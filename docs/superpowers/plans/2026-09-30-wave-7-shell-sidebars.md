@@ -571,10 +571,10 @@ tweb. Чего нет у tweb — удалить, и написать об эт�
 - Тесты: `sidebarRight/index.test.ts`; правка `Chat.infoPanelMount.test.ts`,
   `useRightColumnShown.test.ts`, `UserInfoPanel.shell.test.ts`
 
-- [ ] **Шаг 1: прочитать** tweb `sidebarRight/index.ts`, `slider.ts:1-140` (наш `components/slider.ts`
+- [x] **Шаг 1: прочитать** tweb `sidebarRight/index.ts`, `slider.ts:1-140` (наш `components/slider.ts`
   398 — сверить `canHideFirst` `:28`, `:46`, `:83`), `docs/tweb/right-sidebar.md` §1–§2, наш
   `UserInfoPanel.tsx:40-120`, `:620-660`, `Chat.tsx:360-370`, `:1005-1015`, `:1490-1505`.
-- [ ] **Шаг 2: падающие тесты** (`sidebarRight/index.test.ts`, реальный DOM happy-dom, реальный
+- [x] **Шаг 2: падающие тесты** (`sidebarRight/index.test.ts`, реальный DOM happy-dom, реальный
   `appNavigationController`): (а) `toggleSidebar(true)` → `body.is-right-column-shown`,
   `sidebarEl.inert === false`, в стеке навигации одна запись `'right'`; (б) повторный
   `toggleSidebar(true)` — no-op (записей по-прежнему одна); (в) `toggleSidebar(false)` →
@@ -585,20 +585,35 @@ tweb. Чего нет у tweb — удалить, и написать об эт�
   `large → medium` закрывает колонку; (з) `onCloseTab` последней вкладки закрывает колонку.
   Интеграционно (`Chat.infoPanelMount.test.ts`): клик по шапке открывает колонку, в DOM ровно один
   `#column-right`.
-- [ ] **Шаг 3: убедиться, что падают.** **Мутации (фактически):** убрать проверку
+- [x] **Шаг 3: убедиться, что падают.** **Мутации (фактически):** убрать проверку
   `findItemByType('right')` `:130` → (б) краснеет (две записи); убрать ветку `else if(tab)` `:78` →
   (е) краснеет; оставить старый счётчик писателем параллельно → скан «один писатель
   `is-right-column-shown`» (новый, `sidebarRight/index.test.ts`: `git grep`-скан на
   `classList.*is-right-column-shown` вне `sidebarRight/index.ts`) краснеет.
-- [ ] **Шаг 4: реализовать** дословно; шапка — `порт tweb/src/components/sidebarRight/index.ts:1-143`,
+- [x] **Шаг 4: реализовать** дословно; шапка — `порт tweb/src/components/sidebarRight/index.ts:1-143`,
   расхождения нумерованным списком (все временные строки выше).
-- [ ] **Шаг 5: стенд:** RS-01, RS-06 до/после; профиль открывается и закрывается кликом, Esc,
+- [x] **Шаг 5: стенд:** RS-01, RS-06 до/после; профиль открывается и закрывается кликом, Esc,
   Back (NAV-03 в объёме одного уровня); ширина колонки тянется (resize-хэндл); на `medium` колонка
   закрывается при сужении. Числа: время выезда (`_rightSidebar.scss` transition), `inert`.
 
 **Готово когда:** `#column-right` в DOM ровно один и статичный; писатель `is-right-column-shown` —
 только `sidebarRight/index.ts`; `useNavLayer` с `'right'` — 0 вызовов; P0 RS-01/RS-06 зелёные.
 **Оценка:** 2,5 дня. **Зависимости:** нет (параллельно с 0а).
+
+**Сделано (2026-09-30).** Отличия исполнения от постановки:
+- `core/hooks/useClassEvent.ts` **не заведён**: после врезки у `right_sidebar_toggle` нет ни
+  одного React-читателя — панель больше не держит `open` (видео, `inert`, навигацию, ресайз ведёт
+  класс), `onOpenAfterTimeout` зовёт слайдер на вкладке №0. Хелпер заводит первый настоящий
+  потребитель (мост чтения п. 4). Событие в `rootScope` объявлено (tweb `rootScope.ts:239`).
+- `useOpenAfterTimeout` снесён: его роль — хук вкладки `AppReactProfileTab.onOpenAfterTimeout`.
+- Срез `appImManager.selectTab` для CHAT ↔ PROFILE — `selectProfileTab` в
+  `core/navigation/chatHistory.ts` (своей функции «мобильного перехода» там не было).
+- Оверлеи `GroupEditFlow`/`AddMembersScreen`/`ChannelStats`/`RightsEditor` — соседи вкладки №0 в
+  `.sidebar-slider` (только у активного инстанса), а не её дети: правила
+  `.profile-container .sidebar-header` (`_profile.scss:625`) задели бы их шапки.
+- `useRightColumnShown` — мост только для `RightSearchTab` (панель в нём больше не нуждается):
+  открывает колонку классом и закрывает её, лишь если открывал сам.
+- «Отложено» у задачи нет (О-50…О-54 не заняты).
 
 ### Задачи 0б-1…0б-11: вкладки правой колонки
 

@@ -3,6 +3,8 @@
 // `appNavigationController`, реальная вкладка №0 (`AppReactProfileTab`);
 // замоканного здесь нет ничего — предмет тестов как раз проводка класса к
 // контроллеру навигации, `body` и слайдеру.
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { join, relative } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import appNavigationController from '@core/navigation/appNavigationController'
 import mediaSizes, { ScreenSize } from '@core/dom/mediaSizes'
@@ -220,5 +222,44 @@ describe('AppSidebarRight.construct', () => {
     const spy = vi.spyOn(sidebar, 'toggleSidebar')
     mediaSizes.dispatchEvent('changeScreen', ScreenSize.large, ScreenSize.medium)
     expect(spy).not.toHaveBeenCalled()
+  })
+})
+
+describe('один писатель `is-right-column-shown`', () => {
+  // tweb: класс ставит `toggleSidebar` (:128), снимает `hide` (:96) — и больше
+  // никто. Второй писатель (прежний счётчик `useRightColumnShown`) разводил
+  // состояние колонки с её записью навигации.
+  const SRC = join(__dirname, '../..')
+  const OWNER = 'components/sidebarRight/index.ts'
+
+  function walk(dir: string, acc: string[] = []): string[] {
+    for(const name of readdirSync(dir)) {
+      const p = join(dir, name)
+      if(statSync(p).isDirectory()) walk(p, acc)
+      else if(/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name)) acc.push(p)
+    }
+    return acc
+  }
+
+  // Строковый литерал имени класса в коде — это и есть заготовка писателя
+  // (прежний счётчик держал его в `const CLASS = '…'` и писал `add(CLASS)`);
+  // константу класса вне владельца можно только читать.
+  it('литерал класса и classList-запись константой — только в sidebarRight/index.ts', () => {
+    const writers = walk(SRC).filter((p) => {
+      const src = readFileSync(p, 'utf8')
+      return /['"]is-right-column-shown['"]/.test(src) ||
+        /classList\.(add|remove|toggle)\([^)]*RIGHT_COLUMN_ACTIVE_CLASSNAME/.test(src)
+    }).map((p) => relative(SRC, p))
+    expect(writers).toEqual([OWNER])
+  })
+
+  // Узел колонки один и статичный (tweb `index.html:110-112`): его рисует
+  // шелл, а не портал каждой панели профиля, как раньше `UserInfoPanel`.
+  it('`id="column-right"` в разметке — ровно один, в App.tsx', () => {
+    const hosts = walk(SRC).flatMap((p) => {
+      const n = readFileSync(p, 'utf8').match(/id="column-right"/g)?.length ?? 0
+      return n ? [`${relative(SRC, p)}:${n}`] : []
+    })
+    expect(hosts).toEqual(['App.tsx:1'])
   })
 })
