@@ -126,6 +126,7 @@
  *
  * Заголовок вкладки строит `i18n(key)` ядра — дословно как оригинал (:115-117).
  */
+import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
 import EventListenerBase, { type EventListenerListeners } from '@helpers/eventListenerBase'
 import ListenerSetter from '@helpers/listenerSetter'
 import { getMiddleware, type Middleware, type MiddlewareHelper } from '@helpers/middleware'
@@ -178,6 +179,22 @@ export default class SliderSuperTab {
 
   // should return boolean instantly or `Promise` from `confirmationPopup`
   public isConfirmationNeededOnClose?: () => void | boolean | Promise<any>
+
+  /**
+   * Порт tweb `sliderTab.ts:42-53`: разрешается, когда вкладка ДОЕХАЛА
+   * (переход открытия окончен). `open()` ждёт только рендера, переход идёт
+   * после него — разрешает промис слайдер (`slider.ts::selectTab`, tweb
+   * `slider.ts:136`). Потребитель — вкладка, чья первая страница данных
+   * приходит, пока она ещё за краем экрана (`calls.solid.tsx`).
+   */
+  public shown: CancellablePromise<void> = deferredPromise<void>()
+
+  /** Повторно открытая вкладка въезжает снова — ждущим `shown` ждать заново (tweb :49-53). */
+  public resetShown() {
+    if(this.shown.isFulfilled) {
+      this.shown = deferredPromise<void>()
+    }
+  }
 
   constructor(slider?: SliderSuperTabSlider, destroyable?: boolean) {
     this._constructor(slider, destroyable)

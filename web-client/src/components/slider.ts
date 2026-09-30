@@ -244,11 +244,12 @@ export default class SidebarSlider {
       const hooks = tabHooks(tab)
       hooks.onOpen?.()
 
-      if(hooks.onOpenAfterTimeout) {
-        setTimeout(() => {
-          hooks.onOpenAfterTimeout?.()
-        }, NAVIGATION_TRANSITION_TIME)
-      }
+      // Таймер ставится ВСЕГДА (tweb :133-137): кроме хука он разрешает
+      // `tab.shown` — конец перехода нужен и вкладке без `onOpenAfterTimeout`.
+      setTimeout(() => {
+        hooks.onOpenAfterTimeout?.()
+        tab.shown.resolve?.()
+      }, NAVIGATION_TRANSITION_TIME)
     }
 
     this.pushNavigationItem(tab)
@@ -339,6 +340,9 @@ export default class SidebarSlider {
 
     const tab: SliderSuperTab | undefined = id instanceof SliderSuperTab ? id : this.tabs.get(id)
     if(tab) {
+      // tweb :241 — вкладка уезжает; следующее открытие снова ждёт конца перехода.
+      tab.resetShown()
+
       const hooks = tabHooks(tab)
       try {
         hooks.onClose?.()
