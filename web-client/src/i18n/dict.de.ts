@@ -579,6 +579,9 @@ const de = {
   'AutoDeleteMessages.SectionCaption':
     'Wenn aktiviert, werden alle neuen Nachrichten in Chats, die du beginnst, nach der gewählten Zeit automatisch für alle gelöscht. Das automatische Löschen in deinen zuvor erstellten Chats wird separat aktiviert.',
   'AutoDeleteMessages.SetOtherTime': 'Andere Zeit festlegen',
+  'AutoDeleteMessages.InfoDefault': 'Nachrichten in von dir gestarteten Chats nach einer bestimmten Zeit automatisch für alle löschen.',
+  UnsavedChanges: 'Ungespeicherte Änderungen',
+  'UnsavedChangesDescription.Privacy': 'Du hast Datenschutzeinstellungen geändert. Änderungen speichern?',
   // Разряды длительности (`components/wrappers/wrapDuration.ts`, задача 7 плана 2D)
   Seconds: {
     one_value: '%1$d Sekunde',
