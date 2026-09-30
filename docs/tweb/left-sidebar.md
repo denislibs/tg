@@ -820,15 +820,20 @@ DOM-паритет первого таба выдержан сознательн
    наш попап `EmojiStatusPicker`, а не `EmoticonsDropdown` у кнопки; клик по своему статусу в профиле
    (`clickableEmojiStatus`) ждёт `PeerProfile` в корне настроек (задача 28 волны 2D).
 6а. **Контакты и «Новое сообщение» — адресная книга.** tweb: `AppContactsTab` → `ContactsList`
-   (`getContactsPeerIds(query, false, …)`, без себя) — и для пункта меню, и для кнопки `newprivate`
-   (`sidebarLeft/index.ts:661`, `:1039`). У нас оба экрана (`ContactsView.tsx`, `NewPrivateChat.tsx`)
-   и выбор контакта для отправки (`ContactPicker`) читают книгу через `core/hooks/useContactPeerIds.ts`
-   (ветка `fix/contacts-share-pickers`; прежде собирали «контакты» из личных диалогов — туда попадали
-   «Избранное», служебный «Telegram» 777000 и любой собеседник). Остаток: сам `ContactsList` не
-   портирован — виртуальный список, сортировка «по времени в сети»/по имени с кнопкой в шапке,
-   `SectionIndex`, выделение контактов (`ContactsSelection`), меню контакта; у нас прежняя разметка
-   с группами по букве, порядок по имени задаёт книга; «Новое сообщение» — отдельный экран, а не
-   `AppContactsTab`.
+   (`getContactsPeerIds(query, false, 'none')`, без себя) — и для пункта меню, и для кнопки `newprivate`
+   (`sidebarLeft/index.ts:1079-1083`, `:1105-1109`). **Порт 812502980 готов** (задача 0а-1 волны 7):
+   вкладка `components/sidebarLeft/tabs/contacts.solid.tsx` (`AppContactsTab`, `noSame`,
+   `solidJsTabs/tabs.ts`), список `sidebarLeft/contactsList.solid.tsx` (виртуальный, по «был(а) в
+   сети» с троттлингом 3 с или по имени с секциями, скольжение строк, гашение удалённой), полоса букв
+   `components/sectionIndex.solid.tsx`, порядок `core/peers/sortContacts.ts`, настройка
+   `contactsSortMode`, событие книги `contacts_update` (воркер `contactsManager::onContactUpdated` →
+   `realtimeBridge`), промис `tab.shown` слайдера. Клик по строке открывает чат и вкладку НЕ
+   закрывает — как у оригинала. `{secret: true}` — Отступление В7-1 (секретный чат,
+   `core/navigation/startSecretChat.ts`). Расхождения — в шапках файлов: выделения и меню контакта
+   нет (О-30 волны 7, ждёт `DialogsSelectionBase`), `highlight: 'sort'` нет (О-31), статус — из
+   зеркала присутствия, «добавить контакт» — мост на React-попап до 2C-26. **Врезка ещё не сделана**:
+   меню по-прежнему открывает React-экраны `ContactsView.tsx`/`NewPrivateChat.tsx`
+   (`SidebarScreens.tsx`), их снос — шаг 5 задачи 0а-1 после колоночного слайдера 2D-28.
 7. **Контекстное меню диалога и contact-list-заглушка** — у tweb богатое меню
    (`dialogsContextMenu.ts`, 13 пунктов) и секция Contacts при <10 чатах; у нас этих подсистем нет
    (меню ПАПКИ — не оно: порт `createFolderContextMenu` на оба ряда, задача 7 плана папок).

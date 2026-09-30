@@ -244,11 +244,10 @@ export default class SidebarSlider {
       const hooks = tabHooks(tab)
       hooks.onOpen?.()
 
-      if(hooks.onOpenAfterTimeout) {
-        setTimeout(() => {
-          hooks.onOpenAfterTimeout?.()
-        }, NAVIGATION_TRANSITION_TIME)
-      }
+      setTimeout(() => {
+        hooks.onOpenAfterTimeout?.()
+        tab.shown.resolve!()
+      }, NAVIGATION_TRANSITION_TIME)
     }
 
     this.pushNavigationItem(tab)
@@ -339,6 +338,8 @@ export default class SidebarSlider {
 
     const tab: SliderSuperTab | undefined = id instanceof SliderSuperTab ? id : this.tabs.get(id)
     if(tab) {
+      tab.resetShown()
+
       const hooks = tabHooks(tab)
       try {
         hooks.onClose?.()

@@ -1,6 +1,6 @@
 import { useI18nStore } from '../../i18n'
 import type { LangPackKey } from '../../lang'
-import { useSecretChatStore } from '../../stores/secretChatStore'
+import { startSecretChat } from '../navigation/startSecretChat'
 import { useManagers } from './useManagers'
 import type { GroupPhoto } from '../../components/NewGroupFlow'
 
@@ -38,15 +38,9 @@ export function useSidebarActions(onChatCreated?: (peerId: PeerId) => void) {
     onChatCreated?.(peerId)
   }
 
-  // «Секретный чат» (наша фича): выбор контакта → E2E-handshake managers.secret.start,
-  // затем открыть созданный чат в статусе «ожидание». Контакт берётся из
-  // адресной книги (`NewPrivateChat`), и личного диалога с ним может не быть —
-  // поэтому собеседник адресуется ключом пользователя, а не строкой списка.
-  const startSecret = async (userId: PeerId) => {
-    const { peerId } = await managers.secret.start(userId)
-    useSecretChatStore.getState().setStatus(peerId, 'awaiting')
-    onChatCreated?.(peerId)
-  }
+  // «Секретный чат» (наша фича): развилка — `core/navigation/startSecretChat.ts`, общая с
+  // Solid-вкладкой контактов (`{secret: true}`).
+  const startSecret = (userId: PeerId) => startSecretChat(managers, userId)
 
   return { createGroup, createChannel, startSecret }
 }

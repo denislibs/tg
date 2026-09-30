@@ -1336,6 +1336,8 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 | О-11 | Игры (`playGame` `:1394`), url-auth (`handleUrlAuth` `:1419`), autologin-домены (`:1511`) | нет на бэкенде | боты с логином/играми |
 | О-12 | Пункты меню ⋮ и плашки шапки без бэкенда: перевод чата, снятие платы, автоматизация, бусты (если нет), `CompactDiffView`, `WelcomeMessages.DeleteAll` | детальный план Э6 составит точный список | шапка 1:1 |
 | О-13 | Возможности композера без бэкенда: эфемерный режим, предложенные посты, эффекты (если нет), AI-редактор (`inputState/aiEditorButton`) | детальный план Э7 составит точный список | композер 1:1 |
+| О-30 | Выделение контактов во вкладке контактов: `ContactsSelection` (`contactsSelection.ts` 50), меню строки `attachContactsContextMenu` (45), попап `confirmDeleteContacts` (`popups/deleteContacts.ts` 22), ключи `ContactsSelected`/`DeleteContactsTitle`/`DeleteContactsSubtitle` (коммит ee6f7f9c2) | база `DialogsSelectionBase` (`dialogsSelectionBase.ts` 531, коммит 60a83a6f1 — выделение чатов и тем) не портирована; бэкенд есть (`DELETE /contacts/{id}`) | порт выделения списков (60a83a6f1 → ee6f7f9c2, `docs/tweb/delta/part-5.md` группа 4) |
+| О-31 | `highlight: 'sort'` у `AppContactsTab`: ссылка `tg://contacts/sort` вспыхивает кнопкой сортировки (`flashControl`, `lib/settingsSearch/highlight.ts`) | нет ни обработчика внутренних ссылок, ни поиска по настройкам | `internalLinkProcessor` (Э5-4) и порт `lib/settingsSearch` |
 
 ## Что остаётся волне 8 (после этой программы)
 

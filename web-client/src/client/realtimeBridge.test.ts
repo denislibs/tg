@@ -104,6 +104,19 @@ describe('realtimeBridge.startRealtime — насос smp → rootScope', () => 
     expect(received).toEqual(['ru'])
   })
 
+  // Событие книги (tweb rootScope.ts:152) — тоже не `RT.*`: его шлёт менеджер книги
+  // воркера (`contactsManager::onContactUpdated`), а слушает список контактов.
+  it('contacts_update воркера доезжает до rootScope вкладки', async () => {
+    const { deliver, rootScope, startRealtime } = await setup()
+    startRealtime()
+    const received: unknown[] = []
+    rootScope.addEventListener('contacts_update', (userId) => received.push(userId))
+
+    deliver({ kind: 'event', event: 'contacts_update', payload: 5 })
+
+    expect(received).toEqual([5])
+  })
+
   it('rootScope.setPort(smp) реально вызывается — событие этой вкладки (dispatchEvent) уходит в порт', async () => {
     const { rootScope, RT, startRealtime, startClient } = await setup()
     startRealtime()

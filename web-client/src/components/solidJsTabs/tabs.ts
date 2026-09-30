@@ -475,3 +475,27 @@ export const AppSharedFolderTab =
     getComponentModule: () => import('../sidebarLeft/tabs/sharedFolder.solid'),
     onOpenAfterTimeout: folderTabOpenAfterTimeout,
   })
+
+// ── Контакты (tweb :209-222) — задача 0а-1 плана волны 7 ─────────────────────
+// Вкладка адресной книги (`contacts.solid.tsx`); её же открывает «Новый личный
+// чат» (tweb `sidebarLeft/index.ts:1079-1083`, `:1105-1109`). Расхождения:
+//  • `highlight: 'sort'` (ссылка `tg://contacts/sort` вспыхивает кнопкой
+//    сортировки, `flashControl` из `lib/settingsSearch/highlight.ts`) не
+//    заведена — О-31 волны 7: ни обработчика внутренних ссылок (Э5-4), ни поиска
+//    по настройкам у нас нет, опция была бы без вызывающего;
+//  • `secret` — Отступление В7-1: «Новый секретный чат» (E2E, у tweb пары нет)
+//    открывает эту же вкладку, и клик по контакту начинает секретный чат, а не
+//    открывает личный.
+export type AppContactsTabOptions = {
+  secret?: true
+}
+
+// the tab is mostly opened with nothing to point at
+type AppContactsTabPayload = AppContactsTabOptions | void
+
+export const AppContactsTab =
+  scaffoldSolidJSTab<AppContactsTabPayload>({
+    title: 'Contacts',
+    getComponentModule: () => import('../sidebarLeft/tabs/contacts.solid'),
+  })
+;(AppContactsTab as unknown as { noSame: boolean }).noSame = true
