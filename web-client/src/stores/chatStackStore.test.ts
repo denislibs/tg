@@ -29,6 +29,20 @@ describe('chatStackStore', () => {
     expect(descKey(selectActive(useChatStackStore.getState())!)).toBe(descKey({ peerId: 2, threadId: 7, type: 'discussion' }))
   })
 
+  // tweb appImManager.ts:3394 — `if(peerId === NULL_PEER_ID || !peerId) return`:
+  // инстанса «ни о каком пире» в стеке не бывает, иначе лента и профиль
+  // уходят с ним в сеть (`/chats/NaN/history`, `/chats/0/card`).
+  it('setInnerPeer без пира (0/NaN) стек не трогает', () => {
+    const { setPeer, setInnerPeer } = useChatStackStore.getState()
+    setPeer({ peerId: 1, type: 'chat' })
+    const before = useChatStackStore.getState().stack
+
+    setInnerPeer({ peerId: 0, type: 'chat' })
+    setInnerPeer({ peerId: Number.NaN, threadId: 7, type: 'discussion', thread })
+
+    expect(useChatStackStore.getState().stack).toBe(before)
+  })
+
   it('setInnerPeer на пир, который уже в стеке, срезает всё выше него', () => {
     const { setPeer, setInnerPeer } = useChatStackStore.getState()
     setPeer({ peerId: 1, type: 'chat' })

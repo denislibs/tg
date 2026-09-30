@@ -467,8 +467,14 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := peerChatID(w, r, h.svc)
+	chatID, ok := peerChatIDForRead(w, r, h.svc)
 	if !ok {
+		return
+	}
+	// Собеседник без диалога — пустой разговор (оригинал: пустой
+	// messages.messages), а не 404: чат с ним открыт до первого сообщения.
+	if chatID == 0 {
+		writeMessagesAll(w, r, h.svc, nil)
 		return
 	}
 	limit := int(queryInt(r, "limit", 40))
@@ -1016,7 +1022,7 @@ func (h *ChatHandler) MediaHistory(w http.ResponseWriter, r *http.Request) {
 // открытие профиля. Порядок ответа = порядок запроса, на каждый фильтр ровно
 // одна запись.
 func (h *ChatHandler) SearchCounters(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := peerChatID(w, r, h.svc)
+	chatID, ok := peerChatIDForRead(w, r, h.svc)
 	if !ok {
 		return
 	}
@@ -1029,6 +1035,19 @@ func (h *ChatHandler) SearchCounters(w http.ResponseWriter, r *http.Request) {
 			filters = append(filters, f)
 		}
 	}
+	type counter struct {
+		Filter string `json:"filter"`
+		Count  int    `json:"count"`
+	}
+	out := make([]counter, 0, len(filters))
+	// Собеседник без диалога — пустой разговор: по каждому фильтру ноль.
+	if chatID == 0 {
+		for _, f := range filters {
+			out = append(out, counter{Filter: f})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"counters": out})
+		return
+	}
 	counters, err := h.svc.SearchCounters(r.Context(), chatID, h.meID(r), filters)
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
@@ -1038,11 +1057,6 @@ func (h *ChatHandler) SearchCounters(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "search counters failed")
 		return
 	}
-	type counter struct {
-		Filter string `json:"filter"`
-		Count  int    `json:"count"`
-	}
-	out := make([]counter, 0, len(counters))
 	for _, c := range counters {
 		out = append(out, counter{Filter: c.Filter, Count: c.Count})
 	}

@@ -14,6 +14,7 @@ import type { Chat } from '../data'
 import { useT, useTArgs } from '../i18n'
 import { useHeaderMenuActions } from '../core/hooks/useHeaderMenuActions'
 import { useReportStore } from '../stores/reportStore'
+import { chatPeerId, isDialogChat } from '../core/chatEntity'
 
 type Item = { icon: ReactNode; label: LangPackKey; danger?: boolean; submenu?: boolean; onClick?: () => void }
 
@@ -64,9 +65,10 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
   // На мобилке лупа скрыта из шапки — поиск живёт пунктом меню
   // (tweb topbar.ts: menuButton 'Search', verify: mediaSizes.isMobile).
   const narrow = useMediaQuery('(max-width:900px)')
-  const numericChatId = Number(chat.id)
+  const numericChatId = chatPeerId(chat)
+  // гейт тот же, что у лупы шапки (`useChatHeaderSearch`)
   const searchItems: Item[] =
-    narrow && Number.isFinite(numericChatId) && String(numericChatId) === chat.id
+    narrow && isDialogChat(chat)
       ? [{ icon: <TgIcon name="search" size={20} />, label: 'Search', onClick: () => { initSearch(numericChatId); close() } }]
       : []
 
