@@ -134,3 +134,25 @@ func TestLoad_VAPIDSubjectDefault(t *testing.T) {
 		t.Errorf("VAPIDSubject default = %q", c.VAPIDSubject)
 	}
 }
+
+func TestLoad_PublicLinkOrigins(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/db")
+	t.Setenv("PUBLIC_LINK_ORIGIN", "")
+	t.Setenv("APP_ORIGIN", "")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.PublicLinkOrigin != "https://t.me.local" || c.AppOrigin != "https://web.telegram.local" {
+		t.Errorf("defaults = %q, %q", c.PublicLinkOrigin, c.AppOrigin)
+	}
+
+	t.Setenv("PUBLIC_LINK_ORIGIN", "https://links.example/")
+	t.Setenv("APP_ORIGIN", "https://app.example/")
+	if c, err = Load(); err != nil {
+		t.Fatal(err)
+	}
+	if c.PublicLinkOrigin != "https://links.example" || c.AppOrigin != "https://app.example" {
+		t.Errorf("завершающий «/» не снят: %q, %q", c.PublicLinkOrigin, c.AppOrigin)
+	}
+}
