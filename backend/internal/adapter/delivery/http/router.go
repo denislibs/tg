@@ -245,6 +245,8 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/gifts/catalog", ch.GiftCatalog)
 		pr.Post("/gifts/send", ch.SendGift)
 		pr.Get("/users/{userID}/gifts", ch.ProfileGifts)
+		// users.suggestBirthday — служебка-предложение в личной переписке.
+		pr.Post("/users/{userID}/suggest_birthday", ch.SuggestBirthday)
 		pr.Post("/gifts/{giftID}/convert", ch.ConvertGift)
 		pr.Post("/gifts/{giftID}/hidden", ch.SetGiftHidden)
 		// Боты
