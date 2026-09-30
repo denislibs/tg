@@ -370,8 +370,13 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `Peer.ServiceNotifications` (подпись служебного аккаунта, getUserStatusString
 // :19-21) и `Verified.Bot`/`Verified.Channel`/`Verified.Group` (строка
 // официальной верификации профиля, peerProfile.tsx BotVerification): ru 1412.
+//
+// «Новый канал» (задача 0а-3 волны 7): у ru +5 ключей tweb lang.ts — подтверждение
+// `addChatUsers` (`AddMembersAlertTitle`/`AddMembersAlertCountText`/
+// `AddMembersAlertNamesText`, `InviteToGroupError`) и поле поиска вкладки выбора
+// подписчиков `SendMessageTo`: ru 1417.
 const COMPOSITION = {
-  ru: { keys: 1412, plural: 42 },
+  ru: { keys: 1417, plural: 42 },
   uk: { keys: 748, plural: 31 },
   es: { keys: 745, plural: 30 },
   de: { keys: 745, plural: 31 },
@@ -498,8 +503,9 @@ const COMPOSITION = {
 // Портом кнопки замка (`sidebarLeft/lockButton.solid.tsx`) — наш `PasscodeLock.LockNow`
 // заменён ключом tweb `PasscodeLock.TapToLock` у всех пяти: −1 +1, число строк то же.
 // Особыми чатами — у ru +4 ключа tweb (разбор — у `COMPOSITION` выше).
+// «Новым каналом» (0а-3 волны 7) — у ru +5 ключей tweb (разбор — там же).
 const FINGERPRINT = {
-  ru: '75169aa2',
+  ru: '4a85f400',
   uk: '4c8d1a40',
   es: 'e878cf4f',
   de: '1e1c8f3e',

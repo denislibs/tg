@@ -475,3 +475,14 @@ export const AppSharedFolderTab =
     getComponentModule: () => import('../sidebarLeft/tabs/sharedFolder.solid'),
     onOpenAfterTimeout: folderTabOpenAfterTimeout,
   })
+
+// ── «Новый канал» (tweb :262-270) — задача 0а-3 плана волны 7 ───────────────
+// Форма обычная, `noSame` — как у оригинала. Полезной нагрузки нет: `onCreate`/
+// `openAfter` оригинала нужны только сообществам, которых у нас нет
+// (расхождение 1 шапки `newChannel.solid.tsx`).
+export const AppNewChannelTab =
+  scaffoldSolidJSTab({
+    title: 'NewChannel',
+    getComponentModule: () => import('../sidebarLeft/tabs/newChannel.solid'),
+  })
+;(AppNewChannelTab as unknown as { noSame: boolean }).noSame = true
