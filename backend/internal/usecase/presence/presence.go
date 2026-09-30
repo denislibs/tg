@@ -32,10 +32,34 @@ type PresenceStore interface {
 	SetOffline(ctx context.Context, userID int64, lastSeen int64) error
 	IsOnline(ctx context.Context, userID int64) (bool, error)
 	LastSeen(ctx context.Context, userID int64) (int64, error)
-	// OnlineExpires — дедлайн ключа присутствия (userStatusOnline.expires).
-	// Нулевое время — пир не онлайн.
+	// OnlineExpires — дедлайн ключа присутствия. Нулевое время — пир не онлайн.
 	OnlineExpires(ctx context.Context, userID int64) (time.Time, error)
+	// Announce запоминает дедлайн онлайна, ОБЪЯВЛЕННЫЙ партнёрам
+	// (userStatusOnline.expires последнего кадра); запись живёт до него же.
+	Announce(ctx context.Context, userID int64, deadline time.Time) error
+	// AnnouncedExpires — последний объявленный дедлайн; нулевое время — не
+	// объявлялся или уже истёк.
+	AnnouncedExpires(ctx context.Context, userID int64) (time.Time, error)
 }
+
+// Горизонт онлайна и порог его продления.
+//
+// Telegram держит собеседника «в сети» ПОТОКОМ updateUserStatus: tweb зовёт
+// account.updateStatus каждые 50 с (appImManager.ts:360), и каждый вызов
+// уходит зрителям новым userStatusOnline со свежим expires, а клиент гасит
+// онлайн, как только expires прошёл (appUsersManager.ts:995-1003). Наш пульс —
+// WS-heartbeat раз в 25 с (ws.pingPeriod); продлевать им только TTL ключа
+// (35 с) значит обещать партнёру онлайн на 35 с и больше не сказать ничего —
+// через минуту клиент гасит статус живого человека («был(а) в сети только что»).
+//
+// Поэтому обещание длиннее ключа (onlineHorizon) и продлевается кадром, когда
+// до его истечения остаётся меньше reannounceBefore: при пульсе 25 с это кадр
+// раз в ~50 с — каденция оригинала, а не веер на каждый пульс. reannounceBefore
+// обязан превышать период пульса, иначе обещание истечёт между пульсами.
+const (
+	onlineHorizon    = 90 * time.Second
+	reannounceBefore = 45 * time.Second
+)
 
 type Manager struct {
 	store    PresenceStore
@@ -43,10 +67,11 @@ type Manager struct {
 	partners PartnersFunc
 	ttl      time.Duration
 	privacy  PrivacyChecker
+	now      func() time.Time
 }
 
 func NewManager(store PresenceStore, pub Publisher, partners PartnersFunc, ttl time.Duration) *Manager {
-	return &Manager{store: store, pub: pub, partners: partners, ttl: ttl}
+	return &Manager{store: store, pub: pub, partners: partners, ttl: ttl, now: time.Now}
 }
 
 // SetPrivacy подключает правило «кто видит время моего захода» (optional):
@@ -66,11 +91,12 @@ func (m *Manager) Online(ctx context.Context, userID int64) error {
 		_, _ = m.store.Refresh(ctx, userID, m.ttl)
 		return nil
 	}
-	return m.fanout(ctx, userID, true, 0)
+	return m.announceOnline(ctx, userID)
 }
 
 // Heartbeat refreshes the online TTL; if the key had expired it re-establishes
-// presence (which re-announces online).
+// presence (which re-announces online). Живой ключ продлевается и обещанием
+// партнёрам — кадром, когда объявленный дедлайн близок (см. onlineHorizon).
 func (m *Manager) Heartbeat(ctx context.Context, userID int64) error {
 	existed, err := m.store.Refresh(ctx, userID, m.ttl)
 	if err != nil {
@@ -79,14 +105,25 @@ func (m *Manager) Heartbeat(ctx context.Context, userID int64) error {
 	if !existed {
 		return m.Online(ctx, userID)
 	}
-	return nil
+	if exp, _ := m.store.AnnouncedExpires(ctx, userID); exp.Sub(m.now()) >= reannounceBefore {
+		return nil
+	}
+	return m.announceOnline(ctx, userID)
+}
+
+// announceOnline объявляет партнёрам онлайн с новым дедлайном и запоминает его,
+// чтобы снимок (Status) обещал ровно то же, что последний кадр.
+func (m *Manager) announceOnline(ctx context.Context, userID int64) error {
+	deadline := m.now().Add(onlineHorizon)
+	_ = m.store.Announce(ctx, userID, deadline)
+	return m.fanout(ctx, userID, domain.NewUserStatusOnline(deadline))
 }
 
 // Offline marks a user offline, records last-seen, and fans out presence(offline).
 func (m *Manager) Offline(ctx context.Context, userID int64) error {
-	now := time.Now().UnixMilli()
-	_ = m.store.SetOffline(ctx, userID, now)
-	return m.fanout(ctx, userID, false, now)
+	now := m.now()
+	_ = m.store.SetOffline(ctx, userID, now.UnixMilli())
+	return m.fanout(ctx, userID, domain.PresenceStatus(false, time.Time{}, now))
 }
 
 // IsOnline reports whether a user is currently online. It satisfies the HTTP
@@ -96,8 +133,10 @@ func (m *Manager) IsOnline(ctx context.Context, userID int64) (bool, error) {
 }
 
 // Status — снимок присутствия в том виде, из которого собирается UserStatus
-// схемы: онлайн ли пир, ДО КАКОГО МОМЕНТА (дедлайн TTL ключа) и когда заходил
-// в последний раз. Реализует шов PresenceSnapshot у privacy и delivery.
+// схемы: онлайн ли пир, ДО КАКОГО МОМЕНТА (объявленный партнёрам дедлайн —
+// тот же, что в последнем кадре; до первого объявления — дедлайн TTL ключа) и
+// когда заходил в последний раз. Реализует шов PresenceSnapshot у privacy и
+// delivery.
 //
 // Срок годности — не украшение. Без него потерянный кадр присутствия оставлял
 // человека онлайн навсегда; с ним клиент деградирует online → offline сам,
@@ -105,7 +144,9 @@ func (m *Manager) IsOnline(ctx context.Context, userID int64) (bool, error) {
 func (m *Manager) Status(ctx context.Context, userID int64) (online bool, expires, lastSeen time.Time) {
 	online, _ = m.store.IsOnline(ctx, userID)
 	if online {
-		expires, _ = m.store.OnlineExpires(ctx, userID)
+		if expires, _ = m.store.AnnouncedExpires(ctx, userID); expires.IsZero() {
+			expires, _ = m.store.OnlineExpires(ctx, userID)
+		}
 	}
 	if ms, _ := m.store.LastSeen(ctx, userID); ms > 0 {
 		lastSeen = time.UnixMilli(ms)
@@ -133,21 +174,14 @@ func (m *Manager) UserStatus(ctx context.Context, userID int64, visible bool) do
 // Скрытое правилом last_seen присутствие — не «пустой кадр с online:false», а
 // ДРУГОЙ конструктор: userStatusRecently. Приватность выражена выбором
 // конструктора, ровно как в оригинале.
-func (m *Manager) fanout(ctx context.Context, userID int64, online bool, lastSeenMS int64) error {
+func (m *Manager) fanout(ctx context.Context, userID int64, status domain.UserStatus) error {
 	partners, err := m.partners(ctx, userID)
 	if err != nil {
 		return err
 	}
-	var expires, lastSeen time.Time
-	if online {
-		expires, _ = m.store.OnlineExpires(ctx, userID)
-	}
-	if lastSeenMS > 0 {
-		lastSeen = time.UnixMilli(lastSeenMS)
-	}
 	frame, _ := json.Marshal(map[string]any{
 		"t": "presence",
-		"d": domain.NewUpdateUserStatus(userID, domain.PresenceStatus(online, expires, lastSeen)),
+		"d": domain.NewUpdateUserStatus(userID, status),
 	})
 	var hidden []byte
 	for _, p := range partners {

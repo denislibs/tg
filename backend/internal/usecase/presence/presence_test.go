@@ -44,10 +44,35 @@ type fakeStore struct {
 	now      time.Time
 	expiry   map[int64]time.Time // presence key expiry
 	lastSeen map[int64]int64
+	// announced — объявленный партнёрам дедлайн онлайна (userStatusOnline.expires).
+	announced map[int64]time.Time
 }
 
 func newFakeStore() *fakeStore {
-	return &fakeStore{now: time.Unix(0, 0), expiry: map[int64]time.Time{}, lastSeen: map[int64]int64{}}
+	return &fakeStore{now: time.Unix(1_790_000_000, 0), expiry: map[int64]time.Time{}, lastSeen: map[int64]int64{}, announced: map[int64]time.Time{}}
+}
+
+func (s *fakeStore) clock() time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.now
+}
+
+func (s *fakeStore) Announce(_ context.Context, userID int64, deadline time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.announced[userID] = deadline
+	return nil
+}
+
+func (s *fakeStore) AnnouncedExpires(_ context.Context, userID int64) (time.Time, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d, ok := s.announced[userID]
+	if !ok || !d.After(s.now) {
+		return time.Time{}, nil
+	}
+	return d, nil
 }
 
 func (s *fakeStore) fastForward(d time.Duration) {
@@ -93,6 +118,7 @@ func (s *fakeStore) SetOffline(_ context.Context, userID int64, lastSeen int64) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.expiry, userID)
+	delete(s.announced, userID)
 	s.lastSeen[userID] = lastSeen
 	return nil
 }
@@ -131,7 +157,29 @@ func newManager(t *testing.T) (*Manager, *fakePub, *fakeStore) {
 		}
 		return nil, nil
 	}
-	return NewManager(store, pub, partners, 30*time.Second), pub, store
+	m := NewManager(store, pub, partners, 30*time.Second)
+	m.now = store.clock
+	return m, pub, store
+}
+
+// lastExpires — expires последнего кадра онлайна, ушедшего получателю.
+func lastExpires(t *testing.T, pub *fakePub, userID int64) int64 {
+	t.Helper()
+	var live struct {
+		D struct {
+			Status struct {
+				Underscore string `json:"_"`
+				Expires    int64  `json:"expires"`
+			} `json:"status"`
+		} `json:"d"`
+	}
+	if err := json.Unmarshal(pub.last(userID), &live); err != nil {
+		t.Fatalf("разбор кадра: %v", err)
+	}
+	if live.D.Status.Underscore != domain.UserStatusOnlineTag {
+		t.Fatalf("последний кадр = %q; want userStatusOnline", live.D.Status.Underscore)
+	}
+	return live.D.Status.Expires
 }
 
 func TestManager_OnlineDedupAndOffline(t *testing.T) {
@@ -222,10 +270,12 @@ func TestManager_UserStatusCarriesExpiry(t *testing.T) {
 	if online.Tag() != domain.UserStatusOnlineTag {
 		t.Fatalf("дискриминатор = %q", online.Tag())
 	}
-	// Дедлайн — ровно TTL ключа присутствия от текущего момента фейкового часа.
-	want := store.now.Add(30 * time.Second).Unix()
+	// Дедлайн — объявленный горизонт онлайна от текущего момента фейкового часа
+	// (а не TTL ключа: ключ продлевается каждые 25 с молча, и дедлайн TTL
+	// устаревал бы раньше, чем партнёр получит следующий кадр).
+	want := store.now.Add(onlineHorizon).Unix()
 	if int64(online.Expires) != want {
-		t.Fatalf("expires = %d; want %d (дедлайн TTL ключа)", online.Expires, want)
+		t.Fatalf("expires = %d; want %d (объявленный горизонт)", online.Expires, want)
 	}
 
 	// Тот же дедлайн уходит партнёру в кадре: без него клиент не смог бы
@@ -255,5 +305,45 @@ func TestManager_UserStatusCarriesExpiry(t *testing.T) {
 	_ = m.Offline(ctx, 1)
 	if st := m.UserStatus(ctx, 1, true); st.Tag() != domain.UserStatusOfflineTag {
 		t.Fatalf("после Offline статус = %q; want userStatusOffline", st.Tag())
+	}
+}
+
+// Онлайн продлевается кадром, а не молча. Telegram держит собеседника «в сети»
+// потоком updateUserStatus: tweb зовёт account.updateStatus каждые 50 с
+// (appImManager.ts:360), и каждый вызов уходит зрителям новым userStatusOnline
+// со свежим expires. У нас пульс — WS-heartbeat, и прежде он лишь продлевал
+// TTL ключа: партнёр получал ОДИН кадр онлайна с дедлайном через 35 с, после
+// чего клиент (degradeExpiredPresence, порт updateUsersStatuses) честно гасил
+// статус — человек в сети, а подпись «был(а) в сети только что».
+func TestManager_HeartbeatReannouncesBeforeExpiry(t *testing.T) {
+	m, pub, store := newManager(t)
+	ctx := context.Background()
+	_ = m.Online(ctx, 1)
+	if pub.count(2) != 1 {
+		t.Fatalf("expected 1 online announce, got %d", pub.count(2))
+	}
+
+	// Держим соединение 10 минут пульсом раз в 25 с (pingPeriod WS): после
+	// каждого пульса последний полученный партнёром кадр обязан обещать онлайн
+	// дальше СЛЕДУЮЩЕГО пульса — иначе между пульсами клиент погасит статус
+	// живого человека.
+	const pulse = 25 * time.Second
+	for i := 0; i < 24; i++ {
+		store.fastForward(pulse)
+		if err := m.Heartbeat(ctx, 1); err != nil {
+			t.Fatalf("heartbeat: %v", err)
+		}
+		if exp, next := lastExpires(t, pub, 2), store.clock().Add(pulse).Unix(); exp <= next {
+			t.Fatalf("шаг %d: последний кадр обещает онлайн до %d, а следующий пульс в %d", i, exp, next)
+		}
+	}
+	// И не на каждый пульс: веер уходит всем партнёрам, а кадр нужен лишь
+	// перед истечением обещанного — примерно раз в 50 с, как у tweb.
+	if n := pub.count(2); n > 1+24/2 {
+		t.Fatalf("кадров онлайна за 24 пульса: %d; ждали не больше %d", n, 1+24/2)
+	}
+	// Снимок (GET /presence, /users/{id}) обещает тот же дедлайн, что и кадр.
+	if _, exp, _ := m.Status(ctx, 1); exp.Unix() != lastExpires(t, pub, 2) {
+		t.Fatalf("снимок expires=%d, кадр expires=%d", exp.Unix(), lastExpires(t, pub, 2))
 	}
 }
