@@ -1323,7 +1323,9 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 
 | № | Что | Почему | Что разблокирует |
 |---|---|---|---|
-| О-1 | Конференц-звонки во вкладке звонков и в `#new-menu` (`ConferenceCall.New`, `sidebarLeft/index.ts:1097-1104`) | проверить бэкенд в 0а-4; если нет — сюда | конференции |
+| О-1 | Конференц-звонки во вкладке звонков и в `#new-menu` (`ConferenceCall.New`, `sidebarLeft/index.ts:1097-1104`), а с ними строка «Начать новый звонок» и вкладка `AppNewCallTab` (`tabs/newCall.tsx` 182 — целиком конференция: пустая, по ссылке, с приглашёнными; у tweb строка стоит под `IS_CONFERENCE_CALL_SUPPORTED`, `calls.tsx:421`) | проверено в 0а-4: конференций на бэкенде нет (`domain/mtmessage.go:894`, в `router.go` ручек нет) | конференции |
+| О-45 | «Удалить все звонки» в меню «⋮» вкладки звонков (`calls.tsx:331-348`, `messages.deletePhoneCallHistory`) | ручки на бэкенде нет | очистка журнала звонков |
+| О-46 | Блок «Активные видеочаты» вкладки звонков (`calls.tsx:166-230`, `appGroupCallsManager.getActiveGroupCalls`) | бэкенд не производит флаг `call_not_empty` у карточек чатов (`domain/mtchat.go:170`) | список идущих видеочатов |
 | О-2 | Поля статистики вне `domain/stats.go:39-45` (сравнение с `stats.broadcastStats`/`megagroupStats` tweb) | отдельной статистики супергрупп нет | `statistics.tsx` 1:1 |
 | О-3 | Форумы ботов (`forumTab/botforumTab.ts` 148, `autonomousDialogList/botforumTopics.ts` 122) | нет на бэкенде | бот-форумы |
 | О-4 | Монофорум и direct messages каналов (`monoforumTab.ts` 106, `monoforumThreads.ts` 47, `channelDirectMessages.tsx` 90) | нет на бэкенде (`domain/mtsaveddialog.go:55`, `mtchat.go:296`) | DM каналов |

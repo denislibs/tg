@@ -1,0 +1,6 @@
+// Порт tweb `src/environment/webrtcSupport.ts` (812502980) 1:1.
+import { IS_FIREFOX } from '@environment/userAgent'
+
+const IS_WEBRTC_SUPPORTED = !!(typeof(RTCPeerConnection) !== 'undefined' && !IS_FIREFOX)
+
+export default IS_WEBRTC_SUPPORTED

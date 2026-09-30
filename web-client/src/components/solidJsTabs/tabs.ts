@@ -475,3 +475,15 @@ export const AppSharedFolderTab =
     getComponentModule: () => import('../sidebarLeft/tabs/sharedFolder.solid'),
     onOpenAfterTimeout: folderTabOpenAfterTimeout,
   })
+
+// ── «Звонки» (tweb :225-230) — задача 0а-4 волны 7 ──────────────────────────
+// Журнал звонков левой колонки (`calls.solid.tsx`). `noSame` — как у оригинала:
+// повторный пункт «Звонки» при уже открытой вкладке не кладёт вторую. Вкладки
+// `AppNewCallTab` (tweb :233-238) нет — она целиком про конференции, О-1
+// (шапка `calls.solid.tsx`, расхождение 1).
+export const AppCallsTab =
+  scaffoldSolidJSTab({
+    title: 'Calls',
+    getComponentModule: () => import('../sidebarLeft/tabs/calls.solid'),
+  })
+;(AppCallsTab as unknown as { noSame: boolean }).noSame = true
