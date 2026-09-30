@@ -370,12 +370,18 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `Peer.ServiceNotifications` (подпись служебного аккаунта, getUserStatusString
 // :19-21) и `Verified.Bot`/`Verified.Channel`/`Verified.Group` (строка
 // официальной верификации профиля, peerProfile.tsx BotVerification): ru 1412.
+//
+// Задача 0б-2 волны 7 (вкладка типа чата, порт tweb `sidebarRight/tabs/chatType.tsx`
+// и `usernameInputField.ts`): +5 ключей tweb lang.ts всем пяти — подписи поля имени
+// `Link.{Available,Invalid,Taken}` и подтверждение снятия имени
+// `ChannelVisibility.Confirm.MakePrivate.{Channel,Group}`: ru 1417, uk 753, es/de 750,
+// fr 745. Наши `LinkInvalid`/`LinkTaken` уходят со сносом React-экрана (шаг 5 задачи).
 const COMPOSITION = {
-  ru: { keys: 1412, plural: 42 },
-  uk: { keys: 748, plural: 31 },
-  es: { keys: 745, plural: 30 },
-  de: { keys: 745, plural: 31 },
-  fr: { keys: 740, plural: 30 },
+  ru: { keys: 1417, plural: 42 },
+  uk: { keys: 753, plural: 31 },
+  es: { keys: 750, plural: 30 },
+  de: { keys: 750, plural: 31 },
+  fr: { keys: 745, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -498,12 +504,13 @@ const COMPOSITION = {
 // Портом кнопки замка (`sidebarLeft/lockButton.solid.tsx`) — наш `PasscodeLock.LockNow`
 // заменён ключом tweb `PasscodeLock.TapToLock` у всех пяти: −1 +1, число строк то же.
 // Особыми чатами — у ru +4 ключа tweb (разбор — у `COMPOSITION` выше).
+// Задачей 0б-2 волны 7 — +5 ключей вкладки типа чата у всех пяти (разбор — там же).
 const FINGERPRINT = {
-  ru: '75169aa2',
-  uk: '4c8d1a40',
-  es: 'e878cf4f',
-  de: '1e1c8f3e',
-  fr: '342d3f40',
+  ru: '76c0efd3',
+  uk: 'f05d1925',
+  es: '02308b20',
+  de: '3c6d747b',
+  fr: '031e72f9',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
