@@ -1,9 +1,13 @@
 // Порт tweb/src/lib/richTextProcessor/matchTelegramUrlHost.ts (fcfe06f76).
 // `T_ME_PREFIXES` у оригинала живёт в `@appManagers/constants.ts:26`; у нас
 // единственный читатель — этот модуль, поэтому набор лежит здесь.
+import { publicLinkHostname } from '@core/publicLink'
+
 const T_ME_PREFIXES = new Set(['web', 'k', 'z', 'a'])
 
-const TELEGRAM_LINK_HOSTS = ['t.me', 'telegram.me']
+// Третий хост — свой аналог t.me (`core/publicLink.ts`, настройка VITE_TME_ORIGIN):
+// пути на нём 1:1 с t.me, поэтому и разбор тот же, включая поддомен-юзернейм.
+const telegramLinkHosts = () => ['t.me', 'telegram.me', publicLinkHostname()]
 export const TELESCOPE_LINK_HOST = 'telesco.pe'
 
 /**
@@ -41,7 +45,7 @@ export function matchUrlHost(url: URL | undefined, hosts: string[]) {
  * внешней каждую ссылку без поддомена.
  */
 export default function matchTelegramUrlHost(url: URL | undefined): { prefix?: string } | undefined {
-  const match = matchUrlHost(url, TELEGRAM_LINK_HOSTS)
+  const match = matchUrlHost(url, telegramLinkHosts())
   if (!match) {
     return
   }

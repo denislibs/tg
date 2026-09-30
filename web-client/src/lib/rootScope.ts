@@ -245,6 +245,11 @@ export type BroadcastEvents = {
   // (`core/theme/themeController.ts::setTheme`). Подписчик — фон чата
   // (`components/chat/bubbles/chatBackground.solid.tsx`).
   'theme_changed': [void]
+
+  // ── правая колонка (порт tweb rootScope.ts:239, отправитель —
+  // components/sidebarRight/index.ts:101, :135). Местное (`dispatchEventSingle`):
+  // колонку открыла/закрыла эта вкладка.
+  'right_sidebar_toggle': [boolean]
 }
 
 export type BroadcastEventsListeners = {

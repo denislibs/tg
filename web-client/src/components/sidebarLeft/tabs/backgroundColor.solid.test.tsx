@@ -15,11 +15,11 @@ import type SliderSuperTab from '@components/sliderTab'
 import lang from '@/lang'
 import { useSettingsStore } from '@/settings'
 import { AppBackgroundColorTab } from '@components/solidJsTabs/tabs'
-import { createSettingsSliderHost, type SettingsSliderHost } from '../settingsSliderHost'
+import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-let host: SettingsSliderHost
+let host: TestColumnSlider
 
 beforeEach(() => {
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
@@ -30,7 +30,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = createSettingsSliderHost(columnEl, {} as Managers)
+  host = mountTestColumnSlider(columnEl, {} as Managers)
 })
 
 afterEach(async() => {

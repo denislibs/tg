@@ -27,7 +27,7 @@
 // ОДНИМ пакетом с самой выдачей (featuredSets/searchSets) — не отдельным
 // getStickerSet на строку; getStickerSet в моках ниже остаётся только ради
 // StickerSetModal (клик по строке вне превью/кнопки её открывает).
-import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest'
+import { describe, it, expect, afterEach, beforeAll, vi, beforeEach } from 'vitest'
 import { render, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
 import StickersSearchTab, { openStickersSearchTab } from './StickersSearchTab'
 import { openGifsSearchTab } from './GifsSearchTab'
@@ -36,6 +36,13 @@ import { ManagersProvider } from '../../core/hooks/useManagers'
 import { usePopupStore } from '../../stores/popupStore'
 import type { Managers } from '../../client/bootstrap'
 import { makeStickerSet } from '../../core/stickers/testSticker'
+import { installSidebarRight } from '../../test/sidebarRight'
+
+// Экран поиска открывает правую колонку классом `AppSidebarRight` (мост
+// `useRightColumnShown`, ВРЕМЕННО до 0б-11) — колонка нужна каждому тесту файла.
+let sidebarRight: ReturnType<typeof installSidebarRight>
+beforeEach(() => { sidebarRight = installSidebarRight() })
+afterEach(() => sidebarRight.dispose())
 
 const noop = () => {}
 

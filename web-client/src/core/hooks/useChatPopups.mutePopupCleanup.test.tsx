@@ -46,7 +46,6 @@ function mkDeps(overrides: Partial<ChatPopupDeps> = {}): ChatPopupDeps {
     pins: [],
     deleteLabels: { title: '', text: '', action: '' },
     livestreamActive: false,
-    setInfoOpen: vi.fn(),
     applyMute: vi.fn(),
     toggleMute: vi.fn(),
     startSelectMode: vi.fn(),

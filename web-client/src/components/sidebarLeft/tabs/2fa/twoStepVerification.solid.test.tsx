@@ -4,7 +4,7 @@
  * 812502980) — задача 19 плана волны 2D.
  *
  * Вкладки гоняются НАСТОЯЩИЕ — объявления из `solidJsTabs/tabs.ts`, открытые через
- * хост (`settingsSliderHost.ts`) тем же путём, что строка «Конфиденциальности»;
+ * колоночный слайдер (`sidebarLeft/columnSlider.ts`) тем же путём, что строка «Конфиденциальности»;
  * следующий шаг каждая открывает сама (`slider.createTab(…).open(…)`). Стабы —
  * только границы: воркер (`managers.auth`), загрузчик лотти (обезьянки, конверт),
  * набор анимированных эмодзи (заставки), геометрия.
@@ -32,7 +32,7 @@ import {
   AppTwoStepVerificationSetTab,
   AppTwoStepVerificationTab,
 } from '@components/solidJsTabs/tabs'
-import { createSettingsSliderHost, type SettingsSliderHost } from '../../settingsSliderHost'
+import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
 
 const players = vi.hoisted(() => [] as { remove: ReturnType<typeof vi.fn> }[])
 const loadAnimationAsAsset = vi.hoisted(() => vi.fn())
@@ -73,7 +73,7 @@ const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const OFF: PasswordState = { enabled: false, hint: '', email: '' }
 const ON: PasswordState = { enabled: true, hint: 'кот', email: 'd***@e***.com' }
 
-let host: SettingsSliderHost
+let host: TestColumnSlider
 let auth: {
   passwordState: ReturnType<typeof vi.fn>
   verifyPassword: ReturnType<typeof vi.fn>
@@ -99,7 +99,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = createSettingsSliderHost(columnEl, managers)
+  host = mountTestColumnSlider(columnEl, managers)
 })
 
 afterEach(async() => {

@@ -6,11 +6,15 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 34,
+      "version": 37,
       "strings": [
         {
           "key": "ALongTimeAgo",
           "value": "last seen a long time ago"
+        },
+        {
+          "key": "AccountSettings.Filters",
+          "value": "Chat Folders"
         },
         {
           "key": "AccountSettings.Language",
@@ -19,6 +23,10 @@
         {
           "key": "AccountSettings.Notifications",
           "value": "Notifications and Sounds"
+        },
+        {
+          "key": "AccountSettings.PrivacyAndSecurity",
+          "value": "Privacy and Security"
         },
         {
           "key": "AccountSettings.SpeakersAndCamera",
@@ -749,6 +757,14 @@
         {
           "key": "ChannelType",
           "value": "Channel Type"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "If you make this channel private, the name @%@ will be removed. Anyone else will be able to take it for their public groups or channels."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "If you make this group private, the name @%@ will be removed. Anyone else will be able to take it for their public groups or channels."
         },
         {
           "key": "Channels",
@@ -2423,6 +2439,18 @@
           "value": "Limit Reached"
         },
         {
+          "key": "Link.Available",
+          "value": "Link is available"
+        },
+        {
+          "key": "Link.Invalid",
+          "value": "Link is invalid"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "Link is already taken"
+        },
+        {
           "key": "LinkCopied",
           "value": "Link copied to clipboard"
         },
@@ -3862,38 +3890,6 @@
           "value": "Voice-to-Text"
         },
         {
-          "key": "Premium.Manage.Active",
-          "value": "You have Telegram Premium"
-        },
-        {
-          "key": "Premium.Manage.AutoRenew",
-          "value": "Auto-Renew"
-        },
-        {
-          "key": "Premium.Manage.AutoRenewOffHint",
-          "value": "Auto-renew is off. Your Premium subscription will end on the date above."
-        },
-        {
-          "key": "Premium.Manage.Cancelling",
-          "value": "Cancelling…"
-        },
-        {
-          "key": "Premium.Manage.ExpiresOn",
-          "value": "Expires on"
-        },
-        {
-          "key": "Premium.Manage.Hint",
-          "value": "Your subscription renews automatically. Cancel to stop future charges — Premium stays active until it expires."
-        },
-        {
-          "key": "Premium.Manage.NoSubscription",
-          "value": "No active subscription."
-        },
-        {
-          "key": "Premium.Manage.RenewsOn",
-          "value": "Renews on"
-        },
-        {
           "key": "Premium.SubscribeFor",
           "value": "Subscribe for"
         },
@@ -4911,14 +4907,6 @@
           "value": "Recent Transactions"
         },
         {
-          "key": "Stars.Subscription",
-          "value": "Subscription"
-        },
-        {
-          "key": "Stars.Subscription.Cancel",
-          "value": "Cancel Subscription"
-        },
-        {
           "key": "Stars.Subscriptions.PerMonth",
           "value": "per month"
         },
@@ -5831,7 +5819,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 34,
+      "version": 37,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -6366,48 +6354,8 @@
           "value": "Не удалось оплатить. Попробуйте ещё раз."
         },
         {
-          "key": "Premium.Manage.Active",
-          "value": "У вас есть Telegram Premium"
-        },
-        {
           "key": "Loading",
           "value": "Загрузка…"
-        },
-        {
-          "key": "Stars.Subscription",
-          "value": "Подписка"
-        },
-        {
-          "key": "Premium.Manage.RenewsOn",
-          "value": "Продлится"
-        },
-        {
-          "key": "Premium.Manage.ExpiresOn",
-          "value": "Истекает"
-        },
-        {
-          "key": "Premium.Manage.Hint",
-          "value": "Подписка продлевается автоматически. Отмените, чтобы прекратить списания — Premium останется активным до конца срока."
-        },
-        {
-          "key": "Stars.Subscription.Cancel",
-          "value": "Отменить подписку"
-        },
-        {
-          "key": "Premium.Manage.Cancelling",
-          "value": "Отмена…"
-        },
-        {
-          "key": "Premium.Manage.AutoRenew",
-          "value": "Автопродление"
-        },
-        {
-          "key": "Premium.Manage.AutoRenewOffHint",
-          "value": "Автопродление отключено. Подписка Premium завершится в указанную выше дату."
-        },
-        {
-          "key": "Premium.Manage.NoSubscription",
-          "value": "Нет активной подписки."
         },
         {
           "key": "Stories",
@@ -6515,12 +6463,20 @@
           "value": "Имя пользователя"
         },
         {
+          "key": "AccountSettings.Filters",
+          "value": "Папки с чатами"
+        },
+        {
           "key": "AccountSettings.Language",
           "value": "Язык"
         },
         {
           "key": "AccountSettings.Notifications",
           "value": "Уведомления и звуки"
+        },
+        {
+          "key": "AccountSettings.PrivacyAndSecurity",
+          "value": "Конфиденциальность"
         },
         {
           "key": "DataSettings",
@@ -8040,6 +7996,26 @@
         {
           "key": "ChannelType",
           "value": "Тип канала"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "Если вы сделаете канал частным, имя @%@ будет удалено. Его сможет занять кто угодно для своих публичных групп или каналов."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "Если вы сделаете группу частной, имя @%@ будет удалено. Его сможет занять кто угодно для своих публичных групп или каналов."
+        },
+        {
+          "key": "Link.Available",
+          "value": "Ссылка свободна"
+        },
+        {
+          "key": "Link.Invalid",
+          "value": "Недопустимая ссылка"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "Эта ссылка уже занята"
         },
         {
           "key": "ChannelDirectMessages.Settings.Title",
@@ -11697,7 +11673,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 21,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -11836,12 +11812,20 @@
           "value": "Bio copiée"
         },
         {
+          "key": "AccountSettings.Filters",
+          "value": "Dossiers de discussions"
+        },
+        {
           "key": "AccountSettings.Language",
           "value": "Langue"
         },
         {
           "key": "AccountSettings.Notifications",
           "value": "Notifications et sons"
+        },
+        {
+          "key": "AccountSettings.PrivacyAndSecurity",
+          "value": "Confidentialité et sécurité"
         },
         {
           "key": "DataSettings",
@@ -12755,6 +12739,26 @@
         {
           "key": "ChannelType",
           "value": "Type de canal"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "Si vous rendez ce canal privé, le nom @%@ sera supprimé. N’importe qui pourra alors le prendre pour ses groupes ou canaux publics."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "Si vous rendez ce groupe privé, le nom @%@ sera supprimé. N’importe qui pourra alors le prendre pour ses groupes ou canaux publics."
+        },
+        {
+          "key": "Link.Available",
+          "value": "Le lien est disponible"
+        },
+        {
+          "key": "Link.Invalid",
+          "value": "Le lien est invalide"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "Ce lien est déjà pris"
         },
         {
           "key": "GroupType",
@@ -14755,7 +14759,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 21,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -14894,12 +14898,20 @@
           "value": "Bio kopiert"
         },
         {
+          "key": "AccountSettings.Filters",
+          "value": "Chat-Ordner"
+        },
+        {
           "key": "AccountSettings.Language",
           "value": "Sprache"
         },
         {
           "key": "AccountSettings.Notifications",
           "value": "Benachrichtigungen und Töne"
+        },
+        {
+          "key": "AccountSettings.PrivacyAndSecurity",
+          "value": "Privatsphäre und Sicherheit"
         },
         {
           "key": "DataSettings",
@@ -15816,6 +15828,26 @@
         {
           "key": "ChannelType",
           "value": "Kanaltyp"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "Wenn du diesen Kanal privat machst, wird der Name @%@ entfernt. Jeder andere kann ihn dann für seine öffentlichen Gruppen oder Kanäle verwenden."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "Wenn du diese Gruppe privat machst, wird der Name @%@ entfernt. Jeder andere kann ihn dann für seine öffentlichen Gruppen oder Kanäle verwenden."
+        },
+        {
+          "key": "Link.Available",
+          "value": "Link ist verfügbar"
+        },
+        {
+          "key": "Link.Invalid",
+          "value": "Link ist ungültig"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "Link ist bereits vergeben"
         },
         {
           "key": "GroupType",
@@ -17835,7 +17867,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 21,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -17974,12 +18006,20 @@
           "value": "Biografía copiada al portapapeles"
         },
         {
+          "key": "AccountSettings.Filters",
+          "value": "Carpetas de chats"
+        },
+        {
           "key": "AccountSettings.Language",
           "value": "Idioma"
         },
         {
           "key": "AccountSettings.Notifications",
           "value": "Notificaciones y sonidos"
+        },
+        {
+          "key": "AccountSettings.PrivacyAndSecurity",
+          "value": "Privacidad y seguridad"
         },
         {
           "key": "DataSettings",
@@ -18901,6 +18941,26 @@
         {
           "key": "ChannelType",
           "value": "Tipo de canal"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "Si haces este canal privado, se eliminará el nombre @%@. Cualquier otra persona podrá usarlo para sus grupos o canales públicos."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "Si haces este grupo privado, se eliminará el nombre @%@. Cualquier otra persona podrá usarlo para sus grupos o canales públicos."
+        },
+        {
+          "key": "Link.Available",
+          "value": "El enlace está disponible"
+        },
+        {
+          "key": "Link.Invalid",
+          "value": "El enlace no es válido"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "El enlace ya está en uso"
         },
         {
           "key": "GroupType",
@@ -20913,7 +20973,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 21,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -21052,12 +21112,20 @@
           "value": "Про себе скопійовано"
         },
         {
+          "key": "AccountSettings.Filters",
+          "value": "Папки чатів"
+        },
+        {
           "key": "AccountSettings.Language",
           "value": "Мова"
         },
         {
           "key": "AccountSettings.Notifications",
           "value": "Сповіщення та звуки"
+        },
+        {
+          "key": "AccountSettings.PrivacyAndSecurity",
+          "value": "Конфіденційність"
         },
         {
           "key": "DataSettings",
@@ -21990,6 +22058,26 @@
         {
           "key": "ChannelType",
           "value": "Тип каналу"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "Якщо ви зробите канал приватним, ім’я @%@ буде видалено. Його зможе зайняти будь-хто для своїх публічних груп або каналів."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "Якщо ви зробите групу приватною, ім’я @%@ буде видалено. Його зможе зайняти будь-хто для своїх публічних груп або каналів."
+        },
+        {
+          "key": "Link.Available",
+          "value": "Посилання вільне"
+        },
+        {
+          "key": "Link.Invalid",
+          "value": "Недійсне посилання"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "Це посилання вже зайняте"
         },
         {
           "key": "GroupType",

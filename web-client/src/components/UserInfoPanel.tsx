@@ -13,15 +13,13 @@ import type { Chat, OpenPeer } from '../data'
 import { useT } from '../i18n'
 import { useGroupInfo } from '../core/hooks/useGroupInfo'
 import { useChatsStore } from '../stores/chatsStore'
-import { useNavLayer } from '../core/hooks/useNavLayer'
 import { useTransitionSlider } from '../core/hooks/useTransitionSlider'
 import KeyVerificationPopup from './secret/KeyVerificationPopup'
 import RightsEditor from './userInfo/RightsEditor'
 import { countLabel, isSharedMediaReached, shouldForceFold } from './userInfo/helpers'
-import installColumnResize from '../core/dom/installColumnResize'
-import { useRightColumnShown } from '../core/hooks/useRightColumnShown'
-import { useOpenAfterTimeout } from '../core/hooks/useOpenAfterTimeout'
-import animationIntersector from './animationIntersector'
+import appSidebarRight from './sidebarRight'
+import type AppReactProfileTab from './sidebarRight/reactProfileTab'
+import { useIsActiveChat } from '../core/chat/chatInstanceContext'
 import { isUser as isUserPeer } from '../core/peers/peerId'
 import { cachedUser } from '../core/peerCache'
 import { getUserTitle } from '../core/peers/getPeerTitle'
@@ -50,33 +48,16 @@ import { mountSolid } from '../shared/solid/mountSolid.solid'
 import { useSearchSuper, type SearchSuperActions } from '../core/hooks/useSearchSuper'
 import type { SearchSuperMediaType } from './appSearchSuper'
 
-export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddMembers, onEditContact, searchSuperActions }: { open: boolean; chat: Chat; onClose: () => void; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean; onEditContact?: () => void; searchSuperActions?: SearchSuperActions }) {
+/**
+ * Панель профиля — содержимое вкладки №0 правой колонки (`AppReactProfileTab`,
+ * ВРЕМЕННО до 3-1). Колонкой — открытием/закрытием, `body.is-right-column-shown`,
+ * `inert`, записью навигации `'right'`, ручкой ресайза и паузой видео под
+ * закрытой колонкой — владеет класс `AppSidebarRight`
+ * (`components/sidebarRight/index.ts`), панель лишь рисует вкладку: портал в
+ * `profileTab.container`, как Solid `sharedMedia.tsx` рисует в свою вкладку у tweb.
+ */
+export default function UserInfoPanel({ profileTab, chat, onOpenPeer, canAddMembers, onEditContact, searchSuperActions }: { profileTab: AppReactProfileTab; chat: Chat; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean; onEditContact?: () => void; searchSuperActions?: SearchSuperActions }) {
   const t = useT()
-  useNavLayer(open, onClose, 'right') // Back закрывает панель профиля (tweb right column)
-  // tweb body.is-right-column-shown: пока правая колонка открыта и не «плавает»
-  // над чатом, #column-center сдвигает свою translateX-центровку (_chat.scss:439).
-  // Счётчик (useRightColumnShown), а не булев toggle: экран поиска правой
-  // колонки (RightSearchTab — «Поиск стикеров»/«Поиск GIF») пользуется тем же
-  // классом и может быть открыт одновременно с этой панелью (композер, из
-  // которого он открывается, доступен независимо от профиля) — булев toggle
-  // в двух местах гасил бы класс раньше времени.
-  useRightColumnShown(open)
-  // Правая колонка тоже тянется ручкой (tweb sidebarRight/index.ts:40
-  // `installColumnResize({columnEl: this.sidebarEl, side: 'right'})`): ширина
-  // без свёрнутого состояния, зажата в MIN/MAX. `.sidebar-resize-handle-right`
-  // скрыт до 925px, кроме non-touch (styles/tweb/_leftSidebar.scss:1330).
-  const columnRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const columnEl = columnRef.current
-    if (!columnEl) return
-    return installColumnResize({ columnEl, side: 'right' })
-  }, [])
-  // tweb `appSidebarRight.hide()`/`toggleSidebar()` (sidebarRight/index.ts:98,132):
-  // закрытая колонка уезжает ТРАНСФОРМОМ и остаётся смонтированной, поэтому
-  // видео внутри неё останавливает не наблюдатель, а явная команда.
-  useEffect(() => {
-    animationIntersector.toggleVideosUnder(columnRef.current, !open)
-  }, [open])
   const isSaved = chat.type === 'saved'
   // «Избранное» — панель БЕЗ профиля (tweb sharedMediaTab.tsx:73
   // `noProfile ??= peerId === rootScope.myId`): ни карусели аватарок, ни имени,
@@ -191,7 +172,14 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   // `folded → setCollapsed`) — JSX ниже держит ТОЛЬКО статическую часть
   // строки, которая никогда не меняется, поэтому React больше НИКОГДА не
   // трогает `className` этого узла после первого рендера.
-  const setCollapsedOnRef = useRef<HTMLDivElement>(null)
+  // Узел — контейнер вкладки: классы профиля tweb ставит на `tab.container`
+  // (`sharedMedia.tsx:193` `profile-container`, `:399` `shared-media-container`).
+  // Вкладка одна на инстанс чата и живёт дольше панели (`Chat.tsx`).
+  const setCollapsedOnRef = useRef<HTMLElement>(profileTab.container)
+  const isActiveInstance = useIsActiveChat()
+  useLayoutEffect(() => {
+    profileTab.container.classList.add('shared-media-container', 'profile-container')
+  }, [profileTab])
   // Инстанс класса как СОСТОЯНИЕ — триггер повторного рендера ровно тогда,
   // когда его узлы (`container`, `info`) готовы: до этого отдавать Solid-мосту
   // (`profileContentHostRef` ниже) нечего. Узел класса (structural DOM, tweb
@@ -405,10 +393,14 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   }, [seam])
 
   // tweb sharedMediaTab.tsx:106-108 (`onOpenAfterTimeout` → `scrollable.onScroll()`):
-  // открывшаяся панель пересчитывает триггеры скроллера — пока она была
-  // закрыта (`inert`), догрузка по низу могла не сработать. Как у tweb —
-  // ПОСЛЕ выезда колонки (slider.ts:133-137), а не в кадре клика.
-  useOpenAfterTimeout(open, () => seam?.scrollable.onScroll())
+  // открывшаяся вкладка пересчитывает триггеры скроллера — пока она была
+  // закрыта, догрузка по низу могла не сработать. Зовёт слайдер ПОСЛЕ выезда
+  // (slider.ts:247-251), вкладке нужен только скроллер панели.
+  useEffect(() => {
+    if (!seam) return
+    profileTab.reactScrollable = seam.scrollable
+    return () => { profileTab.reactScrollable = undefined }
+  }, [profileTab, seam])
 
   // Клик по «назад» в залитой шапке — к началу профиля (tweb sharedMedia.tsx:
   // 537-552: `scrollIntoViewNew({element: '.profile-content', position:
@@ -624,210 +616,202 @@ export default function UserInfoPanel({ open, chat, onClose, onOpenPeer, canAddM
   // sharedMedia.tsx:495-503 `getTitleIndex` — тот же TransitionSlider).
   const headerSlider = useTransitionSlider(filled ? 1 : 0)
 
-  return createPortal(
-    // tweb #column-right (`_rightSidebar.scss`): панель ширины
-    // --right-column-width, absolute у правого края; закрытая уехала
-    // translate3d'ом за край, открытая — на месте. Открытие переключает НЕ
-    // класс панели, а `body.is-right-column-shown` (эффект выше) — как в tweb.
-    // Панель остаётся смонтированной; закрытая — inert (недоступна фокусу/AT).
-    // Портал в #main-columns: в tweb #column-right — СОСЕДНЯЯ колонка (§1), а не
-    // потомок #column-center; внутри него панель ловила бы его transform
-    // (translateX-центровку чата) и уезжала бы за край экрана.
-    <div
-      id="column-right"
-      ref={columnRef}
-      inert={!open}
-      className="tabs-tab sidebar sidebar-right main-column"
-    >
-      {/* Вкладка-слайдер правой колонки (дамп 07-right-sidebar):
-          `div.sidebar-content.sidebar-slider.tabs-container` > сама вкладка
-          профиля. Состояния шапки-аватаров — классами НА ВКЛАДКЕ, как в tweb
-          (`_profile.scss`: `.profile-container.is-collapsed`, `.need-white`,
-          `.header-filled`), а не на внутренних узлах. НИ ОДИН из четырёх
-          динамических классов (`is-collapsed`/`need-white`/`header-filled`/
-          `can-add-members`) больше НЕ вычисляется здесь строкой (находка
-          ревью Critical, коммент у `setCollapsedOnRef` выше) — className
-          ниже СТАТИЧЕСКИЙ и не меняется никогда, все писатели идут
-          `classList.toggle` (класс `PeerProfileAvatars` — свою половину,
-          два эффекта выше — панельную). */}
-      <div className="sidebar-content sidebar-slider tabs-container">
-        <div
-          ref={setCollapsedOnRef}
-          className="tabs-tab sidebar-slider-item scrollable-y-bordered shared-media-container profile-container active"
+  const panel = createPortal(
+    // Вкладка №0 слайдера `#column-right` (дамп 07-right-sidebar):
+    // `div.sidebar-content.sidebar-slider.tabs-container` > `tab.container`.
+    // Узел вкладки создаёт и ставит в слайдер класс колонки
+    // (`AppSidebarRight.createSharedMediaTab`/`replaceSharedMediaTab`), `active`
+    // ведёт слайдер. Состояния шапки-аватаров — классами НА ВКЛАДКЕ, как в tweb
+    // (`_profile.scss`: `.profile-container.is-collapsed`, `.need-white`,
+    // `.header-filled`); все писатели идут `classList.toggle` (класс
+    // `PeerProfileAvatars` — свою половину, эффекты выше — панельную).
+    <>
+      {/* Шапка: absolute поверх контента (`.profile-container .sidebar-header`).
+          Над фото — прозрачная с белыми иконками (`:not(.header-filled)` +
+          `.need-white`); у табов — заливка, X→назад, «имя + счётчик таба»
+          слайд-фейдом (tweb setIsSharedMedia + TransitionSlider slide-fade). */}
+      <div className={classNames('sidebar-header', filled ? 'hide-border' : '')}>
+        {/* X ⇄ «назад» — не смена иконки, а поворот трёх полосок
+            (`.animated-close-icon.state-back`, `_animatedIcon.scss`). */}
+        <button
+          type="button"
+          className="btn-icon sidebar-close-button"
+          // Без профиля «назад» закрывает панель (tweb :659-670:
+          // `transition.prevId() && !tab.noProfile` ложно → `onCloseBtnClick`).
+          onClick={filled && !noProfile ? scrollBackToProfile : () => appSidebarRight.onCloseBtnClick()}
+          aria-label={t(filled ? 'Common.Back' : 'Close')}
         >
-        {/* Шапка: absolute поверх контента (`.profile-container .sidebar-header`).
-            Над фото — прозрачная с белыми иконками (`:not(.header-filled)` +
-            `.need-white`); у табов — заливка, X→назад, «имя + счётчик таба»
-            слайд-фейдом (tweb setIsSharedMedia + TransitionSlider slide-fade). */}
-        <div className={classNames('sidebar-header', filled ? 'hide-border' : '')}>
-          {/* X ⇄ «назад» — не смена иконки, а поворот трёх полосок
-              (`.animated-close-icon.state-back`, `_animatedIcon.scss`). */}
-          <button
-            type="button"
-            className="btn-icon sidebar-close-button"
-            // Без профиля «назад» закрывает панель (tweb :659-670:
-            // `transition.prevId() && !tab.noProfile` ложно → `onCloseBtnClick`).
-            onClick={filled && !noProfile ? scrollBackToProfile : onClose}
-            aria-label={t(filled ? 'Common.Back' : 'Close')}
-          >
-            <div className={classNames('animated-close-icon', filled ? 'state-back' : '')} />
-          </button>
-          {/* Заголовок раздела ⇄ «имя + счётчик активного таба»: два
-              `.transition-item` в `.transition.slide-fade`, как у tweb
-              (sharedMedia.setIsSharedMedia → TransitionSlider). */}
-          <div className={classNames('transition slide-fade', headerSlider.containerClass)}>
-            <div className={classNames('transition-item', headerSlider.itemClass(0))}>
-              <div className="sidebar-header__title">{t(title)}</div>
-              {(isGroup || isChannel) && (
-                <IconButton onClick={() => setEditing(true)}>
-                  <TgIcon name="edit" />
-                </IconButton>
-              )}
-              {/* Приватный чат: карандаш открывает экран «Изменить контакт»
-                  (редактируемые поля живут там, инфо-панель — только просмотр). */}
-              {isUser && peerId !== meId && onEditContact && (
-                <IconButton onClick={onEditContact}>
-                  <TgIcon name="edit" />
-                </IconButton>
-              )}
-            </div>
-            <div className={classNames('transition-item', headerSlider.itemClass(1))}>
-              <div className="sidebar-header__rows">
-                <div className="sidebar-header__title">
-                  <span className="peer-title">{isSaved ? t('SavedMessages') : chat.name}</span>
-                </div>
-                <div className="sidebar-header__subtitle">
-                  {/* tweb sharedMedia.tsx:474-479: пока счётчика нет — «Loading» */}
-                  {tab && activeCount != null ? countLabel(tab, activeCount, isChannel) : t('Loading')}
-                </div>
+          <div className={classNames('animated-close-icon', filled ? 'state-back' : '')} />
+        </button>
+        {/* Заголовок раздела ⇄ «имя + счётчик активного таба»: два
+            `.transition-item` в `.transition.slide-fade`, как у tweb
+            (sharedMedia.setIsSharedMedia → TransitionSlider). */}
+        <div className={classNames('transition slide-fade', headerSlider.containerClass)}>
+          <div className={classNames('transition-item', headerSlider.itemClass(0))}>
+            <div className="sidebar-header__title">{t(title)}</div>
+            {(isGroup || isChannel) && (
+              <IconButton onClick={() => setEditing(true)}>
+                <TgIcon name="edit" />
+              </IconButton>
+            )}
+            {/* Приватный чат: карандаш открывает экран «Изменить контакт»
+                (редактируемые поля живут там, инфо-панель — только просмотр). */}
+            {isUser && peerId !== meId && onEditContact && (
+              <IconButton onClick={onEditContact}>
+                <TgIcon name="edit" />
+              </IconButton>
+            )}
+          </div>
+          <div className={classNames('transition-item', headerSlider.itemClass(1))}>
+            <div className="sidebar-header__rows">
+              <div className="sidebar-header__title">
+                <span className="peer-title">{isSaved ? t('SavedMessages') : chat.name}</span>
+              </div>
+              <div className="sidebar-header__subtitle">
+                {/* tweb sharedMedia.tsx:474-479: пока счётчика нет — «Loading» */}
+                {tab && activeCount != null ? countLabel(tab, activeCount, isChannel) : t('Loading')}
               </div>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Тело — тоже глобальные классы tweb: `div.sidebar-content` (позиционный
-            предок, `_sidebar.scss`) > `div.scrollable.scrollable-y`
-            (`position:absolute; inset:0; overflow-y:auto` из `_scrollable.scss`). */}
-        <div className="sidebar-content">
-        {/* Скролл слушает `Scrollable` хозяина (хук-шов `useSearchSuper`
-            поверх ЭТОГО узла, tweb `sliderTab.ts:66`), React-обработчика нет. */}
-        <div ref={bodyRef} className="scrollable scrollable-y">
-          {/* Каркас карточки (задача 2, `peerProfile.solid.tsx`) — `.profile-content`
-              рисует Solid, смонтированный сюда мостом `mountSolid` (эффект выше,
-              у `profileContentHostRef`). Порядок детей корня — как в оригинале
-              (tweb `:194-214`): узел карусели `PeerProfileAvatars.container`
-              (проп `avatarsContainer`, задача 13 — раньше стоял здесь
-              соседом в React-хосте, см. докблок у `avatars`), делимитер,
-              секции, `searchSuperContainer` последним. Хост — пустой
-              узел-обёртка (расхождение с оригиналом: `render()` вставляет узлы
-              ВНУТРЬ хоста). Тот же вызов `mountSolid` (проп `avatarsInfo`)
-              кладёт имя/статус пира ВНУТРЬ `instance.info` узла карусели —
-              задача 3, см. докблок `peerProfile.solid.tsx` у компонента
-              `PeerProfile`. */}
-          <div ref={profileContentHostRef} />
+      {/* Тело — тоже глобальные классы tweb: `div.sidebar-content` (позиционный
+          предок, `_sidebar.scss`) > `div.scrollable.scrollable-y`
+          (`position:absolute; inset:0; overflow-y:auto` из `_scrollable.scss`). */}
+      <div className="sidebar-content">
+      {/* Скролл слушает `Scrollable` хозяина (хук-шов `useSearchSuper`
+          поверх ЭТОГО узла, tweb `sliderTab.ts:66`), React-обработчика нет. */}
+      <div ref={bodyRef} className="scrollable scrollable-y">
+        {/* Каркас карточки (задача 2, `peerProfile.solid.tsx`) — `.profile-content`
+            рисует Solid, смонтированный сюда мостом `mountSolid` (эффект выше,
+            у `profileContentHostRef`). Порядок детей корня — как в оригинале
+            (tweb `:194-214`): узел карусели `PeerProfileAvatars.container`
+            (проп `avatarsContainer`, задача 13 — раньше стоял здесь
+            соседом в React-хосте, см. докблок у `avatars`), делимитер,
+            секции, `searchSuperContainer` последним. Хост — пустой
+            узел-обёртка (расхождение с оригиналом: `render()` вставляет узлы
+            ВНУТРЬ хоста). Тот же вызов `mountSolid` (проп `avatarsInfo`)
+            кладёт имя/статус пира ВНУТРЬ `instance.info` узла карусели —
+            задача 3, см. докблок `peerProfile.solid.tsx` у компонента
+            `PeerProfile`. */}
+        <div ref={profileContentHostRef} />
 
-          {/* Строки info-карточки (tweb MainSection, `:1510-1533`) теперь
-              рисует Solid ВНУТРИ `.profile-content` (`peerProfile.solid.tsx`,
-              Task 4 плана «карточка профиля на Solid»): Phone/Username(+QR)/
-              Bio/Link/Birthday/Notifications — дословно, со своими условиями
-              показа. Наши секции (Statistics/Discussion/JoinRequests/ключ
-              шифрования секретного чата) — Task 5 ТОГО ЖЕ плана: теперь тоже
-              Solid, ДЕТИ `.profile-content` (между `MainSection` и
-              `searchSuperContainer`, см. докблок `peerProfile.solid.tsx`) —
-              гейты и данные едут туда пропами `mountSolid` выше
-              (`showStatistics`/`showDiscussion`/`showJoinRequests`/
-              `isSecret` и соседние поля), сама разметка полностью снесена
-              отсюда. Долг на перенос каждой в правильное место оригинала —
-              `backlogs/frontend/profile-sections-misplaced.md`. */}
+        {/* Строки info-карточки (tweb MainSection, `:1510-1533`) теперь
+            рисует Solid ВНУТРИ `.profile-content` (`peerProfile.solid.tsx`,
+            Task 4 плана «карточка профиля на Solid»): Phone/Username(+QR)/
+            Bio/Link/Birthday/Notifications — дословно, со своими условиями
+            показа. Наши секции (Statistics/Discussion/JoinRequests/ключ
+            шифрования секретного чата) — Task 5 ТОГО ЖЕ плана: теперь тоже
+            Solid, ДЕТИ `.profile-content` (между `MainSection` и
+            `searchSuperContainer`, см. докблок `peerProfile.solid.tsx`) —
+            гейты и данные едут туда пропами `mountSolid` выше
+            (`showStatistics`/`showDiscussion`/`showJoinRequests`/
+            `isSecret` и соседние поля), сама разметка полностью снесена
+            отсюда. Долг на перенос каждой в правильное место оригинала —
+            `backlogs/frontend/profile-sections-misplaced.md`. */}
 
-          {/* Инвайт-ссылка группы/канала без username — строка Solid-`Link`
-              внутри `.profile-content` (проп `exportedInviteUrl`, см.
-              `buildProfilePatch`); React-фолбэка здесь больше нет (задача 13). */}
+        {/* Инвайт-ссылка группы/канала без username — строка Solid-`Link`
+            внутри `.profile-content` (проп `exportedInviteUrl`, см.
+            `buildProfilePatch`); React-фолбэка здесь больше нет (задача 13). */}
 
-          {/* Закреплённые в профиле истории (tweb profile stories) — только у
-              пользователя. Та же находка ревью, что у фолбэк-ссылки выше:
-              был ребёнком React-владетого `.profile-content` на `main`,
-              теперь — сиблинг Solid-хоста (`backlogs/frontend/
-              profile-content-sibling-nodes.md`). */}
-          {isUser && <PinnedStoriesSection peerId={peerId} />}
+        {/* Закреплённые в профиле истории (tweb profile stories) — только у
+            пользователя. Та же находка ревью, что у фолбэк-ссылки выше:
+            был ребёнком React-владетого `.profile-content` на `main`,
+            теперь — сиблинг Solid-хоста (`backlogs/frontend/
+            profile-content-sibling-nodes.md`). */}
+        {isUser && <PinnedStoriesSection peerId={peerId} />}
 
-          {/* Shared media (tweb sharedMedia, `_searchSuper.scss`: min-height
-              var(--super-height)) — узел класса `AppSearchSuper` стоит последним
-              ребёнком `.profile-content` внутри Solid-корня выше (проп
-              `searchSuperContainer`), здесь только ориентир по месту в
-              разметке оригинала. */}
+        {/* Shared media (tweb sharedMedia, `_searchSuper.scss`: min-height
+            var(--super-height)) — узел класса `AppSearchSuper` стоит последним
+            ребёнком `.profile-content` внутри Solid-корня выше (проп
+            `searchSuperContainer`), здесь только ориентир по месту в
+            разметке оригинала. */}
 
-          {/* Ключ шифрования секретного чата (tweb chatEncryptionKey) */}
-          {isSecret && keyPopupOpen != null && (
-            <KeyVerificationPopup
-              open={keyPopupOpen}
-              onClose={() => setKeyPopupOpen(false)}
-              onExitComplete={() => setKeyPopupOpen(null)}
-              chatId={numericChatId}
+        {/* Ключ шифрования секретного чата (tweb chatEncryptionKey) */}
+        {isSecret && keyPopupOpen != null && (
+          <KeyVerificationPopup
+            open={keyPopupOpen}
+            onClose={() => setKeyPopupOpen(false)}
+            onExitComplete={() => setKeyPopupOpen(null)}
+            chatId={numericChatId}
+          />
+        )}
+
+        {/* QR-код (tweb-модалка с темами) — общий попап для фолбэк-ссылки
+            выше И Solid-строк `Username`/`Link` (мост `openQrCode`,
+            `qrPayload` несёт конкретные url/label клика). */}
+        {qrPayload && (
+          <QrModal
+            open={qrOpen}
+            onClose={() => setQrOpen(false)}
+            url={qrPayload.url}
+            label={qrPayload.label}
+            avatar={{ src: headerAvatarSrc, background: chat.avatar, text: chat.avatarText }}
+          />
+        )}
+      </div>
+      </div>
+
+      {/* Group add-member FAB (tweb btnAddMembers): `.btn-circle.btn-corner`
+          внутри самой вкладки — её `.can-add-members` и поднимает
+          (`_profile.scss` → `.shared-media-container.can-add-members`). */}
+      {isGroup && canAddMembers && isRealChat && (
+        <button type="button" className="btn-circle btn-corner rp" onClick={() => setAddingMembers(true)}>
+          <TgIcon name="adduser" />
+        </button>
+      )}
+    </>,
+    profileTab.container,
+  )
+
+  // Оверлеи-подэкраны (ВРЕМЕННО до 0б-1…0б-9 — каждый уходит в Solid-вкладку
+  // своей задачей): въезд справа играет CSS самого экрана. Лежат СОСЕДЯМИ
+  // вкладки №0 в `.sidebar-slider` колонки, как до 0б-0, а не внутри неё:
+  // правила `_profile.scss` для `.profile-container .sidebar-header`
+  // (absolute-шапка поверх карусели) задели бы и шапку оверлея. Только у
+  // активного инстанса — слайдер у колонки один на все инстансы чата.
+  const sliderEl = appSidebarRight.sidebarEl.querySelector<HTMLElement>('.sidebar-slider')
+  return (
+    <>
+      {panel}
+      {isActiveInstance && sliderEl && createPortal(
+        <>
+          {editing && isRealChat && (isGroup || isChannel) && (
+            <GroupEditFlow chatId={Number(chat.id)} chat={chat} onClose={() => setEditing(false)} />
+          )}
+          {/* Список участников после добавления перечитает сам класс
+              (`rt:chat_update`, расхождение 32 `appSearchSuper.ts`). */}
+          {addingMembers && isRealChat && (
+            <AddMembersScreen
+              chatId={Number(chat.id)}
+              onClose={() => setAddingMembers(false)}
+              onAdded={() => setAddingMembers(false)}
             />
           )}
 
-          {/* QR-код (tweb-модалка с темами) — общий попап для фолбэк-ссылки
-              выше И Solid-строк `Username`/`Link` (мост `openQrCode`,
-              `qrPayload` несёт конкретные url/label клика). */}
-          {qrPayload && (
-            <QrModal
-              open={qrOpen}
-              onClose={() => setQrOpen(false)}
-              url={qrPayload.url}
-              label={qrPayload.label}
-              avatar={{ src: headerAvatarSrc, background: chat.avatar, text: chat.avatarText }}
+          {/* Статистика канала/супергруппы (slide-in сабвью, tweb statistics) */}
+          {showStats && isRealChat && (
+            <ChannelStats
+              chatId={Number(chat.id)}
+              isChannel={isChannel}
+              onBack={() => setShowStats(false)}
             />
           )}
-        </div>
-        </div>
 
-        {/* Group add-member FAB (tweb btnAddMembers): `.btn-circle.btn-corner`
-            внутри самой вкладки — её `.can-add-members` и поднимает
-            (`_profile.scss` → `.shared-media-container.can-add-members`). */}
-        {isGroup && canAddMembers && isRealChat && (
-          <button type="button" className="btn-circle btn-corner rp" onClick={() => setAddingMembers(true)}>
-            <TgIcon name="adduser" />
-          </button>
-        )}
-        </div>{/* /.profile-container */}
-
-        {/* Оверлеи-подэкраны: въезд справа играет CSS самого экрана, обёртки-
-            презенсы не нужны. */}
-        {editing && isRealChat && (isGroup || isChannel) && (
-          <GroupEditFlow chatId={Number(chat.id)} chat={chat} onClose={() => setEditing(false)} />
-        )}
-        {/* Список участников после добавления перечитает сам класс
-            (`rt:chat_update`, расхождение 32 `appSearchSuper.ts`). */}
-        {addingMembers && isRealChat && (
-          <AddMembersScreen
-            chatId={Number(chat.id)}
-            onClose={() => setAddingMembers(false)}
-            onAdded={() => setAddingMembers(false)}
-          />
-        )}
-
-        {/* Статистика канала/супергруппы (slide-in сабвью, tweb statistics) */}
-        {showStats && isRealChat && (
-          <ChannelStats
-            chatId={Number(chat.id)}
-            isChannel={isChannel}
-            onBack={() => setShowStats(false)}
-          />
-        )}
-
-        {/* Admin-rights editor overlay (slide-in sub-view, mirrors tweb userPermissions) */}
-        {editMember && (
-          <RightsEditor
-            key={editMember.userId}
-            member={editMember}
-            onBack={() => setEditMember(null)}
-            onSave={(bitmask) => saveRights(editMember.userId, bitmask)}
-            onRemove={() => removeRights(editMember.userId)}
-          />
-        )}
-      </div>{/* /.sidebar-slider */}
-    </div>,
-    document.getElementById('main-columns') ?? document.body,
+          {/* Admin-rights editor overlay (slide-in sub-view, mirrors tweb userPermissions) */}
+          {editMember && (
+            <RightsEditor
+              key={editMember.userId}
+              member={editMember}
+              onBack={() => setEditMember(null)}
+              onSave={(bitmask) => saveRights(editMember.userId, bitmask)}
+              onRemove={() => removeRights(editMember.userId)}
+            />
+          )}
+        </>,
+        sliderEl,
+      )}
+    </>
   )
 }

@@ -867,15 +867,28 @@ chat.finishPeerChange → fillProfileElements() (готовит коммит) �
 
 ## 0. Общая модель
 
-В tweb правая колонка — один постоянный `#column-right` со стеком вкладок (`SidebarSlider`). У нас она распалась на **несколько независимых React-порталов в `#main-columns`**:
+В tweb правая колонка — один постоянный `#column-right` со стеком вкладок (`SidebarSlider`).
+**С задачи 0б-0 волны 7 (2026-09-30) так и у нас:** класс `AppSidebarRight`
+(`src/components/sidebarRight/index.ts`, порт tweb `sidebarRight/index.ts:1-143`) на статичном
+`#column-right > .sidebar-content.sidebar-slider.tabs-container`, который рисует `App.tsx`
+(шелл, ВРЕМЕННО до Э4-1 — у tweb узел из `index.html:110-112`). Экземпляр создаёт
+layout-эффект шелла (`createAppSidebarRight()` + `construct(managers)`), экспорт по умолчанию —
+живая привязка. Класс — единственный писатель `body.is-right-column-shown` (`toggleSidebar`
+ставит, `hide` снимает), владелец `inert`, записи навигации `'right'` (Esc/Back — через
+`appNavigationController`), ручки ресайза (`installColumnResize`), пересчёта ширин
+(`installColumnWidthsUpdater`), паузы видео под закрытой колонкой и события
+`right_sidebar_toggle` (`rootScope`). Скан «один писатель» — `sidebarRight/index.test.ts`.
 
-| Панель | Файл | Портал | Когда |
+| Панель | Файл | Где живёт | Когда |
 |---|---|---|---|
-| Профиль/группа/канал | `src/components/UserInfoPanel.tsx` | `#main-columns`, `div#column-right` | из `Chat.tsx` (lazy, `infoMounted`) |
-| Поиск стикеров/GIF | `src/components/rightSidebar/RightSearchTab.tsx` | `#main-columns`, свой модуль-геометрия | из композера (`popupStore`) |
-| Изменить/добавить контакт | `EditContactView.tsx`, `AddContactView.tsx` | док-панель в потоке (не колонка) | из `useChatPopups` |
+| Профиль/группа/канал | `src/components/UserInfoPanel.tsx` | портал в `tab.container` вкладки №0 — `AppReactProfileTab` (`sidebarRight/reactProfileTab.ts`, ВРЕМЕННО до 3-1, роль `AppSharedMediaTab`) | вкладку создаёт каждый инстанс `Chat.tsx` на монтировании (`createSharedMediaTab`), активный ставит её в слайдер (`replaceSharedMediaTab`, ВРЕМЕННО до Э6) |
+| Поиск стикеров/GIF | `src/components/rightSidebar/RightSearchTab.tsx` | свой портал в `#main-columns` с геометрией колонки | из композера (`popupStore`); колонку открывает классом через мост `useRightColumnShown` (ВРЕМЕННО до 0б-11) |
+| Изменить/добавить контакт | `EditContactView.tsx`, `AddContactView.tsx` | док-панель в потоке (не колонка) | из `useChatPopups` (0б-10) |
 
-Класс `body.is-right-column-shown` держится **счётчиком**, а не toggle'ом — `src/core/hooks/useRightColumnShown.ts:17-40` (обе панели могут быть открыты одновременно; обоснование в докблоке файла 1-14).
+Открыть подэкран правой колонки — как у tweb: `appSidebarRight.createTab(AppXxxTab).open(payload)`
+(+ `toggleSidebar(true)`, если колонка могла быть закрыта). React-оверлеи подэкранов
+(`GroupEditFlow`, `AddMembersScreen`, `ChannelStats`, `RightsEditor`) пока лежат внутри узла
+вкладки №0 и уходят в Solid-вкладки задачами 0б-1…0б-9.
 
 ## 1. Компоненты правой колонки
 
@@ -961,7 +974,7 @@ DOM/лента/жесты/сворачивание живут в отдельн�
 
 ### 1.4 Хелперы/хуки
 
-`src/components/userInfo/helpers.ts` (склонения, `countLabel` по `SearchSuperMediaType`, `HEADER_H=56`, `ADDITIONAL_OFFSET=16`, `BODY_PADDING=16`, `isSharedMediaReached` — порт `sharedMedia.tsx:487-492`), `src/core/format/sharedMediaFmt.ts` (ext/цвета/размер/длительность/host), `core/hooks/useGroupInfo.ts` (карточка/ссылки/заявки; участников грузит класс), `core/hooks/useSearchSuper.ts` (шов), `useMuteToggle.ts`, `useChannelStats.ts`, `usePinnedStories.ts`, `useTransitionSlider.ts`, `useRightColumnShown.ts`, `core/dom/installColumnResize.ts`.
+`src/components/userInfo/helpers.ts` (склонения, `countLabel` по `SearchSuperMediaType`, `HEADER_H=56`, `ADDITIONAL_OFFSET=16`, `BODY_PADDING=16`, `isSharedMediaReached` — порт `sharedMedia.tsx:487-492`), `src/core/format/sharedMediaFmt.ts` (ext/цвета/размер/длительность/host), `core/hooks/useGroupInfo.ts` (карточка/ссылки/заявки; участников грузит класс), `core/hooks/useSearchSuper.ts` (шов), `useMuteToggle.ts`, `useChannelStats.ts`, `usePinnedStories.ts`, `useTransitionSlider.ts`; колонкой (ресайз, класс на body, навигация) с 0б-0 владеет `components/sidebarRight/index.ts`.
 
 ## 2. Табы контента
 

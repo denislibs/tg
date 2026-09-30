@@ -5,10 +5,9 @@ import NewChannelFlow from './NewChannelFlow'
 import NewPrivateChat from './NewPrivateChat'
 import type { OpenPeer } from '../data'
 
-// Экран настроек со всеми под-экранами (Privacy/Notifications/Language/…) — большое
-// поддерево JS+CSS, не нужное до первого кадра. Открывается из меню → грузим лениво.
-const SettingsView = lazy(() => import('./SettingsView'))
-// Кошелёк (звёзды) и экран звонков — тоже из меню, не первый кадр → лениво.
+// Кошелёк (звёзды) и экран звонков — из меню, не первый кадр → лениво. Настроек
+// здесь больше нет: корень — вкладка колоночного слайдера (`AppSettingsTab`,
+// задача 28 плана 2D), её модуль грузится лениво сам (`solidJsTabs/tabs.ts`).
 const WalletView = lazy(() => import('./stars/WalletView'))
 const CallsView = lazy(() => import('./CallsView'))
 
@@ -20,14 +19,13 @@ const CallsView = lazy(() => import('./CallsView'))
 // (`tweb src/scss/partials/_slider.scss:226-241`). Поэтому обёрток-презенсов
 // здесь больше нет: экран просто монтируется и размонтируется.
 export type SidebarScreen =
-  | 'settings' | 'contacts' | 'wallet' | 'calls'
+  | 'contacts' | 'wallet' | 'calls'
   | 'newGroup' | 'newChannel' | 'newPrivate' | 'newSecret' | null
 
 interface SidebarScreensProps {
   screen: SidebarScreen
   /** снять текущий экран (null) */
   close: () => void
-  onSettingsBack: () => void
   onSelect: (id: string) => void
   /** открыть пира (есть диалог — выбрать, нет — черновик): `core/navigation/openPeer.ts` */
   onOpenPeer: (peer: OpenPeer) => void
@@ -40,7 +38,6 @@ interface SidebarScreensProps {
 export default function SidebarScreens({
   screen,
   close,
-  onSettingsBack,
   onSelect,
   onOpenPeer,
   onChatCreated,
@@ -50,11 +47,6 @@ export default function SidebarScreens({
 }: SidebarScreensProps) {
   return (
     <>
-      <Suspense fallback={null}>
-        {screen === 'settings' && (
-          <SettingsView onBack={onSettingsBack} />
-        )}
-      </Suspense>
       <Suspense fallback={null}>
         {screen === 'wallet' && <WalletView onBack={close} />}
       </Suspense>

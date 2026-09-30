@@ -2,8 +2,8 @@
 /**
  * Каркас экрана настроек = вкладка слайдера (задача 3 плана волны 2D). Пины на
  * то, что видит пользователь, на НАСТОЯЩЕЙ вкладке «Язык» (`AppLanguageTab`),
- * открытой через хост (`settingsSliderHost.ts`) — тем же путём, что строка
- * корня настроек:
+ * открытой на колоночном слайдере (`columnSlider.ts`) — тем же путём, что
+ * строка корня настроек (`tab.slider.createTab(AppLanguageTab).open()`):
  *
  *  (1) ШАПКА. У верхнего края шапка без плашки и линии: вкладка несёт
  *      `scrolled-start scrolled-end scrollable-y-bordered`
@@ -28,11 +28,7 @@ import type { Managers } from '@/client/bootstrap'
 import I18n from '@lib/langPack'
 import type SliderSuperTab from '@components/sliderTab'
 import { AppLanguageTab } from '@components/solidJsTabs/tabs'
-import appNavigationController from '@core/navigation/appNavigationController'
-import { createSettingsSliderHost, type SettingsSliderHost } from './settingsSliderHost'
-import hostStyles from './settingsSliderHost.module.scss'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
 
 /** ширина колонки, которую happy-dom сам не посчитает */
 const WIDTH = 420
@@ -56,7 +52,7 @@ const measured = () => pause(50)
 type StartFrame = { transform: string, filter: string }
 let startFrames: Map<Element, StartFrame>
 
-let host: SettingsSliderHost
+let host: TestColumnSlider
 let sliderEl: HTMLElement
 
 beforeEach(() => {
@@ -86,7 +82,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = createSettingsSliderHost(columnEl, managers)
+  host = mountTestColumnSlider(columnEl, managers)
   sliderEl = columnEl.querySelector<HTMLElement>('.sidebar-slider')!
 })
 
@@ -97,8 +93,8 @@ afterEach(async() => {
   vi.restoreAllMocks()
 })
 
-/** заглушка-корень хоста — вкладка №0 (см. шапку `settingsSliderHost.ts`) */
-const rootTab = () => sliderEl.children[0] as HTMLElement
+/** `.item-main` колонки — вкладка №0 (tweb `index.html:93`) */
+const rootTab = () => host.mainEl
 
 /**
  * Переход целиком: `transitionend` обеих вкладок (в браузере их шлют обе — у
@@ -147,21 +143,6 @@ describe('каркас вкладки настроек — шапка (жало�
     scroller.dispatchEvent(new Event('scroll'))
     await measured()
     expect(tab.container.classList.contains('scrolled-start')).toBe(true)
-  })
-})
-
-describe('каркас вкладки настроек — фон (шапка «своего цвета»)', () => {
-  // Шапка у верха прозрачна (`_sidebar.scss:4-5`), поэтому её цвет — это фон
-  // ВКЛАДКИ: у tweb `.sidebar-slider-item { background-color:
-  // var(--background-color) }` (`_sidebar.scss:130-132`, у нас :123-127), и
-  // только прокрутка красит шапку в `--surface-color`. Слой хоста перекрашивал
-  // вкладку в `--surface-color` — шапка у верха выходила цветом плашки.
-  // happy-dom каскад CSS-модулей не считает, поэтому пин — по исходникам.
-  it('фон вкладки задаёт правило tweb, слой хоста его не перекрывает', () => {
-    const sidebarScss = readFileSync(join(__dirname, '../../styles/tweb/_sidebar.scss'), 'utf8')
-    const hostScss = readFileSync(join(__dirname, 'settingsSliderHost.module.scss'), 'utf8')
-    expect(sidebarScss).toMatch(/&-slider\s*\{\s*&-item\s*\{\s*background-color:\s*var\(--background-color\);/)
-    expect(hostScss).not.toMatch(/:global\(\.sidebar-slider-item\)/)
   })
 })
 
@@ -237,32 +218,5 @@ describe('каркас вкладки настроек — переход (жа�
     expect(outgoing.isConnected).toBe(false)
     expect(sliderEl.children).toHaveLength(1)
     expect(incoming.classList.contains('active')).toBe(true)
-  })
-})
-
-describe('каркас вкладки настроек — слой хоста не глотает клики React-экрана', () => {
-  // React-корень настроек держит СВОИ записи навигации (`SettingsView.tsx`,
-  // `useNavLayer(true, onBack, 'left')` и ещё одну на подэкран). Хост решает
-  // «вкладки есть» по `slider.hasTabsInNavigation()` — по ТИПУ записи. Пока
-  // тип слайдера совпадал с типом React-слоёв, признак после закрытия вкладки
-  // оставался взведённым: прозрачный слой хоста (`z-index: 100`,
-  // `pointer-events: auto`) лежал поверх React-экрана, и клики умирали
-  // (стенд: открыть «Язык», вернуться, открыть «Уведомления и звуки»).
-  it('после закрытия вкладки кнопкой «назад» слой снова пропускает клики, React-слой цел', async() => {
-    let reactBacks = 0
-    const reactLayer = appNavigationController.pushItem({ type: 'left', onPop: () => { ++reactBacks } })
-
-    const tab = await openLanguage()
-    const layer = sliderEl.parentElement!
-    expect(layer.classList.contains(hostStyles.withTabs)).toBe(true)
-    await finishTransition(rootTab(), tab.container)
-
-    tab.closeBtn.click()
-    await finishTransition(tab.container, rootTab())
-
-    expect(tab.container.isConnected).toBe(false)
-    expect(layer.classList.contains(hostStyles.withTabs)).toBe(false)
-    expect(reactBacks).toBe(0)
-    appNavigationController.removeItem(reactLayer)
   })
 })

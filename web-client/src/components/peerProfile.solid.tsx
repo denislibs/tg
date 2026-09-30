@@ -223,6 +223,7 @@ import { isPeerMuted } from '../core/dialogs/notifySettings'
 import { startClient } from '../client/bootstrap'
 import type { UserFull } from '../core/peers/peer'
 import { cachedProfilePhone, subscribeProfilePhoneMirror, profilePhoneMirrorVersion } from '../core/profilePhoneCache'
+import { publicUsernameLink } from '../core/publicLink'
 
 export type PeerProfileContextValue = {
   peerId: PeerId
@@ -983,9 +984,8 @@ function Phone() {
  * схемного `usernames: Username[]` в модели нет (`core/peers/peer.ts`).
  * Subtitle поэтому всегда `i18n('Username')`.
  *
- * URL для QR/копии — `${location.origin}/@username`, а не буквальный
- * `t.me/username` оригинала: у нас нет t.me, та же подмена домена уже принята
- * проектом (`QrModal`/`SettingsView.tsx`/прежний `UserInfoPanel.tsx::inviteUrl`).
+ * URL для QR/копии — `t.me/username` оригинала на своём хосте ссылок
+ * (`core/publicLink.ts`): страницу-превью того же формата рендерит наш бэкенд.
  */
 function Username() {
   const context = usePeerProfileContext()
@@ -1010,7 +1010,7 @@ function Username() {
           <Row.Icon icon="mention_filled" />
           <Row.Title>{value()}</Row.Title>
           <Row.Subtitle>{i18n('Username')}</Row.Subtitle>
-          <QrButton url={`${location.origin}/@${value()}`} label={`@${value()}`} />
+          <QrButton url={publicUsernameLink(value())} label={`@${value()}`} />
         </Row>
       )}
     </Show>
@@ -1149,7 +1149,7 @@ function Link() {
   const url = createMemo(() => {
     if (isUser(context.peerId)) return undefined
     const peer = context.peer as Channel | undefined
-    if (isPublic(peer)) return `${location.origin}/@${peer!.username}`
+    if (isPublic(peer)) return publicUsernameLink(peer!.username!)
     return context.exportedInviteUrl
   })
   const label = (value: string) => value.replace(/^https?:\/\//, '')
