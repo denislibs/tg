@@ -3,7 +3,7 @@
 // код-пароль, облачный пароль, ключи доступа, сеансы) + секция privacy-правил
 // с живыми значениями и счётчиками исключений.
 import type { LangPackKey } from '@/lang'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import TgIcon from '../TgIcon'
 import { SettingsScreen, Section, Row } from './kit'
 import BlockedUsers from './BlockedUsers'
@@ -15,7 +15,8 @@ import { useSettingsStore } from '../../settings'
 import { useT, useTArgs } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { commandThenReload } from '../../core/accountTransition'
-import { getSettingsSliderHost, openActiveSessionsTab } from '../sidebarLeft/settingsSliderHost'
+import { openActiveSessionsTab } from '../sidebarLeft/columnSlider'
+import type { ReactScreenTabProps } from '../sidebarLeft/reactScreenTab'
 import {
   AppPasscodeEnterPasswordTab,
   AppPasscodeLockTab,
@@ -57,7 +58,7 @@ function ruleSubtitle(rule: Rule, t: (key: LangPackKey) => string): string {
 
 // Порядок секции Privacy (tweb privacyAndSecurity.tsx:416-466, без gifts/saved
 // music — О-16). Строка открывает вкладку правила (`sidebarLeft/tabs/privacy/*`,
-// задача 17 плана 2D) через хост, как tweb `tab.slider.createTab(…).open()`;
+// задача 17 плана 2D) слайдером своей вкладки, как tweb `tab.slider.createTab(…).open()`;
 // заголовки строк и значения — предмет задачи 23 (хаб станет вкладкой).
 const RULE_ROWS: { key: PrivacyKey; title: LangPackKey; tab: typeof AppPrivacyAboutTab }[] = [
   { key: 'phone_number', title: 'PrivacyPhoneTitle', tab: AppPrivacyPhoneNumberTab },
@@ -73,7 +74,11 @@ const RULE_ROWS: { key: PrivacyKey; title: LangPackKey; tab: typeof AppPrivacyAb
   { key: 'read_time', title: 'PrivacyReadTimeTitle', tab: AppPrivacyReadTimeTab },
 ]
 
-export default function PrivacySecuritySettings({ onBack }: { onBack: () => void }) {
+// ВРЕМЕННО до 2D-23: экран — содержимое вкладки `AppPrivacyAndSecurityTab` на
+// мосту `scaffoldReactScreenTab` (`sidebarLeft/reactScreenTab.tsx`); следующие
+// вкладки он открывает слайдером этой вкладки, как оригинал.
+export default function PrivacySecuritySettings({ tab, onBack }: ReactScreenTabProps) {
+  const slider = tab.slider as SidebarSlider
   const t = useT()
   const tArgs = useTArgs()
   const managers = useManagers()
@@ -120,40 +125,30 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
     return null
   }
 
-  // Мастер 2FA — вкладки слайдера (`sidebarLeft/tabs/2fa/*`), экран под ними
-  // остаётся жить. У tweb конец мастера срезает «Конфиденциальность» из истории
-  // (`sliceTabsUntilTab(AppSettingsTab)`), и при следующем открытии она читает
-  // состояние заново; здесь то же перечитывание — когда стек вкладок хоста
-  // опустел (шов, снимается задачей 23/28).
-  const offTabsEmptyRef = useRef<(() => void) | null>(null)
-  useEffect(() => () => offTabsEmptyRef.current?.(), [])
+  // Мастер 2FA — вкладки слайдера (`sidebarLeft/tabs/2fa/*`). Конец мастера
+  // срезает этот экран из истории (`sliceTabsUntilTab(AppSettingsTab)`, tweb
+  // `2fa/index.tsx:34`, `2fa/passwordSet.tsx:23`), и следующее открытие читает
+  // состояние заново — своего перечитывания экрану не нужно.
   const openTwoStepVerification = () => {
     // tweb :257-271. Пока состояние не пришло, строка «заморожена» (`twoFactorFrozen`).
     if (!pwState) return
-    const host = getSettingsSliderHost()
-    offTabsEmptyRef.current ??= host.onTabsEmpty(() => {
-      void managers.auth.passwordState().then(setPwState).catch(() => {})
-    })
     // Ветки `email_unconfirmed_pattern` → `AppTwoStepVerificationEmailConfirmationTab`
     // (:261-268) нет — О-13: наш сервер ставит почту без подтверждения кодом.
-    const open = pwState.enabled
-      ? host.openTab(AppTwoStepVerificationEnterPasswordTab, { state: pwState })
-      : host.openTab(AppTwoStepVerificationTab, { state: pwState })
-    open.catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+    if (pwState.enabled) {
+      void slider.createTab(AppTwoStepVerificationEnterPasswordTab).open({ state: pwState })
+    } else {
+      void slider.createTab(AppTwoStepVerificationTab).open({ state: pwState })
+    }
   }
 
   const blockedValue = blockedTotal > 0 ? `${blockedTotal}` : t('BlockedEmpty')
   const passcodeEnabled = useSettingsStore((st) => st.passcodeEnabled)
 
   // tweb `privacyAndSecurity.tsx:193-210` (`openPasscodeLock`): при включённом
-  // коде сначала вкладка ввода текущего, при верном — главная вкладка. Вкладки
-  // слайдера открывает хост (шов до задачи 23, когда этот экран сам станет
-  // вкладкой и откроет их своим `tab.slider`); вторую открываем слайдером
-  // вкладки ввода — это тот же слайдер хоста.
+  // коде сначала вкладка ввода текущего, при верном — главная вкладка.
   const openPasscodeLock = () => {
-    const host = getSettingsSliderHost()
     if (passcodeEnabled) {
-      void host.openTab(AppPasscodeEnterPasswordTab, {
+      void slider.createTab(AppPasscodeEnterPasswordTab).open({
         buttonText: 'PasscodeLock.Next',
         inputLabel: 'PasscodeLock.EnterYourPasscode',
         onSubmit: async (passcode, tab, { isMyPasscode }) => {
@@ -164,7 +159,7 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
         },
       })
     } else {
-      void host.openTab(AppPasscodeLockTab)
+      void slider.createTab(AppPasscodeLockTab).open()
     }
   }
 
@@ -221,9 +216,7 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
             key={r.key}
             label={r.title}
             sublabel={ruleSubtitle(rules[r.key], t)}
-            onClick={() => {
-              getSettingsSliderHost().openTab(r.tab).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
-            }}
+            onClick={() => void slider.createTab(r.tab).open()}
           />
         ))}
       </Section>

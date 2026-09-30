@@ -158,12 +158,12 @@ type Table = typeof APP_SETTINGS_KEYS
 
 type LeafValue<E> = E extends keyof Settings ? Settings[E] : E extends { get: (value: never) => infer V } ? V : never
 
-type SettingsView<T> = {
-  readonly [K in keyof T]: T[K] extends Leaf ? LeafValue<T[K]> : SettingsView<T[K]>
+type SettingsTree<T> = {
+  readonly [K in keyof T]: T[K] extends Leaf ? LeafValue<T[K]> : SettingsTree<T[K]>
 }
 
 /** Настройки клиента в форме tweb `StateSettings` — в объёме таблицы. */
-export type AppSettings = SettingsView<Table>
+export type AppSettings = SettingsTree<Table>
 
 /** Путь на одно поле ВНУТРЬ значения-объекта листа. */
 type InnerArgs<V, P extends string[]> = V extends object
@@ -174,7 +174,7 @@ type InnerArgs<V, P extends string[]> = V extends object
 type SetArgs<T, P extends string[] = []> = {
   [K in keyof T & string]: T[K] extends Leaf
     ? [...P, K, LeafValue<T[K]>] | InnerArgs<LeafValue<T[K]>, [...P, K]>
-    : [...P, K, Partial<SettingsView<T[K]>>] | SetArgs<T[K], [...P, K]>
+    : [...P, K, Partial<SettingsTree<T[K]>>] | SetArgs<T[K], [...P, K]>
 }[keyof T & string]
 
 function buildView(table: KeyTable, state: Accessor<Settings>): object {

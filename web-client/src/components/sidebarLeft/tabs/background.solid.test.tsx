@@ -4,7 +4,7 @@
  * 812502980) — задача 12 плана волны 2D.
  *
  * Вкладка гоняется НАСТОЯЩАЯ — `AppChatBackgroundTab` из `solidJsTabs/tabs.ts`,
- * открытая через хост (`settingsSliderHost.ts`) тем же путём, что строка «Общих».
+ * открытая через колоночный слайдер (`sidebarLeft/columnSlider.ts`) тем же путём, что строка «Общих».
  * Стабы — только границы: выбор файла (`requestFile`), воркер (`managers.media`),
  * 2D-контекст холстов фона (в happy-dom его нет — поддельный) и геометрия.
  *
@@ -25,7 +25,7 @@ import { useSettingsStore, DEFAULTS } from '@/settings'
 import { WALLPAPER_PRESETS } from '@/wallpapers'
 import { getIconContent } from '@components/icon'
 import { AppChatBackgroundTab } from '@components/solidJsTabs/tabs'
-import { createSettingsSliderHost, type SettingsSliderHost } from '../settingsSliderHost'
+import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
 import { installSpecLabelActivation } from '@/test/specLabelActivation'
 import { installFakeCanvas } from '@/test/fakeCanvas'
 import backgroundStyles from '@components/chat/bubbles/chatBackground.module.scss'
@@ -43,7 +43,7 @@ vi.mock('@core/media/ensureMediaUrl', () => ({ ensureMediaUrl }))
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-let host: SettingsSliderHost
+let host: TestColumnSlider
 let uninstallLabelActivation: () => void
 let upload: ReturnType<typeof vi.fn>
 
@@ -63,7 +63,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = createSettingsSliderHost(columnEl, managers)
+  host = mountTestColumnSlider(columnEl, managers)
 })
 
 afterEach(async() => {
