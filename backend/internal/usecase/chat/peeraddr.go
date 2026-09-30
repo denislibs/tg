@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -135,6 +136,26 @@ func (i *Interactor) PeerToChatID(ctx context.Context, viewerID int64, peer doma
 // его ещё нет: первое сообщение собеседнику открывает диалог.
 func (i *Interactor) PeerToChatIDOrCreate(ctx context.Context, viewerID int64, peer domain.PeerID) (int64, error) {
 	return i.peerToChatID(ctx, viewerID, peer, true)
+}
+
+// PeerToChatIDForRead — читающий путь, у которого для собеседника БЕЗ диалога
+// есть ответ «пусто», а не «нет такого»: история и счётчики вкладок. Так
+// отвечает оригинал — messages.getHistory по пользователю, с которым ещё не
+// переписывались, отдаёт пустой messages.messages: чат с человеком
+// открывается ДО первого сообщения (tweb appImManager.setInnerPeer наличие
+// диалога не спрашивает, лента сразу просит историю).
+//
+// chatID == 0 без ошибки — «диалога ещё нет»; строка chats при этом НЕ
+// заводится (её заводит первое сообщение, PeerToChatIDOrCreate). Ключ чата
+// (< 0) без строки и NullPeerID — по-прежнему ErrNotFound: группы/канала без
+// строки не бывает. Существование самого пользователя здесь не проверяется —
+// пустой разговор ничего о нём не раскрывает.
+func (i *Interactor) PeerToChatIDForRead(ctx context.Context, viewerID int64, peer domain.PeerID) (int64, error) {
+	chatID, err := i.peerToChatID(ctx, viewerID, peer, false)
+	if errors.Is(err, domain.ErrNotFound) && peer != domain.NullPeerID && peer.IsUser() {
+		return 0, nil
+	}
+	return chatID, err
 }
 
 func (i *Interactor) peerToChatID(ctx context.Context, viewerID int64, peer domain.PeerID, create bool) (int64, error) {

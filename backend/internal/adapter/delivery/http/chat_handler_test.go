@@ -788,3 +788,53 @@ func createdPeerFrom(t *testing.T, rec *httptest.ResponseRecorder) int64 {
 	}
 	return int64(id)
 }
+
+// Первое открытие человека без диалога (глобальный поиск, контакты, @username):
+// лента сразу просит историю, профиль — счётчики вкладок. Оригинал отвечает на
+// это пустым разговором (messages.getHistory → пустой messages.messages), а не
+// ошибкой: до фикса здесь был 404 «peer not found», клиент оставался с вечным
+// лоадером. Диалог при этом не заводится — его заводит первое сообщение.
+func TestHistory_UserWithoutDialog_IsEmpty(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990002001")
+	_, idB := signUp(t, h, pool, "+79990002002")
+
+	rec := authedReq(t, h, http.MethodGet, "/chats/"+itoa(idB)+"/history?limit=40", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("history без диалога: %d %s", rec.Code, rec.Body.String())
+	}
+	var hist struct {
+		Underscore string            `json:"_"`
+		Messages   []json.RawMessage `json:"messages"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &hist); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if hist.Underscore != "messages.messages" || len(hist.Messages) != 0 {
+		t.Fatalf("history без диалога = %s; want пустой messages.messages", rec.Body.String())
+	}
+
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(idB)+"/search_counters?filters=media,files", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("search_counters без диалога: %d %s", rec.Code, rec.Body.String())
+	}
+	var sc struct {
+		Counters []struct {
+			Filter string `json:"filter"`
+			Count  int    `json:"count"`
+		} `json:"counters"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &sc)
+	if len(sc.Counters) != 2 || sc.Counters[0].Filter != "media" || sc.Counters[0].Count != 0 || sc.Counters[1].Filter != "files" || sc.Counters[1].Count != 0 {
+		t.Fatalf("search_counters без диалога = %s; want нули по каждому фильтру", rec.Body.String())
+	}
+
+	// Читающий путь диалога НЕ заводит.
+	if body := getChats(t, h, tokenA, ""); len(body.Dialogs) != 0 {
+		t.Fatalf("GET history завёл диалог: %+v", body.Dialogs)
+	}
+	// Группы/канала без строки не бывает — ключ чата остаётся 404.
+	if rec := authedReq(t, h, http.MethodGet, "/chats/-999999/history", tokenA, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("history несуществующего чата: %d; want 404", rec.Code)
+	}
+}
