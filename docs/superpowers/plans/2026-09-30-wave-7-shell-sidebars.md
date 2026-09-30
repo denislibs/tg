@@ -1316,6 +1316,7 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 | В7-3 | Превью строки диалога берётся из зеркала диалогов, а не из `historyStorage` | модель данных списка (Отступление 1 спеки 2026-08-12) | 1-1 |
 | В7-4 | Пункт аккаунтов в бургере — наша модель «одна сессия на браузер» | `core/auth/accounts.ts:1-5`; модель tweb — 2D О-1 | 2-2 |
 | В7-5 | Подписки `construct` на наши типизированные операции воркера вместо `rootScope` | осознанное расхождение `roadmap.md` («Что в план НЕ входит») | 1-4, 4-6 |
+| В7-6 | Перезвон из журнала звонков есть и в Firefox: `IS_CALL_SUPPORTED` = `RTCPeerConnection` + `getUserMedia`, без `!IS_FIREFOX` tweb `environment/webrtcSupport.ts` | звонит наш движок (`core/calls/callEngine.ts`), и в Firefox он работает; UA-гейт tweb — про их MTProto-звонки (решение пользователя) | 0а-4 (`environment/callSupport.ts`, `calls.solid.tsx`) |
 
 Временные мосты (`// ВРЕМЕННО до …`) — не отступления: у каждого есть задача, которая его снимает.
 

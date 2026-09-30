@@ -27,7 +27,18 @@ import { AppCallsTab } from '@components/solidJsTabs/tabs'
 import { createSettingsSliderHost, type SettingsSliderHost } from '../settingsSliderHost'
 import styles from './calls.module.scss'
 
-vi.mock('@environment/callSupport', () => ({ default: true }))
+// Среда — Firefox с WebRTC и getUserMedia, флаг звонков НАСТОЯЩИЙ
+// (`environment/callSupport.ts`, Отступление В7-6): перезвон обязан быть и там,
+// где tweb его прячет UA-гейтом. `vi.hoisted` — до импортов: флаг считается при
+// загрузке модуля.
+vi.hoisted(() => {
+  Object.defineProperty(navigator, 'userAgent', {
+    configurable: true,
+    value: 'Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0',
+  })
+  Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: () => {} } })
+  ;(globalThis as { RTCPeerConnection?: unknown }).RTCPeerConnection = class {}
+})
 
 const startOutgoing = vi.fn()
 vi.mock('@core/calls/callEngine', () => ({ startOutgoing: (...args: unknown[]) => startOutgoing(...args) }))
@@ -192,11 +203,12 @@ describe('вкладка «Звонки» — строка журнала', () =
 })
 
 describe('вкладка «Звонки» — действия строки', () => {
-  it('кнопка справа перезванивает с тем же видом звонка и НЕ открывает чат', async() => {
+  it('кнопка справа (есть и в Firefox — В7-6) перезванивает с тем же видом звонка и НЕ открывает чат', async() => {
     pages = [[call(2, { out: true, video: true, duration: 5 }), call(3, { duration: 5 })]]
     const tab = await open()
     const [videoRow, voiceRow] = rows(tab)
 
+    expect(callButton(videoRow), 'перезвон в Firefox скрыт — вернулся UA-гейт tweb').not.toBeNull()
     expect(callButton(videoRow)!.classList.contains('videocamera')).toBe(true)
     expect(callButton(voiceRow)!.classList.contains('phone')).toBe(true)
 

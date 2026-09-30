@@ -54,6 +54,9 @@
  *     `requestMessageJump` + `openPeer`, тот же мост, что у строки чатлиста
  *     (`components/dialogRow.ts:361-373`), удаление — vanilla-попап
  *     `openDeleteMessageDialog` (ВРЕМЕННО до 2C-8).
+ *  9. Отступление В7-6: кнопка перезвона есть и в Firefox — `IS_CALL_SUPPORTED`
+ *     у нас отвечает за НАШ движок звонков (`RTCPeerConnection` +
+ *     `getUserMedia`), а не повторяет UA-гейт tweb `webrtcSupport.ts`.
  */
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js'
 import { createStore, reconcile } from 'solid-js/store'
@@ -188,6 +191,8 @@ function CallRow(props: {
     })
   }
 
+  // Отступление В7-6: флаг — поддержка НАШЕГО движка звонков, без UA-гейта
+  // tweb против Firefox (`environment/callSupport.ts`).
   const canCallBack = () => isUser(props.group.peerId) && IS_CALL_SUPPORTED
 
   return (
