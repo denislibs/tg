@@ -86,6 +86,12 @@ const ALLOWED: Record<string, number> = {
   // Solid-файл не может — тот модуль тянет `react` (граница рантаймов,
   // `shared/solid/boundary.test.ts`).
   'components/verticalVirtualList.solid.tsx': 1,
+  // components/verticalOptionWheel.solid.tsx — барабан выбора (порт tweb
+  // `verticalOptionWheel.tsx` 1:1, попап своего срока автоудаления): начальная
+  // прокрутка к выбранному (`:64`), перетаскивание (`:171`), инерция (`:223`) и
+  // доводка `animateValue` (`:279`). Узел — собственный скроллер барабана в теле
+  // попапа (5 строк), не лента: подгрузки нет, второго писателя позиции нет.
+  'components/verticalOptionWheel.solid.tsx': 4,
 }
 
 describe('scrollTop: единственный владелец — Scrollable/ScrollSaver', () => {

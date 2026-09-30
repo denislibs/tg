@@ -379,12 +379,18 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (у tweb его нет — Premium открывает попап), с ним — его ключи без других
 // читателей: восемь наших `Premium.Manage.*` и `Stars.Subscription`/
 // `Stars.Subscription.Cancel`. Итог: ru 1404, uk 750, es/de 747, fr 742.
+//
+// Задача 20 плана 2D (вкладка «Автоудаление», порт tweb autoDeleteMessages/*):
+// +3 ключа tweb lang.ts всем пяти — `AutoDeleteMessages.InfoDefault` (описание
+// попапа своего срока) и `UnsavedChanges`/`UnsavedChangesDescription.Privacy`
+// (подтверждение несохранённого на закрытии). Итог: ru 1407, uk 753, es/de 750,
+// fr 745.
 const COMPOSITION = {
-  ru: { keys: 1404, plural: 42 },
-  uk: { keys: 750, plural: 31 },
-  es: { keys: 747, plural: 30 },
-  de: { keys: 747, plural: 31 },
-  fr: { keys: 742, plural: 30 },
+  ru: { keys: 1407, plural: 42 },
+  uk: { keys: 753, plural: 31 },
+  es: { keys: 750, plural: 30 },
+  de: { keys: 750, plural: 31 },
+  fr: { keys: 745, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -509,12 +515,13 @@ const COMPOSITION = {
 // Особыми чатами — у ru +4 ключа tweb (разбор — у `COMPOSITION` выше).
 // Задачей 28 плана 2D — два ключа строк корня настроек у всех пяти, у ru — минус
 // ключи снесённого `PremiumManage` (разбор — там же).
+// Задачей 20 плана 2D — три ключа вкладки «Автоудаление» у всех пяти (там же).
 const FINGERPRINT = {
-  ru: '13447f25',
-  uk: 'f7af4022',
-  es: '5d6ff751',
-  de: 'ab245f9c',
-  fr: 'be8f0a56',
+  ru: '982d8bd4',
+  uk: 'b0c826f1',
+  es: 'a8693b06',
+  de: 'd2a885c3',
+  fr: '2bb7d3e5',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
