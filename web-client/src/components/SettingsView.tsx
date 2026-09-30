@@ -29,6 +29,7 @@ import { AppGeneralSettingsTab } from './solidJsTabs/tabs'
 import { toastNew } from './toast'
 import StarsPopup from './stars/StarsPopup'
 import { useStarsBalance } from '../stores/starsStore'
+import { publicUsernameLink } from '../core/publicLink'
 import s from './SettingsView.module.scss'
 
 // Pretty-print a Russian +7XXXXXXXXXX number as "+7 925 481 7290"; any other
@@ -378,11 +379,11 @@ export default function SettingsView({
       <StarsPopup open={starsOpen} onClose={() => setStarsOpen(false)} />
 
       {/* «QR-код» профиля (tweb myQrCode) — кодирует нашу публичную страницу
-          /@username (аналог t.me/username) */}
+          t.me/username на своём хосте ссылок (core/publicLink.ts) */}
       <QrModal
         open={qrOpen}
         onClose={() => setQrOpen(false)}
-        url={user?.username ? `${location.origin}/@${user.username}` : location.origin}
+        url={user?.username ? publicUsernameLink(user.username) : location.origin}
         label={user?.username ? `@${user.username}` : name}
         avatar={{ src: avatarSrc, background: avatarBg, text: avatarText }}
       />

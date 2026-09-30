@@ -81,10 +81,10 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		r.Get("/media/{mediaID}/content", mediaH.GetContent)
 	}
 
-	// Публичная страница-превью @username (аналог t.me) — без авторизации.
+	// Публичные страницы-превью (аналог t.me) — без авторизации. Свой хост
+	// (PUBLIC_LINK_ORIGIN) nginx проксирует целиком на /tme/… (nginx/nginx.conf).
 	if pubH != nil {
-		r.Get("/@{username}", pubH.Page)
-		r.Get("/@{username}/photo", pubH.Photo)
+		r.Route("/tme", pubH.Mount)
 	}
 
 	// Bot API (Telegram-подобный): /bot/{token}/{method}. Аутентификация по

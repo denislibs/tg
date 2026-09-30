@@ -1471,8 +1471,8 @@ export default class ChatContextMenu {
     return !(['video', 'gif', 'round', 'sticker'] as (MyDocument['type'])[]).includes(document.type)
   }
 
-  /** Порт `getUrlToMessage` (:1773-1802). Ссылка наша (`core/messageLink.ts`):
-   *  публичного `t.me` у клона нет, зато формат разбирает наш же клиент. */
+  /** Порт `getUrlToMessage` (:1773-1802). `t.me/<username>/<mid>` или
+   *  `t.me/c/<id>/<mid>` на своём хосте ссылок (`core/messageLink.ts`). */
   private getUrlToMessage(): { url: string, isPrivate: boolean } | undefined {
     if(!this.message || isUser(this.messagePeerId)) {
       return
@@ -1482,8 +1482,6 @@ export default class ChatContextMenu {
     const username = chat?._ === 'channel' ? chat.username : undefined
     return {
       url: buildMessageLink({
-        origin: location.origin,
-        pathname: location.pathname,
         peerId: this.messagePeerId,
         username,
         seq: getServerMessageId(this.message.id),

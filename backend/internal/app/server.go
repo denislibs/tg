@@ -354,8 +354,9 @@ func registerServer(p serverParams) {
 	if realtimePublisher != nil {
 		foldersUC.SetPublisher(realtimePublisher)
 	}
-	// Публичная страница-превью @username (аналог t.me)
-	pubH := httptransport.NewPublicHandler(usecasepublic.New(pgadapter.NewPublicRepo(p.Pool)), mediaUC)
+	// Публичные страницы-превью (аналог t.me) — свой хост, см. Config.PublicLinkOrigin
+	pubH := httptransport.NewPublicHandler(usecasepublic.New(pgadapter.NewPublicRepo(p.Pool)), mediaUC,
+		p.Cfg.PublicLinkOrigin, p.Cfg.AppOrigin)
 
 	// Ключи доступа (WebAuthn): опциональны — при кривом RP-конфиге фича
 	// отключается, приложение работает дальше.

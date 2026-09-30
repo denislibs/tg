@@ -11,6 +11,7 @@
 // Смысл тестов перенесён из `components/RichText.tweb.test.tsx` (React-версия ещё
 // жива и не трогается) + добавлено главное, чего та схема не умела: пересекающиеся
 // сущности дают ОДИН элемент с вложением, а не два одинаковых.
+import { DEFAULT_TME_ORIGIN } from '@config/app'
 import { describe, it, expect } from 'vitest'
 import type { MessageEntity } from '@layer'
 import { wrapMessageText, wrapRichText, MAX_ENTITIES } from './index'
@@ -106,12 +107,12 @@ describe('wrapRichText — однопроходная схема с рекурс
 })
 
 describe('wrapRichText — автолинковка plain-текста (parseEntities + классы tweb)', () => {
-  it('@упоминание → a.mention на t.me', () => {
+  it('@упоминание → a.mention на свой хост ссылок (аналог t.me)', () => {
     const host = render('Купить: @dollhouse_manager2')
     const a = host.querySelector('a.mention')
 
     expect(a?.textContent).toBe('@dollhouse_manager2')
-    expect(a?.getAttribute('href')).toBe('https://t.me/dollhouse_manager2')
+    expect(a?.getAttribute('href')).toBe(`${DEFAULT_TME_ORIGIN}/dollhouse_manager2`)
   })
 
   it('#хэштег → a.anchor-hashtag на tg://search_hashtag', () => {

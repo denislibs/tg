@@ -32,6 +32,14 @@ Dev-сервера нет: `npm run dev` пересобирает бандл в 
 а nginx стенда монтирует эту папку — после ребилда достаточно обновить страницу
 на http://localhost:38080. Разовая прод-сборка та же: `npx vite build --outDir ../client-build`.
 
+Build-time переменные (`src/config/app.ts`):
+
+| Переменная | По умолчанию | Назначение |
+|---|---|---|
+| `VITE_TME_ORIGIN` | `https://t.me.local` | хост публичных ссылок — аналог t.me (`core/publicLink.ts`): им собираются ссылки на юзернейм/пост/набор стикеров для копирования, QR и упоминаний, и ссылки на него распознаются как «свои» наравне с t.me (`lib/richtext/matchTelegramUrlHost.ts`). Совпадает с `PUBLIC_LINK_ORIGIN` бэкенда |
+| `VITE_DNP_ENABLED`, `VITE_DNP_SERVER_PUBKEYS` | выкл. | транспорт DNP (`src/config/app.ts`) |
+| `VITE_TL_WIRE` | выкл. | провод WS на TL вместо JSON |
+
 ## Структура
 
 ```

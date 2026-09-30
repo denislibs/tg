@@ -208,6 +208,8 @@ Postgres (назначает монотонный `seq`) → `message_ack` от�
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | (опц.) | ключи web-push; без них push отключён |
 | `VAPID_SUBJECT` | `mailto:admin@example.com` | subject для web-push |
 | `GEOIP_DB_PATH` | (опц.) | путь к GeoLite2-City.mmdb; без него гео в login-алертах опускается |
+| `PUBLIC_LINK_ORIGIN` | `https://t.me.local` | хост публичных ссылок — аналог t.me: страницы-превью (`/{username}`, `/{username}/{N}`, `/c/{id}/{N}`, `/+{hash}`, `/joinchat/{hash}`, `/addstickers/{name}`), абсолютные адреса картинок и og:image. nginx проксирует этот хост на `/tme/…` бэкенда; должен совпадать с `server_name` в `nginx/nginx.conf` и `VITE_TME_ORIGIN` клиента |
+| `APP_ORIGIN` | `https://web.telegram.local` | адрес веб-клиента: куда ведут кнопки страниц-превью («Написать», «Открыть в приложении», «Присоединиться») и корень хоста ссылок |
 
 Пример — [`../.env.example`](../.env.example).
 
