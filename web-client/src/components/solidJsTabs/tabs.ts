@@ -475,3 +475,19 @@ export const AppSharedFolderTab =
     getComponentModule: () => import('../sidebarLeft/tabs/sharedFolder.solid'),
     onOpenAfterTimeout: folderTabOpenAfterTimeout,
   })
+
+// ── Поиск GIF и стикеров правой колонки (tweb :458-462, :521-525) — задача 0б-11 ─
+// Обе обычной формы и без полезной нагрузки, как у оригинала: отправку в чат и
+// колонку вкладки берут у синглтонов (`sidebarRight/tabs/emoticonsSearchBridge.ts`).
+// Открывает их лупа нижней полосы панели эмодзи (tweb `emoticonsDropdown/index.ts:300-310`).
+export const AppGifsTab =
+  scaffoldSolidJSTab({
+    title: 'SearchGifsTitle',
+    getComponentModule: () => import('../sidebarRight/tabs/gifs.solid'),
+  })
+
+export const AppStickersTab =
+  scaffoldSolidJSTab({
+    title: 'StickersName',
+    getComponentModule: () => import('../sidebarRight/tabs/stickers.solid'),
+  })

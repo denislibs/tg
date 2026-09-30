@@ -370,8 +370,13 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `Peer.ServiceNotifications` (подпись служебного аккаунта, getUserStatusString
 // :19-21) и `Verified.Bot`/`Verified.Channel`/`Verified.Group` (строка
 // официальной верификации профиля, peerProfile.tsx BotVerification): ru 1412.
+//
+// Задачей 0б-11 волны 7 (вкладки «Поиск стикеров» и «Поиск GIF» правой колонки) —
+// у ru +2 ключа tweb lang.ts: `Stickers.SearchAdd` (кнопка набора, tweb
+// `stickers.tsx:49`) и `SearchGifsTitle` (заголовок/плейсхолдер `AppGifsTab`,
+// `tabs.ts:460`, `gifs.tsx:92`): ru 1414.
 const COMPOSITION = {
-  ru: { keys: 1412, plural: 42 },
+  ru: { keys: 1414, plural: 42 },
   uk: { keys: 748, plural: 31 },
   es: { keys: 745, plural: 30 },
   de: { keys: 745, plural: 31 },
@@ -498,8 +503,9 @@ const COMPOSITION = {
 // Портом кнопки замка (`sidebarLeft/lockButton.solid.tsx`) — наш `PasscodeLock.LockNow`
 // заменён ключом tweb `PasscodeLock.TapToLock` у всех пяти: −1 +1, число строк то же.
 // Особыми чатами — у ru +4 ключа tweb (разбор — у `COMPOSITION` выше).
+// Задачей 0б-11 волны 7 — у ru +2 ключа tweb (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '75169aa2',
+  ru: 'bf4743f6',
   uk: '4c8d1a40',
   es: 'e878cf4f',
   de: '1e1c8f3e',

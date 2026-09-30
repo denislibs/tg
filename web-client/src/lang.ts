@@ -1212,6 +1212,7 @@ const lang = {
   SearchEmoji: 'Search Emoji',
   SearchEmptyViewTitle: 'No Results',
   SearchGIFs: 'Search GIFs',
+  SearchGifsTitle: 'Search GIFs',
   SearchInAllChats: 'Search in All Chats',
   SearchMessages: 'Messages',
   Seconds: {
@@ -1341,6 +1342,7 @@ const lang = {
   'Stickers.MySets': 'My Sticker Sets',
   'Stickers.NoSets': 'No sticker sets installed',
   'Stickers.RemoveFromFavorites': 'Remove from Favorites',
+  'Stickers.SearchAdd': 'Add',
   'Stickers.SearchAdded': 'Added',
   'Stickers.SearchSets': 'Search sticker sets',
   'Stickers.SuggestStickers': 'Suggest Stickers by Emoji',

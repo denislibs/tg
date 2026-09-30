@@ -1383,9 +1383,11 @@ const ru = {
   'Stickers.NoSets': 'Нет установленных наборов',
   // экраны поиска правой колонки (rightSidebar/StickersSearchTab)
   'StickersTab.SearchPlaceholder': 'Поиск стикеров',
+  'Stickers.SearchAdd': 'Добавить',
   'Stickers.SearchAdded': 'Добавлен',
   // GIF (вкладка пикера, контекстные меню)
   SearchGIFs: 'Поиск GIF',
+  SearchGifsTitle: 'Поиск GIF',
   SavedGifsLimitTitle: 'Сохранённые GIF',
   'Gif.Trending': 'Популярные',
   NoGIFsFound: 'GIF не найдены',

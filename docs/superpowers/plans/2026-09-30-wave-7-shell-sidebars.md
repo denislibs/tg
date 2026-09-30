@@ -1336,6 +1336,11 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 | О-11 | Игры (`playGame` `:1394`), url-auth (`handleUrlAuth` `:1419`), autologin-домены (`:1511`) | нет на бэкенде | боты с логином/играми |
 | О-12 | Пункты меню ⋮ и плашки шапки без бэкенда: перевод чата, снятие платы, автоматизация, бусты (если нет), `CompactDiffView`, `WelcomeMessages.DeleteAll` | детальный план Э6 составит точный список | шапка 1:1 |
 | О-13 | Возможности композера без бэкенда: эфемерный режим, предложенные посты, эффекты (если нет), AI-редактор (`inputState/aiEditorButton`) | детальный план Э7 составит точный список | композер 1:1 |
+| О-25 | Предпросмотр стикера по зажатию во вкладке «Поиск стикеров» (`attachStickerViewerListeners`, tweb `stickers.tsx:166`) — 0б-11 | ванильного порта `components/stickerViewer.ts` нет, только React-хук `stickers/useStickerViewer.ts` | порт `stickerViewer.ts` (нужен и попапу набора 2C-15, и ленте) |
+| О-26 | `installed_date` у наборов трендов, поиска и набора по id (`GET /sticker-sets/featured`, `/search`, `/id/{id}`) — 0б-11 | бэкенд пишет его только в выдачу моих наборов: остальные выборки без пользователя (`stickersrepo.go::setCols`); дословный `isStickerSetAdded` показывает установленный набор как «Add» | «Add/Added» во вкладке поиска стикеров 1:1 (бэкенд-PR — до врезки 0б-11) |
+| О-27 | Поиск GIF инлайн-ботом `@gif` (`resolveUsername('gif')` + `getInlineResults`, tweb `gifs.tsx:36-60`) — 0б-11 | на бэкенде Tenor-прокси `GET /gifs/search`, выдача — ссылки CDN, а не `botInlineMediaResult.document` | кладка на `wrapVideo(doc)` 1:1 (`gifsMasonry.ts`, расхождения 1–2) |
+| О-28 | Подмешка своих наборов в поиск стикеров (`foundSaved`, tweb `appStickersManager.ts:765-775`) — 0б-11 | кэша наборов в `stickersManager` нет | кэш наборов в менеджере |
+| О-29 | Премиум-замок превью стикера (`withLock`, tweb `stickers.tsx:85`) — 0б-11 | премиум-стикеров нет на бэкенде | премиум-стикеры |
 
 ## Что остаётся волне 8 (после этой программы)
 

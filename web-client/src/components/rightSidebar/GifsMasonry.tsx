@@ -7,6 +7,9 @@
 //     _gifsMasonry.scss перебивает их !important (width auto / height 0)
 //     div.preloader-container            ← components/preloader.ts, пока медиа летит
 //     video.media-video / img.media-photo
+// Лежит рядом с единственным потребителем (`GifsSearchTab`) и уходит вместе с
+// ним на врезке 0б-11: на старом месте `components/GifsMasonry` имя совпадало с
+// портом tweb `components/gifsMasonry.ts` без учёта регистра.
 // Ленивость — как в GifsTab дропдауна: медиа монтируется только видимой ячейке
 // (IntersectionObserver, хук useGifsMasonryVisibility ниже).
 //
@@ -14,11 +17,11 @@
 // перевод на этот модуль отложен: файлы emoji/* параллельно правит другая
 // задача (перевод — за оркестратором).
 import { memo, useCallback, useRef, useState, type RefObject } from 'react'
-import type { GifItem } from '../core/gifs'
-import { useMediaUrl } from '../core/hooks/useMediaUrl'
-import { useImperativeIsland } from '../core/hooks/useImperativeIsland'
-import { useLazyVisibility, type LazyVisibility } from './useLazyVisibility'
-import ProgressivePreloader from './preloader'
+import type { GifItem } from '../../core/gifs'
+import { useMediaUrl } from '../../core/hooks/useMediaUrl'
+import { useImperativeIsland } from '../../core/hooks/useImperativeIsland'
+import { useLazyVisibility, type LazyVisibility } from '../useLazyVisibility'
+import ProgressivePreloader from '../preloader'
 
 // tweb GifsMasonry: высота ряда кладки — запас rootMargin ленивой загрузки.
 const ROW_H = 117

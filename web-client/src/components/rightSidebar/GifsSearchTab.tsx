@@ -12,7 +12,7 @@ import { openPopup } from '../../stores/popupStore'
 import useMediaQuery from '../../shared/lib/useMediaQuery'
 import { useGifsSearch } from '../../core/hooks/useGifsSearch'
 import type { GifItem } from '../../core/gifs'
-import GifsMasonry, { useGifsMasonryVisibility } from '../GifsMasonry'
+import GifsMasonry, { useGifsMasonryVisibility } from './GifsMasonry'
 import RightSearchTab, { RIGHT_SEARCH_POPUP_KIND, RightSearchPopup } from './RightSearchTab'
 
 export default function GifsSearchTab({
