@@ -47,6 +47,7 @@ function worker(keys: string[]) {
       if (!c) { c = new Map(); msgsByChat.set(peerId, c) }
       return c
     },
+    appendNewest: (_key, sa, id) => { if (!sa.findSlice(id)) sa.unshift(id) },
     // `me` владельцу нужен на границе разбора (уточнение служебного действия);
     // здесь это тот же отправитель, что у всех сообщений стенда.
     getMeId: () => SENDER,

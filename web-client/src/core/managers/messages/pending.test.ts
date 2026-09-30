@@ -54,6 +54,7 @@ function makeCtx() {
     upload: vi.fn(async (a: UploadArgs) => { uploads.push(a); return 909 }),
     ctx: {
       hkey, slices, msgsFor,
+      appendNewest: (_key: string, sa: SlicedArray<number>, id: number) => { if (!sa.findSlice(id)) sa.unshift(id) },
       // Тот же id, что `sender_id` в evt() ниже. `pFlags.out` на бабле ставит
       // владелец литералом (сообщение зрителя, ещё не ушедшее), а `me` нужен
       // сторонам, которые решают вопрос «чьё это» ниже по потоку.
@@ -233,6 +234,24 @@ describe('pending: подтверждение сервера', () => {
     expect(msgsFor(1).has(temp.id)).toBe(false)
     expect(slices.get('1')!.findSlice(temp.id)).toBeFalsy()
     expect(msgsFor(1).get(cid(20))).toEqual(msg)
+  })
+
+  // Счёт истории (`historyStorage.count`) растёт на ФИНАЛЬНОМ сообщении, а не
+  // на временном бабле: своя отправка — единственный путь новых сообщений в
+  // «Избранном», и без этого «N messages» в его шапке стоял бы на месте.
+  it('ack отдаёт финальный номер владельцу счёта истории, временный — нет', () => {
+    const { ctx, slices } = makeCtx()
+    const appended: [string, number][] = []
+    const appendNewest = ctx.appendNewest
+    ctx.appendNewest = (key, sa, id) => { appended.push([key, id]); appendNewest(key, sa, id) }
+    openWindow(slices, '1', [cid(10)])
+    const p = newPendingMethods(ctx)
+    p.beforeMessageSending(evt())
+    expect(appended).toEqual([])
+
+    p.ackPendingMessage({ client_msg_id: 'c-1', id: 20, created_at: '2026-08-16T10:00:00Z' })
+
+    expect(appended).toEqual([['1', cid(20)]])
   })
 
   it('echo-then-ack: эхо сняло бабл — повторный ack уже ничего не делает', () => {

@@ -338,7 +338,9 @@ type MessageRepo interface {
 	// RecentThreadRepliers — авторы последних комментариев по каждому треду
 	// (новейшие первыми, не более limit различных на тред).
 	RecentThreadRepliers(ctx context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]int64, error)
-	CountMessages(ctx context.Context, chatID int64) (int, error)
+	// CountMessages — сколько сообщений истории видит зритель userID (без
+	// удалённых, скрытых им для себя и очищенных до clearedSeq).
+	CountMessages(ctx context.Context, chatID, userID, clearedSeq int64) (int, error)
 	CountUnread(ctx context.Context, chatID, userID, afterSeq int64) (int, error)
 	MessageChatID(ctx context.Context, messageID int64) (int64, error)
 	// RegisterChannelViews records userID's view of every channel post in chatID

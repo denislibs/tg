@@ -169,7 +169,7 @@ export interface UserEmpty { _: 'userEmpty'; id: number }
 /**
  * user#31774388 flags:# self:flags.10?true contact:flags.11?true
  * mutual_contact:flags.12?true deleted:flags.13?true bot:flags.14?true
- * verified:flags.17?true premium:flags.28?true … id:long
+ * verified:flags.17?true support:flags.23?true premium:flags.28?true … id:long
  * first_name:flags.1?string last_name:flags.2?string username:flags.3?string
  * phone:flags.4?string photo:flags.5?UserProfilePhoto status:flags.6?UserStatus
  * … = User;
@@ -180,7 +180,7 @@ export interface UserEmpty { _: 'userEmpty'; id: number }
  * а `verified`/`premium` — в «полной чужой» `/users/{id}`).
  *
  * Объявлены ровно те булевы флаги, у которых есть предмет; остальные из схемы
- * (support, scam, fake, bot_*, stories_*, …) не объявляются вовсе, а не
+ * (scam, fake, bot_*, stories_*, …) не объявляются вовсе, а не
  * выставляются наугад — то же правило, что на бэкенде.
  *
  * `emoji_status_emoticon` — КЛИЕНТСКИЙ параметр (`schema_additional_params.json`,
@@ -198,6 +198,10 @@ export interface UserReal {
     deleted: true
     bot: true
     verified: true
+    /** служебный аккаунт Telegram (777000; `users.is_service` на бэкенде) —
+     *  «не человек»: подпись `SupportStatus`, без «в сети» и typing в шапке
+     *  (tweb `getUserStatusString.ts:34-37`, `appImManager.ts:3725`) */
+    support: true
     premium: true
     /** этот человек у ЗРИТЕЛЯ в близких друзьях (список правит `PUT
      *  /me/close_friends`, а читается он отсюда — ручки чтения нет, как и

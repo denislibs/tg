@@ -152,13 +152,32 @@ export function replaceMirrorWindow(key: string, msgs: readonly MyMessage[]): vo
   bump()
 }
 
+// Счёт истории окна — зеркало `historyStorage.count` оригинала (tweb
+// appMessagesManager.ts, читает его topbar.ts `messagesCounter`). Владелец —
+// воркерный `messagesManager` (`historyCounts`), писатель здесь один —
+// проектор события `rt:history_count`. Не выводится из окна: окно — лишь
+// загруженная часть истории, а счёт — вся история зрителя.
+const historyCounts = new Map<string, number>()
+
+/** undefined — владелец счёт этого окна ещё не объявлял (история не грузилась). */
+export function mirrorHistoryCount(key: string): number | undefined {
+  return historyCounts.get(key)
+}
+
+export function setMirrorHistoryCount(key: string, count: number): void {
+  if (historyCounts.get(key) === count) return
+  historyCounts.set(key, count)
+  bump()
+}
+
 /** Кадр rt:logging_out: окна прошлой сессии обязаны исчезнуть — зеркало отдаёт
  *  сообщения синхронно на рендере, и без сброса лента следующего аккаунта
  *  прочитала бы чужую историю (та же причина, что у
  *  `core/mediaCache.ts::resetMediaUrlMirror`). */
 export function resetMessagesMirror(): void {
-  if (!windows.size) return
+  if (!windows.size && !historyCounts.size) return
   windows.clear()
+  historyCounts.clear()
   bump()
 }
 

@@ -60,6 +60,7 @@
 | **Композер**: DOM-дерево, морф кнопки отправки, плашка reply/edit, запись голоса, эмодзи-дропдаун, тайминги | [composer.md](composer.md) |
 | **Каналы**: бабл поста, композер канала, шапка, редактирование, права, буст/статистика | [channels.md](channels.md) |
 | **Комментарии и треды** | [comments.md](comments.md) |
+| **Особые пиры**: служебный «Telegram» (777000: `pFlags.support`/`verified`, фото с сервера, «service notifications», строка «This bot is verified…») и «Избранное» (иконка, «N messages» в шапке, панель без профиля с вкладкой «Chats», «My Notes») — по всем поверхностям | [special-peers.md](special-peers.md) |
 
 ## Живой DOM (эталон разметки)
 

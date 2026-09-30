@@ -16,7 +16,7 @@ import { useUploadsStore } from '../../stores/uploadsStore'
 import { applyMediaToken, resetMediaToken } from '../../core/mediaUrl'
 import { applyMediaUrl, resetMediaUrlMirror } from '../../core/mediaCache'
 import { resetPlayback } from '../../core/audio/mediaPlaybackController'
-import { applyOpsToMirror, resetMessagesMirror } from '../../core/history/messagesMirror'
+import { applyOpsToMirror, resetMessagesMirror, setMirrorHistoryCount } from '../../core/history/messagesMirror'
 import { resetProfilePhoneMirror } from '../../core/profilePhoneCache'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
 import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type BotCallbackAnswerEvt, type StoryUpdateEvt, type SentStoryReactionEvt, type ReadStoriesEvt } from '../../core/realtime/events'
@@ -122,6 +122,9 @@ const APPLY: Projector = {
   // (zustand `messagesStore`) жила рядом ради React-ленты и снесена вместе с ней
   // (этап 7) — второго входа в окно заводить нельзя, копии разъедутся.
   [RT.messageOp]: (e) => { applyOpsToMirror(e.ops) },
+  // Счёт истории окна (`historyStorage.count`) — значение владельца
+  // (`messagesManager`), зеркало одно: `messagesMirror`.
+  [RT.historyCount]: (e) => { setMirrorHistoryCount(e.key, e.count) },
   // Stage 1C.2 (Task 2): карточки пиров — владелец воркерный peersManager, он же
   // считает, что изменилось, и публикует операцию. Здесь только применение:
   // проектор — ЕДИНСТВЕННЫЙ писатель зеркала (пин — core/noDuplicatePeers.test.ts).

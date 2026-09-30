@@ -43,10 +43,11 @@
 //    и размеров `photo_video`/`photo_video_full` наша модель фото не объявляет;
 //  • топики форума (`threadId` → `wrapTopicIcon`, :773-784), монофорум
 //    (:756-760, :806) — ни того, ни другого в модели нет;
-//  • `mynotes`/`asAllChats` и `savedAsForum` у «Избранного» (:729-753) —
-//    заметок, «всех чатов» и настройки «Избранное как форум» у нас нет; сама
-//    ветка «Избранного» (`isDialog` + свой пир → иконка `saved`) портирована
-//    для чипа пира глобального поиска (`components/selectorEntity.ts`);
+//  • `asAllChats` и `savedAsForum` у «Избранного» (:729-753) — «всех чатов» и
+//    настройки «Избранное как форум» у нас нет. Сама ветка «Избранного»
+//    (`isDialog` + свой пир → иконка `saved_filled`) портирована, вместе с
+//    `meAsNotes` (→ иконка `mynotes`: строка «Мои заметки» вкладки «Чаты»
+//    правой панели «Избранного», `sidebarRight/savedDialogsTab.solid.tsx`);
 //  • `lazyLoadQueue` (:917-945) и реестр `believeMe` — очереди ленивой
 //    загрузки у ленты нет (её `LazyLoadQueue` не портирован);
 //  • `autoDeletePeriod` (:445-472, :1029-1045), `isSubscribed`
@@ -123,6 +124,9 @@ export interface AvatarOptions {
   /** свой пир рисуется «Избранным» (иконка `saved`, :735-738), а не
    *  собственной фотографией — как строка списка чатов. */
   isDialog?: boolean
+  /** вместе с `isDialog`: свой пир — это «Мои заметки» (иконка `mynotes`,
+   *  :736), источник сообщений «Избранного», а не само «Избранное». */
+  meAsNotes?: boolean
   middleware: Middleware
   managers: AvatarManagers
 }
@@ -253,9 +257,9 @@ class Avatar {
       return false
     }
 
-    // :735-738 — «Избранное». `meAsNotes`/`savedAsForum` — см. шапку.
+    // :735-738 — «Избранное» / «Мои заметки». `savedAsForum` — см. шапку.
     if (peerId === rootScope.myId && this.options.isDialog) {
-      this.set({ icon: 'saved_filled' })
+      this.set({ icon: this.options.meAsNotes ? 'mynotes' : 'saved_filled' })
       return false
     }
 

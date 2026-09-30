@@ -393,3 +393,29 @@ describe('ForwardPicker — фильтр прав получателя', () => {
     expect(rows()).not.toContain(-1)
   })
 })
+
+// Служебный «Telegram» (777000) в «Поделиться» выглядит как в оригинале:
+// фото пира (а не буква «Т»), галочка у имени (`addDialogNew` → PeerTitle
+// `withIcons`) и подпись «service notifications» (`wrapSubtitle` →
+// `getUserStatusString`, :19-21), а не «был(а) давно». Попадёт ли он в список
+// вообще, решает фильтр прав — предмет другого файла.
+describe('ForwardPicker — строка служебного аккаунта', () => {
+  it('галочка и подпись по пиру', () => {
+    applyPeerOps([{
+      op: 'upsert',
+      peers: [{
+        _: 'user', id: 777000, first_name: 'Telegram', pFlags: { verified: true, support: true },
+        photo: { _: 'userProfilePhoto', photo_id: 55 },
+      }],
+    }])
+    render(
+      <ManagersProvider managers={fakeManagers}>
+        <ForwardPicker dialogs={[makeDialog({ peerId: 777000 })]} onPick={() => {}} onClose={() => {}} />
+      </ManagersProvider>,
+    )
+    const row = document.querySelector<HTMLElement>('.popup-forward ul.chatlist [data-peer-id="777000"]')!
+    expect(row).not.toBeNull()
+    expect(row.querySelector('.dialog-title .verified-icon')).not.toBeNull()
+    expect(row.querySelector('.dialog-subtitle')!.textContent).toBe('service notifications')
+  })
+})

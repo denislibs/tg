@@ -52,9 +52,12 @@
  *    (сегменты `StoriesProvider`/`avatarNew.tsx`), у нас нет подсистемы
  *    историй-в-аватарке этого вида (наш `PinnedStoriesSection`, если он есть
  *    на экране, — Task 5, другой предмет и другое место в дереве);
- *  • `BotVerification` (`:1220-1259`) — значок сторонней верификации бота
- *    (`UserFull.bot_verification`), поля нет; официальный `verified`-путь
- *    той же функции — часть значка ИМЕНИ (`Name`, Task 3), не строки;
+ *  • `BotVerification` (`:1220-1259`) — ветка СТОРОННЕЙ верификации бота
+ *    (`UserFull.bot_verification`: кастом-эмодзи + описание) — поля нет.
+ *    Официальная ветка той же функции (`pFlags.verified` → «This bot is
+ *    verified as official…» / «This channel/group was verified…») —
+ *    ПОРТИРОВАНА (`BotVerification` ниже по файлу): это строка под секцией,
+ *    а не значок имени;
  *  • `UnofficialWarning` (`:1260-1283`) — предупреждение о поддельном боте
  *    (`UserFull.pFlags.unofficial_security_risk`), поля нет;
  *  • `BotPermissions` (`:1284-1354`) — переключатели доступа бота
@@ -197,9 +200,10 @@ import { mountSolid } from '../shared/solid/mountSolid.solid'
 import { subscribeExternal } from '../helpers/solid/subscribeExternal'
 import { getPeerTitle, SAVED_MESSAGES_TITLE } from '../core/peers/getPeerTitle'
 import { wrapEmojiText, wrapRichText } from '../lib/richtext'
-import { isUser, HIDDEN_PEER_ID, NULL_PEER_ID } from '../core/peers/peerId'
+import { isAnyChat, isUser, HIDDEN_PEER_ID, NULL_PEER_ID } from '../core/peers/peerId'
+import generateVerifiedIcon from './generateVerifiedIcon'
 import { isBroadcast, isPublic } from '../core/peers/predicates'
-import { userStatusLabel } from '../core/presence'
+import { getUserStatusString, userHasPresence } from '../core/presence'
 import { membersLabel } from './userInfo/helpers'
 import { IconTsx } from './iconTsx.solid'
 import { VERIFIED_BADGE_SEAL_PATH, VERIFIED_BADGE_CHECK_PATH } from '../shared/icons/verifiedBadgePath'
@@ -509,6 +513,7 @@ const PeerProfile = (props: PeerProfileProps) => {
         {props.avatarsContainer}
         <div class="profile-content-delimiter" />
         <MainSection />
+        <BotVerification />
         <Statistics />
         <Discussion />
         <JoinRequests />
@@ -755,14 +760,20 @@ function UserStatusLine() {
   // считается «печатает» и падает на обычный статус — тот же исход, что у
   // оригинала при `!langPackKey` (`:3029-3033`, `getPeerTyping` возвращает
   // `undefined`).
+  // «Не человек» — бот или служебный аккаунт: typing им не показывают
+  // (tweb `appImManager.getUserStatus` :3725, `!bot && !support`).
+  const isHuman = createMemo(() => userHasPresence(context.peer as User | undefined))
   const isTyping = createMemo(() => {
+    if (!isHuman()) return false
     const entry = typingEntry()
     return !!entry && entry.action._ === 'sendMessageTypingAction' && Date.now() - entry.at < TYPING_TTL
   })
 
   const statusNode = createMemo(() => {
     tick() // читаем сигнал ради подписки — тело не зависит от значения
-    return userStatusLabel(presence())
+    // Ветки служебного аккаунта/бота/поддержки — по карточке пира
+    // (`getUserStatusString` :15-37), остальное — живое присутствие.
+    return getUserStatusString(context.peer as User | undefined, presence())
   })
 
   return (
@@ -828,6 +839,39 @@ function EmojiStatusIcon(props: { emoji: string; size: number }) {
     <span aria-label="emoji status" style={{ 'flex-shrink': 0, 'font-size': `${props.size}px`, 'line-height': 1 }}>
       {props.emoji}
     </span>
+  )
+}
+
+/**
+ * Порт `PeerProfile.BotVerification` (tweb `:1250-1289`) в ветке ОФИЦИАЛЬНОЙ
+ * верификации: `pFlags.verified` пира → серая строка со значком
+ * `generateVerifiedIcon` и текстом `Verified.Bot` (пользователь — у оригинала
+ * именно «bot» для ЛЮБОГО пользователя, в том числе служебного «Telegram»),
+ * `Verified.Channel`/`Verified.Group` (чат). Место в дереве — после
+ * `MainSection`, как у оригинала (`:210-213`; `BotMainApp`/`LinkedCommunity`
+ * между ними у нас не портированы).
+ *
+ * Ветка `UserFull.bot_verification` (значок и описание сторонней
+ * верификации) — предмета нет (докблок файла).
+ */
+function BotVerification() {
+  const context = usePeerProfileContext()
+  const officialVerified = createMemo(() => !!(context.peer as { pFlags?: { verified?: true } } | undefined)?.pFlags?.verified)
+  const text = createMemo(() => {
+    if (!officialVerified()) return undefined
+    if (!isAnyChat(context.peerId)) return i18n('Verified.Bot')
+    return i18n(isBroadcast(context.peer as Chat | undefined) ? 'Verified.Channel' : 'Verified.Group')
+  })
+
+  return (
+    <Show when={text()}>
+      <div class="profile-bot-verification">
+        {generateVerifiedIcon()}
+        <div class="profile-bot-verification-content text-overflow-wrap">
+          {text()}
+        </div>
+      </div>
+    </Show>
   )
 }
 

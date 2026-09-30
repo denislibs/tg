@@ -96,9 +96,14 @@ const SavedDialogRow: Component<VerticalVirtualListItemProps<SavedDialog> & { ma
   // (`applyMediaElement(avatarEl, 'bigger')`), размер 54 (`avatarSizeMap.bigger`).
   const middlewareHelper = getMiddleware()
   onCleanup(() => middlewareHelper.destroy())
+  // `isDialog: !!meAsSaved` (по умолчанию true) и `meAsNotes: isSavedDialog`
+  // (`appDialogsManager.ts:357-365`): строка «Мои заметки» — иконка `mynotes`,
+  // а не фотография зрителя.
   const avatar = avatarNew({
     peerId: props.item.peerId,
     size: 54,
+    isDialog: true,
+    meAsNotes: true,
     middleware: middlewareHelper.get(),
     managers: props.managers,
   }).node

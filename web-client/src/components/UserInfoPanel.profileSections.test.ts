@@ -123,8 +123,10 @@ describe('UserInfoPanel — buildProfilePatch (Task 5, проводка секц
   }
   const mountDeps = extractMountEffectDeps(panel)
 
-  it('deps-массив структурного эффекта — ТОЛЬКО peerId/searchSuper/avatars', () => {
-    expect(mountDeps).toMatch(/\[peerId, searchSuper, avatars\]/)
+  // `noProfile` («Избранное», tweb sharedMediaTab.tsx:73) — структурный: он
+  // решает, монтировать ли корень профиля вообще (tweb sharedMedia.tsx:176-200).
+  it('deps-массив структурного эффекта — ТОЛЬКО peerId/searchSuper/avatars/noProfile', () => {
+    expect(mountDeps).toMatch(/\[peerId, searchSuper, avatars, noProfile\]/)
   })
 
   it.each([

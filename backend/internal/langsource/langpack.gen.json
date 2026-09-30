@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 33,
+      "version": 34,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -3551,6 +3551,10 @@
           "value": "typing"
         },
         {
+          "key": "Peer.ServiceNotifications",
+          "value": "service notifications"
+        },
+        {
           "key": "Peer.Status.LastSeenAt",
           "value": "last seen %@ at %@"
         },
@@ -5679,6 +5683,18 @@
           "value": "Private Chats"
         },
         {
+          "key": "Verified.Bot",
+          "value": "This bot is verified as official by the representatives of Telegram."
+        },
+        {
+          "key": "Verified.Channel",
+          "value": "This channel was verified by Telegram."
+        },
+        {
+          "key": "Verified.Group",
+          "value": "This group was verified by Telegram."
+        },
+        {
           "key": "VideoCall",
           "value": "Video Call"
         },
@@ -5815,7 +5831,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 33,
+      "version": 34,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -8674,6 +8690,22 @@
         {
           "key": "SupportStatus",
           "value": "поддержка"
+        },
+        {
+          "key": "Peer.ServiceNotifications",
+          "value": "служебные уведомления"
+        },
+        {
+          "key": "Verified.Bot",
+          "value": "Этот бот верифицирован как официальный представителями Telegram."
+        },
+        {
+          "key": "Verified.Channel",
+          "value": "Этот канал верифицирован Telegram."
+        },
+        {
+          "key": "Verified.Group",
+          "value": "Эта группа верифицирована Telegram."
         },
         {
           "key": "Peer.Status.justNow",

@@ -275,9 +275,8 @@
 //     вхождения, все три объявление и запись). Поле без читателя — мёртвый код.
 // 42. `processEmptyFilter` (`tweb:826-871`) — в объёме нашей строки чатлиста
 //     (`components/dialogRow.ts`, шапка «что НЕ портировано»): опций
-//     `meAsSaved`/`withStories`/`fromName`/`loadPromises`/`dontSetActive` у
-//     `DialogElement` нет, поэтому «Избранное» в выдаче подписано именем, а не
-//     «Saved Messages», и промисы аватара партию не ждут (ждёт только
+//     `withStories`/`fromName`/`loadPromises`/`dontSetActive` у
+//     `DialogElement` нет, поэтому промисы аватара партию не ждут (ждёт только
 //     `setLastMessageN`). Ветка `isSaved` (`:827-832`, `noForwardIcon`) — без
 //     вкладки `saved` (расхождение 26); `getPeerMigratedTo` (`:833`) — миграции
 //     legacy-чата в супергруппу у бэкенда нет (`core/peers/peerId.ts::getOutputPeer`,
@@ -335,7 +334,7 @@
 //     State: ключ `recentSearch` переведён в сигнал, по которому работает
 //     `For` оригинала. Подписи — наши порты тех же функций:
 //     `getChatMembersString` отдаёт строку по форматтеру языка,
-//     `getUserStatusString` → `userStatusLabel` (`core/presence.ts`),
+//     `getUserStatusString` (`core/presence.ts`),
 //     `formatPhoneNumber` → `formatUserPhone` (`core/format/phone.ts`).
 // 45. Кнопка «show more» группы «Global search» прошлого запроса снимается
 //     сигналом группы (`needShowMoreButton('')`), а не удалением узла из
@@ -354,9 +353,9 @@
 //     бэкенда нет (задача 15); ветки ботов `renderPeerDialogs`
 //     (`bot_active_users`, `UnknownBotUsers`, `:1961-1966`) вместе с параметром
 //     `type` — их зовёт только вкладка `apps` (задача 16), а поля
-//     `bot_active_users` у модели нет; опции строки `withStories`/`meAsSaved`
-//     (`:1345`, `:1469`, `:1475`) — у `DialogElement` их нет (расхождение 42), поэтому
-//     «Избранное» в «Recent» подписано именем; параметр `showMembersCount`
+//     `bot_active_users` у модели нет; опции строки `withStories`
+//     (`:1345`, `:1469`, `:1475`) — у `DialogElement` её нет (расхождение 42);
+//     `meAsSaved` — по умолчанию `true`, как у оригинала; параметр `showMembersCount`
 //     (`:1329`) не читается и у оригинала.
 // 47. Две проверки жизни, которых у оригинала нет. `loadChannels` после ответа
 //     `contacts.search` сверяет `middleware`: без неё ответ прошлого запроса лёг
@@ -447,7 +446,7 @@ import type { StarGiftsProfileActions, StarGiftsProfileStore } from '@components
 import SavedDialogsTab, { type SavedDialogsTabProps } from '@components/sidebarRight/savedDialogsTab.solid'
 import type { SavedStarGift } from '@core/managers/starsManager'
 import { formatUserPhone } from '@core/format/phone'
-import { userStatusLabel } from '@core/presence'
+import { getUserStatusString } from '@core/presence'
 import { getChatMembersString } from '@components/wrappers/getChatMembersString'
 import { useAppStateStore } from '@stores/appState'
 import { useChatsStore } from '@stores/chatsStore'
@@ -2167,7 +2166,7 @@ export default class AppSearchSuper {
               void (async() => {
                 const peer = await this.getPeer(peerId)
                 dom.lastMessageSpan.append(isUser(peerId) ?
-                  userStatusLabel(peer?._ === 'user' ? peer.status : undefined) :
+                  getUserStatusString(peer?._ === 'user' ? peer : undefined) :
                   getChatMembersString(cachedChat(peerId), useI18nStore.getState().tArgs))
               })()
 

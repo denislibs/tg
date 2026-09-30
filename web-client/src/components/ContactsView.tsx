@@ -121,7 +121,7 @@ export default function ContactsView({
                       {name}
                     </Text>
                     <Text noWrap size={13.5} color={online ? 'var(--primary-color)' : 'var(--secondary-text-color)'}>
-                      <PeerStatus status={status} />
+                      <PeerStatus user={user} status={status} />
                     </Text>
                   </div>
                 </div>

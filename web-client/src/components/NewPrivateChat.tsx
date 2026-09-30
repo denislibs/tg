@@ -23,7 +23,7 @@ function ContactRow({ user, name, onPick }: { user: UserReal; name: string; onPi
       <UserAvatar id={user.id} name={name} photoId={getPeerPhotoId(user.photo) || undefined} size="lg" />
       <div className={s.rowText}>
         <Text noWrap size={16} weight={500} color="var(--primary-text-color)">{name}</Text>
-        <Text noWrap size={14} color="var(--secondary-text-color)"><PeerStatus status={presence ?? user.status} /></Text>
+        <Text noWrap size={14} color="var(--secondary-text-color)"><PeerStatus user={user} status={presence ?? user.status} /></Text>
       </div>
     </div>
   )

@@ -52,7 +52,7 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	case threadRoot != nil:
 		count, err = i.msgs.CountThread(ctx, chatID, *queryRoot)
 	default:
-		count, err = i.msgs.CountMessages(ctx, chatID)
+		count, err = i.msgs.CountMessages(ctx, chatID, userID, cleared)
 	}
 	if err != nil {
 		return HistoryResult{}, err
@@ -312,7 +312,7 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	if threadRoot != nil {
 		count, err = i.msgs.CountThread(ctx, chatID, *queryRoot)
 	} else {
-		count, err = i.msgs.CountMessages(ctx, chatID)
+		count, err = i.msgs.CountMessages(ctx, chatID, userID, cleared)
 	}
 	if err != nil {
 		return AroundResult{}, err

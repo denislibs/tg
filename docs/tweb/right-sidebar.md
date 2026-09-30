@@ -375,7 +375,7 @@ chat.finishPeerChange (chat.ts:1179-1223)
 3. `changeTitleKey()` (стр. 73–111);
 4. `renderPeerProfile({peerId, threadId, isDialog: true, scrollable, setCollapsedOn: tab.container, searchSuperContainer: tab.searchSuper.container, onPinnedGiftsChange})` + `scrollable.append(...)`.
 
-Если `noProfile` (Saved Messages) — профиль не рендерится, но создаётся пустой `.profile-content`, в который кладётся `searchSuper.container`, чтобы разметка совпадала (стр. 173–182).
+Если `noProfile` (Saved Messages) — профиль не рендерится, но создаётся пустой `.profile-content`, в который кладётся `searchSuper.container`, чтобы разметка совпадала (стр. 173–182). **У нас** — портировано в `UserInfoPanel.tsx` (`noProfile`), разбор особых пиров целиком — [`special-peers.md`](special-peers.md).
 
 ### 4.3 `AppSearchSuper` — `src/components/appSearchSuper.ts`
 

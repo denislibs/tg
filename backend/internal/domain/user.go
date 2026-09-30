@@ -43,10 +43,12 @@ type UserRecord struct {
 	PhotoPreview []byte
 	// IsPremium — подписчик Telegram Premium (золотая звезда у имени),
 	// IsVerified — официальный аккаунт (синяя галочка), IsBot — бот,
-	// Deleted — аккаунт удалён (анонимизирован).
+	// IsService — служебный аккаунт Telegram (users.is_service, миграция 0014;
+	// на проводе — `pFlags.support`), Deleted — аккаунт удалён (анонимизирован).
 	IsPremium   bool
 	IsVerified  bool
 	IsBot       bool
+	IsService   bool
 	Deleted     bool
 	EmojiStatus string
 	// AutoDeletePeriod — глобальный период автоудаления пользователя в секундах
@@ -66,6 +68,7 @@ func (u UserRecord) ToUser(f UserFlags, status UserStatus, showPhoto bool) UserR
 	f.Deleted = f.Deleted || u.Deleted
 	f.Bot = f.Bot || u.IsBot
 	f.Verified = f.Verified || u.IsVerified
+	f.Support = f.Support || u.IsService
 	f.Premium = f.Premium || u.IsPremium
 	out := NewUser(u.ID, f)
 	out.FirstName = u.FirstName

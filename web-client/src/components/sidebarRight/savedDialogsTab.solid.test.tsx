@@ -29,6 +29,7 @@
 // `getBoundingClientRect`) подставляется стабом на самом хосте.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mountSolid } from '@shared/solid/mountSolid.solid'
+import rootScope from '@lib/rootScope'
 import { makeMessage } from '@core/messages/testMessage'
 import type { SavedDialog } from '@core/managers/chatsManager'
 import { useChatsStore } from '@stores/chatsStore'
@@ -286,5 +287,22 @@ describe('SavedDialogsTab — «Чаты» на Solid-ядре виртуаль�
 
     expect(list()).toBe(null)
     expect(scrollListenerCount(removeSpy)).toBe(scrollListenerCount(addSpy))
+  })
+})
+
+// «Мои заметки» — источник «Избранного», которым является сам зритель: у
+// оригинала строка несёт иконку `mynotes` (`avatarNew` с `isDialog` +
+// `meAsNotes`, avatarNew.tsx:735-738, appDialogsManager.ts:357-365), а не
+// фотографию/инициалы зрителя.
+describe('SavedDialogsTab — строка «Мои заметки»', () => {
+  it('источник-зритель: иконка mynotes, остальные — обычная аватарка пира', async () => {
+    rootScope.myId = 7
+    const self: SavedDialog = { peerId: 7, lastMessage: makeMessage({ id: 1, peerId: 7, fromId: 7, date: 1786968000, text: 'заметка' }) }
+    render(fakeManagers([self, dialog(1)]))
+    await settle()
+
+    const [notes, other] = rows()
+    expect(notes.querySelector('.avatar .avatar-icon-mynotes')).not.toBeNull()
+    expect(other.querySelector('.avatar-icon-mynotes')).toBeNull()
   })
 })

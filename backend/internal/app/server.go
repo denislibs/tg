@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -25,7 +26,9 @@ import (
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
 	"github.com/messenger-denis/backend/internal/adapter/translate/libretranslate"
 	"github.com/messenger-denis/backend/internal/config"
+	"github.com/messenger-denis/backend/internal/domain"
 	"github.com/messenger-denis/backend/internal/langsource"
+	"github.com/messenger-denis/backend/internal/serviceaccount"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 	usecasecontacts "github.com/messenger-denis/backend/internal/usecase/contacts"
@@ -259,6 +262,9 @@ func registerServer(p serverParams) {
 		// Bot API sendPhoto/Document/Video: боты кладут медиа через media usecase.
 		p.ChatUC.SetBotMedia(botmedia.New(mediaUC))
 		log.Printf("media enabled (minio bucket %q)", p.Cfg.MinioBucket)
+		// Фото профиля служебного аккаунта (777000): у оригинала это обычная
+		// фотография пира от сервера, миграция положить её в MinIO не может.
+		seedServiceAvatar(p.Ctx, p.AuthUC, mediaUC)
 	}
 
 	// Pass presence as a PresenceQuery only when it's actually wired; passing a
@@ -422,6 +428,36 @@ func redisQRStore(r RedisResult) usecaseauth.QRStore {
 // redisGroupCalls — стор участников групповых звонков.
 func redisGroupCalls(r RedisResult) usecasechat.GroupCallStore {
 	return newGroupCallStore(r.Client)
+}
+
+// serviceAvatarSeedTimeout — сколько сид фото служебного аккаунта держит
+// старт. Та же логика, что у langPackSeedTimeout: один SELECT и, на первом
+// старте, одна загрузка 12 КБ — дольше это «хранилище не отвечает».
+const serviceAvatarSeedTimeout = 30 * time.Second
+
+// seedServiceAvatar ставит служебному аккаунту фото из вшитого JPEG
+// (internal/serviceaccount), если его ещё нет. Отказ не валит приложение:
+// без фото клиент рисует 777000 инициалами, как любого пира без аватарки.
+func seedServiceAvatar(ctx context.Context, auth *usecaseauth.Interactor, media *usecasemedia.Interactor) {
+	ctx, cancel := context.WithTimeout(ctx, serviceAvatarSeedTimeout)
+	defer cancel()
+	err := auth.EnsureServiceAvatar(ctx, func(ctx context.Context) (int64, error) {
+		data := serviceaccount.Avatar
+		m, _, err := media.CreateUpload(ctx, usecasemedia.UploadInput{
+			OwnerID: domain.ServiceUserID, Mime: "image/jpeg", Size: int64(len(data)),
+			Width: serviceaccount.AvatarSize, Height: serviceaccount.AvatarSize, FileName: "telegram.jpg",
+		})
+		if err != nil {
+			return 0, err
+		}
+		if err := media.PutContent(ctx, m.ID, domain.ServiceUserID, bytes.NewReader(data), int64(len(data))); err != nil {
+			return 0, err
+		}
+		return m.ID, nil
+	})
+	if err != nil {
+		log.Printf("service account avatar seed failed: %v", err)
+	}
 }
 
 // langPackSeedTimeout — сколько сид имеет права держать старт.
