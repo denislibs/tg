@@ -2,6 +2,7 @@
 // (имя глобали), у нас то же имя едет в `action` (шапка `url.ts`), а вместо
 // заглушек `window.im` работает реестр `KNOWN_ANCHOR_ACTIONS`.
 import { describe, expect, test } from 'vitest'
+import { DEFAULT_TME_ORIGIN } from '@config/app'
 import { wrapUrl } from './url'
 
 describe('wrapUrl: ссылки Telegram', () => {
@@ -60,5 +61,20 @@ describe('wrapUrl: ссылки Telegram', () => {
     const url = 'https://t.me:99999/durov'
     expect(() => wrapUrl(url)).not.toThrow()
     expect(wrapUrl(url)).toEqual({ url, action: undefined })
+  })
+})
+
+describe('wrapUrl: свой хост ссылок — те же действия, что у t.me', () => {
+  test.each([
+    ['/durov', 'im'],
+    ['/durov/12', 'im'],
+    ['/c/123/4', 'im'],
+    ['/+hash', 'joinchat'],
+    ['/joinchat/hash', 'joinchat'],
+    ['/addstickers/Cats', 'addstickers'],
+    ['/addemoji/Smile', 'addemoji'],
+  ])('%s → действие %s', (path, action) => {
+    const url = DEFAULT_TME_ORIGIN + path
+    expect(wrapUrl(url)).toEqual({ url, action })
   })
 })

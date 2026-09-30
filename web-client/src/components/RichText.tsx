@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { MessageEntity } from '@layer'
 import type { PositionedEntity } from '@lib/richtext/wrapRichText'
 import { safeUrl } from '../core/safeUrl'
+import { publicLinkFromTelegramPath, publicUsernameLink } from '../core/publicLink'
 import CodeBlock from './CodeBlock'
 import StickerMedia from './StickerMedia'
 import { createMessageSpoilerOverlay } from './messages/messageSpoilerOverlay'
@@ -42,7 +43,8 @@ export function emojiOnlyCount(text: string): number {
 /**
  * Автолинковка plain-прогона (URL / @mention / #hashtag). Классы и href — из
  * tweb wrapRichText.ts: URL → `a.anchor-url` (601-603), @mention →
- * `a.mention` c t.me-ссылкой (660-663), #hashtag → `a.anchor-hashtag` c
+ * `a.mention` c t.me-ссылкой (660-663; у нас — свой хост ссылок, пути 1:1,
+ * `core/publicLink.ts`, туда же голый `t.me/…`), #hashtag → `a.anchor-hashtag` c
  * `tg://search_hashtag?hashtag=` (627-636). Живой пример всех трёх — дамп поста
  * канала `docs/tweb/dom/dumps/20-channel-01-post-formatted.json`.
  */
@@ -58,12 +60,12 @@ function plainRun(text: string, linkColor: string, keyBase: string): ReactNode[]
     let href: string | undefined
     if (raw.startsWith('@')) {
       cls = 'mention'
-      href = `https://t.me/${raw.slice(1)}`
+      href = publicUsernameLink(raw.slice(1))
     } else if (raw.startsWith('#')) {
       cls = 'anchor-hashtag'
       href = `tg://search_hashtag?hashtag=${encodeURIComponent(raw.slice(1))}`
     } else {
-      href = safeUrl(raw.startsWith('t.me/') ? `https://${raw}` : raw)
+      href = safeUrl(raw.startsWith('t.me/') ? publicLinkFromTelegramPath(raw.slice(5)) : raw)
     }
     out.push(
       href ? (

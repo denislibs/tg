@@ -67,7 +67,7 @@ const NOT_UI: Record<string, string> = {
   'src/core/net/tlFrames.ts': 'причина отказа разбора кадра — текст `Error` для разработчика',
   'src/lib/mtproto/tl_utils.ts': 'причина отказа непортированной ветки — текст `Error`',
   'src/client/bootstrap.ts': 'предупреждение в консоль о невзятом Web Lock',
-  'src/components/sidebarLeft/settingsSliderHost.ts': 'причина отказа хоста — текст `Error` для разработчика',
+  'src/components/sidebarLeft/columnSlider.ts': 'причина отказа слайдера — текст `Error` для разработчика',
   'src/core/managers/authManager.ts': 'причина отказа неизвестного ответа ручки — текст `Error`',
 }
 

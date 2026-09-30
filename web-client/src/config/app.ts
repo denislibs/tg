@@ -25,9 +25,18 @@ export function readTLWire(env: ImportMetaEnv): boolean {
   return env.VITE_TL_WIRE === '1'
 }
 
+// Хост публичных ссылок — аналог t.me (`core/publicLink.ts`): страницы-превью
+// рендерит бэкенд, пути 1:1 с t.me. Build-time VITE_TME_ORIGIN, по умолчанию —
+// dev-хост из nginx/nginx.conf. Завершающий «/» снимается.
+export const DEFAULT_TME_ORIGIN = 'https://t.me.local'
+export function readTmeOrigin(env: ImportMetaEnv): string {
+  return (env.VITE_TME_ORIGIN || DEFAULT_TME_ORIGIN).replace(/\/+$/, '')
+}
+
 export const AppConfig = {
   dnp: readDnpConfig(import.meta.env),
   tlWire: readTLWire(import.meta.env),
+  tmeOrigin: readTmeOrigin(import.meta.env),
 }
 
 // ── Как клиент называет себя ───────────────────────────────────────────────

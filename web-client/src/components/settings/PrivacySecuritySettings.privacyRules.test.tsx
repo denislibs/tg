@@ -1,6 +1,6 @@
 /**
  * Врезка вкладок правил приватности в React-экран «Конфиденциальность» (задача 17
- * плана 2D): строка правила открывает вкладку слайдера через хост, как tweb
+ * плана 2D): строка правила открывает вкладку слайдером своей вкладки, как tweb
  * `privacyAndSecurity.tsx:416-466` (`tab.slider.createTab(AppPrivacy…Tab).open()`),
  * а не React-подэкран. Уходит вместе с экраном в задаче 23.
  */
@@ -21,16 +21,12 @@ import {
   AppPrivacyReadTimeTab,
   AppPrivacyVoicesTab,
 } from '../solidJsTabs/tabs'
+import type SliderSuperTab from '../sliderTab'
 import PrivacySecuritySettings from './PrivacySecuritySettings'
 
-const host = vi.hoisted(() => ({
-  openTab: vi.fn(async() => ({})),
-  onTabsEmpty: vi.fn(() => () => {}),
-}))
-vi.mock('../sidebarLeft/settingsSliderHost', () => ({
-  getSettingsSliderHost: () => host,
-  openActiveSessionsTab: vi.fn(),
-}))
+const open = vi.fn(async() => {})
+const createTab = vi.fn(() => ({ open }))
+const screenTab = { slider: { createTab } } as unknown as SliderSuperTab
 
 function renderScreen() {
   const managers = {
@@ -39,7 +35,7 @@ function renderScreen() {
   }
   return render(
     <ManagersProvider managers={managers as never}>
-      <PrivacySecuritySettings onBack={() => {}} />
+      <PrivacySecuritySettings tab={screenTab} onBack={() => {}} />
     </ManagersProvider>,
   )
 }
@@ -50,7 +46,10 @@ function rowByTitle(container: HTMLElement, title: string) {
   return el!.closest<HTMLElement>('.row')!
 }
 
-beforeEach(() => host.openTab.mockClear())
+beforeEach(() => {
+  createTab.mockClear()
+  open.mockClear()
+})
 afterEach(cleanup)
 
 describe('«Конфиденциальность» → вкладки правил', () => {
@@ -66,10 +65,11 @@ describe('«Конфиденциальность» → вкладки прави
     ['PrivacyMessagesTitle', AppPrivacyMessagesTab],
     ['Privacy.BirthdayRow', AppPrivacyBirthdayTab],
     ['PrivacyReadTimeTitle', AppPrivacyReadTimeTab],
-  ] as const)('строка %s открывает свою вкладку через хост', (title, tab) => {
+  ] as const)('строка %s открывает свою вкладку', (title, tab) => {
     const { container } = renderScreen()
     fireEvent.click(rowByTitle(container, lang[title]))
-    expect(host.openTab).toHaveBeenCalledTimes(1)
-    expect(host.openTab).toHaveBeenCalledWith(tab)
+    expect(createTab).toHaveBeenCalledTimes(1)
+    expect(createTab).toHaveBeenCalledWith(tab)
+    expect(open).toHaveBeenCalledTimes(1)
   })
 })

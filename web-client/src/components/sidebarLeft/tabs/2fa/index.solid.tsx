@@ -17,13 +17,11 @@
  *     менять», снятие — отдельной ручкой). SRP у нас нет: пароль едет телом
  *     запроса внутри TLS (и канала DNP при его включении), как у всех ручек
  *     `/me/password`.
- *  3. `sliceTabsUntilTab(AppSettingsTab, tab)` → `sliceTabsUntilSettings(tab)`
- *     (шов, шапка того файла): корень настроек ещё React.
- *  4. Заставка: `wrapStickerEmoji` получает зону актуальности вкладки
+ *  3. Заставка: `wrapStickerEmoji` получает зону актуальности вкладки
  *     (`getMiddleware` гасится на уборке острова), а отказ «нет стикера»
  *     поглощается — у tweb промис брошен без обработчика; контейнер в этом
  *     случае остаётся `media-sticker-wrapper`, как у оригинала.
- *  5. Отказ сервера при выключении не молчит, а даёт тост `Error.AnError` —
+ *  4. Отказ сервера при выключении не молчит, а даёт тост `Error.AnError` —
  *     у tweb `.then` без обработчика отказа (SRP не отказывает на верном
  *     пароле, пароль проверен шагом раньше); у нас сессия могла протухнуть.
  */
@@ -38,12 +36,12 @@ import { toastNew } from '@components/toast'
 import wrapStickerEmoji from '@components/wrappers/stickerEmoji'
 import type SidebarSlider from '@components/slider'
 import {
+  AppSettingsTab,
   AppTwoStepVerificationEmailTab,
   AppTwoStepVerificationEnterPasswordTab,
   type AppTwoStepVerificationTab,
 } from '@components/solidJsTabs/tabs'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
-import sliceTabsUntilSettings from './sliceTabsUntilSettings'
 
 const TwoStepVerification: Component = () => {
   const [tab] = useSuperTab<typeof AppTwoStepVerificationTab>()
@@ -71,7 +69,7 @@ const TwoStepVerification: Component = () => {
         langKey: 'Disable',
         callback: () => {
           tab.managers!.auth.removePassword(plainPassword ?? '').then(() => {
-            sliceTabsUntilSettings(tab)
+            (tab.slider as SidebarSlider).sliceTabsUntilTab(AppSettingsTab, tab)
             tab.close()
           }, () => {
             toastNew({ langPackKey: 'Error.AnError' })

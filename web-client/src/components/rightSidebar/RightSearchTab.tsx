@@ -79,11 +79,11 @@ export default function RightSearchTab({
 }) {
   const narrow = useMediaQuery('(max-width:900px)')
   // Экран смонтирован ровно пока открыт (popupStore/RightSearchPopup снимает
-  // узел на закрытии — своего prop'а open здесь нет), поэтому сужаем чат
-  // тем же классом, что и панель профиля (UserInfoPanel), на весь срок жизни
-  // компонента. Счётчик (не булев toggle) — потому что обе панели могут быть
-  // открыты одновременно, см. докблок useRightColumnShown.
-  useRightColumnShown(true)
+  // узел на закрытии — своего prop'а open здесь нет), поэтому на весь срок
+  // жизни компонента колонку держит открытой класс `AppSidebarRight` — чат
+  // сужается тем же `body.is-right-column-shown`, что и под профилем.
+  // ВРЕМЕННО до 0б-11 — мост, см. докблок useRightColumnShown.
+  useRightColumnShown()
   const ownScrollRef = useRef<HTMLDivElement>(null)
   const scrollRef = scrollRefProp ?? ownScrollRef
   // attachBorderListeners: оба класса стоят с монтирования, обновляются скроллом

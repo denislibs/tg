@@ -3,7 +3,7 @@
 // строка экрана «Поиск стикеров» и панель стикеров пикера. До этого канала
 // каждая витрина правила только своё локальное состояние — набор, добавленный в
 // попапе, оставался «Add» в строке под ним и не появлялся в панели.
-import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest'
+import { describe, it, expect, afterEach, beforeAll, beforeEach, vi } from 'vitest'
 import { render, cleanup, fireEvent, waitFor, renderHook, act } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import rootScope from '@lib/rootScope'
@@ -14,6 +14,13 @@ import StickersSearchTab from '../../components/rightSidebar/StickersSearchTab'
 import type { Managers } from '../../client/bootstrap'
 import type { StickerSet } from '../managers/stickersManager'
 import { makeSticker, makeStickerSet } from './testSticker'
+import { installSidebarRight } from '../../test/sidebarRight'
+
+// Экран поиска открывает правую колонку классом `AppSidebarRight` (мост
+// `useRightColumnShown`, ВРЕМЕННО до 0б-11) — колонка нужна каждому тесту файла.
+let sidebarRight: ReturnType<typeof installSidebarRight>
+beforeEach(() => { sidebarRight = installSidebarRight() })
+afterEach(() => sidebarRight.dispose())
 
 const duck: StickerSet = makeStickerSet({ id: 1, shortName: 'utyaduck', title: 'Duck', count: 2 })
 const croco: StickerSet = makeStickerSet({ id: 2, shortName: 'mrcroco', title: 'Croco', count: 2 })
