@@ -379,12 +379,21 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (у tweb его нет — Premium открывает попап), с ним — его ключи без других
 // читателей: восемь наших `Premium.Manage.*` и `Stars.Subscription`/
 // `Stars.Subscription.Cancel`. Итог: ru 1404, uk 750, es/de 747, fr 742.
+//
+// Задача 27 плана 2D («Редактировать профиль» `AppEditProfileTab`, порт tweb
+// editProfile.tsx): снесён React-экран `settings/EditProfile.tsx`, с ним — шесть
+// наших ключей без других читателей (`EditProfile.LastNameLabel`,
+// `EditProfile.Username.Checking`/`.Rules`/`.TooShort`/`.Caption`,
+// `EditProfile.VideoError`; у uk/es/de/fr их было по три). У ru +4 ключа tweb
+// lang.ts: `EditAccount.Username`, `EditProfile.Username.Invalid`,
+// `Login.Register.LastName.Placeholder`, `UsernameHelp`. Итог: ru 1402, uk 747,
+// es/de 744, fr 739.
 const COMPOSITION = {
-  ru: { keys: 1404, plural: 42 },
-  uk: { keys: 750, plural: 31 },
-  es: { keys: 747, plural: 30 },
-  de: { keys: 747, plural: 31 },
-  fr: { keys: 742, plural: 30 },
+  ru: { keys: 1402, plural: 42 },
+  uk: { keys: 747, plural: 31 },
+  es: { keys: 744, plural: 30 },
+  de: { keys: 744, plural: 31 },
+  fr: { keys: 739, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -509,12 +518,14 @@ const COMPOSITION = {
 // Особыми чатами — у ru +4 ключа tweb (разбор — у `COMPOSITION` выше).
 // Задачей 28 плана 2D — два ключа строк корня настроек у всех пяти, у ru — минус
 // ключи снесённого `PremiumManage` (разбор — там же).
+// Задачей 27 плана 2D — минус ключи снесённого React-экрана профиля у всех пяти,
+// у ru плюс четыре ключа tweb (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '13447f25',
-  uk: 'f7af4022',
-  es: '5d6ff751',
-  de: 'ab245f9c',
-  fr: 'be8f0a56',
+  ru: 'f165c19e',
+  uk: '0f05e372',
+  es: '5a454d5d',
+  de: '19850ae0',
+  fr: '5babd452',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

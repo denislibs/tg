@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 35,
+      "version": 36,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -1651,6 +1651,10 @@
           "value": "Edit Profile"
         },
         {
+          "key": "EditAccount.Username",
+          "value": "Username"
+        },
+        {
           "key": "EditAdmin",
           "value": "Admin Rights"
         },
@@ -1691,40 +1695,20 @@
           "value": "Name"
         },
         {
-          "key": "EditProfile.LastNameLabel",
-          "value": "Last name"
-        },
-        {
           "key": "EditProfile.Username.Available",
           "value": "Username is available"
         },
         {
-          "key": "EditProfile.Username.Caption",
-          "value": "You can choose a public username so people can find you and contact you without knowing your phone number."
-        },
-        {
-          "key": "EditProfile.Username.Checking",
-          "value": "Checking…"
+          "key": "EditProfile.Username.Invalid",
+          "value": "Username is invalid"
         },
         {
           "key": "EditProfile.Username.Label",
           "value": "Username (optional)"
         },
         {
-          "key": "EditProfile.Username.Rules",
-          "value": "Username must be 5–32 chars: letters, digits, underscore."
-        },
-        {
           "key": "EditProfile.Username.Taken",
           "value": "Username is already taken"
-        },
-        {
-          "key": "EditProfile.Username.TooShort",
-          "value": "Minimum 5 characters."
-        },
-        {
-          "key": "EditProfile.VideoError",
-          "value": "Could not process this video."
         },
         {
           "key": "EditedMessage",
@@ -2625,6 +2609,10 @@
         {
           "key": "Login.QR.Title",
           "value": "Log in by QR Code"
+        },
+        {
+          "key": "Login.Register.LastName.Placeholder",
+          "value": "Last Name"
         },
         {
           "key": "Login.Register.NameRequired",
@@ -5640,6 +5628,10 @@
           "value": "Username copied to clipboard."
         },
         {
+          "key": "UsernameHelp",
+          "value": "You can choose a username on **Telegram**. If you do, people will be able to find you by this username and contact you without needing your phone number.\n\nYou can use **a–z**, **0–9** and underscores. Minimum length is **5** characters."
+        },
+        {
           "key": "Users",
           "forms": {
             "one_value": "%1$d user",
@@ -5799,7 +5791,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 35,
+      "version": 36,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -9062,28 +9054,28 @@
           "value": "Имя пользователя (необязательно)"
         },
         {
-          "key": "EditProfile.Username.TooShort",
-          "value": "Минимум 5 символов."
+          "key": "EditProfile.Username.Invalid",
+          "value": "Недопустимое имя пользователя."
+        },
+        {
+          "key": "EditAccount.Username",
+          "value": "Имя пользователя"
+        },
+        {
+          "key": "Login.Register.LastName.Placeholder",
+          "value": "Фамилия"
+        },
+        {
+          "key": "UsernameHelp",
+          "value": "Вы можете выбрать имя пользователя в **Telegram**. В этом случае другие люди смогут найти Вас по такому имени и связаться с Вами, не зная Вашего телефона.\n\nМожно использовать символы **a–z**, **0–9** и подчёркивания. Минимальная длина — **5** символов."
         },
         {
           "key": "EditProfile.Username.Available",
           "value": "Это имя пользователя свободно."
         },
         {
-          "key": "EditProfile.Username.Rules",
-          "value": "Имя пользователя — 5–32 символа: буквы, цифры, подчёркивание."
-        },
-        {
-          "key": "EditProfile.Username.Caption",
-          "value": "Вы можете выбрать публичное имя пользователя, чтобы вас могли находить и связываться с вами, не зная номера телефона."
-        },
-        {
           "key": "CreateBot.Username.Taken",
           "value": "Это имя пользователя уже занято."
-        },
-        {
-          "key": "EditProfile.Username.Checking",
-          "value": "Проверка…"
         },
         {
           "key": "Birthday",
@@ -11019,10 +11011,6 @@
           "value": "Отвязать"
         },
         {
-          "key": "EditProfile.VideoError",
-          "value": "Не удалось обработать это видео."
-        },
-        {
           "key": "Effect.Remove",
           "value": "Убрать эффект"
         },
@@ -11353,10 +11341,6 @@
           "value": "Звук"
         },
         {
-          "key": "EditProfile.LastNameLabel",
-          "value": "Фамилия"
-        },
-        {
           "key": "AutoDeleteMessages.Disable",
           "value": "Отключить"
         },
@@ -11633,7 +11617,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -13224,20 +13208,8 @@
           "value": "Nom d'utilisateur (facultatif)"
         },
         {
-          "key": "EditProfile.Username.TooShort",
-          "value": "Minimum 5 caractères."
-        },
-        {
           "key": "EditProfile.Username.Available",
           "value": "Ce nom d'utilisateur est disponible."
-        },
-        {
-          "key": "EditProfile.Username.Rules",
-          "value": "Nom d'utilisateur : 5–32 caractères : lettres, chiffres, tiret bas."
-        },
-        {
-          "key": "EditProfile.Username.Caption",
-          "value": "Vous pouvez choisir un nom d'utilisateur public pour que les gens puissent vous trouver et vous contacter sans connaître votre numéro."
         },
         {
           "key": "BlockUser",
@@ -14699,7 +14671,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16293,20 +16265,8 @@
           "value": "Benutzername (optional)"
         },
         {
-          "key": "EditProfile.Username.TooShort",
-          "value": "Mindestens 5 Zeichen."
-        },
-        {
           "key": "EditProfile.Username.Available",
           "value": "Dieser Benutzername ist verfügbar."
-        },
-        {
-          "key": "EditProfile.Username.Rules",
-          "value": "Benutzername: 5–32 Zeichen: Buchstaben, Ziffern, Unterstrich."
-        },
-        {
-          "key": "EditProfile.Username.Caption",
-          "value": "Du kannst einen öffentlichen Benutzernamen wählen, damit andere dich finden und kontaktieren können, ohne deine Telefonnummer zu kennen."
         },
         {
           "key": "BlockUser",
@@ -17787,7 +17747,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -19386,20 +19346,8 @@
           "value": "Nombre de usuario (opcional)"
         },
         {
-          "key": "EditProfile.Username.TooShort",
-          "value": "Mínimo 5 caracteres."
-        },
-        {
           "key": "EditProfile.Username.Available",
           "value": "Este nombre de usuario está disponible."
-        },
-        {
-          "key": "EditProfile.Username.Rules",
-          "value": "El nombre de usuario debe tener 5–32 caracteres: letras, dígitos, guion bajo."
-        },
-        {
-          "key": "EditProfile.Username.Caption",
-          "value": "Puedes elegir un nombre de usuario público para que la gente pueda encontrarte y contactarte sin saber tu número de teléfono."
         },
         {
           "key": "BlockUser",
@@ -20873,7 +20821,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -22492,20 +22440,8 @@
           "value": "Ім'я користувача (необов'язково)"
         },
         {
-          "key": "EditProfile.Username.TooShort",
-          "value": "Мінімум 5 символів."
-        },
-        {
           "key": "EditProfile.Username.Available",
           "value": "Це ім'я користувача вільне."
-        },
-        {
-          "key": "EditProfile.Username.Rules",
-          "value": "Ім'я користувача — 5–32 символи: літери, цифри, підкреслення."
-        },
-        {
-          "key": "EditProfile.Username.Caption",
-          "value": "Ви можете обрати публічне ім'я користувача, щоб вас могли знаходити та зв'язуватися з вами, не знаючи номера телефону."
         },
         {
           "key": "BlockUser",

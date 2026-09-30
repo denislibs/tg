@@ -1,10 +1,12 @@
 /**
- * ВРЕМЕННЫЕ МОСТЫ корня настроек к React-попапам (снимаются задачами 2C-13,
- * 2C-17, 2C-18, 2C-19, 2C-20). Имена и сигнатуры — tweb (`showPremiumPopup`,
- * `showStarsPopup`, `showMyQrCodePopup`, `showLogOutPopup`, `showSendGiftPicker`
- * из `components/popups/*`), чтобы Solid-корень (`sidebarLeft/tabs/settings.solid.tsx`)
- * звал их ровно как оригинал (`settings.tsx:97-117`, `:419-446`); задача 2C
- * заменяет импорт на свой Solid-попап и удаляет строку отсюда.
+ * ВРЕМЕННЫЕ МОСТЫ вкладок настроек к React-попапам (снимаются задачами 2C-13,
+ * 2C-14, 2C-17, 2C-18, 2C-19, 2C-20). Имена и сигнатуры — tweb (`showPremiumPopup`,
+ * `showStarsPopup`, `showMyQrCodePopup`, `showLogOutPopup`, `showSendGiftPicker`,
+ * `showBirthdayPopup`/`saveMyBirthday` из `components/popups/*`), чтобы
+ * Solid-вкладки (корень `sidebarLeft/tabs/settings.solid.tsx`, профиль
+ * `editProfile.solid.tsx`) звали их ровно как оригинал (`settings.tsx:97-117`,
+ * `:419-446`, `editProfile.tsx:328-339`); задача 2C заменяет импорт на свой
+ * Solid-попап и удаляет строку отсюда.
  *
  * Попапы открываются через глобальный `popupStore` (`PopupHost` живёт в
  * React-дереве шелла, у него есть `ManagersProvider`), поэтому вызов из
@@ -12,6 +14,9 @@
  */
 import { useEffect, useRef } from 'react'
 import type { Managers } from '@/client/bootstrap'
+import type { MaybePromise } from '@types'
+import type { Birthday } from '@core/peers/peer'
+import { toastNew } from '@components/toast'
 import { openPopup, type PopupApi } from '@stores/popupStore'
 import { useChatsStore } from '@stores/chatsStore'
 import { gradientFor } from '@core/dialogToChat'
@@ -22,6 +27,7 @@ import { publicUsernameLink } from '@core/publicLink'
 import PremiumModal from '../PremiumModal'
 import StarsPopup from '../stars/StarsPopup'
 import QrModal from '../QrModal'
+import BirthdayModal from '../settings/BirthdayModal'
 
 /**
  * `StarsPopup`/`QrModal` сами гасят узел через 300 мс после `open = false`
@@ -94,3 +100,46 @@ export function showLogOutPopup(managers: Managers) {
 // `stars/SendGiftPopup` открывается только из чата с известным получателем —
 // строка корня до 2C-20 ничего не открывает, как и до переезда корня.
 export function showSendGiftPicker() {}
+
+function BirthdayBridge({ api, initialDate, onSave }: {
+  api: PopupApi
+  initialDate?: Birthday
+  onSave: (date: Birthday | null) => MaybePromise<boolean>
+}) {
+  useRemoveAfterHide(api)
+  return (
+    <BirthdayModal
+      open={api.open}
+      initial={initialDate ?? null}
+      onClose={api.requestClose}
+      // tweb `birthday.tsx:295-301`: кнопка «Save» ждёт `onSave` и закрывает
+      // попап при любом исходе (`callback` → `return true`)
+      onSave={(date) => { void Promise.resolve(onSave(date)).finally(api.requestClose) }}
+    />
+  )
+}
+
+// ВРЕМЕННО до 2C-14 (tweb `popups/birthday.tsx:52-307`). Вход — только выбор
+// даты: приватности «кто видит» (`getPrivacy('inputPrivacyKeyBirthday')`,
+// :59-64) и кнопки «Remove» (`fromProfile && initialDate`, :282-291) у
+// React-модалки нет — их приносит порт 2C-14.
+export function showBirthdayPopup(props: {
+  initialDate?: Birthday
+  onSave: (date: Birthday | null) => MaybePromise<boolean>
+}) {
+  openPopup((p) => <BirthdayBridge api={p} initialDate={props.initialDate} onSave={props.onSave} />, 'birthday')
+}
+
+// ВРЕМЕННО до 2C-14 (tweb `popups/birthday.tsx:30-39`). `managers` — параметром:
+// DI-ручки вне React у нас нет (как `showLogOutPopup`). `setMyBirthday` —
+// наш `PATCH /me {birthday}` (`profile.update`).
+export async function saveMyBirthday(managers: Pick<Managers, 'profile'>, date: Birthday | null) {
+  try {
+    await managers.profile.update({ birthday: date })
+    return true
+  } catch(error) {
+    console.error(error)
+    toastNew({ langPackKey: 'Error.AnError' })
+    return false
+  }
+}
