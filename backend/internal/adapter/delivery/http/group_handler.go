@@ -62,21 +62,23 @@ func (h *GroupHandler) CreateGroup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "title required")
 		return
 	}
-	id, err := h.uc.CreateGroup(r.Context(), user.ID, b.Title, b.About, b.Username, b.IsPublic, b.MemberIDs)
+	id, missing, err := h.uc.CreateGroup(r.Context(), user.ID, b.Title, b.About, b.Username, b.IsPublic, b.MemberIDs)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	// Ответ действия — СОЗДАННЫЙ объект, а не его адрес в безымянной обёртке.
-	// У оригинала `messages.createChat` отвечает `Updates` с новым чатом
-	// внутри; контейнеров Updates мы не копируем (граница программы), поэтому
-	// отдаём ту же карточку тем же конструктором, что и ручка карточки.
+	// Ответ — `messages.invitedUsers`, как у `messages.createChat` оригинала:
+	// созданный чат в `updates.chats` (tweb `appChatsManager.createChat` берёт
+	// его оттуда) и позванные, кого настройка приватности не пустила. Вектор
+	// `updates` пуст: служебное «создал(а) группу» доезжает кадром WS.
 	c, err := h.uc.ChatCard(r.Context(), id, user.ID)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, domain.NewMessagesChatFull(c.ToChannelFull(), c.ToChannel()))
+	updates := domain.NewUpdates(nil, nil, time.Now())
+	updates.Chats = []domain.Chat{c.ToChannel()}
+	writeJSON(w, http.StatusOK, domain.NewMessagesInvitedUsers(updates, missing))
 }
 
 func (h *GroupHandler) AddMember(w http.ResponseWriter, r *http.Request) {

@@ -7,6 +7,7 @@ import { getPeerId } from '../peers/peerId'
 import type { Peer } from '../peers/peerId'
 import { deniedMask } from '../peers/rights'
 import { MUTE_UNTIL_FOREVER } from '../dialogs/notifySettings'
+import type { MissingInvitee } from '@layer'
 import { WIRE_FOLDER_ARCHIVE, type MyMessage, type RawMyMessage } from '../models'
 import { generateMessageId } from '../history/messageId'
 import type { MessagesManager } from './messagesManager'
@@ -16,6 +17,17 @@ import { isPeerMuted } from '../dialogs/notifySettings'
 
 /** Участник чата: наша роль + статус присутствия (объединение `UserStatus`). */
 export interface ChatMember { userId: number; role: string; status?: UserStatus }
+
+/**
+ * Ответ `POST /groups` — `messages.invitedUsers` (ответ `messages.createChat`
+ * оригинала). Из контейнера `Updates` на проводе у нас приезжают только векторы
+ * пиров: пачка апдейтов пуста, служебное «создал(а) группу» идёт кадром WS.
+ */
+interface MessagesInvitedUsers {
+  _: 'messages.invitedUsers'
+  updates: { _: 'updates'; chats: Channel[]; users: UserReal[] }
+  missing_invitees: MissingInvitee[]
+}
 
 /**
  * Карточка чата — ПАРА конструкторов, как у профиля пользователя
@@ -316,13 +328,15 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
      * Карточка сразу уезжает в зеркало пиров — иначе экран, открытый по
      * возвращённому ключу, ждал бы отдельного запроса за тем, что уже пришло.
      */
-    async createGroup(args: { title: string; about?: string; username?: string; isPublic?: boolean; memberIds?: number[] }): Promise<number> {
-      const r = await rest.post<MessagesChatFull>('/groups', {
-        title: args.title, about: args.about ?? '', username: args.username ?? '', is_public: args.isPublic ?? false,
-        member_ids: args.memberIds ?? [],
-      })
-      peers.saveApiPeers(r)
-      return mapChatCard(r)?.peerId ?? 0
+    // Порт `appChatsManager.createChat` (tweb 812502980 `appChatsManager.ts:627-637`):
+    // ответ `messages.invitedUsers` — созданный чат в `updates.chats[0]`
+    // (пиры пачки — в зеркало, как `processUpdateMessage` оригинала) и те, кого
+    // настройка приватности не дала позвать. `InputUser` оригинала у нас —
+    // ключ пользователя (`access_hash` не копируем, tl-program.md).
+    async createChat(title: string, userIds: number[]): Promise<{ chatId: number; missingInvitees: MissingInvitee[] }> {
+      const r = await rest.post<MessagesInvitedUsers>('/groups', { title, member_ids: userIds })
+      peers.saveApiPeers(r.updates)
+      return { chatId: r.updates.chats[0].id, missingInvitees: r.missing_invitees }
     },
     async addMember(peerId: number, userId: number): Promise<void> {
       await rest.post(`/chats/${peerId}/members`, { user_id: userId })

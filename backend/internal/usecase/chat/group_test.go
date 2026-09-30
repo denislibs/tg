@@ -854,7 +854,7 @@ func newGroupTestInteractor(t *testing.T) (*Interactor, *fakeGroupRepo, *fakeJoi
 
 func TestListMembers_RequiresMembership(t *testing.T) {
 	i, fg, _ := newGroupTestInteractor(t)
-	id, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
+	id, _, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
 	_ = fg.AddMember(context.Background(), id, 8, domain.RoleMember, 0)
 
 	// Non-member 99 → forbidden.
@@ -884,7 +884,7 @@ func TestListMembers_RequiresMembership(t *testing.T) {
 
 func TestCreateGroup_AddsCreator(t *testing.T) {
 	i, fg, _ := newGroupTestInteractor(t)
-	id, err := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
+	id, _, err := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -916,7 +916,7 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 	fg.users[9] = domain.UserReal{ID: 9, FirstName: "Чарли"}
 
 	// Дубликаты и сам создатель в member_ids не задваиваются.
-	id, err := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8, 9, 7, 8})
+	id, _, err := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8, 9, 7, 8})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1041,7 +1041,7 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 
 func TestAddMember_DefaultPermissionGates(t *testing.T) {
 	i, fg, _ := newGroupTestInteractor(t)
-	id, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
+	id, _, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
 	_ = fg.AddMember(context.Background(), id, 8, domain.RoleMember, 0) // plain member
 	// По умолчанию (как в Telegram) обычный участник может добавлять людей.
 	if err := i.AddMember(context.Background(), id, 8, 9); err != nil {
@@ -1061,7 +1061,7 @@ func TestAddMember_DefaultPermissionGates(t *testing.T) {
 
 func TestPromoteAdmin_RequiresManageAdmins(t *testing.T) {
 	i, fg, _ := newGroupTestInteractor(t)
-	id, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
+	id, _, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
 	_ = fg.AddMember(context.Background(), id, 8, domain.RoleMember, 0)
 	if err := i.PromoteAdmin(context.Background(), id, 8, 8, domain.RightPostMessages); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatal("non-manager must not promote")
@@ -1077,7 +1077,7 @@ func TestPromoteAdmin_RequiresManageAdmins(t *testing.T) {
 
 func TestJoinByToken_NoApproval(t *testing.T) {
 	i, fg, fjr := newGroupTestInteractor(t)
-	id, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
+	id, _, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
 	link, _ := i.CreateInvite(context.Background(), id, 7, "", nil, false, nil)
 
 	requested, err := i.JoinByToken(context.Background(), link.Token, 9)
@@ -1114,7 +1114,7 @@ func TestJoinByToken_PostsJoinedByLinkService(t *testing.T) {
 	fg.users[7] = domain.UserReal{ID: 7, FirstName: "Алиса"}
 	fg.users[9] = domain.UserReal{ID: 9, FirstName: "Чарли Ли"}
 
-	id, err := in.CreateGroup(ctx, 7, "Team", "", "", false, nil)
+	id, _, err := in.CreateGroup(ctx, 7, "Team", "", "", false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1147,7 +1147,7 @@ func TestJoinByToken_PostsJoinedByLinkService(t *testing.T) {
 
 func TestJoinByToken_RequiresApproval(t *testing.T) {
 	i, fg, fjr := newGroupTestInteractor(t)
-	id, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
+	id, _, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
 	link, _ := i.CreateInvite(context.Background(), id, 7, "", nil, true, nil)
 
 	requested, err := i.JoinByToken(context.Background(), link.Token, 9)
@@ -1171,7 +1171,7 @@ func TestJoinByToken_RequiresApproval(t *testing.T) {
 func TestEditInvite(t *testing.T) {
 	i, _, _ := newGroupTestInteractor(t)
 	ctx := context.Background()
-	id, _ := i.CreateGroup(ctx, 7, "Team", "", "", false, nil)
+	id, _, _ := i.CreateGroup(ctx, 7, "Team", "", "", false, nil)
 	link, _ := i.CreateInvite(ctx, id, 7, "orig", nil, false, nil)
 
 	title := "renamed"
@@ -1198,7 +1198,7 @@ func TestEditInvite(t *testing.T) {
 func TestInviteImporters_TracksJoins(t *testing.T) {
 	i, _, _ := newGroupTestInteractor(t)
 	ctx := context.Background()
-	id, _ := i.CreateGroup(ctx, 7, "Team", "", "", false, nil)
+	id, _, _ := i.CreateGroup(ctx, 7, "Team", "", "", false, nil)
 
 	// direct join via a no-approval link → recorded.
 	direct, _ := i.CreateInvite(ctx, id, 7, "", nil, false, nil)
@@ -1233,7 +1233,7 @@ func TestInviteImporters_TracksJoins(t *testing.T) {
 
 	// IDOR guard: an admin of another chat can't read this chat's importers by
 	// passing its token — the token is scoped to the chatID from the URL.
-	other, _ := i.CreateGroup(ctx, 7, "Other", "", "", false, nil)
+	other, _, _ := i.CreateGroup(ctx, 7, "Other", "", "", false, nil)
 	if imps, count, err := i.InviteImporters(ctx, other, 7, direct.Token); err != nil || count != 0 || len(imps) != 0 {
 		t.Fatalf("cross-chat importers = %+v count=%d err=%v, want empty", imps, count, err)
 	}
@@ -1252,7 +1252,7 @@ func hasToken(links []domain.InviteLink, token string) bool {
 func TestListInvites_RevokedFilterAndDelete(t *testing.T) {
 	i, _, _ := newGroupTestInteractor(t)
 	ctx := context.Background()
-	id, _ := i.CreateGroup(ctx, 7, "Team", "", "", false, nil) // born with a primary link
+	id, _, _ := i.CreateGroup(ctx, 7, "Team", "", "", false, nil) // born with a primary link
 
 	link, _ := i.CreateInvite(ctx, id, 7, "", nil, false, nil)
 
@@ -1297,7 +1297,7 @@ func TestListInvites_RevokedFilterAndDelete(t *testing.T) {
 func TestDeleteAllRevoked(t *testing.T) {
 	i, _, _ := newGroupTestInteractor(t)
 	ctx := context.Background()
-	id, _ := i.CreateGroup(ctx, 7, "Team", "", "", false, nil)
+	id, _, _ := i.CreateGroup(ctx, 7, "Team", "", "", false, nil)
 
 	revoked := true
 	for n := 0; n < 3; n++ {
@@ -1327,7 +1327,7 @@ func TestDeleteAllRevoked(t *testing.T) {
 
 func TestListJoinRequests_NonAdminForbidden(t *testing.T) {
 	i, fg, _ := newGroupTestInteractor(t)
-	id, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
+	id, _, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
 	_ = fg.AddMember(context.Background(), id, 8, domain.RoleMember, 0) // plain member
 
 	if _, err := i.ListJoinRequests(context.Background(), id, 8); !errors.Is(err, domain.ErrForbidden) {
@@ -1340,7 +1340,7 @@ func TestListJoinRequests_NonAdminForbidden(t *testing.T) {
 
 func TestApproveJoinRequest(t *testing.T) {
 	i, fg, fjr := newGroupTestInteractor(t)
-	id, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
+	id, _, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
 	link, _ := i.CreateInvite(context.Background(), id, 7, "", nil, true, nil)
 	if _, err := i.JoinByToken(context.Background(), link.Token, 9); err != nil {
 		t.Fatal(err)
@@ -1378,7 +1378,7 @@ func TestGroupSettings_Enforcement(t *testing.T) {
 	fg.users[7] = domain.UserReal{ID: 7, FirstName: "Алиса"}
 	fg.users[8] = domain.UserReal{ID: 8, FirstName: "Боб"}
 
-	id, err := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8})
+	id, _, err := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1458,7 +1458,7 @@ func TestGroupSettings_Enforcement(t *testing.T) {
 	if err := in.SetChatType(ctx, id, 7, true, "team"); err != nil {
 		t.Fatal(err)
 	}
-	id2, _ := in.CreateGroup(ctx, 7, "Other", "", "", false, nil)
+	id2, _, _ := in.CreateGroup(ctx, 7, "Other", "", "", false, nil)
 	if err := in.SetChatType(ctx, id2, 7, true, "team"); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("taken username: err = %v; want ErrConflict", err)
 	}
@@ -1497,7 +1497,7 @@ func TestMemberRestrictions(t *testing.T) {
 	fg.users[7] = domain.UserReal{ID: 7, FirstName: "Алиса"}
 	fg.users[8] = domain.UserReal{ID: 8, FirstName: "Боб"}
 
-	id, err := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8})
+	id, _, err := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8})
 	if err != nil {
 		t.Fatal(err)
 	}

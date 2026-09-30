@@ -22,7 +22,7 @@ func pinTestSetup(t *testing.T) (*Interactor, *store, int64) {
 	}
 	in := New(fakeTx{}, groupChats{fg}, fakeMsgs{s}, fakeUpdates{s}, nil, fakeMedia{s}, fg, newFakeInviteRepo(), nil, nil, newFakeJoinRequestRepo())
 	fg.users[7] = domain.UserReal{ID: 7, FirstName: "Дн"}
-	chatID, err := in.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
+	chatID, _, err := in.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
 	if err != nil {
 		t.Fatalf("CreateGroup: %v", err)
 	}

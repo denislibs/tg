@@ -2,6 +2,7 @@ import { useI18nStore } from '../../i18n'
 import type { LangPackKey } from '../../lang'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useManagers } from './useManagers'
+import { toPeerId } from '../peers/peerId'
 import type { GroupPhoto } from '../../components/NewGroupFlow'
 
 // Команды создания чатов из compose-меню сайдбара (порт tweb createChat/createChannel
@@ -23,7 +24,8 @@ export function useSidebarActions(onChatCreated?: (peerId: PeerId) => void) {
   const t = (key: LangPackKey) => useI18nStore.getState().t(key)
 
   const createGroup = async (name: string, memberIds: number[], photo: GroupPhoto | null) => {
-    const peerId = await managers.groups.createGroup({ title: name || t('NewGroup.DefaultTitle'), memberIds })
+    const { chatId } = await managers.groups.createChat(name || t('NewGroup.DefaultTitle'), memberIds)
+    const peerId = toPeerId(chatId, true)
     // Фото — после создания, как tweb (createChat → editPhoto): upload → set.
     if (photo) {
       const bytes = await photo.blob.arrayBuffer()

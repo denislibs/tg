@@ -67,7 +67,7 @@ type chatAPI interface {
 	MessageByClientMsgID(ctx context.Context, chatID, senderID int64, clientMsgID string) (domain.Message, error)
 	ListPins(ctx context.Context, chatID, userID int64) ([]domain.Message, error)
 	CreateChannel(ctx context.Context, creatorID int64, title, about, username string, isPublic bool) (int64, error)
-	CreateGroup(ctx context.Context, creatorID int64, title, about, username string, isPublic bool, memberIDs []int64) (int64, error)
+	CreateGroup(ctx context.Context, creatorID int64, title, about, username string, isPublic bool, memberIDs []int64) (int64, []int64, error)
 	JoinPublic(ctx context.Context, username string, userID int64) error
 	AddMember(ctx context.Context, chatID, actorID, userID int64) error
 	LinkDiscussion(ctx context.Context, channelID, groupID, actorID int64) (int64, error)
@@ -355,7 +355,7 @@ func (s *seeder) discussion(ctx context.Context, channelID, creator int64, c cha
 	// выше; не нашлось — заводим группу.
 	// Участников группе не раздаём: комментатора подписывает на обсуждение сам
 	// PostComment (auto-join), как и у живого клиента.
-	groupID, err := s.uc.CreateGroup(ctx, creator, c.discussion.title, c.discussion.about, "", false, nil)
+	groupID, _, err := s.uc.CreateGroup(ctx, creator, c.discussion.title, c.discussion.about, "", false, nil)
 	if err != nil {
 		log.Printf("seed: группа обсуждения для %q не создана: %v", c.title, err)
 		return 0
@@ -421,7 +421,7 @@ func (s *seeder) group(ctx context.Context, g groupSpec) int {
 				members = append(members, uid)
 			}
 		}
-		id, err := s.uc.CreateGroup(ctx, creator, g.title, g.about, "", false, members)
+		id, _, err := s.uc.CreateGroup(ctx, creator, g.title, g.about, "", false, members)
 		if err != nil {
 			log.Printf("seed: группа %q не создана: %v", g.title, err)
 			return 0

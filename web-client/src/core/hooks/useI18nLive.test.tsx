@@ -36,7 +36,7 @@ vi.mock('./useChatSearch', () => ({
 vi.mock('./usePeers', () => ({ usePeers: () => new Map() }))
 
 const managers = {
-  groups: { createGroup: vi.fn(async () => 42) },
+  groups: { createChat: vi.fn(async () => ({ chatId: 42, missingInvitees: [] })) },
   channels: { createChannel: vi.fn(async () => 43) },
   messages: { getSavedTags: vi.fn(async () => []) },
 } as unknown as Managers
@@ -57,7 +57,7 @@ async function switchTo(lang: string) {
 
 beforeEach(async () => {
   await switchTo('en')
-  vi.mocked(managers.groups.createGroup).mockClear()
+  vi.mocked(managers.groups.createChat).mockClear()
 })
 
 afterEach(async () => {
@@ -73,7 +73,7 @@ describe('useSidebarActions: название по умолчанию — на �
     await act(async () => { await result.current.createGroup('', [], null) })
 
     // Хук НЕ перемонтирован — тот же `result.current`, что и до смены языка.
-    expect(managers.groups.createGroup).toHaveBeenCalledWith({ title: 'Новая группа', memberIds: [] })
+    expect(managers.groups.createChat).toHaveBeenCalledWith('Новая группа', [])
   })
 })
 

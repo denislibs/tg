@@ -433,20 +433,70 @@ func contains(ss []string, want string) bool {
 // createdPeerID — ключ пира СОЗДАННОГО чата из ответа `POST /groups`,
 // `POST /channels`.
 //
-// Ответ там — конструктор `messages.chatFull` (созданный объект целиком), а не
-// адрес в безымянной обёртке: ключ выводится из краткой карточки в `chats`,
-// ровно как его выводит клиент.
+// Ответ там — созданный объект, а не адрес в безымянной обёртке: у канала —
+// `messages.chatFull`, у группы — `messages.invitedUsers` с чатом в
+// `updates.chats` (как `messages.createChat` оригинала). Ключ выводится из
+// краткой карточки, ровно как его выводит клиент.
 func createdPeerID(t *testing.T, rec *httptest.ResponseRecorder) int64 {
 	t.Helper()
-	var out struct {
-		Chats []struct {
-			ID int64 `json:"id"`
-		} `json:"chats"`
+	type chats = []struct {
+		ID int64 `json:"id"`
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || len(out.Chats) == 0 {
+	var out struct {
+		Underscore string `json:"_"`
+		Chats      chats  `json:"chats"`
+		Updates    struct {
+			Chats chats `json:"chats"`
+		} `json:"updates"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("ответ создания не разобрался: %s", rec.Body.String())
+	}
+	list := out.Chats
+	if out.Underscore == domain.MessagesInvitedUsersTag {
+		list = out.Updates.Chats
+	}
+	if len(list) == 0 {
 		t.Fatalf("создание чата не отдало карточку: %s", rec.Body.String())
 	}
-	return int64(domain.ToPeerID(out.Chats[0].ID, true))
+	return int64(domain.ToPeerID(list[0].ID, true))
+}
+
+// Ответ создания группы — `messages.invitedUsers` оригинала
+// (`messages.createChat`): созданный чат в `updates.chats`, пропущенные
+// позванные — вектором `missing_invitees` (пустым, когда пропущенных нет).
+func TestCreateGroup_RespondsInvitedUsers(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990001041")
+	_, idB := signUp(t, h, pool, "+79990001042")
+
+	rec := authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Team", "member_ids": []int64{idB}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create group: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Underscore string `json:"_"`
+		Updates    struct {
+			Underscore string `json:"_"`
+			Chats      []struct {
+				Underscore string `json:"_"`
+				Title      string `json:"title"`
+			} `json:"chats"`
+		} `json:"updates"`
+		MissingInvitees []any `json:"missing_invitees"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Underscore != domain.MessagesInvitedUsersTag || out.Updates.Underscore != domain.UpdatesTag {
+		t.Fatalf("ответ не messages.invitedUsers{updates}: %s", rec.Body.String())
+	}
+	if len(out.Updates.Chats) != 1 || out.Updates.Chats[0].Title != "Team" {
+		t.Fatalf("созданного чата нет в updates.chats: %s", rec.Body.String())
+	}
+	if out.MissingInvitees == nil || len(out.MissingInvitees) != 0 {
+		t.Fatalf("missing_invitees = %#v, ждали пустой вектор", out.MissingInvitees)
+	}
 }
 
 // inviteToken — токен ссылки из ответа. Адрес на проводе ОДИН — параметр `link`

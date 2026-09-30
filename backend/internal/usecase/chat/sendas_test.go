@@ -27,7 +27,7 @@ func sendAsTestSetup(t *testing.T) (*Interactor, *store, *fakeGroupRepo, int64, 
 	fg.users[7] = domain.UserReal{ID: 7, FirstName: "Алиса"}
 	fg.users[8] = domain.UserReal{ID: 8, FirstName: "Боб"}
 
-	gid, err := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8})
+	gid, _, err := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8})
 	if err != nil {
 		t.Fatal(err)
 	}

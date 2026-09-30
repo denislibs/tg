@@ -155,7 +155,7 @@ func TestTyping_GroupCarriesChannelAndAuthor(t *testing.T) {
 	in, _, _, pub := newLoggedGroupInteractor()
 	ctx := context.Background()
 	const owner, member int64 = 7, 8
-	chatID, err := in.CreateGroup(ctx, owner, "Team", "", "", false, []int64{member})
+	chatID, _, err := in.CreateGroup(ctx, owner, "Team", "", "", false, []int64{member})
 	if err != nil {
 		t.Fatalf("CreateGroup: %v", err)
 	}
