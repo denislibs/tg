@@ -115,7 +115,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	if utf8.RuneCountInString(in.Text) > maxMessageRunes {
 		return domain.Message{}, domain.ErrTooLong
 	}
-	in.Entities = sanitizeEntities(in.Entities)
+	in.Entities = domain.SanitizeEntities(in.Entities)
 	// Ответ на сообщение: адрес оригинала — пара «пир + номер»
 	// (messageReplyHeader: reply_to_msg_id осмыслен только вместе с
 	// reply_to_peer_id, отсутствие которого значит «тот же пир»). Резолвим
