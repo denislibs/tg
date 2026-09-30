@@ -182,3 +182,44 @@ func TestDialogPeerID_MatchesResolver(t *testing.T) {
 		}
 	}
 }
+
+// Читающий путь «история/счётчики» (PeerToChatIDForRead): собеседник, с которым
+// ещё не переписывались, — это ПУСТОЙ разговор, а не «пира нет». Так отвечает
+// оригинал (messages.getHistory по такому пользователю — пустой
+// messages.messages): чат с человеком открывается до первого сообщения
+// (tweb appImManager.setInnerPeer наличие диалога не спрашивает). Без этого
+// клиент, открывший пользователя из глобального поиска, получал 404 на историю
+// и крутил лоадер бесконечно.
+func TestPeerToChatIDForRead_UserWithoutDialogIsEmpty(t *testing.T) {
+	in, _ := newInteractor()
+	ctx := context.Background()
+	const me, other int64 = 3, 4
+
+	// Диалога нет — «пусто» (0 без ошибки), и строка чата НЕ заводится.
+	chatID, err := in.PeerToChatIDForRead(ctx, me, domain.PeerID(other))
+	if err != nil || chatID != 0 {
+		t.Fatalf("PeerToChatIDForRead(без диалога) = %d, %v; want 0, nil", chatID, err)
+	}
+	if _, err := in.PeerToChatID(ctx, me, domain.PeerID(other)); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("читающий путь завёл чат: %v", err)
+	}
+	// «Избранное» до первого обращения — тоже пустой разговор с собой.
+	if chatID, err := in.PeerToChatIDForRead(ctx, me, domain.PeerID(me)); err != nil || chatID != 0 {
+		t.Fatalf("PeerToChatIDForRead(self) = %d, %v; want 0, nil", chatID, err)
+	}
+
+	// Диалог есть — тот же чат, что и у PeerToChatID.
+	created, _ := in.CreatePrivateChat(ctx, me, other)
+	if chatID, err := in.PeerToChatIDForRead(ctx, me, domain.PeerID(other)); err != nil || chatID != created {
+		t.Fatalf("PeerToChatIDForRead(с диалогом) = %d, %v; want %d", chatID, err, created)
+	}
+
+	// Группы/канала без строки не бывает: ключ чата — по-прежнему ErrNotFound.
+	if _, err := in.PeerToChatIDForRead(ctx, me, domain.ToPeerID(999, true)); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("несуществующий чат = %v; want ErrNotFound", err)
+	}
+	// И «пира нет» (NULL_PEER_ID) пустым разговором не становится.
+	if _, err := in.PeerToChatIDForRead(ctx, me, domain.NullPeerID); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("NullPeerID = %v; want ErrNotFound", err)
+	}
+}

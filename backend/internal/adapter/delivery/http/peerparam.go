@@ -45,14 +45,45 @@ func queryPeer(r *http.Request, key string, def domain.PeerID) domain.PeerID {
 }
 
 // peerChatID — {peerID} из URL во внутренний chatID глазами автора запроса.
-// Диалога ещё нет (первое открытие приватного чата) — 404: читающим путям
-// нечего показывать, а заводить строку на GET нельзя.
+// Диалога ещё нет (первое открытие приватного чата) — 404, а заводить строку на
+// GET нельзя. Пути, у которых на это есть пустой ответ (история, счётчики), —
+// peerChatIDForRead.
 func peerChatID(w http.ResponseWriter, r *http.Request, res PeerResolver) (int64, bool) {
 	peer, ok := pathPeer(w, r)
 	if !ok {
 		return 0, false
 	}
 	return resolvePeer(w, r, res, peer, false)
+}
+
+// readPeerResolver — разрешение для читающих путей с пустым ответом
+// (usecase/chat PeerToChatIDForRead).
+type readPeerResolver interface {
+	PeerToChatIDForRead(ctx context.Context, viewerID int64, peer domain.PeerID) (int64, error)
+}
+
+// peerChatIDForRead — {peerID} для читающих путей, у которых для собеседника
+// без диалога есть осмысленный ПУСТОЙ ответ (история, счётчики вкладок).
+// chatID == 0 при ok == true — «диалога ещё нет»: вызывающий отвечает пустым
+// разговором, как оригинал, а не 404.
+func peerChatIDForRead(w http.ResponseWriter, r *http.Request, res readPeerResolver) (int64, bool) {
+	peer, ok := pathPeer(w, r)
+	if !ok {
+		return 0, false
+	}
+	me, _ := UserFromContext(r.Context())
+	chatID, err := res.PeerToChatIDForRead(r.Context(), me.ID, peer)
+	switch {
+	case err == nil:
+		return chatID, true
+	case errors.Is(err, domain.ErrNotFound):
+		writeError(w, http.StatusNotFound, "peer not found")
+	case errors.Is(err, domain.ErrForbidden):
+		writeError(w, http.StatusForbidden, "not allowed")
+	default:
+		writeError(w, http.StatusInternalServerError, "peer lookup failed")
+	}
+	return 0, false
 }
 
 // peerChatIDOrCreate — то же для ПИШУЩИХ путей: первое сообщение (черновик,
