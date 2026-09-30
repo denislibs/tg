@@ -57,3 +57,38 @@ func TestPresenceStore_RoundTrip(t *testing.T) {
 		t.Fatalf("Refresh absent: existed=%v err=%v", existed, err)
 	}
 }
+
+// Объявленный партнёрам дедлайн онлайна (userStatusOnline.expires последнего
+// кадра) живёт ровно до себя и гаснет вместе с офлайном: снимок присутствия
+// обязан обещать то же, что последний кадр, и не дольше.
+func TestPresenceStore_AnnouncedExpires(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+	rdb := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+	ctx := context.Background()
+	store := NewPresenceStore(rdb)
+	const uid int64 = 7
+
+	if got, err := store.AnnouncedExpires(ctx, uid); err != nil || !got.IsZero() {
+		t.Fatalf("до объявления: got=%v err=%v; want нулевое время", got, err)
+	}
+
+	deadline := time.Now().Add(90 * time.Second).Truncate(time.Millisecond)
+	if err := store.Announce(ctx, uid, deadline); err != nil {
+		t.Fatalf("Announce: %v", err)
+	}
+	if got, err := store.AnnouncedExpires(ctx, uid); err != nil || !got.Equal(deadline) {
+		t.Fatalf("после объявления: got=%v err=%v; want %v", got, err, deadline)
+	}
+	if ttl := mr.TTL(announcedKey(uid)); ttl <= 0 || ttl > 90*time.Second {
+		t.Fatalf("ключ объявления живёт %v; want до дедлайна (≤90 с)", ttl)
+	}
+
+	if err := store.SetOffline(ctx, uid, 1); err != nil {
+		t.Fatalf("SetOffline: %v", err)
+	}
+	if got, err := store.AnnouncedExpires(ctx, uid); err != nil || !got.IsZero() {
+		t.Fatalf("после офлайна: got=%v err=%v; want нулевое время", got, err)
+	}
+}

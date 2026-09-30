@@ -19,6 +19,9 @@ func NewPresenceStore(rdb *goredis.Client) *PresenceStore { return &PresenceStor
 func presKey(userID int64) string     { return "presence:" + strconv.FormatInt(userID, 10) }
 func lastSeenKey(userID int64) string { return "lastseen:" + strconv.FormatInt(userID, 10) }
 
+// announcedKey — дедлайн онлайна, объявленный партнёрам последним кадром.
+func announcedKey(userID int64) string { return "presexp:" + strconv.FormatInt(userID, 10) }
+
 // SetOnlineNX sets the presence key only if absent, returning true on the
 // offline→online transition.
 func (s *PresenceStore) SetOnlineNX(ctx context.Context, userID int64, ttl time.Duration) (bool, error) {
@@ -32,9 +35,27 @@ func (s *PresenceStore) Refresh(ctx context.Context, userID int64, ttl time.Dura
 
 // SetOffline clears the presence key and records last-seen.
 func (s *PresenceStore) SetOffline(ctx context.Context, userID int64, lastSeen int64) error {
-	s.rdb.Del(ctx, presKey(userID))
+	s.rdb.Del(ctx, presKey(userID), announcedKey(userID))
 	s.rdb.Set(ctx, lastSeenKey(userID), lastSeen, 0)
 	return nil
+}
+
+// Announce запоминает объявленный дедлайн онлайна (unix ms); ключ живёт ровно до него.
+func (s *PresenceStore) Announce(ctx context.Context, userID int64, deadline time.Time) error {
+	return s.rdb.SetArgs(ctx, announcedKey(userID), deadline.UnixMilli(), goredis.SetArgs{ExpireAt: deadline}).Err()
+}
+
+// AnnouncedExpires — последний объявленный дедлайн онлайна; нулевое время —
+// не объявлялся или истёк (ключ исчез вместе с дедлайном).
+func (s *PresenceStore) AnnouncedExpires(ctx context.Context, userID int64) (time.Time, error) {
+	ms, err := s.rdb.Get(ctx, announcedKey(userID)).Int64()
+	if err == goredis.Nil {
+		return time.Time{}, nil
+	}
+	if err != nil || ms <= 0 {
+		return time.Time{}, err
+	}
+	return time.UnixMilli(ms), nil
 }
 
 // OnlineExpires — момент, когда ключ присутствия истечёт: ровно то, что схема
