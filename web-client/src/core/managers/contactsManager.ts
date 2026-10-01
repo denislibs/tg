@@ -6,6 +6,7 @@ import type { PeersManager } from './peersManager'
 import SearchIndex from '@lib/searchIndex'
 import cleanSearchText from '@helpers/cleanSearchText'
 import { getUserSearchText } from '../peers/peerSearchText'
+import { getUserSortName } from '../peers/sortContacts'
 
 // Запись адресной книги: НАША обвязка (заметка, «делиться номером», личное
 // фото) плюс КОНСТРУКТОР `user` самого контакта. Прежде профиль контакта был
@@ -96,6 +97,12 @@ export interface ContactsDeps {
     getState: () => Promise<Partial<Pick<AppState, 'recentSearch'>>>
     pushToState: <K extends keyof AppState>(key: K, value: AppState[K]) => Promise<void>
   }
+  /**
+   * Контакт вошёл в книгу или вышел из неё — порт `rootScope.dispatchEvent('contacts_update',
+   * userId)` из `onContactUpdated` (`appUsersManager.ts:1216-1228`). Воркер шлёт его во вкладки
+   * (`workerCore.ts`), слушает — список контактов (`sidebarLeft/contactsList.solid.tsx`).
+   */
+  onContactsUpdate?: (userId: number) => void
 }
 
 /**
@@ -117,17 +124,19 @@ export interface ContactsDeps {
  *     записи «недавних» сериализованы очередью (`recentQueue`), иначе две
  *     одновременные прочитали бы один и тот же список и вторая затёрла бы
  *     первую.
- *  4. `getContacts` сортирует только по имени (`sortBy: 'name'`): ветки
- *     `'online'`/`'rating'` потребителей не имеют, а у `'rating'` нет ручки
+ *  4. `getContacts` сортирует по имени (`sortBy: 'name'`) или не сортирует
+ *     вовсе (`'none'` — список контактов раскладывает книгу сам, `sortContacts`):
+ *     ветка `'online'` потребителей не имеет, а у `'rating'` нет ручки
  *     (`contacts.getTopPeers`, задача 14 плана глобального поиска).
  *  5. `fillContacts` — первым вызовом `list()` (наша ручка книги, её зовут и
  *     папки, и экран контакта): каждое чтение книги — тот же «свежий снимок»,
  *     что у оригинала `contacts.getContacts` в `fillContacts`, и он же
  *     перестраивает индекс. Контакт, появившийся/пропавший пушем карточки
  *     (`onContactUpdated` из `saveApiUser`, :655), индекс не двигает — у нас
- *     этого канала нет; двигают его `add`/`del` этой вкладки.
+ *     этого канала нет; двигают его `add`/`del` (через `onContactUpdated`, с
+ *     событием `contacts_update`).
  */
-export function newContactsManager({ rest, peers, getMe, state }: ContactsDeps) {
+export function newContactsManager({ rest, peers, getMe, state, onContactsUpdate }: ContactsDeps) {
   const createSearchIndex = () => new SearchIndex<number>(SEARCH_OPTIONS)
   let contactsList = new Set<number>()
   let contactsIndex = createSearchIndex()
@@ -151,6 +160,19 @@ export function newContactsManager({ rest, peers, getMe, state }: ContactsDeps) 
   function popContact(userId: number): void {
     contactsList.delete(userId)
     contactsIndex.indexObject(userId, '') // delete search index
+  }
+
+  /** Порт `onContactUpdated` (:1216-1228) без `onContactsModified` — хэша книги у нас нет. */
+  function onContactUpdated(userId: number, isContact: boolean, curIsContact = contactsList.has(userId)): void {
+    if(isContact !== curIsContact) {
+      if(isContact) {
+        pushContact(userId)
+      } else {
+        popContact(userId)
+      }
+
+      onContactsUpdate?.(userId)
+    }
   }
 
   /** Тело `fillContacts` (:318-331): свежий снимок книги заменяет список. */
@@ -181,7 +203,7 @@ export function newContactsManager({ rest, peers, getMe, state }: ContactsDeps) 
   function sortName(userId: number): string {
     const user = peers.cachedPeer(userId)
     if (user?._ !== 'user' || user.pFlags?.deleted) return ''
-    return cleanSearchText(user.first_name + (user.last_name ? ' ' + user.last_name : ''), false)
+    return cleanSearchText(getUserSortName(user), false)
   }
 
   /** Порт `testSelfSearch` (:501-506). */
@@ -193,8 +215,8 @@ export function newContactsManager({ rest, peers, getMe, state }: ContactsDeps) 
     return index.search(query).has(self.id)
   }
 
-  /** Порт `getContacts` (:417-465) в объёме `sortBy: 'name'` (расхождение 4). */
-  async function getContacts(query?: string, includeSaved = false): Promise<number[]> {
+  /** Порт `getContacts` (:417-465) в объёме `sortBy: 'name' | 'none'` (расхождение 4). */
+  async function getContacts(query?: string, includeSaved = false, sortBy: 'name' | 'none' = 'name'): Promise<number[]> {
     await fillContacts()
     let contacts = [...contactsList]
     if (query) {
@@ -202,7 +224,9 @@ export function newContactsManager({ rest, peers, getMe, state }: ContactsDeps) 
       contacts = contacts.filter((id) => results.has(id))
     }
 
-    contacts.sort((userId1, userId2) => sortName(userId1).localeCompare(sortName(userId2)))
+    if(sortBy === 'name') {
+      contacts.sort((userId1, userId2) => sortName(userId1).localeCompare(sortName(userId2)))
+    }
 
     const myUserId = getMe()?.id
     if (myUserId !== undefined) {
@@ -228,12 +252,11 @@ export function newContactsManager({ rest, peers, getMe, state }: ContactsDeps) 
      * группы «Chats» глобального поиска и чипов пиров. Сеть — только первое
      * чтение книги за сессию.
      *
-     * `sortBy` оставлен позиционным ради формы вызова оригинала
-     * (`getContactsPeerIds(query, true, undefined, 10)`), но значение у него
-     * одно — расхождение 4.
+     * `sortBy` — `'name'` или `'none'` (расхождение 4): `'none'` зовёт список
+     * контактов, который раскладывает книгу сам (`sortContacts`).
      */
-    async getContactsPeerIds(query?: string, includeSaved?: boolean, _sortBy?: 'name', limit?: number): Promise<PeerId[]> {
-      const peerIds: PeerId[] = await getContacts(query, includeSaved)
+    async getContactsPeerIds(query?: string, includeSaved?: boolean, sortBy?: 'name' | 'none', limit?: number): Promise<PeerId[]> {
+      const peerIds: PeerId[] = await getContacts(query, includeSaved, sortBy)
       if (limit) {
         return peerIds.slice(0, limit)
       }
@@ -295,7 +318,7 @@ export function newContactsManager({ rest, peers, getMe, state }: ContactsDeps) 
         share_phone: input.sharePhone ?? false,
       })
       peers.saveApiPeers({ users: r.users })
-      for (const contact of r.contacts ?? []) pushContact(contact.user_id)
+      for (const contact of r.contacts ?? []) onContactUpdated(contact.user_id, true)
       return mapContacts(r)[0]
     },
 
@@ -304,7 +327,7 @@ export function newContactsManager({ rest, peers, getMe, state }: ContactsDeps) 
     // Удалённый — из книги и индекса (`onContactUpdated` → `popContact`).
     async del(contactId: number): Promise<void> {
       await rest.del(`/contacts/${contactId}`)
-      popContact(contactId)
+      onContactUpdated(contactId, false)
     },
 
     // Личное фото контакта (Telegram personal_photo, save=true): владелец видит

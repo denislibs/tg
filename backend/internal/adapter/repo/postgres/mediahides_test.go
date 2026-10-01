@@ -3,7 +3,9 @@ package postgres
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/messenger-denis/backend/internal/domain"
 	storepostgres "github.com/messenger-denis/backend/internal/store/postgres"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
@@ -78,5 +80,54 @@ func TestMessagesRepo_HiddenForViewerExcludedFromMediaAndSearch(t *testing.T) {
 	}
 	if res.Count != 1 || len(res.Messages) != 1 || res.Messages[0].ID != visible.ID {
 		t.Fatalf("глобальный поиск у a = %d сообщений count=%d; ждали только видимое", len(res.Messages), res.Count)
+	}
+}
+
+// Календарь медиа у пикера даты (messages.getSearchResultsCalendar с
+// inputMessagesFilterPhotoVideo) — тот же поиск по виду медиа: фото, удалённое
+// зрителем «у себя», не попадает ни в счётчик дня, ни в его превью. У
+// собеседника день остаётся полным.
+func TestMessagesRepo_CalendarMonthExcludesHiddenForViewer(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+7522")
+	b := seedUser(t, pool, "+7523")
+	chatID := createPrivate(t, pool, a, b)
+	msgs := NewMessagesRepo(pool)
+
+	photo := func(key string) domain.Message {
+		t.Helper()
+		mediaID := seedMedia(t, pool, b, key)
+		seq, err := msgs.NextSeq(ctx, chatID)
+		if err != nil {
+			t.Fatalf("nextSeq: %v", err)
+		}
+		m, err := msgs.Insert(ctx, domain.Message{ChatID: chatID, Seq: seq, SenderID: b, Type: "photo", MediaID: &mediaID})
+		if err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+		return m
+	}
+	visible := photo("cal-visible")
+	hidden := photo("cal-hidden")
+	if err := msgs.HideForUser(ctx, a, hidden.ID); err != nil {
+		t.Fatalf("hide: %v", err)
+	}
+
+	from := time.Now().Add(-24 * time.Hour)
+	to := time.Now().Add(24 * time.Hour)
+	days, err := msgs.CalendarMonth(ctx, chatID, a, from, to)
+	if err != nil {
+		t.Fatalf("CalendarMonth(a): %v", err)
+	}
+	if len(days) != 1 || days[0].Count != 1 || days[0].TopSeq != visible.Seq || days[0].MaxSeq != visible.Seq {
+		t.Fatalf("календарь у a = %+v; ждали один день с count=1 и превью %d", days, visible.Seq)
+	}
+	days, err = msgs.CalendarMonth(ctx, chatID, b, from, to)
+	if err != nil {
+		t.Fatalf("CalendarMonth(b): %v", err)
+	}
+	if len(days) != 1 || days[0].Count != 2 || days[0].TopSeq != hidden.Seq {
+		t.Fatalf("календарь у b = %+v; ждали count=2 и превью %d — скрытие a его не трогает", days, hidden.Seq)
 	}
 }
