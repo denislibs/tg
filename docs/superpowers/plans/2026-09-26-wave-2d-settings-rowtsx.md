@@ -1130,7 +1130,18 @@ BLOCKED (`changeAuthorizationSettings`, О-8): секции нет, у нас с
 **Зависимости:** 2C. **Врезка:** `tabs.ts`, `SettingsView.tsx`, `SettingsSubScreen.tsx`; удалить
 `settings/SpeakersCamera.tsx` + `.module.scss`.
 
-### Задача 27: «Редактировать профиль» (2C)
+### Задача 27: «Редактировать профиль» (2C) — ✅ сделано (PR feat/2d-27-edit-profile-tab)
+
+> **Итог:** вкладка `sidebarLeft/tabs/editProfile.solid.tsx` + `getEditProfileInitArgs`
+> (`solidJsTabs/tabs.ts`, `me` из зеркала `chatsStore`); `AvatarEdit`/`EditPeer` — классы
+> волны 7 дословно (0а-3, 0б-10), ветка аватара `EditPeer` (`editPeer.ts:56-64`) — во
+> вкладке; `UsernameInputField` + `isUsernameValid` (`lib/richtext/validators.ts`);
+> `profile.checkUsername` отдаёт отказ `USERNAME_INVALID` вызывающему, как
+> `account.checkUsername`. Кроп и видео-аватар — медиаредактор (О-24, программа МР-5/МР-6).
+> День рождения — мост к React `BirthdayModal` до 2C-14 (`settingsPopups.tsx`). Выяснено:
+> ручек личного канала нет (О-25). Новые: О-62…О-65. React `settings/EditProfile.tsx` снесён,
+> `AvatarCropper`/`BirthdayModal` остались у потребителей задачи 30.
+
 
 **Порт:** `editProfile.tsx` (436) → `sidebarLeft/tabs/editProfile.solid.tsx` (вкладка :93,
 `noSame`, префетч `getEditProfileInitArgs`); `avatarEdit.ts` (417) + `editPeer.ts` (123) → классы
@@ -1297,8 +1308,8 @@ RowTsxController` + `attachRowController(this, {…, middleware})`, `destroy()` 
 | О-21 | `exclude_archived`, закреплённые в папке | нет на проводе | категории редактора 1:1 |
 | О-22 | Лимиты `folders`/`folderPeers`/`chatlistInvites` + `PopupLimit` | бэкенд не отдаёт лимиты (`MaxFoldersPerUser = 10` зашит, `domain/folder.go:12`); попап — 2C. До них отказ сервера по числу папок — тост `LimitReached` (задача 24) | апселл лимитов |
 | О-23 | Выбор чатов ссылки папки (`editExportedInvite`): галка «Save», событие `edit`, подтверждение на закрытии (`sharedFolder.tsx:86-89`, `:103-112`, `:258-272`) | нет ручки правки ссылки (есть создание/список/отзыв — `router.go`, `/me/folders/{id}/invites`); вкладка ссылки рисует чаты ссылки, выбор «трясётся» (задача 25) | shared folder 1:1 |
-| О-24 | Видео-аватар и крошилка через медиаредактор | редактор — React (`MediaEditor.tsx`), волна 4 | `AvatarEdit` 1:1 |
-| О-25 | Личный канал в профиле | выяснить в задаче 27 (`updatePersonalChannel`) | секция PersonalChannel |
+| О-24 | Видео-аватар и крошилка через медиаредактор (`getFileAndOpenEditor`, `finishFromResult`, `avatarEdit.ts:172-313`) | редактор — React (`MediaEditor.tsx`); порт — программа медиаредактора (`2026-09-30-media-editor-port.md`, МР-5/МР-6). До неё `AvatarEdit` профиля берёт картинку выбором файла без кропа (задача 27) | `AvatarEdit` 1:1 |
+| О-25 | Личный канал в профиле (`editProfile.tsx:427-438`, `:99-102`, `:141-171`, `:213-251`, `:329-331`) | выяснено задачей 27: нет `personal_channel_id` в `UserFull` бэкенда, ручек `account.updatePersonalChannel` и `channels.getAdminedPublicChannels({for_personal})` | секция PersonalChannel |
 | О-26 | Поиск по настройкам и меню шапки из 34f417d12 (`SliderSuperTab.shown`, NavigationItem `settings-search`, `tg://settings/…`) | волна 4 дельты; нужен индекс вкладок, который строится после переезда всех вкладок | поиск по настройкам |
 | О-27 | Попап настроек при свёрнутой колонке (`SettingsSliderPopup`, `createTab`-override `sidebarLeft/index.ts:1730-1741`) | предмет появился задачей 28 (колоночный слайдер `columnSlider.ts`), порт не сделан — вкладка открывается в развёрнутой колонке (`has-open-tabs` раскрывает свёрнутую) | настройки поверх чата на узкой колонке |
 | ~~О-29~~ | ~~Модель отступов `MediaHeader` HEAD (`gap: .5rem`) и под неё `authFlow`~~ | **снято** (ветка `fix/w2d-mediaheader-rtl-overlay`): `mediaHeader.module.scss` дословно с HEAD, `auth/AuthFlow.module.scss` `.qrContainer`, карточки входа — `h1` и `class="secondary"`; отступы экрана входа = tweb HEAD, замеры — `docs/tweb/dom/auth.md` §8.4 | — |
@@ -1315,6 +1326,10 @@ RowTsxController` + `attachRowController(this, {…, middleware})`, `destroy()` 
 | О-40 | Файл обоев фона (`core/chat/chatBackgroundStore.ts`): без корзины `cachedBackgrounds`, общих object URL и SW-скоупа `backgrounds` (`lib/chatBackgroundStore.ts:40-148`); своё фото — обычное медиа (`cachedMediaUrl`/`ensureMediaUrl`), под замком без адреса в зеркале — обои темы | серверных обоев нет (О-11), медиа-конвейер без ключа недоступен (сверить номер с параллельными ветками) | серверные обои (вместе с О-11) |
 | О-41 | Гейт `premiumBlocked` Premium-секции корня (`settings.tsx:314-318`, `apiManagerProxy.isPremiumPurchaseBlocked()`) | источника «покупка Premium запрещена» у нас нет — секция видна всегда (задача 28, расхождение 5 шапки `settings.solid.tsx`) | запрет покупки Premium (регион/платформа) |
 | О-42 | Строка TON (`useStars(true)`, `hasTonTransactions`, `settings.tsx:430-437`) и бизнес-бот в счётчике «Устройств» (`getConnectedBot`, `chat_automation_update`, `:279-298`) | нет баланса/транзакций TON и подключённых бизнес-ботов на бэкенде (задача 28, расхождения 5–6) | TON-звёзды; бизнес-боты |
+| О-62 | `UsernamesSection` профиля (`editProfile.tsx:421-425`, `usernamesSection.tsx`): несколько имён, их порядок и скрытие | у пользователя одно имя (`users.username`), нет `usernames[]`, `toggleUsername`, `reorderUsernames` (задача 27) | коллекционные имена |
+| О-63 | Подпись покупки имени (`purchaseUsernameCaption`, `editProfile.tsx:150`, `:396-401`) и ветка `USERNAME_PURCHASE_AVAILABLE` поля имени (`usernameInputField.ts:84-87`) | торговли именами (Fragment) нет, сервер такого отказа не шлёт (задача 27) | покупка имени |
+| О-64 | Лимит bio с сервера (`apiManager.getLimit('bio')`, премиум — 140; tweb `tabs.ts:86`) | лимитов в конфиге нет; бэкенд режет `maxBioLen = 70` для всех (`usecase/auth/profile.go:14`), вкладка берёт то же число (задача 27) | премиум-лимит bio |
+| О-65 | Кольцо загрузки аватара на большом аватаре профиля (`trackAvatarUpload`, `stores/avatarUpload.ts`, `editProfile.tsx:313-316`) | `media.upload` не отдаёт ни прогресса, ни отмены (`CancellablePromise`); у `PeerProfileAvatars` нет кольца (задача 27) | отменяемая загрузка с прогрессом |
 
 ## Оценка объёма
 

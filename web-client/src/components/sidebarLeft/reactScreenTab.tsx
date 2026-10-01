@@ -1,12 +1,12 @@
 /**
- * ВРЕМЕННЫЙ МОСТ (снимается задачами 2D-15, 2D-23, 2D-26, 2D-27): React-экран
+ * ВРЕМЕННЫЙ МОСТ (снимается задачами 2D-15, 2D-23, 2D-26): React-экран
  * настроек вкладкой колоночного слайдера.
  *
- * Корень настроек — Solid-вкладка `AppSettingsTab` (задача 2D-28), а четыре его
+ * Корень настроек — Solid-вкладка `AppSettingsTab` (задача 2D-28), а три его
  * подэкрана ещё не портированы и существуют только React-компонентами на
  * React-ките `settings/kit.tsx`: «Конфиденциальность» (2D-23), «Стикеры и
- * эмодзи» (2D-15), «Динамики и камера» (2D-26), «Редактировать профиль»
- * (2D-27). Строка Solid-корня обязана открывать их так же, как у tweb, —
+ * эмодзи» (2D-15), «Динамики и камера» (2D-26); «Редактировать профиль» уже
+ * Solid (2D-27). Строка Solid-корня обязана открывать их так же, как у tweb, —
  * `tab.slider.createTab(AppXxxTab).open()`. Поэтому классы вкладок заведены под
  * именами оригинала в `solidJsTabs/tabs.ts`, а их содержимое до порта рисует
  * этот мост: вкладка слайдера, в которой вместо Solid-острова — React-корень
@@ -43,17 +43,14 @@ export type ReactScreenTabProps = {
 
 type ReactScreenTabClass = (new (...args: ConstructorParameters<typeof SliderSuperTab>) => SliderSuperTab & {
   init(): Promise<void>
-}) & { noSame?: boolean }
+})
 
 export function scaffoldReactScreenTab({
   getComponentModule,
-  noSame,
 }: {
   getComponentModule: () => Promise<{ default: ComponentType<ReactScreenTabProps> }>
-  /** tweb `(AppXxxTab as any).noSame = true` — повторное открытие поверх себя */
-  noSame?: boolean
 }): ReactScreenTabClass {
-  const ctor = class extends SliderSuperTab {
+  return class extends SliderSuperTab {
     private root?: Root
 
     public async init() {
@@ -83,10 +80,4 @@ export function scaffoldReactScreenTab({
       super.onCloseAfterTimeout()
     }
   }
-
-  if(noSame) {
-    (ctor as ReactScreenTabClass).noSame = true
-  }
-
-  return ctor
 }

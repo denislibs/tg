@@ -35,10 +35,10 @@
  *     `showStarsPopup`/`showSendGiftPicker` — мосты к React-попапам до 2C-13,
  *     2C-17…2C-20 (`sidebarLeft/settingsPopups.tsx`, ВРЕМЕННО у каждой).
  *  4. `AppPrivacyAndSecurityTab`, `AppStickersAndEmojiTab`,
- *     `AppSpeakersAndCameraTab`, `AppEditProfileTab` — классы tweb, но
- *     содержимое до порта — React-экраны (`scaffoldReactScreenTab`, ВРЕМЕННО
- *     до 2D-23, 2D-15, 2D-26, 2D-27). `getEditProfileInitArgs(true)` (:106) не
- *     передаётся — React-экран грузит профиль сам.
+ *     `AppSpeakersAndCameraTab` — классы tweb, но содержимое до порта —
+ *     React-экраны (`scaffoldReactScreenTab`, ВРЕМЕННО до 2D-23, 2D-15,
+ *     2D-26). `getEditProfileInitArgs` (:106) — без `overwriteConnectedBot`:
+ *     бизнес-бота нет (расхождение 6).
  *  5. `premiumBlocked` (:315-318) — ВСЕГДА ложь: источника
  *     `apiManagerProxy.isPremiumPurchaseBlocked()` у нас нет, секция видна
  *     всегда. Строки TON (`useStars(true)`, `hasTonTransactions`, :329-331,
@@ -77,6 +77,7 @@ import {
   AppPrivacyAndSecurityTab,
   AppSpeakersAndCameraTab,
   AppStickersAndEmojiTab,
+  getEditProfileInitArgs,
 } from '@components/solidJsTabs/tabs'
 import {
   showLogOutPopup,
@@ -146,7 +147,7 @@ const Settings = () => {
       icon: 'edit',
       text: 'EditAccount.Title',
       // расхождение 4
-      onClick: () => void slider().createTab(AppEditProfileTab).open(),
+      onClick: () => void slider().createTab(AppEditProfileTab).open(getEditProfileInitArgs()),
     }, {
       icon: 'qr',
       text: 'QRCode.Title',

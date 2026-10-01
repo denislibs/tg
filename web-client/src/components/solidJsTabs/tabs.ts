@@ -423,14 +423,30 @@ export const AppSpeakersAndCameraTab =
     getComponentModule: () => import('../settings/SpeakersCamera'),
   })
 
-// ВРЕМЕННО до 2D-27 (tweb :93-98, `editProfile.tsx`; `noSame` — :98).
-// `getEditProfileInitArgs` (предзагрузка профиля и бота) — с портом: React-экран
-// грузит своё сам.
-export const AppEditProfileTab =
-  scaffoldReactScreenTab({
-    getComponentModule: () => import('../settings/EditProfile'),
-    noSame: true,
-  })
+// tweb :84-98 — «Редактировать профиль» (`editProfile.solid.tsx`, задача 27
+// плана 2D). Предзагрузку `getEditProfileInitArgs` зовёт открывающая сторона
+// (⋮ корня настроек, tweb `settings.tsx:106`). Отличия от оригинала — шапка
+// модуля: `me` берётся из зеркала `chatsStore` (мост чтения, п. 4), лимит bio —
+// число серверного правила (О-64, п. 3), бизнес-бота нет (п. 6). Импорт — у
+// блока, как у папок ниже: блок меняется одним куском.
+import { useChatsStore } from '@stores/chatsStore'
+
+export function getEditProfileInitArgs(): import('../sidebarLeft/tabs/editProfile.solid').EditProfileTabPayload {
+  const me = useChatsStore.getState().me!
+  return {
+    bioMaxLength: 70,
+    user: me.user,
+    userFull: me.fullUser,
+  }
+}
+
+export const AppEditProfileTab = Object.assign(
+  scaffoldSolidJSTab<import('../sidebarLeft/tabs/editProfile.solid').EditProfileTabPayload>({
+    title: 'EditAccount.Title',
+    getComponentModule: () => import('../sidebarLeft/tabs/editProfile.solid'),
+  }),
+  { noSame: true },
+)
 
 // ── Папки (tweb :609-619, :804-845) — задача 24 плана 2D ─────────────────────
 // Список (`chatFolders.solid.tsx`), редактор (`editFolder.solid.tsx`) и выбор

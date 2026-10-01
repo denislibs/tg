@@ -197,7 +197,7 @@ div#column-left.tabs-tab.chatlist-container.sidebar.sidebar-left.main-column.sid
 | `createNewGroupTab.ts` :5 | функция-обёртка (не таб) | флоу «новая группа»: AddMembers → NewGroup | `sidebarLeft/index.ts:1033`, `internalLinkProcessor.ts:707` |
 | `newGroup.tsx` :267 | `AppNewGroupTab` :246-250 (`noSame`) | финальный шаг создания группы | `createNewGroupTab.ts:9` (`takeOut`), `sidebarRight/tabs/chatDiscussion.tsx:56` |
 | `newChannel.tsx` :101 | `AppNewChannelTab` :222-226 (`noSame`) | создание канала | `sidebarLeft/index.ts:1048`, `internalLinkProcessor.ts:705` |
-| `editProfile.tsx` :63 | `AppEditProfileTab` :86-90 (+префетч :78-84, `noSame`) | редактирование профиля | `settings.tsx:115` (кнопка edit), `internalLinkProcessor.ts:730` |
+| `editProfile.tsx` :63 | `AppEditProfileTab` :86-90 (+префетч :78-84, `noSame`) | редактирование профиля; у нас — `sidebarLeft/tabs/editProfile.solid.tsx` (план 2D, задача 27) | `settings.tsx:115` (кнопка edit), `internalLinkProcessor.ts:730` |
 | `myStories.tsx` :161 | `AppMyStoriesTab` :657-663 (+`getInitArgs`; title по `isArchive`) | свои истории / архив историй | `sidebarLeft/index.ts:707` (меню), `stories/list.tsx:356,363`, `stories/profileList.tsx:804`, `internalLinkProcessor.ts:1313`, `myStories.tsx:40` |
 | `language.tsx` :176 | `AppLanguageTab` :155-159 | язык | `settings.tsx:252` |
 | `keyboardShortcuts.tsx` :279 (812502980) | `AppKeyboardShortcutsTab` :113-117 (812502980) | горячие клавиши | `settings.tsx:413` (812502980) |
@@ -746,8 +746,8 @@ Close/RestartTopic `:224` · ChargeFee `:238` · Delete `:248`.
 |---|---|---|
 | `src/components/Sidebar.tsx` (:61) | оркестратор колонки: `#column-left` с tweb-классами (:213-215), композиция хуков `useSidebar*` | `AppSidebarLeft.construct` |
 | `src/components/SidebarScreens.tsx` | экраны колонки, ещё не ставшие вкладками, — **один enum-стейт** `'contacts'\|'wallet'\|'calls'\|'newGroup'\|'newChannel'\|'newPrivate'\|'newSecret'\|null` (этап 0а волны 7), lazy-подгрузка Wallet/Calls; настроек здесь нет с задачи 28 плана 2D | стек `SliderSuperTab` |
-| `src/components/sidebarLeft/tabs/settings.solid.tsx` + `sidebarLeft/columnSlider.ts` | корень настроек — вкладка `AppSettingsTab` колоночного слайдера (задача 28 плана 2D); подэкраны — вкладки того же слайдера (`tab.slider.createTab`), ещё не портированные «Конфиденциальность»/«Стикеры»/«Динамики»/«Профиль» — React-экраны на мосту `sidebarLeft/reactScreenTab.tsx` (ВРЕМЕННО до 2D-23/15/26/27) | `AppSettingsTab` + дерево части 2 |
-| `src/components/settings/*` | реализации ещё не портированных под-экранов (Passkeys, BlockedUsers, AutoDelete, EditProfile…). «Быстрой реакции» здесь БОЛЬШЕ НЕТ — вкладка `sidebarLeft/tabs/quickReaction.solid.tsx` (задача 14 плана 2D). «Устройства» здесь БОЛЬШЕ НЕТ — уехали на слайдер, см. §3; «Обои» и «Цвет» — тоже (`sidebarLeft/tabs/background.solid.tsx`, `backgroundColor.solid.tsx`, задача 12 плана 2D; открывает строка React-«Общих» через хост) | `sidebarLeft/tabs/*` |
+| `src/components/sidebarLeft/tabs/settings.solid.tsx` + `sidebarLeft/columnSlider.ts` | корень настроек — вкладка `AppSettingsTab` колоночного слайдера (задача 28 плана 2D); подэкраны — вкладки того же слайдера (`tab.slider.createTab`), ещё не портированные «Конфиденциальность»/«Стикеры»/«Динамики» — React-экраны на мосту `sidebarLeft/reactScreenTab.tsx` (ВРЕМЕННО до 2D-23/15/26); «Профиль» — вкладка `sidebarLeft/tabs/editProfile.solid.tsx` (задача 27) | `AppSettingsTab` + дерево части 2 |
+| `src/components/settings/*` | реализации ещё не портированных под-экранов (Passkeys, BlockedUsers, AutoDelete…). «Редактировать профиль» здесь БОЛЬШЕ НЕТ — вкладка `sidebarLeft/tabs/editProfile.solid.tsx` (задача 27 плана 2D). «Быстрой реакции» здесь БОЛЬШЕ НЕТ — вкладка `sidebarLeft/tabs/quickReaction.solid.tsx` (задача 14 плана 2D). «Устройства» здесь БОЛЬШЕ НЕТ — уехали на слайдер, см. §3; «Обои» и «Цвет» — тоже (`sidebarLeft/tabs/background.solid.tsx`, `backgroundColor.solid.tsx`, задача 12 плана 2D; открывает строка React-«Общих» через хост) | `sidebarLeft/tabs/*` |
 | `src/lib/appDialogsManager.ts` | папочный срез владельца: `.chatlist-overlay` с Solid-рядом вкладок, `#folders-container`, скроллер на папку, переключение (`horizontalMenu` + `TransitionSlider`); встроен в колонку `Sidebar.tsx` (план папок, задача 6) | `AppDialogsManager` (папки) |
 | `src/components/ChatList.tsx` / `ChatListItem.tsx` | списки папок на виртуальном ядре — порталом в `.chatlist-top` контейнеров владельца | `AutonomousDialogList` (строки) + `DialogElement` |
 | `src/components/virtual/DeferredSortedVirtualList.*` | порт `deferredSortedVirtualList` | 1:1 |
@@ -916,8 +916,8 @@ React о закрытии вкладки узнаёт только от слай
 - **`SidebarSlider.destroy()`** — колонка монтируется и размонтируется вместе с React-шеллом
   (выход из аккаунта, тесты); вкладки уходят с ней. Снимает Э4-1 (колонки из `index.html`);
 - **React-экраны вкладками** (`sidebarLeft/reactScreenTab.tsx`) — «Конфиденциальность»,
-  «Стикеры и эмодзи», «Динамики и камера», «Редактировать профиль» ещё на ките; классы вкладок
-  уже tweb, содержимое — React-корень. Снимают 2D-23/15/26/27;
+  «Стикеры и эмодзи», «Динамики и камера» ещё на ките; классы вкладок уже tweb, содержимое —
+  React-корень. Снимают 2D-23/15/26 («Редактировать профиль» снят задачей 27);
 - **«Устройства» из React-«Конфиденциальности»** — `openActiveSessionsTab` (порт
   `newAuthorization.tsx:116-121`); корень открывает вкладку сам (`onDevicesClick`, tweb :354-383).
 
