@@ -2,15 +2,19 @@
 // hooks/useHeavyAnimationCheck.ts). Проверяем контракт, на который завязан
 // animationIntersector: старт по первому dispatch, конец только когда доиграли
 // ВСЕ объявленные промисы, страховочный timeout и досрочный обрыв.
+//
+// «Идёт ли анимация» спрашивается так же, как у потребителей tweb
+// (`scrollable.ts:180`, `lazyLoadQueue.ts:42`): `!getHeavyAnimationPromise().isFulfilled`.
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import ListenerSetter from '@helpers/listenerSetter'
 import {
   dispatchHeavyAnimationEvent,
   getHeavyAnimationPromise,
   interruptHeavyAnimation,
-  isHeavyAnimationInProgress,
-  offHeavyAnimation,
   onHeavyAnimation,
 } from './heavyAnimation'
+
+const isAnimating = () => !getHeavyAnimationPromise().isFulfilled
 
 // каждый тест начинает с «ничего не играет»
 beforeEach(() => {
@@ -19,7 +23,7 @@ beforeEach(() => {
 
 describe('heavyAnimation', () => {
   it('в покое не идёт, промис уже зарезолвен', async () => {
-    expect(isHeavyAnimationInProgress()).toBe(false)
+    expect(isAnimating()).toBe(false)
     await expect(getHeavyAnimationPromise()).resolves.toBeUndefined()
   })
 
@@ -34,19 +38,19 @@ describe('heavyAnimation', () => {
     void dispatchHeavyAnimationEvent(new Promise<void>((r) => { resolveB = r }))
 
     expect(start).toHaveBeenCalledTimes(1)
-    expect(isHeavyAnimationInProgress()).toBe(true)
+    expect(isAnimating()).toBe(true)
 
     // первый доиграл — событие ещё идёт, второй в очереди
     resolveA()
     await Promise.resolve()
     await Promise.resolve()
-    expect(isHeavyAnimationInProgress()).toBe(true)
+    expect(isAnimating()).toBe(true)
     expect(end).not.toHaveBeenCalled()
 
     resolveB()
     await a
     expect(end).toHaveBeenCalledTimes(1)
-    expect(isHeavyAnimationInProgress()).toBe(false)
+    expect(isAnimating()).toBe(false)
 
     off()
   })
@@ -70,12 +74,12 @@ describe('heavyAnimation', () => {
       const end = vi.fn()
       const off = onHeavyAnimation(() => {}, end)
       const promise = dispatchHeavyAnimationEvent(new Promise<void>(() => {}), 50)
-      expect(isHeavyAnimationInProgress()).toBe(true)
+      expect(isAnimating()).toBe(true)
 
       await vi.advanceTimersByTimeAsync(60)
       await promise
       expect(end).toHaveBeenCalledTimes(1)
-      expect(isHeavyAnimationInProgress()).toBe(false)
+      expect(isAnimating()).toBe(false)
       off()
     } finally {
       vi.useRealTimers()
@@ -91,7 +95,7 @@ describe('heavyAnimation', () => {
     interruptHeavyAnimation()
     await promise
     expect(end).toHaveBeenCalledTimes(1)
-    expect(isHeavyAnimationInProgress()).toBe(false)
+    expect(isAnimating()).toBe(false)
 
     // «опоздавший» промис не должен породить второй end
     resolve()
@@ -101,15 +105,46 @@ describe('heavyAnimation', () => {
     off()
   })
 
-  it('off снимает слушателя', async () => {
+  it('функция отписки снимает слушателя', async () => {
     const start = vi.fn()
     const end = vi.fn()
-    onHeavyAnimation(start, end)
-    offHeavyAnimation(start, end)
+    const off = onHeavyAnimation(start, end)
+    off()
 
     const promise = dispatchHeavyAnimationEvent(Promise.resolve())
     await promise
     expect(start).not.toHaveBeenCalled()
     expect(end).not.toHaveBeenCalled()
+  })
+
+  // tweb useHeavyAnimationCheck.ts:79-91 — третий аргумент: подписку снимает
+  // `listenerSetter.removeAll()` владельца (так её отдаёт лента, bubbles.ts:1704).
+  it('подписка через listenerSetter снимается его removeAll', async () => {
+    const start = vi.fn()
+    const end = vi.fn()
+    const listenerSetter = new ListenerSetter()
+    onHeavyAnimation(start, end, listenerSetter)
+    listenerSetter.removeAll()
+
+    await dispatchHeavyAnimationEvent(Promise.resolve())
+    expect(start).not.toHaveBeenCalled()
+    expect(end).not.toHaveBeenCalled()
+  })
+
+  it('подписка через listenerSetter получает start и end', async () => {
+    const start = vi.fn()
+    const end = vi.fn()
+    const listenerSetter = new ListenerSetter()
+    onHeavyAnimation(start, end, listenerSetter)
+
+    await dispatchHeavyAnimationEvent(Promise.resolve())
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(end).toHaveBeenCalledTimes(1)
+    listenerSetter.removeAll()
+  })
+
+  // tweb useHeavyAnimationCheck.ts:58 — отладочная ручка в глобальном объекте.
+  it('dispatchHeavyAnimationEvent выставлен на window', () => {
+    expect((window as unknown as Record<string, unknown>).dispatchHeavyAnimationEvent).toBe(dispatchHeavyAnimationEvent)
   })
 })
