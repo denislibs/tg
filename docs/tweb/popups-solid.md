@@ -344,7 +344,7 @@ SCSS HEAD (`_popup.scss`), которых не было у нас (**перен�
 | `rtmp/outputDevicePopup.tsx` — мост `showOutputDevicePopup` (ВРЕМЕННО до 2C-12; сигнатура tweb) | RP | `call/callDeviceSettings.solid.tsx` (`pick`) | `showOutputDevicePopup` |
 | `settings/BirthdayModal.tsx` (87) | PT, без портала | `EditContactView.tsx:173`, `settings/EditProfile.tsx:288` | `showBirthdayPopup` |
 | `messages/ChatDialogs.tsx` `ContactPicker` | RP+PS | `useChatPopups.tsx:248` | `showContactPickerPopup` — строки из адресной книги (`useContactPeerIds`, `peerType: ['contacts']`), не из личных диалогов |
-| `settings/PrivacyUserPicker.tsx` (99) | экран, не попап | `BlockedUsers.tsx:61`, `PrivacyRule.tsx:127` | `showPickUserPopup` (`blockedUsers.tsx:68`); в правилах — `AppAddMembersTab` (2D-16/17) |
+| ~~`settings/PrivacyUserPicker.tsx`~~ (снесён задачей 2D-22) | экран, не попап | FAB `sidebarLeft/tabs/blockedUsers.solid.tsx` — пока `AppAddMembersTab` (ВРЕМЕННО до 2C-16) | `showPickUserPopup` (`blockedUsers.tsx:68`); в правилах — `AppAddMembersTab` (2D-16/17) |
 | `messages/ChatDialogs.tsx` `ForwardPicker` (+ `pickUserFolderTabs.ts`) | RP | `ChatMsgActionPopups.tsx:93`, `StoryViewer.tsx:607` | `showForwardPopup` — фильтр прав `chatRightsActions` (`core/peers/filterByRights.ts`: по пересылаемым сообщениям, у истории `send_media`), «Избранное» первым, «недавние» — только собеседники. Не портировано: контакты без диалога в хвосте списка (`peerType: ['dialogs', 'contacts']`), рейтинг `getTopPeers('correspondents')`, звёзды/премиум-замок (О-31) |
 | `messages/ChatDialogs.tsx:64` `openDeleteMessageDialog` | V | `ChatMsgActionPopups.tsx:49` | `showDeleteMessagesPopup` |
 | `ChatDialogs.tsx:438` `ReactedUsersPopup` | own | `ChatMsgActionPopups.tsx:88` | `showReactedListPopup` |

@@ -425,6 +425,13 @@ function Composer({
   const [stickerEmoji, setStickerEmoji] = useState<string | null>(null)
   const checkStickerSuggest = () => {
     if (!onPickSticker) return
+    // tweb chat/input.ts:3843 — `appSettings.stickers.suggest !== 'none'`
+    // («Стикеры и эмодзи» → «Suggest Stickers by Emoji»). Читается в момент
+    // проверки, как у оригинала, — подписка композеру не нужна.
+    if (useSettingsStore.getState().stickersSuggest === 'none') {
+      setStickerEmoji(null)
+      return
+    }
     setStickerEmoji(stickerSuggestEmoji(editorRef.current?.textContent ?? ''))
   }
   const pickStickerSuggestion = (st: Sticker) => {

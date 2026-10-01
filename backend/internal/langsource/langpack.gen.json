@@ -49,6 +49,18 @@
           "value": "Add Fact Check"
         },
         {
+          "key": "AddMembersAlertCountText",
+          "value": "Are you sure you want to add %1$s to **%2$s**?"
+        },
+        {
+          "key": "AddMembersAlertNamesText",
+          "value": "Are you sure you want to add %1$s to **%2$s**?"
+        },
+        {
+          "key": "AddMembersAlertTitle",
+          "value": "Add %1$s"
+        },
+        {
           "key": "AddOneMemberAlertTitle",
           "value": "Add member"
         },
@@ -415,10 +427,6 @@
         {
           "key": "BlockedEmpty",
           "value": "None"
-        },
-        {
-          "key": "BlockedEmptyDescription",
-          "value": "You haven't blocked anyone."
         },
         {
           "key": "BlockedUsers",
@@ -1663,10 +1671,6 @@
           "value": "Draft"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Dynamic Pack Order"
-        },
-        {
           "key": "Edit",
           "value": "Edit"
         },
@@ -1761,6 +1765,10 @@
         {
           "key": "Effect.Remove",
           "value": "Remove Effect"
+        },
+        {
+          "key": "Emoji",
+          "value": "Emoji"
         },
         {
           "key": "Emoji.Activity",
@@ -2272,6 +2280,10 @@
           "value": "View link"
         },
         {
+          "key": "InviteToGroupError",
+          "value": "Sorry, you can't add this user to groups because of user's privacy settings."
+        },
+        {
           "key": "JumpToDate",
           "value": "Jump to Date"
         },
@@ -2731,6 +2743,10 @@
           "value": "Password"
         },
         {
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Animated stickers will play continuously in chats."
+        },
+        {
           "key": "ManageLinks.DeleteAll.Confirm",
           "value": "Are you sure you want to delete all revoked links?"
         },
@@ -3082,10 +3098,6 @@
         },
         {
           "key": "NewChannel",
-          "value": "New Channel"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
           "value": "New Channel"
         },
         {
@@ -4631,6 +4643,10 @@
           "value": "Send Message"
         },
         {
+          "key": "SendMessageTo",
+          "value": "Add people..."
+        },
+        {
           "key": "Separator.ShowLess",
           "value": "show less"
         },
@@ -4669,10 +4685,6 @@
         {
           "key": "Settings",
           "value": "Settings"
-        },
-        {
-          "key": "Settings.BigEmoji",
-          "value": "Big Emoji"
         },
         {
           "key": "Settings.Limits",
@@ -5038,20 +5050,8 @@
           }
         },
         {
-          "key": "Stickers.AddSets",
-          "value": "Add Sticker Sets"
-        },
-        {
           "key": "Stickers.ClearRecent.Text",
           "value": "Are you sure you want to clear your recent stickers?"
-        },
-        {
-          "key": "Stickers.MySets",
-          "value": "My Sticker Sets"
-        },
-        {
-          "key": "Stickers.NoSets",
-          "value": "No sticker sets installed"
         },
         {
           "key": "Stickers.RemoveFromFavorites",
@@ -5062,12 +5062,12 @@
           "value": "Added"
         },
         {
-          "key": "Stickers.SearchSets",
-          "value": "Search sticker sets"
-        },
-        {
           "key": "Stickers.SuggestStickers",
           "value": "Suggest Stickers by Emoji"
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Artists are welcome to add their own sticker sets using our @stickers bot."
         },
         {
           "key": "StickersName",
@@ -5257,6 +5257,18 @@
           }
         },
         {
+          "key": "SuggestStickersAll",
+          "value": "All Sets"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "My Sets"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "None"
+        },
+        {
           "key": "SuggestedPosts.Empty",
           "value": "No suggested posts here yet…"
         },
@@ -5335,6 +5347,10 @@
         {
           "key": "Telegram.GeneralSettingsViewController",
           "value": "General Settings"
+        },
+        {
+          "key": "Telegram.InstalledStickerPacksController",
+          "value": "Stickers"
         },
         {
           "key": "Telegram.LanguageViewController",
@@ -7193,12 +7209,32 @@
           "value": "Подсказки эмодзи"
         },
         {
-          "key": "Settings.BigEmoji",
-          "value": "Большие эмодзи"
+          "key": "Emoji",
+          "value": "Эмодзи"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Динамический порядок наборов"
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Анимированные стикеры будут воспроизводиться в чатах непрерывно."
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Художники могут добавлять свои наборы стикеров с помощью нашего бота @stickers."
+        },
+        {
+          "key": "SuggestStickersAll",
+          "value": "Все наборы"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "Мои наборы"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "Нет"
+        },
+        {
+          "key": "Telegram.InstalledStickerPacksController",
+          "value": "Стикеры"
         },
         {
           "key": "Call.Output",
@@ -7463,10 +7499,6 @@
         {
           "key": "NewGroup",
           "value": "Создать группу"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
-          "value": "Новый канал"
         },
         {
           "key": "NewGroup.DefaultTitle",
@@ -9214,10 +9246,6 @@
           "value": "Заблокированные пользователи не могут писать вам и видеть ваш профиль."
         },
         {
-          "key": "BlockedEmptyDescription",
-          "value": "Вы никого не заблокировали."
-        },
-        {
           "key": "TwoStepAuth.SetPasswordCaption",
           "value": "Задайте дополнительный пароль, который понадобится при входе на новом устройстве."
         },
@@ -10369,18 +10397,6 @@
           "value": "Убрать из избранного"
         },
         {
-          "key": "Stickers.MySets",
-          "value": "Мои наборы стикеров"
-        },
-        {
-          "key": "Stickers.AddSets",
-          "value": "Добавить наборы"
-        },
-        {
-          "key": "Stickers.SearchSets",
-          "value": "Поиск наборов стикеров"
-        },
-        {
           "key": "Stickers",
           "forms": {
             "one_value": "%1$d стикер",
@@ -10388,10 +10404,6 @@
             "many_value": "%1$d стикеров",
             "other_value": "%1$d стикера"
           }
-        },
-        {
-          "key": "Stickers.NoSets",
-          "value": "Нет установленных наборов"
         },
         {
           "key": "StickersTab.SearchPlaceholder",
@@ -10973,6 +10985,26 @@
         {
           "key": "AddOneMemberAlertTitle",
           "value": "Добавить участника"
+        },
+        {
+          "key": "AddMembersAlertCountText",
+          "value": "Вы уверены, что хотите добавить %1$s в **%2$s**?"
+        },
+        {
+          "key": "AddMembersAlertNamesText",
+          "value": "Вы уверены, что хотите добавить %1$s в **%2$s**?"
+        },
+        {
+          "key": "AddMembersAlertTitle",
+          "value": "Добавить %1$s"
+        },
+        {
+          "key": "InviteToGroupError",
+          "value": "К сожалению, вы не можете добавить этого пользователя в группы из-за его настроек конфиденциальности."
+        },
+        {
+          "key": "SendMessageTo",
+          "value": "Добавить людей..."
         },
         {
           "key": "AutoDownloadSettings.LastDelimeter",
@@ -12343,12 +12375,28 @@
           "value": "Suggérer des émojis"
         },
         {
-          "key": "Settings.BigEmoji",
-          "value": "Grands émojis"
+          "key": "Emoji",
+          "value": "Émojis"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Ordre dynamique des packs"
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Les stickers animés seront lus en boucle dans les discussions."
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Les artistes peuvent ajouter leurs propres packs de stickers grâce à notre bot @stickers."
+        },
+        {
+          "key": "SuggestStickersAll",
+          "value": "Tous les packs"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "Mes packs"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "Aucun"
         },
         {
           "key": "Call.Output",
@@ -12509,10 +12557,6 @@
         {
           "key": "NewGroup",
           "value": "Nouveau groupe"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
-          "value": "Nouveau canal"
         },
         {
           "key": "NewGroup.DefaultTitle",
@@ -13374,10 +13418,6 @@
         {
           "key": "BlockedUsersInfoShort",
           "value": "Les utilisateurs bloqués ne peuvent pas vous envoyer de messages ni voir votre profil."
-        },
-        {
-          "key": "BlockedEmptyDescription",
-          "value": "Vous n'avez bloqué personne."
         },
         {
           "key": "TwoStepAuth.SetPasswordCaption",
@@ -15456,12 +15496,32 @@
           "value": "Emojis vorschlagen"
         },
         {
-          "key": "Settings.BigEmoji",
-          "value": "Große Emojis"
+          "key": "Emoji",
+          "value": "Emojis"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Dynamische Paketreihenfolge"
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Animierte Sticker werden in Chats fortlaufend abgespielt."
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Künstler können mit unserem Bot @stickers eigene Stickerpakete hinzufügen."
+        },
+        {
+          "key": "SuggestStickersAll",
+          "value": "Alle Pakete"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "Meine Pakete"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "Keine"
+        },
+        {
+          "key": "Telegram.InstalledStickerPacksController",
+          "value": "Sticker"
         },
         {
           "key": "Call.Output",
@@ -15626,10 +15686,6 @@
         {
           "key": "NewGroup",
           "value": "Neue Gruppe"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
-          "value": "Neuer Kanal"
         },
         {
           "key": "NewGroup.DefaultTitle",
@@ -16491,10 +16547,6 @@
         {
           "key": "BlockedUsersInfoShort",
           "value": "Blockierte Benutzer können dir keine Nachrichten senden und dein Profil nicht sehen."
-        },
-        {
-          "key": "BlockedEmptyDescription",
-          "value": "Du hast niemanden blockiert."
         },
         {
           "key": "TwoStepAuth.SetPasswordCaption",
@@ -18597,12 +18649,28 @@
           "value": "Sugerir emojis"
         },
         {
-          "key": "Settings.BigEmoji",
-          "value": "Emojis grandes"
+          "key": "Emoji",
+          "value": "Emojis"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Orden dinámico de paquetes"
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Los stickers animados se reproducirán continuamente en los chats."
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Los artistas pueden añadir sus propios packs de stickers con nuestro bot @stickers."
+        },
+        {
+          "key": "SuggestStickersAll",
+          "value": "Todos los packs"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "Mis packs"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "Ninguno"
         },
         {
           "key": "Call.Output",
@@ -18767,10 +18835,6 @@
         {
           "key": "NewGroup",
           "value": "Nuevo grupo"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
-          "value": "Canal nuevo"
         },
         {
           "key": "NewGroup.DefaultTitle",
@@ -19632,10 +19696,6 @@
         {
           "key": "BlockedUsersInfoShort",
           "value": "Los usuarios bloqueados no pueden enviarte mensajes ni ver tu perfil."
-        },
-        {
-          "key": "BlockedEmptyDescription",
-          "value": "No has bloqueado a nadie."
         },
         {
           "key": "TwoStepAuth.SetPasswordCaption",
@@ -21734,12 +21794,32 @@
           "value": "Підказки емодзі"
         },
         {
-          "key": "Settings.BigEmoji",
-          "value": "Великі емодзі"
+          "key": "Emoji",
+          "value": "Емодзі"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Динамічний порядок наборів"
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Анімовані стікери відтворюватимуться в чатах безперервно."
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Художники можуть додавати власні набори стікерів за допомогою нашого бота @stickers."
+        },
+        {
+          "key": "SuggestStickersAll",
+          "value": "Усі набори"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "Мої набори"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "Ні"
+        },
+        {
+          "key": "Telegram.InstalledStickerPacksController",
+          "value": "Стікери"
         },
         {
           "key": "Call.Output",
@@ -21904,10 +21984,6 @@
         {
           "key": "NewGroup",
           "value": "Створити групу"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
-          "value": "Новий канал"
         },
         {
           "key": "NewGroup.DefaultTitle",
@@ -22782,10 +22858,6 @@
         {
           "key": "BlockedUsersInfoShort",
           "value": "Заблоковані користувачі не можуть писати вам і бачити ваш профіль."
-        },
-        {
-          "key": "BlockedEmptyDescription",
-          "value": "Ви нікого не заблокували."
         },
         {
           "key": "TwoStepAuth.SetPasswordCaption",

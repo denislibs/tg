@@ -9,6 +9,7 @@ import type { UserReal } from '../../core/peers/peer'
 import { getUserTitle } from '../../core/peers/getPeerTitle'
 import type { InlineResult } from '../../core/managers/botsManager'
 import { placeCaretEnd } from './helpers'
+import { useSettingsStore } from '../../settings'
 
 export interface ComposerAutocompleteArgs {
   editorRef: RefObject<HTMLDivElement | null>
@@ -54,7 +55,9 @@ export function useComposerAutocomplete({
   // tweb checkAutocomplete: эмодзи-ветка — ':query' или обычное слово без :@/
   const checkEmojiAutocomplete = () => {
     const cw = caretWord()
-    if (!cw) {
+    // tweb chat/input.ts:3871 — `appSettings.emoji.suggest` («Стикеры и эмодзи» →
+    // «Suggest Emoji»), читается в момент проверки.
+    if (!cw || !useSettingsStore.getState().emojiSuggest) {
       setEmojiSug(null)
       return
     }

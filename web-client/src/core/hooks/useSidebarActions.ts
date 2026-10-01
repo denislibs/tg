@@ -3,7 +3,8 @@ import type { LangPackKey } from '../../lang'
 import { useManagers } from './useManagers'
 import type { GroupPhoto } from '../../components/NewGroupFlow'
 
-// Команды создания чатов из compose-меню сайдбара (порт tweb createChat/createChannel).
+// Команды создания чатов из compose-меню сайдбара (порт tweb createChat). «Новый канал» —
+// вкладка `AppNewChannelTab` (задача 0а-3 волны 7), сама зовёт `channels.createChannel`.
 // Read/command-путь через managers — по инварианту слоёв
 // (вниз: View → хук → managers → сервер). Открытие созданного чата — через
 // onChatCreated (навигация живёт в родителе/navigationStore, не тут).
@@ -32,10 +33,5 @@ export function useSidebarActions(onChatCreated?: (peerId: PeerId) => void) {
     onChatCreated?.(peerId) // setDraftPeer(null) + setSelectedId + loadChats
   }
 
-  const createChannel = async (name: string, description: string) => {
-    const peerId = await managers.channels.createChannel({ title: name || t('NewChannel.DefaultTitle'), about: description })
-    onChatCreated?.(peerId)
-  }
-
-  return { createGroup, createChannel }
+  return { createGroup }
 }

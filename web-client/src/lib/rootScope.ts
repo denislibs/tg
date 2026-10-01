@@ -29,6 +29,7 @@ import type { DialogOp } from '@core/dialogs/dialogOps'
 import type { PeerProfile } from '@core/managers/authManager'
 import type { MediaTokenInfo, MediaUrlEvt } from '@core/managers/mediaManager'
 import type { StickerSet } from '@core/managers/stickersManager'
+import type { PeerBlockEvt } from '@core/managers/privacyManager'
 
 export type { EventMeta } from '@rpc/superMessagePort'
 import type { EventMeta } from '@rpc/superMessagePort'
@@ -255,6 +256,12 @@ export type BroadcastEvents = {
   // components/sidebarRight/index.ts:101, :135). Местное (`dispatchEventSingle`):
   // колонку открыла/закрыла эта вкладка.
   'right_sidebar_toggle': [boolean]
+
+  // ── чёрный список (порт tweb rootScope.ts:53, отправитель —
+  // appProfileManager.ts:1528). Шлёт воркер после ответа сервера
+  // (`privacyManager.toggleBlock`), подписчик — вкладка «Заблокированные»
+  // (`sidebarLeft/tabs/blockedUsers.solid.tsx`).
+  'peer_block': [PeerBlockEvt]
 }
 
 export type BroadcastEventsListeners = {

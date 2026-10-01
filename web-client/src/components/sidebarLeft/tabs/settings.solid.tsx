@@ -34,9 +34,9 @@
  *  3. Попапы `showMyQrCodePopup`/`showLogOutPopup`/`showPremiumPopup`/
  *     `showStarsPopup`/`showSendGiftPicker` — мосты к React-попапам до 2C-13,
  *     2C-17…2C-20 (`sidebarLeft/settingsPopups.tsx`, ВРЕМЕННО у каждой).
- *  4. `AppPrivacyAndSecurityTab`, `AppStickersAndEmojiTab`,
- *     `AppEditProfileTab` — классы tweb, но содержимое до порта — React-экраны
- *     (`scaffoldReactScreenTab`, ВРЕМЕННО до 2D-23, 2D-15, 2D-27). `getEditProfileInitArgs(true)` (:106) не
+ *  4. `AppPrivacyAndSecurityTab`, `AppEditProfileTab` — классы tweb, но
+ *     содержимое до порта — React-экраны
+ *     (`scaffoldReactScreenTab`, ВРЕМЕННО до 2D-23, 2D-27). `getEditProfileInitArgs(true)` (:106) не
  *     передаётся — React-экран грузит профиль сам.
  *  5. `premiumBlocked` (:315-318) — ВСЕГДА ложь: источника
  *     `apiManagerProxy.isPremiumPurchaseBlocked()` у нас нет, секция видна

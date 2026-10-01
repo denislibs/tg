@@ -1,6 +1,5 @@
 import { lazy, Suspense } from 'react'
 import NewGroupFlow, { type GroupPhoto } from './NewGroupFlow'
-import NewChannelFlow from './NewChannelFlow'
 
 // Кошелёк (звёзды) и экран звонков — из меню, не первый кадр → лениво. Настроек
 // здесь больше нет: корень — вкладка колоночного слайдера (`AppSettingsTab`,
@@ -17,7 +16,7 @@ const CallsView = lazy(() => import('./CallsView'))
 // здесь больше нет: экран просто монтируется и размонтируется.
 export type SidebarScreen =
   | 'wallet' | 'calls'
-  | 'newGroup' | 'newChannel' | null
+  | 'newGroup' | null
 
 interface SidebarScreensProps {
   screen: SidebarScreen
@@ -25,7 +24,6 @@ interface SidebarScreensProps {
   close: () => void
   onSelect: (id: string) => void
   onCreateGroup: (name: string, memberIds: number[], photo: GroupPhoto | null) => void
-  onCreateChannel: (name: string, description: string) => void
 }
 
 export default function SidebarScreens({
@@ -33,7 +31,6 @@ export default function SidebarScreens({
   close,
   onSelect,
   onCreateGroup,
-  onCreateChannel,
 }: SidebarScreensProps) {
   return (
     <>
@@ -47,9 +44,6 @@ export default function SidebarScreens({
       </Suspense>
       {screen === 'newGroup' && (
         <NewGroupFlow onClose={close} onCreate={(name, memberIds, photo) => { onCreateGroup(name, memberIds, photo); close() }} />
-      )}
-      {screen === 'newChannel' && (
-        <NewChannelFlow onClose={close} onCreate={(name, description) => { onCreateChannel(name, description); close() }} />
       )}
     </>
   )

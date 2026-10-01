@@ -1,6 +1,6 @@
 /**
  * Пины моста «React-экран вкладкой колоночного слайдера»
- * (`reactScreenTab.tsx`, ВРЕМЕННО до 2D-15/23/26/27) и проводки React-экрана
+ * (`reactScreenTab.tsx`, ВРЕМЕННО до 2D-23/26/27) и проводки React-экрана
  * «Конфиденциальность», который через него живёт:
  *  1. мост кладёт React-экран в узел вкладки слайдера (соседом `.item-main`),
  *     стрелка кита закрывает вкладку, закрытая вкладка РАЗМОНТИРУЕТ React-корень;
@@ -69,7 +69,7 @@ function makeManagers() {
         passwordState: vi.fn(async() => ({ enabled: false })),
         passkeysList,
       },
-      privacy: { autoDelete: vi.fn(async() => 0) },
+      privacy: { getBlocked: async() => ({ count: 0, peerIds: [] }), autoDelete: vi.fn(async() => 0) },
       persist: { clearAll: vi.fn(async() => {}) },
     } as unknown as Managers,
   }

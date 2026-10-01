@@ -152,6 +152,17 @@ const APP_SETTINGS_KEYS = {
   // tweb `config/state.ts` (`settings.tabsInSidebar`) — «Расположение папок»
   // вкладки «Папки» (задача 24)
   tabsInSidebar: 'tabsInSidebar',
+  // tweb `config/state.ts:81-96` — «Стикеры и эмодзи» (задача 15). Без
+  // `stickers.dynamicPackOrder` (О-43), `stickers.hiddenGroup*Sets` (панель
+  // стикеров — React, пишет своё сама) и `emoji.big` (О-45): их читатели
+  // у нас не существуют, и тумблер ничего бы не менял.
+  stickers: {
+    suggest: 'stickersSuggest',
+    loop: 'loopStickers',
+  },
+  emoji: {
+    suggest: 'emojiSuggest',
+  },
   // tweb `config/state.ts:182-193` (`callDevices`) — «Динамики и камера»
   // (задача 26): выбор устройств звонка. `micVolume` и `noiseSuppression` нет —
   // их ручки живут в попапе настроек звонка (`call/settingsPopup.tsx`), у нас

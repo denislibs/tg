@@ -408,6 +408,24 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // React-экрана `ChatTypeScreen` ушли наши `LinkInvalid`/`LinkTaken` без других
 // читателей. Итог: ru 1410, uk 756, es/de 753, fr 748.
 //
+// Задача 15 плана 2D («Стикеры и эмодзи», порт tweb stickersAndEmoji.tsx): +7
+// ключей tweb lang.ts — `SuggestStickersAll`/`Installed`/`None`,
+// `LoopAnimatedStickersInfo`, `Emoji`, `Telegram.InstalledStickerPacksController`,
+// `StickersBotInfo`; у es и fr без `Telegram.InstalledStickerPacksController` —
+// «Stickers» там совпадает с английским (нижний слой). Сняты у всех пяти
+// `DynamicPackOrder` (секции нет, О-43) и наш `Settings.BigEmoji` (ни одного
+// читателя); у ru ещё четыре ключа снесённого React-экрана — `Stickers.MySets`,
+// `Stickers.NoSets`, `Stickers.AddSets`, `Stickers.SearchSets`. Итог (поверх 0б-2): ru 1411,
+// uk 761, es 757, de 758, fr 752.
+// Задача 22 плана 2D (вкладка «Заблокированные», порт tweb blockedUsers.tsx): −1 наш
+// ключ у всех пяти — `BlockedEmptyDescription` (пустое состояние снесённого
+// React-экрана; у оригинала его нет). Итог: ru 1409, uk 755, es/de 752, fr 747.
+// Задача 0а-3 волны 7 (вкладка «Новый канал», порт tweb newChannel.tsx +
+// addChatUsers.ts): у ru +5 ключей tweb lang.ts — подтверждение `addChatUsers`
+// (`AddMembersAlertTitle`/`AddMembersAlertCountText`/`AddMembersAlertNamesText`,
+// `InviteToGroupError`) и поле поиска выбора подписчиков `SendMessageTo`; −1 у всех
+// пяти: со сносом React-экрана `NewChannelFlow` ушёл наш `NewChannel.DefaultTitle`
+// (вкладка tweb без названия канал не создаёт). Итог: ru 1414, uk 755, es/de 752, fr 747.
 // Задача 26 плана 2D (вкладка «Динамики и камера», порт tweb
 // speakersAndCamera.tsx + call/*): +8 ключей tweb lang.ts всем пяти — имена
 // секций `CallSettings.OutputSection`/`InputSection`, подписи ошибок захвата
@@ -419,11 +437,11 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `CallSettings.AcceptCallsShort` (читателя не было и до задачи). Итог (поверх 0б-2): ru 1415,
 // uk 761, es/de 759, fr 754.
 const COMPOSITION = {
-  ru: { keys: 1415, plural: 42 },
-  uk: { keys: 761, plural: 31 },
-  es: { keys: 759, plural: 30 },
-  de: { keys: 759, plural: 31 },
-  fr: { keys: 754, plural: 30 },
+  ru: { keys: 1419, plural: 42 },
+  uk: { keys: 764, plural: 31 },
+  es: { keys: 761, plural: 30 },
+  de: { keys: 762, plural: 31 },
+  fr: { keys: 756, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -557,14 +575,20 @@ const COMPOSITION = {
 // Задачей 20 плана 2D — три ключа вкладки «Автоудаление» у всех пяти (там же).
 // Задачей 0б-2 волны 7 — +5 ключей вкладки типа чата у всех пяти, у ru — минус
 // `LinkInvalid`/`LinkTaken` снесённого React-экрана (разбор — там же).
+// Задачей 15 плана 2D — ключи «Стикеров и эмодзи» вместо ключей снесённого
+// React-экрана (разбор — у `COMPOSITION` выше).
+// Задачей 22 плана 2D — минус `BlockedEmptyDescription` у всех пяти (разбор — у
+// `COMPOSITION` выше).
+// Задачей 0а-3 волны 7 — у ru +5 ключей tweb, у всех пяти минус `NewChannel.DefaultTitle`
+// снесённого React-экрана (разбор — у `COMPOSITION` выше).
 // Задачей 26 плана 2D — ключи вкладки «Динамики и камера» вместо ключей
 // «Принимать звонки» (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '1ad14856',
-  uk: 'fbaa6981',
-  es: 'f7869492',
-  de: 'aa9b7037',
-  fr: 'd225a5db',
+  ru: '835be0bf',
+  uk: '82d5efba',
+  es: '542fe36d',
+  de: 'b5f10aa6',
+  fr: '2afadd62',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
