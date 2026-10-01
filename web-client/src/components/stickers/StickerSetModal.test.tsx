@@ -28,7 +28,9 @@ const stickers = Array.from({ length: 40 }, (_, i) => ({
 
 const install = vi.fn().mockResolvedValue(undefined)
 const uninstall = vi.fn().mockResolvedValue(undefined)
-let installed: typeof set[] = []
+// Срок установки набора (`installed_date`) — им и только им попап решает,
+// установлен ли набор (tweb popups/stickers.tsx:144 `isStickerSetAdded`).
+let installedDate: number | undefined
 
 vi.mock('../StickerMedia', () => ({
   default: ({ mediaId }: { mediaId: number }) => <div data-testid="sticker" data-media={mediaId} />,
@@ -49,8 +51,7 @@ vi.mock('@components/wrappers/sticker', () => ({
 vi.mock('../../core/hooks/useManagers', () => ({
   useManagers: () => ({
     stickers: {
-      getStickerSet: async () => ({ set, stickers }),
-      mySets: async () => installed,
+      getStickerSet: async () => ({ set: installedDate === undefined ? set : { ...set, installed_date: installedDate }, stickers }),
       install,
       uninstall,
     },
@@ -64,7 +65,7 @@ describe('StickerSetModal', () => {
   afterEach(cleanup)
 
   beforeEach(() => {
-    installed = []
+    installedDate = undefined
     install.mockClear()
     uninstall.mockClear()
     ioVisibleLimit = Infinity
@@ -113,7 +114,7 @@ describe('StickerSetModal', () => {
   })
 
   it('у установленного набора кнопка удаляет набор — с числом и падежом, как в tweb', async () => {
-    installed = [set]
+    installedDate = 1787334148
     render(<StickerSetModal address={{ shortName: 'utyaduck' }} onClose={() => {}} />)
     const button = await screen.findByRole('button', { name: /удалить 40 стикеров/i })
     fireEvent.click(button)

@@ -58,7 +58,6 @@ function makeManagers(setCount: number, perSet: number) {
   const sets = Array.from({ length: setCount }, (_, i) => makeSet(i + 1))
   const covers = new Map(sets.map((s) => [s.id, Array.from({ length: perSet }, (_, i) => makeSticker(s.id, i))]))
   const fns = {
-    mySets: vi.fn().mockResolvedValue([]),
     featuredSets: vi.fn().mockResolvedValue({ sets, covers }),
     searchSets: vi.fn().mockResolvedValue({ sets: [], covers: new Map() }),
     install: vi.fn().mockResolvedValue(undefined),

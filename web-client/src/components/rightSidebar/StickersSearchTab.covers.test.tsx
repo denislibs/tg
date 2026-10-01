@@ -50,7 +50,6 @@ const makeSticker = (setId: number, id: number): Sticker => makeStickerDoc({ id:
 
 function makeManagers(over: Record<string, unknown> = {}) {
   const fns = {
-    mySets: vi.fn().mockResolvedValue([]),
     featuredSets: vi.fn().mockResolvedValue({ sets: [], covers: new Map() }),
     searchSets: vi.fn().mockResolvedValue({ sets: [], covers: new Map() }),
     // setBySlug — только для StickerSetModal (клик по строке); ни один тест
