@@ -216,6 +216,11 @@ export type BroadcastEvents = {
   'stickers_installed': [StickerSet]
   'stickers_deleted': [StickerSet]
 
+  // tweb rootScope.ts:152 — контакт вошёл в книгу или вышел из неё; шлёт воркер
+  // (`contactsManager::onContactUpdated`), слушает список контактов
+  // (`sidebarLeft/contactsList.solid.tsx`).
+  'contacts_update': [UserId]
+
   // ── UI-команды (бывший core/hooks/uiEvents.ts, удалён) ──
   'ui:toast': [string]
   'ui:savedTagsChanged': [void]
@@ -245,6 +250,11 @@ export type BroadcastEvents = {
   // (`core/theme/themeController.ts::setTheme`). Подписчик — фон чата
   // (`components/chat/bubbles/chatBackground.solid.tsx`).
   'theme_changed': [void]
+
+  // ── правая колонка (порт tweb rootScope.ts:239, отправитель —
+  // components/sidebarRight/index.ts:101, :135). Местное (`dispatchEventSingle`):
+  // колонку открыла/закрыла эта вкладка.
+  'right_sidebar_toggle': [boolean]
 }
 
 export type BroadcastEventsListeners = {

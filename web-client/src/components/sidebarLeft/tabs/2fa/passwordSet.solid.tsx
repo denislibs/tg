@@ -7,10 +7,7 @@
  * обратно по ним.
  *
  * Расхождения с оригиналом:
- *  1. `sliceTabsUntilTab(AppSettingsTab, tab)` → `sliceTabsUntilSettings(tab)`
- *     (шов, шапка того файла): закрытие ведёт на React-экран «Конфиденциальность»
- *     под хостом, а не в корень настроек.
- *  2. Заставка — как на главной вкладке (`index.solid.tsx`, п. 4).
+ *  1. Заставка — как на главной вкладке (`index.solid.tsx`, п. 3).
  */
 import { onCleanup, onMount, type Component } from 'solid-js'
 import { getMiddleware } from '@helpers/middleware'
@@ -18,9 +15,9 @@ import noop from '@helpers/noop'
 import Button from '@components/buttonTsx.solid'
 import Section from '@components/section.solid'
 import wrapStickerEmoji from '@components/wrappers/stickerEmoji'
-import type { AppTwoStepVerificationSetTab } from '@components/solidJsTabs/tabs'
+import type SidebarSlider from '@components/slider'
+import { AppSettingsTab, type AppTwoStepVerificationSetTab } from '@components/solidJsTabs/tabs'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
-import sliceTabsUntilSettings from './sliceTabsUntilSettings'
 
 const TwoStepVerificationSet: Component = () => {
   const [tab] = useSuperTab<typeof AppTwoStepVerificationSetTab>()
@@ -39,7 +36,7 @@ const TwoStepVerificationSet: Component = () => {
 
   onMount(() => {
     tab.container.classList.add('two-step-verification', 'two-step-verification-set')
-    sliceTabsUntilSettings(tab)
+    ;(tab.slider as SidebarSlider).sliceTabsUntilTab(AppSettingsTab, tab)
   })
 
   return (

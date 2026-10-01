@@ -1,40 +1,23 @@
-// tweb держит ОДНУ правую колонку — постоянно смонтированный #column-right со
-// вкладками-слайдером внутри (профиль/поиск и т.п.), поэтому один булев класс
-// body.is-right-column-shown ей и соответствует (appSidebarRight сам решает,
-// когда колонка открыта). Наша правая колонка распалась на НЕСКОЛЬКО
-// независимых React-порталов: UserInfoPanel (панель профиля) и RightSearchTab
-// (поиск стикеров/GIF, открывается из подвала EmojiDropdown композера — см.
-// EmojiDropdown.tsx:712-713). Композер доступен независимо от того, открыта
-// ли панель профиля, поэтому обе панели МОГУТ быть смонтированы и открыты
-// ОДНОВРЕМЕННО (проверено по коду — грep не нашёл места, которое закрывало бы
-// одну при открытии другой). Класс на body при этом общий (styles/tweb/_chat.scss:
-// 438,458,513 — сдвиг #column-center только под ним), а булев `classList.toggle`
-// в двух независимых местах гасил бы его, как только закроется ЛЮБАЯ из
-// панелей, даже если вторая ещё открыта. Поэтому класс держится счётчиком
-// открытых панелей, а не флагом одной.
+// ВРЕМЕННО до 0б-11 — мост экрана поиска стикеров/GIF (`rightSidebar/RightSearchTab.tsx`)
+// к классу правой колонки. У tweb эти экраны — вкладки слайдера `#column-right`
+// (`sidebarRight/tabs/stickers.tsx`, `gifs.tsx`): их открытие —
+// `appSidebarRight.createTab(AppStickersTab).open()` + `toggleSidebar(true)`
+// (`stickers.tsx:215`, `gifs.tsx:109`), и `body.is-right-column-shown` ставит
+// сам класс (`sidebarRight/index.ts:128`). Наш экран пока отдельный React-портал
+// с геометрией колонки, поэтому до своей задачи он лишь просит класс открыть
+// колонку, пока смонтирован, и закрывает её, только если открывал сам: колонка,
+// открытая до него (профиль), переживает закрытие поиска — как у tweb, где
+// снятие вкладки поиска возвращает к профилю под ней.
 import { useLayoutEffect } from 'react'
+import appSidebarRight, { RIGHT_COLUMN_ACTIVE_CLASSNAME } from '@components/sidebarRight'
 
-const CLASS = 'is-right-column-shown'
-let openCount = 0
-
-function retain(): void {
-  openCount += 1
-  document.body.classList.add(CLASS)
-}
-
-function release(): void {
-  openCount = Math.max(0, openCount - 1)
-  if (openCount === 0) document.body.classList.remove(CLASS)
-}
-
-/**
- * @param open — открыта ли ИМЕННО эта правая панель (профиль или экран
- * поиска); класс на body держится, пока открыта хотя бы одна.
- */
-export function useRightColumnShown(open: boolean): void {
+export function useRightColumnShown(): void {
   useLayoutEffect(() => {
-    if (!open) return
-    retain()
-    return release
-  }, [open])
+    const sidebar = appSidebarRight
+    const wasShown = document.body.classList.contains(RIGHT_COLUMN_ACTIVE_CLASSNAME)
+    if (!wasShown) void sidebar.toggleSidebar(true)
+    return () => {
+      if (!wasShown) void sidebar.toggleSidebar(false)
+    }
+  }, [])
 }

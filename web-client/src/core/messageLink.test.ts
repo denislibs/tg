@@ -2,39 +2,25 @@
 // (навигация по хэшу). Формат общий для обеих сторон — если он разъедется,
 // скопированная ссылка перестанет открывать сообщение.
 import { describe, it, expect, beforeEach } from 'vitest'
+import { DEFAULT_TME_ORIGIN } from '@config/app'
 import { buildMessageLink, parseNavHash, requestMessageJump } from './messageLink'
 import { useSearchStore } from '@stores/searchStore'
 
-describe('buildMessageLink', () => {
-  const base = { origin: 'https://msgr.local', pathname: '/' }
-
-  it('у канала с юзернеймом ссылка читаемая — по @username', () => {
-    expect(buildMessageLink({ ...base, peerId: 42, username: 'durov', seq: 7 }))
-      .toBe('https://msgr.local/#@durov/7')
+describe('buildMessageLink — как tweb getUrlToMessage, на своём хосте ссылок', () => {
+  it('у канала с юзернеймом — t.me/<username>/<mid>', () => {
+    expect(buildMessageLink({ peerId: -42, username: 'durov', seq: 7 })).toBe(`${DEFAULT_TME_ORIGIN}/durov/7`)
   })
 
-  it('без юзернейма — по числовому id чата', () => {
-    expect(buildMessageLink({ ...base, peerId: 42, username: undefined, seq: 7 }))
-      .toBe('https://msgr.local/#42/7')
+  it('без юзернейма — t.me/c/<chatId>/<mid>', () => {
+    expect(buildMessageLink({ peerId: -42, username: undefined, seq: 7 })).toBe(`${DEFAULT_TME_ORIGIN}/c/42/7`)
   })
 
-  it('пустой юзернейм не даёт ссылку вида #@/7', () => {
-    expect(buildMessageLink({ ...base, peerId: 42, username: '', seq: 7 }))
-      .toBe('https://msgr.local/#42/7')
-  })
-
-  it('подпуть приложения сохраняется', () => {
-    expect(buildMessageLink({ origin: 'https://msgr.local', pathname: '/k/', peerId: 42, seq: 1 }))
-      .toBe('https://msgr.local/k/#42/1')
+  it('пустой юзернейм — тоже /c/', () => {
+    expect(buildMessageLink({ peerId: -42, username: '', seq: 7 })).toBe(`${DEFAULT_TME_ORIGIN}/c/42/7`)
   })
 })
 
 describe('parseNavHash', () => {
-  it('собранную ссылку разбирает обратно (round-trip)', () => {
-    const link = buildMessageLink({ origin: 'https://msgr.local', pathname: '/', peerId: 42, username: 'durov', seq: 7 })
-    expect(parseNavHash(link.slice(link.indexOf('#')))).toEqual({ target: '@durov', seq: 7 })
-  })
-
   it('чат без якоря — как было до ссылок на сообщение', () => {
     expect(parseNavHash('#42')).toEqual({ target: '42', seq: undefined, threadRoot: undefined })
     expect(parseNavHash('#@durov')).toEqual({ target: '@durov', seq: undefined })
@@ -55,12 +41,6 @@ describe('parseNavHash', () => {
     expect(parseNavHash('#-42')).toEqual({ target: '-42', seq: undefined, threadRoot: undefined })
     expect(parseNavHash('#-42/7')).toEqual({ target: '-42', seq: 7, threadRoot: undefined })
     expect(parseNavHash('#-42_777')).toEqual({ target: '-42', seq: undefined, threadRoot: 777 })
-  })
-
-  it('собранная ссылка на группу разбирается обратно (round-trip)', () => {
-    const link = buildMessageLink({ origin: 'https://msgr.local', pathname: '/', peerId: -42, seq: 7 })
-    expect(link).toBe('https://msgr.local/#-42/7')
-    expect(parseNavHash(link.slice(link.indexOf('#')))).toEqual({ target: '-42', seq: 7, threadRoot: undefined })
   })
 
   it('мусор не разбирается — навигация не трогается', () => {

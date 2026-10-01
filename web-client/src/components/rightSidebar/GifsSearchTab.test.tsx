@@ -11,12 +11,19 @@
 // Поведение: тренды при открытии (searchGifs('','')), дебаунс-поиск по вводу,
 // клик по ячейке — onPick; открытие извне — openGifsSearchTab (popupStore,
 // kind right-search).
-import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest'
+import { describe, it, expect, afterEach, beforeAll, vi, beforeEach } from 'vitest'
 import { render, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import GifsSearchTab, { openGifsSearchTab } from './GifsSearchTab'
 import { ManagersProvider } from '../../core/hooks/useManagers'
 import { usePopupStore } from '../../stores/popupStore'
 import type { Managers } from '../../client/bootstrap'
+import { installSidebarRight } from '../../test/sidebarRight'
+
+// Экран поиска открывает правую колонку классом `AppSidebarRight` (мост
+// `useRightColumnShown`, ВРЕМЕННО до 0б-11) — колонка нужна каждому тесту файла.
+let sidebarRight: ReturnType<typeof installSidebarRight>
+beforeEach(() => { sidebarRight = installSidebarRight() })
+afterEach(() => sidebarRight.dispose())
 
 const noop = () => {}
 

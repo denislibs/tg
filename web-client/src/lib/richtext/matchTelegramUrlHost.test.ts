@@ -10,6 +10,7 @@
 // действие исполняет делегат ленты (`components/chat/bubbles.ts`,
 // `openInternalLink`), а путь он из адреса не пересобирает.
 import { describe, expect, test } from 'vitest'
+import { DEFAULT_TME_ORIGIN } from '@config/app'
 import matchTelegramUrlHost, { matchUrlHost, TELESCOPE_LINK_HOST } from './matchTelegramUrlHost'
 
 describe('matchTelegramUrlHost', () => {
@@ -65,5 +66,21 @@ describe('matchUrlHost', () => {
 
   test('переживает адрес, который парсер так и не построил', () => {
     expect(matchUrlHost(undefined, [TELESCOPE_LINK_HOST])).toBeUndefined()
+  })
+})
+
+describe('matchTelegramUrlHost: свой хост ссылок (VITE_TME_ORIGIN, core/publicLink.ts)', () => {
+  const host = new URL(DEFAULT_TME_ORIGIN).hostname
+
+  test.each([
+    [`https://${host}/durov`, undefined],
+    [`https://${host}/c/123/4`, undefined],
+    [`https://durov.${host}/`, 'durov'],
+  ])('%s — хост «Telegram», username из поддомена: %s', (url, prefix) => {
+    expect(matchTelegramUrlHost(new URL(url))).toEqual({ prefix })
+  })
+
+  test.each([`https://${host}.evil.com/durov`, `https://${host}@evil.com/durov`])('%s — чужой хост', (url) => {
+    expect(matchTelegramUrlHost(new URL(url))).toBeUndefined()
   })
 })

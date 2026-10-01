@@ -6,7 +6,8 @@ export type ContactPhotoMode = 'set' | 'suggest'
 
 // ViewModel экрана «Изменить контакт» (tweb editContact, ветка существующего
 // контакта): поля формы + все managers-команды (upsert, фото set/suggest/clear,
-// удаление). Прегружает сохранённое имя/фамилию/заметку + признак личного фото.
+// удаление). Прегружает сохранённое имя/фамилию (книга), заметку и признак
+// личного фото (полная карточка).
 export function useEditContact(peerId: number | null, seedFirst: string, onClose: () => void): {
   first: string; setFirst: (v: string) => void
   last: string; setLast: (v: string) => void
@@ -29,6 +30,7 @@ export function useEditContact(peerId: number | null, seedFirst: string, onClose
   const [saving, setSaving] = useState(false)
   const [busyPhoto, setBusyPhoto] = useState(false)
   const modeRef = useRef<ContactPhotoMode>('set')
+  const loadedNote = useRef('')
 
   useEffect(() => {
     if (peerId == null) return
@@ -41,8 +43,14 @@ export function useEditContact(peerId: number | null, seedFirst: string, onClose
       // вторым источником того же факта.
       setFirst((c.user._ === 'user' ? c.user.first_name : '') || seedFirst)
       setLast((c.user._ === 'user' ? c.user.last_name : '') ?? '')
-      setNote(c.note)
-      setHasPersonal(c.hasCustomPhoto)
+    }).catch(() => {})
+    // Заметка и личное фото — не поля строки книги, а полная карточка
+    // (`userFull.note`, `userFull.personal_photo`).
+    void managers.privacy.profile(peerId).then((p) => {
+      if (!alive) return
+      loadedNote.current = p.fullUser.note?.text ?? ''
+      setNote(loadedNote.current)
+      setHasPersonal(!!p.fullUser.personal_photo)
     }).catch(() => {})
     return () => {
       alive = false
@@ -59,7 +67,11 @@ export function useEditContact(peerId: number | null, seedFirst: string, onClose
         contactId: peerId!,
         firstName: first.trim(),
         lastName: last.trim(),
-        note: note.trim(),
+        // Заметка — только изменённая (tweb editContact.tsx:356-358): иначе
+        // ключа нет, и сервер прежнюю не трогает.
+        ...(note.trim() !== loadedNote.current
+          ? { note: { _: 'textWithEntities' as const, text: note.trim(), entities: [] } }
+          : {}),
       })
       onClose()
     } catch {

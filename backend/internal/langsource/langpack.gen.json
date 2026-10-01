@@ -6,11 +6,15 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 34,
+      "version": 37,
       "strings": [
         {
           "key": "ALongTimeAgo",
           "value": "last seen a long time ago"
+        },
+        {
+          "key": "AccountSettings.Filters",
+          "value": "Chat Folders"
         },
         {
           "key": "AccountSettings.Language",
@@ -19,6 +23,10 @@
         {
           "key": "AccountSettings.Notifications",
           "value": "Notifications and Sounds"
+        },
+        {
+          "key": "AccountSettings.PrivacyAndSecurity",
+          "value": "Privacy and Security"
         },
         {
           "key": "AccountSettings.SpeakersAndCamera",
@@ -217,6 +225,10 @@
           "value": "Disable"
         },
         {
+          "key": "AutoDeleteMessages.InfoDefault",
+          "value": "Automatically delete messages for everyone in chats you start after a certain amount of time."
+        },
+        {
           "key": "AutoDeleteMessages.SectionCaption",
           "value": "If enabled, all new messages in chats you start will be automatically deleted for everyone at some point after they have been sent. This will not affect your existing chats."
         },
@@ -379,6 +391,14 @@
         {
           "key": "Birthday.PrivacyHint",
           "value": "In settings you can choose who will see your birthday."
+        },
+        {
+          "key": "BirthdaySuggestIncoming",
+          "value": "%s suggested you add your birthday"
+        },
+        {
+          "key": "BirthdaySuggestOutgoing",
+          "value": "You suggested %s to add a birthday"
         },
         {
           "key": "BlockModal.Search.Placeholder",
@@ -749,6 +769,14 @@
         {
           "key": "ChannelType",
           "value": "Channel Type"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "If you make this channel private, the name @%@ will be removed. Anyone else will be able to take it for their public groups or channels."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "If you make this group private, the name @%@ will be removed. Anyone else will be able to take it for their public groups or channels."
         },
         {
           "key": "Channels",
@@ -1349,10 +1377,6 @@
           "value": "Tag"
         },
         {
-          "key": "Compose.NewMessage",
-          "value": "New Message"
-        },
-        {
           "key": "Composer.CancelRecording",
           "value": "Cancel Recording"
         },
@@ -1399,10 +1423,6 @@
         {
           "key": "Contacts.Empty",
           "value": "No contacts"
-        },
-        {
-          "key": "Contacts.NotFound",
-          "value": "No contacts found."
         },
         {
           "key": "Continue",
@@ -2423,12 +2443,20 @@
           "value": "Limit Reached"
         },
         {
-          "key": "LinkCopied",
-          "value": "Link copied to clipboard"
+          "key": "Link.Available",
+          "value": "Link is available"
         },
         {
-          "key": "LinkInvalid",
-          "value": "Invalid link."
+          "key": "Link.Invalid",
+          "value": "Link is invalid"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "Link is already taken"
+        },
+        {
+          "key": "LinkCopied",
+          "value": "Link copied to clipboard"
         },
         {
           "key": "LinkNameHelp",
@@ -2437,10 +2465,6 @@
         {
           "key": "LinkNameHint",
           "value": "Link Name (Optional)"
-        },
-        {
-          "key": "LinkTaken",
-          "value": "This link is already taken."
         },
         {
           "key": "LiteMode.DisableAlert",
@@ -3451,8 +3475,20 @@
           "value": "Wrong passcode. Please try again."
         },
         {
-          "key": "Passkey.CreateError",
-          "value": "Could not create a passkey."
+          "key": "Passkey.Created",
+          "value": "Passkey created successfully"
+        },
+        {
+          "key": "Passkey.CreationError",
+          "value": "Failed to create passkey. Please try again."
+        },
+        {
+          "key": "Passkey.Deletion.Text",
+          "value": "Once deleted, this passkey can't be used to log in.\n\nDon't forget to remove it from your password manager too."
+        },
+        {
+          "key": "Passkey.Deletion.Title",
+          "value": "Delete Passkey?"
         },
         {
           "key": "Passkey.Row1.Subtitle",
@@ -3489,30 +3525,6 @@
         {
           "key": "Passkey.Unsupported",
           "value": "UNSUPPORTED"
-        },
-        {
-          "key": "Passkeys.Add",
-          "value": "Add a Passkey"
-        },
-        {
-          "key": "Passkeys.Caption",
-          "value": "Passkeys let you sign in without a password, using your fingerprint, face or device PIN."
-        },
-        {
-          "key": "Passkeys.Created",
-          "value": "Created"
-        },
-        {
-          "key": "Passkeys.Item",
-          "value": "Passkey"
-        },
-        {
-          "key": "Passkeys.LastUsed",
-          "value": "Last used"
-        },
-        {
-          "key": "Passkeys.Unsupported",
-          "value": "Passkeys are not supported in this browser."
         },
         {
           "key": "PasswordAsHintError",
@@ -3862,38 +3874,6 @@
           "value": "Voice-to-Text"
         },
         {
-          "key": "Premium.Manage.Active",
-          "value": "You have Telegram Premium"
-        },
-        {
-          "key": "Premium.Manage.AutoRenew",
-          "value": "Auto-Renew"
-        },
-        {
-          "key": "Premium.Manage.AutoRenewOffHint",
-          "value": "Auto-renew is off. Your Premium subscription will end on the date above."
-        },
-        {
-          "key": "Premium.Manage.Cancelling",
-          "value": "Cancelling…"
-        },
-        {
-          "key": "Premium.Manage.ExpiresOn",
-          "value": "Expires on"
-        },
-        {
-          "key": "Premium.Manage.Hint",
-          "value": "Your subscription renews automatically. Cancel to stop future charges — Premium stays active until it expires."
-        },
-        {
-          "key": "Premium.Manage.NoSubscription",
-          "value": "No active subscription."
-        },
-        {
-          "key": "Premium.Manage.RenewsOn",
-          "value": "Renews on"
-        },
-        {
           "key": "Premium.SubscribeFor",
           "value": "Subscribe for"
         },
@@ -3998,8 +3978,20 @@
           "value": "Create Passkey"
         },
         {
+          "key": "Privacy.Passkey.Created",
+          "value": "Created %s"
+        },
+        {
+          "key": "Privacy.Passkey.LastUsage",
+          "value": "used %s"
+        },
+        {
           "key": "Privacy.Passkeys",
           "value": "Passkeys"
+        },
+        {
+          "key": "Privacy.Passkeys.Caption",
+          "value": "Your passkey is stored securely in your password manager. [Learn more \u003e]()"
         },
         {
           "key": "Privacy.ReadTimeCaption",
@@ -4911,14 +4903,6 @@
           "value": "Recent Transactions"
         },
         {
-          "key": "Stars.Subscription",
-          "value": "Subscription"
-        },
-        {
-          "key": "Stars.Subscription.Cancel",
-          "value": "Cancel Subscription"
-        },
-        {
           "key": "Stars.Subscriptions.PerMonth",
           "value": "per month"
         },
@@ -5608,6 +5592,14 @@
           "value": "Unread Messages"
         },
         {
+          "key": "UnsavedChanges",
+          "value": "Unsaved Changes"
+        },
+        {
+          "key": "UnsavedChangesDescription.Privacy",
+          "value": "You have changed some privacy settings. Save changes?"
+        },
+        {
           "key": "Updating",
           "value": "Updating..."
         },
@@ -5831,7 +5823,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 34,
+      "version": 37,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -5996,14 +5988,6 @@
         {
           "key": "MegaPrivateLinkHelp",
           "value": "По этой ссылке можно вступить в вашу группу. Вы можете сбросить ссылку в любой момент."
-        },
-        {
-          "key": "LinkTaken",
-          "value": "Эта ссылка уже занята."
-        },
-        {
-          "key": "LinkInvalid",
-          "value": "Недопустимая ссылка."
         },
         {
           "key": "InviteLinks",
@@ -6366,48 +6350,8 @@
           "value": "Не удалось оплатить. Попробуйте ещё раз."
         },
         {
-          "key": "Premium.Manage.Active",
-          "value": "У вас есть Telegram Premium"
-        },
-        {
           "key": "Loading",
           "value": "Загрузка…"
-        },
-        {
-          "key": "Stars.Subscription",
-          "value": "Подписка"
-        },
-        {
-          "key": "Premium.Manage.RenewsOn",
-          "value": "Продлится"
-        },
-        {
-          "key": "Premium.Manage.ExpiresOn",
-          "value": "Истекает"
-        },
-        {
-          "key": "Premium.Manage.Hint",
-          "value": "Подписка продлевается автоматически. Отмените, чтобы прекратить списания — Premium останется активным до конца срока."
-        },
-        {
-          "key": "Stars.Subscription.Cancel",
-          "value": "Отменить подписку"
-        },
-        {
-          "key": "Premium.Manage.Cancelling",
-          "value": "Отмена…"
-        },
-        {
-          "key": "Premium.Manage.AutoRenew",
-          "value": "Автопродление"
-        },
-        {
-          "key": "Premium.Manage.AutoRenewOffHint",
-          "value": "Автопродление отключено. Подписка Premium завершится в указанную выше дату."
-        },
-        {
-          "key": "Premium.Manage.NoSubscription",
-          "value": "Нет активной подписки."
         },
         {
           "key": "Stories",
@@ -6515,12 +6459,20 @@
           "value": "Имя пользователя"
         },
         {
+          "key": "AccountSettings.Filters",
+          "value": "Папки с чатами"
+        },
+        {
           "key": "AccountSettings.Language",
           "value": "Язык"
         },
         {
           "key": "AccountSettings.Notifications",
           "value": "Уведомления и звуки"
+        },
+        {
+          "key": "AccountSettings.PrivacyAndSecurity",
+          "value": "Конфиденциальность"
         },
         {
           "key": "DataSettings",
@@ -7485,10 +7437,6 @@
           "value": "Новое сообщение"
         },
         {
-          "key": "Compose.NewMessage",
-          "value": "Новое сообщение"
-        },
-        {
           "key": "Suggestion.Notifications.Title",
           "value": "Не пропускайте сообщения! 🔔"
         },
@@ -8040,6 +7988,26 @@
         {
           "key": "ChannelType",
           "value": "Тип канала"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "Если вы сделаете канал частным, имя @%@ будет удалено. Его сможет занять кто угодно для своих публичных групп или каналов."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "Если вы сделаете группу частной, имя @%@ будет удалено. Его сможет занять кто угодно для своих публичных групп или каналов."
+        },
+        {
+          "key": "Link.Available",
+          "value": "Ссылка свободна"
+        },
+        {
+          "key": "Link.Invalid",
+          "value": "Недопустимая ссылка"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "Эта ссылка уже занята"
         },
         {
           "key": "ChannelDirectMessages.Settings.Title",
@@ -9158,6 +9126,14 @@
           "value": "В настройках можно выбрать, кто будет видеть Ваш день рождения."
         },
         {
+          "key": "BirthdaySuggestIncoming",
+          "value": "%s предлагает вам указать дату рождения"
+        },
+        {
+          "key": "BirthdaySuggestOutgoing",
+          "value": "Вы предложили %s указать дату рождения"
+        },
+        {
           "key": "ConnectionStatus.ReconnectInPlain",
           "value": "Переподключение через %d с"
         },
@@ -9187,7 +9163,7 @@
         },
         {
           "key": "Discard",
-          "value": "Удалить"
+          "value": "Не сохранять"
         },
         {
           "key": "BlockUser",
@@ -9394,10 +9370,6 @@
           "value": "Ключи доступа"
         },
         {
-          "key": "Passkeys.Add",
-          "value": "Создать ключ доступа"
-        },
-        {
           "key": "LoginEmail",
           "value": "Email для входа"
         },
@@ -9420,10 +9392,6 @@
         {
           "key": "Privacy.AlwaysShareCaption",
           "value": "Эти пользователи всегда будут это видеть, независимо от настройки выше."
-        },
-        {
-          "key": "Contacts.NotFound",
-          "value": "Контакты не найдены."
         },
         {
           "key": "Translate.SectionTitle",
@@ -9726,6 +9694,18 @@
           "value": "Выбрать другой срок"
         },
         {
+          "key": "AutoDeleteMessages.InfoDefault",
+          "value": "Автоматически удалять сообщения для всех в начатых вами чатах через заданное время."
+        },
+        {
+          "key": "UnsavedChanges",
+          "value": "Несохранённые изменения"
+        },
+        {
+          "key": "UnsavedChangesDescription.Privacy",
+          "value": "Вы изменили настройки конфиденциальности. Сохранить изменения?"
+        },
+        {
           "key": "Seconds",
           "forms": {
             "one_value": "%1$d секунда",
@@ -9913,28 +9893,32 @@
           "value": "Нажмите, чтобы заблокировать Telegram."
         },
         {
-          "key": "Passkeys.Caption",
-          "value": "Ключи доступа позволяют входить без пароля — по отпечатку пальца, лицу или ПИН-коду устройства."
+          "key": "Passkey.Created",
+          "value": "Ключ доступа создан"
         },
         {
-          "key": "Passkey.CreateError",
-          "value": "Не удалось создать ключ доступа."
+          "key": "Passkey.CreationError",
+          "value": "Не удалось создать ключ доступа. Попробуйте ещё раз."
         },
         {
-          "key": "Passkeys.Unsupported",
-          "value": "Ключи доступа не поддерживаются в этом браузере."
+          "key": "Passkey.Deletion.Text",
+          "value": "После удаления этот ключ доступа нельзя будет использовать для входа.\n\nНе забудьте удалить его и из менеджера паролей."
         },
         {
-          "key": "Passkeys.Item",
-          "value": "Ключ доступа"
+          "key": "Passkey.Deletion.Title",
+          "value": "Удалить ключ доступа?"
         },
         {
-          "key": "Passkeys.LastUsed",
-          "value": "Использован"
+          "key": "Privacy.Passkey.Created",
+          "value": "Создан %s"
         },
         {
-          "key": "Passkeys.Created",
-          "value": "Создан"
+          "key": "Privacy.Passkey.LastUsage",
+          "value": "использован %s"
+        },
+        {
+          "key": "Privacy.Passkeys.Caption",
+          "value": "Ключ доступа надёжно хранится в Вашем менеджере паролей. [Подробнее \u003e]()"
         },
         {
           "key": "Login.Passkey.Action",
@@ -11697,7 +11681,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 21,
+      "version": 24,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -11836,12 +11820,20 @@
           "value": "Bio copiée"
         },
         {
+          "key": "AccountSettings.Filters",
+          "value": "Dossiers de discussions"
+        },
+        {
           "key": "AccountSettings.Language",
           "value": "Langue"
         },
         {
           "key": "AccountSettings.Notifications",
           "value": "Notifications et sons"
+        },
+        {
+          "key": "AccountSettings.PrivacyAndSecurity",
+          "value": "Confidentialité et sécurité"
         },
         {
           "key": "DataSettings",
@@ -12467,10 +12459,6 @@
           "value": "Nouveau message"
         },
         {
-          "key": "Compose.NewMessage",
-          "value": "Nouveau message"
-        },
-        {
           "key": "Suggestion.Notifications.Title",
           "value": "Ne manquez aucun message ! 🔔"
         },
@@ -12755,6 +12743,26 @@
         {
           "key": "ChannelType",
           "value": "Type de canal"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "Si vous rendez ce canal privé, le nom @%@ sera supprimé. N’importe qui pourra alors le prendre pour ses groupes ou canaux publics."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "Si vous rendez ce groupe privé, le nom @%@ sera supprimé. N’importe qui pourra alors le prendre pour ses groupes ou canaux publics."
+        },
+        {
+          "key": "Link.Available",
+          "value": "Le lien est disponible"
+        },
+        {
+          "key": "Link.Invalid",
+          "value": "Le lien est invalide"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "Ce lien est déjà pris"
         },
         {
           "key": "GroupType",
@@ -13492,10 +13500,6 @@
           "value": "Clés d’accès"
         },
         {
-          "key": "Passkeys.Add",
-          "value": "Créer une clé d'accès"
-        },
-        {
           "key": "LoginEmail",
           "value": "E-mail de connexion"
         },
@@ -13518,10 +13522,6 @@
         {
           "key": "Privacy.AlwaysShareCaption",
           "value": "Ces utilisateurs verront toujours ceci, quel que soit le réglage ci-dessus."
-        },
-        {
-          "key": "Contacts.NotFound",
-          "value": "Aucun contact trouvé."
         },
         {
           "key": "Translate.SectionTitle",
@@ -13820,6 +13820,18 @@
           "value": "Choisir un autre délai"
         },
         {
+          "key": "AutoDeleteMessages.InfoDefault",
+          "value": "Supprimer automatiquement les messages pour tous dans les discussions que vous lancez après un certain délai."
+        },
+        {
+          "key": "UnsavedChanges",
+          "value": "Modifications non enregistrées"
+        },
+        {
+          "key": "UnsavedChangesDescription.Privacy",
+          "value": "Vous avez modifié des paramètres de confidentialité. Enregistrer les modifications ?"
+        },
+        {
           "key": "Seconds",
           "forms": {
             "one_value": "%1$d seconde",
@@ -13986,28 +13998,32 @@
           "value": "Appuyez pour verrouiller Telegram."
         },
         {
-          "key": "Passkeys.Caption",
-          "value": "Les clés d'accès vous permettent de vous connecter sans mot de passe, avec votre empreinte, votre visage ou le code PIN de l'appareil."
+          "key": "Passkey.Created",
+          "value": "Clé d'accès créée"
         },
         {
-          "key": "Passkey.CreateError",
-          "value": "Impossible de créer une clé d'accès."
+          "key": "Passkey.CreationError",
+          "value": "Impossible de créer la clé d'accès. Veuillez réessayer."
         },
         {
-          "key": "Passkeys.Unsupported",
-          "value": "Les clés d'accès ne sont pas prises en charge dans ce navigateur."
+          "key": "Passkey.Deletion.Text",
+          "value": "Une fois supprimée, cette clé d'accès ne pourra plus servir à se connecter.\n\nN'oubliez pas de la supprimer aussi de votre gestionnaire de mots de passe."
         },
         {
-          "key": "Passkeys.Item",
-          "value": "Clé d'accès"
+          "key": "Passkey.Deletion.Title",
+          "value": "Supprimer la clé d'accès ?"
         },
         {
-          "key": "Passkeys.LastUsed",
-          "value": "Dernière utilisation"
+          "key": "Privacy.Passkey.Created",
+          "value": "Créée %s"
         },
         {
-          "key": "Passkeys.Created",
-          "value": "Créée"
+          "key": "Privacy.Passkey.LastUsage",
+          "value": "utilisée %s"
+        },
+        {
+          "key": "Privacy.Passkeys.Caption",
+          "value": "Votre clé d'accès est stockée en toute sécurité dans votre gestionnaire de mots de passe. [En savoir plus \u003e]()"
         },
         {
           "key": "Passkey.Title",
@@ -14755,7 +14771,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 21,
+      "version": 24,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -14894,12 +14910,20 @@
           "value": "Bio kopiert"
         },
         {
+          "key": "AccountSettings.Filters",
+          "value": "Chat-Ordner"
+        },
+        {
           "key": "AccountSettings.Language",
           "value": "Sprache"
         },
         {
           "key": "AccountSettings.Notifications",
           "value": "Benachrichtigungen und Töne"
+        },
+        {
+          "key": "AccountSettings.PrivacyAndSecurity",
+          "value": "Privatsphäre und Sicherheit"
         },
         {
           "key": "DataSettings",
@@ -15528,10 +15552,6 @@
           "value": "Neue Nachricht"
         },
         {
-          "key": "Compose.NewMessage",
-          "value": "Neue Nachricht"
-        },
-        {
           "key": "Suggestion.Notifications.Title",
           "value": "Verpasse keine Nachricht! 🔔"
         },
@@ -15816,6 +15836,26 @@
         {
           "key": "ChannelType",
           "value": "Kanaltyp"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "Wenn du diesen Kanal privat machst, wird der Name @%@ entfernt. Jeder andere kann ihn dann für seine öffentlichen Gruppen oder Kanäle verwenden."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "Wenn du diese Gruppe privat machst, wird der Name @%@ entfernt. Jeder andere kann ihn dann für seine öffentlichen Gruppen oder Kanäle verwenden."
+        },
+        {
+          "key": "Link.Available",
+          "value": "Link ist verfügbar"
+        },
+        {
+          "key": "Link.Invalid",
+          "value": "Link ist ungültig"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "Link ist bereits vergeben"
         },
         {
           "key": "GroupType",
@@ -16553,10 +16593,6 @@
           "value": "Passkeys"
         },
         {
-          "key": "Passkeys.Add",
-          "value": "Passkey erstellen"
-        },
-        {
           "key": "LoginEmail",
           "value": "Login-E-Mail"
         },
@@ -16579,10 +16615,6 @@
         {
           "key": "Privacy.AlwaysShareCaption",
           "value": "Diese Nutzer sehen dies immer, unabhängig von der Einstellung oben."
-        },
-        {
-          "key": "Contacts.NotFound",
-          "value": "Keine Kontakte gefunden."
         },
         {
           "key": "Translate.SectionTitle",
@@ -16881,6 +16913,18 @@
           "value": "Andere Zeit festlegen"
         },
         {
+          "key": "AutoDeleteMessages.InfoDefault",
+          "value": "Nachrichten in von dir gestarteten Chats nach einer bestimmten Zeit automatisch für alle löschen."
+        },
+        {
+          "key": "UnsavedChanges",
+          "value": "Ungespeicherte Änderungen"
+        },
+        {
+          "key": "UnsavedChangesDescription.Privacy",
+          "value": "Du hast Datenschutzeinstellungen geändert. Änderungen speichern?"
+        },
+        {
           "key": "Seconds",
           "forms": {
             "one_value": "%1$d Sekunde",
@@ -17054,28 +17098,32 @@
           "value": "Tippe, um Telegram zu sperren."
         },
         {
-          "key": "Passkeys.Caption",
-          "value": "Mit Passkeys meldest du dich ohne Passwort an – per Fingerabdruck, Gesicht oder Geräte-PIN."
+          "key": "Passkey.Created",
+          "value": "Passkey erfolgreich erstellt"
         },
         {
-          "key": "Passkey.CreateError",
-          "value": "Passkey konnte nicht erstellt werden."
+          "key": "Passkey.CreationError",
+          "value": "Passkey konnte nicht erstellt werden. Bitte versuche es erneut."
         },
         {
-          "key": "Passkeys.Unsupported",
-          "value": "Passkeys werden in diesem Browser nicht unterstützt."
+          "key": "Passkey.Deletion.Text",
+          "value": "Nach dem Löschen kann dieser Passkey nicht mehr zur Anmeldung verwendet werden.\n\nVergiss nicht, ihn auch aus deinem Passwort-Manager zu entfernen."
         },
         {
-          "key": "Passkeys.Item",
-          "value": "Passkey"
+          "key": "Passkey.Deletion.Title",
+          "value": "Passkey löschen?"
         },
         {
-          "key": "Passkeys.LastUsed",
-          "value": "Zuletzt verwendet"
+          "key": "Privacy.Passkey.Created",
+          "value": "Erstellt %s"
         },
         {
-          "key": "Passkeys.Created",
-          "value": "Erstellt"
+          "key": "Privacy.Passkey.LastUsage",
+          "value": "verwendet %s"
+        },
+        {
+          "key": "Privacy.Passkeys.Caption",
+          "value": "Dein Passkey wird sicher in deinem Passwort-Manager gespeichert. [Mehr erfahren \u003e]()"
         },
         {
           "key": "Passkey.Title",
@@ -17835,7 +17883,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 21,
+      "version": 24,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -17974,12 +18022,20 @@
           "value": "Biografía copiada al portapapeles"
         },
         {
+          "key": "AccountSettings.Filters",
+          "value": "Carpetas de chats"
+        },
+        {
           "key": "AccountSettings.Language",
           "value": "Idioma"
         },
         {
           "key": "AccountSettings.Notifications",
           "value": "Notificaciones y sonidos"
+        },
+        {
+          "key": "AccountSettings.PrivacyAndSecurity",
+          "value": "Privacidad y seguridad"
         },
         {
           "key": "DataSettings",
@@ -18613,10 +18669,6 @@
           "value": "Nuevo mensaje"
         },
         {
-          "key": "Compose.NewMessage",
-          "value": "Nuevo mensaje"
-        },
-        {
           "key": "Suggestion.Notifications.Title",
           "value": "¡No te pierdas ningún mensaje! 🔔"
         },
@@ -18901,6 +18953,26 @@
         {
           "key": "ChannelType",
           "value": "Tipo de canal"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "Si haces este canal privado, se eliminará el nombre @%@. Cualquier otra persona podrá usarlo para sus grupos o canales públicos."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "Si haces este grupo privado, se eliminará el nombre @%@. Cualquier otra persona podrá usarlo para sus grupos o canales públicos."
+        },
+        {
+          "key": "Link.Available",
+          "value": "El enlace está disponible"
+        },
+        {
+          "key": "Link.Invalid",
+          "value": "El enlace no es válido"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "El enlace ya está en uso"
         },
         {
           "key": "GroupType",
@@ -19638,10 +19710,6 @@
           "value": "Llaves de acceso"
         },
         {
-          "key": "Passkeys.Add",
-          "value": "Crear una llave de acceso"
-        },
-        {
           "key": "LoginEmail",
           "value": "Correo de inicio de sesión"
         },
@@ -19664,10 +19732,6 @@
         {
           "key": "Privacy.AlwaysShareCaption",
           "value": "Estos usuarios siempre verán esto, sin importar el ajuste anterior."
-        },
-        {
-          "key": "Contacts.NotFound",
-          "value": "No se encontraron contactos."
         },
         {
           "key": "Translate.SectionTitle",
@@ -19966,6 +20030,18 @@
           "value": "Elegir otro plazo"
         },
         {
+          "key": "AutoDeleteMessages.InfoDefault",
+          "value": "Eliminar automáticamente los mensajes para todos en los chats que inicies después de un tiempo."
+        },
+        {
+          "key": "UnsavedChanges",
+          "value": "Cambios sin guardar"
+        },
+        {
+          "key": "UnsavedChangesDescription.Privacy",
+          "value": "Has cambiado algunos ajustes de privacidad. ¿Guardar los cambios?"
+        },
+        {
           "key": "Seconds",
           "forms": {
             "one_value": "%1$d segundo",
@@ -20132,28 +20208,32 @@
           "value": "Toca para bloquear Telegram."
         },
         {
-          "key": "Passkeys.Caption",
-          "value": "Las llaves de acceso te permiten iniciar sesión sin contraseña, con tu huella, tu rostro o el PIN del dispositivo."
+          "key": "Passkey.Created",
+          "value": "Llave de acceso creada"
         },
         {
-          "key": "Passkey.CreateError",
-          "value": "No se pudo crear la llave de acceso."
+          "key": "Passkey.CreationError",
+          "value": "No se pudo crear la llave de acceso. Inténtalo de nuevo."
         },
         {
-          "key": "Passkeys.Unsupported",
-          "value": "Las llaves de acceso no son compatibles con este navegador."
+          "key": "Passkey.Deletion.Text",
+          "value": "Una vez eliminada, esta llave de acceso no podrá usarse para iniciar sesión.\n\nNo olvides eliminarla también de tu gestor de contraseñas."
         },
         {
-          "key": "Passkeys.Item",
-          "value": "Llave de acceso"
+          "key": "Passkey.Deletion.Title",
+          "value": "¿Eliminar llave de acceso?"
         },
         {
-          "key": "Passkeys.LastUsed",
-          "value": "Último uso"
+          "key": "Privacy.Passkey.Created",
+          "value": "Creada %s"
         },
         {
-          "key": "Passkeys.Created",
-          "value": "Creada"
+          "key": "Privacy.Passkey.LastUsage",
+          "value": "usada %s"
+        },
+        {
+          "key": "Privacy.Passkeys.Caption",
+          "value": "Tu llave de acceso se guarda de forma segura en tu gestor de contraseñas. [Más información \u003e]()"
         },
         {
           "key": "Passkey.Title",
@@ -20913,7 +20993,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 21,
+      "version": 24,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -21052,12 +21132,20 @@
           "value": "Про себе скопійовано"
         },
         {
+          "key": "AccountSettings.Filters",
+          "value": "Папки чатів"
+        },
+        {
           "key": "AccountSettings.Language",
           "value": "Мова"
         },
         {
           "key": "AccountSettings.Notifications",
           "value": "Сповіщення та звуки"
+        },
+        {
+          "key": "AccountSettings.PrivacyAndSecurity",
+          "value": "Конфіденційність"
         },
         {
           "key": "DataSettings",
@@ -21698,10 +21786,6 @@
           "value": "Нове повідомлення"
         },
         {
-          "key": "Compose.NewMessage",
-          "value": "Нове повідомлення"
-        },
-        {
           "key": "Suggestion.Notifications.Title",
           "value": "Не пропускайте повідомлення! 🔔"
         },
@@ -21990,6 +22074,26 @@
         {
           "key": "ChannelType",
           "value": "Тип каналу"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "Якщо ви зробите канал приватним, ім’я @%@ буде видалено. Його зможе зайняти будь-хто для своїх публічних груп або каналів."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "Якщо ви зробите групу приватною, ім’я @%@ буде видалено. Його зможе зайняти будь-хто для своїх публічних груп або каналів."
+        },
+        {
+          "key": "Link.Available",
+          "value": "Посилання вільне"
+        },
+        {
+          "key": "Link.Invalid",
+          "value": "Недійсне посилання"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "Це посилання вже зайняте"
         },
         {
           "key": "GroupType",
@@ -22736,10 +22840,6 @@
           "value": "Ключі доступу"
         },
         {
-          "key": "Passkeys.Add",
-          "value": "Створити ключ доступу"
-        },
-        {
           "key": "LoginEmail",
           "value": "Email для входу"
         },
@@ -22762,10 +22862,6 @@
         {
           "key": "Privacy.AlwaysShareCaption",
           "value": "Ці користувачі завжди це бачитимуть, незалежно від налаштування вище."
-        },
-        {
-          "key": "Contacts.NotFound",
-          "value": "Контакти не знайдено."
         },
         {
           "key": "Translate.SectionTitle",
@@ -23064,6 +23160,18 @@
           "value": "Обрати інший строк"
         },
         {
+          "key": "AutoDeleteMessages.InfoDefault",
+          "value": "Автоматично видаляти повідомлення для всіх у розпочатих вами чатах через заданий час."
+        },
+        {
+          "key": "UnsavedChanges",
+          "value": "Незбережені зміни"
+        },
+        {
+          "key": "UnsavedChangesDescription.Privacy",
+          "value": "Ви змінили налаштування конфіденційності. Зберегти зміни?"
+        },
+        {
           "key": "Seconds",
           "forms": {
             "one_value": "%1$d секунда",
@@ -23251,28 +23359,32 @@
           "value": "Натисніть, щоб заблокувати Telegram."
         },
         {
-          "key": "Passkeys.Caption",
-          "value": "Ключі доступу дозволяють входити без пароля — за відбитком пальця, обличчям або PIN-кодом пристрою."
+          "key": "Passkey.Created",
+          "value": "Ключ доступу створено"
         },
         {
-          "key": "Passkey.CreateError",
-          "value": "Не вдалося створити ключ доступу."
+          "key": "Passkey.CreationError",
+          "value": "Не вдалося створити ключ доступу. Спробуйте ще раз."
         },
         {
-          "key": "Passkeys.Unsupported",
-          "value": "Ключі доступу не підтримуються в цьому браузері."
+          "key": "Passkey.Deletion.Text",
+          "value": "Після видалення цей ключ доступу не можна буде використати для входу.\n\nНе забудьте видалити його й з менеджера паролів."
         },
         {
-          "key": "Passkeys.Item",
-          "value": "Ключ доступу"
+          "key": "Passkey.Deletion.Title",
+          "value": "Видалити ключ доступу?"
         },
         {
-          "key": "Passkeys.LastUsed",
-          "value": "Використано"
+          "key": "Privacy.Passkey.Created",
+          "value": "Створено %s"
         },
         {
-          "key": "Passkeys.Created",
-          "value": "Створено"
+          "key": "Privacy.Passkey.LastUsage",
+          "value": "використано %s"
+        },
+        {
+          "key": "Privacy.Passkeys.Caption",
+          "value": "Ваш ключ доступу надійно зберігається в менеджері паролів. [Докладніше \u003e]()"
         },
         {
           "key": "Passkey.Title",

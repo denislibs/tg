@@ -1,70 +1,50 @@
-// src/core/hooks/useRightColumnShown.test.ts
+// src/core/hooks/useRightColumnShown.test.ts — мост экрана поиска стикеров/GIF
+// к `AppSidebarRight` (ВРЕМЕННО до 0б-11). Класс настоящий, на настоящем
+// `#column-right`: мост обязан ходить через `toggleSidebar`, писателя класса
+// на body у него своего нет (скан — `sidebarRight/index.test.ts`).
 import { cleanup, renderHook } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import appNavigationController from '@core/navigation/appNavigationController'
+import { RIGHT_COLUMN_ACTIVE_CLASSNAME, type AppSidebarRight } from '@components/sidebarRight'
+import { installSidebarRight } from '../../test/sidebarRight'
 import { useRightColumnShown } from './useRightColumnShown'
 
-const CLASS = 'is-right-column-shown'
+const shown = () => document.body.classList.contains(RIGHT_COLUMN_ACTIVE_CLASSNAME)
+let sidebar: AppSidebarRight
+let column: ReturnType<typeof installSidebarRight>
 
-describe('useRightColumnShown', () => {
-  beforeEach(() => document.body.classList.remove(CLASS))
-  // Счётчик модульный — незакрытый renderHook из прошлого теста утёк бы в
-  // следующий (нет глобального автоклинапа testing-library в проекте).
-  afterEach(() => {
-    cleanup()
-    document.body.classList.remove(CLASS)
-  })
+beforeEach(() => {
+  vi.useFakeTimers()
+  column = installSidebarRight()
+  sidebar = column.sidebar
+})
 
-  it('панель закрыта при монтировании — класса нет', () => {
-    renderHook(() => useRightColumnShown(false))
-    expect(document.body.classList.contains(CLASS)).toBe(false)
-  })
+afterEach(() => {
+  cleanup()
+  column.dispose()
+  vi.advanceTimersByTime(2000)
+  appNavigationController.spliceItems(0, Infinity)
+  vi.advanceTimersByTime(2000)
+  vi.useRealTimers()
+  document.body.className = ''
+  document.body.replaceChildren()
+})
 
-  it('панель открыта при монтировании — класс на body', () => {
-    renderHook(() => useRightColumnShown(true))
-    expect(document.body.classList.contains(CLASS)).toBe(true)
-  })
-
-  it('открытие после монтирования ставит класс, закрытие — снимает', () => {
-    const { rerender } = renderHook(({ open }) => useRightColumnShown(open), {
-      initialProps: { open: false },
-    })
-    expect(document.body.classList.contains(CLASS)).toBe(false)
-
-    rerender({ open: true })
-    expect(document.body.classList.contains(CLASS)).toBe(true)
-
-    rerender({ open: false })
-    expect(document.body.classList.contains(CLASS)).toBe(false)
-  })
-
-  it('размонтирование снимает класс', () => {
-    const { unmount } = renderHook(() => useRightColumnShown(true))
-    expect(document.body.classList.contains(CLASS)).toBe(true)
+describe('useRightColumnShown — мост к AppSidebarRight', () => {
+  it('колонка закрыта: монтирование открывает её классом, размонтирование — закрывает', () => {
+    const spy = vi.spyOn(sidebar, 'toggleSidebar')
+    const { unmount } = renderHook(() => useRightColumnShown())
+    expect(spy).toHaveBeenLastCalledWith(true)
+    expect(shown()).toBe(true)
     unmount()
-    expect(document.body.classList.contains(CLASS)).toBe(false)
+    expect(spy).toHaveBeenLastCalledWith(false)
+    expect(shown()).toBe(false)
   })
 
-  it('счётчик: две одновременно открытые панели — класс держится, пока открыта хотя бы одна', () => {
-    const a = renderHook(() => useRightColumnShown(true))
-    const b = renderHook(() => useRightColumnShown(true))
-    expect(document.body.classList.contains(CLASS)).toBe(true)
-
-    a.unmount()
-    expect(document.body.classList.contains(CLASS)).toBe(true) // b всё ещё открыта
-
-    b.unmount()
-    expect(document.body.classList.contains(CLASS)).toBe(false)
-  })
-
-  it('счётчик: закрытие одной панели пропом (rerender) не гасит класс другой открытой', () => {
-    const a = renderHook(({ open }) => useRightColumnShown(open), { initialProps: { open: true } })
-    const b = renderHook(() => useRightColumnShown(true))
-    expect(document.body.classList.contains(CLASS)).toBe(true)
-
-    a.rerender({ open: false })
-    expect(document.body.classList.contains(CLASS)).toBe(true) // b держит класс
-
-    b.unmount()
-    expect(document.body.classList.contains(CLASS)).toBe(false)
+  it('колонка уже открыта (профиль): закрытие поиска её не трогает', () => {
+    void sidebar.toggleSidebar(true)
+    const { unmount } = renderHook(() => useRightColumnShown())
+    unmount()
+    expect(shown()).toBe(true)
   })
 })

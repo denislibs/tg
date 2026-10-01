@@ -5,7 +5,7 @@
  * `privacy/*` (812502980), задача 17 плана волны 2D.
  *
  * Вкладки гоняются НАСТОЯЩИЕ — объявления `solidJsTabs/tabs.ts`, открытые через
- * хост (`settingsSliderHost.ts`) тем же путём, что строки React-экрана
+ * колоночный слайдер (`sidebarLeft/columnSlider.ts`) тем же путём, что строки React-экрана
  * «Конфиденциальность». Стабы — только границы: менеджер правил (воркер) и
  * геометрия; стор правил (`stores/privacyStore.ts`) — настоящий.
  *
@@ -31,14 +31,14 @@ import {
   AppPrivacyPhoneNumberTab,
 } from '@components/solidJsTabs/tabs'
 import { installSpecLabelActivation } from '@/test/specLabelActivation'
-import { createSettingsSliderHost, type SettingsSliderHost } from '../../settingsSliderHost'
+import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const rule = (key: PrivacyKey, patch: Partial<PrivacyRule> = {}): PrivacyRule =>
   ({ key, value: 'everybody', allowUserIds: [], denyUserIds: [], ...patch })
 
-let host: SettingsSliderHost
+let host: TestColumnSlider
 let uninstallLabelActivation: () => void
 let setRule: ReturnType<typeof vi.fn<(rule: PrivacyRule) => Promise<PrivacyRule>>>
 
@@ -57,7 +57,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = createSettingsSliderHost(columnEl, managers)
+  host = mountTestColumnSlider(columnEl, managers)
 })
 
 afterEach(async() => {

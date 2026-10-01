@@ -81,10 +81,10 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		r.Get("/media/{mediaID}/content", mediaH.GetContent)
 	}
 
-	// Публичная страница-превью @username (аналог t.me) — без авторизации.
+	// Публичные страницы-превью (аналог t.me) — без авторизации. Свой хост
+	// (PUBLIC_LINK_ORIGIN) nginx проксирует целиком на /tme/… (nginx/nginx.conf).
 	if pubH != nil {
-		r.Get("/@{username}", pubH.Page)
-		r.Get("/@{username}/photo", pubH.Photo)
+		r.Route("/tme", pubH.Mount)
 	}
 
 	// Bot API (Telegram-подобный): /bot/{token}/{method}. Аутентификация по
@@ -245,6 +245,8 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/gifts/catalog", ch.GiftCatalog)
 		pr.Post("/gifts/send", ch.SendGift)
 		pr.Get("/users/{userID}/gifts", ch.ProfileGifts)
+		// users.suggestBirthday — служебка-предложение в личной переписке.
+		pr.Post("/users/{userID}/suggest_birthday", ch.SuggestBirthday)
 		pr.Post("/gifts/{giftID}/convert", ch.ConvertGift)
 		pr.Post("/gifts/{giftID}/hidden", ch.SetGiftHidden)
 		// Боты
@@ -320,6 +322,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Delete("/chats/{peerID}", gh.DeleteGroup)
 		pr.Put("/chats/{peerID}/photo", gh.SetPhoto)
 		pr.Put("/chats/{peerID}/type", gh.SetType)
+		pr.Get("/chats/{peerID}/username/available", gh.CheckUsername) // channels.checkUsername
 		pr.Put("/chats/{peerID}/permissions", gh.SetPermissions)
 		pr.Put("/chats/{peerID}/reactions", gh.SetReactions)
 		pr.Put("/chats/{peerID}/history", gh.SetHistory)
@@ -435,6 +438,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Post("/contacts", coh.Add)
 			pr.Get("/contacts", coh.List)
 			pr.Delete("/contacts/{userID}", coh.Delete)
+			pr.Put("/contacts/{userID}/note", coh.UpdateNote)
 
 			// Личное фото контакта (только у владельца) + предложение фото профиля.
 			cph := NewContactPhotoHandler(contactsUC, chatUC)

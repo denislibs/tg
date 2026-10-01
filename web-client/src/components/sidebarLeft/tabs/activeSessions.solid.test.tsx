@@ -4,7 +4,7 @@
  * `sidebarLeft/tabs/activeSessions.tsx`, 812502980) — задача 9 плана волны 2D.
  *
  * Вкладка гоняется НАСТОЯЩАЯ — `AppActiveSessionsTab` из `solidJsTabs/tabs.ts`,
- * открытая через хост (`settingsSliderHost.ts`) тем же путём, что строка корня
+ * открытая через колоночный слайдер (`sidebarLeft/columnSlider.ts`) тем же путём, что строка корня
  * настроек; клик по строке открывает НАСТОЯЩУЮ `AppSessionTab` тем же слайдером.
  * Стабы — только границы: менеджеры (`tab.managers.sessions` — граница с
  * воркером), попап подтверждения (`confirmationPopup` — свой DOM-слой со своими
@@ -32,7 +32,7 @@ import { glyph } from '@core/tgico-icons'
 import { getRowIconBackgroundImage } from '@helpers/rowIconBackground'
 import contextMenuController from '@helpers/contextMenuController'
 import { AppActiveSessionsTab } from '@components/solidJsTabs/tabs'
-import { createSettingsSliderHost, type SettingsSliderHost } from '../settingsSliderHost'
+import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
 
 const confirmationPopup = vi.hoisted(() => vi.fn(async(_options: unknown) => {}))
 vi.mock('@components/popups/popupPeer', async(importOriginal) => ({
@@ -68,7 +68,7 @@ const other = { ...baseAuth, hash: 2, pFlags: {}, app_name: 'Telegram Android', 
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-let host: SettingsSliderHost
+let host: TestColumnSlider
 let sessions: {
   list: ReturnType<typeof vi.fn<() => Promise<Auth[]>>>
   terminate: ReturnType<typeof vi.fn<(id: number) => Promise<boolean>>>
@@ -88,7 +88,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = createSettingsSliderHost(columnEl, { sessions } as unknown as Managers)
+  host = mountTestColumnSlider(columnEl, { sessions } as unknown as Managers)
 })
 
 afterEach(async() => {
