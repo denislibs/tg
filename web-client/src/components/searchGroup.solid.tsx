@@ -22,9 +22,9 @@
  *     `true` не передаёт ни один вызывающий, а наш `Section` булев заголовок
  *     не принимает.
  *  3. `withContext: undefined` (:118) не передаётся — контекст-меню строки у
- *     `setListClickListener` не портировано (шапка `components/dialogRow.ts`).
+ *     `setListClickListener` не портировано (шапка `lib/appDialogsManager.ts`).
  *  4. Горизонтальный скроллер — `scrollable2.solid.tsx` (порт `scrollable2.tsx`,
- *     :7), список — `dialogRow.createChatList` (:77).
+ *     :7), список — `appDialogsManager.createChatList` (:77).
  *  5. Мемо `nameRight` (:56-76) создаётся ВНУТРИ `createRoot`, у оригинала —
  *     до него, без владельца (Solid такой мемо не снимает никогда). Поведение
  *     то же, но `dispose` по `middleware.onClean` гасит и его.
@@ -36,7 +36,7 @@ import type { Middleware } from '@helpers/middleware'
 import type { OpenPeerManagers } from '@core/navigation/openPeer'
 import Section from '@components/section.solid'
 import Scrollable from '@components/scrollable2.solid'
-import { createChatList, setListClickListener, type DialogListElement } from '@components/dialogRow'
+import { createChatList, setListClickListener, type DialogListElement } from '@lib/appDialogsManager'
 
 // `(string & {})` вместо голого `string` оригинала (:9): тот же набор значений,
 // но известные имена не растворяются в `string` (`no-redundant-type-constituents`)

@@ -23,10 +23,10 @@
  *  5. Отступление В7-1: с `{secret: true}` («Новый секретный чат», E2E — у tweb пары нет) клик
  *     по контакту начинает секретный чат (`core/navigation/startSecretChat.ts`), а не открывает
  *     личный.
- *  6. `setListClickListener` — наш порт (`components/dialogRow.ts`), менеджеры — опцией.
+ *  6. `setListClickListener` — наш порт (`lib/appDialogsManager.ts`), менеджеры — опцией.
  */
 import { createEffect, createSignal, onMount, type Component } from 'solid-js'
-import { setListClickListener } from '@components/dialogRow'
+import { setListClickListener } from '@lib/appDialogsManager'
 import InputSearch from '@components/inputSearch'
 import { IS_MOBILE } from '@environment/userAgent'
 import { canFocus } from '@helpers/dom/canFocus'

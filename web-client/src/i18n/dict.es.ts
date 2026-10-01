@@ -225,7 +225,6 @@ const es = {
   SavedMessages: 'Mensajes guardados',
   'MyStories.Title': 'Mis historias',
   Contacts: 'Contactos',
-  'Stars.Wallet': 'Billetera',
   'MultiAccount.More': 'Más',
   NewChannel: 'Nuevo canal',
   NewGroup: 'Nuevo grupo',

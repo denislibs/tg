@@ -1,14 +1,10 @@
-// Task 2 (подключение useStickerViewer к StickersHelper) — tweb
-// chat/stickersHelper.ts:118 (attachStickerViewerListeners({listenTo: this.container, ...})).
-// Пустое имя файла StickersHelper.test.tsx уже занято под чистую функцию-гейт
-// (StickersHelper.suggest.test.ts) — здесь только рендер-поведение предпросмотра.
+// Предпросмотр по зажатию в подсказках стикеров — tweb chat/stickersHelper.ts:117-118
+// (`attachStickerViewerListeners({listenTo: this.container, listenerSetter})`).
+// Механика самого жеста — `stickerViewer.test.ts`; здесь — что хелпер его
+// подключил к своему контейнеру и ячейки находятся селектором tweb.
 //
-// Порог показа (HOLD_THRESHOLD_MS, useStickerViewer.ts) — реальные 125мс:
-// «удержание» продвигает фейковые часы, «обычный клик» бьёт полную связку
-// mousedown→mouseup→click БЕЗ продвижения часов (синхронный fireEvent занимает
-// ~0мс реального времени — короче порога, как и физический быстрый клик).
-// Голый fireEvent.click(cell) без предшествующих mousedown/mouseup не ловит
-// регрессию глушения — ревью V2 на подключении хука к хостам.
+// «Удержание» продвигает фейковые часы за порог 125 мс; «обычный клик» бьёт
+// полную связку mousedown→mouseup→click без продвижения часов.
 import { render, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import StickersHelper from './StickersHelper'
@@ -20,6 +16,19 @@ import { makeSticker } from '../core/stickers/testSticker'
 // Реальный рендер стикера (fetch/декод) — предмет StickerMedia.test.tsx, здесь
 // важен только факт «ячейка есть и предпросмотр её подхватывает».
 vi.mock('./StickerMedia', () => ({ default: () => <div data-testid="sticker-media" /> }))
+// Документ по `data-doc-id` — реестр воркера (`managers.docs.getDoc`); фикстуры
+// проходят `saveDocument`, поэтому та же функция модуля их и находит.
+vi.mock('@/client/bootstrap', async () => {
+  const { getDoc } = await import('../core/media/messageMedia')
+  return { startClient: () => ({ managers: { docs: { getDoc: async (id: number) => getDoc(id) } } }) }
+})
+vi.mock('@components/wrappers/sticker', () => ({
+  default: (o: { div: HTMLElement }) => {
+    const img = document.createElement('img')
+    o.div.append(img)
+    return { render: Promise.resolve(img), width: 0, height: 0, destroy: () => {} }
+  },
+}))
 
 const stk = (id: number): Sticker => makeSticker({ id, setId: 1, emoji: '🦆', mime: 'application/x-tgsticker' })
 
@@ -43,7 +52,7 @@ async function renderWithCell(onPick: (st: Sticker) => void, result: Sticker[]) 
   return cell
 }
 
-describe('StickersHelper — предпросмотр по зажатию ЛКМ (useStickerViewer)', () => {
+describe('StickersHelper — предпросмотр по зажатию ЛКМ (attachStickerViewerListeners)', () => {
   afterEach(cleanup)
   afterEach(() => vi.useRealTimers())
 
@@ -55,12 +64,13 @@ describe('StickersHelper — предпросмотр по зажатию ЛКМ
     // таймеры (300мс-дебаунс useStickersByEmoji) для поллинга.
     vi.useFakeTimers()
     fireEvent.mouseDown(cell, { button: 0 })
-    expect(document.querySelector('[data-testid="sticker-viewer"]')).toBeNull() // порог ещё не истёк
-    void act(() => vi.advanceTimersByTime(150))
-    expect(document.querySelector('[data-testid="sticker-viewer"]')).not.toBeNull()
+    expect(document.querySelector('.sticker-viewer')).toBeNull() // порог ещё не истёк
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    expect(document.querySelector('.sticker-viewer.is-visible')).not.toBeNull()
 
     fireEvent.mouseUp(document)
-    expect(document.querySelector('[data-testid="sticker-viewer"]')).toBeNull()
+    await act(async () => { await vi.advanceTimersByTimeAsync(250) })
+    expect(document.querySelector('.sticker-viewer')).toBeNull()
 
     fireEvent.click(cell)
     expect(onPick).not.toHaveBeenCalled()
@@ -72,7 +82,7 @@ describe('StickersHelper — предпросмотр по зажатию ЛКМ
 
     fireEvent.mouseDown(cell, { button: 0 })
     fireEvent.mouseUp(document)
-    expect(document.querySelector('[data-testid="sticker-viewer"]')).toBeNull() // не мелькнул
+    expect(document.querySelector('.sticker-viewer')).toBeNull() // не мелькнул
     fireEvent.click(cell)
 
     expect(onPick).toHaveBeenCalledTimes(1)

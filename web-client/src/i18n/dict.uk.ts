@@ -232,7 +232,6 @@ const uk = {
   SavedMessages: 'Збережене',
   'MyStories.Title': 'Мої історії',
   Contacts: 'Контакти',
-  'Stars.Wallet': 'Гаманець',
   'MultiAccount.More': 'Більше',
   NewChannel: 'Створити канал',
   NewGroup: 'Створити групу',

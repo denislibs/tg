@@ -1,0 +1,151 @@
+@use "../foundation" as *;
+
+ .sticker-viewer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  // ВРЕМЕННО до 2C-15 и 0б-11: у tweb `z-index: 4` — общий слой попапов и
+  // меню, порядок между ними решает DOM. Поверх оверлея пока живут React-слои
+  // со своей шкалой: попап набора `StickerSetModal` на `shared/ui/Popup`
+  // (4090, его меню — 4100) и `rightSidebar/RightSearchTab` (1900). Число
+  // возвращается к 4, когда их снимают 2C-15 (`popups/stickers.solid.tsx`)
+  // и 0б-11 (`sidebarRight/tabs/stickers.solid.tsx`).
+  z-index: 4101;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:before {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    background-color: rgba(0, 0, 0, .6);
+    opacity: 0;
+    content: " ";
+
+    @include animation-level(2) {
+      transition: opacity var(--sticker-viewer-open-transition-out);
+    }
+  }
+
+  &.is-visible {
+    &.forwards {
+      &:before {
+        opacity: 1;
+
+        @include animation-level(2) {
+          transition: opacity var(--sticker-viewer-open-transition-in);
+        }
+      }
+
+      .sticker-viewer-transformer:not(.is-switching) {
+        transform: translateX(var(--translateX)) scale(1, 1) !important;
+
+        @include animation-level(2) {
+          transition: transform var(--sticker-viewer-open-transition-in);
+        }
+      }
+
+      .sticker-viewer-emoji,
+      .sticker-viewer-sticker,
+      .emoji-animation {
+        opacity: 1;
+
+        @include animation-level(2) {
+          transition: opacity var(--sticker-viewer-open-transition-in);
+        }
+      }
+
+      .sticker-viewer-sticker:not(.is-overflow) {
+        @include animation-level(2) {
+          transition: opacity 0s;
+        }
+      }
+    }
+  }
+
+  &-transformer {
+    --translateX: 0;
+    position: absolute;
+    // transform: translateX(0) scale(1);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 360px;
+    height: 360px;
+
+    &.has-effect {
+      width: 280px;
+      height: 280px;
+
+      .sticker-viewer-emoji {
+        top: -5.5rem;
+      }
+    }
+
+    @include animation-level(2) {
+      transition: transform var(--sticker-viewer-open-transition-out);
+    }
+
+    &.is-switching {
+      transform: translateX(var(--translateX)) scale(1) !important;
+      opacity: 1 !important;
+
+      @include animation-level(2) {
+        transition: transform var(--sticker-viewer-switch-transition), opacity var(--sticker-viewer-switch-transition) !important;
+      }
+
+      &.forwards {
+        transform: scale(0.4) translateX(var(--translateX)) !important;
+        opacity: 0 !important;
+      }
+    }
+  }
+
+  &-emoji {
+    position: absolute;
+    top: -3rem;
+    transform: translateX(var(--translateX)) scale(2);
+  }
+
+  &-sticker {
+    position: absolute;
+  }
+
+  // &-sticker,
+  // .emoji-animation {
+  //   margin-left: var(--margin-left);
+  //   margin-right: var(--margin-right);
+  // }
+
+  &-emoji,
+  &-sticker,
+  .emoji-animation {
+    opacity: 0;
+
+    @include animation-level(2) {
+      transition: opacity var(--sticker-viewer-open-transition-out);
+    }
+  }
+
+  .media-gif-wrapper {
+    // display: flex;
+    // align-items: center;
+    // justify-content: center;
+
+    .media-poster,
+    .media-video {
+      width: 100%;
+      height: 100%;
+      max-width: 100%;
+      max-height: 100%;
+      margin: auto;
+      object-fit: contain;
+    }
+  }
+}

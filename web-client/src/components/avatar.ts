@@ -83,7 +83,7 @@ import wrapPhoto from '@components/wrappers/photo'
 import { ensureMediaUrl } from '@core/media/ensureMediaUrl'
 import { getPreviewURLFromStrippedThumb } from '@core/media/getStrippedThumbIfNeeded'
 import { cachedPeer, subscribePeerMirror } from '@core/peerCache'
-import { getPeerPhoto, getPeerPhotoId, getPeerPhotoStrippedThumb } from '@core/peers/peer'
+import { getPeerPhoto, getPeerPhotoId, getPeerPhotoStrippedThumb, type Chat, type User } from '@core/peers/peer'
 import { HIDDEN_PEER_ID, NULL_PEER_ID, isUser } from '@core/peers/peerId'
 import { wrapAbbreviation } from '@lib/richtext/abbreviation'
 import type { IconName } from '@core/tgico-icons'
@@ -112,6 +112,11 @@ export interface AvatarManagers {
 export interface AvatarOptions {
   /** знаковый ключ пира; карточка берётся из зеркала */
   peerId?: PeerId
+  /** готовая карточка пира вместо зеркала (tweb `props.peer ??
+   *  apiManagerProxy.getPeer(peerId)`, avatarNew.tsx:778) — пир, которого в
+   *  зеркале этой вкладки нет: другой аккаунт в меню аккаунтов бургера
+   *  (`sidebarLeft/toolsMenu.ts`, Отступление В7-4). */
+  peer?: Chat | User
   /** готовое имя строкой — карточки пира нет и быть не может (порт `peerTitle`
    *  оригинала, avatarNew.tsx:410; там же он уводит `peerId` в `NULL_PEER_ID`) */
   peerTitle?: string
@@ -199,7 +204,7 @@ class Avatar {
     }
 
     // :1113-1119 — рендер запускается сразу, если есть чем рисовать.
-    if (options.peerId !== undefined || options.peerTitle !== undefined) {
+    if (options.peerId !== undefined || options.peerTitle !== undefined || options.peer !== undefined) {
       this.render()
     }
 
@@ -266,7 +271,9 @@ class Avatar {
     // Скрытая атрибуция пересылки — не пир: карточки для этого ключа не
     // существует и появиться не может, спрашивать зеркало не о чем (тот же
     // порядок, что у `peerTitle.ts` для `HIDDEN_PEER_ID`).
-    const peer = peerId === HIDDEN_PEER_ID || peerId === NULL_PEER_ID ? undefined : cachedPeer(peerId)
+    // :778 — `props.peer ??` зеркало
+    const peer = this.options.peer ??
+      (peerId === HIDDEN_PEER_ID || peerId === NULL_PEER_ID ? undefined : cachedPeer(peerId))
     if (!peer && peerId !== HIDDEN_PEER_ID && peerId !== NULL_PEER_ID && !this.declaredGap) {
       // Гейт `!declaredGap` — ровно как в `peerTitle.ts:131-134`: пробел
       // объявляется ОДИН раз. Без него каждый промах зеркала слал бы новый

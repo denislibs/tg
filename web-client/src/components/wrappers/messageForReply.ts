@@ -13,9 +13,9 @@
 // не два правила, а одно.
 //
 // ДВЕ ФОРМЫ, как у оригинала: строка (`plain`) и фрагмент с узлами. Богатую
-// зовёт превью строки в группе «Messages» глобального поиска
-// (`components/dialogRow.ts::setLastMessageN`, tweb `appDialogsManager.ts:2184-2192`)
-// — ради подсветки запроса (`highlightWord`, tweb :36, :45-46, :384-397):
+// зовёт подзаголовок строки чатлиста (`components/wrappers/dialogSubtitle.ts`,
+// tweb `dialogSubtitle.ts:162-175`) — там же и черновик диалога, — в том числе
+// в группе «Messages» глобального поиска ради подсветки запроса (`highlightWord`, tweb :36, :45-46, :384-397):
 // каждое вхождение — сущность `messageEntityHighlight`, её рисует
 // `wrapRichText` узлом `i.text-highlight`.
 //
@@ -35,7 +35,7 @@
 //    (`messageMediaDice`), счёт (`messageMediaInvoice`) — вложений таких видов
 //    наша модель не производит.
 import type { LangPackKey } from '@/lang'
-import { getMessageText, type MyMessage } from '@core/models'
+import { getMessageText, type DraftMessageReal, type MyMessage } from '@core/models'
 import { getDocumentFromMessage, type MessageMedia } from '@core/media/messageMedia'
 import { serviceMsgText } from '@core/serviceMsg'
 import type { MessageEntity } from '@layer'
@@ -54,7 +54,8 @@ import { useI18nStore } from '../../i18n'
 const MAX_LENGTH = 100
 
 export interface WrapMessageForReplyOptions {
-  message: MyMessage
+  /** сообщение либо черновик диалога (tweb `MyMessage | MyDraftMessage`, :32) */
+  message: MyMessage | DraftMessageReal
   /** текст вместо собственного (tweb `options.text`) — подпись альбома */
   text?: string
   /** не добавлять лейбл вложения (tweb `withoutMediaType`) */
@@ -91,18 +92,21 @@ export default function wrapMessageForReply(options: WrapMessageForReplyOptions)
     const action = serviceMsgText(message)
     return plain ? action : fragmentOf([labelSpan(action)])
   }
-  if (message._ !== 'message') return plain ? '' : document.createDocumentFragment()
+  // Черновик (tweb `message: MyMessage | MyDraftMessage`, :32, :83) — только
+  // текст с сущностями: вложений и альбома у него нет.
+  const isDraft = message._ === 'draftMessage'
+  if (!isDraft && message._ !== 'message') return plain ? '' : document.createDocumentFragment()
 
   const parts: string[] = []
-  let text = options.text ?? getMessageText(message)
+  let text = options.text ?? (isDraft ? message.message : getMessageText(message))
   let entities = message.entities
 
-  const rawMedia = message.media
+  const rawMedia = isDraft ? undefined : message.media
 
   // Альбом: лейбл один на всю группу, а текст берётся у того сообщения группы,
   // где он есть (tweb `getGroupedText`). Оригинал добавляет лейбл только когда
   // показывает группу ЦЕЛИКОМ (`usingFullGrouped`).
-  const isFullGrouped = !!message.grouped_id && !!groupedMessages?.length
+  const isFullGrouped = !isDraft && !!message.grouped_id && !!groupedMessages?.length
   if (isFullGrouped) {
     const withText = groupedMessages.find((m) => getMessageText(m))
     text = withText ? getMessageText(withText) : ''
@@ -112,7 +116,7 @@ export default function wrapMessageForReply(options: WrapMessageForReplyOptions)
 
   // Лейбл вложения — если группа не показана целиком и лейбл не запрещён, либо
   // текста нет вовсе (tweb :146).
-  if ((!isFullGrouped && !withoutMediaType) || !text) {
+  if (!isDraft && ((!isFullGrouped && !withoutMediaType) || !text)) {
     const part = mediaPart(rawMedia, message, t)
     if (part !== undefined) parts.push(part)
     // Стикер и аудио НЕСУТ свой текст в лейбле — своего у сообщения нет.

@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 39,
+      "version": 40,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -671,6 +671,10 @@
         {
           "key": "CallSettings.Speakers",
           "value": "Speakers"
+        },
+        {
+          "key": "Calls",
+          "value": "Calls"
         },
         {
           "key": "Calls.Empty",
@@ -1338,6 +1342,10 @@
           "value": "Clear recent stickers"
         },
         {
+          "key": "ClientPip.Exit",
+          "value": "Exit Picture-in-Picture"
+        },
+        {
           "key": "Close",
           "value": "Close"
         },
@@ -1467,6 +1475,10 @@
         {
           "key": "Create",
           "value": "Create"
+        },
+        {
+          "key": "CreateANew",
+          "value": "Create a New"
         },
         {
           "key": "CreateBot.Username.Taken",
@@ -3673,6 +3685,10 @@
           "value": "Please confirm your country code and enter your new phone number."
         },
         {
+          "key": "PictureInPicture",
+          "value": "Picture-in-Picture"
+        },
+        {
           "key": "PinFolderLimitReached",
           "value": "Sorry, you can't pin any more chats to the top."
         },
@@ -3707,14 +3723,6 @@
         {
           "key": "Pip.BackToTab",
           "value": "Back to Tab"
-        },
-        {
-          "key": "Pip.Title",
-          "value": "Picture in Picture"
-        },
-        {
-          "key": "Pip.Unsupported",
-          "value": "Picture-in-Picture is not supported in this browser."
         },
         {
           "key": "PlaybackRateNormal",
@@ -4829,10 +4837,6 @@
           "value": "Convert to"
         },
         {
-          "key": "StarGift.Converted",
-          "value": "Gift converted"
-        },
-        {
           "key": "StarGift.GiftTo",
           "value": "Gift to"
         },
@@ -4923,18 +4927,6 @@
         {
           "key": "Stars.TopUpAction",
           "value": "Top up Stars"
-        },
-        {
-          "key": "Stars.TopUpTitle",
-          "value": "Top-Up"
-        },
-        {
-          "key": "Stars.Transaction",
-          "value": "Transaction"
-        },
-        {
-          "key": "Stars.Wallet",
-          "value": "Wallet"
         },
         {
           "key": "StarsFailed",
@@ -5345,6 +5337,10 @@
         {
           "key": "TelegramFeatures",
           "value": "Telegram Features"
+        },
+        {
+          "key": "TelegramFeaturesUrl",
+          "value": "https://t.me/TelegramTips"
         },
         {
           "key": "TelegramStars",
@@ -5845,7 +5841,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 39,
+      "version": 40,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -6581,20 +6577,8 @@
           "value": "Последние операции"
         },
         {
-          "key": "Stars.TopUpTitle",
-          "value": "Пополнение"
-        },
-        {
           "key": "StarGiftTitle",
           "value": "Подарок"
-        },
-        {
-          "key": "StarGift.Converted",
-          "value": "Подарок обменян на звёзды"
-        },
-        {
-          "key": "Stars.Transaction",
-          "value": "Операция"
         },
         {
           "key": "StarsReactionTitle",
@@ -6717,6 +6701,22 @@
           "value": "Установить приложение"
         },
         {
+          "key": "PictureInPicture",
+          "value": "Картинка в картинке"
+        },
+        {
+          "key": "ClientPip.Exit",
+          "value": "Выйти из режима «Картинка в картинке»"
+        },
+        {
+          "key": "CreateANew",
+          "value": "Создать"
+        },
+        {
+          "key": "Calls",
+          "value": "Звонки"
+        },
+        {
           "key": "Chat.Delete.Private.Text",
           "value": "Чат будет удалён из вашего списка чатов."
         },
@@ -6745,10 +6745,6 @@
           "value": "OK"
         },
         {
-          "key": "Pip.Title",
-          "value": "Картинка в картинке"
-        },
-        {
           "key": "Pip.ActiveTitle",
           "value": "Telegram открыт в режиме «картинка в картинке»"
         },
@@ -6759,10 +6755,6 @@
         {
           "key": "Pip.BackToTab",
           "value": "Назад во вкладку"
-        },
-        {
-          "key": "Pip.Unsupported",
-          "value": "Картинка в картинке не поддерживается в этом браузере."
         },
         {
           "key": "Notifications.Web",
@@ -7465,10 +7457,6 @@
         {
           "key": "Contacts",
           "value": "Контакты"
-        },
-        {
-          "key": "Stars.Wallet",
-          "value": "Кошелёк"
         },
         {
           "key": "MenuTelegramStars",
@@ -11729,7 +11717,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 26,
+      "version": 27,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -12517,10 +12505,6 @@
         {
           "key": "Contacts",
           "value": "Contacts"
-        },
-        {
-          "key": "Stars.Wallet",
-          "value": "Portefeuille"
         },
         {
           "key": "MultiAccount.More",
@@ -14845,7 +14829,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 26,
+      "version": 27,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -15640,10 +15624,6 @@
         {
           "key": "Contacts",
           "value": "Kontakte"
-        },
-        {
-          "key": "Stars.Wallet",
-          "value": "Wallet"
         },
         {
           "key": "MultiAccount.More",
@@ -17987,7 +17967,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 26,
+      "version": 27,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -18783,10 +18763,6 @@
         {
           "key": "Contacts",
           "value": "Contactos"
-        },
-        {
-          "key": "Stars.Wallet",
-          "value": "Billetera"
         },
         {
           "key": "MultiAccount.More",
@@ -21123,7 +21099,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 26,
+      "version": 27,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -21926,10 +21902,6 @@
         {
           "key": "Contacts",
           "value": "Контакти"
-        },
-        {
-          "key": "Stars.Wallet",
-          "value": "Гаманець"
         },
         {
           "key": "MultiAccount.More",

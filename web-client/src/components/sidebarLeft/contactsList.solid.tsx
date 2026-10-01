@@ -28,14 +28,14 @@
  *     помнит имя, по которому поставил каждый контакт, и пересортировывается, когда имя
  *     контакта в пришедшей карточке другое, — ровно тот случай, в котором
  *     `appUsersManager.saveApiUser` шлёт `peer_title_edit`.
- *  6. Строка — наш `addDialogNew` (`components/dialogRow.ts`): без `withStories` (историй на
- *     аватаре у строки нет, шапка `dialogRow.ts`), с `managers` опцией (у оригинала — синглтон).
+ *  6. Строка — наш `addDialogNew` (`lib/appDialogsManager.ts`): без `withStories` (историй на
+ *     аватаре у строки нет, шапка строки `lib/appDialogsManager.ts`), с `managers` опцией (у оригинала — синглтон).
  *  7. `usePeers()` (реактивный стор карточек) → `useUser` из `stores/peers.solid.ts` на строку.
  */
 import { createComputed, createEffect, createMemo, createRenderEffect, createSignal, on, onCleanup, onMount, Show, type Accessor } from 'solid-js'
 import { Portal } from 'solid-js/web'
 import type { Managers } from '@/client/bootstrap'
-import { addDialogNew } from '@components/dialogRow'
+import { addDialogNew } from '@lib/appDialogsManager'
 import rootScope from '@lib/rootScope'
 import { RT } from '@core/realtime/events'
 import sortContacts, { getUserSortName, type ContactsSortMode } from '@core/peers/sortContacts'
