@@ -29,6 +29,7 @@ function setup(opts: { contacts?: UserReal[]; me?: UserReal } = {}) {
     book([user(body.contact_id, 'Added')]))
   const del = vi.fn(async (_path: string): Promise<void> => {})
   const mirror = vi.fn()
+  const onContactsUpdate = vi.fn()
   const persist = newPersistManager(mirror)
   const mgr = newContactsManager({
     rest: { get, post, del, put: vi.fn() } as never,
@@ -41,8 +42,9 @@ function setup(opts: { contacts?: UserReal[]; me?: UserReal } = {}) {
       getState: loadStateAll,
       pushToState: (key, value) => persist.stateKey(key, value),
     },
+    onContactsUpdate,
   })
-  return { mgr, get, mirror }
+  return { mgr, get, mirror, onContactsUpdate }
 }
 
 describe('contactsManager.getContactsPeerIds — локальный индекс контактов', () => {
@@ -101,6 +103,27 @@ describe('contactsManager.getContactsPeerIds — локальный индекс
 
     await mgr.del(1)
     expect(await mgr.getContactsPeerIds('jo')).toEqual([])
+  })
+
+  // tweb `onContactUpdated` (appUsersManager.ts:1216-1228): событие — только когда
+  // принадлежность книге ПОМЕНЯЛАСЬ; повторное добавление того же контакта молчит.
+  it('вход в книгу и выход из неё объявляются событием contacts_update', async () => {
+    const { mgr, onContactsUpdate } = setup({ contacts: [user(1, 'John')] })
+    await mgr.getContactsPeerIds()
+
+    await mgr.add({ contactId: 5, firstName: 'Added' })
+    await mgr.add({ contactId: 5, firstName: 'Added' })
+    await mgr.del(1)
+
+    expect(onContactsUpdate.mock.calls).toEqual([[5], [1]])
+  })
+
+  // `'none'` зовёт список контактов, который раскладывает книгу сам (`sortContacts`)
+  it('sortBy none — книга в порядке книги, без сортировки по имени', async () => {
+    const { mgr } = setup({ contacts: [user(2, 'Boris'), user(1, 'Alice')] })
+
+    expect(await mgr.getContactsPeerIds(undefined, false, 'none')).toEqual([2, 1])
+    expect(await mgr.getContactsPeerIds(undefined, false, 'name')).toEqual([1, 2])
   })
 
   it('смена аккаунта сбрасывает книгу: следующий поиск перечитывает её', async () => {

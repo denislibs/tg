@@ -17,7 +17,7 @@ import { useEvent } from '../core/hooks/useEvent'
 import type { Chat } from '../data'
 import FoldersSidebar, { type MainMenuHandlers } from './folders/FoldersSidebar'
 import type { FolderContextMenuSidebar } from '../helpers/dom/createFolderContextMenu'
-import { createColumnSlider, destroyColumnSlider } from './sidebarLeft/columnSlider'
+import { createColumnSlider, destroyColumnSlider, openContactsTab } from './sidebarLeft/columnSlider'
 import type SidebarSlider from './slider'
 import { AppChatFoldersTab, AppEditFolderTab, AppSettingsTab } from './solidJsTabs/tabs'
 import type { SliderSuperTabConstructable } from './sliderTab'
@@ -127,7 +127,7 @@ export default function Sidebar({
     return open?.thread.kind === 'topic' ? open.thread.rootMsgId : null
   })
   const onSelect = useNavigationStore((st) => st.selectChat)
-  const { openTopicThread: onOpenTopic, onChatCreated, openPeer: onOpenPeer } = useNavigationActions()
+  const { openTopicThread: onOpenTopic, onChatCreated } = useNavigationActions()
 
   // Экраны левой колонки взаимоисключающие — один стейт-энум (см. <SidebarScreens>).
   const [screen, setScreen] = useState<SidebarScreen>(null)
@@ -354,7 +354,8 @@ export default function Sidebar({
   const menuActions: MainMenuHandlers = {
     // tweb `sidebarLeft/index.ts:759-767`
     onOpenSettings: () => appSidebarLeft.closeTabsBefore(() => openColumnTab(AppSettingsTab)),
-    onOpenContacts: () => setScreen('contacts'),
+    // tweb `sidebarLeft/index.ts:693-696`
+    onOpenContacts: () => appSidebarLeft.closeTabsBefore(() => { void openContactsTab() }),
     onOpenSaved: async () => {
       const id = await managers.chats.saved()
       await managers.dialogs.refresh()
@@ -516,9 +517,11 @@ export default function Sidebar({
         <ComposeFab
           searching={searching || !!forumChat}
           onNewGroup={() => setScreen('newGroup')}
-          onNewPrivate={() => setScreen('newPrivate')}
+          // tweb `sidebarLeft/index.ts:1105-1109` (`closeBefore: false`) — «Новый личный
+          // чат» и есть вкладка контактов; секретный — Отступление В7-1
+          onNewPrivate={() => { void openContactsTab() }}
           onNewChannel={() => setScreen('newChannel')}
-          onNewSecret={() => setScreen('newSecret')}
+          onNewSecret={() => { void openContactsTab({ secret: true }) }}
         />
       </div>
 
@@ -531,11 +534,8 @@ export default function Sidebar({
         screen={screen}
         close={closeScreen}
         onSelect={onSelect}
-        onOpenPeer={onOpenPeer}
-        onChatCreated={onChatCreated}
         onCreateGroup={actions.createGroup}
         onCreateChannel={actions.createChannel}
-        onStartSecret={actions.startSecret}
       />
 
       {stories.overlays}

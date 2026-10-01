@@ -26,7 +26,9 @@ let started = false
 //
 // `language_change` — не `RT.*`: его порождает не воркер, а ВКЛАДКА
 // (`lib/langPack.ts::applyLangPack`, порт tweb :325), воркер только ретранслирует.
-const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change']
+// `contacts_update` — не `RT.*` по той же причине, что у tweb: это событие менеджера
+// книги (`contactsManager::onContactUpdated`), а не кадр провода.
+const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change', 'contacts_update']
 
 // Subscribe to worker realtime events exactly once per page.
 export function startRealtime(): void {

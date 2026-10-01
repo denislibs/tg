@@ -514,6 +514,46 @@ export const AppSharedFolderTab =
     onOpenAfterTimeout: folderTabOpenAfterTimeout,
   })
 
+// ── Контакты (tweb :209-222) — задача 0а-1 плана волны 7 ─────────────────────
+// Вкладка адресной книги (`contacts.solid.tsx`); её же открывает «Новый личный
+// чат» (tweb `sidebarLeft/index.ts:1079-1083`, `:1105-1109`). Расхождения:
+//  • `highlight: 'sort'` (ссылка `tg://contacts/sort` вспыхивает кнопкой
+//    сортировки, `flashControl` из `lib/settingsSearch/highlight.ts`) не
+//    заведена — О-31 волны 7: ни обработчика внутренних ссылок (Э5-4), ни поиска
+//    по настройкам у нас нет, опция была бы без вызывающего;
+//  • `secret` — Отступление В7-1: «Новый секретный чат» (E2E, у tweb пары нет)
+//    открывает эту же вкладку, и клик по контакту начинает секретный чат, а не
+//    открывает личный.
+export type AppContactsTabOptions = {
+  secret?: true
+}
+
+// the tab is mostly opened with nothing to point at
+type AppContactsTabPayload = AppContactsTabOptions | void
+
+export const AppContactsTab =
+  scaffoldSolidJSTab<AppContactsTabPayload>({
+    title: 'Contacts',
+    getComponentModule: () => import('../sidebarLeft/tabs/contacts.solid'),
+  })
+;(AppContactsTab as unknown as { noSame: boolean }).noSame = true
+
+// ── Passkeys (tweb :132-141) — задача 21 плана 2D ────────────────────────────
+// Вкладка `passkeys.solid.tsx`; открывает её строка `Privacy.Passkeys`
+// «Конфиденциальности». Список и сеттер — стор ОТКРЫВАЮЩЕГО
+// (`privacyAndSecurity.tsx:134-135`, `:179`): удаление и создание во вкладке
+// сразу видны строке родителя. Тип ключа — предметный `Passkey` (`layer.d.ts`).
+type AppPasskeysTabPayload = {
+  passkeys: import('@layer').Passkey[]
+  setPasskeys: import('solid-js/store').SetStoreFunction<import('@layer').Passkey[]>
+}
+
+export const AppPasskeysTab =
+  scaffoldSolidJSTab<AppPasskeysTabPayload>({
+    title: 'Privacy.Passkeys',
+    getComponentModule: () => import('../sidebarLeft/tabs/passkeys.solid'),
+  })
+
 // ── Заблокированные (tweb :248-258) — задача 22 плана 2D ─────────────────────
 // Вкладка `blockedUsers.solid.tsx`; открывает её хаб «Конфиденциальность» с уже
 // загруженной первой страницей (tweb `privacyAndSecurity.tsx:217`). После въезда

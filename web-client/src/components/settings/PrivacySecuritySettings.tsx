@@ -4,10 +4,10 @@
 // с живыми значениями и счётчиками исключений.
 import type { LangPackKey } from '@/lang'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createStore } from 'solid-js/store'
+import type { Passkey } from '@layer'
 import TgIcon from '../TgIcon'
 import { SettingsScreen, Section, Row } from './kit'
-import Passkeys from './Passkeys'
-import PasskeyIntroPopup from './PasskeyIntroPopup'
 import AutoDeleteMessages, { autoDeleteLabel } from './AutoDeleteMessages'
 import ConfirmDialog from './ConfirmDialog'
 import { useSettingsStore } from '../../settings'
@@ -21,6 +21,7 @@ import {
   AppBlockedUsersTab,
   AppPasscodeEnterPasswordTab,
   AppPasscodeLockTab,
+  AppPasskeysTab,
   AppPrivacyAboutTab,
   AppPrivacyAddToGroupsTab,
   AppPrivacyBirthdayTab,
@@ -38,6 +39,7 @@ import {
 import type SidebarSlider from '../slider'
 import type { PasswordState } from '../../core/managers/authManager'
 import { toastNew } from '../toast'
+import { showPasskeyPopup } from '../sidebarLeft/settingsPopups'
 import { usePrivacyStore } from '../../stores/privacyStore'
 import type { PrivacyKey, PrivacyRule as Rule } from '../../core/managers/privacyManager'
 
@@ -115,8 +117,6 @@ export default function PrivacySecuritySettings({ tab, onBack }: ReactScreenTabP
   // открывается с ним (tweb `privacyAndSecurity.tsx:131`, `:339-341`).
   const [pwState, setPwState] = useState<PasswordState | null>(null)
   const [autoDelete, setAutoDelete] = useState<number | null>(null)
-  const [passkeysCount, setPasskeysCount] = useState(0)
-  const [passkeyIntro, setPasskeyIntro] = useState(false)
   const [clearDrafts, setClearDrafts] = useState(false)
   const [deleteAccount, setDeleteAccount] = useState(false)
   useEffect(() => {
@@ -128,9 +128,6 @@ export default function PrivacySecuritySettings({ tab, onBack }: ReactScreenTabP
     void managers.privacy.autoDelete().then((p) => {
       if (alive) setAutoDelete(p)
     }).catch(() => {})
-    void managers.auth.passkeysList().then((l) => {
-      if (alive) setPasskeysCount(l.length)
-    }).catch(() => {})
     return () => { alive = false }
   }, [sub, managers])
 
@@ -138,12 +135,31 @@ export default function PrivacySecuritySettings({ tab, onBack }: ReactScreenTabP
     if (!sub) return null
     const back = () => setSub(null)
     switch (sub) {
-      case 'Privacy.Passkeys':
-        return <Passkeys onBack={back} />
       case 'AutoDeleteMessages':
         return <AutoDeleteMessages onBack={back} />
     }
     return null
+  }
+
+  // Ключи доступа — вкладка `AppPasskeysTab` (`sidebarLeft/tabs/passkeys.solid.tsx`,
+  // задача 21 плана 2D). tweb :156-160, :290-302: список — Solid-стор открывающего,
+  // вкладка правит его сама; без ключей — сначала интро-попап, созданный ключ —
+  // первый элемент стора. ВРЕМЕННО до 2D-23: список читается на клике, а не на
+  // открытии хаба (`updatePasskeys`, :172-190), — у React-экрана нет подписки на
+  // стор, и счётчик после удаления во вкладке устарел бы.
+  const openPasskeysTab = (list: Passkey[]) => {
+    const [passkeys, setPasskeys] = createStore(list)
+    void slider.createTab(AppPasskeysTab).open({ passkeys, setPasskeys })
+  }
+  const openPasskeys = () => {
+    void managers.auth.passkeysList().then((list) => {
+      if (list.length) {
+        openPasskeysTab(list)
+        return
+      }
+
+      showPasskeyPopup((passkey) => openPasskeysTab([passkey]))
+    }).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
   }
 
   // Мастер 2FA — вкладки слайдера (`sidebarLeft/tabs/2fa/*`). Конец мастера
@@ -214,11 +230,10 @@ export default function PrivacySecuritySettings({ tab, onBack }: ReactScreenTabP
           value={pwState == null ? undefined : t(pwState.enabled ? 'PrivacyAndSecurity.Item.On' : 'Off')}
           onClick={openTwoStepVerification}
         />
-        {/* Как в tweb: без ключей клик открывает интро-попап, с ключами — список */}
         <Row
           icon={<TgIcon name="faceid_filled" size={24} />}
           label="Privacy.Passkeys"
-          onClick={() => (passkeysCount > 0 ? setSub('Privacy.Passkeys') : setPasskeyIntro(true))}
+          onClick={openPasskeys}
         />
         {/* «Активные сессии» — та же портированная вкладка слайдера, что и
             «Устройства» в корне настроек (`sidebarLeft/tabs/activeSessions.solid.tsx`),
@@ -292,16 +307,6 @@ export default function PrivacySecuritySettings({ tab, onBack }: ReactScreenTabP
           onClose={() => setDeleteAccount(false)}
         />
       )}
-
-      <PasskeyIntroPopup
-        open={passkeyIntro}
-        onClose={() => setPasskeyIntro(false)}
-        onCreated={() => {
-          setPasskeyIntro(false)
-          setPasskeysCount(1)
-          setSub('Privacy.Passkeys')
-        }}
-      />
     </SettingsScreen>
   )
 }

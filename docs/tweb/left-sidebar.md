@@ -747,7 +747,7 @@ Close/RestartTopic `:224` · ChargeFee `:238` · Delete `:248`.
 | `src/components/Sidebar.tsx` (:61) | оркестратор колонки: `#column-left` с tweb-классами (:213-215), композиция хуков `useSidebar*` | `AppSidebarLeft.construct` |
 | `src/components/SidebarScreens.tsx` | экраны колонки, ещё не ставшие вкладками, — **один enum-стейт** `'contacts'\|'wallet'\|'calls'\|'newGroup'\|'newChannel'\|'newPrivate'\|'newSecret'\|null` (этап 0а волны 7), lazy-подгрузка Wallet/Calls; настроек здесь нет с задачи 28 плана 2D | стек `SliderSuperTab` |
 | `src/components/sidebarLeft/tabs/settings.solid.tsx` + `sidebarLeft/columnSlider.ts` | корень настроек — вкладка `AppSettingsTab` колоночного слайдера (задача 28 плана 2D); подэкраны — вкладки того же слайдера (`tab.slider.createTab`), ещё не портированные «Конфиденциальность»/«Стикеры»/«Динамики»/«Профиль» — React-экраны на мосту `sidebarLeft/reactScreenTab.tsx` (ВРЕМЕННО до 2D-23/15/26/27) | `AppSettingsTab` + дерево части 2 |
-| `src/components/settings/*` | реализации ещё не портированных под-экранов (Passkeys, AutoDelete, EditProfile…). «Заблокированных» здесь БОЛЬШЕ НЕТ — вкладка `sidebarLeft/tabs/blockedUsers.solid.tsx` (задача 22 плана 2D), открывает её строка React-«Конфиденциальности» слайдером своей вкладки. «Быстрой реакции» здесь БОЛЬШЕ НЕТ — вкладка `sidebarLeft/tabs/quickReaction.solid.tsx` (задача 14 плана 2D). «Устройства» здесь БОЛЬШЕ НЕТ — уехали на слайдер, см. §3; «Обои» и «Цвет» — тоже (`sidebarLeft/tabs/background.solid.tsx`, `backgroundColor.solid.tsx`, задача 12 плана 2D; открывает строка React-«Общих» через хост) | `sidebarLeft/tabs/*` |
+| `src/components/settings/*` | реализации ещё не портированных под-экранов (AutoDelete, EditProfile…). «Заблокированных» здесь БОЛЬШЕ НЕТ — вкладка `sidebarLeft/tabs/blockedUsers.solid.tsx` (задача 22 плана 2D; открывает строка React-«Конфиденциальности»). «Passkeys» здесь БОЛЬШЕ НЕТ — вкладка `sidebarLeft/tabs/passkeys.solid.tsx` (задача 21 плана 2D; открывает строка React-«Конфиденциальности»). «Быстрой реакции» здесь БОЛЬШЕ НЕТ — вкладка `sidebarLeft/tabs/quickReaction.solid.tsx` (задача 14 плана 2D). «Устройства» здесь БОЛЬШЕ НЕТ — уехали на слайдер, см. §3; «Обои» и «Цвет» — тоже (`sidebarLeft/tabs/background.solid.tsx`, `backgroundColor.solid.tsx`, задача 12 плана 2D; открывает строка React-«Общих» через хост) | `sidebarLeft/tabs/*` |
 | `src/lib/appDialogsManager.ts` | папочный срез владельца: `.chatlist-overlay` с Solid-рядом вкладок, `#folders-container`, скроллер на папку, переключение (`horizontalMenu` + `TransitionSlider`); встроен в колонку `Sidebar.tsx` (план папок, задача 6) | `AppDialogsManager` (папки) |
 | `src/components/ChatList.tsx` / `ChatListItem.tsx` | списки папок на виртуальном ядре — порталом в `.chatlist-top` контейнеров владельца | `AutonomousDialogList` (строки) + `DialogElement` |
 | `src/components/virtual/DeferredSortedVirtualList.*` | порт `deferredSortedVirtualList` | 1:1 |
@@ -818,15 +818,23 @@ DOM-паритет первого таба выдержан сознательн
    наш попап `EmojiStatusPicker`, а не `EmoticonsDropdown` у кнопки; клик по своему статусу в профиле
    (`clickableEmojiStatus`) — `PeerProfile` в корне настроек есть с задачи 28 волны 2D; кликабельность статуса — предмет `PeerProfile.Name` (`wrapPeerTitle` c `clickableEmojiStatus`).
 6а. **Контакты и «Новое сообщение» — адресная книга.** tweb: `AppContactsTab` → `ContactsList`
-   (`getContactsPeerIds(query, false, …)`, без себя) — и для пункта меню, и для кнопки `newprivate`
-   (`sidebarLeft/index.ts:661`, `:1039`). У нас оба экрана (`ContactsView.tsx`, `NewPrivateChat.tsx`)
-   и выбор контакта для отправки (`ContactPicker`) читают книгу через `core/hooks/useContactPeerIds.ts`
-   (ветка `fix/contacts-share-pickers`; прежде собирали «контакты» из личных диалогов — туда попадали
-   «Избранное», служебный «Telegram» 777000 и любой собеседник). Остаток: сам `ContactsList` не
-   портирован — виртуальный список, сортировка «по времени в сети»/по имени с кнопкой в шапке,
-   `SectionIndex`, выделение контактов (`ContactsSelection`), меню контакта; у нас прежняя разметка
-   с группами по букве, порядок по имени задаёт книга; «Новое сообщение» — отдельный экран, а не
-   `AppContactsTab`.
+   (`getContactsPeerIds(query, false, 'none')`, без себя) — и для пункта меню, и для кнопки `newprivate`
+   (`sidebarLeft/index.ts:1079-1083`, `:1105-1109`). **Порт 812502980 готов** (задача 0а-1 волны 7):
+   вкладка `components/sidebarLeft/tabs/contacts.solid.tsx` (`AppContactsTab`, `noSame`,
+   `solidJsTabs/tabs.ts`), список `sidebarLeft/contactsList.solid.tsx` (виртуальный, по «был(а) в
+   сети» с троттлингом 3 с или по имени с секциями, скольжение строк, гашение удалённой), полоса букв
+   `components/sectionIndex.solid.tsx`, порядок `core/peers/sortContacts.ts`, настройка
+   `contactsSortMode`, событие книги `contacts_update` (воркер `contactsManager::onContactUpdated` →
+   `realtimeBridge`), промис `tab.shown` слайдера. Клик по строке открывает чат и вкладку НЕ
+   закрывает — как у оригинала. `{secret: true}` — Отступление В7-1 (секретный чат,
+   `core/navigation/startSecretChat.ts`). Расхождения — в шапках файлов: выделения и меню контакта
+   нет (О-30 волны 7, ждёт `DialogsSelectionBase`), `highlight: 'sort'` нет (О-31), статус — из
+   зеркала присутствия, «добавить контакт» — мост на React-попап до 2C-26. **Врезка сделана**:
+   бургер «Контакты» (`closeTabsBefore`, tweb `:693-696`), `#new-menu` «Новый личный чат» и «Новый
+   секретный чат» (`{secret: true}`) открывают вкладку на колоночном слайдере
+   (`sidebarLeft/columnSlider.ts::openContactsTab`, ВРЕМЕННО до 2-1). Вкладка сверху с другой опцией
+   `secret` закрывается и уступает новой (с той же — `noSame`, как у tweb). React-экраны
+   `ContactsView.tsx`/`NewPrivateChat.tsx` и ветки `SidebarScreens` удалены.
 7. **Контекстное меню диалога и contact-list-заглушка** — у tweb богатое меню
    (`dialogsContextMenu.ts`, 13 пунктов) и секция Contacts при <10 чатах; у нас этих подсистем нет
    (меню ПАПКИ — не оно: порт `createFolderContextMenu` на оба ряда, задача 7 плана папок).

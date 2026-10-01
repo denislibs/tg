@@ -373,6 +373,7 @@ export function createWorkerCore() {
     peers,
     getMe: () => me?.user ?? null,
     state: { getState, pushToState: (key, value) => persist.stateKey(key, value) },
+    onContactsUpdate: (userId) => broadcast('contacts_update', userId),
   })
   // `peer_block` — событие tweb `toggleBlock` (`appUsersManager.ts:520-536`);
   // broadcast объявлен ниже — стрелка дёргает его лениво.

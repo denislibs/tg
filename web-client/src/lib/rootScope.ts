@@ -217,6 +217,11 @@ export type BroadcastEvents = {
   'stickers_installed': [StickerSet]
   'stickers_deleted': [StickerSet]
 
+  // tweb rootScope.ts:152 — контакт вошёл в книгу или вышел из неё; шлёт воркер
+  // (`contactsManager::onContactUpdated`), слушает список контактов
+  // (`sidebarLeft/contactsList.solid.tsx`).
+  'contacts_update': [UserId]
+
   // ── UI-команды (бывший core/hooks/uiEvents.ts, удалён) ──
   'ui:toast': [string]
   'ui:savedTagsChanged': [void]
