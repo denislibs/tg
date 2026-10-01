@@ -41,7 +41,9 @@ func (h *GroupHandler) mapErr(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden")
 	case errors.Is(err, domain.ErrPrivacy):
-		writeError(w, http.StatusForbidden, "privacy")
+		// Имя отказа — Telegram (channels.inviteToChannel/messages.addChatUser):
+		// по нему tweb addChatUsers показывает тост InviteToGroupError.
+		writeError(w, http.StatusForbidden, "USER_PRIVACY_RESTRICTED")
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not found")
 	default:
@@ -170,6 +172,35 @@ func (h *GroupHandler) SetType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
+}
+
+// CheckUsername — channels.checkUsername (GET
+// /chats/{peerID}/username/available?u=...): Bool «имя свободно для этого
+// чата». Имя, занятое пользователем или другим чатом, — boolFalse (общее
+// пространство имён), своё имя чата — boolTrue. Негодная форма — 400
+// USERNAME_INVALID (правило то же, что у SetType); нет права менять инфо — 403
+// CHAT_ADMIN_REQUIRED.
+func (h *GroupHandler) CheckUsername(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := peerChatID(w, r, h.uc)
+	if !ok {
+		return
+	}
+	u := r.URL.Query().Get("u")
+	if !usernameRe.MatchString(u) {
+		writeError(w, http.StatusBadRequest, "USERNAME_INVALID")
+		return
+	}
+	available, err := h.uc.CheckChatUsername(r.Context(), chatID, user.ID, u)
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "CHAT_ADMIN_REQUIRED")
+		return
+	}
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, domain.NewBool(available))
 }
 
 // SetPermissions stores default member permissions + slowmode (PUT /chats/{chatID}/permissions).

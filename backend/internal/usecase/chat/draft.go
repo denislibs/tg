@@ -47,7 +47,7 @@ func (i *Interactor) SaveDraft(ctx context.Context, userID, chatID int64, text s
 		return nil, nil
 	}
 	d, err := i.drafts.Upsert(ctx, userID, domain.Draft{
-		ChatID: chatID, Text: text, Entities: sanitizeEntities(entities), ReplyToID: replyToID,
+		ChatID: chatID, Text: text, Entities: domain.SanitizeEntities(entities), ReplyToID: replyToID,
 	})
 	if err != nil {
 		return nil, err

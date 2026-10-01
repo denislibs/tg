@@ -1,15 +1,16 @@
-// ── ПИН: невалидная дата не роняет экран, а год не пропадает ─────────────────
+// ── ПИН: невалидная дата не роняет экран ────────────────────────────────────
 //
-// Два дефекта, оба внесены задачей #121 и оба найдены ревью:
+// Дефект внесён задачей #121 и найден ревью:
 //
 //  1. `Intl.DateTimeFormat.format(new Date(NaN))` бросает
 //     `RangeError: Invalid time value`, и `IntlDateElement.update` его не
 //     ловит — то есть битая строка с провода роняет РЕНДЕР ЭКРАНА. До перевода
 //     подписей на узлы проверка была у каждого экрана своя (`Number.isNaN` в
-//     `PremiumManage`, `try/catch` в `Passkeys`), и при переводе обе пропали;
-//  2. `formatDate` оригинала опускает год у дат ТЕКУЩЕГО года. Экранам, где
-//     дата отвечает на вопрос «до каких пор» («подписка до 3 декабря»), это
-//     меняет смысл, поэтому им служит `overrideIntlOptions`.
+//     `PremiumManage`, `try/catch` в `Passkeys`), и при переводе обе пропали.
+//
+// Обёртки `DayDate` (узел `formatDate`) и её `ALWAYS_YEAR` сняты задачей 21 плана
+// 2D: последний потребитель, React-экран «Passkeys», заменён Solid-вкладкой,
+// которая, как оригинал, зовёт `formatDate` без принудительного года.
 //
 // Проверяется поведение обёрток; что экраны их зовут именно так — отдельным
 // пином (`components/dateLabels.form.test.tsx`).
@@ -18,10 +19,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import '../../test/lang'
 
-import { ALWAYS_YEAR, DayDate, RowDate, SentTime, Time } from './dateNodes'
+import { RowDate, SentTime, Time } from './dateNodes'
 
-/** 14 июня 2026, 10:00 UTC. */
-const TS = Math.floor(Date.parse('2026-06-14T10:00:00Z') / 1000)
 /** Ровно то, что даёт `Math.floor(Date.parse('битая строка') / 1000)`. */
 const BROKEN = Math.floor(Date.parse('не дата') / 1000)
 
@@ -38,7 +37,6 @@ describe('невалидная дата', () => {
   const cases = [
     ['SentTime', (fallback?: string) => <SentTime timestamp={BROKEN} fallback={fallback} />],
     ['Time', (fallback?: string) => <Time timestamp={BROKEN} fallback={fallback} />],
-    ['DayDate', (fallback?: string) => <DayDate date={BROKEN} fallback={fallback} />],
     ['RowDate', (fallback?: string) => <RowDate timestamp={BROKEN} fallback={fallback} />],
   ] as const
 
@@ -51,36 +49,6 @@ describe('невалидная дата', () => {
       expect(document.querySelector('.i18n')).toBeNull()
     })
   }
-})
-
-describe('год в `DayDate`', () => {
-  it('по умолчанию — как у оригинала: у текущего года года нет, у прошлого есть', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-08-29T18:00:00'))
-
-    const { container } = render(<DayDate date={TS} />)
-    expect(container.textContent).toBe('June 14')
-
-    cleanup()
-    const past = Math.floor(Date.parse('2025-06-14T10:00:00Z') / 1000)
-    expect(render(<DayDate date={past} />).container.textContent).toBe('June 14, 2025')
-  })
-
-  it('`ALWAYS_YEAR` возвращает год и датам текущего года', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-08-29T18:00:00'))
-
-    const { container } = render(<DayDate date={TS} overrideIntlOptions={ALWAYS_YEAR} />)
-    expect(container.textContent).toBe('June 14, 2026')
-  })
-
-  it('`shortMonth` вместе с `ALWAYS_YEAR` — «Jun 14, 2026»', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-08-29T18:00:00'))
-
-    const { container } = render(<DayDate date={TS} shortMonth overrideIntlOptions={ALWAYS_YEAR} />)
-    expect(container.textContent).toBe('Jun 14, 2026')
-  })
 })
 
 // ── ПИН ЗАДАЧИ #123: подпись СТРОКИ СПИСКА ───────────────────────────────────

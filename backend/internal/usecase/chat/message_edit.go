@@ -33,7 +33,7 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 	if utf8.RuneCountInString(text) > maxMessageRunes {
 		return domain.Message{}, domain.ErrTooLong
 	}
-	entities = sanitizeEntities(entities)
+	entities = domain.SanitizeEntities(entities)
 
 	var msg domain.Message
 	var members []int64

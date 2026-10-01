@@ -121,6 +121,17 @@ func (i *Interactor) SetChatType(ctx context.Context, chatID, actorID int64, isP
 	return nil
 }
 
+// CheckChatUsername — channels.checkUsername: свободно ли публичное имя для
+// чата (tweb usernameInputField на вкладке chatType). Проверять вправе тот, кто
+// вправе и сохранить (SetChatType — CHANGE_INFO); своё имя чата свободно.
+// Форму имени проверяет вызывающий — тем же правилом, что и сохранение.
+func (i *Interactor) CheckChatUsername(ctx context.Context, chatID, actorID int64, username string) (bool, error) {
+	if err := i.requireRight(ctx, chatID, actorID, domain.RightChangeInfo); err != nil {
+		return false, err
+	}
+	return i.groups.UsernameAvailable(ctx, username, chatID)
+}
+
 // SetChatPermissions stores the default member permissions + slowmode (tweb
 // groupPermissions; needs the admin's BAN_USERS, tweb's change_permissions).
 func (i *Interactor) SetChatPermissions(ctx context.Context, chatID, actorID int64, perms domain.MemberPerms, slowmodeSeconds int) error {

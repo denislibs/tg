@@ -585,7 +585,7 @@ Enter и гасит `destroyed` — иначе отложенный `doubleRaf`-
 попап остаётся» краснеет. **Врезка:** `settings/PrivacySecuritySettings.tsx:264` → `showPasskeyPopup`;
 удалить `settings/PasskeyIntroPopup.tsx` (+ `.module.scss`). **Зависимости:** 5.
 
-### Задача 11: свой срок автоудаления → 2D-20
+### Задача 11: свой срок автоудаления → 2D-20 — ✅ сделано в 2D-20 (PR feat/2d-20-auto-delete-tab)
 
 **Порт:** `components/verticalOptionWheel.tsx` (300) + `.module.scss` (61) → `verticalOptionWheel.solid.tsx`;
 `sidebarLeft/tabs/autoDeleteMessages/options.ts` (порт файла целиком — его импортирует и вкладка
@@ -605,7 +605,9 @@ tweb подходит без подгонки.
 показ после `enumerateDevices`, `devicechange`, «Default», `onStaleCurrentId`, `Scrollable` +
 `Section noMarginBottom` + `Row.RadioField`/`RadioFieldTsx` + `FooterPlaceholder` + `Footer floating`.
 Чисто клиентская функция (бэкенду нечего).
-**Врезка:** `settings/SpeakersCamera.tsx:159`, `:177` — `DevicePicker` снять, звать функцию.
+**Врезка:** с 2D-26 вызывающий — уже Solid (`call/callDeviceSettings.solid.tsx::pick`, имя и
+сигнатура tweb); заменить React-мост `components/rtmp/outputDevicePopup.tsx` (+ `.module.scss`,
+`.test.tsx`) Solid-портом `outputDevicePopup.solid.tsx`, перенести сценарии теста моста.
 **Мутация:** `onPick` получает `currentId` вместо выбранного — пин краснеет. **Зависимости:** 5.
 
 ### Задача 13: выход → 2D-28

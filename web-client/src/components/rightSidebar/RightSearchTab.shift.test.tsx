@@ -1,64 +1,62 @@
 // Пин: экран поиска правой колонки (стикеры/GIF) обязан сужать чат тем же
-// классом body.is-right-column-shown, что и панель профиля (UserInfoPanel) —
-// иначе (баг из ТЗ) панель ложится ПОВЕРХ чата вместо того, чтобы его сузить
+// классом body.is-right-column-shown, что и панель профиля — иначе (баг из ТЗ)
+// панель ложится ПОВЕРХ чата вместо того, чтобы его сузить
 // (styles/tweb/_chat.scss:438,458,513 — сдвиг #column-center только под этим
-// классом).
-//
-// Экран поиска и панель профиля МОГУТ быть открыты одновременно:
-// StickersSearchTab/GifsSearchTab открываются из подвала EmojiDropdown
-// композера (см. EmojiDropdown.tsx:712-713) — композер виден и кликабелен и
-// при открытой панели профиля (панель лишь сужает чат, не блокирует его),
-// поэтому пользователь может открыть профиль (UserInfoPanel open=true),
-// затем — поиск стикеров. Оба навешивают один и тот же класс на body, значит
-// класс обязан жить за счётчиком открытых правых панелей
-// (useRightColumnShown), а не за булевым toggle одной панели — иначе закрытие
-// экрана поиска сняло бы класс и у ещё открытой панели профиля. Сам счётчик
-// покрыт отдельно в useRightColumnShown.test.ts; здесь пинится факт, что
-// RightSearchTab им пользуется (совместно с UserInfoPanel).
+// классом). Класс пишет только `AppSidebarRight` (`sidebarRight/index.ts`),
+// экран просит его мостом `useRightColumnShown` (ВРЕМЕННО до 0б-11); колонка,
+// открытая до экрана (профиль), его закрытие переживает — сам мост покрыт в
+// useRightColumnShown.test.ts, здесь пинится, что RightSearchTab им пользуется.
 import { cleanup, render } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import appNavigationController from '@core/navigation/appNavigationController'
+import type { AppSidebarRight } from '@components/sidebarRight'
+import { installSidebarRight } from '../../test/sidebarRight'
 import RightSearchTab from './RightSearchTab'
 
-afterEach(cleanup)
-
 const noop = () => {}
+const shown = () => document.body.classList.contains('is-right-column-shown')
+let sidebar: AppSidebarRight
+let column: ReturnType<typeof installSidebarRight>
+
+beforeEach(() => {
+  vi.useFakeTimers()
+  column = installSidebarRight()
+  sidebar = column.sidebar
+})
+
+afterEach(() => {
+  cleanup()
+  column.dispose()
+  vi.advanceTimersByTime(2000)
+  appNavigationController.spliceItems(0, Infinity)
+  vi.advanceTimersByTime(2000)
+  vi.useRealTimers()
+  document.body.className = ''
+  document.body.replaceChildren()
+})
+
+const renderTab = () => render(
+  <RightSearchTab id="stickers-container" placeholder="StickersTab.SearchPlaceholder" value="" onChange={noop} onClose={noop}>
+    {null}
+  </RightSearchTab>,
+)
 
 describe('RightSearchTab и сдвиг контента', () => {
   it('пока открыт (смонтирован), на body висит класс сужения чата', () => {
-    render(
-      <RightSearchTab id="stickers-container" placeholder="StickersTab.SearchPlaceholder" value="" onChange={noop} onClose={noop}>
-        {null}
-      </RightSearchTab>,
-    )
-    expect(document.body.classList.contains('is-right-column-shown')).toBe(true)
+    renderTab()
+    expect(shown()).toBe(true)
   })
 
-  it('снимает класс при размонтировании (закрытии) единственной открытой панели', () => {
-    const { unmount } = render(
-      <RightSearchTab id="stickers-container" placeholder="StickersTab.SearchPlaceholder" value="" onChange={noop} onClose={noop}>
-        {null}
-      </RightSearchTab>,
-    )
+  it('снимает класс при размонтировании (закрытии), если колонку открывал он', () => {
+    const { unmount } = renderTab()
     unmount()
-    expect(document.body.classList.contains('is-right-column-shown')).toBe(false)
+    expect(shown()).toBe(false)
   })
 
-  it('не снимает класс при закрытии одной панели, пока рядом открыта другая правая панель', () => {
-    // вторая смонтированная панель имитирует одновременно открытую
-    // UserInfoPanel — обе завязаны на общий счётчик useRightColumnShown.
-    const first = render(
-      <RightSearchTab id="stickers-container" placeholder="StickersTab.SearchPlaceholder" value="" onChange={noop} onClose={noop}>
-        {null}
-      </RightSearchTab>,
-    )
-    const second = render(
-      <RightSearchTab id="search-gifs-container" placeholder="SearchGIFs" value="" onChange={noop} onClose={noop}>
-        {null}
-      </RightSearchTab>,
-    )
-    first.unmount()
-    expect(document.body.classList.contains('is-right-column-shown')).toBe(true)
-    second.unmount()
-    expect(document.body.classList.contains('is-right-column-shown')).toBe(false)
+  it('не снимает класс при закрытии, пока открыт профиль, бывший до него', () => {
+    void sidebar.toggleSidebar(true)
+    const { unmount } = renderTab()
+    unmount()
+    expect(shown()).toBe(true)
   })
 })

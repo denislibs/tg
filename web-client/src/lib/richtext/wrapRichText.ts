@@ -42,6 +42,7 @@ import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
 import { revealSpoiler } from '@lib/spoiler/spoilerReveal'
 import DotRenderer from '@components/dotRenderer'
 import { safeUrl } from '@core/safeUrl'
+import { publicUsernameLink } from '@core/publicLink'
 import encodeSpoiler from './encodeSpoiler'
 import parseEntities, { SITE_HASHTAGS } from './parseEntities'
 import type { MessageEntity } from '@layer'
@@ -440,7 +441,8 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
       case 'messageEntityMention': {
         if (!options.noLinks) {
           const username = fullEntityText.slice(1)
-          const anchor = wrapTelegramUrlToAnchor('t.me/' + username)
+          // tweb: 't.me/' + username; у нас — свой хост ссылок (core/publicLink.ts)
+          const anchor = wrapTelegramUrlToAnchor(publicUsernameLink(username))
           if (anchor) {
             anchor.className = 'mention'
             element = anchor

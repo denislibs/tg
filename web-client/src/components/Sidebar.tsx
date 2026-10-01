@@ -17,11 +17,11 @@ import { useEvent } from '../core/hooks/useEvent'
 import type { Chat } from '../data'
 import FoldersSidebar, { type MainMenuHandlers } from './folders/FoldersSidebar'
 import type { FolderContextMenuSidebar } from '../helpers/dom/createFolderContextMenu'
-import { createSettingsSliderHost, type SettingsSliderHost } from './sidebarLeft/settingsSliderHost'
-import { AppChatFoldersTab, AppEditFolderTab } from './solidJsTabs/tabs'
+import { createColumnSlider, destroyColumnSlider, openContactsTab } from './sidebarLeft/columnSlider'
+import type SidebarSlider from './slider'
+import { AppChatFoldersTab, AppEditFolderTab, AppNewChannelTab, AppSettingsTab } from './solidJsTabs/tabs'
 import type { SliderSuperTabConstructable } from './sliderTab'
 import type SliderSuperTab from './sliderTab'
-import { toastNew } from './toast'
 import pause from '../helpers/schedulers/pause'
 import { useSettings, useSettingsStore } from '../settings'
 import useMediaQuery from '../shared/lib/useMediaQuery'
@@ -127,7 +127,7 @@ export default function Sidebar({
     return open?.thread.kind === 'topic' ? open.thread.rootMsgId : null
   })
   const onSelect = useNavigationStore((st) => st.selectChat)
-  const { openTopicThread: onOpenTopic, onChatCreated, openPeer: onOpenPeer } = useNavigationActions()
+  const { openTopicThread: onOpenTopic, onChatCreated } = useNavigationActions()
 
   // Экраны левой колонки взаимоисключающие — один стейт-энум (см. <SidebarScreens>).
   const [screen, setScreen] = useState<SidebarScreen>(null)
@@ -159,26 +159,34 @@ export default function Sidebar({
   })
 
   const folders = useFolders()
-  // Вкладки папок поверх списка чатов — «Папки» и редактор папки (tweb
-  // `appSidebarLeft.createTab(AppChatFoldersTab | AppEditFolderTab).open(…)`,
-  // `createFolderContextMenu.ts:27-49`, `foldersSidebarContent/index.tsx:207-215`).
-  // Колоночного слайдера у нас ещё нет (шов, задача 28 плана 2D), поэтому
-  // открытие заводит хост слайдера над колонкой (`settingsSliderHost.ts` — тот же
-  // слой, что у вкладок настроек) и открывает вкладку в нём: закрытие последней
-  // вкладки возвращает к списку чатов, как у оригинала. Хост один на колонку:
-  // новое открытие снимает прежний (уже пустой) хост, экран настроек — тоже.
-  const columnTabsHostRef = useRef<SettingsSliderHost | null>(null)
-  // `has-open-tabs`, пока вкладка открыта (tweb `onTabsCountChange` →
-  // `onSomethingOpenInsideChange`, `sidebarLeft/index.ts:547-569`)
-  const [columnTabsOpen, setColumnTabsOpen] = useState(false)
+  // Колоночный слайдер (tweb `AppSidebarLeft extends SidebarSlider`,
+  // `sidebarLeft/index.ts:118`, `:147-152`): вкладка №0 — `.item-main` ниже,
+  // остальные экраны колонки — его вкладки (корень настроек, папки; по мере
+  // переезда — экраны `SidebarScreens`). Узлом `.sidebar-slider` владеет
+  // React, вкладками — слайдер (шапка `sidebarLeft/columnSlider.ts`). Слой
+  // раскладки: узел колонки должен быть в DOM, а слайдер — заведён до того,
+  // как пользователь дотянется до пункта меню. ВРЕМЕННО до 2-1 (волна 7): там
+  // слайдер становится классом колонки.
+  const sliderRef = useRef<SidebarSlider | null>(null)
+  // Отражение числа вкладок в навигации — роль `hasTabsInNavigation()` в tweb
+  // `hasSomethingOpenInside` (`:518-520`). Пишет его ТОЛЬКО слайдер, хуком
+  // `onTabsCountChange` (tweb `:652-654` → `onSomethingOpenInsideChange`):
+  // закрыть вкладку можно и Esc, и стрелкой, и срезом истории изнутри вкладки,
+  // и узнаёт об этом один слайдер.
+  const [tabsOpen, setTabsOpen] = useState(false)
+  useLayoutEffect(() => {
+    const slider = createColumnSlider(columnRef.current!, managers, () => setTabsOpen(slider.hasTabsInNavigation()))
+    sliderRef.current = slider
+    return () => {
+      sliderRef.current = null
+      destroyColumnSlider(slider)
+    }
+  }, [managers])
+  // `appSidebarLeft.createTab(ctor).open(…)` (tweb `createFolderContextMenu.ts:27-49`,
+  // `foldersSidebarContent/index.tsx:207-215`, `sidebarLeft/index.ts:765`).
   const openColumnTab = <T extends SliderSuperTab>(ctor: SliderSuperTabConstructable<T>, ...args: Parameters<T['init']>) => {
-    const host = createSettingsSliderHost(columnRef.current!, managers)
-    columnTabsHostRef.current = host
-    setColumnTabsOpen(true)
-    host.onTabsEmpty(() => setColumnTabsOpen(false))
-    void host.openTab(ctor, ...args).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+    void sliderRef.current!.createTab(ctor).open(...args)
   }
-  useEffect(() => () => columnTabsHostRef.current?.destroy(), [])
 
   // Мемоизировано, чтобы <ChatList> получал стабильный проп — ре-рендер
   // сайдбара под тогл оверлея не пересоздаёт массив и не бьёт его memo.
@@ -198,7 +206,7 @@ export default function Sidebar({
   // --- Ресайз левой колонки (tweb sidebarLeft/index.ts:612-635 initSidebarResize) ---
   const columnRef = useRef<HTMLDivElement>(null)
   // tweb hasSomethingOpenInside(): открытые вкладки | активный поиск | форум-таб.
-  const somethingOpenInside = searching || screen !== null || archiveOpen || columnTabsOpen || !!forumChat
+  const somethingOpenInside = searching || screen !== null || archiveOpen || tabsOpen || !!forumChat
   // tweb isCollapsed(): в floating-диапазоне (<=925) колонка всегда развёрнута,
   // предпочтение просто помнится для широких вьюпортов.
   const floatingLeft = useMediaQuery('(max-width:925px)')
@@ -249,13 +257,12 @@ export default function Sidebar({
   // закрывать.
   const closeAllTabsRef = useRef<() => boolean>(() => false)
   closeAllTabsRef.current = () => {
-    const hadTabs = screen !== null || archiveOpen || columnTabsOpen
+    const hadScreens = screen !== null || archiveOpen
     setScreen(null)
     setArchiveOpen(false)
-    columnTabsHostRef.current?.destroy()
-    columnTabsHostRef.current = null
-    setColumnTabsOpen(false)
-    return hadTabs
+    // tweb `closeAllTabs` (`slider.ts:171-179`) — отвечает, были ли вкладки
+    const hadTabs = !!sliderRef.current?.closeAllTabs()
+    return hadScreens || hadTabs
   }
   // `appSidebarLeft.closeEverythingInside()` (tweb `sidebarLeft/index.ts:494-499`):
   // поиск, форум, вкладки. Им же отвечает колбэк владельцу папок
@@ -345,8 +352,10 @@ export default function Sidebar({
 
   // Меню бургера и вертикальной колонки папок — один набор обработчиков на оба места.
   const menuActions: MainMenuHandlers = {
-    onOpenSettings: () => setScreen('settings'),
-    onOpenContacts: () => setScreen('contacts'),
+    // tweb `sidebarLeft/index.ts:759-767`
+    onOpenSettings: () => appSidebarLeft.closeTabsBefore(() => openColumnTab(AppSettingsTab)),
+    // tweb `sidebarLeft/index.ts:693-696`
+    onOpenContacts: () => appSidebarLeft.closeTabsBefore(() => { void openContactsTab() }),
     onOpenSaved: async () => {
       const id = await managers.chats.saved()
       await managers.dialogs.refresh()
@@ -508,9 +517,12 @@ export default function Sidebar({
         <ComposeFab
           searching={searching || !!forumChat}
           onNewGroup={() => setScreen('newGroup')}
-          onNewPrivate={() => setScreen('newPrivate')}
-          onNewChannel={() => setScreen('newChannel')}
-          onNewSecret={() => setScreen('newSecret')}
+          // tweb `sidebarLeft/index.ts:1105-1109` (`closeBefore: false`) — «Новый личный
+          // чат» и есть вкладка контактов; секретный — Отступление В7-1
+          onNewPrivate={() => { void openContactsTab() }}
+          // tweb `sidebarLeft/index.ts:1086-1092` — `createTab(AppNewChannelTab).open({})`
+          onNewChannel={() => openColumnTab(AppNewChannelTab)}
+          onNewSecret={() => { void openContactsTab({ secret: true }) }}
         />
       </div>
 
@@ -522,13 +534,8 @@ export default function Sidebar({
       <SidebarScreens
         screen={screen}
         close={closeScreen}
-        onSettingsBack={closeScreen}
         onSelect={onSelect}
-        onOpenPeer={onOpenPeer}
-        onChatCreated={onChatCreated}
         onCreateGroup={actions.createGroup}
-        onCreateChannel={actions.createChannel}
-        onStartSecret={actions.startSecret}
       />
 
       {stories.overlays}

@@ -16,7 +16,7 @@ import SvgDefs from './components/SvgDefs'
 import GlobalOverlays from './components/shell/GlobalOverlays'
 import { mountAuthFlow } from './components/auth/mountAuthFlow.solid'
 import classNames from './shared/lib/classNames'
-import { installColumnWidthsUpdater } from './core/dom/updateColumnWidths'
+import { createAppSidebarRight } from './components/sidebarRight'
 import { doubleRaf } from './core/accountTransition'
 // Сущность чата из модели данных; компонент ниже называется так же (как в tweb),
 // поэтому тип импортируется под алиасом.
@@ -46,11 +46,21 @@ import useMediaQuery from './shared/lib/useMediaQuery'
 export type ToggleMode = (coords?: { x: number; y: number }) => void
 
 function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout: () => void }) {
-  // Инфраструктура Shell (эффекты без общего стейта).
-  // Ширины колонок (порт tweb updateColumnWidths): JS пишет --chat-width /
-  // --left-column-width / --page-chats-padding и класс body.right-column-floats,
-  // из которых портированные партиалы раскладывают чат и ленту.
-  useLayoutEffect(() => { installColumnWidthsUpdater() }, [])
+  const managers = useManagers()
+  // Правая колонка — класс `AppSidebarRight` на статичном `#column-right` ниже
+  // (tweb: синглтон при импорте, `sidebarRight/index.ts:141`, и
+  // `appSidebarRight.construct(managers)` из `appDialogsManager.start`,
+  // `appDialogsManager.ts:984`). ВРЕМЕННО до Э4-1: узел рисует этот React,
+  // поэтому экземпляр создаётся ПОСЛЕ его монтирования и снимается с шеллом.
+  // `construct` ставит и пересчёт ширин колонок (`installColumnWidthsUpdater`,
+  // tweb `:39`) — --chat-width/--left-column-width/--page-chats-padding и
+  // body.right-column-floats. Layout-эффект шелла выполняется после
+  // layout-эффектов детей, поэтому инстансы чата берут класс пассивным эффектом.
+  useLayoutEffect(() => {
+    const sidebar = createAppSidebarRight()
+    sidebar.construct(managers)
+    return () => sidebar.destroy()
+  }, [managers])
   // has-auth-pages снимается кадром позже (doubleRaf, bootstrapIm.ts:60-61) —
   // иначе transition .main-column включится сразу и колонка «въедет» из
   // офскрина в первом кадре; на логин-старте dispose() из mountAuthFlow
@@ -166,7 +176,9 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
   //   div.whole.page-chats#page-chats
   //     div#main-columns.tabs-container[data-animation="navigation"]
   //       #folders-sidebar (портал из Sidebar) + #column-left + #column-center
-  //       + #column-right (портал из UserInfoPanel)
+  //       + #column-right (статичный узел tweb `index.html:110-112`; его
+  //         `.sidebar-slider` наполняет класс `AppSidebarRight`, React в него
+  //         не рисует)
   //
   // Обе колонки всегда в DOM и всегда `display: flex` — на узком экране это
   // делает `@include respond-to(handhelds) { .main-column { display: flex
@@ -180,6 +192,9 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
         <div id="main-columns" className="tabs-container" data-animation="navigation">
           {renderSidebar(narrow)}
           {chatArea}
+          <div id="column-right" className="tabs-tab sidebar sidebar-right main-column" role="complementary">
+            <div className="sidebar-content sidebar-slider tabs-container" />
+          </div>
         </div>
       </div>
 

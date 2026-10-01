@@ -60,6 +60,13 @@ type Config struct {
 	// сервера (DNP). Пусто → DNP выключен.
 	DNPServerPrivKey string
 
+	// Публичные страницы-превью (аналог t.me) живут на СВОЁМ хосте, пути 1:1
+	// с t.me (nginx проксирует его на /tme/… бэкенда). PublicLinkOrigin —
+	// адрес этого хоста (абсолютные ссылки и og:image страниц), AppOrigin —
+	// веб-клиент, куда ведут кнопки «Написать»/«Открыть в приложении».
+	PublicLinkOrigin string
+	AppOrigin        string
+
 	// AccountResetWait — окно ожидания отложенного сброса аккаунта («забыли
 	// пароль» без почты восстановления). Неделя, как в Telegram; сокращается
 	// только на стенде, иначе сценарий непроверяем.
@@ -97,6 +104,8 @@ func Load() (*Config, error) {
 	c.TenorAPIKey = os.Getenv("TENOR_API_KEY")
 	c.RTMPBaseURL = getenv("RTMP_BASE_URL", "rtmp://localhost/live")
 	c.DNPServerPrivKey = os.Getenv("DNP_SERVER_PRIVKEY")
+	c.PublicLinkOrigin = strings.TrimRight(getenv("PUBLIC_LINK_ORIGIN", "https://t.me.local"), "/")
+	c.AppOrigin = strings.TrimRight(getenv("APP_ORIGIN", "https://web.telegram.local"), "/")
 	accountResetWait, err := parseDuration("ACCOUNT_RESET_WAIT", defAccountResetWait)
 	if err != nil {
 		return nil, err

@@ -16,6 +16,7 @@
  * всех) — строка под тестом ищется по ГЛИФУ иконки (`glyph(name)`, тот же
  * символ, который `IconTsx` кладёт текстом), не по угаданному классу.
  */
+import { DEFAULT_TME_ORIGIN } from '@config/app'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'solid-js/web'
 import { createSignal } from 'solid-js'
@@ -186,7 +187,7 @@ describe('Username (tweb :693-732) + QrButton (tweb :734-747)', () => {
     const qr = row.querySelector('button.qr') as HTMLElement
     expect(qr).not.toBeNull()
     qr.click()
-    expect(onOpenQrCode).toHaveBeenCalledWith({ url: `${location.origin}/@durov`, label: '@durov' })
+    expect(onOpenQrCode).toHaveBeenCalledWith({ url: `${DEFAULT_TME_ORIGIN}/durov`, label: '@durov' })
   })
 
   it('QR-кнопки НЕТ у СВОЕГО username (peerId === meId), даже если строка видна', () => {
@@ -264,7 +265,7 @@ describe('Link (tweb :969-1036): ветка публичного username и ф�
     const h = mount({ peerId: -100, isDialog: true, scrollable: el(), setCollapsedOn: el(), exportedInviteUrl: 'https://x/join/abc' })
     const rows = Array.from(h.querySelectorAll('.row-icon')).filter((s) => s.textContent === glyph('link_filled'))
     expect(rows).toHaveLength(1)
-    expect(rowByIcon(h, 'link_filled')!.querySelector('.row-title')!.textContent).toBe(`${location.host}/@mygroup`)
+    expect(rowByIcon(h, 'link_filled')!.querySelector('.row-title')!.textContent).toBe(`${new URL(DEFAULT_TME_ORIGIN).host}/mygroup`)
   })
 
   it('фолбэк не показывается пользователю даже при переданном exportedInviteUrl', () => {
@@ -277,7 +278,7 @@ describe('Link (tweb :969-1036): ветка публичного username и ф�
     peerSignal[1]({ _: 'channel', id: 100, pFlags: { megagroup: true }, username: 'mygroup' })
     const h = mount({ peerId: -100, isDialog: true, scrollable: el(), setCollapsedOn: el() })
     const row = rowByIcon(h, 'link_filled')!
-    expect(row.querySelector('.row-title')!.textContent).toBe(`${location.host}/@mygroup`)
+    expect(row.querySelector('.row-title')!.textContent).toBe(`${new URL(DEFAULT_TME_ORIGIN).host}/mygroup`)
   })
 
   it('не показывается: username не задан', () => {
@@ -296,7 +297,7 @@ describe('Link (tweb :969-1036): ветка публичного username и ф�
     peerSignal[1]({ _: 'channel', id: 100, pFlags: { megagroup: true }, username: 'mygroup' })
     const h = mount({ peerId: -100, isDialog: true, scrollable: el(), setCollapsedOn: el() })
     rowByIcon(h, 'link_filled')!.click()
-    expect(copyTextToClipboardSpy).toHaveBeenCalledWith(`${location.origin}/@mygroup`)
+    expect(copyTextToClipboardSpy).toHaveBeenCalledWith(`${DEFAULT_TME_ORIGIN}/mygroup`)
     expect(toastNewSpy).toHaveBeenCalledWith({ langPackKey: 'LinkCopied' })
   })
 
@@ -307,8 +308,8 @@ describe('Link (tweb :969-1036): ветка публичного username и ф�
     const row = rowByIcon(h, 'link_filled')!
     ;(row.querySelector('button.qr') as HTMLElement).click()
     expect(onOpenQrCode).toHaveBeenCalledWith({
-      url: `${location.origin}/@mygroup`,
-      label: `${location.host}/@mygroup`,
+      url: `${DEFAULT_TME_ORIGIN}/mygroup`,
+      label: `${new URL(DEFAULT_TME_ORIGIN).host}/mygroup`,
     })
   })
 })

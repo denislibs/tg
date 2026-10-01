@@ -3,22 +3,26 @@
 // код-пароль, облачный пароль, ключи доступа, сеансы) + секция privacy-правил
 // с живыми значениями и счётчиками исключений.
 import type { LangPackKey } from '@/lang'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createStore } from 'solid-js/store'
+import type { Passkey } from '@layer'
 import TgIcon from '../TgIcon'
 import { SettingsScreen, Section, Row } from './kit'
-import BlockedUsers from './BlockedUsers'
-import Passkeys from './Passkeys'
-import PasskeyIntroPopup from './PasskeyIntroPopup'
-import AutoDeleteMessages, { autoDeleteLabel } from './AutoDeleteMessages'
+import { findExistingOrCreateCustomOption } from '../sidebarLeft/tabs/autoDeleteMessages/options'
 import ConfirmDialog from './ConfirmDialog'
 import { useSettingsStore } from '../../settings'
-import { useT, useTArgs } from '../../i18n'
+import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { commandThenReload } from '../../core/accountTransition'
-import { getSettingsSliderHost, openActiveSessionsTab } from '../sidebarLeft/settingsSliderHost'
+import { openActiveSessionsTab } from '../sidebarLeft/columnSlider'
+import type { ReactScreenTabProps } from '../sidebarLeft/reactScreenTab'
+import rootScope from '@lib/rootScope'
 import {
+  AppBlockedUsersTab,
+  AppMessagesAutoDeleteTab,
   AppPasscodeEnterPasswordTab,
   AppPasscodeLockTab,
+  AppPasskeysTab,
   AppPrivacyAboutTab,
   AppPrivacyAddToGroupsTab,
   AppPrivacyBirthdayTab,
@@ -36,6 +40,7 @@ import {
 import type SidebarSlider from '../slider'
 import type { PasswordState } from '../../core/managers/authManager'
 import { toastNew } from '../toast'
+import { showPasskeyPopup } from '../sidebarLeft/settingsPopups'
 import { usePrivacyStore } from '../../stores/privacyStore'
 import type { PrivacyKey, PrivacyRule as Rule } from '../../core/managers/privacyManager'
 
@@ -57,7 +62,7 @@ function ruleSubtitle(rule: Rule, t: (key: LangPackKey) => string): string {
 
 // Порядок секции Privacy (tweb privacyAndSecurity.tsx:416-466, без gifts/saved
 // music — О-16). Строка открывает вкладку правила (`sidebarLeft/tabs/privacy/*`,
-// задача 17 плана 2D) через хост, как tweb `tab.slider.createTab(…).open()`;
+// задача 17 плана 2D) слайдером своей вкладки, как tweb `tab.slider.createTab(…).open()`;
 // заголовки строк и значения — предмет задачи 23 (хаб станет вкладкой).
 const RULE_ROWS: { key: PrivacyKey; title: LangPackKey; tab: typeof AppPrivacyAboutTab }[] = [
   { key: 'phone_number', title: 'PrivacyPhoneTitle', tab: AppPrivacyPhoneNumberTab },
@@ -73,26 +78,54 @@ const RULE_ROWS: { key: PrivacyKey; title: LangPackKey; tab: typeof AppPrivacyAb
   { key: 'read_time', title: 'PrivacyReadTimeTitle', tab: AppPrivacyReadTimeTab },
 ]
 
-export default function PrivacySecuritySettings({ onBack }: { onBack: () => void }) {
+// Подпись строки автоудаления — tweb `privacyAndSecurity.tsx:370-376`
+// (`updateAutoDeleteRow`): «Off» или подпись срока вкладки. ВРЕМЕННО до 2D-23:
+// React-строке нужна строка, а не узел `label()`, — отсюда `textContent`.
+function autoDeleteSubtitle(period: number, t: (key: LangPackKey) => string): string {
+  return !period ? t('Off') : findExistingOrCreateCustomOption(period).label().textContent ?? ''
+}
+
+// ВРЕМЕННО до 2D-23: экран — содержимое вкладки `AppPrivacyAndSecurityTab` на
+// мосту `scaffoldReactScreenTab` (`sidebarLeft/reactScreenTab.tsx`); следующие
+// вкладки он открывает слайдером этой вкладки, как оригинал.
+export default function PrivacySecuritySettings({ tab, onBack }: ReactScreenTabProps) {
+  const slider = tab.slider as SidebarSlider
   const t = useT()
-  const tArgs = useTArgs()
   const managers = useManagers()
   const rules = usePrivacyStore((s) => s.rules)
   const blockedTotal = usePrivacyStore((s) => s.blockedTotal)
-  const [sub, setSub] = useState<string | null>(null)
+  const setBlockedTotal = usePrivacyStore((s) => s.setBlockedTotal)
 
-  // Сабтайтлы On/Off и период автоудаления (перечитываются при возврате
-  // из под-экранов).
+  // tweb `privacyAndSecurity.tsx:130-139`, `:313-337`: первая страница чёрного
+  // списка грузится заранее и уезжает во вкладку полезной нагрузкой; пока она
+  // не пришла, строка «заморожена». Перечитывается на каждый `peer_block`.
+  const blockedPeerIds = useRef<PeerId[] | null>(null)
+  useEffect(() => {
+    let alive = true
+    const updateBlocked = () => {
+      void managers.privacy.getBlocked().then((res) => {
+        if (!alive) return
+        setBlockedTotal(res.count)
+        blockedPeerIds.current = res.peerIds
+      }).catch(() => {})
+    }
+    rootScope.addEventListener('peer_block', updateBlocked)
+    updateBlocked()
+    return () => {
+      alive = false
+      rootScope.removeEventListener('peer_block', updateBlocked)
+    }
+  }, [managers, setBlockedTotal])
+
+  // Сабтайтлы On/Off и период автоудаления. React-подэкранов у хаба больше нет
+  // (все — вкладки слайдера), поэтому читаются один раз на монтировании.
   // Состояние облачного пароля целиком, а не только признак: мастер 2FA
   // открывается с ним (tweb `privacyAndSecurity.tsx:131`, `:339-341`).
   const [pwState, setPwState] = useState<PasswordState | null>(null)
   const [autoDelete, setAutoDelete] = useState<number | null>(null)
-  const [passkeysCount, setPasskeysCount] = useState(0)
-  const [passkeyIntro, setPasskeyIntro] = useState(false)
   const [clearDrafts, setClearDrafts] = useState(false)
   const [deleteAccount, setDeleteAccount] = useState(false)
   useEffect(() => {
-    if (sub !== null) return
     let alive = true
     void managers.auth.passwordState().then((st) => {
       if (alive) setPwState(st)
@@ -100,60 +133,54 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
     void managers.privacy.autoDelete().then((p) => {
       if (alive) setAutoDelete(p)
     }).catch(() => {})
-    void managers.auth.passkeysList().then((l) => {
-      if (alive) setPasskeysCount(l.length)
-    }).catch(() => {})
     return () => { alive = false }
-  }, [sub, managers])
+  }, [managers])
 
-  const renderSub = (): ReactNode => {
-    if (!sub) return null
-    const back = () => setSub(null)
-    switch (sub) {
-      case 'BlockedUsers':
-        return <BlockedUsers onBack={back} />
-      case 'Privacy.Passkeys':
-        return <Passkeys onBack={back} />
-      case 'AutoDeleteMessages':
-        return <AutoDeleteMessages onBack={back} />
-    }
-    return null
+  // Ключи доступа — вкладка `AppPasskeysTab` (`sidebarLeft/tabs/passkeys.solid.tsx`,
+  // задача 21 плана 2D). tweb :156-160, :290-302: список — Solid-стор открывающего,
+  // вкладка правит его сама; без ключей — сначала интро-попап, созданный ключ —
+  // первый элемент стора. ВРЕМЕННО до 2D-23: список читается на клике, а не на
+  // открытии хаба (`updatePasskeys`, :172-190), — у React-экрана нет подписки на
+  // стор, и счётчик после удаления во вкладке устарел бы.
+  const openPasskeysTab = (list: Passkey[]) => {
+    const [passkeys, setPasskeys] = createStore(list)
+    void slider.createTab(AppPasskeysTab).open({ passkeys, setPasskeys })
+  }
+  const openPasskeys = () => {
+    void managers.auth.passkeysList().then((list) => {
+      if (list.length) {
+        openPasskeysTab(list)
+        return
+      }
+
+      showPasskeyPopup((passkey) => openPasskeysTab([passkey]))
+    }).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
   }
 
-  // Мастер 2FA — вкладки слайдера (`sidebarLeft/tabs/2fa/*`), экран под ними
-  // остаётся жить. У tweb конец мастера срезает «Конфиденциальность» из истории
-  // (`sliceTabsUntilTab(AppSettingsTab)`), и при следующем открытии она читает
-  // состояние заново; здесь то же перечитывание — когда стек вкладок хоста
-  // опустел (шов, снимается задачей 23/28).
-  const offTabsEmptyRef = useRef<(() => void) | null>(null)
-  useEffect(() => () => offTabsEmptyRef.current?.(), [])
+  // Мастер 2FA — вкладки слайдера (`sidebarLeft/tabs/2fa/*`). Конец мастера
+  // срезает этот экран из истории (`sliceTabsUntilTab(AppSettingsTab)`, tweb
+  // `2fa/index.tsx:34`, `2fa/passwordSet.tsx:23`), и следующее открытие читает
+  // состояние заново — своего перечитывания экрану не нужно.
   const openTwoStepVerification = () => {
     // tweb :257-271. Пока состояние не пришло, строка «заморожена» (`twoFactorFrozen`).
     if (!pwState) return
-    const host = getSettingsSliderHost()
-    offTabsEmptyRef.current ??= host.onTabsEmpty(() => {
-      void managers.auth.passwordState().then(setPwState).catch(() => {})
-    })
     // Ветки `email_unconfirmed_pattern` → `AppTwoStepVerificationEmailConfirmationTab`
     // (:261-268) нет — О-13: наш сервер ставит почту без подтверждения кодом.
-    const open = pwState.enabled
-      ? host.openTab(AppTwoStepVerificationEnterPasswordTab, { state: pwState })
-      : host.openTab(AppTwoStepVerificationTab, { state: pwState })
-    open.catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+    if (pwState.enabled) {
+      void slider.createTab(AppTwoStepVerificationEnterPasswordTab).open({ state: pwState })
+    } else {
+      void slider.createTab(AppTwoStepVerificationTab).open({ state: pwState })
+    }
   }
 
   const blockedValue = blockedTotal > 0 ? `${blockedTotal}` : t('BlockedEmpty')
   const passcodeEnabled = useSettingsStore((st) => st.passcodeEnabled)
 
   // tweb `privacyAndSecurity.tsx:193-210` (`openPasscodeLock`): при включённом
-  // коде сначала вкладка ввода текущего, при верном — главная вкладка. Вкладки
-  // слайдера открывает хост (шов до задачи 23, когда этот экран сам станет
-  // вкладкой и откроет их своим `tab.slider`); вторую открываем слайдером
-  // вкладки ввода — это тот же слайдер хоста.
+  // коде сначала вкладка ввода текущего, при верном — главная вкладка.
   const openPasscodeLock = () => {
-    const host = getSettingsSliderHost()
     if (passcodeEnabled) {
-      void host.openTab(AppPasscodeEnterPasswordTab, {
+      void slider.createTab(AppPasscodeEnterPasswordTab).open({
         buttonText: 'PasscodeLock.Next',
         inputLabel: 'PasscodeLock.EnterYourPasscode',
         onSubmit: async (passcode, tab, { isMyPasscode }) => {
@@ -164,24 +191,33 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
         },
       })
     } else {
-      void host.openTab(AppPasscodeLockTab)
+      void slider.createTab(AppPasscodeLockTab).open()
     }
   }
 
   return (
-    <SettingsScreen title="PrivacySettings" onBack={onBack} zIndex={50} sub={renderSub()}>
+    <SettingsScreen title="PrivacySettings" onBack={onBack} zIndex={50}>
       <Section footer="SessionsInfo">
         <Row
           icon={<TgIcon name="person_crossed_filled" size={24} />}
           label="BlockedUsers"
           value={blockedValue}
-          onClick={() => setSub('BlockedUsers')}
+          onClick={() => {
+            // tweb :217 — `if(!blockedFrozen()) tab.slider.createTab(AppBlockedUsersTab).open({peerIds})`
+            if (blockedPeerIds.current) void slider.createTab(AppBlockedUsersTab).open({ peerIds: blockedPeerIds.current })
+          }}
         />
+        {/* tweb `privacyAndSecurity.tsx:238-247`: вкладка слайдера с текущим
+            периодом; `onSaved` обновляет подпись строки (`:370-376`). Пока
+            период не пришёл — строка «заморожена» (`autoDeleteFrozen`). */}
         <Row
           icon={<TgIcon name="auto_delete_filled" size={24} />}
           label="AutoDeleteMessages"
-          value={autoDelete == null ? undefined : autoDeleteLabel(autoDelete, t, tArgs)}
-          onClick={() => setSub('AutoDeleteMessages')}
+          value={autoDelete == null ? undefined : autoDeleteSubtitle(autoDelete, t)}
+          onClick={() => {
+            if (autoDelete == null) return
+            void slider.createTab(AppMessagesAutoDeleteTab).open({ period: autoDelete, onSaved: setAutoDelete })
+          }}
         />
         <Row
           icon={<TgIcon name="key_filled" size={24} />}
@@ -195,16 +231,14 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
           value={pwState == null ? undefined : t(pwState.enabled ? 'PrivacyAndSecurity.Item.On' : 'Off')}
           onClick={openTwoStepVerification}
         />
-        {/* Как в tweb: без ключей клик открывает интро-попап, с ключами — список */}
         <Row
           icon={<TgIcon name="faceid_filled" size={24} />}
           label="Privacy.Passkeys"
-          onClick={() => (passkeysCount > 0 ? setSub('Privacy.Passkeys') : setPasskeyIntro(true))}
+          onClick={openPasskeys}
         />
         {/* «Активные сессии» — та же портированная вкладка слайдера, что и
             «Устройства» в корне настроек (`sidebarLeft/tabs/activeSessions.solid.tsx`),
-            и открывается тем же способом. `setSub` здесь не при чём: вкладка
-            не React-подэкран, состояние этого экрана она не трогает. Второй
+            и открывается тем же способом. Второй
             вход в те же сессии есть и в оригинале — `newAuthorization.tsx:116`. */}
         <Row
           icon={<TgIcon name="devices_filled" size={24} />}
@@ -221,9 +255,7 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
             key={r.key}
             label={r.title}
             sublabel={ruleSubtitle(rules[r.key], t)}
-            onClick={() => {
-              getSettingsSliderHost().openTab(r.tab).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
-            }}
+            onClick={() => void slider.createTab(r.tab).open()}
           />
         ))}
       </Section>
@@ -275,16 +307,6 @@ export default function PrivacySecuritySettings({ onBack }: { onBack: () => void
           onClose={() => setDeleteAccount(false)}
         />
       )}
-
-      <PasskeyIntroPopup
-        open={passkeyIntro}
-        onClose={() => setPasskeyIntro(false)}
-        onCreated={() => {
-          setPasskeyIntro(false)
-          setPasskeysCount(1)
-          setSub('Privacy.Passkeys')
-        }}
-      />
     </SettingsScreen>
   )
 }

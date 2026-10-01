@@ -52,6 +52,7 @@ const NOT_UI: Record<string, string> = {
   'src/lib/richtext/tld.ts': 'список доменов верхнего уровня — ДАННЫЕ («москва», «онлайн», «сайт»), а не текст',
   'src/config/latinizeMap.ts': 'таблица транслитерации поискового индекса (порт tweb) — ДАННЫЕ «буква → латиница»',
   'src/helpers/cleanSearchText.ts': 'раскладка «кириллица → латинская клавиша» для запроса не в той раскладке — ДАННЫЕ',
+  'src/helpers/string/removeAccents.ts': 'таблица свёртки акцентов ключа сортировки контактов (порт tweb/tdesktop, «ё → е») — ДАННЫЕ',
   'src/core/dom/loadFonts.ts': 'глиф-образец для замера готовности шрифта, на экран не попадает',
   'src/core/stickers/testSticker.ts': 'фабрика фикстур для тестов — заголовок набора, а не интерфейс',
   'src/components/emoji/emojiData.ts':
@@ -66,7 +67,7 @@ const NOT_UI: Record<string, string> = {
   'src/core/net/tlFrames.ts': 'причина отказа разбора кадра — текст `Error` для разработчика',
   'src/lib/mtproto/tl_utils.ts': 'причина отказа непортированной ветки — текст `Error`',
   'src/client/bootstrap.ts': 'предупреждение в консоль о невзятом Web Lock',
-  'src/components/sidebarLeft/settingsSliderHost.ts': 'причина отказа хоста — текст `Error` для разработчика',
+  'src/components/sidebarLeft/columnSlider.ts': 'причина отказа слайдера — текст `Error` для разработчика',
   'src/core/managers/authManager.ts': 'причина отказа неизвестного ответа ручки — текст `Error`',
 }
 
@@ -103,7 +104,6 @@ const DEBT: Record<string, number> = {
   'src/components/messages/SendMediaPopup.tsx': 3,
   'src/components/peerProfile.solid.tsx': 3,
   'src/components/settings/BirthdayModal.tsx': 6,
-  'src/components/settings/EditProfile.tsx': 1,
   'src/components/stickers/StickerSetModal.tsx': 7,
   'src/components/userInfo/helpers.ts': 25,
   'src/core/dialogToChat.ts': 1,

@@ -27,6 +27,7 @@ import { ManagersProvider } from '../../core/hooks/useManagers'
 import type { Managers } from '../../client/bootstrap'
 import type { Sticker } from '../../core/managers/stickersManager'
 import { makeSticker } from '../../core/stickers/testSticker'
+import { installSidebarRight } from '../../test/sidebarRight'
 
 // дампы сняты на macOS — рендер нативный (tweb IS_EMOJI_SUPPORTED)
 vi.mock('@environment/emojiSupport', () => ({ default: true }))
@@ -371,6 +372,12 @@ describe('StickersTab — предпросмотр по зажатию ЛКМ (u
 })
 
 describe('EmojiDropdown — кнопка-лупа футера открывает экраны правой колонки (tweb index.ts:295-303)', () => {
+  // Экран поиска открывает правую колонку классом `AppSidebarRight` (мост
+  // `useRightColumnShown`, ВРЕМЕННО до 0б-11).
+  let sidebarRight: ReturnType<typeof installSidebarRight>
+  beforeEach(() => { sidebarRight = installSidebarRight() })
+  afterEach(() => sidebarRight.dispose())
+
   // Экраны сами дёргают менеджеры при монтировании — стабы поверх базовых
   // (плюс savedGifs/media.meta: GIF-вкладка дропдауна монтируется при клике).
   function searchManagers() {

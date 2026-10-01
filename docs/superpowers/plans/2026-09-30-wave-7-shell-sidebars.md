@@ -79,6 +79,12 @@ React-корень `main.tsx`/`App.tsx`, `Sidebar.tsx`, `UserInfoPanel.tsx`, `Ch
    (`Sidebar.tsx:175`, `sidebarLeft/settingsSliderHost.ts:171`). Перенос на колоночный слайдер —
    задача **2D-28** (не сделана, `SettingsView.tsx` 391 и `SettingsSubScreen.tsx` 44 на месте).
    Адреса в тексте 2D-28 устарели: `Sidebar.tsx:350` → `:389`, `:228` → `:370`/`:245`.
+   **Снято задачей 2D-28** (PR feat/2d-28-settings-root-tab): колоночный слайдер —
+   `sidebarLeft/columnSlider.ts` (`SidebarSlider` на `#column-left`, `'left'`, вкладка №0 —
+   `.item-main`, `item-secondary` у вкладок). React-колонка открывает вкладку
+   `getColumnSlider().createTab(AppXxxTab).open(…)` (ВРЕМЕННО до 2-1 — роль синглтона
+   `appSidebarLeft`), изнутри вкладки — `tab.slider.createTab(…)`; `has-open-tabs` колонка
+   пишет по `onTabsCountChange` слайдера. Хоста `settingsSliderHost.ts` больше нет.
 5. **`has-open-tabs` пишет только `Sidebar.tsx`**, двумя путями: className `:370` и
    `setOpenTabsLeftSidebar` `:245` (объявлен в `core/dom/updateColumnWidths.ts:139`).
 6. **`is-right-column-shown` в JS пишет только счётчик** `core/hooks/useRightColumnShown.ts:17-30`.
@@ -446,10 +452,10 @@ tweb `solidJsTabs/tabs.ts:262-270`. После создания — `AppAddMembe
 **Файлы:** создать `sidebarLeft/tabs/newChannel.solid.tsx` + тест; изменить `solidJsTabs/tabs.ts`;
 удалить `components/NewChannelFlow.tsx` (+ scss), ветку `newChannel`.
 
-- [ ] **Шаг 1–3:** прочитать; тесты: (а) название обязательно; (б) описание уходит в запрос;
+- [x] **Шаг 1–3:** прочитать; тесты: (а) название обязательно; (б) описание уходит в запрос;
   (в) после создания открывается выбор подписчиков, «пропустить» открывает канал; (г) владелец
   снимает остров. **Мутация:** не передавать описание — (б) краснеет.
-- [ ] **Шаг 4–6:** реализация, врезка, стенд — CH-01 (P0).
+- [x] **Шаг 4–6:** реализация, врезка, стенд — CH-01 (P0).
 
 **Готово когда:** `git grep -n "NewChannelFlow" web-client/src` пуст; CH-01 зелёный.
 **Оценка:** 1 день. **Зависимости:** 2D-28.
@@ -571,10 +577,10 @@ tweb. Чего нет у tweb — удалить, и написать об эт�
 - Тесты: `sidebarRight/index.test.ts`; правка `Chat.infoPanelMount.test.ts`,
   `useRightColumnShown.test.ts`, `UserInfoPanel.shell.test.ts`
 
-- [ ] **Шаг 1: прочитать** tweb `sidebarRight/index.ts`, `slider.ts:1-140` (наш `components/slider.ts`
+- [x] **Шаг 1: прочитать** tweb `sidebarRight/index.ts`, `slider.ts:1-140` (наш `components/slider.ts`
   398 — сверить `canHideFirst` `:28`, `:46`, `:83`), `docs/tweb/right-sidebar.md` §1–§2, наш
   `UserInfoPanel.tsx:40-120`, `:620-660`, `Chat.tsx:360-370`, `:1005-1015`, `:1490-1505`.
-- [ ] **Шаг 2: падающие тесты** (`sidebarRight/index.test.ts`, реальный DOM happy-dom, реальный
+- [x] **Шаг 2: падающие тесты** (`sidebarRight/index.test.ts`, реальный DOM happy-dom, реальный
   `appNavigationController`): (а) `toggleSidebar(true)` → `body.is-right-column-shown`,
   `sidebarEl.inert === false`, в стеке навигации одна запись `'right'`; (б) повторный
   `toggleSidebar(true)` — no-op (записей по-прежнему одна); (в) `toggleSidebar(false)` →
@@ -585,20 +591,35 @@ tweb. Чего нет у tweb — удалить, и написать об эт�
   `large → medium` закрывает колонку; (з) `onCloseTab` последней вкладки закрывает колонку.
   Интеграционно (`Chat.infoPanelMount.test.ts`): клик по шапке открывает колонку, в DOM ровно один
   `#column-right`.
-- [ ] **Шаг 3: убедиться, что падают.** **Мутации (фактически):** убрать проверку
+- [x] **Шаг 3: убедиться, что падают.** **Мутации (фактически):** убрать проверку
   `findItemByType('right')` `:130` → (б) краснеет (две записи); убрать ветку `else if(tab)` `:78` →
   (е) краснеет; оставить старый счётчик писателем параллельно → скан «один писатель
   `is-right-column-shown`» (новый, `sidebarRight/index.test.ts`: `git grep`-скан на
   `classList.*is-right-column-shown` вне `sidebarRight/index.ts`) краснеет.
-- [ ] **Шаг 4: реализовать** дословно; шапка — `порт tweb/src/components/sidebarRight/index.ts:1-143`,
+- [x] **Шаг 4: реализовать** дословно; шапка — `порт tweb/src/components/sidebarRight/index.ts:1-143`,
   расхождения нумерованным списком (все временные строки выше).
-- [ ] **Шаг 5: стенд:** RS-01, RS-06 до/после; профиль открывается и закрывается кликом, Esc,
+- [x] **Шаг 5: стенд:** RS-01, RS-06 до/после; профиль открывается и закрывается кликом, Esc,
   Back (NAV-03 в объёме одного уровня); ширина колонки тянется (resize-хэндл); на `medium` колонка
   закрывается при сужении. Числа: время выезда (`_rightSidebar.scss` transition), `inert`.
 
 **Готово когда:** `#column-right` в DOM ровно один и статичный; писатель `is-right-column-shown` —
 только `sidebarRight/index.ts`; `useNavLayer` с `'right'` — 0 вызовов; P0 RS-01/RS-06 зелёные.
 **Оценка:** 2,5 дня. **Зависимости:** нет (параллельно с 0а).
+
+**Сделано (2026-09-30).** Отличия исполнения от постановки:
+- `core/hooks/useClassEvent.ts` **не заведён**: после врезки у `right_sidebar_toggle` нет ни
+  одного React-читателя — панель больше не держит `open` (видео, `inert`, навигацию, ресайз ведёт
+  класс), `onOpenAfterTimeout` зовёт слайдер на вкладке №0. Хелпер заводит первый настоящий
+  потребитель (мост чтения п. 4). Событие в `rootScope` объявлено (tweb `rootScope.ts:239`).
+- `useOpenAfterTimeout` снесён: его роль — хук вкладки `AppReactProfileTab.onOpenAfterTimeout`.
+- Срез `appImManager.selectTab` для CHAT ↔ PROFILE — `selectProfileTab` в
+  `core/navigation/chatHistory.ts` (своей функции «мобильного перехода» там не было).
+- Оверлеи `GroupEditFlow`/`AddMembersScreen`/`ChannelStats`/`RightsEditor` — соседи вкладки №0 в
+  `.sidebar-slider` (только у активного инстанса), а не её дети: правила
+  `.profile-container .sidebar-header` (`_profile.scss:625`) задели бы их шапки.
+- `useRightColumnShown` — мост только для `RightSearchTab` (панель в нём больше не нуждается):
+  открывает колонку классом и закрывает её, лишь если открывал сам.
+- «Отложено» у задачи нет (О-50…О-54 не заняты).
 
 ### Задачи 0б-1…0б-11: вкладки правой колонки
 
@@ -1336,7 +1357,18 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 | О-11 | Игры (`playGame` `:1394`), url-auth (`handleUrlAuth` `:1419`), autologin-домены (`:1511`) | нет на бэкенде | боты с логином/играми |
 | О-12 | Пункты меню ⋮ и плашки шапки без бэкенда: перевод чата, снятие платы, автоматизация, бусты (если нет), `CompactDiffView`, `WelcomeMessages.DeleteAll` | детальный план Э6 составит точный список | шапка 1:1 |
 | О-13 | Возможности композера без бэкенда: эфемерный режим, предложенные посты, эффекты (если нет), AI-редактор (`inputState/aiEditorButton`) | детальный план Э7 составит точный список | композер 1:1 |
+| О-14 | ~~Проверка занятости имени чата (`channels.checkUsername`)~~ — **снято**: ручка `GET /chats/{peerID}/username/available` (#340), клиент `groups.checkUsername` в `UsernameInputField` (0б-2) | — | — |
+| О-15 | Секция вступления вкладки типа чата: «вступать, чтобы писать», заявки на вступление, бот-привратник `guard_bot_id` (`chatType.tsx:270-372`) | флагов `join_to_send`/`join_request` у `channel` нет (`domain/mtchat.go`, `ChannelFlags`) | секция 1:1 |
+| О-16 | «Запрет копирования» (`noforwards`, `messages.toggleNoForwards`, `chatType.tsx:374-407`) | флаг не объявлен у `channel`, механики нет | секция 1:1 и гейт копирования/пересылки |
+| О-17 | Коллекция имён `usernames` (несколько имён, порядок, скрытие, покупка на Fragment): `UsernamesSection`, `purchaseUsernameCaption` | у чата одно поле `username` (`core/peers/predicates.ts`, `isPublic`) | `usernamesSection.tsx` 1:1 |
+| О-30 | Выделение контактов во вкладке контактов: `ContactsSelection` (`contactsSelection.ts` 50), меню строки `attachContactsContextMenu` (45), попап `confirmDeleteContacts` (`popups/deleteContacts.ts` 22), ключи `ContactsSelected`/`DeleteContactsTitle`/`DeleteContactsSubtitle` (коммит ee6f7f9c2) | база `DialogsSelectionBase` (`dialogsSelectionBase.ts` 531, коммит 60a83a6f1 — выделение чатов и тем) не портирована; бэкенд есть (`DELETE /contacts/{id}`) | порт выделения списков (60a83a6f1 → ee6f7f9c2, `docs/tweb/delta/part-5.md` группа 4) |
+| О-31 | `highlight: 'sort'` у `AppContactsTab`: ссылка `tg://contacts/sort` вспыхивает кнопкой сортировки (`flashControl`, `lib/settingsSearch/highlight.ts`) | нет ни обработчика внутренних ссылок, ни поиска по настройкам | `internalLinkProcessor` (Э5-4) и порт `lib/settingsSearch` |
 | О-35 | Попап «пригласить ссылкой» для пропущенных при создании группы (`handleMissingInvitees`, tweb `addChatUsers.ts:15-120`; вызов — `newGroup.tsx:187`) | нет `showPickUserPopup` (попап выбора пользователей, 2C) и премиум-веток (`premium_required_for_pm`/`premium_would_allow_invite`); бэкенд пропущенных уже отдаёт (`messages.invitedUsers.missing_invitees`, 0а-2) | порт `showPickUserPopup` |
+| О-40 | Лимит каналов: `handleChannelsTooMuch` + `showChannelsTooMuchPopup` (`popups/channelsTooMuch.tsx`) в «Новом канале» (`newChannel.tsx:52`) | бэкенд не знает отказа `CHANNELS_TOO_MUCH` и лимита каналов (0а-3) | попап лимита 1:1 |
+| О-41 | `handleMissingInvitees` (`addChatUsers.ts:15-133`) — приглашение ссылкой тех, кого нельзя добавить, премиум-ветка | `POST /chats/{id}/members` отвечает `boolTrue`, `missingInvitees` нет (0а-3) | приглашение ссылкой после отказа |
+| О-42 | Приглашение списком (`inviteToChannel(id, peerIds)`/`addChatUser(id, peerIds, fwdLimit)`) и чекбокс «показать последние 100 сообщений» (`addChatUsers.ts:169-190`) | ручка приглашает одного пользователя, `fwd_limit` нет (0а-3) | один запрос на выбор, чекбокс истории для групп |
+| О-43 | Тост `InviteToGroupError` на отказе приватности (`addChatUsers.ts:211-217`) | бэкенд отдаёт текст `privacy` (`group_handler.go:43-44`), а не `USER_PRIVACY_RESTRICTED` — ветка тоста не срабатывает (0а-3) | тост вместо необработанного отказа |
+| О-44 | Диалог нового канала из ответа создания: у tweb `channels.createChannel` отдаёт `Updates`, `processUpdateMessage` ставит диалог (`appChatsManager.ts:587-593`); у нас вкладка зовёт `dialogs.refresh()` (`newChannel.solid.tsx`, расхождение 8) | `POST /channels` отвечает `messages.chatFull` без диалога, кадра о новом канале нет; служебного «канал создан» тоже нет (0а-3) | снятие перезапроса, пилюля `messageActionChannelCreate` |
 
 ## Что остаётся волне 8 (после этой программы)
 

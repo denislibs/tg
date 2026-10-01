@@ -6,7 +6,7 @@
  * `pages/_chats.scss:40` (размер 120px внутри мессенджера).
  * Первый потребитель — вкладка «Новый канал» (`sidebarLeft/tabs/newChannel.solid.tsx`).
  *
- * ВРЕМЕННО до 2D-27 — порт в объёме класса, без медиаредактора. Расхождения:
+ * ВРЕМЕННО до МР-5 — порт в объёме класса, без медиаредактора. Расхождения:
  *  1. Клик открывает не медиаредактор (`getFileAndOpenEditor`, :172-183 —
  *     кадрирование, видео-аватар), а выбор файла `requestFile('image/*')`.
  *     Наш редактор — React (`MediaEditor.tsx`, волна 4), кроппер
@@ -15,7 +15,7 @@
  *     (`auth/cards/SignUpCard.solid.tsx`, долг
  *     `backlogs/frontend/avatar-cropper-solid-port.md`): файл ужимается
  *     `scaleImageForSend`, превью — центральный квадрат на канве. Снимает
- *     задача 2D-27 (порт `avatarEdit.ts` целиком).
+ *     задача МР-5 плана медиаредактора (порт `avatarEdit.ts` целиком).
  *  2. `finishFromResult` (:199-246): полёт превью в круг
  *     (`animateImageToTarget`) и видео-ветка (:248-313) не портированы — их
  *     источник — результат медиаредактора (п. 1). Затемнение канвы
@@ -58,7 +58,7 @@ export default class AvatarEdit {
 
     this.container.append(this.canvas, this.icon)
 
-    // ВРЕМЕННО до 2D-27 — выбор файла вместо медиаредактора (расхождение 1)
+    // ВРЕМЕННО до МР-5 — выбор файла вместо медиаредактора (расхождение 1)
     attachClickEvent(this.container, () => {
       requestFile('image/*').then((file) => this.finishFromFile(file, onChange, options.managers), () => {})
     })
@@ -69,7 +69,7 @@ export default class AvatarEdit {
     ctx?.clearRect(0, 0, this.canvas.width, this.canvas.height)
   }
 
-  // ВРЕМЕННО до 2D-27 — вместо `finishFromResult` (расхождение 2): превью —
+  // ВРЕМЕННО до МР-5 — вместо `finishFromResult` (расхождение 2): превью —
   // центральный квадрат исходника, затемнение — как у оригинала (:230-231).
   private async finishFromFile(file: File, onChange: (payload: AvatarEditPayload) => void, managers: AvatarEditManagers) {
     const prepared = await scaleImageForSend(file)

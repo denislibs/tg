@@ -66,6 +66,17 @@ func (r *fakeGroupRepo) Settings(_ context.Context, chatID int64) (domain.ChatSe
 	return c.Settings, nil
 }
 
+func (r *fakeGroupRepo) UsernameAvailable(_ context.Context, username string, chatID int64) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, c := range r.cards {
+		if id != chatID && strings.EqualFold(c.Username, username) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 func (r *fakeGroupRepo) SetType(_ context.Context, chatID int64, isPublic bool, username string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -1556,5 +1567,32 @@ func TestMemberRestrictions(t *testing.T) {
 	}
 	if list, _ := in.ListRestricted(ctx, id, 7); len(list) != 0 {
 		t.Fatalf("expired restriction listed: %+v", list)
+	}
+}
+
+// CheckChatUsername — channels.checkUsername: проверять имя чата может только
+// тот, кому его и менять (право CHANGE_INFO, как у SetChatType); ответ —
+// занятость в ОБЩЕМ пространстве имён с исключением самого чата.
+func TestCheckChatUsername_RightsAndOwnName(t *testing.T) {
+	ctx := context.Background()
+	in, fg, _ := newGroupTestInteractor(t)
+	// Чаты заводятся прямо в фейке: предмет теста — проверка имени, а не
+	// создание группы.
+	id, _ := fg.CreateMultiMember(ctx, domain.ChatTypeGroup, "Team", "", "team_name", true, 7)
+	_ = fg.AddMember(ctx, id, 7, domain.RoleCreator, domain.AllRights)
+	_ = fg.AddMember(ctx, id, 8, domain.RoleMember, 0)
+	_, _ = fg.CreateMultiMember(ctx, domain.ChatTypeGroup, "Other", "", "other_name", true, 7)
+
+	if _, err := in.CheckChatUsername(ctx, id, 8, "free_name"); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("участник без CHANGE_INFO: err = %v; want ErrForbidden", err)
+	}
+	for u, want := range map[string]bool{"free_name": true, "team_name": true, "other_name": false} {
+		got, err := in.CheckChatUsername(ctx, id, 7, u)
+		if err != nil {
+			t.Fatalf("%s: %v", u, err)
+		}
+		if got != want {
+			t.Fatalf("%s: available = %v; want %v", u, got, want)
+		}
 	}
 }

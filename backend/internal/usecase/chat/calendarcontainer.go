@@ -32,7 +32,7 @@ func (i *Interactor) CalendarMonth(ctx context.Context, chatID, userID int64, fr
 		return CalendarPage{}, domain.ErrNotFound
 	}
 
-	days, err := i.msgs.CalendarMonth(ctx, chatID, from, to)
+	days, err := i.msgs.CalendarMonth(ctx, chatID, userID, from, to)
 	if err != nil {
 		return CalendarPage{}, err
 	}

@@ -102,18 +102,26 @@ function extractLayoutEffectBodyContaining(src: string, marker: string): string 
 }
 
 describe('UserInfoPanel — каркас на классах tweb', () => {
-  it('вкладка слайдера: sidebar-slider > tabs-tab.profile-container, className СТАТИЧЕСКИЙ', () => {
-    expect(panel).toMatch(/<div className="sidebar-content sidebar-slider tabs-container">/)
+  it('вкладка слайдера: узел — контейнер вкладки №0, React его className не пишет вовсе', () => {
+    // С задачи 0б-0 волны 7 `#column-right > .sidebar-slider` — статичная
+    // разметка шелла, а узел вкладки создаёт класс колонки
+    // (`AppSidebarRight.createSharedMediaTab`); панель порталит себя в него.
+    expect(panel).not.toMatch(/sidebar-slider tabs-container/)
+    expect(panel).not.toMatch(/id="column-right"/)
+    expect(panel).toMatch(/const panel = createPortal\([\s\S]*?<\/>,\s*profileTab\.container,\s*\)/)
+    // Оверлеи-подэкраны — соседями вкладки в `.sidebar-slider`, не внутри неё
+    // (правила `.profile-container .sidebar-header` задели бы их шапки), и
+    // только у активного инстанса чата.
+    expect(panel).toMatch(/\{isActiveInstance && sliderEl && createPortal\(\s*<>\s*\{editing && isRealChat/)
     // НАХОДКА РЕВЬЮ (Critical, раунд правок 3): ни один из четырёх динамических
     // классов состояния (is-collapsed/need-white/header-filled/can-add-members)
-    // не вычисляется здесь строкой — className этого узла СТАТИЧЕСКИЙ литерал
-    // (двойные кавычки JSX-атрибута, не аргумент `classNames(...)`), и остаётся
-    // им ВСЕГДА: если бы он менялся, React при смене вычисленной строки
-    // переписал бы `node.className` целиком, стирая классы, выставленные
-    // classList.toggle'ом (класс PeerProfileAvatars и два эффекта панели ниже).
-    expect(panel).toContain('ref={setCollapsedOnRef}')
-    expect(panel).toContain('className="tabs-tab sidebar-slider-item scrollable-y-bordered shared-media-container profile-container active"')
-    expect(panel).not.toMatch(/classNames\(\s*'tabs-tab sidebar-slider-item/)
+    // не вычисляется строкой — React className этого узла не владеет (узел
+    // создан классом, не JSX), все писатели идут classList (класс
+    // PeerProfileAvatars и эффекты панели ниже). Классы профиля — как у tweb
+    // на `tab.container` (sharedMedia.tsx:193, :399).
+    expect(panel).toContain('useRef<HTMLElement>(profileTab.container)')
+    expect(panel).toMatch(/profileTab\.container\.classList\.add\('shared-media-container', 'profile-container'\)/)
+    expect(panel).not.toMatch(/ref=\{setCollapsedOnRef\}/)
     // header-filled/can-add-members/is-collapsed/need-white — ВСЕ четыре теперь
     // ТОЛЬКО через classList.toggle (класс — свою половину, панель — свою,
     // см. useLayoutEffect'ы у setCollapsedOnRef); ни один литерал-кавычка этих
@@ -181,13 +189,16 @@ describe('UserInfoPanel — каркас на классах tweb', () => {
   // карусельной самоделкой — тот же учёт теперь ВНУТРИ класса
   // (`peerProfileAvatars.ts`, покрыт `peerProfileAvatars.test.ts`, describe
   // «rAF-прогресс полоски видео-аватара»). `toggleVideosUnder` на ВСЮ колонку
-  // — это ОТДЕЛЬНЫЙ, не карусельный механизм (порт tweb sidebarRight/index.ts:
-  // 98,132): он гасит ЛЮБЫЕ видео под закрытой колонкой, включая будущие
-  // (не только аватар), поэтому остаётся в панели и пинуется отдельно.
-  it('AvatarVideo снесена; toggleVideosUnder на закрытие колонки остался (не карусельный механизм)', () => {
+  // — ОТДЕЛЬНЫЙ, не карусельный механизм, и с задачи 0б-0 он у своего
+  // владельца, как у tweb: `AppSidebarRight.hide`/`toggleSidebar`
+  // (sidebarRight/index.ts:100, :134; пин — `sidebarRight/index.test.ts`).
+  it('AvatarVideo снесена; колонкой (видео, inert, навигация, ресайз) панель не владеет', () => {
     expect(panel).not.toMatch(/AvatarVideo/)
-    expect(panel).not.toMatch(/animationIntersector\.addAnimation/)
-    expect(panel).toMatch(/animationIntersector\.toggleVideosUnder\(columnRef\.current, !open\)/)
+    expect(panel).not.toMatch(/animationIntersector/)
+    expect(panel).not.toMatch(/inert=/)
+    expect(panel).not.toMatch(/useNavLayer/)
+    expect(panel).not.toMatch(/installColumnResize/)
+    expect(panel).not.toMatch(/useRightColumnShown/)
   })
 
   it('своего CSS-модуля у панели больше нет', () => {
@@ -335,14 +346,13 @@ describe('UserInfoPanel — шов монтирования PeerProfile (Solid, 
   })
 
   // tweb `AppSharedMediaTab.onOpenAfterTimeout` (sharedMediaTab.tsx:105-108) —
-  // пересчёт триггеров скроллера (догрузка шаред-медиа) ПОСЛЕ выезда колонки
-  // (`slider.ts:133-137`, `setTimeout(…, TRANSITION_TIME)`), а не в кадре
-  // клика. Сам тайминг держит `core/hooks/useOpenAfterTimeout.test.tsx`;
-  // здесь — что панель зовёт `onScroll` именно через него.
-  it('пересчёт скроллера по открытию — через useOpenAfterTimeout, не в кадре клика', () => {
-    expect(panel).toMatch(/useOpenAfterTimeout\(open, \(\) => seam\?\.scrollable\.onScroll\(\)\)/)
-    // прежний вызов прямо в эффекте открытия — снят
-    expect(panel).not.toMatch(/if \(open\) seam\?\.scrollable\.onScroll\(\)/)
+  // пересчёт триггеров скроллера (догрузка шаред-медиа) ПОСЛЕ выезда колонки,
+  // а не в кадре клика. Зовёт его слайдер (`slider.ts::selectTab`), вкладка
+  // №0 (`reactProfileTab.ts`) — на скроллере панели, который панель ей отдаёт.
+  it('пересчёт скроллера по открытию — хук вкладки на скроллере панели, не в кадре клика', () => {
+    expect(panel).toMatch(/profileTab\.reactScrollable = seam\.scrollable/)
+    expect(panel).toMatch(/profileTab\.reactScrollable = undefined/)
+    expect(panel).not.toMatch(/seam\?\.scrollable\.onScroll\(\)/)
   })
 })
 
@@ -365,6 +375,7 @@ describe('UserInfoPanel — «Избранное» без профиля (noProf
 
   it('шапка сразу в режиме shared media; «назад» без профиля закрывает панель', () => {
     expect(panel).toMatch(/if \(noProfile && searchSuper\) setIsSharedMediaRef\.current\(true\)/)
-    expect(panel).toMatch(/onClick=\{filled && !noProfile \? scrollBackToProfile : onClose\}/)
+    // «закрыть» — как tweb sharedMedia.tsx:670 `tab.slider.onCloseBtnClick()`
+    expect(panel).toMatch(/onClick=\{filled && !noProfile \? scrollBackToProfile : \(\) => appSidebarRight\.onCloseBtnClick\(\)\}/)
   })
 })

@@ -77,7 +77,6 @@ interface Managers {
     card(chatId: PeerId): Promise<ChatCard | null>
     members(peerId: PeerId): Promise<ChatMember[]>
     editInfo(chatId: number, args: { title: string; about?: string; username?: string }): Promise<void>
-    setType(chatId: number, isPublic: boolean, username: string): Promise<void>
     setPermissions(chatId: number, permissions: number, slowmodeSeconds: number): Promise<void>
     setReactions(chatId: number, mode: 'all' | 'some' | 'none', emojis: string[]): Promise<void>
     setHistory(chatId: number, visible: boolean): Promise<void>
@@ -135,7 +134,6 @@ export interface GroupEdit {
   reload: () => void
   saveInfo: (title: string, about: string) => Promise<void>
   savePhoto: (blob: Blob, width: number, height: number) => Promise<void>
-  saveType: (isPublic: boolean, username: string) => Promise<'ok' | 'taken' | 'invalid'>
   savePermissions: (permissions: number, slowmodeSeconds: number) => Promise<void>
   saveReactions: (mode: 'all' | 'some' | 'none', emojis: string[]) => Promise<void>
   saveHistory: (visible: boolean) => Promise<void>
@@ -254,16 +252,6 @@ export function useGroupEdit(chatId: number): GroupEdit {
       await managers.groups.setPhoto(chatId, mediaId)
       reload()
       await refreshDialogs()
-    },
-    saveType: async (isPublic, username) => {
-      try {
-        await managers.groups.setType(chatId, isPublic, username)
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : ''
-        return msg.includes('taken') || msg.includes('409') ? 'taken' : 'invalid'
-      }
-      reload()
-      return 'ok'
     },
     savePermissions: async (permissions, slowmodeSeconds) => {
       await managers.groups.setPermissions(chatId, permissions, slowmodeSeconds)

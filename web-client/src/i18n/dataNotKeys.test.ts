@@ -65,7 +65,7 @@ const inTranslationCall = (src: string, index: number) =>
  * ПУНКТ МЕНЮ («Создать группу» по-русски), и группа без имени называлась им у всех
  * участников. У названия по умолчанию свой ключ, и он один на роль.
  */
-const DATA_SAFE_KEYS = new Set(['NewGroup.DefaultTitle', 'NewChannel.DefaultTitle'])
+const DATA_SAFE_KEYS = new Set(['NewGroup.DefaultTitle'])
 
 /**
  * АРГУМЕНТЫ вызова менеджера — ровно то, что внутри его скобок. Границы считаются по

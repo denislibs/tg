@@ -59,7 +59,7 @@ func (i *Interactor) ScheduleMessage(ctx context.Context, in SendInput, sendAt t
 	}
 	return i.scheduled.Create(ctx, domain.ScheduledMessage{
 		ChatID: in.ChatID, SenderID: in.SenderID, Type: in.Type, Text: in.Text,
-		Entities: sanitizeEntities(in.Entities), ReplyToID: in.ReplyToID, MediaID: in.MediaID,
+		Entities: domain.SanitizeEntities(in.Entities), ReplyToID: in.ReplyToID, MediaID: in.MediaID,
 		SendAt: sendAt, WhenOnline: whenOnline,
 	})
 }

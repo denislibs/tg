@@ -137,7 +137,7 @@ Postgres (назначает монотонный `seq`) → `message_ack` от�
 - **Чаты/сообщения:** `POST /chats`, `POST /saved`, `GET /chats`, `POST /chats/{id}/messages`, `PATCH|DELETE /chats/{id}/messages/{msgID}`, `POST /chats/{id}/forward`, `POST|DELETE /chats/{id}/messages/{msgID}/pin`, `GET /chats/{id}/pins`, `GET /chats/{id}/messages/{msgID}/viewers`, `GET /chats/{id}/history`, `GET /chats/{id}/search`, `POST /chats/{id}/read`
 - **Sync:** `GET /sync` — апдейты с момента последнего запроса
 - **Реакции:** `POST|DELETE|GET /chats/{id}/messages/{msgID}/reactions[/{emoji}]`
-- **Группы:** `POST /groups`, `GET /chats/{id}/card`, `GET /chats/{id}/members`, `PATCH /chats/{id}`, `POST|DELETE /chats/{id}/members[/{userID}]`, `POST|DELETE /chats/{id}/admins[/{userID}]`, `POST /chats/{id}/mute`, `POST|GET /chats/{id}/invite_links`, `POST /join/{token}`, `GET /chats/{id}/join_requests`, `POST /chats/{id}/join_requests/{userID}/approve|decline`
+- **Группы:** `POST /groups`, `GET /chats/{id}/card`, `GET /chats/{id}/members`, `PATCH /chats/{id}`, `GET /chats/{id}/username/available` (channels.checkUsername; имена пользователей и чатов — одно пространство), `POST|DELETE /chats/{id}/members[/{userID}]`, `POST|DELETE /chats/{id}/admins[/{userID}]`, `POST /chats/{id}/mute`, `POST|GET /chats/{id}/invite_links`, `POST /join/{token}`, `GET /chats/{id}/join_requests`, `POST /chats/{id}/join_requests/{userID}/approve|decline`
 - **Каналы/обсуждения:** `POST /channels`, `POST /channels/{id}/messages`, `GET /channels/{id}/difference`, `POST /channels/join`, `POST /channels/{id}/discussion`, `POST|GET /channels/{id}/posts/{postId}/comments`, `GET /channels/{id}/comment_counts`
 - **Поиск/люди:** `GET /users`, `GET /search`, `GET /presence`
 - **Медиа:** `GET /media/token`, `POST /media/upload`, `GET /media/{id}`, `PUT /media/{id}/content`
@@ -208,6 +208,8 @@ Postgres (назначает монотонный `seq`) → `message_ack` от�
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | (опц.) | ключи web-push; без них push отключён |
 | `VAPID_SUBJECT` | `mailto:admin@example.com` | subject для web-push |
 | `GEOIP_DB_PATH` | (опц.) | путь к GeoLite2-City.mmdb; без него гео в login-алертах опускается |
+| `PUBLIC_LINK_ORIGIN` | `https://t.me.local` | хост публичных ссылок — аналог t.me: страницы-превью (`/{username}`, `/{username}/{N}`, `/c/{id}/{N}`, `/+{hash}`, `/joinchat/{hash}`, `/addstickers/{name}`), абсолютные адреса картинок и og:image. nginx проксирует этот хост на `/tme/…` бэкенда; должен совпадать с `server_name` в `nginx/nginx.conf` и `VITE_TME_ORIGIN` клиента |
+| `APP_ORIGIN` | `https://web.telegram.local` | адрес веб-клиента: куда ведут кнопки страниц-превью («Написать», «Открыть в приложении», «Присоединиться») и корень хоста ссылок |
 
 Пример — [`../.env.example`](../.env.example).
 

@@ -17,7 +17,7 @@ import lang from '@/lang'
 import { DEFAULTS, useSettingsStore } from '@/settings'
 import { AppAutoDownloadFileTab, AppAutoDownloadPhotoTab, AppAutoDownloadVideoTab, AppDataAndStorageTab } from '@components/solidJsTabs/tabs'
 import { installSpecLabelActivation } from '@/test/specLabelActivation'
-import { createSettingsSliderHost, type SettingsSliderHost } from '../../settingsSliderHost'
+import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
 
 vi.mock('@core/mediaCache', async(importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -26,7 +26,7 @@ vi.mock('@core/mediaCache', async(importOriginal) => ({
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-let host: SettingsSliderHost
+let host: TestColumnSlider
 let uninstallLabelActivation: () => void
 
 const resetSettings = () => useSettingsStore.getState().update({
@@ -45,7 +45,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = createSettingsSliderHost(columnEl, {} as Managers)
+  host = mountTestColumnSlider(columnEl, {} as Managers)
 })
 
 afterEach(async() => {

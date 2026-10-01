@@ -7,11 +7,14 @@ import "time"
 // "let them see my phone number" flag. The saved name is the owner's — it does not
 // change the contact's own profile name.
 type ContactRecord struct {
-	OwnerID    int64
-	UserID     int64
-	FirstName  string
-	LastName   string
-	Note       string
+	OwnerID   int64
+	UserID    int64
+	FirstName string
+	LastName  string
+	// Note — заметка владельца о контакте (userFull.note): текст с разметкой.
+	// nil — заметки нет; на ЗАПИСИ (contacts.addContact без note) nil значит
+	// «не трогать», а не «стереть».
+	Note       *TextWithEntities
 	SharePhone bool
 	CreatedAt  time.Time
 	// User — сам пир в форме конструктора `user`, наполняется read-моделью (в
@@ -30,4 +33,24 @@ type ContactRecord struct {
 	// IsBot — контакт является ботом (users.is_bot). Ботов нельзя держать в
 	// адресной книге (Telegram), поэтому read-model их отфильтровывает.
 	IsBot bool
+}
+
+// ContactNoteMaxLen — предел заметки контакта в UTF-16 единицах: поле
+// заметки оригинала ограничено 128 (tweb editContact.tsx, InputFieldEmoji
+// maxLength), и сервер держит тот же предел, а не доверяет клиенту.
+const ContactNoteMaxLen = 128
+
+// ContactCard — то, что ЗРИТЕЛЬ знает о пире по адресным книгам: этим
+// дополняется профиль (users.userFull). Всё здесь зависит от зрителя, как
+// pFlags.contact у оригинала, поэтому считается на каждый запрос профиля.
+type ContactCard struct {
+	// Contact — пир в книге зрителя (user.pFlags.contact).
+	Contact bool
+	// Mutual — и зритель в книге пира (user.pFlags.mutual_contact).
+	Mutual bool
+	// Note — заметка зрителя о пире (userFull.note); nil — нет.
+	Note *TextWithEntities
+	// PersonalPhotoID — media id личного фото, которое зритель поставил пиру
+	// (userFull.personal_photo); 0 — нет.
+	PersonalPhotoID int64
 }
