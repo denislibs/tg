@@ -9163,7 +9163,7 @@
         },
         {
           "key": "Discard",
-          "value": "Удалить"
+          "value": "Не сохранять"
         },
         {
           "key": "BlockUser",

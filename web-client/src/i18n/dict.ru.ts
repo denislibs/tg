@@ -1003,7 +1003,7 @@ const ru = {
   DiscardVoiceMessageTitle: 'Удалить голосовое сообщение?',
   'Composer.DiscardVoice.Text': 'Вы уверены, что хотите удалить это голосовое сообщение?',
   Cancel: 'Отмена',
-  Discard: 'Удалить',
+  Discard: 'Не сохранять',
   BlockUser: 'Заблокировать пользователя',
   BlockedUsersInfoShort: 'Заблокированные пользователи не могут писать вам и видеть ваш профиль.',
   BlockedEmptyDescription: 'Вы никого не заблокировали.',
