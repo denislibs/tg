@@ -33,15 +33,11 @@
  *  • `openContactsTab` — вход во вкладку контактов для пунктов React-колонки
  *    (бургер «Контакты», `#new-menu` «Новый личный чат» и «Новый секретный
  *    чат»); у tweb это строки `createToolsMenu`/`createNewChatsMenuOptions`
- *    самого класса (`sidebarLeft/index.ts:695`, `:1079-1083`), ВРЕМЕННО до 2-1;
- *  • `openActiveSessionsTab` — общий вход во «Устройства» для React-экрана
- *    «Конфиденциальности» (ВРЕМЕННО до 2D-23: хаб станет вкладкой и откроет
- *    «Устройства» своим `tab.slider`, как корень настроек уже делает сам —
- *    `sidebarLeft/tabs/settings.solid.tsx::onDevicesClick`).
+ *    самого класса (`sidebarLeft/index.ts:695`, `:1079-1083`), ВРЕМЕННО до 2-1.
  */
 import SidebarSlider from '@components/slider'
 import type SliderSuperTab from '@components/sliderTab'
-import { AppActiveSessionsTab, AppContactsTab, type AppContactsTabOptions } from '@components/solidJsTabs/tabs'
+import { AppContactsTab, type AppContactsTabOptions } from '@components/solidJsTabs/tabs'
 import pause from '@helpers/schedulers/pause'
 import type { Managers } from '@/client/bootstrap'
 
@@ -109,23 +105,6 @@ export function getColumnSlider(): SidebarSlider {
   }
 
   return current
-}
-
-/**
- * Открыть «Устройства» из React-экрана «Конфиденциальности» — порт
- * `openActiveSessions` (tweb `sidebarLeft/newAuthorization.tsx:116-121`):
- * список сессий забирает ОТКРЫВАЮЩИЙ и отдаёт вкладке готовым, чтобы та не
- * въезжала пустой. ВРЕМЕННО до 2D-23 (см. шапку).
- *
- * Слайдер берётся ДО запроса: у оригинала на его месте вечный синглтон
- * `appSidebarLeft`, снимок ссылки — ближайший аналог. Если колонку снимут, пока
- * летит `sessions.list()`, вкладка тихо гаснет о предохранитель
- * `slider.selectTab`, а не бросает на чужом экране.
- */
-export async function openActiveSessionsTab(managers: Managers): Promise<void> {
-  const slider = getColumnSlider()
-  const authorizations = await managers.sessions.list()
-  await slider.createTab(AppActiveSessionsTab).open({ authorizations })
 }
 
 /**

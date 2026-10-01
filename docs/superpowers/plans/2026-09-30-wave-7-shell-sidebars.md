@@ -356,7 +356,7 @@ React-корень `main.tsx`/`App.tsx`, `Sidebar.tsx`, `UserInfoPanel.tsx`, `Ch
 
 | Экран (`SidebarScreen`) | React сейчас | Кто покрывает | tweb |
 |---|---|---|---|
-| `settings` | `SettingsView.tsx` 391 + `SettingsSubScreen.tsx` 44 | **2D-28** (не сделана), 2D-15/20/21/22/23/26/27 (открыты) | `tabs/settings.tsx` 451 |
+| `settings` | `SettingsView.tsx` 391 + `SettingsSubScreen.tsx` 44 | **2D-28** (не сделана), 2D-15/20/21/22/23/26/27 (открыты). **Снято**: все восемь влиты; последний React-экран настроек («Конфиденциальность») и обратный мост `sidebarLeft/reactScreenTab.tsx` (`scaffoldReactScreenTab`) снесены задачей 2D-23 — в настройках только Solid-вкладки колоночного слайдера | `tabs/settings.tsx` 451 |
 | `wallet` | `stars/WalletView.tsx` 115 | **2C-19** (попап звёзд). Вкладки у tweb нет (`popups/stars.tsx`), экран уходит вместе с попапом | — |
 | `contacts` | `ContactsView.tsx` 141 | **0а-1** (2C-26 — только попап «новый контакт», врезка `ContactsView.tsx:113`) | `tabs/contacts.tsx` 109 |
 | `newPrivate` | `NewPrivateChat.tsx` 119 | **0а-1**: у tweb «новый личный чат» = `AppContactsTab` (`sidebarLeft/index.ts:1079-1083`, `:1105-1109`) | — |

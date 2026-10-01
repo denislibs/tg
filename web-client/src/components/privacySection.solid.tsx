@@ -87,7 +87,8 @@ type PrivacyException = {
 }
 
 // Расхождение 2: кэш правил — стор, запись — менеджер с зеркалом в стор.
-function getPrivacy(managers: Managers, key: PrivacyKey): Promise<PrivacyRule> {
+// Экспорт — для правила `read_time` вкладки «Был в сети» (её расхождение 1).
+export function getPrivacy(managers: Managers, key: PrivacyKey): Promise<PrivacyRule> {
   const store = usePrivacyStore.getState()
   if(store.loaded) {
     return Promise.resolve(store.rules[key])
@@ -99,7 +100,7 @@ function getPrivacy(managers: Managers, key: PrivacyKey): Promise<PrivacyRule> {
   })
 }
 
-function setPrivacy(managers: Managers, rule: PrivacyRule) {
+export function setPrivacy(managers: Managers, rule: PrivacyRule) {
   return managers.privacy.setRule(rule).then((saved) => {
     usePrivacyStore.getState().setRule(saved)
   }, () => loadPrivacy(managers))
@@ -274,6 +275,15 @@ export default class PrivacySection {
   }
 
   public onTabDestroy = () => {
+    return setPrivacy(this.options.managers, this.getRule())
+  }
+
+  /**
+   * Правило в том виде, в каком его пишет закрытие вкладки (tweb :279-344):
+   * исключения — только те, что имеют смысл при выбранном типе. Отдельным
+   * методом — ради «Был в сети», которая копирует его в `read_time`.
+   */
+  public getRule(): PrivacyRule {
     const rule: PrivacyRule = {
       key: this.options.inputKey,
       value: VALUE_BY_TYPE[this.type],
@@ -299,7 +309,7 @@ export default class PrivacySection {
       }
     }
 
-    return setPrivacy(this.options.managers, rule)
+    return rule
   }
 
   private replaceCaption(caption: PrivacySectionStr = this.options.captions[this.type]) {

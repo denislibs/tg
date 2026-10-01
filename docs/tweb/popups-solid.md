@@ -340,7 +340,7 @@ SCSS HEAD (`_popup.scss`), которых не было у нас (**перен�
 | Наш (строк) | Механика | Кто открывает | Пара в tweb |
 |---|---|---|---|
 | `stickers/StickerSetModal.tsx` (400) | RP+PS | `Chat.tsx:1067`, `StickersSearchTab.tsx:30` (импорт) | `showStickersPopup` |
-| `settings/PasskeyIntroPopup.tsx` (116) | PT | `PrivacySecuritySettings.tsx:264` | `showPasskeyPopup` |
+| `settings/PasskeyIntroPopup.tsx` (116) | PT | мост `sidebarLeft/settingsPopups.tsx::showPasskeyPopup` (зовут `tabs/privacyAndSecurity.solid.tsx`, `tabs/passkeys.solid.tsx`) | `showPasskeyPopup` |
 | `rtmp/outputDevicePopup.tsx` — мост `showOutputDevicePopup` (ВРЕМЕННО до 2C-12; сигнатура tweb) | RP | `call/callDeviceSettings.solid.tsx` (`pick`) | `showOutputDevicePopup` |
 | `settings/BirthdayModal.tsx` (87) | PT, без портала | `EditContactView.tsx:173`, `settings/EditProfile.tsx:288` | `showBirthdayPopup` |
 | `messages/ChatDialogs.tsx` `ContactPicker` | RP+PS | `useChatPopups.tsx:248` | `showContactPickerPopup` — строки из адресной книги (`useContactPeerIds`, `peerType: ['contacts']`), не из личных диалогов |

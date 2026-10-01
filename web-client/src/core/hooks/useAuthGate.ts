@@ -106,7 +106,7 @@ export function useAuthGate(): AuthGate {
     // Critical 1 / Important 3-4 в task-1-findings-round4.md. Владелец знает
     // намерение точно и объявляет его сам:
     //  - migrateTo !== null — активный токен переехал на другой уже вошедший
-    //    аккаунт (switchAccount / logout / deleteAccount с остающимся).
+    //    аккаунт (switchAccount / logout с остающимся).
     //    authed сбрасывать НЕЛЬЗЯ (сессия жива, просто другая) — нужен
     //    полноценный подъём под новым токеном (dialogs/folders/State), а
     //    useAppBootstrap на повторный прогон без перезагрузки не рассчитан

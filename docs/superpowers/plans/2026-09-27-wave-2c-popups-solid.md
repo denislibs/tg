@@ -582,7 +582,7 @@ Enter и гасит `destroyed` — иначе отложенный `doubleRaf`-
 у tweb → наш формат запроса менеджера (объявить у строки). `IS_WEB_AUTHN_SUPPORTED` — наш флаг среды
 (найти; нет — порт `environment/webAuthn`).
 **Дамп:** `14-left-35-passkeys-popup`. **Мутация:** `Create` не ждёт `createPasskey` — пин «при ошибке
-попап остаётся» краснеет. **Врезка:** `settings/PrivacySecuritySettings.tsx:264` → `showPasskeyPopup`;
+попап остаётся» краснеет. **Врезка:** мост `showPasskeyPopup` в `sidebarLeft/settingsPopups.tsx` (его зовут хаб `sidebarLeft/tabs/privacyAndSecurity.solid.tsx` и `passkeys.solid.tsx`; React-экрана «Конфиденциальность» нет с 2D-23) → Solid-попап;
 удалить `settings/PasskeyIntroPopup.tsx` (+ `.module.scss`). **Зависимости:** 5.
 
 ### Задача 11: свой срок автоудаления → 2D-20 — ✅ сделано в 2D-20 (PR feat/2d-20-auto-delete-tab)

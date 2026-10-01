@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useManagers } from './useManagers'
-import { usePrivacyStore } from '../../stores/privacyStore'
 
 // Managers-действия ⋮-меню чата (tweb topbar): статус блокировки собеседника +
 // её переключение (private), и per-chat автоудаление (messages.setHistoryTTL).
@@ -33,10 +32,7 @@ export function useHeaderMenuActions(args: {
   }, [canBlock, peerId, managers])
 
   const toggleBlock = () => {
-    void managers.privacy.toggleBlock(peerId, !blocked)
-      .then(() => managers.privacy.getBlocked(0, 1))
-      .then((r) => usePrivacyStore.getState().setBlockedTotal(r.count))
-      .catch(() => {})
+    void managers.privacy.toggleBlock(peerId, !blocked).catch(() => {})
     close()
   }
 
