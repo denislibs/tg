@@ -1029,7 +1029,7 @@ setRule` + зеркало ответа в стор (хаб перерисовы�
 — **2C**. **Зависимости:** 5, 2C. **Врезка:** `tabs.ts`, `PrivacySecuritySettings.tsx`; удалить
 `settings/AutoDeleteMessages.tsx`.
 
-### Задача 21: «Passkeys» (2C)
+### Задача 21: «Passkeys» (2C) — ✅ сделано (PR feat/2d-21-passkeys-tab)
 
 **Порт:** `passkeys.tsx` (131) + `.module.scss` → `sidebarLeft/tabs/passkeys.solid.tsx`; вкладка
 :137. `MediaHeader` со стикером `key`, строки с `contextMenu` удаления → `confirmationPopup`,
@@ -1037,6 +1037,22 @@ setRule` + зеркало ответа в стор (хаб перерисовы�
 (`popups/passkey.tsx`) — **2C**, наш `PasskeyIntroPopup.tsx` удаляется там.
 **Зависимости:** 5, 2C. **Врезка:** `tabs.ts`, `PrivacySecuritySettings.tsx`; удалить
 `settings/Passkeys.tsx`, `PasskeyIntroPopup.tsx` + `.module.scss`.
+
+**Итог (2026-10-01):** `sidebarLeft/tabs/passkeys.solid.tsx` (+ `.module.scss` без правила
+`--custom-emoji-size`), `components/popups/passkey.ts` (`createPasskey` — порт `:9-32`; сам попап
+допишет 2C-10), `helpers/dom/anchorCallback.ts`, вкладка `AppPasskeysTab` блоком в конце `tabs.ts`.
+Поправки к постановке:
+- 2C-10 не сделана: `showPasskeyPopup` — мост к React `PasskeyIntroPopup.tsx` в
+  `sidebarLeft/settingsPopups.tsx` (`// ВРЕМЕННО до 2C-10`); попап и его стили остаются до 2C-10,
+  но регистрацию в нём делает портированный `createPasskey` (тосты tweb, при ошибке попап открыт).
+- `authManager` отдаёт предметный `Passkey` (`layer.d.ts`: `id` строкой, `date`/`last_usage_date` —
+  unix) вместо своего `PasskeyInfo` — payload вкладки 1:1 с tweb.
+- React-«Конфиденциальность» открывает вкладку, как `privacyAndSecurity.tsx:290-302`: с ключами —
+  вкладка со Solid-стором, без — интро-попап, созданный ключ — вкладка с ним; список читается на
+  клике (до 2D-23), счётчика `passkeysCount` больше нет.
+- С React-экраном сняты `DayDate`/`ALWAYS_YEAR` (`shared/ui/dateNodes.tsx`, последний потребитель)
+  и пины года в подписи — оригинал зовёт `formatDate` без принудительного года.
+- Ключи tweb +7 всем пяти словарям, наших −7; `langpack.gen.json` пересчитан (версия 23).
 
 ### Задача 22: «Заблокированные» (2C)
 
@@ -1334,6 +1350,8 @@ RowTsxController` + `attachRowController(this, {…, middleware})`, `destroy()` 
 | О-43 | Секция «Dynamic Pack Order» (`stickersAndEmoji.tsx:140-153`, `settings.stickers.dynamicPackOrder`) и подъём набора наверх по событию `stickers_top` (`:243-250`) | у оригинала тумблер уходит флагом `update_stickersets_order` в отправку стикера (`appMessagesManager.ts:2745`), и сервер переставляет наборы; у нас ни флага отправки, ни порядка наборов, ни события (задача 15) | порядок наборов по использованию |
 | О-44 | «All Sets» ≠ «My Sets» в «Suggest Stickers by Emoji»: серверные стикеры в подсказках (`stickersHelper.ts:66`, `includeServerStickers`) | поиск по эмодзи ищет только в установленных наборах (`GET /stickers/search`, `usecase/stickers/interactor.go:172`); `none` гейтит панель подсказок (`Composer.tsx::checkStickerSuggest`, задача 15) | подсказки стикеров из всех наборов |
 | О-45 | Тумблер «Large Emoji» (`stickersAndEmoji.tsx:127-136`, `settings.emoji.big`) | его читатель — ветка больших эмодзи ленты (`bubbles.ts:8854`), а наша лента их не рисует (`web-client/backlogs/frontend/vanilla-feed-big-emoji.md`); тумблер ничего бы не менял (задача 15) | большие эмодзи в ленте |
+| О-50 | Эмодзи менеджера паролей у строки ключа (`software_emoji_id` → `Row.Media size="abitbigger"` + `wrapAdaptiveCustomEmoji`, `passkeys.tsx:61-72`) | сервер не хранит AAGUID ключа и эмодзи не отдаёт (`domain/passkey.go`) — у всех строк `key_filled` (задача 21, расхождение 1) | AAGUID → эмодзи на сервере |
+| О-51 | Лимит ключей из `appConfig.passkeys_account_passkeys_max` (`passkeys.tsx:109`) | `help.getAppConfig` нет; лимит — константа 10, зеркало `maxPasskeys` сервера (`usecase/passkeys/passkeys.go`) (задача 21, расхождение 2) | app config с сервера |
 
 ## Оценка объёма
 

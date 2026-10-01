@@ -31,7 +31,7 @@ import { formatFullSentTime } from '@helpers/date'
 import '../../test/lang'
 
 import DomNode from './DomNode'
-import { DayDate, SentTime, Time } from './dateNodes'
+import { SentTime, Time } from './dateNodes'
 
 /** 14 июня 2026, 10:00 UTC — «тот же год, не эта неделя». */
 const TS = Math.floor(Date.parse('2026-06-14T10:00:00Z') / 1000)
@@ -86,14 +86,13 @@ describe('DomNode с фрагментом', () => {
   })
 })
 
-// Три обёртки — это и есть все виды подписи, которыми пользуются экраны.
-// `SentTime` отдаёт фрагмент, `Time`/`DayDate` — элемент; под StrictMode обязаны
+// Две обёртки — это и есть все виды подписи, которыми пользуются экраны.
+// `SentTime` отдаёт фрагмент, `Time` — элемент; под StrictMode обязаны
 // работать одинаково, иначе дефект вернётся ровно тем же способом.
 describe('обёртки дат под StrictMode', () => {
   const cases = [
     ['SentTime', <SentTime key="s" timestamp={TS} />],
     ['Time', <Time key="t" timestamp={TS} />],
-    ['DayDate', <DayDate key="d" date={TS} />],
   ] as const
 
   for (const [name, element] of cases) {

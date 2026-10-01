@@ -1,18 +1,20 @@
 /**
- * ВРЕМЕННЫЕ МОСТЫ Solid-вкладок настроек к React-попапам (снимаются задачами
+ * ВРЕМЕННЫЕ МОСТЫ вкладок настроек к React-попапам (снимаются задачами 2C-10,
  * 2C-13, 2C-15, 2C-17, 2C-18, 2C-19, 2C-20). Имена и сигнатуры — tweb
  * (`showPremiumPopup`, `showStarsPopup`, `showMyQrCodePopup`, `showLogOutPopup`,
- * `showSendGiftPicker`, `showStickersPopup` из `components/popups/*`), чтобы
- * Solid-корень (`sidebarLeft/tabs/settings.solid.tsx`, `settings.tsx:97-117`,
- * `:419-446`) и «Стикеры и эмодзи» (`sidebarLeft/tabs/stickersAndEmoji.solid.tsx`,
- * `stickersAndEmoji.tsx:188`) звали их ровно как оригинал; задача 2C заменяет
- * импорт на свой Solid-попап и удаляет строку отсюда.
+ * `showSendGiftPicker`, `showPasskeyPopup`, `showStickersPopup` из
+ * `components/popups/*`), чтобы Solid-вкладки (корень
+ * `sidebarLeft/tabs/settings.solid.tsx`, `passkeys.solid.tsx`,
+ * `stickersAndEmoji.solid.tsx`) звали их ровно как оригинал (`settings.tsx:97-117`,
+ * `:419-446`, `passkeys.tsx:103`, `stickersAndEmoji.tsx:188`); задача 2C
+ * заменяет импорт на свой Solid-попап и удаляет строку отсюда.
  *
  * Попапы открываются через глобальный `popupStore` (`PopupHost` живёт в
  * React-дереве шелла, у него есть `ManagersProvider`), поэтому вызов из
  * Solid-обработчика — обычная функция, React в `.solid.tsx` не попадает.
  */
 import { useEffect, useRef } from 'react'
+import type { Passkey } from '@layer'
 import type { Managers } from '@/client/bootstrap'
 import type { InputStickerSetAddress } from '@core/managers/stickersManager'
 import { openPopup, type PopupApi } from '@stores/popupStore'
@@ -25,9 +27,10 @@ import { publicUsernameLink } from '@core/publicLink'
 import PremiumModal from '../PremiumModal'
 import StarsPopup from '../stars/StarsPopup'
 import QrModal from '../QrModal'
+import PasskeyIntroPopup from '../settings/PasskeyIntroPopup'
 
 /**
- * `StarsPopup`/`QrModal` сами гасят узел через 300 мс после `open = false`
+ * `StarsPopup`/`QrModal`/`PasskeyIntroPopup` сами гасят узел через 300 мс после `open = false`
  * (`usePopupTransition`, `settings/kit.tsx`), но стеку попапов о конце
  * выхода не сообщают — снимаем запись тем же сроком.
  */
@@ -97,6 +100,28 @@ export function showLogOutPopup(managers: Managers) {
 // `stars/SendGiftPopup` открывается только из чата с известным получателем —
 // строка корня до 2C-20 ничего не открывает, как и до переезда корня.
 export function showSendGiftPicker() {}
+
+function PasskeyPopupBridge({ api, onCreation }: { api: PopupApi; onCreation?: (passkey: Passkey) => void }) {
+  useRemoveAfterHide(api)
+  return (
+    <PasskeyIntroPopup
+      open={api.open}
+      onClose={api.requestClose}
+      onCreated={(passkey) => {
+        api.requestClose()
+        onCreation?.(passkey)
+      }}
+    />
+  )
+}
+
+// ВРЕМЕННО до 2C-10 (tweb `popups/passkey.tsx:34-66`: `showFeatureDetailsPopup`
+// с тремя рядами и кнопками Create/Skip; без WebAuthn — одна Unsupported).
+// Создание — портированный `createPasskey` (`components/popups/passkey.ts`),
+// закрытие и `onCreation` — после успеха, как у оригинала (`:47-55`).
+export function showPasskeyPopup(onCreation?: (passkey: Passkey) => void) {
+  openPopup((p) => <PasskeyPopupBridge api={p} onCreation={onCreation} />, 'passkey')
+}
 
 // ВРЕМЕННО до 2C-15 (tweb `popups/stickers.tsx`, `showStickersPopup(input)`):
 // попап набора — наш React `StickerSetModal`. Без колбэка отправки: у оригинала

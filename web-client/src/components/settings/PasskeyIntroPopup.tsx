@@ -1,8 +1,11 @@
 // PasskeyIntroPopup — попап «Защита Вашего аккаунта» (tweb showPasskeyPopup →
 // showFeatureDetailsPopup): rlottie-ключ, три ряда преимуществ и кнопки
-// «Создать ключ доступа» / «Пропустить». Показывается по клику на ряд
-// «Ключи доступа», пока ключей ещё нет.
+// «Создать ключ доступа» / «Пропустить». ВРЕМЕННО до 2C-10: открывается только
+// мостом `showPasskeyPopup` (`sidebarLeft/settingsPopups.tsx`); регистрация —
+// портированный `createPasskey` (`popups/passkey.ts`, тост успеха/ошибки там),
+// при ошибке попап остаётся открытым, как tweb `popups/passkey.tsx:47-55`.
 import { useState } from 'react'
+import type { Passkey } from '@layer'
 import { createPortal } from 'react-dom'
 import TgIcon from '../TgIcon'
 import Text from '../../shared/ui/Text'
@@ -10,7 +13,8 @@ import LottieSticker from '../LottieSticker'
 import classNames from '../../shared/lib/classNames'
 import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
-import { isWebAuthnSupported, createPasskey } from '../../core/webauthnBrowser'
+import { isWebAuthnSupported } from '../../core/webauthnBrowser'
+import { createPasskey } from '../popups/passkey'
 import { usePopupTransition } from './kit'
 import s from './PasskeyIntroPopup.module.scss'
 
@@ -28,25 +32,20 @@ export default function PasskeyIntroPopup({
 }: {
   open: boolean
   onClose: () => void
-  onCreated: () => void
+  onCreated: (passkey: Passkey) => void
 }) {
   const t = useT()
   const managers = useManagers()
   const { mounted, cls } = usePopupTransition(open)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
 
   const create = async () => {
     if (busy) return
     setBusy(true)
-    setError('')
     try {
-      const { session, options } = await managers.auth.passkeyRegisterBegin()
-      const attestation = await createPasskey(options)
-      await managers.auth.passkeyRegisterFinish(session, attestation)
-      onCreated()
+      onCreated(await createPasskey(managers))
     } catch {
-      setError(t('Passkey.CreateError'))
+      // тост об ошибке показал `createPasskey`; попап остаётся
     } finally {
       setBusy(false)
     }
@@ -86,12 +85,6 @@ export default function PasskeyIntroPopup({
             </Text>
           </div>
         ))}
-
-        {error && (
-          <Text size={14} color="#ff595a" className={s.error}>
-            {error}
-          </Text>
-        )}
 
         <div className={s.footer}>
           {isWebAuthnSupported() ? (

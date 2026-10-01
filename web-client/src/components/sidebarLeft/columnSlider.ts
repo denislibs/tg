@@ -30,6 +30,10 @@
  *    Solid-острова, записи навигации и Esc-обработчики пережили бы её
  *    (`slider.ts::destroy`, ВРЕМЕННО до Э4-1: с узлами из `index.html`
  *    колонка станет вечной);
+ *  • `openContactsTab` — вход во вкладку контактов для пунктов React-колонки
+ *    (бургер «Контакты», `#new-menu` «Новый личный чат» и «Новый секретный
+ *    чат»); у tweb это строки `createToolsMenu`/`createNewChatsMenuOptions`
+ *    самого класса (`sidebarLeft/index.ts:695`, `:1079-1083`), ВРЕМЕННО до 2-1;
  *  • `openActiveSessionsTab` — общий вход во «Устройства» для React-экрана
  *    «Конфиденциальности» (ВРЕМЕННО до 2D-23: хаб станет вкладкой и откроет
  *    «Устройства» своим `tab.slider`, как корень настроек уже делает сам —
@@ -37,7 +41,8 @@
  */
 import SidebarSlider from '@components/slider'
 import type SliderSuperTab from '@components/sliderTab'
-import { AppActiveSessionsTab } from '@components/solidJsTabs/tabs'
+import { AppActiveSessionsTab, AppContactsTab, type AppContactsTabOptions } from '@components/solidJsTabs/tabs'
+import pause from '@helpers/schedulers/pause'
 import type { Managers } from '@/client/bootstrap'
 
 /**
@@ -121,4 +126,28 @@ export async function openActiveSessionsTab(managers: Managers): Promise<void> {
   const slider = getColumnSlider()
   const authorizations = await managers.sessions.list()
   await slider.createTab(AppActiveSessionsTab).open({ authorizations })
+}
+
+/**
+ * Открыть вкладку контактов — `this.createTab(AppContactsTab).open()` оригинала
+ * (`sidebarLeft/index.ts:695`, `:1079-1083`). ВРЕМЕННО до 2-1 (см. шапку).
+ *
+ * `noSame` (tweb `solidJsTabs/tabs.ts:222`) отдаёт уже открытую вкладку, если
+ * она сверху, и повторное открытие ничего не делает — как у оригинала. Сверх
+ * него — Отступление В7-1: у вкладки есть наша опция `secret` («Новый
+ * секретный чат»), и вкладка сверху с ДРУГОЙ опцией не годится — клик по
+ * контакту в ней сделал бы не то, что выбрали в меню. Такая вкладка
+ * закрывается, и после её ухода (та же пауза 200 мс, что у `closeTabsBefore`,
+ * tweb `:1068`) открывается новая с нужной опцией.
+ */
+export async function openContactsTab(options?: AppContactsTabOptions): Promise<void> {
+  const slider = getColumnSlider()
+  const history = slider.getHistory()
+  const top = history[history.length - 1]
+  if(top instanceof AppContactsTab && !!(top.payload as AppContactsTabOptions | void)?.secret !== !!options?.secret) {
+    top.close()
+    await pause(200)
+  }
+
+  await slider.createTab(AppContactsTab).open(options)
 }
