@@ -45,7 +45,7 @@ import useMediaQuery from './shared/lib/useMediaQuery'
 
 export type ToggleMode = (coords?: { x: number; y: number }) => void
 
-function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout: () => void }) {
+function Shell({ onToggleMode }: { onToggleMode: ToggleMode }) {
   const managers = useManagers()
   // Правая колонка — класс `AppSidebarRight` на статичном `#column-right` ниже
   // (tweb: синглтон при импорте, `sidebarRight/index.ts:141`, и
@@ -147,7 +147,6 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
     <Sidebar
       initialQuery={deep.deepDomain}
       onToggleMode={onToggleMode}
-      onLogout={onLogout}
       fullWidth={fullWidth}
     />
   )
@@ -213,7 +212,7 @@ function Shell({ onToggleMode, onLogout }: { onToggleMode: ToggleMode; onLogout:
 }
 
 function ThemedApp() {
-  const { authed, login, logout } = useAuthGate()
+  const { authed, login } = useAuthGate()
   const managers = useManagers()
   const toggleMode = useThemeToggle()
   const { shellChatTheme } = useShellTheme()
@@ -259,7 +258,7 @@ function ThemedApp() {
   return (
     <>
       <SvgDefs />
-      {authed && <Shell onToggleMode={toggleMode} onLogout={logout} />}
+      {authed && <Shell onToggleMode={toggleMode} />}
     </>
   )
 }

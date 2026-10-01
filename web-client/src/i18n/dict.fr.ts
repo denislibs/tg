@@ -221,7 +221,6 @@ const fr = {
   SavedMessages: 'Messages enregistrés',
   'MyStories.Title': 'Mes stories',
   Contacts: 'Contacts',
-  'Stars.Wallet': 'Portefeuille',
   'MultiAccount.More': 'Plus',
   NewChannel: 'Nouveau canal',
   NewGroup: 'Nouveau groupe',

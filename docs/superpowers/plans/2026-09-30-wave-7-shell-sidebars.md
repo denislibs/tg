@@ -1390,6 +1390,11 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 | О-72 | «Отметить непрочитанным»: `pFlags.unread_mark` в `getDialogUnreadCount` (`appMessagesManager.ts:14249`) и пункт меню `MarkAsUnread` | флага нет ни на бэкенде (`domain/mtdialog.go:45`), ни в модели (1-1) | бейдж «•» без числа, пункт меню 1-2 |
 | О-73 | Бейдж голосов опроса: `createPollVotesBadge`, `pollVotes` в `setBadgeState` (`appDialogsManager.ts:578-584`, `:2786`, `:2803`) | `unread_poll_votes_count` бэкенд не считает (`domain/mtdialog.go:48`) (1-1) | бейдж `.dialog-subtitle-badge-pollvote` |
 | О-74 | Перекраска частиц блеф-спойлера активной строки: `DotRenderer.setInlineSpoilersTextColor` в `setDialogActiveStatus` (b2df09771, `appDialogsManager.ts:1296-1297`) | наш инлайн-спойлер — путь `mask-image` (до 4184843ff, `delta/part-2.md`): частицы — сам узел, цвет даёт CSS, канваса с цветом нет (1-1) | порт 4184843ff (канвас блеф-спойлера), затем b2df09771 |
+| О-80 | Боты меню вложений в бургере: `getAttachMenuBots`, `show_in_side_menu`, иконка `iconDoc` и бейдж `new` пункта (`sidebarLeft/index.ts:777-808`, `buttonMenu.ts:178-183`) | на бэкенде нет attach-menu ботов (2-2) | пункты ботов перед «Настройками» |
+| О-81 | Бейдж непрочитанного других аккаунтов: на кнопке бургера и у строки аккаунта (`notification_count_update`, `getNotificationsCountForAllAccounts`, `:175-188`, `:850-854`) | воркер не считает непрочитанное неактивных аккаунтов (одна сессия на браузер, В7-4) (2-2) | счётчик в `sidebar-tools-button-notifications` |
+| О-82 | «Мои истории» — вкладка `AppMyStoriesTab` (`sidebarLeft/tabs/myStories`, `:715-722`); до порта пункт открывает наш `StoriesArchiveSheet` | вкладка историй не портирована (волна 4 спеки) (2-2) | пункт 1:1 |
+| О-83 | verify «Архива» целиком: `!isDialogsLoaded(FOLDER_ID_ARCHIVE)` и `appStoriesManager.hasArchive()` (`:681-685`); у нас — только «есть архивные диалоги» | нет признака «архив догружен» и архива историй скрытых пиров (2-2) | пункт до первой загрузки архива |
+| О-84 | Клавиатурная навигация меню: `menuKeyboard`, `focusTrap`, `activateFocus` в `contextMenuController`, 5-й аргумент `addAdditionalMenu` (фокус в подменю) | срез a11y `contextMenuController` не портирован (2-2) | стрелки/Enter/Esc по пунктам бургера и подменю |
 
 ## Что остаётся волне 8 (после этой программы)
 

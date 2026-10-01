@@ -55,7 +55,9 @@ async function renderSidebar() {
 
 async function clickMenuItem(toggle: HTMLElement, label: string) {
   fireEvent.click(toggle)
-  await act(async () => {})
+  // меню — порт tweb `ButtonMenuToggle`: строится асинхронно и принимает клик,
+  // только став `active`
+  await vi.waitFor(() => expect(document.querySelector('.btn-menu.active')).not.toBeNull())
   fireEvent.click(screen.getByText(label))
   await act(async () => { await pause(50) })
 }

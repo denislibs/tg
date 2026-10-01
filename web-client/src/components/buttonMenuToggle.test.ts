@@ -173,4 +173,20 @@ describe('ButtonMenuToggle: закрытие', () => {
     expect(onClick).toHaveBeenCalledTimes(1)
     expect(container.classList.contains('menu-open')).toBe(false)
   })
+
+  // tweb :216 — `dispose` пунктов (аватарка `avatarInfo`, слушатели подменю
+  // `createSubmenuTrigger`) зовётся отложенной уборкой вместе со сносом меню
+  it('отложенная уборка зовёт dispose каждого пункта', async() => {
+    const container = mountTrigger()
+    const dispose = vi.fn()
+    ButtonMenuToggle({ container, direction: 'bottom-left', buttons: [{ text: 'Delete', onClick: () => {}, dispose }] })
+
+    await open(container)
+    vi.useFakeTimers()
+    contextMenuController.close()
+    expect(dispose).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(300)
+
+    expect(dispose).toHaveBeenCalledTimes(1)
+  })
 })

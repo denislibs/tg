@@ -30,9 +30,6 @@ interface DocumentPiP {
 const docPip = (): DocumentPiP | undefined =>
   (window as unknown as { documentPictureInPicture?: DocumentPiP }).documentPictureInPicture
 
-export const pipSupported = (): boolean =>
-  (typeof document !== 'undefined' && !!document.pictureInPictureEnabled) || !!docPip()
-
 // Ввести конкретный <video> в PiP (кнопка в видеоплеере).
 export async function enterPip(video: HTMLVideoElement): Promise<boolean> {
   if (!document.pictureInPictureEnabled || video.disablePictureInPicture) return false

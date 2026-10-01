@@ -776,7 +776,7 @@ Close/RestartTopic `:224` · ChargeFee `:238` · Delete `:248`.
 | `src/components/chatlist/dialogsPlaceholder.ts` | canvas-шиммер | `helpers/dialogsPlaceholder.ts` |
 | `src/components/foldersTabs.solid.tsx` + `src/components/folders/FoldersSidebar.tsx` + `src/helpers/dom/createFolderContextMenu.ts` | горизонтальный ряд (Solid, узлами владельца) и вертикальная колонка папок (React, `tabsInSidebar`; клик — тот же `selectTab` владельца); меню папки — одна фабрика `createFolderContextMenu` на оба ряда (задача 7) | `foldersTabs` + `foldersSidebarContent` + `createFolderContextMenu` |
 | `src/components/StoriesRow.tsx` (Sidebar.tsx:268-282) | сторис-лента (`foldInto`/`setScrolledOn`/`getScrollable`/`listenWheelOn`) | `stories/list.tsx` |
-| `src/components/SidebarMenuButton.tsx` | бургер + морф (`searching` prop — отражение владельца поиска); узел `.sidebar-back-button` отдаётся владельцу поиска ref'ом (`backBtnRef`), своего React-обработчика у него нет; бургер в DOM всегда, при показанной колонке папок и закрытом поиске — `hide` | `createToolsMenu` + animated-menu-icon + `this.backBtn` |
+| `src/components/sidebarLeft/toolsMenu.ts` (+ `createSubmenuTrigger.ts`, `floatingButtonMenu.ts`, `positionFloatingMenu`) | бургер — порт tweb `createToolsMenu`/`createMoreSubmenu`/`createNewChatsSubmenu`/`addAccount`/`getVersionLink` функциями (ВРЕМЕННО до 2-1: методы `AppSidebarLeft`); кнопка в шапке и морф ≡ ↔ ← одним Solid-эффектом (`useFoldersSidebarShown() \|\| useIsLeftSearchActive()`) — `mountSidebarToolsButton`, остров `Sidebar.tsx`; `.animated-menu-icon` и `.sidebar-back-button` — статичная разметка колонки (стрелку держит владелец поиска, `backBtnRef`); при показанной колонке папок и закрытом поиске контейнер — `hide`. Тот же `createToolsMenu` — на верхнем пункте `folders/FoldersSidebar.tsx` (задача 2-2 волны 7) | `createToolsMenu` + animated-menu-icon + `this.backBtn` |
 | `src/components/sidebarLeft/globalSearch.ts` + шов `src/core/hooks/useGlobalSearch.ts` + `shared/ui/InputSearch` (режим ручки `searchRef` → `inputSearchHandle.ts`) | глобальный поиск: владелец (порт `initSearch`) строит и сносит детей постоянного `#search-container`, ведёт `zoom-fade` и `is-search-active`; поле — объект tweb с debounce 300 мс (задача 13 плана `2026-09-07-solid-wave-3-global-search.md`; разбор — `global-search.md`) | `initSearch` + `AppSearchSuper` + `InputSearch` |
 | `src/components/connectionStatus/*` (Sidebar.tsx:88-94) | автомат плейсхолдера/спиннера поля поиска | `ConnectionStatusComponent` |
 | `src/core/dom/{updateColumnWidths,installColumnResize}.ts` (Sidebar.tsx:159-189) | ресайз/коллапс колонки | `installColumnResize`, `updateColumnWidths` |
@@ -822,14 +822,18 @@ DOM-паритет первого таба выдержан сознательн
    `#folders-container` ему нельзя — там кадры папок, адресуемые индексом) с тем же виртуальным ядром и
    `useDialogListSource(ARCHIVE_FOLDER_ID)` (`ArchiveList`, Sidebar.tsx:467-524) — отступление названо
    в комментариях там же.
-6. **Бургер-меню — другой состав.** У нас: Settings/Contacts/Saved/Premium/MyStories/CloseFriends/
-   Wallet/Calls/Logout/ToggleMode (Sidebar.tsx:192-207). Нет: мультиаккаунтов, attach-menu ботов,
-   Archived как пункта (архив — только строкой списка), More-подменю (A-version, PWA, PiP, Report Bug),
-   verify-предикатов. Есть своё: Wallet, Calls, Logout (в tweb logout живёт в «⋮» настроек).
-   Один набор обработчиков переиспользуется бургером и вертикальной колонкой папок — как в tweb.
-   **Ночной режим** — первый пункт подменю «Ещё» (`MainMenu.tsx`), как у tweb `createMoreSubmenu`:
-   подпись по теме (`EnableDarkMode`/`DisableDarkMode`), круг перехода — из центра иконки пункта.
-   Строки «Ночной режим» в корне настроек нет (`fix/settings-root-items`).
+6. **Бургер-меню — порт tweb 812502980** (задача 2-2 волны 7, `sidebarLeft/toolsMenu.ts`). Состав и
+   порядок — по `verify` оригинала: аккаунты (текущий → настройки, другие — переключение) + «Добавить
+   аккаунт», «Создать» (только у свёрнутой колонки), «Избранное», «Архив» (при архивных диалогах, с
+   бейджем), «Мои истории», «Контакты», «Звонки» (`IS_CALL_SUPPORTED`, Отступление В7-6), «Настройки»,
+   подменю «Ещё» по наведению (ночной режим, анимации ↔ «Энергосбережение», Telegram Features,
+   сообщить об ошибке, PWA, PiP + футер-версия). Наших пунктов больше нет: «Близкие друзья» (вход
+   остаётся в листе публикации истории, как у tweb `storySettings`), «Кошелёк» (экран снесён — у tweb
+   звёзды в секции Premium корня настроек), «Telegram Premium» (там же), «Выйти» (⋮ корня настроек,
+   `showLogOutPopup`). Расхождения — шапка `toolsMenu.ts`: мультиаккаунт в нашей модели (В7-4), боты
+   меню вложений (О-80), бейдж других аккаунтов (О-81), «Мои истории» — наш лист архива (О-82),
+   verify архива без «не догружен»/архива историй (О-83), клавиатура меню (О-84), конференции (О-1),
+   «Switch to A version» нет (своего домена версии A нет).
    **Кнопка эмодзи-статуса в шапке** (`statusBtnIcon`) — `SidebarEmojiStatusButton.tsx`: только у
    подписчика Premium, `button.btn-icon.sidebar-emoji-status` без ripple справа от поиска, глиф
    `star` без статуса; `is-input-the-last-child` снимается по `toggleRightButtons`. Отступления:
