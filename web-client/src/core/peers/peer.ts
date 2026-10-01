@@ -32,7 +32,7 @@
 //    у разметки. Из-за этого же тип из `@layer` здесь не годится напрямую, см.
 //    докблок `peer.schema.test.ts`.
 
-import type { MyPhoto } from '../media/messageMedia'
+import type { MyPhoto, TextWithEntities } from '../media/messageMedia'
 import type { PeerNotifySettings } from '../dialogs/notifySettings'
 import { NULL_PEER_ID, toPeerId } from './peerId'
 
@@ -231,7 +231,8 @@ export interface Birthday { _: 'birthday'; day: number; month: number; year?: nu
 
 /**
  * userFull#06cbe645 flags:# blocked:flags.0?true … id:long about:flags.1?string
- * … ttl_period:flags.14?int … birthday:flags2.5?Birthday = UserFull;
+ * … personal_photo:flags.21?Photo … ttl_period:flags.14?int …
+ * birthday:flags2.5?Birthday … note:flags2.22?TextWithEntities = UserFull;
  *
  * ПОЛНАЯ форма — то, что запрашивается один раз при открытии профиля, в
  * отличие от краткой `user`, которая едет с каждым списком.
@@ -253,6 +254,12 @@ export interface UserFull {
   theme_emoticon?: string
   /** пер-чатное переопределение уведомлений; мьют в нём выражен СРОКОМ */
   notify_settings?: PeerNotifySettings
+  /** фото, которое ЗРИТЕЛЬ поставил этому контакту сам
+   *  (`photos.uploadContactProfilePhoto`, у нас `PUT /contacts/{id}/photo`);
+   *  краткая форма того же ответа несёт его же с `pFlags.personal` */
+  personal_photo?: MyPhoto
+  /** заметка зрителя о контакте (`contacts.updateContactNote`); нет — ключа нет */
+  note?: TextWithEntities
 }
 
 /**

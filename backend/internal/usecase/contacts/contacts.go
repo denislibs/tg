@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"unicode/utf16"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -67,10 +68,12 @@ func (i *Interactor) ClearCustomPhoto(ctx context.Context, ownerID, contactUserI
 
 // AddInput is the payload for saving (or editing) a contact.
 type AddInput struct {
-	UserID     int64
-	FirstName  string
-	LastName   string
-	Note       string
+	UserID    int64
+	FirstName string
+	LastName  string
+	// Note — contacts.addContact.note (flags.1?TextWithEntities): nil — поле
+	// не прислано, заметка остаётся прежней.
+	Note       *domain.TextWithEntities
 	SharePhone bool
 }
 
@@ -85,12 +88,16 @@ func (i *Interactor) Add(ctx context.Context, ownerID int64, in AddInput) (domai
 	if first == "" {
 		return domain.ContactRecord{}, ErrNameRequired
 	}
+	note, err := sanitizeNote(in.Note)
+	if err != nil {
+		return domain.ContactRecord{}, err
+	}
 	c, err := i.repo.Add(ctx, domain.ContactRecord{
 		OwnerID:    ownerID,
 		UserID:     in.UserID,
 		FirstName:  first,
 		LastName:   strings.TrimSpace(in.LastName),
-		Note:       strings.TrimSpace(in.Note),
+		Note:       note,
 		SharePhone: in.SharePhone,
 	})
 	if err != nil {
@@ -111,7 +118,7 @@ type AddByPhoneInput struct {
 	Phone      string
 	FirstName  string
 	LastName   string
-	Note       string
+	Note       *domain.TextWithEntities
 	SharePhone bool
 }
 
@@ -127,6 +134,10 @@ func (i *Interactor) AddByPhone(ctx context.Context, ownerID int64, in AddByPhon
 	first := strings.TrimSpace(in.FirstName)
 	if first == "" {
 		return domain.ContactRecord{}, ErrNameRequired
+	}
+	note, err := sanitizeNote(in.Note)
+	if err != nil {
+		return domain.ContactRecord{}, err
 	}
 	userID, err := i.repo.ResolveByPhone(ctx, phone)
 	if err != nil {
@@ -150,7 +161,7 @@ func (i *Interactor) AddByPhone(ctx context.Context, ownerID int64, in AddByPhon
 		UserID:     userID,
 		FirstName:  first,
 		LastName:   strings.TrimSpace(in.LastName),
-		Note:       strings.TrimSpace(in.Note),
+		Note:       note,
 		SharePhone: in.SharePhone,
 	})
 	if err != nil {
@@ -161,6 +172,40 @@ func (i *Interactor) AddByPhone(ctx context.Context, ownerID int64, in AddByPhon
 		return domain.ContactRecord{}, ErrCannotAddBot
 	}
 	return c, nil
+}
+
+// UpdateNote переписывает заметку контакта (contacts.updateContactNote).
+// Пустой текст стирает заметку. domain.ErrNotFound — userID нет в книге
+// ownerID: заметка живёт только у контакта.
+func (i *Interactor) UpdateNote(ctx context.Context, ownerID, userID int64, note domain.TextWithEntities) error {
+	clean, err := sanitizeNote(&note)
+	if err != nil {
+		return err
+	}
+	found, err := i.repo.UpdateNote(ctx, ownerID, userID, *clean)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+// sanitizeNote — заметка ВВОДОМ: предел длины (UTF-16, как offset/length
+// разметки) и та же санитизация сущностей, что у сообщения. nil — «поля нет».
+func sanitizeNote(n *domain.TextWithEntities) (*domain.TextWithEntities, error) {
+	if n == nil {
+		return nil, nil
+	}
+	if len(utf16.Encode([]rune(n.Text))) > domain.ContactNoteMaxLen {
+		return nil, domain.ErrTooLong
+	}
+	entities := domain.SanitizeEntities(n.Entities)
+	if n.Text == "" {
+		entities = nil
+	}
+	return domain.NewTextWithEntities(n.Text, entities), nil
 }
 
 // List returns ownerID's address book, ordered by saved name. Телефон контакта
