@@ -16,6 +16,21 @@ import { fromPrivacyRules, newPrivacyManager, toPrivacyRules, type PrivacyRule }
 const rules = (r: PrivacyRule) => ({ _: 'account.privacyRules', rules: toPrivacyRules(r), chats: [], users: [] })
 
 describe('privacyManager', () => {
+  // Реестр RPC зовёт метод ОТВЯЗАННЫМ (`rpc/managersProxy.ts`: `fn(...args)`), поэтому
+  // метод менеджера не смеет опираться на `this`: `rules()` через `this.rule` падал в
+  // воркере TypeError, `loadPrivacy` глотал отказ, стор правил не загружался никогда,
+  // и хаб «Конфиденциальность» висел на «Загрузка…» (задача 23 плана 2D, стенд).
+  it('rules() работает и отвязанным — так его зовёт реестр RPC', async () => {
+    const get = vi.fn(async () => rules({ key: 'about', value: 'everybody', allowUserIds: [], denyUserIds: [] }))
+    // oxlint-disable-next-line typescript/unbound-method -- отвязанный вызов и есть предмет теста
+    const { rules: detached } = newPrivacyManager({ rest: { get } as unknown as RestClient })
+
+    const list = await detached()
+
+    expect(list).toHaveLength(12)
+    expect(get).toHaveBeenCalledWith('/me/privacy/privacyKeyStatusTimestamp')
+  })
+
   it('спрашивает ОДИН ключ и адресует его конструктором', async () => {
     const get = vi.fn(async () => rules({ key: 'last_seen', value: 'contacts', allowUserIds: [], denyUserIds: [] }))
     const mgr = newPrivacyManager({ rest: { get } as unknown as RestClient })

@@ -16,10 +16,8 @@ import { useT } from '../../i18n'
 import s from './kit.module.scss'
 
 // «Этот экран — вкладка слайдера родителя»: вход/выход ему уже анимирует
-// SettingsScreen-владелец, собственный слайд не нужен. Экспорт — для моста
-// «React-экран вкладкой колоночного слайдера» (`sidebarLeft/reactScreenTab.tsx`):
-// там вход/выход анимирует сам слайдер.
-export const InSliderContext = createContext(false)
+// SettingsScreen-владелец, собственный слайд не нужен.
+const InSliderContext = createContext(false)
 
 /**
  * Полноэкранный экран настроек — порт сайдбар-слайдера tweb.

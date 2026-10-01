@@ -136,8 +136,6 @@ const MUST_STAY_LAZY: Record<string, string> = {
   'components/UserInfoPanel.tsx': 'components/Chat.tsx',
   // Корень настроек — вкладка колоночного слайдера, открывается из бургера.
   'components/sidebarLeft/tabs/settings.solid.tsx': 'components/solidJsTabs/tabs.ts',
-  // Мост React-экрана «Конфиденциальность» (ВРЕМЕННО до 2D-23) — тем же путём.
-  'components/settings/PrivacySecuritySettings.tsx': 'components/solidJsTabs/tabs.ts',
   // Редактор медиа — самый тяжёлый узел, нужен только при отправке/сторис.
   'components/mediaEditor/MediaEditor.tsx': 'components/messages/SendMediaPopup.tsx',
   // Подсветка кода (prismjs) — только внутри блока кода в сообщении.

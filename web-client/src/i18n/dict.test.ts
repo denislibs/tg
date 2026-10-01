@@ -453,12 +453,22 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (строки истории того же экрана) и `Pip.Title`/`Pip.Unsupported` (подпись и тост
 // прежнего пункта PiP — у tweb `PictureInPicture`, а пункт без поддержки скрыт
 // verify). Итог: ru 1415, uk 760, es 757, de 758, fr 752.
+// Задача 23 плана 2D (хаб «Конфиденциальность» `AppPrivacyAndSecurityTab`, порт tweb
+// privacyAndSecurity.tsx + тумблер «Hide Read Time» privacy/lastSeen.tsx): +5 ключей
+// tweb lang.ts всем пяти — `PrivacySettingsController.UserCount` и `Passkeys` (оба
+// с формами числа), `PrivacyAndSecurity.Item.Off`, `HideReadTime`, `HideReadTimeInfo`.
+// Сняты ключи снесённого React-экрана без других читателей: `DeleteAccount.Action`/
+// `.Caption`/`.Text`/`.Title` (удаления аккаунта в приложении у tweb нет) и
+// `PrivacyGroupsTitle` (у tweb строка — `WhoCanAddMe`) у всех пяти; у ru ещё ключи
+// снесённой вкладки «Время прочтения» — `PrivacyReadTime`, `PrivacyReadTimeTitle`,
+// `Privacy.ReadTimeCaption`. Итог (поверх 2-2 волны 7): ru 1412 (форм числа 44), uk 760,
+// es 757, de 758, fr 752 (форм числа +2 у каждого).
 const COMPOSITION = {
-  ru: { keys: 1415, plural: 42 },
-  uk: { keys: 760, plural: 31 },
-  es: { keys: 757, plural: 30 },
-  de: { keys: 758, plural: 31 },
-  fr: { keys: 752, plural: 30 },
+  ru: { keys: 1412, plural: 44 },
+  uk: { keys: 760, plural: 33 },
+  es: { keys: 757, plural: 32 },
+  de: { keys: 758, plural: 33 },
+  fr: { keys: 752, plural: 32 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -604,12 +614,15 @@ const COMPOSITION = {
 // у ru плюс четыре ключа tweb (разбор — у `COMPOSITION` выше).
 // Задачей 2-2 волны 7 — у ru +4 ключа бургера tweb, у всех пяти минус ключи
 // снесённого «Кошелька» (разбор — у `COMPOSITION` выше).
+// Задачей 23 плана 2D — ключи хаба «Конфиденциальность» и «Hide Read Time» вместо
+// ключей снесённого React-экрана и вкладки «Время прочтения» (разбор — у
+// `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '6babd2a0',
-  uk: '2b563c20',
-  es: '2013f0fd',
-  de: '7a9392e4',
-  fr: 'ce5e7650',
+  ru: 'f0027eed',
+  uk: '39fe2b12',
+  es: '67b11e01',
+  de: '19fc8b62',
+  fr: '7b3e801c',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

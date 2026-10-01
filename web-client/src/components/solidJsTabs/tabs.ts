@@ -21,7 +21,6 @@ import type { Authorization } from '@layer'
 import type { PasswordState } from '@core/managers/authManager'
 import type SliderSuperTab from '@components/sliderTab'
 import { scaffoldSolidJSTab, scaffoldSolidJSTabEventable } from './scaffoldSolidJSTab.solid'
-import { scaffoldReactScreenTab } from '../sidebarLeft/reactScreenTab'
 import type { LangPackKey } from '@/lang'
 import type { MaybePromise } from '@types'
 import type { PasscodeActions } from '@lib/passcode/actions'
@@ -29,8 +28,7 @@ import type SidebarSlider from '@components/slider'
 
 // tweb :327-329 — вкладка получает УЖЕ загруженный список сессий, а не ходит
 // за ним сама: запрос делает открывающая сторона (корень настроек —
-// `settings.solid.tsx::onDevicesClick`, React-«Конфиденциальность» —
-// `columnSlider.ts::openActiveSessionsTab`), чтобы вкладка не въезжала пустой.
+// `settings.solid.tsx::onDevicesClick`), чтобы вкладка не въезжала пустой.
 type AppActiveSessionsTabPayload = {
   authorizations: Authorization.authorization[]
 }
@@ -302,8 +300,8 @@ export const AppAddMembersTab =
 // ── Вкладки правил приватности (tweb :59-63, :301-367; задача 17 плана 2D) ────
 // Все eventable: `PrivacySection` пишет правило на `destroy` вкладки
 // (`privacySection.tsx:271`). Открывают их строки раздела «Конфиденциальность»
-// (tweb `privacyAndSecurity.tsx:416-466`; до задачи 23 — React-экран на мосту
-// `AppPrivacyAndSecurityTab`). Расхождения с оригиналом:
+// (tweb `privacyAndSecurity.tsx:416-472`, хаб `AppPrivacyAndSecurityTab`).
+// Расхождения с оригиналом:
 //  • полезной нагрузки нет ни у одной: у tweb «Был в сети» и «Подарки» получают
 //    `GlobalPrivacySettings` и шлют событие `privacy` (:355-365), «Сообщения» —
 //    `onSaved` (:55-63); `globalPrivacySettings` у нас нет (О-18), «Сообщения» —
@@ -311,8 +309,8 @@ export const AppAddMembersTab =
 //    у неё eventable, а не обычная, как у tweb;
 //  • «Подарки» и «Сохранённая музыка» (:337-341, :362-366) не заведены — ключей
 //    нет (О-16);
-//  • «Время прочтения» — НАША вкладка: своё правило `read_time` на месте флага
-//    `hide_read_marks` (шапка `privacy/readTime.solid.tsx`).
+//  • флаг `hide_read_marks` у «Был в сети» — наше правило `read_time` (шапка
+//    `privacy/lastSeen.solid.tsx`, расхождение 1).
 export const AppPrivacyAboutTab =
   scaffoldSolidJSTabEventable({
     title: 'UserBio',
@@ -373,12 +371,6 @@ export const AppPrivacyMessagesTab =
     getComponentModule: () => import('../sidebarLeft/tabs/privacy/messages/tab.solid'),
   })
 
-export const AppPrivacyReadTimeTab =
-  scaffoldSolidJSTabEventable({
-    title: 'PrivacyReadTime',
-    getComponentModule: () => import('../sidebarLeft/tabs/privacy/readTime.solid'),
-  })
-
 // tweb :143-153 — задача 20 плана 2D. Период вкладка получает от открывающей
 // стороны (строка `AutoDeleteMessages` хаба «Конфиденциальность», tweb
 // `privacyAndSecurity.tsx:238-247`), а `onSaved` обновляет подпись той строки.
@@ -433,16 +425,16 @@ export const AppStickersAndEmojiTab =
     getComponentModule: () => import('../sidebarLeft/tabs/stickersAndEmoji.solid'),
   })
 
-// ── ВРЕМЕННО: React-экраны под именами вкладок tweb ──────────────────────────
-// Строки корня открывают их, как оригинал (`settings.tsx:106`, `:254-257`), но
-// содержимое до порта — React-экран на мосту `scaffoldReactScreenTab`
-// (шапка `sidebarLeft/reactScreenTab.tsx`). Задача порта меняет здесь форму на
-// `scaffoldSolidJSTab({title, getComponentModule})` по tweb и удаляет React-экран.
-
-// ВРЕМЕННО до 2D-23 (tweb :659-663, `privacyAndSecurity.tsx`)
+// ── «Конфиденциальность и безопасность» (tweb :651-667) — задача 23 плана 2D ──
+// Открывает строка `AccountSettings.PrivacyAndSecurity` корня настроек (tweb
+// `settings.tsx:254`, `makeSubTabConfig`). Форма eventable, как у оригинала.
+// Предзагрузки `getInitArgs` (tweb :651-655, :667 — `appConfig`, `globalPrivacy`,
+// `webAuthorizations`) нет: все три её предмета у нас отсутствуют (О-18 плана
+// 2D), поэтому и полезной нагрузки у вкладки нет.
 export const AppPrivacyAndSecurityTab =
-  scaffoldReactScreenTab({
-    getComponentModule: () => import('../settings/PrivacySecuritySettings'),
+  scaffoldSolidJSTabEventable({
+    title: 'PrivacySettings',
+    getComponentModule: () => import('../sidebarLeft/tabs/privacyAndSecurity.solid'),
   })
 
 // tweb :84-98 — «Редактировать профиль» (`editProfile.solid.tsx`, задача 27
