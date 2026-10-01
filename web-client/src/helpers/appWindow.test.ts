@@ -3,7 +3,7 @@
 // (`core/pip.ts`), здесь — сама механика на фейковом окне: второй документ
 // happy-dom, чьё body — корень оверлеев «выноса».
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { bindActiveWindowListener, getOverlayRoot, onAppWindowChange, setAppWindow } from './appWindow'
+import { bindActiveWindowListener, getAppWindow, getOverlayRoot, onAppWindowChange, setAppWindow } from './appWindow'
 
 /** Окно выноса: свой документ, в котором живёт перенесённый клиент. */
 function fakeWindow(): Window {
@@ -13,6 +13,15 @@ function fakeWindow(): Window {
 
 afterEach(() => {
   setAppWindow(window)
+})
+
+describe('getAppWindow (tweb appWindow.ts:23-25)', () => {
+  it('без выноса — окно вкладки; после setAppWindow — окно выноса', () => {
+    expect(getAppWindow()).toBe(window)
+    const pip = fakeWindow()
+    setAppWindow(pip)
+    expect(getAppWindow()).toBe(pip)
+  })
 })
 
 describe('getOverlayRoot (tweb appWindow.ts:33-35)', () => {
