@@ -514,7 +514,6 @@ const uk = {
   'LiteMode.Key.chat_background.Title': 'Обертання шпалер',
   'LiteMode.Key.blur.Title': 'Ефекти розмиття',
   'Privacy.Passkeys': 'Ключі доступу',
-  'Passkeys.Add': 'Створити ключ доступу',
   LoginEmail: 'Email для входу',
   'LoginEmail.Caption': 'Цей email використовується для входу, якщо ви втратите доступ до номера.',
   PaymentShippingEmailPlaceholder: 'Email',
@@ -683,13 +682,14 @@ const uk = {
   'PasscodeLock.LockShortcutDescription': 'Підберіть сполучення, яке спрацює у Вашому браузері.',
   'PasscodeLock.TapToLock': 'Натисніть, щоб заблокувати Telegram.',
   // Passkeys
-  'Passkeys.Caption':
-    'Ключі доступу дозволяють входити без пароля — за відбитком пальця, обличчям або PIN-кодом пристрою.',
-  'Passkey.CreateError': 'Не вдалося створити ключ доступу.',
-  'Passkeys.Unsupported': 'Ключі доступу не підтримуються в цьому браузері.',
-  'Passkeys.Item': 'Ключ доступу',
-  'Passkeys.LastUsed': 'Використано',
-  'Passkeys.Created': 'Створено',
+  // Вкладка «Passkeys» (tweb sidebarLeft/tabs/passkeys.tsx, popups/passkey.tsx)
+  'Passkey.Created': 'Ключ доступу створено',
+  'Passkey.CreationError': 'Не вдалося створити ключ доступу. Спробуйте ще раз.',
+  'Passkey.Deletion.Text': 'Після видалення цей ключ доступу не можна буде використати для входу.\n\nНе забудьте видалити його й з менеджера паролів.',
+  'Passkey.Deletion.Title': 'Видалити ключ доступу?',
+  'Privacy.Passkey.Created': 'Створено %s',
+  'Privacy.Passkey.LastUsage': 'використано %s',
+  'Privacy.Passkeys.Caption': 'Ваш ключ доступу надійно зберігається в менеджері паролів. [Докладніше >]()',
   // Попап «Захист Вашого акаунта» (tweb Passkey.*)
   'Passkey.Title': 'Захист Вашого акаунта',
   'Passkey.Subtitle': 'Безпечний вхід і захист даних',

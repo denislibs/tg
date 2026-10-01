@@ -492,7 +492,6 @@ const es = {
   'LiteMode.Key.chat_background.Title': 'Rotación del fondo',
   'LiteMode.Key.blur.Title': 'Efectos de desenfoque',
   'Privacy.Passkeys': 'Llaves de acceso',
-  'Passkeys.Add': 'Crear una llave de acceso',
   LoginEmail: 'Correo de inicio de sesión',
   'LoginEmail.Caption': 'Este correo se usa para iniciar sesión si pierdes el acceso a tu número.',
   PaymentShippingEmailPlaceholder: 'Correo',
@@ -643,13 +642,14 @@ const es = {
   'PasscodeLock.LockShortcutDescription': 'Prueba combinaciones hasta dar con el atajo que funcione en tu navegador.',
   'PasscodeLock.TapToLock': 'Toca para bloquear Telegram.',
   // Passkeys
-  'Passkeys.Caption':
-    'Las llaves de acceso te permiten iniciar sesión sin contraseña, con tu huella, tu rostro o el PIN del dispositivo.',
-  'Passkey.CreateError': 'No se pudo crear la llave de acceso.',
-  'Passkeys.Unsupported': 'Las llaves de acceso no son compatibles con este navegador.',
-  'Passkeys.Item': 'Llave de acceso',
-  'Passkeys.LastUsed': 'Último uso',
-  'Passkeys.Created': 'Creada',
+  // Вкладка «Passkeys» (tweb sidebarLeft/tabs/passkeys.tsx, popups/passkey.tsx)
+  'Passkey.Created': 'Llave de acceso creada',
+  'Passkey.CreationError': 'No se pudo crear la llave de acceso. Inténtalo de nuevo.',
+  'Passkey.Deletion.Text': 'Una vez eliminada, esta llave de acceso no podrá usarse para iniciar sesión.\n\nNo olvides eliminarla también de tu gestor de contraseñas.',
+  'Passkey.Deletion.Title': '¿Eliminar llave de acceso?',
+  'Privacy.Passkey.Created': 'Creada %s',
+  'Privacy.Passkey.LastUsage': 'usada %s',
+  'Privacy.Passkeys.Caption': 'Tu llave de acceso se guarda de forma segura en tu gestor de contraseñas. [Más información >]()',
   // Попап «Защита аккаунта» (tweb Passkey.*)
   'Passkey.Title': 'Proteja su cuenta',
   'Passkey.Subtitle': 'Inicio de sesión seguro y protección de datos',

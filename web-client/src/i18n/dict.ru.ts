@@ -1052,7 +1052,6 @@ const ru = {
   'LiteMode.Key.chat_background.Title': 'Вращение обоев',
   'LiteMode.Key.blur.Title': 'Эффекты размытия',
   'Privacy.Passkeys': 'Ключи доступа',
-  'Passkeys.Add': 'Создать ключ доступа',
   LoginEmail: 'Email для входа',
   'LoginEmail.Caption': 'Этот email используется для входа, если вы потеряете доступ к номеру.',
   PaymentShippingEmailPlaceholder: 'Email',
@@ -1222,13 +1221,14 @@ const ru = {
   'PasscodeLock.LockShortcutDescription': 'Подберите сочетание, которое сработает в Вашем браузере.',
   'PasscodeLock.TapToLock': 'Нажмите, чтобы заблокировать Telegram.',
   // Passkeys
-  'Passkeys.Caption':
-    'Ключи доступа позволяют входить без пароля — по отпечатку пальца, лицу или ПИН-коду устройства.',
-  'Passkey.CreateError': 'Не удалось создать ключ доступа.',
-  'Passkeys.Unsupported': 'Ключи доступа не поддерживаются в этом браузере.',
-  'Passkeys.Item': 'Ключ доступа',
-  'Passkeys.LastUsed': 'Использован',
-  'Passkeys.Created': 'Создан',
+  // Вкладка «Passkeys» (tweb sidebarLeft/tabs/passkeys.tsx, popups/passkey.tsx)
+  'Passkey.Created': 'Ключ доступа создан',
+  'Passkey.CreationError': 'Не удалось создать ключ доступа. Попробуйте ещё раз.',
+  'Passkey.Deletion.Text': 'После удаления этот ключ доступа нельзя будет использовать для входа.\n\nНе забудьте удалить его и из менеджера паролей.',
+  'Passkey.Deletion.Title': 'Удалить ключ доступа?',
+  'Privacy.Passkey.Created': 'Создан %s',
+  'Privacy.Passkey.LastUsage': 'использован %s',
+  'Privacy.Passkeys.Caption': 'Ключ доступа надёжно хранится в Вашем менеджере паролей. [Подробнее >]()',
   'Login.Passkey.Action': 'Войти по ключу доступа',
   'Login.Passkey': 'Войти по ключу доступа >',
   // Отказ входа по ключу (tweb langSign.ts:36). Отдельного «ключ не привязан
