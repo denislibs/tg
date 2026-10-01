@@ -152,6 +152,15 @@ const APP_SETTINGS_KEYS = {
   // tweb `config/state.ts` (`settings.tabsInSidebar`) — «Расположение папок»
   // вкладки «Папки» (задача 24)
   tabsInSidebar: 'tabsInSidebar',
+  // tweb `config/state.ts:182-193` (`callDevices`) — «Динамики и камера»
+  // (задача 26): выбор устройств звонка. `micVolume` и `noiseSuppression` нет —
+  // их ручки живут в попапе настроек звонка (`call/settingsPopup.tsx`), у нас
+  // не портирован.
+  callDevices: {
+    speakerId: 'speakerId',
+    microphoneId: 'micId',
+    cameraId: 'cameraId',
+  },
 } as const satisfies KeyTable
 
 type Table = typeof APP_SETTINGS_KEYS
