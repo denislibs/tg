@@ -793,19 +793,36 @@ Mentions,Reactions,PollVotes}Badge` `:533-578`, `setBadgeState` `:586`, `toggleB
 **не** удаляется: его ещё держат React-потребители (`ChatList`, `ArchiveList`, `TopicsPanel`).
 Удаление — в последней задаче, которая снимает потребителя (1-6).
 
-- [ ] **Шаг 1:** прочитать tweb оба файла, наши `virtual/*` и все пять спек 2026-08-1[23]-* (разделы
+- [x] **Шаг 1:** прочитать tweb оба файла, наши `virtual/*` и все пять спек 2026-08-1[23]-* (разделы
   «Отступления»).
-- [ ] **Шаг 2: тесты — перенос пинов React-ядра на Solid** (сценарии те же, форма новая, спека § 5 «тесты-предохранители
+- [x] **Шаг 2: тесты — перенос пинов React-ядра на Solid** (сценарии те же, форма новая, спека § 5 «тесты-предохранители
   переписываются, а не удаляются»): `useAnimatedTop.test.ts` (167), `useShouldAnimate.test.ts` (290),
   `LoadingDialogSkeleton.test.tsx` (125) → `deferredSortedVirtualList.solid.test.tsx`: вставка сверху
   не сдвигает видимую строку; перестановка анимирует `top` только видимых; reveal пачкой — одна
   запись в DOM на пачку; shrink снимает строки за `EXTRA_ITEMS_TO_KEEP`.
-- [ ] **Шаг 3: мутации:** убрать shrink → пин shrink краснеет; анимировать невидимые → пин
+- [x] **Шаг 3: мутации:** убрать shrink → пин shrink краснеет; анимировать невидимые → пин
   анимации краснеет.
-- [ ] **Шаг 4:** реализовать; спеку `2026-08-13-virtual-chatlist-design.md` § «Отступления»
+- [x] **Шаг 4:** реализовать; спеку `2026-08-13-virtual-chatlist-design.md` § «Отступления»
   поправить по таблице выше в том же PR.
 
 **Оценка:** 3 дня. **Зависимости:** нет.
+
+**Сделано** (ветка `feat/w7-1-3-deferred-sorted-virtual-list`). `verticalVirtualList.solid.tsx` уже был
+на HEAD 812502980 (сверено построчно, правок нет). Новое: `components/deferredSortedVirtualList.solid.tsx`
+(порт файлом, с 108d3f301, 2b00c4dae `onItemDiscard`, ee6f7f9c2 `onItemMount`),
+`components/loadingDialogSkeleton.solid.tsx`; SCSS скелетона переехал на место tweb
+(`components/loadingDialogSkeleton.module.scss`), React-копия `virtual/LoadingDialogSkeleton.tsx` берёт
+его оттуда до своего сноса. Пины: `deferredSortedVirtualList.solid.test.tsx` (35: тесты tweb discard и
+reveal, дырки/скелетоны, `requestItemForIdx`, закреплённые, reveal пачкой, снятие с очереди, `clear`,
+shrink, анимация переезда, `blockAnimation`, `onItemMount`/`onItemUnmount`),
+`verticalVirtualList.solid.test.tsx` (9: границы `useShouldAnimate` с React-носителя),
+`loadingDialogSkeleton.solid.test.tsx` (8). Мутации — 17, все красные (тело коммита). Отложенного
+(О-75…О-79) нет. **API для 1-4** — как у tweb `sortedDialogList.ts:64-141`: `createDeferredSortedVirtualList({
+scrollable, getItemElement, onItemMount, onItemUnmount, onItemDiscard, onListShrinked, requestItemForIdx,
+sortWith, itemSize, noAvatar, onListLengthChange, extraPaddingBottom})` → `{list, dispose, setTotalCount,
+sortedItems, itemsLength, addItems, addPinnedItems, ensurePinnedItems, removePinnedItem, removeItem,
+updateItem, setWasAtLeastOnceFetched, blockAnimation, clear, has, get, getAll}`; `list` в скроллер кладёт
+владелец.
 
 ### Задача 1-4: `SortedDialogList` + `AutonomousDialogList` вместо React-списка
 
