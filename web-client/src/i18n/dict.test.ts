@@ -392,6 +392,14 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // «Новое сообщение»): −2 наших ключа у всех пяти — `Compose.NewMessage` (заголовок
 // снесённого «Нового сообщения»: у tweb это вкладка «Контакты») и `Contacts.NotFound`
 // (пустая выдача снесённого экрана). Итог: ru 1402, uk 748, es/de 745, fr 740.
+// Пилюля `messageActionSuggestBirthday` (users.suggestBirthday, О-22 плана
+// волны 7): у ru +2 ключа tweb — `BirthdaySuggestIncoming`/`Outgoing`: ru 1404.
+//
+// Задача 20 плана 2D (вкладка «Автоудаление», порт tweb autoDeleteMessages/*):
+// +3 ключа tweb lang.ts всем пяти — `AutoDeleteMessages.InfoDefault` (описание
+// попапа своего срока) и `UnsavedChanges`/`UnsavedChangesDescription.Privacy`
+// (подтверждение несохранённого на закрытии). Итог (поверх 0а-1 и О-22): ru 1407, uk 751,
+// es/de 748, fr 743.
 //
 // Задача 15 плана 2D («Стикеры и эмодзи», порт tweb stickersAndEmoji.tsx): +7
 // ключей tweb lang.ts — `SuggestStickersAll`/`Installed`/`None`,
@@ -400,14 +408,14 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // «Stickers» там совпадает с английским (нижний слой). Сняты у всех пяти
 // `DynamicPackOrder` (секции нет, О-43) и наш `Settings.BigEmoji` (ни одного
 // читателя); у ru ещё четыре ключа снесённого React-экрана — `Stickers.MySets`,
-// `Stickers.NoSets`, `Stickers.AddSets`, `Stickers.SearchSets`. Итог: ru 1403,
-// uk 753, es 749, de 750, fr 744.
+// `Stickers.NoSets`, `Stickers.AddSets`, `Stickers.SearchSets`. Итог (поверх задачи 20): ru 1408,
+// uk 756, es 752, de 753, fr 747.
 const COMPOSITION = {
-  ru: { keys: 1403, plural: 42 },
-  uk: { keys: 753, plural: 31 },
-  es: { keys: 749, plural: 30 },
-  de: { keys: 750, plural: 31 },
-  fr: { keys: 744, plural: 30 },
+  ru: { keys: 1408, plural: 42 },
+  uk: { keys: 756, plural: 31 },
+  es: { keys: 752, plural: 30 },
+  de: { keys: 753, plural: 31 },
+  fr: { keys: 747, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -537,14 +545,16 @@ const COMPOSITION = {
 // Задачей 0а-1 волны 7 — минус `Compose.NewMessage` и `Contacts.NotFound` у всех пяти:
 // наши ключи снесённых React-экранов «Новое сообщение» и «Контакты» (вкладка контактов
 // tweb пустой выдачи не подписывает, а «Новое сообщение» — это она же).
+// Пилюлей предложения даты рождения — у ru +2 ключа tweb (разбор — там же).
+// Задачей 20 плана 2D — три ключа вкладки «Автоудаление» у всех пяти (там же).
 // Задачей 15 плана 2D — ключи «Стикеров и эмодзи» вместо ключей снесённого
 // React-экрана (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '80b55974',
-  uk: '00e5bda7',
-  es: '54f550d0',
-  de: 'f9580015',
-  fr: '52809975',
+  ru: 'c8315e2b',
+  uk: '22ffe11a',
+  es: '4aae621b',
+  de: 'f1bac9a8',
+  fr: 'ba185f92',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

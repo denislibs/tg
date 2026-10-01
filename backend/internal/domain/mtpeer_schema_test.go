@@ -132,6 +132,10 @@ func allPeerConstructors() []any {
 			b := NewBirthday(time.Date(1990, time.March, 8, 0, 0, 0, 0, time.UTC))
 			f.Birthday = &b
 			f.ThemeEmoticon = "night"
+			// Заметка зрителя о контакте и личное фото, которое зритель ему
+			// поставил (contacts.updateContactNote, photos.uploadContactProfilePhoto).
+			f.Note = NewTextWithEntities("коллега", MessageEntities{NewMessageEntityBold(0, 7)})
+			f.PersonalPhoto = NewPhoto(901, []PhotoSize{})
 			return f
 		}(),
 		NewUserFull(43, UserFullFlags{}),

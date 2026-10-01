@@ -274,8 +274,19 @@ samp {
   font-family: var(--font-monospace);
 }
 
-* {
+// tweb components/_global.scss:3-11 — border-box задаёт корень, остальные
+// НАСЛЕДУЮТ, включая псевдоэлементы. Голое `* {border-box}` псевдоэлементы не
+// задевает: кольцо `.radio-field-main::before` (22px + рамка 2px) выходило 26px,
+// и точка `::after` (left .3125rem, 12px — расчёт tweb на border-box) съезжала
+// на 2px влево-вверх.
+html {
   box-sizing: border-box;
+}
+
+*,
+*:before,
+*:after {
+  box-sizing: inherit;
 }
 
 /* Peer-typing animations (typingDot… + recordBlink) живут в

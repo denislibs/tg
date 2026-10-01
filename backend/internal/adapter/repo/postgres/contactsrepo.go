@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/jackc/pgx/v5"
@@ -25,20 +26,22 @@ func NewContactsRepo(pool *pgxpool.Pool) *ContactsRepo { return &ContactsRepo{po
 // listing renders the avatar/username/phone without a second round-trip. Column
 // order matches scanContact.
 var contactSelect = `
-	SELECT c.owner_id, c.user_id, c.first_name, c.last_name, c.note, c.share_phone, c.created_at,
+	SELECT c.owner_id, c.user_id, c.first_name, c.last_name, c.note, c.note_entities, c.share_phone, c.created_at,
 	       ` + userRealCols("u.") + `, u.phone
 	FROM contacts c JOIN users u ON u.id = c.user_id`
 
 func scanContact(row pgx.Row) (domain.ContactRecord, error) {
 	var c domain.ContactRecord
 	var u userRealScan
-	var phone string
-	dest := []any{&c.OwnerID, &c.UserID, &c.FirstName, &c.LastName, &c.Note, &c.SharePhone, &c.CreatedAt}
+	var phone, noteText string
+	var noteEntities []byte
+	dest := []any{&c.OwnerID, &c.UserID, &c.FirstName, &c.LastName, &noteText, &noteEntities, &c.SharePhone, &c.CreatedAt}
 	dest = append(dest, u.dest()...)
 	dest = append(dest, &phone)
 	if err := row.Scan(dest...); err != nil {
 		return domain.ContactRecord{}, err
 	}
+	c.Note = contactNote(noteText, noteEntities)
 	c.IsBot = u.isBot
 	c.User = u.user(true)
 	c.User.Phone = phone
@@ -48,6 +51,37 @@ func scanContact(row pgx.Row) (domain.ContactRecord, error) {
 	return c, nil
 }
 
+// contactNote собирает заметку из пары колонок (contacts.note +
+// contacts.note_entities). Пустой текст — заметки НЕТ (nil), а не пустой
+// конструктор: у оригинала пустая заметка это отсутствие userFull.note.
+func contactNote(text string, entities []byte) *domain.TextWithEntities {
+	if text == "" {
+		return nil
+	}
+	var es domain.MessageEntities
+	if len(entities) > 0 {
+		_ = json.Unmarshal(entities, &es)
+	}
+	return domain.NewTextWithEntities(text, es)
+}
+
+// noteParams — пара параметров записи заметки: текст и разметка jsonb-строкой.
+// nil-заметка даёт два NULL — «не трогать» у upsert'а (COALESCE ниже).
+func noteParams(n *domain.TextWithEntities) (text, entities any) {
+	if n == nil {
+		return nil, nil
+	}
+	es := n.Entities
+	if es == nil {
+		es = domain.MessageEntities{}
+	}
+	b, err := json.Marshal(es)
+	if err != nil {
+		b = []byte("[]")
+	}
+	return n.Text, string(b)
+}
+
 // isForeignKeyViolation reports a Postgres FK error (e.g. adding a non-existent user).
 func isForeignKeyViolation(err error) bool {
 	var pgErr *pgconn.PgError
@@ -55,12 +89,18 @@ func isForeignKeyViolation(err error) bool {
 }
 
 func (r *ContactsRepo) Add(ctx context.Context, c domain.ContactRecord) (domain.ContactRecord, error) {
+	// Заметка без значения (addContact без note) — «не трогать»: прежняя
+	// заметка переживает правку имени, у новой записи она пустая.
+	noteText, noteEntities := noteParams(c.Note)
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO contacts (owner_id, user_id, first_name, last_name, note, share_phone)
-		 VALUES ($1,$2,$3,$4,$5,$6)
+		`INSERT INTO contacts (owner_id, user_id, first_name, last_name, note, note_entities, share_phone)
+		 VALUES ($1,$2,$3,$4,COALESCE($5::text,''),COALESCE($6::jsonb,'[]'),$7)
 		 ON CONFLICT (owner_id, user_id)
-		 DO UPDATE SET first_name=$3, last_name=$4, note=$5, share_phone=$6`,
-		c.OwnerID, c.UserID, c.FirstName, c.LastName, c.Note, c.SharePhone)
+		 DO UPDATE SET first_name=$3, last_name=$4,
+		   note=COALESCE($5::text, contacts.note),
+		   note_entities=COALESCE($6::jsonb, contacts.note_entities),
+		   share_phone=$7`,
+		c.OwnerID, c.UserID, c.FirstName, c.LastName, noteText, noteEntities, c.SharePhone)
 	if isForeignKeyViolation(err) {
 		return domain.ContactRecord{}, domain.ErrNotFound // the contact user doesn't exist
 	}
@@ -86,6 +126,19 @@ func (r *ContactsRepo) List(ctx context.Context, ownerID int64) ([]domain.Contac
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// UpdateNote переписывает заметку существующего контакта
+// (contacts.updateContactNote); found=false — такого контакта в книге нет.
+func (r *ContactsRepo) UpdateNote(ctx context.Context, ownerID, userID int64, note domain.TextWithEntities) (bool, error) {
+	text, entities := noteParams(&note)
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE contacts SET note=$3, note_entities=$4::jsonb WHERE owner_id=$1 AND user_id=$2`,
+		ownerID, userID, text, entities)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 // ResolveByPhone finds a registered user by normalized phone; domain.ErrNotFound
