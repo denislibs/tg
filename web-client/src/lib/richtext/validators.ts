@@ -1,16 +1,6 @@
-// Порт tweb `src/lib/richTextProcessor/validators.ts` (812502980) —
-// `isUsernameValid` 1:1 (правило tdlib, ссылка ниже). Первый потребитель —
-// поле имени пользователя `components/usernameInputField.ts` (вкладка
-// «Редактировать профиль», задача 27 плана 2D).
-//
-// `isWebAppNameValid` (:31-33) не портирован: его зовёт только редактор
-// мини-приложений бота — у нас их нет.
-//
-// Правило клиента мягче нашего серверного (`domain.ValidateUsername`:
-// `^[a-z0-9_]{5,32}$` после приведения к нижнему регистру): имя в 3–4 символа
-// клиент пропускает, и его отбивает сервер отказом `USERNAME_INVALID` — поле
-// показывает `invalidText`, как у оригинала на тот же отказ
-// (`usernameInputField.ts:83-93`).
+// Порт tweb `src/lib/richTextProcessor/validators.ts:1-29` (812502980) — дословно.
+// `isWebAppNameValid` (:31-33) не перенесён: его зовут только мини-приложения
+// ботов, которых у нас нет. Первый потребитель — `components/usernameInputField.ts`.
 
 // https://github.com/tdlib/td/blob/c95598e5e1493881d31211c1329bdbe4630f6136/td/telegram/misc.cpp#L246
 export function isUsernameValid(username: string) {

@@ -1,51 +1,41 @@
 /**
  * Порт tweb `src/components/usernameInputField.ts` (812502980, 111 строк) —
- * поле имени пользователя: форма проверяется на вводе (`isUsernameValid`),
- * свободное ли имя — запросом с задержкой 150 мс, итог — состоянием поля
- * (`valid` + `availableText`, `error` + `takenText`/`invalidText`). Первый
- * потребитель — вкладка «Редактировать профиль»
- * (`sidebarLeft/tabs/editProfile.solid.tsx`, задача 27 плана 2D).
+ * поле публичного имени поверх `InputField`: формат проверяется на вводе
+ * (`isUsernameValid`), занятость — сетью за debounce 150 мс, «голова» поля
+ * (`head`, например `t.me/`) отрезается от значения и возвращается на место.
+ * Первый потребитель — вкладка типа чата (`sidebarRight/tabs/chatType.solid.tsx`).
  *
- * Расхождения с оригиналом:
- *  1. Ветки `peerId` (имя канала — `appChatsManager.checkUsername`, :66-68)
- *     нет: её потребитель — вкладка типа канала (`sidebarRight/tabs/chatType.tsx`),
- *     у нас не портированная. Опции `peerId` нет тоже.
- *  2. `managers` — наш `Managers['profile']` (`checkUsername` → `GET
- *     /username/available`, ответ `Bool`, негодное имя — отказ
- *     `USERNAME_INVALID`), а не `AppManagers`.
- *  3. `options` объявлен `declare`: у нас `useDefineForClassFields`, и
- *     переобъявленное без `declare` поле затёрло бы значение, записанное
- *     конструктором `InputField`.
- *  4. (О-63) Отказа `USERNAME_PURCHASE_AVAILABLE` (имя продаётся на Fragment,
- *     :84-87) наш сервер не шлёт: торговли именами нет. Любой отказ проверки —
- *     `invalidText`, как ветка `USERNAME_INVALID`/`default` оригинала. Поля
- *     `error` (:20, `this.error = …`) нет: его читает только подпись покупки
- *     имени (`editProfile.tsx:396-401`), которой нет по той же причине.
+ * Расхождения:
+ *  1. `AppManagers` → наш `Managers` (`client/bootstrap.ts`): имя пользователя —
+ *     `profile.checkUsername` (у tweb `appUsersManager.checkUsername`), имя чата —
+ *     `groups.checkUsername(peerId, …)` (у tweb `appChatsManager.checkUsername(chatId, …)`;
+ *     наши ручки адресуют чат знаковым ключом пира, поэтому `toChatId()` не нужен).
  */
 import type ListenerSetter from '@helpers/listenerSetter'
 import debounce from '@helpers/schedulers/debounce'
 import type { LangPackKey } from '@lib/langPack'
-import InputField, { type InputFieldOptions, InputState } from '@components/inputField'
+import InputField, { InputState, type InputFieldOptions } from '@components/inputField'
 import { isUsernameValid } from '@lib/richtext/validators'
 import type { Managers } from '@/client/bootstrap'
 
-export type UsernameInputFieldManagers = Pick<Managers, 'profile'>
-
 export class UsernameInputField extends InputField {
-  private checkUsernamePromise?: Promise<unknown>
+  private checkUsernamePromise?: Promise<void>
   private checkUsernameDebounced: (username: string) => void
   declare public options: InputFieldOptions & {
-    listenerSetter: ListenerSetter,
-    onChange?: () => void,
-    invalidText: LangPackKey,
-    takenText: LangPackKey,
-    availableText: LangPackKey,
+    peerId?: PeerId
+    listenerSetter: ListenerSetter
+    onChange?: () => void
+    invalidText: LangPackKey
+    takenText: LangPackKey
+    availableText: LangPackKey
     head?: string
   }
 
+  public error?: ApiError
+
   constructor(
     options: UsernameInputField['options'],
-    private managers: UsernameInputFieldManagers,
+    private managers: Managers,
   ) {
     super(options)
 
@@ -54,6 +44,7 @@ export class UsernameInputField extends InputField {
     options.listenerSetter.add(this.input)('input', () => {
       const value = this.getValue()
 
+      this.error = undefined
       if(value === this.originalValue || !value.length) {
         this.setState(InputState.Neutral)
         this.options.onChange?.()
@@ -86,8 +77,13 @@ export class UsernameInputField extends InputField {
   private checkUsername(username: string) {
     if(this.checkUsernamePromise) return
 
-    // расхождение 1 — только имя пользователя
-    const checkPromise = this.managers.profile.checkUsername(username)
+    this.error = undefined
+    let checkPromise: Promise<boolean>
+    if(this.options.peerId) {
+      checkPromise = this.managers.groups.checkUsername(this.options.peerId, username)
+    } else {
+      checkPromise = this.managers.profile.checkUsername(username)
+    }
 
     const promise = this.checkUsernamePromise = checkPromise.then((available) => {
       if(this.getValue() !== username) return
@@ -97,12 +93,22 @@ export class UsernameInputField extends InputField {
       } else {
         this.setError(this.options.takenText)
       }
-    }, () => {
+    }, (err: ApiError) => {
       if(this.getValue() !== username) return
 
-      // расхождение 4: ветки `USERNAME_PURCHASE_AVAILABLE` → `takenText`
-      // (:84-87) нет — отказ приходит только `USERNAME_INVALID`
-      this.setError(this.options.invalidText)
+      this.error = err
+      switch(this.error.type) {
+        case 'USERNAME_PURCHASE_AVAILABLE': {
+          this.setError(this.options.takenText)
+          break
+        }
+
+        case 'USERNAME_INVALID':
+        default: {
+          this.setError(this.options.invalidText)
+          break
+        }
+      }
     }).then(() => {
       if(this.checkUsernamePromise === promise) {
         this.checkUsernamePromise = undefined

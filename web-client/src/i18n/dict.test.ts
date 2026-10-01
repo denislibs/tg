@@ -401,6 +401,13 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (подтверждение несохранённого на закрытии). Итог (поверх 0а-1 и О-22): ru 1407, uk 751,
 // es/de 748, fr 743.
 //
+// Задача 0б-2 волны 7 (вкладка типа чата, порт tweb `sidebarRight/tabs/chatType.tsx`
+// и `usernameInputField.ts`): +5 ключей tweb lang.ts всем пяти — подписи поля имени
+// `Link.{Available,Invalid,Taken}` и подтверждение снятия имени
+// `ChannelVisibility.Confirm.MakePrivate.{Channel,Group}`. У ru ещё −2: со сносом
+// React-экрана `ChatTypeScreen` ушли наши `LinkInvalid`/`LinkTaken` без других
+// читателей. Итог: ru 1410, uk 756, es/de 753, fr 748.
+//
 // Задача 27 плана 2D («Редактировать профиль» `AppEditProfileTab`, порт tweb
 // editProfile.tsx): снесён React-экран `settings/EditProfile.tsx`, с ним — шесть
 // наших ключей без других читателей (`EditProfile.LastNameLabel`,
@@ -408,13 +415,13 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `EditProfile.VideoError`; у uk/es/de/fr их было по три). У ru +4 ключа tweb
 // lang.ts: `EditAccount.Username`, `EditProfile.Username.Invalid`,
 // `Login.Register.LastName.Placeholder`, `UsernameHelp`. Итог (поверх задач 21,
-// 0а-1, 20 и О-22 волны 7): ru 1405, uk 748, es/de 745, fr 740.
+// 0а-1, 20, О-22 и 0б-2 волны 7): ru 1408, uk 753, es/de 750, fr 745.
 const COMPOSITION = {
-  ru: { keys: 1405, plural: 42 },
-  uk: { keys: 748, plural: 31 },
-  es: { keys: 745, plural: 30 },
-  de: { keys: 745, plural: 31 },
-  fr: { keys: 740, plural: 30 },
+  ru: { keys: 1408, plural: 42 },
+  uk: { keys: 753, plural: 31 },
+  es: { keys: 750, plural: 30 },
+  de: { keys: 750, plural: 31 },
+  fr: { keys: 745, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -546,14 +553,16 @@ const COMPOSITION = {
 // tweb пустой выдачи не подписывает, а «Новое сообщение» — это она же).
 // Пилюлей предложения даты рождения — у ru +2 ключа tweb (разбор — там же).
 // Задачей 20 плана 2D — три ключа вкладки «Автоудаление» у всех пяти (там же).
+// Задачей 0б-2 волны 7 — +5 ключей вкладки типа чата у всех пяти, у ru — минус
+// `LinkInvalid`/`LinkTaken` снесённого React-экрана (разбор — там же).
 // Задачей 27 плана 2D — минус ключи снесённого React-экрана профиля у всех пяти,
 // у ru плюс четыре ключа tweb (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '7330fa80',
-  uk: 'e01bf738',
-  es: '64796719',
-  de: '3050866a',
-  fr: '743a50e4',
+  ru: 'a86f7087',
+  uk: '4cb1bf9b',
+  es: '5de0695c',
+  de: 'ceefb24d',
+  fr: 'f505d663',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

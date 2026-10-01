@@ -418,6 +418,17 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
     async editInfo(peerId: number, args: { title: string; about?: string; username?: string }): Promise<void> {
       await rest.patch(`/chats/${peerId}`, { title: args.title, about: args.about ?? '', username: args.username ?? '' })
     },
+    /**
+     * Свободно ли публичное имя для ЭТОГО чата — порт `appChatsManager.checkUsername`
+     * (tweb `:1082-1087`, `channels.checkUsername`). Ответ — `Bool`; своё имя чата
+     * свободно. Отказы приезжают ошибкой с именем (`HttpError.type`): негодная форма —
+     * `USERNAME_INVALID`, нет права менять инфо — `CHAT_ADMIN_REQUIRED`; ветвится по
+     * ним поле `UsernameInputField`, как у оригинала.
+     */
+    async checkUsername(peerId: number, username: string): Promise<boolean> {
+      const res = await rest.get<{ _: string }>(`/chats/${peerId}/username/available`, { u: username })
+      return res._ === 'boolTrue'
+    },
     async setType(peerId: number, isPublic: boolean, username: string): Promise<void> {
       await rest.put(`/chats/${peerId}/type`, { is_public: isPublic, username })
     },
