@@ -245,6 +245,8 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/gifts/catalog", ch.GiftCatalog)
 		pr.Post("/gifts/send", ch.SendGift)
 		pr.Get("/users/{userID}/gifts", ch.ProfileGifts)
+		// users.suggestBirthday — служебка-предложение в личной переписке.
+		pr.Post("/users/{userID}/suggest_birthday", ch.SuggestBirthday)
 		pr.Post("/gifts/{giftID}/convert", ch.ConvertGift)
 		pr.Post("/gifts/{giftID}/hidden", ch.SetGiftHidden)
 		// Боты
@@ -436,6 +438,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 			pr.Post("/contacts", coh.Add)
 			pr.Get("/contacts", coh.List)
 			pr.Delete("/contacts/{userID}", coh.Delete)
+			pr.Put("/contacts/{userID}/note", coh.UpdateNote)
 
 			// Личное фото контакта (только у владельца) + предложение фото профиля.
 			cph := NewContactPhotoHandler(contactsUC, chatUC)

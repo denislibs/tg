@@ -24,7 +24,7 @@ func (i *Interactor) BotEditMessageText(ctx context.Context, bot domain.BotAccou
 	if utf8.RuneCountInString(text) > maxMessageRunes {
 		return domain.Message{}, domain.ErrTooLong
 	}
-	return i.botEditMessage(ctx, bot, chatID, msgID, &text, sanitizeEntities(entities), markup, setMarkup)
+	return i.botEditMessage(ctx, bot, chatID, msgID, &text, domain.SanitizeEntities(entities), markup, setMarkup)
 }
 
 // BotEditReplyMarkup меняет только клавиатуру сообщения бота (markup=nil — убрать).

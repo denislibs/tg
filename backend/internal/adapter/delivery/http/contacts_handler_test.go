@@ -26,7 +26,7 @@ func TestContactsEndpoints_HTTP(t *testing.T) {
 
 	// A adds B with a saved name + note + share-phone.
 	rec := reqJSONAuth(t, h, http.MethodPost, "/contacts", map[string]any{
-		"contact_id": idB, "first_name": "Maya", "last_name": "K", "note": "friend", "share_phone": true,
+		"contact_id": idB, "first_name": "Maya", "last_name": "K", "note": textWithEntities("friend"), "share_phone": true,
 	}, tokenA)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("add contact: %d %s", rec.Code, rec.Body.String())

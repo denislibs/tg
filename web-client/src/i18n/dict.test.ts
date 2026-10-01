@@ -392,14 +392,16 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // «Новое сообщение»): −2 наших ключа у всех пяти — `Compose.NewMessage` (заголовок
 // снесённого «Нового сообщения»: у tweb это вкладка «Контакты») и `Contacts.NotFound`
 // (пустая выдача снесённого экрана). Итог: ru 1402, uk 748, es/de 745, fr 740.
+// Пилюля `messageActionSuggestBirthday` (users.suggestBirthday, О-22 плана
+// волны 7): у ru +2 ключа tweb — `BirthdaySuggestIncoming`/`Outgoing`: ru 1404.
 //
 // Задача 20 плана 2D (вкладка «Автоудаление», порт tweb autoDeleteMessages/*):
 // +3 ключа tweb lang.ts всем пяти — `AutoDeleteMessages.InfoDefault` (описание
 // попапа своего срока) и `UnsavedChanges`/`UnsavedChangesDescription.Privacy`
-// (подтверждение несохранённого на закрытии). Итог (поверх 0а-1): ru 1405, uk 751, es/de 748,
-// fr 743.
+// (подтверждение несохранённого на закрытии). Итог (поверх 0а-1 и О-22): ru 1407, uk 751,
+// es/de 748, fr 743.
 const COMPOSITION = {
-  ru: { keys: 1405, plural: 42 },
+  ru: { keys: 1407, plural: 42 },
   uk: { keys: 751, plural: 31 },
   es: { keys: 748, plural: 30 },
   de: { keys: 748, plural: 31 },
@@ -533,9 +535,10 @@ const COMPOSITION = {
 // Задачей 0а-1 волны 7 — минус `Compose.NewMessage` и `Contacts.NotFound` у всех пяти:
 // наши ключи снесённых React-экранов «Новое сообщение» и «Контакты» (вкладка контактов
 // tweb пустой выдачи не подписывает, а «Новое сообщение» — это она же).
+// Пилюлей предложения даты рождения — у ru +2 ключа tweb (разбор — там же).
 // Задачей 20 плана 2D — три ключа вкладки «Автоудаление» у всех пяти (там же).
 const FINGERPRINT = {
-  ru: 'e9a9febd',
+  ru: '8970c6a3',
   uk: '9168946c',
   es: '0b38fa19',
   de: 'b263576a',

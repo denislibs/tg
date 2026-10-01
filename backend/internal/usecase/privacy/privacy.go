@@ -39,6 +39,9 @@ type Repo interface {
 	// ехала полем КАЖДОЙ строки списка диалогов, хотя в схеме её место — полная
 	// карточка.
 	ChatTheme(ctx context.Context, viewerID, targetID int64) (string, error)
+	// ContactCard — что зритель знает о пире по адресным книгам: пир в его
+	// книге, он в книге пира, его заметка и личное фото для пира.
+	ContactCard(ctx context.Context, viewerID, targetID int64) (domain.ContactCard, error)
 }
 
 type Interactor struct {
@@ -187,8 +190,10 @@ func (i *Interactor) Blocked(ctx context.Context, userID int64, offset, limit in
 // как в схеме: verified/premium/bot/emoji_status — краткая карточка,
 // bio/birthday/blocked/звонки/ttl — полная.
 //
-// Флаги `self`/`contact`/`mutual_contact` кладёт вызывающий: чтобы посчитать
-// их, нужны обе стороны адресной книги, а Profile отвечает за приватность.
+// Всё, что зависит от книги ЗРИТЕЛЯ, — тоже здесь, как у оригинала:
+// `user.pFlags.contact`/`mutual_contact`, заметка (`userFull.note`) и личное
+// фото, которое зритель поставил пиру (`userFull.personal_photo` и оно же
+// краткой формой с `pFlags.personal` — ровно как в книге и списке диалогов).
 func (i *Interactor) Profile(ctx context.Context, viewerID, targetID int64) (domain.UsersUserFull, error) {
 	u, err := i.repo.GetUser(ctx, targetID)
 	if err != nil {
@@ -221,11 +226,30 @@ func (i *Interactor) Profile(ctx context.Context, viewerID, targetID int64) (dom
 		full.Birthday = &b
 	}
 
+	// Книга зрителя: о себе в своей книге ничего нет.
+	var card domain.ContactCard
+	if viewerID != targetID {
+		if card, err = i.repo.ContactCard(ctx, viewerID, targetID); err != nil {
+			return domain.UsersUserFull{}, err
+		}
+	}
+	full.Note = card.Note
+
 	// Краткая форма того же пользователя. Телефон — по правилу приватности, а
 	// не по снятому с пира phone_visibility: механизм на этот вопрос один.
-	brief := u.ToUser(domain.UserFlags{Self: viewerID == targetID}, i.status(ctx, u, check(domain.PrivacyLastSeen)), check(domain.PrivacyProfilePhoto))
+	brief := u.ToUser(domain.UserFlags{
+		Self:          viewerID == targetID,
+		ContactRecord: card.Contact,
+		MutualContact: card.Mutual,
+	}, i.status(ctx, u, check(domain.PrivacyLastSeen)), check(domain.PrivacyProfilePhoto))
 	if check(domain.PrivacyPhoneNumber) {
 		brief.Phone = u.Phone
+	}
+	// Личное фото — поверх правила приватности фото: его поставил сам
+	// зритель, и видит его только он.
+	if card.PersonalPhotoID != 0 {
+		full.PersonalPhoto = domain.NewPhoto(card.PersonalPhotoID, []domain.PhotoSize{})
+		brief.Photo = domain.NewUserProfilePhoto(card.PersonalPhotoID, nil, false, true)
 	}
 	return domain.NewUsersUserFull(full, brief, check(domain.PrivacyMessages)), nil
 }

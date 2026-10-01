@@ -393,6 +393,14 @@
           "value": "In settings you can choose who will see your birthday."
         },
         {
+          "key": "BirthdaySuggestIncoming",
+          "value": "%s suggested you add your birthday"
+        },
+        {
+          "key": "BirthdaySuggestOutgoing",
+          "value": "You suggested %s to add a birthday"
+        },
+        {
           "key": "BlockModal.Search.Placeholder",
           "value": "Block user..."
         },
@@ -9092,6 +9100,14 @@
         {
           "key": "Birthday.PrivacyHint",
           "value": "В настройках можно выбрать, кто будет видеть Ваш день рождения."
+        },
+        {
+          "key": "BirthdaySuggestIncoming",
+          "value": "%s предлагает вам указать дату рождения"
+        },
+        {
+          "key": "BirthdaySuggestOutgoing",
+          "value": "Вы предложили %s указать дату рождения"
         },
         {
           "key": "ConnectionStatus.ReconnectInPlain",
