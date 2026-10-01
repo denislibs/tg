@@ -1,6 +1,8 @@
-// Настройки конфиденциальности (tweb Privacy and Security): правила по ключам
-// + счётчик чёрного списка. Загружается один раз на старте (loadPrivacy) и
-// обновляется оптимистично из экранов настроек.
+// Настройки конфиденциальности (tweb Privacy and Security): правила по ключам —
+// роль кэша `appPrivacyManager`. Загружается один раз на старте (loadPrivacy) и
+// обновляется ответами записи из вкладок правил (`privacySection.solid.tsx`).
+// Счётчика чёрного списка здесь нет: хаб читает первую страницу сам и
+// перечитывает её на `peer_block` (tweb `privacyAndSecurity.tsx:320-337`).
 import { create } from 'zustand'
 import type { PrivacyKey, PrivacyRule, PrivacyValue } from '../core/managers/privacyManager'
 
@@ -23,16 +25,13 @@ function defaults(): Record<PrivacyKey, PrivacyRule> {
 
 interface PrivacyState {
   rules: Record<PrivacyKey, PrivacyRule>
-  blockedTotal: number
   loaded: boolean
   set: (rules: PrivacyRule[]) => void
   setRule: (rule: PrivacyRule) => void
-  setBlockedTotal: (n: number) => void
 }
 
 export const usePrivacyStore = create<PrivacyState>((set) => ({
   rules: defaults(),
-  blockedTotal: 0,
   loaded: false,
   set: (list) =>
     set((st) => {
@@ -42,18 +41,13 @@ export const usePrivacyStore = create<PrivacyState>((set) => ({
     }),
   // оптимистичное обновление из экрана правила
   setRule: (rule) => set((st) => ({ rules: { ...st.rules, [rule.key]: rule } })),
-  setBlockedTotal: (n) => set({ blockedTotal: n }),
 }))
 
 export async function loadPrivacy(managers: {
-  // `count` — параметр конструктора `contacts.blockedSlice` («сколько всего в
-  // чёрном списке»); прежнее `total` было именем нашей обёртки, которой больше
-  // нет: ответ И ЕСТЬ конструктор схемы.
-  privacy: { rules(): Promise<PrivacyRule[]>; getBlocked(offset?: number, limit?: number): Promise<{ count: number }> }
+  privacy: { rules(): Promise<PrivacyRule[]> }
 }): Promise<void> {
   try {
     usePrivacyStore.getState().set(await managers.privacy.rules())
-    usePrivacyStore.getState().setBlockedTotal((await managers.privacy.getBlocked(0, 1)).count)
   } catch {
     /* оффлайн/ошибка — остаются дефолты */
   }

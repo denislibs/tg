@@ -224,7 +224,6 @@ const de = {
   SavedMessages: 'Gespeicherte Nachrichten',
   'MyStories.Title': 'Meine Storys',
   Contacts: 'Kontakte',
-  'Stars.Wallet': 'Wallet',
   'MultiAccount.More': 'Mehr',
   NewChannel: 'Neuer Kanal',
   NewGroup: 'Neue Gruppe',
@@ -538,7 +537,6 @@ const de = {
   'Privacy.BioRow': 'Wer kann meine Bio sehen?',
   WhoCanCallMe: 'Wer kann mich anrufen?',
   PrivacyForwardsTitle: 'Wer darf beim Weiterleiten meiner Nachrichten auf mein Konto verlinken?',
-  PrivacyGroupsTitle: 'Wer kann mich zu Gruppen hinzufügen?',
   PrivacyVoiceMessagesTitle: 'Wer kann mir Sprachnachrichten senden?',
   PrivacyMessagesTitle: 'Wer kann mir Nachrichten senden?',
   'Privacy.BirthdayRow': 'Wer kann meinen Geburtstag sehen?',
@@ -786,12 +784,6 @@ const de = {
     'Bestätige die Ländervorwahl und gib deine neue Telefonnummer ein.',
   'PhoneNumber.AlreadyTaken':
     'Diese Nummer ist bereits mit einem Telegram-Konto verknüpft.',
-  'DeleteAccount.Action': 'Mein Konto löschen',
-  'DeleteAccount.Title': 'Konto löschen',
-  'DeleteAccount.Text':
-    'Möchtest du dein Konto wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.',
-  'DeleteAccount.Caption':
-    'Dadurch werden dein Konto und alle deine Daten gelöscht. Deine Nachrichten bleiben erhalten, erscheinen aber als von einem „gelöschten Konto“ gesendet.',
   AttachAlbum: 'Album',
   AttachPhoto: 'Foto',
   AttachVideo: 'Video',
@@ -919,6 +911,18 @@ const de = {
   'SharedFolder.Toast.NoAdminChannel': 'Du hast keine Adminrechte, um Einladungslinks zu diesem Kanal zu teilen.',
   'SharedFolder.Toast.NoAdminGroup': 'Du hast keine Adminrechte, um Einladungslinks zu dieser Gruppe zu teilen.',
   'SharedFolder.Toast.NoPrivate': 'Private Chats können nicht geteilt werden.',
+  // ── Конфиденциальность: хаб и «Был в сети» (задача 23 плана 2D) ──
+  HideReadTime: 'Lesezeit verbergen',
+  HideReadTimeInfo: 'Verbirg die Zeit, zu der du Nachrichten gelesen hast, vor Personen, die deinen „Zuletzt online“-Status nicht sehen können. Wenn du dies aktivierst, wird auch deren Lesezeit vor dir verborgen (außer du bist Premium-Nutzer).\n\nDiese Einstellung betrifft keine Gruppenchats.',
+  Passkeys: {
+    one_value: '%d Passkey',
+    other_value: '%d Passkeys',
+  },
+  'PrivacyAndSecurity.Item.Off': 'Aus',
+  'PrivacySettingsController.UserCount': {
+    one_value: '%d Nutzer',
+    other_value: '%d Nutzer',
+  },
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(de)

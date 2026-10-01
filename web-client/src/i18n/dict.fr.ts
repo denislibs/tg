@@ -221,7 +221,6 @@ const fr = {
   SavedMessages: 'Messages enregistrés',
   'MyStories.Title': 'Mes stories',
   Contacts: 'Contacts',
-  'Stars.Wallet': 'Portefeuille',
   'MultiAccount.More': 'Plus',
   NewChannel: 'Nouveau canal',
   NewGroup: 'Nouveau groupe',
@@ -535,7 +534,6 @@ const fr = {
   'Privacy.BioRow': 'Qui peut voir ma bio ?',
   WhoCanCallMe: 'Qui peut m\'appeler ?',
   PrivacyForwardsTitle: 'Qui peut ajouter un lien vers mon compte lors du transfert de mes messages ?',
-  PrivacyGroupsTitle: 'Qui peut m\'ajouter à des groupes ?',
   PrivacyVoiceMessagesTitle: 'Qui peut m\'envoyer des messages vocaux ?',
   PrivacyMessagesTitle: 'Qui peut m\'envoyer des messages ?',
   'Privacy.BirthdayRow': 'Qui peut voir mon anniversaire ?',
@@ -777,12 +775,6 @@ const fr = {
     'Confirmez l’indicatif du pays et saisissez votre nouveau numéro de téléphone.',
   'PhoneNumber.AlreadyTaken':
     'Ce numéro est déjà associé à un compte Telegram.',
-  'DeleteAccount.Action': 'Supprimer mon compte',
-  'DeleteAccount.Title': 'Suppression du compte',
-  'DeleteAccount.Text':
-    'Voulez-vous vraiment supprimer votre compte ? Cette action est irréversible.',
-  'DeleteAccount.Caption':
-    'Cela supprimera votre compte et toutes vos données. Vos messages resteront mais apparaîtront comme envoyés par un « compte supprimé ».',
   AttachAlbum: 'Album',
   AttachPhoto: 'Photo',
   AttachVideo: 'Vidéo',
@@ -909,6 +901,18 @@ const fr = {
   'SharedFolder.Toast.NoAdminChannel': 'Vous n’avez pas les droits d’administrateur pour partager des liens d’invitation vers ce canal.',
   'SharedFolder.Toast.NoAdminGroup': 'Vous n’avez pas les droits d’administrateur pour partager des liens d’invitation vers ce groupe.',
   'SharedFolder.Toast.NoPrivate': 'Vous ne pouvez pas partager de discussions privées.',
+  // ── Конфиденциальность: хаб и «Был в сети» (задача 23 плана 2D) ──
+  HideReadTime: 'Masquer l’heure de lecture',
+  HideReadTimeInfo: 'Masquez l’heure à laquelle vous lisez les messages des personnes qui ne peuvent pas voir votre dernière connexion. Si vous activez cette option, leur heure de lecture vous sera aussi masquée (sauf si vous êtes utilisateur Premium).\n\nCe paramètre n’affecte pas les discussions de groupe.',
+  Passkeys: {
+    one_value: '%d clé d’accès',
+    other_value: '%d clés d’accès',
+  },
+  'PrivacyAndSecurity.Item.Off': 'Désactivé',
+  'PrivacySettingsController.UserCount': {
+    one_value: '%d utilisateur',
+    other_value: '%d utilisateurs',
+  },
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(fr)

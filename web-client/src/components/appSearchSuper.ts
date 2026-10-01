@@ -274,7 +274,7 @@
 //     ни класс, ни кто-либо ещё (`grep -rn asChatList tweb/src` — три
 //     вхождения, все три объявление и запись). Поле без читателя — мёртвый код.
 // 42. `processEmptyFilter` (`tweb:826-871`) — в объёме нашей строки чатлиста
-//     (`components/dialogRow.ts`, шапка «что НЕ портировано»): опций
+//     (`lib/appDialogsManager.ts`, шапка «что НЕ портировано»): опций
 //     `withStories`/`fromName`/`loadPromises`/`dontSetActive` у
 //     `DialogElement` нет, поэтому промисы аватара партию не ждут (ждёт только
 //     `setLastMessageN`). Ветка `isSaved` (`:827-832`, `noForwardIcon`) — без
@@ -423,7 +423,7 @@ import { ANCHOR_ACTION_ATTRIBUTE, matchUrl } from '@lib/richtext/url'
 import setInnerHTML from '@helpers/dom/setInnerHTML'
 import SortedUserList from '@components/sortedUserList'
 import createParticipantContextMenu, { type Participant } from '@helpers/dom/createParticipantContextMenu'
-import { addDialogNew, DIALOG_LIST_ELEMENT_TAG, setLastMessageN, type DialogDom } from '@components/dialogRow'
+import { addDialogNew, DIALOG_LIST_ELEMENT_TAG, setLastMessageN, type DialogDom } from '@lib/appDialogsManager'
 import { createSearchGroup, type SearchGroup, type SearchGroupType } from '@components/searchGroup.solid'
 import wrapSenderToPeer from '@components/wrappers/senderToPeer'
 import { setTransition } from '@core/dom/setTransition'

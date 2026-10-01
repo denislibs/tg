@@ -143,6 +143,12 @@ export function newPrivacyManager({ rest, peers, onPeerBlock }: {
   /** Событие `peer_block` во вкладки (воркер — `broadcast`), см. `toggleBlock`. */
   onPeerBlock?: (e: PeerBlockEvt) => void
 }) {
+  // Без `this`: реестр RPC зовёт методы отвязанными (`rpc/managersProxy.ts`).
+  const rule = async(key: PrivacyKey): Promise<PrivacyRule> => {
+    const res = await rest.get<AccountPrivacyRules>(`/me/privacy/${KEY_TAGS[key]}`)
+    return fromPrivacyRules(key, res.rules)
+  }
+
   return {
     /**
      * Правила ВСЕХ ключей.
@@ -153,12 +159,9 @@ export function newPrivacyManager({ rest, peers, onPeerBlock }: {
      * `account.privacyRules` параметра ключа не бывает, его знает спросивший.
      */
     async rules(): Promise<PrivacyRule[]> {
-      return Promise.all(PRIVACY_KEYS.map((key) => this.rule(key)))
+      return Promise.all(PRIVACY_KEYS.map(rule))
     },
-    async rule(key: PrivacyKey): Promise<PrivacyRule> {
-      const res = await rest.get<AccountPrivacyRules>(`/me/privacy/${KEY_TAGS[key]}`)
-      return fromPrivacyRules(key, res.rules)
-    },
+    rule,
     async setRule(rule: PrivacyRule): Promise<PrivacyRule> {
       const res = await rest.put<AccountPrivacyRules>(`/me/privacy/${KEY_TAGS[rule.key]}`, {
         rules: toPrivacyRules(rule),

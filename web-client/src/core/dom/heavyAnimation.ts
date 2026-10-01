@@ -1,102 +1,97 @@
-// Порт tweb `hooks/useHeavyAnimationCheck.ts` (Jolly Cobra's, пропатченный).
+// Порт tweb `hooks/useHeavyAnimationCheck.ts` (Jolly Cobra's, пропатченный) —
+// 1:1 по логике, построчно сверен с tweb 812502980.
 //
 // Смысл: пока на экране играет ТЯЖЁЛАЯ анимация (переход между экранами, скролл
-// к сообщению, круговое раскрытие темы), всё остальное, что жрёт кадры —
-// lottie-стикеры, видео-стикеры, гифки — должно встать на паузу, иначе анимация
-// дёргается. Модуль — это только шина: кто-то объявляет «идёт тяжёлая анимация»
-// (`dispatchHeavyAnimationEvent`), кто-то слушает начало/конец
-// (`onHeavyAnimation`) и глушится (у нас — `components/animationIntersector.ts`,
-// как в tweb `appImManager.ts:336-342`).
+// к сообщению, лестница открытия чата, круговое раскрытие темы), всё остальное,
+// что жрёт кадры — lottie-стикеры, видео-стикеры, гифки — должно встать на
+// паузу, иначе анимация дёргается. Модуль — это только шина: кто-то объявляет
+// «идёт тяжёлая анимация» (`dispatchHeavyAnimationEvent`), кто-то слушает
+// начало/конец (`onHeavyAnimation`) и глушится (у нас —
+// `components/animationIntersector.ts`, как в tweb `appImManager.ts:436-442`).
 //
 // Отличия от tweb:
-//   • `deferredPromise`/`CancellablePromise` там общий хелпер, здесь нужен ровно
-//     один флаг `isFulfilled` — сделан локально, без нового хелпера;
-//   • дефолтный экспорт-хук tweb (подписка + отписка одной функцией) назван
-//     `onHeavyAnimation` и отдаёт функцию отписки; отдельный `offHeavyAnimation`
-//     оставлен для симметрии (tweb снимает слушателей через ListenerSetter).
-
-/** tweb `helpers/cancellablePromise` в объёме, нужном этому модулю */
-type DeferredPromise<T> = Promise<T> & {
-  resolve: (value: T) => void
-  isFulfilled: boolean
-}
-
-function deferredPromise<T>(): DeferredPromise<T> {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((_resolve) => {
-    resolve = _resolve
-  }) as DeferredPromise<T>
-
-  promise.isFulfilled = false
-  promise.resolve = (value: T) => {
-    if (promise.isFulfilled) return
-    promise.isFulfilled = true
-    resolve(value)
-  }
-
-  return promise
-}
-
-/** tweb `pause` (helpers/schedulers/pause) */
-function pause(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms)
-  })
-}
+//   • путь `@core/dom/heavyAnimation`, а не `@hooks/useHeavyAnimationCheck`
+//     (шина портирована сюда раньше и на неё завязаны все потребители);
+//   • дефолтный экспорт-хук tweb назван `onHeavyAnimation` (потребители
+//     импортируют его `as useHeavyAnimationCheck`);
+//   • форматирование — под `.oxlintrc.json` (`DEBUG && log()` → `if(DEBUG) log()`).
+import ListenerSetter from '@helpers/listenerSetter'
+import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
+import DEBUG from '@config/debug'
+import pause from '@helpers/schedulers/pause'
+import EventListenerBase from '@helpers/eventListenerBase'
 
 export type HeavyAnimationCallback = () => void
 
-const startCallbacks = new Set<HeavyAnimationCallback>()
-const endCallbacks = new Set<HeavyAnimationCallback>()
+const eventListener = new EventListenerBase<{
+  start: () => void,
+  end: () => void
+}>()
+const ANIMATION_START_EVENT = 'start'
+const ANIMATION_END_EVENT = 'end'
 
 let isAnimating = false
-let heavyAnimationPromise = deferredPromise<void>()
+let heavyAnimationPromise: CancellablePromise<void> = deferredPromise<void>()
 let promisesInQueue = 0
 
-heavyAnimationPromise.resolve()
+heavyAnimationPromise.resolve!()
+
+const log = console.log.bind(console.log, '[HEAVY-ANIMATION]:')
 
 /**
- * Объявить тяжёлую анимацию. Пока хоть один такой промис не доигран (или не
- * истёк его `timeout`), `isHeavyAnimationInProgress()` истинно, а подписчики
- * держат паузу. Возвращает промис, который резолвится в момент общего конца
- * (tweb useHeavyAnimationCheck.ts:25-56).
+ * Объявить тяжёлую анимацию (tweb useHeavyAnimationCheck.ts:25-56). Пока хоть
+ * один такой промис не доигран (или не истёк его `timeout`), промис
+ * `getHeavyAnimationPromise()` не исполнен, а подписчики держат паузу.
  *
  * @param timeout страховка: если промис завис, событие всё равно закончится
  *        (tweb передаёт длительность самой анимации).
  */
-export function dispatchHeavyAnimationEvent(promise: Promise<unknown>, timeout?: number): Promise<void> {
-  if (!isAnimating) {
+export function dispatchHeavyAnimationEvent(promise: Promise<unknown>, timeout?: number) {
+  if(!isAnimating) {
     heavyAnimationPromise = deferredPromise<void>()
-    startCallbacks.forEach((callback) => callback())
+    eventListener.dispatchEvent(ANIMATION_START_EVENT)
     isAnimating = true
+    if(DEBUG) log('start')
   }
 
   ++promisesInQueue
+  if(DEBUG) log('attach promise, length:', promisesInQueue, timeout)
 
   const promises = [
     timeout !== undefined ? pause(timeout) : undefined,
-    promise.then(() => {}, () => {}),
-  ].filter(Boolean) as Promise<void>[]
+    promise.finally(() => {}),
+  ].filter(Boolean) as Promise<unknown>[]
 
+  const perf = performance.now()
   const _heavyAnimationPromise = heavyAnimationPromise
   void Promise.race(promises).then(() => {
-    // событие успели прервать/перезапустить — этот счётчик уже не наш
-    if (heavyAnimationPromise !== _heavyAnimationPromise || heavyAnimationPromise.isFulfilled) return
+    if(heavyAnimationPromise !== _heavyAnimationPromise || heavyAnimationPromise.isFulfilled) { // interrupted
+      return
+    }
 
     --promisesInQueue
-    if (promisesInQueue <= 0) onHeavyAnimationEnd()
+    if(DEBUG) log('promise end, length:', promisesInQueue, performance.now() - perf)
+    if(promisesInQueue <= 0) {
+      onHeavyAnimationEnd()
+    }
   })
 
   return heavyAnimationPromise
 }
 
+(window as unknown as Record<string, unknown>).dispatchHeavyAnimationEvent = dispatchHeavyAnimationEvent
+
 function onHeavyAnimationEnd() {
-  if (heavyAnimationPromise.isFulfilled) return
+  if(heavyAnimationPromise.isFulfilled) {
+    return
+  }
 
   isAnimating = false
   promisesInQueue = 0
-  endCallbacks.forEach((callback) => callback())
-  heavyAnimationPromise.resolve()
+  eventListener.dispatchEvent(ANIMATION_END_EVENT)
+  heavyAnimationPromise.resolve!()
+
+  if(DEBUG) log('end')
 }
 
 /** tweb `interruptHeavyAnimation` — оборвать событие досрочно */
@@ -104,31 +99,35 @@ export function interruptHeavyAnimation() {
   onHeavyAnimationEnd()
 }
 
-/** tweb `getHeavyAnimationPromise` — «дождаться, пока экран успокоится» */
-export function getHeavyAnimationPromise(): Promise<void> {
+/** tweb `getHeavyAnimationPromise` — «дождаться, пока экран успокоится»;
+ *  `!getHeavyAnimationPromise().isFulfilled` — «анимация идёт». */
+export function getHeavyAnimationPromise() {
   return heavyAnimationPromise
 }
 
-/** tweb `isAnimating` (там приватный, наружу торчал только через промис) */
-export function isHeavyAnimationInProgress(): boolean {
-  return isAnimating
-}
-
 /**
- * tweb `useHeavyAnimationCheck(onStart, onEnd)` — дефолтный экспорт хука: если
- * анимация уже идёт, `onStart` зовётся сразу (иначе подписчик, созданный посреди
- * перехода, останется незаглушенным). Возвращает функцию отписки.
+ * tweb `useHeavyAnimationCheck(onStart, onEnd, listenerSetter?)` — дефолтный
+ * экспорт хука (:79-101): если анимация уже идёт, `onStart` зовётся сразу
+ * (иначе подписчик, созданный посреди перехода, останется незаглушенным).
+ * С `listenerSetter` подписку снимает его `removeAll()`; в любом случае
+ * возвращается функция отписки.
  */
-export function onHeavyAnimation(onStart: HeavyAnimationCallback, onEnd: HeavyAnimationCallback): () => void {
-  if (isAnimating) onStart()
+export function onHeavyAnimation(
+  handleAnimationStart: HeavyAnimationCallback,
+  handleAnimationEnd: HeavyAnimationCallback,
+  listenerSetter?: ListenerSetter,
+) {
+  if(isAnimating) {
+    handleAnimationStart()
+  }
 
-  startCallbacks.add(onStart)
-  endCallbacks.add(onEnd)
+  const add = listenerSetter ? listenerSetter.add(eventListener) : eventListener.addEventListener.bind(eventListener)
+  const remove = listenerSetter ? listenerSetter.removeManual.bind(listenerSetter, eventListener) : eventListener.removeEventListener.bind(eventListener)
+  add(ANIMATION_START_EVENT, handleAnimationStart)
+  add(ANIMATION_END_EVENT, handleAnimationEnd)
 
-  return () => offHeavyAnimation(onStart, onEnd)
-}
-
-export function offHeavyAnimation(onStart: HeavyAnimationCallback, onEnd: HeavyAnimationCallback) {
-  startCallbacks.delete(onStart)
-  endCallbacks.delete(onEnd)
+  return () => {
+    remove(ANIMATION_END_EVENT, handleAnimationEnd)
+    remove(ANIMATION_START_EVENT, handleAnimationStart)
+  }
 }

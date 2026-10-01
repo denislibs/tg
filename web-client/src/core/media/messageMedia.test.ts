@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   saveDocument,
+  getDoc,
   saveMessageMedia,
   getMediaFromMessage,
   getDocumentFromMessage,
@@ -145,6 +146,17 @@ describe('saveDocument — вывод типа документа из атри�
 
   it('без атрибутов и без известного mime тип не выводится вовсе', () => {
     expect(saveDocument(doc('application/octet-stream', [])).type).toBeUndefined()
+  })
+})
+
+describe('getDoc — хранилище документов (порт appDocsManager.docs/getDoc)', () => {
+  // tweb appDocsManager.ts:326-328: документ, прошедший `saveDoc`, достаётся по
+  // id. Этим пользуется предпросмотр стикера (`stickerViewer.ts:239`): у узла
+  // ячейки есть только `data-doc-id`, сам документ — у менеджера воркера.
+  it('документ, прошедший saveDocument, находится по id; чужой id — нет', () => {
+    const saved = saveDocument(doc('image/webp', [{ _: 'documentAttributeSticker', alt: '🦆', stickerset: { _: 'inputStickerSetEmpty' } }], { id: 777001 }))
+    expect(getDoc(777001)).toBe(saved)
+    expect(getDoc(777002)).toBeUndefined()
   })
 })
 

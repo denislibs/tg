@@ -1090,7 +1090,7 @@ useIsConfirmationNeededOnClose}.ts`; `confirmationPopup` получил `buttons
 - Снесены `settings/BlockedUsers.tsx`, `PrivacyUserPicker.tsx`, наш ключ `BlockedEmptyDescription`
   (у tweb пустого состояния нет); снимок словарей пересчитан.
 
-### Задача 23: хаб «Конфиденциальность и безопасность»
+### Задача 23: хаб «Конфиденциальность и безопасность» — ✅ сделано (PR feat/2d-23-privacy-hub-tab)
 
 **Порт:** `privacyAndSecurity.tsx` (700) → `sidebarLeft/tabs/privacyAndSecurity.solid.tsx`; вкладка
 :659 (Eventable). Первая секция `noDelimiter` + подпись `SessionsInfo`; у всех строк значение —
@@ -1103,6 +1103,32 @@ NewChats/Sensitive/Payments. Наши лишние строки «Сессии»
 **Зависимости:** 17–22. **Врезка:** `tabs.ts`, `SettingsView.tsx`, `SettingsSubScreen.tsx`;
 удалить `settings/PrivacySecuritySettings.tsx`, `settings/ConfirmDialog.tsx` — если потребителей
 вне настроек не осталось (см. задачу 30).
+
+**Итог (2026-10-01).** `sidebarLeft/tabs/privacyAndSecurity.solid.tsx` — порт `privacyAndSecurity.tsx`,
+вкладка `AppPrivacyAndSecurityTab` eventable без `getInitArgs` (все три предмета предзагрузки — О-18).
+Дети открываются, как у tweb: заблокированные — с первой страницей (перечитывание на `peer_block`),
+автоудаление — с периодом и `onSaved`, подпись — узел `findExistingOrCreateCustomOption(p).label()`
+(`ВРЕМЕННО до 2D-23` у `textContent` снят), код-пароль — через ввод при включённом коде, 2FA — ввод
+пароля или мастер, Passkeys — Solid-стор ключей, читаемый на открытии хаба (не на клике, как было у
+React-экрана), без ключей и WebAuthn строка скрыта; подсказка выключения кода — в скроллере хаба
+(`mainTab.solid.tsx`, `getTab(AppPrivacyAndSecurityTab)`, как tweb). Поправки к постановке:
+- Решение пользователя «удали лишнее, оставь как в tweb»: «Сессии» — снята (у tweb это «Устройства»
+  корня, у нас уже есть; с ней ушёл `columnSlider.ts::openActiveSessionsTab`); «Удалить мой аккаунт» —
+  снята: в приложении tweb удаления аккаунта нет, есть только сброс со входа («Забыли пароль» →
+  `deleteAccount`) — у нас он есть (`PasswordCard.solid.tsx` → `auth.resetAccount`); вместе со
+  строкой сняты `auth.deleteAccount` клиента (+ тесты) и ключи `DeleteAccount.*`; ручка бэкенда
+  `DELETE /me` оставлена (аналог `account.deleteAccount` API, юзкейс общий со сбросом).
+  «Время прочтения» — перенесена туда, где она у tweb: тумблер «Hide Read Time» вкладки «Был в сети»
+  (`privacy/lastSeen.solid.tsx`, `lastSeen.tsx:64-74`); предмет — наше правило `read_time` (флага
+  `hide_read_marks` нет, О-18): «скрыть» пишет в него копию правила `last_seen` (ровно смысл флага
+  при взаимной проверке сервера), «не скрывать» — «Все». Вкладка `AppPrivacyReadTimeTab` и её ключи
+  сняты. `settings/ConfirmDialog.tsx` остаётся — у него 6 потребителей вне настроек (задача 30).
+- `PrivacyGroupsTitle` → ключ tweb `WhoCanAddMe`; значения строк — `Row.Subtitle` с ключами tweb
+  (`PrivacySettingsController.UserCount`, `PrivacyAndSecurity.Item.On/Off`, `Passkeys`, `Loading`).
+- Счётчик `blockedTotal` стора `privacyStore` снят (читателя больше нет: хаб читает страницу сам).
+- `settings/TwoStepVerification.module.scss` — сирота снесённого React-мастера 2FA, удалён.
+- Мост `sidebarLeft/reactScreenTab.tsx` и его тест удалены: потребителей не осталось.
+Новых «Отложено» нет (О-56…О-58 не понадобились): всё недостающее уже в О-13, О-15…О-18, О-33, О-51.
 
 ### Задача 24: «Папки» — список и редактор — ✅ сделано (PR feat/w2d-folders)
 
@@ -1268,7 +1294,8 @@ React, вкладками — слайдер; правило шва § 7 спе�
   `AppSpeakersAndCameraTab`, `AppEditProfileTab`) на `scaffoldReactScreenTab` — содержимое
   React-корень кита, въезд/выход/Esc — от слайдера. Задача порта меняет одну форму объявления и
   удаляет React-экран. Это обратный мост, которого план не заводил (правило «листья раньше
-  родителей»): он временный, с номером у каждой строки;
+  родителей»): он временный, с номером у каждой строки. **Снят задачей 23**: последний потребитель
+  («Конфиденциальность») переехал, `reactScreenTab.tsx` (+ `.module.scss`, `.wiring.test.tsx`) удалён;
 - **React-попапы** (`sidebarLeft/settingsPopups.tsx`): `showPremiumPopup`/`showStarsPopup`/
   `showMyQrCodePopup`/`showLogOutPopup`/`showSendGiftPicker` именами tweb поверх `popupStore`,
   ВРЕМЕННО до 2C-18/19/17/13/20. Выход — без подтверждения (как пункт бургера, до 2C-13), подарок

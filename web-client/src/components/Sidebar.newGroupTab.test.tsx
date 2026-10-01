@@ -2,7 +2,6 @@
 //  • `#new-menu` «New Group» зовёт `createNewGroupTab(slider)` (tweb
 //    `sidebarLeft/index.ts:1073-1077`): первой въезжает вкладка выбора участников
 //    `AppAddMembersTab` соседом `.item-main`;
-//  • React-экрана `NewGroupFlow` больше нет — в колонке нет его разметки;
 //  • Esc закрывает вкладку одним шагом и возвращает чатлист (NAV-04 для этой вкладки).
 // Вкладки настоящие; собственные пины флоу — `sidebarLeft/tabs/newGroup.solid.test.tsx`.
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'

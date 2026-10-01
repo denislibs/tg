@@ -1,9 +1,8 @@
 import { lazy, Suspense } from 'react'
 
-// Кошелёк (звёзды) и экран звонков — из меню, не первый кадр → лениво. Настроек
-// здесь больше нет: корень — вкладка колоночного слайдера (`AppSettingsTab`,
-// задача 28 плана 2D), её модуль грузится лениво сам (`solidJsTabs/tabs.ts`).
-const WalletView = lazy(() => import('./stars/WalletView'))
+// Экран звонков — из меню, не первый кадр → лениво. Настроек здесь больше нет:
+// корень — вкладка колоночного слайдера (`AppSettingsTab`, задача 28 плана 2D),
+// её модуль грузится лениво сам (`solidJsTabs/tabs.ts`).
 const CallsView = lazy(() => import('./CallsView'))
 
 // Взаимоисключающие экраны левой колонки (в tweb в #column-left всегда один поверх
@@ -14,7 +13,7 @@ const CallsView = lazy(() => import('./CallsView'))
 // (`tweb src/scss/partials/_slider.scss:226-241`). Поэтому обёрток-презенсов
 // здесь больше нет: экран просто монтируется и размонтируется.
 export type SidebarScreen =
-  | 'wallet' | 'calls' | null
+  | 'calls' | null
 
 interface SidebarScreensProps {
   screen: SidebarScreen
@@ -30,9 +29,6 @@ export default function SidebarScreens({
 }: SidebarScreensProps) {
   return (
     <>
-      <Suspense fallback={null}>
-        {screen === 'wallet' && <WalletView onBack={close} />}
-      </Suspense>
       <Suspense fallback={null}>
         {screen === 'calls' && (
           <CallsView onBack={close} onOpenChat={(chatId) => { close(); onSelect(String(chatId)) }} />

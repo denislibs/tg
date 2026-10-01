@@ -246,7 +246,7 @@ describe('Sidebar — бургер и стрелка «назад»', () => {
 
     await clickBack()
     // Мутация: не отдать владельцу узел стрелки (`backBtnRef` у
-    // `SidebarMenuButton`) — клик не дойдёт до владельца.
+    // колонки) — клик не дойдёт до владельца.
     expect(appNavigationController.findItemByType('global-search')).toBeUndefined()
     expect(sidebarContent().classList.contains('backwards')).toBe(true)
   })

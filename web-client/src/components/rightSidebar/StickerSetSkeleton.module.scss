@@ -2,7 +2,7 @@
 // (src/styles/tweb/_rightSidebar.scss: #stickers-container .sticker-set —
 // высота строки 140px, отступы шапки, плитки 68×68), чтобы подмена скелетона
 // на реальные данные не дёргала вёрстку. Мерцание — тот же mask-приём tweb,
-// что уже применён в скелетоне списка чатов (LoadingDialogSkeleton.module.scss,
+// что уже применён в скелетоне списка чатов (components/loadingDialogSkeleton.module.scss,
 // сам порт tweb loadingDialogSkeleton.module.scss); локальный @keyframes —
 // ссылка на кейфрейм соседнего партиала CSS-модуль захешировал бы молча
 // (см. web-client/CLAUDE.md, «Ловушка CSS-модулей»).

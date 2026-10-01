@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import Scrollable from '@components/scrollable'
 import AppSearchSuper, { type SearchSuperManagers, type SearchSuperMediaTab } from '@components/appSearchSuper'
-import type { DialogListElement } from '@components/dialogRow'
+import type { DialogListElement } from '@lib/appDialogsManager'
 import { resetSharedMediaHistories } from '@components/sharedMediaHistories'
 import { applyPeerOps, cachedChat, resetPeerMirror } from '@core/peerCache'
 import { getChatMembersString } from '@components/wrappers/getChatMembersString'

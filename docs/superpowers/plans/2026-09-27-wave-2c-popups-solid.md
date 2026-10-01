@@ -582,7 +582,7 @@ Enter и гасит `destroyed` — иначе отложенный `doubleRaf`-
 у tweb → наш формат запроса менеджера (объявить у строки). `IS_WEB_AUTHN_SUPPORTED` — наш флаг среды
 (найти; нет — порт `environment/webAuthn`).
 **Дамп:** `14-left-35-passkeys-popup`. **Мутация:** `Create` не ждёт `createPasskey` — пин «при ошибке
-попап остаётся» краснеет. **Врезка:** `settings/PrivacySecuritySettings.tsx:264` → `showPasskeyPopup`;
+попап остаётся» краснеет. **Врезка:** мост `showPasskeyPopup` в `sidebarLeft/settingsPopups.tsx` (его зовут хаб `sidebarLeft/tabs/privacyAndSecurity.solid.tsx` и `passkeys.solid.tsx`; React-экрана «Конфиденциальность» нет с 2D-23) → Solid-попап;
 удалить `settings/PasskeyIntroPopup.tsx` (+ `.module.scss`). **Зависимости:** 5.
 
 ### Задача 11: свой срок автоудаления → 2D-20 — ✅ сделано в 2D-20 (PR feat/2d-20-auto-delete-tab)
@@ -640,8 +640,8 @@ tweb подходит без подгонки.
 `ANIMATION_GROUP`, набор/несколько наборов, эмодзи-наборы, ⋮ «копировать ссылку»/«архив», кнопка
 «Добавить/Удалить N стикеров» в `Footer floating={isLoaded()}`, контекст-меню стикера, просмотр по
 долгому нажатию). Опоры у нас: `wrappers/sticker.ts`, `core/lazyLoadQueue.ts`,
-`buttonMenuToggle.ts`, `helpers/clipboard.ts`, `stickers/useStickerViewer.ts` (React — шаг 1: найти
-императивный вход; нет — просмотр по долгому нажатию объявить с номером), `emoticonsDropdown` —
+`buttonMenuToggle.ts`, `helpers/clipboard.ts`, `components/stickerViewer.ts` (ванильный порт, О-25
+волны 7: `attachStickerViewerListeners({listenTo: scrollableEl, listenerSetter})`), `emoticonsDropdown` —
 React (отправка стикера в композер: через событие/`chatInput`-ручку, как делает наш
 `StickerSetModal`). Бэкенд: `GET /sticker-sets/{slug}`, `/id/{setID}`, `install`/`uninstall`
 (`router.go:284-287`); архив (a66af93f6) и порядок — О-8. `_stickers.scss` → HEAD.

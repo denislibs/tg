@@ -25,7 +25,7 @@ export default function ButtonIcon(
   className?: string,
   // `ButtonOptions` уже `Partial<{...}>` — `Pick` из него сохраняет
   // опциональность выбранных полей, второй `Partial` был избыточен.
-  options: Pick<ButtonOptions, 'noRipple' | 'onlyMobile' | 'asDiv'> = {},
+  options: Pick<ButtonOptions, 'noRipple' | 'onlyMobile' | 'asDiv' | 'ariaLabel'> = {},
 ) {
   const splitted = className?.split(' ')
   return Button('btn-icon' + (splitted && splitted.length > 1 ? ' ' + splitted.slice(1).join(' ') : ''), {

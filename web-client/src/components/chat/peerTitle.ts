@@ -34,7 +34,7 @@
 //    `peerId` (обычный автор), `fromName` (имя строкой, когда пира нет —
 //    порт того же поля tweb: скрытый форвард, а у нас send-as, где заголовок
 //    личности приезжает прямо в сообщении), `onlyFirstName` — автор в превью
-//    строки чатлиста (`components/dialogRow.ts::setLastMessageN`, tweb
+//    строки чатлиста (`lib/appDialogsManager.ts::setLastMessageN`, tweb
 //    `appDialogsManager.ts:2168-2171`) и `dialog` — свой пир как «Избранное»
 //    (peerTitle.ts:140-148; потребитель — чип пира глобального поиска,
 //    `components/selectorEntity.ts`; ветка `meAsNotes` — без предмета).

@@ -16,7 +16,7 @@
  *
  * Эталон — дампы `14-left-30*-new-group-members*.json` (квадратный, слева) и
  * `15-right-14-group-members.json` (круглый, справа). Строка —
- * `addDialogNew` (`components/dialogRow.ts`), чип — `renderEntity`
+ * `addDialogNew` (`lib/appDialogsManager.ts`), чип — `renderEntity`
  * (`components/selectorEntity.ts`), поле — `components/selectorSearch.solid.tsx`,
  * заглушка — `components/emptyPlaceholder.solid.tsx`. Ряд папок попапа
  * пересылки (`components/popups/pickUserFolderTabs.ts`) зовёт `setFolderId`
@@ -54,7 +54,7 @@
  *     `getRequirementToContact`, ни платы звёздами за личное сообщение (О-31).
  *  3. Монофорумы и бот-форумы (`excludeMonoforums`/`excludeBotforums`, :265-270)
  *     — предмета нет: таких чатов у нас не бывает. Истории на аватаре
- *     (`withStories`) — наша строка их не рисует (шапка `dialogRow.ts`).
+ *     (`withStories`) — наша строка их не рисует (шапка строки `lib/appDialogsManager.ts`).
  *  4. `DialogsPlaceholder` (:137, :233-242 и вызовы `detach`) не заводится: у
  *     оригинала он создаётся, но нигде не вешается в DOM (`attach` не зовёт ни
  *     класс, ни потребители — поле приватное), так что `detach` — пустые вызовы.
@@ -119,7 +119,7 @@ import Section, { appendSectionContent, type SectionOptions, type SectionParts }
 import SelectorSearch from '@components/selectorSearch.solid'
 import InputSearch from '@components/inputSearch'
 import emptyPlaceholder from '@components/emptyPlaceholder.solid'
-import { addDialogNew, createChatList, type DialogElement, type DialogElementSize, type DialogRowManagers } from '@components/dialogRow'
+import { addDialogNew, createChatList, type DialogElement, type DialogElementSize, type DialogRowManagers } from '@lib/appDialogsManager'
 import type { SelectorEntityManagers } from '@components/selectorEntity'
 import { ROW_SELECTION_CHECKBOX_CLASS, ROW_SELECTION_MEDIA_CLASS, ROW_WITH_CHECKBOX_AND_MEDIA_CLASS } from '@components/rowFieldClasses'
 import { getChatMembersString } from '@components/wrappers/getChatMembersString'

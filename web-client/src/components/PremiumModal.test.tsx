@@ -41,7 +41,7 @@ import type { Managers } from '../client/bootstrap'
 const fakeManagers = {} as unknown as Managers
 
 // `.active` вешается кадром позже (requestAnimationFrame в usePopupTransition,
-// settings/kit.tsx) — как в MainMenu.test.tsx, флашим один кадр после рендера.
+// settings/kit.tsx) — флашим один кадр после рендера.
 async function mount(props: Partial<Parameters<typeof PremiumModal>[0]> = {}) {
   const result = render(
     <ManagersProvider managers={fakeManagers}>

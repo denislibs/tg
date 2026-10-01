@@ -2,7 +2,8 @@
 //  • бургер «Contacts» (tweb `sidebarLeft/index.ts:693-696`, `closeTabsBefore` →
 //    `createTab(AppContactsTab).open()`) кладёт вкладку соседом `.item-main`;
 //  • `#new-menu` «New Private Chat» открывает ТУ ЖЕ вкладку (tweb `:1079-1083`,
-//    `:1105-1109`), «New Secret Chat» — её же с опцией `{secret: true}` (Отступление В7-1);
+//    `:1105-1109`); «New Secret Chat» (Отступление В7-1) скрыт флагом
+//    `SECRET_CHATS_ENABLED` (решение пользователя 2026-10-01, `config/app.ts`);
 //  • Esc закрывает вкладку одним шагом и возвращает чатлист (NAV-04 для этой вкладки).
 // Содержимое вкладки — заглушка, которая показывает опцию: собственные пины вкладки —
 // `sidebarLeft/tabs/contacts.solid.test.tsx`.
@@ -55,7 +56,9 @@ async function renderSidebar() {
 
 async function clickMenuItem(toggle: HTMLElement, label: string) {
   fireEvent.click(toggle)
-  await act(async () => {})
+  // меню — порт tweb `ButtonMenuToggle`: строится асинхронно и принимает клик,
+  // только став `active`
+  await vi.waitFor(() => expect(document.querySelector('.btn-menu.active')).not.toBeNull())
   fireEvent.click(screen.getByText(label))
   await act(async () => { await pause(50) })
 }
@@ -79,7 +82,7 @@ describe('Sidebar — вкладка контактов на колоночно�
     expect(column().classList.contains('has-open-tabs')).toBe(true)
   })
 
-  it('#new-menu: «New Private Chat» — та же вкладка, «New Secret Chat» — она же с {secret: true}', async () => {
+  it('#new-menu: «New Private Chat» — та же вкладка без {secret}; «New Secret Chat» скрыт флагом', async () => {
     await renderSidebar()
     const fab = document.getElementById('new-menu')!
 
@@ -88,11 +91,9 @@ describe('Sidebar — вкладка контактов на колоночно�
     expect(contactsTabs()[0].querySelector('.contacts-stub')!.getAttribute('data-secret')).toBe('false')
     await settle()
 
-    await clickMenuItem(fab, 'New Secret Chat')
-    await settle()
-    // обычная вкладка сверху с другой опцией закрыта, встала секретная (`openContactsTab`)
-    expect(contactsTabs()).toHaveLength(1)
-    expect(contactsTabs()[0].querySelector('.contacts-stub')!.getAttribute('data-secret')).toBe('true')
+    fireEvent.click(fab)
+    await act(async () => {})
+    expect(screen.queryByText('New Secret Chat')).toBeNull()
   })
 
   it('Esc закрывает вкладку одним шагом, чатлист снова активен', async () => {

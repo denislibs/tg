@@ -158,7 +158,7 @@ messages» и правая панель «Saved Messages / 4 chats» с вкла
 | строка «This bot is verified…» | `peerProfile.solid.tsx::BotVerification`, `components/generateVerifiedIcon.ts`, спрайт в `index.html`, `styles/tweb/_bridge.scss` (`.verified-icon-*`) | **порт** официальной ветки; ветка `bot_verification` — предмета нет |
 | правая панель «Избранного» | `UserInfoPanel.tsx` (`noProfile`) | **порт**: без профиля и карусели, шапка сразу в режиме shared media, «назад» закрывает |
 | «My Notes» | `sidebarRight/savedDialogsTab.solid.tsx` + `components/avatar.ts` (`meAsNotes`) | иконка `mynotes` |
-| строки поиска | `components/dialogRow.ts` — `meAsSaved = true` по умолчанию (как `:301`), `sortedUserList.ts` передаёт `false` | «Saved Messages» в выдаче/Recent |
+| строки поиска | `lib/appDialogsManager.ts` (раздел «СТРОКА ДИАЛОГА»; до задачи 1-1 волны 7 — `components/dialogRow.ts`) — `meAsSaved = true` по умолчанию (как `:301`), `sortedUserList.ts` передаёт `false` | «Saved Messages» в выдаче/Recent |
 | «Поделиться» | `shared/ui/PeerSelector/PeerSelector.tsx` (`verified`), `messages/ChatDialogs.tsx` | галочка у имени, подпись по пиру; фильтр — `fix/contacts-share-pickers` (#319) |
 
 ### 3.3 Расхождения, которые остались (и почему)
