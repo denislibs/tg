@@ -500,13 +500,13 @@ func TestPostToChannel_KeepsEntities(t *testing.T) {
 	}
 }
 
-// Разметка не берётся у клиента на веру — тот же sanitizeEntities, что и на
+// Разметка не берётся у клиента на веру — тот же domain.SanitizeEntities, что и на
 // обычной отправке (message.go:132).
 func TestPostToChannel_SanitizesEntities(t *testing.T) {
 	i, _, _, _ := newChannelTestInteractor(t)
 	ctx := context.Background()
 	id, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
-	// text_link с javascript:-схемой — ровно то, что sanitizeEntities выбрасывает
+	// text_link с javascript:-схемой — ровно то, что domain.SanitizeEntities выбрасывает
 	// (sanitize.go:75, safeLinkURL). Рядом валидный bold: он обязан уцелеть,
 	// иначе тест прошёл бы и при «выкинули всё подряд».
 	bad := domain.MessageEntities{

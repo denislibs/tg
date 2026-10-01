@@ -9,15 +9,16 @@ import type { Passkey } from '@layer'
 import TgIcon from '../TgIcon'
 import { SettingsScreen, Section, Row } from './kit'
 import BlockedUsers from './BlockedUsers'
-import AutoDeleteMessages, { autoDeleteLabel } from './AutoDeleteMessages'
+import { findExistingOrCreateCustomOption } from '../sidebarLeft/tabs/autoDeleteMessages/options'
 import ConfirmDialog from './ConfirmDialog'
 import { useSettingsStore } from '../../settings'
-import { useT, useTArgs } from '../../i18n'
+import { useT } from '../../i18n'
 import { useManagers } from '../../core/hooks/useManagers'
 import { commandThenReload } from '../../core/accountTransition'
 import { openActiveSessionsTab } from '../sidebarLeft/columnSlider'
 import type { ReactScreenTabProps } from '../sidebarLeft/reactScreenTab'
 import {
+  AppMessagesAutoDeleteTab,
   AppPasscodeEnterPasswordTab,
   AppPasscodeLockTab,
   AppPasskeysTab,
@@ -76,13 +77,19 @@ const RULE_ROWS: { key: PrivacyKey; title: LangPackKey; tab: typeof AppPrivacyAb
   { key: 'read_time', title: 'PrivacyReadTimeTitle', tab: AppPrivacyReadTimeTab },
 ]
 
+// Подпись строки автоудаления — tweb `privacyAndSecurity.tsx:370-376`
+// (`updateAutoDeleteRow`): «Off» или подпись срока вкладки. ВРЕМЕННО до 2D-23:
+// React-строке нужна строка, а не узел `label()`, — отсюда `textContent`.
+function autoDeleteSubtitle(period: number, t: (key: LangPackKey) => string): string {
+  return !period ? t('Off') : findExistingOrCreateCustomOption(period).label().textContent ?? ''
+}
+
 // ВРЕМЕННО до 2D-23: экран — содержимое вкладки `AppPrivacyAndSecurityTab` на
 // мосту `scaffoldReactScreenTab` (`sidebarLeft/reactScreenTab.tsx`); следующие
 // вкладки он открывает слайдером этой вкладки, как оригинал.
 export default function PrivacySecuritySettings({ tab, onBack }: ReactScreenTabProps) {
   const slider = tab.slider as SidebarSlider
   const t = useT()
-  const tArgs = useTArgs()
   const managers = useManagers()
   const rules = usePrivacyStore((s) => s.rules)
   const blockedTotal = usePrivacyStore((s) => s.blockedTotal)
@@ -114,8 +121,6 @@ export default function PrivacySecuritySettings({ tab, onBack }: ReactScreenTabP
     switch (sub) {
       case 'BlockedUsers':
         return <BlockedUsers onBack={back} />
-      case 'AutoDeleteMessages':
-        return <AutoDeleteMessages onBack={back} />
     }
     return null
   }
@@ -188,11 +193,17 @@ export default function PrivacySecuritySettings({ tab, onBack }: ReactScreenTabP
           value={blockedValue}
           onClick={() => setSub('BlockedUsers')}
         />
+        {/* tweb `privacyAndSecurity.tsx:238-247`: вкладка слайдера с текущим
+            периодом; `onSaved` обновляет подпись строки (`:370-376`). Пока
+            период не пришёл — строка «заморожена» (`autoDeleteFrozen`). */}
         <Row
           icon={<TgIcon name="auto_delete_filled" size={24} />}
           label="AutoDeleteMessages"
-          value={autoDelete == null ? undefined : autoDeleteLabel(autoDelete, t, tArgs)}
-          onClick={() => setSub('AutoDeleteMessages')}
+          value={autoDelete == null ? undefined : autoDeleteSubtitle(autoDelete, t)}
+          onClick={() => {
+            if (autoDelete == null) return
+            void slider.createTab(AppMessagesAutoDeleteTab).open({ period: autoDelete, onSaved: setAutoDelete })
+          }}
         />
         <Row
           icon={<TgIcon name="key_filled" size={24} />}

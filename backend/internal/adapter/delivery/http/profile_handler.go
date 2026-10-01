@@ -54,36 +54,21 @@ func userJSON(u domain.UserRecord) domain.UsersUserFull {
 	return domain.NewUsersUserFull(full, selfUser(u), true)
 }
 
-type birthdayBody struct {
-	Day   int  `json:"day"`
-	Month int  `json:"month"`
-	Year  *int `json:"year"`
-}
-
-// parseBirthday converts the optional JSON birthday into a *time.Time. A nil raw
-// (key absent) or an explicit null both yield (nil, nil): the key being absent is
-// handled by the caller (it keeps the current value); an explicit null clears it.
+// parseBirthday converts the optional JSON birthday (конструктор `birthday`:
+// day, month, year?) into a *time.Time. A nil raw (key absent) or an explicit
+// null both yield (nil, nil): the key being absent is handled by the caller (it
+// keeps the current value); an explicit null clears it. Границы даты —
+// domain.Birthday.Time, те же, что у предложенной контакту даты.
 func parseBirthday(raw json.RawMessage) (*time.Time, error) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return nil, nil
 	}
-	var b birthdayBody
+	var b domain.Birthday
 	if err := json.Unmarshal(raw, &b); err != nil {
 		return nil, errors.New("invalid birthday")
 	}
-	if b.Day < 1 || b.Day > 31 || b.Month < 1 || b.Month > 12 {
-		return nil, errors.New("invalid birthday")
-	}
-	year := domain.BirthdayNoYear
-	if b.Year != nil {
-		if *b.Year < 1900 || *b.Year > time.Now().Year() {
-			return nil, errors.New("invalid birthday year")
-		}
-		year = *b.Year
-	}
-	t := time.Date(year, time.Month(b.Month), b.Day, 0, 0, 0, 0, time.UTC)
-	// Reject overflow (e.g. 31 Feb rolled into March).
-	if t.Day() != b.Day || int(t.Month()) != b.Month {
+	t, err := b.Time(time.Now())
+	if err != nil {
 		return nil, errors.New("invalid birthday")
 	}
 	return &t, nil

@@ -31,7 +31,7 @@
 // `string | number` (у нас всюду число), а `messageActionChatEditPhoto.photo`
 // тянет схемный `Photo` вместо нашего `MyPhoto` (`core/media/messageMedia.ts`),
 // у которого `bytes` ступеней — base64-строка, а не `Uint8Array`.
-import type { ChatBannedRights } from '../peers/peer'
+import type { Birthday, ChatBannedRights } from '../peers/peer'
 import type { MyPhoto, TextWithEntities } from '../media/messageMedia'
 import type { Peer } from '../peers/peerId'
 
@@ -114,6 +114,15 @@ export interface MessageActionSuggestProfilePhoto {
   _: 'messageActionSuggestProfilePhoto'
   photo?: MyPhoto
   accepted?: boolean
+}
+
+/** messageActionSuggestBirthday#2c8f2a25 birthday:Birthday = MessageAction;
+ *
+ *  «Предложил указать дату рождения» (`users.suggestBirthday`): дата едет
+ *  внутри действия. */
+export interface MessageActionSuggestBirthday {
+  _: 'messageActionSuggestBirthday'
+  birthday: Birthday
 }
 
 /** messageActionSuggestedPostApproval#ee7a1596 flags:# rejected:flags.0?true …
@@ -275,6 +284,7 @@ export type MessageAction =
   | MessageActionSetMessagesTTL
   | MessageActionTopicCreate
   | MessageActionSuggestProfilePhoto
+  | MessageActionSuggestBirthday
   | MessageActionSuggestedPostApproval
   | MessageActionPhoneCall
   | MessageActionStarGift

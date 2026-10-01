@@ -27,8 +27,8 @@
  * НЕ портированы (предмета нет вовсе — таблица адресов оригинала):
  *  • `Location` (`:873-893`) — геолокация канала (`ChannelFull.location`),
  *    поля нет в нашем `ChannelFull` (`core/peers/peer.ts`);
- *  • `ContactNote` (`:833-871`) — заметка о контакте (`UserFull.note`), поля
- *    нет в нашем `UserFull`;
+ *  • `ContactNote` (`:833-871`) — заметка о контакте (`UserFull.note`): поле
+ *    на проводе есть (О-20 плана волны 7), строка — О-23 того же плана;
  *  • `BusinessHours` (`:1082-1111`) — часы работы бизнес-аккаунта
  *    (`UserFull.business_work_hours` + `HelpTimezonesList` с сервера), обоих
  *    предметов нет;

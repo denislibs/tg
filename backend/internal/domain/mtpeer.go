@@ -788,6 +788,29 @@ func NewBirthday(t time.Time) Birthday {
 	return b
 }
 
+// Time — дата рождения ВВОДОМ: проверяет границы и переводит в нашу
+// time.Time (год-сентинел BirthdayNoYear, когда года нет). Одно место правил
+// на оба входа — собственную дату (PATCH /me) и предложенную контакту
+// (users.suggestBirthday): день/месяц в своих границах, переполнение
+// («31 февраля» → март) отвергается, год — от 1900 до текущего.
+func (b Birthday) Time(now time.Time) (time.Time, error) {
+	if b.Day < 1 || b.Day > 31 || b.Month < 1 || b.Month > 12 {
+		return time.Time{}, ErrInvalid
+	}
+	year := BirthdayNoYear
+	if b.Year != 0 {
+		if b.Year < 1900 || b.Year > now.Year() {
+			return time.Time{}, ErrInvalid
+		}
+		year = b.Year
+	}
+	t := time.Date(year, time.Month(b.Month), b.Day, 0, 0, 0, 0, time.UTC)
+	if t.Day() != b.Day || int(t.Month()) != b.Month {
+		return time.Time{}, ErrInvalid
+	}
+	return t, nil
+}
+
 // ── UserFull ────────────────────────────────────────────────────────────────
 
 // UserFullTag — дискриминатор `_` конструктора userFull.
@@ -830,6 +853,15 @@ type UserFull struct {
 	// Класть id в поле, где на фазе 2 будет объект, значило бы сломать кодек
 	// молча. См. docs/readiness/port-divergences.md.
 	ThemeEmoticon string `json:"theme_emoticon,omitempty"`
+	// PersonalPhoto — flags.21?Photo: фото, которое ЗРИТЕЛЬ поставил этому
+	// контакту сам (photos.uploadContactProfilePhoto, у нас
+	// PUT /contacts/{id}/photo). Сам контакт о нём не знает; краткая форма
+	// того же ответа несёт его же с pFlags.personal.
+	PersonalPhoto *Photo `json:"personal_photo,omitempty"`
+	// Note — flags2.22?TextWithEntities: заметка зрителя о контакте
+	// (contacts.updateContactNote / contacts.addContact.note). Заметки нет —
+	// ключа нет.
+	Note *TextWithEntities `json:"note,omitempty"`
 }
 
 // UserFullFlags — булевы флаги userFull в форме, удобной для вызова.

@@ -392,20 +392,29 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // «Новое сообщение»): −2 наших ключа у всех пяти — `Compose.NewMessage` (заголовок
 // снесённого «Нового сообщения»: у tweb это вкладка «Контакты») и `Contacts.NotFound`
 // (пустая выдача снесённого экрана). Итог: ru 1402, uk 748, es/de 745, fr 740.
+// Пилюля `messageActionSuggestBirthday` (users.suggestBirthday, О-22 плана
+// волны 7): у ru +2 ключа tweb — `BirthdaySuggestIncoming`/`Outgoing`: ru 1404.
+//
+// Задача 20 плана 2D (вкладка «Автоудаление», порт tweb autoDeleteMessages/*):
+// +3 ключа tweb lang.ts всем пяти — `AutoDeleteMessages.InfoDefault` (описание
+// попапа своего срока) и `UnsavedChanges`/`UnsavedChangesDescription.Privacy`
+// (подтверждение несохранённого на закрытии). Итог (поверх 0а-1 и О-22): ru 1407, uk 751,
+// es/de 748, fr 743.
+//
 // Задача 27 плана 2D («Редактировать профиль» `AppEditProfileTab`, порт tweb
 // editProfile.tsx): снесён React-экран `settings/EditProfile.tsx`, с ним — шесть
 // наших ключей без других читателей (`EditProfile.LastNameLabel`,
 // `EditProfile.Username.Checking`/`.Rules`/`.TooShort`/`.Caption`,
 // `EditProfile.VideoError`; у uk/es/de/fr их было по три). У ru +4 ключа tweb
 // lang.ts: `EditAccount.Username`, `EditProfile.Username.Invalid`,
-// `Login.Register.LastName.Placeholder`, `UsernameHelp`. Итог (поверх задачи 21
-// и 0а-1): ru 1400, uk 745, es/de 742, fr 737.
+// `Login.Register.LastName.Placeholder`, `UsernameHelp`. Итог (поверх задач 21,
+// 0а-1, 20 и О-22 волны 7): ru 1405, uk 748, es/de 745, fr 740.
 const COMPOSITION = {
-  ru: { keys: 1400, plural: 42 },
-  uk: { keys: 745, plural: 31 },
-  es: { keys: 742, plural: 30 },
-  de: { keys: 742, plural: 31 },
-  fr: { keys: 737, plural: 30 },
+  ru: { keys: 1405, plural: 42 },
+  uk: { keys: 748, plural: 31 },
+  es: { keys: 745, plural: 30 },
+  de: { keys: 745, plural: 31 },
+  fr: { keys: 740, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -535,14 +544,16 @@ const COMPOSITION = {
 // Задачей 0а-1 волны 7 — минус `Compose.NewMessage` и `Contacts.NotFound` у всех пяти:
 // наши ключи снесённых React-экранов «Новое сообщение» и «Контакты» (вкладка контактов
 // tweb пустой выдачи не подписывает, а «Новое сообщение» — это она же).
+// Пилюлей предложения даты рождения — у ru +2 ключа tweb (разбор — там же).
+// Задачей 20 плана 2D — три ключа вкладки «Автоудаление» у всех пяти (там же).
 // Задачей 27 плана 2D — минус ключи снесённого React-экрана профиля у всех пяти,
 // у ru плюс четыре ключа tweb (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: 'fce7bb17',
-  uk: '00828f9f',
-  es: '86cb7012',
-  de: 'bb972151',
-  fr: 'b03cb463',
+  ru: '7330fa80',
+  uk: 'e01bf738',
+  es: '64796719',
+  de: '3050866a',
+  fr: '743a50e4',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

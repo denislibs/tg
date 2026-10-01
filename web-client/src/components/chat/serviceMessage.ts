@@ -30,7 +30,10 @@
 //  • Медиа сервисного бабла — только смена фото чата (`wrapServiceMediaBubble`,
 //    `chat/serviceMediaBubble.ts`). Кнопка «Установить фото» у `suggest_photo`
 //    и solid-компоненты (подарки, giveaway, NoForwardsRequest) НЕ портированы —
-//    это отдельные подсистемы, здесь была бы заглушка.
+//    это отдельные подсистемы, здесь была бы заглушка. Так же и тело
+//    предложения даты рождения (tweb `bubbles/suggestBirthday.tsx`: торт,
+//    колонки дня/месяца/года, кнопка «Посмотреть» → `showBirthdayPopup`) —
+//    О-24 плана волны 7; у `messageActionSuggestBirthday` пока только фраза.
 //  • `is-group-first`/`is-group-last` на бабл не вешаются: как и в tweb, их
 //    владелец — группировка (`components/chat/bubbleGroups.ts`).
 import { wrapEmojiText } from '@lib/richtext'

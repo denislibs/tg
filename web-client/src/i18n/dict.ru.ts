@@ -984,6 +984,9 @@ const ru = {
   'CreateBot.Username.Taken': 'Это имя пользователя уже занято.',
   Birthday: 'Дата рождения',
   'Birthday.PrivacyHint': 'В настройках можно выбрать, кто будет видеть Ваш день рождения.',
+  // Пилюля `messageActionSuggestBirthday` (tweb messageActionTextNewUnsafe.ts:901-906).
+  BirthdaySuggestIncoming: '%s предлагает вам указать дату рождения',
+  BirthdaySuggestOutgoing: 'Вы предложили %s указать дату рождения',
   // Автомат состояния соединения (components/connectionStatus.ts, порт tweb
   // ConnectionStatusComponent). Ключи — английские строки ДОСЛОВНО из
   // tweb/src/lang.ts: 'ConnectionStatus.ReconnectInPlain' (:116),
@@ -997,7 +1000,7 @@ const ru = {
   DiscardVoiceMessageTitle: 'Удалить голосовое сообщение?',
   'Composer.DiscardVoice.Text': 'Вы уверены, что хотите удалить это голосовое сообщение?',
   Cancel: 'Отмена',
-  Discard: 'Удалить',
+  Discard: 'Не сохранять',
   BlockUser: 'Заблокировать пользователя',
   BlockedUsersInfoShort: 'Заблокированные пользователи не могут писать вам и видеть ваш профиль.',
   BlockedEmptyDescription: 'Вы никого не заблокировали.',
@@ -1137,6 +1140,9 @@ const ru = {
   'AutoDeleteMessages.SectionCaption':
     'Включите, чтобы все новые сообщения в Ваших чатах, созданных после изменения настройки, автоматически удалялись для всех участников спустя выбранное время. Автоудаление в ранее созданных чатах включается отдельно.',
   'AutoDeleteMessages.SetOtherTime': 'Выбрать другой срок',
+  'AutoDeleteMessages.InfoDefault': 'Автоматически удалять сообщения для всех в начатых вами чатах через заданное время.',
+  UnsavedChanges: 'Несохранённые изменения',
+  'UnsavedChangesDescription.Privacy': 'Вы изменили настройки конфиденциальности. Сохранить изменения?',
   // Разряды длительности (`components/wrappers/wrapDuration.ts`, задача 7 плана 2D)
   Seconds: {
     one_value: '%1$d секунда',
