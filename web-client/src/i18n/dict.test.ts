@@ -388,12 +388,16 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // ключей снесённого React-экрана без других читателей — `Passkeys.Add`,
 // `Passkeys.Caption`, `Passkeys.Created`, `Passkeys.Item`, `Passkeys.LastUsed`,
 // `Passkeys.Unsupported`, `Passkey.CreateError`. Число строк то же, набор другой.
+// Задача 0а-1 волны 7 (вкладка контактов вместо React-экранов «Контакты» и
+// «Новое сообщение»): −2 наших ключа у всех пяти — `Compose.NewMessage` (заголовок
+// снесённого «Нового сообщения»: у tweb это вкладка «Контакты») и `Contacts.NotFound`
+// (пустая выдача снесённого экрана). Итог: ru 1402, uk 748, es/de 745, fr 740.
 const COMPOSITION = {
-  ru: { keys: 1404, plural: 42 },
-  uk: { keys: 750, plural: 31 },
-  es: { keys: 747, plural: 30 },
-  de: { keys: 747, plural: 31 },
-  fr: { keys: 742, plural: 30 },
+  ru: { keys: 1402, plural: 42 },
+  uk: { keys: 748, plural: 31 },
+  es: { keys: 745, plural: 30 },
+  de: { keys: 745, plural: 31 },
+  fr: { keys: 740, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -520,12 +524,15 @@ const COMPOSITION = {
 // ключи снесённого `PremiumManage` (разбор — там же).
 // Задачей 21 плана 2D — ключи вкладки «Passkeys» вместо ключей снесённого
 // React-экрана, −7 +7 у всех пяти (разбор — у `COMPOSITION` выше).
+// Задачей 0а-1 волны 7 — минус `Compose.NewMessage` и `Contacts.NotFound` у всех пяти:
+// наши ключи снесённых React-экранов «Новое сообщение» и «Контакты» (вкладка контактов
+// tweb пустой выдачи не подписывает, а «Новое сообщение» — это она же).
 const FINGERPRINT = {
-  ru: '0ed755ed',
-  uk: '56aa3c92',
-  es: 'b07717b9',
-  de: '33e35414',
-  fr: '1901918e',
+  ru: '65e68ee4',
+  uk: '38a0b8a3',
+  es: '68937dba',
+  de: '0e73a8c9',
+  fr: '055afa1f',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

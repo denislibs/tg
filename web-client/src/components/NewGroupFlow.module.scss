@@ -3,8 +3,8 @@
 // секция участников. Цвета — через CSS-переменные темы.
 @use '../styles/foundation' as *;
 
-// Въезд экрана справа — см. развёрнутый разбор механики в
-// ContactsView.module.scss (`tweb src/components/transition.ts:23-42` +
+// Въезд экрана справа — кейфрейм на вставке узла, как вкладки слайдера tweb
+// (`tweb src/components/transition.ts:23-42` +
 // `tweb src/scss/partials/_slider.scss:226-241`).
 .screen {
   position: absolute;

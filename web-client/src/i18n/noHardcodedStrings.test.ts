@@ -52,6 +52,7 @@ const NOT_UI: Record<string, string> = {
   'src/lib/richtext/tld.ts': 'список доменов верхнего уровня — ДАННЫЕ («москва», «онлайн», «сайт»), а не текст',
   'src/config/latinizeMap.ts': 'таблица транслитерации поискового индекса (порт tweb) — ДАННЫЕ «буква → латиница»',
   'src/helpers/cleanSearchText.ts': 'раскладка «кириллица → латинская клавиша» для запроса не в той раскладке — ДАННЫЕ',
+  'src/helpers/string/removeAccents.ts': 'таблица свёртки акцентов ключа сортировки контактов (порт tweb/tdesktop, «ё → е») — ДАННЫЕ',
   'src/core/dom/loadFonts.ts': 'глиф-образец для замера готовности шрифта, на экран не попадает',
   'src/core/stickers/testSticker.ts': 'фабрика фикстур для тестов — заголовок набора, а не интерфейс',
   'src/components/emoji/emojiData.ts':
