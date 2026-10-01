@@ -18,6 +18,9 @@ const lang = {
   Add: 'Add',
   AddContact: 'Add to contacts',
   AddFactCheck: 'Add Fact Check',
+  AddMembersAlertCountText: 'Are you sure you want to add %1$s to **%2$s**?',
+  AddMembersAlertNamesText: 'Are you sure you want to add %1$s to **%2$s**?',
+  AddMembersAlertTitle: 'Add %1$s',
   AddOneMemberAlertTitle: 'Add member',
   AddToChannel: 'Add to Channel',
   AddToFavorites: 'Add to Favorites',
@@ -595,6 +598,7 @@ const lang = {
   'InviteLinks.TimeLimitHelp': 'You can make the link expire after a certain time.',
   'InviteLinks.UsesLimitHelp': 'You can make the link work only for a certain number of users.',
   'InviteLinks.View': 'View link',
+  InviteToGroupError: 'Sorry, you can\'t add this user to groups because of user\'s privacy settings.',
   JumpToDate: 'Jump to Date',
   'KeyboardShortcuts.Action.Bold': 'Bold',
   'KeyboardShortcuts.Action.ClosePopup': 'Close popup or menu',
@@ -816,14 +820,14 @@ const lang = {
   Never: 'Never',
   New: 'New',
   NewChannel: 'New Channel',
-  // ДВЕ РАЗНЫЕ РОЛИ у одного текста, и ключи поэтому тоже разные. `NewChannel`/`NewGroup`
-  // — ПУНКТЫ МЕНЮ создания («Создать канал»), а `*.DefaultTitle` — НАЗВАНИЕ чата, которое
-  // уезжает на сервер, когда пользователь оставил поле имени пустым, и которое читают все
-  // участники. Один ключ на обе роли давал по-русски группу с названием «Создать группу».
-  'NewChannel.DefaultTitle': 'New Channel',
   NewChecklist: 'New Checklist',
   'NewChecklist.TaskPlaceholder': 'Task',
   NewGroup: 'New Group',
+  // ДВЕ РАЗНЫЕ РОЛИ у одного текста, и ключи поэтому тоже разные. `NewGroup` — ПУНКТ
+  // МЕНЮ создания («Создать группу»), а `NewGroup.DefaultTitle` — НАЗВАНИЕ чата, которое
+  // уезжает на сервер, когда пользователь оставил поле имени пустым, и которое читают все
+  // участники. Один ключ на обе роли давал по-русски группу с названием «Создать группу».
+  // У канала пары нет: вкладка `AppNewChannelTab` без названия не создаёт (как tweb).
   'NewGroup.DefaultTitle': 'New Group',
   NewLink: 'New Link',
   NewPoll: 'New Poll',
@@ -1228,6 +1232,7 @@ const lang = {
   Send: 'Send',
   SendAsFile: 'Send as file',
   SendMessage: 'Send Message',
+  SendMessageTo: 'Add people...',
   'Separator.ShowLess': 'show less',
   'Separator.ShowMore': 'show more',
   SessionsInfo: 'Manage your sessions on all your devices.',

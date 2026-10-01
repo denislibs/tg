@@ -452,10 +452,10 @@ tweb `solidJsTabs/tabs.ts:262-270`. После создания — `AppAddMembe
 **Файлы:** создать `sidebarLeft/tabs/newChannel.solid.tsx` + тест; изменить `solidJsTabs/tabs.ts`;
 удалить `components/NewChannelFlow.tsx` (+ scss), ветку `newChannel`.
 
-- [ ] **Шаг 1–3:** прочитать; тесты: (а) название обязательно; (б) описание уходит в запрос;
+- [x] **Шаг 1–3:** прочитать; тесты: (а) название обязательно; (б) описание уходит в запрос;
   (в) после создания открывается выбор подписчиков, «пропустить» открывает канал; (г) владелец
   снимает остров. **Мутация:** не передавать описание — (б) краснеет.
-- [ ] **Шаг 4–6:** реализация, врезка, стенд — CH-01 (P0).
+- [x] **Шаг 4–6:** реализация, врезка, стенд — CH-01 (P0).
 
 **Готово когда:** `git grep -n "NewChannelFlow" web-client/src` пуст; CH-01 зелёный.
 **Оценка:** 1 день. **Зависимости:** 2D-28.
@@ -1363,6 +1363,11 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 | О-17 | Коллекция имён `usernames` (несколько имён, порядок, скрытие, покупка на Fragment): `UsernamesSection`, `purchaseUsernameCaption` | у чата одно поле `username` (`core/peers/predicates.ts`, `isPublic`) | `usernamesSection.tsx` 1:1 |
 | О-30 | Выделение контактов во вкладке контактов: `ContactsSelection` (`contactsSelection.ts` 50), меню строки `attachContactsContextMenu` (45), попап `confirmDeleteContacts` (`popups/deleteContacts.ts` 22), ключи `ContactsSelected`/`DeleteContactsTitle`/`DeleteContactsSubtitle` (коммит ee6f7f9c2) | база `DialogsSelectionBase` (`dialogsSelectionBase.ts` 531, коммит 60a83a6f1 — выделение чатов и тем) не портирована; бэкенд есть (`DELETE /contacts/{id}`) | порт выделения списков (60a83a6f1 → ee6f7f9c2, `docs/tweb/delta/part-5.md` группа 4) |
 | О-31 | `highlight: 'sort'` у `AppContactsTab`: ссылка `tg://contacts/sort` вспыхивает кнопкой сортировки (`flashControl`, `lib/settingsSearch/highlight.ts`) | нет ни обработчика внутренних ссылок, ни поиска по настройкам | `internalLinkProcessor` (Э5-4) и порт `lib/settingsSearch` |
+| О-40 | Лимит каналов: `handleChannelsTooMuch` + `showChannelsTooMuchPopup` (`popups/channelsTooMuch.tsx`) в «Новом канале» (`newChannel.tsx:52`) | бэкенд не знает отказа `CHANNELS_TOO_MUCH` и лимита каналов (0а-3) | попап лимита 1:1 |
+| О-41 | `handleMissingInvitees` (`addChatUsers.ts:15-133`) — приглашение ссылкой тех, кого нельзя добавить, премиум-ветка | `POST /chats/{id}/members` отвечает `boolTrue`, `missingInvitees` нет (0а-3) | приглашение ссылкой после отказа |
+| О-42 | Приглашение списком (`inviteToChannel(id, peerIds)`/`addChatUser(id, peerIds, fwdLimit)`) и чекбокс «показать последние 100 сообщений» (`addChatUsers.ts:169-190`) | ручка приглашает одного пользователя, `fwd_limit` нет (0а-3) | один запрос на выбор, чекбокс истории для групп |
+| О-43 | Тост `InviteToGroupError` на отказе приватности (`addChatUsers.ts:211-217`) | бэкенд отдаёт текст `privacy` (`group_handler.go:43-44`), а не `USER_PRIVACY_RESTRICTED` — ветка тоста не срабатывает (0а-3) | тост вместо необработанного отказа |
+| О-44 | Диалог нового канала из ответа создания: у tweb `channels.createChannel` отдаёт `Updates`, `processUpdateMessage` ставит диалог (`appChatsManager.ts:587-593`); у нас вкладка зовёт `dialogs.refresh()` (`newChannel.solid.tsx`, расхождение 8) | `POST /channels` отвечает `messages.chatFull` без диалога, кадра о новом канале нет; служебного «канал создан» тоже нет (0а-3) | снятие перезапроса, пилюля `messageActionChannelCreate` |
 
 ## Что остаётся волне 8 (после этой программы)
 

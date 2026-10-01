@@ -420,12 +420,18 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Задача 22 плана 2D (вкладка «Заблокированные», порт tweb blockedUsers.tsx): −1 наш
 // ключ у всех пяти — `BlockedEmptyDescription` (пустое состояние снесённого
 // React-экрана; у оригинала его нет). Итог: ru 1409, uk 755, es/de 752, fr 747.
+// Задача 0а-3 волны 7 (вкладка «Новый канал», порт tweb newChannel.tsx +
+// addChatUsers.ts): у ru +5 ключей tweb lang.ts — подтверждение `addChatUsers`
+// (`AddMembersAlertTitle`/`AddMembersAlertCountText`/`AddMembersAlertNamesText`,
+// `InviteToGroupError`) и поле поиска выбора подписчиков `SendMessageTo`; −1 у всех
+// пяти: со сносом React-экрана `NewChannelFlow` ушёл наш `NewChannel.DefaultTitle`
+// (вкладка tweb без названия канал не создаёт). Итог: ru 1414, uk 755, es/de 752, fr 747.
 const COMPOSITION = {
-  ru: { keys: 1410, plural: 42 },
-  uk: { keys: 760, plural: 31 },
-  es: { keys: 756, plural: 30 },
-  de: { keys: 757, plural: 31 },
-  fr: { keys: 751, plural: 30 },
+  ru: { keys: 1414, plural: 42 },
+  uk: { keys: 759, plural: 31 },
+  es: { keys: 755, plural: 30 },
+  de: { keys: 756, plural: 31 },
+  fr: { keys: 750, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -563,12 +569,14 @@ const COMPOSITION = {
 // React-экрана (разбор — у `COMPOSITION` выше).
 // Задачей 22 плана 2D — минус `BlockedEmptyDescription` у всех пяти (разбор — у
 // `COMPOSITION` выше).
+// Задачей 0а-3 волны 7 — у ru +5 ключей tweb, у всех пяти минус `NewChannel.DefaultTitle`
+// снесённого React-экрана (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: 'ad147965',
-  uk: 'd685a5b4',
-  es: '8255fee9',
-  de: '5c2eca72',
-  fr: '5a615214',
+  ru: '1f76d625',
+  uk: 'b0838d96',
+  es: 'f949f647',
+  de: 'c2c991bc',
+  fr: 'd921175e',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
