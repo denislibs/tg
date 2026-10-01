@@ -3,10 +3,9 @@
 // код-пароль, облачный пароль, ключи доступа, сеансы) + секция privacy-правил
 // с живыми значениями и счётчиками исключений.
 import type { LangPackKey } from '@/lang'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import TgIcon from '../TgIcon'
 import { SettingsScreen, Section, Row } from './kit'
-import BlockedUsers from './BlockedUsers'
 import Passkeys from './Passkeys'
 import PasskeyIntroPopup from './PasskeyIntroPopup'
 import AutoDeleteMessages, { autoDeleteLabel } from './AutoDeleteMessages'
@@ -17,7 +16,9 @@ import { useManagers } from '../../core/hooks/useManagers'
 import { commandThenReload } from '../../core/accountTransition'
 import { openActiveSessionsTab } from '../sidebarLeft/columnSlider'
 import type { ReactScreenTabProps } from '../sidebarLeft/reactScreenTab'
+import rootScope from '@lib/rootScope'
 import {
+  AppBlockedUsersTab,
   AppPasscodeEnterPasswordTab,
   AppPasscodeLockTab,
   AppPrivacyAboutTab,
@@ -85,6 +86,28 @@ export default function PrivacySecuritySettings({ tab, onBack }: ReactScreenTabP
   const rules = usePrivacyStore((s) => s.rules)
   const blockedTotal = usePrivacyStore((s) => s.blockedTotal)
   const [sub, setSub] = useState<string | null>(null)
+  const setBlockedTotal = usePrivacyStore((s) => s.setBlockedTotal)
+
+  // tweb `privacyAndSecurity.tsx:130-139`, `:313-337`: первая страница чёрного
+  // списка грузится заранее и уезжает во вкладку полезной нагрузкой; пока она
+  // не пришла, строка «заморожена». Перечитывается на каждый `peer_block`.
+  const blockedPeerIds = useRef<PeerId[] | null>(null)
+  useEffect(() => {
+    let alive = true
+    const updateBlocked = () => {
+      void managers.privacy.getBlocked().then((res) => {
+        if (!alive) return
+        setBlockedTotal(res.count)
+        blockedPeerIds.current = res.peerIds
+      }).catch(() => {})
+    }
+    rootScope.addEventListener('peer_block', updateBlocked)
+    updateBlocked()
+    return () => {
+      alive = false
+      rootScope.removeEventListener('peer_block', updateBlocked)
+    }
+  }, [managers, setBlockedTotal])
 
   // Сабтайтлы On/Off и период автоудаления (перечитываются при возврате
   // из под-экранов).
@@ -115,8 +138,6 @@ export default function PrivacySecuritySettings({ tab, onBack }: ReactScreenTabP
     if (!sub) return null
     const back = () => setSub(null)
     switch (sub) {
-      case 'BlockedUsers':
-        return <BlockedUsers onBack={back} />
       case 'Privacy.Passkeys':
         return <Passkeys onBack={back} />
       case 'AutoDeleteMessages':
@@ -170,7 +191,10 @@ export default function PrivacySecuritySettings({ tab, onBack }: ReactScreenTabP
           icon={<TgIcon name="person_crossed_filled" size={24} />}
           label="BlockedUsers"
           value={blockedValue}
-          onClick={() => setSub('BlockedUsers')}
+          onClick={() => {
+            // tweb :217 — `if(!blockedFrozen()) tab.slider.createTab(AppBlockedUsersTab).open({peerIds})`
+            if (blockedPeerIds.current) void slider.createTab(AppBlockedUsersTab).open({ peerIds: blockedPeerIds.current })
+          }}
         />
         <Row
           icon={<TgIcon name="auto_delete_filled" size={24} />}

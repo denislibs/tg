@@ -1022,7 +1022,7 @@ setRule` + зеркало ответа в стор (хаб перерисовы�
 **Зависимости:** 5, 2C. **Врезка:** `tabs.ts`, `PrivacySecuritySettings.tsx`; удалить
 `settings/Passkeys.tsx`, `PasskeyIntroPopup.tsx` + `.module.scss`.
 
-### Задача 22: «Заблокированные» (2C)
+### Задача 22: «Заблокированные» (2C) — ✅ сделано (PR feat/2d-22-blocked-tab)
 
 **Порт:** `blockedUsers.tsx` (169) → `sidebarLeft/tabs/blockedUsers.solid.tsx`; вкладка :252
 (`onOpenAfterTimeout: scrollable.onScroll()`). Подпись `BlockedUsersInfo` НАД карточкой (`:61`,
@@ -1031,6 +1031,20 @@ setRule` + зеркало ответа в стор (хаб перерисовы�
 `AppSelectPeers` задачи 16), меню «Unblock» (`lockoff`), подгрузка по 50, `peer_block`.
 **Зависимости:** 16, 2C. **Врезка:** `tabs.ts`, `PrivacySecuritySettings.tsx`; удалить
 `settings/BlockedUsers.tsx`, `PrivacyUserPicker.tsx`.
+
+**Итог (2026-10-01):** `sidebarLeft/tabs/blockedUsers.solid.tsx` + вкладка `AppBlockedUsersTab`
+блоком в конце `tabs.ts` (tweb :248-258, `onOpenAfterTimeout: scrollable.onScroll()`). Поправки к постановке:
+- `showPickUserPopup` (2C-16) ещё нет — FAB открывает `AppAddMembersTab` (задача 16) с заголовком и
+  подсказкой оригинала, `// ВРЕМЕННО до 2C-16` у вызова: выбор «Далее», можно нескольких.
+- `peer_block` у нас не было: событие заведено в каталоге `rootScope` и шлётся воркером после ответа
+  сервера — `privacyManager.toggleBlock` (порт `appUsersManager.toggleBlock` + `onUpdatePeerBlocked`,
+  замена `block`/`unblock`); `blocked()` → `getBlocked()` (порт `appUsersManager.getBlocked`:
+  карточки — `peers.saveApiPeers`, наружу `{count, peerIds}`). Вызывающие (`useHeaderMenuActions`,
+  `loadPrivacy`) переведены. Ручек бэкенда хватило — новых О-n нет.
+- Хаб (React до 2D-23) грузит первую страницу заранее и перечитывает её на `peer_block`
+  (`privacyAndSecurity.tsx:130-139`, `:313-337`), строка до ответа «заморожена».
+- Снесены `settings/BlockedUsers.tsx`, `PrivacyUserPicker.tsx`, наш ключ `BlockedEmptyDescription`
+  (у tweb пустого состояния нет); снимок словарей пересчитан.
 
 ### Задача 23: хаб «Конфиденциальность и безопасность»
 

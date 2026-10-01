@@ -59,7 +59,7 @@ function makeManagers() {
         passwordState: vi.fn(async() => ({ enabled: false })),
         passkeysList: vi.fn(async() => []),
       },
-      privacy: { autoDelete: vi.fn(async() => 0) },
+      privacy: { getBlocked: async() => ({ count: 0, peerIds: [] }), autoDelete: vi.fn(async() => 0) },
       persist: { clearAll: vi.fn(async() => {}) },
     } as unknown as Managers,
   }

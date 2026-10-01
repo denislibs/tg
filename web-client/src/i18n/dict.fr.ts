@@ -444,7 +444,6 @@ const fr = {
   'EditProfile.Username.Caption': 'Vous pouvez choisir un nom d\'utilisateur public pour que les gens puissent vous trouver et vous contacter sans connaître votre numéro.',
   BlockUser: 'Bloquer l\'utilisateur',
   BlockedUsersInfoShort: 'Les utilisateurs bloqués ne peuvent pas vous envoyer de messages ni voir votre profil.',
-  BlockedEmptyDescription: 'Vous n\'avez bloqué personne.',
   'TwoStepAuth.SetPasswordCaption': 'Définissez un mot de passe supplémentaire qui sera requis lors de la connexion sur un nouvel appareil.',
   TwoStepVerificationSetPassword: 'Définir le mot de passe',
   'TwoStepAuth.CreateCaption': 'Créez un mot de passe pour protéger votre compte.',

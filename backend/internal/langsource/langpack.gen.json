@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 35,
+      "version": 36,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -399,10 +399,6 @@
         {
           "key": "BlockedEmpty",
           "value": "None"
-        },
-        {
-          "key": "BlockedEmptyDescription",
-          "value": "You haven't blocked anyone."
         },
         {
           "key": "BlockedUsers",
@@ -5799,7 +5795,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 35,
+      "version": 36,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -9134,10 +9130,6 @@
           "value": "Заблокированные пользователи не могут писать вам и видеть ваш профиль."
         },
         {
-          "key": "BlockedEmptyDescription",
-          "value": "Вы никого не заблокировали."
-        },
-        {
           "key": "TwoStepAuth.SetPasswordCaption",
           "value": "Задайте дополнительный пароль, который понадобится при входе на новом устройстве."
         },
@@ -11633,7 +11625,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -13248,10 +13240,6 @@
           "value": "Les utilisateurs bloqués ne peuvent pas vous envoyer de messages ni voir votre profil."
         },
         {
-          "key": "BlockedEmptyDescription",
-          "value": "Vous n'avez bloqué personne."
-        },
-        {
           "key": "TwoStepAuth.SetPasswordCaption",
           "value": "Définissez un mot de passe supplémentaire qui sera requis lors de la connexion sur un nouvel appareil."
         },
@@ -14699,7 +14687,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16317,10 +16305,6 @@
           "value": "Blockierte Benutzer können dir keine Nachrichten senden und dein Profil nicht sehen."
         },
         {
-          "key": "BlockedEmptyDescription",
-          "value": "Du hast niemanden blockiert."
-        },
-        {
           "key": "TwoStepAuth.SetPasswordCaption",
           "value": "Lege ein zusätzliches Passwort fest, das beim Anmelden auf einem neuen Gerät benötigt wird."
         },
@@ -17787,7 +17771,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -19410,10 +19394,6 @@
           "value": "Los usuarios bloqueados no pueden enviarte mensajes ni ver tu perfil."
         },
         {
-          "key": "BlockedEmptyDescription",
-          "value": "No has bloqueado a nadie."
-        },
-        {
           "key": "TwoStepAuth.SetPasswordCaption",
           "value": "Establece una contraseña adicional que se requerirá al iniciar sesión en un nuevo dispositivo."
         },
@@ -20873,7 +20853,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 22,
+      "version": 23,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -22514,10 +22494,6 @@
         {
           "key": "BlockedUsersInfoShort",
           "value": "Заблоковані користувачі не можуть писати вам і бачити ваш профіль."
-        },
-        {
-          "key": "BlockedEmptyDescription",
-          "value": "Ви нікого не заблокували."
         },
         {
           "key": "TwoStepAuth.SetPasswordCaption",

@@ -467,7 +467,6 @@ const uk = {
   'EditProfile.Username.Caption': 'Ви можете обрати публічне ім\'я користувача, щоб вас могли знаходити та зв\'язуватися з вами, не знаючи номера телефону.',
   BlockUser: 'Заблокувати користувача',
   BlockedUsersInfoShort: 'Заблоковані користувачі не можуть писати вам і бачити ваш профіль.',
-  BlockedEmptyDescription: 'Ви нікого не заблокували.',
   'TwoStepAuth.SetPasswordCaption': 'Встановіть додатковий пароль, який знадобиться під час входу на новому пристрої.',
   TwoStepVerificationSetPassword: 'Встановити пароль',
   'TwoStepAuth.CreateCaption': 'Створіть пароль для захисту акаунту.',
