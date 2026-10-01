@@ -37,7 +37,7 @@ func (i *Interactor) SetFactCheck(ctx context.Context, chatID, msgID, userID int
 	}
 	fc := &domain.FactCheck{
 		Text:     text,
-		Entities: sanitizeEntities(entities),
+		Entities: domain.SanitizeEntities(entities),
 		Country:  sanitizeCountry(country),
 	}
 	return i.applyFactCheck(ctx, chatID, msgID, fc)

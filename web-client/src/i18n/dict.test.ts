@@ -392,15 +392,23 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // «Новое сообщение»): −2 наших ключа у всех пяти — `Compose.NewMessage` (заголовок
 // снесённого «Нового сообщения»: у tweb это вкладка «Контакты») и `Contacts.NotFound`
 // (пустая выдача снесённого экрана). Итог: ru 1402, uk 748, es/de 745, fr 740.
+// Пилюля `messageActionSuggestBirthday` (users.suggestBirthday, О-22 плана
+// волны 7): у ru +2 ключа tweb — `BirthdaySuggestIncoming`/`Outgoing`: ru 1404.
+//
+// Задача 20 плана 2D (вкладка «Автоудаление», порт tweb autoDeleteMessages/*):
+// +3 ключа tweb lang.ts всем пяти — `AutoDeleteMessages.InfoDefault` (описание
+// попапа своего срока) и `UnsavedChanges`/`UnsavedChangesDescription.Privacy`
+// (подтверждение несохранённого на закрытии). Итог (поверх 0а-1 и О-22): ru 1407, uk 751,
+// es/de 748, fr 743.
 // Задача 22 плана 2D (вкладка «Заблокированные», порт tweb blockedUsers.tsx): −1 наш
 // ключ у всех пяти — `BlockedEmptyDescription` (пустое состояние снесённого
-// React-экрана; у оригинала его нет). Итог: ru 1401, uk 747, es/de 744, fr 739.
+// React-экрана; у оригинала его нет). Итог: ru 1406, uk 750, es/de 747, fr 742.
 const COMPOSITION = {
-  ru: { keys: 1401, plural: 42 },
-  uk: { keys: 747, plural: 31 },
-  es: { keys: 744, plural: 30 },
-  de: { keys: 744, plural: 31 },
-  fr: { keys: 739, plural: 30 },
+  ru: { keys: 1406, plural: 42 },
+  uk: { keys: 750, plural: 31 },
+  es: { keys: 747, plural: 30 },
+  de: { keys: 747, plural: 31 },
+  fr: { keys: 742, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -530,14 +538,16 @@ const COMPOSITION = {
 // Задачей 0а-1 волны 7 — минус `Compose.NewMessage` и `Contacts.NotFound` у всех пяти:
 // наши ключи снесённых React-экранов «Новое сообщение» и «Контакты» (вкладка контактов
 // tweb пустой выдачи не подписывает, а «Новое сообщение» — это она же).
+// Пилюлей предложения даты рождения — у ru +2 ключа tweb (разбор — там же).
+// Задачей 20 плана 2D — три ключа вкладки «Автоудаление» у всех пяти (там же).
 // Задачей 22 плана 2D — минус `BlockedEmptyDescription` у всех пяти (разбор — у
 // `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: 'e9b955c5',
-  uk: '07daf24c',
-  es: '9fcec1d3',
-  de: '3e7f503a',
-  fr: 'ebe9e988',
+  ru: 'b748e6dc',
+  uk: 'febc49c1',
+  es: 'ce0e7182',
+  de: '2766a1df',
+  fr: '84e81489',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

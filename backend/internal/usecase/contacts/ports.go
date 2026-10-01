@@ -14,6 +14,9 @@ type ContactsRepo interface {
 	Add(ctx context.Context, c domain.ContactRecord) (domain.ContactRecord, error)
 	List(ctx context.Context, ownerID int64) ([]domain.ContactRecord, error)
 	Delete(ctx context.Context, ownerID, userID int64) (found bool, err error)
+	// UpdateNote переписывает заметку существующего контакта; found=false —
+	// записи (owner, user) нет.
+	UpdateNote(ctx context.Context, ownerID, userID int64, note domain.TextWithEntities) (found bool, err error)
 	// ResolveByPhone ищет зарегистрированного пользователя по нормализованному
 	// номеру; domain.ErrNotFound, если номер не зарегистрирован.
 	ResolveByPhone(ctx context.Context, phone string) (int64, error)

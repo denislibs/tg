@@ -379,6 +379,20 @@ export const AppPrivacyReadTimeTab =
     getComponentModule: () => import('../sidebarLeft/tabs/privacy/readTime.solid'),
   })
 
+// tweb :143-153 — задача 20 плана 2D. Период вкладка получает от открывающей
+// стороны (строка `AutoDeleteMessages` хаба «Конфиденциальность», tweb
+// `privacyAndSecurity.tsx:238-247`), а `onSaved` обновляет подпись той строки.
+type AppMessagesAutoDeleteTabPayload = {
+  period: number
+  onSaved: (period: number) => void
+}
+
+export const AppMessagesAutoDeleteTab =
+  scaffoldSolidJSTab<AppMessagesAutoDeleteTabPayload>({
+    title: 'AutoDeleteMessages',
+    getComponentModule: () => import('../sidebarLeft/tabs/autoDeleteMessages/index.solid'),
+  })
+
 // tweb :160-164. Форма обычная, без полезной нагрузки: настройки вкладка читает
 // сама (мост `useAppSettings`). Открывает её строка корня настроек
 // `Telegram.GeneralSettingsViewController` (tweb `settings.tsx:255`,

@@ -408,7 +408,8 @@ describe('TopicsPanel — геометрия строки', () => {
 
   beforeAll(() => {
     // Вместе с глобальным листом: 64px — это высота ВМЕСТЕ с padding, а
-    // `box-sizing: border-box` приходит из `styles/index.scss` (правило `*`).
+    // `box-sizing: border-box` приходит из `styles/index.scss` (как у tweb
+    // `_global.scss:3-11`: `html` — border-box, остальные `inherit`).
     // Без него строка была бы 76px и разъехалась бы с шагом ядра.
     const global = sass.compile(join(__dirname, '..', 'styles', 'index.scss'), {
       loadPaths: [join(__dirname, '..', 'styles'), join(__dirname, '..', '..', 'node_modules')],
@@ -438,7 +439,12 @@ describe('TopicsPanel — геометрия строки', () => {
     // Мутация: вернуть `min-height` вместо `height` — абсолютная строка
     // перестаёт гарантировать шаг 64 (её высоту начинает диктовать содержимое).
     expect(getComputedStyle(row).height).toBe('64px')
-    expect(getComputedStyle(row).boxSizing).toBe('border-box')
+    // Модель коробки строка НАСЛЕДУЕТ (tweb `_global.scss:3-11`: `*` — `inherit`,
+    // `html` — border-box). happy-dom отдаёт `inherit` буквально и специфичность
+    // `html` против `*` не разрешает, поэтому здесь проверяем только, что своё
+    // правило строки модель не переопределяет; цепочку до корня держит
+    // `styles/globalBoxSizing.test.ts`.
+    expect(getComputedStyle(row).boxSizing).toBe('inherit')
 
     style.remove()
     row.remove()

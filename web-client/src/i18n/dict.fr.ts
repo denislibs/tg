@@ -574,6 +574,9 @@ const fr = {
   'AutoDeleteMessages.SectionCaption':
     'Si activé, tous les nouveaux messages dans les discussions que vous commencez seront automatiquement supprimés pour tout le monde après le délai choisi. La suppression automatique dans vos discussions créées auparavant s\'active séparément.',
   'AutoDeleteMessages.SetOtherTime': 'Choisir un autre délai',
+  'AutoDeleteMessages.InfoDefault': 'Supprimer automatiquement les messages pour tous dans les discussions que vous lancez après un certain délai.',
+  UnsavedChanges: 'Modifications non enregistrées',
+  'UnsavedChangesDescription.Privacy': 'Vous avez modifié des paramètres de confidentialité. Enregistrer les modifications ?',
   // Разряды длительности (`components/wrappers/wrapDuration.ts`, задача 7 плана 2D)
   Seconds: {
     one_value: '%1$d seconde',

@@ -1004,7 +1004,7 @@ setRule` + зеркало ответа в стор (хаб перерисовы�
 `PrivacyVoiceMessagesInfo`, `Users`), сняты 13 без читателей (подписи прежнего экрана и давно мёртвые
 `Privacy.*Choose`/`PrivacyPhoneInfo2`/…). Стенд не трогался.
 
-### Задача 20: «Автоудаление» (2C)
+### Задача 20: «Автоудаление» (2C) — ✅ сделано (PR feat/2d-20-auto-delete-tab)
 
 **Порт:** `autoDeleteMessages/{index,options}.tsx` + `customTimePopup/*` →
 `sidebarLeft/tabs/autoDeleteMessages/*.solid.tsx`; вкладка :148. SaveButton в шапке (Portal),
@@ -1012,6 +1012,18 @@ setRule` + зеркало ответа в стор (хаб перерисовы�
 вставкой своего значения по порядку, `tools` «SetOtherTime» → `showAutoDeleteMessagesCustomTimePopup`
 — **2C**. **Зависимости:** 5, 2C. **Врезка:** `tabs.ts`, `PrivacySecuritySettings.tsx`; удалить
 `settings/AutoDeleteMessages.tsx`.
+
+**Итог (2026-10-01).** Попап своего срока (задача 11 плана 2C) сделан здесь же — без него вкладку не
+собрать: `customTimePopup/{index,content}.solid.tsx` (содержимое — `defineSolidElement`, как у tweb,
+DOM-тег `auto-delete-messages-custom-time-popup-content` тот же) и `verticalOptionWheel.solid.tsx`
+(с ним — `helpers/useSwipe.ts`, `useGlobalDocumentEvent.ts`, `helpers/solid/{useIsCleaned,
+useScrollPosition}.ts`, `helpers/array/lastItem.ts`). Для шапки и закрытия — `saveButton.solid.tsx`,
+`privacy/messages/appearZoomTransition.solid.tsx`, `helpers/solid/{createScheduled,
+useIsConfirmationNeededOnClose}.ts`; `confirmationPopup` получил `buttons`/`rejectWithReason`
+(tweb `confirmationPopup.ts`), `helpers/formatDuration.ts` — саму `formatDuration`. Новых «Отложено»
+нет: бэкенд принимает любой срок 0…366 суток. Хаб «Конфиденциальность» (React до 2D-23) открывает
+вкладку `tab.slider.createTab(AppMessagesAutoDeleteTab).open({period, onSaved})`; подпись строки —
+`findExistingOrCreateCustomOption(p).label().textContent` (`ВРЕМЕННО до 2D-23`).
 
 ### Задача 21: «Passkeys» (2C) — ✅ сделано (PR feat/2d-21-passkeys-tab)
 
