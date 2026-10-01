@@ -417,12 +417,15 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // читателя); у ru ещё четыре ключа снесённого React-экрана — `Stickers.MySets`,
 // `Stickers.NoSets`, `Stickers.AddSets`, `Stickers.SearchSets`. Итог (поверх 0б-2): ru 1411,
 // uk 761, es 757, de 758, fr 752.
+// Задача 22 плана 2D (вкладка «Заблокированные», порт tweb blockedUsers.tsx): −1 наш
+// ключ у всех пяти — `BlockedEmptyDescription` (пустое состояние снесённого
+// React-экрана; у оригинала его нет). Итог: ru 1409, uk 755, es/de 752, fr 747.
 const COMPOSITION = {
-  ru: { keys: 1411, plural: 42 },
-  uk: { keys: 761, plural: 31 },
-  es: { keys: 757, plural: 30 },
-  de: { keys: 758, plural: 31 },
-  fr: { keys: 752, plural: 30 },
+  ru: { keys: 1410, plural: 42 },
+  uk: { keys: 760, plural: 31 },
+  es: { keys: 756, plural: 30 },
+  de: { keys: 757, plural: 31 },
+  fr: { keys: 751, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -558,12 +561,14 @@ const COMPOSITION = {
 // `LinkInvalid`/`LinkTaken` снесённого React-экрана (разбор — там же).
 // Задачей 15 плана 2D — ключи «Стикеров и эмодзи» вместо ключей снесённого
 // React-экрана (разбор — у `COMPOSITION` выше).
+// Задачей 22 плана 2D — минус `BlockedEmptyDescription` у всех пяти (разбор — у
+// `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: 'd759faac',
-  uk: '0d25560d',
-  es: '71847c28',
-  de: '06d3b073',
-  fr: 'aec1d52f',
+  ru: 'ad147965',
+  uk: 'd685a5b4',
+  es: '8255fee9',
+  de: '5c2eca72',
+  fr: '5a615214',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

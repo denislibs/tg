@@ -582,3 +582,20 @@ export const AppPasskeysTab =
     title: 'Privacy.Passkeys',
     getComponentModule: () => import('../sidebarLeft/tabs/passkeys.solid'),
   })
+
+// ── Заблокированные (tweb :248-258) — задача 22 плана 2D ─────────────────────
+// Вкладка `blockedUsers.solid.tsx`; открывает её хаб «Конфиденциальность» с уже
+// загруженной первой страницей (tweb `privacyAndSecurity.tsx:217`). После въезда
+// — `scrollable.onScroll()`: короткая первая страница сразу догружает следующую.
+type AppBlockedUsersTabPayload = {
+  peerIds: PeerId[]
+}
+
+export const AppBlockedUsersTab =
+  scaffoldSolidJSTab<AppBlockedUsersTabPayload>({
+    title: 'BlockedUsers',
+    getComponentModule: () => import('../sidebarLeft/tabs/blockedUsers.solid'),
+    onOpenAfterTimeout: function() {
+      this.scrollable.onScroll()
+    },
+  })

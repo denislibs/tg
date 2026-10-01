@@ -117,6 +117,19 @@ describe('realtimeBridge.startRealtime — насос smp → rootScope', () => 
     expect(received).toEqual([5])
   })
 
+  // Событие чёрного списка (tweb rootScope.ts:53) — шлёт `privacyManager.toggleBlock`
+  // воркера, слушают вкладка «Заблокированные» и хаб «Конфиденциальность».
+  it('peer_block воркера доезжает до rootScope вкладки', async () => {
+    const { deliver, rootScope, startRealtime } = await setup()
+    startRealtime()
+    const received: unknown[] = []
+    rootScope.addEventListener('peer_block', (e) => received.push(e))
+
+    deliver({ kind: 'event', event: 'peer_block', payload: { peerId: 6, blocked: true } })
+
+    expect(received).toEqual([{ peerId: 6, blocked: true }])
+  })
+
   it('rootScope.setPort(smp) реально вызывается — событие этой вкладки (dispatchEvent) уходит в порт', async () => {
     const { rootScope, RT, startRealtime, startClient } = await setup()
     startRealtime()

@@ -1012,7 +1012,6 @@ const ru = {
   Discard: 'Не сохранять',
   BlockUser: 'Заблокировать пользователя',
   BlockedUsersInfoShort: 'Заблокированные пользователи не могут писать вам и видеть ваш профиль.',
-  BlockedEmptyDescription: 'Вы никого не заблокировали.',
   'TwoStepAuth.SetPasswordCaption': 'Задайте дополнительный пароль, который понадобится при входе на новом устройстве.',
   TwoStepVerificationSetPassword: 'Задать пароль',
   'TwoStepAuth.CreateCaption': 'Создайте пароль для защиты аккаунта.',

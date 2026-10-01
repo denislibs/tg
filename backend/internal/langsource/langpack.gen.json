@@ -413,10 +413,6 @@
           "value": "None"
         },
         {
-          "key": "BlockedEmptyDescription",
-          "value": "You haven't blocked anyone."
-        },
-        {
           "key": "BlockedUsers",
           "value": "Blocked Users"
         },
@@ -9198,10 +9194,6 @@
           "value": "Заблокированные пользователи не могут писать вам и видеть ваш профиль."
         },
         {
-          "key": "BlockedEmptyDescription",
-          "value": "Вы никого не заблокировали."
-        },
-        {
           "key": "TwoStepAuth.SetPasswordCaption",
           "value": "Задайте дополнительный пароль, который понадобится при входе на новом устройстве."
         },
@@ -13336,10 +13328,6 @@
           "value": "Les utilisateurs bloqués ne peuvent pas vous envoyer de messages ni voir votre profil."
         },
         {
-          "key": "BlockedEmptyDescription",
-          "value": "Vous n'avez bloqué personne."
-        },
-        {
           "key": "TwoStepAuth.SetPasswordCaption",
           "value": "Définissez un mot de passe supplémentaire qui sera requis lors de la connexion sur un nouvel appareil."
         },
@@ -16447,10 +16435,6 @@
         {
           "key": "BlockedUsersInfoShort",
           "value": "Blockierte Benutzer können dir keine Nachrichten senden und dein Profil nicht sehen."
-        },
-        {
-          "key": "BlockedEmptyDescription",
-          "value": "Du hast niemanden blockiert."
         },
         {
           "key": "TwoStepAuth.SetPasswordCaption",
@@ -19580,10 +19564,6 @@
         {
           "key": "BlockedUsersInfoShort",
           "value": "Los usuarios bloqueados no pueden enviarte mensajes ni ver tu perfil."
-        },
-        {
-          "key": "BlockedEmptyDescription",
-          "value": "No has bloqueado a nadie."
         },
         {
           "key": "TwoStepAuth.SetPasswordCaption",
@@ -22730,10 +22710,6 @@
         {
           "key": "BlockedUsersInfoShort",
           "value": "Заблоковані користувачі не можуть писати вам і бачити ваш профіль."
-        },
-        {
-          "key": "BlockedEmptyDescription",
-          "value": "Ви нікого не заблокували."
         },
         {
           "key": "TwoStepAuth.SetPasswordCaption",

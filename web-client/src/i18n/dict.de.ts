@@ -455,7 +455,6 @@ const de = {
   'EditProfile.Username.Caption': 'Du kannst einen öffentlichen Benutzernamen wählen, damit andere dich finden und kontaktieren können, ohne deine Telefonnummer zu kennen.',
   BlockUser: 'Benutzer blockieren',
   BlockedUsersInfoShort: 'Blockierte Benutzer können dir keine Nachrichten senden und dein Profil nicht sehen.',
-  BlockedEmptyDescription: 'Du hast niemanden blockiert.',
   'TwoStepAuth.SetPasswordCaption': 'Lege ein zusätzliches Passwort fest, das beim Anmelden auf einem neuen Gerät benötigt wird.',
   TwoStepVerificationSetPassword: 'Passwort festlegen',
   'TwoStepAuth.CreateCaption': 'Erstelle ein Passwort zum Schutz deines Kontos.',

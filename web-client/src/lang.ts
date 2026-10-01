@@ -113,7 +113,6 @@ const lang = {
   'BlockModal.Search.Placeholder': 'Block user...',
   BlockUser: 'Block user',
   BlockedEmpty: 'None',
-  BlockedEmptyDescription: 'You haven\'t blocked anyone.',
   BlockedUsers: 'Blocked Users',
   BlockedUsersInfo: 'Blocked users can\'t send you messages or add you to groups. They will not see your profile photos, stories, online and last seen status.',
   BlockedUsersInfoShort: 'Blocked users can\'t send you messages or see your profile.',
