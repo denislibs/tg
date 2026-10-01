@@ -1,6 +1,7 @@
 import { HttpError, type RestClient } from '../net/restClient'
 import { mapPeerProfile, type PeerProfile, type RawPeerProfile } from './authManager'
 import type { Birthday } from '../peers/peer'
+import type { TextWithEntities } from '../media/messageMedia'
 
 // A partial profile edit. `undefined` leaves a field unchanged; for birthday,
 // `null` explicitly clears it.
@@ -47,6 +48,22 @@ export function newProfileManager({ rest, onMeChanged, getMe }: ProfileDeps) {
       const mapped = mapPeerProfile(await rest.patch<RawPeerProfile>('/me', body))
       onMeChanged?.(mapped) // rt:me всем вкладкам (Stage 1C.2, Task 1)
       return mapped
+    },
+
+    /**
+     * Порт tweb `appProfileManager.updateUserNote` (`contacts.updateContactNote`):
+     * заметка о контакте, пустой текст её стирает. Ответ — `Bool`.
+     */
+    async updateUserNote(userId: number, note: TextWithEntities): Promise<void> {
+      await rest.put(`/contacts/${userId}/note`, { note })
+    },
+
+    /**
+     * Порт tweb `appProfileManager.suggestUserBirthday` (`users.suggestBirthday`):
+     * служебка-предложение в личной переписке; она же приезжает кадром ленты.
+     */
+    async suggestUserBirthday(userId: number, birthday: Birthday): Promise<void> {
+      await rest.post(`/users/${userId}/suggest_birthday`, { birthday })
     },
 
     /**

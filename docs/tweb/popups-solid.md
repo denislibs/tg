@@ -252,7 +252,7 @@ SCSS HEAD (`_popup.scss`), которых не было у нас (**перен�
 | `showMutePopup` | `popups/mute.ts` (77) | над `showPeerPopup` + `RadioFormTsx` | меню чата, чатлист | наш `popupMute.ts` |
 | `showFeatureDetailsPopup` + `FeatureRows` | `popups/featureDetails.tsx` (80) + `.module.scss` (29), `featureRows.tsx` (30) + `.module.scss` (17) | `Header floating` + `MediaHeader` + `Footer` | passkey, toggleReadDate и др. | 2D-21 (через passkey) |
 | `showPasskeyPopup` | `popups/passkey.tsx` (67) | над featureDetails | `passkeys.tsx:103`, `privacyAndSecurity.tsx:298` | 2D-21, 2D-23 |
-| `showAutoDeleteMessagesCustomTimePopup` | `…/customTimePopup/{index,content}.tsx` (41+52) + `verticalOptionWheel.tsx` (300) | `old`, `Buttons` | `autoDeleteMessages/index.tsx:77` | 2D-20 |
+| `showAutoDeleteMessagesCustomTimePopup` | `…/customTimePopup/{index,content}.tsx` (41+52) + `verticalOptionWheel.tsx` (300) | `old`, `Buttons` | `autoDeleteMessages/index.tsx:77` | **портирован** (2D-20): `sidebarLeft/tabs/autoDeleteMessages/customTimePopup/{index,content}.solid.tsx`, `components/verticalOptionWheel.solid.tsx` |
 | `showOutputDevicePopup` | `rtmp/outputDevicePopup.tsx` (143) + `.scss` | `Scrollable` + `FooterPlaceholder` + `Footer floating` | `call/callDeviceSettings.tsx:73` | 2D-26 |
 | `showStickersPopup` | `popups/stickers.tsx` (409) | `kind`, `Scrollable`, `Footer floating={isLoaded()}` | `stickersAndEmoji.tsx:188`, чат, эмодзи | 2D-15 |
 | `showPickUserPopup` (+ `showSendGiftPicker`) | `popups/pickUser.tsx` (856) | `AppSelectPeers` + `TransitionSlider` форумов | `blockedUsers.tsx:68`, `editProfile.tsx:214`, пересылка | 2D-22, 2D-27, 2D-28 |
@@ -340,7 +340,6 @@ SCSS HEAD (`_popup.scss`), которых не было у нас (**перен�
 | Наш (строк) | Механика | Кто открывает | Пара в tweb |
 |---|---|---|---|
 | `stickers/StickerSetModal.tsx` (400) | RP+PS | `Chat.tsx:1067`, `StickersSearchTab.tsx:30` (импорт) | `showStickersPopup` |
-| `settings/AutoDeleteMessages.tsx:85` (свой срок) | RP | сам экран | `showAutoDeleteMessagesCustomTimePopup` |
 | `settings/PasskeyIntroPopup.tsx` (116) | PT | `PrivacySecuritySettings.tsx:264` | `showPasskeyPopup` |
 | `rtmp/outputDevicePopup.tsx` — мост `showOutputDevicePopup` (ВРЕМЕННО до 2C-12; сигнатура tweb) | RP | `call/callDeviceSettings.solid.tsx` (`pick`) | `showOutputDevicePopup` |
 | `settings/BirthdayModal.tsx` (87) | PT, без портала | `EditContactView.tsx:173`, `settings/EditProfile.tsx:288` | `showBirthdayPopup` |

@@ -585,7 +585,7 @@ Enter и гасит `destroyed` — иначе отложенный `doubleRaf`-
 попап остаётся» краснеет. **Врезка:** `settings/PrivacySecuritySettings.tsx:264` → `showPasskeyPopup`;
 удалить `settings/PasskeyIntroPopup.tsx` (+ `.module.scss`). **Зависимости:** 5.
 
-### Задача 11: свой срок автоудаления → 2D-20
+### Задача 11: свой срок автоудаления → 2D-20 — ✅ сделано в 2D-20 (PR feat/2d-20-auto-delete-tab)
 
 **Порт:** `components/verticalOptionWheel.tsx` (300) + `.module.scss` (61) → `verticalOptionWheel.solid.tsx`;
 `sidebarLeft/tabs/autoDeleteMessages/options.ts` (порт файла целиком — его импортирует и вкладка

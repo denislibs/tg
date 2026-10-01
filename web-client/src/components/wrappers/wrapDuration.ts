@@ -1,14 +1,11 @@
 // Порт tweb `src/components/wrappers/wrapDuration.ts:1-30` (812502980) — подпись
 // длительности формами числа langPack.
 //
-// Расхождения с оригиналом:
-//  1. Только не-plain ветка `wrapFormattedDuration` (`:24-29`): plain-ветку
-//     (`:19-22`) и `wrapCallDuration`/`wrapLeftDuration`/
-//     `wrapSlowModeLeftDuration`/`wrapStoriesStealthModeDuration` (`:32-58`)
-//     никто не зовёт — первый потребитель у нас «Данные и память»
-//     (`storageQuota.tsx:145`).
-//  2. Аргумент — `FormattedDuration` (тип результата `formatDuration`), сама
-//     функция не портирована (`helpers/formatDuration.ts`).
+// Расхождение с оригиналом: только не-plain ветка `wrapFormattedDuration`
+// (`:24-29`). Plain-ветку (`:19-22`) и `wrapCallDuration`/`wrapLeftDuration`/
+// `wrapSlowModeLeftDuration`/`wrapStoriesStealthModeDuration` (`:32-58`) никто
+// не зовёт; потребители — «Данные и память» (`storageQuota.tsx:145`) и
+// «Автоудаление» (`autoDeleteMessages/options.ts`).
 import { i18n, join, type LangPackKey } from '@lib/langPack'
 import { DurationType, type FormattedDuration } from '@helpers/formatDuration'
 

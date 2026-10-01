@@ -215,6 +215,16 @@ describe('wrapMessageActionText — по одному на конструкто�
       .toEqual(['peer#5:Аня', ' предлагает вам установить это фото профиля'])
   })
 
+  // tweb `messageActionTextNewUnsafe.ts:901-906`: ключ решает `pFlags.out`, а
+  // имя — СОБЕСЕДНИК переписки (`getNameDivHTML(message.peerId)`), не автор.
+  it('messageActionSuggestBirthday — ключами tweb, имя — собеседник переписки', () => {
+    const action: MessageAction = { _: 'messageActionSuggestBirthday', birthday: { _: 'birthday', day: 8, month: 3 } }
+    const at = (peerId: number, out: boolean) =>
+      makeServiceMessage({ id: 7, peerId, fromId: out ? 1 : peerId, date: 1781898326, action, out })
+    expect(phrase(at(6, true))).toEqual(['You suggested ', 'peer#6:Боря', ' to add a birthday'])
+    expect(phrase(at(5, false))).toEqual(['peer#5:Аня', ' suggested you add your birthday'])
+  })
+
   it('messageActionSuggestedPostApproval — канал едет ССЫЛКОЙ, имя берётся из зеркала', () => {
     // `channel_id` — ЗНАКОВЫЙ ключ пира (у чата он отрицательный), а не голый id.
     expect(phrase(pill({ _: 'messageActionSuggestedPostApproval', channel_id: -8 })))

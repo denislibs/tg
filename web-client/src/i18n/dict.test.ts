@@ -392,6 +392,15 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // «Новое сообщение»): −2 наших ключа у всех пяти — `Compose.NewMessage` (заголовок
 // снесённого «Нового сообщения»: у tweb это вкладка «Контакты») и `Contacts.NotFound`
 // (пустая выдача снесённого экрана). Итог: ru 1402, uk 748, es/de 745, fr 740.
+// Пилюля `messageActionSuggestBirthday` (users.suggestBirthday, О-22 плана
+// волны 7): у ru +2 ключа tweb — `BirthdaySuggestIncoming`/`Outgoing`: ru 1404.
+//
+// Задача 20 плана 2D (вкладка «Автоудаление», порт tweb autoDeleteMessages/*):
+// +3 ключа tweb lang.ts всем пяти — `AutoDeleteMessages.InfoDefault` (описание
+// попапа своего срока) и `UnsavedChanges`/`UnsavedChangesDescription.Privacy`
+// (подтверждение несохранённого на закрытии). Итог (поверх 0а-1 и О-22): ru 1407, uk 751,
+// es/de 748, fr 743.
+//
 // Задача 26 плана 2D (вкладка «Динамики и камера», порт tweb
 // speakersAndCamera.tsx + call/*): +8 ключей tweb lang.ts всем пяти — имена
 // секций `CallSettings.OutputSection`/`InputSection`, подписи ошибок захвата
@@ -400,14 +409,14 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `CameraError`, «Default» попапа выбора `Rtmp.OutputPopup.Default`. Сняты ключи
 // без читателей: `CallSettings.AcceptCalls` (+ `.Caption` у ru/uk — у es/de/fr его
 // не было) — строка «Принимать звонки» ушла в О-8 вместе с экраном, и
-// `CallSettings.AcceptCallsShort` (читателя не было и до задачи). Итог: ru 1407,
-// uk 753, es/de 751, fr 746.
+// `CallSettings.AcceptCallsShort` (читателя не было и до задачи). Итог (поверх 2D-20): ru 1412,
+// uk 756, es/de 754, fr 749.
 const COMPOSITION = {
-  ru: { keys: 1407, plural: 42 },
-  uk: { keys: 753, plural: 31 },
-  es: { keys: 751, plural: 30 },
-  de: { keys: 751, plural: 31 },
-  fr: { keys: 746, plural: 30 },
+  ru: { keys: 1412, plural: 42 },
+  uk: { keys: 756, plural: 31 },
+  es: { keys: 754, plural: 30 },
+  de: { keys: 754, plural: 31 },
+  fr: { keys: 749, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -537,14 +546,16 @@ const COMPOSITION = {
 // Задачей 0а-1 волны 7 — минус `Compose.NewMessage` и `Contacts.NotFound` у всех пяти:
 // наши ключи снесённых React-экранов «Новое сообщение» и «Контакты» (вкладка контактов
 // tweb пустой выдачи не подписывает, а «Новое сообщение» — это она же).
+// Пилюлей предложения даты рождения — у ru +2 ключа tweb (разбор — там же).
+// Задачей 20 плана 2D — три ключа вкладки «Автоудаление» у всех пяти (там же).
 // Задачей 26 плана 2D — ключи вкладки «Динамики и камера» вместо ключей
 // «Принимать звонки» (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '83541f4c',
-  uk: 'e832e909',
-  es: 'cf83dfbe',
-  de: '5d54af7d',
-  fr: '12429add',
+  ru: '3689932b',
+  uk: 'e058fb6e',
+  es: '565b4283',
+  de: '658810dc',
+  fr: '2977f8d0',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
