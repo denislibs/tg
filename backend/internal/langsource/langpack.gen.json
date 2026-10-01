@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 36,
+      "version": 37,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -39,6 +39,10 @@
         {
           "key": "AddContact",
           "value": "Add to contacts"
+        },
+        {
+          "key": "AddContactTitle",
+          "value": "Add Contact"
         },
         {
           "key": "AddFactCheck",
@@ -115,6 +119,10 @@
         {
           "key": "AreYouSureClearDraftsTitle",
           "value": "Delete cloud drafts"
+        },
+        {
+          "key": "AreYouSureDeleteContact",
+          "value": "Are you sure you want to delete this contact?"
         },
         {
           "key": "AreYouSureDeleteFewMessages",
@@ -1405,6 +1413,10 @@
           "value": "Waiting for network..."
         },
         {
+          "key": "ContactNoteRow",
+          "value": "Notes"
+        },
+        {
           "key": "Contacts",
           "value": "Contacts"
         },
@@ -1494,6 +1506,21 @@
         {
           "key": "DeleteChat.DeleteGroupForAll",
           "value": "Delete for all members"
+        },
+        {
+          "key": "DeleteContact",
+          "value": "Delete contact"
+        },
+        {
+          "key": "DeleteContactsSubtitle",
+          "value": "Are you sure you want to delete these contacts?"
+        },
+        {
+          "key": "DeleteContactsTitle",
+          "forms": {
+            "one_value": "Delete %d contact",
+            "other_value": "Delete %d contacts"
+          }
         },
         {
           "key": "DeleteForEveryone",
@@ -1661,6 +1688,10 @@
         {
           "key": "EditAdminWhatCanDo",
           "value": "What can this admin do?"
+        },
+        {
+          "key": "EditContact.OriginalName",
+          "value": "original name"
         },
         {
           "key": "EditContact.PhotoHint",
@@ -2999,6 +3030,14 @@
           }
         },
         {
+          "key": "MobileHidden",
+          "value": "Mobile hidden"
+        },
+        {
+          "key": "MobileHiddenExceptionInfo",
+          "value": "Phone number will be visible once %1$s adds you as a contact."
+        },
+        {
           "key": "Months",
           "forms": {
             "one_value": "%1$d month",
@@ -3063,6 +3102,14 @@
         {
           "key": "NewChecklist.TaskPlaceholder",
           "value": "Task"
+        },
+        {
+          "key": "NewContact.Exception.ShareMyPhoneNumber",
+          "value": "Share My Phone Number"
+        },
+        {
+          "key": "NewContact.Exception.ShareMyPhoneNumber.Desc",
+          "value": "You can make your phone visible to %@."
         },
         {
           "key": "NewGroup",
@@ -3584,6 +3631,10 @@
         {
           "key": "PeerInfo.DeleteChannel",
           "value": "Delete Channel"
+        },
+        {
+          "key": "PeerInfo.DeleteContact",
+          "value": "Delete Contact"
         },
         {
           "key": "PeerInfo.Discussion",
@@ -5584,8 +5635,48 @@
           "value": "Bio"
         },
         {
+          "key": "UserInfo.CustomPhotoHelp",
+          "value": "Set a photo for this contact that only you will see, or suggest a new profile photo to them."
+        },
+        {
+          "key": "UserInfo.PhotoResetToast",
+          "value": "Custom photo removed"
+        },
+        {
+          "key": "UserInfo.PhotoSetToast",
+          "value": "You will now always see this photo for %1$s's account."
+        },
+        {
+          "key": "UserInfo.PhotoSuggestedToast",
+          "value": "Photo suggested to %1$s"
+        },
+        {
+          "key": "UserInfo.RemovePersonalPhoto",
+          "value": "Reset to Original Photo"
+        },
+        {
+          "key": "UserInfo.ResetCustomPhoto",
+          "value": "Reset to Original Photo"
+        },
+        {
+          "key": "UserInfo.ResetCustomPhotoDescription",
+          "value": "The custom photo for this contact will be removed and their profile photo will be shown instead."
+        },
+        {
+          "key": "UserInfo.SetPhotoFor",
+          "value": "Set Photo for %1$s"
+        },
+        {
           "key": "UserInfo.SetPhotoTitle",
           "value": "Set Photo"
+        },
+        {
+          "key": "UserInfo.SuggestPhotoFor",
+          "value": "Suggest Photo for %1$s"
+        },
+        {
+          "key": "UserInfo.UpdatePhotoFor",
+          "value": "Change Photo for %1$s"
         },
         {
           "key": "UserPermissions.Duration",
@@ -5799,7 +5890,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 36,
+      "version": 37,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -11623,6 +11714,99 @@
         {
           "key": "SharedFolder.Toast.NoPrivate",
           "value": "Личными чатами делиться нельзя."
+        },
+        {
+          "key": "AddContactTitle",
+          "value": "Добавить контакт"
+        },
+        {
+          "key": "AreYouSureDeleteContact",
+          "value": "Вы точно хотите удалить этот контакт?"
+        },
+        {
+          "key": "ContactNoteRow",
+          "value": "Заметки"
+        },
+        {
+          "key": "DeleteContact",
+          "value": "Удалить контакт"
+        },
+        {
+          "key": "DeleteContactsSubtitle",
+          "value": "Вы точно хотите удалить эти контакты?"
+        },
+        {
+          "key": "DeleteContactsTitle",
+          "forms": {
+            "one_value": "Удалить %d контакт",
+            "few_value": "Удалить %d контакта",
+            "many_value": "Удалить %d контактов",
+            "other_value": "Удалить %d контакта"
+          }
+        },
+        {
+          "key": "EditContact.OriginalName",
+          "value": "исходное имя"
+        },
+        {
+          "key": "MobileHidden",
+          "value": "Номер скрыт"
+        },
+        {
+          "key": "MobileHiddenExceptionInfo",
+          "value": "Номер телефона станет виден, когда %1$s добавит вас в контакты."
+        },
+        {
+          "key": "NewContact.Exception.ShareMyPhoneNumber",
+          "value": "Показать мой номер"
+        },
+        {
+          "key": "NewContact.Exception.ShareMyPhoneNumber.Desc",
+          "value": "Вы можете сделать свой номер видимым для %@."
+        },
+        {
+          "key": "PeerInfo.DeleteContact",
+          "value": "Удалить контакт"
+        },
+        {
+          "key": "UserInfo.CustomPhotoHelp",
+          "value": "Установите для этого контакта фотографию, которую будете видеть только вы, или предложите ему новую фотографию профиля."
+        },
+        {
+          "key": "UserInfo.PhotoResetToast",
+          "value": "Установленное фото удалено"
+        },
+        {
+          "key": "UserInfo.PhotoSetToast",
+          "value": "Теперь вы всегда будете видеть это фото в аккаунте %1$s."
+        },
+        {
+          "key": "UserInfo.PhotoSuggestedToast",
+          "value": "Фото предложено: %1$s"
+        },
+        {
+          "key": "UserInfo.RemovePersonalPhoto",
+          "value": "Сбросить к исходному фото"
+        },
+        {
+          "key": "UserInfo.ResetCustomPhoto",
+          "value": "Сбросить к исходному фото"
+        },
+        {
+          "key": "UserInfo.ResetCustomPhotoDescription",
+          "value": "Установленная вами фотография этого контакта будет удалена, и вместо неё снова будет показано фото его профиля."
+        },
+        {
+          "key": "UserInfo.SetPhotoFor",
+          "value": "Установить фото для %1$s"
+        },
+        {
+          "key": "UserInfo.SuggestPhotoFor",
+          "value": "Предложить фото для %1$s"
+        },
+        {
+          "key": "UserInfo.UpdatePhotoFor",
+          "value": "Изменить фото для %1$s"
         }
       ]
     },

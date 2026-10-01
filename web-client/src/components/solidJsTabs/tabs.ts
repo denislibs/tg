@@ -553,3 +553,13 @@ export const AppPasskeysTab =
     title: 'Privacy.Passkeys',
     getComponentModule: () => import('../sidebarLeft/tabs/passkeys.solid'),
   })
+
+// ── «Изменить контакт» (tweb :509-513) — задача 0б-10 плана волны 7 ───────────
+// Вкладка правой колонки (`sidebarRight/tabs/editContact.solid.tsx`); полезная
+// нагрузка — ключ пира, заголовок вкладка переписывает сама («Edit» или
+// «AddContactTitle» — по тому, контакт ли это, `editContact.tsx:42`).
+export const AppEditContactTab =
+  scaffoldSolidJSTab<PeerId>({
+    title: 'Edit',
+    getComponentModule: () => import('../sidebarRight/tabs/editContact.solid'),
+  })
