@@ -33,7 +33,7 @@ vi.mock('solid-js', async(importOriginal) => {
 
 import GlobalSearch, { type GlobalSearchInputSearch, type GlobalSearchManagers } from '@components/sidebarLeft/globalSearch'
 import type { ScrollableBase } from '@components/scrollable'
-import type { DialogListElement } from '@components/dialogRow'
+import type { DialogListElement } from '@lib/appDialogsManager'
 import { resetSharedMediaHistories } from '@components/sharedMediaHistories'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import { getOutputPeer } from '@core/peers/peerId'

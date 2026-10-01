@@ -63,7 +63,7 @@
  *  9. `aria-label` кнопок шапки ставится атрибутом: у нашего `ButtonIcon` нет
  *     опции `ariaLabel` (шапка `components/buttonCorner.ts`).
  * 10. Заставка — как в `chatFolders.solid.tsx`, расхождение 8.
- * 11. Строки чатов — наш `dialogRow.ts::addDialogNew` с `managers`; фильтр
+ * 11. Строки чатов — наш `lib/appDialogsManager.ts::addDialogNew` с `managers`; фильтр
  *     «пиры, из которых нас выгнали» (`:127-129`) — по зеркалу диалогов:
  *     пользователь остаётся всегда (удалённых карточек `userEmpty` у нас нет).
  */
@@ -82,7 +82,7 @@ import Button from '@components/button'
 import Icon from '@components/icon'
 import Section, { appendSectionContent } from '@components/section.solid'
 import RowTsx from '@components/rowTsx.solid'
-import { addDialogNew, createChatList } from '@components/dialogRow'
+import { addDialogNew, createChatList } from '@lib/appDialogsManager'
 import type SidebarSlider from '@components/slider'
 import { AppIncludedChatsTab, AppSharedFolderTab, type AppEditFolderTab } from '@components/solidJsTabs/tabs'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
