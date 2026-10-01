@@ -4,7 +4,7 @@
 //
 // Что делает: `SortedList` (`helpers/sortedList.ts`) с индексом по присутствию
 // (`getUserStatusForSort`, у чатов 0 — они не сортируются) и убывающим
-// порядком — онлайн первыми; строка — `addDialogNew` (`components/dialogRow.ts`,
+// порядком — онлайн первыми; строка — `addDialogNew` (`lib/appDialogsManager.ts`,
 // порт `appDialogsManager.addDialogNew`); подпись — статус пользователя
 // (`getUserStatusString`) либо «N участников» у чата; ранг — правым слотом
 // заголовка (`wrapParticipantRank`). Раз в `SORT_INTERVAL` (30 с) список
@@ -13,7 +13,7 @@
 //
 // Расхождения с оригиналом:
 //   • `lazyLoadQueue`, `withStories` в `addDialogNew` (tweb :75-87) — не
-//     передаются: у нашей строки этих опций нет (шапка `dialogRow.ts`);
+//     передаются: у нашей строки этих опций нет (шапка строки `lib/appDialogsManager.ts`);
 //   • статус пользователя берётся из ЗЕРКАЛА карточек (`cachedUser`), а не
 //     запросом к менеджеру (`appUsersManager.getUser`, :59): карточки участников
 //     едут вектором `users` того же контейнера, и владелец публикует их в
@@ -22,11 +22,11 @@
 //     (`core/presence.ts`): статус — из зеркала присутствия, а не
 //     `user.status` (присутствие у нас живёт отдельно от карточки);
 //   • `createChatListOptions` (:31, :119) не портированы: `createChatList` у
-//     нас без опций (`dialogRow.ts`).
+//     нас без опций (`lib/appDialogsManager.ts`).
 // Правки под строгий tsconfig: `safeAssign(this, options)` (:117) выписан по
 // полям — у `options` есть `managers`/`middleware`, которые на инстанс лечь не
 // должны.
-import { addDialogNew, createChatList, type DialogElement, type DialogElementSize, type DialogDom, type DialogRowManagers } from '@components/dialogRow'
+import { addDialogNew, createChatList, type DialogElement, type DialogElementSize, type DialogDom, type DialogRowManagers } from '@lib/appDialogsManager'
 import { getHeavyAnimationPromise } from '@core/dom/heavyAnimation'
 import isInDOM from '@helpers/dom/isInDOM'
 import positionElementByIndex from '@helpers/dom/positionElementByIndex'

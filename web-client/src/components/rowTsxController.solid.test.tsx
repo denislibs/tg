@@ -1,6 +1,6 @@
 // Пины `components/rowTsxController.solid.tsx` — порт tweb `components/rowTsxController.tsx`
 // (812502980) в портированном объёме: императивный фасад над Solid `Row` для
-// единственного потребителя — строки чатлиста (`components/dialogRow.ts`, у tweb
+// единственного потребителя — строки чатлиста (`lib/appDialogsManager.ts`, как у tweb
 // `lib/appDialogsManager.ts:321`). Сценарии — из tweb `src/tests/rowTsxController.test.tsx`
 // (`:136`, `:226`, `:247`, `:402`) на тех опциях, что у нас есть.
 import { readdirSync, readFileSync } from 'node:fs'
@@ -148,11 +148,11 @@ describe('граница миграции: контроллер — только
     return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) && !entry.name.endsWith('.d.ts') ? [path] : []
   })
 
-  it('импортирует `rowTsxController.solid` только `components/dialogRow.ts`', () => {
+  it('импортирует `rowTsxController.solid` только `lib/appDialogsManager.ts`', () => {
     const importers = collect(SRC)
       .filter((file) => !file.endsWith('rowTsxController.solid.tsx'))
       .filter((file) => /from '(?:@components|\.)\/rowTsxController\.solid'/.test(readFileSync(file, 'utf8')))
       .map((file) => relative(SRC, file))
-    expect(importers).toEqual(['components/dialogRow.ts'])
+    expect(importers).toEqual(['lib/appDialogsManager.ts'])
   })
 })

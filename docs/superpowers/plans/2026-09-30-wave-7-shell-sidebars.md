@@ -740,24 +740,24 @@ Mentions,Reactions,PollVotes}Badge` `:533-578`, `setBadgeState` `:586`, `toggleB
 - Удалить: `components/dialogRow.ts` (тест `dialogRow.test.ts` → `lib/appDialogsManager.dialogElement.test.ts`)
 - Доки: `docs/tweb/left-sidebar.md` (чатлист, «у нас»), `docs/tweb/delta/part-2.md:51`, `part-3.md:15` (статус → DONE)
 
-- [ ] **Шаг 1: прочитать** tweb `appDialogsManager.ts:133-720`, `:1281-1318`, `:2382-3024`,
+- [x] **Шаг 1: прочитать** tweb `appDialogsManager.ts:133-720`, `:1281-1318`, `:2382-3024`,
   `git -C /Users/denisurevic/Documents/tweb show 0af53a342 b2df09771`, наш `dialogRow.ts`,
   `ChatListItem.tsx` (сценарии: бейджи, «Избранное», 777000 — PR #329/#330, секретный замок,
   черновик, typing).
-- [ ] **Шаг 2: падающие тесты** (`lib/appDialogsManager.dialogElement.test.ts`): (а) непрочитанное
+- [x] **Шаг 2: падающие тесты** (`lib/appDialogsManager.dialogElement.test.ts`): (а) непрочитанное
   → `.dialog-subtitle-badge-unread` с числом; mute → класс `is-muted` у бейджа; (б) закреп —
   `.dialog-subtitle-badge-pinned`, при непрочитанном закреп скрыт (порядок `setBadgeState`);
   (в) упоминание/реакция → свои бейджи, порядок узлов как tweb; (г) **0af53a342:** повторный
   `setLastMessage` с тем же сообщением не меняет `.dialog-subtitle` (тот же узел,
   `MutationObserver` без записей); (д) повторный `setBadgeState` с тем же состоянием не ставит
-  класс перехода; (е) **b2df09771:** `setDialogActiveStatus(true)` перекрашивает частицы спойлера
-  (цвет берётся из `getTextColor(true)`); (ж) «Избранное» и «Telegram» — как в пинах PR #330;
+  класс перехода; (е) ~~**b2df09771:** `setDialogActiveStatus(true)` перекрашивает частицы спойлера
+  (цвет берётся из `getTextColor(true)`)~~ — **не пинится: О-74** (до 4184843ff перекрашивать нечего); (ж) «Избранное» и «Telegram» — как в пинах PR #330;
   (з) `destroy()` снимает Solid-корень строки (`attachRowController` → `dispose`).
-- [ ] **Шаг 3: падают.** **Мутации:** убрать сравнение сигнатуры → (г) краснеет; всегда ставить
+- [x] **Шаг 3: падают.** **Мутации:** убрать сравнение сигнатуры → (г) краснеет; всегда ставить
   переход → (д) краснеет.
-- [ ] **Шаг 4: реализовать** дословно; расхождения провода (превью у нас из зеркала, не из
+- [x] **Шаг 4: реализовать** дословно; расхождения провода (превью у нас из зеркала, не из
   `historyStorage`) — в шапку с номером Отступления В7-3.
-- [ ] **Шаг 5:** полные прогоны поиска (`globalSearch.test.ts`), участников (`appSearchSuper.members.test.ts`),
+- [x] **Шаг 5:** полные прогоны поиска (`globalSearch.test.ts`), участников (`appSearchSuper.members.test.ts`),
   выбора (`appSelectPeers.solid.test.tsx`) — зелёные.
 
 **Готово когда:** `git grep -n "components/dialogRow" web-client/src` пуст; `DialogElement` в
@@ -1385,6 +1385,11 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 | О-42 | Приглашение списком (`inviteToChannel(id, peerIds)`/`addChatUser(id, peerIds, fwdLimit)`) и чекбокс «показать последние 100 сообщений» (`addChatUsers.ts:169-190`) | ручка приглашает одного пользователя, `fwd_limit` нет (0а-3) | один запрос на выбор, чекбокс истории для групп |
 | О-43 | Тост `InviteToGroupError` на отказе приватности (`addChatUsers.ts:211-217`) | бэкенд отдаёт текст `privacy` (`group_handler.go:43-44`), а не `USER_PRIVACY_RESTRICTED` — ветка тоста не срабатывает (0а-3) | тост вместо необработанного отказа |
 | О-44 | Диалог нового канала из ответа создания: у tweb `channels.createChannel` отдаёт `Updates`, `processUpdateMessage` ставит диалог (`appChatsManager.ts:587-593`); у нас вкладка зовёт `dialogs.refresh()` (`newChannel.solid.tsx`, расхождение 8) | `POST /channels` отвечает `messages.chatFull` без диалога, кадра о новом канале нет; служебного «канал создан» тоже нет (0а-3) | снятие перезапроса, пилюля `messageActionChannelCreate` |
+| О-70 | Закреп внутри пользовательской папки: `dialogsStorage.isDialogPinned(peerId, filterId)` по `filter.pinnedPeerIds` (`storages/dialogs.ts:452-462`) — строка `DialogElement` в такой папке закреп не показывает | у `Folder` нет `pinned_peers` (`core/managers/foldersManager.ts`, ручки `/folders`), порядок закрепов ведётся только для «Всех чатов» (`dialogsManager`, `pinnedOrders[ALL_FOLDER_ID]`) (1-1) | закреп в папке 1:1 (бейдж и порядок) |
+| О-71 | Непрочитанное форума по темам в строке: `getForumUnreadCount` (`count` тем вместо сообщений, `hasUnmuted` → `no-unmuted-topic`), повторный `setUnreadMessagesN` по доезду счёта (`appDialogsManager.ts:2711-2722`, `:2760`) | на проводе диалога нет суммы по темам (`core/models.ts::RawDialog`, `core/folders/folderUnreadCounts.ts` расхождение 2) (1-1) | бейдж форума 1:1 |
+| О-72 | «Отметить непрочитанным»: `pFlags.unread_mark` в `getDialogUnreadCount` (`appMessagesManager.ts:14249`) и пункт меню `MarkAsUnread` | флага нет ни на бэкенде (`domain/mtdialog.go:45`), ни в модели (1-1) | бейдж «•» без числа, пункт меню 1-2 |
+| О-73 | Бейдж голосов опроса: `createPollVotesBadge`, `pollVotes` в `setBadgeState` (`appDialogsManager.ts:578-584`, `:2786`, `:2803`) | `unread_poll_votes_count` бэкенд не считает (`domain/mtdialog.go:48`) (1-1) | бейдж `.dialog-subtitle-badge-pollvote` |
+| О-74 | Перекраска частиц блеф-спойлера активной строки: `DotRenderer.setInlineSpoilersTextColor` в `setDialogActiveStatus` (b2df09771, `appDialogsManager.ts:1296-1297`) | наш инлайн-спойлер — путь `mask-image` (до 4184843ff, `delta/part-2.md`): частицы — сам узел, цвет даёт CSS, канваса с цветом нет (1-1) | порт 4184843ff (канвас блеф-спойлера), затем b2df09771 |
 
 ## Что остаётся волне 8 (после этой программы)
 

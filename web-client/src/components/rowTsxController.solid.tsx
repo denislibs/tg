@@ -3,7 +3,7 @@
  * Порт tweb/src/components/rowTsxController.tsx:1-398 (812502980) — императивный
  * фасад над Solid `Row` (`components/rowTsx.solid.tsx`). У tweb это мост ровно для
  * одного потребителя — строки чатлиста `DialogElement` (`lib/appDialogsManager.ts:321`,
- * у нас `components/dialogRow.ts`); всё остальное пишет JSX `<Row>`. Граница
+ * у нас там же); всё остальное пишет JSX `<Row>`. Граница
  * запинена `rowTsxController.solid.test.tsx` (порт tweb `tests/rowTsxSafeMigrations.test.ts:56-66`).
  *
  * Как устроено (дословно): `mountRowController` (`:97-359`) монтирует `<Row>` в свой
@@ -30,13 +30,14 @@
  *     (`:167-192`, `:297-302`), `createTitle`, `createMedia`, `isDisabled`,
  *     `toggleDisability`, `disableWithPromise`, `makeSortable`/`toggleSorting`,
  *     `openContextMenu`, `checkboxField`/`buttonRight` в контроллере, сеттер `media`;
- *  5. `createRowSortableIcon` (`:61-63`) — у tweb его зовёт `DialogElement.createSortableIcon`
- *     (`appDialogsManager.ts:542-546`) для закреплённых главного списка, а главный
- *     список у нас React (`ChatListItem.tsx`), не `DialogElement`.
+ *
+ * `createRowSortableIcon` (`:61-63`) портирован: его зовёт `DialogElement.createSortableIcon`
+ * (`appDialogsManager.ts:542-546`) у закреплённых строк.
  */
 import { createRoot, createSignal, Show } from 'solid-js'
 import Row, { type RowMediaSizeType } from '@components/rowTsx.solid'
 import type { Middleware } from '@helpers/middleware'
+import Icon from '@components/icon'
 
 export type { RowMediaSizeType } from '@components/rowTsx.solid'
 
@@ -56,6 +57,11 @@ export type RowTsxOptions = Partial<{
   middleware: Middleware
   asLink: boolean
 }>
+
+/** tweb `:61-63` — ручка перетаскивания строки (закреплённой строки чатлиста). */
+export function createRowSortableIcon() {
+  return Icon('menu', 'row-sortable-icon')
+}
 
 /** tweb `:65-90` в портированном объёме (п. 4 шапки). */
 export type RowTsxController = {

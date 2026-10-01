@@ -8,7 +8,7 @@
  *
  * Разметка — дамп `docs/tweb/dom/dumps/14-left-16b-settings-blocked-users.json`:
  * подпись `BlockedUsersInfo` НАД карточкой (`:61`), в карточке — `ul.chatlist`
- * строк `chatlist-chat-abitbigger` (`components/dialogRow.ts`, порт
+ * строк `chatlist-chat-abitbigger` (`lib/appDialogsManager.ts`, порт
  * `appDialogsManager.addDialogNew`), угловая кнопка `btn-corner` «добавить».
  *
  * Расхождения с оригиналом:
@@ -27,12 +27,12 @@
  *     а не клик по строке, и можно отметить нескольких (каждого блокируем).
  *  5. `ButtonCorner` без `ariaLabel: 'Add'` (:64) — шапка `components/buttonCorner.ts`.
  *  6. `(dialogElement.container as any).dialogElement = dialogElement` (:41) делает
- *     сам `addDialogNew` (`dialogRow.ts`, tweb `appDialogsManager.ts:2643`).
+ *     сам `addDialogNew` (`lib/appDialogsManager.ts`, tweb `appDialogsManager.ts:2643`).
  */
 import { onCleanup, onMount } from 'solid-js'
 import { getOverlayRoot } from '@helpers/appWindow'
 import { ButtonMenuSync } from '@components/buttonMenu'
-import { addDialogNew, createChatList, DIALOG_LIST_ELEMENT_TAG, type DialogListElement } from '@components/dialogRow'
+import { addDialogNew, createChatList, DIALOG_LIST_ELEMENT_TAG, type DialogListElement } from '@lib/appDialogsManager'
 import rootScope from '@lib/rootScope'
 import findUpTag from '@helpers/dom/findUpTag'
 import ButtonCorner from '@components/buttonCorner'
