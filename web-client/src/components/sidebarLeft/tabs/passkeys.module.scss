@@ -1,0 +1,6 @@
+// Порт tweb `sidebarLeft/tabs/passkeys.module.scss` (812502980). Правила
+// `.container { --custom-emoji-size: 2.625rem }` нет — эмодзи строк не рисуются
+// (О-50, расхождение 1 шапки `passkeys.solid.tsx`).
+.items {
+  margin-top: 1rem;
+}

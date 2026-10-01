@@ -328,7 +328,9 @@ func (r *MessagesRepo) MessageSeqByDate(ctx context.Context, chatID int64, from 
 // Only photos and videos: that's the filter tweb passes
 // (inputMessagesFilterPhotoVideo), and only those have a thumbnail to draw.
 // Latest message of the day wins; days without such media are simply absent.
-func (r *MessagesRepo) CalendarMonth(ctx context.Context, chatID int64, from, to time.Time) ([]domain.CalendarDay, error) {
+// Удалённое зрителем userID «у себя» не входит ни в счётчик дня, ни в превью —
+// как у вкладки медиа (notHiddenFor).
+func (r *MessagesRepo) CalendarMonth(ctx context.Context, chatID, userID int64, from, to time.Time) ([]domain.CalendarDay, error) {
 	q := querier(ctx, r.pool)
 	// Агрегат по дню, а не одна строка: отрезку оригинала нужны ОБЕ границы
 	// номеров и счётчик, а ячейке — номер сообщения-превью (последнее за
@@ -339,11 +341,12 @@ func (r *MessagesRepo) CalendarMonth(ctx context.Context, chatID int64, from, to
 		        (array_agg(m.seq ORDER BY m.created_at DESC))[1] AS top_seq
 		 FROM messages m JOIN media md ON md.id = m.media_id
 		 WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND m.media_id IS NOT NULL
+		       AND `+notHiddenFor("$4")+`
 		       AND m.type IN ('photo','video')
 		       AND m.created_at >= $2 AND m.created_at < $3
 		 GROUP BY date_trunc('day', m.created_at)
 		 ORDER BY day`,
-		chatID, from, to)
+		chatID, from, to, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -454,7 +457,8 @@ func (r *MessagesRepo) GlobalSearchMessages(ctx context.Context, userID int64, g
 // CallLog — журнал звонков пользователя: сообщения type='call' из его личных
 // чатов, обогащённые собеседником (другой участник приватного чата). Out —
 // инициатор сам пользователь. Newest first. Для вкладки «Звонки» (агрегирует
-// messageActionPhoneCall, как в Telegram).
+// messageActionPhoneCall, как в Telegram: messages.search с
+// inputMessagesFilterPhoneCalls — удалённые зрителем «у себя» не отдаются).
 func (r *MessagesRepo) CallLog(ctx context.Context, userID int64, offset, limit int) ([]domain.CallLogEntry, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT `+messageColsPrefixed("m")+`, `+userRealCols("u.")+`
@@ -463,6 +467,7 @@ func (r *MessagesRepo) CallLog(ctx context.Context, userID int64, offset, limit 
 		   JOIN chat_members other ON other.chat_id = m.chat_id AND other.user_id <> $1
 		   JOIN users u ON u.id = other.user_id
 		  WHERE m.type = 'call' AND m.deleted_at IS NULL
+		    AND `+notHiddenFor("$1")+`
 		    AND EXISTS (SELECT 1 FROM chat_members me WHERE me.chat_id = m.chat_id AND me.user_id = $1)
 		  ORDER BY m.id DESC LIMIT $2 OFFSET $3`, userID, limit, offset)
 	if err != nil {
@@ -515,7 +520,8 @@ func dateRangeCond(minDate, maxDate int64, add func(any) string) string {
 // notHiddenFor — предикат «сообщение m не удалено зрителем у себя»
 // (message_hides); p — плейсхолдер id зрителя. Одно условие на все выдачи
 // сообщений чата зрителю, кроме истории (там свой алиас таблицы): вкладки
-// шаред-медиа, их счётчики, поиск в чате и глобальный. Без него «удалить у
+// шаред-медиа, их счётчики, календарь медиа, поиск в чате и глобальный,
+// журнал звонков. Без него «удалить у
 // себя» убирало сообщение из ленты, но не из медиа и не из поиска.
 func notHiddenFor(p string) string {
 	return `NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id = m.id AND h.user_id = ` + p + `)`

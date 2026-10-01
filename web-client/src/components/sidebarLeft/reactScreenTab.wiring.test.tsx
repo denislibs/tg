@@ -8,15 +8,18 @@
  *  3. «Active Sessions» открывает вкладку «Устройства» на том же слайдере;
  *  4. «Passcode Lock» открывает вкладки «Код-пароль»; главная вкладка срезает
  *     ввод ДО `AppPrivacyAndSecurityTab` (tweb `solidJsTabs/tabs.ts:31-37`) —
- *     сама «Конфиденциальность» в истории остаётся.
+ *     сама «Конфиденциальность» в истории остаётся;
+ *  5. «Passkeys» с ключами открывает вкладку «Passkeys» со списком, без ключей —
+ *     интро-попап, созданный в нём ключ — вкладку с этим ключом (tweb
+ *     `privacyAndSecurity.tsx:290-302`).
  *
  * Строки «Конфиденциальности» — единственный вход в эти вкладки, пока хаб не
  * портирован (задача 23), поэтому у них пин, а не пометка.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent } from '@testing-library/react'
 import { useEffect } from 'react'
-import type { Authorization } from '@layer'
+import type { Authorization, Passkey } from '@layer'
 import type { Managers } from '@/client/bootstrap'
 import { useSettingsStore } from '@/settings'
 import { enablePasscode } from '@lib/passcode/actions'
@@ -35,6 +38,11 @@ vi.mock('@core/store/idbKv', () => ({
   idbSet: async(key: string, val: unknown) => { idb.set(key, val) },
   idbDel: async(key: string) => { idb.delete(key) },
 }))
+const showPasskeyPopup = vi.hoisted(() => vi.fn<(onCreation?: (passkey: Passkey) => void) => void>())
+vi.mock('@components/sidebarLeft/settingsPopups', async(importOriginal) => ({
+  ...(await importOriginal<object>()),
+  showPasskeyPopup,
+}))
 vi.mock('@lib/lottie/lottieLoader', () => ({
   default: { loadAnimationAsAsset: vi.fn(async() => ({ playOrRestart() {}, remove() {} })) },
 }))
@@ -50,14 +58,16 @@ const auth = (hash: number, app_name = 'Telegram Web') => ({
 
 function makeManagers() {
   const list = vi.fn<() => Promise<Auth[]>>(async() => [auth(0), auth(2, 'Telegram Android')])
+  const passkeysList = vi.fn(async(): Promise<Passkey[]> => [])
   return {
     list,
+    passkeysList,
     managers: {
       sessions: { list, terminate: vi.fn(), terminateOthers: vi.fn() },
       // «Конфиденциальность» читает это на монтировании
       auth: {
         passwordState: vi.fn(async() => ({ enabled: false })),
-        passkeysList: vi.fn(async() => []),
+        passkeysList,
       },
       privacy: { autoDelete: vi.fn(async() => 0) },
       persist: { clearAll: vi.fn(async() => {}) },
@@ -86,14 +96,20 @@ function rowByTitle(root: HTMLElement, title: string) {
   return found!
 }
 
+// Модуль «Конфиденциальности» тянет мосты попапов (`settingsPopups.tsx` → премиум,
+// звёзды, QR) — холодный импорт не должен съедать бюджет первого теста.
+beforeAll(async() => { await import('../settings/PrivacySecuritySettings') }, 60_000)
+
 let columnEl: HTMLElement
 let host: TestColumnSlider
 let managers: Managers
 let list: ReturnType<typeof makeManagers>['list']
+let passkeysList: ReturnType<typeof makeManagers>['passkeysList']
 
 beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 420 } as DOMRect)
-  ;({ managers, list } = makeManagers())
+  ;({ managers, list, passkeysList } = makeManagers())
+  showPasskeyPopup.mockReset()
   columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
@@ -193,5 +209,34 @@ describe('«Конфиденциальность» на мосту → вкла�
     expect(history[0]).toBe(privacy)
     expect(history[1]).toBeInstanceOf(AppPasscodeLockTab)
     expect(tabs()[0]).toBe(privacy.container)
+  })
+
+  const passkey = (id: string, name: string): Passkey => ({ _: 'passkey', id, name, date: 1_700_000_000 })
+  const passkeyTitles = (tab: HTMLElement) =>
+    [...tab.querySelectorAll('.row .row-title:not(.row-title-right)')].map((el) => el.textContent)
+
+  it('«Passkeys» с ключами: список читается на клике и уезжает во вкладку «Passkeys»', async() => {
+    passkeysList.mockResolvedValue([passkey('1', 'Chrome'), passkey('2', 'Safari')])
+    const privacy = await openPrivacy()
+
+    await act(async() => { fireEvent.click(rowByTitle(privacy.container, 'Passkeys')) })
+    await flush(() => tabs().length === 2 && passkeyTitles(tabs()[1]).length > 0)
+
+    expect(showPasskeyPopup).not.toHaveBeenCalled()
+    expect(passkeyTitles(tabs()[1])).toEqual(['Chrome', 'Safari'])
+  })
+
+  it('«Passkeys» без ключей: интро-попап; созданный в нём ключ открывает вкладку с ним', async() => {
+    vi.stubGlobal('PublicKeyCredential', class {})
+    const privacy = await openPrivacy()
+
+    await act(async() => { fireEvent.click(rowByTitle(privacy.container, 'Passkeys')) })
+    await flush(() => showPasskeyPopup.mock.calls.length > 0)
+    expect(tabs()).toHaveLength(1)
+
+    await act(async() => { showPasskeyPopup.mock.calls[0][0]!(passkey('9', 'Firefox')) })
+    await flush(() => tabs().length === 2 && passkeyTitles(tabs()[1]).length > 0)
+    expect(passkeyTitles(tabs()[1])).toEqual(['Firefox'])
+    vi.unstubAllGlobals()
   })
 })
