@@ -7,7 +7,8 @@
  * НАСТОЯЩИМ слайдером (`components/slider.ts`, навигация `'right'`, как у
  * `AppSidebarRight` tweb `sidebarRight/index.ts:20-28`) и настоящим
  * `appNavigationController` (Esc). Стабы — только границы: менеджеры воркера,
- * мост выбора фото (ВРЕМЕННО до 2D-27), тост и `startClient` попапа удаления.
+ * мосты выбора фото (ВРЕМЕННО до 2D-27) и попапа даты рождения (ВРЕМЕННО до
+ * 2C-14), тост и `startClient` попапа удаления.
  *
  * Предмет — форма оригинала: порядок узлов и классы, сеть только по угловой
  * кнопке (не на каждом вводе), видимость кнопки по `EditPeer.isChanged`, ветки
@@ -17,9 +18,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Managers } from '@/client/bootstrap'
-import type { UserReal } from '@core/peers/peer'
+import type { Birthday, UserFull, UserReal } from '@core/peers/peer'
 import type { PrivacyRule } from '@core/managers/privacyManager'
-import type { Contact } from '@core/managers/contactsManager'
 import rootScope from '@lib/rootScope'
 import appNavigationController from '@core/navigation/appNavigationController'
 import { useChatsStore } from '@stores/chatsStore'
@@ -35,6 +35,13 @@ vi.mock('@components/toast', () => ({ toastNew: (o: unknown) => toastNewSpy(o) }
 const pickAvatarAndUploadSpy = vi.fn()
 vi.mock('@components/pickAvatarAndUpload.bridge', () => ({
   pickAvatarAndUpload: (o: unknown) => pickAvatarAndUploadSpy(o),
+}))
+
+const showBirthdayPopupSpy = vi.fn()
+const suggestUserBirthdaySpy = vi.fn(async(_userId: number, _date: Birthday) => true)
+vi.mock('@components/popups/birthday.bridge', () => ({
+  default: (o: unknown) => showBirthdayPopupSpy(o),
+  suggestUserBirthday: (userId: number, date: Birthday) => suggestUserBirthdaySpy(userId, date),
 }))
 
 vi.mock('@/client/bootstrap', () => ({
@@ -57,6 +64,8 @@ let user: UserReal
 let isContact: boolean
 let rule: PrivacyRule
 let personal: boolean
+let note: string | undefined
+let birthday: Birthday | undefined
 let managers: ReturnType<typeof makeManagers>
 let slider: SidebarSlider
 
@@ -67,16 +76,25 @@ function makeManagers() {
       add: vi.fn(async() => ({})),
       del: vi.fn(async() => {}),
       clearPhoto: vi.fn(async() => { personal = false }),
-      list: vi.fn(async(): Promise<Contact[]> => isContact ? [{
-        userId: PEER,
-        note: '',
-        sharePhone: false,
-        hasCustomPhoto: false,
-        createdAt: '',
-        user: { ...user, photo: { _: 'userProfilePhoto', photo_id: 7, ...(personal ? { pFlags: { personal: true } } : {}) } },
-      }] : []),
     },
-    privacy: { rule: vi.fn(async() => rule) },
+    privacy: {
+      rule: vi.fn(async() => rule),
+      // полная карточка `GET /users/{id}`: заметка, личное фото, день рождения
+      profile: vi.fn(async() => ({
+        user,
+        fullUser: {
+          _: 'userFull',
+          id: PEER,
+          ...(note !== undefined ? { note: { _: 'textWithEntities', text: note, entities: [] } } : {}),
+          ...(personal ? { personal_photo: { _: 'photo', id: 7, sizes: [] } } : {}),
+          ...(birthday ? { birthday } : {}),
+        } as UserFull,
+        canMessage: true,
+      })),
+    },
+    profile: {
+      updateUserNote: vi.fn(async() => {}),
+    },
     peers: {
       getUsers: vi.fn(async() => [user]),
       fillMirror: vi.fn(async() => {}),
@@ -99,6 +117,8 @@ beforeEach(() => {
   user = { _: 'user', id: PEER, first_name: 'Two', last_name: 'Last', pFlags: { contact: true } } as UserReal
   isContact = true
   personal = false
+  note = undefined
+  birthday = undefined
   rule = { key: 'phone_number', value: 'everybody', allowUserIds: [], denyUserIds: [] }
   useChatsStore.setState({ dialogs: [] })
   // имя в `.peer-title` берётся из зеркала карточек (`chat/peerTitle.ts`)
@@ -119,6 +139,8 @@ afterEach(async() => {
   document.body.replaceChildren()
   toastNewSpy.mockReset()
   pickAvatarAndUploadSpy.mockReset()
+  showBirthdayPopupSpy.mockReset()
+  suggestUserBirthdaySpy.mockClear()
 })
 
 async function open() {
@@ -171,10 +193,10 @@ describe('«Изменить контакт» — разметка контак�
     expect(nextBtn(tab)).not.toBeNull()
   })
 
-  // Кнопка видна сразу: у заметки нет исходного значения (на проводе её нет —
-  // расхождение 3 вкладки), а `isChanged` сравнивает с `undefined` — ровно так
-  // же у оригинала для контакта без заметки (`InputFieldEmoji.isChanged` —
-  // `deepEqual(richValue, undefined)` ложно, `inputFieldEmoji.ts`).
+  // Кнопка видна сразу: у контакта без заметки исходного значения нет, а
+  // `isChanged` сравнивает с `undefined` — ровно так же у оригинала
+  // (`InputFieldEmoji.isChanged` — `deepEqual(richValue, undefined)` ложно,
+  // `inputFieldEmoji.ts`; `setRichOriginalValue` зовётся только при `note`).
   it('поля: имя/фамилия — исходные значения, заметка пустая и без исходного — кнопка видна', async() => {
     const tab = await open()
 
@@ -183,6 +205,13 @@ describe('«Изменить контакт» — разметка контак�
     expect(field(tab, 'First name (required)').querySelector('.input-field-input')!.textContent).toBe('Two')
     expect(field(tab, 'Last name (optional)').querySelector('.input-field-input')!.textContent).toBe('Last')
     expect(nextBtn(tab).classList.contains('is-visible')).toBe(true)
+  })
+
+  it('заметка из userFull.note — исходное значение поля, кнопка скрыта', async() => {
+    note = 'коллега'
+    const tab = await open()
+    expect(field(tab, 'Notes').querySelector('.input-field-input')!.textContent).toBe('коллега')
+    expect(nextBtn(tab).classList.contains('is-visible')).toBe(false)
   })
 
   it('строка уведомлений: переключатель и подпись; переключение зовёт мьют, зеркало двигает подпись', async() => {
@@ -218,17 +247,28 @@ describe('«Изменить контакт» — сохранение толь�
     click(nextBtn(tab))
     await settle()
     expect(managers.contacts.add).toHaveBeenCalledTimes(1)
+    // заметка — не в addContact, а отдельным updateUserNote (:348-358)
     expect(managers.contacts.add).toHaveBeenCalledWith({
       contactId: PEER,
       firstName: 'Twoo',
       lastName: 'Last',
-      note: 'note',
       sharePhone: undefined,
     })
+    expect(managers.profile.updateUserNote).toHaveBeenCalledWith(PEER, { _: 'textWithEntities', text: 'note', entities: [] })
 
     await closed()
     expect(slider.getHistory()).toEqual([])
     expect(tab.container.isConnected).toBe(false)
+  })
+
+  it('неизменённая заметка не пишется: правка имени — только contacts.add', async() => {
+    note = 'коллега'
+    const tab = await open()
+    typeInto(tab, 'First name (required)', 'Twoo')
+    click(nextBtn(tab))
+    await settle()
+    expect(managers.contacts.add).toHaveBeenCalledTimes(1)
+    expect(managers.profile.updateUserNote).not.toHaveBeenCalled()
   })
 
   it('пустое обязательное имя прячет кнопку, даже если другое поле изменено', async() => {
@@ -365,11 +405,33 @@ describe('«Изменить контакт» — личное фото', () => 
   })
 })
 
+describe('«Изменить контакт» — предложить дату рождения', () => {
+  // tweb `editContact.tsx:194`, `:254-266`: строка есть, пока у пира нет даты
+  it('без даты рождения — строка «Suggest Date of Birth»; клик — попап с suggestForPeer, сохранение — suggestUserBirthday', async() => {
+    const tab = await open()
+    const rows = [...scrollChildren(tab)[3].querySelectorAll<HTMLElement>('.row')]
+    expect(rows.map((row) => row.querySelector('.row-title')!.textContent)).toEqual(['Notifications', 'Suggest Date of Birth'])
+
+    click(rows[1])
+    expect(showBirthdayPopupSpy).toHaveBeenCalledWith(expect.objectContaining({ suggestForPeer: PEER }))
+    const date: Birthday = { _: 'birthday', day: 8, month: 3 }
+    await expect(showBirthdayPopupSpy.mock.calls[0][0].onSave(date)).resolves.toBe(true)
+    expect(suggestUserBirthdaySpy).toHaveBeenCalledWith(PEER, date)
+  })
+
+  it('дата рождения уже есть — строки нет', async() => {
+    birthday = { _: 'birthday', day: 1, month: 5 }
+    const tab = await open()
+    const rows = [...scrollChildren(tab)[3].querySelectorAll<HTMLElement>('.row')]
+    expect(rows.map((row) => row.querySelector('.row-title')!.textContent)).toEqual(['Notifications'])
+  })
+})
+
 describe('«Изменить контакт» — закрытие', () => {
   it('Esc закрывает вкладку через контроллер навигации и снимает Solid-корни (через 250 мс узлов нет)', async() => {
     const tab = await open()
     const rows = scrollChildren(tab)[3].querySelector('.row')!.parentElement!
-    expect(rows.childElementCount).toBe(1)
+    expect(rows.childElementCount).toBe(2)
 
     const esc = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
     window.dispatchEvent(esc)

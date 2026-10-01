@@ -1397,6 +1397,7 @@ const lang = {
     one_value: '%1$d subscriber',
     other_value: '%1$d subscribers',
   },
+  SuggestBirthdayRow: 'Suggest Date of Birth',
   'SuggestedPosts.Empty': 'No suggested posts here yet…',
   'SuggestedPosts.PostPlaceholder': 'Type your post…',
   'SuggestedPosts.Publish': 'Publish',

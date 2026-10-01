@@ -1836,6 +1836,7 @@ const ru = {
   AddContactTitle: 'Добавить контакт',
   AreYouSureDeleteContact: 'Вы точно хотите удалить этот контакт?',
   ContactNoteRow: 'Заметки',
+  SuggestBirthdayRow: 'Предложить дату рождения',
   DeleteContact: 'Удалить контакт',
   DeleteContactsSubtitle: 'Вы точно хотите удалить эти контакты?',
   DeleteContactsTitle: {

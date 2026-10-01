@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 37,
+      "version": 38,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -5272,6 +5272,10 @@
           }
         },
         {
+          "key": "SuggestBirthdayRow",
+          "value": "Suggest Date of Birth"
+        },
+        {
           "key": "SuggestedPosts.Empty",
           "value": "No suggested posts here yet…"
         },
@@ -5890,7 +5894,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 37,
+      "version": 38,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -11726,6 +11730,10 @@
         {
           "key": "ContactNoteRow",
           "value": "Заметки"
+        },
+        {
+          "key": "SuggestBirthdayRow",
+          "value": "Предложить дату рождения"
         },
         {
           "key": "DeleteContact",

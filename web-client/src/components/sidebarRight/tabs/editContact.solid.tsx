@@ -34,23 +34,14 @@
  *     «Никто»; наш провод пишет «контакты» одним `AllowContacts`
  *     (`domain/mtprivacy.go::PrivacyRulesOf`), поэтому то же условие здесь —
  *     `value !== 'everybody'`: номер не виден новому контакту в обоих случаях.
- *  3. (О-20) Заметка: `userFull.note` сервер не отдаёт
- *     (`core/peers/peer.ts::UserFull`), поле открывается пустым; отдельной ручки
- *     `updateUserNote` (`:356-358`) нет — заметка едет в том же `contacts.add`
- *     (`POST /contacts`, `note`), что и имя. Поле — `InputField` без эмодзи-кнопки
- *     (`InputFieldEmoji` — rich-путь, О-28 плана 2D), значение — строка.
- *  4. (О-21) Личное фото (`fullUser.personal_photo`, `:64`) у нас выражено флагом
- *     `pFlags.personal` на `user.photo`, и накладывает его только книга
- *     (`GET /contacts`, `usecase/contacts/contacts.go:207`), а не профиль
- *     `/users/{id}` — поэтому признак читается из книги. Книга читается с сети
- *     каждый раз, поэтому `refreshFullPeer` (`:135`) перед перестройкой секции не
- *     нужен: свежий ответ и есть сброс кэша.
- *  5. (О-22) Строки «Предложить дату рождения» (`:254-266`) нет: у бэкенда нет
- *     `users.suggestBirthday`, а `suggestForPeer` у `showBirthdayPopup` отложен
- *     вместе с ним (О-13 плана 2C). Мост к React `BirthdayModal` (план, «Особые
- *     пункты» 0б-10) не заведён: сохранять предложенную дату некуда, строка
- *     была бы мёртвой кнопкой. Потому и `getProfile` (`:178-195`, заметка и день
- *     рождения) не зовётся: из полной формы вкладке нечего читать (п. 3).
+ *  3. `getProfile` → `privacy.profile` (`GET /users/{id}`): он не кэшируется и
+ *     каждый раз идёт в сеть, поэтому `refreshFullPeer` (`:135`) перед
+ *     перестройкой секции фото не нужен — свежий ответ и есть сброс кэша.
+ *  4. Заметка — `InputField` без эмодзи-кнопки (`InputFieldEmoji` — rich-путь,
+ *     О-28 плана 2D): исходное значение — `note.text`, на запись уходит
+ *     `textWithEntities` без разметки (`updateUserNote`, `profile.updateUserNote`).
+ *  5. `showBirthdayPopup`/`suggestUserBirthday` — мост
+ *     `popups/birthday.bridge.tsx` (ВРЕМЕННО до 2C-14, React `BirthdayModal`).
  *  6. Выбор и загрузка фото — мост `pickAvatarAndUpload.bridge.tsx`
  *     (ВРЕМЕННО до 2D-27, класс `AvatarEdit`).
  *  7. Мьют читается мостом зеркала диалогов (`chatsStore.dialogs[].notify_settings`,
@@ -78,6 +69,8 @@ import Section from '@components/section.solid'
 import { wrapSolidComponent } from '@helpers/solid/wrapSolidComponent'
 import { toastNew } from '@components/toast'
 import { pickAvatarAndUpload } from '@components/pickAvatarAndUpload.bridge'
+// ВРЕМЕННО до 2C-14 — `@components/popups/birthday` (расхождение 5)
+import showBirthdayPopup, { suggestUserBirthday } from '@components/popups/birthday.bridge'
 import { confirmationPopup } from '@components/popups/popupPeer'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
 import { usePromiseCollector } from '@components/solidJsTabs/promiseCollector.solid'
@@ -95,6 +88,8 @@ const EditContact = () => {
 
   // расхождение 1 — `appUsersManager.getUser`
   const getUser = async(userId: number) => (await managers.peers.getUsers([userId]))[0]
+  // расхождение 3 — `appProfileManager.getProfile`
+  const getProfile = async(userId: number) => (await managers.privacy.profile(userId)).fullUser
 
   promiseCollector.collect((async() => {
     const userId = peerId
@@ -112,6 +107,8 @@ const EditContact = () => {
     let editPeer: EditPeer
     let sharePhoneSignal: Signal<boolean> | undefined
 
+    let canSuggestBirthday = false
+
     // Tracks the personal/suggest photo section so it can be re-rendered in place
     // after the personal photo is set/suggested/reset.
     let photoSectionContainer: HTMLElement | undefined
@@ -120,13 +117,11 @@ const EditContact = () => {
     // personal photo is set/reset — e.g. dropping the "Reset" button + flipping
     // "Update Photo" back to "Set Photo" once the custom photo is removed.
     async function buildPhotoSection(): Promise<HTMLElement> {
-      // О-21 волна 7 — личное фото из книги (расхождение 4)
-      const [user, contact] = await Promise.all([
+      const [user, fullUser] = await Promise.all([
         getUser(userId),
-        managers.contacts.list().then((contacts) => contacts.find((contact) => contact.userId === userId)),
+        getProfile(userId),
       ])
-      const photo = contact?.user.photo
-      const hasPersonal = !!(photo?._ === 'userProfilePhoto' && photo.pFlags?.personal)
+      const hasPersonal = !!fullUser?.personal_photo
       const firstName = user.first_name || ''
 
       const btnSetPhoto = Button('btn-primary btn-transparent', {
@@ -193,7 +188,7 @@ const EditContact = () => {
     async function refreshPhotoSection() {
       const old = photoSectionContainer
       if(!old?.isConnected) return
-      // О-21 волна 7: `refreshFullPeer` не нужен — книга читается с сети
+      // расхождение 3: `refreshFullPeer` не нужен — профиль читается с сети
       const fresh = await buildPhotoSection()
       if(!old.isConnected) return // tab closed while the fresh book loaded
       old.replaceWith(fresh)
@@ -235,16 +230,21 @@ const EditContact = () => {
       inputFields.push(nameInputField, lastNameInputField)
 
       if(userId) {
-        // О-20 волна 7 — исходного значения нет; `InputField` вместо
-        // `InputFieldEmoji` (расхождение 3)
+        const fullUser = await getProfile(userId)
+        // `InputField` вместо `InputFieldEmoji` (расхождение 4)
         noteInputField = new InputField({
           label: 'ContactNoteRow',
           name: 'contact-note',
           maxLength: 128,
           withLinebreaks: true,
         })
+        if(fullUser?.note) {
+          noteInputField.setOriginalValue(fullUser.note.text)
+        }
         inputFields.push(noteInputField)
         inputWrapper.append(noteInputField.container)
+
+        canSuggestBirthday = !fullUser?.birthday
       }
 
       editPeer = new EditPeer({
@@ -306,7 +306,19 @@ const EditContact = () => {
                   <Row.Title>{i18n('Notifications')}</Row.Title>
                   <Row.Subtitle>{i18n(notificationsSignal[0]() ? 'Checkbox.Enabled' : 'Checkbox.Disabled')}</Row.Subtitle>
                 </Row>
-                {/* О-22 волна 7 — строки «Предложить дату рождения» нет (расхождение 5) */}
+                {canSuggestBirthday && (
+                  <Row
+                    clickable={() => {
+                      showBirthdayPopup({
+                        suggestForPeer: peerId,
+                        onSave: (it) => suggestUserBirthday(userId, it),
+                      })
+                    }}
+                  >
+                    <Row.Icon icon="gift_filled" />
+                    <Row.Title>{i18n('SuggestBirthdayRow')}</Row.Title>
+                  </Row>
+                )}
               </>
             ),
             middleware: tab.middlewareHelper.get(),
@@ -391,14 +403,18 @@ const EditContact = () => {
       editPeer.nextBtn.disabled = true
 
       try {
-        // О-20 волна 7 — заметка в том же вызове; без номера (расхождение 9)
+        // без номера (расхождение 9)
         await managers.contacts.add({
           contactId: userId,
           firstName: nameInputField.value,
           lastName: lastNameInputField.value,
-          note: noteInputField.value,
           sharePhone: sharePhoneSignal?.[0](),
         })
+
+        if(noteInputField.isChanged()) {
+          // расхождение 4 — текст без разметки
+          await managers.profile.updateUserNote(userId, { _: 'textWithEntities', text: noteInputField.value, entities: [] })
+        }
       } catch(error) {
         console.error(error)
         toastNew({ langPackKey: 'Error.AnError' })
