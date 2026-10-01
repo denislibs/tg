@@ -1,6 +1,7 @@
 import TgIcon from './TgIcon'
 import Menu, { MenuItem } from '../shared/ui/Menu'
 import { useT } from '../i18n'
+import { SECRET_CHATS_ENABLED } from '../config/app'
 
 interface Props {
   open: boolean
@@ -46,14 +47,18 @@ export default function ComposeMenu({ open, anchor, onClose, onNewGroup, onNewPr
           onNewPrivate?.()
         }}
       />
-      <MenuItem
-        icon={<TgIcon name="lock" size={20} />}
-        label={t('SecretChat.New')}
-        onClick={() => {
-          onClose()
-          onNewSecret?.()
-        }}
-      />
+      {/* Отступление В7-1: секретных чатов у tweb нет; вход скрыт флагом
+          `SECRET_CHATS_ENABLED` (решение пользователя 2026-10-01, `config/app.ts`). */}
+      {SECRET_CHATS_ENABLED && (
+        <MenuItem
+          icon={<TgIcon name="lock" size={20} />}
+          label={t('SecretChat.New')}
+          onClick={() => {
+            onClose()
+            onNewSecret?.()
+          }}
+        />
+      )}
     </Menu>
   )
 }
