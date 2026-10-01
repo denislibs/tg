@@ -380,6 +380,14 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // читателей: восемь наших `Premium.Manage.*` и `Stars.Subscription`/
 // `Stars.Subscription.Cancel`. Итог: ru 1404, uk 750, es/de 747, fr 742.
 //
+// Задача 21 плана 2D (вкладка «Passkeys», порт tweb passkeys.tsx + popups/passkey.tsx):
+// +7 ключей tweb lang.ts всем пяти — `Privacy.Passkeys.Caption`,
+// `Privacy.Passkey.Created`/`Privacy.Passkey.LastUsage` (подзаголовок строки),
+// `Passkey.Deletion.Title`/`Passkey.Deletion.Text` (подтверждение удаления),
+// `Passkey.Created`/`Passkey.CreationError` (тосты `createPasskey`); −7 наших
+// ключей снесённого React-экрана без других читателей — `Passkeys.Add`,
+// `Passkeys.Caption`, `Passkeys.Created`, `Passkeys.Item`, `Passkeys.LastUsed`,
+// `Passkeys.Unsupported`, `Passkey.CreateError`. Число строк то же, набор другой.
 // Задача 0а-1 волны 7 (вкладка контактов вместо React-экранов «Контакты» и
 // «Новое сообщение»): −2 наших ключа у всех пяти — `Compose.NewMessage` (заголовок
 // снесённого «Нового сообщения»: у tweb это вкладка «Контакты») и `Contacts.NotFound`
@@ -514,15 +522,17 @@ const COMPOSITION = {
 // Особыми чатами — у ru +4 ключа tweb (разбор — у `COMPOSITION` выше).
 // Задачей 28 плана 2D — два ключа строк корня настроек у всех пяти, у ru — минус
 // ключи снесённого `PremiumManage` (разбор — там же).
+// Задачей 21 плана 2D — ключи вкладки «Passkeys» вместо ключей снесённого
+// React-экрана, −7 +7 у всех пяти (разбор — у `COMPOSITION` выше).
 // Задачей 0а-1 волны 7 — минус `Compose.NewMessage` и `Contacts.NotFound` у всех пяти:
 // наши ключи снесённых React-экранов «Новое сообщение» и «Контакты» (вкладка контактов
 // tweb пустой выдачи не подписывает, а «Новое сообщение» — это она же).
 const FINGERPRINT = {
-  ru: '9ad334dc',
-  uk: '2a1f2d83',
-  es: '1d8ef75a',
-  de: 'fa667ee1',
-  fr: '2a2bbdf7',
+  ru: '65e68ee4',
+  uk: '38a0b8a3',
+  es: '68937dba',
+  de: '0e73a8c9',
+  fr: '055afa1f',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -843,7 +853,6 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     'EditProfile.BioLabel': '«Bio (optional)» — оба слова немецкие',
     'Settings.Limits': '«Limits» — заимствование, немецкое множественное',
     'Privacy.Passkeys': '«Passkeys» — термин без немецкого эквивалента',
-    'Passkeys.Item': '«Passkey» — тот же термин в единственном',
     'StorageQuota.CacheSizeLimitAuto': '«Auto» — сокращение от «automatisch»',
     'Unit.Bytes': 'B — единица информации, не переводится',
     'Unit.Kilobytes': 'KB — единица информации, не переводится',
