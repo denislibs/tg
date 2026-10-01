@@ -400,15 +400,22 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // попапа своего срока) и `UnsavedChanges`/`UnsavedChangesDescription.Privacy`
 // (подтверждение несохранённого на закрытии). Итог (поверх 0а-1 и О-22): ru 1407, uk 751,
 // es/de 748, fr 743.
+//
+// Задача 0б-2 волны 7 (вкладка типа чата, порт tweb `sidebarRight/tabs/chatType.tsx`
+// и `usernameInputField.ts`): +5 ключей tweb lang.ts всем пяти — подписи поля имени
+// `Link.{Available,Invalid,Taken}` и подтверждение снятия имени
+// `ChannelVisibility.Confirm.MakePrivate.{Channel,Group}`. У ru ещё −2: со сносом
+// React-экрана `ChatTypeScreen` ушли наши `LinkInvalid`/`LinkTaken` без других
+// читателей. Итог: ru 1410, uk 756, es/de 753, fr 748.
 // Задача 22 плана 2D (вкладка «Заблокированные», порт tweb blockedUsers.tsx): −1 наш
 // ключ у всех пяти — `BlockedEmptyDescription` (пустое состояние снесённого
-// React-экрана; у оригинала его нет). Итог: ru 1406, uk 750, es/de 747, fr 742.
+// React-экрана; у оригинала его нет). Итог: ru 1409, uk 755, es/de 752, fr 747.
 const COMPOSITION = {
-  ru: { keys: 1406, plural: 42 },
-  uk: { keys: 750, plural: 31 },
-  es: { keys: 747, plural: 30 },
-  de: { keys: 747, plural: 31 },
-  fr: { keys: 742, plural: 30 },
+  ru: { keys: 1409, plural: 42 },
+  uk: { keys: 755, plural: 31 },
+  es: { keys: 752, plural: 30 },
+  de: { keys: 752, plural: 31 },
+  fr: { keys: 747, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -540,14 +547,16 @@ const COMPOSITION = {
 // tweb пустой выдачи не подписывает, а «Новое сообщение» — это она же).
 // Пилюлей предложения даты рождения — у ru +2 ключа tweb (разбор — там же).
 // Задачей 20 плана 2D — три ключа вкладки «Автоудаление» у всех пяти (там же).
+// Задачей 0б-2 волны 7 — +5 ключей вкладки типа чата у всех пяти, у ru — минус
+// `LinkInvalid`/`LinkTaken` снесённого React-экрана (разбор — там же).
 // Задачей 22 плана 2D — минус `BlockedEmptyDescription` у всех пяти (разбор — у
 // `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: 'b748e6dc',
-  uk: 'febc49c1',
-  es: 'ce0e7182',
-  de: '2766a1df',
-  fr: '84e81489',
+  ru: '27a36f53',
+  uk: '339ea3e0',
+  es: '1bbe9185',
+  de: '1ecacbde',
+  fr: 'd3205dec',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

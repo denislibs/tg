@@ -162,9 +162,21 @@ tweb: `sharedMediaTab` + `peerProfile`. Табы (`sharedMedia.tsx:449-462, 604-
 | Sign Messages + Show Profiles | ✅ (`editChat.tsx:640-676`) | 🟡 тумблеры есть, на рендер ленты не влияют |
 | Delete Channel | ✅ | ✅ |
 
-`Channel Type` внутри (`chatType.tsx`): приватная ссылка + Revoke, публичный username,
-**Restrict Saving Content** (`noforwards`, `chatType.tsx:326-343`).
-У нас (`ChatTypeScreen.tsx`) — тип, ссылка, Revoke; **`noforwards` ❌**.
+`Channel Type` внутри (`chatType.tsx`, 812502980): радио приватный/публичный, приватная
+ссылка + Revoke (попап `revoke-link`), публичный username (`UsernameInputField`, голова `t.me/`)
+с `UsernamesSection`, секция вступления (join to send / заявки / бот-привратник
+`guard_bot_id`), **Restrict Saving Content** (`noforwards`, `chatType.tsx:374-407`); всё
+сохраняет угловая кнопка (`:231-266`), снятие имени — через подтверждение
+`ChannelVisibility.Confirm.MakePrivate.*` (`:214-229`).
+У нас — порт вкладкой `AppChatTypeTab` (`web-client/src/components/sidebarRight/tabs/chatType.solid.tsx`,
+задача 0б-2 волны 7): тип, ссылка, Revoke, поле имени, угловая «Сохранить», подтверждение — 1:1.
+Занятость имени — ручкой чата `GET /chats/{id}/username/available` (`groups.checkUsername`,
+порт `channels.checkUsername`; имена пользователей и чатов — одно пространство).
+Нет на бэкенде (шапка вкладки): вступление и бот-привратник (О-15), **`noforwards` ❌** (О-16),
+коллекция имён `usernames` и покупка имени (О-17). Открывает её React-редактор
+`group/GroupEditFlow.tsx` мостом `appSidebarRight.createTab(AppChatTypeTab).open(…)`
+(ВРЕМЕННО до 0б-1: пока вкладка открыта, React-оверлей спрятан — он лежит соседом
+вкладок в `.sidebar-slider` с `z-index: 60`); React-экран `ChatTypeScreen.tsx` снесён.
 
 ## 7. Права админа
 
