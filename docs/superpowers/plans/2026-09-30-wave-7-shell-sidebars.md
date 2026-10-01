@@ -1357,6 +1357,10 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 | О-11 | Игры (`playGame` `:1394`), url-auth (`handleUrlAuth` `:1419`), autologin-домены (`:1511`) | нет на бэкенде | боты с логином/играми |
 | О-12 | Пункты меню ⋮ и плашки шапки без бэкенда: перевод чата, снятие платы, автоматизация, бусты (если нет), `CompactDiffView`, `WelcomeMessages.DeleteAll` | детальный план Э6 составит точный список | шапка 1:1 |
 | О-13 | Возможности композера без бэкенда: эфемерный режим, предложенные посты, эффекты (если нет), AI-редактор (`inputState/aiEditorButton`) | детальный план Э7 составит точный список | композер 1:1 |
+| О-14 | Проверка занятости имени чата (`channels.checkUsername`, tweb `appChatsManager.checkUsername`); поле `UsernameInputField` вкладки типа чата — `// ВРЕМЕННО до О-14` без сети | `GET /username/available` смотрит только `users`, у чатов своё пространство имён (`chats.username`) | ручка проверки имени чата (ветка `fix/chat-username-available-privacy-error`) |
+| О-15 | Секция вступления вкладки типа чата: «вступать, чтобы писать», заявки на вступление, бот-привратник `guard_bot_id` (`chatType.tsx:270-372`) | флагов `join_to_send`/`join_request` у `channel` нет (`domain/mtchat.go`, `ChannelFlags`) | секция 1:1 |
+| О-16 | «Запрет копирования» (`noforwards`, `messages.toggleNoForwards`, `chatType.tsx:374-407`) | флаг не объявлен у `channel`, механики нет | секция 1:1 и гейт копирования/пересылки |
+| О-17 | Коллекция имён `usernames` (несколько имён, порядок, скрытие, покупка на Fragment): `UsernamesSection`, `purchaseUsernameCaption` | у чата одно поле `username` (`core/peers/predicates.ts`, `isPublic`) | `usernamesSection.tsx` 1:1 |
 
 ## Что остаётся волне 8 (после этой программы)
 

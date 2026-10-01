@@ -383,10 +383,11 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Задача 0б-2 волны 7 (вкладка типа чата, порт tweb `sidebarRight/tabs/chatType.tsx`
 // и `usernameInputField.ts`): +5 ключей tweb lang.ts всем пяти — подписи поля имени
 // `Link.{Available,Invalid,Taken}` и подтверждение снятия имени
-// `ChannelVisibility.Confirm.MakePrivate.{Channel,Group}`. Итог: ru 1409, uk 755,
-// es/de 752, fr 747.
+// `ChannelVisibility.Confirm.MakePrivate.{Channel,Group}`. У ru ещё −2: со сносом
+// React-экрана `ChatTypeScreen` ушли наши `LinkInvalid`/`LinkTaken` без других
+// читателей. Итог: ru 1407, uk 755, es/de 752, fr 747.
 const COMPOSITION = {
-  ru: { keys: 1409, plural: 42 },
+  ru: { keys: 1407, plural: 42 },
   uk: { keys: 755, plural: 31 },
   es: { keys: 752, plural: 30 },
   de: { keys: 752, plural: 31 },
@@ -515,9 +516,10 @@ const COMPOSITION = {
 // Особыми чатами — у ru +4 ключа tweb (разбор — у `COMPOSITION` выше).
 // Задачей 28 плана 2D — два ключа строк корня настроек у всех пяти, у ru — минус
 // ключи снесённого `PremiumManage` (разбор — там же).
-// Задачей 0б-2 волны 7 — +5 ключей вкладки типа чата у всех пяти (разбор — там же).
+// Задачей 0б-2 волны 7 — +5 ключей вкладки типа чата у всех пяти, у ru — минус
+// `LinkInvalid`/`LinkTaken` снесённого React-экрана (разбор — там же).
 const FINGERPRINT = {
-  ru: 'b039bfb6',
+  ru: 'c481b28e',
   uk: '12d6c803',
   es: '09f1a876',
   de: '83339d15',
