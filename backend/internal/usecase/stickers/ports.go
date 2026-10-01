@@ -75,8 +75,8 @@ type Repo interface {
 	DeleteGif(ctx context.Context, userID, mediaID int64) error
 
 	MediaExists(ctx context.Context, mediaID int64) (bool, error)
-	// IsStickerMedia — media принадлежит какому-либо стикеру (наборы публичны,
-	// поэтому такое media можно слать и читать всем).
+	// IsStickerMedia — media принадлежит какому-либо стикеру или это обложка
+	// набора (наборы публичны, поэтому такое media можно слать и читать всем).
 	IsStickerMedia(ctx context.Context, mediaID int64) (bool, error)
 }
 

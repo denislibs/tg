@@ -776,8 +776,8 @@ DOM-паритет первого таба выдержан сознательн
    `closeAllTabsNaturally` на слайдере есть, вызывающего нет).
 2. ~~**Настройки — один компонент, а не дерево табов.**~~ Снято задачей 28 плана 2D: корень —
    `AppSettingsTab`, подэкраны — вкладки (`makeSubTabConfig` с `getInitArgs`-префетчем, срезы
-   `sliceTabsUntilTab` мастера 2FA и код-пароля — дословно). Остаток: четыре React-экрана на
-   мосту `scaffoldReactScreenTab` (до 2D-15/23/26/27) и нет попап-режима настроек при свёрнутой
+   `sliceTabsUntilTab` мастера 2FA и код-пароля — дословно). Остаток: React-экраны на
+   мосту `scaffoldReactScreenTab` (до 2D-23/26/27; «Стикеры и эмодзи» — Solid с задачи 15) и нет попап-режима настроек при свёрнутой
    колонке (`SettingsSliderPopup`, О-27 плана 2D).
 3. ~~**Поиск без `AppSearchSuper`.**~~ Снято задачей 13 плана
    `docs/superpowers/plans/2026-09-07-solid-wave-3-global-search.md`: выдачу рисует тот же класс
@@ -869,7 +869,8 @@ DOM-паритет первого таба выдержан сознательн
 | `components/sidebarLeft/tabs/notifications.solid.tsx` | `src/components/sidebarLeft/tabs/notifications.tsx` (812502980) | «Уведомления и звуки» — пилот плана 2D (задача 6): первый экран на Solid `Row`/`Section` HEAD; без «All Accounts» (О-1) и секций Stories/Reactions/Other (О-3…О-5); React `settings/NotificationsSettings.tsx` снесён |
 | `components/sidebarLeft/tabs/keyboardShortcuts.solid.tsx` | `src/components/sidebarLeft/tabs/keyboardShortcuts.tsx` (812502980) | «Горячие клавиши» (план 2D, задача 10): только обрабатываемые клиентом сочетания — без `InlineSelect` отправки, `JumpToInputStart/End` и секции Other (расхождения в шапке); React `settings/HotkeysSettings.tsx` снесён |
 | `components/sidebarLeft/tabs/powerSaving.solid.tsx` + `components/checkboxFields.solid.tsx` | `src/components/sidebarLeft/tabs/powerSaving.tsx`, `src/components/checkboxFields.tsx` (812502980) | «Энергосбережение» — задача 11 плана 2D; открывает строка «Общих» через хост; пункт меню «Ещё» «Отключить анимации» пишет `liteMode.animations`, пункта «Lite Mode» при `liteMode.all` (`index.ts:946-954`) нет до задачи 28; React `settings/PowerSaving.tsx` снесён |
-| `components/sidebarLeft/tabs/quickReaction.solid.tsx` | `src/components/sidebarLeft/tabs/quickReaction.tsx` (812502980) | «Быстрая реакция» — задача 14 плана 2D; открывает строка `DoubleTapSetting` React-экрана «Стикеры» через хост (до задачи 15); выбор не сохраняется (О-30); React `settings/QuickReaction.tsx` снесён |
+| `components/sidebarLeft/tabs/quickReaction.solid.tsx` | `src/components/sidebarLeft/tabs/quickReaction.tsx` (812502980) | «Быстрая реакция» — задача 14 плана 2D; открывает строка `DoubleTapSetting` вкладки «Стикеры и эмодзи» (`tab.slider.createTab`); выбор не сохраняется (О-30); React `settings/QuickReaction.tsx` снесён |
+| `components/sidebarLeft/tabs/stickersAndEmoji.solid.tsx` + `components/wrappers/stickerSetThumb.ts` | `src/components/sidebarLeft/tabs/stickersAndEmoji.tsx`, `src/components/wrappers/stickerSetThumb.ts` (812502980) | «Стикеры и эмодзи» — задача 15 плана 2D; открывает строка `StickersName` корня; без превью быстрой реакции (О-30), «Large Emoji» (О-45), «Dynamic Pack Order» (О-43), перетаскивания наборов (О-14); «All Sets» = «My Sets» (О-44); попап набора — мост `showStickersPopup` до 2C-15; React `settings/StickersSettings.tsx` снесён |
 | `components/sidebarLeft/tabs/addMembers.solid.tsx` + `components/appSelectPeers.solid.tsx` | `sidebarLeft/tabs/addMembers.tsx` + `components/appSelectPeers.tsx` (812502980) | вкладка выбора участников на селекторе пиров (план 2D, задача 16); без категорий/мини-приложений (О-33), участников канала, `peerLoader`, лимита — шапки файлов; открывающих пока нет (исключения приватности — задача 17) |
 | `components/sidebarLeft/tabs/sharedFolder.solid.tsx` + `inviteLink.ts` | `src/components/sidebarLeft/tabs/sharedFolder.tsx`, `inviteLink.ts` (812502980) | вкладка ссылки папки «Share Folder» (план 2D, задача 25): открывает редактор папки (`openChatlistInvite`); ссылку показывает/копирует/удаляет, выбор чатов ссылки заблокирован (нет `editExportedInvite`, О-23), кнопки «Share Link» нет (попап 2C) |
 | `components/sidebarLeft/columnSlider.ts` | `sidebarLeft/index.ts:147-152`, `:652-654`, `:1743-1753` | колоночный слайдер: `createColumnSlider`/`getColumnSlider` (роль синглтона `appSidebarLeft`, ВРЕМЕННО до 2-1), `item-secondary` у вкладок, `openActiveSessionsTab` для React-«Конфиденциальности» |
@@ -924,8 +925,8 @@ React о закрытии вкладки узнаёт только от слай
 - **`SidebarSlider.destroy()`** — колонка монтируется и размонтируется вместе с React-шеллом
   (выход из аккаунта, тесты); вкладки уходят с ней. Снимает Э4-1 (колонки из `index.html`);
 - **React-экраны вкладками** (`sidebarLeft/reactScreenTab.tsx`) — «Конфиденциальность»,
-  «Стикеры и эмодзи», «Динамики и камера», «Редактировать профиль» ещё на ките; классы вкладок
-  уже tweb, содержимое — React-корень. Снимают 2D-23/15/26/27;
+  «Динамики и камера», «Редактировать профиль» ещё на ките; классы вкладок уже tweb,
+  содержимое — React-корень. Снимают 2D-23/26/27 («Стикеры и эмодзи» сняла задача 15);
 - **«Устройства» из React-«Конфиденциальности»** — `openActiveSessionsTab` (порт
   `newAuthorization.tsx:116-121`); корень открывает вкладку сам (`onDevicesClick`, tweb :354-383).
 
@@ -959,9 +960,9 @@ React о закрытии вкладки узнаёт только от слай
 
 ### Что НЕ портировано
 
-- **Четыре подэкрана настроек** — «Конфиденциальность» (с её саб-экранами), «Стикеры и эмодзи»,
-  «Динамики и камера», «Редактировать профиль» — React-экраны `components/settings/*` на мосту
-  `scaffoldReactScreenTab` (задачи 2D-23/15/26/27): задача порта меняет форму объявления в
+- **Три подэкрана настроек** — «Конфиденциальность» (с её саб-экранами), «Динамики и камера»,
+  «Редактировать профиль» — React-экраны `components/settings/*` на мосту
+  `scaffoldReactScreenTab` (задачи 2D-23/26/27): задача порта меняет форму объявления в
   `solidJsTabs/tabs.ts` и удаляет React-экран.
 - **`SettingsSliderPopup`** (`createTab`-override при свёрнутой колонке, `sidebarLeft/index.ts:1730-1741`):
   вкладка настроек в попапе — О-27 плана 2D (предмет появился с задачей 28, порт не сделан).
