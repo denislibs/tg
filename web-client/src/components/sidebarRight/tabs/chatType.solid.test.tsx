@@ -57,6 +57,7 @@ let groups: {
   editInvite: ReturnType<typeof vi.fn>
   createInvite: ReturnType<typeof vi.fn>
   setType: ReturnType<typeof vi.fn>
+  checkUsername: ReturnType<typeof vi.fn>
 }
 
 beforeEach(() => {
@@ -70,8 +71,9 @@ beforeEach(() => {
     editInvite: vi.fn(async(_peerId: number, token: string) => ({ ...link(token), revoked: true })),
     createInvite: vi.fn(async() => link('fresh')),
     setType: vi.fn(async() => {}),
+    checkUsername: vi.fn(async(_peerId: number, username: string) => username !== 'takenname'),
   }
-  const managers = { groups, profile: { checkUsername: vi.fn(async() => true) } } as unknown as Managers
+  const managers = { groups } as unknown as Managers
 
   const sidebarEl = document.createElement('div')
   sidebarEl.id = 'column-right'
@@ -185,6 +187,9 @@ describe('вкладка «Тип» — сеть в момент оригина�
     await pause(250) // проверка имени — за debounce 150 мс (`usernameInputField.ts:28`)
     await settle()
 
+    // занятость — ручкой ЧАТА (`channels.checkUsername`, О-14), один раз за debounce
+    expect(groups.checkUsername).toHaveBeenCalledTimes(1)
+    expect(groups.checkUsername).toHaveBeenCalledWith(toPeerId(CHANNEL_ID, true), 'newname')
     expect(linkInput(tab).classList.contains('valid')).toBe(true)
     expect(applyBtn(tab).classList.contains('is-visible')).toBe(true)
     expect(groups.setType).not.toHaveBeenCalled()
@@ -208,6 +213,20 @@ describe('вкладка «Тип» — сеть в момент оригина�
 
     expect(linkInput(tab).classList.contains('error')).toBe(true)
     expect(text(tab.container.querySelector('.input-field-error-label'))).toBe(lang['Link.Invalid'])
+    expect(applyBtn(tab).classList.contains('is-visible')).toBe(false)
+    expect(groups.checkUsername).not.toHaveBeenCalled()
+  })
+
+  it('занятое имя — ошибка поля «Link.Taken», кнопки нет', async() => {
+    const tab = await open(CHANNEL_ID)
+    choose(radios(tab)[1])
+
+    type(linkInput(tab), 't.me/takenname')
+    await pause(250)
+    await settle()
+
+    expect(groups.checkUsername).toHaveBeenCalledWith(toPeerId(CHANNEL_ID, true), 'takenname')
+    expect(text(tab.container.querySelector('.input-field-error-label'))).toBe(lang['Link.Taken'])
     expect(applyBtn(tab).classList.contains('is-visible')).toBe(false)
   })
 
@@ -238,7 +257,7 @@ describe('вкладка «Тип» — сеть в момент оригина�
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     choose(radios(tab)[1])
-    type(linkInput(tab), 't.me/takenname')
+    type(linkInput(tab), 't.me/racename')
     await pause(250)
     await settle()
     click(applyBtn(tab))

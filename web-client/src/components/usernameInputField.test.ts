@@ -2,7 +2,8 @@
  * `UsernameInputField` — порт tweb `components/usernameInputField.ts` (812502980).
  * Предмет: голова `t.me/` не отрезается от поля и не входит в значение; формат
  * проверяется на вводе без сети; занятость — одним запросом за debounce 150 мс;
- * ответ «занято» — ошибка поля; имя ЧАТА — без сети (ВРЕМЕННО, О-14 волна 7).
+ * ответ «занято» — ошибка поля; имя ЧАТА — своей ручкой (`groups.checkUsername`), её
+ * отказ `USERNAME_INVALID` — ошибка «Link.Invalid».
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Managers } from '@/client/bootstrap'
@@ -14,11 +15,16 @@ const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 let listenerSetter: ListenerSetter
 let checkUsername: ReturnType<typeof vi.fn>
+let checkChatUsername: ReturnType<typeof vi.fn>
 let onChange: ReturnType<typeof vi.fn<() => void>>
 
 beforeEach(() => {
   listenerSetter = new ListenerSetter()
   checkUsername = vi.fn(async(username: string) => username !== 'takenname')
+  checkChatUsername = vi.fn(async(_peerId: PeerId, username: string) => {
+    if(username === 'badbad') throw Object.assign(new Error('USERNAME_INVALID'), { type: 'USERNAME_INVALID' })
+    return username !== 'takenchat'
+  })
   onChange = vi.fn<() => void>()
 })
 
@@ -38,7 +44,7 @@ const create = (peerId?: PeerId) => {
     onChange,
     peerId,
     head: 't.me/',
-  }, { profile: { checkUsername } } as unknown as Managers)
+  }, { profile: { checkUsername }, groups: { checkUsername: checkChatUsername } } as unknown as Managers)
   document.body.append(field.container)
   field.setOriginalValue('t.me/', true)
   return field
@@ -88,11 +94,20 @@ describe('UsernameInputField', () => {
     expect(checkUsername).not.toHaveBeenCalled()
   })
 
-  it('имя чата: сеть не спрашивается, годное имя — valid (ВРЕМЕННО до О-14 волна 7)', async() => {
+  it('имя чата — ручка чата (`groups.checkUsername`), не пользователя; занято → «Link.Taken»', async() => {
     const field = create(-30)
-    type(field, 't.me/chatname')
+    type(field, 't.me/takenchat')
     await pause(200)
     expect(checkUsername).not.toHaveBeenCalled()
-    expect(field.input.classList.contains('valid')).toBe(true)
+    expect(checkChatUsername).toHaveBeenCalledWith(-30, 'takenchat')
+    expect(field.errorLabel?.textContent).toBe(lang['Link.Taken'])
+  })
+
+  it('отказ ручки `USERNAME_INVALID` → «Link.Invalid»', async() => {
+    const field = create(-30)
+    type(field, 't.me/badbad')
+    await pause(200)
+    expect(checkChatUsername).toHaveBeenCalledTimes(1)
+    expect(field.errorLabel?.textContent).toBe(lang['Link.Invalid'])
   })
 })

@@ -6,13 +6,10 @@
  * Первый потребитель — вкладка типа чата (`sidebarRight/tabs/chatType.solid.tsx`).
  *
  * Расхождения:
- *  1. `AppManagers` → наш `Managers` (`client/bootstrap.ts`); проверка имени
- *     пользователя — `profile.checkUsername` (у tweb `appUsersManager.checkUsername`).
- *  2. Проверки имени ЧАТА (`channels.checkUsername`, tweb `appChatsManager.checkUsername`
- *     `:1082-1087`) на бэкенде нет: `GET /username/available` смотрит только таблицу
- *     `users`, а у чатов своё пространство имён (`chats.username`). До ручки
- *     формально годное имя считается свободным, окончательно решает сервер при
- *     сохранении (`PUT /chats/{id}/type` → 409) — см. строку вызова.
+ *  1. `AppManagers` → наш `Managers` (`client/bootstrap.ts`): имя пользователя —
+ *     `profile.checkUsername` (у tweb `appUsersManager.checkUsername`), имя чата —
+ *     `groups.checkUsername(peerId, …)` (у tweb `appChatsManager.checkUsername(chatId, …)`;
+ *     наши ручки адресуют чат знаковым ключом пира, поэтому `toChatId()` не нужен).
  */
 import type ListenerSetter from '@helpers/listenerSetter'
 import debounce from '@helpers/schedulers/debounce'
@@ -83,8 +80,7 @@ export class UsernameInputField extends InputField {
     this.error = undefined
     let checkPromise: Promise<boolean>
     if(this.options.peerId) {
-      // ВРЕМЕННО до О-14 волна 7: `channels.checkUsername` на бэкенде нет (шапка, п. 2)
-      checkPromise = Promise.resolve(true)
+      checkPromise = this.managers.groups.checkUsername(this.options.peerId, username)
     } else {
       checkPromise = this.managers.profile.checkUsername(username)
     }

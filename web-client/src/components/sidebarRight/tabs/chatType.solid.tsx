@@ -46,8 +46,6 @@
  *  8. `ButtonCorner` без `ariaLabel: 'Save'` (`:199`) — шапка `components/buttonCorner.ts`.
  *  9. Попап отзыва — `PopupPeer` классом (`components/popups/popupPeer.ts`), у
  *     tweb `showPeerPopup` (Solid-обёртка того же попапа, `popups/peer.tsx`).
- *  10. Проверка занятости имени чата — ВРЕМЕННО без сети (О-14 волна 7), см.
- *     `components/usernameInputField.ts`, шапка п. 2.
  */
 import { createSignal, type Component } from 'solid-js'
 import { copyTextToClipboard } from '@helpers/clipboard'

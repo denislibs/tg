@@ -170,8 +170,9 @@ tweb: `sharedMediaTab` + `peerProfile`. Табы (`sharedMedia.tsx:449-462, 604-
 `ChannelVisibility.Confirm.MakePrivate.*` (`:214-229`).
 У нас — порт вкладкой `AppChatTypeTab` (`web-client/src/components/sidebarRight/tabs/chatType.solid.tsx`,
 задача 0б-2 волны 7): тип, ссылка, Revoke, поле имени, угловая «Сохранить», подтверждение — 1:1.
-Нет на бэкенде (шапка вкладки): проверка имени чата `channels.checkUsername` (О-14 волна 7,
-поле временно без сети), вступление и бот-привратник (О-15), **`noforwards` ❌** (О-16),
+Занятость имени — ручкой чата `GET /chats/{id}/username/available` (`groups.checkUsername`,
+порт `channels.checkUsername`; имена пользователей и чатов — одно пространство).
+Нет на бэкенде (шапка вкладки): вступление и бот-привратник (О-15), **`noforwards` ❌** (О-16),
 коллекция имён `usernames` и покупка имени (О-17). Открывает её React-редактор
 `group/GroupEditFlow.tsx` мостом `appSidebarRight.createTab(AppChatTypeTab).open(…)`
 (ВРЕМЕННО до 0б-1: пока вкладка открыта, React-оверлей спрятан — он лежит соседом
