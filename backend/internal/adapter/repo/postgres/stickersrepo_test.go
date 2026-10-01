@@ -259,6 +259,15 @@ func TestStickersRepo_IsStickerMediaAndExists(t *testing.T) {
 	if ok, _ := r.IsStickerMedia(ctx, plainMedia); ok {
 		t.Fatalf("IsStickerMedia(обычное медиа): want false")
 	}
+	// Обложка набора — публичный файл набора, как и его стикеры (thumb_document_id
+	// клиента): без этого GET /media/{id}/content отвечал на неё 404.
+	cover := seedStickerMedia(t, pool, owner, "cover")
+	if err := r.SetCover(ctx, set.ID, cover); err != nil {
+		t.Fatalf("SetCover: %v", err)
+	}
+	if ok, err := r.IsStickerMedia(ctx, cover); err != nil || !ok {
+		t.Fatalf("IsStickerMedia(обложка набора): %v, %v", ok, err)
+	}
 	if ok, err := r.MediaExists(ctx, plainMedia); err != nil || !ok {
 		t.Fatalf("MediaExists: %v, %v", ok, err)
 	}

@@ -407,12 +407,22 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `ChannelVisibility.Confirm.MakePrivate.{Channel,Group}`. У ru ещё −2: со сносом
 // React-экрана `ChatTypeScreen` ушли наши `LinkInvalid`/`LinkTaken` без других
 // читателей. Итог: ru 1410, uk 756, es/de 753, fr 748.
+//
+// Задача 15 плана 2D («Стикеры и эмодзи», порт tweb stickersAndEmoji.tsx): +7
+// ключей tweb lang.ts — `SuggestStickersAll`/`Installed`/`None`,
+// `LoopAnimatedStickersInfo`, `Emoji`, `Telegram.InstalledStickerPacksController`,
+// `StickersBotInfo`; у es и fr без `Telegram.InstalledStickerPacksController` —
+// «Stickers» там совпадает с английским (нижний слой). Сняты у всех пяти
+// `DynamicPackOrder` (секции нет, О-43) и наш `Settings.BigEmoji` (ни одного
+// читателя); у ru ещё четыре ключа снесённого React-экрана — `Stickers.MySets`,
+// `Stickers.NoSets`, `Stickers.AddSets`, `Stickers.SearchSets`. Итог (поверх 0б-2): ru 1411,
+// uk 761, es 757, de 758, fr 752.
 const COMPOSITION = {
-  ru: { keys: 1410, plural: 42 },
-  uk: { keys: 756, plural: 31 },
-  es: { keys: 753, plural: 30 },
-  de: { keys: 753, plural: 31 },
-  fr: { keys: 748, plural: 30 },
+  ru: { keys: 1411, plural: 42 },
+  uk: { keys: 761, plural: 31 },
+  es: { keys: 757, plural: 30 },
+  de: { keys: 758, plural: 31 },
+  fr: { keys: 752, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -546,12 +556,14 @@ const COMPOSITION = {
 // Задачей 20 плана 2D — три ключа вкладки «Автоудаление» у всех пяти (там же).
 // Задачей 0б-2 волны 7 — +5 ключей вкладки типа чата у всех пяти, у ru — минус
 // `LinkInvalid`/`LinkTaken` снесённого React-экрана (разбор — там же).
+// Задачей 15 плана 2D — ключи «Стикеров и эмодзи» вместо ключей снесённого
+// React-экрана (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '91d1c94e',
-  uk: '8a7db127',
-  es: '35060ecc',
-  de: '912ea73d',
-  fr: 'f508a3e3',
+  ru: 'd759faac',
+  uk: '0d25560d',
+  es: '71847c28',
+  de: '06d3b073',
+  fr: 'aec1d52f',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
