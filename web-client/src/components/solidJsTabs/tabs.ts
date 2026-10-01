@@ -513,3 +513,19 @@ export const AppSharedFolderTab =
     getComponentModule: () => import('../sidebarLeft/tabs/sharedFolder.solid'),
     onOpenAfterTimeout: folderTabOpenAfterTimeout,
   })
+
+// ── Passkeys (tweb :132-141) — задача 21 плана 2D ────────────────────────────
+// Вкладка `passkeys.solid.tsx`; открывает её строка `Privacy.Passkeys`
+// «Конфиденциальности». Список и сеттер — стор ОТКРЫВАЮЩЕГО
+// (`privacyAndSecurity.tsx:134-135`, `:179`): удаление и создание во вкладке
+// сразу видны строке родителя. Тип ключа — предметный `Passkey` (`layer.d.ts`).
+type AppPasskeysTabPayload = {
+  passkeys: import('@layer').Passkey[]
+  setPasskeys: import('solid-js/store').SetStoreFunction<import('@layer').Passkey[]>
+}
+
+export const AppPasskeysTab =
+  scaffoldSolidJSTab<AppPasskeysTabPayload>({
+    title: 'Privacy.Passkeys',
+    getComponentModule: () => import('../sidebarLeft/tabs/passkeys.solid'),
+  })
