@@ -56,7 +56,9 @@ async function renderSidebar() {
 
 async function openSettings() {
   fireEvent.click(document.querySelector('.sidebar-tools-button')!)
-  await act(async () => {})
+  // меню бургера — порт tweb `ButtonMenuToggle`: строится асинхронно (verify
+  // пунктов, реестр аккаунтов) и принимает клик, только став `active`
+  await vi.waitFor(() => expect(document.querySelector('.btn-menu.active')).not.toBeNull())
   fireEvent.click(screen.getByText('Settings'))
   // `closeTabsBefore` — синхронно, если закрывать нечего; дальше — чанк вкладки
   await act(async () => { await pause(50) })

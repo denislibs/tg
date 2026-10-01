@@ -224,7 +224,6 @@ const de = {
   SavedMessages: 'Gespeicherte Nachrichten',
   'MyStories.Title': 'Meine Storys',
   Contacts: 'Kontakte',
-  'Stars.Wallet': 'Wallet',
   'MultiAccount.More': 'Mehr',
   NewChannel: 'Neuer Kanal',
   NewGroup: 'Neue Gruppe',

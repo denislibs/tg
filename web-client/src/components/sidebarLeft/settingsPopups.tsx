@@ -93,9 +93,10 @@ export function showMyQrCodePopup() {
 }
 
 // ВРЕМЕННО до 2C-13 (tweb `popups/logOut.ts`: `confirmationPopup` «Выйти?» →
-// `apiManager.logOut()`). До порта — то же действие, что у пункта бургера
-// (`MainMenu.tsx` → `useAuthGate.logout`), без подтверждения: подтверждение
-// приходит с попапом 2C-13 сразу в оба входа.
+// `apiManager.logOut()`). До порта — только команда воркеру, без
+// подтверждения: реакцию исполняет обработчик `rt:logging_out`
+// (`core/hooks/useAuthGate.ts`). Это единственный вход выхода — пункта «Выйти»
+// в бургере у tweb нет (задача 2-2 волны 7). Пины — `settingsPopups.logout.test.ts`.
 export function showLogOutPopup(managers: Managers) {
   void managers.auth.logout().catch(() => { location.reload() })
 }

@@ -24,8 +24,8 @@
  *  • ограничения голосования в опросе (:860-873) — флагов `subscribers_only`/
  *    `countries_iso2` у нашего `Poll` нет вовсе;
  *  • сабменю пункта чеклиста (:888-896) и варианта опроса (:896-908) —
- *    `createSubmenuTrigger`/`floatingButtonMenu` не портированы, чек-листы
- *    (`messageMediaToDo`) лента не рисует;
+ *    чек-листы (`messageMediaToDo`) лента не рисует (`createSubmenuTrigger`/
+ *    `floatingButtonMenu` портированы задачей 2-2 волны 7 — бургер);
  *  • `MessageScheduleSend`/`Selection.SendNow`/`MessageScheduleEditTime`
  *    (:908-938) — `ChatType.Scheduled` у императивной ленты нет: окно
  *    отложенных живёт отдельным экраном, а не типом чата;
