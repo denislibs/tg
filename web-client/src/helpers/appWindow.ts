@@ -10,13 +10,14 @@
  * `:118`): `enterAppPip` при выносе и его `restore` при возврате.
  *
  * Расхождения с оригиналом:
- *  1. `getAppWindow` (`:23-25`) и `onBeforeAppWindowChange` (`:21`, `:40-47`,
- *     `:62-70`) не портированы — у нас нет ни одного читателя. У tweb их
- *     читают слой метрик (`windowSize`, `mediaSizes`, `updateColumnWidths`,
- *     `--vh`) и снимок скролла ленты перед переносом (`bubbles.ts`); наши
- *     метрики в выносе окно не меняют (`core/dom/mediaSizes.ts`, шапка), узкий
- *     лейаут PiP держит `usePipStore().active`. Заводятся вместе с первым
- *     читателем.
+ *  1. `onBeforeAppWindowChange` (`:21`, `:40-47`, `:62-70`) не портирован —
+ *     у нас нет ни одного читателя. У tweb его читает снимок скролла ленты
+ *     перед переносом (`bubbles.ts`); наши метрики в выносе окно не меняют
+ *     (`core/dom/mediaSizes.ts`, шапка), узкий лейаут PiP держит
+ *     `usePipStore().active`. Заводится вместе с первым читателем.
+ *     `getAppWindow` (`:23-25`) заведён с первым читателем — предпросмотром
+ *     стикера (`components/stickerViewer.ts`): жест удержания слушает
+ *     документ и таймеры того окна, где сейчас живёт приложение.
  */
 
 // tweb :18
@@ -24,6 +25,11 @@ let activeWindow: Window = typeof window !== 'undefined' ? window : (undefined a
 
 // tweb :20
 const listeners = new Set<(win: Window, prev: Window) => void>()
+
+// tweb :23-25
+export function getAppWindow(): Window {
+  return activeWindow
+}
 
 /**
  * The body where transient overlays (context menus, popups, tooltips, the media viewer) should mount.

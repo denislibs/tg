@@ -93,6 +93,11 @@
   // не «значение по умолчанию», а исчезнувший z-index / размер / цвет.
   --z-below: -1; // base.scss:30 — z-index подложек
   --reaction-paid-transition: .2s ease-in-out; // base.scss:65
+  // base.scss:70-73 — переходы предпросмотра стикера (`styles/tweb/_stickerViewer.scss`)
+  --sticker-viewer-open-transition-in: .2s var(--transition-standard-easing);
+  --sticker-viewer-open-transition-out: .2s var(--transition-standard-easing);
+  // --sticker-viewer-switch-transition: .2s cubic-bezier(.07,1.21,.56,1.2);
+  --sticker-viewer-switch-transition: .2s cubic-bezier(.12,1.1,.56,1.2);
   --call-button-size: 3.375rem; // base.scss:150
   --call-button-margin: 2rem; // base.scss:151
   --premium-gradient: linear-gradient(52.62deg, #6B93FF 12.22%, #976FFF 50.25%, #E46ACE 98.83%); // base.scss:194
