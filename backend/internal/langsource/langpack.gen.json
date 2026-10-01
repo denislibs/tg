@@ -1361,10 +1361,6 @@
           "value": "Tag"
         },
         {
-          "key": "Compose.NewMessage",
-          "value": "New Message"
-        },
-        {
           "key": "Composer.CancelRecording",
           "value": "Cancel Recording"
         },
@@ -1411,10 +1407,6 @@
         {
           "key": "Contacts.Empty",
           "value": "No contacts"
-        },
-        {
-          "key": "Contacts.NotFound",
-          "value": "No contacts found."
         },
         {
           "key": "Continue",
@@ -7433,10 +7425,6 @@
           "value": "Новое сообщение"
         },
         {
-          "key": "Compose.NewMessage",
-          "value": "Новое сообщение"
-        },
-        {
           "key": "Suggestion.Notifications.Title",
           "value": "Не пропускайте сообщения! 🔔"
         },
@@ -9364,10 +9352,6 @@
         {
           "key": "Privacy.AlwaysShareCaption",
           "value": "Эти пользователи всегда будут это видеть, независимо от настройки выше."
-        },
-        {
-          "key": "Contacts.NotFound",
-          "value": "Контакты не найдены."
         },
         {
           "key": "Translate.SectionTitle",
@@ -12435,10 +12419,6 @@
           "value": "Nouveau message"
         },
         {
-          "key": "Compose.NewMessage",
-          "value": "Nouveau message"
-        },
-        {
           "key": "Suggestion.Notifications.Title",
           "value": "Ne manquez aucun message ! 🔔"
         },
@@ -13482,10 +13462,6 @@
         {
           "key": "Privacy.AlwaysShareCaption",
           "value": "Ces utilisateurs verront toujours ceci, quel que soit le réglage ci-dessus."
-        },
-        {
-          "key": "Contacts.NotFound",
-          "value": "Aucun contact trouvé."
         },
         {
           "key": "Translate.SectionTitle",
@@ -15516,10 +15492,6 @@
           "value": "Neue Nachricht"
         },
         {
-          "key": "Compose.NewMessage",
-          "value": "Neue Nachricht"
-        },
-        {
           "key": "Suggestion.Notifications.Title",
           "value": "Verpasse keine Nachricht! 🔔"
         },
@@ -16563,10 +16535,6 @@
         {
           "key": "Privacy.AlwaysShareCaption",
           "value": "Diese Nutzer sehen dies immer, unabhängig von der Einstellung oben."
-        },
-        {
-          "key": "Contacts.NotFound",
-          "value": "Keine Kontakte gefunden."
         },
         {
           "key": "Translate.SectionTitle",
@@ -18621,10 +18589,6 @@
           "value": "Nuevo mensaje"
         },
         {
-          "key": "Compose.NewMessage",
-          "value": "Nuevo mensaje"
-        },
-        {
           "key": "Suggestion.Notifications.Title",
           "value": "¡No te pierdas ningún mensaje! 🔔"
         },
@@ -19668,10 +19632,6 @@
         {
           "key": "Privacy.AlwaysShareCaption",
           "value": "Estos usuarios siempre verán esto, sin importar el ajuste anterior."
-        },
-        {
-          "key": "Contacts.NotFound",
-          "value": "No se encontraron contactos."
         },
         {
           "key": "Translate.SectionTitle",
@@ -21726,10 +21686,6 @@
           "value": "Нове повідомлення"
         },
         {
-          "key": "Compose.NewMessage",
-          "value": "Нове повідомлення"
-        },
-        {
           "key": "Suggestion.Notifications.Title",
           "value": "Не пропускайте повідомлення! 🔔"
         },
@@ -22786,10 +22742,6 @@
         {
           "key": "Privacy.AlwaysShareCaption",
           "value": "Ці користувачі завжди це бачитимуть, незалежно від налаштування вище."
-        },
-        {
-          "key": "Contacts.NotFound",
-          "value": "Контакти не знайдено."
         },
         {
           "key": "Translate.SectionTitle",

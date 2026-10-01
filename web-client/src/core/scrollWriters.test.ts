@@ -92,6 +92,16 @@ const ALLOWED: Record<string, number> = {
   // доводка `animateValue` (`:279`). Узел — собственный скроллер барабана в теле
   // попапа (5 строк), не лента: подгрузки нет, второго писателя позиции нет.
   'components/verticalOptionWheel.solid.tsx': 4,
+  // components/sidebarLeft/contactsList.solid.tsx (`jumpTo`, без анимации) и
+  // components/sectionIndex.solid.tsx (`onWheel`) — полоса букв вкладки контактов,
+  // порт tweb 1:1 (`contactsList.tsx:271-276`, `sectionIndex.tsx:269-274`): протяжка
+  // по буквам ставит скроллер ровно на начало секции, колесо над полосой листает
+  // список под ней. Оба пишут ПОЛЬЗОВАТЕЛЬСКИЙ жест, а не корректирующую запись:
+  // событие `scroll` здесь как раз нужно (по нему список пересчитывает окно строк
+  // и подсветку букв), а с плавной прокруткой `fastSmoothScroll` его конкурент
+  // гасится `cancelAnimationByKey` прямо перед записью, как у оригинала.
+  'components/sidebarLeft/contactsList.solid.tsx': 1,
+  'components/sectionIndex.solid.tsx': 1,
 }
 
 describe('scrollTop: единственный владелец — Scrollable/ScrollSaver', () => {

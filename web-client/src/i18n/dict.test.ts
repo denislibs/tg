@@ -388,18 +388,22 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // ключей снесённого React-экрана без других читателей — `Passkeys.Add`,
 // `Passkeys.Caption`, `Passkeys.Created`, `Passkeys.Item`, `Passkeys.LastUsed`,
 // `Passkeys.Unsupported`, `Passkey.CreateError`. Число строк то же, набор другой.
+// Задача 0а-1 волны 7 (вкладка контактов вместо React-экранов «Контакты» и
+// «Новое сообщение»): −2 наших ключа у всех пяти — `Compose.NewMessage` (заголовок
+// снесённого «Нового сообщения»: у tweb это вкладка «Контакты») и `Contacts.NotFound`
+// (пустая выдача снесённого экрана). Итог: ru 1402, uk 748, es/de 745, fr 740.
 //
 // Задача 20 плана 2D (вкладка «Автоудаление», порт tweb autoDeleteMessages/*):
 // +3 ключа tweb lang.ts всем пяти — `AutoDeleteMessages.InfoDefault` (описание
 // попапа своего срока) и `UnsavedChanges`/`UnsavedChangesDescription.Privacy`
-// (подтверждение несохранённого на закрытии). Итог: ru 1407, uk 753, es/de 750,
-// fr 745.
+// (подтверждение несохранённого на закрытии). Итог (поверх 0а-1): ru 1405, uk 751, es/de 748,
+// fr 743.
 const COMPOSITION = {
-  ru: { keys: 1407, plural: 42 },
-  uk: { keys: 753, plural: 31 },
-  es: { keys: 750, plural: 30 },
-  de: { keys: 750, plural: 31 },
-  fr: { keys: 745, plural: 30 },
+  ru: { keys: 1405, plural: 42 },
+  uk: { keys: 751, plural: 31 },
+  es: { keys: 748, plural: 30 },
+  de: { keys: 748, plural: 31 },
+  fr: { keys: 743, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -526,13 +530,16 @@ const COMPOSITION = {
 // ключи снесённого `PremiumManage` (разбор — там же).
 // Задачей 21 плана 2D — ключи вкладки «Passkeys» вместо ключей снесённого
 // React-экрана, −7 +7 у всех пяти (разбор — у `COMPOSITION` выше).
+// Задачей 0а-1 волны 7 — минус `Compose.NewMessage` и `Contacts.NotFound` у всех пяти:
+// наши ключи снесённых React-экранов «Новое сообщение» и «Контакты» (вкладка контактов
+// tweb пустой выдачи не подписывает, а «Новое сообщение» — это она же).
 // Задачей 20 плана 2D — три ключа вкладки «Автоудаление» у всех пяти (там же).
 const FINGERPRINT = {
-  ru: '00f1f33c',
-  uk: '67c353f1',
-  es: '62452f26',
-  de: '659797ab',
-  fr: 'd4c6f00d',
+  ru: 'e9a9febd',
+  uk: '9168946c',
+  es: '0b38fa19',
+  de: 'b263576a',
+  fr: '0f282284',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
