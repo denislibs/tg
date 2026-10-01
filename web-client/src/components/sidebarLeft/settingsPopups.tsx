@@ -1,10 +1,12 @@
 /**
  * ВРЕМЕННЫЕ МОСТЫ вкладок настроек к React-попапам (снимаются задачами 2C-10,
- * 2C-13, 2C-17, 2C-18, 2C-19, 2C-20). Имена и сигнатуры — tweb (`showPremiumPopup`,
- * `showStarsPopup`, `showMyQrCodePopup`, `showLogOutPopup`, `showSendGiftPicker`,
- * `showPasskeyPopup` из `components/popups/*`), чтобы Solid-вкладки (корень
- * `sidebarLeft/tabs/settings.solid.tsx`, `passkeys.solid.tsx`) звали их ровно как
- * оригинал (`settings.tsx:97-117`, `:419-446`, `passkeys.tsx:103`); задача 2C
+ * 2C-13, 2C-15, 2C-17, 2C-18, 2C-19, 2C-20). Имена и сигнатуры — tweb
+ * (`showPremiumPopup`, `showStarsPopup`, `showMyQrCodePopup`, `showLogOutPopup`,
+ * `showSendGiftPicker`, `showPasskeyPopup`, `showStickersPopup` из
+ * `components/popups/*`), чтобы Solid-вкладки (корень
+ * `sidebarLeft/tabs/settings.solid.tsx`, `passkeys.solid.tsx`,
+ * `stickersAndEmoji.solid.tsx`) звали их ровно как оригинал (`settings.tsx:97-117`,
+ * `:419-446`, `passkeys.tsx:103`, `stickersAndEmoji.tsx:188`); задача 2C
  * заменяет импорт на свой Solid-попап и удаляет строку отсюда.
  *
  * Попапы открываются через глобальный `popupStore` (`PopupHost` живёт в
@@ -14,6 +16,7 @@
 import { useEffect, useRef } from 'react'
 import type { Passkey } from '@layer'
 import type { Managers } from '@/client/bootstrap'
+import type { InputStickerSetAddress } from '@core/managers/stickersManager'
 import { openPopup, type PopupApi } from '@stores/popupStore'
 import { useChatsStore } from '@stores/chatsStore'
 import { gradientFor } from '@core/dialogToChat'
@@ -118,4 +121,15 @@ function PasskeyPopupBridge({ api, onCreation }: { api: PopupApi; onCreation?: (
 // закрытие и `onCreation` — после успеха, как у оригинала (`:47-55`).
 export function showPasskeyPopup(onCreation?: (passkey: Passkey) => void) {
   openPopup((p) => <PasskeyPopupBridge api={p} onCreation={onCreation} />, 'passkey')
+}
+
+// ВРЕМЕННО до 2C-15 (tweb `popups/stickers.tsx`, `showStickersPopup(input)`):
+// попап набора — наш React `StickerSetModal`. Без колбэка отправки: у оригинала
+// `chatInput` по умолчанию — ввод открытого чата (`stickers.tsx:46`), и клик по
+// стикеру отправляет в него (`:155-162`); у нас отправку попапу даёт только
+// `Chat.tsx`, поэтому из настроек сетка лишь смотрится — до 2C-15. Импорт
+// ленивый, как у клика по стикеру в ленте (`Chat.tsx`): попап — свой чанк
+// (`lazyChunks.test.ts`).
+export function showStickersPopup(input: InputStickerSetAddress) {
+  void import('../stickers/StickerSetModal').then((m) => { m.openStickerSetModal(input) })
 }

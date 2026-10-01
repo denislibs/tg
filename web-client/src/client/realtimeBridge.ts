@@ -28,7 +28,9 @@ let started = false
 // (`lib/langPack.ts::applyLangPack`, порт tweb :325), воркер только ретранслирует.
 // `contacts_update` — не `RT.*` по той же причине, что у tweb: это событие менеджера
 // книги (`contactsManager::onContactUpdated`), а не кадр провода.
-const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change', 'contacts_update']
+// `peer_block` — то же: его шлёт менеджер приватности после ответа сервера
+// (`privacyManager.toggleBlock`, tweb `appProfileManager.ts:1528`).
+const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change', 'contacts_update', 'peer_block']
 
 // Subscribe to worker realtime events exactly once per page.
 export function startRealtime(): void {

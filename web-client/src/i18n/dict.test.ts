@@ -408,6 +408,18 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // React-экрана `ChatTypeScreen` ушли наши `LinkInvalid`/`LinkTaken` без других
 // читателей. Итог: ru 1410, uk 756, es/de 753, fr 748.
 //
+// Задача 15 плана 2D («Стикеры и эмодзи», порт tweb stickersAndEmoji.tsx): +7
+// ключей tweb lang.ts — `SuggestStickersAll`/`Installed`/`None`,
+// `LoopAnimatedStickersInfo`, `Emoji`, `Telegram.InstalledStickerPacksController`,
+// `StickersBotInfo`; у es и fr без `Telegram.InstalledStickerPacksController` —
+// «Stickers» там совпадает с английским (нижний слой). Сняты у всех пяти
+// `DynamicPackOrder` (секции нет, О-43) и наш `Settings.BigEmoji` (ни одного
+// читателя); у ru ещё четыре ключа снесённого React-экрана — `Stickers.MySets`,
+// `Stickers.NoSets`, `Stickers.AddSets`, `Stickers.SearchSets`. Итог (поверх 0б-2): ru 1411,
+// uk 761, es 757, de 758, fr 752.
+// Задача 22 плана 2D (вкладка «Заблокированные», порт tweb blockedUsers.tsx): −1 наш
+// ключ у всех пяти — `BlockedEmptyDescription` (пустое состояние снесённого
+// React-экрана; у оригинала его нет). Итог: ru 1409, uk 755, es/de 752, fr 747.
 // Задача 0а-3 волны 7 (вкладка «Новый канал», порт tweb newChannel.tsx +
 // addChatUsers.ts): у ru +5 ключей tweb lang.ts — подтверждение `addChatUsers`
 // (`AddMembersAlertTitle`/`AddMembersAlertCountText`/`AddMembersAlertNamesText`,
@@ -416,10 +428,10 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (вкладка tweb без названия канал не создаёт). Итог: ru 1414, uk 755, es/de 752, fr 747.
 const COMPOSITION = {
   ru: { keys: 1414, plural: 42 },
-  uk: { keys: 755, plural: 31 },
-  es: { keys: 752, plural: 30 },
-  de: { keys: 752, plural: 31 },
-  fr: { keys: 747, plural: 30 },
+  uk: { keys: 759, plural: 31 },
+  es: { keys: 755, plural: 30 },
+  de: { keys: 756, plural: 31 },
+  fr: { keys: 750, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -553,14 +565,18 @@ const COMPOSITION = {
 // Задачей 20 плана 2D — три ключа вкладки «Автоудаление» у всех пяти (там же).
 // Задачей 0б-2 волны 7 — +5 ключей вкладки типа чата у всех пяти, у ru — минус
 // `LinkInvalid`/`LinkTaken` снесённого React-экрана (разбор — там же).
+// Задачей 15 плана 2D — ключи «Стикеров и эмодзи» вместо ключей снесённого
+// React-экрана (разбор — у `COMPOSITION` выше).
+// Задачей 22 плана 2D — минус `BlockedEmptyDescription` у всех пяти (разбор — у
+// `COMPOSITION` выше).
 // Задачей 0а-3 волны 7 — у ru +5 ключей tweb, у всех пяти минус `NewChannel.DefaultTitle`
 // снесённого React-экрана (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '87fd2492',
-  uk: '16499dd9',
-  es: 'd9195a0a',
-  de: '832aad57',
-  fr: 'e5e0e56d',
+  ru: '1f76d625',
+  uk: 'b0838d96',
+  es: 'f949f647',
+  de: 'c2c991bc',
+  fr: 'd921175e',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

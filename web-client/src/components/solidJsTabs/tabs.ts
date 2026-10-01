@@ -413,6 +413,15 @@ export const AppSettingsTab =
     getComponentModule: () => import('../sidebarLeft/tabs/settings.solid'),
   })
 
+// ── «Стикеры и эмодзи» (tweb :202-206) — задача 15 плана 2D ──────────────────
+// Открывает строка `StickersName` корня настроек (tweb `settings.tsx:257`); сама
+// открывает «Быструю реакцию». Форма обычная, без полезной нагрузки.
+export const AppStickersAndEmojiTab =
+  scaffoldSolidJSTab({
+    title: 'StickersName',
+    getComponentModule: () => import('../sidebarLeft/tabs/stickersAndEmoji.solid'),
+  })
+
 // ── ВРЕМЕННО: React-экраны под именами вкладок tweb ──────────────────────────
 // Строки корня открывают их, как оригинал (`settings.tsx:106`, `:254-257`), но
 // содержимое до порта — React-экран на мосту `scaffoldReactScreenTab`
@@ -423,12 +432,6 @@ export const AppSettingsTab =
 export const AppPrivacyAndSecurityTab =
   scaffoldReactScreenTab({
     getComponentModule: () => import('../settings/PrivacySecuritySettings'),
-  })
-
-// ВРЕМЕННО до 2D-15 (tweb :202-206, `stickersAndEmoji.tsx`)
-export const AppStickersAndEmojiTab =
-  scaffoldReactScreenTab({
-    getComponentModule: () => import('../settings/StickersSettings'),
   })
 
 // ВРЕМЕННО до 2D-26 (tweb :181-185, `speakersAndCamera.tsx`)
@@ -578,6 +581,23 @@ export const AppPasskeysTab =
   scaffoldSolidJSTab<AppPasskeysTabPayload>({
     title: 'Privacy.Passkeys',
     getComponentModule: () => import('../sidebarLeft/tabs/passkeys.solid'),
+  })
+
+// ── Заблокированные (tweb :248-258) — задача 22 плана 2D ─────────────────────
+// Вкладка `blockedUsers.solid.tsx`; открывает её хаб «Конфиденциальность» с уже
+// загруженной первой страницей (tweb `privacyAndSecurity.tsx:217`). После въезда
+// — `scrollable.onScroll()`: короткая первая страница сразу догружает следующую.
+type AppBlockedUsersTabPayload = {
+  peerIds: PeerId[]
+}
+
+export const AppBlockedUsersTab =
+  scaffoldSolidJSTab<AppBlockedUsersTabPayload>({
+    title: 'BlockedUsers',
+    getComponentModule: () => import('../sidebarLeft/tabs/blockedUsers.solid'),
+    onOpenAfterTimeout: function() {
+      this.scrollable.onScroll()
+    },
   })
 
 // ── «Новый канал» (tweb :262-270) — задача 0а-3 плана волны 7 ───────────────

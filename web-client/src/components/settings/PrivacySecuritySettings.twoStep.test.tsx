@@ -24,7 +24,7 @@ let passwordState: ReturnType<typeof vi.fn<() => Promise<PasswordState>>>
 function renderScreen() {
   const managers = {
     auth: { passwordState, passkeysList: async() => [] },
-    privacy: { autoDelete: async() => 0 },
+    privacy: { getBlocked: async() => ({ count: 0, peerIds: [] }), autoDelete: async() => 0 },
   }
   return render(
     <ManagersProvider managers={managers as never}>

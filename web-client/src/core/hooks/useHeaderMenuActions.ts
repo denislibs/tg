@@ -33,8 +33,8 @@ export function useHeaderMenuActions(args: {
   }, [canBlock, peerId, managers])
 
   const toggleBlock = () => {
-    void (blocked ? managers.privacy.unblock(peerId) : managers.privacy.block(peerId))
-      .then(() => managers.privacy.blocked(0, 1))
+    void managers.privacy.toggleBlock(peerId, !blocked)
+      .then(() => managers.privacy.getBlocked(0, 1))
       .then((r) => usePrivacyStore.getState().setBlockedTotal(r.count))
       .catch(() => {})
     close()
