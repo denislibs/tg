@@ -246,7 +246,8 @@ type MessageRepo interface {
 	// CalendarMonth — по одному медиа-сообщению на каждый день полуинтервала
 	// [from, to): превью в ячейках дня у пикера даты (tweb
 	// messages.getSearchResultsCalendar). Дни без медиа не возвращаются.
-	CalendarMonth(ctx context.Context, chatID int64, from, to time.Time) ([]domain.CalendarDay, error)
+	// Удалённое зрителем userID «у себя» не считается — как у MediaHistory.
+	CalendarMonth(ctx context.Context, chatID, userID int64, from, to time.Time) ([]domain.CalendarDay, error)
 	// GlobalSearchMessages searches across every chat userID is a member of;
 	// filter narrows by shared-media kind ("" = any type). Окно — курсор
 	// q.OffsetRate; NextRate ответа — id последнего отданного, 0 на последней
