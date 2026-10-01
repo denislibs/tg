@@ -28,7 +28,7 @@ import lang from '@/lang'
 import { useSettingsStore } from '@/settings'
 import { useLockStore } from '@/stores/lockStore'
 import Icon from '@components/icon'
-import { AppPasscodeEnterPasswordTab, AppPasscodeLockTab } from '@components/solidJsTabs/tabs'
+import { AppPasscodeEnterPasswordTab, AppPasscodeLockTab, AppPrivacyAndSecurityTab } from '@components/solidJsTabs/tabs'
 import type SidebarSlider from '@components/slider'
 import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
 import { installSpecLabelActivation } from '@/test/specLabelActivation'
@@ -88,7 +88,13 @@ beforeEach(() => {
   })
 
   clearAll = vi.fn(async() => {})
-  const managers = { persist: { clearAll } } as unknown as Managers
+  // `privacy`/`auth`/`drafts` — то, что хаб «Конфиденциальность» читает на
+  // открытии: подсказка выключения встаёт в его скроллер (tweb :244-246).
+  const managers = {
+    persist: { clearAll },
+    privacy: { getBlocked: async() => ({ count: 0, peerIds: [] }), autoDelete: async() => 0, rules: async() => [] },
+    auth: { passwordState: async() => ({ enabled: false, hint: '', email: '' }), passkeysList: async() => [] },
+  } as unknown as Managers
 
   columnEl = document.createElement('div')
   columnEl.id = 'column-left'
@@ -275,8 +281,9 @@ describe('вкладка «Код-пароль» — код задан', () => {
     expect(useSettingsStore.getState().passcodeLockShortcut).toEqual(['Alt'])
   })
 
-  it('выключение: попап подтверждения с danger-кнопкой, код снят, вкладка закрыта, подсказка', async() => {
+  it('выключение: попап подтверждения с danger-кнопкой, код снят, вкладка закрыта, подсказка в скроллере хаба', async() => {
     idb.set('passcode', { verificationHash: [1], verificationSalt: [2] })
+    const privacy = await host.openTab(AppPrivacyAndSecurityTab)
     const tab = await host.openTab(AppPasscodeLockTab)
     row(tab.scrollable.container, lang['PasscodeLock.TurnOff.Title']).querySelector<HTMLElement>('.row-title')!.click()
 
@@ -291,7 +298,11 @@ describe('вкладка «Код-пароль» — код задан', () => {
     expect(idb.has('passcode')).toBe(false)
     const hint = await waitFor(() => columnEl.querySelector<HTMLElement>('.quiz-hint'))
     expect(hint.querySelector('.quiz-hint-text')?.textContent).toBe(lang['PasscodeLock.PasscodeHasBeenDisabled'])
-    await waitFor(() => tabs().length === 0 || !tabs().some((t) => t.classList.contains('active')))
+    // tweb `getHintParams(tab.slider.getTab(AppPrivacyAndSecurityTab), …)`
+    expect(privacy.scrollable.container.contains(hint)).toBe(true)
+    // вкладка кода закрыта, наверху снова хаб
+    await waitFor(() => !tab.container.isConnected)
+    expect(host.slider.getHistory()).toEqual([privacy])
   })
 
   it('смена кода: ввод без старого кода (он спрошен при входе), совпадение — новый хеш, подсказка', async() => {

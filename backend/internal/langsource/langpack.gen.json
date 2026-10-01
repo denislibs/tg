@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 38,
+      "version": 39,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -1504,22 +1504,6 @@
           "value": "Delete"
         },
         {
-          "key": "DeleteAccount.Action",
-          "value": "Delete My Account"
-        },
-        {
-          "key": "DeleteAccount.Caption",
-          "value": "This will delete your account and all your data. Your messages will remain but appear as sent by a «Deleted Account»."
-        },
-        {
-          "key": "DeleteAccount.Text",
-          "value": "Are you sure you want to delete your account? This action cannot be undone."
-        },
-        {
-          "key": "DeleteAccount.Title",
-          "value": "Delete Account"
-        },
-        {
           "key": "DeleteAllRevokedLinks",
           "value": "Delete All Revoked Links"
         },
@@ -2175,6 +2159,14 @@
         {
           "key": "Hide",
           "value": "Hide"
+        },
+        {
+          "key": "HideReadTime",
+          "value": "Hide Read Time"
+        },
+        {
+          "key": "HideReadTimeInfo",
+          "value": "Hide the time when you read messages from people who can’t see your last seen. If you turn this on, their read time will also be hidden from you (unless you are a Premium user).\n\nThis setting does not affect group chats."
         },
         {
           "key": "Hours",
@@ -3543,6 +3535,13 @@
           "value": "UNSUPPORTED"
         },
         {
+          "key": "Passkeys",
+          "forms": {
+            "one_value": "%d passkey",
+            "other_value": "%d passkeys"
+          }
+        },
+        {
           "key": "PasswordAsHintError",
           "value": "Hint must be different from your password"
         },
@@ -4010,12 +4009,12 @@
           "value": "Your passkey is stored securely in your password manager. [Learn more \u003e]()"
         },
         {
-          "key": "Privacy.ReadTimeCaption",
-          "value": "You won't see when people read your messages if you don't share when you read theirs. This setting does not affect group chats."
-        },
-        {
           "key": "Privacy.WhoCanSeeThis",
           "value": "Who can see this"
+        },
+        {
+          "key": "PrivacyAndSecurity.Item.Off",
+          "value": "Off"
         },
         {
           "key": "PrivacyAndSecurity.Item.On",
@@ -4032,10 +4031,6 @@
         {
           "key": "PrivacyForwardsTitle",
           "value": "Who can add a link to my account when forwarding my messages?"
-        },
-        {
-          "key": "PrivacyGroupsTitle",
-          "value": "Who can add me to group chats?"
         },
         {
           "key": "PrivacyLastSeen",
@@ -4080,14 +4075,6 @@
         {
           "key": "PrivacyProfilePhotoTitle",
           "value": "Who can see my profile photos?"
-        },
-        {
-          "key": "PrivacyReadTime",
-          "value": "Read Time"
-        },
-        {
-          "key": "PrivacyReadTimeTitle",
-          "value": "Who can see when I read their messages?"
         },
         {
           "key": "PrivacySettings",
@@ -4164,6 +4151,13 @@
         {
           "key": "PrivacySettingsController.ProfilePhoto.CustomHelp",
           "value": "You can restrict who can see your profile photo with granular precision."
+        },
+        {
+          "key": "PrivacySettingsController.UserCount",
+          "forms": {
+            "one_value": "%d user",
+            "other_value": "%d users"
+          }
         },
         {
           "key": "PrivacyTitle",
@@ -5851,7 +5845,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 38,
+      "version": 39,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -9554,10 +9548,6 @@
           "value": "Кто может ссылаться на мой аккаунт при пересылке сообщений?"
         },
         {
-          "key": "PrivacyGroupsTitle",
-          "value": "Кто может приглашать меня?"
-        },
-        {
           "key": "PrivacyVoiceMessagesTitle",
           "value": "Кто может отправлять мне голосовые сообщения?"
         },
@@ -9568,18 +9558,6 @@
         {
           "key": "Privacy.BirthdayRow",
           "value": "Кто видит мой день рождения?"
-        },
-        {
-          "key": "PrivacyReadTime",
-          "value": "Время прочтения"
-        },
-        {
-          "key": "PrivacyReadTimeTitle",
-          "value": "Кто видит, когда я прочитал их сообщения?"
-        },
-        {
-          "key": "Privacy.ReadTimeCaption",
-          "value": "Вы не будете видеть, когда Ваши сообщения прочитали, если не показываете, когда читаете сами. Эта настройка не влияет на групповые чаты."
         },
         {
           "key": "PrivacyPhoneInfo",
@@ -10715,22 +10693,6 @@
           "value": "Этот номер уже привязан к аккаунту Telegram."
         },
         {
-          "key": "DeleteAccount.Action",
-          "value": "Удалить мой аккаунт"
-        },
-        {
-          "key": "DeleteAccount.Title",
-          "value": "Удаление аккаунта"
-        },
-        {
-          "key": "DeleteAccount.Text",
-          "value": "Вы уверены, что хотите удалить аккаунт? Это действие необратимо."
-        },
-        {
-          "key": "DeleteAccount.Caption",
-          "value": "Аккаунт и все данные будут удалены. Сообщения останутся, но будут отображаться как отправленные «Удалённым аккаунтом»."
-        },
-        {
           "key": "AttachAlbum",
           "value": "Альбом"
         },
@@ -11727,6 +11689,36 @@
         {
           "key": "SharedFolder.Toast.NoPrivate",
           "value": "Личными чатами делиться нельзя."
+        },
+        {
+          "key": "HideReadTime",
+          "value": "Скрывать время прочтения"
+        },
+        {
+          "key": "HideReadTimeInfo",
+          "value": "Скрывать время прочтения ваших сообщений от тех, кто не видит, когда вы были в сети. Если включить, время прочтения их сообщений тоже будет скрыто от вас (если у вас нет Telegram Premium).\n\nЭта настройка не влияет на групповые чаты."
+        },
+        {
+          "key": "Passkeys",
+          "forms": {
+            "one_value": "%d ключ",
+            "few_value": "%d ключа",
+            "many_value": "%d ключей",
+            "other_value": "%d ключа"
+          }
+        },
+        {
+          "key": "PrivacyAndSecurity.Item.Off",
+          "value": "Выкл."
+        },
+        {
+          "key": "PrivacySettingsController.UserCount",
+          "forms": {
+            "one_value": "%d пользователь",
+            "few_value": "%d пользователя",
+            "many_value": "%d пользователей",
+            "other_value": "%d пользователя"
+          }
         }
       ]
     },
@@ -11737,7 +11729,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 25,
+      "version": 26,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -13700,10 +13692,6 @@
           "value": "Qui peut ajouter un lien vers mon compte lors du transfert de mes messages ?"
         },
         {
-          "key": "PrivacyGroupsTitle",
-          "value": "Qui peut m'ajouter à des groupes ?"
-        },
-        {
           "key": "PrivacyVoiceMessagesTitle",
           "value": "Qui peut m'envoyer des messages vocaux ?"
         },
@@ -14514,22 +14502,6 @@
           "value": "Ce numéro est déjà associé à un compte Telegram."
         },
         {
-          "key": "DeleteAccount.Action",
-          "value": "Supprimer mon compte"
-        },
-        {
-          "key": "DeleteAccount.Title",
-          "value": "Suppression du compte"
-        },
-        {
-          "key": "DeleteAccount.Text",
-          "value": "Voulez-vous vraiment supprimer votre compte ? Cette action est irréversible."
-        },
-        {
-          "key": "DeleteAccount.Caption",
-          "value": "Cela supprimera votre compte et toutes vos données. Vos messages resteront mais apparaîtront comme envoyés par un « compte supprimé »."
-        },
-        {
           "key": "AttachAlbum",
           "value": "Album"
         },
@@ -14837,6 +14809,32 @@
         {
           "key": "SharedFolder.Toast.NoPrivate",
           "value": "Vous ne pouvez pas partager de discussions privées."
+        },
+        {
+          "key": "HideReadTime",
+          "value": "Masquer l’heure de lecture"
+        },
+        {
+          "key": "HideReadTimeInfo",
+          "value": "Masquez l’heure à laquelle vous lisez les messages des personnes qui ne peuvent pas voir votre dernière connexion. Si vous activez cette option, leur heure de lecture vous sera aussi masquée (sauf si vous êtes utilisateur Premium).\n\nCe paramètre n’affecte pas les discussions de groupe."
+        },
+        {
+          "key": "Passkeys",
+          "forms": {
+            "one_value": "%d clé d’accès",
+            "other_value": "%d clés d’accès"
+          }
+        },
+        {
+          "key": "PrivacyAndSecurity.Item.Off",
+          "value": "Désactivé"
+        },
+        {
+          "key": "PrivacySettingsController.UserCount",
+          "forms": {
+            "one_value": "%d utilisateur",
+            "other_value": "%d utilisateurs"
+          }
         }
       ]
     },
@@ -14847,7 +14845,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 25,
+      "version": 26,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16817,10 +16815,6 @@
           "value": "Wer darf beim Weiterleiten meiner Nachrichten auf mein Konto verlinken?"
         },
         {
-          "key": "PrivacyGroupsTitle",
-          "value": "Wer kann mich zu Gruppen hinzufügen?"
-        },
-        {
           "key": "PrivacyVoiceMessagesTitle",
           "value": "Wer kann mir Sprachnachrichten senden?"
         },
@@ -17646,22 +17640,6 @@
           "value": "Diese Nummer ist bereits mit einem Telegram-Konto verknüpft."
         },
         {
-          "key": "DeleteAccount.Action",
-          "value": "Mein Konto löschen"
-        },
-        {
-          "key": "DeleteAccount.Title",
-          "value": "Konto löschen"
-        },
-        {
-          "key": "DeleteAccount.Text",
-          "value": "Möchtest du dein Konto wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden."
-        },
-        {
-          "key": "DeleteAccount.Caption",
-          "value": "Dadurch werden dein Konto und alle deine Daten gelöscht. Deine Nachrichten bleiben erhalten, erscheinen aber als von einem „gelöschten Konto“ gesendet."
-        },
-        {
           "key": "AttachAlbum",
           "value": "Album"
         },
@@ -17973,6 +17951,32 @@
         {
           "key": "SharedFolder.Toast.NoPrivate",
           "value": "Private Chats können nicht geteilt werden."
+        },
+        {
+          "key": "HideReadTime",
+          "value": "Lesezeit verbergen"
+        },
+        {
+          "key": "HideReadTimeInfo",
+          "value": "Verbirg die Zeit, zu der du Nachrichten gelesen hast, vor Personen, die deinen „Zuletzt online“-Status nicht sehen können. Wenn du dies aktivierst, wird auch deren Lesezeit vor dir verborgen (außer du bist Premium-Nutzer).\n\nDiese Einstellung betrifft keine Gruppenchats."
+        },
+        {
+          "key": "Passkeys",
+          "forms": {
+            "one_value": "%d Passkey",
+            "other_value": "%d Passkeys"
+          }
+        },
+        {
+          "key": "PrivacyAndSecurity.Item.Off",
+          "value": "Aus"
+        },
+        {
+          "key": "PrivacySettingsController.UserCount",
+          "forms": {
+            "one_value": "%d Nutzer",
+            "other_value": "%d Nutzer"
+          }
         }
       ]
     },
@@ -17983,7 +17987,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 25,
+      "version": 26,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -19954,10 +19958,6 @@
           "value": "¿Quién puede añadir un enlace a mi cuenta al reenviar mis mensajes?"
         },
         {
-          "key": "PrivacyGroupsTitle",
-          "value": "¿Quién puede añadirme a chats grupales?"
-        },
-        {
           "key": "PrivacyVoiceMessagesTitle",
           "value": "¿Quién puede enviarme mensajes de voz?"
         },
@@ -20776,22 +20776,6 @@
           "value": "Este número ya está vinculado a una cuenta de Telegram."
         },
         {
-          "key": "DeleteAccount.Action",
-          "value": "Eliminar mi cuenta"
-        },
-        {
-          "key": "DeleteAccount.Title",
-          "value": "Eliminar cuenta"
-        },
-        {
-          "key": "DeleteAccount.Text",
-          "value": "¿Seguro que quieres eliminar tu cuenta? Esta acción no se puede deshacer."
-        },
-        {
-          "key": "DeleteAccount.Caption",
-          "value": "Esto eliminará tu cuenta y todos tus datos. Tus mensajes permanecerán, pero aparecerán como enviados por una «Cuenta eliminada»."
-        },
-        {
           "key": "AttachAlbum",
           "value": "Álbum"
         },
@@ -21103,6 +21087,32 @@
         {
           "key": "SharedFolder.Toast.NoPrivate",
           "value": "No puedes compartir chats privados."
+        },
+        {
+          "key": "HideReadTime",
+          "value": "Ocultar hora de lectura"
+        },
+        {
+          "key": "HideReadTimeInfo",
+          "value": "Oculta la hora en que lees los mensajes a quienes no pueden ver tu última conexión. Si lo activas, su hora de lectura también se te ocultará (a menos que seas usuario Premium).\n\nEste ajuste no afecta a los chats grupales."
+        },
+        {
+          "key": "Passkeys",
+          "forms": {
+            "one_value": "%d llave de acceso",
+            "other_value": "%d llaves de acceso"
+          }
+        },
+        {
+          "key": "PrivacyAndSecurity.Item.Off",
+          "value": "Desactivado"
+        },
+        {
+          "key": "PrivacySettingsController.UserCount",
+          "forms": {
+            "one_value": "%d usuario",
+            "other_value": "%d usuarios"
+          }
         }
       ]
     },
@@ -21113,7 +21123,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 25,
+      "version": 26,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -23104,10 +23114,6 @@
           "value": "Хто може посилатися на мій акаунт під час пересилання повідомлень?"
         },
         {
-          "key": "PrivacyGroupsTitle",
-          "value": "Хто може запрошувати мене?"
-        },
-        {
           "key": "PrivacyVoiceMessagesTitle",
           "value": "Хто може надсилати мені голосові повідомлення?"
         },
@@ -23947,22 +23953,6 @@
           "value": "Цей номер уже прив’язаний до акаунту Telegram."
         },
         {
-          "key": "DeleteAccount.Action",
-          "value": "Видалити мій акаунт"
-        },
-        {
-          "key": "DeleteAccount.Title",
-          "value": "Видалення акаунту"
-        },
-        {
-          "key": "DeleteAccount.Text",
-          "value": "Ви впевнені, що хочете видалити акаунт? Цю дію не можна скасувати."
-        },
-        {
-          "key": "DeleteAccount.Caption",
-          "value": "Акаунт і всі дані буде видалено. Повідомлення залишаться, але відображатимуться як надіслані «Видаленим акаунтом»."
-        },
-        {
           "key": "AttachAlbum",
           "value": "Альбом"
         },
@@ -24310,6 +24300,36 @@
         {
           "key": "SharedFolder.Toast.NoPrivate",
           "value": "Особистими чатами ділитися не можна."
+        },
+        {
+          "key": "HideReadTime",
+          "value": "Приховувати час прочитання"
+        },
+        {
+          "key": "HideReadTimeInfo",
+          "value": "Приховувати час прочитання від тих, хто не бачить, коли ви були в мережі. Якщо ввімкнути, їхній час прочитання теж буде прихований від вас (якщо у вас немає Telegram Premium).\n\nЦе налаштування не впливає на групові чати."
+        },
+        {
+          "key": "Passkeys",
+          "forms": {
+            "one_value": "%d ключ",
+            "few_value": "%d ключі",
+            "many_value": "%d ключів",
+            "other_value": "%d ключа"
+          }
+        },
+        {
+          "key": "PrivacyAndSecurity.Item.Off",
+          "value": "Вимк."
+        },
+        {
+          "key": "PrivacySettingsController.UserCount",
+          "forms": {
+            "one_value": "%d користувач",
+            "few_value": "%d користувачі",
+            "many_value": "%d користувачів",
+            "other_value": "%d користувача"
+          }
         }
       ]
     }

@@ -31,7 +31,6 @@ import {
   createColumnSlider,
   destroyColumnSlider,
   getColumnSlider,
-  openActiveSessionsTab,
 } from './columnSlider'
 
 type Auth = Authorization.authorization
@@ -301,19 +300,5 @@ describe('columnSlider — слайдер на разметке левой ко�
 
     destroyColumnSlider(slider)
     expect(() => getColumnSlider()).toThrow(/слайдер не заведён/)
-  })
-
-  it('openActiveSessionsTab отдаёт вкладке УЖЕ загруженный список, а не пустой', async() => {
-    const { managers, list } = makeManagers([current, other])
-    createSlider(managers)
-
-    await openActiveSessionsTab(managers)
-
-    expect(list).toHaveBeenCalledTimes(1)
-    // Обе секции на месте — значит список доехал до вкладки: у пустого списка
-    // вкладка не построила бы даже секцию текущей сессии.
-    const sections = columnEl.querySelectorAll('.sidebar-left-section')
-    expect(sections).toHaveLength(2)
-    expect(sections[1].querySelector('.session-row .row-title')!.textContent).toBe('Telegram Android 1.0')
   })
 })

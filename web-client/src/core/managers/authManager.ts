@@ -262,7 +262,7 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
   }
   // Общий REST-фетч текущего /me — используется публичным me() (прогрев/
   // loadChats) И внутренними переходами активного токена (switchAccount/
-  // deleteAccount/logout со сменой аккаунта), где нужно вывести свежего
+  // logout со сменой аккаунта), где нужно вывести свежего
   // пользователя НОВОГО активного токена и опубликовать его, а не просто
   // дёрнуть RPC. Инвариант (повторное ревью Stage 1C.2, п.1/п.6): воркерный
   // `me` не может быть протухшим относительно активного токена — ЛЮБОЙ
@@ -277,8 +277,8 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
   // снимка воркера и разослал бы его всем вкладкам, затерев уже показанное
   // свежее значение.
   //
-  // `rederive` — вызов из перехода активного токена (switchAccount/logout/
-  // deleteAccount со сменой аккаунта). Отличий два, оба обязательные:
+  // `rederive` — вызов из перехода активного токена (switchAccount/logout
+  // со сменой аккаунта). Отличий два, оба обязательные:
   //  1. Офлайн-фолбэк на диск ЗАПРЕЩЁН. На диске лежит профиль СТАРОГО
   //     аккаунта (persistScope переезжает только при рестарте воркера), и
   //     вернуть его — значит оставить владельца с чужой личностью: следующий
@@ -542,36 +542,6 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
       return fetchMe()
     },
 
-    // Удаление аккаунта: сервер анонимизирует профиль и отзывает все сессии.
-    // Локально ведём себя как logout — убираем аккаунт из реестра; если остались
-    // другие, переключаемся на первый (UI затем перезагружает страницу).
-    async deleteAccount(): Promise<{ switched: boolean }> {
-      if (store.get()) {
-        try { await rest.del('/me') } catch { /* сервер мог уже отозвать сессию */ }
-      }
-      const active = store.get()
-      const all = await listAccounts()
-      const activeAcc = all.find((a) => a.token === active)
-      const remaining = activeAcc ? await removeAccount(activeAcc.id) : all
-      if (remaining.length > 0) {
-        await store.set(remaining[0].token)
-        // Активный токен сменился на ДРУГОЙ живой аккаунт — это не логаут, а
-        // переезд: объявляем намерение (вкладки поднимутся под новым токеном).
-        onLoggingOut?.({ migrateTo: remaining[0].id })
-        // Фикс повторного ревью, п.1: перевывести `me` под НОВЫМ токеном (см.
-        // докблок fetchMe): без этого кэш воркера остаётся с личностью
-        // удалённого аккаунта, и следующая мутация профиля (addPhoto/update/
-        // premium) смерджит и разошлёт её всем вкладкам вместо личности того,
-        // на кого реально переключились.
-        await fetchMe(true)
-        return { switched: true }
-      }
-      await store.clear()
-      onMeChanged?.(null) // аккаунтов не осталось — настоящий логаут
-      onLoggingOut?.({ migrateTo: null })
-      return { switched: false }
-    },
-
     async logout(): Promise<{ switched: boolean }> {
       if (store.get()) {
         try { await rest.post('/auth/logout', {}) } catch { /* ignore */ }
@@ -591,8 +561,8 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
         // это и уходила на экран входа (useAuthGate), хотя bootData.hasToken
         // истинен и вернуть её можно было только ручной перезагрузкой. Теперь
         // намерение объявлено явно (migrateTo), а `me` перевыводится под
-        // НОВЫМ активным токеном — та же проводка, что у switchAccount/
-        // deleteAccount (см. докблок fetchMe).
+        // НОВЫМ активным токеном — та же проводка, что у switchAccount
+        // (см. докблок fetchMe).
         onLoggingOut?.({ migrateTo: remaining[0].id })
         await fetchMe(true)
         return { switched: true }
@@ -634,7 +604,7 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
     async addAccount(): Promise<void> {
       await store.clear()
       // Активный токен снят — активного пользователя больше нет, тем же
-      // инвариантом, что у switchAccount/deleteAccount/logout выше.
+      // инвариантом, что у switchAccount/logout выше.
       onMeChanged?.(null)
       // Осознанное расхождение с tweb (Minor 10 раунда 4). Там «добавить
       // аккаунт» — открытие СВОБОДНОГО слота (`sidebarLeft/index.ts:1652`:

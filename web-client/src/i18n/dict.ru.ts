@@ -1100,13 +1100,9 @@ const ru = {
   'Privacy.BioRow': 'Кто видит мой раздел «О себе»?',
   WhoCanCallMe: 'Кто может мне звонить?',
   PrivacyForwardsTitle: 'Кто может ссылаться на мой аккаунт при пересылке сообщений?',
-  PrivacyGroupsTitle: 'Кто может приглашать меня?',
   PrivacyVoiceMessagesTitle: 'Кто может отправлять мне голосовые сообщения?',
   PrivacyMessagesTitle: 'Кто может отправлять мне сообщения?',
   'Privacy.BirthdayRow': 'Кто видит мой день рождения?',
-  PrivacyReadTime: 'Время прочтения',
-  PrivacyReadTimeTitle: 'Кто видит, когда я прочитал их сообщения?',
-  'Privacy.ReadTimeCaption': 'Вы не будете видеть, когда Ваши сообщения прочитали, если не показываете, когда читаете сами. Эта настройка не влияет на групповые чаты.',
   PrivacyPhoneInfo: 'Пользователи, сохранившие Ваш номер в контактах, также увидят его в Telegram.',
   PrivacyPhoneInfo3: 'Пользователи, которые сохранили Ваш номер в телефонную книгу, будут видеть его в Telegram, только если Вы добавили их в контакты.',
   'Privacy.BioCaption': 'Вы можете точно настроить, кто видит раздел «О себе» в Вашем профиле.',
@@ -1478,12 +1474,6 @@ const ru = {
     'Подтвердите код страны и введите новый номер телефона.',
   'PhoneNumber.AlreadyTaken':
     'Этот номер уже привязан к аккаунту Telegram.',
-  'DeleteAccount.Action': 'Удалить мой аккаунт',
-  'DeleteAccount.Title': 'Удаление аккаунта',
-  'DeleteAccount.Text':
-    'Вы уверены, что хотите удалить аккаунт? Это действие необратимо.',
-  'DeleteAccount.Caption':
-    'Аккаунт и все данные будут удалены. Сообщения останутся, но будут отображаться как отправленные «Удалённым аккаунтом».',
   AttachAlbum: 'Альбом',
   AttachPhoto: 'Фото',
   AttachVideo: 'Видео',
@@ -1849,6 +1839,22 @@ const ru = {
   'SharedFolder.Toast.NoAdminChannel': 'У вас нет прав администратора, чтобы делиться ссылками-приглашениями в этот канал.',
   'SharedFolder.Toast.NoAdminGroup': 'У вас нет прав администратора, чтобы делиться ссылками-приглашениями в эту группу.',
   'SharedFolder.Toast.NoPrivate': 'Личными чатами делиться нельзя.',
+  // ── Конфиденциальность: хаб и «Был в сети» (задача 23 плана 2D) ──
+  HideReadTime: 'Скрывать время прочтения',
+  HideReadTimeInfo: 'Скрывать время прочтения ваших сообщений от тех, кто не видит, когда вы были в сети. Если включить, время прочтения их сообщений тоже будет скрыто от вас (если у вас нет Telegram Premium).\n\nЭта настройка не влияет на групповые чаты.',
+  Passkeys: {
+    one_value: '%d ключ',
+    few_value: '%d ключа',
+    many_value: '%d ключей',
+    other_value: '%d ключа',
+  },
+  'PrivacyAndSecurity.Item.Off': 'Выкл.',
+  'PrivacySettingsController.UserCount': {
+    one_value: '%d пользователь',
+    few_value: '%d пользователя',
+    many_value: '%d пользователей',
+    other_value: '%d пользователя',
+  },
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

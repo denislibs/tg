@@ -558,7 +558,6 @@ const uk = {
   'Privacy.BioRow': 'Хто бачить мій розділ «Про себе»?',
   WhoCanCallMe: 'Хто може мені телефонувати?',
   PrivacyForwardsTitle: 'Хто може посилатися на мій акаунт під час пересилання повідомлень?',
-  PrivacyGroupsTitle: 'Хто може запрошувати мене?',
   PrivacyVoiceMessagesTitle: 'Хто може надсилати мені голосові повідомлення?',
   PrivacyMessagesTitle: 'Хто може надсилати мені повідомлення?',
   'Privacy.BirthdayRow': 'Хто бачить мій день народження?',
@@ -820,12 +819,6 @@ const uk = {
     'Підтвердьте код країни та введіть новий номер телефону.',
   'PhoneNumber.AlreadyTaken':
     'Цей номер уже прив’язаний до акаунту Telegram.',
-  'DeleteAccount.Action': 'Видалити мій акаунт',
-  'DeleteAccount.Title': 'Видалення акаунту',
-  'DeleteAccount.Text':
-    'Ви впевнені, що хочете видалити акаунт? Цю дію не можна скасувати.',
-  'DeleteAccount.Caption':
-    'Акаунт і всі дані буде видалено. Повідомлення залишаться, але відображатимуться як надіслані «Видаленим акаунтом».',
   AttachAlbum: 'Альбом',
   AttachPhoto: 'Фото',
   AttachVideo: 'Відео',
@@ -986,6 +979,22 @@ const uk = {
   'SharedFolder.Toast.NoAdminChannel': 'У вас немає прав адміністратора, щоб ділитися посиланнями-запрошеннями в цей канал.',
   'SharedFolder.Toast.NoAdminGroup': 'У вас немає прав адміністратора, щоб ділитися посиланнями-запрошеннями в цю групу.',
   'SharedFolder.Toast.NoPrivate': 'Особистими чатами ділитися не можна.',
+  // ── Конфиденциальность: хаб и «Был в сети» (задача 23 плана 2D) ──
+  HideReadTime: 'Приховувати час прочитання',
+  HideReadTimeInfo: 'Приховувати час прочитання від тих, хто не бачить, коли ви були в мережі. Якщо ввімкнути, їхній час прочитання теж буде прихований від вас (якщо у вас немає Telegram Premium).\n\nЦе налаштування не впливає на групові чати.',
+  Passkeys: {
+    one_value: '%d ключ',
+    few_value: '%d ключі',
+    many_value: '%d ключів',
+    other_value: '%d ключа',
+  },
+  'PrivacyAndSecurity.Item.Off': 'Вимк.',
+  'PrivacySettingsController.UserCount': {
+    one_value: '%d користувач',
+    few_value: '%d користувачі',
+    many_value: '%d користувачів',
+    other_value: '%d користувача',
+  },
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(uk)

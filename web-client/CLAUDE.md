@@ -518,7 +518,8 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
   (скроллер выдачи глобального поиска в `#search-container`, порт tweb
   `sidebarLeft/index.ts:1089`; создаётся на каждое открытие поиска и роняется
   его `cleanup` — расхождение 3 шапки владельца), `components/settings/kit.tsx`
-  (скроллер React-экрана настроек, до его сноса волной 2D),
+  (скроллер React-экранов кита — с задачи 23 плана 2D их в настройках нет, остались группа и
+  кошелёк звёзд; снос кита — задачи 30–31 плана 2D),
   `components/appSelectPeers.solid.tsx` (скроллер селектора пиров, порт tweb
   `appSelectPeers.tsx:399`; вкладка может отдать свой — опция `scrollable`) и
   `components/selectorSearch.solid.tsx` (строка чипов над полем поиска селектора,

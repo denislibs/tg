@@ -538,7 +538,6 @@ const es = {
   'Privacy.BioRow': '¿Quién puede ver mi biografía?',
   WhoCanCallMe: '¿Quién puede llamarme?',
   PrivacyForwardsTitle: '¿Quién puede añadir un enlace a mi cuenta al reenviar mis mensajes?',
-  PrivacyGroupsTitle: '¿Quién puede añadirme a chats grupales?',
   PrivacyVoiceMessagesTitle: '¿Quién puede enviarme mensajes de voz?',
   PrivacyMessagesTitle: '¿Quién puede enviarme mensajes?',
   'Privacy.BirthdayRow': '¿Quién puede ver mi cumpleaños?',
@@ -782,12 +781,6 @@ const es = {
     'Confirma el código de país e introduce tu nuevo número de teléfono.',
   'PhoneNumber.AlreadyTaken':
     'Este número ya está vinculado a una cuenta de Telegram.',
-  'DeleteAccount.Action': 'Eliminar mi cuenta',
-  'DeleteAccount.Title': 'Eliminar cuenta',
-  'DeleteAccount.Text':
-    '¿Seguro que quieres eliminar tu cuenta? Esta acción no se puede deshacer.',
-  'DeleteAccount.Caption':
-    'Esto eliminará tu cuenta y todos tus datos. Tus mensajes permanecerán, pero aparecerán como enviados por una «Cuenta eliminada».',
   AttachAlbum: 'Álbum',
   AttachPhoto: 'Foto',
   AttachVideo: 'Vídeo',
@@ -915,6 +908,18 @@ const es = {
   'SharedFolder.Toast.NoAdminChannel': 'No tienes permisos de administrador para compartir enlaces de invitación a este canal.',
   'SharedFolder.Toast.NoAdminGroup': 'No tienes permisos de administrador para compartir enlaces de invitación a este grupo.',
   'SharedFolder.Toast.NoPrivate': 'No puedes compartir chats privados.',
+  // ── Конфиденциальность: хаб и «Был в сети» (задача 23 плана 2D) ──
+  HideReadTime: 'Ocultar hora de lectura',
+  HideReadTimeInfo: 'Oculta la hora en que lees los mensajes a quienes no pueden ver tu última conexión. Si lo activas, su hora de lectura también se te ocultará (a menos que seas usuario Premium).\n\nEste ajuste no afecta a los chats grupales.',
+  Passkeys: {
+    one_value: '%d llave de acceso',
+    other_value: '%d llaves de acceso',
+  },
+  'PrivacyAndSecurity.Item.Off': 'Desactivado',
+  'PrivacySettingsController.UserCount': {
+    one_value: '%d usuario',
+    other_value: '%d usuarios',
+  },
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(es)

@@ -444,12 +444,22 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // lang.ts: `EditAccount.Username`, `EditProfile.Username.Invalid`,
 // `Login.Register.LastName.Placeholder`, `UsernameHelp`. Итог (поверх задач 21,
 // 0а-1, 20, О-22 и 0б-2 волны 7): ru 1408, uk 753, es/de 750, fr 745.
+// Задача 23 плана 2D (хаб «Конфиденциальность» `AppPrivacyAndSecurityTab`, порт tweb
+// privacyAndSecurity.tsx + тумблер «Hide Read Time» privacy/lastSeen.tsx): +5 ключей
+// tweb lang.ts всем пяти — `PrivacySettingsController.UserCount` и `Passkeys` (оба
+// с формами числа), `PrivacyAndSecurity.Item.Off`, `HideReadTime`, `HideReadTimeInfo`.
+// Сняты ключи снесённого React-экрана без других читателей: `DeleteAccount.Action`/
+// `.Caption`/`.Text`/`.Title` (удаления аккаунта в приложении у tweb нет) и
+// `PrivacyGroupsTitle` (у tweb строка — `WhoCanAddMe`) у всех пяти; у ru ещё ключи
+// снесённой вкладки «Время прочтения» — `PrivacyReadTime`, `PrivacyReadTimeTitle`,
+// `Privacy.ReadTimeCaption`. Итог: ru 1414 (форм числа 44), uk 761, es 758, de 759,
+// fr 753 (форм числа +2 у каждого).
 const COMPOSITION = {
-  ru: { keys: 1417, plural: 42 },
-  uk: { keys: 761, plural: 31 },
-  es: { keys: 758, plural: 30 },
-  de: { keys: 759, plural: 31 },
-  fr: { keys: 753, plural: 30 },
+  ru: { keys: 1414, plural: 44 },
+  uk: { keys: 761, plural: 33 },
+  es: { keys: 758, plural: 32 },
+  de: { keys: 759, plural: 33 },
+  fr: { keys: 753, plural: 32 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -593,12 +603,15 @@ const COMPOSITION = {
 // «Принимать звонки» (разбор — у `COMPOSITION` выше).
 // Задачей 27 плана 2D — минус ключи снесённого React-экрана профиля у всех пяти,
 // у ru плюс четыре ключа tweb (разбор — у `COMPOSITION` выше).
+// Задачей 23 плана 2D — ключи хаба «Конфиденциальность» и «Hide Read Time» вместо
+// ключей снесённого React-экрана и вкладки «Время прочтения» (разбор — у
+// `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '49623dd6',
-  uk: 'ad07d856',
-  es: 'd68e7ff1',
-  de: '7141179a',
-  fr: 'a49b1cae',
+  ru: 'b204af3d',
+  uk: '588872ec',
+  es: '0d0e50c5',
+  de: 'a0805a9c',
+  fr: 'f035626a',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

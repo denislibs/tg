@@ -184,7 +184,7 @@ div#column-left.tabs-tab.chatlist-container.sidebar.sidebar-left.main-column.sid
 | `settings.tsx` (комп. :82) | `AppSettingsTab` = `scaffoldSolidJSTab` :169-173 | корневой экран настроек | `sidebarLeft/index.ts:722` (меню), `:797` (клик по своему аккаунту), `lib/internalLinkProcessor.ts:723`; `sliceTabsUntilTab(AppSettingsTab)` из 2fa/email-флоу (`2fa/index.tsx:34`, `2fa/passwordSet.tsx:23`, `2fa/emailConfirmation.tsx:44`, `2fa/forgotPasswordLink.ts:108`, `changeLoginEmail.tsx:30`) |
 | `generalSettings.tsx` :359 (812502980) | `AppGeneralSettingsTab` :160-164 (812502980) | размер текста, фон, тема, lite mode | `settings.tsx:255` (812502980); у нас — `sidebarLeft/tabs/generalSettings.solid.tsx` (задача 13 плана 2D) |
 | `notifications.tsx` :543 (812502980) | `AppNotificationsTab` :77-81 (812502980) | уведомления | `settings.tsx:252` (812502980) |
-| `privacyAndSecurity.tsx` :760 | `AppPrivacyAndSecurityTab` = Eventable :533-537 (+`getInitArgs` :541) | хаб приватности | `settings.tsx:128→137`; `sliceTabsUntilTab` из `2fa/forgotPasswordLink.ts:103`, `tabs.ts:27-30` |
+| `privacyAndSecurity.tsx` :700 (812502980) | `AppPrivacyAndSecurityTab` = Eventable :659-663 (+`getInitArgs` :651-655, :667) (812502980) | хаб приватности | `settings.tsx:254` (812502980); `sliceTabsUntilTab` из `2fa/forgotPasswordLink.ts:103`, `tabs.ts:27-30`; у нас — `sidebarLeft/tabs/privacyAndSecurity.solid.tsx` (задача 23 плана 2D, без `getInitArgs` — О-18) |
 | `dataAndStorage/index.tsx` :52 (812502980) | `AppDataAndStorageTab` = Eventable :439-443 (812502980) | данные и хранилище | `settings.tsx:127→137` |
 | `chatFolders.tsx` :356 | `AppChatFoldersTab` :612-621 (+`getInitArgs`) | список папок | `settings.tsx:130→137`; `foldersSidebarContent/index.tsx:204`; `createFolderContextMenu.ts:47` |
 | `editFolder.tsx` :715 | `AppEditFolderTab` :630-642 (+`getInitArgs`, `deleteFolder`) | редактор папки | `chatFolders.tsx:110` (edit) / `:334` (new); `appDialogsManager.ts:1426`; `createFolderContextMenu.ts:29` |
@@ -263,12 +263,13 @@ useStateStore и т.д.) — внутренние Solid-компоненты/х�
 `Row.Icon` (person_crossed_filled / adduser) + `Row.Title` (Never/Always Allow|Share) +
 `Row.Subtitle` (число пользователей или «Add Users»). **У нас** (план 2D, задача 17) — тот же класс
 `components/privacySection.solid.tsx` и вкладки `sidebarLeft/tabs/privacy/*.solid.tsx` (объявления —
-блок в конце `solidJsTabs/tabs.ts`, все eventable, запись на `destroy`); открывают их строки React-экрана
-`settings/PrivacySecuritySettings.tsx` через `getSettingsSliderHost().openTab` до задачи 23. Исключения —
+блок в конце `solidJsTabs/tabs.ts`, все eventable, запись на `destroy`); открывают их строки хаба
+`sidebarLeft/tabs/privacyAndSecurity.solid.tsx` (задача 23) слайдером своей вкладки. Исключения —
 `AppAddMembersTab` (`type: 'privacy'`, только пользователи — О-17). Нет вкладок Gifts/SavedMusic и секции
 P2P (О-16), премиум-замка голосовых (О-34), «публичного фото» (О-35); «Сообщения» — `PrivacySection` по
-нашему правилу `messages` вместо `messages/*` (О-15, О-34); своя вкладка `readTime.solid.tsx` на месте
-флага `hide_read_marks` (О-18). React `settings/PrivacyRule.tsx` снесён; пины —
+нашему правилу `messages` вместо `messages/*` (О-15, О-34); тумблер «Hide Read Time» «Был в сети»
+(`lastSeen.tsx:64-74`) пишет наше правило `read_time` копией `last_seen` вместо флага `hide_read_marks`
+(О-18, задача 23 — своей вкладки «Время прочтения» больше нет). React `settings/PrivacyRule.tsx` снесён; пины —
 `sidebarLeft/tabs/privacy/privacy.solid.test.tsx` («Н…» — счётчик в `Row.Subtitle`, не в `titleRight`).
 
 ### `passcodeLock/`
@@ -746,8 +747,8 @@ Close/RestartTopic `:224` · ChargeFee `:238` · Delete `:248`.
 |---|---|---|
 | `src/components/Sidebar.tsx` (:61) | оркестратор колонки: `#column-left` с tweb-классами (:213-215), композиция хуков `useSidebar*` | `AppSidebarLeft.construct` |
 | `src/components/SidebarScreens.tsx` | экраны колонки, ещё не ставшие вкладками, — **один enum-стейт** `'wallet'\|'calls'\|'newGroup'\|null` (этап 0а волны 7), lazy-подгрузка Wallet/Calls; настроек здесь нет с задачи 28 плана 2D | стек `SliderSuperTab` |
-| `src/components/sidebarLeft/tabs/settings.solid.tsx` + `sidebarLeft/columnSlider.ts` | корень настроек — вкладка `AppSettingsTab` колоночного слайдера (задача 28 плана 2D); подэкраны — вкладки того же слайдера (`tab.slider.createTab`), ещё не портированная «Конфиденциальность» — React-экран на мосту `sidebarLeft/reactScreenTab.tsx` (ВРЕМЕННО до 2D-23); «Стикеры» (задача 15), «Динамики» (задача 26) и «Профиль» (задача 27, `sidebarLeft/tabs/editProfile.solid.tsx`) — Solid-вкладки | `AppSettingsTab` + дерево части 2 |
-| `src/components/settings/*` | реализации ещё не портированных под-экранов (PrivacySecuritySettings). «Редактировать профиль» здесь БОЛЬШЕ НЕТ — вкладка `sidebarLeft/tabs/editProfile.solid.tsx` (задача 27 плана 2D). «Заблокированных» здесь БОЛЬШЕ НЕТ — вкладка `sidebarLeft/tabs/blockedUsers.solid.tsx` (задача 22 плана 2D; открывает строка React-«Конфиденциальности»). «Автоудаления» здесь БОЛЬШЕ НЕТ — вкладка `sidebarLeft/tabs/autoDeleteMessages/index.solid.tsx` (задача 20 плана 2D; открывает строка React-«Конфиденциальности» слайдером своей вкладки). «Passkeys» здесь БОЛЬШЕ НЕТ — вкладка `sidebarLeft/tabs/passkeys.solid.tsx` (задача 21 плана 2D; открывает строка React-«Конфиденциальности»). «Быстрой реакции» здесь БОЛЬШЕ НЕТ — вкладка `sidebarLeft/tabs/quickReaction.solid.tsx` (задача 14 плана 2D). «Устройства» здесь БОЛЬШЕ НЕТ — уехали на слайдер, см. §3; «Обои» и «Цвет» — тоже (`sidebarLeft/tabs/background.solid.tsx`, `backgroundColor.solid.tsx`, задача 12 плана 2D; открывает строка React-«Общих» через хост) | `sidebarLeft/tabs/*` |
+| `src/components/sidebarLeft/tabs/settings.solid.tsx` + `sidebarLeft/columnSlider.ts` | корень настроек — вкладка `AppSettingsTab` колоночного слайдера (задача 28 плана 2D); подэкраны — вкладки того же слайдера (`tab.slider.createTab`), все Solid: «Стикеры» (задача 15), «Конфиденциальность» (задача 23, `sidebarLeft/tabs/privacyAndSecurity.solid.tsx`), «Динамики» (задача 26), «Профиль» (задача 27, `sidebarLeft/tabs/editProfile.solid.tsx`) | `AppSettingsTab` + дерево части 2 |
+| `src/components/settings/*` | экранов настроек здесь БОЛЬШЕ НЕТ (последний — «Конфиденциальность» — снесён задачей 23 плана 2D, хаб и все его дети — вкладки `sidebarLeft/tabs/*`); остались React-кит `kit.tsx` и попапы (`AvatarCropper`, `BirthdayModal`, `ConfirmDialog`, `PasskeyIntroPopup` до 2C-10) для потребителей ВНЕ настроек — задачи 30–31 плана 2D | `sidebarLeft/tabs/*` |
 | `src/lib/appDialogsManager.ts` | папочный срез владельца: `.chatlist-overlay` с Solid-рядом вкладок, `#folders-container`, скроллер на папку, переключение (`horizontalMenu` + `TransitionSlider`); встроен в колонку `Sidebar.tsx` (план папок, задача 6) | `AppDialogsManager` (папки) |
 | `src/components/ChatList.tsx` / `ChatListItem.tsx` | списки папок на виртуальном ядре — порталом в `.chatlist-top` контейнеров владельца | `AutonomousDialogList` (строки) + `DialogElement` |
 | `src/components/virtual/DeferredSortedVirtualList.*` | порт `deferredSortedVirtualList` | 1:1 |
@@ -776,9 +777,9 @@ DOM-паритет первого таба выдержан сознательн
    `closeAllTabsNaturally` на слайдере есть, вызывающего нет).
 2. ~~**Настройки — один компонент, а не дерево табов.**~~ Снято задачей 28 плана 2D: корень —
    `AppSettingsTab`, подэкраны — вкладки (`makeSubTabConfig` с `getInitArgs`-префетчем, срезы
-   `sliceTabsUntilTab` мастера 2FA и код-пароля — дословно). Остаток: React-экраны на
-   мосту `scaffoldReactScreenTab` (до 2D-23/26/27; «Стикеры и эмодзи» — Solid с задачи 15) и нет попап-режима настроек при свёрнутой
-   колонке (`SettingsSliderPopup`, О-27 плана 2D).
+   `sliceTabsUntilTab` мастера 2FA и код-пароля — дословно). Остаток: нет попап-режима настроек
+   при свёрнутой колонке (`SettingsSliderPopup`, О-27 плана 2D); React-экранов настроек и моста
+   `scaffoldReactScreenTab` больше нет (задача 2D-23).
 3. ~~**Поиск без `AppSearchSuper`.**~~ Снято задачей 13 плана
    `docs/superpowers/plans/2026-09-07-solid-wave-3-global-search.md`: выдачу рисует тот же класс
    `AppSearchSuper` вторым потребителем, обвязку — владелец `components/sidebarLeft/globalSearch.ts`
@@ -874,7 +875,7 @@ DOM-паритет первого таба выдержан сознательн
 | `components/sidebarLeft/tabs/addMembers.solid.tsx` + `components/appSelectPeers.solid.tsx` | `sidebarLeft/tabs/addMembers.tsx` + `components/appSelectPeers.tsx` (812502980) | вкладка выбора участников на селекторе пиров (план 2D, задача 16); без категорий/мини-приложений (О-33), участников канала, `peerLoader`, лимита — шапки файлов; открывающих пока нет (исключения приватности — задача 17) |
 | `components/sidebarLeft/tabs/newChannel.solid.tsx` + `components/addChatUsers.ts` + `components/avatarEdit.ts` | `sidebarLeft/tabs/newChannel.tsx` + `components/addChatUsers.ts` + класс `AvatarEdit` (812502980) | «Новый канал» (задача 0а-3 плана волны 7): название/описание, `createChannel` → открыть канал (`openPeer`, ВРЕМЕННО до Э4-3) → `removeTabFromHistory` → выбор подписчиков `skippable` с подтверждением `popup-add-members`. Без нагрузки `onCreate`/`openAfter` (сообщества, О-5), `handleChannelsTooMuch` (О-40), `handleMissingInvitees` (О-41), чекбокса «последние 100 сообщений» (нет `fwd_limit`, О-42); приглашение — по запросу на пользователя (О-42); тост отказа приватности не срабатывает — бэкенд шлёт `privacy` (О-43); `AvatarEdit` — выбор файла без медиаредактора (ВРЕМЕННО до МР-5). **Врезка сделана**: `#new-menu` «Новый канал» открывает вкладку на колоночном слайдере (`Sidebar.tsx` → `openColumnTab(AppNewChannelTab)`, ВРЕМЕННО до 2-1); React `NewChannelFlow.tsx`, ветка `newChannel` в `SidebarScreens`, `useSidebarActions.createChannel` и ключ `NewChannel.DefaultTitle` удалены |
 | `components/sidebarLeft/tabs/sharedFolder.solid.tsx` + `inviteLink.ts` | `src/components/sidebarLeft/tabs/sharedFolder.tsx`, `inviteLink.ts` (812502980) | вкладка ссылки папки «Share Folder» (план 2D, задача 25): открывает редактор папки (`openChatlistInvite`); ссылку показывает/копирует/удаляет, выбор чатов ссылки заблокирован (нет `editExportedInvite`, О-23), кнопки «Share Link» нет (попап 2C) |
-| `components/sidebarLeft/columnSlider.ts` | `sidebarLeft/index.ts:147-152`, `:652-654`, `:1743-1753` | колоночный слайдер: `createColumnSlider`/`getColumnSlider` (роль синглтона `appSidebarLeft`, ВРЕМЕННО до 2-1), `item-secondary` у вкладок, `openActiveSessionsTab` для React-«Конфиденциальности» |
+| `components/sidebarLeft/columnSlider.ts` | `sidebarLeft/index.ts:147-152`, `:652-654`, `:1743-1753` | колоночный слайдер: `createColumnSlider`/`getColumnSlider` (роль синглтона `appSidebarLeft`, ВРЕМЕННО до 2-1), `item-secondary` у вкладок, `openContactsTab` для пунктов React-колонки |
 
 Навигация: `pushItem` оригинала разложен на два наших механизма — `navigationStack.pushLayer`
 (Back) и `hotkeys.pushEsc` (Escape), потому что единого `appNavigationController` у нас нет
@@ -925,11 +926,11 @@ React о закрытии вкладки узнаёт только от слай
   `appSidebarLeft`, пока колонку рисует React; снимает задача 2-1 волны 7;
 - **`SidebarSlider.destroy()`** — колонка монтируется и размонтируется вместе с React-шеллом
   (выход из аккаунта, тесты); вкладки уходят с ней. Снимает Э4-1 (колонки из `index.html`);
-- **React-экраны вкладками** (`sidebarLeft/reactScreenTab.tsx`) — «Конфиденциальность»,
-  ещё на ките; классы вкладок уже tweb, содержимое — React-корень. Снимает 2D-23
-  («Стикеры и эмодзи» сняла задача 15, «Динамики и камера» — 2D-26, «Редактировать профиль» — 27);
-- **«Устройства» из React-«Конфиденциальности»** — `openActiveSessionsTab` (порт
-  `newAuthorization.tsx:116-121`); корень открывает вкладку сам (`onDevicesClick`, tweb :354-383).
+- ~~**React-экраны вкладками** (`sidebarLeft/reactScreenTab.tsx`)~~ — мост снесён задачей 2D-23
+  вместе с последним React-экраном настроек («Конфиденциальность»; «Стикеры и эмодзи» сняла
+  задача 15, «Динамики и камера» — 26, «Редактировать профиль» — 27). Вместе с ним ушёл и
+  `openActiveSessionsTab`: строки «Сессии» в хабе у tweb нет, «Устройства» открывает корень сам
+  (`onDevicesClick`, tweb :354-383).
 
 ### Каркас экрана = вкладка (план 2D, задача 3)
 
@@ -961,10 +962,7 @@ React о закрытии вкладки узнаёт только от слай
 
 ### Что НЕ портировано
 
-- **Два подэкрана настроек** — «Конфиденциальность» (с её саб-экранами) и
-  «Редактировать профиль» — React-экраны `components/settings/*` на мосту
-  `scaffoldReactScreenTab` (задачи 2D-23/27): задача порта меняет форму объявления в
-  `solidJsTabs/tabs.ts` и удаляет React-экран.
+- ~~**Подэкраны настроек на React**~~ — сняты задачами 2D-15/23/26/27: все подэкраны — Solid-вкладки.
 - **`SettingsSliderPopup`** (`createTab`-override при свёрнутой колонке, `sidebarLeft/index.ts:1730-1741`):
   вкладка настроек в попапе — О-27 плана 2D (предмет появился с задачей 28, порт не сделан).
 - **`providedTabs.ts`** — реестр вкладок, открываемых по имени в обход циклов импортов.
