@@ -12,7 +12,7 @@ import TransitionSlider, {
   runNavigationTransition,
   slideNavigation,
 } from './transition'
-import { interruptHeavyAnimation, isHeavyAnimationInProgress } from '@core/dom/heavyAnimation'
+import { getHeavyAnimationPromise, interruptHeavyAnimation } from '@core/dom/heavyAnimation'
 
 /** happy-dom не считает layout — ширину вкладки задаём моком */
 const WIDTH = 800
@@ -324,17 +324,17 @@ describe('runNavigationTransition', () => {
   it('на время перехода объявлена тяжёлая анимация', async () => {
     const { content, tabs } = makeTabs()
     runNavigationTransition({ container: content, to: tabs[1], from: tabs[0], toRight: true })
-    expect(isHeavyAnimationInProgress()).toBe(true)
+    expect(getHeavyAnimationPromise().isFulfilled).toBe(false)
 
     await vi.advanceTimersByTimeAsync(NAVIGATION_TRANSITION_TIME * 2 + 10)
-    expect(isHeavyAnimationInProgress()).toBe(false)
+    expect(getHeavyAnimationPromise().isFulfilled).toBe(true)
   })
 
   it('без вкладок (их двигает другой слой) — только классы контейнера и тяжёлая анимация', () => {
     const { content } = makeTabs()
     runNavigationTransition({ container: content, toRight: true })
     expect(content.classList.contains('animating')).toBe(true)
-    expect(isHeavyAnimationInProgress()).toBe(true)
+    expect(getHeavyAnimationPromise().isFulfilled).toBe(false)
 
     vi.advanceTimersByTime(NAVIGATION_TRANSITION_TIME + 100)
     expect(content.classList.contains('animating')).toBe(false)

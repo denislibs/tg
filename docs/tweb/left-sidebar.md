@@ -516,7 +516,7 @@ transitionTime: 150})`; дети — `#chatlist-container` (id 0) и `#search-co
 | Класс | Файл:строки | Ответственность |
 |---|---|---|
 | `AppDialogsManager` (singleton) | `src/lib/appDialogsManager.ts:512-2690` | оркестратор: папки (`xds`), клики, контекстные меню, `setLastMessage*`/`setUnreadMessages*`, плейсхолдеры, сторис, forum-табы |
-| `DialogElement` + `attachRowController` (HEAD 812502980; в старой базе — `extends Row`) | `appDialogsManager.ts:288-506` (HEAD) | одна строка: DOM, `dom: DialogDom`, бейджи; у нас — `components/dialogRow.ts` на `rowTsxController.solid.tsx` (задача 29 плана 2D) |
+| `DialogElement` + `attachRowController` (HEAD 812502980; в старой базе — `extends Row`) | `appDialogsManager.ts:288-506` (HEAD) | одна строка: DOM, `dom: DialogDom`, бейджи; у нас — `lib/appDialogsManager.ts` (раздел «СТРОКА ДИАЛОГА», задача 1-1 волны 7; до неё — `components/dialogRow.ts`, задача 29 плана 2D) на `rowTsxController.solid.tsx` |
 | `SortedDialogList` | `src/components/sortedDialogList.ts:16-278` | «ключ → DialogElement» поверх виртуального списка; индексы, add/update/delete/pinned |
 | `CustomPinnedDialog` | `sortedDialogList.ts:284-290` | псевдо-диалог с произвольным `render()` (строка «Архив») |
 | `AutonomousDialogListBase<T>` | `src/components/autonomousDialogList/base.ts:39-381` | загрузка/пагинация/плейсхолдер/typing (бывш. `Some`) |
@@ -560,6 +560,12 @@ a.row.no-wrap.chatlist-chat.chatlist-chat-bigger.row-big  href="#<peerId>" data-
 текст — `wrapMessageForReply` (`:2183-2208`); flex-вёрстка `.dialog-subtitle-flex/-span/-overflow/-last`
 (`:2216-2237`); время — `formatDateAccordingToTodayNew` (`:2240-2243`).
 
+> Адреса выше — старой базы. В HEAD 812502980: `setLastMessage` `:2485-2676` с сигнатурой входов
+> (`getLastMessageRenderKey` `:2437-2483`, `isRenderedSubtitleIntact` `:220-226`, 0af53a342 — пропуск
+> перерисовки неизменного подзаголовка), части подзаголовка собирает
+> `components/wrappers/dialogSubtitle.ts` (`renderDialogSubtitleParts`), вёрстка — одна inline-строка
+> `.dialog-subtitle-parts` > `span.dialog-subtitle-span[dir=auto]` (3f974c341, `unicode-bidi: isolate`).
+
 ## 2. Сортировка (индексы)
 
 - `getDialogIndexKey(localId)` → `` `index_${localId}` `` (`appManagers/utils/dialogs/getDialogIndexKey.ts:3`);
@@ -584,9 +590,9 @@ a.row.no-wrap.chatlist-chat.chatlist-chat-bigger.row-big  href="#<peerId>" data-
 | рефетч через 500 мс (первый ответ может дать `count: null`) | `base.ts:250-272` |
 | догрузка по дну + throttle 200 мс | `base.ts:148-150, 347-351`; override с контактами — `dialogs.ts:343-349` |
 | canvas-шиммер первой загрузки | `helpers/dialogsPlaceholder.ts` (`:62,79,99`); `createPlaceholder` — `base.ts:152-170` |
-| per-row скелет непогруженных индексов | `components/loadingDialogSkeleton.tsx` (fallback — `deferredSortedVirtualList.tsx:306-316`) |
-| **шринк DOM**: держится `maxVisible + EXTRA_ITEMS_TO_KEEP(50)`, лишнее режется `slice` | `deferredSortedVirtualList.tsx:226-239, 41, 257-263`; `onListShrinked` пересчитывает курсор — `base.ts:67-77` |
-| окно рендера `thresholdPadding: 72*4`; постепенный reveal (~1 эл/120 мс) | `deferredSortedVirtualList.tsx:328, 199-223`; видимость — `verticalVirtualList.tsx:66-72` |
+| per-row скелет непогруженных индексов | `components/loadingDialogSkeleton.tsx` (fallback — `deferredSortedVirtualList.tsx:395-406`) |
+| **шринк DOM**: держится `maxVisible + EXTRA_ITEMS_TO_KEEP(50)`, лишнее режется `slice` и отдаётся `onItemDiscard` | `deferredSortedVirtualList.tsx:48, 291-307, 325-352` (один таймер, перевзводится, пока окно двигается — 108d3f301); `onListShrinked` пересчитывает курсор — `base.ts:67-77` |
+| окно рендера `thresholdPadding: 72*4`; reveal всей готовой пачкой за один тик ~8 мс (108d3f301, `getNextRevealIdx` = max+1) | `deferredSortedVirtualList.tsx:417, 61-68, 266-289`; видимость — `verticalVirtualList.tsx:66-72` |
 | размонтированный `DialogElement` реинициализируется через 200 мс при возврате | `sortedDialogList.ts:33, 70-99` |
 | пустые состояния (`.empty-placeholder`, папка → 📂 + «Edit Folder») | `appDialogsManager.ts:1324-1435` |
 
@@ -610,6 +616,18 @@ a.row.no-wrap.chatlist-chat.chatlist-chat-bigger.row-big  href="#<peerId>" data-
 **verified/premium/fake/emoji-status** — иконки `PeerTitle({withIcons})` (`peerTitle.ts:196-224`),
 перекраска активной строки — `setDialogActiveStatus` (`:979-993`). Активная строка —
 `setDialogActive` (`:995-1012`, классы `active`, `is-forum-open`).
+
+**У нас (задача 1-1 волны 7):** `DialogElement` с бейджами (`setMuted`, `create*Badge`,
+`setBadgeState` с 0af53a342 — переход только на смене состояния, `toggleBadgeByKey`) и
+`setLastMessage`/`setUnreadMessages`/`getDialog`/`initDialog` — в `lib/appDialogsManager.ts`
+функциями модуля (менеджер у нас — экземпляр колонки; контекст списка — опция `list`).
+Факты строки — из зеркал: диалог `chatsStore` (В7-3), мьют — `notifyStore.isDialogMuted`,
+«✓/✓✓» — по `read_outbox_max_id` (`components/sendingStatus.ts`). Не портировано, с номерами:
+закреп внутри пользовательской папки (О-70), непрочитанное форума по темам (О-71), `unread_mark`
+(О-72), бейдж голосов опроса (О-73), перекраска частиц спойлера активной строки b2df09771 (О-74),
+иконки у имени (`PeerTitle` `withIcons` — `special-peers.md` § 3.3 п. 2). Онлайн-точка, «печатает»,
+звонок — методы `AutonomousDialogList`, задача 1-4; активность (`setDialogActive`) — 1-8. Главный
+список пока рисует React `ChatListItem.tsx` (снимается в 1-4).
 
 ## 5. Онлайн-точка, typing, draft
 
@@ -748,9 +766,10 @@ Close/RestartTopic `:224` · ChargeFee `:238` · Delete `:248`.
 | `src/components/SidebarScreens.tsx` | экраны колонки, ещё не ставшие вкладками, — **один enum-стейт** `'wallet'\|'calls'\|'newGroup'\|null` (этап 0а волны 7), lazy-подгрузка Wallet/Calls; настроек здесь нет с задачи 28 плана 2D | стек `SliderSuperTab` |
 | `src/components/sidebarLeft/tabs/settings.solid.tsx` + `sidebarLeft/columnSlider.ts` | корень настроек — вкладка `AppSettingsTab` колоночного слайдера (задача 28 плана 2D); подэкраны — вкладки того же слайдера (`tab.slider.createTab`), ещё не портированная «Конфиденциальность» — React-экран на мосту `sidebarLeft/reactScreenTab.tsx` (ВРЕМЕННО до 2D-23); «Стикеры» (задача 15), «Динамики» (задача 26) и «Профиль» (задача 27, `sidebarLeft/tabs/editProfile.solid.tsx`) — Solid-вкладки | `AppSettingsTab` + дерево части 2 |
 | `src/components/settings/*` | реализации ещё не портированных под-экранов (PrivacySecuritySettings). «Редактировать профиль» здесь БОЛЬШЕ НЕТ — вкладка `sidebarLeft/tabs/editProfile.solid.tsx` (задача 27 плана 2D). «Заблокированных» здесь БОЛЬШЕ НЕТ — вкладка `sidebarLeft/tabs/blockedUsers.solid.tsx` (задача 22 плана 2D; открывает строка React-«Конфиденциальности»). «Автоудаления» здесь БОЛЬШЕ НЕТ — вкладка `sidebarLeft/tabs/autoDeleteMessages/index.solid.tsx` (задача 20 плана 2D; открывает строка React-«Конфиденциальности» слайдером своей вкладки). «Passkeys» здесь БОЛЬШЕ НЕТ — вкладка `sidebarLeft/tabs/passkeys.solid.tsx` (задача 21 плана 2D; открывает строка React-«Конфиденциальности»). «Быстрой реакции» здесь БОЛЬШЕ НЕТ — вкладка `sidebarLeft/tabs/quickReaction.solid.tsx` (задача 14 плана 2D). «Устройства» здесь БОЛЬШЕ НЕТ — уехали на слайдер, см. §3; «Обои» и «Цвет» — тоже (`sidebarLeft/tabs/background.solid.tsx`, `backgroundColor.solid.tsx`, задача 12 плана 2D; открывает строка React-«Общих» через хост) | `sidebarLeft/tabs/*` |
-| `src/lib/appDialogsManager.ts` | папочный срез владельца: `.chatlist-overlay` с Solid-рядом вкладок, `#folders-container`, скроллер на папку, переключение (`horizontalMenu` + `TransitionSlider`); встроен в колонку `Sidebar.tsx` (план папок, задача 6) | `AppDialogsManager` (папки) |
-| `src/components/ChatList.tsx` / `ChatListItem.tsx` | списки папок на виртуальном ядре — порталом в `.chatlist-top` контейнеров владельца | `AutonomousDialogList` (строки) + `DialogElement` |
-| `src/components/virtual/DeferredSortedVirtualList.*` | порт `deferredSortedVirtualList` | 1:1 |
+| `src/lib/appDialogsManager.ts` | папочный срез владельца: `.chatlist-overlay` с Solid-рядом вкладок, `#folders-container`, скроллер на папку, переключение (`horizontalMenu` + `TransitionSlider`); встроен в колонку `Sidebar.tsx` (план папок, задача 6). Строка диалога `DialogElement` + `setLastMessage`/`setUnreadMessages`/`setListClickListener`/`createChatList`/`addDialogNew` (задача 1-1 волны 7) | `AppDialogsManager` (папки, строка) |
+| `src/components/ChatList.tsx` / `ChatListItem.tsx` | списки папок на виртуальном ядре — порталом в `.chatlist-top` контейнеров владельца (до задачи 1-4 волны 7; строка `DialogElement` уже портирована — `lib/appDialogsManager.ts`) | `AutonomousDialogList` (строки) + `DialogElement` |
+| `src/components/virtual/DeferredSortedVirtualList.*` | React-порт `deferredSortedVirtualList` (данными не владеет; shrink не портирован; reveal по одной строке) — держат React-`ChatList`/`ArchiveList`/`TopicsPanel`, уходит с последним из них (волна 7, 1-6) | с отступлениями (спека `2026-08-13-virtual-chatlist-design.md`) |
+| `src/components/deferredSortedVirtualList.solid.tsx` + `loadingDialogSkeleton.solid.tsx` | Solid-ядро tweb файлом (волна 7, 1-3): владение элементами, скелетоны, reveal пачкой (108d3f301), shrink `EXTRA_ITEMS_TO_KEEP`, `onItemDiscard` (2b00c4dae), `onItemMount`; поверх `verticalVirtualList.solid.tsx`. Потребителя пока нет — список диалогов переключается в 1-4 (`SortedDialogList`) | 1:1 |
 | `src/core/hooks/useDialogListSource.ts` | источник набора папки/архива (фильтр, размер, курсор) | `AutonomousDialogListBase` |
 | `src/core/managers/dialogsManager.ts` (воркер) | владелец диалогов: сортировка, пагинация, refresh | `dialogsStorage` (воркерная сторона) |
 | `src/core/dialogs/{dialogIndex,dialogOps,loadCount}.ts` | индексы, операции, размер страницы | `getDialogIndex*`, `DIALOG_LOAD_COUNT` |

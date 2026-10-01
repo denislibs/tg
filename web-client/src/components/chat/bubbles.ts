@@ -103,7 +103,8 @@ import mediaSizes from '@helpers/mediaSizes'
 import { IS_MOBILE, IS_SAFARI } from '@environment/userAgent'
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import idleController from '@helpers/idleController'
-import { getHeavyAnimationPromise, onHeavyAnimation as useHeavyAnimationCheck } from '@core/dom/heavyAnimation'
+import { getHeavyAnimationPromise, interruptHeavyAnimation, onHeavyAnimation as useHeavyAnimationCheck } from '@core/dom/heavyAnimation'
+import { cancelAnimationByKey } from '@helpers/animation'
 import rootScope from '@lib/rootScope'
 import { ANCHOR_ACTION_ATTRIBUTE, wrapEmojiText, wrapMessageText, type AnchorAction } from '@lib/richtext'
 import { mirrorWindow, putMirrorPage, replaceMirrorWindow } from '@core/history/messagesMirror'
@@ -856,9 +857,6 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * промис асинхронный метод назвать не может.
    */
   private setPeerPromise?: CancellablePromise<void>
-  // Отписка от шины тяжёлых анимаций (в tweb её снимает `listenerSetter`,
-  // которому `useHeavyAnimationCheck` передан третьим аргументом).
-  private removeHeavyAnimationListener?: () => void
 
   /** Порт tweb `this.chat.selection` — им лента гейтит клики и жесты.
    *  Живёт здесь, а не в `ChatContext`, потому что создаётся уже с готовой
@@ -5649,17 +5647,16 @@ export default class ChatBubbles implements BubbleGroupsHost {
       this.sliceViewportDebounced = debounce(this.sliceViewport.bind(this), 3000, false, true)
     }
 
-    // tweb bubbles.ts:1416-1436 в применимом объёме: флаг «идёт тяжёлая
+    // tweb bubbles.ts:1683-1704 в применимом объёме: флаг «идёт тяжёлая
     // анимация» читают `onScroll` и `loadMoreHistory`. Ветки `lazyLoadQueue`
-    // (lock/unlockAndRefresh) не портированы — очереди ленивой загрузки у
-    // ленты нет. tweb снимает подписку своим `listenerSetter` (третий аргумент);
-    // наш `onHeavyAnimation` — вендорная шина `@core/dom/heavyAnimation` —
-    // возвращает отписку функцией, её и зовёт `destroy()`.
-    this.removeHeavyAnimationListener = useHeavyAnimationCheck(() => {
+    // (lock/unlockAndRefresh и `middleware` под них) не портированы — очереди
+    // ленивой загрузки у ленты нет. Подписку, как в tweb, снимает
+    // `listenerSetter.removeAll()` из `destroy()`.
+    useHeavyAnimationCheck(() => {
       this.isHeavyAnimationInProgress = true
     }, () => {
       this.isHeavyAnimationInProgress = false
-    })
+    }, this.listenerSetter)
 
     // will call when message is sent (only 1) — tweb bubbles.ts:1860.
     // Рендер идёт через `renderNewMessage` (:1891), а не прямым
@@ -6317,6 +6314,15 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.setLoaded('top', false)
     this.setLoaded('bottom', false)
 
+    // cancel scroll — tweb bubbles.ts:5692-5693: полёт `fastSmoothScroll`
+    // прошлого окна (ключ анимации — скролл-контейнер) дальше не нужен.
+    cancelAnimationByKey(this.scrollable.container)
+
+    // do not wait ending of previous scale animation — tweb bubbles.ts:5695-5696:
+    // тяжёлая анимация прошлого окна (лестница, полёт скролла) обрывается,
+    // стикеры/видео нового окна не ждут её страховочного таймаута.
+    interruptHeavyAnimation()
+
     // tweb bubbles.ts:5005-5008.
     if (this.isScrollingTimeout) {
       clearTimeout(this.isScrollingTimeout)
@@ -6486,7 +6492,6 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.contextMenu = undefined
     this.selection?.attachListeners(undefined, undefined)
     this.selection?.cleanup()
-    this.removeHeavyAnimationListener?.()
     this.sliceViewportDebounced?.clearTimeout()
     // Дебаунс просмотров переживает ленту (таймер висит на окне) и на срабатывании
     // прочитал бы `this.peerId` уже умершего инстанса — гасим вместе с ней, тем же
