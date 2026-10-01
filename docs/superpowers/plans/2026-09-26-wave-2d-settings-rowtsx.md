@@ -1201,7 +1201,18 @@ getAudioConstraints,shouldMirrorVideoTrack,stopTrack}.ts`, `environment/constrai
 сигнатура tweb). Врезка — одна строка `tabs.ts` (с 2D-28 вкладку открывают строка корня и меню
 «⋮» вкладки «Звонки»; `SettingsView`/`SettingsSubScreen` снесены задачей 28).
 
-### Задача 27: «Редактировать профиль» (2C)
+### Задача 27: «Редактировать профиль» (2C) — ✅ сделано (PR feat/2d-27-edit-profile-tab)
+
+> **Итог:** вкладка `sidebarLeft/tabs/editProfile.solid.tsx` + `getEditProfileInitArgs`
+> (`solidJsTabs/tabs.ts`, `me` из зеркала `chatsStore`); `AvatarEdit`/`EditPeer` — классы
+> волны 7 дословно (0а-3, 0б-10), ветка аватара `EditPeer` (`editPeer.ts:56-64`) — во
+> вкладке; `UsernameInputField` + `isUsernameValid` (`lib/richtext/validators.ts`);
+> `profile.checkUsername` отдаёт отказ `USERNAME_INVALID` вызывающему, как
+> `account.checkUsername`. Кроп и видео-аватар — медиаредактор (О-24, программа МР-5/МР-6).
+> День рождения — мост к React `BirthdayModal` до 2C-14 (`settingsPopups.tsx`). Выяснено:
+> ручек личного канала нет (О-25). Новые: О-62…О-65. React `settings/EditProfile.tsx` снесён,
+> `AvatarCropper`/`BirthdayModal` остались у потребителей задачи 30.
+
 
 **Порт:** `editProfile.tsx` (436) → `sidebarLeft/tabs/editProfile.solid.tsx` (вкладка :93,
 `noSame`, префетч `getEditProfileInitArgs`); `avatarEdit.ts` (417) + `editPeer.ts` (123) → классы
@@ -1368,8 +1379,8 @@ RowTsxController` + `attachRowController(this, {…, middleware})`, `destroy()` 
 | О-21 | `exclude_archived`, закреплённые в папке | нет на проводе | категории редактора 1:1 |
 | О-22 | Лимиты `folders`/`folderPeers`/`chatlistInvites` + `PopupLimit` | бэкенд не отдаёт лимиты (`MaxFoldersPerUser = 10` зашит, `domain/folder.go:12`); попап — 2C. До них отказ сервера по числу папок — тост `LimitReached` (задача 24) | апселл лимитов |
 | О-23 | Выбор чатов ссылки папки (`editExportedInvite`): галка «Save», событие `edit`, подтверждение на закрытии (`sharedFolder.tsx:86-89`, `:103-112`, `:258-272`) | нет ручки правки ссылки (есть создание/список/отзыв — `router.go`, `/me/folders/{id}/invites`); вкладка ссылки рисует чаты ссылки, выбор «трясётся» (задача 25) | shared folder 1:1 |
-| О-24 | Видео-аватар и крошилка через медиаредактор | редактор — React (`MediaEditor.tsx`), волна 4 | `AvatarEdit` 1:1 |
-| О-25 | Личный канал в профиле | выяснить в задаче 27 (`updatePersonalChannel`) | секция PersonalChannel |
+| О-24 | Видео-аватар и крошилка через медиаредактор (`getFileAndOpenEditor`, `finishFromResult`, `avatarEdit.ts:172-313`) | редактор — React (`MediaEditor.tsx`); порт — программа медиаредактора (`2026-09-30-media-editor-port.md`, МР-5/МР-6). До неё `AvatarEdit` профиля берёт картинку выбором файла без кропа (задача 27) | `AvatarEdit` 1:1 |
+| О-25 | Личный канал в профиле (`editProfile.tsx:427-438`, `:99-102`, `:141-171`, `:213-251`, `:329-331`) | выяснено задачей 27: нет `personal_channel_id` в `UserFull` бэкенда, ручек `account.updatePersonalChannel` и `channels.getAdminedPublicChannels({for_personal})` | секция PersonalChannel |
 | О-26 | Поиск по настройкам и меню шапки из 34f417d12 (`SliderSuperTab.shown`, NavigationItem `settings-search`, `tg://settings/…`) | волна 4 дельты; нужен индекс вкладок, который строится после переезда всех вкладок | поиск по настройкам |
 | О-27 | Попап настроек при свёрнутой колонке (`SettingsSliderPopup`, `createTab`-override `sidebarLeft/index.ts:1730-1741`) | предмет появился задачей 28 (колоночный слайдер `columnSlider.ts`), порт не сделан — вкладка открывается в развёрнутой колонке (`has-open-tabs` раскрывает свёрнутую) | настройки поверх чата на узкой колонке |
 | ~~О-29~~ | ~~Модель отступов `MediaHeader` HEAD (`gap: .5rem`) и под неё `authFlow`~~ | **снято** (ветка `fix/w2d-mediaheader-rtl-overlay`): `mediaHeader.module.scss` дословно с HEAD, `auth/AuthFlow.module.scss` `.qrContainer`, карточки входа — `h1` и `class="secondary"`; отступы экрана входа = tweb HEAD, замеры — `docs/tweb/dom/auth.md` §8.4 | — |
@@ -1391,6 +1402,10 @@ RowTsxController` + `attachRowController(this, {…, middleware})`, `destroy()` 
 | О-45 | Тумблер «Large Emoji» (`stickersAndEmoji.tsx:127-136`, `settings.emoji.big`) | его читатель — ветка больших эмодзи ленты (`bubbles.ts:8854`), а наша лента их не рисует (`web-client/backlogs/frontend/vanilla-feed-big-emoji.md`); тумблер ничего бы не менял (задача 15) | большие эмодзи в ленте |
 | О-50 | Эмодзи менеджера паролей у строки ключа (`software_emoji_id` → `Row.Media size="abitbigger"` + `wrapAdaptiveCustomEmoji`, `passkeys.tsx:61-72`) | сервер не хранит AAGUID ключа и эмодзи не отдаёт (`domain/passkey.go`) — у всех строк `key_filled` (задача 21, расхождение 1) | AAGUID → эмодзи на сервере |
 | О-51 | Лимит ключей из `appConfig.passkeys_account_passkeys_max` (`passkeys.tsx:109`) | `help.getAppConfig` нет; лимит — константа 10, зеркало `maxPasskeys` сервера (`usecase/passkeys/passkeys.go`) (задача 21, расхождение 2) | app config с сервера |
+| О-62 | `UsernamesSection` профиля (`editProfile.tsx:421-425`, `usernamesSection.tsx`): несколько имён, их порядок и скрытие | у пользователя одно имя (`users.username`), нет `usernames[]`, `toggleUsername`, `reorderUsernames` (задача 27) | коллекционные имена |
+| О-63 | Подпись покупки имени (`purchaseUsernameCaption`, `editProfile.tsx:150`, `:396-401`) | торговли именами (Fragment) нет, сервер отказа `USERNAME_PURCHASE_AVAILABLE` не шлёт (ветка поля имени `usernameInputField.ts` есть — портирована 0б-2) (задача 27) | покупка имени |
+| О-64 | Лимит bio с сервера (`apiManager.getLimit('bio')`, премиум — 140; tweb `tabs.ts:86`) | лимитов в конфиге нет; бэкенд режет `maxBioLen = 70` для всех (`usecase/auth/profile.go:14`), вкладка берёт то же число (задача 27) | премиум-лимит bio |
+| О-65 | Кольцо загрузки аватара на большом аватаре профиля (`trackAvatarUpload`, `stores/avatarUpload.ts`, `editProfile.tsx:313-316`) | `media.upload` не отдаёт ни прогресса, ни отмены (`CancellablePromise`); у `PeerProfileAvatars` нет кольца (задача 27) | отменяемая загрузка с прогрессом |
 
 ## Оценка объёма
 

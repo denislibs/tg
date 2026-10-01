@@ -104,7 +104,6 @@ const DEBT: Record<string, number> = {
   'src/components/messages/SendMediaPopup.tsx': 3,
   'src/components/peerProfile.solid.tsx': 3,
   'src/components/settings/BirthdayModal.tsx': 6,
-  'src/components/settings/EditProfile.tsx': 1,
   'src/components/stickers/StickerSetModal.tsx': 7,
   'src/components/userInfo/helpers.ts': 25,
   'src/core/dialogToChat.ts': 1,
