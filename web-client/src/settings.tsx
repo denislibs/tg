@@ -25,12 +25,14 @@ export interface Settings {
   // узора (`needBlur` в sidebarLeft/tabs/background.tsx:41-44).
   customWallpaperMediaId?: number
   customWallpaperBlur?: boolean
-  // Устройства для звонков (Настройки → Динамики и камера); '' = системное
-  // по умолчанию. deviceId из enumerateDevices, читаются при старте звонка.
+  // Устройства для звонков (Настройки → Динамики и камера; tweb
+  // `appSettings.callDevices`, мост `stores/appSettings.solid.ts`); '' =
+  // системное по умолчанию. deviceId из enumerateDevices, читаются при старте
+  // звонка. «Принимать звонки» (`acceptCalls`) снят задачей 26 плана 2D: у tweb
+  // это флаг авторизации на сервере (О-8), локально его не читал никто.
   speakerId: string
   micId: string
   cameraId: string
-  acceptCalls: boolean
   // Тип записи кнопкой в композере (tweb recordingMediaType): голос или кружок
   recordingMediaType: 'voice' | 'round'
   // tweb `config/state.ts:199-201` — порядок вкладки контактов, помнится между визитами, как на
@@ -137,7 +139,6 @@ export const DEFAULTS: Settings = {
   speakerId: '',
   micId: '',
   cameraId: '',
-  acceptCalls: true,
   recordingMediaType: 'voice',
   contactsSortMode: 'online', // tweb SETTINGS_INIT.contactsSortMode (`config/state.ts:602`)
   notifyDesktop: true,
@@ -277,7 +278,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       speakerId: s.speakerId,
       micId: s.micId,
       cameraId: s.cameraId,
-      acceptCalls: s.acceptCalls,
       recordingMediaType: s.recordingMediaType,
       contactsSortMode: s.contactsSortMode,
       notifyDesktop: s.notifyDesktop,

@@ -13,6 +13,10 @@
           "value": "last seen a long time ago"
         },
         {
+          "key": "AccDescr.MicrophoneLevel",
+          "value": "Microphone level"
+        },
+        {
           "key": "AccountSettings.Filters",
           "value": "Chat Folders"
         },
@@ -621,24 +625,16 @@
           "value": "Outgoing Video Call"
         },
         {
-          "key": "CallSettings.AcceptCalls",
-          "value": "Accept calls on this device"
-        },
-        {
-          "key": "CallSettings.AcceptCalls.Caption",
-          "value": "Turn off to stop receiving incoming calls and group video chats on this device."
-        },
-        {
-          "key": "CallSettings.AcceptCallsShort",
-          "value": "Accept Calls"
-        },
-        {
           "key": "CallSettings.Camera",
           "value": "Device"
         },
         {
           "key": "CallSettings.CameraSection",
           "value": "Camera"
+        },
+        {
+          "key": "CallSettings.CameraUnavailable",
+          "value": "Camera is unavailable. Check camera access and try again."
         },
         {
           "key": "CallSettings.DeviceDefault",
@@ -653,12 +649,24 @@
           "value": "Input device"
         },
         {
+          "key": "CallSettings.InputSection",
+          "value": "Microphone"
+        },
+        {
           "key": "CallSettings.Microphone",
           "value": "Microphone"
         },
         {
+          "key": "CallSettings.MicrophoneUnavailable",
+          "value": "Microphone is unavailable. Check microphone access and try again."
+        },
+        {
           "key": "CallSettings.OutputDevice",
           "value": "Output device"
+        },
+        {
+          "key": "CallSettings.OutputSection",
+          "value": "Speakers"
         },
         {
           "key": "CallSettings.Speakers",
@@ -1411,6 +1419,14 @@
         {
           "key": "Composer.RecordVoice",
           "value": "Record voice message"
+        },
+        {
+          "key": "ConferenceCall.Media.CameraError",
+          "value": "Could not change the camera state. Check camera access and try again."
+        },
+        {
+          "key": "ConferenceCall.Media.MicrophoneError",
+          "value": "Could not change the microphone state. Check microphone access and try again."
         },
         {
           "key": "ConnectionStatus.ReconnectInPlain",
@@ -4380,6 +4396,10 @@
         {
           "key": "Rtmp.MediaViewer.Live",
           "value": "LIVE"
+        },
+        {
+          "key": "Rtmp.OutputPopup.Default",
+          "value": "Default"
         },
         {
           "key": "Rtmp.OutputPopup.Title",
@@ -7361,14 +7381,6 @@
           "value": "Сохранить"
         },
         {
-          "key": "CallSettings.AcceptCalls",
-          "value": "Приём звонков на этом устройстве"
-        },
-        {
-          "key": "CallSettings.AcceptCalls.Caption",
-          "value": "Отключите, чтобы не принимать входящие звонки и групповые видеозвонки на этом устройстве."
-        },
-        {
           "key": "Call.Input",
           "value": "Ввод"
         },
@@ -7377,8 +7389,36 @@
           "value": "Устройство ввода"
         },
         {
-          "key": "CallSettings.AcceptCallsShort",
-          "value": "Принимать звонки"
+          "key": "CallSettings.OutputSection",
+          "value": "Динамики"
+        },
+        {
+          "key": "CallSettings.InputSection",
+          "value": "Микрофон"
+        },
+        {
+          "key": "CallSettings.MicrophoneUnavailable",
+          "value": "Микрофон недоступен. Проверьте доступ к микрофону и попробуйте ещё раз."
+        },
+        {
+          "key": "CallSettings.CameraUnavailable",
+          "value": "Камера недоступна. Проверьте доступ к камере и попробуйте ещё раз."
+        },
+        {
+          "key": "AccDescr.MicrophoneLevel",
+          "value": "Уровень микрофона"
+        },
+        {
+          "key": "ConferenceCall.Media.MicrophoneError",
+          "value": "Не удалось изменить состояние микрофона. Проверьте доступ к микрофону и попробуйте ещё раз."
+        },
+        {
+          "key": "ConferenceCall.Media.CameraError",
+          "value": "Не удалось изменить состояние камеры. Проверьте доступ к камере и попробуйте ещё раз."
+        },
+        {
+          "key": "Rtmp.OutputPopup.Default",
+          "value": "По умолчанию"
         },
         {
           "key": "Translate",
@@ -12395,10 +12435,6 @@
           "value": "Enregistrer"
         },
         {
-          "key": "CallSettings.AcceptCalls",
-          "value": "Accepter les appels sur cet appareil"
-        },
-        {
           "key": "Call.Input",
           "value": "Entrée"
         },
@@ -12407,8 +12443,36 @@
           "value": "Périphérique d'entrée"
         },
         {
-          "key": "CallSettings.AcceptCallsShort",
-          "value": "Accepter les appels"
+          "key": "CallSettings.OutputSection",
+          "value": "Haut-parleurs"
+        },
+        {
+          "key": "CallSettings.InputSection",
+          "value": "Microphone"
+        },
+        {
+          "key": "CallSettings.MicrophoneUnavailable",
+          "value": "Le microphone est indisponible. Vérifiez l’accès au microphone et réessayez."
+        },
+        {
+          "key": "CallSettings.CameraUnavailable",
+          "value": "La caméra est indisponible. Vérifiez l’accès à la caméra et réessayez."
+        },
+        {
+          "key": "AccDescr.MicrophoneLevel",
+          "value": "Niveau du microphone"
+        },
+        {
+          "key": "ConferenceCall.Media.MicrophoneError",
+          "value": "Impossible de modifier l’état du microphone. Vérifiez l’accès au microphone et réessayez."
+        },
+        {
+          "key": "ConferenceCall.Media.CameraError",
+          "value": "Impossible de modifier l’état de la caméra. Vérifiez l’accès à la caméra et réessayez."
+        },
+        {
+          "key": "Rtmp.OutputPopup.Default",
+          "value": "Par défaut"
         },
         {
           "key": "CurrentSession",
@@ -15496,10 +15560,6 @@
           "value": "Speichern"
         },
         {
-          "key": "CallSettings.AcceptCalls",
-          "value": "Anrufe auf diesem Gerät annehmen"
-        },
-        {
           "key": "Call.Input",
           "value": "Eingabe"
         },
@@ -15508,8 +15568,36 @@
           "value": "Eingabegerät"
         },
         {
-          "key": "CallSettings.AcceptCallsShort",
-          "value": "Anrufe annehmen"
+          "key": "CallSettings.OutputSection",
+          "value": "Lautsprecher"
+        },
+        {
+          "key": "CallSettings.InputSection",
+          "value": "Mikrofon"
+        },
+        {
+          "key": "CallSettings.MicrophoneUnavailable",
+          "value": "Das Mikrofon ist nicht verfügbar. Prüfe den Mikrofonzugriff und versuche es erneut."
+        },
+        {
+          "key": "CallSettings.CameraUnavailable",
+          "value": "Die Kamera ist nicht verfügbar. Prüfe den Kamerazugriff und versuche es erneut."
+        },
+        {
+          "key": "AccDescr.MicrophoneLevel",
+          "value": "Mikrofonpegel"
+        },
+        {
+          "key": "ConferenceCall.Media.MicrophoneError",
+          "value": "Der Mikrofonstatus konnte nicht geändert werden. Prüfe den Mikrofonzugriff und versuche es erneut."
+        },
+        {
+          "key": "ConferenceCall.Media.CameraError",
+          "value": "Der Kamerastatus konnte nicht geändert werden. Prüfe den Kamerazugriff und versuche es erneut."
+        },
+        {
+          "key": "Rtmp.OutputPopup.Default",
+          "value": "Standard"
         },
         {
           "key": "CurrentSession",
@@ -18621,10 +18709,6 @@
           "value": "Guardar"
         },
         {
-          "key": "CallSettings.AcceptCalls",
-          "value": "Aceptar llamadas en este dispositivo"
-        },
-        {
           "key": "Call.Input",
           "value": "Entrada"
         },
@@ -18633,8 +18717,36 @@
           "value": "Dispositivo de entrada"
         },
         {
-          "key": "CallSettings.AcceptCallsShort",
-          "value": "Aceptar llamadas"
+          "key": "CallSettings.OutputSection",
+          "value": "Altavoces"
+        },
+        {
+          "key": "CallSettings.InputSection",
+          "value": "Micrófono"
+        },
+        {
+          "key": "CallSettings.MicrophoneUnavailable",
+          "value": "El micrófono no está disponible. Comprueba el acceso al micrófono e inténtalo de nuevo."
+        },
+        {
+          "key": "CallSettings.CameraUnavailable",
+          "value": "La cámara no está disponible. Comprueba el acceso a la cámara e inténtalo de nuevo."
+        },
+        {
+          "key": "AccDescr.MicrophoneLevel",
+          "value": "Nivel del micrófono"
+        },
+        {
+          "key": "ConferenceCall.Media.MicrophoneError",
+          "value": "No se pudo cambiar el estado del micrófono. Comprueba el acceso al micrófono e inténtalo de nuevo."
+        },
+        {
+          "key": "ConferenceCall.Media.CameraError",
+          "value": "No se pudo cambiar el estado de la cámara. Comprueba el acceso a la cámara e inténtalo de nuevo."
+        },
+        {
+          "key": "Rtmp.OutputPopup.Default",
+          "value": "Predeterminado"
         },
         {
           "key": "CurrentSession",
@@ -21746,14 +21858,6 @@
           "value": "Зберегти"
         },
         {
-          "key": "CallSettings.AcceptCalls",
-          "value": "Приймати дзвінки на цьому пристрої"
-        },
-        {
-          "key": "CallSettings.AcceptCalls.Caption",
-          "value": "Вимкніть, щоб не приймати вхідні дзвінки та групові відеодзвінки на цьому пристрої."
-        },
-        {
           "key": "Call.Input",
           "value": "Ввід"
         },
@@ -21762,8 +21866,36 @@
           "value": "Пристрій вводу"
         },
         {
-          "key": "CallSettings.AcceptCallsShort",
-          "value": "Приймати дзвінки"
+          "key": "CallSettings.OutputSection",
+          "value": "Динаміки"
+        },
+        {
+          "key": "CallSettings.InputSection",
+          "value": "Мікрофон"
+        },
+        {
+          "key": "CallSettings.MicrophoneUnavailable",
+          "value": "Мікрофон недоступний. Перевірте доступ до мікрофона й спробуйте ще раз."
+        },
+        {
+          "key": "CallSettings.CameraUnavailable",
+          "value": "Камера недоступна. Перевірте доступ до камери й спробуйте ще раз."
+        },
+        {
+          "key": "AccDescr.MicrophoneLevel",
+          "value": "Рівень мікрофона"
+        },
+        {
+          "key": "ConferenceCall.Media.MicrophoneError",
+          "value": "Не вдалося змінити стан мікрофона. Перевірте доступ до мікрофона й спробуйте ще раз."
+        },
+        {
+          "key": "ConferenceCall.Media.CameraError",
+          "value": "Не вдалося змінити стан камери. Перевірте доступ до камери й спробуйте ще раз."
+        },
+        {
+          "key": "Rtmp.OutputPopup.Default",
+          "value": "За замовчуванням"
         },
         {
           "key": "CurrentSession",

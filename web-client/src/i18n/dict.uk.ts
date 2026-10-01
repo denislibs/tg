@@ -200,12 +200,19 @@ const uk = {
   'CallSettings.OutputDevice': 'Пристрій відтворення',
   'CallSettings.Camera': 'Пристрій',
   Save: 'Зберегти',
-  'CallSettings.AcceptCalls': 'Приймати дзвінки на цьому пристрої',
-  'CallSettings.AcceptCalls.Caption':
-    'Вимкніть, щоб не приймати вхідні дзвінки та групові відеодзвінки на цьому пристрої.',
   'Call.Input': 'Ввід',
   'CallSettings.InputDevice': 'Пристрій вводу',
-  'CallSettings.AcceptCallsShort': 'Приймати дзвінки',
+  'CallSettings.OutputSection': 'Динаміки',
+  'CallSettings.InputSection': 'Мікрофон',
+  'CallSettings.MicrophoneUnavailable':
+    'Мікрофон недоступний. Перевірте доступ до мікрофона й спробуйте ще раз.',
+  'CallSettings.CameraUnavailable': 'Камера недоступна. Перевірте доступ до камери й спробуйте ще раз.',
+  'AccDescr.MicrophoneLevel': 'Рівень мікрофона',
+  'ConferenceCall.Media.MicrophoneError':
+    'Не вдалося змінити стан мікрофона. Перевірте доступ до мікрофона й спробуйте ще раз.',
+  'ConferenceCall.Media.CameraError':
+    'Не вдалося змінити стан камери. Перевірте доступ до камери й спробуйте ще раз.',
+  'Rtmp.OutputPopup.Default': 'За замовчуванням',
   CurrentSession: 'Цей пристрій',
   OtherSessions: 'Активні сеанси',
   TerminateAllSessions: 'Завершити всі інші сеанси',

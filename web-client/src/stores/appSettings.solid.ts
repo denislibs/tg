@@ -163,6 +163,15 @@ const APP_SETTINGS_KEYS = {
   emoji: {
     suggest: 'emojiSuggest',
   },
+  // tweb `config/state.ts:182-193` (`callDevices`) — «Динамики и камера»
+  // (задача 26): выбор устройств звонка. `micVolume` и `noiseSuppression` нет —
+  // их ручки живут в попапе настроек звонка (`call/settingsPopup.tsx`), у нас
+  // не портирован.
+  callDevices: {
+    speakerId: 'speakerId',
+    microphoneId: 'micId',
+    cameraId: 'cameraId',
+  },
   // tweb `config/state.ts:199-201` — порядок вкладки контактов (`sidebarLeft/tabs/contacts.solid.tsx`)
   contactsSortMode: 'contactsSortMode',
 } as const satisfies KeyTable

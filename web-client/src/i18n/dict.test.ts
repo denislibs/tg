@@ -426,12 +426,22 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `InviteToGroupError`) и поле поиска выбора подписчиков `SendMessageTo`; −1 у всех
 // пяти: со сносом React-экрана `NewChannelFlow` ушёл наш `NewChannel.DefaultTitle`
 // (вкладка tweb без названия канал не создаёт). Итог: ru 1414, uk 755, es/de 752, fr 747.
+// Задача 26 плана 2D (вкладка «Динамики и камера», порт tweb
+// speakersAndCamera.tsx + call/*): +8 ключей tweb lang.ts всем пяти — имена
+// секций `CallSettings.OutputSection`/`InputSection`, подписи ошибок захвата
+// `CallSettings.MicrophoneUnavailable`/`CameraUnavailable`, `aria-label` метра
+// `AccDescr.MicrophoneLevel`, тосты отказа `ConferenceCall.Media.MicrophoneError`/
+// `CameraError`, «Default» попапа выбора `Rtmp.OutputPopup.Default`. Сняты ключи
+// без читателей: `CallSettings.AcceptCalls` (+ `.Caption` у ru/uk — у es/de/fr его
+// не было) — строка «Принимать звонки» ушла в О-8 вместе с экраном, и
+// `CallSettings.AcceptCallsShort` (читателя не было и до задачи). Итог (поверх 0б-2): ru 1415,
+// uk 761, es/de 759, fr 754.
 const COMPOSITION = {
-  ru: { keys: 1414, plural: 42 },
-  uk: { keys: 759, plural: 31 },
-  es: { keys: 755, plural: 30 },
-  de: { keys: 756, plural: 31 },
-  fr: { keys: 750, plural: 30 },
+  ru: { keys: 1419, plural: 42 },
+  uk: { keys: 764, plural: 31 },
+  es: { keys: 761, plural: 30 },
+  de: { keys: 762, plural: 31 },
+  fr: { keys: 756, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -571,12 +581,14 @@ const COMPOSITION = {
 // `COMPOSITION` выше).
 // Задачей 0а-3 волны 7 — у ru +5 ключей tweb, у всех пяти минус `NewChannel.DefaultTitle`
 // снесённого React-экрана (разбор — у `COMPOSITION` выше).
+// Задачей 26 плана 2D — ключи вкладки «Динамики и камера» вместо ключей
+// «Принимать звонки» (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '1f76d625',
-  uk: 'b0838d96',
-  es: 'f949f647',
-  de: 'c2c991bc',
-  fr: 'd921175e',
+  ru: '835be0bf',
+  uk: '82d5efba',
+  es: '542fe36d',
+  de: 'b5f10aa6',
+  fr: '2afadd62',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -919,6 +931,7 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     Notifications: '«notifications» — французское слово',
     AutoDownloadPhotos: '«photos» — французское слово',
     'CallSettings.Microphone': '«microphone» — французское слово',
+    'CallSettings.InputSection': '«microphone» — французское слово (имя секции, tweb speakersAndCamera.tsx)',
     Contacts: '«contacts» — французское слово',
     Message: '«message» — французское слово',
     ReportChatSpam: '«spam» — заимствование',
