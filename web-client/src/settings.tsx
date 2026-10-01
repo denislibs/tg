@@ -3,6 +3,7 @@ import I18n from '@lib/langPack'
 import type { ThemeChoice } from './theme'
 import type { Wallpaper } from './wallpapers'
 import type { LiteModeKey } from '@helpers/liteMode'
+import type { ContactsSortMode } from '@core/peers/sortContacts'
 // tweb `config/state.ts:8` — тип клавиш сочетания блокировки живёт у ShortcutBuilder.
 import type { ShortcutKey as PasscodeLockShortcutKey } from '@components/sidebarLeft/tabs/passcodeLock/shortcutBuilder.solid'
 
@@ -34,6 +35,9 @@ export interface Settings {
   cameraId: string
   // Тип записи кнопкой в композере (tweb recordingMediaType): голос или кружок
   recordingMediaType: 'voice' | 'round'
+  // tweb `config/state.ts:199-201` — порядок вкладки контактов, помнится между визитами, как на
+  // Android и iOS (tdesktop всякий раз открывает контакты по «был(а) в сети»)
+  contactsSortMode: ContactsSortMode
   // Уведомления (tweb appSettings.notifications; дефолты из SETTINGS_INIT):
   // desktop — показывать браузерные уведомления; push — offline-уведомления
   // (web push); sound + volume — звук уведомления; sentMessageSound — звук
@@ -128,6 +132,7 @@ export const DEFAULTS: Settings = {
   micId: '',
   cameraId: '',
   recordingMediaType: 'voice',
+  contactsSortMode: 'online', // tweb SETTINGS_INIT.contactsSortMode (`config/state.ts:602`)
   notifyDesktop: true,
   notifyPush: true,
   // tweb стартует с sound: false; у нас звук входящего был всегда включён —
@@ -264,6 +269,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       micId: s.micId,
       cameraId: s.cameraId,
       recordingMediaType: s.recordingMediaType,
+      contactsSortMode: s.contactsSortMode,
       notifyDesktop: s.notifyDesktop,
       notifyPush: s.notifyPush,
       notifySound: s.notifySound,

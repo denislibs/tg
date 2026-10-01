@@ -23,7 +23,7 @@
 import { useMemo, type ReactNode } from 'react'
 
 import { dayLabel } from '@core/format/dayLabel'
-import { formatDate, formatDateAccordingToTodayNew, formatFullSentTime, formatTime, isValidTimestamp } from '@helpers/date'
+import { formatDateAccordingToTodayNew, formatFullSentTime, formatTime, isValidTimestamp } from '@helpers/date'
 
 import DomNode from './DomNode'
 
@@ -66,34 +66,6 @@ export function Time({ timestamp, className, fallback = null }: {
   )
   return node ? <DomNode node={node} className={className} /> : <>{fallback}</>
 }
-
-/**
- * «5 сентября» / «5 сен. 2024» — узел `formatDate` (порт tweb
- * `helpers/date.ts:75-105`). Год оригинал добавляет, ТОЛЬКО если он не
- * сегодняшний, — экранам, где год нужен всегда, служит `overrideIntlOptions`
- * (то же имя и та же роль, что у опции оригинала, `date.ts:71`).
- */
-export function DayDate({ date, withTime, shortMonth, overrideIntlOptions, className, fallback = null }: {
-  /** СЕКУНДЫ эпохи. */
-  date: number
-  withTime?: boolean
-  shortMonth?: boolean
-  /** ВНИМАНИЕ: объект обязан быть стабильным (модульная константа) — он лежит
-   *  в зависимостях `useMemo`, и литерал на каждом рендере пересобирал бы узел. */
-  overrideIntlOptions?: Intl.DateTimeFormatOptions
-  className?: string
-  fallback?: ReactNode
-}) {
-  const node = useMemo(
-    () => (isValidTimestamp(date) ? formatDate(new Date(date * 1000), { withTime, shortMonth, overrideIntlOptions }) : null),
-    [date, withTime, shortMonth, overrideIntlOptions],
-  )
-  return node ? <DomNode node={node} className={className} /> : <>{fallback}</>
-}
-
-/** Год нужен всегда — см. `overrideIntlOptions`. Константа модульная, чтобы не
- *  пересобирать узел литералом на каждом рендере. */
-export const ALWAYS_YEAR: Intl.DateTimeFormatOptions = { year: 'numeric' }
 
 /**
  * «Сегодня» или дата — метка дня (`core/format/dayLabel`, порт веток tweb

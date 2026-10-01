@@ -139,12 +139,15 @@ func (r *AuthRepo) UpdateProfile(ctx context.Context, id int64, first, last, bio
 }
 
 // UsernameAvailable reports whether a (normalized, CITEXT) username is free,
-// ignoring the caller's own row.
+// ignoring the caller's own row. Пространство имён общее с чатами (Telegram;
+// граница сохранения — триггер миграции 0134): имя группы/канала занято и для
+// пользователя.
 func (r *AuthRepo) UsernameAvailable(ctx context.Context, username string, excludeID int64) (bool, error) {
-	var n int
+	var free bool
 	err := r.pool.QueryRow(ctx,
-		`SELECT count(*) FROM users WHERE username=$1 AND id<>$2`, username, excludeID).Scan(&n)
-	return n == 0, err
+		`SELECT NOT EXISTS (SELECT 1 FROM users WHERE username=$1 AND id<>$2)
+		    AND NOT EXISTS (SELECT 1 FROM chats WHERE username=$1)`, username, excludeID).Scan(&free)
+	return free, err
 }
 
 // SetUsername sets (or clears, when username is nil) the user's username,

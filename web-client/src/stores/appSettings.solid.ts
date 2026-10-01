@@ -161,6 +161,8 @@ const APP_SETTINGS_KEYS = {
     microphoneId: 'micId',
     cameraId: 'cameraId',
   },
+  // tweb `config/state.ts:199-201` — порядок вкладки контактов (`sidebarLeft/tabs/contacts.solid.tsx`)
+  contactsSortMode: 'contactsSortMode',
 } as const satisfies KeyTable
 
 type Table = typeof APP_SETTINGS_KEYS

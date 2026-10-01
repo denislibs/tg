@@ -1,3 +1,4 @@
+import type { Passkey } from '@layer'
 import { HttpError, type RestClient } from '../net/restClient'
 import type { UserFull, UserReal, UsersUserFull } from '../peers/peer'
 import { getPeerPhotoId } from '../peers/peer'
@@ -121,14 +122,6 @@ export interface PasswordState {
   email: string // маскированный (d****@e******.com)
 }
 
-// Ключ доступа в списке настроек.
-export interface PasskeyInfo {
-  id: number
-  name: string
-  createdAt: string
-  lastUsedAt: string | null
-}
-
 interface RawPasskey {
   id: number
   name: string
@@ -136,8 +129,17 @@ interface RawPasskey {
   last_used_at: string | null
 }
 
-const mapPasskey = (r: RawPasskey): PasskeyInfo => ({
-  id: r.id, name: r.name, createdAt: r.created_at, lastUsedAt: r.last_used_at,
+// Ключ доступа — предметный тип MTProto `Passkey` (`layer.d.ts`), как у
+// tweb `account.getPasskeys`; провод пока REST (время — RFC 3339, id — int64).
+// `software_emoji_id` (эмодзи менеджера паролей по AAGUID) сервер не хранит —
+// О-50 плана 2D.
+const toUnixTime = (iso: string) => Math.floor(Date.parse(iso) / 1000)
+const mapPasskey = (r: RawPasskey): Passkey => ({
+  _: 'passkey',
+  id: String(r.id),
+  name: r.name,
+  date: toUnixTime(r.created_at),
+  last_usage_date: r.last_used_at ? toUnixTime(r.last_used_at) : undefined,
 })
 
 interface TokenStoreLike {
@@ -482,17 +484,17 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
 
     // Ключи доступа (WebAuthn). REST-часть живёт здесь (воркер);
     // navigator.credentials вызывается в UI-потоке (core/webauthnBrowser.ts).
-    async passkeysList(): Promise<PasskeyInfo[]> {
+    async passkeysList(): Promise<Passkey[]> {
       const r = await rest.get<{ passkeys: RawPasskey[] }>('/me/passkeys')
       return (r.passkeys ?? []).map(mapPasskey)
     },
     async passkeyRegisterBegin(): Promise<{ session: string; options: unknown }> {
       return rest.post('/me/passkeys/begin', {})
     },
-    async passkeyRegisterFinish(session: string, attestation: unknown): Promise<PasskeyInfo> {
+    async passkeyRegisterFinish(session: string, attestation: unknown): Promise<Passkey> {
       return mapPasskey(await rest.post<RawPasskey>(`/me/passkeys/finish?session=${encodeURIComponent(session)}`, attestation))
     },
-    async passkeyDelete(id: number): Promise<void> {
+    async passkeyDelete(id: string): Promise<void> {
       await rest.del(`/me/passkeys/${id}`)
     },
     async passkeyLoginBegin(): Promise<{ session: string; options: unknown }> {
