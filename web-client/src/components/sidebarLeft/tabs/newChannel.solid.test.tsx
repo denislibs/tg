@@ -58,6 +58,7 @@ let createChannel: ReturnType<typeof vi.fn>
 let setPhoto: ReturnType<typeof vi.fn>
 let addMember: ReturnType<typeof vi.fn>
 let upload: ReturnType<typeof vi.fn>
+let refresh: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   rootScope.myId = ME
@@ -75,11 +76,12 @@ beforeEach(() => {
   setPhoto = vi.fn(async() => {})
   addMember = vi.fn(async() => {})
   upload = vi.fn(async() => 77)
+  refresh = vi.fn(async() => {})
   const managers = {
     channels: { createChannel, search: vi.fn() },
     groups: { setPhoto, addMember },
     media: { upload },
-    dialogs: { getDialogs: vi.fn(async() => ({ dialogs: [], count: 0, isEnd: true })) },
+    dialogs: { getDialogs: vi.fn(async() => ({ dialogs: [], count: 0, isEnd: true })), refresh },
     contacts: { getContactsPeerIds: vi.fn(async() => [2]), testSelfSearch: vi.fn(async() => false) },
     peers: {
       getPeers: vi.fn(async(ids: PeerId[]) => ids.map((id) => CARDS.find((c) => (c._ === 'user' ? c.id : -c.id) === id)).filter(Boolean)),
@@ -208,6 +210,7 @@ describe('(б) запрос создания', () => {
     expect(nextBtn(tab).hasAttribute('disabled')).toBe(false)
     expect(openPeer).not.toHaveBeenCalled()
     expect(slider.getHistory()).toEqual([tab])
+    expect(refresh).not.toHaveBeenCalled()
   })
 
   it('выбранный аватар загружается и ставится фото созданного канала', async() => {
@@ -252,6 +255,8 @@ describe('(в) после создания — канал и выбор подп
 
     expect(openPeer).toHaveBeenCalledTimes(1)
     expect(openPeer.mock.calls[0][1]).toEqual({ id: CHANNEL, title: 'Chan' })
+    // диалог канала перезапрошен (О-44: ответ создания диалога не несёт)
+    expect(refresh).toHaveBeenCalledTimes(1)
 
     expect(slider.getHistory()).toHaveLength(1)
     expect(members).toBeInstanceOf(AppAddMembersTab)

@@ -19,7 +19,7 @@ import FoldersSidebar, { type MainMenuHandlers } from './folders/FoldersSidebar'
 import type { FolderContextMenuSidebar } from '../helpers/dom/createFolderContextMenu'
 import { createColumnSlider, destroyColumnSlider, openContactsTab } from './sidebarLeft/columnSlider'
 import type SidebarSlider from './slider'
-import { AppChatFoldersTab, AppEditFolderTab, AppSettingsTab } from './solidJsTabs/tabs'
+import { AppChatFoldersTab, AppEditFolderTab, AppNewChannelTab, AppSettingsTab } from './solidJsTabs/tabs'
 import type { SliderSuperTabConstructable } from './sliderTab'
 import type SliderSuperTab from './sliderTab'
 import pause from '../helpers/schedulers/pause'
@@ -520,7 +520,8 @@ export default function Sidebar({
           // tweb `sidebarLeft/index.ts:1105-1109` (`closeBefore: false`) — «Новый личный
           // чат» и есть вкладка контактов; секретный — Отступление В7-1
           onNewPrivate={() => { void openContactsTab() }}
-          onNewChannel={() => setScreen('newChannel')}
+          // tweb `sidebarLeft/index.ts:1086-1092` — `createTab(AppNewChannelTab).open({})`
+          onNewChannel={() => openColumnTab(AppNewChannelTab)}
           onNewSecret={() => { void openContactsTab({ secret: true }) }}
         />
       </div>
@@ -535,7 +536,6 @@ export default function Sidebar({
         close={closeScreen}
         onSelect={onSelect}
         onCreateGroup={actions.createGroup}
-        onCreateChannel={actions.createChannel}
       />
 
       {stories.overlays}

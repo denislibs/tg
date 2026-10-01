@@ -118,6 +118,13 @@
   @include avatar-color("blue", #5CAFFA, #408ACF);
   @include avatar-color("pink", #FF8AAC, #D95574);
   @include avatar-color("archive", #B8C2CC, #9EAAB5);
+  // Подложка канвы `AvatarEdit` (`.avatar-edit-canvas`, tweb base.scss:182-183, :194-195):
+  // цвета «Избранного» из темы (`--saved-color`/`--light-filled-saved-color` ставит
+  // `core/theme/themeController`). Без них градиент канвы пуст — круга не видно.
+  --peer-avatar-saved-top: var(--light-filled-saved-color);
+  --peer-avatar-saved-bottom: var(--saved-color);
+  --avatar-color-top: var(--peer-avatar-saved-top);
+  --avatar-color-bottom: var(--peer-avatar-saved-bottom);
   // Форумная аватарка — скруглённый квадрат (tweb base.scss:192).
   --avatar-border-radius-forum: 37%;
   // ── Шкала размеров шрифта (tweb base.scss:105-115) — единый набор токенов

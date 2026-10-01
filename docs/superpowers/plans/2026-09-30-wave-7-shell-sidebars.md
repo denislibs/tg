@@ -1367,6 +1367,7 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 | О-41 | `handleMissingInvitees` (`addChatUsers.ts:15-133`) — приглашение ссылкой тех, кого нельзя добавить, премиум-ветка | `POST /chats/{id}/members` отвечает `boolTrue`, `missingInvitees` нет (0а-3) | приглашение ссылкой после отказа |
 | О-42 | Приглашение списком (`inviteToChannel(id, peerIds)`/`addChatUser(id, peerIds, fwdLimit)`) и чекбокс «показать последние 100 сообщений» (`addChatUsers.ts:169-190`) | ручка приглашает одного пользователя, `fwd_limit` нет (0а-3) | один запрос на выбор, чекбокс истории для групп |
 | О-43 | Тост `InviteToGroupError` на отказе приватности (`addChatUsers.ts:211-217`) | бэкенд отдаёт текст `privacy` (`group_handler.go:43-44`), а не `USER_PRIVACY_RESTRICTED` — ветка тоста не срабатывает (0а-3) | тост вместо необработанного отказа |
+| О-44 | Диалог нового канала из ответа создания: у tweb `channels.createChannel` отдаёт `Updates`, `processUpdateMessage` ставит диалог (`appChatsManager.ts:587-593`); у нас вкладка зовёт `dialogs.refresh()` (`newChannel.solid.tsx`, расхождение 8) | `POST /channels` отвечает `messages.chatFull` без диалога, кадра о новом канале нет; служебного «канал создан» тоже нет (0а-3) | снятие перезапроса, пилюля `messageActionChannelCreate` |
 
 ## Что остаётся волне 8 (после этой программы)
 

@@ -102,6 +102,10 @@ describe('константы tweb base.scss, чьи потребители к н
     '--input-message-placeholder-color',
     '--premium-color',
     '--avatar-border-radius-forum',
+    '--avatar-color-top',
+    '--avatar-color-bottom',
+    '--peer-avatar-saved-top',
+    '--peer-avatar-saved-bottom',
   ]
 
   it.each(PORTED)('%s объявлена', (name) => {

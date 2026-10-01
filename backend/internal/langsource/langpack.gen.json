@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 37,
+      "version": 38,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -43,6 +43,18 @@
         {
           "key": "AddFactCheck",
           "value": "Add Fact Check"
+        },
+        {
+          "key": "AddMembersAlertCountText",
+          "value": "Are you sure you want to add %1$s to **%2$s**?"
+        },
+        {
+          "key": "AddMembersAlertNamesText",
+          "value": "Are you sure you want to add %1$s to **%2$s**?"
+        },
+        {
+          "key": "AddMembersAlertTitle",
+          "value": "Add %1$s"
         },
         {
           "key": "AddOneMemberAlertTitle",
@@ -2256,6 +2268,10 @@
           "value": "View link"
         },
         {
+          "key": "InviteToGroupError",
+          "value": "Sorry, you can't add this user to groups because of user's privacy settings."
+        },
+        {
           "key": "JumpToDate",
           "value": "Jump to Date"
         },
@@ -3066,10 +3082,6 @@
         },
         {
           "key": "NewChannel",
-          "value": "New Channel"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
           "value": "New Channel"
         },
         {
@@ -4611,6 +4623,10 @@
           "value": "Send Message"
         },
         {
+          "key": "SendMessageTo",
+          "value": "Add people..."
+        },
+        {
           "key": "Separator.ShowLess",
           "value": "show less"
         },
@@ -5823,7 +5839,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 37,
+      "version": 38,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -7423,10 +7439,6 @@
         {
           "key": "NewGroup",
           "value": "Создать группу"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
-          "value": "Новый канал"
         },
         {
           "key": "NewGroup.DefaultTitle",
@@ -10935,6 +10947,26 @@
           "value": "Добавить участника"
         },
         {
+          "key": "AddMembersAlertCountText",
+          "value": "Вы уверены, что хотите добавить %1$s в **%2$s**?"
+        },
+        {
+          "key": "AddMembersAlertNamesText",
+          "value": "Вы уверены, что хотите добавить %1$s в **%2$s**?"
+        },
+        {
+          "key": "AddMembersAlertTitle",
+          "value": "Добавить %1$s"
+        },
+        {
+          "key": "InviteToGroupError",
+          "value": "К сожалению, вы не можете добавить этого пользователя в группы из-за его настроек конфиденциальности."
+        },
+        {
+          "key": "SendMessageTo",
+          "value": "Добавить людей..."
+        },
+        {
           "key": "AutoDownloadSettings.LastDelimeter",
           "value": " и "
         },
@@ -11681,7 +11713,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 24,
+      "version": 25,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -12445,10 +12477,6 @@
         {
           "key": "NewGroup",
           "value": "Nouveau groupe"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
-          "value": "Nouveau canal"
         },
         {
           "key": "NewGroup.DefaultTitle",
@@ -14771,7 +14799,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 24,
+      "version": 25,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -15538,10 +15566,6 @@
         {
           "key": "NewGroup",
           "value": "Neue Gruppe"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
-          "value": "Neuer Kanal"
         },
         {
           "key": "NewGroup.DefaultTitle",
@@ -17883,7 +17907,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 24,
+      "version": 25,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -18655,10 +18679,6 @@
         {
           "key": "NewGroup",
           "value": "Nuevo grupo"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
-          "value": "Canal nuevo"
         },
         {
           "key": "NewGroup.DefaultTitle",
@@ -20993,7 +21013,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 24,
+      "version": 25,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -21772,10 +21792,6 @@
         {
           "key": "NewGroup",
           "value": "Створити групу"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
-          "value": "Новий канал"
         },
         {
           "key": "NewGroup.DefaultTitle",

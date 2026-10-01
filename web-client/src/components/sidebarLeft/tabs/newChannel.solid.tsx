@@ -30,6 +30,13 @@
  *  6. `tab.slider as SidebarSlider` — поле вкладки объявлено узким контрактом
  *     (`SliderSuperTabSlider`, шапка `sliderTab.ts`), как у соседних вкладок.
  *  7. `ButtonCorner` без `ariaLabel: 'Next'` (:37) — шапка `components/buttonCorner.ts`.
+ *  8. (О-44) Диалог нового канала — `dialogs.refresh()` после создания. У оригинала
+ *     его приносит ответ `channels.createChannel`: `Updates` прогоняются через
+ *     `processUpdateMessage` (`appChatsManager.ts:587-593`), и диалог встаёт в
+ *     список из апдейтов. Наш `POST /channels` отвечает `messages.chatFull` без
+ *     диалога и кадра не шлёт — без перезапроса канал не появляется в списке, а
+ *     шапка открытого чата остаётся без названия (тот же путь, что у снесённого
+ *     `onChatCreated` React-экрана).
  */
 import { onCleanup, onMount } from 'solid-js'
 import type InputField from '@components/inputField'
@@ -87,6 +94,8 @@ const NewChannel = () => {
 
         // ВРЕМЕННО до Э4-3 — `appImManager.setInnerPeer({peerId})` (расхождение 5)
         openPeer(managers, { id: peerId, title: peerTitle(peerId) })
+        // О-44 волна 7 — диалог канала (расхождение 8)
+        void managers.dialogs.refresh().catch(() => {})
         const slider = tab.slider as SidebarSlider
         slider.removeTabFromHistory(tab)
         addChatUsers({

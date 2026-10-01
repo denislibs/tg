@@ -532,7 +532,8 @@ button:focus {
   // vertical-align: text-top !important;
 }
 
-// tweb base.scss:797-849 — аватар-«редактор» карточки регистрации (`signUp`):
+// tweb base.scss:800-849 — аватар-«редактор» карточки регистрации (`signUp`) и
+// вкладки «Новый канал» (класс `AvatarEdit`):
 // круглая маска, канва-подложка, иконка камеры по центру. Дословно, кроме
 // добавленных width/height — см. комментарий ниже.
 .avatar-edit {
@@ -548,6 +549,13 @@ button:focus {
   width: var(--sticker-size, 120px);
   height: var(--sticker-size, 120px);
 
+  // tweb 5a87c445e (base.scss:801-807): контейнер `AvatarEdit` — `<button>`
+  // (`components/avatarEdit.ts`); снять inline-block и UA-оформление кнопки, иначе
+  // `margin: auto` (`.page-chats .avatar-edit`) перестаёт центровать круг.
+  display: block;
+  padding: 0;
+  border: none;
+  background: none;
   position: relative;
   border-radius: 50%;
   cursor: pointer;
