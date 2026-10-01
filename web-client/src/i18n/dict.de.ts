@@ -185,10 +185,20 @@ const de = {
   'CallSettings.OutputDevice': 'Wiedergabegerät',
   'CallSettings.Camera': 'Gerät',
   Save: 'Speichern',
-  'CallSettings.AcceptCalls': 'Anrufe auf diesem Gerät annehmen',
   'Call.Input': 'Eingabe',
   'CallSettings.InputDevice': 'Eingabegerät',
-  'CallSettings.AcceptCallsShort': 'Anrufe annehmen',
+  'CallSettings.OutputSection': 'Lautsprecher',
+  'CallSettings.InputSection': 'Mikrofon',
+  'CallSettings.MicrophoneUnavailable':
+    'Das Mikrofon ist nicht verfügbar. Prüfe den Mikrofonzugriff und versuche es erneut.',
+  'CallSettings.CameraUnavailable':
+    'Die Kamera ist nicht verfügbar. Prüfe den Kamerazugriff und versuche es erneut.',
+  'AccDescr.MicrophoneLevel': 'Mikrofonpegel',
+  'ConferenceCall.Media.MicrophoneError':
+    'Der Mikrofonstatus konnte nicht geändert werden. Prüfe den Mikrofonzugriff und versuche es erneut.',
+  'ConferenceCall.Media.CameraError':
+    'Der Kamerastatus konnte nicht geändert werden. Prüfe den Kamerazugriff und versuche es erneut.',
+  'Rtmp.OutputPopup.Default': 'Standard',
   CurrentSession: 'Dieses Gerät',
   OtherSessions: 'Aktive Sitzungen',
   TerminateAllSessions: 'Alle anderen Sitzungen beenden',

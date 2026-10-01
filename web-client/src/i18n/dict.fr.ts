@@ -185,10 +185,19 @@ const fr = {
   'CallSettings.OutputDevice': 'Périphérique de lecture',
   'CallSettings.Camera': 'Périphérique',
   Save: 'Enregistrer',
-  'CallSettings.AcceptCalls': 'Accepter les appels sur cet appareil',
   'Call.Input': 'Entrée',
   'CallSettings.InputDevice': 'Périphérique d\'entrée',
-  'CallSettings.AcceptCallsShort': 'Accepter les appels',
+  'CallSettings.OutputSection': 'Haut-parleurs',
+  'CallSettings.InputSection': 'Microphone',
+  'CallSettings.MicrophoneUnavailable':
+    'Le microphone est indisponible. Vérifiez l’accès au microphone et réessayez.',
+  'CallSettings.CameraUnavailable': 'La caméra est indisponible. Vérifiez l’accès à la caméra et réessayez.',
+  'AccDescr.MicrophoneLevel': 'Niveau du microphone',
+  'ConferenceCall.Media.MicrophoneError':
+    'Impossible de modifier l’état du microphone. Vérifiez l’accès au microphone et réessayez.',
+  'ConferenceCall.Media.CameraError':
+    'Impossible de modifier l’état de la caméra. Vérifiez l’accès à la caméra et réessayez.',
+  'Rtmp.OutputPopup.Default': 'Par défaut',
   CurrentSession: 'Cet appareil',
   OtherSessions: 'Sessions actives',
   TerminateAllSessions: 'Fermer toutes les autres sessions',

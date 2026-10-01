@@ -441,12 +441,19 @@ const ru = {
   'CallSettings.OutputDevice': 'Устройство воспроизведения',
   'CallSettings.Camera': 'Устройство',
   Save: 'Сохранить',
-  'CallSettings.AcceptCalls': 'Приём звонков на этом устройстве',
-  'CallSettings.AcceptCalls.Caption':
-    'Отключите, чтобы не принимать входящие звонки и групповые видеозвонки на этом устройстве.',
   'Call.Input': 'Ввод',
   'CallSettings.InputDevice': 'Устройство ввода',
-  'CallSettings.AcceptCallsShort': 'Принимать звонки',
+  'CallSettings.OutputSection': 'Динамики',
+  'CallSettings.InputSection': 'Микрофон',
+  'CallSettings.MicrophoneUnavailable':
+    'Микрофон недоступен. Проверьте доступ к микрофону и попробуйте ещё раз.',
+  'CallSettings.CameraUnavailable': 'Камера недоступна. Проверьте доступ к камере и попробуйте ещё раз.',
+  'AccDescr.MicrophoneLevel': 'Уровень микрофона',
+  'ConferenceCall.Media.MicrophoneError':
+    'Не удалось изменить состояние микрофона. Проверьте доступ к микрофону и попробуйте ещё раз.',
+  'ConferenceCall.Media.CameraError':
+    'Не удалось изменить состояние камеры. Проверьте доступ к камере и попробуйте ещё раз.',
+  'Rtmp.OutputPopup.Default': 'По умолчанию',
   Translate: 'Перевести',
   'MediaEditor.Original': 'Оригинал',
   // Долг «фолбэк без WASM SIMD» (backlogs/frontend/lottie-no-wasm-fallback.md):

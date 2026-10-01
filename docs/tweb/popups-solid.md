@@ -342,7 +342,7 @@ SCSS HEAD (`_popup.scss`), которых не было у нас (**перен�
 | `stickers/StickerSetModal.tsx` (400) | RP+PS | `Chat.tsx:1067`, `StickersSearchTab.tsx:30` (импорт) | `showStickersPopup` |
 | `settings/AutoDeleteMessages.tsx:85` (свой срок) | RP | сам экран | `showAutoDeleteMessagesCustomTimePopup` |
 | `settings/PasskeyIntroPopup.tsx` (116) | PT | `PrivacySecuritySettings.tsx:264` | `showPasskeyPopup` |
-| `settings/SpeakersCamera.tsx:177` `DevicePicker` | RP | `:159` | `showOutputDevicePopup` |
+| `rtmp/outputDevicePopup.tsx` — мост `showOutputDevicePopup` (ВРЕМЕННО до 2C-12; сигнатура tweb) | RP | `call/callDeviceSettings.solid.tsx` (`pick`) | `showOutputDevicePopup` |
 | `settings/BirthdayModal.tsx` (87) | PT, без портала | `EditContactView.tsx:173`, `settings/EditProfile.tsx:288` | `showBirthdayPopup` |
 | `messages/ChatDialogs.tsx` `ContactPicker` | RP+PS | `useChatPopups.tsx:248` | `showContactPickerPopup` — строки из адресной книги (`useContactPeerIds`, `peerType: ['contacts']`), не из личных диалогов |
 | `settings/PrivacyUserPicker.tsx` (99) | экран, не попап | `BlockedUsers.tsx:61`, `PrivacyRule.tsx:127` | `showPickUserPopup` (`blockedUsers.tsx:68`); в правилах — `AppAddMembersTab` (2D-16/17) |

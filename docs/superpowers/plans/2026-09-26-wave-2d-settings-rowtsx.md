@@ -1119,7 +1119,7 @@ NewChats/Sensitive/Payments. Наши лишние строки «Сессии»
   задачи 16/24 плана 2C); ветка по умолчанию `InviteLink` не портирована (расхождение 1 в шапке).
 - Ключи tweb +13 всем пяти словарям; `langpack.gen.json` пересчитан (версия 20).
 
-### Задача 26: «Динамики и камера» (2C)
+### Задача 26: «Динамики и камера» (2C) — ✅ сделано (PR feat/2d-26-speakers-camera-tab)
 
 **Порт:** `speakersAndCamera.tsx` (121) + `call/{callDeviceSettings,microphoneLevelMeter,
 cameraSection}.tsx` → Solid; вкладка :181. Имена секций `CallSettings.OutputSection/InputSection`,
@@ -1129,6 +1129,19 @@ BLOCKED (`changeAuthorizationSettings`, О-8): секции нет, у нас с
 чтение, обосновать.
 **Зависимости:** 2C. **Врезка:** `tabs.ts`, `SettingsView.tsx`, `SettingsSubScreen.tsx`; удалить
 `settings/SpeakersCamera.tsx` + `.module.scss`.
+
+**Итог:** `sidebarLeft/tabs/speakersAndCamera.solid.tsx` + `call/{callDeviceSettings,
+microphoneLevelMeter,cameraSection}.solid.tsx`; вместе с ними портированы `lib/calls/
+{callDeviceKind,applyDeviceToActiveCall}.ts`, `lib/calls/helpers/{getStream,acquireStream,
+getAudioConstraints,shouldMirrorVideoTrack,stopTrack}.ts`, `environment/constraintSupport.ts`,
+стили `components/call/settingsPopup.scss` (→ `styles/tweb/_callSettingsPopup.scss`) и выдержка
+`.call-video-mirror` из `popups/_call.scss`; в мост `useAppSettings` добавлен `callDevices`
+(`microphoneId` ↔ `micId`). AcceptCalls — О-8, локальный `acceptCalls` снят: звонковый код его не
+читал (`core/calls/*`, `CallScreen.tsx` — только `speakerId`/`micId`/`cameraId`). Живой звонок —
+`core/calls/callEngine.ts::applyDeviceToActiveCall` (динамик применяет `CallScreen` по
+`speakerId`). Попап выбора — React-мост `components/rtmp/outputDevicePopup.tsx` (ВРЕМЕННО до 2C-12,
+сигнатура tweb). Врезка — одна строка `tabs.ts` (с 2D-28 вкладку открывают строка корня и меню
+«⋮» вкладки «Звонки»; `SettingsView`/`SettingsSubScreen` снесены задачей 28).
 
 ### Задача 27: «Редактировать профиль» (2C)
 

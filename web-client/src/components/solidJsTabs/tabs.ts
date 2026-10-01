@@ -389,6 +389,17 @@ export const AppGeneralSettingsTab =
     getComponentModule: () => import('../sidebarLeft/tabs/generalSettings.solid'),
   })
 
+// ── «Динамики и камера» (tweb :181-185) — задача 26 плана 2D ─────────────────
+// Форма обычная, без полезной нагрузки: выбор устройств вкладка читает сама
+// (мост `useAppSettings`, `callDevices`). Открывают её строка корня настроек
+// (tweb `settings.tsx:258`, `makeSubTabConfig`) и меню «⋮» вкладки «Звонки»
+// (tweb `calls.tsx:363`: `tab.slider.createTab(AppSpeakersAndCameraTab).open()`).
+export const AppSpeakersAndCameraTab =
+  scaffoldSolidJSTab({
+    title: 'AccountSettings.SpeakersAndCamera',
+    getComponentModule: () => import('../sidebarLeft/tabs/speakersAndCamera.solid'),
+  })
+
 // ── Корень настроек (tweb :188-192) — задача 28 плана 2D ─────────────────────
 // Вкладка колоночного слайдера (`sidebarLeft/columnSlider.ts`); открывает её
 // пункт «Настройки» бургера и колонки папок (tweb `sidebarLeft/index.ts:765`,
@@ -415,12 +426,6 @@ export const AppPrivacyAndSecurityTab =
 export const AppStickersAndEmojiTab =
   scaffoldReactScreenTab({
     getComponentModule: () => import('../settings/StickersSettings'),
-  })
-
-// ВРЕМЕННО до 2D-26 (tweb :181-185, `speakersAndCamera.tsx`)
-export const AppSpeakersAndCameraTab =
-  scaffoldReactScreenTab({
-    getComponentModule: () => import('../settings/SpeakersCamera'),
   })
 
 // ВРЕМЕННО до 2D-27 (tweb :93-98, `editProfile.tsx`; `noSame` — :98).
