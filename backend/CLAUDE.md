@@ -31,7 +31,8 @@ go vet ./... && gofmt -l .   # перед коммитом
 - Ошибки домена — в `domain/errors.go` (`ErrNotFound`, `ErrForbidden`, `ErrTooLong`…). Хендлеры мапят
   их в HTTP-коды; не возвращай сырые ошибки наружу.
 - Любой пользовательский ввод (текст, entities, ссылки) санитизировать в usecase
-  (см. `usecase/chat/sanitize.go`): allow-list схем ссылок, лимиты длины/количества.
+  (разметка — `domain.SanitizeEntities`, `domain/mtentity_sanitize.go`): allow-list схем ссылок,
+  лимиты длины/количества.
 - Опциональные зависимости (Redis, MinIO, VAPID, GeoIP) деградируют мягко — код не должен падать
   при их отсутствии, фича просто отключается.
 

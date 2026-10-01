@@ -73,6 +73,9 @@ func ParseMessageAction(raw []byte) (MessageAction, error) {
 		}
 		a.Photo = nil // фото приезжает с media_id сообщения, см. шапку файла
 		return a, nil
+	case MessageActionSuggestBirthdayTag:
+		var a MessageActionSuggestBirthday
+		return a, json.Unmarshal(raw, &a)
 	case MessageActionSuggestedPostApprovalTag:
 		var a MessageActionSuggestedPostApproval
 		return a, json.Unmarshal(raw, &a)

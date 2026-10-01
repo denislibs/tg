@@ -392,8 +392,10 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // «Новое сообщение»): −2 наших ключа у всех пяти — `Compose.NewMessage` (заголовок
 // снесённого «Нового сообщения»: у tweb это вкладка «Контакты») и `Contacts.NotFound`
 // (пустая выдача снесённого экрана). Итог: ru 1402, uk 748, es/de 745, fr 740.
+// Пилюля `messageActionSuggestBirthday` (users.suggestBirthday, О-22 плана
+// волны 7): у ru +2 ключа tweb — `BirthdaySuggestIncoming`/`Outgoing`: ru 1404.
 const COMPOSITION = {
-  ru: { keys: 1402, plural: 42 },
+  ru: { keys: 1404, plural: 42 },
   uk: { keys: 748, plural: 31 },
   es: { keys: 745, plural: 30 },
   de: { keys: 745, plural: 31 },
@@ -527,8 +529,9 @@ const COMPOSITION = {
 // Задачей 0а-1 волны 7 — минус `Compose.NewMessage` и `Contacts.NotFound` у всех пяти:
 // наши ключи снесённых React-экранов «Новое сообщение» и «Контакты» (вкладка контактов
 // tweb пустой выдачи не подписывает, а «Новое сообщение» — это она же).
+// Пилюлей предложения даты рождения — у ru +2 ключа tweb (разбор — там же).
 const FINGERPRINT = {
-  ru: '65e68ee4',
+  ru: '1f306e4a',
   uk: '38a0b8a3',
   es: '68937dba',
   de: '0e73a8c9',

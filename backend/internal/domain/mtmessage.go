@@ -574,6 +574,7 @@ const (
 	MessageActionSetMessagesTTLTag        = "messageActionSetMessagesTTL"
 	MessageActionTopicCreateTag           = "messageActionTopicCreate"
 	MessageActionSuggestProfilePhotoTag   = "messageActionSuggestProfilePhoto"
+	MessageActionSuggestBirthdayTag       = "messageActionSuggestBirthday"
 	MessageActionSuggestedPostApprovalTag = "messageActionSuggestedPostApproval"
 	MessageActionPhoneCallTag             = "messageActionPhoneCall"
 	MessageActionRestrictTag              = "messageActionRestrict"
@@ -768,6 +769,24 @@ func NewMessageActionSuggestProfilePhoto(photo *Photo, accepted bool) MessageAct
 	return MessageActionSuggestProfilePhoto{
 		Underscore: MessageActionSuggestProfilePhotoTag, Photo: photo, Accepted: accepted,
 	}
+}
+
+// messageActionSuggestBirthday#2c8f2a25 birthday:Birthday = MessageAction;
+//
+// «Предложил указать дату рождения» (users.suggestBirthday): служебное
+// сообщение в личной переписке с тем, кому дату предложили. Дата едет ВНУТРИ
+// действия — получатель принимает её кнопкой «Посмотреть» у своей пилюли
+// (tweb bubbles/suggestBirthday.tsx), второго места для неё нет.
+type MessageActionSuggestBirthday struct {
+	Underscore string   `json:"_"`
+	Birthday   Birthday `json:"birthday"`
+}
+
+func (MessageActionSuggestBirthday) isMessageAction() {}
+func (a MessageActionSuggestBirthday) Tag() string    { return a.Underscore }
+
+func NewMessageActionSuggestBirthday(b Birthday) MessageActionSuggestBirthday {
+	return MessageActionSuggestBirthday{Underscore: MessageActionSuggestBirthdayTag, Birthday: b}
 }
 
 // messageActionSuggestedPostApproval#ee7a1596 flags:# rejected:flags.0?true

@@ -107,6 +107,8 @@ const lang = {
   BioCopied: 'Bio copied to clipboard.',
   Birthday: 'Birthday',
   'Birthday.PrivacyHint': 'In settings you can choose who will see your birthday.',
+  BirthdaySuggestIncoming: '%s suggested you add your birthday',
+  BirthdaySuggestOutgoing: 'You suggested %s to add a birthday',
   'BlockModal.Search.Placeholder': 'Block user...',
   BlockUser: 'Block user',
   BlockedEmpty: 'None',

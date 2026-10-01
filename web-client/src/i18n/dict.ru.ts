@@ -984,6 +984,9 @@ const ru = {
   'EditProfile.Username.Checking': 'Проверка…',
   Birthday: 'Дата рождения',
   'Birthday.PrivacyHint': 'В настройках можно выбрать, кто будет видеть Ваш день рождения.',
+  // Пилюля `messageActionSuggestBirthday` (tweb messageActionTextNewUnsafe.ts:901-906).
+  BirthdaySuggestIncoming: '%s предлагает вам указать дату рождения',
+  BirthdaySuggestOutgoing: 'Вы предложили %s указать дату рождения',
   // Автомат состояния соединения (components/connectionStatus.ts, порт tweb
   // ConnectionStatusComponent). Ключи — английские строки ДОСЛОВНО из
   // tweb/src/lang.ts: 'ConnectionStatus.ReconnectInPlain' (:116),
