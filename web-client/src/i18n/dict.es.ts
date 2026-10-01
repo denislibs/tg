@@ -576,6 +576,9 @@ const es = {
   'AutoDeleteMessages.SectionCaption':
     'Si lo activas, todos los mensajes nuevos en los chats que inicies se eliminarán automáticamente para todos pasado el tiempo elegido. La autoeliminación en tus chats creados anteriormente se activa por separado.',
   'AutoDeleteMessages.SetOtherTime': 'Elegir otro plazo',
+  'AutoDeleteMessages.InfoDefault': 'Eliminar automáticamente los mensajes para todos en los chats que inicies después de un tiempo.',
+  UnsavedChanges: 'Cambios sin guardar',
+  'UnsavedChangesDescription.Privacy': 'Has cambiado algunos ajustes de privacidad. ¿Guardar los cambios?',
   // Разряды длительности (`components/wrappers/wrapDuration.ts`, задача 7 плана 2D)
   Seconds: {
     one_value: '%1$d segundo',
