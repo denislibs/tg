@@ -3,12 +3,11 @@
 // код-пароль, облачный пароль, ключи доступа, сеансы) + секция privacy-правил
 // с живыми значениями и счётчиками исключений.
 import type { LangPackKey } from '@/lang'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createStore } from 'solid-js/store'
 import type { Passkey } from '@layer'
 import TgIcon from '../TgIcon'
 import { SettingsScreen, Section, Row } from './kit'
-import BlockedUsers from './BlockedUsers'
 import { findExistingOrCreateCustomOption } from '../sidebarLeft/tabs/autoDeleteMessages/options'
 import ConfirmDialog from './ConfirmDialog'
 import { useSettingsStore } from '../../settings'
@@ -17,7 +16,9 @@ import { useManagers } from '../../core/hooks/useManagers'
 import { commandThenReload } from '../../core/accountTransition'
 import { openActiveSessionsTab } from '../sidebarLeft/columnSlider'
 import type { ReactScreenTabProps } from '../sidebarLeft/reactScreenTab'
+import rootScope from '@lib/rootScope'
 import {
+  AppBlockedUsersTab,
   AppMessagesAutoDeleteTab,
   AppPasscodeEnterPasswordTab,
   AppPasscodeLockTab,
@@ -93,10 +94,31 @@ export default function PrivacySecuritySettings({ tab, onBack }: ReactScreenTabP
   const managers = useManagers()
   const rules = usePrivacyStore((s) => s.rules)
   const blockedTotal = usePrivacyStore((s) => s.blockedTotal)
-  const [sub, setSub] = useState<string | null>(null)
+  const setBlockedTotal = usePrivacyStore((s) => s.setBlockedTotal)
 
-  // Сабтайтлы On/Off и период автоудаления (перечитываются при возврате
-  // из под-экранов).
+  // tweb `privacyAndSecurity.tsx:130-139`, `:313-337`: первая страница чёрного
+  // списка грузится заранее и уезжает во вкладку полезной нагрузкой; пока она
+  // не пришла, строка «заморожена». Перечитывается на каждый `peer_block`.
+  const blockedPeerIds = useRef<PeerId[] | null>(null)
+  useEffect(() => {
+    let alive = true
+    const updateBlocked = () => {
+      void managers.privacy.getBlocked().then((res) => {
+        if (!alive) return
+        setBlockedTotal(res.count)
+        blockedPeerIds.current = res.peerIds
+      }).catch(() => {})
+    }
+    rootScope.addEventListener('peer_block', updateBlocked)
+    updateBlocked()
+    return () => {
+      alive = false
+      rootScope.removeEventListener('peer_block', updateBlocked)
+    }
+  }, [managers, setBlockedTotal])
+
+  // Сабтайтлы On/Off и период автоудаления. React-подэкранов у хаба больше нет
+  // (все — вкладки слайдера), поэтому читаются один раз на монтировании.
   // Состояние облачного пароля целиком, а не только признак: мастер 2FA
   // открывается с ним (tweb `privacyAndSecurity.tsx:131`, `:339-341`).
   const [pwState, setPwState] = useState<PasswordState | null>(null)
@@ -104,7 +126,6 @@ export default function PrivacySecuritySettings({ tab, onBack }: ReactScreenTabP
   const [clearDrafts, setClearDrafts] = useState(false)
   const [deleteAccount, setDeleteAccount] = useState(false)
   useEffect(() => {
-    if (sub !== null) return
     let alive = true
     void managers.auth.passwordState().then((st) => {
       if (alive) setPwState(st)
@@ -113,17 +134,7 @@ export default function PrivacySecuritySettings({ tab, onBack }: ReactScreenTabP
       if (alive) setAutoDelete(p)
     }).catch(() => {})
     return () => { alive = false }
-  }, [sub, managers])
-
-  const renderSub = (): ReactNode => {
-    if (!sub) return null
-    const back = () => setSub(null)
-    switch (sub) {
-      case 'BlockedUsers':
-        return <BlockedUsers onBack={back} />
-    }
-    return null
-  }
+  }, [managers])
 
   // Ключи доступа — вкладка `AppPasskeysTab` (`sidebarLeft/tabs/passkeys.solid.tsx`,
   // задача 21 плана 2D). tweb :156-160, :290-302: список — Solid-стор открывающего,
@@ -185,13 +196,16 @@ export default function PrivacySecuritySettings({ tab, onBack }: ReactScreenTabP
   }
 
   return (
-    <SettingsScreen title="PrivacySettings" onBack={onBack} zIndex={50} sub={renderSub()}>
+    <SettingsScreen title="PrivacySettings" onBack={onBack} zIndex={50}>
       <Section footer="SessionsInfo">
         <Row
           icon={<TgIcon name="person_crossed_filled" size={24} />}
           label="BlockedUsers"
           value={blockedValue}
-          onClick={() => setSub('BlockedUsers')}
+          onClick={() => {
+            // tweb :217 — `if(!blockedFrozen()) tab.slider.createTab(AppBlockedUsersTab).open({peerIds})`
+            if (blockedPeerIds.current) void slider.createTab(AppBlockedUsersTab).open({ peerIds: blockedPeerIds.current })
+          }}
         />
         {/* tweb `privacyAndSecurity.tsx:238-247`: вкладка слайдера с текущим
             периодом; `onSaved` обновляет подпись строки (`:370-376`). Пока
@@ -224,8 +238,7 @@ export default function PrivacySecuritySettings({ tab, onBack }: ReactScreenTabP
         />
         {/* «Активные сессии» — та же портированная вкладка слайдера, что и
             «Устройства» в корне настроек (`sidebarLeft/tabs/activeSessions.solid.tsx`),
-            и открывается тем же способом. `setSub` здесь не при чём: вкладка
-            не React-подэкран, состояние этого экрана она не трогает. Второй
+            и открывается тем же способом. Второй
             вход в те же сессии есть и в оригинале — `newAuthorization.tsx:116`. */}
         <Row
           icon={<TgIcon name="devices_filled" size={24} />}

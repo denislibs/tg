@@ -403,6 +403,17 @@ export const AppGeneralSettingsTab =
     getComponentModule: () => import('../sidebarLeft/tabs/generalSettings.solid'),
   })
 
+// ── «Динамики и камера» (tweb :181-185) — задача 26 плана 2D ─────────────────
+// Форма обычная, без полезной нагрузки: выбор устройств вкладка читает сама
+// (мост `useAppSettings`, `callDevices`). Открывают её строка корня настроек
+// (tweb `settings.tsx:258`, `makeSubTabConfig`) и меню «⋮» вкладки «Звонки»
+// (tweb `calls.tsx:363`: `tab.slider.createTab(AppSpeakersAndCameraTab).open()`).
+export const AppSpeakersAndCameraTab =
+  scaffoldSolidJSTab({
+    title: 'AccountSettings.SpeakersAndCamera',
+    getComponentModule: () => import('../sidebarLeft/tabs/speakersAndCamera.solid'),
+  })
+
 // ── Корень настроек (tweb :188-192) — задача 28 плана 2D ─────────────────────
 // Вкладка колоночного слайдера (`sidebarLeft/columnSlider.ts`); открывает её
 // пункт «Настройки» бургера и колонки папок (tweb `sidebarLeft/index.ts:765`,
@@ -411,6 +422,15 @@ export const AppSettingsTab =
   scaffoldSolidJSTab({
     title: 'Settings',
     getComponentModule: () => import('../sidebarLeft/tabs/settings.solid'),
+  })
+
+// ── «Стикеры и эмодзи» (tweb :202-206) — задача 15 плана 2D ──────────────────
+// Открывает строка `StickersName` корня настроек (tweb `settings.tsx:257`); сама
+// открывает «Быструю реакцию». Форма обычная, без полезной нагрузки.
+export const AppStickersAndEmojiTab =
+  scaffoldSolidJSTab({
+    title: 'StickersName',
+    getComponentModule: () => import('../sidebarLeft/tabs/stickersAndEmoji.solid'),
   })
 
 // ── ВРЕМЕННО: React-экраны под именами вкладок tweb ──────────────────────────
@@ -423,18 +443,6 @@ export const AppSettingsTab =
 export const AppPrivacyAndSecurityTab =
   scaffoldReactScreenTab({
     getComponentModule: () => import('../settings/PrivacySecuritySettings'),
-  })
-
-// ВРЕМЕННО до 2D-15 (tweb :202-206, `stickersAndEmoji.tsx`)
-export const AppStickersAndEmojiTab =
-  scaffoldReactScreenTab({
-    getComponentModule: () => import('../settings/StickersSettings'),
-  })
-
-// ВРЕМЕННО до 2D-26 (tweb :181-185, `speakersAndCamera.tsx`)
-export const AppSpeakersAndCameraTab =
-  scaffoldReactScreenTab({
-    getComponentModule: () => import('../settings/SpeakersCamera'),
   })
 
 // tweb :84-98 — «Редактировать профиль» (`editProfile.solid.tsx`, задача 27
@@ -595,3 +603,31 @@ export const AppPasskeysTab =
     title: 'Privacy.Passkeys',
     getComponentModule: () => import('../sidebarLeft/tabs/passkeys.solid'),
   })
+
+// ── Заблокированные (tweb :248-258) — задача 22 плана 2D ─────────────────────
+// Вкладка `blockedUsers.solid.tsx`; открывает её хаб «Конфиденциальность» с уже
+// загруженной первой страницей (tweb `privacyAndSecurity.tsx:217`). После въезда
+// — `scrollable.onScroll()`: короткая первая страница сразу догружает следующую.
+type AppBlockedUsersTabPayload = {
+  peerIds: PeerId[]
+}
+
+export const AppBlockedUsersTab =
+  scaffoldSolidJSTab<AppBlockedUsersTabPayload>({
+    title: 'BlockedUsers',
+    getComponentModule: () => import('../sidebarLeft/tabs/blockedUsers.solid'),
+    onOpenAfterTimeout: function() {
+      this.scrollable.onScroll()
+    },
+  })
+
+// ── «Новый канал» (tweb :262-270) — задача 0а-3 плана волны 7 ───────────────
+// Форма обычная, `noSame` — как у оригинала. Полезной нагрузки нет: `onCreate`/
+// `openAfter` оригинала нужны только сообществам, которых у нас нет
+// (расхождение 1 шапки `newChannel.solid.tsx`).
+export const AppNewChannelTab =
+  scaffoldSolidJSTab({
+    title: 'NewChannel',
+    getComponentModule: () => import('../sidebarLeft/tabs/newChannel.solid'),
+  })
+;(AppNewChannelTab as unknown as { noSame: boolean }).noSame = true

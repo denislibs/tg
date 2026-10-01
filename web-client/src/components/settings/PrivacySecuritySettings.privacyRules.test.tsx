@@ -31,7 +31,7 @@ const screenTab = { slider: { createTab } } as unknown as SliderSuperTab
 function renderScreen() {
   const managers = {
     auth: { passwordState: () => new Promise(() => {}), passkeysList: async() => [] },
-    privacy: { autoDelete: async() => 0 },
+    privacy: { getBlocked: async() => ({ count: 0, peerIds: [] }), autoDelete: async() => 0 },
   }
   return render(
     <ManagersProvider managers={managers as never}>

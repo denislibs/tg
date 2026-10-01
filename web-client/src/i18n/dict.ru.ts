@@ -401,8 +401,14 @@ const ru = {
   FilterAllChatsShort: 'Все',
   'InstalledStickers.LoopAnimated': 'Зацикливать анимированные стикеры',
   'GeneralSettings.EmojiPrediction': 'Подсказки эмодзи',
-  'Settings.BigEmoji': 'Большие эмодзи',
-  DynamicPackOrder: 'Динамический порядок наборов',
+  // ── «Стикеры и эмодзи» (tweb stickersAndEmoji.tsx, задача 15 плана 2D) ──
+  Emoji: 'Эмодзи',
+  LoopAnimatedStickersInfo: 'Анимированные стикеры будут воспроизводиться в чатах непрерывно.',
+  StickersBotInfo: 'Художники могут добавлять свои наборы стикеров с помощью нашего бота @stickers.',
+  SuggestStickersAll: 'Все наборы',
+  SuggestStickersInstalled: 'Мои наборы',
+  SuggestStickersNone: 'Нет',
+  'Telegram.InstalledStickerPacksController': 'Стикеры',
   'Call.Output': 'Вывод',
   'Rtmp.OutputPopup.Title': 'Устройство вывода',
   'CallSettings.DeviceDefault': 'По умолчанию',
@@ -439,12 +445,19 @@ const ru = {
   'CallSettings.OutputDevice': 'Устройство воспроизведения',
   'CallSettings.Camera': 'Устройство',
   Save: 'Сохранить',
-  'CallSettings.AcceptCalls': 'Приём звонков на этом устройстве',
-  'CallSettings.AcceptCalls.Caption':
-    'Отключите, чтобы не принимать входящие звонки и групповые видеозвонки на этом устройстве.',
   'Call.Input': 'Ввод',
   'CallSettings.InputDevice': 'Устройство ввода',
-  'CallSettings.AcceptCallsShort': 'Принимать звонки',
+  'CallSettings.OutputSection': 'Динамики',
+  'CallSettings.InputSection': 'Микрофон',
+  'CallSettings.MicrophoneUnavailable':
+    'Микрофон недоступен. Проверьте доступ к микрофону и попробуйте ещё раз.',
+  'CallSettings.CameraUnavailable': 'Камера недоступна. Проверьте доступ к камере и попробуйте ещё раз.',
+  'AccDescr.MicrophoneLevel': 'Уровень микрофона',
+  'ConferenceCall.Media.MicrophoneError':
+    'Не удалось изменить состояние микрофона. Проверьте доступ к микрофону и попробуйте ещё раз.',
+  'ConferenceCall.Media.CameraError':
+    'Не удалось изменить состояние камеры. Проверьте доступ к камере и попробуйте ещё раз.',
+  'Rtmp.OutputPopup.Default': 'По умолчанию',
   Translate: 'Перевести',
   'MediaEditor.Original': 'Оригинал',
   // Долг «фолбэк без WASM SIMD» (backlogs/frontend/lottie-no-wasm-fallback.md):
@@ -470,7 +483,6 @@ const ru = {
   NewGroup: 'Создать группу',
   // Название чата, созданного без имени: уезжает НА СЕРВЕР и его читают все участники,
   // поэтому это НАЗВАНИЕ, а не подпись пункта меню («Создать группу» строкой выше).
-  'NewChannel.DefaultTitle': 'Новый канал',
   'NewGroup.DefaultTitle': 'Новая группа',
   NewPrivateChat: 'Новое сообщение',
   'Suggestion.Notifications.Title': 'Не пропускайте сообщения! 🔔',
@@ -1006,7 +1018,6 @@ const ru = {
   Discard: 'Не сохранять',
   BlockUser: 'Заблокировать пользователя',
   BlockedUsersInfoShort: 'Заблокированные пользователи не могут писать вам и видеть ваш профиль.',
-  BlockedEmptyDescription: 'Вы никого не заблокировали.',
   'TwoStepAuth.SetPasswordCaption': 'Задайте дополнительный пароль, который понадобится при входе на новом устройстве.',
   TwoStepVerificationSetPassword: 'Задать пароль',
   'TwoStepAuth.CreateCaption': 'Создайте пароль для защиты аккаунта.',
@@ -1368,16 +1379,12 @@ const ru = {
   'Stickers.ClearRecent.Text': 'Точно очистить недавние стикеры?',
   AddToFavorites: 'В избранное',
   'Stickers.RemoveFromFavorites': 'Убрать из избранного',
-  'Stickers.MySets': 'Мои наборы стикеров',
-  'Stickers.AddSets': 'Добавить наборы',
-  'Stickers.SearchSets': 'Поиск наборов стикеров',
   Stickers: {
     one_value: '%1$d стикер',
     few_value: '%1$d стикера',
     many_value: '%1$d стикеров',
     other_value: '%1$d стикера',
   },
-  'Stickers.NoSets': 'Нет установленных наборов',
   // экраны поиска правой колонки (rightSidebar/StickersSearchTab)
   'StickersTab.SearchPlaceholder': 'Поиск стикеров',
   'Stickers.SearchAdded': 'Добавлен',
@@ -1577,6 +1584,13 @@ const ru = {
   // (звонок, редактор медиа, мини-приложения, ссылки-приглашения) жила без словаря
   // вовсе — старый ключ был английской строкой, и русский её и показывал.
   AddOneMemberAlertTitle: 'Добавить участника',
+  // Подтверждение «добавить участников/подписчиков» (`components/addChatUsers.ts`,
+  // задача 0а-3 волны 7) и поле поиска вкладки выбора.
+  AddMembersAlertCountText: 'Вы уверены, что хотите добавить %1$s в **%2$s**?',
+  AddMembersAlertNamesText: 'Вы уверены, что хотите добавить %1$s в **%2$s**?',
+  AddMembersAlertTitle: 'Добавить %1$s',
+  InviteToGroupError: 'К сожалению, вы не можете добавить этого пользователя в группы из-за его настроек конфиденциальности.',
+  SendMessageTo: 'Добавить людей...',
   'AutoDownloadSettings.LastDelimeter': ' и ',
   'Call.Accept': 'Принять',
   'Call.CameraOff': 'Выключить камеру',

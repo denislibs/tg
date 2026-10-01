@@ -556,6 +556,13 @@ button:focus {
   width: var(--sticker-size, 120px);
   height: var(--sticker-size, 120px);
 
+  // tweb 5a87c445e (base.scss:801-807): контейнер `AvatarEdit` — `<button>`
+  // (`components/avatarEdit.ts`); снять inline-block и UA-оформление кнопки, иначе
+  // `margin: auto` (`.page-chats .avatar-edit`) перестаёт центровать круг.
+  display: block;
+  padding: 0;
+  border: none;
+  background: none;
   position: relative;
   border-radius: 50%;
   cursor: pointer;

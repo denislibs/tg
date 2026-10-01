@@ -408,6 +408,34 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // React-экрана `ChatTypeScreen` ушли наши `LinkInvalid`/`LinkTaken` без других
 // читателей. Итог: ru 1410, uk 756, es/de 753, fr 748.
 //
+// Задача 15 плана 2D («Стикеры и эмодзи», порт tweb stickersAndEmoji.tsx): +7
+// ключей tweb lang.ts — `SuggestStickersAll`/`Installed`/`None`,
+// `LoopAnimatedStickersInfo`, `Emoji`, `Telegram.InstalledStickerPacksController`,
+// `StickersBotInfo`; у es и fr без `Telegram.InstalledStickerPacksController` —
+// «Stickers» там совпадает с английским (нижний слой). Сняты у всех пяти
+// `DynamicPackOrder` (секции нет, О-43) и наш `Settings.BigEmoji` (ни одного
+// читателя); у ru ещё четыре ключа снесённого React-экрана — `Stickers.MySets`,
+// `Stickers.NoSets`, `Stickers.AddSets`, `Stickers.SearchSets`. Итог (поверх 0б-2): ru 1411,
+// uk 761, es 757, de 758, fr 752.
+// Задача 22 плана 2D (вкладка «Заблокированные», порт tweb blockedUsers.tsx): −1 наш
+// ключ у всех пяти — `BlockedEmptyDescription` (пустое состояние снесённого
+// React-экрана; у оригинала его нет). Итог: ru 1409, uk 755, es/de 752, fr 747.
+// Задача 0а-3 волны 7 (вкладка «Новый канал», порт tweb newChannel.tsx +
+// addChatUsers.ts): у ru +5 ключей tweb lang.ts — подтверждение `addChatUsers`
+// (`AddMembersAlertTitle`/`AddMembersAlertCountText`/`AddMembersAlertNamesText`,
+// `InviteToGroupError`) и поле поиска выбора подписчиков `SendMessageTo`; −1 у всех
+// пяти: со сносом React-экрана `NewChannelFlow` ушёл наш `NewChannel.DefaultTitle`
+// (вкладка tweb без названия канал не создаёт). Итог: ru 1414, uk 755, es/de 752, fr 747.
+// Задача 26 плана 2D (вкладка «Динамики и камера», порт tweb
+// speakersAndCamera.tsx + call/*): +8 ключей tweb lang.ts всем пяти — имена
+// секций `CallSettings.OutputSection`/`InputSection`, подписи ошибок захвата
+// `CallSettings.MicrophoneUnavailable`/`CameraUnavailable`, `aria-label` метра
+// `AccDescr.MicrophoneLevel`, тосты отказа `ConferenceCall.Media.MicrophoneError`/
+// `CameraError`, «Default» попапа выбора `Rtmp.OutputPopup.Default`. Сняты ключи
+// без читателей: `CallSettings.AcceptCalls` (+ `.Caption` у ru/uk — у es/de/fr его
+// не было) — строка «Принимать звонки» ушла в О-8 вместе с экраном, и
+// `CallSettings.AcceptCallsShort` (читателя не было и до задачи). Итог (поверх 0б-2): ru 1415,
+// uk 761, es/de 759, fr 754.
 // Задача 27 плана 2D («Редактировать профиль» `AppEditProfileTab`, порт tweb
 // editProfile.tsx): снесён React-экран `settings/EditProfile.tsx`, с ним — шесть
 // наших ключей без других читателей (`EditProfile.LastNameLabel`,
@@ -417,11 +445,11 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `Login.Register.LastName.Placeholder`, `UsernameHelp`. Итог (поверх задач 21,
 // 0а-1, 20, О-22 и 0б-2 волны 7): ru 1408, uk 753, es/de 750, fr 745.
 const COMPOSITION = {
-  ru: { keys: 1408, plural: 42 },
-  uk: { keys: 753, plural: 31 },
-  es: { keys: 750, plural: 30 },
-  de: { keys: 750, plural: 31 },
-  fr: { keys: 745, plural: 30 },
+  ru: { keys: 1417, plural: 42 },
+  uk: { keys: 761, plural: 31 },
+  es: { keys: 758, plural: 30 },
+  de: { keys: 759, plural: 31 },
+  fr: { keys: 753, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -555,14 +583,22 @@ const COMPOSITION = {
 // Задачей 20 плана 2D — три ключа вкладки «Автоудаление» у всех пяти (там же).
 // Задачей 0б-2 волны 7 — +5 ключей вкладки типа чата у всех пяти, у ru — минус
 // `LinkInvalid`/`LinkTaken` снесённого React-экрана (разбор — там же).
+// Задачей 15 плана 2D — ключи «Стикеров и эмодзи» вместо ключей снесённого
+// React-экрана (разбор — у `COMPOSITION` выше).
+// Задачей 22 плана 2D — минус `BlockedEmptyDescription` у всех пяти (разбор — у
+// `COMPOSITION` выше).
+// Задачей 0а-3 волны 7 — у ru +5 ключей tweb, у всех пяти минус `NewChannel.DefaultTitle`
+// снесённого React-экрана (разбор — у `COMPOSITION` выше).
+// Задачей 26 плана 2D — ключи вкладки «Динамики и камера» вместо ключей
+// «Принимать звонки» (разбор — у `COMPOSITION` выше).
 // Задачей 27 плана 2D — минус ключи снесённого React-экрана профиля у всех пяти,
 // у ru плюс четыре ключа tweb (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: 'a86f7087',
-  uk: '4cb1bf9b',
-  es: '5de0695c',
-  de: 'ceefb24d',
-  fr: 'f505d663',
+  ru: '49623dd6',
+  uk: 'ad07d856',
+  es: 'd68e7ff1',
+  de: '7141179a',
+  fr: 'a49b1cae',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -905,6 +941,7 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     Notifications: '«notifications» — французское слово',
     AutoDownloadPhotos: '«photos» — французское слово',
     'CallSettings.Microphone': '«microphone» — французское слово',
+    'CallSettings.InputSection': '«microphone» — французское слово (имя секции, tweb speakersAndCamera.tsx)',
     Contacts: '«contacts» — французское слово',
     Message: '«message» — французское слово',
     ReportChatSpam: '«spam» — заимствование',

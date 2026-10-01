@@ -6,11 +6,15 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 37,
+      "version": 38,
       "strings": [
         {
           "key": "ALongTimeAgo",
           "value": "last seen a long time ago"
+        },
+        {
+          "key": "AccDescr.MicrophoneLevel",
+          "value": "Microphone level"
         },
         {
           "key": "AccountSettings.Filters",
@@ -43,6 +47,18 @@
         {
           "key": "AddFactCheck",
           "value": "Add Fact Check"
+        },
+        {
+          "key": "AddMembersAlertCountText",
+          "value": "Are you sure you want to add %1$s to **%2$s**?"
+        },
+        {
+          "key": "AddMembersAlertNamesText",
+          "value": "Are you sure you want to add %1$s to **%2$s**?"
+        },
+        {
+          "key": "AddMembersAlertTitle",
+          "value": "Add %1$s"
         },
         {
           "key": "AddOneMemberAlertTitle",
@@ -413,10 +429,6 @@
           "value": "None"
         },
         {
-          "key": "BlockedEmptyDescription",
-          "value": "You haven't blocked anyone."
-        },
-        {
           "key": "BlockedUsers",
           "value": "Blocked Users"
         },
@@ -613,24 +625,16 @@
           "value": "Outgoing Video Call"
         },
         {
-          "key": "CallSettings.AcceptCalls",
-          "value": "Accept calls on this device"
-        },
-        {
-          "key": "CallSettings.AcceptCalls.Caption",
-          "value": "Turn off to stop receiving incoming calls and group video chats on this device."
-        },
-        {
-          "key": "CallSettings.AcceptCallsShort",
-          "value": "Accept Calls"
-        },
-        {
           "key": "CallSettings.Camera",
           "value": "Device"
         },
         {
           "key": "CallSettings.CameraSection",
           "value": "Camera"
+        },
+        {
+          "key": "CallSettings.CameraUnavailable",
+          "value": "Camera is unavailable. Check camera access and try again."
         },
         {
           "key": "CallSettings.DeviceDefault",
@@ -645,12 +649,24 @@
           "value": "Input device"
         },
         {
+          "key": "CallSettings.InputSection",
+          "value": "Microphone"
+        },
+        {
           "key": "CallSettings.Microphone",
           "value": "Microphone"
         },
         {
+          "key": "CallSettings.MicrophoneUnavailable",
+          "value": "Microphone is unavailable. Check microphone access and try again."
+        },
+        {
           "key": "CallSettings.OutputDevice",
           "value": "Output device"
+        },
+        {
+          "key": "CallSettings.OutputSection",
+          "value": "Speakers"
         },
         {
           "key": "CallSettings.Speakers",
@@ -1405,6 +1421,14 @@
           "value": "Record voice message"
         },
         {
+          "key": "ConferenceCall.Media.CameraError",
+          "value": "Could not change the camera state. Check camera access and try again."
+        },
+        {
+          "key": "ConferenceCall.Media.MicrophoneError",
+          "value": "Could not change the microphone state. Check microphone access and try again."
+        },
+        {
           "key": "ConnectionStatus.ReconnectInPlain",
           "value": "Reconnect in %ds"
         },
@@ -1647,10 +1671,6 @@
           "value": "Draft"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Dynamic Pack Order"
-        },
-        {
           "key": "Edit",
           "value": "Edit"
         },
@@ -1729,6 +1749,10 @@
         {
           "key": "Effect.Remove",
           "value": "Remove Effect"
+        },
+        {
+          "key": "Emoji",
+          "value": "Emoji"
         },
         {
           "key": "Emoji.Activity",
@@ -2240,6 +2264,10 @@
           "value": "View link"
         },
         {
+          "key": "InviteToGroupError",
+          "value": "Sorry, you can't add this user to groups because of user's privacy settings."
+        },
+        {
           "key": "JumpToDate",
           "value": "Jump to Date"
         },
@@ -2703,6 +2731,10 @@
           "value": "Password"
         },
         {
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Animated stickers will play continuously in chats."
+        },
+        {
           "key": "ManageLinks.DeleteAll.Confirm",
           "value": "Are you sure you want to delete all revoked links?"
         },
@@ -3054,10 +3086,6 @@
         },
         {
           "key": "NewChannel",
-          "value": "New Channel"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
           "value": "New Channel"
         },
         {
@@ -4358,6 +4386,10 @@
           "value": "LIVE"
         },
         {
+          "key": "Rtmp.OutputPopup.Default",
+          "value": "Default"
+        },
+        {
           "key": "Rtmp.OutputPopup.Title",
           "value": "Output Device"
         },
@@ -4599,6 +4631,10 @@
           "value": "Send Message"
         },
         {
+          "key": "SendMessageTo",
+          "value": "Add people..."
+        },
+        {
           "key": "Separator.ShowLess",
           "value": "show less"
         },
@@ -4637,10 +4673,6 @@
         {
           "key": "Settings",
           "value": "Settings"
-        },
-        {
-          "key": "Settings.BigEmoji",
-          "value": "Big Emoji"
         },
         {
           "key": "Settings.Limits",
@@ -5006,20 +5038,8 @@
           }
         },
         {
-          "key": "Stickers.AddSets",
-          "value": "Add Sticker Sets"
-        },
-        {
           "key": "Stickers.ClearRecent.Text",
           "value": "Are you sure you want to clear your recent stickers?"
-        },
-        {
-          "key": "Stickers.MySets",
-          "value": "My Sticker Sets"
-        },
-        {
-          "key": "Stickers.NoSets",
-          "value": "No sticker sets installed"
         },
         {
           "key": "Stickers.RemoveFromFavorites",
@@ -5030,12 +5050,12 @@
           "value": "Added"
         },
         {
-          "key": "Stickers.SearchSets",
-          "value": "Search sticker sets"
-        },
-        {
           "key": "Stickers.SuggestStickers",
           "value": "Suggest Stickers by Emoji"
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Artists are welcome to add their own sticker sets using our @stickers bot."
         },
         {
           "key": "StickersName",
@@ -5225,6 +5245,18 @@
           }
         },
         {
+          "key": "SuggestStickersAll",
+          "value": "All Sets"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "My Sets"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "None"
+        },
+        {
           "key": "SuggestedPosts.Empty",
           "value": "No suggested posts here yet…"
         },
@@ -5303,6 +5335,10 @@
         {
           "key": "Telegram.GeneralSettingsViewController",
           "value": "General Settings"
+        },
+        {
+          "key": "Telegram.InstalledStickerPacksController",
+          "value": "Stickers"
         },
         {
           "key": "Telegram.LanguageViewController",
@@ -5815,7 +5851,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 37,
+      "version": 38,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -7165,12 +7201,32 @@
           "value": "Подсказки эмодзи"
         },
         {
-          "key": "Settings.BigEmoji",
-          "value": "Большие эмодзи"
+          "key": "Emoji",
+          "value": "Эмодзи"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Динамический порядок наборов"
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Анимированные стикеры будут воспроизводиться в чатах непрерывно."
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Художники могут добавлять свои наборы стикеров с помощью нашего бота @stickers."
+        },
+        {
+          "key": "SuggestStickersAll",
+          "value": "Все наборы"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "Мои наборы"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "Нет"
+        },
+        {
+          "key": "Telegram.InstalledStickerPacksController",
+          "value": "Стикеры"
         },
         {
           "key": "Call.Output",
@@ -7317,14 +7373,6 @@
           "value": "Сохранить"
         },
         {
-          "key": "CallSettings.AcceptCalls",
-          "value": "Приём звонков на этом устройстве"
-        },
-        {
-          "key": "CallSettings.AcceptCalls.Caption",
-          "value": "Отключите, чтобы не принимать входящие звонки и групповые видеозвонки на этом устройстве."
-        },
-        {
           "key": "Call.Input",
           "value": "Ввод"
         },
@@ -7333,8 +7381,36 @@
           "value": "Устройство ввода"
         },
         {
-          "key": "CallSettings.AcceptCallsShort",
-          "value": "Принимать звонки"
+          "key": "CallSettings.OutputSection",
+          "value": "Динамики"
+        },
+        {
+          "key": "CallSettings.InputSection",
+          "value": "Микрофон"
+        },
+        {
+          "key": "CallSettings.MicrophoneUnavailable",
+          "value": "Микрофон недоступен. Проверьте доступ к микрофону и попробуйте ещё раз."
+        },
+        {
+          "key": "CallSettings.CameraUnavailable",
+          "value": "Камера недоступна. Проверьте доступ к камере и попробуйте ещё раз."
+        },
+        {
+          "key": "AccDescr.MicrophoneLevel",
+          "value": "Уровень микрофона"
+        },
+        {
+          "key": "ConferenceCall.Media.MicrophoneError",
+          "value": "Не удалось изменить состояние микрофона. Проверьте доступ к микрофону и попробуйте ещё раз."
+        },
+        {
+          "key": "ConferenceCall.Media.CameraError",
+          "value": "Не удалось изменить состояние камеры. Проверьте доступ к камере и попробуйте ещё раз."
+        },
+        {
+          "key": "Rtmp.OutputPopup.Default",
+          "value": "По умолчанию"
         },
         {
           "key": "Translate",
@@ -7415,10 +7491,6 @@
         {
           "key": "NewGroup",
           "value": "Создать группу"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
-          "value": "Новый канал"
         },
         {
           "key": "NewGroup.DefaultTitle",
@@ -9166,10 +9238,6 @@
           "value": "Заблокированные пользователи не могут писать вам и видеть ваш профиль."
         },
         {
-          "key": "BlockedEmptyDescription",
-          "value": "Вы никого не заблокировали."
-        },
-        {
           "key": "TwoStepAuth.SetPasswordCaption",
           "value": "Задайте дополнительный пароль, который понадобится при входе на новом устройстве."
         },
@@ -10321,18 +10389,6 @@
           "value": "Убрать из избранного"
         },
         {
-          "key": "Stickers.MySets",
-          "value": "Мои наборы стикеров"
-        },
-        {
-          "key": "Stickers.AddSets",
-          "value": "Добавить наборы"
-        },
-        {
-          "key": "Stickers.SearchSets",
-          "value": "Поиск наборов стикеров"
-        },
-        {
           "key": "Stickers",
           "forms": {
             "one_value": "%1$d стикер",
@@ -10340,10 +10396,6 @@
             "many_value": "%1$d стикеров",
             "other_value": "%1$d стикера"
           }
-        },
-        {
-          "key": "Stickers.NoSets",
-          "value": "Нет установленных наборов"
         },
         {
           "key": "StickersTab.SearchPlaceholder",
@@ -10925,6 +10977,26 @@
         {
           "key": "AddOneMemberAlertTitle",
           "value": "Добавить участника"
+        },
+        {
+          "key": "AddMembersAlertCountText",
+          "value": "Вы уверены, что хотите добавить %1$s в **%2$s**?"
+        },
+        {
+          "key": "AddMembersAlertNamesText",
+          "value": "Вы уверены, что хотите добавить %1$s в **%2$s**?"
+        },
+        {
+          "key": "AddMembersAlertTitle",
+          "value": "Добавить %1$s"
+        },
+        {
+          "key": "InviteToGroupError",
+          "value": "К сожалению, вы не можете добавить этого пользователя в группы из-за его настроек конфиденциальности."
+        },
+        {
+          "key": "SendMessageTo",
+          "value": "Добавить людей..."
         },
         {
           "key": "AutoDownloadSettings.LastDelimeter",
@@ -11665,7 +11737,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 24,
+      "version": 25,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -12287,12 +12359,28 @@
           "value": "Suggérer des émojis"
         },
         {
-          "key": "Settings.BigEmoji",
-          "value": "Grands émojis"
+          "key": "Emoji",
+          "value": "Émojis"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Ordre dynamique des packs"
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Les stickers animés seront lus en boucle dans les discussions."
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Les artistes peuvent ajouter leurs propres packs de stickers grâce à notre bot @stickers."
+        },
+        {
+          "key": "SuggestStickersAll",
+          "value": "Tous les packs"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "Mes packs"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "Aucun"
         },
         {
           "key": "Call.Output",
@@ -12331,10 +12419,6 @@
           "value": "Enregistrer"
         },
         {
-          "key": "CallSettings.AcceptCalls",
-          "value": "Accepter les appels sur cet appareil"
-        },
-        {
           "key": "Call.Input",
           "value": "Entrée"
         },
@@ -12343,8 +12427,36 @@
           "value": "Périphérique d'entrée"
         },
         {
-          "key": "CallSettings.AcceptCallsShort",
-          "value": "Accepter les appels"
+          "key": "CallSettings.OutputSection",
+          "value": "Haut-parleurs"
+        },
+        {
+          "key": "CallSettings.InputSection",
+          "value": "Microphone"
+        },
+        {
+          "key": "CallSettings.MicrophoneUnavailable",
+          "value": "Le microphone est indisponible. Vérifiez l’accès au microphone et réessayez."
+        },
+        {
+          "key": "CallSettings.CameraUnavailable",
+          "value": "La caméra est indisponible. Vérifiez l’accès à la caméra et réessayez."
+        },
+        {
+          "key": "AccDescr.MicrophoneLevel",
+          "value": "Niveau du microphone"
+        },
+        {
+          "key": "ConferenceCall.Media.MicrophoneError",
+          "value": "Impossible de modifier l’état du microphone. Vérifiez l’accès au microphone et réessayez."
+        },
+        {
+          "key": "ConferenceCall.Media.CameraError",
+          "value": "Impossible de modifier l’état de la caméra. Vérifiez l’accès à la caméra et réessayez."
+        },
+        {
+          "key": "Rtmp.OutputPopup.Default",
+          "value": "Par défaut"
         },
         {
           "key": "CurrentSession",
@@ -12429,10 +12541,6 @@
         {
           "key": "NewGroup",
           "value": "Nouveau groupe"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
-          "value": "Nouveau canal"
         },
         {
           "key": "NewGroup.DefaultTitle",
@@ -13282,10 +13390,6 @@
         {
           "key": "BlockedUsersInfoShort",
           "value": "Les utilisateurs bloqués ne peuvent pas vous envoyer de messages ni voir votre profil."
-        },
-        {
-          "key": "BlockedEmptyDescription",
-          "value": "Vous n'avez bloqué personne."
         },
         {
           "key": "TwoStepAuth.SetPasswordCaption",
@@ -14743,7 +14847,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 24,
+      "version": 25,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -15364,12 +15468,32 @@
           "value": "Emojis vorschlagen"
         },
         {
-          "key": "Settings.BigEmoji",
-          "value": "Große Emojis"
+          "key": "Emoji",
+          "value": "Emojis"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Dynamische Paketreihenfolge"
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Animierte Sticker werden in Chats fortlaufend abgespielt."
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Künstler können mit unserem Bot @stickers eigene Stickerpakete hinzufügen."
+        },
+        {
+          "key": "SuggestStickersAll",
+          "value": "Alle Pakete"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "Meine Pakete"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "Keine"
+        },
+        {
+          "key": "Telegram.InstalledStickerPacksController",
+          "value": "Sticker"
         },
         {
           "key": "Call.Output",
@@ -15408,10 +15532,6 @@
           "value": "Speichern"
         },
         {
-          "key": "CallSettings.AcceptCalls",
-          "value": "Anrufe auf diesem Gerät annehmen"
-        },
-        {
           "key": "Call.Input",
           "value": "Eingabe"
         },
@@ -15420,8 +15540,36 @@
           "value": "Eingabegerät"
         },
         {
-          "key": "CallSettings.AcceptCallsShort",
-          "value": "Anrufe annehmen"
+          "key": "CallSettings.OutputSection",
+          "value": "Lautsprecher"
+        },
+        {
+          "key": "CallSettings.InputSection",
+          "value": "Mikrofon"
+        },
+        {
+          "key": "CallSettings.MicrophoneUnavailable",
+          "value": "Das Mikrofon ist nicht verfügbar. Prüfe den Mikrofonzugriff und versuche es erneut."
+        },
+        {
+          "key": "CallSettings.CameraUnavailable",
+          "value": "Die Kamera ist nicht verfügbar. Prüfe den Kamerazugriff und versuche es erneut."
+        },
+        {
+          "key": "AccDescr.MicrophoneLevel",
+          "value": "Mikrofonpegel"
+        },
+        {
+          "key": "ConferenceCall.Media.MicrophoneError",
+          "value": "Der Mikrofonstatus konnte nicht geändert werden. Prüfe den Mikrofonzugriff und versuche es erneut."
+        },
+        {
+          "key": "ConferenceCall.Media.CameraError",
+          "value": "Der Kamerastatus konnte nicht geändert werden. Prüfe den Kamerazugriff und versuche es erneut."
+        },
+        {
+          "key": "Rtmp.OutputPopup.Default",
+          "value": "Standard"
         },
         {
           "key": "CurrentSession",
@@ -15510,10 +15658,6 @@
         {
           "key": "NewGroup",
           "value": "Neue Gruppe"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
-          "value": "Neuer Kanal"
         },
         {
           "key": "NewGroup.DefaultTitle",
@@ -16363,10 +16507,6 @@
         {
           "key": "BlockedUsersInfoShort",
           "value": "Blockierte Benutzer können dir keine Nachrichten senden und dein Profil nicht sehen."
-        },
-        {
-          "key": "BlockedEmptyDescription",
-          "value": "Du hast niemanden blockiert."
         },
         {
           "key": "TwoStepAuth.SetPasswordCaption",
@@ -17843,7 +17983,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 24,
+      "version": 25,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -18469,12 +18609,28 @@
           "value": "Sugerir emojis"
         },
         {
-          "key": "Settings.BigEmoji",
-          "value": "Emojis grandes"
+          "key": "Emoji",
+          "value": "Emojis"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Orden dinámico de paquetes"
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Los stickers animados se reproducirán continuamente en los chats."
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Los artistas pueden añadir sus propios packs de stickers con nuestro bot @stickers."
+        },
+        {
+          "key": "SuggestStickersAll",
+          "value": "Todos los packs"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "Mis packs"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "Ninguno"
         },
         {
           "key": "Call.Output",
@@ -18513,10 +18669,6 @@
           "value": "Guardar"
         },
         {
-          "key": "CallSettings.AcceptCalls",
-          "value": "Aceptar llamadas en este dispositivo"
-        },
-        {
           "key": "Call.Input",
           "value": "Entrada"
         },
@@ -18525,8 +18677,36 @@
           "value": "Dispositivo de entrada"
         },
         {
-          "key": "CallSettings.AcceptCallsShort",
-          "value": "Aceptar llamadas"
+          "key": "CallSettings.OutputSection",
+          "value": "Altavoces"
+        },
+        {
+          "key": "CallSettings.InputSection",
+          "value": "Micrófono"
+        },
+        {
+          "key": "CallSettings.MicrophoneUnavailable",
+          "value": "El micrófono no está disponible. Comprueba el acceso al micrófono e inténtalo de nuevo."
+        },
+        {
+          "key": "CallSettings.CameraUnavailable",
+          "value": "La cámara no está disponible. Comprueba el acceso a la cámara e inténtalo de nuevo."
+        },
+        {
+          "key": "AccDescr.MicrophoneLevel",
+          "value": "Nivel del micrófono"
+        },
+        {
+          "key": "ConferenceCall.Media.MicrophoneError",
+          "value": "No se pudo cambiar el estado del micrófono. Comprueba el acceso al micrófono e inténtalo de nuevo."
+        },
+        {
+          "key": "ConferenceCall.Media.CameraError",
+          "value": "No se pudo cambiar el estado de la cámara. Comprueba el acceso a la cámara e inténtalo de nuevo."
+        },
+        {
+          "key": "Rtmp.OutputPopup.Default",
+          "value": "Predeterminado"
         },
         {
           "key": "CurrentSession",
@@ -18615,10 +18795,6 @@
         {
           "key": "NewGroup",
           "value": "Nuevo grupo"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
-          "value": "Canal nuevo"
         },
         {
           "key": "NewGroup.DefaultTitle",
@@ -19468,10 +19644,6 @@
         {
           "key": "BlockedUsersInfoShort",
           "value": "Los usuarios bloqueados no pueden enviarte mensajes ni ver tu perfil."
-        },
-        {
-          "key": "BlockedEmptyDescription",
-          "value": "No has bloqueado a nadie."
         },
         {
           "key": "TwoStepAuth.SetPasswordCaption",
@@ -20941,7 +21113,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 24,
+      "version": 25,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -21570,12 +21742,32 @@
           "value": "Підказки емодзі"
         },
         {
-          "key": "Settings.BigEmoji",
-          "value": "Великі емодзі"
+          "key": "Emoji",
+          "value": "Емодзі"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Динамічний порядок наборів"
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Анімовані стікери відтворюватимуться в чатах безперервно."
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Художники можуть додавати власні набори стікерів за допомогою нашого бота @stickers."
+        },
+        {
+          "key": "SuggestStickersAll",
+          "value": "Усі набори"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "Мої набори"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "Ні"
+        },
+        {
+          "key": "Telegram.InstalledStickerPacksController",
+          "value": "Стікери"
         },
         {
           "key": "Call.Output",
@@ -21614,14 +21806,6 @@
           "value": "Зберегти"
         },
         {
-          "key": "CallSettings.AcceptCalls",
-          "value": "Приймати дзвінки на цьому пристрої"
-        },
-        {
-          "key": "CallSettings.AcceptCalls.Caption",
-          "value": "Вимкніть, щоб не приймати вхідні дзвінки та групові відеодзвінки на цьому пристрої."
-        },
-        {
           "key": "Call.Input",
           "value": "Ввід"
         },
@@ -21630,8 +21814,36 @@
           "value": "Пристрій вводу"
         },
         {
-          "key": "CallSettings.AcceptCallsShort",
-          "value": "Приймати дзвінки"
+          "key": "CallSettings.OutputSection",
+          "value": "Динаміки"
+        },
+        {
+          "key": "CallSettings.InputSection",
+          "value": "Мікрофон"
+        },
+        {
+          "key": "CallSettings.MicrophoneUnavailable",
+          "value": "Мікрофон недоступний. Перевірте доступ до мікрофона й спробуйте ще раз."
+        },
+        {
+          "key": "CallSettings.CameraUnavailable",
+          "value": "Камера недоступна. Перевірте доступ до камери й спробуйте ще раз."
+        },
+        {
+          "key": "AccDescr.MicrophoneLevel",
+          "value": "Рівень мікрофона"
+        },
+        {
+          "key": "ConferenceCall.Media.MicrophoneError",
+          "value": "Не вдалося змінити стан мікрофона. Перевірте доступ до мікрофона й спробуйте ще раз."
+        },
+        {
+          "key": "ConferenceCall.Media.CameraError",
+          "value": "Не вдалося змінити стан камери. Перевірте доступ до камери й спробуйте ще раз."
+        },
+        {
+          "key": "Rtmp.OutputPopup.Default",
+          "value": "За замовчуванням"
         },
         {
           "key": "CurrentSession",
@@ -21720,10 +21932,6 @@
         {
           "key": "NewGroup",
           "value": "Створити групу"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
-          "value": "Новий канал"
         },
         {
           "key": "NewGroup.DefaultTitle",
@@ -22586,10 +22794,6 @@
         {
           "key": "BlockedUsersInfoShort",
           "value": "Заблоковані користувачі не можуть писати вам і бачити ваш профіль."
-        },
-        {
-          "key": "BlockedEmptyDescription",
-          "value": "Ви нікого не заблокували."
         },
         {
           "key": "TwoStepAuth.SetPasswordCaption",
