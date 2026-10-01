@@ -380,18 +380,31 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // читателей: восемь наших `Premium.Manage.*` и `Stars.Subscription`/
 // `Stars.Subscription.Cancel`. Итог: ru 1404, uk 750, es/de 747, fr 742.
 //
+// Задача 21 плана 2D (вкладка «Passkeys», порт tweb passkeys.tsx + popups/passkey.tsx):
+// +7 ключей tweb lang.ts всем пяти — `Privacy.Passkeys.Caption`,
+// `Privacy.Passkey.Created`/`Privacy.Passkey.LastUsage` (подзаголовок строки),
+// `Passkey.Deletion.Title`/`Passkey.Deletion.Text` (подтверждение удаления),
+// `Passkey.Created`/`Passkey.CreationError` (тосты `createPasskey`); −7 наших
+// ключей снесённого React-экрана без других читателей — `Passkeys.Add`,
+// `Passkeys.Caption`, `Passkeys.Created`, `Passkeys.Item`, `Passkeys.LastUsed`,
+// `Passkeys.Unsupported`, `Passkey.CreateError`. Число строк то же, набор другой.
+// Задача 0а-1 волны 7 (вкладка контактов вместо React-экранов «Контакты» и
+// «Новое сообщение»): −2 наших ключа у всех пяти — `Compose.NewMessage` (заголовок
+// снесённого «Нового сообщения»: у tweb это вкладка «Контакты») и `Contacts.NotFound`
+// (пустая выдача снесённого экрана). Итог: ru 1402, uk 748, es/de 745, fr 740.
+//
 // Задача 0б-2 волны 7 (вкладка типа чата, порт tweb `sidebarRight/tabs/chatType.tsx`
 // и `usernameInputField.ts`): +5 ключей tweb lang.ts всем пяти — подписи поля имени
 // `Link.{Available,Invalid,Taken}` и подтверждение снятия имени
 // `ChannelVisibility.Confirm.MakePrivate.{Channel,Group}`. У ru ещё −2: со сносом
 // React-экрана `ChatTypeScreen` ушли наши `LinkInvalid`/`LinkTaken` без других
-// читателей. Итог: ru 1407, uk 755, es/de 752, fr 747.
+// читателей. Итог: ru 1405, uk 753, es/de 750, fr 745.
 const COMPOSITION = {
-  ru: { keys: 1407, plural: 42 },
-  uk: { keys: 755, plural: 31 },
-  es: { keys: 752, plural: 30 },
-  de: { keys: 752, plural: 31 },
-  fr: { keys: 747, plural: 30 },
+  ru: { keys: 1405, plural: 42 },
+  uk: { keys: 753, plural: 31 },
+  es: { keys: 750, plural: 30 },
+  de: { keys: 750, plural: 31 },
+  fr: { keys: 745, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -516,14 +529,19 @@ const COMPOSITION = {
 // Особыми чатами — у ru +4 ключа tweb (разбор — у `COMPOSITION` выше).
 // Задачей 28 плана 2D — два ключа строк корня настроек у всех пяти, у ru — минус
 // ключи снесённого `PremiumManage` (разбор — там же).
+// Задачей 21 плана 2D — ключи вкладки «Passkeys» вместо ключей снесённого
+// React-экрана, −7 +7 у всех пяти (разбор — у `COMPOSITION` выше).
+// Задачей 0а-1 волны 7 — минус `Compose.NewMessage` и `Contacts.NotFound` у всех пяти:
+// наши ключи снесённых React-экранов «Новое сообщение» и «Контакты» (вкладка контактов
+// tweb пустой выдачи не подписывает, а «Новое сообщение» — это она же).
 // Задачей 0б-2 волны 7 — +5 ключей вкладки типа чата у всех пяти, у ru — минус
 // `LinkInvalid`/`LinkTaken` снесённого React-экрана (разбор — там же).
 const FINGERPRINT = {
-  ru: 'c481b28e',
-  uk: '12d6c803',
-  es: '09f1a876',
-  de: '83339d15',
-  fr: '3a64f823',
+  ru: 'a3d8a70d',
+  uk: '523a27e0',
+  es: 'c79429bf',
+  de: 'feac50fe',
+  fr: '4dfac1b0',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -844,7 +862,6 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     'EditProfile.BioLabel': '«Bio (optional)» — оба слова немецкие',
     'Settings.Limits': '«Limits» — заимствование, немецкое множественное',
     'Privacy.Passkeys': '«Passkeys» — термин без немецкого эквивалента',
-    'Passkeys.Item': '«Passkey» — тот же термин в единственном',
     'StorageQuota.CacheSizeLimitAuto': '«Auto» — сокращение от «automatisch»',
     'Unit.Bytes': 'B — единица информации, не переводится',
     'Unit.Kilobytes': 'KB — единица информации, не переводится',

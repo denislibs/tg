@@ -222,6 +222,18 @@ func (r *GroupRepo) SetType(ctx context.Context, chatID int64, isPublic bool, us
 	return err
 }
 
+// UsernameAvailable — свободно ли имя для чата chatID (channels.checkUsername):
+// не занято ни другим чатом, ни пользователем — пространство имён общее
+// (миграция 0134), своё имя чата свободно. Сравнение CITEXT — без регистра,
+// как у индексов.
+func (r *GroupRepo) UsernameAvailable(ctx context.Context, username string, chatID int64) (bool, error) {
+	var free bool
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT NOT EXISTS (SELECT 1 FROM chats WHERE username=$1 AND id<>$2)
+		    AND NOT EXISTS (SELECT 1 FROM users WHERE username=$1)`, username, chatID).Scan(&free)
+	return free, err
+}
+
 func (r *GroupRepo) SetPermissions(ctx context.Context, chatID int64, perms domain.MemberPerms, slowmodeSeconds int) error {
 	_, err := querier(ctx, r.pool).Exec(ctx,
 		`UPDATE chats SET default_permissions=$2, slowmode_seconds=$3 WHERE id=$1`,

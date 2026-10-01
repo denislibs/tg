@@ -1361,6 +1361,8 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 | О-15 | Секция вступления вкладки типа чата: «вступать, чтобы писать», заявки на вступление, бот-привратник `guard_bot_id` (`chatType.tsx:270-372`) | флагов `join_to_send`/`join_request` у `channel` нет (`domain/mtchat.go`, `ChannelFlags`) | секция 1:1 |
 | О-16 | «Запрет копирования» (`noforwards`, `messages.toggleNoForwards`, `chatType.tsx:374-407`) | флаг не объявлен у `channel`, механики нет | секция 1:1 и гейт копирования/пересылки |
 | О-17 | Коллекция имён `usernames` (несколько имён, порядок, скрытие, покупка на Fragment): `UsernamesSection`, `purchaseUsernameCaption` | у чата одно поле `username` (`core/peers/predicates.ts`, `isPublic`) | `usernamesSection.tsx` 1:1 |
+| О-30 | Выделение контактов во вкладке контактов: `ContactsSelection` (`contactsSelection.ts` 50), меню строки `attachContactsContextMenu` (45), попап `confirmDeleteContacts` (`popups/deleteContacts.ts` 22), ключи `ContactsSelected`/`DeleteContactsTitle`/`DeleteContactsSubtitle` (коммит ee6f7f9c2) | база `DialogsSelectionBase` (`dialogsSelectionBase.ts` 531, коммит 60a83a6f1 — выделение чатов и тем) не портирована; бэкенд есть (`DELETE /contacts/{id}`) | порт выделения списков (60a83a6f1 → ee6f7f9c2, `docs/tweb/delta/part-5.md` группа 4) |
+| О-31 | `highlight: 'sort'` у `AppContactsTab`: ссылка `tg://contacts/sort` вспыхивает кнопкой сортировки (`flashControl`, `lib/settingsSearch/highlight.ts`) | нет ни обработчика внутренних ссылок, ни поиска по настройкам | `internalLinkProcessor` (Э5-4) и порт `lib/settingsSearch` |
 
 ## Что остаётся волне 8 (после этой программы)
 

@@ -373,6 +373,7 @@ export function createWorkerCore() {
     peers,
     getMe: () => me?.user ?? null,
     state: { getState, pushToState: (key, value) => persist.stateKey(key, value) },
+    onContactsUpdate: (userId) => broadcast('contacts_update', userId),
   })
   const privacy = newPrivacyManager({ rest, peers })
   const drafts = newDraftsManager({ rest })

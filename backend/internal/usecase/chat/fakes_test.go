@@ -973,7 +973,7 @@ func (r fakeMsgs) SearchMessages(_ context.Context, chatID, userID int64, q stri
 	return hits, count, nil
 }
 
-func (r fakeMsgs) CalendarMonth(_ context.Context, chatID int64, from, to time.Time) ([]domain.CalendarDay, error) {
+func (r fakeMsgs) CalendarMonth(_ context.Context, chatID, userID int64, from, to time.Time) ([]domain.CalendarDay, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	// Агрегат по дню, как у настоящего запроса: границы номеров, счётчик и
@@ -981,7 +981,7 @@ func (r fakeMsgs) CalendarMonth(_ context.Context, chatID int64, from, to time.T
 	byDay := map[string]*domain.CalendarDay{}
 	order := []string{}
 	for _, m := range r.s.messages[chatID] {
-		if m.Deleted || m.MediaID == nil || m.CreatedAt.Before(from) || !m.CreatedAt.Before(to) {
+		if m.Deleted || r.s.hiddenFor(userID, m.ID) || m.MediaID == nil || m.CreatedAt.Before(from) || !m.CreatedAt.Before(to) {
 			continue
 		}
 		day := m.CreatedAt.UTC().Truncate(24 * time.Hour)
