@@ -44,7 +44,9 @@
 //    rich-text и ответ жестом (даблклик на десктопе / свайп на таче, порт
 //    bubbles.ts:1496-1572), плюс контекстное меню (:1478) и выделение (:1479) —
 //    оба лента поднимает фабрикой хоста (`createContextMenu`/`createSelection`)
-//    — и ховер-реакция (`setReactionsHoverListeners`, :2830).
+//    — ховер-реакция (`setReactionsHoverListeners`, :2830) и предпросмотр
+//    стикера по зажатию (`attachStickerViewerListeners`, :1591; у tweb — в
+//    конструкторе ленты).
 //    Зовёт его конструктор: в tweb это делает `Chat` (`chat.ts:638`), а у нас
 //    `Chat`-хоста нет.
 //  • `processBatch` портирован вместе со скроллом (`changedTop`/`changedBottom`
@@ -135,6 +137,7 @@ import type { SelectionBubbles } from './selection'
 import wrapPhoto from '@components/wrappers/photo'
 import wrapVideo from '@components/wrappers/video'
 import wrapSticker from '@components/wrappers/sticker'
+import attachStickerViewerListeners from '@components/stickerViewer'
 import wrapDocument from '@components/wrappers/document'
 import wrapAlbum from '@components/wrappers/album'
 import wrapMediaSpoiler, { onMediaSpoilerClick } from '@components/wrappers/mediaSpoiler'
@@ -3075,6 +3078,20 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // (внутри `attachTo` собственный `ListenerSetter`), лента отдаёт только узел.
     this.contextMenu = this.chat.createContextMenu?.(this)
     this.contextMenu?.attachTo(this.container)
+
+    // Предпросмотр стикера/GIF по зажатию — tweb bubbles.ts:1591-1599, на
+    // скроллере ленты и раньше разбора кликов: отпускание после удержания
+    // глотает следующий click (`stickerViewer.ts`), и клик по стикеру не
+    // откроет набор.
+    attachStickerViewerListeners({
+      listenTo: this.scrollable.container,
+      listenerSetter: this.listenerSetter,
+      findTarget: (e) => {
+        const target = e.target as HTMLElement
+        const found = target.closest('.attachment.media-sticker-wrapper, .attachment.media-gif-wrapper, .poll-option-sticker.media-sticker-wrapper') || (findUpClassName(target, 'attachment') && target.closest('.custom-emoji'))
+        return found as HTMLElement
+      },
+    })
 
     this.listenerSetter.add(this.container)('click', this.onContainerClick)
 

@@ -126,7 +126,7 @@ function eagerGraph(): Set<string> {
  * зелёным, поэтому точка входа проверяется отдельным тестом ниже.
  */
 const MUST_STAY_LAZY: Record<string, string> = {
-  // Попап набора стикеров: сетка набора + StickerViewer. Открывается кликом по
+  // Попап набора стикеров (сетка набора). Открывается кликом по
   // стикеру в ленте (`components/Chat.tsx`) и по строке набора в поиске
   // стикеров (`rightSidebar/StickersSearchTab.tsx` — сам внутри EmojiDropdown).
   'components/stickers/StickerSetModal.tsx': 'components/Chat.tsx',
