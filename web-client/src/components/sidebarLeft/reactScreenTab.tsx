@@ -1,12 +1,12 @@
 /**
- * ВРЕМЕННЫЙ МОСТ (снимается задачами 2D-23, 2D-27): React-экран
- * настроек вкладкой колоночного слайдера.
+ * ВРЕМЕННЫЙ МОСТ (снимается задачей 2D-23): React-экран настроек вкладкой
+ * колоночного слайдера.
  *
  * Корень настроек — Solid-вкладка `AppSettingsTab` (задача 2D-28), а его
- * подэкраны, ещё не портированные, существуют только React-компонентами на
- * React-ките `settings/kit.tsx`: «Конфиденциальность» (2D-23), «Редактировать
- * профиль» (2D-27); «Стикеры и эмодзи» (2D-15) и «Динамики и камера» (2D-26)
- * уже Solid. Строка Solid-корня обязана открывать их так же, как у tweb, —
+ * последний не портированный подэкран существует только React-компонентом на
+ * React-ките `settings/kit.tsx`: «Конфиденциальность» (2D-23); «Стикеры и
+ * эмодзи» (2D-15), «Динамики и камера» (2D-26) и «Редактировать профиль»
+ * (2D-27) уже Solid. Строка Solid-корня обязана открывать его так же, как у tweb, —
  * `tab.slider.createTab(AppXxxTab).open()`. Поэтому классы вкладок заведены под
  * именами оригинала в `solidJsTabs/tabs.ts`, а их содержимое до порта рисует
  * этот мост: вкладка слайдера, в которой вместо Solid-острова — React-корень
@@ -43,17 +43,14 @@ export type ReactScreenTabProps = {
 
 type ReactScreenTabClass = (new (...args: ConstructorParameters<typeof SliderSuperTab>) => SliderSuperTab & {
   init(): Promise<void>
-}) & { noSame?: boolean }
+})
 
 export function scaffoldReactScreenTab({
   getComponentModule,
-  noSame,
 }: {
   getComponentModule: () => Promise<{ default: ComponentType<ReactScreenTabProps> }>
-  /** tweb `(AppXxxTab as any).noSame = true` — повторное открытие поверх себя */
-  noSame?: boolean
 }): ReactScreenTabClass {
-  const ctor = class extends SliderSuperTab {
+  return class extends SliderSuperTab {
     private root?: Root
 
     public async init() {
@@ -83,10 +80,4 @@ export function scaffoldReactScreenTab({
       super.onCloseAfterTimeout()
     }
   }
-
-  if(noSame) {
-    (ctor as ReactScreenTabClass).noSame = true
-  }
-
-  return ctor
 }
