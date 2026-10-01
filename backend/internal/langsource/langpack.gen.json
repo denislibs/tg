@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 37,
+      "version": 38,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -769,6 +769,14 @@
         {
           "key": "ChannelType",
           "value": "Channel Type"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "If you make this channel private, the name @%@ will be removed. Anyone else will be able to take it for their public groups or channels."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "If you make this group private, the name @%@ will be removed. Anyone else will be able to take it for their public groups or channels."
         },
         {
           "key": "Channels",
@@ -2435,12 +2443,20 @@
           "value": "Limit Reached"
         },
         {
-          "key": "LinkCopied",
-          "value": "Link copied to clipboard"
+          "key": "Link.Available",
+          "value": "Link is available"
         },
         {
-          "key": "LinkInvalid",
-          "value": "Invalid link."
+          "key": "Link.Invalid",
+          "value": "Link is invalid"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "Link is already taken"
+        },
+        {
+          "key": "LinkCopied",
+          "value": "Link copied to clipboard"
         },
         {
           "key": "LinkNameHelp",
@@ -2449,10 +2465,6 @@
         {
           "key": "LinkNameHint",
           "value": "Link Name (Optional)"
-        },
-        {
-          "key": "LinkTaken",
-          "value": "This link is already taken."
         },
         {
           "key": "LiteMode.DisableAlert",
@@ -5982,14 +5994,6 @@
           "value": "По этой ссылке можно вступить в вашу группу. Вы можете сбросить ссылку в любой момент."
         },
         {
-          "key": "LinkTaken",
-          "value": "Эта ссылка уже занята."
-        },
-        {
-          "key": "LinkInvalid",
-          "value": "Недопустимая ссылка."
-        },
-        {
           "key": "InviteLinks",
           "value": "Пригласительные ссылки"
         },
@@ -8008,6 +8012,26 @@
         {
           "key": "ChannelType",
           "value": "Тип канала"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "Если вы сделаете канал частным, имя @%@ будет удалено. Его сможет занять кто угодно для своих публичных групп или каналов."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "Если вы сделаете группу частной, имя @%@ будет удалено. Его сможет занять кто угодно для своих публичных групп или каналов."
+        },
+        {
+          "key": "Link.Available",
+          "value": "Ссылка свободна"
+        },
+        {
+          "key": "Link.Invalid",
+          "value": "Недопустимая ссылка"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "Эта ссылка уже занята"
         },
         {
           "key": "ChannelDirectMessages.Settings.Title",
@@ -11665,7 +11689,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 24,
+      "version": 25,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -12743,6 +12767,26 @@
         {
           "key": "ChannelType",
           "value": "Type de canal"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "Si vous rendez ce canal privé, le nom @%@ sera supprimé. N’importe qui pourra alors le prendre pour ses groupes ou canaux publics."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "Si vous rendez ce groupe privé, le nom @%@ sera supprimé. N’importe qui pourra alors le prendre pour ses groupes ou canaux publics."
+        },
+        {
+          "key": "Link.Available",
+          "value": "Le lien est disponible"
+        },
+        {
+          "key": "Link.Invalid",
+          "value": "Le lien est invalide"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "Ce lien est déjà pris"
         },
         {
           "key": "GroupType",
@@ -14751,7 +14795,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 24,
+      "version": 25,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -15836,6 +15880,26 @@
         {
           "key": "ChannelType",
           "value": "Kanaltyp"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "Wenn du diesen Kanal privat machst, wird der Name @%@ entfernt. Jeder andere kann ihn dann für seine öffentlichen Gruppen oder Kanäle verwenden."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "Wenn du diese Gruppe privat machst, wird der Name @%@ entfernt. Jeder andere kann ihn dann für seine öffentlichen Gruppen oder Kanäle verwenden."
+        },
+        {
+          "key": "Link.Available",
+          "value": "Link ist verfügbar"
+        },
+        {
+          "key": "Link.Invalid",
+          "value": "Link ist ungültig"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "Link ist bereits vergeben"
         },
         {
           "key": "GroupType",
@@ -17863,7 +17927,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 24,
+      "version": 25,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -18949,6 +19013,26 @@
         {
           "key": "ChannelType",
           "value": "Tipo de canal"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "Si haces este canal privado, se eliminará el nombre @%@. Cualquier otra persona podrá usarlo para sus grupos o canales públicos."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "Si haces este grupo privado, se eliminará el nombre @%@. Cualquier otra persona podrá usarlo para sus grupos o canales públicos."
+        },
+        {
+          "key": "Link.Available",
+          "value": "El enlace está disponible"
+        },
+        {
+          "key": "Link.Invalid",
+          "value": "El enlace no es válido"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "El enlace ya está en uso"
         },
         {
           "key": "GroupType",
@@ -20969,7 +21053,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 24,
+      "version": 25,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -22070,6 +22154,26 @@
         {
           "key": "ChannelType",
           "value": "Тип каналу"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "Якщо ви зробите канал приватним, ім’я @%@ буде видалено. Його зможе зайняти будь-хто для своїх публічних груп або каналів."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "Якщо ви зробите групу приватною, ім’я @%@ буде видалено. Його зможе зайняти будь-хто для своїх публічних груп або каналів."
+        },
+        {
+          "key": "Link.Available",
+          "value": "Посилання вільне"
+        },
+        {
+          "key": "Link.Invalid",
+          "value": "Недійсне посилання"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "Це посилання вже зайняте"
         },
         {
           "key": "GroupType",
