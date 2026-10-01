@@ -401,6 +401,13 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (подтверждение несохранённого на закрытии). Итог (поверх 0а-1 и О-22): ru 1407, uk 751,
 // es/de 748, fr 743.
 //
+// Задача 0б-2 волны 7 (вкладка типа чата, порт tweb `sidebarRight/tabs/chatType.tsx`
+// и `usernameInputField.ts`): +5 ключей tweb lang.ts всем пяти — подписи поля имени
+// `Link.{Available,Invalid,Taken}` и подтверждение снятия имени
+// `ChannelVisibility.Confirm.MakePrivate.{Channel,Group}`. У ru ещё −2: со сносом
+// React-экрана `ChatTypeScreen` ушли наши `LinkInvalid`/`LinkTaken` без других
+// читателей. Итог: ru 1410, uk 756, es/de 753, fr 748.
+//
 // Задача 26 плана 2D (вкладка «Динамики и камера», порт tweb
 // speakersAndCamera.tsx + call/*): +8 ключей tweb lang.ts всем пяти — имена
 // секций `CallSettings.OutputSection`/`InputSection`, подписи ошибок захвата
@@ -409,14 +416,14 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `CameraError`, «Default» попапа выбора `Rtmp.OutputPopup.Default`. Сняты ключи
 // без читателей: `CallSettings.AcceptCalls` (+ `.Caption` у ru/uk — у es/de/fr его
 // не было) — строка «Принимать звонки» ушла в О-8 вместе с экраном, и
-// `CallSettings.AcceptCallsShort` (читателя не было и до задачи). Итог (поверх 2D-20): ru 1412,
-// uk 756, es/de 754, fr 749.
+// `CallSettings.AcceptCallsShort` (читателя не было и до задачи). Итог (поверх 0б-2): ru 1415,
+// uk 761, es/de 759, fr 754.
 const COMPOSITION = {
-  ru: { keys: 1412, plural: 42 },
-  uk: { keys: 756, plural: 31 },
-  es: { keys: 754, plural: 30 },
-  de: { keys: 754, plural: 31 },
-  fr: { keys: 749, plural: 30 },
+  ru: { keys: 1415, plural: 42 },
+  uk: { keys: 761, plural: 31 },
+  es: { keys: 759, plural: 30 },
+  de: { keys: 759, plural: 31 },
+  fr: { keys: 754, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -548,14 +555,16 @@ const COMPOSITION = {
 // tweb пустой выдачи не подписывает, а «Новое сообщение» — это она же).
 // Пилюлей предложения даты рождения — у ru +2 ключа tweb (разбор — там же).
 // Задачей 20 плана 2D — три ключа вкладки «Автоудаление» у всех пяти (там же).
+// Задачей 0б-2 волны 7 — +5 ключей вкладки типа чата у всех пяти, у ru — минус
+// `LinkInvalid`/`LinkTaken` снесённого React-экрана (разбор — там же).
 // Задачей 26 плана 2D — ключи вкладки «Динамики и камера» вместо ключей
 // «Принимать звонки» (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '3689932b',
-  uk: 'e058fb6e',
-  es: '565b4283',
-  de: '658810dc',
-  fr: '2977f8d0',
+  ru: '1ad14856',
+  uk: 'fbaa6981',
+  es: 'f7869492',
+  de: 'aa9b7037',
+  fr: 'd225a5db',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

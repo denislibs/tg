@@ -533,6 +533,18 @@ export const AppSharedFolderTab =
     onOpenAfterTimeout: folderTabOpenAfterTimeout,
   })
 
+// ── Тип чата (tweb :536-540) — задача 0б-2 волны 7 ───────────────────────────
+// Вкладка правой колонки «Тип канала / группы» (`sidebarRight/tabs/chatType.solid.tsx`);
+// открывает её редактор чата (`editChat`, 0б-1). Заголовок `ChannelType` — как у
+// оригинала: вкладка сама меняет его на `GroupType` для группы (`chatType :57`).
+// `chatFull` — наш `ChannelFull` (у tweb `AppChatFull`); его поля читают секции,
+// отложенные до бэкенда (О-15 волна 7, шапка вкладки).
+export const AppChatTypeTab =
+  scaffoldSolidJSTabEventable<{ chatId: ChatId, chatFull: import('@core/peers/peer').ChannelFull }>({
+    title: 'ChannelType',
+    getComponentModule: () => import('../sidebarRight/tabs/chatType.solid'),
+  })
+
 // ── Контакты (tweb :209-222) — задача 0а-1 плана волны 7 ─────────────────────
 // Вкладка адресной книги (`contacts.solid.tsx`); её же открывает «Новый личный
 // чат» (tweb `sidebarLeft/index.ts:1079-1083`, `:1105-1109`). Расхождения:
