@@ -400,12 +400,19 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // попапа своего срока) и `UnsavedChanges`/`UnsavedChangesDescription.Privacy`
 // (подтверждение несохранённого на закрытии). Итог (поверх 0а-1 и О-22): ru 1407, uk 751,
 // es/de 748, fr 743.
+//
+// Задача 0б-2 волны 7 (вкладка типа чата, порт tweb `sidebarRight/tabs/chatType.tsx`
+// и `usernameInputField.ts`): +5 ключей tweb lang.ts всем пяти — подписи поля имени
+// `Link.{Available,Invalid,Taken}` и подтверждение снятия имени
+// `ChannelVisibility.Confirm.MakePrivate.{Channel,Group}`. У ru ещё −2: со сносом
+// React-экрана `ChatTypeScreen` ушли наши `LinkInvalid`/`LinkTaken` без других
+// читателей. Итог: ru 1410, uk 756, es/de 753, fr 748.
 const COMPOSITION = {
-  ru: { keys: 1407, plural: 42 },
-  uk: { keys: 751, plural: 31 },
-  es: { keys: 748, plural: 30 },
-  de: { keys: 748, plural: 31 },
-  fr: { keys: 743, plural: 30 },
+  ru: { keys: 1410, plural: 42 },
+  uk: { keys: 756, plural: 31 },
+  es: { keys: 753, plural: 30 },
+  de: { keys: 753, plural: 31 },
+  fr: { keys: 748, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -537,12 +544,14 @@ const COMPOSITION = {
 // tweb пустой выдачи не подписывает, а «Новое сообщение» — это она же).
 // Пилюлей предложения даты рождения — у ru +2 ключа tweb (разбор — там же).
 // Задачей 20 плана 2D — три ключа вкладки «Автоудаление» у всех пяти (там же).
+// Задачей 0б-2 волны 7 — +5 ключей вкладки типа чата у всех пяти, у ru — минус
+// `LinkInvalid`/`LinkTaken` снесённого React-экрана (разбор — там же).
 const FINGERPRINT = {
-  ru: '8970c6a3',
-  uk: '9168946c',
-  es: '0b38fa19',
-  de: 'b263576a',
-  fr: '0f282284',
+  ru: '91d1c94e',
+  uk: '8a7db127',
+  es: '35060ecc',
+  de: '912ea73d',
+  fr: 'f508a3e3',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
