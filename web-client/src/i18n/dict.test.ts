@@ -446,12 +446,15 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // 0а-1, 20, О-22 и 0б-2 волны 7): ru 1408, uk 753, es/de 750, fr 745.
 // Задача 0а-2 волны 7 («Новая группа», порт tweb newGroup.tsx): у ru +1 ключ tweb
 // lang.ts — скрытое поле места `ChatLocation` (`SendMessageTo` уже завела 0а-3): ru 1418.
+// Её врезкой −1 у всех пяти: со сносом React-экрана `NewGroupFlow` и
+// `useSidebarActions` ушёл наш `NewGroup.DefaultTitle` (вкладка tweb без названия
+// группу не создаёт). Итог: ru 1417, uk 760, es 757, de 758, fr 752.
 const COMPOSITION = {
-  ru: { keys: 1418, plural: 42 },
-  uk: { keys: 761, plural: 31 },
-  es: { keys: 758, plural: 30 },
-  de: { keys: 759, plural: 31 },
-  fr: { keys: 753, plural: 30 },
+  ru: { keys: 1417, plural: 42 },
+  uk: { keys: 760, plural: 31 },
+  es: { keys: 757, plural: 30 },
+  de: { keys: 758, plural: 31 },
+  fr: { keys: 752, plural: 30 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -595,13 +598,14 @@ const COMPOSITION = {
 // «Принимать звонки» (разбор — у `COMPOSITION` выше).
 // Задачей 27 плана 2D — минус ключи снесённого React-экрана профиля у всех пяти,
 // у ru плюс четыре ключа tweb (разбор — у `COMPOSITION` выше).
-// Задачей 0а-2 волны 7 — у ru +1 ключ tweb `ChatLocation` (разбор — там же).
+// Задачей 0а-2 волны 7 — у ru +1 ключ tweb `ChatLocation`, у всех пяти минус
+// `NewGroup.DefaultTitle` снесённого React-экрана (разбор — там же).
 const FINGERPRINT = {
-  ru: 'ce2e94ef',
-  uk: 'ad07d856',
-  es: 'd68e7ff1',
-  de: '7141179a',
-  fr: 'a49b1cae',
+  ru: '2a8deaad',
+  uk: 'fa0f9efc',
+  es: 'e7964fc3',
+  de: '03c30798',
+  fr: '03425a4c',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

@@ -91,7 +91,7 @@ src/
     ├── auth/                 # вход по коду / QR — Solid (mountAuthFlow.solid.tsx точка входа,
     │                         #   AuthCardsHost.solid.tsx хост карточек), не React
     ├── StoryViewer.tsx EmojiPicker.tsx CallScreen.tsx SearchView.tsx SettingsView.tsx
-    └── NewGroupFlow / NewChannelFlow / NewPrivateChat / ContactsView / AddContactView …
+    └── AddContactView …
 ```
 
 ## Архитектура и поток данных

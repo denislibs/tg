@@ -236,7 +236,6 @@ const uk = {
   'MultiAccount.More': 'Більше',
   NewChannel: 'Створити канал',
   NewGroup: 'Створити групу',
-  'NewGroup.DefaultTitle': 'Нова група',
   NewPrivateChat: 'Нове повідомлення',
   'Suggestion.Notifications.Title': 'Не пропускайте повідомлення! 🔔',
   'Suggestion.Notifications.Subtitle': 'Увімкніть сповіщення, щоб бути в курсі.',

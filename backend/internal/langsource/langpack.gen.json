@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 39,
+      "version": 40,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -3105,10 +3105,6 @@
           "value": "New Group"
         },
         {
-          "key": "NewGroup.DefaultTitle",
-          "value": "New Group"
-        },
-        {
           "key": "NewLink",
           "value": "New Link"
         },
@@ -5855,7 +5851,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 39,
+      "version": 40,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -7495,10 +7491,6 @@
         {
           "key": "NewGroup",
           "value": "Создать группу"
-        },
-        {
-          "key": "NewGroup.DefaultTitle",
-          "value": "Новая группа"
         },
         {
           "key": "NewPrivateChat",
@@ -11745,7 +11737,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 25,
+      "version": 26,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -12548,10 +12540,6 @@
         },
         {
           "key": "NewGroup",
-          "value": "Nouveau groupe"
-        },
-        {
-          "key": "NewGroup.DefaultTitle",
           "value": "Nouveau groupe"
         },
         {
@@ -14855,7 +14843,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 25,
+      "version": 26,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -15665,10 +15653,6 @@
         },
         {
           "key": "NewGroup",
-          "value": "Neue Gruppe"
-        },
-        {
-          "key": "NewGroup.DefaultTitle",
           "value": "Neue Gruppe"
         },
         {
@@ -17991,7 +17975,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 25,
+      "version": 26,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -18803,10 +18787,6 @@
         {
           "key": "NewGroup",
           "value": "Nuevo grupo"
-        },
-        {
-          "key": "NewGroup.DefaultTitle",
-          "value": "Grupo nuevo"
         },
         {
           "key": "NewPrivateChat",
@@ -21121,7 +21101,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 25,
+      "version": 26,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -21940,10 +21920,6 @@
         {
           "key": "NewGroup",
           "value": "Створити групу"
-        },
-        {
-          "key": "NewGroup.DefaultTitle",
-          "value": "Нова група"
         },
         {
           "key": "NewPrivateChat",

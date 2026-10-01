@@ -225,7 +225,6 @@ const fr = {
   'MultiAccount.More': 'Plus',
   NewChannel: 'Nouveau canal',
   NewGroup: 'Nouveau groupe',
-  'NewGroup.DefaultTitle': 'Nouveau groupe',
   NewPrivateChat: 'Nouveau message',
   'Suggestion.Notifications.Title': 'Ne manquez aucun message ! 🔔',
   'Suggestion.Notifications.Subtitle':

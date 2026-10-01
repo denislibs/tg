@@ -92,7 +92,6 @@ const DEBT: Record<string, number> = {
   'src/components/MainMenu.tsx': 1,
   'src/components/MarkupTooltip.tsx': 9,
   'src/components/NewContactPopup.tsx': 7,
-  'src/components/NewGroupFlow.tsx': 1,
   'src/components/RepostStorySheet.tsx': 2,
   'src/components/SidebarMenuButton.tsx': 1,
   'src/components/StoriesRow.tsx': 3,
