@@ -783,12 +783,23 @@ Mentions,Reactions,PollVotes}Badge` `:533-578`, `setBadgeState` `:586`, `toggleB
 `roadmap.md` этап 2) — вместе с `ChatListItem` в 1-4. До 1-4 меню вешается на React-строку через
 `data-peer-id` (tweb ищет строку `findUpClassName`, так же).
 
-- [ ] **Шаги:** прочитать; тесты — (а) ПКМ по строке → `.btn-menu.contextmenu` с пунктами для
+- [x] **Шаги:** прочитать; тесты — (а) ПКМ по строке → `.btn-menu.contextmenu` с пунктами для
   лички/группы/канала/«Избранного» ровно по `verify` tweb; (б) «Закрепить» зовёт менеджер и не
   закрывает меню раньше ответа (как tweb); (в) «Архивировать» переносит диалог (стаб); (г) Esc
   закрывает меню (запись `'menu'`); (д) позиция считается по фактическому размеру меню (пин:
   подменить `getBoundingClientRect` меню — флип меняется). **Мутация:** захардкодить размер →
   (д) краснеет. Стенд — LS-03, LS-04, LS-05, LS-09.
+  **Сделано** (`components/dialogsContextMenu.test.ts`, 19 пинов). Поправки по коду tweb: (б) — у
+  оригинала пункт закрывает меню СРАЗУ после `onClick` (`buttonMenu.ts:210-217`), а закреп
+  переставляет владелец по ответу сети; пин так и проверяет (меню закрыто, зеркало не тронуто до
+  ответа). (д) — `positionMenu` меряет `scrollWidth`/`scrollHeight` меню и окно по
+  `body.getBoundingClientRect()` (`:197-210`), подменяются они. Отложено — О-85…О-89.
+  **Перевеска на список 1-4** (после вливания 1-4): меню вешает метод владельца
+  `setListClickListener({list, withContext: true})` на `ul` списка `AutonomousDialogList` из
+  `l(filter)` — как tweb `:1478` → `:2337-2339`; пометки «ВРЕМЕННО до 1-4» (`.chatlist-top`) сняты,
+  отдельный экземпляр меню оверлея архива (`Sidebar.tsx`, `useDialogFolder`) снят — архивный список
+  `mountArchivedList` идёт через тот же `l()`. Пины — на настоящих строках `DialogElement`
+  (все папки, папка пользователя, архив, долгое нажатие Apple-тача).
 
 **Оценка:** 2,5 дня. **Зависимости:** 1-1 (строка), 2C-6/7 — мягкая.
 
@@ -1418,6 +1429,11 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 | О-82 | «Мои истории» — вкладка `AppMyStoriesTab` (`sidebarLeft/tabs/myStories`, `:715-722`); до порта пункт открывает наш `StoriesArchiveSheet` | вкладка историй не портирована (волна 4 спеки) (2-2) | пункт 1:1 |
 | О-83 | verify «Архива» целиком: `!isDialogsLoaded(FOLDER_ID_ARCHIVE)` и `appStoriesManager.hasArchive()` (`:681-685`); у нас — только «есть архивные диалоги» | нет признака «архив догружен» и архива историй скрытых пиров (2-2) | пункт до первой загрузки архива |
 | О-84 | Клавиатурная навигация меню: `menuKeyboard`, `focusTrap`, `activateFocus` в `contextMenuController`, 5-й аргумент `addAdditionalMenu` (фокус в подменю) | срез a11y `contextMenuController` не портирован (2-2) | стрелки/Enter/Esc по пунктам бургера и подменю |
+| О-85 | Пункт «Добавить в папку» меню диалога: подменю `createSubmenuTrigger` + `addToFolderDropdownMenu/` (913 строк: `defineSolidElement`, нечёткий поиск папок, `showTooltip`), `hasFilters` (`dialogsContextMenu.ts:258-268`, `:476-517`) | отдельный порт компонента; бэкенд есть (`include_peers` папки), задача 1-2 его не несёт | пункт `AddToFolder` 1:1 |
+| О-86 | Превью чата: пункт `ChatList.Context.Preview` и Shift-клик по строке — `showChatPreviewPopup`/`chatPreviewAnchorFromDialogRow` (`popups/chatPreview`, `dialogsContextMenu.ts:203-209`, `:607-615`) | попап превью не портирован (1-2) | пункт и Shift-клик 1:1 |
+| О-87 | Отказ лимита закрепа: на проводе `pin limit reached` (`group_handler.go:590-591`), у tweb `PINNED_DIALOGS_TOO_MUCH`/`PINNED_TOO_MUCH`; `showLimitPopup('pin')` (`showPinLimitReached.ts`) — у нас ВРЕМЕННО тост `PinFolderLimitReached` | ни имени отказа, ни `PopupLimit` (1-2) | `showPinLimitReached` 1:1 |
+| О-88 | «Вид темами/сообщениями»: `TopicViewAsTopics`, `SavedViewAsChats`, `SavedViewAsMessages` (`dialogsContextMenu.ts:210-232`, `appImManager.toggleViewAsMessages`) | нет флага `view_forum_as_messages` (`domain/mtdialog.go:47`) и настройки `savedAsForum` (1-2) | три пункта и переключение вида |
+| О-89 | Удаление истории вместе с диалогом и у собеседника: чекбоксы `DeleteMessagesOptionAlso`, `ClearHistoryOptionAlso`, `DeleteMessagesOptionAlsoChat` (`revoke`), удаление «Избранного» (`AreYouSureDeleteThisChatSavedMessages`, пункт `Delete` у себя) — `flushHistory({justClear: false, revoke})` | на бэкенде только очистка у себя (`POST /chats/{id}/clear`), удаление лички = выход (`removeMember`) (1-2) | чекбоксы и пункт 1:1 |
 | О-90 | Лог звонка, обе стороны которого пропали без кадра конца (закрыли/убили обе вкладки, нет сети у обоих): у оригинала сервер сам кончает такой звонок по таймауту и кладёт `messageActionPhoneCall` (Missed без ответа, Disconnect после) | сервер узнаёт о конце только из `call_end`/`call_decline` (`backend/internal/usecase/chat/phonecall.go`); серверного таймера звонка нет, состояние просто истекает по TTL (`adapter/cache/redis/phonecallstore.go`, 24 ч) без лога (журнал звонков, PR этого фикса) | серверный таймер звонка (ожидание ответа 45 с + сторож живости сторон) |
 | О-96 | Иконка звонка в группе у строки чатлиста: `processDialogForCallStatus`/`setCallStatus` (`autonomousDialogList/dialogs.ts:722-760`, `groupCallActiveIcon`, класс `has-group-call-icon`), `callIcon.setActive` в `setDialogActive` (`appDialogsManager.ts:1315`) | у чата в модели нет `pFlags.call_active`/`call_not_empty` (`domain/mtchat.go:170`) (1-4) | иконка 1:1, перекраска активной строки |
 | О-97 | Превью потокового черновика бота в строке: `streamed_message_update/remove/finalize` → `setLastMessageN({lastMessage})` (`autonomousDialogList/dialogs.ts:173-209`) | потоковых черновиков (`HistoryStreamedDrafts`) нет ни на бэкенде, ни в модели (1-4) | превью «печатает текстом» у ботов |

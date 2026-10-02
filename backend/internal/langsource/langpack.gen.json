@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 44,
+      "version": 45,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -89,6 +89,10 @@
           "value": "Sorry, this user doesn't seem to exist."
         },
         {
+          "key": "AlertClearHistory",
+          "value": "Clear History"
+        },
+        {
           "key": "AllChats",
           "value": "All Chats"
         },
@@ -137,6 +141,34 @@
           "value": "Delete cloud drafts"
         },
         {
+          "key": "AreYouSureClearHistory",
+          "value": "Are you sure you want to delete all messages in this chat?"
+        },
+        {
+          "key": "AreYouSureClearHistorySavedMessages",
+          "value": "Are you sure you want to clear **Saved Messages**?"
+        },
+        {
+          "key": "AreYouSureClearHistoryWithChannel",
+          "value": "Are you sure you want to clear the channel history in **%1$s**?"
+        },
+        {
+          "key": "AreYouSureClearHistoryWithUser",
+          "value": "Are you sure you want to clear your chat history with **%1$s**?"
+        },
+        {
+          "key": "AreYouSureDeleteAndExit",
+          "value": "Are you sure you want to delete and leave the group?"
+        },
+        {
+          "key": "AreYouSureDeleteAndExitChannel",
+          "value": "Do you want to delete and leave the channel?"
+        },
+        {
+          "key": "AreYouSureDeleteAndExitName",
+          "value": "Are you sure you want to delete and leave the group **%1$s**?"
+        },
+        {
           "key": "AreYouSureDeleteContact",
           "value": "Are you sure you want to delete this contact?"
         },
@@ -147,6 +179,10 @@
         {
           "key": "AreYouSureDeleteSingleMessage",
           "value": "Are you sure you want to delete this message?"
+        },
+        {
+          "key": "AreYouSureDeleteThisChatWithUser",
+          "value": "Are you sure you want to delete the chat with **%1$s**?"
         },
         {
           "key": "AreYouSureSessionTitle",
@@ -739,12 +775,24 @@
           "value": "Owner"
         },
         {
+          "key": "ChannelDelete",
+          "value": "Delete Channel"
+        },
+        {
+          "key": "ChannelDeleteMenu",
+          "value": "Delete channel"
+        },
+        {
           "key": "ChannelDirectMessages.Settings.Title",
           "value": "Direct Messages"
         },
         {
           "key": "ChannelJoin",
           "value": "JOIN"
+        },
+        {
+          "key": "ChannelLeaveAlertWithName",
+          "value": "Are you sure you want to leave **%1$s**?"
         },
         {
           "key": "ChannelLinkInfo",
@@ -1156,10 +1204,6 @@
           "value": "Pin"
         },
         {
-          "key": "ChatList.Context.Preview",
-          "value": "Preview"
-        },
-        {
           "key": "ChatList.Context.Unmute",
           "value": "Unmute"
         },
@@ -1344,6 +1388,10 @@
         {
           "key": "ClearButton",
           "value": "Clear"
+        },
+        {
+          "key": "ClearHistory",
+          "value": "Clear history"
         },
         {
           "key": "ClearOtherSessionsHelp",
@@ -1544,8 +1592,16 @@
           "value": "Delete and Leave Group"
         },
         {
+          "key": "DeleteChannelForAll",
+          "value": "Delete for all subscribers"
+        },
+        {
           "key": "DeleteChat.DeleteGroupForAll",
           "value": "Delete for all members"
+        },
+        {
+          "key": "DeleteChatUser",
+          "value": "Delete chat"
         },
         {
           "key": "DeleteContact",
@@ -1577,6 +1633,10 @@
         {
           "key": "DeleteMega",
           "value": "Delete Group"
+        },
+        {
+          "key": "DeleteMegaMenu",
+          "value": "Delete group"
         },
         {
           "key": "DeleteMessagesCount",
@@ -2490,6 +2550,18 @@
           "value": "Leave a comment"
         },
         {
+          "key": "LeaveChannel",
+          "value": "Leave Channel"
+        },
+        {
+          "key": "LeaveChannelMenu",
+          "value": "Leave channel"
+        },
+        {
+          "key": "LeaveMegaMenu",
+          "value": "Leave group"
+        },
+        {
           "key": "LimitReached",
           "value": "Limit Reached"
         },
@@ -2778,8 +2850,8 @@
           "value": "Are you sure you want to delete all revoked links?"
         },
         {
-          "key": "MarkAsUnread",
-          "value": "Mark as unread"
+          "key": "MarkAsRead",
+          "value": "Mark as read"
         },
         {
           "key": "MarkupTooltip.LinkPlaceholder",
@@ -6044,7 +6116,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 44,
+      "version": 45,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -8265,14 +8337,6 @@
         {
           "key": "OpenInNewTab",
           "value": "Открыть в новой вкладке"
-        },
-        {
-          "key": "ChatList.Context.Preview",
-          "value": "Предпросмотр"
-        },
-        {
-          "key": "MarkAsUnread",
-          "value": "Отметить непрочитанным"
         },
         {
           "key": "Archive",
@@ -12115,6 +12179,86 @@
             "many_value": "%d пользователей",
             "other_value": "%d пользователя"
           }
+        },
+        {
+          "key": "AlertClearHistory",
+          "value": "Очистить историю"
+        },
+        {
+          "key": "AreYouSureClearHistory",
+          "value": "Вы уверены, что хотите удалить все сообщения в этом чате?"
+        },
+        {
+          "key": "AreYouSureClearHistorySavedMessages",
+          "value": "Вы уверены, что хотите очистить **Избранное**?"
+        },
+        {
+          "key": "AreYouSureClearHistoryWithChannel",
+          "value": "Вы уверены, что хотите очистить историю канала **%1$s**?"
+        },
+        {
+          "key": "AreYouSureClearHistoryWithUser",
+          "value": "Вы уверены, что хотите очистить историю переписки с **%1$s**?"
+        },
+        {
+          "key": "AreYouSureDeleteAndExit",
+          "value": "Вы уверены, что хотите удалить группу и покинуть её?"
+        },
+        {
+          "key": "AreYouSureDeleteAndExitChannel",
+          "value": "Вы хотите удалить канал и покинуть его?"
+        },
+        {
+          "key": "AreYouSureDeleteAndExitName",
+          "value": "Вы уверены, что хотите удалить группу **%1$s** и покинуть её?"
+        },
+        {
+          "key": "AreYouSureDeleteThisChatWithUser",
+          "value": "Вы уверены, что хотите удалить чат с **%1$s**?"
+        },
+        {
+          "key": "ChannelDelete",
+          "value": "Удалить канал"
+        },
+        {
+          "key": "ChannelDeleteMenu",
+          "value": "Удалить канал"
+        },
+        {
+          "key": "ChannelLeaveAlertWithName",
+          "value": "Вы уверены, что хотите покинуть **%1$s**?"
+        },
+        {
+          "key": "ClearHistory",
+          "value": "Очистить историю"
+        },
+        {
+          "key": "DeleteChannelForAll",
+          "value": "Удалить для всех подписчиков"
+        },
+        {
+          "key": "DeleteChatUser",
+          "value": "Удалить чат"
+        },
+        {
+          "key": "DeleteMegaMenu",
+          "value": "Удалить группу"
+        },
+        {
+          "key": "LeaveChannel",
+          "value": "Покинуть канал"
+        },
+        {
+          "key": "LeaveChannelMenu",
+          "value": "Покинуть канал"
+        },
+        {
+          "key": "LeaveMegaMenu",
+          "value": "Покинуть группу"
+        },
+        {
+          "key": "MarkAsRead",
+          "value": "Отметить как прочитанное"
         }
       ]
     },
@@ -12125,7 +12269,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 27,
+      "version": 28,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -13143,14 +13287,6 @@
         {
           "key": "OpenInNewTab",
           "value": "Ouvrir dans un nouvel onglet"
-        },
-        {
-          "key": "ChatList.Context.Preview",
-          "value": "Aperçu"
-        },
-        {
-          "key": "MarkAsUnread",
-          "value": "Marquer comme non lu"
         },
         {
           "key": "Archive",
@@ -15233,7 +15369,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 27,
+      "version": 28,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16258,14 +16394,6 @@
         {
           "key": "OpenInNewTab",
           "value": "In neuem Tab öffnen"
-        },
-        {
-          "key": "ChatList.Context.Preview",
-          "value": "Vorschau"
-        },
-        {
-          "key": "MarkAsUnread",
-          "value": "Als ungelesen markieren"
         },
         {
           "key": "Archive",
@@ -18367,7 +18495,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 27,
+      "version": 28,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -19393,14 +19521,6 @@
         {
           "key": "OpenInNewTab",
           "value": "Abrir en pestaña nueva"
-        },
-        {
-          "key": "ChatList.Context.Preview",
-          "value": "Vista previa"
-        },
-        {
-          "key": "MarkAsUnread",
-          "value": "Marcar como no leído"
         },
         {
           "key": "Archive",
@@ -21495,7 +21615,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 28,
+      "version": 29,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -22624,14 +22744,6 @@
         {
           "key": "OpenInNewTab",
           "value": "Відкрити в новій вкладці"
-        },
-        {
-          "key": "ChatList.Context.Preview",
-          "value": "Перегляд"
-        },
-        {
-          "key": "MarkAsUnread",
-          "value": "Позначити непрочитаним"
         },
         {
           "key": "Archive",

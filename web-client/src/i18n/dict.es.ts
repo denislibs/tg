@@ -290,8 +290,6 @@ const es = {
   'ChatList.Context.LeaveChannel': 'Salir del canal',
   
   OpenInNewTab: 'Abrir en pestaña nueva',
-  'ChatList.Context.Preview': 'Vista previa',
-  MarkAsUnread: 'Marcar como no leído',
   Archive: 'Archivar',
   'Profile.Info.User': 'Información',
   'Profile.Info.Group': 'Info del grupo',

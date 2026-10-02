@@ -16,8 +16,9 @@
 // Строка диалога (`DialogElement`, `setLastMessage`/`setUnreadMessages`, клик
 // по списку) — ниже, раздел «СТРОКА ДИАЛОГА» со своими расхождениями С1–С9
 // (задача 1-1 волны 7, `docs/superpowers/plans/2026-09-30-wave-7-shell-sidebars.md`).
-// Остальной менеджер (контекстное меню диалога, форум-табы, сторис, активность)
-// — задачи 1-2…1-8 той же программы.
+// Контекстное меню диалога (`DialogsContextMenu`, `:850`, `:2337-2339`) — задача
+// 1-2, расхождение 23. Остальной менеджер (форум-табы, сторис, активность) —
+// задачи 1-3…1-8 той же программы.
 //
 // Список папки — `AutonomousDialogList` (`components/autonomousDialogList/dialogs.ts`,
 // задача 1-4 волны 7): его создаёт `l(filter)` на каждую отрисованную папку и
@@ -138,6 +139,18 @@
 //     (`navigationStore.selectedId`, мост чтения п. 1 плана волны 7), а не событие
 //     `appImManager` (этап 4). Тред/тема у строки не сравниваются (`isSamePeer` c
 //     `threadId`): строки тем — задача 1-6.
+// 23. Меню диалога (`this.contextMenu`, `:850`): менеджеры приходят хуками
+//     колонки (`hooks.managers`, расхождение 20), вторым аргументом — сам
+//     владелец (расхождение 1 шапки `components/dialogsContextMenu.ts`). Вешает
+//     его `setListClickListener({withContext: true})` (`:2337-2339`) на `ul`
+//     списка папки из `l(filter)` (`:1478`), как у tweb; `withArchiveContext`
+//     (меню строки «Архив») — задача 1-5.
+// 24. `openDialogInNewTab` (`:2055-2070`): маршрута `#/im?p=…` у нас нет (разбор
+//     хэша — `core/messageLink.ts::parseNavHash`, ссылки — `internalLinkProcessor`,
+//     Э5-4), адрес чата — наш хэш `#<peerId>` (`core/navigation/chatHistory.ts::hashForChat`).
+//     Параметров `message`/`thread`/`community` нет: строки с `data-mid` и
+//     `data-thread-id` (выдача поиска, темы форума) меню получают в 2-3 и 1-6,
+//     сообществ нет (О-5).
 
 import { createEffect, createRoot, on, untrack } from 'solid-js'
 import Scrollable from '@components/scrollable'
@@ -147,6 +160,7 @@ import createFolderContextMenu, {
   type FolderContextMenuManagers,
   type FolderContextMenuSidebar,
 } from '@helpers/dom/createFolderContextMenu'
+import DialogsContextMenu, { type DialogsContextMenuManagers } from '@components/dialogsContextMenu'
 import type { ScrollableContextValue } from '@components/scrollable2.solid'
 import type { ToolsMenuSidebar } from '@components/sidebarLeft/toolsMenu'
 import { createSolidNodes } from '@shared/solid/mountSolid.solid'
@@ -770,8 +784,8 @@ export type AppDialogsManagerHooks = {
   isForumOpen: () => boolean
   /** `appSidebarLeft` меню папки (`:815`) — расхождение 20; `isCollapsed`/`openArchiveTab` — списку (`:1128`, `:2139`) */
   appSidebarLeft: FolderContextMenuSidebar & Pick<ToolsMenuSidebar, 'isCollapsed' | 'openArchiveTab'>
-  /** `this.managers` меню папки (`:818`) — расхождение 20; им же списки берут страницы и строки */
-  managers: FolderContextMenuManagers & DialogListManagers & OpenPeerManagers
+  /** `this.managers` меню папки (`:818`) и меню диалога (`:850`) — расхождения 20, 23; им же списки берут страницы и строки */
+  managers: FolderContextMenuManagers & DialogsContextMenuManagers & DialogListManagers & OpenPeerManagers
   /**
    * `toggleForumTabByPeerId` (`:1941`) — клик по строке форума открывает панель
    * тем. Панель у нас — React-`TopicsPanel` колонки (`// ВРЕМЕННО до 1-6`).
@@ -788,6 +802,7 @@ export class AppDialogsManager {
   public filterId: number = ALL_FOLDER_ID
   public xd: AutonomousDialogList | undefined
   public xds = new Map<number, AutonomousDialogList>()
+  public contextMenu: DialogsContextMenu | undefined
 
   private folders!: { [k in 'menu' | 'container' | 'menuScrollContainer' | 'menuGradient']: HTMLElement }
   private filtersRendered = new Map<number, FilterRendered>()
@@ -828,6 +843,8 @@ export class AppDialogsManager {
     this.host = host
     this.chatsContainer = chatsContainer
     this.hooks = hooks
+
+    this.contextMenu = new DialogsContextMenu(hooks.managers, this) // `:850`, расхождение 23
 
     const folders = useFolders()
     // `hydrateFilters` (`:1026-1035`) — до ряда, расхождение 8.
@@ -967,6 +984,7 @@ export class AppDialogsManager {
     this.filtersRendered.clear()
     this.lastActiveElements.clear()
     this.xd = undefined
+    this.contextMenu = undefined
 
     this.foldersOverlay.remove()
     this.folders.container.remove()
@@ -1133,10 +1151,18 @@ export class AppDialogsManager {
     const xd = new AutonomousDialogList({ filterId: filter.id, appDialogsManager: this })
     this.xds.set(filter.id, xd)
     const { scrollable, list } = xd.generateScrollable(filter)
-    // `withContext`/`withArchiveContext` — контекст-меню строки, задача 1-2
-    this.setListClickListener({ list })
+    // `withArchiveContext: filter.id === FOLDER_ID_ALL` — меню строки «Архив», задача 1-5
+    this.setListClickListener({ list, withContext: true })
 
     return { ul: list, xd, scrollable }
+  }
+
+  /** `:2055-2070` — расхождение 24 */
+  public openDialogInNewTab(element: HTMLElement) {
+    const peerId = +element.dataset.peerId!
+
+    const url = `#${peerId}`
+    window.open(url, '_blank')
   }
 
   /** `addFilter` (`:1249-1290`). */
@@ -1331,8 +1357,9 @@ export class AppDialogsManager {
    * с поведением главного списка: строка форума открывает панель тем
    * (`toggleForumTabByPeerId`, `:2206-2210`; `// ВРЕМЕННО до 1-6` — панель React),
    * остальное — открыть чат; подсветку ставит `peer_changed`, а не клик.
+   * `withContext` — меню диалога (`:2337-2339`, расхождение 23).
    */
-  public setListClickListener({ list }: { list: HTMLElement }) {
+  public setListClickListener({ list, withContext = false }: { list: HTMLElement, withContext?: boolean }) {
     setListClickListener({
       list,
       managers: this.managers,
@@ -1345,6 +1372,10 @@ export class AppDialogsManager {
         }
       },
     })
+
+    if(withContext) {
+      this.contextMenu!.attach(list)
+    }
   }
 
   /** tweb `appSidebarLeft.openArchiveTab()` (`sidebarLeft/index.ts:1760-1763`) — клик по строке «Архив» */
@@ -1446,7 +1477,7 @@ function isDialogPinned(dialog: Dialog, filterId: number) {
  * tweb `appMessagesManager.isDialogUnread`/`getDialogUnreadCount`
  * (`:14233-14254`): сумма по темам форума — О-71, `unread_mark` — О-72.
  */
-function isDialogUnread(dialog: Dialog) {
+export function isDialogUnread(dialog: Dialog) {
   return !!dialog.unread_count
 }
 
@@ -1495,8 +1526,9 @@ export function setDialogActiveStatus(listEl: HTMLElement, active: boolean) {
  *   6. форум (`toggleForumTabByPeerId`, `toggleForumTab` главного списка) —
  *      форум-таб задача 1-6, главный список — 1-4;
  *   7. `lastActiveElements` — реестр менеджера, задача 1-8 (С4);
- *   8. `withContext`/`withArchiveContext`/`openInner` — контекст-меню строки —
- *      задача 1-2, архив — 1-5;
+ *   8. `withContext` — меню диалога вешает метод владельца
+ *      `setListClickListener` (расхождение 23), на выдачу поиска — задача 2-3; `withArchiveContext`/
+ *      `openInner` — архив, задача 1-5;
  *   9. `appImManager.setPeer({peerId, lastMsgId, threadId, highlight})` →
  *      `core/navigation/openPeer.ts` + прыжок `core/messageLink.ts::requestMessageJump`
  *      для строки-сообщения (`data-mid`); `threadId`/`highlight` — С6, С7;

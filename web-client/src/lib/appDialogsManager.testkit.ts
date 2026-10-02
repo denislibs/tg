@@ -255,9 +255,23 @@ export function mountOwner(options: {
     },
     managers: {
       folders: { del: vi.fn(async (_id: number) => {}) },
-      dialogs: { getDialogs: options.getDialogs ?? vi.fn(async () => ({ dialogs: [], count: 0, isEnd: true })) },
-      peers: { fillMirror: async () => {} },
+      peers: { fillMirror: vi.fn(async (_ids: number[]) => {}) },
       presence: { get: async () => [] },
+      dialogs: {
+        getDialogs: options.getDialogs ?? vi.fn(async () => ({ dialogs: [], count: 0, isEnd: true })),
+        // меню диалога (задача 1-2 волны 7) — дублёры ручек его пунктов
+        applyRemoved: vi.fn(async (_peerId: number) => {}),
+        refresh: vi.fn(async () => null),
+      },
+      groups: {
+        setPin: vi.fn(async (_peerId: number, _pinned: boolean) => {}),
+        setMute: vi.fn(async (_peerId: number, _muted: boolean, _until?: number) => {}),
+        setArchive: vi.fn(async (_peerId: number, _archived: boolean) => {}),
+        deleteGroup: vi.fn(async (_peerId: number) => {}),
+        removeMember: vi.fn(async (_peerId: number, _userId: number) => {}),
+      },
+      chats: { clearHistory: vi.fn(async (_peerId: number) => {}) },
+      realtime: { markRead: vi.fn(async (_args: { peerId: number, upToId: number }) => ({ ok: true })) },
     },
     openForum: vi.fn(),
   }

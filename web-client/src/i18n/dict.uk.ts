@@ -324,8 +324,6 @@ const uk = {
   'ChatList.Context.LeaveChannel': 'Покинути канал',
   
   OpenInNewTab: 'Відкрити в новій вкладці',
-  'ChatList.Context.Preview': 'Перегляд',
-  MarkAsUnread: 'Позначити непрочитаним',
   Archive: 'Архівувати',
   'Profile.Info.User': 'Інформація',
   'Profile.Info.Group': 'Про групу',

@@ -287,8 +287,6 @@ const fr = {
   'ChatList.Context.LeaveChannel': 'Quitter le canal',
   
   OpenInNewTab: 'Ouvrir dans un nouvel onglet',
-  'ChatList.Context.Preview': 'Aperçu',
-  MarkAsUnread: 'Marquer comme non lu',
   Archive: 'Archiver',
   'Profile.Info.User': 'Infos',
   'Profile.Info.Group': 'Infos du groupe',

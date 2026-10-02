@@ -662,8 +662,6 @@ const ru = {
   'ChatList.Context.LeaveChannel': 'Покинуть канал',
   
   OpenInNewTab: 'Открыть в новой вкладке',
-  'ChatList.Context.Preview': 'Предпросмотр',
-  MarkAsUnread: 'Отметить непрочитанным',
   Archive: 'Архивировать',
   'Profile.Info.User': 'Информация',
   'Profile.Info.Group': 'Информация о группе',
@@ -1910,6 +1908,27 @@ const ru = {
     many_value: '%d пользователей',
     other_value: '%d пользователя',
   },
+  // ── Меню диалога (tweb dialogsContextMenu.ts, popups/deleteDialog.ts, clearHistory.ts) ──
+  AlertClearHistory: 'Очистить историю',
+  AreYouSureClearHistory: 'Вы уверены, что хотите удалить все сообщения в этом чате?',
+  AreYouSureClearHistorySavedMessages: 'Вы уверены, что хотите очистить **Избранное**?',
+  AreYouSureClearHistoryWithChannel: 'Вы уверены, что хотите очистить историю канала **%1$s**?',
+  AreYouSureClearHistoryWithUser: 'Вы уверены, что хотите очистить историю переписки с **%1$s**?',
+  AreYouSureDeleteAndExit: 'Вы уверены, что хотите удалить группу и покинуть её?',
+  AreYouSureDeleteAndExitChannel: 'Вы хотите удалить канал и покинуть его?',
+  AreYouSureDeleteAndExitName: 'Вы уверены, что хотите удалить группу **%1$s** и покинуть её?',
+  AreYouSureDeleteThisChatWithUser: 'Вы уверены, что хотите удалить чат с **%1$s**?',
+  ChannelDelete: 'Удалить канал',
+  ChannelDeleteMenu: 'Удалить канал',
+  ChannelLeaveAlertWithName: 'Вы уверены, что хотите покинуть **%1$s**?',
+  ClearHistory: 'Очистить историю',
+  DeleteChannelForAll: 'Удалить для всех подписчиков',
+  DeleteChatUser: 'Удалить чат',
+  DeleteMegaMenu: 'Удалить группу',
+  LeaveChannel: 'Покинуть канал',
+  LeaveChannelMenu: 'Покинуть канал',
+  LeaveMegaMenu: 'Покинуть группу',
+  MarkAsRead: 'Отметить как прочитанное',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)
