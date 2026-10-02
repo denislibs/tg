@@ -94,10 +94,17 @@ export function newChatsManager({ rest, peers, messages }: ChatsDeps) {
       const r = await rest.get<MessagesSavedDialogs>('/saved/dialogs')
       peers?.saveApiPeers({ chats: r.chats, users: r.users })
       await messages?.saveApiMessages(r.messages)
+      // `top_message` — номер в САМОМ «Избранном» (`peer_id` сообщения — свой
+      // пир), а не в чате источника: tweb разрешает его `getMessageByPeer(myId,
+      // top_message)`. Свой пир воркер берёт из адреса сообщения контейнера —
+      // ключ источника (`d.peer`) для этого не годится: у пересланного от
+      // человека или из канала его истории здесь нет.
+      const chatOf = new Map((r.messages ?? []).map((m) => [m.id, getPeerId(m.peer_id)]))
       return (r.dialogs ?? []).map((d) => {
         const peerId = getPeerId(d.peer)
         const topMessage = generateMessageId(d.top_message)
-        return { peerId, lastMessage: messages?.getMessageByPeer(peerId, topMessage) }
+        const chatPeerId = chatOf.get(d.top_message)
+        return { peerId, lastMessage: chatPeerId === undefined ? undefined : messages?.getMessageByPeer(chatPeerId, topMessage) }
       })
     },
   }
