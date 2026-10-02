@@ -115,7 +115,7 @@ beforeEach(() => {
 })
 
 afterEach(async() => {
-  slider.destroy()
+  slider.closeAllTabs()
   await pause(400)
   // Контроллер навигации — модульный синглтон (как в `slider.test.ts`).
   appNavigationController.spliceItems(0, Infinity)

@@ -100,7 +100,7 @@ beforeEach(() => {
 })
 
 afterEach(async() => {
-  slider.destroy()
+  slider.closeAllTabs()
   await pause(400)
   document.body.replaceChildren()
   resetPeerMirror()

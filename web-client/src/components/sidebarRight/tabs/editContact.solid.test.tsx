@@ -133,7 +133,7 @@ beforeEach(() => {
 })
 
 afterEach(async() => {
-  slider.destroy()
+  slider.closeAllTabs()
   await closed()
   appNavigationController.spliceItems(0, Infinity)
   document.body.replaceChildren()

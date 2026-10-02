@@ -88,10 +88,8 @@ beforeEach(async() => {
   env.pip = false
   accounts = [{ id: 1, name: 'Denis Me', photoId: 0, phone: '' }]
   useChatsStore.setState({ me: { user: ME } } as never)
-  column = document.createElement('div')
-  column.id = 'column-left'
-  document.body.append(column)
-  testSlider = installSidebarLeft(managers, column, { full: true })
+  testSlider = installSidebarLeft(managers, undefined, { full: true })
+  column = testSlider.column
 })
 
 afterEach(async() => {
@@ -293,13 +291,16 @@ describe('createMoreSubmenu — «Ещё»', () => {
 })
 
 describe('construct — кнопка бургера в шапке (tweb :165-172, :244, :431-442)', () => {
+  // синглтон вечен (К-2): `construct` — один раз на прогон, как в приложении
+  let constructed = false
   function mountHeader() {
     const sidebar = makeSidebar()
-    sidebar.construct(managers, { xd: undefined } as unknown as AppDialogsManager)
+    if(!constructed) sidebar.construct(managers, { xd: undefined } as unknown as AppDialogsManager)
+    constructed = true
     const container = column.querySelector<HTMLElement>('.left-sidebar-burger')!
     const icon = container.querySelector<HTMLElement>('.animated-menu-icon')!
     const back = container.querySelector<HTMLElement>('.sidebar-back-button')!
-    return { container, icon, back, destroy: () => sidebar.destroy() }
+    return { container, icon, back }
   }
 
   it('кнопка меню встаёт перед «назад», с бейджем уведомлений других аккаунтов', () => {
@@ -329,14 +330,5 @@ describe('construct — кнопка бургера в шапке (tweb :165-172
     useFoldersSidebarShown()[1](true)
     expect(icon.classList.contains('state-back')).toBe(true)
     expect(back.classList.contains('is-visible')).toBe(true)
-  })
-
-  it('destroy снимает кнопку и гасит морф', () => {
-    const { container, icon, destroy } = mountHeader()
-    destroy()
-
-    expect(container.querySelector('.sidebar-tools-button')).toBeNull()
-    useIsLeftSearchActive()[1](true)
-    expect(icon.classList.contains('state-back')).toBe(false)
   })
 })

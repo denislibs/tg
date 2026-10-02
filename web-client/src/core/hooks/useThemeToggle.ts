@@ -7,7 +7,7 @@ import { resolvePreset, PRESET_MODE, type ThemeChoice } from '../../theme'
 import { getCurrentPreset, setTheme } from '../theme/themeController'
 import { switchThemeWithTransition } from '../theme/themeTransition'
 import { useSettings } from '../../settings'
-import type { ToggleMode } from '../../App'
+type ToggleMode = (coords?: { x: number; y: number }) => void
 
 export function useThemeToggle(): ToggleMode {
   const { themeChoice, update } = useSettings()

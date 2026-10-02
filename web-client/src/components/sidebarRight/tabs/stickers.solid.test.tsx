@@ -366,7 +366,7 @@ describe('вкладка «Поиск стикеров» — колонка и �
     await pause(0)
     expect(toggleSidebar).not.toHaveBeenCalled()
     expect(stickers.featuredSets).toHaveBeenCalledTimes(1)
-    left.destroy()
+    left.closeAllTabs()
   })
 
   it('Esc закрывает вкладку через контроллер навигации; после перехода узла вкладки нет, Solid-корень снят', async() => {
