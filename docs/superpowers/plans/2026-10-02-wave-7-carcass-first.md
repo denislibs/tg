@@ -559,7 +559,7 @@ React-`GroupEditFlow`.
 | Б-1 | Архив: пункт бургера, бейдж, список архива (сейчас оверлей `Sidebar.tsx` + `mountArchivedList`) | К-1 | `sidebarLeft/tabs/archivedTab.tsx`, `sidebarLeft/index.ts:681-685`, `:1760` | П-2 |
 | Б-2 | Строка «Архив» в списке — React-остров (`autonomousDialogList/dialogs.ts:56`, `:378`) | К-1 | `components/archiveDialog.tsx` | П-2 |
 | Б-3 | Форум: панель тем `TopicsPanel.tsx` (583), открытие форума из списка | К-1 | `forumTab/*`, `autonomousDialogList/forumTopics.ts` | П-2 |
-| Б-4 | Ряд историй над списком (`StoriesRow.tsx` 405, `useSidebarStories.tsx`), просмотр из ряда | К-1 | `components/stories/list.tsx` (474), `appDialogsManager.ts:1095-1125` | **закрыто задачей 2-6** (П-3, ветка `feat/w7-p3-stories`): `components/stories/list.solid.tsx`, вьювер — `stories/viewer.ts` (ВРЕМЕННО до волны 4); остаток — Б-60…Б-62 |
+| Б-4 | Ряд историй над списком (`StoriesRow.tsx` 405, `useSidebarStories.tsx`), просмотр из ряда | К-1 | `components/stories/list.tsx` (474), `appDialogsManager.ts:1095-1125` | **закрыто задачей 2-6** (П-3, PR #383): `components/stories/list.solid.tsx`, вьювер — `stories/viewer.ts` (ВРЕМЕННО до волны 4); остаток — Б-60…Б-62 |
 | Б-5 | Вертикальная колонка папок (`FoldersSidebar.tsx` 238) | К-1 | `sidebarLeft/foldersSidebarContent/*` | П-3 |
 | Б-6 | Кнопка статус-эмодзи в шапке колонки (`SidebarEmojiStatusButton.tsx`) | К-1 | `sidebarLeft/index.ts:262`, `emojiStatusPicker.tsx` | П-3 |
 | Б-7 | Кнопка замка в шапке колонки | К-1 | `sidebarLeft/index.ts:264`, `:345-361` (у нас `lockButton.solid.tsx` есть) | П-3 |
