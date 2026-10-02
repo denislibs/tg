@@ -14,6 +14,8 @@ import type { Managers } from '@/client/bootstrap'
 import type { PublicAccount } from '@core/auth/accounts'
 import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
 import { applyLang } from '@/test/lang'
+import lottieLoader from '@lib/lottie/lottieLoader'
+import type LottiePlayer from '@lib/lottie/lottiePlayer'
 import { createToolsMenu, mountSidebarToolsButton, type ToolsMenuSidebar } from './toolsMenu'
 
 const env = vi.hoisted(() => ({ call: true, pip: false }))
@@ -53,7 +55,6 @@ function makeSidebar(over: Partial<ToolsMenuSidebar> = {}): ToolsMenuSidebar {
     openSavedMessages: vi.fn(),
     openMyStories: vi.fn(),
     openCalls: vi.fn(),
-    openNewGroup: vi.fn(),
     switchTheme: vi.fn(),
     ...over,
   }
@@ -142,6 +143,21 @@ describe('createToolsMenu — состав по verify tweb', () => {
     const { menu } = await openMenu(makeSidebar({ isCollapsed: () => true }))
 
     expect(itemTexts(menu).slice(0, 4)).toEqual(['Denis Me', 'Add Account', 'Create a New', 'Saved Messages'])
+  })
+
+  it('«Создать → Группа» — флоу «Новой группы» в колоночном слайдере после closeTabsBefore (tweb :1074-1078)', async() => {
+    // пустая книга контактов рисует стикер-заглушку выбора — воркера lottie в happy-dom нет
+    vi.spyOn(lottieLoader, 'loadAnimationAsAsset').mockResolvedValue({} as LottiePlayer)
+    vi.spyOn(lottieLoader, 'waitForFirstFrame').mockResolvedValue(undefined as never)
+    const { menu, sidebar } = await openMenu(makeSidebar({ isCollapsed: () => true }))
+    item(menu, 'Create a New').dispatchEvent(new MouseEvent('mouseenter'))
+    await vi.waitFor(() => expect(submenu()?.classList.contains('active')).toBe(true))
+
+    item(submenu()!, 'Group').click()
+    await vi.waitFor(() => expect(column.querySelector('.add-members-container')).not.toBeNull())
+
+    expect(sidebar.closeTabsBefore).toHaveBeenCalledTimes(1)
+    expect(testSlider.slider.hasTabsInNavigation()).toBe(true)
   })
 
   it('«Звонки» — только при поддержке звонков (IS_CALL_SUPPORTED, Отступление В7-6)', async() => {

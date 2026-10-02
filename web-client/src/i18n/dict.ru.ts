@@ -480,9 +480,6 @@ const ru = {
   'MultiAccount.More': 'Ещё',
   NewChannel: 'Создать канал',
   NewGroup: 'Создать группу',
-  // Название чата, созданного без имени: уезжает НА СЕРВЕР и его читают все участники,
-  // поэтому это НАЗВАНИЕ, а не подпись пункта меню («Создать группу» строкой выше).
-  'NewGroup.DefaultTitle': 'Новая группа',
   NewPrivateChat: 'Новое сообщение',
   'Suggestion.Notifications.Title': 'Не пропускайте сообщения! 🔔',
   'Suggestion.Notifications.Subtitle': 'Включите уведомления, чтобы быть в курсе.',
@@ -705,6 +702,7 @@ const ru = {
   ApproveNewMembers: 'Требовать одобрение администратора',
   EnterChannelName: 'Название канала',
   'CreateGroup.NameHolder': 'Название группы',
+  ChatLocation: 'Местоположение',
   DescriptionPlaceholder: 'Описание',
   DescriptionOptionalPlaceholder: 'Описание (необязательно)',
   'Channel.DescriptionPrefix': 'Вы можете добавить описание для',

@@ -91,7 +91,6 @@ const DEBT: Record<string, number> = {
   'src/components/LocationPicker.tsx': 6,
   'src/components/MarkupTooltip.tsx': 9,
   'src/components/NewContactPopup.tsx': 7,
-  'src/components/NewGroupFlow.tsx': 1,
   'src/components/RepostStorySheet.tsx': 2,
   'src/components/StoriesRow.tsx': 3,
   'src/components/StoryViewer.tsx': 4,

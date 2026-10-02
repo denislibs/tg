@@ -75,13 +75,23 @@ func (i *Interactor) userCard(ctx context.Context, id int64) domain.UserReal {
 
 // CreateGroup creates a group chat with the creator plus memberIDs and posts the
 // "created the group" service message (which fans out live to every member).
-func (i *Interactor) CreateGroup(ctx context.Context, creatorID int64, title, about, username string, isPublic bool, memberIDs []int64) (int64, error) {
+//
+// missing — позванные, чья настройка «Кто может приглашать меня в группы»
+// (или чёрный список) не пускает создателя: их не добавляют, а отдают назад —
+// `missing_invitees` ответа `messages.createChat` у оригинала
+// (`messages.invitedUsers`). Правило то же, что у AddMember: создание группы с
+// участниками — не обход настройки, которую добавление в готовую соблюдает.
+func (i *Interactor) CreateGroup(ctx context.Context, creatorID int64, title, about, username string, isPublic bool, memberIDs []int64) (int64, []int64, error) {
 	var chatID int64
+	invitees, missing, err := i.splitInvitees(ctx, creatorID, memberIDs)
+	if err != nil {
+		return 0, nil, err
+	}
 	// added — те, кто РЕАЛЬНО добавлен: без создателя и без повторов. Именно
 	// они уезжают в messageActionChatCreate.users; сырой memberIDs отдал бы
 	// клиенту список, которого в чате нет.
 	var added []int64
-	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
+	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		id, e := i.groups.CreateMultiMember(ctx, domain.ChatTypeGroup, title, about, username, isPublic, creatorID)
 		if e != nil {
 			return e
@@ -92,7 +102,7 @@ func (i *Interactor) CreateGroup(ctx context.Context, creatorID int64, title, ab
 		}
 		added = added[:0]
 		seen := map[int64]bool{creatorID: true}
-		for _, uid := range memberIDs {
+		for _, uid := range invitees {
 			if seen[uid] {
 				continue
 			}
@@ -105,7 +115,7 @@ func (i *Interactor) CreateGroup(ctx context.Context, creatorID int64, title, ab
 		return nil
 	})
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	// Primary-инвайт существует у группы с рождения (tweb exported_invite).
 	if i.invites != nil {
@@ -115,7 +125,31 @@ func (i *Interactor) CreateGroup(ctx context.Context, creatorID int64, title, ab
 	// действии ехал один actor_id, и пилюля читалась «Имя создал(а) группу» без
 	// названия и без списка.
 	i.postGroupService(ctx, chatID, creatorID, domain.NewMessageActionChatCreate(title, added))
-	return chatID, nil
+	return chatID, missing, nil
+}
+
+// splitInvitees делит позванных на тех, кого настройка приватности пускает, и
+// тех, кого нет (missing). Без PrivacyChecker ограничений нет — как у AddMember.
+func (i *Interactor) splitInvitees(ctx context.Context, actorID int64, userIDs []int64) (allowed, missing []int64, err error) {
+	if i.privacy == nil {
+		return userIDs, nil, nil
+	}
+	for _, uid := range userIDs {
+		if uid == actorID {
+			allowed = append(allowed, uid)
+			continue
+		}
+		ok, err := i.privacy.Check(ctx, uid, actorID, domain.PrivacyChatInvite)
+		if err != nil {
+			return nil, nil, err
+		}
+		if ok {
+			allowed = append(allowed, uid)
+		} else {
+			missing = append(missing, uid)
+		}
+	}
+	return allowed, missing, nil
 }
 
 func (i *Interactor) AddMember(ctx context.Context, chatID, actorID, userID int64) error {

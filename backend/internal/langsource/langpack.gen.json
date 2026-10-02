@@ -1232,6 +1232,10 @@
           "value": "Missed Call"
         },
         {
+          "key": "ChatLocation",
+          "value": "Location"
+        },
+        {
           "key": "ChatTheme.None",
           "value": "No Theme"
         },
@@ -3102,10 +3106,6 @@
         },
         {
           "key": "NewGroup",
-          "value": "New Group"
-        },
-        {
-          "key": "NewGroup.DefaultTitle",
           "value": "New Group"
         },
         {
@@ -7475,10 +7475,6 @@
           "value": "Создать группу"
         },
         {
-          "key": "NewGroup.DefaultTitle",
-          "value": "Новая группа"
-        },
-        {
           "key": "NewPrivateChat",
           "value": "Новое сообщение"
         },
@@ -8214,6 +8210,10 @@
         {
           "key": "CreateGroup.NameHolder",
           "value": "Название группы"
+        },
+        {
+          "key": "ChatLocation",
+          "value": "Местоположение"
         },
         {
           "key": "DescriptionPlaceholder",
@@ -12519,10 +12519,6 @@
           "value": "Nouveau groupe"
         },
         {
-          "key": "NewGroup.DefaultTitle",
-          "value": "Nouveau groupe"
-        },
-        {
           "key": "NewPrivateChat",
           "value": "Nouveau message"
         },
@@ -15635,10 +15631,6 @@
         },
         {
           "key": "NewGroup",
-          "value": "Neue Gruppe"
-        },
-        {
-          "key": "NewGroup.DefaultTitle",
           "value": "Neue Gruppe"
         },
         {
@@ -18777,10 +18769,6 @@
           "value": "Nuevo grupo"
         },
         {
-          "key": "NewGroup.DefaultTitle",
-          "value": "Grupo nuevo"
-        },
-        {
           "key": "NewPrivateChat",
           "value": "Nuevo mensaje"
         },
@@ -21914,10 +21902,6 @@
         {
           "key": "NewGroup",
           "value": "Створити групу"
-        },
-        {
-          "key": "NewGroup.DefaultTitle",
-          "value": "Нова група"
         },
         {
           "key": "NewPrivateChat",

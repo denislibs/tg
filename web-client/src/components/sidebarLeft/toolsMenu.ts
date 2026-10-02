@@ -32,8 +32,6 @@
  *  • «Мои истории» — `AppMyStoriesTab` (:715-722) не портирован → наш
  *    `StoriesArchiveSheet`, О-82 волны 7;
  *  • «Звонки» — `AppCallsTab` (:727-734) → React-экран, ВРЕМЕННО до 0а-4;
- *  • «Создать → Группа» — `createNewGroupTab(this)` → React-экран,
- *    ВРЕМЕННО до 0а-2;
  *  • ночной режим — `themeController.switchTheme` (:919-928) → React-хук
  *    шелла `useThemeToggle`, ВРЕМЕННО до Э4-5.
  *
@@ -76,6 +74,7 @@ import ButtonMenuToggle from '@components/buttonMenuToggle'
 import createSubmenuTrigger, { type CreateSubmenuArgs } from '@components/createSubmenuTrigger'
 import { AppNewChannelTab, AppPowerSavingTab, AppSettingsTab } from '@components/solidJsTabs/tabs'
 import { getColumnSlider, openContactsTab } from '@components/sidebarLeft/columnSlider'
+import createNewGroupTab from '@components/sidebarLeft/tabs/createNewGroupTab'
 import type { User, UserReal } from '@core/peers/peer'
 import { MAX_ACCOUNTS, type PublicAccount } from '@core/auth/accounts'
 import {
@@ -138,8 +137,6 @@ export interface ToolsMenuSidebar {
   openMyStories: () => void
   /** `AppCallsTab` (:727-734) — ВРЕМЕННО до 0а-4 */
   openCalls: () => void
-  /** `createNewGroupTab(this)` (:1074-1078) — ВРЕМЕННО до 0а-2 */
-  openNewGroup: () => void
   /** `themeController.switchTheme(undefined, coords)` (:919-928) — ВРЕМЕННО до Э4-5 */
   switchTheme: (coords: { x: number, y: number }) => void
 }
@@ -542,7 +539,7 @@ function createNewChatsSubmenu(sidebar: ToolsMenuSidebar) {
       text: 'Group',
       onClick: () => {
         closeTabsBefore(() => {
-          sidebar.openNewGroup()
+          createNewGroupTab(getColumnSlider())
         })
       },
     }, {

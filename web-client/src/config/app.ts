@@ -33,6 +33,13 @@ export function readTmeOrigin(env: ImportMetaEnv): string {
   return (env.VITE_TME_ORIGIN || DEFAULT_TME_ORIGIN).replace(/\/+$/, '')
 }
 
+// Секретные чаты (E2E) — НАША фича: у tweb их нет (Отступление В7-1 плана
+// волны 7). Решение пользователя 2026-10-01: фича на паузе — входы СОЗДАНИЯ
+// секретного чата скрыты (пункт «Новый секретный чат» `#new-menu`,
+// `ComposeMenu.tsx`), и меню совпадает с tweb: канал, группа, личный чат.
+// Уже существующие секретные чаты, их строка в списке и лента не трогаются.
+export const SECRET_CHATS_ENABLED = false
+
 export const AppConfig = {
   dnp: readDnpConfig(import.meta.env),
   tlWire: readTLWire(import.meta.env),

@@ -57,7 +57,6 @@ function makeAppSidebarLeft() {
     openSavedMessages: vi.fn(),
     openMyStories: vi.fn(),
     openCalls: vi.fn(),
-    openNewGroup: vi.fn(),
     switchTheme: vi.fn(),
   }
 }

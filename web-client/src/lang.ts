@@ -327,6 +327,7 @@ const lang = {
   'ChatList.Mute.4Hours': 'For 4 Hours',
   'ChatList.Mute.8Hours': 'For 8 Hours',
   'ChatList.Service.Call.Missed': 'Missed Call',
+  ChatLocation: 'Location',
   'ChatTheme.None': 'No Theme',
   'ChatTheme.Title': 'Chat Theme',
   ChatYourSelf: 'forward here to save',
@@ -826,12 +827,6 @@ const lang = {
   NewChecklist: 'New Checklist',
   'NewChecklist.TaskPlaceholder': 'Task',
   NewGroup: 'New Group',
-  // ДВЕ РАЗНЫЕ РОЛИ у одного текста, и ключи поэтому тоже разные. `NewGroup` — ПУНКТ
-  // МЕНЮ создания («Создать группу»), а `NewGroup.DefaultTitle` — НАЗВАНИЕ чата, которое
-  // уезжает на сервер, когда пользователь оставил поле имени пустым, и которое читают все
-  // участники. Один ключ на обе роли давал по-русски группу с названием «Создать группу».
-  // У канала пары нет: вкладка `AppNewChannelTab` без названия не создаёт (как tweb).
-  'NewGroup.DefaultTitle': 'New Group',
   NewLink: 'New Link',
   NewPoll: 'New Poll',
   'NewPoll.Anonymous': 'Anonymous Voting',

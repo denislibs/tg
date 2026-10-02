@@ -228,7 +228,6 @@ const es = {
   'MultiAccount.More': 'Más',
   NewChannel: 'Nuevo canal',
   NewGroup: 'Nuevo grupo',
-  'NewGroup.DefaultTitle': 'Grupo nuevo',
   NewPrivateChat: 'Nuevo mensaje',
   'Suggestion.Notifications.Title': '¡No te pierdas ningún mensaje! 🔔',
   'Suggestion.Notifications.Subtitle': 'Activa las notificaciones para estar al día.',

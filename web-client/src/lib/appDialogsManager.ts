@@ -1315,15 +1315,21 @@ function isDialogUnread(dialog: Dialog) {
 }
 
 /**
- * tweb `:2348-2380` — `ul.chatlist`. Опции оригинала (`new`, `dialogSize`) у
- * наших потребителей не читаются.
+ * tweb `:2348-2380` — `ul.chatlist`. Из опций оригинала портирован `new`
+ * (`chatlist-new`, список участников вкладки «Новая группа», `newGroup.tsx:64-66`);
+ * `dialogSize` у наших потребителей не читается.
  */
-export function createChatList() {
+export function createChatList(options: { new?: boolean } = {}) {
   const list = document.createElement('ul')
   // Legacy layout host: its direct children are native links, not li elements.
   // Keep those links exposed without announcing an invalid list structure.
   list.setAttribute('role', 'presentation')
   list.classList.add('chatlist')
+
+  if(options.new) {
+    list.classList.add('chatlist-new')
+  }
+
   return list
 }
 

@@ -463,12 +463,17 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // снесённой вкладки «Время прочтения» — `PrivacyReadTime`, `PrivacyReadTimeTitle`,
 // `Privacy.ReadTimeCaption`. Итог (поверх 2-2 волны 7): ru 1412 (форм числа 44), uk 760,
 // es 757, de 758, fr 752 (форм числа +2 у каждого).
+// Задача 0а-2 волны 7 («Новая группа», порт tweb newGroup.tsx): у ru +1 ключ tweb
+// lang.ts — скрытое поле места `ChatLocation` (`SendMessageTo` завела 0а-3); у всех
+// пяти −1: со сносом React-экрана `NewGroupFlow` и `useSidebarActions` ушёл наш
+// `NewGroup.DefaultTitle` (вкладка tweb без названия группу не создаёт). Итог: ru 1412,
+// uk 759, es 756, de 757, fr 751.
 const COMPOSITION = {
   ru: { keys: 1412, plural: 44 },
-  uk: { keys: 760, plural: 33 },
-  es: { keys: 757, plural: 32 },
-  de: { keys: 758, plural: 33 },
-  fr: { keys: 752, plural: 32 },
+  uk: { keys: 759, plural: 33 },
+  es: { keys: 756, plural: 32 },
+  de: { keys: 757, plural: 33 },
+  fr: { keys: 751, plural: 32 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -617,12 +622,14 @@ const COMPOSITION = {
 // Задачей 23 плана 2D — ключи хаба «Конфиденциальность» и «Hide Read Time» вместо
 // ключей снесённого React-экрана и вкладки «Время прочтения» (разбор — у
 // `COMPOSITION` выше).
+// Задачей 0а-2 волны 7 — у ru +1 ключ tweb `ChatLocation`, у всех пяти минус
+// `NewGroup.DefaultTitle` снесённого React-экрана (разбор — там же).
 const FINGERPRINT = {
-  ru: 'f0027eed',
-  uk: '39fe2b12',
-  es: '67b11e01',
-  de: '19fc8b62',
-  fr: '7b3e801c',
+  ru: 'ab4c53b2',
+  uk: '571c2c10',
+  es: '737d78e3',
+  de: '5e55ac08',
+  fr: '05470caa',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

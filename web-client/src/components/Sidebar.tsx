@@ -18,6 +18,7 @@ import type { Chat } from '../data'
 import FoldersSidebar from './folders/FoldersSidebar'
 import type { FolderContextMenuSidebar } from '../helpers/dom/createFolderContextMenu'
 import { createColumnSlider, destroyColumnSlider, openContactsTab } from './sidebarLeft/columnSlider'
+import createNewGroupTab from './sidebarLeft/tabs/createNewGroupTab'
 import type SidebarSlider from './slider'
 import { AppChatFoldersTab, AppEditFolderTab, AppNewChannelTab } from './solidJsTabs/tabs'
 import type { SliderSuperTabConstructable } from './sliderTab'
@@ -42,7 +43,6 @@ import { useNavigationActions } from '../core/hooks/useNavigationActions'
 import InputSearch from '../shared/ui/InputSearch'
 import { useT } from '../i18n'
 import { useGlobalSearch } from '../core/hooks/useGlobalSearch'
-import { useSidebarActions } from '../core/hooks/useSidebarActions'
 import { useSidebarStories } from '../core/hooks/useSidebarStories'
 import { useForumPanel } from '../core/hooks/useForumPanel'
 import { useImperativeIsland } from '../core/hooks/useImperativeIsland'
@@ -123,7 +123,7 @@ export default function Sidebar({
     return open?.thread.kind === 'topic' ? open.thread.rootMsgId : null
   })
   const onSelect = useNavigationStore((st) => st.selectChat)
-  const { openTopicThread: onOpenTopic, onChatCreated } = useNavigationActions()
+  const { openTopicThread: onOpenTopic } = useNavigationActions()
 
   // Экраны левой колонки взаимоисключающие — один стейт-энум (см. <SidebarScreens>).
   const [screen, setScreen] = useState<SidebarScreen>(null)
@@ -142,7 +142,6 @@ export default function Sidebar({
   // замок, `has-open-tabs`. Классы перехода React не ставит — см. разметку.
   const [searching, setSearching] = useState(false)
   const stories = useSidebarStories()
-  const actions = useSidebarActions(onChatCreated)
   const { handleSelect, forumChat, closeForum, panel: forumPanel } = useForumPanel({ chats, onSelect, activeTopicId, onOpenTopic })
   // Владелец поиска (порт `initSearch`, `components/sidebarLeft/globalSearch.ts`);
   // шов и расхождения — шапка `core/hooks/useGlobalSearch.ts`.
@@ -310,8 +309,6 @@ export default function Sidebar({
     openMyStories: () => bridgeRef.current.openMyStories(),
     // ВРЕМЕННО до 0а-4: React-экран звонков вместо `AppCallsTab`
     openCalls: () => setScreen('calls'),
-    // ВРЕМЕННО до 0а-2: React-экран новой группы вместо `createNewGroupTab`
-    openNewGroup: () => setScreen('newGroup'),
     // ВРЕМЕННО до Э4-5: тему переключает хук шелла `useThemeToggle`
     switchTheme: (coords) => bridgeRef.current.onToggleMode(coords),
   }))
@@ -532,7 +529,8 @@ export default function Sidebar({
             .sidebar-content, рядом с чатлистом и выдачей поиска. */}
         <ComposeFab
           searching={searching || !!forumChat}
-          onNewGroup={() => setScreen('newGroup')}
+          // tweb `sidebarLeft/index.ts:1073-1077` — `createNewGroupTab(this)`
+          onNewGroup={() => createNewGroupTab(sliderRef.current!)}
           // tweb `sidebarLeft/index.ts:1105-1109` (`closeBefore: false`) — «Новый личный
           // чат» и есть вкладка контактов; секретный — Отступление В7-1
           onNewPrivate={() => { void openContactsTab() }}
@@ -551,7 +549,6 @@ export default function Sidebar({
         screen={screen}
         close={closeScreen}
         onSelect={onSelect}
-        onCreateGroup={actions.createGroup}
       />
 
       {stories.overlays}
