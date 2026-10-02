@@ -1590,6 +1590,7 @@ const lang = {
   UnsavedChangesDescription: 'Are you sure you want to discard all changes?',
   'UnsavedChangesDescription.Group': 'You have changed some settings in this group. Save changes?',
   'UnsavedChangesDescription.Privacy': 'You have changed some privacy settings. Save changes?',
+  Update: 'UPDATE',
   Updating: 'Updating...',
   UserBio: 'Bio',
   'UserInfo.CustomPhotoHelp': 'Set a photo for this contact that only you will see, or suggest a new profile photo to them.',

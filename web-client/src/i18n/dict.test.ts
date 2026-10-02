@@ -525,8 +525,10 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (`sidebarLeft/index.ts:163`). Итог: ru 1518.
 // Задача 2-4 волны 7 (кнопка `#new-menu`, tweb `sidebarLeft/index.ts:1113-1129`): у ru
 // +1 ключ tweb lang.ts:66 `ChatAutomation.NewChats` — `aria-label` кнопки. Итог: ru 1519.
+// Пачка П-3 волны 7 (кнопка «Обновить» шапки колонки, tweb `sidebarLeft/index.ts:211-227`):
+// у ru +1 ключ tweb lang.ts:2077 `Update`. Итог: ru 1531.
 const COMPOSITION = {
-  ru: { keys: 1530, plural: 48 },
+  ru: { keys: 1531, plural: 48 },
   uk: { keys: 827, plural: 35 },
   es: { keys: 798, plural: 34 },
   de: { keys: 799, plural: 35 },
@@ -701,8 +703,9 @@ const COMPOSITION = {
 // снесённого `PermissionsScreen` (разбор — у `COMPOSITION` выше).
 // Задачей 2-1 волны 7 — у ru +1 ключ tweb `StarsRating.Back` (разбор — там же).
 // Задачей 2-4 волны 7 — у ru +1 ключ tweb `ChatAutomation.NewChats` (разбор — там же).
+// Пачкой П-3 волны 7 — у ru +1 ключ tweb `Update` (разбор — там же).
 const FINGERPRINT = {
-  ru: '9a90c28d',
+  ru: '08b433ee',
   uk: 'ffe46f66',
   es: '1c8d911a',
   de: 'dcd1c9f9',

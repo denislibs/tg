@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 48,
+      "version": 49,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -6029,6 +6029,10 @@
           "value": "You have changed some privacy settings. Save changes?"
         },
         {
+          "key": "Update",
+          "value": "UPDATE"
+        },
+        {
           "key": "Updating",
           "value": "Updating..."
         },
@@ -6328,7 +6332,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 48,
+      "version": 49,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -9761,6 +9765,10 @@
         {
           "key": "Updating",
           "value": "Обновление..."
+        },
+        {
+          "key": "Update",
+          "value": "ОБНОВИТЬ"
         },
         {
           "key": "DiscardVoiceMessageTitle",

@@ -13,8 +13,8 @@
  * обработчике события: `import appSidebarLeft from '@components/sidebarLeft'`
  * — живая привязка (п. 1 ниже).
  *
- * Перенесено (этой задачей, 2-1 волны 7): конструктор, `construct` без кнопок
- * шапки статуса и замка (поле поиска `:158-160`, бургер `:165-172`, `:244`,
+ * Перенесено (этой задачей, 2-1 волны 7): конструктор, `construct` (поле поиска
+ * `:158-160`, бургер `:165-172`, `:244`,
  * морф `:431-442`, клик по `.sidebar-left-overlay` `:447-450`,
  * `initSidebarResize` `:451`, `can-menu-have-z-index` `:190-194`),
  * `initSearch` (:1137, тело — владелец `globalSearch.ts`), `initNavigation` (:474-489),
@@ -27,6 +27,12 @@
  * `createNewChatsSubmenu` (:198-200, :1065-1135, задача 2-4), `closeSearch` (:1722), `createTab`/
  * `addTab` (:1730-1753), `closeTabsBefore`/`openArchiveTab` (:1755-1764),
  * `addAccount` (:1766), синглтон (:1798), `getVersionLink` (:1802).
+ * Пачкой П-3 волны 7: вертикальная колонка папок `renderFoldersSidebarContent`
+ * (:174-184, `foldersSidebarContent/*`), кнопка «Обновить» `updateBtn` и
+ * проверка новой сборки (:211-227, :367-384), кнопки шапки — статус-эмодзи,
+ * замок и `toggleRightButtons` с `is-input-the-last-child` (:237-361), кнопка
+ * поиска свёрнутой колонки `sidebar-header-search-trigger` (:392-421) с
+ * сигналом `useHasOpenLeftTabs` (:561).
  *
  * Не перенесено — у каждого пункта задача или номер «Отложено»:
  *  • тело `initSearch` (:1137-1691) — класс `GlobalSearch`
@@ -40,13 +46,11 @@
  *    бургера скрыт; форум-таб (`appDialogsManager.forumTab`, :519, :524, :541,
  *    :555-560) — задача 1-6;
  *  • «Мои истории» (`AppMyStoriesTab`, :715-722) — О-82, пункт скрыт;
- *  • статус-эмодзи и замок (`toggleRightButtons`, :258-361) — задача 2-8;
- *  • вертикальная колонка папок (`renderFoldersSidebarContent`, :177-184) —
- *    задача 2-7; бейдж уведомлений других аккаунтов (:186-188) — О-81;
- *  • бейдж архива по `folder_unread` (:202-235) — расхождение 4 бургера ниже;
- *  • кнопка «Обновить» (`updateBtn`, :202-216, :367-384) — О-100;
- *  • кнопка поиска свёрнутой колонки `sidebar-header-search-trigger`
- *    (:392-421, сигнал `useHasOpenLeftTabs`) — О-101;
+ *  • бейдж уведомлений других аккаунтов (:186-210; и у бургера колонки папок —
+ *    `allNotificationsCount`) — О-81;
+ *  • бейдж архива по `folder_unread` (:229-257) — расхождение 4 бургера ниже;
+ *  • `onResize`/`fastRaf(updateColumnWidths)` (:386-391) — пересчёт ширин
+ *    ставит `core/dom/updateColumnWidths.ts` (`installColumnWidthsUpdater`);
  *  • `getTopPeers('correspondents')` (:363) — прогрев выдачи поиска, задача 2-3;
  *  • Ctrl+0 (:463-470) — наш `core/hotkeys.ts`, задача 5-1;
  *  • `onSwipeTick: appImManager.adjustChatPatternBackground` (:670) — Э4-5;
@@ -76,7 +80,23 @@
  *  6. `globalSearch` — экземпляр владельца поиска (`sidebarLeft/globalSearch.ts`):
  *     у tweb это тело `initSearch` самого класса (:1137-1691), задача 2-3
  *     переносит его методом. Сеттер `isSearchActive` у tweb приватный (:137),
- *     у нас его зовёт владелец через `onSearchActive` (:1600-1601, :1614-1615).
+ *     у нас его зовёт владелец через `onSearchActive` (:1600-1601, :1614-1615);
+ *     там же класс ставит `is-visible`/`appear-animated` контейнеру бургера
+ *     (:1586-1599, :1613). `updateBtn`/`hasUpdate` владелец получает опциями.
+ *  7. Код-пароль кнопки замка — настройка `passcode.enabled` (`useAppSettings`,
+ *     её синхронизирует с воркером `passcodeLockScreenController`), а не
+ *     `DeferredIsUsingPasscode.isUsingPasscode()` (:323, :339) и событие
+ *     `toggle_using_passcode` (:356-358): отложенный флаг на главном потоке
+ *     разрешается только проверкой замка, и его `await` мог бы не вернуться.
+ *     Premium на старте — из `me` зеркала (как `appImManager`, :388-397):
+ *     `premium_toggle` класса приходит раньше `construct` колонки.
+ *  8. Статус — юникод-эмодзи `me.emoji_status_emoticon` (`core/peers/peer.ts`)
+ *     текстом `wrapEmojiText` в `.sidebar-emoji-status-emoji`, а не
+ *     `wrapEmojiStatus` над документом кастомного эмодзи (:304-314); анимации
+ *     вокруг нового статуса (`fireOnNew` + `ReactionElement.fireAroundAnimation`,
+ *     :285-302) нет — ей нужен тот же документ; `emoji_status_change` —
+ *     подписка на смену статуса в `me` зеркала. Выбор статуса — Б-50
+ *     (`emojiStatusPicker.solid.tsx`).
  *
  * Расхождения бургера (`createToolsMenu`/`createMoreSubmenu`, задача 2-2):
  *  1. Отступление В7-4 — мультиаккаунт в нашей модели «одна сессия на
@@ -119,12 +139,18 @@
  *  9. Клавиатурная навигация меню (фокус в подменю) — О-84 волны 7
  *     (`components/floatingButtonMenu.ts`).
  */
-import { createEffect, createRoot } from 'solid-js'
+import { createEffect, createRoot, createSignal, on } from 'solid-js'
 import SidebarSlider, { SliderSuperTab } from '@components/slider'
 import type { SliderSuperTabConstructable } from '@components/sliderTab'
 import ButtonMenu, { type ButtonMenuItemOptions, type ButtonMenuItemOptionsVerifiable } from '@components/buttonMenu'
 import ButtonMenuToggle from '@components/buttonMenuToggle'
 import Icon from '@components/icon'
+import ButtonIcon from '@components/buttonIcon'
+import { replaceButtonIcon } from '@components/button'
+import ripple from '@components/ripple'
+import createLockButton from '@components/sidebarLeft/lockButton.solid'
+import { openEmojiStatusPicker } from '@components/sidebarLeft/emojiStatusPicker.solid'
+import { renderFoldersSidebarContent } from '@components/sidebarLeft/foldersSidebarContent/index.solid'
 import type { IconName } from '@core/tgico-icons'
 import createSubmenuTrigger, { type CreateSubmenuArgs } from '@components/createSubmenuTrigger'
 import {
@@ -158,23 +184,25 @@ import { setOpenTabsLeftSidebar } from '@core/dom/updateColumnWidths'
 import installColumnResize from '@core/dom/installColumnResize'
 import appNavigationController, { type NavigationItem } from '@core/navigation/appNavigationController'
 import { useChatsStore } from '@stores/chatsStore'
-import { useFoldersSidebarShown, useIsLeftSearchActive, useIsSidebarCollapsed } from '@stores/foldersSidebar.solid'
+import useHasFoldersSidebar, { useFoldersSidebarShown, useHasOpenLeftTabs, useIsLeftSearchActive, useIsSidebarCollapsed } from '@stores/foldersSidebar.solid'
 import { useAppSettings } from '@stores/appSettings.solid'
 import { useSettingsStore } from '@/settings'
 import { PRESET_MODE, resolvePreset } from '@/theme'
 import IS_CALL_SUPPORTED from '@environment/callSupport'
 import DOCUMENT_PICTURE_IN_PICTURE_SUPPORTED from '@environment/documentPictureInPictureSupport'
 import contextMenuController from '@helpers/contextMenuController'
-import { CLICK_EVENT_NAME, simulateClickEvent } from '@helpers/dom/clickEvent'
+import { attachClickEvent, CLICK_EVENT_NAME, simulateClickEvent } from '@helpers/dom/clickEvent'
 import filterAsync from '@helpers/array/filterAsync'
 import createBadge from '@helpers/createBadge'
 import liteMode from '@helpers/liteMode'
+import noop from '@helpers/noop'
 import type { MenuPositionPadding } from '@helpers/positionMenu'
 import pause from '@helpers/schedulers/pause'
 import limitSymbols from '@helpers/string/limitSymbols'
 import type ListenerSetter from '@helpers/listenerSetter'
 import I18n, { i18n } from '@lib/langPack'
 import { setBlankToAnchor } from '@lib/richtext/url'
+import wrapEmojiText from '@lib/richtext/wrapEmojiText'
 import rootScope from '@lib/rootScope'
 import { MOUNT_CLASS_TO } from '@config/debug'
 import { APP_TITLE, APP_VERSION_FULL, SECRET_CHATS_ENABLED } from '@/config/app'
@@ -189,6 +217,9 @@ export class AppSidebarLeft extends SidebarSlider {
   private toolsBtn!: HTMLElement
   private backBtn!: HTMLElement
   private newBtnMenu!: HTMLElement
+  private updateBtn!: HTMLElement
+  private hasUpdate = false
+  private searchTriggerWhenCollapsed!: HTMLElement
   public inputSearch!: InputSearch
   /** Расхождение 6 шапки. */
   private globalSearch?: GlobalSearch
@@ -233,6 +264,19 @@ export class AppSidebarLeft extends SidebarSlider {
     totalNotificationsCount.classList.add('sidebar-tools-button-notifications')
     this.toolsBtn.append(totalNotificationsCount)
 
+    // :174-184 — `setAllNotificationsCount` пишет `notification_count_update`
+    // (:186-200): источника нет, О-81 (расхождение 3 бургера)
+    const [allNotificationsCount] = createSignal(0)
+    const mainMiddleware = this.middlewareHelper.get()
+    // renderFoldersSidebarContent creates the #folders-sidebar element
+    // itself and inserts it as the first child of #main-columns.
+    renderFoldersSidebarContent(
+      document.getElementById('main-columns')!,
+      allNotificationsCount,
+      managers,
+      mainMiddleware,
+    )
+
     // If it has z-index to early, the browser makes it shift a few times before showing it properly in its position (on very large screens)
     // Doesn't solve the blinking, which doesn't seem to appear when the project is built
     void pause(1000).then(() => {
@@ -246,6 +290,22 @@ export class AppSidebarLeft extends SidebarSlider {
     this.newBtnMenu = this.createNewChatsMenuButton()
     sidebarHeader.nextElementSibling!.append(this.newBtnMenu)
 
+    this.updateBtn = document.createElement('div')
+    this.updateBtn.className = 'btn-circle rp btn-corner z-depth-1 btn-update is-hidden'
+    this.updateBtn.tabIndex = -1
+    ripple(this.updateBtn)
+    this.updateBtn.append(i18n('Update'))
+
+    attachClickEvent(this.updateBtn, () => {
+      if(this.updateBtn.classList.contains('is-hidden')) {
+        return
+      }
+
+      appNavigationController.reload()
+    })
+
+    sidebarHeader.nextElementSibling!.append(this.updateBtn)
+
     // `inputSearch.input focus → initSearch` (:226) вешает владелец поиска сам
     // (расхождение 6); он же слушает Ctrl+F (`tg-focus-search`).
     this.globalSearch = new GlobalSearch({
@@ -253,15 +313,156 @@ export class AppSidebarLeft extends SidebarSlider {
       inputSearch: this.inputSearch,
       backBtn: this.backBtn,
       newBtnMenu: this.newBtnMenu,
+      updateBtn: this.updateBtn,
+      hasUpdate: () => this.hasUpdate,
       managers,
       onSearchActive: (active) => {
+        // :1586-1599, :1613 — расхождение 6
+        if(active) {
+          if(!this.buttonsContainer.classList.contains('is-visible')) {
+            const triggerIsVisible = this.searchTriggerWhenCollapsed.classList.contains('is-visible')
+            this.buttonsContainer.classList.toggle('appear-animated', !triggerIsVisible)
+          }
+
+          this.buttonsContainer.classList.add('is-visible')
+        } else {
+          this.buttonsContainer.classList.remove('is-visible')
+        }
+
         this.isSearchActive = active
         this.onSomethingOpenInsideChange()
       },
       openUrl: (url) => openSearchUrl(url),
     })
 
+    // :258-361 — кнопки шапки справа от поля поиска: статус-эмодзи (Premium) и
+    // замок (код-пароль). Расхождения 7, 8 шапки.
+    const premiumMiddlewareHelper = this.getMiddleware().create()
+    const statusBtnIcon = ButtonIcon(' sidebar-emoji-status', { noRipple: true, ariaLabel: 'SetAsEmojiStatus' })
+
+    const lockButton = createLockButton()
+
+    attachClickEvent(statusBtnIcon, () => {
+      // `onChosen` → `fireOnNew` — взвод анимации вокруг нового статуса, расхождение 8
+      openEmojiStatusPicker({
+        managers,
+        anchorElement: statusBtnIcon,
+      })
+    })
+
+    const wrapStatus = () => {
+      const emojiStatus = useChatsStore.getState().me?.user.emoji_status_emoticon
+      if(!emojiStatus) {
+        statusBtnIcon.replaceChildren()
+        replaceButtonIcon(statusBtnIcon, 'star')
+        return
+      }
+
+      // `fireOnNew && ReactionElement.fireAroundAnimation` (:285-302) — расхождение 8
+
+      const container = document.createElement('span')
+      container.classList.add('sidebar-emoji-status-emoji')
+      container.append(wrapEmojiText(emojiStatus))
+
+      statusBtnIcon.replaceChildren(container)
+    }
+
+    let isPremium = false
+    const onPremium = (premium: boolean) => {
+      isPremium = premium
+      premiumMiddlewareHelper.clean()
+      const middleware = premiumMiddlewareHelper.get()
+      if(premium) {
+        wrapStatus()
+        toggleRightButtons(true, isUsingPasscode())
+
+        // `emoji_status_change` (:326-337) — смена `me` в зеркале (расхождение 8)
+        const onEmojiStatusChange = useChatsStore.subscribe((state, prev) => {
+          if(state.me?.user.emoji_status_emoticon !== prev.me?.user.emoji_status_emoticon) {
+            wrapStatus()
+          }
+        })
+
+        middleware.onClean(onEmojiStatusChange)
+      } else {
+        toggleRightButtons(false, isUsingPasscode())
+      }
+
+      // `appDialogsManager.resizeStoriesList?.()` (:342) — Б-4, П-3 «истории»
+    }
+
+    const toggleRightButtons = (isPremium: boolean, isUsingPasscode: boolean) => {
+      if(isPremium) sidebarHeader.append(statusBtnIcon)
+      else statusBtnIcon.remove()
+
+      if(isUsingPasscode) sidebarHeader.append(lockButton.element)
+      else lockButton.element.remove()
+
+      sidebarHeader.classList.toggle('is-input-the-last-child', !isPremium && !isUsingPasscode)
+    }
+
+    appImManager.addEventListener('premium_toggle', onPremium)
+    // `toggle_using_passcode` (:356-358) и `appSettings.passcode?.enabled`
+    // (:360-361) — одна настройка (расхождение 7)
+    const [appSettings] = useAppSettings()
+    const isUsingPasscode = () => !!appSettings.passcode.enabled
+    createRoot(() => {
+      createEffect(on(isUsingPasscode, (usingPasscode) => {
+        toggleRightButtons(isPremium, usingPasscode)
+      }, { defer: true }))
+    })
+
+    onPremium(!!useChatsStore.getState().me?.user.pFlags?.premium)
+
+    // `getTopPeers('correspondents')` (:363) — задача 2-3, см. шапку
+
     this.initNavigation()
+
+    // :367-384
+    {
+      const CHECK_UPDATE_INTERVAL = 1800e3
+      const checkUpdateInterval = setInterval(() => {
+        fetch('version', { cache: 'no-cache' })
+        .then((res) => (res.status === 200 && res.ok && res.text()) || Promise.reject())
+        .then((text) => {
+          if(text !== APP_VERSION_FULL) {
+            this.hasUpdate = true
+            clearInterval(checkUpdateInterval)
+
+            if(!this.newBtnMenu.classList.contains('is-hidden')) {
+              this.updateBtn.classList.remove('is-hidden')
+            }
+          }
+        })
+        .catch(noop)
+      }, CHECK_UPDATE_INTERVAL)
+    }
+
+    this.searchTriggerWhenCollapsed = document.createElement('div')
+    this.searchTriggerWhenCollapsed.className = 'sidebar-header-search-trigger'
+    this.searchTriggerWhenCollapsed.append(ButtonIcon('search', { ariaLabel: 'Search' }))
+    this.searchTriggerWhenCollapsed.addEventListener('click', () => {
+      this.initSearch().open()
+    })
+
+    this.buttonsContainer.parentElement!.prepend(this.searchTriggerWhenCollapsed)
+
+    // Visibility lives in JS — drives the `.is-visible` class from the
+    // signals that decide whether the icon-only search affordance should
+    // be shown. The CSS only reads that class, no body/parent-selector
+    // cascades.
+    createRoot(() => {
+      const [hasFoldersSidebar] = useHasFoldersSidebar()
+      const [isCollapsed] = useIsSidebarCollapsed()
+      const [hasOpenLeftTabs] = useHasOpenLeftTabs()
+      createEffect(() => {
+        const visible =
+          hasFoldersSidebar() &&
+          isCollapsed() &&
+          !hasOpenLeftTabs()
+        this.searchTriggerWhenCollapsed.classList.toggle('is-visible', visible)
+      })
+    })
 
     // The burger element has two visual states: the three-line menu icon (a
     // click on it opens the burger menu) and the back arrow (a click on it
@@ -370,7 +571,7 @@ export class AppSidebarLeft extends SidebarSlider {
     this.sidebarEl.classList.toggle('has-open-tabs', isFloating)
     this.sidebarEl.classList.toggle('has-real-tabs', hasRealTabs)
     // `has-forum-open` и `forumTab.container.inert = hasRealTabs` (:555-560) — задача 1-6
-    // `useHasOpenLeftTabs()[1](isFloating)` (:561) — сигнал без читателя, О-101
+    useHasOpenLeftTabs()[1](isFloating)
 
     // Keep the pop-out flag in sync with the actual tabs state regardless of
     // the early-return paths below. If we only set it inside the

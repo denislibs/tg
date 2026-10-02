@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import contextMenuController from '@helpers/contextMenuController'
 import { useChatsStore } from '@stores/chatsStore'
 import appImManager from '@lib/appImManager'
-import { useFoldersSidebarShown, useIsLeftSearchActive } from '@stores/foldersSidebar.solid'
+import { useIsLeftSearchActive } from '@stores/foldersSidebar.solid'
 import { useSettingsStore } from '@/settings'
 import { usePwaStore } from '@core/pwa'
 import type { Managers } from '@/client/bootstrap'
@@ -103,7 +103,7 @@ afterEach(async() => {
   useChatsStore.setState({ me: null })
   switchTheme.mockClear()
   usePwaStore.setState({ canInstall: false })
-  useFoldersSidebarShown()[1](false)
+  useSettingsStore.getState().update({ tabsInSidebar: false })
   useIsLeftSearchActive()[1](false)
   document.body.replaceChildren()
   vi.restoreAllMocks()
@@ -332,7 +332,8 @@ describe('construct — кнопка бургера в шапке (tweb :165-172
     expect(icon.classList.contains('state-back')).toBe(true)
 
     useIsLeftSearchActive()[1](false)
-    useFoldersSidebarShown()[1](true)
+    // «папки слева» на широком экране — колонка папок показана (`useFoldersSidebarShown`)
+    useSettingsStore.getState().update({ tabsInSidebar: true })
     expect(icon.classList.contains('state-back')).toBe(true)
     expect(back.classList.contains('is-visible')).toBe(true)
   })

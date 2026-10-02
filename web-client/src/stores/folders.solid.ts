@@ -42,10 +42,13 @@
  *     (`exclude_archived`, `:113-115`) у нашей `Folder` не выражается — его
  *     держат владельцы списка и счётчика по `id === ALL_FOLDER_ID`; сам этот
  *     фильтр в `matchesFolder` не передаётся.
- *  3. `chatsCount` (`:15`, `:97`) не заводится: единственный читатель у
- *     оригинала — кнопка «добавить чаты» пустой папки в вертикальной колонке
- *     (`foldersSidebarContent/index.tsx:180-194`), у нас она React и вне плана
- *     (отложенная задача 17).
+ *  3. `chatsCount` (`:15`, `:97` — `folder.dialogs.length` воркерной папки)
+ *     считается по зеркалу диалогов тем же правилом, что список папки и её
+ *     счётчик (`dialogMatchesFolder`, архив не входит —
+ *     `core/folders/folderUnreadCounts.ts`, расхождение 3): воркерного набора
+ *     диалогов папки у главного потока нет. В счёт входят только загруженные
+ *     страницы (расхождение 1 там же). Читатель — кнопка «добавить чаты» пустой
+ *     папки в вертикальной колонке (`foldersSidebarContent/index.solid.tsx`).
  *  4. Счётчики пересчитываются целиком на любое движение источников, а не
  *     точечно по `dialog_flush`/`folder_unread` (`:170-178`): таких событий у
  *     главного потока нет, а зеркало диалогов — вот оно. Элементы при этом
@@ -71,11 +74,15 @@ import { useNotifyStore } from './notifyStore'
 import { cachedPeer, subscribePeerMirror } from '../core/peerCache'
 import { ALL_FOLDER_ID } from '../core/folderIds'
 import { folderUnreadCounts, type FolderNotifications } from '../core/folders/folderUnreadCounts'
+import { dialogMatchesFolder } from '../core/folderFilter'
+import { isDialogMuted } from './notifyStore'
+import { isDialogArchived, type Dialog } from '../core/models'
 import type { Folder } from '../core/managers/foldersManager'
 
 export type StoredFolder = {
   id: number
   notifications?: FolderNotifications
+  chatsCount: number | null
   filter: Folder
 }
 
@@ -116,11 +123,27 @@ function project(): void {
     useNotifyStore.getState().settings,
     cachedPeer,
   )
+  const chatsCount = (filter: Folder) => folderChatsCount(useChatsStore.getState().dialogs, filter)
   const items: StoredFolder[] = [
-    { id: ALL_FOLDER_ID, notifications: counts[ALL_FOLDER_ID], filter: ALL_CHATS_FILTER },
-    ...folders.map((filter) => ({ id: filter.id, notifications: counts[filter.id], filter })),
+    { id: ALL_FOLDER_ID, notifications: counts[ALL_FOLDER_ID], chatsCount: null, filter: ALL_CHATS_FILTER },
+    ...folders.map((filter) => ({ id: filter.id, notifications: counts[filter.id], chatsCount: chatsCount(filter), filter })),
   ]
   setFolderItems(reconcile(items, { key: 'id' }))
+}
+
+/** `folder.dialogs.length` (`:97`) — расхождение 3. */
+function folderChatsCount(dialogs: readonly Dialog[], filter: Folder): number {
+  const { contactIds } = useFoldersStore.getState()
+  const { settings } = useNotifyStore.getState()
+  const now = Math.floor(Date.now() / 1000)
+  let count = 0
+  for (const dialog of dialogs) {
+    if (isDialogArchived(dialog)) continue
+    const peer = cachedPeer(dialog.peerId)
+    const chat = peer && peer._ !== 'user' && peer._ !== 'userEmpty' ? peer : undefined
+    if (dialogMatchesFolder(dialog, peer, filter, contactIds, isDialogMuted(dialog, chat, settings, now))) ++count
+  }
+  return count
 }
 
 let unsubscribe: (() => void)[] | null = null

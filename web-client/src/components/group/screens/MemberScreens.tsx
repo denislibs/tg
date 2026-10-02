@@ -59,7 +59,7 @@ export function RemovedUsersScreen({ g, onBack }: { g: GroupEdit; onBack: () => 
       {/* Кнопка-действие экрана — вендорная `.btn-circle.btn-corner`
           (tweb `btnAddMembers`), а не свой FAB. */}
       {g.canBan && (
-        <button type="button" className="btn-circle btn-corner rp" onClick={() => setPicking(true)}>
+        <button type="button" className="btn-circle btn-corner rp is-visible" onClick={() => setPicking(true)}>
           <TgIcon name="adduser" />
         </button>
       )}

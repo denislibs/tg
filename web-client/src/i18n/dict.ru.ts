@@ -1028,6 +1028,9 @@ const ru = {
   'ConnectionStatus.Reconnecting': 'Переподключение...',
   'ConnectionStatus.Waiting': 'Ожидание сети...',
   Updating: 'Обновление...',
+  // tweb lang.ts:2077 — кнопка «Обновить» новой сборки в шапке левой колонки
+  // (`AppSidebarLeft.updateBtn`, tweb sidebarLeft/index.ts:211-227).
+  Update: 'ОБНОВИТЬ',
   DiscardVoiceMessageTitle: 'Удалить голосовое сообщение?',
   'Composer.DiscardVoice.Text': 'Вы уверены, что хотите удалить это голосовое сообщение?',
   Cancel: 'Отмена',

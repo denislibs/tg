@@ -4,11 +4,15 @@
  * План — `docs/superpowers/plans/2026-09-07-solid-wave-3-folders-tabs.md`,
  * задача 8; разбор оригинала — `docs/tweb/folders-tabs.md` § 1.9.
  *
- * Взято у оригинала: сигналы `useHasFolders` (`:43-50`, пишет владелец папок
- * `lib/appDialogsManager.ts` из `onFiltersLengthChange`, `:1315-1316`),
- * `useFoldersSidebarShown` (`:25-41`), `useIsSidebarCollapsed` (`:52-59`), вызов
- * `setFoldersSidebarShown` из эффекта показа колонки (`:30-34`) и итоговый
- * эффект body-классов (`:90-112`):
+ * Взято у оригинала: сигналы `useHasFoldersSidebar` (`:11-18`, сырая настройка),
+ * `useFoldersSidebarShown` (`:25-41`: настройка И экран шире плавающего
+ * диапазона; эффект ставит `body.has-folders-sidebar` и резервирует место
+ * колонке — `setFoldersSidebarShown`), `useHasFolders` (`:43-50`, пишет владелец
+ * папок `lib/appDialogsManager.ts` из `onFiltersLengthChange`, `:1315-1316`),
+ * `useIsSidebarCollapsed` (`:52-59`), `useHasOpenLeftTabs` (`:61-74`, пишет
+ * `AppSidebarLeft.onSomethingOpenInsideChange`, читает кнопка поиска свёрнутой
+ * колонки), `useIsLeftSearchActive` (`:76-88`) и итоговый эффект body-классов
+ * (`:90-112`):
  *   `has-horizontal-folders` = есть папки ∧ (не свёрнута ∨ экран мобильный)
  *                              ∧ колонка не показана;
  *   `has-vertical-folders`   = есть папки ∧ не горизонтальный.
@@ -17,56 +21,64 @@
  * статического `has-horizontal-folders` в `index.html` больше нет.
  *
  * ── Расхождения с оригиналом ────────────────────────────────────────────────
- *  1. «Колонка показана» — не производная (`createMemo` от сырой настройки
- *     `useHasFoldersSidebar` и `!mediaSizes.isLessThanFloatingLeftSidebar`,
- *     `:25-28`), а сигнал с сеттером, который пишет колонка
- *     (`components/Sidebar.tsx`): вертикальная колонка у нас ещё React
- *     (`components/folders/FoldersSidebar.tsx`, отложенная задача 17) и
- *     рендерится по своему условию. Класс обязан совпадать с тем, что
- *     нарисовано, иначе при расхождении условий ряд и колонка окажутся на
- *     экране вместе — поэтому факт «показана» сообщает тот, кто её рисует.
- *     Сырая настройка `useHasFoldersSidebar` (`:11-18`) не заводится: у нас
- *     это `tabsInSidebar` стора настроек, а другого читателя, кроме условия
- *     колонки, у неё нет: бургер-морф (`AppSidebarLeft.construct`, tweb
- *     `sidebarLeft/index.ts:431-442`) читает «показана», а не настройку.
- *  2. Класс `body.has-folders-sidebar` (`:32`) не ставится. Его правила в
- *     `_leftSidebar.scss` прячут `.left-sidebar-burger` без `.is-visible`
- *     (`:549-570`), а у нас `is-visible` носят кнопки внутри бургера
- *     (`sidebarLeft/index.ts`), не сам контейнер — включённый класс спрятал бы
- *     кнопку «назад» открытого поиска в режиме «папки слева». Это предмет
- *     порта колонки папок (задача 2-7 волны 7).
- *  3. «Свёрнута» пишет хост колонки (`Sidebar.tsx`, порт `setSidebarLeftWidth`,
- *     ВРЕМЕННО до Э4-1) и ручка ресайза класса; в плавающем
- *     диапазоне 601–925px сигнал ложен; у tweb он = `isUserCollapsedLeft() &&
- *     !isMobile` (`src/index.ts:224-228`) и в этом диапазоне истинен. Сигнал
- *     следует тому, что колонка рисует (`is-collapsed`), — расхождение самой
- *     колонки (`left-sidebar.md` § 8.2), не этого стора.
- *  4. `useMediaSizes()` (реактивный стор `helpers/mediaSizes.ts:46-52`) у нас не
- *     портирован (шапка `core/dom/mediaSizes.ts`) — активный экран здесь
- *     сигнал, который кормит событие `changeScreen` того же инстанса.
- *  5. `useHasOpenLeftTabs` (`:61-74`) не заводится: его читатель (кнопка
- *     поиска свёрнутой колонки) не портирован. `useIsLeftSearchActive`
- *     (`:76-88`) есть — его читает бургер-морф класса колонки; пишет сеттер
- *     `AppSidebarLeft.isSearchActive` (tweb `sidebarLeft/index.ts:134-139`),
- *     который пока зовёт React-владелец поиска (`Sidebar.tsx`, ВРЕМЕННО до 2-3).
+ *  1. `useHasFoldersSidebar` — без сеттера: это чтение настройки `tabsInSidebar`
+ *     (`stores/appSettings.solid.ts`, над zustand `settings.tsx`), а не второй
+ *     держатель того же факта. У tweb сигнал пишут два места — старт
+ *     (`src/index.ts:527-528`) и вкладка «Папки» по `settings_updated`
+ *     (`chatFolders.tsx:275-282`); у нас оба заменяет подписка на настройку.
+ *  2. «Свёрнута» пишет эффект `setSidebarLeftWidth` (`src/index.ts`) и ручка
+ *     ресайза класса; в плавающем диапазоне 601–925px сигнал ложен; у tweb он =
+ *     `isUserCollapsedLeft() && !isMobile` (`src/index.ts:224-228`) и в этом
+ *     диапазоне истинен. Сигнал следует тому, что колонка рисует (`is-collapsed`),
+ *     — расхождение самой колонки (`left-sidebar.md` § 8.2), не этого стора.
+ *  3. `useMediaSizes()` (реактивный стор `helpers/mediaSizes.ts:46-52`) у нас не
+ *     портирован (шапка `core/dom/mediaSizes.ts`) — активный экран и «уже
+ *     плавающего диапазона» здесь сигналы, которые кормят события `changeScreen`
+ *     и `resize` того же инстанса.
  */
-import { createEffect, createRoot, createSignal } from 'solid-js'
+import { createEffect, createMemo, createRoot, createSignal } from 'solid-js'
 import mediaSizes, { ScreenSize } from '@core/dom/mediaSizes'
 import { setFoldersSidebarShown } from '@core/dom/updateColumnWidths'
+import { useAppSettings } from '@stores/appSettings.solid'
 
-const foldersSidebarShownSignal = createRoot(() => {
-  const [shown, setShown] = createSignal(false)
-
-  // `:30-34`: панель резервирует место — правая колонка начинает всплывать
-  // раньше, а чат становится уже (`updateColumnWidths`).
-  createEffect(() => {
-    setFoldersSidebarShown(shown())
-  })
-
-  return [shown, setShown] as const
+// расхождение 1
+const hasFoldersSidebarSignal = createRoot(() => {
+  const [appSettings] = useAppSettings()
+  const hasFoldersSidebar = createMemo(() => !!appSettings.tabsInSidebar)
+  return [hasFoldersSidebar] as const
 })
 
-/** Показана ли вертикальная колонка папок на экране (расхождение 1). */
+/** Сырая настройка «папки слева» — не зависит от ширины экрана (расхождение 1). */
+export default function useHasFoldersSidebar() {
+  return hasFoldersSidebarSignal
+}
+
+// расхождение 3
+const mediaSizesSignals = createRoot(() => {
+  const [activeScreen, setActiveScreen] = createSignal(mediaSizes.activeScreen)
+  const [isLessThanFloatingLeftSidebar, setIsLessThanFloatingLeftSidebar] = createSignal(mediaSizes.isLessThanFloatingLeftSidebar)
+  mediaSizes.addEventListener('changeScreen', (_from, to) => setActiveScreen(to))
+  mediaSizes.addEventListener('resize', () => setIsLessThanFloatingLeftSidebar(mediaSizes.isLessThanFloatingLeftSidebar))
+  return { activeScreen, isLessThanFloatingLeftSidebar }
+})
+
+// `:25-41` — показана ли колонка на самом деле: настройка И экран шире 925px
+// (панель прячет SCSS, `_foldersSidebar.scss` `until-floating-left-sidebar`).
+// Единственный источник `body.has-folders-sidebar` и места колонки в раскладке
+// (`updateColumnWidths`), чтобы все три совпадали.
+const foldersSidebarShownSignal = createRoot(() => {
+  const [hasFoldersSidebar] = hasFoldersSidebarSignal
+  const shown = createMemo(() => hasFoldersSidebar() && !mediaSizesSignals.isLessThanFloatingLeftSidebar())
+
+  createEffect(() => {
+    const visible = shown()
+    document.body.classList.toggle('has-folders-sidebar', visible)
+    setFoldersSidebarShown(visible)
+  })
+
+  return [shown] as const
+})
+
 export function useFoldersSidebarShown() {
   return foldersSidebarShownSignal
 }
@@ -86,9 +98,24 @@ const isSidebarCollapsedSignal = createRoot(() => {
   return [isSidebarCollapsed, setIsSidebarCollapsed] as const
 })
 
-/** Свёрнута ли левая колонка в полосу аватаров (расхождение 3). */
+/** Свёрнута ли левая колонка в полосу аватаров (расхождение 2). */
 export function useIsSidebarCollapsed() {
   return isSidebarCollapsedSignal
+}
+
+// Whether something is open inside the left sidebar (a tab — settings,
+// archive, etc., search input focused, or a forum). Mirrors the
+// `has-open-tabs` class on `#column-left`; pushed in from
+// AppSidebarLeft.onSomethingOpenInsideChange so reactive consumers (e.g.
+// the collapsed-search-trigger button) can drive their visibility from a
+// signal instead of CSS selectors that combine three sidebar classes.
+const hasOpenLeftTabsSignal = createRoot(() => {
+  const [hasOpenLeftTabs, setHasOpenLeftTabs] = createSignal(false)
+  return [hasOpenLeftTabs, setHasOpenLeftTabs] as const
+})
+
+export function useHasOpenLeftTabs() {
+  return hasOpenLeftTabsSignal
 }
 
 // tweb :76-88 — Whether the left sidebar's search input is focused / search
@@ -99,17 +126,9 @@ const isLeftSearchActiveSignal = createRoot(() => {
   return [isLeftSearchActive, setIsLeftSearchActive] as const
 })
 
-/** Открыт ли глобальный поиск колонки (расхождение 5). */
 export function useIsLeftSearchActive() {
   return isLeftSearchActiveSignal
 }
-
-// расхождение 4
-const activeScreen = createRoot(() => {
-  const [screen, setScreen] = createSignal(mediaSizes.activeScreen)
-  mediaSizes.addEventListener('changeScreen', (_from, to) => setScreen(to))
-  return screen
-})
 
 createRoot(() => {
   const [hasFolders] = hasFoldersSignal
@@ -117,7 +136,10 @@ createRoot(() => {
   const [isSidebarCollapsed] = isSidebarCollapsedSignal
   createEffect(() => {
     const hasFolders$ = hasFolders()
-    const hasHorizontal = (!isSidebarCollapsed() || activeScreen() < ScreenSize.medium) &&
+    // Folders render as horizontal tabs unless the vertical panel is actually
+    // shown — `!foldersSidebarShown()` is exactly the old
+    // `!hasFoldersSidebar() || isLessThanFloatingLeftSidebar`.
+    const hasHorizontal = (!isSidebarCollapsed() || mediaSizesSignals.activeScreen() < ScreenSize.medium) &&
       !foldersSidebarShown()
     const hasVertical = !hasHorizontal
     document.body.classList.toggle('has-horizontal-folders', hasFolders$ && hasHorizontal)

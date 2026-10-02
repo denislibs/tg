@@ -122,7 +122,7 @@ export default function AddMembersScreen({
       />
 
       {selected.length > 0 && (
-        <button type="button" className="btn-circle btn-corner rp" onClick={() => void confirm()}>
+        <button type="button" className="btn-circle btn-corner rp is-visible" onClick={() => void confirm()}>
           {saving ? <Spinner size={24} /> : <TgIcon name="check" />}
         </button>
       )}
