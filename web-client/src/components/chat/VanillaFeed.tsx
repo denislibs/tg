@@ -258,7 +258,7 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
           // здесь исполняет хост, потому что у нашего движка звонков вход не по
           // одному ключу: `startOutgoing` берёт КАРТОЧКУ собеседника, и
           // собирается она ровно так же, как в журнале звонков
-          // (`components/CallsView.tsx:35-52`) — из зеркала пиров.
+          // (`sidebarLeft/tabs/calls.solid.tsx::callUser`) — из зеркала пиров.
           //
           // Гейт `toUserId()` оригинала (звонок бывает только личный) у нас
           // выражается знаком ключа: `isAnyChat` — «это группа или канал».
