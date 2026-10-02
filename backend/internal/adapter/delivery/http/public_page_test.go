@@ -155,7 +155,7 @@ func TestPublicPages(t *testing.T) {
 			"tgme_page_post", `class="tgme_widget_message_author"`, "Лента",
 			"<b>Привет</b><br>мир &lt;script&gt;", "1.5K", "1 сен 2026 в 12:30",
 			`property="og:description" content="Привет мир &lt;script&gt;"`,
-			`href="https://web.msgr.test/#@lenta/5">Открыть в приложении</a>`,
+			`href="https://web.msgr.test/#@lenta?post=5">Открыть в приложении</a>`,
 			`<a href="https://t.me.test/lenta/5">t.me.test/lenta</a>`,
 		}, []string{"<script>"}},
 		{"/lenta/99", 404, []string{"Пост не найден", `href="https://web.msgr.test/#@lenta"`}, nil},
