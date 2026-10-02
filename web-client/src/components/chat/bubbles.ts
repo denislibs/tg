@@ -151,10 +151,10 @@ import { collectLightboxItems } from '@components/mediaViewer/collectLightboxIte
 import { cachedPeer } from '@core/peerCache'
 import { getBubbleMedia, getStrippedThumb, isMediaSpoiler, type InputStickerSetID, type MyDocument } from '@core/media/messageMedia'
 import { getMediaId, getMessageKind } from '@core/messages/messageKind'
-import type { MessageActionPhoneCall } from '@core/messages/messageAction'
+import { isCallLogMessage, type CallLogMessage } from '@lib/calls/helpers/callLog'
+import wrapCallBubble from '@components/wrappers/callBubble'
 import isUnreadByReadCursor from '@core/messages/isUnreadByReadCursor'
 import Icon from '@components/icon'
-import { formatVideoTime } from '@components/messages/videoPlayback'
 import PeerTitle, { type PeerTitleManagers } from './peerTitle'
 import { generateTail } from './tail'
 import { avatarNew } from '@components/avatar'
@@ -1621,68 +1621,28 @@ export default class ChatBubbles implements BubbleGroupsHost {
   }
 
   /**
-   * ЛОГ ЗВОНКА — порт ветки tweb `messageMediaCall` (bubbles.ts:8650-8704).
+   * ЛОГ ЗВОНКА — порт ветки tweb `messageMediaCall` (bubbles.ts:10067-10083);
+   * сам бабл строит `wrappers/callBubble.ts` (порт tweb того же файла).
    *
-   * Бабл у звонка ОБЫЧНЫЙ, а не служебная пилюля: у оригинала за это отвечает
-   * `SERVICE_AS_REGULAR` (:278 — в наборе ровно один элемент,
-   * `messageActionPhoneCall`), у нас ту же роль играет `getMessageKind`
-   * (`'call'`, а не `'service'`), см. ветку сервисного бабла в `renderMessage`.
+   * Бабл у звонка ОБЫЧНЫЙ, а не служебная пилюля: у оригинала служебное
+   * `messageActionPhoneCall` подменяется синтетическим медиа `messageMediaCall`
+   * (:8669-8675), у нас ту же роль играет `getMessageKind` (`'call'`, а не
+   * `'service'`), см. ветку сервисного бабла в `renderMessage`.
    *
-   * Узел встаёт В ТЕЛО сообщения (`messageDiv.append(div)`, :8703) — как и
-   * строка документа, вложения (`attachment`) у ветки нет вовсе
-   * (`noAttachmentDivNeeded`, :8699). `data-type` на самом `.bubble-call`
-   * (:8656-8657) — не украшение: по нему обработчик клика узнаёт, каким
-   * перезванивать (`callDiv.dataset.type`, :3194).
-   *
-   * РАСХОЖДЕНИЕ ОДНО, и оно в подписи длительности: оригинал зовёт
-   * `wrapCallDuration` → `formatDuration(duration, 2)` (wrapDuration.ts:32),
-   * то есть «1 минута 20 секунд» через МНОЖЕСТВЕННЫЕ формы langPack. Ни
-   * `formatDuration`, ни плюрализации у нашего словаря нет вовсе, поэтому
-   * длительность идёт тем же `m:ss`, что у таймкода видео
-   * (`formatVideoTime`), — как её и рисовала снесённая React-лента.
+   * Узел встаёт В ТЕЛО сообщения (`messageDiv.append(element)`, :10080) — как
+   * и строка документа, вложения у ветки нет (`noAttachmentDivNeeded`, :10077).
+   * Своего блока времени у бабла нет (`noMessageInfo`, :9004-9012): время
+   * печатает строка статуса самого бабла, см. `renderMessageMeta`.
    */
-  private renderCall(action: MessageActionPhoneCall, isOut: boolean, bubble: HTMLElement, messageDiv: HTMLElement): void {
-    const t = useI18nStore.getState().t
+  private renderCall(message: CallLogMessage, bubble: HTMLElement, messageDiv: HTMLElement): void {
+    const { element } = wrapCallBubble({
+      action: message.action,
+      isOut: this.isOutMessage(message),
+      date: message.date,
+    })
 
-    const div = document.createElement('div')
-    div.classList.add('bubble-call')
-    div.append(Icon(action.pFlags?.video ? 'videocamera' : 'phone', 'bubble-call-icon'))
-
-    // tweb :8656-8657 — тип звонка на самом узле; его читает обработчик клика.
-    div.dataset.type = action.pFlags?.video ? 'video' : 'voice'
-
-    const title = document.createElement('div')
-    title.classList.add('bubble-call-title')
-    // tweb :8662-8665 — четыре ключа: сторона × «видео или нет».
-    title.textContent = t(isOut
-      ? (action.pFlags?.video ? 'CallMessageVideoOutgoing' : 'CallMessageOutgoing')
-      : (action.pFlags?.video ? 'CallMessageVideoIncoming' : 'CallMessageIncoming'))
-
-    const subtitle = document.createElement('div')
-    subtitle.classList.add('bubble-call-subtitle')
-
-    // tweb :8669-8688 — СОСТОЯВШИЙСЯ звонок отличает НАЛИЧИЕ длительности, а не
-    // причина: она есть у любого завершённого. Ветка `default` оригинала
-    // (`phoneCallDiscardReasonHangup` и всё прочее) — «отменён».
-    if(action.duration !== undefined) {
-      subtitle.append(document.createTextNode(formatVideoTime(action.duration)))
-    } else {
-      subtitle.classList.add('is-reason') // tweb :8687
-      subtitle.append(document.createTextNode(t(
-        action.reason?._ === 'phoneCallDiscardReasonBusy' ? 'Call.StatusBusy'
-        : action.reason?._ === 'phoneCallDiscardReasonMissed' ? 'ChatList.Service.Call.Missed'
-        : 'CallMessageCancelled',
-      )))
-    }
-
-    // tweb :8691 — стрелка ПЕРЕД текстом, зелёная у состоявшегося звонка и
-    // красная у сорвавшегося.
-    subtitle.prepend(Icon('arrow_next', 'bubble-call-arrow', 'bubble-call-arrow-' + (action.duration !== undefined ? 'green' : 'red')))
-
-    div.append(title, subtitle)
-
-    bubble.classList.add('call-message') // tweb :8702
-    messageDiv.append(div)
+    bubble.classList.add('call-message') // tweb :10079
+    messageDiv.append(element)
   }
 
   /**
@@ -2126,12 +2086,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // взаимоисключительны, вложение у сообщения ровно одно.
     this.renderContact(message, messageDiv)
 
-    // Лог звонка — соседняя ветка того же switch'а оригинала (:8650), поэтому
+    // Лог звонка — соседняя ветка того же switch'а оригинала (:10067), поэтому
     // и здесь она стоит рядом с медиа. Само сообщение при этом СЛУЖЕБНОЕ:
     // из пилюли его увёл `getMessageKind` (см. ветку сервисного бабла выше),
-    // как `SERVICE_AS_REGULAR` уводит его в tweb.
-    if(message._ === 'messageService' && message.action._ === 'messageActionPhoneCall') {
-      this.renderCall(message.action, this.isOutMessage(message), bubble, messageDiv)
+    // как подмена на `messageMediaCall` (:8669-8675) уводит его в tweb.
+    if(isCallLogMessage(message)) {
+      this.renderCall(message, bubble, messageDiv)
     }
 
     const replyContainer = this.renderReply(message, bubbleContainer, messageDiv)
@@ -2318,69 +2278,65 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // вторым `.time` в переиспользованном ряду.
     previousReactions?.querySelectorAll(':scope > .time').forEach((node) => node.remove())
 
-    // Точка вставки у оригинала меняется (подпись документа, floating), но
-    // базовая именно эта; остальные приедут вместе со своими подсистемами.
-    const timeSpan = createMessageTime(message)
-    // Значок отправки — порт `setBubbleSendingStatus` (:6382-6408). САМ статус
-    // считает общий с React-лентой `messageToConvMsg` по правилу оригинала
-    // (:9716-9719): ошибка → «отправляется» → прочитано/доставлено. Второго
-    // вычислителя того же здесь нет намеренно.
-    //
-    // «Прочитано» (две галочки) пока не наступает: правило требует горизонта
-    // ИСХОДЯЩИХ (`read_outbox_max_id`), а лента его не получает — в
-    // `BubblesManagers` есть только горизонт входящих, под границу
-    // непрочитанных. Названо задачей.
-    setSendingStatus(timeSpan, messageToConvMsg(message, rootScope.myId, {
-      isMegagroup: this.chat.isMegagroup,
-    }).status)
-    // У ЛОГА ЗВОНКА время уезжает В ПОДПИСЬ — tweb `appendBubbleTime(bubble,
-    // subtitle, () => subtitle.append(timeSpan))` (:8693): длительность и время
-    // стоят одной строкой, иначе бабл в две строки распирало бы третьей.
-    // Реестр `bubble.timeAppenders` оригинала (:468-470) не портируется: он
-    // нужен, чтобы ПЕРЕВЫЛОЖИТЬ время, когда бабл меняет форму, а из наших
-    // веток такую точку вставки объявляет ровно одна.
-    const callSubtitle = messageDiv.querySelector<HTMLElement>('.bubble-call-subtitle')
-    callSubtitle?.querySelector(':scope > .time')?.remove()
-
-    // МЕДИА БЕЗ ПОДПИСИ — tweb :9257-9276. `has-floating-time` уже стоит на
-    // бабле (bubbleClasses.ts:129, тем же условием `isMessageEmpty`, каким
-    // оригинал считает `isFloatingTime`): `.message` у такого бабла ПУСТОЕ тело
-    // без текста, и класть время внутрь него нельзя — часть текстовых стилей
-    // `.message` (`float:right` вместо `position:absolute`) растянула бы время
-    // на всю ширину колонки, а не прижала к углу медиа. Оригинал в этой ветке
-    // вовсе СНОСИТ `messageDiv` из DOM (:9261 `messageDiv.remove()`) и кладёт
-    // время ПРЯМО на `.bubble-content` — соседом `.message`, а не потомком; мы
-    // `messageDiv` не удаляем (он остаётся пустым узлом тела — другая, отдельно
-    // прожитая часть порта), но адрес вставки времени — тот же сосед.
-    // `is-floating` — CSS-класс времени (`_chatBubble.scss:1818-1848`,
-    // `position: absolute; bottom: .1875rem; right: .1875rem`), без него узел
-    // остаётся в потоке `.message` со `position: static`.
+    // БАБЛ БЕЗ БЛОКА ВРЕМЕНИ — tweb :9004-9012 (`noMessageInfo`). У лога звонка
+    // время печатает строка статуса самого бабла (`wrappers/callBubble.ts`), а
+    // статуса доставки нет вовсе (tdesktop `customInfoLayout() = true`): ни
+    // `.time`, ни распорки, ни времени в ряду реакций (:11298-11301).
     const isFloatingTime = bubble.classList.contains('has-floating-time')
-    if (isFloatingTime) timeSpan.classList.add('is-floating')
+    const timeSpan = isCallLogMessage(message) ? undefined : createMessageTime(message)
+    if (timeSpan) {
+      // Точка вставки у оригинала меняется (подпись документа, floating), но
+      // базовая именно эта; остальные приедут вместе со своими подсистемами.
+      // Значок отправки — порт `setBubbleSendingStatus` (:6382-6408). САМ статус
+      // считает общий с React-лентой `messageToConvMsg` по правилу оригинала
+      // (:9716-9719): ошибка → «отправляется» → прочитано/доставлено. Второго
+      // вычислителя того же здесь нет намеренно.
+      //
+      // «Прочитано» (две галочки) пока не наступает: правило требует горизонта
+      // ИСХОДЯЩИХ (`read_outbox_max_id`), а лента его не получает — в
+      // `BubblesManagers` есть только горизонт входящих, под границу
+      // непрочитанных. Названо задачей.
+      setSendingStatus(timeSpan, messageToConvMsg(message, rootScope.myId, {
+        isMegagroup: this.chat.isMegagroup,
+      }).status)
 
-    if (callSubtitle) {
-      callSubtitle.append(timeSpan)
-    } else if (isFloatingTime) {
-      bubbleContainer.append(timeSpan)
-    } else {
-      // tweb bubbles.ts:9029 `messageDiv.append(timeSpan, clearfix())`. Время —
-      // `float: right`; когда тело кончается блоком (цитата, код), float уходит
-      // строкой ниже и в высоту `.message` не входит — абсолютная `.time-inner`
-      // ложилась на текст цитаты. Распорка `clear: both` (tweb base.scss:2328)
-      // возвращает эту строку в высоту тела. Правка застаёт ряд реакций на
-      // месте (см. выше) — время и распорка встают ПЕРЕД ним, как на сборке
-      // (дамп tweb 03-bubbles-123.json: `span.clearfix` → `reactions-element`).
-      const tail = previousReactions?.parentElement === messageDiv ? previousReactions : null
-      messageDiv.insertBefore(timeSpan, tail)
-      messageDiv.insertBefore(clearfix(), tail)
-    }
+      // МЕДИА БЕЗ ПОДПИСИ — tweb :9257-9276. `has-floating-time` уже стоит на
+      // бабле (bubbleClasses.ts:129, тем же условием `isMessageEmpty`, каким
+      // оригинал считает `isFloatingTime`): `.message` у такого бабла ПУСТОЕ тело
+      // без текста, и класть время внутрь него нельзя — часть текстовых стилей
+      // `.message` (`float:right` вместо `position:absolute`) растянула бы время
+      // на всю ширину колонки, а не прижала к углу медиа. Оригинал в этой ветке
+      // вовсе СНОСИТ `messageDiv` из DOM (:9261 `messageDiv.remove()`) и кладёт
+      // время ПРЯМО на `.bubble-content` — соседом `.message`, а не потомком; мы
+      // `messageDiv` не удаляем (он остаётся пустым узлом тела — другая, отдельно
+      // прожитая часть порта), но адрес вставки времени — тот же сосед.
+      // `is-floating` — CSS-класс времени (`_chatBubble.scss:1818-1848`,
+      // `position: absolute; bottom: .1875rem; right: .1875rem`), без него узел
+      // остаётся в потоке `.message` со `position: static`.
+      if (isFloatingTime) timeSpan.classList.add('is-floating')
 
-    // tweb :7638-7640. У ПОСТА КАНАЛА читающий узел — время, а не бабл: пост
-    // бывает выше вьюпорта, и «увиден» он, только когда пользователь домотал до
-    // его конца. Время стоит в конце тела, поэтому целью наблюдения оригинал
-    // берёт именно его.
-    if(this.chat.isBroadcast) {
-      setUnreadObserver?.(timeSpan)
+      if (isFloatingTime) {
+        bubbleContainer.append(timeSpan)
+      } else {
+        // tweb bubbles.ts:9029 `messageDiv.append(timeSpan, clearfix())`. Время —
+        // `float: right`; когда тело кончается блоком (цитата, код), float уходит
+        // строкой ниже и в высоту `.message` не входит — абсолютная `.time-inner`
+        // ложилась на текст цитаты. Распорка `clear: both` (tweb base.scss:2328)
+        // возвращает эту строку в высоту тела. Правка застаёт ряд реакций на
+        // месте (см. выше) — время и распорка встают ПЕРЕД ним, как на сборке
+        // (дамп tweb 03-bubbles-123.json: `span.clearfix` → `reactions-element`).
+        const tail = previousReactions?.parentElement === messageDiv ? previousReactions : null
+        messageDiv.insertBefore(timeSpan, tail)
+        messageDiv.insertBefore(clearfix(), tail)
+      }
+
+      // tweb :7638-7640. У ПОСТА КАНАЛА читающий узел — время, а не бабл: пост
+      // бывает выше вьюпорта, и «увиден» он, только когда пользователь домотал до
+      // его конца. Время стоит в конце тела, поэтому целью наблюдения оригинал
+      // берёт именно его.
+      if(this.chat.isBroadcast) {
+        setUnreadObserver?.(timeSpan)
+      }
     }
 
     this.renderMessageReplies(message, bubble, bubbleContainer)
@@ -2418,7 +2374,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
       // построению: `appendReactionsElementToBubble` (:9849-9856) зовётся на
       // СБОРКЕ бабла, а обновление (bubbles.ts:1285-1289) узел не трогает.
       const owner = isFloatingTime ? (contentWrapper ?? bubbleContainer) : messageDiv
-      if (!isFloatingTime) reactionsElement.append(timeSpan)
+      if (!isFloatingTime && timeSpan) reactionsElement.append(timeSpan)
       if (reactionsElement.parentElement !== owner) owner.append(reactionsElement)
     }
   }

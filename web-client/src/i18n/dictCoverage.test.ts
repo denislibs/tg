@@ -25,6 +25,7 @@ const SRC = resolve(process.cwd(), 'src')
  */
 const NO_TRANSLATION: Record<string, string> = {
   'AutoDownloadSettings.Delimeter': 'запятая с пробелом — пунктуация перечисления, а не текст',
+  'Chat.CallMessage.TimeAndDuration': '«%1$@, %2$@» — время и длительность звонка через запятую, пунктуация, а не текст',
   'Appearance.Color.Hex': 'HEX — название цветовой модели, в переводах Telegram не переводится',
   'Appearance.Color.RGB': 'RGB — название цветовой модели, в переводах Telegram не переводится',
   TelegramFeaturesUrl: 'адрес канала подсказок, а не текст; свой канал языка приходит серверным пакетом',

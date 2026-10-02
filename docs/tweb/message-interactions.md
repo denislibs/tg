@@ -732,7 +732,7 @@ time|code-header-button|reaction|bubble-beside-button|poll-message-content`; ц�
 | дайс/эмодзи-слот | тултип с «отправить такой же» | 3123–3153 |
 | режим selection | `cancelEvent` + toggle выбора | 3156–3172 |
 | `.contact` | открыть peer / скопировать телефон | 3174–3190 |
-| `.bubble-call` | `callUser` | 3192–3196 |
+| `.bubble-call` | `callUser` (у конференции — `joinConference`, у нас её нет) | 3617–3633 (812502980) |
 | `.is-buy` (инвойс) | `PopupPayment` | 3198–3234 |
 | `.media-spoiler-container` | раскрыть спойлер | 3236–3243 |
 | `reaction-element` | тоггл реакции / поиск по тегу (§7.3) | 3245–3279 |

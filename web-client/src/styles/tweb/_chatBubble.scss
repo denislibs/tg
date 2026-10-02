@@ -1359,7 +1359,12 @@
   &-call {
     cursor: pointer;
     padding: .125rem 0;
-    padding-left: 2.5625rem;
+    // The icon hangs off the end of the block, the way every official client
+    // draws it — tdesktop paints it at `paintw - historyCallIconPosition.x`
+    // (history_view_call.cpp:120), iOS at `boundingWidth - width - 8`
+    // (ChatMessageCallBubbleContentNode.swift:351).
+    padding-inline-start: .125rem;
+    padding-inline-end: 3.5625rem;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -1368,8 +1373,12 @@
 
     &-icon {
       position: absolute;
-      left: .3125rem;
+      inset-inline-end: .3125rem;
+      inset-block: 0;
+      height: 1.5rem;
+      margin-block: auto;
       font-size: 1.5rem;
+      color: var(--primary-color);
     }
 
     &-title {
@@ -1398,11 +1407,14 @@
       margin-top: .0625rem;
       margin-left: -.1875rem;
       line-height: var(--messages-secondary-line-height);
-
-      &.is-reason:before {
-        margin-right: .0625rem;
-      }
     }
+
+    &-status {
+      white-space: nowrap;
+    }
+
+    // tweb `&-participants` (ряд участников конференции) не перенесён:
+    // конференц-звонков нет (О-1 волны 7, см. `wrappers/callBubble.ts`).
   }
 
   .document-message {

@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 45,
+      "version": 46,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -653,24 +653,44 @@
           "value": "Call Back"
         },
         {
-          "key": "CallMessageCancelled",
-          "value": "Cancelled call"
-        },
-        {
           "key": "CallMessageIncoming",
           "value": "Incoming Call"
+        },
+        {
+          "key": "CallMessageIncomingDeclined",
+          "value": "Declined Call"
+        },
+        {
+          "key": "CallMessageIncomingMissed",
+          "value": "Missed Call"
         },
         {
           "key": "CallMessageOutgoing",
           "value": "Outgoing Call"
         },
         {
+          "key": "CallMessageOutgoingMissed",
+          "value": "Cancelled Call"
+        },
+        {
           "key": "CallMessageVideoIncoming",
           "value": "Incoming Video Call"
         },
         {
+          "key": "CallMessageVideoIncomingDeclined",
+          "value": "Declined Video Call"
+        },
+        {
+          "key": "CallMessageVideoIncomingMissed",
+          "value": "Missed Video Call"
+        },
+        {
           "key": "CallMessageVideoOutgoing",
           "value": "Outgoing Video Call"
+        },
+        {
+          "key": "CallMessageVideoOutgoingMissed",
+          "value": "Cancelled Video Call"
         },
         {
           "key": "CallSettings.Camera",
@@ -914,6 +934,10 @@
         {
           "key": "Chat.Alert.Forward.ShowSenderName",
           "value": "Show sender name"
+        },
+        {
+          "key": "Chat.CallMessage.TimeAndDuration",
+          "value": "%1$@, %2$@"
         },
         {
           "key": "Chat.ChannelBadge",
@@ -1282,10 +1306,6 @@
         {
           "key": "ChatList.Mute.8Hours",
           "value": "For 8 Hours"
-        },
-        {
-          "key": "ChatList.Service.Call.Missed",
-          "value": "Missed Call"
         },
         {
           "key": "ChatLocation",
@@ -6116,7 +6136,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 45,
+      "version": 46,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -7562,12 +7582,28 @@
           "value": "Исходящий видеозвонок"
         },
         {
-          "key": "ChatList.Service.Call.Missed",
+          "key": "CallMessageOutgoingMissed",
+          "value": "Отменённый звонок"
+        },
+        {
+          "key": "CallMessageIncomingMissed",
           "value": "Пропущенный звонок"
         },
         {
-          "key": "CallMessageCancelled",
-          "value": "Отменённый звонок"
+          "key": "CallMessageIncomingDeclined",
+          "value": "Отклонённый звонок"
+        },
+        {
+          "key": "CallMessageVideoOutgoingMissed",
+          "value": "Отменённый видеозвонок"
+        },
+        {
+          "key": "CallMessageVideoIncomingMissed",
+          "value": "Пропущенный видеозвонок"
+        },
+        {
+          "key": "CallMessageVideoIncomingDeclined",
+          "value": "Отклонённый видеозвонок"
         },
         {
           "key": "StarsTransactionsOutgoing",
@@ -12269,7 +12305,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 28,
+      "version": 29,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -15359,6 +15395,46 @@
             "one_value": "%d utilisateur",
             "other_value": "%d utilisateurs"
           }
+        },
+        {
+          "key": "CallMessageIncoming",
+          "value": "Appel entrant"
+        },
+        {
+          "key": "CallMessageIncomingDeclined",
+          "value": "Appel refusé"
+        },
+        {
+          "key": "CallMessageIncomingMissed",
+          "value": "Appel manqué"
+        },
+        {
+          "key": "CallMessageOutgoing",
+          "value": "Appel sortant"
+        },
+        {
+          "key": "CallMessageOutgoingMissed",
+          "value": "Appel annulé"
+        },
+        {
+          "key": "CallMessageVideoIncoming",
+          "value": "Appel vidéo entrant"
+        },
+        {
+          "key": "CallMessageVideoIncomingDeclined",
+          "value": "Appel vidéo refusé"
+        },
+        {
+          "key": "CallMessageVideoIncomingMissed",
+          "value": "Appel vidéo manqué"
+        },
+        {
+          "key": "CallMessageVideoOutgoing",
+          "value": "Appel vidéo sortant"
+        },
+        {
+          "key": "CallMessageVideoOutgoingMissed",
+          "value": "Appel vidéo annulé"
         }
       ]
     },
@@ -15369,7 +15445,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 28,
+      "version": 29,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -18485,6 +18561,46 @@
             "one_value": "%d Nutzer",
             "other_value": "%d Nutzer"
           }
+        },
+        {
+          "key": "CallMessageIncoming",
+          "value": "Eingehender Anruf"
+        },
+        {
+          "key": "CallMessageIncomingDeclined",
+          "value": "Abgelehnter Anruf"
+        },
+        {
+          "key": "CallMessageIncomingMissed",
+          "value": "Verpasster Anruf"
+        },
+        {
+          "key": "CallMessageOutgoing",
+          "value": "Ausgehender Anruf"
+        },
+        {
+          "key": "CallMessageOutgoingMissed",
+          "value": "Abgebrochener Anruf"
+        },
+        {
+          "key": "CallMessageVideoIncoming",
+          "value": "Eingehender Videoanruf"
+        },
+        {
+          "key": "CallMessageVideoIncomingDeclined",
+          "value": "Abgelehnter Videoanruf"
+        },
+        {
+          "key": "CallMessageVideoIncomingMissed",
+          "value": "Verpasster Videoanruf"
+        },
+        {
+          "key": "CallMessageVideoOutgoing",
+          "value": "Ausgehender Videoanruf"
+        },
+        {
+          "key": "CallMessageVideoOutgoingMissed",
+          "value": "Abgebrochener Videoanruf"
         }
       ]
     },
@@ -18495,7 +18611,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 28,
+      "version": 29,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -21605,6 +21721,46 @@
             "one_value": "%d usuario",
             "other_value": "%d usuarios"
           }
+        },
+        {
+          "key": "CallMessageIncoming",
+          "value": "Llamada entrante"
+        },
+        {
+          "key": "CallMessageIncomingDeclined",
+          "value": "Llamada rechazada"
+        },
+        {
+          "key": "CallMessageIncomingMissed",
+          "value": "Llamada perdida"
+        },
+        {
+          "key": "CallMessageOutgoing",
+          "value": "Llamada saliente"
+        },
+        {
+          "key": "CallMessageOutgoingMissed",
+          "value": "Llamada cancelada"
+        },
+        {
+          "key": "CallMessageVideoIncoming",
+          "value": "Videollamada entrante"
+        },
+        {
+          "key": "CallMessageVideoIncomingDeclined",
+          "value": "Videollamada rechazada"
+        },
+        {
+          "key": "CallMessageVideoIncomingMissed",
+          "value": "Videollamada perdida"
+        },
+        {
+          "key": "CallMessageVideoOutgoing",
+          "value": "Videollamada saliente"
+        },
+        {
+          "key": "CallMessageVideoOutgoingMissed",
+          "value": "Videollamada cancelada"
         }
       ]
     },
@@ -21615,7 +21771,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 29,
+      "version": 30,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -24898,6 +25054,46 @@
             "many_value": "%d користувачів",
             "other_value": "%d користувача"
           }
+        },
+        {
+          "key": "CallMessageIncoming",
+          "value": "Вхідний дзвінок"
+        },
+        {
+          "key": "CallMessageIncomingDeclined",
+          "value": "Відхилений дзвінок"
+        },
+        {
+          "key": "CallMessageIncomingMissed",
+          "value": "Пропущений дзвінок"
+        },
+        {
+          "key": "CallMessageOutgoing",
+          "value": "Вихідний дзвінок"
+        },
+        {
+          "key": "CallMessageOutgoingMissed",
+          "value": "Скасований дзвінок"
+        },
+        {
+          "key": "CallMessageVideoIncoming",
+          "value": "Вхідний відеодзвінок"
+        },
+        {
+          "key": "CallMessageVideoIncomingDeclined",
+          "value": "Відхилений відеодзвінок"
+        },
+        {
+          "key": "CallMessageVideoIncomingMissed",
+          "value": "Пропущений відеодзвінок"
+        },
+        {
+          "key": "CallMessageVideoOutgoing",
+          "value": "Вихідний відеодзвінок"
+        },
+        {
+          "key": "CallMessageVideoOutgoingMissed",
+          "value": "Скасований відеодзвінок"
         }
       ]
     }
