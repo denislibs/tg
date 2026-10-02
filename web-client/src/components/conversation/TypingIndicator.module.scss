@@ -1,4 +1,7 @@
-// TypingIndicator — три прыгающие точки (печатает) / одна мигающая (запись).
+// Три прыгающие точки (печатает) / одна мигающая (запись). React-компонент
+// `TypingIndicator` снесён с шапкой чата (К-3: шапка — `chat/topbar.ts` на классах tweb
+// `_peerTyping.scss`); единственный потребитель модуля — `TypingDots` в
+// `peerProfile.solid.tsx`.
 // Порт tweb .peer-typing-text / .peer-typing-record. Цвет — через --typing-color.
 // ВАЖНО: keyframes держим ВНУТРИ модуля. CSS Modules скоупит и @keyframes, и
 // ссылку animation-name согласованно; при глобальных keyframes (в index.scss)

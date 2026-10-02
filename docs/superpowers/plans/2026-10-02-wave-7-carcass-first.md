@@ -584,7 +584,7 @@ React-`GroupEditFlow`.
 | Б-26 | Теги сохранённых (`SavedTagsPanel.tsx`) | К-3 | `chat/topbar` + `savedReactionTags` | П-5 |
 | Б-27 | Кнопки-углы ленты («вниз», упоминания, реакции: `CornerButton`, `ScrollDownFab`) | К-3 | `input.ts:638` (`constructGoDownButton`) | К-4 (часть ядра ввода) |
 | Б-28 | Попапы действий над сообщением из `Chat.tsx` (`ChatMsgActionPopups.tsx`, `useChatPopups.tsx` 327) | К-3 | попапы 2C | П-5 |
-| Б-29 | Статус и «печатает» в шапке — ядро шапки берёт `getPeerStatus`; полная модель статуса | К-3 | `appImManager.ts:3454-3816` | П-4 |
+| Б-29 | Статус и «печатает» в шапке — ядро шапки (`chat/topbar.ts`) держит `setPeerStatus`/`getUserStatus`/`getChatStatus` функциями модуля на зеркалах `chatsStore`/`peerCache`; полная модель статуса и «N онлайн» у групп (`getOnlines`, было в `useChatInfoCard` по присутствию участников) | К-3 | `appImManager.ts:3454-3816` | П-4 |
 | Б-30 | Запись голоса и кружков (`useVoiceRecorder.ts` 366, `VoiceRecordingPanel`, `RoundRecordPreview`) | К-4 | `chat/recording/*`, `nativeVideoRecorder.ts` | П-6 |
 | Б-31 | Send-as (`SendAsButton.tsx`, `useSendAs.ts`) | К-4 | `chat/sendAs.ts` (418) | П-6 |
 | Б-32 | Меню отправки, расписание, без звука (`SendMenu`, `SchedulePopup`) | К-4 | `sendContextMenu.ts` (154), `scheduleSendingPopup.tsx` | П-6 |
@@ -605,6 +605,9 @@ React-`GroupEditFlow`.
 | Б-47 | Ссылка «пропустить к чату» и имена ориентиров колонок (`attachSkipToContent`, `setLandmarkLabels`): ключей `AccDescr.SkipToConversation`/`ChatList`/`ChatInfo` в лангпаке нет | К-2 (не было) | `helpers/dom/appLandmarks.ts`, `appImManager.ts:349-352`, `:3199-3201` | П-4 |
 | Б-48 | Хэши страницы бэкенда `#@имя/<seq>` и `#<peerId>/<seq>` (кнопка публичной страницы, `public_page.go:40-41`) — `onHashChange` tweb принимает только `#@имя`, `#<peerId>`, `#/im?p=…&post=` | К-2 | `appImManager.ts:1912-2031` | **закрыто PR #380**: кнопка поста публичной страницы ведёт на `#@имя?post=<seq>` (схема tweb `onHashChangeUnsafe` → `openUsername({lastMsgId})`) |
 | Б-49 | Пилюля «доступна новая сборка» (`useUpdateStore`) — только в мессенджере (остров `#react-overlays` монтирует `bootstrapIm`), на экране входа её нет; бейдж `api: ok/down` (dev-индикатор `App.tsx`, не tweb) снят без замены | К-2 | `sidebarLeft/index.ts:202-216`, `:367-384` (`updateBtn`, `checkForUpdates`) | О-100 / П-3 (кнопка «Обновить» в шапке колонки) |
+| Б-55 | Кнопки звонка в шапке (голос и видео в `ChatHeader.tsx`; у tweb — `btnCall` с `verifyCallButton` по `userFull.phone_calls_available`, видео — пункт меню ⋮; групповой звонок `btnGroupCall`/RTMP) | К-3 | `topbar.ts:1035-1057`, `:361-416`, `appImManager.callUser` | П-4 (звонки 5-5) |
+| Б-56 | Замок и зелёное имя секретного чата в шапке (наше расширение, у tweb секретных чатов нет) | К-3 | — | вне волны: секретные чаты на паузе (`SECRET_CHATS_ENABLED=false`) |
+| Б-57 | Шапка темы форума: имя темы, иконка, замок закрытой темы, подпись «В <группа>» (`TopicProfileStatus`); наш `PeerTitle` темы не знает | К-3 | `topbar.ts:1625-1636` (`wrapPeerTitle({threadId})`), `:1736-1742` | П-2 (с форумом, Б-3) |
 
 ### Пачки бэклога
 

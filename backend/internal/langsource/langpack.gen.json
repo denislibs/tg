@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 48,
+      "version": 49,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -1190,6 +1190,13 @@
         {
           "key": "Chat.Service.Call.Missed",
           "value": "Missed"
+        },
+        {
+          "key": "Chat.Title.Comments",
+          "forms": {
+            "one_value": "%d Comment",
+            "other_value": "%d Comments"
+          }
         },
         {
           "key": "Chat.UnpinAll.Text",
@@ -6328,7 +6335,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 48,
+      "version": 49,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -11013,6 +11020,15 @@
         {
           "key": "Message.Context.Selection.Forward",
           "value": "Переслать выбранные"
+        },
+        {
+          "key": "Chat.Title.Comments",
+          "forms": {
+            "one_value": "%d комментарий",
+            "few_value": "%d комментария",
+            "many_value": "%d комментариев",
+            "other_value": "%d комментария"
+          }
         },
         {
           "key": "messages",

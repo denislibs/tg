@@ -102,7 +102,6 @@ const DEBT: Record<string, number> = {
   'src/core/dialogToChat.ts': 1,
   'src/core/hooks/useGroupInfo.ts': 8,
   'src/core/hooks/useStoryViewer.ts': 3,
-  'src/core/hooks/useTypingLabel.ts': 32,
   'src/core/messageToConvMsg.ts': 13,
   'src/core/peers/getPeerTitle.ts': 5,
   'src/core/serviceMsg.ts': 36,

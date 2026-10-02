@@ -525,8 +525,11 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (`sidebarLeft/index.ts:163`). Итог: ru 1518.
 // Задача 2-4 волны 7 (кнопка `#new-menu`, tweb `sidebarLeft/index.ts:1113-1129`): у ru
 // +1 ключ tweb lang.ts:66 `ChatAutomation.NewChats` — `aria-label` кнопки. Итог: ru 1519.
+// Шаг К-3 волны 7 (ядро шапки чата `chat/topbar.ts`): у ru +1 ключ tweb lang.ts:4172
+// `Chat.Title.Comments` (с формами числа) — заголовок треда комментариев
+// (`topbar.ts` `setTitleManual`, tweb :1596-1610). Итог: ru 1531, `plural` 48 → 49.
 const COMPOSITION = {
-  ru: { keys: 1530, plural: 48 },
+  ru: { keys: 1531, plural: 49 },
   uk: { keys: 827, plural: 35 },
   es: { keys: 798, plural: 34 },
   de: { keys: 799, plural: 35 },
@@ -701,8 +704,9 @@ const COMPOSITION = {
 // снесённого `PermissionsScreen` (разбор — у `COMPOSITION` выше).
 // Задачей 2-1 волны 7 — у ru +1 ключ tweb `StarsRating.Back` (разбор — там же).
 // Задачей 2-4 волны 7 — у ru +1 ключ tweb `ChatAutomation.NewChats` (разбор — там же).
+// Шагом К-3 волны 7 — у ru +1 ключ tweb `Chat.Title.Comments` (разбор — там же).
 const FINGERPRINT = {
-  ru: '9a90c28d',
+  ru: 'd9dd401d',
   uk: 'ffe46f66',
   es: '1c8d911a',
   de: 'dcd1c9f9',
