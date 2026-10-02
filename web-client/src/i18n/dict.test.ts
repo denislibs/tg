@@ -498,12 +498,21 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `LeaveMegaMenu`, `AreYouSureDeleteAndExitName`. У всех пяти −2: снесённое React-меню строки
 // было единственным читателем `MarkAsUnread` (пункт — О-72) и `ChatList.Context.Preview`
 // (пункт — О-86). Итог (поверх 1-4): ru 1480, uk 780, es 754, de 755, fr 749.
+// Бабл лога звонка (порт tweb wrappers/callBubble.ts): заголовок говорит, чем кончился
+// звонок, — +6 ключей tweb lang.ts:2009-2014 (`CallMessageOutgoingMissed`,
+// `CallMessageIncomingMissed`, `CallMessageIncomingDeclined` и их `CallMessageVideo*`)
+// у ru; у uk/es/de/fr звонковых строк не было вовсе — +10 (те же шесть и четыре
+// базовых `CallMessage{Incoming,Outgoing}`, `CallMessageVideo{Incoming,Outgoing}`).
+// У ru −2 ключа без читателей: наш выдуманный `CallMessageCancelled` и
+// `ChatList.Service.Call.Missed` (их звала только прежняя подпись причины).
+// `Chat.CallMessage.TimeAndDuration` — пунктуация, в `NO_TRANSLATION` покрытия.
+// Итог: ru 1484, uk 790, es 764, de 765, fr 759.
 const COMPOSITION = {
-  ru: { keys: 1480, plural: 45 },
-  uk: { keys: 780, plural: 33 },
-  es: { keys: 754, plural: 32 },
-  de: { keys: 755, plural: 33 },
-  fr: { keys: 749, plural: 32 },
+  ru: { keys: 1484, plural: 45 },
+  uk: { keys: 790, plural: 33 },
+  es: { keys: 764, plural: 32 },
+  de: { keys: 765, plural: 33 },
+  fr: { keys: 759, plural: 32 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -663,12 +672,13 @@ const COMPOSITION = {
 // Задачей 1-2 волны 7 — у ru +20 ключей меню диалога и его попапов, у всех пяти минус
 // `MarkAsUnread` и `ChatList.Context.Preview` снесённого React-меню (разбор — у
 // `COMPOSITION` выше).
+// Баблом лога звонка — ключи исхода звонка (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '908b0084',
-  uk: '5517859f',
-  es: 'fa206f0e',
-  de: '1df82eb9',
-  fr: '1773852f',
+  ru: 'f82eb6f9',
+  uk: 'b76f1da0',
+  es: 'f76ec947',
+  de: 'aeb3a69c',
+  fr: '24c61a5c',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

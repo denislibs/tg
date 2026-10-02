@@ -1014,6 +1014,17 @@ const uk = {
     many_value: '%d користувачів',
     other_value: '%d користувача',
   },
+  // ── Бабл лога звонка (tweb lang.ts:2005-2014, wrappers/callBubble.ts) ──
+  CallMessageIncoming: 'Вхідний дзвінок',
+  CallMessageIncomingDeclined: 'Відхилений дзвінок',
+  CallMessageIncomingMissed: 'Пропущений дзвінок',
+  CallMessageOutgoing: 'Вихідний дзвінок',
+  CallMessageOutgoingMissed: 'Скасований дзвінок',
+  CallMessageVideoIncoming: 'Вхідний відеодзвінок',
+  CallMessageVideoIncomingDeclined: 'Відхилений відеодзвінок',
+  CallMessageVideoIncomingMissed: 'Пропущений відеодзвінок',
+  CallMessageVideoOutgoing: 'Вихідний відеодзвінок',
+  CallMessageVideoOutgoingMissed: 'Скасований відеодзвінок',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(uk)

@@ -1,13 +1,14 @@
 // Порт tweb `src/components/wrappers/wrapDuration.ts:1-30` (812502980) — подпись
 // длительности формами числа langPack.
 //
-// Расхождение с оригиналом: только не-plain ветка `wrapFormattedDuration`
-// (`:24-29`). Plain-ветку (`:19-22`) и `wrapCallDuration`/`wrapLeftDuration`/
-// `wrapSlowModeLeftDuration`/`wrapStoriesStealthModeDuration` (`:32-58`) никто
-// не зовёт; потребители — «Данные и память» (`storageQuota.tsx:145`) и
-// «Автоудаление» (`autoDeleteMessages/options.ts`).
+// Расхождение с оригиналом: только не-plain ветки `wrapFormattedDuration`
+// (`:24-29`) и `wrapCallDuration` (`:32-34`). Plain-ветку (`:19-22`) и
+// `wrapLeftDuration`/`wrapSlowModeLeftDuration`/`wrapStoriesStealthModeDuration`
+// (`:36-58`) никто не зовёт; потребители — «Данные и память»
+// (`storageQuota.tsx:145`), «Автоудаление» (`autoDeleteMessages/options.ts`) и
+// бабл звонка (`wrappers/callBubble.ts`).
 import { i18n, join, type LangPackKey } from '@lib/langPack'
-import { DurationType, type FormattedDuration } from '@helpers/formatDuration'
+import formatDuration, { DurationType, type FormattedDuration } from '@helpers/formatDuration'
 
 export const DURATION_LANG_KEYS: { [type in DurationType]: LangPackKey } = {
   [DurationType.Seconds]: 'Seconds',
@@ -26,4 +27,9 @@ export function wrapFormattedDuration(formatted: FormattedDuration): HTMLSpanEle
   fragment.append(...join(elements, false))
 
   return fragment
+}
+
+/** tweb :32-34 — длительность звонка: два старших разряда («1 минута, 5 секунд»). */
+export function wrapCallDuration(duration: number): HTMLSpanElement {
+  return wrapFormattedDuration(formatDuration(duration, 2))
 }

@@ -10,7 +10,8 @@
 //     лента обязана донести до враппера (tweb bubbles.ts кладёт в него весь
 //     `Message.message`, а наши врапперы берут срез);
 //   • ПЕРЕЗВОН по баблу лога звонка — ветка `bubble-call` в делегированном
-//     обработчике (tweb bubbles.ts:3192-3196) и сам бабл (:8650-8704).
+//     обработчике (tweb bubbles.ts:3617-3633) и место вызова бабла
+//     (:10067-10083; сам бабл — `wrappers/callBubble.ts`, свой тест рядом).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
@@ -362,44 +363,60 @@ describe('ChatBubbles — «прослушано» у голосового и к
 
 describe('ChatBubbles — лог звонка', () => {
   it('исходящий видеозвонок: .bubble-call с data-type=video внутри тела', async () => {
-    const message = callMessage({ id: 8, out: true, video: true, duration: 65 })
+    const message = callMessage({ id: 8, out: true, video: true, duration: 65, reason: 'phoneCallDiscardReasonHangup' })
     bubbles = new ChatBubbles(chatContext(), managersWith([message]))
     await openFeed(bubbles)
     await settle()
 
     const bubble = bubbleOf(bubbles, 8)
-    // Пилюлей звонок НЕ рисуется (роль `SERVICE_AS_REGULAR`, tweb :278).
+    // Пилюлей звонок НЕ рисуется (tweb подменяет действие медиа `messageMediaCall`).
     expect(bubble.classList.contains('service')).toBe(false)
     expect(bubble.classList.contains('call-message')).toBe(true)
 
     const call = bubble.querySelector<HTMLElement>('.bubble-call')!
     expect(call.dataset.type).toBe('video')
-    // Узел лежит В ТЕЛЕ сообщения (tweb :8703), вложения у ветки нет.
+    // Узел лежит В ТЕЛЕ сообщения (tweb :10080), вложения у ветки нет.
     expect(call.parentElement?.classList.contains('message')).toBe(true)
     expect(bubble.querySelector('.attachment')).toBeNull()
 
     expect(call.querySelector('.bubble-call-title')!.textContent).toBe('Outgoing Video Call')
-    const subtitle = call.querySelector<HTMLElement>('.bubble-call-subtitle')!
-    expect(subtitle.textContent).toContain('1:05')
-    // Состоявшийся звонок — ЗЕЛЁНАЯ стрелка (tweb :8691).
-    expect(subtitle.querySelector('.bubble-call-arrow-green')).not.toBeNull()
-    // Время уезжает В ПОДПИСЬ (tweb `appendBubbleTime`, :8693).
-    expect(subtitle.querySelector(':scope > .time')).not.toBeNull()
+    const status = call.querySelector<HTMLElement>('.bubble-call-status')!
+    expect(status.textContent).toContain('1 minute, 5 seconds')
+    expect(call.querySelector('.bubble-call-arrow-green')).not.toBeNull()
   })
 
-  it('пропущенный входящий: причина вместо длительности и КРАСНАЯ стрелка', async () => {
-    const message = callMessage({ id: 9, reason: 'phoneCallDiscardReasonMissed' })
+  it('у бабла звонка НЕТ блока времени: время печатает строка статуса (tweb `noMessageInfo`)', async () => {
+    const message = callMessage({ id: 12, out: true, duration: 3, reason: 'phoneCallDiscardReasonHangup' })
+    bubbles = new ChatBubbles(chatContext(), managersWith([message]))
+    await openFeed(bubbles)
+    await settle()
+
+    const bubble = bubbleOf(bubbles, 12)
+    expect(bubble.querySelector('.time')).toBeNull()
+    expect(bubble.querySelector('.clearfix')).toBeNull()
+    expect(bubble.querySelector('.bubble-call-status')!.textContent).toMatch(/^\d{1,2}:\d{2}/)
+  })
+
+  it('отменённый исходящий у звонящего — «Cancelled Call», красная стрелка, только время', async () => {
+    const message = callMessage({ id: 9, out: true, reason: 'phoneCallDiscardReasonMissed' })
     bubbles = new ChatBubbles(chatContext(), managersWith([message]))
     await openFeed(bubbles)
     await settle()
 
     const call = bubbleOf(bubbles, 9).querySelector<HTMLElement>('.bubble-call')!
     expect(call.dataset.type).toBe('voice')
-    expect(call.querySelector('.bubble-call-title')!.textContent).toBe('Incoming Call')
-    const subtitle = call.querySelector<HTMLElement>('.bubble-call-subtitle')!
-    expect(subtitle.classList.contains('is-reason')).toBe(true)
-    expect(subtitle.textContent).toContain('Missed Call')
-    expect(subtitle.querySelector('.bubble-call-arrow-red')).not.toBeNull()
+    expect(call.querySelector('.bubble-call-title')!.textContent).toBe('Cancelled Call')
+    expect(call.querySelector('.bubble-call-status')!.textContent).toMatch(/^\d{1,2}:\d{2}( [AP]M)?$/)
+    expect(call.querySelector('.bubble-call-arrow-red')).not.toBeNull()
+  })
+
+  it('отклонённый — у адресата «Declined Call»', async () => {
+    const message = callMessage({ id: 13, reason: 'phoneCallDiscardReasonBusy' })
+    bubbles = new ChatBubbles(chatContext(), managersWith([message]))
+    await openFeed(bubbles)
+    await settle()
+
+    expect(bubbleOf(bubbles, 13).querySelector('.bubble-call-title')!.textContent).toBe('Declined Call')
   })
 
   it('клик по баблу звонка перезванивает ТЕМ ЖЕ типом, что лежит на узле', async () => {

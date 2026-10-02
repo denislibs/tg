@@ -911,6 +911,17 @@ const fr = {
     one_value: '%d utilisateur',
     other_value: '%d utilisateurs',
   },
+  // ── Бабл лога звонка (tweb lang.ts:2005-2014, wrappers/callBubble.ts) ──
+  CallMessageIncoming: 'Appel entrant',
+  CallMessageIncomingDeclined: 'Appel refusé',
+  CallMessageIncomingMissed: 'Appel manqué',
+  CallMessageOutgoing: 'Appel sortant',
+  CallMessageOutgoingMissed: 'Appel annulé',
+  CallMessageVideoIncoming: 'Appel vidéo entrant',
+  CallMessageVideoIncomingDeclined: 'Appel vidéo refusé',
+  CallMessageVideoIncomingMissed: 'Appel vidéo manqué',
+  CallMessageVideoOutgoing: 'Appel vidéo sortant',
+  CallMessageVideoOutgoingMissed: 'Appel vidéo annulé',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(fr)

@@ -454,15 +454,47 @@ div.message > div.contact data-peer-id
 ```
 Классы: `contact-message`; `mediaRequiresMessageDiv = true`.
 
-## 4.11 Звонок (`messageMediaCall` — синтезируется из `messageActionPhoneCall`, 7349–7354, 8651–8704)
+## 4.11 Звонок (`messageMediaCall` — синтезируется из `messageActionPhoneCall`/`messageActionConferenceCall`, 8669–8675; ветка 10067–10083; бабл — `wrappers/callBubble.ts`)
 
 ```
-div.message > div.bubble-call data-type=video|voice
-  ├ Icon phone|videocamera .bubble-call-icon
-  ├ div.bubble-call-title      («Outgoing/Incoming (Video) Call»)
-  └ div.bubble-call-subtitle[.is-reason] > Icon arrow_next.bubble-call-arrow-(green|red) + длительность/причина + time
+div.message > button.bubble-call[data-type=video|voice]      (Button, noRipple)
+  ├ Icon phone|videocamera|group .bubble-call-icon            (у ПРАВОГО края: inset-inline-end)
+  ├ div.bubble-call-title     — ЧЕМ кончился звонок (`getPhoneCallLangKey`, callBubble.ts:49-71)
+  └ div.bubble-call-subtitle
+      ├ Icon arrow_next .bubble-call-arrow.bubble-call-arrow-(green|red)   (red — нет `duration`)
+      └ span.bubble-call-status  — «время» или «время, длительность»
+                                   (`Chat.CallMessage.TimeAndDuration` + `wrapCallDuration`)
 ```
-Класс `call-message`. Это единственный `SERVICE_AS_REGULAR`-экшен (bubbles.ts:275–279).
+
+Заголовок по `out`/`reason`/`video` (как tdesktop `MediaCall::Text`):
+
+| сторона | reason | заголовок |
+|---|---|---|
+| out | `Missed` | `CallMessage(Video)OutgoingMissed` — «Cancelled (Video) Call» |
+| out | прочее (вкл. `Busy`) | `CallMessage(Video)Outgoing` |
+| in | `Missed` | `CallMessage(Video)IncomingMissed` — «Missed (Video) Call» |
+| in | `Busy` | `CallMessage(Video)IncomingDeclined` — «Declined (Video) Call» |
+| in | прочее | `CallMessage(Video)Incoming` |
+
+Класс `call-message` (`--min-content-width: 200px`). Блока времени и статуса доставки у бабла
+НЕТ (`noMessageInfo`, 9004–9012; tdesktop `customInfoLayout() = true`): время печатает строка
+статуса, в ряд реакций время не переезжает (11298–11301). Клик — `callUser(peerId, data-type)`,
+у конференции — `joinConference` по `data-conference-msg-id` (3617–3633). Конференция: заголовок
+по состоянию (`getConferenceCallLangKey`), ряд участников `.bubble-call-participants`
+(`StackedAvatars` 16px + счётчик).
+
+**У нас (порт 812502980).** `web-client/src/components/wrappers/callBubble.ts` — бабл 1:1,
+точка вызова — `ChatBubbles.renderCall` (`components/chat/bubbles.ts`), `noMessageInfo` —
+`renderMessageMeta` (для `isCallLogMessage` время не строится). Длительность —
+`wrapCallDuration` (`wrappers/wrapDuration.ts`, формы числа: «1 минута, 5 секунд»). Стили
+`.bubble-call*` — `styles/tweb/_chatBubble.scss`, scss-parity расходится только рядом
+участников. Расхождение одно: конференц-звонков нет (О-1 волны 7) — ветка
+`messageActionConferenceCall`, ряд участников и `data-conference-msg-id` не перенесены.
+Исходы, которые производит сервер (`backend/internal/usecase/chat/phonecall.go:150-176`):
+разговор — `Hangup`/`Disconnect` + `duration` (`0` у отвеченного короче секунды →
+«1 second», как у tweb `formatDuration`); не ответили и бросил звонящий — `Missed`; адресат
+отклонил или занят — `Busy`. Пины — `wrappers/callBubble.test.ts` (матрица исход × сторона ×
+видео, ru-перевод), `chat/bubbles.actions.test.ts` (место вызова, нет `.time`, перезвон).
 
 ## 4.12 Опрос / чек-лист (8757–8838)
 

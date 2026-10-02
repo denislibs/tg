@@ -921,6 +921,17 @@ const de = {
     one_value: '%d Nutzer',
     other_value: '%d Nutzer',
   },
+  // ── Бабл лога звонка (tweb lang.ts:2005-2014, wrappers/callBubble.ts) ──
+  CallMessageIncoming: 'Eingehender Anruf',
+  CallMessageIncomingDeclined: 'Abgelehnter Anruf',
+  CallMessageIncomingMissed: 'Verpasster Anruf',
+  CallMessageOutgoing: 'Ausgehender Anruf',
+  CallMessageOutgoingMissed: 'Abgebrochener Anruf',
+  CallMessageVideoIncoming: 'Eingehender Videoanruf',
+  CallMessageVideoIncomingDeclined: 'Abgelehnter Videoanruf',
+  CallMessageVideoIncomingMissed: 'Verpasster Videoanruf',
+  CallMessageVideoOutgoing: 'Ausgehender Videoanruf',
+  CallMessageVideoOutgoingMissed: 'Abgebrochener Videoanruf',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(de)
