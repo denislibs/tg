@@ -334,6 +334,23 @@ describe('вкладка «Разрешения» — сохранение (на
     expect(groups.editChatDefaultBannedRights.mock.calls[0][1].pFlags).toEqual({ invite_users: true, pin_messages: true })
   })
 
+  it('Save на подтверждении закрывает ТОЛЬКО эту вкладку — нижняя остаётся открытой (стенд: колонка не схлопывается)', async() => {
+    const base = await open()
+    const tab = await open()
+    flip(toggleOf(permissionRows(tab)[2]))
+    await waitFor(() => saveIcon(tab).classList.contains('appear-zoom--active'))
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+    const popup = await waitFor(() => document.querySelector('.popup-confirmation'))
+    popupButton(popup, lang.Save).click()
+    await waitFor(() => !tab.container.isConnected)
+    await pause(400)
+
+    expect(groups.editChatDefaultBannedRights).toHaveBeenCalledTimes(1)
+    expect(base.container.isConnected).toBe(true)
+    expect(base.container.classList.contains('active')).toBe(true)
+  })
+
   it('Discard закрывает без записи', async() => {
     const tab = await open()
     flip(toggleOf(permissionRows(tab)[2]))
