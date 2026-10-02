@@ -1,6 +1,7 @@
 import { HttpError, type RestClient } from '../net/restClient'
 import { mapPeerProfile, type PeerProfile, type RawPeerProfile } from './authManager'
 import type { Birthday } from '../peers/peer'
+import type { TextWithEntities } from '../media/messageMedia'
 
 // A partial profile edit. `undefined` leaves a field unchanged; for birthday,
 // `null` explicitly clears it.
@@ -50,22 +51,36 @@ export function newProfileManager({ rest, onMeChanged, getMe }: ProfileDeps) {
     },
 
     /**
+     * Порт tweb `appProfileManager.updateUserNote` (`contacts.updateContactNote`):
+     * заметка о контакте, пустой текст её стирает. Ответ — `Bool`.
+     */
+    async updateUserNote(userId: number, note: TextWithEntities): Promise<void> {
+      await rest.put(`/contacts/${userId}/note`, { note })
+    },
+
+    /**
+     * Порт tweb `appProfileManager.suggestUserBirthday` (`users.suggestBirthday`):
+     * служебка-предложение в личной переписке; она же приезжает кадром ленты.
+     */
+    async suggestUserBirthday(userId: number, birthday: Birthday): Promise<void> {
+      await rest.post(`/users/${userId}/suggest_birthday`, { birthday })
+    },
+
+    /**
      * Свободно ли имя. Ответ — конструктор `Bool`, как у
      * `account.checkUsername` оригинала.
      *
      * Негодная форма имени приезжает ОТКАЗОМ (400 `USERNAME_INVALID`), а не
-     * успешным «занято»: прежняя пара `{available, reason}` была отказом,
-     * одетым в успех. Форму имени экран и так проверяет сам, до запроса, — так
-     * что отказ здесь означает только гонку с чужим правилом.
+     * успешным «занято», — и отказом же уходит вызывающему, как у оригинала:
+     * поле имени (`components/usernameInputField.ts`, tweb
+     * `usernameInputField.ts:83-93`) различает по `err.type` «занято» и
+     * «негодно». Клиентское правило формы (`isUsernameValid`) мягче серверного
+     * (шапка `lib/richtext/validators.ts`), поэтому этот отказ — обычный путь
+     * для имени в 3–4 символа, а не гонка.
      */
     async checkUsername(username: string): Promise<boolean> {
-      try {
-        const res = await rest.get<{ _: string }>('/username/available', { u: username })
-        return res._ === 'boolTrue'
-      } catch (e) {
-        if (e instanceof HttpError && e.status === 400) return false
-        throw e
-      }
+      const res = await rest.get<{ _: string }>('/username/available', { u: username })
+      return res._ === 'boolTrue'
     },
 
     async setUsername(username: string): Promise<SetUsernameResult> {

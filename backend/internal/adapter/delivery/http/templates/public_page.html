@@ -1,71 +1,138 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Messenger: {{if eq .Kind "user"}}@{{.Username}}{{else}}{{.Title}}{{end}}</title>
-<meta property="og:title" content="{{.Title}}">
+<title>{{.PageTitle}}</title>
+{{if .NoIndex}}<meta name="robots" content="noindex, nofollow">{{end}}
+<meta property="og:title" content="{{.OGTitle}}">
+{{if .OGImage}}<meta property="og:image" content="{{.OGImage}}">{{end}}
 <meta property="og:site_name" content="Messenger">
-<meta property="og:description" content="{{.About}}">
-{{if .HasPhoto}}<meta property="og:image" content="/@{{.Username}}/photo">{{end}}
+<meta property="og:description" content="{{.OGDescription}}">
+<meta name="twitter:card" content="summary">
+<meta property="twitter:title" content="{{.OGTitle}}">
+<meta name="twitter:description" content="{{.OGDescription}}">
+{{if .OGImage}}<meta property="twitter:image" content="{{.OGImage}}">{{end}}
 <style>
-/* Порт t.me (telegram.org/css/telegram.css): значения 1:1 */
+/* Порт t.me — telegram.org/css/telegram.css (tgme_*) и widget-frame.css
+   (tgme_widget_message, режим tme_mode); значения 1:1. Своё: имя/лого
+   Messenger, иконки (Material), фон — CSS-градиент вместо canvas-обоев. */
 :root {
   --text-color: #000;
   --second-text-color: #7d7f81;
   --accent-btn-color: #2481cc;
-  --accent-color-hover: #1c93e3;
+  --accent-color-hover: #1a8ad5;
+  --accent-link-color: #2481cc;
+  --body-bg: #fff;
   --box-bg: #fff;
+  --box-bg-blured: rgba(255, 255, 255, .84);
+  --logo-color: #363b40;
+  --bg-opacity: 1;
+  /* widget-frame.css, body.tme_mode */
+  --accent-color: #2481cc;
+  --accent-background: #2481cc1f;
+  --second-color: #7d7f81;
+  --bubble-bgcolor: #fff;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --text-color: #fff; --accent-btn-color: #1c93e3; --box-bg: #1e1e1e; }
+  :root {
+    --text-color: #fff;
+    --accent-btn-color: #1c93e3;
+    --accent-link-color: #3ca1eb;
+    --body-bg: #000;
+    --box-bg: #1e1e1e;
+    --box-bg-blured: rgba(34, 34, 34, .84);
+    --logo-color: #fff;
+    --bg-opacity: .3;
+    --accent-color: #64b5ef;
+    --accent-background: #64b5ef1f;
+    --bubble-bgcolor: #1e1e1e;
+  }
 }
-* { margin: 0; padding: 0; box-sizing: border-box; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
 body {
-  font-family: Roboto, 'Helvetica Neue', system-ui, sans-serif;
+  font-family: Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.42857143;
   color: var(--text-color);
-  min-height: 100vh;
+  background: var(--body-bg);
 }
-/* tgme_background: дефолтные обои (data-colors dbddbb,6ba587,d5d88d,88b884) */
-.bg {
+a { color: var(--accent-link-color); text-decoration: none; }
+a:hover { text-decoration: underline; }
+strong { font-weight: bold; }
+
+/* tgme_background_wrap: дефолтные обои t.me (data-colors dbddbb,6ba587,d5d88d,88b884);
+   в тёмной теме у t.me градиент под маской узора с opacity .3 */
+.tgme_background_wrap {
   position: fixed;
   inset: 0;
+  pointer-events: none;
   z-index: -1;
-  background: linear-gradient(150deg, #dbddbb, #6ba587, #d5d88d, #88b884);
+  background: var(--body-bg);
 }
-.head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px;
+.tgme_background {
+  position: absolute;
+  inset: 0;
+  opacity: var(--bg-opacity);
+  background:
+    radial-gradient(circle at 20% 20%, #dbddbb 0, transparent 55%),
+    radial-gradient(circle at 80% 30%, #6ba587 0, transparent 55%),
+    radial-gradient(circle at 25% 80%, #d5d88d 0, transparent 55%),
+    radial-gradient(circle at 80% 85%, #88b884 0, transparent 55%),
+    #a8c49a;
 }
-.brand {
-  display: flex;
+
+.tgme_page_wrap { color: var(--text-color); }
+.tgme_head_wrap {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 54px;
+  padding: 10px 16px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  background: var(--box-bg-blured);
+  -webkit-backdrop-filter: blur(25px);
+  backdrop-filter: blur(25px);
+  z-index: 1;
+}
+.tgme_head { display: flex; justify-content: space-between; }
+.tgme_head_brand {
+  display: inline-flex;
   align-items: center;
   gap: 10px;
-  text-decoration: none;
-  color: #fff;
-  font-weight: bold;
+  height: 34px;
   font-size: 20px;
-  text-shadow: 0 1px 2px rgba(0,0,0,.15);
+  font-weight: bold;
+  color: var(--logo-color);
 }
-.brand svg { display: block; }
-/* tgme_head_right_btn */
-.head_btn {
+.tgme_head_brand:hover { text-decoration: none; }
+.tgme_logo { display: block; }
+a.tgme_head_right_btn {
   display: inline-block;
   font-size: 14px;
   line-height: 17px;
   font-weight: bold;
+  -webkit-font-smoothing: antialiased;
   text-transform: uppercase;
   color: #fff;
   background: var(--accent-btn-color);
   padding: 9px 16px;
+  height: 34px;
   border-radius: 17px;
-  text-decoration: none;
+  text-align: center;
+  transition: all .15s ease .15s;
 }
-/* tgme_body_wrap / tgme_page */
-.body_wrap { padding: 70px 16px 40px; }
-.page {
+a.tgme_head_right_btn:hover,
+a.tgme_head_right_btn:active {
+  text-decoration: none;
+  color: #fff;
+  background: var(--accent-color-hover);
+}
+
+.tgme_body_wrap { padding: 70px 16px 40px; }
+.tgme_page {
   position: relative;
   margin: 16px auto;
   padding: 32px 0;
@@ -73,108 +140,357 @@ body {
   background: var(--box-bg);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   border-radius: 16px;
-  text-align: center;
+  transition: all .15s ease .15s;
 }
-/* tgme_page_photo(_image): 122px круг */
-.photo { padding-bottom: 16px; }
-.photo img, .photo .initials {
+.tgme_page_post {
+  max-width: 500px;
+  padding: 3px 0 0;
+  margin: 0 auto;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+}
+.tgme_page_icon { text-align: center; margin-bottom: 20px; }
+.tgme_page_icon svg { display: inline-block; width: 48px; height: 48px; vertical-align: top; fill: #1c93e3; }
+.tgme_page_photo { text-align: center; padding-bottom: 16px; }
+.tgme_page_photo_image {
+  display: inline-block;
   width: 122px;
   height: 122px;
   border-radius: 61px;
   object-fit: cover;
+  vertical-align: top;
 }
-.photo .initials {
+.tgme_page_photo_initials {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: #fff;
   font-size: 48px;
   font-weight: 500;
-  background: {{.AvatarGradient}};
 }
-/* tgme_page_title 26/32 bold */
-.title {
+.tgme_page_title {
   font-size: 26px;
   line-height: 32px;
   font-weight: bold;
+  text-align: center;
   max-width: 340px;
   padding: 0 10px;
   margin: 0 auto;
+  color: var(--text-color);
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.verified { color: #1c93e3; font-style: normal; font-size: 20px; }
-/* tgme_page_extra 15/18 */
-.extra {
+.verified-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -4px;
+  margin-left: 8px;
+  fill: #1c93e3;
+}
+.tgme_page_extra {
   font-size: 15px;
   line-height: 18px;
+  text-align: center;
   padding: 6px 16px 0;
   color: var(--second-text-color);
 }
-/* tgme_page_description 16/25, clamp 5 */
-.description {
+.tgme_page_description,
+.tgme_page_additional {
   font-size: 16px;
   line-height: 25px;
+  text-align: center;
   margin: 10px 16px 0;
+  padding: 0;
   overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tgme_page_description {
   display: -webkit-box;
   -webkit-line-clamp: 5;
   -webkit-box-orient: vertical;
+  max-height: 125px;
+  word-break: break-word;
 }
-.action { padding: 20px 16px 0; }
-/* tgme_action_button_new + shine */
-.action a {
+.tgme_page_additional strong { -webkit-font-smoothing: antialiased; }
+.tgme_page_action { text-align: center; margin-top: 24px; line-height: 0; }
+a.tgme_action_button,
+a.tgme_action_button_new {
   font-size: 14px;
   line-height: 17px;
   font-weight: bold;
+  -webkit-font-smoothing: antialiased;
   color: #fff;
-  background-color: var(--accent-btn-color);
+  background: #5dc390;
   border-radius: 22px;
   overflow: hidden;
   display: inline-block;
   padding: 13px 24px;
   height: 42px;
   text-transform: uppercase;
+  vertical-align: top;
+}
+a.tgme_action_button:hover,
+a.tgme_action_button:active {
+  color: #fff;
+  background: #4bbc87;
   text-decoration: none;
+}
+a.tgme_action_button_new { background-color: var(--accent-btn-color); }
+a.tgme_action_button_new.shine {
   background-image: linear-gradient(270deg, rgba(100, 181, 239, 0) 48.44%, #64b5ef 75.52%, rgba(100, 181, 239, 0) 100%);
   background-repeat: no-repeat;
   animation: bg-move linear 5s infinite;
 }
-.action a:hover { background-color: var(--accent-color-hover); }
+a.tgme_action_button_new:hover,
+a.tgme_action_button_new:active {
+  color: #fff;
+  text-decoration: none;
+  background-color: var(--accent-color-hover);
+}
 @keyframes bg-move {
   0%   { background-position: -500px 0; }
   100% { background-position: 1000px 0; }
 }
-/* tgme_page_additional */
-.additional {
-  font-size: 16px;
-  line-height: 25px;
-  margin: 20px 16px 0;
+a.tgme_username_link,
+a.tgme_username_link:hover { text-decoration: none; }
+.tgme_page_additional {
+  display: none;
+  font-size: 14px;
+  line-height: 16px;
+  padding: 0 16px;
+  margin: 24px 0 0;
   color: var(--second-text-color);
+}
+
+/* Пост: tgme_widget_message (widget-frame.css, tme_mode), встроенный без iframe */
+.tgme_widget_message {
+  padding: 5px 10px 10px;
+  line-height: normal;
+  font-size: 16px;
+}
+.tgme_widget_message_user { float: left; }
+.tgme_widget_message_user a { display: inline-block; border-radius: 18px; }
+.tgme_widget_message_user_photo {
+  position: relative;
+  display: inline-block;
+  vertical-align: top;
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  overflow: hidden;
+  font-style: normal;
+  text-align: center;
+  font-size: 16px;
+  line-height: 37px;
+  font-weight: 500;
+  color: #fff;
+}
+.tgme_widget_message_user_photo img {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+}
+.tgme_widget_message_bubble {
+  position: relative;
+  margin-left: 45px;
+  border-radius: 0 15px 15px 15px;
+  background: var(--bubble-bgcolor);
+  padding: 12px 17px;
+  filter: drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.1));
+}
+.tgme_widget_message_bubble_tail {
+  pointer-events: none;
+  position: absolute;
+  left: -8px;
+  top: 0;
+  line-height: 0;
+}
+.tgme_widget_message_bubble_tail path { fill: var(--bubble-bgcolor); }
+.tgme_widget_message_author {
+  font-size: 16px;
+  line-height: 23px;
+  margin: -2px 0;
+  color: var(--accent-color);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+.tgme_widget_message_author a { color: inherit; font-weight: 500; }
+.tgme_widget_message_photo_wrap {
+  display: block;
+  margin: 12px -17px;
+  overflow: hidden;
+}
+.tgme_widget_message_photo_wrap img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.tgme_widget_message_text {
+  font-size: 16px;
+  line-height: 21px;
+  word-break: break-word;
+  margin-top: 6px;
+}
+.tgme_widget_message_text b { font-weight: 500; }
+.tgme_widget_message_text code,
+.tgme_widget_message_text pre { font-family: monospace; white-space: pre-wrap; }
+.tgme_widget_message_text pre { padding: 0; margin: 0; }
+.tgme_widget_message_text blockquote {
+  display: inline-block;
+  width: fit-content;
+  margin: 4px 0;
+  padding: 2px 34px 2px 12px;
+  border-radius: 4px;
+  background: linear-gradient(var(--accent-color), var(--accent-color)) no-repeat, var(--accent-background);
+  background-size: 2.8px 100%, auto;
+}
+.tgme_widget_message_text .tg-spoiler {
+  color: transparent;
+  background: var(--second-color);
+  border-radius: 4px;
+  transition: color .2s, background .2s;
+}
+.tgme_widget_message_text .tg-spoiler:hover { color: inherit; background: transparent; }
+.tgme_widget_message_error {
+  font-size: 16px;
+  line-height: 21px;
+  padding: 3px 0;
+  word-break: break-word;
+  color: var(--second-color);
+}
+.tgme_widget_message_footer {
+  font-size: 14px;
+  line-height: 19px;
+  color: var(--second-color);
+  margin: 5px 0 0;
+  overflow: hidden;
+}
+.tgme_widget_message_link {
+  float: left;
+  max-width: calc(100% - 100px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tgme_widget_message_link a { color: var(--accent-color); }
+.tgme_widget_message_info { text-align: right; }
+.tgme_widget_message_views,
+.tgme_widget_message_meta {
+  display: inline-block;
+  vertical-align: top;
+  white-space: nowrap;
+  margin-left: 10px;
+}
+.tgme_widget_message_views svg { width: 16px; height: 10px; margin-left: 5px; fill: currentColor; }
+.tgme_widget_message_date { color: inherit; }
+.tgme_page_widget_actions_wrap { padding: 14px 0 0; }
+.tgme_page_widget_actions {
+  padding: 16px 0;
+  background-color: var(--box-bg);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border-radius: 16px;
+  max-width: 500px;
+  margin: 0 auto;
+}
+.tgme_page_widget_action { text-align: center; line-height: 0; }
+
+@media (max-width: 480px) {
+  .tgme_page_photo_image { width: 110px; height: 110px; border-radius: 55px; }
+  .tgme_page { margin-top: 0; }
+  .tgme_page_post { margin-top: 0; }
+  .tgme_page_additional { display: block; }
 }
 </style>
 </head>
 <body>
-<div class="bg"></div>
-<div class="head">
-  <a class="brand" href="/">
-    <svg height="34" width="34" viewBox="0 0 34 34" xmlns="http://www.w3.org/2000/svg"><circle cx="17" cy="17" fill="var(--accent-btn-color)" r="17"/><path d="m7.06510669 16.9258959c5.22739451-2.1065178 8.71314291-3.4952633 10.45724521-4.1662364 4.9797665-1.9157646 6.0145193-2.2485535 6.6889567-2.2595423.1483363-.0024169.480005.0315855.6948461.192827.1814076.1361492.23132.3200675.2552048.4491519.0238847.1290844.0536269.4231419.0299841.65291-.2698553 2.6225356-1.4375148 8.986738-2.0315537 11.9240228-.2513602 1.2428753-.7499132 1.5088847-1.2290685 1.5496672-1.0413153.0886298-1.8284257-.4857912-2.8369905-1.0972863-1.5782048-.9568691-2.5327083-1.3984317-4.0646293-2.3321592-1.7703998-1.0790837-.212559-1.583655.7963867-2.5529189.2640459-.2536609 4.7753906-4.3097041 4.755976-4.431706-.0070494-.0442984-.1409018-.481649-.2457499-.5678447-.104848-.0861957-.2595946-.0567202-.3712641-.033278-.1582881.0332286-2.6794907 1.5745492-7.5636077 4.6239616-.715635.4545193-1.3638349.6759763-1.9445998.6643712-.64024672-.0127938-1.87182452-.334829-2.78737602-.6100966-1.12296117-.3376271-1.53748501-.4966332-1.45976769-1.0700283.04048-.2986597.32581586-.610598.8560076-.935815z" fill="#fff"/></svg>
-    Messenger
-  </a>
-  <a class="head_btn" href="/">Открыть Web</a>
-</div>
-<div class="body_wrap">
-  <div class="page">
-    <div class="photo">
-      {{if .HasPhoto}}<img src="/@{{.Username}}/photo" alt="">{{else}}<div class="initials">{{.Initial}}</div>{{end}}
+<div class="tgme_background_wrap"><div class="tgme_background"></div></div>
+<div class="tgme_page_wrap">
+  <div class="tgme_head_wrap">
+    <div class="tgme_head">
+      <a href="{{.AppURL}}" class="tgme_head_brand">
+        <svg class="tgme_logo" width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><circle cx="17" cy="17" r="17" fill="var(--accent-btn-color)"/><path transform="translate(5 5)" fill="#fff" d="M21 6h-2v9H6v2c0 .55.45 1 1 1h11l4 4V7c0-.55-.45-1-1-1zm-4 6V3c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v14l4-4h10c.55 0 1-.45 1-1z"/></svg>
+        Messenger
+      </a>
+      <a class="tgme_head_right_btn" href="{{.AppURL}}">Открыть Web</a>
     </div>
-    <div class="title"><span>{{.Title}}</span>{{if .Verified}} <i class="verified">✔</i>{{end}}</div>
-    <div class="extra">{{.Extra}}</div>
-    {{if .About}}<div class="description">{{.About}}</div>{{end}}
-    <div class="action"><a href="/?domain={{.Username}}">{{.ButtonText}}</a></div>
-    <div class="additional">
-      Если у вас открыт <strong>Messenger Web</strong>,<br>вы можете сразу открыть <strong>{{.Title}}</strong>.
+  </div>
+  <div class="tgme_body_wrap">
+{{- if .Post}}{{with .Post}}
+    <div class="tgme_page tgme_page_post">
+      <div class="tgme_widget_message">
+        <div class="tgme_widget_message_user">{{if .Error}}<i class="tgme_widget_message_user_photo" style="background: {{$.AvatarGradient}}">{{.Initial}}</i>{{else}}<a href="{{.AuthorHref}}"><i class="tgme_widget_message_user_photo" style="background: {{$.AvatarGradient}}">{{if .AuthorPhoto}}<img src="{{.AuthorPhoto}}" alt="">{{else}}{{.Initial}}{{end}}</i></a>{{end}}</div>
+        <div class="tgme_widget_message_bubble">
+          <i class="tgme_widget_message_bubble_tail"><svg width="9" height="20" viewBox="0 0 9 20"><path d="M8,1 L9,1 L9,20 L8,20 L8,18 C7.807,15.161 7.124,12.233 5.950,9.218 C5.046,6.893 3.504,4.733 1.325,2.738 L1.325,2.738 C0.917,2.365 0.89,1.732 1.263,1.325 C1.452,1.118 1.72,1 2,1 L8,1 Z"/></svg></i>
+          {{- if .Error}}
+          <div class="tgme_widget_message_error" dir="auto">{{.Error}}</div>
+          {{- else}}
+          <div class="tgme_widget_message_author"><a class="tgme_widget_message_owner_name" href="{{.AuthorHref}}"><span dir="auto">{{.AuthorName}}</span></a></div>
+          {{if .PhotoURL}}<a class="tgme_widget_message_photo_wrap" href="{{.PhotoURL}}"><img class="tgme_widget_message_photo" src="{{.PhotoURL}}" {{if .PhotoW}}width="{{.PhotoW}}" height="{{.PhotoH}}"{{end}} alt=""></a>{{end}}
+          {{if .Text}}<div class="tgme_widget_message_text" dir="auto">{{.Text}}</div>{{end}}
+          <div class="tgme_widget_message_footer">
+            <div class="tgme_widget_message_link"><a href="{{.Link}}">{{.LinkLabel}}</a></div>
+            <div class="tgme_widget_message_info">
+              <span class="tgme_widget_message_views">{{.Views}}<svg viewBox="0 0 16 10" aria-label="просмотры"><path d="M8 0c2.89 0 5.22 1.67 7 5-1.78 3.33-4.11 5-7 5S2.78 8.33 1 5c1.78-3.33 4.11-5 7-5zm0 1.48c-1.99 0-3.6 1.58-3.6 3.52S6.01 8.52 8 8.52s3.6-1.58 3.6-3.52S9.99 1.48 8 1.48zm0 1.85c.94 0 1.7.75 1.7 1.67S8.94 6.67 8 6.67 6.3 5.92 6.3 5 7.06 3.33 8 3.33z"/></svg></span><span class="tgme_widget_message_meta"><a class="tgme_widget_message_date" href="{{.Link}}"><time datetime="{{.DateISO}}">{{.Date}}</time></a></span>
+            </div>
+          </div>
+          {{- end}}
+        </div>
+      </div>
     </div>
+    <div class="tgme_page_widget_actions_wrap">
+      <div class="tgme_page_widget_actions">
+        <div class="tgme_page_widget_action"><a class="tgme_action_button_new shine" href="{{$.ButtonHref}}">{{$.ButtonText}}</a></div>
+      </div>
+    </div>
+{{- end}}{{else}}
+    <div class="tgme_page">
+{{- if .Icon}}
+      <div class="tgme_page_icon">
+        {{- if eq .Icon "user"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>
+        {{- else if eq .Icon "group"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+        {{- else}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/></svg>
+        {{- end}}
+      </div>
+{{- else}}
+      <div class="tgme_page_photo">
+        {{if .PhotoURL}}<img class="tgme_page_photo_image" src="{{.PhotoURL}}" alt="">{{else}}<span class="tgme_page_photo_image tgme_page_photo_initials" style="background: {{.AvatarGradient}}">{{.Initial}}</span>{{end}}
+      </div>
+      <div class="tgme_page_title" dir="auto"><span dir="auto">{{.Title}}</span>{{if .Verified}}<svg class="verified-icon" viewBox="0 0 24 24" aria-label="подтверждён"><path d="M23 12l-2.44-2.79.34-3.69-3.61-.82-1.89-3.2L12 2.96 8.6 1.5 6.71 4.69 3.1 5.5l.34 3.7L1 12l2.44 2.79-.34 3.7 3.61.82L8.6 22.5l3.4-1.47 3.4 1.46 1.89-3.19 3.61-.82-.34-3.69L23 12zm-12.91 4.72l-3.8-3.81 1.48-1.48 2.32 2.33 5.85-5.87 1.48 1.48-7.33 7.35z"/></svg>{{end}}</div>
+      {{- range .Extras}}
+      <div class="tgme_page_extra">{{.}}</div>
+      {{- end}}
+{{- end}}
+{{- if eq .Lead "contact"}}
+      <div class="tgme_page_description">Если у вас есть <strong>Messenger</strong>, вы можете сразу написать <a class="tgme_username_link" href="{{.LeadHref}}">{{.LeadName}}</a>.</div>
+{{- else if eq .Lead "privatepost"}}
+      <div class="tgme_page_description">Сообщение в закрытой группе или канале.<br>Ссылка работает, только если вы участник.</div>
+{{- else if eq .Lead "invite"}}
+      <div class="tgme_page_description">Вас пригласили в <strong>групповой чат</strong> в <strong>Messenger</strong>. Нажмите, чтобы вступить:</div>
+{{- else if eq .Lead "addstickers"}}
+      <div class="tgme_page_description">Пользователь <strong>Messenger</strong> создал набор стикеров <strong>{{.LeadName}}</strong>.</div>
+{{- else if eq .Lead "addemoji"}}
+      <div class="tgme_page_description">Пользователь <strong>Messenger</strong> создал набор эмодзи <strong>{{.LeadName}}</strong>.</div>
+{{- else if eq .Lead "stickers"}}
+      <div class="tgme_page_description">Пользователь <strong>Messenger</strong> создал <strong>набор стикеров</strong>.</div>
+{{- else if .Description}}
+      <div class="tgme_page_description" dir="auto">{{.Description}}</div>
+{{- end}}
+      <div class="tgme_page_action">
+        <a class="{{if .ButtonGreen}}tgme_action_button{{else}}tgme_action_button_new{{if .ButtonShine}} shine{{end}}{{end}}" href="{{.ButtonHref}}">{{.ButtonText}}</a>
+      </div>
+{{- if .AdditionalLead}}
+      <div class="tgme_page_additional">
+        Если у вас есть <strong>Messenger</strong>, вы можете сразу {{.AdditionalLead}} <br><strong>{{.Title}}</strong>.
+      </div>
+{{- end}}
+    </div>
+{{- end}}
   </div>
 </div>
 </body>

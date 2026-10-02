@@ -17,7 +17,7 @@ import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import { useNavigationStore } from '@stores/navigationStore'
 import { useChatStackStore, selectActive } from '@stores/chatStackStore'
 import { useChatsStore } from '@stores/chatsStore'
-import { addDialogNew, createChatList, setListClickListener } from '@components/dialogRow'
+import { addDialogNew, createChatList, setListClickListener } from '@lib/appDialogsManager'
 import type { Chat } from '@/data'
 import { chatPeerId, isDialogChat, resolveChatEntity } from './chatEntity'
 

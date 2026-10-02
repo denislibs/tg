@@ -52,20 +52,6 @@ export function newPremiumManager({ rest, onMeChanged }: PremiumDeps) {
       onMeChanged?.(user) // rt:me всем вкладкам (Stage 1C.2, Task 1)
       return { user, subscription: mapSubscription(res.subscription) }
     },
-
-    // getSubscription returns the current subscription, or null when the user has
-    // never subscribed.
-    async getSubscription(): Promise<PremiumSubscription | null> {
-      const res = await rest.get<{ subscription: RawSubscription | null }>('/me/premium/subscription')
-      return res.subscription ? mapSubscription(res.subscription) : null
-    },
-
-    // cancelSubscription disables auto-renew; the subscription stays active until
-    // it expires.
-    async cancelSubscription(): Promise<PremiumSubscription> {
-      const res = await rest.post<{ subscription: RawSubscription }>('/me/premium/cancel', {})
-      return mapSubscription(res.subscription)
-    },
   }
 }
 

@@ -15,13 +15,14 @@ import DeferredSortedVirtualList, {
 import { useDialogListSource } from '../core/hooks/useDialogListSource'
 import { useEvent } from '../core/hooks/useEvent'
 import type { Chat } from '../data'
-import FoldersSidebar, { type MainMenuHandlers } from './folders/FoldersSidebar'
+import FoldersSidebar from './folders/FoldersSidebar'
 import type { FolderContextMenuSidebar } from '../helpers/dom/createFolderContextMenu'
-import { createSettingsSliderHost, type SettingsSliderHost } from './sidebarLeft/settingsSliderHost'
-import { AppChatFoldersTab, AppEditFolderTab } from './solidJsTabs/tabs'
+import { createColumnSlider, destroyColumnSlider, openContactsTab } from './sidebarLeft/columnSlider'
+import createNewGroupTab from './sidebarLeft/tabs/createNewGroupTab'
+import type SidebarSlider from './slider'
+import { AppChatFoldersTab, AppEditFolderTab, AppNewChannelTab } from './solidJsTabs/tabs'
 import type { SliderSuperTabConstructable } from './sliderTab'
 import type SliderSuperTab from './sliderTab'
-import { toastNew } from './toast'
 import pause from '../helpers/schedulers/pause'
 import { useSettings, useSettingsStore } from '../settings'
 import useMediaQuery from '../shared/lib/useMediaQuery'
@@ -29,10 +30,9 @@ import Text from '../shared/ui/Text'
 import TgIcon from './TgIcon'
 import IconButton from '../shared/ui/IconButton'
 import createLockButton from './sidebarLeft/lockButton.solid'
-import SidebarMenuButton from './SidebarMenuButton'
+import { mountSidebarToolsButton, type ToolsMenuSidebar } from './sidebarLeft/toolsMenu'
 import SidebarEmojiStatusButton from './SidebarEmojiStatusButton'
 import ComposeFab from './ComposeFab'
-import PremiumModal from './PremiumModal'
 import StoriesRow from './StoriesRow'
 import SidebarScreens, { type SidebarScreen } from './SidebarScreens'
 import { useManagers } from '../core/hooks/useManagers'
@@ -40,24 +40,21 @@ import { useChatList } from '../core/hooks/useChatList'
 import { useNavigationStore } from '../stores/navigationStore'
 import { useChatStackStore, selectOpenThreadDesc } from '../stores/chatStackStore'
 import { useNavigationActions } from '../core/hooks/useNavigationActions'
-import { openPopup } from '../stores/popupStore'
 import InputSearch from '../shared/ui/InputSearch'
 import { useT } from '../i18n'
 import { useGlobalSearch } from '../core/hooks/useGlobalSearch'
-import { useSidebarActions } from '../core/hooks/useSidebarActions'
 import { useSidebarStories } from '../core/hooks/useSidebarStories'
 import { useForumPanel } from '../core/hooks/useForumPanel'
 import { useImperativeIsland } from '../core/hooks/useImperativeIsland'
 import { useFolders } from '../stores/foldersStore'
 import { AppDialogsManager } from '../lib/appDialogsManager'
-import { useFoldersSidebarShown, useIsSidebarCollapsed } from '../stores/foldersSidebar.solid'
+import { useFoldersSidebarShown, useIsLeftSearchActive, useIsSidebarCollapsed } from '../stores/foldersSidebar.solid'
 import ConnectionStatusComponent from './connectionStatus'
 import type { InputSearchStatus } from '../shared/ui/InputSearch'
 import type InputSearchHandle from '../shared/ui/InputSearch/inputSearchHandle'
 
 interface Props {
   onToggleMode: (coords?: { x: number; y: number }) => void
-  onLogout?: () => void
   fullWidth?: boolean
   /** префилл поиска (deep-open с публичной страницы /?domain=username) */
   initialQuery?: string
@@ -70,7 +67,6 @@ interface Props {
 // стора, а не через проброс из Shell) — тема/авторизация остаются пропсами (скоуп App).
 export default function Sidebar({
   onToggleMode,
-  onLogout,
   fullWidth = false,
   initialQuery,
 }: Props) {
@@ -127,7 +123,7 @@ export default function Sidebar({
     return open?.thread.kind === 'topic' ? open.thread.rootMsgId : null
   })
   const onSelect = useNavigationStore((st) => st.selectChat)
-  const { openTopicThread: onOpenTopic, onChatCreated, openPeer: onOpenPeer } = useNavigationActions()
+  const { openTopicThread: onOpenTopic } = useNavigationActions()
 
   // Экраны левой колонки взаимоисключающие — один стейт-энум (см. <SidebarScreens>).
   const [screen, setScreen] = useState<SidebarScreen>(null)
@@ -146,48 +142,58 @@ export default function Sidebar({
   // замок, `has-open-tabs`. Классы перехода React не ставит — см. разметку.
   const [searching, setSearching] = useState(false)
   const stories = useSidebarStories()
-  const actions = useSidebarActions(onChatCreated)
   const { handleSelect, forumChat, closeForum, panel: forumPanel } = useForumPanel({ chats, onSelect, activeTopicId, onOpenTopic })
   // Владелец поиска (порт `initSearch`, `components/sidebarLeft/globalSearch.ts`);
   // шов и расхождения — шапка `core/hooks/useGlobalSearch.ts`.
+  // Отражение пишется и в сигнал `useIsLeftSearchActive` — его читает морф
+  // бургера (tweb сеттер `AppSidebarLeft.isSearchActive`, `sidebarLeft/index.ts:134-139`;
+  // ВРЕМЕННО до 2-1: сеттером станет класс колонки).
+  const onSearchActive = useCallback((active: boolean) => {
+    setSearching(active)
+    useIsLeftSearchActive()[1](active)
+  }, [])
+  useLayoutEffect(() => () => { useIsLeftSearchActive()[1](false) }, [])
   const searchOwnerRef = useGlobalSearch({
     searchContainerRef,
     inputSearchRef,
     backBtnRef,
-    onSearchActive: setSearching,
+    onSearchActive,
     initialQuery,
   })
 
   const folders = useFolders()
-  // Вкладки папок поверх списка чатов — «Папки» и редактор папки (tweb
-  // `appSidebarLeft.createTab(AppChatFoldersTab | AppEditFolderTab).open(…)`,
-  // `createFolderContextMenu.ts:27-49`, `foldersSidebarContent/index.tsx:207-215`).
-  // Колоночного слайдера у нас ещё нет (шов, задача 28 плана 2D), поэтому
-  // открытие заводит хост слайдера над колонкой (`settingsSliderHost.ts` — тот же
-  // слой, что у вкладок настроек) и открывает вкладку в нём: закрытие последней
-  // вкладки возвращает к списку чатов, как у оригинала. Хост один на колонку:
-  // новое открытие снимает прежний (уже пустой) хост, экран настроек — тоже.
-  const columnTabsHostRef = useRef<SettingsSliderHost | null>(null)
-  // `has-open-tabs`, пока вкладка открыта (tweb `onTabsCountChange` →
-  // `onSomethingOpenInsideChange`, `sidebarLeft/index.ts:547-569`)
-  const [columnTabsOpen, setColumnTabsOpen] = useState(false)
+  // Колоночный слайдер (tweb `AppSidebarLeft extends SidebarSlider`,
+  // `sidebarLeft/index.ts:118`, `:147-152`): вкладка №0 — `.item-main` ниже,
+  // остальные экраны колонки — его вкладки (корень настроек, папки; по мере
+  // переезда — экраны `SidebarScreens`). Узлом `.sidebar-slider` владеет
+  // React, вкладками — слайдер (шапка `sidebarLeft/columnSlider.ts`). Слой
+  // раскладки: узел колонки должен быть в DOM, а слайдер — заведён до того,
+  // как пользователь дотянется до пункта меню. ВРЕМЕННО до 2-1 (волна 7): там
+  // слайдер становится классом колонки.
+  const sliderRef = useRef<SidebarSlider | null>(null)
+  // Отражение числа вкладок в навигации — роль `hasTabsInNavigation()` в tweb
+  // `hasSomethingOpenInside` (`:518-520`). Пишет его ТОЛЬКО слайдер, хуком
+  // `onTabsCountChange` (tweb `:652-654` → `onSomethingOpenInsideChange`):
+  // закрыть вкладку можно и Esc, и стрелкой, и срезом истории изнутри вкладки,
+  // и узнаёт об этом один слайдер.
+  const [tabsOpen, setTabsOpen] = useState(false)
+  useLayoutEffect(() => {
+    const slider = createColumnSlider(columnRef.current!, managers, () => setTabsOpen(slider.hasTabsInNavigation()))
+    sliderRef.current = slider
+    return () => {
+      sliderRef.current = null
+      destroyColumnSlider(slider)
+    }
+  }, [managers])
+  // `appSidebarLeft.createTab(ctor).open(…)` (tweb `createFolderContextMenu.ts:27-49`,
+  // `foldersSidebarContent/index.tsx:207-215`, `sidebarLeft/index.ts:765`).
   const openColumnTab = <T extends SliderSuperTab>(ctor: SliderSuperTabConstructable<T>, ...args: Parameters<T['init']>) => {
-    const host = createSettingsSliderHost(columnRef.current!, managers)
-    columnTabsHostRef.current = host
-    setColumnTabsOpen(true)
-    host.onTabsEmpty(() => setColumnTabsOpen(false))
-    void host.openTab(ctor, ...args).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+    void sliderRef.current!.createTab(ctor).open(...args)
   }
-  useEffect(() => () => columnTabsHostRef.current?.destroy(), [])
 
   // Мемоизировано, чтобы <ChatList> получал стабильный проп — ре-рендер
   // сайдбара под тогл оверлея не пересоздаёт массив и не бьёт его memo.
   const archivedChats = useMemo(() => chats.filter((c) => !!c.archived), [chats])
-
-  // Вьюпортная модалка Premium — через глобальный popupStore (не экран колонки).
-  const openPremium = () => openPopup((p) => (
-    <PremiumModal open={p.open} onClose={p.requestClose} onExitComplete={p.onExitComplete} />
-  ))
 
   // «Расположение папок → Слева от чатов» (tweb tabsInSidebar): вертикальная колонка
   // вместо горизонтальных табов; на узких экранах скрыта (tweb until-floating-left-sidebar).
@@ -198,7 +204,7 @@ export default function Sidebar({
   // --- Ресайз левой колонки (tweb sidebarLeft/index.ts:612-635 initSidebarResize) ---
   const columnRef = useRef<HTMLDivElement>(null)
   // tweb hasSomethingOpenInside(): открытые вкладки | активный поиск | форум-таб.
-  const somethingOpenInside = searching || screen !== null || archiveOpen || columnTabsOpen || !!forumChat
+  const somethingOpenInside = searching || screen !== null || archiveOpen || tabsOpen || !!forumChat
   // tweb isCollapsed(): в floating-диапазоне (<=925) колонка всегда развёрнута,
   // предпочтение просто помнится для широких вьюпортов.
   const floatingLeft = useMediaQuery('(max-width:925px)')
@@ -249,13 +255,12 @@ export default function Sidebar({
   // закрывать.
   const closeAllTabsRef = useRef<() => boolean>(() => false)
   closeAllTabsRef.current = () => {
-    const hadTabs = screen !== null || archiveOpen || columnTabsOpen
+    const hadScreens = screen !== null || archiveOpen
     setScreen(null)
     setArchiveOpen(false)
-    columnTabsHostRef.current?.destroy()
-    columnTabsHostRef.current = null
-    setColumnTabsOpen(false)
-    return hadTabs
+    // tweb `closeAllTabs` (`slider.ts:171-179`) — отвечает, были ли вкладки
+    const hadTabs = !!sliderRef.current?.closeAllTabs()
+    return hadScreens || hadTabs
   }
   // `appSidebarLeft.closeEverythingInside()` (tweb `sidebarLeft/index.ts:494-499`):
   // поиск, форум, вкладки. Им же отвечает колбэк владельцу папок
@@ -271,17 +276,41 @@ export default function Sidebar({
     closeForum()
     return closeAllTabsRef.current()
   }
-  // То, что меню папки (`createFolderContextMenu`, оба ряда) берёт у колонки —
-  // у tweb `appSidebarLeft` и классы вкладок. Объект один на жизнь колонки:
-  // его получают владелец папок (хуки `start()`) и вертикальная колонка.
-  const [appSidebarLeft] = useState<FolderContextMenuSidebar>(() => ({
-    // tweb `sidebarLeft/index.ts:1613-1616`: пауза — на уход закрытой вкладки
+  // То, что меню папки (`createFolderContextMenu`, оба ряда) и бургер
+  // (`sidebarLeft/toolsMenu.ts`, оба места) берут у колонки — у tweb это
+  // `appSidebarLeft` и классы вкладок. Объект один на жизнь колонки: его
+  // получают владелец папок (хуки `start()`), бургер шапки и вертикальная
+  // колонка. Состояние React читается через ref — объект создаётся один раз.
+  // ВРЕМЕННО до 2-1: объектом станет класс `AppSidebarLeft`.
+  const bridgeRef = useRef({ collapsed: false, archivedChats: [] as Chat[], openMyStories: () => {}, onToggleMode })
+  const [appSidebarLeft] = useState<FolderContextMenuSidebar & ToolsMenuSidebar>(() => ({
+    managers,
+    // tweb `sidebarLeft/index.ts:1755-1758`: пауза — на уход закрытой вкладки
     closeTabsBefore: async (clb) => {
       if (closeEverythingInsideRef.current()) await pause(200)
       clb()
     },
     openEditFolderTab: (filter) => openColumnTab(AppEditFolderTab, { ...AppEditFolderTab.getInitArgs(), initFilter: filter }),
     openChatFoldersTab: () => openColumnTab(AppChatFoldersTab, AppChatFoldersTab.getInitArgs()),
+    isCollapsed: () => bridgeRef.current.collapsed,
+    // ВРЕМЕННО до 1-5: оверлей архива вместо `AppArchivedTab` (tweb `:1760-1764`)
+    openArchiveTab: () => appSidebarLeft.closeTabsBefore(() => setArchiveOpen(true)),
+    hasArchivedDialogs: () => bridgeRef.current.archivedChats.length > 0,
+    getArchivedUnreadCount: () => bridgeRef.current.archivedChats.reduce((sum, c) => sum + (c.unread ?? 0), 0),
+    // ВРЕМЕННО до Э4-3: `appImManager.setPeer({peerId: myId})` (tweb `:707-713`)
+    openSavedMessages: () => {
+      void (async () => {
+        const id = await managers.chats.saved()
+        await managers.dialogs.refresh()
+        useNavigationStore.getState().selectChat(String(id))
+      })()
+    },
+    // О-82 волны 7: `AppMyStoriesTab` не портирован — наш архив историй
+    openMyStories: () => bridgeRef.current.openMyStories(),
+    // ВРЕМЕННО до 0а-4: React-экран звонков вместо `AppCallsTab`
+    openCalls: () => setScreen('calls'),
+    // ВРЕМЕННО до Э4-5: тему переключает хук шелла `useThemeToggle`
+    switchTheme: (coords) => bridgeRef.current.onToggleMode(coords),
   }))
   // Кнопка настроек вертикальной колонки папок (tweb
   // `foldersSidebarContent/index.tsx:203-216`: `closeTabsBefore` → `AppChatFoldersTab`).
@@ -343,23 +372,12 @@ export default function Sidebar({
     dialogsManager.setCollapsed(!!forumChat)
   }, [dialogsManager, forumChat])
 
-  // Меню бургера и вертикальной колонки папок — один набор обработчиков на оба места.
-  const menuActions: MainMenuHandlers = {
-    onOpenSettings: () => setScreen('settings'),
-    onOpenContacts: () => setScreen('contacts'),
-    onOpenSaved: async () => {
-      const id = await managers.chats.saved()
-      await managers.dialogs.refresh()
-      onSelect(String(id))
-    },
-    onOpenPremium: openPremium,
-    onOpenMyStories: stories.openArchive,
-    onOpenCloseFriends: stories.openCloseFriends,
-    onOpenWallet: () => setScreen('wallet'),
-    onOpenCalls: () => setScreen('calls'),
-    onLogout,
-    onToggleMode,
-  }
+  bridgeRef.current = { collapsed, archivedChats, openMyStories: stories.openArchive, onToggleMode }
+
+  // Кнопка бургера (tweb `construct` :165-172, :244, морф :431-442) — узлы
+  // колонки `.animated-menu-icon` и `.sidebar-back-button` статичны, кнопку
+  // меню между ними ставит и снимает порт.
+  const burgerRef = useImperativeIsland((container) => mountSidebarToolsButton(appSidebarLeft, container), [])
 
   return (
     <div
@@ -376,7 +394,6 @@ export default function Sidebar({
           appSidebarLeft={appSidebarLeft}
           managers={managers}
           onOpenFolderSettings={openFolderSettings}
-          menu={menuActions}
         />
       )}
       {/* Дальше — дерево tweb 1:1 (живой DOM §2):
@@ -400,8 +417,13 @@ export default function Sidebar({
             (`hide`), пока поиск закрыт — у колонки свой триггер меню (у tweb то
             же делает `body.has-folders-sidebar .left-sidebar-burger:not(.is-visible)`,
             расхождение 2 шапки `stores/foldersSidebar.solid.ts`). */}
-        <div className={classNames('sidebar-header__btn-container', 'left-sidebar-burger', foldersSidebarShown && !searching ? 'hide' : '')}>
-          <SidebarMenuButton searching={searching} backBtnRef={backBtnRef} {...menuActions} />
+        <div ref={burgerRef} className={classNames('sidebar-header__btn-container', 'left-sidebar-burger', foldersSidebarShown && !searching ? 'hide' : '')}>
+          {/* tweb `index.html:93-96`: три полоски ≡ ↔ ← рисует CSS
+              (`_animatedIcon.scss`), `state-back` и `is-visible` ставит морф
+              порта — классы React здесь постоянные. Стрелку «назад» держит
+              владелец поиска (`backBtnRef`), своего обработчика у неё нет. */}
+          <div className="animated-menu-icon" />
+          <div ref={backBtnRef} className="btn-icon sidebar-back-button" />
         </div>
         <InputSearch
           ref={inputRef}
@@ -507,10 +529,14 @@ export default function Sidebar({
             .sidebar-content, рядом с чатлистом и выдачей поиска. */}
         <ComposeFab
           searching={searching || !!forumChat}
-          onNewGroup={() => setScreen('newGroup')}
-          onNewPrivate={() => setScreen('newPrivate')}
-          onNewChannel={() => setScreen('newChannel')}
-          onNewSecret={() => setScreen('newSecret')}
+          // tweb `sidebarLeft/index.ts:1073-1077` — `createNewGroupTab(this)`
+          onNewGroup={() => createNewGroupTab(sliderRef.current!)}
+          // tweb `sidebarLeft/index.ts:1105-1109` (`closeBefore: false`) — «Новый личный
+          // чат» и есть вкладка контактов; секретный — Отступление В7-1
+          onNewPrivate={() => { void openContactsTab() }}
+          // tweb `sidebarLeft/index.ts:1086-1092` — `createTab(AppNewChannelTab).open({})`
+          onNewChannel={() => openColumnTab(AppNewChannelTab)}
+          onNewSecret={() => { void openContactsTab({ secret: true }) }}
         />
       </div>
 
@@ -522,13 +548,7 @@ export default function Sidebar({
       <SidebarScreens
         screen={screen}
         close={closeScreen}
-        onSettingsBack={closeScreen}
         onSelect={onSelect}
-        onOpenPeer={onOpenPeer}
-        onChatCreated={onChatCreated}
-        onCreateGroup={actions.createGroup}
-        onCreateChannel={actions.createChannel}
-        onStartSecret={actions.startSecret}
       />
 
       {stories.overlays}

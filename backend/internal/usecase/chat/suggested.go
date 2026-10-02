@@ -61,7 +61,7 @@ func (i *Interactor) SuggestPost(ctx context.Context, chatID, authorID int64, te
 	}
 	sp, err := i.suggested.Create(ctx, domain.SuggestedPost{
 		ChatID: chatID, AuthorID: authorID, Text: text,
-		Entities: sanitizeEntities(entities), MediaID: mediaID,
+		Entities: domain.SanitizeEntities(entities), MediaID: mediaID,
 		PublishAt: publishAt, Status: "pending",
 	})
 	if err != nil {

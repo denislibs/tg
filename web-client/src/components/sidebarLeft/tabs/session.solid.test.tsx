@@ -18,7 +18,7 @@ import lang from '@/lang'
 import { glyph } from '@core/tgico-icons'
 import { getRowIconBackgroundImage } from '@helpers/rowIconBackground'
 import { AppSessionTab } from '@components/solidJsTabs/tabs'
-import { createSettingsSliderHost, type SettingsSliderHost } from '../settingsSliderHost'
+import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
 
 type Auth = Authorization.authorization
 
@@ -55,14 +55,14 @@ const current = {
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-let host: SettingsSliderHost
+let host: TestColumnSlider
 
 beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 420 } as DOMRect)
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = createSettingsSliderHost(columnEl, {} as Managers)
+  host = mountTestColumnSlider(columnEl, {} as Managers)
 })
 
 afterEach(async() => {

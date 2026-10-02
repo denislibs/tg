@@ -1,6 +1,6 @@
 import type { RestClient } from '../net/restClient'
 import type { Chat, UserReal } from '../peers/peer'
-import type { Peer } from '../peers/peerId'
+import { getPeerId, type Peer } from '../peers/peerId'
 import { mapPeerProfile, type PeerProfile, type RawPeerProfile } from './authManager'
 import type { PeersManager } from './peersManager'
 
@@ -132,11 +132,23 @@ export interface ContactsBlockedSlice {
   users: UserReal[]
 }
 
-export function newPrivacyManager({ rest, peers }: {
+/** Порт tweb `rootScope.ts:53` (`peer_block`) без `blockedMyStoriesFrom`: блокировки
+ *  «скрыть мои истории» у нас нет (на проводе — только `POST/DELETE /me/blocked`). */
+export type PeerBlockEvt = { peerId: PeerId; blocked?: boolean }
+
+export function newPrivacyManager({ rest, peers, onPeerBlock }: {
   rest: Pick<RestClient, 'get' | 'put' | 'post' | 'del'>
-  /** Владелец карточек: вектор `users` ответа профиля кладётся туда (см. `profile`). */
+  /** Владелец карточек: вектор `users` ответов кладётся туда (см. `profile`, `getBlocked`). */
   peers?: Pick<PeersManager, 'saveApiPeers'>
+  /** Событие `peer_block` во вкладки (воркер — `broadcast`), см. `toggleBlock`. */
+  onPeerBlock?: (e: PeerBlockEvt) => void
 }) {
+  // Без `this`: реестр RPC зовёт методы отвязанными (`rpc/managersProxy.ts`).
+  const rule = async(key: PrivacyKey): Promise<PrivacyRule> => {
+    const res = await rest.get<AccountPrivacyRules>(`/me/privacy/${KEY_TAGS[key]}`)
+    return fromPrivacyRules(key, res.rules)
+  }
+
   return {
     /**
      * Правила ВСЕХ ключей.
@@ -147,35 +159,45 @@ export function newPrivacyManager({ rest, peers }: {
      * `account.privacyRules` параметра ключа не бывает, его знает спросивший.
      */
     async rules(): Promise<PrivacyRule[]> {
-      return Promise.all(PRIVACY_KEYS.map((key) => this.rule(key)))
+      return Promise.all(PRIVACY_KEYS.map(rule))
     },
-    async rule(key: PrivacyKey): Promise<PrivacyRule> {
-      const res = await rest.get<AccountPrivacyRules>(`/me/privacy/${KEY_TAGS[key]}`)
-      return fromPrivacyRules(key, res.rules)
-    },
+    rule,
     async setRule(rule: PrivacyRule): Promise<PrivacyRule> {
       const res = await rest.put<AccountPrivacyRules>(`/me/privacy/${KEY_TAGS[rule.key]}`, {
         rules: toPrivacyRules(rule),
       })
       return fromPrivacyRules(rule.key, res.rules)
     },
-    async blocked(offset = 0, limit = 50): Promise<ContactsBlockedSlice> {
+    /**
+     * Порт tweb `appUsersManager.getBlocked` (:1128-1138): страница чёрного
+     * списка. Карточки ответа уходят владельцу (`saveApiUsers`/`saveApiChats`),
+     * наружу — «сколько всего» и ключи пиров по порядку ответа. `limit = 0` —
+     * «по умолчанию сервера», как у оригинала (у нас — 50,
+     * `usecase/privacy.Interactor.Blocked`).
+     */
+    async getBlocked(offset = 0, limit = 0): Promise<{ count: number; peerIds: PeerId[] }> {
       // Маппера нет: ответ И ЕСТЬ модель — конструктор схемы приходит в корне.
       const res = await rest.get<ContactsBlockedSlice>(`/me/blocked?offset=${offset}&limit=${limit}`)
+      peers?.saveApiPeers({ chats: res.chats ?? [], users: res.users ?? [] })
       return {
-        ...res,
-        _: 'contacts.blockedSlice',
         count: res.count ?? 0,
-        blocked: res.blocked ?? [],
-        chats: res.chats ?? [],
-        users: res.users ?? [],
+        peerIds: (res.blocked ?? []).map((blocked) => getPeerId(blocked.peer_id)),
       }
     },
-    async block(userId: number): Promise<void> {
-      await rest.post('/me/blocked', { user_id: userId })
-    },
-    async unblock(userId: number): Promise<void> {
-      await rest.del(`/me/blocked/${userId}`)
+    /**
+     * Порт tweb `appUsersManager.toggleBlock` (:520-536): после ответа сервера —
+     * местный апдейт `updatePeerBlocked`, из которого `appProfileManager`
+     * (`:1506-1532`) шлёт `peer_block` с `blocked` из `pFlags` (`true` или нет
+     * ключа). Апдейта на проводе у нас нет — событие шлётся здесь же, тем же
+     * содержимым. `refreshPeerSettingsIfNeeded` (:534) — нет `peerSettings`.
+     */
+    async toggleBlock(peerId: PeerId, block: boolean): Promise<void> {
+      if (block) {
+        await rest.post('/me/blocked', { user_id: peerId })
+      } else {
+        await rest.del(`/me/blocked/${peerId}`)
+      }
+      onPeerBlock?.({ peerId, blocked: block || undefined })
     },
     // Автоудаление сообщений: глобальный период (новые чаты) и период чата.
     async autoDelete(): Promise<number> {

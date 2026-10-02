@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/messenger-denis/backend/internal/domain"
 	usecasestickers "github.com/messenger-denis/backend/internal/usecase/stickers"
@@ -134,7 +137,7 @@ type featuredRepoStub struct {
 	covers map[int64][]domain.Sticker
 }
 
-func (s *featuredRepoStub) FeaturedSets(context.Context, int) ([]domain.StickerSetRecord, error) {
+func (s *featuredRepoStub) FeaturedSets(context.Context, int64, int) ([]domain.StickerSetRecord, error) {
 	return s.sets, nil
 }
 
@@ -222,7 +225,7 @@ type searchSetsRepoStub struct {
 	covers map[int64][]domain.Sticker
 }
 
-func (s *searchSetsRepoStub) SearchSets(context.Context, string, int) ([]domain.StickerSetRecord, error) {
+func (s *searchSetsRepoStub) SearchSets(context.Context, int64, string, int) ([]domain.StickerSetRecord, error) {
 	return s.sets, nil
 }
 
@@ -294,5 +297,147 @@ func TestFeatured_EmptyIsArray(t *testing.T) {
 	}
 	if string(body["unread"]) != "[]" {
 		t.Fatalf(`unread = %s, want []`, body["unread"])
+	}
+}
+
+// installRepoStub — каталог из двух наборов и установки по пользователям:
+// отдаёт срок установки ТОМУ, кто смотрит (viewerID), как SQL-реализация.
+type installRepoStub struct {
+	usecasestickers.Repo
+	sets     []domain.StickerSetRecord
+	installs map[int64]map[int64]time.Time // viewerID → setID → added_at
+}
+
+func (s *installRepoStub) forViewer(viewerID int64) []domain.StickerSetRecord {
+	out := make([]domain.StickerSetRecord, 0, len(s.sets))
+	for _, set := range s.sets {
+		set.InstalledAt = s.installs[viewerID][set.ID]
+		out = append(out, set)
+	}
+	return out
+}
+
+func (s *installRepoStub) FeaturedSets(_ context.Context, viewerID int64, _ int) ([]domain.StickerSetRecord, error) {
+	return s.forViewer(viewerID), nil
+}
+
+func (s *installRepoStub) SearchSets(_ context.Context, viewerID int64, _ string, _ int) ([]domain.StickerSetRecord, error) {
+	return s.forViewer(viewerID), nil
+}
+
+func (s *installRepoStub) SetByID(_ context.Context, viewerID, id int64) (domain.StickerSetRecord, error) {
+	for _, set := range s.forViewer(viewerID) {
+		if set.ID == id {
+			return set, nil
+		}
+	}
+	return domain.StickerSetRecord{}, domain.ErrNotFound
+}
+
+func (s *installRepoStub) SetBySlug(_ context.Context, viewerID int64, slug string) (domain.StickerSetRecord, error) {
+	for _, set := range s.forViewer(viewerID) {
+		if set.Slug == slug {
+			return set, nil
+		}
+	}
+	return domain.StickerSetRecord{}, domain.ErrNotFound
+}
+
+func (s *installRepoStub) Stickers(context.Context, int64) ([]domain.Sticker, error) { return nil, nil }
+
+func (s *installRepoStub) CoverStickers(context.Context, []int64, int) (map[int64][]domain.Sticker, error) {
+	return map[int64][]domain.Sticker{}, nil
+}
+
+// `stickerSet.installed_date` — параметр САМОГО набора (tweb
+// isStickerSetAdded): тренды, поиск и набор по id/slug несут его для набора,
+// который поставил ТОТ, кто спрашивает, — и только для него. У неустановленного
+// ключа нет вовсе (flags-параметр), чужая установка не видна. Без поля вкладка
+// поиска стикеров рисует установленный набор с кнопкой «Add».
+func TestStickerSets_InstalledDateForViewer(t *testing.T) {
+	const alice, bob = int64(42), int64(43)
+	installedAt := time.Unix(1787334148, 0)
+	h := NewStickersHandler(usecasestickers.New(&installRepoStub{
+		sets: []domain.StickerSetRecord{
+			{ID: 1, Slug: "mine", Title: "Mine", Kind: "sticker"},
+			{ID: 2, Slug: "other", Title: "Other", Kind: "sticker"},
+		},
+		installs: map[int64]map[int64]time.Time{alice: {1: installedAt}},
+	}))
+	router := chi.NewRouter()
+	router.Get("/sticker-sets/featured", h.Featured)
+	router.Get("/sticker-sets/search", h.SearchSets)
+	router.Get("/sticker-sets/id/{setID}", h.SetByID)
+	router.Get("/sticker-sets/{slug}", h.SetBySlug)
+
+	get := func(viewer int64, url string) []byte {
+		t.Helper()
+		req := httptest.NewRequest("GET", url, nil)
+		req = req.WithContext(WithUser(req.Context(), domain.UserRecord{ID: viewer}, 0))
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if w.Code != 200 {
+			t.Fatalf("%s: code = %d (body %s)", url, w.Code, w.Body.String())
+		}
+		return w.Body.Bytes()
+	}
+	// installed — срок установки каждого набора выдачи; ключа нет → -1.
+	installed := func(t *testing.T, raw []byte) map[int64]int64 {
+		t.Helper()
+		var body struct {
+			Set  json.RawMessage   `json:"set"`
+			Sets []json.RawMessage `json:"sets"`
+		}
+		if err := json.Unmarshal(raw, &body); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		var sets []map[string]json.RawMessage
+		if body.Set != nil {
+			var set map[string]json.RawMessage
+			_ = json.Unmarshal(body.Set, &set)
+			sets = append(sets, set)
+		}
+		for _, covered := range body.Sets {
+			var c struct {
+				Set map[string]json.RawMessage `json:"set"`
+			}
+			_ = json.Unmarshal(covered, &c)
+			sets = append(sets, c.Set)
+		}
+		out := map[int64]int64{}
+		for _, set := range sets {
+			var id int64
+			_ = json.Unmarshal(set["id"], &id)
+			date := int64(-1)
+			if v, ok := set["installed_date"]; ok {
+				_ = json.Unmarshal(v, &date)
+			}
+			out[id] = date
+		}
+		return out
+	}
+
+	for _, url := range []string{
+		"/sticker-sets/featured", "/sticker-sets/search?q=m",
+		"/sticker-sets/id/1", "/sticker-sets/mine", "/sticker-sets/id/2",
+	} {
+		t.Run(url, func(t *testing.T) {
+			mine := installed(t, get(alice, url))
+			if v, ok := mine[1]; ok && v != installedAt.Unix() {
+				t.Fatalf("Алиса: installed_date mine = %d, want %d", v, installedAt.Unix())
+			}
+			if v, ok := mine[2]; ok && v != -1 {
+				t.Fatalf("Алиса: у неустановленного other installed_date = %d, want ключа нет", v)
+			}
+			for id, v := range installed(t, get(bob, url)) {
+				if v != -1 {
+					t.Fatalf("Боб: набор %d несёт чужую установку installed_date = %d", id, v)
+				}
+			}
+		})
+	}
+	// Тренды и поиск — обе ветки сразу: установленный рядом с неустановленным.
+	if got := installed(t, get(alice, "/sticker-sets/featured")); got[1] != installedAt.Unix() || got[2] != -1 {
+		t.Fatalf("тренды Алисы = %v, want {1: %d, 2: нет}", got, installedAt.Unix())
 	}
 }

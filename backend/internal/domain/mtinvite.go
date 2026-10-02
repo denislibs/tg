@@ -18,6 +18,8 @@ const (
 	MessagesExportedChatInviteTag  = "messages.exportedChatInvite"
 	MessagesExportedInvitesTag     = "messages.exportedChatInvites"
 	MessagesChatInviteImportersTag = "messages.chatInviteImporters"
+	MissingInviteeTag              = "missingInvitee"
+	MessagesInvitedUsersTag        = "messages.invitedUsers"
 )
 
 // chatInviteExported#a22cbd96 flags:# revoked:flags.0?true permanent:flags.5?true
@@ -151,5 +153,45 @@ func NewMessagesChatInviteImporters(count int, importers []ChatInviteImporter, u
 		Count:      count,
 		Importers:  orEmpty(importers),
 		Users:      orEmpty(users),
+	}
+}
+
+// ── Ответ создания группы ──────────────────────────────────────────────────
+
+// missingInvitee#628c9224 flags:# premium_would_allow_invite:flags.0?true
+// premium_required_for_pm:flags.1?true user_id:long = MissingInvitee;
+//
+// Позванный, которого создатель группы добавить не смог: его настройка
+// «Кто может приглашать меня в группы» (или чёрный список) не пускает.
+// Оба флага — про премиум, которого у нас нет: выводить их не из чего, и
+// `pFlags` едет без ключей («выключено» — отсутствие ключа).
+type MissingInvitee struct {
+	Underscore string          `json:"_"`
+	PFlags     map[string]bool `json:"pFlags,omitempty"`
+	UserID     int64           `json:"user_id"`
+}
+
+// messages.invitedUsers#7f5defa6 updates:Updates
+// missing_invitees:Vector<MissingInvitee> = messages.InvitedUsers;
+//
+// Ответ `messages.createChat` у оригинала: пачка апдейтов с созданным чатом в
+// `chats` плюс те, кого позвать не удалось. Клиент берёт чат из
+// `updates.chats[0]` (tweb `appChatsManager.createChat`), а пропущенных
+// предлагает позвать ссылкой (`handleMissingInvitees`).
+type MessagesInvitedUsers struct {
+	Underscore      string           `json:"_"`
+	Updates         UpdatesReal      `json:"updates"`
+	MissingInvitees []MissingInvitee `json:"missing_invitees"`
+}
+
+func NewMessagesInvitedUsers(updates UpdatesReal, missing []int64) MessagesInvitedUsers {
+	out := make([]MissingInvitee, 0, len(missing))
+	for _, id := range missing {
+		out = append(out, MissingInvitee{Underscore: MissingInviteeTag, UserID: id})
+	}
+	return MessagesInvitedUsers{
+		Underscore:      MessagesInvitedUsersTag,
+		Updates:         updates,
+		MissingInvitees: out,
 	}
 }

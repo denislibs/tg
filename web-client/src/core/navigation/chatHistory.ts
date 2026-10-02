@@ -21,6 +21,11 @@ import { cachedChat } from '../peerCache'
 import appNavigationController from './appNavigationController'
 import mediaSizes, { ScreenSize } from '@core/dom/mediaSizes'
 import { usePipStore } from '../pip'
+import liteMode from '@helpers/liteMode'
+import pause from '@helpers/schedulers/pause'
+import { doubleRaf } from '@helpers/schedulers'
+import blurActiveElement from '@helpers/dom/blurActiveElement'
+import { dispatchHeavyAnimationEvent } from '@core/dom/heavyAnimation'
 
 /**
  * Хэш открытого состояния БЕЗ ведущего `#`. '' — список чатов (стек пуст ИЛИ
@@ -475,4 +480,39 @@ export function startChatHistory(): () => void {
   pushImRecordIfNeeded()
   syncChatRecords()
   return () => { unsubStack(); unsubNav() }
+}
+
+/**
+ * ВРЕМЕННО до Э4-2 — срез `appImManager.selectTab` (tweb
+ * `lib/appImManager.ts:3137-3194`) для единственного своего вызывающего до
+ * класса: `AppSidebarRight.toggleSidebar` (`sidebarRight/index.ts:125`), то
+ * есть переходы CHAT ↔ PROFILE при уже открытом чате. Из тела оригинала для
+ * этих двух табов остаётся ровно то, что ниже:
+ *  • `is-left-column-shown` — `id === CHATLIST` ложно в обе стороны, класс не
+ *    меняется (его и сейчас пишет только `useLeftColumnShown`);
+ *  • `overrideHash(this.chat?.peerId)` — `id > CHATLIST` в обе стороны, хэш
+ *    тот же; `tab_changing` — слушателей у нас нет;
+ *  • запись `im` — `id === PROFILE` пушит её только при `!findItemByType('im')`,
+ *    а открытый чат её уже держит (`pushImRecordIfNeeded`);
+ *  • `appSidebarRight.hide()` на мобиле при PROFILE → CHAT — вызывающий
+ *    (`toggleSidebar(false)`) сам зовёт `hide()` следом.
+ * Не перенесено: `disableTransition` при `animate === false` — хелпера у нас
+ * нет, переход колонки при edge-свайпе Safari сыграет (Э4-2).
+ * Своего `tabId` нет: вызывающий зовёт только при реальной смене таба
+ * (`willChange`), поэтому `prevTabId !== id` у оригинала здесь всегда истинно.
+ */
+export function selectProfileTab(animate?: boolean): Promise<unknown> {
+  let animationPromise: Promise<unknown> = liteMode.isAvailable('animations') ? doubleRaf() : Promise.resolve()
+  if(
+    liteMode.isAvailable('animations') &&
+    animate !== false &&
+    mediaSizes.activeScreen !== ScreenSize.large
+  ) {
+    const transitionTime = (mediaSizes.isMobile ? 250 : 200) + 100 // * cause transition time could be > 250ms
+    animationPromise = pause(transitionTime)
+    void dispatchHeavyAnimationEvent(animationPromise, transitionTime)
+  }
+
+  blurActiveElement()
+  return animationPromise
 }

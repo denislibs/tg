@@ -6,15 +6,16 @@
 //   div.autocomplete-helper.z-depth-1.stickers-helper
 //     div.scrollable.scrollable-y
 //       div.stickers-helper-stickers.super-stickers.navigable-list
-//         div.grid-item.super-sticker[data-doc-id]
+//         div.grid-item.super-sticker.media-sticker-wrapper[data-doc-id]
 //
 // Стили — глобальные партиалы `_autocompleteHelper.scss` + `_chatStickersHelper.scss`
 // (своего CSS-модуля у хелпера больше нет).
-import { useMemo, useState } from 'react'
 import StickerMedia from './StickerMedia'
 import { useStickersByEmoji } from '../core/hooks/useStickers'
+import { useImperativeIsland } from '../core/hooks/useImperativeIsland'
 import { emojiOnlyCount } from './RichText'
-import { useStickerViewer } from './stickers/useStickerViewer'
+import attachStickerViewerListeners from './stickerViewer'
+import ListenerSetter from '@helpers/listenerSetter'
 import type { Sticker } from '../core/managers/stickersManager'
 
 // tweb mediaSizes.ts:87 `esgSticker: makeMediaSize(72, 72)` = base.scss:116
@@ -46,69 +47,48 @@ export default function StickersHelper({
 }) {
   const stickers = useStickersByEmoji(emoji) // debounce 300мс внутри
 
-  // Предпросмотр по зажатию ЛКМ — tweb stickersHelper.ts:118
-  // (attachStickerViewerListeners({listenTo: this.container, ...})). Хук нельзя
-  // звать после условного `return null` ниже (правила хуков) — цепляем на весь
-  // список ДО гейта пустого результата.
-  //
-  // НЕ обычный `useRef`: этот компонент сам появляется в DOM только когда
-  // стикеры уже пришли (см. `if (!stickers.length) return null` ниже) — на
-  // самом первом рендере (сразу после монтирования родителем, `stickers` ещё
-  // `[]` из-за 300мс-дебаунса внутри `useStickersByEmoji`) корневой div ещё не
-  // существует. `useStickerViewer` вешает слушатели В ЭФФЕКТЕ С ЗАВИСИМОСТЬЮ
-  // `[rootRef]` РОВНО ОДИН раз — а `useRef` возвращает один и тот же объект на
-  // каждом рендере, так что «дырка» `rootRef.current: null → div` для React
-  // не выглядит изменением зависимости, и эффект не перезапускается, когда
-  // сам div наконец появляется. Колбэк-реф + `useState` + `useMemo` создают
-  // НОВЫЙ объект `{current}` именно в момент смены DOM-узла (null→div или
-  // обратно) — и только в этот момент, не на каждый чужой ре-рендер (иначе
-  // эффект хука срывал бы активный hold при любом стороннем ре-рендере).
-  const [rootEl, setRootEl] = useState<HTMLDivElement | null>(null)
-  const rootRef = useMemo(() => ({ current: rootEl }), [rootEl])
-  const stickerViewer = useStickerViewer({
-    rootRef,
-    // `data-doc-id` — тот же атрибут, что уже несёт ячейка ниже (SuperStickerRenderer
-    // parity, см. её докблок) — свой атрибут не заводим.
-    findSticker: (el) => {
-      const cell = el.closest('.super-sticker') as HTMLElement | null
-      const id = cell?.dataset.docId
-      return id ? stickers.find((st) => st.id === Number(id)) : undefined
-    },
-  })
+  // Предпросмотр по зажатию ЛКМ — tweb stickersHelper.ts:117-118
+  // (`attachStickerViewerListeners({listenTo: this.container, listenerSetter})`).
+  // Узел появляется только с первым результатом (`return null` ниже), поэтому
+  // слушатель вешается ref-колбэком острова — на появление узла, а не на маунт.
+  const viewerRef = useImperativeIsland((container) => {
+    const listenerSetter = new ListenerSetter()
+    attachStickerViewerListeners({ listenTo: container, listenerSetter })
+    return () => listenerSetter.removeAll()
+  }, [])
 
   if (!stickers.length) return null // пустой результат — панель скрыта
   return (
-    <>
-      <div
-        ref={setRootEl}
-        className={ROOT_CLASS}
-        // отступление от tweb: гасим mousedown, иначе клик уводит каретку из
-        // contenteditable-редактора композера.
-        onMouseDown={(e) => e.preventDefault()}
-      >
-        <div className="scrollable scrollable-y">
-          {/* `navigable-list` вешает attachListNavigation.ts:131 на сам список
-              (у stickersHelper нет getNavigationList). Ширина ленты — из
-              stickersHelper.ts:112: N * esgSticker.width + (N - 1). */}
-          <div
-            className="stickers-helper-stickers super-stickers navigable-list"
-            style={{ width: stickers.length * STICKER_SIZE + stickers.length - 1 }}
-          >
-            {stickers.map((st) => (
-              // SuperStickerRenderer.ts:61-63 — `div.grid-item.super-sticker[data-doc-id]`.
-              <div
-                key={st.id}
-                className="grid-item super-sticker"
-                data-doc-id={st.id}
-                onClick={() => onPick(st)}
-              >
-                <StickerMedia doc={st} width={STICKER_SIZE} height={STICKER_SIZE} playOnHover loop />
-              </div>
-            ))}
-          </div>
+    <div
+      ref={viewerRef}
+      className={ROOT_CLASS}
+      // отступление от tweb: гасим mousedown, иначе клик уводит каретку из
+      // contenteditable-редактора композера.
+      onMouseDown={(e) => e.preventDefault()}
+    >
+      <div className="scrollable scrollable-y">
+        {/* `navigable-list` вешает attachListNavigation.ts:131 на сам список
+            (у stickersHelper нет getNavigationList). Ширина ленты — из
+            stickersHelper.ts:112: N * esgSticker.width + (N - 1). */}
+        <div
+          className="stickers-helper-stickers super-stickers navigable-list"
+          style={{ width: stickers.length * STICKER_SIZE + stickers.length - 1 }}
+        >
+          {stickers.map((st) => (
+            // SuperStickerRenderer.ts:61-63 — `div.grid-item.super-sticker[data-doc-id]`;
+            // `media-sticker-wrapper` вешает `wrapSticker` на ту же ячейку (tweb
+            // sticker.ts:143), по нему её находит предпросмотр.
+            <div
+              key={st.id}
+              className="grid-item super-sticker media-sticker-wrapper"
+              data-doc-id={st.id}
+              onClick={() => onPick(st)}
+            >
+              <StickerMedia doc={st} width={STICKER_SIZE} height={STICKER_SIZE} playOnHover loop />
+            </div>
+          ))}
         </div>
       </div>
-      {stickerViewer}
-    </>
+    </div>
   )
 }

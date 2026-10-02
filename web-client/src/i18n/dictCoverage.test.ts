@@ -27,6 +27,7 @@ const NO_TRANSLATION: Record<string, string> = {
   'AutoDownloadSettings.Delimeter': 'запятая с пробелом — пунктуация перечисления, а не текст',
   'Appearance.Color.Hex': 'HEX — название цветовой модели, в переводах Telegram не переводится',
   'Appearance.Color.RGB': 'RGB — название цветовой модели, в переводах Telegram не переводится',
+  TelegramFeaturesUrl: 'адрес канала подсказок, а не текст; свой канал языка приходит серверным пакетом',
 }
 
 function* sourceFiles(dir: string): Generator<string> {

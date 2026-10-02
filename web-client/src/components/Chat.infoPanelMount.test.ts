@@ -6,7 +6,9 @@
 // чата — `chat.ts:1003-1008` (`createSharedMediaTab` + `setPeer`) и
 // `finishPeerChange` `:1224-1229` (`fillProfileElements` + `loadSidebarMedia`),
 // а клик — лишь `appSidebarRight.toggleSidebar(true)` (sidebarRight/index.ts:
-// 111-147): класс на body, выезд колонки transform'ом.
+// 104-138): класс на body, выезд колонки transform'ом. С задачи 0б-0 это и у
+// нас класс (`components/sidebarRight/index.ts`), а панель — содержимое
+// вкладки №0, которую инстанс создаёт при монтировании.
 //
 // Прежде панель монтировалась ПО ПЕРВОМУ КЛИКУ (`infoMounted`): клик →
 // загрузка ленивого чанка → троттлинг Suspense (~300 мс без работы) → монтаж
@@ -33,17 +35,28 @@ function panelSuspenseBlock(): string {
 }
 
 describe('Chat.tsx — панель профиля строится до клика', () => {
-  it('UserInfoPanel смонтирован безусловно: ни гейта по клику, ни состояния «уже открывали»', () => {
+  it('UserInfoPanel ждёт только вкладку №0, созданную эффектом монтирования, — ни гейта по клику, ни «уже открывали»', () => {
     const block = panelSuspenseBlock()
     expect(block).toContain('<UserInfoPanel')
     // Между `<Suspense …>` и `<UserInfoPanel` нет условного рендера.
     const beforePanel = block.slice(block.indexOf('>') + 1, block.indexOf('<UserInfoPanel'))
     expect(beforePanel).not.toMatch(/&&|\?/)
+    // Снаружи Suspense — ровно одно условие: вкладка есть.
+    const at = CHAT_TSX.lastIndexOf('<Suspense', CHAT_TSX.indexOf('<UserInfoPanel'))
+    expect(CHAT_TSX.slice(at - 40, at)).toMatch(/\{profileTab && \(\s*$/)
+    // Вкладку создаёт эффект монтирования инстанса (deps `[]`), а не клик.
+    expect(CHAT_TSX).toMatch(/useEffect\(\(\) => \{\s*const sidebar = appSidebarRight\s*const tab = sidebar\.createSharedMediaTab\(\)\s*setProfileTab\(tab\)[\s\S]*?\}, \[\]\)/)
     expect(CHAT_TSX).not.toMatch(/infoMounted|setInfoMounted/)
   })
 
-  it('клик по шапке управляет только пропом `open` уже живой панели', () => {
-    const block = panelSuspenseBlock()
-    expect(block).toMatch(/<UserInfoPanel\s+open=\{infoOpen\}/)
+  it('клик по шапке — только `appSidebarRight.toggleSidebar`, своего состояния открытия у чата нет', () => {
+    expect(CHAT_TSX).not.toMatch(/infoOpen|setInfoOpen/)
+    expect(panelSuspenseBlock()).toMatch(/<UserInfoPanel\s+profileTab=\{profileTab\}/)
+    expect(CHAT_TSX).toMatch(/const onToggleInfo = useEvent\(\(\) => \{ void appSidebarRight\.toggleSidebar\(/)
+  })
+
+  it('активный инстанс ставит свою вкладку в слайдер (replaceSharedMediaTab), уходящий — снимает и разрушает', () => {
+    expect(CHAT_TSX).toMatch(/if \(isActiveInstance && profileTab\) appSidebarRight\.replaceSharedMediaTab\(profileTab\)/)
+    expect(CHAT_TSX).toMatch(/if \(sidebar\.sharedMediaTab === tab\) \{\s*void sidebar\.toggleSidebar\(false\)\s*sidebar\.replaceSharedMediaTab\(\)\s*\}\s*tab\.destroy\(\)/)
   })
 })

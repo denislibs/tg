@@ -150,10 +150,10 @@ export default class SidebarSlider {
    * Слайдер отдаёт владение всем, что успел развесить. Метода НЕТ в оригинале
    * (#112): там слайдеры — синглтоны обеих колонок и живут столько же, сколько
    * приложение, поэтому вопрос «а если слайдер умер» у tweb не возникает. У нас
-   * слайдер заводится на время жизни React-экрана настроек (шов, см. докблок
-   * `sidebarLeft/settingsSliderHost.ts`) и обязан уметь умирать; с переездом
-   * корня настроек во вкладку слайдер снова станет вечным, и метод уйдёт вместе
-   * со швом.
+   * колоночный слайдер живёт столько же, сколько React-колонка (`Sidebar.tsx`,
+   * см. докблок `sidebarLeft/columnSlider.ts`), и обязан уметь умирать вместе с
+   * ней. ВРЕМЕННО до Э4-1: с узлами колонок из `index.html` слайдер снова
+   * станет вечным, и метод уйдёт.
    *
    * Гасим ИМЕННО `middlewareHelper`, а не заводим отдельный флаг: миддлварь
    * каждой вкладки — его ребёнок (`sliderTab.ts::_constructor`, tweb :47), то
@@ -244,11 +244,10 @@ export default class SidebarSlider {
       const hooks = tabHooks(tab)
       hooks.onOpen?.()
 
-      if(hooks.onOpenAfterTimeout) {
-        setTimeout(() => {
-          hooks.onOpenAfterTimeout?.()
-        }, NAVIGATION_TRANSITION_TIME)
-      }
+      setTimeout(() => {
+        hooks.onOpenAfterTimeout?.()
+        tab.shown.resolve!()
+      }, NAVIGATION_TRANSITION_TIME)
     }
 
     this.pushNavigationItem(tab)
@@ -339,6 +338,8 @@ export default class SidebarSlider {
 
     const tab: SliderSuperTab | undefined = id instanceof SliderSuperTab ? id : this.tabs.get(id)
     if(tab) {
+      tab.resetShown()
+
       const hooks = tabHooks(tab)
       try {
         hooks.onClose?.()

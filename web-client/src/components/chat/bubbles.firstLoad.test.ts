@@ -201,15 +201,24 @@ describe('ChatBubbles — спиннер первой загрузки (порт
    * `performHistoryResult` лента ждёт `getHeavyAnimationPromise()` (порт tweb
    * bubbles.ts:11491). Так между «ответ пришёл» и «окно отрисовано» появляется
    * наблюдаемый момент — тот самый, в котором и живёт гейт `!cached`.
+   *
+   * Объявляется ИЗ запроса истории, а не до `setPeer`: `cleanup()` нового окна
+   * обрывает тяжёлую анимацию прошлого (tweb bubbles.ts:5695-5696), и
+   * объявленная раньше пауза до рендера бы не дожила.
    */
-  function holdRender() {
-    void dispatchHeavyAnimationEvent(new Promise<void>(() => {}), 60_000)
+  function holdRender(managers: ReturnType<typeof managersFor>) {
+    const getHistory = managers.getHistory.getMockImplementation()!
+    managers.getHistory.mockImplementation(async (args: HistoryArgs) => {
+      void dispatchHeavyAnimationEvent(new Promise<void>(() => {}), 60_000)
+      return getHistory(args)
+    })
     return () => { interruptHeavyAnimation() }
   }
 
   it('страница ПО СЕТИ: ответ пришёл, окно ещё не отрисовано — спиннер висит', async () => {
-    const b = mount(managersFor(page([1, 2, 3])))
-    const release = holdRender()
+    const managers = managersFor(page([1, 2, 3]))
+    const b = mount(managers)
+    const release = holdRender(managers)
 
     const setPeerPromise = b.setPeer()
     await settle(2)
@@ -221,8 +230,9 @@ describe('ChatBubbles — спиннер первой загрузки (порт
   })
 
   it('страница ИЗ КЭША: в тот же момент спиннера уже нет (гейт `!cached`, tweb :5375)', async () => {
-    const b = mount(managersFor(page([1, 2, 3], true, true, true)))
-    const release = holdRender()
+    const managers = managersFor(page([1, 2, 3], true, true, true))
+    const b = mount(managers)
+    const release = holdRender(managers)
 
     const setPeerPromise = b.setPeer()
     await settle(2)

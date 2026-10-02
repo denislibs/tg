@@ -90,7 +90,11 @@ func (r *BotAPIRepo) BotsByOwner(ctx context.Context, ownerID int64) ([]domain.B
 
 func (r *BotAPIRepo) UsernameTaken(ctx context.Context, username string) (bool, error) {
 	var n int
-	err := querier(ctx, r.pool).QueryRow(ctx, `SELECT count(*) FROM users WHERE lower(username) = lower($1)`, username).Scan(&n)
+	// Пространство имён общее с чатами (миграция 0134): имя группы/канала
+	// боту не отдаётся.
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT (SELECT count(*) FROM users WHERE lower(username) = lower($1))
+		      + (SELECT count(*) FROM chats WHERE lower(username) = lower($1))`, username).Scan(&n)
 	return n > 0, err
 }
 

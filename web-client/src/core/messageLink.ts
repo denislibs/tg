@@ -1,18 +1,22 @@
-// Ссылка на конкретное сообщение («Copy Message Link» в меню бабла).
+// Ссылка на конкретное сообщение («Copy Message Link» в меню бабла) и хэш
+// навигации клиента.
 //
-// В tweb это `t.me/<username>/<mid>` — ссылка на домен Telegram, которую
-// открывает их же клиент. У нас домена t.me нет, поэтому ссылка ведёт на наш
-// origin и продолжает существующую схему хэша (`useUrlSync`):
+// Ссылка — как у tweb (`contextMenu.ts::getUrlToMessage`): `t.me/<username>/<mid>`
+// у чата с юзернеймом, `t.me/c/<chatId>/<mid>` у остальных, только на своём
+// хосте ссылок (`core/publicLink.ts`). Страница по ней (бэкенд) ведёт в клиент
+// по схеме хэша (`useUrlSync`):
 //
-//   #@channelname      → чат по юзернейму        (уже было)
-//   #<peerId>          → чат по числовому id     (уже было)
-//   #@channelname/123  → чат + прыжок к сообщению (добавлено здесь)
+//   #@channelname      → чат по юзернейму
+//   #<peerId>          → чат по числовому id
+//   #@channelname/123  → чат + прыжок к сообщению
 //   #<peerId>/123      → то же для чата без юзернейма
 //
 // Якорь сообщения — `seq` (порядковый номер сообщения В ЧАТЕ), а не глобальный
 // `id`: именно им оперирует прыжок (`setPendingJump(peerId, seq)`), и он же
 // аналог телеграмного `mid` — номера внутри чата, а не по всей базе.
 import { useSearchStore } from '@stores/searchStore'
+import { toChatId } from '@core/peers/peerId'
+import { publicPrivatePostLink, publicUsernameLink } from './publicLink'
 
 /** Хэш без ведущего `#`: цель навигации + (опционально) якорь сообщения. */
 export interface ParsedHash {
@@ -59,25 +63,19 @@ export function parseNavHash(rawHash: string): ParsedHash | undefined {
 }
 
 /**
- * Ссылка на сообщение для буфера обмена. Юзернейм предпочтительнее числового
- * id: такая ссылка читаема и переживает переезд между инсталляциями (её
- * разбирает та же ветка `@username`, что и обычную ссылку на чат).
+ * Ссылка на сообщение для буфера обмена (tweb `getUrlToMessage`, без веток
+ * треда/комментария — см. шапку `components/chat/contextMenu.ts`).
  */
 export function buildMessageLink({
-  origin,
-  pathname,
   peerId,
   username,
   seq,
 }: {
-  origin: string
-  pathname: string
-  peerId: PeerId | string
+  peerId: PeerId
   username?: string | null
   seq: number
 }): string {
-  const target = username ? `@${username}` : String(peerId)
-  return `${origin}${pathname}#${target}/${seq}`
+  return username ? publicUsernameLink(username, seq) : publicPrivatePostLink(toChatId(peerId), seq)
 }
 
 /**

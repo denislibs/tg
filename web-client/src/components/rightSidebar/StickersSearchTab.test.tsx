@@ -27,7 +27,7 @@
 // ОДНИМ пакетом с самой выдачей (featuredSets/searchSets) — не отдельным
 // getStickerSet на строку; getStickerSet в моках ниже остаётся только ради
 // StickerSetModal (клик по строке вне превью/кнопки её открывает).
-import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest'
+import { describe, it, expect, afterEach, beforeAll, vi, beforeEach } from 'vitest'
 import { render, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
 import StickersSearchTab, { openStickersSearchTab } from './StickersSearchTab'
 import { openGifsSearchTab } from './GifsSearchTab'
@@ -36,6 +36,13 @@ import { ManagersProvider } from '../../core/hooks/useManagers'
 import { usePopupStore } from '../../stores/popupStore'
 import type { Managers } from '../../client/bootstrap'
 import { makeStickerSet } from '../../core/stickers/testSticker'
+import { installSidebarRight } from '../../test/sidebarRight'
+
+// Экран поиска открывает правую колонку классом `AppSidebarRight` (мост
+// `useRightColumnShown`, ВРЕМЕННО до 0б-11) — колонка нужна каждому тесту файла.
+let sidebarRight: ReturnType<typeof installSidebarRight>
+beforeEach(() => { sidebarRight = installSidebarRight() })
+afterEach(() => sidebarRight.dispose())
 
 const noop = () => {}
 
@@ -64,6 +71,19 @@ beforeAll(() => {
 // Файл стикера в тестах не грузим (fetch к media) — превью пинится по обёртке
 // .sticker-set-sticker; сам StickerMedia покрыт своим StickerMedia.test.tsx.
 vi.mock('../StickerMedia', () => ({ default: () => <div data-testid="sticker-media" /> }))
+// Предпросмотр достаёт документ ячейки у реестра воркера (`managers.docs.getDoc`)
+// и рисует его `wrapSticker` — оба подменены: рендер медиа не предмет файла.
+vi.mock('@/client/bootstrap', async () => {
+  const { makeSticker } = await import('../../core/stickers/testSticker')
+  return { startClient: () => ({ managers: { docs: { getDoc: async (id: number) => makeSticker({ id }) } } }) }
+})
+vi.mock('@components/wrappers/sticker', () => ({
+  default: (o: { div: HTMLElement }) => {
+    const img = document.createElement('img')
+    o.div.append(img)
+    return { render: Promise.resolve(img), width: 0, height: 0, destroy: () => {} }
+  },
+}))
 
 let slugSeq = 0
 // slug уникален на тест: StickerSetModal, открытый кликом по строке, кэширует
@@ -74,7 +94,6 @@ const makeSticker = (id: number) => ({ id, setId: 1, mediaId: 100 + id, emoji: '
 function makeManagers(over: Record<string, unknown> = {}) {
   const duck = makeSet(1, 'Duck')
   const fns = {
-    mySets: vi.fn().mockResolvedValue([]),
     // covers — превью строки, приезжает ОДНИМ пакетом с самой выдачей
     // (Task 2): семь стикеров набора, строка покажет первые min(5, count).
     featuredSets: vi.fn().mockResolvedValue({ sets: [duck], covers: new Map([[duck.id, [1, 2, 3, 4, 5, 6, 7].map(makeSticker)]]) }),
@@ -131,11 +150,10 @@ describe('StickersSearchTab — разметка tweb', () => {
     })
   })
 
-  // Task 2 (подключение useStickerViewer) — tweb sidebarRight/tabs/stickers.tsx:164
-  // (attachStickerViewerListeners на том же диве, что рисует все строки). Обычный
-  // клик по превью (короче порога показа) уже проверен тестом ниже («ввод
-  // запроса...»). Порог (HOLD_THRESHOLD_MS, useStickerViewer.ts) — реальные
-  // 125мс, поэтому здесь фейковые часы продвигают время удержания.
+  // tweb sidebarRight/tabs/stickers.tsx:166 (attachStickerViewerListeners на
+  // `.sticker-sets`, что держит все строки). Обычный клик по превью (короче
+  // порога показа) проверен тестом ниже («ввод запроса...»); порог — 125 мс
+  // (stickerViewer.ts), фейковые часы продвигают время удержания.
   it('долгое зажатие ЛКМ на превью-стикере строки открывает предпросмотр, отпускание закрывает его; клик после такого удержания стикер НЕ отправляет', async () => {
     const onPickSticker = vi.fn()
     const { managers } = makeManagers()
@@ -148,12 +166,13 @@ describe('StickersSearchTab — разметка tweb', () => {
     try {
       const cell = document.querySelector('.sticker-set-sticker')!
       fireEvent.mouseDown(cell, { button: 0 })
-      expect(document.querySelector('[data-testid="sticker-viewer"]')).toBeNull() // порог ещё не истёк
-      void act(() => vi.advanceTimersByTime(150))
-      expect(document.querySelector('[data-testid="sticker-viewer"]')).not.toBeNull()
+      expect(document.querySelector('.sticker-viewer')).toBeNull() // порог ещё не истёк
+      await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+      expect(document.querySelector('.sticker-viewer.is-visible')).not.toBeNull()
 
       fireEvent.mouseUp(document)
-      expect(document.querySelector('[data-testid="sticker-viewer"]')).toBeNull()
+      await act(async () => { await vi.advanceTimersByTimeAsync(250) })
+      expect(document.querySelector('.sticker-viewer')).toBeNull()
 
       fireEvent.click(cell)
       expect(onPickSticker).not.toHaveBeenCalled()
@@ -195,8 +214,14 @@ describe('StickersSearchTab — разметка tweb', () => {
     expect(button.classList.contains('gray')).toBe(true)
   })
 
-  it('уже установленный набор (mySets) сразу "Added"+gray; клик — uninstall', async () => {
-    const { managers, fns } = makeManagers({ mySets: vi.fn().mockResolvedValue([makeSet(1, 'Duck')]) })
+  // «Установлен ли» — `installed_date` самого набора выдачи (tweb
+  // stickers.tsx:48 `isStickerSetAdded(set)`), а не поиск в моих наборах:
+  // ручки «моих наборов» экран не зовёт вовсе (её нет в стабе).
+  it('набор трендов с installed_date сразу "Added"+gray; клик — uninstall', async () => {
+    const installed = { ...makeSet(1, 'Duck'), installed_date: 1787334148 }
+    const { managers, fns } = makeManagers({
+      featuredSets: vi.fn().mockResolvedValue({ sets: [installed], covers: new Map() }),
+    })
     renderTab({}, managers)
     await waitFor(() => {
       const b = document.querySelector('.sticker-set-button')
@@ -224,7 +249,7 @@ describe('StickersSearchTab — разметка tweb', () => {
     const cell = document.querySelector('.sticker-set-sticker')!
     fireEvent.mouseDown(cell, { button: 0 })
     fireEvent.mouseUp(document)
-    expect(document.querySelector('[data-testid="sticker-viewer"]')).toBeNull() // не мелькнул
+    expect(document.querySelector('.sticker-viewer')).toBeNull() // не мелькнул
     fireEvent.click(cell)
     expect(onPickSticker).toHaveBeenCalledTimes(1)
     expect(onPickSticker.mock.calls[0][0].mediaId).toBe(101)

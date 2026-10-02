@@ -61,3 +61,11 @@ if(size) bubble.style.setProperty('--emoji-size', size + 'px');       // :7381
 `can-have-big-emoji`, `sticker`, `is-message-empty`, `just-media` и не несёт
 `can-have-tail`; тест ленты пинует и обратное — текст с эмодзи И буквами
 остаётся обычным баблом.
+
+## Связанный тумблер настроек
+
+Вкладка «Стикеры и эмодзи» (`sidebarLeft/tabs/stickersAndEmoji.solid.tsx`, задача 15
+плана 2D) не рисует тумблер «Large Emoji» (tweb `stickersAndEmoji.tsx:127-136`,
+`settings.emoji.big`) — О-45 плана 2D: его единственный читатель у оригинала — эта
+ветка ленты (`bubbles.ts:8854`, перерисовка по `settings.emoji.big` — `:2457`). Закрывая
+долг, вернуть тумблер вместе с настройкой в `settings.tsx` и мосту `useAppSettings`.

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/messenger-denis/backend/internal/domain"
@@ -62,14 +63,14 @@ func TestStickersRepo_SetsCRUD(t *testing.T) {
 	if _, err := r.CreateSet(ctx, domain.StickerSetRecord{Slug: "duck", Title: "Дубль", Kind: "sticker", CreatedBy: owner}); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("duplicate slug: want ErrConflict, got %v", err)
 	}
-	got, err := r.SetBySlug(ctx, "duck")
+	got, err := r.SetBySlug(ctx, owner, "duck")
 	if err != nil || got.ID != set.ID || got.StickerCount != 3 || got.CreatedBy != owner || got.Kind != "sticker" {
 		t.Fatalf("SetBySlug: %+v, %v", got, err)
 	}
-	if _, err := r.SetBySlug(ctx, "nope"); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := r.SetBySlug(ctx, owner, "nope"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("SetBySlug missing: want ErrNotFound, got %v", err)
 	}
-	byID, err := r.SetByID(ctx, set.ID)
+	byID, err := r.SetByID(ctx, owner, set.ID)
 	if err != nil || byID.Slug != "duck" {
 		t.Fatalf("SetByID: %+v, %v", byID, err)
 	}
@@ -88,7 +89,7 @@ func TestStickersRepo_SetsCRUD(t *testing.T) {
 	}
 
 	// Поиск по title/slug, регистронезависимый.
-	found, err := r.SearchSets(ctx, "DUC", 10)
+	found, err := r.SearchSets(ctx, owner, "DUC", 10)
 	if err != nil || len(found) != 1 || found[0].ID != set.ID {
 		t.Fatalf("SearchSets: %+v, %v", found, err)
 	}
@@ -259,6 +260,15 @@ func TestStickersRepo_IsStickerMediaAndExists(t *testing.T) {
 	if ok, _ := r.IsStickerMedia(ctx, plainMedia); ok {
 		t.Fatalf("IsStickerMedia(обычное медиа): want false")
 	}
+	// Обложка набора — публичный файл набора, как и его стикеры (thumb_document_id
+	// клиента): без этого GET /media/{id}/content отвечал на неё 404.
+	cover := seedStickerMedia(t, pool, owner, "cover")
+	if err := r.SetCover(ctx, set.ID, cover); err != nil {
+		t.Fatalf("SetCover: %v", err)
+	}
+	if ok, err := r.IsStickerMedia(ctx, cover); err != nil || !ok {
+		t.Fatalf("IsStickerMedia(обложка набора): %v, %v", ok, err)
+	}
 	if ok, err := r.MediaExists(ctx, plainMedia); err != nil || !ok {
 		t.Fatalf("MediaExists: %v, %v", ok, err)
 	}
@@ -381,7 +391,7 @@ func TestStickersRepo_FeaturedSets(t *testing.T) {
 	second, _ := seedFullSet(t, pool, r, owner, "feat_second", 1)
 	third, _ := seedFullSet(t, pool, r, owner, "feat_third", 3)
 
-	sets, err := r.FeaturedSets(ctx, 40)
+	sets, err := r.FeaturedSets(ctx, owner, 40)
 	if err != nil {
 		t.Fatalf("FeaturedSets: %v", err)
 	}
@@ -392,7 +402,7 @@ func TestStickersRepo_FeaturedSets(t *testing.T) {
 		t.Fatalf("StickerCount = %d, want 3", sets[0].StickerCount)
 	}
 
-	limited, err := r.FeaturedSets(ctx, 2)
+	limited, err := r.FeaturedSets(ctx, owner, 2)
 	if err != nil || len(limited) != 2 || limited[0].ID != third.ID {
 		t.Fatalf("FeaturedSets(limit=2): %+v, %v — want 2 новейших", limited, err)
 	}
@@ -426,7 +436,7 @@ func TestFeaturedSetsOrderByRank(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sets, err := r.FeaturedSets(ctx, 10)
+	sets, err := r.FeaturedSets(ctx, owner, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -702,5 +712,115 @@ func TestStickerIndexes(t *testing.T) {
 	}
 	if rankIdx {
 		t.Error("sticker_sets_rank_idx жив — 0097 не должна его создавать (планировщик его не берёт)")
+	}
+}
+
+// «Установлен ли набор» — параметр САМОГО набора (`stickerSet.installed_date`,
+// tweb isStickerSetAdded): он обязан приезжать в КАЖДОЙ выдаче набора — тренды,
+// поиск, набор по id и по slug, мои наборы, — и только для того, кто смотрит.
+// Без него вкладка поиска стикеров рисует установленный набор с кнопкой «Add».
+func TestStickersRepo_InstalledAtForViewer(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewStickersRepo(pool)
+	ctx := context.Background()
+	owner := seedUser(t, pool, "+7830")
+	alice := seedUser(t, pool, "+7831")
+	bob := seedUser(t, pool, "+7832")
+	carol := seedUser(t, pool, "+7833")
+
+	mine, _ := seedFullSet(t, pool, r, owner, "inst_mine", 1)
+	other, _ := seedFullSet(t, pool, r, owner, "inst_other", 1)
+	// mine ставят Алиса и Боб (две строки user_sticker_sets на один набор —
+	// выдача не должна размножиться), other — только Боб.
+	for _, in := range []struct{ user, set int64 }{{alice, mine.ID}, {bob, mine.ID}, {bob, other.ID}} {
+		if err := r.Install(ctx, in.user, in.set); err != nil {
+			t.Fatalf("Install: %v", err)
+		}
+	}
+	// Срок установки Алисы — ровно её строка, а не чужая: разводим их во времени.
+	if _, err := pool.Exec(ctx,
+		`UPDATE user_sticker_sets SET added_at = added_at - interval '1 hour' WHERE user_id=$1`, bob); err != nil {
+		t.Fatal(err)
+	}
+	var aliceAt time.Time
+	if err := pool.QueryRow(ctx,
+		`SELECT added_at FROM user_sticker_sets WHERE user_id=$1 AND set_id=$2`, alice, mine.ID).Scan(&aliceAt); err != nil {
+		t.Fatal(err)
+	}
+
+	byID := func(viewer int64) map[int64]domain.StickerSetRecord {
+		t.Helper()
+		out := map[int64]domain.StickerSetRecord{}
+		for _, id := range []int64{mine.ID, other.ID} {
+			s, err := r.SetByID(ctx, viewer, id)
+			if err != nil {
+				t.Fatalf("SetByID: %v", err)
+			}
+			out[id] = s
+		}
+		return out
+	}
+	bySlug := func(viewer int64) map[int64]domain.StickerSetRecord {
+		t.Helper()
+		out := map[int64]domain.StickerSetRecord{}
+		for _, slug := range []string{"inst_mine", "inst_other"} {
+			s, err := r.SetBySlug(ctx, viewer, slug)
+			if err != nil {
+				t.Fatalf("SetBySlug: %v", err)
+			}
+			out[s.ID] = s
+		}
+		return out
+	}
+	list := func(name string, sets []domain.StickerSetRecord, err error) map[int64]domain.StickerSetRecord {
+		t.Helper()
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		out := map[int64]domain.StickerSetRecord{}
+		for _, s := range sets {
+			if _, dup := out[s.ID]; dup {
+				t.Fatalf("%s: набор %d размножился чужими установками: %+v", name, s.ID, sets)
+			}
+			out[s.ID] = s
+		}
+		return out
+	}
+
+	for _, viewer := range []struct {
+		name          string
+		id            int64
+		mine, other   bool
+		mineAtIsAlice bool
+	}{
+		{"alice", alice, true, false, true},
+		{"bob", bob, true, true, false},
+		{"carol", carol, false, false, false},
+	} {
+		featured, err := r.FeaturedSets(ctx, viewer.id, 10)
+		found, err2 := r.SearchSets(ctx, viewer.id, "inst_", 10)
+		views := map[string]map[int64]domain.StickerSetRecord{
+			"FeaturedSets": list("FeaturedSets", featured, err),
+			"SearchSets":   list("SearchSets", found, err2),
+			"SetByID":      byID(viewer.id),
+			"SetBySlug":    bySlug(viewer.id),
+		}
+		for name, got := range views {
+			if g := !got[mine.ID].InstalledAt.IsZero(); g != viewer.mine {
+				t.Errorf("%s/%s: mine установлен = %v, want %v", viewer.name, name, g, viewer.mine)
+			}
+			if g := !got[other.ID].InstalledAt.IsZero(); g != viewer.other {
+				t.Errorf("%s/%s: other установлен = %v, want %v", viewer.name, name, g, viewer.other)
+			}
+			if viewer.mineAtIsAlice && !got[mine.ID].InstalledAt.Equal(aliceAt) {
+				t.Errorf("%s/%s: срок установки %v, want строку Алисы %v", viewer.name, name, got[mine.ID].InstalledAt, aliceAt)
+			}
+		}
+	}
+
+	// Мои наборы: тот же срок, что в остальных выдачах.
+	installed, err := r.InstalledSets(ctx, alice)
+	if err != nil || len(installed) != 1 || !installed[0].InstalledAt.Equal(aliceAt) {
+		t.Fatalf("InstalledSets: %+v, %v — want mine со сроком %v", installed, err, aliceAt)
 	}
 }

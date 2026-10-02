@@ -57,7 +57,7 @@ func (f *fakeRepo) CreateSet(_ context.Context, set domain.StickerSetRecord) (do
 	return set, nil
 }
 
-func (f *fakeRepo) SetBySlug(_ context.Context, slug string) (domain.StickerSetRecord, error) {
+func (f *fakeRepo) SetBySlug(_ context.Context, _ int64, slug string) (domain.StickerSetRecord, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, s := range f.sets {
@@ -68,7 +68,7 @@ func (f *fakeRepo) SetBySlug(_ context.Context, slug string) (domain.StickerSetR
 	return domain.StickerSetRecord{}, domain.ErrNotFound
 }
 
-func (f *fakeRepo) SetByID(_ context.Context, id int64) (domain.StickerSetRecord, error) {
+func (f *fakeRepo) SetByID(_ context.Context, _, id int64) (domain.StickerSetRecord, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	s, ok := f.sets[id]
@@ -183,7 +183,7 @@ func (f *fakeRepo) InstalledSets(_ context.Context, userID int64) ([]domain.Stic
 	return out, nil
 }
 
-func (f *fakeRepo) SearchSets(_ context.Context, q string, limit int) ([]domain.StickerSetRecord, error) {
+func (f *fakeRepo) SearchSets(_ context.Context, _ int64, q string, limit int) ([]domain.StickerSetRecord, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var out []domain.StickerSetRecord
@@ -200,7 +200,7 @@ func (f *fakeRepo) SearchSets(_ context.Context, q string, limit int) ([]domain.
 	return out, nil
 }
 
-func (f *fakeRepo) FeaturedSets(_ context.Context, limit int) ([]domain.StickerSetRecord, error) {
+func (f *fakeRepo) FeaturedSets(_ context.Context, _ int64, limit int) ([]domain.StickerSetRecord, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.featuredLimit = limit
@@ -666,7 +666,7 @@ func TestFeatured_NewestFirstAndLimit(t *testing.T) {
 	older, olderSts := seedSet(t, in, f, 1, "older_set", 1)
 	newer, newerSts := seedSet(t, in, f, 1, "newer_set", 1)
 
-	got, covers, err := in.Featured(ctx)
+	got, covers, err := in.Featured(ctx, 1)
 	if err != nil {
 		t.Fatalf("Featured: %v", err)
 	}
@@ -703,7 +703,7 @@ func TestSearchSets_ReturnsCovers(t *testing.T) {
 	duck, duckSts := seedSet(t, in, f, 1, "duck_pack", 3)
 	seedSet(t, in, f, 1, "cat_pack", 1) // не матчится по запросу
 
-	sets, covers, err := in.SearchSets(ctx, "duck")
+	sets, covers, err := in.SearchSets(ctx, 1, "duck")
 	if err != nil {
 		t.Fatalf("SearchSets: %v", err)
 	}
@@ -714,7 +714,7 @@ func TestSearchSets_ReturnsCovers(t *testing.T) {
 		t.Fatalf("covers[duck]: %+v, want превью из %v", covers[duck.ID], duckSts)
 	}
 
-	sets, covers, err = in.SearchSets(ctx, "  ")
+	sets, covers, err = in.SearchSets(ctx, 1, "  ")
 	if err != nil || len(sets) != 0 || len(covers) != 0 {
 		t.Fatalf("SearchSets(пусто): %+v, %+v, %v — want пустую выдачу", sets, covers, err)
 	}

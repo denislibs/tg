@@ -2,12 +2,10 @@
 //
 // Перевод подписей со строк на живые узлы менял форму МОЛЧА — ни тайпчек, ни
 // сборка формы не видят, а тестов на дату у этих экранов не было вовсе. Ревью
-// нашло три таких потери, и каждая закрыта пином здесь:
+// нашло три таких потери, и каждая закрыта пином здесь (одна из них — год в подписи
+// React-«Passkeys» — снята вместе с экраном задачей 21 плана 2D: Solid-вкладка
+// зовёт `formatDate`, как оригинал, `passkeys.solid.test.tsx`):
 //
-//  • `PremiumManage` и `Passkeys` — у `formatDate` оригинала год появляется
-//    ТОЛЬКО у прошлых лет, а прежние подписи несли `year: 'numeric'` всегда.
-//    «Подписка действует до 3 декабря» без года не отвечает на вопрос, ради
-//    которого строку читают;
 //  • `GiftInfoPopup` — разделитель ` · ` печатался только при непустой дате,
 //    после перевода стал безусловным, и `date === 0` («даты нет») дал бы
 //    «· 1 янв. 1970»;
@@ -17,7 +15,7 @@
 //
 // Экраны рендерятся НАСТОЯЩИЕ; подменены только источники данных (RPC-менеджеры),
 // потому что предмет проверки — подпись, а не загрузка.
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import '../test/lang'
@@ -26,8 +24,6 @@ import type { Managers } from '../client/bootstrap'
 import type { MyMessage } from '../core/models'
 import type { AnyStarGift } from '../core/managers/starsManager'
 
-import PremiumManage from './PremiumManage'
-import Passkeys from './settings/Passkeys'
 import GiftInfoPopup from './stars/GiftInfoPopup'
 import { ScheduledLabel } from './ScheduledView'
 
@@ -50,47 +46,6 @@ afterEach(() => {
 const withManagers = (managers: unknown, ui: React.ReactNode) => render(
   <ManagersProvider managers={managers as Managers}>{ui}</ManagersProvider>,
 )
-
-describe('PremiumManage — дата окончания подписки', () => {
-  const managers = (expiresAt: string) => ({
-    premium: {
-      getSubscription: async () => ({
-        plan: 'monthly', priceCents: 499, startedAt: THIS_YEAR, expiresAt, autoRenew: true,
-      }),
-    },
-  })
-
-  it('несёт ГОД, даже когда он текущий', async () => {
-    await act(async () => { withManagers(managers(THIS_YEAR), <PremiumManage onBack={() => {}} />) })
-
-    // Без `ALWAYS_YEAR` здесь было бы «June 14» — формально верно, по смыслу нет.
-    expect(screen.getByText('June 14, 2026')).toBeTruthy()
-  })
-
-  it('битую дату с провода показывает сырой, а не роняет экран', async () => {
-    await act(async () => { withManagers(managers('не дата'), <PremiumManage onBack={() => {}} />) })
-
-    expect(screen.getByText('не дата')).toBeTruthy()
-  })
-})
-
-describe('Passkeys — дата создания/последнего использования', () => {
-  const managers = (createdAt: string) => ({
-    auth: { passkeysList: async () => [{ id: 1, name: 'ключ', createdAt, lastUsedAt: null }] },
-  })
-
-  it('несёт ГОД и сокращённый месяц', async () => {
-    await act(async () => { withManagers(managers(THIS_YEAR), <Passkeys onBack={() => {}} />) })
-
-    expect(document.body.textContent).toContain('Jun 14, 2026')
-  })
-
-  it('битую дату с провода показывает сырой, а не роняет экран', async () => {
-    await act(async () => { withManagers(managers('не дата'), <Passkeys onBack={() => {}} />) })
-
-    expect(document.body.textContent).toContain('не дата')
-  })
-})
 
 describe('GiftInfoPopup — разделитель перед датой', () => {
   const gift: AnyStarGift = {

@@ -97,7 +97,6 @@ export function useSidebarStories() {
     },
     pickStoryFile,
     openArchive: () => setShowArchive(true),
-    openCloseFriends: () => setShowCloseFriends(true),
     overlays,
   }
 }

@@ -528,6 +528,25 @@ const MIME_PDF = 'application/pdf'
 // рисовался ФАЙЛОМ с именем «8.json».
 
 /**
+ * Хранилище документов — `appDocsManager.docs` оригинала. Наполняет его только
+ * `saveDocument`, и в воркере через него проходит каждый документ с провода
+ * (вложение сообщения — `saveMessageMedia`, стикеры и GIF — `stickersManager`),
+ * поэтому реестр воркера (`workerCore.ts`, `docs.getDoc`) знает всё, что видела
+ * вкладка. Своя копия модуля в главном потоке пустует: вкладка спрашивает
+ * воркер, как tweb спрашивает `managers.appDocsManager`.
+ *
+ * Отступление: документы истории, поднятой с диска офлайн-фолбэком
+ * (`messagesManager` → `loadMessages`), `saveDocument` не проходят и здесь их
+ * нет — у tweb кэш истории перечитывается через `saveMessages` → `saveDoc`.
+ */
+const docs = new Map<number, MyDocument>()
+
+/** tweb appDocsManager.ts:326-328 — `getDoc(docId)`. */
+export function getDoc(id: number): MyDocument | undefined {
+  return docs.get(id)
+}
+
+/**
  * Порт `appDocsManager.saveDoc` (tweb :150-260) в части вывода типа документа:
  * проходит атрибуты, затем уточняет по mime. Мутирует документ на месте — как
  * в оригинале, где `saveDoc` дописывает поля в сам объект.
@@ -545,6 +564,10 @@ const MIME_PDF = 'application/pdf'
  *    только стикерам.
  */
 export function saveDocument(doc: MyDocument): MyDocument {
+  // tweb saveDoc: `this.docs[doc.id] = doc` — документ, прошедший разбор, лежит
+  // у менеджера и достаётся по id (`getDoc` ниже).
+  docs.set(doc.id, doc)
+
   for (const attribute of doc.attributes) {
     switch (attribute._) {
       case 'documentAttributeAudio':

@@ -7,7 +7,7 @@
  * задача 25; сама вкладка — `sharedFolder.solid.test.tsx`.
  *
  * Вкладки НАСТОЯЩИЕ (`solidJsTabs/tabs.ts`), открытые через хост слайдера
- * (`settingsSliderHost.ts`) тем же путём, что их открывает строка корня
+ * (`sidebarLeft/columnSlider.ts`) тем же путём, что их открывает строка корня
  * настроек и меню папки; дочерние вкладки — изнутри, `tab.slider.createTab`.
  * Стабы — только границы: менеджеры воркера (папки, ссылки, пиры, диалоги),
  * попап подтверждения, всплывашка, загрузка лотти (без WASM SIMD она и так
@@ -29,7 +29,7 @@ import { initialState } from '@core/state/state'
 import contextMenuController from '@helpers/contextMenuController'
 import type SliderSuperTab from '@components/sliderTab'
 import { AppChatFoldersTab, AppEditFolderTab } from '@components/solidJsTabs/tabs'
-import { createSettingsSliderHost, type SettingsSliderHost } from '../settingsSliderHost'
+import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
 
 const confirmationPopup = vi.hoisted(() => vi.fn(async(_options: unknown) => {}))
 vi.mock('@components/popups/popupPeer', async(importOriginal) => ({
@@ -79,7 +79,7 @@ const settle = async() => {
   for(let i = 0; i < 12; ++i) await pause(0)
 }
 
-let host: SettingsSliderHost
+let host: TestColumnSlider
 let folders: {
   create: ReturnType<typeof vi.fn>
   update: ReturnType<typeof vi.fn>
@@ -125,7 +125,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = createSettingsSliderHost(columnEl, managers)
+  host = mountTestColumnSlider(columnEl, managers)
 })
 
 afterEach(async() => {

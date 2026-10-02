@@ -1,5 +1,5 @@
 // commandThenReload — общая точка вкладок-инициаторов перехода между
-// аккаунтами (MainMenu.switchTo/addAccount, AuthFlow.backToAccount,
+// аккаунтами (бургер `sidebarLeft/toolsMenu.ts` — строка аккаунта и addAccount, AuthFlow.backToAccount,
 // PasscodeLockScreen «выйти»). Ни у одного из четырёх вызывающих файлов
 // тестов нет, а поведение у строки есть: без проглатывания отказа реджект
 // уходит из async-обработчика наружу, `location.reload()` следующей строкой
