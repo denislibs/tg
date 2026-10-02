@@ -107,7 +107,7 @@
 //     `chatlistTopNotification.tsx`) не портирована: у бэкенда нет ни
 //     `chatlists.getChatlistUpdates`/`hideChatlistUpdates`, ни признака
 //     `dialogFilterChatlist` у папки, вступившей по ссылке (`domain.DialogFilter`) —
-//     плашке не из чего взяться (бэклог Б-50).
+//     плашке не из чего взяться (бэклог Б-52).
 // 15. `setFilterIdAndChangeTab` синхронный (у tweb `async`, `:855-858`): его
 //     обещание разрешается `undefined` — `onChatsScroll` ничего не возвращает
 //     (`base.ts:144-146`), — и полоса ждала бы пустоту.
