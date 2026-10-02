@@ -44,8 +44,8 @@ func (i *Interactor) replyAuthorName(ctx context.Context, orig domain.Message) s
 
 // mentionedUserIDs collects the distinct target users of a message's
 // "text_mention" entities (Telegram's mention-of-a-user-without-username, which
-// carries the user id inline). Plain "@username" mentions aren't resolved here —
-// they don't carry a user id — so they don't feed the unread-mentions counter.
+// carries the user id inline). Plain "@username" mentions carry no user id —
+// they're resolved against the chat's members by mentionedUsers.
 func mentionedUserIDs(entities domain.MessageEntities) map[int64]bool {
 	var out map[int64]bool
 	for _, e := range entities {
@@ -59,6 +59,30 @@ func mentionedUserIDs(entities domain.MessageEntities) map[int64]bool {
 		out[v.UserID] = true
 	}
 	return out
+}
+
+// mentionedUsers — кого упоминает сообщение в чате chatID: адресаты
+// text_mention (user_id в сущности) плюс участники чата, чьё «@username»
+// стоит в тексте. Второе сервер распознаёт сам, как Telegram: клиент шлёт
+// @username голым текстом, без сущности (разметка — на показе). Отправителя
+// отсекает fanOutNewMessage — упоминание считается только у получателей.
+func (i *Interactor) mentionedUsers(ctx context.Context, chatID int64, text string, entities domain.MessageEntities) (map[int64]bool, error) {
+	out := mentionedUserIDs(entities)
+	names := domain.MentionedUsernames(text, entities)
+	if len(names) == 0 {
+		return out, nil
+	}
+	ids, err := i.chats.MemberIDsByUsernames(ctx, chatID, names)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		if out == nil {
+			out = map[int64]bool{}
+		}
+		out[id] = true
+	}
+	return out, nil
 }
 
 // Send inserts a message, appends a new_message update to every member (bumping
@@ -458,10 +482,11 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			channelPts, err = i.channels.AppendUpdate(ctx, in.ChatID, "new_message", payload)
 			return err
 		}
-		// Упоминания: пользователи, явно указанные в тексте (text_mention несёт
-		// user_id). @username-упоминания сервер не резолвит — их user_id нет в
-		// entity (клиентский mention), поэтому в счётчик они не попадают.
-		mentioned := mentionedUserIDs(msg.Entities)
+		// Упоминания: адресаты text_mention и участники с «@username» в тексте.
+		mentioned, e := i.mentionedUsers(ctx, in.ChatID, msg.Text, msg.Entities)
+		if e != nil {
+			return e
+		}
 		// Корень треда едет ВНУТРИ сообщения (reply_to.reply_to_top_id) —
 		// messageUpdatePayload его туда и кладёт. Отдельного ключа на уровне
 		// кадра больше нет: это был второй источник того же факта, и именно

@@ -279,6 +279,9 @@ func (c groupMembershipChats) LastReadAt(context.Context, int64, int64) (time.Ti
 func (c groupMembershipChats) AddMention(context.Context, int64, int64, int64, int64) error {
 	return nil
 }
+func (c groupMembershipChats) MemberIDsByUsernames(context.Context, int64, []string) ([]int64, error) {
+	return nil, nil
+}
 func (c groupMembershipChats) ClearMentions(context.Context, int64, int64, int64) (int, error) {
 	return 0, nil
 }

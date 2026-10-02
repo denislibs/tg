@@ -96,7 +96,7 @@ func (i *Interactor) fanOutNewMessage(
 		if _, e := i.chats.IncUnreadBulk(ctx, chatID, others); e != nil {
 			return nil, nil, e
 		}
-		// Упоминания редки — точечно (по остатку text_mention).
+		// Упоминания редки — точечно (text_mention и @username, см. mentionedUsers).
 		for _, uid := range others {
 			if mentioned[uid] {
 				if e := i.chats.AddMention(ctx, chatID, msgID, msgSeq, uid); e != nil {

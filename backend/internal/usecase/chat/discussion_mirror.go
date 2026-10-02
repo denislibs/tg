@@ -131,7 +131,10 @@ func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message)
 	// thread_root_id у зеркала не нуждается в переводе (в отличие от Send):
 	// зеркало САМО корень треда, i.messageUpdatePayload(ctx, mirror) уже несёт
 	// thread_root_id=nil.
-	mentioned := mentionedUserIDs(mirror.Entities)
+	mentioned, err := i.mentionedUsers(ctx, disc, mirror.Text, mirror.Entities)
+	if err != nil {
+		return nil, err
+	}
 	recipients, ptsByUser, err := i.fanOutNewMessage(
 		ctx, disc, post.SenderID, mirror.ID, mirror.Seq, i.messageUpdatePayload(ctx, mirror), nil, mentioned)
 	if err != nil {

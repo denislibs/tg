@@ -493,6 +493,30 @@ func (r *ChatsRepo) AddMention(ctx context.Context, chatID, msgID, seq, userID i
 	return err
 }
 
+// MemberIDsByUsernames resolves @username mentions to the chat's members
+// (case-insensitive: users.username is CITEXT). Chat usernames share the
+// namespace (0134) but name a chat, not a user, so they never match here.
+func (r *ChatsRepo) MemberIDsByUsernames(ctx context.Context, chatID int64, usernames []string) ([]int64, error) {
+	q := querier(ctx, r.pool)
+	rows, err := q.Query(ctx,
+		`SELECT u.id FROM users u
+		 JOIN chat_members m ON m.user_id = u.id AND m.chat_id = $1
+		 WHERE u.username = ANY($2::citext[])`, chatID, usernames)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // ClearMentions drops the member's mentions with seq<=uptoSeq (they've been read)
 // and re-syncs unread_mentions_count to the remaining rows, which it returns.
 func (r *ChatsRepo) ClearMentions(ctx context.Context, chatID, userID, uptoSeq int64) (int, error) {
