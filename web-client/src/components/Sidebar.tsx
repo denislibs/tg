@@ -307,8 +307,6 @@ export default function Sidebar({
     },
     // О-82 волны 7: `AppMyStoriesTab` не портирован — наш архив историй
     openMyStories: () => bridgeRef.current.openMyStories(),
-    // ВРЕМЕННО до 0а-4: React-экран звонков вместо `AppCallsTab`
-    openCalls: () => setScreen('calls'),
     // ВРЕМЕННО до Э4-5: тему переключает хук шелла `useThemeToggle`
     switchTheme: (coords) => bridgeRef.current.onToggleMode(coords),
   }))

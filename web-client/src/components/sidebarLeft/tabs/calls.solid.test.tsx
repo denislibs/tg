@@ -61,6 +61,15 @@ vi.mock('@components/messages/ChatDialogs', () => ({
   openDeleteMessageDialog: (args: DeleteDialogArgs) => openDeleteMessageDialog(args),
 }))
 
+// Вкладка «Динамики и камера» — заглушка: её пины — `speakersAndCamera.solid.test.tsx`.
+vi.mock('./speakersAndCamera.solid', () => ({
+  default: () => {
+    const el = document.createElement('div')
+    el.className = 'speakers-tab-stub'
+    return el
+  },
+}))
+
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const settle = async() => {
   for(let i = 0; i < 12; ++i) await pause(0)
@@ -255,6 +264,24 @@ describe('вкладка «Звонки» — действия строки', ()
 
     args.onDeleteForEveryone()
     expect(deleteMessage.mock.calls).toEqual([[2, 41, true], [2, 40, true]])
+  })
+})
+
+describe('вкладка «Звонки» — меню «⋮» шапки', () => {
+  it('один пункт «Динамики и камера» открывает AppSpeakersAndCameraTab тем же слайдером; «Удалить все звонки» нет (О-45)', async() => {
+    const tab = await open()
+    const toggle = tab.header.querySelector<HTMLElement>('.btn-menu-toggle')!
+    expect(toggle).not.toBeNull()
+
+    toggle.click()
+    await settle()
+    const menu = document.querySelector<HTMLElement>('.btn-menu.active')!
+    const items = [...menu.querySelectorAll<HTMLElement>('.btn-menu-item')]
+    expect(items.map((item) => item.querySelector('.btn-menu-item-text')!.textContent)).toEqual(['Speakers and Camera'])
+
+    items[0].click()
+    await vi.waitFor(() => expect(document.querySelector('.speakers-tab-stub')).not.toBeNull())
+    expect(host.slider.getHistory().length).toBe(2)
   })
 })
 

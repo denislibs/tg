@@ -470,9 +470,10 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // uk 759, es 756, de 757, fr 751.
 // Задача 0а-4 волны 7 (вкладка «Звонки», порт tweb calls.tsx): у ru +4 ключа tweb
 // lang.ts:2017-2025 — `NoRecentCalls`, `NoRecentCallsInfo`, `Calls.Status.Group`,
-// `CallBack` (`Calls` уже завела 2-2). Итог: ru 1416.
+// `CallBack` (`Calls` уже завела 2-2); −1 наш `Calls.Empty` снесённого React-экрана
+// `CallsView` (у tweb пустой журнал — `NoRecentCalls`). Итог: ru 1415.
 const COMPOSITION = {
-  ru: { keys: 1416, plural: 44 },
+  ru: { keys: 1415, plural: 44 },
   uk: { keys: 759, plural: 33 },
   es: { keys: 756, plural: 32 },
   de: { keys: 757, plural: 33 },
@@ -627,9 +628,10 @@ const COMPOSITION = {
 // `COMPOSITION` выше).
 // Задачей 0а-2 волны 7 — у ru +1 ключ tweb `ChatLocation`, у всех пяти минус
 // `NewGroup.DefaultTitle` снесённого React-экрана (разбор — там же).
-// Задачей 0а-4 волны 7 — у ru +4 ключа вкладки «Звонки» (разбор — там же).
+// Задачей 0а-4 волны 7 — у ru +4 ключа вкладки «Звонки» и −1 `Calls.Empty`
+// снесённого React-экрана (разбор — там же).
 const FINGERPRINT = {
-  ru: '1e481ae9',
+  ru: '1fd757f5',
   uk: '571c2c10',
   es: '737d78e3',
   de: '5e55ac08',

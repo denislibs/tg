@@ -180,7 +180,6 @@ const lang = {
   'CallSettings.OutputSection': 'Speakers',
   'CallSettings.Speakers': 'Speakers',
   Calls: 'Calls',
-  'Calls.Empty': 'No recent calls',
   'Calls.Status.Group': '(%1$s) %2$s',
   // «Сколько ещё человек может вступить по ссылке» — ключ ОРИГИНАЛА (tweb lang.ts:2316,
   // `chatInviteLinks.tsx:452`) с числом ВНУТРИ строки. Наш `InviteLinks.CanJoinSuffix`

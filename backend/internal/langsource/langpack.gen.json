@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 41,
+      "version": 42,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -679,10 +679,6 @@
         {
           "key": "Calls",
           "value": "Calls"
-        },
-        {
-          "key": "Calls.Empty",
-          "value": "No recent calls"
         },
         {
           "key": "Calls.Status.Group",
@@ -5857,7 +5853,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 41,
+      "version": 42,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -7321,10 +7317,6 @@
         {
           "key": "Chat.Service.Call.Missed",
           "value": "Пропущенный"
-        },
-        {
-          "key": "Calls.Empty",
-          "value": "Нет недавних звонков"
         },
         {
           "key": "NoRecentCalls",

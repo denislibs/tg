@@ -23,11 +23,8 @@
  *     оригинал строит его из флага `call_not_empty` карточек чатов
  *     (`appGroupCallsManager.getActiveGroupCalls`), а наш бэкенд этого флага не
  *     производит (`backend/internal/domain/mtchat.go:170` — «предмета не имеют»).
- *  3. Меню «⋮» в шапке (:350-366) не заводится: у обоих его пунктов нет
- *     предмета. «Динамики и камера» открывает `AppSpeakersAndCameraTab` —
- *     вкладки ещё нет, это задача 2D-26 (ВРЕМЕННО до 2D-26: меню появится с
- *     ней). «Удалить все звонки» зовёт `messages.deletePhoneCallHistory` — ручки
- *     на бэкенде нет, О-45 волны 7.
+ *  3. В меню «⋮» шапки (:350-366) нет пункта «Удалить все звонки»: он зовёт
+ *     `messages.deletePhoneCallHistory`, а ручки на бэкенде нет — О-45 волны 7.
  *  4. Страница журнала — `managers.calls.log(offset, limit)` (`GET /calls`),
  *     а не `getHistory({inputFilter: phoneCalls, offsetId})`: ручка листает
  *     СМЕЩЕНИЕМ, а не `offset_id`. Смещение считается по всем полученным
@@ -63,12 +60,14 @@ import { createStore, reconcile } from 'solid-js/store'
 import Row from '@components/rowTsx.solid'
 import Section from '@components/section.solid'
 import Button from '@components/buttonTsx.solid'
+import ButtonMenuToggle from '@components/buttonMenuToggle'
 import { IconTsx } from '@components/iconTsx.solid'
 import { avatarNew } from '@components/avatar'
 import PeerTitle from '@components/chat/peerTitle'
 import { openDeleteMessageDialog } from '@components/messages/ChatDialogs'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
 import { usePromiseCollector } from '@components/solidJsTabs/promiseCollector.solid'
+import { AppSpeakersAndCameraTab } from '@components/solidJsTabs/tabs'
 import IS_CALL_SUPPORTED from '@environment/callSupport'
 import classNames from '@helpers/string/classNames'
 import { formatFullSentTime, formatTime } from '@helpers/date'
@@ -84,6 +83,7 @@ import { getPeerTitle, getUserTitle } from '@core/peers/getPeerTitle'
 import { getPeerPhoto, getPeerPhotoId } from '@core/peers/peer'
 import { isUser } from '@core/peers/peerId'
 import type { Managers } from '@/client/bootstrap'
+import type SidebarSlider from '@components/slider'
 import {
   type CallLogGroup,
   type CallLogMessage,
@@ -348,6 +348,20 @@ const Calls = () => {
 
   onMount(() => {
     tab.container.classList.add('calls-container')
+
+    const buttonMenu = ButtonMenuToggle({
+      icon: 'more',
+      direction: 'bottom-left',
+      buttons: [{
+        icon: 'settings',
+        text: 'AccountSettings.SpeakersAndCamera',
+        onClick: () => {
+          void (tab.slider as SidebarSlider).createTab(AppSpeakersAndCameraTab).open()
+        },
+      }],
+      // «Удалить все звонки» (:358-364) — О-45 волны 7, шапка файла (расхождение 3).
+    })
+    tab.header.append(buttonMenu)
 
     // Звонок, случившийся при открытой вкладке, встаёт наверх и сливается со
     // строкой над ним, если ей принадлежит (tdesktop подписан на
