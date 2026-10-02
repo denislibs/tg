@@ -228,7 +228,7 @@ const de = {
   NewChannel: 'Neuer Kanal',
   NewGroup: 'Neue Gruppe',
   NewPrivateChat: 'Neue Nachricht',
-  'Suggestion.Notifications.Title': 'Verpasse keine Nachricht! 🔔',
+  'Suggestion.Notifications': 'Verpasse keine Nachricht! %s',
   'Suggestion.Notifications.Subtitle':
     'Aktiviere Benachrichtigungen, um auf dem Laufenden zu bleiben.',
   'Suggestion.Notifications.Dismissed':

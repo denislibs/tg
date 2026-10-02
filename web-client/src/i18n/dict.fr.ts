@@ -225,7 +225,7 @@ const fr = {
   NewChannel: 'Nouveau canal',
   NewGroup: 'Nouveau groupe',
   NewPrivateChat: 'Nouveau message',
-  'Suggestion.Notifications.Title': 'Ne manquez aucun message ! 🔔',
+  'Suggestion.Notifications': 'Ne manquez aucun message ! %s',
   'Suggestion.Notifications.Subtitle':
     'Activez les notifications pour rester informé.',
   'Suggestion.Notifications.Dismissed':

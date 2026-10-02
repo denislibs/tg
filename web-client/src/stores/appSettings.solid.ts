@@ -103,6 +103,9 @@ const APP_SETTINGS_KEYS = {
     sound: 'notifySound',
     volume: 'notifyVolume',
     sentMessageSound: 'sentMessageSound',
+    // tweb `config/state.ts:120` `notifications.suggested` — плашка «включить
+    // уведомления» отклонена или отработана (`sidebarLeft/notificationsSuggestion.solid.tsx`)
+    suggested: 'notifySuggested',
   },
   // tweb `config/state.ts:67-76` — «Данные и память» и автозагрузка
   // (`sidebarLeft/tabs/dataAndStorage`, `autoDownload`). Из `autoDownloadNew`

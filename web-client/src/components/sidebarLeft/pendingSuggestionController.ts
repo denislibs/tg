@@ -1,18 +1,9 @@
-// Порт tweb `src/components/sidebarLeft/pendingSuggestionController.ts`.
-//
-// Отступления от tweb:
-//   • `available` у него — реактивный геттер Solid'а (`() => boolean`); у нас
-//     значение считает хук-конструктор на рендере, поэтому это просто флаг;
-//   • `component` принимает `collapsed` пропом — в Solid'е свёрнутость читается
-//     из глобального сигнала `useIsSidebarCollapsed`, у нас её знает Sidebar.
-import type { ComponentType } from 'react'
+// Порт tweb `src/components/sidebarLeft/pendingSuggestionController.ts`
+// (812502980, 1-6) — дословно: вид плашки = реактивный «доступна ли» +
+// компонент, который её рисует.
+import type { JSX } from 'solid-js'
 
-export interface PendingSuggestionProps {
-  /** сайдбар свёрнут в узкую полосу (tweb useIsSidebarCollapsed) */
-  collapsed?: boolean
-}
-
-export interface PendingSuggestionController {
-  available: boolean
-  component: ComponentType<PendingSuggestionProps>
+export type PendingSuggestionController = {
+  available: () => boolean
+  component: () => JSX.Element
 }
