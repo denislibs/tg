@@ -203,10 +203,10 @@ func allMessageConstructors() []any {
 		NewMessageActionSuggestedPostApproval(true, 8),
 		// Одобрено: pFlags.rejected нет вовсе, а не false.
 		NewMessageActionSuggestedPostApproval(false, 8),
-		NewMessageActionPhoneCall(true, NewPhoneCallDiscardReasonHangup(), 42),
+		NewMessageActionPhoneCall(true, NewPhoneCallDiscardReasonHangup(), ptr(42)),
 		// Отменённый звонок: duration отсутствует — это и отличает его от
 		// состоявшегося.
-		NewMessageActionPhoneCall(false, NewPhoneCallDiscardReasonHangup(), 0),
+		NewMessageActionPhoneCall(false, NewPhoneCallDiscardReasonHangup(), nil),
 		// НАШ конструктор: сверщик обязан признавать его по записи с полем
 		// `type` в schema_additional_params.json, а не считать «предиката нет».
 		NewMessageActionRestrict(43, NewChatBannedRights(PermSendMessages, now.Add(time.Hour))),
@@ -245,6 +245,7 @@ func allMessageConstructors() []any {
 		NewPhoneCallDiscardReasonMissed(),
 		NewPhoneCallDiscardReasonBusy(),
 		NewPhoneCallDiscardReasonHangup(),
+		NewPhoneCallDiscardReasonDisconnect(),
 
 		// ── MessageReactions ─────────────────────────────────────────────────
 		NewMessageReactions([]MTReactionCount{NewReactionCount(NewReactionEmoji("👍"), 1, false)}, nil),
@@ -326,7 +327,7 @@ func messageConstructorTags() []string {
 		MessageActionSuggestedPostApprovalTag, MessageActionPhoneCallTag,
 		MessageActionRestrictTag,
 		PhoneCallDiscardReasonMissedTag, PhoneCallDiscardReasonBusyTag,
-		PhoneCallDiscardReasonHangupTag,
+		PhoneCallDiscardReasonHangupTag, PhoneCallDiscardReasonDisconnectTag,
 		MessageReactionsTag, ReactionCountTag, ReactionPaidTag, MessagePeerReactionTag,
 		MessageReactorTag,
 		FactCheckTag, TextWithEntitiesTag,

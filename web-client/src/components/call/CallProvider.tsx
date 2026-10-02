@@ -31,7 +31,6 @@ export function startCallForChat(chat: Chat, video: boolean): void {
       photoId: chat.photoId,
     },
     video,
-    numericChatId,
   )
 }
 

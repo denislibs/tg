@@ -278,7 +278,6 @@ export default function VanillaFeed({ api, scrollerRef, paddingTopPx, paddingBot
                 photoId: user?._ === 'user' ? getPeerPhotoId(user.photo) : 0,
               },
               type === 'video',
-              peerId,
             )
           },
         },

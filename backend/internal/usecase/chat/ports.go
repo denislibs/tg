@@ -657,6 +657,21 @@ type GroupCallStore interface {
 	Participants(ctx context.Context, chatID int64) ([]int64, error)
 }
 
+// PhoneCallStore — состояние идущих 1:1 звонков между call_request и концом
+// (эфемерно, Redis). Нужно серверу, чтобы самому положить лог звонка.
+type PhoneCallStore interface {
+	// Create заводит звонок; false — такой call_id уже занят (повтор кадра).
+	Create(ctx context.Context, c domain.PhoneCall) (bool, error)
+	// Get — звонок по id; domain.ErrNotFound, если его нет (кончился/не было).
+	Get(ctx context.Context, id string) (domain.PhoneCall, error)
+	// Accept отмечает ответ; повторный ответ время не сдвигает.
+	Accept(ctx context.Context, id string, at time.Time) error
+	// Finish атомарно забирает звонок: из конкурирующих вызовов его получает
+	// ровно один, остальным — domain.ErrNotFound. На этом держится «один
+	// звонок — одна запись», когда call_end шлют обе стороны.
+	Finish(ctx context.Context, id string) (domain.PhoneCall, error)
+}
+
 // LivestreamRepo персистит метаданные RTMP-трансляции чата (Telegram livestream):
 // stream key, флаг активности, время старта. Одна запись на чат. Число зрителей
 // сюда не пишется — это участники группового звонка (GroupCallStore).
