@@ -5,7 +5,7 @@
 // и вся геометрия SCSS — дословно из оригинала.
 import { useEffect, useState, type CSSProperties } from 'react'
 import classNames from '../../shared/lib/classNames'
-import s from './LoadingDialogSkeleton.module.scss'
+import s from '../loadingDialogSkeleton.module.scss'
 
 // tweb loadingDialogSkeleton.tsx:6-11 — псевдослучайная (но детерминированная
 // от seed) ширина плашки в диапазоне [min, max).

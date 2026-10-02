@@ -24,8 +24,8 @@
  *  • ограничения голосования в опросе (:860-873) — флагов `subscribers_only`/
  *    `countries_iso2` у нашего `Poll` нет вовсе;
  *  • сабменю пункта чеклиста (:888-896) и варианта опроса (:896-908) —
- *    `createSubmenuTrigger`/`floatingButtonMenu` не портированы, чек-листы
- *    (`messageMediaToDo`) лента не рисует;
+ *    чек-листы (`messageMediaToDo`) лента не рисует (`createSubmenuTrigger`/
+ *    `floatingButtonMenu` портированы задачей 2-2 волны 7 — бургер);
  *  • `MessageScheduleSend`/`Selection.SendNow`/`MessageScheduleEditTime`
  *    (:908-938) — `ChatType.Scheduled` у императивной ленты нет: окно
  *    отложенных живёт отдельным экраном, а не типом чата;
@@ -1471,8 +1471,8 @@ export default class ChatContextMenu {
     return !(['video', 'gif', 'round', 'sticker'] as (MyDocument['type'])[]).includes(document.type)
   }
 
-  /** Порт `getUrlToMessage` (:1773-1802). Ссылка наша (`core/messageLink.ts`):
-   *  публичного `t.me` у клона нет, зато формат разбирает наш же клиент. */
+  /** Порт `getUrlToMessage` (:1773-1802). `t.me/<username>/<mid>` или
+   *  `t.me/c/<id>/<mid>` на своём хосте ссылок (`core/messageLink.ts`). */
   private getUrlToMessage(): { url: string, isPrivate: boolean } | undefined {
     if(!this.message || isUser(this.messagePeerId)) {
       return
@@ -1482,8 +1482,6 @@ export default class ChatContextMenu {
     const username = chat?._ === 'channel' ? chat.username : undefined
     return {
       url: buildMessageLink({
-        origin: location.origin,
-        pathname: location.pathname,
         peerId: this.messagePeerId,
         username,
         seq: getServerMessageId(this.message.id),

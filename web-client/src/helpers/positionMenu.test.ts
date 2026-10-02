@@ -5,7 +5,7 @@
 // а `body.getBoundingClientRect()` — нули. Поэтому размеры меню и «окна» задаём
 // через `defineProperty`/стаб — ровно те величины, из которых считает оригинал.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import positionMenu from './positionMenu'
+import positionMenu, { DEFAULT_MENU_WINDOW_MARGIN, positionFloatingMenu } from './positionMenu'
 
 const WINDOW_WIDTH = 1000
 const WINDOW_HEIGHT = 800
@@ -126,5 +126,52 @@ describe('positionMenu', () => {
 
     expect(elem.style.left).toBe('300px')
     expect(elem.style.top).toBe('250px')
+  })
+})
+
+// tweb `positionFloatingMenu` (:63-144) — подменю у пункта-триггера
+// (`createSubmenuTrigger` → `attachFloatingButtonMenu`). Окно happy-dom —
+// `innerWidth`/`innerHeight`, размеры меню — `clientWidth`/`clientHeight`.
+describe('positionFloatingMenu', () => {
+  function sizedMenu(width: number, height: number) {
+    const menu = document.createElement('div')
+    Object.defineProperty(menu, 'clientWidth', { value: width, configurable: true })
+    Object.defineProperty(menu, 'clientHeight', { value: height, configurable: true })
+    return menu
+  }
+  const rect = (left: number, top: number, width: number, height: number) =>
+    ({ left, top, width, height, right: left + width, bottom: top + height }) as DOMRect
+
+  beforeEach(() => {
+    vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(WINDOW_WIDTH)
+    vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(WINDOW_HEIGHT)
+  })
+
+  it('right-start: справа от триггера, верхом к его верху со смещением, origin — левый верх', () => {
+    const menu = sizedMenu(200, 300)
+    const used = positionFloatingMenu(rect(100, 100, 250, 40), menu, 'right-start', [-5, -5])
+
+    expect(used).toBe('right-start')
+    // left = right + mainOffset(x) = 350 - 5; top = top + crossOffset(y) = 100 - 5
+    expect(menu.style.left).toBe('345px')
+    expect(menu.style.top).toBe('95px')
+    expect(menu.style.transformOrigin).toBe('0 0')
+  })
+
+  it('не влезает справа, а слева влезает — сторона переворачивается в left', () => {
+    const menu = sizedMenu(200, 300)
+    const used = positionFloatingMenu(rect(700, 100, 250, 40), menu, 'right-start', [-5, -5])
+
+    expect(used).toBe('left-start')
+    // left = left - mainOffset - menuW = 700 + 5 - 200
+    expect(menu.style.left).toBe('505px')
+    expect(menu.style.transformOrigin).toBe('100% 0')
+  })
+
+  it('прижимается к окну с полем DEFAULT_MENU_WINDOW_MARGIN снизу', () => {
+    const menu = sizedMenu(200, 300)
+    positionFloatingMenu(rect(100, 700, 250, 40), menu, 'right-start')
+
+    expect(menu.style.top).toBe(WINDOW_HEIGHT - 300 - DEFAULT_MENU_WINDOW_MARGIN + 'px')
   })
 })

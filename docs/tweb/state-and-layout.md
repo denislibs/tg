@@ -749,11 +749,13 @@ JS — единственный владелец ширин; SCSS только �
   (`authManager, chatsManager, messagesManager, dialogsManager, peersManager, foldersManager,
   storiesManager, …`) — но это RPC-фасады над HTTP/WS к нашему бэкенду, а не MTProto-репликация.
 - **Layout**: `App.tsx:74-187` собирает тот же скелет
-  (`#main-columns[data-animation=navigation]` + `#column-left/center/right`, порталы для
-  `#folders-sidebar` и правой колонки), использует портированные `--left-column-width`,
-  `--page-chats-padding`, `body.right-column-floats`, `body.is-left-column-shown`
-  (ставит хук `useLeftColumnShown` — аналог `appImManager.ts:2593`); мобильный стек — те же
-  CSS-переходы `.main-column` без JS-слайда.
+  (`#main-columns[data-animation=navigation]` + `#column-left/center/right`, портал для
+  `#folders-sidebar`; `#column-right > .sidebar-slider` — статичная разметка, которой с 0б-0
+  волны 7 владеет класс `AppSidebarRight`, `components/sidebarRight/index.ts`), использует
+  портированные `--left-column-width`, `--page-chats-padding`, `body.right-column-floats`,
+  `body.is-left-column-shown` (ставит хук `useLeftColumnShown` — аналог `appImManager.ts:2593`),
+  `body.is-right-column-shown` (единственный писатель — `AppSidebarRight.toggleSidebar`/`hide`,
+  как у tweb); мобильный стек — те же CSS-переходы `.main-column` без JS-слайда.
 
 - **Шрифт иконок tgico** (волна 2A): `public/fonts/tgico.{woff,ttf}`, карта
   `core/tgico-icons.ts` и `styles/tgico/_variables.scss` — одна выгрузка icomoon tweb

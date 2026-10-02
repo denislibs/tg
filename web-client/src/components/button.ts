@@ -8,6 +8,10 @@
  * ядра ЖИВОЙ (записан в `weakMap`, перерисовывается сменой языка), а аргументом
  * подстановки может быть УЗЕЛ; готовую строку сюда класть незачем и нечем.
  *
+ * `ariaLabel` (:49-52) — явный ключ подписи для экранного чтеца. Запасной
+ * ключ по глифу (`getIconButtonLabelKey(options.icon)`, таблица
+ * `buttonIconLabels`) не портирован: таблицы у нас нет — отдельный a11y-срез.
+ *
  * ── ОСТАТОК ВОЛНЫ (#112) ───────────────────────────────────────────────────
  * Живой React-двойник — `shared/ui/Button` (4 потребителя против 3 у этого
  * порта). Как и у `buttonIcon.ts`: двойник уйдёт вместе с последним
@@ -16,7 +20,7 @@
 import Icon from '@components/icon'
 import type { IconName } from '@core/tgico-icons'
 import ripple from '@components/ripple'
-import { i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
+import I18n, { i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 
 export type ButtonOptions = Partial<{
   noRipple: true
@@ -28,6 +32,7 @@ export type ButtonOptions = Partial<{
   disabled: boolean
   asDiv: boolean
   asLink: boolean
+  ariaLabel: LangPackKey
 }>
 
 export default function Button<T extends ButtonOptions>(
@@ -59,6 +64,10 @@ export default function Button<T extends ButtonOptions>(
 
   if (options.text) {
     button.append(i18n(options.text, options.textArgs))
+  }
+
+  if (options.ariaLabel) {
+    button.setAttribute('aria-label', I18n.format(options.ariaLabel, true))
   }
 
   return button as any

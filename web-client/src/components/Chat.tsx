@@ -104,6 +104,9 @@ import useMeasuredHeight from '../shared/lib/useMeasuredHeight'
 import type { Sticker } from '../core/managers/stickersManager'
 import type { SearchSuperActions } from '../core/hooks/useSearchSuper'
 import { getMediaId } from '../core/messages/messageKind'
+import { useIsActiveChat } from '../core/chat/chatInstanceContext'
+import appSidebarRight, { RIGHT_COLUMN_ACTIVE_CLASSNAME } from './sidebarRight'
+import type AppReactProfileTab from './sidebarRight/reactProfileTab'
 
 // Инфо-панель — не первый кадр; ленивый чанк.
 const UserInfoPanel = lazy(() => import('./UserInfoPanel'))
@@ -361,9 +364,33 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // Окно рисует ИМПЕРАТИВНАЯ лента, витрины `ConvMsg[]` в React больше нет:
   // вью-модель бабла собирает сама лента (`chat/bubbles.ts` через
   // `core/messageToConvMsg.ts`), а окно она читает из зеркала.
-  // Инфо-панель — локальный toggle (сосуществует с gift-попапом поверх профиля).
-  // Остальные попапы колонки открываются императивно через popupStore (useChatPopups).
-  const [infoOpen, setInfoOpen] = useState(false)
+  // Вкладка №0 правой колонки — своя у каждого инстанса чата, как у tweb
+  // (`chat.ts:1003-1005` `appSidebarRight.createSharedMediaTab()`); в неё
+  // порталит себя `UserInfoPanel`. ВРЕМЕННО до Э6: создаёт и снимает её
+  // React-инстанс, а не класс `Chat`. Пассивный эффект, а не layout: синглтон
+  // колонки создаёт layout-эффект шелла (`App.tsx`), он выполняется ПОСЛЕ
+  // layout-эффектов детей того же коммита.
+  const [profileTab, setProfileTab] = useState<AppReactProfileTab | null>(null)
+  useEffect(() => {
+    const sidebar = appSidebarRight
+    const tab = sidebar.createSharedMediaTab()
+    setProfileTab(tab)
+    return () => {
+      // tweb chat.ts:1097-1105 (чат закрыт) + `destroySharedMediaTab` (:1178-1185)
+      if (sidebar.sharedMediaTab === tab) {
+        void sidebar.toggleSidebar(false)
+        sidebar.replaceSharedMediaTab()
+      }
+      tab.destroy()
+    }
+  }, [])
+  // Инстанс стал активным — его вкладка встаёт в слайдер на место прежней
+  // (tweb `finishPeerChange` chat.ts:1239-1242 и `spliceChats`
+  // appImManager.ts:3277). ВРЕМЕННО до Э6.
+  const isActiveInstance = useIsActiveChat()
+  useEffect(() => {
+    if (isActiveInstance && profileTab) appSidebarRight.replaceSharedMediaTab(profileTab)
+  }, [isActiveInstance, profileTab])
   // Попапы чат-скоупные: снимаем их со стека при уходе с чата (колонка ремаунтится по key).
   useEffect(() => () => clearPopups(), [])
   // ⋮-меню тред-шапки требует права «Закрыть тему»
@@ -1011,7 +1038,8 @@ export default function Chat({ chat, onBack, thread }: Props) {
 
   // Stable handlers for the extracted header/pinned bars so their memo holds
   // across the parent's transient re-renders.
-  const onToggleInfo = useEvent(() => setInfoOpen((o) => !o))
+  // Клик по шапке — tweb topbar.ts:276-283 (ветка аватара: toggle по классу колонки).
+  const onToggleInfo = useEvent(() => { void appSidebarRight.toggleSidebar(!document.body.classList.contains(RIGHT_COLUMN_ACTIVE_CLASSNAME)) })
   const onOpenHeaderMenu = useEvent((r: DOMRect) => pop.openHeaderMenu({ top: r.bottom + 6, right: window.innerWidth - r.right }))
   const onUnpin = useEvent((id: number) => { void managers.messages.unpin(numericChatId, id) })
   // Клик по пин-плашке (tweb followPinnedMessage): прыжок к показанному пину,
@@ -1067,7 +1095,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // третий аргумент оригинала — композер, которым попап отправляет выбранный
   // стикер, поэтому владелец вызова здесь, а не в ленте.
   // Чанк попапа грузим по клику, а не статическим импортом: попап тяжёлый
-  // (сетка набора + StickerViewer) и до этого клика не нужен ни разу. Приём тот
+  // (сетка набора) и до этого клика не нужен ни разу. Приём тот
   // же, что у EmojiDropdown в `Composer.tsx:63` и `UserInfoPanel` выше, но точка
   // входа императивная (не JSX), поэтому `import()` в обработчике — как у
   // `CodeBlock.tsx:68` (prism) и `QrModal.tsx:310`, а не `lazy()` + Suspense.
@@ -1198,7 +1226,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
     chat, numericChatId, isRealChat, isChannel,
     activeThemeId, muted, owned, thread, canManageTopic,
     canAddMember, canCreateGiveaway, canUnpinAll, pins, deleteLabels, livestreamActive,
-    setInfoOpen,
     applyMute, toggleMute, startSelectMode,
     doDeleteChat, doClearHistory, openPicker, sendGeo, sendContact, setPendingMedia,
     getMessageSendingParams, onMessageSent,
@@ -1278,7 +1305,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
             <IconButton onClick={onCloseThread} color="var(--secondary-text-color)" className="sidebar-close-button">
               <TgIcon name="back" />
             </IconButton>
-            <div className="chat-info" onClick={() => setInfoOpen(true)} style={{ cursor: 'pointer' }}>
+            <div className="chat-info" onClick={() => { void appSidebarRight.toggleSidebar(true) }} style={{ cursor: 'pointer' }}>
               <div className="person">
                 {thread.kind === 'topic' ? (
                   <TopicIcon color={thread.iconColor ?? 0} title={thread.title} size={30} />
@@ -1489,22 +1516,23 @@ export default function Chat({ chat, onBack, thread }: Props) {
           (chat.ts:1003-1008 `createSharedMediaTab`+`setPeer`, `finishPeerChange`
           :1224-1229 `fillProfileElements`+`loadSidebarMedia`), а клик по шапке —
           только `toggleSidebar(true)`: класс на body, выезд колонки transform'ом
-          (sidebarRight/index.ts:111-147). Монтаж по первому клику стоил загрузки
+          (sidebarRight/index.ts:104-138). Монтаж по первому клику стоил загрузки
           чанка, ~300 мс троттлинга Suspense и всего профиля одной задачей в
           кадре клика — и колонка выскакивала без выезда (пин —
-          `Chat.infoPanelMount.test.ts`). Закрытая панель — inert и за краем
-          экрана; поверх открытой может открыться gift-попап (стек popupStore). */}
-      <Suspense fallback={null}>
-        <UserInfoPanel
-          open={infoOpen}
-          chat={chat}
-          onClose={() => setInfoOpen(false)}
-          onOpenPeer={onOpenPeer}
-          canAddMembers={canAddMember}
-          onEditContact={() => { setInfoOpen(false); pop.openEditContact() }}
-          searchSuperActions={searchSuperActions}
-        />
-      </Suspense>
+          `Chat.infoPanelMount.test.ts`). Панель ждёт только свою вкладку
+          (эффект монтирования выше); порталит себя в неё сама. */}
+      {profileTab && (
+        <Suspense fallback={null}>
+          <UserInfoPanel
+            profileTab={profileTab}
+            chat={chat}
+            onOpenPeer={onOpenPeer}
+            canAddMembers={canAddMember}
+            onEditContact={() => { void appSidebarRight.toggleSidebar(false); pop.openEditContact() }}
+            searchSuperActions={searchSuperActions}
+          />
+        </Suspense>
+      )}
 
       {/* Баннер идущего видеочата (tweb topbar-call): Join, пока сам не в звонке */}
       {isRealChat && !thread && groupCallActive.length > 0 && myGroupCallChat !== numericChatId && (

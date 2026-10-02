@@ -1,0 +1,17 @@
+// Выдержка из tweb `src/scss/partials/popups/_call.scss:574-584` (812502980) —
+// только `.call-video-mirror`, дословно. Остальной партиал — попап звонка
+// tweb (`.popup-call`), у нас звонок рисует `components/CallScreen.tsx`.
+// Потребитель — превью камеры вкладки «Динамики и камера»
+// (`components/call/cameraSection.solid.tsx`).
+
+/* Mirror every <video> in call / group-call / livestream contexts —
+ * both own camera and remote feeds. Set as a separate top-level rule (not
+ * scoped under `.popup-call`) so it applies to:
+ *   - the P2P call popup video containers,
+ *   - cloned group-call participant tiles (cloneNode preserves classList),
+ *   - the Speakers-and-Camera self preview in app settings.
+ * Class is applied at element-creation time by callInstance.getVideoElement,
+ * callInstanceBase.tryAddTrack, and the settings tab JSX. */
+.call-video-mirror {
+  transform: scaleX(-1);
+}

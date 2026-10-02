@@ -230,7 +230,7 @@ func TestPaidMessages_ChargeCreditAndOwnerFree(t *testing.T) {
 	fg.users[2] = domain.UserReal{ID: 2, FirstName: "Member"}
 
 	// Владелец = 1, участник = 2.
-	cid, err := in.CreateGroup(ctx, 1, "Paid", "", "", false, []int64{2})
+	cid, _, err := in.CreateGroup(ctx, 1, "Paid", "", "", false, []int64{2})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -532,10 +532,18 @@ button:focus {
   // vertical-align: text-top !important;
 }
 
-// tweb base.scss:797-849 — аватар-«редактор» карточки регистрации (`signUp`):
-// круглая маска, канва-подложка, иконка камеры по центру. Дословно, кроме
-// добавленных width/height — см. комментарий ниже.
+// tweb base.scss:800-864 (812502980) — аватар-«редактор» (`AvatarEdit`: карточка
+// регистрации, «Новый канал», «Редактировать профиль»): круглая маска,
+// канва-подложка, иконка камеры по центру. Дословно, кроме добавленных
+// width/height — см. комментарий ниже — и правила `:focus-visible` (:819-821):
+// переменной `--focus-ring-width` (a11y 472e3e76b) у нас нет.
 .avatar-edit {
+  // AvatarEdit's container is a <button>: undo the inline-block and the UA chrome it brings,
+  // or `margin: auto` stops centering it
+  display: block;
+  padding: 0;
+  border: none;
+  background: none;
   // отступление от tweb: в оригинале размер задан ТОЛЬКО правилом
   // `partials/pages/_chats.scss` → `.page-chats .avatar-edit {width/height: 120px}`,
   // а auth-хост (`#auth-flow-root` → `#auth-pages`) смонтирован ВНЕ `#page-chats`.
@@ -548,6 +556,13 @@ button:focus {
   width: var(--sticker-size, 120px);
   height: var(--sticker-size, 120px);
 
+  // tweb 5a87c445e (base.scss:801-807): контейнер `AvatarEdit` — `<button>`
+  // (`components/avatarEdit.ts`); снять inline-block и UA-оформление кнопки, иначе
+  // `margin: auto` (`.page-chats .avatar-edit`) перестаёт центровать круг.
+  display: block;
+  padding: 0;
+  border: none;
+  background: none;
   position: relative;
   border-radius: 50%;
   cursor: pointer;

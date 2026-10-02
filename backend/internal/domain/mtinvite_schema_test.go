@@ -36,6 +36,12 @@ func inviteCases() []struct {
 		{"ждёт одобрения", NewChatInviteImporter(9, time.Unix(1787334148, 0), true, 0)},
 		{"список импортёров", NewMessagesChatInviteImporters(1,
 			[]ChatInviteImporter{NewChatInviteImporter(9, time.Unix(1, 0), false, 7)}, nil)},
+		{"ответ создания группы", func() MessagesInvitedUsers {
+			u := NewUpdates(nil, nil, time.Unix(1787334148, 0))
+			u.Chats = []Chat{NewChannel(8, "группа", NewChatPhotoEmpty(), time.Unix(1787334148, 0), ChannelFlags{Megagroup: true})}
+			return NewMessagesInvitedUsers(u, []int64{9})
+		}()},
+		{"ответ создания группы без пропущенных", NewMessagesInvitedUsers(NewUpdates(nil, nil, time.Unix(1, 0)), nil)},
 	}
 }
 
@@ -103,5 +109,17 @@ func TestInvites_JoinedAndRequestedShareOneConstructor(t *testing.T) {
 	}
 	if !requested.PFlags["requested"] {
 		t.Error("у заявки нет флага requested")
+	}
+}
+
+// Пропущенные — ВЕКТОР и при пустом списке: у обязательного параметра схемы
+// «никого» это пустой вектор, а не отсутствие значения.
+func TestInvitedUsers_MissingInviteesStayVector(t *testing.T) {
+	decoded, ok := roundTripJSON(t, NewMessagesInvitedUsers(NewUpdates(nil, nil, time.Unix(1, 0)), nil)).(map[string]any)
+	if !ok {
+		t.Fatal("ответ не разобрался в объект")
+	}
+	if list, isList := decoded["missing_invitees"].([]any); !isList || len(list) != 0 {
+		t.Errorf("missing_invitees = %#v, ожидался пустой вектор", decoded["missing_invitees"])
 	}
 }

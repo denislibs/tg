@@ -1,3 +1,4 @@
+import type { Passkey } from '@layer'
 import { HttpError, type RestClient } from '../net/restClient'
 import type { UserFull, UserReal, UsersUserFull } from '../peers/peer'
 import { getPeerPhotoId } from '../peers/peer'
@@ -121,14 +122,6 @@ export interface PasswordState {
   email: string // маскированный (d****@e******.com)
 }
 
-// Ключ доступа в списке настроек.
-export interface PasskeyInfo {
-  id: number
-  name: string
-  createdAt: string
-  lastUsedAt: string | null
-}
-
 interface RawPasskey {
   id: number
   name: string
@@ -136,8 +129,17 @@ interface RawPasskey {
   last_used_at: string | null
 }
 
-const mapPasskey = (r: RawPasskey): PasskeyInfo => ({
-  id: r.id, name: r.name, createdAt: r.created_at, lastUsedAt: r.last_used_at,
+// Ключ доступа — предметный тип MTProto `Passkey` (`layer.d.ts`), как у
+// tweb `account.getPasskeys`; провод пока REST (время — RFC 3339, id — int64).
+// `software_emoji_id` (эмодзи менеджера паролей по AAGUID) сервер не хранит —
+// О-50 плана 2D.
+const toUnixTime = (iso: string) => Math.floor(Date.parse(iso) / 1000)
+const mapPasskey = (r: RawPasskey): Passkey => ({
+  _: 'passkey',
+  id: String(r.id),
+  name: r.name,
+  date: toUnixTime(r.created_at),
+  last_usage_date: r.last_used_at ? toUnixTime(r.last_used_at) : undefined,
 })
 
 interface TokenStoreLike {
@@ -260,7 +262,7 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
   }
   // Общий REST-фетч текущего /me — используется публичным me() (прогрев/
   // loadChats) И внутренними переходами активного токена (switchAccount/
-  // deleteAccount/logout со сменой аккаунта), где нужно вывести свежего
+  // logout со сменой аккаунта), где нужно вывести свежего
   // пользователя НОВОГО активного токена и опубликовать его, а не просто
   // дёрнуть RPC. Инвариант (повторное ревью Stage 1C.2, п.1/п.6): воркерный
   // `me` не может быть протухшим относительно активного токена — ЛЮБОЙ
@@ -275,8 +277,8 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
   // снимка воркера и разослал бы его всем вкладкам, затерев уже показанное
   // свежее значение.
   //
-  // `rederive` — вызов из перехода активного токена (switchAccount/logout/
-  // deleteAccount со сменой аккаунта). Отличий два, оба обязательные:
+  // `rederive` — вызов из перехода активного токена (switchAccount/logout
+  // со сменой аккаунта). Отличий два, оба обязательные:
   //  1. Офлайн-фолбэк на диск ЗАПРЕЩЁН. На диске лежит профиль СТАРОГО
   //     аккаунта (persistScope переезжает только при рестарте воркера), и
   //     вернуть его — значит оставить владельца с чужой личностью: следующий
@@ -284,8 +286,8 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
   //     (Minor 6 раунда 4). Не получили свежий ответ — публикуем null: «не
   //     знаем, кто мы» (addPhoto при пустом getMe() молча пропускает мердж).
   //  2. Наружу не бросаем. Ответ RPC перехода не должен реджектиться: на нём
-  //     вызывающая вкладка строит навигацию (MainMenu.switchTo, AuthFlow.
-  //     backToAccount, useAuthGate.logout), а ошибка переживает границу
+  //     вызывающая вкладка строит навигацию (строка аккаунта бургера
+  //     `sidebarLeft/toolsMenu.ts`, AuthFlow.backToAccount, `showLogOutPopup`), а ошибка переживает границу
   //     worker-RPC (superMessagePort реджектит ожидающий промис) — до раунда 3
   //     в этих ветках падать было нечему, и .catch там никто не ставил
   //     (Important 2 раунда 4).
@@ -482,17 +484,17 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
 
     // Ключи доступа (WebAuthn). REST-часть живёт здесь (воркер);
     // navigator.credentials вызывается в UI-потоке (core/webauthnBrowser.ts).
-    async passkeysList(): Promise<PasskeyInfo[]> {
+    async passkeysList(): Promise<Passkey[]> {
       const r = await rest.get<{ passkeys: RawPasskey[] }>('/me/passkeys')
       return (r.passkeys ?? []).map(mapPasskey)
     },
     async passkeyRegisterBegin(): Promise<{ session: string; options: unknown }> {
       return rest.post('/me/passkeys/begin', {})
     },
-    async passkeyRegisterFinish(session: string, attestation: unknown): Promise<PasskeyInfo> {
+    async passkeyRegisterFinish(session: string, attestation: unknown): Promise<Passkey> {
       return mapPasskey(await rest.post<RawPasskey>(`/me/passkeys/finish?session=${encodeURIComponent(session)}`, attestation))
     },
-    async passkeyDelete(id: number): Promise<void> {
+    async passkeyDelete(id: string): Promise<void> {
       await rest.del(`/me/passkeys/${id}`)
     },
     async passkeyLoginBegin(): Promise<{ session: string; options: unknown }> {
@@ -540,36 +542,6 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
       return fetchMe()
     },
 
-    // Удаление аккаунта: сервер анонимизирует профиль и отзывает все сессии.
-    // Локально ведём себя как logout — убираем аккаунт из реестра; если остались
-    // другие, переключаемся на первый (UI затем перезагружает страницу).
-    async deleteAccount(): Promise<{ switched: boolean }> {
-      if (store.get()) {
-        try { await rest.del('/me') } catch { /* сервер мог уже отозвать сессию */ }
-      }
-      const active = store.get()
-      const all = await listAccounts()
-      const activeAcc = all.find((a) => a.token === active)
-      const remaining = activeAcc ? await removeAccount(activeAcc.id) : all
-      if (remaining.length > 0) {
-        await store.set(remaining[0].token)
-        // Активный токен сменился на ДРУГОЙ живой аккаунт — это не логаут, а
-        // переезд: объявляем намерение (вкладки поднимутся под новым токеном).
-        onLoggingOut?.({ migrateTo: remaining[0].id })
-        // Фикс повторного ревью, п.1: перевывести `me` под НОВЫМ токеном (см.
-        // докблок fetchMe): без этого кэш воркера остаётся с личностью
-        // удалённого аккаунта, и следующая мутация профиля (addPhoto/update/
-        // premium) смерджит и разошлёт её всем вкладкам вместо личности того,
-        // на кого реально переключились.
-        await fetchMe(true)
-        return { switched: true }
-      }
-      await store.clear()
-      onMeChanged?.(null) // аккаунтов не осталось — настоящий логаут
-      onLoggingOut?.({ migrateTo: null })
-      return { switched: false }
-    },
-
     async logout(): Promise<{ switched: boolean }> {
       if (store.get()) {
         try { await rest.post('/auth/logout', {}) } catch { /* ignore */ }
@@ -589,8 +561,8 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
         // это и уходила на экран входа (useAuthGate), хотя bootData.hasToken
         // истинен и вернуть её можно было только ручной перезагрузкой. Теперь
         // намерение объявлено явно (migrateTo), а `me` перевыводится под
-        // НОВЫМ активным токеном — та же проводка, что у switchAccount/
-        // deleteAccount (см. докблок fetchMe).
+        // НОВЫМ активным токеном — та же проводка, что у switchAccount
+        // (см. докблок fetchMe).
         onLoggingOut?.({ migrateTo: remaining[0].id })
         await fetchMe(true)
         return { switched: true }
@@ -632,7 +604,7 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
     async addAccount(): Promise<void> {
       await store.clear()
       // Активный токен снят — активного пользователя больше нет, тем же
-      // инвариантом, что у switchAccount/deleteAccount/logout выше.
+      // инвариантом, что у switchAccount/logout выше.
       onMeChanged?.(null)
       // Осознанное расхождение с tweb (Minor 10 раунда 4). Там «добавить
       // аккаунт» — открытие СВОБОДНОГО слота (`sidebarLeft/index.ts:1652`:

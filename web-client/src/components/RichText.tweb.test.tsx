@@ -11,6 +11,7 @@
 // До порта bold был инлайновым `font-weight: 600` на `<span>`, а ссылки/хэштеги —
 // модульными классами: визуально похоже, но DOM расходился с tweb, и вес шрифта
 // не наследовался от темы.
+import { DEFAULT_TME_ORIGIN } from '@config/app'
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
 import RichText from './RichText'
@@ -50,12 +51,12 @@ describe('RichText — семантические теги форматиров�
 })
 
 describe('RichText — автолинковка plain-текста (классы и href из tweb)', () => {
-  it('@упоминание → a.mention на t.me', () => {
+  it('@упоминание → a.mention на свой хост ссылок (аналог t.me)', () => {
     const { container } = render(<RichText text="Купить: @dollhouse_manager2" linkColor="var(--link-color)" />)
     const a = container.querySelector('a.mention')
 
     expect(a?.textContent).toBe('@dollhouse_manager2')
-    expect(a?.getAttribute('href')).toBe('https://t.me/dollhouse_manager2')
+    expect(a?.getAttribute('href')).toBe(`${DEFAULT_TME_ORIGIN}/dollhouse_manager2`)
   })
 
   it('#хэштег → a.anchor-hashtag на tg://search_hashtag', () => {

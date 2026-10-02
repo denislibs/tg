@@ -51,9 +51,9 @@ func (i *Interactor) MySets(ctx context.Context, userID int64) ([]domain.Sticker
 	return i.repo.InstalledSets(ctx, userID)
 }
 
-// SetBySlug — набор + его стикеры по slug.
-func (i *Interactor) SetBySlug(ctx context.Context, slug string) (domain.StickerSetRecord, []domain.Sticker, error) {
-	set, err := i.repo.SetBySlug(ctx, slug)
+// SetBySlug — набор + его стикеры по slug; срок установки — userID.
+func (i *Interactor) SetBySlug(ctx context.Context, userID int64, slug string) (domain.StickerSetRecord, []domain.Sticker, error) {
+	set, err := i.repo.SetBySlug(ctx, userID, slug)
 	if err != nil {
 		return domain.StickerSetRecord{}, nil, err
 	}
@@ -61,9 +61,9 @@ func (i *Interactor) SetBySlug(ctx context.Context, slug string) (domain.Sticker
 	return set, sts, err
 }
 
-// SetByID — набор + его стикеры по id.
-func (i *Interactor) SetByID(ctx context.Context, id int64) (domain.StickerSetRecord, []domain.Sticker, error) {
-	set, err := i.repo.SetByID(ctx, id)
+// SetByID — набор + его стикеры по id; срок установки — userID.
+func (i *Interactor) SetByID(ctx context.Context, userID, id int64) (domain.StickerSetRecord, []domain.Sticker, error) {
+	set, err := i.repo.SetByID(ctx, userID, id)
 	if err != nil {
 		return domain.StickerSetRecord{}, nil, err
 	}
@@ -73,7 +73,7 @@ func (i *Interactor) SetByID(ctx context.Context, id int64) (domain.StickerSetRe
 
 // Install добавляет набор пользователю (идемпотентно). Нет набора → ErrNotFound.
 func (i *Interactor) Install(ctx context.Context, userID, setID int64) error {
-	if _, err := i.repo.SetByID(ctx, setID); err != nil {
+	if _, err := i.repo.SetByID(ctx, userID, setID); err != nil {
 		return err
 	}
 	return i.repo.Install(ctx, userID, setID)
@@ -87,13 +87,13 @@ func (i *Interactor) Uninstall(ctx context.Context, userID, setID int64) error {
 // SearchSets ищет наборы по title/slug (ilike) и отдаёт вместе с ними превью
 // (covered sets): без превью строка поиска пуста до похода за полным набором,
 // а по 338 наборам разом это N+1 запросов — CoverStickers берёт все одним.
-// Пустой запрос — пустая выдача.
-func (i *Interactor) SearchSets(ctx context.Context, q string) ([]domain.StickerSetRecord, map[int64][]domain.Sticker, error) {
+// Пустой запрос — пустая выдача. Срок установки у наборов — userID.
+func (i *Interactor) SearchSets(ctx context.Context, userID int64, q string) ([]domain.StickerSetRecord, map[int64][]domain.Sticker, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
 		return []domain.StickerSetRecord{}, map[int64][]domain.Sticker{}, nil
 	}
-	sets, err := i.repo.SearchSets(ctx, q, setSearchLim)
+	sets, err := i.repo.SearchSets(ctx, userID, q, setSearchLim)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -104,9 +104,9 @@ func (i *Interactor) SearchSets(ctx context.Context, q string) ([]domain.Sticker
 // Featured — трендовые наборы для экрана поиска стикеров при пустом запросе
 // (аналог tweb messages.getFeaturedStickers): наборы публичны, порядок задаёт
 // rank из выгрузки. Вместе с наборами отдаёт превью (covered sets) — тем же
-// приёмом, что SearchSets.
-func (i *Interactor) Featured(ctx context.Context) ([]domain.StickerSetRecord, map[int64][]domain.Sticker, error) {
-	sets, err := i.repo.FeaturedSets(ctx, featuredLim)
+// приёмом, что SearchSets. Срок установки у наборов — userID.
+func (i *Interactor) Featured(ctx context.Context, userID int64) ([]domain.StickerSetRecord, map[int64][]domain.Sticker, error) {
+	sets, err := i.repo.FeaturedSets(ctx, userID, featuredLim)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -203,7 +203,7 @@ func (i *Interactor) AddSticker(ctx context.Context, ownerID, setID, mediaID int
 	if len(emoji) > maxEmojiBytes {
 		return domain.Sticker{}, domain.ErrInvalid
 	}
-	set, err := i.repo.SetByID(ctx, setID)
+	set, err := i.repo.SetByID(ctx, ownerID, setID)
 	if err != nil {
 		return domain.Sticker{}, err
 	}
@@ -228,7 +228,7 @@ func (i *Interactor) AddStickerAt(ctx context.Context, ownerID, setID, mediaID i
 	if len(emoji) > maxEmojiBytes {
 		return domain.Sticker{}, domain.ErrInvalid
 	}
-	set, err := i.repo.SetByID(ctx, setID)
+	set, err := i.repo.SetByID(ctx, ownerID, setID)
 	if err != nil {
 		return domain.Sticker{}, err
 	}

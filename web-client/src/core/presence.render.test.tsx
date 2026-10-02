@@ -39,8 +39,8 @@ const user = (id: number, name: string) => ({ _: 'user' as const, id, first_name
 const managers = {
   contacts: {
     list: vi.fn(async () => [
-      { userId: 1, note: '', sharePhone: false, hasCustomPhoto: false, createdAt: '', user: user(1, 'Recently') },
-      { userId: 2, note: '', sharePhone: false, hasCustomPhoto: false, createdAt: '', user: user(2, 'Never') },
+      { userId: 1, sharePhone: false, createdAt: '', user: user(1, 'Recently') },
+      { userId: 2, sharePhone: false, createdAt: '', user: user(2, 'Never') },
     ]),
   },
   channels: { search: vi.fn(async () => ({ users: [] })) },

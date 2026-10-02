@@ -1,0 +1,45 @@
+// ВРЕМЕННО до 2C-12: список устройств React-моста `outputDevicePopup.tsx`
+// (перенесён со снесённого экрана `settings/SpeakersCamera`). Порт 2C-12 рисует
+// список `Row` + `RadioFieldTsx` на глобальных стилях `_row.scss`/`_checkbox.scss`
+// и удаляет этот файл.
+.options {
+  border-radius: 16px;
+  background: var(--surface-color);
+  padding: 6px 0;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.option {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  cursor: pointer;
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--light-secondary-text-color);
+    }
+  }
+}
+// радио-кружок (внешнее кольцо + внутренняя точка при выборе)
+.radio {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--secondary-text-color);
+  flex-shrink: 0;
+  position: relative;
+
+  &[data-on] {
+    border-color: var(--primary-color);
+
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 4px;
+      border-radius: 50%;
+      background: var(--primary-color);
+    }
+  }
+}

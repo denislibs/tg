@@ -4,7 +4,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, cleanup, act } from '@testing-library/react'
 import LoadingDialogSkeleton from './LoadingDialogSkeleton'
-import s from './LoadingDialogSkeleton.module.scss'
+import s from '../loadingDialogSkeleton.module.scss'
 
 afterEach(() => {
   cleanup()

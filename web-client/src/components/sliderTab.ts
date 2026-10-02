@@ -125,10 +125,16 @@
  * наоборот).
  *
  * Заголовок вкладки строит `i18n(key)` ядра — дословно как оригинал (:115-117).
+ *
+ * ── `shown` / `resetShown` (tweb 812502980 :42-55, коммит 34f417d12) — промис
+ * «вкладка доехала»: его разрешает слайдер по окончании перехода
+ * (`slider.ts::selectTab`), сбрасывает — на закрытии (`onCloseTab`). Первый
+ * потребитель — фокус поля поиска вкладки контактов
+ * (`sidebarLeft/tabs/contacts.solid.tsx`).
  */
-import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
 import EventListenerBase, { type EventListenerListeners } from '@helpers/eventListenerBase'
 import ListenerSetter from '@helpers/listenerSetter'
+import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
 import { getMiddleware, type Middleware, type MiddlewareHelper } from '@helpers/middleware'
 import noop from '@helpers/noop'
 import ButtonIcon from '@components/buttonIcon'
@@ -181,15 +187,12 @@ export default class SliderSuperTab {
   public isConfirmationNeededOnClose?: () => void | boolean | Promise<any>
 
   /**
-   * Порт tweb `sliderTab.ts:42-53`: разрешается, когда вкладка ДОЕХАЛА
-   * (переход открытия окончен). `open()` ждёт только рендера, переход идёт
-   * после него — разрешает промис слайдер (`slider.ts::selectTab`, tweb
-   * `slider.ts:136`). Потребитель — вкладка, чья первая страница данных
-   * приходит, пока она ещё за краем экрана (`calls.solid.tsx`).
+   * Resolves once the tab has finished sliding in. `open()` awaits the render,
+   * the transition runs after it — the slider resolves this when it is over.
    */
   public shown: CancellablePromise<void> = deferredPromise<void>()
 
-  /** Повторно открытая вкладка въезжает снова — ждущим `shown` ждать заново (tweb :49-53). */
+  /** A reopened tab slides in again, so what waits on `shown` has to wait anew. */
   public resetShown() {
     if(this.shown.isFulfilled) {
       this.shown = deferredPromise<void>()

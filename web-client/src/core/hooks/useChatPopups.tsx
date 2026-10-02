@@ -41,6 +41,7 @@ import SuggestedPostsView from '../../components/SuggestedPostsView'
 import CreatePollPopup from '../../components/CreatePollPopup'
 import CreateChecklistPopup from '../../components/CreateChecklistPopup'
 import { getUserTitle } from '../peers/getPeerTitle'
+import appSidebarRight from '../../components/sidebarRight'
 
 // TopicIcon импортируется на случай будущего использования в тред-меню (аватар темы).
 void _TopicIcon
@@ -62,7 +63,6 @@ export interface ChatPopupDeps {
   deleteLabels: { title: LangPackKey; text: LangPackKey; action: LangPackKey }
   livestreamActive: boolean
   /** инфо-панель живёт локальным стейтом в Chat (toggle + сосуществует с gift) */
-  setInfoOpen: (v: boolean | ((o: boolean) => boolean)) => void
   applyMute: (next: boolean, seconds?: number | null) => void
   toggleMute: () => void
   /** Вход в режим выделения — порт tweb topbar.ts:560
@@ -269,7 +269,7 @@ export function useChatPopups(d: ChatPopupDeps) {
       anchor={anchor}
       onClose={p.destroy}
       onToggleMute={isRealChat ? d.toggleMute : undefined}
-      onAddMember={d.canAddMember ? () => d.setInfoOpen(true) : undefined}
+      onAddMember={d.canAddMember ? () => { void appSidebarRight.toggleSidebar(true) } : undefined}
       onSelectMessages={d.startSelectMode}
       onAddContact={chat.type === 'private' ? openAddContact : undefined}
       onDeleteChat={isRealChat ? openConfirmDelete : undefined}

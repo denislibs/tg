@@ -27,14 +27,14 @@
  *     экране вместе — поэтому факт «показана» сообщает тот, кто её рисует.
  *     Сырая настройка `useHasFoldersSidebar` (`:11-18`) не заводится: у нас
  *     это `tabsInSidebar` стора настроек, а другого читателя, кроме условия
- *     колонки, у неё нет (бургер-морф `sidebarLeft/index.ts:381-418` не
- *     портирован).
+ *     колонки, у неё нет: бургер-морф (`sidebarLeft/toolsMenu.ts`, tweb
+ *     `sidebarLeft/index.ts:431-442`) читает «показана», а не настройку.
  *  2. Класс `body.has-folders-sidebar` (`:32`) не ставится. Его правила в
  *     `_leftSidebar.scss` прячут `.left-sidebar-burger` без `.is-visible`
  *     (`:549-570`), а у нас `is-visible` носят кнопки внутри бургера
- *     (`SidebarMenuButton.tsx`), не сам контейнер — включённый класс спрятал бы
+ *     (`sidebarLeft/toolsMenu.ts`), не сам контейнер — включённый класс спрятал бы
  *     кнопку «назад» открытого поиска в режиме «папки слева». Это предмет
- *     порта колонки вместе с бургером (отложенная задача 17).
+ *     порта колонки папок (задача 2-7 волны 7).
  *  3. «Свёрнута» — `collapsed` колонки (`Sidebar.tsx`), который в плавающем
  *     диапазоне 601–925px ложен; у tweb сигнал = `isUserCollapsedLeft() &&
  *     !isMobile` (`src/index.ts:224-228`) и в этом диапазоне истинен. Сигнал
@@ -43,9 +43,12 @@
  *  4. `useMediaSizes()` (реактивный стор `helpers/mediaSizes.ts:46-52`) у нас не
  *     портирован (шапка `core/dom/mediaSizes.ts`) — активный экран здесь
  *     сигнал, который кормит событие `changeScreen` того же инстанса.
- *  5. `useHasOpenLeftTabs`/`useIsLeftSearchActive` (`:61-88`) не заводятся:
- *     их читатели (кнопка поиска свёрнутой колонки, бургер-морф) не
- *     портированы, а колонка держит это своим состоянием.
+ *  5. `useHasOpenLeftTabs` (`:61-74`) не заводится: его читатель (кнопка
+ *     поиска свёрнутой колонки) не портирован. `useIsLeftSearchActive`
+ *     (`:76-88`) есть — его читает бургер-морф; пишет колонка
+ *     (`Sidebar.tsx`, роль сеттера `AppSidebarLeft.isSearchActive`, tweb
+ *     `sidebarLeft/index.ts:134-139`, ВРЕМЕННО до 2-1) отражением владельца
+ *     поиска.
  */
 import { createEffect, createRoot, createSignal } from 'solid-js'
 import mediaSizes, { ScreenSize } from '@core/dom/mediaSizes'
@@ -86,6 +89,19 @@ const isSidebarCollapsedSignal = createRoot(() => {
 /** Свёрнута ли левая колонка в полосу аватаров (расхождение 3). */
 export function useIsSidebarCollapsed() {
   return isSidebarCollapsedSignal
+}
+
+// tweb :76-88 — Whether the left sidebar's search input is focused / search
+// panel is open. Drives the burger element's "back-arrow vs menu icon" state
+// via a Solid effect so the class wiring stays in one place.
+const isLeftSearchActiveSignal = createRoot(() => {
+  const [isLeftSearchActive, setIsLeftSearchActive] = createSignal(false)
+  return [isLeftSearchActive, setIsLeftSearchActive] as const
+})
+
+/** Открыт ли глобальный поиск колонки (расхождение 5). */
+export function useIsLeftSearchActive() {
+  return isLeftSearchActiveSignal
 }
 
 // расхождение 4

@@ -247,15 +247,15 @@ func (f *fakeChat) CreateChannel(_ context.Context, creatorID int64, title, abou
 	return f.createChat(domain.ChatTypeChannel, title, about, username, creatorID)
 }
 
-func (f *fakeChat) CreateGroup(_ context.Context, creatorID int64, title, about, username string, _ bool, memberIDs []int64) (int64, error) {
+func (f *fakeChat) CreateGroup(_ context.Context, creatorID int64, title, about, username string, _ bool, memberIDs []int64) (int64, []int64, error) {
 	id, err := f.createChat(domain.ChatTypeGroup, title, about, username, creatorID)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	for _, uid := range memberIDs {
 		f.chats[id].members[uid] = true
 	}
-	return id, nil
+	return id, nil, nil
 }
 
 func (f *fakeChat) JoinPublic(_ context.Context, username string, userID int64) error {

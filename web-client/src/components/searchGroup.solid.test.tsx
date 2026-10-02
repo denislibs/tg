@@ -19,7 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getMiddleware } from '@helpers/middleware'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import { useNavigationStore } from '@stores/navigationStore'
-import { addDialogNew } from './dialogRow'
+import { addDialogNew } from '@lib/appDialogsManager'
 import { createSearchGroup } from './searchGroup.solid'
 
 const GROUP: PeerId = -100

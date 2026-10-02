@@ -11,6 +11,13 @@ import StickersSearchTab from './StickersSearchTab'
 import { ManagersProvider } from '../../core/hooks/useManagers'
 import type { Managers } from '../../client/bootstrap'
 import { makeStickerSet } from '../../core/stickers/testSticker'
+import { installSidebarRight } from '../../test/sidebarRight'
+
+// Экран поиска открывает правую колонку классом `AppSidebarRight` (мост
+// `useRightColumnShown`, ВРЕМЕННО до 0б-11) — колонка нужна каждому тесту файла.
+let sidebarRight: ReturnType<typeof installSidebarRight>
+beforeEach(() => { sidebarRight = installSidebarRight() })
+afterEach(() => sidebarRight.dispose())
 
 const noop = () => {}
 
@@ -51,7 +58,6 @@ function makeManagers(setCount: number, perSet: number) {
   const sets = Array.from({ length: setCount }, (_, i) => makeSet(i + 1))
   const covers = new Map(sets.map((s) => [s.id, Array.from({ length: perSet }, (_, i) => makeSticker(s.id, i))]))
   const fns = {
-    mySets: vi.fn().mockResolvedValue([]),
     featuredSets: vi.fn().mockResolvedValue({ sets, covers }),
     searchSets: vi.fn().mockResolvedValue({ sets: [], covers: new Map() }),
     install: vi.fn().mockResolvedValue(undefined),

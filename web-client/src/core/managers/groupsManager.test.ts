@@ -36,7 +36,6 @@ function invite(over: Record<string, unknown> = {}) {
   return { _: 'chatInviteExported', link: '/join/abc', admin_id: 1, date: 100, ...over }
 }
 
-
 /** Ответ `GET /chats/{peerID}/card` — конструктор `messages.chatFull` В КОРНЕ,
  *  без обёртки: ключ пира выводим из краткой карточки, а `creator_id` был
  *  мёртвым полем, которое никто не читал. */
@@ -89,26 +88,27 @@ function fakeRest(opts: { postReturn?: unknown; getReturn?: unknown; patchReturn
 }
 
 describe('GroupsManager', () => {
-  // Ответ создания — СОЗДАННЫЙ объект (messages.chatFull), а не адрес в
-  // обёртке: ключ пира выводится из краткой карточки, а сама карточка сразу
-  // уезжает в зеркало пиров.
-  it('createGroup POSTs /groups with snake_case body and returns peer_id', async () => {
+  // Порт `appChatsManager.createChat(title, userIds)` (tweb 812502980
+  // `appChatsManager.ts:627-637`): ответ — `messages.invitedUsers`, созданный
+  // чат берётся из `updates.chats[0]`, пиры пачки уезжают в зеркало, а наружу
+  // идут `{chatId, missingInvitees}` — ровно пара оригинала.
+  it('createChat POSTs /groups {title, member_ids} and returns {chatId, missingInvitees}', async () => {
     const peers = fakePeers()
-    const { rest, posts } = fakeRest({ postReturn: cardResponse() })
+    const card = cardResponse()
+    const missing = [{ _: 'missingInvitee' as const, pFlags: {}, user_id: 9 }]
+    const reply = {
+      _: 'messages.invitedUsers' as const,
+      updates: { _: 'updates' as const, updates: [], users: [], chats: card.chats, date: 1, seq: 0 },
+      missing_invitees: missing,
+    }
+    const { rest, posts } = fakeRest({ postReturn: reply })
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers })
-    const id = await mgr.createGroup({ title: 'My Group', about: 'hi', username: 'mg', isPublic: true })
-    expect(id).toBe(-5)
-    expect(peers.saveApiPeers).toHaveBeenCalledWith(cardResponse())
+    const result = await mgr.createChat('My Group', [8, 9])
+    expect(result).toEqual({ chatId: 5, missingInvitees: missing })
+    expect(peers.saveApiPeers).toHaveBeenCalledWith(reply.updates)
     expect(posts).toHaveLength(1)
     expect(posts[0].path).toBe('/groups')
-    expect(posts[0].body).toEqual({ title: 'My Group', about: 'hi', username: 'mg', is_public: true, member_ids: [] })
-  })
-
-  it('createGroup defaults about/username/is_public', async () => {
-    const { rest, posts } = fakeRest({ postReturn: cardResponse() })
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-    await mgr.createGroup({ title: 'Solo' })
-    expect(posts[0].body).toEqual({ title: 'Solo', about: '', username: '', is_public: false, member_ids: [] })
+    expect(posts[0].body).toEqual({ title: 'My Group', member_ids: [8, 9] })
   })
 
   it('setMute POSTs /chats/{id}/mute with muted flag', async () => {

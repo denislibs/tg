@@ -60,7 +60,7 @@ func (h *StickersHandler) MySets(w http.ResponseWriter, r *http.Request) {
 // SetBySlug — GET /sticker-sets/{slug}: набор со стикерами.
 func (h *StickersHandler) SetBySlug(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
-	set, sts, err := h.svc.SetBySlug(r.Context(), slug)
+	set, sts, err := h.svc.SetBySlug(r.Context(), h.meID(r), slug)
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "set not found")
 		return
@@ -90,7 +90,7 @@ func (h *StickersHandler) SetByID(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	set, sts, err := h.svc.SetByID(r.Context(), id)
+	set, sts, err := h.svc.SetByID(r.Context(), h.meID(r), id)
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "set not found")
 		return
@@ -136,7 +136,7 @@ func (h *StickersHandler) Uninstall(w http.ResponseWriter, r *http.Request) {
 
 // SearchSets — GET /sticker-sets/search?q= (messages.foundStickerSets схемы).
 func (h *StickersHandler) SearchSets(w http.ResponseWriter, r *http.Request) {
-	sets, covers, err := h.svc.SearchSets(r.Context(), r.URL.Query().Get("q"))
+	sets, covers, err := h.svc.SearchSets(r.Context(), h.meID(r), r.URL.Query().Get("q"))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "search failed")
 		return
@@ -150,7 +150,7 @@ func (h *StickersHandler) SearchSets(w http.ResponseWriter, r *http.Request) {
 // первые стикеры каждого набора одним запросом, чтобы строка не была пустой до
 // отдельного похода за полным набором.
 func (h *StickersHandler) Featured(w http.ResponseWriter, r *http.Request) {
-	sets, covers, err := h.svc.Featured(r.Context())
+	sets, covers, err := h.svc.Featured(r.Context(), h.meID(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load featured")
 		return

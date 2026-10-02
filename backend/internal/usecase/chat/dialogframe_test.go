@@ -25,7 +25,7 @@ func TestDialogFrames_AreSchemaConstructors(t *testing.T) {
 	in, s, _, pub := newLoggedGroupInteractor()
 	ctx := context.Background()
 	const owner int64 = 7
-	chatID, err := in.CreateGroup(ctx, owner, "Team", "", "", false, nil)
+	chatID, _, err := in.CreateGroup(ctx, owner, "Team", "", "", false, nil)
 	if err != nil {
 		t.Fatalf("CreateGroup: %v", err)
 	}

@@ -138,6 +138,16 @@ html.no-backdrop {
   }
 }
 
+/* tweb base.scss:2069-2074 — звезда премиума в заголовке строки правила хаба
+   «Конфиденциальность» (`sidebarLeft/tabs/privacyAndSecurity.solid.tsx`,
+   `createPremiumTitle`: голосовые и сообщения). */
+.privacy-premium-icon {
+  vertical-align: text-top;
+  color: var(--primary-color);
+  font-size: 1.125rem;
+  margin-inline-start: .25rem;
+}
+
 /* Ширины колонок (--default-column-width, --left-column-*, --right-column-width,
    --middle-column-width, --chat-width, --page-chats-padding, --folders-sidebar-*)
    пишет JS — core/dom/updateColumnWidths.ts (порт tweb helpers/updateColumnWidths.ts).
@@ -274,8 +284,19 @@ samp {
   font-family: var(--font-monospace);
 }
 
-* {
+// tweb components/_global.scss:3-11 — border-box задаёт корень, остальные
+// НАСЛЕДУЮТ, включая псевдоэлементы. Голое `* {border-box}` псевдоэлементы не
+// задевает: кольцо `.radio-field-main::before` (22px + рамка 2px) выходило 26px,
+// и точка `::after` (left .3125rem, 12px — расчёт tweb на border-box) съезжала
+// на 2px влево-вверх.
+html {
   box-sizing: border-box;
+}
+
+*,
+*:before,
+*:after {
+  box-sizing: inherit;
 }
 
 /* Peer-typing animations (typingDot… + recordBlink) живут в

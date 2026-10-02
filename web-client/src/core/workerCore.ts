@@ -44,6 +44,7 @@ import { newSessionsManager } from './managers/sessionsManager'
 import { newLangPackManager } from './managers/langPackManager'
 import { newCallsManager } from './managers/callsManager'
 import { newLivestreamManager } from './managers/livestreamManager'
+import { getDoc } from './media/messageMedia'
 import { newConnectionManager } from './realtime/connectionManager'
 import { newRealtime } from './realtime/realtime'
 import { newSyncEngine } from './realtime/syncEngine'
@@ -373,8 +374,11 @@ export function createWorkerCore() {
     peers,
     getMe: () => me?.user ?? null,
     state: { getState, pushToState: (key, value) => persist.stateKey(key, value) },
+    onContactsUpdate: (userId) => broadcast('contacts_update', userId),
   })
-  const privacy = newPrivacyManager({ rest, peers })
+  // `peer_block` — событие tweb `toggleBlock` (`appUsersManager.ts:520-536`);
+  // broadcast объявлен ниже — стрелка дёргает его лениво.
+  const privacy = newPrivacyManager({ rest, peers, onPeerBlock: (e) => broadcast('peer_block', e) })
   const drafts = newDraftsManager({ rest })
   // Тема оформления чата: только REST. Её место в схеме — полная карточка
   // (решение Р7), поэтому применяет её читатель карточки на главном потоке.
@@ -392,6 +396,11 @@ export function createWorkerCore() {
   const stickers = newStickersManager({ rest })
   const reactions = newReactionsManager({ rest })
   const iv = newIVManager({ rest })
+  // tweb `appDocsManager.getDoc` — документ по id из хранилища, которое
+  // наполняет `saveDocument` (`core/media/messageMedia.ts`). Читатель —
+  // предпросмотр стикера (`components/stickerViewer.ts`): у ячейки есть только
+  // `data-doc-id`.
+  const docs = { getDoc }
   const health = newHealthManager(rest)
   // Языковой пакет: владелец кэша, версии и разницы — воркер (обоснование места
   // и выбора хранилища — в докблоке менеджера). Хранилище — тот же KV IndexedDB,
@@ -856,7 +865,7 @@ export function createWorkerCore() {
     health, auth, profile, premium, chats, messages, realtime, media, push, notify,
     folders, groups, channels, peers, dialogs, presence, stories, contacts, privacy, drafts,
     chatThemes, sessions, calls, livestream, stars, boosts, report, stats, bots,
-    stickers, reactions, iv, secret, persist, langPack,
+    stickers, reactions, iv, secret, persist, langPack, docs,
   }
 
   function bind(ep: Endpoint) {

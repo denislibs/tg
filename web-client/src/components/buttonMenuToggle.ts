@@ -19,10 +19,7 @@
 //  1. `getOverlayRoot()` (боди активного окна Document PiP, `:154`) →
 //     `document.body`: Document PiP у нас нет — та же адаптация, что в
 //     `helpers/overlayClickHandler.ts` и `helpers/positionMenu.ts`.
-//  2. `button.dispose?.()` в отложенной уборке (`:179`) не перенесён: `dispose`
-//     пишет в опции только `avatarInfo`-ветка `ButtonMenuItem`, а она не
-//     портирована (шапка `components/buttonMenu.ts`); поля в типе нет.
-//  3. Неиспользуемый импорт `findUpClassName` оригинала (`:10`) не перенесён.
+//  2. Неиспользуемый импорт `findUpClassName` оригинала (`:10`) не перенесён.
 import contextMenuController from '@helpers/contextMenuController'
 import cancelEvent from '@helpers/dom/cancelEvent'
 import { type AttachClickOptions, CLICK_EVENT_NAME, hasMouseMovedSinceDown } from '@helpers/dom/clickEvent'
@@ -199,6 +196,9 @@ export default function ButtonMenuToggle({
         closeTimeout = undefined
         listenerSetter.removeAll()
         buttons.forEach((button) => {
+          // tweb :216 — аватарка пункта (`avatarInfo`) и слушатели подменю
+          // (`createSubmenuTrigger`) гаснут вместе с меню
+          try { button.dispose?.() } catch {}
           button.element = undefined
         })
         canDeleteTextElementsOnClose.forEach((button) => delete button.textElement)

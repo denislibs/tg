@@ -15,19 +15,26 @@
 //     (`ButtonMenuSync` :226-232, :250-277) — `CheckboxField` и `RadioForm` не
 //     портированы; вместе с ними ушла ветка `keepOpen = !!checkboxField`
 //     (осталась `!!options.keepOpen`) и класс `has-checkbox`;
-//   • `iconDoc` (`wrapAttachBotIcon`) — иконок attach-ботов в проекте нет;
-//   • `avatarInfo` + `dispose` (`AvatarNew`, solid `createRoot`) — solid-js в
-//     проекте нет;
-//   • `new` (бейдж `span.btn-menu-item-badge`, tweb :147-152) — ветка мёртвая
-//     уже в tweb: `new: true` не ставит ни один потребитель меню (проверено
-//     grep'ом по репозиторию tweb), плюс тянет langPack-ключ 'New';
+//   • `iconDoc` (`wrapAttachBotIcon`) — иконок attach-ботов в проекте нет
+//     (боты меню вложений — О-80 волны 7);
+//   • `new` (бейдж `span.btn-menu-item-badge`, tweb :178-183) — его ставят
+//     только пункты attach-ботов бургера (`side_menu_disclaimer_needed`), а их
+//     нет (О-80);
 //   • `waitForAnimation` — мёртвое уже в tweb: читается только внутри
-//     закомментированного черновика (:171-174);
-//   • `inner` (`has-inner` + `Icon('next')`, :207-211) и поля-проводники
-//     `id` / `onOpen` / `onClose`: сам этот файл их не читает — их читают
-//     потребители меню и `createSubmenuTrigger`, которого в проекте нет
-//     (`ChatTypeMenu` держит `id` пересечением типа у себя).
-//     ChatContextMenu подменю делает через `createSubmenuTrigger`, а не `inner`.
+//     закомментированного черновика;
+//   • `inner` (`has-inner` + `Icon('next')`) — потребителей нет.
+//
+// Поля-проводники `id` / `onOpen` / `onClose` / `dispose` сам этот файл не
+// читает (кроме `dispose`, который пишет ветка `avatarInfo`): их читают
+// владельцы меню — `createSubmenuTrigger`, бургер (`sidebarLeft/toolsMenu.ts`)
+// и уборка `ButtonMenuToggle` (`dispose`).
+//
+// `avatarInfo` (tweb :163-176, `AvatarNew` под `createRoot`) — наша ванильная
+// аватарка `avatarNew` (`components/avatar.ts`) под своей мидлварью; `dispose`
+// гасит её. Расхождение: менеджеры аватарке передаются явно (`managers` в
+// `AvatarInfo`) — глобального `rootScope.managers` у нас нет; `accountNumber`
+// оригинала не нужен — другой аккаунт приходит готовой карточкой `peer`
+// (Отступление В7-4 волны 7).
 import flatten from '@helpers/array/flatten'
 import contextMenuController from '@helpers/contextMenuController'
 import cancelEvent from '@helpers/dom/cancelEvent'
@@ -39,13 +46,26 @@ import Icon from '@components/icon'
 import { putPreloader } from '@components/putPreloader'
 import type { IconName } from '@core/tgico-icons'
 import { i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
+import { avatarNew, type AvatarManagers } from '@components/avatar'
+import { getMiddleware } from '@helpers/middleware'
+import type { Chat, User } from '@core/peers/peer'
+
+// tweb :26-31
+type AvatarInfo = {
+  peerId?: PeerId,
+  peer?: Chat | User,
+  active?: boolean,
+  managers: AvatarManagers,
+}
 
 export type ButtonMenuItemOptions = {
+  id?: unknown,
   /** имя глифа; хвост после первого слова уезжает в className пункта
    *  (tweb: `icon: 'delete danger-cls'` кладёт `danger-cls` на пункт) */
   icon?: string,
   iconElement?: HTMLElement,
   emptyIcon?: boolean,
+  avatarInfo?: AvatarInfo,
   danger?: boolean,
   className?: string,
   /**
@@ -76,6 +96,9 @@ export type ButtonMenuItemOptions = {
   multiline?: boolean,
   secondary?: boolean,
   loadPromise?: Promise<unknown>,
+  dispose?: () => void,
+  onOpen?: () => void,
+  onClose?: () => void,
 }
 
 export type ButtonMenuItemOptionsVerifiable = ButtonMenuItemOptions & {
@@ -120,6 +143,7 @@ export function ButtonMenuItem(options: ButtonMenuItemOptions) {
     text,
     onClick,
     emptyIcon,
+    avatarInfo,
   } = options
   const el = document.createElement('div')
   const iconSplitted = icon?.split(' ')
@@ -147,6 +171,24 @@ export function ButtonMenuItem(options: ButtonMenuItemOptions) {
       setInnerHTML(textElement, options.regularText)
       textElement.dir = ''
     }
+  }
+
+  // tweb :163-176
+  if(avatarInfo) {
+    const middlewareHelper = getMiddleware()
+    options.dispose = () => middlewareHelper.destroy()
+    const avatar = avatarNew({
+      size: 24,
+      peerId: avatarInfo.peerId,
+      peer: avatarInfo.peer,
+      middleware: middlewareHelper.get(),
+      managers: avatarInfo.managers,
+    })
+    avatar.node.classList.add('btn-menu-item-icon', 'is-external', 'btn-menu-item-avatar')
+    if(avatarInfo.active) {
+      avatar.node.classList.add('active')
+    }
+    el.append(avatar.node)
   }
 
   textElement.classList.add('btn-menu-item-text')

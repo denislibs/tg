@@ -16,6 +16,21 @@ import { fromPrivacyRules, newPrivacyManager, toPrivacyRules, type PrivacyRule }
 const rules = (r: PrivacyRule) => ({ _: 'account.privacyRules', rules: toPrivacyRules(r), chats: [], users: [] })
 
 describe('privacyManager', () => {
+  // Реестр RPC зовёт метод ОТВЯЗАННЫМ (`rpc/managersProxy.ts`: `fn(...args)`), поэтому
+  // метод менеджера не смеет опираться на `this`: `rules()` через `this.rule` падал в
+  // воркере TypeError, `loadPrivacy` глотал отказ, стор правил не загружался никогда,
+  // и хаб «Конфиденциальность» висел на «Загрузка…» (задача 23 плана 2D, стенд).
+  it('rules() работает и отвязанным — так его зовёт реестр RPC', async () => {
+    const get = vi.fn(async () => rules({ key: 'about', value: 'everybody', allowUserIds: [], denyUserIds: [] }))
+    // oxlint-disable-next-line typescript/unbound-method -- отвязанный вызов и есть предмет теста
+    const { rules: detached } = newPrivacyManager({ rest: { get } as unknown as RestClient })
+
+    const list = await detached()
+
+    expect(list).toHaveLength(12)
+    expect(get).toHaveBeenCalledWith('/me/privacy/privacyKeyStatusTimestamp')
+  })
+
   it('спрашивает ОДИН ключ и адресует его конструктором', async () => {
     const get = vi.fn(async () => rules({ key: 'last_seen', value: 'contacts', allowUserIds: [], denyUserIds: [] }))
     const mgr = newPrivacyManager({ rest: { get } as unknown as RestClient })
@@ -82,5 +97,58 @@ describe('privacyManager', () => {
 
     expect(saveApiPeers).toHaveBeenCalledWith({ chats: [], users: [bob] })
     expect(profile.user).toEqual(bob)
+  })
+
+  // Порт `appUsersManager.getBlocked` (tweb :1128-1138): векторы ответа уходят
+  // владельцу карточек (`saveApiUsers`/`saveApiChats`), наружу — пары
+  // «сколько всего» и ключи пиров по порядку ответа.
+  it('чёрный список: карточки — владельцу, наружу — count и peerIds', async () => {
+    const alice = { _: 'user', id: 5, first_name: 'Алиса' }
+    const bob = { _: 'user', id: 9, first_name: 'Боб' }
+    const get = vi.fn(async () => ({
+      _: 'contacts.blockedSlice',
+      count: 7,
+      blocked: [
+        { _: 'peerBlocked', peer_id: { _: 'peerUser', user_id: 9 }, date: 1 },
+        { _: 'peerBlocked', peer_id: { _: 'peerUser', user_id: 5 }, date: 2 },
+      ],
+      chats: [],
+      users: [alice, bob],
+    }))
+    const saveApiPeers = vi.fn()
+    const mgr = newPrivacyManager({ rest: { get } as unknown as RestClient, peers: { saveApiPeers } })
+
+    const res = await mgr.getBlocked(50, 50)
+
+    expect(get).toHaveBeenCalledWith('/me/blocked?offset=50&limit=50')
+    expect(saveApiPeers).toHaveBeenCalledWith({ chats: [], users: [alice, bob] })
+    expect(res).toEqual({ count: 7, peerIds: [9, 5] })
+  })
+
+  // Порт `appUsersManager.toggleBlock` (tweb :520-536) + `onUpdatePeerBlocked`
+  // (`appProfileManager.ts:1506-1532`): после ответа сервера — событие
+  // `peer_block` с `blocked` из `pFlags` (`true` или отсутствует).
+  it('toggleBlock: блокировка — POST, разблокировка — DELETE; после ответа — событие peer_block', async () => {
+    const post = vi.fn(async () => ({ _: 'boolTrue' }))
+    const del = vi.fn(async () => ({ _: 'boolTrue' }))
+    const onPeerBlock = vi.fn()
+    const mgr = newPrivacyManager({ rest: { post, del } as unknown as RestClient, onPeerBlock })
+
+    await mgr.toggleBlock(9, true)
+    expect(post).toHaveBeenCalledWith('/me/blocked', { user_id: 9 })
+    expect(onPeerBlock).toHaveBeenLastCalledWith({ peerId: 9, blocked: true })
+
+    await mgr.toggleBlock(9, false)
+    expect(del).toHaveBeenCalledWith('/me/blocked/9')
+    expect(onPeerBlock).toHaveBeenLastCalledWith({ peerId: 9, blocked: undefined })
+  })
+
+  it('toggleBlock: отказ сервера — без события', async () => {
+    const post = vi.fn(async () => { throw new Error('user not found') })
+    const onPeerBlock = vi.fn()
+    const mgr = newPrivacyManager({ rest: { post } as unknown as RestClient, onPeerBlock })
+
+    await expect(mgr.toggleBlock(9, true)).rejects.toThrow()
+    expect(onPeerBlock).not.toHaveBeenCalled()
   })
 })

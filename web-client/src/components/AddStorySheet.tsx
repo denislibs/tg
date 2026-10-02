@@ -42,7 +42,7 @@ const PERIOD_OPTIONS: { key: number; label: string }[] = [
 
 /**
  * Caption + privacy sheet shown after a story media file is picked + uploaded.
- * Reuses the app's slide-in panel pattern (mirrors NewGroupFlow / UserInfoPanel's
+ * Reuses the app's slide-in panel pattern (mirrors UserInfoPanel's
  * RightsEditor): an absolute-positioned motion panel over the sidebar with a
  * back header, a rounded card body and a confirm FAB.
  */

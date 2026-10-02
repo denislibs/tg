@@ -152,18 +152,40 @@ const APP_SETTINGS_KEYS = {
   // tweb `config/state.ts` (`settings.tabsInSidebar`) — «Расположение папок»
   // вкладки «Папки» (задача 24)
   tabsInSidebar: 'tabsInSidebar',
+  // tweb `config/state.ts:81-96` — «Стикеры и эмодзи» (задача 15). Без
+  // `stickers.dynamicPackOrder` (О-43), `stickers.hiddenGroup*Sets` (панель
+  // стикеров — React, пишет своё сама) и `emoji.big` (О-45): их читатели
+  // у нас не существуют, и тумблер ничего бы не менял.
+  stickers: {
+    suggest: 'stickersSuggest',
+    loop: 'loopStickers',
+  },
+  emoji: {
+    suggest: 'emojiSuggest',
+  },
+  // tweb `config/state.ts:182-193` (`callDevices`) — «Динамики и камера»
+  // (задача 26): выбор устройств звонка. `micVolume` и `noiseSuppression` нет —
+  // их ручки живут в попапе настроек звонка (`call/settingsPopup.tsx`), у нас
+  // не портирован.
+  callDevices: {
+    speakerId: 'speakerId',
+    microphoneId: 'micId',
+    cameraId: 'cameraId',
+  },
+  // tweb `config/state.ts:199-201` — порядок вкладки контактов (`sidebarLeft/tabs/contacts.solid.tsx`)
+  contactsSortMode: 'contactsSortMode',
 } as const satisfies KeyTable
 
 type Table = typeof APP_SETTINGS_KEYS
 
 type LeafValue<E> = E extends keyof Settings ? Settings[E] : E extends { get: (value: never) => infer V } ? V : never
 
-type SettingsView<T> = {
-  readonly [K in keyof T]: T[K] extends Leaf ? LeafValue<T[K]> : SettingsView<T[K]>
+type SettingsTree<T> = {
+  readonly [K in keyof T]: T[K] extends Leaf ? LeafValue<T[K]> : SettingsTree<T[K]>
 }
 
 /** Настройки клиента в форме tweb `StateSettings` — в объёме таблицы. */
-export type AppSettings = SettingsView<Table>
+export type AppSettings = SettingsTree<Table>
 
 /** Путь на одно поле ВНУТРЬ значения-объекта листа. */
 type InnerArgs<V, P extends string[]> = V extends object
@@ -174,7 +196,7 @@ type InnerArgs<V, P extends string[]> = V extends object
 type SetArgs<T, P extends string[] = []> = {
   [K in keyof T & string]: T[K] extends Leaf
     ? [...P, K, LeafValue<T[K]>] | InnerArgs<LeafValue<T[K]>, [...P, K]>
-    : [...P, K, Partial<SettingsView<T[K]>>] | SetArgs<T[K], [...P, K]>
+    : [...P, K, Partial<SettingsTree<T[K]>>] | SetArgs<T[K], [...P, K]>
 }[keyof T & string]
 
 function buildView(table: KeyTable, state: Accessor<Settings>): object {
