@@ -1,42 +1,22 @@
 // Установка/удаление набора объявляется каналом rootScope (порт tweb
-// 'stickers_installed'/'stickers_deleted'), и обе витрины наборов пересчитываются:
-// строка экрана «Поиск стикеров» и панель стикеров пикера. До этого канала
-// каждая витрина правила только своё локальное состояние — набор, добавленный в
-// попапе, оставался «Add» в строке под ним и не появлялся в панели.
-import { describe, it, expect, afterEach, beforeAll, beforeEach, vi } from 'vitest'
-import { render, cleanup, fireEvent, waitFor, renderHook, act } from '@testing-library/react'
+// 'stickers_installed'/'stickers_deleted'), и панель стикеров пикера его
+// подхватывает. До этого канала набор, добавленный в попапе, не появлялся в
+// панели. (Вкладка «Поиск стикеров» этих событий не слушает — как у tweb
+// `sidebarRight/tabs/stickers.tsx`: строка меняет надпись по ответу своего клика.)
+import { describe, it, expect, afterEach, vi } from 'vitest'
+import { cleanup, waitFor, renderHook, act } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import rootScope from '@lib/rootScope'
 import { toggleStickerSet } from './toggleStickerSet'
 import { useStickersPanel } from '../hooks/useStickers'
 import { ManagersProvider } from '../hooks/useManagers'
-import StickersSearchTab from '../../components/rightSidebar/StickersSearchTab'
 import type { Managers } from '../../client/bootstrap'
 import type { StickerSet } from '../managers/stickersManager'
 import { makeSticker, makeStickerSet } from './testSticker'
-import { installSidebarRight } from '../../test/sidebarRight'
-
-// Экран поиска открывает правую колонку классом `AppSidebarRight` (мост
-// `useRightColumnShown`, ВРЕМЕННО до 0б-11) — колонка нужна каждому тесту файла.
-let sidebarRight: ReturnType<typeof installSidebarRight>
-beforeEach(() => { sidebarRight = installSidebarRight() })
-afterEach(() => sidebarRight.dispose())
 
 const duck: StickerSet = makeStickerSet({ id: 1, shortName: 'utyaduck', title: 'Duck', count: 2 })
 const croco: StickerSet = makeStickerSet({ id: 2, shortName: 'mrcroco', title: 'Croco', count: 2 })
 const stickersOf = (setId: number) => [1, 2].map((i) => makeSticker({ id: setId * 100 + i, setId }))
-
-// happy-dom не реализует IntersectionObserver — нужен ленивой сетке попапа.
-beforeAll(() => {
-  vi.stubGlobal('IntersectionObserver', class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  })
-})
-
-// Файл стикера в тестах не грузим (fetch к media) — StickerMedia покрыт своим тестом.
-vi.mock('../../components/StickerMedia', () => ({ default: () => <div data-testid="sticker-media" /> }))
 
 function makeManagers(mine: StickerSet[] = []) {
   const fns = {
@@ -78,29 +58,6 @@ describe('toggleStickerSet — объявление установки набо�
     }
   })
 
-  // Регрессия: набор добавляли в попапе (или в другой вкладке), а строка того
-  // же набора на экране поиска продолжала показывать «Add».
-  it('строка экрана поиска переключается на Added по объявлению, а не по своему же ответу', async () => {
-    const { managers } = makeManagers()
-    render(
-      <ManagersProvider managers={managers}>
-        <StickersSearchTab onClose={() => {}} />
-      </ManagersProvider>,
-    )
-    const button = await waitFor(() => {
-      const b = document.querySelector<HTMLButtonElement>('button.sticker-set-button')
-      expect(b).not.toBeNull()
-      return b!
-    })
-    expect(button.textContent).toBe('Add')
-
-    act(() => { rootScope.dispatchEvent('stickers_installed', duck) })
-    await waitFor(() => expect(button.textContent).toBe('Added'))
-
-    act(() => { rootScope.dispatchEvent('stickers_deleted', duck) })
-    await waitFor(() => expect(button.textContent).toBe('Add'))
-  })
-
   // Регрессия: панель грузит наборы ровно один раз (startedRef), поэтому без
   // подписки новый набор появлялся в ней только после перезагрузки страницы.
   it('панель стикеров подхватывает установленный набор и убирает удалённый', async () => {
@@ -117,35 +74,5 @@ describe('toggleStickerSet — объявление установки набо�
 
     act(() => { rootScope.dispatchEvent('stickers_deleted', duck) })
     await waitFor(() => expect(result.current.sets.map((x) => x.set.id)).toEqual([2]))
-  })
-})
-
-describe('витрины наборов — сквозной путь из попапа', () => {
-  afterEach(cleanup)
-
-  it('добавление набора в попапе переключает строку того же набора на Added', async () => {
-    const { managers, fns } = makeManagers()
-    render(
-      <ManagersProvider managers={managers}>
-        <StickersSearchTab onClose={() => {}} />
-      </ManagersProvider>,
-    )
-    await waitFor(() => expect(document.querySelector('.sticker-set')).not.toBeNull())
-
-    // клик по строке (не по кнопке/превью) открывает попап набора
-    fireEvent.click(document.querySelector('.sticker-set')!)
-    const addInPopup = await waitFor(() => {
-      const b = document.querySelector<HTMLButtonElement>('.popup-stickers .popup-footer-button')
-      expect(b?.textContent).toMatch(/Добавить/)
-      return b!
-    })
-
-    fireEvent.click(addInPopup)
-    await waitFor(() => expect(fns.install).toHaveBeenCalledWith(1))
-
-    // строка под попапом узнала об установке
-    await waitFor(() =>
-      expect(document.querySelector('button.sticker-set-button')!.textContent).toBe('Added'),
-    )
   })
 })

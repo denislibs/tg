@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 42,
+      "version": 43,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -4629,6 +4629,10 @@
           "value": "Search GIFs"
         },
         {
+          "key": "SearchGifsTitle",
+          "value": "Search GIFs"
+        },
+        {
           "key": "SearchInAllChats",
           "value": "Search in All Chats"
         },
@@ -5089,6 +5093,10 @@
         {
           "key": "Stickers.RemoveFromFavorites",
           "value": "Remove from Favorites"
+        },
+        {
+          "key": "Stickers.SearchAdd",
+          "value": "Add"
         },
         {
           "key": "Stickers.SearchAdded",
@@ -5944,7 +5952,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 42,
+      "version": 43,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -10483,11 +10491,19 @@
           "value": "Поиск стикеров"
         },
         {
+          "key": "Stickers.SearchAdd",
+          "value": "Добавить"
+        },
+        {
           "key": "Stickers.SearchAdded",
           "value": "Добавлен"
         },
         {
           "key": "SearchGIFs",
+          "value": "Поиск GIF"
+        },
+        {
+          "key": "SearchGifsTitle",
           "value": "Поиск GIF"
         },
         {

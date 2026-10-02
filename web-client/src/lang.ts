@@ -1231,6 +1231,7 @@ const lang = {
   SearchEmoji: 'Search Emoji',
   SearchEmptyViewTitle: 'No Results',
   SearchGIFs: 'Search GIFs',
+  SearchGifsTitle: 'Search GIFs',
   SearchInAllChats: 'Search in All Chats',
   SearchMessages: 'Messages',
   Seconds: {
@@ -1351,6 +1352,7 @@ const lang = {
   },
   'Stickers.ClearRecent.Text': 'Are you sure you want to clear your recent stickers?',
   'Stickers.RemoveFromFavorites': 'Remove from Favorites',
+  'Stickers.SearchAdd': 'Add',
   'Stickers.SearchAdded': 'Added',
   'Stickers.SuggestStickers': 'Suggest Stickers by Emoji',
   StickersBotInfo: 'Artists are welcome to add their own sticker sets using our @stickers bot.',

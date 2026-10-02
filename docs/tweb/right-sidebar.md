@@ -882,7 +882,7 @@ layout-эффект шелла (`createAppSidebarRight()` + `construct(managers)
 | Панель | Файл | Где живёт | Когда |
 |---|---|---|---|
 | Профиль/группа/канал | `src/components/UserInfoPanel.tsx` | портал в `tab.container` вкладки №0 — `AppReactProfileTab` (`sidebarRight/reactProfileTab.ts`, ВРЕМЕННО до 3-1, роль `AppSharedMediaTab`) | вкладку создаёт каждый инстанс `Chat.tsx` на монтировании (`createSharedMediaTab`), активный ставит её в слайдер (`replaceSharedMediaTab`, ВРЕМЕННО до Э6) |
-| Поиск стикеров/GIF | `src/components/rightSidebar/RightSearchTab.tsx` | свой портал в `#main-columns` с геометрией колонки | из композера (`popupStore`); колонку открывает классом через мост `useRightColumnShown` (ВРЕМЕННО до 0б-11) |
+| Поиск стикеров/GIF | `sidebarRight/tabs/stickers.solid.tsx`, `gifs.solid.tsx` (`AppStickersTab`/`AppGifsTab`, порт tweb 1:1, 0б-11) | Solid-вкладки слайдера `AppSidebarRight` | лупа нижней полосы панели эмодзи — `isTabExists` → `appSidebarRight.createTab(…).open()` (tweb `emoticonsDropdown/index.ts:303-308`); отправка — `appImManager.chat.input.sendMessageWithDocument` через мост `sidebarRight/tabs/emoticonsSearchBridge.ts` (ВРЕМЕННО до Э4-3, ставит активный `Chat.tsx`); попап набора — React `openStickerSetModal` (ВРЕМЕННО до 2C-15). Расхождения: выдача GIF — Tenor, а не `@gif` (О-27); кладка — `components/gifsMasonry.ts` |
 | Изменить/добавить контакт | `sidebarRight/tabs/editContact.solid.tsx` (`AppEditContactTab`, 0б-10) | вкладка слайдера правой колонки, как у tweb | карандаш профиля (`Chat.tsx` `onEditContact`, ВРЕМЕННО до 3-1) и ⋮ «AddContact» (`useChatPopups::openAddContact` — порт `topbar.addContact`, ВРЕМЕННО до Э6-2) |
 
 Открыть подэкран правой колонки — как у tweb: `appSidebarRight.createTab(AppXxxTab).open(payload)`
@@ -1104,7 +1104,6 @@ key_filled (ключ шифрования), statistics_filled. Пин цвето
 
 - `components/stargifts/stargiftsGrid.module.scss` + `profileList.module.scss` — **это модули самого tweb**, портированы дословно (там подарки тоже модулями);
 - `settings/kit.module.scss` — два правила (`screen`, `entering`), обосновано комментарием: у нас экран монтируется слоем поверх колонки, а не вкладкой постоянного слайдера;
-- `rightSidebar/RightSearchTab.module.scss` — только геометрия панели;
 
 Инлайн-стили (отсебятина, не по tweb): `PinnedStoriesSection.tsx:16-45` (грид историй целиком на инлайне), `ChannelStats.tsx:73,138-141` (топ-посты, лоадер), `SharedMedia.tsx:258` (пустое состояние).
 

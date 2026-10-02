@@ -481,8 +481,12 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Врезкой той же задачи снят наш `EditContact.PhotoHint` (подпись снесённого
 // React-экрана `EditContactView`; у tweb — `UserInfo.CustomPhotoHelp`).
 // Итог (поверх 0а-4): ru 1437 (форм числа 45).
+// Задача 0б-11 волны 7 (вкладки «Поиск стикеров» и «Поиск GIF» правой колонки):
+// у ru +2 ключа tweb lang.ts — `Stickers.SearchAdd` (кнопка набора, tweb
+// `stickers.tsx:49`) и `SearchGifsTitle` (заголовок/плейсхолдер `AppGifsTab`,
+// `tabs.ts:460`, `gifs.tsx:92`). Итог: ru 1417.
 const COMPOSITION = {
-  ru: { keys: 1437, plural: 45 },
+  ru: { keys: 1439, plural: 45 },
   uk: { keys: 759, plural: 33 },
   es: { keys: 756, plural: 32 },
   de: { keys: 757, plural: 33 },
@@ -640,8 +644,9 @@ const COMPOSITION = {
 // Задачей 0а-4 волны 7 — у ru +4 ключа вкладки «Звонки» и −1 `Calls.Empty`
 // снесённого React-экрана (разбор — там же).
 // Задачей 0б-10 волны 7 — у ru +23 ключа вкладки «Изменить контакт» (разбор — там же).
+// Задачей 0б-11 волны 7 — у ru +2 ключа tweb (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '16632b84',
+  ru: 'da30070a',
   uk: '571c2c10',
   es: '737d78e3',
   de: '5e55ac08',

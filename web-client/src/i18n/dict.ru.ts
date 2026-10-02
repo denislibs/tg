@@ -1382,11 +1382,13 @@ const ru = {
     many_value: '%1$d стикеров',
     other_value: '%1$d стикера',
   },
-  // экраны поиска правой колонки (rightSidebar/StickersSearchTab)
+  // вкладки поиска правой колонки (sidebarRight/tabs/stickers.solid, gifs.solid)
   'StickersTab.SearchPlaceholder': 'Поиск стикеров',
+  'Stickers.SearchAdd': 'Добавить',
   'Stickers.SearchAdded': 'Добавлен',
   // GIF (вкладка пикера, контекстные меню)
   SearchGIFs: 'Поиск GIF',
+  SearchGifsTitle: 'Поиск GIF',
   SavedGifsLimitTitle: 'Сохранённые GIF',
   'Gif.Trending': 'Популярные',
   NoGIFsFound: 'GIF не найдены',
