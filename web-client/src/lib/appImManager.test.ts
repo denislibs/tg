@@ -11,6 +11,7 @@ import mediaSizes, { ScreenSize } from '@core/dom/mediaSizes'
 import appNavigationController, { type NavigationItem } from '@core/navigation/appNavigationController'
 import { ChatType } from '@components/chat/chatType'
 import type { Managers } from '@/client/bootstrap'
+import { returnToStaticMarkup } from '@/test/staticMarkup'
 import { APP_TABS, AppImManager, LEFT_COLUMN_ACTIVE_CLASSNAME } from './appImManager'
 
 const columnRight = vi.hoisted(() => ({ sidebarEl: undefined as HTMLElement | undefined, toggleSidebar: () => Promise.resolve(), hide: () => {} }))
@@ -36,13 +37,13 @@ let im: AppImManager
 /** Дождаться `setPeer` целиком: динамический импорт острова и два `setTimeout(0)` (`:3366-3378`). */
 const settle = () => pause(20)
 
+/** Статичные колонки `index.html` (`test/staticMarkup.ts`) — в `body` на время теста. */
 function mountColumns() {
-  const left = document.createElement('div')
-  left.id = 'column-left'
-  const center = document.createElement('div')
-  center.id = 'column-center'
-  const right = document.createElement('div')
-  right.id = 'column-right'
+  const left = document.getElementById('column-left')!
+  const center = document.getElementById('column-center')!
+  const right = document.getElementById('column-right')!
+  center.replaceChildren()
+  left.inert = center.inert = false
   document.body.append(left, center, right)
   columnRight.sidebarEl = right
   return { left, center }
@@ -57,6 +58,7 @@ beforeEach(() => {
 
 afterEach(() => {
   appNavigationController.spliceItems(0, Infinity)
+  ;['column-left', 'column-center', 'column-right'].forEach((id) => returnToStaticMarkup(document.getElementById(id)!))
   document.body.replaceChildren()
   document.body.className = ''
   vi.restoreAllMocks()

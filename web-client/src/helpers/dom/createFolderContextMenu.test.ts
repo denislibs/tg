@@ -36,6 +36,8 @@ afterEach(() => {
   mounted = undefined
   uninstallFrames()
   vi.unstubAllGlobals()
+  // колонка — вечный синглтон (К-2): шпионы на ней иначе копят вызовы между тестами
+  vi.restoreAllMocks()
   document.body.replaceChildren()
   resetStores()
   resetPeerMirror()

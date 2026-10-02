@@ -44,8 +44,8 @@ Build-time переменные (`src/config/app.ts`):
 
 ```
 src/
-├── main.tsx              # точка входа: монтаж React, регистрация sw.js, шрифты
-├── App.tsx               # Shell: startClient() → loadChats() → startRealtime() → setupPush()
+├── index.ts              # точка входа (порт tweb src/index.ts): boot → mountAuthFlow | bootstrapIm
+├── pages/bootstrapIm.ts  # подъём мессенджера: #page-chats, appDialogsManager.start()
 ├── theme.ts settings.tsx # темы (light/dark/пресеты), контекст настроек
 ├── data.ts               # ConvMsg / Chat / OpenPeer — формы для рендера
 ├── i18n/                 # локализация
