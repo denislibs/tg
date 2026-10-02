@@ -81,6 +81,13 @@
 // 10. `destroy()` — метода у оригинала нет (колонка живёт столько же, сколько
 //     вкладка); у нас хозяин — React-компонент, и на размонтировании владелец
 //     снимает сеанс поиска сразу, без перехода, и свои подписки.
+// 11. `AppSearchSuper` собирается внутри `createRoot`, снятого на `middleware`
+//     сеанса: у оригинала (:1137) класс строится из once-слушателя фокуса без
+//     владельца, и Solid-вычисления конструктора (`Tabs.MenuGradient` прямым
+//     вызовом, `appSearchSuper.ts` tweb `:650-657`) не освобождаются никогда —
+//     dev-сборка Solid пишет «computations created outside a `createRoot`».
+//     Тем же порядком, что правая колонка (`sharedMediaTab.tsx:115-118`): корень
+//     гаснет после `searchSuper.destroy()` — вместе с `searchMiddlewareHelper`.
 import AppSearchSuper, { type SearchSuperManagers, type SearchSuperMediaTab } from '@components/appSearchSuper'
 import Scrollable from '@components/scrollable'
 import TransitionSlider from '@components/transition'
@@ -108,6 +115,7 @@ import pause from '@helpers/schedulers/pause'
 import { i18n } from '@lib/langPack'
 import { wrapUrl } from '@lib/richtext/url'
 import { useChatsStore } from '@stores/chatsStore'
+import { createRoot } from 'solid-js'
 
 /** Контракт tweb `InputSearch` (`inputSearch.ts`) в объёме, который читает и пишет владелец. */
 export type GlobalSearchInputSearch = {
@@ -267,14 +275,18 @@ export default class GlobalSearch {
     })
 
     // :1128-1170
-    const searchSuper = this.searchSuper = new AppSearchSuper({
-      mediaTabs: MEDIA_TABS(),
-      scrollable,
-      searchGroups,
-      hideEmptyTabs: false,
-      showSender: true,
-      managers,
-      scrollOffset: 16,
+    // расхождение 11: корень класса — на `middleware` сеанса
+    const searchSuper = this.searchSuper = createRoot((dispose) => {
+      middleware.onClean(dispose)
+      return new AppSearchSuper({
+        mediaTabs: MEDIA_TABS(),
+        scrollable,
+        searchGroups,
+        hideEmptyTabs: false,
+        showSender: true,
+        managers,
+        scrollOffset: 16,
+      })
     })
 
     // :1172-1183 — без ветки `posts` (расхождение 1)
