@@ -132,6 +132,15 @@ describe('AppSelectPeers — разметка (дамп 14-left-30b)', () => {
     expect(content.lastElementChild!.className).toBe('chatlist')
   })
 
+  it('градиент шапки поиска собран внутри корня на middleware владельца: предупреждения Solid нет (расхождение 3 selectorSearch)', async() => {
+    const warn = vi.spyOn(console, 'warn')
+    build()
+    await settle()
+    helper.destroy()
+    const leaks = warn.mock.calls.filter(([msg]) => String(msg).includes('computations created outside a `createRoot` or `render`'))
+    expect(leaks, '`Tabs.MenuGradient` конструктора `SelectorSearch` без владельца').toEqual([])
+  })
+
   it('поле поиска: input-search без крестика, input.selector-search-input, плейсхолдер Search', async() => {
     const selector = build()
     const field = selector.container.querySelector('.selector-search-container .selector-search > .input-search')!
