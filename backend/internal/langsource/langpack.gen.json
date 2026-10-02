@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 47,
+      "version": 48,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -1194,6 +1194,10 @@
         {
           "key": "ChatAdmin",
           "value": "admin"
+        },
+        {
+          "key": "ChatAutomation.NewChats",
+          "value": "New Chats"
         },
         {
           "key": "ChatBackground",
@@ -5282,6 +5286,10 @@
           "value": "Failed"
         },
         {
+          "key": "StarsRating.Back",
+          "value": "Back"
+        },
+        {
           "key": "StarsReaction.Caption",
           "value": "Choose how many Stars you want to send to support this message."
         },
@@ -6274,7 +6282,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 47,
+      "version": 48,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -6996,6 +7004,10 @@
         {
           "key": "Stars.DemoNotice",
           "value": "Демо: пополнение начисляет звёзды сразу, без реальной оплаты."
+        },
+        {
+          "key": "StarsRating.Back",
+          "value": "Назад"
         },
         {
           "key": "BuyStars",
@@ -12575,6 +12587,10 @@
             "many_value": "%d звёзд",
             "other_value": "%d звезды"
           }
+        },
+        {
+          "key": "ChatAutomation.NewChats",
+          "value": "Новые чаты"
         }
       ]
     },
