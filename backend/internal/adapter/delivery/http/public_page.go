@@ -37,10 +37,9 @@ var publicPageTpl = template.Must(template.ParseFS(publicPageFS, "templates/publ
 // и картинки к ним (аватарки, фото поста) — страницу читает аноним, поэтому
 // отдаётся только то, что и так показано на странице.
 //
-// Кнопка страницы ведёт в веб-клиент (Config.AppOrigin): `#@username`,
-// `#@username/<seq>`, `#<peerId>/<seq>` (схема хэша клиента,
-// core/messageLink.ts), `/join/<hash>` (диплинк вступления клиента), набор —
-// `#?tgaddr=<tg://…>` (схема tweb index.ts / appImManager onHashChange).
+// Кнопка страницы ведёт в веб-клиент (Config.AppOrigin) по схеме хэша tweb
+// (appImManager.ts `onHashChangeUnsafe`): `#@username`, пост — `#@username?post=<seq>`;
+// `/join/<hash>` (диплинк вступления клиента), набор — `#?tgaddr=<tg://…>`.
 type PublicHandler struct {
 	uc    *usecasepublic.Interactor
 	media *usecasemedia.Interactor // nil — MinIO выключен, фото недоступны
@@ -443,7 +442,7 @@ func (h *PublicHandler) Post(w http.ResponseWriter, r *http.Request) {
 	v := pageView{
 		PageTitle: "Messenger: Просмотр @" + ch.Username,
 		OGTitle:   ch.Title, OGDescription: plainPreview(p.Text, 200),
-		ButtonText: "Открыть в приложении", ButtonHref: h.inApp("#@" + ch.Username + "/" + strconv.FormatInt(p.Seq, 10)),
+		ButtonText: "Открыть в приложении", ButtonHref: h.inApp("#@" + ch.Username + "?post=" + strconv.FormatInt(p.Seq, 10)),
 		ButtonShine: true, AvatarGradient: gradientOf(ch.Title),
 		Post: pv,
 	}
