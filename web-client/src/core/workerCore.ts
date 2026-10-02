@@ -327,6 +327,7 @@ export function createWorkerCore() {
     messages: {
       saveApiMessages: (list) => messages.saveApiMessages(list),
       getMessageByPeer: (peerId, seq) => messages.getMessageByPeer(peerId, seq),
+      getHistoryFirstSlice: (peerId) => messages.getHistoryFirstSlice(peerId),
     },
   })
   // Stage 1C.2 (Task 2): карточки пиров — воркер единственный владелец. Веер тот

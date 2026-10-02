@@ -138,6 +138,8 @@ function fakeMessagesOwner() {
       return out
     },
     getMessageByPeer: (peerId: number, id: number) => (id ? byPeer.get(peerId)?.get(id) : undefined),
+    // Окон истории холодному старту не нужно — удаление его не касается.
+    getHistoryFirstSlice: () => undefined,
   }
 }
 

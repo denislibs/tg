@@ -106,6 +106,8 @@ function fakeMessages() {
       return out
     },
     getMessageByPeer: (peerId: number, msgId: number) => (msgId ? byPeer.get(peerId)?.get(msgId) : undefined),
+    // Окон истории этим тестам не нужно — удаление их не касается.
+    getHistoryFirstSlice: () => undefined,
   }
 }
 

@@ -332,6 +332,40 @@ func (h *ChatHandler) ListDialogs(w http.ResponseWriter, r *http.Request) {
 		domain.NewMessagesDialogsSlice(res.Count, res.Dialogs, messages, res.Chats, res.Users))
 }
 
+// PeerDialogs — GET /peer_dialogs?peers=<ключ>,<ключ> (messages.getPeerDialogs):
+// строки запрошенных диалогов тем же контейнером, что и /chats. Ключи — знаковые
+// ключи пиров глазами зрителя; неизвестных и чужих в ответе просто нет.
+func (h *ChatHandler) PeerDialogs(w http.ResponseWriter, r *http.Request) {
+	var peers []domain.PeerID
+	for _, s := range strings.Split(r.URL.Query().Get("peers"), ",") {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		v, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid peers")
+			return
+		}
+		peers = append(peers, domain.PeerID(v))
+	}
+	res, err := h.svc.PeerDialogs(r.Context(), h.meID(r), peers)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not get dialogs")
+		return
+	}
+	wire, err := messagesJSON(r.Context(), h.svc, res.Messages)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not get dialogs")
+		return
+	}
+	messages := make([]any, 0, len(wire))
+	for _, m := range wire {
+		messages = append(messages, m)
+	}
+	writeJSON(w, http.StatusOK, domain.NewMessagesPeerDialogs(res.Dialogs, messages, res.Chats, res.Users))
+}
+
 type sendBody struct {
 	Type     string                 `json:"type"`
 	Text     string                 `json:"text"`

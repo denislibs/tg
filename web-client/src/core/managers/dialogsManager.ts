@@ -9,7 +9,9 @@
 import type { RestClient } from '../net/restClient'
 import { HttpError } from '../net/restClient'
 import { mapMessage, isDialogArchived, type Dialog, type DraftMessage, type MyMessage, type RawDialog, type RawMyMessage } from '../models'
-import { generateMessageId } from '../history/messageId'
+import { generateMessageId, isLocalMessageId } from '../history/messageId'
+import { SliceEnd } from '../history/slicedArray'
+import pause from '@helpers/schedulers/pause'
 import { getPeerId } from '../peers/peerId'
 import { MUTE_UNTIL_FOREVER, type PeerNotifySettings } from '../dialogs/notifySettings'
 import type { Chat, UserReal } from '../peers/peer'
@@ -56,6 +58,14 @@ type MessagesDialogs = {
   chats?: Chat[]
   users?: UserReal[]
 }
+
+/**
+ * Ответ `GET /peer_dialogs` — `messages.peerDialogs` (порт
+ * `messages.getPeerDialogs`): строки ЗАПРОШЕННЫХ диалогов теми же векторами,
+ * что у списка. `state` сервер не производит — pts этот владелец не видит
+ * (см. `dialogOmittedWithoutSubject`, backend/internal/domain/mtdialog_schema_test.go).
+ */
+type MessagesPeerDialogs = Omit<MessagesDialogs, '_' | 'count'> & { _?: 'messages.peerDialogs' }
 
 export interface DialogsDeps {
   rest: Pick<RestClient, 'get'>
@@ -122,7 +132,7 @@ export interface DialogsDeps {
    * воркере). Прежний `decryptSecret` владельца диалогов был второй копией того
    * же правила и снят.
    */
-  messages?: Pick<MessagesManager, 'saveApiMessages' | 'getMessageByPeer'>
+  messages?: Pick<MessagesManager, 'saveApiMessages' | 'getMessageByPeer' | 'getHistoryFirstSlice'>
 }
 
 /** Тот же интервал, что был у main-thread-дебаунса `dialogsPersist.ts` (800мс)
@@ -543,7 +553,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    * тесты, которых контейнер не касается, их не задают. Тогда `lastMessage`
    * просто не разрешается — строка списка остаётся без превью, а не падает.
    */
-  async function applyContainer(r: MessagesDialogs): Promise<Dialog[]> {
+  async function applyContainer(r: MessagesDialogs | MessagesPeerDialogs): Promise<Dialog[]> {
     peers?.saveApiPeers({ chats: r.chats, users: r.users })
     await messages?.saveApiMessages(r.messages)
     return (r.dialogs ?? []).map(toDialog)
@@ -579,6 +589,52 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     const draft = toClientDraft(raw.draft)
     if (draft) dialog.draft = draft
     return dialog
+  }
+
+  /**
+   * Порт `appMessagesManager.setDialogTopMessage` (tweb :4954-4973): последним
+   * становится известное сообщение — превью и место строки пересчитываются
+   * от него (`patchDialog` → `dialogIndex`, у оригинала `generateIndexForDialog`).
+   */
+  function setDialogTopMessage(message: MyMessage): void {
+    patchDialog(message.peerId, { top_message: message.id, lastMessage: message })
+  }
+
+  // Порт `appMessagesManager.reloadConversation` (tweb :6247-6366): строки
+  // диалогов перечитываются у сервера ПАЧКОЙ — пиры, попросившие в одном такте,
+  // уходят одним `messages.getPeerDialogs` (`pause(0)`), а попросившие, пока
+  // запрос в полёте, — следующим. Ответ сливается как страница списка
+  // (`dialogsStorage.applyDialogs` → наш `mergePage`).
+  //
+  // Отступления: повтора при разошедшемся pts (:6316-6321) нет — курсор
+  // апдейтов живёт в соединении, а не у этого владельца; промиса на пира
+  // наружу тоже нет — его ждущих у нас нет.
+  const reloadPeers = new Set<number>()
+  let reloadPromise: Promise<void> | null = null
+  function reloadConversation(peerId: number): void {
+    reloadPeers.add(peerId)
+    flushReload()
+  }
+  function flushReload(): void {
+    if (reloadPromise || !reloadPeers.size) return
+    reloadPromise = pause(0).then(async () => {
+      const peerIds = [...reloadPeers]
+      reloadPeers.clear()
+      const gen = sessionGen
+      try {
+        const r = await rest.get<MessagesPeerDialogs>('/peer_dialogs', { peers: peerIds.join(',') })
+        if (gen !== sessionGen) return
+        const dialogs = await applyContainer(r)
+        if (gen !== sessionGen) return
+        mergePage(dialogs)
+      } catch {
+        // Офлайн или сбой — строка остаётся как была до ближайшей загрузки
+        // списка; оригинал здесь тоже только пишет в лог (:6352).
+      }
+    }).finally(() => {
+      reloadPromise = null
+      flushReload()
+    })
   }
 
   /** Перевод номера ответа черновика в клиентское пространство. */
@@ -890,9 +946,10 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    *    раньше, чем сервер собрал ответ) — остаётся: вернуть его сервер не мог,
    *    это мы знаем больше, чем он;
    *  - **с УДАЛЁННЫМ на сервере последним сообщением** — единственная категория,
-   *    которую правило снимает ошибочно, и это принятая цена. Нашу копию
-   *    `lastMessage` вниз никто не пересчитывает (её единственный писатель —
-   *    `applyNewMessage`), поэтому чат, уехавший на сервере НИЖЕ окна из-за
+   *    которую правило снимает ошибочно, и это принятая цена. Удаление,
+   *    дошедшее до нас кадром, `lastMessage` пересчитывает
+   *    (`applyDeletedMessages`), но удаление, потерянное в разрыве потока
+   *    апдейтов, — нет: чат, уехавший на сервере НИЖЕ окна из-за
    *    удаления своих последних сообщений, в ответе не придёт, а локальный
    *    `msgTime` останется внутри `(bottom, top]` — строка снимется из кэша и
    *    пропадёт из сайдбара до ближайшей догрузки вглубь, которая вернёт её с
@@ -1300,6 +1357,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       // см. докблок sessionGen.
       sessionGen++
       items = []
+      reloadPeers.clear()
       dialogsIndex = createSearchIndex()
       pinnedOrders = {}
       pinnedOrder = []
@@ -1442,13 +1500,33 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
      *
      * Авторитет по-прежнему приезжает строкой диалога — сервер снимает
      * удалённое со счётчика сам (`ChatsRepo.ForgetUnread`).
+     *
+     * Удалено последнее сообщение — строка получает новое (там же,
+     * :11577-11593): из низа истории, если он загружен, иначе строкой с
+     * сервера (`reloadConversation`). Без этого превью в списке оставалось на
+     * удалённом сообщении.
      */
     applyDeletedMessages(peerId: number, deleted: readonly MyMessage[]): void {
       const cur = findDialog(peerId)
-      if (!cur || !cur.unread_count) return
-      const unread = deleted.filter((m) => !m.pFlags?.out && m.id > cur.read_inbox_max_id).length
-      if (!unread) return
-      patchDialog(peerId, { unread_count: Math.max(0, cur.unread_count - unread) })
+      if (!cur) return
+      const unread = cur.unread_count
+        ? deleted.filter((m) => !m.pFlags?.out && m.id > cur.read_inbox_max_id).length
+        : 0
+      if (unread) patchDialog(peerId, { unread_count: Math.max(0, cur.unread_count - unread) })
+
+      // Удалено ПОСЛЕДНЕЕ — строке нужно новое (tweb :11577-11593). Окно уже
+      // без удалённого (эвикция идёт до этого вызова, как `history.delete` у
+      // оригинала до цикла по диалогам). Низ истории известен и в нём есть
+      // настоящие сообщения — последним становится `slice[0]`; иначе (чат не
+      // открыт, низ не загружен, удалено всё) знает только сервер. Временные
+      // номера не в счёт: строку, удалённую целиком с другого клиента, всё
+      // равно надо перечитать.
+      if (!deleted.some((m) => m.id === cur.top_message)) return
+      const slice = messages?.getHistoryFirstSlice(peerId)
+      const hasMessages = !!slice?.some((id) => !isLocalMessageId(id))
+      const top = slice?.isEnd(SliceEnd.Bottom) && hasMessages ? messages?.getMessageByPeer(peerId, slice[0]) : undefined
+      if (top) setDialogTopMessage(top)
+      else reloadConversation(peerId)
     },
 
     // Меня удалили из группы / вышел сам (chat_removed) — диалог исчезает из списка.

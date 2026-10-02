@@ -43,10 +43,56 @@ func (i *Interactor) DialogsPage(ctx context.Context, viewerID int64, p domain.D
 	if err != nil {
 		return DialogsPage{}, err
 	}
+	out, err := i.dialogsContainer(ctx, viewerID, page.Dialogs)
+	if err != nil {
+		return DialogsPage{}, err
+	}
+	out.Count = page.Count
+	out.Whole = page.Whole
+	return out, nil
+}
 
-	// ── messages: последние сообщения ТОЛЬКО отданной страницы ──────────────
-	ids := make([]int64, 0, len(page.Dialogs))
-	for _, d := range page.Dialogs {
+// PeerDialogs — порт messages.getPeerDialogs: строки ТОЛЬКО запрошенных
+// диалогов зрителя, разложенные теми же векторами, что и страница списка.
+//
+// Клиент спрашивает так строку, у которой удалено последнее сообщение, а
+// нового низа истории у него нет (tweb onUpdateDeleteMessages →
+// reloadConversation, appMessagesManager.ts:11577-11593, :6247-6366): новый
+// top_message и сам объект сообщения знает только сервер.
+//
+// Выборка — тот же полный список (ListDialogs, кэш на 15с), что у страниц, и
+// отбор по КЛЮЧУ ПИРА глазами зрителя: так чужой чат или неизвестный ключ
+// просто не попадает в ответ — ровно как у оригинала, который такие пиры
+// резолвит пустым значением (fullfillLeft, :6283-6293). Кэш удалением
+// сбрасывается (DeleteMessage → dialogsCache.Invalidate), поэтому строка после
+// удаления читается свежей.
+func (i *Interactor) PeerDialogs(ctx context.Context, viewerID int64, peers []domain.PeerID) (DialogsPage, error) {
+	if len(peers) == 0 {
+		return DialogsPage{}, nil
+	}
+	want := make(map[domain.PeerID]bool, len(peers))
+	for _, p := range peers {
+		want[p] = true
+	}
+	all, err := i.ListDialogs(ctx, viewerID)
+	if err != nil {
+		return DialogsPage{}, err
+	}
+	picked := make([]domain.DialogRecord, 0, len(peers))
+	for _, d := range all {
+		if want[i.DialogPeerID(d, viewerID)] {
+			picked = append(picked, d)
+		}
+	}
+	return i.dialogsContainer(ctx, viewerID, picked)
+}
+
+// dialogsContainer раскладывает строки выборки по векторам контейнера.
+func (i *Interactor) dialogsContainer(ctx context.Context, viewerID int64, records []domain.DialogRecord) (DialogsPage, error) {
+	var err error
+	// ── messages: последние сообщения ТОЛЬКО отданных строк ─────────────────
+	ids := make([]int64, 0, len(records))
+	for _, d := range records {
 		if d.TopMessageID != 0 {
 			ids = append(ids, d.TopMessageID)
 		}
@@ -82,11 +128,11 @@ func (i *Interactor) DialogsPage(ctx context.Context, viewerID int64, p domain.D
 	}
 
 	// ── dialogs + chats ─────────────────────────────────────────────────────
-	dialogs := make([]domain.Dialog, 0, len(page.Dialogs))
-	chats := make([]domain.Chat, 0, len(page.Dialogs))
-	users := make([]domain.UserReal, 0, len(page.Dialogs))
-	seen := make(map[int64]bool, len(page.Dialogs))
-	for _, d := range page.Dialogs {
+	dialogs := make([]domain.Dialog, 0, len(records))
+	chats := make([]domain.Chat, 0, len(records))
+	users := make([]domain.UserReal, 0, len(records))
+	seen := make(map[int64]bool, len(records))
+	for _, d := range records {
 		peerID := i.DialogPeerID(d, viewerID)
 		// Ссылка на пир и ТЕЛО пира — разные вещи: dialog.peer это ссылка, а
 		// тело едет вектором chats (у группы/канала) либо users (у приватного
@@ -136,8 +182,6 @@ func (i *Interactor) DialogsPage(ctx context.Context, viewerID int64, p domain.D
 		Messages: messages,
 		Chats:    chats,
 		Users:    users,
-		Count:    page.Count,
-		Whole:    page.Whole,
 	}, nil
 }
 

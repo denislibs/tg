@@ -33,7 +33,7 @@ import type { SendArgs as WireSendArgs } from '../realtime/connectionManager'
 import type { UploadArgs } from './mediaManager'
 import { RT } from '../realtime/events'
 import type { MessageOp } from '../realtime/messageOps'
-import SlicedArray, { SliceEnd } from '../history/slicedArray'
+import SlicedArray, { SliceEnd, type Slice } from '../history/slicedArray'
 import { saveMessageMedia } from '../media/messageMedia'
 import { getWireFilter, type MessagesWireFilter, type MyInputMessagesFilter } from '../messages/inputMessagesFilter'
 import { mergeReactions } from '../reactions/messageReactions'
@@ -710,6 +710,17 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
      */
     getMessageByPeer(peerId: number, seq: number): MyMessage | undefined {
       return seq ? msgsByChat.get(peerId)?.get(seq) : undefined
+    },
+
+    /**
+     * Порт `getHistoryStorage(peerId).history.first` (tweb, читает
+     * `onUpdateDeleteMessages` :11579): самый свежий срез основного окна чата,
+     * номера свежими вперёд. По нему владелец диалогов решает, кто станет
+     * последним после удаления верхнего, — `isEnd(SliceEnd.Bottom)` говорит,
+     * загружен ли низ. Окна нет (чат не открывали) — `undefined`.
+     */
+    getHistoryFirstSlice(peerId: number): Slice<number> | undefined {
+      return slices.get(hkey(peerId))?.first
     },
 
     /**

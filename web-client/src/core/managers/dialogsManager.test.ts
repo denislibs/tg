@@ -12,6 +12,7 @@ import { generateMessageId, getServerMessageId } from '../history/messageId'
 import { makeDialog, makeLastMessage } from '../dialogs/testDialog'
 import { isPeerMuted, MUTE_UNTIL_FOREVER } from '../dialogs/notifySettings'
 import type { DialogOp } from '../dialogs/dialogOps'
+import SlicedArray, { SliceEnd } from '../history/slicedArray'
 
 const dialog = (peerId: number, at: string, pinned = false): Dialog =>
   makeDialog({ peerId, pinned, lastMessage: makeLastMessage({ peerId, id: 1, fromId: 1, text: 'x', createdAt: at }) })
@@ -85,6 +86,9 @@ function fakeMessages() {
       return out
     },
     getMessageByPeer: (peerId: number, id: number) => (id ? byPeer.get(peerId)?.get(id) : undefined),
+    /** Окна истории (tweb `historyStorage.history`) — задаёт сам тест. */
+    history: new Map<number, SlicedArray<number>>(),
+    getHistoryFirstSlice(peerId: number) { return this.history.get(peerId)?.first },
   }
 }
 
@@ -1255,5 +1259,132 @@ describe('dialogsManager.applyDeletedMessages', () => {
     const { mgr, ops } = await setup()
     mgr.applyDeletedMessages(-6, [msg(11), msg(12), msg(13), msg(14)])
     expect(unreadOf(ops)).toBe(0)
+  })
+})
+
+// Порт tweb `onUpdateDeleteMessages` (appMessagesManager.ts:11577-11593): удалено
+// ПОСЛЕДНЕЕ сообщение диалога — строка обязана получить новое. Низ истории
+// известен и в нём есть сообщения → `setDialogTopMessage(slice[0])` (:4954);
+// иначе → `reloadConversation` (:6247, у нас — `GET /peer_dialogs`,
+// messages.getPeerDialogs). Удаление НЕ последнего превью не трогает.
+describe('dialogsManager.applyDeletedMessages: последнее сообщение', () => {
+  const PEER = 5
+  const OTHER = 6
+  type PeerResp = { dialogs: unknown[]; messages: unknown[] }
+  const setup = async (peerResp: PeerResp = { dialogs: [], messages: [] }) => {
+    const ops: DialogOp[] = []
+    const messages = fakeMessages()
+    const get = vi.fn(async (path: string) => path === '/peer_dialogs'
+      ? { _: 'messages.peerDialogs', chats: [], users: [], ...peerResp }
+      : container([rawDialog(PEER, 3), rawDialog(OTHER, 4)], undefined, {
+        messages: [rawMessage(PEER, 3, 'три', 1, '2026-08-01T00:03:00Z'), rawMessage(OTHER, 4, 'чужое', 1, '2026-08-01T00:04:00Z')],
+      }))
+    const mgr = newDialogsManager({
+      rest: { get } as never,
+      onDialogOps: (o) => ops.push(...o),
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {} }),
+      peers: fakePeers(), messages,
+    })
+    await mgr.refresh()
+    // Предыдущие сообщения чата уже лежат в SSOT владельца сообщений.
+    await messages.saveApiMessages([rawMessage(PEER, 1, 'раз', 1, '2026-08-01T00:01:00Z'), rawMessage(PEER, 2, 'два', 1, '2026-08-01T00:02:00Z')])
+    ops.length = 0
+    get.mockClear()
+    const top = messages.getMessageByPeer(PEER, generateMessageId(3))!
+    return { mgr, ops, messages, get, top }
+  }
+  /** Окно истории после эвикции удалённого: номера свежими вперёд. */
+  const window = (seqs: number[], bottom: boolean) => {
+    const sa = new SlicedArray<number>()
+    const slice = sa.insertSlice(seqs.map(generateMessageId))
+    if (bottom) (slice ?? sa.first).setEnd(SliceEnd.Bottom)
+    return sa
+  }
+  const row = (mgr: ReturnType<typeof newDialogsManager>, peerId = PEER) =>
+    mgr.getSnapshot().find((i) => i.dialog.peerId === peerId)!.dialog
+  const flush = () => new Promise((r) => setTimeout(r, 0))
+
+  it('низ истории известен — превью сползает на предыдущее без сети (setDialogTopMessage)', async () => {
+    const { mgr, ops, messages, get, top } = await setup()
+    messages.history.set(PEER, window([2, 1], true))
+
+    mgr.applyDeletedMessages(PEER, [top])
+    await flush()
+
+    expect(row(mgr).top_message).toBe(generateMessageId(2))
+    expect(row(mgr).lastMessage).toMatchObject({ id: generateMessageId(2), message: 'два' })
+    expect(ops).toContainEqual(expect.objectContaining({ op: 'patch', peerId: PEER, fields: expect.objectContaining({ top_message: generateMessageId(2) }) }))
+    expect(get).not.toHaveBeenCalled()
+  })
+
+  it('окна нет (чат закрыт) — строка перечитывается у сервера (reloadConversation)', async () => {
+    const { mgr, get, top } = await setup({ dialogs: [rawDialog(PEER, 2)], messages: [rawMessage(PEER, 2, 'два', 1, '2026-08-01T00:02:00Z')] })
+
+    mgr.applyDeletedMessages(PEER, [top])
+    await vi.waitFor(() => expect(row(mgr).top_message).toBe(generateMessageId(2)))
+
+    expect(get).toHaveBeenCalledWith('/peer_dialogs', { peers: String(PEER) })
+    expect(row(mgr).lastMessage).toMatchObject({ message: 'два' })
+  })
+
+  it('низ истории не загружен — тоже к серверу: slice[0] не обязан быть последним', async () => {
+    const { mgr, messages, get, top } = await setup({ dialogs: [rawDialog(PEER, 2)], messages: [rawMessage(PEER, 2, 'два')] })
+    messages.history.set(PEER, window([2, 1], false))
+
+    mgr.applyDeletedMessages(PEER, [top])
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(1))
+  })
+
+  it('удалено всё — сервер отдаёт строку без последнего сообщения, превью пустое', async () => {
+    const { mgr, messages, get, top } = await setup({ dialogs: [rawDialog(PEER, 0)], messages: [] })
+    messages.history.set(PEER, window([], true))
+
+    mgr.applyDeletedMessages(PEER, [top])
+    await vi.waitFor(() => expect(row(mgr).top_message).toBe(generateMessageId(0)))
+
+    expect(get).toHaveBeenCalledTimes(1)
+    expect(row(mgr).lastMessage).toBeUndefined()
+  })
+
+  it('удалено НЕ последнее — превью и сеть не трогаются (даже у закрытого чата)', async () => {
+    const { mgr, ops, messages, get } = await setup()
+
+    mgr.applyDeletedMessages(PEER, [messages.getMessageByPeer(PEER, generateMessageId(2))!])
+    await flush()
+
+    expect(row(mgr).lastMessage).toMatchObject({ message: 'три' })
+    expect(ops).toEqual([])
+    expect(get).not.toHaveBeenCalled()
+  })
+
+  it('ответ, долетевший после логаута, не применяется (sessionGen)', async () => {
+    const { mgr, ops, get, top } = await setup()
+    let resolve!: (v: unknown) => void
+    get.mockImplementationOnce(() => new Promise((r) => { resolve = r }) as never)
+
+    mgr.applyDeletedMessages(PEER, [top])
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(1))
+    mgr.resetForLogout()
+    ops.length = 0
+    resolve({ _: 'messages.peerDialogs', dialogs: [rawDialog(PEER, 2)], messages: [], chats: [], users: [] })
+    await flush()
+
+    expect(mgr.getSnapshot()).toEqual([])
+    expect(ops).toEqual([])
+  })
+
+  it('перечитывания в одном такте уходят ОДНИМ запросом (tweb pause(0) в reloadConversation)', async () => {
+    const { mgr, messages, get, top } = await setup()
+    mgr.applyDeletedMessages(PEER, [top])
+    // Второй — уже в другой микрозадаче, но в том же такте: `pause(0)`, а не
+    // микрозадача, собирает обоих.
+    await Promise.resolve()
+    mgr.applyDeletedMessages(OTHER, [messages.getMessageByPeer(OTHER, generateMessageId(4))!])
+
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(1))
+    await flush()
+    expect(get).toHaveBeenCalledTimes(1)
+    expect(get).toHaveBeenCalledWith('/peer_dialogs', { peers: `${PEER},${OTHER}` })
   })
 })

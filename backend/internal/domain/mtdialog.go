@@ -647,6 +647,7 @@ func UnmarshalNotificationSound(raw []byte) (NotificationSound, error) {
 const (
 	MessagesDialogsTag      = "messages.dialogs"
 	MessagesDialogsSliceTag = "messages.dialogsSlice"
+	MessagesPeerDialogsTag  = "messages.peerDialogs"
 )
 
 // messages.dialogs#15ba6c40 dialogs:Vector<Dialog> messages:Vector<Message>
@@ -713,6 +714,36 @@ func NewMessagesDialogsSlice(count int, dialogs []Dialog, messages []any, chats 
 	return MessagesDialogsSlice{
 		Underscore: MessagesDialogsSliceTag,
 		Count:      count,
+		Dialogs:    orEmpty(dialogs),
+		Messages:   orEmpty(messages),
+		Chats:      orEmpty(chats),
+		Users:      orEmpty(users),
+	}
+}
+
+// messages.peerDialogs#3371c354 dialogs:Vector<Dialog> messages:Vector<Message>
+// chats:Vector<Chat> users:Vector<User> state:updates.State = messages.PeerDialogs;
+//
+// Ответ messages.getPeerDialogs — строки ЗАПРОШЕННЫХ диалогов теми же векторами,
+// что и у списка. Клиент перечитывает так строку, у которой удалено последнее
+// сообщение, а нового низа истории у него нет (tweb reloadConversation,
+// appMessagesManager.ts:6247-6366).
+//
+// `state` не производим (см. dialogOmittedWithoutSubject в сверке со схемой).
+type MessagesPeerDialogs struct {
+	Underscore string   `json:"_"`
+	Dialogs    []Dialog `json:"dialogs"`
+	// Messages — то же временное место стыка, что у MessagesDialogs.
+	Messages []any      `json:"messages"`
+	Chats    []Chat     `json:"chats"`
+	Users    []UserReal `json:"users"`
+}
+
+// NewMessagesPeerDialogs — строки запрошенных диалогов; неизвестных среди них
+// просто нет, обязательные векторы едут [], а не null.
+func NewMessagesPeerDialogs(dialogs []Dialog, messages []any, chats []Chat, users []UserReal) MessagesPeerDialogs {
+	return MessagesPeerDialogs{
+		Underscore: MessagesPeerDialogsTag,
 		Dialogs:    orEmpty(dialogs),
 		Messages:   orEmpty(messages),
 		Chats:      orEmpty(chats),

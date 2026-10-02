@@ -175,6 +175,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/saved/tags", ch.SavedTags)                  // теги-реакции «Избранного»
 		pr.Put("/saved/tags/{reaction}", ch.SetSavedTagName) // имя тега (updateSavedReactionTag)
 		pr.Get("/chats", ch.ListDialogs)
+		pr.Get("/peer_dialogs", ch.PeerDialogs) // messages.getPeerDialogs
 		pr.Post("/chats/{peerID}/messages", ch.Send)
 		// Выборка по АДРЕСАМ (?ids=): разрешение ссылок reply_to/reply_to_top_id
 		// и единственный производитель messageEmpty — аналог messages.getMessages.
