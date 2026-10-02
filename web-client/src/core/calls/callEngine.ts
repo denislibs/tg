@@ -17,7 +17,6 @@
 import { getUserTitle } from '../peers/getPeerTitle'
 import { getPeerPhotoId } from '../peers/peer'
 import { useCallStore, type CallPeer, type CallEndReason } from '../../stores/callStore'
-import { useChatsStore } from '../../stores/chatsStore'
 import { useSettingsStore } from '../../settings'
 import { playSound, stopSound } from '../audio/sounds'
 import { startClient } from '../../client/bootstrap'
@@ -65,6 +64,12 @@ let ringTimer: ReturnType<typeof setTimeout> | null = null
 let disconnectTimer: ReturnType<typeof setTimeout> | null = null
 const DISCONNECT_GRACE_MS = 8000
 // Обработчик закрытия/перезагрузки вкладки — шлём call_end собеседнику (best-effort).
+//
+// Лог звонка (служебное messageActionPhoneCall в чате) клиент НЕ отправляет:
+// его кладёт сервер по концу звонка, сам считая исход и длительность
+// (backend usecase/chat/phonecall.go) — как phone.discardCall у оригинала.
+// Клиент, как tweb discardCall (callInstance.ts:888), лишь называет причину
+// конца в поле reason кадра call_end: 'hangup' | 'missed' | 'disconnect'.
 let unloadHandler: (() => void) | null = null
 
 // ── E2E (SAS): ECDH поверх сигналинга → emoji-fingerprint (как в секретных чатах).
@@ -135,26 +140,6 @@ function cleanupRtc() {
   }
 }
 
-// Лог звонка в историю чата (tweb messageActionPhoneCall): одно сообщение,
-// пишет ЗВОНЯЩИЙ — у него бабл «Исходящий звонок», у собеседника «Входящий».
-function logCallMessage(reason: CallEndReason) {
-  const call = store().call
-  if (!call || !call.outgoing || call.peerId == null) return
-  const duration = call.connectedAt ? Math.round((Date.now() - call.connectedAt) / 1000) : undefined
-  const mapped: 'ok' | 'missed' | 'busy' | 'cancelled' =
-    duration != null ? 'ok'
-    : reason === 'missed' ? 'missed'
-    : reason === 'busy' || reason === 'privacy' ? 'busy'
-    : 'cancelled'
-  const text = JSON.stringify({ video: call.video, reason: mapped, duration })
-  const clientMsgId = crypto.randomUUID()
-  const meId = useChatsStore.getState().meId
-  // Оптимистичный бабл лога звонка заводит владелец окна (единственная точка
-  // отправки — messages.sendText); без известного meId бабл не рисуем — он
-  // отрисовался бы как чужой.
-  void managers().messages.sendText({ peerId: call.peerId, text, clientMsgId, type: 'call', optimistic: meId != null ? { senderId: meId } : undefined })
-}
-
 // Завершение с показом финального статуса; экран закрывается через паузу.
 function finish(reason: CallEndReason) {
   clearRingTimer()
@@ -162,7 +147,6 @@ function finish(reason: CallEndReason) {
   stopSound()
   const call = store().call
   if (!call || call.phase === 'ended') return
-  logCallMessage(reason)
   playSound(reason === 'busy' || reason === 'declined' || reason === 'privacy' ? 'call_busy' : 'call_end')
   store().patch({ phase: 'ended', endReason: reason, localStream: null, remoteStream: null })
   setTimeout(() => {
@@ -243,7 +227,7 @@ async function startRtc(withVideo: boolean) {
         store().patch({ phase: 'active', connectedAt: Date.now() })
       }
     } else if (st === 'failed') {
-      sendFrame('call_end', {})
+      sendFrame('call_end', { reason: 'disconnect' })
       finish('failed')
     } else if (st === 'disconnected') {
       // Собеседник пропал (перезагрузил вкладку / потерял сеть). Даём шанс
@@ -251,7 +235,12 @@ async function startRtc(withVideo: boolean) {
       if (!disconnectTimer) {
         disconnectTimer = setTimeout(() => {
           disconnectTimer = null
-          if (pc && (pc.connectionState === 'disconnected' || pc.connectionState === 'failed')) finish('failed')
+          if (pc && (pc.connectionState === 'disconnected' || pc.connectionState === 'failed')) {
+            // tweb hangUp('phoneCallDiscardReasonDisconnect'): без кадра сервер
+            // не узнал бы, что разговор кончился, и лога звонка не было бы.
+            sendFrame('call_end', { reason: 'disconnect' })
+            finish('failed')
+          }
         }, DISCONNECT_GRACE_MS)
       }
     }
@@ -259,7 +248,7 @@ async function startRtc(withVideo: boolean) {
 
   // Перезагрузка/закрытие вкладки во время звонка → уведомить собеседника, чтобы у
   // него звонок не завис (best-effort; выживший сам завершит по disconnected-таймеру).
-  unloadHandler = () => { try { sendFrame('call_end', {}) } catch { /* окно уже закрывается */ } }
+  unloadHandler = () => { try { sendFrame('call_end', { reason: 'hangup' }) } catch { /* окно уже закрывается */ } }
   window.addEventListener('pagehide', unloadHandler)
   window.addEventListener('beforeunload', unloadHandler)
 
@@ -314,11 +303,11 @@ async function handleSignal(d: Record<string, unknown>) {
 
 // ── публичное API (UI) ──
 
-export function startOutgoing(peer: CallPeer, video: boolean, peerId: number | null = null) {
+export function startOutgoing(peer: CallPeer, video: boolean) {
   if (store().call) return // уже в звонке
   const callId = crypto.randomUUID()
   useCallStore.getState().set({
-    callId, peer, peerId, outgoing: true, video, phase: 'outgoing',
+    callId, peer, outgoing: true, video, phase: 'outgoing',
     muted: false, camOn: video, screenOn: false, remoteMuted: false, remoteCamOn: false,
     connectedAt: null, localStream: null, remoteStream: null,
   })
@@ -326,7 +315,7 @@ export function startOutgoing(peer: CallPeer, video: boolean, peerId: number | n
   playSound('call_outgoing', { loop: true })
   // ECDH: свой публичный ключ уходит в call_request; ответ придёт в call_accept.
   void beginDh().then((dh) => { if (store().call?.callId === callId) sendFrame('call_request', { video, dh }) })
-  ringTimer = setTimeout(() => { sendFrame('call_end', {}); finish('missed') }, RING_TIMEOUT_MS)
+  ringTimer = setTimeout(() => { sendFrame('call_end', { reason: 'missed' }); finish('missed') }, RING_TIMEOUT_MS)
 }
 
 export function accept() {
@@ -354,7 +343,7 @@ export function hangup() {
   const call = store().call
   if (!call) return
   if (call.phase === 'incoming') { decline(); return }
-  sendFrame('call_end', {})
+  sendFrame('call_end', { reason: 'hangup' })
   finish('hangup')
 }
 
@@ -512,7 +501,7 @@ export function handleFrame(evt: CallFrameEvt) {
     // имя/аватар звонящего подтягиваем асинхронно
     useCallStore.getState().set({
       callId, peer: { id: from, name: `ID ${from}`, avatar: 'var(--primary-color)' },
-      peerId: null, outgoing: false, video, phase: 'incoming',
+      outgoing: false, video, phase: 'incoming',
       muted: false, camOn: video, screenOn: false, remoteMuted: false, remoteCamOn: false,
       connectedAt: null, localStream: null, remoteStream: null,
     })

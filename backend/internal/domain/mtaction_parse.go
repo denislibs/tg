@@ -120,7 +120,7 @@ func parsePhoneCallAction(raw []byte) (MessageAction, error) {
 		Underscore string          `json:"_"`
 		PFlags     map[string]bool `json:"pFlags"`
 		Reason     json.RawMessage `json:"reason"`
-		Duration   int             `json:"duration"`
+		Duration   *int            `json:"duration"`
 	}
 	if err := json.Unmarshal(raw, &v); err != nil {
 		return nil, err
@@ -151,6 +151,8 @@ func parseDiscardReason(raw json.RawMessage) (PhoneCallDiscardReason, error) {
 		return NewPhoneCallDiscardReasonBusy(), nil
 	case PhoneCallDiscardReasonHangupTag:
 		return NewPhoneCallDiscardReasonHangup(), nil
+	case PhoneCallDiscardReasonDisconnectTag:
+		return NewPhoneCallDiscardReasonDisconnect(), nil
 	default:
 		return nil, fmt.Errorf("неизвестная причина завершения звонка %q", probe.Underscore)
 	}

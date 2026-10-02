@@ -44,7 +44,7 @@ function setup(opts: { contacts?: UserReal[]; me?: UserReal } = {}) {
     },
     onContactsUpdate,
   })
-  return { mgr, get, mirror, onContactsUpdate }
+  return { mgr, get, mirror, onContactsUpdate, cards }
 }
 
 describe('contactsManager.getContactsPeerIds — локальный индекс контактов', () => {
@@ -193,5 +193,30 @@ describe('contactsManager.pushRecentSearch / clearRecentSearch', () => {
 
     expect(await recent()).toEqual([])
     expect(mirror).toHaveBeenLastCalledWith('recentSearch', [])
+  })
+})
+
+describe('contactsManager.isContact — порт `isContact` (:897-899)', () => {
+  it('в книге — контакт; книга дочитывается до ответа (первое чтение ленивое)', async () => {
+    const { mgr, get } = setup({ contacts: [user(5, 'Book')] })
+    expect(await mgr.isContact(5)).toBe(true)
+    expect(get).toHaveBeenCalledTimes(1)
+    expect(await mgr.isContact(6)).toBe(false)
+    expect(get).toHaveBeenCalledTimes(1) // книга читается один раз за сессию
+  })
+
+  it('вне книги, но с флагом contact на карточке — контакт', async () => {
+    const { mgr, cards } = setup()
+    cards.set(7, user(7, 'Flag', undefined, { pFlags: { contact: true } }))
+    cards.set(8, user(8, 'Plain', undefined, { pFlags: {} }))
+    expect(await mgr.isContact(7)).toBe(true)
+    expect(await mgr.isContact(8)).toBe(false)
+  })
+
+  it('удалённый из книги перестаёт быть контактом', async () => {
+    const { mgr } = setup({ contacts: [user(5, 'Book')] })
+    expect(await mgr.isContact(5)).toBe(true)
+    await mgr.del(5)
+    expect(await mgr.isContact(5)).toBe(false)
   })
 })

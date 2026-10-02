@@ -883,7 +883,7 @@ layout-эффект шелла (`createAppSidebarRight()` + `construct(managers)
 |---|---|---|---|
 | Профиль/группа/канал | `src/components/UserInfoPanel.tsx` | портал в `tab.container` вкладки №0 — `AppReactProfileTab` (`sidebarRight/reactProfileTab.ts`, ВРЕМЕННО до 3-1, роль `AppSharedMediaTab`) | вкладку создаёт каждый инстанс `Chat.tsx` на монтировании (`createSharedMediaTab`), активный ставит её в слайдер (`replaceSharedMediaTab`, ВРЕМЕННО до Э6) |
 | Поиск стикеров/GIF | `sidebarRight/tabs/stickers.solid.tsx`, `gifs.solid.tsx` (`AppStickersTab`/`AppGifsTab`, порт tweb 1:1, 0б-11) | Solid-вкладки слайдера `AppSidebarRight` | лупа нижней полосы панели эмодзи — `isTabExists` → `appSidebarRight.createTab(…).open()` (tweb `emoticonsDropdown/index.ts:303-308`); отправка — `appImManager.chat.input.sendMessageWithDocument` через мост `sidebarRight/tabs/emoticonsSearchBridge.ts` (ВРЕМЕННО до Э4-3, ставит активный `Chat.tsx`); попап набора — React `openStickerSetModal` (ВРЕМЕННО до 2C-15). Расхождения: выдача GIF — Tenor, а не `@gif` (О-27); кладка — `components/gifsMasonry.ts` |
-| Изменить/добавить контакт | `EditContactView.tsx`, `AddContactView.tsx` | док-панель в потоке (не колонка) | из `useChatPopups` (0б-10) |
+| Изменить/добавить контакт | `sidebarRight/tabs/editContact.solid.tsx` (`AppEditContactTab`, 0б-10) | вкладка слайдера правой колонки, как у tweb | карандаш профиля (`Chat.tsx` `onEditContact`, ВРЕМЕННО до 3-1) и ⋮ «AddContact» (`useChatPopups::openAddContact` — порт `topbar.addContact`, ВРЕМЕННО до Э6-2) |
 
 Открыть подэкран правой колонки — как у tweb: `appSidebarRight.createTab(AppXxxTab).open(payload)`
 (+ `toggleSidebar(true)`, если колонка могла быть закрыта). React-оверлеи подэкранов
@@ -1022,7 +1022,7 @@ TAB_FILTER  = Media→media, Files→files, Links→links, Music→music, Voice�
 
 Внутри `GroupEditFlow` — настоящий второй уровень: проп `sub` (`:106-117`), 9 подэкранов (type / links / reactions / discussion / permissions / admins / members / banned / restricted), переход играет `core/dom/navigationTransition.ts` (параллакс уходящего `-25%` + `brightness(80%)`, порт `slideNavigation`).
 
-«Изменить контакт» — **вне колонки**: `onEditContact` сначала закрывает панель (`Chat.tsx:1592`) и открывает отдельную док-панель `EditContactView` (404px, `AddContactView.module.scss`). В tweb это вкладка того же слайдера.
+«Изменить контакт» — **вкладка того же слайдера** (0б-10): `onEditContact` панели зовёт `appSidebarRight.createTab(AppEditContactTab).open(peerId)` поверх профиля, как карандаш tweb `sharedMedia.tsx:675-686`; React-панели `EditContactView`/`AddContactView` снесены.
 
 **Шапка:** X ⇄ «назад» — не подмена иконки, а `.animated-close-icon.state-back` (CSS-морф полосок). Заголовок «User Info» ⇄ «имя + счётчик» — `useTransitionSlider` (`core/hooks/useTransitionSlider.ts`, порт `TransitionSlider` с классами `active/from/to` + `animating/backwards`, 400 мс, гейт `liteMode.isAvailable('animations')`).
 
@@ -1104,7 +1104,6 @@ key_filled (ключ шифрования), statistics_filled. Пин цвето
 
 - `components/stargifts/stargiftsGrid.module.scss` + `profileList.module.scss` — **это модули самого tweb**, портированы дословно (там подарки тоже модулями);
 - `settings/kit.module.scss` — два правила (`screen`, `entering`), обосновано комментарием: у нас экран монтируется слоем поверх колонки, а не вкладкой постоянного слайдера;
-- `AddContactView.module.scss` — док-панели контактов.
 
 Инлайн-стили (отсебятина, не по tweb): `PinnedStoriesSection.tsx:16-45` (грид историй целиком на инлайне), `ChannelStats.tsx:73,138-141` (топ-посты, лоадер), `SharedMedia.tsx:258` (пустое состояние).
 
@@ -1116,7 +1115,7 @@ key_filled (ключ шифрования), statistics_filled. Пин цвето
 - `messagesStore` — только длина окна чата (`SharedMedia.tsx:146`) как сигнал инвалидации кэша табов.
 - `peersStore` — карточки пиров для имён авторов во вьювере (`SharedMedia.tsx:245`).
 - `audioStore` — очередь/трек/играет для Music/Voice.
-- `popupStore` — GiftInfo/QR/KeyVerification/EditContact.
+- `popupStore` — GiftInfo/QR/KeyVerification.
 
 **Локальный `useState` (панель):** `tab`, `filled`, `headerFilled`, `tabCounts`, `editing`, `addingMembers`, `showStats`, `qrOpen`, `keyPopupOpen`, `selectedGift`, `avatarsInfoEl` (триггер ре-рендера портала контента карусели, см. ниже). `expanded`/`photoIndex`/`dragDx`/`dragging` — состояние самодельной карусели — снесены вместе с ней (задача 5 плана `2026-09-05-profile-avatars-class.md`): у класса `PeerProfileAvatars` свой индекс и своя DOM-позиция, React их не дублирует.
 
@@ -1182,7 +1181,7 @@ key_filled (ключ шифрования), statistics_filled. Пин цвето
 
 # Выводы (сводка для выбора стратегии)
 
-1. **У tweb правая колонка — платформа** (`SidebarSlider` + `SliderSuperTab`: стек из ~25 экранов с общим шеллом, lifecycle и анимациями), **у нас — один компонент** с условными оверлеями; `ChannelStats`/`RightsEditor` без стилей и анимаций, `EditContact` вне колонки.
+1. **У tweb правая колонка — платформа** (`SidebarSlider` + `SliderSuperTab`: стек из ~25 экранов с общим шеллом, lifecycle и анимациями), **у нас — один компонент** с условными оверлеями; `ChannelStats`/`RightsEditor` без стилей и анимаций (`EditContact` — уже вкладка, 0б-10).
 2. **Различия user/group/channel в tweb декларативные** — секции `PeerProfile` и предикаты `canView*` в `SearchSuper`; у нас — форки по `chat.type`, размазанные по панели.
 3. **Точечные фиксы конфликтуют**, потому что нет каркаса-эталона: инлайновый `stickyTop=8` перебивает верный портированный CSS; кэш табов сбрасывается на любое изменение окна сообщений; состояние панели не сбрасывается при смене чата; `TabSlide` без `keepMounted` теряет скролл-позиции (tweb сохраняет/восстанавливает их в `onTransitionEnd`).
 4. **Стили уже портированы глобально** (`styles/tweb/`), т.е. недостающее — поведенческий каркас, а не CSS.

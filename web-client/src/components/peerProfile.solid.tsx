@@ -1222,11 +1222,10 @@ function Birthday() {
 /**
  * Порт `PeerProfile.Notifications` (tweb `:1175-1218`).
  *
- * Источник мьюта — ТЕ ЖЕ примитивы, что у React `core/hooks/useMuteToggle.ts`
- * (`core/dialogs/notifySettings.ts::isPeerMuted` + `chatsStore.dialogs` +
- * `managers.groups.setMute`), без обёртки-хука (Solid не читает React-хуки);
- * второго способа мьютить нет — `useMuteToggle` остаётся у `EditContactView`
- * (докблок хука), эта функция и он читают/пишут ОДНО и то же состояние.
+ * Источник мьюта — `core/dialogs/notifySettings.ts::isPeerMuted` +
+ * `chatsStore.dialogs` + `managers.groups.setMute`; второго способа мьютить
+ * нет — ту же пару читает/пишет строка уведомлений вкладки «Изменить контакт»
+ * (`sidebarRight/tabs/editContact.solid.tsx`).
  * `managers` — `startClient().managers`, тот же приём, что у Task 1
  * (`fullPeers.solid.ts`, докблок «зачем `managers` параметром»).
  *

@@ -652,6 +652,16 @@ export const AppCallsTab =
   })
 ;(AppCallsTab as unknown as { noSame: boolean }).noSame = true
 
+// ── «Изменить контакт» (tweb :509-513) — задача 0б-10 плана волны 7 ───────────
+// Вкладка правой колонки (`sidebarRight/tabs/editContact.solid.tsx`); полезная
+// нагрузка — ключ пира, заголовок вкладка переписывает сама («Edit» или
+// «AddContactTitle» — по тому, контакт ли это, `editContact.tsx:42`).
+export const AppEditContactTab =
+  scaffoldSolidJSTab<PeerId>({
+    title: 'Edit',
+    getComponentModule: () => import('../sidebarRight/tabs/editContact.solid'),
+  })
+
 // ── Поиск GIF и стикеров правой колонки (tweb :458-462, :521-525) — задача 0б-11 ─
 // Обе обычной формы и без полезной нагрузки, как у оригинала: колонку вкладки берут
 // у синглтона `appSidebarRight`, отправку в чат — у `appImManager.chat` (мост
