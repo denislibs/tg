@@ -517,18 +517,27 @@ func (r *ChatsRepo) MemberIDsByUsernames(ctx context.Context, chatID int64, user
 	return ids, rows.Err()
 }
 
-// ClearMentions drops the member's mentions with seq<=uptoSeq (they've been read)
-// and re-syncs unread_mentions_count to the remaining rows, which it returns.
+// ClearMentions marks the member's mentions with seq<=uptoSeq read (the row —
+// the fact of the mention, message.mentioned — stays) and re-syncs
+// unread_mentions_count to the still-unread rows, which it returns.
 func (r *ChatsRepo) ClearMentions(ctx context.Context, chatID, userID, uptoSeq int64) (int, error) {
 	q := querier(ctx, r.pool)
 	if _, err := q.Exec(ctx,
-		`DELETE FROM message_mentions WHERE chat_id=$1 AND user_id=$2 AND seq<=$3`,
+		`UPDATE message_mentions SET unread=false
+		 WHERE chat_id=$1 AND user_id=$2 AND seq<=$3 AND unread`,
 		chatID, userID, uptoSeq); err != nil {
 		return 0, err
 	}
+	return r.syncUnreadMentions(ctx, chatID, userID)
+}
+
+// syncUnreadMentions пересчитывает unread_mentions_count участника по
+// непрочитанным строкам message_mentions (их и возвращает).
+func (r *ChatsRepo) syncUnreadMentions(ctx context.Context, chatID, userID int64) (int, error) {
+	q := querier(ctx, r.pool)
 	var remaining int
 	if err := q.QueryRow(ctx,
-		`SELECT count(*) FROM message_mentions WHERE chat_id=$1 AND user_id=$2`,
+		`SELECT count(*) FROM message_mentions WHERE chat_id=$1 AND user_id=$2 AND unread`,
 		chatID, userID).Scan(&remaining); err != nil {
 		return 0, err
 	}
@@ -538,6 +547,76 @@ func (r *ChatsRepo) ClearMentions(ctx context.Context, chatID, userID, uptoSeq i
 	return remaining, err
 }
 
+// ReadMention marks one mention read (Telegram readMessageContents on a
+// mention): reports whether it was unread, and then re-syncs the counter.
+func (r *ChatsRepo) ReadMention(ctx context.Context, chatID, msgID, userID int64) (bool, error) {
+	q := querier(ctx, r.pool)
+	tag, err := q.Exec(ctx,
+		`UPDATE message_mentions SET unread=false WHERE message_id=$1 AND user_id=$2 AND unread`,
+		msgID, userID)
+	if err != nil || tag.RowsAffected() == 0 {
+		return false, err
+	}
+	_, err = r.syncUnreadMentions(ctx, chatID, userID)
+	return true, err
+}
+
+// RemoveMention drops a mention the message no longer carries (an edit removed
+// it) and re-syncs the member's counter.
+func (r *ChatsRepo) RemoveMention(ctx context.Context, chatID, msgID, userID int64) error {
+	q := querier(ctx, r.pool)
+	tag, err := q.Exec(ctx,
+		`DELETE FROM message_mentions WHERE message_id=$1 AND user_id=$2`, msgID, userID)
+	if err != nil || tag.RowsAffected() == 0 {
+		return err
+	}
+	_, err = r.syncUnreadMentions(ctx, chatID, userID)
+	return err
+}
+
+// MessageMentions — who a message mentions: userID -> still unread.
+func (r *ChatsRepo) MessageMentions(ctx context.Context, msgID int64) (map[int64]bool, error) {
+	q := querier(ctx, r.pool)
+	rows, err := q.Query(ctx,
+		`SELECT user_id, unread FROM message_mentions WHERE message_id=$1`, msgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]bool{}
+	for rows.Next() {
+		var uid int64
+		var unread bool
+		if err := rows.Scan(&uid, &unread); err != nil {
+			return nil, err
+		}
+		out[uid] = unread
+	}
+	return out, rows.Err()
+}
+
+// ViewerMentions — which of msgIDs mention userID: msgID -> still unread.
+func (r *ChatsRepo) ViewerMentions(ctx context.Context, userID int64, msgIDs []int64) (map[int64]bool, error) {
+	q := querier(ctx, r.pool)
+	rows, err := q.Query(ctx,
+		`SELECT message_id, unread FROM message_mentions
+		 WHERE user_id=$1 AND message_id = ANY($2::bigint[])`, userID, msgIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]bool{}
+	for rows.Next() {
+		var mid int64
+		var unread bool
+		if err := rows.Scan(&mid, &unread); err != nil {
+			return nil, err
+		}
+		out[mid] = unread
+	}
+	return out, rows.Err()
+}
+
 // NextMention returns the number (seq) of the member's earliest unread mention
 // past afterSeq; domain.ErrNotFound when there is none.
 func (r *ChatsRepo) NextMention(ctx context.Context, chatID, userID, afterSeq int64) (int64, error) {
@@ -545,7 +624,7 @@ func (r *ChatsRepo) NextMention(ctx context.Context, chatID, userID, afterSeq in
 	var seq int64
 	err := q.QueryRow(ctx,
 		`SELECT seq FROM message_mentions
-		 WHERE chat_id=$1 AND user_id=$2 AND seq>$3
+		 WHERE chat_id=$1 AND user_id=$2 AND seq>$3 AND unread
 		 ORDER BY seq ASC LIMIT 1`, chatID, userID, afterSeq).Scan(&seq)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, domain.ErrNotFound

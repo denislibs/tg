@@ -38,6 +38,7 @@ type member struct {
 // mentionRow mirrors a message_mentions row in the fake store.
 type mentionRow struct {
 	chatID, msgID, seq, userID int64
+	read                       bool // прочитано (message_mentions.unread = false)
 }
 
 // readMark — одна отметка продвижения горизонта чтения (chat_read_marks).
@@ -418,7 +419,7 @@ func (r fakeChats) AddMention(_ context.Context, chatID, msgID, seq, userID int6
 			return nil
 		}
 	}
-	r.s.mentions = append(r.s.mentions, mentionRow{chatID, msgID, seq, userID})
+	r.s.mentions = append(r.s.mentions, mentionRow{chatID: chatID, msgID: msgID, seq: seq, userID: userID})
 	if m := r.s.members[chatID][userID]; m != nil {
 		m.mentions++
 	}
@@ -443,22 +444,80 @@ func (r fakeChats) MemberIDsByUsernames(_ context.Context, chatID int64, usernam
 func (r fakeChats) ClearMentions(_ context.Context, chatID, userID, uptoSeq int64) (int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
+	for i := range r.s.mentions {
+		m := &r.s.mentions[i]
+		if m.chatID == chatID && m.userID == userID && m.seq <= uptoSeq {
+			m.read = true
+		}
+	}
+	return r.s.syncMentionsLocked(chatID, userID), nil
+}
+
+// syncMentionsLocked — unread_mentions_count по непрочитанным строкам (под s.mu).
+func (s *store) syncMentionsLocked(chatID, userID int64) int {
+	n := 0
+	for _, m := range s.mentions {
+		if m.chatID == chatID && m.userID == userID && !m.read {
+			n++
+		}
+	}
+	if m := s.members[chatID][userID]; m != nil {
+		m.mentions = n
+	}
+	return n
+}
+
+func (r fakeChats) ReadMention(_ context.Context, chatID, msgID, userID int64) (bool, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for i := range r.s.mentions {
+		m := &r.s.mentions[i]
+		if m.msgID == msgID && m.userID == userID && !m.read {
+			m.read = true
+			r.s.syncMentionsLocked(chatID, userID)
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (r fakeChats) RemoveMention(_ context.Context, chatID, msgID, userID int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
 	kept := r.s.mentions[:0]
-	remaining := 0
 	for _, m := range r.s.mentions {
-		if m.chatID == chatID && m.userID == userID {
-			if m.seq <= uptoSeq {
-				continue // read → drop
-			}
-			remaining++
+		if m.msgID == msgID && m.userID == userID {
+			continue
 		}
 		kept = append(kept, m)
 	}
 	r.s.mentions = kept
-	if m := r.s.members[chatID][userID]; m != nil {
-		m.mentions = remaining
+	r.s.syncMentionsLocked(chatID, userID)
+	return nil
+}
+
+func (r fakeChats) MessageMentions(_ context.Context, msgID int64) (map[int64]bool, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	out := map[int64]bool{}
+	for _, m := range r.s.mentions {
+		if m.msgID == msgID {
+			out[m.userID] = !m.read
+		}
 	}
-	return remaining, nil
+	return out, nil
+}
+
+func (r fakeChats) ViewerMentions(_ context.Context, userID int64, msgIDs []int64) (map[int64]bool, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	out := map[int64]bool{}
+	for _, m := range r.s.mentions {
+		if m.userID == userID && slices.Contains(msgIDs, m.msgID) {
+			out[m.msgID] = !m.read
+		}
+	}
+	return out, nil
 }
 
 func (r fakeChats) NextMention(_ context.Context, chatID, userID, afterSeq int64) (int64, error) {
@@ -467,7 +526,7 @@ func (r fakeChats) NextMention(_ context.Context, chatID, userID, afterSeq int64
 	var best *mentionRow
 	for i := range r.s.mentions {
 		m := r.s.mentions[i]
-		if m.chatID != chatID || m.userID != userID || m.seq <= afterSeq {
+		if m.chatID != chatID || m.userID != userID || m.seq <= afterSeq || m.read {
 			continue
 		}
 		if best == nil || m.seq < best.seq {
