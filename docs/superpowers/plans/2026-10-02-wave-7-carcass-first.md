@@ -1,0 +1,644 @@
+# Волна 7: ускоренный план «каркас сверху вниз»
+
+> **Решение пользователя от 2026-10-02.** Сначала каркас tweb ставится целиком, потом на него по
+> одной натягиваются текущие фичи (Solid и классы), без мостов в React. Переход грубый: держать
+> работающим всё приложение не нужно — прода нет, разработка только локальная.
+>
+> Этот файл задаёт **порядок и правила** программы волны 7. План
+> [`2026-09-30-wave-7-shell-sidebars.md`](2026-09-30-wave-7-shell-sidebars.md) остаётся
+> **справочником по tweb**: карта `appImManager.ts` по блокам A–M, адреса оригинала, сравнение
+> «Chat первым», разбор этапов 0а–7. Его порядок этапов, фасады (`ChatFacade`,
+> `ChatInputFacade`), предусловие «этапы 2–3 целиком до точки входа», номера О-n и ворота e2e по
+> этапам **отменены** этим файлом.
+>
+> Скилл перед каждой задачей — `tweb-parity` (`.claude/skills/tweb-parity/SKILL.md`): док →
+> исходник tweb → код. Оригинал — `/Users/denisurevic/Documents/tweb`, коммит **`812502980`**.
+> Наш код — `web-client/src/`, срез **`bd9f1893`** (2026-10-02, после #374).
+
+---
+
+## 1. Правила ускоренного перехода
+
+1. **P0 после каждого влития в `main`.** На стенде работают вход, список чатов, открытие чата,
+   история, отправка и приём (realtime), профиль. Всё остальное может временно пропасть. Каждое
+   пропавшее — одна строка в разделе 5 «Бэклог»: что пропало, файл tweb, куда вернётся. Номеров
+   О-n с диапазонами больше нет. Новые пропажи вписывает в бэклог задача, которая их создала, в
+   своём PR.
+2. **Мостов «новый код tweb → React-оболочка» нет.** Класс или Solid не монтируется внутрь
+   React-дерева и не зовёт React-экран. Обратное направление допустимо: React-остров внутри
+   класса tweb (центр, композер, вкладка №0 правой колонки), но только до шага, который его
+   снимает. У такого острова в шапке файла и у строки монтирования стоит `// ВРЕМЕННО до К-<n>`.
+3. **Старые React-тесты не переносятся.** Они удаляются вместе со своим кодом. Тесты пишутся на
+   новую нетривиальную логику: стек чатов, записи навигации, разбор хэша, порядок старта,
+   отправка, правила видимости пунктов (`verify`).
+4. **Проверки на задачу:** `npx tsc --noEmit`, `vitest run` (только из `web-client/`, полный —
+   `--maxWorkers=3` под `heavy.lock`), `npx oxlint --type-aware` по изменённым. Мутаций,
+   `dom-parity` и стенда на каждой задаче нет. **Стенд** — P0 через Chrome DevTools MCP **на
+   вехах**: после каждого К-n и после каждой пачки бэклога.
+5. **Влитие прямо в `main`**, без долгоживущей ветки. Мержит главная сессия после tsc + vitest + P0.
+   Если шаг К режется на несколько агентов, они работают в своих ворктри на общей базе с
+   непересекающимися файлами. Один из них (ведущий, указан у шага) вливает ветки соседей в свою,
+   и в `main` уходит один PR.
+6. **Порт файлом 1:1 из tweb.** Мёртвый код удаляется в той же задаче. Имена и места — как у
+   tweb (`lib/appImManager.ts`, `components/chat/{chat,topbar,input}.ts`, `src/index.ts`,
+   `src/pages/bootstrapIm.ts`, `components/sidebarLeft/index.ts`,
+   `components/sidebarRight/tabs/*.solid.tsx`). Строки langpack — ключами tweb. Комментарии и
+   коммиты — по-русски.
+
+Остальные Global Constraints плана программы (одноимённый раздел) действуют, если не противоречат
+правилам выше. Не действуют «мутация фактически», «стенд и числа в каждом коммите», «врезка —
+отдельным последним коммитом».
+
+---
+
+## 2. Где мы на `bd9f1893`
+
+| Что | В `main` | В работе (ворктри) | Судьба в новом плане |
+|---|---|---|---|
+| Левая колонка: вкладки | 0а-1…0а-5, 2D целиком, 2-2 (бургер), 2-5 (баннер, #374) | — | основа К-1 |
+| `AppSidebarLeft` | — | 2-1 (`w7-2-1`: `sidebarLeft/index.ts` 1028 строк, `toolsMenu.ts` в него влит, `columnSlider.ts` удалён; React-мост `bridge` для архива, форума и поиска) | **К-1**: мост `bridge` снимается, архив и форум — в бэклог |
+| `#new-menu` | — | 2-4 (`w7-2-4`: 2 коммита, врезка в React `ComposeFab`) | **К-1**: перевешивается на класс без временного монтажа |
+| Список чатов | 1-1…1-4, 1-2 (#366) | 1-7 (`w7-1-7`, сохранённые) | 1-7 доливается как есть; 1-5, 1-6, 1-8 — бэклог П-2 |
+| Правая колонка | 0б-0, 0б-2, 0б-10, 0б-11 | 0б-3 (`w7-0b-3`), 0б-6 (`w7-0b-6`) | доливаются как есть (Solid-вкладки из React-`GroupEditFlow` — существующее направление, не новый мост); в К-5 их открывает родная `AppEditChatTab` |
+| Центр | `ChatBubbles`, `ChatContextMenu`, `ChatSelection` — классы | — | К-2, К-3, К-4 |
+| Точка входа | React: `index.html` с `#root` (`:56`), `main.tsx` (39), `App.tsx` (325) | — | К-2 |
+
+---
+
+## 3. Шаги каркаса
+
+```
+К-1 AppSidebarLeft + #new-menu + поиск, снос Sidebar.tsx
+ └► К-2 index.html + src/index.ts + bootstrapIm + ядро AppImManager, снос main.tsx/App.tsx
+     └► К-3 класс Chat + ядро ChatTopbar (композер — React-остров внутри Chat)
+         └► К-4 ядро ChatInput, снос React-композера
+             └► К-5 AppSharedMediaTab + AppEditChatTab, снос UserInfoPanel/GroupEditFlow
+                  ⇒ React остаётся только островом глобальных оверлеев
+Бэклог П-1…П-6 — с К-2 (П-2, П-3, П-4), с К-3 (П-5), с К-4 (П-6), с К-5 (П-1) — параллельно
+```
+
+Шаги идут строго по очереди: каждый следующий меняет владельца того, на чём стоит предыдущий.
+Внутри шага агенты работают параллельно на непересекающихся файлах (правило 5).
+
+---
+
+### К-1: `AppSidebarLeft`, `#new-menu`, глобальный поиск; снос `Sidebar.tsx`
+
+**Порт.** tweb `components/sidebarLeft/index.ts` (1817):
+- класс `:118`, `construct` `:154-473`;
+- `initNavigation` `:474`;
+- `isCollapsed`/`onCollapsedChange` `:491-517`;
+- `closeEverythingInside` `:518-545`;
+- `onSomethingOpenInsideChange` `:547-569` (`has-open-tabs` `:553`);
+- `onTabsCountChange` `:652`;
+- `createToolsMenu` `:673-905`;
+- `createNewChatsMenuOptions`/`createNewChatsMenuButton` `:1065-1136`;
+- `initSearch` `:1137-1691`, `closeSearch` `:1722`;
+- `createTab`/`addTab`/`closeTabsBefore` `:1730-1758`;
+- синглтон `:1798`.
+
+`ConnectionStatusComponent` создаётся в `appDialogsManager.start` (tweb `appDialogsManager.ts:990`)
+с `appSidebarLeft.inputSearch`.
+
+**Что делается сверх 2-1.**
+- Мост `bridge` из `w7-2-1` (`index.ts:66`, `:190-208`) снимается целиком: архив, форум и
+  «Избранное»/тема через React уходят.
+  - «Избранное» из бургера зовёт `appImManager.setPeer` только с К-2, до него пункт скрыт.
+  - Переключатель темы — функция `themeController` (порт `switchTheme`, tweb
+    `helpers/themeController.ts`, вызов `sidebarLeft/index.ts:924`).
+- Поиск — `initSearch` методом класса над нашим классом `sidebarLeft/globalSearch.ts` (692, уже
+  порт). `InputSearch` — класс `components/inputSearch.ts`, а не React `shared/ui/InputSearch`.
+- `#new-menu` из `w7-2-4` переносится в класс: `createNewChatsMenuButton` в `construct`,
+  `ComposeFab.tsx` (77) и `ComposeMenu.tsx` (64) удаляются.
+
+**Узел `#column-left`.** До К-2 его рисует `App.tsx` статичной разметкой tweb `index.html:91-107`
+без логики. Синглтон создаётся из layout-эффекта шелла — это уже сделано в 2-1
+(`createAppSidebarLeft`, `index.ts:54-57`), а снимается в К-2 (решение **Р-1**).
+
+**Удаляется.**
+- `components/Sidebar.tsx` (546) + `Sidebar.module.scss` (174) + все `Sidebar.*.test.tsx`;
+- `core/hooks/useGlobalSearch.ts` (117), `useForumPanel.tsx` (86), `useSidebarStories.tsx` (102);
+- `shared/ui/InputSearch/*`, если без потребителей;
+- `ComposeFab.tsx`, `ComposeMenu.tsx`, `SidebarEmojiStatusButton.tsx` (41);
+- `components/TopicsPanel.tsx` (583) + scss, `StoriesRow.tsx` (405) + scss,
+  `folders/FoldersSidebar.tsx` (238) + scss — их места занимает бэклог (П-2, П-3).
+
+**В бэклог:** архив-оверлей и пункт «Архив», форум (`TopicsPanel`), ряд историй, вертикальная
+колонка папок, кнопки статус-эмодзи и замка в шапке, плашка «пригласить» (если её держал
+`Sidebar.tsx`) — строки Б-1…Б-7 раздела 5.
+
+**Тесты на новое:**
+- `sidebarLeft/index.test.ts` (уже пишется в 2-1): `has-open-tabs` — один писатель;
+  `closeEverythingInside` закрывает вкладки и поиск; Back/Esc снимают верхнюю вкладку;
+- пункты `#new-menu` по флагам (`IS_CONFERENCE_CALL_SUPPORTED`, `SECRET_CHATS_ENABLED`);
+- поиск открывается фокусом поля и закрывается Esc (`global-search`/`global-search-focus`).
+
+**Агенты: 2.**
+
+| Агент | Ворктри | Файлы | Роль |
+|---|---|---|---|
+| **А (ведущий)** | `w7-2-1` | `sidebarLeft/index.ts`, `globalSearch.ts`, `components/inputSearch.ts`, `lib/appDialogsManager.ts`, `App.tsx` (разметка колонки), снос `Sidebar.tsx` и хуков | доводит 2-1, подключает поиск |
+| **Б** | `w7-2-4` | новый `sidebarLeft/newChatsMenu.ts` (или методы в `index.ts`, если ведущий отдаст блок `:1065-1136`), тест меню, снос `ComposeFab`/`ComposeMenu` | ребейзится на ветку А, вставка в `construct` — две строки |
+
+**Оценка: 4 агенто-дня, ≈ 3 календарных.** 2-1 написан примерно на две трети (1028 строк
+класса, тесты вкладок уже переведены). Остаток — снос моста `bridge` (−~200 строк), поиск
+классом вместо React-владельца (`globalSearch.ts` уже класс, меняется только владелец поля) и
+снос `Sidebar.tsx` с хуками. На `#new-menu` — день: порт есть, меняется только место монтажа.
+
+**Веха К-1 (стенд, P0):** вход, список, открыть чат из списка и из поиска, отправка и приём,
+профиль; «новый чат» → контакты.
+
+---
+
+### К-2: точка входа и ядро `AppImManager`; снос `main.tsx`/`App.tsx`
+
+Решения пользователя по этому шагу: **В4-1 = А** (выход — перезагрузка, синглтоны вечные),
+**В4-2 = А** (`draftPeer` удаляется), **В4-3 = А** (`chatTips` — в бэклог).
+
+**Порт: вход.**
+- tweb `index.html:87-116`, все узлы — статикой в нашем `index.html`:
+  - `#skip-to-content[hidden]` `:87`, `.sidebar-left-overlay` `:88`;
+  - `#page-chats[style="display: none;"]` `:89`, `#main-columns` `:90`;
+  - `#column-left` с вкладкой №0 `:91-107`;
+  - `#column-center[role=main][tabindex=-1]` `:109`, `#column-right` `:110-112`;
+  - `#stories-viewer` `:115`;
+  - `#svg-defs` `:46` (переезжает из `components/SvgDefs.tsx`, 23 строки).
+  - `<script src="/src/index.ts">` `:116`.
+- tweb `src/index.ts:417-675` поверх нашего `client/boot.ts` (307). Порядок `waitForUnlock` →
+  состояние → лангпак уже наш (`boot.ts:134-209`). Новое:
+  - развилка `:613-673`: `mountAuthFlow` `:640-641` или `fadeInWhenFontsReady(#main-columns)`
+    `:645-646` и `bootstrapIm()`;
+  - анимация входа `should_animate_main` `:650-669` — наш `ANIMATE_MAIN_KEY`
+    (`core/accountTransition.ts:14`);
+  - `loadFonts`/`setRootClasses` (`main.tsx:15`, `:19`);
+  - `pingBackend`, `startVersionCheck` (`App.tsx:271-278`).
+- tweb `pages/bootstrapIm.ts:21-70`:
+  - идемпотентность `:9`, `:22-23`;
+  - показ `#page-chats` `:27-28`;
+  - `appDialogsManager.start()` `:51`;
+  - `doubleRaf` → снятие `has-auth-pages` `:60-61`;
+  - `disposeActiveAuthFlow` через 1 с `:65-67`.
+- tweb `pages/mountAuthFlow.tsx:28`, `:62`: модульный `activeDispose` и `disposeActiveAuthFlow`.
+  Наша запись `has-auth-pages` (`mountAuthFlow.solid.tsx:102`, `:112`) удаляется: выход теперь
+  перезагрузка.
+- Успех входа → `bootstrapIm()` (tweb `pages/AuthCardsHost.tsx:105`). Наш `onComplete` из `App.tsx`
+  (`AuthCardsHost.solid.tsx:163`, `:210`) уходит.
+- Выход — перезагрузка: `logging_out` → `onLoggedOut` (`lib/apiManagerProxy.ts:619-634`,
+  `:676-704`) → `appNavigationController.reload(url)` (`components/appNavigationController.ts:499-511`;
+  `close`/`focus`/`navigateToUrl` `:513-537` — их нет у нас, шапка `:54`). `persist.clearAll()` —
+  до перезагрузки.
+- Вечные синглтоны при импорте:
+  - `appSidebarRight` (tweb `sidebarRight/index.ts:141-143`) — снимаются
+    `createAppSidebarRight`/`destroy` (`sidebarRight/index.ts:181-202`);
+  - `appSidebarLeft` (`:1798`) — снимается `createAppSidebarLeft` из К-1;
+  - `appDialogsManager` на `#chatlist-container` (`appDialogsManager.ts:765`, `:3064`) — `start()`
+    без аргументов, без `destroy()`; уходят расхождения 1, 2, 7, 17, 18 шапки
+    `lib/appDialogsManager.ts`;
+  - `SidebarSlider.destroy` (`slider.ts:155-170`).
+
+**Порт: ядро `AppImManager`** (`lib/appImManager.ts`; файл уже есть — модуль функций набора, 202
+строки, класс ложится рядом):
+- **A, B.**
+  - Типы `ChatSavedPosition`, `ChatSetPeerOptions`, `ChatSetInnerPeerOptions`, `APP_TABS`
+    `:163-213`.
+  - `EventListenerBase` с `chat_changing`, `peer_changed`, `peer_changing`, `tab_changing`,
+    `premium_toggle` `:252-258`.
+  - Поля `:259-302`, синглтон `:3989-3991`.
+  - `ChatType` — порт `components/chat/chatType.ts` (значения совпадают с
+    `stores/chatStackStore.ts:10`).
+- **J.**
+  - `selectTab` `:3137-3197`: `is-left-column-shown`, тяжёлая анимация `:3164`,
+    `updateColumnAccessibility`, `appSidebarRight.hide()` на мобильном, запись `im`
+    `:3178-3188`.
+  - `setStaticLandmarkLabels`/`updateColumnAccessibility` `:3199-3208`; `disableTransition` —
+    порт `helpers/dom/disableTransition.ts`.
+  - Стек чатов: `createNewChat` `:3219`, `spliceChats` `:3233-3290`, `setPeer` `:3292-3390`
+    (без `min`-пиров), `setInnerPeer` `:3392-3434`, `chatsSelectTab` `:2766-2805`, `isSamePeer`
+    `:3809-3816`.
+  - `.chats-container` и `createNewChat()` в `construct` `:368-382`: `chats[0]` существует всегда.
+- **G.**
+  - `overrideHash` `:3127-3135`, `onHashChange`/`onHashChangeUnsafe` `:1912-2031` (`tgaddr`;
+    голый фрагмент — только `@имя` или peerId, `:1947`; `#/im?p=` `:1954-1963`).
+  - `open`/`op` `:2050-2157`, `openUsername` `:2165`, `openThread` `:2186`, `openComment` `:2212`.
+  - `appNavigationController.onHashChange = this.onHashChange` `:384`, первое применение `:998`.
+  - `overrideHash` на `peer_changed` `:835-843`.
+- **I (часть).**
+  - `setBackground`/`setCurrentBackground`/`applyCurrentTheme` `:2607-2713`;
+    `themeController.appChatBackground` `:444-455`.
+  - `setSettings` `:2715-2762` (`--messages-text-size`, `animation-level-*`, `no-backdrop`,
+    автоплей) — заменяет `client/liteModeSettings.ts` (51).
+- **C (часть).**
+  - `mediaSizes.changeScreen` `:458-467`, `idleController` `:354-362`.
+  - `premium_toggle` `:388-397`.
+  - `notificationBuild` `:805-822` — на наш `client/uiNotifications.ts`, «открытый чат» — из
+    `appImManager.chat`.
+  - `has-chat` + очистка `emojiAnimationContainer` `:835-843`.
+  - Звук отправки `:857-877` — по коду `client/realtime/soundSubscriber.ts`.
+- **Старт из `useAppBootstrap.ts` (109).** Загрузки, `startRealtime`, `initAppBadge`,
+  `watchPushConditions` — в `bootstrapIm`/`appDialogsManager.start` (у tweb это `start` и
+  `onStateLoaded`, `appDialogsManager.ts:997`). `ui:toast` → `toastNew` (вместо `useGlobalToast`).
+
+**Центр на К-2 — React-остров `Chat.tsx` на инстанс, минимальный интерфейс.** Файл
+`components/chat/reactChatInstance.ts` (`// ВРЕМЕННО до К-3`) — ровно то, что `appImManager` зовёт
+у `Chat` на К-2:
+
+| Член | Нужен в |
+|---|---|
+| `container` (`.chat.tabs-tab`) | `createNewChat`, `spliceChats`, `chatsSelectTab` |
+| `peerId`, `threadId`, `type` | `isSamePeer`, хэш, уведомления |
+| `inited` | `setInnerPeer` |
+| `setPeer(options) → {cached, promise}` | `setPeer` |
+| `beforeDestroy`, `destroy` | `spliceChats` |
+
+Остров монтируется лениво, на первом `setPeer` с пиром, через `shared/react/mountReact.tsx`
+(зеркало `shared/solid/mountSolid.solid.tsx`: `ErrorBoundary`, `ManagersProvider`, `unmount`).
+
+Чего у острова на К-2 нет — и что поэтому выключено:
+- `publishBackground` — фон в теме чата → Б-10;
+- позицию ленты по-прежнему пишет `ChatBubbles` сам (`bubbles.ts:6354`), класс её не трогает;
+- `sharedMediaTab` — правой колонкой управляет `Chat.tsx`, как сейчас (`:384`, `:394`), до К-3;
+- мета треда (заголовок темы, `ChatInstanceDesc.thread`) — опцией `setInnerPeer`, остров отдаёт
+  её `Chat.tsx`.
+
+Мост `emoticonsSearchBridge.ts` уходит. Вкладки поиска стикеров и GIF берут
+`appImManager.chat.input.sendMessageWithDocument`, а это — метод острова, который отдаёт
+`Chat.tsx` (направление «React внутри класса»).
+
+**Остров глобальных оверлеев** — `#react-overlays` в `index.html`, один корень `mountReact`,
+монтирует `bootstrapIm`. Внутри — `GroupCallScreen`, `LivestreamScreen`, `CallOverlay`,
+`WebAppModal`, `ReportPopup`, `PopupHost` (`components/shell/GlobalOverlays.tsx` без тоста, QR и
+`FolderInvitePopup`).
+
+**Удаляется** (тесты — вместе с кодом, правило 3).
+- Корень: `main.tsx` (39), `App.tsx` (325), `App.module.scss` (134), `App.*.test.ts`,
+  `components/SvgDefs.tsx`.
+- Центр: `components/chat/ChatsContainer.tsx` (166) + тест (325).
+- Сторы и навигация: `stores/chatStackStore.ts` (197), `stores/navigationStore.ts` (43),
+  `core/navigation/chatHistory.ts` (518) + тест (670), `core/navigation/openPeer.ts` (46),
+  `startSecretChat.ts` (23).
+- Хуки шелла: `core/hooks/{useAuthGate 203, useShellEnterAnimation 42, useLeftColumnShown 24,
+  useChatNavigation 35, useNavigationActions 94, useUrlSync 185, useShellTheme 43,
+  useThemeToggle 34, useAppBootstrap 109, useGlobalToast 32, useDeepLinks 160, useAppHotkeys 63}`.
+- Прочее: `client/liteModeSettings.ts`, `sidebarRight/tabs/emoticonsSearchBridge.ts`,
+  `chatsStore.activePeerId`/`setActiveChat` (`stores/chatsStore.ts:28`, `:54`, `:109`, `:162`).
+
+Вызывающие `openPeer`/`selectChat` переходят на `appImManager.setInnerPeer`/`setPeer`:
+- `sidebarLeft/tabs/{calls,newChannel,newGroup}.solid.tsx`, `sidebarRight/savedDialogsTab.solid.tsx`,
+  `searchGroup.solid.tsx`;
+- `popups/deleteDialog.ts:37-38` → `appImManager.setPeer({isDeleting: true})`;
+- `lib/appDialogsManager.ts` (`:946` подписка → `appImManager.addEventListener('peer_changed')`,
+  tweb `:1178`; `:1578` → tweb `:2094`).
+
+**В бэклог:** диплинки и QR-подтверждение (`useDeepLinks`), хоткеи (`useAppHotkeys`),
+автоблокировка и Ctrl+L (`useAutoLock`, `useLockScreenShortcut` — если не переносятся функцией
+одной строкой), фон в теме чата, PiP клиента, `chatTips`, `updateStatus`/`goOffline`, тост
+вступления, подписки `construct` без предмета — строки Б-8…Б-17.
+
+**Тесты на новое** (`lib/appImManager.test.ts`, `src/index.test.ts`, `pages/bootstrapIm.test.ts`):
+- `selectTab`: класс на `body`, одна запись `im`, `inert` колонок на мобильном;
+- стек: `setInnerPeer` поверх `inited` даёт новый инстанс; `setPeer({})` на глубине > 0 —
+  `spliceChats`, `removeByType('chat', true)` × (N−1), через 350 мс контейнера и React-корня нет;
+  `existingIndex` переиспользует инстанс; мобильный `setPeer({})` инстанс не трогает;
+- хэш: `#@имя`, `#<id>`, `#/im?p=…&post=`, `#column-center` ничего не открывает;
+- старт: без токена — `mountAuthFlow`, с токеном — `bootstrapIm` один раз, `has-auth-pages`
+  снимается после `doubleRaf`; `loggingOut` → `reload`.
+
+**Агенты: 2**, одна база, файлы не пересекаются.
+
+| Агент | Файлы |
+|---|---|
+| **А (ведущий): вход** | `index.html`, `src/index.ts`, `pages/bootstrapIm.ts`, `client/boot.ts`, `components/auth/{mountAuthFlow,AuthCardsHost}.solid.tsx`, `core/navigation/appNavigationController.ts` (`reload` и соседи), синглтоны `sidebarRight/index.ts`, `sidebarLeft/index.ts`, `components/slider.ts`, `shared/react/mountReact.tsx`, остров оверлеев `components/shell/*`, снос `main.tsx`/`App.tsx`/`SvgDefs`/`useAuthGate`/`useShellEnterAnimation`/`useAppBootstrap`/`useGlobalToast` |
+| **Б: класс** | `lib/appImManager.ts`, `components/chat/{chatType,reactChatInstance}.ts`, `components/Chat.tsx` (перевод на класс), `lib/appDialogsManager.ts` (целиком: и `start()` без аргументов, и подписки), `client/uiNotifications.ts`, `soundSubscriber.ts`, `stores/chatsStore.ts`, вкладки-вызывающие, `deleteDialog.ts`, вкладки стикеров/GIF, снос сторов навигации, `ChatsContainer`, хуков навигации/хэша/темы |
+
+Стык между агентами — одна строка: `appDialogsManager.start()` в конце зовёт
+`appImManager.construct(managers)` (tweb `:988`). Её ставит Б, `bootstrapIm` А зовёт `start()`.
+
+**Оценка: 9 агенто-дней, ≈ 5 календарных.**
+- Вход: ≈ 3 дня. Порт короткий (`index.ts` ~180, `bootstrapIm` ~60), объём — в переводе тестов
+  на вечные синглтоны (сейчас ~21 тестовый файл поднимает колонки многократно) и в сносе шелла.
+- Класс: ≈ 5–6 дней. Около 1 000 строк порта блоков A, B, G, I, J и части C.
+- По старому плану то же стоило 24,5 дня (4-1…4-7 в детальном плане от 2026-10-02). Разница — в
+  трёх вещах: нет `ChatFacade` (≈ 2 дня), нет переноса 34 пинов `chatHistory`/`ChatsContainer`
+  (≈ 2 дня), нет стенда и мутаций на каждой из семи задач (≈ 5 дней).
+
+**Веха К-2 (стенд, P0):** вход и выход (перезагрузка), F5 на `#@имя` и `#<id>`, список, открыть
+чат и тред, Back/Esc, отправка и приём, профиль.
+
+---
+
+### К-3: класс `Chat` + ядро `ChatTopbar`
+
+**Порт.**
+- tweb `components/chat/chat.ts` (1690) целиком:
+  - конструктор `:233-273`, распорки `:279-370`;
+  - фон и `publishBackground` `:372-607` — возвращает Б-10;
+  - `init` `:613-835`: подкомпоненты `:616-637`, подписки `:650-709`;
+  - `destroy`/`cleanup` `:837-883`;
+  - `onChangePeer` `:893-1012`: тип, права, флаги, `sharedMediaTab`;
+  - `setPeer` `:1035-1156`, `finishPeerChange` `:1198-1254`, права `:1340-1403`.
+
+  `ChatBubbles` (`chat/bubbles.ts` 6472), `ChatContextMenu` (1720), `ChatSelection` (1144) у нас
+  уже классы и получают `this`, как у tweb. Клей `ChatContext` (`bubbles.ts:287-~460`) и
+  `VanillaFeed.tsx` (501) уходят.
+- tweb `components/chat/topbar.ts` (1873), **ядро**:
+  - `construct` `:132-307`;
+  - клик по шапке → `appSidebarRight.toggleSidebar` `:259-286`, «назад» → `chat.pop()` `:288-306`;
+  - `constructPeerHelpers` `:1030-1175`: аватар, заголовок, статус;
+  - `finishPeerChange` `:1383-1549`, `setTitle*` `:1550-1641`.
+
+  Меню ⋮ (`:462-903`, 39 пунктов), закреп, поиск, плашки — в бэклог П-5.
+- `appImManager` теряет `reactChatInstance.ts`: `createNewChat` строит `new Chat(this, managers,
+  true)` (tweb `:3220`). Позиция ленты (`saveChatPosition`/`getChatSavedPosition` `:2640-2688`)
+  переезжает из `bubbles.ts:6354` в класс.
+- `replaceSharedMediaTab` зовёт класс (`appImManager.ts:3277`, `chat.ts:1239-1242`), а не
+  `Chat.tsx`. Вкладка №0 справа — по-прежнему `AppReactProfileTab` с `UserInfoPanel` до К-5.
+
+**Композер — React-остров внутри `Chat`** (`components/chat/reactChatInput.ts`,
+`// ВРЕМЕННО до К-4`). У острова только члены, которые зовут `Chat` и соседи:
+- `chat.ts:618-648`, `:702`, `:850`, `:876`, `:1010`, `:1223`, `:1383-1396`;
+- внешний API `messageInput`, `editMessage`, `initMessageReply`,
+  `getChatInputReplyToFromMessage`, `sendMessageWithDocument` — в объёме того, что реально
+  зовут `ChatBubbles`/`ChatContextMenu` у нас (сверить `git grep "chat.input\."` при старте).
+
+**Удаляется.**
+- `components/Chat.tsx` (1617) + тесты, `chat/VanillaFeed.tsx` (501);
+- `conversation/ChatHeader.tsx` (201), `HeaderMenu.tsx` (274), `useHeaderMenuActions.ts` (47);
+- `core/hooks/useChatInfoCard.ts` (228), `useTypingLabel.ts`, `useMirrorWindow.ts`,
+  `useSetTransition.ts`;
+- `core/chat/chatInstanceContext.tsx`;
+- всё из `Chat.tsx`, что уходит в бэклог: `PinnedBar`, `TopbarSearch`, `SavedTagsPanel`,
+  плашки, `NowPlayingBar`, `SelectionBar`, `ChatDrops`, `ScheduledView`, `SuggestedPostsView`,
+  `ChatMsgActionPopups`, кнопки-углы.
+
+**В бэклог:** меню ⋮, закреп, поиск по чату, плашки шапки (заявки, настройки пира, звонок, эфир),
+аудиоплеер, панель выделения, drag&drop, отложенные, предложенные посты, клавиатура бота
+инлайном — строки Б-18…Б-29.
+
+**Тесты на новое:**
+- `chat.test.ts`: `setPeer` → `inited`, `peer_changing` один раз;
+- `onChangePeer` считает `type`/флаги и права по пиру (личка, группа, канал, тред);
+- `destroy` снимает подкомпоненты и контейнер, не оставляет подписок;
+- `topbar.test.ts`: заголовок и статус по типу пира, клик открывает правую колонку, «назад» —
+  `chat.pop`.
+
+**Агенты: 3.**
+
+| Агент | Файлы |
+|---|---|
+| **А (ведущий)** | `components/chat/chat.ts`, `chatType.ts`, правки `bubbles.ts`/`contextMenu.ts`/`selection.ts` под `this`, `lib/appImManager.ts` (создание `Chat`, позиция), снос `VanillaFeed.tsx`, `chatInstanceContext`, `reactChatInstance.ts` |
+| **Б** | `components/chat/topbar.ts` (+ тест), снос `ChatHeader`, `HeaderMenu`, `useHeaderMenuActions`, `useChatInfoCard`, `useTypingLabel` |
+| **В** | `components/chat/reactChatInput.ts`, `shared/react/*` (если нужен общий хост), разбор `Chat.tsx`: что уходит в бэклог, что — в `chat.ts` (передаёт А списком), снос `Chat.tsx` и его сателлитов |
+
+**Оценка: 12 агенто-дней, ≈ 6 календарных.** По старому плану 6-1 стоил 12 дней (риск) и 6-2 —
+8, всего 20 вместе со стендом и мутациями на каждом шаге и переносом 6 тестов `Chat.*`. Здесь
+меню ⋮ (≈ 4 дня из 8) уходит в бэклог, тесты не переносятся, класс портируется против
+настоящих `ChatBubbles`/`ChatContextMenu`/`ChatSelection`.
+
+**Веха К-3 (стенд, P0):** открыть личку, группу, канал, тред комментариев; история; отправка и
+приём (композер — остров); клик по шапке открывает профиль; фон в теме чата.
+
+---
+
+### К-4: ядро `ChatInput`; снос React-композера
+
+**Порт** (tweb `components/chat/input.ts`, 5718; карта — план программы, этап 7):
+- `construct` `:487-609`;
+- плашки reply/forward/webpage `:652-852`;
+- каркас `constructPeerHelpers` `:1055-1682` без эмодзи-дропдауна, send-as, записи и
+  автокомплита;
+- меню вложений `:1115-1352`, морф `btnSend` `:1398-1416`;
+- `finishPeerChange` `:2522-2815`;
+- черновики `:2271-2333`, `:2412-2484`;
+- ввод `:3129-3532`, превью ссылки `:3533-3634`;
+- `updateSendBtn` `:4390-4442`, отправка `:4536-4834`;
+- правка/пересылка/ответ `:4859-5204`;
+- `clearHelper` `:5265-5318`, `setTopInfo` `:5353-5443`.
+
+Поле ввода — rich-DOM tweb (решение пользователя В-4 = А):
+- `components/inputField.ts` до HEAD (904; у нас 381 без rich);
+- `inputFieldAnimated.ts` (122);
+- `helpers/dom/richInputHandler.ts` (900), `helpers/dom/markdown.ts` (549).
+
+Правило `CLAUDE.md` «инпут хранит сырые markdown-маркеры» меняется в этом шаге.
+
+`Chat.init` строит `new ChatInput(this, appImManager, managers, 'chat-input-main')`
+(`chat.ts:618`, `:632`, `:635`).
+
+**Удаляется.**
+- `components/Composer.tsx` (786), `components/composer/*` (20 файлов, 1682 строки);
+- `core/hooks/useChatSend.ts` (570), `useComposerDraft.ts` (79);
+- `core/richtext/markdown.ts` (779) — если без потребителей вне композера;
+- `reactChatInput.ts`.
+
+**В бэклог:** запись голоса и кружков, send-as, меню отправки и расписание, тултип разметки,
+автокомплит (упоминания, стикеры, эмодзи, команды, инлайн), эмодзи-дропдаун, клавиатура бота,
+медленный режим и платные сообщения — строки Б-30…Б-38.
+
+**Вложения** открывают наш React `SendMediaPopup.tsx` (429) через `popupStore`, то есть через
+остров оверлеев (вопрос **Р-2**).
+
+**Тесты на новое:**
+- `inputField.test.ts` / `richInputHandler.test.ts`: entities из DOM в UTF-16, вставка с
+  разметкой, undo;
+- `input.send.test.ts`: отправка текста, ответ, правка, пересылка — один RPC с правильными
+  полями;
+- черновик сохраняется на `finishPeerChange` и восстанавливается;
+- морф кнопки по состоянию (пусто, текст, правка).
+
+**Агенты: 3.**
+
+| Агент | Файлы |
+|---|---|
+| **А** | `components/inputField.ts`, `inputFieldAnimated.ts`, `helpers/dom/{richInputHandler,markdown}.ts` (+ тесты); правка `CLAUDE.md` о модели ввода |
+| **Б (ведущий)** | `components/chat/input.ts` (`construct`, `finishPeerChange`, черновики, отправка, `clearHelper`/`setTopInfo`), `chat/replyContainer.ts`, правка `chat.ts:618-648` |
+| **В** | `chat/attachMenuButton.tsx`, морф `btnSend`, плашка управления (`controlPlate.tsx`), снос `Composer.tsx`, `composer/*`, `useChatSend`, `useComposerDraft`, `reactChatInput.ts` |
+
+А и В начинают параллельно с Б по договорённому интерфейсу:
+- `InputField` — API tweb;
+- `ChatInput` вызывает `attachMenu`/`btnSend` через поля класса.
+
+**Оценка: 16 агенто-дней, ≈ 7 календарных.** По старому плану 7-1 + 7-2 = 22 дня, а этап 7
+целиком — 45 (+18 с дропдауном). Здесь — только ядро (rich-поле 6, `ChatInput` 7, вложения и
+снос 3). Всё вокруг — в П-6.
+
+**Веха К-4 (стенд, P0):** отправка текста с разметкой, ответ, правка, пересылка, вложение фото,
+приём в другом окне; F5 сохраняет черновик.
+
+---
+
+### К-5: `AppSharedMediaTab` + `AppEditChatTab`; снос `UserInfoPanel`/`GroupEditFlow`
+
+**Порт.**
+- tweb `sidebarRight/tabs/sharedMediaTab.tsx` (135, класс-вкладка) и `sharedMedia.tsx` (924):
+  `PeerProfile`, `AppSearchSuper` в одной прокрутке, кнопка «Изменить» `:674-702`, счётчики
+  вкладок `:563`, «Сохранённые диалоги» `:727`. У нас уже есть `peerProfile.solid.tsx` (1488),
+  `peerProfileAvatars.ts`, `appSearchSuper.ts` (3318).
+- Вкладка у инстанса чата — `chat.ts:1003-1008`, `:1178-1185`, `:1218-1242` (класс `Chat` уже
+  есть с К-3).
+- tweb `sidebarRight/tabs/editChat.tsx` (980) → `sidebarRight/tabs/editChat.solid.tsx` (0б-1).
+  Строки, ведущие в непортированные вкладки, скрыты до своей пачки (П-1): реакции, обсуждение,
+  админы/участники/удалённые/заявки, статистика. Уже портированные открываются родным
+  `createTab`: `chatType`, ссылки (0б-3), права (0б-6), `editContact`.
+
+**Удаляется.**
+- `components/UserInfoPanel.tsx` (823) + тесты, `sidebarRight/reactProfileTab.ts` (46);
+- `core/hooks/useSearchSuper.ts` (181), `useGroupInfo.ts` (220), `useTransitionSlider`;
+- `components/group/GroupEditFlow.tsx` (295) + оставшиеся `group/screens/*`,
+  `core/hooks/useGroupEdit.ts` (382);
+- `components/userInfo/*`, `ChannelStats.tsx`, `group/AddMembersScreen.tsx` — их места займут
+  вкладки П-1.
+
+**В бэклог:** вкладки 0б-4, 0б-5, 0б-7, 0б-8, 0б-9; `PinnedStoriesSection` (истории профиля),
+`QrModal` из профиля (2C-17), `KeyVerificationPopup` (Отступление В7-2) — строки Б-39…Б-44.
+
+**Тесты на новое:**
+- `sharedMediaTab.solid.test.tsx`: `setPeer` на той же вкладке не пересоздаёт `AppSearchSuper`,
+  новая вкладка на другого пира пересоздаёт; `destroy` снимает корень, `AppSearchSuper`,
+  `PeerProfileAvatars`;
+- кнопка «Изменить» по типу пира;
+- `editChat.solid.test.tsx`: сохранение на закрытии (не на каждом изменении); видимость строк
+  по правам.
+
+**Агенты: 2.**
+
+| Агент | Файлы |
+|---|---|
+| **А (ведущий)** | `sidebarRight/tabs/sharedMediaTab.ts`, `sharedMedia.solid.tsx`, `solidJsTabs/tabs.ts` (строка вкладки), правки `chat.ts` (`createSharedMediaTab`/`destroySharedMediaTab`), снос `UserInfoPanel`, `reactProfileTab`, `useSearchSuper`, `useGroupInfo` |
+| **Б** | `sidebarRight/tabs/editChat.solid.tsx` (+ тест), строка в `tabs.ts` (точечно), снос `GroupEditFlow`, `group/*`, `useGroupEdit` |
+
+**Оценка: 8 агенто-дней, ≈ 4 календарных.** По старому плану: 3-1 (4,5) + 3-2 (2,5) + 0б-1 (4) =
+11. Здесь нет моста `useChatSharedMediaTab` (`Chat` уже класс) и нет поштучной врезки детей в
+React-`GroupEditFlow`.
+
+**Веха К-5 (стенд, P0):** профиль лички, группы, канала; общие медиа; «Изменить» → сохранить
+название; Back/Esc по уровням.
+
+**После К-5** React остаётся только островом глобальных оверлеев (`#react-overlays`) и
+островами волны 4 (`StoryViewer`, `MediaEditor`, части `mediaViewer/base.ts`, пока их пачки не
+пройдены).
+
+---
+
+## 4. Сводка шагов и сравнение с остатком старого плана
+
+| Шаг | Агентов | Агенто-дней | Календарно | Тот же объём по старому плану |
+|---|---|---|---|---|
+| К-1 | 2 | 4 | 3 | 2-1, 2-3, 2-4, 2-9 ≈ 8 |
+| К-2 | 2 | 9 | 5 | этап 4 ≈ 24,5 |
+| К-3 | 3 | 12 | 6 | 6-1 + 6-2 ≈ 20 |
+| К-4 | 3 | 16 | 7 | 7-1 + 7-2 + часть 7-5 ≈ 25 |
+| К-5 | 2 | 8 | 4 | 3-1 + 3-2 + 0б-1 ≈ 11 |
+| **Каркас** | — | **49** | **≈ 25** | **≈ 88** |
+| Бэклог П-1…П-6 | 2–4 на пачку | ≈ 115 | ≈ 35 (пачки параллельно с вехи своего К) | ≈ 120 (остаток этапов 0б, 1, 2, 5, 6, 7) |
+| **Итого** | | **≈ 164** | **≈ 60** | **≈ 208** агенто-дней (остаток 0б ≈ 20, 1 ≈ 10, 2 ≈ 16, 3 ≈ 7, 4 ≈ 24,5, 5 ≈ 22, 6 ≈ 40, 7 ≈ 63 с дропдауном; ≈ 130–150 календарных по плану программы) |
+
+Откуда экономия (≈ 20 % агенто-дней и примерно вдвое по календарю):
+1. Нет временных фасадов и мостов (`ChatFacade`, `ChatInputFacade`, мосты `ВРЕМЕННО до Э*`) и их
+   последующего сноса.
+2. Не переносятся React-тесты.
+3. Нет стенда и мутаций на каждой задаче.
+4. Пачки бэклога портируются сразу в родное место, параллельно, без «врезки по одной» в общий
+   React-файл.
+
+Оценки грубые. Самая неточная — К-4 (rich-поле меняет модель ввода).
+
+---
+
+## 5. Бэклог
+
+Каждая строка — то, что пропадает на шаге К. «Куда» — пачка, в которой фича возвращается, уже в
+родное место. Пачка стартует после вехи своего К.
+
+| № | Что пропало | Пропадает на | tweb | Куда |
+|---|---|---|---|---|
+| Б-1 | Архив: пункт бургера, бейдж, список архива (сейчас оверлей `Sidebar.tsx` + `mountArchivedList`) | К-1 | `sidebarLeft/tabs/archivedTab.tsx`, `sidebarLeft/index.ts:681-685`, `:1760` | П-2 |
+| Б-2 | Строка «Архив» в списке — React-остров (`autonomousDialogList/dialogs.ts:56`, `:378`) | К-1 | `components/archiveDialog.tsx` | П-2 |
+| Б-3 | Форум: панель тем `TopicsPanel.tsx` (583), открытие форума из списка | К-1 | `forumTab/*`, `autonomousDialogList/forumTopics.ts` | П-2 |
+| Б-4 | Ряд историй над списком (`StoriesRow.tsx` 405, `useSidebarStories.tsx`), просмотр из ряда | К-1 | `components/stories/list.tsx` (474), `appDialogsManager.ts:1095-1125` | П-3 |
+| Б-5 | Вертикальная колонка папок (`FoldersSidebar.tsx` 238) | К-1 | `sidebarLeft/foldersSidebarContent/*` | П-3 |
+| Б-6 | Кнопка статус-эмодзи в шапке колонки (`SidebarEmojiStatusButton.tsx`) | К-1 | `sidebarLeft/index.ts:262`, `emojiStatusPicker.tsx` | П-3 |
+| Б-7 | Кнопка замка в шапке колонки | К-1 | `sidebarLeft/index.ts:264`, `:345-361` (у нас `lockButton.solid.tsx` есть) | П-3 |
+| Б-8 | Диплинки `/join/`, `/addlist/`, `?domain=&start=`, QR-подтверждение входа с десктопа (`useDeepLinks.ts` 160, `GlobalOverlays.tsx` QR, `FolderInvitePopup`) | К-2 | `lib/internalLinkProcessor.ts` (1661), `appImManager.ts:1043` | П-4 |
+| Б-9 | Хоткеи приложения: Ctrl+F, Ctrl+0 «Избранное», Alt+↑↓, мьют (`useAppHotkeys.ts`, `core/hotkeys.ts`) | К-2 | `appImManager.ts:1703-1853` | П-4 |
+| Б-10 | Фон в теме чата (публикация по активному чату, `useShellTheme`) | К-2 | `chat.ts:372-433` | К-3 (возвращается шагом) |
+| Б-11 | Автоблокировка по таймеру и Ctrl+L (`useAutoLock`, `useLockScreenShortcut`) — если не переносятся вызовом функции | К-2 | `lib/mainWorker/useAutoLock.ts`, `appImManager.ts:630` | П-4 |
+| Б-12 | Вынос клиента в окно PiP (`core/pip.ts` переносит `#root`, которого больше нет) | К-2 | `components/clientPip.tsx` (196) | П-6 |
+| Б-13 | Карточки пустой колонки и «недавно закрытые» | К-2 | `components/chatTips/*` (734), `appImManager.ts:377`, `:824-833` | П-6 |
+| Б-14 | Статус «не в сети» при простое | К-2 (не было) | `appImManager.ts:3210-3217` | бэкенд: ручки `account.updateStatus` нет (`presencestore.go:36-37`) |
+| Б-15 | Тост вступления по ссылке (`GlobalOverlays.tsx` `joinToast`) | К-2 | `toastNew` | П-4 (с диплинками) |
+| Б-16 | Подписки `construct` без предмета: `ephemeral_*`, `file_speed_limited`, `service_notification`, `payment_sent` | К-2 (не было) | `appImManager.ts:567-628` | бэкенд |
+| Б-17 | `singleInstance`, t.me-вход, состояние вкладок (`updateTabState`) | К-2 (не было) | `index.ts:443`, `:487-494`, `appImManager.ts:842`, `:951-957` | вне волны |
+| Б-18 | Меню ⋮ шапки (39 пунктов с `verify`; `HeaderMenu.tsx` 274) | К-3 | `topbar.ts:462-903` | П-5 |
+| Б-19 | Закреп (`PinnedBar`, `PinnedBorder`, `AnimatedSuper`, `usePinnedBar`, экран закрепов) | К-3 | `pinnedMessage.tsx` (841), `pinnedMessageBorder.ts` (204), `ChatType.Pinned` | П-5 |
+| Б-20 | Поиск по чату (`TopbarSearch.tsx`, `useChatHeaderSearch.ts`) | К-3 | `topbarSearch.tsx` (1352) | П-5 |
+| Б-21 | Плашки шапки: заявки, настройки пира, звонок, эфир | К-3 | `topbarPlates.ts`, `topbarPlate.tsx`, `requests.tsx`, `actions.tsx`, `topbarGroupCall/*`, `topbarLive/*` | П-5 |
+| Б-22 | Аудиоплеер (`NowPlayingBar.tsx` 265) и плашка звонка | К-3 | `chat/audio.tsx` (326), `appImManager.ts:849-855` | П-5 |
+| Б-23 | Панель выделения (`SelectionBar.tsx`) — кнопки над выделением | К-3 | `chat/selection.ts` (у нас класс, панель — tweb `selection.ts`) | П-5 |
+| Б-24 | Drag&drop и вставка файлов (`ChatDrops.tsx`, `ChatDragAndDrop.tsx`) | К-3 | `appImManager.ts:2807-3125`, `chat/dragAndDrop.ts` | П-4 |
+| Б-25 | Отложенные (`ScheduledView.tsx`), предложенные посты (`SuggestedPostsView.tsx`) | К-3 | `ChatType.Scheduled`, `appImManager.openScheduled` `:3436` | П-5 |
+| Б-26 | Теги сохранённых (`SavedTagsPanel.tsx`) | К-3 | `chat/topbar` + `savedReactionTags` | П-5 |
+| Б-27 | Кнопки-углы ленты («вниз», упоминания, реакции: `CornerButton`, `ScrollDownFab`) | К-3 | `input.ts:638` (`constructGoDownButton`) | К-4 (часть ядра ввода) |
+| Б-28 | Попапы действий над сообщением из `Chat.tsx` (`ChatMsgActionPopups.tsx`, `useChatPopups.tsx` 327) | К-3 | попапы 2C | П-5 |
+| Б-29 | Статус и «печатает» в шапке — ядро шапки берёт `getPeerStatus`; полная модель статуса | К-3 | `appImManager.ts:3454-3816` | П-4 |
+| Б-30 | Запись голоса и кружков (`useVoiceRecorder.ts` 366, `VoiceRecordingPanel`, `RoundRecordPreview`) | К-4 | `chat/recording/*`, `nativeVideoRecorder.ts` | П-6 |
+| Б-31 | Send-as (`SendAsButton.tsx`, `useSendAs.ts`) | К-4 | `chat/sendAs.ts` (418) | П-6 |
+| Б-32 | Меню отправки, расписание, без звука (`SendMenu`, `SchedulePopup`) | К-4 | `sendContextMenu.ts` (154), `scheduleSendingPopup.tsx` | П-6 |
+| Б-33 | Тултип разметки (`MarkupTooltip.tsx` 395) | К-4 | `chat/markupTooltip.ts` (582) | П-6 |
+| Б-34 | Автокомплит: упоминания, стикеры, эмодзи, команды, инлайн-боты | К-4 | `autocompleteHelper.ts` и соседи (~1 260) | П-6 |
+| Б-35 | Эмодзи/стикер/GIF-дропдаун (`emoji/EmojiDropdown.tsx` 746); вкладки поиска стикеров и GIF открывались из него | К-4 | `emoticonsDropdown/**` (4315) | П-6 |
+| Б-36 | Клавиатура бота (`Chat.tsx` инлайн) и плашка управления | К-3/К-4 | `replyKeyboard.tsx` (188), `controlPlate.tsx` | П-6 |
+| Б-37 | Медленный режим, платные сообщения | К-4 | `input.ts:4005-4085`, `paidMessagesInterceptor.ts` | П-6 |
+| Б-38 | Правка медиа в сообщении | К-4 | `editMessageMedia.ts` (133) | П-6 |
+| Б-39 | Реакции чата (0б-4) | К-5 (строка `editChat` скрыта) | `chatReactions.tsx` (208) | П-1 |
+| Б-40 | Обсуждение канала (0б-5) | К-5 | `chatDiscussion.tsx` (317) | П-1 |
+| Б-41 | Админы, участники, удалённые, заявки, права участника (0б-7; сейчас `userInfo/RightsEditor`, `group/screens/*`) | К-5 | `chatAdministrators.tsx`, `chatMembers.tsx`, `removedUsers.tsx`, `chatRequests.tsx`, `chatUserPermissions.tsx` | П-1 |
+| Б-42 | Добавление участников из профиля (0б-8; `AddMembersScreen.tsx`) | К-5 | `sidebarLeft/tabs/addMembers.tsx` (у нас Solid есть) | П-1 |
+| Б-43 | Статистика канала (0б-9; `ChannelStats.tsx`) | К-5 | `statistics.tsx` (1156) | П-1 |
+| Б-44 | Истории профиля (`PinnedStoriesSection.tsx`), QR из профиля (`QrModal`), проверка ключа секретного чата | К-5 | `sharedMedia.tsx` (истории), 2C-17, Отступление В7-2 | П-1 |
+
+### Пачки бэклога
+
+| Пачка | Состав (строки) | Старт | Агентов | Агенто-дней | Разбиение файлов |
+|---|---|---|---|---|---|
+| **П-1** вкладки правой колонки | 0б-4, 0б-5, 0б-7, 0б-8, 0б-9; Б-39…Б-44 (0б-3, 0б-6 — уже в работе) | после К-5 | 3 | ≈ 13 | агент на вкладку или группу: (0б-4 + 0б-5), (0б-7), (0б-8 + 0б-9); общий — только `solidJsTabs/tabs.ts`, строки точечно |
+| **П-2** список | архив 1-5 (Б-1, Б-2), форум 1-6 (Б-3), сохранённые 1-7 (в работе), ядро 1-8 | после К-2 | 3 | ≈ 11 | архив — `archivedTab`, `archiveDialog`; форум — `forumTab/*`, `forumTopics.ts`; 1-8 — `lib/appDialogsManager.ts` (единственный владелец файла) |
+| **П-3** левая колонка | истории (Б-4), колонка папок (Б-5), кнопки шапки (Б-6, Б-7) | после К-2 | 2 | ≈ 7 | истории — `stories/list.tsx` + вызов в `appDialogsManager` (через владельца П-2/1-8); папки + кнопки — `foldersSidebarContent/*`, строки в `sidebarLeft/index.ts` |
+| **П-4** подсистемы `AppImManager` | хоткеи (Б-9), drag&drop (Б-24), `internalLinkProcessor` (Б-8, Б-15), звонки (5-5), боты/вебапп (5-6), статус/typing (Б-29), автоблокировка (Б-11) | после К-3 | 4 | ≈ 25 | каждый — свой файл (`internalLinkProcessor.ts`, `chat/dragAndDrop.ts`, …), в `lib/appImManager.ts` — методы блоками F/K/L/D/H; врезка в класс по очереди |
+| **П-5** чат и шапка | меню ⋮ (Б-18), закреп (Б-19), поиск по чату (Б-20), плашки (Б-21), аудио (Б-22), выделение (Б-23), отложенные (Б-25), теги (Б-26), попапы (Б-28) | после К-3 | 4 | ≈ 27 | `topbar.ts` — у одного (меню ⋮ + плашки); `pinnedMessage.tsx`, `topbarSearch.tsx`, `chat/audio.tsx` — отдельные агенты; врезка в `chat.ts`/`topbar.ts` по очереди |
+| **П-6** композер и прочее | запись (Б-30), send-as (Б-31), меню отправки (Б-32), тултип (Б-33), автокомплит (Б-34), эмодзи-дропдаун (Б-35), клавиатура бота (Б-36), медленный режим (Б-37), правка медиа (Б-38), PiP (Б-12), `chatTips` (Б-13); медиаредактор, вьювер историй — волна 4 | после К-4 | 4 | ≈ 32 | дропдаун — один агент целиком (`emoticonsDropdown/**`); запись — `chat/recording/*`; автокомплит + тултип — `autocomplete*`, `markupTooltip.ts`; остальное — четвёртый; врезка в `input.ts` по очереди |
+
+Строки Б-14, Б-16, Б-17 ждут бэкенда или вне волны. Их порт не планируется, пока нет предмета.
+
+---
+
+## 6. Острова React по шагам
+
+| После | React-корни |
+|---|---|
+| К-1 | `#root` (`main.tsx` → `App.tsx`: центр, оверлеи, хуки), остров строки «Архив» снят вместе с архивом |
+| К-2 | остров инстанса чата (`reactChatInstance.ts`, `ВРЕМЕННО до К-3`), `#react-overlays`, острова волны 4 |
+| К-3 | остров композера внутри `Chat` (`reactChatInput.ts`, `ВРЕМЕННО до К-4`), вкладка №0 справа (`reactProfileTab.ts`, до К-5), `#react-overlays`, волна 4 |
+| К-4 | вкладка №0 справа, `#react-overlays`, волна 4 |
+| К-5 | `#react-overlays`, волна 4 |
+
+---
+
+## 7. Что нужно решить пользователю
+
+| № | Вопрос | Рекомендация |
+|---|---|---|
+| **Р-1** | В К-1 класс `AppSidebarLeft` создаётся из layout-эффекта `App.tsx` над статичной разметкой колонки: это «класс внутри React» до К-2, а правило 2 его запрещает. Он уже написан в 2-1. Варианты: **А** — принять как исключение на один шаг (снимается К-2 через ~3 дня); **Б** — слить К-1 и К-2 в один шаг | **А**: 2-1 почти готов, а слияние делает К-2 вдвое больше при одной вехе P0 |
+| **Р-2** | Вложения в К-4 открывают наш React `SendMediaPopup` через `popupStore` (остров оверлеев): класс → React-попап. Варианты: **А** — допустить до порта `popups/newMedia.tsx` (2328, отдельная пачка); **Б** — убрать вложения в бэклог, отправка только текстом | **А**: вложение фото — часть P0 («отправка»), а попап живёт в уже разрешённом острове |
+| **Р-3** | 0б-3 и 0б-6 в работе открывают Solid-вкладки из React-`GroupEditFlow`. Варианты: **А** — долить как есть, в К-5 их откроет `AppEditChatTab`; **Б** — остановить и ждать К-5 | **А**: порт вкладок — родной код, меняется только вызывающий |
+
+---
+
+## 8. Ссылки на справочник
+
+- Разбор tweb по старым задачам 4-1…4-7 (адреса `index.ts`, `bootstrapIm`, `appImManager` по
+  блокам, подписки `construct`) — в истории этой ветки, коммит `3e12342c`
+  (`2026-10-02-wave-7-stage-4-entry-appimmanager.md`, удалён). Его содержание перенесено в К-2.
+- Карта `appImManager.ts` по блокам A–M и члены `Chat`, к которым обращается класс, — план
+  программы, этап 4 (`2026-09-30-wave-7-shell-sidebars.md`).
+- Карта `input.ts` — там же, этап 7. `chat.ts`/`topbar.ts` — этап 6.
+- Архитектура tweb — `docs/tweb/app-architecture.md`.
