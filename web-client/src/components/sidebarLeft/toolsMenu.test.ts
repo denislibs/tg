@@ -30,6 +30,14 @@ vi.mock('./tabs/settings.solid', () => ({
     return el
   },
 }))
+// Журнал звонков — тоже заглушка: пины вкладки — `tabs/calls.solid.test.tsx`.
+vi.mock('./tabs/calls.solid', () => ({
+  default: () => {
+    const el = document.createElement('div')
+    el.className = 'calls-tab-stub'
+    return el
+  },
+}))
 
 const ME = { _: 'user', id: 1, first_name: 'Denis', last_name: 'Me', pFlags: {} }
 
@@ -54,7 +62,6 @@ function makeSidebar(over: Partial<ToolsMenuSidebar> = {}): ToolsMenuSidebar {
     getArchivedUnreadCount: () => 0,
     openSavedMessages: vi.fn(),
     openMyStories: vi.fn(),
-    openCalls: vi.fn(),
     switchTheme: vi.fn(),
     ...over,
   }
@@ -207,12 +214,21 @@ describe('createToolsMenu — клики', () => {
     await vi.waitFor(() => expect(column.querySelector('.settings-root-stub')).not.toBeNull())
   })
 
-  it('«Избранное», «Мои истории», «Звонки», «Архив» зовут мосты колонки', async() => {
+  it('«Звонки» открывают AppCallsTab в колоночном слайдере после closeTabsBefore (tweb :751-756)', async() => {
+    const { menu, sidebar } = await openMenu()
+
+    item(menu, 'Calls').click()
+    await vi.waitFor(() => expect(column.querySelector('.calls-tab-stub')).not.toBeNull())
+
+    expect(sidebar.closeTabsBefore).toHaveBeenCalledTimes(1)
+    expect(testSlider.slider.hasTabsInNavigation()).toBe(true)
+  })
+
+  it('«Избранное», «Мои истории», «Архив» зовут мосты колонки', async() => {
     const sidebar = makeSidebar({ hasArchivedDialogs: () => true })
     for(const [text, fn] of [
       ['Saved Messages', sidebar.openSavedMessages],
       ['My Stories', sidebar.openMyStories],
-      ['Calls', sidebar.openCalls],
       ['Archived Chats', sidebar.openArchiveTab],
     ] as const) {
       const { menu } = await openMenu(sidebar)

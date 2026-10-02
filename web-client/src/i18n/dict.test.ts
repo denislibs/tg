@@ -468,12 +468,16 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // пяти −1: со сносом React-экрана `NewGroupFlow` и `useSidebarActions` ушёл наш
 // `NewGroup.DefaultTitle` (вкладка tweb без названия группу не создаёт). Итог: ru 1412,
 // uk 759, es 756, de 757, fr 751.
+// Задача 0а-4 волны 7 (вкладка «Звонки», порт tweb calls.tsx): у ru +4 ключа tweb
+// lang.ts:2017-2025 — `NoRecentCalls`, `NoRecentCallsInfo`, `Calls.Status.Group`,
+// `CallBack` (`Calls` уже завела 2-2); −1 наш `Calls.Empty` снесённого React-экрана
+// `CallsView` (у tweb пустой журнал — `NoRecentCalls`). Итог: ru 1415.
 // Задача 0б-11 волны 7 (вкладки «Поиск стикеров» и «Поиск GIF» правой колонки):
 // у ru +2 ключа tweb lang.ts — `Stickers.SearchAdd` (кнопка набора, tweb
 // `stickers.tsx:49`) и `SearchGifsTitle` (заголовок/плейсхолдер `AppGifsTab`,
-// `tabs.ts:460`, `gifs.tsx:92`). Итог: ru 1414.
+// `tabs.ts:460`, `gifs.tsx:92`). Итог: ru 1417.
 const COMPOSITION = {
-  ru: { keys: 1414, plural: 44 },
+  ru: { keys: 1417, plural: 44 },
   uk: { keys: 759, plural: 33 },
   es: { keys: 756, plural: 32 },
   de: { keys: 757, plural: 33 },
@@ -628,9 +632,11 @@ const COMPOSITION = {
 // `COMPOSITION` выше).
 // Задачей 0а-2 волны 7 — у ru +1 ключ tweb `ChatLocation`, у всех пяти минус
 // `NewGroup.DefaultTitle` снесённого React-экрана (разбор — там же).
+// Задачей 0а-4 волны 7 — у ru +4 ключа вкладки «Звонки» и −1 `Calls.Empty`
+// снесённого React-экрана (разбор — там же).
 // Задачей 0б-11 волны 7 — у ru +2 ключа tweb (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: 'cbf7cbf4',
+  ru: '5d69fb8d',
   uk: '571c2c10',
   es: '737d78e3',
   de: '5e55ac08',
@@ -912,6 +918,7 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     PaymentShippingEmailPlaceholder: '«Email» — заимствование, в русском Telegram так же',
     AttachGif: 'GIF — аббревиатура формата, не переводится',
     AppName: 'название продукта — «Telegram» не переводится (заголовок попапа без своего, tweb peer.ts:58)',
+    'Calls.Status.Group': 'чистый шаблон «(N) время» без слов — tweb lang.ts:2020, в русском Telegram тот же',
   },
   uk: {
     'Premium.Boarding.Title': 'назва продукту — «Telegram Premium» не перекладається',

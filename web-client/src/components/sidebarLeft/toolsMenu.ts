@@ -31,7 +31,6 @@
  *    бейдж — из зеркала диалогов колонки, ВРЕМЕННО до 1-5;
  *  • «Мои истории» — `AppMyStoriesTab` (:715-722) не портирован → наш
  *    `StoriesArchiveSheet`, О-82 волны 7;
- *  • «Звонки» — `AppCallsTab` (:727-734) → React-экран, ВРЕМЕННО до 0а-4;
  *  • ночной режим — `themeController.switchTheme` (:919-928) → React-хук
  *    шелла `useThemeToggle`, ВРЕМЕННО до Э4-5.
  *
@@ -72,7 +71,7 @@
 import ButtonMenu, { type ButtonMenuItemOptions, type ButtonMenuItemOptionsVerifiable } from '@components/buttonMenu'
 import ButtonMenuToggle from '@components/buttonMenuToggle'
 import createSubmenuTrigger, { type CreateSubmenuArgs } from '@components/createSubmenuTrigger'
-import { AppNewChannelTab, AppPowerSavingTab, AppSettingsTab } from '@components/solidJsTabs/tabs'
+import { AppCallsTab, AppNewChannelTab, AppPowerSavingTab, AppSettingsTab } from '@components/solidJsTabs/tabs'
 import { getColumnSlider, openContactsTab } from '@components/sidebarLeft/columnSlider'
 import createNewGroupTab from '@components/sidebarLeft/tabs/createNewGroupTab'
 import type { User, UserReal } from '@core/peers/peer'
@@ -135,8 +134,6 @@ export interface ToolsMenuSidebar {
   openSavedMessages: () => void
   /** `AppMyStoriesTab` (:715-722) — О-82 волны 7 */
   openMyStories: () => void
-  /** `AppCallsTab` (:727-734) — ВРЕМЕННО до 0а-4 */
-  openCalls: () => void
   /** `themeController.switchTheme(undefined, coords)` (:919-928) — ВРЕМЕННО до Э4-5 */
   switchTheme: (coords: { x: number, y: number }) => void
 }
@@ -279,7 +276,7 @@ export function createToolsMenu(
     text: 'Calls',
     onClick: () => {
       closeTabsBefore(() => {
-        sidebar.openCalls()
+        void getColumnSlider().createTab(AppCallsTab).open()
       })
     },
     verify: () => IS_CALL_SUPPORTED, // || IS_CONFERENCE_CALL_SUPPORTED — О-1 волны 7

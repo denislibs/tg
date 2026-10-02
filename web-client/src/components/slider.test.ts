@@ -377,6 +377,28 @@ describe('SidebarSlider — onOpenTab', () => {
   })
 })
 
+describe('SidebarSlider — tab.shown (tweb slider.ts:136, :241)', () => {
+  it('разрешается по концу перехода открытия, а не по рендеру; закрытие взводит его заново', async () => {
+    const slider = new SidebarSlider({ sidebarEl: createSidebarEl(), navigationType: 'left' })
+    // У базовой вкладки нет `onOpenAfterTimeout` — таймер конца перехода обязан
+    // стоять и без хука, иначе `shown` у такой вкладки не разрешится никогда.
+    const tab = slider.createTab(SliderSuperTab, false)
+    let shown = 0
+    void tab.shown.then(() => { ++shown })
+
+    await tab.open()
+    await vi.advanceTimersByTimeAsync(NAVIGATION_TRANSITION_TIME - 1)
+    expect(shown).toBe(0)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(shown).toBe(1)
+
+    const first = tab.shown
+    void tab.close()
+    expect(tab.shown).not.toBe(first)
+    expect(tab.shown.isFulfilled).toBe(false)
+  })
+})
+
 describe('SidebarSlider — createTab', () => {
   it('проставляет вкладке managers (иначе она полезет к воркеру своим путём)', () => {
     const managers = { sessions: {} } as never

@@ -640,9 +640,22 @@ export const AppNewGroupTab =
   })
 ;(AppNewGroupTab as unknown as { noSame: boolean }).noSame = true
 
+// ── «Звонки» (tweb :225-230) — задача 0а-4 волны 7 ──────────────────────────
+// Журнал звонков левой колонки (`calls.solid.tsx`). `noSame` — как у оригинала:
+// повторный пункт «Звонки» при уже открытой вкладке не кладёт вторую. Вкладки
+// `AppNewCallTab` (tweb :233-238) нет — она целиком про конференции, О-1
+// (шапка `calls.solid.tsx`, расхождение 1).
+export const AppCallsTab =
+  scaffoldSolidJSTab({
+    title: 'Calls',
+    getComponentModule: () => import('../sidebarLeft/tabs/calls.solid'),
+  })
+;(AppCallsTab as unknown as { noSame: boolean }).noSame = true
+
 // ── Поиск GIF и стикеров правой колонки (tweb :458-462, :521-525) — задача 0б-11 ─
-// Обе обычной формы и без полезной нагрузки, как у оригинала: отправку в чат и
-// колонку вкладки берут у синглтонов (`sidebarRight/tabs/emoticonsSearchBridge.ts`).
+// Обе обычной формы и без полезной нагрузки, как у оригинала: колонку вкладки берут
+// у синглтона `appSidebarRight`, отправку в чат — у `appImManager.chat` (мост
+// `sidebarRight/tabs/emoticonsSearchBridge.ts`, ВРЕМЕННО до Э4-3).
 // Открывает их лупа нижней полосы панели эмодзи (tweb `emoticonsDropdown/index.ts:300-310`).
 export const AppGifsTab =
   scaffoldSolidJSTab({
