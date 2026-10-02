@@ -278,7 +278,7 @@ export interface BubblesNavigation {
    * поднимает `core/calls/callEngine::startOutgoing`, и ему нужна КАРТОЧКА
    * собеседника (имя, градиент, id фотографии), которой лента не владеет;
    * собирает её хост (`VanillaFeed`) — тем же способом, что список звонков
-   * (`components/CallsView.tsx`).
+   * (`sidebarLeft/tabs/calls.solid.tsx::callUser`).
    *
    * Тип едет тем же значением, что лежит в `data-type` бабла: `'voice'` либо
    * `'video'` (tweb `CallType`). Не передан — клик по баблу звонка ничего не

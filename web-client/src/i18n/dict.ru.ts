@@ -432,7 +432,11 @@ const ru = {
   StarsTransactionsOutgoing: 'Исходящий',
   StarsTransactionsIncoming: 'Входящий',
   'Chat.Service.Call.Missed': 'Пропущенный',
-  'Calls.Empty': 'Нет недавних звонков',
+  // ── Вкладка «Звонки» (tweb lang.ts:2015-2025, задача 0а-4 волны 7) ──
+  NoRecentCalls: 'Нет недавних звонков',
+  NoRecentCallsInfo: 'Здесь будут отображаться ваши недавние голосовые и видеозвонки.',
+  'Calls.Status.Group': '(%1$s) %2$s',
+  CallBack: 'Перезвонить',
   CallMessageVideoIncoming: 'Входящий видеозвонок',
   'Call.StatusEnded': 'Звонок завершён',
   'Call.StatusDeclined': 'Отклонён',
