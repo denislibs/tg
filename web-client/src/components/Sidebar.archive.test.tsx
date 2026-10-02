@@ -1,70 +1,29 @@
 // src/components/Sidebar.archive.test.tsx
-// Этап 4, Task 1: оверлей архива переехал на то же виртуальное ядро, что и
-// список папки (`DeferredSortedVirtualList`).
+// Оверлей архива колонки (`ВРЕМЕННО до 1-5`, вкладка `AppArchivedTab` у tweb):
+// список — `AutonomousDialogList(FOLDER_ID_ARCHIVE)` владельца
+// (`appDialogsManager.mountArchivedList`, задача 1-4 волны 7), как у вкладки tweb
+// `archivedTab.tsx:80-110`.
 //
-// Пины здесь про проводку ИМЕННО архива, а не про само ядро (оно покрыто
-// `virtual/*.test.tsx`) и не про список папки (`ChatList.test.tsx`):
+// Пины здесь про проводку ИМЕННО архива, а не про само ядро
+// (`deferredSortedVirtualList.solid.test.tsx`) и не про список папки
+// (`autonomousDialogList/dialogs.test.ts`):
 // (1) в DOM живут только строки окна, а не весь архив;
-// (2) `ul` несёт высоту под ВЕСЬ набор и лежит прямо в контейнере прокрутки;
-// (3) `totalCount` — размер АРХИВНОЙ выборки, который отдал ВЛАДЕЛЕЦ (а не
-//     длина того, что уже в зеркале): при неполной загрузке архива хвост списка
-//     это дырки-скелетоны, и они же просят следующую страницу — оверлей
-//     листается сам (порт `archivedTab.tsx:19,80-96` — архив это тот же
-//     `AutonomousDialogList` с `FOLDER_ID_ARCHIVE`);
-// (4) пустой архив показывает заглушку ВМЕСТО `ul`;
-// (5) строки те же `ChatListItem` с тем же `onSelect`/`selected`.
+// (2) `ul` несёт высоту под ВЕСЬ набор и лежит в скроллере списка;
+// (3) размер набора — `count` АРХИВНОЙ выборки владельца: при неполной загрузке
+//     хвост — скелетоны, и они же просят следующую страницу;
+// (4) пустой архив показывает заглушку ВМЕСТО списка;
+// (5) клик по строке открывает чат, подсветку ставит `peer_changed` владельца.
+// React-пины мемоизации строк (`memo`, стабильный `renderItem`, кэш обёрток
+// `useDialogListSource`) предмета больше не имеют: строку строит список один раз
+// (`SortedDialogList`), React её не перерисовывает.
 //
-// Тест гоняет ЖИВОЙ Sidebar (как `Sidebar.chatlist.test.tsx`): оверлей архива
-// открывается тем же путём, что у пользователя, — кликом по закреплённому ряду
-// «Архив» в списке чатов.
+// Тест гоняет ЖИВОЙ Sidebar: оверлей открывается тем же путём, что у пользователя, —
+// кликом по закреплённой строке «Архив» в списке «Всех чатов».
 //
-// happy-dom не считает layout: `offsetHeight`/`offsetWidth` (их читает
-// `useElementSize` у контейнера прокрутки) подставляются стабом на прототипе —
-// тот же приём, что в `ChatList.test.tsx`.
+// happy-dom не считает layout: высоту скроллера (её читает `useElementSize` ядра)
+// отдаёт стаб `getBoundingClientRect`.
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-
-// Рендеры НАСТОЯЩЕЙ `ChatListItem` — считаются по `useTypingLabel`, который
-// строка зовёт ровно один раз за рендер и ровно со своим `chatId` (приём
-// `ChatList.test.tsx`). Границей мемоизации при этом остаётся `memo` самой
-// строки, поэтому счётчик краснеет и на снятом `memo`, и на нестабильных
-// пропсах, приехавших из `ArchiveList`.
-// `archiveRenderItems` — какая ссылка `renderItem` приезжала в ядро списка
-// АРХИВА (в сайдбаре таких списков два — папки и архива, различаем по классу
-// `ul`). Сюда `useCallback` вокруг `renderItem` попадает напрямую: счётчик
-// рендеров строк его не видит, потому что пропсы строки стабильны сами по себе
-// и её `memo` гасит лишний рендер даже при меняющемся `renderItem`.
-const { rowRenders, archiveRenderItems } = vi.hoisted(() => ({
-  rowRenders: [] as number[],
-  archiveRenderItems: [] as unknown[],
-}))
-
-vi.mock('../core/hooks/useTypingLabel', async (importOriginal) => {
-  const mod = await importOriginal<typeof import('../core/hooks/useTypingLabel')>()
-  return {
-    ...mod,
-    useTypingLabel: (chatId: number, isGroup: boolean) => {
-      rowRenders.push(chatId)
-      return mod.useTypingLabel(chatId, isGroup)
-    },
-  }
-})
-
-vi.mock('./virtual/DeferredSortedVirtualList', async (importOriginal) => {
-  const mod = await importOriginal<typeof import('./virtual/DeferredSortedVirtualList')>()
-  const styles = (await import('./Sidebar.module.scss')).default
-  const Real = mod.default
-  return {
-    ...mod,
-    default: (props: ComponentProps<typeof Real>) => {
-      if (props.className === styles.archiveVirtualList) archiveRenderItems.push(props.renderItem)
-      return <Real {...props} />
-    },
-  }
-})
-
-import type { ComponentProps } from 'react'
-
 import Sidebar from './Sidebar'
 import s from './Sidebar.module.scss'
 import { ManagersProvider } from '../core/hooks/useManagers'
@@ -76,7 +35,7 @@ import { useAppStateStore } from '../stores/appState'
 import { useSettingsStore } from '../settings'
 import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '../core/folderIds'
 import type { Managers } from '../client/bootstrap'
-import type { Dialog } from '../core/models'
+import { isDialogArchived, type Dialog } from '../core/models'
 import { makeDialog } from '../core/dialogs/testDialog'
 
 const HOST_HEIGHT = 720
@@ -87,16 +46,21 @@ const NORMAL = 5
 /** id архивных диалогов идут отдельным диапазоном — их видно в `href` строки. */
 const ARCHIVE_ID_BASE = 1000
 
-// Владелец отдаёт размер СВОЕЙ выборки: «Все чаты» — набор незаархивированных,
-// архив — свой (`/chats?folder_id=1`). Дырок ни у того, ни у другого не
-// остаётся, поэтому каждый список просит страницу ровно один раз — на первом
-// показе. Сами диалоги приезжают зеркалу отдельно (`seedMirror`), как их
-// разложил бы проектор по операции владельца.
-const answerFor = (filterId: number, archiveCount: number) => ({
-  dialogs: [],
-  count: filterId === ARCHIVE_FOLDER_ID ? archiveCount : NORMAL,
-  isEnd: true,
-})
+// Владелец отдаёт страницу СВОЕЙ выборки из зеркала (курсор — индекс, как
+// `dialogsManager.forFilter`) и её размер: «Все чаты» — набор незаархивированных,
+// архив — свой (`/chats?folder_id=1`; `archiveCount` — сколько их «на сервере»).
+const answerFor = (o: { filterId: number, offsetIndex?: number, limit?: number }, archiveCount: number) => {
+  const { dialogs, dialogIndexById } = useChatsStore.getState()
+  const archived = o.filterId === ARCHIVE_FOLDER_ID
+  const matching = dialogs.filter((d) => isDialogArchived(d) === archived)
+  const after = matching.filter((d) => o.offsetIndex === undefined || dialogIndexById[d.peerId] < o.offsetIndex)
+  const limit = o.limit ?? 20
+  return {
+    dialogs: after.slice(0, limit),
+    count: archived ? archiveCount : NORMAL,
+    isEnd: after.length <= limit,
+  }
+}
 
 function managersWith(getDialogs: (o: { filterId: number }) => unknown): Managers {
   return new Proxy({}, {
@@ -111,18 +75,18 @@ function managersWith(getDialogs: (o: { filterId: number }) => unknown): Manager
 }
 
 function fakeManagers(archiveCount = ARCHIVED) {
-  const getDialogs = vi.fn(async (o: { filterId: number }) => answerFor(o.filterId, archiveCount))
+  const getDialogs = vi.fn(async (o: { filterId: number, offsetIndex?: number, limit?: number }) => answerFor(o, archiveCount))
   return { managers: managersWith(getDialogs), getDialogs }
 }
 
 /** Тот же владелец, но страница АРХИВНОЙ выборки не отвечает, пока тест её не
- *  отпустит: только в этом окне у архивного списка живы `wasAtLeastOnceFetched
- *  === false` и `animate === false` (первая загрузка ещё идёт). */
+ *  отпустит: только в этом окне у архивного списка `wasAtLeastOnceFetched === false`
+ *  (первая загрузка ещё идёт). */
 function pendingArchiveManagers(archiveCount = ARCHIVED) {
   let release: (() => void) | null = null
-  const getDialogs = vi.fn(async (o: { filterId: number }) => {
-    if (o.filterId === ARCHIVE_FOLDER_ID) await new Promise<void>((resolve) => { release = resolve })
-    return answerFor(o.filterId, archiveCount)
+  const getDialogs = vi.fn(async (o: { filterId: number, offsetIndex?: number, limit?: number }) => {
+    if (o.filterId === ARCHIVE_FOLDER_ID && o.limit !== 10) await new Promise<void>((resolve) => { release = resolve })
+    return answerFor(o, archiveCount)
   })
   return { managers: managersWith(getDialogs), release: () => release?.() }
 }
@@ -143,19 +107,13 @@ function seed(archived: number) {
   seedMirror([...normal, ...arch])
 }
 
-/** Архивный чат получил сообщение и уехал на самый верх архива. */
-const raiseArchived = (chatId: number, index: number) =>
-  useChatsStore.getState().applyDialogOps([{ op: 'upsert', items: [{ dialog: dialog(chatId, true), index }] }])
-
-/** Контейнер прокрутки оверлея архива — он же `scrollableHost` списка. */
-const archiveHost = () => document.querySelector<HTMLElement>('.' + s.archiveList) as HTMLElement
+/** Хост оверлея и скроллер списка архива (узел владельца, `l()` → `generateScrollable`). */
+const archiveBox = () => document.querySelector<HTMLElement>('.' + s.archiveList) as HTMLElement
+const archiveHost = () => archiveBox().querySelector<HTMLElement>(':scope > .scrollable')!
 const archiveList = () => archiveHost().querySelector('ul') as HTMLElement
+/** Строки сверху вниз — по `top` ядра (порядок узлов в DOM — не порядок строк). */
 const archiveRows = () => Array.from(archiveList().querySelectorAll<HTMLElement>('a.chatlist-chat'))
-/** Строки, которым ядро ПРЯМО СЕЙЧАС анимирует `top`: на время движения
- *  `useAnimatedTop` держит на строке `--background` (`useAnimatedTop.ts:97`). */
-const animatingRows = () => archiveRows().filter((el) => el.style.getPropertyValue('--background') !== '')
-/** Рендеры НАСТОЯЩИХ строк архива (id обычных диалогов в этот диапазон не попадают). */
-const archiveRowRenders = () => rowRenders.filter((id) => id > ARCHIVE_ID_BASE).length
+.sort((a, b) => parseFloat(a.style.top) - parseFloat(b.style.top))
 
 /** Троттлинг измерения скролла в happy-dom уходит в `setTimeout(24)`. */
 async function scrollArchiveTo(top: number) {
@@ -164,14 +122,15 @@ async function scrollArchiveTo(top: number) {
     host.scrollTop = top
     host.dispatchEvent(new Event('scroll'))
   })
+  await settle()
+}
+
+/** Волна раскрытия строк ядра (`setTimeout` ~8 мс) и ответы владельца. */
+async function settle() {
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)) })
 }
 
-let sizeStubbed = false
-
 beforeEach(() => {
-  rowRenders.length = 0
-  archiveRenderItems.length = 0
   seed(ARCHIVED)
   useSettingsStore.setState({ passcodeEnabled: false })
   useFoldersStore.setState({ contactIds: new Set(), selectedId: ALL_FOLDER_ID })
@@ -179,21 +138,14 @@ beforeEach(() => {
   useNavigationStore.setState({ selectedId: null })
   useNotifyStore.setState({ settings: { private: { muted: false, preview: true }, groups: { muted: false, preview: true }, channels: { muted: false, preview: true } } })
 
-  if (!sizeStubbed) {
-    sizeStubbed = true
-    // Высота есть у контейнера прокрутки папки и у контейнера прокрутки архива —
-    // из неё каждый список считает своё окно видимости.
-    const isHost = (el: HTMLElement) =>
-      el.classList.contains('folders-scrollable') || el.classList.contains(s.archiveList)
-    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
-      configurable: true,
-      get(this: HTMLElement) { return isHost(this) ? HOST_HEIGHT : 0 },
-    })
-    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
-      configurable: true,
-      get(this: HTMLElement) { return isHost(this) ? 360 : 0 },
-    })
-  }
+  // Высота есть у скроллера папки и у скроллера списка архива — из неё каждый
+  // список считает своё окно видимости.
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function(this: HTMLElement) {
+    if (this.classList.contains('scrollable')) {
+      return { width: 360, height: HOST_HEIGHT, top: 0, left: 0, right: 360, bottom: HOST_HEIGHT, x: 0, y: 0, toJSON() {} } as DOMRect
+    }
+    return { width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0, toJSON() {} } as DOMRect
+  })
 })
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
@@ -205,12 +157,14 @@ async function mountAndOpenArchive(managers: Managers) {
       <Sidebar onToggleMode={() => {}} />
     </ManagersProvider>,
   )
-  await act(async () => {})
+  await settle()
 
-  // Закреплённый ряд «Архив» — ПЕРВЫЙ элемент списка чатов (`div`, в отличие от
-  // строки-диалога `a`), кликом по нему оверлей и открывается.
-  const archiveRow = document.querySelector('ul.chatlist > div.chatlist-chat') as HTMLElement
+  // Закреплённая строка «Архив» — ПЕРВАЯ в списке «Всех чатов» (`div`, в отличие от
+  // строки-диалога `a`; островом `ArchiveRow`, ВРЕМЕННО до 1-5), кликом по ней
+  // оверлей и открывается (tweb `openArchiveTab`).
+  const archiveRow = document.querySelector('ul.chatlist div.chatlist-chat') as HTMLElement
   await act(async () => { fireEvent.click(archiveRow) })
+  await settle()
 }
 
 /** То же с владельцем, отвечающим сразу. `archiveCount` — размер архивной
@@ -247,14 +201,13 @@ describe('Sidebar — архив на виртуальном ядре', () => {
   it('ul лежит в контейнере прокрутки и несёт высоту под ВЕСЬ архив (300 * 72 + 8)', async () => {
     await openArchive()
 
-    expect(archiveList().parentElement).toBe(archiveHost())
+    expect(archiveList().closest('.scrollable')).toBe(archiveHost())
     expect(archiveList().style.height).toBe(ARCHIVED * ITEM + 8 + 'px')
   })
 
   // Размер набора приезжает от ВЛАДЕЛЬЦА, а не считается по зеркалу: пока
   // архив догружен не весь, `ul` ростом со всю выборку, а её незагруженный
-  // хвост — дырки-скелетоны, которые и просят следующую страницу. Мутация:
-  // `totalCount={items.length}` в `ArchiveList` — оба ассерта краснеют.
+  // хвост — дырки-скелетоны, которые и просят следующую страницу.
   it('загружена часть архива: ul ростом со ВСЮ выборку, хвост — скелетоны', async () => {
     const SERVER = ARCHIVED * 2
 
@@ -277,7 +230,8 @@ describe('Sidebar — архив на виртуальном ядре', () => {
 
     // Нижняя граница: idx >= ceil((20888 - 288) / 72) = 287; верхняя — за концом
     // набора, поэтому окно упирается в его длину: строки 288..300.
-    expect(archiveRows()).toHaveLength(13)
+    // хвост догружается страницами по 20 — ждём, пока они дойдут до конца набора
+    await vi.waitFor(() => expect(archiveRows()).toHaveLength(13), { timeout: 5000 })
     expect(archiveRows()[12].getAttribute('href')).toBe('#' + (ARCHIVE_ID_BASE + ARCHIVED))
     expect(archiveList().querySelectorAll('.loading-dialog-skeleton')).toHaveLength(0)
   })
@@ -286,16 +240,15 @@ describe('Sidebar — архив на виртуальном ядре', () => {
   // сам, как и список папки. Без этого архив живёт лишь тем, что случайно
   // оказалось в зеркале, а страницы «Всех чатов» уходят с `folder_id=0` и
   // архивных диалогов не приносят вовсе (спека, «Дополнение: вход в архив»).
-  // Мутация: вернуть списку `NO_ITEM_REQUEST` и `totalCount={items.length}` —
-  // запроса с `filterId: ARCHIVE_FOLDER_ID` при открытии оверлея не будет.
+  // Мутация: не звать `setFilterIdAndChangeTab(FOLDER_ID_ARCHIVE)` в
+  // `mountArchivedList` — запроса с `filterId: ARCHIVE_FOLDER_ID` при открытии нет.
   it('архив листается сам: открытие оверлея просит у владельца страницу архивной выборки', async () => {
     const { getDialogs } = await openArchive()
 
-    // Счёт ТОЧНЫЙ: по одной первой странице на список и ни одной сверх — иначе
-    // дырки-скелетоны архива устроили бы лавину запросов. Запроса строки
-    // «Архив» здесь нет: архив уже в зеркале (`seed`), просить нечего
-    // (`useDialogListSource::ensureArchiveHydrated`).
-    expect(getDialogs.mock.calls.map(([o]) => o)).toEqual([
+    // Первые страницы — по одной на список. Запроса строки «Архив» здесь нет:
+    // архив уже в зеркале (`seed`), просить нечего (`ensureArchiveDialogHydrated`).
+    const firstPages = getDialogs.mock.calls.map(([o]) => o).filter((o) => o.offsetIndex === undefined)
+    expect(firstPages).toEqual([
       { offsetIndex: undefined, limit: 20, filterId: ALL_FOLDER_ID },
       { offsetIndex: undefined, limit: 20, filterId: ARCHIVE_FOLDER_ID },
     ])
@@ -304,57 +257,15 @@ describe('Sidebar — архив на виртуальном ядре', () => {
   it('клик по строке архива выбирает ТОТ ЖЕ чат и подсвечивает её', async () => {
     await openArchive()
 
-    await act(async () => { fireEvent.click(archiveRows()[3]) })
+    // клик списка — `mousedown` в фазе захвата (`setListClickListener`, tweb `:2072-2346`)
+    await act(async () => { fireEvent.mouseDown(archiveRows()[3], { button: 0 }) })
 
     const id = String(ARCHIVE_ID_BASE + 4)
     expect(useNavigationStore.getState().selectedId).toBe(id)
     expect(archiveRows()[3].classList.contains('active')).toBe(true)
   })
 
-  it('рендер сайдбара строк архива не касается', async () => {
-    await openArchive()
-
-    expect(archiveRowRenders()).toBe(14) // всё окно, по разу
-
-    // Рендер сайдбара, не меняющий ни набор архива, ни выделение: включили
-    // код-пароль (над списком появляется замок). Мутации, которые это краснит:
-    // снять `useEvent` вокруг `onSelect` или `useCallback` вокруг `renderItem`
-    // в `ArchiveList` — `handleSelect` приезжает новой стрелкой на каждом
-    // рендере Sidebar, и всё окно перерисуется; снять `memo` с `ChatListItem` —
-    // тоже.
-    await act(async () => { useSettingsStore.setState({ passcodeEnabled: true }) })
-
-    expect(archiveRowRenders()).toBe(14)
-  })
-
-  it('ядро архива получает ОДНУ И ТУ ЖЕ ссылку renderItem между рендерами', async () => {
-    await openArchive()
-    await act(async () => { useSettingsStore.setState({ passcodeEnabled: true }) })
-
-    // Мутация: снять `useCallback` вокруг `renderItem` в `ArchiveList` — на
-    // каждом рендере сайдбара в ядро приезжает новая стрелка, и оно проходит
-    // по всему окну заново (строки при этом спасает их собственный `memo`,
-    // поэтому счётчик рендеров строк такую мутацию не видит).
-    expect(archiveRenderItems.length).toBeGreaterThan(1)
-    expect(new Set(archiveRenderItems).size).toBe(1)
-  })
-
-  it('операция зеркала в ЧУЖОМ чате строк архива не касается', async () => {
-    await openArchive()
-    expect(archiveRowRenders()).toBe(14)
-
-    // Прочитали обычный (неархивный) чат: `dialogs` в зеркале — новый массив,
-    // значит и `chats` приезжают новыми. Мутация: убрать кэш обёрток в
-    // `useDialogListSource` (`itemCacheRef`/`prevItemsRef`) — у каждой строки
-    // окна сменится ссылка `item`, и все 14 перерисуются.
-    await act(async () => {
-      useChatsStore.getState().applyDialogOps([{ op: 'patch', peerId: 1, fields: { unread_count: 1 } }])
-    })
-
-    expect(archiveRowRenders()).toBe(14)
-  })
-
-  it('новый архивный чат сверху компенсируется скроллом, а не рывком всех строк', async () => {
+  it('новый архивный чат встаёт первым в архиве (`dialogs_multiupdate`), окно сдвигается компенсацией скролла', async () => {
     await openArchive()
     await scrollArchiveTo(HOST_HEIGHT)
 
@@ -366,54 +277,24 @@ describe('Sidebar — архив на виртуальном ядре', () => {
       ])
     })
 
-    // Равномерный сдвиг ядро компенсирует скроллом, а не анимацией `top` у всех
-    // видимых строк сразу (`useShouldAnimate` → `createScrollShiftCompensator`).
-    // Мутация: убрать кэш обёрток в `useDialogListSource` — сравнение старого и
-    // нового списка идёт ПО ССЫЛКЕ, новые обёртки в прежнем списке не найдутся,
-    // компенсация не сработает и весь экран дёрнется.
+    await settle()
+    // Равномерный сдвиг ядро компенсирует скроллом (`onScrollShift`,
+    // `verticalVirtualList.tsx:49-53`), а не анимацией `top` у всех видимых строк.
     expect(archiveHost().scrollTop).toBe(HOST_HEIGHT + ITEM)
   })
 
-  // `wasAtLeastOnceFetched` и `animate` — ЖИВЫЕ значения из
-  // `useDialogListSource`, а не константы (ими они были, пока своей первой
-  // загрузки у архива не существовало вовсе). Наблюдать разницу можно РОВНО
-  // пока первая страница архива летит: во всех остальных тестах файла ассерты
-  // идут после её ответа, когда оба значения уже истинны, — там мутация
-  // «обратно в `true`» не красит ничего.
-  describe('первая страница архива ещё летит', () => {
-    it('ul ростом с ХОСТ, а не под весь набор (wasAtLeastOnceFetched)', async () => {
-      const { managers, release } = pendingArchiveManagers()
-      await mountAndOpenArchive(managers)
+  // Пока первая страница архива летит, ядро держит `ul` ростом с хост
+  // (`wasAtLeastOnceFetched` ложен, `forceHostHeight`), после ответа — под весь набор.
+  it('первая страница архива ещё летит: ul ростом с ХОСТ, а не под весь набор', async () => {
+    const { managers, release } = pendingArchiveManagers()
+    await mountAndOpenArchive(managers)
 
-      // Мутация `wasAtLeastOnceFetched={true}`: `forceHostHeight` снимается, и
-      // `ul` сразу получает высоту под всю выборку — первый ассерт краснеет.
-      expect(archiveList().style.height).toBe(HOST_HEIGHT + 'px')
+    expect(archiveList().style.height).toBe(HOST_HEIGHT + 'px')
 
-      await act(async () => { release() })
+    await act(async () => { release() })
+    await settle()
 
-      expect(archiveList().style.height).toBe(ARCHIVED * ITEM + 8 + 'px')
-    })
-
-    it('переезд строки НЕ анимируется, а после ответа — анимируется (animate)', async () => {
-      const { managers, release } = pendingArchiveManagers()
-      await mountAndOpenArchive(managers)
-
-      // Сдвиг НЕравномерный (одна строка едет через всё окно наверх, остальные —
-      // на позицию вниз), поэтому `useShouldAnimate` анимацию разрешает и
-      // решает уже `animate` списка: пока первая загрузка не доиграла, глушилка
-      // (`blockedAnimationCount`) держит её выключенной.
-      // Мутация `animate={true}`: строки поедут анимацией и `--background`
-      // встанет — первый ассерт краснеет.
-      await act(async () => { raiseArchived(ARCHIVE_ID_BASE + 10, 1000) })
-      expect(animatingRows()).toHaveLength(0)
-
-      await act(async () => { release() })
-      await act(async () => { raiseArchived(ARCHIVE_ID_BASE + 11, 1001) })
-
-      // Мутация `animate={false}`: анимации не будет и здесь — второй ассерт
-      // краснеет.
-      expect(animatingRows().length).toBeGreaterThan(0)
-    })
+    expect(archiveList().style.height).toBe(ARCHIVED * ITEM + 8 + 'px')
   })
 
   it('пустой архив: заглушка ВМЕСТО списка, ul в DOM нет', async () => {
@@ -423,7 +304,7 @@ describe('Sidebar — архив на виртуальном ядре', () => {
     // Разархивировали всё, пока оверлей открыт, — он остаётся на экране.
     await act(async () => { seed(0) })
 
-    expect(archiveHost().querySelector('ul')).toBe(null)
+    expect(archiveBox().querySelector('ul')).toBe(null)
     expect(screen.getByText('No archived chats')).toBeTruthy()
   })
 })

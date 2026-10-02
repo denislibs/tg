@@ -42,6 +42,50 @@
   }
 }
 
+// tweb base.scss:1556-1595 — коробка значков у имени (`generateTitleIcons`).
+// Расхождение: правило ограничено значками ВНУТРИ `.peer-title` — React-значки
+// (`VerifiedBadge.tsx`/`PremiumBadge.tsx`) стоят рядом с узлом имени, а не в нём,
+// и размер задают сами (шапка `.verified-icon` в `_bridge.scss`); глобальная
+// коробка 1.25rem легла бы на них поверх.
+.peer-title {
+  .verified-icon,
+  .premium-icon,
+  .emoji-status {
+    flex: 0 0 auto;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-inline-start: .125rem;
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .emoji-status {
+    position: relative;
+    width: 1.125rem;
+    height: 1.125rem;
+    margin-inline-start: .25rem;
+  }
+
+  .premium-icon {
+    color: var(--primary-color);
+    margin-top: -.0625rem;
+  }
+}
+
+// Каскад tweb: глобальные стили приходят `<link>`-ом index.html, CSS-модули — с
+// чанками позже, поэтому `.item` ядра (`verticalVirtualList.module.scss`,
+// `position: absolute`) у оригинала бьёт `.row`/`.rp` (`position: relative`) той же
+// специфичности. У нас список папки статически достижим из `App`, а `App`
+// импортирован в `main.tsx` ДО `styles/index.scss` — модуль ложится в бандл
+// раньше, и строка остаётся в потоке: `top` ядра прибавлялся бы к её месту в
+// потоке (строки через одну высоту). Порядок импорта не трогаем (сдвинул бы
+// каскад всего приложения) — возвращаем оригинальный результат здесь.
+.virtual-chatlist > .chatlist-chat {
+  position: absolute;
+}
+
 .chatlist-chat {
   &.row-with-padding {
     padding-inline-start: 4.5rem !important;

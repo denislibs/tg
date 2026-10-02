@@ -101,3 +101,47 @@ describe('PeerTitle', () => {
     expect(fillMirror).not.toHaveBeenCalled()
   })
 })
+
+describe('PeerTitle `withIcons` (tweb peerTitle.ts:196-229, `generateTitleIcons`)', () => {
+  const withIcons = (peerId: PeerId) =>
+    new PeerTitle({ peerId, withIcons: true, middleware: middlewareHelper.get(), managers }).element
+  const upsert = (pFlags: Record<string, true>, emoji_status_emoticon?: string) =>
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'user', id: ALICE, first_name: 'Алиса', pFlags, emoji_status_emoticon }] }])
+
+  it('верифицированный: имя во внутреннем span, галочка после него, класс with-icons', () => {
+    upsert({ verified: true })
+
+    const element = withIcons(ALICE)
+
+    expect(element.classList.contains('with-icons')).toBe(true)
+    expect(Array.from(element.children, (el) => el.className)).toEqual(['peer-title-inner', 'verified-icon'])
+    expect(element.querySelector('.peer-title-inner')!.textContent).toBe('Алиса')
+  })
+
+  it('эмодзи-статус вытесняет звезду премиума (ветка `emojiStatus ? … : premium`)', () => {
+    upsert({ premium: true }, '😎')
+    expect(withIcons(ALICE).querySelector('.emoji-status')).not.toBeNull()
+    expect(withIcons(ALICE).querySelector('.premium-icon')).toBeNull()
+
+    upsert({ premium: true })
+    expect(withIcons(ALICE).querySelector('.premium-icon')).not.toBeNull()
+  })
+
+  it('без `withIcons` значков нет, хотя пир верифицирован', () => {
+    upsert({ verified: true })
+    const element = title(ALICE)
+    expect(element.querySelector('.verified-icon')).toBeNull()
+    expect(element.classList.contains('with-icons')).toBe(false)
+  })
+
+  it('флаг сняли в карточке — значок и with-icons уходят на перерисовке', () => {
+    upsert({ verified: true })
+    const element = withIcons(ALICE)
+
+    upsert({})
+
+    expect(element.querySelector('.verified-icon')).toBeNull()
+    expect(element.classList.contains('with-icons')).toBe(false)
+    expect(element.textContent).toBe('Алиса')
+  })
+})

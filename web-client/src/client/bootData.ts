@@ -27,7 +27,7 @@ export interface BootData {
    * читал зеркало сразу и на пустом кэше (смена аккаунта, очищенное хранилище,
    * вход в соседней вкладке) молча выходил без единой цели, оставляя сеанс без
    * онлайн-точек и «был(а) в сети». Заменил мёртвый `hydratedFromCache`:
-   * скелетон списка решает по `loaded` (см. ChatList.tsx), флаг не читал никто.
+   * скелетон списка решает по `loaded` (`autonomousDialogList/base.ts::checkForDialogsPlaceholder`), флаг не читал никто.
    */
   dialogsReady: Promise<void>
   // Есть ли локальный session_token (у воркера, `persist.scopeToSession`). По нему

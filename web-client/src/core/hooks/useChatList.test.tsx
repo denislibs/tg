@@ -5,7 +5,7 @@
 // `stores/noDuplicateMuteRule.test.ts`), здесь пинится ЕГО ПРИМЕНЕНИЕ: до этого
 // теста удаление строки не красило ни одного теста во всём прогоне, хотя
 // расхождение витрины с фильтром папок ровно на нём уже ловили (см. докблок
-// `matchesThisFolder` в `core/hooks/useDialogListSource.ts`).
+// `testDialogForFilter` в `components/autonomousDialogList/dialogs.ts`).
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import type { ReactNode } from 'react'

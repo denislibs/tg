@@ -23,11 +23,11 @@
 // Фейковый `rest` ведёт себя как бэкенд: режет запрошенную выборку `limit`ом и
 // курсором, выборку выбирает по `folder_id` (`dialogpage.go`, `chatsrepo.go`).
 //
-// happy-dom не считает layout: `offsetHeight`/`offsetWidth` (их читает
-// `useElementSize` у контейнеров прокрутки) подставляются стабом на прототипе —
-// тот же приём, что в `components/Sidebar.archive.test.tsx`.
+// happy-dom не считает layout: высоту скроллеров списков (её читает
+// `useElementSize` ядра) отдаёт стаб `getBoundingClientRect` — тот же приём, что в
+// `components/Sidebar.archive.test.tsx`.
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 
 import { applyDialogsMirror, fillDialogsMirror } from './boot'
@@ -57,7 +57,7 @@ const HOST_HEIGHT = 720
 const FIRST_PAGE = DIALOG_LOAD_COUNT
 /**
  * Набор — ЧЕТЫРЕ первых страницы. Двух мало: одна страница догрузки
- * (`useDialogListSource` → `getDialogs({filterId})` → `dialogsManager.fetchPage`)
+ * (`AutonomousDialogList` → `getDialogs({filterId})` → `dialogsManager.fetchPage`)
  * на таком наборе случайно дотянулась бы до хвоста, и тест не отличил бы
  * работающий цикл догрузки от единственного везучего запроса.
  */
@@ -195,12 +195,12 @@ async function settle(ms: number) {
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)) })
 }
 
-/** Закреплённый ряд «Архив» — единственный `div` среди строк списка чатов. */
-const archiveRow = () => document.querySelector<HTMLElement>('ul.chatlist > div.chatlist-chat')
+/** Закреплённая строка «Архив» — узел с тегом строки архива tweb (`archive-dialog`) среди строк. */
+const archiveRow = () => document.querySelector<HTMLElement>('ul.chatlist archive-dialog')
 const archiveOverlayRows = () => [...document.querySelectorAll<HTMLElement>(`.${s.archiveList} ul a.chatlist-chat`)]
+/** Клик списка — `mousedown` в фазе захвата (`setListClickListener`, tweb `:2072-2346`). */
+const press = (el: HTMLElement) => fireEvent.mouseDown(el, { button: 0 })
 const hrefs = (rows: HTMLElement[]) => rows.map((r) => r.getAttribute('href'))
-
-let sizeStubbed = false
 
 beforeAll(() => registerStoreProjection({} as unknown as Managers))
 
@@ -212,22 +212,16 @@ beforeEach(() => {
   useNavigationStore.setState({ selectedId: null })
   useNotifyStore.setState({ settings: { private: { muted: false, preview: true }, groups: { muted: false, preview: true }, channels: { muted: false, preview: true } } })
 
-  if (!sizeStubbed) {
-    sizeStubbed = true
-    const isHost = (el: HTMLElement) =>
-      el.classList.contains('folders-scrollable') || el.classList.contains(s.archiveList)
-    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
-      configurable: true,
-      get(this: HTMLElement) { return isHost(this) ? HOST_HEIGHT : 0 },
-    })
-    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
-      configurable: true,
-      get(this: HTMLElement) { return isHost(this) ? 360 : 0 },
-    })
-  }
+  // высоту скроллеров списков ядро читает `getBoundingClientRect` (`useElementSize`)
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function(this: HTMLElement) {
+    if (this.classList.contains('scrollable')) {
+      return { width: 360, height: HOST_HEIGHT, top: 0, left: 0, right: 360, bottom: HOST_HEIGHT, x: 0, y: 0, toJSON() {} } as DOMRect
+    }
+    return { width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0, toJSON() {} } as DOMRect
+  })
 })
 
-afterEach(() => { cleanup() })
+afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 describe('boot: холодный старт грузит ПЕРВУЮ СТРАНИЦУ (архив и папки догружаются сами)', () => {
   // Страховка от вырождения фикстуры: если архивный чат или чат папки уедут в
@@ -252,7 +246,8 @@ describe('boot: холодный старт грузит ПЕРВУЮ СТРАН
     await renderSidebar(dialogs)
     await settle(350) // догрузка «Всех чатов» и архива доиграна
 
-    await act(async () => { fireEvent.click(archiveRow()!) })
+    await act(async () => { press(archiveRow()!) })
+    await settle(100)
 
     expect(hrefs(archiveOverlayRows())).toEqual(['#' + ARCHIVED_ID])
   })
@@ -262,8 +257,9 @@ describe('boot: холодный старт грузит ПЕРВУЮ СТРАН
     await renderSidebar(dialogs)
     await settle(350)
 
-    // Гейт закреплённого ряда — `archived.length > 0` (ChatList.tsx), то есть
-    // архив в зеркале. Первая страница его не приносит; приносит догрузка.
+    // Гейт закреплённой строки — архив в зеркале (`AutonomousDialogList`,
+    // `onHasArchiveDialogChanged`). Первая страница его не приносит; приносит
+    // гидратация строки (`ensureArchiveDialogHydrated`).
     expect(archiveRow()).not.toBe(null)
   })
 

@@ -843,13 +843,13 @@ updateItem, setWasAtLeastOnceFetched, blockAnimation, clear, has, get, getAll}`;
 `core/hooks/useDialogListSource.ts` (+ тест), `useChatList.ts` (+ тест), портал папок
 `ChatList.tsx:80`.
 
-- [ ] **Шаги:** прочитать; тесты — порядок по последнему сообщению и закрепу, пагинация вниз
+- [x] **Шаги:** прочитать; тесты — порядок по последнему сообщению и закрепу, пагинация вниз
   (стаб менеджера), вставка нового диалога сверху, удаление, смена папки не пересоздаёт строки
   другой папки (tweb держит `xds` по фильтрам), `activeElement` подсвечивается при открытом чате
   (`setDialogActive` `:1300`), `destroy` папки снимает все строки. **Мутации:** сортировать без
   закрепа → пин порядка краснеет; пересоздавать `xd` на каждый `setFilterId` → пин «строки
   переиспользуются» краснеет.
-- [ ] **Стенд:** LS-01, LS-02, DM-01, DM-06, DM-07, DM-15, DM-16, P0-03 до/после; скролл 500
+- [x] **Стенд:** LS-01, LS-02, DM-01, DM-06, DM-07, DM-15, DM-16, P0-03 до/после; скролл 500
   диалогов — FPS и число узлов (`document.querySelectorAll('.chatlist-chat').length`) до/после в коммит.
 
 **Оценка:** 5 дней (риск). **Зависимости:** 1-1, 1-3.
@@ -1403,6 +1403,8 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 | О-82 | «Мои истории» — вкладка `AppMyStoriesTab` (`sidebarLeft/tabs/myStories`, `:715-722`); до порта пункт открывает наш `StoriesArchiveSheet` | вкладка историй не портирована (волна 4 спеки) (2-2) | пункт 1:1 |
 | О-83 | verify «Архива» целиком: `!isDialogsLoaded(FOLDER_ID_ARCHIVE)` и `appStoriesManager.hasArchive()` (`:681-685`); у нас — только «есть архивные диалоги» | нет признака «архив догружен» и архива историй скрытых пиров (2-2) | пункт до первой загрузки архива |
 | О-84 | Клавиатурная навигация меню: `menuKeyboard`, `focusTrap`, `activateFocus` в `contextMenuController`, 5-й аргумент `addAdditionalMenu` (фокус в подменю) | срез a11y `contextMenuController` не портирован (2-2) | стрелки/Enter/Esc по пунктам бургера и подменю |
+| О-96 | Иконка звонка в группе у строки чатлиста: `processDialogForCallStatus`/`setCallStatus` (`autonomousDialogList/dialogs.ts:722-760`, `groupCallActiveIcon`, класс `has-group-call-icon`), `callIcon.setActive` в `setDialogActive` (`appDialogsManager.ts:1315`) | у чата в модели нет `pFlags.call_active`/`call_not_empty` (`domain/mtchat.go:170`) (1-4) | иконка 1:1, перекраска активной строки |
+| О-97 | Превью потокового черновика бота в строке: `streamed_message_update/remove/finalize` → `setLastMessageN({lastMessage})` (`autonomousDialogList/dialogs.ts:173-209`) | потоковых черновиков (`HistoryStreamedDrafts`) нет ни на бэкенде, ни в модели (1-4) | превью «печатает текстом» у ботов |
 
 ## Что остаётся волне 8 (после этой программы)
 

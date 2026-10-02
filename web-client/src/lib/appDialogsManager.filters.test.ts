@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import '@/test/lang'
 import {
   FakeResizeObserver, expectActiveOnly, filterIds, finishTransition, frameOf, installFrames,
-  mountList, mountOwner, putFolders, raw, resetStores, settle, stubGeometry, uninstallFrames,
+  filterIdOf, installListProbes, mountOwner, putFolders, raw, resetStores, settle, stubGeometry, uninstallFrames,
   type Mounted,
 } from './appDialogsManager.testkit'
 import { resetPeerMirror } from '@core/peerCache'
@@ -53,6 +53,7 @@ afterEach(() => {
   mounted = undefined
   uninstallFrames()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
   document.body.replaceChildren()
   resetStores()
   resetPeerMirror()
@@ -72,48 +73,45 @@ describe('appDialogsManager: папки добавляются, удаляютс
     // кадр создаётся один раз и живёт — соседей не пересоздали
     expect(frameOf(mounted.folders, 3)).toBe(before)
     expect(rowHidden()).toBe(false)
-    expect(mounted.manager.getRendered().map((list) => list.id).sort((a, b) => a - b)).toEqual([0, 3, 4, 5])
+    expect(Array.from(mounted.manager.xds.keys()).sort((a, b) => a - b)).toEqual([0, 3, 4, 5])
   })
 
-  it('подписчик getRendered (хозяин ul, задача 6) слышит добавление и снятие; переименование ссылку массива не меняет', async () => {
+  it('переименование папки список не пересоздаёт (xds держит список на папку, tweb :1474)', async () => {
     putFolders(raw(3, 1, 'Работа'))
     mounted = mountOwner()
     await settle()
-    const heard: number[][] = []
-    const unsubscribe = mounted.manager.subscribe(() => {
-      heard.push(mounted!.manager.getRendered().map((list) => list.id))
-    })
-    const before = mounted.manager.getRendered()
+    const before = mounted.manager.xds.get(3)
 
     putFolders(raw(3, 1, 'Работа и дом'))
     await settle()
-    expect(mounted.manager.getRendered()).toBe(before)
+    expect(mounted.manager.xds.get(3)).toBe(before)
 
     putFolders(raw(4, 2, 'Шум'))
     applyFolderUpdate({ folder_id: 3, deleted: true })
     await settle()
 
-    expect(heard).toEqual([[0, 3, 4], [0, 4]])
-    unsubscribe()
+    expect(Array.from(mounted.manager.xds.keys()).sort((a, b) => a - b)).toEqual([0, 4])
   })
 
   it('удалённая неактивная папка — её кадр снят, Scrollable погашен, выбор не тронут (filter_delete)', async () => {
     putFolders(raw(3, 1, 'Работа'), raw(4, 2, 'Шум'))
+    const probeOf = installListProbes()
     mounted = mountOwner()
     await settle()
-    const list = mounted.manager.getRendered().find((item) => item.id === 4)!
+    const list = mounted.manager.xds.get(4)!
     const destroy = vi.spyOn(list.scrollable, 'destroy')
-    const probe = mountList(list)
+    const probe = probeOf(list)
+    probe.calls.clear = 0
 
     applyFolderUpdate({ folder_id: 4, deleted: true })
     await settle()
 
     expect(filterIds(mounted.folders)).toEqual(['0', '3'])
-    expect(list.container.isConnected).toBe(false)
+    expect(list.scrollable.container.isConnected).toBe(false)
     expect(destroy).toHaveBeenCalledTimes(1)
     expect(probe.calls.clear).toBe(1)
     expectActiveOnly(mounted.folders, 0)
-    expect(mounted.manager.getRendered().map((item) => item.id)).not.toContain(4)
+    expect(mounted.manager.xds.has(4)).toBe(false)
   })
 
   it('удалённая АКТИВНАЯ папка — активной стала «Все чаты» через selectTab(0), выбор в сторе сброшен', async () => {
@@ -130,7 +128,7 @@ describe('appDialogsManager: папки добавляются, удаляютс
 
     expectActiveOnly(mounted.folders, 0)
     expect(useFoldersStore.getState().selectedId).toBe(0)
-    expect(mounted.manager.xd!.id).toBe(0)
+    expect(filterIdOf(mounted.manager.xd!)).toBe(0)
     // Уходящего кадра уже нет в DOM — слайдеру не от чего ехать, переключение
     // мгновенное (`transition.ts`: `prevId === -1` → без анимации). У tweb так
     // же: контейнер снимает `filter_delete` раньше, чем `selectTab` доходит до

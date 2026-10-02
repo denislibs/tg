@@ -19,6 +19,14 @@
 // `layout` для строк разной высоты (`ItemsLayout`, `createItemsLayout`), класс
 // строки `VIRTUAL_LIST_ITEM_CLASS_NAME`, память высоты хоста нулевой высоты
 // (`hostHeight`) и `role="presentation"` у `ul` (472e3e76b).
+//
+// Расхождение (наше, задача 1-4 волны 7): пустой список, получивший строки, заново
+// читает `scrollTop` хоста (`refreshScrollAmount`). Список папки чатлиста чистится,
+// пока её кадр скрыт (`.tabs-tab { display: none }`, `appDialogsManager` — по концу
+// перехода и перед показом), а браузер обнуляет позицию скрытого скроллера БЕЗ
+// события `scroll`: у оригинала окно видимости при возврате в папку считалось бы от
+// прежней прокрутки, и верх списка оставался бы пустым. Прежний React-список чинил
+// то же пересозданием `ul` на каждый `clear()` (замер на стенде, задача 6 плана папок).
 import {
   createSignal,
   onCleanup,
@@ -82,6 +90,11 @@ function VerticalVirtualList<T>(props: VerticalVirtualListProps<T>) {
   // * it was: shrinking it to nothing would drop every row, only to build them all anew - avatars and
   // * custom emoji along with them - the moment the tab is back
   const hostHeight = createMemo<number>((prev) => hostSize.height || prev, 0)
+
+  // расхождение шапки: окно видимости заново от фактической прокрутки хоста
+  createComputed(on(() => props.list.length > 0, (hasItems, hadItems) => {
+    if(hasItems && !hadItems) setScrollAmount(props.scrollableHost.scrollTop)
+  }, { defer: true }))
 
   onMount(() => {
     const listenerSetter = new ListenerSetter()

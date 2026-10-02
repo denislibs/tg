@@ -472,9 +472,13 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // lang.ts:2017-2025 — `NoRecentCalls`, `NoRecentCallsInfo`, `Calls.Status.Group`,
 // `CallBack` (`Calls` уже завела 2-2); −1 наш `Calls.Empty` снесённого React-экрана
 // `CallsView` (у tweb пустой журнал — `NoRecentCalls`). Итог: ru 1415.
+// Задача 1-4 волны 7 (строка списка чатов на `DialogElement`): «печатает» в строке —
+// порт tweb `getPeerTyping` (`lib/appImManager.ts`), +23 ключа tweb lang.ts
+// `Peer.Activity.{User,Chat,Chat.Multi,Chat.Pair}.*` в объёме наших действий набора —
+// русскому и украинскому. Итог: ru 1438, uk 782.
 const COMPOSITION = {
-  ru: { keys: 1415, plural: 44 },
-  uk: { keys: 759, plural: 33 },
+  ru: { keys: 1438, plural: 44 },
+  uk: { keys: 782, plural: 33 },
   es: { keys: 756, plural: 32 },
   de: { keys: 757, plural: 33 },
   fr: { keys: 751, plural: 32 },
@@ -630,9 +634,11 @@ const COMPOSITION = {
 // `NewGroup.DefaultTitle` снесённого React-экрана (разбор — там же).
 // Задачей 0а-4 волны 7 — у ru +4 ключа вкладки «Звонки» и −1 `Calls.Empty`
 // снесённого React-экрана (разбор — там же).
+// Задачей 1-4 волны 7 — у ru и uk +23 ключа `Peer.Activity.*` tweb (разбор — у
+// `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '1fd757f5',
-  uk: '571c2c10',
+  ru: '3d395859',
+  uk: 'cd3c9d20',
   es: '737d78e3',
   de: '5e55ac08',
   fr: '05470caa',

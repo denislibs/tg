@@ -4,7 +4,8 @@
 //
 // Почему это пин, а не стиль. Правило читают три несвязанных потребителя:
 // витрина списка (`core/hooks/useChatList.ts` — серая иконка и бейдж), фильтр
-// папок (`core/hooks/useDialogListSource.ts` — правило `excludeMuted`) и
+// папок (`components/autonomousDialogList/dialogs.ts::testDialogForFilter` — правило
+// `excludeMuted`) и
 // foreground-уведомления (`client/uiNotifications.ts` — гейт звука и
 // Notification). Ровно на этом выражении уже расходились СПИСОК папки и СЧЁТЧИК
 // её набора: витрина считала чат заглушённого типа приглушённым, а счётчик (по
