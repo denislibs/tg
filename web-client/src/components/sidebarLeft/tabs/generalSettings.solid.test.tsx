@@ -4,7 +4,7 @@
  * `sidebarLeft/tabs/generalSettings.tsx`, 812502980) — задача 13 плана волны 2D.
  *
  * Вкладка гоняется НАСТОЯЩАЯ — `AppGeneralSettingsTab` из `solidJsTabs/tabs.ts`,
- * открытая через колоночный слайдер (`sidebarLeft/columnSlider.ts`) тем же путём, что строка корня
+ * открытая через колоночный слайдер (`sidebarLeft/index.ts`) тем же путём, что строка корня
  * настроек. Стабы — только границы: геометрия (happy-dom её не считает) и холсты
  * фона вкладки «Обои» (в happy-dom нет 2D-контекста).
  *
@@ -26,7 +26,7 @@ import lang from '@/lang'
 import { useSettingsStore, DEFAULTS } from '@/settings'
 import { getIconContent } from '@components/icon'
 import { AppGeneralSettingsTab } from '@components/solidJsTabs/tabs'
-import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
+import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 import { installSpecLabelActivation } from '@/test/specLabelActivation'
 import { installFakeCanvas } from '@/test/fakeCanvas'
 
@@ -52,7 +52,7 @@ vi.mock('@helpers/eachMinute', async(importOriginal) => {
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-let host: TestColumnSlider
+let host: InstalledSidebarLeft
 let uninstallLabelActivation: () => void
 
 const resetSettings = () => useSettingsStore.getState().update({
@@ -71,7 +71,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = mountTestColumnSlider(columnEl, {} as Managers)
+  host = installSidebarLeft({} as Managers, columnEl)
 })
 
 afterEach(async() => {

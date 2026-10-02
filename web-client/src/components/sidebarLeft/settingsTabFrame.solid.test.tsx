@@ -2,7 +2,7 @@
 /**
  * Каркас экрана настроек = вкладка слайдера (задача 3 плана волны 2D). Пины на
  * то, что видит пользователь, на НАСТОЯЩЕЙ вкладке «Язык» (`AppLanguageTab`),
- * открытой на колоночном слайдере (`columnSlider.ts`) — тем же путём, что
+ * открытой на колоночном слайдере (`sidebarLeft/index.ts`) — тем же путём, что
  * строка корня настроек (`tab.slider.createTab(AppLanguageTab).open()`):
  *
  *  (1) ШАПКА. У верхнего края шапка без плашки и линии: вкладка несёт
@@ -28,7 +28,7 @@ import type { Managers } from '@/client/bootstrap'
 import I18n from '@lib/langPack'
 import type SliderSuperTab from '@components/sliderTab'
 import { AppLanguageTab } from '@components/solidJsTabs/tabs'
-import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
+import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 
 /** ширина колонки, которую happy-dom сам не посчитает */
 const WIDTH = 420
@@ -52,7 +52,7 @@ const measured = () => pause(50)
 type StartFrame = { transform: string, filter: string }
 let startFrames: Map<Element, StartFrame>
 
-let host: TestColumnSlider
+let host: InstalledSidebarLeft
 let sliderEl: HTMLElement
 
 beforeEach(() => {
@@ -82,7 +82,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = mountTestColumnSlider(columnEl, managers)
+  host = installSidebarLeft(managers, columnEl)
   sliderEl = columnEl.querySelector<HTMLElement>('.sidebar-slider')!
 })
 

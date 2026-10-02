@@ -5,7 +5,7 @@
  * 812502980) — задача 7 плана волны 2D.
  *
  * Вкладка гоняется НАСТОЯЩАЯ — `AppDataAndStorageTab` из `solidJsTabs/tabs.ts`,
- * открытая через колоночный слайдер (`sidebarLeft/columnSlider.ts`) тем же путём, что строка корня
+ * открытая через колоночный слайдер (`sidebarLeft/index.ts`) тем же путём, что строка корня
  * настроек. Стабы — только границы: попап подтверждения (`confirmationPopup`,
  * свой DOM-слой со своими тестами), корзина CacheStorage (`core/mediaCache`:
  * подсчёт и очистка — happy-dom её не знает), геометрия.
@@ -26,7 +26,7 @@ import { DEFAULTS, load, useSettingsStore } from '@/settings'
 import { AppDataAndStorageTab } from '@components/solidJsTabs/tabs'
 import { getIconContent } from '@components/icon'
 import { installSpecLabelActivation } from '@/test/specLabelActivation'
-import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
+import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 
 const confirmationPopup = vi.hoisted(() => vi.fn(async() => {}))
 vi.mock('@components/popups/popupPeer', async(importOriginal) => ({
@@ -50,7 +50,7 @@ const ZERO = { total: 0, images: 0, videos: 0, stickers: 0, other: 0 }
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-let host: TestColumnSlider
+let host: InstalledSidebarLeft
 let uninstallLabelActivation: () => void
 
 const resetSettings = () => useSettingsStore.getState().update({
@@ -74,7 +74,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = mountTestColumnSlider(columnEl, {} as Managers)
+  host = installSidebarLeft({} as Managers, columnEl)
 })
 
 afterEach(async() => {

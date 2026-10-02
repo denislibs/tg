@@ -216,6 +216,7 @@ const ru = {
   TelegramStars: 'Telegram Stars',
   'Stars.Balance': 'Ваш баланс',
   'Stars.DemoNotice': 'Демо: пополнение начисляет звёзды сразу, без реальной оплаты.',
+  'StarsRating.Back': 'Назад',
   BuyStars: 'Купить звёзды',
   'Stars.RecentTransactions': 'Последние операции',
   StarGiftTitle: 'Подарок',

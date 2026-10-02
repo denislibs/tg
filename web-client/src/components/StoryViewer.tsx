@@ -24,12 +24,14 @@ import { useManagers } from '../core/hooks/useManagers'
 import rootScope from '@lib/rootScope'
 import classNames from '../shared/lib/classNames'
 import { animateStoryViewer, type StoryMorphElements } from './storyViewerMorph'
-import type { StoryTargetGetter } from './StoriesRow'
 import type { StoryGroup } from '../core/managers/storiesManager'
 import { isStoryEdited, realStory, storyCaption, storyDate, storyMediaId } from '../core/stories/story'
 import { getUserTitle } from '../core/peers/getPeerTitle'
 import { getPeerPhotoId, type UserReal } from '../core/peers/peer'
 import { useMediaUrl } from '../core/hooks/useMediaUrl'
+
+/** Узел, из которого вьювер вылетает и куда садится, — у кружка группы ряда историй (задача 2-6 волны 7, `stories/list.tsx`). */
+type StoryTargetGetter = (groupIndex: number) => Element | null
 import s from './StoryViewer.module.scss'
 
 // Статистика своей истории (графики) — оверлей по кнопке, не первый кадр → лениво.

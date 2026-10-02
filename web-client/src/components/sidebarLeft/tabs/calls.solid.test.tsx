@@ -4,7 +4,7 @@
  * `sidebarLeft/tabs/calls.tsx`, 812502980).
  *
  * Вкладка НАСТОЯЩАЯ — `AppCallsTab` из `solidJsTabs/tabs.ts`, открытая через
- * колоночный слайдер (`@/test/columnSlider` → `sidebarLeft/columnSlider.ts`).
+ * колоночный слайдер (`@/test/sidebarLeft` → класс `AppSidebarLeft`).
  * Стабы — только границы: менеджеры воркера, движок звонков (до 5-5 он и есть
  * `appImManager.callUser`), открытие чата, попап удаления (до 2C-8) и
  * геометрия (happy-dom её не считает).
@@ -24,7 +24,7 @@ import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import contextMenuController from '@helpers/contextMenuController'
 import { NAVIGATION_TRANSITION_TIME } from '@components/transition'
 import { AppCallsTab } from '@components/solidJsTabs/tabs'
-import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
+import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 import styles from './calls.module.scss'
 
 // Среда — Firefox с WebRTC и getUserMedia, флаг звонков НАСТОЯЩИЙ
@@ -96,7 +96,7 @@ function call(peerId: PeerId, o: { out?: boolean; missed?: boolean; video?: bool
   } as unknown as MyMessage
 }
 
-let host: TestColumnSlider
+let host: InstalledSidebarLeft
 let log: ReturnType<typeof vi.fn>
 let deleteMessage: ReturnType<typeof vi.fn>
 let pages: MyMessage[][]
@@ -128,7 +128,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = mountTestColumnSlider(columnEl, managers)
+  host = installSidebarLeft(managers, columnEl)
 })
 
 afterEach(async() => {

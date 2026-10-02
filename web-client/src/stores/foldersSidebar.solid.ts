@@ -27,16 +27,17 @@
  *     экране вместе — поэтому факт «показана» сообщает тот, кто её рисует.
  *     Сырая настройка `useHasFoldersSidebar` (`:11-18`) не заводится: у нас
  *     это `tabsInSidebar` стора настроек, а другого читателя, кроме условия
- *     колонки, у неё нет: бургер-морф (`sidebarLeft/toolsMenu.ts`, tweb
+ *     колонки, у неё нет: бургер-морф (`AppSidebarLeft.construct`, tweb
  *     `sidebarLeft/index.ts:431-442`) читает «показана», а не настройку.
  *  2. Класс `body.has-folders-sidebar` (`:32`) не ставится. Его правила в
  *     `_leftSidebar.scss` прячут `.left-sidebar-burger` без `.is-visible`
  *     (`:549-570`), а у нас `is-visible` носят кнопки внутри бургера
- *     (`sidebarLeft/toolsMenu.ts`), не сам контейнер — включённый класс спрятал бы
+ *     (`sidebarLeft/index.ts`), не сам контейнер — включённый класс спрятал бы
  *     кнопку «назад» открытого поиска в режиме «папки слева». Это предмет
  *     порта колонки папок (задача 2-7 волны 7).
- *  3. «Свёрнута» — `collapsed` колонки (`Sidebar.tsx`), который в плавающем
- *     диапазоне 601–925px ложен; у tweb сигнал = `isUserCollapsedLeft() &&
+ *  3. «Свёрнута» пишет хост колонки (`Sidebar.tsx`, порт `setSidebarLeftWidth`,
+ *     ВРЕМЕННО до Э4-1) и ручка ресайза класса; в плавающем
+ *     диапазоне 601–925px сигнал ложен; у tweb он = `isUserCollapsedLeft() &&
  *     !isMobile` (`src/index.ts:224-228`) и в этом диапазоне истинен. Сигнал
  *     следует тому, что колонка рисует (`is-collapsed`), — расхождение самой
  *     колонки (`left-sidebar.md` § 8.2), не этого стора.
@@ -45,10 +46,9 @@
  *     сигнал, который кормит событие `changeScreen` того же инстанса.
  *  5. `useHasOpenLeftTabs` (`:61-74`) не заводится: его читатель (кнопка
  *     поиска свёрнутой колонки) не портирован. `useIsLeftSearchActive`
- *     (`:76-88`) есть — его читает бургер-морф; пишет колонка
- *     (`Sidebar.tsx`, роль сеттера `AppSidebarLeft.isSearchActive`, tweb
- *     `sidebarLeft/index.ts:134-139`, ВРЕМЕННО до 2-1) отражением владельца
- *     поиска.
+ *     (`:76-88`) есть — его читает бургер-морф класса колонки; пишет сеттер
+ *     `AppSidebarLeft.isSearchActive` (tweb `sidebarLeft/index.ts:134-139`),
+ *     который пока зовёт React-владелец поиска (`Sidebar.tsx`, ВРЕМЕННО до 2-3).
  */
 import { createEffect, createRoot, createSignal } from 'solid-js'
 import mediaSizes, { ScreenSize } from '@core/dom/mediaSizes'

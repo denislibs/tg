@@ -4,7 +4,7 @@
  * `sidebarLeft/tabs/notifications.tsx`, 812502980) — пилот плана волны 2D.
  *
  * Вкладка гоняется НАСТОЯЩАЯ — `AppNotificationsTab` из `solidJsTabs/tabs.ts`,
- * открытая через колоночный слайдер (`sidebarLeft/columnSlider.ts`) тем же путём, что строка корня
+ * открытая через колоночный слайдер (`sidebarLeft/index.ts`) тем же путём, что строка корня
  * настроек: под пином и объявление вкладки, и её содержимое, и уборка острова
  * на закрытии. Стабы — только границы: разрешение браузера (`Notification`),
  * воркер (`managers.notify`), push-подписка и звук (побочки вне вкладки),
@@ -26,7 +26,7 @@ import { useSettingsStore, DEFAULTS } from '@/settings'
 import { useNotifyStore } from '@/stores/notifyStore'
 import type { NotifySettings } from '@core/managers/notifyManager'
 import { AppNotificationsTab } from '@components/solidJsTabs/tabs'
-import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
+import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 import { installSpecLabelActivation } from '@/test/specLabelActivation'
 
 const support = vi.hoisted(() => ({ value: true }))
@@ -57,7 +57,7 @@ const SERVER: NotifySettings = {
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-let host: TestColumnSlider
+let host: InstalledSidebarLeft
 let uninstallLabelActivation: () => void
 let update: ReturnType<typeof vi.fn>
 let requestPermission: ReturnType<typeof vi.fn>
@@ -82,7 +82,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = mountTestColumnSlider(columnEl, managers)
+  host = installSidebarLeft(managers, columnEl)
 })
 
 afterEach(async() => {

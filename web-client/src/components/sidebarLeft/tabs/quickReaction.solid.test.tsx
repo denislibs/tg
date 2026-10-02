@@ -4,7 +4,7 @@
  * `sidebarLeft/tabs/quickReaction.tsx`, 812502980).
  *
  * Вкладка гоняется НАСТОЯЩАЯ — `AppQuickReactionTab` из `solidJsTabs/tabs.ts`,
- * открытая через колоночный слайдер (`sidebarLeft/columnSlider.ts`) тем же путём, что её открывает
+ * открытая через колоночный слайдер (`sidebarLeft/index.ts`) тем же путём, что её открывает
  * строка «Quick Reaction» экрана «Стикеры и эмодзи». Стабы — только границы:
  * каталог реакций (воркер, `GET /reactions`), `wrapSticker` (загрузка файла и
  * плеер — не предмет вкладки) и геометрия (happy-dom её не считает).
@@ -29,7 +29,7 @@ import type SliderSuperTab from '@components/sliderTab'
 import wrapSticker from '@components/wrappers/sticker'
 import lang from '@/lang'
 import { AppQuickReactionTab } from '@components/solidJsTabs/tabs'
-import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
+import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 import { installSpecLabelActivation } from '@/test/specLabelActivation'
 
 vi.mock('@components/wrappers/sticker', () => ({ default: vi.fn() }))
@@ -56,7 +56,7 @@ const ACTIVE_TITLES = ['Thumbs Up', 'Red Heart', 'Fire']
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-let host: TestColumnSlider
+let host: InstalledSidebarLeft
 let uninstallLabelActivation: () => void
 let list: ReturnType<typeof vi.fn>
 
@@ -78,7 +78,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = mountTestColumnSlider(columnEl, managers)
+  host = installSidebarLeft(managers, columnEl)
 })
 
 afterEach(async() => {

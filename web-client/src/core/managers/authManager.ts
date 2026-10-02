@@ -287,7 +287,7 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
   //     знаем, кто мы» (addPhoto при пустом getMe() молча пропускает мердж).
   //  2. Наружу не бросаем. Ответ RPC перехода не должен реджектиться: на нём
   //     вызывающая вкладка строит навигацию (строка аккаунта бургера
-  //     `sidebarLeft/toolsMenu.ts`, AuthFlow.backToAccount, `showLogOutPopup`), а ошибка переживает границу
+  //     `sidebarLeft/index.ts`, AuthFlow.backToAccount, `showLogOutPopup`), а ошибка переживает границу
   //     worker-RPC (superMessagePort реджектит ожидающий промис) — до раунда 3
   //     в этих ветках падать было нечему, и .catch там никто не ставил
   //     (Important 2 раунда 4).

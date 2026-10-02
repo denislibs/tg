@@ -4,7 +4,7 @@
  * `sidebarLeft/tabs/addMembers.tsx`, 812502980).
  *
  * Вкладка НАСТОЯЩАЯ — `AppAddMembersTab` из `solidJsTabs/tabs.ts`, открытая
- * через колоночный слайдер (`sidebarLeft/columnSlider.ts`); селектор — настоящий
+ * через колоночный слайдер (`sidebarLeft/index.ts`); селектор — настоящий
  * `AppSelectPeers`. Стабы — только границы: менеджеры воркера, зеркало индексов
  * диалогов и геометрия (happy-dom её не считает).
  *
@@ -23,7 +23,7 @@ import { useChatsStore } from '@stores/chatsStore'
 import { useSettingsStore } from '@/settings'
 import type { Chat, User } from '@core/peers/peer'
 import { AppAddMembersTab } from '@components/solidJsTabs/tabs'
-import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
+import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 
 const ME = 1
 const PEERS = new Map<PeerId, User | Chat>([
@@ -38,7 +38,7 @@ const settle = async() => {
   for(let i = 0; i < 12; ++i) await pause(0)
 }
 
-let host: TestColumnSlider
+let host: InstalledSidebarLeft
 let getDialogs: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
@@ -68,7 +68,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = mountTestColumnSlider(columnEl, managers)
+  host = installSidebarLeft(managers, columnEl)
 })
 
 afterEach(async() => {

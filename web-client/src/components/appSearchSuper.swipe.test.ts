@@ -47,6 +47,11 @@ const IDLE_MANAGERS = {
 async function loadWithTouch() {
   vi.resetModules()
   vi.doMock('@environment/touchSupport', () => ({ default: true }))
+  // Класс левой колонки (через `lib/appDialogsManager.ts` → `components/sidebarLeft`)
+  // тянет владельца поиска с его custom element'ами (`chat-type-menu`); после
+  // `vi.resetModules()` их модуль исполнился бы второй раз и `customElements.define`
+  // упал бы на занятом имени. Свайпу колонка не нужна.
+  vi.doMock('@components/sidebarLeft', () => ({ default: undefined }))
   // `vi.resetModules()` роняет и ядро локализации: общий сетап наполняет его
   // один раз на файл (`src/test/setup.ts:87-89`), а после сброса подписи
   // строились бы на пустом ядре и в DOM поехали бы имена ключей (пин
@@ -61,6 +66,7 @@ async function loadWithTouch() {
 
 afterEach(() => {
   vi.doUnmock('@environment/touchSupport')
+  vi.doUnmock('@components/sidebarLeft')
   vi.resetModules()
   document.body.replaceChildren()
 })

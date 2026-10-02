@@ -11,12 +11,6 @@
 // `target.dataset.filterId` (`:69-71`), ставят его сами ряды.
 //
 // Адаптации (каждая — из-за отсутствующей у нас подсистемы):
-//   • `appSidebarLeft` + классы вкладок `AppEditFolderTab`/`AppChatFoldersTab`
-//     (`:10-12`, `:28-30`, `:46-48`) → объект колонки `FolderContextMenuSidebar`:
-//     `closeTabsBefore` — тот же метод (`sidebarLeft/index.ts:1613-1616`), а
-//     `createTab(X).open(...)` — `openEditFolderTab(filter)`/`openChatFoldersTab()`:
-//     колоночного слайдера у нас ещё нет (шов, задача 28 плана 2D), вкладки
-//     открывает колонка (`Sidebar.tsx::openColumnTab` — хост слайдера над ней);
 //   • `managers.filtersStorage.getFilter(id)` (`:26`, RPC в воркер) →
 //     синхронное чтение `appState.folders`: папки у нас живут на главном потоке;
 //     папки нет (успела уйти пушем) — нет и экрана (у tweb редактор открылся бы
@@ -36,28 +30,24 @@ import findUpClassName from '@helpers/dom/findUpClassName'
 import noop from '@helpers/noop'
 import { useAppStateStore } from '@stores/appState'
 import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '@core/folderIds'
-import type { Folder } from '@core/managers/foldersManager'
 import { deleteFolder, type EditFolderManagers } from '@components/sidebarLeft/tabs/editFolderShared'
-
-/** То, что меню берёт у колонки (у tweb — `appSidebarLeft` и классы вкладок). */
-export type FolderContextMenuSidebar = {
-  /** `appSidebarLeft.closeTabsBefore` (`sidebarLeft/index.ts:1613-1616`) */
-  closeTabsBefore: (clb: () => void) => void
-  /** `createTab(AppEditFolderTab).open({initFilter: filter})` */
-  openEditFolderTab: (filter: Folder) => void
-  /** `createTab(AppChatFoldersTab).open()` */
-  openChatFoldersTab: () => void
-}
+import type { AppChatFoldersTab } from '@components/solidJsTabs/tabs'
+import type { AppEditFolderTab } from '@components/solidJsTabs/tabs'
+import type { AppSidebarLeft } from '@components/sidebarLeft'
 
 export type FolderContextMenuManagers = EditFolderManagers
 
 export default function createFolderContextMenu({
   appSidebarLeft,
+  AppChatFoldersTab: _AppChatFoldersTab,
+  AppEditFolderTab: _AppEditFolderTab,
   managers,
   className,
   listenTo,
 }: {
-  appSidebarLeft: FolderContextMenuSidebar,
+  appSidebarLeft: AppSidebarLeft,
+  AppChatFoldersTab: typeof AppChatFoldersTab,
+  AppEditFolderTab: typeof AppEditFolderTab,
   managers: FolderContextMenuManagers,
   className: string,
   listenTo: HTMLElement
@@ -67,8 +57,8 @@ export default function createFolderContextMenu({
     const filter = useAppStateStore.getState().folders.find((folder) => folder.id === filterId)
     if(!filter) return
 
-    appSidebarLeft.closeTabsBefore(() => {
-      appSidebarLeft.openEditFolderTab(filter)
+    void appSidebarLeft.closeTabsBefore(() => {
+      void appSidebarLeft.createTab(_AppEditFolderTab).open({ ..._AppEditFolderTab.getInitArgs(), initFilter: filter })
     })
   }
 
@@ -85,8 +75,8 @@ export default function createFolderContextMenu({
       icon: 'edit',
       text: 'FilterEditAll',
       onClick: () => {
-        appSidebarLeft.closeTabsBefore(() => {
-          appSidebarLeft.openChatFoldersTab()
+        void appSidebarLeft.closeTabsBefore(() => {
+          void appSidebarLeft.createTab(_AppChatFoldersTab).open(_AppChatFoldersTab.getInitArgs())
         })
       },
       verify: () => clickFilterId === ALL_FOLDER_ID,

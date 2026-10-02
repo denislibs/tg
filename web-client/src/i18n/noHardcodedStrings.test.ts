@@ -67,7 +67,6 @@ const NOT_UI: Record<string, string> = {
   'src/core/net/tlFrames.ts': 'причина отказа разбора кадра — текст `Error` для разработчика',
   'src/lib/mtproto/tl_utils.ts': 'причина отказа непортированной ветки — текст `Error`',
   'src/client/bootstrap.ts': 'предупреждение в консоль о невзятом Web Lock',
-  'src/components/sidebarLeft/columnSlider.ts': 'причина отказа слайдера — текст `Error` для разработчика',
   'src/core/managers/authManager.ts': 'причина отказа неизвестного ответа ручки — текст `Error`',
 }
 
@@ -90,7 +89,6 @@ const DEBT: Record<string, number> = {
   'src/components/MarkupTooltip.tsx': 9,
   'src/components/NewContactPopup.tsx': 7,
   'src/components/RepostStorySheet.tsx': 2,
-  'src/components/StoriesRow.tsx': 3,
   'src/components/StoryViewer.tsx': 4,
   'src/components/auth/cards/SignUpCard.solid.tsx': 1,
   'src/components/composer/helpers.ts': 12,
@@ -104,7 +102,6 @@ const DEBT: Record<string, number> = {
   'src/core/dialogToChat.ts': 1,
   'src/core/hooks/useDeepLinks.ts': 5,
   'src/core/hooks/useGroupInfo.ts': 8,
-  'src/core/hooks/useSidebarStories.tsx': 1,
   'src/core/hooks/useStoryViewer.ts': 3,
   'src/core/hooks/useTypingLabel.ts': 32,
   'src/core/messageToConvMsg.ts': 13,

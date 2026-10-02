@@ -2,7 +2,7 @@
 /**
  * «Редактировать профиль» `AppEditProfileTab` (порт tweb
  * `sidebarLeft/tabs/editProfile.tsx`, задача 27 плана 2D) — настоящая вкладка
- * на колоночном слайдере (`@/test/columnSlider`), открытая тем же путём, что
+ * на колоночном слайдере (`@/test/sidebarLeft`), открытая тем же путём, что
  * ⋮ → «Edit Profile» корня: `createTab(AppEditProfileTab).open(getEditProfileInitArgs())`.
  *
  * Пины на результат:
@@ -30,7 +30,7 @@ import type { Birthday } from '@core/peers/peer'
 import { useChatsStore } from '@stores/chatsStore'
 import type SliderSuperTab from '@components/sliderTab'
 import { AppEditProfileTab, getEditProfileInitArgs } from '@components/solidJsTabs/tabs'
-import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
+import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 
 type BirthdayPopupProps = { initialDate?: Birthday, onSave: (date: Birthday | null) => Promise<boolean> | boolean }
 const popups = vi.hoisted(() => ({ showBirthdayPopup: vi.fn((_props: unknown) => {}) }))
@@ -64,7 +64,7 @@ const settle = () => pause(400)
 
 const ME = 7
 
-let host: TestColumnSlider
+let host: InstalledSidebarLeft
 let profile: {
   update: ReturnType<typeof vi.fn>
   checkUsername: ReturnType<typeof vi.fn>
@@ -117,7 +117,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = mountTestColumnSlider(columnEl, managers)
+  host = installSidebarLeft(managers, columnEl)
 })
 
 afterEach(async() => {

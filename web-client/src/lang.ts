@@ -1395,6 +1395,7 @@ const lang = {
   'Stars.Subscriptions.PerMonth': 'per month',
   'Stars.TopUpAction': 'Top up Stars',
   StarsFailed: 'Failed',
+  'StarsRating.Back': 'Back',
   'StarsReaction.Caption': 'Choose how many Stars you want to send to support this message.',
   'StarsReaction.Title': 'React with Stars',
   StarsReactionTitle: 'Star Reaction',

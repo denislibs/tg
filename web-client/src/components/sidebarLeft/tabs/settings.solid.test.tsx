@@ -2,7 +2,7 @@
 /**
  * Корень настроек `AppSettingsTab` (порт tweb `sidebarLeft/tabs/settings.tsx`,
  * задача 28 плана 2D) — настоящая вкладка на колоночном слайдере
- * (`@/test/columnSlider`), тем же путём, что пункт «Settings» бургера.
+ * (`@/test/sidebarLeft`), тем же путём, что пункт «Settings» бургера.
  *
  * Пины на результат:
  *  • состав и порядок строк — дословно JSX `Settings` оригинала (:376-446):
@@ -41,7 +41,7 @@ import {
 } from '@components/solidJsTabs/tabs'
 import { setAppStateSilent } from '@stores/appState'
 import { useChatsStore } from '@stores/chatsStore'
-import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
+import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 
 const avatars = vi.hoisted(() => ({
   instances: [] as { options: { setCollapsedOn: HTMLElement, scrollableEl: HTMLElement }, setPeer: ReturnType<typeof vi.fn>, cleanup: ReturnType<typeof vi.fn> }[],
@@ -99,7 +99,7 @@ const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 /** Переход (250) + разрушение вкладки (280) + запас. */
 const settle = () => pause(400)
 
-let host: TestColumnSlider
+let host: InstalledSidebarLeft
 let list: ReturnType<typeof vi.fn<() => Promise<Auth[]>>>
 
 beforeEach(() => {
@@ -119,7 +119,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = mountTestColumnSlider(columnEl, managers)
+  host = installSidebarLeft(managers, columnEl)
 })
 
 afterEach(async() => {

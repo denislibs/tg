@@ -28,7 +28,7 @@ import type { Managers } from '@/client/bootstrap'
 import lang from '@/lang'
 import { AppMessagesAutoDeleteTab } from '@components/solidJsTabs/tabs'
 import type SliderSuperTab from '@components/sliderTab'
-import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
+import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 import { installSpecLabelActivation } from '@/test/specLabelActivation'
 import lottieStyles from '@components/settingsTabLottieAnimation.module.scss'
 
@@ -58,7 +58,7 @@ beforeAll(async() => {
   await import('./index.solid')
 }, 30000)
 
-let host: TestColumnSlider
+let host: InstalledSidebarLeft
 let columnEl: HTMLElement
 let setAutoDelete: ReturnType<typeof vi.fn>
 let uninstallLabelActivation: () => void
@@ -75,7 +75,7 @@ beforeEach(() => {
   columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = mountTestColumnSlider(columnEl, managers)
+  host = installSidebarLeft(managers, columnEl)
 })
 
 afterEach(async() => {
