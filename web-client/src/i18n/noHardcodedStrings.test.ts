@@ -81,11 +81,9 @@ const NOT_UI: Record<string, string> = {
  */
 const DEBT: Record<string, number> = {
   'src/client/realtime/storeProjection.ts': 1,
-  'src/components/AddContactView.tsx': 3,
   'src/components/AddStorySheet.tsx': 13,
   'src/components/CodeBlock.tsx': 2,
   'src/components/Composer.tsx': 2,
-  'src/components/EditContactView.tsx': 10,
   'src/components/EditStorySheet.tsx': 5,
   'src/components/GroupCallScreen.tsx': 1,
   'src/components/LocationPicker.tsx': 6,

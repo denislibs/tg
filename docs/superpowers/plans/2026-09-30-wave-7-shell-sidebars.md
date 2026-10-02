@@ -667,6 +667,11 @@ tweb. Чего нет у tweb — удалить, и написать об эт�
   порт `sharedPermissions.ts` — туда, где они у tweb.
 - **0б-10:** день рождения в редакторе контакта — `showBirthdayPopup` (**2C-14**); до неё
   `// ВРЕМЕННО до 2C-14` (React `BirthdayModal` функцией). Аватар — `AvatarEdit` (2D-27).
+  **Итог врезки:** ветка `AvatarEdit` перенесена в сам `EditPeer` (tweb `editPeer.ts:56-64`,
+  `editProfile` — без своей копии); «Установить/Предложить фото» — мост
+  `pickAvatarAndUpload.bridge.tsx` `// ВРЕМЕННО до МР-5`. Снесены и `AddContactView.tsx`
+  (+`.module.scss`) — ветка «новый контакт» той же вкладки (tweb `topbar.ts:902-908`), — а с ними
+  `useEditContact.ts`, `useMuteToggle.ts`.
 - **0б-9:** графики у tweb — `lovely-chart` (`statistics.tsx`). Если его нет в зависимостях, решение
   «взять пакет tweb» выносится в PR. Свою `StatChart` внутрь Solid-вкладки не тащить (React).
 - **Не входит в 0б:** `QrModal.tsx` (**2C-17**), `components/secret/KeyVerificationPopup.tsx`

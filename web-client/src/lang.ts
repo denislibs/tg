@@ -460,7 +460,6 @@ const lang = {
   EditAdminRights: 'Edit admin rights',
   EditAdminWhatCanDo: 'What can this admin do?',
   'EditContact.OriginalName': 'original name',
-  'EditContact.PhotoHint': 'You can suggest a new profile photo to your contact — or change their photo just for yourself.',
   EditFactCheck: 'Edit Fact Check',
   'EditFolder.EmojiAsIconTip': 'If you put only one emoji at the beginning (or at the end), it will be displayed as the icon in the folders sidebar',
   'EditFolder.Toast.ChooseChat': 'Please choose at least one chat for this folder.',

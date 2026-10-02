@@ -25,7 +25,7 @@
   flex-direction: column;
 
   // Узел создаётся на открытии (popupStore), transition стартовать не от чего —
-  // въезд кейфреймом той же кривой (как AddContactView.panelNarrowIn).
+  // въезд кейфреймом той же кривой.
   @include animation-level-global(2) {
     animation: right-search-slide-in var(--transition-standard-in-time) var(--transition-standard-easing);
   }
@@ -47,7 +47,7 @@
 }
 
 // CSS-модули хешируют любое имя в animation — ссылка на глобальный кейфрейм
-// партиала молча сломалась бы; держим локальный дубль (см. AddContactView.module.scss).
+// партиала молча сломалась бы; держим локальный дубль.
 @keyframes right-search-slide-in {
   from {
     transform: translate3d(100%, 0, 0);

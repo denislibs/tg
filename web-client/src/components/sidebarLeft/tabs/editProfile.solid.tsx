@@ -18,12 +18,8 @@
  *
  * Расхождения с оригиналом (номер — у строки):
  *  1. Аватар: `EditPeer` и `AvatarEdit` — общие классы волны 7 (0б-10 и 0а-3),
- *     взятые дословно; у нашего `EditPeer` ветки `AvatarEdit` нет
- *     (`doNotEditAvatar: true` — литерал, `editPeer.ts` шапка п. 1). Поэтому
- *     её тело (tweb `editPeer.ts:56-64`: `uploadAvatar`, `handleChange`, снятие
- *     заглушки, заглушка внутри кнопки) и её доля в `isChanged` (:95-98)
- *     живут здесь, в том же месте, где оригинал сам дописывает `isChanged`
- *     (:143-145). Кроп и видео-аватар — медиаредактор (`getFileAndOpenEditor`,
+ *     взятые дословно, ветка `AvatarEdit` — в самом `EditPeer` (tweb
+ *     `editPeer.ts:56-64`). Кроп и видео-аватар — медиаредактор (`getFileAndOpenEditor`,
  *     О-24; порт — программа медиаредактора, МР-5/МР-6): до него `AvatarEdit`
  *     берёт картинку выбором файла без кропа (шапка `avatarEdit.ts`).
  *  2. Загрузка аватара — `media.upload` → `profile.addPhoto(mediaId)` вместо
@@ -69,7 +65,6 @@ import Row from '@components/rowTsx.solid'
 import { InputFieldTsx } from '@components/inputFieldTsx.solid'
 import { i18n } from '@lib/langPack'
 import EditPeer from '@components/editPeer'
-import AvatarEdit, { type AvatarEditPayload } from '@components/avatarEdit'
 import type InputField from '@components/inputField'
 import { UsernameInputField } from '@components/usernameInputField'
 import { saveMyBirthday, showBirthdayPopup } from '@components/sidebarLeft/settingsPopups'
@@ -130,20 +125,9 @@ const EditProfileForm = (props: { data: FormData }) => {
     peerId: toPeerId(user.id, false),
     inputFields,
     listenerSetter: tab.listenerSetter,
-    // расхождение 1
-    doNotEditAvatar: true,
     middleware: tab.middlewareHelper.get(),
     managers,
   })
-
-  // расхождение 1 — ветка `AvatarEdit` tweb `editPeer.ts:56-64`
-  let uploadAvatar: AvatarEditPayload | undefined
-  const avatarEdit = new AvatarEdit((payload) => {
-    uploadAvatar = payload
-    editPeer.handleChange()
-    editPeer.avatarElem.node.remove()
-  }, { managers })
-  avatarEdit.container.append(editPeer.avatarElem.node)
 
   tab.content.append(editPeer.nextBtn)
 
@@ -159,10 +143,8 @@ const EditProfileForm = (props: { data: FormData }) => {
 
   const [hasBirthday, setHasBirthday] = createSignal(!!userFull.birthday)
 
-  // tweb :143-145 дописывает сюда личный канал (О-25); доля аватара —
-  // tweb `editPeer.ts:95-98` (расхождение 1)
-  const origIsChanged = editPeer.isChanged
-  editPeer.isChanged = () => !!uploadAvatar || origIsChanged()
+  // (О-25) tweb :142-143 дописывает сюда `isPersonalChannelChanged` — личного
+  // канала нет, `isChanged` оригинала `EditPeer` остаётся как есть
 
   const onSave = () => {
     editPeer.nextBtn.disabled = true
@@ -180,9 +162,9 @@ const EditProfileForm = (props: { data: FormData }) => {
       console.error('updateProfile error:', err)
     }))
 
-    if(uploadAvatar) {
+    if(editPeer.uploadAvatar) {
       // расхождение 2
-      const filePromise = uploadAvatar.file()
+      const filePromise = editPeer.uploadAvatar.file()
       promises.push(filePromise.then((mediaId) => {
         return managers.profile.addPhoto(mediaId)
       }, () => {
@@ -214,7 +196,7 @@ const EditProfileForm = (props: { data: FormData }) => {
 
   return (
     <>
-      {avatarEdit.container}
+      {editPeer.avatarEdit.container}
 
       <Section caption="Bio.Description">
         <div class="input-wrapper">

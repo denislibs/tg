@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 41,
+      "version": 42,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -1728,10 +1728,6 @@
         {
           "key": "EditContact.OriginalName",
           "value": "original name"
-        },
-        {
-          "key": "EditContact.PhotoHint",
-          "value": "You can suggest a new profile photo to your contact — or change their photo just for yourself."
         },
         {
           "key": "EditFactCheck",
@@ -5936,7 +5932,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 41,
+      "version": 42,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -10926,10 +10922,6 @@
         {
           "key": "QrLogin.Confirm.Action",
           "value": "Подтвердить"
-        },
-        {
-          "key": "EditContact.PhotoHint",
-          "value": "Вы можете предложить контакту установить новую фотографию профиля — или изменить его фотографию только у себя."
         },
         {
           "key": "MoreBoosts",

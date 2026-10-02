@@ -106,6 +106,7 @@ import type { SearchSuperActions } from '../core/hooks/useSearchSuper'
 import { getMediaId } from '../core/messages/messageKind'
 import { useIsActiveChat } from '../core/chat/chatInstanceContext'
 import appSidebarRight, { RIGHT_COLUMN_ACTIVE_CLASSNAME } from './sidebarRight'
+import { AppEditContactTab } from './solidJsTabs/tabs'
 import type AppReactProfileTab from './sidebarRight/reactProfileTab'
 
 // Инфо-панель — не первый кадр; ленивый чанк.
@@ -1528,7 +1529,9 @@ export default function Chat({ chat, onBack, thread }: Props) {
             chat={chat}
             onOpenPeer={onOpenPeer}
             canAddMembers={canAddMember}
-            onEditContact={() => { void appSidebarRight.toggleSidebar(false); pop.openEditContact() }}
+            // ВРЕМЕННО до 3-1 — карандаш профиля tweb (`sharedMedia.tsx:675-686`):
+            // вкладка «Изменить контакт» в тот же слайдер правой колонки.
+            onEditContact={() => { void appSidebarRight.createTab(AppEditContactTab).open(Number(chat.id)) }}
             searchSuperActions={searchSuperActions}
           />
         </Suspense>

@@ -474,9 +474,11 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `MobileHiddenExceptionInfo`, `NewContact.Exception.ShareMyPhoneNumber{,.Desc}`,
 // `PeerInfo.DeleteContact`, десять `UserInfo.*` личного фото, `DeleteContact`,
 // `AreYouSureDeleteContact`, `DeleteContactsSubtitle` и числовой `DeleteContactsTitle`.
-// Итог (поверх 0а-2): ru 1435 (форм числа 45).
+// Врезкой той же задачи снят наш `EditContact.PhotoHint` (подпись снесённого
+// React-экрана `EditContactView`; у tweb — `UserInfo.CustomPhotoHelp`).
+// Итог (поверх 0а-2): ru 1434 (форм числа 45).
 const COMPOSITION = {
-  ru: { keys: 1435, plural: 45 },
+  ru: { keys: 1434, plural: 45 },
   uk: { keys: 759, plural: 33 },
   es: { keys: 756, plural: 32 },
   de: { keys: 757, plural: 33 },
@@ -633,7 +635,7 @@ const COMPOSITION = {
 // `NewGroup.DefaultTitle` снесённого React-экрана (разбор — там же).
 // Задачей 0б-10 волны 7 — у ru +23 ключа вкладки «Изменить контакт» (разбор — там же).
 const FINGERPRINT = {
-  ru: '2b49af1a',
+  ru: '0530be85',
   uk: '571c2c10',
   es: '737d78e3',
   de: '5e55ac08',

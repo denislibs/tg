@@ -43,7 +43,7 @@
  *  5. `showBirthdayPopup`/`suggestUserBirthday` — мост
  *     `popups/birthday.bridge.tsx` (ВРЕМЕННО до 2C-14, React `BirthdayModal`).
  *  6. Выбор и загрузка фото — мост `pickAvatarAndUpload.bridge.tsx`
- *     (ВРЕМЕННО до 2D-27, класс `AvatarEdit`).
+ *     (ВРЕМЕННО до МР-5, порт `pickAvatarAndUpload` с медиаредактором).
  *  7. Мьют читается мостом зеркала диалогов (`chatsStore.dialogs[].notify_settings`,
  *     тот же источник, что `peerProfile.solid.tsx::Notifications`): подписка —
  *     на слушателях вкладки, как `rootScope` `notify_settings` у оригинала (`:213-220`).
@@ -68,6 +68,7 @@ import { formatUserPhone } from '@core/format/phone'
 import Section from '@components/section.solid'
 import { wrapSolidComponent } from '@helpers/solid/wrapSolidComponent'
 import { toastNew } from '@components/toast'
+// ВРЕМЕННО до МР-5 — `@components/avatarEdit` (расхождение 6)
 import { pickAvatarAndUpload } from '@components/pickAvatarAndUpload.bridge'
 // ВРЕМЕННО до 2C-14 — `@components/popups/birthday` (расхождение 5)
 import showBirthdayPopup, { suggestUserBirthday } from '@components/popups/birthday.bridge'
