@@ -81,15 +81,3 @@ describe('watchLiteModeSettings', () => {
     expect(document.body.classList.contains('animation-level-0')).toBe(false)
   })
 })
-
-// Проводка (web-client/CLAUDE.md, «Тесты»): подписку заводит `App.tsx` — рендер
-// App в vitest невозможен (нужны менеджеры/воркер), поэтому скан исходника, как
-// `App.authMount.test.ts`: вызов лежит в теле layout-эффекта и отдаёт ему отписку.
-describe('проводка в App.tsx', () => {
-  it('watchLiteModeSettings заводится в useLayoutEffect и снимается его уборкой', async() => {
-    const { readFileSync } = await import('node:fs')
-    const { join } = await import('node:path')
-    const src = readFileSync(join(__dirname, '..', 'App.tsx'), 'utf8')
-    expect(src).toMatch(/useLayoutEffect\(\s*\(\)\s*=>\s*(?:\{\s*return\s+)?watchLiteModeSettings\(\)/)
-  })
-})

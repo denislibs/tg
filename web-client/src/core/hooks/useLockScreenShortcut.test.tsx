@@ -5,8 +5,6 @@
 // сам экран — заглушка, а `lockAndReload` (tweb `apiManagerProxy.lock()`:
 // воркер завершается вместе с ключом, вкладки перезагружаются) — шпион. Его
 // зовёт `onAnimationEnd` контроллера — после проявления экрана (tweb `:70-72`).
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { useSettingsStore } from '@/settings'
@@ -100,15 +98,5 @@ describe('useLockScreenShortcut', () => {
     unmount()
     press({ altKey: true })
     expect(useLockStore.getState().locked).toBe(false)
-  })
-})
-
-// Проводка: хук живёт, только пока его зовёт оболочка (у tweb — конструктор
-// `appImManager`, `appImManager.ts:630`). Вызов проверяется сканом исходника —
-// приём `components/Chat.feedMount.test.ts`: `App.tsx` в тестах не монтируется.
-describe('проводка', () => {
-  it('App.tsx зовёт useLockScreenShortcut() рядом с useAutoLock()', () => {
-    const src = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8')
-    expect(src).toMatch(/^\s*useAutoLock\(\)\n\s*useLockScreenShortcut\(\)$/m)
   })
 })

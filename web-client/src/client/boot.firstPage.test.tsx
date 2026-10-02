@@ -43,7 +43,6 @@ import { ALL_FOLDER_ID } from '../core/folderIds'
 import { useChatsStore } from '../stores/chatsStore'
 import { useFoldersStore } from '../stores/foldersStore'
 import { useNotifyStore } from '../stores/notifyStore'
-import { useNavigationStore } from '../stores/navigationStore'
 import { useAppStateStore } from '../stores/appState'
 import { useSettingsStore } from '../settings'
 import type { Managers } from './bootstrap'
@@ -210,7 +209,6 @@ beforeEach(() => {
   useSettingsStore.setState({ passcodeEnabled: false })
   useFoldersStore.setState({ contactIds: new Set(), selectedId: ALL_FOLDER_ID })
   useAppStateStore.setState({ folders: [FOLDER] })
-  useNavigationStore.setState({ selectedId: null })
   useNotifyStore.setState({ settings: { private: { muted: false, preview: true }, groups: { muted: false, preview: true }, channels: { muted: false, preview: true } } })
 
   // высоту скроллеров списков ядро читает `getBoundingClientRect` (`useElementSize`)

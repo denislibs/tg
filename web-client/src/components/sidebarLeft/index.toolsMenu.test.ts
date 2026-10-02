@@ -257,13 +257,14 @@ describe('createMoreSubmenu — «Ещё»', () => {
     }
   })
 
-  it('PWA и PiP — по своим verify', async() => {
+  it('PWA — по своему verify; PiP скрыт без `#root` (Б-12)', async() => {
     usePwaStore.setState({ canInstall: true })
     env.pip = true
     const { menu } = await openMenu()
     const more = await openMore(menu)
 
-    expect(itemTexts(more).slice(-2)).toEqual(['Install App', 'Picture-in-Picture'])
+    expect(itemTexts(more).slice(-1)).toEqual(['Install App'])
+    expect(itemTexts(more)).not.toContain('Picture-in-Picture')
   })
 
   it('тумблер анимаций пишет liteMode.animations', async() => {

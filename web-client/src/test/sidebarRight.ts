@@ -24,6 +24,8 @@ export function installSidebarRight(managers = {} as Managers) {
       void appSidebarRight.toggleSidebar(false)
       appSidebarRight.closeAllTabs()
       appSidebarRight.replaceSharedMediaTab(undefined)
+      // закрытые вкладки снимаются с узла отложенно — следующему тесту нужен пустой слайдер
+      slider.replaceChildren()
       appNavigationController.spliceItems(0, Infinity)
       returnToStaticMarkup(column)
     },

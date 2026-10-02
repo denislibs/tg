@@ -245,11 +245,12 @@ describe('один писатель `is-right-column-shown`', () => {
 
   // Узел колонки один и статичный (tweb `index.html:110-112`): его рисует
   // шелл, а не портал каждой панели профиля, как раньше `UserInfoPanel`.
-  it('`id="column-right"` в разметке — ровно один, в App.tsx', () => {
+  it('`id="column-right"` — ровно один, статикой в index.html (tweb :110-112); в коде — ни одного', () => {
     const hosts = walk(SRC).flatMap((p) => {
       const n = readFileSync(p, 'utf8').match(/id="column-right"/g)?.length ?? 0
       return n ? [`${relative(SRC, p)}:${n}`] : []
     })
-    expect(hosts).toEqual(['App.tsx:1'])
+    expect(hosts).toEqual([])
+    expect(readFileSync(join(SRC, '../index.html'), 'utf8').match(/id="column-right"/g)).toHaveLength(1)
   })
 })

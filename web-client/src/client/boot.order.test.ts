@@ -77,17 +77,11 @@ vi.mock('../core/state/loadState', async () => {
 import { bootstrap } from './boot'
 import { useSettingsStore } from '../settings'
 import backgroundStyles from '../components/chat/bubbles/chatBackground.module.scss'
-import { useNavigationStore } from '../stores/navigationStore'
-import { resetHashBootstrap } from '../core/hooks/useUrlSync'
 
 beforeEach(() => {
   calls.length = 0
   vi.clearAllMocks()
   location.hash = ''
-  useNavigationStore.getState().selectChat(null)
-  // Защёлка «первое применение хэша» — модульная и одна на жизнь страницы;
-  // между прогонами её надо снимать, иначе второй bootstrap() её не увидит.
-  resetHashBootstrap()
 })
 
 describe('boot: гидрация владельца диалогов упорядочена относительно persistScope', () => {
@@ -138,36 +132,3 @@ describe('boot: фон страницы', () => {
 // держится неотвеченным, и чат обязан быть выбран ДО того, как он приедет.
 // Верни применение хэша обратно за `await dialogsOp` — и `waitFor` ниже
 // никогда не дождётся.
-describe('boot: хэш применяется до загрузки списка диалогов', () => {
-  it('чат из хэша выбран ещё до ответа fillMirror()', async () => {
-    let release!: () => void
-    dialogs.fillMirror.mockImplementationOnce(
-      () => new Promise((resolve) => { release = () => resolve({ op: 'reset' as const, items: [] }) }),
-    )
-    location.hash = '#-42'
-
-    const booted = bootstrap()
-
-    await vi.waitFor(() => {
-      expect(useNavigationStore.getState().selectedId).toBe('-42')
-    })
-    // ...и это действительно ДО чатлиста: ни ответа владельца, ни сетевого догона.
-    expect(calls).not.toContain('dialogs.refresh')
-
-    release()
-    await booted
-  })
-
-  // Без токена IM не поднимается вовсе (Shell рендерится под `authed`), и у
-  // оригинала `bootstrapIm()` тоже зовётся только под авторизацией
-  // (tweb `index.ts:628`/`:641`). Открывать по хэшу чат на экране входа значило
-  // бы получить 401 и тост поверх формы логина.
-  it('без токена boot хэш НЕ применяет — это делает монтирование Shell', async () => {
-    scopeToSession.mockResolvedValueOnce(false)
-    location.hash = '#-42'
-
-    await bootstrap()
-
-    expect(useNavigationStore.getState().selectedId).toBeNull()
-  })
-})

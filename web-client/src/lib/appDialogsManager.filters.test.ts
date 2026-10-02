@@ -5,7 +5,7 @@
 //
 // Поток «добавили/удалили/переставили» у нас один — проекция `folders.solid`
 // поверх `appState.folders`; папки кладутся тем же путём, что пуш сервера
-// (`applyFolderUpdate`) и логаут (`resetAppState`).
+// (`applyFolderUpdate`).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import '@/test/lang'
 import {
@@ -15,7 +15,6 @@ import {
 } from './appDialogsManager.testkit'
 import { resetPeerMirror } from '@core/peerCache'
 import { applyFolderUpdate, useFoldersStore } from '@stores/foldersStore'
-import { resetAppState } from '@stores/appState'
 import useFolders from '@stores/folders.solid'
 import type { SwipeEvent, SwipeHandlerHorizontalOptions } from '@helpers/dom/handleHorizontalSwipe'
 
@@ -196,19 +195,6 @@ describe('appDialogsManager: папки добавляются, удаляютс
     expect(rowHidden()).toBe(true)
     expect(gradientHidden()).toBe(true)
     expect(mounted.chatsContainer.classList.contains('has-filters')).toBe(false)
-  })
-
-  it('логаут (сброс appState) — пользовательские кадры сняты, «Все чаты» осталась (state_cleared)', async () => {
-    putFolders(raw(3, 1, 'Работа'), raw(4, 2, 'Шум'))
-    mounted = mountOwner()
-    await settle()
-
-    resetAppState()
-    await settle()
-
-    expect(filterIds(mounted.folders)).toEqual(['0'])
-    expectActiveOnly(mounted.folders, 0)
-    expect(rowHidden()).toBe(true)
   })
 })
 

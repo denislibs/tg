@@ -51,16 +51,6 @@ export async function playMainScreenExit(el: HTMLElement | null): Promise<void> 
   await pause(200)
 }
 
-// tweb src/index.ts (should_animate_main): появление мессенджера
-export async function playMainScreenEnter(el: HTMLElement | null): Promise<void> {
-  if (!el) return
-  el.classList.add('main-screen-enter')
-  await doubleRaf()
-  el.classList.add('main-screen-entering')
-  await pause(200)
-  el.classList.remove('main-screen-enter', 'main-screen-entering')
-}
-
 // tweb меню аккаунтов: список чатов уезжает перед changeAccount
 export async function playChatlistExit(el: HTMLElement | null): Promise<void> {
   if (!el) return

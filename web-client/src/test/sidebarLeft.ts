@@ -59,6 +59,8 @@ export function installSidebarLeft(managers = {} as Managers, columnEl?: HTMLEle
     destroy() {
       appSidebarLeft.closeAllTabs()
       appNavigationController.spliceItems(0, Infinity)
+      // вкладки, созданные без `open()`, в историю не попали и closeAllTabs их не снимет
+      ;[...sliderEl.children].forEach((child) => child !== mainEl && child.remove())
       mainEl.append(...detached)
       returnToStaticMarkup(column)
     },

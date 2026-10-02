@@ -712,7 +712,9 @@ export class AppSidebarLeft extends SidebarSlider {
         }
       },
       // Document Picture-in-Picture is Chromium-only — gate the entry on actual support.
-      verify: () => DOCUMENT_PICTURE_IN_PICTURE_SUPPORTED,
+      // Б-12 (К-2): вынос переносил `#root`, которого с точкой входа tweb нет, —
+      // пункт скрыт до порта `components/clientPip.tsx`.
+      verify: () => DOCUMENT_PICTURE_IN_PICTURE_SUPPORTED && !!document.getElementById('root'),
     }]
 
     const hasAnimations = () => {

@@ -83,7 +83,7 @@ beforeEach(() => {
   columnEl.id = 'column-left'
   document.body.append(columnEl)
   host = installSidebarLeft(managers, columnEl)
-  sliderEl = columnEl.querySelector<HTMLElement>('.sidebar-slider')!
+  sliderEl = host.sliderEl
 })
 
 afterEach(async() => {

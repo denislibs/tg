@@ -120,7 +120,13 @@ describe('construct — кнопка #new-menu (:198-200, :1113-1129)', () => {
 
   it('+1 «New Secret Chat» под SECRET_CHATS_ENABLED (Отступление В7-1)', async() => {
     flags.secret = true
-    const { menu } = await openMenu()
+    // пункты собираются в `construct` один раз — кнопку под флагом строим заново
+    construct()
+    const btn = (installed.sidebar as unknown as { createNewChatsMenuButton(): HTMLElement }).createNewChatsMenuButton()
+    document.body.append(btn)
+    btn.click()
+    await vi.waitFor(() => expect(rootMenu()?.classList.contains('active')).toBe(true))
+    const menu = rootMenu()!
 
     expect(itemTexts(menu)).toEqual(['New Channel', 'New Group', 'New Private Chat', 'New Secret Chat'])
   })
