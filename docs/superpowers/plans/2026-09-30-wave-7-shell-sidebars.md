@@ -1403,6 +1403,7 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 | О-82 | «Мои истории» — вкладка `AppMyStoriesTab` (`sidebarLeft/tabs/myStories`, `:715-722`); до порта пункт открывает наш `StoriesArchiveSheet` | вкладка историй не портирована (волна 4 спеки) (2-2) | пункт 1:1 |
 | О-83 | verify «Архива» целиком: `!isDialogsLoaded(FOLDER_ID_ARCHIVE)` и `appStoriesManager.hasArchive()` (`:681-685`); у нас — только «есть архивные диалоги» | нет признака «архив догружен» и архива историй скрытых пиров (2-2) | пункт до первой загрузки архива |
 | О-84 | Клавиатурная навигация меню: `menuKeyboard`, `focusTrap`, `activateFocus` в `contextMenuController`, 5-й аргумент `addAdditionalMenu` (фокус в подменю) | срез a11y `contextMenuController` не портирован (2-2) | стрелки/Enter/Esc по пунктам бургера и подменю |
+| О-90 | Лог звонка, обе стороны которого пропали без кадра конца (закрыли/убили обе вкладки, нет сети у обоих): у оригинала сервер сам кончает такой звонок по таймауту и кладёт `messageActionPhoneCall` (Missed без ответа, Disconnect после) | сервер узнаёт о конце только из `call_end`/`call_decline` (`backend/internal/usecase/chat/phonecall.go`); серверного таймера звонка нет, состояние просто истекает по TTL (`adapter/cache/redis/phonecallstore.go`, 24 ч) без лога (журнал звонков, PR этого фикса) | серверный таймер звонка (ожидание ответа 45 с + сторож живости сторон) |
 
 ## Что остаётся волне 8 (после этой программы)
 

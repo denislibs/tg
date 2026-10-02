@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -706,8 +707,32 @@ func (r fakeMsgs) GetAround(_ context.Context, chatID, userID, centerSeq int64, 
 	return append(older, newer...), nil
 }
 
-func (r fakeMsgs) CallLog(context.Context, int64, int, int) ([]domain.CallLogEntry, error) {
-	return nil, nil
+// CallLog — тот же предикат, что у репозитория (messagesrepo.go::CallLog):
+// строки type='call' личных чатов зрителя, кроме скрытых им, новые сверху.
+func (r fakeMsgs) CallLog(_ context.Context, userID int64, offset, limit int) ([]domain.CallLogEntry, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var all []domain.Message
+	for cid, msgs := range r.s.messages {
+		if r.s.chatType[cid] != "private" || r.s.members[cid][userID] == nil {
+			continue
+		}
+		for _, m := range msgs {
+			if m.Type == "call" && !m.Deleted && !r.s.hidden[userID][m.ID] {
+				all = append(all, m)
+			}
+		}
+	}
+	slices.SortFunc(all, func(a, b domain.Message) int { return cmp.Compare(b.ID, a.ID) })
+	if offset >= len(all) {
+		return nil, nil
+	}
+	all = all[offset:min(offset+limit, len(all))]
+	out := make([]domain.CallLogEntry, len(all))
+	for i, m := range all {
+		out[i] = domain.CallLogEntry{Message: m}
+	}
+	return out, nil
 }
 
 // matchesMediaFilter — те же предикаты вкладок, что у репозитория

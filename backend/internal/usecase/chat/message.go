@@ -98,8 +98,9 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	broadcast := chatType == domain.ChatTypeChannel
 	// Вид строки выводится ИЗ ДЕЙСТВИЯ, а не приходит полем: «служебное ли» —
 	// это выбор конструктора, и клиент его назначить не может (у него в теле
-	// запроса действия нет вовсе). Лог звонка при этом остаётся отдельным видом
-	// строки: по нему идёт выборка журнала звонков.
+	// запроса действия нет вовсе; лог звонка кладёт сервер по концу звонка,
+	// phonecall.go). Лог звонка при этом остаётся отдельным видом строки: по
+	// нему идёт выборка журнала звонков.
 	switch {
 	case in.Action == nil && in.Type == "":
 		in.Type = "text"
@@ -250,9 +251,11 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	// у text/медиа-сообщений (service/encrypted/gift/… эффект не несут).
 	in.Effect = sanitizeEffect(in.Effect, in.Type)
 
-	// Групповые дефолтные разрешения + slowmode (сервисные сообщения генерирует
-	// сам сервер — их не ограничиваем).
-	if in.Type != "service" {
+	// Групповые дефолтные разрешения + slowmode + приватность получателя.
+	// Служебные сообщения (в том числе лог звонка) генерирует сам сервер — их
+	// не ограничиваем: решение «можно ли» принято там, где родилось действие
+	// (звонок, например, гейтится правилом звонков на call_request).
+	if in.Action == nil {
 		switch {
 		case broadcast:
 			// В канал пишут ПО ПРАВУ ПОСТИНГА. Дефолтная маска участника
@@ -507,8 +510,9 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 				}
 			}
 		}
-		// Отправка сообщения снимает черновик чата (Telegram-семантика).
-		if in.Type != "service" {
+		// Отправка сообщения снимает черновик чата (Telegram-семантика);
+		// служебное — например, лог звонка — черновика не трогает.
+		if in.Action == nil {
 			i.clearDraftAfterSend(ctx, in.SenderID, in.ChatID)
 		}
 	}
@@ -955,35 +959,6 @@ func (i *Interactor) checkPrivateSendPrivacy(ctx context.Context, in SendInput) 
 		}
 	}
 	return nil
-}
-
-// RelayCall forwards a 1:1 call signaling frame (call_request / call_accept /
-// call_decline / call_end / call_signal) to every device of the callee. The
-// server only relays — media is DTLS-encrypted peer-to-peer, so payloads stay
-// opaque. The sender id is stamped server-side so it can't be spoofed.
-// Ephemeral like Typing: no DB write, no-op without a publisher.
-// call_request дополнительно гейтится правилом «кто может мне звонить» +
-// чёрным списком: запрещённый вызов сразу отвечает инициатору call_decline
-// reason=privacy (адресат ничего не видит, как в Telegram).
-func (i *Interactor) RelayCall(ctx context.Context, frameType string, fromUserID, toUserID int64, data map[string]any) error {
-	if i.publisher == nil || toUserID == 0 || toUserID == fromUserID {
-		return nil
-	}
-	if frameType == "call_request" && i.privacy != nil {
-		ok, err := i.privacy.Check(ctx, toUserID, fromUserID, domain.PrivacyCalls)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			decline := frame("call_decline", map[string]any{"from_user_id": toUserID, "reason": "privacy"})
-			return i.publisher.PublishToUser(ctx, fromUserID, decline)
-		}
-	}
-	if data == nil {
-		data = map[string]any{}
-	}
-	data["from_user_id"] = fromUserID
-	return i.publisher.PublishToUser(ctx, toUserID, frame(frameType, data))
 }
 
 // Typing publishes an ephemeral typing indicator to the other chat members.

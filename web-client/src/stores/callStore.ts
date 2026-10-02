@@ -22,9 +22,6 @@ export interface CallPeer {
 export interface ActiveCall {
   callId: string
   peer: CallPeer
-  /** знаковый ключ приватного диалога (для записи лога звонка в историю) —
-   *  он же id собеседника; null у входящего до принятия */
-  peerId: PeerId | null
   outgoing: boolean
   video: boolean // видеозвонок (камера включена при старте)
   phase: CallPhase

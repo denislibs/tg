@@ -93,8 +93,6 @@ export interface ConvMsg {
   factCheck?: import('./core/models').FactCheck
   // расшифровка голосового/видео-кружка (Telegram transcribeAudio) — текст под баблом
   transcription?: string
-  /** лог 1:1 звонка (tweb messageActionPhoneCall): исход + длительность */
-  call?: CallLog
   /** секретное сообщение (E2E) — включает таймер самоуничтожения в бабле */
   secret?: boolean
   /** E2E-медиа секретного чата — рисуется отдельной веткой (fetch+decrypt) */
@@ -104,12 +102,6 @@ export interface ConvMsg {
   destructAt?: string | null
   /** вид полноэкранного эффекта сообщения (наш аналог Telegram message effects) */
   effect?: import('./core/effects/emojiEffects').EmojiEffectKind
-}
-
-export interface CallLog {
-  video: boolean
-  reason: 'ok' | 'missed' | 'busy' | 'cancelled'
-  duration?: number // секунды; есть только у состоявшегося (ok)
 }
 
 // Минимальная личность пира, по клику на которую открывают диалог (строка
