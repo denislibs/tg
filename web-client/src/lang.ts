@@ -318,6 +318,7 @@ const lang = {
   'Chat.Service.Call.Missed': 'Missed',
   'Chat.UnpinAll.Text': 'Are you sure you want to unpin all messages?',
   ChatAdmin: 'admin',
+  'ChatAutomation.NewChats': 'New Chats',
   ChatBackground: 'Chat Wallpaper',
   'ChatBackground.Blur': 'Blur Wallpaper Image',
   'ChatBackground.Title': 'Chat Background',

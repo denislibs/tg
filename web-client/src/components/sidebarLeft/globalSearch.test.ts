@@ -164,7 +164,10 @@ function build(backend: Backend = {}) {
   const searchContainer = document.createElement('div')
   searchContainer.id = 'search-container'
   searchContainer.classList.add('transition-item', 'sidebar-search')
-  sidebarContent.append(chatlistContainer, searchContainer)
+  // `#new-menu` — последний ребёнок `.sidebar-content` (`construct`, :210-211)
+  const newBtnMenu = document.createElement('div')
+  newBtnMenu.id = 'new-menu'
+  sidebarContent.append(chatlistContainer, searchContainer, newBtnMenu)
   itemMain.append(backBtn, inputSearch.container, sidebarContent)
   document.body.append(itemMain)
 
@@ -177,10 +180,11 @@ function build(backend: Backend = {}) {
     backBtn,
     managers,
     onSearchActive: (active) => searchActive.push(active),
+    newBtnMenu,
     openUrl: (url) => openedUrls.push(url),
   })
   owners.push(owner)
-  return { owner, inputSearch, backBtn, itemMain, sidebarContent, chatlistContainer, searchContainer, calls, searchActive, openedUrls }
+  return { owner, inputSearch, backBtn, itemMain, sidebarContent, chatlistContainer, searchContainer, newBtnMenu, calls, searchActive, openedUrls }
 }
 
 /** запросы helper'а чипов — без лимита, в отличие от `loadChats` класса (`appSearchSuper.ts:1720`, `:1752`) */
@@ -362,6 +366,39 @@ describe('жизненный цикл: создание по фокусу, сн�
     simulateClickEvent(backBtn)
     animationEnd(chatlistContainer)
     expect([...registry()].some((ref) => ref.deref() === mine[0])).toBe(false)
+  })
+
+  it('#new-menu: is-hidden с фокуса; снимается через 150 мс после ухода выдачи, не раньше (:1550-1558, :1571)', async() => {
+    const { inputSearch, backBtn, searchContainer, chatlistContainer, newBtnMenu } = build()
+    expect(newBtnMenu.classList.contains('is-hidden')).toBe(false)
+
+    focus(inputSearch)
+    expect(newBtnMenu.classList.contains('is-hidden')).toBe(true)
+    animationEnd(searchContainer)
+    await settle()
+
+    simulateClickEvent(backBtn)
+    // переход назад ещё идёт — кнопка спрятана
+    expect(newBtnMenu.classList.contains('is-hidden')).toBe(true)
+    animationEnd(chatlistContainer)
+    expect(newBtnMenu.classList.contains('is-hidden')).toBe(true)
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(newBtnMenu.classList.contains('is-hidden')).toBe(true)
+    await new Promise((resolve) => setTimeout(resolve, 80))
+    expect(newBtnMenu.classList.contains('is-hidden')).toBe(false)
+  })
+
+  it('#new-menu: destroy() снимает таймер возврата (расхождение 8)', async() => {
+    const { owner, inputSearch, backBtn, searchContainer, chatlistContainer, newBtnMenu } = build()
+    focus(inputSearch)
+    animationEnd(searchContainer)
+    await settle()
+    simulateClickEvent(backBtn)
+    animationEnd(chatlistContainer)
+
+    owner.destroy()
+    await new Promise((resolve) => setTimeout(resolve, 180))
+    expect(newBtnMenu.classList.contains('is-hidden')).toBe(true)
   })
 
   it('без анимаций уборка — сразу на «назад»', async() => {

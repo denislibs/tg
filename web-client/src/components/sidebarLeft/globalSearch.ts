@@ -28,7 +28,8 @@
 //    (:1091-1093), им же пользуются `onFound` групп, Escape и Enter со ссылкой.
 //  • `onSearchActive(active)` — роль сеттера `isSearchActive` +
 //    `onSomethingOpenInsideChange()` (:1484-1485, :1498-1499): морф бургера,
-//    FAB, ряд папок — дело хозяина.
+//    ряд папок — дело хозяина.
+//  • `newBtnMenu` — кнопка `#new-menu` колонки (расхождение 8).
 //  • `openUrl(url)` — роль `appImManager.openUrl` (:1320); чем исполняется у
 //    нас — расхождение 1 шапки шва `core/hooks/useGlobalSearch.ts`.
 //
@@ -68,9 +69,12 @@
 //  7. Отмена подтверждения очистки недавних гасится (`.catch`): у оригинала
 //     промис `confirmationPopup` (:1506) реджектится на отмене без
 //     обработчика.
-//  8. Не портировано — у нас этим владеет хозяин: `newBtnMenu`/`updateBtn`
-//     `is-hidden` и таймер их возврата (:1398, :1434-1447, :1455-1456) — FAB
-//     прячет React-проп `ComposeFab.searching`; `buttonsContainer.is-visible`
+//  8. `newBtnMenu` (`#new-menu`, поле колонки `AppSidebarLeft.newBtnMenu`)
+//     владелец получает опцией: у оригинала тело `initSearch` — метод самой
+//     колонки. `is-hidden` и таймер возврата — как у оригинала (812502980
+//     :1514, :1550-1558, :1571); таймер снимает и `destroy()` (расхождение 10). `updateBtn` (проверка новой
+//     версии клиента, :365-383) не портирован — его нет у колонки. Не
+//     портировано — у нас этим владеет хозяин: `buttonsContainer.is-visible`
 //     и `appear-animated` (:1471-1482, :1495) — морф бургера по
 //     сигналу `useIsLeftSearchActive` (`sidebarLeft/index.ts`), свёрнутой
 //     колонки с триггером поиска у нас нет. `isAnimatingCollapse` в `onPop` (:1463) — анимации сворачивания
@@ -138,6 +142,8 @@ export type GlobalSearchOptions = {
   backBtn: HTMLElement
   managers: GlobalSearchManagers
   onSearchActive?: (active: boolean) => void
+  /** `this.newBtnMenu` колонки — расхождение 8 */
+  newBtnMenu?: HTMLElement
   openUrl: (url: string) => void
 }
 
@@ -194,6 +200,9 @@ export default class GlobalSearch {
   private backBtn: HTMLElement
   private managers: GlobalSearchManagers
   private onSearchActive?: (active: boolean) => void
+  private newBtnMenu?: HTMLElement
+  /** tweb `hideNewBtnMenuTimeout` (:1514) — полем, чтобы его снял `destroy()` */
+  private hideNewBtnMenuTimeout = 0
   private openUrl: (url: string) => void
 
   constructor(options: GlobalSearchOptions) {
@@ -202,6 +211,7 @@ export default class GlobalSearch {
     this.backBtn = options.backBtn
     this.managers = options.managers
     this.onSearchActive = options.onSearchActive
+    this.newBtnMenu = options.newBtnMenu
     this.openUrl = options.openUrl
 
     // :220
@@ -558,8 +568,14 @@ export default class GlobalSearch {
         searchContainer.parentElement!.parentElement!.classList.toggle('is-search-active', id === 1)
       },
       onTransitionEnd: (id) => {
+        if(this.hideNewBtnMenuTimeout) clearTimeout(this.hideNewBtnMenuTimeout)
+
         if(id === 0 && !first) {
           cleanup()
+          this.hideNewBtnMenuTimeout = window.setTimeout(() => {
+            this.hideNewBtnMenuTimeout = 0
+            this.newBtnMenu?.classList.remove('is-hidden')
+          }, 150)
         }
 
         first = false
@@ -570,6 +586,8 @@ export default class GlobalSearch {
 
     // :1451-1486
     const onFocus = () => {
+      this.newBtnMenu?.classList.add('is-hidden')
+
       const navigationType: NavigationItem['type'] = 'global-search'
       if(!IS_MOBILE_SAFARI && !appNavigationController.findItemByType(navigationType)) {
         appNavigationController.pushItem({
@@ -686,6 +704,7 @@ export default class GlobalSearch {
     this.destroyed = true
     this.inputSearch.input.removeEventListener('focus', this.onFirstFocus)
     window.removeEventListener('tg-focus-search', this.onFocusShortcut)
+    clearTimeout(this.hideNewBtnMenuTimeout)
     this.teardownSearch?.()
     this.middlewareHelper.destroy()
   }

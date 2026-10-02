@@ -1978,6 +1978,7 @@ const ru = {
     many_value: '%d звёзд',
     other_value: '%d звезды',
   },
+  'ChatAutomation.NewChats': 'Новые чаты',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)
