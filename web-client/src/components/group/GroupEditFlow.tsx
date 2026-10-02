@@ -1,6 +1,6 @@
 // GroupEditFlow — корневой экран редактирования группы И канала (порт tweb
 // sidebarRight editChat). Диспетчер: главный экран (аватар/имя/описание + строки
-// разделов) + стек под-экранов в screens/ (chatType / chatInviteLinks /
+// разделов) + стек под-экранов в screens/ (
 // chatReactions / chatDiscussion / groupPermissions / chatAdministrators /
 // chatMembers / removedUsers / restricted). Один компонент под оба типа:
 // isChannel = chat.type === 'channel'. Каркас — SettingsScreen/Section/Row
@@ -8,7 +8,7 @@
 //
 // ВРЕМЕННО до 0б-1: дочерние экраны, уже ставшие Solid-вкладками правой колонки
 // (тип чата — `AppChatTypeTab`, 0б-2; права группы — `AppGroupPermissionsTab`,
-// 0б-6), открываются мостом
+// 0б-6; ссылки — `AppChatInviteLinksTab`, 0б-3), открываются мостом
 // `appSidebarRight.createTab(…).open(…)`, как у tweb `editChat.tsx`. Сам экран —
 // React-оверлей в `.sidebar-slider` с `z-index: 60`, поэтому, пока дочерняя
 // вкладка открыта, он спрятан (`hidden`), а на её закрытии (Esc/Back/кнопка)
@@ -32,8 +32,7 @@ import { gradientFor } from '../../core/dialogToChat'
 import type { Chat } from '../../data'
 import { EMOJIS } from './screens/shared'
 import appSidebarRight from '@components/sidebarRight'
-import { AppChatTypeTab, AppGroupPermissionsTab } from '@components/solidJsTabs/tabs'
-import { InviteLinksScreen } from './screens/InviteLinkScreens'
+import { AppChatInviteLinksTab, AppChatTypeTab, AppGroupPermissionsTab } from '@components/solidJsTabs/tabs'
 import { ReactionsScreen } from './screens/ReactionsScreen'
 import { DiscussionScreen } from './screens/DiscussionScreen'
 import { AdminsScreen } from './screens/AdminScreens'
@@ -42,7 +41,6 @@ import { RemovedUsersScreen, RestrictedUsersScreen } from './screens/MemberScree
 
 type Sub =
   | null
-  | 'links'
   | 'reactions'
   | 'discussion'
   | 'admins'
@@ -118,6 +116,20 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
     })
     void tab.open({ chatId: card.chat.id }).then(() => setChildTabOpen(true))
   }
+  // ВРЕМЕННО до 0б-1 — мост на вкладку ссылок (tweb `editChat.tsx:689-692`:
+  // `createTab(AppChatInviteLinksTab).open({chatId, p: getInitArgs(chatId)})`).
+  // Вкладка сохраняет сама; закрытие возвращает оверлей и перечитывает
+  // карточку — число ссылок в строке.
+  const openInviteLinks = () => {
+    if (!card) return
+    const chatId = card.chat.id
+    const tab = appSidebarRight.createTab(AppChatInviteLinksTab)
+    tab.eventListener.addEventListener('close', () => {
+      setChildTabOpen(false)
+      g.reload()
+    })
+    void tab.open({ chatId, p: AppChatInviteLinksTab.getInitArgs(managers, chatId) }).then(() => setChildTabOpen(true))
+  }
   // Право менять инфо — вопрос к конструктору (`hasRights`), а не к строке
   // `my_role`, которой на проводе больше нет.
   const canChangeInfo = hasRights(card?.chat, 'change_info')
@@ -150,7 +162,6 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
         ) : undefined
       }
       sub={
-        sub === 'links' ? <InviteLinksScreen g={g} isChannel={isChannel} onBack={() => setSub(null)} /> :
         sub === 'reactions' ? <ReactionsScreen g={g} onBack={() => setSub(null)} /> :
         sub === 'discussion' ? <DiscussionScreen g={g} onBack={() => setSub(null)} /> :
         sub === 'admins' ? <AdminsScreen g={g} onBack={() => setSub(null)} /> :
@@ -202,7 +213,7 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
       {canChangeInfo && (
         <Section>
           <Row icon={<TgIcon name="lock_filled" size={22} />} label={isChannel ? 'ChannelType' : 'GroupType'} value={t(chatIsPublic(card?.chat) ? 'TypePublic' : 'TypePrivate')} onClick={openChatType} />
-          <Row icon={<TgIcon name="link_filled" size={22} />} label="InviteLinks" value={String(Math.max(activeInvites.length, 1))} onClick={() => setSub('links')} />
+          <Row icon={<TgIcon name="link_filled" size={22} />} label="InviteLinks" value={String(Math.max(activeInvites.length, 1))} onClick={openInviteLinks} />
           <Row icon={<TgIcon name="reactions_filled" size={22} />} label="Reactions" value={reactionsValue} onClick={() => setSub('reactions')} />
           {isChannel && (
             <Row icon={<TgIcon name="bubble_filled" size={22} />} label="PeerInfo.Discussion" value={linkedId ? undefined : t('Add')} onClick={() => setSub('discussion')} />

@@ -104,6 +104,11 @@ export function rgbaToHsla(r: number, g: number, b: number, a = 1): ColorHsla {
  * @param   {number}  l       The lightness [0, 1]
  * @return  {Array}           The RGB representation [0, 255]
  */
+/** tweb `helpers/color.ts:76-78` — HSLA строкой CSS (цвет плашки ссылки по остатку срока). */
+export function hslaToString(hsla: ColorHsla) {
+  return `hsla(${hsla.h}, ${hsla.s}%, ${hsla.l}%, ${hsla.a})`
+}
+
 export function hslaToRgba(h: number, s: number, l: number, a: number): ColorRgba {
   h /= 360
   s /= 100

@@ -18,7 +18,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Managers } from '@/client/bootstrap'
 import type { Channel, ChannelFull } from '@core/peers/peer'
-import type { InviteLink } from '@core/managers/groupsManager'
+import type { ChatInviteExported } from '@core/managers/groupsManager'
+import { DEFAULT_TME_ORIGIN } from '@config/app'
 import lang from '@/lang'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import { toPeerId } from '@core/peers/peerId'
@@ -44,7 +45,8 @@ const CHANNEL: Channel = { _: 'channel', id: CHANNEL_ID, title: 'Channel', photo
 const GROUP: Channel = { _: 'channel', id: GROUP_ID, title: 'Group', username: 'pubgr', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true, creator: true } } as Channel
 const fullOf = (id: number): ChannelFull => ({ _: 'channelFull', id, about: '', read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0, chat_photo: null })
 
-const link = (token: string): InviteLink => ({ token, url: '/join/' + token, uses: 0, requiresApproval: false, title: '', usageLimit: null, revoked: false })
+// ссылка в форме оригинала — `link` публичный адрес `t.me/+<хеш>` нашего хоста (`core/publicLink.ts`)
+const link = (hash: string): ChatInviteExported => ({ _: 'chatInviteExported', link: `${DEFAULT_TME_ORIGIN}/+${hash}`, admin_id: 1, date: 0 })
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const settle = async() => {
@@ -53,9 +55,9 @@ const settle = async() => {
 
 let slider: SidebarSlider
 let groups: {
-  listInvites: ReturnType<typeof vi.fn>
-  editInvite: ReturnType<typeof vi.fn>
-  createInvite: ReturnType<typeof vi.fn>
+  getExportedChatInvites: ReturnType<typeof vi.fn>
+  editExportedChatInvite: ReturnType<typeof vi.fn>
+  exportChatInvite: ReturnType<typeof vi.fn>
   setType: ReturnType<typeof vi.fn>
   checkUsername: ReturnType<typeof vi.fn>
 }
@@ -67,9 +69,9 @@ beforeEach(() => {
   copyTextToClipboard.mockClear()
 
   groups = {
-    listInvites: vi.fn(async() => [link('primary')]),
-    editInvite: vi.fn(async(_peerId: number, token: string) => ({ ...link(token), revoked: true })),
-    createInvite: vi.fn(async() => link('fresh')),
+    getExportedChatInvites: vi.fn(async() => ({ _: 'messages.exportedChatInvites', count: 1, invites: [link('primary')] })),
+    editExportedChatInvite: vi.fn(async({ link: url }: { link: string }) => ({ _: 'messages.exportedChatInvite', invite: { ...link('x'), link: url, pFlags: { revoked: true } } })),
+    exportChatInvite: vi.fn(async() => link('fresh')),
     setType: vi.fn(async() => {}),
     checkUsername: vi.fn(async(_peerId: number, username: string) => username !== 'takenname'),
   }
@@ -142,7 +144,7 @@ describe('вкладка «Тип» — разметка оригинала', ()
     // :123-136 — ссылка-приглашение и кнопка отзыва
     expect(privateSection.classList.contains('hide')).toBe(false)
     const linkRow = privateSection.querySelector('.row')!
-    expect(text(linkRow.querySelector('.row-title'))).toBe(location.origin + '/join/primary')
+    expect(text(linkRow.querySelector('.row-title'))).toBe(`${DEFAULT_TME_ORIGIN}/+primary`)
     expect(text(linkRow.querySelector('.row-subtitle'))).toBe(lang.ChannelPrivateLinkHelp)
     const revoke = privateSection.querySelector('button')!
     expect(revoke.className).toContain('btn-primary btn-transparent danger')
@@ -274,7 +276,7 @@ describe('вкладка «Тип» — сеть в момент оригина�
     const tab = await open(CHANNEL_ID)
     click(sections(tab)[1].querySelector('.row')!)
 
-    expect(copyTextToClipboard).toHaveBeenCalledWith(location.origin + '/join/primary')
+    expect(copyTextToClipboard).toHaveBeenCalledWith(`${DEFAULT_TME_ORIGIN}/+primary`)
     expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'LinkCopied' })
   })
 
@@ -286,14 +288,14 @@ describe('вкладка «Тип» — сеть в момент оригина�
     await settle()
     expect(document.querySelector('.popup.popup-peer.revoke-link')).not.toBeNull()
     expect(text(document.querySelector('.popup.revoke-link .popup-title'))).toBe(lang.RevokeLink)
-    expect(groups.editInvite).not.toHaveBeenCalled()
+    expect(groups.editExportedChatInvite).not.toHaveBeenCalled()
 
     click(popupButton('revoke-link', 'RevokeButton'))
     await settle()
 
-    expect(groups.editInvite).toHaveBeenCalledWith(toPeerId(CHANNEL_ID, true), 'primary', { revoked: true })
-    expect(groups.createInvite).toHaveBeenCalledTimes(1)
-    expect(text(sections(tab)[1].querySelector('.row .row-title'))).toBe(location.origin + '/join/fresh')
+    expect(groups.editExportedChatInvite).toHaveBeenCalledWith({ chatId: CHANNEL_ID, link: `${DEFAULT_TME_ORIGIN}/+primary`, revoked: true })
+    expect(groups.exportChatInvite).toHaveBeenCalledWith({ chatId: CHANNEL_ID })
+    expect(text(sections(tab)[1].querySelector('.row .row-title'))).toBe(`${DEFAULT_TME_ORIGIN}/+fresh`)
     expect(revoke.hasAttribute('disabled')).toBe(false)
   })
 })

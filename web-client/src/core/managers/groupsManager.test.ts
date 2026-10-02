@@ -8,6 +8,7 @@ import { newPeersManager } from './peersManager'
 import { applyPeerOps, cachedChat, hasRightsPeer, isBroadcastPeer, isChannelPeer, isMegagroupPeer, resetPeerMirror } from '../peerCache'
 import { MUTE_UNTIL_FOREVER } from '../dialogs/notifySettings'
 import { generateMessageId } from '../history/messageId'
+import { DEFAULT_TME_ORIGIN } from '@config/app'
 
 type PostCall = { path: string; body: unknown }
 
@@ -269,56 +270,71 @@ describe('GroupsManager', () => {
     expect(links[0].revoked).toBe(true)
   })
 
-  it('deleteInvite DELETEs /chats/{id}/invite_links/{token} (hard delete)', async () => {
-    const { rest, dels } = fakeRest({})
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-    await mgr.deleteInvite(5, 'tok')
-    expect(dels).toHaveLength(1)
-    expect(dels[0]).toBe('/chats/5/invite_links/tok')
-  })
-
-  it('deleteAllRevoked DELETEs /chats/{id}/revoked_invite_links', async () => {
-    const { rest, dels } = fakeRest({})
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-    await mgr.deleteAllRevoked(5)
-    expect(dels).toHaveLength(1)
-    expect(dels[0]).toBe('/chats/5/revoked_invite_links')
-  })
-
-  it('editInvite PATCHes only present fields and maps the result', async () => {
-    const { rest, patches } = fakeRest({
-      patchReturn: {
-        _: 'messages.exportedChatInvite',
-        invite: invite({ link: '/join/t', usage: 5, title: 'Renamed', pFlags: { request_needed: true } }),
-      },
+  // ── Форма оригинала (`appChatInvitesManager`, вкладки ссылок 0б-3) ──────────
+  // Ключ — `chatId` (ключ пира собирается внутри), ссылка — ПОЛНЫЙ публичный
+  // адрес `t.me/+<хеш>` на нашем хосте (`core/publicLink.ts`), а не путь диплинка.
+  it('getExportedChatInvites: ключ пира из chatId, link — публичный адрес /+<хеш>, карточки создателей — в зеркало', async () => {
+    const users = [{ _: 'user', id: 1, first_name: 'A' }]
+    const { rest, gets } = fakeRest({
+      getReturn: { _: 'messages.exportedChatInvites', count: 1, invites: [invite({ link: '/join/t1', usage: 2 })], users },
     })
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-    const r = await mgr.editInvite(5, 't', { title: 'Renamed', requiresApproval: true })
-    expect(patches).toHaveLength(1)
-    expect(patches[0].path).toBe('/chats/5/invite_links/t')
-    expect(patches[0].body).toEqual({ title: 'Renamed', requires_approval: true })
-    expect(r).toEqual({ token: 't', uses: 5, url: '/join/t', requiresApproval: true, title: 'Renamed', usageLimit: null, revoked: false })
+    const peers = fakePeers()
+    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers })
+    const r = await mgr.getExportedChatInvites({ chatId: 5, revoked: true })
+    expect(gets[0]).toBe('/chats/-5/invite_links?revoked=true')
+    expect(r).toEqual({ _: 'messages.exportedChatInvites', count: 1, invites: [invite({ link: `${DEFAULT_TME_ORIGIN}/+t1`, usage: 2 })] })
+    expect(peers.saveApiPeers).toHaveBeenCalledWith({ users })
   })
 
-  it('editInvite sends usage_limit:null for unlimited and revoked flag', async () => {
-    const { rest, patches } = fakeRest({ patchReturn: { _: 'messages.exportedChatInvite', invite: invite({ pFlags: { revoked: true } }) } })
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-    await mgr.editInvite(5, 't', { usageLimit: null, expireSeconds: 0, revoked: true })
-    expect(patches[0].body).toEqual({ usage_limit: null, expire_seconds: 0, revoked: true })
+  it('exportChatInvite: абсолютный срок → expire_seconds от «сейчас», usageLimit 0 → без лимита', async () => {
+    vi.useFakeTimers({ now: 1_000_000 * 1000 })
+    try {
+      const { rest, posts } = fakeRest({ postReturn: { _: 'messages.exportedChatInvite', invite: invite({ link: '/join/n' }) } })
+      const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
+      const r = await mgr.exportChatInvite({ chatId: 5, title: 'Team', requestNeeded: true, usageLimit: 0, expireDate: 1_000_000 + 3600 })
+      expect(posts[0].path).toBe('/chats/-5/invite_links')
+      expect(posts[0].body).toEqual({ title: 'Team', usage_limit: null, requires_approval: true, expire_seconds: 3600 })
+      expect(r.link).toBe(`${DEFAULT_TME_ORIGIN}/+n`)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
-  // Импортёр — конструктор `chatInviteImporter`; дата в СЕКУНДАХ эпохи.
-  it('inviteImporters GETs importers and maps user_id/date + count', async () => {
+  it('editExportedChatInvite: отзыв — одним признаком; правка — все поля формы по хешу ссылки', async () => {
+    const { rest, patches } = fakeRest({ patchReturn: { _: 'messages.exportedChatInvite', invite: invite({ link: '/join/h', pFlags: { revoked: true } }) } })
+    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
+    const r = await mgr.editExportedChatInvite({ chatId: 5, link: `${DEFAULT_TME_ORIGIN}/+h`, revoked: true })
+    expect(patches[0]).toEqual({ path: '/chats/-5/invite_links/h', body: { revoked: true } })
+    expect(r.invite.link).toBe(`${DEFAULT_TME_ORIGIN}/+h`)
+
+    await mgr.editExportedChatInvite({ chatId: 5, link: `${DEFAULT_TME_ORIGIN}/+h`, title: '', requestNeeded: false, usageLimit: 10, expireDate: 0 })
+    expect(patches[1].body).toEqual({ title: '', requires_approval: false, usage_limit: 10, expire_seconds: 0 })
+  })
+
+  it('deleteExportedChatInvite / deleteRevokedExportedChatInvites — DELETE по хешу и всех отозванных', async () => {
+    const { rest, dels } = fakeRest({})
+    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
+    await mgr.deleteExportedChatInvite(5, `${DEFAULT_TME_ORIGIN}/+tok`)
+    await mgr.deleteRevokedExportedChatInvites(5)
+    expect(dels).toEqual(['/chats/-5/invite_links/tok', '/chats/-5/revoked_invite_links'])
+  })
+
+  // Импортёр — конструктор `chatInviteImporter`; карточки вектора `users` — в зеркало.
+  it('getChatInviteImporters: контейнер как есть, карточки users — владельцу пиров', async () => {
+    const users = [{ _: 'user', id: 11, first_name: 'B' }]
     const { rest, gets } = fakeRest({
       getReturn: {
         _: 'messages.chatInviteImporters', count: 1,
         importers: [{ _: 'chatInviteImporter', user_id: 11, date: 1785542400 }],
+        users,
       },
     })
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-    const r = await mgr.inviteImporters(5, 't')
-    expect(gets[0]).toBe('/chats/5/invite_links/t/importers')
-    expect(r).toEqual({ importers: [{ userId: 11, joinedAt: new Date(1785542400 * 1000).toISOString() }], count: 1 })
+    const peers = fakePeers()
+    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers })
+    const r = await mgr.getChatInviteImporters({ chatId: 5, link: `${DEFAULT_TME_ORIGIN}/+t` })
+    expect(gets[0]).toBe('/chats/-5/invite_links/t/importers')
+    expect(r.importers).toEqual([{ _: 'chatInviteImporter', user_id: 11, date: 1785542400 }])
+    expect(peers.saveApiPeers).toHaveBeenCalledWith({ users })
   })
 
   it('joinByToken POSTs /join/{token} and returns status', async () => {

@@ -150,7 +150,7 @@ export default class PopupPeer extends PopupElement {
   // узлы. По единому критерию мёртвого кода этого порта (выписан в докблоке
   // `components/slider.ts`) потребитель ищется НА ДОРОЖНОЙ КАРТЕ, а не в
   // текущем срезе: вход по ссылке-приглашению — обычная функциональность
-  // Telegram, ссылки у нас уже есть (`group/screens/InviteLinkScreens.tsx`),
+  // Telegram, ссылки у нас уже есть (`sidebarRight/tabs/chatInviteLinks.solid.tsx`),
   // то есть подкласс придёт. Поэтому поле остаётся — снос заставил бы дописать
   // его обратно на следующем же шаге.
   protected description?: HTMLParagraphElement

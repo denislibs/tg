@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 47,
+      "version": 48,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -123,6 +123,10 @@
         {
           "key": "ApproveNewMembers",
           "value": "Request Admin Approval"
+        },
+        {
+          "key": "ApproveNewMembersDescription",
+          "value": "Turn this on if you want users to join only after they are approved by an admin."
         },
         {
           "key": "Archive",
@@ -1192,8 +1196,16 @@
           "value": "Are you sure you want to unpin all messages?"
         },
         {
+          "key": "Chat.VoiceChat.JoinLink.Participants_ZeroValueHolder",
+          "value": "no one joined yet"
+        },
+        {
           "key": "ChatAdmin",
           "value": "admin"
+        },
+        {
+          "key": "ChatAutomation.NewChats",
+          "value": "New Chats"
         },
         {
           "key": "ChatBackground",
@@ -1890,6 +1902,22 @@
           "value": "Please choose at least one chat for this folder."
         },
         {
+          "key": "EditInvitation.ExpiryDate",
+          "value": "Expiry Date"
+        },
+        {
+          "key": "EditInvitation.Never",
+          "value": "Never"
+        },
+        {
+          "key": "EditInvitation.NumberOfUsers",
+          "value": "Number of Users"
+        },
+        {
+          "key": "EditInvitation.Unlimited",
+          "value": "Unlimited"
+        },
+        {
           "key": "EditProfile.AddBirthdayRow",
           "value": "Add Birthday"
         },
@@ -2379,6 +2407,24 @@
           "value": "Invite Link"
         },
         {
+          "key": "InviteLink.AdminApproval.Disabled",
+          "value": "You can't enable admin approval for links that require a monthly fee."
+        },
+        {
+          "key": "InviteLink.JoinedNew",
+          "forms": {
+            "other_value": "%d joined"
+          }
+        },
+        {
+          "key": "InviteLink.JoinedRevoked",
+          "value": "no one joined"
+        },
+        {
+          "key": "InviteLink.Sticker.TimeLeft",
+          "value": "expires in %@"
+        },
+        {
           "key": "InviteLinks",
           "value": "Invite Links"
         },
@@ -2387,52 +2433,24 @@
           "value": "Additional Links"
         },
         {
-          "key": "InviteLinks.Caption",
-          "value": "You can create additional invite links and revoke them at any time."
-        },
-        {
-          "key": "InviteLinks.Description.Additional",
+          "key": "InviteLinks.Description",
           "value": "You can create additional invite links that are limited by time, number of users, or require a paid subscription."
-        },
-        {
-          "key": "InviteLinks.Description.Group",
-          "value": "Anyone who has Telegram installed will be able to join your group by following this link."
         },
         {
           "key": "InviteLinks.Edit",
           "value": "Edit Link"
         },
         {
-          "key": "InviteLinks.Expires",
-          "value": "Expires"
-        },
-        {
-          "key": "InviteLinks.LimitPeriod",
-          "value": "Limit by Period"
+          "key": "InviteLinks.ExpiresCaption",
+          "value": "This link expires %s."
         },
         {
           "key": "InviteLinks.LimitReached",
           "value": "limit reached"
         },
         {
-          "key": "InviteLinks.LimitUses",
-          "value": "Limit Number of Uses"
-        },
-        {
-          "key": "InviteLinks.NameLabel",
-          "value": "Link Name"
-        },
-        {
-          "key": "InviteLinks.TimeLimitHelp",
-          "value": "You can make the link expire after a certain time."
-        },
-        {
-          "key": "InviteLinks.UsesLimitHelp",
-          "value": "You can make the link work only for a certain number of users."
-        },
-        {
-          "key": "InviteLinks.View",
-          "value": "View link"
+          "key": "InviteLinks.Reactivate",
+          "value": "Reactivate Link"
         },
         {
           "key": "InviteToGroupError",
@@ -2634,6 +2652,14 @@
           "value": "Leave group"
         },
         {
+          "key": "LimitByPeriod",
+          "value": "Limit by time period"
+        },
+        {
+          "key": "LimitNumberOfUses",
+          "value": "Limit by number of users"
+        },
+        {
           "key": "LimitReached",
           "value": "Limit Reached"
         },
@@ -2652,6 +2678,18 @@
         {
           "key": "LinkCopied",
           "value": "Link copied to clipboard"
+        },
+        {
+          "key": "LinkCreatedeBy",
+          "value": "Link created by"
+        },
+        {
+          "key": "LinkIsExpired",
+          "value": "The time limit for this link has expired."
+        },
+        {
+          "key": "LinkIsExpiredLimitReached",
+          "value": "This link reached its usage limit."
         },
         {
           "key": "LinkNameHelp",
@@ -5011,6 +5049,10 @@
           "value": "Share"
         },
         {
+          "key": "ShareLink",
+          "value": "Share Link"
+        },
+        {
           "key": "ShareModal.Search.ForwardPlaceholder",
           "value": "Forward to..."
         },
@@ -5280,6 +5322,10 @@
         {
           "key": "StarsFailed",
           "value": "Failed"
+        },
+        {
+          "key": "StarsRating.Back",
+          "value": "Back"
         },
         {
           "key": "StarsReaction.Caption",
@@ -5748,6 +5794,10 @@
           "value": "Dark"
         },
         {
+          "key": "TimeLimitHelp",
+          "value": "You can make the link expire after a certain time."
+        },
+        {
           "key": "Topics",
           "value": "Topics"
         },
@@ -6126,6 +6176,10 @@
           "value": "Private Chats"
         },
         {
+          "key": "UsesLimitHelp",
+          "value": "You can make the link work only for a certain number of users."
+        },
+        {
           "key": "Verified.Bot",
           "value": "This bot is verified as official by the representatives of Telegram."
         },
@@ -6274,7 +6328,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 47,
+      "version": 48,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -6465,10 +6519,6 @@
           "value": "Дополнительные ссылки"
         },
         {
-          "key": "InviteLinks.Caption",
-          "value": "Вы можете создать дополнительные ссылки и отозвать их в любой момент."
-        },
-        {
           "key": "PhoneCopied",
           "value": "Телефон скопирован"
         },
@@ -6479,10 +6529,6 @@
         {
           "key": "BioCopied",
           "value": "О себе скопировано"
-        },
-        {
-          "key": "InviteLinks.Description.Group",
-          "value": "Любой пользователь Telegram сможет вступить в вашу группу, перейдя по этой ссылке."
         },
         {
           "key": "Reactions",
@@ -6996,6 +7042,10 @@
         {
           "key": "Stars.DemoNotice",
           "value": "Демо: пополнение начисляет звёзды сразу, без реальной оплаты."
+        },
+        {
+          "key": "StarsRating.Back",
+          "value": "Назад"
         },
         {
           "key": "BuyStars",
@@ -8705,20 +8755,8 @@
           "value": "Новая ссылка"
         },
         {
-          "key": "InviteLinks.NameLabel",
-          "value": "Название ссылки"
-        },
-        {
           "key": "LinkNameHelp",
           "value": "Это название видят только админы."
-        },
-        {
-          "key": "InviteLinks.LimitPeriod",
-          "value": "Ограничение по времени"
-        },
-        {
-          "key": "InviteLinks.LimitUses",
-          "value": "Ограничение по числу использований"
         },
         {
           "key": "DiscussionCreateGroup",
@@ -11654,32 +11692,101 @@
           "value": "ограничен"
         },
         {
-          "key": "InviteLinks.Description.Additional",
-          "value": "Вы можете создать дополнительные ссылки-приглашения с ограничением по времени, числу пользователей или платной подпиской."
-        },
-        {
-          "key": "InviteLinks.Expires",
-          "value": "Истекает"
-        },
-        {
           "key": "InviteLinks.LimitReached",
           "value": "лимит исчерпан"
         },
         {
-          "key": "InviteLinks.TimeLimitHelp",
+          "key": "LinkNameHint",
+          "value": "Название ссылки (необязательно)"
+        },
+        {
+          "key": "ShareLink",
+          "value": "Поделиться ссылкой"
+        },
+        {
+          "key": "InviteLinks.Description",
+          "value": "Вы можете создать дополнительные ссылки-приглашения с ограничением по времени, числу пользователей или платной подпиской."
+        },
+        {
+          "key": "InviteLink.JoinedRevoked",
+          "value": "никто не вступил"
+        },
+        {
+          "key": "InviteLink.JoinedNew",
+          "forms": {
+            "one_value": "%d вступил",
+            "few_value": "%d вступили",
+            "many_value": "%d вступили",
+            "other_value": "%d вступили"
+          }
+        },
+        {
+          "key": "Chat.VoiceChat.JoinLink.Participants_ZeroValueHolder",
+          "value": "пока никто не вступил"
+        },
+        {
+          "key": "InviteLink.Sticker.TimeLeft",
+          "value": "истекает через %@"
+        },
+        {
+          "key": "InviteLinks.Reactivate",
+          "value": "Возобновить ссылку"
+        },
+        {
+          "key": "LinkIsExpiredLimitReached",
+          "value": "Лимит вступлений по этой ссылке исчерпан."
+        },
+        {
+          "key": "InviteLinks.ExpiresCaption",
+          "value": "Ссылка действует до %s."
+        },
+        {
+          "key": "LinkIsExpired",
+          "value": "Срок действия этой ссылки истёк."
+        },
+        {
+          "key": "LinkCreatedeBy",
+          "value": "Ссылку создал"
+        },
+        {
+          "key": "ApproveNewMembersDescription",
+          "value": "Включите, чтобы пользователи вступали только после одобрения администратором."
+        },
+        {
+          "key": "InviteLink.AdminApproval.Disabled",
+          "value": "Одобрение администратором нельзя включить для ссылок с ежемесячной платой."
+        },
+        {
+          "key": "EditInvitation.Never",
+          "value": "Никогда"
+        },
+        {
+          "key": "EditInvitation.ExpiryDate",
+          "value": "Срок действия"
+        },
+        {
+          "key": "EditInvitation.Unlimited",
+          "value": "Без ограничений"
+        },
+        {
+          "key": "EditInvitation.NumberOfUsers",
+          "value": "Число пользователей"
+        },
+        {
+          "key": "LimitByPeriod",
+          "value": "Ограничение по времени"
+        },
+        {
+          "key": "LimitNumberOfUses",
+          "value": "Ограничение по числу пользователей"
+        },
+        {
+          "key": "TimeLimitHelp",
           "value": "Ссылка перестанет работать через заданное время."
         },
         {
-          "key": "InviteLinks.UsesLimitHelp",
+          "key": "UsesLimitHelp",
           "value": "Ссылка будет работать только для заданного числа пользователей."
-        },
-        {
-          "key": "InviteLinks.View",
-          "value": "Открыть ссылку"
-        },
-        {
-          "key": "LinkNameHint",
-          "value": "Название ссылки (необязательно)"
         },
         {
           "key": "ManageLinks.DeleteAll.Confirm",
@@ -12575,6 +12682,10 @@
             "many_value": "%d звёзд",
             "other_value": "%d звезды"
           }
+        },
+        {
+          "key": "ChatAutomation.NewChats",
+          "value": "Новые чаты"
         }
       ]
     },
