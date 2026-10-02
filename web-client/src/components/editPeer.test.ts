@@ -3,15 +3,23 @@
  * правило видимости угловой кнопки — «все обязательные поля валидны и хоть одно
  * поле изменено» (`isChanged`, :95-118), пересчёт на вводе в любое поле (:67-69),
  * `disabled` гасит поля (:78-82), аватар-заглушка (:48-54), своя кнопка без
- * `btn-corner` управляется атрибутом `disabled` (:42-46).
+ * `btn-corner` управляется атрибутом `disabled` (:42-46), ветка `AvatarEdit`
+ * (:56-64) и её доля в `isChanged` (:96-98).
  */
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import InputField from '@components/inputField'
 import ListenerSetter from '@helpers/listenerSetter'
 import { getMiddleware } from '@helpers/middleware'
 import EditPeer from './editPeer'
 
-const managers = { peers: { fillMirror: async() => {} } }
+vi.mock('@helpers/files/requestFile', () => ({
+  default: vi.fn(async() => new File(['x'], 'a.png', { type: 'image/png' })),
+}))
+vi.mock('@core/media/scaleImageForSend', () => ({
+  scaleImageForSend: vi.fn(async(file: File) => ({ file, width: 640, height: 480 })),
+}))
+
+const managers = { peers: { fillMirror: async() => {} }, media: { upload: vi.fn(async() => 77) } } as never
 const listenerSetter = new ListenerSetter()
 const middlewareHelper = getMiddleware()
 
@@ -20,7 +28,7 @@ afterEach(() => {
   middlewareHelper.clean()
 })
 
-function make(nextBtn?: HTMLButtonElement) {
+function make(nextBtn?: HTMLButtonElement, doNotEditAvatar = true) {
   const name = new InputField({ label: 'FirstName', required: true })
   const last = new InputField({ label: 'LastName' })
   name.setOriginalValue('Anna')
@@ -29,7 +37,7 @@ function make(nextBtn?: HTMLButtonElement) {
     peerId: 2,
     inputFields: [name, last],
     listenerSetter,
-    doNotEditAvatar: true,
+    doNotEditAvatar,
     middleware: middlewareHelper.get(),
     managers,
     nextBtn,
@@ -79,5 +87,26 @@ describe('EditPeer', () => {
     editPeer.disabled = true
     expect(last.input.hasAttribute('disabled')).toBe(true)
     expect(own.hasAttribute('disabled')).toBe(true)
+  })
+
+  it('без doNotEditAvatar: заглушка внутри кнопки AvatarEdit; выбор фото — uploadAvatar, кнопка видна, заглушка снята', async() => {
+    const { editPeer } = make(undefined, false)
+    const container = editPeer.avatarEdit.container
+    expect(container.matches('button.avatar-edit')).toBe(true)
+    expect(editPeer.avatarElem.node.parentElement).toBe(container)
+    expect(editPeer.nextBtn.classList.contains('is-visible')).toBe(false)
+
+    container.click()
+    await vi.waitFor(() => expect(editPeer.uploadAvatar).toBeDefined())
+    expect(editPeer.isChanged()).toBe(true)
+    expect(editPeer.nextBtn.classList.contains('is-visible')).toBe(true)
+    expect(editPeer.avatarElem.node.isConnected).toBe(false)
+    expect(await editPeer.uploadAvatar!.file()).toBe(77)
+  })
+
+  it('doNotEditAvatar: кнопки AvatarEdit нет, только заглушка', () => {
+    const { editPeer } = make()
+    expect(editPeer.avatarEdit).toBeUndefined()
+    expect(editPeer.avatarElem.node.classList.contains('avatar-placeholder')).toBe(true)
   })
 })

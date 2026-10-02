@@ -472,8 +472,17 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // lang.ts:2017-2025 — `NoRecentCalls`, `NoRecentCallsInfo`, `Calls.Status.Group`,
 // `CallBack` (`Calls` уже завела 2-2); −1 наш `Calls.Empty` снесённого React-экрана
 // `CallsView` (у tweb пустой журнал — `NoRecentCalls`). Итог: ru 1415.
+// Задача 0б-10 волны 7 (вкладка «Изменить контакт», порт tweb editContact.tsx +
+// popups/deleteContacts.ts): у ru +23 ключа tweb lang.ts — `AddContactTitle`,
+// `ContactNoteRow`, `SuggestBirthdayRow`, `EditContact.OriginalName`, `MobileHidden`,
+// `MobileHiddenExceptionInfo`, `NewContact.Exception.ShareMyPhoneNumber{,.Desc}`,
+// `PeerInfo.DeleteContact`, десять `UserInfo.*` личного фото, `DeleteContact`,
+// `AreYouSureDeleteContact`, `DeleteContactsSubtitle` и числовой `DeleteContactsTitle`.
+// Врезкой той же задачи снят наш `EditContact.PhotoHint` (подпись снесённого
+// React-экрана `EditContactView`; у tweb — `UserInfo.CustomPhotoHelp`).
+// Итог (поверх 0а-4): ru 1437 (форм числа 45).
 const COMPOSITION = {
-  ru: { keys: 1415, plural: 44 },
+  ru: { keys: 1437, plural: 45 },
   uk: { keys: 759, plural: 33 },
   es: { keys: 756, plural: 32 },
   de: { keys: 757, plural: 33 },
@@ -630,8 +639,9 @@ const COMPOSITION = {
 // `NewGroup.DefaultTitle` снесённого React-экрана (разбор — там же).
 // Задачей 0а-4 волны 7 — у ru +4 ключа вкладки «Звонки» и −1 `Calls.Empty`
 // снесённого React-экрана (разбор — там же).
+// Задачей 0б-10 волны 7 — у ru +23 ключа вкладки «Изменить контакт» (разбор — там же).
 const FINGERPRINT = {
-  ru: '1fd757f5',
+  ru: '16632b84',
   uk: '571c2c10',
   es: '737d78e3',
   de: '5e55ac08',

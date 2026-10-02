@@ -6,7 +6,7 @@
 // Контракты закрытия (см. popupStore.PopupApi):
 //   • self-animating (HeaderMenu/AttachMenu/пикеры): onClose={p.destroy}
 //   • open-controlled (MutePopup/ChatThemesPicker/LocationPicker): open/requestClose/onExitComplete
-//   • instant (ConfirmDialog, слайд-ины AddContact/EditContact и пр.): onClose={p.destroy}
+//   • instant (ConfirmDialog и пр.): onClose={p.destroy}
 import type { LangPackKey } from '@/lang'
 import { useEffect, useRef } from 'react'
 import { openPopup } from '../../stores/popupStore'
@@ -26,8 +26,6 @@ import ConfirmDialog from '../../components/settings/ConfirmDialog'
 import PopupElement from '../../components/popups/popupElement'
 import PopupMute from '../../components/popups/popupMute'
 import ChatThemesPicker from '../../components/ChatThemesPicker'
-import AddContactView from '../../components/AddContactView'
-import EditContactView from '../../components/EditContactView'
 import LocationPicker from '../../components/LocationPicker'
 import { ContactPicker } from '../../components/messages/ChatDialogs'
 import SendGiftPopup from '../../components/stars/SendGiftPopup'
@@ -42,6 +40,7 @@ import CreatePollPopup from '../../components/CreatePollPopup'
 import CreateChecklistPopup from '../../components/CreateChecklistPopup'
 import { getUserTitle } from '../peers/getPeerTitle'
 import appSidebarRight from '../../components/sidebarRight'
+import { AppEditContactTab } from '../../components/solidJsTabs/tabs'
 
 // TopicIcon импортируется на случай будущего использования в тред-меню (аватар темы).
 void _TopicIcon
@@ -151,17 +150,17 @@ export function useChatPopups(d: ChatPopupDeps) {
     />
   ))
 
-  // Слайд-ины карточек контакта — вкладки слайдера правой колонки (tweb
-  // `SidebarSlider.createTab`/`closeTab`, `components/slider.ts:41-46`): узел
-  // создаётся на открытии и снимается самим экраном по концу перехода, поэтому
-  // попапу достаточно instant-контракта (`onClose={p.destroy}`).
-  const openAddContact = () => openPopup((p) => (
-    <AddContactView chat={chat} onClose={p.destroy} />
-  ))
-
-  const openEditContact = () => openPopup((p) => (
-    <EditContactView chat={chat} onClose={p.destroy} />
-  ))
+  // ВРЕМЕННО до Э6-2 — порт `ChatTopbar.addContact` (tweb `topbar.ts:902-908`):
+  // пункт ⋮ «AddContact» открывает вкладку «Изменить контакт» правой колонки
+  // (`AppEditContactTab`, ветка «новый контакт» — `editContact.tsx:41-42`) и
+  // показывает колонку. Повторный клик при открытой вкладке — no-op, как у
+  // оригинала (`isTabExists`).
+  const openAddContact = () => {
+    if (!appSidebarRight.isTabExists(AppEditContactTab)) {
+      void appSidebarRight.createTab(AppEditContactTab).open(numericChatId)
+      void appSidebarRight.toggleSidebar(true)
+    }
+  }
 
   const openPinned = () => {
     if (!isRealChat || d.pins.length === 0) return
@@ -320,7 +319,7 @@ export function useChatPopups(d: ChatPopupDeps) {
 
   return {
     openHeaderMenu, openThreadMenu, openAttach,
-    openAddContact, openEditContact, openMute, openThemePicker, openGift,
+    openAddContact, openMute, openThemePicker, openGift,
     openPinned, openScheduled, openBoost, openStream, openGiveaway,
     openSuggest, openSuggested, openPoll, openChecklist, openLocation, openContactPicker,
     openConfirmDelete, openConfirmClear,

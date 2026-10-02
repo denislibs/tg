@@ -651,3 +651,13 @@ export const AppCallsTab =
     getComponentModule: () => import('../sidebarLeft/tabs/calls.solid'),
   })
 ;(AppCallsTab as unknown as { noSame: boolean }).noSame = true
+
+// ── «Изменить контакт» (tweb :509-513) — задача 0б-10 плана волны 7 ───────────
+// Вкладка правой колонки (`sidebarRight/tabs/editContact.solid.tsx`); полезная
+// нагрузка — ключ пира, заголовок вкладка переписывает сама («Edit» или
+// «AddContactTitle» — по тому, контакт ли это, `editContact.tsx:42`).
+export const AppEditContactTab =
+  scaffoldSolidJSTab<PeerId>({
+    title: 'Edit',
+    getComponentModule: () => import('../sidebarRight/tabs/editContact.solid'),
+  })

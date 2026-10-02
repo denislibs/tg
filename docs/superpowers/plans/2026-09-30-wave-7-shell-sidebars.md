@@ -671,6 +671,11 @@ tweb. Чего нет у tweb — удалить, и написать об эт�
   порт `sharedPermissions.ts` — туда, где они у tweb.
 - **0б-10:** день рождения в редакторе контакта — `showBirthdayPopup` (**2C-14**); до неё
   `// ВРЕМЕННО до 2C-14` (React `BirthdayModal` функцией). Аватар — `AvatarEdit` (2D-27).
+  **Итог врезки:** ветка `AvatarEdit` перенесена в сам `EditPeer` (tweb `editPeer.ts:56-64`,
+  `editProfile` — без своей копии); «Установить/Предложить фото» — мост
+  `pickAvatarAndUpload.bridge.tsx` `// ВРЕМЕННО до МР-5`. Снесены и `AddContactView.tsx`
+  (+`.module.scss`) — ветка «новый контакт» той же вкладки (tweb `topbar.ts:902-908`), — а с ними
+  `useEditContact.ts`, `useMuteToggle.ts`.
 - **0б-9:** графики у tweb — `lovely-chart` (`statistics.tsx`). Если его нет в зависимостях, решение
   «взять пакет tweb» выносится в PR. Свою `StatChart` внутрь Solid-вкладки не тащить (React).
 - **Не входит в 0б:** `QrModal.tsx` (**2C-17**), `components/secret/KeyVerificationPopup.tsx`
@@ -1385,6 +1390,11 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 | О-15 | Секция вступления вкладки типа чата: «вступать, чтобы писать», заявки на вступление, бот-привратник `guard_bot_id` (`chatType.tsx:270-372`) | флагов `join_to_send`/`join_request` у `channel` нет (`domain/mtchat.go`, `ChannelFlags`) | секция 1:1 |
 | О-16 | «Запрет копирования» (`noforwards`, `messages.toggleNoForwards`, `chatType.tsx:374-407`) | флаг не объявлен у `channel`, механики нет | секция 1:1 и гейт копирования/пересылки |
 | О-17 | Коллекция имён `usernames` (несколько имён, порядок, скрытие, покупка на Fragment): `UsernamesSection`, `purchaseUsernameCaption` | у чата одно поле `username` (`core/peers/predicates.ts`, `isPublic`) | `usernamesSection.tsx` 1:1 |
+| О-20 | ~~Заметка контакта во вкладке «Изменить контакт» (`editContact.tsx:178-192`, `:356-358`)~~ — **закрыто** PR #345: `userFull.note`, `contacts.addContact.note` без затирания, `PUT /contacts/{id}/note`; вкладка читает `fullUser.note` и пишет `profile.updateUserNote` только изменённой | — | — |
+| О-21 | ~~Личное фото и флаг контакта в профиле `/users/{id}`~~ — **закрыто** PR #345: `userFull.personal_photo`, `user.photo.pFlags.personal`, `pFlags.contact`/`mutual_contact`; секция фото вкладки читает профиль | — | — |
+| О-22 | ~~«Предложить дату рождения» (`editContact.tsx:254-266`)~~ — **закрыто** PR #345: `POST /users/{id}/suggest_birthday` → служебка `messageActionSuggestBirthday` (пилюля ключами tweb); строка вкладки открывает React `BirthdayModal` мостом `popups/birthday.bridge.tsx` (ВРЕМЕННО до 2C-14) | — | — |
+| О-23 | Строка `ContactNote` профиля (`peerProfile.tsx:849-887`: заметка, копирование, контекст-меню `Text.CopyLabel_Note`) | порт строки профиля — поле `userFull.note` на проводе уже есть (О-20) | заметка в профиле 1:1 |
+| О-24 | Тело бабла `messageActionSuggestBirthday` (`chat/bubbles/suggestBirthday.tsx`: торт `Cake`, колонки дня/месяца/года, кнопка «Посмотреть» → `showBirthdayPopup({fromSuggestion})` → `saveMyBirthday`) и ветка `bubbles.ts:8135-8142` | нужен Solid-попап даты рождения (2C-14) и lottie-ассет торта; в ленте пока только фраза-пилюля | бабл предложения 1:1 |
 | О-30 | Выделение контактов во вкладке контактов: `ContactsSelection` (`contactsSelection.ts` 50), меню строки `attachContactsContextMenu` (45), попап `confirmDeleteContacts` (`popups/deleteContacts.ts` 22), ключи `ContactsSelected`/`DeleteContactsTitle`/`DeleteContactsSubtitle` (коммит ee6f7f9c2) | база `DialogsSelectionBase` (`dialogsSelectionBase.ts` 531, коммит 60a83a6f1 — выделение чатов и тем) не портирована; бэкенд есть (`DELETE /contacts/{id}`) | порт выделения списков (60a83a6f1 → ee6f7f9c2, `docs/tweb/delta/part-5.md` группа 4) |
 | О-31 | `highlight: 'sort'` у `AppContactsTab`: ссылка `tg://contacts/sort` вспыхивает кнопкой сортировки (`flashControl`, `lib/settingsSearch/highlight.ts`) | нет ни обработчика внутренних ссылок, ни поиска по настройкам | `internalLinkProcessor` (Э5-4) и порт `lib/settingsSearch` |
 | О-35 | Попап «пригласить ссылкой» для пропущенных при создании группы (`handleMissingInvitees`, tweb `addChatUsers.ts:15-120`; вызов — `newGroup.tsx:187`) | нет `showPickUserPopup` (попап выбора пользователей, 2C) и премиум-веток (`premium_required_for_pm`/`premium_would_allow_invite`); бэкенд пропущенных уже отдаёт (`messages.invitedUsers.missing_invitees`, 0а-2) | порт `showPickUserPopup` |
