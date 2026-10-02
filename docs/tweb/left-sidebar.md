@@ -361,10 +361,25 @@ AppSettingsTab
 | Picture-in-Picture | `pip` | 955-970 | verify: `DOCUMENT_PICTURE_IN_PICTURE_SUPPORTED`; label живой (`isClientPipOpen()`) |
 | футер-версия | — | 1006, 1660-1675 | ссылка на CHANGELOG, `Telegram Web… (build)` |
 
-**FAB и меню «новый чат»**: `createNewChatsMenuOptions` (стр. 1023-1060) — `newchannel` →
-`AppNewChannelTab`, `newgroup` → `createNewGroupTab(this)`, `newprivate` → `AppContactsTab`.
-FAB `#new-menu` (стр. 1062-1076): `.btn-circle.btn-corner.btn-menu-toggle.animated-button-icon` с двумя
-иконками `newchat_filled`/`close` (морф при открытии меню), `direction: 'top-left'`.
+**FAB и меню «новый чат»** (812502980): `createNewChatsMenuOptions(closeBefore?, singular?)`
+(`:1065-1111`) — `newchannel` → `AppNewChannelTab`, `newgroup` → `createNewGroupTab(this)`, `phone` →
+`appImManager.createConference()` под `IS_CONFERENCE_CALL_SUPPORTED`, `newprivate` → `AppContactsTab`;
+`closeBefore` — сначала `closeEverythingInside() && pause(200)` (подменю «Создать» бургера),
+`singular` — подписи без «Новый». FAB `#new-menu` (`createNewChatsMenuButton`, `:1113-1129`):
+`ButtonMenuToggle` `direction: 'top-left'`, `positionPadding: {bottom: 10}`, классы
+`.btn-new-menu.btn-circle.rp.btn-corner.z-depth-1.btn-menu-toggle.animated-button-icon`, две иконки
+`newchat_filled`/`close` (морф по `menu-open`), `aria-label` `ChatAutomation.NewChats`. Кладётся
+последним ребёнком `.sidebar-content` (`construct` `:198-200`). Видимость — `.item-main .sidebar-content
+.btn-corner:not(.is-hidden)`; `is-hidden` ставит фокус поиска (`:1571`), снимает `onTransitionEnd(0)`
+через 150 мс (`:1514`, `:1550-1558`); при открытой вкладке кнопка уезжает вместе с `.item-main`.
+
+**У нас** (задача 2-4 волны 7): три метода оригинала в `AppSidebarLeft` (`sidebarLeft/index.ts`),
+кнопка — в `construct`; `is-hidden` и таймер возврата ведёт владелец поиска `globalSearch.ts` (тело
+`initSearch`, расхождение 8 его шапки, кнопку получает опцией `newBtnMenu`). Конференции нет (О-1),
+«Новый секретный чат» — Отступление В7-1 под `SECRET_CHATS_ENABLED=false` (флаг решает состав
+массива: подменю строит `ButtonMenu`, который `verify` не фильтрует). Пины —
+`sidebarLeft/index.newChatsMenu.test.ts`, `globalSearch.test.ts` (`#new-menu`). Не перенесён
+`visibility` у `.btn-corner` из a11y-дельты tweb 472e3e76b: спрятанная кнопка остаётся в порядке Tab.
 
 ---
 
