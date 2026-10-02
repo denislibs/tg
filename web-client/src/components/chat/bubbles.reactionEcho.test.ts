@@ -34,7 +34,9 @@ import type { MessageReactions, RawMessage } from '@core/models'
 import type { RestClient } from '@core/net/restClient'
 import LottiePlayer from '@lib/lottie/lottiePlayer'
 import wrapSticker from '@components/wrappers/sticker'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles } from './testChat'
 
 vi.mock('@components/wrappers/sticker', () => ({ default: vi.fn() }))
 const wrapStickerMock = vi.mocked(wrapSticker)
@@ -46,12 +48,7 @@ const AUTHOR = 5
 const CENTER_ID = 222
 const SERVER_MID = 2
 
-const chatContext = (): ChatContext => ({
-  peerId: CHAT,
-  messagesStorageKey: String(CHAT),
-  container: document.createElement('div'),
-  bubblesViewport: document.createElement('div'),
-})
+const chatContext = () => createTestChat({ peerId: CHAT })
 
 /** Чужая реакция на сообщении до клика. */
 const foreign: MessageReactions = {
@@ -132,7 +129,7 @@ async function stand() {
     },
   }
 
-  bubbles = new ChatBubbles(chatContext(), managers)
+  bubbles = mountTestBubbles(chatContext(), managers)
   await (await bubbles.setPeer())?.promise
   await settle()
   document.body.append(bubbles.container)

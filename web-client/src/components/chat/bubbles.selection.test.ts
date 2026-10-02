@@ -2,18 +2,20 @@
 //
 // Сам режим покрыт своими тестами (`selection.test.ts`, 25 штук: drag,
 // `getElementsBetween`, чекбоксы, альбомы); здесь проверяется то, чего они
-// видеть не могут — что лента СОЗДАЁТ выделение, отдаёт ему свои баблы и
-// пропускает через него клики в том порядке, который требует оригинал.
+// видеть не могут — что `chat.selection` (его создаёт `Chat.init`, tweb
+// chat.ts:620) видит баблы ленты, а лента пропускает через него клики в том
+// порядке, который требует оригинал.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
-import { clearChatPositions } from '@core/chat/chatPositions'
 import { useSettingsStore } from '@/settings'
 import { makeMessage } from '@core/messages/testMessage'
 import type { MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles } from './testChat'
 import ChatSelection from './selection'
 
 /** Открыть окно ленты и дождаться ОТРИСОВКИ. `setPeer` (как в оригинале)
@@ -65,30 +67,17 @@ beforeEach(() => {
   // (tweb bubbles.ts:10436-10440). Гейт тот же, что в оригинале
   // (`liteMode.isAvailable('animations')`, tweb bubbles.ts:11540).
   useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
-  // `destroy()` в `afterEach` пишет позицию чата в синглтон-карту — без
-  // сброса следующий тест открыл бы «тот же чат» ВОЗВРАТОМ, без запроса.
-  clearChatPositions()
 })
 
-/** Лента с настоящим режимом выделения — ровно так её поднимает хост. */
-async function feedWithSelection(messages: MyMessage[], plateSpy?: (call: { event: string, forwards?: boolean }) => void) {
-  const chat: ChatContext = {
-    peerId: CHAT,
-    messagesStorageKey: String(CHAT),
-    container: document.createElement('div'),
-    bubblesViewport: document.createElement('div'),
-    createSelection: (port) => new ChatSelection(port, { messages: {} }, plateSpy && {
-      toggle: (forwards) => plateSpy({ event: 'toggle', forwards }),
-      update: () => plateSpy({ event: 'update' }),
-      remove: () => plateSpy({ event: 'remove' }),
-    }),
-  }
-  const feed = new ChatBubbles(chat, managersWith(messages))
+/** Лента с настоящим режимом выделения — в порядке `Chat.init`. */
+async function feedWithSelection(messages: MyMessage[]) {
+  const chat = createTestChat({ peerId: CHAT })
+  const feed = mountTestBubbles(chat, managersWith(messages))
   bubbles = feed
   await openFeed(feed)
   await settle()
   document.body.append(feed.container)
-  return feed
+  return { feed, selection: chat.selection }
 }
 
 const bubbleOf = (b: ChatBubbles, mid: number) =>
@@ -111,38 +100,38 @@ const untrustedClick = (node: HTMLElement) =>
   node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
 
 describe('ChatBubbles — режим выделения', () => {
-  it('лента создаёт выделение и отдаёт ему СЕБЯ', async () => {
-    const feed = await feedWithSelection([msg(1)])
+  it('выделение `Chat` видит баблы ленты', async () => {
+    const { feed, selection } = await feedWithSelection([msg(1)])
 
-    expect(feed.selection).toBeInstanceOf(ChatSelection)
+    expect(selection).toBeInstanceOf(ChatSelection)
     // Порт ленты рабочий: выделение видит отрисованную историю.
-    expect(feed.selection!.canSelectBubble(bubbleOf(feed, 1))).toBe(true)
+    expect(selection.canSelectBubble(bubbleOf(feed, 1))).toBe(true)
   })
 
   it('клик по времени включает выделение — tweb :3118-3121', async () => {
-    const feed = await feedWithSelection([msg(1)])
+    const { feed, selection } = await feedWithSelection([msg(1)])
 
     click(bubbleOf(feed, 1).querySelector<HTMLElement>('.time')!)
 
-    expect(feed.selection!.isSelecting).toBe(true)
-    expect(feed.selection!.getSelectedMids()).toEqual([1])
+    expect(selection.isSelecting).toBe(true)
+    expect(selection.getSelectedMids()).toEqual([1])
   })
 
   it('в режиме выделения клик по баблу тогглит выбор — tweb :3156-3172', async () => {
-    const feed = await feedWithSelection([msg(1), msg(2)])
+    const { feed, selection } = await feedWithSelection([msg(1), msg(2)])
     click(bubbleOf(feed, 1).querySelector<HTMLElement>('.time')!)
 
     click(bubbleOf(feed, 2))
-    expect(feed.selection!.getSelectedMids()).toEqual([1, 2])
+    expect(selection.getSelectedMids()).toEqual([1, 2])
 
     click(bubbleOf(feed, 2))
-    expect(feed.selection!.getSelectedMids()).toEqual([1])
+    expect(selection.getSelectedMids()).toEqual([1])
   })
 
   it('в режиме выделения клик по вложению НЕ открывает вьювер', async () => {
     // Ветка выделения у оригинала стоит ВЫШЕ медиа (:3156 против :3479) и
     // перебивает её — иначе выбор картинки открывал бы просмотр.
-    const feed = await feedWithSelection([msg(1), msg(2)])
+    const { feed, selection } = await feedWithSelection([msg(1), msg(2)])
     click(bubbleOf(feed, 1).querySelector<HTMLElement>('.time')!)
 
     const opened = vi.spyOn(feed as unknown as { openMediaViewerFor: () => boolean }, 'openMediaViewerFor')
@@ -154,33 +143,22 @@ describe('ChatBubbles — режим выделения', () => {
 
     // Вьювер не открылся, а клик достался выбору — как у оригинала.
     expect(opened).not.toHaveBeenCalled()
-    expect(feed.selection!.getSelectedMids()).toEqual([1, 2])
+    expect(selection.getSelectedMids()).toEqual([1, 2])
   })
 
   it('НЕдоверенный клик выбор не трогает — tweb :3156 «due to audio autoclick»', async () => {
-    const feed = await feedWithSelection([msg(1), msg(2)])
+    const { feed, selection } = await feedWithSelection([msg(1), msg(2)])
     click(bubbleOf(feed, 1).querySelector<HTMLElement>('.time')!)
 
     untrustedClick(bubbleOf(feed, 2))
 
-    expect(feed.selection!.getSelectedMids()).toEqual([1])
-  })
-
-  it('плашка узнаёт и о входе в режим, и о смене выбора', async () => {
-    const plate = vi.fn()
-    const feed = await feedWithSelection([msg(1), msg(2)], plate)
-
-    click(bubbleOf(feed, 1).querySelector<HTMLElement>('.time')!)
-    await settle()
-
-    expect(plate.mock.calls.map(([c]) => c.event)).toContain('toggle')
-    expect(plate.mock.calls.map(([c]) => c.event)).toContain('update')
+    expect(selection.getSelectedMids()).toEqual([1])
   })
 
   it('страница, догруженная В РЕЖИМЕ выделения, приезжает с чекбоксами', async () => {
     // tweb bubbles.ts:5931-5935. Без этого подгруженные сверху баблы стояли бы
     // без чекбокса и выбрать их было бы нечем.
-    const feed = await feedWithSelection([msg(2)])
+    const { feed } = await feedWithSelection([msg(2)])
     click(bubbleOf(feed, 2).querySelector<HTMLElement>('.time')!)
 
     rootScope.dispatchEventSingle('history_append', { storageKey: String(CHAT), message: msg(3) })

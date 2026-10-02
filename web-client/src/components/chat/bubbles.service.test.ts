@@ -18,7 +18,9 @@ import { makeMessage, makeServiceMessage } from '@core/messages/testMessage'
 import type { MessageAction } from '@core/messages/messageAction'
 import type { MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles } from './testChat'
 
 /** Открыть окно ленты и дождаться ОТРИСОВКИ (см. `bubbles.test.ts`). */
 async function openFeed(feed: ChatBubbles) {
@@ -28,12 +30,7 @@ async function openFeed(feed: ChatBubbles) {
 const CHAT = 90
 const ANYA = 5
 
-const chatContext = (): ChatContext => ({
-  peerId: CHAT,
-  messagesStorageKey: String(CHAT),
-  container: document.createElement('div'),
-  bubblesViewport: document.createElement('div'),
-})
+const chatContext = () => createTestChat({ peerId: CHAT })
 
 const managersWith = (messages: MyMessage[]): BubblesManagers => ({
   messages: {
@@ -73,7 +70,7 @@ const bubbleOf = (b: ChatBubbles, mid: number) =>
 
 describe('ChatBubbles — служебное сообщение уходит по ветке пилюли', () => {
   it('пилюля, а не пустой обычный бабл', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([
+    bubbles = mountTestBubbles(chatContext(), managersWith([
       pill(1, { _: 'messageActionChatAddUser', users: [7] }),
     ]))
     await openFeed(bubbles)
@@ -94,7 +91,7 @@ describe('ChatBubbles — служебное сообщение уходит п�
   })
 
   it('«закрепил(а)» несёт превью цели, разрешённое по reply_to из окна', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([
+    bubbles = mountTestBubbles(chatContext(), managersWith([
       text(1),
       pill(2, { _: 'messageActionPinMessage' }, { replyToMsgId: 1 }),
     ]))
@@ -111,7 +108,7 @@ describe('ChatBubbles — служебное сообщение уходит п�
   })
 
   it('без цели в окне — формулировка без превью (tweb ActionPinnedNoText)', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([
+    bubbles = mountTestBubbles(chatContext(), managersWith([
       pill(2, { _: 'messageActionPinMessage' }, { replyToMsgId: 999 }),
     ]))
     await openFeed(bubbles)
@@ -124,7 +121,7 @@ describe('ChatBubbles — служебное сообщение уходит п�
 
   it('правка пилюли пересобирает фразу, а не стирает класс service', async () => {
     const before = pill(1, { _: 'messageActionChatEditTitle', title: 'Старое' })
-    bubbles = new ChatBubbles(chatContext(), managersWith([before]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([before]))
     await openFeed(bubbles)
     await settle()
 
@@ -144,7 +141,7 @@ describe('ChatBubbles — служебное сообщение уходит п�
   })
 
   it('звонок и подарок по ветке пилюли НЕ идут — у них свой вид бабла', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([
+    bubbles = mountTestBubbles(chatContext(), managersWith([
       pill(1, { _: 'messageActionPhoneCall', duration: 42 }),
       pill(2, {
         _: 'messageActionStarGift',

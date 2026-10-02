@@ -1,11 +1,12 @@
-// Ядро `AppImManager` (порт tweb `src/lib/appImManager.ts`, шаг К-2): колонки
-// (`selectTab`), стек инстансов чата (`setPeer`/`setInnerPeer`/`spliceChats`) и
-// разбор хэша (`onHashChange`). Класс — настоящий, свой экземпляр на тест; соседи-
-// синглтоны колонок и фон — дублёры (их предмет — свои тесты), React-остров центра
-// — настоящий `mountReact` с дублёром `Chat.tsx`: класс проверяется по своему DOM
-// (`.chats-container`, контейнеры инстансов) и записям `appNavigationController`.
+// Ядро `AppImManager` (порт tweb `src/lib/appImManager.ts`, шаги К-2, К-3): колонки
+// (`selectTab`), стек инстансов чата (`setPeer`/`setInnerPeer`/`spliceChats`), разбор
+// хэша (`onHashChange`) и позиция ленты (`saveChatPosition`/`getChatSavedPosition`).
+// Класс — настоящий, свой экземпляр на тест; соседи-синглтоны колонок и фон — дублёры
+// (их предмет — свои тесты), инстанс чата — дублёр `Chat` (`components/chat/chat.ts`,
+// его предмет — `chat.test.ts`) с тем же контрактом смены пира: класс проверяется по
+// своему DOM (`.chats-container`, контейнеры инстансов) и записям
+// `appNavigationController`.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createElement } from 'react'
 import pause from '@helpers/schedulers/pause'
 import mediaSizes, { ScreenSize } from '@core/dom/mediaSizes'
 import appNavigationController, { type NavigationItem } from '@core/navigation/appNavigationController'
@@ -15,15 +16,68 @@ import type { Managers } from '@/client/bootstrap'
 import { returnToStaticMarkup } from '@/test/staticMarkup'
 import { APP_TABS, AppImManager, LEFT_COLUMN_ACTIVE_CLASSNAME } from './appImManager'
 
-const columnRight = vi.hoisted(() => ({ sidebarEl: undefined as HTMLElement | undefined, toggleSidebar: () => Promise.resolve(), hide: () => {} }))
+const columnRight = vi.hoisted(() => ({ sidebarEl: undefined as HTMLElement | undefined, toggleSidebar: () => Promise.resolve(), hide: () => {}, replaceSharedMediaTab: () => {} }))
 vi.mock('@components/sidebarRight', () => ({ default: columnRight, RIGHT_COLUMN_ACTIVE_CLASSNAME: 'is-right-column-shown' }))
 vi.mock('@components/chat/bubbles/chatBackground.solid', () => ({
   default: { setBackground: () => Promise.resolve(), getReadyPromise: () => Promise.resolve() },
 }))
-// дублёр React-`Chat.tsx`: острову инстанса важен сам факт рендера пира
-vi.mock('@components/Chat', () => ({
-  default: ({ chat }: { chat: { id: string } }) => createElement('div', { className: 'fake-chat', 'data-peer-id': chat.id }),
-}))
+// дублёр `Chat` (tweb `chat.ts:1035-1156` в объёме, который читает `AppImManager`):
+// `inited`, `peer_changing` до смены пира, `peer_changed` после, `.fake-chat` — «окно»
+type FakeAppImManager = {
+  isSamePeer(a: object, b: object): boolean
+  dispatchEvent(name: string, chat: object): void
+}
+const FakeChat = vi.hoisted(() => class {
+  public container = document.createElement('div')
+  public peerId = 0
+  public threadId?: number
+  public monoforumThreadId?: number
+  public type = 'chat'
+  public inited?: boolean
+  public sharedMediaTab = undefined
+  public bubbles = undefined
+  constructor(public appImManager: FakeAppImManager) {
+    this.container.classList.add('chat', 'tabs-tab')
+  }
+
+  public async setPeer(options: { peerId?: number, threadId?: number, monoforumThreadId?: number, type?: string }) {
+    const { peerId, threadId, monoforumThreadId, type = 'chat' } = options
+    if(!peerId) this.inited = undefined
+    else if(!this.inited) this.inited = true
+    if(!this.appImManager.isSamePeer(this, options)) {
+      this.appImManager.dispatchEvent('peer_changing', this)
+      this.peerId = peerId || 0
+      this.threadId = threadId
+      this.monoforumThreadId = monoforumThreadId
+    }
+
+    if(!peerId) {
+      this.container.replaceChildren()
+      this.appImManager.dispatchEvent('peer_changed', this)
+      return
+    }
+
+    this.type = type
+    const fake = document.createElement('div')
+    fake.className = 'fake-chat'
+    fake.dataset.peerId = String(peerId)
+    this.container.replaceChildren(fake)
+    this.appImManager.dispatchEvent('peer_changed', this)
+    return { cached: true, promise: Promise.resolve() }
+  }
+
+  public publishBackground() {
+    return Promise.resolve()
+  }
+
+  public beforeDestroy() {}
+
+  public destroy() {
+    this.container.replaceChildren()
+    this.container.remove()
+  }
+})
+vi.mock('@components/chat/chat', () => ({ default: FakeChat }))
 
 const getPeers = vi.fn(async(ids: PeerId[]) => ids.map((id) => ({ _: 'user', id, pFlags: {} })))
 const managers = {
@@ -277,5 +331,72 @@ describe('хэш (tweb :1912-2031)', () => {
     await im.setInnerPeer({ peerId: 77 })
     await settle()
     expect(overrideHash).toHaveBeenCalledWith('77')
+  })
+})
+
+describe('позиция ленты (tweb :479-486, :2640-2688)', () => {
+  /** Лента в том состоянии, которое читает `saveChatPosition`. */
+  const bubblesAt = ({ distanceToEnd, loadedBottom = true, rendered = 30, invisibleBottom = 5, savedReaction }: {
+    distanceToEnd: number, loadedBottom?: boolean, rendered?: number, invisibleBottom?: number, savedReaction?: string
+  }) => ({
+    scrollable: { getDistanceToEnd: () => distanceToEnd, loadedAll: { bottom: loadedBottom }, scrollPosition: 420 },
+    getRenderedLength: () => rendered,
+    getViewportSlice: () => ({ invisibleBottom: { length: invisibleBottom } }),
+    sliceViewport: vi.fn(),
+    getRenderedHistory: () => ['1_9', '1_8', '1_7'],
+    savedReaction,
+  })
+
+  it('смена пира на том же инстансе (`peer_changing`) сохраняет окно', async() => {
+    construct()
+    await im.setInnerPeer({ peerId: 1 })
+    await settle()
+    const chat = im.chat as unknown as { bubbles: ReturnType<typeof bubblesAt> }
+    chat.bubbles = bubblesAt({ distanceToEnd: 500 })
+
+    await im.setPeer({ peerId: 2 })
+    await settle()
+    expect(chat.bubbles.sliceViewport).toHaveBeenCalledWith(true)
+    expect(im.getChatSavedPosition({ peerId: 1, type: ChatType.Chat } as never)).toEqual({ mids: [9, 8, 7], top: 420 })
+  })
+
+  it('чат оставлен у низа — прошлая запись удаляется', async() => {
+    construct()
+    await im.setInnerPeer({ peerId: 1 })
+    await settle()
+    const chat = im.chat as unknown as { bubbles: ReturnType<typeof bubblesAt> }
+    chat.bubbles = bubblesAt({ distanceToEnd: 500 })
+    await im.setPeer({ peerId: 2 })
+    await settle()
+    await im.setPeer({ peerId: 1 })
+    await settle()
+    chat.bubbles = bubblesAt({ distanceToEnd: 0 })
+
+    await im.setPeer({ peerId: 2 })
+    await settle()
+    expect(im.getChatSavedPosition({ peerId: 1, type: ChatType.Chat } as never)).toBeUndefined()
+  })
+
+  it('под фильтром тега «Избранного» позиция не сохраняется (:2125)', async() => {
+    construct()
+    await im.setInnerPeer({ peerId: 1 })
+    await settle()
+    const chat = im.chat as unknown as { bubbles: ReturnType<typeof bubblesAt> }
+    chat.bubbles = bubblesAt({ distanceToEnd: 500, savedReaction: '👍' })
+
+    await im.setPeer({ peerId: 2 })
+    await settle()
+    expect(im.getChatSavedPosition({ peerId: 1, type: ChatType.Chat } as never)).toBeUndefined()
+  })
+
+  it('ключ — пир и тред; отложенные и поиск позиции не имеют (:2641-2643)', () => {
+    construct()
+    const at = { peerId: 1, threadId: 10, type: ChatType.Discussion, bubbles: bubblesAt({ distanceToEnd: 500 }) }
+    im.saveChatPosition(at as never)
+    expect(im.getChatSavedPosition({ peerId: 1, threadId: 10, type: ChatType.Discussion } as never)).toEqual({ mids: [9, 8, 7], top: 420 })
+    expect(im.getChatSavedPosition({ peerId: 1, type: ChatType.Chat } as never)).toBeUndefined()
+
+    im.saveChatPosition({ peerId: 3, type: ChatType.Scheduled, bubbles: bubblesAt({ distanceToEnd: 500 }) } as never)
+    expect(im.getChatSavedPosition({ peerId: 3, type: ChatType.Chat } as never)).toBeUndefined()
   })
 })

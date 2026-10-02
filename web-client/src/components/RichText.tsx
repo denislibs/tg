@@ -155,8 +155,7 @@ const handleSpoilerClick = (e: React.MouseEvent<HTMLSpanElement>) => {
  * через `useImperativeIsland` — мост руками не пишем (докблок
  * `core/hooks/useImperativeIsland.ts`).
  *
- * Хост объявлен `display: contents` — тем же приёмом, что `VanillaFeed.tsx` и
- * `SolidIsland.tsx`: бокса он не создаёт, поэтому `.message-spoiler-overlay`
+ * Хост объявлен `display: contents` — тем же приёмом, что `SolidIsland.tsx`: бокса он не создаёт, поэтому `.message-spoiler-overlay`
  * (`position: absolute`, `width/height: 100%`) считает проценты и позицию от
  * НАСТОЯЩЕГО тела сообщения, а не от обёртки.
  */

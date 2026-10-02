@@ -13,25 +13,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { resetMessagesMirror } from '@core/history/messagesMirror'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
-import { clearChatPositions } from '@core/chat/chatPositions'
 import { useSettingsStore } from '@/settings'
 import { generateTempMessageId } from '@core/history/messageId'
 import { makeMessage } from '@core/messages/testMessage'
 import type { MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles } from './testChat'
 
 const GROUP = -30
 const CHANNEL = -31
 const ROOT_MID = 100
 const AUTHOR = 5
 
-const chatContext = (threadId?: number): ChatContext => ({
+const chatContext = (threadId?: number) => createTestChat({
   peerId: GROUP,
   threadId,
   messagesStorageKey: threadId ? `${GROUP}_${threadId}` : String(GROUP),
-  container: document.createElement('div'),
-  bubblesViewport: document.createElement('div'),
 })
 
 /** Зеркало поста в группе обсуждения — корень треда: номер у него СВОЙ,
@@ -68,7 +67,6 @@ afterEach(() => { bubbles?.destroy(); bubbles = undefined })
 beforeEach(() => {
   resetMessagesMirror()
   resetPeerMirror()
-  clearChatPositions()
   useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
   rootScope.myId = 1
   applyPeerOps([{ op: 'upsert', peers: [{ _: 'user', id: AUTHOR, first_name: 'Аня', pFlags: {} }] }])
@@ -76,7 +74,7 @@ beforeEach(() => {
 
 describe('ChatBubbles — плашка «Обсуждение началось»', () => {
   it('в сведённом с верхом окне треда встаёт за корнем', async () => {
-    bubbles = new ChatBubbles(chatContext(ROOT_MID), managersWith([rootMirror(), comment(2)]))
+    bubbles = mountTestBubbles(chatContext(ROOT_MID), managersWith([rootMirror(), comment(2)]))
     await (await bubbles.setPeer())?.promise
     await settle()
 
@@ -92,7 +90,7 @@ describe('ChatBubbles — плашка «Обсуждение началось»
   })
 
   it('в обычном чате плашки нет', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([rootMirror(), comment(2)]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([rootMirror(), comment(2)]))
     await (await bubbles.setPeer())?.promise
     await settle()
 
@@ -100,7 +98,7 @@ describe('ChatBubbles — плашка «Обсуждение началось»
   })
 
   it('верх треда не сведён — плашки нет', async () => {
-    bubbles = new ChatBubbles(chatContext(ROOT_MID), managersWith([rootMirror(), comment(2)], false))
+    bubbles = mountTestBubbles(chatContext(ROOT_MID), managersWith([rootMirror(), comment(2)], false))
     await (await bubbles.setPeer())?.promise
     await settle()
 
@@ -108,7 +106,7 @@ describe('ChatBubbles — плашка «Обсуждение началось»
   })
 
   it('вторая страница её не задваивает', async () => {
-    bubbles = new ChatBubbles(chatContext(ROOT_MID), managersWith([rootMirror(), comment(2)]))
+    bubbles = mountTestBubbles(chatContext(ROOT_MID), managersWith([rootMirror(), comment(2)]))
     await (await bubbles.setPeer())?.promise
     await settle()
     await bubbles.performHistoryResult([rootMirror(), comment(2)], true, { top: true })

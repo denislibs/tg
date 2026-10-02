@@ -46,7 +46,7 @@ vi.mock('../../client/bootstrap', () => ({
 
 type FakeMedia = HTMLMediaElement & { _playing?: boolean, _time?: number, _dur?: number, _ready?: number }
 
-let ChatBubbles: typeof import('./bubbles').default
+let testChat: typeof import('./testChat')
 let mediaPlayback: typeof import('@core/audio/mediaPlaybackController').mediaPlayback
 let resetPlayback: typeof import('@core/audio/mediaPlaybackController').resetPlayback
 let useAudioStore: typeof import('@stores/audioStore').useAudioStore
@@ -54,7 +54,6 @@ let rootScope: typeof import('@lib/rootScope').default
 let makeMessage: typeof import('@core/messages/testMessage').makeMessage
 let resetMessagesMirror: typeof import('@core/history/messagesMirror').resetMessagesMirror
 let resetPeerMirror: typeof import('@core/peerCache').resetPeerMirror
-let clearChatPositions: typeof import('@core/chat/chatPositions').clearChatPositions
 let useSettingsStore: typeof import('@/settings').useSettingsStore
 
 beforeAll(async () => {
@@ -86,14 +85,13 @@ beforeAll(async () => {
     this.dispatchEvent(new Event('pause'))
   }
 
-  ChatBubbles = (await import('./bubbles')).default
+  testChat = await import('./testChat')
   ;({ mediaPlayback, resetPlayback } = await import('@core/audio/mediaPlaybackController'))
   ;({ useAudioStore } = await import('@stores/audioStore'))
   rootScope = (await import('@lib/rootScope')).default
   ;({ makeMessage } = await import('@core/messages/testMessage'))
   ;({ resetMessagesMirror } = await import('@core/history/messagesMirror'))
   ;({ resetPeerMirror } = await import('@core/peerCache'))
-  ;({ clearChatPositions } = await import('@core/chat/chatPositions'))
   ;({ useSettingsStore } = await import('@/settings'))
 })
 
@@ -118,7 +116,6 @@ let bubbles: import('./bubbles').default | undefined
 beforeEach(() => {
   resetMessagesMirror()
   resetPeerMirror()
-  clearChatPositions()
   resetPlayback()
   rootScope.myId = 1
   useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
@@ -138,12 +135,7 @@ async function settle(times = 6) {
 async function openFeed(messages: ReturnType<typeof message>[]) {
   const container = document.createElement('div')
   container.classList.add('chat')
-  const b = new ChatBubbles({
-    peerId: CHAT,
-    messagesStorageKey: String(CHAT),
-    container,
-    bubblesViewport: document.createElement('div'),
-  }, {
+  const b = testChat.mountTestBubbles(testChat.createTestChat({ peerId: CHAT, container }), {
     messages: {
       getHistory: vi.fn(async () => ({ messages, count: messages.length, reachedTop: true, reachedBottom: true })),
       getAround: vi.fn(async () => ({ messages, reachedTop: true, reachedBottom: true })),

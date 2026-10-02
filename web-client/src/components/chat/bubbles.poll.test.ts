@@ -16,7 +16,9 @@ import { makeMessage } from '@core/messages/testMessage'
 import rootScope from '@lib/rootScope'
 import type { MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles } from './testChat'
 
 async function openFeed(feed: ChatBubbles) {
   await (await feed.setPeer())?.promise
@@ -48,12 +50,7 @@ async function waitFor(predicate: () => boolean, timeout = 3000) {
 
 const CHAT = 70
 
-const chatContext = (): ChatContext => ({
-  peerId: CHAT,
-  messagesStorageKey: String(CHAT),
-  container: document.createElement('div'),
-  bubblesViewport: document.createElement('div'),
-})
+const chatContext = () => createTestChat({ peerId: CHAT })
 
 interface PollFixture {
   question?: string
@@ -158,7 +155,7 @@ const editTo = (message: MyMessage) => {
 describe('ChatBubbles — опрос в ленте', () => {
   describe('отрисовка', () => {
     it('бабл опроса НЕ пустой: несёт .poll-message-content с вопросом и всеми вариантами', async () => {
-      bubbles = new ChatBubbles(chatContext(), managersWith([pollMessage(pollMedia())]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([pollMessage(pollMedia())]))
       await openFeed(bubbles)
       await settle()
 
@@ -185,7 +182,7 @@ describe('ChatBubbles — опрос в ленте', () => {
     })
 
     it('время стоит ВНУТРИ бабла, а не рядом с соседним сообщением', async () => {
-      bubbles = new ChatBubbles(chatContext(), managersWith([pollMessage(pollMedia())]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([pollMessage(pollMedia())]))
       await openFeed(bubbles)
       await settle()
 
@@ -202,7 +199,7 @@ describe('ChatBubbles — опрос в ленте', () => {
     it('текст сообщения рисуется описанием ВНУТРИ опроса и не дублируется телом', async () => {
       // tweb :8760 — `context.messageMessage = totalEntities = undefined`.
       const message = pollMessage(pollMedia(), 'Голосуем до пятницы')
-      bubbles = new ChatBubbles(chatContext(), managersWith([message]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([message]))
       await openFeed(bubbles)
       await settle()
 
@@ -229,7 +226,7 @@ describe('ChatBubbles — опрос в ленте', () => {
       ]
 
       for (const [fixture, expected] of cases) {
-        const feed = new ChatBubbles(chatContext(), managersWith([pollMessage(pollMedia(fixture))]))
+        const feed = mountTestBubbles(chatContext(), managersWith([pollMessage(pollMedia(fixture))]))
         await openFeed(feed)
         await settle()
         const subtitle = pollOf(feed).querySelector('.i18n')?.textContent
@@ -241,13 +238,13 @@ describe('ChatBubbles — опрос в ленте', () => {
     it('без голосов футер говорит «No votes yet», у закрытого — «No votes»', async () => {
       // Сверка ТОЧНАЯ, а не по вхождению: «No votes yet» содержит «No votes»,
       // и `toContain` пропустил бы стёртую ветку закрытого опроса.
-      const open = new ChatBubbles(chatContext(), managersWith([pollMessage(pollMedia({ chosen: [0] }))]))
+      const open = mountTestBubbles(chatContext(), managersWith([pollMessage(pollMedia({ chosen: [0] }))]))
       await openFeed(open)
       await settle()
       expect(footerOf(open).textContent).toBe('No votes yet')
       open.destroy()
 
-      const closed = new ChatBubbles(chatContext(), managersWith([pollMessage(pollMedia({ closed: true }))]))
+      const closed = mountTestBubbles(chatContext(), managersWith([pollMessage(pollMedia({ closed: true }))]))
       await openFeed(closed)
       await settle()
       expect(footerOf(closed).textContent).toBe('No votes')
@@ -256,7 +253,7 @@ describe('ChatBubbles — опрос в ленте', () => {
 
     it('проголосовавший видит проценты, счётчик голосовавших и полоску результата', async () => {
       const media = pollMedia({ voters: [3, 1, 0], chosen: [0], totalVoters: 4 })
-      bubbles = new ChatBubbles(chatContext(), managersWith([pollMessage(media)]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([pollMessage(media)]))
       await openFeed(bubbles)
       await settle()
 
@@ -273,7 +270,7 @@ describe('ChatBubbles — опрос в ленте', () => {
 
     it('викторина показывает «answered», а не «voted»', async () => {
       const media = pollMedia({ quiz: true, voters: [1, 0, 0], chosen: [0], correct: 1, totalVoters: 1 })
-      bubbles = new ChatBubbles(chatContext(), managersWith([pollMessage(media)]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([pollMessage(media)]))
       await openFeed(bubbles)
       await settle()
 
@@ -282,7 +279,7 @@ describe('ChatBubbles — опрос в ленте', () => {
     })
 
     it('до голосования футер зовёт выбрать вариант', async () => {
-      bubbles = new ChatBubbles(chatContext(), managersWith([pollMessage(pollMedia())]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([pollMessage(pollMedia())]))
       await openFeed(bubbles)
       await settle()
 
@@ -293,7 +290,7 @@ describe('ChatBubbles — опрос в ленте', () => {
   describe('голосование', () => {
     it('клик по варианту одиночного опроса шлёт голос НОМЕРОМ варианта', async () => {
       const votePoll = vi.fn(async () => ({}))
-      bubbles = new ChatBubbles(chatContext(), managersWith([pollMessage(pollMedia())], { votePoll }))
+      bubbles = mountTestBubbles(chatContext(), managersWith([pollMessage(pollMedia())], { votePoll }))
       await openFeed(bubbles)
       await settle()
 
@@ -309,7 +306,7 @@ describe('ChatBubbles — опрос в ленте', () => {
     it('мультивыбор копит выбор и шлёт его ОДНИМ запросом по кнопке футера', async () => {
       const votePoll = vi.fn(async () => ({}))
       const media = pollMedia({ multiple: true })
-      bubbles = new ChatBubbles(chatContext(), managersWith([pollMessage(media)], { votePoll }))
+      bubbles = mountTestBubbles(chatContext(), managersWith([pollMessage(media)], { votePoll }))
       await openFeed(bubbles)
       await settle()
 
@@ -329,7 +326,7 @@ describe('ChatBubbles — опрос в ленте', () => {
     it('повторный клик по варианту мультивыбора снимает его с выбора', async () => {
       const votePoll = vi.fn(async () => ({}))
       const media = pollMedia({ multiple: true })
-      bubbles = new ChatBubbles(chatContext(), managersWith([pollMessage(media)], { votePoll }))
+      bubbles = mountTestBubbles(chatContext(), managersWith([pollMessage(media)], { votePoll }))
       await openFeed(bubbles)
       await settle()
 
@@ -346,7 +343,7 @@ describe('ChatBubbles — опрос в ленте', () => {
     it('в проголосованном опросе клик по варианту на сервер не идёт', async () => {
       const votePoll = vi.fn(async () => ({}))
       const media = pollMedia({ voters: [1, 0, 0], chosen: [0], totalVoters: 1 })
-      bubbles = new ChatBubbles(chatContext(), managersWith([pollMessage(media)], { votePoll }))
+      bubbles = mountTestBubbles(chatContext(), managersWith([pollMessage(media)], { votePoll }))
       await openFeed(bubbles)
       await settle()
 
@@ -358,7 +355,7 @@ describe('ChatBubbles — опрос в ленте', () => {
     it('в закрытом опросе клик по варианту на сервер не идёт', async () => {
       const votePoll = vi.fn(async () => ({}))
       const media = pollMedia({ closed: true })
-      bubbles = new ChatBubbles(chatContext(), managersWith([pollMessage(media)], { votePoll }))
+      bubbles = mountTestBubbles(chatContext(), managersWith([pollMessage(media)], { votePoll }))
       await openFeed(bubbles)
       await settle()
 
@@ -373,7 +370,7 @@ describe('ChatBubbles — опрос в ленте', () => {
       // Кадр `updateMessagePoll` воркер кладёт патчем `media`, зеркало объявляет
       // патч событием `message_edit` (см. `core/history/messagesMirror.ts:192`).
       const message = pollMessage(pollMedia())
-      bubbles = new ChatBubbles(chatContext(), managersWith([message]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([message]))
       await openFeed(bubbles)
       await settle()
       expect(pollOf(bubbles).textContent).not.toContain('%')
@@ -395,7 +392,7 @@ describe('ChatBubbles — опрос в ленте', () => {
 
     it('правка НЕ пересобирает узел опроса — он живой (анимации идут от прежнего значения)', async () => {
       const message = pollMessage(pollMedia())
-      bubbles = new ChatBubbles(chatContext(), managersWith([message]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([message]))
       await openFeed(bubbles)
       await settle()
 
@@ -416,7 +413,7 @@ describe('ChatBubbles — опрос в ленте', () => {
       // Тот же класс дефекта, что был у строки документа: `renderMessageContent`
       // сносит из тела всё, что не в `BODY_NOT_CONTENT`.
       const message = pollMessage(pollMedia())
-      bubbles = new ChatBubbles(chatContext(), managersWith([message]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([message]))
       await openFeed(bubbles)
       await settle()
 
@@ -435,7 +432,7 @@ describe('ChatBubbles — опрос в ленте', () => {
 
     it('отзыв голоса возвращает опрос в состояние «до голосования»', async () => {
       const voted = pollMessage(pollMedia({ voters: [1, 0, 0], chosen: [0], totalVoters: 1 }))
-      bubbles = new ChatBubbles(chatContext(), managersWith([voted]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([voted]))
       await openFeed(bubbles)
       await settle()
       expect(pollOf(bubbles).textContent).toContain('100%')

@@ -9,7 +9,8 @@
 //   (2) `emoji` обычному стикеру не передаётся (tweb :6135 — только у
 //       `emoji-big`): во враппере оно тождественно гасит цикл
 //       (`wrappers/sticker.ts:167`, tweb `sticker.ts:135`);
-//   (3) клик по стикеру открывает НАБОР (tweb :3432-3442) и НЕ открывает
+//   (3) клик по стикеру открывает НАБОР (tweb :3432-3442: попап набора —
+//       `StickerSetModal`, выбранный стикер уходит `chat.input`) и НЕ открывает
 //       медиавьювер — ветка стоит до :3479;
 //   (4) то же проигрывание у стикера-приветствия пустого чата (tweb :10571-10585).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -24,20 +25,23 @@ import type LottiePlayer from '@lib/lottie/lottiePlayer'
 import lottieLoader from '@lib/lottie/lottieLoader'
 import * as stickerContent from '@components/wrappers/stickerContent'
 import * as viewer from '@components/mediaViewer/openMediaViewer'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles, type TestChatOptions } from './testChat'
+
+// Попап набора лента грузит чанком по клику (`import('@components/stickers/StickerSetModal')`);
+// мокается граница — сам вызов попапа.
+const { openStickerSetModal } = vi.hoisted(() => ({
+  openStickerSetModal: vi.fn<(address: { id: number }, onPick?: (sticker: unknown) => void) => void>(),
+}))
+vi.mock('@components/stickers/StickerSetModal', () => ({ openStickerSetModal }))
 
 const ME = 1
 const CHAT = 60
 const FRIEND = 8
 const SET: InputStickerSetID = { _: 'inputStickerSetID', id: 777 }
 
-const chatContext = (over: Partial<ChatContext> = {}): ChatContext => ({
-  peerId: CHAT,
-  messagesStorageKey: String(CHAT),
-  container: document.createElement('div'),
-  bubblesViewport: document.createElement('div'),
-  ...over,
-})
+const chatContext = (over: TestChatOptions = {}) => createTestChat({ peerId: CHAT, ...over })
 
 const managersWith = (messages: MyMessage[], stickers?: BubblesManagers['stickers']): BubblesManagers => ({
   messages: {
@@ -98,7 +102,7 @@ describe('ChatBubbles — стикер в ленте', () => {
   it('стикер заводится играющим и зациклённым', async () => {
     const load = vi.spyOn(lottieLoader, 'loadAnimationWorker').mockImplementation(async () => stubPlayer())
 
-    bubbles = new ChatBubbles(chatContext(), managersWith([withSticker(1, stickerDoc(22, SET))]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([withSticker(1, stickerDoc(22, SET))]))
     await (await bubbles.setPeer())?.promise
     await settle()
 
@@ -111,7 +115,7 @@ describe('ChatBubbles — стикер в ленте', () => {
   it('обычному стикеру не передаётся emoji — иначе цикл гаснет во враппере', async () => {
     vi.spyOn(lottieLoader, 'loadAnimationWorker').mockImplementation(async () => stubPlayer())
 
-    bubbles = new ChatBubbles(chatContext(), managersWith([withSticker(1, stickerDoc(22, SET))]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([withSticker(1, stickerDoc(22, SET))]))
     await (await bubbles.setPeer())?.promise
     await settle()
 
@@ -124,17 +128,27 @@ describe('ChatBubbles — стикер в ленте', () => {
     vi.spyOn(lottieLoader, 'loadAnimationWorker').mockImplementation(async () => stubPlayer())
     const opened = vi.fn()
     vi.spyOn(viewer, 'openMediaViewer').mockImplementation((args) => { opened(args); return undefined })
-    const showStickerSet = vi.fn()
+    openStickerSetModal.mockClear()
+    const sendMessageWithDocument = vi.fn(() => true)
 
-    bubbles = new ChatBubbles(chatContext({ showStickerSet }), managersWith([withSticker(1, stickerDoc(22, SET))]))
+    bubbles = mountTestBubbles(
+      chatContext({ input: { sendMessageWithDocument } }),
+      managersWith([withSticker(1, stickerDoc(22, SET))]),
+    )
     await (await bubbles.setPeer())?.promise
     await settle()
 
     document.body.append(bubbles.container)
     clickSticker(bubbles.chatInner.querySelector<HTMLElement>('.bubble[data-mid="1"] .attachment')!)
+    await settle()
 
-    expect(showStickerSet).toHaveBeenCalledWith(SET)
+    expect(openStickerSetModal).toHaveBeenCalledWith({ id: SET.id }, expect.any(Function))
     expect(opened).not.toHaveBeenCalled()
+
+    // Выбранный в попапе стикер уходит композером (tweb `showStickersPopup(…, chat.input)`).
+    const picked = { id: 99 }
+    openStickerSetModal.mock.calls[0][1]!(picked)
+    expect(sendMessageWithDocument).toHaveBeenCalledWith({ document: picked })
     bubbles.container.remove()
   })
 
@@ -142,10 +156,10 @@ describe('ChatBubbles — стикер в ленте', () => {
     vi.spyOn(lottieLoader, 'loadAnimationWorker').mockImplementation(async () => stubPlayer())
     const opened = vi.fn()
     vi.spyOn(viewer, 'openMediaViewer').mockImplementation((args) => { opened(args); return undefined })
-    const showStickerSet = vi.fn()
+    openStickerSetModal.mockClear()
 
-    bubbles = new ChatBubbles(
-      chatContext({ showStickerSet }),
+    bubbles = mountTestBubbles(
+      chatContext(),
       managersWith([withSticker(1, stickerDoc(22, { _: 'inputStickerSetEmpty' }))]),
     )
     await (await bubbles.setPeer())?.promise
@@ -153,8 +167,9 @@ describe('ChatBubbles — стикер в ленте', () => {
 
     document.body.append(bubbles.container)
     clickSticker(bubbles.chatInner.querySelector<HTMLElement>('.bubble[data-mid="1"] .attachment')!)
+    await settle()
 
-    expect(showStickerSet).not.toHaveBeenCalled()
+    expect(openStickerSetModal).not.toHaveBeenCalled()
     expect(opened).not.toHaveBeenCalled()
     bubbles.container.remove()
   })
@@ -163,7 +178,7 @@ describe('ChatBubbles — стикер в ленте', () => {
     const load = vi.spyOn(lottieLoader, 'loadAnimationWorker').mockImplementation(async () => stubPlayer())
     const greeting = stickerDoc(555, SET)
 
-    bubbles = new ChatBubbles(
+    bubbles = mountTestBubbles(
       chatContext({ peerId: FRIEND, messagesStorageKey: String(FRIEND), canSend: () => true }),
       managersWith([], { searchByEmoji: vi.fn(async () => [greeting]) }),
     )
@@ -190,7 +205,7 @@ describe('ChatBubbles — стикер в ленте', () => {
 // сюда: `.floating-part` у `just-media` — абсолютная плашка, которая «болталась»
 // в стороне от стикера.
 describe('ChatBubbles — имя автора у стикера в группе', () => {
-  const groupContext = (over: Partial<ChatContext> = {}): ChatContext =>
+  const groupContext = (over: TestChatOptions = {}) =>
     chatContext({ isLikeGroup: true, isMegagroup: true, ...over })
   const bubbleOf = (b: ChatBubbles, mid: number) =>
     b.chatInner.querySelector<HTMLElement>(`.bubble[data-mid="${mid}"]`)!
@@ -200,7 +215,7 @@ describe('ChatBubbles — имя автора у стикера в группе'
   })
 
   it('входящий стикер: имени нет, бабл hide-name', async () => {
-    bubbles = new ChatBubbles(groupContext(), managersWith([withSticker(1, stickerDoc(22, SET))]))
+    bubbles = mountTestBubbles(groupContext(), managersWith([withSticker(1, stickerDoc(22, SET))]))
     await (await bubbles.setPeer())?.promise
     await settle()
 
@@ -215,7 +230,7 @@ describe('ChatBubbles — имя автора у стикера в группе'
       peerId: CHAT, fromId: ME, out: true, id: 1, text: '',
       createdAt: '2026-08-15T12:00:00Z', media: stickerMedia(stickerDoc(22, SET)),
     })
-    bubbles = new ChatBubbles(groupContext(), managersWith([own]))
+    bubbles = mountTestBubbles(groupContext(), managersWith([own]))
     await (await bubbles.setPeer())?.promise
     await settle()
 
@@ -231,7 +246,7 @@ describe('ChatBubbles — имя автора у стикера в группе'
       peerId: CHAT, fromId: 2, id: 2, text: '', replyToMsgId: 1,
       createdAt: '2026-08-15T12:00:00Z', media: stickerMedia(stickerDoc(22, SET)),
     })
-    bubbles = new ChatBubbles(groupContext(), managersWith([original, reply]))
+    bubbles = mountTestBubbles(groupContext(), managersWith([original, reply]))
     await (await bubbles.setPeer())?.promise
     await settle()
 
@@ -243,7 +258,7 @@ describe('ChatBubbles — имя автора у стикера в группе'
   // гейт стоит на виде медиа, а не на группе.
   it('входящий текст рядом — имя на месте', async () => {
     const text = makeMessage({ peerId: CHAT, fromId: 2, id: 1, text: 'привет', createdAt: '2026-08-15T12:00:00Z' })
-    bubbles = new ChatBubbles(groupContext(), managersWith([text]))
+    bubbles = mountTestBubbles(groupContext(), managersWith([text]))
     await (await bubbles.setPeer())?.promise
     await settle()
 

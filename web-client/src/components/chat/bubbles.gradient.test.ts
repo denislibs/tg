@@ -20,14 +20,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
-import { clearChatPositions } from '@core/chat/chatPositions'
 import { useSettingsStore } from '@/settings'
 import type ChatBackgroundGradientRenderer from '@core/chat/gradientRenderer'
 import { makeMessage } from '@core/messages/testMessage'
 import type { MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
 import type { ScrollStartCallbackDimensions } from '@helpers/fastSmoothScroll'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles } from './testChat'
 
 // Фон страницы — синглтон `appChatBackground` (порт tweb
 // `chat/bubbles/chatBackground.tsx:759-777`); здесь от него нужна только ручка к
@@ -76,15 +77,10 @@ const managersWith = (messages: MyMessage[]): BubblesManagers => ({
   realtime: { markRead: vi.fn(async () => ({ ok: true })) },
 })
 
-const chatContext = (): ChatContext => {
+const chatContext = () => {
   const container = document.createElement('div')
   container.classList.add('chat')
-  return {
-    peerId: CHAT,
-    messagesStorageKey: String(CHAT),
-    container,
-    bubblesViewport: document.createElement('div'),
-  }
+  return createTestChat({ peerId: CHAT, container })
 }
 
 /** Прокрутка, которой хватает только на одно: позвать `startCallback`. */
@@ -110,7 +106,6 @@ let bubbles: ChatBubbles | undefined
 beforeEach(() => {
   resetMessagesMirror()
   resetPeerMirror()
-  clearChatPositions()
   rootScope.myId = ME
   toNextPosition.mockClear()
   background.set({ toNextPosition } as unknown as ChatBackgroundGradientRenderer)
@@ -128,7 +123,7 @@ afterEach(() => {
 })
 
 async function openFeed(messages: MyMessage[]) {
-  const b = new ChatBubbles(chatContext(), managersWith(messages))
+  const b = mountTestBubbles(chatContext(), managersWith(messages))
   bubbles = b
   await (await b.setPeer())?.promise
   await settle()

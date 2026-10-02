@@ -14,7 +14,9 @@ import rootScope from '@lib/rootScope'
 import type { MessageMediaContact } from '@core/media/messageMedia'
 import type { MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles } from './testChat'
 
 const clipboard = vi.hoisted(() => ({ copyTextToClipboard: vi.fn(async () => {}) }))
 vi.mock('@helpers/clipboard', () => clipboard)
@@ -35,15 +37,9 @@ async function settle() {
 
 const CHAT = 71
 
-const openPeer = vi.fn((_peerId: number, _element: HTMLElement) => true)
+const setInnerPeer = vi.fn()
 
-const chatContext = (): ChatContext => ({
-  peerId: CHAT,
-  messagesStorageKey: String(CHAT),
-  container: document.createElement('div'),
-  bubblesViewport: document.createElement('div'),
-  navigation: { openPeer },
-})
+const chatContext = () => createTestChat({ peerId: CHAT, appImManager: { setInnerPeer } })
 
 /** Вложение визитки в форме схемы — ровно то, что кладёт на провод
  *  `domain.NewMessageMediaContact` (`backend/internal/domain/mtmedia.go:474`):
@@ -81,7 +77,7 @@ beforeEach(() => {
   resetPeerMirror()
   clipboard.copyTextToClipboard.mockClear()
   toast.toastNew.mockClear()
-  openPeer.mockClear()
+  setInnerPeer.mockClear()
 })
 
 const bubbleOf = (b: ChatBubbles, mid: number) =>
@@ -95,7 +91,7 @@ const contactOf = (b: ChatBubbles, mid = 1) =>
 async function feedWith(media: MessageMediaContact, text = '') {
   const ctx = chatContext()
   document.body.append(ctx.container)
-  const feed = new ChatBubbles(ctx, managersWith([contactMessage(media, text)]))
+  const feed = mountTestBubbles(ctx, managersWith([contactMessage(media, text)]))
   await openFeed(feed)
   await settle()
   return feed
@@ -212,8 +208,8 @@ describe('ChatBubbles — контакт в ленте', () => {
 
       contactOf(bubbles).click()
 
-      expect(openPeer).toHaveBeenCalledTimes(1)
-      expect(openPeer.mock.calls[0][0]).toBe(42)
+      expect(setInnerPeer).toHaveBeenCalledTimes(1)
+      expect(setInnerPeer).toHaveBeenCalledWith({ peerId: 42 })
       expect(clipboard.copyTextToClipboard).not.toHaveBeenCalled()
     })
 
@@ -222,7 +218,7 @@ describe('ChatBubbles — контакт в ленте', () => {
 
       contactOf(bubbles).click()
 
-      expect(openPeer).not.toHaveBeenCalled()
+      expect(setInnerPeer).not.toHaveBeenCalled()
       // Пробелы группировки в буфер не попадают (:3184).
       expect(clipboard.copyTextToClipboard).toHaveBeenCalledWith('+79261234567')
       expect(toast.toastNew).toHaveBeenCalledWith({ langPackKey: 'PhoneCopied' })

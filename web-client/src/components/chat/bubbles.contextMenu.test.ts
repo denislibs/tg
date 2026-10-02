@@ -1,9 +1,10 @@
 // Контекстное меню В ЛЕНТЕ — стыковка `bubbles.ts` с портом `contextMenu.ts`.
 //
-// Само меню покрыто своими тестами (`contextMenu.test.ts`, 15 штук: состав
-// пунктов, фильтрация, позиционирование, закрытие). Здесь проверяется ровно
-// то, чего они видеть не могут: что лента СОЗДАЁТ меню фабрикой хоста, вешает
-// его на СВОЙ контейнер и гасит на `destroy`.
+// Само меню покрыто своими тестами (`contextMenu.test.ts`: состав пунктов,
+// фильтрация, позиционирование, закрытие). Здесь проверяется ровно то, чего они
+// видеть не могут: что лента вешает `chat.contextMenu` на СВОЙ контейнер
+// (`attachContainerListeners`, tweb bubbles.ts:1478), а `contextMenu.destroy()`
+// (его зовёт `Chat.destroy`, tweb chat.ts:845) эти слушатели снимает.
 //
 // Без этого теста связка гниёт молча: удали строку `attachTo` — и меню просто
 // перестанет открываться, а все 15 тестов порта останутся зелёными.
@@ -14,8 +15,10 @@ import { resetPeerMirror } from '@core/peerCache'
 import { makeMessage } from '@core/messages/testMessage'
 import type { MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
-import ChatContextMenu from './contextMenu'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles } from './testChat'
+import type { ContextMenuManagers } from './contextMenu'
 
 const CHAT = 93
 
@@ -67,50 +70,24 @@ beforeEach(() => {
   rootScope.myId = 1
 })
 
-/** Лента с настоящим меню — ровно так её поднимает хост. */
+const menuManagers: ContextMenuManagers = {
+  messages: {
+    votePoll: vi.fn().mockResolvedValue(undefined),
+    closePoll: vi.fn().mockResolvedValue(undefined),
+    viewers: vi.fn().mockResolvedValue([]),
+  },
+  chats: { getReadDate: vi.fn().mockResolvedValue(null) },
+}
+
+/** Лента с настоящим меню — в порядке `Chat.init`. */
 async function feedWithMenu(messages: MyMessage[]) {
-  const chat: ChatContext = {
-    peerId: CHAT,
-    messagesStorageKey: String(CHAT),
-    container: document.createElement('div'),
-    bubblesViewport: document.createElement('div'),
-    createContextMenu: (port) => new ChatContextMenu(
-      {
-        peerId: CHAT,
-        messagesStorageKey: String(CHAT),
-        canSend: () => true,
-        hasMessageInput: () => true,
-        initMessageReply: vi.fn(),
-        initMessageEditing: vi.fn(),
-        initSearch: vi.fn(),
-      },
-      port,
-      {
-        messages: {
-          votePoll: vi.fn().mockResolvedValue(undefined),
-          closePoll: vi.fn().mockResolvedValue(undefined),
-          viewers: vi.fn().mockResolvedValue([]),
-        },
-        chats: { getReadDate: vi.fn().mockResolvedValue(null) },
-        media: { downloadToDisc: vi.fn() },
-      },
-      {
-        showPinMessage: vi.fn(),
-        showDeleteMessages: vi.fn(),
-        showForward: vi.fn(),
-        showMessageReport: vi.fn(),
-        showReactedList: vi.fn(),
-        showStatistics: vi.fn(),
-        showFactCheckEditor: vi.fn(),
-      },
-    ),
-  }
-  const feed = new ChatBubbles(chat, managersWith(messages))
+  const chat = createTestChat({ peerId: CHAT })
+  const feed = mountTestBubbles(chat, managersWith(messages), { menuManagers })
   bubbles = feed
   await (await feed.setPeer())?.promise
   await settle()
   document.body.append(feed.container)
-  return feed
+  return { feed, chat }
 }
 
 const bubbleOf = (b: ChatBubbles, mid: number) =>
@@ -118,7 +95,7 @@ const bubbleOf = (b: ChatBubbles, mid: number) =>
 
 describe('ChatBubbles — контекстное меню', () => {
   it('правый клик по баблу ленты открывает меню', async () => {
-    const feed = await feedWithMenu([msg(1)])
+    const { feed } = await feedWithMenu([msg(1)])
 
     rightClick(bubbleOf(feed, 1).querySelector<HTMLElement>('.bubble-content')!)
     await settle()
@@ -126,41 +103,20 @@ describe('ChatBubbles — контекстное меню', () => {
     expect(menuElement()).not.toBeNull()
   })
 
-  it('destroy снимает слушатели — после него правый клик меню не открывает', async () => {
+  it('contextMenu.destroy снимает слушатели — после него правый клик меню не открывает', async () => {
     // Именно это и гарантирует `destroy` у оригинала (tweb contextMenu.ts:
     // 689-692): `cleanup()` + `attachListenerSetter.removeAll()`. Закрывать
     // УЖЕ ОТКРЫТОЕ меню он не обязан — этого нет и в tweb, поэтому проверять
     // такое значило бы пинить поведение, которого у оригинала не существует
     // (см. долг в задаче #77).
-    const feed = await feedWithMenu([msg(1)])
+    const { feed, chat } = await feedWithMenu([msg(1)])
     const content = bubbleOf(feed, 1).querySelector<HTMLElement>('.bubble-content')!
 
-    feed.destroy()
-    bubbles = undefined
+    chat.contextMenu.destroy()
     await settle()
     menuElement()?.remove()
 
     rightClick(content)
-    await settle()
-
-    expect(menuElement()).toBeNull()
-  })
-
-  it('хост не дал фабрики — лента живёт без меню и не падает', async () => {
-    // Порт опционален, как и остальное окружение: собственные тесты ленты
-    // поднимают её без него.
-    const feed = new ChatBubbles({
-      peerId: CHAT,
-      messagesStorageKey: String(CHAT),
-      container: document.createElement('div'),
-      bubblesViewport: document.createElement('div'),
-    }, managersWith([msg(1)]))
-    bubbles = feed
-    await (await feed.setPeer())?.promise
-    await settle()
-    document.body.append(feed.container)
-
-    rightClick(bubbleOf(feed, 1).querySelector<HTMLElement>('.bubble-content')!)
     await settle()
 
     expect(menuElement()).toBeNull()

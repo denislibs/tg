@@ -45,7 +45,7 @@
 //     звёзды, `sendReaction` (лента ставит реакции сама, `chat/reactions.ts`),
 //     `getMessageSendingParams` (параметры отправки собирает остров композера),
 //     веб-аппы, автоудаление, `isStartButtonNeeded`.
-import { createRoot, createSignal, type Signal } from 'solid-js'
+import { createMemo, createRoot, createSignal, type Accessor, type Signal } from 'solid-js'
 import type { Managers } from '@/client/bootstrap'
 import type { AppImManager, ChatSetPeerOptions } from '@lib/appImManager'
 import { APP_TABS, LEFT_COLUMN_ACTIVE_CLASSNAME } from '@lib/appImManager'
@@ -61,7 +61,7 @@ import { isBot } from '@core/peers/predicates'
 import { isUser, NULL_PEER_ID } from '@core/peers/peerId'
 import type { ChatRights } from '@core/peers/rights'
 import { isOurMessage, isOutMessage, type MyMessage } from '@core/models'
-import { cachedPeerTheme, subscribeChatFullMirror } from '@core/chatFullCache'
+import { cachedPeerTheme, subscribeChatFullMirror, type PeerFull } from '@core/chatFullCache'
 import { applyChatTheme, clearChatTheme } from '@core/theme/themeController'
 import getAutoDownloadSettings, { type ChatAutoDownload } from '@core/chat/autoDownloadSettings'
 import { useFullPeer } from '@stores/fullPeers.solid'
@@ -145,6 +145,9 @@ export default class Chat extends EventListenerBase<{
 
   public animationGroup: AnimationItemGroup
 
+  /** tweb `:271` — полная карточка пира (`useFullPeer` грузит её и держит свежей по TTL). */
+  public fullPeer!: Accessor<PeerFull | undefined>
+
   public destroyPromise?: CancellablePromise<void>
 
   public middlewareHelper: MiddlewareHelper
@@ -189,6 +192,14 @@ export default class Chat extends EventListenerBase<{
     this.recomputePaddings()
 
     this.sharedMediaTabs = []
+
+    createRoot((dispose) => {
+      this.destroyMiddlewareHelper.onDestroy(dispose)
+      this.fullPeer = createMemo(() => {
+        const peerId = this.peerIdSignal[0]()
+        return peerId ? useFullPeer(peerId)() : undefined
+      })
+    })
   }
 
   private chatInputSurplusPx = 0
@@ -233,7 +244,7 @@ export default class Chat extends EventListenerBase<{
       clearTimeout(timeout)
       this.preservePaddingScrollAbort = undefined
     }
-    animateSingle(() => {
+    void animateSingle(() => {
       if(finished) {
         return false
       }
@@ -308,7 +319,7 @@ export default class Chat extends EventListenerBase<{
 
   /**
    * tweb `:450-588` — расхождение 3 шапки. Тема — `theme_emoticon` полной карточки
-   * (`useFullPeer` грузит её, как у tweb); перепубликация — на приезд карточки и кадр
+   * (её грузит `this.fullPeer`, как у tweb); перепубликация — на приезд карточки и кадр
    * `chat_theme_update` (подписка на зеркало карточек) и на смену дня/ночи
    * (`theme_changed`). Возвращает колбэк, который `finishPeerChange` применяет вместе с
    * остальными: тему контейнера.
@@ -323,8 +334,6 @@ export default class Chat extends EventListenerBase<{
     }
 
     update()
-    // tweb: `useFullPeer(this.peerId)` — карточка грузится (и протухает по TTL) сама.
-    useFullPeer(peerId)
 
     const unsubscribe = subscribeChatFullMirror(() => {
       if(this.peerId !== peerId || !update()) return
@@ -536,7 +545,7 @@ export default class Chat extends EventListenerBase<{
         promise = this.publishBackground('auto')
       }
 
-      callbackify(promise, () => {
+      void callbackify(promise, () => {
         void appSidebarRight.toggleSidebar(false)
         this.cleanup(true)
         void this.bubbles?.setPeer({ ...options, samePeer: false })

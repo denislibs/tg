@@ -70,9 +70,8 @@ const T_ME_ACTION_PATHS = new Set([
  *  • Всё семейство `tg_*` — у tweb для него зарегистрирован 21 обработчик
  *    (`tg_resolve` :404-405, `tg_settings` :717-718, `tg_iv` :676-677, …), у нас
  *    исполнителя нет НИ ОДНОГО: единственный читатель атрибута — делегирование
- *    ленты (`components/chat/bubbles.ts:2362`), а `openInternalLink` не
- *    реализована и даже не прокидывается хостом (`components/chat/VanillaFeed.tsx:204`
- *    передаёт другие ручки). Сюда же попадает `tg_iv` из задачи #33 — см. ниже.
+ *    ленты (`components/chat/bubbles.ts::onContainerClick`), и оно клик не
+ *    исполняет (`internalLinkProcessor` — бэклог Б-8). Сюда же попадает `tg_iv` из задачи #33 — см. ниже.
  *  • `execBotCommand` (tweb `internalLinkProcessor.ts:90`, ставится в
  *    `wrapRichText.ts:393`) и `setMediaTimestamp` (:119 / `wrapRichText.ts:725`):
  *    сущностей `messageEntityBotCommand`/`messageEntityTimestamp` наш

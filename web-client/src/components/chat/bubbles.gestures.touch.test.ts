@@ -33,10 +33,9 @@ vi.mock('./replySwipe', async (importOriginal) => ({
   attachReplySwipe,
 }))
 
-const ChatBubbles = (await import('./bubbles')).default
+const { createTestChat, mountTestBubbles } = await import('./testChat')
 type BubblesManagers = import('./bubbles').BubblesManagers
-type ChatContext = import('./bubbles').ChatContext
-type ChatBubbles = InstanceType<typeof ChatBubbles>
+type ChatBubbles = import('./bubbles').default
 
 /** Открыть окно ленты и дождаться ОТРИСОВКИ. `setPeer` (как в оригинале)
  *  возвращает управление, едва отправив запрос: рендер и доводка живут во
@@ -45,7 +44,6 @@ type ChatBubbles = InstanceType<typeof ChatBubbles>
 async function openFeed(feed: ChatBubbles) {
   await (await feed.setPeer())?.promise
 }
-
 
 const CHAT = 91
 
@@ -66,14 +64,8 @@ const managersWith = (messages: MyMessage[]): BubblesManagers => ({
   realtime: { markRead: vi.fn(async () => ({ ok: true })) },
 })
 
-const chatContext = (): ChatContext => ({
-  peerId: CHAT,
-  messagesStorageKey: String(CHAT),
-  container: document.createElement('div'),
-  bubblesViewport: document.createElement('div'),
-  canSend: () => true,
-  initMessageReply: vi.fn(),
-})
+const initMessageReply = vi.fn()
+const chatContext = () => createTestChat({ peerId: CHAT, input: { initMessageReply } })
 
 beforeEach(() => {
   resetMessagesMirror()
@@ -81,16 +73,17 @@ beforeEach(() => {
   rootScope.myId = 1
   attachReplySwipe.mockClear()
   removeListeners.mockClear()
+  initMessageReply.mockClear()
 })
 
-let feed: InstanceType<typeof ChatBubbles> | undefined
+let feed: ChatBubbles | undefined
 afterEach(() => { feed?.destroy(); feed = undefined })
 
 const message = makeMessage({ peerId: CHAT, fromId: 2, id: 1, text: 'привет', createdAt: '2026-08-15T12:34:00' })
 
 describe('ChatBubbles — свайп-ответ на таче', () => {
   it('лента вешает свайп на СВОЙ контейнер', async () => {
-    feed = new ChatBubbles(chatContext(), managersWith([message]))
+    feed = mountTestBubbles(chatContext(), managersWith([message]))
 
     expect(attachReplySwipe).toHaveBeenCalledTimes(1)
     expect(attachReplySwipe.mock.calls[0][0]).toBe(feed.container)
@@ -98,9 +91,7 @@ describe('ChatBubbles — свайп-ответ на таче', () => {
 
   it('даблклик на таче НЕ вешается — ветки взаимоисключающие', async () => {
     // Держать оба сразу нельзя: на таче даблклик стрелял бы по концу свайпа.
-    const chat = chatContext()
-    chat.canSendPlain = () => true
-    feed = new ChatBubbles(chat, managersWith([message]))
+    feed = mountTestBubbles(chatContext(), managersWith([message]))
     await openFeed(feed)
     await new Promise((resolve) => setTimeout(resolve, 0))
     document.body.append(feed.container)
@@ -108,12 +99,12 @@ describe('ChatBubbles — свайп-ответ на таче', () => {
     feed.chatInner.querySelector<HTMLElement>('.bubble[data-mid="1"]')!
       .dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }))
 
-    expect(chat.initMessageReply).not.toHaveBeenCalled()
+    expect(initMessageReply).not.toHaveBeenCalled()
     feed.container.remove()
   })
 
   it('destroy снимает слушатели жеста — они висят на ownerDocument, а он переживает ленту', async () => {
-    feed = new ChatBubbles(chatContext(), managersWith([message]))
+    feed = mountTestBubbles(chatContext(), managersWith([message]))
 
     feed.destroy()
     feed = undefined

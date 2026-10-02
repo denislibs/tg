@@ -15,7 +15,7 @@
 // чате — ни на одном.
 //
 // Из соседей по тому же forEach у нас есть предмет только для `is-broadcast`
-// (`this.chat.isBroadcast` — обычное поле `ChatContext`, как и `isLikeGroup`).
+// (`this.chat.isBroadcast` — обычное поле `Chat`, как и `isLikeGroup`).
 // `no-messages` не портирован — нужен асинхронный `hasMessages()`
 // (`Chat.hasMessages`, chat.ts), которого у ленты нет. `with-message-avatars`
 // не портирован — гейтит `isVerificationBot(peerId)`, а ботов-верификаторов
@@ -24,7 +24,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { MyMessage } from '@core/models'
 import { makeMessage, type MessageFixture } from '@core/messages/testMessage'
 import type { HistoryResult } from '@core/managers/messagesManager'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles, type TestChatOptions } from './testChat'
 
 const CHAT = 60
 
@@ -54,13 +56,7 @@ function managersWith(messages: MyMessage[]) {
   return managers
 }
 
-const chatContext = (over: Partial<ChatContext> = {}): ChatContext => ({
-  peerId: CHAT,
-  messagesStorageKey: String(CHAT),
-  container: document.createElement('div'),
-  bubblesViewport: document.createElement('div'),
-  ...over,
-})
+const chatContext = (over: TestChatOptions = {}) => createTestChat({ peerId: CHAT, ...over })
 
 async function openFeed(feed: ChatBubbles) {
   await (await feed.setPeer())?.promise
@@ -75,7 +71,7 @@ afterEach(() => {
 
 describe('ChatBubbles — отступ под аватар (класс is-chat)', () => {
   it('в групповом чате is-chat стоит на chatInner И на remover', async () => {
-    bubbles = new ChatBubbles(chatContext({ isLikeGroup: true }), managersWith([msg({ id: 1 })]))
+    bubbles = mountTestBubbles(chatContext({ isLikeGroup: true }), managersWith([msg({ id: 1 })]))
     await openFeed(bubbles)
 
     expect(bubbles.chatInner.classList.contains('is-chat')).toBe(true)
@@ -83,7 +79,7 @@ describe('ChatBubbles — отступ под аватар (класс is-chat)'
   })
 
   it('в личном чате is-chat не стоит ни на одном узле', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([msg({ id: 1 })]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([msg({ id: 1 })]))
     await openFeed(bubbles)
 
     expect(bubbles.chatInner.classList.contains('is-chat')).toBe(false)
@@ -91,7 +87,7 @@ describe('ChatBubbles — отступ под аватар (класс is-chat)'
   })
 
   it('is-broadcast (тот же forEach, tweb :5790) стоит на обоих узлах в канале', async () => {
-    bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managersWith([msg({ id: 1 })]))
+    bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managersWith([msg({ id: 1 })]))
     await openFeed(bubbles)
 
     expect(bubbles.chatInner.classList.contains('is-broadcast')).toBe(true)

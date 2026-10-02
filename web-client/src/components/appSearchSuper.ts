@@ -225,8 +225,7 @@
 //     `appImManager.setInnerPeer({peerId})` (`:1569`; `toggleSidebar(false)` на
 //     мобиле, `:1564-1566`, — тоже дело хоста) и `openUserPermissions` — вместо
 //     `openUserPermissionsTab(slider, …)` из меню участника (Solid-вкладка
-//     `AppUserPermissionsTab` не портирована). Тот же шов, что
-//     `BubblesNavigation.openPeer` у ленты; оба опциональны и зовутся через
+//     `AppUserPermissionsTab` не портирована). Оба опциональны и зовутся через
 //     `?.`, как остальные колбэки хоста в этом классе.
 // 34. Проверка карточки участника (`:1667-1678`, `appPeersManager.getPeer`) —
 //     по ЗЕРКАЛУ (`cachedPeer`); пробел объявляется владельцу через

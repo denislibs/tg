@@ -22,7 +22,9 @@ import { resetPeerMirror } from '@core/peerCache'
 import { makeMessage } from '@core/messages/testMessage'
 import type { MessageReplies, MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
-import ChatBubbles, { makeFullMid, type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import { makeFullMid, type BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles, type TestChatOptions } from './testChat'
 
 const CHAT: PeerId = -700
 const DISCUSSION_ID = 900
@@ -48,13 +50,7 @@ const intersect = (el: Element) => {
   observerOf(el)!.cb([{ target: el, isIntersecting: true }], null)
 }
 
-const chatContext = (over: Partial<ChatContext> = {}): ChatContext => ({
-  peerId: CHAT,
-  messagesStorageKey: String(CHAT),
-  container: document.createElement('div'),
-  bubblesViewport: document.createElement('div'),
-  ...over,
-})
+const chatContext = (over: TestChatOptions = {}) => createTestChat({ peerId: CHAT, ...over })
 
 function managersWith(messages: MyMessage[]) {
   const registerViews = vi.fn(async () => {})
@@ -117,7 +113,7 @@ describe('ChatBubbles — регистрация просмотра поста',
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       const managers = managersWith([post(11, { views: 3 }), post(12, { views: 4 })])
-      bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managers)
+      bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managers)
       await openFeed(bubbles)
       await settle()
 
@@ -140,7 +136,7 @@ describe('ChatBubbles — регистрация просмотра поста',
   // на пару «пост + зритель», и второй показ регистрировать нечего.
   it('наблюдение одноразовое — тот же пост второй раз не регистрируется', async () => {
     const managers = managersWith([post(11, { views: 3 })])
-    bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managers)
+    bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managers)
     await openFeed(bubbles)
     await settle()
 
@@ -156,7 +152,7 @@ describe('ChatBubbles — регистрация просмотра поста',
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       const managers = managersWith([post(11, { views: 3 }), post(12, { views: 4 })])
-      bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managers)
+      bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managers)
       await openFeed(bubbles)
       await settle()
 
@@ -177,7 +173,7 @@ describe('ChatBubbles — регистрация просмотра поста',
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       const managers = managersWith([post(11, { views: 3 })])
-      bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managers)
+      bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managers)
       await openFeed(bubbles)
       await settle()
 
@@ -198,7 +194,7 @@ describe('ChatBubbles — регистрация просмотра поста',
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       const managers = managersWith([post(11, { views: 3 })])
-      bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managers)
+      bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managers)
       await openFeed(bubbles)
       await settle()
 
@@ -220,7 +216,7 @@ describe('ChatBubbles — регистрация просмотра поста',
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       const managers = managersWith([post(11)])
-      bubbles = new ChatBubbles(chatContext(), managers)
+      bubbles = mountTestBubbles(chatContext(), managers)
       await openFeed(bubbles)
       await settle()
 
@@ -238,7 +234,7 @@ describe('ChatBubbles — счётчики поста двигаются кад�
   // tweb :2094-2124. Переписывается ОДИН узел, а не бабл: пересборка тела
   // перезапустила бы вложение (докблок `onMessageEdit`).
   it('messages_views переписывает ОБА узла .post-views', async () => {
-    bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managersWith([post(11, { views: 9200 })]))
+    bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managersWith([post(11, { views: 9200 })]))
     await openFeed(bubbles)
     await settle()
 
@@ -254,7 +250,7 @@ describe('ChatBubbles — счётчики поста двигаются кад�
   })
 
   it('чужой чат в кадре просмотров игнорируется', async () => {
-    bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managersWith([post(11, { views: 9200 })]))
+    bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managersWith([post(11, { views: 9200 })]))
     await openFeed(bubbles)
     await settle()
 
@@ -268,7 +264,7 @@ describe('ChatBubbles — счётчики поста двигаются кад�
   // у альбома футер один на группу и висит не под тем номером, что `data-mid`.
   it('replies_updated двигает число в футере, не пересобирая его', async () => {
     const message = post(11, { replies: commentThread(0) })
-    bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managersWith([message]))
+    bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managersWith([message]))
     await openFeed(bubbles)
     await settle()
 
@@ -292,7 +288,7 @@ describe('ChatBubbles — счётчики поста двигаются кад�
 
   it('кадр чужого окна футер не трогает', async () => {
     const message = post(11, { replies: commentThread(0) })
-    bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managersWith([message]))
+    bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managersWith([message]))
     await openFeed(bubbles)
     await settle()
 

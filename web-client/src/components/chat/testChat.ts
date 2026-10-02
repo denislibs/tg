@@ -1,6 +1,10 @@
 // Фабрика `Chat` для тестов ленты, меню и выделения (`bubbles.*.test.ts`,
 // `contextMenu*.test.ts`, `selection.test.ts`) — не тест сама по себе.
 //
+// `attachTestSelection` — выделение `Chat` без ленты, на поддельных баблах: им
+// пользуются тесты меню, которым лента не нужна (tweb меню читает
+// `chat.selection`, а его создаёт `Chat.init`).
+//
 // С шага К-3 `ChatBubbles`, `ChatContextMenu` и `ChatSelection` получают `Chat`
 // (`components/chat/chat.ts`), как у tweb. Поднимать настоящий класс в тесте ленты
 // значит тянуть шапку, остров композера и правую колонку; вместо этого здесь — ровно
@@ -16,7 +20,7 @@ import type { MyMessage } from '@core/models'
 import type { ChatAutoDownload } from '@core/chat/autoDownloadSettings'
 import ChatBubbles, { type BubblesManagers } from './bubbles'
 import ChatContextMenu, { type ContextMenuManagers, type ContextMenuPopups } from './contextMenu'
-import ChatSelection from './selection'
+import ChatSelection, { type SelectionBubbles, type SelectionManagers } from './selection'
 import { ChatType } from './chatType'
 import type Chat from './chat'
 import type ChatInput from './reactChatInput'
@@ -124,4 +128,14 @@ export function mountTestBubbles(chat: Chat, managers: BubblesManagers, options:
 
   bubbles.attachContainerListeners()
   return bubbles
+}
+
+/** Выделение `Chat` поверх поддельных баблов — для тестов меню без ленты. */
+export function attachTestSelection(
+  chat: Chat,
+  bubbles: SelectionBubbles,
+  managers: SelectionManagers = { messages: {} },
+): ChatSelection {
+  chat.selection = new ChatSelection(chat, bubbles, chat.input as unknown as ChatInput, managers)
+  return chat.selection
 }

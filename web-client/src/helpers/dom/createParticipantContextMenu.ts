@@ -19,9 +19,7 @@
 //     (Solid-вкладка `AppUserPermissionsTab`, у нас не портирована) →
 //     колбэк `openUserPermissions(participant, isAdmin)`; кто его исполняет —
 //     решает владелец меню (сегодня — React-экран прав участника);
-//   • `appImManager.setInnerPeer({peerId})` → колбэк `openPeer(peerId)` — тот же
-//     шов, что `BubblesNavigation.openPeer` у ленты: глобального
-//     `appImManager` у нас нет;
+//   • `appImManager.setInnerPeer({peerId})` → колбэк `openPeer(peerId)` у владельца меню;
 //   • действия — наши ручки `groups.addMember`/`unban`/`removeMember` вместо
 //     `appChatsManager.addToChat`/`editBanned(…, пустые права)`/`kickFromChat`;
 //     `handleMissingInvitees` после добавления (:53-55) не портирован — наша

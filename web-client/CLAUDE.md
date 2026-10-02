@@ -45,9 +45,10 @@ npx vite build --outDir ../client-build
   ничего не сыграет (ни сборка, ни тайпчек не поймают). Нужен локальный `@keyframes`-дубль;
   `animation: :global(name)` не компилируется.
 - Лента сообщений — НЕ React: это императивный порт tweb `ChatBubbles`
-  (`components/chat/bubbles.ts`), смонтированный хостом `components/chat/VanillaFeed.tsx`.
-  Мемоизация рядов к ней неприменима; из React в ленту едут только пропы среды
-  (пир/тред/вид чата/распорки) и ручки наружу (`ChatFeedApi`).
+  (`components/chat/bubbles.ts`) внутри класса `Chat` (`components/chat/chat.ts`, порт
+  tweb `chat.ts`, шаг К-3): `Chat` владеет шапкой (`topbar.ts`), лентой, меню, выделением
+  и композером (React-остров `reactChatInput.ts`, `ВРЕМЕННО до К-4`), а лента берёт у
+  него пир, вид чата, права и стек колонки (`chat.appImManager`), как у tweb.
 - **Импорт-алиасы** (tsconfig + vite + vitest, держать синхронно): `@core @stores @shared @rpc
   @lib @helpers @components @config @environment @vendor @customEmoji @types @/*`. Раскладка кросс-каттинга:
   `shared/lib` — чистые переиспользуемые утилиты; `lib` — толстые вендор-подсистемы (lottie,
@@ -303,7 +304,8 @@ read-marker (markRead живого сообщения при вьюпорте у
 наблюдателем за непрочитанными баблами (`components/chat/bubbles.ts`, порт tweb
 bubbles.ts:2941-3012): «прочитано» это «увидено», а видимость бабла знает только
 его владелец. Счётчик unread-below остался **производным из стора**
-(`newestSeq − lastReadSeq`, `Chat.tsx`), а не накапливается из потока событий.
+(`newestSeq − lastReadSeq`, остров композера — кнопка «вниз»), а не накапливается из
+потока событий.
 
 ## Владение фактами (воркер публикует, витрина зеркалит)
 
@@ -350,12 +352,15 @@ bubbles.ts:2941-3012): «прочитано» это «увидено», а ви
 Лента (`components/chat/bubbles.ts`, порт tweb `ChatBubbles`) целиком владеет
 `.bubbles`: окном, скроллом, пагинацией, липкими датами, отметкой прочтения,
 контекстным меню (`chat/contextMenu.ts`) и выделением (`chat/selection.ts`).
-React-хост — `components/chat/VanillaFeed.tsx`, единственная точка монтирования —
-`Chat.tsx` (пин: `components/Chat.feedMount.test.ts`). Роль tweb-овского `Chat`
-поверх ленты исполняет `Chat.tsx`: он считает распорки
-(`Chat.recomputePaddings` → `ChatBubbles.setPaddings`), держит попапы, которые
-открывают пункты меню, и зовёт ручки `ChatFeedApi` (прыжок к сообщению, кнопка
-«вниз», вход/выход из режима выделения, перезагрузка окна).
+Владелец ленты — класс `Chat` (`components/chat/chat.ts`, порт tweb `chat.ts`, шаг
+К-3; пины — `chat/chat.test.ts`): `Chat.init` создаёт `ChatBubbles(this, managers)`,
+`ChatContextMenu(this, managers)` и `ChatSelection(this, bubbles, input, managers)`,
+зовёт `attachContainerListeners`; пир меняет `Chat.setPeer` на ТОМ ЖЕ инстансе ленты
+(`bubbles.setPeer` → `chat.onChangePeer` → `chat.finishPeerChange`, tweb :5848/:6183);
+распорки считает `Chat.recomputePaddings` → `ChatBubbles.setPaddings`. Тесты ленты
+поднимают её на фабрике `chat/testChat.ts` (`createTestChat` + `mountTestBubbles`,
+порядок `Chat.init`). Попапов пунктов меню (закреп, пересылка, удаление, жалоба,
+статистика, проверка фактов) до П-5 нет — их пункты скрыты `verify` (Б-28).
 
 React-лента (`components/messages/ChatFeed` и её ~18 модулей), флаг
 `VITE_VANILLA_FEED`, zustand-копия окна `stores/messagesStore` и ленточные хуки
@@ -368,8 +373,9 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
 `setPeer` :5375-5380/:5393), «лестница» появления баблов
 (`ChatBubbles.animateAsLadder` поверх примитива `core/dom/ladder.ts`, tweb :10313)
 и восстановление позиции между открытиями (`savedPosition`: пишет
-`ChatBubbles.saveChatPosition` на `destroy()` — наш аналог tweb-события
-`peer_changing`, хранит `core/chat/chatPositions.ts`, читает `setPeer`).
+`appImManager.saveChatPosition` по `peer_changing`, читает `setPeer` через
+`appImManager.getChatSavedPosition`, как tweb `appImManager.ts:479-486`, `:2640-2688`;
+пины — `lib/appImManager.test.ts`).
 ОДНО расхождение с оригиналом по месту вызова, и оно намеренное: спиннер
 вешается ДО запроса истории, а не после (у tweb `requestHistory` —
 подтверждённый вызов `managers.acknowledged.*`, у нас подтверждений нет вовсе);
@@ -387,7 +393,7 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
 отметку шлёт одноразовый `timeupdate` — порт `appMediaPlaybackController.ts:452-456`, а
 гасит точку общий слушатель `components/audio.ts`, теперь и по `.media-round`) и перезвон
 по баблу лога звонка (бабл `.bubble-call` — порт tweb `wrappers/callBubble.ts`, ветка клика — :3617-3633,
-`callUser` отдаёт хост `VanillaFeed`, как `appImManager` в оригинале). Четвёртое —
+перезванивает `appImManager.callUser`, как в оригинале). Четвёртое —
 разблокировка платного медиа — в таблице ниже: у неё нет ни узла, ни попапа подтверждения.
 
 **Пустая лента и лента под фильтром закрыты** (пины — `chat/bubbles.emptyPlaceholder.test.ts`,
@@ -410,8 +416,8 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
   (`CHAT_SEARCH_KEYS`, chat.ts:73-74): смена тега идёт через `setMessageId({savedReaction})` →
   `setPeer` с `sameSearch: false`, окно перезапрашивается целиком, пагинация идёт по отфильтрованной
   выдаче, входящее без тега в окно не попадает (:4559-4568), позиция чата под фильтром не
-  сохраняется (appImManager.ts:2125). Панель `SavedTagsPanel` больше не врёт: её `onFilter` зовёт
-  `ChatFeedApi.setSavedReaction`. **Одно расхождение**, навязанное ручкой: страницы берутся
+  сохраняется (appImManager.ts:2125). Панель тегов (`SavedTagsPanel`) снята до П-5 (Б-26) —
+  механизм фильтра в ленте остался. **Одно расхождение**, навязанное ручкой: страницы берутся
   `GET /chats/{id}/search?reaction=` со смещением `offset`, а не `offset_id`, как у tweb
   (`messages.search` с `saved_reaction`). Ручка `GET /chats/{id}/history?tag=` — точнее по форме
   (тот же `offset_id`, и фильтр по МОЕЙ реакции, `messagesrepo.go:662`), но она идёт через
@@ -441,13 +447,11 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
   спрашивается в обработчике (`isOurMessage`) — тот же вопрос, на который у
   оригинала отвечает выбор события;
 - **автозагрузка медиа по настройкам чата** — свод `{photo, video, file}` считает
-  роль `Chat` (`Chat.tsx` через `useChatAutoDownload`, порт
-  `useAutoDownloadSettings`; у tweb — chat.ts:1055 внутри `createEffect`), едет в
-  ленту `VanillaFeed` → `ChatContext.autoDownload` и раздаётся врапперам ровно там
-  же, где у оригинала (bubbles.ts:7901 альбом, :7919 фото, :8542/:8561 видео и
-  кружок, :8597 документ). Функцией, а не значением, — по той же причине, что
-  `canSend`: чтение живое, и смена настройки доезжает до следующего же бабла без
-  пересборки ленты. Гейт числовой и разный по виду медиа: фото и видео сравнивают
+  `Chat.autoDownload` (`core/chat/autoDownloadSettings.ts`, порт
+  `useAutoDownloadSettings`; у tweb — chat.ts:1055 внутри `createEffect`) и
+  раздаётся лентой врапперам ровно там же, где у оригинала (bubbles.ts:7901 альбом,
+  :7919 фото, :8542/:8561 видео и кружок, :8597 документ). Поле — геттер: чтение живое,
+  и смена настройки доезжает до следующего же бабла без пересборки ленты. Гейт числовой и разный по виду медиа: фото и видео сравнивают
   порог с нулём, документ — с размером файла;
 - **очередь голосовых/кружков** предметом долга не была: она уже закрыта
   портом `components/audio.ts` (`findMediaTargets` — скан соседей по DOM, tweb
@@ -469,7 +473,7 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
 
 | Долг | Где был | Куда портировать |
 |---|---|---|
-| разблокировка платного медиа | обработчик в `Chat.tsx` | **не обработчиком**: у tweb это ЦЕЛАЯ ветка рендера `messageMediaPaidMedia` (bubbles.ts:8840-9030 — псевдо-фото из превью, ценник `.extended-media-buy`, `DotRenderer`, опрос `extendedMediaMessages`) плюс `PopupPayment` с подтверждением суммы (:3199-3232). У нас заблокированный бабл сегодня пуст (`getBubbleMedia` → `undefined`), попапа платежей нет, а ручка `starsManager.unlockPaidMedia` списывает звёзды молча — разбор в докблоке `chat/bubbles.ts::renderMedia` |
+| разблокировка платного медиа | обработчик в снесённом `Chat.tsx` | **не обработчиком**: у tweb это ЦЕЛАЯ ветка рендера `messageMediaPaidMedia` (bubbles.ts:8840-9030 — псевдо-фото из превью, ценник `.extended-media-buy`, `DotRenderer`, опрос `extendedMediaMessages`) плюс `PopupPayment` с подтверждением суммы (:3199-3232). У нас заблокированный бабл сегодня пуст (`getBubbleMedia` → `undefined`), попапа платежей нет, а ручка `starsManager.unlockPaidMedia` списывает звёзды молча — разбор в докблоке `chat/bubbles.ts::renderMedia` |
 | «Переотправить» упавшее сообщение, «Перевести», ⭐-реакция, «Ответить в другом чате», «Сохранить GIF» | пункты React-меню сообщения | **никуда — предмета нет**, разбор каждого в шапке `chat/contextMenu.ts` («Семь пунктов React-меню»). Три из пяти пунктами tweb `ChatContextMenu` не являются вовсе (⭐-реакция — клик по платному чипу, «Ответить в другом чате» — меню плашки ответа `chat/input.ts:647-651`, повтор упавшей отправки в tweb отсутствует), у «Перевести» и «Сохранить GIF» дословный порт даёт вечно ложный `verify` — мёртвую кнопку. Два пункта прежней строки ПОРТИРОВАНЫ: «Кто просмотрел» — `views`-пункт группы (`messages.viewers` → «Seen by N»), тесты — `contextMenu.test.ts`; «Копировать медиа» — появился у tweb в 508acd4f5 и перенесён по 812502980 (`MediaViewer.Context.Copy`, `copyMessageMediaWithFeedback`), тесты — `contextMenu.copyMedia.test.ts` |
 | ручной повтор упавшей отправки: `messages.retryPending` (`core/managers/messages/pending.ts:570`) остался без единого вызывающего | пункт «Переотправить» React-меню | решать не пунктом меню: у tweb ручного повтора нет по построению (сорванную отправку переигрывает транспорт, `message.error` даёт лишь право удалить бабл). Это расхождение нашей модели отправки с оригиналом — ему место в `docs/readiness/port-divergences.md`, а не в порте меню. **`cancelPending` вызывающего обрёл**: его зовёт крестик кольца отдачи на неотправленном бабле (`chat/bubbles.ts::uploadPromiseFor`) |
 | предпросмотр стикера по зажатию в ленте | входа не было вовсе | **закрыт**: ванильный порт `components/stickerViewer.ts` (tweb `stickerViewer.ts` 1:1, расхождения — в шапке) висит на скроллере ленты (`chat/bubbles.ts::attachContainerListeners`, tweb bubbles.ts:1591-1599 — тот же `findTarget` по `.attachment.media-sticker-wrapper`/`.media-gif-wrapper`/`.poll-option-sticker`), пин — `chat/bubbles.stickerViewer.test.ts`. React-хук `useStickerViewer` снесён, остальные хосты (`StickersHelper`, `StickerSetModal`, `emoji/StickersTab`, `rightSidebar/StickersSearchTab`) вешают тот же слушатель островом. Документ по `data-doc-id` отдаёт воркер (`docs.getDoc`) |

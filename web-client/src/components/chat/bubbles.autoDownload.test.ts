@@ -2,9 +2,9 @@
 //
 // АВТОЗАГРУЗКА МЕДИА ПО НАСТРОЙКАМ ЧАТА — порт раздачи `this.chat.autoDownload`
 // врапперам (tweb bubbles.ts:7901 альбом, :7919 фото, :8542/:8561 видео и
-// кружок, :8597 документ). Сами пороги считает роль `Chat`
-// (tweb chat.ts:1055 `useAutoDownloadSettings`, у нас `Chat.tsx` через
-// `useChatAutoDownload`); лента их только ПЕРЕДАЁТ — это и пинится.
+// кружок, :8597 документ). Сами пороги считает `Chat` (tweb chat.ts:1055
+// `useAutoDownloadSettings`, у нас `core/chat/autoDownloadSettings.ts`); лента их
+// только ПЕРЕДАЁТ — это и пинится.
 //
 // Гейт у оригинала числовой и разный по виду медиа: у фото и видео значение
 // сравнивается с нулём (`noAutoDownload = autoDownloadSize === 0`,
@@ -17,14 +17,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
-import { clearChatPositions } from '@core/chat/chatPositions'
 import { useSettingsStore } from '@/settings'
 import { saveDocument, THUMB_TYPE_FULL, type DocumentAttribute, type MessageMedia } from '@core/media/messageMedia'
 import { makeMessage } from '@core/messages/testMessage'
 import type { MyMessage } from '@core/models'
-import type { ChatAutoDownload } from '@core/hooks/useChatAutoDownload'
+import type { ChatAutoDownload } from '@core/chat/autoDownloadSettings'
 import type { HistoryResult } from '@core/managers/messagesManager'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles } from './testChat'
 
 const { downloadMediaURL } = vi.hoisted(() => ({
   downloadMediaURL: vi.fn(async (id: number) => `blob:${id}`),
@@ -85,16 +86,10 @@ const managersWith = (messages: MyMessage[]): BubblesManagers => ({
   realtime: { markRead: vi.fn(async () => ({ ok: true })) },
 })
 
-const chatContext = (autoDownload?: ChatAutoDownload): ChatContext => {
+const chatContext = (autoDownload?: ChatAutoDownload) => {
   const container = document.createElement('div')
   container.classList.add('chat')
-  return {
-    peerId: CHAT,
-    messagesStorageKey: String(CHAT),
-    container,
-    bubblesViewport: document.createElement('div'),
-    ...(autoDownload ? { autoDownload: () => autoDownload } : {}),
-  }
+  return createTestChat({ peerId: CHAT, container, autoDownload })
 }
 
 async function settle(times = 6) {
@@ -106,7 +101,6 @@ let bubbles: ChatBubbles | undefined
 beforeEach(() => {
   resetMessagesMirror()
   resetPeerMirror()
-  clearChatPositions()
   rootScope.myId = ME
   downloadMediaURL.mockClear()
   useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
@@ -128,7 +122,7 @@ afterEach(() => {
  *  идёт «лестница» первой загрузки, которая здесь безвредна. */
 async function openFeed(messages: MyMessage[], autoDownload?: ChatAutoDownload, motion = false) {
   if (motion) useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: false } })
-  const b = new ChatBubbles(chatContext(autoDownload), managersWith(messages))
+  const b = mountTestBubbles(chatContext(autoDownload), managersWith(messages))
   bubbles = b
   await (await b.setPeer())?.promise
   await settle()
@@ -153,7 +147,7 @@ describe('ChatBubbles — автозагрузка медиа по настро�
     expect(downloadMediaURL).toHaveBeenCalled()
   })
 
-  it('свода нет вовсе (хост его не передал) — качаем, как без гейта у tweb', async () => {
+  it('свода нет вовсе (`chat.autoDownload` не задан) — качаем, как без гейта у tweb', async () => {
     // `autoDownload: undefined` у оригинала не запрещает ничего:
     // `noAutoDownload = autoDownloadSize === 0` при `undefined` ложно.
     await openFeed([message(1, photoMedia(103))])
@@ -207,17 +201,15 @@ describe('ChatBubbles — автозагрузка медиа по настро�
   it('свод читается ЖИВЫМ на каждый рендер: смена настройки доезжает без пересборки ленты', async () => {
     // Порт `createEffect` у поля `chat.autoDownload` (tweb chat.ts:1053-1057):
     // настройка меняется, пока чат открыт, и следующий же бабл рисуется по ней.
-    let current: ChatAutoDownload = NONE
-    const b = new ChatBubbles(
-      { ...chatContext(), autoDownload: () => current },
-      managersWith([message(1, photoMedia(110))]),
-    )
+    const chat = chatContext(NONE)
+    const b = mountTestBubbles(chat, managersWith([message(1, photoMedia(110))]))
     bubbles = b
     await (await b.setPeer())?.promise
     await settle()
     expect(downloadMediaURL).not.toHaveBeenCalled()
 
-    current = ALL
+    // У `Chat` это геттер над настройками; у фейка — обычное поле.
+    ;(chat as { autoDownload?: ChatAutoDownload }).autoDownload = ALL
     rootScope.dispatchEventSingle('history_append', {
       storageKey: String(CHAT),
       message: message(2, photoMedia(111)),

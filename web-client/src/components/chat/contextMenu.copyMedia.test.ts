@@ -6,13 +6,17 @@
 // `contextMenuController`, окно — `messagesMirror`), как в `contextMenu.test.ts`.
 // Подменены только края мира: буфер обмена браузера (`ClipboardItem`,
 // `navigator.clipboard`), выдача URL медиа воркером (`ensureMediaUrl`) и
-// `fetch` байтов по нему, плюс тост — ради проверки текста.
+// `fetch` байтов по нему, плюс тост — ради проверки текста. Здесь же — соседний
+// пункт «Скачать» (`onDownloadClick` :2178-2190, граница — `appDownloadManager`).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   ensureMediaUrl: vi.fn<(id: number) => Promise<string>>(),
   toastNew: vi.fn(),
+  downloadToDisc: vi.fn(() => Promise.resolve()),
 }))
+
+vi.mock('@lib/appDownloadManager', () => ({ downloadToDisc: mocks.downloadToDisc }))
 
 vi.mock('@core/media/ensureMediaUrl', () => ({ ensureMediaUrl: mocks.ensureMediaUrl }))
 vi.mock('@components/toast', async(importOriginal) => ({
@@ -20,7 +24,9 @@ vi.mock('@components/toast', async(importOriginal) => ({
   toastNew: mocks.toastNew,
 }))
 
-import ChatContextMenu, { type ContextMenuChat, type ContextMenuManagers, type ContextMenuPopups } from './contextMenu'
+import ChatContextMenu, { type ContextMenuManagers, type ContextMenuPopups } from './contextMenu'
+import type Chat from './chat'
+import { attachTestSelection, createTestChat } from './testChat'
 import contextMenuController from '@helpers/contextMenuController'
 import { putMirrorPage, resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
@@ -86,7 +92,6 @@ function makeManagers() {
       viewers: vi.fn().mockResolvedValue([]),
     },
     chats: { getReadDate: vi.fn().mockResolvedValue(null) },
-    media: { downloadToDisc: vi.fn() },
   } satisfies ContextMenuManagers
 }
 
@@ -102,16 +107,10 @@ function makePopups() {
   } satisfies ContextMenuPopups
 }
 
-function makeChat(): ContextMenuChat {
-  return {
-    peerId: PEER,
-    messagesStorageKey: KEY,
-    canSend: () => true,
-    hasMessageInput: () => true,
-    initMessageReply: vi.fn(),
-    initMessageEditing: vi.fn(),
-    initSearch: vi.fn(),
-  }
+function makeChat(): Chat {
+  const chat = createTestChat({ peerId: PEER, messagesStorageKey: KEY })
+  attachTestSelection(chat, { getRenderedHistory: () => [], getBubble: () => undefined, getBubbleGroupedItems: () => [] })
+  return chat
 }
 
 function rightClick(target: HTMLElement) {
@@ -141,7 +140,7 @@ async function openOn(message: MyMessage) {
   const { bubble, media } = makeMediaBubble(message.id)
   container.append(bubble)
 
-  const menu = new ChatContextMenu(makeChat(), {}, makeManagers(), makePopups())
+  const menu = new ChatContextMenu(makeChat(), makeManagers(), makePopups())
   menu.attachTo(container)
 
   rightClick(media)
@@ -240,5 +239,31 @@ describe('«Копировать медиа» в меню сообщения (tw
 
     expect(mocks.toastNew).toHaveBeenCalledWith({ langPackKey: 'MediaCopyFailed' })
     expect(item.classList.contains('is-loading')).toBe(false)
+  })
+})
+
+describe('«Скачать» в меню сообщения (tweb :2178-2190)', () => {
+  const clickDownload = () => items()
+    .find((item) => item.querySelector('.btn-menu-item-text')?.textContent === 'Download')!
+    .click()
+
+  it('фото уходит в `appDownloadManager.downloadToDisc` полным файлом `photo<id>.jpg`', async() => {
+    await openOn(photoMessage(6))
+
+    clickDownload()
+
+    expect(mocks.downloadToDisc).toHaveBeenCalledWith({
+      mediaId: 706, fileName: 'photo706.jpg', mime: 'image/jpeg', size: undefined,
+    })
+  })
+
+  it('документ — со своим типом и размером, имя без `file_name` — `file<id>`', async() => {
+    await openOn(videoMessage(7))
+
+    clickDownload()
+
+    expect(mocks.downloadToDisc).toHaveBeenCalledWith({
+      mediaId: 807, fileName: 'file807', mime: 'video/mp4', size: 1,
+    })
   })
 })

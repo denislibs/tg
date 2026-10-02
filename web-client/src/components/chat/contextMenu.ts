@@ -59,8 +59,7 @@
  *    (`components/avatar.ts` + `ChatBubbles.createAvatar`), но её меню у
  *    оригинала состоит из пунктов о ПИРЕ («открыть профиль», «отправить
  *    сообщение», упоминание), а не о сообщении: это отдельный набор со своим
- *    носителем — навигацией по пирам, которой у ленты нет
- *    (`BubblesNavigation.openPeer` не передаётся, см. `VanillaFeed.tsx`).
+ *    носителем (П-5).
  *
  * ─── Семь пунктов React-меню (строка долгов в `web-client/CLAUDE.md`) ───────
  * Снесённое меню React-ленты держало семь пунктов, которых здесь не было.
@@ -147,10 +146,9 @@
  *    нет: текст остаётся тем же, что и у одиночного пункта.
  *
  * ─── Адаптации ──────────────────────────────────────────────────────────────
- *  • `Chat`/`AppManagers` → узкие порт-интерфейсы (`ContextMenuChat`,
- *    `ContextMenuBubbles`, `ContextMenuManagers`, `ContextMenuPopups`) — тем
- *    же способом, каким лента объявляет `ChatContext`/`BubblesManagers`
- *    (`components/chat/bubbles.ts`);
+ *  • `Chat` — настоящий класс (`components/chat/chat.ts`, К-3), `AppManagers` →
+ *    узкий `ContextMenuManagers`, попапы — порт `ContextMenuPopups` (до П-5 его
+ *    не отдаёт никто, Б-28);
  *  • `pFlags.is_outgoing` («ещё не отправлено») у нас — ДРОБНЫЙ номер
  *    (`isLocalMessageId`), `message.error` — флаг `failed`;
  *  • `PeerId.isUser()` → `isUser(peerId)` (`core/peers/peerId.ts`), права —

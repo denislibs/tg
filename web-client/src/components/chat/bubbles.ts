@@ -2773,7 +2773,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
   /** Порт tweb `attachContainerListeners` (bubbles.ts:1460) в применимом
    *  объёме — ОДИН делегированный слушатель на контейнере ленты. Разбирает
    *  разметку, которую оставляет rich-text вместо inline-обработчиков tweb
-   *  (см. докблок `BubblesNavigation`), и крышку спойлера медиа.
+   *  (`data-anchor-action`, `lib/richtext/url.ts`), и крышку спойлера медиа.
    *
    *  ПОРЯДОК ВЕТОК ЗНАЧИМ, и он взят у оригинала (`onBubblesClick`,
    *  bubbles.ts:3014-3627): первый совпавший выигрывает. Поэтому спойлер
@@ -3128,7 +3128,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
       for (const timestamp in this.dateMessages) {
         if (this.dateMessages[timestamp].div === dateBubble) {
-          showDatePickerPopup({ initDate: new Date(+timestamp), onPick: this.onDatePick })
+          showDatePickerPopup({ initDate: new Date(+timestamp), onPick: this.onDatePick, peerId: this.peerId })
           break
         }
       }
@@ -3456,12 +3456,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     const peerId = this.peerId
     const lang = useI18nStore.getState().lang
-    const mediaHistory = this.managers.messages.mediaHistory
+    const messagesManager = this.managers.messages
     let loader: MediaNeighboursLoader | undefined
-    const loadMoreMedia = mediaHistory && (async(older: boolean, anchor: ViewerItem | undefined, loadCount: number): Promise<ViewerItem[]> => {
+    const loadMoreMedia = messagesManager.mediaHistory && (async(older: boolean, anchor: ViewerItem | undefined, loadCount: number): Promise<ViewerItem[]> => {
       if(!anchor) return []
       loader ??= createMediaNeighboursLoader({
-        fetchPage: async(offsetId, limit) => (await mediaHistory(peerId, 'media', offsetId, limit)).messages,
+        fetchPage: async(offsetId, limit) => (await messagesManager.mediaHistory!(peerId, 'media', offsetId, limit)).messages,
       })
       try {
         const slice = await loader.neighbours(anchor.mid, older, loadCount)

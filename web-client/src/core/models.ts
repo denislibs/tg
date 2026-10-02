@@ -418,8 +418,8 @@ export function getThreadRootId(m: MyMessage): number | undefined {
  * а свою личность — у глобального `rootScope.myId`. У нас ни того, ни другого
  * внутри `core/models.ts` взять нельзя и не нужно:
  *
- *  • вид чата знает тот, кто чат открыл (`ChatContext` императивной ленты,
- *    `Chat.tsx` у реактивной), а тянуть сюда `core/peerCache.ts` — значит
+ *  • вид чата знает тот, кто чат открыл (`Chat` — `components/chat/chat.ts`),
+ *    а тянуть сюда `core/peerCache.ts` — значит
  *    завести в ВОРКЕРЕ (модуль грузится и там) второе, пустое зеркало карточек;
  *  • свою личность так же передаёт вызывающий — ровно как уже делает соседний
  *    `messageToConvMsg(m, meId)`; `lib/rootScope.ts` — главнопоточная шина.

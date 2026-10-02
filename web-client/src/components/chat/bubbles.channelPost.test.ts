@@ -1,7 +1,7 @@
 // Признаки ПОСТА КАНАЛА на бабле — порт блока tweb bubbles.ts:7671-7691:
 // класс `channel-post`, кнопка «переслать» сбоку (`bubble-beside-button
 // with-hover forward` + `with-beside-button` на бабле) и её клик
-// (`showForwardPopup({[peerId]: getMidsByMessage(message)})`, :3511-3517).
+// (`showForwardPopup`, :3511-3517; попапа у нас нет до П-5 — клик только гасится).
 //
 // ПИН ГЕЙТА: признак поста выводится из САМОГО сообщения — `isMessage &&
 // message.views` (:7672), а не из вида чата. До починки лента звала
@@ -17,17 +17,13 @@ import { resetPeerMirror } from '@core/peerCache'
 import { makeMessage } from '@core/messages/testMessage'
 import type { MessageReal, MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles, type TestChatOptions } from './testChat'
 
 const CHAT: PeerId = -700
 
-const chatContext = (over: Partial<ChatContext> = {}): ChatContext => ({
-  peerId: CHAT,
-  messagesStorageKey: String(CHAT),
-  container: document.createElement('div'),
-  bubblesViewport: document.createElement('div'),
-  ...over,
-})
+const chatContext = (over: TestChatOptions = {}) => createTestChat({ peerId: CHAT, ...over })
 
 const managersWith = (messages: MyMessage[]): BubblesManagers => ({
   messages: {
@@ -70,7 +66,7 @@ const bubbleOf = (b: ChatBubbles, mid: number) =>
 
 describe('ChatBubbles — признаки поста канала', () => {
   it('пост канала: `channel-post`, `with-beside-button` и узел кнопки', async () => {
-    bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managersWith([post(1, { views: 2 })]))
+    bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managersWith([post(1, { views: 2 })]))
     await openFeed(bubbles)
     await settle()
 
@@ -89,7 +85,7 @@ describe('ChatBubbles — признаки поста канала', () => {
   })
 
   it('в КАНАЛЕ сообщение без просмотров признаков поста не получает', async () => {
-    bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managersWith([post(1)]))
+    bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managersWith([post(1)]))
     await openFeed(bubbles)
     await settle()
 
@@ -108,7 +104,7 @@ describe('ChatBubbles — признаки поста канала', () => {
       ...(post(1, { views: 2 }) as MessageReal),
       fwd_from: { _: 'messageFwdHeader', date: 0, saved_from_msg_id: 9 },
     }
-    bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managersWith([forwarded]))
+    bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managersWith([forwarded]))
     await openFeed(bubbles)
     await settle()
 
@@ -119,7 +115,7 @@ describe('ChatBubbles — признаки поста канала', () => {
   })
 
   it('в ОБЫЧНОМ чате сообщение с просмотрами признаки поста получает', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([post(1, { views: 5 })]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([post(1, { views: 5 })]))
     await openFeed(bubbles)
     await settle()
 
@@ -129,61 +125,23 @@ describe('ChatBubbles — признаки поста канала', () => {
     expect(bubble.querySelector('.bubble-beside-button.forward')).not.toBeNull()
   })
 
-  describe('клик по кнопке ведёт в попап пересылки', () => {
-    it('адресат — запись `{peerId: [номер]}` (tweb :3512-3514)', async () => {
-      const showForward = vi.fn()
-      bubbles = new ChatBubbles(
-        chatContext({ isBroadcast: true, navigation: { showForward } }),
-        managersWith([post(1, { views: 2 })]),
-      )
-      await openFeed(bubbles)
-      await settle()
+  it('клик по кнопке гасится и ничего не открывает — попапа пересылки нет до П-5 (Б-28)', async () => {
+    const setInnerPeer = vi.fn()
+    bubbles = mountTestBubbles(
+      chatContext({ isBroadcast: true, appImManager: { setInnerPeer } }),
+      managersWith([post(1, { views: 2 })]),
+    )
+    await openFeed(bubbles)
+    await settle()
 
-      document.body.append(bubbles.container)
-      // Клик приходит с УЗЛА ИКОНКИ — так его и получает боевая кнопка.
-      bubbleOf(bubbles, 1).querySelector<HTMLElement>('.bubble-beside-button.forward > .tgico')!
-        .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
-      bubbles.container.remove()
+    document.body.append(bubbles.container)
+    // Клик приходит с УЗЛА ИКОНКИ — так его и получает боевая кнопка.
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true })
+    bubbleOf(bubbles, 1).querySelector<HTMLElement>('.bubble-beside-button.forward > .tgico')!
+      .dispatchEvent(click)
+    bubbles.container.remove()
 
-      expect(showForward).toHaveBeenCalledWith({ [CHAT]: [1] })
-    })
-
-    it('у альбома уходят номера ВСЕЙ группы (`getMidsByMessage`)', async () => {
-      const showForward = vi.fn()
-      bubbles = new ChatBubbles(
-        chatContext({ isBroadcast: true, navigation: { showForward } }),
-        managersWith([
-          post(1, { views: 2, groupedId: 5 }),
-          post(2, { views: 2, groupedId: 5 }),
-        ]),
-      )
-      await openFeed(bubbles)
-      await settle()
-
-      document.body.append(bubbles.container)
-      // Бабл у альбома ОДИН — главного сообщения группы (первого по номеру).
-      bubbleOf(bubbles, 1).querySelector<HTMLElement>('.bubble-beside-button.forward')!
-        .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
-      bubbles.container.remove()
-
-      expect(showForward).toHaveBeenCalledWith({ [CHAT]: [1, 2] })
-    })
-
-    it('клик по телу поста в пересылку не ведёт', async () => {
-      const showForward = vi.fn()
-      bubbles = new ChatBubbles(
-        chatContext({ isBroadcast: true, navigation: { showForward } }),
-        managersWith([post(1, { views: 2 })]),
-      )
-      await openFeed(bubbles)
-      await settle()
-
-      document.body.append(bubbles.container)
-      bubbleOf(bubbles, 1).querySelector<HTMLElement>('.message')!
-        .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
-      bubbles.container.remove()
-
-      expect(showForward).not.toHaveBeenCalled()
-    })
+    expect(click.defaultPrevented).toBe(true)
+    expect(setInnerPeer).not.toHaveBeenCalled()
   })
 })

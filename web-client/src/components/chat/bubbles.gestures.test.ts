@@ -3,7 +3,7 @@
 // Сам порт (контроллер свайпа, предикат даблклика) покрыт своими тестами
 // (`replySwipe.test.ts`, 35 штук); здесь проверяется то, чего они видеть не
 // могут: что лента ВЕШАЕТ обработчик, отдаёт в предикат право `canSendPlain`
-// и адресует ответ номером кликнутого бабла.
+// и адресует ответ кликнутому баблу (`chat.input.initMessageReply`).
 //
 // Развилка оригинала (tweb bubbles.ts:1496-1543) взаимоисключающая: даблклик —
 // на десктопе, свайп — на таче. jsdom выдаёт себя за десктоп (`IS_MOBILE`
@@ -18,7 +18,9 @@ import { generateTempMessageId } from '@core/history/messageId'
 import { makeMessage } from '@core/messages/testMessage'
 import type { MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles } from './testChat'
 
 /** Открыть окно ленты и дождаться ОТРИСОВКИ. `setPeer` (как в оригинале)
  *  возвращает управление, едва отправив запрос: рендер и доводка живут во
@@ -69,15 +71,8 @@ const msg = (id: number) =>
 /** Поднять ленту с заданным правом на текст и шпионом входа в reply. */
 async function feedWith(messages: MyMessage[], canSendPlain: boolean) {
   const initMessageReply = vi.fn()
-  const chat: ChatContext = {
-    peerId: CHAT,
-    messagesStorageKey: String(CHAT),
-    container: document.createElement('div'),
-    bubblesViewport: document.createElement('div'),
-    canSendPlain: () => canSendPlain,
-    initMessageReply,
-  }
-  const feed = new ChatBubbles(chat, managersWith(messages))
+  const chat = createTestChat({ peerId: CHAT, input: { canSendPlain: () => canSendPlain, initMessageReply } })
+  const feed = mountTestBubbles(chat, managersWith(messages))
   bubbles = feed
   await openFeed(feed)
   await settle()
@@ -98,7 +93,7 @@ describe('ChatBubbles — ответ даблкликом (десктоп)', () 
 
     dblclick(bubbleOf(feed, 2))
 
-    expect(initMessageReply).toHaveBeenCalledWith(2)
+    expect(initMessageReply).toHaveBeenCalledWith({ replyToMsgId: 2 })
   })
 
   it('без права на текст (canSendPlain) ответа нет', async () => {
@@ -109,28 +104,6 @@ describe('ChatBubbles — ответ даблкликом (десктоп)', () 
     dblclick(bubbleOf(feed, 1))
 
     expect(initMessageReply).not.toHaveBeenCalled()
-  })
-
-  it('хост не пробросил право — ответа нет (умолчание запрещающее)', async () => {
-    // Порты жеста опциональны: лента поднимается и без окружения (так живут её
-    // собственные тесты). Умолчание обязано быть ЗАПРЕЩАЮЩИМ — разрешающее
-    // дало бы ответ в чате, где писать нельзя.
-    const chat: ChatContext = {
-      peerId: CHAT,
-      messagesStorageKey: String(CHAT),
-      container: document.createElement('div'),
-      bubblesViewport: document.createElement('div'),
-      initMessageReply: vi.fn(),
-    }
-    const feed = new ChatBubbles(chat, managersWith([msg(1)]))
-    bubbles = feed
-    await openFeed(feed)
-    await settle()
-    document.body.append(feed.container)
-
-    dblclick(bubbleOf(feed, 1))
-
-    expect(chat.initMessageReply).not.toHaveBeenCalled()
   })
 
   it('своё ещё не отправленное сообщение ответа не получает', async () => {
