@@ -6,8 +6,8 @@
 // Это ОРИГИНАЛЬНАЯ (Solid) форма того же ядра, что раньше портировано под React
 // в `components/virtual/VerticalVirtualList.tsx`: там окно — состояние
 // родителя с троттлингом измерения, здесь — `createSelector` + `<Show>` на
-// строку, как у tweb (`:65-74`, `:103-109`). Потребитель — Solid-вкладка
-// «Чаты» правой колонки (`sidebarRight/savedDialogsTab.solid.tsx`) и список
+// строку, как у tweb (`:65-74`, `:103-109`). Потребители — Solid-ядро списков
+// диалогов (`components/deferredSortedVirtualList.solid.tsx`) и список
 // вкладки контактов (`sidebarLeft/contactsList.solid.tsx`).
 //
 // Отличия только в типах: `any[]` → generic `T`, `Ref` → колбэк (вызывающие

@@ -168,7 +168,7 @@ React-корень `main.tsx`/`App.tsx`, `Sidebar.tsx`, `UserInfoPanel.tsx`, `Ch
    `subscribeExternal(subscribe, getSnapshot) → Accessor`, с `onCleanup(unsubscribe)`. Образцы:
    `stores/peers.solid.ts:64` (`usePeer`/`useChat`/`useUser` `:83-91`), `stores/fullPeers.solid.ts:230`
    (`useFullPeer` `:260`), `peerProfile.solid.tsx:742-748` (presence),
-   `sidebarRight/savedDialogsTab.solid.tsx:83` (`meId`), `stores/appSettings.solid.ts:199`
+   `stores/appSettings.solid.ts:199`
    (`useSettingsStore`). Снимок без подписки — `useChatsStore.getState().x`: только в обработчике
    события, не в рендере.
 2. **Класс читает зеркало синхронно** — `cachedPeer`/`cachedChat` (`core/peerCache.ts`), как
@@ -924,11 +924,23 @@ register 24, fillRegister 32, findForumTabByPeerId 10}.ts`, менеджерна
 него не остаётся роли. Иначе он сводится к тому, что у tweb делает `appSearchSuper`.
 **Координация:** `appSearchSuper.ts` — зона программы shared media; прогнать все `appSearchSuper.*.test.ts`.
 
-- [ ] **Тесты:** вкладка у «Избранного» рисует строки `DialogElement` с `isMainList: false`, клик —
+- [x] **Тесты:** вкладка у «Избранного» рисует строки `DialogElement` с `isMainList: false`, клик —
   `setInnerPeer` (сохранённый диалог). **Мутация:** `isMainList: true` → пин классов строки краснеет.
-- [ ] **Стенд:** RS-04.
+- [x] **Стенд:** RS-04.
 
 **Оценка:** 1,5 дня. **Зависимости:** 1-3, 1-4.
+
+**Сделано** (ветка `feat/w7-1-7-saved-dialogs`). Порт `components/autonomousDialogList/savedDialogs.ts`;
+`loadSavedDialogs` — как tweb `:2214-2265`; `SortedDialogList` — `virtualFilterId`; строка
+`DialogElement` — `threadId` сохранённого диалога (С10), `PeerTitle.meAsNotes`, `isSaved` подзаголовка;
+`sidebarRight/savedDialogsTab.solid.tsx` (+ тест) снесён — роли не осталось. **Поправки по коду tweb:**
+(1) `isMainList` у tweb ИСТИНЕН: `loadSavedDialogs` передаёт `indexKey: 'index_0'`, а
+`getDialogOptions` ставит `isMainList: this.indexKey === 'index_0'` (`sortedDialogList.ts:187`) —
+пин держит `true`, мутация «`false`» его красит; (2) `setInnerPeer` открыл бы окно
+`ChatType.Saved`, которого у нас нет (О-110) — клик открывает чат источника (`openPeer`, ВРЕМЕННО до Э4-3).
+Найдено на стенде: превью строк-источников было пустым на `main` — `chats.savedDialogs` искал
+`top_message` в чате источника, а он лежит в самом «Избранном» (исправлено, пин
+`core/managers/chatsManager.savedDialogs.test.ts`). Отложено — О-110…О-112.
 
 ### Задача 1-8: ядро `AppDialogsManager` — клик, активность, плейсхолдеры, верхние плашки
 
@@ -1449,6 +1461,9 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 | О-88 | «Вид темами/сообщениями»: `TopicViewAsTopics`, `SavedViewAsChats`, `SavedViewAsMessages` (`dialogsContextMenu.ts:210-232`, `appImManager.toggleViewAsMessages`) | нет флага `view_forum_as_messages` (`domain/mtdialog.go:47`) и настройки `savedAsForum` (1-2) | три пункта и переключение вида |
 | О-89 | Удаление истории вместе с диалогом и у собеседника: чекбоксы `DeleteMessagesOptionAlso`, `ClearHistoryOptionAlso`, `DeleteMessagesOptionAlsoChat` (`revoke`), удаление «Избранного» (`AreYouSureDeleteThisChatSavedMessages`, пункт `Delete` у себя) — `flushHistory({justClear: false, revoke})` | на бэкенде только очистка у себя (`POST /chats/{id}/clear`), удаление лички = выход (`removeMember`) (1-2) | чекбоксы и пункт 1:1 |
 | О-90 | Лог звонка, обе стороны которого пропали без кадра конца (закрыли/убили обе вкладки, нет сети у обоих): у оригинала сервер сам кончает такой звонок по таймауту и кладёт `messageActionPhoneCall` (Missed без ответа, Disconnect после) | сервер узнаёт о конце только из `call_end`/`call_decline` (`backend/internal/usecase/chat/phonecall.go`); серверного таймера звонка нет, состояние просто истекает по TTL (`adapter/cache/redis/phonecallstore.go`, 24 ч) без лога (журнал звонков, PR этого фикса) | серверный таймер звонка (ожидание ответа 45 с + сторож живости сторон) |
+| О-110 | Окно сохранённого диалога: клик по строке вкладки «Чаты» — `setInnerPeer({peerId: myId, threadId})` → `ChatType.Saved` (`appImManager.ts:3400-3404`, `openSavedDialogsInner` `sharedMedia.tsx:803`); у нас строка открывает чат самого источника, активная подсветка строки не ставится | у сообщения нет `saved_peer_id`, у истории — фильтра по нему (`router.go` — только `/saved/dialogs`; разбор — `docs/tweb/special-peers.md` § 3.3 п. 1), у клиента нет вида чата `saved` (1-7) | переписка «Избранного» с одним источником |
+| О-111 | Меню строки сохранённого диалога и перестановка закрепов: `withContext: true`, `xd.attachPinnedReorder()` (`appSearchSuper.ts:2236-2242`), закреп в строке (`dialog.pFlags.pinned`, `appDialogsManager.ts:2709`) | на бэкенде нет ни закрепа (`toggleSavedDialogPin`/`reorderPinnedSavedDialogs`), ни удаления сохранённого диалога (`deleteSavedHistory`) (1-7) | пункты меню и закреп 1:1 |
+| О-112 | Живые апдейты списка сохранённых диалогов: `dialogs_multiupdate` с `saved`, `dialog_drop` (`autonomousDialogList/savedDialogs.ts:22-43`) | у воркера нет хранилища сохранённых диалогов (`dialogsStorage` с `filterId: myId`): набор собирается одним ответом `GET /saved/dialogs` на каждый первый показ вкладки (1-7) | новая пересылка в «Избранное» видна во вкладке без её переоткрытия |
 | О-96 | Иконка звонка в группе у строки чатлиста: `processDialogForCallStatus`/`setCallStatus` (`autonomousDialogList/dialogs.ts:722-760`, `groupCallActiveIcon`, класс `has-group-call-icon`), `callIcon.setActive` в `setDialogActive` (`appDialogsManager.ts:1315`) | у чата в модели нет `pFlags.call_active`/`call_not_empty` (`domain/mtchat.go:170`) (1-4) | иконка 1:1, перекраска активной строки |
 | О-97 | Превью потокового черновика бота в строке: `streamed_message_update/remove/finalize` → `setLastMessageN({lastMessage})` (`autonomousDialogList/dialogs.ts:173-209`) | потоковых черновиков (`HistoryStreamedDrafts`) нет ни на бэкенде, ни в модели (1-4) | превью «печатает текстом» у ботов |
 | О-108 | Виды плашки-подсказки с серверным источником: «аккаунт заморожен» (`frozenSuggestion.tsx`, `appConfig.freeze_since_date`, класс `.suggestion.danger`), «создайте ключ доступа» (`passkeySetupSuggestion.tsx`, `SETUP_PASSKEY`), дни рождения контактов и «укажите свой» (`birthdaySuggestions.tsx`, `BIRTHDAY_CONTACTS_TODAY`/`BIRTHDAY_SETUP`, `contacts.getBirthdays`), попап почты входа (`emailSetupSuggestion.ts`, `SETUP_LOGIN_EMAIL`) — `selectPendingSuggestion.ts`, `pendingSuggestion.solid.tsx` расхождение 1 | на бэкенде нет ни заморозки аккаунта, ни промо-подсказок `help.getPromoData().pendingSuggestions`/`help.dismissSuggestion` (`stores/promo`); ключи доступа и дата рождения есть, но подсказок по ним сервер не выдаёт (2-5) | виды плашки 1:1 на своих местах приоритета |

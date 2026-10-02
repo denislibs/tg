@@ -235,10 +235,9 @@
 // 35. `nextRates` (`tweb:378`) держит и смещение страницы участников
 //     (`:1723`, `:1730`), и курсор глобальной выдачи (`:2288`, `:2321`) — одно
 //     пер-типовое поле на оба, как у оригинала; сброс в `cleanup` (`:2718`).
-// 36. Solid-вкладки «Подарки» и «Чаты» монтируются мостом `mountSolid`
+// 36. Solid-вкладка «Подарки» монтируется мостом `mountSolid`
 //     (`shared/solid/mountSolid.solid.tsx`, `ErrorBoundary` сдерживания), а не
-//     прямым вызовом компонента внутри своего `createRoot` (`tweb:2137-2168`,
-//     `:1894-1930`). `store`/`actions` витрины класс получает `ref`-пропом
+//     прямым вызовом компонента внутри своего `createRoot` (`tweb:2137-2168`). `store`/`actions` витрины класс получает `ref`-пропом
 //     (`stargifts/profileList.solid.tsx`, «Форма шва с классом»), а не из
 //     возврата функции; `getFirstChild(giftsList)` (`:2165`) не нужен — мост
 //     сам кладёт дерево в `itemsTab`.
@@ -261,14 +260,17 @@
 //     ручки `GET /users/{id}/gifts` нет (`stargifts/profileStore.solid.ts`).
 //     Вкладка `stories` (`:513-515`) в правой колонке у нас не вкладка
 //     (`docs/tweb/shared-media.md` § 2.1).
-// 40. `loadSavedDialogs` (`tweb:1890-1941`): вместо `AutonomousSavedDialogList`
-//     + `SortedDialogList` (пагинация `onChatsScroll(side)`, счётчик из
-//     `dialogsStorage.getDialogs`) — Solid `sidebarRight/savedDialogsTab.solid.tsx`
-//     поверх порта `verticalVirtualList.tsx`: набор приезжает ОДНИМ RPC
-//     (`chats.savedDialogs`), поэтому `side` не читается, а счётчик — длина
-//     набора. `openSavedDialogsInner`/`slider` (`:430`, `:1915`) не в опциях:
-//     окна сохранённого диалога у нас нет, клик открывает оригинальный чат
-//     пира (`core/navigation/openPeer.ts`), — см. шапку вкладки.
+// 40. `loadSavedDialogs` (812502980 `:2214-2265`) — порт: `AutonomousSavedDialogList`
+//     (`autonomousDialogList/savedDialogs.ts`, задача 1-7 волны 7) +
+//     `SortedDialogList`. Отличия: владельца списков (`appDialogsManager`) класс
+//     берёт у запущенной колонки (`getAppDialogsManager`, ВРЕМЕННО до Э4-1);
+//     набор приезжает ОДНИМ ответом (`chats.savedDialogs`), поэтому `side` не
+//     читается, а счётчик — число строк страницы, а не повторный
+//     `dialogsStorage.getDialogs` (расхождения 1, 8 списка); меню строки и
+//     перестановка закрепов (`withContext`, `attachPinnedReorder`) — О-111;
+//     `openSavedDialogsInner` (`:485`, `sharedMedia.tsx:803`) не в опциях: окна
+//     сохранённого диалога у нас нет (О-110), клик открывает чат источника
+//     (`setListClickListener`, `lib/appDialogsManager.ts`).
 // 41. Опция `asChatList` (`tweb:408`, `:444`) не заводится: у оригинала её
 //     ПИШЕТ левая колонка (`sidebarLeft/index.ts:1165`) и не читает никто —
 //     ни класс, ни кто-либо ещё (`grep -rn asChatList tweb/src` — три
@@ -423,7 +425,9 @@ import { ANCHOR_ACTION_ATTRIBUTE, matchUrl } from '@lib/richtext/url'
 import setInnerHTML from '@helpers/dom/setInnerHTML'
 import SortedUserList from '@components/sortedUserList'
 import createParticipantContextMenu, { type Participant } from '@helpers/dom/createParticipantContextMenu'
-import { addDialogNew, DIALOG_LIST_ELEMENT_TAG, setLastMessageN, type DialogDom } from '@lib/appDialogsManager'
+import { addDialogNew, DIALOG_LIST_ELEMENT_TAG, getAppDialogsManager, setLastMessageN, type DialogDom } from '@lib/appDialogsManager'
+import type { OpenPeerManagers } from '@core/navigation/openPeer'
+import { ALL_FOLDER_ID } from '@core/folderIds'
 import { createSearchGroup, type SearchGroup, type SearchGroupType } from '@components/searchGroup.solid'
 import wrapSenderToPeer from '@components/wrappers/senderToPeer'
 import { setTransition } from '@core/dom/setTransition'
@@ -443,7 +447,8 @@ import { unwrap } from 'solid-js/store'
 import { mountSolid } from '@shared/solid/mountSolid.solid'
 import { StarGiftsProfileTab, type StarGiftsProfileTabProps } from '@components/stargifts/profileList.solid'
 import type { StarGiftsProfileActions, StarGiftsProfileStore } from '@components/stargifts/profileStore.solid'
-import SavedDialogsTab, { type SavedDialogsTabProps } from '@components/sidebarRight/savedDialogsTab.solid'
+import { AutonomousSavedDialogList } from '@components/autonomousDialogList/savedDialogs'
+import SortedDialogList from '@components/sortedDialogList'
 import type { SavedStarGift } from '@core/managers/starsManager'
 import { formatUserPhone } from '@core/format/phone'
 import { getUserStatusString } from '@core/presence'
@@ -811,10 +816,10 @@ export type SearchSuperManagers = {
   peers: Pick<Managers['peers'], 'fillMirror'>
   groups: Pick<Managers['groups'], 'channelParticipants' | 'addMember' | 'removeMember' | 'unban'>
   stories: Pick<Managers['stories'], 'pinnedStories'>
-  // те же ручки, что просят `SavedDialogsTabProps`/`StarGiftsProfileTabProps` у своих `managers`
+  // те же ручки, что просят `SavedDialogListManagers`/`StarGiftsProfileTabProps` у своих `managers`
   chats: Pick<Managers['chats'], 'savedDialogs'>
   stars: Pick<Managers['stars'], 'profileGifts'>
-  presence: SavedDialogsTabProps['managers']['presence']
+  presence: OpenPeerManagers['presence']
   // `appUsersManager.getContactsPeerIds` (tweb `:1365`)
   contacts: Pick<Managers['contacts'], 'getContactsPeerIds'>
   // `appUsersManager.searchContacts` — `contacts.search` (`:1423`, `:1978`)
@@ -2397,37 +2402,63 @@ export default class AppSearchSuper {
   }
 
   /**
-   * tweb `:1890-1941` — вкладка «Чаты» (savedDialogs). Список — Solid
-   * `SavedDialogsTab` (расхождение 40 в шапке) в карточке секции
-   * (`mediaTab.itemsTab`), хост окна — скроллер ВСЕЙ панели (`:1897`, `:1904`).
-   * Второй и последующие вызовы (`:1891-1893`) ничего не догружают: страница
-   * одна. `afterPerforming(1, mediaTab)` (`:1932`) раскрывает карточку до
-   * ответа — как и в оригинале, где список сначала пуст.
+   * tweb 812502980 `:2214-2265` — вкладка «Чаты» (savedDialogs):
+   * `AutonomousSavedDialogList` + `SortedDialogList` на скроллере ВСЕЙ панели,
+   * строки — `DialogElement` своего пира с источником в `threadId`
+   * (расхождение 40 в шапке).
    */
   private loadSavedDialogs({ mediaTab, middleware }: SearchSuperLoadTypeOptions): Promise<void> {
     if(this._loadSavedDialogs) {
       return this._loadSavedDialogs()
     }
 
-    const { dispose } = mountSolid<SavedDialogsTabProps>(mediaTab.itemsTab!, SavedDialogsTab, {
-      scrollableHost: this.scrollable.container,
-      managers: this.managers,
-      // `getCount` → `setCounter` (`:1922-1932`)
-      onCountChange: (count) => {
-        if(!middleware()) return
-        this.setCounter(mediaTab.type, count)
-      },
+    const appDialogsManager = getAppDialogsManager() // ВРЕМЕННО до Э4-1
+    const xd = new AutonomousSavedDialogList({ appDialogsManager, managers: this.managers })
+    xd.scrollable = this.scrollable
+    xd.sortedList = new SortedDialogList({
+      appDialogsManager,
+      requestItemForIdx: xd.requestItemForIdx,
+      onListShrinked: xd.onListShrinked,
+      itemSize: 72,
+      scrollable: this.scrollable,
+      // `indexKey: 'index_0'` — у оригинала это и делает строку `isMainList`
+      filterId: ALL_FOLDER_ID,
+      virtualFilterId: rootScope.myId,
+      savedDialogs: xd,
+      extraPaddingBottom: 0,
     })
 
+    const list = xd.sortedList.list
+
+    // `withContext: true` и `xd.attachPinnedReorder()` — О-111 волна 7: меню
+    // строки и перестановку закрепов нечем исполнить (на бэкенде нет ни закрепа,
+    // ни удаления сохранённого диалога). `openInner` — О-110 волна 7: окна
+    // сохранённого диалога нет, строку открывает клик списка (`setListClickListener`).
+    appDialogsManager.setListClickListener({ list })
+
+    // расхождение 40: число строк полученной страницы
+    const getCount = () => xd.getCount()
+
+    const onAnyUpdate = xd.onAnyUpdate = async() => {
+      if(!middleware()) return
+      const count = await getCount()
+      if(!middleware()) return
+      this.setCounter(mediaTab.type, count)
+    }
+
+    void onAnyUpdate()
+
+    mediaTab.itemsTab!.append(list)
     this.afterPerforming(1, mediaTab)
 
-    this._loadSavedDialogs = () => Promise.resolve()
+    this._loadSavedDialogs = () => Promise.resolve(xd.onChatsScroll())
     middleware.onClean(() => {
-      dispose()
+      xd.destroy()
+      list.remove()
       this._loadSavedDialogs = undefined
     })
 
-    return Promise.resolve()
+    return Promise.resolve(xd.onChatsScroll())
   }
 
   /**

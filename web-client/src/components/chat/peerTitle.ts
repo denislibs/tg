@@ -37,7 +37,9 @@
 //    строки чатлиста (`lib/appDialogsManager.ts::setLastMessageN`, tweb
 //    `appDialogsManager.ts:2168-2171`), `dialog` — свой пир как «Избранное»
 //    (peerTitle.ts:140-148; потребитель — чип пира глобального поиска,
-//    `components/selectorEntity.ts`; ветка `meAsNotes` — без предмета), и
+//    `components/selectorEntity.ts`), `meAsNotes` — свой пир как «Мои заметки»
+//    (peerTitle.ts:141-142; строка сохранённого диалога, задача 1-7 волны 7;
+//    `MyNotesShort` при `onlyFirstName` — без потребителя, ключа у нас нет), и
 //    `withIcons` — значки после имени в строке списка чатов
 //    (`components/generateTitleIcons.ts`, синхронно из зеркала;
 //    `withPremiumIcon` — без потребителя).
@@ -70,6 +72,8 @@ export interface PeerTitleOptions {
   onlyFirstName?: boolean
   /** свой пир — «Избранное» (tweb `dialog`, peerTitle.ts:140) */
   dialog?: boolean
+  /** вместе с `dialog`: свой пир — «Мои заметки» (peerTitle.ts:141-142) */
+  meAsNotes?: boolean
   /** значки после имени: эмодзи-статус/премиум, верификация (tweb `withIcons`) */
   withIcons?: boolean
   middleware: Middleware
@@ -117,7 +121,7 @@ export default class PeerTitle {
 
   /** Порт tweb `update` в применимом объёме (peerTitle.ts:104-200). */
   public update() {
-    const { fromName, peerId, onlyFirstName, dialog, withIcons, managers, middleware } = this.options
+    const { fromName, peerId, onlyFirstName, dialog, meAsNotes, withIcons, managers, middleware } = this.options
     if (!middleware()) {
       return
     }
@@ -137,7 +141,7 @@ export default class PeerTitle {
     // peerTitle.ts:140-148 — «Избранное» узлом ядра: на смену языка его
     // перепишет само ядро (`applyLangPack`), не подписка на зеркало.
     if (peerId === rootScope.myId && dialog) {
-      replaceContent(this.element, i18n(onlyFirstName ? 'Saved' : 'SavedMessages'))
+      replaceContent(this.element, i18n(meAsNotes ? 'MyNotes' : onlyFirstName ? 'Saved' : 'SavedMessages'))
       return
     }
 

@@ -12,8 +12,9 @@
 // пользователя; у tweb замерено ~9300 вызовов в секунду.
 //
 // Зависимости настоящие: живой `Scrollable` (его `checkForTriggers` и есть
-// половина ловушки) и живой класс с Solid-вкладкой «Чаты». Геометрию, которой
-// в happy-dom нет, задаём ЗНАЧЕНИЯМИ: список высотой ровно в окно.
+// половина ловушки) и живой класс со списком вкладки «Чаты» (`AutonomousSavedDialogList`
+// у запущенного владельца списков). Геометрию, которой в happy-dom нет, задаём
+// ЗНАЧЕНИЯМИ: список высотой ровно в окно.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Scrollable from '@components/scrollable'
 import AppSearchSuper, { type SearchSuperManagers, type SearchSuperMediaTab } from '@components/appSearchSuper'
@@ -24,8 +25,9 @@ import type { SearchHistoryOptions } from '@core/managers/messagesManager'
 import type { MyMessage } from '@core/models'
 import type { LangPackKey } from '@lib/langPack'
 import { useChatsStore } from '@stores/chatsStore'
+import { FakeResizeObserver, mountOwner, type Mounted } from '@lib/appDialogsManager.testkit'
 
-// `usePeer` строки «Чатов» объявляет пробел зеркала через `startClient()`;
+// узлы имени и аватара строк объявляют пробел зеркала через `startClient()`;
 // фабрика в happy-dom подняла бы воркер — гасим.
 vi.mock('@/client/bootstrap', () => ({
   startClient: () => ({ managers: { peers: { fillMirror: async () => {} } } }),
@@ -97,11 +99,20 @@ async function idle(ticks = 30) {
 const SAVED_DIALOGS: SearchSuperMediaTab = { type: 'savedDialogs', name: 'FilterChats' as LangPackKey }
 const MEDIA: SearchSuperMediaTab = { type: 'media', inputFilter: 'inputMessagesFilterPhotoVideo', name: 'SharedMediaTab2' as LangPackKey }
 
+let owner: Mounted | undefined
+
 beforeEach(() => {
   resetSharedMediaHistories()
   useChatsStore.setState({ meId: ME, dialogs: [] })
+  vi.stubGlobal('ResizeObserver', FakeResizeObserver)
+  owner = mountOwner()
 })
-afterEach(() => document.body.replaceChildren())
+afterEach(() => {
+  owner?.manager.destroy()
+  owner = undefined
+  vi.unstubAllGlobals()
+  document.body.replaceChildren()
+})
 
 describe('AppSearchSuper: догрузка после загрузки не зацикливается (tweb fb18166dc)', () => {
   it('вкладка «Чаты» Избранного в неполном окне успокаивается после одной проверки', async () => {

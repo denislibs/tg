@@ -1,29 +1,21 @@
-// Пины вкладок «Подарки» и «Чаты» (savedDialogs) в `AppSearchSuper` — порт
-// tweb `src/components/appSearchSuper.ts:2130-2179` (`loadGifts`), `:2579-2610`
-// (`setPinnedGifts`), `:1890-1941` (`loadSavedDialogs`), `:2362-2365`
-// (ветка подарков в `canLoadMediaTab`); задача 12 плана
-// `docs/superpowers/plans/2026-09-07-solid-wave-3-shared-media.md`.
+// Пины вкладки «Подарки» в `AppSearchSuper` — порт tweb
+// `src/components/appSearchSuper.ts:2130-2179` (`loadGifts`), `:2579-2610`
+// (`setPinnedGifts`), `:2362-2365` (ветка подарков в `canLoadMediaTab`); задача 12
+// плана `docs/superpowers/plans/2026-09-07-solid-wave-3-shared-media.md`.
+// Вкладка «Чаты» (savedDialogs) — `appSearchSuper.savedDialogs.test.ts` (задача 1-7
+// волны 7).
 //
 // Предмет — ФАКТ: что оказалось в узлах вкладки, в ряду вкладок, в счётчиках
-// и сколько запросов ушло. Сами Solid-вкладки покрыты своими файлами
-// (`stargifts/profileList.solid.test.tsx`, `sidebarRight/savedDialogsTab.solid.test.tsx`);
-// здесь — шов между ними и классом.
+// и сколько запросов ушло. Сама Solid-витрина покрыта своим файлом
+// (`stargifts/profileList.solid.test.tsx`); здесь — шов между ней и классом.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Scrollable from '@components/scrollable'
 import AppSearchSuper, { type SearchSuperManagers, type SearchSuperMediaTab } from '@components/appSearchSuper'
 import { getHistoryStorage, resetSharedMediaHistories } from '@components/sharedMediaHistories'
-import { makeMessage } from '@core/messages/testMessage'
 import type { SavedStarGift } from '@core/managers/starsManager'
-import type { SavedDialog } from '@core/managers/chatsManager'
 import type { LangPackKey } from '@lib/langPack'
 import { useChatsStore } from '@stores/chatsStore'
 import gridStyles from '@components/stargifts/stargiftsGrid.module.scss'
-
-// `usePeer` строки «Чатов» объявляет пробел зеркала через `startClient()`;
-// фабрика в happy-dom подняла бы воркер — гасим.
-vi.mock('@/client/bootstrap', () => ({
-  startClient: () => ({ managers: { peers: { fillMirror: async () => {} } } }),
-}))
 
 const PEER: PeerId = 1
 
@@ -35,14 +27,8 @@ const gift = (i: number): SavedStarGift => ({
 })
 const gifts = (n: number) => Array.from({ length: n }, (_, i) => gift(i))
 
-const dialog = (i: number): SavedDialog => ({
-  peerId: i + 1,
-  lastMessage: makeMessage({ id: i + 1, peerId: i + 1, fromId: i + 1, date: 1786968000, text: 'msg-' + i }),
-})
-const dialogs = (n: number) => Array.from({ length: n }, (_, i) => dialog(i))
-
-function fakeBackend(opts: { gifts?: SavedStarGift[]; dialogs?: SavedDialog[] } = {}) {
-  const calls = { gifts: 0, dialogs: 0, media: 0 }
+function fakeBackend(opts: { gifts?: SavedStarGift[] } = {}) {
+  const calls = { gifts: 0, media: 0 }
   const managers = {
     messages: {
       searchHistory: async () => { calls.media++; return { messages: [], count: 0 } },
@@ -50,15 +36,13 @@ function fakeBackend(opts: { gifts?: SavedStarGift[]; dialogs?: SavedDialog[] } 
     },
     peers: { fillMirror: async () => {} },
     stars: { profileGifts: async () => { calls.gifts++; return opts.gifts ?? [] } },
-    chats: { savedDialogs: async () => { calls.dialogs++; return opts.dialogs ?? [] } },
     presence: { get: async () => [] },
   } as unknown as SearchSuperManagers
   return { managers, calls }
 }
 
-const TABS: Record<'gifts' | 'savedDialogs' | 'media', SearchSuperMediaTab> = {
+const TABS: Record<'gifts' | 'media', SearchSuperMediaTab> = {
   gifts: { type: 'gifts', name: 'SharedMedia.Gifts' as LangPackKey },
-  savedDialogs: { type: 'savedDialogs', name: 'FilterChats' as LangPackKey },
   media: { type: 'media', inputFilter: 'inputMessagesFilterPhotoVideo', name: 'SharedMediaTab2' as LangPackKey },
 }
 
@@ -200,86 +184,5 @@ describe('AppSearchSuper: вкладка «Подарки» (loadGifts, tweb:213
 
     expect(calls.gifts).toBe(2)
     expect(giftItems(searchSuper)).toHaveLength(3)
-  })
-})
-
-describe('AppSearchSuper: вкладка «Чаты» (loadSavedDialogs, tweb:1890-1941)', () => {
-  it('load(true) монтирует ul.chatlist в карточку секции, открывает её и ставит счётчик', async () => {
-    const onLengthChange = vi.fn()
-    const { managers, calls } = fakeBackend({ dialogs: dialogs(3) })
-    const { searchSuper } = build(managers, ['savedDialogs', 'media'], onLengthChange)
-
-    await searchSuper.load(true)
-    await settle()
-
-    const tab = searchSuper.mediaTabsMap.get('savedDialogs')!
-    expect(calls.dialogs).toBe(1)
-    const ul = tab.itemsTab!.querySelector('ul.chatlist')!
-    expect(ul).not.toBe(null)
-    expect(ul.querySelectorAll('.chatlist-chat')).toHaveLength(3)
-    // `afterPerforming(1, mediaTab)` (tweb:1932) — карточка секции раскрыта
-    expect(tab.hideOn!.classList.contains('hide')).toBe(false)
-    expect(searchSuper.counters.savedDialogs).toBe(3)
-    expect(onLengthChange).toHaveBeenCalledWith('savedDialogs', 3)
-  })
-
-  it('список живёт один на пира: повторный load не ходит в сеть и не плодит ul', async () => {
-    const { managers, calls } = fakeBackend({ dialogs: dialogs(2) })
-    const { searchSuper } = build(managers, ['savedDialogs', 'media'])
-
-    await searchSuper.load(true)
-    await settle()
-    await searchSuper.load(true)
-    await settle()
-
-    expect(calls.dialogs).toBe(1)
-    expect(searchSuper.mediaTabsMap.get('savedDialogs')!.itemsTab!.querySelectorAll('ul')).toHaveLength(1)
-  })
-
-  it('окно списка слушает скролл ОБЩЕГО скроллера панели (tweb:1897, :1904)', async () => {
-    const { managers } = fakeBackend({ dialogs: dialogs(2) })
-    const { searchSuper, scrollable } = build(managers, ['savedDialogs', 'media'])
-    const addSpy = vi.spyOn(scrollable.container, 'addEventListener')
-
-    await searchSuper.load(true)
-    await settle()
-
-    expect(addSpy.mock.calls.some((c) => c[0] === 'scroll')).toBe(true)
-  })
-
-  it('смена пира сносит список по middleware; новый load строит его заново', async () => {
-    const { managers, calls } = fakeBackend({ dialogs: dialogs(2) })
-    const { searchSuper, scrollable } = build(managers, ['savedDialogs', 'media'])
-    const removeSpy = vi.spyOn(scrollable.container, 'removeEventListener')
-    await searchSuper.load(true)
-    await settle()
-
-    searchSuper.setQuery({ peerId: 2, historyStorage: getHistoryStorage(2) })
-    searchSuper.cleanupHTML()
-
-    expect(removeSpy.mock.calls.some((c) => c[0] === 'scroll')).toBe(true)
-    expect(searchSuper.mediaTabsMap.get('savedDialogs')!.itemsTab!.querySelector('ul')).toBe(null)
-
-    await searchSuper.load(true)
-    await settle()
-    expect(calls.dialogs).toBe(2)
-    expect(searchSuper.mediaTabsMap.get('savedDialogs')!.itemsTab!.querySelector('ul')).not.toBe(null)
-  })
-
-  it('destroy() не оставляет ни узлов вкладок, ни слушателя скролла на общем скроллере', async () => {
-    const { managers } = fakeBackend({ dialogs: dialogs(2), gifts: gifts(2) })
-    const { searchSuper, scrollable } = build(managers, ['savedDialogs', 'gifts'])
-    const removeSpy = vi.spyOn(scrollable.container, 'removeEventListener')
-    await searchSuper.load(true)
-    await searchSuper.load()
-    await settle()
-    expect(document.querySelector('ul.chatlist')).not.toBe(null)
-    expect(document.querySelector(`.${gridStyles.gridItem}`)).not.toBe(null)
-
-    searchSuper.destroy()
-
-    expect(document.querySelector('.search-super')).toBe(null)
-    expect(document.querySelector('ul.chatlist')).toBe(null)
-    expect(removeSpy.mock.calls.some((c) => c[0] === 'scroll')).toBe(true)
   })
 })

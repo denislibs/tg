@@ -5,7 +5,7 @@
 //
 // Предмет проверок — ФАКТ: классы на узлах ряда, какая вкладка активна, сколько
 // запросов ушло. «Менеджер позван с такими аргументами» не проверяется нигде.
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import Scrollable from '@components/scrollable'
 import AppSearchSuper, {
   type SearchSuperManagers,
@@ -18,6 +18,7 @@ import { getHistoryStorage, resetSharedMediaHistories } from '@components/shared
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import rootScope from '@lib/rootScope'
 import type { LangPackKey } from '@lib/langPack'
+import { FakeResizeObserver, mountOwner, type Mounted } from '@lib/appDialogsManager.testkit'
 
 const ME: PeerId = 1
 const ALICE: PeerId = 2
@@ -89,6 +90,7 @@ const MEDIA_ONLY: SearchSuperMediaType[] = ['media', 'files', 'links']
 const FULL: SearchSuperMediaType[] = ['savedDialogs', 'stories', 'members', 'media', 'files', 'links', 'gifts']
 
 let host: HTMLElement
+let owner: Mounted | undefined
 
 function build(world: World, peerId: PeerId, types: SearchSuperMediaType[] = FULL, options: { hideEmptyTabs?: boolean } = {}) {
   const backend = fakeBackend(world)
@@ -134,9 +136,15 @@ beforeEach(() => {
     ],
   }])
   rootScope.myId = ME
+  // список вкладки «Чаты» строит запущенный владелец списков (`getAppDialogsManager`, ВРЕМЕННО до Э4-1)
+  vi.stubGlobal('ResizeObserver', FakeResizeObserver)
+  owner = mountOwner()
 })
 
 afterEach(() => {
+  owner?.manager.destroy()
+  owner = undefined
+  vi.unstubAllGlobals()
   rootScope.myId = 0
   document.body.replaceChildren()
 })

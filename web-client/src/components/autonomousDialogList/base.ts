@@ -39,6 +39,10 @@
 //     его потребитель контекст-меню (задача 1-2).
 //  6. `setDialogTyping` получает зону и менеджеры узлов имени: `getPeerTyping` у нас
 //     функция модуля `lib/appImManager.ts` (до задачи 5-3), а не метод синглтона.
+//  7. Индекс диалога — метод списка `getDialogIndex(dialog)` (у оригинала функция
+//     `getDialogIndex(dialog, this.indexKey)`, `:172`, `:276`): у диалога папки он
+//     в зеркале (расхождение 1), у сохранённого — в его странице
+//     (`autonomousDialogList/savedDialogs.ts`, задача 1-7).
 import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
 import replaceContent from '@helpers/dom/replaceContent'
 import ListenerSetter from '@helpers/listenerSetter'
@@ -55,6 +59,7 @@ import { DialogsPlaceholder } from '@components/chatlist/dialogsPlaceholder'
 import { guessLoadCount } from '@core/dialogs/loadCount'
 import type { DialogsPage } from '@core/managers/dialogsManager'
 import type { Dialog } from '@core/models'
+import type { SavedDialog } from '@lib/appDialogsManager'
 import { useChatsStore } from '@stores/chatsStore'
 
 /** tweb `:23` */
@@ -100,6 +105,9 @@ export type BaseConstructorArgs = {
   appDialogsManager: AppDialogsManager,
 }
 
+/** tweb `PossibleDialog` (`:57`) в объёме нашей модели: диалог зеркала либо сохранённый. */
+export type ListDialog = Dialog | SavedDialog
+
 export type LoadDialogsInnerArgs = {
   offsetIndex?: number,
   removePlaceholder?: boolean,
@@ -111,7 +119,7 @@ export function getDialogIndex(peerId: PeerId): number | undefined {
   return useChatsStore.getState().dialogIndexById[peerId]
 }
 
-export class AutonomousDialogListBase {
+export class AutonomousDialogListBase<T extends ListDialog = Dialog> {
   public sortedList!: SortedDialogList
   public scrollable!: Scrollable
   public loadedDialogsAtLeastOnce = false
@@ -156,7 +164,7 @@ export class AutonomousDialogListBase {
     this.sortedList.delete(key)
   }
 
-  public deleteDialog(dialog: Dialog) {
+  public deleteDialog(dialog: T) {
     return this.deleteDialogByKey(this.getDialogKey(dialog))
   }
 
@@ -164,7 +172,7 @@ export class AutonomousDialogListBase {
    * tweb `:131-147`
    * @returns Returns `true` if a new dialog was just added
    */
-  private addOrDeleteDialogIfNeeded(dialog: Dialog, key: PeerId) {
+  private addOrDeleteDialogIfNeeded(dialog: T, key: PeerId) {
     if(!this.canUpdateDialog(dialog)) {
       this.deleteDialog(dialog)
       return false
@@ -179,7 +187,7 @@ export class AutonomousDialogListBase {
   }
 
   /** tweb `:149-165` */
-  public updateDialog(dialog: Dialog) {
+  public updateDialog(dialog: T) {
     const key = this.getDialogKey(dialog)
 
     if(this.addOrDeleteDialogIfNeeded(dialog, key)) return
@@ -198,12 +206,12 @@ export class AutonomousDialogListBase {
   }
 
   /** tweb `:167-175` */
-  protected canUpdateDialog(dialog: Dialog) {
+  protected canUpdateDialog(dialog: T) {
     const sortedItems = this.sortedList.getSortedItems()
     const last = sortedItems[sortedItems.length - 1]
 
     const bottomIndex = last?.index
-    const dialogIndex = getDialogIndex(dialog.peerId)
+    const dialogIndex = this.getDialogIndex(dialog)
 
     return !last || (dialogIndex !== undefined && dialogIndex >= bottomIndex) || this.hasReachedTheEnd
   }
@@ -248,8 +256,13 @@ export class AutonomousDialogListBase {
     return deferred
   }
 
-  public getDialogKey(dialog: Dialog): PeerId {
+  public getDialogKey(dialog: T): PeerId {
     return dialog.peerId
+  }
+
+  /** расхождение 7 */
+  protected getDialogIndex(dialog: T): number | undefined {
+    return getDialogIndex(dialog.peerId)
   }
 
   protected getFilterId(): number {
@@ -264,12 +277,12 @@ export class AutonomousDialogListBase {
   }
 
   /** tweb `:238-249` */
-  protected dialogsFetcher(offsetIndex: number | undefined, limit: number): Promise<DialogsPage> {
+  protected dialogsFetcher(offsetIndex: number | undefined, limit: number): Promise<{ dialogs: T[], count: number, isEnd: boolean }> {
     return this.managers.dialogs.getDialogs({
       offsetIndex,
       limit,
       filterId: this.getFilterId(),
-    })
+    }) as Promise<DialogsPage & { dialogs: T[] }>
   }
 
   /** tweb `:251-299` (расхождения 1–3) */
@@ -279,7 +292,7 @@ export class AutonomousDialogListBase {
     const result = await this.dialogsFetcher(offsetIndex, guessLoadCount())
 
     const newOffsetIndex = result.dialogs.reduce((prev, curr) => {
-      const index = getDialogIndex(curr.peerId)
+      const index = this.getDialogIndex(curr)
       return index !== undefined && index < prev ? index : prev
     }, offsetIndex || Infinity)
 
@@ -311,7 +324,7 @@ export class AutonomousDialogListBase {
   }
 
   /** tweb `:301-318` */
-  public setTyping(dialog: Dialog) {
+  public setTyping(dialog: T) {
     const key = this.getDialogKey(dialog)
     const dialogElement = this.getDialogElement(key)
     if(!dialogElement) {
@@ -331,7 +344,7 @@ export class AutonomousDialogListBase {
   }
 
   /** tweb `:320-334`: последнее сообщение — с подписью заново, бейджи не трогаются */
-  public unsetTyping(dialog: Dialog) {
+  public unsetTyping(dialog: T) {
     const key = this.getDialogKey(dialog)
     const dialogElement = this.getDialogElement(key)
     if(!dialogElement) {

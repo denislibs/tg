@@ -4,10 +4,10 @@
 // (tweb `appDialogsManager.ts:1768`) открывает пира из любого списка.
 //
 // Вынесено из `core/hooks/useNavigationActions.ts::openPeer` (хук теперь
-// делегирует сюда): у Solid-списка «Чаты» правой колонки
-// (`components/sidebarRight/savedDialogsTab.solid.tsx`) React-хука нет, а
-// вторая копия той же развилки «диалог есть → выбрать, человека без диалога →
-// черновик» была бы вторым источником правила навигации.
+// делегирует сюда): у классов списков (`setListClickListener` в
+// `lib/appDialogsManager.ts`) React-хука нет, а вторая копия той же развилки
+// «диалог есть → выбрать, человека без диалога → черновик» была бы вторым
+// источником правила навигации.
 import type { OpenPeer } from '@/data'
 import { useChatsStore, loadPresence } from '@stores/chatsStore'
 import { useNavigationStore } from '@stores/navigationStore'
