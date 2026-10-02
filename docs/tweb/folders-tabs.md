@@ -120,6 +120,16 @@
 Собственных стилей у `menu-horizontal-gradient*` нет — правило даёт потребитель
 (для папок `_leftSidebar.scss:315-325`).
 
+Вызов функцией создаёт Solid-вычисления (`class={classNames(…props)}`), поэтому
+нужен владелец. В tweb он есть только у правой колонки: `AppSearchSuper` строится
+в теле `SharedMedia` под `render(...)` вкладки (`sharedMediaTab.tsx:48-56`),
+корень гасится за `searchSuper.destroy()` (`:115-118`); левый поиск
+(`sidebarLeft/index.ts:1137`) и `selectorSearch.tsx:89` зовут функцию без
+владельца (dev Solid: «computations created outside a `createRoot`»). У нас
+владелец есть у всех трёх: `core/hooks/useSearchSuper.ts` (корень хука, как
+tweb), `sidebarLeft/globalSearch.ts` (расхождение 11 — корень на `middleware`
+сеанса), `selectorSearch.solid.tsx` (расхождение 3 — `wrapSolidComponent`).
+
 ## 1.4 `foldersTabs.tsx` — ряд вкладок
 
 | Стр. | Что |

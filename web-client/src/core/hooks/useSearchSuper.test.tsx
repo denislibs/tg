@@ -17,7 +17,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, render } from '@testing-library/react'
 import { useLayoutEffect, useRef } from 'react'
-import { createSignal } from 'solid-js'
+import { createEffect, createSignal } from 'solid-js'
 import type { SearchSuperManagers, SearchSuperMediaTab, SearchSuperMediaType } from '@components/appSearchSuper'
 import { getHistoryStorage, resetSharedMediaHistories } from '@components/sharedMediaHistories'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
@@ -31,6 +31,26 @@ vi.mock('@stores/fullPeers.solid', () => ({ useFullPeer: () => fullPeerSignal[0]
 vi.mock('@/client/bootstrap', () => ({
   startClient: () => ({ managers: { groups: { setMute: vi.fn() } } }),
 }))
+
+// Зонд владельца: настоящий `Tabs.MenuGradient`, которого конструктор класса
+// зовёт прямым вызовом функции (`appSearchSuper.ts`, tweb `:650-657`), плюс
+// эффект на сигнал теста — он живёт ровно столько, сколько корень, в котором
+// класс собран. Вне корня Solid (dev) пишет «computations created outside…»,
+// а эффект не гаснет никогда.
+const probeSignal = createSignal(0)
+const probeRuns = { count: 0 }
+vi.mock('@components/tabs.solid', async (importOriginal) => {
+  const { default: Tabs } = await importOriginal<typeof import('@components/tabs.solid')>()
+  const realMenuGradient = Tabs.MenuGradient
+  Tabs.MenuGradient = (props) => {
+    createEffect(() => {
+      probeSignal[0]()
+      probeRuns.count++
+    })
+    return realMenuGradient(props)
+  }
+  return { default: Tabs }
+})
 
 const { default: PeerProfile } = await import('@components/peerProfile.solid')
 const { useSearchSuper } = await import('./useSearchSuper')
@@ -226,5 +246,36 @@ describe('useSearchSuper — владение узлом (шаг 2) и липк�
     expect(nav.classList.contains('search-super-tabs-scrollable')).toBe(true)
     expect(nav.style.top).toBe('')
     expect(nav.getAttribute('style')).toBeNull()
+  })
+})
+
+describe('useSearchSuper — Solid-владелец класса (tweb `sharedMediaTab.tsx:48-56`, `:111-117`)', () => {
+  const OUTSIDE_ROOT = 'computations created outside a `createRoot` or `render`'
+
+  it('класс собран внутри корня: предупреждения Solid нет ни при открытии, ни при закрытии', async () => {
+    const warn = vi.spyOn(console, 'warn')
+    try {
+      const h = mountHarness()
+      await settle()
+      h.view.unmount()
+      const leaks = warn.mock.calls.filter(([msg]) => String(msg).includes(OUTSIDE_ROOT))
+      expect(leaks, 'вычисления конструктора без владельца').toEqual([])
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('после размонтирования корень класса утилизирован: эффекты конструктора на сигнал больше не срабатывают', async () => {
+    const [, setProbe] = probeSignal
+    const h = mountHarness()
+    await settle()
+    const runsMounted = probeRuns.count
+    expect(runsMounted, 'зонд стоит в конструкторе').toBeGreaterThan(0)
+    setProbe((v) => v + 1)
+    expect(probeRuns.count, 'пока панель жива, эффект живой').toBe(runsMounted + 1)
+
+    h.view.unmount()
+    setProbe((v) => v + 1)
+    expect(probeRuns.count, 'мутация «класс вне createRoot» — эффект копится и срабатывает после destroy').toBe(runsMounted + 1)
   })
 })

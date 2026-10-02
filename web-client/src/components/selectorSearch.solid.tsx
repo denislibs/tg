@@ -20,9 +20,11 @@
  *     имя чипа объявляют пробел зеркала карточек, шапка `selectorEntity.ts`).
  *  2. `renderEntity` статикой класса не заводится (`static renderEntity`,
  *     :332) — это тот же экспорт `selectorEntity.ts`.
- *  3. Узел градиента — `Tabs.MenuGradient` вызовом функции с приведением к
- *     узлу, как `appSearchSuper.ts` (:1168) и оригинал (:89-93); Solid-корня
- *     у вызова нет — реактивных пропов у градиента тоже нет.
+ *  3. Узел градиента — `Tabs.MenuGradient`, как у оригинала (:89-93), но
+ *     внутри `wrapSolidComponent` на `middleware` владельца — тем же корнем,
+ *     что секция над ним (:77-85). Оригинал зовёт функцию без владельца, и
+ *     вычисления её `class={…}` не освобождаются никогда (dev-сборка Solid
+ *     пишет «computations created outside a `createRoot`»).
  */
 import Section, { type SectionParts } from '@components/section.solid'
 import { wrapSolidComponent } from '@helpers/solid/wrapSolidComponent'
@@ -115,11 +117,12 @@ export default class SelectorSearch {
 
     this.section = { container, content }
 
-    this.gradient = Tabs.MenuGradient({
+    // расхождение 3
+    this.gradient = wrapSolidComponent(() => Tabs.MenuGradient({
       color: 'background',
       className: 'selector-search-gradient',
       smaller: true,
-    }) as HTMLElement
+    }), this.middlewareHelper.get())
   }
 
   // :96-132

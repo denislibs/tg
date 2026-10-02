@@ -331,6 +331,22 @@ describe('жизненный цикл: создание по фокусу, сн�
     expect(solidRoots.disposed).toBe(solidRoots.opened)
   })
 
+  it('класс сеанса собран внутри корня сеанса: предупреждения Solid о вычислениях без владельца нет (расхождение 11)', async() => {
+    const warn = vi.spyOn(console, 'warn')
+    try {
+      const { inputSearch, backBtn, chatlistContainer } = build()
+      focus(inputSearch)
+      await settle()
+      simulateClickEvent(backBtn)
+      animationEnd(chatlistContainer)
+      await settle()
+      const leaks = warn.mock.calls.filter(([msg]) => String(msg).includes('computations created outside a `createRoot` or `render`'))
+      expect(leaks, '`Tabs.MenuGradient` конструктора `AppSearchSuper` без владельца').toEqual([])
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   it('скроллер, созданный владельцем, снят: его подписка на окно отписана (расхождение 3)', async() => {
     // С tweb ffd925068 скроллер не вешает свой `resize` на окно: все живые
     // экземпляры лежат в ОДНОМ слабом реестре (`scrollable.ts`), выставленном

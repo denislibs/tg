@@ -49,6 +49,7 @@
 //     не здесь: первого у панели нет (открытие чата не блокирует её), второе —
 //     дело панели, у которой есть `open`.
 import { useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { createRoot } from 'solid-js'
 import Scrollable from '@components/scrollable'
 import AppSearchSuper, {
   type AppSearchSuperOptions,
@@ -126,7 +127,13 @@ export function useSearchSuper(options: UseSearchSuperOptions): SearchSuperSeam 
     const scrollable = new Scrollable(undefined, undefined, undefined, undefined, scrollableEl)
     scrollable.attachBorderListeners(setCollapsedOn)
 
-    const searchSuper = new AppSearchSuper({
+    // tweb `sharedMediaTab.tsx:48-56`: класс собирается в теле компонента
+    // `SharedMedia`, то есть под владельцем `render(...)` вкладки, — Solid-части
+    // конструктора (`Tabs.MenuGradient` прямым вызовом, `appSearchSuper.ts`
+    // tweb `:650-657`) принадлежат этому корню. Хук зовётся из React-эффекта,
+    // где владельца нет, — корень заводится здесь, иначе вычисления конструктора
+    // не освобождаются никогда и копятся с каждым открытием чата.
+    const [searchSuper, disposeRoot] = createRoot((dispose) => [new AppSearchSuper({
       mediaTabs: SHARED_MEDIA_TABS.map((tab) => ({ ...tab })),
       scrollable,
       managers: optionsRef.current.managers,
@@ -139,7 +146,7 @@ export function useSearchSuper(options: UseSearchSuperOptions): SearchSuperSeam 
       showDeleteMessagesPopup: (peerId, mids, onConfirm) => optionsRef.current.showDeleteMessagesPopup?.(peerId, mids, onConfirm),
       downloadToDisc: (message) => optionsRef.current.downloadToDisc?.(message),
       scrollOffset: SCROLL_OFFSET,
-    })
+    }), dispose] as const)
 
     // `sharedMedia.tsx:596-602`
     const listenerSetter = new ListenerSetter()
@@ -152,6 +159,8 @@ export function useSearchSuper(options: UseSearchSuperOptions): SearchSuperSeam 
       // `sharedMediaTab.tsx:111-117` → `sliderTab.ts:109`: сперва класс, потом
       // скроллер хозяина — тем же порядком, что у оригинала.
       searchSuper.destroy()
+      // `sharedMediaTab.tsx:115-118`: корень гасится сразу за `destroy()` класса.
+      disposeRoot()
       scrollable.destroy()
     }
   }, [])
