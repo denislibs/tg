@@ -21,9 +21,10 @@
 //
 // Расхождения с оригиналом:
 //  1. Горячая замена модуля (`swapComponentFromHMR`, список `instances`,
-//     `HotReloadGuard`, повторный вызов с тем же `name`) не перенесена: у нас
-//     нет dev-сервера с HMR — `npm run dev` это watch-сборка (web-client/CLAUDE.md),
-//     модуль в рантайме не переисполняется.
+//     `HotReloadGuard`) не перенесена: у нас нет dev-сервера с HMR — `npm run dev`
+//     это watch-сборка (web-client/CLAUDE.md). Повторный вызов с тем же `name`
+//     (`:74-79`) отдаёт уже определённый класс, без подмены компонента: модуль
+//     переисполняют тесты с `vi.resetModules()` (`client/realtimeBridge.test.ts`).
 //  2. `observedAttributes`/`attributesStore`/`attributeChangedCallback`,
 //     `shadow` и `controls` не перенесены: ни один портированный потребитель
 //     ими не пользуется; приедут с первым, кому нужны.
@@ -47,6 +48,16 @@ export default function defineSolidElement<Props extends object>({
   name: string
   component: CustomElementComponent<Props>
 }) {
+  // tweb `:74-79` — модуль исполнен повторно (расхождение 1)
+  const previousElementClass = customElements.get(name)
+  if(previousElementClass) {
+    return previousElementClass as unknown as ReturnType<typeof createSolidElementClass<Props>>
+  }
+
+  return createSolidElementClass(name, component)
+}
+
+function createSolidElementClass<Props extends object>(name: string, component: CustomElementComponent<Props>) {
   const SolidElement = class extends HTMLElement {
     private propsStore?: PassedProps<Props>
     private disposeContent?: () => void
