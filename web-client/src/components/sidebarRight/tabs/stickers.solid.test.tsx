@@ -3,11 +3,12 @@
  * Тесты вкладки «Поиск стикеров» (`stickers.solid.tsx`, порт tweb
  * `sidebarRight/tabs/stickers.tsx`, 812502980).
  *
- * Вкладка гоняется НАСТОЯЩАЯ — `AppStickersTab` из `solidJsTabs/tabs.ts` на
- * настоящем `SidebarSlider` (класса правой колонки ещё нет — задача 0б-0), с
+ * Вкладка гоняется НАСТОЯЩАЯ — `AppStickersTab` из `solidJsTabs/tabs.ts` в
+ * настоящей правой колонке (`AppSidebarRight`, `test/sidebarRight.ts`), с
  * настоящим `appNavigationController`. Стабы — только границы: менеджер
  * стикеров (воркер), `wrapSticker` (загрузка файла и плеер — не предмет вкладки),
- * React-попап набора (ВРЕМЕННО до 2C-15) и синглтоны моста.
+ * просмотрщик по зажатию (свой тест — `stickerViewer.test.ts`), React-попап
+ * набора (ВРЕМЕННО до 2C-15) и инстанс чата (мост `appImManager`, ВРЕМЕННО до Э4-3).
  *
  * Предмет проверок:
  *  • разметка — живой DOM tweb (дамп 19-emoticons-06): `#stickers-container
@@ -21,6 +22,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Managers } from '@/client/bootstrap'
 import SidebarSlider from '@components/slider'
+import attachStickerViewerListeners from '@components/stickerViewer'
 import type SliderSuperTab from '@components/sliderTab'
 import { AppStickersTab } from '@components/solidJsTabs/tabs'
 import { NAVIGATION_TRANSITION_TIME } from '@components/transition'
@@ -29,15 +31,20 @@ import type { Covers, Sticker, StickerSet } from '@core/managers/stickersManager
 import appNavigationController from '@core/navigation/appNavigationController'
 import { makeSticker } from '@core/stickers/testSticker'
 import rootScope from '@lib/rootScope'
-import { emoticonsSearchBridge, type EmoticonsSearchSidebar } from './emoticonsSearchBridge'
+import { installSidebarRight } from '@/test/sidebarRight'
+import { appImManager } from './emoticonsSearchBridge'
 
 vi.mock('@components/wrappers/sticker', () => ({ default: vi.fn() }))
+vi.mock('@components/stickerViewer', () => ({ default: vi.fn() }))
+const attachStickerViewerListenersMock = vi.mocked(attachStickerViewerListeners)
 const wrapStickerMock = vi.mocked(wrapSticker)
 
 const openStickerSetModal = vi.fn()
 vi.mock('@components/stickers/StickerSetModal', () => ({ openStickerSetModal: (...args: unknown[]) => openStickerSetModal(...args) }))
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+/** Выезд правой колонки (`selectProfileTab`: 200 + 100 на десктопе) + запас. */
+const REVEAL = 350
 /** Переход вкладки (250) + её разрушение (250 + 30) + запас. */
 const settle = () => pause(NAVIGATION_TRANSITION_TIME * 2 + 100)
 
@@ -62,8 +69,6 @@ function covered(...rows: Array<[StickerSet, number]>): { sets: StickerSet[], co
 const DUCK = makeSet(1, 'Duck', 40)
 const UTYA = makeSet(2, 'Utya', 3, { installed_date: 1700000000 })
 
-let sidebarEl: HTMLElement
-
 /** Разметка колонки tweb `index.html:110-112`: слайдер ищет в ней `.sidebar-slider`. */
 function createSidebarEl() {
   const el = document.createElement('div')
@@ -73,7 +78,7 @@ function createSidebarEl() {
   document.body.append(el)
   return el
 }
-let slider: SidebarSlider
+let column: ReturnType<typeof installSidebarRight>
 let stickers: {
   featuredSets: ReturnType<typeof vi.fn>
   searchSets: ReturnType<typeof vi.fn>
@@ -90,6 +95,7 @@ beforeEach(() => {
     destroy: () => {},
   }))
   openStickerSetModal.mockReset()
+  attachStickerViewerListenersMock.mockReset()
 
   stickers = {
     featuredSets: vi.fn(async() => covered([DUCK, 5], [UTYA, 3])),
@@ -98,29 +104,24 @@ beforeEach(() => {
     uninstall: vi.fn(async() => {}),
   }
 
-  sidebarEl = createSidebarEl()
-  sidebarEl.id = 'column-right'
-  slider = new SidebarSlider({
-    sidebarEl,
-    navigationType: 'right',
-    canHideFirst: true,
-    managers: { stickers } as unknown as Managers,
-  })
+  column = installSidebarRight({ stickers } as unknown as Managers)
 })
 
 afterEach(async() => {
-  slider.destroy()
+  column.dispose()
   await settle()
   appNavigationController.spliceItems(0, Infinity)
-  emoticonsSearchBridge.appSidebarRight = undefined
-  emoticonsSearchBridge.appImManager.chat = undefined
+  appImManager.chat = undefined
+  vi.restoreAllMocks()
   document.body.replaceChildren()
 })
 
+/** Открытие — как tweb `emoticonsDropdown/index.ts:303-305`. */
 async function open() {
-  const tab = slider.createTab(AppStickersTab)
+  const tab = column.sidebar.createTab(AppStickersTab)
   await tab.open()
-  await pause(0)
+  // Тренды — после выезда колонки (`toggleSidebar(true)` ждёт переход, до 300 мс).
+  await pause(REVEAL)
   return tab
 }
 
@@ -187,6 +188,17 @@ describe('вкладка «Поиск стикеров» — разметка tw
     }
     expect(new Set(calls.map((options) => options.lazyLoadQueue)).size).toBe(1)
     expect(calls[0].mediaId).toBe(100)
+  })
+})
+
+describe('вкладка «Поиск стикеров» — предпросмотр по зажатию', () => {
+  it('просмотрщик слушает кладку наборов со слушателями вкладки (tweb :166)', async() => {
+    const tab = await open()
+    expect(attachStickerViewerListenersMock).toHaveBeenCalledTimes(1)
+    expect(attachStickerViewerListenersMock).toHaveBeenCalledWith({
+      listenTo: tab.scrollable.container.querySelector('.sticker-sets'),
+      listenerSetter: tab.listenerSetter,
+    })
   })
 })
 
@@ -294,7 +306,7 @@ describe('вкладка «Поиск стикеров» — кнопка Add/Ad
 describe('вкладка «Поиск стикеров» — клики', () => {
   it('стикер при открытом чате — отправка самим документом в композер чата', async() => {
     const sendMessageWithDocument = vi.fn(() => true)
-    emoticonsSearchBridge.appImManager.chat = { peerId: 5, input: { sendMessageWithDocument } }
+    appImManager.chat = { peerId: 5, input: { sendMessageWithDocument } }
     const tab = await open()
 
     const cell = row(tab, 'Duck').querySelectorAll<HTMLElement>('.sticker-set-sticker')[1]
@@ -328,8 +340,7 @@ describe('вкладка «Поиск стикеров» — клики', () => 
 describe('вкладка «Поиск стикеров» — колонка и закрытие', () => {
   it('в правой колонке — сначала раскрыть её, тренды — после', async() => {
     let reveal!: () => void
-    const toggleSidebar = vi.fn(() => new Promise<void>((resolve) => { reveal = resolve }))
-    emoticonsSearchBridge.appSidebarRight = Object.assign(slider, { toggleSidebar }) as EmoticonsSearchSidebar
+    const toggleSidebar = vi.spyOn(column.sidebar, 'toggleSidebar').mockImplementation(() => new Promise<void>((resolve) => { reveal = resolve }))
 
     await open()
     expect(toggleSidebar).toHaveBeenCalledWith(true)
@@ -340,27 +351,36 @@ describe('вкладка «Поиск стикеров» — колонка и �
     expect(stickers.featuredSets).toHaveBeenCalledTimes(1)
   })
 
-  it('в другом слайдере колонку не раскрывает', async() => {
-    const toggleSidebar = vi.fn(async() => {})
-    const other = new SidebarSlider({ sidebarEl: createSidebarEl(), navigationType: 'right' })
-    emoticonsSearchBridge.appSidebarRight = Object.assign(other, { toggleSidebar }) as EmoticonsSearchSidebar
+  // tweb :211-217: из подсказки пустой колонки вкладка открывается в ЛЕВОМ
+  // слайдере — там правую колонку раскрывать незачем.
+  it('в другом слайдере правую колонку не раскрывает', async() => {
+    const toggleSidebar = vi.spyOn(column.sidebar, 'toggleSidebar')
+    const left = new SidebarSlider({
+      sidebarEl: createSidebarEl(),
+      navigationType: 'left',
+      managers: { stickers } as unknown as Managers,
+    })
 
-    await open()
+    const tab = left.createTab(AppStickersTab)
+    await tab.open()
+    await pause(0)
     expect(toggleSidebar).not.toHaveBeenCalled()
     expect(stickers.featuredSets).toHaveBeenCalledTimes(1)
+    left.destroy()
   })
 
   it('Esc закрывает вкладку через контроллер навигации; после перехода узла вкладки нет, Solid-корень снят', async() => {
     const tab = await open()
     const middleware = wrapStickerMock.mock.calls[0][0].middleware!
     const setsDiv = tab.scrollable.container.querySelector('.sticker-sets')!
-    expect(appNavigationController.findItemByType('right')).toBeTruthy()
+    expect(column.column.contains(tab.container)).toBe(true)
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
     await settle()
 
-    expect(appNavigationController.findItemByType('right')).toBeFalsy()
-    expect(sidebarEl.querySelector('#stickers-container')).toBeNull()
+    // Снята ровно вкладка поиска: под ней — профиль, колонка открыта (tweb).
+    expect(column.column.querySelector('#stickers-container')).toBeNull()
+    expect(column.sidebar.getHistory()).toEqual([column.sidebar.sharedMediaTab])
     // onCleanup Solid-корня: кладка наборов вычищена, зоны превью погашены.
     expect(setsDiv.children).toHaveLength(0)
     expect(middleware()).toBe(false)

@@ -4,10 +4,11 @@
  * `sidebarRight/tabs/gifs.tsx`, 812502980) вместе с её кладкой
  * (`components/gifsMasonry.ts`, порт tweb `gifsMasonry.ts`).
  *
- * Вкладка гоняется НАСТОЯЩАЯ — `AppGifsTab` из `solidJsTabs/tabs.ts` на
- * настоящем `SidebarSlider` (класса правой колонки ещё нет — задача 0б-0).
+ * Вкладка гоняется НАСТОЯЩАЯ — `AppGifsTab` из `solidJsTabs/tabs.ts` в
+ * настоящей правой колонке (`AppSidebarRight`, `test/sidebarRight.ts`).
  * Стабы — только границы: поиск GIF (воркер, прокси Tenor), `IntersectionObserver`
- * (в happy-dom его нет — колбэк дёргается руками) и синглтоны моста.
+ * (в happy-dom его нет — колбэк дёргается руками) и инстанс чата (мост
+ * `appImManager`, ВРЕМЕННО до Э4-3).
  *
  * Предмет проверок:
  *  • разметка — живой DOM tweb (дампы 19-emoticons-04/05): `#search-gifs-container`,
@@ -20,7 +21,6 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Managers } from '@/client/bootstrap'
-import SidebarSlider from '@components/slider'
 import type SliderSuperTab from '@components/sliderTab'
 import { AppGifsTab } from '@components/solidJsTabs/tabs'
 import { NAVIGATION_TRANSITION_TIME } from '@components/transition'
@@ -28,7 +28,8 @@ import type { GifItem } from '@core/gifs'
 import type { GifPage, TenorGif } from '@core/managers/stickersManager'
 import appNavigationController from '@core/navigation/appNavigationController'
 import mediaSizes from '@helpers/mediaSizes'
-import { emoticonsSearchBridge, type EmoticonsSearchSidebar } from './emoticonsSearchBridge'
+import { installSidebarRight } from '@/test/sidebarRight'
+import { appImManager } from './emoticonsSearchBridge'
 
 type Entry = { target: Element, isIntersecting: boolean }
 class IntersectionObserverStub {
@@ -51,6 +52,8 @@ function intersect(target: Element, isIntersecting: boolean) {
 }
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+/** Выезд правой колонки (`selectProfileTab`: 200 + 100 на десктопе) + запас. */
+const REVEAL = 350
 /** Переход вкладки (250) + её разрушение (250 + 30) + запас. */
 const settle = () => pause(NAVIGATION_TRANSITION_TIME * 2 + 100)
 
@@ -64,18 +67,8 @@ const gif = (id: string, width = 320, height = 240): TenorGif => ({
 })
 const page = (ids: string[], next = ''): GifPage => ({ gifs: ids.map((id) => gif(id)), next })
 
-let sidebarEl: HTMLElement
-let slider: SidebarSlider
+let column: ReturnType<typeof installSidebarRight>
 let searchGifs: ReturnType<typeof vi.fn>
-
-function createSidebarEl() {
-  const el = document.createElement('div')
-  const sliderEl = document.createElement('div')
-  sliderEl.classList.add('sidebar-content', 'sidebar-slider', 'tabs-container')
-  el.append(sliderEl)
-  document.body.append(el)
-  return el
-}
 
 beforeEach(() => {
   IntersectionObserverStub.instances = []
@@ -83,30 +76,25 @@ beforeEach(() => {
     if(q === '') return pos ? page(['t3']) : page(['t1', 't2'], 'p2')
     return page([q + '1'])
   })
-  sidebarEl = createSidebarEl()
-  sidebarEl.id = 'column-right'
-  slider = new SidebarSlider({
-    sidebarEl,
-    navigationType: 'right',
-    canHideFirst: true,
-    managers: { stickers: { searchGifs } } as unknown as Managers,
-  })
+  column = installSidebarRight({ stickers: { searchGifs } } as unknown as Managers)
 })
 
 afterEach(async() => {
-  slider.destroy()
+  column.dispose()
   await settle()
   appNavigationController.spliceItems(0, Infinity)
-  emoticonsSearchBridge.appSidebarRight = undefined
-  emoticonsSearchBridge.appImManager.chat = undefined
+  appImManager.chat = undefined
   mediaSizes.isMobile = false
+  vi.restoreAllMocks()
   document.body.replaceChildren()
 })
 
+/** Открытие — как tweb `emoticonsDropdown/index.ts:306-308`. */
 async function open() {
-  const tab = slider.createTab(AppGifsTab)
+  const tab = column.sidebar.createTab(AppGifsTab)
   await tab.open()
-  await pause(0)
+  // Первый запрос — после выезда колонки (`toggleSidebar(true)` ждёт переход).
+  await pause(REVEAL)
   return tab
 }
 
@@ -208,10 +196,9 @@ describe('кладка — видео только у видимой ячейк�
 
 describe('вкладка «Поиск GIF» — клик', () => {
   it('отправка самим элементом в композер чата; на десктопе колонка остаётся', async() => {
-    const onCloseBtnClick = vi.fn()
+    const onCloseBtnClick = vi.spyOn(column.sidebar, 'onCloseBtnClick')
     const sendMessageWithDocument = vi.fn(async() => true)
-    emoticonsSearchBridge.appImManager.chat = { peerId: 5, input: { sendMessageWithDocument } }
-    emoticonsSearchBridge.appSidebarRight = Object.assign(slider, { toggleSidebar: async() => {}, onCloseBtnClick }) as EmoticonsSearchSidebar
+    appImManager.chat = { peerId: 5, input: { sendMessageWithDocument } }
     const tab = await open()
 
     const [, second] = cells(tab)
@@ -227,9 +214,8 @@ describe('вкладка «Поиск GIF» — клик', () => {
 
   it('на мобильном после отправки колонка закрывается', async() => {
     mediaSizes.isMobile = true
-    const onCloseBtnClick = vi.fn()
-    emoticonsSearchBridge.appImManager.chat = { peerId: 5, input: { sendMessageWithDocument: async() => true } }
-    emoticonsSearchBridge.appSidebarRight = Object.assign(slider, { toggleSidebar: async() => {}, onCloseBtnClick }) as EmoticonsSearchSidebar
+    const onCloseBtnClick = vi.spyOn(column.sidebar, 'onCloseBtnClick')
+    appImManager.chat = { peerId: 5, input: { sendMessageWithDocument: async() => true } }
     const tab = await open()
 
     cells(tab)[0].click()
@@ -241,8 +227,7 @@ describe('вкладка «Поиск GIF» — клик', () => {
 describe('вкладка «Поиск GIF» — колонка и закрытие', () => {
   it('сначала раскрыть колонку, первый запрос — после', async() => {
     let reveal!: () => void
-    const toggleSidebar = vi.fn(() => new Promise<void>((resolve) => { reveal = resolve }))
-    emoticonsSearchBridge.appSidebarRight = Object.assign(slider, { toggleSidebar }) as EmoticonsSearchSidebar
+    const toggleSidebar = vi.spyOn(column.sidebar, 'toggleSidebar').mockImplementation(() => new Promise<void>((resolve) => { reveal = resolve }))
 
     await open()
     expect(toggleSidebar).toHaveBeenCalledWith(true)
@@ -261,8 +246,9 @@ describe('вкладка «Поиск GIF» — колонка и закрыти
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
     await settle()
 
-    expect(appNavigationController.findItemByType('right')).toBeFalsy()
-    expect(sidebarEl.querySelector('#search-gifs-container')).toBeNull()
+    // Снята ровно вкладка поиска: под ней — профиль, колонка открыта (tweb).
+    expect(column.column.querySelector('#search-gifs-container')).toBeNull()
+    expect(column.sidebar.getHistory()).toEqual([column.sidebar.sharedMediaTab])
     // onCleanup Solid-корня: кладка вычищена, поле поиска снято (`inputSearch.remove()`
     // отцепляет слушатели — ввод в мёртвое поле в сеть не уходит).
     expect(masonry.children).toHaveLength(0)

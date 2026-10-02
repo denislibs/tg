@@ -1,8 +1,9 @@
 // StickerSetModal — модалка набора стикеров («ADD N STICKERS»), порт tweb
 // `components/popups/stickers.tsx` (шапка/тело/футер — строки 330-363, сборка
 // сетки — 196-260, клик по стикеру — 145-162 `onStickersClick`). Открывается
-// по клику на заголовок набора в «Поиске стикеров» (StickersSearchTab), там
-// же пробрасывается колбэк отправки — см. проп `onPickSticker` ниже.
+// по клику на строку набора во вкладке «Поиск стикеров»
+// (`sidebarRight/tabs/stickers.solid.tsx`, ВРЕМЕННО до 2C-15), там же
+// пробрасывается колбэк отправки — см. проп `onPickSticker` ниже.
 //
 // Открытие по клику на стикер В ЧАТЕ (tweb wrapSticker → showStickersPopup) —
 // в бабле стикера (`chat/bubbles.ts`). Адрес набора берётся ИЗ САМОГО
@@ -132,8 +133,8 @@ export default function StickerSetModal({ address, open = true, onClose, onExitC
   /**
    * Контракт popupStore «open-controlled» (см. stores/popupStore): владелец из
    * стека попапов ведёт закрытие сам (`open={p.open}` + `onExitComplete`), а
-   * владелец, который держит модалку своим состоянием (StickersSearchTab),
-   * просто размонтирует её — для него по умолчанию `true`.
+   * рендер без стека (тесты модалки) просто размонтирует её — для него по
+   * умолчанию `true`.
    */
   open?: boolean
   onClose: () => void
@@ -146,7 +147,7 @@ export default function StickerSetModal({ address, open = true, onClose, onExitC
    * доступа к «текущему чату» (это Composer-состояние, см.
    * `core/hooks/useChatSend.ts::sendSticker`) без правки контракта — контракт
    * не трогаем, поэтому колбэк пробрасывает владелец, у которого он уже есть
-   * (`StickersSearchTab`). Без колбэка ячейки НЕ кликабельны (см. класс
+   * (`Chat.tsx`, вкладка поиска стикеров). Без колбэка ячейки НЕ кликабельны (см. класс
    * `is-read-only` на сетке ниже) — аффорданс не изображает то, чего нет.
    */
   onPickSticker?: (st: Sticker) => void
@@ -158,7 +159,7 @@ export default function StickerSetModal({ address, open = true, onClose, onExitC
   const [stickers, setStickers] = useState<Sticker[]>([])
   const [installed, setInstalled] = useState(false)
   // Add/Remove — на время запроса гасится (tweb `disabled={!isLoaded()}` +
-  // отдельно наш busy на время toggle, как в useStickersSearch.toggle).
+  // отдельно наш busy на время toggle).
   const [busy, setBusy] = useState(false)
   const loaded = set !== null
   // Ленивая загрузка ячеек по видимости — корень наблюдения — тело попапа
@@ -365,7 +366,7 @@ export default function StickerSetModal({ address, open = true, onClose, onExitC
 export const STICKER_SET_POPUP_KIND = 'sticker-set'
 
 /**
- * Публичный путь открытия — симметрично `openStickersSearchTab`.
+ * Публичный путь открытия (tweb `showStickersPopup`).
  *
  * Попап обязан жить в ГЛОБАЛЬНОМ стеке (stores/popupStore), а не React-потомком
  * того узла, откуда его открыли. `Popup` монтируется через `createPortal`, но

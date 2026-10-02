@@ -6,12 +6,12 @@
   right: 0;
   bottom: 0;
   left: 0;
-  // ВРЕМЕННО до 2C-15 и 0б-11: у tweb `z-index: 4` — общий слой попапов и
-  // меню, порядок между ними решает DOM. Поверх оверлея пока живут React-слои
-  // со своей шкалой: попап набора `StickerSetModal` на `shared/ui/Popup`
-  // (4090, его меню — 4100) и `rightSidebar/RightSearchTab` (1900). Число
-  // возвращается к 4, когда их снимают 2C-15 (`popups/stickers.solid.tsx`)
-  // и 0б-11 (`sidebarRight/tabs/stickers.solid.tsx`).
+  // ВРЕМЕННО до 2C-15: у tweb `z-index: 4` — общий слой попапов и меню,
+  // порядок между ними решает DOM. Поверх оверлея пока живёт React-слой со
+  // своей шкалой: попап набора `StickerSetModal` на `shared/ui/Popup` (4090,
+  // его меню — 4100). Число возвращается к 4, когда его снимает 2C-15
+  // (`popups/stickers.solid.tsx`). Портал поиска стикеров (1900) снят 0б-11:
+  // поиск — вкладка колонки (`sidebarRight/tabs/stickers.solid.tsx`).
   z-index: 4101;
   pointer-events: none;
   display: flex;

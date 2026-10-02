@@ -18,8 +18,8 @@
  *     отдаёт в отправку САМ элемент, а не `docId` (`:77-78`): Tenor-результат не
  *     документ, по id его никто, кроме кладки, не знает.
  *
- * Временное (с номерами): `appImManager.chat` и `appSidebarRight` — через
- * `emoticonsSearchBridge` (ВРЕМЕННО до Э4-3 и до врезки 0б-11 — шапка моста).
+ * Временное (с номерами): `appImManager.chat` — мост `emoticonsSearchBridge`
+ * (ВРЕМЕННО до Э4-3, шапка моста); его ставит активный инстанс `Chat.tsx`.
  */
 import { onCleanup, onMount, type Component } from 'solid-js'
 import animationIntersector, { type AnimationItemGroup } from '@components/animationIntersector'
@@ -31,7 +31,8 @@ import type { GifPage } from '@core/managers/stickersManager'
 import { attachClickEvent } from '@helpers/dom/clickEvent'
 import findUpClassName from '@helpers/dom/findUpClassName'
 import mediaSizes from '@helpers/mediaSizes'
-import { emoticonsSearchBridge } from './emoticonsSearchBridge'
+import appSidebarRight from '@components/sidebarRight'
+import { appImManager } from './emoticonsSearchBridge' // ВРЕМЕННО до Э4-3
 
 const ANIMATIONGROUP: AnimationItemGroup = 'GIFS-SEARCH'
 
@@ -91,12 +92,11 @@ const Gifs: Component = () => {
     const target = findUpClassName(e.target as HTMLElement, 'gif')
     if(!target) return
 
-    const { appImManager, appSidebarRight } = emoticonsSearchBridge
     const fileId = target.dataset.docId!
     const item = masonry.getItem(fileId)
     if(item && appImManager.chat && await appImManager.chat.input.sendMessageWithDocument({ document: item, target })) {
       if(mediaSizes.isMobile) {
-        appSidebarRight?.onCloseBtnClick()
+        appSidebarRight.onCloseBtnClick()
       }
     } else {
       console.warn('got no doc by id:', fileId)
@@ -124,10 +124,7 @@ const Gifs: Component = () => {
 
     masonry = new GifsMasonry(gifsDiv, ANIMATIONGROUP, tab.scrollable)
 
-    // ВРЕМЕННО до 0б-11 (врезка): `appSidebarRight.toggleSidebar(true)` — синглтон
-    // колонки (шапка моста); до него вкладке раскрывать нечего.
-    const revealed = emoticonsSearchBridge.appSidebarRight?.toggleSidebar(true) ?? Promise.resolve()
-    void revealed.then(() => {
+    void appSidebarRight.toggleSidebar(true).then(() => {
       void search('', true)
 
       tab.scrollable.onScrolledBottom = () => {

@@ -37,7 +37,6 @@ import { isLottieMime, readLottie } from '../core/stickers/tgs'
 import { useMiddlewareHelper } from '../core/hooks/useMiddlewareHelper'
 import { useEvent } from '../core/hooks/useEvent'
 import renderImageFromUrl from '@helpers/dom/renderImageFromUrl'
-import type { LazyLoadQueue } from '../core/lazyLoadQueue'
 import { getPathThumb, getStrippedThumb, type MyDocument } from '../core/media/messageMedia'
 
 export type StickerContent =
@@ -48,26 +47,12 @@ export type StickerContent =
 const cache = new Map<number, Promise<StickerContent>>()
 
 /**
- * @param loadQueue общая на экран очередь загрузки (tweb `wrapSticker`'s
- *   `lazyLoadQueue`, `PARALLEL_LIMIT=8`) — без неё вьюпорт с десятками
- *   стикеров запускал бы столько же параллельных fetch'ей разом. Как и в
- *   tweb (`wrapSticker.ts:735` — уже скачанное грузится в обход очереди),
- *   через неё идёт ТОЛЬКО настоящая новая загрузка: кэш-хит возвращает
- *   существующий промис напрямую, не занимая место в очереди повторно.
- * @param isVisible живой геттер видимости ЭТОЙ ячейки прямо сейчас — уходит в
- *   `queue.push` для приоритезации (порт tweb `LazyLoadQueue.onVisibilityChange`,
- *   см. `core/lazyLoadQueue.ts`): пока превью ждёт своей очереди, строка
- *   могла уже уйти за край вьюпорта — такая задача уступает место тому, что
- *   сейчас перед глазами.
- *
- * ВАЖНО: если `loadQueue` передана и её `clear()` снимает эту задачу ДО
- * старта (панель закрылась), промис РЕДЖЕКТИТСЯ (см. `lazyLoadQueue.ts`) —
- * `p.catch(() => cache.delete(mediaId))` ниже вычищает кэш, чтобы следующий
- * запрос того же `mediaId` (в ЛЮБОМ месте приложения — бабл в чате, пикер,
- * медиаредактор, они делят этот модульный кэш) грузил заново, а не наследовал
- * навсегда отклонённый промис.
+ * Содержимое стикера по `mediaId` — одна загрузка на файл на всё приложение
+ * (модульный кэш делят бабл в чате, пикер и медиаредактор). Упавшая загрузка
+ * из кэша вычищается: следующий запрос пробует снова, а не наследует мёртвый
+ * промис.
  */
-export function loadStickerContent(mediaId: number, loadQueue?: LazyLoadQueue, isVisible?: () => boolean): Promise<StickerContent> {
+export function loadStickerContent(mediaId: number): Promise<StickerContent> {
   let p = cache.get(mediaId)
   if (!p) {
     const fetchContent = async (): Promise<StickerContent> => {
@@ -83,9 +68,8 @@ export function loadStickerContent(mediaId: number, loadQueue?: LazyLoadQueue, i
       if (ct.startsWith('video/')) return { kind: 'video', url: URL.createObjectURL(await res.blob()) }
       return { kind: 'image', url: URL.createObjectURL(await res.blob()) }
     }
-    p = loadQueue ? loadQueue.push(fetchContent, isVisible) : fetchContent()
-    // упавшую загрузку (включая реджект от queue.clear()) не кэшировать —
-    // следующий запрос попробует снова, а не унаследует мёртвый промис
+    p = fetchContent()
+    // упавшую загрузку не кэшировать — следующий запрос попробует снова
     p.catch(() => cache.delete(mediaId))
     cache.set(mediaId, p)
   }
@@ -106,8 +90,6 @@ const StickerMedia = memo(function StickerMedia({
   playOnHover = false,
   replayToken = 0,
   group = 'chat',
-  loadQueue,
-  isVisible,
   onComplete,
 }: {
   /**
@@ -145,14 +127,6 @@ const StickerMedia = memo(function StickerMedia({
   replayToken?: number
   /** группа animationIntersector (tweb `group`): ею гасят/будят пачку анимаций разом */
   group?: AnimationItemGroup
-  /** общая на экран очередь загрузки (см. `loadStickerContent`) — опциональна:
-   * большинство мест (бабл в чате, саджесты) грузят стикер напрямую, без
-   * лимита; его заводит экран поиска стикеров (StickersSearchTab, Task 3) —
-   * там же, где им гейтится и запрос состава набора. */
-  loadQueue?: LazyLoadQueue
-  /** живой геттер видимости ЭТОЙ ячейки — приоритезация внутри `loadQueue`
-   * (см. `loadStickerContent`); без `loadQueue` не используется. */
-  isVisible?: () => boolean
   /** проигрывание без loop дошло до конца (lottie: LottiePlayer.onComplete;
    * видео: 'ended'; статика — сразу после первого кадра, играть нечего).
    * Нужен потребителям, которые снимают себя по завершении одноразовой
@@ -222,7 +196,7 @@ const StickerMedia = memo(function StickerMedia({
     let player: LottiePlayer | null = null
     let video: HTMLVideoElement | null = null
 
-    void loadStickerContent(mediaId, loadQueue, isVisible).then((content) => {
+    void loadStickerContent(mediaId).then((content) => {
       if (!middleware()) return
 
       if (content.kind === 'lottie') {
@@ -358,7 +332,7 @@ const StickerMedia = memo(function StickerMedia({
       videoRef.current = null
       scope.destroy()
     }
-  }, [mediaId, thumb, pathThumb, docWidth, docHeight, width, height, loop, autoplay, group, playOnHover, loadQueue, isVisible, middlewareHelper])
+  }, [mediaId, thumb, pathThumb, docWidth, docHeight, width, height, loop, autoplay, group, playOnHover, middlewareHelper])
 
   // Replay по клику big-emoji (tweb: клик по анимированному эмодзи проигрывает
   // его заново): рестарт с первого кадра при каждом инкременте токена.

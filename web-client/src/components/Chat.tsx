@@ -106,6 +106,7 @@ import type { SearchSuperActions } from '../core/hooks/useSearchSuper'
 import { getMediaId } from '../core/messages/messageKind'
 import { useIsActiveChat } from '../core/chat/chatInstanceContext'
 import appSidebarRight, { RIGHT_COLUMN_ACTIVE_CLASSNAME } from './sidebarRight'
+import { appImManager, type EmoticonsSearchChat } from './sidebarRight/tabs/emoticonsSearchBridge'
 import type AppReactProfileTab from './sidebarRight/reactProfileTab'
 
 // Инфо-панель — не первый кадр; ленивый чанк.
@@ -1107,6 +1108,27 @@ export default function Chat({ chat, onBack, thread }: Props) {
   })
   // GIF из вкладки пикера — те же ограничения, что у стикеров (не канал, не секретный).
   const onComposerPickGif = useEvent((g: GifItem) => { sendGif(g); slowmodeMarkSent() })
+  // Отправка из вкладок «Поиск стикеров»/«Поиск GIF» правой колонки — tweb
+  // `appImManager.chat.input.sendMessageWithDocument` (input.ts:4341), который
+  // зовут `stickers.tsx:174` и `gifs.tsx:77`. ВРЕМЕННО до Э4-3: класса
+  // `AppImManager` нет, активный инстанс кладёт себя в мост
+  // (`sidebarRight/tabs/emoticonsSearchBridge.ts`) и снимает, уходя из активных.
+  // Гейт — тот же, что у пикера композера (`onPickSticker`/`onPickGif` ниже):
+  // без прав отправки ответ «не ушло», как у оригинала.
+  const sendDocumentFromSearch = useEvent(({ document }: { document: Sticker | GifItem }) => {
+    if (!canSendStickers) return false
+    if ('_' in document) onComposerPickSticker(document)
+    else onComposerPickGif(document)
+    return true
+  })
+  useEffect(() => {
+    if (!isActiveInstance) return
+    const chatBridge: EmoticonsSearchChat = { peerId: numericChatId, input: { sendMessageWithDocument: sendDocumentFromSearch } }
+    appImManager.chat = chatBridge
+    return () => {
+      if (appImManager.chat === chatBridge) appImManager.chat = undefined
+    }
+  }, [isActiveInstance, numericChatId, sendDocumentFromSearch])
   // Ответ жестом из императивной ленты (свайп на таче / даблклик на десктопе,
   // tweb bubbles.ts:1497-1542 и :1699). Лента отдаёт только НОМЕР — плашку
   // собирает владелец композера, тем же путём, которым её восстанавливает

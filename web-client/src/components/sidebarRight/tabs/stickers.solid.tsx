@@ -39,17 +39,8 @@
  *  • `showStickersPopup` (`:205-206`) → React `openStickerSetModal` — ВРЕМЕННО
  *    до 2C-15 (порт `popups/stickers.solid.tsx`). Полный набор перед попапом не
  *    запрашиваем: попап грузит его сам по адресу.
- *  • `appImManager.chat` и `appSidebarRight` — через `emoticonsSearchBridge`
- *    (ВРЕМЕННО до Э4-3 и до врезки 0б-11 — шапка моста).
- *
- * Отложено (с номерами):
- *  • О-25 волна 7 — предпросмотр по зажатию (`attachStickerViewerListeners`,
- *    `:166`): ванильного порта `components/stickerViewer.ts` нет, у нас только
- *    React-хук `components/stickers/useStickerViewer.ts`.
- *  • О-26 волна 7 — «Add/Added» читает `installed_date` набора дословно
- *    (`isStickerSetAdded`), а бэкенд кладёт его только в выдачу моих наборов:
- *    тренды, поиск и набор по id собираются без пользователя
- *    (`stickersrepo.go::setCols`), и установленный набор здесь выглядит «Add».
+ *  • `appImManager.chat` — мост `emoticonsSearchBridge` (ВРЕМЕННО до Э4-3,
+ *    шапка моста); его ставит активный инстанс `Chat.tsx`.
  */
 import { onCleanup, onMount, type Component } from 'solid-js'
 import animationIntersector from '@components/animationIntersector'
@@ -67,7 +58,9 @@ import findUpClassName from '@helpers/dom/findUpClassName'
 import setInnerHTML from '@helpers/dom/setInnerHTML'
 import { i18n } from '@lib/langPack'
 import wrapEmojiText from '@lib/richtext/wrapEmojiText'
-import { emoticonsSearchBridge } from './emoticonsSearchBridge'
+import appSidebarRight from '@components/sidebarRight'
+import attachStickerViewerListeners from '@components/stickerViewer'
+import { appImManager } from './emoticonsSearchBridge' // ВРЕМЕННО до Э4-3
 
 const ANIMATION_GROUP = 'STICKERS-SEARCH'
 
@@ -113,7 +106,6 @@ const Stickers: Component = () => {
 
     const button = document.createElement('button')
     button.classList.add('btn-primary', 'btn-color-primary', 'sticker-set-button')
-    // О-26 волна 7: у трендов и поиска `installed_date` бэкенд пока не пишет.
     const added = isStickerSetAdded(set)
     button.append(i18n(added ? 'Stickers.SearchAdded' : 'Stickers.SearchAdd'))
 
@@ -238,10 +230,9 @@ const Stickers: Component = () => {
     setsDiv.classList.add('sticker-sets')
     tab.scrollable.append(setsDiv)
 
-    // О-25 волна 7: `attachStickerViewerListeners({listenTo: setsDiv, …})` — порта нет.
+    attachStickerViewerListeners({ listenTo: setsDiv, listenerSetter: tab.listenerSetter })
 
     attachClickEvent(setsDiv, (e) => {
-      const { appImManager } = emoticonsSearchBridge
       const sticker = findUpClassName(e.target as HTMLElement, 'sticker-set-sticker')
       // With no chat to send to — the tab opened from the empty column's Stickers tip — a sticker
       // falls through to its own set below, which opens the pack.
@@ -286,9 +277,7 @@ const Stickers: Component = () => {
     // The tab is opened from the emoticons panel into the right sidebar, and from the empty
     // column's Stickers tip into the left one — where there is no sidebar to reveal, and where
     // revealing the right one would just show an empty column.
-    // ВРЕМЕННО до 0б-11 (врезка): `appSidebarRight` — синглтон колонки (шапка моста).
-    const { appSidebarRight } = emoticonsSearchBridge
-    const revealed = appSidebarRight && tab.slider === appSidebarRight ?
+    const revealed = tab.slider === appSidebarRight ?
       appSidebarRight.toggleSidebar(true) :
       Promise.resolve()
 

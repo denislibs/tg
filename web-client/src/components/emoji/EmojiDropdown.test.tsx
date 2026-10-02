@@ -383,14 +383,13 @@ describe('StickersTab — предпросмотр по зажатию ЛКМ (a
   })
 })
 
-describe('EmojiDropdown — кнопка-лупа футера открывает экраны правой колонки (tweb index.ts:295-303)', () => {
-  // Экран поиска открывает правую колонку классом `AppSidebarRight` (мост
-  // `useRightColumnShown`, ВРЕМЕННО до 0б-11).
+describe('EmojiDropdown — кнопка-лупа футера открывает вкладки правой колонки (tweb index.ts:300-310)', () => {
+  // Вкладки поиска открываются в слайдере `AppSidebarRight` (tweb
+  // `emoticonsDropdown/index.ts:303-308`) — колонка нужна каждому тесту блока.
   let sidebarRight: ReturnType<typeof installSidebarRight>
-  beforeEach(() => { sidebarRight = installSidebarRight() })
   afterEach(() => sidebarRight.dispose())
 
-  // Экраны сами дёргают менеджеры при монтировании — стабы поверх базовых
+  // Вкладки сами дёргают менеджеры при открытии — стабы поверх базовых
   // (плюс savedGifs/media.meta: GIF-вкладка дропдауна монтируется при клике).
   function searchManagers() {
     const { managers, stickers } = makeManagers()
@@ -401,38 +400,37 @@ describe('EmojiDropdown — кнопка-лупа футера открывае�
       savedGifs: vi.fn(async () => []),
     })
     ;(managers as unknown as { media: object }).media = { meta: vi.fn(async () => null) }
+    sidebarRight = installSidebarRight(managers)
     return managers
   }
-  const popupApi = { open: true, requestClose: () => {}, onExitComplete: () => {}, destroy: () => {} }
 
-  it('вкладка стикеров: клик по лупе кладёт попап kind=right-search с экраном поиска наборов', async () => {
+  /** Что лежит в истории слайдера правой колонки — по id контейнеров вкладок. */
+  const history = () => sidebarRight.sidebar.getHistory().map((tab) => (tab as { container: HTMLElement }).container.id)
+
+  it('вкладка стикеров: клик по лупе кладёт в правую колонку AppStickersTab, повторный — второй не кладёт', async () => {
     const managers = searchManagers()
     renderDropdown(managers, { onPickSticker: () => {}, onPickGif: () => {} })
     fireEvent.click(document.querySelector('.emoji-tabs-stickers')!)
     fireEvent.click(document.querySelector('.emoji-tabs-search')!)
 
-    const { usePopupStore } = await import('../../stores/popupStore')
-    const popups = usePopupStore.getState().popups
-    const entry = popups[popups.length - 1]
-    // литерал, не импортированная константа — иначе мутация kind не краснеет
-    expect(entry.kind).toBe('right-search')
-    render(<ManagersProvider managers={managers}>{entry.render(popupApi)}</ManagersProvider>)
-    expect(document.getElementById('stickers-container')).not.toBeNull()
-    usePopupStore.getState().clear()
+    await waitFor(() => expect(sidebarRight.column.querySelector('#stickers-container')).not.toBeNull())
+    await waitFor(() => expect(history()).toContain('stickers-container'))
+
+    // tweb `isTabExists` — уже открытую вкладку вторым экземпляром не кладём
+    fireEvent.click(document.querySelector('.emoji-tabs-search')!)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(sidebarRight.column.querySelectorAll('#stickers-container')).toHaveLength(1)
+    expect(history().filter((id) => id === 'stickers-container')).toHaveLength(1)
   })
 
-  it('вкладка GIF: клик по лупе открывает экран поиска GIF (ветка else, как в tweb)', async () => {
+  it('вкладка GIF: клик по лупе кладёт AppGifsTab (ветка else, как в tweb)', async () => {
     const managers = searchManagers()
     renderDropdown(managers, { onPickSticker: () => {}, onPickGif: () => {} })
     fireEvent.click(document.querySelector('.emoji-tabs-gifs')!)
     fireEvent.click(document.querySelector('.emoji-tabs-search')!)
 
-    const { usePopupStore } = await import('../../stores/popupStore')
-    const popups = usePopupStore.getState().popups
-    const entry = popups[popups.length - 1]
-    expect(entry.kind).toBe('right-search')
-    render(<ManagersProvider managers={managers}>{entry.render(popupApi)}</ManagersProvider>)
-    expect(document.getElementById('search-gifs-container')).not.toBeNull()
-    usePopupStore.getState().clear()
+    await waitFor(() => expect(sidebarRight.column.querySelector('#search-gifs-container')).not.toBeNull())
+    await waitFor(() => expect(history()).toContain('search-gifs-container'))
+    expect(sidebarRight.column.querySelector('#stickers-container')).toBeNull()
   })
 })
