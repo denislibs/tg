@@ -25,6 +25,28 @@ const Labeled = defineSolidElement({
 })
 
 describe('defineSolidElement', () => {
+  it('повторное определение с тем же именем — прежний класс, новые вставки рисует новый компонент (tweb :74-80)', () => {
+    const Again = defineSolidElement({
+      name: 'test-labeled',
+      component: (props: PassedProps<Props>) => <i>{props.label}</i>,
+    })
+    expect(Again).toBe(Labeled)
+
+    const el = new Again()
+    el.feedProps({ label: 'b' })
+    document.body.append(el)
+    expect(el.innerHTML).toBe('<i>b</i>')
+
+    // вернуть компонент файла — остальным тестам
+    defineSolidElement({
+      name: 'test-labeled',
+      component: (props: PassedProps<Props>) => {
+        onCleanup(() => props.onClean?.())
+        return <b onClick={() => props.label = 'clicked'}>{props.label}</b>
+      },
+    })
+  })
+
   it('регистрирует настоящий custom element с тегом name', () => {
     const el = new Labeled()
     expect(el).toBeInstanceOf(HTMLElement)

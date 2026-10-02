@@ -920,6 +920,14 @@ React-оверлей архива снесён вместе с `Sidebar.tsx` (2-
 
 **Оценка:** 2 дня. **Зависимости:** 1-4, 2D-28.
 
+**Сделано** (пачка П-2 плана каркаса, ветка `feat/w7-p2-archive`): строка — `components/archiveDialog.solid.tsx`
+(custom element на зеркале диалогов, состояние `createArchiveDialogState`), вкладка —
+`sidebarLeft/tabs/archivedTab.solid.tsx` (`AppArchivedTab`), `openArchiveTab` и пункт «Архив» бургера с
+бейджем; `ArchiveRow.tsx` снесён, `mountArchivedList` владельца снимает агент «ядро» (контракт П-2). Пины —
+`archiveDialog.solid.test.tsx`, `archivedTab.solid.test.tsx`, раздел строки «Архив» в
+`autonomousDialogList/dialogs.test.ts`, бургер — `index.toolsMenu.test.ts`. Меню архива и истории архива —
+Б-50, Б-51 плана каркаса.
+
 ### Задача 1-6: форум — `AutonomousForumTopicList` и форум-таб
 
 **Порт:** tweb `autonomousDialogList/forumTopics.ts` (125), `forumTab/{forumTab 177, groupForumTab 230,

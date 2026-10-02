@@ -143,7 +143,7 @@
 //     владелец (расхождение 1 шапки `components/dialogsContextMenu.ts`). Вешает
 //     его `setListClickListener({withContext: true})` (`:2337-2339`) на `ul`
 //     списка папки из `l(filter)` (`:1478`), как у tweb; `withArchiveContext`
-//     (меню строки «Архив») — задача 1-5.
+//     (меню строки «Архив») — бэклог Б-50.
 // 24. `openDialogInNewTab` (`:2055-2070`): `message`/`thread` в адресе —
 //     серверные номера (`getServerMessageId`): наш `appImManager.op` переводит
 //     номера из ссылки в клиентские всегда (его `:2084-2096`), а у tweb перевод
@@ -221,7 +221,8 @@ import { isUserStatusOnline } from '@core/peers/peer'
 import { loadChats, loadPresence, startPresenceDegradation, useChatsStore } from '@stores/chatsStore'
 import { isDialogMuted, loadNotifySettings, useNotifyStore } from '@stores/notifyStore'
 import { useSecretChatStore } from '@stores/secretChatStore'
-import { ARCHIVE_DIALOG_TAG_NAME, AutonomousDialogList } from '@components/autonomousDialogList/dialogs'
+import { AutonomousDialogList } from '@components/autonomousDialogList/dialogs'
+import { archiveDialogTagName } from '@components/archiveDialog.solid'
 import { setDialogTyping } from '@components/autonomousDialogList/base'
 import { MOUNT_CLASS_TO } from '@config/debug'
 import { loadStories } from '@stores/storiesStore'
@@ -1262,7 +1263,7 @@ export class AppDialogsManager {
     const xd = new AutonomousDialogList({ filterId: filter.id, appDialogsManager: this })
     this.xds.set(filter.id, xd)
     const { scrollable, list } = xd.generateScrollable(filter)
-    // `withArchiveContext: filter.id === FOLDER_ID_ALL` — меню строки «Архив», задача 1-5
+    // `withArchiveContext: filter.id === FOLDER_ID_ALL` — меню строки «Архив», бэклог Б-50
     this.setListClickListener({ list, onFound: undefined, withContext: true })
 
     return { ul: list, xd, scrollable }
@@ -1707,7 +1708,7 @@ export class AppDialogsManager {
    *      `bot_forum_view`) — О-4, О-5, О-3;
    *   5. Shift-клик → превью чата (`showChatPreviewPopup`) — попапа нет;
    *   6. подсветка запроса в открытом чате (`highlight` по `data-search-query`) — С6;
-   *   7. `withArchiveContext` (меню строки «Архив») — задача 1-5.
+   *   7. `withArchiveContext` (меню строки «Архив») — бэклог Б-50.
    */
   public setListClickListener({
     list,
@@ -1732,7 +1733,7 @@ export class AppDialogsManager {
     const onPress = (e: MouseEvent) => {
       const target = e.target as HTMLElement
 
-      const archiveElem = findUpTag(target, ARCHIVE_DIALOG_TAG_NAME)
+      const archiveElem = findUpTag(target, archiveDialogTagName)
       if(archiveElem) {
         appSidebarLeft.openArchiveTab()
         return
@@ -1816,32 +1817,6 @@ export class AppDialogsManager {
 
     if(withContext) {
       this.contextMenu!.attach(list)
-    }
-  }
-
-  /**
-   * ВРЕМЕННО до 1-5: список архива для React-оверлея архива колонки — то, что
-   * делает вкладка tweb `archivedTab.tsx:46-110` (`l({id: FOLDER_ID_ARCHIVE})`,
-   * `setFilterIdAndChangeTab`, на закрытии — возврат к прежней папке и `destroy`).
-   */
-  public mountArchivedList(container: HTMLElement) {
-    const filterId = ARCHIVE_FOLDER_ID
-    const wasFilterId = this.filterId
-
-    if(!this.xds.get(filterId)) {
-      const { ul, scrollable } = this.l({ id: filterId, localId: filterId })
-      scrollable.append(ul)
-    }
-
-    const xd = this.xds.get(filterId)!
-    container.append(xd.scrollable.container)
-    this.setFilterIdAndChangeTab(filterId)
-
-    return () => {
-      this.xds.delete(filterId)
-      if(this.xd === xd) this.setFilterIdAndChangeTab(wasFilterId)
-      xd.destroy()
-      xd.scrollable.container.remove()
     }
   }
 

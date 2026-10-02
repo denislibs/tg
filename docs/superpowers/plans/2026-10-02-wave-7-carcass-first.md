@@ -556,8 +556,8 @@ React-`GroupEditFlow`.
 
 | № | Что пропало | Пропадает на | tweb | Куда |
 |---|---|---|---|---|
-| Б-1 | Архив: пункт бургера, бейдж, список архива (сейчас оверлей `Sidebar.tsx` + `mountArchivedList`) | К-1 | `sidebarLeft/tabs/archivedTab.tsx`, `sidebarLeft/index.ts:681-685`, `:1760` | П-2 |
-| Б-2 | Строка «Архив» в списке — React-остров (`autonomousDialogList/dialogs.ts:56`, `:378`) | К-1 | `components/archiveDialog.tsx` | П-2 |
+| Б-1 | Архив: пункт бургера, бейдж, список архива (сейчас оверлей `Sidebar.tsx` + `mountArchivedList`) | К-1 | `sidebarLeft/tabs/archivedTab.tsx`, `sidebarLeft/index.ts:681-685`, `:1760` | **закрыто П-2 (архив)**: вкладка `sidebarLeft/tabs/archivedTab.solid.tsx` (`AppArchivedTab`), `openArchiveTab`, пункт «Архив» с бейджем `archived-count` |
+| Б-2 | Строка «Архив» в списке — React-остров (`autonomousDialogList/dialogs.ts:56`, `:378`) | К-1 | `components/archiveDialog.tsx` | **закрыто П-2 (архив)**: `components/archiveDialog.solid.tsx` (custom element), `ArchiveRow.tsx` снесён |
 | Б-3 | Форум: панель тем `TopicsPanel.tsx` (583), открытие форума из списка | К-1 | `forumTab/*`, `autonomousDialogList/forumTopics.ts` | П-2 |
 | Б-4 | Ряд историй над списком (`StoriesRow.tsx` 405, `useSidebarStories.tsx`), просмотр из ряда | К-1 | `components/stories/list.tsx` (474), `appDialogsManager.ts:1095-1125` | П-3 |
 | Б-5 | Вертикальная колонка папок (`FoldersSidebar.tsx` 238) | К-1 | `sidebarLeft/foldersSidebarContent/*` | П-3 |
@@ -605,6 +605,8 @@ React-`GroupEditFlow`.
 | Б-47 | Ссылка «пропустить к чату» и имена ориентиров колонок (`attachSkipToContent`, `setLandmarkLabels`): ключей `AccDescr.SkipToConversation`/`ChatList`/`ChatInfo` в лангпаке нет | К-2 (не было) | `helpers/dom/appLandmarks.ts`, `appImManager.ts:349-352`, `:3199-3201` | П-4 |
 | Б-48 | Хэши страницы бэкенда `#@имя/<seq>` и `#<peerId>/<seq>` (кнопка публичной страницы, `public_page.go:40-41`) — `onHashChange` tweb принимает только `#@имя`, `#<peerId>`, `#/im?p=…&post=` | К-2 | `appImManager.ts:1912-2031` | **закрыто PR #380**: кнопка поста публичной страницы ведёт на `#@имя?post=<seq>` (схема tweb `onHashChangeUnsafe` → `openUsername({lastMsgId})`) |
 | Б-49 | Пилюля «доступна новая сборка» (`useUpdateStore`) — только в мессенджере (остров `#react-overlays` монтирует `bootstrapIm`), на экране входа её нет; бейдж `api: ok/down` (dev-индикатор `App.tsx`, не tweb) снят без замены | К-2 | `sidebarLeft/index.ts:202-216`, `:367-384` (`updateBtn`, `checkForUpdates`) | О-100 / П-3 (кнопка «Обновить» в шапке колонки) |
+| Б-50 | Меню архива: ⋮ вкладки архива и ПКМ по строке «Архив» (`withArchiveContext`), «Скрыть из списка»/«Показать в списке» (`showArchiveInChatList` — строка «Архив» сейчас видна всегда при непустом архиве), «Прочитать всё» (`markFolderAsRead`), вкладка «Настройки архива», попап «Об архиве» | П-2 (не было) | `components/archiveDialogContextMenu.ts` (163), `archivedTab.tsx:47-56`, `appDialogsManager.ts:2341-2345`, `solidJsTabs/tabs.ts` `AppArchiveSettingsTab`, `popups/featureDetails` | П-3 |
+| Б-51 | Истории архива: ряд `StoriesList({archive: true})` во вкладке, сегменты историй на аватаре строки «Архив» и открытие просмотра с него, `hasArchive` в verify пункта бургера | П-2 (не было) | `archivedTab.tsx:26-45`, `archiveDialog.tsx:328-437`, `appDialogsManager.ts:2104-2112`, `sidebarLeft/index.ts:686` | П-3 (с историями Б-4) |
 | Б-52 | Плашка «N новых чатов» над папкой, вступившей по ссылке (`createTopNotification`/`toggleTopNotification`, `chatlistTopNotification.tsx`), опрос `getChatlistUpdates` по `chatlist_update_period` в `onTabChange` | П-2 (не было) | `appDialogsManager.ts:1406-1548`, `sidebarLeft/chatlistTopNotification.tsx` | бэкенд: нет `chatlists.getChatlistUpdates`/`hideChatlistUpdates` и признака `dialogFilterChatlist` у папки (`domain.DialogFilter`) |
 
 ### Пачки бэклога

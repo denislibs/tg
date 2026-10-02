@@ -747,3 +747,29 @@ export const AppStickersTab =
     title: 'StickersName',
     getComponentModule: () => import('../sidebarRight/tabs/stickers.solid'),
   })
+
+// ── «Архив» (tweb :869-882) — задача 1-5 волны 7 ─────────────────────────────
+// Вкладка `archivedTab.solid.tsx`; открывает её `appSidebarLeft.openArchiveTab()`
+// (строка «Архив» списка и пункт бургера). Хуки жизненного цикла содержимое
+// вешает на сам экземпляр вкладки (`_onOpenAfterTimeout`/`_onClose`/
+// `_onCloseAfterTimeout`), как у оригинала; у нас — типом вместо `as any`.
+export type ArchivedTabHooks = {
+  _onOpenAfterTimeout?: () => void
+  _onClose?: () => void
+  _onCloseAfterTimeout?: () => void
+}
+
+export const AppArchivedTab =
+  scaffoldSolidJSTab({
+    title: 'ArchivedChats',
+    getComponentModule: () => import('../sidebarLeft/tabs/archivedTab.solid'),
+    onOpenAfterTimeout: function() {
+      (this as ArchivedTabHooks)._onOpenAfterTimeout?.()
+    },
+    onClose: function() {
+      (this as ArchivedTabHooks)._onClose?.()
+    },
+    onCloseAfterTimeout: function() {
+      (this as ArchivedTabHooks)._onCloseAfterTimeout?.()
+    },
+  })

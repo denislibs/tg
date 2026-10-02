@@ -42,7 +42,9 @@
 //    `MyNotesShort` при `onlyFirstName` — без потребителя, ключа у нас нет), и
 //    `withIcons` — значки после имени в строке списка чатов
 //    (`components/generateTitleIcons.ts`, синхронно из зеркала;
-//    `withPremiumIcon` — без потребителя).
+//    `withPremiumIcon` — без потребителя), и `limitSymbols` — обрезка имени
+//    (`getPeerTitle.ts:87-89`, ветка пира; у `fromName` — без потребителя; потребитель — подпись
+//    строки «Архив», `components/archiveDialog.solid.tsx`).
 //  • Имя идёт через `wrapEmojiText` (`lib/richtext/wrapEmojiText.ts`) — как в
 //    оригинале, где его прогоняет `getPeerTitle` (`wrappers/getPeerTitle.ts:91`,
 //    `plainText` там не передаётся) и ветка `fromName` самого `PeerTitle`
@@ -76,6 +78,8 @@ export interface PeerTitleOptions {
   meAsNotes?: boolean
   /** значки после имени: эмодзи-статус/премиум, верификация (tweb `withIcons`) */
   withIcons?: boolean
+  /** обрезать имя до стольких символов с многоточием (tweb `limitSymbols`) */
+  limitSymbols?: number
   middleware: Middleware
   managers: PeerTitleManagers
 }
@@ -121,7 +125,7 @@ export default class PeerTitle {
 
   /** Порт tweb `update` в применимом объёме (peerTitle.ts:104-200). */
   public update() {
-    const { fromName, peerId, onlyFirstName, dialog, meAsNotes, withIcons, managers, middleware } = this.options
+    const { fromName, peerId, onlyFirstName, dialog, meAsNotes, withIcons, limitSymbols, managers, middleware } = this.options
     if (!middleware()) {
       return
     }
@@ -173,7 +177,7 @@ export default class PeerTitle {
     // (`getPeerTitle.ts:62`), то есть промах кэша и удалённый аккаунт дают одну
     // и ту же надпись. Иначе пир, которого владелец отдать не может (удалён,
     // недоступен), остался бы пустым узлом навсегда.
-    const title = getPeerTitle({ peerId, peer, onlyFirstName })
+    const title = getPeerTitle({ peerId, peer, onlyFirstName, limitSymbols })
     // peerTitle.ts:196-229 — значки есть: имя во внутреннем `span.peer-title-inner`
     // (обрезка многоточием), значки — после него
     const icons = withIcons ? generateTitleIcons({ peerId, peer }) : []
