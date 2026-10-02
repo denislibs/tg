@@ -53,6 +53,7 @@ import attachStickerViewerListeners from '../stickerViewer'
 import ListenerSetter from '@helpers/listenerSetter'
 import { useImperativeIsland } from '../../core/hooks/useImperativeIsland'
 import { toggleStickerSet } from '../../core/stickers/toggleStickerSet'
+import isStickerSetAdded from '@core/stickers/isStickerSetAdded'
 import { useManagers } from '../../core/hooks/useManagers'
 import { publicStickerSetLink } from '../../core/publicLink'
 import { useMiddlewareHelper } from '../../core/hooks/useMiddlewareHelper'
@@ -203,13 +204,9 @@ export default function StickerSetModal({ address, open = true, onClose, onExitC
         if (!middleware()) return
         setSet(r.set)
         setStickers(r.stickers)
-        void managers.stickers.mySets().then(
-          (mine) => {
-            if (!middleware()) return
-            setInstalled(mine.some((s) => s.id === r.set.id))
-          },
-          () => {},
-        )
+        // «Установлен ли» — параметр самого набора (tweb popups/stickers.tsx:144
+        // `setUpdateAdded(isStickerSetAdded(set))`), а не поиск в моих наборах.
+        setInstalled(isStickerSetAdded(r.set))
       },
       () => {
         if (!middleware()) return

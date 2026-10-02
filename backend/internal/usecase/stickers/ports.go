@@ -13,8 +13,13 @@ import (
 type Repo interface {
 	// CreateSet создаёт набор; занятый slug → domain.ErrConflict.
 	CreateSet(ctx context.Context, set domain.StickerSetRecord) (domain.StickerSetRecord, error)
-	SetBySlug(ctx context.Context, slug string) (domain.StickerSetRecord, error) // domain.ErrNotFound
-	SetByID(ctx context.Context, id int64) (domain.StickerSetRecord, error)      // domain.ErrNotFound
+	// SetBySlug/SetByID/SearchSets/FeaturedSets/InstalledSets отдают набор
+	// со СРОКОМ УСТАНОВКИ тем, кто смотрит (viewerID): InstalledAt —
+	// `user_sticker_sets.added_at` его строки, нулевое время — он набор не
+	// ставил. Чужие установки не видны. На проводе это
+	// `stickerSet.installed_date` (tweb isStickerSetAdded).
+	SetBySlug(ctx context.Context, viewerID int64, slug string) (domain.StickerSetRecord, error) // domain.ErrNotFound
+	SetByID(ctx context.Context, viewerID, id int64) (domain.StickerSetRecord, error)            // domain.ErrNotFound
 	Stickers(ctx context.Context, setID int64) ([]domain.Sticker, error)
 	// AddSticker добавляет стикер в конец набора (position назначает хранилище).
 	AddSticker(ctx context.Context, s domain.Sticker) (domain.Sticker, error)
@@ -32,10 +37,10 @@ type Repo interface {
 	Uninstall(ctx context.Context, userID, setID int64) error // идемпотентно
 	// InstalledSets — установленные наборы пользователя по position.
 	InstalledSets(ctx context.Context, userID int64) ([]domain.StickerSetRecord, error)
-	SearchSets(ctx context.Context, q string, limit int) ([]domain.StickerSetRecord, error)
+	SearchSets(ctx context.Context, viewerID int64, q string, limit int) ([]domain.StickerSetRecord, error)
 	// FeaturedSets — «трендовые» наборы: по рангу (порядок Telegram-выдачи),
 	// затем наборы без ранга новейшими первыми; не больше limit.
-	FeaturedSets(ctx context.Context, limit int) ([]domain.StickerSetRecord, error)
+	FeaturedSets(ctx context.Context, viewerID int64, limit int) ([]domain.StickerSetRecord, error)
 	// CoverStickers — превью первых perSet стикеров каждого набора из setIDs,
 	// ОДНИМ запросом на всю выдачу (covered sets Telegram): экран поиска
 	// показывает сотни наборов разом, по SetBySlug на строку — N+1. Наборов

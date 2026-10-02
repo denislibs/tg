@@ -3,11 +3,13 @@
 // (renderFeatured → getFeaturedStickers; у нас GET /sticker-sets/featured),
 // ввод — searchStickerSets с дебаунсом 300мс (tweb InputSearch). Кнопка
 // Add/Added — toggleStickerSet: на время запроса гасится (disabled), состояние
-// «установлен» ведётся по mySets (у tweb — set.installed_date).
+// «установлен» — `installed_date` набора выдачи (tweb stickers.tsx:48
+// `isStickerSetAdded(set)`), дальше его ведут объявления установки/снятия.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import rootScope from '@lib/rootScope'
 import { useManagers } from './useManagers'
 import { toggleStickerSet } from '../stickers/toggleStickerSet'
+import isStickerSetAdded from '../stickers/isStickerSetAdded'
 import type { Covers, StickerSet } from '../managers/stickersManager'
 
 export function useStickersSearch(query: string) {
@@ -27,16 +29,6 @@ export function useStickersSearch(query: string) {
   // Устаревшие ответы отбрасываются счётчиком поколений (как useGifsSearch).
   const reqRef = useRef(0)
   const firstRef = useRef(true)
-
-  // Установленные наборы — источник Add/Added (tweb installed_date).
-  useEffect(() => {
-    let alive = true
-    managers.stickers.mySets().then(
-      (mine) => { if (alive) setInstalledIds(new Set(mine.map((s) => s.id))) },
-      () => {},
-    )
-    return () => { alive = false }
-  }, [managers])
 
   // Набор мог быть поставлен/снят не отсюда (попап набора, другая вкладка) —
   // Add/Added пересчитывается по объявлению, а не по своему же ответу
@@ -63,7 +55,13 @@ export function useStickersSearch(query: string) {
       setLoading(true)
       const p = q ? managers.stickers.searchSets(q) : managers.stickers.featuredSets()
       p.then(
-        (res) => { if (req === reqRef.current) { setSets(res.sets); setCovers(res.covers); setLoading(false) } },
+        (res) => {
+          if (req !== reqRef.current) return
+          setSets(res.sets)
+          setCovers(res.covers)
+          setInstalledIds(new Set(res.sets.filter(isStickerSetAdded).map((s) => s.id)))
+          setLoading(false)
+        },
         () => { if (req === reqRef.current) { setSets([]); setCovers(new Map()); setLoading(false) } },
       )
     }

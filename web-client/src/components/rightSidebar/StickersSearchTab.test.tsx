@@ -94,7 +94,6 @@ const makeSticker = (id: number) => ({ id, setId: 1, mediaId: 100 + id, emoji: '
 function makeManagers(over: Record<string, unknown> = {}) {
   const duck = makeSet(1, 'Duck')
   const fns = {
-    mySets: vi.fn().mockResolvedValue([]),
     // covers — превью строки, приезжает ОДНИМ пакетом с самой выдачей
     // (Task 2): семь стикеров набора, строка покажет первые min(5, count).
     featuredSets: vi.fn().mockResolvedValue({ sets: [duck], covers: new Map([[duck.id, [1, 2, 3, 4, 5, 6, 7].map(makeSticker)]]) }),
@@ -215,8 +214,14 @@ describe('StickersSearchTab — разметка tweb', () => {
     expect(button.classList.contains('gray')).toBe(true)
   })
 
-  it('уже установленный набор (mySets) сразу "Added"+gray; клик — uninstall', async () => {
-    const { managers, fns } = makeManagers({ mySets: vi.fn().mockResolvedValue([makeSet(1, 'Duck')]) })
+  // «Установлен ли» — `installed_date` самого набора выдачи (tweb
+  // stickers.tsx:48 `isStickerSetAdded(set)`), а не поиск в моих наборах:
+  // ручки «моих наборов» экран не зовёт вовсе (её нет в стабе).
+  it('набор трендов с installed_date сразу "Added"+gray; клик — uninstall', async () => {
+    const installed = { ...makeSet(1, 'Duck'), installed_date: 1787334148 }
+    const { managers, fns } = makeManagers({
+      featuredSets: vi.fn().mockResolvedValue({ sets: [installed], covers: new Map() }),
+    })
     renderTab({}, managers)
     await waitFor(() => {
       const b = document.querySelector('.sticker-set-button')

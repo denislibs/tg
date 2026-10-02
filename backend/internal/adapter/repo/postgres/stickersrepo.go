@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -23,25 +24,44 @@ func NewStickersRepo(pool *pgxpool.Pool) *StickersRepo { return &StickersRepo{po
 const setCols = `s.id, s.slug, s.title, s.kind, COALESCE(s.created_by, 0),
 	(SELECT count(*) FROM stickers st WHERE st.set_id = s.id), s.rank, COALESCE(s.cover_media_id, 0)`
 
-// setColsInstalled — те же колонки плюс СРОК УСТАНОВКИ: на проводе это
-// `stickerSet.installed_date`, параметр самого набора (Р2 разбора стикеров).
-// Отдельная константа, а не подзапрос в setCols: «установлен ли» — вопрос про
-// пару «пользователь + набор», и выборки без пользователя (тренды, поиск) на
-// него не отвечают вовсе.
-const setColsInstalled = setCols + `, uss.added_at`
+// setColsViewer — те же колонки плюс СРОК УСТАНОВКИ набора тем, кто смотрит:
+// на проводе это `stickerSet.installed_date`, параметр самого набора (Р5
+// разбора стикеров, tweb isStickerSetAdded). Ехать он обязан в КАЖДОЙ выдаче
+// набора — тренды, поиск, набор по id/slug, мои наборы: иначе один и тот же
+// набор в списке моих и в трендах выглядит по-разному, а вкладка поиска
+// стикеров рисует установленный набор с кнопкой «Add». Запрос с этими
+// колонками джойнит `user_sticker_sets uss` — viewerJoin либо, у моих наборов,
+// внутренним JOIN.
+const setColsViewer = setCols + `, uss.added_at`
+
+// viewerJoin — установка набора ТЕМ, кто смотрит ($1). LEFT: неустановленный
+// набор остаётся в выдаче с NULL вместо срока. Пара (user_id, set_id) —
+// первичный ключ, поэтому строк не множит: чужие установки того же набора в
+// джойн не попадают вовсе.
+const viewerJoin = ` LEFT JOIN user_sticker_sets uss ON uss.set_id = s.id AND uss.user_id = $1`
 
 func scanSet(s scanner) (domain.StickerSetRecord, error) {
 	var set domain.StickerSetRecord
+	var installedAt *time.Time
 	err := s.Scan(&set.ID, &set.Slug, &set.Title, &set.Kind, &set.CreatedBy, &set.StickerCount,
-		&set.Rank, &set.CoverMediaID)
+		&set.Rank, &set.CoverMediaID, &installedAt)
+	if installedAt != nil {
+		set.InstalledAt = *installedAt
+	}
 	return set, err
 }
 
-func scanSetInstalled(s scanner) (domain.StickerSetRecord, error) {
-	var set domain.StickerSetRecord
-	err := s.Scan(&set.ID, &set.Slug, &set.Title, &set.Kind, &set.CreatedBy, &set.StickerCount,
-		&set.Rank, &set.CoverMediaID, &set.InstalledAt)
-	return set, err
+func scanSets(rows pgx.Rows) ([]domain.StickerSetRecord, error) {
+	defer rows.Close()
+	var out []domain.StickerSetRecord
+	for rows.Next() {
+		set, err := scanSet(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, set)
+	}
+	return out, rows.Err()
 }
 
 func (r *StickersRepo) CreateSet(ctx context.Context, set domain.StickerSetRecord) (domain.StickerSetRecord, error) {
@@ -94,18 +114,18 @@ func (r *StickersRepo) StickerPositions(ctx context.Context, setID int64) (map[i
 	return out, rows.Err()
 }
 
-func (r *StickersRepo) SetBySlug(ctx context.Context, slug string) (domain.StickerSetRecord, error) {
+func (r *StickersRepo) SetBySlug(ctx context.Context, viewerID int64, slug string) (domain.StickerSetRecord, error) {
 	set, err := scanSet(querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT `+setCols+` FROM sticker_sets s WHERE s.slug=$1`, slug))
+		`SELECT `+setColsViewer+` FROM sticker_sets s`+viewerJoin+` WHERE s.slug=$2`, viewerID, slug))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.StickerSetRecord{}, domain.ErrNotFound
 	}
 	return set, err
 }
 
-func (r *StickersRepo) SetByID(ctx context.Context, id int64) (domain.StickerSetRecord, error) {
+func (r *StickersRepo) SetByID(ctx context.Context, viewerID, id int64) (domain.StickerSetRecord, error) {
 	set, err := scanSet(querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT `+setCols+` FROM sticker_sets s WHERE s.id=$1`, id))
+		`SELECT `+setColsViewer+` FROM sticker_sets s`+viewerJoin+` WHERE s.id=$2`, viewerID, id))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.StickerSetRecord{}, domain.ErrNotFound
 	}
@@ -294,7 +314,7 @@ func (r *StickersRepo) Uninstall(ctx context.Context, userID, setID int64) error
 
 func (r *StickersRepo) InstalledSets(ctx context.Context, userID int64) ([]domain.StickerSetRecord, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT `+setColsInstalled+`
+		`SELECT `+setColsViewer+`
 		   FROM user_sticker_sets uss
 		   JOIN sticker_sets s ON s.id = uss.set_id
 		  WHERE uss.user_id=$1
@@ -302,62 +322,35 @@ func (r *StickersRepo) InstalledSets(ctx context.Context, userID int64) ([]domai
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []domain.StickerSetRecord
-	for rows.Next() {
-		set, e := scanSetInstalled(rows)
-		if e != nil {
-			return nil, e
-		}
-		out = append(out, set)
-	}
-	return out, rows.Err()
+	return scanSets(rows)
 }
 
-func (r *StickersRepo) SearchSets(ctx context.Context, q string, limit int) ([]domain.StickerSetRecord, error) {
+func (r *StickersRepo) SearchSets(ctx context.Context, viewerID int64, q string, limit int) ([]domain.StickerSetRecord, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT `+setCols+`
-		   FROM sticker_sets s
-		  WHERE s.title ILIKE '%' || $1 || '%' OR s.slug ILIKE '%' || $1 || '%'
+		`SELECT `+setColsViewer+`
+		   FROM sticker_sets s`+viewerJoin+`
+		  WHERE s.title ILIKE '%' || $2 || '%' OR s.slug ILIKE '%' || $2 || '%'
 		  ORDER BY s.id
-		  LIMIT $2`, escapeLike(q), limit)
+		  LIMIT $3`, viewerID, escapeLike(q), limit)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []domain.StickerSetRecord
-	for rows.Next() {
-		set, e := scanSet(rows)
-		if e != nil {
-			return nil, e
-		}
-		out = append(out, set)
-	}
-	return out, rows.Err()
+	return scanSets(rows)
 }
 
 // FeaturedSets — «трендовые» наборы: сначала по rank (1,2,3… — порядок
 // messages.getFeaturedStickers из Telegram), затем наборы без ранга (rank=0)
 // новейшими первыми.
-func (r *StickersRepo) FeaturedSets(ctx context.Context, limit int) ([]domain.StickerSetRecord, error) {
+func (r *StickersRepo) FeaturedSets(ctx context.Context, viewerID int64, limit int) ([]domain.StickerSetRecord, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT `+setCols+`
-		   FROM sticker_sets s
+		`SELECT `+setColsViewer+`
+		   FROM sticker_sets s`+viewerJoin+`
 		  ORDER BY (s.rank = 0), s.rank, s.id DESC
-		  LIMIT $1`, limit)
+		  LIMIT $2`, viewerID, limit)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []domain.StickerSetRecord
-	for rows.Next() {
-		set, e := scanSet(rows)
-		if e != nil {
-			return nil, e
-		}
-		out = append(out, set)
-	}
-	return out, rows.Err()
+	return scanSets(rows)
 }
 
 func (r *StickersRepo) TouchRecent(ctx context.Context, userID, mediaID int64, keep int) error {
