@@ -157,7 +157,7 @@ messages» и правая панель «Saved Messages / 4 chats» с вкла
 | онлайн-точка «Избранного» | `ChatListItem.tsx` | нет |
 | строка «This bot is verified…» | `peerProfile.solid.tsx::BotVerification`, `components/generateVerifiedIcon.ts`, спрайт в `index.html`, `styles/tweb/_bridge.scss` (`.verified-icon-*`) | **порт** официальной ветки; ветка `bot_verification` — предмета нет |
 | правая панель «Избранного» | `UserInfoPanel.tsx` (`noProfile`) | **порт**: без профиля и карусели, шапка сразу в режиме shared media, «назад» закрывает |
-| «My Notes» | `sidebarRight/savedDialogsTab.solid.tsx` + `components/avatar.ts` (`meAsNotes`) | иконка `mynotes` |
+| «My Notes» | строка `DialogElement` сохранённого диалога (`lib/appDialogsManager.ts`, С10; список — `autonomousDialogList/savedDialogs.ts`) + `components/avatar.ts`/`chat/peerTitle.ts` (`meAsNotes`) | иконка `mynotes`, имя `MyNotes` |
 | строки поиска | `lib/appDialogsManager.ts` (раздел «СТРОКА ДИАЛОГА»; до задачи 1-1 волны 7 — `components/dialogRow.ts`) — `meAsSaved = true` по умолчанию (как `:301`), `sortedUserList.ts` передаёт `false` | «Saved Messages» в выдаче/Recent |
 | «Поделиться» | `shared/ui/PeerSelector/PeerSelector.tsx` (`verified`), `messages/ChatDialogs.tsx` | галочка у имени, подпись по пиру; фильтр — `fix/contacts-share-pickers` (#319) |
 
@@ -169,7 +169,7 @@ messages» и правая панель «Saved Messages / 4 chats» с вкла
    `messages.saved_peer_id` + заполнение при пересылке в «Избранное» + миграция старых строк по
    `fwd_from_*` + `GET /chats/{self}/history?saved_peer_id=`; клиент: `ChatType.Saved` в
    `bubbles.ts`/`Chat.tsx`, `meAsNotes` в шапке). Сейчас клик открывает оригинальный чат пира
-   (`savedDialogsTab.solid.tsx`, шапка).
+   (`setListClickListener` в `lib/appDialogsManager.ts`, `// О-110 волна 7`).
 2. **`PeerTitle` `withIcons`** (`chat/peerTitle.ts` + `components/generateTitleIcons.ts`) включён
    только у строки списка чатов (задача 1-4 волны 7): галочка, премиум/эмодзи-статус; fake/scam,
    monoforum и `bot_verification_icon` — без предмета в модели пира. В строках

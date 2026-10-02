@@ -44,7 +44,7 @@
  *     на своё и чужое (см. `web-client/CLAUDE.md`, «Градиент обоев»).
  *  7. `AvatarNewTsx`/`PeerTitleTsx` — наши императивные `avatarNew`
  *     (`components/avatar.ts`) и `PeerTitle` (`components/chat/peerTitle.ts`)
- *     узлом в `Row.Media`/`Row.Title`, как у `sidebarRight/savedDialogsTab`.
+ *     узлом в `Row.Media`/`Row.Title`, как у строки `DialogElement`.
  *     `withIcons` (значки верификации/премиума) у нашего `PeerTitle` нет.
  *  8. Вызовы `appImManager` — до его порта (этап 4/5 волны 7): перезвон —
  *     наш движок звонков (ВРЕМЕННО до 5-5), «Показать в чате» —

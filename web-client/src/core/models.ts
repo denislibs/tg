@@ -493,10 +493,10 @@ export function isOurMessage(m: MyMessage, chat: OurMessageChat): boolean {
  * тред у нас бывает только у форум-топика и у комментариев канала, а
  * «Избранное» (единственный чат, где `peerId === myId`) ни тем, ни другим не
  * бывает. Окна сохранённого диалога (tweb `ChatType.Saved`, где `threadId` —
- * это `savedPeerId`) у нас нет вовсе: строка списка «Избранного» открывает
- * ОРИГИНАЛЬНЫЙ чат пира (`sidebarRight/savedDialogsTab.solid.tsx` →
- * `core/navigation/openPeer.ts`), а
- * не под-окно «Избранного».
+ * это `savedPeerId`) у нас нет вовсе (О-110 плана волны 7): строка списка
+ * «Избранного» открывает ОРИГИНАЛЬНЫЙ чат пира (`setListClickListener` в
+ * `lib/appDialogsManager.ts` → `core/navigation/openPeer.ts`), а не под-окно
+ * «Избранного».
  *
  * `this.peerId` оригинала здесь — `message.peerId`: окно одно, и все его
  * сообщения принадлежат ему же.

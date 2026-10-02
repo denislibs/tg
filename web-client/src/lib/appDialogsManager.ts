@@ -260,8 +260,7 @@ const log = logger('DIALOGS', LogTypes.Error)
 //      не ставятся, а «✓/✓✓» считаются по `read_outbox_max_id` диалога
 //      (`components/sendingStatus.ts`, расхождение 1).
 //  С3. Чего нет в модели, того нет и в строке (ветки удалены, а не заглушены):
-//      сохранённые диалоги строкой (`isSavedDialog`, `threadId` = saved peer —
-//      задача 1-7), темы форума строкой (`isForumTopic`, `closed`, `not-visited`
+//      темы форума строкой (`isForumTopic`, `closed`, `not-visited`
 //      — задача 1-6), монофорум и «все чаты» (`monoforumParentPeerId`,
 //      `asAllChats`, О-4), сообщества (`subtitlePeerId`, `getEmptySubtitle`, О-5),
 //      ограничения/чувствительное/самоуничтожающееся медиа (`isMessageRestricted`,
@@ -270,6 +269,8 @@ const log = logger('DIALOGS', LogTypes.Error)
 //      (`filter.pinnedPeerIds`) — `// О-70 волна 7`; непрочитанное форума по
 //      темам (`getForumUnreadCount`, `no-unmuted-topic`) — `// О-71 волна 7`;
 //      «отметить непрочитанным» (`pFlags.unread_mark`) — `// О-72 волна 7`;
+//      закреп сохранённого диалога (`dialog.pFlags.pinned` у `isSaved`,
+//      `:2709`) — `// О-111 волна 7`;
 //      бейдж голосов опроса (`unread_poll_votes_count`, `createPollVotesBadge`)
 //      — `// О-73 волна 7`; перекраска частиц спойлера активной строки
 //      (b2df09771, `DotRenderer.setInlineSpoilersTextColor`) — `// О-74 волна 7`.
@@ -300,6 +301,14 @@ const log = logger('DIALOGS', LogTypes.Error)
 //      папки). Звонок в группе (`xd.processDialogForCallStatus`) — `// О-96 волна 7`:
 //      `call_active` у чата в модели нет. `addListDialog` — без ленивой догрузки
 //      истории по видимости (`lazyLoadQueue`, `:2889-2926`): очереди нет.
+// С10. Сохранённый диалог строкой (`isSavedDialog`: свой пир + `threadId` —
+//      пир-источник, `:345-348`; задача 1-7, `autonomousDialogList/savedDialogs.ts`).
+//      Его диалог — из страницы списка (`options.dialog`, `SavedDialog`), а не из
+//      `dialogsStorage.getAnyDialog(myId, threadId)` (`:2836-2843`): хранилища
+//      сохранённых диалогов у нас нет, набор приезжает одним ответом
+//      (`chats.savedDialogs`). Подсветка активной строки при сборке не ставится:
+//      у оригинала она сравнивает с открытым окном `ChatType.Saved` (`:384-390`),
+//      а такого окна у нас нет (`// О-110 волна 7`).
 //  С9. Порядок частей строки задаёт HEAD `rowTsx.tsx:247-257` (заголовок →
 //      подпись → аватар), живые дампы `docs/tweb/dom/dumps/15-right-14…` сняты со
 //      старой базы (подпись → заголовок); вид не меняется — места раскладывает
@@ -407,6 +416,8 @@ export type DialogElementOptions = {
   /** строка НЕ в главном списке чатов: без `href` (tweb `:428-430`) */
   autonomous?: boolean,
   wrapOptions: { middleware?: Middleware },
+  /** tweb `:253`: у своего пира — пир-источник сохранённого диалога (С10); темы форума — 1-6 */
+  threadId?: number,
   /** строка главного списка — ей положен бейдж на аватаре в узкой колонке (`:2770`) */
   isMainList?: boolean,
   /** менеджеры строки (у оригинала — синглтон, С1) */
@@ -459,6 +470,7 @@ export class DialogElement {
     meAsSaved = true,
     avatarSize = 'bigger',
     autonomous,
+    threadId,
     wrapOptions,
     isMainList,
     managers,
@@ -469,11 +481,11 @@ export class DialogElement {
     this.middlewareHelper = wrapOptions.middleware ? wrapOptions.middleware.create() : getMiddleware()
     const middleware = this.middlewareHelper.get()
 
-    // tweb `:321-332`; `havePadding` безусловный — тем форума и `asAllChats` нет (С3)
+    // tweb `:321-332`; `asAllChats` нет (С3)
     attachRowController(this, {
       clickable: true,
       noRipple: !rippleEnabled,
-      havePadding: true,
+      havePadding: !threadId,
       title: true,
       titleRightSecondary: true,
       subtitle: true,
@@ -488,12 +500,18 @@ export class DialogElement {
     this.subtitleRight.remove()
     this.managers = managers
 
+    // tweb `:345-348` — темы форума строкой (`isForumTopic`) — задача 1-6 (С3)
+    const isSavedDialog = !!threadId && peerId === rootScope.myId
+
+    const usePeerId = isSavedDialog ? threadId! : peerId
+
     // tweb `:350-374`
     const avatar = avatarNew({
       middleware,
       size: avatarSizeMap[avatarSize]!,
-      peerId,
+      peerId: usePeerId,
       isDialog: !!meAsSaved,
+      meAsNotes: isSavedDialog,
       managers,
     })
     const avatarEl = avatar.node
@@ -509,7 +527,7 @@ export class DialogElement {
     this.titleRow.classList.add('dialog-title')
 
     // tweb `:397-411` — имя пира узлом `.peer-title`
-    const peerTitle = new PeerTitle({ peerId, dialog: meAsSaved, withIcons: true, middleware, managers })
+    const peerTitle = new PeerTitle({ peerId: usePeerId, dialog: meAsSaved, withIcons: true, meAsNotes: isSavedDialog, middleware, managers })
     titleSpanContainer.append(peerTitle.element)
 
     const span = this.subtitle
@@ -528,6 +546,8 @@ export class DialogElement {
     }
 
     li.dataset.peerId = '' + peerId
+
+    if(threadId) li.dataset.threadId = '' + threadId
 
     // tweb `:448-458`
     const statusSpan = document.createElement('span')
@@ -799,6 +819,22 @@ export type AppDialogsManagerHooks = {
 
 type FilterLike = { id: number, localId: number }
 
+/**
+ * ВРЕМЕННО до Э4-1: у tweb владелец — синглтон модуля (`export default
+ * appDialogsManager`, `:3066`), и чужие списки (вкладка «Чаты» правой колонки,
+ * `appSearchSuper.ts:2219-2240`) берут его импортом. У нас экземпляр живёт с
+ * колонкой (расхождение 1) — запущенный отдаёт этот геттер.
+ */
+let startedManager: AppDialogsManager | undefined
+
+export function getAppDialogsManager(): AppDialogsManager {
+  if(!startedManager) {
+    throw new Error('appDialogsManager: the owner is not started (a list is built outside the column)')
+  }
+
+  return startedManager
+}
+
 /** tweb `FilterRendered` (`:500-511`) в портированном объёме: контейнер папки и его скроллер. */
 type FilterRendered = { id: number, container: HTMLElement, scrollable: Scrollable }
 
@@ -843,6 +879,8 @@ export class AppDialogsManager {
     this.host = host
     this.chatsContainer = chatsContainer
     this.hooks = hooks
+    // eslint-disable-next-line typescript/no-this-alias -- синглтон tweb (`:3066`), ВРЕМЕННО до Э4-1
+    startedManager = this
 
     this.contextMenu = new DialogsContextMenu(hooks.managers, this) // `:850`, расхождение 23
 
@@ -959,6 +997,7 @@ export class AppDialogsManager {
     }
 
     const folders = useFolders()
+    if(startedManager === this) startedManager = undefined // ВРЕМЕННО до Э4-1
     this.middlewareHelper.clean()
     this.showFiltersPromise = undefined
     this.disposeListeners?.()
@@ -1302,7 +1341,7 @@ export class AppDialogsManager {
    * (`lazyLoadQueue`, `:2889-2926`) не портирована: очереди нет (шапка
    * `components/avatar.ts`).
    */
-  public addListDialog(options: Omit<Parameters<typeof addDialogNew>[0], 'managers'> & { isBatch?: boolean }) {
+  public addListDialog(options: Omit<Parameters<typeof addDialogNew>[0], 'managers'> & { isBatch?: boolean, dialog?: SavedDialog }) {
     const ret = addDialogNew({ ...options, managers: this.managers, autonomous: false })
 
     // В7-1: строка секретного чата — замок и зелёное имя (у tweb секретных чатов нет)
@@ -1313,7 +1352,8 @@ export class AppDialogsManager {
 
     void this.initDialog(ret, options)
 
-    if(this.getActivePeerId() === options.peerId) {
+    // С10: окна сохранённого диалога нет — его строка активной не бывает
+    if(!options.threadId && this.getActivePeerId() === options.peerId) {
       this.setDialogActive(ret.dom.listEl, true)
     }
 
@@ -1324,9 +1364,10 @@ export class AppDialogsManager {
    * tweb `:2931-2983`: подзаголовок с бейджами, онлайн-точка и «печатает».
    * Звонок в группе (`processDialogForCallStatus`) — О-96.
    */
-  public initDialog(dialogElement: DialogElement, options: { peerId: PeerId, isBatch?: boolean, lastMessage?: MyMessage }) {
+  public initDialog(dialogElement: DialogElement, options: { peerId: PeerId, isBatch?: boolean, lastMessage?: MyMessage, dialog?: SavedDialog }) {
     const { peerId } = options
-    const dialog = getDialog(peerId)
+    // `getDialog(options.dialog || peerId, {threadOrSavedId})` (`:2932-2935`) — С10
+    const dialog = options.dialog ?? getDialog(peerId)
 
     if(peerId !== rootScope.myId && isUser(peerId)) {
       const status = useChatsStore.getState().presence[peerId]
@@ -1460,10 +1501,30 @@ const NO_LIST: DialogListContext = {
 }
 
 /**
- * Диалог строки. У поиска это только пир (`{_: 'dialog', peerId} as any`,
- * tweb `:2992`), у списка — диалог зеркала целиком.
+ * tweb `SavedDialog` (`appMessagesManager.ts`, `savedDialog` схемы в обработке
+ * `dialogsStorage`) в объёме нашей модели (С10): `peerId` — свой пир, как у
+ * оригинала, `savedPeerId` — пир-источник, `index` — порядок страницы
+ * (`index_0` у оригинала, расхождение 2 `autonomousDialogList/savedDialogs.ts`),
+ * `lastMessage` — уже разрешённый `top_message` (В7-3).
  */
-export type PossibleDialog = Dialog | { _?: undefined, peerId: PeerId }
+export type SavedDialog = {
+  _: 'savedDialog',
+  peerId: PeerId,
+  savedPeerId: PeerId,
+  index: number,
+  lastMessage?: MyMessage,
+}
+
+/** tweb `utils/dialogs/isDialog.ts:9-11` */
+export function isSavedDialog(dialog: PossibleDialog): dialog is SavedDialog {
+  return dialog._ === 'savedDialog'
+}
+
+/**
+ * Диалог строки. У поиска это только пир (`{_: 'dialog', peerId} as any`,
+ * tweb `:2992`), у списка — диалог зеркала целиком либо сохранённый (С10).
+ */
+export type PossibleDialog = Dialog | SavedDialog | { _?: undefined, peerId: PeerId }
 
 const isFullDialog = (dialog: PossibleDialog): dialog is Dialog => dialog._ === 'dialog'
 
@@ -1570,18 +1631,24 @@ export function setListClickListener({
 
     const peerId: PeerId = +elem.dataset.peerId!
     const lastMsgId = +elem.dataset.mid! || undefined
+    const threadId = +elem.dataset.threadId! || undefined
 
-    // tweb `setPeerFunc({peerId, lastMsgId})` — прыжок ставится до открытия:
-    // лента потребляет `pendingJump`, когда чат откроется.
+    // tweb `setPeerFunc({peerId, lastMsgId, threadId})` — прыжок ставится до
+    // открытия: лента потребляет `pendingJump`, когда чат откроется.
     const openChat = () => {
       if(lastMsgId) {
         requestMessageJump(peerId, lastMsgId)
       }
 
-      const peer = cachedPeer(peerId)
+      // О-110 волна 7: окна сохранённого диалога (`setInnerPeer({peerId: myId, threadId})`
+      // → `ChatType.Saved`, tweb `appImManager.ts:3400-3404`) у нас нет — строка
+      // сохранённого диалога открывает чат самого источника
+      const openPeerId = threadId && peerId === rootScope.myId ? threadId : peerId
+      const peer = cachedPeer(openPeerId)
+      // ВРЕМЕННО до Э4-3: `appImManager.setPeer`/`setInnerPeer` (`:2094`) — `openPeer`
       openPeer(managers, {
-        id: peerId,
-        title: getPeerTitle({ peerId, peer }),
+        id: openPeerId,
+        title: getPeerTitle({ peerId: openPeerId, peer }),
         username: peer?._ === 'user' ? peer.username : undefined,
         photoId: getPeerPhotoId(getPeerPhoto(peer)) || undefined,
       })
@@ -1643,7 +1710,10 @@ export function setLastMessageN(options: SetLastMessageOptions) {
  */
 function getLastMessageForDialog(dialog: PossibleDialog, lastMessage?: MyMessage) {
   let draftMessage: DraftMessageReal | undefined
-  if(!lastMessage && isFullDialog(dialog)) {
+  // С10: у сохранённого диалога черновика нет, последнее — его `topMessage`
+  if(!lastMessage && isSavedDialog(dialog)) {
+    lastMessage = dialog.lastMessage
+  } else if(!lastMessage && isFullDialog(dialog)) {
     const draft = realDraft(dialog.draft)
     if(draft && (!isAnyChat(dialog.peerId) || !isForum(cachedChat(dialog.peerId)))) {
       draftMessage = draft
@@ -1657,12 +1727,13 @@ function getLastMessageForDialog(dialog: PossibleDialog, lastMessage?: MyMessage
 
 /**
  * tweb `:2437-2483` (0af53a342) — всё, из чего рисуется подзаголовок, одной
- * строкой. Без `isSaved`/`subtitlePeerId`/`isRestricted`/`isSensitive`/
+ * строкой. Без `subtitlePeerId`/`isRestricted`/`isSensitive`/
  * `ttl_seconds` (С3); `fwdFromId` у нас — наличие `fwd_from` (иконка рисуется
  * по нему, `components/wrappers/dialogSubtitle.ts`).
  */
 function getLastMessageRenderKey(options: {
   peerId: PeerId,
+  isSaved: boolean,
   lastMessage?: MyMessage,
   draftMessage?: DraftMessageReal,
   highlightWord?: string,
@@ -1674,6 +1745,7 @@ function getLastMessageRenderKey(options: {
 
   return [
     options.peerId,
+    options.isSaved,
     options.highlightWord,
     options.noForwardIcon,
     draftMessage?.date,
@@ -1723,6 +1795,7 @@ async function setLastMessage({
 }: SetLastMessageOptions) {
   const { dom } = dialogElement
   const { peerId } = dialog
+  const isSaved = isSavedDialog(dialog)
 
   const { deferred: promise, middleware } = setPromiseMiddleware(dom, 'setLastMessagePromise')
 
@@ -1730,12 +1803,13 @@ async function setLastMessage({
 
   const isSearch = !setUnread
   // * do not uncomment `setUnread` - unsetTyping right after this call will interrupt setting unread badges
-  if(!isSearch && isFullDialog(dialog)) {
+  if(!isSearch && (isFullDialog(dialog) || isSaved)) {
     void setUnreadMessagesN({ dialog, dialogElement, isBatch, setLastMessagePromise: promise, list })
   }
 
   const renderKey = getLastMessageRenderKey({
     peerId,
+    isSaved,
     lastMessage,
     draftMessage,
     highlightWord,
@@ -1834,6 +1908,7 @@ async function setLastMessage({
     const withoutMediaType = !!mediaContainer && !!(lastMessage && getMessageText(lastMessage))
     const parts = await renderDialogSubtitleParts({
       peerId,
+      isSaved,
       lastMessage,
       draftMessage,
       noForwardIcon,
@@ -1860,7 +1935,7 @@ async function setLastMessage({
 }
 
 export type SetUnreadMessagesOptions = {
-  dialog: Dialog,
+  dialog: Dialog | SavedDialog,
   dialogElement: DialogElement,
   isBatch?: boolean,
   setLastMessagePromise?: Promise<void>,
@@ -1877,8 +1952,9 @@ export function setUnreadMessagesN(options: SetUnreadMessagesOptions) {
  * tweb `:2682-2823`. Факты — синхронно из зеркал (мосты чтения п. 2 плана
  * волны 7): мьют — `stores/notifyStore.ts::isDialogMuted` (порт
  * `isPeerLocalMuted({respectType: true})`, правило одно на приложение), закреп
- * и непрочитанное — из диалога (О-70…О-72). Темы, сохранённые диалоги,
- * монофорум и «все чаты» — С3.
+ * и непрочитанное — из диалога (О-70…О-72). Сохранённый диалог — С10: мьют
+ * своего пира, без непрочитанного и упоминаний (`:2700-2786`). Темы, монофорум
+ * и «все чаты» — С3.
  */
 async function setUnreadMessages({
   dialog,
@@ -1891,19 +1967,22 @@ async function setUnreadMessages({
   const { deferred, middleware } = setPromiseMiddleware(dom, 'setUnreadMessagePromise')
 
   const { peerId } = dialog
-  const isMuted = isDialogMuted(dialog, cachedChat(peerId), useNotifyStore.getState().settings)
-  const { draftMessage, lastMessage } = getLastMessageForDialog(dialog)
-  const isPinned = isDialogPinned(dialog, list.filterId)
-  const isUnread = isDialogUnread(dialog)
+  const isSaved = isSavedDialog(dialog)
+  // `isPeerLocalMuted({peerId})` (`:2707`) — у сохранённого `peerId` свой, мьют «Избранного»
+  const isMuted = isDialogMuted(isSaved ? getDialog(peerId) : dialog, cachedChat(peerId), useNotifyStore.getState().settings)
+  const { draftMessage, lastMessage } = !isSaved ? getLastMessageForDialog(dialog) : {}
+  // О-111 волна 7: закрепа сохранённых диалогов на бэкенде нет (`dialog.pFlags.pinned`, `:2709`)
+  const isPinned = isSaved ? false : isDialogPinned(dialog, list.filterId)
+  const isUnread = isSaved ? false : isDialogUnread(dialog)
 
   // tweb `:2723-2726`: значок у своего последнего исходящего, не в «Избранном»;
   // «прочитан ли» — по горизонту собеседника (С2)
   let sendingStatus: SendingStatusIcon | undefined
-  if(!draftMessage && lastMessage && lastMessage.pFlags.out && lastMessage.peerId !== rootScope.myId) {
+  if(!isSaved && !draftMessage && lastMessage && lastMessage.pFlags.out && lastMessage.peerId !== rootScope.myId) {
     sendingStatus = lastMessage.id > dialog.read_outbox_max_id ? 'check' : 'checks'
   }
 
-  const unreadCount = dialog.unread_count
+  const unreadCount = isSaved ? 0 : dialog.unread_count
 
   // * have to await all promises before modifying something
 
@@ -1929,11 +2008,11 @@ async function setUnreadMessages({
   // * must be derived from it too — not from `dialog.unread_count` (О-71)
   const { isMention, hasMentionsBadge } = getDialogMentionBadgeState({
     unreadCount,
-    unreadMessagesCount: dialog.unread_count,
-    unreadMentionsCount: dialog.unread_mentions_count,
+    unreadMessagesCount: isSaved ? 0 : dialog.unread_count,
+    unreadMentionsCount: isSaved ? 0 : dialog.unread_mentions_count,
     hasUnreadBadge,
   })
-  const hasReactionsBadge = !!dialog.unread_reactions_count
+  const hasReactionsBadge = isSaved ? false : !!dialog.unread_reactions_count
   let unreadBadgeText: string | undefined
   if(hasUnreadBadge) {
     unreadBadgeText = isMention ? '@' : '' + (unreadCount ? formatNumber(unreadCount, 1) : ' ')
@@ -1992,12 +2071,12 @@ export function getDialog(dialog: Dialog | PeerId): Dialog {
  */
 export function initDialog(dialogElement: DialogElement, options: {
   peerId: PeerId,
-  dialog?: Dialog,
+  dialog?: Dialog | SavedDialog,
   isBatch?: boolean,
   lastMessage?: MyMessage,
   list?: DialogListContext,
 }) {
-  const dialog = getDialog(options.dialog || options.peerId)
+  const dialog = options.dialog && isSavedDialog(options.dialog) ? options.dialog : getDialog(options.dialog || options.peerId)
   return setLastMessageN({
     dialog,
     dialogElement,

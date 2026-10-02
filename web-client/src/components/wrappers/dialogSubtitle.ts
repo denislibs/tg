@@ -6,9 +6,8 @@
 // `setLastMessage` (`lib/appDialogsManager.ts`).
 //
 // Расхождения с оригиналом:
-//  1. `isSaved` (`:21`, сохранённый диалог — строка «Избранного» с `threadId`) не
-//     принимается: сохранённых диалогов строкой у нас нет (задача 1-7 волны 7,
-//     `AutonomousSavedDialogList`). С ним ушло условие `!isSaved` у иконки пересылки.
+//  1. (снято задачей 1-7 волны 7: `isSaved` принимается — сохранённый диалог строкой,
+//     `AutonomousSavedDialogList`.)
 //  2. Иконка `storyreply` (`:56-61`) — ответа на историю (`messageReplyStoryHeader`)
 //     в нашей модели нет (`core/models.ts::MessageReplyHeader`).
 //  3. `prependPeerId` и стрелка `dialog-subtitle-arrow` (`:84-148`) — имя чата
@@ -40,6 +39,7 @@ type MiddlewarePromise = ReturnType<typeof middlewarePromise>
 
 export default async function renderDialogSubtitleParts(options: {
   peerId: PeerId,
+  isSaved: boolean,
   lastMessage?: MyMessage,
   draftMessage?: DraftMessageReal,
   noForwardIcon?: boolean,
@@ -52,6 +52,7 @@ export default async function renderDialogSubtitleParts(options: {
 }) {
   const {
     peerId,
+    isSaved,
     lastMessage,
     draftMessage,
     noForwardIcon,
@@ -60,7 +61,7 @@ export default async function renderDialogSubtitleParts(options: {
   const willPrepend: (Promise<HTMLElement> | HTMLElement)[] = []
 
   // tweb `:47-61` — у черновика иконки нет
-  if(!draftMessage && lastMessage?._ === 'message' && lastMessage.fwd_from && !noForwardIcon) {
+  if(!draftMessage && lastMessage?._ === 'message' && lastMessage.fwd_from && !isSaved && !noForwardIcon) {
     willPrepend.push(Icon('forward_filled', 'dialog-subtitle-ico', 'dialog-subtitle-ico-forward_filled'))
   }
 

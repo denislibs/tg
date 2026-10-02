@@ -9,7 +9,7 @@
 //  1. Индекс ключа — из зеркала `chatsStore.dialogIndexById` (его считает
 //     владелец диалогов), см. расхождение 1 `autonomousDialogList/base.ts`;
 //     `indexKey` заменён `filterId` списка (`isMainList` — список «Всех чатов»).
-//  2. `CustomSortedDialog`, `virtualFilterId`, `monoforumParentPeerId`,
+//  2. `CustomSortedDialog`, `monoforumParentPeerId`,
 //     `getAsAllChats`, `attachCommunityChildBadge` — строки сообществ, тем
 //     форума и монофорума (О-5, задача 1-6, О-4); `getDialogAutoDeletePeriod` —
 //     таймер автоудаления на аватаре у нашего `avatarNew` не портирован (шапка
@@ -20,6 +20,13 @@
 //  5. `controlled: true` (`getDialogOptions`) у нашей строки по умолчанию: без
 //     `wrapOptions.middleware` `DialogElement` заводит свой корень зоны (С4 шапки
 //     раздела «СТРОКА ДИАЛОГА» `lib/appDialogsManager.ts`).
+//  6. `virtualFilterId` — только сохранённые диалоги (`virtualFilterId === myId`,
+//     задача 1-7): их индекс и сам диалог список спрашивает не у
+//     `dialogsStorage.getDialogIndex(myId, indexKey, key)`/`getAnyDialog`
+//     (`:143-162`, `appDialogsManager.ts:2836-2843`) — хранилища сохранённых
+//     диалогов у нас нет, — а у страницы своего владельца (`savedDialogs`, его
+//     даёт `AutonomousSavedDialogList`). Строки тем форума (`virtualFilterId` —
+//     форум) — задача 1-6.
 import { batch, onCleanup } from 'solid-js'
 import type { AppDialogsManager, DialogElement } from '@lib/appDialogsManager'
 import { logger } from '@lib/logger'
@@ -28,6 +35,12 @@ import type { LoadingDialogSkeletonSize } from '@components/loadingDialogSkeleto
 import type Scrollable from '@components/scrollable'
 import { ALL_FOLDER_ID } from '@core/folderIds'
 import { getDialogIndex } from '@components/autonomousDialogList/base'
+import type { SavedDialog } from '@lib/appDialogsManager'
+
+/** Страница сохранённых диалогов владельца — расхождение 6. */
+export type SortedSavedDialogs = {
+  getDialog(key: PeerId): SavedDialog | undefined,
+}
 
 export type SortedDialogListKey = PeerId | CustomPinnedDialog
 
@@ -37,6 +50,8 @@ export default class SortedDialogList {
   public list: HTMLElement
   public filterId: number
   public onListLengthChange?: () => void
+  public virtualFilterId?: PeerId
+  private savedDialogs?: SortedSavedDialogs
 
   private virtualList: ReturnType<typeof createDeferredSortedVirtualList<SortedDialogListItem>>
   private totalCount = 0
@@ -54,6 +69,9 @@ export default class SortedDialogList {
     log?: ReturnType<typeof logger>,
     filterId: number,
     onListLengthChange?: () => void,
+    /** tweb `:44` — у сохранённых диалогов свой пир (расхождение 6) */
+    virtualFilterId?: PeerId,
+    savedDialogs?: SortedSavedDialogs,
 
     scrollable: Scrollable,
     requestItemForIdx: (idx: number, itemsLength: number) => void,
@@ -66,6 +84,8 @@ export default class SortedDialogList {
     this.log = options.log ?? logger('SDL')
     this.filterId = options.filterId
     this.onListLengthChange = options.onListLengthChange
+    this.virtualFilterId = options.virtualFilterId
+    this.savedDialogs = options.savedDialogs
 
     this.virtualList = createDeferredSortedVirtualList<SortedDialogListItem>({
       scrollable: options.scrollable.container,
@@ -133,9 +153,13 @@ export default class SortedDialogList {
     this.list.classList.add('chatlist', 'virtual-chatlist')
   }
 
-  /** tweb `:143-162` (расхождения 1, 2) */
+  /** tweb `:143-162` (расхождения 1, 2, 6) */
   public getIndexForKey(key: SortedDialogListKey) {
     if(key instanceof CustomPinnedDialog) return 0
+
+    if(this.virtualFilterId) {
+      return this.savedDialogs?.getDialog(key)?.index ?? 0
+    }
 
     return getDialogIndex(key) ?? 0
   }
@@ -146,14 +170,16 @@ export default class SortedDialogList {
     return { id: key, index: this.getIndexForKey(key), value }
   }
 
-  /** tweb `:173-191` (расхождения 2, 5) */
+  /** tweb `:173-191` (расхождения 2, 5, 6) */
   private getDialogOptions(key: PeerId) {
     const options: Parameters<AppDialogsManager['addListDialog']>[0] = {
-      peerId: key,
+      peerId: this.virtualFilterId ?? key,
       isBatch: true,
+      threadId: this.virtualFilterId ? key : undefined,
       isMainList: this.filterId === ALL_FOLDER_ID,
       meAsSaved: true,
       wrapOptions: {},
+      dialog: this.virtualFilterId ? this.savedDialogs?.getDialog(key) : undefined,
     }
 
     return { options }

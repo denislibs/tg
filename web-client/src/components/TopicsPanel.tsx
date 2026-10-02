@@ -81,7 +81,7 @@ const TOPIC_ITEM_HEIGHT = 64
  *
  * У архива своего `NO_ITEM_REQUEST` больше нет: `Sidebar.tsx` теперь просит
  * страницы настоящим курсором (`AutonomousDialogList` архива, задача 1-4), а список «Чаты»
- * правой колонки ушёл на Solid-ядро (`sidebarRight/savedDialogsTab.solid.tsx`).
+ * правой колонки — `AutonomousSavedDialogList` (задача 1-7).
  */
 const NO_ITEM_REQUEST = () => {}
 
