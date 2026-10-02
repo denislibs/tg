@@ -76,8 +76,7 @@
 //     до папок, `:1044-1057`) нет; `xd.preloadDialogs()` и `doNotRenderChatList`
 //     (`:1340-1351`) — тоже: зеркало диалогов поднято до первого кадра
 //     (`client/boot.ts::applyDialogsMirror`), первую страницу список рисует сам.
-//     Сторис (`renderStories`) — пачка П-3 (Б-4); `fillConversations` — догрузка
-//     истории диалогов в фоне, у нас её делает воркер на старте (`bootPrefetch`).
+//     Сторис (`renderStories`) — пачка П-3 (Б-4); `fillConversations` — бэклог П-2.
 //     Остальной `onStateLoaded` — первичные загрузки и realtime (бывший
 //     `core/hooks/useAppBootstrap.ts`), метод `onStateLoaded`.
 //     `suggestionContainer` создаётся в `startDialogs()` (у tweb — в конце
