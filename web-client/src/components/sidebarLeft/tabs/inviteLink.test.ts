@@ -1,9 +1,10 @@
 /**
  * Виджет ссылки-приглашения `inviteLink.ts` — порт tweb
  * `sidebarLeft/tabs/inviteLink.ts` (812502980). Меню ⋮ и копирование плашкой
- * держит `sharedFolder.solid.test.tsx` (единственный наш вызывающий); здесь —
- * остальные формы конструктора оригинала: кнопка «копировать» справа, без неё,
- * кнопки под ссылкой, свой класс контейнера, срез схемы в адресе.
+ * держит `sharedFolder.solid.test.tsx`; здесь — остальные формы конструктора
+ * оригинала: кнопка «копировать» справа, без неё, кнопка «Share Link» по
+ * умолчанию (`:73-80`) и её `onButtonClick`, кнопки под ссылкой, свой класс
+ * контейнера, срез схемы в адресе.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ListenerSetter from '@helpers/listenerSetter'
@@ -21,12 +22,17 @@ vi.mock('@helpers/clipboard', async(importOriginal) => ({
   copyTextToClipboard,
 }))
 
+// мост выбора получателей (ВРЕМЕННО до 2C-24) — граница: React-попап здесь не нужен
+const shareUrlToPeers = vi.hoisted(() => vi.fn())
+vi.mock('@components/popups/shareUrl.bridge', () => ({ default: shareUrlToPeers }))
+
 let listenerSetter: ListenerSetter
 
 beforeEach(() => {
   listenerSetter = new ListenerSetter()
   toastNew.mockReset()
   copyTextToClipboard.mockClear()
+  shareUrlToPeers.mockReset()
 })
 
 afterEach(() => {
@@ -49,12 +55,30 @@ describe('InviteLink', () => {
     expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'LinkCopied' })
   })
 
-  it('адрес показан без схемы; кнопки под ссылкой по умолчанию нет (расхождение 1)', () => {
+  it('адрес показан без схемы; под ссылкой по умолчанию — «Share Link»: шлёт адрес выбором получателей (:73-80, :129-131)', () => {
     const link = new InviteLink({ listenerSetter, url: 'https://t.me/addlist/abc' })
     expect(link.textElement.textContent).toBe('t.me/addlist/abc')
     expect(link.url).toBe('https://t.me/addlist/abc')
-    expect(link.button).toBeUndefined()
-    expect([...link.container.children].map((el) => el.className)).toEqual(['invite-link rp-overflow rp'])
+    expect([...link.container.children].map((el) => el.className)).toEqual([
+      'invite-link rp-overflow rp',
+      'btn-primary btn-color-primary invite-link-button',
+    ])
+    expect(link.button!.textContent).toBe('Share Link')
+    expect(link.buttonText).toBe(link.button!.lastElementChild)
+    click(link.button!)
+    expect(shareUrlToPeers).toHaveBeenCalledWith({ url: 'https://t.me/addlist/abc', openAfter: true })
+  })
+
+  it('onButtonClick перехватывает кнопку по умолчанию; button: false — кнопки нет', () => {
+    const onButtonClick = vi.fn()
+    const link = new InviteLink({ listenerSetter, url: 'https://t.me/x', onButtonClick })
+    click(link.button!)
+    expect(onButtonClick).toHaveBeenCalledTimes(1)
+    expect(shareUrlToPeers).not.toHaveBeenCalled()
+
+    const bare = new InviteLink({ listenerSetter, url: 'https://t.me/x', button: false })
+    expect(bare.button).toBeUndefined()
+    expect([...bare.container.children].map((el) => el.className)).toEqual(['invite-link rp-overflow rp'])
   })
 
   it('noRightButton — справа ничего; onClick плашки — свой', () => {

@@ -64,6 +64,11 @@ const ALLOWED: Record<string, number> = {
   // usecase и её тест-вызовы — отдельная работа по бэкенду; плашку этот путь
   // при этом гасит (useChatSend.test.tsx).
   'core/hooks/useChatSend.ts': 1,
+  // «Поделиться ссылкой» (мост `components/popups/shareUrl.bridge.ts`, ВРЕМЕННО до
+  // 2C-24): адрес уходит голым текстом в выбранные чаты, как tweb `shareUrlToPeers`
+  // (`sendText({peerId, threadId, text})`) — ни ответа, ни треда, ни send-as у
+  // выбора чатом `ForwardPicker` нет, собирать в пакет нечего.
+  'components/popups/shareUrl.bridge.ts': 1,
 }
 
 /** Аргументы вызова: от `(` до парной `)`. */

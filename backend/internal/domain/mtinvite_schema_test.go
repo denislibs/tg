@@ -31,7 +31,7 @@ func inviteCases() []struct {
 		{"ссылка без срока и лимита", NewChatInviteExported(InviteLink{Token: "b", CreatedBy: 7, CreatedAt: time.Unix(1, 0)})},
 		{"отозванная", NewChatInviteExported(InviteLink{Token: "c", CreatedBy: 7, Revoked: true, CreatedAt: time.Unix(1, 0)})},
 		{"ответ создания", NewMessagesExportedChatInvite(link)},
-		{"список ссылок", NewMessagesExportedChatInvites([]InviteLink{link})},
+		{"список ссылок", NewMessagesExportedChatInvites([]InviteLink{link}, nil)},
 		{"вошёл по ссылке", NewChatInviteImporter(9, time.Unix(1787334148, 0), false, 0)},
 		{"ждёт одобрения", NewChatInviteImporter(9, time.Unix(1787334148, 0), true, 0)},
 		{"список импортёров", NewMessagesChatInviteImporters(1,

@@ -45,8 +45,9 @@
  *     `filtersStorage.deleteExportedInvite(filter.id, url)` (`:153-159`). Путь
  *     ссылки у нас относительный (`/addlist/<slug>`) — в виджет идёт полный адрес
  *     (`inviteUrl`, `editFolderShared.ts`).
- *  6. Кнопки «Share Link» под ссылкой нет: `InviteLink` без попапа
- *     `shareUrlToPeers` (волна 2C) — расхождение 1 в `inviteLink.ts`.
+ *  6. «Share Link» под ссылкой (кнопка `InviteLink` по умолчанию) выбирает
+ *     получателей React-мостом `popups/shareUrl.bridge.ts` (ВРЕМЕННО до 2C-24) —
+ *     расхождение 1 в `inviteLink.ts`.
  *  7. Подпись чата по умолчанию (`getChatMembersString`, `:100`) даёт сам
  *     селектор (`AppSelectPeers.wrapSubtitle` — тот же `getChatMembersString`):
  *     наш `getSubtitleForElement` строку не возвращает (тип — узел).

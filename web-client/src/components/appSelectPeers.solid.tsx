@@ -30,8 +30,11 @@
  * `peerType: []` + прямой `renderResultsFunc`, `sectionCaption`,
  * `processElementAfter`) и попап выбора пользователя (2C: `onSelect`,
  * `noInstantLoad`/`loadFirst`, `onFirstRender`, `checkForTriggers`,
- * `setFolderId`/`onSearchChange` ряда папок). Ветки, у которых в волне
- * потребителя нет, не портированы — список ниже, п. 14.
+ * `setFolderId`/`onSearchChange` ряда папок). С 0б-3 волны 7 — ещё свой
+ * источник строк (`peerType: ['custom']` + `getMoreCustom`, :965-993): список
+ * вступивших по ссылке (`sidebarRight/tabs/chatInviteLink.solid.tsx`, tweb
+ * `chatInviteLink.tsx:212-229`). Ветки, у которых потребителя нет, не
+ * портированы — список ниже, п. 14.
  *
  * ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
  *
@@ -94,8 +97,7 @@
  *     цвета не принимает, а `'secondary'` по умолчанию класса не ставит и у
  *     оригинала (`checkboxField.ts:48-49`).
  * 14. Без потребителя в волне (у оригинала их зовут попапы и вкладки вне 2D):
- *     `peerType: 'custom'` + `getMoreCustom` (:965-993; форумный селектор
- *     пересылки, `chatAutomation`), режим `multiSelect: 'hidden'` с меню
+ *     режим `multiSelect: 'hidden'` с меню
  *     «SelectChat»/«Deselect» и `setMultiSelectMode` (:475-507, :1433-1436;
  *     пересылка), `setLimit` (:620-623; бусты, `pickCountry`, `showPickUsersPopup`),
  *     `getPeerIdFromKey` (`reassignBoost`), `prependPeerIds` (дни рождения),
@@ -151,7 +153,7 @@ const ROW_WITH_CHECKBOX_CLASS = 'selector-row-with-checkbox'
 /** tweb `REAL_FOLDERS` (`appManagers/constants.ts`) — «Все чаты» и архив (расхождение 8). */
 const REAL_FOLDERS = new Set([ALL_FOLDER_ID, ARCHIVE_FOLDER_ID])
 
-export type SelectSearchPeerType = 'contacts' | 'dialogs'
+export type SelectSearchPeerType = 'contacts' | 'dialogs' | 'custom'
 /** tweb `IsPeerType` в заведённом объёме (расхождение 9). */
 export type IsPeerType = 'isAnyGroup' | 'isUser'
 
@@ -192,7 +194,7 @@ export default class AppSelectPeers {
   private query = ''
   private cachedContacts?: PeerId[]
 
-  private loadedWhat: Partial<{ [k in 'dialogs' | 'archived' | 'contacts']: boolean }> = {}
+  private loadedWhat: Partial<{ [k in 'dialogs' | 'archived' | 'contacts' | 'custom']: boolean }> = {}
 
   private renderedPeerIds: Set<PeerId> = new Set()
   private pendingLists = new Set<HTMLElement>()
@@ -211,6 +213,8 @@ export default class AppSelectPeers {
   private chatRightsActions?: readonly ChatRights[]
   private meAsSaved: boolean
   private onSelect?: (peerId: PeerId | string, adding: boolean, e: MouseEvent) => MaybePromise<void | boolean>
+  /** tweb :146 — свой источник строк (`peerType: ['custom']`): страница ключей и признак конца */
+  public getMoreCustom?: (q: string, middleware: () => boolean) => Promise<{ result: PeerId[], isEnd: boolean }>
 
   private tempIds: { [k in keyof AppSelectPeers['loadedWhat']]?: number } = {}
 
@@ -278,6 +282,7 @@ export default class AppSelectPeers {
     processElementAfter?: AppSelectPeers['processElementAfter'],
     meAsSaved?: boolean,
     onSelect?: AppSelectPeers['onSelect'],
+    getMoreCustom?: AppSelectPeers['getMoreCustom'],
     scrollable?: Scrollable,
     checkboxSide?: 'right' | 'left',
     excludePeerIds?: Set<PeerId>,
@@ -302,6 +307,7 @@ export default class AppSelectPeers {
     this.getSubtitleForElement = options.getSubtitleForElement
     this.processElementAfter = options.processElementAfter
     this.onSelect = options.onSelect
+    this.getMoreCustom = options.getMoreCustom
     if(options.scrollable) this.scrollable = options.scrollable
 
     // :217-219
@@ -585,6 +591,10 @@ export default class AppSelectPeers {
       this.loadedWhat.contacts = false
     }
 
+    if(this.peerType.includes('custom')) {
+      this.loadedWhat.custom = false
+    }
+
     // Only force the section open (hiding the empty placeholder) when there's
     // actually previous content to show during the new search. If the previous
     // search was empty, leave the placeholder visible — its query text is
@@ -784,6 +794,36 @@ export default class AppSelectPeers {
     this.scrollable.checkForTriggers()
   }
 
+  // :965-993 — страница своего источника (`getMoreCustom`); конец — по `isEnd`
+  private async _getMoreCustom() {
+    if(this.loadedWhat.custom) {
+      return
+    }
+
+    const { middleware } = this.getTempId('custom')
+    const promise = this.getMoreCustom!(this.query, middleware)
+
+    promise.catch(() => {
+      if(!middleware()) {
+        return
+      }
+
+      this.loadedWhat.custom = true
+    })
+
+    const res = await promise
+    if(!middleware()) {
+      return
+    }
+
+    const { result, isEnd } = res
+
+    await this.renderResultsFunc(result)
+
+    if(isEnd) {
+      this.loadedWhat.custom = true
+    }
+  }
   // :999-1021 (без участников канала и `custom` — расхождения 1, 14)
   private _getMoreResults(): Promise<unknown> | undefined {
     if(this.peerType.includes('dialogs') && !this.loadedWhat.archived) { // to load non-contacts
@@ -792,6 +832,10 @@ export default class AppSelectPeers {
 
     if((this.peerType.includes('contacts') || this.peerType.includes('dialogs')) && !this.loadedWhat.contacts && this.canLoadContacts()) {
       return this.getMoreSomething('contacts')
+    }
+
+    if(this.peerType.includes('custom') && !this.loadedWhat.custom) {
+      return this.getMoreSomething('custom')
     }
   }
 
@@ -897,6 +941,7 @@ export default class AppSelectPeers {
     const map: { [type in SelectSearchPeerType]: () => Promise<unknown> } = {
       dialogs: () => this.getMoreDialogs(),
       contacts: () => this.getMoreContacts(),
+      custom: () => this._getMoreCustom(),
     }
 
     const promise = map[peerType]()

@@ -179,8 +179,8 @@ describe('вкладка «Share Folder» — разметка', () => {
     expect(link.querySelector('.invite-link-text > middle-ellipsis-element')!.textContent).toBe(location.host + '/addlist/abc')
     expect(link.lastElementChild!.classList.contains('btn-menu-toggle')).toBe(true)
     expect(link.lastElementChild!.classList.contains('invite-link-menu')).toBe(true)
-    // кнопки «Share Link» нет — попап `shareUrlToPeers` волны 2C
-    expect(tab.container.querySelector('.invite-link-button')).toBeNull()
+    // под плашкой — «Share Link» по умолчанию (`inviteLink.ts:73-80`), как у оригинала
+    expect(tab.container.querySelector('.invite-link-container > .invite-link-button')!.textContent).toBe('Share Link')
   })
 })
 

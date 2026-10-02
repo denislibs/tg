@@ -5,7 +5,7 @@
 // портированный `PopupPeer`/`PopupElement` (`shared/ui/ConfirmPopup`, снесён
 // этой же задачей) — теперь компонент только МОСТ: на монтировании открывает
 // vanilla-попап и транслирует его исход (resolve/reject промиса) в пропы
-// onConfirm/onClose, которые ждут вызывающие (InviteLinkScreens,
+// onConfirm/onClose, которые ждут вызывающие (
 // DiscussionScreen ×2, PinnedMessagesScreen, useChatPopups ×2, MediaEditor) —
 // их контракт этой задачей не меняется.
 //

@@ -45,3 +45,9 @@ describe('нерасшариваемая строка селектора (tweb b
     expect(rule('.cant-select .checkbox-box-border')).toMatch(/border-style:\s*dotted/)
   })
 })
+
+describe('ступенчатый селектор (tweb base.scss .range-steps-selector)', () => {
+  it('над дорожкой — место под подписи ступеней', () => {
+    expect(rule('.range-steps-selector')).toMatch(/padding-top:\s*2\.375rem/)
+  })
+})
