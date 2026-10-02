@@ -19,10 +19,8 @@
  *     (`lib/passcode/actions.ts`): не хук — канал к воркеру у нас синглтон,
  *     а включению нужен writer офлайн-стора (его под кодом не шифруют, а
  *     стирают, docs/tweb/passcode-encryption.md П-1).
- *  3. (О-12) Подсказка после выключения — у tweb в скроллере вкладки
- *     `AppPrivacyAndSecurityTab` (`:236-238`); хаб станет вкладкой задачей 23,
- *     до неё подсказка кладётся в слой хоста слайдера (`tab.slider.sidebarEl`),
- *     поверх React-экрана конфиденциальности.
+ *  3. (снято задачей 23) Подсказка после выключения — в скроллере хаба
+ *     `AppPrivacyAndSecurityTab` (`:244-246`), как у оригинала.
  *  4. `setQuizHint` — `components/quizHint.ts` без `canCloseOnPeerChange`
  *     (шапка того файла): закрытия по смене чата у нас нет, а здесь оно и
  *     выключено (`:41`).
@@ -44,7 +42,8 @@ import ripple from '@components/ripple'
 import Row from '@components/rowTsx.solid'
 import Section from '@components/section.solid'
 import type SidebarSlider from '@components/slider'
-import { AppPasscodeEnterPasswordTab, AppPasscodeLockTab } from '@components/solidJsTabs/tabs'
+import type SliderSuperTab from '@components/sliderTab'
+import { AppPasscodeEnterPasswordTab, AppPasscodeLockTab, AppPrivacyAndSecurityTab } from '@components/solidJsTabs/tabs'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
 import Space from '@components/space.solid'
 import CheckboxFieldTsx from '@components/checkboxFieldTsx.solid'
@@ -59,8 +58,8 @@ void ripple
 
 type AppPasscodeLockTabType = typeof AppPasscodeLockTab
 
-const getHintParams = (appendTo: HTMLElement, title: LangPackKey) => ({
-  appendTo,
+const getHintParams = (tab: SliderSuperTab, title: LangPackKey) => ({
+  appendTo: tab.scrollable.container,
   duration: 2500,
   from: 'bottom',
   textElement: i18n(title),
@@ -111,7 +110,7 @@ const NoPasscodeContent = () => {
         otherSlider.sliceTabsUntilTab(AppPasscodeLockTab, otherTab)
         otherTab.close()
 
-        setQuizHint(getHintParams(tab.scrollable.container, 'PasscodeLock.PasscodeHasBeenSet'))
+        setQuizHint(getHintParams(tab, 'PasscodeLock.PasscodeHasBeenSet'))
       },
       buttonText: 'PasscodeLock.SetPasscode',
       inputLabel: 'PasscodeLock.ReEnterPasscode',
@@ -202,7 +201,7 @@ const PasscodeSetContent: Component<{
         otherSlider.sliceTabsUntilTab(AppPasscodeLockTab, otherTab)
         otherTab.close()
 
-        setQuizHint(getHintParams(tab.scrollable.container, 'PasscodeLock.PasscodeHasBeenChanged'))
+        setQuizHint(getHintParams(tab, 'PasscodeLock.PasscodeHasBeenChanged'))
       },
       buttonText: 'PasscodeLock.SetPasscode',
       inputLabel: 'PasscodeLock.ReEnterPasscode',
@@ -222,8 +221,9 @@ const PasscodeSetContent: Component<{
       props.onDisable()
       await disablePasscode()
       tab.close()
-      // (О-12) расхождение 3 в шапке: хаб приватности ещё не вкладка
-      setQuizHint(getHintParams(slider.sidebarEl, 'PasscodeLock.PasscodeHasBeenDisabled'))
+      setQuizHint(getHintParams(
+        slider.getTab(AppPrivacyAndSecurityTab)!, 'PasscodeLock.PasscodeHasBeenDisabled',
+      ))
     })
     .catch(() => {})
   }

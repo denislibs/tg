@@ -72,8 +72,8 @@
 //     `is-hidden` и таймер их возврата (:1398, :1434-1447, :1455-1456) — FAB
 //     прячет React-проп `ComposeFab.searching`; `buttonsContainer.is-visible`
 //     и `appear-animated` (:1471-1482, :1495) — морф бургера по
-//     `SidebarMenuButton.searching`, свёрнутой колонки с триггером поиска у
-//     нас нет. `isAnimatingCollapse` в `onPop` (:1463) — анимации сворачивания
+//     сигналу `useIsLeftSearchActive` (`sidebarLeft/toolsMenu.ts`), свёрнутой
+//     колонки с триггером поиска у нас нет. `isAnimatingCollapse` в `onPop` (:1463) — анимации сворачивания
 //     колонки нет.
 //  9. Ctrl+F: у оригинала `addShortcutListener(['ctrl+f', …])` (:451-454), у
 //     нас сочетание разбирает `core/hotkeys.ts` и объявляет событием
@@ -88,7 +88,7 @@ import ChatTypeMenu from '@components/chatTypeMenu.solid'
 import EmptySearchPlaceholder from '@components/emptySearchPlaceholder.solid'
 import { createSearchGroup, type SearchGroup } from '@components/searchGroup.solid'
 import { renderEntity as renderSelectorEntity } from '@components/selectorEntity'
-import { DIALOG_LIST_ELEMENT_TAG } from '@components/dialogRow'
+import { DIALOG_LIST_ELEMENT_TAG } from '@lib/appDialogsManager'
 import { confirmationPopup } from '@components/popups/popupPeer'
 import type { Managers } from '@/client/bootstrap'
 import type { SearchHistoryOptions } from '@core/managers/messagesManager'

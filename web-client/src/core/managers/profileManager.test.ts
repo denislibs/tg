@@ -58,6 +58,30 @@ describe('ProfileManager.update', () => {
   })
 })
 
+// Ответ — `Bool` (`account.checkUsername`); негодная форма — ОТКАЗ, и он
+// уходит вызывающему с именем: поле имени (`components/usernameInputField.ts`,
+// tweb `usernameInputField.ts:83-93`) показывает по нему `invalidText`, а не
+// «занято».
+describe('ProfileManager.checkUsername', () => {
+  it('boolTrue/boolFalse → true/false', async () => {
+    const get = vi.fn()
+      .mockResolvedValueOnce({ _: 'boolTrue' })
+      .mockResolvedValueOnce({ _: 'boolFalse' })
+    const mgr = newProfileManager({ rest: { get } as unknown as RestClient })
+    expect(await mgr.checkUsername('free_one')).toBe(true)
+    expect(await mgr.checkUsername('taken_one')).toBe(false)
+    expect(get).toHaveBeenCalledWith('/username/available', { u: 'free_one' })
+  })
+
+  it('400 USERNAME_INVALID — отказ с `type`, а не «занято»', async () => {
+    const get = vi.fn(async () => {
+      throw new HttpError(400, 'USERNAME_INVALID', 'USERNAME_INVALID')
+    })
+    const mgr = newProfileManager({ rest: { get } as unknown as RestClient })
+    await expect(mgr.checkUsername('abc')).rejects.toMatchObject({ type: 'USERNAME_INVALID' })
+  })
+})
+
 describe('ProfileManager.setUsername', () => {
   it('returns the mapped user on success', async () => {
     const put = vi.fn(async () => RAW)

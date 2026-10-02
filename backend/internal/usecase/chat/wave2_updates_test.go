@@ -109,7 +109,7 @@ func TestDialogFlagsAndTheme_LoggedAndDiff(t *testing.T) {
 	in, s, _, pub := newLoggedGroupInteractor()
 	ctx := context.Background()
 	const owner int64 = 7
-	chatID, err := in.CreateGroup(ctx, owner, "Team", "", "", false, nil)
+	chatID, _, err := in.CreateGroup(ctx, owner, "Team", "", "", false, nil)
 	if err != nil {
 		t.Fatalf("CreateGroup: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestChatUpdate_LoggedAndLiveToMembers(t *testing.T) {
 	in, s, _, pub := newLoggedGroupInteractor()
 	ctx := context.Background()
 	const owner, member int64 = 7, 8
-	chatID, err := in.CreateGroup(ctx, owner, "Team", "", "", false, nil)
+	chatID, _, err := in.CreateGroup(ctx, owner, "Team", "", "", false, nil)
 	if err != nil {
 		t.Fatalf("CreateGroup: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestPollUpdate_LoggedAndDiff(t *testing.T) {
 	in, s, fg, pub := newLoggedGroupInteractor()
 	ctx := context.Background()
 	const owner, voter int64 = 7, 8
-	chatID, _ := in.CreateGroup(ctx, owner, "Team", "", "", false, nil)
+	chatID, _, _ := in.CreateGroup(ctx, owner, "Team", "", "", false, nil)
 	_ = fg.AddMember(ctx, chatID, voter, domain.RoleMember, 0)
 	fp := newFakePolls()
 	in.SetPolls(fp)
@@ -231,7 +231,7 @@ func TestChecklistUpdate_LoggedAndDiff(t *testing.T) {
 	in, s, fg, pub := newLoggedGroupInteractor()
 	ctx := context.Background()
 	const owner int64 = 7
-	chatID, _ := in.CreateGroup(ctx, owner, "Team", "", "", false, nil)
+	chatID, _, _ := in.CreateGroup(ctx, owner, "Team", "", "", false, nil)
 	_ = fg.AddMember(ctx, chatID, owner, domain.RoleCreator, domain.AllRights)
 	fc := newFakeChecklists()
 	in.SetChecklists(fc)
@@ -321,7 +321,7 @@ func TestDialogMuteFrameCarriesNotifySettings(t *testing.T) {
 	in, _, _, pub := newLoggedGroupInteractor()
 	ctx := context.Background()
 	const owner int64 = 7
-	chatID, err := in.CreateGroup(ctx, owner, "Team", "", "", false, nil)
+	chatID, _, err := in.CreateGroup(ctx, owner, "Team", "", "", false, nil)
 	if err != nil {
 		t.Fatalf("CreateGroup: %v", err)
 	}

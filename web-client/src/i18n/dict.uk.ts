@@ -183,8 +183,14 @@ const uk = {
   FilterAllChatsShort: 'Усі',
   'InstalledStickers.LoopAnimated': 'Циклічні анімовані стікери',
   'GeneralSettings.EmojiPrediction': 'Підказки емодзі',
-  'Settings.BigEmoji': 'Великі емодзі',
-  DynamicPackOrder: 'Динамічний порядок наборів',
+  // ── «Стикеры и эмодзи» (tweb stickersAndEmoji.tsx, задача 15 плана 2D) ──
+  Emoji: 'Емодзі',
+  LoopAnimatedStickersInfo: 'Анімовані стікери відтворюватимуться в чатах безперервно.',
+  StickersBotInfo: 'Художники можуть додавати власні набори стікерів за допомогою нашого бота @stickers.',
+  SuggestStickersAll: 'Усі набори',
+  SuggestStickersInstalled: 'Мої набори',
+  SuggestStickersNone: 'Ні',
+  'Telegram.InstalledStickerPacksController': 'Стікери',
   'Call.Output': 'Вивід',
   'Rtmp.OutputPopup.Title': 'Пристрій виводу',
   'CallSettings.DeviceDefault': 'За замовчуванням',
@@ -194,12 +200,19 @@ const uk = {
   'CallSettings.OutputDevice': 'Пристрій відтворення',
   'CallSettings.Camera': 'Пристрій',
   Save: 'Зберегти',
-  'CallSettings.AcceptCalls': 'Приймати дзвінки на цьому пристрої',
-  'CallSettings.AcceptCalls.Caption':
-    'Вимкніть, щоб не приймати вхідні дзвінки та групові відеодзвінки на цьому пристрої.',
   'Call.Input': 'Ввід',
   'CallSettings.InputDevice': 'Пристрій вводу',
-  'CallSettings.AcceptCallsShort': 'Приймати дзвінки',
+  'CallSettings.OutputSection': 'Динаміки',
+  'CallSettings.InputSection': 'Мікрофон',
+  'CallSettings.MicrophoneUnavailable':
+    'Мікрофон недоступний. Перевірте доступ до мікрофона й спробуйте ще раз.',
+  'CallSettings.CameraUnavailable': 'Камера недоступна. Перевірте доступ до камери й спробуйте ще раз.',
+  'AccDescr.MicrophoneLevel': 'Рівень мікрофона',
+  'ConferenceCall.Media.MicrophoneError':
+    'Не вдалося змінити стан мікрофона. Перевірте доступ до мікрофона й спробуйте ще раз.',
+  'ConferenceCall.Media.CameraError':
+    'Не вдалося змінити стан камери. Перевірте доступ до камери й спробуйте ще раз.',
+  'Rtmp.OutputPopup.Default': 'За замовчуванням',
   CurrentSession: 'Цей пристрій',
   OtherSessions: 'Активні сеанси',
   TerminateAllSessions: 'Завершити всі інші сеанси',
@@ -219,12 +232,9 @@ const uk = {
   SavedMessages: 'Збережене',
   'MyStories.Title': 'Мої історії',
   Contacts: 'Контакти',
-  'Stars.Wallet': 'Гаманець',
   'MultiAccount.More': 'Більше',
   NewChannel: 'Створити канал',
   NewGroup: 'Створити групу',
-  'NewChannel.DefaultTitle': 'Новий канал',
-  'NewGroup.DefaultTitle': 'Нова група',
   NewPrivateChat: 'Нове повідомлення',
   'Suggestion.Notifications.Title': 'Не пропускайте повідомлення! 🔔',
   'Suggestion.Notifications.Subtitle': 'Увімкніть сповіщення, щоб бути в курсі.',
@@ -309,6 +319,11 @@ const uk = {
   Lately: 'був(ла) нещодавно',
   'Chat.OwnerBadge': 'власник',
   ChannelType: 'Тип каналу',
+  'ChannelVisibility.Confirm.MakePrivate.Channel': 'Якщо ви зробите канал приватним, ім’я @%@ буде видалено. Його зможе зайняти будь-хто для своїх публічних груп або каналів.',
+  'ChannelVisibility.Confirm.MakePrivate.Group': 'Якщо ви зробите групу приватною, ім’я @%@ буде видалено. Його зможе зайняти будь-хто для своїх публічних груп або каналів.',
+  'Link.Available': 'Посилання вільне',
+  'Link.Invalid': 'Недійсне посилання',
+  'Link.Taken': 'Це посилання вже зайняте',
   GroupType: 'Тип групи',
   TypePrivate: 'Приватний',
   InviteLinks: 'Запрошувальні посилання',
@@ -460,13 +475,9 @@ const uk = {
   'EditProfile.AddBirthdayRow': 'Додати день народження',
   'Bio.Description': 'Будь-які деталі, наприклад: вік, рід занять або місто. Приклад: дизайнер 23 років із Сан-Франциско.',
   'EditProfile.Username.Label': 'Ім\'я користувача (необов\'язково)',
-  'EditProfile.Username.TooShort': 'Мінімум 5 символів.',
   'EditProfile.Username.Available': 'Це ім\'я користувача вільне.',
-  'EditProfile.Username.Rules': 'Ім\'я користувача — 5–32 символи: літери, цифри, підкреслення.',
-  'EditProfile.Username.Caption': 'Ви можете обрати публічне ім\'я користувача, щоб вас могли знаходити та зв\'язуватися з вами, не знаючи номера телефону.',
   BlockUser: 'Заблокувати користувача',
   BlockedUsersInfoShort: 'Заблоковані користувачі не можуть писати вам і бачити ваш профіль.',
-  BlockedEmptyDescription: 'Ви нікого не заблокували.',
   'TwoStepAuth.SetPasswordCaption': 'Встановіть додатковий пароль, який знадобиться під час входу на новому пристрої.',
   TwoStepVerificationSetPassword: 'Встановити пароль',
   'TwoStepAuth.CreateCaption': 'Створіть пароль для захисту акаунту.',
@@ -545,7 +556,6 @@ const uk = {
   'Privacy.BioRow': 'Хто бачить мій розділ «Про себе»?',
   WhoCanCallMe: 'Хто може мені телефонувати?',
   PrivacyForwardsTitle: 'Хто може посилатися на мій акаунт під час пересилання повідомлень?',
-  PrivacyGroupsTitle: 'Хто може запрошувати мене?',
   PrivacyVoiceMessagesTitle: 'Хто може надсилати мені голосові повідомлення?',
   PrivacyMessagesTitle: 'Хто може надсилати мені повідомлення?',
   'Privacy.BirthdayRow': 'Хто бачить мій день народження?',
@@ -598,6 +608,9 @@ const uk = {
   'AutoDeleteMessages.SectionCaption':
     'Увімкніть, щоб усі нові повідомлення у Ваших чатах, створених після зміни налаштування, автоматично видалялися для всіх учасників через обраний час. Автовидалення в раніше створених чатах вмикається окремо.',
   'AutoDeleteMessages.SetOtherTime': 'Обрати інший строк',
+  'AutoDeleteMessages.InfoDefault': 'Автоматично видаляти повідомлення для всіх у розпочатих вами чатах через заданий час.',
+  UnsavedChanges: 'Незбережені зміни',
+  'UnsavedChangesDescription.Privacy': 'Ви змінили налаштування конфіденційності. Зберегти зміни?',
   // Разряды длительности (`components/wrappers/wrapDuration.ts`, задача 7 плана 2D)
   Seconds: {
     one_value: '%1$d секунда',
@@ -804,12 +817,6 @@ const uk = {
     'Підтвердьте код країни та введіть новий номер телефону.',
   'PhoneNumber.AlreadyTaken':
     'Цей номер уже прив’язаний до акаунту Telegram.',
-  'DeleteAccount.Action': 'Видалити мій акаунт',
-  'DeleteAccount.Title': 'Видалення акаунту',
-  'DeleteAccount.Text':
-    'Ви впевнені, що хочете видалити акаунт? Цю дію не можна скасувати.',
-  'DeleteAccount.Caption':
-    'Акаунт і всі дані буде видалено. Повідомлення залишаться, але відображатимуться як надіслані «Видаленим акаунтом».',
   AttachAlbum: 'Альбом',
   AttachPhoto: 'Фото',
   AttachVideo: 'Відео',
@@ -970,6 +977,22 @@ const uk = {
   'SharedFolder.Toast.NoAdminChannel': 'У вас немає прав адміністратора, щоб ділитися посиланнями-запрошеннями в цей канал.',
   'SharedFolder.Toast.NoAdminGroup': 'У вас немає прав адміністратора, щоб ділитися посиланнями-запрошеннями в цю групу.',
   'SharedFolder.Toast.NoPrivate': 'Особистими чатами ділитися не можна.',
+  // ── Конфиденциальность: хаб и «Был в сети» (задача 23 плана 2D) ──
+  HideReadTime: 'Приховувати час прочитання',
+  HideReadTimeInfo: 'Приховувати час прочитання від тих, хто не бачить, коли ви були в мережі. Якщо ввімкнути, їхній час прочитання теж буде прихований від вас (якщо у вас немає Telegram Premium).\n\nЦе налаштування не впливає на групові чати.',
+  Passkeys: {
+    one_value: '%d ключ',
+    few_value: '%d ключі',
+    many_value: '%d ключів',
+    other_value: '%d ключа',
+  },
+  'PrivacyAndSecurity.Item.Off': 'Вимк.',
+  'PrivacySettingsController.UserCount': {
+    one_value: '%d користувач',
+    few_value: '%d користувачі',
+    many_value: '%d користувачів',
+    other_value: '%d користувача',
+  },
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(uk)

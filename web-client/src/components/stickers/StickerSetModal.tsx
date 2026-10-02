@@ -49,8 +49,11 @@ import StickerMedia from '../StickerMedia'
 import Preloader from '../../shared/ui/Preloader'
 import animationIntersector from '../animationIntersector'
 import { useLazyVisibility } from '../useLazyVisibility'
-import { useStickerViewer } from './useStickerViewer'
+import attachStickerViewerListeners from '../stickerViewer'
+import ListenerSetter from '@helpers/listenerSetter'
+import { useImperativeIsland } from '../../core/hooks/useImperativeIsland'
 import { toggleStickerSet } from '../../core/stickers/toggleStickerSet'
+import isStickerSetAdded from '@core/stickers/isStickerSetAdded'
 import { useManagers } from '../../core/hooks/useManagers'
 import { publicStickerSetLink } from '../../core/publicLink'
 import { useMiddlewareHelper } from '../../core/hooks/useMiddlewareHelper'
@@ -98,8 +101,8 @@ function StickerCell({ st, visible, register, onPick }: {
       ref={ref}
       className="sticker-set-sticker media-sticker-wrapper"
       // tweb wrapSticker (wrappers/sticker.ts:138) — `div.dataset.docId = doc.id`
-      // на этом же контейнере; useStickerViewer.findSticker ниже переиспользует
-      // тот же атрибут, свой не заводим.
+      // на этом же контейнере; по нему предпросмотр (`stickerViewer.ts`)
+      // достаёт документ.
       data-doc-id={st.id}
       onClick={onPick}
     >
@@ -163,19 +166,15 @@ export default function StickerSetModal({ address, open = true, onClose, onExitC
   const bodyRef = useRef<HTMLDivElement>(null)
   const { visible, register } = useLazyVisibility(bodyRef, PRELOAD_MARGIN)
 
-  // Предпросмотр по зажатию ЛКМ — tweb popups/stickers.tsx:310
-  // (attachStickerViewerListeners({listenTo: scrollableEl, ...})), корень тот
-  // же, что и у ленивой видимости (тело попапа — оно и есть скроллер сетки).
-  // Работает независимо от `onPickSticker` — в tweb предпросмотр не завязан на
-  // read-only режим сетки, гейтится только САМА отправка по клику.
-  const stickerViewer = useStickerViewer({
-    rootRef: bodyRef,
-    findSticker: (el) => {
-      const cell = el.closest('.sticker-set-sticker') as HTMLElement | null
-      const id = cell?.dataset.docId
-      return id ? stickers.find((st) => st.id === Number(id)) : undefined
-    },
-  })
+  // Предпросмотр по зажатию ЛКМ — tweb popups/stickers.tsx:335-336
+  // (`attachStickerViewerListeners({listenTo: scrollableEl, listenerSetter})`),
+  // контейнер тот же, что у ленивой видимости (тело попапа — скроллер сетки).
+  // Не завязан на read-only режим сетки: гейтится только САМА отправка по клику.
+  useImperativeIsland((listenTo) => {
+    const listenerSetter = new ListenerSetter()
+    attachStickerViewerListeners({ listenTo, listenerSetter })
+    return () => listenerSetter.removeAll()
+  }, [], { host: bodyRef })
 
   // onClose/managers держим в ref: эффект загрузки не должен перезапускаться
   // из-за смены их ссылки между рендерами (onClose — обычный колбэк владельца;
@@ -205,13 +204,9 @@ export default function StickerSetModal({ address, open = true, onClose, onExitC
         if (!middleware()) return
         setSet(r.set)
         setStickers(r.stickers)
-        void managers.stickers.mySets().then(
-          (mine) => {
-            if (!middleware()) return
-            setInstalled(mine.some((s) => s.id === r.set.id))
-          },
-          () => {},
-        )
+        // «Установлен ли» — параметр самого набора (tweb popups/stickers.tsx:144
+        // `setUpdateAdded(isStickerSetAdded(set))`), а не поиск в моих наборах.
+        setInstalled(isStickerSetAdded(r.set))
       },
       () => {
         if (!middleware()) return
@@ -359,10 +354,6 @@ export default function StickerSetModal({ address, open = true, onClose, onExitC
           </div>
         </div>
       )}
-      {/* StickerViewer рендерится порталом (usePortalContainer) — место в
-          дереве не влияет на позиционирование, поэтому кладём его прямо
-          рядом с телом попапа, а не оборачиваем весь return фрагментом. */}
-      {stickerViewer}
     </Popup>
   )
 }

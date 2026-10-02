@@ -43,6 +43,7 @@
 
 | Что портируем | Док |
 |---|---|
+| **Как устроено приложение целиком** (обзор на 30–40 минут, `812502980`): старт `index.html` → `src/index.ts` → `bootstrapIm` → `appDialogsManager.start()`, главный поток и воркер, синглтоны и кто чем владеет, класс-компонент (`DialogElement`, `SliderSuperTab`, `middleware`, `ListenerSetter`), Solid внутри классов, `appImManager` по блокам, сквозные сценарии по шагам, анимации, где мы по волне 7 | [app-architecture.md](app-architecture.md) |
 | **Каркас приложения**: воркеры, менеджеры, rootScope-события, состояние, навигация, три колонки, брейкпоинты, liteMode | [state-and-layout.md](state-and-layout.md) |
 | **Лента чата**: открытие чата, подгрузка истории, скролл, прюнинг DOM, применение апдейтов, unread | [chat-feed.md](chat-feed.md) |
 | **Баблы**: все типы контента, классы, хвосты, альбомы, reply-заголовок, реакции, группировка | [bubbles.md](bubbles.md) |

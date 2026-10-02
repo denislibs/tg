@@ -394,15 +394,93 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (пустая выдача снесённого экрана). Итог: ru 1402, uk 748, es/de 745, fr 740.
 // Пилюля `messageActionSuggestBirthday` (users.suggestBirthday, О-22 плана
 // волны 7): у ru +2 ключа tweb — `BirthdaySuggestIncoming`/`Outgoing`: ru 1404.
-// Вкладка «Изменить контакт» (0б-10 волны 7, `editContact.tsx`, `deleteContacts.ts`):
-// у ru +22 ключа tweb, один из них множественный (`DeleteContactsTitle`): ru 1426;
-// строка «Предложить дату рождения» (`SuggestBirthdayRow`, О-22) — +1: ru 1427.
+//
+// Задача 20 плана 2D (вкладка «Автоудаление», порт tweb autoDeleteMessages/*):
+// +3 ключа tweb lang.ts всем пяти — `AutoDeleteMessages.InfoDefault` (описание
+// попапа своего срока) и `UnsavedChanges`/`UnsavedChangesDescription.Privacy`
+// (подтверждение несохранённого на закрытии). Итог (поверх 0а-1 и О-22): ru 1407, uk 751,
+// es/de 748, fr 743.
+//
+// Задача 0б-2 волны 7 (вкладка типа чата, порт tweb `sidebarRight/tabs/chatType.tsx`
+// и `usernameInputField.ts`): +5 ключей tweb lang.ts всем пяти — подписи поля имени
+// `Link.{Available,Invalid,Taken}` и подтверждение снятия имени
+// `ChannelVisibility.Confirm.MakePrivate.{Channel,Group}`. У ru ещё −2: со сносом
+// React-экрана `ChatTypeScreen` ушли наши `LinkInvalid`/`LinkTaken` без других
+// читателей. Итог: ru 1410, uk 756, es/de 753, fr 748.
+//
+// Задача 15 плана 2D («Стикеры и эмодзи», порт tweb stickersAndEmoji.tsx): +7
+// ключей tweb lang.ts — `SuggestStickersAll`/`Installed`/`None`,
+// `LoopAnimatedStickersInfo`, `Emoji`, `Telegram.InstalledStickerPacksController`,
+// `StickersBotInfo`; у es и fr без `Telegram.InstalledStickerPacksController` —
+// «Stickers» там совпадает с английским (нижний слой). Сняты у всех пяти
+// `DynamicPackOrder` (секции нет, О-43) и наш `Settings.BigEmoji` (ни одного
+// читателя); у ru ещё четыре ключа снесённого React-экрана — `Stickers.MySets`,
+// `Stickers.NoSets`, `Stickers.AddSets`, `Stickers.SearchSets`. Итог (поверх 0б-2): ru 1411,
+// uk 761, es 757, de 758, fr 752.
+// Задача 22 плана 2D (вкладка «Заблокированные», порт tweb blockedUsers.tsx): −1 наш
+// ключ у всех пяти — `BlockedEmptyDescription` (пустое состояние снесённого
+// React-экрана; у оригинала его нет). Итог: ru 1409, uk 755, es/de 752, fr 747.
+// Задача 0а-3 волны 7 (вкладка «Новый канал», порт tweb newChannel.tsx +
+// addChatUsers.ts): у ru +5 ключей tweb lang.ts — подтверждение `addChatUsers`
+// (`AddMembersAlertTitle`/`AddMembersAlertCountText`/`AddMembersAlertNamesText`,
+// `InviteToGroupError`) и поле поиска выбора подписчиков `SendMessageTo`; −1 у всех
+// пяти: со сносом React-экрана `NewChannelFlow` ушёл наш `NewChannel.DefaultTitle`
+// (вкладка tweb без названия канал не создаёт). Итог: ru 1414, uk 755, es/de 752, fr 747.
+// Задача 26 плана 2D (вкладка «Динамики и камера», порт tweb
+// speakersAndCamera.tsx + call/*): +8 ключей tweb lang.ts всем пяти — имена
+// секций `CallSettings.OutputSection`/`InputSection`, подписи ошибок захвата
+// `CallSettings.MicrophoneUnavailable`/`CameraUnavailable`, `aria-label` метра
+// `AccDescr.MicrophoneLevel`, тосты отказа `ConferenceCall.Media.MicrophoneError`/
+// `CameraError`, «Default» попапа выбора `Rtmp.OutputPopup.Default`. Сняты ключи
+// без читателей: `CallSettings.AcceptCalls` (+ `.Caption` у ru/uk — у es/de/fr его
+// не было) — строка «Принимать звонки» ушла в О-8 вместе с экраном, и
+// `CallSettings.AcceptCallsShort` (читателя не было и до задачи). Итог (поверх 0б-2): ru 1415,
+// uk 761, es/de 759, fr 754.
+// Задача 27 плана 2D («Редактировать профиль» `AppEditProfileTab`, порт tweb
+// editProfile.tsx): снесён React-экран `settings/EditProfile.tsx`, с ним — шесть
+// наших ключей без других читателей (`EditProfile.LastNameLabel`,
+// `EditProfile.Username.Checking`/`.Rules`/`.TooShort`/`.Caption`,
+// `EditProfile.VideoError`; у uk/es/de/fr их было по три). У ru +4 ключа tweb
+// lang.ts: `EditAccount.Username`, `EditProfile.Username.Invalid`,
+// `Login.Register.LastName.Placeholder`, `UsernameHelp`. Итог (поверх задач 21,
+// 0а-1, 20, О-22 и 0б-2 волны 7): ru 1408, uk 753, es/de 750, fr 745.
+// Задача 2-2 волны 7 (бургер — порт tweb `createToolsMenu`/`createMoreSubmenu`):
+// у ru +4 ключа tweb lang.ts — `Calls`, `CreateANew`, `PictureInPicture`,
+// `ClientPip.Exit` (`TelegramFeaturesUrl` — адрес, перевода не требует,
+// `dictCoverage.test.ts`). Сняты ключи без читателей: у всех пяти — `Stars.Wallet`
+// (экран «Кошелёк» снесён: его единственный вход был пунктом бургера, которого
+// у tweb нет), у ru ещё `Stars.TopUpTitle`/`Stars.Transaction`/`StarGift.Converted`
+// (строки истории того же экрана) и `Pip.Title`/`Pip.Unsupported` (подпись и тост
+// прежнего пункта PiP — у tweb `PictureInPicture`, а пункт без поддержки скрыт
+// verify). Итог: ru 1415, uk 760, es 757, de 758, fr 752.
+// Задача 23 плана 2D (хаб «Конфиденциальность» `AppPrivacyAndSecurityTab`, порт tweb
+// privacyAndSecurity.tsx + тумблер «Hide Read Time» privacy/lastSeen.tsx): +5 ключей
+// tweb lang.ts всем пяти — `PrivacySettingsController.UserCount` и `Passkeys` (оба
+// с формами числа), `PrivacyAndSecurity.Item.Off`, `HideReadTime`, `HideReadTimeInfo`.
+// Сняты ключи снесённого React-экрана без других читателей: `DeleteAccount.Action`/
+// `.Caption`/`.Text`/`.Title` (удаления аккаунта в приложении у tweb нет) и
+// `PrivacyGroupsTitle` (у tweb строка — `WhoCanAddMe`) у всех пяти; у ru ещё ключи
+// снесённой вкладки «Время прочтения» — `PrivacyReadTime`, `PrivacyReadTimeTitle`,
+// `Privacy.ReadTimeCaption`. Итог (поверх 2-2 волны 7): ru 1412 (форм числа 44), uk 760,
+// es 757, de 758, fr 752 (форм числа +2 у каждого).
+// Задача 0а-2 волны 7 («Новая группа», порт tweb newGroup.tsx): у ru +1 ключ tweb
+// lang.ts — скрытое поле места `ChatLocation` (`SendMessageTo` завела 0а-3); у всех
+// пяти −1: со сносом React-экрана `NewGroupFlow` и `useSidebarActions` ушёл наш
+// `NewGroup.DefaultTitle` (вкладка tweb без названия группу не создаёт). Итог: ru 1412,
+// uk 759, es 756, de 757, fr 751.
+// Задача 0б-10 волны 7 (вкладка «Изменить контакт», порт tweb editContact.tsx +
+// popups/deleteContacts.ts): у ru +23 ключа tweb lang.ts — `AddContactTitle`,
+// `ContactNoteRow`, `SuggestBirthdayRow`, `EditContact.OriginalName`, `MobileHidden`,
+// `MobileHiddenExceptionInfo`, `NewContact.Exception.ShareMyPhoneNumber{,.Desc}`,
+// `PeerInfo.DeleteContact`, десять `UserInfo.*` личного фото, `DeleteContact`,
+// `AreYouSureDeleteContact`, `DeleteContactsSubtitle` и числовой `DeleteContactsTitle`.
+// Итог (поверх 0а-2): ru 1435 (форм числа 45).
 const COMPOSITION = {
-  ru: { keys: 1427, plural: 43 },
-  uk: { keys: 748, plural: 31 },
-  es: { keys: 745, plural: 30 },
-  de: { keys: 745, plural: 31 },
-  fr: { keys: 740, plural: 30 },
+  ru: { keys: 1435, plural: 45 },
+  uk: { keys: 759, plural: 33 },
+  es: { keys: 756, plural: 32 },
+  de: { keys: 757, plural: 33 },
+  fr: { keys: 751, plural: 32 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -533,13 +611,33 @@ const COMPOSITION = {
 // наши ключи снесённых React-экранов «Новое сообщение» и «Контакты» (вкладка контактов
 // tweb пустой выдачи не подписывает, а «Новое сообщение» — это она же).
 // Пилюлей предложения даты рождения — у ru +2 ключа tweb (разбор — там же).
-// Вкладкой «Изменить контакт» — у ru +23 ключа tweb (разбор — там же).
+// Задачей 20 плана 2D — три ключа вкладки «Автоудаление» у всех пяти (там же).
+// Задачей 0б-2 волны 7 — +5 ключей вкладки типа чата у всех пяти, у ru — минус
+// `LinkInvalid`/`LinkTaken` снесённого React-экрана (разбор — там же).
+// Задачей 15 плана 2D — ключи «Стикеров и эмодзи» вместо ключей снесённого
+// React-экрана (разбор — у `COMPOSITION` выше).
+// Задачей 22 плана 2D — минус `BlockedEmptyDescription` у всех пяти (разбор — у
+// `COMPOSITION` выше).
+// Задачей 0а-3 волны 7 — у ru +5 ключей tweb, у всех пяти минус `NewChannel.DefaultTitle`
+// снесённого React-экрана (разбор — у `COMPOSITION` выше).
+// Задачей 26 плана 2D — ключи вкладки «Динамики и камера» вместо ключей
+// «Принимать звонки» (разбор — у `COMPOSITION` выше).
+// Задачей 27 плана 2D — минус ключи снесённого React-экрана профиля у всех пяти,
+// у ru плюс четыре ключа tweb (разбор — у `COMPOSITION` выше).
+// Задачей 2-2 волны 7 — у ru +4 ключа бургера tweb, у всех пяти минус ключи
+// снесённого «Кошелька» (разбор — у `COMPOSITION` выше).
+// Задачей 23 плана 2D — ключи хаба «Конфиденциальность» и «Hide Read Time» вместо
+// ключей снесённого React-экрана и вкладки «Время прочтения» (разбор — у
+// `COMPOSITION` выше).
+// Задачей 0а-2 волны 7 — у ru +1 ключ tweb `ChatLocation`, у всех пяти минус
+// `NewGroup.DefaultTitle` снесённого React-экрана (разбор — там же).
+// Задачей 0б-10 волны 7 — у ru +23 ключа вкладки «Изменить контакт» (разбор — там же).
 const FINGERPRINT = {
-  ru: '8173567e',
-  uk: '38a0b8a3',
-  es: '68937dba',
-  de: '0e73a8c9',
-  fr: '055afa1f',
+  ru: '2b49af1a',
+  uk: '571c2c10',
+  es: '737d78e3',
+  de: '5e55ac08',
+  fr: '05470caa',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
@@ -846,7 +944,6 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     'Premium.Boarding.Title': 'название продукта — «Telegram Premium» не переводится',
     AutodownloadPrivateChats: '«Private Chats» — немецкое «privat» плюс заимствованное «Chats»',
     AutoDownloadVideos: '«Videos» — немецкое множественное от «Video»',
-    'Stars.Wallet': '«Wallet» — заимствование, немецкого эквивалента в Telegram нет',
     ReportChatSpam: '«Spam» — заимствование',
     Info: '«Info» — немецкое сокращение от «Information»',
     SetUrlPlaceholder: '«Link» — немецкое слово',
@@ -882,6 +979,7 @@ const SAME_AS_ENGLISH: Record<Code, Partial<Record<LangPackKey, string>>> = {
     Notifications: '«notifications» — французское слово',
     AutoDownloadPhotos: '«photos» — французское слово',
     'CallSettings.Microphone': '«microphone» — французское слово',
+    'CallSettings.InputSection': '«microphone» — французское слово (имя секции, tweb speakersAndCamera.tsx)',
     Contacts: '«contacts» — французское слово',
     Message: '«message» — французское слово',
     ReportChatSpam: '«spam» — заимствование',

@@ -72,7 +72,7 @@
  *  • `getCurrentAccount() !== 1` (у tweb — реальный мультиаккаунт,
  *    `lib/accounts/*`, которого у нас нет) заменён на то же условие, что уже
  *    использует наш React `AuthFlow.tsx`: `PREV_ACCOUNT_KEY` в localStorage
- *    (`core/accountTransition.ts` — ставит `MainMenu.tsx` при «добавить
+ *    (`core/accountTransition.ts` — ставит бургер `sidebarLeft/toolsMenu.ts` при «добавить
  *    аккаунт», часть уже смержённой, не придуманной здесь схемы).
  *  • `sessionStorage.set/get/delete('should_animate_auth'/'should_animate_main'
  *    /'previous_account')` + `getValidatedAccount`/`changeAccount` (модули

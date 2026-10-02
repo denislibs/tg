@@ -6,11 +6,15 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 38,
+      "version": 41,
       "strings": [
         {
           "key": "ALongTimeAgo",
           "value": "last seen a long time ago"
+        },
+        {
+          "key": "AccDescr.MicrophoneLevel",
+          "value": "Microphone level"
         },
         {
           "key": "AccountSettings.Filters",
@@ -47,6 +51,18 @@
         {
           "key": "AddFactCheck",
           "value": "Add Fact Check"
+        },
+        {
+          "key": "AddMembersAlertCountText",
+          "value": "Are you sure you want to add %1$s to **%2$s**?"
+        },
+        {
+          "key": "AddMembersAlertNamesText",
+          "value": "Are you sure you want to add %1$s to **%2$s**?"
+        },
+        {
+          "key": "AddMembersAlertTitle",
+          "value": "Add %1$s"
         },
         {
           "key": "AddOneMemberAlertTitle",
@@ -233,6 +249,10 @@
           "value": "Disable"
         },
         {
+          "key": "AutoDeleteMessages.InfoDefault",
+          "value": "Automatically delete messages for everyone in chats you start after a certain amount of time."
+        },
+        {
           "key": "AutoDeleteMessages.SectionCaption",
           "value": "If enabled, all new messages in chats you start will be automatically deleted for everyone at some point after they have been sent. This will not affect your existing chats."
         },
@@ -415,10 +435,6 @@
         {
           "key": "BlockedEmpty",
           "value": "None"
-        },
-        {
-          "key": "BlockedEmptyDescription",
-          "value": "You haven't blocked anyone."
         },
         {
           "key": "BlockedUsers",
@@ -617,24 +633,16 @@
           "value": "Outgoing Video Call"
         },
         {
-          "key": "CallSettings.AcceptCalls",
-          "value": "Accept calls on this device"
-        },
-        {
-          "key": "CallSettings.AcceptCalls.Caption",
-          "value": "Turn off to stop receiving incoming calls and group video chats on this device."
-        },
-        {
-          "key": "CallSettings.AcceptCallsShort",
-          "value": "Accept Calls"
-        },
-        {
           "key": "CallSettings.Camera",
           "value": "Device"
         },
         {
           "key": "CallSettings.CameraSection",
           "value": "Camera"
+        },
+        {
+          "key": "CallSettings.CameraUnavailable",
+          "value": "Camera is unavailable. Check camera access and try again."
         },
         {
           "key": "CallSettings.DeviceDefault",
@@ -649,16 +657,32 @@
           "value": "Input device"
         },
         {
+          "key": "CallSettings.InputSection",
+          "value": "Microphone"
+        },
+        {
           "key": "CallSettings.Microphone",
           "value": "Microphone"
+        },
+        {
+          "key": "CallSettings.MicrophoneUnavailable",
+          "value": "Microphone is unavailable. Check microphone access and try again."
         },
         {
           "key": "CallSettings.OutputDevice",
           "value": "Output device"
         },
         {
+          "key": "CallSettings.OutputSection",
+          "value": "Speakers"
+        },
+        {
           "key": "CallSettings.Speakers",
           "value": "Speakers"
+        },
+        {
+          "key": "Calls",
+          "value": "Calls"
         },
         {
           "key": "Calls.Empty",
@@ -773,6 +797,14 @@
         {
           "key": "ChannelType",
           "value": "Channel Type"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "If you make this channel private, the name @%@ will be removed. Anyone else will be able to take it for their public groups or channels."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "If you make this group private, the name @%@ will be removed. Anyone else will be able to take it for their public groups or channels."
         },
         {
           "key": "Channels",
@@ -1208,6 +1240,10 @@
           "value": "Missed Call"
         },
         {
+          "key": "ChatLocation",
+          "value": "Location"
+        },
+        {
           "key": "ChatTheme.None",
           "value": "No Theme"
         },
@@ -1318,6 +1354,10 @@
           "value": "Clear recent stickers"
         },
         {
+          "key": "ClientPip.Exit",
+          "value": "Exit Picture-in-Picture"
+        },
+        {
           "key": "Close",
           "value": "Close"
         },
@@ -1401,6 +1441,14 @@
           "value": "Record voice message"
         },
         {
+          "key": "ConferenceCall.Media.CameraError",
+          "value": "Could not change the camera state. Check camera access and try again."
+        },
+        {
+          "key": "ConferenceCall.Media.MicrophoneError",
+          "value": "Could not change the microphone state. Check microphone access and try again."
+        },
+        {
           "key": "ConnectionStatus.ReconnectInPlain",
           "value": "Reconnect in %ds"
         },
@@ -1445,6 +1493,10 @@
           "value": "Create"
         },
         {
+          "key": "CreateANew",
+          "value": "Create a New"
+        },
+        {
           "key": "CreateBot.Username.Taken",
           "value": "This username is already taken."
         },
@@ -1478,22 +1530,6 @@
         {
           "key": "Delete",
           "value": "Delete"
-        },
-        {
-          "key": "DeleteAccount.Action",
-          "value": "Delete My Account"
-        },
-        {
-          "key": "DeleteAccount.Caption",
-          "value": "This will delete your account and all your data. Your messages will remain but appear as sent by a «Deleted Account»."
-        },
-        {
-          "key": "DeleteAccount.Text",
-          "value": "Are you sure you want to delete your account? This action cannot be undone."
-        },
-        {
-          "key": "DeleteAccount.Title",
-          "value": "Delete Account"
         },
         {
           "key": "DeleteAllRevokedLinks",
@@ -1662,10 +1698,6 @@
           "value": "Draft"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Dynamic Pack Order"
-        },
-        {
           "key": "Edit",
           "value": "Edit"
         },
@@ -1676,6 +1708,10 @@
         {
           "key": "EditAccount.Title",
           "value": "Edit Profile"
+        },
+        {
+          "key": "EditAccount.Username",
+          "value": "Username"
         },
         {
           "key": "EditAdmin",
@@ -1722,40 +1758,20 @@
           "value": "Name"
         },
         {
-          "key": "EditProfile.LastNameLabel",
-          "value": "Last name"
-        },
-        {
           "key": "EditProfile.Username.Available",
           "value": "Username is available"
         },
         {
-          "key": "EditProfile.Username.Caption",
-          "value": "You can choose a public username so people can find you and contact you without knowing your phone number."
-        },
-        {
-          "key": "EditProfile.Username.Checking",
-          "value": "Checking…"
+          "key": "EditProfile.Username.Invalid",
+          "value": "Username is invalid"
         },
         {
           "key": "EditProfile.Username.Label",
           "value": "Username (optional)"
         },
         {
-          "key": "EditProfile.Username.Rules",
-          "value": "Username must be 5–32 chars: letters, digits, underscore."
-        },
-        {
           "key": "EditProfile.Username.Taken",
           "value": "Username is already taken"
-        },
-        {
-          "key": "EditProfile.Username.TooShort",
-          "value": "Minimum 5 characters."
-        },
-        {
-          "key": "EditProfile.VideoError",
-          "value": "Could not process this video."
         },
         {
           "key": "EditedMessage",
@@ -1764,6 +1780,10 @@
         {
           "key": "Effect.Remove",
           "value": "Remove Effect"
+        },
+        {
+          "key": "Emoji",
+          "value": "Emoji"
         },
         {
           "key": "Emoji.Activity",
@@ -2188,6 +2208,14 @@
           "value": "Hide"
         },
         {
+          "key": "HideReadTime",
+          "value": "Hide Read Time"
+        },
+        {
+          "key": "HideReadTimeInfo",
+          "value": "Hide the time when you read messages from people who can’t see your last seen. If you turn this on, their read time will also be hidden from you (unless you are a Premium user).\n\nThis setting does not affect group chats."
+        },
+        {
           "key": "Hours",
           "forms": {
             "one_value": "%1$d hour",
@@ -2273,6 +2301,10 @@
         {
           "key": "InviteLinks.View",
           "value": "View link"
+        },
+        {
+          "key": "InviteToGroupError",
+          "value": "Sorry, you can't add this user to groups because of user's privacy settings."
         },
         {
           "key": "JumpToDate",
@@ -2462,12 +2494,20 @@
           "value": "Limit Reached"
         },
         {
-          "key": "LinkCopied",
-          "value": "Link copied to clipboard"
+          "key": "Link.Available",
+          "value": "Link is available"
         },
         {
-          "key": "LinkInvalid",
-          "value": "Invalid link."
+          "key": "Link.Invalid",
+          "value": "Link is invalid"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "Link is already taken"
+        },
+        {
+          "key": "LinkCopied",
+          "value": "Link copied to clipboard"
         },
         {
           "key": "LinkNameHelp",
@@ -2476,10 +2516,6 @@
         {
           "key": "LinkNameHint",
           "value": "Link Name (Optional)"
-        },
-        {
-          "key": "LinkTaken",
-          "value": "This link is already taken."
         },
         {
           "key": "LiteMode.DisableAlert",
@@ -2658,6 +2694,10 @@
           "value": "Log in by QR Code"
         },
         {
+          "key": "Login.Register.LastName.Placeholder",
+          "value": "Last Name"
+        },
+        {
           "key": "Login.Register.NameRequired",
           "value": "Please enter your name"
         },
@@ -2728,6 +2768,10 @@
         {
           "key": "LoginPassword",
           "value": "Password"
+        },
+        {
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Animated stickers will play continuously in chats."
         },
         {
           "key": "ManageLinks.DeleteAll.Confirm",
@@ -3092,10 +3136,6 @@
           "value": "New Channel"
         },
         {
-          "key": "NewChannel.DefaultTitle",
-          "value": "New Channel"
-        },
-        {
           "key": "NewChecklist",
           "value": "New Checklist"
         },
@@ -3113,10 +3153,6 @@
         },
         {
           "key": "NewGroup",
-          "value": "New Group"
-        },
-        {
-          "key": "NewGroup.DefaultTitle",
           "value": "New Group"
         },
         {
@@ -3558,6 +3594,13 @@
           "value": "UNSUPPORTED"
         },
         {
+          "key": "Passkeys",
+          "forms": {
+            "one_value": "%d passkey",
+            "other_value": "%d passkeys"
+          }
+        },
+        {
           "key": "PasswordAsHintError",
           "value": "Hint must be different from your password"
         },
@@ -3693,6 +3736,10 @@
           "value": "Please confirm your country code and enter your new phone number."
         },
         {
+          "key": "PictureInPicture",
+          "value": "Picture-in-Picture"
+        },
+        {
           "key": "PinFolderLimitReached",
           "value": "Sorry, you can't pin any more chats to the top."
         },
@@ -3727,14 +3774,6 @@
         {
           "key": "Pip.BackToTab",
           "value": "Back to Tab"
-        },
-        {
-          "key": "Pip.Title",
-          "value": "Picture in Picture"
-        },
-        {
-          "key": "Pip.Unsupported",
-          "value": "Picture-in-Picture is not supported in this browser."
         },
         {
           "key": "PlaybackRateNormal",
@@ -4029,12 +4068,12 @@
           "value": "Your passkey is stored securely in your password manager. [Learn more \u003e]()"
         },
         {
-          "key": "Privacy.ReadTimeCaption",
-          "value": "You won't see when people read your messages if you don't share when you read theirs. This setting does not affect group chats."
-        },
-        {
           "key": "Privacy.WhoCanSeeThis",
           "value": "Who can see this"
+        },
+        {
+          "key": "PrivacyAndSecurity.Item.Off",
+          "value": "Off"
         },
         {
           "key": "PrivacyAndSecurity.Item.On",
@@ -4051,10 +4090,6 @@
         {
           "key": "PrivacyForwardsTitle",
           "value": "Who can add a link to my account when forwarding my messages?"
-        },
-        {
-          "key": "PrivacyGroupsTitle",
-          "value": "Who can add me to group chats?"
         },
         {
           "key": "PrivacyLastSeen",
@@ -4099,14 +4134,6 @@
         {
           "key": "PrivacyProfilePhotoTitle",
           "value": "Who can see my profile photos?"
-        },
-        {
-          "key": "PrivacyReadTime",
-          "value": "Read Time"
-        },
-        {
-          "key": "PrivacyReadTimeTitle",
-          "value": "Who can see when I read their messages?"
         },
         {
           "key": "PrivacySettings",
@@ -4183,6 +4210,13 @@
         {
           "key": "PrivacySettingsController.ProfilePhoto.CustomHelp",
           "value": "You can restrict who can see your profile photo with granular precision."
+        },
+        {
+          "key": "PrivacySettingsController.UserCount",
+          "forms": {
+            "one_value": "%d user",
+            "other_value": "%d users"
+          }
         },
         {
           "key": "PrivacyTitle",
@@ -4403,6 +4437,10 @@
         {
           "key": "Rtmp.MediaViewer.Live",
           "value": "LIVE"
+        },
+        {
+          "key": "Rtmp.OutputPopup.Default",
+          "value": "Default"
         },
         {
           "key": "Rtmp.OutputPopup.Title",
@@ -4646,6 +4684,10 @@
           "value": "Send Message"
         },
         {
+          "key": "SendMessageTo",
+          "value": "Add people..."
+        },
+        {
           "key": "Separator.ShowLess",
           "value": "show less"
         },
@@ -4684,10 +4726,6 @@
         {
           "key": "Settings",
           "value": "Settings"
-        },
-        {
-          "key": "Settings.BigEmoji",
-          "value": "Big Emoji"
         },
         {
           "key": "Settings.Limits",
@@ -4850,10 +4888,6 @@
           "value": "Convert to"
         },
         {
-          "key": "StarGift.Converted",
-          "value": "Gift converted"
-        },
-        {
           "key": "StarGift.GiftTo",
           "value": "Gift to"
         },
@@ -4944,18 +4978,6 @@
         {
           "key": "Stars.TopUpAction",
           "value": "Top up Stars"
-        },
-        {
-          "key": "Stars.TopUpTitle",
-          "value": "Top-Up"
-        },
-        {
-          "key": "Stars.Transaction",
-          "value": "Transaction"
-        },
-        {
-          "key": "Stars.Wallet",
-          "value": "Wallet"
         },
         {
           "key": "StarsFailed",
@@ -5053,20 +5075,8 @@
           }
         },
         {
-          "key": "Stickers.AddSets",
-          "value": "Add Sticker Sets"
-        },
-        {
           "key": "Stickers.ClearRecent.Text",
           "value": "Are you sure you want to clear your recent stickers?"
-        },
-        {
-          "key": "Stickers.MySets",
-          "value": "My Sticker Sets"
-        },
-        {
-          "key": "Stickers.NoSets",
-          "value": "No sticker sets installed"
         },
         {
           "key": "Stickers.RemoveFromFavorites",
@@ -5077,12 +5087,12 @@
           "value": "Added"
         },
         {
-          "key": "Stickers.SearchSets",
-          "value": "Search sticker sets"
-        },
-        {
           "key": "Stickers.SuggestStickers",
           "value": "Suggest Stickers by Emoji"
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Artists are welcome to add their own sticker sets using our @stickers bot."
         },
         {
           "key": "StickersName",
@@ -5276,6 +5286,18 @@
           "value": "Suggest Date of Birth"
         },
         {
+          "key": "SuggestStickersAll",
+          "value": "All Sets"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "My Sets"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "None"
+        },
+        {
           "key": "SuggestedPosts.Empty",
           "value": "No suggested posts here yet…"
         },
@@ -5356,6 +5378,10 @@
           "value": "General Settings"
         },
         {
+          "key": "Telegram.InstalledStickerPacksController",
+          "value": "Stickers"
+        },
+        {
           "key": "Telegram.LanguageViewController",
           "value": "Language"
         },
@@ -5366,6 +5392,10 @@
         {
           "key": "TelegramFeatures",
           "value": "Telegram Features"
+        },
+        {
+          "key": "TelegramFeaturesUrl",
+          "value": "https://t.me/TelegramTips"
         },
         {
           "key": "TelegramStars",
@@ -5631,6 +5661,14 @@
           "value": "Unread Messages"
         },
         {
+          "key": "UnsavedChanges",
+          "value": "Unsaved Changes"
+        },
+        {
+          "key": "UnsavedChangesDescription.Privacy",
+          "value": "You have changed some privacy settings. Save changes?"
+        },
+        {
           "key": "Updating",
           "value": "Updating..."
         },
@@ -5733,6 +5771,10 @@
         {
           "key": "UsernameCopied",
           "value": "Username copied to clipboard."
+        },
+        {
+          "key": "UsernameHelp",
+          "value": "You can choose a username on **Telegram**. If you do, people will be able to find you by this username and contact you without needing your phone number.\n\nYou can use **a–z**, **0–9** and underscores. Minimum length is **5** characters."
         },
         {
           "key": "Users",
@@ -5894,7 +5936,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 38,
+      "version": 41,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -6059,14 +6101,6 @@
         {
           "key": "MegaPrivateLinkHelp",
           "value": "По этой ссылке можно вступить в вашу группу. Вы можете сбросить ссылку в любой момент."
-        },
-        {
-          "key": "LinkTaken",
-          "value": "Эта ссылка уже занята."
-        },
-        {
-          "key": "LinkInvalid",
-          "value": "Недопустимая ссылка."
         },
         {
           "key": "InviteLinks",
@@ -6638,20 +6672,8 @@
           "value": "Последние операции"
         },
         {
-          "key": "Stars.TopUpTitle",
-          "value": "Пополнение"
-        },
-        {
           "key": "StarGiftTitle",
           "value": "Подарок"
-        },
-        {
-          "key": "StarGift.Converted",
-          "value": "Подарок обменян на звёзды"
-        },
-        {
-          "key": "Stars.Transaction",
-          "value": "Операция"
         },
         {
           "key": "StarsReactionTitle",
@@ -6774,6 +6796,22 @@
           "value": "Установить приложение"
         },
         {
+          "key": "PictureInPicture",
+          "value": "Картинка в картинке"
+        },
+        {
+          "key": "ClientPip.Exit",
+          "value": "Выйти из режима «Картинка в картинке»"
+        },
+        {
+          "key": "CreateANew",
+          "value": "Создать"
+        },
+        {
+          "key": "Calls",
+          "value": "Звонки"
+        },
+        {
           "key": "Chat.Delete.Private.Text",
           "value": "Чат будет удалён из вашего списка чатов."
         },
@@ -6802,10 +6840,6 @@
           "value": "OK"
         },
         {
-          "key": "Pip.Title",
-          "value": "Картинка в картинке"
-        },
-        {
           "key": "Pip.ActiveTitle",
           "value": "Telegram открыт в режиме «картинка в картинке»"
         },
@@ -6816,10 +6850,6 @@
         {
           "key": "Pip.BackToTab",
           "value": "Назад во вкладку"
-        },
-        {
-          "key": "Pip.Unsupported",
-          "value": "Картинка в картинке не поддерживается в этом браузере."
         },
         {
           "key": "Notifications.Web",
@@ -7252,12 +7282,32 @@
           "value": "Подсказки эмодзи"
         },
         {
-          "key": "Settings.BigEmoji",
-          "value": "Большие эмодзи"
+          "key": "Emoji",
+          "value": "Эмодзи"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Динамический порядок наборов"
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Анимированные стикеры будут воспроизводиться в чатах непрерывно."
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Художники могут добавлять свои наборы стикеров с помощью нашего бота @stickers."
+        },
+        {
+          "key": "SuggestStickersAll",
+          "value": "Все наборы"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "Мои наборы"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "Нет"
+        },
+        {
+          "key": "Telegram.InstalledStickerPacksController",
+          "value": "Стикеры"
         },
         {
           "key": "Call.Output",
@@ -7404,14 +7454,6 @@
           "value": "Сохранить"
         },
         {
-          "key": "CallSettings.AcceptCalls",
-          "value": "Приём звонков на этом устройстве"
-        },
-        {
-          "key": "CallSettings.AcceptCalls.Caption",
-          "value": "Отключите, чтобы не принимать входящие звонки и групповые видеозвонки на этом устройстве."
-        },
-        {
           "key": "Call.Input",
           "value": "Ввод"
         },
@@ -7420,8 +7462,36 @@
           "value": "Устройство ввода"
         },
         {
-          "key": "CallSettings.AcceptCallsShort",
-          "value": "Принимать звонки"
+          "key": "CallSettings.OutputSection",
+          "value": "Динамики"
+        },
+        {
+          "key": "CallSettings.InputSection",
+          "value": "Микрофон"
+        },
+        {
+          "key": "CallSettings.MicrophoneUnavailable",
+          "value": "Микрофон недоступен. Проверьте доступ к микрофону и попробуйте ещё раз."
+        },
+        {
+          "key": "CallSettings.CameraUnavailable",
+          "value": "Камера недоступна. Проверьте доступ к камере и попробуйте ещё раз."
+        },
+        {
+          "key": "AccDescr.MicrophoneLevel",
+          "value": "Уровень микрофона"
+        },
+        {
+          "key": "ConferenceCall.Media.MicrophoneError",
+          "value": "Не удалось изменить состояние микрофона. Проверьте доступ к микрофону и попробуйте ещё раз."
+        },
+        {
+          "key": "ConferenceCall.Media.CameraError",
+          "value": "Не удалось изменить состояние камеры. Проверьте доступ к камере и попробуйте ещё раз."
+        },
+        {
+          "key": "Rtmp.OutputPopup.Default",
+          "value": "По умолчанию"
         },
         {
           "key": "Translate",
@@ -7484,10 +7554,6 @@
           "value": "Контакты"
         },
         {
-          "key": "Stars.Wallet",
-          "value": "Кошелёк"
-        },
-        {
           "key": "MenuTelegramStars",
           "value": "Мои звёзды"
         },
@@ -7502,14 +7568,6 @@
         {
           "key": "NewGroup",
           "value": "Создать группу"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
-          "value": "Новый канал"
-        },
-        {
-          "key": "NewGroup.DefaultTitle",
-          "value": "Новая группа"
         },
         {
           "key": "NewPrivateChat",
@@ -8069,6 +8127,26 @@
           "value": "Тип канала"
         },
         {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "Если вы сделаете канал частным, имя @%@ будет удалено. Его сможет занять кто угодно для своих публичных групп или каналов."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "Если вы сделаете группу частной, имя @%@ будет удалено. Его сможет занять кто угодно для своих публичных групп или каналов."
+        },
+        {
+          "key": "Link.Available",
+          "value": "Ссылка свободна"
+        },
+        {
+          "key": "Link.Invalid",
+          "value": "Недопустимая ссылка"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "Эта ссылка уже занята"
+        },
+        {
           "key": "ChannelDirectMessages.Settings.Title",
           "value": "Личные сообщения"
         },
@@ -8227,6 +8305,10 @@
         {
           "key": "CreateGroup.NameHolder",
           "value": "Название группы"
+        },
+        {
+          "key": "ChatLocation",
+          "value": "Местоположение"
         },
         {
           "key": "DescriptionPlaceholder",
@@ -9153,28 +9235,28 @@
           "value": "Имя пользователя (необязательно)"
         },
         {
-          "key": "EditProfile.Username.TooShort",
-          "value": "Минимум 5 символов."
+          "key": "EditProfile.Username.Invalid",
+          "value": "Недопустимое имя пользователя."
+        },
+        {
+          "key": "EditAccount.Username",
+          "value": "Имя пользователя"
+        },
+        {
+          "key": "Login.Register.LastName.Placeholder",
+          "value": "Фамилия"
+        },
+        {
+          "key": "UsernameHelp",
+          "value": "Вы можете выбрать имя пользователя в **Telegram**. В этом случае другие люди смогут найти Вас по такому имени и связаться с Вами, не зная Вашего телефона.\n\nМожно использовать символы **a–z**, **0–9** и подчёркивания. Минимальная длина — **5** символов."
         },
         {
           "key": "EditProfile.Username.Available",
           "value": "Это имя пользователя свободно."
         },
         {
-          "key": "EditProfile.Username.Rules",
-          "value": "Имя пользователя — 5–32 символа: буквы, цифры, подчёркивание."
-        },
-        {
-          "key": "EditProfile.Username.Caption",
-          "value": "Вы можете выбрать публичное имя пользователя, чтобы вас могли находить и связываться с вами, не зная номера телефона."
-        },
-        {
           "key": "CreateBot.Username.Taken",
           "value": "Это имя пользователя уже занято."
-        },
-        {
-          "key": "EditProfile.Username.Checking",
-          "value": "Проверка…"
         },
         {
           "key": "Birthday",
@@ -9222,7 +9304,7 @@
         },
         {
           "key": "Discard",
-          "value": "Удалить"
+          "value": "Не сохранять"
         },
         {
           "key": "BlockUser",
@@ -9231,10 +9313,6 @@
         {
           "key": "BlockedUsersInfoShort",
           "value": "Заблокированные пользователи не могут писать вам и видеть ваш профиль."
-        },
-        {
-          "key": "BlockedEmptyDescription",
-          "value": "Вы никого не заблокировали."
         },
         {
           "key": "TwoStepAuth.SetPasswordCaption",
@@ -9553,10 +9631,6 @@
           "value": "Кто может ссылаться на мой аккаунт при пересылке сообщений?"
         },
         {
-          "key": "PrivacyGroupsTitle",
-          "value": "Кто может приглашать меня?"
-        },
-        {
           "key": "PrivacyVoiceMessagesTitle",
           "value": "Кто может отправлять мне голосовые сообщения?"
         },
@@ -9567,18 +9641,6 @@
         {
           "key": "Privacy.BirthdayRow",
           "value": "Кто видит мой день рождения?"
-        },
-        {
-          "key": "PrivacyReadTime",
-          "value": "Время прочтения"
-        },
-        {
-          "key": "PrivacyReadTimeTitle",
-          "value": "Кто видит, когда я прочитал их сообщения?"
-        },
-        {
-          "key": "Privacy.ReadTimeCaption",
-          "value": "Вы не будете видеть, когда Ваши сообщения прочитали, если не показываете, когда читаете сами. Эта настройка не влияет на групповые чаты."
         },
         {
           "key": "PrivacyPhoneInfo",
@@ -9751,6 +9813,18 @@
         {
           "key": "AutoDeleteMessages.SetOtherTime",
           "value": "Выбрать другой срок"
+        },
+        {
+          "key": "AutoDeleteMessages.InfoDefault",
+          "value": "Автоматически удалять сообщения для всех в начатых вами чатах через заданное время."
+        },
+        {
+          "key": "UnsavedChanges",
+          "value": "Несохранённые изменения"
+        },
+        {
+          "key": "UnsavedChangesDescription.Privacy",
+          "value": "Вы изменили настройки конфиденциальности. Сохранить изменения?"
         },
         {
           "key": "Seconds",
@@ -10376,18 +10450,6 @@
           "value": "Убрать из избранного"
         },
         {
-          "key": "Stickers.MySets",
-          "value": "Мои наборы стикеров"
-        },
-        {
-          "key": "Stickers.AddSets",
-          "value": "Добавить наборы"
-        },
-        {
-          "key": "Stickers.SearchSets",
-          "value": "Поиск наборов стикеров"
-        },
-        {
           "key": "Stickers",
           "forms": {
             "one_value": "%1$d стикер",
@@ -10395,10 +10457,6 @@
             "many_value": "%1$d стикеров",
             "other_value": "%1$d стикера"
           }
-        },
-        {
-          "key": "Stickers.NoSets",
-          "value": "Нет установленных наборов"
         },
         {
           "key": "StickersTab.SearchPlaceholder",
@@ -10718,22 +10776,6 @@
           "value": "Этот номер уже привязан к аккаунту Telegram."
         },
         {
-          "key": "DeleteAccount.Action",
-          "value": "Удалить мой аккаунт"
-        },
-        {
-          "key": "DeleteAccount.Title",
-          "value": "Удаление аккаунта"
-        },
-        {
-          "key": "DeleteAccount.Text",
-          "value": "Вы уверены, что хотите удалить аккаунт? Это действие необратимо."
-        },
-        {
-          "key": "DeleteAccount.Caption",
-          "value": "Аккаунт и все данные будут удалены. Сообщения останутся, но будут отображаться как отправленные «Удалённым аккаунтом»."
-        },
-        {
           "key": "AttachAlbum",
           "value": "Альбом"
         },
@@ -10982,6 +11024,26 @@
           "value": "Добавить участника"
         },
         {
+          "key": "AddMembersAlertCountText",
+          "value": "Вы уверены, что хотите добавить %1$s в **%2$s**?"
+        },
+        {
+          "key": "AddMembersAlertNamesText",
+          "value": "Вы уверены, что хотите добавить %1$s в **%2$s**?"
+        },
+        {
+          "key": "AddMembersAlertTitle",
+          "value": "Добавить %1$s"
+        },
+        {
+          "key": "InviteToGroupError",
+          "value": "К сожалению, вы не можете добавить этого пользователя в группы из-за его настроек конфиденциальности."
+        },
+        {
+          "key": "SendMessageTo",
+          "value": "Добавить людей..."
+        },
+        {
           "key": "AutoDownloadSettings.LastDelimeter",
           "value": " и "
         },
@@ -11112,10 +11174,6 @@
         {
           "key": "DiscussionUnlink",
           "value": "Отвязать"
-        },
-        {
-          "key": "EditProfile.VideoError",
-          "value": "Не удалось обработать это видео."
         },
         {
           "key": "Effect.Remove",
@@ -11446,10 +11504,6 @@
         {
           "key": "Story.Sound",
           "value": "Звук"
-        },
-        {
-          "key": "EditProfile.LastNameLabel",
-          "value": "Фамилия"
         },
         {
           "key": "AutoDeleteMessages.Disable",
@@ -11815,6 +11869,36 @@
         {
           "key": "UserInfo.UpdatePhotoFor",
           "value": "Изменить фото для %1$s"
+        },
+        {
+          "key": "HideReadTime",
+          "value": "Скрывать время прочтения"
+        },
+        {
+          "key": "HideReadTimeInfo",
+          "value": "Скрывать время прочтения ваших сообщений от тех, кто не видит, когда вы были в сети. Если включить, время прочтения их сообщений тоже будет скрыто от вас (если у вас нет Telegram Premium).\n\nЭта настройка не влияет на групповые чаты."
+        },
+        {
+          "key": "Passkeys",
+          "forms": {
+            "one_value": "%d ключ",
+            "few_value": "%d ключа",
+            "many_value": "%d ключей",
+            "other_value": "%d ключа"
+          }
+        },
+        {
+          "key": "PrivacyAndSecurity.Item.Off",
+          "value": "Выкл."
+        },
+        {
+          "key": "PrivacySettingsController.UserCount",
+          "forms": {
+            "one_value": "%d пользователь",
+            "few_value": "%d пользователя",
+            "many_value": "%d пользователей",
+            "other_value": "%d пользователя"
+          }
         }
       ]
     },
@@ -11825,7 +11909,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 23,
+      "version": 27,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -12447,12 +12531,28 @@
           "value": "Suggérer des émojis"
         },
         {
-          "key": "Settings.BigEmoji",
-          "value": "Grands émojis"
+          "key": "Emoji",
+          "value": "Émojis"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Ordre dynamique des packs"
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Les stickers animés seront lus en boucle dans les discussions."
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Les artistes peuvent ajouter leurs propres packs de stickers grâce à notre bot @stickers."
+        },
+        {
+          "key": "SuggestStickersAll",
+          "value": "Tous les packs"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "Mes packs"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "Aucun"
         },
         {
           "key": "Call.Output",
@@ -12491,10 +12591,6 @@
           "value": "Enregistrer"
         },
         {
-          "key": "CallSettings.AcceptCalls",
-          "value": "Accepter les appels sur cet appareil"
-        },
-        {
           "key": "Call.Input",
           "value": "Entrée"
         },
@@ -12503,8 +12599,36 @@
           "value": "Périphérique d'entrée"
         },
         {
-          "key": "CallSettings.AcceptCallsShort",
-          "value": "Accepter les appels"
+          "key": "CallSettings.OutputSection",
+          "value": "Haut-parleurs"
+        },
+        {
+          "key": "CallSettings.InputSection",
+          "value": "Microphone"
+        },
+        {
+          "key": "CallSettings.MicrophoneUnavailable",
+          "value": "Le microphone est indisponible. Vérifiez l’accès au microphone et réessayez."
+        },
+        {
+          "key": "CallSettings.CameraUnavailable",
+          "value": "La caméra est indisponible. Vérifiez l’accès à la caméra et réessayez."
+        },
+        {
+          "key": "AccDescr.MicrophoneLevel",
+          "value": "Niveau du microphone"
+        },
+        {
+          "key": "ConferenceCall.Media.MicrophoneError",
+          "value": "Impossible de modifier l’état du microphone. Vérifiez l’accès au microphone et réessayez."
+        },
+        {
+          "key": "ConferenceCall.Media.CameraError",
+          "value": "Impossible de modifier l’état de la caméra. Vérifiez l’accès à la caméra et réessayez."
+        },
+        {
+          "key": "Rtmp.OutputPopup.Default",
+          "value": "Par défaut"
         },
         {
           "key": "CurrentSession",
@@ -12575,10 +12699,6 @@
           "value": "Contacts"
         },
         {
-          "key": "Stars.Wallet",
-          "value": "Portefeuille"
-        },
-        {
           "key": "MultiAccount.More",
           "value": "Plus"
         },
@@ -12588,14 +12708,6 @@
         },
         {
           "key": "NewGroup",
-          "value": "Nouveau groupe"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
-          "value": "Nouveau canal"
-        },
-        {
-          "key": "NewGroup.DefaultTitle",
           "value": "Nouveau groupe"
         },
         {
@@ -12887,6 +12999,26 @@
         {
           "key": "ChannelType",
           "value": "Type de canal"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "Si vous rendez ce canal privé, le nom @%@ sera supprimé. N’importe qui pourra alors le prendre pour ses groupes ou canaux publics."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "Si vous rendez ce groupe privé, le nom @%@ sera supprimé. N’importe qui pourra alors le prendre pour ses groupes ou canaux publics."
+        },
+        {
+          "key": "Link.Available",
+          "value": "Le lien est disponible"
+        },
+        {
+          "key": "Link.Invalid",
+          "value": "Le lien est invalide"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "Ce lien est déjà pris"
         },
         {
           "key": "GroupType",
@@ -13412,20 +13544,8 @@
           "value": "Nom d'utilisateur (facultatif)"
         },
         {
-          "key": "EditProfile.Username.TooShort",
-          "value": "Minimum 5 caractères."
-        },
-        {
           "key": "EditProfile.Username.Available",
           "value": "Ce nom d'utilisateur est disponible."
-        },
-        {
-          "key": "EditProfile.Username.Rules",
-          "value": "Nom d'utilisateur : 5–32 caractères : lettres, chiffres, tiret bas."
-        },
-        {
-          "key": "EditProfile.Username.Caption",
-          "value": "Vous pouvez choisir un nom d'utilisateur public pour que les gens puissent vous trouver et vous contacter sans connaître votre numéro."
         },
         {
           "key": "BlockUser",
@@ -13434,10 +13554,6 @@
         {
           "key": "BlockedUsersInfoShort",
           "value": "Les utilisateurs bloqués ne peuvent pas vous envoyer de messages ni voir votre profil."
-        },
-        {
-          "key": "BlockedEmptyDescription",
-          "value": "Vous n'avez bloqué personne."
         },
         {
           "key": "TwoStepAuth.SetPasswordCaption",
@@ -13748,10 +13864,6 @@
           "value": "Qui peut ajouter un lien vers mon compte lors du transfert de mes messages ?"
         },
         {
-          "key": "PrivacyGroupsTitle",
-          "value": "Qui peut m'ajouter à des groupes ?"
-        },
-        {
           "key": "PrivacyVoiceMessagesTitle",
           "value": "Qui peut m'envoyer des messages vocaux ?"
         },
@@ -13942,6 +14054,18 @@
         {
           "key": "AutoDeleteMessages.SetOtherTime",
           "value": "Choisir un autre délai"
+        },
+        {
+          "key": "AutoDeleteMessages.InfoDefault",
+          "value": "Supprimer automatiquement les messages pour tous dans les discussions que vous lancez après un certain délai."
+        },
+        {
+          "key": "UnsavedChanges",
+          "value": "Modifications non enregistrées"
+        },
+        {
+          "key": "UnsavedChangesDescription.Privacy",
+          "value": "Vous avez modifié des paramètres de confidentialité. Enregistrer les modifications ?"
         },
         {
           "key": "Seconds",
@@ -14550,22 +14674,6 @@
           "value": "Ce numéro est déjà associé à un compte Telegram."
         },
         {
-          "key": "DeleteAccount.Action",
-          "value": "Supprimer mon compte"
-        },
-        {
-          "key": "DeleteAccount.Title",
-          "value": "Suppression du compte"
-        },
-        {
-          "key": "DeleteAccount.Text",
-          "value": "Voulez-vous vraiment supprimer votre compte ? Cette action est irréversible."
-        },
-        {
-          "key": "DeleteAccount.Caption",
-          "value": "Cela supprimera votre compte et toutes vos données. Vos messages resteront mais apparaîtront comme envoyés par un « compte supprimé »."
-        },
-        {
           "key": "AttachAlbum",
           "value": "Album"
         },
@@ -14873,6 +14981,32 @@
         {
           "key": "SharedFolder.Toast.NoPrivate",
           "value": "Vous ne pouvez pas partager de discussions privées."
+        },
+        {
+          "key": "HideReadTime",
+          "value": "Masquer l’heure de lecture"
+        },
+        {
+          "key": "HideReadTimeInfo",
+          "value": "Masquez l’heure à laquelle vous lisez les messages des personnes qui ne peuvent pas voir votre dernière connexion. Si vous activez cette option, leur heure de lecture vous sera aussi masquée (sauf si vous êtes utilisateur Premium).\n\nCe paramètre n’affecte pas les discussions de groupe."
+        },
+        {
+          "key": "Passkeys",
+          "forms": {
+            "one_value": "%d clé d’accès",
+            "other_value": "%d clés d’accès"
+          }
+        },
+        {
+          "key": "PrivacyAndSecurity.Item.Off",
+          "value": "Désactivé"
+        },
+        {
+          "key": "PrivacySettingsController.UserCount",
+          "forms": {
+            "one_value": "%d utilisateur",
+            "other_value": "%d utilisateurs"
+          }
         }
       ]
     },
@@ -14883,7 +15017,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 23,
+      "version": 27,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -15504,12 +15638,32 @@
           "value": "Emojis vorschlagen"
         },
         {
-          "key": "Settings.BigEmoji",
-          "value": "Große Emojis"
+          "key": "Emoji",
+          "value": "Emojis"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Dynamische Paketreihenfolge"
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Animierte Sticker werden in Chats fortlaufend abgespielt."
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Künstler können mit unserem Bot @stickers eigene Stickerpakete hinzufügen."
+        },
+        {
+          "key": "SuggestStickersAll",
+          "value": "Alle Pakete"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "Meine Pakete"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "Keine"
+        },
+        {
+          "key": "Telegram.InstalledStickerPacksController",
+          "value": "Sticker"
         },
         {
           "key": "Call.Output",
@@ -15548,10 +15702,6 @@
           "value": "Speichern"
         },
         {
-          "key": "CallSettings.AcceptCalls",
-          "value": "Anrufe auf diesem Gerät annehmen"
-        },
-        {
           "key": "Call.Input",
           "value": "Eingabe"
         },
@@ -15560,8 +15710,36 @@
           "value": "Eingabegerät"
         },
         {
-          "key": "CallSettings.AcceptCallsShort",
-          "value": "Anrufe annehmen"
+          "key": "CallSettings.OutputSection",
+          "value": "Lautsprecher"
+        },
+        {
+          "key": "CallSettings.InputSection",
+          "value": "Mikrofon"
+        },
+        {
+          "key": "CallSettings.MicrophoneUnavailable",
+          "value": "Das Mikrofon ist nicht verfügbar. Prüfe den Mikrofonzugriff und versuche es erneut."
+        },
+        {
+          "key": "CallSettings.CameraUnavailable",
+          "value": "Die Kamera ist nicht verfügbar. Prüfe den Kamerazugriff und versuche es erneut."
+        },
+        {
+          "key": "AccDescr.MicrophoneLevel",
+          "value": "Mikrofonpegel"
+        },
+        {
+          "key": "ConferenceCall.Media.MicrophoneError",
+          "value": "Der Mikrofonstatus konnte nicht geändert werden. Prüfe den Mikrofonzugriff und versuche es erneut."
+        },
+        {
+          "key": "ConferenceCall.Media.CameraError",
+          "value": "Der Kamerastatus konnte nicht geändert werden. Prüfe den Kamerazugriff und versuche es erneut."
+        },
+        {
+          "key": "Rtmp.OutputPopup.Default",
+          "value": "Standard"
         },
         {
           "key": "CurrentSession",
@@ -15636,10 +15814,6 @@
           "value": "Kontakte"
         },
         {
-          "key": "Stars.Wallet",
-          "value": "Wallet"
-        },
-        {
           "key": "MultiAccount.More",
           "value": "Mehr"
         },
@@ -15649,14 +15823,6 @@
         },
         {
           "key": "NewGroup",
-          "value": "Neue Gruppe"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
-          "value": "Neuer Kanal"
-        },
-        {
-          "key": "NewGroup.DefaultTitle",
           "value": "Neue Gruppe"
         },
         {
@@ -15948,6 +16114,26 @@
         {
           "key": "ChannelType",
           "value": "Kanaltyp"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "Wenn du diesen Kanal privat machst, wird der Name @%@ entfernt. Jeder andere kann ihn dann für seine öffentlichen Gruppen oder Kanäle verwenden."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "Wenn du diese Gruppe privat machst, wird der Name @%@ entfernt. Jeder andere kann ihn dann für seine öffentlichen Gruppen oder Kanäle verwenden."
+        },
+        {
+          "key": "Link.Available",
+          "value": "Link ist verfügbar"
+        },
+        {
+          "key": "Link.Invalid",
+          "value": "Link ist ungültig"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "Link ist bereits vergeben"
         },
         {
           "key": "GroupType",
@@ -16473,20 +16659,8 @@
           "value": "Benutzername (optional)"
         },
         {
-          "key": "EditProfile.Username.TooShort",
-          "value": "Mindestens 5 Zeichen."
-        },
-        {
           "key": "EditProfile.Username.Available",
           "value": "Dieser Benutzername ist verfügbar."
-        },
-        {
-          "key": "EditProfile.Username.Rules",
-          "value": "Benutzername: 5–32 Zeichen: Buchstaben, Ziffern, Unterstrich."
-        },
-        {
-          "key": "EditProfile.Username.Caption",
-          "value": "Du kannst einen öffentlichen Benutzernamen wählen, damit andere dich finden und kontaktieren können, ohne deine Telefonnummer zu kennen."
         },
         {
           "key": "BlockUser",
@@ -16495,10 +16669,6 @@
         {
           "key": "BlockedUsersInfoShort",
           "value": "Blockierte Benutzer können dir keine Nachrichten senden und dein Profil nicht sehen."
-        },
-        {
-          "key": "BlockedEmptyDescription",
-          "value": "Du hast niemanden blockiert."
         },
         {
           "key": "TwoStepAuth.SetPasswordCaption",
@@ -16809,10 +16979,6 @@
           "value": "Wer darf beim Weiterleiten meiner Nachrichten auf mein Konto verlinken?"
         },
         {
-          "key": "PrivacyGroupsTitle",
-          "value": "Wer kann mich zu Gruppen hinzufügen?"
-        },
-        {
           "key": "PrivacyVoiceMessagesTitle",
           "value": "Wer kann mir Sprachnachrichten senden?"
         },
@@ -17003,6 +17169,18 @@
         {
           "key": "AutoDeleteMessages.SetOtherTime",
           "value": "Andere Zeit festlegen"
+        },
+        {
+          "key": "AutoDeleteMessages.InfoDefault",
+          "value": "Nachrichten in von dir gestarteten Chats nach einer bestimmten Zeit automatisch für alle löschen."
+        },
+        {
+          "key": "UnsavedChanges",
+          "value": "Ungespeicherte Änderungen"
+        },
+        {
+          "key": "UnsavedChangesDescription.Privacy",
+          "value": "Du hast Datenschutzeinstellungen geändert. Änderungen speichern?"
         },
         {
           "key": "Seconds",
@@ -17626,22 +17804,6 @@
           "value": "Diese Nummer ist bereits mit einem Telegram-Konto verknüpft."
         },
         {
-          "key": "DeleteAccount.Action",
-          "value": "Mein Konto löschen"
-        },
-        {
-          "key": "DeleteAccount.Title",
-          "value": "Konto löschen"
-        },
-        {
-          "key": "DeleteAccount.Text",
-          "value": "Möchtest du dein Konto wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden."
-        },
-        {
-          "key": "DeleteAccount.Caption",
-          "value": "Dadurch werden dein Konto und alle deine Daten gelöscht. Deine Nachrichten bleiben erhalten, erscheinen aber als von einem „gelöschten Konto“ gesendet."
-        },
-        {
           "key": "AttachAlbum",
           "value": "Album"
         },
@@ -17953,6 +18115,32 @@
         {
           "key": "SharedFolder.Toast.NoPrivate",
           "value": "Private Chats können nicht geteilt werden."
+        },
+        {
+          "key": "HideReadTime",
+          "value": "Lesezeit verbergen"
+        },
+        {
+          "key": "HideReadTimeInfo",
+          "value": "Verbirg die Zeit, zu der du Nachrichten gelesen hast, vor Personen, die deinen „Zuletzt online“-Status nicht sehen können. Wenn du dies aktivierst, wird auch deren Lesezeit vor dir verborgen (außer du bist Premium-Nutzer).\n\nDiese Einstellung betrifft keine Gruppenchats."
+        },
+        {
+          "key": "Passkeys",
+          "forms": {
+            "one_value": "%d Passkey",
+            "other_value": "%d Passkeys"
+          }
+        },
+        {
+          "key": "PrivacyAndSecurity.Item.Off",
+          "value": "Aus"
+        },
+        {
+          "key": "PrivacySettingsController.UserCount",
+          "forms": {
+            "one_value": "%d Nutzer",
+            "other_value": "%d Nutzer"
+          }
         }
       ]
     },
@@ -17963,7 +18151,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 23,
+      "version": 27,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -18589,12 +18777,28 @@
           "value": "Sugerir emojis"
         },
         {
-          "key": "Settings.BigEmoji",
-          "value": "Emojis grandes"
+          "key": "Emoji",
+          "value": "Emojis"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Orden dinámico de paquetes"
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Los stickers animados se reproducirán continuamente en los chats."
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Los artistas pueden añadir sus propios packs de stickers con nuestro bot @stickers."
+        },
+        {
+          "key": "SuggestStickersAll",
+          "value": "Todos los packs"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "Mis packs"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "Ninguno"
         },
         {
           "key": "Call.Output",
@@ -18633,10 +18837,6 @@
           "value": "Guardar"
         },
         {
-          "key": "CallSettings.AcceptCalls",
-          "value": "Aceptar llamadas en este dispositivo"
-        },
-        {
           "key": "Call.Input",
           "value": "Entrada"
         },
@@ -18645,8 +18845,36 @@
           "value": "Dispositivo de entrada"
         },
         {
-          "key": "CallSettings.AcceptCallsShort",
-          "value": "Aceptar llamadas"
+          "key": "CallSettings.OutputSection",
+          "value": "Altavoces"
+        },
+        {
+          "key": "CallSettings.InputSection",
+          "value": "Micrófono"
+        },
+        {
+          "key": "CallSettings.MicrophoneUnavailable",
+          "value": "El micrófono no está disponible. Comprueba el acceso al micrófono e inténtalo de nuevo."
+        },
+        {
+          "key": "CallSettings.CameraUnavailable",
+          "value": "La cámara no está disponible. Comprueba el acceso a la cámara e inténtalo de nuevo."
+        },
+        {
+          "key": "AccDescr.MicrophoneLevel",
+          "value": "Nivel del micrófono"
+        },
+        {
+          "key": "ConferenceCall.Media.MicrophoneError",
+          "value": "No se pudo cambiar el estado del micrófono. Comprueba el acceso al micrófono e inténtalo de nuevo."
+        },
+        {
+          "key": "ConferenceCall.Media.CameraError",
+          "value": "No se pudo cambiar el estado de la cámara. Comprueba el acceso a la cámara e inténtalo de nuevo."
+        },
+        {
+          "key": "Rtmp.OutputPopup.Default",
+          "value": "Predeterminado"
         },
         {
           "key": "CurrentSession",
@@ -18721,10 +18949,6 @@
           "value": "Contactos"
         },
         {
-          "key": "Stars.Wallet",
-          "value": "Billetera"
-        },
-        {
           "key": "MultiAccount.More",
           "value": "Más"
         },
@@ -18735,14 +18959,6 @@
         {
           "key": "NewGroup",
           "value": "Nuevo grupo"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
-          "value": "Canal nuevo"
-        },
-        {
-          "key": "NewGroup.DefaultTitle",
-          "value": "Grupo nuevo"
         },
         {
           "key": "NewPrivateChat",
@@ -19033,6 +19249,26 @@
         {
           "key": "ChannelType",
           "value": "Tipo de canal"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "Si haces este canal privado, se eliminará el nombre @%@. Cualquier otra persona podrá usarlo para sus grupos o canales públicos."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "Si haces este grupo privado, se eliminará el nombre @%@. Cualquier otra persona podrá usarlo para sus grupos o canales públicos."
+        },
+        {
+          "key": "Link.Available",
+          "value": "El enlace está disponible"
+        },
+        {
+          "key": "Link.Invalid",
+          "value": "El enlace no es válido"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "El enlace ya está en uso"
         },
         {
           "key": "GroupType",
@@ -19558,20 +19794,8 @@
           "value": "Nombre de usuario (opcional)"
         },
         {
-          "key": "EditProfile.Username.TooShort",
-          "value": "Mínimo 5 caracteres."
-        },
-        {
           "key": "EditProfile.Username.Available",
           "value": "Este nombre de usuario está disponible."
-        },
-        {
-          "key": "EditProfile.Username.Rules",
-          "value": "El nombre de usuario debe tener 5–32 caracteres: letras, dígitos, guion bajo."
-        },
-        {
-          "key": "EditProfile.Username.Caption",
-          "value": "Puedes elegir un nombre de usuario público para que la gente pueda encontrarte y contactarte sin saber tu número de teléfono."
         },
         {
           "key": "BlockUser",
@@ -19580,10 +19804,6 @@
         {
           "key": "BlockedUsersInfoShort",
           "value": "Los usuarios bloqueados no pueden enviarte mensajes ni ver tu perfil."
-        },
-        {
-          "key": "BlockedEmptyDescription",
-          "value": "No has bloqueado a nadie."
         },
         {
           "key": "TwoStepAuth.SetPasswordCaption",
@@ -19894,10 +20114,6 @@
           "value": "¿Quién puede añadir un enlace a mi cuenta al reenviar mis mensajes?"
         },
         {
-          "key": "PrivacyGroupsTitle",
-          "value": "¿Quién puede añadirme a chats grupales?"
-        },
-        {
           "key": "PrivacyVoiceMessagesTitle",
           "value": "¿Quién puede enviarme mensajes de voz?"
         },
@@ -20088,6 +20304,18 @@
         {
           "key": "AutoDeleteMessages.SetOtherTime",
           "value": "Elegir otro plazo"
+        },
+        {
+          "key": "AutoDeleteMessages.InfoDefault",
+          "value": "Eliminar automáticamente los mensajes para todos en los chats que inicies después de un tiempo."
+        },
+        {
+          "key": "UnsavedChanges",
+          "value": "Cambios sin guardar"
+        },
+        {
+          "key": "UnsavedChangesDescription.Privacy",
+          "value": "Has cambiado algunos ajustes de privacidad. ¿Guardar los cambios?"
         },
         {
           "key": "Seconds",
@@ -20704,22 +20932,6 @@
           "value": "Este número ya está vinculado a una cuenta de Telegram."
         },
         {
-          "key": "DeleteAccount.Action",
-          "value": "Eliminar mi cuenta"
-        },
-        {
-          "key": "DeleteAccount.Title",
-          "value": "Eliminar cuenta"
-        },
-        {
-          "key": "DeleteAccount.Text",
-          "value": "¿Seguro que quieres eliminar tu cuenta? Esta acción no se puede deshacer."
-        },
-        {
-          "key": "DeleteAccount.Caption",
-          "value": "Esto eliminará tu cuenta y todos tus datos. Tus mensajes permanecerán, pero aparecerán como enviados por una «Cuenta eliminada»."
-        },
-        {
           "key": "AttachAlbum",
           "value": "Álbum"
         },
@@ -21031,6 +21243,32 @@
         {
           "key": "SharedFolder.Toast.NoPrivate",
           "value": "No puedes compartir chats privados."
+        },
+        {
+          "key": "HideReadTime",
+          "value": "Ocultar hora de lectura"
+        },
+        {
+          "key": "HideReadTimeInfo",
+          "value": "Oculta la hora en que lees los mensajes a quienes no pueden ver tu última conexión. Si lo activas, su hora de lectura también se te ocultará (a menos que seas usuario Premium).\n\nEste ajuste no afecta a los chats grupales."
+        },
+        {
+          "key": "Passkeys",
+          "forms": {
+            "one_value": "%d llave de acceso",
+            "other_value": "%d llaves de acceso"
+          }
+        },
+        {
+          "key": "PrivacyAndSecurity.Item.Off",
+          "value": "Desactivado"
+        },
+        {
+          "key": "PrivacySettingsController.UserCount",
+          "forms": {
+            "one_value": "%d usuario",
+            "other_value": "%d usuarios"
+          }
         }
       ]
     },
@@ -21041,7 +21279,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 23,
+      "version": 27,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -21670,12 +21908,32 @@
           "value": "Підказки емодзі"
         },
         {
-          "key": "Settings.BigEmoji",
-          "value": "Великі емодзі"
+          "key": "Emoji",
+          "value": "Емодзі"
         },
         {
-          "key": "DynamicPackOrder",
-          "value": "Динамічний порядок наборів"
+          "key": "LoopAnimatedStickersInfo",
+          "value": "Анімовані стікери відтворюватимуться в чатах безперервно."
+        },
+        {
+          "key": "StickersBotInfo",
+          "value": "Художники можуть додавати власні набори стікерів за допомогою нашого бота @stickers."
+        },
+        {
+          "key": "SuggestStickersAll",
+          "value": "Усі набори"
+        },
+        {
+          "key": "SuggestStickersInstalled",
+          "value": "Мої набори"
+        },
+        {
+          "key": "SuggestStickersNone",
+          "value": "Ні"
+        },
+        {
+          "key": "Telegram.InstalledStickerPacksController",
+          "value": "Стікери"
         },
         {
           "key": "Call.Output",
@@ -21714,14 +21972,6 @@
           "value": "Зберегти"
         },
         {
-          "key": "CallSettings.AcceptCalls",
-          "value": "Приймати дзвінки на цьому пристрої"
-        },
-        {
-          "key": "CallSettings.AcceptCalls.Caption",
-          "value": "Вимкніть, щоб не приймати вхідні дзвінки та групові відеодзвінки на цьому пристрої."
-        },
-        {
           "key": "Call.Input",
           "value": "Ввід"
         },
@@ -21730,8 +21980,36 @@
           "value": "Пристрій вводу"
         },
         {
-          "key": "CallSettings.AcceptCallsShort",
-          "value": "Приймати дзвінки"
+          "key": "CallSettings.OutputSection",
+          "value": "Динаміки"
+        },
+        {
+          "key": "CallSettings.InputSection",
+          "value": "Мікрофон"
+        },
+        {
+          "key": "CallSettings.MicrophoneUnavailable",
+          "value": "Мікрофон недоступний. Перевірте доступ до мікрофона й спробуйте ще раз."
+        },
+        {
+          "key": "CallSettings.CameraUnavailable",
+          "value": "Камера недоступна. Перевірте доступ до камери й спробуйте ще раз."
+        },
+        {
+          "key": "AccDescr.MicrophoneLevel",
+          "value": "Рівень мікрофона"
+        },
+        {
+          "key": "ConferenceCall.Media.MicrophoneError",
+          "value": "Не вдалося змінити стан мікрофона. Перевірте доступ до мікрофона й спробуйте ще раз."
+        },
+        {
+          "key": "ConferenceCall.Media.CameraError",
+          "value": "Не вдалося змінити стан камери. Перевірте доступ до камери й спробуйте ще раз."
+        },
+        {
+          "key": "Rtmp.OutputPopup.Default",
+          "value": "За замовчуванням"
         },
         {
           "key": "CurrentSession",
@@ -21806,10 +22084,6 @@
           "value": "Контакти"
         },
         {
-          "key": "Stars.Wallet",
-          "value": "Гаманець"
-        },
-        {
           "key": "MultiAccount.More",
           "value": "Більше"
         },
@@ -21820,14 +22094,6 @@
         {
           "key": "NewGroup",
           "value": "Створити групу"
-        },
-        {
-          "key": "NewChannel.DefaultTitle",
-          "value": "Новий канал"
-        },
-        {
-          "key": "NewGroup.DefaultTitle",
-          "value": "Нова група"
         },
         {
           "key": "NewPrivateChat",
@@ -22122,6 +22388,26 @@
         {
           "key": "ChannelType",
           "value": "Тип каналу"
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Channel",
+          "value": "Якщо ви зробите канал приватним, ім’я @%@ буде видалено. Його зможе зайняти будь-хто для своїх публічних груп або каналів."
+        },
+        {
+          "key": "ChannelVisibility.Confirm.MakePrivate.Group",
+          "value": "Якщо ви зробите групу приватною, ім’я @%@ буде видалено. Його зможе зайняти будь-хто для своїх публічних груп або каналів."
+        },
+        {
+          "key": "Link.Available",
+          "value": "Посилання вільне"
+        },
+        {
+          "key": "Link.Invalid",
+          "value": "Недійсне посилання"
+        },
+        {
+          "key": "Link.Taken",
+          "value": "Це посилання вже зайняте"
         },
         {
           "key": "GroupType",
@@ -22656,20 +22942,8 @@
           "value": "Ім'я користувача (необов'язково)"
         },
         {
-          "key": "EditProfile.Username.TooShort",
-          "value": "Мінімум 5 символів."
-        },
-        {
           "key": "EditProfile.Username.Available",
           "value": "Це ім'я користувача вільне."
-        },
-        {
-          "key": "EditProfile.Username.Rules",
-          "value": "Ім'я користувача — 5–32 символи: літери, цифри, підкреслення."
-        },
-        {
-          "key": "EditProfile.Username.Caption",
-          "value": "Ви можете обрати публічне ім'я користувача, щоб вас могли знаходити та зв'язуватися з вами, не знаючи номера телефону."
         },
         {
           "key": "BlockUser",
@@ -22678,10 +22952,6 @@
         {
           "key": "BlockedUsersInfoShort",
           "value": "Заблоковані користувачі не можуть писати вам і бачити ваш профіль."
-        },
-        {
-          "key": "BlockedEmptyDescription",
-          "value": "Ви нікого не заблокували."
         },
         {
           "key": "TwoStepAuth.SetPasswordCaption",
@@ -22992,10 +23262,6 @@
           "value": "Хто може посилатися на мій акаунт під час пересилання повідомлень?"
         },
         {
-          "key": "PrivacyGroupsTitle",
-          "value": "Хто може запрошувати мене?"
-        },
-        {
           "key": "PrivacyVoiceMessagesTitle",
           "value": "Хто може надсилати мені голосові повідомлення?"
         },
@@ -23186,6 +23452,18 @@
         {
           "key": "AutoDeleteMessages.SetOtherTime",
           "value": "Обрати інший строк"
+        },
+        {
+          "key": "AutoDeleteMessages.InfoDefault",
+          "value": "Автоматично видаляти повідомлення для всіх у розпочатих вами чатах через заданий час."
+        },
+        {
+          "key": "UnsavedChanges",
+          "value": "Незбережені зміни"
+        },
+        {
+          "key": "UnsavedChangesDescription.Privacy",
+          "value": "Ви змінили налаштування конфіденційності. Зберегти зміни?"
         },
         {
           "key": "Seconds",
@@ -23823,22 +24101,6 @@
           "value": "Цей номер уже прив’язаний до акаунту Telegram."
         },
         {
-          "key": "DeleteAccount.Action",
-          "value": "Видалити мій акаунт"
-        },
-        {
-          "key": "DeleteAccount.Title",
-          "value": "Видалення акаунту"
-        },
-        {
-          "key": "DeleteAccount.Text",
-          "value": "Ви впевнені, що хочете видалити акаунт? Цю дію не можна скасувати."
-        },
-        {
-          "key": "DeleteAccount.Caption",
-          "value": "Акаунт і всі дані буде видалено. Повідомлення залишаться, але відображатимуться як надіслані «Видаленим акаунтом»."
-        },
-        {
           "key": "AttachAlbum",
           "value": "Альбом"
         },
@@ -24186,6 +24448,36 @@
         {
           "key": "SharedFolder.Toast.NoPrivate",
           "value": "Особистими чатами ділитися не можна."
+        },
+        {
+          "key": "HideReadTime",
+          "value": "Приховувати час прочитання"
+        },
+        {
+          "key": "HideReadTimeInfo",
+          "value": "Приховувати час прочитання від тих, хто не бачить, коли ви були в мережі. Якщо ввімкнути, їхній час прочитання теж буде прихований від вас (якщо у вас немає Telegram Premium).\n\nЦе налаштування не впливає на групові чати."
+        },
+        {
+          "key": "Passkeys",
+          "forms": {
+            "one_value": "%d ключ",
+            "few_value": "%d ключі",
+            "many_value": "%d ключів",
+            "other_value": "%d ключа"
+          }
+        },
+        {
+          "key": "PrivacyAndSecurity.Item.Off",
+          "value": "Вимк."
+        },
+        {
+          "key": "PrivacySettingsController.UserCount",
+          "forms": {
+            "one_value": "%d користувач",
+            "few_value": "%d користувачі",
+            "many_value": "%d користувачів",
+            "other_value": "%d користувача"
+          }
         }
       ]
     }

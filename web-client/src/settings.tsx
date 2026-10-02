@@ -25,12 +25,14 @@ export interface Settings {
   // узора (`needBlur` в sidebarLeft/tabs/background.tsx:41-44).
   customWallpaperMediaId?: number
   customWallpaperBlur?: boolean
-  // Устройства для звонков (Настройки → Динамики и камера); '' = системное
-  // по умолчанию. deviceId из enumerateDevices, читаются при старте звонка.
+  // Устройства для звонков (Настройки → Динамики и камера; tweb
+  // `appSettings.callDevices`, мост `stores/appSettings.solid.ts`); '' =
+  // системное по умолчанию. deviceId из enumerateDevices, читаются при старте
+  // звонка. «Принимать звонки» (`acceptCalls`) снят задачей 26 плана 2D: у tweb
+  // это флаг авторизации на сервере (О-8), локально его не читал никто.
   speakerId: string
   micId: string
   cameraId: string
-  acceptCalls: boolean
   // Тип записи кнопкой в композере (tweb recordingMediaType): голос или кружок
   recordingMediaType: 'voice' | 'round'
   // tweb `config/state.ts:199-201` — порядок вкладки контактов, помнится между визитами, как на
@@ -83,6 +85,14 @@ export interface Settings {
   translateTo: string
   // Зацикливать анимированные стикеры в чате (tweb settings.stickers.loop).
   loopStickers: boolean
+  // Стикеры-подсказки по эмодзи (tweb settings.stickers.suggest,
+  // config/state.ts:82): 'none' гасит панель саджестов композера
+  // (tweb chat/input.ts:3843); 'all' от 'installed' у нас не отличается —
+  // О-44 плана 2D (поиск по эмодзи — только в установленных наборах).
+  stickersSuggest: 'all' | 'installed' | 'none'
+  // Подсказки эмодзи по слову у каретки (tweb settings.emoji.suggest,
+  // config/state.ts:94; гейт — chat/input.ts:3871).
+  emojiSuggest: boolean
   // Скорость воспроизведения видео в медиа-вьюере (tweb appMediaPlaybackController
   // .playbackRate): восстанавливается при открытии следующего видео. Дефолт 1.
   videoRate: number
@@ -129,7 +139,6 @@ export const DEFAULTS: Settings = {
   speakerId: '',
   micId: '',
   cameraId: '',
-  acceptCalls: true,
   recordingMediaType: 'voice',
   contactsSortMode: 'online', // tweb SETTINGS_INIT.contactsSortMode (`config/state.ts:602`)
   notifyDesktop: true,
@@ -177,6 +186,8 @@ export const DEFAULTS: Settings = {
   showTranslateButton: true,
   translateTo: '',
   loopStickers: true, // tweb stickers.loop default true
+  stickersSuggest: 'all', // tweb config/state.ts:489
+  emojiSuggest: true, // tweb config/state.ts:496
   videoRate: 1,
   playbackRates: { voice: 1, audio: 1 },
   sidebarLeftWidth: undefined,
@@ -267,7 +278,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       speakerId: s.speakerId,
       micId: s.micId,
       cameraId: s.cameraId,
-      acceptCalls: s.acceptCalls,
       recordingMediaType: s.recordingMediaType,
       contactsSortMode: s.contactsSortMode,
       notifyDesktop: s.notifyDesktop,
@@ -292,6 +302,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       showTranslateButton: s.showTranslateButton,
       translateTo: s.translateTo,
       loopStickers: s.loopStickers,
+      stickersSuggest: s.stickersSuggest,
+      emojiSuggest: s.emojiSuggest,
       videoRate: s.videoRate,
       playbackRates: s.playbackRates,
       sidebarLeftWidth: s.sidebarLeftWidth,

@@ -93,7 +93,7 @@ func newFakeSeeder() *fakeSeeder {
 	}
 }
 
-func (f *fakeSeeder) SetBySlug(_ context.Context, slug string) (domain.StickerSetRecord, []domain.Sticker, error) {
+func (f *fakeSeeder) SetBySlug(_ context.Context, _ int64, slug string) (domain.StickerSetRecord, []domain.Sticker, error) {
 	set, ok := f.sets[slug]
 	if !ok {
 		return domain.StickerSetRecord{}, nil, domain.ErrNotFound

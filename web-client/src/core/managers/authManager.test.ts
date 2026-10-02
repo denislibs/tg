@@ -1,4 +1,4 @@
-// fake-indexeddb — нужна только для switchAccount()/deleteAccount() ниже: они
+// fake-indexeddb — нужна только для switchAccount()/logout() ниже: они
 // реально ищут аккаунт через ../auth/accounts (listAccounts/tokenOf/
 // removeAccount), а те тихо деградируют до пустого списка без реального IDB
 // (см. accounts.ts). Остальные тесты файла (сигнатура AuthDeps не меняется)
@@ -190,35 +190,6 @@ describe('AuthManager', () => {
     expect(onMeChanged).not.toHaveBeenCalled()
   })
 
-  // deleteAccount(): тот же инвариант — с остающимся аккаунтом это тоже смена
-  // активного токена, не логаут.
-  it('deleteAccount() с остающимся аккаунтом зовёт onMeChanged свежим пользователем НОВОГО токена', async () => {
-    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', photoId: 0, phone: '+700' })
-    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', photoId: 0, phone: '+701' })
-    const onMeChanged = vi.fn()
-    const { d, token } = deps({ token: 'TOK_A' })
-    const auth = newAuthManager({ ...d, onMeChanged })
-
-    const r = await auth.deleteAccount()
-
-    expect(r).toEqual({ switched: true })
-    expect(token()).toBe('TOK_B')
-    expect(onMeChanged).toHaveBeenCalledTimes(1)
-    expect(onMeChanged).not.toHaveBeenCalledWith(null)
-  })
-
-  it('deleteAccount() без остающихся аккаунтов зовёт onMeChanged(null) — настоящий логаут', async () => {
-    const onMeChanged = vi.fn()
-    const { d } = deps() // без аккаунтов в реестре
-    const auth = newAuthManager({ ...d, onMeChanged })
-
-    const r = await auth.deleteAccount()
-
-    expect(r).toEqual({ switched: false })
-    expect(onMeChanged).toHaveBeenCalledTimes(1)
-    expect(onMeChanged).toHaveBeenCalledWith(null)
-  })
-
   // addAccount(): активный токен снимается (готовим экран входа для нового
   // аккаунта) — тем же инвариантом кэш воркера обязан узнать, что активного
   // пользователя больше нет.
@@ -401,20 +372,6 @@ describe('AuthManager: rt:logging_out — намерение перехода а
     expect(onLoggingOut).toHaveBeenCalledWith({ migrateTo: null })
   })
 
-  it('deleteAccount() с остающимся аккаунтом — переезд; без остающихся — логаут', async () => {
-    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', photoId: 0, phone: '+700' })
-    await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', photoId: 0, phone: '+701' })
-    const migrated = vi.fn()
-    const { d } = deps({ token: 'TOK_A' })
-    await newAuthManager({ ...d, onLoggingOut: migrated }).deleteAccount()
-    expect(migrated).toHaveBeenCalledWith({ migrateTo: 2 })
-
-    const loggedOut = vi.fn()
-    const { d: d2 } = deps({ token: 'TOK_B' })
-    await newAuthManager({ ...d2, onLoggingOut: loggedOut }).deleteAccount()
-    expect(loggedOut).toHaveBeenCalledWith({ migrateTo: null })
-  })
-
   // Расхождение с tweb названо в комментарии у самой строки (Minor 10): там
   // «добавить аккаунт» открывает свободный слот и соседей не трогает, у нас
   // общий активный токен снимается глобально — промолчать нельзя.
@@ -524,23 +481,17 @@ describe('AuthManager: /me отвечает ошибкой', () => {
     expect(onMeChanged).toHaveBeenCalledWith(null)
   })
 
-  // Тот же перевывод и те же два его свойства — у logout()/deleteAccount() с
-  // остающимся аккаунтом: это тоже смена активного токена. Без rederive обе
-  // ветки реджектили бы ответ RPC на 5xx и подставляли бы в кэш профиль с
-  // диска (= личность СТАРОГО аккаунта).
-  it('logout()/deleteAccount() с остающимся аккаунтом: 5xx на /me не реджектит и обнуляет `me`', async () => {
+  // Тот же перевывод и те же два его свойства — у logout() с остающимся
+  // аккаунтом: это тоже смена активного токена. Без rederive ветка реджектила
+  // бы ответ RPC на 5xx и подставляла бы в кэш профиль с диска (= личность
+  // СТАРОГО аккаунта).
+  it('logout() с остающимся аккаунтом: 5xx на /me не реджектит и обнуляет `me`', async () => {
     await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', photoId: 0, phone: '+700' })
     await upsertAccount({ token: 'TOK_B', id: 2, name: 'B', photoId: 0, phone: '+701' })
     const onLogout = vi.fn()
     const { d } = failingDeps(new HttpError(503, 'unavailable'), 'TOK_A')
     await expect(newAuthManager({ ...d, onMeChanged: onLogout }).logout()).resolves.toEqual({ switched: true })
     expect(onLogout).toHaveBeenCalledWith(null)
-
-    await upsertAccount({ token: 'TOK_A', id: 1, name: 'A', photoId: 0, phone: '+700' })
-    const onDelete = vi.fn()
-    const { d: d2 } = failingDeps(new HttpError(503, 'unavailable'), 'TOK_A')
-    await expect(newAuthManager({ ...d2, onMeChanged: onDelete }).deleteAccount()).resolves.toEqual({ switched: true })
-    expect(onDelete).toHaveBeenCalledWith(null)
   })
 
   // Тот же путь при сетевом сбое: публичный me() отдал бы кэш с диска, но при

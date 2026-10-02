@@ -356,7 +356,7 @@ React-корень `main.tsx`/`App.tsx`, `Sidebar.tsx`, `UserInfoPanel.tsx`, `Ch
 
 | Экран (`SidebarScreen`) | React сейчас | Кто покрывает | tweb |
 |---|---|---|---|
-| `settings` | `SettingsView.tsx` 391 + `SettingsSubScreen.tsx` 44 | **2D-28** (не сделана), 2D-15/20/21/22/23/26/27 (открыты) | `tabs/settings.tsx` 451 |
+| `settings` | `SettingsView.tsx` 391 + `SettingsSubScreen.tsx` 44 | **2D-28** (не сделана), 2D-15/20/21/22/23/26/27 (открыты). **Снято**: все восемь влиты; последний React-экран настроек («Конфиденциальность») и обратный мост `sidebarLeft/reactScreenTab.tsx` (`scaffoldReactScreenTab`) снесены задачей 2D-23 — в настройках только Solid-вкладки колоночного слайдера | `tabs/settings.tsx` 451 |
 | `wallet` | `stars/WalletView.tsx` 115 | **2C-19** (попап звёзд). Вкладки у tweb нет (`popups/stars.tsx`), экран уходит вместе с попапом | — |
 | `contacts` | `ContactsView.tsx` 141 | **0а-1** (2C-26 — только попап «новый контакт», врезка `ContactsView.tsx:113`) | `tabs/contacts.tsx` 109 |
 | `newPrivate` | `NewPrivateChat.tsx` 119 | **0а-1**: у tweb «новый личный чат» = `AppContactsTab` (`sidebarLeft/index.ts:1079-1083`, `:1105-1109`) | — |
@@ -452,10 +452,10 @@ tweb `solidJsTabs/tabs.ts:262-270`. После создания — `AppAddMembe
 **Файлы:** создать `sidebarLeft/tabs/newChannel.solid.tsx` + тест; изменить `solidJsTabs/tabs.ts`;
 удалить `components/NewChannelFlow.tsx` (+ scss), ветку `newChannel`.
 
-- [ ] **Шаг 1–3:** прочитать; тесты: (а) название обязательно; (б) описание уходит в запрос;
+- [x] **Шаг 1–3:** прочитать; тесты: (а) название обязательно; (б) описание уходит в запрос;
   (в) после создания открывается выбор подписчиков, «пропустить» открывает канал; (г) владелец
   снимает остров. **Мутация:** не передавать описание — (б) краснеет.
-- [ ] **Шаг 4–6:** реализация, врезка, стенд — CH-01 (P0).
+- [x] **Шаг 4–6:** реализация, врезка, стенд — CH-01 (P0).
 
 **Готово когда:** `git grep -n "NewChannelFlow" web-client/src` пуст; CH-01 зелёный.
 **Оценка:** 1 день. **Зависимости:** 2D-28.
@@ -740,24 +740,24 @@ Mentions,Reactions,PollVotes}Badge` `:533-578`, `setBadgeState` `:586`, `toggleB
 - Удалить: `components/dialogRow.ts` (тест `dialogRow.test.ts` → `lib/appDialogsManager.dialogElement.test.ts`)
 - Доки: `docs/tweb/left-sidebar.md` (чатлист, «у нас»), `docs/tweb/delta/part-2.md:51`, `part-3.md:15` (статус → DONE)
 
-- [ ] **Шаг 1: прочитать** tweb `appDialogsManager.ts:133-720`, `:1281-1318`, `:2382-3024`,
+- [x] **Шаг 1: прочитать** tweb `appDialogsManager.ts:133-720`, `:1281-1318`, `:2382-3024`,
   `git -C /Users/denisurevic/Documents/tweb show 0af53a342 b2df09771`, наш `dialogRow.ts`,
   `ChatListItem.tsx` (сценарии: бейджи, «Избранное», 777000 — PR #329/#330, секретный замок,
   черновик, typing).
-- [ ] **Шаг 2: падающие тесты** (`lib/appDialogsManager.dialogElement.test.ts`): (а) непрочитанное
+- [x] **Шаг 2: падающие тесты** (`lib/appDialogsManager.dialogElement.test.ts`): (а) непрочитанное
   → `.dialog-subtitle-badge-unread` с числом; mute → класс `is-muted` у бейджа; (б) закреп —
   `.dialog-subtitle-badge-pinned`, при непрочитанном закреп скрыт (порядок `setBadgeState`);
   (в) упоминание/реакция → свои бейджи, порядок узлов как tweb; (г) **0af53a342:** повторный
   `setLastMessage` с тем же сообщением не меняет `.dialog-subtitle` (тот же узел,
   `MutationObserver` без записей); (д) повторный `setBadgeState` с тем же состоянием не ставит
-  класс перехода; (е) **b2df09771:** `setDialogActiveStatus(true)` перекрашивает частицы спойлера
-  (цвет берётся из `getTextColor(true)`); (ж) «Избранное» и «Telegram» — как в пинах PR #330;
+  класс перехода; (е) ~~**b2df09771:** `setDialogActiveStatus(true)` перекрашивает частицы спойлера
+  (цвет берётся из `getTextColor(true)`)~~ — **не пинится: О-74** (до 4184843ff перекрашивать нечего); (ж) «Избранное» и «Telegram» — как в пинах PR #330;
   (з) `destroy()` снимает Solid-корень строки (`attachRowController` → `dispose`).
-- [ ] **Шаг 3: падают.** **Мутации:** убрать сравнение сигнатуры → (г) краснеет; всегда ставить
+- [x] **Шаг 3: падают.** **Мутации:** убрать сравнение сигнатуры → (г) краснеет; всегда ставить
   переход → (д) краснеет.
-- [ ] **Шаг 4: реализовать** дословно; расхождения провода (превью у нас из зеркала, не из
+- [x] **Шаг 4: реализовать** дословно; расхождения провода (превью у нас из зеркала, не из
   `historyStorage`) — в шапку с номером Отступления В7-3.
-- [ ] **Шаг 5:** полные прогоны поиска (`globalSearch.test.ts`), участников (`appSearchSuper.members.test.ts`),
+- [x] **Шаг 5:** полные прогоны поиска (`globalSearch.test.ts`), участников (`appSearchSuper.members.test.ts`),
   выбора (`appSelectPeers.solid.test.tsx`) — зелёные.
 
 **Готово когда:** `git grep -n "components/dialogRow" web-client/src` пуст; `DialogElement` в
@@ -793,19 +793,36 @@ Mentions,Reactions,PollVotes}Badge` `:533-578`, `setBadgeState` `:586`, `toggleB
 **не** удаляется: его ещё держат React-потребители (`ChatList`, `ArchiveList`, `TopicsPanel`).
 Удаление — в последней задаче, которая снимает потребителя (1-6).
 
-- [ ] **Шаг 1:** прочитать tweb оба файла, наши `virtual/*` и все пять спек 2026-08-1[23]-* (разделы
+- [x] **Шаг 1:** прочитать tweb оба файла, наши `virtual/*` и все пять спек 2026-08-1[23]-* (разделы
   «Отступления»).
-- [ ] **Шаг 2: тесты — перенос пинов React-ядра на Solid** (сценарии те же, форма новая, спека § 5 «тесты-предохранители
+- [x] **Шаг 2: тесты — перенос пинов React-ядра на Solid** (сценарии те же, форма новая, спека § 5 «тесты-предохранители
   переписываются, а не удаляются»): `useAnimatedTop.test.ts` (167), `useShouldAnimate.test.ts` (290),
   `LoadingDialogSkeleton.test.tsx` (125) → `deferredSortedVirtualList.solid.test.tsx`: вставка сверху
   не сдвигает видимую строку; перестановка анимирует `top` только видимых; reveal пачкой — одна
   запись в DOM на пачку; shrink снимает строки за `EXTRA_ITEMS_TO_KEEP`.
-- [ ] **Шаг 3: мутации:** убрать shrink → пин shrink краснеет; анимировать невидимые → пин
+- [x] **Шаг 3: мутации:** убрать shrink → пин shrink краснеет; анимировать невидимые → пин
   анимации краснеет.
-- [ ] **Шаг 4:** реализовать; спеку `2026-08-13-virtual-chatlist-design.md` § «Отступления»
+- [x] **Шаг 4:** реализовать; спеку `2026-08-13-virtual-chatlist-design.md` § «Отступления»
   поправить по таблице выше в том же PR.
 
 **Оценка:** 3 дня. **Зависимости:** нет.
+
+**Сделано** (ветка `feat/w7-1-3-deferred-sorted-virtual-list`). `verticalVirtualList.solid.tsx` уже был
+на HEAD 812502980 (сверено построчно, правок нет). Новое: `components/deferredSortedVirtualList.solid.tsx`
+(порт файлом, с 108d3f301, 2b00c4dae `onItemDiscard`, ee6f7f9c2 `onItemMount`),
+`components/loadingDialogSkeleton.solid.tsx`; SCSS скелетона переехал на место tweb
+(`components/loadingDialogSkeleton.module.scss`), React-копия `virtual/LoadingDialogSkeleton.tsx` берёт
+его оттуда до своего сноса. Пины: `deferredSortedVirtualList.solid.test.tsx` (35: тесты tweb discard и
+reveal, дырки/скелетоны, `requestItemForIdx`, закреплённые, reveal пачкой, снятие с очереди, `clear`,
+shrink, анимация переезда, `blockAnimation`, `onItemMount`/`onItemUnmount`),
+`verticalVirtualList.solid.test.tsx` (9: границы `useShouldAnimate` с React-носителя),
+`loadingDialogSkeleton.solid.test.tsx` (8). Мутации — 17, все красные (тело коммита). Отложенного
+(О-75…О-79) нет. **API для 1-4** — как у tweb `sortedDialogList.ts:64-141`: `createDeferredSortedVirtualList({
+scrollable, getItemElement, onItemMount, onItemUnmount, onItemDiscard, onListShrinked, requestItemForIdx,
+sortWith, itemSize, noAvatar, onListLengthChange, extraPaddingBottom})` → `{list, dispose, setTotalCount,
+sortedItems, itemsLength, addItems, addPinnedItems, ensurePinnedItems, removePinnedItem, removeItem,
+updateItem, setWasAtLeastOnceFetched, blockAnimation, clear, has, get, getAll}`; `list` в скроллер кладёт
+владелец.
 
 ### Задача 1-4: `SortedDialogList` + `AutonomousDialogList` вместо React-списка
 
@@ -1332,7 +1349,7 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 
 | № | Что | Почему | Где |
 |---|---|---|---|
-| В7-1 | «Новый секретный чат»: опция `{secret: true}` вкладки контактов и пункт `#new-menu` | секретные E2E-чаты — наш продукт, у tweb их нет | 0а-1, 2-4 |
+| В7-1 | «Новый секретный чат»: опция `{secret: true}` вкладки контактов и пункт `#new-menu`. **Входы скрыты флагом `SECRET_CHATS_ENABLED`** (`config/app.ts`, `false`; решение пользователя 2026-10-01 — фича на паузе): пункта в `#new-menu` нет, меню = tweb; опция вкладки контактов в коде осталась без вызывающего; существующие секретные чаты и их лента не тронуты | секретные E2E-чаты — наш продукт, у tweb их нет | 0а-1, 0а-2, 2-4 |
 | В7-2 | `KeyVerificationPopup` — наш попап на `PopupElement` (2C-5) | пары у tweb нет (секретные чаты) | 3-1 |
 | В7-3 | Превью строки диалога берётся из зеркала диалогов, а не из `historyStorage` | модель данных списка (Отступление 1 спеки 2026-08-12) | 1-1 |
 | В7-4 | Пункт аккаунтов в бургере — наша модель «одна сессия на браузер» | `core/auth/accounts.ts:1-5`; модель tweb — 2D О-1 | 2-2 |
@@ -1357,6 +1374,10 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 | О-11 | Игры (`playGame` `:1394`), url-auth (`handleUrlAuth` `:1419`), autologin-домены (`:1511`) | нет на бэкенде | боты с логином/играми |
 | О-12 | Пункты меню ⋮ и плашки шапки без бэкенда: перевод чата, снятие платы, автоматизация, бусты (если нет), `CompactDiffView`, `WelcomeMessages.DeleteAll` | детальный план Э6 составит точный список | шапка 1:1 |
 | О-13 | Возможности композера без бэкенда: эфемерный режим, предложенные посты, эффекты (если нет), AI-редактор (`inputState/aiEditorButton`) | детальный план Э7 составит точный список | композер 1:1 |
+| О-14 | ~~Проверка занятости имени чата (`channels.checkUsername`)~~ — **снято**: ручка `GET /chats/{peerID}/username/available` (#340), клиент `groups.checkUsername` в `UsernameInputField` (0б-2) | — | — |
+| О-15 | Секция вступления вкладки типа чата: «вступать, чтобы писать», заявки на вступление, бот-привратник `guard_bot_id` (`chatType.tsx:270-372`) | флагов `join_to_send`/`join_request` у `channel` нет (`domain/mtchat.go`, `ChannelFlags`) | секция 1:1 |
+| О-16 | «Запрет копирования» (`noforwards`, `messages.toggleNoForwards`, `chatType.tsx:374-407`) | флаг не объявлен у `channel`, механики нет | секция 1:1 и гейт копирования/пересылки |
+| О-17 | Коллекция имён `usernames` (несколько имён, порядок, скрытие, покупка на Fragment): `UsernamesSection`, `purchaseUsernameCaption` | у чата одно поле `username` (`core/peers/predicates.ts`, `isPublic`) | `usernamesSection.tsx` 1:1 |
 | О-20 | ~~Заметка контакта во вкладке «Изменить контакт» (`editContact.tsx:178-192`, `:356-358`)~~ — **закрыто** PR #345: `userFull.note`, `contacts.addContact.note` без затирания, `PUT /contacts/{id}/note`; вкладка читает `fullUser.note` и пишет `profile.updateUserNote` только изменённой | — | — |
 | О-21 | ~~Личное фото и флаг контакта в профиле `/users/{id}`~~ — **закрыто** PR #345: `userFull.personal_photo`, `user.photo.pFlags.personal`, `pFlags.contact`/`mutual_contact`; секция фото вкладки читает профиль | — | — |
 | О-22 | ~~«Предложить дату рождения» (`editContact.tsx:254-266`)~~ — **закрыто** PR #345: `POST /users/{id}/suggest_birthday` → служебка `messageActionSuggestBirthday` (пилюля ключами tweb); строка вкладки открывает React `BirthdayModal` мостом `popups/birthday.bridge.tsx` (ВРЕМЕННО до 2C-14) | — | — |
@@ -1364,6 +1385,22 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 | О-24 | Тело бабла `messageActionSuggestBirthday` (`chat/bubbles/suggestBirthday.tsx`: торт `Cake`, колонки дня/месяца/года, кнопка «Посмотреть» → `showBirthdayPopup({fromSuggestion})` → `saveMyBirthday`) и ветка `bubbles.ts:8135-8142` | нужен Solid-попап даты рождения (2C-14) и lottie-ассет торта; в ленте пока только фраза-пилюля | бабл предложения 1:1 |
 | О-30 | Выделение контактов во вкладке контактов: `ContactsSelection` (`contactsSelection.ts` 50), меню строки `attachContactsContextMenu` (45), попап `confirmDeleteContacts` (`popups/deleteContacts.ts` 22), ключи `ContactsSelected`/`DeleteContactsTitle`/`DeleteContactsSubtitle` (коммит ee6f7f9c2) | база `DialogsSelectionBase` (`dialogsSelectionBase.ts` 531, коммит 60a83a6f1 — выделение чатов и тем) не портирована; бэкенд есть (`DELETE /contacts/{id}`) | порт выделения списков (60a83a6f1 → ee6f7f9c2, `docs/tweb/delta/part-5.md` группа 4) |
 | О-31 | `highlight: 'sort'` у `AppContactsTab`: ссылка `tg://contacts/sort` вспыхивает кнопкой сортировки (`flashControl`, `lib/settingsSearch/highlight.ts`) | нет ни обработчика внутренних ссылок, ни поиска по настройкам | `internalLinkProcessor` (Э5-4) и порт `lib/settingsSearch` |
+| О-35 | Попап «пригласить ссылкой» для пропущенных при создании группы (`handleMissingInvitees`, tweb `addChatUsers.ts:15-120`; вызов — `newGroup.tsx:187`) | нет `showPickUserPopup` (попап выбора пользователей, 2C) и премиум-веток (`premium_required_for_pm`/`premium_would_allow_invite`); бэкенд пропущенных уже отдаёт (`messages.invitedUsers.missing_invitees`, 0а-2) | порт `showPickUserPopup` |
+| О-40 | Лимит каналов: `handleChannelsTooMuch` + `showChannelsTooMuchPopup` (`popups/channelsTooMuch.tsx`) в «Новом канале» (`newChannel.tsx:52`) | бэкенд не знает отказа `CHANNELS_TOO_MUCH` и лимита каналов (0а-3) | попап лимита 1:1 |
+| О-41 | `handleMissingInvitees` (`addChatUsers.ts:15-133`) — приглашение ссылкой тех, кого нельзя добавить, премиум-ветка | `POST /chats/{id}/members` отвечает `boolTrue`, `missingInvitees` нет (0а-3) | приглашение ссылкой после отказа |
+| О-42 | Приглашение списком (`inviteToChannel(id, peerIds)`/`addChatUser(id, peerIds, fwdLimit)`) и чекбокс «показать последние 100 сообщений» (`addChatUsers.ts:169-190`) | ручка приглашает одного пользователя, `fwd_limit` нет (0а-3) | один запрос на выбор, чекбокс истории для групп |
+| О-43 | Тост `InviteToGroupError` на отказе приватности (`addChatUsers.ts:211-217`) | бэкенд отдаёт текст `privacy` (`group_handler.go:43-44`), а не `USER_PRIVACY_RESTRICTED` — ветка тоста не срабатывает (0а-3) | тост вместо необработанного отказа |
+| О-44 | Диалог нового канала из ответа создания: у tweb `channels.createChannel` отдаёт `Updates`, `processUpdateMessage` ставит диалог (`appChatsManager.ts:587-593`); у нас вкладка зовёт `dialogs.refresh()` (`newChannel.solid.tsx`, расхождение 8) | `POST /channels` отвечает `messages.chatFull` без диалога, кадра о новом канале нет; служебного «канал создан» тоже нет (0а-3) | снятие перезапроса, пилюля `messageActionChannelCreate` |
+| О-70 | Закреп внутри пользовательской папки: `dialogsStorage.isDialogPinned(peerId, filterId)` по `filter.pinnedPeerIds` (`storages/dialogs.ts:452-462`) — строка `DialogElement` в такой папке закреп не показывает | у `Folder` нет `pinned_peers` (`core/managers/foldersManager.ts`, ручки `/folders`), порядок закрепов ведётся только для «Всех чатов» (`dialogsManager`, `pinnedOrders[ALL_FOLDER_ID]`) (1-1) | закреп в папке 1:1 (бейдж и порядок) |
+| О-71 | Непрочитанное форума по темам в строке: `getForumUnreadCount` (`count` тем вместо сообщений, `hasUnmuted` → `no-unmuted-topic`), повторный `setUnreadMessagesN` по доезду счёта (`appDialogsManager.ts:2711-2722`, `:2760`) | на проводе диалога нет суммы по темам (`core/models.ts::RawDialog`, `core/folders/folderUnreadCounts.ts` расхождение 2) (1-1) | бейдж форума 1:1 |
+| О-72 | «Отметить непрочитанным»: `pFlags.unread_mark` в `getDialogUnreadCount` (`appMessagesManager.ts:14249`) и пункт меню `MarkAsUnread` | флага нет ни на бэкенде (`domain/mtdialog.go:45`), ни в модели (1-1) | бейдж «•» без числа, пункт меню 1-2 |
+| О-73 | Бейдж голосов опроса: `createPollVotesBadge`, `pollVotes` в `setBadgeState` (`appDialogsManager.ts:578-584`, `:2786`, `:2803`) | `unread_poll_votes_count` бэкенд не считает (`domain/mtdialog.go:48`) (1-1) | бейдж `.dialog-subtitle-badge-pollvote` |
+| О-74 | Перекраска частиц блеф-спойлера активной строки: `DotRenderer.setInlineSpoilersTextColor` в `setDialogActiveStatus` (b2df09771, `appDialogsManager.ts:1296-1297`) | наш инлайн-спойлер — путь `mask-image` (до 4184843ff, `delta/part-2.md`): частицы — сам узел, цвет даёт CSS, канваса с цветом нет (1-1) | порт 4184843ff (канвас блеф-спойлера), затем b2df09771 |
+| О-80 | Боты меню вложений в бургере: `getAttachMenuBots`, `show_in_side_menu`, иконка `iconDoc` и бейдж `new` пункта (`sidebarLeft/index.ts:777-808`, `buttonMenu.ts:178-183`) | на бэкенде нет attach-menu ботов (2-2) | пункты ботов перед «Настройками» |
+| О-81 | Бейдж непрочитанного других аккаунтов: на кнопке бургера и у строки аккаунта (`notification_count_update`, `getNotificationsCountForAllAccounts`, `:175-188`, `:850-854`) | воркер не считает непрочитанное неактивных аккаунтов (одна сессия на браузер, В7-4) (2-2) | счётчик в `sidebar-tools-button-notifications` |
+| О-82 | «Мои истории» — вкладка `AppMyStoriesTab` (`sidebarLeft/tabs/myStories`, `:715-722`); до порта пункт открывает наш `StoriesArchiveSheet` | вкладка историй не портирована (волна 4 спеки) (2-2) | пункт 1:1 |
+| О-83 | verify «Архива» целиком: `!isDialogsLoaded(FOLDER_ID_ARCHIVE)` и `appStoriesManager.hasArchive()` (`:681-685`); у нас — только «есть архивные диалоги» | нет признака «архив догружен» и архива историй скрытых пиров (2-2) | пункт до первой загрузки архива |
+| О-84 | Клавиатурная навигация меню: `menuKeyboard`, `focusTrap`, `activateFocus` в `contextMenuController`, 5-й аргумент `addAdditionalMenu` (фокус в подменю) | срез a11y `contextMenuController` не портирован (2-2) | стрелки/Enter/Esc по пунктам бургера и подменю |
 
 ## Что остаётся волне 8 (после этой программы)
 

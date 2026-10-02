@@ -67,7 +67,6 @@ const makeSticker = (id: number): Sticker => makeStickerDoc({ id, setId: 1, emoj
 
 function makeManagers(over: Record<string, unknown> = {}) {
   const fns = {
-    mySets: vi.fn().mockResolvedValue([]),
     featuredSets: vi.fn().mockResolvedValue({ sets: [makeSet(1, 'Duck', 3)], covers: new Map() }),
     searchSets: vi.fn().mockResolvedValue({ sets: [], covers: new Map() }),
     // setBySlug строке больше не нужен — используется только StickerSetModal

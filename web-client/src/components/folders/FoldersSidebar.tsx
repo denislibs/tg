@@ -8,7 +8,8 @@ import { createPortal } from 'react-dom'
 import classNames from '../../shared/lib/classNames'
 import TgIcon from '../TgIcon'
 import type { IconName } from '../TgIcon'
-import MainMenu from '../MainMenu'
+import { createToolsMenu, type ToolsMenuSidebar } from '../sidebarLeft/toolsMenu'
+import ListenerSetter from '../../helpers/listenerSetter'
 import { useT } from '../../i18n'
 import { ALL_FOLDER_ID } from '../../core/folderIds'
 import type { Folder } from '../../core/managers/foldersManager'
@@ -71,19 +72,6 @@ function Item({
   )
 }
 
-export interface MainMenuHandlers {
-  onOpenSettings: () => void
-  onOpenContacts: () => void
-  onOpenSaved: () => void
-  onOpenPremium: () => void
-  onOpenMyStories?: () => void
-  onOpenCloseFriends?: () => void
-  onOpenWallet?: () => void
-  onOpenCalls?: () => void
-  onLogout?: () => void
-  onToggleMode?: (coords?: { x: number; y: number }) => void
-}
-
 /**
  * Клик по папке в колонке — tweb `foldersSidebarContent/index.tsx:64-73`:
  * индекс папки в `folderItems` и тот же `onClick()` стора, что у полосы
@@ -105,20 +93,17 @@ export default function FoldersSidebar({
   appSidebarLeft,
   managers,
   onOpenFolderSettings,
-  menu,
 }: {
   folders: Folder[]
-  /** колонка и ручки для меню папки (`createFolderContextMenu`) */
-  appSidebarLeft: FolderContextMenuSidebar
+  /** колонка: ручки меню папки (`createFolderContextMenu`) и бургера (`createToolsMenu`) */
+  appSidebarLeft: FolderContextMenuSidebar & ToolsMenuSidebar
   managers: FolderContextMenuManagers
   onOpenFolderSettings: () => void
-  menu: MainMenuHandlers
 }) {
   const t = useT()
   // Выбранная папка — факт `foldersStore.selectedId`, его пишет только владелец.
   const selectedId = useFoldersStore((st) => st.selectedId)
   const counts = useFolderUnreadCounts(folders)
-  const [menuOpen, setMenuOpen] = useState(false)
   const backgroundCanvasRef = useRef<HTMLCanvasElement>(null)
   const [hasGradient, setHasGradient] = useState(false)
   const [isDarkPattern, setIsDarkPattern] = useState(false)
@@ -159,6 +144,21 @@ export default function FoldersSidebar({
     }).destroy
   }, [appSidebarLeft, managers])
 
+  // Бургер колонки — ТО ЖЕ меню, что в шапке (tweb
+  // `foldersSidebarContent/index.tsx:77-83`: `appSidebarLeft.createToolsMenu(
+  // target, {top: 8, left: 48})` + `sidebar-tools-button is-visible` на пункте).
+  // Узел пункта — React-узел колонки, поэтому слушатель снимается с островом
+  // (`listenerSetter` порта, ВРЕМЕННО до 2-7).
+  const menuButtonRef = useImperativeIsland((target) => {
+    const listenerSetter = new ListenerSetter()
+    createToolsMenu(appSidebarLeft, target, { top: 8, left: 48 }, listenerSetter)
+    target.classList.add('sidebar-tools-button', 'is-visible')
+    return () => {
+      listenerSetter.removeAll()
+      target.classList.remove('btn-menu-toggle', 'sidebar-tools-button', 'is-visible')
+    }
+  }, [appSidebarLeft])
+
   // Портал в #main-columns: в tweb #folders-sidebar — соседняя колонка каркаса
   // (живой DOM §1), а не потомок #column-left.
   return createPortal(
@@ -176,7 +176,7 @@ export default function FoldersSidebar({
         <div className={s.backgroundTint} />
       </div>
       {/* tweb folders-sidebar__menu-button.is-first — бургер главного меню */}
-      <div className={classNames(s.item, s.menuButton)} onClick={() => setMenuOpen(true)}>
+      <div ref={menuButtonRef} className={classNames(s.item, s.menuButton)}>
         <TgIcon name="menu" size={24} />
       </div>
 
@@ -210,32 +210,6 @@ export default function FoldersSidebar({
         <TgIcon name="equalizer" size={24} />
       </div>
 
-      <MainMenu
-        open={menuOpen}
-        onClose={() => setMenuOpen(false)}
-        onOpenSettings={() => {
-          setMenuOpen(false)
-          menu.onOpenSettings()
-        }}
-        onOpenContacts={() => {
-          setMenuOpen(false)
-          menu.onOpenContacts()
-        }}
-        onOpenSaved={() => {
-          setMenuOpen(false)
-          menu.onOpenSaved()
-        }}
-        onOpenPremium={() => {
-          setMenuOpen(false)
-          menu.onOpenPremium()
-        }}
-        onOpenMyStories={menu.onOpenMyStories ? () => { setMenuOpen(false); menu.onOpenMyStories!() } : undefined}
-        onOpenCloseFriends={menu.onOpenCloseFriends ? () => { setMenuOpen(false); menu.onOpenCloseFriends!() } : undefined}
-        onOpenWallet={menu.onOpenWallet ? () => { setMenuOpen(false); menu.onOpenWallet!() } : undefined}
-        onOpenCalls={menu.onOpenCalls ? () => { setMenuOpen(false); menu.onOpenCalls!() } : undefined}
-        onLogout={menu.onLogout}
-        onToggleMode={menu.onToggleMode}
-      />
     </div>,
     document.getElementById('main-columns') ?? document.body,
   )

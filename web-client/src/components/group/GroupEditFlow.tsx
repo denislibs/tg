@@ -5,6 +5,13 @@
 // chatMembers / removedUsers / restricted). Один компонент под оба типа:
 // isChannel = chat.type === 'channel'. Каркас — SettingsScreen/Section/Row
 // (settings/kit), данные — useGroupEdit.
+//
+// ВРЕМЕННО до 0б-1: дочерние экраны, уже ставшие Solid-вкладками правой колонки
+// (тип чата — `AppChatTypeTab`, 0б-2), открываются мостом
+// `appSidebarRight.createTab(…).open(…)`, как у tweb `editChat.tsx`. Сам экран —
+// React-оверлей в `.sidebar-slider` с `z-index: 60`, поэтому, пока дочерняя
+// вкладка открыта, он спрятан (`hidden`), а на её закрытии (Esc/Back/кнопка)
+// показан снова и перечитывает карточку — вкладка сохраняет сама.
 import { useRef, useState } from 'react'
 import { SettingsScreen, Section, Row } from '../settings/kit'
 import IconButton from '../../shared/ui/IconButton'
@@ -23,7 +30,8 @@ import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import { gradientFor } from '../../core/dialogToChat'
 import type { Chat } from '../../data'
 import { EMOJIS } from './screens/shared'
-import { ChatTypeScreen } from './screens/ChatTypeScreen'
+import appSidebarRight from '@components/sidebarRight'
+import { AppChatTypeTab } from '@components/solidJsTabs/tabs'
 import { InviteLinksScreen } from './screens/InviteLinkScreens'
 import { ReactionsScreen } from './screens/ReactionsScreen'
 import { DiscussionScreen } from './screens/DiscussionScreen'
@@ -34,7 +42,6 @@ import { RemovedUsersScreen, RestrictedUsersScreen } from './screens/MemberScree
 
 type Sub =
   | null
-  | 'type'
   | 'links'
   | 'reactions'
   | 'discussion'
@@ -49,6 +56,8 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
   const managers = useManagers()
   const g = useGroupEdit(chatId)
   const [sub, setSub] = useState<Sub>(null)
+  // ВРЕМЕННО до 0б-1 — см. шапку: открыта ли поверх Solid-вкладка правой колонки
+  const [childTabOpen, setChildTabOpen] = useState(false)
   const isChannel = chat.type === 'channel'
 
   // Имя/описание: локальный черновик; галочка появляется при изменениях (tweb nextBtn)
@@ -85,6 +94,18 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
   }
 
   const card = g.card
+
+  // ВРЕМЕННО до 0б-1 — мост на вкладку типа чата (tweb `editChat.tsx`:
+  // `this.slider.createTab(AppChatTypeTab).open({chatId, chatFull})`).
+  const openChatType = () => {
+    if (!card) return
+    const tab = appSidebarRight.createTab(AppChatTypeTab)
+    tab.eventListener.addEventListener('close', () => {
+      setChildTabOpen(false)
+      g.reload()
+    })
+    void tab.open({ chatId: card.chat.id, chatFull: card.fullChat }).then(() => setChildTabOpen(true))
+  }
   // Право менять инфо — вопрос к конструктору (`hasRights`), а не к строке
   // `my_role`, которой на проводе больше нет.
   const canChangeInfo = hasRights(card?.chat, 'change_info')
@@ -108,6 +129,7 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
       title="Edit"
       onBack={onClose}
       zIndex={60}
+      hidden={childTabOpen}
       headerRight={
         dirty && title.trim() ? (
           <IconButton onClick={() => void save()} color="var(--primary-color)">
@@ -116,7 +138,6 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
         ) : undefined
       }
       sub={
-        sub === 'type' ? <ChatTypeScreen g={g} isChannel={isChannel} onBack={() => setSub(null)} /> :
         sub === 'links' ? <InviteLinksScreen g={g} isChannel={isChannel} onBack={() => setSub(null)} /> :
         sub === 'reactions' ? <ReactionsScreen g={g} onBack={() => setSub(null)} /> :
         sub === 'discussion' ? <DiscussionScreen g={g} onBack={() => setSub(null)} /> :
@@ -169,7 +190,7 @@ export default function GroupEditFlow({ chatId, chat, onClose }: { chatId: numbe
 
       {canChangeInfo && (
         <Section>
-          <Row icon={<TgIcon name="lock_filled" size={22} />} label={isChannel ? 'ChannelType' : 'GroupType'} value={t(chatIsPublic(card?.chat) ? 'TypePublic' : 'TypePrivate')} onClick={() => setSub('type')} />
+          <Row icon={<TgIcon name="lock_filled" size={22} />} label={isChannel ? 'ChannelType' : 'GroupType'} value={t(chatIsPublic(card?.chat) ? 'TypePublic' : 'TypePrivate')} onClick={openChatType} />
           <Row icon={<TgIcon name="link_filled" size={22} />} label="InviteLinks" value={String(Math.max(activeInvites.length, 1))} onClick={() => setSub('links')} />
           <Row icon={<TgIcon name="reactions_filled" size={22} />} label="Reactions" value={reactionsValue} onClick={() => setSub('reactions')} />
           {isChannel && (

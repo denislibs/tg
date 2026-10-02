@@ -5,8 +5,8 @@
  * `privacy/*` (812502980), задача 17 плана волны 2D.
  *
  * Вкладки гоняются НАСТОЯЩИЕ — объявления `solidJsTabs/tabs.ts`, открытые через
- * колоночный слайдер (`sidebarLeft/columnSlider.ts`) тем же путём, что строки React-экрана
- * «Конфиденциальность». Стабы — только границы: менеджер правил (воркер) и
+ * колоночный слайдер (`sidebarLeft/columnSlider.ts`) тем же путём, что строки хаба
+ * «Конфиденциальность» (`privacyAndSecurity.solid.tsx`). Стабы — только границы: менеджер правил (воркер) и
  * геометрия; стор правил (`stores/privacyStore.ts`) — настоящий.
  *
  * Предмет:
@@ -23,6 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Managers } from '@/client/bootstrap'
 import type SliderSuperTab from '@components/sliderTab'
 import lang from '@/lang'
+import { i18n } from '@lib/langPack'
 import type { PrivacyKey, PrivacyRule } from '@core/managers/privacyManager'
 import { usePrivacyStore } from '@stores/privacyStore'
 import {
@@ -50,6 +51,7 @@ beforeEach(() => {
     rule('last_seen', { value: 'contacts', denyUserIds: [5, 6] }),
     rule('phone_number', { value: 'contacts' }),
     rule('added_by_phone', { value: 'contacts' }),
+    rule('read_time'),
   ])
   setRule = vi.fn(async(r: PrivacyRule) => r)
 
@@ -253,5 +255,102 @@ describe('«Номер телефона» — две секции', () => {
       rule('added_by_phone', { value: 'contacts' }),
       rule('phone_number', { value: 'nobody' }),
     ])
+  })
+})
+
+// tweb `privacy/lastSeen.tsx:18-74`: тумблер «Hide Read Time» под исключениями,
+// виден, только когда «был в сети» от кого-то скрыт (`canHideReadTime`), пишется
+// на закрытии и только при изменении. Предмет у нас — правило `read_time`
+// (сервер проверяет его взаимно, `usecase/chat/message.go`): «скрыть» = время
+// прочтения видят ровно те, кто видит «был в сети» (копия правила `last_seen`),
+// «не скрывать» = видят все. Своей строки в хабе и своей вкладки у него больше нет.
+describe('«Был в сети» — Hide Read Time', () => {
+  const hideSection = (tab: SliderSuperTab) => {
+    const el = [...tab.scrollable.container.querySelectorAll<HTMLElement>('.sidebar-left-section-container')]
+      .find((c) => c.querySelector('.row-title')?.textContent === lang.HideReadTime)
+    if(!el) throw new Error('no Hide Read Time section')
+    return el
+  }
+  const toggle = (tab: SliderSuperTab) => hideSection(tab).querySelector<HTMLInputElement>('input[type="checkbox"]')!
+  const readTimeWrites = () => setRule.mock.calls.map(([r]) => r).filter((r) => r.key === 'read_time')
+
+  it('секция за исключениями: Row.CheckboxFieldToggle + подпись HideReadTimeInfo вне карточки', async() => {
+    const tab = await open(AppPrivacyLastSeenTab)
+    const containers = [...tab.scrollable.container.querySelectorAll<HTMLElement>('.sidebar-left-section-container')]
+    expect(containers.indexOf(hideSection(tab))).toBe(containers.indexOf(section(tab, lang.PrivacyExceptions)) + 1)
+
+    const hide = hideSection(tab)
+    expect(hide.querySelector('.row .row-checkbox-field-toggle, .row .checkbox-field-toggle')).not.toBeNull()
+    expect(caption(hide).textContent).toBe(i18n('HideReadTimeInfo').textContent)
+    expect(hide.classList.contains('hide')).toBe(false)
+  })
+
+  it('видна, только когда «был в сети» от кого-то скрыт (canHideReadTime)', async() => {
+    const tab = await open(AppPrivacyLastSeenTab)
+    const radio = section(tab, lang.LastSeenTitle)
+
+    // «Все» c исключениями Never [5, 6] — скрывать есть от кого
+    row(radio, lang['PrivacySettingsController.Everbody']).click()
+    expect(hideSection(tab).classList.contains('hide')).toBe(false)
+
+    row(radio, lang['PrivacySettingsController.Nobody']).click()
+    expect(hideSection(tab).classList.contains('hide')).toBe(false)
+  })
+
+  it('«Все» без исключений — секция скрыта', async() => {
+    usePrivacyStore.getState().setRule(rule('last_seen'))
+    const tab = await open(AppPrivacyLastSeenTab)
+    expect(hideSection(tab).classList.contains('hide')).toBe(true)
+  })
+
+  it('отметка по правилу read_time; без изменений закрытие read_time не пишет', async() => {
+    usePrivacyStore.getState().setRule(rule('read_time', { value: 'contacts', denyUserIds: [5, 6] }))
+    const tab = await open(AppPrivacyLastSeenTab)
+    expect(toggle(tab).checked).toBe(true)
+
+    await close(tab)
+    expect(readTimeWrites()).toEqual([])
+  })
+
+  it('включили — закрытие пишет read_time копией нового правила «был в сети»', async() => {
+    usePrivacyStore.getState().setRule(rule('read_time'))
+    const tab = await open(AppPrivacyLastSeenTab)
+    expect(toggle(tab).checked).toBe(false)
+    row(section(tab, lang.LastSeenTitle), lang['PrivacySettingsController.Nobody']).click()
+    toggle(tab).click()
+    expect(setRule).not.toHaveBeenCalled()
+
+    await close(tab)
+    expect(readTimeWrites()).toEqual([rule('read_time', { value: 'nobody' })])
+    expect(usePrivacyStore.getState().rules.read_time).toEqual(rule('read_time', { value: 'nobody' }))
+  })
+
+  it('включено и «был в сети» поменяли — read_time идёт за ним', async() => {
+    usePrivacyStore.getState().setRule(rule('read_time', { value: 'contacts', denyUserIds: [5, 6] }))
+    const tab = await open(AppPrivacyLastSeenTab)
+    row(section(tab, lang.LastSeenTitle), lang['PrivacySettingsController.Nobody']).click()
+
+    await close(tab)
+    expect(readTimeWrites()).toEqual([rule('read_time', { value: 'nobody' })])
+  })
+
+  it('выключили — read_time «Все» без исключений', async() => {
+    usePrivacyStore.getState().setRule(rule('read_time', { value: 'contacts', denyUserIds: [5, 6] }))
+    const tab = await open(AppPrivacyLastSeenTab)
+    toggle(tab).click()
+
+    await close(tab)
+    expect(readTimeWrites()).toEqual([rule('read_time')])
+  })
+
+  it('включено, но «был в сети» открыли всем — скрывать не от кого, read_time «Все» (tweb hide && canHideReadTime)', async() => {
+    usePrivacyStore.getState().setRule(rule('last_seen', { value: 'contacts' }))
+    usePrivacyStore.getState().setRule(rule('read_time', { value: 'contacts' }))
+    const tab = await open(AppPrivacyLastSeenTab)
+    row(section(tab, lang.LastSeenTitle), lang['PrivacySettingsController.Everbody']).click()
+    expect(hideSection(tab).classList.contains('hide')).toBe(true)
+
+    await close(tab)
+    expect(readTimeWrites()).toEqual([rule('read_time')])
   })
 })

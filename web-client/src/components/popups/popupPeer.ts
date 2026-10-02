@@ -245,13 +245,24 @@ export default class PopupPeer extends PopupElement {
  * (250мс) → `closeAfterTimeout`, кроме явного клика по Cancel-кнопке —
  * её `callback` реджектит немедленно, как и в оригинале
  * (simpleConfirmation.ts:37-42).
+ *
+ * `buttons` и `rejectWithReason` — из HEAD-хелпера tweb
+ * (`components/confirmationPopup.ts:21-38`): свой набор кнопок вместо
+ * `[button]` и причина отказа — `'canceled'` (кнопка отмены) или `'closed'`
+ * (любое другое закрытие). Потребитель — подтверждение несохранённого на
+ * закрытии вкладки (`helpers/solid/useIsConfirmationNeededOnClose.ts`): там
+ * «Discard» закрывает вкладку, а крестик/Esc оставляют её открытой.
  */
+export type ConfirmationPopupRejectReason = 'canceled' | 'closed'
+
 export function confirmationPopup(options: {
   titleLangKey?: LangPackKey
   titleLangArgs?: FormatterArguments
   descriptionLangKey?: LangPackKey
   descriptionLangArgs?: FormatterArguments
   button: PopupButton
+  buttons?: PopupButton[]
+  rejectWithReason?: boolean
   /** НАШЕ расширение, не из tweb — см. докблок `PopupOptions.zIndex`
    *  (`popupElement.ts`). Потребитель — мост `ConfirmDialog.tsx` (задача 3). */
   zIndex?: number
@@ -275,11 +286,11 @@ export function confirmationPopup(options: {
   return new Promise<void>((resolve, reject) => {
     let resolved = false // simpleConfirmation.ts:33
 
-    const buttons = addCancelButton([options.button]) // simpleConfirmation.ts:35
+    const buttons = addCancelButton(options.buttons || [options.button]) // confirmationPopup.ts:29
     const cancelButton = buttons.find((b) => b.isCancel)!
-    cancelButton.callback = () => { // simpleConfirmation.ts:37-42
+    cancelButton.callback = () => { // simpleConfirmation.ts:37-42, confirmationPopup.ts:31-33
       if(!resolved) {
-        reject()
+        reject(options.rejectWithReason ? 'canceled' : undefined)
         resolved = true
       }
     }
@@ -306,7 +317,7 @@ export function confirmationPopup(options: {
     // `closeAfterTimeout` — момент, когда popup гарантированно закрыт.
     popup.addEventListener('closeAfterTimeout', () => {
       if(!resolved) {
-        reject()
+        reject(options.rejectWithReason ? 'closed' : undefined) // confirmationPopup.ts:38-40
         resolved = true
       }
     })

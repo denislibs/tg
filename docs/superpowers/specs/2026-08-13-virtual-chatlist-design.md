@@ -221,6 +221,19 @@ type DialogListSource = {
 
 ### Отступления от tweb (осознанные)
 
+> **Пересмотр волной 7 (задача 1-3, план `2026-09-30-wave-7-shell-sidebars.md`, этап 1).**
+> Ядро портировано в исходной Solid-форме tweb файлом —
+> `components/deferredSortedVirtualList.solid.tsx` поверх `verticalVirtualList.solid.tsx`.
+> Судьба пунктов ниже **для Solid-ядра**: №1 — **снят, shrink портирован**: Solid-ядро, как
+> оригинал, владеет элементами (`items`/`pinnedItems`), и обрезка освобождает их через
+> `onItemDiscard`, а `onListShrinked` откатывает курсор владельца — причина отступления
+> (данными владеет React-состояние/зеркало) у этого ядра отсутствует; №2 и №3 — **сняты**:
+> `top`, `--background` и класс позиционирования пишет одно ядро (`InnerItem`), второго
+> владельца атрибута `class` у vanilla-строки нет; №4 — **не отступление**: canvas-плейсхолдер —
+> порт tweb `dialogsPlaceholder.ts`, tweb использует его вместе со скелетоном строки.
+> Для React-ядра `components/virtual/*` пункты №1–3 действуют, пока его держат React-потребители
+> (`ChatList`, `ArchiveList`, `TopicsPanel`); оно уходит с последним из них (задача 1-6).
+
 1. **Shrink не портируем** (`deferredSortedVirtualList.tsx:226-239`,
    `EXTRA_ITEMS_TO_KEEP = 50`, `onListShrinked`, откат курсора). Причина: в tweb
    список ВЛАДЕЕТ своими элементами и обрезка реально освобождает память —
@@ -243,7 +256,7 @@ type DialogListSource = {
    (`DeferredSortedVirtualList.tsx`, `classList.add(styles.Item)`): дописываем
    класс поверх того, что React только что записал, в той же фазе — до
    отрисовки. Стоимость — один `classList.add` на строку окна за коммит.
-4. **Скелетон-плейсхолдер первой загрузки остаётся canvas'ный**
+4. **(Не отступление — пересмотр волны 7 выше.) Скелетон-плейсхолдер первой загрузки остаётся canvas'ный**
    (`dialogsPlaceholder.ts`) — он уже портирован из tweb и там же и живёт
    (tweb использует ОБА: canvas-плейсхолдер до первой загрузки и
    `LoadingDialogSkeleton` под незагруженными индексами). Ничего не меняем.

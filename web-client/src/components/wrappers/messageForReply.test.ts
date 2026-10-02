@@ -97,7 +97,7 @@ describe('wrapMessageForReply — лейбл вложения', () => {
 
 // Богатая форма (`plain: false`) и подсветка поиска — tweb
 // `messageForReply.ts:36`, `:45-46`, `:384-397`. Потребитель — превью строки
-// в группе «Messages» глобального поиска (`dialogRow.setLastMessageN`,
+// в группе «Messages» глобального поиска (`appDialogsManager.setLastMessageN`,
 // tweb `appDialogsManager.ts:2184-2192`). Пин на УЗЛЫ: вхождение запроса —
 // `i.text-highlight` (tweb `wrapRichText.ts:346-350`), лейбл вложения — свой
 // `span`, запятая между частями — текстом.

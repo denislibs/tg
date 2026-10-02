@@ -5,7 +5,7 @@
 // «нет зеркала» не отличалось от «есть».
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, cleanup, act } from '@testing-library/react'
-import FoldersSidebar, { type MainMenuHandlers } from './FoldersSidebar'
+import FoldersSidebar from './FoldersSidebar'
 import contextMenuController from '../../helpers/contextMenuController'
 import { CLICK_EVENT_NAME } from '../../helpers/dom/clickEvent'
 import { applyFolderUpdate } from '../../stores/foldersStore'
@@ -14,6 +14,7 @@ import { initialState } from '../../core/state/state'
 import type { Folder, RawFolder } from '../../core/managers/foldersManager'
 import type ChatBackgroundGradientRenderer from '../../core/chat/gradientRenderer'
 import s from './FoldersSidebar.module.scss'
+import type { Managers } from '../../client/bootstrap'
 
 // Фон страницы — синглтон `appChatBackground` (порт tweb
 // `chat/bubbles/chatBackground.tsx:759-777`); здесь от него нужна только ручка к
@@ -41,22 +42,22 @@ const background = vi.hoisted(() => {
 })
 vi.mock('../chat/bubbles/chatBackground.solid', () => ({ default: background.api }))
 
-// Главное меню тянет менеджеры воркера (useManagers) — к зеркалу градиента
-// отношения не имеет, подменяем заглушкой.
-vi.mock('../MainMenu', () => ({ default: () => null }))
-
-const menu: MainMenuHandlers = {
-  onOpenSettings: () => {},
-  onOpenContacts: () => {},
-  onOpenSaved: () => {},
-  onOpenPremium: () => {},
-}
-
+// Колонка — те же ручки, что у шапки: меню папки (`createFolderContextMenu`) и
+// бургер (`createToolsMenu`, `sidebarLeft/toolsMenu.ts`).
 function makeAppSidebarLeft() {
   return {
+    managers: { auth: { listAccounts: async() => [] }, peers: { fillMirror: async() => {} } } as unknown as Managers,
     closeTabsBefore: vi.fn((clb: () => void) => clb()),
     openEditFolderTab: vi.fn(),
     openChatFoldersTab: vi.fn(),
+    isCollapsed: () => false,
+    openArchiveTab: vi.fn(),
+    hasArchivedDialogs: () => false,
+    getArchivedUnreadCount: () => 0,
+    openSavedMessages: vi.fn(),
+    openMyStories: vi.fn(),
+    openCalls: vi.fn(),
+    switchTheme: vi.fn(),
   }
 }
 
@@ -76,7 +77,6 @@ function renderSidebar(folders: Folder[] = []) {
       appSidebarLeft={appSidebarLeft}
       managers={managers}
       onOpenFolderSettings={() => {}}
-      menu={menu}
     />,
   )
   return { host, appSidebarLeft, managers, ...r }
@@ -203,5 +203,38 @@ describe('FoldersSidebar — меню папки (createFolderContextMenu)', () 
     const el = row(3)
     unmount()
     expect(await openOn(el)).toBeNull()
+  })
+})
+
+// Бургер колонки — то же меню, что в шапке (tweb `foldersSidebarContent/index.tsx:77-83`):
+// `createToolsMenu(target, {top: 8, left: 48})` на верхний пункт и
+// `sidebar-tools-button is-visible` на нём же.
+describe('FoldersSidebar — бургер (createToolsMenu)', () => {
+  const menuButton = (host: HTMLElement) => host.querySelector<HTMLElement>(`.${s.menuButton}`)!
+  const openedMenu = () => document.body.querySelector<HTMLElement>(':scope > .btn-menu')
+
+  it('верхний пункт — триггер бургера: клик открывает меню колонки с «Settings»', async () => {
+    const { host } = renderSidebar()
+    const button = menuButton(host)
+    expect(button.classList.contains('btn-menu-toggle')).toBe(true)
+    expect(button.classList.contains('sidebar-tools-button')).toBe(true)
+    expect(button.classList.contains('is-visible')).toBe(true)
+
+    await act(async () => { button.click() })
+    await vi.waitFor(() => expect(openedMenu()?.classList.contains('active')).toBe(true))
+    expect(openedMenu()!.textContent).toContain('Settings')
+    expect(openedMenu()!.classList.contains('bottom-right')).toBe(true)
+  })
+
+  it('размонтирование колонки снимает слушатель бургера', async () => {
+    const { host, unmount } = renderSidebar()
+    const button = menuButton(host)
+    unmount()
+    document.body.append(button)
+
+    button.classList.add('btn-menu-toggle')
+    button.click()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(openedMenu()).toBeNull()
   })
 })

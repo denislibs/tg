@@ -1320,6 +1320,24 @@ c1c10b8c6 + cab52547f (пины в `animationIntersector.test.ts`, в том ч�
 2. `cachingDelta` + reference-counted `FramesCache` — ключ к памяти на панели стикеров; без `clearCacheWhenSafe()` на выходе из вьюпорта память течёт.
 3. `SuperStickerRenderer` и `animationIntersector` — независимые слои: первый управляет **жизнью** плеера (создать/снести), второй — **воспроизведением** (play/pause). Портировать их нужно вместе.
 
+## 9.7 Предпросмотр стикера по зажатию — `components/stickerViewer.ts`
+
+`attachStickerViewerListeners({listenTo, listenerSetter, selector?, findTarget?, getTextColor?,
+additionalClass?})` (`:33`) — один `mousedown` на контейнере, на таче не вешается вовсе (`:41`).
+Цель — `.media-sticker-wrapper, .media-gif-wrapper` (`:50`) с `data-doc-id`, документ —
+`appDocsManager.getDoc` (`:239`). Удержание 125 мс (`:259`) открывает `div.sticker-viewer` в
+`getOverlayRoot()` (`:191`): `.sticker-viewer-transformer` летит из прямоугольника ячейки
+(`translate+scale`, `:144-149`) в центр, внутри `.sticker-viewer-sticker` (360, GIF —
+`min(480, h−200)`, с эффектом — 280) и `.sticker-viewer-emoji`. Пока открыт, играет только группа
+`STICKER-VIEWER` (`:201-203`). `mousemove` по документу с зажатой кнопкой переключает стикер
+(`:261-321`, только внутри `listenTo` — `findUpAsChild`), старый уходит `is-switching`; увод
+курсора до порога обрывает жест (`onMousePreMove`, `:349`); `mouseup` закрывает переходом
+`is-visible` и глотает следующий `click` (`:364-379`); ячейка, исчезнувшая из DOM, закрывает
+оверлей опросом `isInDOM` раз в 100 мс (`:389`). Стили — `partials/_stickerViewer.scss`, переходы —
+`base.scss:70-73`. Вызывающие: лента (`bubbles.ts:1591`, свой `findTarget` по `.attachment`),
+`stickersHelper.ts:118`, `emojiHelper.ts:107`, `emoticonsDropdown/tab.ts:471`,
+`popups/stickers.tsx:336`, `sidebarRight/tabs/stickers.tsx:166`.
+
 # 10. «У нас»: состояние web-client и расхождения
 
 <!-- SECTION:OURS -->
@@ -1345,6 +1363,7 @@ c1c10b8c6 + cab52547f (пины в `animationIntersector.test.ts`, в том ч�
 | `src/components/lottieAnimation.solid.tsx` (Solid), `LottieSticker.tsx` (React) | единая точка входа для встроенных ассетов (обезьянки, уточки, иконки папок/ключа/пасскода, шапки карточек) — порт tweb `components/lottieAnimation.tsx`, зовёт `lottieLoader.loadAnimationAsAsset(params, name: LottieAssetName)` |
 | `public/assets/tgs/*.json` | встроенные ассеты статикой, как в оригинале (было — 11 json'ов отдельными JS-чанками бандла); `lottieLoader.makeAssetUrl` резолвит `assets/tgs/<name>.json` |
 | `src/components/mediaEditor/`, `StoryViewer.tsx`, `GifsMasonry.tsx` | медиа-редактор, сторис-вьювер, сетка GIF |
+| `src/components/stickerViewer.ts` + `styles/tweb/_stickerViewer.scss` | порт `stickerViewer.ts` 1:1 (§9.7), расхождения — в шапке файла; документ по `data-doc-id` — RPC `docs.getDoc` воркера (хранилище наполняет `saveDocument`). Подключён в ленте (`chat/bubbles.ts`), подсказках стикеров (`StickersHelper.tsx`), вкладке стикеров панели (`emoji/StickersTab.tsx`), попапе набора (`stickers/StickerSetModal.tsx`) и поиске стикеров (`rightSidebar/StickersSearchTab.tsx`) |
 
 ## 10.2 Главные расхождения с tweb
 
@@ -1359,6 +1378,7 @@ c1c10b8c6 + cab52547f (пины в `animationIntersector.test.ts`, в том ч�
 | Вьювер | `appMediaViewerBase` + avatar-вьювер | порт 1:1 (mover/zoom/video) | avatar-вьювер и sharing таргетов между источниками — сверить с §8 |
 | Аватарки | stripped+blur | без блюра | осознанное решение (2026-08-12) |
 | Форма фото профиля | квадрат: клиент кадрирует (`PopupAvatar`), сервер хранит только квадратные размеры; мелкие `.avatar-photo` рисуются без `object-fit` (`_avatar.scss:445-466`, `cover` — только у `.avatar-full`) | квадрат обеспечивает сервер: `auth.SetAvatar/AddProfilePhoto` зовут `media.SquareAvatar` — неквадратная jpeg/png становится новым медиа, центральным квадратом с учётом EXIF Orientation (`adapter/media/imagecrop`) | клиентского кропа нет на регистрации (`SignUpCard.solid.tsx`, долг `avatar-cropper-solid-port.md`); уже загруженные неквадратные аватарки не пересчитываются; фото чатов/каналов через этот путь не идут |
+| Предпросмотр стикера по зажатию | `stickerViewer.ts`: премиум-эффект (280, `has-effect`, запуск эффекта), кастомные эмодзи (`textColor`), вызов из `emojiHelper.ts:107` | тот же жест и разметка; эффекта и кастомных эмодзи нет; `z-index` оверлея временно 4101 (над React-слоями `Popup` 4090 и `RightSearchTab` 1900) | эффекты стикеров и кастомные эмодзи-документы; `z-index: 4` — после 2C-15 и 0б-11; эмодзи-подсказки (`EmojiHelper.tsx`) кастомных эмодзи не рисуют — вешать не на что; вкладка GIF панели (tweb `tabs/gifs.ts:190` → `attachHelpers`) не подключена — ячейки `emoji/GifsTab.tsx` без `media-gif-wrapper`/`data-doc-id`, подключится вместе с портом `gifsMasonry.ts` |
 | Обои чата | `ChatBackgroundStore` (`lib/chatBackgroundStore.ts`): файл серверных обоев по slug → корзина `cachedBackgrounds` + общие object URL, размытая копия `blur(url, 12, 4)` | `core/chat/chatBackgroundStore.ts`: своё фото — обычное медиа (`cachedMediaUrl`/`ensureMediaUrl`, корзина `cachedFiles` владельца), размытая копия тем же `blurWallPaperImage`, засев локальным файлом на время отгрузки; память вкладки, своей корзины нет. Потребитель — фон чата `components/chat/bubbles/chatBackground.solid.tsx` | серверных обоев нет (О-11) — `cachedBackgrounds` и SW-скоуп `backgrounds` не нужны (О-40) |
 
 Смежные наши доки: `2026-08-08-tweb-deep-structural-audit.md`, `bubbles.md`
@@ -1377,6 +1397,7 @@ c1c10b8c6 + cab52547f (пины в `animationIntersector.test.ts`, в том ч�
 - [ ] Аудио и голосовое: плеер, волна, скорость, продолжение воспроизведения в шапке при уходе из чата.
 - [ ] Документ: иконка или превью, прогресс загрузки, отмена загрузки.
 - [ ] Стикеры трёх видов (статический, анимированный, видео); вне вьюпорта воспроизведение на паузе.
+- [ ] Зажатие стикера (лента, панель, попап набора, подсказки, поиск): через 125 мс оверлей вылетает из ячейки, ведение мыши переключает стикер, отпускание закрывает и стикер не отправляется.
 - [ ] Повторное открытие того же медиа берёт файл из cacheStorage — в сетевой панели нового запроса нет.
 - [ ] Аватарки и превью в чатлисте и shared media строятся тем же кодом, что медиа в бабле.
 

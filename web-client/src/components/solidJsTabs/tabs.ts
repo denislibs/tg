@@ -21,7 +21,6 @@ import type { Authorization } from '@layer'
 import type { PasswordState } from '@core/managers/authManager'
 import type SliderSuperTab from '@components/sliderTab'
 import { scaffoldSolidJSTab, scaffoldSolidJSTabEventable } from './scaffoldSolidJSTab.solid'
-import { scaffoldReactScreenTab } from '../sidebarLeft/reactScreenTab'
 import type { LangPackKey } from '@/lang'
 import type { MaybePromise } from '@types'
 import type { PasscodeActions } from '@lib/passcode/actions'
@@ -29,8 +28,7 @@ import type SidebarSlider from '@components/slider'
 
 // tweb :327-329 — вкладка получает УЖЕ загруженный список сессий, а не ходит
 // за ним сама: запрос делает открывающая сторона (корень настроек —
-// `settings.solid.tsx::onDevicesClick`, React-«Конфиденциальность» —
-// `columnSlider.ts::openActiveSessionsTab`), чтобы вкладка не въезжала пустой.
+// `settings.solid.tsx::onDevicesClick`), чтобы вкладка не въезжала пустой.
 type AppActiveSessionsTabPayload = {
   authorizations: Authorization.authorization[]
 }
@@ -302,8 +300,8 @@ export const AppAddMembersTab =
 // ── Вкладки правил приватности (tweb :59-63, :301-367; задача 17 плана 2D) ────
 // Все eventable: `PrivacySection` пишет правило на `destroy` вкладки
 // (`privacySection.tsx:271`). Открывают их строки раздела «Конфиденциальность»
-// (tweb `privacyAndSecurity.tsx:416-466`; до задачи 23 — React-экран на мосту
-// `AppPrivacyAndSecurityTab`). Расхождения с оригиналом:
+// (tweb `privacyAndSecurity.tsx:416-472`, хаб `AppPrivacyAndSecurityTab`).
+// Расхождения с оригиналом:
 //  • полезной нагрузки нет ни у одной: у tweb «Был в сети» и «Подарки» получают
 //    `GlobalPrivacySettings` и шлют событие `privacy` (:355-365), «Сообщения» —
 //    `onSaved` (:55-63); `globalPrivacySettings` у нас нет (О-18), «Сообщения» —
@@ -311,8 +309,8 @@ export const AppAddMembersTab =
 //    у неё eventable, а не обычная, как у tweb;
 //  • «Подарки» и «Сохранённая музыка» (:337-341, :362-366) не заведены — ключей
 //    нет (О-16);
-//  • «Время прочтения» — НАША вкладка: своё правило `read_time` на месте флага
-//    `hide_read_marks` (шапка `privacy/readTime.solid.tsx`).
+//  • флаг `hide_read_marks` у «Был в сети» — наше правило `read_time` (шапка
+//    `privacy/lastSeen.solid.tsx`, расхождение 1).
 export const AppPrivacyAboutTab =
   scaffoldSolidJSTabEventable({
     title: 'UserBio',
@@ -373,10 +371,18 @@ export const AppPrivacyMessagesTab =
     getComponentModule: () => import('../sidebarLeft/tabs/privacy/messages/tab.solid'),
   })
 
-export const AppPrivacyReadTimeTab =
-  scaffoldSolidJSTabEventable({
-    title: 'PrivacyReadTime',
-    getComponentModule: () => import('../sidebarLeft/tabs/privacy/readTime.solid'),
+// tweb :143-153 — задача 20 плана 2D. Период вкладка получает от открывающей
+// стороны (строка `AutoDeleteMessages` хаба «Конфиденциальность», tweb
+// `privacyAndSecurity.tsx:238-247`), а `onSaved` обновляет подпись той строки.
+type AppMessagesAutoDeleteTabPayload = {
+  period: number
+  onSaved: (period: number) => void
+}
+
+export const AppMessagesAutoDeleteTab =
+  scaffoldSolidJSTab<AppMessagesAutoDeleteTabPayload>({
+    title: 'AutoDeleteMessages',
+    getComponentModule: () => import('../sidebarLeft/tabs/autoDeleteMessages/index.solid'),
   })
 
 // tweb :160-164. Форма обычная, без полезной нагрузки: настройки вкладка читает
@@ -389,6 +395,17 @@ export const AppGeneralSettingsTab =
     getComponentModule: () => import('../sidebarLeft/tabs/generalSettings.solid'),
   })
 
+// ── «Динамики и камера» (tweb :181-185) — задача 26 плана 2D ─────────────────
+// Форма обычная, без полезной нагрузки: выбор устройств вкладка читает сама
+// (мост `useAppSettings`, `callDevices`). Открывают её строка корня настроек
+// (tweb `settings.tsx:258`, `makeSubTabConfig`) и меню «⋮» вкладки «Звонки»
+// (tweb `calls.tsx:363`: `tab.slider.createTab(AppSpeakersAndCameraTab).open()`).
+export const AppSpeakersAndCameraTab =
+  scaffoldSolidJSTab({
+    title: 'AccountSettings.SpeakersAndCamera',
+    getComponentModule: () => import('../sidebarLeft/tabs/speakersAndCamera.solid'),
+  })
+
 // ── Корень настроек (tweb :188-192) — задача 28 плана 2D ─────────────────────
 // Вкладка колоночного слайдера (`sidebarLeft/columnSlider.ts`); открывает её
 // пункт «Настройки» бургера и колонки папок (tweb `sidebarLeft/index.ts:765`,
@@ -399,38 +416,51 @@ export const AppSettingsTab =
     getComponentModule: () => import('../sidebarLeft/tabs/settings.solid'),
   })
 
-// ── ВРЕМЕННО: React-экраны под именами вкладок tweb ──────────────────────────
-// Строки корня открывают их, как оригинал (`settings.tsx:106`, `:254-257`), но
-// содержимое до порта — React-экран на мосту `scaffoldReactScreenTab`
-// (шапка `sidebarLeft/reactScreenTab.tsx`). Задача порта меняет здесь форму на
-// `scaffoldSolidJSTab({title, getComponentModule})` по tweb и удаляет React-экран.
-
-// ВРЕМЕННО до 2D-23 (tweb :659-663, `privacyAndSecurity.tsx`)
-export const AppPrivacyAndSecurityTab =
-  scaffoldReactScreenTab({
-    getComponentModule: () => import('../settings/PrivacySecuritySettings'),
-  })
-
-// ВРЕМЕННО до 2D-15 (tweb :202-206, `stickersAndEmoji.tsx`)
+// ── «Стикеры и эмодзи» (tweb :202-206) — задача 15 плана 2D ──────────────────
+// Открывает строка `StickersName` корня настроек (tweb `settings.tsx:257`); сама
+// открывает «Быструю реакцию». Форма обычная, без полезной нагрузки.
 export const AppStickersAndEmojiTab =
-  scaffoldReactScreenTab({
-    getComponentModule: () => import('../settings/StickersSettings'),
+  scaffoldSolidJSTab({
+    title: 'StickersName',
+    getComponentModule: () => import('../sidebarLeft/tabs/stickersAndEmoji.solid'),
   })
 
-// ВРЕМЕННО до 2D-26 (tweb :181-185, `speakersAndCamera.tsx`)
-export const AppSpeakersAndCameraTab =
-  scaffoldReactScreenTab({
-    getComponentModule: () => import('../settings/SpeakersCamera'),
+// ── «Конфиденциальность и безопасность» (tweb :651-667) — задача 23 плана 2D ──
+// Открывает строка `AccountSettings.PrivacyAndSecurity` корня настроек (tweb
+// `settings.tsx:254`, `makeSubTabConfig`). Форма eventable, как у оригинала.
+// Предзагрузки `getInitArgs` (tweb :651-655, :667 — `appConfig`, `globalPrivacy`,
+// `webAuthorizations`) нет: все три её предмета у нас отсутствуют (О-18 плана
+// 2D), поэтому и полезной нагрузки у вкладки нет.
+export const AppPrivacyAndSecurityTab =
+  scaffoldSolidJSTabEventable({
+    title: 'PrivacySettings',
+    getComponentModule: () => import('../sidebarLeft/tabs/privacyAndSecurity.solid'),
   })
 
-// ВРЕМЕННО до 2D-27 (tweb :93-98, `editProfile.tsx`; `noSame` — :98).
-// `getEditProfileInitArgs` (предзагрузка профиля и бота) — с портом: React-экран
-// грузит своё сам.
-export const AppEditProfileTab =
-  scaffoldReactScreenTab({
-    getComponentModule: () => import('../settings/EditProfile'),
-    noSame: true,
-  })
+// tweb :84-98 — «Редактировать профиль» (`editProfile.solid.tsx`, задача 27
+// плана 2D). Предзагрузку `getEditProfileInitArgs` зовёт открывающая сторона
+// (⋮ корня настроек, tweb `settings.tsx:106`). Отличия от оригинала — шапка
+// модуля: `me` берётся из зеркала `chatsStore` (мост чтения, п. 4), лимит bio —
+// число серверного правила (О-64, п. 3), бизнес-бота нет (п. 6). Импорт — у
+// блока, как у папок ниже: блок меняется одним куском.
+import { useChatsStore } from '@stores/chatsStore'
+
+export function getEditProfileInitArgs(): import('../sidebarLeft/tabs/editProfile.solid').EditProfileTabPayload {
+  const me = useChatsStore.getState().me!
+  return {
+    bioMaxLength: 70,
+    user: me.user,
+    userFull: me.fullUser,
+  }
+}
+
+export const AppEditProfileTab = Object.assign(
+  scaffoldSolidJSTab<import('../sidebarLeft/tabs/editProfile.solid').EditProfileTabPayload>({
+    title: 'EditAccount.Title',
+    getComponentModule: () => import('../sidebarLeft/tabs/editProfile.solid'),
+  }),
+  { noSame: true },
+)
 
 // ── Папки (tweb :609-619, :804-845) — задача 24 плана 2D ─────────────────────
 // Список (`chatFolders.solid.tsx`), редактор (`editFolder.solid.tsx`) и выбор
@@ -514,6 +544,18 @@ export const AppSharedFolderTab =
     onOpenAfterTimeout: folderTabOpenAfterTimeout,
   })
 
+// ── Тип чата (tweb :536-540) — задача 0б-2 волны 7 ───────────────────────────
+// Вкладка правой колонки «Тип канала / группы» (`sidebarRight/tabs/chatType.solid.tsx`);
+// открывает её редактор чата (`editChat`, 0б-1). Заголовок `ChannelType` — как у
+// оригинала: вкладка сама меняет его на `GroupType` для группы (`chatType :57`).
+// `chatFull` — наш `ChannelFull` (у tweb `AppChatFull`); его поля читают секции,
+// отложенные до бэкенда (О-15 волна 7, шапка вкладки).
+export const AppChatTypeTab =
+  scaffoldSolidJSTabEventable<{ chatId: ChatId, chatFull: import('@core/peers/peer').ChannelFull }>({
+    title: 'ChannelType',
+    getComponentModule: () => import('../sidebarRight/tabs/chatType.solid'),
+  })
+
 // ── Контакты (tweb :209-222) — задача 0а-1 плана волны 7 ─────────────────────
 // Вкладка адресной книги (`contacts.solid.tsx`); её же открывает «Новый личный
 // чат» (tweb `sidebarLeft/index.ts:1079-1083`, `:1105-1109`). Расхождения:
@@ -553,6 +595,50 @@ export const AppPasskeysTab =
     title: 'Privacy.Passkeys',
     getComponentModule: () => import('../sidebarLeft/tabs/passkeys.solid'),
   })
+
+// ── Заблокированные (tweb :248-258) — задача 22 плана 2D ─────────────────────
+// Вкладка `blockedUsers.solid.tsx`; открывает её хаб «Конфиденциальность» с уже
+// загруженной первой страницей (tweb `privacyAndSecurity.tsx:217`). После въезда
+// — `scrollable.onScroll()`: короткая первая страница сразу догружает следующую.
+type AppBlockedUsersTabPayload = {
+  peerIds: PeerId[]
+}
+
+export const AppBlockedUsersTab =
+  scaffoldSolidJSTab<AppBlockedUsersTabPayload>({
+    title: 'BlockedUsers',
+    getComponentModule: () => import('../sidebarLeft/tabs/blockedUsers.solid'),
+    onOpenAfterTimeout: function() {
+      this.scrollable.onScroll()
+    },
+  })
+
+// ── «Новый канал» (tweb :262-270) — задача 0а-3 плана волны 7 ───────────────
+// Форма обычная, `noSame` — как у оригинала. Полезной нагрузки нет: `onCreate`/
+// `openAfter` оригинала нужны только сообществам, которых у нас нет
+// (расхождение 1 шапки `newChannel.solid.tsx`).
+export const AppNewChannelTab =
+  scaffoldSolidJSTab({
+    title: 'NewChannel',
+    getComponentModule: () => import('../sidebarLeft/tabs/newChannel.solid'),
+  })
+;(AppNewChannelTab as unknown as { noSame: boolean }).noSame = true
+// ── «Новая группа» (tweb :282-296) — задача 0а-2 плана волны 7 ───────────────
+// Второй шаг флоу `createNewGroupTab` (`sidebarLeft/tabs/createNewGroupTab.ts`):
+// открывает его `takeOut` вкладки выбора участников. Из нагрузки оригинала —
+// только `peerIds`: `isGeoChat` у tweb без вызывающих (группа «рядом» снята),
+// а `onCreate`/`openAfter`/`title`/`asChannel` передаёт лишь добавление чата в
+// сообщество (`communities/addChatToCommunity.tsx:35`) — сообществ нет (О-5).
+type AppNewGroupTabPayload = {
+  peerIds: PeerId[]
+}
+
+export const AppNewGroupTab =
+  scaffoldSolidJSTab<AppNewGroupTabPayload>({
+    title: 'NewGroup',
+    getComponentModule: () => import('../sidebarLeft/tabs/newGroup.solid'),
+  })
+;(AppNewGroupTab as unknown as { noSame: boolean }).noSame = true
 
 // ── «Изменить контакт» (tweb :509-513) — задача 0б-10 плана волны 7 ───────────
 // Вкладка правой колонки (`sidebarRight/tabs/editContact.solid.tsx`); полезная

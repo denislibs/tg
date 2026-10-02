@@ -39,12 +39,7 @@
 //     единственное использование в tweb — под закомментированным блоком
 //     `padding`-контейнера) и `e` в `onMouseUp` — в `_e` (тело обработчика его
 //     не читает);
-//   • общая слабая подписка (tweb ffd925068): догонялка «экземпляр родился
-//     посреди тяжёлой анимации» спрашивает `isHeavyAnimationInProgress()`, а
-//     не `!getHeavyAnimationPromise().isFulfilled` — наша шина отдаёт промис
-//     типом `Promise<void>` без `isFulfilled`, а флаг `isAnimating` (который
-//     `isHeavyAnimationInProgress` и читает) меняется в тех же двух точках,
-//     что и `isFulfilled` оригинала. `memoryReport` (tweb
+//   • общая слабая подписка (tweb ffd925068): `memoryReport` (tweb
 //     `lib/debug/memoryReport.ts`), который считает реестр, у нас не
 //     портирован — реестр лишь выставлен в `MOUNT_CLASS_TO`, как у оригинала;
 //     его и читает `scrollable.sharedListeners.test.ts`;
@@ -54,7 +49,7 @@ import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import { logger, LogTypes } from '@lib/logger'
 import fastSmoothScroll, { ScrollOptions } from '@helpers/fastSmoothScroll'
 import { MOUNT_CLASS_TO } from '@config/debug'
-import { onHeavyAnimation as useHeavyAnimationCheck, isHeavyAnimationInProgress } from '@core/dom/heavyAnimation'
+import { onHeavyAnimation as useHeavyAnimationCheck, getHeavyAnimationPromise } from '@core/dom/heavyAnimation'
 import cancelEvent from '@helpers/dom/cancelEvent'
 import { IS_OVERLAY_SCROLL_SUPPORTED } from '@environment/overlayScrollSupport'
 import { IS_MOBILE_SAFARI, IS_SAFARI } from '@environment/userAgent'
@@ -230,7 +225,7 @@ export class ScrollableBase {
 
     // * A shared subscription cannot deliver a start that has already fired, which the per-instance
     // * useHeavyAnimationCheck did for free - so an instance that appears mid-animation catches up
-    if(isHeavyAnimationInProgress()) {
+    if(!getHeavyAnimationPromise().isFulfilled) {
       this.onHeavyAnimationStart()
     }
   }

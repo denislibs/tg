@@ -174,8 +174,14 @@ const de = {
   FilterAllChatsShort: 'Alle',
   'InstalledStickers.LoopAnimated': 'Animierte Sticker wiederholen',
   'GeneralSettings.EmojiPrediction': 'Emojis vorschlagen',
-  'Settings.BigEmoji': 'Große Emojis',
-  DynamicPackOrder: 'Dynamische Paketreihenfolge',
+  // ── «Стикеры и эмодзи» (tweb stickersAndEmoji.tsx, задача 15 плана 2D) ──
+  Emoji: 'Emojis',
+  LoopAnimatedStickersInfo: 'Animierte Sticker werden in Chats fortlaufend abgespielt.',
+  StickersBotInfo: 'Künstler können mit unserem Bot @stickers eigene Stickerpakete hinzufügen.',
+  SuggestStickersAll: 'Alle Pakete',
+  SuggestStickersInstalled: 'Meine Pakete',
+  SuggestStickersNone: 'Keine',
+  'Telegram.InstalledStickerPacksController': 'Sticker',
   'Call.Output': 'Ausgabe',
   'Rtmp.OutputPopup.Title': 'Ausgabegerät',
   'CallSettings.DeviceDefault': 'Standard',
@@ -185,10 +191,20 @@ const de = {
   'CallSettings.OutputDevice': 'Wiedergabegerät',
   'CallSettings.Camera': 'Gerät',
   Save: 'Speichern',
-  'CallSettings.AcceptCalls': 'Anrufe auf diesem Gerät annehmen',
   'Call.Input': 'Eingabe',
   'CallSettings.InputDevice': 'Eingabegerät',
-  'CallSettings.AcceptCallsShort': 'Anrufe annehmen',
+  'CallSettings.OutputSection': 'Lautsprecher',
+  'CallSettings.InputSection': 'Mikrofon',
+  'CallSettings.MicrophoneUnavailable':
+    'Das Mikrofon ist nicht verfügbar. Prüfe den Mikrofonzugriff und versuche es erneut.',
+  'CallSettings.CameraUnavailable':
+    'Die Kamera ist nicht verfügbar. Prüfe den Kamerazugriff und versuche es erneut.',
+  'AccDescr.MicrophoneLevel': 'Mikrofonpegel',
+  'ConferenceCall.Media.MicrophoneError':
+    'Der Mikrofonstatus konnte nicht geändert werden. Prüfe den Mikrofonzugriff und versuche es erneut.',
+  'ConferenceCall.Media.CameraError':
+    'Der Kamerastatus konnte nicht geändert werden. Prüfe den Kamerazugriff und versuche es erneut.',
+  'Rtmp.OutputPopup.Default': 'Standard',
   CurrentSession: 'Dieses Gerät',
   OtherSessions: 'Aktive Sitzungen',
   TerminateAllSessions: 'Alle anderen Sitzungen beenden',
@@ -208,12 +224,9 @@ const de = {
   SavedMessages: 'Gespeicherte Nachrichten',
   'MyStories.Title': 'Meine Storys',
   Contacts: 'Kontakte',
-  'Stars.Wallet': 'Wallet',
   'MultiAccount.More': 'Mehr',
   NewChannel: 'Neuer Kanal',
   NewGroup: 'Neue Gruppe',
-  'NewChannel.DefaultTitle': 'Neuer Kanal',
-  'NewGroup.DefaultTitle': 'Neue Gruppe',
   NewPrivateChat: 'Neue Nachricht',
   'Suggestion.Notifications.Title': 'Verpasse keine Nachricht! 🔔',
   'Suggestion.Notifications.Subtitle':
@@ -295,6 +308,11 @@ const de = {
   Lately: 'zuletzt kürzlich',
   'Chat.OwnerBadge': 'Eigentümer',
   ChannelType: 'Kanaltyp',
+  'ChannelVisibility.Confirm.MakePrivate.Channel': 'Wenn du diesen Kanal privat machst, wird der Name @%@ entfernt. Jeder andere kann ihn dann für seine öffentlichen Gruppen oder Kanäle verwenden.',
+  'ChannelVisibility.Confirm.MakePrivate.Group': 'Wenn du diese Gruppe privat machst, wird der Name @%@ entfernt. Jeder andere kann ihn dann für seine öffentlichen Gruppen oder Kanäle verwenden.',
+  'Link.Available': 'Link ist verfügbar',
+  'Link.Invalid': 'Link ist ungültig',
+  'Link.Taken': 'Link ist bereits vergeben',
   GroupType: 'Gruppentyp',
   TypePrivate: 'Privat',
   InviteLinks: 'Einladungslinks',
@@ -438,13 +456,9 @@ const de = {
   'EditProfile.AddBirthdayRow': 'Geburtstag hinzufügen',
   'Bio.Description': 'Beliebige Angaben wie Alter, Beruf oder Stadt. Beispiel: 23-jähriger Designer aus San Francisco.',
   'EditProfile.Username.Label': 'Benutzername (optional)',
-  'EditProfile.Username.TooShort': 'Mindestens 5 Zeichen.',
   'EditProfile.Username.Available': 'Dieser Benutzername ist verfügbar.',
-  'EditProfile.Username.Rules': 'Benutzername: 5–32 Zeichen: Buchstaben, Ziffern, Unterstrich.',
-  'EditProfile.Username.Caption': 'Du kannst einen öffentlichen Benutzernamen wählen, damit andere dich finden und kontaktieren können, ohne deine Telefonnummer zu kennen.',
   BlockUser: 'Benutzer blockieren',
   BlockedUsersInfoShort: 'Blockierte Benutzer können dir keine Nachrichten senden und dein Profil nicht sehen.',
-  BlockedEmptyDescription: 'Du hast niemanden blockiert.',
   'TwoStepAuth.SetPasswordCaption': 'Lege ein zusätzliches Passwort fest, das beim Anmelden auf einem neuen Gerät benötigt wird.',
   TwoStepVerificationSetPassword: 'Passwort festlegen',
   'TwoStepAuth.CreateCaption': 'Erstelle ein Passwort zum Schutz deines Kontos.',
@@ -523,7 +537,6 @@ const de = {
   'Privacy.BioRow': 'Wer kann meine Bio sehen?',
   WhoCanCallMe: 'Wer kann mich anrufen?',
   PrivacyForwardsTitle: 'Wer darf beim Weiterleiten meiner Nachrichten auf mein Konto verlinken?',
-  PrivacyGroupsTitle: 'Wer kann mich zu Gruppen hinzufügen?',
   PrivacyVoiceMessagesTitle: 'Wer kann mir Sprachnachrichten senden?',
   PrivacyMessagesTitle: 'Wer kann mir Nachrichten senden?',
   'Privacy.BirthdayRow': 'Wer kann meinen Geburtstag sehen?',
@@ -576,6 +589,9 @@ const de = {
   'AutoDeleteMessages.SectionCaption':
     'Wenn aktiviert, werden alle neuen Nachrichten in Chats, die du beginnst, nach der gewählten Zeit automatisch für alle gelöscht. Das automatische Löschen in deinen zuvor erstellten Chats wird separat aktiviert.',
   'AutoDeleteMessages.SetOtherTime': 'Andere Zeit festlegen',
+  'AutoDeleteMessages.InfoDefault': 'Nachrichten in von dir gestarteten Chats nach einer bestimmten Zeit automatisch für alle löschen.',
+  UnsavedChanges: 'Ungespeicherte Änderungen',
+  'UnsavedChangesDescription.Privacy': 'Du hast Datenschutzeinstellungen geändert. Änderungen speichern?',
   // Разряды длительности (`components/wrappers/wrapDuration.ts`, задача 7 плана 2D)
   Seconds: {
     one_value: '%1$d Sekunde',
@@ -768,12 +784,6 @@ const de = {
     'Bestätige die Ländervorwahl und gib deine neue Telefonnummer ein.',
   'PhoneNumber.AlreadyTaken':
     'Diese Nummer ist bereits mit einem Telegram-Konto verknüpft.',
-  'DeleteAccount.Action': 'Mein Konto löschen',
-  'DeleteAccount.Title': 'Konto löschen',
-  'DeleteAccount.Text':
-    'Möchtest du dein Konto wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.',
-  'DeleteAccount.Caption':
-    'Dadurch werden dein Konto und alle deine Daten gelöscht. Deine Nachrichten bleiben erhalten, erscheinen aber als von einem „gelöschten Konto“ gesendet.',
   AttachAlbum: 'Album',
   AttachPhoto: 'Foto',
   AttachVideo: 'Video',
@@ -901,6 +911,18 @@ const de = {
   'SharedFolder.Toast.NoAdminChannel': 'Du hast keine Adminrechte, um Einladungslinks zu diesem Kanal zu teilen.',
   'SharedFolder.Toast.NoAdminGroup': 'Du hast keine Adminrechte, um Einladungslinks zu dieser Gruppe zu teilen.',
   'SharedFolder.Toast.NoPrivate': 'Private Chats können nicht geteilt werden.',
+  // ── Конфиденциальность: хаб и «Был в сети» (задача 23 плана 2D) ──
+  HideReadTime: 'Lesezeit verbergen',
+  HideReadTimeInfo: 'Verbirg die Zeit, zu der du Nachrichten gelesen hast, vor Personen, die deinen „Zuletzt online“-Status nicht sehen können. Wenn du dies aktivierst, wird auch deren Lesezeit vor dir verborgen (außer du bist Premium-Nutzer).\n\nDiese Einstellung betrifft keine Gruppenchats.',
+  Passkeys: {
+    one_value: '%d Passkey',
+    other_value: '%d Passkeys',
+  },
+  'PrivacyAndSecurity.Item.Off': 'Aus',
+  'PrivacySettingsController.UserCount': {
+    one_value: '%d Nutzer',
+    other_value: '%d Nutzer',
+  },
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(de)

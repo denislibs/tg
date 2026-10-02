@@ -953,7 +953,7 @@ React-экрана `ThemeLight` стоял на `day`, а у tweb `light` = «Da
 `noBrowserLocaleDates` запрещает `toLocale*String`). Порог выделенных подэкранов в
 `settingsSubScreen.reachable.test.ts` 5 → 4, веток корня 4 → 5.
 
-### Задача 15: «Стикеры и эмодзи» (2C)
+### Задача 15: «Стикеры и эмодзи» (2C) — ✅ сделано (PR feat/2d-15-stickers-emoji-tab)
 
 **Порт:** `stickersAndEmoji.tsx` (270) → `sidebarLeft/tabs/stickersAndEmoji.solid.tsx`; вкладка
 :202. DoubleTap → `AppQuickReactionTab` (задача 14), SuggestStickers (`contextMenu` строки), Loop,
@@ -962,6 +962,22 @@ React-экрана `ThemeLight` стоял на `day`, а у tweb `light` = «Da
 `showStickersPopup` — **2C**.
 **Зависимости:** 5, 14, 2C. **Врезка:** `tabs.ts`, `SettingsView.tsx`, `SettingsSubScreen.tsx`;
 удалить `settings/StickersSettings.tsx`.
+
+**Итог (2026-10-01):** порт дословный — секции императивно в `onMount`, компонент возвращает
+`null` (`sidebarLeft/tabs/stickersAndEmoji.solid.tsx`); обложка набора — порт
+`wrappers/stickerSetThumb.ts` (только ветка документа: `thumbs[]` у нашего набора нет). Врезка —
+после задачи 28: в `tabs.ts` мост `scaffoldReactScreenTab` заменён на `scaffoldSolidJSTab`, React
+`settings/StickersSettings.tsx` (с его поиском/установкой наборов — выдумка, у tweb их нет) и пин
+`StickersSettings.quickReaction.test.tsx` удалены. Настройки: в zustand заведены
+`stickersSuggest`/`emojiSuggest` (дефолты tweb `config/state.ts:489`, `:496`), мост
+`useAppSettings` — ветки `stickers`/`emoji`; читатели — гейты композера
+(`Composer.tsx::checkStickerSuggest`, `useComposerAutocomplete::checkEmojiAutocomplete`, как
+`chat/input.ts:3843`, `:3871`). Не портировано с номерами: превью быстрой реакции (О-30),
+«All Sets» = «My Sets» (О-44), «Large Emoji» (О-45), «Dynamic Pack Order» (О-43), перетаскивание
+наборов (О-14). Попап набора — мост `showStickersPopup` (`sidebarLeft/settingsPopups.tsx`,
+ВРЕМЕННО до 2C-15, ленивый импорт `StickerSetModal`). Ключи: +7 tweb, сняты `DynamicPackOrder`,
+наш `Settings.BigEmoji` и четыре `Stickers.*` снесённого экрана; `langpack.gen.json` пересобран
+(версии 22→23 — пересчитать при слиянии с соседями).
 
 ### Задача 17: `PrivacySection` + вкладки правил приватности — ✅ сделано (PR feat/w2d-privacy-rules)
 
@@ -1004,7 +1020,7 @@ setRule` + зеркало ответа в стор (хаб перерисовы�
 `PrivacyVoiceMessagesInfo`, `Users`), сняты 13 без читателей (подписи прежнего экрана и давно мёртвые
 `Privacy.*Choose`/`PrivacyPhoneInfo2`/…). Стенд не трогался.
 
-### Задача 20: «Автоудаление» (2C)
+### Задача 20: «Автоудаление» (2C) — ✅ сделано (PR feat/2d-20-auto-delete-tab)
 
 **Порт:** `autoDeleteMessages/{index,options}.tsx` + `customTimePopup/*` →
 `sidebarLeft/tabs/autoDeleteMessages/*.solid.tsx`; вкладка :148. SaveButton в шапке (Portal),
@@ -1012,6 +1028,18 @@ setRule` + зеркало ответа в стор (хаб перерисовы�
 вставкой своего значения по порядку, `tools` «SetOtherTime» → `showAutoDeleteMessagesCustomTimePopup`
 — **2C**. **Зависимости:** 5, 2C. **Врезка:** `tabs.ts`, `PrivacySecuritySettings.tsx`; удалить
 `settings/AutoDeleteMessages.tsx`.
+
+**Итог (2026-10-01).** Попап своего срока (задача 11 плана 2C) сделан здесь же — без него вкладку не
+собрать: `customTimePopup/{index,content}.solid.tsx` (содержимое — `defineSolidElement`, как у tweb,
+DOM-тег `auto-delete-messages-custom-time-popup-content` тот же) и `verticalOptionWheel.solid.tsx`
+(с ним — `helpers/useSwipe.ts`, `useGlobalDocumentEvent.ts`, `helpers/solid/{useIsCleaned,
+useScrollPosition}.ts`, `helpers/array/lastItem.ts`). Для шапки и закрытия — `saveButton.solid.tsx`,
+`privacy/messages/appearZoomTransition.solid.tsx`, `helpers/solid/{createScheduled,
+useIsConfirmationNeededOnClose}.ts`; `confirmationPopup` получил `buttons`/`rejectWithReason`
+(tweb `confirmationPopup.ts`), `helpers/formatDuration.ts` — саму `formatDuration`. Новых «Отложено»
+нет: бэкенд принимает любой срок 0…366 суток. Хаб «Конфиденциальность» (React до 2D-23) открывает
+вкладку `tab.slider.createTab(AppMessagesAutoDeleteTab).open({period, onSaved})`; подпись строки —
+`findExistingOrCreateCustomOption(p).label().textContent` (`ВРЕМЕННО до 2D-23`).
 
 ### Задача 21: «Passkeys» (2C) — ✅ сделано (PR feat/2d-21-passkeys-tab)
 
@@ -1038,7 +1066,7 @@ setRule` + зеркало ответа в стор (хаб перерисовы�
   и пины года в подписи — оригинал зовёт `formatDate` без принудительного года.
 - Ключи tweb +7 всем пяти словарям, наших −7; `langpack.gen.json` пересчитан (версия 23).
 
-### Задача 22: «Заблокированные» (2C)
+### Задача 22: «Заблокированные» (2C) — ✅ сделано (PR feat/2d-22-blocked-tab)
 
 **Порт:** `blockedUsers.tsx` (169) → `sidebarLeft/tabs/blockedUsers.solid.tsx`; вкладка :252
 (`onOpenAfterTimeout: scrollable.onScroll()`). Подпись `BlockedUsersInfo` НАД карточкой (`:61`,
@@ -1048,7 +1076,21 @@ setRule` + зеркало ответа в стор (хаб перерисовы�
 **Зависимости:** 16, 2C. **Врезка:** `tabs.ts`, `PrivacySecuritySettings.tsx`; удалить
 `settings/BlockedUsers.tsx`, `PrivacyUserPicker.tsx`.
 
-### Задача 23: хаб «Конфиденциальность и безопасность»
+**Итог (2026-10-01):** `sidebarLeft/tabs/blockedUsers.solid.tsx` + вкладка `AppBlockedUsersTab`
+блоком в конце `tabs.ts` (tweb :248-258, `onOpenAfterTimeout: scrollable.onScroll()`). Поправки к постановке:
+- `showPickUserPopup` (2C-16) ещё нет — FAB открывает `AppAddMembersTab` (задача 16) с заголовком и
+  подсказкой оригинала, `// ВРЕМЕННО до 2C-16` у вызова: выбор «Далее», можно нескольких.
+- `peer_block` у нас не было: событие заведено в каталоге `rootScope` и шлётся воркером после ответа
+  сервера — `privacyManager.toggleBlock` (порт `appUsersManager.toggleBlock` + `onUpdatePeerBlocked`,
+  замена `block`/`unblock`); `blocked()` → `getBlocked()` (порт `appUsersManager.getBlocked`:
+  карточки — `peers.saveApiPeers`, наружу `{count, peerIds}`). Вызывающие (`useHeaderMenuActions`,
+  `loadPrivacy`) переведены. Ручек бэкенда хватило — новых О-n нет.
+- Хаб (React до 2D-23) грузит первую страницу заранее и перечитывает её на `peer_block`
+  (`privacyAndSecurity.tsx:130-139`, `:313-337`), строка до ответа «заморожена».
+- Снесены `settings/BlockedUsers.tsx`, `PrivacyUserPicker.tsx`, наш ключ `BlockedEmptyDescription`
+  (у tweb пустого состояния нет); снимок словарей пересчитан.
+
+### Задача 23: хаб «Конфиденциальность и безопасность» — ✅ сделано (PR feat/2d-23-privacy-hub-tab)
 
 **Порт:** `privacyAndSecurity.tsx` (700) → `sidebarLeft/tabs/privacyAndSecurity.solid.tsx`; вкладка
 :659 (Eventable). Первая секция `noDelimiter` + подпись `SessionsInfo`; у всех строк значение —
@@ -1061,6 +1103,32 @@ NewChats/Sensitive/Payments. Наши лишние строки «Сессии»
 **Зависимости:** 17–22. **Врезка:** `tabs.ts`, `SettingsView.tsx`, `SettingsSubScreen.tsx`;
 удалить `settings/PrivacySecuritySettings.tsx`, `settings/ConfirmDialog.tsx` — если потребителей
 вне настроек не осталось (см. задачу 30).
+
+**Итог (2026-10-01).** `sidebarLeft/tabs/privacyAndSecurity.solid.tsx` — порт `privacyAndSecurity.tsx`,
+вкладка `AppPrivacyAndSecurityTab` eventable без `getInitArgs` (все три предмета предзагрузки — О-18).
+Дети открываются, как у tweb: заблокированные — с первой страницей (перечитывание на `peer_block`),
+автоудаление — с периодом и `onSaved`, подпись — узел `findExistingOrCreateCustomOption(p).label()`
+(`ВРЕМЕННО до 2D-23` у `textContent` снят), код-пароль — через ввод при включённом коде, 2FA — ввод
+пароля или мастер, Passkeys — Solid-стор ключей, читаемый на открытии хаба (не на клике, как было у
+React-экрана), без ключей и WebAuthn строка скрыта; подсказка выключения кода — в скроллере хаба
+(`mainTab.solid.tsx`, `getTab(AppPrivacyAndSecurityTab)`, как tweb). Поправки к постановке:
+- Решение пользователя «удали лишнее, оставь как в tweb»: «Сессии» — снята (у tweb это «Устройства»
+  корня, у нас уже есть; с ней ушёл `columnSlider.ts::openActiveSessionsTab`); «Удалить мой аккаунт» —
+  снята: в приложении tweb удаления аккаунта нет, есть только сброс со входа («Забыли пароль» →
+  `deleteAccount`) — у нас он есть (`PasswordCard.solid.tsx` → `auth.resetAccount`); вместе со
+  строкой сняты `auth.deleteAccount` клиента (+ тесты) и ключи `DeleteAccount.*`; ручка бэкенда
+  `DELETE /me` оставлена (аналог `account.deleteAccount` API, юзкейс общий со сбросом).
+  «Время прочтения» — перенесена туда, где она у tweb: тумблер «Hide Read Time» вкладки «Был в сети»
+  (`privacy/lastSeen.solid.tsx`, `lastSeen.tsx:64-74`); предмет — наше правило `read_time` (флага
+  `hide_read_marks` нет, О-18): «скрыть» пишет в него копию правила `last_seen` (ровно смысл флага
+  при взаимной проверке сервера), «не скрывать» — «Все». Вкладка `AppPrivacyReadTimeTab` и её ключи
+  сняты. `settings/ConfirmDialog.tsx` остаётся — у него 6 потребителей вне настроек (задача 30).
+- `PrivacyGroupsTitle` → ключ tweb `WhoCanAddMe`; значения строк — `Row.Subtitle` с ключами tweb
+  (`PrivacySettingsController.UserCount`, `PrivacyAndSecurity.Item.On/Off`, `Passkeys`, `Loading`).
+- Счётчик `blockedTotal` стора `privacyStore` снят (читателя больше нет: хаб читает страницу сам).
+- `settings/TwoStepVerification.module.scss` — сирота снесённого React-мастера 2FA, удалён.
+- Мост `sidebarLeft/reactScreenTab.tsx` и его тест удалены: потребителей не осталось.
+Новых «Отложено» нет (О-56…О-58 не понадобились): всё недостающее уже в О-13, О-15…О-18, О-33, О-51.
 
 ### Задача 24: «Папки» — список и редактор — ✅ сделано (PR feat/w2d-folders)
 
@@ -1135,7 +1203,7 @@ NewChats/Sensitive/Payments. Наши лишние строки «Сессии»
   задачи 16/24 плана 2C); ветка по умолчанию `InviteLink` не портирована (расхождение 1 в шапке).
 - Ключи tweb +13 всем пяти словарям; `langpack.gen.json` пересчитан (версия 20).
 
-### Задача 26: «Динамики и камера» (2C)
+### Задача 26: «Динамики и камера» (2C) — ✅ сделано (PR feat/2d-26-speakers-camera-tab)
 
 **Порт:** `speakersAndCamera.tsx` (121) + `call/{callDeviceSettings,microphoneLevelMeter,
 cameraSection}.tsx` → Solid; вкладка :181. Имена секций `CallSettings.OutputSection/InputSection`,
@@ -1146,7 +1214,31 @@ BLOCKED (`changeAuthorizationSettings`, О-8): секции нет, у нас с
 **Зависимости:** 2C. **Врезка:** `tabs.ts`, `SettingsView.tsx`, `SettingsSubScreen.tsx`; удалить
 `settings/SpeakersCamera.tsx` + `.module.scss`.
 
-### Задача 27: «Редактировать профиль» (2C)
+**Итог:** `sidebarLeft/tabs/speakersAndCamera.solid.tsx` + `call/{callDeviceSettings,
+microphoneLevelMeter,cameraSection}.solid.tsx`; вместе с ними портированы `lib/calls/
+{callDeviceKind,applyDeviceToActiveCall}.ts`, `lib/calls/helpers/{getStream,acquireStream,
+getAudioConstraints,shouldMirrorVideoTrack,stopTrack}.ts`, `environment/constraintSupport.ts`,
+стили `components/call/settingsPopup.scss` (→ `styles/tweb/_callSettingsPopup.scss`) и выдержка
+`.call-video-mirror` из `popups/_call.scss`; в мост `useAppSettings` добавлен `callDevices`
+(`microphoneId` ↔ `micId`). AcceptCalls — О-8, локальный `acceptCalls` снят: звонковый код его не
+читал (`core/calls/*`, `CallScreen.tsx` — только `speakerId`/`micId`/`cameraId`). Живой звонок —
+`core/calls/callEngine.ts::applyDeviceToActiveCall` (динамик применяет `CallScreen` по
+`speakerId`). Попап выбора — React-мост `components/rtmp/outputDevicePopup.tsx` (ВРЕМЕННО до 2C-12,
+сигнатура tweb). Врезка — одна строка `tabs.ts` (с 2D-28 вкладку открывают строка корня и меню
+«⋮» вкладки «Звонки»; `SettingsView`/`SettingsSubScreen` снесены задачей 28).
+
+### Задача 27: «Редактировать профиль» (2C) — ✅ сделано (PR feat/2d-27-edit-profile-tab)
+
+> **Итог:** вкладка `sidebarLeft/tabs/editProfile.solid.tsx` + `getEditProfileInitArgs`
+> (`solidJsTabs/tabs.ts`, `me` из зеркала `chatsStore`); `AvatarEdit`/`EditPeer` — классы
+> волны 7 дословно (0а-3, 0б-10), ветка аватара `EditPeer` (`editPeer.ts:56-64`) — во
+> вкладке; `UsernameInputField` + `isUsernameValid` (`lib/richtext/validators.ts`);
+> `profile.checkUsername` отдаёт отказ `USERNAME_INVALID` вызывающему, как
+> `account.checkUsername`. Кроп и видео-аватар — медиаредактор (О-24, программа МР-5/МР-6).
+> День рождения — мост к React `BirthdayModal` до 2C-14 (`settingsPopups.tsx`). Выяснено:
+> ручек личного канала нет (О-25). Новые: О-62…О-65. React `settings/EditProfile.tsx` снесён,
+> `AvatarCropper`/`BirthdayModal` остались у потребителей задачи 30.
+
 
 **Порт:** `editProfile.tsx` (436) → `sidebarLeft/tabs/editProfile.solid.tsx` (вкладка :93,
 `noSame`, префетч `getEditProfileInitArgs`); `avatarEdit.ts` (417) + `editPeer.ts` (123) → классы
@@ -1202,7 +1294,8 @@ React, вкладками — слайдер; правило шва § 7 спе�
   `AppSpeakersAndCameraTab`, `AppEditProfileTab`) на `scaffoldReactScreenTab` — содержимое
   React-корень кита, въезд/выход/Esc — от слайдера. Задача порта меняет одну форму объявления и
   удаляет React-экран. Это обратный мост, которого план не заводил (правило «листья раньше
-  родителей»): он временный, с номером у каждой строки;
+  родителей»): он временный, с номером у каждой строки. **Снят задачей 23**: последний потребитель
+  («Конфиденциальность») переехал, `reactScreenTab.tsx` (+ `.module.scss`, `.wiring.test.tsx`) удалён;
 - **React-попапы** (`sidebarLeft/settingsPopups.tsx`): `showPremiumPopup`/`showStarsPopup`/
   `showMyQrCodePopup`/`showLogOutPopup`/`showSendGiftPicker` именами tweb поверх `popupStore`,
   ВРЕМЕННО до 2C-18/19/17/13/20. Выход — без подтверждения (как пункт бургера, до 2C-13), подарок
@@ -1303,7 +1396,7 @@ RowTsxController` + `attachRowController(this, {…, middleware})`, `destroy()` 
 | О-11 | Серверные обои (`account.getWallPapers`, `uploadWallPaper`, `saveWallPaper`; `background.tsx:404-416`, `:546-554`) | ручек обоев на бэкенде нет вовсе (выяснено задачей 12): сетка — клиентские `WALLPAPER_PRESETS`, своё фото — общая `/media/upload` + `customWallpaperMediaId`, список загруженных обоев не хранится | сетка обоев 1:1, обои по темам, загруженные обои в выдаче |
 | ~~О-12~~ | ~~`sliceTabsUntilTab(AppPrivacyAndSecurityTab)` у код-пароля~~ | **снято задачей 28**: класс `AppPrivacyAndSecurityTab` есть (мост до 23), срез дословный | — |
 | О-13 | Подтверждение почты 2FA кодом (`2fa/emailConfirmation.tsx`, ветка `EMAIL_UNCONFIRMED` в `email.tsx:74-83` и `privacyAndSecurity.tsx:261-268`), «Забыли пароль» (`forgotPasswordLink.ts`), снятие почты пропуском («Skip» шлёт `email: ''`) | нет unconfirmed pattern (`authManager.ts:118-122`, `:468-475`); пустая почта у `POST /me/password` = «оставить прежнюю» (`usecase/auth/password.go::SetPassword`) | восстановление пароля, снятие почты |
-| О-14 | Порядок стикерсетов (`reorderStickerSets`) | выяснить в задаче 15 | сортировка наборов |
+| О-14 | Порядок стикерсетов (`reorderStickerSets`): `Sortable`, класс `row-sortable` и ручка `row-sortable-icon` строк наборов, событие `stickers_order` (`stickersAndEmoji.tsx:186`, `:193`, `:228-241`, `:252-259`) | выяснено задачей 15: ручки порядка установленных наборов нет — у `/sticker-sets` только список и install/uninstall (`router.go:276-287`); = О-8 плана 2C | перетаскивание наборов |
 | О-15 | Платные сообщения (`privacy/messages/paidSettingsSection.tsx`) | `privacyKeyMessages` — наш конструктор, звёзд за сообщения нет | «кто может писать» 1:1 |
 | О-16 | Правила Gifts, SavedMusic, P2P | ключей нет (`backend/internal/domain/privacy.go:9-20`) | три вкладки правил |
 | О-17 | Исключения-чаты в правилах | `PrivacyRuleWire` без участников чатов (`privacyManager.ts:33-40`) | исключения «участники чата» |
@@ -1313,8 +1406,8 @@ RowTsxController` + `attachRowController(this, {…, middleware})`, `destroy()` 
 | О-21 | `exclude_archived`, закреплённые в папке | нет на проводе | категории редактора 1:1 |
 | О-22 | Лимиты `folders`/`folderPeers`/`chatlistInvites` + `PopupLimit` | бэкенд не отдаёт лимиты (`MaxFoldersPerUser = 10` зашит, `domain/folder.go:12`); попап — 2C. До них отказ сервера по числу папок — тост `LimitReached` (задача 24) | апселл лимитов |
 | О-23 | Выбор чатов ссылки папки (`editExportedInvite`): галка «Save», событие `edit`, подтверждение на закрытии (`sharedFolder.tsx:86-89`, `:103-112`, `:258-272`) | нет ручки правки ссылки (есть создание/список/отзыв — `router.go`, `/me/folders/{id}/invites`); вкладка ссылки рисует чаты ссылки, выбор «трясётся» (задача 25) | shared folder 1:1 |
-| О-24 | Видео-аватар и крошилка через медиаредактор | редактор — React (`MediaEditor.tsx`), волна 4 | `AvatarEdit` 1:1 |
-| О-25 | Личный канал в профиле | выяснить в задаче 27 (`updatePersonalChannel`) | секция PersonalChannel |
+| О-24 | Видео-аватар и крошилка через медиаредактор (`getFileAndOpenEditor`, `finishFromResult`, `avatarEdit.ts:172-313`) | редактор — React (`MediaEditor.tsx`); порт — программа медиаредактора (`2026-09-30-media-editor-port.md`, МР-5/МР-6). До неё `AvatarEdit` профиля берёт картинку выбором файла без кропа (задача 27) | `AvatarEdit` 1:1 |
+| О-25 | Личный канал в профиле (`editProfile.tsx:427-438`, `:99-102`, `:141-171`, `:213-251`, `:329-331`) | выяснено задачей 27: нет `personal_channel_id` в `UserFull` бэкенда, ручек `account.updatePersonalChannel` и `channels.getAdminedPublicChannels({for_personal})` | секция PersonalChannel |
 | О-26 | Поиск по настройкам и меню шапки из 34f417d12 (`SliderSuperTab.shown`, NavigationItem `settings-search`, `tg://settings/…`) | волна 4 дельты; нужен индекс вкладок, который строится после переезда всех вкладок | поиск по настройкам |
 | О-27 | Попап настроек при свёрнутой колонке (`SettingsSliderPopup`, `createTab`-override `sidebarLeft/index.ts:1730-1741`) | предмет появился задачей 28 (колоночный слайдер `columnSlider.ts`), порт не сделан — вкладка открывается в развёрнутой колонке (`has-open-tabs` раскрывает свёрнутую) | настройки поверх чата на узкой колонке |
 | ~~О-29~~ | ~~Модель отступов `MediaHeader` HEAD (`gap: .5rem`) и под неё `authFlow`~~ | **снято** (ветка `fix/w2d-mediaheader-rtl-overlay`): `mediaHeader.module.scss` дословно с HEAD, `auth/AuthFlow.module.scss` `.qrContainer`, карточки входа — `h1` и `class="secondary"`; отступы экрана входа = tweb HEAD, замеры — `docs/tweb/dom/auth.md` §8.4 | — |
@@ -1331,8 +1424,15 @@ RowTsxController` + `attachRowController(this, {…, middleware})`, `destroy()` 
 | О-40 | Файл обоев фона (`core/chat/chatBackgroundStore.ts`): без корзины `cachedBackgrounds`, общих object URL и SW-скоупа `backgrounds` (`lib/chatBackgroundStore.ts:40-148`); своё фото — обычное медиа (`cachedMediaUrl`/`ensureMediaUrl`), под замком без адреса в зеркале — обои темы | серверных обоев нет (О-11), медиа-конвейер без ключа недоступен (сверить номер с параллельными ветками) | серверные обои (вместе с О-11) |
 | О-41 | Гейт `premiumBlocked` Premium-секции корня (`settings.tsx:314-318`, `apiManagerProxy.isPremiumPurchaseBlocked()`) | источника «покупка Premium запрещена» у нас нет — секция видна всегда (задача 28, расхождение 5 шапки `settings.solid.tsx`) | запрет покупки Premium (регион/платформа) |
 | О-42 | Строка TON (`useStars(true)`, `hasTonTransactions`, `settings.tsx:430-437`) и бизнес-бот в счётчике «Устройств» (`getConnectedBot`, `chat_automation_update`, `:279-298`) | нет баланса/транзакций TON и подключённых бизнес-ботов на бэкенде (задача 28, расхождения 5–6) | TON-звёзды; бизнес-боты |
+| О-43 | Секция «Dynamic Pack Order» (`stickersAndEmoji.tsx:140-153`, `settings.stickers.dynamicPackOrder`) и подъём набора наверх по событию `stickers_top` (`:243-250`) | у оригинала тумблер уходит флагом `update_stickersets_order` в отправку стикера (`appMessagesManager.ts:2745`), и сервер переставляет наборы; у нас ни флага отправки, ни порядка наборов, ни события (задача 15) | порядок наборов по использованию |
+| О-44 | «All Sets» ≠ «My Sets» в «Suggest Stickers by Emoji»: серверные стикеры в подсказках (`stickersHelper.ts:66`, `includeServerStickers`) | поиск по эмодзи ищет только в установленных наборах (`GET /stickers/search`, `usecase/stickers/interactor.go:172`); `none` гейтит панель подсказок (`Composer.tsx::checkStickerSuggest`, задача 15) | подсказки стикеров из всех наборов |
+| О-45 | Тумблер «Large Emoji» (`stickersAndEmoji.tsx:127-136`, `settings.emoji.big`) | его читатель — ветка больших эмодзи ленты (`bubbles.ts:8854`), а наша лента их не рисует (`web-client/backlogs/frontend/vanilla-feed-big-emoji.md`); тумблер ничего бы не менял (задача 15) | большие эмодзи в ленте |
 | О-50 | Эмодзи менеджера паролей у строки ключа (`software_emoji_id` → `Row.Media size="abitbigger"` + `wrapAdaptiveCustomEmoji`, `passkeys.tsx:61-72`) | сервер не хранит AAGUID ключа и эмодзи не отдаёт (`domain/passkey.go`) — у всех строк `key_filled` (задача 21, расхождение 1) | AAGUID → эмодзи на сервере |
 | О-51 | Лимит ключей из `appConfig.passkeys_account_passkeys_max` (`passkeys.tsx:109`) | `help.getAppConfig` нет; лимит — константа 10, зеркало `maxPasskeys` сервера (`usecase/passkeys/passkeys.go`) (задача 21, расхождение 2) | app config с сервера |
+| О-62 | `UsernamesSection` профиля (`editProfile.tsx:421-425`, `usernamesSection.tsx`): несколько имён, их порядок и скрытие | у пользователя одно имя (`users.username`), нет `usernames[]`, `toggleUsername`, `reorderUsernames` (задача 27) | коллекционные имена |
+| О-63 | Подпись покупки имени (`purchaseUsernameCaption`, `editProfile.tsx:150`, `:396-401`) | торговли именами (Fragment) нет, сервер отказа `USERNAME_PURCHASE_AVAILABLE` не шлёт (ветка поля имени `usernameInputField.ts` есть — портирована 0б-2) (задача 27) | покупка имени |
+| О-64 | Лимит bio с сервера (`apiManager.getLimit('bio')`, премиум — 140; tweb `tabs.ts:86`) | лимитов в конфиге нет; бэкенд режет `maxBioLen = 70` для всех (`usecase/auth/profile.go:14`), вкладка берёт то же число (задача 27) | премиум-лимит bio |
+| О-65 | Кольцо загрузки аватара на большом аватаре профиля (`trackAvatarUpload`, `stores/avatarUpload.ts`, `editProfile.tsx:313-316`) | `media.upload` не отдаёт ни прогресса, ни отмены (`CancellablePromise`); у `PeerProfileAvatars` нет кольца (задача 27) | отменяемая загрузка с прогрессом |
 
 ## Оценка объёма
 
