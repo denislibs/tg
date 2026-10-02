@@ -4,8 +4,11 @@
 // Ссылка — как у tweb (`contextMenu.ts::getUrlToMessage`): `t.me/<username>/<mid>`
 // у чата с юзернеймом, `t.me/c/<chatId>/<mid>` у остальных, только на своём
 // хосте ссылок (`core/publicLink.ts`). Хэш навигации разбирает
-// `appImManager.onHashChange` (порт tweb: `#@имя`, `#<peerId>`, `#/im?p=…&post=`);
-// хэши страницы бэкенда `#@имя/<seq>` и `#<peerId>/<seq>` он не принимает — Б-48.
+// `appImManager.onHashChange` по схеме tweb: `#@имя`, `#<peerId>`, `#@имя?post=<seq>`,
+// `#<peerId>?message=<seq>`, `#/im?p=…&post=` (`onHashChangeUnsafe`); кнопка
+// публичной страницы бэкенда ведёт на ту же форму (PR #380). Ссылку своего хоста
+// (`<tme>/имя/<seq>`) из поиска открывает `appImManager.openUsername` напрямую
+// (`core/hooks/openSearchUrl.ts`, роль tweb `internalLinkProcessor`).
 //
 // Якорь сообщения — `seq` (порядковый номер сообщения В ЧАТЕ), а не глобальный
 // `id`: именно им оперирует прыжок (`setPendingJump(peerId, seq)`), и он же
