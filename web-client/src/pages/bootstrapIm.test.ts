@@ -8,14 +8,11 @@ const start = vi.hoisted(() => vi.fn(() => { calls.push('start') }))
 const disposeActiveAuthFlow = vi.hoisted(() => vi.fn())
 const mountGlobalOverlays = vi.hoisted(() => vi.fn())
 
-vi.mock('@lib/appDialogsManager', () => ({
-  AppDialogsManager: class { start = start },
-}))
-vi.mock('@components/sidebarRight', () => ({ default: { construct: vi.fn() } }))
+vi.mock('@lib/appDialogsManager', () => ({ default: { start } }))
 vi.mock('@components/shell/mountGlobalOverlays', () => ({ mountGlobalOverlays }))
 vi.mock('@components/auth/mountAuthFlow.solid', () => ({ disposeActiveAuthFlow }))
 vi.mock('@core/dom/loadFonts', () => ({ loadFonts: vi.fn(async() => {}) }))
-vi.mock('@/client/bootstrap', () => ({ startClient: () => ({ managers: {} }) }))
+vi.mock('@/client/bootstrap', () => ({ getProxiedManagers: () => ({}) }))
 
 let bootstrapIm: typeof import('./bootstrapIm').bootstrapIm
 let pageChats: HTMLElement

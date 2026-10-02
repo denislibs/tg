@@ -199,9 +199,9 @@ describe('appDialogsManager: папки добавляются, удаляютс
 })
 
 describe('appDialogsManager: свайп — это клик по соседней вкладке (поправка 3, :617-634)', () => {
-  async function setupSwipe(forumOpen = false) {
+  async function setupSwipe() {
     putFolders(raw(3, 1, 'Работа'), raw(4, 2, 'Шум'))
-    mounted = mountOwner({ forumOpen: () => forumOpen })
+    mounted = mountOwner()
     await settle()
     expect(swipes).toHaveLength(1)
     expect(swipes[0].element).toBe(mounted.folders)
@@ -236,10 +236,10 @@ describe('appDialogsManager: свайп — это клик по соседне�
     expectActiveOnly(mounted!.folders, 4)
   })
 
-  it('открытый форум гасит жест (verifyTouchTarget: !forumTab), destroy снимает распознаватель', async () => {
-    const options = await setupSwipe(true)
+  it('destroy снимает распознаватель (форум-таба, гасящего жест, нет — Б-3)', async () => {
+    const options = await setupSwipe()
 
-    expect(options.verifyTouchTarget!(new TouchEvent('touchstart') as unknown as SwipeEvent)).toBe(false)
+    expect(options.verifyTouchTarget).toBeUndefined()
     mounted!.manager.destroy()
     mounted = undefined
     expect(swipeRemoved).toHaveBeenCalledTimes(1)

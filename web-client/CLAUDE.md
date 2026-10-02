@@ -37,7 +37,7 @@ npx vite build --outDir ../client-build
   (как и MUI). Механика: `core/hooks/useSetTransition` (порт `singleTransition.ts` — классы
   `forwards`/`backwards`/`animating`) и `core/hooks/useMountTransition` (роль `AnimatePresence`: узел живёт
   в DOM, пока играет exit). Гейт — `body.animation-level-0/2`, ставит подписчик настройки «Энергосбережение»
-  (`client/liteModeSettings.ts`, заводит `App.tsx`).
+  (`appImManager.setSettings`, `lib/appImManager.ts`).
   Тяжёлые переходы объявлять через `core/dom/heavyAnimation` — на их время `animationIntersector` глушит
   стикеры/видео. **TS strict** — без `any`, неиспользуемые переменные не пройдут сборку.
 - **Ловушка CSS-модулей:** Vite хеширует любое имя в `animation`, включая ссылку на глобальный кейфрейм

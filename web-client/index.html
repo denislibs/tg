@@ -55,10 +55,8 @@
     <!-- Каркас страницы — tweb `index.html:87-116` 1:1. `#page-chats` скрыт, пока
          его не покажет `bootstrapIm` (pages/bootstrapIm.ts, tweb :27-28);
          колонками владеют вечные синглтоны: `AppSidebarLeft` (`#column-left`),
-         `AppImManager` (`#column-center`), `AppSidebarRight` (`#column-right`).
-         Отличие от tweb: в `#chatlist-container` вместо `#folders-container`
-         лежит `.connection-status-bottom` — хост владельца списка
-         (`lib/appDialogsManager.ts`, сам он кладёт туда `#folders-container`). -->
+         `AppImManager` (`#column-center`), `AppSidebarRight` (`#column-right`),
+         список чатов — `appDialogsManager` (`#chatlist-container`). -->
     <a class="sr-only sr-only-focusable" href="#column-center" id="skip-to-content" hidden></a>
     <div class="sidebar-left-overlay"></div>
     <div class="whole page-chats" style="display: none;" id="page-chats">
@@ -74,7 +72,7 @@
               </div>
               <div class="sidebar-content transition zoom-fade can-have-forum">
                 <div class="transition-item active" id="chatlist-container">
-                  <div class="connection-status-bottom"></div>
+                  <div class="tabs-container" id="folders-container"></div>
                 </div>
                 <div class="transition-item sidebar-search" id="search-container"></div>
               </div>

@@ -157,7 +157,7 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Сдвиг набора задачей «открытие чата по ссылке»: русскому добавлены два ключа
 // отказа резолва имени — `NoUsernameFound` и `Alert.UserDoesntExists` (оба взяты
 // у оригинала дословно, tweb `lang.ts:1718` и `:3391`). До этой задачи отказ
-// `#@username` глушился пустым `catch {}` в `core/hooks/useUrlSync.ts`, а у
+// `#@username` глушился пустым `catch {}` (прежний `useUrlSync.ts`), а у
 // оригинала он показывается тостом (`appImManager.ts:1802-1809`). `plural` не
 // менялся — обе строки не числовые.
 // Сдвиг набора задачей «разнобой языка интерфейса»: русскому добавлен ОДИН

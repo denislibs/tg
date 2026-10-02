@@ -34,7 +34,7 @@ import rootScope from '@lib/rootScope'
 
 import { applyDialogsMirror, fillDialogsMirror } from './boot'
 import { registerStoreProjection } from './realtime/storeProjection'
-import { AppDialogsManager } from '../lib/appDialogsManager'
+import appDialogsManager, { type AppDialogsManager } from '../lib/appDialogsManager'
 import { installSidebarLeft, type InstalledSidebarLeft } from '../test/sidebarLeft'
 import { newDialogsManager } from '../core/managers/dialogsManager'
 import { DIALOG_LOAD_COUNT } from '../core/dialogs/loadCount'
@@ -185,12 +185,12 @@ function sidebarManagers(dialogs: unknown): Managers {
 let column: InstalledSidebarLeft | undefined
 let owner: AppDialogsManager | undefined
 
-/** Колонка, как её поднимает шелл (`App.tsx`): класс колонки + владелец списка. */
+/** Колонка, как её поднимает `appDialogsManager.start()`: класс колонки + владелец списка. */
 async function renderSidebar(dialogs: unknown) {
   const managers = sidebarManagers(dialogs)
   column = installSidebarLeft(managers, undefined, { full: true })
-  owner = new AppDialogsManager()
-  owner.start(column.host, column.chatlistContainer, { managers, isForumOpen: () => false, openForum: () => {} })
+  owner = appDialogsManager
+  owner.startDialogs(managers)
   await act(async () => {})
 }
 

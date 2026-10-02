@@ -17,7 +17,7 @@ import rootScope from '@lib/rootScope'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import { makeMessage } from '@core/messages/testMessage'
 import { saveDocument, THUMB_TYPE_FULL, type MessageMedia } from '@core/media/messageMedia'
-import { useNavigationStore } from '@stores/navigationStore'
+import appImManager from '@lib/appImManager'
 import { useSearchStore } from '@stores/searchStore'
 import { useChatsStore } from '@stores/chatsStore'
 import { makeDialog } from '@core/dialogs/testDialog'
@@ -52,6 +52,7 @@ const ME: PeerId = 1
 const GROUP: PeerId = -100
 
 const managers = { peers: { fillMirror: async () => {} }, presence: { get: async () => [] } }
+let setPeer: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
   resetPeerMirror()
@@ -62,10 +63,13 @@ beforeEach(() => {
   useChatsStore.setState({ meId: ME })
   // зеркало `meId` (`chatsStore.setMe` пишет оба) — его читает подзаголовок («Вы»)
   rootScope.myId = ME
-  useNavigationStore.setState({ selectedId: null, draftPeer: null })
+  setPeer = vi.spyOn(appImManager, 'setPeer').mockResolvedValue(undefined)
   useSearchStore.setState({ pendingJump: null })
 })
-afterEach(() => document.body.replaceChildren())
+afterEach(() => {
+  document.body.replaceChildren()
+  vi.restoreAllMocks()
+})
 
 describe('DialogElement: разметка строки участника', () => {
   it('createChatList отдаёт ul.chatlist (дамп 15-right-14: `ul.chatlist`)', () => {
@@ -198,9 +202,8 @@ describe('DialogElement: разметка строки участника', () =
 })
 
 // tweb `appDialogsManager.ts:2072-2346` — клик по строке. Строка находится по
-// тегу `a` (`findUpTag`), открытие — `appImManager.setPeer({peerId, lastMsgId})`,
-// у нас `core/navigation/openPeer.ts` + `searchStore.setPendingJump` для
-// строки-сообщения (`data-mid`).
+// тегу `a` (`findUpTag`), открытие — `appImManager.setInnerPeer({peerId, lastMsgId})`
+// (прыжок к `lastMsgId` ставит инстанс чата).
 describe('setListClickListener', () => {
   const makeRow = (list: HTMLElement, peerId: PeerId) => addDialogNew({
     peerId,
@@ -218,38 +221,37 @@ describe('setListClickListener', () => {
     document.body.append(list)
     const row = makeRow(list, GROUP)
     const onFound = vi.fn()
-    setListClickListener({ list, onFound, autonomous: true, managers })
+    setListClickListener({ list, onFound, autonomous: true })
 
     mousedown(row.dom.titleSpan)
 
     expect(onFound).toHaveBeenCalledWith(row.container)
-    expect(useNavigationStore.getState().selectedId).toBe(String(GROUP))
+    expect(setPeer).toHaveBeenCalledWith({ peerId: GROUP, lastMsgId: undefined })
     expect(list.dataset.autonomous).toBe('1')
   })
 
-  it('строка-сообщение (`data-mid`) ставит прыжок к нему до открытия чата', () => {
+  it('строка-сообщение (`data-mid`) открывает чат на этом сообщении', () => {
     const list = createChatList()
     document.body.append(list)
     const row = makeRow(list, GROUP)
     row.container.dataset.mid = '42'
-    setListClickListener({ list, managers })
+    setListClickListener({ list })
 
     mousedown(row.container)
 
-    expect(useSearchStore.getState().pendingJump).toEqual({ peerId: GROUP, seq: 42 })
-    expect(useNavigationStore.getState().selectedId).toBe(String(GROUP))
+    expect(setPeer).toHaveBeenCalledWith({ peerId: GROUP, lastMsgId: 42 })
   })
 
   it('onFound вернул false — открытия нет; правая кнопка — тоже', () => {
     const list = createChatList()
     document.body.append(list)
     const row = makeRow(list, GROUP)
-    setListClickListener({ list, onFound: () => false, managers })
+    setListClickListener({ list, onFound: () => false })
 
     mousedown(row.container)
     mousedown(row.container, { button: 2 })
 
-    expect(useNavigationStore.getState().selectedId).toBeNull()
+    expect(setPeer).not.toHaveBeenCalled()
   })
 
   it('автономный список переносит `active` на последнюю нажатую строку', () => {
@@ -257,7 +259,7 @@ describe('setListClickListener', () => {
     document.body.append(list)
     const a = makeRow(list, GROUP)
     const b = makeRow(list, ALICE)
-    setListClickListener({ list, autonomous: true, managers })
+    setListClickListener({ list, autonomous: true })
 
     mousedown(a.container)
     expect(a.container.classList.contains('active')).toBe(true)
@@ -270,7 +272,7 @@ describe('setListClickListener', () => {
     const list = createChatList()
     document.body.append(list)
     const row = makeRow(list, GROUP)
-    setListClickListener({ list, managers })
+    setListClickListener({ list })
 
     const click = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 })
     row.container.dispatchEvent(click)

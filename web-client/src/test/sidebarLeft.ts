@@ -45,7 +45,6 @@ export function installSidebarLeft(managers = {} as Managers, columnEl?: HTMLEle
     header,
     backBtn: header.querySelector<HTMLElement>('.sidebar-back-button')!,
     chatlistContainer: content.querySelector<HTMLElement>('#chatlist-container')!,
-    host: content.querySelector<HTMLElement>('.connection-status-bottom')!,
     searchContainer: content.querySelector<HTMLElement>('#search-container')!,
     overlay,
     sidebar: appSidebarLeft,

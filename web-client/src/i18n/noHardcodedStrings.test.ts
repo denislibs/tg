@@ -100,7 +100,6 @@ const DEBT: Record<string, number> = {
   'src/components/stickers/StickerSetModal.tsx': 7,
   'src/components/userInfo/helpers.ts': 25,
   'src/core/dialogToChat.ts': 1,
-  'src/core/hooks/useDeepLinks.ts': 5,
   'src/core/hooks/useGroupInfo.ts': 8,
   'src/core/hooks/useStoryViewer.ts': 3,
   'src/core/hooks/useTypingLabel.ts': 32,

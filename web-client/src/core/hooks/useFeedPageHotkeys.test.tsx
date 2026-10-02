@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from '@testing-library/react'
 import { ChatInstanceProvider } from '../chat/chatInstanceContext'
-import type { ChatInstanceDesc } from '../../stores/chatStackStore'
+import type ReactChatInstance from '@components/chat/reactChatInstance'
 import { useFeedPageHotkeys } from './useFeedPageHotkeys'
 
 afterEach(cleanup)
 
-const desc = (id: number): ChatInstanceDesc => ({ id, peerId: 1, type: 'chat' })
+const instance = (peerId: PeerId) => ({ peerId }) as ReactChatInstance
 
 function Harness({ onPageDown }: { onPageDown: () => void }) {
   useFeedPageHotkeys({ enabled: true, onPageUp: () => {}, onPageDown })
@@ -21,10 +21,10 @@ describe('useFeedPageHotkeys', () => {
     const onPageDown = vi.fn()
     render(
       <>
-        <ChatInstanceProvider value={{ desc: desc(1), isActive: false }}>
+        <ChatInstanceProvider value={{ instance: instance(1), isActive: false }}>
           <Harness onPageDown={onPageDown} />
         </ChatInstanceProvider>
-        <ChatInstanceProvider value={{ desc: desc(2), isActive: true }}>
+        <ChatInstanceProvider value={{ instance: instance(2), isActive: true }}>
           <Harness onPageDown={onPageDown} />
         </ChatInstanceProvider>
       </>,

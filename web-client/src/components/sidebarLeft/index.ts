@@ -63,11 +63,8 @@
  *     `AppDialogsManager` колонки, а не синглтон (расхождение 1 его шапки,
  *     `lib/appDialogsManager.ts`), и `construct` его получает от `start()`,
  *     который его зовёт (tweb :983).
- *  3. `switchTheme` — ВРЕМЕННО до Э4-5: ночной режим бургера
- *     (`themeController.switchTheme`, :919-928) — React-хук шелла
- *     `useThemeToggle`, его отдаёт `App.tsx`. «Избранное» —
- *     `appImManager.setPeer({peerId: myId})` (:707-713), ВРЕМЕННО до Э4-3 —
- *     открытие через `navigationStore`.
+ *  3. Ночной режим бургера (`themeController.switchTheme`, :919-928) — наш
+ *     `switchTheme` из `core/theme/themeTransition.ts` (там исполнитель перехода).
  *  4. `createTab` при свёрнутой колонке не открывает `AppSettingsTab`/
  *     `AppEditFolderTab`/`AppChatFoldersTab` попапом `showSettingsSliderPopup`
  *     (:1735-1739) — О-27 плана 2D: попапа-слайдера настроек нет. Вкладка
@@ -142,7 +139,8 @@ import InputSearch from '@components/inputSearch'
 import GlobalSearch from '@components/sidebarLeft/globalSearch'
 import type { AppDialogsManager } from '@lib/appDialogsManager'
 import { openSearchUrl } from '@core/hooks/openSearchUrl'
-import { useNavigationStore } from '@stores/navigationStore'
+import appImManager from '@lib/appImManager'
+import { switchTheme } from '@core/theme/themeTransition'
 import type { User, UserReal } from '@core/peers/peer'
 import { MAX_ACCOUNTS, type PublicAccount } from '@core/auth/accounts'
 import {
@@ -194,8 +192,6 @@ export class AppSidebarLeft extends SidebarSlider {
   public inputSearch!: InputSearch
   /** Расхождение 6 шапки. */
   private globalSearch?: GlobalSearch
-  /** Расхождение 3 шапки — ВРЕМЕННО до Э4-5. */
-  public switchTheme?: (coords: { x: number, y: number }) => void
   private dialogsManager?: AppDialogsManager
 
   public get isSearchActive() {
@@ -262,7 +258,7 @@ export class AppSidebarLeft extends SidebarSlider {
         this.isSearchActive = active
         this.onSomethingOpenInsideChange()
       },
-      openUrl: (url) => openSearchUrl(url, managers),
+      openUrl: (url) => openSearchUrl(url),
     })
 
     this.initNavigation()
@@ -632,7 +628,7 @@ export class AppSidebarLeft extends SidebarSlider {
       const item = btns[0].element!
       const icon = item.querySelector('.tgico')!
       const rect = icon.getBoundingClientRect()
-      this.switchTheme?.({
+      switchTheme({
         x: rect.left + rect.width / 2,
         y: rect.top + rect.height / 2,
       })
@@ -894,13 +890,13 @@ export class AppSidebarLeft extends SidebarSlider {
     })
   }
 
-  /** `appImManager.setPeer({peerId: myId})` (:707-713) — ВРЕМЕННО до Э4-3 (расхождение 3). */
+  /** `appImManager.setPeer({peerId: myId})` (:707-713). */
   private openSavedMessages() {
     const managers = this.managers!
     void (async() => {
       const id = await managers.chats.saved()
       await managers.dialogs.refresh()
-      useNavigationStore.getState().selectChat(String(id))
+      void appImManager.setPeer({ peerId: id })
     })()
   }
 

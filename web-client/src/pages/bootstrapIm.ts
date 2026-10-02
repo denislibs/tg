@@ -19,11 +19,10 @@
 import blurActiveElement from '@helpers/dom/blurActiveElement'
 import { doubleRaf } from '@helpers/schedulers'
 import { loadFonts } from '@core/dom/loadFonts'
-import { startClient } from '@/client/bootstrap'
+import { getProxiedManagers } from '@/client/bootstrap'
 import { disposeActiveAuthFlow } from '@components/auth/mountAuthFlow.solid'
 import { mountGlobalOverlays } from '@components/shell/mountGlobalOverlays'
-import appSidebarRight from '@components/sidebarRight'
-import { AppDialogsManager } from '@lib/appDialogsManager'
+import appDialogsManager from '@lib/appDialogsManager'
 
 let bootstrapped = false
 
@@ -38,19 +37,9 @@ export async function bootstrapIm(): Promise<void> {
 
   await loadFonts()
 
-  // tweb `rootScope.managers` — у нас кэш `startClient()` (`client/bootstrap.ts`)
-  const { managers } = startClient()
-  mountGlobalOverlays(managers)
+  mountGlobalOverlays(getProxiedManagers()) // расхождение 3
 
-  // ВРЕМЕННО до влития feat/w7-k2-appimmanager: там `appDialogsManager` — вечный
-  // синглтон и `start()` без аргументов (tweb `:51`) сам конструирует колонки.
-  const columnEl = document.getElementById('column-left')!
-  new AppDialogsManager().start(
-    columnEl.querySelector<HTMLElement>('.connection-status-bottom')!,
-    document.getElementById('chatlist-container')!,
-    { managers, isForumOpen: () => false, openForum: () => {} },
-  )
-  appSidebarRight.construct(managers)
+  appDialogsManager.start()
 
   // start() toggles body.is-left-column-shown synchronously
   // (appImManager.selectTab(CHATLIST)). The .main-column transform/opacity

@@ -9,6 +9,7 @@ import { mapEffect } from '../../core/models'
 import { getPeerId } from '../../core/peers/peerId'
 import { playMessageSent } from '../../core/audio/sounds'
 import { playEmojiEffect } from '../../core/effects/emojiEffects'
+import appImManager from '@lib/appImManager'
 
 export function registerSoundSubscriber(): void {
   // Сервер подтвердил нашу отправку → «пак» (tweb message_sent), если не выключен
@@ -31,6 +32,6 @@ export function registerSoundSubscriber(): void {
     if (!effect) return
     const cs = useChatsStore.getState()
     const peerId = getPeerId(msg.peer_id)
-    if (getPeerId(msg.from_id) !== cs.meId && cs.activePeerId === peerId) playEmojiEffect(effect)
+    if (getPeerId(msg.from_id) !== cs.meId && appImManager.chat?.peerId === peerId) playEmojiEffect(effect)
   })
 }

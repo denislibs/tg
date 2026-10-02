@@ -734,8 +734,7 @@ export const AppEditContactTab =
 
 // ── Поиск GIF и стикеров правой колонки (tweb :458-462, :521-525) — задача 0б-11 ─
 // Обе обычной формы и без полезной нагрузки, как у оригинала: колонку вкладки берут
-// у синглтона `appSidebarRight`, отправку в чат — у `appImManager.chat` (мост
-// `sidebarRight/tabs/emoticonsSearchBridge.ts`, ВРЕМЕННО до Э4-3).
+// у синглтона `appSidebarRight`, отправку в чат — у `appImManager.chat.input`.
 // Открывает их лупа нижней полосы панели эмодзи (tweb `emoticonsDropdown/index.ts:300-310`).
 export const AppGifsTab =
   scaffoldSolidJSTab({

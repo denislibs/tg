@@ -9,6 +9,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import appNavigationController from '@core/navigation/appNavigationController'
 import mediaSizes, { ScreenSize } from '@core/dom/mediaSizes'
 import rootScope from '@lib/rootScope'
+import appImManager from '@lib/appImManager'
 import { NAVIGATION_TRANSITION_TIME } from '@components/transition'
 import SliderSuperTab from '@components/sliderTab'
 import type { Managers } from '../../client/bootstrap'
@@ -48,6 +49,8 @@ beforeAll(() => {
 
 beforeEach(() => {
   vi.useFakeTimers()
+  // переход вкладок центра — предмет `lib/appImManager.test.ts`; ядро здесь не сконструировано
+  vi.spyOn(appImManager, 'selectTab').mockResolvedValue(undefined)
   dom = mountColumn()
 })
 
@@ -62,6 +65,7 @@ afterEach(() => {
   document.body.className = ''
   returnToStaticMarkup(dom.column)
   document.body.replaceChildren()
+  vi.restoreAllMocks()
 })
 
 describe('AppSidebarRight — синглтон на статичном #column-right', () => {

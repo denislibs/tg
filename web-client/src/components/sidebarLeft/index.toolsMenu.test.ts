@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import contextMenuController from '@helpers/contextMenuController'
 import { useChatsStore } from '@stores/chatsStore'
-import { useNavigationStore } from '@stores/navigationStore'
+import appImManager from '@lib/appImManager'
 import { useFoldersSidebarShown, useIsLeftSearchActive } from '@stores/foldersSidebar.solid'
 import { useSettingsStore } from '@/settings'
 import { usePwaStore } from '@core/pwa'
@@ -22,6 +22,11 @@ import type { AppDialogsManager } from '@lib/appDialogsManager'
 import type { AppSidebarLeft } from './index'
 
 const env = vi.hoisted(() => ({ call: true, pip: false }))
+const switchTheme = vi.hoisted(() => vi.fn())
+vi.mock('@core/theme/themeTransition', async(importOriginal) => ({
+  ...await importOriginal<typeof import('@core/theme/themeTransition')>(),
+  switchTheme,
+}))
 vi.mock('@environment/callSupport', () => ({ get default() { return env.call } }))
 vi.mock('@environment/documentPictureInPictureSupport', () => ({ get default() { return env.pip } }))
 
@@ -57,12 +62,11 @@ const managers = new Proxy({}, {
 
 let closeEverythingInside: ReturnType<typeof vi.spyOn>
 
-type SidebarOver = { isCollapsed?: () => boolean, switchTheme?: AppSidebarLeft['switchTheme'] }
+type SidebarOver = { isCollapsed?: () => boolean }
 
-/** Класс колонки с дублёром ночного режима (расхождение 3 шапки класса) и шпионом «закрыть всё». */
+/** Класс колонки со шпионом «закрыть всё». */
 function makeSidebar(over: SidebarOver = {}): AppSidebarLeft {
   const { sidebar } = testSlider
-  sidebar.switchTheme = over.switchTheme ?? vi.fn()
   if(over.isCollapsed) vi.spyOn(sidebar, 'isCollapsed').mockImplementation(over.isCollapsed)
   closeEverythingInside = vi.spyOn(sidebar, 'closeEverythingInside')
   return sidebar
@@ -97,7 +101,7 @@ afterEach(async() => {
   await pause(320) // уборка ButtonMenuToggle (300 мс)
   testSlider.destroy()
   useChatsStore.setState({ me: null })
-  useNavigationStore.setState({ selectedId: null })
+  switchTheme.mockClear()
   usePwaStore.setState({ canInstall: false })
   useFoldersSidebarShown()[1](false)
   useIsLeftSearchActive()[1](false)
@@ -220,14 +224,15 @@ describe('createToolsMenu — клики', () => {
     expect(testSlider.slider.hasTabsInNavigation()).toBe(true)
   })
 
-  it('«Избранное» открывает свой чат (`appImManager.setPeer({peerId: myId})`, ВРЕМЕННО до Э4-3)', async() => {
+  it('«Избранное» открывает свой чат (`appImManager.setPeer({peerId: myId})`)', async() => {
+    const setPeer = vi.spyOn(appImManager, 'setPeer').mockResolvedValue(undefined)
     const saved = vi.fn(async() => 77)
     const own = { auth: managers.auth, peers: managers.peers, chats: { saved }, dialogs: { refresh: async() => null } } as unknown as Managers
     ;(testSlider.sidebar as unknown as { managers: Managers }).managers = own
     const { menu } = await openMenu()
     item(menu, 'Saved Messages').click()
 
-    await vi.waitFor(() => expect(useNavigationStore.getState().selectedId).toBe('77'))
+    await vi.waitFor(() => expect(setPeer).toHaveBeenCalledWith({ peerId: 77 }))
     expect(saved).toHaveBeenCalledTimes(1)
   })
 })
@@ -280,8 +285,7 @@ describe('createMoreSubmenu — «Ещё»', () => {
   })
 
   it('ночной режим: тема переключается из центра иконки, меню закрывается', async() => {
-    const switchTheme = vi.fn()
-    const { menu } = await openMenu(makeSidebar({ switchTheme }))
+    const { menu } = await openMenu(makeSidebar())
     const more = await openMore(menu)
 
     item(more, 'Enable Dark Mode').click()

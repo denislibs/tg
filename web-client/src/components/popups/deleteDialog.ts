@@ -23,7 +23,7 @@
 //     тексты `chat`, действие — выход, как у шапки секретного чата.
 //  5. `onSelect` оригинала у меню не передаётся; закрыть открытый удалённый чат у
 //     tweb — дело класса `Chat` (`dialog_drop`, `chat.ts:658-668`), у нас его нет:
-//     ВРЕМЕННО до Э6 это делает сам попап (`closeChatLevel({isDeleting: true})`).
+//     ВРЕМЕННО до К-3 это делает сам попап (`appImManager.setPeer({isDeleting: true})`).
 //  6. Имя в тексте — `PeerTitle` с миддлварью, которую попап снимает на закрытии
 //     (`wrapPeerTitle` у нас — узел, которому надо знать, когда его снять).
 import type { FormatterArguments, LangPackKey } from '@lib/langPack'
@@ -34,8 +34,7 @@ import PopupElement from './popupElement'
 import PopupPeer, { type PopupPeerOptions } from './popupPeer'
 import { getDialogType, type PeerType } from '@core/peers/dialogType'
 import { hasRightsPeer } from '@core/peerCache'
-import { closeChatLevel } from '@core/navigation/chatHistory'
-import { useNavigationStore } from '@stores/navigationStore'
+import appImManager from '@lib/appImManager'
 import type { Managers } from '@/client/bootstrap'
 
 export type DeleteDialogManagers = PeerTitleManagers & {
@@ -65,8 +64,8 @@ export default function showDeleteDialogPopup(
   // расхождение 5
   const onSelect = (promise: Promise<unknown>) => {
     void promise.then(() => {
-      if(useNavigationStore.getState().selectedId === String(peerId)) {
-        closeChatLevel({ isDeleting: true }) // ВРЕМЕННО до Э6
+      if(appImManager.chat?.peerId === peerId) {
+        void appImManager.setPeer({ isDeleting: true }) // ВРЕМЕННО до К-3
       }
     })
   }

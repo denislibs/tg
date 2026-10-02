@@ -18,8 +18,8 @@
  *     отдаёт в отправку САМ элемент, а не `docId` (`:77-78`): Tenor-результат не
  *     документ, по id его никто, кроме кладки, не знает.
  *
- * Временное (с номерами): `appImManager.chat` — мост `emoticonsSearchBridge`
- * (ВРЕМЕННО до Э4-3, шапка моста); его ставит активный инстанс `Chat.tsx`.
+ * Временное (с номерами): `appImManager.chat.input` — то, что отдаёт React-остров
+ * инстанса чата (`components/chat/reactChatInstance.ts`, ВРЕМЕННО до К-3).
  */
 import { onCleanup, onMount, type Component } from 'solid-js'
 import animationIntersector, { type AnimationItemGroup } from '@components/animationIntersector'
@@ -32,7 +32,7 @@ import { attachClickEvent } from '@helpers/dom/clickEvent'
 import findUpClassName from '@helpers/dom/findUpClassName'
 import mediaSizes from '@helpers/mediaSizes'
 import appSidebarRight from '@components/sidebarRight'
-import { appImManager } from './emoticonsSearchBridge' // ВРЕМЕННО до Э4-3
+import appImManager from '@lib/appImManager'
 
 const ANIMATIONGROUP: AnimationItemGroup = 'GIFS-SEARCH'
 
@@ -94,7 +94,8 @@ const Gifs: Component = () => {
 
     const fileId = target.dataset.docId!
     const item = masonry.getItem(fileId)
-    if(item && appImManager.chat && await appImManager.chat.input.sendMessageWithDocument({ document: item, target })) {
+    const input = appImManager.chat?.input
+    if(item && input && await input.sendMessageWithDocument({ document: item, target })) {
       if(mediaSizes.isMobile) {
         appSidebarRight.onCloseBtnClick()
       }

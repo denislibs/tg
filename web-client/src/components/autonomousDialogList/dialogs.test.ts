@@ -28,7 +28,7 @@ import { dialogMatchesFolder } from '@core/folderFilter'
 import { isDialogArchived, type Dialog } from '@core/models'
 import type { DialogsPage } from '@core/managers/dialogsManager'
 import { useChatsStore } from '@stores/chatsStore'
-import { useNavigationStore } from '@stores/navigationStore'
+import appImManager from '@lib/appImManager'
 import { useNotifyStore } from '@stores/notifyStore'
 import { useAppStateStore } from '@stores/appState'
 import { useFoldersStore } from '@stores/foldersStore'
@@ -114,7 +114,6 @@ beforeEach(() => {
     }
     return { width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0, toJSON() {} } as DOMRect
   })
-  useNavigationStore.setState({ selectedId: null })
 })
 
 afterEach(() => {
@@ -513,7 +512,13 @@ describe('AppDialogsManager + списки: папки, активная стр�
   it('открытый чат — его строка `active`; другой чат — подсветка переехала; чат закрыт — подсветки нет (`setDialogActive`)', async () => {
     applyPeerOps([{ op: 'upsert', peers: [user(1), user(2)] }])
     seed([dialogOf(1), dialogOf(2)])
-    useNavigationStore.setState({ selectedId: '1' })
+    // открытый чат — `appImManager.chat`, его смена — событие `peer_changed`
+    let openPeerId: PeerId = 1
+    vi.spyOn(appImManager, 'chat', 'get').mockImplementation(() => ({ peerId: openPeerId }) as typeof appImManager.chat)
+    const peerChanged = (peerId: PeerId) => {
+      openPeerId = peerId
+      appImManager.dispatchEvent('peer_changed', appImManager.chat)
+    }
     await start()
     await waitRows([1, 2])
     const row = (id: number) => xd().getDialogElement(id)!.dom.listEl
@@ -521,24 +526,24 @@ describe('AppDialogsManager + списки: папки, активная стр�
     // строка, построенная при открытом чате, подсвечена сразу (у tweb — в конструкторе)
     expect(row(1).classList.contains('active')).toBe(true)
 
-    useNavigationStore.setState({ selectedId: '2' })
+    peerChanged(2)
     expect(row(1).classList.contains('active')).toBe(false)
     expect(row(2).classList.contains('active')).toBe(true)
 
-    useNavigationStore.setState({ selectedId: null })
+    peerChanged(0)
     expect(row(2).classList.contains('active')).toBe(false)
     expect(xd().sortedList.list.querySelectorAll('.chatlist-chat.active')).toHaveLength(0)
   })
 
-  it('клик по строке форума открывает панель тем, а не чат (`toggleForumTabByPeerId`)', async () => {
+  it('клик по строке форума чат не открывает (`toggleForumTabByPeerId` — бэклог Б-3)', async () => {
+    const setPeer = vi.spyOn(appImManager, 'setPeer').mockResolvedValue(undefined)
     applyPeerOps([{ op: 'upsert', peers: [{ _: 'channel', id: 50, title: 'Форум', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true, forum: true } }] }])
     seed([dialogOf(-50)])
     await start()
     await waitRows([-50])
 
     xd().getDialogElement(-50)!.dom.listEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
-    expect(mounted!.hooks.openForum).toHaveBeenCalledWith(-50)
-    expect(useNavigationStore.getState().selectedId).toBeNull()
+    expect(setPeer).not.toHaveBeenCalled()
   })
 
   it('`destroy()` списка снимает все его строки и гасит их зоны (DoD 5)', async () => {
