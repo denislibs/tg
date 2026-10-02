@@ -195,7 +195,16 @@ export function deniedMask(pFlags: Record<string, true> | undefined): number {
 }
 
 export function allowedMemberPerms(chat: Chat | undefined): number {
-  const banned = chat && (chat._ === 'chat' || chat._ === 'channel') ? chat.default_banned_rights : undefined
+  return allowedFromBannedRights(chat && (chat._ === 'chat' || chat._ === 'channel') ? chat.default_banned_rights : undefined)
+}
+
+/**
+ * Тот же перевод для ГОТОВОГО набора запретов — его собирает вкладка прав группы
+ * (`ChatPermissions.takeOut`, `sidebarRight/tabs/groupPermissions/sharedPermissions.ts`),
+ * а ручка `PUT /chats/{id}/permissions` ждёт наш битмаск «что можно»
+ * (`groupsManager.editChatDefaultBannedRights`).
+ */
+export function allowedFromBannedRights(banned: ChatBannedRights | undefined): number {
   if (!banned) return ALL_MEMBER_PERMS
   let out = 0
   for (const { bit, flag } of MEMBER_PERM_FLAGS) if (!banned.pFlags?.[flag]) out |= bit

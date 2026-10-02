@@ -186,6 +186,25 @@ describe('GroupsManager', () => {
     expect(posts[0].body).toEqual({ user_id: 11, rights: 129 })
   })
 
+  // Порт пары `editChatDefaultBannedRights` + `toggleSlowMode` одним вызовом
+  // (задача 0б-6 волны 7): ЗАПРЕТЫ вкладки прав уходят нашим битмаском «что
+  // можно» — инверсия только в `allowedFromBannedRights`.
+  it('editChatDefaultBannedRights PUTs /chats/{id}/permissions: запреты → битмаск «что можно» + slowmode', async () => {
+    const puts: PostCall[] = []
+    const rest = { async put(path: string, body: unknown) { puts.push({ path, body }); return {} } } as unknown as RestClient
+    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
+    await mgr.editChatDefaultBannedRights(-5, { _: 'chatBannedRights', until_date: 0x7FFFFFFF, pFlags: { send_media: true, pin_messages: true } }, 60)
+    expect(puts).toEqual([{ path: '/chats/-5/permissions', body: { permissions: 1 | 4 | 16, slowmode_seconds: 60 } }])
+  })
+
+  it('channelParticipantsBanned GETs /chats/{id}/restrictions и отдаёт контейнер как есть', async () => {
+    const reply = { _: 'channels.channelParticipants', count: 1, participants: [{ _: 'channelParticipantBanned', peer: { _: 'peerUser', user_id: 7 }, kicked_by: 1, date: 0, banned_rights: { until_date: 0, pFlags: { send_media: true } } }], chats: [], users: [] }
+    const { rest, gets } = fakeRest({ getReturn: reply })
+    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
+    expect(await mgr.channelParticipantsBanned(-5)).toBe(reply)
+    expect(gets).toEqual(['/chats/-5/restrictions'])
+  })
+
   it('demoteAdmin DELETEs /chats/{id}/admins/{userId}', async () => {
     const { rest, dels } = fakeRest({})
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })

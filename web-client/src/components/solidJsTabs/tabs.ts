@@ -544,6 +544,25 @@ export const AppSharedFolderTab =
     onOpenAfterTimeout: folderTabOpenAfterTimeout,
   })
 
+// ── Права группы (tweb :640-648) — задача 0б-6 волны 7 ───────────────────────
+// Вкладка правой колонки «Разрешения» (`sidebarRight/tabs/groupPermissions/
+// groupPermissions.solid.tsx`); открывает её редактор группы (`editChat`, 0б-1).
+// ВРЕМЕННО до 0б-1: форма eventable, у tweb — обычная `scaffoldSolidJSTab`. Мосту
+// React-`GroupEditFlow` нужно событие `close`, чтобы показать свой оверлей сразу,
+// а не после выезда вкладки; `editChat` этого моста не держит.
+type AppGroupPermissionsTabPayload = {
+  chatId: ChatId
+}
+
+export const AppGroupPermissionsTab =
+  scaffoldSolidJSTabEventable<AppGroupPermissionsTabPayload>({
+    title: 'ChannelPermissions',
+    getComponentModule: () => import('../sidebarRight/tabs/groupPermissions/groupPermissions.solid'),
+    onOpenAfterTimeout: function() {
+      this.scrollable.onScroll()
+    },
+  })
+
 // ── Тип чата (tweb :536-540) — задача 0б-2 волны 7 ───────────────────────────
 // Вкладка правой колонки «Тип канала / группы» (`sidebarRight/tabs/chatType.solid.tsx`);
 // открывает её редактор чата (`editChat`, 0б-1). Заголовок `ChannelType` — как у

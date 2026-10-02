@@ -11,3 +11,8 @@
 export default function numberThousandSplitter(x: number, joiner = ' '): string {
   return String(x).replace(/\B(?=(\d{3})+(?!\d))/g, joiner)
 }
+
+/** tweb `:13-16` — сумма в звёздах (`StarRangeInput`, «плата за сообщение» прав группы). */
+export function numberThousandSplitterForStars(x: number) {
+  return numberThousandSplitter(x, ' ')
+}

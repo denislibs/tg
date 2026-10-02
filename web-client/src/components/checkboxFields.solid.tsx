@@ -20,17 +20,20 @@
  * :107-128). Поле группы выключено всегда (`input.disabled`, :275-277): его
  * значение выводится из вложенных (`processNestedTo`, :312-316).
  *
- * Расхождения с оригиналом — объём вызывающих (у нас один: «Энергосбережение»,
- * `sidebarLeft/tabs/powerSaving.solid.tsx`; прочие вызывающие tweb — права
- * группы `groupPermissions/sharedPermissions.ts`, `chatAutomation.tsx`,
+ * Расхождения с оригиналом — объём вызывающих (у нас два: «Энергосбережение»,
+ * `sidebarLeft/tabs/powerSaving.solid.tsx`, и права группы/админа
+ * `sidebarRight/tabs/groupPermissions/sharedPermissions.ts`, задача 0б-6 волны 7;
+ * прочие вызывающие tweb — `chatAutomation.tsx`,
  * `popups/deleteMegagroupMessages.tsx` — у нас ещё не портированы):
  *  1. Круглая форма (`round`: чекбокс слева + кнопка-шеврон `accordion-right-button`
  *     со счётчиком и a11y `ensureButtonSemantics`/`aria-controls`, :104-111,
  *     :189-218, :262-265) не перенесена вместе с опцией `round` и
  *     `rightButtonIcon`/`nestedRightButtonIcon` — вызывающий у неё права группы.
- *  2. Ограничения (`asRestrictions`, `restrictionText` → замок `premium_lock` и тост,
- *     :140-143, :248-254, :293-295) не перенесены — у нашего `CheckboxFieldTsx`
- *     нет `restriction` (его шапка, п. 1); вызывающие — права группы.
+ *  2. (Ограничения — `asRestrictions`, `restrictionText` → замок `premium_lock`,
+ *     выключенное поле и тост, :140-143, :248-254, :293-295 — СНЯТЫ с этого
+ *     списка: портированы с правами группы, задача 0б-6 волны 7. Запись
+ *     `input.disabled = true` у поля с `restrictionText` (:249) — эффектом в
+ *     корне строки по той же причине, что в п. 5.)
  *  3. `description` (подзаголовок строки), `textArgs`, `middleware`,
  *     `onRowCreation`, `onAnyChange`, `onExpand`, своя `setNestedCounter` у поля —
  *     вызывающих нет; время жизни корней — только `listenerSetter.addCleanup`
@@ -56,6 +59,8 @@
  */
 import { createEffect, createRoot, createSignal, type Accessor, type Setter } from 'solid-js'
 import { i18n, type LangPackKey } from '@lib/langPack'
+import { attachClickEvent } from '@helpers/dom/clickEvent'
+import { toastNew } from '@components/toast'
 import cancelEvent from '@helpers/dom/cancelEvent'
 import findUpAsChild from '@helpers/dom/findUpAsChild'
 import type ListenerSetter from '@helpers/listenerSetter'
@@ -73,6 +78,7 @@ export type CheckboxFieldsRow = {
 
 export type CheckboxFieldsField = {
   text?: LangPackKey
+  restrictionText?: LangPackKey
   checkboxField?: CheckboxField
   checked?: boolean
   nested?: CheckboxFieldsField[]
@@ -86,13 +92,16 @@ export type CheckboxFieldsField = {
 export default class CheckboxFields<K extends CheckboxFieldsField = CheckboxFieldsField> {
   public fields: Array<K>
   protected listenerSetter: ListenerSetter
+  protected asRestrictions?: boolean
 
   constructor(options: {
     fields: Array<K>
     listenerSetter: ListenerSetter
+    asRestrictions?: boolean
   }) {
     this.fields = options.fields
     this.listenerSetter = options.listenerSetter
+    this.asRestrictions = options.asRestrictions
   }
 
   public createField(info: CheckboxFieldsField, isNested?: boolean): { row: CheckboxFieldsRow, nodes: HTMLElement[] } | undefined {
@@ -152,7 +161,9 @@ export default class CheckboxFields<K extends CheckboxFieldsField = CheckboxFiel
         <CheckboxFieldTsx
           checked={nested ? false : info.checked}
           toggle={!isNested}
+          restriction={this.asRestrictions && !isNested}
           name={info.name}
+          lockIcon={info.restrictionText && !info.nestedTo ? 'premium_lock' : undefined}
           ref={(createdField) => {
             checkboxField = info.checkboxField = createdField
             createdField.label.classList.add('disable-hover')
@@ -196,9 +207,10 @@ export default class CheckboxFields<K extends CheckboxFieldsField = CheckboxFiel
         </Row>
       )
 
-      if(nested) {
-        // Расхождение 5: поле группы выключено всегда (tweb :275-277) — и ПОСЛЕ
-        // эффекта `toggleDisability(!!props.disabled)` самого поля.
+      if(info.restrictionText || nested) {
+        // Расхождение 5: поле группы (tweb :275-277) и поле с ограничением
+        // (:248-249) выключены всегда — и ПОСЛЕ эффекта
+        // `toggleDisability(!!props.disabled)` самого поля.
         createEffect(() => {
           checkboxField.input.disabled = true
         })
@@ -224,6 +236,13 @@ export default class CheckboxFields<K extends CheckboxFieldsField = CheckboxFiel
         setDisabled(disable)
         return () => setDisabled(!disable)
       },
+    }
+
+    if(info.restrictionText && !nested) { // tweb :248-254 (`disabled` — расхождение 5)
+      const langPackKey = info.restrictionText
+      attachClickEvent(row.container, () => {
+        toastNew({ langPackKey })
+      }, { listenerSetter: this.listenerSetter })
     }
 
     const nodes: HTMLElement[] = [row.container]
@@ -259,6 +278,10 @@ export default class CheckboxFields<K extends CheckboxFieldsField = CheckboxFiel
 
         const other = this.fields.filter((i) => arr.includes(i))
         other.forEach((info) => {
+          if(info.restrictionText) {
+            return
+          }
+
           info.checkboxField!.setValueSilently(value)
           if(info.nestedTo && !nested) {
             this.setNestedCounter(info.nestedTo)
