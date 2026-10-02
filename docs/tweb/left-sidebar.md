@@ -651,8 +651,8 @@ a.row.no-wrap.chatlist-chat.chatlist-chat-bigger.row-big  href="#<peerId>" data-
 Онлайн-точка (`setOnlineStatus` по `presence`), «печатает» (`setDialogTyping` → `getPeerTyping`,
 `lib/appImManager.ts` до 5-3), активная строка открытого чата (`setDialogActive` по
 `navigationStore.selectedId`, `lastActiveElements`) и бейджи на аватарах узкой колонки
-(`toggleAvatarUnreadBadges`) — портированы. Строка «Архив» — React-`ArchiveRow` островом в
-`<archive-dialog>` (ВРЕМЕННО до 1-5), панель тем — React (ВРЕМЕННО до 1-6). Иконка звонка — О-96,
+(`toggleAvatarUnreadBadges`) — портированы. Строка «Архив» — порт `components/archiveDialog.solid.tsx`
+(custom element `<archive-dialog>` на зеркале диалогов, задача 1-5), панель тем — React (ВРЕМЕННО до 1-6). Иконка звонка — О-96,
 потоковые черновики — О-97, контекст-меню строки — задача 1-2. React-список
 (`ChatList.tsx`, `ChatListItem.tsx`, `useDialogListSource.ts`) снесён. Значки у имени — `PeerTitle`
 `withIcons` (`components/generateTitleIcons.ts`: галочка, премиум/эмодзи-статус). Строка над
@@ -850,10 +850,12 @@ DOM-паритет первого таба выдержан сознательн
    `2026-08-13-remaining-lists-design.md`, `2026-08-13-dialogs-count-and-refresh-design.md`
    (разделы «Отступления» читать перед правкой ядра). Ветка оживления пагинации
    `worktree-dialogs-count-refresh` готова и проверена на стенде, на момент снятия не смержена.
-5. **Архив — оверлей, не таб.** tweb: `AppArchivedTab` в слайдере, переиспользующий `l(FOLDER_ID_ARCHIVE)`.
-   У нас: оверлей внутри `.connection-status-bottom` (React-ребёнок хоста владельца папок; в
-   `#folders-container` ему нельзя — там кадры папок, адресуемые индексом); список в нём — тот же
-   `AutonomousDialogList(FOLDER_ID_ARCHIVE)` владельца (`mountArchivedList`, ВРЕМЕННО до 1-5, задача 1-4).
+5. **Архив — вкладка, как у tweb** (задача 1-5 волны 7): `AppArchivedTab`
+   (`sidebarLeft/tabs/archivedTab.solid.tsx`, объявление — `solidJsTabs/tabs.ts`) в колоночном
+   слайдере, переиспользует `l({id: FOLDER_ID_ARCHIVE})` владельца; открывает её
+   `appSidebarLeft.openArchiveTab()` — клик по строке «Архив» и пункт бургера. Чего нет: истории
+   архива (Б-51), меню архива — ⋮ вкладки и ПКМ по строке, «скрыть из списка», «прочитать всё»,
+   настройки архива (Б-50).
 6. **Бургер-меню — порт tweb 812502980** (задача 2-2 волны 7, методы класса `AppSidebarLeft` с 2-1). Состав и
    порядок — по `verify` оригинала: аккаунты (текущий → настройки, другие — переключение) + «Добавить
    аккаунт», «Создать» (только у свёрнутой колонки), «Избранное», «Архив» (при архивных диалогах, с
@@ -864,7 +866,7 @@ DOM-паритет первого таба выдержан сознательн
    звёзды в секции Premium корня настроек), «Telegram Premium» (там же), «Выйти» (⋮ корня настроек,
    `showLogOutPopup`). Расхождения — «Расхождения бургера» шапки `sidebarLeft/index.ts`: мультиаккаунт в нашей модели (В7-4), боты
    меню вложений (О-80), бейдж других аккаунтов (О-81), «Мои истории» — наш лист архива (О-82),
-   verify архива без «не догружен»/архива историй (О-83), клавиатура меню (О-84), конференции (О-1),
+   verify архива — по зеркалу, без архива историй (расхождение 4 бургера, Б-51), клавиатура меню (О-84), конференции (О-1),
    «Switch to A version» нет (своего домена версии A нет).
    **Кнопка эмодзи-статуса в шапке** (`statusBtnIcon`) — `SidebarEmojiStatusButton.tsx`: только у
    подписчика Premium, `button.btn-icon.sidebar-emoji-status` без ripple справа от поиска, глиф
@@ -895,9 +897,9 @@ DOM-паритет первого таба выдержан сознательн
    `createContextMenu` (`ButtonMenu` + `positionMenu` по фактическому размеру меню +
    `contextMenuController`, запись `'menu'` — Esc/Back). Создаёт его `AppDialogsManager.start`
    (tweb `:850`), вешает `setListClickListener({withContext: true})` на `ul` списка каждой папки из
-   `l(filter)` (`:1478` → `:2337-2339`), в том числе архива (`mountArchivedList` → `l({id:
+   `l(filter)` (`:1478` → `:2337-2339`), в том числе архива (вкладка архива → `l({id:
    FOLDER_ID_ARCHIVE})`, `filterId` архива) — расхождение 23 `lib/appDialogsManager.ts`; меню
-   строки «Архив» (`withArchiveContext`) — задача 1-5. Пункты: «Открыть в новой вкладке» (наш хэш
+   строки «Архив» (`withArchiveContext`) — Б-50. Пункты: «Открыть в новой вкладке» (наш хэш
    `#<peerId>`, расхождение 24), «Прочитано», закреп, mute (vanilla `PopupMute`, ВРЕМЕННО до 2C-7),
    архив, «Очистить историю» (`components/clearHistory.ts`), «Удалить/покинуть»
    (`components/popups/deleteDialog.ts`, подпись — `core/peers/dialogType.ts::getDeleteButtonText`;

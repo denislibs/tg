@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import contextMenuController from '@helpers/contextMenuController'
 import { useChatsStore } from '@stores/chatsStore'
+import { makeDialog } from '@core/dialogs/testDialog'
 import appImManager from '@lib/appImManager'
 import { useFoldersSidebarShown, useIsLeftSearchActive } from '@stores/foldersSidebar.solid'
 import { useSettingsStore } from '@/settings'
@@ -38,6 +39,19 @@ vi.mock('./tabs/settings.solid', () => ({
     return el
   },
 }))
+// Вкладка архива — тоже заглушка, но с `id` контейнера: пины вкладки — `tabs/archivedTab.solid.test.tsx`.
+vi.mock('./tabs/archivedTab.solid', async() => {
+  const { useSuperTab } = await import('@components/solidJsTabs/superTabProvider.solid')
+  return {
+    default: () => {
+      const [tab] = useSuperTab()
+      tab.container.id = 'chats-archived-container'
+      const el = document.createElement('div')
+      el.className = 'archived-tab-stub'
+      return el
+    },
+  }
+})
 // Журнал звонков — тоже заглушка: пины вкладки — `tabs/calls.solid.test.tsx`.
 vi.mock('./tabs/calls.solid', () => ({
   default: () => {
@@ -100,7 +114,7 @@ afterEach(async() => {
   contextMenuController.close()
   await pause(320) // уборка ButtonMenuToggle (300 мс)
   testSlider.destroy()
-  useChatsStore.setState({ me: null })
+  useChatsStore.setState({ me: null, dialogs: [], dialogIndexById: {} })
   switchTheme.mockClear()
   usePwaStore.setState({ canInstall: false })
   useFoldersSidebarShown()[1](false)
@@ -139,11 +153,27 @@ describe('createToolsMenu — состав по verify tweb', () => {
     expect(menu.classList.contains('bottom-right')).toBe(true)
   })
 
-  it('«Архив» и «Мои истории» скрыты до своих вкладок (1-5, О-82): мёртвых пунктов нет', async() => {
+  it('«Мои истории» скрыты (О-82); «Архив» — только когда в зеркале есть архивные диалоги (расхождение 4 бургера)', async() => {
     const { menu } = await openMenu()
 
-    expect(itemTexts(menu)).not.toContain('Archived Chats')
     expect(itemTexts(menu)).not.toContain('My Stories')
+    expect(itemTexts(menu)).not.toContain('Archived Chats')
+  })
+
+  it('«Архив» — после «Избранного» (tweb :736), с бейджем `archived-count`; клик открывает AppArchivedTab после closeEverythingInside', async() => {
+    useChatsStore.getState().applyDialogOps([{ op: 'reset', items: [{ dialog: makeDialog({ peerId: 2, archived: true }), index: 1 }] }])
+    const { menu } = await openMenu()
+
+    expect(itemTexts(menu)).toEqual([
+      'Denis Me', 'Add Account', 'Saved Messages', 'Archived Chats', 'Contacts', 'Calls', 'Settings', 'More',
+    ])
+    const archive = item(menu, 'Archived Chats')
+    expect(archive.querySelector('.badge.badge-24.badge-gray.archived-count')).not.toBeNull()
+
+    archive.click()
+    await vi.waitFor(() => expect(column.querySelector('#chats-archived-container .archived-tab-stub')).not.toBeNull())
+    expect(closeEverythingInside).toHaveBeenCalledTimes(1)
+    expect(testSlider.slider.hasTabsInNavigation()).toBe(true)
   })
 
   it('«Создать» — только у свёрнутой колонки (дублирует скрытый FAB, tweb :700)', async() => {

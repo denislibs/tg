@@ -35,15 +35,12 @@
  *    :511-513), `watchChannelsTabVisibility` (:1692) — задача 2-3. Ctrl+F
  *    (:458-461) — наш `core/hotkeys.ts` → событие `tg-focus-search` владельцу
  *    (его расхождение 9);
- *  • архив-вкладка `AppArchivedTab` (`openArchiveTab` :1760-1764) — задача 1-5:
- *    до неё строка «Архив» списка закрывает открытое и больше ничего, пункт
- *    бургера скрыт; форум-таб (`appDialogsManager.forumTab`, :519, :524, :541,
- *    :555-560) — задача 1-6;
+ *  • форум-таб (`appDialogsManager.forumTab`, :519, :524, :541, :555-560) —
+ *    задача 1-6;
  *  • «Мои истории» (`AppMyStoriesTab`, :715-722) — О-82, пункт скрыт;
  *  • статус-эмодзи и замок (`toggleRightButtons`, :258-361) — задача 2-8;
  *  • вертикальная колонка папок (`renderFoldersSidebarContent`, :177-184) —
  *    задача 2-7; бейдж уведомлений других аккаунтов (:186-188) — О-81;
- *  • бейдж архива по `folder_unread` (:202-235) — расхождение 4 бургера ниже;
  *  • кнопка «Обновить» (`updateBtn`, :202-216, :367-384) — О-100;
  *  • кнопка поиска свёрнутой колонки `sidebar-header-search-trigger`
  *    (:392-421, сигнал `useHasOpenLeftTabs`) — О-101;
@@ -95,9 +92,13 @@
  *     `getNotificationsCountForAllAccounts`, :175-188, :862-870) — источника
  *     нет: воркер не считает непрочитанное неактивных аккаунтов. Бейдж в
  *     разметке есть и пуст (`is-badge-empty`) — О-81 волны 7.
- *  4. «Архив» (:680-688) и бейдж `archivedCount` (:202-235) — пункт скрыт до
- *     `AppArchivedTab` (задача 1-5, см. «Не перенесено»); verify оригинала у
- *     нас неполон и без того — О-83 волны 7.
+ *  4. «Архив» (:680-688, задача 1-5): verify — архивные диалоги в зеркале
+ *     (`useChatsStore`), а не `getFolderDialogs`/`isDialogsLoaded` хранилища
+ *     воркера (его нет на главном потоке); первую страницу архива зеркало
+ *     получает от строки «Архив» списка («Все чаты» тянут её на первой загрузке).
+ *     Истории архива (`appStoriesManager.hasArchive`) — Б-51. Бейдж
+ *     `archivedCount` (:230-258) — подписка на зеркало вместо `folder_unread`,
+ *     счёт — `archiveUnreadCount` (расхождение 3 шапки `archiveDialog.solid.tsx`).
  *  5. «Новая конференция» (`ConferenceCall.New`, :1093-1101, пункт
  *     `createNewChatsMenuOptions`) и verify `IS_CONFERENCE_CALL_SUPPORTED` у
  *     «Звонков» — О-1 волны 7: конференц-звонков нет на бэкенде, флага
@@ -128,6 +129,7 @@ import Icon from '@components/icon'
 import type { IconName } from '@core/tgico-icons'
 import createSubmenuTrigger, { type CreateSubmenuArgs } from '@components/createSubmenuTrigger'
 import {
+  AppArchivedTab,
   AppCallsTab,
   AppContactsTab,
   AppNewChannelTab,
@@ -158,6 +160,8 @@ import { setOpenTabsLeftSidebar } from '@core/dom/updateColumnWidths'
 import installColumnResize from '@core/dom/installColumnResize'
 import appNavigationController, { type NavigationItem } from '@core/navigation/appNavigationController'
 import { useChatsStore } from '@stores/chatsStore'
+import { isDialogArchived } from '@core/models'
+import { archiveUnreadCount } from '@core/folders/folderUnreadCounts'
 import { useFoldersSidebarShown, useIsLeftSearchActive, useIsSidebarCollapsed } from '@stores/foldersSidebar.solid'
 import { useAppSettings } from '@stores/appSettings.solid'
 import { useSettingsStore } from '@/settings'
@@ -168,6 +172,8 @@ import contextMenuController from '@helpers/contextMenuController'
 import { CLICK_EVENT_NAME, simulateClickEvent } from '@helpers/dom/clickEvent'
 import filterAsync from '@helpers/array/filterAsync'
 import createBadge from '@helpers/createBadge'
+import setBadgeContent from '@helpers/setBadgeContent'
+import formatNumber from '@helpers/number/formatNumber'
 import liteMode from '@helpers/liteMode'
 import type { MenuPositionPadding } from '@helpers/positionMenu'
 import pause from '@helpers/schedulers/pause'
@@ -180,6 +186,13 @@ import { MOUNT_CLASS_TO } from '@config/debug'
 import { APP_TITLE, APP_VERSION_FULL, SECRET_CHATS_ENABLED } from '@/config/app'
 import type { Managers } from '@/client/bootstrap'
 
+/** :230-231 */
+function createArchivedCount() {
+  const archivedCount = createBadge('span', 24, 'gray')
+  archivedCount.classList.add('archived-count')
+  return archivedCount
+}
+
 /** Куда ведёт футер подменю «Ещё» — tweb ведёт на свой CHANGELOG.md (:1804). */
 const CHANGELOG_URL = 'https://github.com/denislibs/messenger/blob/main/CHANGELOG.md'
 
@@ -189,6 +202,8 @@ export class AppSidebarLeft extends SidebarSlider {
   private toolsBtn!: HTMLElement
   private backBtn!: HTMLElement
   private newBtnMenu!: HTMLElement
+  /** :230-231 — бейдж пункта «Архив» бургера (расхождение 4 бургера) */
+  private archivedCount = createArchivedCount()
   public inputSearch!: InputSearch
   /** Расхождение 6 шапки. */
   private globalSearch?: GlobalSearch
@@ -259,6 +274,16 @@ export class AppSidebarLeft extends SidebarSlider {
         this.onSomethingOpenInsideChange()
       },
       openUrl: (url) => openSearchUrl(url),
+    })
+
+    // :233-258 — `folder_unread` архива; у нас — движение зеркала диалогов (расхождение 4 бургера)
+    const updateArchivedCount = () => {
+      const unreadCount = archiveUnreadCount(useChatsStore.getState().dialogs)
+      setBadgeContent(this.archivedCount, unreadCount ? '' + formatNumber(unreadCount, 1) : '')
+    }
+    updateArchivedCount()
+    useChatsStore.subscribe((state, prev) => {
+      if(state.dialogs !== prev.dialogs) updateArchivedCount()
     })
 
     this.initNavigation()
@@ -473,7 +498,15 @@ export class AppSidebarLeft extends SidebarSlider {
       clb()
     }
 
-    // «Архив» с бейджем `archivedCount` (:202-235, :680-688) — расхождение 4 бургера
+    const btnArchive: ButtonMenuItemOptionsVerifiable = {
+      icon: 'archive',
+      text: 'ArchivedChats',
+      onClick: () => {
+        this.openArchiveTab()
+      },
+      // расхождение 4 бургера
+      verify: () => useChatsStore.getState().dialogs.some(isDialogArchived),
+    }
 
     const onContactsClick = () => {
       void closeTabsBefore(() => {
@@ -516,7 +549,7 @@ export class AppSidebarLeft extends SidebarSlider {
         }, 0)
       },
       separator: true,
-    }, {
+    }, btnArchive, {
       icon: 'user',
       text: 'Contacts',
       onClick: onContactsClick,
@@ -608,6 +641,7 @@ export class AppSidebarLeft extends SidebarSlider {
       onOpen: () => {
         moreSubmenu.onOpen?.()
         newSubmenu.onOpen?.()
+        btnArchive.element?.append(this.archivedCount)
       },
       onClose: () => {
         moreSubmenu.onClose?.()
@@ -886,7 +920,7 @@ export class AppSidebarLeft extends SidebarSlider {
 
   public openArchiveTab() {
     void this.closeTabsBefore(() => {
-      // `this.createTab(AppArchivedTab).open()` — задача 1-5 (см. «Не перенесено»)
+      void this.createTab(AppArchivedTab).open()
     })
   }
 

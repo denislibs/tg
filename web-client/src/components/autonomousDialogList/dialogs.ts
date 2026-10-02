@@ -34,14 +34,12 @@
 //     `dialogMatchesFolder` с мьютом по `isDialogMuted` (пин
 //     `stores/noDuplicateMuteRule.test.ts`). Определения папки ещё нет — папка
 //     пуста, а не «показать всё».
-//  2. Строка «Архив» — React-`ArchiveRow` островом в `CustomPinnedDialog`
-//     (`// ВРЕМЕННО до 1-5`: `ArchiveDialog`/`createArchiveDialogState`). Её
-//     наличие — архивные диалоги в зеркале; страницу архива список «Всех чатов»
-//     тянет при каждой своей загрузке, пока архива в зеркале нет и владелец не
-//     ответил «архива нет вовсе» (`ensureArchiveDialogHydrated`, у tweb —
-//     `archiveDialog.tsx:124-171`, `ensureHydrated`): страницы «Всех чатов» уходят с
-//     `folder_id=0` и архива не приносят никогда (спека
-//     `2026-08-13-dialogs-count-and-refresh-design.md`, «Дополнение: вход в архив»).
+//  2. Строка «Архив» — `ArchiveDialog` в `CustomPinnedDialog`, как tweb (`:101-120`);
+//     её состояние и расхождения — шапка `components/archiveDialog.solid.tsx`.
+//     Первую страницу архива (`ensureHydrated`) список «Всех чатов» тянет на
+//     первой своей загрузке: страницы «Всех чатов» уходят с `folder_id=0` и
+//     архива не приносят никогда (спека `2026-08-13-dialogs-count-and-refresh-design.md`,
+//     «Дополнение: вход в архив»).
 //  3. Не портировано, с номерами: иконка звонка в группе (`processDialogForCallStatus`,
 //     `setCallStatus`, `groupCallActiveIcon`) — `call_active` у чата в модели нет —
 //     `// О-96 волна 7`; сообщества (`CommunityProjection`, `setupCommunityProjection`,
@@ -52,9 +50,7 @@
 //     `onListLengthChange` (пустые плейсхолдеры) — задача 1-8; `fetchChatlistUpdates`
 //     — расхождение 14 менеджера.
 //  4. `pinnedPeerIds` фильтра (`filterPinnedPeerIds`) — О-70.
-import { createElement, useMemo, useSyncExternalStore } from 'react'
-import { createRoot as createReactRoot } from 'react-dom/client'
-import ArchiveRow from '@components/ArchiveRow'
+import ArchiveDialog, { archiveDialogTagName, createArchiveDialogState, type DisposableArchiveDialogState } from '@components/archiveDialog.solid'
 import { AutonomousDialogListBase, type BaseConstructorArgs, type LoadDialogsInnerArgs } from '@components/autonomousDialogList/base'
 import Scrollable from '@components/scrollable'
 import SortedDialogList, { CustomPinnedDialog } from '@components/sortedDialogList'
@@ -62,8 +58,7 @@ import { setTransition } from '@core/dom/setTransition'
 import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '@core/folderIds'
 import { dialogMatchesFolder } from '@core/folderFilter'
 import { isDialogArchived, type Dialog } from '@core/models'
-import { cachedChat, cachedPeer, peerMirrorVersion, subscribePeerMirror } from '@core/peerCache'
-import { dialogToChat } from '@core/dialogToChat'
+import { cachedChat, cachedPeer, subscribePeerMirror } from '@core/peerCache'
 import { isForum } from '@core/peers/predicates'
 import { isUserStatusOnline } from '@core/peers/peer'
 import rootScope from '@lib/rootScope'
@@ -77,22 +72,14 @@ type ConstructorArgs = BaseConstructorArgs & {
   filterId: number,
 }
 
-/** tweb `archiveDialog.tsx:44` — тег строки «Архив»; по нему её находит клик списка. */
-export const ARCHIVE_DIALOG_TAG_NAME = 'archive-dialog'
-
-/** `archiveDialog.tsx:27` — страница архива, которой живёт строка «Архив». */
-const ARCHIVE_ROW_LIMIT = 10
-
-/** Список «Всех чатов» без закреплённого архива — архива в зеркале нет. */
-const hasArchivedDialogs = (dialogs: readonly Dialog[]) => dialogs.some(isDialogArchived)
+// ВРЕМЕННО до влития П-2 «ядро»: клик списка (`lib/appDialogsManager.ts`) берёт тег
+// отсюда; у tweb — из `archiveDialog` (`appDialogsManager.ts:117`), запрос в контракте П-2
+export { archiveDialogTagName as ARCHIVE_DIALOG_TAG_NAME }
 
 export class AutonomousDialogList extends AutonomousDialogListBase {
   protected filterId: number
+  private archiveDialogState?: DisposableArchiveDialogState
   private customPinnedDialog?: CustomPinnedDialog
-  private disposeArchiveRow?: () => void
-  private hasArchiveDialog = false
-  /** владелец ответил «архива нет вовсе» — больше не спрашиваем (расхождение 2) */
-  private noArchive = false
   private unsubscribers: (() => void)[] = []
 
   constructor({ filterId, ...args }: ConstructorArgs) {
@@ -101,9 +88,22 @@ export class AutonomousDialogList extends AutonomousDialogListBase {
     this.filterId = filterId
 
     if(filterId === ALL_FOLDER_ID) {
-      // ВРЕМЕННО до 1-5: строка «Архив» — React-остров (расхождение 2)
       this.customPinnedDialog = new CustomPinnedDialog({
-        render: () => this.renderArchiveRow(),
+        render: () => {
+          const element = new ArchiveDialog()
+          element.feedProps({
+            state: this.archiveDialogState!.state,
+          })
+
+          return element
+        },
+      })
+
+      this.archiveDialogState = createArchiveDialogState({
+        managers: this.managers,
+        onHasArchiveDialogChanged: (hasDialogs) => {
+          void this.onHasArchiveDialogChanged(hasDialogs)
+        },
       })
     }
 
@@ -176,11 +176,6 @@ export class AutonomousDialogList extends AutonomousDialogListBase {
     prevIndexById: Record<number, number>,
     indexById: Record<number, number>,
   ) {
-    if(this.customPinnedDialog) {
-      const hasArchive = hasArchivedDialogs(dialogs)
-      if(hasArchive !== this.hasArchiveDialog) this.onHasArchiveDialogChanged(hasArchive)
-    }
-
     if(!this.isActive) {
       return
     }
@@ -324,12 +319,14 @@ export class AutonomousDialogList extends AutonomousDialogListBase {
 
     const unblock = isFirstLoad ? this.sortedList.blockAnimation() : () => {}
     try {
-      this.ensureArchiveDialogHydrated()
-      const result = await super.loadDialogsInner({
-        offsetIndex,
-        removePlaceholder: false,
-        canFinish,
-      })
+      const [result] = await Promise.all([
+        super.loadDialogsInner({
+          offsetIndex,
+          removePlaceholder: false,
+          canFinish,
+        }),
+        this.ensureArchiveDialogHydrated(),
+      ])
 
       this.placeholder?.detach(this.sortedList.itemsLength())
 
@@ -342,48 +339,17 @@ export class AutonomousDialogList extends AutonomousDialogListBase {
     }
   }
 
-  /**
-   * tweb `:382-396` (расхождение 2). Ответ здесь НЕ применяется: страницу владелец
-   * объявляет сам (`dialog_op` → зеркало), и строка появится подпиской на
-   * зеркало. Читается одно — «архива нет вовсе», чтобы больше не спрашивать;
-   * упавший запрос признака не ставит, и следующая страница спросит снова.
-   */
-  private ensureArchiveDialogHydrated() {
-    if(!this.customPinnedDialog) return
-    // `ensureHydrated()` без промиса — архив уже есть: закрепить строку (после `clear()` её нет)
-    if(hasArchivedDialogs(useChatsStore.getState().dialogs)) {
-      this.onHasArchiveDialogChanged(true)
+  /** tweb `:413-425`: страница строки «Архив» — один раз; уже есть — закрепить строку (после `clear()` её нет) */
+  private async ensureArchiveDialogHydrated() {
+    if(!this.archiveDialogState) return
+
+    const promise = this.archiveDialogState.state.ensureHydrated()
+    if(!promise) {
+      await this.onHasArchiveDialogChanged(this.archiveDialogState.hasArchiveDialog())
       return
     }
 
-    if(this.noArchive) return
-
-    void this.managers.dialogs.getDialogs({ filterId: ARCHIVE_FOLDER_ID, limit: ARCHIVE_ROW_LIMIT })
-    .then((r) => {
-      if(!r.dialogs.length && r.isEnd) this.noArchive = true
-    })
-    .catch(() => {})
-  }
-
-  /**
-   * ВРЕМЕННО до 1-5: React-`ArchiveRow` островом в узле с тегом строки архива tweb
-   * (`archiveDialogTagName`, `archiveDialog.tsx:44`) — по нему клик списка открывает
-   * архив (`setListClickListener`, tweb `:2137-2141`). Прежний корень снимается после
-   * текущего рендера: строку перестраивает ядро списка, и это бывает посреди
-   * рендера React (операция зеркала из его обработчика).
-   */
-  private renderArchiveRow() {
-    this.disposeArchiveRow?.()
-    const element = document.createElement(ARCHIVE_DIALOG_TAG_NAME)
-    const root = createReactRoot(element)
-    const openArchive = () => this.appDialogsManager.openArchiveTab()
-    root.render(createElement(ArchiveRowIsland, { onOpen: openArchive }))
-    this.disposeArchiveRow = () => {
-      queueMicrotask(() => root.unmount())
-      this.disposeArchiveRow = undefined
-    }
-
-    return element
+    await promise
   }
 
   /** tweb `:672-685` */
@@ -459,22 +425,15 @@ export class AutonomousDialogList extends AutonomousDialogListBase {
     return super.canUpdateDialog(dialog)
   }
 
-  /** tweb `:826-834` */
-  private onHasArchiveDialogChanged(hasArchiveDialog: boolean) {
-    if(!this.customPinnedDialog) return
+  /** tweb `:825-834` */
+  private async onHasArchiveDialogChanged(hasArchiveDialog: boolean) {
+    if(!this.customPinnedDialog || !this.archiveDialogState) return
 
-    this.hasArchiveDialog = hasArchiveDialog
     if(hasArchiveDialog) {
-      void this.sortedList.ensurePinned(this.customPinnedDialog)
+      await this.sortedList.ensurePinned(this.customPinnedDialog)
     } else {
       this.sortedList.removePinned(this.customPinnedDialog)
     }
-  }
-
-  /** tweb `:836-846`: закреплённые строки список отдаёт вместе с прочими */
-  public clear(): void {
-    super.clear()
-    this.hasArchiveDialog = false
   }
 
   /** tweb `:848-853` */
@@ -482,23 +441,6 @@ export class AutonomousDialogList extends AutonomousDialogListBase {
     this.unsubscribers.forEach((unsubscribe) => unsubscribe())
     this.unsubscribers = []
     super.destroy()
-    this.disposeArchiveRow?.()
+    this.archiveDialogState?.dispose()
   }
-}
-
-/**
- * ВРЕМЕННО до 1-5: остров строки «Архив». Архивные чаты — вью-модель зеркала
- * (`dialogToChat`), перерисовка — по движению диалогов и карточек пиров (имена).
- * Пробел зеркала пиров объявляет сам список строк (`PeerTitle`/`avatarNew`).
- */
-function ArchiveRowIsland({ onOpen }: { onOpen: () => void }) {
-  const dialogs = useChatsStore((state) => state.dialogs)
-  const meId = useChatsStore((state) => state.meId)
-  const peersVersion = useSyncExternalStore(subscribePeerMirror, peerMirrorVersion)
-  const archived = useMemo(
-    () => dialogs.filter(isDialogArchived).map((dialog) => dialogToChat(dialog, meId)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- версия зеркала пиров — триггер пересчёта имён
-    [dialogs, meId, peersVersion],
-  )
-  return createElement(ArchiveRow, { chats: archived, onOpen })
 }
