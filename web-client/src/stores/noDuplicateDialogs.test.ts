@@ -37,16 +37,11 @@ function walk(dir: string, acc: string[] = []): string[] {
  * round-trip'а) — список диалогов витрина не сочиняет сама, только зеркалит
  * уже применённое владельцем.
  *
- * Единственное допущенное исключение — `core/hooks/useAuthGate.ts`
- * (`resetAccountStateInMemory`, обработчик `rt:logging_out`): владелец
- * (dialogsManager) на переходе сессии чистит СВОЙ кэш (`resetForLogout()`,
- * см. dialogsManager.ts), но НЕ публикует rt:dialog_op reset — значит очистить
- * ЗЕРКАЛО от чужих диалогов прошлого аккаунта обязана та же вкладка, что и
- * `resetAppState()`/`resetStateCache()` рядом (иначе они успели бы сброситься,
- * а список диалогов — нет). Обоснование прямо у вызова в файле; см. образец
- * `me` (setMe-исключения) — `stores/noDuplicateMe.test.ts`.
+ * Исключения для выхода больше нет (К-2 волны 7): переход сессии —
+ * перезагрузка страницы (`src/index.ts::listenSessionTransitions`), зеркало
+ * прошлого аккаунта умирает вместе с ней.
  */
-const ALLOWED = ['client/realtime/storeProjection.ts', 'client/boot.ts', 'core/hooks/useAuthGate.ts']
+const ALLOWED = ['client/realtime/storeProjection.ts', 'client/boot.ts']
 
 /**
  * Запись в стор ищем не по голым `set(`/`applyDialogOps(` (второе — легитимное

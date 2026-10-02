@@ -12,26 +12,17 @@
  * `open` кладёт вкладку поверх истории слайдера (Back/Esc снимают её по
  * одной), `toggleSidebar(true)` при непустой истории вкладку профиля не
  * трогает. Из React зовётся тем же текстом в обработчике события: `import
- * appSidebarRight from '@components/sidebarRight'` — живая привязка, до
- * монтирования шелла её нет (см. п. 1 ниже).
+ * appSidebarRight from '@components/sidebarRight'`.
  *
  * Расхождения с оригиналом (все временные, с номером задачи, которая снимает):
- *  1. ВРЕМЕННО до Э4-1 (поправка 13 плана волны 7). Синглтон tweb создаётся при
- *     импорте (`:141`) и берёт узел из `index.html`. У нас `#column-right`
- *     рисует `App.tsx`, поэтому экземпляр создаёт `createAppSidebarRight()` из
- *     layout-эффекта шелла ПОСЛЕ монтирования узла, а `destroy()` снимает всё,
- *     что навесил `construct` (шелл умирает на логауте, StrictMode гоняет
- *     эффект дважды на одном узле). Экспорт — живая привязка
- *     (`export { appSidebarRight as default }`), вызывающие читают её в
- *     момент события.
+ *  1. (снято на К-2) Синглтон создаётся при импорте, как у tweb (`:141`), над
+ *     статичным `#column-right` из `index.html`.
  *  2. ВРЕМЕННО до 3-1. Вкладка «общих медиа» — `AppReactProfileTab`
  *     (`reactProfileTab.ts`, хост React-панели `UserInfoPanel`), а не
  *     `AppSharedMediaTab`. `replaceSharedMediaTab` зовёт `Chat.tsx`, когда
  *     инстанс становится активным (порт смысла `chat.ts:1239-1242`,
  *     `appImManager.ts:3277`) — ВРЕМЕННО до Э6.
- *  3. ВРЕМЕННО до Э4-2. `appImManager.selectTab(active ? CHAT : PROFILE,
- *     animate)` (`:125`) — класса нет, строка зовёт срез его тела
- *     `selectProfileTab` (`core/navigation/chatHistory.ts`).
+ *  3. (снято К-2: `appImManager.selectTab(active ? CHAT : PROFILE, animate)`, `:125`.)
  *  4. `sharedMediaTab` объявлен необязательным (строгие типы: до первого
  *     `replaceSharedMediaTab` его нет и у оригинала); `toggleSidebar` обращается
  *     к нему с `!` — там, где оригинал обращается напрямую.
@@ -46,15 +37,12 @@ import rootScope from '@lib/rootScope'
 import { installColumnWidthsUpdater } from '@core/dom/updateColumnWidths'
 import installColumnResize from '@core/dom/installColumnResize'
 import animationIntersector from '@components/animationIntersector'
-import { selectProfileTab } from '@core/navigation/chatHistory'
+import appImManager, { APP_TABS } from '@lib/appImManager'
 
 export const RIGHT_COLUMN_ACTIVE_CLASSNAME = 'is-right-column-shown'
 
 export class AppSidebarRight extends SidebarSlider {
   public sharedMediaTab?: AppReactProfileTab
-  // ВРЕМЕННО до Э4-1 (п. 1 шапки): то, что снимает `destroy()`.
-  private onChangeScreen?: (from: ScreenSize, to: ScreenSize) => void
-  private disposeColumnResize?: () => void
 
   constructor() {
     super({
@@ -69,15 +57,14 @@ export class AppSidebarRight extends SidebarSlider {
   construct(managers: Managers) {
     this.managers = managers
 
-    this.onChangeScreen = (from, to) => {
+    mediaSizes.addEventListener('changeScreen', (from, to) => {
       if(to === ScreenSize.medium && from !== ScreenSize.mobile) {
         void this.toggleSidebar(false)
       }
-    }
-    mediaSizes.addEventListener('changeScreen', this.onChangeScreen)
+    })
 
     installColumnWidthsUpdater()
-    this.disposeColumnResize = installColumnResize({ columnEl: this.sidebarEl, side: 'right' })
+    installColumnResize({ columnEl: this.sidebarEl, side: 'right' })
   }
 
   public createSharedMediaTab() {
@@ -162,7 +149,7 @@ export class AppSidebarRight extends SidebarSlider {
       void this.sharedMediaTab!.open()
     }
 
-    const animationPromise = selectProfileTab(animate) // ВРЕМЕННО до Э4-2 — appImManager.selectTab(active ? APP_TABS.CHAT : APP_TABS.PROFILE, animate)
+    const animationPromise = appImManager.selectTab(active ? APP_TABS.CHAT : APP_TABS.PROFILE, animate)
     if(!enable) this.hide()
     else {
       document.body.classList.add(RIGHT_COLUMN_ACTIVE_CLASSNAME)
@@ -176,27 +163,8 @@ export class AppSidebarRight extends SidebarSlider {
     }
     return animationPromise
   }
-
-  /**
-   * ВРЕМЕННО до Э4-1 (п. 1 шапки) — у оригинала метода нет: синглтон вечен.
-   * Закрывает колонку и вкладки (`super.destroy`), снимает слушатель экрана и
-   * ручку ресайза, которые повесил `construct`.
-   */
-  public destroy() {
-    void this.toggleSidebar(false)
-    super.destroy()
-    if(this.onChangeScreen) mediaSizes.removeEventListener('changeScreen', this.onChangeScreen)
-    this.disposeColumnResize?.()
-  }
 }
 
-// ВРЕМЕННО до Э4-1 (п. 1 шапки): у tweb — `const appSidebarRight = new AppSidebarRight()` при импорте (:141-143).
-let appSidebarRight!: AppSidebarRight
-
-export function createAppSidebarRight() {
-  appSidebarRight = new AppSidebarRight()
-  MOUNT_CLASS_TO.appSidebarRight = appSidebarRight
-  return appSidebarRight
-}
-
-export { appSidebarRight as default }
+const appSidebarRight = new AppSidebarRight()
+MOUNT_CLASS_TO.appSidebarRight = appSidebarRight
+export default appSidebarRight

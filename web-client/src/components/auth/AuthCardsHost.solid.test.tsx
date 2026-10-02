@@ -29,6 +29,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Managers } from '@/client/bootstrap'
 
+// `toIm()` зовёт `bootstrapIm()` (tweb `AuthCardsHost.tsx:105`) — подъём мессенджера
+// здесь не предмет и тянул бы весь каркас колонок.
+vi.mock('@/pages/bootstrapIm', () => ({ bootstrapIm: vi.fn(async() => {}) }))
+
 let render: typeof import('solid-js/web').render
 let navigateAuth: typeof import('./authFlow.solid').navigateAuth
 let AuthCardsHost: typeof import('./AuthCardsHost.solid').default
@@ -74,13 +78,12 @@ afterEach(() => {
   localStorage.clear()
 })
 
-function mount(props: { managers?: Managers; onComplete?: () => void } = {}) {
+function mount(props: { managers?: Managers } = {}) {
   host = document.createElement('div')
   document.body.append(host)
   const managers = props.managers ?? mockManagers()
-  const onComplete = props.onComplete ?? vi.fn()
   dispose = render(
-    (() => <AuthCardsHost managers={managers} onComplete={onComplete} />) as () => never,
+    (() => <AuthCardsHost managers={managers} />) as () => never,
     host,
   )
   return host

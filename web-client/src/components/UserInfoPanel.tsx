@@ -325,8 +325,7 @@ export default function UserInfoPanel({ profileTab, chat, onOpenPeer, canAddMemb
     onChangeTab: (mediaTab) => setTab(mediaTab.type),
     onLengthChange: (type, length) => setCounters((c) => (c[type] === length ? c : { ...c, [type]: length })),
     // `appSearchSuper.ts:1569` оригинала — `appImManager.setInnerPeer({peerId})`;
-    // у нас та же навигация — `onOpenPeer` (`core/navigation/openPeer.ts`), ей
-    // нужна карточка из зеркала: класс объявил пробел `peers.fillMirror` до клика.
+    // у нас — `onOpenPeer` экрана чата (тот же `setInnerPeer`).
     openPeer: (id) => {
       const user = realUser(id)
       onOpenPeer?.({ id, title: getUserTitle(user), username: user?.username, photoId: getPeerPhotoId(user?.photo) || undefined })

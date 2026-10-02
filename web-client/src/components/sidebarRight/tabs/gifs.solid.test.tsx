@@ -8,7 +8,7 @@
  * настоящей правой колонке (`AppSidebarRight`, `test/sidebarRight.ts`).
  * Стабы — только границы: поиск GIF (воркер, прокси Tenor), `IntersectionObserver`
  * (в happy-dom его нет — колбэк дёргается руками) и инстанс чата (мост
- * `appImManager`, ВРЕМЕННО до Э4-3).
+ * `appImManager.chat`, ВРЕМЕННО до К-3).
  *
  * Предмет проверок:
  *  • разметка — живой DOM tweb (дампы 19-emoticons-04/05): `#search-gifs-container`,
@@ -29,7 +29,14 @@ import type { GifPage, TenorGif } from '@core/managers/stickersManager'
 import appNavigationController from '@core/navigation/appNavigationController'
 import mediaSizes from '@helpers/mediaSizes'
 import { installSidebarRight } from '@/test/sidebarRight'
-import { appImManager } from './emoticonsSearchBridge'
+import appImManager from '@lib/appImManager'
+
+// открытый чат вкладки — `appImManager.chat`: геттер синглтона подменяется на тест
+let openChat: unknown
+const setChat = (chat: unknown) => { openChat = chat }
+beforeEach(() => {
+  vi.spyOn(appImManager, 'chat', 'get').mockImplementation(() => openChat as typeof appImManager.chat)
+})
 
 type Entry = { target: Element, isIntersecting: boolean }
 class IntersectionObserverStub {
@@ -83,7 +90,7 @@ afterEach(async() => {
   column.dispose()
   await settle()
   appNavigationController.spliceItems(0, Infinity)
-  appImManager.chat = undefined
+  setChat(undefined)
   mediaSizes.isMobile = false
   vi.restoreAllMocks()
   document.body.replaceChildren()
@@ -198,7 +205,7 @@ describe('вкладка «Поиск GIF» — клик', () => {
   it('отправка самим элементом в композер чата; на десктопе колонка остаётся', async() => {
     const onCloseBtnClick = vi.spyOn(column.sidebar, 'onCloseBtnClick')
     const sendMessageWithDocument = vi.fn(async() => true)
-    appImManager.chat = { peerId: 5, input: { sendMessageWithDocument } }
+    setChat({ peerId: 5, input: { sendMessageWithDocument } })
     const tab = await open()
 
     const [, second] = cells(tab)
@@ -215,7 +222,7 @@ describe('вкладка «Поиск GIF» — клик', () => {
   it('на мобильном после отправки колонка закрывается', async() => {
     mediaSizes.isMobile = true
     const onCloseBtnClick = vi.spyOn(column.sidebar, 'onCloseBtnClick')
-    appImManager.chat = { peerId: 5, input: { sendMessageWithDocument: async() => true } }
+    setChat({ peerId: 5, input: { sendMessageWithDocument: async() => true } })
     const tab = await open()
 
     cells(tab)[0].click()

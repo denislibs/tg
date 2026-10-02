@@ -27,8 +27,7 @@
  *     `managers.groups.setPhoto(peerId, mediaId)` — фото ставится ключом пира
  *     и id залитого медиа (шапка `components/avatarEdit.ts`, расхождение 3;
  *     класс общий с «Новым каналом», задача 0а-3).
- *  4. `appImManager.setInnerPeer` → `core/navigation/openPeer.ts` (роль
- *     `setInnerPeer`, пока `AppImManager` не портирован — этап 4).
+ *  4. (снято К-2: открытие — `appImManager.setInnerPeer`.)
  *  5. `handleMissingInvitees` (`addChatUsers.ts:15`, попап «пригласить
  *     ссылкой») не портирован — нет `showPickUserPopup` (О-35 волны 7):
  *     пропущенные настройкой приватности просто не попадают в группу.
@@ -51,7 +50,7 @@ import toggleDisability from '@helpers/dom/toggleDisability'
 import { unwrapSolidElement } from '@helpers/solid/wrapSolidComponent'
 import rootScope from '@lib/rootScope'
 import { getUserStatusString } from '@core/presence'
-import { openPeer } from '@core/navigation/openPeer'
+import appImManager from '@lib/appImManager'
 import { toPeerId, toUserId } from '@core/peers/peerId'
 
 const NewGroup = () => {
@@ -123,7 +122,7 @@ const NewGroup = () => {
       })
       .then(({ chatId }) => {
         tab.close()
-        openPeer(managers, { id: toPeerId(chatId, true), title: groupTitle })
+        void appImManager.setInnerPeer({ peerId: toPeerId(chatId, true) })
         // О-35 волна 7: `handleMissingInvitees(chatId, missingInvitees)` (расхождение 5)
       }).catch((err: unknown) => {
         console.error('createGroup error', err)

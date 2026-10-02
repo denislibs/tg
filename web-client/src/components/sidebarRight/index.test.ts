@@ -5,23 +5,21 @@
 // контроллеру навигации, `body` и слайдеру.
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import appNavigationController from '@core/navigation/appNavigationController'
 import mediaSizes, { ScreenSize } from '@core/dom/mediaSizes'
 import rootScope from '@lib/rootScope'
+import appImManager from '@lib/appImManager'
 import { NAVIGATION_TRANSITION_TIME } from '@components/transition'
 import SliderSuperTab from '@components/sliderTab'
 import type { Managers } from '../../client/bootstrap'
-import appSidebarRight, { createAppSidebarRight, RIGHT_COLUMN_ACTIVE_CLASSNAME, type AppSidebarRight } from './index'
+import { returnToStaticMarkup } from '@/test/staticMarkup'
+import appSidebarRight, { RIGHT_COLUMN_ACTIVE_CLASSNAME, type AppSidebarRight } from './index'
 
-/** Разметка tweb `index.html:110-112` — та же, что рисует `App.tsx`. */
+/** Статичный `#column-right` из `index.html` (`test/staticMarkup.ts`) — в `body` на время теста. */
 function mountColumn() {
-  const column = document.createElement('div')
-  column.id = 'column-right'
-  column.className = 'tabs-tab sidebar sidebar-right main-column'
-  const slider = document.createElement('div')
-  slider.className = 'sidebar-content sidebar-slider tabs-container'
-  column.append(slider)
+  const column = appSidebarRight.sidebarEl
+  const slider = column.querySelector<HTMLElement>('.sidebar-slider')!
   document.body.append(column)
   return { column, slider }
 }
@@ -41,30 +39,38 @@ const esc = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Esca
 /** Переход (250) + отложенные хуки вкладки (280) + очередь истории контроллера. */
 const settle = () => vi.advanceTimersByTime(NAVIGATION_TRANSITION_TIME * 3 + 600)
 
-let sidebar: AppSidebarRight
+const sidebar: AppSidebarRight = appSidebarRight
 let dom: ReturnType<typeof mountColumn>
 
-beforeEach(() => {
-  vi.useFakeTimers()
-  dom = mountColumn()
-  sidebar = createAppSidebarRight()
+// Синглтон вечен (К-2), `construct` у него — один раз, как в приложении.
+beforeAll(() => {
   sidebar.construct({} as Managers)
 })
 
+beforeEach(() => {
+  vi.useFakeTimers()
+  // переход вкладок центра — предмет `lib/appImManager.test.ts`; ядро здесь не сконструировано
+  vi.spyOn(appImManager, 'selectTab').mockResolvedValue(undefined)
+  dom = mountColumn()
+})
+
 afterEach(() => {
-  sidebar.destroy()
+  void sidebar.toggleSidebar(false)
+  sidebar.closeAllTabs()
+  sidebar.replaceSharedMediaTab(undefined)
   settle()
   appNavigationController.spliceItems(0, Infinity)
   settle()
   vi.useRealTimers()
   document.body.className = ''
+  returnToStaticMarkup(dom.column)
   document.body.replaceChildren()
+  vi.restoreAllMocks()
 })
 
 describe('AppSidebarRight — синглтон на статичном #column-right', () => {
-  it('экспорт по умолчанию — живая привязка к созданному экземпляру; узел — #column-right, закрытая колонка inert', () => {
-    expect(appSidebarRight).toBe(sidebar)
-    expect(sidebar.sidebarEl).toBe(dom.column)
+  it('синглтон при импорте над статичным #column-right (tweb :141-143); закрытая колонка inert', () => {
+    expect(sidebar.sidebarEl.id).toBe('column-right')
     expect(dom.column.inert).toBe(true)
   })
 })
@@ -211,18 +217,6 @@ describe('AppSidebarRight.construct', () => {
   it('ручка ресайза правой колонки — в колонке', () => {
     expect(dom.column.querySelector(':scope > .sidebar-resize-handle.sidebar-resize-handle-right')).not.toBeNull()
   })
-
-  it('destroy(): колонка закрыта, ручки нет, слушатель экрана снят', () => {
-    sidebar.replaceSharedMediaTab(sidebar.createSharedMediaTab())
-    void sidebar.toggleSidebar(true)
-    sidebar.destroy()
-    expect(shown()).toBe(false)
-    expect(rightItems()).toBe(0)
-    expect(dom.column.querySelector('.sidebar-resize-handle')).toBeNull()
-    const spy = vi.spyOn(sidebar, 'toggleSidebar')
-    mediaSizes.dispatchEvent('changeScreen', ScreenSize.large, ScreenSize.medium)
-    expect(spy).not.toHaveBeenCalled()
-  })
 })
 
 describe('один писатель `is-right-column-shown`', () => {
@@ -255,11 +249,12 @@ describe('один писатель `is-right-column-shown`', () => {
 
   // Узел колонки один и статичный (tweb `index.html:110-112`): его рисует
   // шелл, а не портал каждой панели профиля, как раньше `UserInfoPanel`.
-  it('`id="column-right"` в разметке — ровно один, в App.tsx', () => {
+  it('`id="column-right"` — ровно один, статикой в index.html (tweb :110-112); в коде — ни одного', () => {
     const hosts = walk(SRC).flatMap((p) => {
       const n = readFileSync(p, 'utf8').match(/id="column-right"/g)?.length ?? 0
       return n ? [`${relative(SRC, p)}:${n}`] : []
     })
-    expect(hosts).toEqual(['App.tsx:1'])
+    expect(hosts).toEqual([])
+    expect(readFileSync(join(SRC, '../index.html'), 'utf8').match(/id="column-right"/g)).toHaveLength(1)
   })
 })

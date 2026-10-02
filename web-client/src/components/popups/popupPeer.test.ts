@@ -3,7 +3,6 @@
 // `popupElement.test.ts`, гоняют НАСТОЯЩИЕ классы на реальном DOM (happy-dom),
 // без моков.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { initHotkeys } from '@core/hotkeys'
 import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import type { AvatarManagers } from '@components/avatar'
@@ -93,7 +92,6 @@ describe('confirmationPopup — порт tweb popups/peer.ts + simpleConfirmatio
 
   it('Esc реджектит промис (отмена), а не оставляет попап висеть без исхода', async() => {
     vi.useFakeTimers()
-    const deactivate = initHotkeys({})
 
     const promise = confirmationPopup({
       titleLangKey: 'ChatList.Context.DeleteChat',
@@ -110,8 +108,6 @@ describe('confirmationPopup — порт tweb popups/peer.ts + simpleConfirmatio
 
     await expect(promise).rejects.toBeUndefined()
     expect(document.body.contains(root)).toBe(false)
-
-    deactivate()
   })
 })
 

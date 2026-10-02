@@ -602,6 +602,9 @@ React-`GroupEditFlow`.
 | Б-44 | Истории профиля (`PinnedStoriesSection.tsx`), QR из профиля (`QrModal`), проверка ключа секретного чата | К-5 | `sharedMedia.tsx` (истории), 2C-17, Отступление В7-2 | П-1 |
 | Б-45 | `visibility: hidden`/`visible` у `.btn-corner` (a11y-дельта tweb 472e3e76b): у нас угловая кнопка (`#new-menu` и др.) прячется только сдвигом и остаётся в порядке Tab | К-1 (не было) | `scss/partials/_button.scss:54`, `:82`, `_leftSidebar.scss` `.btn-corner:not(.is-hidden)` | П-3 |
 | Б-46 | «Новая конференция» в `#new-menu` и подменю «Создать» (`ConferenceCall.New`) | К-1 (не было) | `sidebarLeft/index.ts:1093-1101`, `environment/conferenceCallSupport.ts` | бэкенд: конференц-звонков нет (О-1 плана программы) |
+| Б-47 | Ссылка «пропустить к чату» и имена ориентиров колонок (`attachSkipToContent`, `setLandmarkLabels`): ключей `AccDescr.SkipToConversation`/`ChatList`/`ChatInfo` в лангпаке нет | К-2 (не было) | `helpers/dom/appLandmarks.ts`, `appImManager.ts:349-352`, `:3199-3201` | П-4 |
+| Б-48 | Хэши страницы бэкенда `#@имя/<seq>` и `#<peerId>/<seq>` (кнопка публичной страницы, `public_page.go:40-41`) — `onHashChange` tweb принимает только `#@имя`, `#<peerId>`, `#/im?p=…&post=` | К-2 | `appImManager.ts:1912-2031` | **закрыто PR #380**: кнопка поста публичной страницы ведёт на `#@имя?post=<seq>` (схема tweb `onHashChangeUnsafe` → `openUsername({lastMsgId})`) |
+| Б-49 | Пилюля «доступна новая сборка» (`useUpdateStore`) — только в мессенджере (остров `#react-overlays` монтирует `bootstrapIm`), на экране входа её нет; бейдж `api: ok/down` (dev-индикатор `App.tsx`, не tweb) снят без замены | К-2 | `sidebarLeft/index.ts:202-216`, `:367-384` (`updateBtn`, `checkForUpdates`) | О-100 / П-3 (кнопка «Обновить» в шапке колонки) |
 
 ### Пачки бэклога
 

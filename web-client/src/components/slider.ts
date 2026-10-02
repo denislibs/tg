@@ -63,7 +63,7 @@
 import SliderSuperTab, { type SliderSuperTabConstructable } from '@components/sliderTab'
 import indexOfAndSplice from '@helpers/array/indexOfAndSplice'
 import safeAssign from '@helpers/object/safeAssign'
-import { getMiddleware, type Middleware, type MiddlewareHelper } from '@helpers/middleware'
+import { getMiddleware, type MiddlewareHelper } from '@helpers/middleware'
 import TransitionSlider, { NAVIGATION_TRANSITION_TIME } from '@components/transition'
 import appNavigationController, { type NavigationItem, type NavigationItemType } from '@core/navigation/appNavigationController'
 import type { Managers } from '../client/bootstrap'
@@ -110,14 +110,6 @@ export default class SidebarSlider {
   private navigationType!: NavigationItemType
   protected managers?: Managers
   protected middlewareHelper!: MiddlewareHelper
-  /**
-   * Снимок собственной миддлвари, взятый В КОНСТРУКТОРЕ, — «слайдер ещё жив».
-   * Именно снимок, а не `getMiddleware()` по месту: `destroy()` гасит хелпер,
-   * а `MiddlewareHelper.clean()` тут же заводит СВЕЖИЙ `details`
-   * (`helpers/middleware.ts:39`), поэтому повторный `get()` после смерти
-   * отдаёт снова живую миддлварь и ничего не различает.
-   */
-  private middleware!: Middleware
   public onOpenTab?: () => void | Promise<void>
   public onTabsCountChange?: () => void
 
@@ -139,30 +131,10 @@ export default class SidebarSlider {
     }
 
     this.middlewareHelper = getMiddleware()
-    this.middleware = this.middlewareHelper.get()
   }
 
   public getMiddleware() {
     return this.middlewareHelper.get()
-  }
-
-  /**
-   * Слайдер отдаёт владение всем, что успел развесить. Метода НЕТ в оригинале
-   * (#112): там слайдеры — синглтоны обеих колонок и живут столько же, сколько
-   * приложение, поэтому вопрос «а если слайдер умер» у tweb не возникает. У нас
-   * колоночный слайдер живёт столько же, сколько React-колонка (`Sidebar.tsx`,
-   * расхождение 1 шапки `sidebarLeft/index.ts`), и обязан уметь умирать вместе с
-   * ней. ВРЕМЕННО до Э4-1: с узлами колонок из `index.html` слайдер снова
-   * станет вечным, и метод уйдёт.
-   *
-   * Гасим ИМЕННО `middlewareHelper`, а не заводим отдельный флаг: миддлварь
-   * каждой вкладки — его ребёнок (`sliderTab.ts::_constructor`, tweb :47), то
-   * есть одно гашение каскадом объявляет недействительным ВСЁ, что вкладки
-   * ждут от воркера. Это же и есть признак «слайдер мёртв» для `selectTab`.
-   */
-  public destroy() {
-    this.closeAllTabs()
-    this.middlewareHelper.destroy()
   }
 
   public onCloseBtnClick = () => {
@@ -232,20 +204,6 @@ export default class SidebarSlider {
   }
 
   public async selectTab(id: number | SliderSuperTab) {
-    // Единственная воронка открытия — сюда сходятся и `tab.open()`, и прямой
-    // вызов. Слайдер мог умереть, пока вкладка ждала свой чанк и данные
-    // (`SliderSuperTab.open` держит `await` между `createTab` и этой строкой):
-    // показывать её некуда, а её след — узлы мимо колонки, слой навигации и
-    // Esc-обработчик — пережил бы свой экран. Разбираем вкладку тем же путём,
-    // каким разбирается закрытая (`onCloseTab` → `onCloseAfterTimeout`), и
-    // `isNavigation: true`, потому что своей записи навигации у неё нет —
-    // `pushNavigationItem` ниже до неё не дошёл. Ветки нет в оригинале по той
-    // же причине, что и `destroy()` выше (#112).
-    if(!this.middleware()) {
-      this.onCloseTab(id, false, true)
-      return false
-    }
-
     if(this.historyTabIds[this.historyTabIds.length - 1] === id) {
       return false
     }

@@ -34,7 +34,7 @@ import rootScope from '@lib/rootScope'
 
 import { applyDialogsMirror, fillDialogsMirror } from './boot'
 import { registerStoreProjection } from './realtime/storeProjection'
-import { AppDialogsManager } from '../lib/appDialogsManager'
+import appDialogsManager, { type AppDialogsManager } from '../lib/appDialogsManager'
 import { installSidebarLeft, type InstalledSidebarLeft } from '../test/sidebarLeft'
 import { newDialogsManager } from '../core/managers/dialogsManager'
 import { DIALOG_LOAD_COUNT } from '../core/dialogs/loadCount'
@@ -43,7 +43,6 @@ import { ALL_FOLDER_ID } from '../core/folderIds'
 import { useChatsStore } from '../stores/chatsStore'
 import { useFoldersStore } from '../stores/foldersStore'
 import { useNotifyStore } from '../stores/notifyStore'
-import { useNavigationStore } from '../stores/navigationStore'
 import { useAppStateStore } from '../stores/appState'
 import { useSettingsStore } from '../settings'
 import type { Managers } from './bootstrap'
@@ -186,12 +185,12 @@ function sidebarManagers(dialogs: unknown): Managers {
 let column: InstalledSidebarLeft | undefined
 let owner: AppDialogsManager | undefined
 
-/** Колонка, как её поднимает шелл (`App.tsx`): класс колонки + владелец списка. */
+/** Колонка, как её поднимает `appDialogsManager.start()`: класс колонки + владелец списка. */
 async function renderSidebar(dialogs: unknown) {
   const managers = sidebarManagers(dialogs)
   column = installSidebarLeft(managers, undefined, { full: true })
-  owner = new AppDialogsManager()
-  owner.start(column.host, column.chatlistContainer, { managers, isForumOpen: () => false, openForum: () => {} })
+  owner = appDialogsManager
+  owner.startDialogs(managers)
   await act(async () => {})
 }
 
@@ -210,7 +209,6 @@ beforeEach(() => {
   useSettingsStore.setState({ passcodeEnabled: false })
   useFoldersStore.setState({ contactIds: new Set(), selectedId: ALL_FOLDER_ID })
   useAppStateStore.setState({ folders: [FOLDER] })
-  useNavigationStore.setState({ selectedId: null })
   useNotifyStore.setState({ settings: { private: { muted: false, preview: true }, groups: { muted: false, preview: true }, channels: { muted: false, preview: true } } })
 
   // высоту скроллеров списков ядро читает `getBoundingClientRect` (`useElementSize`)

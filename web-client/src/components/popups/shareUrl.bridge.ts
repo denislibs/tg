@@ -23,8 +23,7 @@ import { ForwardPicker } from '@components/messages/ChatDialogs'
 import { openPopup } from '@stores/popupStore'
 import { useChatsStore } from '@stores/chatsStore'
 import { startClient } from '@/client/bootstrap'
-import { openPeer } from '@core/navigation/openPeer'
-import { peerTitle } from '@core/peerCache'
+import appImManager from '@lib/appImManager'
 
 export type ShareUrlOptions = {
   url: string,
@@ -56,7 +55,7 @@ function SharePicker({ options, onClose }: { options: ShareUrlOptions, onClose: 
       })
 
       if(peerIds.length === 1 && options.openAfter) {
-        openPeer(managers, { id: peerIds[0], title: peerTitle(peerIds[0]) })
+        void appImManager.setInnerPeer({ peerId: peerIds[0] })
       }
     },
   })

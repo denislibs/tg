@@ -15,6 +15,7 @@ import { cachedChat, isAnyGroupPeer, peerTitle } from '../core/peerCache'
 import { getUserTitle } from '../core/peers/getPeerTitle'
 import { playIncoming } from '../core/audio/sounds'
 import { incNotificationsCount } from './appBadge'
+import appImManager from '../lib/appImManager'
 
 /** Входящее сообщение для уведомления — ЦЕЛЫЙ конструктор, а не выжимка из
  *  четырёх полей: кадр `new_message` несёт сообщение под ключом `message`
@@ -33,8 +34,11 @@ export function notifyIncomingMessage(evt: IncomingMsg): void {
   if (isDialogMuted(dialog, chat, notifySettings)) return
   const typeSettings = notifySettings[notifyTypeForChat(evt.peerId, chat)]
 
-  // Открытый чат в видимой вкладке — ни звука, ни уведомления (читается на экране).
-  if (s.activePeerId === evt.peerId && !document.hidden) return
+  // Открытый чат в видимой вкладке — ни звука, ни уведомления (читается на экране):
+  // tweb `notificationBuild` (`appImManager.ts:805-822`) сверяет `appImManager.chat`.
+  // Тред не сверяется — у кадра `new_message` его номера нет; видимость вкладки —
+  // наш аналог `!idleController.isIdle`.
+  if (appImManager.chat?.peerId === evt.peerId && !document.hidden) return
 
   // Счётчик для мигающего заголовка вкладки — до проверок звука/разрешения, как в
   // tweb (notify() инкрементит до `settings.desktop`/Notification.permission).

@@ -74,15 +74,10 @@ describe('updateColumnWidths', () => {
   })
 
   it('--page-chats-padding у #column-center — своя величина (16 десктоп)', () => {
-    const center = document.createElement('div')
-    center.id = 'column-center'
-    document.body.append(center)
-    try {
-      atWidth(1728)
-      expect(center.style.getPropertyValue('--page-chats-padding')).toBe('16px')
-    } finally {
-      center.remove()
-    }
+    // статичный `#column-center` из `index.html` (`test/staticMarkup.ts`)
+    const center = document.getElementById('column-center')!
+    atWidth(1728)
+    expect(center.style.getPropertyValue('--page-chats-padding')).toBe('16px')
   })
 })
 

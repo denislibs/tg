@@ -248,11 +248,11 @@ export default class GlobalSearch {
     const searchMiddlewareHelper = this.middlewareHelper.get().create()
     const middleware = searchMiddlewareHelper.get()
     const searchGroups: SearchGroups = {
-      contacts: createSearchGroup({ name: 'SearchAllChatsShort', type: 'contacts', onFound: close, middleware, managers }),
-      globalContacts: createSearchGroup({ name: 'GlobalSearch', type: 'contacts', onFound: close, middleware, managers }),
-      messages: createSearchGroup({ name: 'SearchMessages', type: 'messages', middleware, managers }),
-      people: createSearchGroup({ name: false, type: 'contacts', className: 'search-group-people', autonomous: false, onFound: close, noIcons: true, middleware, scrollableX: true, managers }),
-      recent: createSearchGroup({ name: 'Recent', type: 'contacts', className: 'search-group-recent', onFound: close, middleware, managers }),
+      contacts: createSearchGroup({ name: 'SearchAllChatsShort', type: 'contacts', onFound: close, middleware }),
+      globalContacts: createSearchGroup({ name: 'GlobalSearch', type: 'contacts', onFound: close, middleware }),
+      messages: createSearchGroup({ name: 'SearchMessages', type: 'messages', middleware }),
+      people: createSearchGroup({ name: false, type: 'contacts', className: 'search-group-people', autonomous: false, onFound: close, noIcons: true, middleware, scrollableX: true }),
+      recent: createSearchGroup({ name: 'Recent', type: 'contacts', className: 'search-group-recent', onFound: close, middleware }),
     }
 
     const chatTypeMenu = new ChatTypeMenu()

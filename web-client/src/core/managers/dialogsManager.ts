@@ -1265,7 +1265,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     /**
      * Порт `appMessagesManager.getDialogOnly` (tweb :4363-4365) в единственной
      * применимой форме — «строка диалога у меня есть». Спрашивает открытие по
-     * ссылке (`core/hooks/useUrlSync.ts`): у нас публичный канал, в котором
+     * ссылке (`appImManager.op`, `lib/appImManager.ts`): у нас публичный канал, в котором
      * пользователь не состоит, истории НЕ отдаёт (`chat_handler.go:499-502`,
      * 403 «not a member of this chat»), поэтому в него приходится вступать, а
      * лишний раз вступать в уже открытый канал — лишний round-trip.
@@ -1427,11 +1427,10 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       // бейдж не бампит.
       //
       // Отступление от прежнего main-кода (chatsStore.applyNewMessage): там ещё
-      // проверялся `activePeerId`, чтобы не бампить бейдж для открытого на ЭТОЙ
-      // вкладке чата. Воркер общий на все вкладки и какая из них что смотрит —
-      // не знает; `activePeerId` — эфемерика, остаётся на main (докблок
-      // ChatsState.activePeerId, спека docs/superpowers/specs/2026-08-12-
-      // dialogs-ownership-and-virtual-list-design.md, «Что остаётся на main»).
+      // проверялся открытый на ЭТОЙ вкладке чат, чтобы не бампить ему бейдж.
+      // Воркер общий на все вкладки и какая из них что смотрит — не знает;
+      // открытый чат — `appImManager.chat` вкладки (спека docs/superpowers/specs/
+      // 2026-08-12-dialogs-ownership-and-virtual-list-design.md, «Что остаётся на main»).
       // Блип бейджа для открытого чата гасит немедленный markRead активной вкладки.
       const incoming = m.fromId !== meId
       const nextUnread = incoming ? cur.unread_count + 1 : cur.unread_count

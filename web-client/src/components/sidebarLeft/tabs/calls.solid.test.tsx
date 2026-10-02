@@ -16,6 +16,7 @@
  * удаление из контекстного меню и уборка острова после закрытия.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import appImManager from '@lib/appImManager'
 import type { Managers } from '@/client/bootstrap'
 import type { MyMessage } from '@core/models'
 import rootScope from '@lib/rootScope'
@@ -43,11 +44,7 @@ vi.hoisted(() => {
 const startOutgoing = vi.fn()
 vi.mock('@core/calls/callEngine', () => ({ startOutgoing: (...args: unknown[]) => startOutgoing(...args) }))
 
-const openPeer = vi.fn()
-vi.mock('@core/navigation/openPeer', () => ({ openPeer: (...args: unknown[]) => openPeer(...args) }))
-
-const requestMessageJump = vi.fn()
-vi.mock('@core/messageLink', () => ({ requestMessageJump: (...args: unknown[]) => requestMessageJump(...args) }))
+const setInnerPeer = vi.fn()
 
 type DeleteDialogArgs = {
   peerId: PeerId
@@ -138,8 +135,8 @@ afterEach(async() => {
   document.body.replaceChildren()
   vi.restoreAllMocks()
   startOutgoing.mockReset()
-  openPeer.mockReset()
-  requestMessageJump.mockReset()
+  setInnerPeer.mockReset()
+  vi.spyOn(appImManager, 'setInnerPeer').mockImplementation(async(options) => { setInnerPeer(options) })
   openDeleteMessageDialog.mockReset()
   useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: false } })
 })
@@ -226,7 +223,7 @@ describe('вкладка «Звонки» — действия строки', ()
     const [peer, video] = startOutgoing.mock.calls[0]
     expect(peer).toMatchObject({ id: 2, name: 'Борис' })
     expect(video).toBe(true)
-    expect(openPeer).not.toHaveBeenCalled()
+    expect(setInnerPeer).not.toHaveBeenCalled()
 
     callButton(voiceRow)!.click()
     expect(startOutgoing.mock.calls[1][1]).toBe(false)
@@ -238,9 +235,8 @@ describe('вкладка «Звонки» — действия строки', ()
     const tab = await open()
 
     rows(tab)[0].click()
-    expect(requestMessageJump).toHaveBeenCalledWith(2, 41)
-    expect(openPeer).toHaveBeenCalledTimes(1)
-    expect(openPeer.mock.calls[0][1]).toMatchObject({ id: 2, title: 'Борис' })
+    expect(setInnerPeer).toHaveBeenCalledTimes(1)
+    expect(setInnerPeer).toHaveBeenCalledWith({ peerId: 2, lastMsgId: 41 })
     expect(startOutgoing).not.toHaveBeenCalled()
   })
 

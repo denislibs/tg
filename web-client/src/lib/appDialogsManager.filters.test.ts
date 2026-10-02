@@ -5,7 +5,7 @@
 //
 // Поток «добавили/удалили/переставили» у нас один — проекция `folders.solid`
 // поверх `appState.folders`; папки кладутся тем же путём, что пуш сервера
-// (`applyFolderUpdate`) и логаут (`resetAppState`).
+// (`applyFolderUpdate`).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import '@/test/lang'
 import {
@@ -15,7 +15,6 @@ import {
 } from './appDialogsManager.testkit'
 import { resetPeerMirror } from '@core/peerCache'
 import { applyFolderUpdate, useFoldersStore } from '@stores/foldersStore'
-import { resetAppState } from '@stores/appState'
 import useFolders from '@stores/folders.solid'
 import type { SwipeEvent, SwipeHandlerHorizontalOptions } from '@helpers/dom/handleHorizontalSwipe'
 
@@ -197,25 +196,12 @@ describe('appDialogsManager: папки добавляются, удаляютс
     expect(gradientHidden()).toBe(true)
     expect(mounted.chatsContainer.classList.contains('has-filters')).toBe(false)
   })
-
-  it('логаут (сброс appState) — пользовательские кадры сняты, «Все чаты» осталась (state_cleared)', async () => {
-    putFolders(raw(3, 1, 'Работа'), raw(4, 2, 'Шум'))
-    mounted = mountOwner()
-    await settle()
-
-    resetAppState()
-    await settle()
-
-    expect(filterIds(mounted.folders)).toEqual(['0'])
-    expectActiveOnly(mounted.folders, 0)
-    expect(rowHidden()).toBe(true)
-  })
 })
 
 describe('appDialogsManager: свайп — это клик по соседней вкладке (поправка 3, :617-634)', () => {
-  async function setupSwipe(forumOpen = false) {
+  async function setupSwipe() {
     putFolders(raw(3, 1, 'Работа'), raw(4, 2, 'Шум'))
-    mounted = mountOwner({ forumOpen: () => forumOpen })
+    mounted = mountOwner()
     await settle()
     expect(swipes).toHaveLength(1)
     expect(swipes[0].element).toBe(mounted.folders)
@@ -250,10 +236,10 @@ describe('appDialogsManager: свайп — это клик по соседне�
     expectActiveOnly(mounted!.folders, 4)
   })
 
-  it('открытый форум гасит жест (verifyTouchTarget: !forumTab), destroy снимает распознаватель', async () => {
-    const options = await setupSwipe(true)
+  it('destroy снимает распознаватель (форум-таба, гасящего жест, нет — Б-3)', async () => {
+    const options = await setupSwipe()
 
-    expect(options.verifyTouchTarget!(new TouchEvent('touchstart') as unknown as SwipeEvent)).toBe(false)
+    expect(options.verifyTouchTarget).toBeUndefined()
     mounted!.manager.destroy()
     mounted = undefined
     expect(swipeRemoved).toHaveBeenCalledTimes(1)

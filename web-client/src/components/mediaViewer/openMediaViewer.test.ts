@@ -3,7 +3,6 @@
 // контроллер навигации, повторное открытие после закрытия. Среда — как
 // appMediaViewer.test.ts: happy-dom + fake timers, RPC managers замокан.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { initHotkeys } from '@core/hotkeys'
 import appNavigationController from '@core/navigation/appNavigationController'
 import type { ViewerItem } from './appMediaViewer'
 import { closeMediaViewer, isMediaViewerOpen, openMediaViewer } from './openMediaViewer'
@@ -88,7 +87,6 @@ describe('openMediaViewer: один живой инстанс (аналог tweb
 
 describe('Esc/Back закрывают вьювер с анимацией (проводка pushEsc/pushLayer)', () => {
   it('Esc (глобальный LIFO-стек хоткеев) зовёт close — вьювер уходит из DOM', async () => {
-    const offHotkeys = initHotkeys({})
     await settle(openMediaViewer({ items: [item(1)], index: 0 }))
     expect(wholeCount()).toBe(1)
 
@@ -96,7 +94,6 @@ describe('Esc/Back закрывают вьювер с анимацией (про
     await settle()
     expect(wholeCount()).toBe(0)
     expect(isMediaViewerOpen()).toBe(false)
-    offHotkeys()
   })
 
   it('Back (popstate снимает запись навигации) зовёт close', async () => {
@@ -109,7 +106,6 @@ describe('Esc/Back закрывают вьювер с анимацией (про
   })
 
   it('после закрытия Esc-обработчик снят: чужой Escape не трогает следующий слой', async () => {
-    const offHotkeys = initHotkeys({})
     const onClosed = vi.fn()
     await settle(openMediaViewer({ items: [item(1)], index: 0, onClosed }))
     closeMediaViewer()
@@ -120,7 +116,6 @@ describe('Esc/Back закрывают вьювер с анимацией (про
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
     await settle()
     expect(onClosed).toHaveBeenCalledTimes(1)
-    offHotkeys()
   })
 })
 

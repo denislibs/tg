@@ -51,9 +51,9 @@
  * `pendingBacks` + предохранитель на 500мс, см. `legacySettleForBack`).
  *
  * ── Прочие адаптации под наш стек ──────────────────────────────────────────
- *  • `reload`/`close`/`focus`/`navigateToUrl` (`:481-520`) НЕ портированы —
- *    вызывающих нет ни одного: перезагрузку после логаута у нас делает
- *    `client/boot.ts` напрямую, а `window.close()`/`focus()` не зовёт никто;
+ *  • `reload`/`close`/`focus`/`navigateToUrl` (`:498-536`) — порт 1:1 (К-2 волны
+ *    7): выход из аккаунта и переезд сессии — перезагрузка `reload()`
+ *    (`src/index.ts::onLoggedOut`, tweb `apiManagerProxy.ts:619-634`);
  *  • класс экспортируется вместе с синглтоном (у оригинала так же): тестам
  *    нужен свой экземпляр, а приложению — один на вкладку.
  */
@@ -506,6 +506,48 @@ export class AppNavigationController {
   public findItem(predicate: (item: NavigationItem) => boolean) {
     const index = this.navigations.findIndex(predicate)
     return index === -1 ? undefined : { index, item: this.navigations[index] }
+  }
+
+  /** tweb `:498-511`: снять стек и перезагрузить страницу после уже идущих мутаций истории. */
+  public reload(urlOrRemoveHash?: boolean | URL) {
+    this.spliceItems(0, Infinity) // * clear the stack
+    if(typeof(urlOrRemoveHash) === 'boolean') {
+      if(urlOrRemoveHash) this.overrideHash()
+    } else {
+      this.modifyHistoryFromEvent(() => {
+        this.replaceState(urlOrRemoveHash)
+      })
+    }
+    this.modifyHistoryFromEvent(() => {
+      location.reload()
+    })
+  }
+
+  /** tweb `:513-517`. */
+  public close() {
+    try {
+      window.close()
+    } catch {}
+  }
+
+  /**
+   * Better to call from event
+   */
+  public focus() {
+    window.focus()
+  }
+
+  /** tweb `:526-536`: уйти на адрес, не реагируя на собственный уход. */
+  public navigateToUrl(url: string) {
+    if(USE_NAVIGATION_API) {
+      navigation.removeEventListener('navigate', this.onNavigate)
+    } else {
+      window.removeEventListener('popstate', this.onPopState)
+    }
+
+    setTimeout(() => {
+      location.href = url
+    }, 100)
   }
 
   // ── История ───────────────────────────────────────────────────────────────

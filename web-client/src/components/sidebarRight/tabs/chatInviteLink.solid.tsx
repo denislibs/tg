@@ -22,8 +22,7 @@
  *     «InviteLink.Observe.Fee», `:91-107`) — нет на бэкенде.
  *  3. (О-124) Вступившие — одна страница сервера (`getImportersLoader`,
  *     расхождение 4 `chatInviteLinkShared.ts`).
- *  4. `appImManager.setInnerPeer({peerId})` (`:79`, `:216`) → `openPeer` из
- *     `core/navigation/openPeer.ts` (роль `setPeer` до Э4), имя — из зеркала.
+ *  4. (снято К-2: `appImManager.setInnerPeer({peerId})`, `:79`, `:216`.)
  *  5. `addDialogNew` берёт менеджеры строки параметром (`managers`, С1 у
  *     `lib/appDialogsManager.ts`).
  */
@@ -43,8 +42,7 @@ import { ChatInviteLink, getImportersLoader } from './chatInviteLinkShared'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
 import { usePromiseCollector } from '@components/solidJsTabs/promiseCollector.solid'
 import type { AppChatInviteLinkTab } from '@components/solidJsTabs/tabs'
-import { openPeer } from '@core/navigation/openPeer'
-import { peerTitle } from '@core/peerCache'
+import appImManager from '@lib/appImManager'
 import { toPeerId } from '@core/peers/peerId'
 
 const ChatInviteLinkTab: Component = () => {
@@ -53,8 +51,7 @@ const ChatInviteLinkTab: Component = () => {
   const managers = tab.managers!
   const { chatId, chatInvite, menuButtons, actions } = tab.payload
 
-  // расхождение 4
-  const setInnerPeer = (peerId: PeerId) => openPeer(managers, { id: peerId, title: peerTitle(peerId) })
+  const setInnerPeer = (peerId: PeerId) => { void appImManager.setInnerPeer({ peerId }) }
 
   promiseCollector.collect((async() => {
     // default title 'InviteLink' is set by the scaffold; override only for a custom invite title

@@ -11,7 +11,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
 import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
-import { initHotkeys } from '@core/hotkeys'
 import type { AvatarManagers } from '@components/avatar'
 import { openDeleteMessageDialog, ForwardPicker, ReactedUsersPopup } from './ChatDialogs'
 import { ManagersProvider } from '../../core/hooks/useManagers'
@@ -157,7 +156,6 @@ describe('openDeleteMessageDialog — поведение (раунд право�
 
   it('Esc — тот же исход, что Cancel', () => {
     vi.useFakeTimers()
-    const deactivate = initHotkeys({})
     const onClose = vi.fn()
     openDeleteMessageDialog({
       peerId: 1, managers: mkManagers(), canRevoke: true,
@@ -168,7 +166,6 @@ describe('openDeleteMessageDialog — поведение (раунд право�
     vi.advanceTimersByTime(300)
 
     expect(onClose).toHaveBeenCalledTimes(1)
-    deactivate()
     vi.useRealTimers()
   })
 

@@ -1,33 +1,33 @@
-// Правая колонка для компонентных тестов: статичный `#column-right` (как
-// рисует `App.tsx`), синглтон `AppSidebarRight` и вкладка №0 активного чата.
-// Нужна экранам, которые открывают колонку классом (вкладки
-// `appSidebarRight.createTab(…).open()`): без синглтона их
-// обработчики обращаются к пустой привязке, как в приложении до монтирования шелла.
+// Правая колонка для компонентных тестов: вечный синглтон `AppSidebarRight`
+// (создан при импорте над статичным `#column-right`, `test/staticMarkup.ts`) и
+// вкладка №0 активного чата. Нужна экранам, которые открывают колонку классом
+// (вкладки `appSidebarRight.createTab(…).open()`). Хелпер переносит колонку в
+// `body` и возвращает её в статику на `dispose()`.
 import appNavigationController from '@core/navigation/appNavigationController'
-import { createAppSidebarRight } from '@components/sidebarRight'
+import appSidebarRight from '@components/sidebarRight'
 import type { Managers } from '../client/bootstrap'
+import { returnToStaticMarkup } from './staticMarkup'
 
 export function installSidebarRight(managers = {} as Managers) {
-  const column = document.createElement('div')
-  column.id = 'column-right'
-  column.className = 'tabs-tab sidebar sidebar-right main-column'
-  const slider = document.createElement('div')
-  slider.className = 'sidebar-content sidebar-slider tabs-container'
-  column.append(slider)
+  const column = appSidebarRight.sidebarEl
+  const slider = column.querySelector<HTMLElement>('.sidebar-slider')!
   document.body.append(column)
 
-  const sidebar = createAppSidebarRight()
-  sidebar.construct(managers)
-  sidebar.replaceSharedMediaTab(sidebar.createSharedMediaTab())
+  ;(appSidebarRight as unknown as { managers: Managers }).managers = managers
+  appSidebarRight.replaceSharedMediaTab(appSidebarRight.createSharedMediaTab())
 
   return {
-    sidebar,
+    sidebar: appSidebarRight,
     column,
     slider,
     dispose() {
-      sidebar.destroy()
+      void appSidebarRight.toggleSidebar(false)
+      appSidebarRight.closeAllTabs()
+      appSidebarRight.replaceSharedMediaTab(undefined)
+      // закрытые вкладки снимаются с узла отложенно — следующему тесту нужен пустой слайдер
+      slider.replaceChildren()
       appNavigationController.spliceItems(0, Infinity)
-      column.remove()
+      returnToStaticMarkup(column)
     },
   }
 }

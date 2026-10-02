@@ -10,7 +10,7 @@
 // микрозадачами. `settle()` ждёт всю цепочку целиком.
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Authorization } from '@layer'
 import type { Managers } from '@/client/bootstrap'
 import appNavigationController from '@core/navigation/appNavigationController'
@@ -19,7 +19,7 @@ import { AppActiveSessionsTab, AppSettingsTab } from '@components/solidJsTabs/ta
 import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
 import type { AppDialogsManager } from '@lib/appDialogsManager'
 import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
-import appSidebarLeft, { createAppSidebarLeft, type AppSidebarLeft } from './index'
+import appSidebarLeft, { type AppSidebarLeft } from './index'
 
 type Auth = Authorization.authorization
 
@@ -69,15 +69,22 @@ const toggleAvatarUnreadBadges = vi.fn()
 const dialogsManager = { xd: { toggleAvatarUnreadBadges } } as unknown as AppDialogsManager
 
 let column: InstalledSidebarLeft
-let sidebar: AppSidebarLeft
+const sidebar: AppSidebarLeft = appSidebarLeft
 
-beforeEach(() => {
-  column = installSidebarLeft(managers, undefined, { full: true })
-  sidebar = column.sidebar
+// Синглтон вечен (К-2), `construct` у него — один раз, как в приложении.
+beforeAll(() => {
   sidebar.construct(managers, dialogsManager)
 })
 
+beforeEach(() => {
+  column = installSidebarLeft(managers, undefined, { full: true })
+  // запись `global-search-focus` из `construct` снимает очистка очереди после теста
+  sidebar.initNavigation()
+})
+
 afterEach(async() => {
+  if(sidebar.isSearchActive) sidebar.closeSearch()
+  column.column.classList.remove('is-collapsed')
   column.destroy()
   await settle()
   appNavigationController.spliceItems(0, Infinity)
@@ -107,17 +114,6 @@ describe('AppSidebarLeft — синглтон на #column-left', () => {
     expect(field.querySelector('.preloader-container')).not.toBeNull()
     sidebar.inputSearch.setPlaceholder('Search')
     expect(field.querySelectorAll('.input-search-placeholder')).toHaveLength(1) // тот же ключ — без кросс-фейда
-  })
-
-  it('слайдер один на колонку: второй экземпляр уносит вкладки первого', async() => {
-    const tab = sidebar.createTab(SliderSuperTab)
-    await tab.open()
-
-    const second = createAppSidebarLeft()
-    await settle()
-
-    expect(tab.container.parentElement).toBeNull()
-    expect(appSidebarLeft).toBe(second)
   })
 })
 
@@ -227,7 +223,7 @@ describe('(в) свёрнутая колонка на medium — плавающ�
     // бейджи аватаров свёрнутой колонки гаснут, пока она всплыла (tweb :606-607)
     expect(toggleAvatarUnreadBadges).toHaveBeenLastCalledWith(false)
 
-    column.overlay.click()
+    ;(column.overlay as HTMLElement).click()
     await settle()
 
     expect(sidebar.getHistory()).toEqual([])
@@ -311,40 +307,5 @@ describe('вкладки на колоночном слайдере', () => {
     expect(tab.container.previousElementSibling).toBe(column.mainEl)
     expect(tab.container.classList.contains('item-secondary')).toBe(true)
     expect(column.mainEl.classList.contains('item-secondary')).toBe(false)
-  })
-
-  it('destroy уничтожает открытые вкладки: Solid-остров разобран, миддлварь погашена, Esc отпущен', async() => {
-    const set = vi.spyOn(globalThis, 'setInterval')
-    const clear = vi.spyOn(globalThis, 'clearInterval')
-    const tab = await column.openTab(AppActiveSessionsTab, { authorizations: [current, other] })
-    const middleware = tab.middlewareHelper.get()
-    const pollIndex = set.mock.calls.findIndex(([, ms]) => ms === 60e3)
-    expect(pollIndex).not.toBe(-1)
-
-    sidebar.destroy()
-    await settle()
-
-    expect(tab.container.parentElement).toBeNull()
-    expect(clear.mock.calls.some(([id]) => id === set.mock.results[pollIndex].value)).toBe(true)
-    expect(middleware()).toBe(false)
-    expect(column.sliderEl.children).toHaveLength(1)
-    expect(esc().defaultPrevented).toBe(false)
-    // следы класса на узле и в очереди сняты (расхождение 1)
-    expect(column.column.classList.contains('has-open-tabs')).toBe(false)
-    expect(column.header.querySelector('.sidebar-tools-button')).toBeNull()
-    expect(appNavigationController.findItemByType('global-search-focus')).toBeUndefined()
-  })
-
-  it('вкладка, уходившая за своим чанком, не переживает свой экран', async() => {
-    const tab = sidebar.createTab(AppActiveSessionsTab)
-    const opening = tab.open({ authorizations: [current, other] })
-    sidebar.destroy()
-
-    await opening
-    await settle()
-
-    expect(tab.container.parentElement).toBeNull()
-    expect(column.sliderEl.children).toHaveLength(1)
-    expect(esc().defaultPrevented).toBe(false)
   })
 })

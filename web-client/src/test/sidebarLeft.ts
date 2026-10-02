@@ -1,88 +1,67 @@
-// Левая колонка для тестов: разметка tweb `index.html:89-107` (та же, что
-// рисует `components/Sidebar.tsx` — `.sidebar-slider.tabs-container >
-// .item-main.active > .sidebar-header` с бургером и `.sidebar-content >
-// #chatlist-container > .connection-status-bottom` + `#search-container`),
-// оверлей `.sidebar-left-overlay` шелла и синглтон `AppSidebarLeft` на ней.
+// Левая колонка для тестов: вечный синглтон `AppSidebarLeft` (создан при импорте
+// над статикой `index.html`, `test/staticMarkup.ts`). Хелпер переносит его
+// `#column-left` в `body` (тестам вкладок нужен документ) и возвращает обратно на
+// `destroy()`, закрыв вкладки и сняв записи навигации.
+//
 // `construct` колонки зовёт владелец списка (`appDialogsManager.start`, tweb
 // `appDialogsManager.ts:983`) — ему нужна разметка целиком (`full`); тестам
-// вкладок, которым нужен только слайдер, — `.item-main` без шапки и списка
-// (иначе их запросы `.sidebar-header` попадали бы в шапку колонки). `openTab` —
-// `createTab(…).open(…)` одним вызовом, промис разрешается, когда содержимое
-// вкладки готово.
-import { createAppSidebarLeft } from '@components/sidebarLeft'
+// вкладок, которым нужен только слайдер, шапка и список `.item-main` на время
+// теста вынимаются (иначе их запросы `.sidebar-header` попадали бы в шапку
+// колонки). `openTab` — `createTab(…).open(…)` одним вызовом, промис
+// разрешается, когда содержимое вкладки готово.
+//
+// `columnEl` — прежний аргумент: тест сам заводил узел колонки. Синглтон
+// берёт свой узел из статики, поэтому переданный узел убирается из документа
+// (два `#column-left` сбили бы `getElementById`).
+import appSidebarLeft from '@components/sidebarLeft'
 import type SliderSuperTab from '@components/sliderTab'
 import type { SliderSuperTabConstructable } from '@components/sliderTab'
+import appNavigationController from '@core/navigation/appNavigationController'
 import type { Managers } from '../client/bootstrap'
-
-/** Разметка колонки tweb `index.html:89-107`, без класса. */
-export function mountLeftColumn(columnEl: HTMLElement = document.createElement('div'), full = true) {
-  const overlay = document.createElement('div')
-  overlay.className = 'sidebar-left-overlay'
-
-  columnEl.id = 'column-left'
-  columnEl.classList.add('tabs-tab', 'chatlist-container', 'sidebar', 'sidebar-left', 'main-column')
-  const sliderEl = document.createElement('div')
-  sliderEl.className = 'sidebar-slider tabs-container'
-  const mainEl = document.createElement('div')
-  mainEl.className = 'tabs-tab sidebar-slider-item item-main active'
-  const header = document.createElement('div')
-  header.className = 'sidebar-header main-search-sidebar-header'
-  const buttons = document.createElement('div')
-  buttons.className = 'sidebar-header__btn-container left-sidebar-burger'
-  const menuIcon = document.createElement('div')
-  menuIcon.className = 'animated-menu-icon'
-  const backBtn = document.createElement('div')
-  backBtn.className = 'btn-icon sidebar-back-button'
-  buttons.append(menuIcon, backBtn)
-  header.append(buttons)
-  const content = document.createElement('div')
-  content.className = 'sidebar-content transition zoom-fade'
-  const chatlistContainer = document.createElement('div')
-  chatlistContainer.id = 'chatlist-container'
-  chatlistContainer.className = 'transition-item active'
-  const host = document.createElement('div')
-  host.className = 'connection-status-bottom'
-  chatlistContainer.append(host)
-  const searchContainer = document.createElement('div')
-  searchContainer.id = 'search-container'
-  searchContainer.className = 'transition-item sidebar-search'
-  content.append(chatlistContainer, searchContainer)
-  if(full) mainEl.append(header, content)
-  sliderEl.append(mainEl)
-  columnEl.append(sliderEl)
-
-  if(!columnEl.isConnected) document.body.append(columnEl)
-  document.body.prepend(overlay)
-
-  return { column: columnEl, sliderEl, mainEl, header, backBtn, chatlistContainer, host, searchContainer, overlay }
-}
+import { returnToStaticMarkup } from './staticMarkup'
 
 export type InstalledSidebarLeft = ReturnType<typeof installSidebarLeft>
 
-/**
- * `columnEl` — узел, который тест уже положил в документ (вкладки рисуют в
- * него), иначе заводится свой.
- */
 export function installSidebarLeft(managers = {} as Managers, columnEl?: HTMLElement, { full = false } = {}) {
-  const dom = mountLeftColumn(columnEl, full)
-  const sidebar = createAppSidebarLeft()
+  if(columnEl && columnEl !== appSidebarLeft.sidebarEl) columnEl.remove()
+
+  const column = appSidebarLeft.sidebarEl
+  const overlay = document.querySelector('.sidebar-left-overlay')!
+  const sliderEl = column.querySelector<HTMLElement>('.sidebar-slider')!
+  const mainEl = sliderEl.querySelector<HTMLElement>('.item-main')!
+  const header = mainEl.querySelector<HTMLElement>('.sidebar-header')!
+  const content = mainEl.querySelector<HTMLElement>('.sidebar-content')!
+  const detached = full ? [] : [header, content]
+  detached.forEach((node) => node.remove())
+  document.body.append(column)
+
   // без `construct` вкладкам нужен только реестр менеджеров (tweb `slider.ts:270`)
-  ;(sidebar as unknown as { managers: Managers }).managers = managers
+  ;(appSidebarLeft as unknown as { managers: Managers }).managers = managers
 
   return {
-    ...dom,
-    sidebar,
+    column,
+    sliderEl,
+    mainEl,
+    header,
+    backBtn: header.querySelector<HTMLElement>('.sidebar-back-button')!,
+    chatlistContainer: content.querySelector<HTMLElement>('#chatlist-container')!,
+    searchContainer: content.querySelector<HTMLElement>('#search-container')!,
+    overlay,
+    sidebar: appSidebarLeft,
     /** Совместимое имя для тестов вкладок: слайдер колонки и есть класс. */
-    slider: sidebar,
+    slider: appSidebarLeft,
     async openTab<T extends SliderSuperTab>(ctor: SliderSuperTabConstructable<T>, ...args: Parameters<T['init']>): Promise<T> {
-      const tab = sidebar.createTab(ctor)
+      const tab = appSidebarLeft.createTab(ctor)
       await tab.open(...args)
       return tab
     },
     destroy() {
-      sidebar.destroy()
-      dom.sliderEl.remove()
-      dom.overlay.remove()
+      appSidebarLeft.closeAllTabs()
+      appNavigationController.spliceItems(0, Infinity)
+      // вкладки, созданные без `open()`, в историю не попали и closeAllTabs их не снимет
+      ;[...sliderEl.children].forEach((child) => child !== mainEl && child.remove())
+      mainEl.append(...detached)
+      returnToStaticMarkup(column)
     },
   }
 }

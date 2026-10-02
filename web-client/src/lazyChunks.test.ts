@@ -1,7 +1,7 @@
 // src/lazyChunks.test.ts
 //
 // Пин ЛЕНИВОСТИ тяжёлых узлов: перечисленные ниже модули не должны быть
-// достижимы из точки входа (`src/main.tsx`) по СТАТИЧЕСКИМ импортам — только
+// достижимы из точки входа (`src/index.ts`) по СТАТИЧЕСКИМ импортам — только
 // через `import()` (напрямую или обёрнутый в `lazy()`). Иначе Rolldown кладёт
 // их в главный чанк, и они грузятся первым кадром, хотя нужны по требованию.
 //
@@ -31,7 +31,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 
 const SRC = __dirname
-const ENTRY = join(SRC, 'main.tsx')
+const ENTRY = join(SRC, 'index.ts')
 
 /**
  * Алиасы — зеркало `resolve.alias` из `vite.config.ts`. Дублируются здесь
@@ -102,7 +102,7 @@ function resolveSpec(spec: string, fromFile: string): string | null {
   return null
 }
 
-/** Модули, достижимые из `main.tsx` по статическим импортам (пути от `src/`). */
+/** Модули, достижимые из `index.ts` по статическим импортам (пути от `src/`). */
 function eagerGraph(): Set<string> {
   const seen = new Set<string>()
   const stack = [ENTRY]
@@ -148,9 +148,9 @@ describe('ленивые чанки: тяжёлые узлы не втягива
   // Санити: обход вообще дошёл до приложения. Без этого «ничего не достижимо»
   // (например, если сломается резолвер) выглядело бы как зелёный пин.
   it('обход доходит до ядра приложения', () => {
-    expect(eager.has('App.tsx')).toBe(true)
-    expect(eager.has('components/Chat.tsx')).toBe(true)
-    expect(eager.has('components/Composer.tsx')).toBe(true)
+    // экран входа статически тянет `bootstrapIm` (tweb `AuthCardsHost.tsx:28`), тот — владельца списка
+    expect(eager.has('pages/bootstrapIm.ts')).toBe(true)
+    expect(eager.has('lib/appDialogsManager.ts')).toBe(true)
     expect(eager.size).toBeGreaterThan(300)
   })
 

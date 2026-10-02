@@ -21,9 +21,9 @@
  *  4. `showCreateContactPopup` — `// ВРЕМЕННО до 2C-26` мост на React-попап
  *     (`sidebarLeft/createContactPopupBridge.tsx`).
  *  5. Отступление В7-1: с `{secret: true}` («Новый секретный чат», E2E — у tweb пары нет) клик
- *     по контакту начинает секретный чат (`core/navigation/startSecretChat.ts`), а не открывает
+ *     по контакту начинает секретный чат (`startSecretChat` ниже), а не открывает
  *     личный.
- *  6. `setListClickListener` — наш порт (`lib/appDialogsManager.ts`), менеджеры — опцией.
+ *  6. `setListClickListener` — наш порт (`lib/appDialogsManager.ts`).
  */
 import { createEffect, createSignal, onMount, type Component } from 'solid-js'
 import { setListClickListener } from '@lib/appDialogsManager'
@@ -39,7 +39,22 @@ import ContactsList from '@components/sidebarLeft/contactsList.solid'
 import { useAppSettings } from '@stores/appSettings.solid'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
 import type { AppContactsTab, AppContactsTabOptions } from '@components/solidJsTabs/tabs'
-import { startSecretChat } from '@core/navigation/startSecretChat'
+import appImManager from '@lib/appImManager'
+import { useSecretChatStore } from '@stores/secretChatStore'
+import type { Managers } from '@/client/bootstrap'
+
+/**
+ * Отступление В7-1 (наша фича, E2E): рукопожатие `managers.secret.start` с выбранным
+ * контактом, статус «ожидание» и открытие созданного чата — как только что созданной
+ * группы: `appImManager.setInnerPeer` и перечитывание списка.
+ */
+async function startSecretChat(managers: Pick<Managers, 'secret' | 'dialogs'>, userId: PeerId): Promise<void> {
+  const { peerId } = await managers.secret.start(userId)
+  useSecretChatStore.getState().setStatus(peerId, 'awaiting')
+  void appImManager.setInnerPeer({ peerId })
+  // `.catch`: fire-and-forget, `refresh()` пробрасывает HttpError
+  void managers.dialogs.refresh().catch(() => {})
+}
 
 const Contacts: Component = () => {
   const [tab] = useSuperTab<typeof AppContactsTab>()
@@ -54,7 +69,6 @@ const Contacts: Component = () => {
     setListClickListener({
       list,
       autonomous: true,
-      managers,
       // Отступление В7-1: секретный чат вместо личного
       onFound: (tab.payload as AppContactsTabOptions)?.secret ? (element) => { void startSecretChat(managers, +element.dataset.peerId!); return false } : undefined,
     })

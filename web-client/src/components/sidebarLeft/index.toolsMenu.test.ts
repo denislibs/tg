@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import contextMenuController from '@helpers/contextMenuController'
 import { useChatsStore } from '@stores/chatsStore'
-import { useNavigationStore } from '@stores/navigationStore'
+import appImManager from '@lib/appImManager'
 import { useFoldersSidebarShown, useIsLeftSearchActive } from '@stores/foldersSidebar.solid'
 import { useSettingsStore } from '@/settings'
 import { usePwaStore } from '@core/pwa'
@@ -22,6 +22,11 @@ import type { AppDialogsManager } from '@lib/appDialogsManager'
 import type { AppSidebarLeft } from './index'
 
 const env = vi.hoisted(() => ({ call: true, pip: false }))
+const switchTheme = vi.hoisted(() => vi.fn())
+vi.mock('@core/theme/themeTransition', async(importOriginal) => ({
+  ...await importOriginal<typeof import('@core/theme/themeTransition')>(),
+  switchTheme,
+}))
 vi.mock('@environment/callSupport', () => ({ get default() { return env.call } }))
 vi.mock('@environment/documentPictureInPictureSupport', () => ({ get default() { return env.pip } }))
 
@@ -57,12 +62,11 @@ const managers = new Proxy({}, {
 
 let closeEverythingInside: ReturnType<typeof vi.spyOn>
 
-type SidebarOver = { isCollapsed?: () => boolean, switchTheme?: AppSidebarLeft['switchTheme'] }
+type SidebarOver = { isCollapsed?: () => boolean }
 
-/** Класс колонки с дублёром ночного режима (расхождение 3 шапки класса) и шпионом «закрыть всё». */
+/** Класс колонки со шпионом «закрыть всё». */
 function makeSidebar(over: SidebarOver = {}): AppSidebarLeft {
   const { sidebar } = testSlider
-  sidebar.switchTheme = over.switchTheme ?? vi.fn()
   if(over.isCollapsed) vi.spyOn(sidebar, 'isCollapsed').mockImplementation(over.isCollapsed)
   closeEverythingInside = vi.spyOn(sidebar, 'closeEverythingInside')
   return sidebar
@@ -88,10 +92,8 @@ beforeEach(async() => {
   env.pip = false
   accounts = [{ id: 1, name: 'Denis Me', photoId: 0, phone: '' }]
   useChatsStore.setState({ me: { user: ME } } as never)
-  column = document.createElement('div')
-  column.id = 'column-left'
-  document.body.append(column)
-  testSlider = installSidebarLeft(managers, column, { full: true })
+  testSlider = installSidebarLeft(managers, undefined, { full: true })
+  column = testSlider.column
 })
 
 afterEach(async() => {
@@ -99,7 +101,7 @@ afterEach(async() => {
   await pause(320) // уборка ButtonMenuToggle (300 мс)
   testSlider.destroy()
   useChatsStore.setState({ me: null })
-  useNavigationStore.setState({ selectedId: null })
+  switchTheme.mockClear()
   usePwaStore.setState({ canInstall: false })
   useFoldersSidebarShown()[1](false)
   useIsLeftSearchActive()[1](false)
@@ -222,14 +224,15 @@ describe('createToolsMenu — клики', () => {
     expect(testSlider.slider.hasTabsInNavigation()).toBe(true)
   })
 
-  it('«Избранное» открывает свой чат (`appImManager.setPeer({peerId: myId})`, ВРЕМЕННО до Э4-3)', async() => {
+  it('«Избранное» открывает свой чат (`appImManager.setPeer({peerId: myId})`)', async() => {
+    const setPeer = vi.spyOn(appImManager, 'setPeer').mockResolvedValue(undefined)
     const saved = vi.fn(async() => 77)
     const own = { auth: managers.auth, peers: managers.peers, chats: { saved }, dialogs: { refresh: async() => null } } as unknown as Managers
     ;(testSlider.sidebar as unknown as { managers: Managers }).managers = own
     const { menu } = await openMenu()
     item(menu, 'Saved Messages').click()
 
-    await vi.waitFor(() => expect(useNavigationStore.getState().selectedId).toBe('77'))
+    await vi.waitFor(() => expect(setPeer).toHaveBeenCalledWith({ peerId: 77 }))
     expect(saved).toHaveBeenCalledTimes(1)
   })
 })
@@ -259,13 +262,14 @@ describe('createMoreSubmenu — «Ещё»', () => {
     }
   })
 
-  it('PWA и PiP — по своим verify', async() => {
+  it('PWA — по своему verify; PiP скрыт без `#root` (Б-12)', async() => {
     usePwaStore.setState({ canInstall: true })
     env.pip = true
     const { menu } = await openMenu()
     const more = await openMore(menu)
 
-    expect(itemTexts(more).slice(-2)).toEqual(['Install App', 'Picture-in-Picture'])
+    expect(itemTexts(more).slice(-1)).toEqual(['Install App'])
+    expect(itemTexts(more)).not.toContain('Picture-in-Picture')
   })
 
   it('тумблер анимаций пишет liteMode.animations', async() => {
@@ -281,8 +285,7 @@ describe('createMoreSubmenu — «Ещё»', () => {
   })
 
   it('ночной режим: тема переключается из центра иконки, меню закрывается', async() => {
-    const switchTheme = vi.fn()
-    const { menu } = await openMenu(makeSidebar({ switchTheme }))
+    const { menu } = await openMenu(makeSidebar())
     const more = await openMore(menu)
 
     item(more, 'Enable Dark Mode').click()
@@ -293,13 +296,16 @@ describe('createMoreSubmenu — «Ещё»', () => {
 })
 
 describe('construct — кнопка бургера в шапке (tweb :165-172, :244, :431-442)', () => {
+  // синглтон вечен (К-2): `construct` — один раз на прогон, как в приложении
+  let constructed = false
   function mountHeader() {
     const sidebar = makeSidebar()
-    sidebar.construct(managers, { xd: undefined } as unknown as AppDialogsManager)
+    if(!constructed) sidebar.construct(managers, { xd: undefined } as unknown as AppDialogsManager)
+    constructed = true
     const container = column.querySelector<HTMLElement>('.left-sidebar-burger')!
     const icon = container.querySelector<HTMLElement>('.animated-menu-icon')!
     const back = container.querySelector<HTMLElement>('.sidebar-back-button')!
-    return { container, icon, back, destroy: () => sidebar.destroy() }
+    return { container, icon, back }
   }
 
   it('кнопка меню встаёт перед «назад», с бейджем уведомлений других аккаунтов', () => {
@@ -329,14 +335,5 @@ describe('construct — кнопка бургера в шапке (tweb :165-172
     useFoldersSidebarShown()[1](true)
     expect(icon.classList.contains('state-back')).toBe(true)
     expect(back.classList.contains('is-visible')).toBe(true)
-  })
-
-  it('destroy снимает кнопку и гасит морф', () => {
-    const { container, icon, destroy } = mountHeader()
-    destroy()
-
-    expect(container.querySelector('.sidebar-tools-button')).toBeNull()
-    useIsLeftSearchActive()[1](true)
-    expect(icon.classList.contains('state-back')).toBe(false)
   })
 })

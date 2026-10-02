@@ -100,6 +100,7 @@ beforeEach(() => {
   columnEl.id = 'column-left'
   document.body.append(columnEl)
   host = installSidebarLeft(managers, columnEl)
+  columnEl = host.column // синглтон колонки — свой узел из статики
 })
 
 afterEach(async() => {

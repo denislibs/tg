@@ -16,6 +16,7 @@
  * слайдера (Esc возвращает к списку), закрытие снимает таймер остатка (DoD 5).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import appImManager from '@lib/appImManager'
 import type { Managers } from '@/client/bootstrap'
 import type { Channel, User } from '@core/peers/peer'
 import type { ChatInviteExported } from '@core/managers/groupsManager'
@@ -42,8 +43,7 @@ vi.mock('@helpers/clipboard', async(importOriginal) => ({
 const shareUrlToPeers = vi.hoisted(() => vi.fn())
 vi.mock('@components/popups/shareUrl.bridge', () => ({ default: shareUrlToPeers }))
 
-const openPeer = vi.hoisted(() => vi.fn())
-vi.mock('@core/navigation/openPeer', () => ({ openPeer }))
+const openPeer = vi.fn()
 
 const ME = 1
 const CHANNEL_ID = 20
@@ -79,6 +79,7 @@ beforeEach(() => {
   copyTextToClipboard.mockClear()
   shareUrlToPeers.mockReset()
   openPeer.mockReset()
+  vi.spyOn(appImManager, 'setInnerPeer').mockImplementation(async(options) => { openPeer(options) })
 
   // выдача сервера — от новых к старым; «постоянная» (без параметров) — самая старая
   active = [
@@ -343,6 +344,6 @@ describe('«Ссылка» — вкладка одной ссылки', () => {
     expect(bob).not.toBeNull()
 
     click(bob)
-    expect(openPeer).toHaveBeenCalledWith(expect.anything(), { id: 2, title: 'Bob' })
+    expect(openPeer).toHaveBeenCalledWith({ peerId: 2 })
   })
 })

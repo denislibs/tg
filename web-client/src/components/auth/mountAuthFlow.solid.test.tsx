@@ -13,7 +13,7 @@
  * устройство монтирования (узел/класс/dispose/стартовый шаг), а не рендер
  * настоящих карточек — тот предмет уже держат `AuthCardsHost.solid.test.tsx`
  * и тесты самих карточек. Мок заодно ловит пятый факт бонусом: пропы
- * (managers/onComplete) долетают до хоста, не теряясь по дороге.
+ * (managers) долетают до хоста, не теряясь по дороге.
  *
  * ── Повторное ревью, ОБЯЗАТЕЛЬНО 2: снятие Solid-корня было не запинено ────
  * Первая редакция мокала хост ГОЛЫМ DOM-узлом без `onCleanup` — снимать
@@ -37,6 +37,7 @@ import { onCleanup } from 'solid-js'
 import type { Managers } from '@/client/bootstrap'
 
 let mountAuthFlow: typeof import('./mountAuthFlow.solid').mountAuthFlow
+let disposeActiveAuthFlow: typeof import('./mountAuthFlow.solid').disposeActiveAuthFlow
 let currentCard: typeof import('./authFlow.solid').currentCard
 
 // `vi.mock` хоистится над импортами — переменная, которую читает и пишет
@@ -62,7 +63,7 @@ beforeEach(async () => {
   vi.resetModules()
   receivedProps.length = 0
   cleanupCalled.count = 0
-  ;({ mountAuthFlow } = await import('./mountAuthFlow.solid'))
+  ;({ mountAuthFlow, disposeActiveAuthFlow } = await import('./mountAuthFlow.solid'))
   ;({ currentCard } = await import('./authFlow.solid'))
 })
 
@@ -73,7 +74,7 @@ afterEach(() => {
 })
 
 function mock() {
-  return { managers: {} as Managers, onComplete: vi.fn() }
+  return { managers: {} as Managers }
 }
 
 describe('mountAuthFlow: узел монтирования', () => {
@@ -90,46 +91,63 @@ describe('mountAuthFlow: узел монтирования', () => {
     dispose()
   })
 
-  it('пропы (managers/onComplete) долетают до AuthCardsHost как есть', () => {
+  it('пропы (managers) долетают до AuthCardsHost как есть', () => {
     const props = mock()
     const dispose = mountAuthFlow(props)
 
     expect(receivedProps).toHaveLength(1)
-    expect(receivedProps[0]).toMatchObject({ managers: props.managers, onComplete: props.onComplete })
+    expect(receivedProps[0]).toMatchObject({ managers: props.managers })
 
     dispose()
   })
 })
 
 describe('mountAuthFlow: has-auth-pages', () => {
-  it('ставится синхронно при монтировании', () => {
-    expect(document.body.classList.contains('has-auth-pages')).toBe(false)
+  // Класс стоит статикой в `index.html` и снимается один раз в `bootstrapIm`
+  // (tweb `bootstrapIm.ts:60-61`); экран входа его не трогает — выход теперь
+  // перезагрузка, второго захода без неё нет.
+  it('монтаж и снятие класс не трогают', async () => {
+    document.body.classList.add('has-auth-pages')
     const dispose = mountAuthFlow(mock())
-    expect(document.body.classList.contains('has-auth-pages')).toBe(true)
     dispose()
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    expect(document.body.classList.contains('has-auth-pages')).toBe(true)
+  })
+})
+
+describe('mountAuthFlow: один монтаж (tweb `mountAuthFlow.tsx:28-37`, `:62`)', () => {
+  it('повторный вызов гасит прежний монтаж', () => {
+    mountAuthFlow(mock())
+    mountAuthFlow(mock())
+    expect(document.querySelectorAll('#auth-flow-root')).toHaveLength(1)
+    expect(cleanupCalled.count).toBe(1)
+    disposeActiveAuthFlow()
+  })
+
+  it('disposeActiveAuthFlow снимает активный монтаж; второй вызов — пустой ход', () => {
+    mountAuthFlow(mock())
+    disposeActiveAuthFlow()
+    expect(document.getElementById('auth-flow-root')).toBeNull()
+    expect(cleanupCalled.count).toBe(1)
+    disposeActiveAuthFlow()
+    expect(cleanupCalled.count).toBe(1)
   })
 })
 
 describe('mountAuthFlow: dispose', () => {
-  it('снимает узел, класс И реактивный граф хоста (onCleanup) — иначе экран входа переживает собственный уход', async () => {
+  it('снимает узел И реактивный граф хоста (onCleanup) — иначе экран входа переживает собственный уход', () => {
     const dispose = mountAuthFlow(mock())
     expect(document.getElementById('auth-flow-root')).not.toBeNull()
     expect(cleanupCalled.count, 'onCleanup не должен звать себя ДО dispose()').toBe(0)
 
     dispose()
 
-    // Узел уходит немедленно (mountAuthFlow.solid.tsx: dispose(); root.remove()
-    // — до doubleRaf); класс — после двойного rAF, тем же приёмом, что и
-    // прежний React `AuthFlow.tsx`, поэтому ждём его отдельно.
     expect(document.getElementById('auth-flow-root')).toBeNull()
     // Реактивный граф хоста реально снят Solid'ом — не только DOM-узел вынут
     // из документа. Мутация «убрать только dispose(), оставить root.remove()»
     // (находка 2 повторного ревью) убирает узел из DOM ровно так же, но
     // `onCleanup` мока НЕ позовётся — этот ассерт обязан покраснеть на ней.
     expect(cleanupCalled.count, 'onCleanup хоста не был вызван — Solid-корень не снят').toBe(1)
-    await vi.waitFor(() => {
-      expect(document.body.classList.contains('has-auth-pages')).toBe(false)
-    })
   })
 })
 

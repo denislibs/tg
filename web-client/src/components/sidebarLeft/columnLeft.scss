@@ -1,12 +1,17 @@
-// Доля узлов статичной разметки `#column-left` (App.tsx, tweb `index.html:91-107`)
+// Доля узлов статичной разметки `#column-left` (`index.html`, tweb `index.html:91-107`)
 // в нашей флекс-раскладке колонки. Сама колонка — глобальный `#column-left`
 // (`styles/tweb/_leftSidebar.scss`, порт 1:1); у tweb `.sidebar-slider` — блок
 // высотой страницы (`_leftSidebar.scss:446`), у нас `#column-left` — флекс-колонка,
 // поэтому детям нужна доля и `min-height: 0`.
+//
+// Разметка статичная, поэтому селекторы — по классам tweb; префикс `:where()`
+// держит специфичность на уровне одного класса (как у прежнего CSS-модуля), чтобы
+// правила портированных партиалов перебивали эти так же, как раньше.
 @use '../../styles/foundation' as *;
 
-// Полноширинный режим (узкий экран, PiP): колонка занимает всё — наша раскладка.
-.fullWidth {
+// Полноширинный режим (узкий экран): колонка занимает всё — наша раскладка.
+// Класс ставит `setSidebarLeftWidth` (`src/index.ts`).
+:where(#column-left).is-full-width {
   flex: 1 1 auto;
   width: auto;
   margin-inline-end: var(--page-chats-padding);
@@ -15,17 +20,17 @@
 // Раскладку вкладок даёт портированный грид `.tabs-container`
 // (`styles/tweb/_slider.scss:164-186`): вкладка №0 `.item-main` и вкладки класса
 // колонки лежат в одной ячейке, видна `.active`.
-.slider {
+:where(#column-left) > .sidebar-slider {
   flex: 1;
   min-height: 0;
 }
 
-.sliderItem {
+:where(#column-left > .sidebar-slider) > .item-main {
   min-width: 0;
 }
 
 // tweb .sidebar-content — слой чатлиста и выдачи поиска.
-.content {
+:where(#column-left .item-main) > .sidebar-content {
   flex: 1;
   min-height: 0;
   position: relative;
@@ -33,7 +38,7 @@
 }
 
 // tweb .sidebar-header (_sidebar.scss) + .main-search-sidebar-header (_leftSidebar.scss).
-.header {
+:where(#column-left .item-main) > .sidebar-header {
   background-color: transparent;
   display: flex;
   align-items: center;
@@ -48,14 +53,14 @@
   }
 
   // поле поиска шапки (класс колонки, tweb `:158-160`) занимает остаток строки
-  > :global(.input-search) {
+  > .input-search {
     flex: 1;
     min-width: 0;
   }
 }
 
 // tweb #chatlist-container: max-height:100%; position:relative; bg surface.
-.body {
+:where(#column-left .sidebar-content) > .transition-item:where(#chatlist-container) {
   flex: 1;
   position: relative;
   min-height: 0;

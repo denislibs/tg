@@ -7,7 +7,6 @@
 // Классы держат ВСЮ геометрию (партиалы styles/tweb/popups/*), поэтому потеря
 // любого из них — молчаливая поломка вёрстки: ни тайпчек, ни сборка её не ловят.
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { initHotkeys } from '../../../core/hotkeys'
 import { render, cleanup, fireEvent } from '@testing-library/react'
 import Popup from './Popup'
 
@@ -77,14 +76,11 @@ describe('Popup — разметка tweb', () => {
   })
 })
 
-// Esc обязан закрывать попап. В tweb клавиша и Back ведут в один LIFO-стек
-// (appNavigationController); у нас Back ведёт useNavLayer (popstate), а Escape
-// popstate не порождает — поэтому попап отдельно регистрируется в стеке
-// `core/hotkeys`. Без этого календарь/«Поделиться»/выбор контакта закрывались
-// только крестиком или кликом по скриму.
+// Esc обязан закрывать попап: клавиша и Back ведут в один LIFO-стек
+// `appNavigationController`, как в tweb. Без этого календарь/«Поделиться»/выбор
+// контакта закрывались только крестиком или кликом по скриму.
 describe('Popup — закрытие по Esc', () => {
   it('Escape зовёт onClose у открытого попапа', () => {
-    initHotkeys({})
     const onClose = vi.fn()
     render(<Popup open title="T" onClose={onClose}>x</Popup>)
 
@@ -95,7 +91,6 @@ describe('Popup — закрытие по Esc', () => {
   })
 
   it('закрытый попап Esc не перехватывает', () => {
-    initHotkeys({})
     const onClose = vi.fn()
     render(<Popup open={false} title="T" onClose={onClose}>x</Popup>)
 

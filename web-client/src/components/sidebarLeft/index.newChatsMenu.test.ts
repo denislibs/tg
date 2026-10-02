@@ -65,9 +65,12 @@ afterEach(async() => {
   vi.restoreAllMocks()
 })
 
+// синглтон вечен (К-2): `construct` — один раз на прогон, как в приложении
+let constructed = false
 function construct() {
-  installed.sidebar.construct(managers, { xd: undefined } as unknown as AppDialogsManager)
-  return document.getElementById('new-menu')!
+  if(!constructed) installed.sidebar.construct(managers, { xd: undefined } as unknown as AppDialogsManager)
+  constructed = true
+  return installed.column.querySelector<HTMLElement>('#new-menu')!
 }
 
 async function openMenu() {
@@ -117,7 +120,13 @@ describe('construct — кнопка #new-menu (:198-200, :1113-1129)', () => {
 
   it('+1 «New Secret Chat» под SECRET_CHATS_ENABLED (Отступление В7-1)', async() => {
     flags.secret = true
-    const { menu } = await openMenu()
+    // пункты собираются в `construct` один раз — кнопку под флагом строим заново
+    construct()
+    const btn = (installed.sidebar as unknown as { createNewChatsMenuButton(): HTMLElement }).createNewChatsMenuButton()
+    document.body.append(btn)
+    btn.click()
+    await vi.waitFor(() => expect(rootMenu()?.classList.contains('active')).toBe(true))
+    const menu = rootMenu()!
 
     expect(itemTexts(menu)).toEqual(['New Channel', 'New Group', 'New Private Chat', 'New Secret Chat'])
   })
@@ -165,13 +174,6 @@ describe('construct — кнопка #new-menu (:198-200, :1113-1129)', () => {
     installed.sidebar.inputSearch.input.dispatchEvent(new FocusEvent('focus'))
 
     expect(btn.classList.contains('is-hidden')).toBe(true)
-  })
-
-  it('destroy снимает кнопку', () => {
-    const btn = construct()
-    installed.sidebar.destroy()
-
-    expect(btn.isConnected).toBe(false)
   })
 })
 

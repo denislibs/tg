@@ -38,6 +38,15 @@ export function startClient(): { smp: SuperMessagePort; managers: Managers; ep: 
 }
 
 /**
+ * Порт tweb `lib/appManagers/getProxiedManagers.ts`: менеджеры вкладки — те, что
+ * поднял `startClient` (он идемпотентен). Ими конструируются синглтоны оболочки
+ * (`appDialogsManager.start()`, tweb `appDialogsManager.ts:848`).
+ */
+export function getProxiedManagers(): Managers {
+  return startClient().managers
+}
+
+/**
  * Web Locks (порт tweb superMessagePort.ts:220-236) — вкладка сигнализирует
  * воркеру, что она жива, держа лок со случайным id: пока лок удерживается,
  * воркерный navigator.locks.request(id, cb) (см. handleLockTask в

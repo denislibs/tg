@@ -1,7 +1,8 @@
-// Единая точка холодного старта (аналог tweb index.ts): регистрируем SW, поднимаем
-// воркер, СРАЗУ запускаем критические RPC (me + список диалогов), готовим всё, что
-// нужно до первого кадра — offline-first кэш чатов и активный словарь — и отдаём
-// managers для рендера. Всё, что можно, делается параллельно и до React.
+// Холодный старт до развилки «вход / мессенджер» (тело tweb `index.ts:417-612`,
+// развилка и сам вызов — `src/index.ts`): регистрируем SW, поднимаем воркер, СРАЗУ
+// запускаем критические RPC (me + список диалогов), готовим всё, что нужно до
+// первого кадра — offline-first кэш чатов и активный словарь — и отдаём managers
+// и признак сессии. Всё, что можно, делается параллельно.
 import { startClient, type Managers } from './bootstrap'
 import { installBridgeHandoff } from './dnpBridgeHandoff'
 import { initPwaInstall } from '../core/pwa'
@@ -25,7 +26,6 @@ import { preventCrossTabDynamicImportDeadlock } from '../core/preventDeadlock'
 import { useChatsStore } from '../stores/chatsStore'
 import type { DialogOp } from '../core/dialogs/dialogOps'
 import type { PeerProfile } from '../core/managers/authManager'
-import { bootstrapHash } from '../core/hooks/useUrlSync'
 import type { LangPackDifference } from '@layer'
 
 /**
@@ -45,23 +45,23 @@ export function fillDialogsMirror(managers: Pick<Managers, 'dialogs'>): Promise<
 /**
  * Применить ответ владельца к витрине ДО первого рендера (подписка на
  * rt:dialog_op ещё не поднята — startRealtime() стартует позже, из
- * useAppBootstrap.ts; кадры, случившиеся раньше её подписки, никто не
+ * `appDialogsManager.start()`; кадры, случившиеся раньше её подписки, никто не
  * буферизует, см. web-client/CLAUDE.md «Владение фактами»). Сеть догоняет
  * отдельно (refresh) — её НЕ ждём здесь, чтобы не блокировать рендер сетью.
  *
  * `applyDialogOps` здесь — allow-listed исключение из «пишет только проектор»
- * (см. stores/noDuplicateDialogs.test.ts, как и у `core/hooks/useAuthGate.ts`):
+ * (см. stores/noDuplicateDialogs.test.ts, как и у сброса зеркала на выходе):
  * это тот же метод и тот же единственный вход зеркала, что и у storeProjection,
  * просто вызванный отсюда до того, как подписка на rt:dialog_op вообще
  * поднята — не второй вывод факта.
  *
  * Fix (финальное ревью, Important #2/#3): ответ догона применяется ЗДЕСЬ ЖЕ,
  * из результата RPC, а не только бродкастом — до подъёма насоса (startRealtime()
- * из эффекта useAppBootstrap) кадр `rt:dialog_op` доставить некому, и на быстрой
+ * из `appDialogsManager.start()`) кадр `rt:dialog_op` доставить некому, и на быстрой
  * сети reset уходил в никуда. Возвращаем промис этого догона: он уезжает в
  * `bootData` и на нём висит сид презенса (`loadPresence`), которому нужен
  * честный сигнал «сетевой список приехал» — на пустом кэше зеркало в момент
- * монтирования Shell ещё пусто. Промис намеренно НЕ отклоняется (401/5xx у
+ * старта мессенджера ещё пусто. Промис намеренно НЕ отклоняется (401/5xx у
  * `refresh()` пробрасываются): остаёмся на кэше, презенс сеется тем, что есть,
  * unhandled rejection не плодим (Minor #3).
  *
@@ -97,7 +97,7 @@ function setDocumentLangPackProperties(langPack: LangPackDifference) {
   }
 }
 
-export async function bootstrap(): Promise<{ managers: Managers }> {
+export async function bootstrap(): Promise<{ managers: Managers; hasToken: boolean }> {
   // В самом начале boot (как tweb index.ts): ждём один кадр анимации, чтобы
   // отложить последующие dynamic import и не словить кросс-табовый deadlock
   // загрузки модулей в Chrome (см. preventDeadlock.ts). До решения о passcode-локе
@@ -153,7 +153,7 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   void sendPasscodeStateToServiceWorker()
 
   // #1 — критические запросы стартуют до рендера: к моменту mount ответ уже летит.
-  // me переиспользуется в useAuthGate (через bootData) — без второго round-trip
+  // me переиспользуется проверкой сессии `src/index.ts` и стартом (через bootData) — без второго round-trip
   // me().
   const me: Promise<PeerProfile | null> = managers.auth.me()
 
@@ -235,30 +235,9 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   if (stateWasResetToDefaults()) setAppState('version', STATE_VERSION)
   migrateRecentSearchFromLocalStorage()
 
-  // ── Открытие по ссылке — ЗДЕСЬ, до списка диалогов ──────────────────────────
-  // Порт порядка холодного старта оригинала: `appImManager.construct` зовёт
-  // `this.onHashChange(true)` (tweb `appImManager.ts:834`) РАНЬШЕ, чем
-  // `appDialogsManager` берётся за чатлист (`appDialogsManager.ts:726`
-  // `this.onStateLoaded(appState)`). Единственная гарантия, которую открытие
-  // пира там ждёт, — поднятое состояние (`await apiManagerProxy.loadAllStates()`,
-  // tweb `index.ts:455`), и оно у нас поднято строкой выше.
-  //
-  // Раньше первое применение хэша висело на эффекте смонтированного React
-  // (`App.tsx` → `useUrlSync`), то есть стояло ПОСЛЕ `await dialogsOp` ниже и
-  // после всего маунта дерева: ссылка на канал начинала резолвиться последней
-  // из всего старта. Теперь резолв уходит в воркер здесь, параллельно
-  // диалогам, — как в оригинале.
-  //
-  // НЕ `await`: у оригинала `onHashChange` тоже вызывается без ожидания. Ждать
-  // его нельзя ни в коем случае — в ветке «канал, в котором мы не состоим» он
-  // ходит в сеть за вступлением, и первый кадр повис бы на этой сети.
-  //
-  // Без токена — не применяем: у оригинала `bootstrapIm()` (а с ним и `onHashChange`)
-  // вызывается ТОЛЬКО под авторизацией (tweb `index.ts:628`/`:641`), а у нас
-  // без токена не поднят даже Shell. Этот случай (открыли ссылку, вошли по
-  // OTP — `useAuthGate.login()` перезагрузки не делает) закрывает вторая точка
-  // той же защёлки — монтирование `Shell`, см. `bootstrapHash`.
-  if (hasToken) bootstrapHash(managers)
+  // Открытие по ссылке (хэш) — не здесь: у оригинала его первое применение
+  // зовёт `appImManager.construct` (`onHashChange(true)`, tweb
+  // `appImManager.ts:998`) из `appDialogsManager.start()` → `bootstrapIm()`.
 
   // Ответ владельца применяем к витрине ДО первого рендера (см. докблок
   // applyDialogsMirror); dialogsOp был запущен выше, ещё до чтения State —
@@ -273,7 +252,7 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   // Fix (финальное ревью, Minor #1 + Important #3): вместо мёртвого
   // `hydratedFromCache` (его никто не читал: ChatList решает по `loaded`)
   // в bootData уезжает промис СЕТЕВОГО догона — на нём висит сид презенса в
-  // `useAppBootstrap`, см. докблок `applyDialogsMirror`. Сам догон НЕ ждём:
+  // `appDialogsManager.start()`, см. докблок `applyDialogsMirror`. Сам догон НЕ ждём:
   // рендер не должен упираться в сеть.
   const dialogsReady = applyDialogsMirror(op, managers)
   setBootData({ me, dialogsReady, hasToken })
@@ -303,5 +282,5 @@ export async function bootstrap(): Promise<{ managers: Managers }> {
   // видно без перезагрузки: узлы `.i18n` перерисовывает `applyLangPack`.
   void suggestBrowserLangCode()
 
-  return { managers }
+  return { managers, hasToken }
 }

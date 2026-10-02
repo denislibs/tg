@@ -58,7 +58,6 @@ vi.mock('../core/state/loadState', async () => {
 
 import { bootstrap } from './boot'
 import backgroundStyles from '../components/chat/bubbles/chatBackground.module.scss'
-import { useNavigationStore } from '../stores/navigationStore'
 import { useSettingsStore } from '../settings'
 
 // ── Старт под код-паролем (S10, порт tweb index.ts:453 `waitForUnlock`) ───────
@@ -100,7 +99,6 @@ describe('boot: под код-паролем старт ждёт разблок�
     expect(me).not.toHaveBeenCalled()
     expect(scopeToSession).not.toHaveBeenCalled()
     expect(dialogs.fillMirror).not.toHaveBeenCalled()
-    expect(useNavigationStore.getState().selectedId).toBeNull()
 
     // соседняя вкладка ввела код — воркер рассылает toggleLock(false)
     passcodeListeners[passcodeListeners.length - 1]({ method: 'toggleLock', payload: false })

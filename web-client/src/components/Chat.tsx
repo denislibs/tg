@@ -26,9 +26,9 @@ import { useTypingLabel } from '../core/hooks/useTypingLabel'
 import { PeerStatus } from '../shared/ui/peerStatus'
 import { userHasPresence } from '../core/presence'
 import { useManagers } from '../core/hooks/useManagers'
-import { useNavigationActions } from '../core/hooks/useNavigationActions'
-import { useChatStackStore } from '../stores/chatStackStore'
-import { backChatLevel, closeChatLevel } from '../core/navigation/chatHistory'
+import appImManager from '../lib/appImManager'
+import { ChatType } from './chat/chatType'
+import type { OpenPeer } from '../data'
 import { useMirrorHistoryCount, useMirrorWindow } from '../core/hooks/useMirrorWindow'
 import { replaceMirrorWindow, winKey } from '../core/history/messagesMirror'
 import { useEvent } from '../core/hooks/useEvent'
@@ -104,9 +104,8 @@ import useMeasuredHeight from '../shared/lib/useMeasuredHeight'
 import type { Sticker } from '../core/managers/stickersManager'
 import type { SearchSuperActions } from '../core/hooks/useSearchSuper'
 import { getMediaId } from '../core/messages/messageKind'
-import { useIsActiveChat } from '../core/chat/chatInstanceContext'
+import { useChatInstance, useIsActiveChat } from '../core/chat/chatInstanceContext'
 import appSidebarRight, { RIGHT_COLUMN_ACTIVE_CLASSNAME } from './sidebarRight'
-import { appImManager, type EmoticonsSearchChat } from './sidebarRight/tabs/emoticonsSearchBridge'
 import { AppEditContactTab } from './solidJsTabs/tabs'
 import type AppReactProfileTab from './sidebarRight/reactProfileTab'
 
@@ -165,26 +164,22 @@ interface Props {
 export default function Chat({ chat, onBack, thread }: Props) {
   const t = useT()
   const tArgs = useTArgs()
-  // Навигация — из navigationStore/useNavigationActions напрямую (инвариант: View
-  // читает из стора, а не через проброс из Shell). Имена локальные совпадают с
-  // прежними пропсами, чтобы не менять места использования ниже.
-  const { openPeer: onOpenPeer, onChatCreated } = useNavigationActions()
-  // Кнопка «назад» в шапке треда закрывает уровень ЗАПИСЬЮ, а не стором
-  // напрямую — как и стрелка «назад» в шапке чата у оригинала (tweb
-  // src/components/chat/chat.ts:1628-1632, `appNavigationController.back(
-  // isFirstChat ? 'im' : 'chat')`; `backChatLevel` сама решает, какой из двух
-  // типов сейчас на вершине). Прямой `closeTop()` (как было раньше) оставлял
-  // бы запись `chat`/`im` (`core/navigation/chatHistory.ts`) висеть на стеке
-  // контроллера при уже закрытом на экране треде — история расходилась бы с
-  // состоянием.
-  const onCloseThread = useCallback(() => { backChatLevel() }, [])
+  // ВРЕМЕННО до К-3: инстанс стека `appImManager.chats`, чей остров рисует этот
+  // экран (`components/chat/reactChatInstance.ts`).
+  const instance = useChatInstance()?.instance
+  // Открыть пира (участник, автор, «Избранное») — `appImManager.setInnerPeer`, как
+  // у tweb (`setListClickListener`, appDialogsManager.ts:2094).
+  const onOpenPeer = useCallback((peer: OpenPeer) => { void appImManager.setInnerPeer({ peerId: peer.id }) }, [])
+  // Кнопка «назад» в шапке треда — `Chat.pop()` (tweb chat.ts:1671-1676):
+  // `appNavigationController.back(isFirstChat ? 'im' : 'chat')`.
+  const onCloseThread = useCallback(() => { instance?.pop() }, [instance])
   // Ветка комментариев под постом канала (tweb setPeer({peerId, threadId})) —
-  // кладём поверх стека (tweb setInnerPeer).
+  // поверх стека (tweb `openThread` → `setInnerPeer`, тип `Discussion`).
   const onOpenThread = useCallback((args: { chatId: number; rootMsgId: number; title: string; subtitle?: string }) => {
-    useChatStackStore.getState().setInnerPeer({
+    void appImManager.setInnerPeer({
       peerId: args.chatId,
       threadId: args.rootMsgId,
-      type: 'discussion',
+      type: ChatType.Discussion,
       thread: { rootMsgId: args.rootMsgId, title: args.title, subtitle: args.subtitle, kind: 'comments' },
     })
   }, [])
@@ -282,6 +277,14 @@ export default function Chat({ chat, onBack, thread }: Props) {
   )
   const muted = dialogNotify ? isPeerMuted(dialogNotify, Math.floor(Date.now() / 1000)) : !!chat.muted
   const managers = useManagers()
+  // Первое сообщение создало диалог / открыт новый чат (пересылка, новая группа):
+  // чат открывается тем же `setInnerPeer` (тот же пир — тот же инстанс), список
+  // догоняет `refresh()`.
+  const onChatCreated = useCallback((peerId: PeerId) => {
+    void appImManager.setInnerPeer({ peerId })
+    // `.catch`: fire-and-forget, `refresh()` пробрасывает HttpError
+    void managers.dialogs.refresh().catch(() => {})
+  }, [managers])
   const middlewareHelper = useMiddlewareHelper()
 
   // Секретный чат: наблюдаемый статус E2E-handshake (secretChatStore ← realtimeBridge).
@@ -348,13 +351,6 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // это место менеджера сообщений. Фраза и конструктор уже есть
   // (`core/serviceMsg.ts:110`, `core/messages/messageAction.ts:249`).
 
-  // Register the active chat so chatsStore suppresses unread bumps while it's open.
-  const setActiveChat = useChatsStore((s) => s.setActiveChat)
-  useEffect(() => {
-    if (isRealChat) setActiveChat(numericChatId)
-    return () => setActiveChat(null)
-  }, [isRealChat, numericChatId, setActiveChat])
-
   // Real group/channel header card (type/counts/rights) + member presence seeding +
   // post/type permission + discussion wiring + live online count — view-model hook.
   // `chatPeer` — краткий конструктор `channel` из зеркала пиров: вид чата и
@@ -368,10 +364,8 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // `core/messageToConvMsg.ts`), а окно она читает из зеркала.
   // Вкладка №0 правой колонки — своя у каждого инстанса чата, как у tweb
   // (`chat.ts:1003-1005` `appSidebarRight.createSharedMediaTab()`); в неё
-  // порталит себя `UserInfoPanel`. ВРЕМЕННО до Э6: создаёт и снимает её
-  // React-инстанс, а не класс `Chat`. Пассивный эффект, а не layout: синглтон
-  // колонки создаёт layout-эффект шелла (`App.tsx`), он выполняется ПОСЛЕ
-  // layout-эффектов детей того же коммита.
+  // порталит себя `UserInfoPanel`. ВРЕМЕННО до К-3: создаёт и снимает её
+  // React-остров инстанса, а не класс `Chat`.
   const [profileTab, setProfileTab] = useState<AppReactProfileTab | null>(null)
   useEffect(() => {
     const sidebar = appSidebarRight
@@ -388,7 +382,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   }, [])
   // Инстанс стал активным — его вкладка встаёт в слайдер на место прежней
   // (tweb `finishPeerChange` chat.ts:1239-1242 и `spliceChats`
-  // appImManager.ts:3277). ВРЕМЕННО до Э6.
+  // appImManager.ts:3277). ВРЕМЕННО до К-3.
   const isActiveInstance = useIsActiveChat()
   useEffect(() => {
     if (isActiveInstance && profileTab) appSidebarRight.replaceSharedMediaTab(profileTab)
@@ -574,15 +568,9 @@ export default function Chat({ chat, onBack, thread }: Props) {
       ? managers.groups.deleteGroup(numericChatId)
       : managers.groups.removeMember(numericChatId, meId).then(() => managers.dialogs.applyRemoved(numericChatId))
     void op.catch(() => {})
-    // НАХОДКА РЕВЬЮ (Important, финальное ревью п.4): было `onBack?.()` — на
-    // десктопе `onBack` не задан (`App.tsx`: пропа нет вовсе вне узкого
-    // экрана), чат из которого вышли/который удалили оставался открытым, а
-    // лента продолжала биться о 403. Порт `dialog_drop` → `appImManager.
-    // setPeer({isDeleting: true})` (tweb chat.ts:658-668) — закрыть чат
-    // обязано само действие удаления, а не колбэк, которого на десктопе нет.
-    // `closeChatLevel({isDeleting: true})` — та же запись/контроллер, что и
-    // обычное закрытие (см. её докблок), а не второй механизм в обход него.
-    closeChatLevel({ isDeleting: true })
+    // Порт `dialog_drop` → `appImManager.setPeer({isDeleting: true})` (tweb
+    // chat.ts:658-668) — закрыть чат обязано само действие удаления.
+    void appImManager.setPeer({ isDeleting: true })
   }
   // «Очистить историю» у себя: сервер поднимает персональный горизонт, затем
   // выкидываем окно из зеркала, перезагружаем ленту и список диалогов
@@ -1111,9 +1099,8 @@ export default function Chat({ chat, onBack, thread }: Props) {
   const onComposerPickGif = useEvent((g: GifItem) => { sendGif(g); slowmodeMarkSent() })
   // Отправка из вкладок «Поиск стикеров»/«Поиск GIF» правой колонки — tweb
   // `appImManager.chat.input.sendMessageWithDocument` (input.ts:4341), который
-  // зовут `stickers.tsx:174` и `gifs.tsx:77`. ВРЕМЕННО до Э4-3: класса
-  // `AppImManager` нет, активный инстанс кладёт себя в мост
-  // (`sidebarRight/tabs/emoticonsSearchBridge.ts`) и снимает, уходя из активных.
+  // зовут `stickers.tsx:174` и `gifs.tsx:77`. ВРЕМЕННО до К-3: остров отдаёт
+  // её своему инстансу (`ReactChatInstance.input`), пока активен.
   // Гейт — тот же, что у пикера композера (`onPickSticker`/`onPickGif` ниже):
   // без прав отправки ответ «не ушло», как у оригинала.
   const sendDocumentFromSearch = useEvent(({ document }: { document: Sticker | GifItem }) => {
@@ -1123,13 +1110,13 @@ export default function Chat({ chat, onBack, thread }: Props) {
     return true
   })
   useEffect(() => {
-    if (!isActiveInstance) return
-    const chatBridge: EmoticonsSearchChat = { peerId: numericChatId, input: { sendMessageWithDocument: sendDocumentFromSearch } }
-    appImManager.chat = chatBridge
+    if (!isActiveInstance || !instance) return
+    const input = { sendMessageWithDocument: sendDocumentFromSearch }
+    instance.input = input
     return () => {
-      if (appImManager.chat === chatBridge) appImManager.chat = undefined
+      if (instance.input === input) instance.input = undefined
     }
-  }, [isActiveInstance, numericChatId, sendDocumentFromSearch])
+  }, [isActiveInstance, instance, sendDocumentFromSearch])
   // Ответ жестом из императивной ленты (свайп на таче / даблклик на десктопе,
   // tweb bubbles.ts:1497-1542 и :1699). Лента отдаёт только НОМЕР — плашку
   // собирает владелец композера, тем же путём, которым её восстанавливает

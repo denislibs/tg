@@ -461,7 +461,7 @@ describe('appNavigationController — единственный писатель 
   // Комментарии выкидываем: `history.pushState`/`history.replaceState`
   // упоминаются ПРОЗОЙ в докблоках (объясняют, как было раньше, или
   // ссылаются на контроллер как на единственного писателя, см.
-  // `core/navigation/chatHistory.ts`, `core/hooks/useUrlSync.ts`) — без этого
+  // `lib/appImManager.ts`) — без этого
   // инвариант ловил бы собственную документацию, а не код.
   const stripComments = (src: string): string =>
     src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')

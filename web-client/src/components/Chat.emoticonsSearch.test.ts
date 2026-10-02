@@ -2,11 +2,11 @@
 //
 // Пин проводки 0б-11: вкладки «Поиск стикеров»/«Поиск GIF» правой колонки
 // отправляют выбранное через `appImManager.chat.input.sendMessageWithDocument`
-// (tweb `stickers.tsx:174`, `gifs.tsx:77`). Класса `AppImManager` нет до Э4-3,
-// поэтому `appImManager.chat` — мост (`sidebarRight/tabs/emoticonsSearchBridge.ts`),
-// и ставит его АКТИВНЫЙ инстанс `Chat.tsx`. Без этой строки вкладки открываются,
-// ищут и рисуют, но клик по стикеру/GIF никуда не уходит — и ни один тест вкладок
-// этого не видит (там мост ставит сам тест).
+// (tweb `stickers.tsx:174`, `gifs.tsx:77`). `appImManager.chat` — инстанс стека
+// (`components/chat/reactChatInstance.ts`, ВРЕМЕННО до К-3), а его `input` отдаёт
+// АКТИВНЫЙ остров `Chat.tsx`. Без этой строки вкладки открываются, ищут и рисуют,
+// но клик по стикеру/GIF никуда не уходит — и ни один тест вкладок этого не видит
+// (там `appImManager.chat` подменяет сам тест).
 //
 // Почему СКАН ИСХОДНИКА — то же основание, что у `Chat.feedMount.test.ts`:
 // `Chat.tsx` в vitest не рендерится (заявленное исключение, web-client/CLAUDE.md).
@@ -16,9 +16,9 @@ import { join } from 'node:path'
 
 const CHAT_TSX = readFileSync(join(__dirname, 'Chat.tsx'), 'utf8')
 
-/** Тело `useEffect`, который ставит мост: от `useEffect(() => {` до его `}, [deps])`. */
+/** Тело `useEffect`, который отдаёт `input`: от `useEffect(() => {` до его `}, [deps])`. */
 function bridgeEffect(): { body: string, deps: string } {
-  const at = CHAT_TSX.indexOf('appImManager.chat = chatBridge')
+  const at = CHAT_TSX.indexOf('instance.input = input')
   if (at === -1) return { body: '', deps: '' }
   const start = CHAT_TSX.lastIndexOf('useEffect(() => {', at)
   const close = CHAT_TSX.indexOf('}, [', at)
@@ -26,16 +26,15 @@ function bridgeEffect(): { body: string, deps: string } {
   return { body: CHAT_TSX.slice(start, close), deps: CHAT_TSX.slice(close + 4, depsEnd) }
 }
 
-describe('Chat.tsx — мост appImManager.chat для вкладок поиска стикеров/GIF', () => {
-  it('ставит себя в мост только активным инстансом и снимает себя на уходе', () => {
+describe('Chat.tsx — `appImManager.chat.input` для вкладок поиска стикеров/GIF', () => {
+  it('отдаёт input своему инстансу только активным и снимает его на уходе', () => {
     const { body, deps } = bridgeEffect()
-    expect(body).toContain('if (!isActiveInstance) return')
-    expect(body).toContain('appImManager.chat = chatBridge')
-    // снимает ТОЛЬКО себя: новый активный инстанс мог уже поставить свой мост
-    expect(body).toMatch(/if \(appImManager\.chat === chatBridge\) appImManager\.chat = undefined/)
-    expect(body).toContain('peerId: numericChatId')
+    expect(body).toContain('if (!isActiveInstance || !instance) return')
+    expect(body).toContain('instance.input = input')
+    // снимает ТОЛЬКО своё: эффект мог перезапуститься с новым колбэком
+    expect(body).toMatch(/if \(instance\.input === input\) instance\.input = undefined/)
     expect(body).toContain('sendMessageWithDocument: sendDocumentFromSearch')
-    expect(deps.split(',').map((d) => d.trim())).toEqual(['isActiveInstance', 'numericChatId', 'sendDocumentFromSearch'])
+    expect(deps.split(',').map((d) => d.trim())).toEqual(['isActiveInstance', 'instance', 'sendDocumentFromSearch'])
   })
 
   it('отправка гейтится теми же правами, что пикер композера, и различает стикер и GIF', () => {

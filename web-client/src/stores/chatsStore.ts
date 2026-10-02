@@ -25,7 +25,6 @@ interface ChatsState {
   me: PeerProfile | null
   meId: number | null
   loaded: boolean
-  activePeerId: number | null
   /** присутствие по id пользователя — КОНСТРУКТОР `UserStatus` (объединение
    *  схемы), а не пара `{online, lastSeen}`. «Онлайн» выводится предикатом
    *  `isUserStatusOnline(status, now)` (порт `appUsersManager.isUserOnline`):
@@ -51,7 +50,6 @@ interface ChatsState {
    * storeProjection (APPLY[RT.me]). Прямые вызовы из витрины — allow-listed
    * исключения (оптимистика/гидратация), см. stores/noDuplicateMe.test.ts. */
   setMe: (u: PeerProfile | null) => void
-  setActiveChat: (id: number | null) => void
   // Task 3 (перенос владения диалогами): removeDialog/applyChatMeta/applyNewMessage/
   // applyRead/bumpUnreadReactions отсюда убраны — их тела переехали во владельца
   // (core/managers/dialogsManager.ts), выход теперь операция rt:dialog_op через
@@ -106,7 +104,6 @@ export const useChatsStore = create<ChatsState>((set) => ({
   me: null,
   meId: null,
   loaded: false,
-  activePeerId: null,
   presence: {},
   typing: {},
   applyDialogOps: (ops) =>
@@ -159,7 +156,6 @@ export const useChatsStore = create<ChatsState>((set) => ({
     rootScope.myId = me?.user.id ?? 0
     set({ me, meId: me?.user.id ?? null })
   },
-  setActiveChat: (activePeerId) => set({ activePeerId }),
   // Task 3 (перенос владения диалогами): removeDialog/applyChatMeta ушли
   // отсюда — их тела переехали в core/managers/dialogsManager.ts
   // (applyRemoved/applyChatMeta), вызываются из workerCore.ts::dispatch по тем

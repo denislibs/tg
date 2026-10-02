@@ -57,32 +57,22 @@
  *    `core/dom/updateColumnWidths.ts`).
  *
  * Расхождения с оригиналом (временные — с номером задачи, которая снимает):
- *  1. ВРЕМЕННО до Э4-1 (поправка 13 плана волны 7). Синглтон tweb создаётся при
- *     импорте (:1798) и берёт узел из `index.html`. У нас `#column-left`
- *     рисует React (`components/Sidebar.tsx`), поэтому экземпляр создаёт
- *     `createAppSidebarLeft()` из layout-эффекта колонки ПОСЛЕ монтирования
- *     узла, а `destroy()` снимает всё, что навесил `construct` (колонка умирает
- *     на логауте, StrictMode гоняет эффект дважды на одном узле). Узлы колонки
- *     и `.sidebar-left-overlay` — статичная разметка шелла (`App.tsx`, tweb
- *     `index.html:88-107`); в тестах колонки оверлея может не быть — подписка
- *     на клик через `?.`.
+ *  1. (снято на К-2) Синглтон создаётся при импорте, как у tweb (:1798), над
+ *     статичной разметкой `index.html` (`#column-left`, `.sidebar-left-overlay`).
  *  2. `construct(managers, dialogsManager)`: владелец списка чатов — экземпляр
  *     `AppDialogsManager` колонки, а не синглтон (расхождение 1 его шапки,
  *     `lib/appDialogsManager.ts`), и `construct` его получает от `start()`,
  *     который его зовёт (tweb :983).
- *  3. `switchTheme` — ВРЕМЕННО до Э4-5: ночной режим бургера
- *     (`themeController.switchTheme`, :919-928) — React-хук шелла
- *     `useThemeToggle`, его отдаёт `App.tsx`. «Избранное» —
- *     `appImManager.setPeer({peerId: myId})` (:707-713), ВРЕМЕННО до Э4-3 —
- *     открытие через `navigationStore`.
+ *  3. Ночной режим бургера (`themeController.switchTheme`, :919-928) — наш
+ *     `switchTheme` из `core/theme/themeTransition.ts` (там исполнитель перехода).
  *  4. `createTab` при свёрнутой колонке не открывает `AppSettingsTab`/
  *     `AppEditFolderTab`/`AppChatFoldersTab` попапом `showSettingsSliderPopup`
  *     (:1735-1739) — О-27 плана 2D: попапа-слайдера настроек нет. Вкладка
  *     открывается в колонке, а колонка всплывает (`has-open-tabs`).
  *  5. `is-collapsed` колонки пишет, как у tweb, не класс, а эффект
- *     `setSidebarLeftWidth` (`src/index.ts:205-235`) — у нас шелл `App.tsx`,
- *     ВРЕМЕННО до Э4-1; класс читает его (`isCollapsed`), а ручка ресайза пушит
- *     сырой драг в сигнал `useIsSidebarCollapsed` (:660-666).
+ *     `setSidebarLeftWidth` (`src/index.ts`, tweb `:205-235`); класс читает его
+ *     (`isCollapsed`), а ручка ресайза пушит сырой драг в сигнал
+ *     `useIsSidebarCollapsed` (:660-666).
  *  6. `globalSearch` — экземпляр владельца поиска (`sidebarLeft/globalSearch.ts`):
  *     у tweb это тело `initSearch` самого класса (:1137-1691), задача 2-3
  *     переносит его методом. Сеттер `isSearchActive` у tweb приватный (:137),
@@ -149,7 +139,8 @@ import InputSearch from '@components/inputSearch'
 import GlobalSearch from '@components/sidebarLeft/globalSearch'
 import type { AppDialogsManager } from '@lib/appDialogsManager'
 import { openSearchUrl } from '@core/hooks/openSearchUrl'
-import { useNavigationStore } from '@stores/navigationStore'
+import appImManager from '@lib/appImManager'
+import { switchTheme } from '@core/theme/themeTransition'
 import type { User, UserReal } from '@core/peers/peer'
 import { MAX_ACCOUNTS, type PublicAccount } from '@core/auth/accounts'
 import {
@@ -201,8 +192,6 @@ export class AppSidebarLeft extends SidebarSlider {
   public inputSearch!: InputSearch
   /** Расхождение 6 шапки. */
   private globalSearch?: GlobalSearch
-  /** Расхождение 3 шапки — ВРЕМЕННО до Э4-5. */
-  public switchTheme?: (coords: { x: number, y: number }) => void
   private dialogsManager?: AppDialogsManager
 
   public get isSearchActive() {
@@ -213,9 +202,6 @@ export class AppSidebarLeft extends SidebarSlider {
   public set isSearchActive(value: boolean) {
     useIsLeftSearchActive()[1](value)
   }
-
-  // ВРЕМЕННО до Э4-1 (расхождение 1): то, что снимает `destroy()`.
-  private disposers: (() => void)[] = []
 
   constructor() {
     super({
@@ -249,9 +235,7 @@ export class AppSidebarLeft extends SidebarSlider {
 
     // If it has z-index to early, the browser makes it shift a few times before showing it properly in its position (on very large screens)
     // Doesn't solve the blinking, which doesn't seem to appear when the project is built
-    const middleware = this.getMiddleware()
     void pause(1000).then(() => {
-      if(!middleware()) return // расхождение 1
       this.sidebarEl.classList.add('can-menu-have-z-index')
     })
 
@@ -274,7 +258,7 @@ export class AppSidebarLeft extends SidebarSlider {
         this.isSearchActive = active
         this.onSomethingOpenInsideChange()
       },
-      openUrl: (url) => openSearchUrl(url, managers),
+      openUrl: (url) => openSearchUrl(url),
     })
 
     this.initNavigation()
@@ -287,7 +271,7 @@ export class AppSidebarLeft extends SidebarSlider {
     // the same condition, so a single Solid effect owns the truth:
     //
     //   showBack = useFoldersSidebarShown OR useIsLeftSearchActive
-    this.disposers.push(createRoot((dispose) => {
+    createRoot(() => {
       const [foldersSidebarShown] = useFoldersSidebarShown()
       const [isLeftSearchActive] = useIsLeftSearchActive()
       const animatedMenuIcon = this.buttonsContainer.firstElementChild as HTMLElement
@@ -297,15 +281,12 @@ export class AppSidebarLeft extends SidebarSlider {
         this.backBtn.classList.toggle('is-visible', showBack)
         animatedMenuIcon.classList.toggle('state-back', showBack)
       })
-      return dispose
-    }))
+    })
 
-    const sidebarOverlay = document.querySelector('.sidebar-left-overlay')
-    const onOverlayClick = () => {
+    const sidebarOverlay = document.querySelector('.sidebar-left-overlay')!
+    sidebarOverlay.addEventListener('click', () => {
       this.closeEverythingInside()
-    }
-    sidebarOverlay?.addEventListener('click', onOverlayClick) // `?.` — расхождение 1
-    this.disposers.push(() => sidebarOverlay?.removeEventListener('click', onOverlayClick))
+    })
 
     this.initSidebarResize()
   }
@@ -465,7 +446,7 @@ export class AppSidebarLeft extends SidebarSlider {
       this.onSomethingOpenInsideChange()
     }
 
-    this.disposers.push(installColumnResize({
+    installColumnResize({
       columnEl: this.sidebarEl,
       side: 'left',
       isCollapsed: () => this.isCollapsed(),
@@ -473,13 +454,14 @@ export class AppSidebarLeft extends SidebarSlider {
         // Drag only fires off-handheld (the resize handle is display:none
         // at handheld), so the raw drag value is already the effective
         // one — push it into the signal and the mirror effect
-        // (`App.tsx`, расхождение 5) toggles #column-left.is-collapsed.
+        // (`src/index.ts::setSidebarLeftWidth`, расхождение 5) toggles
+        // #column-left.is-collapsed.
         useIsSidebarCollapsed()[1](collapsed)
       },
       onCollapsedChange: () => this.onCollapsedChange(true),
       preventCollapse: () => this.hasSomethingOpenInside(),
       // onSwipeTick: appImManager.adjustChatPatternBackground — Э4-5, см. шапку
-    }))
+    })
   }
 
   /** tweb `createToolsMenu` (:673-905). `listenerSetter` — расхождение 7. */
@@ -646,7 +628,7 @@ export class AppSidebarLeft extends SidebarSlider {
       const item = btns[0].element!
       const icon = item.querySelector('.tgico')!
       const rect = icon.getBoundingClientRect()
-      this.switchTheme?.({
+      switchTheme({
         x: rect.left + rect.width / 2,
         y: rect.top + rect.height / 2,
       })
@@ -726,7 +708,9 @@ export class AppSidebarLeft extends SidebarSlider {
         }
       },
       // Document Picture-in-Picture is Chromium-only — gate the entry on actual support.
-      verify: () => DOCUMENT_PICTURE_IN_PICTURE_SUPPORTED,
+      // Б-12 (К-2): вынос переносил `#root`, которого с точкой входа tweb нет, —
+      // пункт скрыт до порта `components/clientPip.tsx`.
+      verify: () => DOCUMENT_PICTURE_IN_PICTURE_SUPPORTED && !!document.getElementById('root'),
     }]
 
     const hasAnimations = () => {
@@ -906,13 +890,13 @@ export class AppSidebarLeft extends SidebarSlider {
     })
   }
 
-  /** `appImManager.setPeer({peerId: myId})` (:707-713) — ВРЕМЕННО до Э4-3 (расхождение 3). */
+  /** `appImManager.setPeer({peerId: myId})` (:707-713). */
   private openSavedMessages() {
     const managers = this.managers!
     void (async() => {
       const id = await managers.chats.saved()
       await managers.dialogs.refresh()
-      useNavigationStore.getState().selectChat(String(id))
+      void appImManager.setPeer({ peerId: id })
     })()
   }
 
@@ -931,46 +915,11 @@ export class AppSidebarLeft extends SidebarSlider {
     await playMainScreenExit(document.querySelector<HTMLElement>('.page-chats'))
     await commandThenReload(managers.auth.addAccount())
   }
-
-  /**
-   * ВРЕМЕННО до Э4-1 (расхождение 1) — у оригинала метода нет: синглтон вечен.
-   * Закрывает вкладки (`super.destroy`), снимает запись навигации, кнопку
-   * бургера, морф, клик по оверлею, ручку ресайза и свои следы на узле колонки.
-   */
-  public destroy() {
-    super.destroy()
-    this.disposers.forEach((dispose) => dispose())
-    this.disposers = []
-    this.onTabsCountChange = undefined
-    this.toolsBtn?.remove()
-    this.newBtnMenu?.remove()
-    this.globalSearch?.destroy()
-    this.globalSearch = undefined
-    this.inputSearch?.container.remove()
-    appNavigationController.removeByType('global-search-focus')
-    this.sidebarEl.classList.remove(
-      'has-open-tabs', 'has-real-tabs', 'has-forum-open', 'can-menu-have-z-index',
-      'force-hide-large-content', 'force-hide-menu', 'force-hide-search', 'force-chatlist-thin',
-      'force-fixed', 'hide-add-folders',
-    )
-    setOpenTabsLeftSidebar(false)
-    this.dialogsManager = undefined
-    this.switchTheme = undefined
-  }
 }
 
-// ВРЕМЕННО до Э4-1 (расхождение 1): у tweb — `const appSidebarLeft = new AppSidebarLeft()` при импорте (:1798-1800).
-let appSidebarLeft!: AppSidebarLeft
-
-/** Слайдер ОДИН на колонку: он владеет историей вкладок, а история одна. */
-export function createAppSidebarLeft() {
-  appSidebarLeft?.destroy()
-  appSidebarLeft = new AppSidebarLeft()
-  MOUNT_CLASS_TO.appSidebarLeft = appSidebarLeft
-  return appSidebarLeft
-}
-
-export { appSidebarLeft as default }
+const appSidebarLeft = new AppSidebarLeft()
+MOUNT_CLASS_TO.appSidebarLeft = appSidebarLeft
+export default appSidebarLeft
 
 /** tweb `themeController.isNight()` — по применённой теме, а не по выбору рендера. */
 function isNight() {

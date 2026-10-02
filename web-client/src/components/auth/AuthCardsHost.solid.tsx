@@ -63,12 +63,14 @@
  *    компонента — отсебятина. Владелец монтирования (пока не портирован —
  *    задача снятия React, волна 3+) передаст то же значение, что сегодня
  *    `startClient().managers`.
- *  • `onComplete` — параметр вместо `bootstrapIm()` (модуль реального
- *    бутстрапа мессенджера, которого в Solid-слое ещё нет). `toIm()` делает
- *    ровно то же, что и в оригинале СТРУКТУРНО — гасит фикс-кнопки классом
- *    `.leaving` (см. `AuthFlow.module.scss::.leaving`, тот же класс, что и у
- *    React-версии) и передаёт управление дальше, — но «дальше» здесь параметр,
- *    а не прямой вызов.
+ *  • `toIm()` — как у оригинала (`AuthCardsHost.tsx:100-106`): гасит фикс-кнопки
+ *    классом `.leaving` и зовёт `bootstrapIm()` (`pages/bootstrapIm.ts`, тот
+ *    снимает хост через секунду, `disposeActiveAuthFlow`). Сверх оригинала
+ *    перед ним — то, что раньше делал `useAuthGate.login()`: вход обесценивает
+ *    префетч старта (`invalidateBootPrefetch`, поднят под «нет сессии») и
+ *    снимает «предыдущий аккаунт» кнопки возврата (`PREV_ACCOUNT_KEY`). У tweb
+ *    их роли несут `apiManager.setUserAuth` → `user_auth` и `sessionStorage`
+ *    `previous_account`.
  *  • `getCurrentAccount() !== 1` (у tweb — реальный мультиаккаунт,
  *    `lib/accounts/*`, которого у нас нет) заменён на то же условие, что уже
  *    использует наш React `AuthFlow.tsx`: `PREV_ACCOUNT_KEY` в localStorage
@@ -130,6 +132,8 @@ import { switchThemeWithTransition } from '@core/theme/themeTransition'
 import { useSettingsStore } from '@/settings'
 import { resolvePreset, PRESET_MODE, type ThemeChoice } from '@/theme'
 import type { Managers } from '@/client/bootstrap'
+import { invalidateBootPrefetch } from '@/client/bootData'
+import { bootstrapIm } from '@/pages/bootstrapIm'
 import {
   AuthFlowContext,
   currentCard,
@@ -159,8 +163,6 @@ const SignImportCard = lazy(() => import('./cards/SignImportCard.solid'))
 export type AuthCardsHostProps = {
   /** DI-хендл менеджеров воркера — см. докблок «Расхождения с tweb». */
   managers: Managers
-  /** Свернуть auth-UI и забутстрапить мессенджер — см. докблок «toIm()». */
-  onComplete: () => void
 }
 
 export default function AuthCardsHost(props: AuthCardsHostProps): JSX.Element {
@@ -207,7 +209,9 @@ export default function AuthCardsHost(props: AuthCardsHostProps): JSX.Element {
     // лежат НАД ним — гасим их сразу классом, не дожидаясь, пока хост реально
     // размонтируется (тот же приём и тот же комментарий, что у оригинала).
     hostEl.classList.add(styles.leaving)
-    props.onComplete()
+    invalidateBootPrefetch()
+    localStorage.removeItem(PREV_ACCOUNT_KEY)
+    await bootstrapIm()
   }
 
   /* ---------- переключатель темы (см. докблок «Расхождения с tweb») ---------- */

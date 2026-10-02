@@ -8,7 +8,7 @@
  * настоящим `appNavigationController`. Стабы — только границы: менеджер
  * стикеров (воркер), `wrapSticker` (загрузка файла и плеер — не предмет вкладки),
  * просмотрщик по зажатию (свой тест — `stickerViewer.test.ts`), React-попап
- * набора (ВРЕМЕННО до 2C-15) и инстанс чата (мост `appImManager`, ВРЕМЕННО до Э4-3).
+ * набора (ВРЕМЕННО до 2C-15) и инстанс чата (мост `appImManager.chat`, ВРЕМЕННО до К-3).
  *
  * Предмет проверок:
  *  • разметка — живой DOM tweb (дамп 19-emoticons-06): `#stickers-container
@@ -32,7 +32,14 @@ import appNavigationController from '@core/navigation/appNavigationController'
 import { makeSticker } from '@core/stickers/testSticker'
 import rootScope from '@lib/rootScope'
 import { installSidebarRight } from '@/test/sidebarRight'
-import { appImManager } from './emoticonsSearchBridge'
+import appImManager from '@lib/appImManager'
+
+// открытый чат вкладки — `appImManager.chat`: геттер синглтона подменяется на тест
+let openChat: unknown
+const setChat = (chat: unknown) => { openChat = chat }
+beforeEach(() => {
+  vi.spyOn(appImManager, 'chat', 'get').mockImplementation(() => openChat as typeof appImManager.chat)
+})
 
 vi.mock('@components/wrappers/sticker', () => ({ default: vi.fn() }))
 vi.mock('@components/stickerViewer', () => ({ default: vi.fn() }))
@@ -111,7 +118,7 @@ afterEach(async() => {
   column.dispose()
   await settle()
   appNavigationController.spliceItems(0, Infinity)
-  appImManager.chat = undefined
+  setChat(undefined)
   vi.restoreAllMocks()
   document.body.replaceChildren()
 })
@@ -306,7 +313,7 @@ describe('вкладка «Поиск стикеров» — кнопка Add/Ad
 describe('вкладка «Поиск стикеров» — клики', () => {
   it('стикер при открытом чате — отправка самим документом в композер чата', async() => {
     const sendMessageWithDocument = vi.fn(() => true)
-    appImManager.chat = { peerId: 5, input: { sendMessageWithDocument } }
+    setChat({ peerId: 5, input: { sendMessageWithDocument } })
     const tab = await open()
 
     const cell = row(tab, 'Duck').querySelectorAll<HTMLElement>('.sticker-set-sticker')[1]
@@ -366,7 +373,7 @@ describe('вкладка «Поиск стикеров» — колонка и �
     await pause(0)
     expect(toggleSidebar).not.toHaveBeenCalled()
     expect(stickers.featuredSets).toHaveBeenCalledTimes(1)
-    left.destroy()
+    left.closeAllTabs()
   })
 
   it('Esc закрывает вкладку через контроллер навигации; после перехода узла вкладки нет, Solid-корень снят', async() => {

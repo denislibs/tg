@@ -6,7 +6,7 @@
  *
  * Слайдер НАСТОЯЩИЙ (`components/slider.ts`), вкладки — настоящие объявления
  * `solidJsTabs/tabs.ts`, селектор участников — настоящий `AppSelectPeers`.
- * Стабы — границы: менеджеры воркера, открытие чата (`openPeer`, роль
+ * Стабы — границы: менеджеры воркера, открытие чата (шпион
  * `appImManager.setInnerPeer`) и кнопка-аватар (`AvatarEdit` — порт задачи
  * 0а-3, общий с «Новым каналом»; здесь нужен только её `onChange`).
  *
@@ -16,6 +16,7 @@
  * остаётся ОДНА вкладка, а «Назад» с неё уводит из флоу, а не на выбор.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import appImManager from '@lib/appImManager'
 import type { Managers } from '@/client/bootstrap'
 import rootScope from '@lib/rootScope'
 import { useChatsStore } from '@stores/chatsStore'
@@ -44,8 +45,7 @@ vi.mock('@components/avatarEdit', () => ({
   },
 }))
 
-const openPeerMock = vi.hoisted(() => vi.fn())
-vi.mock('@core/navigation/openPeer', () => ({ openPeer: openPeerMock }))
+const openPeerMock = vi.fn()
 
 const ME = 1
 const USERS = new Map<PeerId, User>([
@@ -85,6 +85,7 @@ beforeEach(() => {
   useChatsStore.setState({ dialogIndexById: {} })
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 420 } as DOMRect)
   openPeerMock.mockClear()
+  vi.spyOn(appImManager, 'setInnerPeer').mockImplementation(async(options) => { openPeerMock(options) })
   avatarEdit.onChange = undefined
   avatarEdit.clear.mockClear()
 
@@ -115,7 +116,7 @@ beforeEach(() => {
 })
 
 afterEach(async() => {
-  slider.destroy()
+  slider.closeAllTabs()
   await pause(400)
   // Контроллер навигации — модульный синглтон (как в `slider.test.ts`).
   appNavigationController.spliceItems(0, Infinity)
@@ -280,7 +281,7 @@ describe('вкладка «New Group» — создание', () => {
     expect(createChat).toHaveBeenCalledWith('Team', [2, 3])
     expect(history()).toEqual([])
     expect(openPeerMock).toHaveBeenCalledTimes(1)
-    expect(openPeerMock.mock.calls[0][1]).toMatchObject({ id: -50 })
+    expect(openPeerMock).toHaveBeenCalledWith({ peerId: -50 })
     expect(setPhoto).not.toHaveBeenCalled()
 
     await pause(400)

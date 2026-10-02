@@ -30,6 +30,11 @@ import { resolve } from 'node:path'
 import { beforeAll } from 'vitest'
 
 import { installDomKeyLeakPin } from './domKeyLeak'
+import { installStaticMarkup } from './staticMarkup'
+
+// Статика `index.html` до импорта модулей теста — синглтоны колонок строятся при
+// импорте (см. `staticMarkup.ts`).
+installStaticMarkup()
 
 // Пин на утечку ключа в DOM — общий для всех компонентных тестов (см. `domKeyLeak.ts`).
 installDomKeyLeakPin()
