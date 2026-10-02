@@ -814,6 +814,8 @@ export class AppDialogsManager {
 
   private host: HTMLElement | undefined
   public chatsContainer!: HTMLElement
+  /** `#folders-container` завёл сам владелец (в документе его не было) */
+  private foldersContainerOwned = false
   /** tweb `:848` — менеджеры владельца (у tweb — `getProxiedManagers()`) */
   public managers!: Managers
   private foldersOverlay!: HTMLElement
@@ -869,7 +871,9 @@ export class AppDialogsManager {
     folders.hydrate()
 
     // tweb `index.html:102` — статичный узел; без него (тесты) владелец заводит свой
-    const container = document.getElementById('folders-container') ?? document.createElement('div')
+    const staticContainer = document.getElementById('folders-container')
+    this.foldersContainerOwned = !staticContainer
+    const container = staticContainer ?? document.createElement('div')
     container.id = 'folders-container'
     container.classList.add('tabs-container')
     // Узлы ряда (`menu`, `menuScrollContainer`, `menuGradient`) приходят ref-ами
@@ -1019,7 +1023,13 @@ export class AppDialogsManager {
     this.contextMenu = undefined
 
     this.foldersOverlay.remove()
-    this.folders.container.remove()
+    // статичный `#folders-container` возвращается на место tweb (`index.html:102`) пустым
+    if(this.foldersContainerOwned) {
+      this.folders.container.remove()
+    } else {
+      this.folders.container.replaceChildren()
+      this.chatsContainer.append(this.folders.container)
+    }
     this.host.remove()
     this.chatsContainer.classList.remove('has-filters')
     useHasFolders()[1](false) // расхождение 12

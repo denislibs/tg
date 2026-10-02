@@ -36,15 +36,23 @@ let im: AppImManager
 /** Дождаться `setPeer` целиком: динамический импорт острова и два `setTimeout(0)` (`:3366-3378`). */
 const settle = () => pause(20)
 
+/** Колонки — статика `index.html`, если сетап прогона её уже вставил, иначе свои узлы. */
+function column(id: string) {
+  let el = document.getElementById(id)
+  if(!el) {
+    el = document.createElement('div')
+    el.id = id
+    document.body.append(el)
+  }
+
+  return el
+}
+
 function mountColumns() {
-  const left = document.createElement('div')
-  left.id = 'column-left'
-  const center = document.createElement('div')
-  center.id = 'column-center'
-  const right = document.createElement('div')
-  right.id = 'column-right'
-  document.body.append(left, center, right)
-  columnRight.sidebarEl = right
+  const left = column('column-left')
+  const center = column('column-center')
+  center.replaceChildren()
+  columnRight.sidebarEl = column('column-right')
   return { left, center }
 }
 

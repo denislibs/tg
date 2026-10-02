@@ -280,7 +280,7 @@ export function mountOwner(options: {
   })
 
   // `bottomPart` — узел владельца (tweb `:857-859`), разметке колонки его не нужно
-  column.host.remove()
+  ;(column.host as HTMLElement | null)?.remove()
   const manager = appDialogsManager
   manager.startDialogs(hooks.managers as unknown as Managers)
   const host = chatsContainer.querySelector<HTMLDivElement>(':scope > .connection-status-bottom')!
