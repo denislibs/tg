@@ -1,5 +1,4 @@
-// Ссылка на конкретное сообщение («Copy Message Link» в меню бабла) и прыжок к
-// сообщению при открытии чата.
+// Ссылка на конкретное сообщение («Copy Message Link» в меню бабла).
 //
 // Ссылка — как у tweb (`contextMenu.ts::getUrlToMessage`): `t.me/<username>/<mid>`
 // у чата с юзернеймом, `t.me/c/<chatId>/<mid>` у остальных, только на своём
@@ -11,9 +10,7 @@
 // (`core/hooks/openSearchUrl.ts`, роль tweb `internalLinkProcessor`).
 //
 // Якорь сообщения — `seq` (порядковый номер сообщения В ЧАТЕ), а не глобальный
-// `id`: именно им оперирует прыжок (`setPendingJump(peerId, seq)`), и он же
-// аналог телеграмного `mid` — номера внутри чата, а не по всей базе.
-import { useSearchStore } from '@stores/searchStore'
+// `id`: аналог телеграмного `mid` — номера внутри чата, а не по всей базе.
 import { toChatId } from '@core/peers/peerId'
 import { publicPrivatePostLink, publicUsernameLink } from './publicLink'
 
@@ -31,12 +28,4 @@ export function buildMessageLink({
   seq: number
 }): string {
   return username ? publicUsernameLink(username, seq) : publicPrivatePostLink(toChatId(peerId), seq)
-}
-
-/**
- * Поставить прыжок к сообщению, который потребит лента чата при открытии
- * (`Chat.tsx` читает `pendingJump` ровно так же для перехода из поиска).
- */
-export function requestMessageJump(peerId: PeerId, seq: number): void {
-  useSearchStore.getState().setPendingJump(peerId, seq)
 }

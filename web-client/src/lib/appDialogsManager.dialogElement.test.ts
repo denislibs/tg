@@ -18,7 +18,6 @@ import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import { makeMessage } from '@core/messages/testMessage'
 import { saveDocument, THUMB_TYPE_FULL, type MessageMedia } from '@core/media/messageMedia'
 import appImManager from '@lib/appImManager'
-import { useSearchStore } from '@stores/searchStore'
 import { useChatsStore } from '@stores/chatsStore'
 import { makeDialog } from '@core/dialogs/testDialog'
 import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '@core/folderIds'
@@ -64,7 +63,6 @@ beforeEach(() => {
   // зеркало `meId` (`chatsStore.setMe` пишет оба) — его читает подзаголовок («Вы»)
   rootScope.myId = ME
   setPeer = vi.spyOn(appImManager, 'setPeer').mockResolvedValue(undefined)
-  useSearchStore.setState({ pendingJump: null })
 })
 afterEach(() => {
   document.body.replaceChildren()

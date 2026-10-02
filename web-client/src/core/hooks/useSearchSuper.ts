@@ -93,7 +93,7 @@ export type UseSearchSuperOptions = {
  * пересылки/удаления и переход к сообщению живут в хосте чата (`Chat.tsx`).
  */
 export type SearchSuperActions = Pick<AppSearchSuperOptions,
-  'setInnerPeer' | 'showForwardPopup' | 'showDeleteMessagesPopup' | 'downloadToDisc'>
+  'setInnerPeer' | 'showForwardPopup' | 'showDeleteMessagesPopup'>
 
 export type SearchSuperSeam = {
   searchSuper: AppSearchSuper
@@ -144,7 +144,6 @@ export function useSearchSuper(options: UseSearchSuperOptions): SearchSuperSeam 
       setInnerPeer: (options) => optionsRef.current.setInnerPeer?.(options),
       showForwardPopup: (fromPeerIdsMids, onSelect) => optionsRef.current.showForwardPopup?.(fromPeerIdsMids, onSelect),
       showDeleteMessagesPopup: (peerId, mids, onConfirm) => optionsRef.current.showDeleteMessagesPopup?.(peerId, mids, onConfirm),
-      downloadToDisc: (message) => optionsRef.current.downloadToDisc?.(message),
       scrollOffset: SCROLL_OFFSET,
     }), dispose] as const)
 

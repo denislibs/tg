@@ -163,7 +163,7 @@ describe('dialogMatchesFolder: адаптер Dialog, контактность �
 // самой логике сопоставления (аналог `firstUnpinned`/`.sort(` в
 // noManualOrder.test.ts:76-84): membership-проверки include/exclude-списков
 // чатов папки. (`contactIds.has(` не годится маркером — тот же паттерн
-// случайно совпадает с несвязанным `useChatAutoDownload.ts`.)
+// случайно совпадает с несвязанным `core/chat/autoDownloadSettings.ts`.)
 describe('folderFilter: правила папок описаны ровно в одном файле', () => {
   const SRC_ROOT = join(__dirname, '..')
   const RULE_FILE = 'core/folderFilter.ts'

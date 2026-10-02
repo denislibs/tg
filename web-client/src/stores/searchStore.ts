@@ -67,8 +67,6 @@ export interface PendingForward {
 
 interface SearchState {
   byChat: Record<number, ChatSearch>
-  /** результат сайдбар-поиска ждёт открытия чата → Chat прыгает к seq */
-  pendingJump: { peerId: number; seq: number } | null
   /** «Ответить в другом чате» ждёт открытия целевого чата → ставится reply-плашка */
   pendingReply: PendingReply | null
   /** пересылка в один чат ждёт открытия целевого чата → ставится плашка форварда */
@@ -83,8 +81,6 @@ interface SearchState {
   /** Закрыть поиск (tweb `searchSignal(undefined)`, chat.ts:792). */
   closeSearch: (peerId: number) => void
   setReactionsShown: (peerId: number, shown: boolean) => void
-  setPendingJump: (peerId: number, seq: number) => void
-  clearPendingJump: () => void
   setPendingReply: (r: PendingReply) => void
   clearPendingReply: () => void
   setPendingForward: (f: PendingForward) => void
@@ -96,7 +92,6 @@ const EMPTY: ChatSearch = { open: false, reactionsShown: false, seed: EMPTY_SEED
 
 export const useSearchStore = create<SearchState>((set) => ({
   byChat: {},
-  pendingJump: null,
   pendingReply: null,
   pendingForward: null,
   initSearch: (peerId, options = {}) =>
@@ -127,8 +122,6 @@ export const useSearchStore = create<SearchState>((set) => ({
     set((s) => ({ byChat: { ...s.byChat, [peerId]: { ...(s.byChat[peerId] ?? EMPTY), open: false, reactionsShown: false } } })),
   setReactionsShown: (peerId, reactionsShown) =>
     set((s) => ({ byChat: { ...s.byChat, [peerId]: { ...(s.byChat[peerId] ?? EMPTY), reactionsShown } } })),
-  setPendingJump: (peerId, seq) => set({ pendingJump: { peerId, seq } }),
-  clearPendingJump: () => set({ pendingJump: null }),
   setPendingReply: (r) => set({ pendingReply: r }),
   clearPendingReply: () => set({ pendingReply: null }),
   setPendingForward: (f) => set({ pendingForward: f }),

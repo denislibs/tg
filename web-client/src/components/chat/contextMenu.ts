@@ -210,50 +210,8 @@ import type { ReadDateResult } from '@core/managers/chatsManager'
 import { useI18nStore } from '../../i18n'
 import { _i18n, i18n } from '@lib/langPack'
 import type ChatSelection from './selection'
-
-/**
- * Срез `Chat`, которым пользуется меню — тот же приём, что `ChatContext` у
- * ленты (`bubbles.ts`): tweb передаёт в конструктор весь `Chat` (топбар, инпут,
- * поиск, выделение), у нас поимённо перечислено ровно нужное.
- */
-export interface ContextMenuChat {
-  peerId: PeerId
-  /** ключ окна в зеркале — источник сообщений (tweb `chat.getMessageByPeer`
-   *  ходит в `apiManagerProxy`, у нас окно лежит в `messagesMirror`) */
-  messagesStorageKey: string
-  /** tweb `chat.canSend()` — асинхронный, как в оригинале */
-  canSend(): boolean | Promise<boolean>
-  /** Порт tweb `!!chat.input.messageInput` (verify Reply/Edit): «композер
-   *  существует», то есть в чат в принципе можно писать. */
-  hasMessageInput(): boolean
-  /** Порт `chat.input.initMessageReply(getChatInputReplyToFromMessage(message))`
-   *  (:1861-1872). Наружу едет только номер: собрать плашку умеет владелец
-   *  композера — ровно как у ленты (`ChatContext.initMessageReply`). */
-  initMessageReply(mid: number): void
-  /** Порт `chat.input.initMessageEditing(mid)` (:1912) */
-  initMessageEditing(mid: number): void
-  /** Порт `chat.initSearch({query, filterPeerId})` (:1046) */
-  initSearch(options: { query?: string, filterPeerId?: PeerId }): void
-  /**
-   * Порт `chat.bubbles.canForward` (bubbles.ts:9802).
-   *
-   * ОПЦИОНАЛЕН, и это честная граница: факта `pFlags.noforwards` (ни у
-   * сообщения, ни у пира) в нашей модели нет вовсе — та же дыра, что у
-   * `SelectionManagers.cantForwardDeleteMids` (`selection.ts`). Не передан —
-   * пересылать можно всё, как отвечает оригинал при отсутствии запретов.
-   */
-  canForward?(message: MyMessage): boolean
-}
-
-/**
- * Срез ЛЕНТЫ — по образцу `SelectionBubbles` (`selection.ts`). Меню нужна одна
- * её часть: живой режим выделения. В tweb он висит на `Chat`
- * (`chat.selection`), у нас владелец — лента (`ChatBubbles.selection`), потому
- * что она же создаёт его фабрикой хоста.
- */
-export interface ContextMenuBubbles {
-  readonly selection?: ChatSelection
-}
+import type Chat from './chat'
+import { downloadToDisc } from '@lib/appDownloadManager'
 
 /** Срез менеджеров — только те вызовы, которые делают пункты меню. */
 export interface ContextMenuManagers {
@@ -291,10 +249,6 @@ export interface ContextMenuManagers {
   chats: {
     /** Порт `appMessagesManager.getOutboxReadDate` (:1518) */
     getReadDate(peerId: number, msgId: number): Promise<ReadDateResult>
-  }
-  media: {
-    /** Порт `appDownloadManager.downloadToDisc({media})` (:2189) */
-    downloadToDisc(message: MyMessage): void | Promise<void>
   }
 }
 
@@ -419,16 +373,20 @@ export default class ChatContextMenu {
   /** tweb :231 — живёт ровно столько, сколько открыто меню. */
   private reactionsMenu?: ChatReactionsMenu
 
+  /**
+   * tweb `new ChatContextMenu(chat, managers)` (chat.ts:619). Третий аргумент —
+   * носители попапов (`ContextMenuPopups`): ВРЕМЕННО до П-5 (бэклог Б-28) `Chat` их
+   * не отдаёт, и пункты, которым нужен попап (закреп, пересылка, удаление, жалоба,
+   * статистика, проверка фактов), скрыты своим `verify`.
+   */
   constructor(
-    private chat: ContextMenuChat,
-    private bubbles: ContextMenuBubbles,
+    private chat: Chat,
     private managers: ContextMenuManagers,
-    private popups: ContextMenuPopups,
+    private popups?: ContextMenuPopups,
   ) {}
 
-  /** tweb `this.chat.selection` — у нас владелец режима выделения это лента. */
-  private get selection(): ChatSelection | undefined {
-    return this.bubbles.selection
+  private get selection(): ChatSelection {
+    return this.chat.selection
   }
 
   /** Порт `attachTo` (:246-348). */
@@ -453,7 +411,7 @@ export default class ChatContextMenu {
       attachContextMenuListener({
         element,
         callback: (e) => {
-          if(this.selection?.isSelecting || !(e.target as HTMLElement).closest(REACTION_SELECTOR)) {
+          if(this.selection.isSelecting || !(e.target as HTMLElement).closest(REACTION_SELECTOR)) {
             return
           }
 
@@ -481,7 +439,7 @@ export default class ChatContextMenu {
       // tweb :282-315 — обычный тап по баблу открывает меню, если цель не
       // попала в «плохие селекторы».
       attachClickEvent(element, (e) => {
-        if(this.selection?.isSelecting) {
+        if(this.selection.isSelecting) {
           return
         }
 
@@ -517,7 +475,7 @@ export default class ChatContextMenu {
         return
       }
 
-      if(this.selection?.isSelecting && this.selectedMessages) {
+      if(this.selection.isSelecting && this.selectedMessages) {
         const hasDeletedSelectedMessage = this.selectedMessages.some((message) => msgs.has(message.id))
         if(hasDeletedSelectedMessage) {
           contextMenuController.close()
@@ -688,7 +646,7 @@ export default class ChatContextMenu {
     return filterAsync(buttons, async(button) => {
       let good: boolean
 
-      if(this.selection?.isSelecting && !button.withSelection) {
+      if(this.selection.isSelecting && !button.withSelection) {
         good = false
       } else {
         good = await button.verify()
@@ -716,19 +674,19 @@ export default class ChatContextMenu {
       onClick: this.onReplyClick,
       verify: async() => !!this.message &&
         !this.isOutgoing(this.message) &&
-        this.chat.hasMessageInput() &&
+        !!this.chat.input.messageInput &&
         (this.canForward(this.message) || !!await this.chat.canSend()),
     }, {
       icon: 'edit',
       text: 'Edit',
       onClick: this.onEditClick,
-      verify: () => this.canEditMessage(this.message, 'text') && this.chat.hasMessageInput(),
+      verify: () => this.canEditMessage(this.message, 'text') && !!this.chat.input.messageInput,
     }, {
       icon: 'factcheck',
       // tweb :1026 — текст зависит от наличия проверки у ГЛАВНОГО сообщения
       text: (this.mainMessage as MessageReal | undefined)?.factcheck ? 'EditFactCheck' : 'AddFactCheck',
       onClick: this.onEditFactCheckClick,
-      verify: () => !!this.mainMessage && this.canUpdateFactCheck(this.mainMessage),
+      verify: () => !!this.popups && !!this.mainMessage && this.canUpdateFactCheck(this.mainMessage),
     }, {
       icon: 'copy',
       text: 'Copy',
@@ -804,7 +762,7 @@ export default class ChatContextMenu {
       icon: 'pin',
       text: 'Message.Context.Pin',
       onClick: this.onPinClick,
-      verify: () => !!this.message &&
+      verify: () => !!this.popups && !!this.message &&
         !this.isOutgoing(this.message) &&
         this.message._ !== 'messageService' &&
         !this.message.pFlags.pinned &&
@@ -813,11 +771,11 @@ export default class ChatContextMenu {
       icon: 'unpin',
       text: 'Message.Context.Unpin',
       onClick: this.onUnpinClick,
-      verify: () => !!this.message?.pFlags.pinned && this.canPinMessage(this.message.peerId),
+      verify: () => !!this.popups && !!this.message?.pFlags.pinned && this.canPinMessage(this.message.peerId),
     }, {
       icon: 'download',
       text: 'MediaViewer.Context.Download',
-      onClick: () => ChatContextMenu.onDownloadClick(this.managers, this.message, this.noForwards),
+      onClick: () => ChatContextMenu.onDownloadClick(this.message, this.noForwards),
       verify: () => ChatContextMenu.canDownload(this.message, this.target, this.noForwards),
     }, {
       icon: 'checkretract',
@@ -853,7 +811,7 @@ export default class ChatContextMenu {
       text: 'Forward',
       // let forward the message if it's outgoing but not ours (like a changelog)
       onClick: this.onForwardClick,
-      verify: () => !this.noForwards &&
+      verify: () => !!this.popups && !this.noForwards &&
         !!this.message &&
         (!this.isOutgoing(this.message) || this.message.fromId === SERVICE_PEER_ID) &&
         this.message._ !== 'messageService',
@@ -865,12 +823,12 @@ export default class ChatContextMenu {
       // её `disabled`); плашка у нас — порт-интерфейс без узлов, а факта
       // «нельзя переслать выбранное» не существует (см. `selection.ts`),
       // поэтому остаётся сам признак «есть выбранное».
-      verify: () => this.isSelected && !!this.selection?.length(),
+      verify: () => !!this.popups && this.isSelected && !!this.selection.length(),
       withSelection: true,
     }, {
       icon: 'download',
       text: 'MediaViewer.Context.Download',
-      onClick: () => ChatContextMenu.onDownloadClick(this.managers, this.selectedMessages, this.noForwards),
+      onClick: () => ChatContextMenu.onDownloadClick(this.selectedMessages, this.noForwards),
       verify: () => !!this.selectedMessages &&
         ChatContextMenu.canDownload(this.selectedMessages, null, this.noForwards),
       withSelection: true,
@@ -882,13 +840,13 @@ export default class ChatContextMenu {
         const selectedMids = selection?.isSelecting && this.isSelected ?
           selection.selectedMids.get(this.messagePeerId) :
           undefined
-        this.popups.showMessageReport(
+        this.popups?.showMessageReport(
           this.messagePeerId,
           selectedMids?.size ? [...selectedMids] : [this.mid],
           selectedMids?.size ? () => selection?.cancelSelection() : undefined,
         )
       },
-      verify: () => !!this.message &&
+      verify: () => !!this.popups && !!this.message &&
         !this.message.pFlags.out &&
         this.message._ === 'message' &&
         !this.isOutgoing(this.message) &&
@@ -912,7 +870,7 @@ export default class ChatContextMenu {
       // просмотрел», клик открывает список.
       onClick: (e) => {
         if(this.canOpenReactedList && this.message) {
-          this.popups.showReactedList(this.messagePeerId, this.message.id, pointerPosition(e))
+          this.popups?.showReactedList(this.messagePeerId, this.message.id, pointerPosition(e))
         }
       },
       verify: () => !isUser(this.peerId) &&
@@ -923,14 +881,14 @@ export default class ChatContextMenu {
       className: 'danger',
       text: 'Delete',
       onClick: this.onDeleteClick,
-      verify: () => canDeleteMessage(this.message),
+      verify: () => !!this.popups && canDeleteMessage(this.message),
     }, {
       icon: 'delete',
       className: 'danger',
       text: 'Delete',
       onClick: this.onDeleteClick,
       // tweb :1287 сверяется с `selectionDeleteBtn.disabled` — см. Forward выше
-      verify: () => this.isSelected && !!this.selection?.length(),
+      verify: () => !!this.popups && this.isSelected && !!this.selection.length(),
       withSelection: true,
     }]
   }
@@ -1068,7 +1026,7 @@ export default class ChatContextMenu {
     const message = this.message
     if(
       message?._ === 'message' &&
-      !this.selection?.isSelecting &&
+      !this.selection.isSelecting &&
       !this.isOutgoing(message) &&
       !message.pFlags.is_scheduled &&
       this.managers.reactions &&
@@ -1276,10 +1234,11 @@ export default class ChatContextMenu {
     return isLocalMessageId(message.id)
   }
 
-  /** Порт `chat.bubbles.canForward` (bubbles.ts:9802) через порт-интерфейс. */
+  /** Порт `chat.bubbles.canForward` (bubbles.ts:9802): запретов
+   *  `pFlags.noforwards` (ни у сообщения, ни у пира) в нашей модели нет, остаётся
+   *  «это обычное сообщение». */
   private canForward(message: MyMessage | undefined): boolean {
-    if(!message || message._ !== 'message') return false
-    return this.chat.canForward ? this.chat.canForward(message) : true
+    return !!message && message._ === 'message'
   }
 
   /** Порт `appPeersManager.canPinMessage` (appPeersManager.ts:38-40). */
@@ -1371,7 +1330,7 @@ export default class ChatContextMenu {
   /** Порт `canViewMessageStatistics` (:2113-2117). `appProfileManager
    *  .canViewStatistics` у нас — право `just_admin` (`useGroupInfo.ts`). */
   private canViewMessageStatistics = () => {
-    return isBroadcastPeer(this.messagePeerId) &&
+    return !!this.popups && isBroadcastPeer(this.messagePeerId) &&
       hasRightsPeer(this.messagePeerId, 'just_admin') &&
       !!this.message && !this.isOutgoing(this.message)
   }
@@ -1502,7 +1461,7 @@ export default class ChatContextMenu {
     }
 
     let rawMessages: MyMessage[]
-    if(!this.selection?.isSelecting) {
+    if(!this.selection.isSelecting) {
       const message = this.getMessageWithText()
       if(!message) {
         return
@@ -1559,14 +1518,15 @@ export default class ChatContextMenu {
    *  пикера у ванильного меню нет). */
   private onReplyClick = () => {
     if(!this.message) return
-    this.chat.initMessageReply(this.message.id)
+    const input = this.chat.input
+    input.initMessageReply(input.getChatInputReplyToFromMessage(this.message))
   }
 
   /** Порт `onEditClick` (:1898-1914) без чек-листов и suggested-постов. */
   private onEditClick = () => {
     const message = this.getMessageWithText()
     if(!message) return
-    this.chat.initMessageEditing(this.isTargetAGroupedItem ? this.mid : message.id)
+    this.chat.input.initMessageEditing(this.isTargetAGroupedItem ? this.mid : message.id)
   }
 
   /** Порт `onEditFactCheckClick` (:1916-1992): у оригинала попап собирается
@@ -1575,7 +1535,7 @@ export default class ChatContextMenu {
   private onEditFactCheckClick = () => {
     const message = this.mainMessage
     if(!message) return
-    this.popups.showFactCheckEditor(message.peerId, message.id)
+    this.popups?.showFactCheckEditor(message.peerId, message.id)
   }
 
   /** tweb `onCopyMediaClick` (:2200-2205, 812502980, 508acd4f5) */
@@ -1618,11 +1578,11 @@ export default class ChatContextMenu {
 
   /** Порт `onPinClick`/`onUnpinClick` (:2016-2022). */
   private onPinClick = () => {
-    this.popups.showPinMessage(this.messagePeerId, this.mid)
+    this.popups?.showPinMessage(this.messagePeerId, this.mid)
   }
 
   private onUnpinClick = () => {
-    this.popups.showPinMessage(this.messagePeerId, this.mid, true)
+    this.popups?.showPinMessage(this.messagePeerId, this.mid, true)
   }
 
   /** Порт `onRetractVote`/`onStopPoll` (:2024-2030). */
@@ -1641,7 +1601,7 @@ export default class ChatContextMenu {
   /** Порт `onStatisticsClick` (:2108-2112). */
   private onStatisticsClick = () => {
     if(!this.message) return
-    this.popups.showStatistics(this.messagePeerId, this.message.id)
+    this.popups?.showStatistics(this.messagePeerId, this.message.id)
   }
 
   /** Порт `onForwardClick` (:2032-2044). Ветка selection у оригинала кликает
@@ -1649,17 +1609,17 @@ export default class ChatContextMenu {
    *  попап forward открывается тем же вызовом, что и из неё. */
   private onForwardClick = () => {
     const peerId = this.messagePeerId
-    if(this.selection?.isSelecting) {
+    if(this.selection.isSelecting) {
       const mids = this.selection.getSelectedMids()
       if(mids.length) {
-        this.popups.showForward({ [peerId]: mids })
+        this.popups?.showForward({ [peerId]: mids })
       }
 
       return
     }
 
     const mids = this.isTargetAGroupedItem ? [this.mid] : this.getMidsByMid(this.mid)
-    this.popups.showForward({ [peerId]: mids })
+    this.popups?.showForward({ [peerId]: mids })
   }
 
   /** Порт `onSelectClick` (:2046-2048). */
@@ -1667,23 +1627,23 @@ export default class ChatContextMenu {
     if(!this.target) return
     const element = findUpClassName(this.target, 'grouped-item') || findUpClassName(this.target, 'bubble')
     if(element) {
-      this.selection?.toggleByElement(element)
+      this.selection.toggleByElement(element)
     }
   }
 
   /** Порт `onClearSelectionClick` (:2050-2052). */
   private onClearSelectionClick = () => {
-    this.selection?.cancelSelection()
+    this.selection.cancelSelection()
   }
 
   /** Порт `onDeleteClick` (:2054-2065) — та же развилка «выбранное / это
    *  сообщение», что у forward. */
   private onDeleteClick = () => {
     const peerId = this.messagePeerId
-    if(this.selection?.isSelecting) {
+    if(this.selection.isSelecting) {
       const mids = this.selection.getSelectedMids()
       if(mids.length) {
-        this.popups.showDeleteMessages(peerId, mids)
+        this.popups?.showDeleteMessages(peerId, mids)
       }
 
       return
@@ -1691,19 +1651,17 @@ export default class ChatContextMenu {
 
     if(!this.message) return
     const mid = this.message.id
-    this.popups.showDeleteMessages(peerId, this.isTargetAGroupedItem ? [mid] : this.getMidsByMid(mid))
+    this.popups?.showDeleteMessages(peerId, this.isTargetAGroupedItem ? [mid] : this.getMidsByMid(mid))
   }
 
-  /** Порт `onDownloadClick` (:2178-2190). Носитель скачивания — менеджер
-   *  медиа (у оригинала `appDownloadManager`), поэтому он приезжает
-   *  аргументом: сам метод статический, как в tweb. */
+  /** Порт `onDownloadClick` (:2178-2190) — статический, как в tweb: его зовёт и
+   *  меню элемента shared media (`appSearchSuper.ts`). */
   public static onDownloadClick(
-    managers: Pick<ContextMenuManagers, 'media'>,
     messages: MyMessage | MyMessage[] | undefined,
     noForwards?: boolean,
   ): void {
     if(Array.isArray(messages)) {
-      messages.forEach((message) => ChatContextMenu.onDownloadClick(managers, message, noForwards))
+      messages.forEach((message) => ChatContextMenu.onDownloadClick(message, noForwards))
       return
     }
 
@@ -1711,10 +1669,19 @@ export default class ChatContextMenu {
       return
     }
 
-    if(!getMediaFromMessage(messages)) {
+    const media = getMediaFromMessage(messages)
+    if(!media) {
       return
     }
 
-    void managers.media.downloadToDisc(messages)
+    // tweb `appDownloadManager.downloadToDisc({media})` (:2189): имя и тип файла —
+    // из документа; у фото — `photo<id>.jpg`, как `getFileNameByLocation` оригинала.
+    const isDocument = media._ === 'document'
+    void downloadToDisc({
+      mediaId: media.id,
+      fileName: isDocument ? media.file_name || `file${media.id}` : `photo${media.id}.jpg`,
+      mime: isDocument ? media.mime_type : 'image/jpeg',
+      size: isDocument ? media.size : undefined,
+    }).catch(noop)
   }
 }

@@ -290,9 +290,9 @@
 //     как `openPeer`/`openUserPermissions` (расхождение 33):
 //     `setInnerPeer` — вместо `appImManager.setInnerPeer` (812502980 `:342-348`,
 //     `chat/selection.ts:782-793`), `showForwardPopup`/`showDeleteMessagesPopup`
-//     — вместо одноимённых попапов (`:357-385`, `selection.ts:795-822`),
-//     `downloadToDisc` — вместо `appDownloadManager` внутри
-//     `ChatContextMenu.onDownloadClick` (`:297`, `:302`). Попапы пересылки и
+//     — вместо одноимённых попапов (`:357-385`, `selection.ts:795-822`).
+//     «Скачать» (`ChatContextMenu.onDownloadClick`, `:297`, `:302`) — сам,
+//     через `appDownloadManager`, как у оригинала. Попапы пересылки и
 //     удаления у нас живут в React-хосте чата (`Chat.tsx`), вызвать их
 //     напрямую из класса нечем. Обратный вызов «по подтверждению» (снять
 //     выделение) едет тем же аргументом, что у оригинала.
@@ -654,12 +654,6 @@ class SearchContextMenu {
   /** tweb :275-340 */
   private init() {
     const selection = () => this.searchSuper.selection!
-    // Носитель скачивания — хост (расхождение 51): `onDownloadClick` зовёт
-    // `media.downloadToDisc`, как у меню ленты.
-    const downloadManagers = {
-      media: { downloadToDisc: (message: MyMessage) => this.searchSuper.downloadToDisc?.(message) },
-    }
-
     this.buttons = [{
       icon: 'forward',
       text: 'Forward',
@@ -681,12 +675,12 @@ class SearchContextMenu {
     }, {
       icon: 'download',
       text: 'MediaViewer.Context.Download',
-      onClick: () => ChatContextMenu.onDownloadClick(downloadManagers, this.message, this.noForwards),
+      onClick: () => ChatContextMenu.onDownloadClick(this.message, this.noForwards),
       verify: () => !selection().isSelecting && ChatContextMenu.canDownload(this.message, undefined, this.noForwards),
     }, {
       icon: 'download',
       text: 'Message.Context.Selection.Download',
-      onClick: () => ChatContextMenu.onDownloadClick(downloadManagers, this.selectedMessages, this.noForwards),
+      onClick: () => ChatContextMenu.onDownloadClick(this.selectedMessages, this.noForwards),
       verify: () => selection().isSelecting && ChatContextMenu.canDownload(this.selectedMessages, undefined, this.noForwards),
       withSelection: true,
     }, {
@@ -881,8 +875,6 @@ export type AppSearchSuperOptions = {
   showForwardPopup?: (fromPeerIdsMids: Record<PeerId, number[]>, onSelect?: () => void) => void
   /** tweb `showDeleteMessagesPopup(peerId, mids, ChatType.Chat, onConfirm)`; расхождение 51. */
   showDeleteMessagesPopup?: (peerId: PeerId, mids: number[], onConfirm?: () => void) => void
-  /** tweb `appDownloadManager.downloadToDisc` пункта «Скачать»; расхождение 51. */
-  downloadToDisc?: (message: MyMessage) => void
 }
 
 export default class AppSearchSuper {
@@ -973,7 +965,6 @@ export default class AppSearchSuper {
   public setInnerPeer?: AppSearchSuperOptions['setInnerPeer']
   public showForwardPopup?: AppSearchSuperOptions['showForwardPopup']
   public showDeleteMessagesPopup?: AppSearchSuperOptions['showDeleteMessagesPopup']
-  public downloadToDisc?: AppSearchSuperOptions['downloadToDisc']
 
   /** tweb `:459-460` (812502980) — меню элемента и выделение (задача 14). */
   private searchContextMenu?: SearchContextMenu
