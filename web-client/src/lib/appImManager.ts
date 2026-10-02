@@ -53,8 +53,7 @@
 //     предмета до К-3.
 //  8. Хэш: `tgaddr` и чужие действия уходят в `openUrl` → `openSearchUrl`
 //     (исполнителя внутренних ссылок нет, Б-8); `story`/`community`/`call` в
-//     `#/im` — нет предметов. `op()` без форума (`toggleForumTabByPeerId`, Б-3),
-//     `migrated_to`, ботфорума. В канал, где мы не состоим, `op()` ВСТУПАЕТ: наш
+//     `#/im` — нет предметов. `op()` без `migrated_to` и ботфорума. В канал, где мы не состоим, `op()` ВСТУПАЕТ: наш
 //     `GET /chats/{id}/history` не-участнику отдаёт 403 (перенесено из прежнего
 //     `useUrlSync.applyHash`, долг — `docs/readiness/port-divergences.md`).
 //  9. `setPeer` без `getPeerMigratedTo` и `min`-пиров (`:3293-3317`) — в нашей
@@ -107,6 +106,7 @@ import { ChatType } from '@components/chat/chatType'
 import ReactChatInstance from '@components/chat/reactChatInstance'
 import type { ThreadInfo } from '@components/Chat'
 import appSidebarRight, { RIGHT_COLUMN_ACTIVE_CLASSNAME } from '@components/sidebarRight'
+import appDialogsManager from '@lib/appDialogsManager'
 import { toast, toastNew } from '@components/toast'
 import rootScope from '@lib/rootScope'
 import { useSettingsStore } from '@/settings'
@@ -559,8 +559,16 @@ export class AppImManager extends EventListenerBase<{
       void this.managers.dialogs.refresh().catch(() => { /* список догонит следующий refresh */ })
     }
 
+    const peerIsForum = isForum(peer._ === 'user' || peer._ === 'userEmpty' ? undefined : peer)
+
+    // `:2107-2111` — open forum tab
+    if(!commentId && !threadId && !lastMsgId && peerIsForum) {
+      void appDialogsManager.toggleForumTabByPeerId(peerId, true, true)
+      return
+    }
+
     if(threadId) {
-      return this.openThread({ ...rest, peerId, lastMsgId, threadId, isForum: isForum(peer._ === 'user' || peer._ === 'userEmpty' ? undefined : peer) })
+      return this.openThread({ ...rest, peerId, lastMsgId, threadId, isForum: peerIsForum })
     } else if(commentId) {
       // `openComment` (`:2212`) — ручки `getDiscussionMessage` нет, открываем пост
       return this.setInnerPeer({ ...rest, peerId, lastMsgId })

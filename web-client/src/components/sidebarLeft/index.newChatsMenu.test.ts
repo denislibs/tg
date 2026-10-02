@@ -68,7 +68,7 @@ afterEach(async() => {
 // синглтон вечен (К-2): `construct` — один раз на прогон, как в приложении
 let constructed = false
 function construct() {
-  if(!constructed) installed.sidebar.construct(managers, { xd: undefined } as unknown as AppDialogsManager)
+  if(!constructed) installed.sidebar.construct(managers, { xd: undefined, toggleForumTab: vi.fn() } as unknown as AppDialogsManager)
   constructed = true
   return installed.column.querySelector<HTMLElement>('#new-menu')!
 }

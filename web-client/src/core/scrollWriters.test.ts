@@ -66,25 +66,13 @@ const ALLOWED: Record<string, number> = {
   // выдачи поиска по стрелкам, формула 1:1 из tweb (topbarSearch.tsx:678-681).
   // Изолированный дропдаун, не лента сообщений.
   'components/conversation/TopbarSearch.tsx': 1,
-  // components/virtual/useShouldAnimate.ts (createScrollShiftCompensator) — порт
-  // побочного эффекта `verticalVirtualList.tsx:49-53`: когда ВСЕ видимые строки
-  // виртуального списка чатов сдвинулись на одинаковое число позиций,
-  // `useShouldAnimate` отменяет их анимацию `top` и ВМЕСТО неё компенсирует
-  // scrollTop на ту же величину — список визуально стоит на месте. Список чатов
-  // не ходит через Scrollable/ScrollSaver: у него нет ни подгрузки контента НАД
-  // вьюпортом (новое приходит сверху, но окно строк считается арифметикой от
-  // `scrollTop`, а не восстановлением позиции), ни второго писателя, с которым
-  // эта тихая запись могла бы конкурировать. Функция экспортирована здесь же (не в будущем
-  // `VerticalVirtualList.tsx`, Task 5) — это парный механизм самого
-  // `useShouldAnimate`: тот решает КОГДА компенсировать, эта функция — КАК.
-  'components/virtual/useShouldAnimate.ts': 1,
-  // components/verticalVirtualList.solid.tsx — ТОТ ЖЕ компенсатор, что строкой
-  // выше, в исходной Solid-форме tweb (`verticalVirtualList.tsx:49-53`,
-  // `onScrollShift` под `untrack`): порт файлом 1:1, ядро Solid-списков диалогов
-  // (`deferredSortedVirtualList.solid.tsx`) и контактов. Импортировать
-  // React-соседа `createScrollShiftCompensator` из `virtual/useShouldAnimate.ts`
-  // Solid-файл не может — тот модуль тянет `react` (граница рантаймов,
-  // `shared/solid/boundary.test.ts`).
+  // components/verticalVirtualList.solid.tsx — компенсатор сдвига в исходной
+  // Solid-форме tweb (`verticalVirtualList.tsx:49-53`, `onScrollShift` под
+  // `untrack`): когда ВСЕ видимые строки виртуального списка сдвинулись на
+  // одинаковое число позиций, анимация `top` отменяется и ВМЕСТО неё
+  // компенсируется scrollTop — список визуально стоит на месте. Порт файлом 1:1,
+  // ядро Solid-списков диалогов (`deferredSortedVirtualList.solid.tsx`) и
+  // контактов; второго писателя позиции у этих скроллеров нет.
   'components/verticalVirtualList.solid.tsx': 1,
   // components/verticalOptionWheel.solid.tsx — барабан выбора (порт tweb
   // `verticalOptionWheel.tsx` 1:1, попап своего срока автоудаления): начальная

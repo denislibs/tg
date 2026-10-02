@@ -1,8 +1,7 @@
 // Порт 1:1 tweb src/components/loadingDialogSkeleton.module.scss — скелетон
-// строки списка чатов. Место — как у tweb (`components/`): его носят оба
-// компонента — Solid-порт `loadingDialogSkeleton.solid.tsx` (ядро
-// `deferredSortedVirtualList.solid.tsx`) и React-копия
-// `virtual/LoadingDialogSkeleton.tsx`, пока живы её React-потребители.
+// строки списка чатов. Место — как у tweb (`components/`): его носит
+// Solid-порт `loadingDialogSkeleton.solid.tsx` (ядро
+// `deferredSortedVirtualList.solid.tsx`).
 // `animation-level-global` оригинала — наш эквивалент из src/styles/mixins
 // (src/styles/mixins/_animationLevel.scss:8, гейт body.animation-level-2).
 @use '../styles/mixins' as *;

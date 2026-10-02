@@ -17,7 +17,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import '@/test/lang'
 import {
-  FakeResizeObserver, finishTransition, flushFrames, installFrames, mountOwner, putFolders, raw,
+  FakeResizeObserver, finishTransition, installFrames, mountOwner, putFolders, raw,
   resetStores, settle, tabEls, uninstallFrames, type Mounted,
 } from '@lib/appDialogsManager.testkit'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
@@ -509,29 +509,6 @@ describe('В7-1: строка секретного чата (наш продук
   })
 })
 
-describe('Панель тем и свёрнутая колонка (`ВРЕМЕННО до 1-6`/`2-1`)', () => {
-  it('форум открыт — `is-forum-visible` колонки и бейджи на аватарах непрочитанных строк; закрыт — сняты', async () => {
-    applyPeerOps([{ op: 'upsert', peers: [user(1)] }])
-    seed([dialogOf(1, { unread: 3 })])
-    await start()
-    await waitRows([1])
-    const dom = xd().getDialogElement(1)!.dom
-    await vi.waitFor(() => expect(dom.unreadBadge?.textContent).toBe('3'))
-    const column = document.createElement('div')
-
-    mounted!.manager.onForumToggle(true, column)
-    expect(column.classList.contains('is-forum-visible')).toBe(true)
-    expect(dom.unreadAvatarBadge?.textContent).toBe('3')
-
-    mounted!.manager.onForumToggle(false, column)
-    // уход бейджа — переход с отложенным на два кадра стартом (`toggleBadgeByKey`, `useRafs`)
-    await vi.waitFor(() => {
-      flushFrames()
-      expect(dom.unreadAvatarBadge).toBeUndefined()
-    })
-  })
-})
-
 describe('AppDialogsManager + списки: папки, активная строка, destroy', () => {
   it('смена папки не пересоздаёт списки: `xds` держит список на папку (tweb `:1474`)', async () => {
     putFolders(raw(3, 1, 'Работа'))
@@ -575,17 +552,6 @@ describe('AppDialogsManager + списки: папки, активная стр�
     peerChanged(0)
     expect(row(2).classList.contains('active')).toBe(false)
     expect(xd().sortedList.list.querySelectorAll('.chatlist-chat.active')).toHaveLength(0)
-  })
-
-  it('клик по строке форума чат не открывает (`toggleForumTabByPeerId` — бэклог Б-3)', async () => {
-    const setPeer = vi.spyOn(appImManager, 'setPeer').mockResolvedValue(undefined)
-    applyPeerOps([{ op: 'upsert', peers: [{ _: 'channel', id: 50, title: 'Форум', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true, forum: true } }] }])
-    seed([dialogOf(-50)])
-    await start()
-    await waitRows([-50])
-
-    xd().getDialogElement(-50)!.dom.listEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
-    expect(setPeer).not.toHaveBeenCalled()
   })
 
   it('`destroy()` списка снимает все его строки и гасит их зоны (DoD 5)', async () => {

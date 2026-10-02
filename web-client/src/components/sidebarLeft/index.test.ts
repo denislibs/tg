@@ -66,7 +66,7 @@ function leftItems() {
 
 /** Владелец списка — классу нужен лишь `xd` (бейджи аватаров, `onCollapsedChange`). */
 const toggleAvatarUnreadBadges = vi.fn()
-const dialogsManager = { xd: { toggleAvatarUnreadBadges } } as unknown as AppDialogsManager
+const dialogsManager = { xd: { toggleAvatarUnreadBadges }, toggleForumTab: vi.fn() } as unknown as AppDialogsManager
 
 let column: InstalledSidebarLeft
 const sidebar: AppSidebarLeft = appSidebarLeft

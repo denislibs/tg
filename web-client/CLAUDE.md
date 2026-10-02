@@ -290,8 +290,7 @@ npx vite build --outDir ../client-build
   рендерит с новыми пропсами ДО cleanup предыдущего эффекта, поэтому токен, взятый
   на рендере, принадлежит уже гасимому поколению: собственные запросы нового ключа
   молча перестают писать. Если поздний вызов нужно отбросить по смене сущности —
-  сверяй её явно (`forChat !== chatIdRef.current` в `TopicsPanel`), а не полагайся
-  на токен.
+  сверяй её явно (`forChat !== chatIdRef.current`), а не полагайся на токен.
 - Ручные `alive`-флаги в новом коде не заводить; существующие мигрируют при
   ближайшем касании файла.
 - Примитивы (`helpers/middleware.ts`, `helpers/middlewarePromise.ts`) — дословный
@@ -577,8 +576,7 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
 |---|---|---|
 | `components/DatePickerPopup.tsx:195` | Начальная позиция (месяц `initDate`) при открытии попапа календаря | Одноразовая установка до первого показа; попап, не лента |
 | `components/conversation/TopbarSearch.tsx:219` | Центрирование активной строки выдачи поиска по стрелкам | Формула 1:1 из tweb (`topbarSearch.tsx:678-681`); изолированный дропдаун, не лента |
-| `components/virtual/useShouldAnimate.ts` (`createScrollShiftCompensator`) | Компенсация `scrollTop` вместо анимации, когда ВСЕ видимые строки виртуального списка сдвинулись на одинаковое число позиций | Порт побочного эффекта `verticalVirtualList.tsx:49-53`; список чатов не ходит через Scrollable/ScrollSaver — конкурировать за корректирующую запись не с кем |
-| `components/verticalVirtualList.solid.tsx` (`onScrollShift`) | Тот же компенсатор в исходной Solid-форме tweb — ядро Solid-списков диалогов (`deferredSortedVirtualList.solid.tsx`) и контактов | Порт файлом 1:1 (`verticalVirtualList.tsx:49-53`); Solid-файл не может импортировать React-соседа `createScrollShiftCompensator` (граница рантаймов) |
+| `components/verticalVirtualList.solid.tsx` (`onScrollShift`) | Компенсация `scrollTop` вместо анимации, когда ВСЕ видимые строки виртуального списка сдвинулись на одинаковое число позиций — ядро Solid-списков диалогов (`deferredSortedVirtualList.solid.tsx`) и контактов | Порт файлом 1:1 (`verticalVirtualList.tsx:49-53`); список не ходит через Scrollable/ScrollSaver — конкурировать за корректирующую запись не с кем |
 | `components/sidebarLeft/contactsList.solid.tsx` (`jumpTo`), `components/sectionIndex.solid.tsx` (`onWheel`) | Прыжок к секции по полосе букв и колесо над полосой во вкладке контактов | Порт tweb 1:1 (`contactsList.tsx:271-276`, `sectionIndex.tsx:269-274`); запись — жест пользователя, её `scroll` нужен списку, плавную прокрутку перед ней гасит `cancelAnimationByKey` |
 
 Сброс списка чатов на верх при смене папки из этого списка ушёл вместе со
