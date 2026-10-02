@@ -523,8 +523,10 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Задача 2-1 волны 7 (класс `AppSidebarLeft`): у ru +1 ключ tweb lang.ts
 // `StarsRating.Back` — `aria-label` стрелки «назад» шапки колонки
 // (`sidebarLeft/index.ts:163`). Итог: ru 1518.
+// Задача 2-4 волны 7 (кнопка `#new-menu`, tweb `sidebarLeft/index.ts:1113-1129`): у ru
+// +1 ключ tweb lang.ts:66 `ChatAutomation.NewChats` — `aria-label` кнопки. Итог: ru 1519.
 const COMPOSITION = {
-  ru: { keys: 1518, plural: 47 },
+  ru: { keys: 1519, plural: 47 },
   uk: { keys: 827, plural: 35 },
   es: { keys: 798, plural: 34 },
   de: { keys: 799, plural: 35 },
@@ -694,8 +696,9 @@ const COMPOSITION = {
 // Задачей 0б-6 волны 7 — ключи вкладки прав группы у всех пяти, у ru минус четыре ключа
 // снесённого `PermissionsScreen` (разбор — у `COMPOSITION` выше).
 // Задачей 2-1 волны 7 — у ru +1 ключ tweb `StarsRating.Back` (разбор — там же).
+// Задачей 2-4 волны 7 — у ru +1 ключ tweb `ChatAutomation.NewChats` (разбор — там же).
 const FINGERPRINT = {
-  ru: '90834499',
+  ru: '1f9be3cb',
   uk: 'ffe46f66',
   es: '1c8d911a',
   de: 'dcd1c9f9',
