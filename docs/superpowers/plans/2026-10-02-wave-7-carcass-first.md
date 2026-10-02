@@ -558,7 +558,7 @@ React-`GroupEditFlow`.
 |---|---|---|---|---|
 | Б-1 | Архив: пункт бургера, бейдж, список архива (сейчас оверлей `Sidebar.tsx` + `mountArchivedList`) | К-1 | `sidebarLeft/tabs/archivedTab.tsx`, `sidebarLeft/index.ts:681-685`, `:1760` | П-2 |
 | Б-2 | Строка «Архив» в списке — React-остров (`autonomousDialogList/dialogs.ts:56`, `:378`) | К-1 | `components/archiveDialog.tsx` | П-2 |
-| Б-3 | Форум: панель тем `TopicsPanel.tsx` (583), открытие форума из списка | К-1 | `forumTab/*`, `autonomousDialogList/forumTopics.ts` | П-2 |
+| Б-3 | Форум: панель тем `TopicsPanel.tsx` (583), открытие форума из списка | К-1 | `forumTab/*`, `autonomousDialogList/forumTopics.ts` | **закрыто П-2 «форум»** (ветка `feat/w7-p2-forum`): `GroupForumTab` + `AutonomousForumTopicList`, остаток — Б-53, Б-54 |
 | Б-4 | Ряд историй над списком (`StoriesRow.tsx` 405, `useSidebarStories.tsx`), просмотр из ряда | К-1 | `components/stories/list.tsx` (474), `appDialogsManager.ts:1095-1125` | П-3 |
 | Б-5 | Вертикальная колонка папок (`FoldersSidebar.tsx` 238) | К-1 | `sidebarLeft/foldersSidebarContent/*` | П-3 |
 | Б-6 | Кнопка статус-эмодзи в шапке колонки (`SidebarEmojiStatusButton.tsx`) | К-1 | `sidebarLeft/index.ts:262`, `emojiStatusPicker.tsx` | П-3 |
@@ -606,6 +606,8 @@ React-`GroupEditFlow`.
 | Б-48 | Хэши страницы бэкенда `#@имя/<seq>` и `#<peerId>/<seq>` (кнопка публичной страницы, `public_page.go:40-41`) — `onHashChange` tweb принимает только `#@имя`, `#<peerId>`, `#/im?p=…&post=` | К-2 | `appImManager.ts:1912-2031` | **закрыто PR #380**: кнопка поста публичной страницы ведёт на `#@имя?post=<seq>` (схема tweb `onHashChangeUnsafe` → `openUsername({lastMsgId})`) |
 | Б-49 | Пилюля «доступна новая сборка» (`useUpdateStore`) — только в мессенджере (остров `#react-overlays` монтирует `bootstrapIm`), на экране входа её нет; бейдж `api: ok/down` (dev-индикатор `App.tsx`, не tweb) снят без замены | К-2 | `sidebarLeft/index.ts:202-216`, `:367-384` (`updateBtn`, `checkForUpdates`) | О-100 / П-3 (кнопка «Обновить» в шапке колонки) |
 | Б-52 | Плашка «N новых чатов» над папкой, вступившей по ссылке (`createTopNotification`/`toggleTopNotification`, `chatlistTopNotification.tsx`), опрос `getChatlistUpdates` по `chatlist_update_period` в `onTabChange` | П-2 (не было) | `appDialogsManager.ts:1406-1548`, `sidebarLeft/chatlistTopNotification.tsx` | бэкенд: нет `chatlists.getChatlistUpdates`/`hideChatlistUpdates` и признака `dialogFilterChatlist` у папки (`domain.DialogFilter`) |
+| Б-53 | Меню строки темы (закрепить, заглушить, закрыть/открыть, удалить; у `TopicsPanel` были ещё «Изменить» и «Скрыть») и выделение тем пачкой (`ForumTopicsSelection`, перестановка закрепов `attachPinnedReorder`) | П-2 (1-6) | ветки `threadId` в `dialogsContextMenu.ts` (`:224`, `canManageTopics`), `forumTopicsSelection.ts`, `dialogsPinnedReorder.ts` | П-2 (вторая очередь) / О-30 (выделение) |
+| Б-54 | Форум-таб: «Создать тему» и правка темы (`AppEditTopicTab`; у `TopicsPanel` был свой попап), «Информация о группе» из меню ⋮ (`AppSharedMediaTab` в левой колонке), «Вступить»/«Подать заявку» (`joinChat`); живые апдейты списка тем (`dialogs_multiupdate` с `topics`, `dialog_unread`/`dialog_drop`/`peer_typings` темы) — у нас темы перечитываются на каждый показ таба | П-2 (1-6) | `sidebarRight/tabs/editTopic.tsx`, `groupForumTab.ts:96-147`, `autonomousDialogList/forumTopics.ts:24-104` | П-1 (вкладки) / воркер: хранилища тем и событий тем на главном потоке нет |
 
 ### Пачки бэклога
 

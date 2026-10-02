@@ -40,7 +40,7 @@
 //     • `AddToFolder` — подменю `addToFolderDropdownMenu/` (913 строк) не
 //       портировано (О-85 волна 7);
 //     • `Hide`, `CloseTopic`, `RestartTopic` и всё про `threadId`/
-//       `canManageTopics` — меню на списке тем форума вешает задача 1-6;
+//       `canManageTopics` — меню строки темы форум-таба — бэклог Б-53;
 //     • `PaidMessages.ChargeFee`/`RemoveFee` и `monoforumParentPeerId` — монофорума
 //       нет (О-4);
 //     • `DeleteFromRecent` и опция `recentSearch` — меню на выдаче поиска вешает
