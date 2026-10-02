@@ -48,9 +48,7 @@
 //     `communityProjectionRows`, `getCollapsedCommunityId`) — О-5; стриминговые
 //     черновики (`streamed_message_*`) — `// О-97 волна 7`; таймер автоудаления на
 //     аватаре (`auto_delete_period_update`) — `avatarNew` его не рисует;
-//     `processContact`/`loadContacts` (контакты под коротким списком) и
-//     `onListLengthChange` (пустые плейсхолдеры) — задача 1-8; `fetchChatlistUpdates`
-//     — расхождение 14 менеджера.
+//     `fetchChatlistUpdates` — расхождение 14 менеджера.
 //  4. `pinnedPeerIds` фильтра (`filterPinnedPeerIds`) — О-70.
 import { createElement, useMemo, useSyncExternalStore } from 'react'
 import { createRoot as createReactRoot } from 'react-dom/client'
@@ -67,6 +65,7 @@ import { dialogToChat } from '@core/dialogToChat'
 import { isForum } from '@core/peers/predicates'
 import { isUserStatusOnline } from '@core/peers/peer'
 import rootScope from '@lib/rootScope'
+import appSidebarLeft from '@components/sidebarLeft'
 import { useAppStateStore } from '@stores/appState'
 import { useChatsStore } from '@stores/chatsStore'
 import { useFoldersStore } from '@stores/foldersStore'
@@ -194,10 +193,14 @@ export class AutonomousDialogList extends AutonomousDialogListBase {
       }
 
       this.updateDialog(dialog)
+      this.appDialogsManager.processContact(dialog.peerId) // `:222`
     }
 
     // `dialog_drop`
-    prevByPeerId.forEach((dialog) => this.deleteDialog(dialog))
+    prevByPeerId.forEach((dialog) => {
+      this.deleteDialog(dialog)
+      this.appDialogsManager.processContact(dialog.peerId) // `:241`
+    })
   }
 
   /** `peer_typings` (`:120-133`): у форума набор показывают темы, не строка */
@@ -288,6 +291,7 @@ export class AutonomousDialogList extends AutonomousDialogListBase {
       itemSize: 72,
       onListLengthChange: () => {
         scrollable.onSizeChange()
+        this.appDialogsManager.onListLengthChange?.()
       },
     })
 
@@ -376,7 +380,7 @@ export class AutonomousDialogList extends AutonomousDialogListBase {
     this.disposeArchiveRow?.()
     const element = document.createElement(ARCHIVE_DIALOG_TAG_NAME)
     const root = createReactRoot(element)
-    const openArchive = () => this.appDialogsManager.openArchiveTab()
+    const openArchive = () => appSidebarLeft.openArchiveTab()
     root.render(createElement(ArchiveRowIsland, { onOpen: openArchive }))
     this.disposeArchiveRow = () => {
       queueMicrotask(() => root.unmount())
@@ -408,6 +412,15 @@ export class AutonomousDialogList extends AutonomousDialogListBase {
     }
 
     return super.updateDialog(dialog)
+  }
+
+  /** tweb `:761-767` — список дочитан до конца: следующая страница контактов под ним */
+  protected onScrolledBottom() {
+    super.onScrolledBottom()
+
+    if(this.hasReachedTheEnd) {
+      this.appDialogsManager.loadContacts()
+    }
   }
 
   /** tweb `:770-809` (`useRafs` оригинал принимает, но не читает) */

@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 48,
+      "version": 49,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -1312,6 +1312,18 @@
           "value": "Read"
         },
         {
+          "key": "ChatList.Main.EmptyPlaceholder.Subtitle",
+          "value": "You have %s on Telegram"
+        },
+        {
+          "key": "ChatList.Main.EmptyPlaceholder.SubtitleNoContacts",
+          "value": "Use Telegram app on your [Android](https://telegram.org/android) or [iOS](https://telegram.org/dl/ios) device to sync your contacts"
+        },
+        {
+          "key": "ChatList.Main.EmptyPlaceholder.Title",
+          "value": "Your chats will appear here"
+        },
+        {
           "key": "ChatList.Mute.1Day",
           "value": "For 1 Day"
         },
@@ -1563,6 +1575,13 @@
         {
           "key": "Contacts",
           "value": "Contacts"
+        },
+        {
+          "key": "Contacts.Count",
+          "forms": {
+            "one_value": "%d contact",
+            "other_value": "%d contacts"
+          }
         },
         {
           "key": "Contacts.Empty",
@@ -2140,6 +2159,14 @@
         {
           "key": "FilterNew",
           "value": "New Folder"
+        },
+        {
+          "key": "FilterNoChatsToDisplay",
+          "value": "Folder is empty"
+        },
+        {
+          "key": "FilterNoChatsToDisplayInfo",
+          "value": "No chats currently belong to this folder."
         },
         {
           "key": "FilterRemoveChats",
@@ -6328,7 +6355,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 48,
+      "version": 49,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -12686,6 +12713,35 @@
         {
           "key": "ChatAutomation.NewChats",
           "value": "Новые чаты"
+        },
+        {
+          "key": "ChatList.Main.EmptyPlaceholder.Title",
+          "value": "Здесь будут ваши чаты"
+        },
+        {
+          "key": "ChatList.Main.EmptyPlaceholder.Subtitle",
+          "value": "У вас %s в Telegram"
+        },
+        {
+          "key": "ChatList.Main.EmptyPlaceholder.SubtitleNoContacts",
+          "value": "Используйте приложение Telegram на [Android](https://telegram.org/android) или [iOS](https://telegram.org/dl/ios), чтобы синхронизировать контакты"
+        },
+        {
+          "key": "Contacts.Count",
+          "forms": {
+            "one_value": "%d контакт",
+            "few_value": "%d контакта",
+            "many_value": "%d контактов",
+            "other_value": "%d контакта"
+          }
+        },
+        {
+          "key": "FilterNoChatsToDisplay",
+          "value": "Папка пуста"
+        },
+        {
+          "key": "FilterNoChatsToDisplayInfo",
+          "value": "Сейчас в этой папке нет чатов."
         }
       ]
     },

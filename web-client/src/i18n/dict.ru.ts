@@ -1995,6 +1995,18 @@ const ru = {
     other_value: '%d звезды',
   },
   'ChatAutomation.NewChats': 'Новые чаты',
+  // ── Пустой список чатов и секция «Контакты» под ним (tweb appDialogsManager.ts:1649-1772) ──
+  'ChatList.Main.EmptyPlaceholder.Title': 'Здесь будут ваши чаты',
+  'ChatList.Main.EmptyPlaceholder.Subtitle': 'У вас %s в Telegram',
+  'ChatList.Main.EmptyPlaceholder.SubtitleNoContacts': 'Используйте приложение Telegram на [Android](https://telegram.org/android) или [iOS](https://telegram.org/dl/ios), чтобы синхронизировать контакты',
+  'Contacts.Count': {
+    one_value: '%d контакт',
+    few_value: '%d контакта',
+    many_value: '%d контактов',
+    other_value: '%d контакта',
+  },
+  FilterNoChatsToDisplay: 'Папка пуста',
+  FilterNoChatsToDisplayInfo: 'Сейчас в этой папке нет чатов.',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)
