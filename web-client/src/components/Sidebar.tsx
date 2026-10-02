@@ -34,7 +34,6 @@ import { mountSidebarToolsButton, type ToolsMenuSidebar } from './sidebarLeft/to
 import SidebarEmojiStatusButton from './SidebarEmojiStatusButton'
 import ComposeFab from './ComposeFab'
 import StoriesRow from './StoriesRow'
-import SidebarScreens, { type SidebarScreen } from './SidebarScreens'
 import { useManagers } from '../core/hooks/useManagers'
 import { useChatList } from '../core/hooks/useChatList'
 import { useNavigationStore } from '../stores/navigationStore'
@@ -62,7 +61,7 @@ interface Props {
 
 // Sidebar — оркестратор левой колонки: композиция хуков (поиск/папки/истории/
 // форум/создание чатов) + разметка шапки, списка и оверлеев. Кластеры логики
-// вынесены в core/hooks/useSidebar*; экраны колонки — в <SidebarScreens>.
+// вынесены в core/hooks/useSidebar*; экраны колонки — вкладки колоночного слайдера.
 // Навигация и список чатов читаются из стора напрямую (инвариант: View читает из
 // стора, а не через проброс из Shell) — тема/авторизация остаются пропсами (скоуп App).
 export default function Sidebar({
@@ -125,9 +124,6 @@ export default function Sidebar({
   const onSelect = useNavigationStore((st) => st.selectChat)
   const { openTopicThread: onOpenTopic } = useNavigationActions()
 
-  // Экраны левой колонки взаимоисключающие — один стейт-энум (см. <SidebarScreens>).
-  const [screen, setScreen] = useState<SidebarScreen>(null)
-  const closeScreen = () => setScreen(null)
   const [archiveOpen, setArchiveOpen] = useState(false)
 
   // Поле поиска шапки: `inputRef` — сам `<input>` (сворачивание ряда историй),
@@ -164,8 +160,8 @@ export default function Sidebar({
   const folders = useFolders()
   // Колоночный слайдер (tweb `AppSidebarLeft extends SidebarSlider`,
   // `sidebarLeft/index.ts:118`, `:147-152`): вкладка №0 — `.item-main` ниже,
-  // остальные экраны колонки — его вкладки (корень настроек, папки; по мере
-  // переезда — экраны `SidebarScreens`). Узлом `.sidebar-slider` владеет
+  // остальные экраны колонки — его вкладки (корень настроек, папки, контакты,
+  // новая группа и канал, звонки; архив — оверлеем до 1-5). Узлом `.sidebar-slider` владеет
   // React, вкладками — слайдер (шапка `sidebarLeft/columnSlider.ts`). Слой
   // раскладки: узел колонки должен быть в DOM, а слайдер — заведён до того,
   // как пользователь дотянется до пункта меню. ВРЕМЕННО до 2-1 (волна 7): там
@@ -204,7 +200,7 @@ export default function Sidebar({
   // --- Ресайз левой колонки (tweb sidebarLeft/index.ts:612-635 initSidebarResize) ---
   const columnRef = useRef<HTMLDivElement>(null)
   // tweb hasSomethingOpenInside(): открытые вкладки | активный поиск | форум-таб.
-  const somethingOpenInside = searching || screen !== null || archiveOpen || tabsOpen || !!forumChat
+  const somethingOpenInside = searching || archiveOpen || tabsOpen || !!forumChat
   // tweb isCollapsed(): в floating-диапазоне (<=925) колонка всегда развёрнута,
   // предпочтение просто помнится для широких вьюпортов.
   const floatingLeft = useMediaQuery('(max-width:925px)')
@@ -250,17 +246,16 @@ export default function Sidebar({
   // ширины, пока внутри что-то открыто (sidebarLeft/index.ts:535).
   useEffect(() => { setOpenTabsLeftSidebar(somethingOpenInside) }, [somethingOpenInside])
 
-  // `appSidebarLeft.closeAllTabs()` — экраны колонки (у tweb это вкладки
-  // слайдера: экран-вкладка, архив, редактор папки). Отвечает, было ли что
+  // `appSidebarLeft.closeAllTabs()` — вкладки колонки и оверлей архива (у tweb
+  // архив — тоже вкладка слайдера, ВРЕМЕННО до 1-5). Отвечает, было ли что
   // закрывать.
   const closeAllTabsRef = useRef<() => boolean>(() => false)
   closeAllTabsRef.current = () => {
-    const hadScreens = screen !== null || archiveOpen
-    setScreen(null)
+    const hadArchive = archiveOpen
     setArchiveOpen(false)
     // tweb `closeAllTabs` (`slider.ts:171-179`) — отвечает, были ли вкладки
     const hadTabs = !!sliderRef.current?.closeAllTabs()
-    return hadScreens || hadTabs
+    return hadArchive || hadTabs
   }
   // `appSidebarLeft.closeEverythingInside()` (tweb `sidebarLeft/index.ts:494-499`):
   // поиск, форум, вкладки. Им же отвечает колбэк владельцу папок
@@ -542,12 +537,6 @@ export default function Sidebar({
       <div className="topics-slider">{forumPanel}</div>
       </div>
       </div>
-
-      <SidebarScreens
-        screen={screen}
-        close={closeScreen}
-        onSelect={onSelect}
-      />
 
       {stories.overlays}
     </div>
