@@ -527,7 +527,7 @@ export class AppNavigationController {
   public close() {
     try {
       window.close()
-    } catch(e) {}
+    } catch {}
   }
 
   /**
