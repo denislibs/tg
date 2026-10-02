@@ -115,7 +115,7 @@ export interface AvatarOptions {
   /** готовая карточка пира вместо зеркала (tweb `props.peer ??
    *  apiManagerProxy.getPeer(peerId)`, avatarNew.tsx:778) — пир, которого в
    *  зеркале этой вкладки нет: другой аккаунт в меню аккаунтов бургера
-   *  (`sidebarLeft/toolsMenu.ts`, Отступление В7-4). */
+   *  (`sidebarLeft/index.ts`, Отступление В7-4). */
   peer?: Chat | User
   /** готовое имя строкой — карточки пира нет и быть не может (порт `peerTitle`
    *  оригинала, avatarNew.tsx:410; там же он уводит `peerId` в `NULL_PEER_ID`) */

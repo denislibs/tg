@@ -18,6 +18,8 @@ import { resetPeerMirror } from '@core/peerCache'
 import { useAppStateStore } from '@stores/appState'
 import contextMenuController from '@helpers/contextMenuController'
 import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
+import type { AppSidebarLeft } from '@components/sidebarLeft'
+import { AppChatFoldersTab, AppEditFolderTab } from '@components/solidJsTabs/tabs'
 
 let mounted: Mounted | undefined
 
@@ -58,6 +60,17 @@ function clickItem(menu: HTMLElement, text: string) {
   item.dispatchEvent(new MouseEvent('click', { bubbles: true }))
 }
 
+/**
+ * Вкладки колонки — дублёр открытия: меню проверяют по тому, ЧТО оно открывает
+ * (класс вкладки и её нагрузку), содержимое вкладок — их собственные пины.
+ */
+function spyColumn(sidebar: AppSidebarLeft) {
+  const open = vi.fn(async (..._args: unknown[]) => {})
+  const closeTabsBefore = vi.spyOn(sidebar, 'closeTabsBefore').mockImplementation(async (clb) => clb())
+  const createTab = vi.spyOn(sidebar, 'createTab').mockImplementation((() => ({ open })) as never)
+  return { open, closeTabsBefore, createTab }
+}
+
 async function mountWithFolders() {
   putFolders(raw(3, 1, 'Работа'), raw(5, 2, 'Учёба'))
   mounted = mountOwner()
@@ -90,25 +103,27 @@ describe('createFolderContextMenu на ряду владельца: пункты
 
 describe('createFolderContextMenu на ряду владельца: действия', () => {
   it('«Edit folder» закрывает вкладки колонки и открывает редактор ЭТОЙ папки (data-filter-id)', async () => {
-    const { host, hooks } = await mountWithFolders()
+    const { host, sidebar } = await mountWithFolders()
+    const { closeTabsBefore, open, createTab } = spyColumn(sidebar)
     clickItem((await openOn(tabOf(host, 5)))!, 'Edit folder')
     await settle()
 
-    const sidebar = hooks.appSidebarLeft
-    expect(sidebar.closeTabsBefore).toHaveBeenCalledTimes(1)
-    expect(sidebar.openEditFolderTab).toHaveBeenCalledTimes(1)
-    expect(vi.mocked(sidebar.openEditFolderTab).mock.calls[0][0]).toMatchObject({ id: 5, title: 'Учёба' })
-    expect(sidebar.openChatFoldersTab).not.toHaveBeenCalled()
+    // tweb `createFolderContextMenu.ts:28-30`: `closeTabsBefore` → `createTab(AppEditFolderTab).open({initFilter})`
+    expect(closeTabsBefore).toHaveBeenCalledTimes(1)
+    expect(createTab).toHaveBeenCalledTimes(1)
+    expect(createTab.mock.calls[0][0]).toBe(AppEditFolderTab)
+    expect(open.mock.calls[0][0]).toMatchObject({ initFilter: { id: 5, title: 'Учёба' } })
   })
 
   it('«Edit folders» на «Все чаты» открывает список папок', async () => {
-    const { host, hooks } = await mountWithFolders()
+    const { host, sidebar } = await mountWithFolders()
+    const { closeTabsBefore, createTab } = spyColumn(sidebar)
     clickItem((await openOn(tabOf(host, 0)))!, 'Edit folders')
     await settle()
 
-    expect(hooks.appSidebarLeft.closeTabsBefore).toHaveBeenCalledTimes(1)
-    expect(hooks.appSidebarLeft.openChatFoldersTab).toHaveBeenCalledTimes(1)
-    expect(hooks.appSidebarLeft.openEditFolderTab).not.toHaveBeenCalled()
+    expect(closeTabsBefore).toHaveBeenCalledTimes(1)
+    expect(createTab).toHaveBeenCalledTimes(1)
+    expect(createTab.mock.calls[0][0]).toBe(AppChatFoldersTab)
   })
 
   it('«Delete» — подтверждение, затем удаление папки из data-filter-id; её вкладка уходит из ряда', async () => {

@@ -66,7 +66,7 @@ import {
   AppTwoStepVerificationEnterPasswordTab,
   AppTwoStepVerificationTab,
 } from '@components/solidJsTabs/tabs'
-import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
+import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 
 // Для «Код-пароля»: IndexedDB — словарь в памяти (хеш кода кладёт настоящий
 // `lib/passcode/actions.ts`), канал к воркеру — заглушка, лотти-заставка — заглушка.
@@ -106,7 +106,7 @@ const rule = (key: PrivacyKey, patch: Partial<PrivacyRule> = {}): PrivacyRule =>
 
 const passkey = (id: string, name: string): Passkey => ({ _: 'passkey', id, name, date: 1_700_000_000 })
 
-let host: TestColumnSlider
+let host: InstalledSidebarLeft
 let columnEl: HTMLElement
 let getBlocked: ReturnType<typeof vi.fn<() => Promise<{ count: number, peerIds: PeerId[] }>>>
 let autoDelete: ReturnType<typeof vi.fn<() => Promise<number>>>
@@ -158,7 +158,7 @@ beforeEach(() => {
   columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = mountTestColumnSlider(columnEl, managers)
+  host = installSidebarLeft(managers, columnEl)
 })
 
 afterEach(async() => {

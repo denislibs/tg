@@ -5,7 +5,6 @@ import liteMode from './helpers/liteMode'
 import { watchLiteModeSettings } from './client/liteModeSettings'
 import { dispatchHeavyAnimationEvent } from './core/dom/heavyAnimation'
 import pause from './helpers/schedulers/pause'
-import Sidebar from './components/Sidebar'
 import Chat from './components/Chat'
 import ChatsContainer from './components/chat/ChatsContainer'
 import type { ChatInstanceDesc } from './stores/chatStackStore'
@@ -17,6 +16,12 @@ import GlobalOverlays from './components/shell/GlobalOverlays'
 import { mountAuthFlow } from './components/auth/mountAuthFlow.solid'
 import classNames from './shared/lib/classNames'
 import { createAppSidebarRight } from './components/sidebarRight'
+import appSidebarLeft, { createAppSidebarLeft } from './components/sidebarLeft'
+import { AppDialogsManager } from './lib/appDialogsManager'
+import { isUserCollapsedLeft } from './core/dom/updateColumnWidths'
+import { useIsSidebarCollapsed } from './stores/foldersSidebar.solid'
+import { createEffect, createRoot } from 'solid-js'
+import columnLeft from './components/sidebarLeft/columnLeft.module.scss'
 import { doubleRaf } from './core/accountTransition'
 // Сущность чата из модели данных; компонент ниже называется так же (как в tweb),
 // поэтому тип импортируется под алиасом.
@@ -90,6 +95,23 @@ function Shell({ onToggleMode }: { onToggleMode: ToggleMode }) {
   // на разные модули (см. докблок `core/navigation/chatHistory.ts`).
   useEffect(() => startChatHistory(), [])
   const deep = useDeepLinks(showToast)
+  // Deep-open с префиллом поиска (`?domain=…` публичной страницы) — у tweb
+  // такого входа нет. Поиск открывает владелец (`initSearch` зовёт `onFocus`
+  // сам, tweb `sidebarLeft/index.ts:1489`), значение уходит в его поле и его же
+  // `onChange` (:1250). Кадром позже старта колонки: стартовый показ «Всех
+  // чатов» (`start()` → `onClick(0, false)`) закрывает всё открытое внутри
+  // (`closeEverythingInsideNaturally`, tweb `appDialogsManager.ts:1027`).
+  const deepDomainRef = useRef(deep.deepDomain)
+  useLayoutEffect(() => {
+    const query = deepDomainRef.current
+    if (!query) return
+    const timer = window.setTimeout(() => {
+      appSidebarLeft.initSearch()
+      appSidebarLeft.inputSearch.value = query
+      appSidebarLeft.inputSearch.onChange?.(query)
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [])
   const chatList = useChatList()
 
   // Responsive: below 900px columns overlap fullscreen (tweb handheld). PiP-окно
@@ -109,6 +131,69 @@ function Shell({ onToggleMode }: { onToggleMode: ToggleMode }) {
   // читавшийся только из стека) не чистился, F5 открывал чат вместо списка,
   // Back/Esc били мимо.
   const backToList = narrow ? () => backChatLevel() : undefined
+
+  const leftColumnRef = useRef<HTMLDivElement>(null)
+  const toggleModeRef = useRef(onToggleMode)
+  toggleModeRef.current = onToggleMode
+  // «Свёрнута» — tweb `setSidebarLeftWidth` (`src/index.ts:205-235`): сигнал
+  // `useIsSidebarCollapsed` = запомненное предпочтение и не узкий экран, его
+  // зеркало — `#column-left.is-collapsed`; драг ручки класса колонки пушит в
+  // тот же сигнал (`initSidebarResize`). ВРЕМЕННО до Э4-1 (расхождение 5 шапки
+  // класса). «Не узкий экран» у нас — вне плавающего диапазона и не во всю
+  // ширину (расхождение 3 шапки стора `foldersSidebar.solid.ts`).
+  const floatingLeft = useMediaQuery('(max-width:925px)')
+  useLayoutEffect(() => {
+    useIsSidebarCollapsed()[1](isUserCollapsedLeft() && !floatingLeft && !narrow)
+  }, [floatingLeft, narrow])
+  useLayoutEffect(() => {
+    const columnEl = leftColumnRef.current!
+    const dispose = createRoot((dispose) => {
+      const [isSidebarCollapsed] = useIsSidebarCollapsed()
+      createEffect(() => {
+        columnEl.classList.toggle('is-collapsed', isSidebarCollapsed())
+      })
+      return dispose
+    })
+    return () => {
+      dispose()
+      useIsSidebarCollapsed()[1](false)
+    }
+  }, [])
+  // Колонка во всю ширину на узком экране — наша раскладка, не tweb: класс
+  // модуля пишется `classList`, потому что `className` узла постоянный (его
+  // классами владеет класс колонки).
+  useLayoutEffect(() => {
+    leftColumnRef.current!.classList.toggle(columnLeft.fullWidth, narrow)
+  }, [narrow])
+  // Левая колонка — класс `AppSidebarLeft` на статичном `#column-left` ниже
+  // (tweb: синглтон при импорте, `sidebarLeft/index.ts:1798`), и владелец
+  // списка чатов `AppDialogsManager`: его `start()` конструирует класс колонки
+  // и автомат соединения (tweb `appDialogsManager.ts:983`, `:990`) — как
+  // `bootstrapIm.ts:51`. ВРЕМЕННО до Э4-1: узлы рисует этот React, поэтому оба
+  // создаются ПОСЛЕ монтирования и снимаются с шеллом (расхождение 1 шапки
+  // класса колонки и расхождение 1 шапки владельца).
+  useLayoutEffect(() => {
+    const sidebar = createAppSidebarLeft()
+    // ночной режим бургера — ВРЕМЕННО до Э4-5 (расхождение 3 шапки класса)
+    sidebar.switchTheme = (coords) => toggleModeRef.current(coords)
+    const dialogsManager = new AppDialogsManager()
+    const columnEl = leftColumnRef.current!
+    dialogsManager.start(
+      columnEl.querySelector<HTMLElement>('.connection-status-bottom')!,
+      columnEl.querySelector<HTMLElement>('#chatlist-container')!,
+      {
+        managers,
+        // форум-таб (`toggleForumTabByPeerId`, tweb `:1941`) — задача 1-6:
+        // до неё клик по строке форума ничего не открывает
+        isForumOpen: () => false,
+        openForum: () => {},
+      },
+    )
+    return () => {
+      dialogsManager.destroy()
+      sidebar.destroy()
+    }
+  }, [managers])
 
   // Переключение список ↔ чат на узком экране — 1:1 tweb `appImManager.selectTab`
   // (appImManager.ts:2588-2645). Само движение колонок там делает ОДИН класс на
@@ -142,14 +227,6 @@ function Shell({ onToggleMode }: { onToggleMode: ToggleMode }) {
     const transitionTime = 250 + 100
     void dispatchHeavyAnimationEvent(pause(transitionTime), transitionTime)
   }, [chatOpen, narrow])
-
-  const renderSidebar = (fullWidth = false) => (
-    <Sidebar
-      initialQuery={deep.deepDomain}
-      onToggleMode={onToggleMode}
-      fullWidth={fullWidth}
-    />
-  )
 
   // Резолв дескриптора стека в сущность чата — `core/chatEntity.ts`: реальный
   // диалог, иначе пир без диалога (тот же ключ, признак `noDialog`), иначе
@@ -189,7 +266,33 @@ function Shell({ onToggleMode }: { onToggleMode: ToggleMode }) {
       <div className="sidebar-left-overlay" />
       <div id="page-chats" className="whole page-chats">
         <div id="main-columns" className="tabs-container" data-animation="navigation">
-          {renderSidebar(narrow)}
+          {/* tweb `index.html:91-107` — статичная разметка без логики: шапку
+              (поле поиска, бургер), список (`.connection-status-bottom` —
+              хост владельца, расхождение 2 его шапки) и выдачу поиска строят
+              класс колонки и владелец списка. `className` постоянный. */}
+          <div
+            id="column-left"
+            ref={leftColumnRef}
+            className="tabs-tab chatlist-container sidebar sidebar-left main-column sidebar-left-common"
+            role="navigation"
+          >
+            <div className={classNames('sidebar-slider', 'tabs-container', columnLeft.slider)}>
+              <div className={classNames('tabs-tab', 'sidebar-slider-item', 'item-main', 'active', columnLeft.sliderItem)}>
+                <div className={classNames('sidebar-header', 'main-search-sidebar-header', 'can-have-forum', columnLeft.header)}>
+                  <div className="sidebar-header__btn-container left-sidebar-burger">
+                    <div className="animated-menu-icon" />
+                    <div className="btn-icon sidebar-back-button" />
+                  </div>
+                </div>
+                <div className={classNames('sidebar-content', 'transition', 'zoom-fade', 'can-have-forum', columnLeft.content)}>
+                  <div id="chatlist-container" className={classNames('transition-item', 'active', columnLeft.body)}>
+                    <div className="connection-status-bottom" />
+                  </div>
+                  <div id="search-container" className="transition-item sidebar-search" />
+                </div>
+              </div>
+            </div>
+          </div>
           {chatArea}
           <div id="column-right" className="tabs-tab sidebar sidebar-right main-column" role="complementary">
             <div className="sidebar-content sidebar-slider tabs-container" />

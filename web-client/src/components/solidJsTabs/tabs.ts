@@ -407,7 +407,7 @@ export const AppSpeakersAndCameraTab =
   })
 
 // ── Корень настроек (tweb :188-192) — задача 28 плана 2D ─────────────────────
-// Вкладка колоночного слайдера (`sidebarLeft/columnSlider.ts`); открывает её
+// Вкладка левой колонки (`AppSidebarLeft`, `sidebarLeft/index.ts`); открывает её
 // пункт «Настройки» бургера и колонки папок (tweb `sidebarLeft/index.ts:765`,
 // `:841`). Форма обычная, без полезной нагрузки.
 export const AppSettingsTab =

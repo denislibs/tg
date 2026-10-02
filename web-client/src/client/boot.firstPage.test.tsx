@@ -24,17 +24,18 @@
 // курсором, выборку выбирает по `folder_id` (`dialogpage.go`, `chatsrepo.go`).
 //
 // happy-dom не считает layout: высоту скроллеров списков (её читает
-// `useElementSize` ядра) отдаёт стаб `getBoundingClientRect` — тот же приём, что в
-// `components/Sidebar.archive.test.tsx`.
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+// `useElementSize` ядра) отдаёт стаб `getBoundingClientRect`.
+//
+// Колонка — статичная разметка tweb (`test/sidebarLeft.ts`) с классом колонки и
+// владельцем списка `AppDialogsManager`, как их поднимает шелл (`App.tsx`).
+import { act, fireEvent, screen } from '@testing-library/react'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 
 import { applyDialogsMirror, fillDialogsMirror } from './boot'
 import { registerStoreProjection } from './realtime/storeProjection'
-import Sidebar from '../components/Sidebar'
-import s from '../components/Sidebar.module.scss'
-import { ManagersProvider } from '../core/hooks/useManagers'
+import { AppDialogsManager } from '../lib/appDialogsManager'
+import { installSidebarLeft, type InstalledSidebarLeft } from '../test/sidebarLeft'
 import { newDialogsManager } from '../core/managers/dialogsManager'
 import { DIALOG_LOAD_COUNT } from '../core/dialogs/loadCount'
 import { RT } from '../core/realtime/events'
@@ -167,9 +168,8 @@ async function coldStart() {
   return { dialogs, requests }
 }
 
-/** Менеджеры сайдбара: `dialogs` — ТОТ ЖЕ владелец, что грузил холодный старт
- *  (список папки просит страницы у него), остальное — no-op (приём
- *  `Sidebar.connectionStatus.test.tsx`). */
+/** Менеджеры колонки: `dialogs` — ТОТ ЖЕ владелец, что грузил холодный старт
+ *  (список папки просит страницы у него), остальное — no-op. */
 function sidebarManagers(dialogs: unknown): Managers {
   const stub = (ns: string) => new Proxy({}, {
     get: (_t, method: string | symbol) => (
@@ -183,12 +183,15 @@ function sidebarManagers(dialogs: unknown): Managers {
   }) as unknown as Managers
 }
 
+let column: InstalledSidebarLeft | undefined
+let owner: AppDialogsManager | undefined
+
+/** Колонка, как её поднимает шелл (`App.tsx`): класс колонки + владелец списка. */
 async function renderSidebar(dialogs: unknown) {
-  render(
-    <ManagersProvider managers={sidebarManagers(dialogs)}>
-      <Sidebar onToggleMode={() => {}} />
-    </ManagersProvider>,
-  )
+  const managers = sidebarManagers(dialogs)
+  column = installSidebarLeft(managers, undefined, { full: true })
+  owner = new AppDialogsManager()
+  owner.start(column.host, column.chatlistContainer, { managers, isForumOpen: () => false, openForum: () => {} })
   await act(async () => {})
 }
 
@@ -199,10 +202,6 @@ async function settle(ms: number) {
 
 /** Закреплённая строка «Архив» — узел с тегом строки архива tweb (`archive-dialog`) среди строк. */
 const archiveRow = () => document.querySelector<HTMLElement>('ul.chatlist archive-dialog')
-const archiveOverlayRows = () => [...document.querySelectorAll<HTMLElement>(`.${s.archiveList} ul a.chatlist-chat`)]
-/** Клик списка — `mousedown` в фазе захвата (`setListClickListener`, tweb `:2072-2346`). */
-const press = (el: HTMLElement) => fireEvent.mouseDown(el, { button: 0 })
-const hrefs = (rows: HTMLElement[]) => rows.map((r) => r.getAttribute('href'))
 
 beforeAll(() => registerStoreProjection({} as unknown as Managers))
 
@@ -223,7 +222,14 @@ beforeEach(() => {
   })
 })
 
-afterEach(() => { cleanup(); vi.restoreAllMocks() })
+afterEach(() => {
+  owner?.destroy()
+  column?.destroy()
+  owner = undefined
+  column = undefined
+  document.body.replaceChildren()
+  vi.restoreAllMocks()
+})
 
 describe('boot: холодный старт грузит ПЕРВУЮ СТРАНИЦУ (архив и папки догружаются сами)', () => {
   // Страховка от вырождения фикстуры: если архивный чат или чат папки уедут в
@@ -241,17 +247,6 @@ describe('boot: холодный старт грузит ПЕРВУЮ СТРАН
     // по ГЛОБАЛЬНОЙ выборке и без курсора: `refresh()` обслуживает весь кэш.
     expect(requests).toEqual([{ limit: FIRST_PAGE }])
     expect(useChatsStore.getState().dialogs).toHaveLength(FIRST_PAGE)
-  })
-
-  it('архив: диалог за пределами первой страницы попадает в архивный список', async () => {
-    const { dialogs } = await coldStart()
-    await renderSidebar(dialogs)
-    await settle(350) // догрузка «Всех чатов» и архива доиграна
-
-    await act(async () => { press(archiveRow()!) })
-    await settle(100)
-
-    expect(hrefs(archiveOverlayRows())).toEqual(['#' + ARCHIVED_ID])
   })
 
   it('строка «Архив» есть, хотя архивных чатов нет среди первых DIALOG_LOAD_COUNT диалогов', async () => {

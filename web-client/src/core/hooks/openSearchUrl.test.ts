@@ -4,7 +4,7 @@ import { DEFAULT_TME_ORIGIN } from '@config/app'
 const applyHash = vi.fn(async () => {})
 vi.mock('./useUrlSync', () => ({ applyHash }))
 
-const { openSearchUrl } = await import('./useGlobalSearch')
+const { openSearchUrl } = await import('./openSearchUrl')
 
 describe('openSearchUrl — своя ссылка открывается внутри, как t.me', () => {
   it('свой хост ссылок: <tme>/username/N → #@username/N', () => {

@@ -5,7 +5,7 @@
  * 812502980) — задача 11 плана волны 2D.
  *
  * Вкладка гоняется НАСТОЯЩАЯ — `AppPowerSavingTab` из `solidJsTabs/tabs.ts`,
- * открытая через колоночный слайдер (`sidebarLeft/columnSlider.ts`) тем же путём, что строка
+ * открытая через колоночный слайдер (`sidebarLeft/index.ts`) тем же путём, что строка
  * «Общих». Стабы — только границы: тост и геометрия (happy-dom её не считает).
  *
  * Предмет — видимое в DOM и записанное в стор:
@@ -25,7 +25,7 @@ import type SliderSuperTab from '@components/sliderTab'
 import lang from '@/lang'
 import { useSettingsStore, DEFAULTS } from '@/settings'
 import { AppPowerSavingTab } from '@components/solidJsTabs/tabs'
-import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
+import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 // щелчок по заголовку группы раскрывает её (`cancelEvent`), а не переключает —
 // «не переключилось» мерится по спецификации, а не по happy-dom
 import { installSpecLabelActivation } from '@/test/specLabelActivation'
@@ -38,7 +38,7 @@ vi.mock('@components/toast', async(importOriginal) => ({
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-let host: TestColumnSlider
+let host: InstalledSidebarLeft
 let uninstallLabelActivation: () => void
 
 beforeEach(() => {
@@ -49,7 +49,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = mountTestColumnSlider(columnEl, {} as Managers)
+  host = installSidebarLeft({} as Managers, columnEl)
 })
 
 afterEach(async() => {

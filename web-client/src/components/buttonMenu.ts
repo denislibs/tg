@@ -26,7 +26,7 @@
 //
 // Поля-проводники `id` / `onOpen` / `onClose` / `dispose` сам этот файл не
 // читает (кроме `dispose`, который пишет ветка `avatarInfo`): их читают
-// владельцы меню — `createSubmenuTrigger`, бургер (`sidebarLeft/toolsMenu.ts`)
+// владельцы меню — `createSubmenuTrigger`, бургер (`sidebarLeft/index.ts`)
 // и уборка `ButtonMenuToggle` (`dispose`).
 //
 // `avatarInfo` (tweb :163-176, `AvatarNew` под `createRoot`) — наша ванильная

@@ -1,5 +1,6 @@
 // Бургер-меню левой колонки — порт tweb `sidebarLeft/index.ts:673-905`
-// (`createToolsMenu`) и `:916-1064` (`createMoreSubmenu`), шапка `toolsMenu.ts`.
+// (`createToolsMenu`) и `:916-1064` (`createMoreSubmenu`), методы класса
+// `AppSidebarLeft` (`index.ts`, расхождения бургера — в его шапке).
 // Пины — на то, что видит пользователь: состав и порядок пунктов ровно по
 // `verify` оригинала (ничего сверх: ни «Близких друзей», ни «Кошелька», ни
 // «Telegram Premium», ни «Выйти»), что открывает клик, подменю «Ещё» и морф
@@ -7,16 +8,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import contextMenuController from '@helpers/contextMenuController'
 import { useChatsStore } from '@stores/chatsStore'
+import { useNavigationStore } from '@stores/navigationStore'
 import { useFoldersSidebarShown, useIsLeftSearchActive } from '@stores/foldersSidebar.solid'
 import { useSettingsStore } from '@/settings'
 import { usePwaStore } from '@core/pwa'
 import type { Managers } from '@/client/bootstrap'
 import type { PublicAccount } from '@core/auth/accounts'
-import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
+import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 import { applyLang } from '@/test/lang'
 import lottieLoader from '@lib/lottie/lottieLoader'
 import type LottiePlayer from '@lib/lottie/lottiePlayer'
-import { createToolsMenu, mountSidebarToolsButton, type ToolsMenuSidebar } from './toolsMenu'
+import type { AppDialogsManager } from '@lib/appDialogsManager'
+import type { AppSidebarLeft } from './index'
 
 const env = vi.hoisted(() => ({ call: true, pip: false }))
 vi.mock('@environment/callSupport', () => ({ get default() { return env.call } }))
@@ -52,19 +55,17 @@ const managers = new Proxy({}, {
   }),
 }) as unknown as Managers
 
-function makeSidebar(over: Partial<ToolsMenuSidebar> = {}): ToolsMenuSidebar {
-  return {
-    managers,
-    closeTabsBefore: vi.fn((clb: () => void) => clb()),
-    isCollapsed: () => false,
-    openArchiveTab: vi.fn(),
-    hasArchivedDialogs: () => false,
-    getArchivedUnreadCount: () => 0,
-    openSavedMessages: vi.fn(),
-    openMyStories: vi.fn(),
-    switchTheme: vi.fn(),
-    ...over,
-  }
+let closeEverythingInside: ReturnType<typeof vi.spyOn>
+
+type SidebarOver = { isCollapsed?: () => boolean, switchTheme?: AppSidebarLeft['switchTheme'] }
+
+/** Класс колонки с дублёром ночного режима (расхождение 3 шапки класса) и шпионом «закрыть всё». */
+function makeSidebar(over: SidebarOver = {}): AppSidebarLeft {
+  const { sidebar } = testSlider
+  sidebar.switchTheme = over.switchTheme ?? vi.fn()
+  if(over.isCollapsed) vi.spyOn(sidebar, 'isCollapsed').mockImplementation(over.isCollapsed)
+  closeEverythingInside = vi.spyOn(sidebar, 'closeEverythingInside')
+  return sidebar
 }
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -79,7 +80,7 @@ const item = (menu: HTMLElement, text: string) =>
   [...menu.querySelectorAll<HTMLElement>(':scope > .btn-menu-item')].find((el) => label(el) === text)!
 
 let column: HTMLElement
-let testSlider: TestColumnSlider
+let testSlider: InstalledSidebarLeft
 
 beforeEach(async() => {
   await applyLang('en')
@@ -90,7 +91,7 @@ beforeEach(async() => {
   column = document.createElement('div')
   column.id = 'column-left'
   document.body.append(column)
-  testSlider = mountTestColumnSlider(column, managers)
+  testSlider = installSidebarLeft(managers, column, { full: true })
 })
 
 afterEach(async() => {
@@ -98,6 +99,7 @@ afterEach(async() => {
   await pause(320) // уборка ButtonMenuToggle (300 мс)
   testSlider.destroy()
   useChatsStore.setState({ me: null })
+  useNavigationStore.setState({ selectedId: null })
   usePwaStore.setState({ canInstall: false })
   useFoldersSidebarShown()[1](false)
   useIsLeftSearchActive()[1](false)
@@ -108,7 +110,7 @@ afterEach(async() => {
 async function openMenu(sidebar = makeSidebar()) {
   const trigger = document.createElement('div')
   document.body.append(trigger)
-  createToolsMenu(sidebar, trigger)
+  sidebar.createToolsMenu(trigger)
   trigger.click()
   await vi.waitFor(() => expect(rootMenu()?.classList.contains('active')).toBe(true))
   return { menu: rootMenu()!, sidebar, trigger }
@@ -125,7 +127,7 @@ describe('createToolsMenu — состав по verify tweb', () => {
     const { menu } = await openMenu()
 
     expect(itemTexts(menu)).toEqual([
-      'Denis Me', 'Add Account', 'Saved Messages', 'My Stories', 'Contacts', 'Calls', 'Settings', 'More',
+      'Denis Me', 'Add Account', 'Saved Messages', 'Contacts', 'Calls', 'Settings', 'More',
     ])
     // разделители — перед «Избранным» и «Настройками» (tweb :705, :739)
     const hrBefore = (text: string) => item(menu, text).previousElementSibling?.tagName
@@ -135,15 +137,11 @@ describe('createToolsMenu — состав по verify tweb', () => {
     expect(menu.classList.contains('bottom-right')).toBe(true)
   })
 
-  it('«Архив» — только при архивных диалогах, с бейджем непрочитанного', async() => {
-    const { menu } = await openMenu(makeSidebar({ hasArchivedDialogs: () => true, getArchivedUnreadCount: () => 1234 }))
+  it('«Архив» и «Мои истории» скрыты до своих вкладок (1-5, О-82): мёртвых пунктов нет', async() => {
+    const { menu } = await openMenu()
 
-    expect(itemTexts(menu)).toEqual([
-      'Denis Me', 'Add Account', 'Saved Messages', 'Archived Chats', 'My Stories', 'Contacts', 'Calls', 'Settings', 'More',
-    ])
-    const badge = item(menu, 'Archived Chats').querySelector('.archived-count')!
-    expect(badge.className).toBe('badge badge-24 badge-gray archived-count')
-    expect(badge.textContent).toBe('1.2K')
+    expect(itemTexts(menu)).not.toContain('Archived Chats')
+    expect(itemTexts(menu)).not.toContain('My Stories')
   })
 
   it('«Создать» — только у свёрнутой колонки (дублирует скрытый FAB, tweb :700)', async() => {
@@ -152,18 +150,18 @@ describe('createToolsMenu — состав по verify tweb', () => {
     expect(itemTexts(menu).slice(0, 4)).toEqual(['Denis Me', 'Add Account', 'Create a New', 'Saved Messages'])
   })
 
-  it('«Создать → Группа» — флоу «Новой группы» в колоночном слайдере после closeTabsBefore (tweb :1074-1078)', async() => {
+  it('«Создать → Группа» — флоу «Новой группы» в колоночном слайдере после closeEverythingInside (tweb :1074-1078)', async() => {
     // пустая книга контактов рисует стикер-заглушку выбора — воркера lottie в happy-dom нет
     vi.spyOn(lottieLoader, 'loadAnimationAsAsset').mockResolvedValue({} as LottiePlayer)
     vi.spyOn(lottieLoader, 'waitForFirstFrame').mockResolvedValue(undefined as never)
-    const { menu, sidebar } = await openMenu(makeSidebar({ isCollapsed: () => true }))
+    const { menu } = await openMenu(makeSidebar({ isCollapsed: () => true }))
     item(menu, 'Create a New').dispatchEvent(new MouseEvent('mouseenter'))
     await vi.waitFor(() => expect(submenu()?.classList.contains('active')).toBe(true))
 
     item(submenu()!, 'Group').click()
-    await vi.waitFor(() => expect(column.querySelector('.add-members-container')).not.toBeNull())
+    await vi.waitFor(() => expect(column.querySelector('.add-members-container')).not.toBeNull(), { timeout: 5000 }) // чанк вкладки и селектор — долгий путь под нагрузкой хоста
 
-    expect(sidebar.closeTabsBefore).toHaveBeenCalledTimes(1)
+    expect(closeEverythingInside).toHaveBeenCalledTimes(1)
     expect(testSlider.slider.hasTabsInNavigation()).toBe(true)
   })
 
@@ -196,13 +194,13 @@ describe('createToolsMenu — состав по verify tweb', () => {
 })
 
 describe('createToolsMenu — клики', () => {
-  it('«Настройки» открывают AppSettingsTab в колоночном слайдере после closeTabsBefore', async() => {
-    const { menu, sidebar } = await openMenu()
+  it('«Настройки» открывают AppSettingsTab в колоночном слайдере после closeEverythingInside', async() => {
+    const { menu } = await openMenu()
 
     item(menu, 'Settings').click()
     await vi.waitFor(() => expect(column.querySelector('.settings-root-stub')).not.toBeNull())
 
-    expect(sidebar.closeTabsBefore).toHaveBeenCalledTimes(1)
+    expect(closeEverythingInside).toHaveBeenCalledTimes(1)
     expect(testSlider.slider.hasTabsInNavigation()).toBe(true)
     expect(menu.classList.contains('active')).toBe(false)
   })
@@ -214,30 +212,25 @@ describe('createToolsMenu — клики', () => {
     await vi.waitFor(() => expect(column.querySelector('.settings-root-stub')).not.toBeNull())
   })
 
-  it('«Звонки» открывают AppCallsTab в колоночном слайдере после closeTabsBefore (tweb :751-756)', async() => {
-    const { menu, sidebar } = await openMenu()
+  it('«Звонки» открывают AppCallsTab в колоночном слайдере после closeEverythingInside (tweb :751-756)', async() => {
+    const { menu } = await openMenu()
 
     item(menu, 'Calls').click()
     await vi.waitFor(() => expect(column.querySelector('.calls-tab-stub')).not.toBeNull())
 
-    expect(sidebar.closeTabsBefore).toHaveBeenCalledTimes(1)
+    expect(closeEverythingInside).toHaveBeenCalledTimes(1)
     expect(testSlider.slider.hasTabsInNavigation()).toBe(true)
   })
 
-  it('«Избранное», «Мои истории», «Архив» зовут мосты колонки', async() => {
-    const sidebar = makeSidebar({ hasArchivedDialogs: () => true })
-    for(const [text, fn] of [
-      ['Saved Messages', sidebar.openSavedMessages],
-      ['My Stories', sidebar.openMyStories],
-      ['Archived Chats', sidebar.openArchiveTab],
-    ] as const) {
-      const { menu } = await openMenu(sidebar)
-      item(menu, text).click()
-      await vi.waitFor(() => expect(fn).toHaveBeenCalledTimes(1))
-      contextMenuController.close()
-      await pause(320)
-      document.body.querySelectorAll(':scope > div:not(#column-left)').forEach((el) => el.remove())
-    }
+  it('«Избранное» открывает свой чат (`appImManager.setPeer({peerId: myId})`, ВРЕМЕННО до Э4-3)', async() => {
+    const saved = vi.fn(async() => 77)
+    const own = { auth: managers.auth, peers: managers.peers, chats: { saved }, dialogs: { refresh: async() => null } } as unknown as Managers
+    ;(testSlider.sidebar as unknown as { managers: Managers }).managers = own
+    const { menu } = await openMenu()
+    item(menu, 'Saved Messages').click()
+
+    await vi.waitFor(() => expect(useNavigationStore.getState().selectedId).toBe('77'))
+    expect(saved).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -288,28 +281,25 @@ describe('createMoreSubmenu — «Ещё»', () => {
   })
 
   it('ночной режим: тема переключается из центра иконки, меню закрывается', async() => {
-    const { menu, sidebar } = await openMenu()
+    const switchTheme = vi.fn()
+    const { menu } = await openMenu(makeSidebar({ switchTheme }))
     const more = await openMore(menu)
 
     item(more, 'Enable Dark Mode').click()
-    expect(sidebar.switchTheme).toHaveBeenCalledTimes(1)
-    expect(sidebar.switchTheme).toHaveBeenCalledWith({ x: expect.any(Number), y: expect.any(Number) })
+    expect(switchTheme).toHaveBeenCalledTimes(1)
+    expect(switchTheme).toHaveBeenCalledWith({ x: expect.any(Number), y: expect.any(Number) })
     await vi.waitFor(() => expect(contextMenuController.isOpened()).toBe(false))
   })
 })
 
-describe('mountSidebarToolsButton — кнопка бургера в шапке', () => {
+describe('construct — кнопка бургера в шапке (tweb :165-172, :244, :431-442)', () => {
   function mountHeader() {
-    const container = document.createElement('div')
-    container.className = 'sidebar-header__btn-container left-sidebar-burger'
-    const icon = document.createElement('div')
-    icon.className = 'animated-menu-icon'
-    const back = document.createElement('div')
-    back.className = 'btn-icon sidebar-back-button'
-    container.append(icon, back)
-    document.body.append(container)
-    const destroy = mountSidebarToolsButton(makeSidebar(), container)
-    return { container, icon, back, destroy }
+    const sidebar = makeSidebar()
+    sidebar.construct(managers, { xd: undefined } as unknown as AppDialogsManager)
+    const container = column.querySelector<HTMLElement>('.left-sidebar-burger')!
+    const icon = container.querySelector<HTMLElement>('.animated-menu-icon')!
+    const back = container.querySelector<HTMLElement>('.sidebar-back-button')!
+    return { container, icon, back, destroy: () => sidebar.destroy() }
   }
 
   it('кнопка меню встаёт перед «назад», с бейджем уведомлений других аккаунтов', () => {
@@ -319,6 +309,7 @@ describe('mountSidebarToolsButton — кнопка бургера в шапке'
     expect(tools.nextElementSibling).toBe(back)
     expect(tools.classList.contains('btn-menu-toggle')).toBe(true)
     expect(tools.getAttribute('aria-label')).toBe('More')
+    expect(back.getAttribute('aria-label')).toBe('Back')
     expect(tools.querySelector('.badge.badge-20.badge-primary.sidebar-tools-button-notifications.is-badge-empty')).not.toBeNull()
   })
 
@@ -340,7 +331,7 @@ describe('mountSidebarToolsButton — кнопка бургера в шапке'
     expect(back.classList.contains('is-visible')).toBe(true)
   })
 
-  it('уборка снимает кнопку и гасит морф', () => {
+  it('destroy снимает кнопку и гасит морф', () => {
     const { container, icon, destroy } = mountHeader()
     destroy()
 

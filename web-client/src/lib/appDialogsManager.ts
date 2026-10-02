@@ -27,7 +27,8 @@
 // `setDialogActive` по смене выбранного чата (`peer_changed`, `:1176-1229`).
 // В колонку владелец встроен `components/Sidebar.tsx` (`// ВРЕМЕННО до 2-9`, мост
 // этапа 1): `.connection-status-bottom` — хост `start()`, `#chatlist-container` —
-// второй аргумент.
+// второй аргумент. `start()` конструирует класс колонки (`appSidebarLeft.construct`,
+// `:983`) и автомат соединения (`:990`), как у оригинала.
 //
 // ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
 //
@@ -125,13 +126,12 @@
 //     показывалась бы не с начала). `setCollapsed` — наш: свёрнутая в
 //     колонку аватаров панель при открытом форуме гасит клиренс; у tweb
 //     свёрнутый чатлист устроен иначе (`left-sidebar.md` § 8.2).
-// 20. Меню папки (`:814-821`): `appSidebarLeft` и `managers`, которые у tweb
-//     владелец берёт у синглтонов, приходят хуками колонки
-//     (`hooks.appSidebarLeft`/`hooks.managers`, адаптации — шапка
-//     `helpers/dom/createFolderContextMenu.ts`); классов вкладок
-//     `AppChatFoldersTab`/`AppEditFolderTab` не передаётся — экраны открывает
-//     колонка. Возвращённый `destroy` у tweb выбрасывается (владелец вечен), у
-//     нас `destroy()` владельца снимает им слушатели с ряда (п. 1).
+// 20. Меню папки (`:814-821`): `managers`, которые у tweb владелец берёт у
+//     синглтона, приходят хуком колонки (`hooks.managers`, адаптации — шапка
+//     `helpers/dom/createFolderContextMenu.ts`); `appSidebarLeft` и классы
+//     вкладок — как у tweb. Возвращённый `destroy` у tweb выбрасывается
+//     (владелец вечен), у нас `destroy()` владельца снимает им слушатели с ряда
+//     (п. 1).
 // 21. `hide` градиента ряда: у tweb его ставит ref (`:678-681`, затирается
 //     class-эффектом `Tabs.MenuGradient`), а снимает/ставит
 //     `onFiltersLengthChange` лишь при смене показа (`:1310-1312`) — одна папка
@@ -159,14 +159,14 @@ import { createEffect, createRoot, on, untrack } from 'solid-js'
 import Scrollable from '@components/scrollable'
 import { horizontalMenu } from '@components/horizontalMenu'
 import FoldersTabs from '@components/foldersTabs.solid'
-import createFolderContextMenu, {
-  type FolderContextMenuManagers,
-  type FolderContextMenuSidebar,
-} from '@helpers/dom/createFolderContextMenu'
-import DialogsContextMenu, { type DialogsContextMenuManagers } from '@components/dialogsContextMenu'
+import createFolderContextMenu from '@helpers/dom/createFolderContextMenu'
+import DialogsContextMenu from '@components/dialogsContextMenu'
+import type { Managers } from '@/client/bootstrap'
 import type { ScrollableContextValue } from '@components/scrollable2.solid'
-import type { ToolsMenuSidebar } from '@components/sidebarLeft/toolsMenu'
 import { renderPendingSuggestion } from '@components/sidebarLeft/pendingSuggestion.solid'
+import appSidebarLeft from '@components/sidebarLeft'
+import { AppChatFoldersTab, AppEditFolderTab } from '@components/solidJsTabs/tabs'
+import ConnectionStatusComponent from '@components/connectionStatus'
 import { createSolidNodes } from '@shared/solid/mountSolid.solid'
 import useFolders from '@stores/folders.solid'
 import { useHasFolders } from '@stores/foldersSidebar.solid'
@@ -221,7 +221,7 @@ import { isDialogMuted, useNotifyStore } from '@stores/notifyStore'
 import { useNavigationStore } from '@stores/navigationStore'
 import { useSecretChatStore } from '@stores/secretChatStore'
 import { ARCHIVE_DIALOG_TAG_NAME, AutonomousDialogList } from '@components/autonomousDialogList/dialogs'
-import { setDialogTyping, type DialogListManagers } from '@components/autonomousDialogList/base'
+import { setDialogTyping } from '@components/autonomousDialogList/base'
 import styles from './appDialogsManager.module.scss'
 
 const log = logger('DIALOGS', LogTypes.Error)
@@ -797,19 +797,14 @@ export class DialogElement {
 
 /** Колбэки колонки: то, что у tweb владелец берёт у соседей-синглтонов. */
 export type AppDialogsManagerHooks = {
-  /**
-   * `appSidebarLeft.closeEverythingInsideNaturally()` (`:756-758`,
-   * `sidebarLeft/index.ts:505-516`): закрыть поиск, вкладки «через назад»,
-   * форум. `false` — пользователь отказался, переключение отменяется. У нас это
-   * состояние колонки (`Sidebar.tsx`).
-   */
-  closeEverythingInsideNaturally: () => boolean | Promise<boolean>
   /** `!!this.forumTab` — открытый форум гасит свайп между папками (`:631-633`). */
   isForumOpen: () => boolean
-  /** `appSidebarLeft` меню папки (`:815`) — расхождение 20; `isCollapsed`/`openArchiveTab` — списку (`:1128`, `:2139`) */
-  appSidebarLeft: FolderContextMenuSidebar & Pick<ToolsMenuSidebar, 'isCollapsed' | 'openArchiveTab'>
-  /** `this.managers` меню папки (`:818`) и меню диалога (`:850`) — расхождения 20, 23; им же списки берут страницы и строки */
-  managers: FolderContextMenuManagers & DialogsContextMenuManagers & DialogListManagers & OpenPeerManagers
+  /**
+   * `managers` из `start(managers)` оригинала (`:847`): ими конструируются класс
+   * колонки и автомат соединения (`:983`, `:990`), их берут меню папки (`:818`)
+   * и меню диалога (`:850`) — расхождения 20, 23, — им же списки берут страницы и строки.
+   */
+  managers: Managers
   /**
    * `toggleForumTabByPeerId` (`:1941`) — клик по строке форума открывает панель
    * тем. Панель у нас — React-`TopicsPanel` колонки (`// ВРЕМЕННО до 1-6`).
@@ -866,6 +861,7 @@ export class AppDialogsManager {
   private disposeListeners: (() => void) | undefined
   private disposePeerChanged: (() => void) | undefined
   private destroyContextMenu: (() => void) | undefined
+  private connectionStatus: ConnectionStatusComponent | undefined
 
   /** расхождение 19; переживает `destroy()` — колонка задаёт его своим состоянием */
   private collapsed = false
@@ -970,7 +966,15 @@ export class AppDialogsManager {
     this.disposeTabs = tabs.dispose
     this.foldersOverlay.append(...tabs.nodes)
 
+    // `:983` — второй аргумент: экземпляр владельца, расхождение 2 шапки класса колонки
+    appSidebarLeft.construct(hooks.managers, this)
+    // `:990` — поле поиска колонки пока React (`inputSearch` класса, ВРЕМЕННО до 2-3)
+    this.connectionStatus = new ConnectionStatusComponent()
+    this.connectionStatus.construct(hooks.managers, appSidebarLeft.inputSearch!)
+
     this.xd = this.xds.get(this.filterId)
+
+    appSidebarLeft.onCollapsedChange() // `:996`
 
     // срез `onStateLoaded` (`:1014-1090`), расхождение 8
     this.addFilters()
@@ -1007,6 +1011,8 @@ export class AppDialogsManager {
     folders.setOnClick(undefined)
     this.destroyContextMenu?.()
     this.destroyContextMenu = undefined
+    this.connectionStatus?.destroy()
+    this.connectionStatus = undefined
     this.disposeTabs?.()
     this.disposeTabs = undefined
     this.disposeSuggestion?.()
@@ -1052,7 +1058,7 @@ export class AppDialogsManager {
 
       // Лимит папок не-Premium (`:742-748`) — расхождение 9, задача 10.
 
-      if(!await this.hooks.closeEverythingInsideNaturally() || !middleware()) { // `middleware` — расхождение 18
+      if(!await appSidebarLeft.closeEverythingInsideNaturally() || !middleware()) { // `middleware` — расхождение 18
         return false
       }
 
@@ -1107,7 +1113,9 @@ export class AppDialogsManager {
 
     // `destroy` — расхождение 20
     this.destroyContextMenu = createFolderContextMenu({
-      appSidebarLeft: this.hooks.appSidebarLeft,
+      appSidebarLeft,
+      AppChatFoldersTab,
+      AppEditFolderTab,
       managers: this.hooks.managers,
       className: 'menu-horizontal-div-item',
       listenTo: this.folders.menu,
@@ -1278,7 +1286,7 @@ export class AppDialogsManager {
 
   /** tweb `:1127-1129`: у нас форум — состояние колонки (`// ВРЕМЕННО до 1-6`) */
   public isChatListNarrow() {
-    return this.hooks.isForumOpen() || this.hooks.appSidebarLeft.isCollapsed()
+    return this.hooks.isForumOpen() || appSidebarLeft.isCollapsed()
   }
 
   /** Контекст списка для строки (С1 раздела «СТРОКА ДИАЛОГА»): то, что оригинал читает у себя. */
@@ -1425,7 +1433,7 @@ export class AppDialogsManager {
 
   /** tweb `appSidebarLeft.openArchiveTab()` (`sidebarLeft/index.ts:1760-1763`) — клик по строке «Архив» */
   public openArchiveTab() {
-    this.hooks.appSidebarLeft.openArchiveTab()
+    appSidebarLeft.openArchiveTab()
   }
 
   /**
@@ -1468,15 +1476,6 @@ export class AppDialogsManager {
       duration: 300,
       forwards: open,
     })
-  }
-
-  /**
-   * Колонка свернулась/развернулась — `onCollapsedChange` tweb
-   * (`sidebarLeft/index.ts:503-507`) в части списка: бейджи на аватарах.
-   * `// ВРЕМЕННО до 2-1`: колбэк станет методом `AppSidebarLeft`.
-   */
-  public onCollapsedChange(collapsed: boolean) {
-    this.xd?.toggleAvatarUnreadBadges(collapsed)
   }
 }
 

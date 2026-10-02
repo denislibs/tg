@@ -31,7 +31,7 @@ import { getIconContent } from '@components/icon'
 import rootScope from '@lib/rootScope'
 import { DEFAULTS, useSettingsStore } from '@/settings'
 import { AppQuickReactionTab, AppStickersAndEmojiTab } from '@components/solidJsTabs/tabs'
-import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
+import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 import { installSpecLabelActivation } from '@/test/specLabelActivation'
 
 vi.mock('@components/wrappers/sticker', () => ({ default: vi.fn() }))
@@ -50,7 +50,7 @@ const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 /** Переход (250) + разрушение вкладки (280) + запас. */
 const settle = () => pause(400)
 
-let host: TestColumnSlider
+let host: InstalledSidebarLeft
 let uninstallLabelActivation: () => void
 let mySets: ReturnType<typeof vi.fn<() => Promise<StickerSet[]>>>
 let getStickerSet: ReturnType<typeof vi.fn>
@@ -84,7 +84,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = mountTestColumnSlider(columnEl, managers)
+  host = installSidebarLeft(managers, columnEl)
 })
 
 afterEach(async() => {

@@ -29,7 +29,7 @@ import lang from '@/lang'
 import { useSettingsStore } from '@/settings'
 import { AppSpeakersAndCameraTab } from '@components/solidJsTabs/tabs'
 import type { OutputDevicePopupOptions } from '@components/rtmp/outputDevicePopup'
-import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
+import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 
 const showOutputDevicePopup = vi.hoisted(() => vi.fn<(options: OutputDevicePopupOptions) => void>())
 vi.mock('@components/rtmp/outputDevicePopup', () => ({ default: showOutputDevicePopup }))
@@ -106,7 +106,7 @@ class FakeAudioContext {
 /** Поток, выданный последним под `kind` (audio — уровень, video — превью). */
 const lastIssued = (kind: 'audio' | 'video') => [...issued].reverse().find((i) => i.constraints[kind])!
 
-let host: TestColumnSlider
+let host: InstalledSidebarLeft
 
 // Модуль вкладки грузится ленивым `import()` на первом открытии (3+ с на
 // холодной трансформации под параллельным прогоном) — греем заранее, чтобы
@@ -137,7 +137,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = mountTestColumnSlider(columnEl, {} as Managers)
+  host = installSidebarLeft({} as Managers, columnEl)
 })
 
 afterEach(async() => {

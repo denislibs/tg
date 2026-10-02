@@ -26,7 +26,7 @@ import lang from '@/lang'
 import { glyph } from '@core/tgico-icons'
 import contextMenuController from '@helpers/contextMenuController'
 import { AppPasskeysTab } from '@components/solidJsTabs/tabs'
-import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
+import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 
 const confirmationPopup = vi.hoisted(() => vi.fn(async(_options: unknown) => {}))
 vi.mock('@components/popups/popupPeer', async(importOriginal) => ({
@@ -53,7 +53,7 @@ const passkey = (id: string, name: string, extra: Partial<Passkey> = {}): Passke
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-let host: TestColumnSlider
+let host: InstalledSidebarLeft
 let auth: { passkeyDelete: ReturnType<typeof vi.fn<(id: string) => Promise<void>>> }
 
 beforeEach(() => {
@@ -67,7 +67,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = mountTestColumnSlider(columnEl, { auth } as unknown as Managers)
+  host = installSidebarLeft({ auth } as unknown as Managers, columnEl)
 })
 
 afterEach(async() => {

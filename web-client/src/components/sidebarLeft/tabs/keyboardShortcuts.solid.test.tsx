@@ -4,7 +4,7 @@
  * `sidebarLeft/tabs/keyboardShortcuts.tsx`, 812502980) — задача 10 плана волны 2D.
  *
  * Вкладка гоняется НАСТОЯЩАЯ — `AppKeyboardShortcutsTab` из `solidJsTabs/tabs.ts`,
- * открытая через колоночный слайдер (`sidebarLeft/columnSlider.ts`) тем же путём, что строка корня
+ * открытая через колоночный слайдер (`sidebarLeft/index.ts`) тем же путём, что строка корня
  * настроек. Стаб — только платформа (`IS_APPLE`): от неё зависят подписи клавиш.
  *
  * Предмет — видимое в DOM:
@@ -21,7 +21,7 @@ import type { Managers } from '@/client/bootstrap'
 import type SliderSuperTab from '@components/sliderTab'
 import lang from '@/lang'
 import { AppKeyboardShortcutsTab } from '@components/solidJsTabs/tabs'
-import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
+import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 import styles from './keyboardShortcuts.module.scss'
 
 const platform = vi.hoisted(() => ({ apple: false }))
@@ -32,7 +32,7 @@ vi.mock('@environment/userAgent', async(importOriginal) => ({
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-let host: TestColumnSlider
+let host: InstalledSidebarLeft
 
 beforeEach(() => {
   platform.apple = false
@@ -40,7 +40,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = mountTestColumnSlider(columnEl, {} as Managers)
+  host = installSidebarLeft({} as Managers, columnEl)
 })
 
 afterEach(async() => {

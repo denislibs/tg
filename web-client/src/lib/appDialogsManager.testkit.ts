@@ -27,6 +27,9 @@ import { ALL_FOLDER_ID } from '@core/folderIds'
 import { fastRaf } from '@helpers/schedulers'
 import type { RawFolder } from '@core/managers/foldersManager'
 import { AppDialogsManager, type AppDialogsManagerHooks } from './appDialogsManager'
+import type { AppSidebarLeft } from '@components/sidebarLeft'
+import { installSidebarLeft } from '@/test/sidebarLeft'
+import type { Managers } from '@/client/bootstrap'
 import { AutonomousDialogList } from '@components/autonomousDialogList/dialogs'
 
 /** ширина кадра папки — её читает `slideTabs` (`transition.ts:102-116`) */
@@ -213,74 +216,78 @@ export function installListProbes() {
 }
 
 // ── Владелец ───────────────────────────────────────────────────────────────
+/** Дублёры менеджеров, которые зовут владелец, его списки и меню. */
+function fakeManagers(getDialogs?: (...args: never[]) => unknown) {
+  return {
+    folders: { del: vi.fn(async (_id: number) => {}) },
+    peers: { fillMirror: vi.fn(async (_ids: number[]) => {}) },
+    presence: { get: async () => [] },
+    dialogs: {
+      getDialogs: getDialogs ?? vi.fn(async () => ({ dialogs: [], count: 0, isEnd: true })),
+      // меню диалога (задача 1-2 волны 7) — дублёры ручек его пунктов
+      applyRemoved: vi.fn(async (_peerId: number) => {}),
+      refresh: vi.fn(async () => null),
+    },
+    groups: {
+      setPin: vi.fn(async (_peerId: number, _pinned: boolean) => {}),
+      setMute: vi.fn(async (_peerId: number, _muted: boolean, _until?: number) => {}),
+      setArchive: vi.fn(async (_peerId: number, _archived: boolean) => {}),
+      deleteGroup: vi.fn(async (_peerId: number) => {}),
+      removeMember: vi.fn(async (_peerId: number, _userId: number) => {}),
+    },
+    chats: { clearHistory: vi.fn(async (_peerId: number) => {}) },
+    realtime: {
+      markRead: vi.fn(async (_args: { peerId: number, upToId: number }) => ({ ok: true })),
+      // автомат соединения (`start()`, `:990`) — его стартовый pull
+      getStatus: async () => ({ state: 'ready', retryAt: undefined, syncing: false }),
+    },
+  }
+}
+
 export type Mounted = {
   manager: AppDialogsManager
   host: HTMLDivElement
   chatsContainer: HTMLDivElement
-  hooks: AppDialogsManagerHooks & { closeCalls: number }
+  hooks: Omit<AppDialogsManagerHooks, 'managers'> & { managers: ReturnType<typeof fakeManagers>; closeCalls: number }
   folders: HTMLElement
+  /** класс колонки (`appSidebarLeft`), который конструирует `start()` (`:983`) */
+  sidebar: AppSidebarLeft
 }
 
 /**
- * Колонка, какой её отдаст `Sidebar.tsx` в задаче 6: `#chatlist-container` и
- * внутри React-`.connection-status-bottom` — хост владельца.
+ * Колонка, какой её отдаёт `Sidebar.tsx`: разметка tweb `index.html:89-107`
+ * с `#chatlist-container` и React-`.connection-status-bottom` — хостом
+ * владельца — и класс колонки на ней (`start()` его конструирует). Переход
+ * «закрыть всё внутри колонки» (`closeEverythingInsideNaturally`, `:1027`) —
+ * дублёр класса: тестам владельца важен его ответ, а не закрытие вкладок.
  */
 export function mountOwner(options: {
   close?: () => boolean | Promise<boolean>
   forumOpen?: () => boolean
   /** страницы владельца диалогов — у тестов списка свои (`autonomousDialogList/dialogs.test.ts`) */
-  getDialogs?: AppDialogsManagerHooks['managers']['dialogs']['getDialogs']
+  getDialogs?: (...args: never[]) => unknown
 } = {}): Mounted {
-  const chatsContainer = document.createElement('div')
-  chatsContainer.id = 'chatlist-container'
-  const host = document.createElement('div')
-  host.className = 'connection-status-bottom'
-  chatsContainer.append(host)
-  document.body.append(chatsContainer)
+  const column = installSidebarLeft({} as Managers, undefined, { full: true })
+  const { sidebar } = column
+  const chatsContainer = column.chatlistContainer as HTMLDivElement
+  const host = column.host as HTMLDivElement
 
   const hooks = {
     closeCalls: 0,
-    closeEverythingInsideNaturally: () => {
-      ++hooks.closeCalls
-      return options.close ? options.close() : true
-    },
     isForumOpen: options.forumOpen ?? (() => false),
-    // меню папки (задача 7): колонка открывает экраны, ручка удаления — дублёр
-    appSidebarLeft: {
-      closeTabsBefore: vi.fn((clb: () => void) => clb()),
-      openEditFolderTab: vi.fn(),
-      openChatFoldersTab: vi.fn(),
-      isCollapsed: () => false,
-      openArchiveTab: vi.fn(),
-    },
-    managers: {
-      folders: { del: vi.fn(async (_id: number) => {}) },
-      peers: { fillMirror: vi.fn(async (_ids: number[]) => {}) },
-      presence: { get: async () => [] },
-      dialogs: {
-        getDialogs: options.getDialogs ?? vi.fn(async () => ({ dialogs: [], count: 0, isEnd: true })),
-        // меню диалога (задача 1-2 волны 7) — дублёры ручек его пунктов
-        applyRemoved: vi.fn(async (_peerId: number) => {}),
-        refresh: vi.fn(async () => null),
-      },
-      groups: {
-        setPin: vi.fn(async (_peerId: number, _pinned: boolean) => {}),
-        setMute: vi.fn(async (_peerId: number, _muted: boolean, _until?: number) => {}),
-        setArchive: vi.fn(async (_peerId: number, _archived: boolean) => {}),
-        deleteGroup: vi.fn(async (_peerId: number) => {}),
-        removeMember: vi.fn(async (_peerId: number, _userId: number) => {}),
-      },
-      chats: { clearHistory: vi.fn(async (_peerId: number) => {}) },
-      realtime: { markRead: vi.fn(async (_args: { peerId: number, upToId: number }) => ({ ok: true })) },
-    },
+    managers: fakeManagers(options.getDialogs),
     openForum: vi.fn(),
   }
+  vi.spyOn(sidebar, 'closeEverythingInsideNaturally').mockImplementation(async () => {
+    ++hooks.closeCalls
+    return options.close ? options.close() : true
+  })
 
   const manager = new AppDialogsManager()
-  manager.start(host, chatsContainer, hooks)
+  manager.start(host, chatsContainer, hooks as unknown as AppDialogsManagerHooks)
   const folders = host.querySelector<HTMLElement>('#folders-container')!
   stubGeometry(folders)
-  return { manager, host, chatsContainer, hooks, folders }
+  return { manager, host, chatsContainer, hooks, folders, sidebar }
 }
 
 export const frameEls = (folders: HTMLElement) => Array.from(folders.children) as HTMLElement[]

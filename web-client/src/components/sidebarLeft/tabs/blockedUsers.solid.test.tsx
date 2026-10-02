@@ -30,7 +30,7 @@ import { formatUserPhone } from '@core/format/phone'
 import contextMenuController from '@helpers/contextMenuController'
 import { getOverlayRoot } from '@helpers/appWindow'
 import { AppBlockedUsersTab } from '@components/solidJsTabs/tabs'
-import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
+import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 
 const ME = 1
 const PEERS = new Map<PeerId, User>([
@@ -53,7 +53,7 @@ const settle = async() => {
   for(let i = 0; i < 12; ++i) await pause(0)
 }
 
-let host: TestColumnSlider
+let host: InstalledSidebarLeft
 let getBlocked: ReturnType<typeof vi.fn<(offset: number, limit: number) => Promise<{ count: number, peerIds: PeerId[] }>>>
 let toggleBlock: ReturnType<typeof vi.fn<(peerId: PeerId, block: boolean) => Promise<void>>>
 
@@ -91,7 +91,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = mountTestColumnSlider(columnEl, managers)
+  host = installSidebarLeft(managers, columnEl)
 })
 
 afterEach(async() => {

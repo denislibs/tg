@@ -4,7 +4,7 @@
  * `sidebarLeft/tabs/language.tsx`, 812502980).
  *
  * Вкладка гоняется НАСТОЯЩАЯ — `AppLanguageTab` из `solidJsTabs/tabs.ts`,
- * открытая через колоночный слайдер (`sidebarLeft/columnSlider.ts`) тем же путём, что строка корня
+ * открытая через колоночный слайдер (`sidebarLeft/index.ts`) тем же путём, что строка корня
  * настроек: под пином и объявление вкладки, и её содержимое, и уборка острова на
  * закрытии. Стабы — только границы: менеджер языков (воркер), применение пакета
  * (`I18n`) и геометрия (happy-dom её не считает).
@@ -24,7 +24,7 @@ import type SliderSuperTab from '@components/sliderTab'
 import lang from '@/lang'
 import I18n from '@lib/langPack'
 import { AppLanguageTab } from '@components/solidJsTabs/tabs'
-import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
+import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 import { installSpecLabelActivation } from '@/test/specLabelActivation'
 
 /** Поля конструктора, которые вкладка не читает, но тип требует. */
@@ -38,7 +38,7 @@ const LANGS: LangPackLanguage[] = [
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-let host: TestColumnSlider
+let host: InstalledSidebarLeft
 let uninstallLabelActivation: () => void
 let getLanguages: ReturnType<typeof vi.fn>
 let getCacheLangPackAndApply: ReturnType<typeof vi.spyOn>
@@ -57,7 +57,7 @@ beforeEach(() => {
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = mountTestColumnSlider(columnEl, managers)
+  host = installSidebarLeft(managers, columnEl)
 })
 
 afterEach(async() => {

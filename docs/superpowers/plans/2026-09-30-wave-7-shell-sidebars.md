@@ -91,8 +91,12 @@ React-корень `main.tsx`/`App.tsx`, `Sidebar.tsx`, `UserInfoPanel.tsx`, `Ch
    `getColumnSlider().createTab(AppXxxTab).open(…)` (ВРЕМЕННО до 2-1 — роль синглтона
    `appSidebarLeft`), изнутри вкладки — `tab.slider.createTab(…)`; `has-open-tabs` колонка
    пишет по `onTabsCountChange` слайдера. Хоста `settingsSliderHost.ts` больше нет.
+   **Снято задачей 2-1**: слайдер колонки — сам класс `AppSidebarLeft`
+   (`components/sidebarLeft/index.ts`, синглтон `appSidebarLeft`), `columnSlider.ts` удалён.
 5. **`has-open-tabs` пишет только `Sidebar.tsx`**, двумя путями: className `:370` и
    `setOpenTabsLeftSidebar` `:245` (объявлен в `core/dom/updateColumnWidths.ts:139`).
+   **Снято задачей 2-1**: единственный писатель обоих — `AppSidebarLeft.onSomethingOpenInsideChange`
+   (пин-скан `components/sidebarLeft/index.test.ts`), `Sidebar.tsx` удалён.
 6. **`is-right-column-shown` в JS пишет только счётчик** `core/hooks/useRightColumnShown.ts:17-30`.
    Его потребители — `UserInfoPanel.tsx:63` и `rightSidebar/RightSearchTab.tsx:86`. У tweb
    класс ставит `AppSidebarRight.toggleSidebar` (`sidebarRight/index.ts:128`), а снимает `hide`
@@ -890,8 +894,11 @@ updateItem, setWasAtLeastOnceFetched, blockAnimation, clear, has, get, getAll}`;
 **Порт:** tweb `components/archiveDialog.tsx` (467; используется `appDialogsManager.ts:117`,
 `autonomousDialogList/dialogs.ts:9`) и `sidebarLeft/tabs/archivedTab.tsx` (117, `FOLDER_ID_ARCHIVE`
 `:19`, `AutonomousDialogList` `:24`). Вкладка открывается на колоночном слайдере (2D-28), клик по
-строке архива — `openArchiveTab` (tweb `sidebarLeft/index.ts:1760-1763`). До 2-1 это
-`slider.createTab(AppArchivedTab).open()` из моста — `// ВРЕМЕННО до 2-1`.
+строке архива — `openArchiveTab` (tweb `sidebarLeft/index.ts:1760-1763`) — метод класса
+`AppSidebarLeft` (2-1), сейчас без вкладки: строка «Архив» лишь закрывает открытое, пункт бургера
+скрыт (сделать: `this.createTab(AppArchivedTab).open()` в `openArchiveTab`, вернуть пункт с бейджем).
+React-оверлей архива снесён вместе с `Sidebar.tsx` (2-1); `mountArchivedList` владельца — мост для него
+и для тестов, удаляется/становится телом вкладки здесь.
 **Удалить:** `ArchiveRow.tsx` (+ scss, тест), React-оверлей архива `Sidebar.tsx:135`, `:474-497`,
 `ArchiveList` `:581-638`, `Sidebar.archive.test.tsx` → перенос сценариев в `archivedTab.solid.test.tsx`.
 Отступление `remaining-lists` п. 6 (архивный `ul` без классов) снимается.
@@ -1029,6 +1036,15 @@ sidebar-emoji-status')` `:262`, `createLockButton()` `:264`, `toggleRightButtons
 - [ ] **Мутации:** оставить React-запись `has-open-tabs` → скан краснеет; не пушить запись `'left'` →
   (д) краснеет.
 - [ ] **Стенд:** LS-01, P0-02, NAV-04.
+
+**Сделано (PR feat/w7-2-1-app-sidebar-left).** Решение пользователя 2026-10-02 «каркас сверху вниз»:
+`Sidebar.tsx` удалён целиком, `App.tsx` рисует статичную разметку колонки tweb (`index.html:91-107`),
+класс создаёт шелл, `construct` зовёт `appDialogsManager.start`. Поле поиска — ванильный
+`components/inputSearch.ts` (`oldStyle`, `toggleLoading`/`isLoading`/`setPlaceholder` 1:1), владелец
+поиска `GlobalSearch` заводится в `construct`, `initSearch` класса — его. Бургер (2-2) — методы класса.
+Пропало до бэклога (возвращают задачи): ряд историй — 2-6; вертикальная колонка папок — 2-7; кнопки
+статуса и замка — 2-8; `#new-menu` (FAB) — 2-4; оверлей архива — 1-5; панель тем форума — 1-6;
+«Мои истории» в бургере — О-82. Мутации и dom-parity по решению пользователя не обязательны.
 
 **Оценка:** 3 дня (риск). **Зависимости:** 0а-5, 1-4, 2D-28.
 
@@ -1474,6 +1490,8 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 | О-111 | Меню строки сохранённого диалога и перестановка закрепов: `withContext: true`, `xd.attachPinnedReorder()` (`appSearchSuper.ts:2236-2242`), закреп в строке (`dialog.pFlags.pinned`, `appDialogsManager.ts:2709`) | на бэкенде нет ни закрепа (`toggleSavedDialogPin`/`reorderPinnedSavedDialogs`), ни удаления сохранённого диалога (`deleteSavedHistory`) (1-7) | пункты меню и закреп 1:1 |
 | О-112 | Живые апдейты списка сохранённых диалогов: `dialogs_multiupdate` с `saved`, `dialog_drop` (`autonomousDialogList/savedDialogs.ts:22-43`) | у воркера нет хранилища сохранённых диалогов (`dialogsStorage` с `filterId: myId`): набор собирается одним ответом `GET /saved/dialogs` на каждый первый показ вкладки (1-7) | новая пересылка в «Избранное» видна во вкладке без её переоткрытия |
 | О-96 | Иконка звонка в группе у строки чатлиста: `processDialogForCallStatus`/`setCallStatus` (`autonomousDialogList/dialogs.ts:722-760`, `groupCallActiveIcon`, класс `has-group-call-icon`), `callIcon.setActive` в `setDialogActive` (`appDialogsManager.ts:1315`) | у чата в модели нет `pFlags.call_active`/`call_not_empty` (`domain/mtchat.go:170`) (1-4) | иконка 1:1, перекраска активной строки |
+| О-100 | Кнопка «Обновить» в колонке (`updateBtn`, `sidebarLeft/index.ts:202-216`, `:367-384`): опрос `version` раз в 30 мин и кнопка над `#new-menu` | у нас проверка версии — `core/version/versionCheck.ts` + пилюля шелла `App.tsx`, задачи на перенос в класс в плане нет (2-1) | кнопка 1:1 в колонке, снос пилюли шелла |
+| О-101 | Кнопка поиска свёрнутой колонки `sidebar-header-search-trigger` и сигнал `useHasOpenLeftTabs` (`sidebarLeft/index.ts:392-421`, `:561`, `stores/foldersSidebar.ts:61-74`) | читатель сигнала — только эта кнопка, а она требует колонки папок (2-7) и `initSearch` HEAD (2-3) (2-1) | поиск из свёрнутой колонки при «папки слева» |
 | О-97 | Превью потокового черновика бота в строке: `streamed_message_update/remove/finalize` → `setLastMessageN({lastMessage})` (`autonomousDialogList/dialogs.ts:173-209`) | потоковых черновиков (`HistoryStreamedDrafts`) нет ни на бэкенде, ни в модели (1-4) | превью «печатает текстом» у ботов |
 | О-108 | Виды плашки-подсказки с серверным источником: «аккаунт заморожен» (`frozenSuggestion.tsx`, `appConfig.freeze_since_date`, класс `.suggestion.danger`), «создайте ключ доступа» (`passkeySetupSuggestion.tsx`, `SETUP_PASSKEY`), дни рождения контактов и «укажите свой» (`birthdaySuggestions.tsx`, `BIRTHDAY_CONTACTS_TODAY`/`BIRTHDAY_SETUP`, `contacts.getBirthdays`), попап почты входа (`emailSetupSuggestion.ts`, `SETUP_LOGIN_EMAIL`) — `selectPendingSuggestion.ts`, `pendingSuggestion.solid.tsx` расхождение 1 | на бэкенде нет ни заморозки аккаунта, ни промо-подсказок `help.getPromoData().pendingSuggestions`/`help.dismissSuggestion` (`stores/promo`); ключи доступа и дата рождения есть, но подсказок по ним сервер не выдаёт (2-5) | виды плашки 1:1 на своих местах приоритета |
 | О-109 | Проверка подключения бизнес-бота над списком: `BotConnectionReviewSuggestion` (`pendingSuggestion.tsx:23-102`, `stores/chatAutomation`, `confirmBotConnection`/`rejectBotConnection`, классы `.connectionReview*`) | бизнес-ботов и их подключений на бэкенде нет (2-5) | плашка проверки бота 1:1 |

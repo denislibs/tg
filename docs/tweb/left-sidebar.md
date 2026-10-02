@@ -778,10 +778,10 @@ Close/RestartTopic `:224` · ChargeFee `:238` · Delete `:248`.
 
 | Наш файл | Роль | Аналог tweb |
 |---|---|---|
-| `src/components/Sidebar.tsx` (:61) | оркестратор колонки: `#column-left` с tweb-классами (:213-215), композиция хуков `useSidebar*` | `AppSidebarLeft.construct` |
-| `src/components/sidebarLeft/tabs/settings.solid.tsx` + `sidebarLeft/columnSlider.ts` | корень настроек — вкладка `AppSettingsTab` колоночного слайдера (задача 28 плана 2D); подэкраны — вкладки того же слайдера (`tab.slider.createTab`), все Solid: «Стикеры» (задача 15), «Конфиденциальность» (задача 23, `sidebarLeft/tabs/privacyAndSecurity.solid.tsx`), «Динамики» (задача 26), «Профиль» (задача 27, `sidebarLeft/tabs/editProfile.solid.tsx`) | `AppSettingsTab` + дерево части 2 |
+| `src/components/sidebarLeft/index.ts` + `App.tsx` (разметка) | класс `AppSidebarLeft extends SidebarSlider` (задача 2-1 волны 7): `#column-left` — статичная разметка tweb `index.html:91-107` в `App.tsx`, синглтон создаёт шелл (ВРЕМЕННО до Э4-1), `construct` — из `appDialogsManager.start`; поле поиска `InputSearch` + владелец `GlobalSearch`, бургер, `has-open-tabs`/`force-*` (единственный писатель), ресайз, `closeEverythingInside(Naturally)`, `closeTabsBefore`; React-колонки `Sidebar.tsx` больше нет | `AppSidebarLeft` целиком (без поиска HEAD, `#new-menu`, историй, колонки папок, кнопок статуса/замка — 2-3…2-8) |
+| `src/components/sidebarLeft/tabs/settings.solid.tsx` | корень настроек — вкладка `AppSettingsTab` класса колонки (задача 28 плана 2D, слайдер — `AppSidebarLeft` с 2-1); подэкраны — вкладки того же слайдера (`tab.slider.createTab`), все Solid: «Стикеры» (задача 15), «Конфиденциальность» (задача 23, `sidebarLeft/tabs/privacyAndSecurity.solid.tsx`), «Динамики» (задача 26), «Профиль» (задача 27, `sidebarLeft/tabs/editProfile.solid.tsx`) | `AppSettingsTab` + дерево части 2 |
 | `src/components/settings/*` | экранов настроек здесь БОЛЬШЕ НЕТ (последний — «Конфиденциальность» — снесён задачей 23 плана 2D, хаб и все его дети — вкладки `sidebarLeft/tabs/*`); остались React-кит `kit.tsx` и попапы (`AvatarCropper`, `BirthdayModal`, `ConfirmDialog`, `PasskeyIntroPopup` до 2C-10) для потребителей ВНЕ настроек — задачи 30–31 плана 2D | `sidebarLeft/tabs/*` |
-| `src/lib/appDialogsManager.ts` | папочный срез владельца: `.chatlist-overlay` с Solid-рядом вкладок, `#folders-container`, скроллер на папку, переключение (`horizontalMenu` + `TransitionSlider`); встроен в колонку `Sidebar.tsx` (план папок, задача 6). Строка диалога `DialogElement` + `setLastMessage`/`setUnreadMessages`/`setListClickListener`/`createChatList`/`addDialogNew` (задача 1-1 волны 7) | `AppDialogsManager` (папки, строка) |
+| `src/lib/appDialogsManager.ts` | папочный срез владельца: `.chatlist-overlay` с Solid-рядом вкладок, `#folders-container`, скроллер на папку, переключение (`horizontalMenu` + `TransitionSlider`); поднимает его шелл `App.tsx` на `.connection-status-bottom` статичной колонки, `start()` конструирует класс колонки и автомат соединения (2-1). Строка диалога `DialogElement` + `setLastMessage`/`setUnreadMessages`/`setListClickListener`/`createChatList`/`addDialogNew` (задача 1-1 волны 7) | `AppDialogsManager` (папки, строка) |
 | ~~`src/components/ChatList.tsx` / `ChatListItem.tsx`~~ (снесены задачей 1-4) → `components/sortedDialogList.ts` + `components/autonomousDialogList/*` | списки папок на виртуальном ядре — порталом в `.chatlist-top` контейнеров владельца (до задачи 1-4 волны 7; строка `DialogElement` уже портирована — `lib/appDialogsManager.ts`) | `AutonomousDialogList` (строки) + `DialogElement` |
 | `src/components/virtual/DeferredSortedVirtualList.*` | React-порт `deferredSortedVirtualList` (данными не владеет; shrink не портирован; reveal по одной строке) — держат React-`ChatList`/`ArchiveList`/`TopicsPanel`, уходит с последним из них (волна 7, 1-6) | с отступлениями (спека `2026-08-13-virtual-chatlist-design.md`) |
 | `src/components/deferredSortedVirtualList.solid.tsx` + `loadingDialogSkeleton.solid.tsx` | Solid-ядро tweb файлом (волна 7, 1-3): владение элементами, скелетоны, reveal пачкой (108d3f301), shrink `EXTRA_ITEMS_TO_KEEP`, `onItemDiscard` (2b00c4dae), `onItemMount`; поверх `verticalVirtualList.solid.tsx`. Потребитель — список диалогов (`SortedDialogList`, 1-4) | 1:1 |
@@ -789,17 +789,17 @@ Close/RestartTopic `:224` · ChargeFee `:238` · Delete `:248`.
 | `src/core/managers/dialogsManager.ts` (воркер) | владелец диалогов: сортировка, пагинация, refresh | `dialogsStorage` (воркерная сторона) |
 | `src/core/dialogs/{dialogIndex,dialogOps,loadCount}.ts` | индексы, операции, размер страницы | `getDialogIndex*`, `DIALOG_LOAD_COUNT` |
 | `src/components/chatlist/dialogsPlaceholder.ts` | canvas-шиммер | `helpers/dialogsPlaceholder.ts` |
-| `src/components/foldersTabs.solid.tsx` + `src/components/folders/FoldersSidebar.tsx` + `src/helpers/dom/createFolderContextMenu.ts` | горизонтальный ряд (Solid, узлами владельца) и вертикальная колонка папок (React, `tabsInSidebar`; клик — тот же `selectTab` владельца); меню папки — одна фабрика `createFolderContextMenu` на оба ряда (задача 7) | `foldersTabs` + `foldersSidebarContent` + `createFolderContextMenu` |
-| `src/components/StoriesRow.tsx` (Sidebar.tsx:268-282) | сторис-лента (`foldInto`/`setScrolledOn`/`getScrollable`/`listenWheelOn`) | `stories/list.tsx` |
-| `src/components/sidebarLeft/toolsMenu.ts` (+ `createSubmenuTrigger.ts`, `floatingButtonMenu.ts`, `positionFloatingMenu`) | бургер — порт tweb `createToolsMenu`/`createMoreSubmenu`/`createNewChatsSubmenu`/`addAccount`/`getVersionLink` функциями (ВРЕМЕННО до 2-1: методы `AppSidebarLeft`); кнопка в шапке и морф ≡ ↔ ← одним Solid-эффектом (`useFoldersSidebarShown() \|\| useIsLeftSearchActive()`) — `mountSidebarToolsButton`, остров `Sidebar.tsx`; `.animated-menu-icon` и `.sidebar-back-button` — статичная разметка колонки (стрелку держит владелец поиска, `backBtnRef`); при показанной колонке папок и закрытом поиске контейнер — `hide`. Тот же `createToolsMenu` — на верхнем пункте `folders/FoldersSidebar.tsx` (задача 2-2 волны 7) | `createToolsMenu` + animated-menu-icon + `this.backBtn` |
+| `src/components/foldersTabs.solid.tsx` + `src/helpers/dom/createFolderContextMenu.ts` | горизонтальный ряд (Solid, узлами владельца); меню папки — фабрика `createFolderContextMenu` в форме tweb (`appSidebarLeft` + классы вкладок аргументами, 2-1). Вертикальной колонки папок нет — React `FoldersSidebar.tsx` снесён с `Sidebar.tsx`, порт `foldersSidebarContent` — задача 2-7 | `foldersTabs` + `foldersSidebarContent` + `createFolderContextMenu` |
+| — (снесено с `Sidebar.tsx`, 2-1) | сторис-ленты над списком нет до задачи 2-6; React-вьювер `StoryViewer.tsx` остался без входа | `stories/list.tsx` |
+| `src/components/sidebarLeft/index.ts` (+ `createSubmenuTrigger.ts`, `floatingButtonMenu.ts`, `positionFloatingMenu`) | бургер — методы класса `createToolsMenu`/`createMoreSubmenu`/`createNewChatsSubmenu`/`addAccount` и `getVersionLink` (задача 2-2, перенос в класс — 2-1); кнопка в шапке и морф ≡ ↔ ← одним Solid-эффектом в `construct` (`useFoldersSidebarShown() \|\| useIsLeftSearchActive()`); «Архив» и «Мои истории» скрыты до своих вкладок (1-5, О-82) | `createToolsMenu` + animated-menu-icon + `this.backBtn` |
 | `src/components/sidebarLeft/globalSearch.ts` + шов `src/core/hooks/useGlobalSearch.ts` + `shared/ui/InputSearch` (режим ручки `searchRef` → `inputSearchHandle.ts`) | глобальный поиск: владелец (порт `initSearch`) строит и сносит детей постоянного `#search-container`, ведёт `zoom-fade` и `is-search-active`; поле — объект tweb с debounce 300 мс (задача 13 плана `2026-09-07-solid-wave-3-global-search.md`; разбор — `global-search.md`) | `initSearch` + `AppSearchSuper` + `InputSearch` |
-| `src/components/connectionStatus/*` (Sidebar.tsx:88-94) | автомат плейсхолдера/спиннера поля поиска | `ConnectionStatusComponent` |
+| `src/components/connectionStatus.ts` | автомат плейсхолдера/спиннера поля поиска; заводит `appDialogsManager.start` на `appSidebarLeft.inputSearch` (tweb `:990`) | `ConnectionStatusComponent` |
 | `src/components/sidebarLeft/{pendingSuggestion,pendingSuggestionItem,notificationsSuggestion}.solid.tsx` + `pendingSuggestionController.ts`, `selectPendingSuggestion.ts`, `pendingSuggestion.module.scss` | плашка-подсказка над списком (задача 2-5 волны 7): корень `renderPendingSuggestion` рисует владелец `lib/appDialogsManager.ts` в свой `suggestionContainer` первым в `.chatlist-overlay` (tweb `appDialogsManager.ts:1384-1388`), появление/уход — `<Animated type="grow-height">` (`helpers/solid/animations.solid.tsx` → `animationList.ts` → `vendor/createListTransition.ts`, порты файлом), высоту оверлея — в `--chatlist-overlay-height`. Вид один — «включите уведомления» (`notifications.suggested`); `frozen`/`passkey`/`birthday*`/почта — О-108, проверка бизнес-бота — О-109 плана волны 7 | `renderPendingSuggestion` + виды |
-| `src/core/dom/{updateColumnWidths,installColumnResize}.ts` (Sidebar.tsx:159-189) | ресайз/коллапс колонки | `installColumnResize`, `updateColumnWidths` |
+| `src/core/dom/{updateColumnWidths,installColumnResize}.ts` | ресайз/коллапс колонки: ручку вешает `AppSidebarLeft.initSidebarResize`, `is-collapsed` — зеркало сигнала в `App.tsx` (порт `setSidebarLeftWidth`, ВРЕМЕННО до Э4-1) | `installColumnResize`, `updateColumnWidths` |
 
 DOM-паритет первого таба выдержан сознательно: `.sidebar-slider > .item-main > .sidebar-header +
 .stories-list + .sidebar-content > #chatlist-container/#search-container` с теми же классами и
-`--chatlist-overlay-height` (Sidebar.tsx:229-327).
+`--chatlist-overlay-height` (`lib/appDialogsManager.ts::start`).
 
 ## 2. Главные структурные расхождения
 
@@ -839,7 +839,7 @@ DOM-паритет первого таба выдержан сознательн
    У нас: оверлей внутри `.connection-status-bottom` (React-ребёнок хоста владельца папок; в
    `#folders-container` ему нельзя — там кадры папок, адресуемые индексом); список в нём — тот же
    `AutonomousDialogList(FOLDER_ID_ARCHIVE)` владельца (`mountArchivedList`, ВРЕМЕННО до 1-5, задача 1-4).
-6. **Бургер-меню — порт tweb 812502980** (задача 2-2 волны 7, `sidebarLeft/toolsMenu.ts`). Состав и
+6. **Бургер-меню — порт tweb 812502980** (задача 2-2 волны 7, методы класса `AppSidebarLeft` с 2-1). Состав и
    порядок — по `verify` оригинала: аккаунты (текущий → настройки, другие — переключение) + «Добавить
    аккаунт», «Создать» (только у свёрнутой колонки), «Избранное», «Архив» (при архивных диалогах, с
    бейджем), «Мои истории», «Контакты», «Звонки» (`IS_CALL_SUPPORTED`, Отступление В7-6), «Настройки»,
@@ -847,7 +847,7 @@ DOM-паритет первого таба выдержан сознательн
    сообщить об ошибке, PWA, PiP + футер-версия). Наших пунктов больше нет: «Близкие друзья» (вход
    остаётся в листе публикации истории, как у tweb `storySettings`), «Кошелёк» (экран снесён — у tweb
    звёзды в секции Premium корня настроек), «Telegram Premium» (там же), «Выйти» (⋮ корня настроек,
-   `showLogOutPopup`). Расхождения — шапка `toolsMenu.ts`: мультиаккаунт в нашей модели (В7-4), боты
+   `showLogOutPopup`). Расхождения — «Расхождения бургера» шапки `sidebarLeft/index.ts`: мультиаккаунт в нашей модели (В7-4), боты
    меню вложений (О-80), бейдж других аккаунтов (О-81), «Мои истории» — наш лист архива (О-82),
    verify архива без «не догружен»/архива историй (О-83), клавиатура меню (О-84), конференции (О-1),
    «Switch to A version» нет (своего домена версии A нет).
@@ -872,8 +872,8 @@ DOM-паритет первого таба выдержан сознательн
    зеркала присутствия, «добавить контакт» — мост на React-попап до 2C-26. **Врезка сделана**:
    бургер «Контакты» (`closeTabsBefore`, tweb `:693-696`), `#new-menu` «Новый личный чат» и «Новый
    секретный чат» (`{secret: true}`) открывают вкладку на колоночном слайдере
-   (`sidebarLeft/columnSlider.ts::openContactsTab`, ВРЕМЕННО до 2-1). Вкладка сверху с другой опцией
-   `secret` закрывается и уступает новой (с той же — `noSame`, как у tweb). React-экраны
+   (`createTab(AppContactsTab).open()`). С 2-1 вход один — бургер; `#new-menu` вернёт задача 2-4
+   (без секретного пункта — В7-1). React-экраны
    `ContactsView.tsx`/`NewPrivateChat.tsx` и ветки `SidebarScreens` удалены.
 7. **Контекстное меню диалога — порт 812502980 готов** (задача 1-2 волны 7):
    `components/dialogsContextMenu.ts` (класс `DialogsContextMenu`, tweb `:64`) на
@@ -902,10 +902,10 @@ DOM-паритет первого таба выдержан сознательн
    при «папки слева» горизонтальный ряд виден вместе с колонкой), общее меню папки (задача 7),
    счётчики на клиенте из зеркала, а не `dialogsStorage.getFolderUnreadCount` (отложенная задача 16);
    разбор — `folders-tabs.md` § 2.
-9. **Ресайз/коллапс** — `installColumnResize` портирован (Sidebar.tsx:159-189), но без побочек
-   tweb-`onCollapsedChange` (fade/zoom-fade чатлиста, avatar-badges, Ctrl+F-подсказка) — отмечено
-   комментарием Sidebar.tsx:176-178; «всплытие» has-open-tabs воспроизведено через
-   `setOpenTabsLeftSidebar` (Sidebar.tsx:187-189).
+9. **Ресайз/коллапс** — `AppSidebarLeft.initSidebarResize` (`installColumnResize`), `onCollapsedChange`
+   (fade/zoom-fade чатлиста, бейджи аватаров; Ctrl+F-подсказка — 2-3) и `onSomethingOpenInsideChange`
+   (`has-open-tabs`, `has-real-tabs`, `force-*`, `setOpenTabsLeftSidebar`) — 1:1 (2-1). `onSwipeTick`
+   (`adjustChatPatternBackground`) — Э4-5.
 
 ## 3. Слайдер вкладок настроек (волна 2 `solid-migration`)
 
@@ -928,11 +928,10 @@ DOM-паритет первого таба выдержан сознательн
 | `components/sidebarLeft/tabs/quickReaction.solid.tsx` | `src/components/sidebarLeft/tabs/quickReaction.tsx` (812502980) | «Быстрая реакция» — задача 14 плана 2D; открывает строка `DoubleTapSetting` вкладки «Стикеры и эмодзи» (`tab.slider.createTab`); выбор не сохраняется (О-30); React `settings/QuickReaction.tsx` снесён |
 | `components/sidebarLeft/tabs/stickersAndEmoji.solid.tsx` + `components/wrappers/stickerSetThumb.ts` | `src/components/sidebarLeft/tabs/stickersAndEmoji.tsx`, `src/components/wrappers/stickerSetThumb.ts` (812502980) | «Стикеры и эмодзи» — задача 15 плана 2D; открывает строка `StickersName` корня; без превью быстрой реакции (О-30), «Large Emoji» (О-45), «Dynamic Pack Order» (О-43), перетаскивания наборов (О-14); «All Sets» = «My Sets» (О-44); попап набора — мост `showStickersPopup` до 2C-15; React `settings/StickersSettings.tsx` снесён |
 | `components/sidebarLeft/tabs/addMembers.solid.tsx` + `components/appSelectPeers.solid.tsx` | `sidebarLeft/tabs/addMembers.tsx` + `components/appSelectPeers.tsx` (812502980) | вкладка выбора участников на селекторе пиров (план 2D, задача 16); без категорий/мини-приложений (О-33), участников канала, `peerLoader`, лимита — шапки файлов; открывающих пока нет (исключения приватности — задача 17) |
-| `components/sidebarLeft/tabs/newChannel.solid.tsx` + `components/addChatUsers.ts` + `components/avatarEdit.ts` | `sidebarLeft/tabs/newChannel.tsx` + `components/addChatUsers.ts` + класс `AvatarEdit` (812502980) | «Новый канал» (задача 0а-3 плана волны 7): название/описание, `createChannel` → открыть канал (`openPeer`, ВРЕМЕННО до Э4-3) → `removeTabFromHistory` → выбор подписчиков `skippable` с подтверждением `popup-add-members`. Без нагрузки `onCreate`/`openAfter` (сообщества, О-5), `handleChannelsTooMuch` (О-40), `handleMissingInvitees` (О-41), чекбокса «последние 100 сообщений» (нет `fwd_limit`, О-42); приглашение — по запросу на пользователя (О-42); тост отказа приватности не срабатывает — бэкенд шлёт `privacy` (О-43); `AvatarEdit` — выбор файла без медиаредактора (ВРЕМЕННО до МР-5). **Врезка сделана**: `#new-menu` «Новый канал» открывает вкладку на колоночном слайдере (`Sidebar.tsx` → `openColumnTab(AppNewChannelTab)`, ВРЕМЕННО до 2-1); React `NewChannelFlow.tsx`, ветка `newChannel` в `SidebarScreens`, `useSidebarActions.createChannel` и ключ `NewChannel.DefaultTitle` удалены |
-| `components/sidebarLeft/tabs/createNewGroupTab.ts` + `components/sidebarLeft/tabs/newGroup.solid.tsx` | `sidebarLeft/tabs/createNewGroupTab.ts` + `sidebarLeft/tabs/newGroup.tsx` (812502980) | флоу «Новая группа» (волна 7, 0а-2); создание — `managers.groups.createChat` → `POST /groups` с ответом `messages.invitedUsers` (пропущенные настройкой «кто может приглашать» — `missing_invitees`); аватар — класс `AvatarEdit` (общий с «Новым каналом», 0а-3; выбор файла без медиаредактора — ВРЕМЕННО до МР-5); «Назад» со второго шага уводит из флоу (выбор участников вынут из истории, как у tweb); `handleMissingInvitees` — О-35. **Врезка сделана**: `#new-menu` «Новая группа» зовёт `createNewGroupTab(slider)` (`Sidebar.tsx`, tweb `sidebarLeft/index.ts:1073-1077`; слайдер колонки — ВРЕМЕННО до 2-1); React `NewGroupFlow.tsx` (+ scss), ветка `newGroup` в `SidebarScreens`, `useSidebarActions` целиком и ключ `NewGroup.DefaultTitle` удалены |
-| `components/sidebarLeft/tabs/calls.solid.tsx` + `lib/calls/helpers/callLog.ts` + `environment/callSupport.ts` | `sidebarLeft/tabs/calls.tsx` + `lib/calls/helpers/callLog.ts` + `environment/callSupport.ts` (812502980) | «Звонки» (волна 7, 0а-4): журнал строками `Row` со стрелкой направления (`out`/`missed`), свёртка смежных звонков «(N) время», перезвон кнопкой справа (есть и в Firefox — Отступление В7-6), «Показать в чате» кликом и меню, удаление (ВРЕМЕННО до 2C-8 — `openDeleteMessageDialog`), листание по 100, живые `history_append`/`history_delete`, меню «⋮» → `AppSpeakersAndCameraTab`. Открывает пункт бургера «Звонки» (`toolsMenu.ts`, tweb `sidebarLeft/index.ts:751-756`). Нет с номером: «Начать новый звонок» и `newCall.tsx` — конференции, О-1; «Активные видеочаты» — О-46; «Удалить все звонки» — О-45. React-экран `CallsView.tsx`, хук `useCallsLog.ts` и `SidebarScreens.tsx` сняты (0а-4, 0а-5) |
+| `components/sidebarLeft/tabs/newChannel.solid.tsx` + `components/addChatUsers.ts` + `components/avatarEdit.ts` | `sidebarLeft/tabs/newChannel.tsx` + `components/addChatUsers.ts` + класс `AvatarEdit` (812502980) | «Новый канал» (задача 0а-3 плана волны 7): название/описание, `createChannel` → открыть канал (`openPeer`, ВРЕМЕННО до Э4-3) → `removeTabFromHistory` → выбор подписчиков `skippable` с подтверждением `popup-add-members`. Без нагрузки `onCreate`/`openAfter` (сообщества, О-5), `handleChannelsTooMuch` (О-40), `handleMissingInvitees` (О-41), чекбокса «последние 100 сообщений» (нет `fwd_limit`, О-42); приглашение — по запросу на пользователя (О-42); тост отказа приватности не срабатывает — бэкенд шлёт `privacy` (О-43); `AvatarEdit` — выбор файла без медиаредактора (ВРЕМЕННО до МР-5). **Врезка сделана**: `#new-menu` «Новый канал» открывает вкладку на колоночном слайдере (`#new-menu` снесён с `Sidebar.tsx` в 2-1, вернёт 2-4; вход сейчас — подменю бургера «Создать»); React `NewChannelFlow.tsx`, ветка `newChannel` в `SidebarScreens`, `useSidebarActions.createChannel` и ключ `NewChannel.DefaultTitle` удалены |
+| `components/sidebarLeft/tabs/createNewGroupTab.ts` + `components/sidebarLeft/tabs/newGroup.solid.tsx` | `sidebarLeft/tabs/createNewGroupTab.ts` + `sidebarLeft/tabs/newGroup.tsx` (812502980) | флоу «Новая группа» (волна 7, 0а-2); создание — `managers.groups.createChat` → `POST /groups` с ответом `messages.invitedUsers` (пропущенные настройкой «кто может приглашать» — `missing_invitees`); аватар — класс `AvatarEdit` (общий с «Новым каналом», 0а-3; выбор файла без медиаредактора — ВРЕМЕННО до МР-5); «Назад» со второго шага уводит из флоу (выбор участников вынут из истории, как у tweb); `handleMissingInvitees` — О-35. **Врезка сделана**: `#new-menu` «Новая группа» зовёт `createNewGroupTab(slider)` (tweb `sidebarLeft/index.ts:1073-1077`; с 2-1 — подменю бургера «Создать», `#new-menu` вернёт 2-4); React `NewGroupFlow.tsx` (+ scss), ветка `newGroup` в `SidebarScreens`, `useSidebarActions` целиком и ключ `NewGroup.DefaultTitle` удалены |
+| `components/sidebarLeft/tabs/calls.solid.tsx` + `lib/calls/helpers/callLog.ts` + `environment/callSupport.ts` | `sidebarLeft/tabs/calls.tsx` + `lib/calls/helpers/callLog.ts` + `environment/callSupport.ts` (812502980) | «Звонки» (волна 7, 0а-4): журнал строками `Row` со стрелкой направления (`out`/`missed`), свёртка смежных звонков «(N) время», перезвон кнопкой справа (есть и в Firefox — Отступление В7-6), «Показать в чате» кликом и меню, удаление (ВРЕМЕННО до 2C-8 — `openDeleteMessageDialog`), листание по 100, живые `history_append`/`history_delete`, меню «⋮» → `AppSpeakersAndCameraTab`. Открывает пункт бургера «Звонки» (`AppSidebarLeft.createToolsMenu`, tweb `sidebarLeft/index.ts:751-756`). Нет с номером: «Начать новый звонок» и `newCall.tsx` — конференции, О-1; «Активные видеочаты» — О-46; «Удалить все звонки» — О-45. React-экран `CallsView.tsx`, хук `useCallsLog.ts` и `SidebarScreens.tsx` сняты (0а-4, 0а-5) |
 | `components/sidebarLeft/tabs/sharedFolder.solid.tsx` + `inviteLink.ts` | `src/components/sidebarLeft/tabs/sharedFolder.tsx`, `inviteLink.ts` (812502980) | вкладка ссылки папки «Share Folder» (план 2D, задача 25): открывает редактор папки (`openChatlistInvite`); ссылку показывает/копирует/удаляет, выбор чатов ссылки заблокирован (нет `editExportedInvite`, О-23), кнопки «Share Link» нет (попап 2C) |
-| `components/sidebarLeft/columnSlider.ts` | `sidebarLeft/index.ts:147-152`, `:652-654`, `:1743-1753` | колоночный слайдер: `createColumnSlider`/`getColumnSlider` (роль синглтона `appSidebarLeft`, ВРЕМЕННО до 2-1), `item-secondary` у вкладок, `openContactsTab` для пунктов React-колонки |
 
 Навигация: `pushItem` оригинала разложен на два наших механизма — `navigationStack.pushLayer`
 (Back) и `hotkeys.pushEsc` (Escape), потому что единого `appNavigationController` у нас нет
@@ -969,7 +968,7 @@ privacy-исключения, passcode, general, editChat, editContact). Стр�
 
 ### Шов с React снят (задача 28 плана 2D)
 
-Корень настроек — вкладка `AppSettingsTab` колоночного слайдера (`sidebarLeft/columnSlider.ts`),
+Корень настроек — вкладка `AppSettingsTab` колоночного слайдера (с 2-1 — сам класс `AppSidebarLeft`),
 как у tweb: `SidebarSlider` на `#column-left` с `navigationType: 'left'`, вкладка №0 — `.item-main`
 React-колонки (узлом владеет React, вкладками — слайдер). Пункт «Settings» бургера —
 `closeTabsBefore(() => slider.createTab(AppSettingsTab).open())` (tweb `index.ts:759-767`).
@@ -1025,9 +1024,8 @@ React о закрытии вкладки узнаёт только от слай
 - **`providedTabs.ts`** — реестр вкладок, открываемых по имени в обход циклов импортов.
   `AppActiveSessionsTab` не входит в него и в оригинале.
 - **`hasSomethingOpenInside`/`onSomethingOpenInsideChange`** (`index.ts:490-600`): классы
-  `has-open-tabs`/`has-real-tabs` и «всплытие» свёрнутой колонки. У нас признак ведёт React
-  (`Sidebar.tsx:184`, `:228`) по своему состоянию экранов, слайдер в него не пишет — иначе
-  писателей стало бы два.
+  `has-open-tabs`/`has-real-tabs` и «всплытие» свёрнутой колонки — портированы задачей 2-1
+  (класс `AppSidebarLeft`, единственный писатель, пин-скан в `sidebarLeft/index.test.ts`).
 - **`removeByType`-ручка** (`sidebarRight/index.ts:95,128`): снять все слои навигации слайдера
   разом, снаружи и без спроса у вкладок. Потребителя нет: хост закрывает вкладки по одной.
 - **`getInitArgs`-префетч** (`SliderSuperTab.getInitArgs`, объявлен, но никем не заполняется) и

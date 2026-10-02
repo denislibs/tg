@@ -4,7 +4,7 @@
  * порт tweb `sidebarLeft/tabs/passcodeLock/*`, 812502980) — задача 18 плана 2D.
  *
  * Вкладки гоняются НАСТОЯЩИЕ — `AppPasscodeLockTab`/`AppPasscodeEnterPasswordTab`
- * из `solidJsTabs/tabs.ts` через колоночный слайдер (`sidebarLeft/columnSlider.ts`), логика кода —
+ * из `solidJsTabs/tabs.ts` через колоночный слайдер (`sidebarLeft/index.ts`), логика кода —
  * настоящая (`lib/passcode/actions.ts`: PBKDF2, соли, ключ). Стабы — только
  * границы: IndexedDB (`idbKv` — словарь в памяти), канал к воркеру
  * (`invokePasscode` — шифрует хранилища там), writer офлайн-стора
@@ -30,7 +30,7 @@ import { useLockStore } from '@/stores/lockStore'
 import Icon from '@components/icon'
 import { AppPasscodeEnterPasswordTab, AppPasscodeLockTab, AppPrivacyAndSecurityTab } from '@components/solidJsTabs/tabs'
 import type SidebarSlider from '@components/slider'
-import { mountTestColumnSlider, type TestColumnSlider } from '@/test/columnSlider'
+import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 import { installSpecLabelActivation } from '@/test/specLabelActivation'
 import styles from './mainTab.module.scss'
 import shortcutStyles from './shortcutBuilder.module.scss'
@@ -68,7 +68,7 @@ async function waitFor<T>(get: () => T | null | undefined | false, timeout = 300
   }
 }
 
-let host: TestColumnSlider
+let host: InstalledSidebarLeft
 let columnEl: HTMLElement
 let clearAll: ReturnType<typeof vi.fn>
 let uninstallLabelActivation: () => void
@@ -99,7 +99,7 @@ beforeEach(() => {
   columnEl = document.createElement('div')
   columnEl.id = 'column-left'
   document.body.append(columnEl)
-  host = mountTestColumnSlider(columnEl, managers)
+  host = installSidebarLeft(managers, columnEl)
 })
 
 afterEach(async() => {
