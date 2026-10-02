@@ -10,7 +10,8 @@
 // (`core/hooks/openSearchUrl.ts`, роль tweb `internalLinkProcessor`).
 //
 // Якорь сообщения — `seq` (порядковый номер сообщения В ЧАТЕ), а не глобальный
-// `id`: аналог телеграмного `mid` — номера внутри чата, а не по всей базе.
+// `id`: именно им оперирует прыжок (`appImManager.setInnerPeer({lastMsgId})`), и
+// он же аналог телеграмного `mid` — номера внутри чата, а не по всей базе.
 import { toChatId } from '@core/peers/peerId'
 import { publicPrivatePostLink, publicUsernameLink } from './publicLink'
 

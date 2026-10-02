@@ -536,7 +536,7 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
   над JSX: «в tweb приходят от `new Scrollable(...)`») — визуальный слепок
   чужого инстанса, не свой; как и ещё ~13 других `.scrollable`-элементов
   приложения (`EmojiDropdown`/`StickersTab`/`GifsTab`,
-  `MentionsHelper`, `TopbarSearch`, `StoriesRow`, …), это часть TODO в
+  `MentionsHelper`, `StoriesRow`, …), это часть TODO в
   `core/dom/rootClasses.ts` — «Scrollable для остальных скроллеров», отдельная
   задача.
 - **`helpers/scrollSaver.ts`** (`ScrollSaver`, порт `TWEB/src/helpers/scrollSaver.ts`)
@@ -576,9 +576,7 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
 | Файл | Что делает | Почему не через Scrollable/ScrollSaver |
 |---|---|---|
 | `components/DatePickerPopup.tsx:195` | Начальная позиция (месяц `initDate`) при открытии попапа календаря | Одноразовая установка до первого показа; попап, не лента |
-| `components/conversation/TopbarSearch.tsx:219` | Центрирование активной строки выдачи поиска по стрелкам | Формула 1:1 из tweb (`topbarSearch.tsx:678-681`); изолированный дропдаун, не лента |
-| `components/virtual/useShouldAnimate.ts` (`createScrollShiftCompensator`) | Компенсация `scrollTop` вместо анимации, когда ВСЕ видимые строки виртуального списка сдвинулись на одинаковое число позиций | Порт побочного эффекта `verticalVirtualList.tsx:49-53`; список чатов не ходит через Scrollable/ScrollSaver — конкурировать за корректирующую запись не с кем |
-| `components/verticalVirtualList.solid.tsx` (`onScrollShift`) | Тот же компенсатор в исходной Solid-форме tweb — ядро Solid-списков диалогов (`deferredSortedVirtualList.solid.tsx`) и контактов | Порт файлом 1:1 (`verticalVirtualList.tsx:49-53`); Solid-файл не может импортировать React-соседа `createScrollShiftCompensator` (граница рантаймов) |
+| `components/verticalVirtualList.solid.tsx` (`onScrollShift`) | Компенсация `scrollTop` вместо анимации, когда ВСЕ видимые строки виртуального списка сдвинулись на одинаковое число позиций — ядро Solid-списков диалогов (`deferredSortedVirtualList.solid.tsx`) и контактов | Порт файлом 1:1 (`verticalVirtualList.tsx:49-53`); список не ходит через Scrollable/ScrollSaver — конкурировать за корректирующую запись не с кем |
 | `components/sidebarLeft/contactsList.solid.tsx` (`jumpTo`), `components/sectionIndex.solid.tsx` (`onWheel`) | Прыжок к секции по полосе букв и колесо над полосой во вкладке контактов | Порт tweb 1:1 (`contactsList.tsx:271-276`, `sectionIndex.tsx:269-274`); запись — жест пользователя, её `scroll` нужен списку, плавную прокрутку перед ней гасит `cancelAnimationByKey` |
 
 Сброс списка чатов на верх при смене папки из этого списка ушёл вместе со
@@ -656,9 +654,6 @@ CacheStorage-корзину `cachedFiles` (`core/files/cacheStorage.ts`; сох�
   берётся pull-ом — `realtime.getStatus()` → `{state, retryAt, syncing}`; события `RT.state`,
   `RT.stateSynchronizing`, `RT.stateSynchronized` — только уведомления «дёрни pull», их payload
   читать нельзя (причина — в докблоке `getStatus`, `core/realtime/realtime.ts`).
-  Второй индикатор с тем же классом `is-connecting` — в `components/conversation/TopbarSearch.tsx`:
-  это загрузка выдачи поиска ПО ЧАТУ (порт `toggleLoading` из tweb `chat/topbarSearch.tsx`),
-  к состоянию соединения отношения не имеет.
 
 ## Тесты
 
@@ -743,15 +738,3 @@ CacheStorage-корзину `cachedFiles` (`core/files/cacheStorage.ts`; сох�
   `bootstrap.startClient — реальная проводка вызывает attachLock`) проверяет, что
   `startClient()` реально вызывает `attachLock`, а не только что функция где-то
   существует. Условность покрытия при `USE_LOCKS=false` — см. пункт выше.
-- `src/components/Chat.tsx` — известное исключение и долг (точные размер файла и
-  число `useEffect` здесь не приводим намеренно — они дрейфуют при каждой правке
-  файла и протухают быстрее, чем кто-то успеет их поправить; ориентир — «самый
-  большой компонент клиента, на порядок больше следующего по размеру»). Ни один
-  тест её не импортирует. Не переписывать ради самой нормы прямо сейчас; при
-  следующем содержательном касании файла — приводить затронутую проводку в
-  соответствие (тест либо пометка с причиной), а не расширять непокрытую площадь
-  дальше. Точка монтирования ленты и её пропы при этом ПОКРЫТЫ — сканом
-  исходника (`src/components/Chat.feedMount.test.ts`, тот же приём, что у
-  `core/scrollWriters.test.ts` / `stores/noManualOrder.test.ts`): удаление
-  `<VanillaFeed …>`, любого из его пропов среды или ручек `ChatFeedApi` красит
-  этот тест.

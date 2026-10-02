@@ -2,16 +2,14 @@
 //
 // Перевод подписей со строк на живые узлы менял форму МОЛЧА — ни тайпчек, ни
 // сборка формы не видят, а тестов на дату у этих экранов не было вовсе. Ревью
-// нашло три таких потери, и каждая закрыта пином здесь (одна из них — год в подписи
-// React-«Passkeys» — снята вместе с экраном задачей 21 плана 2D: Solid-вкладка
-// зовёт `formatDate`, как оригинал, `passkeys.solid.test.tsx`):
+// нашло три таких потери, и каждая закрыта пином здесь (две сняты вместе с
+// экранами: год в подписи React-«Passkeys» — задачей 21 плана 2D, Solid-вкладка
+// зовёт `formatDate`, как оригинал, `passkeys.solid.test.tsx`; подпись
+// `ScheduledView` — шагом К-3, отложенные ушли в бэклог Б-25):
 //
 //  • `GiftInfoPopup` — разделитель ` · ` печатался только при непустой дате,
 //    после перевода стал безусловным, и `date === 0` («даты нет») дал бы
 //    «· 1 янв. 1970»;
-//  • `ScheduledView` — подпись собиралась склейкой переведённого обрезка с
-//    датой; приведена к оригиналу (`bubbles.ts::createDateBubble`), где дата
-//    едет АРГУМЕНТОМ ключа.
 //
 // Экраны рендерятся НАСТОЯЩИЕ; подменены только источники данных (RPC-менеджеры),
 // потому что предмет проверки — подпись, а не загрузка.
@@ -21,11 +19,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import '../test/lang'
 import { ManagersProvider } from '../core/hooks/useManagers'
 import type { Managers } from '../client/bootstrap'
-import type { MyMessage } from '../core/models'
 import type { AnyStarGift } from '../core/managers/starsManager'
 
 import GiftInfoPopup from './stars/GiftInfoPopup'
-import { ScheduledLabel } from './ScheduledView'
 
 /** «Сегодня» у всех тестов файла — 29 августа 2026, чтобы ветки «текущий год»
  *  и «сегодня/не сегодня» были воспроизводимы. */
@@ -68,63 +64,5 @@ describe('GiftInfoPopup — разделитель перед датой', () =>
 
     expect(document.body.textContent).toContain('·')
     expect(document.body.textContent).toContain('Jun 14')
-  })
-})
-
-describe('ScheduledView — подпись «Отправится …»', () => {
-  const message = (over: Partial<Extract<MyMessage, { _: 'message' }>>) => ({
-    _: 'message', id: 1, peerId: 1, date: 0, message: '', ...over,
-  } as MyMessage)
-
-  it('дата едет АРГУМЕНТОМ ключа, а не приклеена к переведённому обрезку', () => {
-    const sendAt = Math.floor(Date.parse('2026-09-05T10:00:00Z') / 1000)
-    const { container } = render(<ScheduledLabel message={message({ send_at: sendAt })} />)
-
-    // Ключ оригинала — 'Scheduled for %@': подстановка стоит ВНУТРИ строки, и
-    // её делает `superFormatter` ядра. Склейка «обрезок + дата» дала бы тот же
-    // английский текст, поэтому проверяется и структура: дата — вложенный узел
-    // ядра, а не соседний кусок текста.
-    expect(container.textContent).toBe('Scheduled for September 5')
-    expect(container.querySelector('.i18n .i18n')).not.toBeNull()
-  })
-
-  it('сегодня — отдельный ключ оригинала, без даты', () => {
-    const sendAt = Math.floor(Date.parse(NOW).valueOf() / 1000) + 3600
-    const { container } = render(<ScheduledLabel message={message({ send_at: sendAt })} />)
-
-    expect(container.textContent).toBe('Scheduled for today')
-  })
-
-  it('«когда онлайн» — свой ключ вместо любой даты', () => {
-    const { container } = render(<ScheduledLabel message={message({ when_online: true })} />)
-
-    expect(container.textContent).toBe('Scheduled until online')
-  })
-
-  // Живой узел обновляет СЕБЯ САМ — пересобирать его нельзя (докблок `DomNode`).
-  // Список отдаёт НОВЫЙ объект сообщения на каждое обновление, поэтому мемо по
-  // объекту пересобирало бы узел там, где подпись не менялась; зависимости — два
-  // числа. Тот же дефект чинился в `TopicsPanel`/`SharedMedia`.
-  it('новый объект сообщения с той же датой узел НЕ пересобирает', () => {
-    const sendAt = Math.floor(Date.parse('2026-09-05T10:00:00Z') / 1000)
-    const { container, rerender } = render(<ScheduledLabel message={message({ send_at: sendAt })} />)
-
-    const node = container.querySelector('.i18n')
-    expect(node).not.toBeNull()
-
-    // Другой объект, те же данные — ровно то, что приезжает из списка.
-    rerender(<ScheduledLabel message={message({ send_at: sendAt })} />)
-    expect(container.querySelector('.i18n')).toBe(node)
-
-    // А вот смена САМОЙ даты узел обязана пересобрать.
-    rerender(<ScheduledLabel message={message({ send_at: sendAt + 86400 })} />)
-    expect(container.querySelector('.i18n')).not.toBe(node)
-  })
-
-  it('времени в подписи нет — у `formatDate(date, {today})` оригинала его нет', () => {
-    const sendAt = Math.floor(Date.parse('2026-09-05T10:34:00Z') / 1000)
-    const { container } = render(<ScheduledLabel message={message({ send_at: sendAt })} />)
-
-    expect(container.textContent).not.toMatch(/\d{1,2}:\d{2}/)
   })
 })
