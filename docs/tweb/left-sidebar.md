@@ -798,7 +798,8 @@ Close/RestartTopic `:224` · ChargeFee `:238` · Delete `:248`.
 | `src/components/settings/*` | экранов настроек здесь БОЛЬШЕ НЕТ (последний — «Конфиденциальность» — снесён задачей 23 плана 2D, хаб и все его дети — вкладки `sidebarLeft/tabs/*`); остались React-кит `kit.tsx` и попапы (`AvatarCropper`, `BirthdayModal`, `ConfirmDialog`, `PasskeyIntroPopup` до 2C-10) для потребителей ВНЕ настроек — задачи 30–31 плана 2D | `sidebarLeft/tabs/*` |
 | `src/lib/appDialogsManager.ts` | папочный срез владельца: `.chatlist-overlay` с Solid-рядом вкладок, `#folders-container`, скроллер на папку, переключение (`horizontalMenu` + `TransitionSlider`); поднимает его шелл `App.tsx` на `.connection-status-bottom` статичной колонки, `start()` конструирует класс колонки и автомат соединения (2-1). Строка диалога `DialogElement` + `setLastMessage`/`setUnreadMessages`/`setListClickListener`/`createChatList`/`addDialogNew` (задача 1-1 волны 7) | `AppDialogsManager` (папки, строка) |
 | ~~`src/components/ChatList.tsx` / `ChatListItem.tsx`~~ (снесены задачей 1-4) → `components/sortedDialogList.ts` + `components/autonomousDialogList/*` | списки папок на виртуальном ядре — порталом в `.chatlist-top` контейнеров владельца (до задачи 1-4 волны 7; строка `DialogElement` уже портирована — `lib/appDialogsManager.ts`) | `AutonomousDialogList` (строки) + `DialogElement` |
-| `src/components/virtual/DeferredSortedVirtualList.*` | React-порт `deferredSortedVirtualList` (данными не владеет; shrink не портирован; reveal по одной строке) — держат React-`ChatList`/`ArchiveList`/`TopicsPanel`, уходит с последним из них (волна 7, 1-6) | с отступлениями (спека `2026-08-13-virtual-chatlist-design.md`) |
+| ~~`src/components/virtual/*`~~ (React-ядро виртуального списка — снесено задачей 1-6 волны 7 вместе с последним потребителем `TopicsPanel`) | — | — |
+| `src/components/forumTab/*` + `autonomousDialogList/forumTopics.ts` | форум-таб tweb (волна 7, 1-6): `GroupForumTab` плавающим в `.topics-slider` владельца (`appDialogsManager.toggleForumTab`/`toggleForumTabByPeerId`, запись навигации `forum`, `is-forum-visible` колонки) или вкладкой слайдера, если в колонке уже открыта вкладка; темы — строки `DialogElement` без аватара (С11 шапки `lib/appDialogsManager.ts`); страница — `groups.listTopics` целиком, живых апдейтов тем нет; меню строки темы, создание темы, ботфорум/монофорум/сообщества — нет (Б-53, Б-54, О-3…О-5) | `ForumTab`/`GroupForumTab`/`AutonomousForumTopicList` |
 | `src/components/deferredSortedVirtualList.solid.tsx` + `loadingDialogSkeleton.solid.tsx` | Solid-ядро tweb файлом (волна 7, 1-3): владение элементами, скелетоны, reveal пачкой (108d3f301), shrink `EXTRA_ITEMS_TO_KEEP`, `onItemDiscard` (2b00c4dae), `onItemMount`; поверх `verticalVirtualList.solid.tsx`. Потребитель — список диалогов (`SortedDialogList`, 1-4) | 1:1 |
 | ~~`src/core/hooks/useDialogListSource.ts`~~ (снесён задачей 1-4) → `components/autonomousDialogList/{base,dialogs}.ts` | курсор, страница, правило папки, гидратация строки «Архив» | `AutonomousDialogListBase`/`AutonomousDialogList` |
 | `src/core/managers/dialogsManager.ts` (воркер) | владелец диалогов: сортировка, пагинация, refresh | `dialogsStorage` (воркерная сторона) |
@@ -843,8 +844,8 @@ DOM-паритет первого таба выдержан сознательн
 4. **Чатлист — уже портирован программой, не переизобретать.** Порт «виртуальный список диалогов 1:1»
    смержен целиком (4 этапа, `0d41dc41`): владелец диалогов в воркере
    `core/managers/dialogsManager.ts`; представление с волны 7 — классы tweb (Solid-ядро 1-3,
-   `SortedDialogList`/`AutonomousDialogList` 1-4), React-ядро `components/virtual/` держит только
-   `TopicsPanel` (до 1-6). Спеки:
+   `SortedDialogList`/`AutonomousDialogList` 1-4, темы форума 1-6); React-ядро
+   `components/virtual/` снесено (1-6). Спеки:
    `docs/superpowers/specs/2026-08-12-dialogs-ownership-and-virtual-list-design.md`,
    `2026-08-13-dialogs-pagination-design.md`, `2026-08-13-virtual-chatlist-design.md`,
    `2026-08-13-remaining-lists-design.md`, `2026-08-13-dialogs-count-and-refresh-design.md`

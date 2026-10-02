@@ -78,6 +78,14 @@
 
 ## Отступления от tweb
 
+> **Пересмотрено задачей 1-6 волны 7 (2026-10-02):** React-`TopicsPanel` снесена,
+> темы — порт tweb `autonomousDialogList/forumTopics.ts` + `forumTab/groupForumTab.ts`
+> (строки `DialogElement` в `SortedDialogList` с `itemSize: 64`, `noAvatar`). Пункты 1, 4
+> и 5 сняты: отдельной секции скрытых тем нет (у tweb `CAN_HIDE_TOPIC = false` —
+> скрытая тема обычная строка того же списка), `extraPaddingBottom` у тем — дефолт
+> ядра, как у оригинала, а `topic-dialogs-override` стоит на контейнере таба
+> (`styles/tweb/_topics.scss`, порт `_topics.scss`). Пункт 6 (архив) — задача 1-5.
+
 1. **Секция скрытых тем не виртуализируется** (см. выше). В tweb скрытые темы
    живут в том же `SortedDialogList`; у нас они вынесены в отдельную
    сворачиваемую секцию — это отступление СУЩЕСТВУЮЩЕЕ, не вводимое этим

@@ -20,6 +20,8 @@
  * `initSearch` (:1137, тело — владелец `globalSearch.ts`), `initNavigation` (:474-489),
  * `isCollapsed`/`hasFoldersSidebar`/`onCollapsedChange` (:491-516),
  * `hasSomethingOpenInside`/`closeEverythingInside(Naturally)` (:518-545),
+ * форум-таб (`appDialogsManager.forumTab`, :453-455, :519, :524, :541, :555-560,
+ * :610, задача 1-6 — через экземпляр владельца, расхождение 2),
  * `onSomethingOpenInsideChange` (:547-634) — ЕДИНСТВЕННЫЙ писатель
  * `has-open-tabs` и `setOpenTabsLeftSidebar`, `initSidebarResize` (:651-671),
  * бургер `createToolsMenu` (:673-905), `createMoreSubmenu` (:916-1064),
@@ -37,8 +39,7 @@
  *    (его расхождение 9);
  *  • архив-вкладка `AppArchivedTab` (`openArchiveTab` :1760-1764) — задача 1-5:
  *    до неё строка «Архив» списка закрывает открытое и больше ничего, пункт
- *    бургера скрыт; форум-таб (`appDialogsManager.forumTab`, :519, :524, :541,
- *    :555-560) — задача 1-6;
+ *    бургера скрыт;
  *  • «Мои истории» (`AppMyStoriesTab`, :715-722) — О-82, пункт скрыт;
  *  • статус-эмодзи и замок (`toggleRightButtons`, :258-361) — задача 2-8;
  *  • вертикальная колонка папок (`renderFoldersSidebarContent`, :177-184) —
@@ -289,6 +290,10 @@ export class AppSidebarLeft extends SidebarSlider {
     })
 
     this.initSidebarResize()
+    // `:453-455`
+    dialogsManager.onSomeDrawerToggle = () => {
+      this.onSomethingOpenInsideChange()
+    }
   }
 
   /**
@@ -332,12 +337,12 @@ export class AppSidebarLeft extends SidebarSlider {
   }
 
   public hasSomethingOpenInside() {
-    return this.hasTabsInNavigation() || this.isSearchActive // `|| !!appDialogsManager.forumTab` — задача 1-6
+    return this.hasTabsInNavigation() || this.isSearchActive || !!this.dialogsManager?.forumTab
   }
 
   public closeEverythingInside() {
     this.closeSearch()
-    // `appDialogsManager.toggleForumTab()` — задача 1-6
+    void this.dialogsManager?.toggleForumTab()
 
     return this.closeAllTabs()
   }
@@ -354,7 +359,7 @@ export class AppSidebarLeft extends SidebarSlider {
     if(this.isSearchActive) {
       this.closeSearch()
     }
-    // `appDialogsManager.toggleForumTab()` — задача 1-6
+    void this.dialogsManager?.toggleForumTab()
 
     return true
   }
@@ -369,7 +374,12 @@ export class AppSidebarLeft extends SidebarSlider {
 
     this.sidebarEl.classList.toggle('has-open-tabs', isFloating)
     this.sidebarEl.classList.toggle('has-real-tabs', hasRealTabs)
-    // `has-forum-open` и `forumTab.container.inert = hasRealTabs` (:555-560) — задача 1-6
+    this.sidebarEl.classList.toggle('has-forum-open', !!this.dialogsManager?.forumTab)
+    // A floating forum stays mounted under its own management tabs — take it out
+    // of hit-testing so the selected tab gets pointer and keyboard interaction.
+    if(this.dialogsManager?.forumTab) {
+      this.dialogsManager.forumTab.container.inert = hasRealTabs
+    }
     // `useHasOpenLeftTabs()[1](isFloating)` (:561) — сигнал без читателя, О-101
 
     // Keep the pop-out flag in sync with the actual tabs state regardless of
@@ -415,8 +425,9 @@ export class AppSidebarLeft extends SidebarSlider {
           'force-chatlist-thin',
         )
       })
-      // `if(!appDialogsManager.forumTab)` — задача 1-6
-      this.dialogsManager?.xd?.toggleAvatarUnreadBadges(false)
+      if(!this.dialogsManager?.forumTab) {
+        this.dialogsManager?.xd?.toggleAvatarUnreadBadges(false)
+      }
     } else {
       this.sidebarEl.classList.add(
         'force-fixed',

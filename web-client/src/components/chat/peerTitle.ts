@@ -42,7 +42,10 @@
 //    `MyNotesShort` при `onlyFirstName` — без потребителя, ключа у нас нет), и
 //    `withIcons` — значки после имени в строке списка чатов
 //    (`components/generateTitleIcons.ts`, синхронно из зеркала;
-//    `withPremiumIcon` — без потребителя).
+//    `withPremiumIcon` — без потребителя). `threadId` темы форума — опцией
+//    `topic` (строка темы в списке форум-таба, задача 1-6 волны 7): хранилища
+//    тем (`dialogsStorage.getForumTopic`, peerTitle.ts:152-187) у нас нет, тему
+//    приносит строка; заголовок — значок и название (peerTitle.ts:186-220).
 //  • Имя идёт через `wrapEmojiText` (`lib/richtext/wrapEmojiText.ts`) — как в
 //    оригинале, где его прогоняет `getPeerTitle` (`wrappers/getPeerTitle.ts:91`,
 //    `plainText` там не передаётся) и ветка `fromName` самого `PeerTitle`
@@ -57,6 +60,7 @@ import { i18n } from '@lib/langPack'
 import rootScope from '@lib/rootScope'
 import replaceContent from '@helpers/dom/replaceContent'
 import generateTitleIcons from '@components/generateTitleIcons'
+import { wrapTopicIcon, type TopicIconSource } from '@components/topicAvatar'
 
 /** Срез менеджеров, который нужен узлу имени: объявить пробел зеркала. */
 export interface PeerTitleManagers {
@@ -76,6 +80,8 @@ export interface PeerTitleOptions {
   meAsNotes?: boolean
   /** значки после имени: эмодзи-статус/премиум, верификация (tweb `withIcons`) */
   withIcons?: boolean
+  /** тема форума вместо пира (tweb `threadId`, peerTitle.ts:152-220) — см. шапку */
+  topic?: TopicIconSource
   middleware: Middleware
   managers: PeerTitleManagers
 }
@@ -121,13 +127,23 @@ export default class PeerTitle {
 
   /** Порт tweb `update` в применимом объёме (peerTitle.ts:104-200). */
   public update() {
-    const { fromName, peerId, onlyFirstName, dialog, meAsNotes, withIcons, managers, middleware } = this.options
+    const { fromName, peerId, onlyFirstName, dialog, meAsNotes, withIcons, topic, managers, middleware } = this.options
     if (!middleware()) {
       return
     }
 
     // peerTitle.ts:98-103 `setHasInner` — флаг ставит только ветка со значками
     this.element.classList.remove('with-icons')
+
+    // peerTitle.ts:186-220 — тема: значок (при `withIcons`) и название во внутреннем span
+    if (topic) {
+      const inner = document.createElement('span')
+      inner.classList.add('peer-title-inner')
+      inner.append(wrapEmojiText(topic.title))
+      this.element.replaceChildren(...(withIcons ? [wrapTopicIcon(topic)] : []), inner)
+      this.element.classList.add('with-icons')
+      return
+    }
 
     if (fromName !== undefined) {
       this.setTitle(fromName)

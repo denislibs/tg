@@ -70,7 +70,8 @@ const EMPTY_IDS: number[] = []
 const nowSeconds = () => Math.floor(Date.now() / 1000)
 import ChatHeader from './conversation/ChatHeader'
 import IconButton from '../shared/ui/IconButton'
-import { TopicIcon } from './TopicsPanel'
+import { wrapTopicIcon } from './topicAvatar'
+import DomNode from '../shared/ui/DomNode'
 import PinnedBar from './conversation/PinnedBar'
 import SavedTagsPanel from './conversation/SavedTagsPanel'
 import ScrollDownFab from './conversation/ScrollDownFab'
@@ -1226,7 +1227,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
   // (`chat/bubbles.ts:3427`) — как в tweb, где всё это тоже роль `ChatBubbles`.
 
   // Форум-группы здесь НЕ перехватываются: как в tweb, клик по форуму открывает
-  // панель топиков в ЛЕВОМ сайдбаре (Sidebar → TopicsPanel); тред топика — этот же
+  // форум-таб в ЛЕВОЙ колонке (`components/forumTab/*`); тред топика — этот же
   // компонент в thread-режиме, а «Показать как сообщения» — обычный чат.
 
   // Фасад открытия императивных попапов колонки (меню/пикеры/подтверждения/попапы
@@ -1266,6 +1267,12 @@ export default function Chat({ chat, onBack, thread }: Props) {
         <SavedTagsPanel activeTag={savedTagFilter} onFilter={onSavedTagFilter} onCountChange={setSavedTagsCount} />
       )}
     </>
+  )
+
+  // значок темы в шапке треда — `components/topicAvatar.ts` (задача 1-6 волны 7)
+  const topicIconNode = useMemo(
+    () => (thread?.kind === 'topic' ? wrapTopicIcon({ title: thread.title, icon_color: thread.iconColor ?? 0 }) : null),
+    [thread?.kind, thread?.title, thread?.iconColor],
   )
 
   return (
@@ -1318,7 +1325,7 @@ export default function Chat({ chat, onBack, thread }: Props) {
             <div className="chat-info" onClick={() => { void appSidebarRight.toggleSidebar(true) }} style={{ cursor: 'pointer' }}>
               <div className="person">
                 {thread.kind === 'topic' ? (
-                  <TopicIcon color={thread.iconColor ?? 0} title={thread.title} size={30} />
+                  topicIconNode && <DomNode node={topicIconNode} />
                 ) : (
                   <TgIcon name="comments" size={26} color="var(--primary-color)" />
                 )}
