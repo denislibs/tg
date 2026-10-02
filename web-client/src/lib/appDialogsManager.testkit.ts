@@ -223,7 +223,13 @@ function fakeManagers(getDialogs?: (...args: never[]) => unknown) {
     folders: { del: vi.fn(async (_id: number) => {}) },
     peers: { fillMirror: vi.fn(async (_ids: number[]) => {}) },
     presence: { get: async () => [] },
+    // контакты под коротким списком и подпись пустого плейсхолдера (задача 1-8 волны 7)
+    contacts: {
+      getContactsPeerIds: vi.fn(async (..._args: unknown[]): Promise<number[]> => []),
+      isContact: vi.fn(async (_peerId: number) => false),
+    },
     dialogs: {
+      hasDialog: vi.fn(async (_peerId: number) => false),
       getDialogs: getDialogs ?? vi.fn(async () => ({ dialogs: [], count: 0, isEnd: true })),
       // меню диалога (задача 1-2 волны 7) — дублёры ручек его пунктов
       applyRemoved: vi.fn(async (_peerId: number) => {}),

@@ -21,8 +21,6 @@
 //   • подпись пользователя — `getUserStatusString(user, status)`
 //     (`core/presence.ts`): статус — из зеркала присутствия, а не
 //     `user.status` (присутствие у нас живёт отдельно от карточки);
-//   • `createChatListOptions` (:31, :119) не портированы: `createChatList` у
-//     нас без опций (`lib/appDialogsManager.ts`).
 // Правки под строгий tsconfig: `safeAssign(this, options)` (:117) выписан по
 // полям — у `options` есть `managers`/`middleware`, которые на инстанс лечь не
 // должны.
@@ -71,6 +69,7 @@ export default class SortedUserList extends SortedList<SortedUser, PeerId> {
     rippleEnabled: SortedUserList['rippleEnabled'],
     autonomous: SortedUserList['autonomous'],
     onListLengthChange: SortedUserList['onListLengthChange'],
+    createChatListOptions: Parameters<typeof createChatList>[0],
     getIndex: SortedUserList['getIndex'],
     onUpdate: SortedUserList['onUpdate']
   }> & {
@@ -153,7 +152,7 @@ export default class SortedUserList extends SortedList<SortedUser, PeerId> {
     this.onListLengthChange = options.onListLengthChange
     this.managers = options.managers
 
-    this.list = createChatList()
+    this.list = createChatList(options.createChatListOptions)
 
     // tweb `:121-132` — цикл пересортировки; глохнет сам, как только
     // `updateList` ответит «нельзя» (список не в DOM или middleware протух).

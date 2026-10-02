@@ -525,8 +525,12 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (`sidebarLeft/index.ts:163`). Итог: ru 1518.
 // Задача 2-4 волны 7 (кнопка `#new-menu`, tweb `sidebarLeft/index.ts:1113-1129`): у ru
 // +1 ключ tweb lang.ts:66 `ChatAutomation.NewChats` — `aria-label` кнопки. Итог: ru 1519.
+// Задача 1-8 волны 7 (пустой список чатов и секция «Контакты», tweb
+// `appDialogsManager.ts:1649-1772`): у ru +6 ключей tweb lang.ts — заголовок и две подписи
+// `ChatList.Main.EmptyPlaceholder.*`, плюральный `Contacts.Count`, пустая папка
+// `FilterNoChatsToDisplay{,Info}`. Итог: ru 1536, плюральных 49.
 const COMPOSITION = {
-  ru: { keys: 1530, plural: 48 },
+  ru: { keys: 1536, plural: 49 },
   uk: { keys: 827, plural: 35 },
   es: { keys: 798, plural: 34 },
   de: { keys: 799, plural: 35 },
@@ -701,8 +705,9 @@ const COMPOSITION = {
 // снесённого `PermissionsScreen` (разбор — у `COMPOSITION` выше).
 // Задачей 2-1 волны 7 — у ru +1 ключ tweb `StarsRating.Back` (разбор — там же).
 // Задачей 2-4 волны 7 — у ru +1 ключ tweb `ChatAutomation.NewChats` (разбор — там же).
+// Задачей 1-8 волны 7 — у ru +6 ключей пустого списка и контактов (разбор — там же).
 const FINGERPRINT = {
-  ru: '9a90c28d',
+  ru: '4c9e806e',
   uk: 'ffe46f66',
   es: '1c8d911a',
   de: 'dcd1c9f9',
