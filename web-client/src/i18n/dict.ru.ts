@@ -88,8 +88,6 @@ const ru = {
   UserRestrictionsPinMessages: 'Закрепление сообщений',
   UserRestrictionsChangeInfo: 'Изменение профиля группы',
   Slowmode: 'Медленный режим',
-  SlowmodeInfo:
-    'Выберите, как часто каждый участник сможет писать в группу.',
   ChannelAddAdmin: 'Добавить администратора',
   EditAdmin: 'Права администратора',
   EditAdminWhatCanDo: 'Что может делать этот администратор?',
@@ -708,9 +706,6 @@ const ru = {
   ChannelSignMessagesWithProfile: 'Показывать профили авторов',
   ChannelSignMessagesInfo: 'Добавлять имена админов к их сообщениям',
   ChannelSignProfilesInfo: 'Добавлять имена и фото админов к их сообщениям со ссылкой на профиль.',
-  'GroupPermissions.PaidMessages': 'Платные сообщения',
-  'GroupPermissions.StarsPerMessage': 'Звёзд за сообщение',
-  'GroupPermissions.PaidMessages.Hint': 'Плата в звёздах за сообщение с не-админов. 0 — выключить.',
   'ForumTopic.EnableHint': 'Участники смогут обсуждать разные темы в отдельных ветках.',
   GlobalSendMessageRestricted: 'В этой группе запрещено отправлять сообщения',
   'Composer.MediaRestricted': 'В этой группе запрещено отправлять медиа',

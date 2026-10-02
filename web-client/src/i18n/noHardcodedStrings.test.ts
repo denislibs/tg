@@ -103,7 +103,6 @@ const DEBT: Record<string, number> = {
   'src/components/userInfo/helpers.ts': 25,
   'src/core/dialogToChat.ts': 1,
   'src/core/hooks/useDeepLinks.ts': 5,
-  'src/core/hooks/useGroupEdit.ts': 4,
   'src/core/hooks/useGroupInfo.ts': 8,
   'src/core/hooks/useSidebarStories.tsx': 1,
   'src/core/hooks/useStoryViewer.ts': 3,

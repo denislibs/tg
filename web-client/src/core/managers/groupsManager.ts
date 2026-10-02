@@ -446,9 +446,6 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
     async setType(peerId: number, isPublic: boolean, username: string): Promise<void> {
       await rest.put(`/chats/${peerId}/type`, { is_public: isPublic, username })
     },
-    async setPermissions(peerId: number, permissions: number, slowmodeSeconds: number): Promise<void> {
-      await rest.put(`/chats/${peerId}/permissions`, { permissions, slowmode_seconds: slowmodeSeconds })
-    },
     /**
      * Права участников по умолчанию и медленный режим — порт пары
      * `appChatsManager.editChatDefaultBannedRights` (`:887-901`) +

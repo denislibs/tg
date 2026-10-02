@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 48,
+      "version": 47,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -2319,18 +2319,6 @@
         {
           "key": "GroupChecklist",
           "value": "Group Checklist"
-        },
-        {
-          "key": "GroupPermissions.PaidMessages",
-          "value": "Paid messages"
-        },
-        {
-          "key": "GroupPermissions.PaidMessages.Hint",
-          "value": "Charge stars per message from non-admins. 0 disables paid messages."
-        },
-        {
-          "key": "GroupPermissions.StarsPerMessage",
-          "value": "Stars per message"
         },
         {
           "key": "GroupType",
@@ -5163,10 +5151,6 @@
           "value": "%1$dh"
         },
         {
-          "key": "SlowmodeInfo",
-          "value": "Choose how often members of the group are able to send messages."
-        },
-        {
           "key": "SlowmodeInfoOff",
           "value": "Choose how long each member must wait before sending their next message."
         },
@@ -6290,7 +6274,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 48,
+      "version": 47,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -6563,10 +6547,6 @@
         {
           "key": "Slowmode",
           "value": "Медленный режим"
-        },
-        {
-          "key": "SlowmodeInfo",
-          "value": "Выберите, как часто каждый участник сможет писать в группу."
         },
         {
           "key": "ChannelAddAdmin",
@@ -8683,18 +8663,6 @@
         {
           "key": "ChannelSignProfilesInfo",
           "value": "Добавлять имена и фото админов к их сообщениям со ссылкой на профиль."
-        },
-        {
-          "key": "GroupPermissions.PaidMessages",
-          "value": "Платные сообщения"
-        },
-        {
-          "key": "GroupPermissions.StarsPerMessage",
-          "value": "Звёзд за сообщение"
-        },
-        {
-          "key": "GroupPermissions.PaidMessages.Hint",
-          "value": "Плата в звёздах за сообщение с не-админов. 0 — выключить."
         },
         {
           "key": "ForumTopic.EnableHint",
