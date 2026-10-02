@@ -1,28 +1,22 @@
-import type { LangPackKey } from '@/lang'
-import { memo, useMemo, useState, type CSSProperties, type ReactNode, type Ref } from 'react'
+import { memo, useMemo, type Ref } from 'react'
 import Avatar from '../shared/ui/Avatar'
 import DomNode from '../shared/ui/DomNode'
 import { formatDateAccordingToTodayNew } from '@helpers/date'
 import getDialogMentionBadgeState from '../core/dialogs/dialogMentionBadgeState'
 import classNames from '../shared/lib/classNames'
-import Menu, { MenuItem, cornerFrom, type MenuCorner } from '../shared/ui/Menu'
 import { useRipple } from '../shared/ui/Ripple/useRipple'
 import TgIcon from './TgIcon'
-import { useManagers } from '../core/hooks/useManagers'
 import { useMediaUrl } from '../core/hooks/useMediaUrl'
 import { isUserStatusOnline } from '../core/peers/peer'
 import { useChatsStore } from '../stores/chatsStore'
 import { useSecretChatStore } from '../stores/secretChatStore'
 import { useTypingLabel } from '../core/hooks/useTypingLabel'
-import rootScope from '@lib/rootScope'
 import TypingIndicator from './conversation/TypingIndicator'
 import VerifiedBadge from './VerifiedBadge'
 import PremiumBadge from './PremiumBadge'
 import EmojiStatus from './EmojiStatus'
 import type { Chat } from '../data'
 import { useT } from '../i18n'
-import PopupElement from './popups/popupElement'
-import PopupMute from './popups/popupMute'
 import s from './ChatListItem.module.scss'
 
 interface Props {
@@ -55,7 +49,6 @@ function SidebarThumb({ id }: { id: number }) {
 function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
   const onClick = () => onSelect(chat.id)
   const t = useT()
-  const managers = useManagers()
   const avatarSrc = useMediaUrl(chat.photoId ?? null)
   const typingLabel = useTypingLabel(Number(chat.id), chat.type === 'group')
   // Секретный чат: статус handshake для pending-превью «Приглашение…» / «Ожидание…»
@@ -76,82 +69,6 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
     [chat.date],
   )
   const { onPointerDown, ripple } = useRipple()
-
-  // Mute/Unmute (tweb dialogsContextMenu): Mute открывает попап длительности
-  // (задача 3 плана solid-wave-1: теперь vanilla `PopupMute`, не React-стейт),
-  // Unmute снимает сразу.
-  const openMutePopup = () => {
-    PopupElement.createPopup(PopupMute, Number(chat.id), managers, (seconds) => applyMute(true, seconds))
-  }
-  // Task 4 (действия без оптимистики, порт tweb toggleDialogPin/
-  // updateNotifySettings): оптимистики нет — локальный апдейт (patchDialog)
-  // применяет владелец (dialogsManager) ПОСЛЕ успешного REST-ответа
-  // (groupsManager.ts), витрина здесь только шлёт запрос.
-  const applyMute = (muted: boolean, seconds?: number | null) => {
-    const peerId = Number(chat.id)
-    const until = muted && seconds ? Math.floor(Date.now() / 1000) + seconds : undefined
-    void managers.groups.setMute(peerId, muted, until).catch(() => {})
-  }
-
-  // Anchor a corner of the menu AT the click point and grow toward free space
-  // (right/bottom edges flip via right/bottom CSS so it stays exactly at the cursor).
-  const [menuPos, setMenuPos] = useState<{ style: CSSProperties; corner: MenuCorner } | null>(null)
-  const openMenu = (e: React.MouseEvent) => {
-    e.preventDefault()
-    const MW = 220, MH = 320 // rough size, only to decide the grow direction
-    const flipLeft = e.clientX + MW > window.innerWidth
-    const flipUp = e.clientY + MH > window.innerHeight
-    const originY = flipUp ? 'bottom' : 'top'
-    const originX = flipLeft ? 'right' : 'left'
-    const style: CSSProperties = {}
-    if (flipLeft) style.right = window.innerWidth - e.clientX
-    else style.left = e.clientX
-    if (flipUp) style.bottom = window.innerHeight - e.clientY
-    else style.top = e.clientY
-    setMenuPos({ style, corner: cornerFrom(originY, originX) })
-  }
-  // Pin/Unpin (tweb ChatList.Context.Pin): сеть сначала (Task 4) — лимит 5
-  // (бэк вернёт 400) отдаём тостом, локально ничего откатывать не нужно, т.к.
-  // ничего не менялось до ответа.
-  const applyPin = (pinned: boolean) => {
-    const peerId = Number(chat.id)
-    void managers.groups.setPin(peerId, pinned).catch((e: unknown) => {
-      if (String(e).includes('pin limit')) {
-        rootScope.dispatchEvent('ui:toast', t('PinFolderLimitReached'))
-      }
-    })
-  }
-  // Archive/Unarchive (tweb editPeerFolders folder_id 0↔1) — сеть сначала (Task 4).
-  const applyArchive = (archived: boolean) => {
-    const peerId = Number(chat.id)
-    void managers.groups.setArchive(peerId, archived).catch(() => {})
-  }
-  const destructive =
-    chat.type === 'channel' ? 'ChatList.Context.LeaveChannel' : chat.type === 'group' ? 'DeleteMega' : 'ChatList.Context.DeleteChat'
-  const menuItems: { icon: ReactNode; label: LangPackKey; danger?: boolean; onClick?: () => void }[] = [
-    { icon: <TgIcon name="newtab" size={20} />, label: 'OpenInNewTab' },
-    { icon: <TgIcon name="eye" size={20} />, label: 'ChatList.Context.Preview' },
-    { icon: <TgIcon name="messageunread" size={20} />, label: 'MarkAsUnread' },
-    {
-      icon: <TgIcon name={chat.pinned ? 'unpin' : 'pin'} size={20} />,
-      label: chat.pinned ? 'ChatList.Context.Unpin' : 'ChatList.Context.Pin',
-      onClick: () => applyPin(!chat.pinned),
-    },
-    {
-      icon: <TgIcon name={chat.muted ? 'unmute' : 'mute'} size={20} />,
-      label: chat.muted ? 'ChatList.Context.Unmute' : 'ChatList.Context.Mute',
-      onClick: () => (chat.muted ? applyMute(false) : openMutePopup()),
-    },
-    // «Избранное» не архивируется (tweb: verify peerId !== myId)
-    ...(chat.type !== 'saved'
-      ? [{
-          icon: <TgIcon name={chat.archived ? 'unarchive' : 'archive'} size={20} />,
-          label: (chat.archived ? 'Unarchive' : 'Archive') as LangPackKey,
-          onClick: () => applyArchive(!chat.archived),
-        }]
-      : []),
-    { icon: <TgIcon name="delete" size={20} />, label: destructive, danger: true },
-  ]
 
   // Бейджи подзаголовка — классы tweb (appDialogsManager.create*Badge): все несут
   // `dialog-subtitle-badge badge badge-22`, размер 22 задаётся базовым `.badge`
@@ -196,7 +113,6 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
         data-peer-id={chat.id}
         onClick={(e) => { e.preventDefault(); onClick() }}
         onPointerDown={onPointerDown}
-        onContextMenu={openMenu}
       >
         {ripple}
 
@@ -307,22 +223,6 @@ function ChatListItem({ chat, selected, onSelect, collapsed, ref }: Props) {
           </span>
         ) : null}
       </a>
-
-      <Menu open={!!menuPos} onClose={() => setMenuPos(null)} corner={menuPos?.corner} style={menuPos?.style}>
-        {menuItems.map((it) => (
-          <MenuItem
-            key={it.label}
-            icon={it.icon}
-            label={t(it.label)}
-            danger={it.danger}
-            onClick={() => {
-              setMenuPos(null)
-              it.onClick?.()
-            }}
-          />
-        ))}
-      </Menu>
-
     </>
   )
 }

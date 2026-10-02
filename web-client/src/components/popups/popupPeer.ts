@@ -256,6 +256,10 @@ export default class PopupPeer extends PopupElement {
 export type ConfirmationPopupRejectReason = 'canceled' | 'closed'
 
 export function confirmationPopup(options: {
+  /** аватар пира в заголовке (tweb `PopupConfirmationOptions = PopupPeerOptions & …`,
+   *  `confirmationPopup.ts:6`); потребитель — `components/clearHistory.ts` */
+  peerId?: PeerId
+  managers?: AvatarManagers
   titleLangKey?: LangPackKey
   titleLangArgs?: FormatterArguments
   descriptionLangKey?: LangPackKey
@@ -295,14 +299,17 @@ export function confirmationPopup(options: {
       }
     }
 
-    const popup = PopupElement.createPopup(PopupPeer, 'popup-confirmation', { // simpleConfirmation.ts:50-55
+    const peerOptions: PopupPeerOptions = { // simpleConfirmation.ts:50-55
       titleLangKey: options.titleLangKey,
       titleLangArgs: options.titleLangArgs,
       descriptionLangKey: options.descriptionLangKey,
       descriptionLangArgs: options.descriptionLangArgs,
       buttons,
       zIndex: options.zIndex,
-    })
+    }
+    const popup = PopupElement.createPopup(PopupPeer, 'popup-confirmation', options.peerId ?
+      { ...peerOptions, peerId: options.peerId, managers: options.managers! } :
+      peerOptions)
     options.getPopup?.(popup)
 
     // simpleConfirmation.ts:57-62 — реджект на закрытие БЕЗ клика по кнопке

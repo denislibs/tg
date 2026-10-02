@@ -11,19 +11,6 @@ import s from './Menu.module.scss'
  *  инлайновый `transform-origin` для того же — отсебятина. */
 export type MenuCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center-left' | 'center-right'
 
-/** Класс-угол из CSS `transform-origin`, для мест, где угол вычисляется в
- *  рантайме (флип у края экрана), а не задаётся статически. Соответствие —
- *  `_button.scss:228-262` (инверсия: там класс задаёт origin, здесь по origin
- *  находим класс):
- *   top left     → bottom-right
- *   top right    → bottom-left
- *   bottom left  → top-right
- *   bottom right → top-left */
-export function cornerFrom(originY: 'top' | 'bottom', originX: 'left' | 'right'): MenuCorner {
-  if (originY === 'top') return originX === 'left' ? 'bottom-right' : 'bottom-left'
-  return originX === 'left' ? 'top-right' : 'top-left'
-}
-
 interface MenuProps {
   open: boolean
   onClose: () => void

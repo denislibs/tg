@@ -238,6 +238,21 @@ export function mountOwner(options: { close?: () => boolean | Promise<boolean>; 
     },
     managers: {
       folders: { del: vi.fn(async (_id: number) => {}) },
+      // меню диалога (задача 1-2 волны 7) — дублёры ручек его пунктов
+      peers: { fillMirror: vi.fn(async (_ids: number[]) => {}) },
+      groups: {
+        setPin: vi.fn(async (_peerId: number, _pinned: boolean) => {}),
+        setMute: vi.fn(async (_peerId: number, _muted: boolean, _until?: number) => {}),
+        setArchive: vi.fn(async (_peerId: number, _archived: boolean) => {}),
+        deleteGroup: vi.fn(async (_peerId: number) => {}),
+        removeMember: vi.fn(async (_peerId: number, _userId: number) => {}),
+      },
+      chats: { clearHistory: vi.fn(async (_peerId: number) => {}) },
+      realtime: { markRead: vi.fn(async (_args: { peerId: number, upToId: number }) => ({ ok: true })) },
+      dialogs: {
+        applyRemoved: vi.fn(async (_peerId: number) => {}),
+        refresh: vi.fn(async () => null),
+      },
     },
   }
 

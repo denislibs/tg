@@ -659,6 +659,7 @@ Pin/Unpin `:153` · Mute/Unmute `:193` · Archive/Unarchive `:207` · Hide Gener
 Close/RestartTopic `:224` · ChargeFee `:238` · Delete `:248`.
 Подключение — `setListClickListener({withContext})` (`appDialogsManager.ts:1941-1943`); у строки «Архив»
 своё меню (`:1945-1949` → `archiveDialogContextMenu.ts:24,45`: Hide/Show, MarkAllAsRead, ArchiveSettings).
+**У нас:** порт `components/dialogsContextMenu.ts` (задача 1-2 волны 7), разбор — п. 7 раздела «у нас» ниже.
 
 Клики по строке — `setListClickListener` (`:1751-1950`): аватар → сторис (`:1770-1793`);
 `archive-dialog` → `openArchiveTab` (`:1807-1811`); Shift+клик → превью-попап чата (`:1852-1862`);
@@ -858,9 +859,23 @@ DOM-паритет первого таба выдержан сознательн
    (`sidebarLeft/columnSlider.ts::openContactsTab`, ВРЕМЕННО до 2-1). Вкладка сверху с другой опцией
    `secret` закрывается и уступает новой (с той же — `noSame`, как у tweb). React-экраны
    `ContactsView.tsx`/`NewPrivateChat.tsx` и ветки `SidebarScreens` удалены.
-7. **Контекстное меню диалога и contact-list-заглушка** — у tweb богатое меню
-   (`dialogsContextMenu.ts`, 13 пунктов) и секция Contacts при <10 чатах; у нас этих подсистем нет
-   (меню ПАПКИ — не оно: порт `createFolderContextMenu` на оба ряда, задача 7 плана папок).
+7. **Контекстное меню диалога — порт 812502980 готов** (задача 1-2 волны 7):
+   `components/dialogsContextMenu.ts` (класс `DialogsContextMenu`, tweb `:64`) на
+   `createContextMenu` (`ButtonMenu` + `positionMenu` по фактическому размеру меню +
+   `contextMenuController`, запись `'menu'` — Esc/Back). Создаёт его `AppDialogsManager.start`
+   (tweb `:850`), вешает `l(filter)` на `.chatlist-top` каждой папки — ВРЕМЕННО до 1-4, пока `ul`
+   React (расхождение 22 `lib/appDialogsManager.ts`); оверлей архива — свой экземпляр с
+   `useDialogFolder` (ВРЕМЕННО до 1-5, `Sidebar.tsx`). Пункты: «Открыть в новой вкладке» (наш хэш
+   `#<peerId>`, расхождение 23), «Прочитано», закреп, mute (vanilla `PopupMute`, ВРЕМЕННО до 2C-7),
+   архив, «Очистить историю» (`components/clearHistory.ts`), «Удалить/покинуть»
+   (`components/popups/deleteDialog.ts`, подпись — `core/peers/dialogType.ts::getDeleteButtonText`;
+   оба попапа — vanilla `PopupPeer`, ВРЕМЕННО до 2C-6). Чего нет — шапка файла: превью (О-86),
+   «вид темами/сообщениями» (О-88), выделение (О-30), «непрочитанным» (О-72), «в папку» (О-85),
+   темы форума (1-6), выдача поиска (2-3), сообщества/монофорум (О-5/О-4), закреп в папке (О-70),
+   имя отказа лимита закрепа и `PopupLimit` (О-87), «удалить у обоих»/удаление «Избранного» (О-89).
+   React-меню строки `ChatListItem.tsx` (`MW=220, MH=320`) и хелпер `cornerFrom` удалены.
+   Секция Contacts при <10 чатах — по-прежнему нет.
+   (Меню ПАПКИ — не оно: порт `createFolderContextMenu` на оба ряда, задача 7 плана папок.)
 8. **Фолдеры**: контейнеры, ряд вкладок и переключение — у владельца `lib/appDialogsManager.ts`
    (план `docs/superpowers/plans/2026-09-07-solid-wave-3-folders-tabs.md`, задача 6: `FolderTabs` и
    `TabSlide` из колонки сняты; переключение = список с начала, свайп есть; задача 9 перевела на

@@ -1,31 +1,15 @@
 // `corner` — единственный источник угла роста панели (класс tweb, `_button.scss:228-262`
 // выставляет из него `--transform-origin-x/y`). Инлайновый `transform-origin` в `style` —
-// отсебятина и был убран у всех вызывающих; здесь держим два инварианта, которые эту
-// правку и мотивировали:
-//   1. панель реально получает переданный класс-угол (а не теряет его при сборке classNames);
-//   2. `cornerFrom` — хелпер для рантайм-флипа у края экрана (ChatListItem,
-//      снесённое React-меню сообщения) — переводит origin в класс строго по соответствию из
-//      `_button.scss:228-262` (инверсия «класс → origin»).
+// отсебятина и был убран у всех вызывающих; здесь держим инвариант, который эту
+// правку и мотивировал: панель реально получает переданный класс-угол (а не теряет его
+// при сборке classNames). Рантайм-флип у края экрана (`cornerFrom`) снят вместе с
+// последним его потребителем — React-меню строки чатлиста (задача 1-2 волны 7: меню
+// диалога — `components/dialogsContextMenu.ts`, флип считает `positionMenu`).
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { act, render, cleanup } from '@testing-library/react'
-import Menu, { cornerFrom } from './Menu'
+import Menu from './Menu'
 
 afterEach(cleanup)
-
-describe('cornerFrom — origin → класс-угол (инверсия _button.scss:228-262)', () => {
-  it('top left → bottom-right', () => {
-    expect(cornerFrom('top', 'left')).toBe('bottom-right')
-  })
-  it('top right → bottom-left', () => {
-    expect(cornerFrom('top', 'right')).toBe('bottom-left')
-  })
-  it('bottom left → top-right', () => {
-    expect(cornerFrom('bottom', 'left')).toBe('top-right')
-  })
-  it('bottom right → top-left', () => {
-    expect(cornerFrom('bottom', 'right')).toBe('top-left')
-  })
-})
 
 describe('Menu — проп corner', () => {
   it('вешает переданный класс-угол на панель', () => {

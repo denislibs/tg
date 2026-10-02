@@ -47,6 +47,7 @@ import { useForumPanel } from '../core/hooks/useForumPanel'
 import { useImperativeIsland } from '../core/hooks/useImperativeIsland'
 import { useFolders } from '../stores/foldersStore'
 import { AppDialogsManager } from '../lib/appDialogsManager'
+import DialogsContextMenu from './dialogsContextMenu'
 import { useFoldersSidebarShown, useIsLeftSearchActive, useIsSidebarCollapsed } from '../stores/foldersSidebar.solid'
 import ConnectionStatusComponent from './connectionStatus'
 import type { InputSearchStatus } from '../shared/ui/InputSearch'
@@ -345,6 +346,15 @@ export default function Sidebar({
     return () => dialogsManager.destroy()
   }, [], { host: bottomPartRef })
 
+  // ВРЕМЕННО до 1-5: меню диалога на оверлее архива. У tweb его вешает `l()` на xd
+  // архива (`archivedTab.tsx:86-95` → `appDialogsManager.ts:1478`), а `filterId`
+  // архива ставит `setFilterIdAndChangeTab(FOLDER_ID_ARCHIVE)` (`:108`); у оверлея
+  // ни xd, ни папки нет, поэтому список архива слушает свой экземпляр с
+  // `useDialogFolder` — папку строки ему даёт сам диалог (расхождение 7 меню).
+  const archiveListRef = useImperativeIsland((host) => {
+    return new DialogsContextMenu(managers, dialogsManager, { useDialogFolder: true }).attach(host).destroy
+  }, [managers])
+
   // Кнопка замка (tweb `toggleRightButtons`, `sidebarLeft/index.ts:345-352`) —
   // ванильный узел порта `sidebarLeft/lockButton.solid.tsx`: при включённом коде
   // шапка дописывает его последним, после кнопки статуса, и снимает при
@@ -499,7 +509,7 @@ export default function Sidebar({
               {/* Контейнер прокрутки оверлея — он же `scrollableHost` списка;
                   заглушка пустого архива рендерится ВМЕСТО `ul`, а не внутри
                   него (у виртуального `ul` своя геометрия под весь набор). */}
-              <div className={s.archiveList}>
+              <div className={s.archiveList} ref={archiveListRef}>
                 {archivedChats.length === 0 ? (
                   <div style={{ padding: '3rem 1rem', textAlign: 'center' }}>
                     <Text size={15} color="var(--secondary-text-color)">{t('Archive.Empty')}</Text>

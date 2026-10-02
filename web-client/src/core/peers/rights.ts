@@ -36,7 +36,9 @@ import type { Chat, ChatAdminRights, ChatBannedRights } from './peer'
  * `manage_topics`, `manage_ranks`, `post/edit/delete_stories`,
  * `manage_direct_messages`, гранулярные запреты новых слоёв
  * (`send_photos`/`send_videos`/…/`view_messages`), а также `change_type`/
- * `delete_chat`/`toggle_forum`/`create_giveaway`.
+ * `toggle_forum`/`create_giveaway`. `delete_chat` (только создатель,
+ * `hasRights.ts:113-118`) — потребитель меню диалога и попап удаления чата
+ * (`core/peers/dialogType.ts`, `components/popups/deleteDialog.ts`).
  *
  * `view_participants` — третье синтетическое действие: бита у него нет и в
  * оригинале, ответ складывается из вида чата и флагов (`hasRights.ts:140-142`).
@@ -56,6 +58,7 @@ export type ChatRights =
   | 'invite_links'
   | 'just_admin'
   | 'view_participants'
+  | 'delete_chat'
 
 /**
  * Порт `hasRights(chat, action, rights?)`. Ветвление и порядок проверок — как в
@@ -132,6 +135,11 @@ export function hasRights(
 
     case 'just_admin':
       return isAdmin
+
+    // * only creator can do that (`hasRights.ts:113-118`) — создатель ответил
+    // «да» выше
+    case 'delete_chat':
+      return false
 
     // `hasRights.ts:140-142` — список участников закрыт только у вещательного
     // канала, и то не для создателя и админов.

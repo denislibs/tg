@@ -472,12 +472,21 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // lang.ts:2017-2025 — `NoRecentCalls`, `NoRecentCallsInfo`, `Calls.Status.Group`,
 // `CallBack` (`Calls` уже завела 2-2); −1 наш `Calls.Empty` снесённого React-экрана
 // `CallsView` (у tweb пустой журнал — `NoRecentCalls`). Итог: ru 1415.
+// Задача 1-2 волны 7 (меню диалога — порт tweb `dialogsContextMenu.ts`,
+// `popups/deleteDialog.ts`, `clearHistory.ts`): у ru +20 ключей tweb lang.ts — `MarkAsRead`,
+// `ClearHistory`, `ChannelDelete`, `AlertClearHistory`, четыре `AreYouSureClearHistory*`,
+// `ChannelDeleteMenu`, `AreYouSureDeleteAndExitChannel`, `DeleteChannelForAll`,
+// `LeaveChannelMenu`, `ChannelLeaveAlertWithName`, `LeaveChannel`, `DeleteChatUser`,
+// `AreYouSureDeleteThisChatWithUser`, `DeleteMegaMenu`, `AreYouSureDeleteAndExit`,
+// `LeaveMegaMenu`, `AreYouSureDeleteAndExitName`. У всех пяти −2: снесённое React-меню строки
+// было единственным читателем `MarkAsUnread` (пункт — О-72) и `ChatList.Context.Preview`
+// (пункт — О-86). Итог (поверх 0а-4): ru 1433, uk 757, es 754, de 755, fr 749.
 const COMPOSITION = {
-  ru: { keys: 1415, plural: 44 },
-  uk: { keys: 759, plural: 33 },
-  es: { keys: 756, plural: 32 },
-  de: { keys: 757, plural: 33 },
-  fr: { keys: 751, plural: 32 },
+  ru: { keys: 1433, plural: 44 },
+  uk: { keys: 757, plural: 33 },
+  es: { keys: 754, plural: 32 },
+  de: { keys: 755, plural: 33 },
+  fr: { keys: 749, plural: 32 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -630,12 +639,15 @@ const COMPOSITION = {
 // `NewGroup.DefaultTitle` снесённого React-экрана (разбор — там же).
 // Задачей 0а-4 волны 7 — у ru +4 ключа вкладки «Звонки» и −1 `Calls.Empty`
 // снесённого React-экрана (разбор — там же).
+// Задачей 1-2 волны 7 — у ru +20 ключей меню диалога и его попапов, у всех пяти минус
+// `MarkAsUnread` и `ChatList.Context.Preview` снесённого React-меню (разбор — у
+// `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '1fd757f5',
-  uk: '571c2c10',
-  es: '737d78e3',
-  de: '5e55ac08',
-  fr: '05470caa',
+  ru: 'bf48220f',
+  uk: '6a2125df',
+  es: 'fa206f0e',
+  de: '1df82eb9',
+  fr: '1773852f',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
