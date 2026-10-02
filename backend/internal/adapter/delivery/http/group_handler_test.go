@@ -337,16 +337,24 @@ func TestInviteEditAndImporters_HTTP(t *testing.T) {
 			UserID     int64  `json:"user_id"`
 		} `json:"importers"`
 		Count int `json:"count"`
+		Users []struct {
+			Underscore string `json:"_"`
+			ID         int64  `json:"id"`
+		} `json:"users"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &imp)
 	if imp.Count != 1 || len(imp.Importers) != 1 || imp.Importers[0].UserID != idB {
 		t.Fatalf("importers = %s", rec.Body.String())
 	}
+	// Карточка вошедшего — в векторе `users` контейнера (клиент читает её из зеркала).
+	if len(imp.Users) != 1 || imp.Users[0].ID != idB || imp.Users[0].Underscore != "user" {
+		t.Fatalf("importers users = %s", rec.Body.String())
+	}
 }
 
 func TestInviteRevokeAndDelete_HTTP(t *testing.T) {
 	h, pool := newMessagingRouter(t)
-	tokenA, _ := signUp(t, h, pool, "+79990006001")
+	tokenA, idA := signUp(t, h, pool, "+79990006001")
 
 	rec := authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Team"})
 	createdPeerID := createdPeerID(t, rec)
@@ -372,8 +380,15 @@ func TestInviteRevokeAndDelete_HTTP(t *testing.T) {
 				Link   string          `json:"link"`
 				PFlags map[string]bool `json:"pFlags"`
 			} `json:"invites"`
+			Users []struct {
+				ID int64 `json:"id"`
+			} `json:"users"`
 		}
 		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		// Карточка создателя ссылок — в векторе `users` контейнера, одна на создателя.
+		if len(out.Invites) > 0 && (len(out.Users) != 1 || out.Users[0].ID != idA) {
+			t.Fatalf("list (revoked=%v) users = %s", revoked, rec.Body.String())
+		}
 		toks := make([]string, 0, len(out.Invites))
 		for _, l := range out.Invites {
 			if l.PFlags["revoked"] != revoked {

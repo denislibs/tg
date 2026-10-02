@@ -124,7 +124,9 @@ type MessagesExportedChatInvites struct {
 	Users      []UserReal           `json:"users"`
 }
 
-func NewMessagesExportedChatInvites(links []InviteLink) MessagesExportedChatInvites {
+// users — карточки создателей ссылок (`admin_id`), как у оригинала: вкладка
+// ссылки рисует строку «Ссылку создал» по ключу и читает карточку из зеркала.
+func NewMessagesExportedChatInvites(links []InviteLink, users []UserReal) MessagesExportedChatInvites {
 	invites := make([]ChatInviteExported, 0, len(links))
 	for _, l := range links {
 		invites = append(invites, NewChatInviteExported(l))
@@ -133,7 +135,7 @@ func NewMessagesExportedChatInvites(links []InviteLink) MessagesExportedChatInvi
 		Underscore: MessagesExportedInvitesTag,
 		Count:      len(invites),
 		Invites:    invites,
-		Users:      []UserReal{},
+		Users:      orEmpty(users),
 	}
 }
 

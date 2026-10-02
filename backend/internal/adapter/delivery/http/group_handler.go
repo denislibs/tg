@@ -805,7 +805,22 @@ func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, domain.NewMessagesExportedChatInvites(links))
+	// Карточки создателей ссылок — вектором `users` контейнера (как у оригинала).
+	seen := make(map[int64]bool, len(links))
+	ids := make([]int64, 0, len(links))
+	for _, l := range links {
+		if !seen[l.CreatedBy] {
+			seen[l.CreatedBy] = true
+			ids = append(ids, l.CreatedBy)
+		}
+	}
+	cards, err := h.uc.UsersByIDs(r.Context(), user.ID, ids)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	gatePhotos(r, h.privacy, cards)
+	writeJSON(w, http.StatusOK, domain.NewMessagesExportedChatInvites(links, cards))
 }
 
 // EditInvite updates an invite link (PATCH /chats/{chatID}/invite_links/{token}).
@@ -890,10 +905,22 @@ func (h *GroupHandler) InviteImporters(w http.ResponseWriter, r *http.Request) {
 	// Вошедший и ждущий одобрения — ОДИН конструктор `chatInviteImporter`,
 	// разницу выражает `pFlags.requested`. У нас это были два разных списка.
 	out := make([]domain.ChatInviteImporter, 0, len(importers))
+	ids := make([]int64, 0, len(importers))
 	for _, im := range importers {
 		out = append(out, domain.NewChatInviteImporter(im.UserID, im.JoinedAt, false, 0))
+		ids = append(ids, im.UserID)
 	}
-	writeJSON(w, http.StatusOK, domain.NewMessagesChatInviteImporters(count, out, nil))
+	// Карточки вошедших едут вектором `users` того же контейнера, как у
+	// оригинала (`messages.chatInviteImporters`): список вступивших (вкладка
+	// ссылки, tweb `chatInviteLink.tsx`) рисует строку пользователя по ключу и
+	// читает карточку из зеркала, второго запроса за ней клиент не делает.
+	cards, err := h.uc.UsersByIDs(r.Context(), user.ID, ids)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	gatePhotos(r, h.privacy, cards)
+	writeJSON(w, http.StatusOK, domain.NewMessagesChatInviteImporters(count, out, cards))
 }
 
 func (h *GroupHandler) Join(w http.ResponseWriter, r *http.Request) {
