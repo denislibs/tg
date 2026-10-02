@@ -23,8 +23,7 @@
  *     ручка `POST /channels` создаёт только каналы.
  *  4. Фото — `groups.setPhoto(peerId, mediaId)` вместо `editPhoto(channelId,
  *     inputFile)` (:55-58): провода `InputFile` нет (шапка `avatarEdit.ts`, п. 3).
- *  5. `appImManager.setInnerPeer` (:68) → `openPeer` — ВРЕМЕННО до Э4-3
- *     (класса `AppImManager` ещё нет). `appSidebarLeft.removeTabFromHistory`
+ *  5. `appSidebarLeft.removeTabFromHistory`
  *     (:69) → `tab.slider`: вкладку открывает колоночный слайдер, он и есть
  *     `appSidebarLeft`; `useHotReloadGuard` (HMR-ветки tweb) не портирован.
  *  6. `tab.slider as SidebarSlider` — поле вкладки объявлено узким контрактом
@@ -50,8 +49,7 @@ import toggleDisability from '@helpers/dom/toggleDisability'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
 import type { AppNewChannelTab } from '@components/solidJsTabs/tabs'
 import type SidebarSlider from '@components/slider'
-import { openPeer } from '@core/navigation/openPeer'
-import { peerTitle } from '@core/peerCache'
+import appImManager from '@lib/appImManager'
 
 const NewChannel = () => {
   const [tab] = useSuperTab<typeof AppNewChannelTab>()
@@ -92,8 +90,7 @@ const NewChannel = () => {
           })
         }
 
-        // ВРЕМЕННО до Э4-3 — `appImManager.setInnerPeer({peerId})` (расхождение 5)
-        openPeer(managers, { id: peerId, title: peerTitle(peerId) })
+        void appImManager.setInnerPeer({ peerId })
         // О-44 волна 7 — диалог канала (расхождение 8)
         void managers.dialogs.refresh().catch(() => {})
         const slider = tab.slider as SidebarSlider

@@ -1,7 +1,7 @@
 // Круговое раскрытие смены темы — порт view-transition части tweb
 // `ThemeController.setTheme` (`src/helpers/themeController.ts:354-468`,
 // 812502980). Один исполнитель на оба переключателя: ⋮-меню приложения
-// (`core/hooks/useThemeToggle.ts`) и кнопку экрана входа
+// (`switchTheme` ниже, бургер колонки) и кнопку экрана входа
 // (`components/auth/AuthCardsHost.solid.tsx`) — прежде у каждого была своя
 // копия формулы.
 //
@@ -22,6 +22,9 @@ import { dispatchHeavyAnimationEvent } from '../dom/heavyAnimation'
 import noop from '@helpers/noop'
 import pause from '@helpers/schedulers/pause'
 import appChatBackground from '@components/chat/bubbles/chatBackground.solid'
+import { useSettingsStore } from '@/settings'
+import { PRESET_MODE, resolvePreset, type ThemeChoice } from '@/theme'
+import { getCurrentPreset } from './themeController'
 
 // tweb :27 — сколько стоит пауза тяжёлого рендера и через сколько зависший
 // переход принудительно завершается.
@@ -114,4 +117,18 @@ export function switchThemeWithTransition(
     clipAnimation?.cancel()
     root.classList.remove('no-view-transition', 'reverse')
   })
+}
+
+/**
+ * Порт tweb `themeController.switchTheme` (`helpers/themeController.ts`, вызов —
+ * бургер `sidebarLeft/index.ts:924`): день ↔ ночь от ПРИМЕНЁННОЙ темы (системную мог
+ * сменить слушатель `setThemeListener`). Выбор пишется в настройки, тему применяет
+ * их подписчик (`appImManager.applyCurrentTheme`) синхронно — внутри снапшота
+ * перехода. Бывший `core/hooks/useThemeToggle.ts` шелла.
+ */
+export function switchTheme(coordinates?: { x: number, y: number }): void {
+  const { themeChoice, update } = useSettingsStore.getState()
+  const isNight = PRESET_MODE[getCurrentPreset() ?? resolvePreset(themeChoice)] === 'dark'
+  const next: ThemeChoice = isNight ? 'day' : 'night'
+  switchThemeWithTransition(() => update({ themeChoice: next }), coordinates, isNight)
 }

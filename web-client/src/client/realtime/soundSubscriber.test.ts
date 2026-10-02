@@ -14,6 +14,9 @@ vi.mock('../../core/effects/emojiEffects', () => ({
   playEmojiEffect: (...args: unknown[]) => playEmojiEffect(...args),
 }))
 
+// открытый чат вкладки — `appImManager.chat` (tweb), здесь — его срез
+vi.mock('@lib/appImManager', () => ({ default: { chat: { peerId: 5 } } }))
+
 import { registerSoundSubscriber } from './soundSubscriber'
 
 // Открытый чат 5, эффект от чужого отправителя (2 !== meId 1) — оба условия
@@ -34,7 +37,7 @@ describe('soundSubscriber — RT.newMessage учитывает meta.catchUp', ()
 
   beforeEach(() => {
     playEmojiEffect.mockClear()
-    useChatsStore.setState({ meId: 1, activePeerId: 5 })
+    useChatsStore.setState({ meId: 1 })
   })
 
   it('живой кадр (catchUp: false) — эффект играет', () => {

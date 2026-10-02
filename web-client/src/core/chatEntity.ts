@@ -9,12 +9,13 @@
 // оригинала пространства имён `draft:` нет вовсе: пир без диалога открывается
 // тем же `appImManager.setInnerPeer({peerId})` (appImManager.ts:3392), и
 // `chat.peerId` — всегда число. Отсутствие диалога здесь — ПРИЗНАК сущности
-// (`noDialog`), а не форма её id. `draft:<peerId>` остаётся только ключом
-// выбора в `navigationStore.selectedId` (хэш, хоткеи) и сущности не касается.
-import type { Chat, OpenPeer } from '@/data'
-import type { ChatInstanceDesc } from '@stores/chatStackStore'
+// (`noDialog`), а не форма её id; `draftPeer` навигации снят решением В4-2 (К-2).
+import type { Chat } from '@/data'
 import { gradientFor } from './dialogToChat'
 import { NULL_PEER_ID, parsePeerId } from './peers/peerId'
+import { cachedPeer } from './peerCache'
+import { getPeerTitle } from './peers/getPeerTitle'
+import { getPeerPhotoId } from './peers/peer'
 
 /** Знаковый ключ пира сущности; не ключ — `NULL_PEER_ID`, а не NaN. */
 export function chatPeerId(chat: Chat): PeerId {
@@ -30,31 +31,37 @@ export function isDialogChat(chat: Chat): boolean {
   return !chat.noDialog && chatPeerId(chat) !== NULL_PEER_ID
 }
 
-/** Сущность пира без диалога — из личности, по которой его открыли. */
-export function draftChatEntity(peer: OpenPeer): Chat {
+/**
+ * Сущность пира без диалога — из карточки зеркала пиров (`core/peerCache.ts`):
+ * у оригинала пир без диалога открывается тем же `setInnerPeer({peerId})`
+ * (appImManager.ts:3392), и шапка читает пира, а не строку списка.
+ */
+function noDialogChatEntity(peerId: PeerId): Chat | undefined {
+  const peer = cachedPeer(peerId)
+  if (!peer || peer._ !== 'user') return undefined
+  const title = getPeerTitle({ peerId, peer })
   return {
-    id: String(peer.id),
+    id: String(peerId),
     noDialog: true,
-    name: peer.title,
-    avatar: gradientFor(peer.id),
-    avatarText: peer.title.charAt(0).toUpperCase() || '?',
+    name: title,
+    avatar: gradientFor(peerId),
+    avatarText: title.charAt(0).toUpperCase() || '?',
     // id медиа аватарки приходит готовым (`photo.photo_id`)
-    photoId: peer.photoId,
+    photoId: getPeerPhotoId(peer.photo) || undefined,
     preview: '',
     type: 'private',
   }
 }
 
 /**
- * Резолв дескриптора стека в сущность: реальный диалог из списка, иначе пир
- * без диалога (открытый `draftPeer` того же ключа), иначе синтетическая
- * сущность треда/комментариев (discussion-группа, где мы можем не состоять).
- * Диалог, появившийся после первого сообщения, выигрывает у черновика того же
- * ключа сам — инстанс и лента при этом не меняются (ключ тот же).
+ * Резолв инстанса чата в сущность: реальный диалог из списка, иначе человек без
+ * диалога (карточка зеркала), иначе синтетическая сущность треда/комментариев
+ * (discussion-группа, где мы можем не состоять). Диалог, появившийся после
+ * первого сообщения, выигрывает сам — инстанс и лента при этом не меняются.
  */
-export function resolveChatEntity(desc: ChatInstanceDesc, chatList: readonly Chat[], draftPeer: OpenPeer | null): Chat {
+export function resolveChatEntity(desc: { peerId: PeerId, thread?: { title: string } }, chatList: readonly Chat[]): Chat {
   return chatList.find((c) => c.id === String(desc.peerId)) ??
-    (draftPeer && draftPeer.id === desc.peerId ? draftChatEntity(draftPeer) : null) ?? {
+    noDialogChatEntity(desc.peerId) ?? {
       id: String(desc.peerId),
       name: desc.thread?.title ?? '',
       avatar: gradientFor(desc.peerId),

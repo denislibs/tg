@@ -25,24 +25,20 @@
 // держит `xds[filterId]`, как tweb (`:1474-1480`); строки — `SortedDialogList`
 // поверх Solid-ядра виртуального списка. Активная строка открытого чата —
 // `setDialogActive` по смене выбранного чата (`peer_changed`, `:1176-1229`).
-// В колонку владелец встроен `components/Sidebar.tsx` (`// ВРЕМЕННО до 2-9`, мост
-// этапа 1): `.connection-status-bottom` — хост `start()`, `#chatlist-container` —
-// второй аргумент. `start()` конструирует класс колонки (`appSidebarLeft.construct`,
-// `:983`) и автомат соединения (`:990`), как у оригинала.
+// Синглтон модуля; его `start()` зовёт `pages/bootstrapIm.ts` (tweb `:51`) и
+// конструирует класс колонки (`appSidebarLeft.construct`, `:983`), правую колонку
+// (`:984`), `appImManager` (`:988`) и автомат соединения (`:990`), как у оригинала.
 //
 // ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
 //
-//  1. Экземпляр со `start(host, chatsContainer, hooks)` и `destroy()`, а не
-//     синглтон на `document.getElementById('chatlist-container')` (`:513`):
-//     колонка у нас монтируется и размонтируется, тесты поднимают её
-//     многократно. `destroy()` — наш (у оригинала синглтон живёт вечно): снимает
-//     подписки, наблюдатель, свайп, Solid-корень, навигационную запись, все
-//     списки папок (`xds`), свои узлы и свои следы на чужих узлах (`has-filters`,
-//     `--chatlist-overlay-height`) — DoD 5 спеки волны 3.
-//  2. `bottomPart` не создаётся (`:587-589`, `:704`): это React-узел
-//     `.connection-status-bottom` колонки, он приходит как `host`;
-//     `#folders-container` (у tweb — статический в `index.html:100`) создаёт
-//     владелец и кладёт в `host` последним, оверлей — первым (`:595-597`).
+//  1. Синглтон модуля (`:3066`) со `start()` без аргументов, как у tweb, но тело
+//     владельца вынесено в `startDialogs(managers)`, а `destroy()` оставлен — оба
+//     ради тестов: они поднимают владельца многократно и без соседей-синглтонов
+//     (`appSidebarRight`, `appImManager`) и сетевого старта. В приложении
+//     `destroy()` не зовёт никто — владелец вечен, выход из аккаунта —
+//     перезагрузка (решение В4-1).
+//  2. (снято К-2: `bottomPart` создаёт владелец, `#folders-container` берётся из
+//     `index.html`, как у tweb `:857-859`, `:974`.)
 //  3. (снято задачей 1-4: список папки — `AutonomousDialogList`, отдельная
 //     карта `filtersRendered` (`:526-528`) — контейнеры отрисованных папок, `xds` —
 //     их списки и список архива, пока открыт его оверлей.)
@@ -69,19 +65,17 @@
 //     1ca7cb99e, он портирован в `components/horizontalMenu.ts::selectTarget`).
 //     Условие `length >= selectedId` (`:131`, длина против id) не портировано —
 //     дефект оригинала.
-//  7. `state_cleared` (`:640-652`): события на главном потоке нет. Сброс
-//     `appState.folders` при логауте (`resetAppState`) приходит той же
-//     подпиской (п. 5) и снимает пользовательские контейнеры. Повторный
-//     `onStateLoaded` и `xd.clear()` + `onTabChange()` «Всех чатов» (`:643-649`)
-//     не нужны: логаут размонтирует колонку, `destroy()` снимает всё, новый
-//     вход — новый `start()`.
-//  8. Из `onStateLoaded` (`:1014-1090`) взят только папочный срез: `addFilter`
+//  7. `state_cleared` (`:640-652`): события на главном потоке нет; выход из
+//     аккаунта — перезагрузка страницы (решение В4-1).
+//  8. Из `onStateLoaded` (`:1014-1090`) папочный срез — в `startDialogs`: `addFilter`
 //     на каждую папку, гидрация стора, `filterId = -1; onClick(0, false)`,
 //     `suggestionContainer`. Папки у нас известны синхронно (подняты из State в
 //     `client/boot.ts`), поэтому ветки `!haveFilters` с плейсхолдером
-//     (`:1044-1057`) нет; `preloadDialogs`, сторис, `fillConversations` — волна 7.
-//     `suggestionContainer` создаётся в `start()` (у tweb — в конце
-//     `onStateLoaded`, `:1384-1388`; у нас `onStateLoaded` и есть `start()`), и
+//     (`:1044-1057`) нет; сторис, `fillConversations` — бэклог П-2/П-3.
+//     Остальной `onStateLoaded` — первичные загрузки и realtime (бывший
+//     `core/hooks/useAppBootstrap.ts`), метод `onStateLoaded`.
+//     `suggestionContainer` создаётся в `startDialogs()` (у tweb — в конце
+//     `onStateLoaded`, `:1384-1388`), и
 //     в него сразу рисует `renderPendingSuggestion` (задача 2-5 волны 7);
 //     `destroy()` гасит этот корень. `authorizationContainer` (`:1390-1394`,
 //     плашка «новый вход») не заводится — у колонки её нет.
@@ -111,13 +105,9 @@
 //     считается от `filterId` владельца: `selectedFolderId` в Solid-проекции нет
 //     (решение 2 шапки `stores/folders.solid.ts`), факт выбора —
 //     `foldersStore.selectedId`, и пишет его ТОЛЬКО `selectFolderByIndex` (`:784`).
-// 17. Слушатели полосы и слайдера висят на `ListenerSetter` — у tweb его не
-//     передают (узлы живут вечно), у нас `destroy()` их снимает.
+// 17. Слушатели полосы и слайдера висят на `ListenerSetter`, а
 // 18. `selectFolderByIndex` после своего `await` сверяется с `middleware`
-//     прогона (`@helpers/middleware`): у tweb владелец не умирает, у нас
-//     `destroy()` может прийти, пока ждём `closeEverythingInsideNaturally` (в
-//     том числе прямо на старте — первый `onClick(0, false)` асинхронный), и
-//     продолжение полезло бы в снятые списки папок.
+//     прогона — оба ради тестового `destroy()` (расхождение 1).
 // 19. Скроллеру папки и `.chatlist-bottom` владелец ставит ещё и наши классы
 //     (`appDialogsManager.module.scss`): тонкий скроллбар (у tweb его включает
 //     непортированный класс на `<html>`) и клиренс под compose-FAB (у tweb
@@ -126,8 +116,7 @@
 //     показывалась бы не с начала). `setCollapsed` — наш: свёрнутая в
 //     колонку аватаров панель при открытом форуме гасит клиренс; у tweb
 //     свёрнутый чатлист устроен иначе (`left-sidebar.md` § 8.2).
-// 20. Меню папки (`:814-821`): `managers`, которые у tweb владелец берёт у
-//     синглтона, приходят хуком колонки (`hooks.managers`, адаптации — шапка
+// 20. Меню папки (`:814-821`): `managers` — владельца (адаптации — шапка
 //     `helpers/dom/createFolderContextMenu.ts`); `appSidebarLeft` и классы
 //     вкладок — как у tweb. Возвращённый `destroy` у tweb выбрасывается
 //     (владелец вечен), у нас `destroy()` владельца снимает им слушатели с ряда
@@ -138,19 +127,16 @@
 //     на холодном старте оставляет градиент видимым под плашкой-подсказкой.
 //     У нас мёртвой строки в ref нет, а `onFiltersLengthChange` синхронизирует
 //     `hide` градиента с показом ряда на каждом проходе.
-// 22. `peer_changed` (`:1176-1229`) — подписка на выбранный чат навигации
-//     (`navigationStore.selectedId`, мост чтения п. 1 плана волны 7), а не событие
-//     `appImManager` (этап 4). Тред/тема у строки не сравниваются (`isSamePeer` c
-//     `threadId`): строки тем — задача 1-6.
-// 23. Меню диалога (`this.contextMenu`, `:850`): менеджеры приходят хуками
-//     колонки (`hooks.managers`, расхождение 20), вторым аргументом — сам
+// 22. `peer_changed` (`:1176-1229`) — событие `appImManager`; тред/тема у строки
+//     не сравниваются (`isSamePeer` c `threadId`): строки тем — бэклог Б-3.
+// 23. Меню диалога (`this.contextMenu`, `:850`): менеджеры владельца, вторым аргументом — сам
 //     владелец (расхождение 1 шапки `components/dialogsContextMenu.ts`). Вешает
 //     его `setListClickListener({withContext: true})` (`:2337-2339`) на `ul`
 //     списка папки из `l(filter)` (`:1478`), как у tweb; `withArchiveContext`
 //     (меню строки «Архив») — задача 1-5.
 // 24. `openDialogInNewTab` (`:2055-2070`): маршрута `#/im?p=…` у нас нет (разбор
 //     хэша — `core/messageLink.ts::parseNavHash`, ссылки — `internalLinkProcessor`,
-//     Э5-4), адрес чата — наш хэш `#<peerId>` (`core/navigation/chatHistory.ts::hashForChat`).
+//     Э5-4), адрес чата — наш хэш `#<peerId>` (`appImManager.overrideHash`).
 //     Параметров `message`/`thread`/`community` нет: строки с `data-mid` и
 //     `data-thread-id` (выдача поиска, темы форума) меню получают в 2-3 и 1-6,
 //     сообществ нет (О-5).
@@ -161,10 +147,12 @@ import { horizontalMenu } from '@components/horizontalMenu'
 import FoldersTabs from '@components/foldersTabs.solid'
 import createFolderContextMenu from '@helpers/dom/createFolderContextMenu'
 import DialogsContextMenu from '@components/dialogsContextMenu'
-import type { Managers } from '@/client/bootstrap'
+import { getProxiedManagers, type Managers } from '@/client/bootstrap'
 import type { ScrollableContextValue } from '@components/scrollable2.solid'
 import { renderPendingSuggestion } from '@components/sidebarLeft/pendingSuggestion.solid'
 import appSidebarLeft from '@components/sidebarLeft'
+import appSidebarRight from '@components/sidebarRight'
+import appImManager from '@lib/appImManager'
 import { AppChatFoldersTab, AppEditFolderTab } from '@components/solidJsTabs/tabs'
 import ConnectionStatusComponent from '@components/connectionStatus'
 import { createSolidNodes } from '@shared/solid/mountSolid.solid'
@@ -209,22 +197,33 @@ import { getMessageText, type Dialog, type DraftMessageReal, type MyMessage } fr
 import { realDraft } from '@core/dialogs/draft'
 import { EMPTY_NOTIFY_SETTINGS } from '@core/dialogs/notifySettings'
 import getDialogMentionBadgeState from '@core/dialogs/dialogMentionBadgeState'
-import { cachedChat, cachedPeer } from '@core/peerCache'
+import { cachedChat } from '@core/peerCache'
 import { getOutputPeer, isAnyChat, isUser } from '@core/peers/peerId'
 import { isForum } from '@core/peers/predicates'
-import { getPeerTitle } from '@core/peers/getPeerTitle'
-import { getPeerPhoto, getPeerPhotoId, isUserStatusOnline } from '@core/peers/peer'
-import { openPeer, type OpenPeerManagers } from '@core/navigation/openPeer'
-import { requestMessageJump } from '@core/messageLink'
-import { useChatsStore } from '@stores/chatsStore'
-import { isDialogMuted, useNotifyStore } from '@stores/notifyStore'
-import { useNavigationStore } from '@stores/navigationStore'
+import { isUserStatusOnline } from '@core/peers/peer'
+import { loadChats, loadPresence, startPresenceDegradation, useChatsStore } from '@stores/chatsStore'
+import { isDialogMuted, loadNotifySettings, useNotifyStore } from '@stores/notifyStore'
 import { useSecretChatStore } from '@stores/secretChatStore'
 import { ARCHIVE_DIALOG_TAG_NAME, AutonomousDialogList } from '@components/autonomousDialogList/dialogs'
 import { setDialogTyping } from '@components/autonomousDialogList/base'
+import { MOUNT_CLASS_TO } from '@config/debug'
+import { loadStories } from '@stores/storiesStore'
+import { loadFolders } from '@stores/foldersStore'
+import { loadPrivacy } from '@stores/privacyStore'
+import { loadStars } from '@stores/starsStore'
+import { primeMediaToken } from '@core/mediaUrl'
+import { watchCacheSettings } from '@core/mediaCache'
+import { startRealtime } from '@/client/realtimeBridge'
+import { watchPushConditions } from '@/client/pushSetup'
+import { initAppBadge } from '@/client/appBadge'
+import { bootPrefetch } from '@/client/bootData'
+import { preloadReactionAssets } from '@components/chat/reactions'
 import styles from './appDialogsManager.module.scss'
 
 const log = logger('DIALOGS', LogTypes.Error)
+
+/** tweb appReactionsManager.ts:94-96 — предзагрузка ассетов реакций через 7.5 с после `user_auth`. */
+const REACTIONS_PRELOAD_DELAY = 7.5e3
 
 // ═══ СТРОКА ДИАЛОГА ═════════════════════════════════════════════════════════
 //
@@ -795,40 +794,7 @@ export class DialogElement {
   }
 }
 
-/** Колбэки колонки: то, что у tweb владелец берёт у соседей-синглтонов. */
-export type AppDialogsManagerHooks = {
-  /** `!!this.forumTab` — открытый форум гасит свайп между папками (`:631-633`). */
-  isForumOpen: () => boolean
-  /**
-   * `managers` из `start(managers)` оригинала (`:847`): ими конструируются класс
-   * колонки и автомат соединения (`:983`, `:990`), их берут меню папки (`:818`)
-   * и меню диалога (`:850`) — расхождения 20, 23, — им же списки берут страницы и строки.
-   */
-  managers: Managers
-  /**
-   * `toggleForumTabByPeerId` (`:1941`) — клик по строке форума открывает панель
-   * тем. Панель у нас — React-`TopicsPanel` колонки (`// ВРЕМЕННО до 1-6`).
-   */
-  openForum: (peerId: PeerId) => void
-}
-
 type FilterLike = { id: number, localId: number }
-
-/**
- * ВРЕМЕННО до Э4-1: у tweb владелец — синглтон модуля (`export default
- * appDialogsManager`, `:3066`), и чужие списки (вкладка «Чаты» правой колонки,
- * `appSearchSuper.ts:2219-2240`) берут его импортом. У нас экземпляр живёт с
- * колонкой (расхождение 1) — запущенный отдаёт этот геттер.
- */
-let startedManager: AppDialogsManager | undefined
-
-export function getAppDialogsManager(): AppDialogsManager {
-  if(!startedManager) {
-    throw new Error('appDialogsManager: the owner is not started (a list is built outside the column)')
-  }
-
-  return startedManager
-}
 
 /** tweb `FilterRendered` (`:500-511`) в портированном объёме: контейнер папки и его скроллер. */
 type FilterRendered = { id: number, container: HTMLElement, scrollable: Scrollable }
@@ -848,7 +814,8 @@ export class AppDialogsManager {
 
   private host: HTMLElement | undefined
   public chatsContainer!: HTMLElement
-  private hooks!: AppDialogsManagerHooks
+  /** tweb `:848` — менеджеры владельца (у tweb — `getProxiedManagers()`) */
+  public managers!: Managers
   private foldersOverlay!: HTMLElement
   private suggestionContainer: HTMLElement | undefined
   private disposeSuggestion: (() => void) | undefined
@@ -866,25 +833,43 @@ export class AppDialogsManager {
   /** расхождение 19; переживает `destroy()` — колонка задаёт его своим состоянием */
   private collapsed = false
 
-  /** Менеджеры колонки — их берут списки папок (у tweb — `rootScope.managers`). */
-  public get managers() {
-    return this.hooks.managers
+  /**
+   * tweb `:847-997`. Владелец списков, класс колонки слева (`:983`), справа
+   * (`:984`), ядро `appImManager` (`:988`) и срез `onStateLoaded` (`:997`) —
+   * в порядке оригинала, кроме одного: списки папок (`startDialogs`) строятся
+   * до `appImManager.construct` — его первый `onHashChange(true)` может открыть
+   * чат, и `peer_changed` подсвечивает строку уже построенного списка.
+   */
+  public start() {
+    const managers = getProxiedManagers()
+    this.startDialogs(managers)
+    appSidebarRight.construct(managers)
+    appImManager.construct(managers)
+    this.onStateLoaded(managers)
   }
 
-  public start(host: HTMLElement, chatsContainer: HTMLElement, hooks: AppDialogsManagerHooks) {
-    this.host = host
-    this.chatsContainer = chatsContainer
-    this.hooks = hooks
-    // eslint-disable-next-line typescript/no-this-alias -- синглтон tweb (`:3066`), ВРЕМЕННО до Э4-1
-    startedManager = this
+  /**
+   * Тело `start()` оригинала в части самого владельца: папки, ряд, класс колонки,
+   * автомат соединения, `peer_changed`. Тесты владельца зовут его напрямую —
+   * без соседей-синглтонов и сетевого старта (расхождение 1).
+   */
+  public startDialogs(managers: Managers) {
+    this.managers = managers
+    // tweb `:513` — `#chatlist-container` статичен в `index.html`
+    this.chatsContainer = document.getElementById('chatlist-container') as HTMLElement
 
-    this.contextMenu = new DialogsContextMenu(hooks.managers, this) // `:850`, расхождение 23
+    this.contextMenu = new DialogsContextMenu(managers, this) // `:850`, расхождение 23
+
+    // `:857-859`, `:974` — `bottomPart` с `#folders-container` внутри
+    const host = this.host = document.createElement('div')
+    host.classList.add('connection-status-bottom')
 
     const folders = useFolders()
     // `hydrateFilters` (`:1026-1035`) — до ряда, расхождение 8.
     folders.hydrate()
 
-    const container = document.createElement('div')
+    // tweb `index.html:102` — статичный узел; без него (тесты) владелец заводит свой
+    const container = document.getElementById('folders-container') ?? document.createElement('div')
     container.id = 'folders-container'
     container.classList.add('tabs-container')
     // Узлы ряда (`menu`, `menuScrollContainer`, `menuGradient`) приходят ref-ами
@@ -898,6 +883,7 @@ export class AppDialogsManager {
     }
 
     host.append(container)
+    this.chatsContainer.append(host)
 
     // Single absolute overlay sitting above the chatlist (#folders-container) that hosts every
     // panel currently rendered there: pending suggestion, folder tabs scrollable, gradient.
@@ -925,9 +911,7 @@ export class AppDialogsManager {
           )
           folders.onClick()?.(newIndex)
         },
-        verifyTouchTarget: () => {
-          return !this.hooks.isForumOpen()
-        },
+        // `verifyTouchTarget: () => !this.forumTab` (`:631-633`) — форум-таба нет (Б-3)
       })
     }
 
@@ -967,10 +951,10 @@ export class AppDialogsManager {
     this.foldersOverlay.append(...tabs.nodes)
 
     // `:983` — второй аргумент: экземпляр владельца, расхождение 2 шапки класса колонки
-    appSidebarLeft.construct(hooks.managers, this)
-    // `:990` — поле поиска колонки пока React (`inputSearch` класса, ВРЕМЕННО до 2-3)
+    appSidebarLeft.construct(managers, this)
+    // `:990`
     this.connectionStatus = new ConnectionStatusComponent()
-    this.connectionStatus.construct(hooks.managers, appSidebarLeft.inputSearch!)
+    this.connectionStatus.construct(managers, appSidebarLeft.inputSearch!)
 
     this.xd = this.xds.get(this.filterId)
 
@@ -985,9 +969,9 @@ export class AppDialogsManager {
     this.initListeners()
 
     // `peer_changed` (`:1176-1229`) — расхождение 22
-    this.disposePeerChanged = useNavigationStore.subscribe((state, prev) => {
-      if(state.selectedId !== prev.selectedId) this.onPeerChanged(this.getActivePeerId())
-    })
+    const onPeerChanged = ({ peerId }: { peerId: PeerId }) => this.onPeerChanged(peerId)
+    appImManager.addEventListener('peer_changed', onPeerChanged)
+    this.disposePeerChanged = () => appImManager.removeEventListener('peer_changed', onPeerChanged)
 
     // `:1384-1388` — плашка-подсказка (`renderPendingSuggestion`), расхождение 8
     this.suggestionContainer = document.createElement('div')
@@ -1001,7 +985,6 @@ export class AppDialogsManager {
     }
 
     const folders = useFolders()
-    if(startedManager === this) startedManager = undefined // ВРЕМЕННО до Э4-1
     this.middlewareHelper.clean()
     this.showFiltersPromise = undefined
     this.disposeListeners?.()
@@ -1037,13 +1020,49 @@ export class AppDialogsManager {
 
     this.foldersOverlay.remove()
     this.folders.container.remove()
-    this.host.style.removeProperty('--chatlist-overlay-height')
+    this.host.remove()
     this.chatsContainer.classList.remove('has-filters')
     useHasFolders()[1](false) // расхождение 12
     this.suggestionContainer = undefined
     this.host = undefined
 
     folders.dispose()
+  }
+
+  /**
+   * Срез `onStateLoaded` (`:997`, `:1014-1090`) вне папок (расхождение 8): первичные
+   * загрузки, realtime, бейдж, web-push — бывший `core/hooks/useAppBootstrap.ts`
+   * шелла. Под код-паролем сюда не доходим до разблокировки (`client/boot.ts`
+   * ждёт её ДО чтения State, tweb `index.ts:453`), поэтому всё стартует сразу.
+   */
+  private onStateLoaded(managers: Managers) {
+    // Префетч старта (`client/boot.ts`) одноразовый: данные аккаунта, под
+    // которым страница загрузилась. Без него — сеть под текущим токеном.
+    const prefetch = bootPrefetch() ?? undefined
+    void loadChats(managers, prefetch)
+    // На холодном старте список уже применён к зеркалу до первого кадра
+    // (`client/boot.ts::applyDialogsMirror`) — берём ПРОМИС его догона; без
+    // префетча это единственное место, которое подтягивает диалоги. `loadPresence`
+    // читает цели из зеркала, поэтому идёт после него; `.catch` — `refresh()`
+    // пробрасывает HttpError.
+    const dialogsReady = prefetch ? prefetch.dialogsReady : managers.dialogs.refresh()
+    void dialogsReady.catch(() => {}).then(() => loadPresence(managers)).catch(() => {})
+    void loadStories(managers)
+    void loadNotifySettings(managers)
+    void loadFolders(managers)
+    void loadPrivacy(managers)
+    void loadStars(managers)
+    void primeMediaToken() // cache the media token so media bubbles build URLs sync
+    // SW чистит медиакэш по TTL/лимиту при получении настроек (tweb clearOldCache)
+    watchCacheSettings()
+    startRealtime()
+    initAppBadge() // счётчик непрочитанных: title/favicon/PWA-бейдж
+    // Деградация присутствия по `expires` — порт интервала `appUsersManager.ts:68`
+    startPresenceDegradation()
+    // offline-уведомления (web push) следуют за настройкой (tweb uiNotificationsManager.ts:320-322)
+    watchPushConditions()
+    // Ассеты реакций — фоном, через 7.5 с после входа (tweb appReactionsManager.ts:88-115)
+    setTimeout(() => { void preloadReactionAssets(managers) }, REACTIONS_PRELOAD_DELAY)
   }
 
   private onRef(scrollableContext: ScrollableContextValue | undefined) {
@@ -1116,7 +1135,7 @@ export class AppDialogsManager {
       appSidebarLeft,
       AppChatFoldersTab,
       AppEditFolderTab,
-      managers: this.hooks.managers,
+      managers: this.managers,
       className: 'menu-horizontal-div-item',
       listenTo: this.folders.menu,
     }).destroy
@@ -1284,9 +1303,9 @@ export class AppDialogsManager {
     })
   }
 
-  /** tweb `:1127-1129`: у нас форум — состояние колонки (`// ВРЕМЕННО до 1-6`) */
+  /** tweb `:1127-1129` без `!!this.forumTab` — форум-таба нет (Б-3) */
   public isChatListNarrow() {
-    return this.hooks.isForumOpen() || appSidebarLeft.isCollapsed()
+    return appSidebarLeft.isCollapsed()
   }
 
   /** Контекст списка для строки (С1 раздела «СТРОКА ДИАЛОГА»): то, что оригинал читает у себя. */
@@ -1318,9 +1337,8 @@ export class AppDialogsManager {
 
   /**
    * tweb `peer_changed` (`:1176-1229`): прежние активные строки гаснут, строка
-   * нового чата подсвечивается. Источник — выбранный чат навигации
-   * (`navigationStore.selectedId`, мост чтения п. 1; у tweb — событие
-   * `appImManager`, этап 4): закрытый чат (`null`) гасит подсветку целиком.
+   * нового чата подсвечивается; закрытый чат (`peerId` 0) гасит подсветку целиком.
+   * Тред/тема у строки не сравниваются (`isSamePeer` с `threadId`) — расхождение 22.
    */
   private onPeerChanged(peerId: PeerId | undefined) {
     for(const element of this.lastActiveElements) {
@@ -1334,12 +1352,6 @@ export class AppDialogsManager {
     if(element) {
       this.setDialogActive(element, true)
     }
-  }
-
-  /** Выбранный чат (`peer_changed`) — `PeerId` или ничего */
-  private getActivePeerId() {
-    const selectedId = useNavigationStore.getState().selectedId
-    return selectedId ? +selectedId : undefined
   }
 
   /**
@@ -1361,7 +1373,7 @@ export class AppDialogsManager {
     void this.initDialog(ret, options)
 
     // С10: окна сохранённого диалога нет — его строка активной не бывает
-    if(!options.threadId && this.getActivePeerId() === options.peerId) {
+    if(!options.threadId && appImManager.chat?.peerId === options.peerId) {
       this.setDialogActive(ret.dom.listEl, true)
     }
 
@@ -1408,19 +1420,18 @@ export class AppDialogsManager {
   /**
    * Клик по строке главного списка — `setListClickListener` (`:2072-2346`) модуля
    * с поведением главного списка: строка форума открывает панель тем
-   * (`toggleForumTabByPeerId`, `:2206-2210`; `// ВРЕМЕННО до 1-6` — панель React),
-   * остальное — открыть чат; подсветку ставит `peer_changed`, а не клик.
+   * (`toggleForumTabByPeerId`, `:2206-2210` — бэклог Б-3, до него строка форума
+   * ничего не открывает), остальное — открыть чат; подсветку ставит `peer_changed`, а не клик.
    * `withContext` — меню диалога (`:2337-2339`, расхождение 23).
    */
   public setListClickListener({ list, withContext = false }: { list: HTMLElement, withContext?: boolean }) {
     setListClickListener({
       list,
-      managers: this.managers,
       openArchiveTab: () => this.openArchiveTab(),
       onFound: (elem) => {
         const peerId: PeerId = +elem.dataset.peerId!
         if(!elem.dataset.mid && isForum(cachedChat(peerId))) {
-          this.hooks.openForum(peerId)
+          // форум-таб (`toggleForumTabByPeerId`, `:2206-2210`) — бэклог Б-3
           return false
         }
       },
@@ -1593,22 +1604,20 @@ export function setDialogActiveStatus(listEl: HTMLElement, active: boolean) {
  *   8. `withContext` — меню диалога вешает метод владельца
  *      `setListClickListener` (расхождение 23), на выдачу поиска — задача 2-3; `withArchiveContext`/
  *      `openInner` — архив, задача 1-5;
- *   9. `appImManager.setPeer({peerId, lastMsgId, threadId, highlight})` →
- *      `core/navigation/openPeer.ts` + прыжок `core/messageLink.ts::requestMessageJump`
- *      для строки-сообщения (`data-mid`); `threadId`/`highlight` — С6, С7;
- *      менеджеры приходят опцией `managers` (у оригинала — синглтон).
+ *   9. `setPeerFunc({peerId, lastMsgId})` без `threadId`/`highlight` — С6, С7.
  */
 export function setListClickListener({
   list,
   onFound,
   autonomous = false,
-  managers,
+  openInner,
   openArchiveTab,
 }: {
   list: HTMLElement,
   onFound?: (target: HTMLElement) => void | boolean,
   autonomous?: boolean,
-  managers: OpenPeerManagers,
+  /** tweb `:2086` — открыть поверх стека (`setInnerPeer`), а не вместо (`setPeer`) */
+  openInner?: boolean,
   /** `appSidebarLeft.openArchiveTab` (`:2137-2141`) — у списка со строкой «Архив» (С1) */
   openArchiveTab?: () => void,
 }) {
@@ -1632,25 +1641,19 @@ export function setListClickListener({
     const lastMsgId = +elem.dataset.mid! || undefined
     const threadId = +elem.dataset.threadId! || undefined
 
-    // tweb `setPeerFunc({peerId, lastMsgId, threadId})` — прыжок ставится до
-    // открытия: лента потребляет `pendingJump`, когда чат откроется.
+    // tweb `setPeerFunc({peerId, lastMsgId, threadId})` (`:2094`, `:2153-2159`);
+    // прыжок к `lastMsgId` ставит инстанс чата до рендера ленты.
+    const setPeerFunc = (openInner ? appImManager.setInnerPeer : appImManager.setPeer).bind(appImManager)
     const openChat = () => {
-      if(lastMsgId) {
-        requestMessageJump(peerId, lastMsgId)
-      }
-
       // О-110 волна 7: окна сохранённого диалога (`setInnerPeer({peerId: myId, threadId})`
       // → `ChatType.Saved`, tweb `appImManager.ts:3400-3404`) у нас нет — строка
       // сохранённого диалога открывает чат самого источника
-      const openPeerId = threadId && peerId === rootScope.myId ? threadId : peerId
-      const peer = cachedPeer(openPeerId)
-      // ВРЕМЕННО до Э4-3: `appImManager.setPeer`/`setInnerPeer` (`:2094`) — `openPeer`
-      openPeer(managers, {
-        id: openPeerId,
-        title: getPeerTitle({ peerId: openPeerId, peer }),
-        username: peer?._ === 'user' ? peer.username : undefined,
-        photoId: getPeerPhotoId(getPeerPhoto(peer)) || undefined,
-      })
+      if(threadId && peerId === rootScope.myId) {
+        void setPeerFunc({ peerId: threadId })
+        return
+      }
+
+      void setPeerFunc({ peerId, lastMsgId })
     }
 
     if(onFound?.(elem) === false) {
@@ -2106,3 +2109,7 @@ export function addDialogNew(options: DialogElementOptions & { container?: HTMLE
 
   return d
 }
+
+const appDialogsManager = new AppDialogsManager()
+if(MOUNT_CLASS_TO) MOUNT_CLASS_TO.appDialogsManager = appDialogsManager
+export default appDialogsManager

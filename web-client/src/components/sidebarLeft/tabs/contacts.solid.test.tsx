@@ -19,20 +19,17 @@ import type { Managers } from '@/client/bootstrap'
 import rootScope from '@lib/rootScope'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import { useChatsStore } from '@stores/chatsStore'
-import { useNavigationStore } from '@stores/navigationStore'
+import appImManager from '@lib/appImManager'
 import { useSecretChatStore } from '@stores/secretChatStore'
 import { useSettingsStore } from '@/settings'
 import type { UserReal } from '@core/peers/peer'
 import type SidebarSlider from '@components/slider'
 import { AppContactsTab } from '@components/solidJsTabs/tabs'
-import { openPeer } from '@core/navigation/openPeer'
 import { glyph } from '@core/tgico-icons'
 import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
 
-vi.mock('@core/navigation/openPeer', async(importOriginal) => ({
-  ...await importOriginal<typeof import('@core/navigation/openPeer')>(),
-  openPeer: vi.fn(),
-}))
+let setPeer: ReturnType<typeof vi.spyOn>
+let setInnerPeer: ReturnType<typeof vi.spyOn>
 
 const NOW = Math.floor(Date.now() / 1000)
 const USERS: UserReal[] = [
@@ -52,6 +49,8 @@ let getContactsPeerIds: ReturnType<typeof vi.fn>
 let secretStart: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
+  setPeer = vi.spyOn(appImManager, 'setPeer').mockResolvedValue(undefined)
+  setInnerPeer = vi.spyOn(appImManager, 'setInnerPeer').mockResolvedValue(undefined)
   useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true }, contactsSortMode: 'online' })
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 420, height: 600 } as DOMRect)
   resetPeerMirror()
@@ -91,10 +90,8 @@ afterEach(async() => {
   await pause(400)
   document.body.replaceChildren()
   vi.restoreAllMocks()
-  vi.mocked(openPeer).mockClear()
   resetPeerMirror()
   useChatsStore.setState({ presence: {} })
-  useNavigationStore.setState({ selectedId: null, draftPeer: null })
   useSecretChatStore.setState({ byChat: {} })
   useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: false }, contactsSortMode: 'online' })
 })
@@ -193,8 +190,8 @@ describe('вкладка контактов — клик по строке', () 
 
     mousedown(row(tab, 11))
 
-    expect(openPeer).toHaveBeenCalledTimes(1)
-    expect(vi.mocked(openPeer).mock.calls[0][1]).toMatchObject({ id: 11, title: 'Boris', username: 'bob' })
+    expect(setPeer).toHaveBeenCalledTimes(1)
+    expect(setPeer).toHaveBeenCalledWith({ peerId: 11, lastMsgId: undefined })
     expect(close).not.toHaveBeenCalled()
     expect(tab.container.isConnected).toBe(true)
   })
@@ -206,9 +203,10 @@ describe('вкладка контактов — клик по строке', () 
     await settle()
 
     expect(secretStart).toHaveBeenCalledWith(12)
-    expect(openPeer).not.toHaveBeenCalled()
     expect(useSecretChatStore.getState().byChat[5012]?.status).toBe('awaiting')
-    expect(useNavigationStore.getState().selectedId).toBe('5012')
+    expect(setPeer).not.toHaveBeenCalled()
+    expect(setInnerPeer).toHaveBeenCalledTimes(1)
+    expect(setInnerPeer).toHaveBeenCalledWith({ peerId: 5012 })
   })
 })
 

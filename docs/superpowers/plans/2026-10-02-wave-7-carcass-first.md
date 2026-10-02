@@ -595,6 +595,8 @@ React-`GroupEditFlow`.
 | Б-42 | Добавление участников из профиля (0б-8; `AddMembersScreen.tsx`) | К-5 | `sidebarLeft/tabs/addMembers.tsx` (у нас Solid есть) | П-1 |
 | Б-43 | Статистика канала (0б-9; `ChannelStats.tsx`) | К-5 | `statistics.tsx` (1156) | П-1 |
 | Б-44 | Истории профиля (`PinnedStoriesSection.tsx`), QR из профиля (`QrModal`), проверка ключа секретного чата | К-5 | `sharedMedia.tsx` (истории), 2C-17, Отступление В7-2 | П-1 |
+| Б-45 | Ссылка «пропустить к чату» и имена ориентиров колонок (`attachSkipToContent`, `setLandmarkLabels`): ключей `AccDescr.SkipToConversation`/`ChatList`/`ChatInfo` в лангпаке нет | К-2 (не было) | `helpers/dom/appLandmarks.ts`, `appImManager.ts:349-352`, `:3199-3201` | П-4 |
+| Б-46 | Хэши страницы бэкенда `#@имя/<seq>` и `#<peerId>/<seq>` (кнопка публичной страницы, `public_page.go:40-41`) — `onHashChange` tweb принимает только `#@имя`, `#<peerId>`, `#/im?p=…&post=` | К-2 | `appImManager.ts:1912-2031` | П-4 (страница бэкенда → `#/im?p=@имя&post=<seq>`) |
 
 ### Пачки бэклога
 

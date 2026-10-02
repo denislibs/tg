@@ -114,7 +114,7 @@ function build(managers: SearchSuperManagers) {
 
   // пять групп владельца (`sidebarLeft/index.ts:1095-1103`)
   const group = (name: string | false, type: string, className?: string) => createSearchGroup({
-    name: name as LangPackKey | false, type, className, managers, middleware: groupsMiddleware.get(),
+    name: name as LangPackKey | false, type, className, middleware: groupsMiddleware.get(),
   })
   const groups: Groups = {
     contacts: group('SearchAllChatsShort', 'contacts'),

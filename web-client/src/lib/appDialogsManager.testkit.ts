@@ -26,7 +26,7 @@ import { initialState } from '@core/state/state'
 import { ALL_FOLDER_ID } from '@core/folderIds'
 import { fastRaf } from '@helpers/schedulers'
 import type { RawFolder } from '@core/managers/foldersManager'
-import { AppDialogsManager, type AppDialogsManagerHooks } from './appDialogsManager'
+import appDialogsManager, { type AppDialogsManager } from './appDialogsManager'
 import type { AppSidebarLeft } from '@components/sidebarLeft'
 import { installSidebarLeft } from '@/test/sidebarLeft'
 import type { Managers } from '@/client/bootstrap'
@@ -248,43 +248,42 @@ export type Mounted = {
   manager: AppDialogsManager
   host: HTMLDivElement
   chatsContainer: HTMLDivElement
-  hooks: Omit<AppDialogsManagerHooks, 'managers'> & { managers: ReturnType<typeof fakeManagers>; closeCalls: number }
+  hooks: { managers: ReturnType<typeof fakeManagers>; closeCalls: number }
   folders: HTMLElement
   /** класс колонки (`appSidebarLeft`), который конструирует `start()` (`:983`) */
   sidebar: AppSidebarLeft
 }
 
 /**
- * Колонка, какой её отдаёт `Sidebar.tsx`: разметка tweb `index.html:89-107`
- * с `#chatlist-container` и React-`.connection-status-bottom` — хостом
- * владельца — и класс колонки на ней (`start()` его конструирует). Переход
+ * Колонка: разметка tweb `index.html:89-107` с `#chatlist-container` и класс
+ * колонки на ней (`startDialogs()` его конструирует); `.connection-status-bottom`
+ * (`bottomPart`) заводит сам владелец. Переход
  * «закрыть всё внутри колонки» (`closeEverythingInsideNaturally`, `:1027`) —
  * дублёр класса: тестам владельца важен его ответ, а не закрытие вкладок.
  */
 export function mountOwner(options: {
   close?: () => boolean | Promise<boolean>
-  forumOpen?: () => boolean
   /** страницы владельца диалогов — у тестов списка свои (`autonomousDialogList/dialogs.test.ts`) */
   getDialogs?: (...args: never[]) => unknown
 } = {}): Mounted {
   const column = installSidebarLeft({} as Managers, undefined, { full: true })
   const { sidebar } = column
   const chatsContainer = column.chatlistContainer as HTMLDivElement
-  const host = column.host as HTMLDivElement
 
   const hooks = {
     closeCalls: 0,
-    isForumOpen: options.forumOpen ?? (() => false),
     managers: fakeManagers(options.getDialogs),
-    openForum: vi.fn(),
   }
   vi.spyOn(sidebar, 'closeEverythingInsideNaturally').mockImplementation(async () => {
     ++hooks.closeCalls
     return options.close ? options.close() : true
   })
 
-  const manager = new AppDialogsManager()
-  manager.start(host, chatsContainer, hooks as unknown as AppDialogsManagerHooks)
+  // `bottomPart` — узел владельца (tweb `:857-859`), разметке колонки его не нужно
+  column.host.remove()
+  const manager = appDialogsManager
+  manager.startDialogs(hooks.managers as unknown as Managers)
+  const host = chatsContainer.querySelector<HTMLDivElement>(':scope > .connection-status-bottom')!
   const folders = host.querySelector<HTMLElement>('#folders-container')!
   stubGeometry(folders)
   return { manager, host, chatsContainer, hooks, folders, sidebar }

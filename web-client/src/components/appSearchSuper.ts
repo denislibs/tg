@@ -263,7 +263,7 @@
 // 40. `loadSavedDialogs` (812502980 `:2214-2265`) — порт: `AutonomousSavedDialogList`
 //     (`autonomousDialogList/savedDialogs.ts`, задача 1-7 волны 7) +
 //     `SortedDialogList`. Отличия: владельца списков (`appDialogsManager`) класс
-//     берёт у запущенной колонки (`getAppDialogsManager`, ВРЕМЕННО до Э4-1);
+//     — синглтон модуля, как у tweb;
 //     набор приезжает ОДНИМ ответом (`chats.savedDialogs`), поэтому `side` не
 //     читается, а счётчик — число строк страницы, а не повторный
 //     `dialogsStorage.getDialogs` (расхождения 1, 8 списка); меню строки и
@@ -425,8 +425,7 @@ import { ANCHOR_ACTION_ATTRIBUTE, matchUrl } from '@lib/richtext/url'
 import setInnerHTML from '@helpers/dom/setInnerHTML'
 import SortedUserList from '@components/sortedUserList'
 import createParticipantContextMenu, { type Participant } from '@helpers/dom/createParticipantContextMenu'
-import { addDialogNew, DIALOG_LIST_ELEMENT_TAG, getAppDialogsManager, setLastMessageN, type DialogDom } from '@lib/appDialogsManager'
-import type { OpenPeerManagers } from '@core/navigation/openPeer'
+import appDialogsManager, { addDialogNew, DIALOG_LIST_ELEMENT_TAG, setLastMessageN, type DialogDom } from '@lib/appDialogsManager'
 import { ALL_FOLDER_ID } from '@core/folderIds'
 import { createSearchGroup, type SearchGroup, type SearchGroupType } from '@components/searchGroup.solid'
 import wrapSenderToPeer from '@components/wrappers/senderToPeer'
@@ -819,7 +818,7 @@ export type SearchSuperManagers = {
   // те же ручки, что просят `SavedDialogListManagers`/`StarGiftsProfileTabProps` у своих `managers`
   chats: Pick<Managers['chats'], 'savedDialogs'>
   stars: Pick<Managers['stars'], 'profileGifts'>
-  presence: OpenPeerManagers['presence']
+  presence: Pick<Managers['presence'], 'get'>
   // `appUsersManager.getContactsPeerIds` (tweb `:1365`)
   contacts: Pick<Managers['contacts'], 'getContactsPeerIds'>
   // `appUsersManager.searchContacts` — `contacts.search` (`:1423`, `:1978`)
@@ -1181,7 +1180,6 @@ export default class AppSearchSuper {
 
     this.searchGroupMedia = createSearchGroup({
       type: 'messages',
-      managers: this.managers,
       middleware: this.searchGroupMediaMiddleware.get(),
     })
 
@@ -2412,7 +2410,6 @@ export default class AppSearchSuper {
       return this._loadSavedDialogs()
     }
 
-    const appDialogsManager = getAppDialogsManager() // ВРЕМЕННО до Э4-1
     const xd = new AutonomousSavedDialogList({ appDialogsManager, managers: this.managers })
     xd.scrollable = this.scrollable
     xd.sortedList = new SortedDialogList({
@@ -2503,7 +2500,7 @@ export default class AppSearchSuper {
    */
   private async loadChannels({ mediaTab, middleware }: SearchSuperLoadTypeOptions) {
     if(this.searchContext.query) {
-      const group = createSearchGroup({ name: 'Channels', type: 'channels', middleware, managers: this.managers })
+      const group = createSearchGroup({ name: 'Channels', type: 'channels', middleware })
       group.setActive()
       group.nameEl.style.display = 'none'
 
@@ -2541,7 +2538,7 @@ export default class AppSearchSuper {
     const channelDialogs = cachedDialogs.filter((dialog) => isBroadcastPeer(dialog.peerId))
 
     if(channelDialogs.length) {
-      const group = createSearchGroup({ name: 'Chat.Search.JoinedChannels', type: 'channels', middleware, managers: this.managers })
+      const group = createSearchGroup({ name: 'Chat.Search.JoinedChannels', type: 'channels', middleware })
       group.setActive()
       mediaTab.itemsTab!.append(group.container)
 

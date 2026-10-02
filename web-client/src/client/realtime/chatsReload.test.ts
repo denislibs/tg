@@ -49,7 +49,7 @@ describe('единственный дебаунс /chats-рефетча (storePr
     // в refetchSubscriber.ts): без явного сброса кейс унаследовал бы висящий
     // таймер от предыдущего и первый триггер молча проглотился бы.
     __resetChatsReloadTimerForTests()
-    useChatsStore.setState({ dialogs: [], meId: 1, activePeerId: null })
+    useChatsStore.setState({ dialogs: [], meId: 1 })
   })
 
   afterEach(() => {

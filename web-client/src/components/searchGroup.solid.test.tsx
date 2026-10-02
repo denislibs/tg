@@ -18,21 +18,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getMiddleware } from '@helpers/middleware'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
-import { useNavigationStore } from '@stores/navigationStore'
+import appImManager from '@lib/appImManager'
 import { addDialogNew } from '@lib/appDialogsManager'
 import { createSearchGroup } from './searchGroup.solid'
 
 const GROUP: PeerId = -100
 const managers = { peers: { fillMirror: async () => {} }, presence: { get: async () => [] } }
+let setPeer: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
   resetPeerMirror()
   applyPeerOps([{ op: 'upsert', peers: [
     { _: 'channel', id: 100, title: 'Группа', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true } },
   ] }])
-  useNavigationStore.setState({ selectedId: null, draftPeer: null })
+  setPeer = vi.spyOn(appImManager, 'setPeer').mockResolvedValue(undefined)
 })
-afterEach(() => document.body.replaceChildren())
+afterEach(() => {
+  document.body.replaceChildren()
+  vi.restoreAllMocks()
+})
 
 const addRow = (list: HTMLElement) => addDialogNew({
   peerId: GROUP,
@@ -44,7 +48,7 @@ const addRow = (list: HTMLElement) => addDialogNew({
 
 describe('createSearchGroup: разметка (дамп 14-left-03b)', () => {
   it('секция search-group-<type> > search-group-inner > search-group-content > [заголовок, ul.chatlist]', () => {
-    const group = createSearchGroup({ name: 'Recent', type: 'contacts', className: 'search-group-recent', managers })
+    const group = createSearchGroup({ name: 'Recent', type: 'contacts', className: 'search-group-recent' })
     const { container } = group
     document.body.append(container)
 
@@ -66,7 +70,7 @@ describe('createSearchGroup: разметка (дамп 14-left-03b)', () => {
   })
 
   it('scrollableX: без заголовка, `search-group-with-scroll` и горизонтальный скроллер вокруг списка', () => {
-    const group = createSearchGroup({ name: false, type: 'contacts', className: 'search-group-people', scrollableX: true, autonomous: false, managers })
+    const group = createSearchGroup({ name: false, type: 'contacts', className: 'search-group-people', scrollableX: true, autonomous: false })
     const { container } = group
     expect(container.classList.contains('search-group-with-scroll')).toBe(true)
     expect(container.querySelector('.sidebar-left-section-name')).toBeNull()
@@ -82,14 +86,14 @@ describe('createSearchGroup: разметка (дамп 14-left-03b)', () => {
 
 describe('createSearchGroup: видимость', () => {
   it('создаётся скрытой; setActive() показывает', () => {
-    const group = createSearchGroup({ name: 'Recent', type: 'contacts', managers })
+    const group = createSearchGroup({ name: 'Recent', type: 'contacts' })
     expect(group.container.classList.contains('hide')).toBe(true)
     group.setActive()
     expect(group.container.classList.contains('hide')).toBe(false)
   })
 
   it('toggle() показывает группу со строками, а пустую прячет и ЧИСТИТ', () => {
-    const group = createSearchGroup({ name: 'Recent', type: 'contacts', managers })
+    const group = createSearchGroup({ name: 'Recent', type: 'contacts' })
     const row = addRow(group.list)
     group.toggle()
     expect(group.container.classList.contains('hide')).toBe(false)
@@ -108,7 +112,7 @@ describe('createSearchGroup: видимость', () => {
   })
 
   it('clear() сносит строки через dialogElement.remove() — их middleware гаснет; чужие узлы просто удаляются', () => {
-    const group = createSearchGroup({ name: 'Recent', type: 'contacts', managers })
+    const group = createSearchGroup({ name: 'Recent', type: 'contacts' })
     const row = addRow(group.list)
     const onClean = vi.fn()
     row.middlewareHelper!.get().onClean(onClean)
@@ -124,7 +128,7 @@ describe('createSearchGroup: видимость', () => {
   })
 
   it('clearable: false — строки переживают clear(), прячется только группа', () => {
-    const group = createSearchGroup({ name: 'Recent', type: 'contacts', clearable: false, managers })
+    const group = createSearchGroup({ name: 'Recent', type: 'contacts', clearable: false })
     addRow(group.list)
     group.setActive()
     group.clear()
@@ -134,7 +138,7 @@ describe('createSearchGroup: видимость', () => {
 
   it('после middleware.onClean корень Solid снят — сигналы больше не двигают DOM', () => {
     const helper = getMiddleware()
-    const group = createSearchGroup({ name: 'Recent', type: 'contacts', middleware: helper.get(), managers })
+    const group = createSearchGroup({ name: 'Recent', type: 'contacts', middleware: helper.get() })
     helper.destroy()
     group.setActive()
     expect(group.container.classList.contains('hide')).toBe(true)
@@ -143,7 +147,7 @@ describe('createSearchGroup: видимость', () => {
 
 describe('createSearchGroup: правый слот заголовка', () => {
   it('needShowMoreButton ставит класс-обрезку и «show more»; клик снимает класс и пишет «show less»', () => {
-    const group = createSearchGroup({ name: 'Recent', type: 'contacts', managers })
+    const group = createSearchGroup({ name: 'Recent', type: 'contacts' })
     group.needShowMoreButton('is-short')
     const { container } = group
     // клик Solid делегирован на document — группа должна быть в документе
@@ -163,13 +167,13 @@ describe('createSearchGroup: правый слот заголовка', () => {
   })
 
   it('по умолчанию обрезка — is-short-5 (tweb :163)', () => {
-    const group = createSearchGroup({ name: 'Recent', type: 'contacts', managers })
+    const group = createSearchGroup({ name: 'Recent', type: 'contacts' })
     group.needShowMoreButton()
     expect(group.container.classList.contains('is-short-5')).toBe(true)
   })
 
   it('setNameRight кладёт узел в заголовок и вешает клик', () => {
-    const group = createSearchGroup({ name: 'Recent', type: 'contacts', managers })
+    const group = createSearchGroup({ name: 'Recent', type: 'contacts' })
     document.body.append(group.container)
     const onClick = vi.fn()
     const children = document.createElement('b')
@@ -185,22 +189,22 @@ describe('createSearchGroup: правый слот заголовка', () => {
 describe('createSearchGroup: клик по строке', () => {
   it('clickable (по умолчанию) — строка открывает пира и зовёт onFound', () => {
     const onFound = vi.fn()
-    const group = createSearchGroup({ name: 'Recent', type: 'contacts', onFound, managers })
+    const group = createSearchGroup({ name: 'Recent', type: 'contacts', onFound })
     document.body.append(group.container)
     const row = addRow(group.list)
 
     row.container.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }))
 
     expect(onFound).toHaveBeenCalledWith(row.container)
-    expect(useNavigationStore.getState().selectedId).toBe(String(GROUP))
+    expect(setPeer).toHaveBeenCalledWith({ peerId: GROUP, lastMsgId: undefined })
     expect(group.list.dataset.autonomous).toBe('1')
   })
 
   it('clickable: false — список без обработчика', () => {
-    const group = createSearchGroup({ name: 'Recent', type: 'contacts', clickable: false, managers })
+    const group = createSearchGroup({ name: 'Recent', type: 'contacts', clickable: false })
     document.body.append(group.container)
     const row = addRow(group.list)
     row.container.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }))
-    expect(useNavigationStore.getState().selectedId).toBeNull()
+    expect(setPeer).not.toHaveBeenCalled()
   })
 })

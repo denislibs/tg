@@ -28,7 +28,7 @@ import type { SavedDialog } from '@core/managers/chatsManager'
 import type { LangPackKey } from '@lib/langPack'
 import rootScope from '@lib/rootScope'
 import { useChatsStore } from '@stores/chatsStore'
-import { useNavigationStore } from '@stores/navigationStore'
+import appImManager from '@lib/appImManager'
 
 vi.mock('@/client/bootstrap', () => ({
   startClient: () => ({ managers: { peers: { fillMirror: async () => {} } } }),
@@ -101,7 +101,6 @@ beforeEach(() => {
   resetPeerMirror()
   rootScope.myId = ME
   useChatsStore.setState({ meId: ME, dialogs: [], loaded: true })
-  useNavigationStore.setState({ selectedId: null, draftPeer: null })
   applyPeerOps([{ op: 'upsert', peers: [user(ME, 'Я'), user(100, 'Алиса'), user(102, 'Борис')] }])
   vi.stubGlobal('ResizeObserver', FakeResizeObserver)
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function(this: HTMLElement) {
@@ -188,8 +187,8 @@ describe('AppSearchSuper: «Чаты» у «Избранного» — стро�
     expect(r.map((el) => +el.dataset.threadId!).slice(0, 3)).toEqual([100, -101, 102])
   })
 
-  it('клик открывает чат источника (О-110: окна сохранённого диалога нет); «Мои заметки» не открывает ничего', async() => {
-    // у Алисы диалог есть — открывается он; у Бориса нет — черновик с именем из карточки
+  it('клик открывает чат источника (О-110: окна сохранённого диалога нет); «Мои заметки» — «Избранное»', async() => {
+    const setPeer = vi.spyOn(appImManager, 'setPeer').mockResolvedValue(undefined)
     useChatsStore.setState({ dialogs: [makeDialog({ peerId: 100 })] })
     const { managers } = fakeBackend([saved(100, 0), saved(102, 1), saved(ME, 2)])
     const { searchSuper } = build(managers)
@@ -198,19 +197,18 @@ describe('AppSearchSuper: «Чаты» у «Избранного» — стро�
     const [alice, boris, notes] = rows(searchSuper)
 
     press(alice)
-    expect(useNavigationStore.getState().selectedId).toBe('100')
+    expect(setPeer).toHaveBeenLastCalledWith({ peerId: 100 })
 
     press(boris)
-    expect(useNavigationStore.getState().selectedId).toBe('draft:102')
-    expect(useNavigationStore.getState().draftPeer).toMatchObject({ id: 102, title: 'Борис' })
+    expect(setPeer).toHaveBeenLastCalledWith({ peerId: 102 })
 
-    useNavigationStore.setState({ selectedId: null, draftPeer: null })
+    // tweb `setPeer({peerId: myId})` — «Избранное»
     press(notes)
-    expect(useNavigationStore.getState().selectedId).toBe(null)
+    expect(setPeer).toHaveBeenLastCalledWith({ peerId: ME })
   })
 
   it('открытое «Избранное» не подсвечивает строки сохранённых диалогов (С10)', async() => {
-    useNavigationStore.setState({ selectedId: '' + ME })
+    vi.spyOn(appImManager, 'chat', 'get').mockReturnValue({ peerId: ME } as typeof appImManager.chat)
     const { managers } = fakeBackend([saved(100, 0)])
     const { searchSuper } = build(managers)
 

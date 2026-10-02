@@ -48,8 +48,7 @@
  *     `withIcons` (значки верификации/премиума) у нашего `PeerTitle` нет.
  *  8. Вызовы `appImManager` — до его порта (этап 4/5 волны 7): перезвон —
  *     наш движок звонков (ВРЕМЕННО до 5-5), «Показать в чате» —
- *     `requestMessageJump` + `openPeer`, тот же мост, что у строки чатлиста
- *     (`components/dialogRow.ts:361-373`), удаление — vanilla-попап
+ *     `appImManager.setInnerPeer({peerId, lastMsgId})`, удаление — vanilla-попап
  *     `openDeleteMessageDialog` (ВРЕМЕННО до 2C-8).
  *  9. Отступление В7-6: кнопка перезвона есть и в Firefox — `IS_CALL_SUPPORTED`
  *     у нас отвечает за НАШ движок звонков (`RTCPeerConnection` +
@@ -76,11 +75,10 @@ import { logger } from '@lib/logger'
 import rootScope from '@lib/rootScope'
 import { startOutgoing } from '@core/calls/callEngine'
 import { gradientFor } from '@core/dialogToChat'
-import { requestMessageJump } from '@core/messageLink'
-import { openPeer } from '@core/navigation/openPeer'
-import { cachedPeer, cachedUser, peerTitle } from '@core/peerCache'
-import { getPeerTitle, getUserTitle } from '@core/peers/getPeerTitle'
-import { getPeerPhoto, getPeerPhotoId } from '@core/peers/peer'
+import appImManager from '@lib/appImManager'
+import { cachedUser, peerTitle } from '@core/peerCache'
+import { getUserTitle } from '@core/peers/getPeerTitle'
+import { getPeerPhotoId } from '@core/peers/peer'
 import { isUser } from '@core/peers/peerId'
 import type { Managers } from '@/client/bootstrap'
 import type SidebarSlider from '@components/slider'
@@ -180,14 +178,7 @@ function CallRow(props: {
     // tweb `appImManager.setInnerPeer({peerId, lastMsgId})` (:111-116) —
     // прыжок ставится ДО открытия, лента потребляет его, когда чат откроется.
     const { peerId, mids } = props.group
-    requestMessageJump(peerId, mids[0])
-    const peer = cachedPeer(peerId)
-    openPeer(managers, {
-      id: peerId,
-      title: getPeerTitle({ peerId, peer }),
-      username: peer?._ === 'user' ? peer.username : undefined,
-      photoId: getPeerPhotoId(getPeerPhoto(peer)) || undefined,
-    })
+    void appImManager.setInnerPeer({ peerId, lastMsgId: mids[0] })
   }
 
   // Отступление В7-6: флаг — поддержка НАШЕГО движка звонков, без UA-гейта

@@ -29,9 +29,7 @@
  *     `AppSharedMediaTab`. `replaceSharedMediaTab` зовёт `Chat.tsx`, когда
  *     инстанс становится активным (порт смысла `chat.ts:1239-1242`,
  *     `appImManager.ts:3277`) — ВРЕМЕННО до Э6.
- *  3. ВРЕМЕННО до Э4-2. `appImManager.selectTab(active ? CHAT : PROFILE,
- *     animate)` (`:125`) — класса нет, строка зовёт срез его тела
- *     `selectProfileTab` (`core/navigation/chatHistory.ts`).
+ *  3. (снято К-2: `appImManager.selectTab(active ? CHAT : PROFILE, animate)`, `:125`.)
  *  4. `sharedMediaTab` объявлен необязательным (строгие типы: до первого
  *     `replaceSharedMediaTab` его нет и у оригинала); `toggleSidebar` обращается
  *     к нему с `!` — там, где оригинал обращается напрямую.
@@ -46,7 +44,7 @@ import rootScope from '@lib/rootScope'
 import { installColumnWidthsUpdater } from '@core/dom/updateColumnWidths'
 import installColumnResize from '@core/dom/installColumnResize'
 import animationIntersector from '@components/animationIntersector'
-import { selectProfileTab } from '@core/navigation/chatHistory'
+import appImManager, { APP_TABS } from '@lib/appImManager'
 
 export const RIGHT_COLUMN_ACTIVE_CLASSNAME = 'is-right-column-shown'
 
@@ -162,7 +160,7 @@ export class AppSidebarRight extends SidebarSlider {
       void this.sharedMediaTab!.open()
     }
 
-    const animationPromise = selectProfileTab(animate) // ВРЕМЕННО до Э4-2 — appImManager.selectTab(active ? APP_TABS.CHAT : APP_TABS.PROFILE, animate)
+    const animationPromise = appImManager.selectTab(active ? APP_TABS.CHAT : APP_TABS.PROFILE, animate)
     if(!enable) this.hide()
     else {
       document.body.classList.add(RIGHT_COLUMN_ACTIVE_CLASSNAME)

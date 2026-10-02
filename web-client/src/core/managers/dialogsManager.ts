@@ -1427,11 +1427,10 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       // бейдж не бампит.
       //
       // Отступление от прежнего main-кода (chatsStore.applyNewMessage): там ещё
-      // проверялся `activePeerId`, чтобы не бампить бейдж для открытого на ЭТОЙ
-      // вкладке чата. Воркер общий на все вкладки и какая из них что смотрит —
-      // не знает; `activePeerId` — эфемерика, остаётся на main (докблок
-      // ChatsState.activePeerId, спека docs/superpowers/specs/2026-08-12-
-      // dialogs-ownership-and-virtual-list-design.md, «Что остаётся на main»).
+      // проверялся открытый на ЭТОЙ вкладке чат, чтобы не бампить ему бейдж.
+      // Воркер общий на все вкладки и какая из них что смотрит — не знает;
+      // открытый чат — `appImManager.chat` вкладки (спека docs/superpowers/specs/
+      // 2026-08-12-dialogs-ownership-and-virtual-list-design.md, «Что остаётся на main»).
       // Блип бейджа для открытого чата гасит немедленный markRead активной вкладки.
       const incoming = m.fromId !== meId
       const nextUnread = incoming ? cur.unread_count + 1 : cur.unread_count

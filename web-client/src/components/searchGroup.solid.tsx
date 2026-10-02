@@ -15,9 +15,7 @@
  * (группы `contacts`, `messages`, `people`, `recent`).
  *
  * Расхождения с оригиналом:
- *  1. `managers` — обязательная опция: клик по строке открывает пира через
- *     `core/navigation/openPeer.ts`, которому нужен срез менеджеров (присутствие
- *     для черновика); у оригинала `setListClickListener` берёт синглтоны.
+ *  1. (снято К-2: клик по строке — `appImManager.setInnerPeer`, менеджеры не нужны.)
  *  2. `name` — `LangPackKey | false` (у оригинала `LangPackKey | boolean`):
  *     `true` не передаёт ни один вызывающий, а наш `Section` булев заголовок
  *     не принимает.
@@ -33,7 +31,6 @@ import { createMemo, createRoot, createSignal, Show, type JSX } from 'solid-js'
 import { i18n, type LangPackKey } from '@lib/langPack'
 import classNames from '@helpers/string/classNames'
 import type { Middleware } from '@helpers/middleware'
-import type { OpenPeerManagers } from '@core/navigation/openPeer'
 import Section from '@components/section.solid'
 import Scrollable from '@components/scrollable2.solid'
 import { createChatList, setListClickListener, type DialogListElement } from '@lib/appDialogsManager'
@@ -60,7 +57,6 @@ export function createSearchGroup(options: {
   noIcons?: boolean,
   middleware?: Middleware,
   scrollableX?: boolean,
-  managers: OpenPeerManagers,
 }) {
   const {
     name,
@@ -73,7 +69,6 @@ export function createSearchGroup(options: {
     noIcons,
     middleware,
     scrollableX,
-    managers,
   } = options
 
   const NameRight = (props: NameRightProps) => {
@@ -158,7 +153,6 @@ export function createSearchGroup(options: {
       list,
       onFound,
       autonomous,
-      managers,
     })
   }
 

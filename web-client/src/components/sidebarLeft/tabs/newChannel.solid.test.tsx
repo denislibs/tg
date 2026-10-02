@@ -9,7 +9,7 @@
  * как у `appSidebarLeft`); поля — настоящие `InputField`, выбор подписчиков —
  * настоящие `AppAddMembersTab` + `AppSelectPeers`, подтверждение — настоящий
  * `PopupPeer`. Стабы — только границы: менеджеры воркера, открытие чата
- * (`openPeer`, до Э4-3), выбор файла и его ужатие (DOM-диалог и
+ * (`appImManager.setInnerPeer`), выбор файла и его ужатие (DOM-диалог и
  * `createImageBitmap` у happy-dom не работают) и геометрия.
  *
  * Предмет — сценарии tweb (задача 0а-3 плана волны 7): (а) название
@@ -18,6 +18,7 @@
  * закрывает его, выбор — приглашает; (г) владелец снимает остров.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import appImManager from '@lib/appImManager'
 import type { Managers } from '@/client/bootstrap'
 import rootScope from '@lib/rootScope'
 import lottieLoader from '@lib/lottie/lottieLoader'
@@ -29,8 +30,7 @@ import SidebarSlider from '@components/slider'
 import AvatarEdit from '@components/avatarEdit'
 import { AppAddMembersTab, AppNewChannelTab } from '@components/solidJsTabs/tabs'
 
-const openPeer = vi.hoisted(() => vi.fn())
-vi.mock('@core/navigation/openPeer', () => ({ openPeer }))
+const openPeer = vi.fn()
 
 const pickedFile = vi.hoisted(() => ({ current: null as File | null }))
 vi.mock('@helpers/files/requestFile', () => ({
@@ -70,6 +70,7 @@ beforeEach(() => {
   // (`saveApiPeers`), а `addChatUsers` читает `isBroadcast` синхронно
   applyPeerOps([{ op: 'upsert', peers: CARDS }])
   openPeer.mockClear()
+  vi.spyOn(appImManager, 'setInnerPeer').mockImplementation(async(options) => { openPeer(options) })
   pickedFile.current = null
 
   createChannel = vi.fn(async() => CHANNEL)
@@ -254,7 +255,7 @@ describe('(в) после создания — канал и выбор подп
     const { tab, members } = await create()
 
     expect(openPeer).toHaveBeenCalledTimes(1)
-    expect(openPeer.mock.calls[0][1]).toEqual({ id: CHANNEL, title: 'Chan' })
+    expect(openPeer).toHaveBeenCalledWith({ peerId: CHANNEL })
     // диалог канала перезапрошен (О-44: ответ создания диалога не несёт)
     expect(refresh).toHaveBeenCalledTimes(1)
 

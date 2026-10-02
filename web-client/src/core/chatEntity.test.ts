@@ -8,62 +8,25 @@
 // имён нет вовсе: пир без диалога открывается тем же `setInnerPeer({peerId})`
 // (tweb appImManager.ts:3392), `chat.peerId` — число.
 //
-// Путь в тесте — настоящий: строка поиска (`addDialogNew` +
-// `setListClickListener`, ровно то, что вешает `createSearchGroup`) →
-// `openPeer` → стек → резолв сущности для инстанса, как его делает `App.tsx`.
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { getMiddleware } from '@helpers/middleware'
+// Резолв — тот, что делает остров инстанса чата (`components/chat/reactChatInstance.ts`):
+// пир, открытый `appImManager.setInnerPeer({peerId})`, + список диалогов.
+import { beforeEach, describe, expect, it } from 'vitest'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
-import { useNavigationStore } from '@stores/navigationStore'
-import { useChatStackStore, selectActive } from '@stores/chatStackStore'
-import { useChatsStore } from '@stores/chatsStore'
-import { addDialogNew, createChatList, setListClickListener } from '@lib/appDialogsManager'
 import type { Chat } from '@/data'
 import { chatPeerId, isDialogChat, resolveChatEntity } from './chatEntity'
 
-const ME: PeerId = 1
 const ALICE: PeerId = 777001
-
-const managers = { peers: { fillMirror: async () => {} }, presence: { get: async () => [] } }
 
 beforeEach(() => {
   resetPeerMirror()
   applyPeerOps([{ op: 'upsert', peers: [
     { _: 'user', id: ALICE, first_name: 'Алиса', last_name: 'Иванова', username: 'alice_ivanova', pFlags: {} },
   ] }])
-  useChatsStore.setState({ meId: ME, dialogs: [] })
-  useNavigationStore.setState({ selectedId: null, draftPeer: null })
-  useChatStackStore.setState({ stack: [] }, false)
 })
-afterEach(() => document.body.replaceChildren())
-
-/** Клик по строке результата глобального поиска (у нового аккаунта диалогов нет). */
-function clickSearchResult(peerId: PeerId) {
-  const list = createChatList()
-  document.body.append(list)
-  const row = addDialogNew({
-    peerId,
-    container: list,
-    avatarSize: 'abitbigger',
-    wrapOptions: { middleware: getMiddleware().get() },
-    managers,
-  })
-  setListClickListener({ list, autonomous: true, managers })
-  row.container.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }))
-}
-
-/** Сущность верхнего инстанса стека — то, что `App.tsx` отдаёт `<Chat>`. */
-function openedChat(chatList: Chat[] = []): Chat {
-  const desc = selectActive(useChatStackStore.getState())
-  expect(desc).toBeDefined()
-  return resolveChatEntity(desc!, chatList, useNavigationStore.getState().draftPeer)
-}
 
 describe('чат с пиром без диалога: ключ сущности — число', () => {
-  it('результат глобального поиска без диалога открывается сущностью с ключом пира, а не NaN', () => {
-    clickSearchResult(ALICE)
-
-    const chat = openedChat()
+  it('человек без диалога открывается сущностью с ключом пира из карточки зеркала, а не NaN', () => {
+    const chat = resolveChatEntity({ peerId: ALICE }, [])
     // Все дети колонки берут ключ так: лента (`VanillaFeed peerId`), профиль
     // (`/users/{id}/gifts`, `/chats/{id}/search_counters`), шапка.
     expect(Number(chat.id)).toBe(ALICE)
@@ -76,11 +39,10 @@ describe('чат с пиром без диалога: ключ сущности 
   })
 
   it('диалог появился (первое сообщение) — тот же ключ, уже диалоговая сущность', () => {
-    clickSearchResult(ALICE)
-    const draft = openedChat()
+    const draft = resolveChatEntity({ peerId: ALICE }, [])
 
     const dialog: Chat = { id: String(ALICE), name: 'Алиса Иванова', avatar: '', preview: 'привет', type: 'private' }
-    const real = openedChat([dialog])
+    const real = resolveChatEntity({ peerId: ALICE }, [dialog])
 
     expect(real).toBe(dialog)
     expect(chatPeerId(real)).toBe(chatPeerId(draft))

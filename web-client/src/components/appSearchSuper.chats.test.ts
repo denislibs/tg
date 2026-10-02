@@ -87,7 +87,7 @@ function build(managers: SearchSuperManagers, { createPlaceholder }: { createPla
   // пять групп, как у владельца (`sidebarLeft/index.ts:1095-1103`); здесь
   // проверяется только `messages`
   const group = (name: string | false, type: string, className?: string) => createSearchGroup({
-    name: name as LangPackKey | false, type, className, managers, middleware: groupsMiddleware.get(),
+    name: name as LangPackKey | false, type, className, middleware: groupsMiddleware.get(),
   })
   const messages = group('SearchMessages', 'messages')
   messages.createPlaceholder = createPlaceholder

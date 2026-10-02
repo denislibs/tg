@@ -39,8 +39,8 @@
  *  • `showStickersPopup` (`:205-206`) → React `openStickerSetModal` — ВРЕМЕННО
  *    до 2C-15 (порт `popups/stickers.solid.tsx`). Полный набор перед попапом не
  *    запрашиваем: попап грузит его сам по адресу.
- *  • `appImManager.chat` — мост `emoticonsSearchBridge` (ВРЕМЕННО до Э4-3,
- *    шапка моста); его ставит активный инстанс `Chat.tsx`.
+ *  • `appImManager.chat.input` — то, что отдаёт React-остров инстанса чата
+ *    (`components/chat/reactChatInstance.ts`, ВРЕМЕННО до К-3).
  */
 import { onCleanup, onMount, type Component } from 'solid-js'
 import animationIntersector from '@components/animationIntersector'
@@ -60,7 +60,7 @@ import { i18n } from '@lib/langPack'
 import wrapEmojiText from '@lib/richtext/wrapEmojiText'
 import appSidebarRight from '@components/sidebarRight'
 import attachStickerViewerListeners from '@components/stickerViewer'
-import { appImManager } from './emoticonsSearchBridge' // ВРЕМЕННО до Э4-3
+import appImManager from '@lib/appImManager'
 
 const ANIMATION_GROUP = 'STICKERS-SEARCH'
 
@@ -236,10 +236,11 @@ const Stickers: Component = () => {
       const sticker = findUpClassName(e.target as HTMLElement, 'sticker-set-sticker')
       // With no chat to send to — the tab opened from the empty column's Stickers tip — a sticker
       // falls through to its own set below, which opens the pack.
-      if(sticker && appImManager.chat?.peerId) {
+      const input = appImManager.chat?.peerId ? appImManager.chat.input : undefined
+      if(sticker && input) {
         const doc = renderedDocs.get(sticker.dataset.docId!)
         if(doc) {
-          void appImManager.chat.input.sendMessageWithDocument({ document: doc, target: sticker })
+          void input.sendMessageWithDocument({ document: doc, target: sticker })
         }
         return
       }
@@ -268,8 +269,8 @@ const Stickers: Component = () => {
         })
       } else {
         // ВРЕМЕННО до 2C-15: `showStickersPopup(getStickerSetInputByStickerSet(full.set))`
-        const chat = appImManager.chat
-        const onPick = chat ? (doc: Sticker) => { void chat.input.sendMessageWithDocument({ document: doc }) } : undefined
+        const input = appImManager.chat?.input
+        const onPick = input ? (doc: Sticker) => { void input.sendMessageWithDocument({ document: doc }) } : undefined
         void import('@components/stickers/StickerSetModal').then((m) => { m.openStickerSetModal({ id: set.id }, onPick) })
       }
     }, { listenerSetter: tab.listenerSetter })
