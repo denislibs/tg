@@ -159,7 +159,7 @@ func (m MessageEmpty) Tag() string { return m.Underscore }
 // MessageFlags — булевы флаги message в форме, удобной для вызова: в pFlags
 // попадают только выставленные. Перечислены ровно те, у которых есть предмет.
 //
-//	Mentioned   — сообщение упоминает зрителя (mentionedUserIDs + журнал
+//	Mentioned   — сообщение упоминает зрителя (mentionedUsers + журнал
 //	              непрочитанных упоминаний, ручка /mentions/next)
 //	MediaUnread — голосовое/кружок ещё не прослушан получателем (messages.media_unread)
 //	Post        — сообщение в вещательном канале. Сегодня этот же факт выражает

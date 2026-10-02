@@ -70,6 +70,10 @@ type ChatRepo interface {
 	// возвращает оставшееся число. NextMention — НОМЕР ближайшего
 	// непрочитанного упоминания с seq>afterSeq (domain.ErrNotFound, если нет).
 	AddMention(ctx context.Context, chatID, msgID, seq, userID int64) error
+	// MemberIDsByUsernames — участники чата с этими именами (@username, без
+	// учёта регистра). Имя чата/канала из общего пространства имён (миграция
+	// 0134) пользователем не резолвится, не-участник в ответ не попадает.
+	MemberIDsByUsernames(ctx context.Context, chatID int64, usernames []string) ([]int64, error)
 	ClearMentions(ctx context.Context, chatID, userID, uptoSeq int64) (remaining int, err error)
 	NextMention(ctx context.Context, chatID, userID, afterSeq int64) (seq int64, err error)
 	// Непрочитанные реакции (Telegram unread_reactions_count). IncUnreadReactions

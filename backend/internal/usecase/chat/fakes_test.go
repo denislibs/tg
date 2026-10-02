@@ -66,6 +66,7 @@ type store struct {
 	pins      map[int64][]int64              // chatID -> pinned msgIDs (newest first)
 	viewed    map[int64]map[int64]bool       // msgID -> userID -> viewed (channel view dedup)
 	mentions  []mentionRow                   // message_mentions rows
+	usernames map[int64]string               // userID -> users.username (seedUsername)
 	readMarks map[int64]map[int64][]readMark // chatID -> userID -> история горизонта чтения
 
 	// discussionChat — channelID -> текущая привязанная группа обсуждения
@@ -104,6 +105,16 @@ func newStore() *store {
 		updates:        map[int64][]domain.UpdateRecord{},
 		discussionChat: map[int64]int64{},
 	}
+}
+
+// seedUsername задаёт пользователю @username (users.username в реальной БД).
+func (s *store) seedUsername(userID int64, username string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.usernames == nil {
+		s.usernames = map[int64]string{}
+	}
+	s.usernames[userID] = username
 }
 
 // seedDiscussion привязывает к каналу группу обсуждения (эквивалент
@@ -412,6 +423,21 @@ func (r fakeChats) AddMention(_ context.Context, chatID, msgID, seq, userID int6
 		m.mentions++
 	}
 	return nil
+}
+
+func (r fakeChats) MemberIDsByUsernames(_ context.Context, chatID int64, usernames []string) ([]int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var ids []int64
+	for uid := range r.s.members[chatID] {
+		for _, n := range usernames {
+			if u := r.s.usernames[uid]; u != "" && strings.EqualFold(u, n) {
+				ids = append(ids, uid)
+				break
+			}
+		}
+	}
+	return ids, nil
 }
 
 func (r fakeChats) ClearMentions(_ context.Context, chatID, userID, uptoSeq int64) (int, error) {
