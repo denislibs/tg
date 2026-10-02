@@ -14,6 +14,9 @@ import type { MessagesManager } from './messagesManager'
 import type { Chat } from '../peers/peer'
 import type { PeerNotifySettings } from '../dialogs/notifySettings'
 import { isPeerMuted } from '../dialogs/notifySettings'
+import { publicLinkFromTelegramPath } from '../publicLink'
+import { toPeerId } from '../peers/peerId'
+import tsNow from '@helpers/tsNow'
 
 /** Участник чата: наша роль + статус присутствия (объединение `UserStatus`). */
 export interface ChatMember { userId: number; role: string; status?: UserStatus }
@@ -164,6 +167,31 @@ export interface ChatInviteExported {
 export interface MessagesExportedChatInvite { _: 'messages.exportedChatInvite'; invite: ChatInviteExported }
 export interface MessagesExportedChatInvites { _: 'messages.exportedChatInvites'; count: number; invites: ChatInviteExported[] }
 
+/**
+ * Хеш ссылки-приглашения — хвост её адреса. Сервер отдаёт путь диплинка
+ * клиента (`/join/<хеш>`), а ссылка в форме оригинала — публичная
+ * `t.me/+<хеш>` (`toPublicInvite`); хеш один и тот же в обеих.
+ */
+export const inviteHash = (link: string): string => link.slice(link.lastIndexOf('/') + 1).replace(/^\+/, '')
+
+/**
+ * Ссылка в форме оригинала: `link` — полный публичный адрес, как
+ * `chatInviteExported.link` у tweb (`https://t.me/+<хеш>`). У нас хост
+ * публичных ссылок свой (`core/publicLink.ts`, страница `/+{hash}` рендерит
+ * бэкенд, `public_page.go`), путь — 1:1 с t.me.
+ */
+const toPublicInvite = (l: ChatInviteExported): ChatInviteExported => ({
+  ...l,
+  link: publicLinkFromTelegramPath('+' + inviteHash(l.link)),
+})
+
+/** Ключ пира чата: ручки адресуют чат знаковым ключом, tweb — положительным `chatId`. */
+const chatPeerId = (chatId: ChatId) => toPeerId(chatId as number, true)
+
+/** Срок ссылки на проводе — ОТНОСИТЕЛЬНЫЙ (`expire_seconds` от «сейчас», 0 — бессрочно),
+ *  у оригинала — абсолютный `expire_date` (0 — бессрочно). */
+const toExpireSeconds = (expireDate?: number) => expireDate ? Math.max(1, expireDate - tsNow(true)) : 0
+
 /** `chatInviteImporter` — вошедший ИЛИ ждущий одобрения: разницу выражает
  *  `pFlags.requested`, а не два разных списка. */
 export interface ChatInviteImporter {
@@ -181,9 +209,10 @@ export interface MessagesChatInviteImporters {
 }
 
 const mapInvite = (l: ChatInviteExported): InviteLink => ({
-  // Токен — хвост адреса, а не отдельное поле провода.
-  token: l.link.slice(l.link.lastIndexOf('/') + 1),
-  url: l.link,
+  // Токен — хвост адреса, а не отдельное поле провода; `url` — путь диплинка
+  // клиента, как его отдаёт сервер (читатели приклеивают к нему `origin`).
+  token: inviteHash(l.link),
+  url: '/join/' + inviteHash(l.link),
   uses: l.usage ?? 0,
   requiresApproval: !!l.pFlags?.request_needed,
   expiresAt: l.expire_date ? new Date(l.expire_date * 1000).toISOString() : undefined,
@@ -520,15 +549,6 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
     async removeMember(peerId: number, userId: number): Promise<void> {
       await rest.del(`/chats/${peerId}/members/${userId}`)
     },
-    // Hard-delete ссылки (Telegram deleteExportedChatInvite). Отзыв — через
-    // editInvite({revoked:true}) (PATCH), а не этот метод.
-    async deleteInvite(peerId: number, token: string): Promise<void> {
-      await rest.del(`/chats/${peerId}/invite_links/${token}`)
-    },
-    // Удалить все отозванные ссылки чата (Telegram deleteRevokedExportedChatInvites).
-    async deleteAllRevoked(peerId: number): Promise<void> {
-      await rest.del(`/chats/${peerId}/revoked_invite_links`)
-    },
     // Удаляет чат целиком (для всех участников) — в отличие от removeMember,
     // которым выходит один конкретный участник (в т.ч. может быть кем угодно —
     // «удаляемый я» не всегда), здесь однозначно: мой собственный диалог тоже
@@ -586,25 +606,73 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
       const r = await rest.get<MessagesExportedChatInvites>(`/chats/${peerId}/invite_links${revoked ? '?revoked=true' : ''}`)
       return (r.invites ?? []).map(mapInvite)
     },
-    // Частичный PATCH ссылки (Telegram editExportedChatInvite): revoked:true — отзыв,
-    // usageLimit:null — снять лимит, expireSeconds:0 — сделать бессрочной.
-    async editInvite(peerId: number, token: string, patch: { title?: string; usageLimit?: number | null; requiresApproval?: boolean; expireSeconds?: number; revoked?: boolean }): Promise<InviteLink> {
-      const body: Record<string, unknown> = {}
-      if (patch.title !== undefined) body.title = patch.title
-      if (patch.usageLimit !== undefined) body.usage_limit = patch.usageLimit
-      if (patch.requiresApproval !== undefined) body.requires_approval = patch.requiresApproval
-      if (patch.expireSeconds !== undefined) body.expire_seconds = patch.expireSeconds
-      if (patch.revoked !== undefined) body.revoked = patch.revoked
-      const r = await rest.patch<MessagesExportedChatInvite>(`/chats/${peerId}/invite_links/${token}`, body)
-      return mapInvite(r.invite)
+    // ── Ссылки в форме оригинала — порт `appChatInvitesManager` (tweb
+    // `lib/appManagers/appChatInvitesManager.ts`) в объёме вкладок ссылок
+    // правой колонки (`sidebarRight/tabs/chatInviteLink*.solid.tsx`, 0б-3).
+    // Ключ — `chatId` (положительный), ссылка адресуется `link` — полным
+    // публичным адресом (`toPublicInvite`), как у оригинала. Ответы —
+    // конструкторы провода, без переклейки в плоскую витрину.
+    //
+    // Нет на бэкенде (О-120…О-124 волны 7): `admin_id`-фильтр и
+    // `getAdminsWithInvites`, постоянная ссылка (`permanent`,
+    // `messages.exportedChatInviteReplaced`), заявки по ссылке (`requested`),
+    // подписки (`subscription_pricing`), страницы и поиск вступивших.
+
+    /** tweb `getExportedChatInvites({chatId, revoked})` (без `adminId` — О-121). Карточки
+     *  создателей (`users`) — в зеркало: строка «Ссылку создал» читает их синхронно. */
+    async getExportedChatInvites({ chatId, revoked }: { chatId: ChatId; revoked?: boolean }): Promise<MessagesExportedChatInvites> {
+      const r = await rest.get<MessagesExportedChatInvites & { users?: UserReal[] }>(`/chats/${chatPeerId(chatId)}/invite_links${revoked ? '?revoked=true' : ''}`)
+      peers.saveApiPeers({ users: r.users })
+      return { _: r._, count: r.count, invites: (r.invites ?? []).map(toPublicInvite) }
     },
-    // Список вступивших по ссылке (Telegram chatInviteImporters).
-    async inviteImporters(peerId: number, token: string): Promise<{ importers: { userId: number; joinedAt: string }[]; count: number }> {
-      const r = await rest.get<MessagesChatInviteImporters>(`/chats/${peerId}/invite_links/${token}/importers`)
-      return {
-        importers: (r.importers ?? []).map((i) => ({ userId: i.user_id, joinedAt: new Date(i.date * 1000).toISOString() })),
-        count: r.count ?? 0,
+    /** tweb `exportChatInvite` (без `stars` — О-123). `usageLimit: 0` — без лимита, `expireDate: 0` — бессрочно. */
+    async exportChatInvite({ chatId, title, requestNeeded, usageLimit, expireDate }: {
+      chatId: ChatId; title?: string; requestNeeded?: boolean; usageLimit?: number; expireDate?: number
+    }): Promise<ChatInviteExported> {
+      const r = await rest.post<MessagesExportedChatInvite>(`/chats/${chatPeerId(chatId)}/invite_links`, {
+        title: title || undefined,
+        usage_limit: usageLimit || null,
+        requires_approval: !!requestNeeded,
+        expire_seconds: toExpireSeconds(expireDate),
+      })
+      return toPublicInvite(r.invite)
+    },
+    /**
+     * tweb `editExportedChatInvite`. Отзыв (`revoked`) — одним признаком; иначе
+     * едут все поля формы, как у оригинала (`usageLimit: 0` — без лимита,
+     * `expireDate: 0` — бессрочно). Ответ — всегда `messages.exportedChatInvite`:
+     * замены постоянной ссылки (`…Replaced` с `new_invite`) сервер не производит (О-120).
+     */
+    async editExportedChatInvite({ chatId, link, revoked, expireDate, requestNeeded, title, usageLimit }: {
+      chatId: ChatId; link: string; revoked?: boolean; expireDate?: number; requestNeeded?: boolean; title?: string; usageLimit?: number
+    }): Promise<MessagesExportedChatInvite> {
+      const body: Record<string, unknown> = revoked ? { revoked: true } : {
+        title: title ?? '',
+        requires_approval: !!requestNeeded,
+        usage_limit: usageLimit || null,
+        expire_seconds: toExpireSeconds(expireDate),
       }
+      const r = await rest.patch<MessagesExportedChatInvite>(`/chats/${chatPeerId(chatId)}/invite_links/${inviteHash(link)}`, body)
+      return { ...r, invite: toPublicInvite(r.invite) }
+    },
+    /** tweb `deleteExportedChatInvite(chatId, link)` — удаление навсегда (отзыв — `editExportedChatInvite({revoked})`). */
+    async deleteExportedChatInvite(chatId: ChatId, link: string): Promise<void> {
+      await rest.del(`/chats/${chatPeerId(chatId)}/invite_links/${inviteHash(link)}`)
+    },
+    /** tweb `deleteRevokedExportedChatInvites(chatId, adminId)` (без `adminId` — О-121). */
+    async deleteRevokedExportedChatInvites(chatId: ChatId): Promise<void> {
+      await rest.del(`/chats/${chatPeerId(chatId)}/revoked_invite_links`)
+    },
+    /**
+     * tweb `getChatInviteImporters({chatId, link, limit, offsetDate, offsetUserId, q, requested})`
+     * в объёме сервера: вошедшие по ссылке, первые 50 (`usecase InviteImporters`),
+     * без страниц, поиска и заявок (О-122, О-124). Карточки из вектора `users` —
+     * в зеркало, как у оригинала (`saveApiUsers`): строка списка читает их синхронно.
+     */
+    async getChatInviteImporters({ chatId, link }: { chatId: ChatId; link: string }): Promise<MessagesChatInviteImporters> {
+      const r = await rest.get<MessagesChatInviteImporters & { users?: UserReal[] }>(`/chats/${chatPeerId(chatId)}/invite_links/${inviteHash(link)}/importers`)
+      peers.saveApiPeers({ users: r.users })
+      return r
     },
     /**
      * Войти по ссылке. Ответ — конструктор `chatInviteImporter`: «вошёл» и

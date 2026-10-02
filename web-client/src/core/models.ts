@@ -495,7 +495,7 @@ export function isOurMessage(m: MyMessage, chat: OurMessageChat): boolean {
  * бывает. Окна сохранённого диалога (tweb `ChatType.Saved`, где `threadId` —
  * это `savedPeerId`) у нас нет вовсе (О-110 плана волны 7): строка списка
  * «Избранного» открывает ОРИГИНАЛЬНЫЙ чат пира (`setListClickListener` в
- * `lib/appDialogsManager.ts` → `core/navigation/openPeer.ts`), а не под-окно
+ * `lib/appDialogsManager.ts` → `appImManager.setPeer`), а не под-окно
  * «Избранного».
  *
  * `this.peerId` оригинала здесь — `message.peerId`: окно одно, и все его

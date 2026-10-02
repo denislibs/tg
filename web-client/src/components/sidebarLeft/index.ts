@@ -23,7 +23,8 @@
  * `onSomethingOpenInsideChange` (:547-634) — ЕДИНСТВЕННЫЙ писатель
  * `has-open-tabs` и `setOpenTabsLeftSidebar`, `initSidebarResize` (:651-671),
  * бургер `createToolsMenu` (:673-905), `createMoreSubmenu` (:916-1064),
- * `createNewChatsSubmenu` (:1130-1134), `closeSearch` (:1722), `createTab`/
+ * `#new-menu` — `createNewChatsMenuOptions`/`createNewChatsMenuButton`/
+ * `createNewChatsSubmenu` (:198-200, :1065-1135, задача 2-4), `closeSearch` (:1722), `createTab`/
  * `addTab` (:1730-1753), `closeTabsBefore`/`openArchiveTab` (:1755-1764),
  * `addAccount` (:1766), синглтон (:1798), `getVersionLink` (:1802).
  *
@@ -34,9 +35,6 @@
  *    :511-513), `watchChannelsTabVisibility` (:1692) — задача 2-3. Ctrl+F
  *    (:458-461) — наш `core/hotkeys.ts` → событие `tg-focus-search` владельцу
  *    (его расхождение 9);
- *  • `#new-menu` (`createNewChatsMenuButton`/`createNewChatsMenuOptions`,
- *    :198-200, :1065-1128) — задача 2-4, место в `construct` помечено; подменю
- *    «Создать» бургера пока собирает свои три пункта (`createNewChatsSubmenu`);
  *  • архив-вкладка `AppArchivedTab` (`openArchiveTab` :1760-1764) — задача 1-5:
  *    до неё строка «Архив» списка закрывает открытое и больше ничего, пункт
  *    бургера скрыт; форум-таб (`appDialogsManager.forumTab`, :519, :524, :541,
@@ -107,8 +105,17 @@
  *  4. «Архив» (:680-688) и бейдж `archivedCount` (:202-235) — пункт скрыт до
  *     `AppArchivedTab` (задача 1-5, см. «Не перенесено»); verify оригинала у
  *     нас неполон и без того — О-83 волны 7.
- *  5. «Новая конференция» (`ConferenceCall.New`, :1093-1101) и verify
- *     `IS_CONFERENCE_CALL_SUPPORTED` у «Звонков» — О-1 волны 7.
+ *  5. «Новая конференция» (`ConferenceCall.New`, :1093-1101, пункт
+ *     `createNewChatsMenuOptions`) и verify `IS_CONFERENCE_CALL_SUPPORTED` у
+ *     «Звонков» — О-1 волны 7: конференц-звонков нет на бэкенде, флага
+ *     `environment/conferenceCallSupport` и `appImManager.createConference`
+ *     у нас нет, пункта нет.
+ * 10. Отступление В7-1 — «Новый секретный чат» в `createNewChatsMenuOptions`
+ *     (у tweb секретных чатов нет): пункт под `SECRET_CHATS_ENABLED`
+ *     (`config/app.ts`, решение пользователя 2026-10-01 — фича на паузе, флаг
+ *     `false`), так что меню = tweb. Флаг решает состав массива, а не
+ *     `verify`: подменю «Создать» строит `ButtonMenu` напрямую (:1131-1135), а
+ *     он `verify` не фильтрует — фильтрует только `ButtonMenuToggle`.
  *  6. «Switch to A version» (`ChatList.Menu.SwitchTo.A`, :985-997) — verify
  *     `App.isMainDomain` у нас всегда ложь (своего домена версии A нет),
  *     пункта нет; поэтому `separator` у «Telegram Features» — всегда.
@@ -124,6 +131,8 @@ import SidebarSlider, { SliderSuperTab } from '@components/slider'
 import type { SliderSuperTabConstructable } from '@components/sliderTab'
 import ButtonMenu, { type ButtonMenuItemOptions, type ButtonMenuItemOptionsVerifiable } from '@components/buttonMenu'
 import ButtonMenuToggle from '@components/buttonMenuToggle'
+import Icon from '@components/icon'
+import type { IconName } from '@core/tgico-icons'
 import createSubmenuTrigger, { type CreateSubmenuArgs } from '@components/createSubmenuTrigger'
 import {
   AppCallsTab,
@@ -175,7 +184,7 @@ import I18n, { i18n } from '@lib/langPack'
 import { setBlankToAnchor } from '@lib/richtext/url'
 import rootScope from '@lib/rootScope'
 import { MOUNT_CLASS_TO } from '@config/debug'
-import { APP_TITLE, APP_VERSION_FULL } from '@/config/app'
+import { APP_TITLE, APP_VERSION_FULL, SECRET_CHATS_ENABLED } from '@/config/app'
 import type { Managers } from '@/client/bootstrap'
 
 /** Куда ведёт футер подменю «Ещё» — tweb ведёт на свой CHANGELOG.md (:1804). */
@@ -186,6 +195,7 @@ export class AppSidebarLeft extends SidebarSlider {
   private buttonsContainer!: HTMLElement
   private toolsBtn!: HTMLElement
   private backBtn!: HTMLElement
+  private newBtnMenu!: HTMLElement
   public inputSearch!: InputSearch
   /** Расхождение 6 шапки. */
   private globalSearch?: GlobalSearch
@@ -245,8 +255,8 @@ export class AppSidebarLeft extends SidebarSlider {
 
     this.buttonsContainer = this.backBtn.parentElement!
 
-    // `this.newBtnMenu = this.createNewChatsMenuButton()` +
-    // `sidebarHeader.nextElementSibling.append(this.newBtnMenu)` (:198-200) — задача 2-4
+    this.newBtnMenu = this.createNewChatsMenuButton()
+    sidebarHeader.nextElementSibling!.append(this.newBtnMenu)
 
     // `inputSearch.input focus → initSearch` (:226) вешает владелец поиска сам
     // (расхождение 6); он же слушает Ctrl+F (`tg-focus-search`).
@@ -254,6 +264,7 @@ export class AppSidebarLeft extends SidebarSlider {
       searchContainer: this.sidebarEl.querySelector('#search-container') as HTMLElement,
       inputSearch: this.inputSearch,
       backBtn: this.backBtn,
+      newBtnMenu: this.newBtnMenu,
       managers,
       onSearchActive: (active) => {
         this.isSearchActive = active
@@ -762,44 +773,84 @@ export class AppSidebarLeft extends SidebarSlider {
     return menu
   }
 
-  /**
-   * tweb `createNewChatsSubmenu` (:1130-1134) — `createNewChatsMenuOptions(true,
-   * true)` (:1065-1110): «Канал», «Группа», «Личный чат», каждый после
-   * `closeEverythingInside`. «Новая конференция» — О-1 (расхождение 5 бургера).
-   * Общий с `#new-menu` `createNewChatsMenuOptions` — задача 2-4.
-   */
-  private createNewChatsSubmenu() {
+  /** tweb `createNewChatsMenuOptions` (:1065-1111); конференция и секретный чат — расхождения 5, 10 бургера. */
+  private createNewChatsMenuOptions(closeBefore?: boolean, singular?: boolean): ButtonMenuItemOptionsVerifiable[] {
     const closeTabsBefore = async(clb: () => void) => {
-      if(this.closeEverythingInside()) await pause(200)
+      if(closeBefore && this.closeEverythingInside()) {
+        await pause(200)
+      }
       clb()
     }
 
+    const onNewGroupClick = () => {
+      void closeTabsBefore(() => {
+        createNewGroupTab(this)
+      })
+    }
+
+    const onContactsClick = () => {
+      void closeTabsBefore(() => {
+        void this.createTab(AppContactsTab).open()
+      })
+    }
+
+    const buttons: ButtonMenuItemOptionsVerifiable[] = [{
+      icon: 'newchannel',
+      text: singular ? 'Channel' : 'NewChannel',
+      onClick: () => {
+        void closeTabsBefore(() => {
+          void this.createTab(AppNewChannelTab).open()
+        })
+      },
+    }, {
+      icon: 'newgroup',
+      text: singular ? 'Group' : 'NewGroup',
+      onClick: onNewGroupClick,
+    }, {
+      icon: 'newprivate',
+      text: singular ? 'PrivateChat' : 'NewPrivateChat',
+      onClick: onContactsClick,
+    }]
+
+    // Отступление В7-1 (расхождение 10 бургера)
+    if(SECRET_CHATS_ENABLED) {
+      buttons.push({
+        icon: 'lock',
+        text: 'SecretChat.New',
+        onClick: () => {
+          void closeTabsBefore(() => {
+            void this.createTab(AppContactsTab).open({ secret: true })
+          })
+        },
+      })
+    }
+
+    return buttons
+  }
+
+  /** tweb `createNewChatsMenuButton` (:1113-1129). */
+  private createNewChatsMenuButton() {
+    const btnMenu = ButtonMenuToggle({
+      direction: 'top-left',
+      buttons: this.createNewChatsMenuOptions(false),
+      noIcon: true,
+      buttonOptions: { ariaLabel: 'ChatAutomation.NewChats' },
+      positionPadding: { bottom: 10 },
+    })
+    btnMenu.className = 'btn-new-menu btn-circle rp btn-corner z-depth-1 btn-menu-toggle animated-button-icon'
+    btnMenu.tabIndex = 0
+    btnMenu.setAttribute('role', 'button')
+    const icons: IconName[] = ['newchat_filled', 'close']
+    btnMenu.prepend(...icons.map((icon, idx) => Icon(icon, 'animated-button-icon-icon', 'animated-button-icon-icon-' + (idx === 0 ? 'first' : 'last'))))
+    btnMenu.id = 'new-menu'
+
+    return btnMenu
+  }
+
+  /** tweb `createNewChatsSubmenu` (:1131-1135). */
+  private createNewChatsSubmenu() {
     return ButtonMenu({
-      buttons: [{
-        icon: 'newchannel',
-        text: 'Channel',
-        onClick: () => {
-          void closeTabsBefore(() => {
-            void this.createTab(AppNewChannelTab).open()
-          })
-        },
-      }, {
-        icon: 'newgroup',
-        text: 'Group',
-        onClick: () => {
-          void closeTabsBefore(() => {
-            createNewGroupTab(this)
-          })
-        },
-      }, {
-        icon: 'newprivate',
-        text: 'PrivateChat',
-        onClick: () => {
-          void closeTabsBefore(() => {
-            void this.createTab(AppContactsTab).open()
-          })
-        },
-      }],
+      buttons: this.createNewChatsMenuOptions(true, true),
     })
   }
 
@@ -888,6 +939,7 @@ export class AppSidebarLeft extends SidebarSlider {
     this.disposers = []
     this.onTabsCountChange = undefined
     this.toolsBtn?.remove()
+    this.newBtnMenu?.remove()
     this.globalSearch?.destroy()
     this.globalSearch = undefined
     this.inputSearch?.container.remove()

@@ -245,7 +245,7 @@ export interface BubblesNavigation {
    * .toPeerId(true), type: ChatType.Discussion, threadId})`.
    *
    * Здесь, а не внутри ленты, по той же причине, что календарь: тред у нас
-   * открывается стеком колонки чата (`stores/chatStackStore.setInnerPeer` через
+   * открывается стеком колонки чата (`appImManager.setInnerPeer` через
    * `Chat.tsx::onOpenThread`), а стеком владеет хост. Лента отдаёт то же, что
    * отдаёт оригинал: КЛЮЧ ГРУППЫ ОБСУЖДЕНИЯ (не канала — :3335) и номер поста.
    *

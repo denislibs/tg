@@ -57,7 +57,7 @@
 |---|---|---|---|
 | Левая колонка: вкладки | 0а-1…0а-5, 2D целиком, 2-2 (бургер), 2-5 (баннер, #374) | — | основа К-1 |
 | `AppSidebarLeft` | — | 2-1 (`w7-2-1`: `sidebarLeft/index.ts` 1028 строк, `toolsMenu.ts` в него влит, `columnSlider.ts` удалён; React-мост `bridge` для архива, форума и поиска) | **К-1**: мост `bridge` снимается, архив и форум — в бэклог |
-| `#new-menu` | — | 2-4 (`w7-2-4`: 2 коммита, врезка в React `ComposeFab`) | **К-1**: перевешивается на класс без временного монтажа |
+| `#new-menu` | — | 2-4 (`w7-2-4`: 2 коммита, врезка в React `ComposeFab`) | **К-1**: перевешивается на класс без временного монтажа — **сделано** (методы `AppSidebarLeft`, `ComposeFab`/`ComposeMenu` удалены с `Sidebar.tsx` в 2-1) |
 | Список чатов | 1-1…1-4, 1-2 (#366) | 1-7 (`w7-1-7`, сохранённые) | 1-7 доливается как есть; 1-5, 1-6, 1-8 — бэклог П-2 |
 | Правая колонка | 0б-0, 0б-2, 0б-10, 0б-11 | 0б-3 (`w7-0b-3`), 0б-6 (`w7-0b-6`) | доливаются как есть (Solid-вкладки из React-`GroupEditFlow` — существующее направление, не новый мост); в К-5 их открывает родная `AppEditChatTab` |
 | Центр | `ChatBubbles`, `ChatContextMenu`, `ChatSelection` — классы | — | К-2, К-3, К-4 |
@@ -109,7 +109,12 @@
 - Поиск — `initSearch` методом класса над нашим классом `sidebarLeft/globalSearch.ts` (692, уже
   порт). `InputSearch` — класс `components/inputSearch.ts`, а не React `shared/ui/InputSearch`.
 - `#new-menu` из `w7-2-4` переносится в класс: `createNewChatsMenuButton` в `construct`,
-  `ComposeFab.tsx` (77) и `ComposeMenu.tsx` (64) удаляются.
+  `ComposeFab.tsx` (77) и `ComposeMenu.tsx` (64) удаляются. **Сделано** (2-4): методы
+  `createNewChatsMenuOptions`/`createNewChatsMenuButton`/`createNewChatsSubmenu` класса
+  (tweb `:1065-1135`), кнопка в `construct` (`:198-200`), `is-hidden` на поиске — владелец
+  поиска `globalSearch.ts` (`:1514`, `:1550-1558`, `:1571`); пины —
+  `sidebarLeft/index.newChatsMenu.test.ts`. Конференции нет (О-1 плана программы),
+  «Новый секретный чат» — под `SECRET_CHATS_ENABLED=false`.
 
 **Узел `#column-left`.** До К-2 его рисует `App.tsx` статичной разметкой tweb `index.html:91-107`
 без логики. Синглтон создаётся из layout-эффекта шелла — это уже сделано в 2-1
@@ -595,8 +600,10 @@ React-`GroupEditFlow`.
 | Б-42 | Добавление участников из профиля (0б-8; `AddMembersScreen.tsx`) | К-5 | `sidebarLeft/tabs/addMembers.tsx` (у нас Solid есть) | П-1 |
 | Б-43 | Статистика канала (0б-9; `ChannelStats.tsx`) | К-5 | `statistics.tsx` (1156) | П-1 |
 | Б-44 | Истории профиля (`PinnedStoriesSection.tsx`), QR из профиля (`QrModal`), проверка ключа секретного чата | К-5 | `sharedMedia.tsx` (истории), 2C-17, Отступление В7-2 | П-1 |
-| Б-45 | Ссылка «пропустить к чату» и имена ориентиров колонок (`attachSkipToContent`, `setLandmarkLabels`): ключей `AccDescr.SkipToConversation`/`ChatList`/`ChatInfo` в лангпаке нет | К-2 (не было) | `helpers/dom/appLandmarks.ts`, `appImManager.ts:349-352`, `:3199-3201` | П-4 |
-| Б-46 | Хэши страницы бэкенда `#@имя/<seq>` и `#<peerId>/<seq>` (кнопка публичной страницы, `public_page.go:40-41`) — `onHashChange` tweb принимает только `#@имя`, `#<peerId>`, `#/im?p=…&post=` | К-2 | `appImManager.ts:1912-2031` | П-4 (страница бэкенда → `#/im?p=@имя&post=<seq>`) |
+| Б-45 | `visibility: hidden`/`visible` у `.btn-corner` (a11y-дельта tweb 472e3e76b): у нас угловая кнопка (`#new-menu` и др.) прячется только сдвигом и остаётся в порядке Tab | К-1 (не было) | `scss/partials/_button.scss:54`, `:82`, `_leftSidebar.scss` `.btn-corner:not(.is-hidden)` | П-3 |
+| Б-46 | «Новая конференция» в `#new-menu` и подменю «Создать» (`ConferenceCall.New`) | К-1 (не было) | `sidebarLeft/index.ts:1093-1101`, `environment/conferenceCallSupport.ts` | бэкенд: конференц-звонков нет (О-1 плана программы) |
+| Б-47 | Ссылка «пропустить к чату» и имена ориентиров колонок (`attachSkipToContent`, `setLandmarkLabels`): ключей `AccDescr.SkipToConversation`/`ChatList`/`ChatInfo` в лангпаке нет | К-2 (не было) | `helpers/dom/appLandmarks.ts`, `appImManager.ts:349-352`, `:3199-3201` | П-4 |
+| Б-48 | Хэши страницы бэкенда `#@имя/<seq>` и `#<peerId>/<seq>` (кнопка публичной страницы, `public_page.go:40-41`) — `onHashChange` tweb принимает только `#@имя`, `#<peerId>`, `#/im?p=…&post=` | К-2 | `appImManager.ts:1912-2031` | П-4 (страница бэкенда → `#/im?p=@имя&post=<seq>`) |
 
 ### Пачки бэклога
 

@@ -138,6 +138,14 @@ html.no-backdrop {
   }
 }
 
+/* tweb base.scss:1898-1900 — над дорожкой ступенчатого селектора место под подписи
+   ступеней (`.range-setting-selector-option-text`, `top: -1.875rem`): без него подписи
+   наезжают на имя секции (`components/rangeStepsSelector.ts`, вкладка «Новая ссылка»
+   `sidebarRight/tabs/editChatInviteLink.solid.tsx`). */
+.range-steps-selector {
+  padding-top: 2.375rem;
+}
+
 /* tweb base.scss:2069-2074 — звезда премиума в заголовке строки правила хаба
    «Конфиденциальность» (`sidebarLeft/tabs/privacyAndSecurity.solid.tsx`,
    `createPremiumTitle`: голосовые и сообщения). */

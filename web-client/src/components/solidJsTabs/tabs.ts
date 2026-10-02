@@ -575,6 +575,57 @@ export const AppChatTypeTab =
     getComponentModule: () => import('../sidebarRight/tabs/chatType.solid'),
   })
 
+// ── Ссылки-приглашения (tweb :670-712) — задача 0б-3 волны 7 ─────────────────
+// Список (`chatInviteLinks.solid.tsx`), одна ссылка (`chatInviteLink.solid.tsx`) и
+// её редактор (`editChatInviteLink.solid.tsx`); общее — `chatInviteLinkShared.ts`.
+// Список открывает редактор чата (`editChat`, 0б-1; до неё — мост React
+// `GroupEditFlow`), остальные — сам список. `getInitArgs` висит на конструкторе,
+// как у оригинала: предзагрузку зовёт открывающий. Расхождения: `adminId` у
+// списка нет (О-121), `onUpdate` у ссылки — тоже (его зовёт только список
+// заявок, О-122); `getInitArgs` берёт `managers` первым аргументом (DI-ручки вне
+// вкладки нет — расхождение 6 `chatInviteLinkShared.ts`).
+import { getChatInviteLinksInitArgs, type ChatInvite, type ChatInviteActions } from '../sidebarRight/tabs/chatInviteLinkShared'
+import type { ButtonMenuItemOptionsVerifiable } from '@components/buttonMenu'
+
+type AppEditChatInviteLinkTabPayload = {
+  chatId: ChatId,
+  invite?: ChatInvite
+}
+
+export const AppEditChatInviteLinkTab =
+  scaffoldSolidJSTabEventable<AppEditChatInviteLinkTabPayload, {
+    finish: (chatInvite: ChatInvite) => void
+  }>({
+    title: (p) => p.invite ? 'InviteLinks.Edit' : 'NewLink',
+    getComponentModule: () => import('../sidebarRight/tabs/editChatInviteLink.solid'),
+  })
+
+type AppChatInviteLinkTabPayload = {
+  chatId: ChatId,
+  chatInvite: ChatInvite,
+  menuButtons: ButtonMenuItemOptionsVerifiable[],
+  actions: ChatInviteActions
+}
+
+export const AppChatInviteLinkTab =
+  scaffoldSolidJSTabEventable<AppChatInviteLinkTabPayload>({
+    title: 'InviteLink',
+    getComponentModule: () => import('../sidebarRight/tabs/chatInviteLink.solid'),
+  })
+
+type AppChatInviteLinksTabPayload = {
+  chatId: ChatId,
+  p?: ReturnType<typeof getChatInviteLinksInitArgs>
+}
+
+export const AppChatInviteLinksTab = Object.assign(
+  scaffoldSolidJSTabEventable<AppChatInviteLinksTabPayload>({
+    title: 'InviteLinks',
+    getComponentModule: () => import('../sidebarRight/tabs/chatInviteLinks.solid'),
+  }),
+  { getInitArgs: getChatInviteLinksInitArgs },
+)
+
 // ── Контакты (tweb :209-222) — задача 0а-1 плана волны 7 ─────────────────────
 // Вкладка адресной книги (`contacts.solid.tsx`); её же открывает «Новый личный
 // чат» (tweb `sidebarLeft/index.ts:1079-1083`, `:1105-1109`). Расхождения:
@@ -683,8 +734,7 @@ export const AppEditContactTab =
 
 // ── Поиск GIF и стикеров правой колонки (tweb :458-462, :521-525) — задача 0б-11 ─
 // Обе обычной формы и без полезной нагрузки, как у оригинала: колонку вкладки берут
-// у синглтона `appSidebarRight`, отправку в чат — у `appImManager.chat` (мост
-// `sidebarRight/tabs/emoticonsSearchBridge.ts`, ВРЕМЕННО до Э4-3).
+// у синглтона `appSidebarRight`, отправку в чат — у `appImManager.chat.input`.
 // Открывает их лупа нижней полосы панели эмодзи (tweb `emoticonsDropdown/index.ts:300-310`).
 export const AppGifsTab =
   scaffoldSolidJSTab({

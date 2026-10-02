@@ -806,8 +806,7 @@ type SearchSuperItem = { element: HTMLElement, message: MyMessage }
  * Ручки менеджеров, которыми пользуется подсистема — расхождения 6, 20, 29,
  * 34, 36-40 и 44 в шапке. `groups` — участники (задача 11); `stories`/`chats`/
  * `stars` — предикаты первого показа (задача 10) и вкладки «Чаты»/«Подарки»
- * (задача 12); `presence` — присутствие пира для черновика
- * (`core/navigation/openPeer.ts`); `contacts`/`channels`/`dialogs` — группы
+ * (задача 12); `presence` — присутствие пира; `contacts`/`channels`/`dialogs` — группы
  * контактов левой колонки и вкладка «Каналы» (задача 9 плана поиска).
  */
 export type SearchSuperManagers = {

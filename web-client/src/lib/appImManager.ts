@@ -25,7 +25,7 @@
 //     импортируется тестами и соседями до того, как в документе есть `#column-center`.
 //  2. Ссылка «пропустить к чату» и имена ориентиров (`attachSkipToContent`,
 //     `setStaticLandmarkLabels`, `:349-352`, `:3199-3201`) не портированы: ключей
-//     `AccDescr.*` в нашем лангпаке нет — бэклог Б-45. `inert` колонок
+//     `AccDescr.*` в нашем лангпаке нет — бэклог Б-47. `inert` колонок
 //     (`updateColumnAccessibility`) — портирован.
 //  3. Нет предмета у подписок `construct`: `internalLinkProcessor` (Б-8),
 //     `appMediaPlaybackController.construct` (у нас модуль без конструктора),

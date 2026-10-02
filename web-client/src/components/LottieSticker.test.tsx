@@ -51,7 +51,7 @@ describe('LottieSticker: загрузка ассета по имени', () => {
     expect(params).toMatchObject({ width: 86, height: 86, loop: false, autoplay: true, group: 'none' })
   })
 
-  it('loop=true доезжает до loadAnimationAsAsset без искажений (PeerSelector/InviteLinkScreens)', async () => {
+  it('loop=true доезжает до loadAnimationAsAsset без искажений (PeerSelector)', async () => {
     const player = makeFakePlayer()
     loadAnimationAsAsset.mockResolvedValue(player)
 
