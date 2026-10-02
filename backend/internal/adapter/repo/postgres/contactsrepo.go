@@ -162,6 +162,16 @@ func (r *ContactsRepo) Delete(ctx context.Context, ownerID, userID int64) (bool,
 	return tag.RowsAffected() > 0, nil
 }
 
+// SeenUser — карточка userID глазами viewerID (userSeenCols).
+func (r *ContactsRepo) SeenUser(ctx context.Context, viewerID, userID int64) (domain.UserReal, error) {
+	u, err := scanUserSeen(querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT `+userSeenCols("u.", "$2")+` FROM users u WHERE u.id = $1`, userID, viewerID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.UserReal{}, domain.ErrNotFound
+	}
+	return u, err
+}
+
 // SetCustomPhoto upserts the owner's personal photo for a contact.
 func (r *ContactsRepo) SetCustomPhoto(ctx context.Context, ownerID, contactUserID, mediaID int64) error {
 	_, err := r.pool.Exec(ctx,

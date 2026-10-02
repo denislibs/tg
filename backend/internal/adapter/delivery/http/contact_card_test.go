@@ -287,6 +287,22 @@ func TestContactName_SeenByViewerEverywhere_HTTP(t *testing.T) {
 	}
 	want("/me/blocked", usersOf(tokenA, "/me/blocked"), "Бобби", "", true)
 
+	// contacts.deleteContacts у оригинала отвечает Updates с этим user — уже
+	// без contact и с профильным именем: клиент кладёт его в кэш, и пункт
+	// «Добавить в контакты» возвращается сразу, без перечитывания.
+	rec = authedReq(t, h, http.MethodDelete, "/contacts/"+itoa(idB), tokenA, nil)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"_":"updates"`) {
+		t.Fatalf("delete contact: %d %s", rec.Code, rec.Body.String())
+	}
+	var del struct {
+		Users []map[string]any `json:"users"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &del); err != nil || len(del.Users) != 1 {
+		t.Fatalf("delete contact: users %v (%s)", err, rec.Body.String())
+	}
+	want("DELETE /contacts", del.Users[0], "Боб", "Петров", false)
+	want("/users/{id} после удаления", usersOf(tokenA, "/users/"+itoa(idB)), "Боб", "Петров", false)
+
 	// У Боба Алисы в книге нет: он видит её профильное имя и без contact,
 	// а то, что Алиса записала, — только её.
 	if u := getProfile(t, h, tokenB, idA).Users[0]; pflag(u, "contact") {

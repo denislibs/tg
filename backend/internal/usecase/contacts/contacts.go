@@ -278,6 +278,33 @@ func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.ContactR
 
 // Delete removes a contact from ownerID's address book; found is false when there
 // was no such entry.
-func (i *Interactor) Delete(ctx context.Context, ownerID, userID int64) (bool, error) {
-	return i.repo.Delete(ctx, ownerID, userID)
+//
+// Ответ — карточка удалённого глазами владельца, то есть уже с профильным
+// именем и без pFlags.contact: у оригинала contacts.deleteContacts отвечает
+// Updates с этим user, и клиент кладёт его в кэш (tweb
+// appUsersManager.deleteContacts → processUpdateMessage). Иначе в кэше
+// оставалась бы карточка «контакта» с именем из книги. Фото — по тем же
+// правилам, что в книге: правило profile_photo, поверх него личное фото.
+func (i *Interactor) Delete(ctx context.Context, ownerID, userID int64) (domain.UserReal, bool, error) {
+	found, err := i.repo.Delete(ctx, ownerID, userID)
+	if err != nil || !found {
+		return domain.UserReal{}, found, err
+	}
+	u, err := i.repo.SeenUser(ctx, ownerID, userID)
+	if err != nil {
+		return domain.UserReal{}, true, err
+	}
+	if i.privacy != nil {
+		if ok, err := i.privacy.Check(ctx, userID, ownerID, domain.PrivacyProfilePhoto); err != nil || !ok {
+			u.Photo = domain.NewUserProfilePhotoEmpty()
+		}
+	}
+	if i.photos != nil {
+		if custom, err := i.photos.CustomPhotoMap(ctx, ownerID, []int64{userID}); err == nil {
+			if mediaID, ok := custom[userID]; ok {
+				u.Photo = domain.NewUserProfilePhoto(mediaID, nil, false, true)
+			}
+		}
+	}
+	return u, true, nil
 }

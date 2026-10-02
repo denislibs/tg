@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 	usecasecontacts "github.com/messenger-denis/backend/internal/usecase/contacts"
@@ -144,16 +145,18 @@ func (h *ContactsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	found, err := h.uc.Delete(r.Context(), u.ID, userID)
+	card, found, err := h.uc.Delete(r.Context(), u.ID, userID)
+	if !found && err == nil {
+		writeError(w, http.StatusNotFound, "contact not found")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "delete contact failed")
 		return
 	}
-	if !found {
-		writeError(w, http.StatusNotFound, "contact not found")
-		return
-	}
-	writeJSON(w, http.StatusOK, domain.NewBool(true))
+	// contacts.deleteContacts → Updates: карточка удалённого уже глазами
+	// бывшего владельца книги (профильное имя, без pFlags.contact).
+	writeJSON(w, http.StatusOK, domain.NewUpdates(nil, []domain.UserReal{card}, time.Now()))
 }
 
 type contactNoteBody struct {

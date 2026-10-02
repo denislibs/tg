@@ -27,7 +27,8 @@ function setup(opts: { contacts?: UserReal[]; me?: UserReal } = {}) {
   const get = vi.fn(async (_path: string): Promise<unknown> => book(opts.contacts ?? []))
   const post = vi.fn(async (_path: string, body: { contact_id: number }): Promise<unknown> =>
     book([user(body.contact_id, 'Added')]))
-  const del = vi.fn(async (_path: string): Promise<void> => {})
+  // `contacts.deleteContacts` отвечает Updates (контракт — contactsManager.delete.test.ts).
+  const del = vi.fn(async (_path: string): Promise<unknown> => ({ _: 'updates', updates: [], users: [], chats: [] }))
   const mirror = vi.fn()
   const onContactsUpdate = vi.fn()
   const persist = newPersistManager(mirror)
