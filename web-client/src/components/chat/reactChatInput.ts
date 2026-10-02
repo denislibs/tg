@@ -34,6 +34,7 @@ import type { GifItem } from '@core/gifs'
 import type { MyMessage } from '@core/models'
 import type { Sticker } from '@core/managers/stickersManager'
 import type { AppImManager } from '@lib/appImManager'
+import type { ChatRights } from '@core/peers/rights'
 import type { ChatType } from './chatType'
 import type { ReactChatInputViewProps } from './reactChatInputView'
 
@@ -50,9 +51,8 @@ export interface ReactChatInputHost {
   threadId?: number
   type: ChatType
   container: HTMLElement
-  /** мета треда (опция `setInnerPeer`): заголовок для пира без диалога и
-   *  «тема закрыта» — плашка вместо ввода */
-  thread?: { title: string, closed?: boolean }
+  /** tweb `chat.ts:1340` — права на запись (текст, медиа) */
+  canSend(action?: ChatRights): Promise<boolean>
   /** tweb `chat.ts:283` */
   updateChatInputHeight(surplus: number): void
   /** tweb `bubbles.ts:3852` — кнопка «вниз» (`input.ts:648`) */
@@ -113,7 +113,6 @@ export default class ReactChatInput {
       input: this,
       peerId: this.chat.peerId,
       threadId: this.chat.threadId,
-      thread: this.chat.thread,
     }
 
     return () => {

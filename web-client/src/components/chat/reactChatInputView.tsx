@@ -16,6 +16,7 @@ import { useManagers } from '@core/hooks/useManagers'
 import { useChatList } from '@core/hooks/useChatList'
 import { usePeers } from '@core/hooks/usePeers'
 import { useEvent } from '@core/hooks/useEvent'
+import { useMiddlewareHelper } from '@core/hooks/useMiddlewareHelper'
 import { useMirrorWindow } from '@core/hooks/useMirrorWindow'
 import { useChatSend } from '@core/hooks/useChatSend'
 import { useComposerDraft } from '@core/hooks/useComposerDraft'
@@ -23,8 +24,7 @@ import { useMentionPeers } from '@core/hooks/useMentionPeers'
 import { useSendAs } from '@core/hooks/useSendAs'
 import { chatPeerId, isDialogChat, resolveChatEntity } from '@core/chatEntity'
 import { cachedChat, cachedUser } from '@core/peerCache'
-import { hasRights } from '@core/peers/rights'
-import { isUser, NULL_PEER_ID } from '@core/peers/peerId'
+import { NULL_PEER_ID } from '@core/peers/peerId'
 import { isPeerMuted } from '@core/dialogs/notifySettings'
 import { draftReplyToId as draftReplyOf } from '@core/dialogs/draft'
 import { windowReplyState } from '@core/draftReply'
@@ -60,15 +60,17 @@ export type ReactChatInputViewProps = {
   input: ReactChatInput
   peerId: PeerId
   threadId?: number
-  thread?: { title: string, closed?: boolean }
 }
 
-export default function ReactChatInputView({ input, peerId, threadId, thread }: ReactChatInputViewProps) {
+/** Права на запись открытого пира — ответ `chat.canSend` (tweb `chat.ts:1340`). */
+type SendRights = { peerId: PeerId, text: boolean, media: boolean }
+
+export default function ReactChatInputView({ input, peerId, threadId }: ReactChatInputViewProps) {
   const managers = useManagers()
   const chatList = useChatList()
   // пир без диалога: карточку в зеркало приносит объявленный пробел (`usePeers`)
   usePeers(useMemo(() => [peerId], [peerId]))
-  const chat = resolveChatEntity({ peerId, thread }, chatList)
+  const chat = resolveChatEntity({ peerId }, chatList)
   const numericChatId = chatPeerId(chat)
   const isRealChat = isDialogChat(chat)
   const isChannel = chat.type === 'channel'
@@ -76,17 +78,27 @@ export default function ReactChatInputView({ input, peerId, threadId, thread }: 
   const isSecret = chat.type === 'secret'
   const meId = useChatsStore((st) => st.meId)
 
-  // Права на запись — правило прежнего `useChatInfoCard` по краткому
-  // конструктору `channel` из зеркала пиров (у tweb — `chat.canSend`,
-  // `chat.ts:1340`). Канал: пишут только постящие; группа — дефолт-права.
+  // Права на запись — `chat.canSend` (tweb `chat.ts:1340`): канал — только
+  // постящие, группа — права участника и дефолт-права. Ответ пересчитывается,
+  // когда в зеркало пиров приезжает новая карточка чата.
   const chatPeer = isRealChat ? cachedChat(numericChatId) : undefined
-  const canPostChannel = hasRights(chatPeer, 'post_messages')
-  const canType = !isChannel || canPostChannel
-  const permissionsKnown = !isChannel || !isRealChat || chatPeer !== undefined
-  const canSendToUser = isUser(numericChatId)
-  const canSendText = isChannel ? canPostChannel : canSendToUser || chatPeer === undefined || hasRights(chatPeer, 'send_messages')
-  const canSendMedia = isChannel ? canPostChannel : canSendToUser || chatPeer === undefined || hasRights(chatPeer, 'send_media')
-  const composerUsable = canType && canSendText
+  const middlewareHelper = useMiddlewareHelper()
+  const [rights, setRights] = useState<SendRights | null>(null)
+  useEffect(() => {
+    const scope = middlewareHelper.get().create()
+    const middleware = scope.get()
+    void Promise.all([input.chat.canSend('send_messages'), input.chat.canSend('send_media')]).then(([text, media]) => {
+      if (middleware()) setRights({ peerId: numericChatId, text, media })
+    })
+    return () => scope.destroy()
+  }, [input, numericChatId, chatPeer, middlewareHelper])
+  const known = rights?.peerId === numericChatId ? rights : null
+  // «Неизвестно» — не «нельзя»: пока ответа нет, плашки нет (`permissionsKnown`).
+  const permissionsKnown = !isRealChat || known !== null
+  const canSendText = known?.text ?? false
+  const canSendMedia = known?.media ?? false
+  const canType = canSendText
+  const composerUsable = canSendText
 
   // Цвет плашки ответа — акцент темы чата (`applyContainerTheme` пишет его на `.chat`).
   const accentColor = getComputedStyle(input.chat.container).getPropertyValue('--primary-color').trim() || '#3390ec'
@@ -205,7 +217,8 @@ export default function ReactChatInputView({ input, peerId, threadId, thread }: 
   })
 
   // Плашка вместо строки ввода — цепочка `haveSomethingInControl` (`computeControlPlates`).
-  const threadClosed = !!thread?.closed
+  // Закрытой темы форума нет: форум в бэклоге (Б-3, П-2).
+  const threadClosed = false
   const { botStartPlate, secretPlate, groupRestricted, channelMutePlate } = computeControlPlates({
     composerUsable, permissionsKnown, isGroup, canSendText, botStart, secretLocked, threadClosed,
   })

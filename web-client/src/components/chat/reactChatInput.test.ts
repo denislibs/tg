@@ -49,6 +49,7 @@ function makeHost(over: Partial<ReactChatInputHost> = {}): ReactChatInputHost {
     peerId: 42,
     type: ChatType.Chat,
     container: document.createElement('div'),
+    canSend: () => Promise.resolve(true),
     updateChatInputHeight,
     bubbles: { onGoDownClick: vi.fn() },
     ...over,
@@ -95,13 +96,13 @@ describe('ReactChatInput: узел и монтирование', () => {
     const mount = await input.finishPeerChange()
     expect(renders).toHaveLength(0) // монтирует колбэк, а не сам вызов (tweb chat.ts:1240-1244)
     mount()
-    expect(renders.at(-1)).toMatchObject({ peerId: 42, threadId: undefined })
+    expect(renders[renders.length - 1]).toMatchObject({ peerId: 42, threadId: undefined })
     expect(input.messageInput).toBe(input.chatInput.querySelector('.input-message-input'))
 
     host.peerId = 7
     host.threadId = 3
     ;(await input.finishPeerChange())()
-    expect(renders.at(-1)).toMatchObject({ peerId: 7, threadId: 3 })
+    expect(renders[renders.length - 1]).toMatchObject({ peerId: 7, threadId: 3 })
     expect(input.chatInput.querySelectorAll('.chat-input-container')).toHaveLength(1)
   })
 

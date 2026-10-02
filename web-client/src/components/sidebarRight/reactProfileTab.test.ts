@@ -40,7 +40,7 @@ describe('AppReactProfileTab.setPeer', () => {
     expect(tab.setPeer(42)).toBe(true)
     await tab.fillProfileElements()
 
-    expect(renders.at(-1)).toMatchObject({ tab, peerId: 42, threadId: undefined })
+    expect(renders[renders.length - 1]).toMatchObject({ tab, peerId: 42, threadId: undefined })
   })
 
   it('тот же пир — false и без перерисовки; другой — тот же корень с новым пиром', async() => {
@@ -54,7 +54,7 @@ describe('AppReactProfileTab.setPeer', () => {
     expect(renders).toHaveLength(count)
 
     expect(tab.setPeer(42, 7)).toBe(true)
-    expect(renders.at(-1)).toMatchObject({ peerId: 42, threadId: 7 })
+    expect(renders[renders.length - 1]).toMatchObject({ peerId: 42, threadId: 7 })
     expect(unmounts).toBe(unmountsAfterMount)
   })
 
