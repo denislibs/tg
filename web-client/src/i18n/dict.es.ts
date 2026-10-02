@@ -229,7 +229,7 @@ const es = {
   NewChannel: 'Nuevo canal',
   NewGroup: 'Nuevo grupo',
   NewPrivateChat: 'Nuevo mensaje',
-  'Suggestion.Notifications.Title': '¡No te pierdas ningún mensaje! 🔔',
+  'Suggestion.Notifications': '¡No te pierdas ningún mensaje! %s',
   'Suggestion.Notifications.Subtitle': 'Activa las notificaciones para estar al día.',
   'Suggestion.Notifications.Dismissed':
     'Puedes volver a activar las notificaciones en los ajustes.',

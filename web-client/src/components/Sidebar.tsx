@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { isUserCollapsedLeft, setOpenTabsLeftSidebar } from '../core/dom/updateColumnWidths'
 import installColumnResize from '../core/dom/installColumnResize'
-import PendingSuggestion from './sidebarLeft/pendingSuggestion'
 import classNames from '../shared/lib/classNames'
 import s from './Sidebar.module.scss'
 import { useChatsStore } from '../stores/chatsStore'
@@ -307,9 +305,6 @@ export default function Sidebar({
   // раз — актуальное замыкание через ref.
   const openForumRef = useRef(openForum)
   openForumRef.current = openForum
-  // Плашка-подсказка рисуется порталом в узел владельца (tweb `:1079-1082`);
-  // узел появляется со `start()`, поэтому это состояние.
-  const [suggestionContainer, setSuggestionContainer] = useState<HTMLElement>()
 
   // Владелец въезжает в `.connection-status-bottom` (tweb `start()`,
   // `:587-604`): кладёт туда `.chatlist-overlay` и `#folders-container`, ставит
@@ -335,7 +330,6 @@ export default function Sidebar({
       managers,
       openForum: (peerId) => openForumRef.current(peerId),
     })
-    setSuggestionContainer(dialogsManager.suggestionContainer)
     return () => dialogsManager.destroy()
   }, [], { host: bottomPartRef })
 
@@ -474,10 +468,9 @@ export default function Sidebar({
           их строками — тоже (`AutonomousDialogList`, задача 1-4); высоту оверлея
           он же кладёт в --chatlist-overlay-height, её читает padding-top у
           .folders-scrollable — так табы никогда не накрывают первый ряд списка.
-          React рисует сюда только плашку-подсказку и оверлей архива. */}
+          Плашку-подсказку в оверлей рисует тоже владелец (`renderPendingSuggestion`,
+          tweb `:1384-1388`); React рисует сюда только оверлей архива. */}
       <div ref={bottomPartRef} className="connection-status-bottom">
-        {suggestionContainer && createPortal(<PendingSuggestion collapsed={collapsed} />, suggestionContainer)}
-
         {/* Архив — в tweb отдельная вкладка слайдера (AppArchivedTab,
             SliderSuperTab), поэтому появление у неё то же, что у прочих вкладок:
             въезд справа за --transition-standard-in. Кейфрейм на вставке узла

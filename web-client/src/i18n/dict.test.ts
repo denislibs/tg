@@ -507,6 +507,10 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `ChatList.Service.Call.Missed` (их звала только прежняя подпись причины).
 // `Chat.CallMessage.TimeAndDuration` — пунктуация, в `NO_TRANSLATION` покрытия.
 // Итог: ru 1484, uk 790, es 764, de 765, fr 759.
+// Задача 2-5 волны 7 (плашка-подсказка `pendingSuggestion`): наш ключ
+// `Suggestion.Notifications.Title` с вшитым «🔔» заменён ключом tweb
+// `Suggestion.Notifications` (lang.ts:306, колокольчик — аргументом `%s`) у всех
+// пяти: −1 +1, числа те же, набор другой (см. `FINGERPRINT`).
 const COMPOSITION = {
   ru: { keys: 1484, plural: 45 },
   uk: { keys: 790, plural: 33 },
@@ -673,12 +677,14 @@ const COMPOSITION = {
 // `MarkAsUnread` и `ChatList.Context.Preview` снесённого React-меню (разбор — у
 // `COMPOSITION` выше).
 // Баблом лога звонка — ключи исхода звонка (разбор — у `COMPOSITION` выше).
+// Задачей 2-5 волны 7 — `Suggestion.Notifications.Title` → ключ tweb
+// `Suggestion.Notifications` у всех пяти (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: 'f82eb6f9',
-  uk: 'b76f1da0',
-  es: 'f76ec947',
-  de: 'aeb3a69c',
-  fr: '24c61a5c',
+  ru: '8facde8f',
+  uk: '1bd49a4a',
+  es: '5945d64d',
+  de: '328a4a5e',
+  fr: '7441bd26',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

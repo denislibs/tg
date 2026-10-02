@@ -236,7 +236,7 @@ const uk = {
   NewChannel: 'Створити канал',
   NewGroup: 'Створити групу',
   NewPrivateChat: 'Нове повідомлення',
-  'Suggestion.Notifications.Title': 'Не пропускайте повідомлення! 🔔',
+  'Suggestion.Notifications': 'Не пропускайте повідомлення! %s',
   'Suggestion.Notifications.Subtitle': 'Увімкніть сповіщення, щоб бути в курсі.',
   'Suggestion.Notifications.Dismissed':
     'Ви можете знову увімкнути сповіщення в налаштуваннях.',

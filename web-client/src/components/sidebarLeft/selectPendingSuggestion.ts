@@ -1,13 +1,18 @@
-// Порт tweb `src/components/sidebarLeft/selectPendingSuggestion.ts` — какую из
-// плашек показать: первую доступную по фиксированному приоритету.
+// Порт tweb `src/components/sidebarLeft/selectPendingSuggestion.ts`
+// (812502980, 1-15) — какую из плашек показать: первую доступную по
+// фиксированному приоритету.
 //
-// У tweb список длиннее:
+// Расхождение с оригиналом одно — список короче. У tweb
 //   ['frozen', 'notifications', 'passkey', 'birthdayContacts', 'birthdaySetup']
-// Все, кроме 'notifications', приходят с сервера через appPromoManager
-// (`help.getPromoData().pendingSuggestions` + `help.dismissSuggestion`). У нас
-// такого менеджера нет, поэтому источник данных есть только у уведомлений —
-// остальные варианты не портированы (заглушки не держим, см. CLAUDE.md).
-export const PENDING_SUGGESTION_PRIORITY = ['notifications'] as const
+// и все виды, кроме 'notifications', берут данные с сервера: `frozen` —
+// `appConfig.freeze_since_date`, остальные — `help.getPromoData().pendingSuggestions`
+// (`stores/promo`, `appPromoManager.dismissSuggestion`). На нашем бэкенде нет ни
+// заморозки аккаунта, ни промо-подсказок — О-108 волна 7. Виды без источника
+// данных не заводятся (заглушки не держим); приедут с бэкендом на свои места
+// этого списка.
+export const PENDING_SUGGESTION_PRIORITY = [
+  'notifications', // О-108 волна 7: 'frozen' перед ним, 'passkey', 'birthdayContacts', 'birthdaySetup' — после
+] as const
 
 export type PendingSuggestionType = typeof PENDING_SUGGESTION_PRIORITY[number]
 

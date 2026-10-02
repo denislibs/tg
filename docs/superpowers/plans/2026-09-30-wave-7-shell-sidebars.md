@@ -1062,8 +1062,12 @@ pendingSuggestionController.ts 6, selectPendingSuggestion.ts 15, pendingSuggesti
 pendingSuggestionItem 85, notificationsSuggestion 77}.tsx` — удаляются. `notificationsSuggestion` у tweb
 — один из видов `pendingSuggestion` (сверить; если отдельный — перенести так же).
 
-- [ ] **Тесты:** баннер «включить уведомления» при `Notification.permission === 'default'`, закрытие
+- [x] **Тесты:** баннер «включить уведомления» при `Notification.permission === 'default'`, закрытие
   запоминается; высота оверлея пишется в переменную. **Мутация:** не писать переменную → пин краснеет.
+  Сделано (`sidebarLeft/pendingSuggestion.solid.test.tsx`). `notificationsSuggestion` у tweb — отдельный
+  файл одного из видов, перенесён так же (`notificationsSuggestion.solid.tsx`). Точка монтирования —
+  не `AppSidebarLeft`, а владелец списка: `appDialogsManager` в конце `onStateLoaded`
+  (`:1384-1388`), у нас — в `start()`; от 2-1 врезка не зависит. Остальные виды — О-108, О-109.
 
 **Оценка:** 1,5 дня. **Зависимости:** 2-1.
 
@@ -1441,13 +1445,8 @@ React-корня, временные пометки, О-125…О-131, оценк
 | О-90 | Лог звонка, обе стороны которого пропали без кадра конца (закрыли/убили обе вкладки, нет сети у обоих): у оригинала сервер сам кончает такой звонок по таймауту и кладёт `messageActionPhoneCall` (Missed без ответа, Disconnect после) | сервер узнаёт о конце только из `call_end`/`call_decline` (`backend/internal/usecase/chat/phonecall.go`); серверного таймера звонка нет, состояние просто истекает по TTL (`adapter/cache/redis/phonecallstore.go`, 24 ч) без лога (журнал звонков, PR этого фикса) | серверный таймер звонка (ожидание ответа 45 с + сторож живости сторон) |
 | О-96 | Иконка звонка в группе у строки чатлиста: `processDialogForCallStatus`/`setCallStatus` (`autonomousDialogList/dialogs.ts:722-760`, `groupCallActiveIcon`, класс `has-group-call-icon`), `callIcon.setActive` в `setDialogActive` (`appDialogsManager.ts:1315`) | у чата в модели нет `pFlags.call_active`/`call_not_empty` (`domain/mtchat.go:170`) (1-4) | иконка 1:1, перекраска активной строки |
 | О-97 | Превью потокового черновика бота в строке: `streamed_message_update/remove/finalize` → `setLastMessageN({lastMessage})` (`autonomousDialogList/dialogs.ts:173-209`) | потоковых черновиков (`HistoryStreamedDrafts`) нет ни на бэкенде, ни в модели (1-4) | превью «печатает текстом» у ботов |
-| О-125 | `updateStatus`/`goOffline` (`appImManager.ts:3210-3217`), `idleController` → `account.updateStatus(offline)` (`:354-362`), вызовы из левой колонки (`sidebarLeft/index.ts:871`, `:1783`) | ручки статуса нет: присутствие ведётся по WS-соединению (`adapter/realtime/redis/presencestore.go:36-37`) (план этапа 4, 4-2) | «не в сети» при простое вкладки |
-| О-126 | Карточки пустой колонки `chatTips` (`components/chatTips/*`, 734; вызов `:377`) и «недавно закрытые» (`pushRecentlyClosedChat` `:824-833`) | вне состава этапа 4, вопрос В4-3 (план этапа 4, 4-3/4-6) | пустой `#column-center` как у tweb |
-| О-127 | Состояние вкладок между окнами: `updateTabState('chatPeerIds')` (`:842`), `getAllTabStates` для звука отправки (`:866-870`) | механизма состояния вкладок нет (план этапа 4, 4-6) | звук отправки только в активной вкладке |
-| О-128 | `singleInstance` (`index.ts:487-494`, `appImManager.ts:951`) | механизма одной активной вкладки нет (`components/connectionStatus.ts:12`) (план этапа 4, 4-1) | «открыто в другом окне» |
-| О-129 | `checkLastActiveAccountFromTMe`, `telegramMeWebManager` (`index.ts:443`, `appImManager.ts:953-957`, `:988-989`), test-режим веб-токена (`index.ts:578-605`) | нет t.me-интеграции и тестового DC (план этапа 4, 4-1) | вход с t.me |
-| О-130 | Подписки без предмета: `ephemeral_send_error`/`ephemeral_send_blocked` (`:567-586`), `file_speed_limited` (`:587-601`); `service_notification`/`payment_sent` (`:607-628`) — если 4-6 не найдёт кадров | событий нет ни на бэкенде, ни в `RT` (план этапа 4, 4-6) | тосты 1:1 |
-| О-131 | Автоблокировка в воркере (tweb `lib/mainWorker/useAutoLock.ts`) | наш замок — главный поток (`core/hooks/useAutoLock.ts`) (план этапа 4, 4-6) | блокировка без открытой вкладки |
+| О-108 | Виды плашки-подсказки с серверным источником: «аккаунт заморожен» (`frozenSuggestion.tsx`, `appConfig.freeze_since_date`, класс `.suggestion.danger`), «создайте ключ доступа» (`passkeySetupSuggestion.tsx`, `SETUP_PASSKEY`), дни рождения контактов и «укажите свой» (`birthdaySuggestions.tsx`, `BIRTHDAY_CONTACTS_TODAY`/`BIRTHDAY_SETUP`, `contacts.getBirthdays`), попап почты входа (`emailSetupSuggestion.ts`, `SETUP_LOGIN_EMAIL`) — `selectPendingSuggestion.ts`, `pendingSuggestion.solid.tsx` расхождение 1 | на бэкенде нет ни заморозки аккаунта, ни промо-подсказок `help.getPromoData().pendingSuggestions`/`help.dismissSuggestion` (`stores/promo`); ключи доступа и дата рождения есть, но подсказок по ним сервер не выдаёт (2-5) | виды плашки 1:1 на своих местах приоритета |
+| О-109 | Проверка подключения бизнес-бота над списком: `BotConnectionReviewSuggestion` (`pendingSuggestion.tsx:23-102`, `stores/chatAutomation`, `confirmBotConnection`/`rejectBotConnection`, классы `.connectionReview*`) | бизнес-ботов и их подключений на бэкенде нет (2-5) | плашка проверки бота 1:1 |
 
 ## Что остаётся волне 8 (после этой программы)
 
