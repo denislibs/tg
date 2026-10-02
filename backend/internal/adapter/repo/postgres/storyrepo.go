@@ -156,7 +156,7 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 		`SELECT s.id, s.seq, s.author_id, s.media_id, s.caption, s.privacy, s.pinned, s.edited,
 		        s.media_areas, s.fwd_from_author_id, s.fwd_from_story_id,
 		        s.created_at, s.expires_at,
-		        `+userRealCols("u.")+`,
+		        `+userSeenCols("u.", "$1")+`,
 		        (SELECT count(*) FROM story_reactions sr WHERE sr.story_id = s.id) AS reactions_count,
 		        COALESCE((SELECT sr.reaction FROM story_reactions sr WHERE sr.story_id = s.id AND sr.user_id = $1), '') AS my_reaction,
 		        COALESCE((SELECT rd.max_read_id FROM story_read rd WHERE rd.viewer_id = $1 AND rd.author_id = s.author_id), 0) AS max_read_id
@@ -190,7 +190,7 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 	for rows.Next() {
 		var (
 			item                domain.StoryRecord
-			au                  userRealScan
+			au                  userSeenScan
 			discard             int64 // s.author_id (== u.id via JOIN)
 			areasRaw            []byte
 			fwdAuthor, fwdStory *int64
@@ -285,21 +285,21 @@ func (r *StoryRepo) MarkViewed(ctx context.Context, storyID, viewerID int64) err
 // объявлены у `storyView`, предмет у обоих есть (`story_views.viewed_at` и
 // `story_reactions.reaction`), и терялись они только потому, что наружу ехали
 // голые карточки.
-func (r *StoryRepo) Viewers(ctx context.Context, storyID int64) (domain.StoryViewers, error) {
+func (r *StoryRepo) Viewers(ctx context.Context, viewerID, storyID int64) (domain.StoryViewers, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT `+userRealCols("u.")+`, sv.viewed_at, COALESCE(sr.reaction,'')
+		`SELECT `+userSeenCols("u.", "$2")+`, sv.viewed_at, COALESCE(sr.reaction,'')
 		   FROM story_views sv
 		   JOIN users u ON u.id = sv.viewer_id
 		   LEFT JOIN story_reactions sr ON sr.story_id = sv.story_id AND sr.user_id = sv.viewer_id
 		  WHERE sv.story_id = $1
-		  ORDER BY sv.viewed_at`, storyID)
+		  ORDER BY sv.viewed_at`, storyID, viewerID)
 	if err != nil {
 		return domain.StoryViewers{}, err
 	}
 	defer rows.Close()
 	out := domain.StoryViewers{Views: []domain.StoryView{}, Users: []domain.UserReal{}}
 	for rows.Next() {
-		var us userRealScan
+		var us userSeenScan
 		var viewedAt time.Time
 		var reaction string
 		if err := rows.Scan(append(us.dest(), &viewedAt, &reaction)...); err != nil {

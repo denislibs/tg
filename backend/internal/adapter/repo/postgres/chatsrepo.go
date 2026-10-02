@@ -219,6 +219,10 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		        COALESCE(peer.is_bot,false), COALESCE(peer.is_verified,false),
 		        COALESCE(peer.is_premium,false), COALESCE(peer.emoji_status,''),
 		        COALESCE(peer.deleted,false), COALESCE(peer.is_service,false),
+		        -- Собеседник ГЛАЗАМИ ЗРИТЕЛЯ: имя из его книги и pFlags.contact
+		        -- (domain.UserReal.SeenBy). Без них строка списка затирала на
+		        -- клиенте имя контакта профильным.
+		        `+contactViewCols("peer.id", "$1")+`,
 		        c.auto_delete_period,
 		        -- Дата ВСТУПЛЕНИЯ зрителя — обязательный channel.date краткой
 		        -- формы (DialogRecord.ToChannel). Выборка идёт ОТ его строки
@@ -275,7 +279,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		var notifySound *string
 		var topMessageID *int64
 		var peerID *int64
-		var peer userRealScan
+		var peer userSeenScan
 		var rights, perms int
 		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.PhotoID, &d.PhotoPreview,
 			&d.LastReadSeq, &d.UnreadCount, &d.UnreadMentionsCount, &d.UnreadReactionsCount,
@@ -283,6 +287,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 			&topMessageID, &d.TopMessageSeq,
 			&peerID, &peer.firstName, &peer.lastName, &peer.username, &peer.photoID, &peer.photoPreview,
 			&peer.isBot, &peer.isVerified, &peer.isPremium, &peer.emojiStatus, &peer.deleted, &peer.isService,
+			&peer.contactName, &peer.mutual,
 			&d.TTLPeriod, &d.JoinedAt,
 			&d.MemberCount, &d.MyRole, &rights, &d.Signatures, &d.SignatureProfiles,
 			&d.DiscussionChatID, &perms, &d.Settings.SlowmodeSeconds, &d.Settings.ChargeStars); err != nil {

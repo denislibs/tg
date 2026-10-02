@@ -133,7 +133,7 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 		i.publishBalance(ctx, msg.SenderID, authorBal)
 	}
 
-	top, _ := i.starReaction.TopSenders(ctx, messageID, starReactionTopN)
+	top, _ := i.starReaction.TopSenders(ctx, userID, messageID, starReactionTopN)
 	return agg, hideAnonymousSenders(top), senderBal, nil
 }
 
@@ -161,7 +161,7 @@ func (i *Interactor) StarReactionOf(ctx context.Context, chatID, messageID, user
 	if err != nil {
 		return domain.StarReactionAgg{}, nil, err
 	}
-	top, err := i.starReaction.TopSenders(ctx, messageID, starReactionTopN)
+	top, err := i.starReaction.TopSenders(ctx, userID, messageID, starReactionTopN)
 	if err != nil {
 		return domain.StarReactionAgg{}, nil, err
 	}

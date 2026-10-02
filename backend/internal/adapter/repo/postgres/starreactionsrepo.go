@@ -68,15 +68,15 @@ func (r *StarReactionsRepo) AggregatesFor(ctx context.Context, messageIDs []int6
 // TopSenders — крупнейшие отправители звёзд сообщения (по убыванию вклада),
 // joined с users для отображения. Anonymous сохраняется во флаге (личность
 // прячет read-модель usecase).
-func (r *StarReactionsRepo) TopSenders(ctx context.Context, messageID int64, limit int) ([]domain.StarReactionSender, error) {
+func (r *StarReactionsRepo) TopSenders(ctx context.Context, viewerID, messageID int64, limit int) ([]domain.StarReactionSender, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT `+userRealCols("u.")+`, sr.stars, sr.anonymous
+		`SELECT `+userSeenCols("u.", "$3")+`, sr.stars, sr.anonymous
 		   FROM star_reactions sr
 		   JOIN users u ON u.id = sr.user_id
 		  WHERE sr.message_id = $1
 		  ORDER BY sr.stars DESC, sr.updated_at ASC
 		  LIMIT $2`,
-		messageID, limit)
+		messageID, limit, viewerID)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func (r *StarReactionsRepo) TopSenders(ctx context.Context, messageID int64, lim
 	out := make([]domain.StarReactionSender, 0)
 	for rows.Next() {
 		var s domain.StarReactionSender
-		var u userRealScan
+		var u userSeenScan
 		if e := rows.Scan(append(u.dest(), &s.Stars, &s.Anonymous)...); e != nil {
 			return nil, e
 		}

@@ -32,15 +32,12 @@ const maxBioLen = 70
 // Аватарка при этом гасится ПОКАЖДОМУ получателю: photo живёт внутри `user`, и
 // без проверки правила profile_photo кадр раздал бы фото тем, кому владелец его
 // закрыл. Проверяющий необязателен — без него фото в кадре нет вовсе.
+//
+// Карточка — ГЛАЗАМИ ПОЛУЧАТЕЛЯ (domain.UserReal.SeenBy): тот, у кого автор в
+// книге, получает имя из книги и pFlags.contact — и в живом кадре, и в строке
+// журнала, которую переиграет /sync.
 func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.UserRecord) {
 	if i.pub == nil && i.updates == nil {
-		return
-	}
-	// Строка журнала одна на всех — в ней фото нет: журнал переигрывается при
-	// /sync, а к тому моменту правило приватности может стать другим.
-	logged := domain.NewUpdateUserSnapshot(u.ToUser(domain.UserFlags{}, nil, false))
-	payload, err := json.Marshal(logged)
-	if err != nil {
 		return
 	}
 	// Recipients: own devices first, then shared-chat peers (dedup not needed —
@@ -53,11 +50,29 @@ func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.UserRecord) {
 		}
 		recipients = append(recipients, partners...)
 	}
+	views := map[int64]domain.ContactView{}
+	if i.contacts != nil {
+		v, err := i.contacts.ContactViews(ctx, u.ID, recipients)
+		if err != nil {
+			i.logf("[user_update] contact views for %d: %v", u.ID, err)
+		} else {
+			views = v
+		}
+	}
 	date := time.Now().UnixMilli()
 	for _, uid := range recipients {
-		live := domain.NewUpdateUserSnapshot(u.ToUser(domain.UserFlags{Self: uid == u.ID}, nil, i.photoVisible(ctx, u.ID, uid)))
+		seen := func(showPhoto bool) domain.UpdateUserSnapshot {
+			return domain.NewUpdateUserSnapshot(u.ToUser(domain.UserFlags{Self: uid == u.ID}, nil, showPhoto).SeenBy(views[uid]))
+		}
+		live := seen(i.photoVisible(ctx, u.ID, uid))
 		env := map[string]any{"t": "user_update", "d": live}
 		if i.updates != nil {
+			// В строке журнала фото нет: журнал переигрывается при /sync, а к
+			// тому моменту правило приватности может стать другим.
+			payload, err := json.Marshal(seen(false))
+			if err != nil {
+				continue
+			}
 			if pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "user_update", payload); e == nil {
 				// Курсор едет в КОНВЕРТЕ: своего параметра pts у этого
 				// конструктора нет (см. domain.UpdateDeclaresPts), а дописать

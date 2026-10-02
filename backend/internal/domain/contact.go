@@ -40,14 +40,53 @@ type ContactRecord struct {
 // maxLength), и сервер держит тот же предел, а не доверяет клиенту.
 const ContactNoteMaxLen = 128
 
-// ContactCard — то, что ЗРИТЕЛЬ знает о пире по адресным книгам: этим
-// дополняется профиль (users.userFull). Всё здесь зависит от зрителя, как
-// pFlags.contact у оригинала, поэтому считается на каждый запрос профиля.
-type ContactCard struct {
+// ContactView — то, что книга ЗРИТЕЛЯ говорит о пользователе в краткой
+// карточке: в книге ли он (user.pFlags.contact), есть ли зритель в его книге
+// (user.pFlags.mutual_contact) и под каким именем зритель его сохранил.
+type ContactView struct {
 	// Contact — пир в книге зрителя (user.pFlags.contact).
 	Contact bool
 	// Mutual — и зритель в книге пира (user.pFlags.mutual_contact).
 	Mutual bool
+	// FirstName/LastName — имя из книги зрителя; значимо только при Contact.
+	FirstName string
+	LastName  string
+}
+
+// SeenBy — пользователь ГЛАЗАМИ СМОТРЯЩЕГО: единственное место, где краткая
+// карточка `user` получает то, что зависит от книги зрителя.
+//
+// У оригинала сервер отдаёт `user` с first_name/last_name ИЗ КОНТАКТА
+// смотрящего и с pFlags.contact во всех ответах, где этот user есть (диалоги,
+// история, участники, поиск, профиль, апдейты), а клиент кладёт карточку в
+// кэш как есть (tweb appUsersManager.saveApiUser) и имени из книги не
+// подставляет. Поэтому линзу обязан пройти КАЖДЫЙ путь сборки карточки для
+// зрителя: карточка, собранная мимо неё, затирает в кэше клиента имя из книги
+// профильным — «то Боб, то Боб Петров».
+//
+// Флаги ставятся и СНИМАЮТСЯ: карточка может прийти уже с чужими флагами.
+// Удалённый аккаунт имени из книги не получает — он остаётся «Deleted
+// Account», как и у оригинала, где удалённый пир приходит без имени.
+func (u UserReal) SeenBy(v ContactView) UserReal {
+	flags := make(map[string]bool, len(u.PFlags)+2)
+	for k, on := range u.PFlags {
+		flags[k] = on
+	}
+	setPFlag(&flags, "contact", v.Contact)
+	setPFlag(&flags, "mutual_contact", v.Mutual)
+	u.PFlags = flags
+	if v.Contact && !u.Deleted() {
+		u.FirstName, u.LastName = v.FirstName, v.LastName
+	}
+	return u
+}
+
+// ContactCard — то, что ЗРИТЕЛЬ знает о пире по адресным книгам: этим
+// дополняется профиль (users.userFull). Всё здесь зависит от зрителя, как
+// pFlags.contact у оригинала, поэтому считается на каждый запрос профиля.
+type ContactCard struct {
+	// ContactView — часть, которая ложится на краткую карточку (SeenBy).
+	ContactView
 	// Note — заметка зрителя о пире (userFull.note); nil — нет.
 	Note *TextWithEntities
 	// PersonalPhotoID — media id личного фото, которое зритель поставил пиру

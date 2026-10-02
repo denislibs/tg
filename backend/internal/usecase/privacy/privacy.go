@@ -235,13 +235,12 @@ func (i *Interactor) Profile(ctx context.Context, viewerID, targetID int64) (dom
 	}
 	full.Note = card.Note
 
-	// Краткая форма того же пользователя. Телефон — по правилу приватности, а
-	// не по снятому с пира phone_visibility: механизм на этот вопрос один.
-	brief := u.ToUser(domain.UserFlags{
-		Self:          viewerID == targetID,
-		ContactRecord: card.Contact,
-		MutualContact: card.Mutual,
-	}, i.status(ctx, u, check(domain.PrivacyLastSeen)), check(domain.PrivacyProfilePhoto))
+	// Краткая форма того же пользователя — глазами зрителя (SeenBy: имя из
+	// его книги, contact/mutual_contact), как в любом другом ответе с этим
+	// пользователем. Телефон — по правилу приватности, а не по снятому с пира
+	// phone_visibility: механизм на этот вопрос один.
+	brief := u.ToUser(domain.UserFlags{Self: viewerID == targetID},
+		i.status(ctx, u, check(domain.PrivacyLastSeen)), check(domain.PrivacyProfilePhoto)).SeenBy(card.ContactView)
 	if check(domain.PrivacyPhoneNumber) {
 		brief.Phone = u.Phone
 	}

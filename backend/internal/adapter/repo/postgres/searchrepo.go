@@ -47,18 +47,20 @@ func (r *SearchRepo) SearchChats(ctx context.Context, q string, limit int) ([]do
 	return out, rows.Err()
 }
 
-func (r *SearchRepo) SearchUsers(ctx context.Context, q string, limit int) ([]domain.UserReal, error) {
+// SearchUsers — пользователи по @username/имени профиля, карточки глазами
+// viewerID (userSeenCols).
+func (r *SearchRepo) SearchUsers(ctx context.Context, viewerID int64, q string, limit int) ([]domain.UserReal, error) {
 	like := escapeLike(q) + "%"
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT `+userRealCols("u.")+`
-		   FROM users u WHERE u.username ILIKE $1 OR u.display_name ILIKE $2 LIMIT $3`, like, like, limit)
+		`SELECT `+userSeenCols("u.", "$4")+`
+		   FROM users u WHERE u.username ILIKE $1 OR u.display_name ILIKE $2 LIMIT $3`, like, like, limit, viewerID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []domain.UserReal
 	for rows.Next() {
-		u, err := scanUserReal(rows)
+		u, err := scanUserSeen(rows)
 		if err != nil {
 			return nil, err
 		}

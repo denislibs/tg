@@ -62,11 +62,13 @@ func (i *Interactor) postGroupServiceMedia(ctx context.Context, chatID, actorID,
 }
 
 // userCard looks up a user for service-message attribution (zero card on miss).
+// Карточка БЕЗ зрителя (профильное имя): её имя замораживается в снимок,
+// который читают все получатели, а не один.
 func (i *Interactor) userCard(ctx context.Context, id int64) domain.UserReal {
 	if i.groups == nil {
 		return domain.NewUser(id, domain.UserFlags{})
 	}
-	us, err := i.groups.UsersByIDs(ctx, []int64{id})
+	us, err := i.groups.UsersByIDs(ctx, 0, []int64{id})
 	if err != nil || len(us) == 0 {
 		return domain.NewUser(id, domain.UserFlags{})
 	}
@@ -361,8 +363,9 @@ func (i *Interactor) ChatCard(ctx context.Context, chatID, viewerID int64) (doma
 	return i.groups.Card(ctx, chatID, viewerID)
 }
 
-func (i *Interactor) UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserReal, error) {
-	return i.groups.UsersByIDs(ctx, ids)
+// UsersByIDs — карточки глазами viewerID (имя из его книги, pFlags.contact).
+func (i *Interactor) UsersByIDs(ctx context.Context, viewerID int64, ids []int64) ([]domain.UserReal, error) {
+	return i.groups.UsersByIDs(ctx, viewerID, ids)
 }
 
 // ListMembers returns the chat's members (role + rights + mute). The viewer must

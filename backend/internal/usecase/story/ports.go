@@ -27,7 +27,8 @@ type StoryRepo interface {
 	ReadHorizons(ctx context.Context, viewerID int64, authorIDs []int64) (map[int64]int64, error)
 	ActiveFeed(ctx context.Context, viewerID int64, authorIDs []int64) ([]domain.StoryGroup, error)
 	MarkViewed(ctx context.Context, storyID, viewerID int64) error
-	Viewers(ctx context.Context, storyID int64) (domain.StoryViewers, error)
+	// Viewers — карточки зрителей истории глазами viewerID (её автора).
+	Viewers(ctx context.Context, viewerID, storyID int64) (domain.StoryViewers, error)
 	// Stats — статистика истории (просмотры + динамика по дням из story_views).
 	Stats(ctx context.Context, storyID int64) (domain.StoryStats, error)
 	GetAuthor(ctx context.Context, storyID int64) (int64, error) // domain.ErrNotFound

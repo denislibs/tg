@@ -332,7 +332,8 @@ func (h *ChannelHandler) CommentCounts(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	replies, users, err := h.uc.CommentCounts(r.Context(), chatID, postIDs)
+	viewer, _ := UserFromContext(r.Context())
+	replies, users, err := h.uc.CommentCounts(r.Context(), viewer.ID, chatID, postIDs)
 	if err != nil {
 		h.mapErr(w, err)
 		return

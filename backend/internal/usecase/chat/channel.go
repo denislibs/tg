@@ -135,7 +135,7 @@ func (i *Interactor) SearchPeers(ctx context.Context, viewerID int64, q string, 
 	if err != nil {
 		return PeerSearchResult{}, err
 	}
-	users, err := i.search.SearchUsers(ctx, q, limit)
+	users, err := i.search.SearchUsers(ctx, viewerID, q, limit)
 	if err != nil {
 		return PeerSearchResult{}, err
 	}

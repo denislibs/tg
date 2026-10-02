@@ -262,7 +262,7 @@ func (i *Interactor) messageContext(ctx context.Context, m domain.Message, peer 
 // появились конструкторы-снимки). Тред при этом ссылается на них по-прежнему —
 // ССЫЛКАМИ, как в схеме.
 func (i *Interactor) messageThread(ctx context.Context, m domain.Message, kind string) *domain.MessageReplies {
-	threads, _ := i.threadReplies(ctx, []domain.Message{m}, map[int64]string{m.ChatID: kind})
+	threads, _ := i.threadReplies(ctx, 0, []domain.Message{m}, map[int64]string{m.ChatID: kind})
 	return repliesOf(threads, m.ID)
 }
 

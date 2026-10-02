@@ -24,15 +24,17 @@ func NewContactsRepo(pool *pgxpool.Pool) *ContactsRepo { return &ContactsRepo{po
 
 // contactSelect joins the saved contact row with the peer's live profile so a
 // listing renders the avatar/username/phone without a second round-trip. Column
-// order matches scanContact.
+// order matches scanContact. Карточка пира — глазами ВЛАДЕЛЬЦА книги
+// (userSeenCols): имя, под которым он её сохранил, и pFlags.contact — та же
+// линза, что у любого другого ответа с этим пользователем.
 var contactSelect = `
 	SELECT c.owner_id, c.user_id, c.first_name, c.last_name, c.note, c.note_entities, c.share_phone, c.created_at,
-	       ` + userRealCols("u.") + `, u.phone
+	       ` + userSeenCols("u.", "c.owner_id") + `, u.phone
 	FROM contacts c JOIN users u ON u.id = c.user_id`
 
 func scanContact(row pgx.Row) (domain.ContactRecord, error) {
 	var c domain.ContactRecord
-	var u userRealScan
+	var u userSeenScan
 	var phone, noteText string
 	var noteEntities []byte
 	dest := []any{&c.OwnerID, &c.UserID, &c.FirstName, &c.LastName, &noteText, &noteEntities, &c.SharePhone, &c.CreatedAt}
@@ -45,9 +47,6 @@ func scanContact(row pgx.Row) (domain.ContactRecord, error) {
 	c.IsBot = u.isBot
 	c.User = u.user(true)
 	c.User.Phone = phone
-	// Имя карточки — сохранённое ВЛАДЕЛЬЦЕМ, а не профильное: это и есть
-	// смысл адресной книги.
-	c.User.FirstName, c.User.LastName = c.FirstName, c.LastName
 	return c, nil
 }
 
@@ -161,6 +160,16 @@ func (r *ContactsRepo) Delete(ctx context.Context, ownerID, userID int64) (bool,
 		return false, err
 	}
 	return tag.RowsAffected() > 0, nil
+}
+
+// SeenUser — карточка userID глазами viewerID (userSeenCols).
+func (r *ContactsRepo) SeenUser(ctx context.Context, viewerID, userID int64) (domain.UserReal, error) {
+	u, err := scanUserSeen(querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT `+userSeenCols("u.", "$2")+` FROM users u WHERE u.id = $1`, userID, viewerID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.UserReal{}, domain.ErrNotFound
+	}
+	return u, err
 }
 
 // SetCustomPhoto upserts the owner's personal photo for a contact.

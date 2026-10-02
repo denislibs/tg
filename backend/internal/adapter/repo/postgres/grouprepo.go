@@ -616,19 +616,20 @@ func (r *GroupRepo) ChatBriefs(ctx context.Context, ids []int64) (map[int64]doma
 	return out, rows.Err()
 }
 
-func (r *GroupRepo) UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserReal, error) {
+// UsersByIDs — карточки пользователей глазами viewerID (userSeenCols).
+func (r *GroupRepo) UsersByIDs(ctx context.Context, viewerID int64, ids []int64) ([]domain.UserReal, error) {
 	if len(ids) == 0 {
 		return []domain.UserReal{}, nil
 	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT `+userRealCols("u.")+` FROM users u WHERE u.id = ANY($1)`, ids)
+		`SELECT `+userSeenCols("u.", "$2")+` FROM users u WHERE u.id = ANY($1)`, ids, viewerID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []domain.UserReal
 	for rows.Next() {
-		u, err := scanUserReal(rows)
+		u, err := scanUserSeen(rows)
 		if err != nil {
 			return nil, err
 		}

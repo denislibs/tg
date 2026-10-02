@@ -338,9 +338,13 @@ export function newContactsManager({ rest, peers, getMe, state, onContactsUpdate
       return contactsList.has(userId) || !!(user?._ === 'user' && user.pFlags?.contact)
     },
 
-    // Удалённый — из книги и индекса (`onContactUpdated` → `popContact`).
+    // Порт `deleteContacts` (:1310-1320): ответ — Updates с карточкой
+    // удалённого уже без `pFlags.contact` и с профильным именем; она ложится в
+    // кэш (`processUpdateMessage` оригинала), затем удалённый — из книги и
+    // индекса (`onContactUpdated` → `popContact`).
     async del(contactId: number): Promise<void> {
-      await rest.del(`/contacts/${contactId}`)
+      const r = await rest.del<{ _: 'updates'; users: UserReal[] }>(`/contacts/${contactId}`)
+      peers.saveApiPeers({ users: r.users })
       onContactUpdated(contactId, false)
     },
 

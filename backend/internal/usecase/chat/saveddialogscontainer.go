@@ -83,7 +83,7 @@ func (i *Interactor) SavedDialogsPage(ctx context.Context, viewerID int64) (Save
 	}
 	var users []domain.UserReal
 	if len(userIDs) > 0 && i.groups != nil {
-		users, err = i.groups.UsersByIDs(ctx, userIDs)
+		users, err = i.groups.UsersByIDs(ctx, viewerID, userIDs)
 		if err != nil {
 			return SavedDialogsPage{}, err
 		}

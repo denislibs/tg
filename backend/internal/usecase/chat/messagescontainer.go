@@ -37,12 +37,12 @@ import (
 // чат уже известен клиенту из списка диалогов.
 func (i *Interactor) MessagesContainer(ctx context.Context, viewerID int64, msgs []domain.Message) ([]domain.MTMessage, []domain.UserReal, error) {
 	kinds := i.chatKinds(ctx, msgs)
-	threads, repliers := i.threadReplies(ctx, msgs, kinds)
+	threads, repliers := i.threadReplies(ctx, viewerID, msgs, kinds)
 	wire, err := i.messagesWire(ctx, viewerID, msgs, kinds, threads)
 	if err != nil {
 		return nil, nil, err
 	}
-	users := mergeUserCards(i.messageAuthors(ctx, msgs), repliers)
+	users := mergeUserCards(i.messageAuthors(ctx, viewerID, msgs), repliers)
 	i.gateAuthorPhotos(ctx, viewerID, users)
 	return wire, users, nil
 }
@@ -51,7 +51,7 @@ func (i *Interactor) MessagesContainer(ctx context.Context, viewerID int64, msgs
 //
 // Сбой запроса не роняет выдачу: список сообщений полезен и без подписей, а
 // упавшая история полезна никому. Порядок тот же, что у диалогов.
-func (i *Interactor) messageAuthors(ctx context.Context, msgs []domain.Message) []domain.UserReal {
+func (i *Interactor) messageAuthors(ctx context.Context, viewerID int64, msgs []domain.Message) []domain.UserReal {
 	if i.groups == nil {
 		return nil
 	}
@@ -66,7 +66,7 @@ func (i *Interactor) messageAuthors(ctx context.Context, msgs []domain.Message) 
 	if len(ids) == 0 {
 		return nil
 	}
-	authors, err := i.groups.UsersByIDs(ctx, ids)
+	authors, err := i.groups.UsersByIDs(ctx, viewerID, ids)
 	if err != nil {
 		return nil
 	}
@@ -102,7 +102,7 @@ func (i *Interactor) messageAuthors(ctx context.Context, msgs []domain.Message) 
 // Сбой подсчёта не роняет выдачу — то же правило, что у messageAuthors: чат
 // без счётчика читается, упавший чат не читается никак.
 func (i *Interactor) threadReplies(
-	ctx context.Context, msgs []domain.Message, kinds map[int64]string,
+	ctx context.Context, viewerID int64, msgs []domain.Message, kinds map[int64]string,
 ) (map[int64]domain.MessageReplies, []domain.UserReal) {
 	if i.msgs == nil || len(msgs) == 0 {
 		return nil, nil
@@ -124,7 +124,7 @@ func (i *Interactor) threadReplies(
 			if i.groups == nil {
 				continue // привязку обсуждения спросить не у кого
 			}
-			byPost, cards, err := i.CommentCounts(ctx, chatID, ids)
+			byPost, cards, err := i.CommentCounts(ctx, viewerID, chatID, ids)
 			if err != nil {
 				continue
 			}

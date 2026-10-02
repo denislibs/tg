@@ -118,7 +118,9 @@ type GroupRepo interface {
 	Card(ctx context.Context, chatID, viewerID int64) (domain.ChatRecord, error) // domain.ErrNotFound if no chat
 	EditInfo(ctx context.Context, chatID int64, title, about, username string) error
 	SetPhoto(ctx context.Context, chatID, mediaID int64) error
-	UsersByIDs(ctx context.Context, ids []int64) ([]domain.UserReal, error)
+	// UsersByIDs — карточки глазами viewerID (domain.UserReal.SeenBy): имя из
+	// его книги и pFlags.contact. viewerID 0 — без зрителя (профильные имена).
+	UsersByIDs(ctx context.Context, viewerID int64, ids []int64) ([]domain.UserReal, error)
 	ListMembers(ctx context.Context, chatID int64, offset, limit int) ([]domain.Member, error)
 	// AdminIDs — id владельца и админов чата (role in creator/admin), для адресной
 	// рассылки (напр. новые предложенные посты уходят только тем, кто их решает).
@@ -426,7 +428,8 @@ type ChannelRepo interface {
 
 type SearchRepo interface {
 	SearchChats(ctx context.Context, q string, limit int) ([]domain.ChatRecord, error) // public only
-	SearchUsers(ctx context.Context, q string, limit int) ([]domain.UserReal, error)
+	// SearchUsers — карточки глазами viewerID (domain.UserReal.SeenBy).
+	SearchUsers(ctx context.Context, viewerID int64, q string, limit int) ([]domain.UserReal, error)
 	// OwnPeers — какие из найденных пиров «свои» для viewerID: чаты, где он
 	// участник, и пользователи из его контактов или с общим личным чатом
 	// (my_results contacts.search). ОДИН запрос на всю выдачу, не по пиру.
@@ -466,7 +469,8 @@ type ReactionRepo interface {
 	ReactionsFor(ctx context.Context, messageIDs []int64, viewerID int64) (map[int64][]domain.ReactionCount, error)
 	// ReactionUsers lists who reacted to a message (with which emoji), oldest first,
 	// hydrated with the user card for display — for the who-reacted popup.
-	ReactionUsers(ctx context.Context, messageID int64) ([]domain.ReactionUser, error)
+	// Карточки — глазами viewerID (domain.UserReal.SeenBy).
+	ReactionUsers(ctx context.Context, viewerID, messageID int64) ([]domain.ReactionUser, error)
 }
 
 // StarReactionRepo — платные ⭐-реакции сообщений (star_reactions). Вклад
@@ -480,7 +484,8 @@ type StarReactionRepo interface {
 	AggregatesFor(ctx context.Context, messageIDs []int64, viewerID int64) (map[int64]domain.StarReactionAgg, error)
 	// TopSenders — крупнейшие отправители звёзд сообщения (по убыванию), с
 	// карточкой пользователя для отображения. Anonymous сохраняется во флаге.
-	TopSenders(ctx context.Context, messageID int64, limit int) ([]domain.StarReactionSender, error)
+	// Карточки — глазами viewerID (domain.UserReal.SeenBy).
+	TopSenders(ctx context.Context, viewerID, messageID int64, limit int) ([]domain.StarReactionSender, error)
 }
 
 // SavedTagRepo — имена тегов-реакций «Избранного» (Telegram saved reaction tags).

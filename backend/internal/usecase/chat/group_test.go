@@ -568,7 +568,7 @@ func (r *fakeGroupRepo) AdminIDs(_ context.Context, chatID int64) ([]int64, erro
 	return out, nil
 }
 
-func (r *fakeGroupRepo) UsersByIDs(_ context.Context, ids []int64) ([]domain.UserReal, error) {
+func (r *fakeGroupRepo) UsersByIDs(_ context.Context, _ int64, ids []int64) ([]domain.UserReal, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	out := make([]domain.UserReal, 0, len(ids))

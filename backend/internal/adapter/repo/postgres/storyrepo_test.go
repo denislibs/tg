@@ -81,7 +81,7 @@ func TestStoryRepo_FeedViewViewersDelete(t *testing.T) {
 	}
 
 	// Viewers lists u2.
-	viewers, err := repo.Viewers(ctx, storyID)
+	viewers, err := repo.Viewers(ctx, 0, storyID)
 	if err != nil {
 		t.Fatalf("Viewers: %v", err)
 	}
@@ -449,7 +449,7 @@ func TestStoryRepo_PurgeRecentViews(t *testing.T) {
 	if err := repo.PurgeRecentViews(ctx, viewer, time.Now().Add(-5*time.Minute)); err != nil {
 		t.Fatalf("PurgeRecentViews: %v", err)
 	}
-	viewers, _ := repo.Viewers(ctx, storyID)
+	viewers, _ := repo.Viewers(ctx, 0, storyID)
 	if len(viewers.Views) != 0 {
 		t.Fatalf("view should be purged, got %+v", viewers.Views)
 	}

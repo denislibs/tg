@@ -14,6 +14,9 @@ type ContactsRepo interface {
 	Add(ctx context.Context, c domain.ContactRecord) (domain.ContactRecord, error)
 	List(ctx context.Context, ownerID int64) ([]domain.ContactRecord, error)
 	Delete(ctx context.Context, ownerID, userID int64) (found bool, err error)
+	// SeenUser — карточка userID глазами viewerID (domain.UserReal.SeenBy);
+	// domain.ErrNotFound, если пользователя нет.
+	SeenUser(ctx context.Context, viewerID, userID int64) (domain.UserReal, error)
 	// UpdateNote переписывает заметку существующего контакта; found=false —
 	// записи (owner, user) нет.
 	UpdateNote(ctx context.Context, ownerID, userID int64, note domain.TextWithEntities) (found bool, err error)
