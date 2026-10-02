@@ -81,6 +81,10 @@
           "value": "Add to Group"
         },
         {
+          "key": "AdminRights.ManageMessages",
+          "value": "Manage Messages"
+        },
+        {
           "key": "Administrators",
           "value": "Administrators"
         },
@@ -775,6 +779,10 @@
           "value": "You can provide an optional description for your"
         },
         {
+          "key": "Channel.EditAdmin.PermissionInviteSubscribers",
+          "value": "Add Subscribers"
+        },
+        {
           "key": "Channel.UsernameAboutChannel",
           "value": "People can share this link with others and can find your channel using Telegram search."
         },
@@ -785,6 +793,10 @@
         {
           "key": "ChannelAddAdmin",
           "value": "Add Admin"
+        },
+        {
+          "key": "ChannelAddException",
+          "value": "Add Exception"
         },
         {
           "key": "ChannelAddSubscribers",
@@ -1802,12 +1814,64 @@
           "value": "Admin Rights"
         },
         {
+          "key": "EditAdminAddAdmins",
+          "value": "Add New Admins"
+        },
+        {
+          "key": "EditAdminAddUsersViaLink",
+          "value": "Invite Users via Link"
+        },
+        {
+          "key": "EditAdminBanUsers",
+          "value": "Ban Users"
+        },
+        {
+          "key": "EditAdminCantEdit",
+          "value": "You can't edit the rights of this admin."
+        },
+        {
+          "key": "EditAdminChangeChannelInfo",
+          "value": "Change Channel Info"
+        },
+        {
+          "key": "EditAdminChangeGroupInfo",
+          "value": "Change Group Info"
+        },
+        {
+          "key": "EditAdminDeleteMessages",
+          "value": "Delete Messages of Others"
+        },
+        {
+          "key": "EditAdminEditMessages",
+          "value": "Edit Messages of Others"
+        },
+        {
+          "key": "EditAdminGroupDeleteMessages",
+          "value": "Delete Messages"
+        },
+        {
+          "key": "EditAdminPinMessages",
+          "value": "Pin Messages"
+        },
+        {
+          "key": "EditAdminPostMessages",
+          "value": "Post Messages"
+        },
+        {
           "key": "EditAdminRights",
           "value": "Edit admin rights"
         },
         {
           "key": "EditAdminWhatCanDo",
           "value": "What can this admin do?"
+        },
+        {
+          "key": "EditCantEditPermissions",
+          "value": "You cannot change this permission."
+        },
+        {
+          "key": "EditCantEditPermissionsPublic",
+          "value": "This permission is not available in public groups."
         },
         {
           "key": "EditContact.OriginalName",
@@ -2255,18 +2319,6 @@
         {
           "key": "GroupChecklist",
           "value": "Group Checklist"
-        },
-        {
-          "key": "GroupPermissions.PaidMessages",
-          "value": "Paid messages"
-        },
-        {
-          "key": "GroupPermissions.PaidMessages.Hint",
-          "value": "Charge stars per message from non-admins. 0 disables paid messages."
-        },
-        {
-          "key": "GroupPermissions.StarsPerMessage",
-          "value": "Stars per message"
         },
         {
           "key": "GroupType",
@@ -3522,6 +3574,18 @@
           "value": "Unlocking…"
         },
         {
+          "key": "PaidMessages.ChargeForGroupMessagesDescription",
+          "value": "If you turn this on, regular members of the group will have to pay Stars to send messages."
+        },
+        {
+          "key": "PaidMessages.ChargeForMessages",
+          "value": "Charge for Messages"
+        },
+        {
+          "key": "PaidMessages.SetPrice",
+          "value": "Set your price per message"
+        },
+        {
           "key": "PasscodeLock.AutoLock",
           "value": "Auto-lock after"
         },
@@ -3906,6 +3970,17 @@
           "forms": {
             "other_value": "%1$d remaining"
           }
+        },
+        {
+          "key": "Permissions.ExceptionsCount",
+          "forms": {
+            "one_value": "%d exception",
+            "other_value": "%d exceptions"
+          }
+        },
+        {
+          "key": "Permissions.NoExceptions",
+          "value": "No exceptions"
         },
         {
           "key": "Phone",
@@ -5072,8 +5147,28 @@
           "value": "Slow Mode"
         },
         {
-          "key": "SlowmodeInfo",
-          "value": "Choose how often members of the group are able to send messages."
+          "key": "SlowmodeHours",
+          "value": "%1$dh"
+        },
+        {
+          "key": "SlowmodeInfoOff",
+          "value": "Choose how long each member must wait before sending their next message."
+        },
+        {
+          "key": "SlowmodeInfoSelected",
+          "value": "Members will be able to send only one message every %1$s."
+        },
+        {
+          "key": "SlowmodeMinutes",
+          "value": "%1$dm"
+        },
+        {
+          "key": "SlowmodeOff",
+          "value": "Off"
+        },
+        {
+          "key": "SlowmodeSeconds",
+          "value": "%1$ds"
         },
         {
           "key": "SomeReactions",
@@ -5150,6 +5245,13 @@
         {
           "key": "StarGiftTitle",
           "value": "Gift"
+        },
+        {
+          "key": "Stars",
+          "forms": {
+            "one_value": "%d Star",
+            "other_value": "%d Stars"
+          }
         },
         {
           "key": "Stars.Balance",
@@ -5865,6 +5967,14 @@
           "value": "Unsaved Changes"
         },
         {
+          "key": "UnsavedChangesDescription",
+          "value": "Are you sure you want to discard all changes?"
+        },
+        {
+          "key": "UnsavedChangesDescription.Group",
+          "value": "You have changed some settings in this group. Save changes?"
+        },
+        {
           "key": "UnsavedChangesDescription.Privacy",
           "value": "You have changed some privacy settings. Save changes?"
         },
@@ -5945,12 +6055,40 @@
           "value": "Ban and remove from group"
         },
         {
+          "key": "UserRestrictionsBy",
+          "value": "Restricted by %1$s"
+        },
+        {
           "key": "UserRestrictionsChangeInfo",
           "value": "Change Chat Info"
         },
         {
+          "key": "UserRestrictionsDisabled",
+          "value": "This option is disabled for all members in Group Permissions"
+        },
+        {
           "key": "UserRestrictionsInviteUsers",
           "value": "Add Users"
+        },
+        {
+          "key": "UserRestrictionsNoChangeInfo",
+          "value": "can't change Info"
+        },
+        {
+          "key": "UserRestrictionsNoInviteUsers",
+          "value": "can't add users"
+        },
+        {
+          "key": "UserRestrictionsNoPinMessages",
+          "value": "no pins"
+        },
+        {
+          "key": "UserRestrictionsNoSend",
+          "value": "can't send messages"
+        },
+        {
+          "key": "UserRestrictionsNoSendMedia",
+          "value": "no media"
         },
         {
           "key": "UserRestrictionsPinMessages",
@@ -6409,10 +6547,6 @@
         {
           "key": "Slowmode",
           "value": "Медленный режим"
-        },
-        {
-          "key": "SlowmodeInfo",
-          "value": "Выберите, как часто каждый участник сможет писать в группу."
         },
         {
           "key": "ChannelAddAdmin",
@@ -8529,18 +8663,6 @@
         {
           "key": "ChannelSignProfilesInfo",
           "value": "Добавлять имена и фото админов к их сообщениям со ссылкой на профиль."
-        },
-        {
-          "key": "GroupPermissions.PaidMessages",
-          "value": "Платные сообщения"
-        },
-        {
-          "key": "GroupPermissions.StarsPerMessage",
-          "value": "Звёзд за сообщение"
-        },
-        {
-          "key": "GroupPermissions.PaidMessages.Hint",
-          "value": "Плата в звёздах за сообщение с не-админов. 0 — выключить."
         },
         {
           "key": "ForumTopic.EnableHint",
@@ -12295,6 +12417,164 @@
         {
           "key": "MarkAsRead",
           "value": "Отметить как прочитанное"
+        },
+        {
+          "key": "UserRestrictionsNoSend",
+          "value": "не может отправлять сообщения"
+        },
+        {
+          "key": "UserRestrictionsNoSendMedia",
+          "value": "без медиа"
+        },
+        {
+          "key": "UserRestrictionsNoInviteUsers",
+          "value": "не может добавлять участников"
+        },
+        {
+          "key": "UserRestrictionsNoPinMessages",
+          "value": "без закрепления"
+        },
+        {
+          "key": "UserRestrictionsNoChangeInfo",
+          "value": "не может менять профиль"
+        },
+        {
+          "key": "UserRestrictionsDisabled",
+          "value": "Эта настройка отключена для всех участников в разрешениях группы"
+        },
+        {
+          "key": "EditCantEditPermissionsPublic",
+          "value": "Это разрешение недоступно в публичных группах."
+        },
+        {
+          "key": "EditAdminChangeChannelInfo",
+          "value": "Изменение профиля канала"
+        },
+        {
+          "key": "EditAdminChangeGroupInfo",
+          "value": "Изменение профиля группы"
+        },
+        {
+          "key": "EditAdminPostMessages",
+          "value": "Публикация сообщений"
+        },
+        {
+          "key": "EditAdminEditMessages",
+          "value": "Изменение чужих сообщений"
+        },
+        {
+          "key": "EditAdminDeleteMessages",
+          "value": "Удаление чужих сообщений"
+        },
+        {
+          "key": "AdminRights.ManageMessages",
+          "value": "Управление сообщениями"
+        },
+        {
+          "key": "EditAdminGroupDeleteMessages",
+          "value": "Удаление сообщений"
+        },
+        {
+          "key": "EditAdminBanUsers",
+          "value": "Блокировка пользователей"
+        },
+        {
+          "key": "EditAdminAddUsersViaLink",
+          "value": "Пригласительные ссылки"
+        },
+        {
+          "key": "EditAdminPinMessages",
+          "value": "Закрепление сообщений"
+        },
+        {
+          "key": "Channel.EditAdmin.PermissionInviteSubscribers",
+          "value": "Добавление подписчиков"
+        },
+        {
+          "key": "EditAdminAddAdmins",
+          "value": "Назначение администраторов"
+        },
+        {
+          "key": "EditAdminCantEdit",
+          "value": "Вы не можете изменять права этого администратора."
+        },
+        {
+          "key": "EditCantEditPermissions",
+          "value": "Вы не можете изменить это разрешение."
+        },
+        {
+          "key": "UnsavedChangesDescription",
+          "value": "Вы уверены, что хотите отменить все изменения?"
+        },
+        {
+          "key": "UnsavedChangesDescription.Group",
+          "value": "Вы изменили настройки этой группы. Сохранить изменения?"
+        },
+        {
+          "key": "SlowmodeOff",
+          "value": "Выкл."
+        },
+        {
+          "key": "SlowmodeHours",
+          "value": "%1$dч"
+        },
+        {
+          "key": "SlowmodeMinutes",
+          "value": "%1$dм"
+        },
+        {
+          "key": "SlowmodeSeconds",
+          "value": "%1$dс"
+        },
+        {
+          "key": "SlowmodeInfoSelected",
+          "value": "Участники смогут отправлять только одно сообщение раз в %1$s."
+        },
+        {
+          "key": "SlowmodeInfoOff",
+          "value": "Выберите, сколько каждый участник должен ждать перед отправкой следующего сообщения."
+        },
+        {
+          "key": "ChannelAddException",
+          "value": "Добавить исключение"
+        },
+        {
+          "key": "UserRestrictionsBy",
+          "value": "Ограничил(а) %1$s"
+        },
+        {
+          "key": "Permissions.ExceptionsCount",
+          "forms": {
+            "one_value": "%d исключение",
+            "few_value": "%d исключения",
+            "many_value": "%d исключений",
+            "other_value": "%d исключения"
+          }
+        },
+        {
+          "key": "Permissions.NoExceptions",
+          "value": "Нет исключений"
+        },
+        {
+          "key": "PaidMessages.ChargeForGroupMessagesDescription",
+          "value": "Если включить, обычным участникам группы придётся платить звёздами за отправку сообщений."
+        },
+        {
+          "key": "PaidMessages.ChargeForMessages",
+          "value": "Плата за сообщения"
+        },
+        {
+          "key": "PaidMessages.SetPrice",
+          "value": "Цена за одно сообщение"
+        },
+        {
+          "key": "Stars",
+          "forms": {
+            "one_value": "%d звезда",
+            "few_value": "%d звезды",
+            "many_value": "%d звёзд",
+            "other_value": "%d звезды"
+          }
         }
       ]
     },
@@ -12305,7 +12585,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 30,
+      "version": 31,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -15435,6 +15715,152 @@
         {
           "key": "CallMessageVideoOutgoingMissed",
           "value": "Appel vidéo annulé"
+        },
+        {
+          "key": "UserRestrictionsNoSend",
+          "value": "ne peut pas envoyer de messages"
+        },
+        {
+          "key": "UserRestrictionsNoSendMedia",
+          "value": "pas de médias"
+        },
+        {
+          "key": "UserRestrictionsNoInviteUsers",
+          "value": "ne peut pas ajouter de membres"
+        },
+        {
+          "key": "UserRestrictionsNoPinMessages",
+          "value": "pas d'épinglage"
+        },
+        {
+          "key": "UserRestrictionsNoChangeInfo",
+          "value": "ne peut pas modifier les infos"
+        },
+        {
+          "key": "UserRestrictionsDisabled",
+          "value": "Cette option est désactivée pour tous les membres dans les autorisations du groupe"
+        },
+        {
+          "key": "EditCantEditPermissionsPublic",
+          "value": "Cette autorisation n'est pas disponible dans les groupes publics."
+        },
+        {
+          "key": "EditAdminChangeChannelInfo",
+          "value": "Modifier les infos du canal"
+        },
+        {
+          "key": "EditAdminChangeGroupInfo",
+          "value": "Modifier les infos du groupe"
+        },
+        {
+          "key": "EditAdminPostMessages",
+          "value": "Publier des messages"
+        },
+        {
+          "key": "EditAdminEditMessages",
+          "value": "Modifier les messages des autres"
+        },
+        {
+          "key": "EditAdminDeleteMessages",
+          "value": "Supprimer les messages des autres"
+        },
+        {
+          "key": "AdminRights.ManageMessages",
+          "value": "Gérer les messages"
+        },
+        {
+          "key": "EditAdminGroupDeleteMessages",
+          "value": "Supprimer des messages"
+        },
+        {
+          "key": "EditAdminBanUsers",
+          "value": "Bannir des utilisateurs"
+        },
+        {
+          "key": "EditAdminAddUsersViaLink",
+          "value": "Inviter via un lien"
+        },
+        {
+          "key": "EditAdminPinMessages",
+          "value": "Épingler des messages"
+        },
+        {
+          "key": "Channel.EditAdmin.PermissionInviteSubscribers",
+          "value": "Ajouter des abonnés"
+        },
+        {
+          "key": "EditAdminAddAdmins",
+          "value": "Ajouter des administrateurs"
+        },
+        {
+          "key": "EditAdminCantEdit",
+          "value": "Vous ne pouvez pas modifier les droits de cet administrateur."
+        },
+        {
+          "key": "EditCantEditPermissions",
+          "value": "Vous ne pouvez pas modifier cette autorisation."
+        },
+        {
+          "key": "UnsavedChangesDescription",
+          "value": "Voulez-vous vraiment annuler toutes les modifications ?"
+        },
+        {
+          "key": "UnsavedChangesDescription.Group",
+          "value": "Vous avez modifié des paramètres de ce groupe. Enregistrer les modifications ?"
+        },
+        {
+          "key": "SlowmodeOff",
+          "value": "Désactivé"
+        },
+        {
+          "key": "SlowmodeMinutes",
+          "value": "%1$dmin"
+        },
+        {
+          "key": "SlowmodeInfoSelected",
+          "value": "Les membres ne pourront envoyer qu'un message toutes les %1$s."
+        },
+        {
+          "key": "SlowmodeInfoOff",
+          "value": "Choisissez combien de temps chaque membre doit attendre avant d'envoyer son prochain message."
+        },
+        {
+          "key": "ChannelAddException",
+          "value": "Ajouter une exception"
+        },
+        {
+          "key": "UserRestrictionsBy",
+          "value": "Restreint par %1$s"
+        },
+        {
+          "key": "Permissions.ExceptionsCount",
+          "forms": {
+            "one_value": "%d exception",
+            "other_value": "%d exceptions"
+          }
+        },
+        {
+          "key": "Permissions.NoExceptions",
+          "value": "Aucune exception"
+        },
+        {
+          "key": "PaidMessages.ChargeForGroupMessagesDescription",
+          "value": "Si vous activez cette option, les membres ordinaires du groupe devront payer des Étoiles pour envoyer des messages."
+        },
+        {
+          "key": "PaidMessages.ChargeForMessages",
+          "value": "Facturer les messages"
+        },
+        {
+          "key": "PaidMessages.SetPrice",
+          "value": "Fixez votre prix par message"
+        },
+        {
+          "key": "Stars",
+          "forms": {
+            "one_value": "%d Étoile",
+            "other_value": "%d Étoiles"
+          }
         }
       ]
     },
@@ -15445,7 +15871,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 30,
+      "version": 31,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -18601,6 +19027,148 @@
         {
           "key": "CallMessageVideoOutgoingMissed",
           "value": "Abgebrochener Videoanruf"
+        },
+        {
+          "key": "UserRestrictionsNoSend",
+          "value": "kann keine Nachrichten senden"
+        },
+        {
+          "key": "UserRestrictionsNoSendMedia",
+          "value": "keine Medien"
+        },
+        {
+          "key": "UserRestrictionsNoInviteUsers",
+          "value": "kann keine Mitglieder hinzufügen"
+        },
+        {
+          "key": "UserRestrictionsNoPinMessages",
+          "value": "kein Anheften"
+        },
+        {
+          "key": "UserRestrictionsNoChangeInfo",
+          "value": "kann Info nicht ändern"
+        },
+        {
+          "key": "UserRestrictionsDisabled",
+          "value": "Diese Option ist in den Gruppenberechtigungen für alle Mitglieder deaktiviert"
+        },
+        {
+          "key": "EditCantEditPermissionsPublic",
+          "value": "Diese Berechtigung ist in öffentlichen Gruppen nicht verfügbar."
+        },
+        {
+          "key": "EditAdminChangeChannelInfo",
+          "value": "Kanalinfo ändern"
+        },
+        {
+          "key": "EditAdminChangeGroupInfo",
+          "value": "Gruppeninfo ändern"
+        },
+        {
+          "key": "EditAdminPostMessages",
+          "value": "Nachrichten posten"
+        },
+        {
+          "key": "EditAdminEditMessages",
+          "value": "Nachrichten anderer bearbeiten"
+        },
+        {
+          "key": "EditAdminDeleteMessages",
+          "value": "Nachrichten anderer löschen"
+        },
+        {
+          "key": "AdminRights.ManageMessages",
+          "value": "Nachrichten verwalten"
+        },
+        {
+          "key": "EditAdminGroupDeleteMessages",
+          "value": "Nachrichten löschen"
+        },
+        {
+          "key": "EditAdminBanUsers",
+          "value": "Nutzer sperren"
+        },
+        {
+          "key": "EditAdminAddUsersViaLink",
+          "value": "Per Link einladen"
+        },
+        {
+          "key": "EditAdminPinMessages",
+          "value": "Nachrichten anheften"
+        },
+        {
+          "key": "Channel.EditAdmin.PermissionInviteSubscribers",
+          "value": "Abonnenten hinzufügen"
+        },
+        {
+          "key": "EditAdminAddAdmins",
+          "value": "Neue Admins hinzufügen"
+        },
+        {
+          "key": "EditAdminCantEdit",
+          "value": "Du kannst die Rechte dieses Admins nicht bearbeiten."
+        },
+        {
+          "key": "EditCantEditPermissions",
+          "value": "Du kannst diese Berechtigung nicht ändern."
+        },
+        {
+          "key": "UnsavedChangesDescription",
+          "value": "Möchtest du wirklich alle Änderungen verwerfen?"
+        },
+        {
+          "key": "UnsavedChangesDescription.Group",
+          "value": "Du hast Einstellungen dieser Gruppe geändert. Änderungen speichern?"
+        },
+        {
+          "key": "SlowmodeOff",
+          "value": "Aus"
+        },
+        {
+          "key": "SlowmodeInfoSelected",
+          "value": "Mitglieder können nur eine Nachricht alle %1$s senden."
+        },
+        {
+          "key": "SlowmodeInfoOff",
+          "value": "Lege fest, wie lange jedes Mitglied vor dem Senden der nächsten Nachricht warten muss."
+        },
+        {
+          "key": "ChannelAddException",
+          "value": "Ausnahme hinzufügen"
+        },
+        {
+          "key": "UserRestrictionsBy",
+          "value": "Eingeschränkt von %1$s"
+        },
+        {
+          "key": "Permissions.ExceptionsCount",
+          "forms": {
+            "one_value": "%d Ausnahme",
+            "other_value": "%d Ausnahmen"
+          }
+        },
+        {
+          "key": "Permissions.NoExceptions",
+          "value": "Keine Ausnahmen"
+        },
+        {
+          "key": "PaidMessages.ChargeForGroupMessagesDescription",
+          "value": "Wenn du das einschaltest, müssen normale Mitglieder der Gruppe Sterne bezahlen, um Nachrichten zu senden."
+        },
+        {
+          "key": "PaidMessages.ChargeForMessages",
+          "value": "Gebühr für Nachrichten"
+        },
+        {
+          "key": "PaidMessages.SetPrice",
+          "value": "Lege deinen Preis pro Nachricht fest"
+        },
+        {
+          "key": "Stars",
+          "forms": {
+            "one_value": "%d Stern",
+            "other_value": "%d Sterne"
+          }
         }
       ]
     },
@@ -18611,7 +19179,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 30,
+      "version": 31,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -21761,6 +22329,148 @@
         {
           "key": "CallMessageVideoOutgoingMissed",
           "value": "Videollamada cancelada"
+        },
+        {
+          "key": "UserRestrictionsNoSend",
+          "value": "no puede enviar mensajes"
+        },
+        {
+          "key": "UserRestrictionsNoSendMedia",
+          "value": "sin multimedia"
+        },
+        {
+          "key": "UserRestrictionsNoInviteUsers",
+          "value": "no puede añadir usuarios"
+        },
+        {
+          "key": "UserRestrictionsNoPinMessages",
+          "value": "sin fijar"
+        },
+        {
+          "key": "UserRestrictionsNoChangeInfo",
+          "value": "no puede cambiar la info"
+        },
+        {
+          "key": "UserRestrictionsDisabled",
+          "value": "Esta opción está desactivada para todos los miembros en los permisos del grupo"
+        },
+        {
+          "key": "EditCantEditPermissionsPublic",
+          "value": "Este permiso no está disponible en grupos públicos."
+        },
+        {
+          "key": "EditAdminChangeChannelInfo",
+          "value": "Cambiar info del canal"
+        },
+        {
+          "key": "EditAdminChangeGroupInfo",
+          "value": "Cambiar info del grupo"
+        },
+        {
+          "key": "EditAdminPostMessages",
+          "value": "Publicar mensajes"
+        },
+        {
+          "key": "EditAdminEditMessages",
+          "value": "Editar mensajes de otros"
+        },
+        {
+          "key": "EditAdminDeleteMessages",
+          "value": "Eliminar mensajes de otros"
+        },
+        {
+          "key": "AdminRights.ManageMessages",
+          "value": "Gestionar mensajes"
+        },
+        {
+          "key": "EditAdminGroupDeleteMessages",
+          "value": "Eliminar mensajes"
+        },
+        {
+          "key": "EditAdminBanUsers",
+          "value": "Bloquear usuarios"
+        },
+        {
+          "key": "EditAdminAddUsersViaLink",
+          "value": "Invitar usuarios con enlace"
+        },
+        {
+          "key": "EditAdminPinMessages",
+          "value": "Fijar mensajes"
+        },
+        {
+          "key": "Channel.EditAdmin.PermissionInviteSubscribers",
+          "value": "Añadir suscriptores"
+        },
+        {
+          "key": "EditAdminAddAdmins",
+          "value": "Añadir administradores"
+        },
+        {
+          "key": "EditAdminCantEdit",
+          "value": "No puedes editar los derechos de este administrador."
+        },
+        {
+          "key": "EditCantEditPermissions",
+          "value": "No puedes cambiar este permiso."
+        },
+        {
+          "key": "UnsavedChangesDescription",
+          "value": "¿Seguro que quieres descartar todos los cambios?"
+        },
+        {
+          "key": "UnsavedChangesDescription.Group",
+          "value": "Has cambiado algunos ajustes de este grupo. ¿Guardar los cambios?"
+        },
+        {
+          "key": "SlowmodeOff",
+          "value": "No"
+        },
+        {
+          "key": "SlowmodeInfoSelected",
+          "value": "Los miembros solo podrán enviar un mensaje cada %1$s."
+        },
+        {
+          "key": "SlowmodeInfoOff",
+          "value": "Elige cuánto debe esperar cada miembro antes de enviar su siguiente mensaje."
+        },
+        {
+          "key": "ChannelAddException",
+          "value": "Añadir excepción"
+        },
+        {
+          "key": "UserRestrictionsBy",
+          "value": "Restringido por %1$s"
+        },
+        {
+          "key": "Permissions.ExceptionsCount",
+          "forms": {
+            "one_value": "%d excepción",
+            "other_value": "%d excepciones"
+          }
+        },
+        {
+          "key": "Permissions.NoExceptions",
+          "value": "Sin excepciones"
+        },
+        {
+          "key": "PaidMessages.ChargeForGroupMessagesDescription",
+          "value": "Si lo activas, los miembros normales del grupo tendrán que pagar Estrellas para enviar mensajes."
+        },
+        {
+          "key": "PaidMessages.ChargeForMessages",
+          "value": "Cobrar por mensajes"
+        },
+        {
+          "key": "PaidMessages.SetPrice",
+          "value": "Fija tu precio por mensaje"
+        },
+        {
+          "key": "Stars",
+          "forms": {
+            "one_value": "%d Estrella",
+            "other_value": "%d Estrellas"
+          }
         }
       ]
     },
@@ -21771,7 +22481,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 31,
+      "version": 32,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -25094,6 +25804,164 @@
         {
           "key": "CallMessageVideoOutgoingMissed",
           "value": "Скасований відеодзвінок"
+        },
+        {
+          "key": "UserRestrictionsNoSend",
+          "value": "не може надсилати повідомлення"
+        },
+        {
+          "key": "UserRestrictionsNoSendMedia",
+          "value": "без медіа"
+        },
+        {
+          "key": "UserRestrictionsNoInviteUsers",
+          "value": "не може додавати учасників"
+        },
+        {
+          "key": "UserRestrictionsNoPinMessages",
+          "value": "без закріплення"
+        },
+        {
+          "key": "UserRestrictionsNoChangeInfo",
+          "value": "не може змінювати профіль"
+        },
+        {
+          "key": "UserRestrictionsDisabled",
+          "value": "Цей параметр вимкнено для всіх учасників у дозволах групи"
+        },
+        {
+          "key": "EditCantEditPermissionsPublic",
+          "value": "Цей дозвіл недоступний у публічних групах."
+        },
+        {
+          "key": "EditAdminChangeChannelInfo",
+          "value": "Зміна профілю каналу"
+        },
+        {
+          "key": "EditAdminChangeGroupInfo",
+          "value": "Зміна профілю групи"
+        },
+        {
+          "key": "EditAdminPostMessages",
+          "value": "Публікація повідомлень"
+        },
+        {
+          "key": "EditAdminEditMessages",
+          "value": "Редагування чужих повідомлень"
+        },
+        {
+          "key": "EditAdminDeleteMessages",
+          "value": "Видалення чужих повідомлень"
+        },
+        {
+          "key": "AdminRights.ManageMessages",
+          "value": "Керування повідомленнями"
+        },
+        {
+          "key": "EditAdminGroupDeleteMessages",
+          "value": "Видалення повідомлень"
+        },
+        {
+          "key": "EditAdminBanUsers",
+          "value": "Блокування користувачів"
+        },
+        {
+          "key": "EditAdminAddUsersViaLink",
+          "value": "Запрошення за посиланням"
+        },
+        {
+          "key": "EditAdminPinMessages",
+          "value": "Закріплення повідомлень"
+        },
+        {
+          "key": "Channel.EditAdmin.PermissionInviteSubscribers",
+          "value": "Додавання підписників"
+        },
+        {
+          "key": "EditAdminAddAdmins",
+          "value": "Призначення адміністраторів"
+        },
+        {
+          "key": "EditAdminCantEdit",
+          "value": "Ви не можете змінювати права цього адміністратора."
+        },
+        {
+          "key": "EditCantEditPermissions",
+          "value": "Ви не можете змінити цей дозвіл."
+        },
+        {
+          "key": "UnsavedChangesDescription",
+          "value": "Ви впевнені, що хочете скасувати всі зміни?"
+        },
+        {
+          "key": "UnsavedChangesDescription.Group",
+          "value": "Ви змінили налаштування цієї групи. Зберегти зміни?"
+        },
+        {
+          "key": "SlowmodeOff",
+          "value": "Вимк."
+        },
+        {
+          "key": "SlowmodeHours",
+          "value": "%1$dг"
+        },
+        {
+          "key": "SlowmodeMinutes",
+          "value": "%1$dхв"
+        },
+        {
+          "key": "SlowmodeSeconds",
+          "value": "%1$dс"
+        },
+        {
+          "key": "SlowmodeInfoSelected",
+          "value": "Учасники зможуть надсилати лише одне повідомлення раз на %1$s."
+        },
+        {
+          "key": "SlowmodeInfoOff",
+          "value": "Виберіть, скільки кожен учасник має чекати перед надсиланням наступного повідомлення."
+        },
+        {
+          "key": "ChannelAddException",
+          "value": "Додати виняток"
+        },
+        {
+          "key": "UserRestrictionsBy",
+          "value": "Обмежив(ла) %1$s"
+        },
+        {
+          "key": "Permissions.ExceptionsCount",
+          "forms": {
+            "one_value": "%d виняток",
+            "few_value": "%d винятки",
+            "many_value": "%d винятків",
+            "other_value": "%d винятку"
+          }
+        },
+        {
+          "key": "Permissions.NoExceptions",
+          "value": "Немає винятків"
+        },
+        {
+          "key": "PaidMessages.ChargeForGroupMessagesDescription",
+          "value": "Якщо це ввімкнути, звичайним учасникам групи доведеться платити зірками за надсилання повідомлень."
+        },
+        {
+          "key": "PaidMessages.ChargeForMessages",
+          "value": "Плата за повідомлення"
+        },
+        {
+          "key": "PaidMessages.SetPrice",
+          "value": "Ціна за одне повідомлення"
+        },
+        {
+          "key": "Stars",
+          "forms": {
+            "one_value": "%d зірка",
+            "few_value": "%d зірки",
+            "many_value": "%d зірок",
+            "other_value": "%d зірки"
+          }
         }
       ]
     }

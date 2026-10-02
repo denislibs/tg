@@ -25,11 +25,6 @@ export const PERMS = [
 ] as const
 export const ALL_PERMS = 31
 
-// Шаги слайдера медленного режима (tweb RangeStepsSelector).
-export const SLOWMODE_STEPS = [0, 5, 10, 30, 60, 300, 900, 3600]
-export const slowmodeLabel = (sec: number): string =>
-  sec === 0 ? 'Нет' : sec < 60 ? `${sec} сек` : sec < 3600 ? `${sec / 60} мин` : '1 ч'
-
 export interface EditMember {
   userId: number
   name: string
@@ -77,10 +72,8 @@ interface Managers {
     card(chatId: PeerId): Promise<ChatCard | null>
     members(peerId: PeerId): Promise<ChatMember[]>
     editInfo(chatId: number, args: { title: string; about?: string; username?: string }): Promise<void>
-    setPermissions(chatId: number, permissions: number, slowmodeSeconds: number): Promise<void>
     setReactions(chatId: number, mode: 'all' | 'some' | 'none', emojis: string[]): Promise<void>
     setHistory(chatId: number, visible: boolean): Promise<void>
-    setChargeStars(chatId: number, chargeStars: number): Promise<void>
     listInvites(chatId: number, revoked?: boolean): Promise<InviteLink[]>
     createInvite(chatId: number, opts?: CreateInviteOpts): Promise<InviteLink>
     editInvite(chatId: number, token: string, patch: InvitePatch): Promise<InviteLink>
@@ -134,10 +127,8 @@ export interface GroupEdit {
   reload: () => void
   saveInfo: (title: string, about: string) => Promise<void>
   savePhoto: (blob: Blob, width: number, height: number) => Promise<void>
-  savePermissions: (permissions: number, slowmodeSeconds: number) => Promise<void>
   saveReactions: (mode: 'all' | 'some' | 'none', emojis: string[]) => Promise<void>
   saveHistory: (visible: boolean) => Promise<void>
-  saveChargeStars: (chargeStars: number) => Promise<void>
   saveSignatures: (signatures: boolean, profiles: boolean) => Promise<void>
   createInvite: (opts?: CreateInviteOpts) => Promise<void>
   editInvite: (token: string, patch: InvitePatch) => Promise<void>
@@ -253,20 +244,12 @@ export function useGroupEdit(chatId: number): GroupEdit {
       reload()
       await refreshDialogs()
     },
-    savePermissions: async (permissions, slowmodeSeconds) => {
-      await managers.groups.setPermissions(chatId, permissions, slowmodeSeconds)
-      reload()
-    },
     saveReactions: async (mode, emojis) => {
       await managers.groups.setReactions(chatId, mode, emojis)
       reload()
     },
     saveHistory: async (visible) => {
       await managers.groups.setHistory(chatId, visible)
-      reload()
-    },
-    saveChargeStars: async (chargeStars) => {
-      await managers.groups.setChargeStars(chatId, chargeStars)
       reload()
     },
     saveSignatures: async (signatures, profiles) => {

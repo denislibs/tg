@@ -968,7 +968,7 @@ DOM/лента/жесты/сворачивание живут в отдельн�
 
 - `src/components/userInfo/RightsEditor.tsx` (136) — права админа (`.user-permissions-container`).
 - `src/components/ChannelStats.tsx` (152) — статистика (`.statistics-container`, `useChannelStats`).
-- `src/components/group/GroupEditFlow.tsx` (256) — «Изменить группу/канал» + 9 подэкранов в `group/screens/*` (`ChatTypeScreen`, `InviteLinkScreens`, `ReactionsScreen`, `DiscussionScreen`, `PermissionsScreen`, `AdminScreens`, `MembersScreen`, `MemberScreens` — banned/restricted).
+- `src/components/group/GroupEditFlow.tsx` (256) — «Изменить группу/канал» + подэкраны в `group/screens/*` (`InviteLinkScreens`, `ReactionsScreen`, `DiscussionScreen`, `AdminScreens`, `MembersScreen`, `MemberScreens` — banned/restricted). «Тип» (0б-2) и «Разрешения» (0б-6) — уже Solid-вкладки слайдера колонки: `sidebarRight/tabs/chatType.solid.tsx` и `sidebarRight/tabs/groupPermissions/groupPermissions.solid.tsx` (кит `sharedPermissions.ts` файлом tweb: `ChatPermissions`, `ChatAdministratorRights`, `createSolidTabState`); редактор открывает их мостом `appSidebarRight.createTab(…).open(…)` и прячет свой оверлей, пока вкладка открыта (`// ВРЕМЕННО до 0б-1`). Права группы сохраняются, как у tweb, галочкой в шапке или «Save» подтверждения на закрытии, а не на каждом изменении. Чего нет у бэкенда — О-115…О-119 плана волны 7.
 - `src/components/group/AddMembersScreen.tsx` (118) — селектор участников.
 - `src/components/PinnedStoriesSection.tsx` (49).
 
@@ -1020,7 +1020,7 @@ TAB_FILTER  = Media→media, Files→files, Links→links, Music→music, Voice�
 | `ChannelStats` | строка «Statistics» | **Нет.** Голый `div.tabs-tab…statistics-container.active` — классов `.statistics-container` в SCSS вообще нет, контейнер-родитель без `data-animation` → появляется мгновенно |
 | `RightsEditor` | клик по роли участника | **Нет** (то же самое, `.user-permissions-container` без стилей) |
 
-Внутри `GroupEditFlow` — настоящий второй уровень: проп `sub` (`:106-117`), 9 подэкранов (type / links / reactions / discussion / permissions / admins / members / banned / restricted), переход играет `core/dom/navigationTransition.ts` (параллакс уходящего `-25%` + `brightness(80%)`, порт `slideNavigation`).
+Внутри `GroupEditFlow` — настоящий второй уровень: проп `sub` (`:106-117`), подэкраны (links / reactions / discussion / admins / members / banned / restricted; type и permissions — вкладки слайдера, см. § 1.3), переход играет `core/dom/navigationTransition.ts` (параллакс уходящего `-25%` + `brightness(80%)`, порт `slideNavigation`).
 
 «Изменить контакт» — **вкладка того же слайдера** (0б-10): `onEditContact` панели зовёт `appSidebarRight.createTab(AppEditContactTab).open(peerId)` поверх профиля, как карандаш tweb `sharedMedia.tsx:675-686`; React-панели `EditContactView`/`AddContactView` снесены.
 

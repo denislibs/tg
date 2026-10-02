@@ -2,10 +2,10 @@
 import type { RestClient } from '../net/restClient'
 import type { DialogsManager } from './dialogsManager'
 import type { PeersManager } from './peersManager'
-import type { Channel, ChannelFull, MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
+import type { Channel, ChannelFull, ChatBannedRights, MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
 import { getPeerId } from '../peers/peerId'
 import type { Peer } from '../peers/peerId'
-import { deniedMask } from '../peers/rights'
+import { allowedFromBannedRights, deniedMask } from '../peers/rights'
 import { MUTE_UNTIL_FOREVER } from '../dialogs/notifySettings'
 import type { MissingInvitee } from '@layer'
 import { WIRE_FOLDER_ARCHIVE, type MyMessage, type RawMyMessage } from '../models'
@@ -446,8 +446,17 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
     async setType(peerId: number, isPublic: boolean, username: string): Promise<void> {
       await rest.put(`/chats/${peerId}/type`, { is_public: isPublic, username })
     },
-    async setPermissions(peerId: number, permissions: number, slowmodeSeconds: number): Promise<void> {
-      await rest.put(`/chats/${peerId}/permissions`, { permissions, slowmode_seconds: slowmodeSeconds })
+    /**
+     * Права участников по умолчанию и медленный режим — порт пары
+     * `appChatsManager.editChatDefaultBannedRights` (`:887-901`) +
+     * `toggleSlowMode` (`:1188-1196`) ОДНИМ вызовом: бэкенд хранит пару одной
+     * ручкой `PUT /chats/{id}/permissions` (`group_handler.go::SetPermissions`
+     * перезаписывает оба поля), и раздельная запись второй половины затирала бы
+     * первую значением из устаревшего зеркала. Запреты (`chatBannedRights`) едут
+     * нашим битмаском «что можно» — перевод в `allowedFromBannedRights`.
+     */
+    async editChatDefaultBannedRights(peerId: number, rights: ChatBannedRights, slowmodeSeconds: number): Promise<void> {
+      await rest.put(`/chats/${peerId}/permissions`, { permissions: allowedFromBannedRights(rights), slowmode_seconds: slowmodeSeconds })
     },
     async setReactions(peerId: number, mode: 'all' | 'some' | 'none', emojis: string[]): Promise<void> {
       await rest.put(`/chats/${peerId}/reactions`, { mode, emojis })
@@ -489,6 +498,18 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
           restrictedBy: p.kicked_by,
         }]
       })
+    },
+    /**
+     * Ограниченные участники — порт `appProfileManager.getChannelParticipants`
+     * с фильтром `channelParticipantsBanned` (`:744-790`): ограниченный остаётся в
+     * чате (у выгнанного — `left`, его список `listBans`). Ручка отдаёт список
+     * целиком, без `offset`/`limit`; карточек `users` в ответе нет — строки
+     * объявляют пробел зеркала сами (`peers.fillMirror` у `PeerTitle`/`avatar`).
+     */
+    async channelParticipantsBanned(peerId: number): Promise<ChannelsChannelParticipants> {
+      const r = await rest.get<ChannelsChannelParticipants>(`/chats/${peerId}/restrictions`)
+      peers.saveApiPeers({ users: r.users ?? [] })
+      return r
     },
     async restrictMember(peerId: number, userId: number, deniedRights: number, untilSeconds?: number): Promise<void> {
       await rest.post(`/chats/${peerId}/restrictions`, { user_id: userId, denied_rights: deniedRights, until_seconds: untilSeconds ?? 0 })

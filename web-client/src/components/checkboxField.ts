@@ -19,8 +19,7 @@
  *  • (`toggle` СНЯТ с этого списка — портирован вместе с первой Solid-вкладкой
  *    настроек, у которой он появился вызывающим: `checkboxFieldTsx.solid.ts`
  *    → `sidebarLeft/tabs/language.solid.tsx`. Разметка дословная, tweb
- *    :117-129. Подветка `restriction` внутри неё (`:120-122`) не перенесена
- *    вместе с самим `restriction` — см. ниже. Ванильный `row.ts` с его
+ *    :117-129 (с подветкой `restriction` — см. ниже). Ванильный `row.ts` с его
  *    toggle-веткой (`checkboxFieldOptions.toggle`) снят задачей 29 плана 2D;
  *    строки кладут поле через `Row.CheckboxFieldToggle` (`rowTsx.solid.tsx`));
  *  • `stateKey`/`stateValues`/`stateValueReverse` — двусторонняя привязка к
@@ -38,8 +37,13 @@
  *    #110 покрывает только `toggle` и `contextMenu`, `withRipple`/`withHover`
  *    в неё не входят — вынесено ведущему финальным ревью волны 2, номер
  *    проставить сюда, как только он появится;
- *  • `color`, `restriction`, `asRadio`, `listenerSetter` — их не зовёт ни
+ *  • `color`, `asRadio`, `listenerSetter` — их не зовёт ни
  *    выделение, ни `PopupPeer`, ни Solid-обёртка;
+ *  • (`restriction` СНЯТ с этого списка — портирован дословно, tweb :26,
+ *    :40-42, :116-118, с первым вызывающим: строки прав группы
+ *    `ChatPermissions`, `sidebarRight/tabs/groupPermissions/sharedPermissions.ts`,
+ *    через `CheckboxFields({asRestrictions})` и Solid-обёртку, задача 0б-6
+ *    волны 7: снятый тумблер — красный «запрещено», а не серый;)
  *  • (`toggleDisability` и `toggleLockIcon`/`setToggleLockIcon` СНЯТЫ с этого
  *    списка — портированы с HEAD 812502980 вместе с дельтой `checkboxFieldTsx`
  *    (волна 2D, задача 2): их зовут её эффекты, tweb `checkboxField.ts:122`,
@@ -88,6 +92,10 @@ export type CheckboxFieldOptions = {
   toggle?: boolean
   /** замок в бегунке тумблера (tweb HEAD :25, :127); только с `toggle` */
   toggleLockIcon?: IconName
+  /** поле-ограничение (tweb :26): снятое — «запрещено», красным; классы
+   *  `checkbox-field-restriction` (коробка, :40-42) и
+   *  `checkbox-field-toggle-restriction` (тумблер, :116-118) */
+  restriction?: boolean
 }
 
 export default class CheckboxField {
@@ -105,6 +113,10 @@ export default class CheckboxField {
     // щелчок по подписи обязан переключать поле). Уйдёт с попапами 2C.
     const label = this.label = document.createElement(options.text ? 'label' : 'span')
     label.classList.add('checkbox-field')
+
+    if (options.restriction && !options.toggle) { // tweb :40-42
+      label.classList.add('checkbox-field-restriction')
+    }
 
     if (options.round) {
       label.classList.add('checkbox-field-round')
@@ -134,10 +146,12 @@ export default class CheckboxField {
     label.append(input)
 
     if (options.toggle) {
-      // tweb :117-129 — переключатель: дорожка + бегунок, коробки нет вовсе.
-      // Подветка `restriction` (:120-122) не перенесена вместе с самой опцией
-      // `restriction` — у неё по-прежнему нет ни одного вызывающего.
+      // tweb :113-129 — переключатель: дорожка + бегунок, коробки нет вовсе.
       label.classList.add('checkbox-field-toggle')
+
+      if (options.restriction) { // tweb :116-118
+        label.classList.add('checkbox-field-toggle-restriction')
+      }
 
       const toggle = document.createElement('div')
       toggle.classList.add('checkbox-toggle')

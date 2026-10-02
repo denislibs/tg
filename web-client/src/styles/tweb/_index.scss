@@ -100,6 +100,7 @@
 @use "storiesList";
 @use "whole"; // выдержка `.whole` из base.scss:513-522 (не путать с pages/pages)
 @use "toast"; // выдержка `.toast`/`.toasts-container` из base.scss:740-780
+@use "appearZoom"; // выдержка `.overflow-hidden`/`.appear-zoom` из base.scss:674-676, :2357-2367
 @use "pages/pages"; // :124
 @use "pages/chats"; // :125
 @use "passcodeLockScreen"; // :127

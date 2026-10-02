@@ -183,6 +183,19 @@ tweb: `sharedMediaTab` + `peerProfile`. Табы (`sharedMedia.tsx:449-462, 604-
 tweb различает набор прав broadcast vs megagroup и умеет кастомный «титул» админа.
 У нас `RIGHTS` — один захардкоженный список из 8 бит с русскими подписями
 (`core/hooks/useGroupInfo.ts:11-20`), одинаковый для группы и канала, без rank.
+Набор tweb уже портирован классом `ChatAdministratorRights`
+(`web-client/src/components/sidebarRight/tabs/groupPermissions/sharedPermissions.ts`, задача 0б-6
+волны 7: строки группы и канала, «Управление сообщениями» с вложенными, `canEdit`/`canGrant`,
+`takeOut`) в объёме восьми прав бэкенда (О-115); `RIGHTS` снимает вкладка прав участника (0б-7).
+
+Права группы по умолчанию (`groupPermissions.tsx`) — вкладка `AppGroupPermissionsTab`
+(`sidebarRight/tabs/groupPermissions/groupPermissions.solid.tsx`, 0б-6): пять запретов
+(`ChatPermissions`, строки-ограничения `checkbox-field-toggle-restriction`, замок у публичной группы),
+плата за сообщения (`chargeForMessasgesSection` + `StarRangeInput`), медленный режим
+(`RangeStepsSelector`), исключения — ограниченные участники с подписью «чего нельзя». Сеть — по
+галочке/«Save» на закрытии; права и медленный режим — один `PUT /chats/{id}/permissions`.
+Нет у бэкенда: вложенные медиа-запреты и `manage_topics` (О-115), «не ограничивать бустеров» (О-116),
+гигагруппа (О-117), подпись комиссии цены (О-119); переходы из исключений — 0б-7 (О-118).
 
 ## 8. Буст, статистика, розыгрыши
 

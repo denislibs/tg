@@ -511,12 +511,21 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `Suggestion.Notifications.Title` с вшитым «🔔» заменён ключом tweb
 // `Suggestion.Notifications` (lang.ts:306, колокольчик — аргументом `%s`) у всех
 // пяти: −1 +1, числа те же, набор другой (см. `FINGERPRINT`).
+// Задача 0б-6 волны 7 (вкладка прав группы, порт tweb `sidebarRight/tabs/groupPermissions/*`):
+// +37 ключей tweb lang.ts всем пяти (запреты и их подписи-исключения `UserRestrictionsNo*`,
+// права админа `EditAdmin*` кита `sharedPermissions.ts`, медленный режим `Slowmode*`,
+// исключения, «плата за сообщения» `PaidMessages.*`, плюральные `Stars` и
+// `Permissions.ExceptionsCount`, подтверждение `UnsavedChangesDescription{,.Group}`). У es/de
+// не легли `SlowmodeHours`/`Minutes`/`Seconds`, у fr — `SlowmodeHours`/`Seconds`: перевод
+// совпал бы с английским (`%1$dh`…). У ru ещё −4 наших ключа снесённого React-экрана
+// `PermissionsScreen`: `GroupPermissions.{PaidMessages,PaidMessages.Hint,StarsPerMessage}` и
+// `SlowmodeInfo`. Итог: ru 1517, uk 827, es 798, de 799, fr 794.
 const COMPOSITION = {
-  ru: { keys: 1484, plural: 45 },
-  uk: { keys: 790, plural: 33 },
-  es: { keys: 764, plural: 32 },
-  de: { keys: 765, plural: 33 },
-  fr: { keys: 759, plural: 32 },
+  ru: { keys: 1517, plural: 47 },
+  uk: { keys: 827, plural: 35 },
+  es: { keys: 798, plural: 34 },
+  de: { keys: 799, plural: 35 },
+  fr: { keys: 794, plural: 34 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -679,12 +688,14 @@ const COMPOSITION = {
 // Баблом лога звонка — ключи исхода звонка (разбор — у `COMPOSITION` выше).
 // Задачей 2-5 волны 7 — `Suggestion.Notifications.Title` → ключ tweb
 // `Suggestion.Notifications` у всех пяти (разбор — у `COMPOSITION` выше).
+// Задачей 0б-6 волны 7 — ключи вкладки прав группы у всех пяти, у ru минус четыре ключа
+// снесённого `PermissionsScreen` (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '8facde8f',
-  uk: '1bd49a4a',
-  es: '5945d64d',
-  de: '328a4a5e',
-  fr: '7441bd26',
+  ru: '3cb754a6',
+  uk: 'ffe46f66',
+  es: '1c8d911a',
+  de: 'dcd1c9f9',
+  fr: 'b3dccb74',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

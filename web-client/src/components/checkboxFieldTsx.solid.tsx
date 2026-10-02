@@ -22,7 +22,7 @@
  * ── Отличия от оригинала ───────────────────────────────────────────────────
  *  1. Пропы — не `Omit<CheckboxFieldOptions, 'toggleLockIcon'>` целиком, а та
  *     часть, которую умеет наш `CheckboxField`: `color`, `stateKey`,
- *     `stateValues`, `stateValueReverse`, `restriction`, `listenerSetter`,
+ *     `stateValues`, `stateValueReverse`, `listenerSetter`,
  *     `asRadio` (tweb `:21-28`) он не поддерживает (разобрано в его докблоке:
  *     привязка к `appStateManager` у нас — zustand), и проп не переносим, чтобы
  *     он не был принят и молча проигнорирован. Приедут с первым экраном,
@@ -46,6 +46,8 @@ export default function CheckboxFieldTsx(props: {
   name?: string
   round?: boolean
   toggle?: boolean
+  /** поле-ограничение (tweb `:25`, задача 0б-6 волны 7) */
+  restriction?: boolean
   disabled?: boolean
   checked?: boolean
   signal?: Signal<boolean>
@@ -61,6 +63,7 @@ export default function CheckboxFieldTsx(props: {
     toggleLockIcon: props.lockIcon,
     round: props.round,
     name: props.name,
+    restriction: props.restriction,
     checked: checked(),
   })
   props.ref?.(checkboxField)

@@ -682,6 +682,15 @@ tweb. Чего нет у tweb — удалить, и написать об эт�
   `pickAvatarAndUpload.bridge.tsx` `// ВРЕМЕННО до МР-5`. Снесены и `AddContactView.tsx`
   (+`.module.scss`) — ветка «новый контакт» той же вкладки (tweb `topbar.ts:902-908`), — а с ними
   `useEditContact.ts`, `useMuteToggle.ts`.
+- **0б-6 (итог):** вкладка — `sidebarRight/tabs/groupPermissions/groupPermissions.solid.tsx` (+
+  `chargeForMessasgesSection.solid.tsx`, `starsRangeInput.solid.tsx`, `components/rangeStepsSelector.ts`,
+  `helpers/scrollableLoader.ts`); кит `sharedPermissions.ts` портирован файлом: `ChatPermissions`
+  (с участником — для 0б-7), `ChatAdministratorRights`, `createSolidTabState`. `RIGHTS`/`RealMember`
+  (`useGroupInfo.ts`) у tweb в `sharedPermissions.ts` не живут: `RIGHTS` — наш битмаск, его заменяет
+  набор полей `ChatAdministratorRights` (снимает 0б-7 вместе с `AdminScreens`/`RightsEditor`),
+  `RealMember` — вью-модель React-панели. Права и медленный режим — один вызов
+  `groups.editChatDefaultBannedRights` (одна ручка бэкенда); регистрация — eventable
+  `// ВРЕМЕННО до 0б-1` (мосту `GroupEditFlow` нужен `close`). Отложено — О-115…О-119.
 - **0б-9:** графики у tweb — `lovely-chart` (`statistics.tsx`). Если его нет в зависимостях, решение
   «взять пакет tweb» выносится в PR. Свою `StatChart` внутрь Solid-вкладки не тащить (React).
 - **Не входит в 0б:** `QrModal.tsx` (**2C-17**), `components/secret/KeyVerificationPopup.tsx`
@@ -1468,6 +1477,11 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 | О-97 | Превью потокового черновика бота в строке: `streamed_message_update/remove/finalize` → `setLastMessageN({lastMessage})` (`autonomousDialogList/dialogs.ts:173-209`) | потоковых черновиков (`HistoryStreamedDrafts`) нет ни на бэкенде, ни в модели (1-4) | превью «печатает текстом» у ботов |
 | О-108 | Виды плашки-подсказки с серверным источником: «аккаунт заморожен» (`frozenSuggestion.tsx`, `appConfig.freeze_since_date`, класс `.suggestion.danger`), «создайте ключ доступа» (`passkeySetupSuggestion.tsx`, `SETUP_PASSKEY`), дни рождения контактов и «укажите свой» (`birthdaySuggestions.tsx`, `BIRTHDAY_CONTACTS_TODAY`/`BIRTHDAY_SETUP`, `contacts.getBirthdays`), попап почты входа (`emailSetupSuggestion.ts`, `SETUP_LOGIN_EMAIL`) — `selectPendingSuggestion.ts`, `pendingSuggestion.solid.tsx` расхождение 1 | на бэкенде нет ни заморозки аккаунта, ни промо-подсказок `help.getPromoData().pendingSuggestions`/`help.dismissSuggestion` (`stores/promo`); ключи доступа и дата рождения есть, но подсказок по ним сервер не выдаёт (2-5) | виды плашки 1:1 на своих местах приоритета |
 | О-109 | Проверка подключения бизнес-бота над списком: `BotConnectionReviewSuggestion` (`pendingSuggestion.tsx:23-102`, `stores/chatAutomation`, `confirmBotConnection`/`rejectBotConnection`, классы `.connectionReview*`) | бизнес-ботов и их подключений на бэкенде нет (2-5) | плашка проверки бота 1:1 |
+| О-115 | Гранулярные запреты и права, которых нет у бэкенда: девять вложенных под «Отправку медиа» (`send_photos`…`send_polls`, `embed_links`) и `manage_topics` у `ChatPermissions`; `manage_welcome_messages`, истории, `manage_topics`, `manage_call`, `manage_direct_messages`, `anonymous`, `manage_linked_peers`, `other` у `ChatAdministratorRights` (`groupPermissions/sharedPermissions.ts`, расхождение 1) | бэкенд знает 5 запретов (`domain/mtchat.go:535-544`) и 8 прав админа (`adminRightNames`) (0б-6) | аккордеон «Отправка медиа» 1:1, полный набор прав админа |
+| О-116 | «Не ограничивать бустеров» вкладки прав группы (`doNotRestrictBoostersSection.tsx`, `channels.setBoostsToUnblockRestrictions`, `groupPermissions.tsx:174-195`) | у бэкенда нет `boosts_unrestrict` (`domain/mtchat.go::ChannelFull`); бусты `:235` есть, но без этого поля (0б-6) | секция 1:1 |
+| О-117 | «Широковещательная группа» (`showConvertToGigagroupPopup`, `groupPermissions.tsx:197-217`) | гигагрупп нет (`gigagroup`, `megagroup_size_max` конфига) (0б-6) | строка и попап конвертации |
+| О-118 | Исключения вкладки прав группы только показываются: щелчок по строке и «Добавить исключение» (`openUserPermissionsTab`, `showPickUserPopup`, `groupPermissions.tsx:221-261`), живое обновление по `chat_participant` (`:307-341`) | вкладки прав участника нет до 0б-7, `showPickUserPopup` — 2C-16; кадра по участнику на проводе нет (`appSearchSuper.ts`, расхождение 32) (0б-6) | **0б-7**: `clickable` у строки, щелчок по списку, карта `participants`, перечитывание по `chat_update` |
+| О-119 | Подпись цены «платы за сообщения» `PaidMessages.SetPriceGroupDescription` (комиссия % и выручка $, `useStarsCommissionAndWithdrawalPrice`, `chargeForMessasgesSection.tsx:76-81`) | нет `help.getAppConfig` (`stars_paid_message_commission_permille`, `stars_usd_withdraw_rate_x1000`); бэкенд зачисляет создателю всю плату, вывода в валюту нет (0б-6) | подпись 1:1 |
 
 ## Что остаётся волне 8 (после этой программы)
 

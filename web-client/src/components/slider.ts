@@ -189,7 +189,17 @@ export default class SidebarSlider {
     return true
   }
 
-  /** Порт `pushNavigationItem` (:87-115) — теперь дословный. */
+  /**
+   * Порт `pushNavigationItem` (:87-115). Одно отличие: после подтверждения
+   * закрывается ИМЕННО эта вкладка (её запись в истории), а не верхняя
+   * (`closeTab(undefined, …)` у tweb :98). «Save» вкладок на
+   * `createSolidTabState` (`sidebarRight/tabs/groupPermissions/sharedPermissions.ts`,
+   * tweb :411-420) сам закрывает вкладку (`tab.close()`) до того, как промис
+   * подтверждения разрешится, — и строка оригинала закрывала следующую вкладку
+   * под ней. У tweb это editChat под правами, у нас — вкладка №0 профиля, и
+   * колонка схлопывалась (стенд 0б-6). Уже закрытой вкладки в истории нет —
+   * закрывать нечего.
+   */
   protected pushNavigationItem(tab: SliderSuperTab | undefined) {
     const navigationItem: NavigationItem = {
       type: this.navigationType,
@@ -201,7 +211,10 @@ export default class SidebarSlider {
               appNavigationController.removeItem(navigationItem)
               this.onTabsCountChange?.()
 
-              this.closeTab(undefined, undefined, true)
+              const entry = this.historyTabIds.find((id) => id === tab || (typeof(id) === 'number' && this.tabs.get(id) === tab))
+              if(entry !== undefined) {
+                this.closeTab(entry, undefined, true)
+              }
             }, () => {})
 
             return false

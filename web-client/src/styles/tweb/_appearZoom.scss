@@ -1,0 +1,25 @@
+// Утилиты `.overflow-hidden` и `.appear-zoom` — выдержка из tweb
+// `src/scss/base.scss:674-676` и `:2357-2367` (целиком base.scss не портируем:
+// это глобальный ресет, конфликтующий с нашим styles/index.scss — тот же приём,
+// что у `_whole.scss`/`_toast.scss`). Скопировано дословно. Потребители —
+// угловая галочка «Сохранить» вкладок прав (`createSolidTabState`,
+// `sidebarRight/tabs/groupPermissions/sharedPermissions.ts`) и раскрываемые
+// секции «платы за сообщения» (`chargeForMessasgesSection.solid.tsx`),
+// задача 0б-6 волны 7.
+@use "../foundation" as *;
+
+.overflow-hidden {
+  overflow: hidden;
+}
+
+.appear-zoom {
+  transform: scale(0);
+
+  @include animation-level(2) {
+    transition: transform 0.1s;
+  }
+
+  &--active {
+    transform: scale(1);
+  }
+}
