@@ -345,7 +345,7 @@ func (i *Interactor) ReactionUsers(ctx context.Context, chatID, messageID, userI
 	if !domain.CanViewReactionsList(i.chatKind(ctx, chatID)) {
 		return nil, domain.ErrForbidden
 	}
-	return i.reactions.ReactionUsers(ctx, messageID)
+	return i.reactions.ReactionUsers(ctx, userID, messageID)
 }
 
 // CanAccessMedia reports whether userID may download a media object: either they

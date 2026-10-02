@@ -106,7 +106,7 @@ func TestGroupRepo_CreateAndMembership(t *testing.T) {
 		t.Fatalf("count after remove = %d", card2.MemberCount)
 	}
 
-	cards, err := r.UsersByIDs(ctx, []int64{u1, u2})
+	cards, err := r.UsersByIDs(ctx, 0, []int64{u1, u2})
 	if err != nil || len(cards) != 2 {
 		t.Fatalf("usersByIDs: %v %d", err, len(cards))
 	}

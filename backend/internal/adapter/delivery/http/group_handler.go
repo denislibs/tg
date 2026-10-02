@@ -708,7 +708,7 @@ func (h *GroupHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 	for _, m := range members {
 		participants = append(participants, domain.NewChannelParticipant(m, 0))
 	}
-	cards, err := h.uc.UsersByIDs(r.Context(), ids)
+	cards, err := h.uc.UsersByIDs(r.Context(), viewer.ID, ids)
 	if err != nil {
 		h.mapErr(w, err)
 		return
@@ -741,7 +741,8 @@ func (h *GroupHandler) Users(w http.ResponseWriter, r *http.Request) {
 			ids = append(ids, n)
 		}
 	}
-	cards, err := h.uc.UsersByIDs(r.Context(), ids)
+	viewer, _ := UserFromContext(r.Context())
+	cards, err := h.uc.UsersByIDs(r.Context(), viewer.ID, ids)
 	if err != nil {
 		h.mapErr(w, err)
 		return

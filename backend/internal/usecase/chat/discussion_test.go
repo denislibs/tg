@@ -243,7 +243,7 @@ func TestListComments_ReturnsThreadAndCount(t *testing.T) {
 
 	// 300 — заведомо несуществующий пост (без зеркала): счёт обязан остаться
 	// нулевым, а не упасть ошибкой резолва.
-	replies, users, err := i.CommentCounts(ctx, ch, []int64{post1.ID, post2.ID, 300})
+	replies, users, err := i.CommentCounts(ctx, 0, ch, []int64{post1.ID, post2.ID, 300})
 	if err != nil {
 		t.Fatalf("CommentCounts: %v", err)
 	}
@@ -303,7 +303,7 @@ func TestComments_ThreadOnMirror(t *testing.T) {
 		t.Fatalf("комментарий висит на %v, а корень треда — зеркало %d", msgs[0].ThreadRootID, mirrorID)
 	}
 
-	replies, users, err := i.CommentCounts(ctx, ch, []int64{post.ID})
+	replies, users, err := i.CommentCounts(ctx, 0, ch, []int64{post.ID})
 	if err != nil {
 		t.Fatal(err)
 	}

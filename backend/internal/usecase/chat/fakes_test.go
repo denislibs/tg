@@ -1779,7 +1779,7 @@ func (r fakeReactions) ReactionsFor(_ context.Context, messageIDs []int64, viewe
 	return res, nil
 }
 
-func (r fakeReactions) ReactionUsers(_ context.Context, messageID int64) ([]domain.ReactionUser, error) {
+func (r fakeReactions) ReactionUsers(_ context.Context, _, messageID int64) ([]domain.ReactionUser, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	var out []domain.ReactionUser

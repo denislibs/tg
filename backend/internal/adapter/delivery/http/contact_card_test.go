@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -205,4 +206,91 @@ func TestContactCard_FlagsAndPersonalPhoto_HTTP(t *testing.T) {
 	if card = getProfile(t, h, tokenA, idB); card.FullUser["personal_photo"] != nil {
 		t.Fatalf("после сброса personal_photo остался: %v", card.FullUser)
 	}
+}
+
+// Имя из книги ВЕЗДЕ: у оригинала сервер отдаёт `user` с first_name/last_name
+// из контакта смотрящего и pFlags.contact в каждом ответе, где этот user есть,
+// а клиент кладёт карточку в кэш как есть. Один ответ с профильным именем
+// затирает в кэше имя контакта — «то Боб, то Боб Петров».
+func TestContactName_SeenByViewerEverywhere_HTTP(t *testing.T) {
+	h := newContactCardRouter(t)
+	tokenA, idA := signInToken(t, h, "+79990000311")
+	tokenB, idB := signInToken(t, h, "+79990000312")
+	if rec := authedReq(t, h, http.MethodPatch, "/me", tokenB, map[string]any{"first_name": "Боб", "last_name": "Петров"}); rec.Code != http.StatusOK {
+		t.Fatalf("PATCH /me: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := authedReq(t, h, http.MethodPost, "/contacts", tokenA, map[string]any{"contact_id": idB, "first_name": "Бобби"}); rec.Code != http.StatusCreated {
+		t.Fatalf("add contact: %d %s", rec.Code, rec.Body.String())
+	}
+	rec := authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create chat: %d %s", rec.Code, rec.Body.String())
+	}
+	private := createdPeerFrom(t, rec)
+	// Пир приватного чата — у каждой стороны свой: Боб пишет в ключ Алисы.
+	if rec := authedReq(t, h, http.MethodPost, "/chats/"+itoa(idA)+"/messages", tokenB, map[string]any{"text": "привет", "client_msg_id": "b1"}); rec.Code != http.StatusOK {
+		t.Fatalf("send: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Команда", "member_ids": []int64{idB}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create group: %d %s", rec.Code, rec.Body.String())
+	}
+	group := createdPeerID(t, rec)
+
+	// usersOf — карточка idB из ответа: вектор `users` контейнера либо голый вектор.
+	usersOf := func(token, path string) map[string]any {
+		t.Helper()
+		rec := authedReq(t, h, http.MethodGet, path, token, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body.String())
+		}
+		var list []map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+			var box struct {
+				Users []map[string]any `json:"users"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &box); err != nil {
+				t.Fatalf("%s: разбор %v (%s)", path, err, rec.Body.String())
+			}
+			list = box.Users
+		}
+		for _, u := range list {
+			if id, _ := u["id"].(float64); int64(id) == idB {
+				return u
+			}
+		}
+		t.Fatalf("%s: в users нет карточки %d: %s", path, idB, rec.Body.String())
+		return nil
+	}
+	want := func(path string, u map[string]any, first, last string, contact bool) {
+		t.Helper()
+		gotLast, _ := u["last_name"].(string)
+		if u["first_name"] != first || gotLast != last || pflag(u, "contact") != contact {
+			t.Errorf("%s: имя %v %q contact=%v, want %q %q contact=%v", path, u["first_name"], gotLast, pflag(u, "contact"), first, last, contact)
+		}
+	}
+
+	for _, path := range []string{
+		"/chats",                               // список диалогов
+		"/chats/" + itoa(private) + "/history", // история
+		"/chats/" + itoa(group) + "/members",   // участники группы
+		"/users?ids=" + itoa(idB),              // батч карточек
+		"/users/" + itoa(idB),                  // профиль
+		"/search?q=" + url.QueryEscape("Боб"),  // поиск пиров
+		"/contacts",                            // сама книга
+	} {
+		want(path, usersOf(tokenA, path), "Бобби", "", true)
+	}
+	// Чёрный список — тоже карточка глазами зрителя.
+	if rec := authedReq(t, h, http.MethodPost, "/me/blocked", tokenA, map[string]any{"user_id": idB}); rec.Code != http.StatusOK {
+		t.Fatalf("block: %d %s", rec.Code, rec.Body.String())
+	}
+	want("/me/blocked", usersOf(tokenA, "/me/blocked"), "Бобби", "", true)
+
+	// У Боба Алисы в книге нет: он видит её профильное имя и без contact,
+	// а то, что Алиса записала, — только её.
+	if u := getProfile(t, h, tokenB, idA).Users[0]; pflag(u, "contact") {
+		t.Errorf("Боб видит Алису контактом: %v", u)
+	}
+	want("участники у самого Боба", usersOf(tokenB, "/chats/"+itoa(group)+"/members"), "Боб", "Петров", false)
 }

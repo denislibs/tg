@@ -37,6 +37,7 @@ type Interactor struct {
 	previews AvatarPreviewer    // optional: stripped-превью аватарки при её установке
 	squarer  AvatarSquarer      // optional: квадрат неквадратной аватарки
 	privacy  PrivacyChecker     // optional: видимость фото профиля в кадре user_update
+	contacts ContactViewer      // optional: имя из книги получателя в кадре user_update
 	pwFails  *failCounter       // счётчик неудачных попыток пароля на password_token
 	recFails *failCounter       // счётчик неудачных кодов восстановления на password_token
 	// resetWait — окно ожидания отложенного сброса аккаунта; 0 = дефолт (неделя).
@@ -62,6 +63,15 @@ type PartnersFunc func(ctx context.Context, userID int64) ([]int64, error)
 // кадре нет вовсе (безопасная деградация: клиент дочитает карточку ручкой).
 type PrivacyChecker interface {
 	Check(ctx context.Context, ownerID, viewerID int64, key domain.PrivacyKey) (bool, error)
+}
+
+// ContactViewer — как книги зрителей видят пользователя userID: viewerID →
+// domain.ContactView (у кого связи нет — ключа нет). Кадр user_update несёт
+// конструктор `user` ГЛАЗАМИ ПОЛУЧАТЕЛЯ (domain.UserReal.SeenBy): без этого
+// смена профиля затирала бы у получателя имя, под которым он сохранил автора.
+// Не подключён — имена профильные.
+type ContactViewer interface {
+	ContactViews(ctx context.Context, userID int64, viewerIDs []int64) (map[int64]domain.ContactView, error)
 }
 
 // UpdateLog appends one row to a user's per-user update log and returns the new
@@ -180,6 +190,7 @@ func (i *Interactor) SetUpdateLog(u UpdateLog)                   { i.updates = u
 func (i *Interactor) SetAvatarPreviewer(p AvatarPreviewer)       { i.previews = p }
 func (i *Interactor) SetAvatarSquarer(s AvatarSquarer)           { i.squarer = s }
 func (i *Interactor) SetPrivacy(p PrivacyChecker)                { i.privacy = p }
+func (i *Interactor) SetContactViewer(c ContactViewer)           { i.contacts = c }
 
 // SetAccountResetWindow задаёт окно ожидания отложенного сброса аккаунта
 // (ACCOUNT_RESET_WAIT). Неположительное значение оставляет дефолт — неделю.

@@ -118,7 +118,7 @@ func (f *fakeRepo) MarkViewed(ctx context.Context, storyID, viewerID int64) erro
 	f.marked = true
 	return f.markErr
 }
-func (f *fakeRepo) Viewers(ctx context.Context, storyID int64) (domain.StoryViewers, error) {
+func (f *fakeRepo) Viewers(ctx context.Context, _, storyID int64) (domain.StoryViewers, error) {
 	return f.viewers, f.viewersErr
 }
 func (f *fakeRepo) GetAuthor(ctx context.Context, storyID int64) (int64, error) {

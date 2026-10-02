@@ -82,7 +82,7 @@ func (r *fakeSearchRepo) SearchChats(_ context.Context, _ string, limit int) ([]
 	return r.chats, nil
 }
 
-func (r *fakeSearchRepo) SearchUsers(_ context.Context, _ string, limit int) ([]domain.UserReal, error) {
+func (r *fakeSearchRepo) SearchUsers(_ context.Context, _ int64, _ string, limit int) ([]domain.UserReal, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.lastLimit, r.searchCalls = limit, r.searchCalls+1

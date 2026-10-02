@@ -121,7 +121,7 @@ func (r *PrivacyRepo) BlockedList(ctx context.Context, userID int64, offset, lim
 	// Телефон в ряду показывается по правилу phone_number заблокированного
 	// относительно блокировщика (блок направлен в другую сторону и его не гасит).
 	rows, err := q.Query(ctx,
-		`SELECT `+userRealCols("u.")+`, b.created_at,
+		`SELECT `+userSeenCols("u.", "$1")+`, b.created_at,
 		        CASE WHEN `+privacyAllowsSQL("u.id", "$1", "pr")+` THEN u.phone ELSE '' END
 		   FROM user_blocks b
 		   JOIN users u ON u.id = b.blocked_id
@@ -135,7 +135,7 @@ func (r *PrivacyRepo) BlockedList(ctx context.Context, userID int64, offset, lim
 	defer rows.Close()
 	out := make([]domain.BlockedUser, 0)
 	for rows.Next() {
-		var s userRealScan
+		var s userSeenScan
 		var blockedAt time.Time
 		var phone string
 		if err := rows.Scan(append(s.dest(), &blockedAt, &phone)...); err != nil {
@@ -160,8 +160,8 @@ func (r *PrivacyRepo) IsContact(ctx context.Context, ownerID, userID int64) (boo
 }
 
 // ContactCard — то, что зритель знает о пире по адресным книгам, одним
-// запросом: пир в книге зрителя, зритель в книге пира, заметка зрителя и его
-// личное фото для пира. Личное фото не требует записи в книге — как и в
+// запросом: пир в книге зрителя (и под каким именем), зритель в книге пира,
+// заметка зрителя и его личное фото для пира. Личное фото не требует записи в книге — как и в
 // списке диалогов, оно накладывается по одной таблице contact_custom_photo.
 func (r *PrivacyRepo) ContactCard(ctx context.Context, viewerID, targetID int64) (domain.ContactCard, error) {
 	var card domain.ContactCard
@@ -170,17 +170,47 @@ func (r *PrivacyRepo) ContactCard(ctx context.Context, viewerID, targetID int64)
 	err := querier(ctx, r.pool).QueryRow(ctx,
 		`SELECT c.user_id IS NOT NULL,
 		        EXISTS(SELECT 1 FROM contacts m WHERE m.owner_id = $2 AND m.user_id = $1),
+		        COALESCE(c.first_name, ''), COALESCE(c.last_name, ''),
 		        COALESCE(c.note, ''), COALESCE(c.note_entities, '[]'),
 		        COALESCE(p.media_id, 0)
 		   FROM (SELECT 1) AS one
 		   LEFT JOIN contacts c ON c.owner_id = $1 AND c.user_id = $2
 		   LEFT JOIN contact_custom_photo p ON p.owner_id = $1 AND p.contact_user_id = $2`,
-		viewerID, targetID).Scan(&card.Contact, &card.Mutual, &noteText, &noteEntities, &card.PersonalPhotoID)
+		viewerID, targetID).Scan(&card.Contact, &card.Mutual, &card.FirstName, &card.LastName,
+		&noteText, &noteEntities, &card.PersonalPhotoID)
 	if err != nil {
 		return domain.ContactCard{}, err
 	}
 	card.Note = contactNote(noteText, noteEntities)
 	return card, nil
+}
+
+// ContactViews — как книги зрителей viewerIDs видят пользователя userID
+// (usecase/auth.ContactViewer): имя, под которым зритель его сохранил, и есть
+// ли зритель в книге самого userID. Зрители без связи в ответ не попадают.
+func (r *PrivacyRepo) ContactViews(ctx context.Context, userID int64, viewerIDs []int64) (map[int64]domain.ContactView, error) {
+	out := make(map[int64]domain.ContactView, len(viewerIDs))
+	if len(viewerIDs) == 0 {
+		return out, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT v.id, `+contactViewCols("$1::bigint", "v.id")+`
+		   FROM unnest($2::bigint[]) AS v(id)`, userID, viewerIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var s userSeenScan
+		if err := rows.Scan(&id, &s.contactName, &s.mutual); err != nil {
+			return nil, err
+		}
+		if v := s.view(); v.Contact || v.Mutual {
+			out[id] = v
+		}
+	}
+	return out, rows.Err()
 }
 
 // privacyAllowsSQL — SQL-эквивалент domain.PrivacyRuleRecord.Allows для правила из

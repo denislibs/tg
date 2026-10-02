@@ -87,6 +87,8 @@ func registerServer(p serverParams) {
 	// Кадр user_update несёт конструктор `user`, а в нём photo: без правила
 	// profile_photo аватарка уехала бы мимо приватности.
 	p.AuthUC.SetPrivacy(privacyUC)
+	// …и он же ГЛАЗАМИ ПОЛУЧАТЕЛЯ: имя из его книги и pFlags.contact.
+	p.AuthUC.SetContactViewer(pgadapter.NewPrivacyRepo(p.Pool))
 
 	// Личное фото контактов: тот же postgres-адаптер, что и адресная книга,
 	// реализует CustomPhotoRepo. Владелец видит это фото вместо настоящего

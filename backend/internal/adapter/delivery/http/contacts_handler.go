@@ -34,9 +34,9 @@ func contactsContainer(list []domain.ContactRecord) domain.ContactsContacts {
 	rows := make([]domain.Contact, 0, len(list))
 	cards := make([]domain.UserReal, 0, len(list))
 	for _, c := range list {
-		// Взаимности мы не храним: строка книги односторонняя. Названо
-		// в OmittedWithoutSubject как отсутствие ЗНАЧЕНИЯ.
-		rows = append(rows, domain.NewContact(c.UserID, false))
+		// Взаимность — тот же флаг карточки, что ставит линза зрителя
+		// (domain.UserReal.SeenBy): зритель есть в книге самого контакта.
+		rows = append(rows, domain.NewContact(c.UserID, c.User.MutualContact()))
 		cards = append(cards, c.User)
 	}
 	return domain.NewContactsContacts(rows, cards)

@@ -9,17 +9,19 @@ import (
 
 // fakeUpdateLog — in-memory per-user update log (dense pts).
 type fakeUpdateLog struct {
-	pts  map[int64]int64
-	rows map[int64][]string // userID -> types appended
+	pts      map[int64]int64
+	rows     map[int64][]string          // userID -> types appended
+	payloads map[int64][]json.RawMessage // userID -> logged bodies
 }
 
 func newFakeUpdateLog() *fakeUpdateLog {
-	return &fakeUpdateLog{pts: map[int64]int64{}, rows: map[int64][]string{}}
+	return &fakeUpdateLog{pts: map[int64]int64{}, rows: map[int64][]string{}, payloads: map[int64][]json.RawMessage{}}
 }
 
-func (l *fakeUpdateLog) AppendUpdate(_ context.Context, userID int64, ptsCount int, _ int64, typ string, _ json.RawMessage) (int64, error) {
+func (l *fakeUpdateLog) AppendUpdate(_ context.Context, userID int64, ptsCount int, _ int64, typ string, payload json.RawMessage) (int64, error) {
 	l.pts[userID] += int64(ptsCount)
 	l.rows[userID] = append(l.rows[userID], typ)
+	l.payloads[userID] = append(l.payloads[userID], payload)
 	return l.pts[userID], nil
 }
 
@@ -99,5 +101,82 @@ func TestUserUpdate_DegradesWithoutDeps(t *testing.T) {
 	}
 	if len(pub.frames[u.ID]) != 1 {
 		t.Fatalf("own frame not published without update log")
+	}
+}
+
+// fakeContactViewer — книги зрителей: viewerID → как он видит пользователя.
+type fakeContactViewer map[int64]domain.ContactView
+
+func (f fakeContactViewer) ContactViews(_ context.Context, _ int64, viewerIDs []int64) (map[int64]domain.ContactView, error) {
+	out := map[int64]domain.ContactView{}
+	for _, id := range viewerIDs {
+		if v, ok := f[id]; ok {
+			out[id] = v
+		}
+	}
+	return out, nil
+}
+
+// Кадр user_update и его строка журнала (её переигрывает /sync) — карточка
+// ГЛАЗАМИ ПОЛУЧАТЕЛЯ: тот, у кого автор в книге, получает имя из книги и
+// pFlags.contact, остальные — профильное имя. Иначе смена профиля затирала
+// бы у клиента имя контакта (у оригинала сервер отдаёт user с именем из
+// книги смотрящего в любом ответе и апдейте).
+func TestUserUpdate_SeenByEachRecipient(t *testing.T) {
+	i, users, _, _ := newInteractor()
+	ctx := context.Background()
+	u, _ := users.CreateWithName(ctx, "+70000000003", "Боб", "Петров")
+
+	log := newFakeUpdateLog()
+	pub := newFakeAuthPub()
+	i.SetUpdateLog(log)
+	i.SetPublisher(pub)
+	const friend, stranger int64 = 999, 998
+	i.SetPartners(func(context.Context, int64) ([]int64, error) { return []int64{friend, stranger}, nil })
+	i.SetContactViewer(fakeContactViewer{friend: {Contact: true, FirstName: "Бобби"}})
+
+	if _, err := i.UpdateProfile(ctx, u.ID, ProfileInput{FirstName: "Борис", LastName: "Петров"}); err != nil {
+		t.Fatalf("UpdateProfile: %v", err)
+	}
+
+	card := func(raw []byte, inEnvelope bool) domain.UserReal {
+		t.Helper()
+		var body struct {
+			User domain.UserReal `json:"user"`
+		}
+		if inEnvelope {
+			var env struct {
+				D json.RawMessage `json:"d"`
+			}
+			if err := json.Unmarshal(raw, &env); err != nil {
+				t.Fatalf("unmarshal frame: %v", err)
+			}
+			raw = env.D
+		}
+		if err := json.Unmarshal(raw, &body); err != nil {
+			t.Fatalf("unmarshal body: %v", err)
+		}
+		return body.User
+	}
+	for _, c := range []struct {
+		uid     int64
+		first   string
+		last    string
+		contact bool
+		self    bool
+	}{
+		{friend, "Бобби", "", true, false},
+		{stranger, "Борис", "Петров", false, false},
+		{u.ID, "Борис", "Петров", false, true},
+	} {
+		for name, got := range map[string]domain.UserReal{
+			"кадр":   card(pub.frames[c.uid][0], true),
+			"журнал": card(log.payloads[c.uid][0], false),
+		} {
+			if got.FirstName != c.first || got.LastName != c.last || got.ContactRecord() != c.contact || got.Self() != c.self {
+				t.Errorf("%s для %d: %q %q %v, want %q %q contact=%v self=%v",
+					name, c.uid, got.FirstName, got.LastName, got.PFlags, c.first, c.last, c.contact, c.self)
+			}
+		}
 	}
 }

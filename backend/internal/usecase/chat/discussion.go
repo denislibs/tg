@@ -300,7 +300,7 @@ const RecentRepliersLimit = 3
 // про пару (канал, пост) не меняется, зеркало — деталь реализации треда. Посты
 // без зеркала комментариев не набирают. Обсуждение не включено — пустой
 // результат без ошибки.
-func (i *Interactor) CommentCounts(ctx context.Context, channelID int64, postIDs []int64) (map[int64]domain.MessageReplies, []domain.UserReal, error) {
+func (i *Interactor) CommentCounts(ctx context.Context, viewerID, channelID int64, postIDs []int64) (map[int64]domain.MessageReplies, []domain.UserReal, error) {
 	out := map[int64]domain.MessageReplies{}
 	disc, _ := i.groups.GetDiscussion(ctx, channelID)
 	if disc == 0 {
@@ -330,7 +330,7 @@ func (i *Interactor) CommentCounts(ctx context.Context, channelID int64, postIDs
 		}
 	}
 	// Карточки комментаторов — ОДНИМ вектором на весь ответ.
-	cards, err := i.groups.UsersByIDs(ctx, ids)
+	cards, err := i.groups.UsersByIDs(ctx, viewerID, ids)
 	if err != nil {
 		return out, nil, err
 	}

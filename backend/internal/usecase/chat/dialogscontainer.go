@@ -123,7 +123,7 @@ func (i *Interactor) DialogsPage(ctx context.Context, viewerID int64, p domain.D
 		}
 	}
 	if len(missing) > 0 && i.groups != nil {
-		authors, err := i.groups.UsersByIDs(ctx, missing)
+		authors, err := i.groups.UsersByIDs(ctx, viewerID, missing)
 		if err != nil {
 			return DialogsPage{}, err
 		}

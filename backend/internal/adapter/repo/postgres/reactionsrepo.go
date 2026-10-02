@@ -118,15 +118,15 @@ func (r *ReactionsRepo) ReactionsFor(ctx context.Context, messageIDs []int64, vi
 
 // ReactionUsers lists who reacted to a message and with which emoji, oldest first,
 // joined with users for display (name/username/avatar) — for the who-reacted popup.
-func (r *ReactionsRepo) ReactionUsers(ctx context.Context, messageID int64) ([]domain.ReactionUser, error) {
+func (r *ReactionsRepo) ReactionUsers(ctx context.Context, viewerID, messageID int64) ([]domain.ReactionUser, error) {
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
-		`SELECT `+userRealCols("u.")+`, re.emoji
+		`SELECT `+userSeenCols("u.", "$2")+`, re.emoji
 		   FROM reactions re
 		   JOIN users u ON u.id = re.user_id
 		  WHERE re.message_id = $1
 		  ORDER BY re.created_at`,
-		messageID)
+		messageID, viewerID)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +134,7 @@ func (r *ReactionsRepo) ReactionUsers(ctx context.Context, messageID int64) ([]d
 	out := make([]domain.ReactionUser, 0)
 	for rows.Next() {
 		var ru domain.ReactionUser
-		var u userRealScan
+		var u userSeenScan
 		if err := rows.Scan(append(u.dest(), &ru.Emoji)...); err != nil {
 			return nil, err
 		}

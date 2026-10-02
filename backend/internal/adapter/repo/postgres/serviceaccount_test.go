@@ -38,7 +38,7 @@ func TestServiceAccount_SupportFlagOnEveryCardPath(t *testing.T) {
 	}
 
 	// userRealCols — батч карточек.
-	users, err := NewGroupRepo(pool).UsersByIDs(ctx, []int64{domain.ServiceUserID})
+	users, err := NewGroupRepo(pool).UsersByIDs(ctx, 0, []int64{domain.ServiceUserID})
 	if err != nil || len(users) != 1 {
 		t.Fatalf("UsersByIDs = %v, %v", users, err)
 	}
@@ -72,7 +72,7 @@ func TestServiceAccount_SupportFlagOnEveryCardPath(t *testing.T) {
 	check("ListDialogs", *dialogs[0].Peer)
 
 	// Обычный человек флага не получает — предикат не «любой собеседник».
-	human, err := NewGroupRepo(pool).UsersByIDs(ctx, []int64{viewer})
+	human, err := NewGroupRepo(pool).UsersByIDs(ctx, viewer, []int64{viewer})
 	if err != nil || len(human) != 1 {
 		t.Fatalf("UsersByIDs(viewer) = %v, %v", human, err)
 	}

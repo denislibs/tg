@@ -461,7 +461,7 @@ func (r *MessagesRepo) GlobalSearchMessages(ctx context.Context, userID int64, g
 // inputMessagesFilterPhoneCalls — удалённые зрителем «у себя» не отдаются).
 func (r *MessagesRepo) CallLog(ctx context.Context, userID int64, offset, limit int) ([]domain.CallLogEntry, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT `+messageColsPrefixed("m")+`, `+userRealCols("u.")+`
+		`SELECT `+messageColsPrefixed("m")+`, `+userSeenCols("u.", "$1")+`
 		   FROM messages m
 		   JOIN chats c ON c.id = m.chat_id AND c.type = 'private'
 		   JOIN chat_members other ON other.chat_id = m.chat_id AND other.user_id <> $1
@@ -476,7 +476,7 @@ func (r *MessagesRepo) CallLog(ctx context.Context, userID int64, offset, limit 
 	defer rows.Close()
 	var out []domain.CallLogEntry
 	for rows.Next() {
-		var peer userRealScan
+		var peer userSeenScan
 		// Сообщение сканируется ТЕМ ЖЕ scanMessage, что и история: журнал
 		// звонков перестал быть отдельной выборкой из пяти колонок.
 		s := &joinedScanner{row: rows, extra: peer.dest()}

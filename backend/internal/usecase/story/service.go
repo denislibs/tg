@@ -459,7 +459,7 @@ func (s *Service) Viewers(ctx context.Context, authorID, seq, requesterID int64)
 	if author != requesterID {
 		return domain.StoryViewers{}, domain.ErrForbidden
 	}
-	return s.repo.Viewers(ctx, storyID)
+	return s.repo.Viewers(ctx, requesterID, storyID)
 }
 
 // Stats returns view/reaction statistics for a story; only the author may read

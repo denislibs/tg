@@ -55,7 +55,7 @@ func (f *fakeStarReactions) AggregatesFor(_ context.Context, messageIDs []int64,
 	return out, nil
 }
 
-func (f *fakeStarReactions) TopSenders(_ context.Context, messageID int64, limit int) ([]domain.StarReactionSender, error) {
+func (f *fakeStarReactions) TopSenders(_ context.Context, _, messageID int64, limit int) ([]domain.StarReactionSender, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var out []domain.StarReactionSender

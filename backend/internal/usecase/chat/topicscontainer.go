@@ -75,7 +75,7 @@ func (i *Interactor) TopicsPage(ctx context.Context, chatID, viewerID int64) (To
 
 	var users []domain.UserReal
 	if len(need) > 0 && i.groups != nil {
-		users, err = i.groups.UsersByIDs(ctx, need)
+		users, err = i.groups.UsersByIDs(ctx, viewerID, need)
 		if err != nil {
 			return TopicsPage{}, err
 		}

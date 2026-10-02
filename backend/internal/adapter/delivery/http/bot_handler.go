@@ -56,7 +56,7 @@ func (h *ChatHandler) BotInline(w http.ResponseWriter, r *http.Request) {
 	// Подсказка поля ввода рядом больше не едет: у оригинала это параметр
 	// САМОГО бота (`user.bot_inline_placeholder`), и карточка бота уезжает
 	// здесь же — вектором `users` контейнера.
-	cards, _ := h.svc.UsersByIDs(r.Context(), []int64{botID})
+	cards, _ := h.svc.UsersByIDs(r.Context(), h.meID(r), []int64{botID})
 	for i := range cards {
 		cards[i].BotInlinePlaceholder = h.svc.BotInlinePlaceholder(r.Context(), botID)
 	}

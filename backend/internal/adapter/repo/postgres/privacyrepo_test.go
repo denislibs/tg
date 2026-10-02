@@ -126,3 +126,38 @@ func TestPrivacyRepo_VisibleMap(t *testing.T) {
 		t.Error("phone_number: дефолт contacts — viewer контакт friend, номер должен быть виден")
 	}
 }
+
+// ContactViews — как книги зрителей видят пользователя: имя из книги
+// зрителя, contact и mutual_contact; зрителей без связи в ответе нет. Это
+// вход линзы domain.UserReal.SeenBy для кадра user_update.
+func TestPrivacyRepo_ContactViews(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewPrivacyRepo(pool)
+	ctx := context.Background()
+	bob := seedUser(t, pool, "+7911")
+	alice := seedUser(t, pool, "+7912") // Боб у неё в книге как «Бобби»
+	carol := seedUser(t, pool, "+7913") // Боба нет, но Боб записал её
+	dave := seedUser(t, pool, "+7914")  // связи нет вовсе
+	for _, c := range []struct {
+		owner, user int64
+		first, last string
+	}{{alice, bob, "Бобби", "Б."}, {bob, carol, "Кэрол", ""}} {
+		if _, err := pool.Exec(ctx, `INSERT INTO contacts (owner_id, user_id, first_name, last_name) VALUES ($1,$2,$3,$4)`,
+			c.owner, c.user, c.first, c.last); err != nil {
+			t.Fatalf("insert contact: %v", err)
+		}
+	}
+	got, err := r.ContactViews(ctx, bob, []int64{alice, carol, dave})
+	if err != nil {
+		t.Fatalf("ContactViews: %v", err)
+	}
+	if v := got[alice]; !v.Contact || v.Mutual || v.FirstName != "Бобби" || v.LastName != "Б." {
+		t.Errorf("Алиса видит Боба как %+v, want контакт «Бобби Б.» без взаимности", v)
+	}
+	if v := got[carol]; v.Contact || !v.Mutual {
+		t.Errorf("Кэрол видит Боба как %+v, want не контакт, но mutual", v)
+	}
+	if _, ok := got[dave]; ok || len(got) != 2 {
+		t.Errorf("лишние зрители: %+v", got)
+	}
+}
