@@ -490,7 +490,7 @@ const ru = {
   NewChannel: 'Создать канал',
   NewGroup: 'Создать группу',
   NewPrivateChat: 'Новое сообщение',
-  'Suggestion.Notifications.Title': 'Не пропускайте сообщения! 🔔',
+  'Suggestion.Notifications': 'Не пропускайте сообщения! %s',
   'Suggestion.Notifications.Subtitle': 'Включите уведомления, чтобы быть в курсе.',
   'Suggestion.Notifications.Dismissed':
     'Вы можете снова включить уведомления в настройках.',

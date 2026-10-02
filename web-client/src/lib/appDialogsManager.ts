@@ -79,8 +79,11 @@
 //     `suggestionContainer`. Папки у нас известны синхронно (подняты из State в
 //     `client/boot.ts`), поэтому ветки `!haveFilters` с плейсхолдером
 //     (`:1044-1057`) нет; `preloadDialogs`, сторис, `fillConversations` — волна 7.
-//     `suggestionContainer` создаётся в `start()`, `authorizationContainer`
-//     (`:1084-1088`, плашка «новый вход») не заводится — у колонки её нет.
+//     `suggestionContainer` создаётся в `start()` (у tweb — в конце
+//     `onStateLoaded`, `:1384-1388`; у нас `onStateLoaded` и есть `start()`), и
+//     в него сразу рисует `renderPendingSuggestion` (задача 2-5 волны 7);
+//     `destroy()` гасит этот корень. `authorizationContainer` (`:1390-1394`,
+//     плашка «новый вход») не заводится — у колонки её нет.
 //     Гидрация стора (`hydrateFilters`, `:1026-1035`) зовётся ДО ряда: полосе к
 //     первому `onClick(0)` нужна вкладка «Все чаты» (у tweb её гарантирует
 //     порядок `onStateLoaded`); `destroy()` проекцию гасит (`dispose`).
@@ -163,6 +166,7 @@ import createFolderContextMenu, {
 import DialogsContextMenu, { type DialogsContextMenuManagers } from '@components/dialogsContextMenu'
 import type { ScrollableContextValue } from '@components/scrollable2.solid'
 import type { ToolsMenuSidebar } from '@components/sidebarLeft/toolsMenu'
+import { renderPendingSuggestion } from '@components/sidebarLeft/pendingSuggestion.solid'
 import { createSolidNodes } from '@shared/solid/mountSolid.solid'
 import useFolders from '@stores/folders.solid'
 import { useHasFolders } from '@stores/foldersSidebar.solid'
@@ -815,7 +819,8 @@ export class AppDialogsManager {
   public chatsContainer!: HTMLElement
   private hooks!: AppDialogsManagerHooks
   private foldersOverlay!: HTMLElement
-  private _suggestionContainer: HTMLElement | undefined
+  private suggestionContainer: HTMLElement | undefined
+  private disposeSuggestion: (() => void) | undefined
 
   private listenerSetter = new ListenerSetter()
   private middlewareHelper = getMiddleware()
@@ -828,11 +833,6 @@ export class AppDialogsManager {
 
   /** расхождение 19; переживает `destroy()` — колонка задаёт его своим состоянием */
   private collapsed = false
-
-  /** узел для плашки-подсказки (`:1079-1082`) — в него рисует React-`PendingSuggestion` */
-  public get suggestionContainer() {
-    return this._suggestionContainer
-  }
 
   /** Менеджеры колонки — их берут списки папок (у tweb — `rootScope.managers`). */
   public get managers() {
@@ -947,8 +947,10 @@ export class AppDialogsManager {
       if(state.selectedId !== prev.selectedId) this.onPeerChanged(this.getActivePeerId())
     })
 
-    this._suggestionContainer = document.createElement('div')
-    this.foldersOverlay.prepend(this._suggestionContainer)
+    // `:1384-1388` — плашка-подсказка (`renderPendingSuggestion`), расхождение 8
+    this.suggestionContainer = document.createElement('div')
+    this.foldersOverlay.prepend(this.suggestionContainer)
+    this.disposeSuggestion = renderPendingSuggestion(this.suggestionContainer)
   }
 
   public destroy() {
@@ -968,6 +970,8 @@ export class AppDialogsManager {
     this.destroyContextMenu = undefined
     this.disposeTabs?.()
     this.disposeTabs = undefined
+    this.disposeSuggestion?.()
+    this.disposeSuggestion = undefined
     this.listenerSetter.removeAll()
     this.swipeHandler?.removeListeners()
     this.swipeHandler = undefined
@@ -991,7 +995,7 @@ export class AppDialogsManager {
     this.host.style.removeProperty('--chatlist-overlay-height')
     this.chatsContainer.classList.remove('has-filters')
     useHasFolders()[1](false) // расхождение 12
-    this._suggestionContainer = undefined
+    this.suggestionContainer = undefined
     this.host = undefined
 
     folders.dispose()

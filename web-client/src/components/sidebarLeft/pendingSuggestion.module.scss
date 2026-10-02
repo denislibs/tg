@@ -1,9 +1,34 @@
-// Порт tweb `src/components/sidebarLeft/pendingSuggestion.module.scss`.
-// Геометрию плашки даёт глобальный `.row` (styles/tweb/_row.scss) — здесь только
-// то, что добавляет модуль: фон, размеры подзаголовка, крестик и свёрнутый вид.
+// Порт tweb `src/components/sidebarLeft/pendingSuggestion.module.scss` (812502980).
+// Геометрию строки даёт глобальный `.row` (styles/tweb/_row.scss) — здесь только
+// то, что добавляет модуль. `@use "../../scss/variables"` оригинала не перенесён:
+// переменные в файле не читаются.
 //
-// Не портирован блок `.suggestion.danger` — он нужен единственной плашке
-// `frozen`, а у неё нет источника данных (см. selectPendingSuggestion.ts).
+// Не перенесены блоки без потребителя: `.suggestion.danger` (вид «аккаунт
+// заморожен», О-108 волна 7) и `.connectionReview*` (проверка подключения
+// бизнес-бота, О-109 волна 7). Вложенное `.collapsed .emoji` оригинала тоже
+// не перенесено: в модуле `.emoji` — локальный (хэшированный) класс, а
+// `wrapEmojiText` ставит глобальный `span.emoji`, — правило и у tweb не
+// срабатывает ни на одном узле.
+
+.suggestion {
+  &Subtitle {
+    font-size: var(--font-size-16);
+    line-height: var(--line-height-16);
+  }
+
+  &Container {
+    overflow: hidden;
+    margin: .5rem;
+
+    :global(.has-vertical-folders) & {
+      margin-bottom: 0;
+    }
+  }
+
+  &.secondary {
+    background-color: var(--light-filled-secondary-text-color) !important;
+  }
+}
 
 // отступление от tweb: жирность заголовка у него даёт ГЛОБАЛЬНЫЙ `.text-bold`
 // (scss/components/_global.scss:150), которого в наших портированных партиалах
@@ -13,30 +38,16 @@
   font-weight: var(--font-weight-bold);
 }
 
-.suggestionSubtitle {
-  font-size: var(--font-size-16);
-  line-height: var(--line-height-16);
-}
-
-.suggestionContainer {
-  overflow: hidden;
-  margin: 0.5rem;
-
-  :global(.has-vertical-folders) & {
-    margin-bottom: 0;
-  }
-}
-
-.secondary {
-  background-color: var(--light-filled-secondary-text-color) !important;
-}
-
 .collapsed {
   width: 100%;
   height: 3.75rem;
+  padding: 0;
+  border: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  color: inherit;
+  background: transparent;
   font-size: 1.5rem;
   cursor: pointer;
 }
@@ -47,9 +58,9 @@
 // отступление от tweb: у него порядок импортов обратный и хватает `.close`.
 button.close {
   font-size: 1.0625rem;
-  padding: 0.375rem;
+  padding: .375rem;
   position: absolute;
-  inset-inline-end: 0.25rem;
-  top: 0.25rem;
+  inset-inline-end: .25rem;
+  top: .25rem;
   z-index: 1;
 }

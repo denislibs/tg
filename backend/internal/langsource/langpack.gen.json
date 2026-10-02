@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 46,
+      "version": 47,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -5558,16 +5558,16 @@
           "value": "Your suggestions"
         },
         {
+          "key": "Suggestion.Notifications",
+          "value": "Never miss a message! %s"
+        },
+        {
           "key": "Suggestion.Notifications.Dismissed",
           "value": "You can turn notifications back on in the settings."
         },
         {
           "key": "Suggestion.Notifications.Subtitle",
           "value": "Enable notifications to stay updated."
-        },
-        {
-          "key": "Suggestion.Notifications.Title",
-          "value": "Never miss a message! 🔔"
         },
         {
           "key": "SupportStatus",
@@ -6136,7 +6136,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 46,
+      "version": 47,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -7802,8 +7802,8 @@
           "value": "Новое сообщение"
         },
         {
-          "key": "Suggestion.Notifications.Title",
-          "value": "Не пропускайте сообщения! 🔔"
+          "key": "Suggestion.Notifications",
+          "value": "Не пропускайте сообщения! %s"
         },
         {
           "key": "Suggestion.Notifications.Subtitle",
@@ -12305,7 +12305,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 29,
+      "version": 30,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -13111,8 +13111,8 @@
           "value": "Nouveau message"
         },
         {
-          "key": "Suggestion.Notifications.Title",
-          "value": "Ne manquez aucun message ! 🔔"
+          "key": "Suggestion.Notifications",
+          "value": "Ne manquez aucun message ! %s"
         },
         {
           "key": "Suggestion.Notifications.Subtitle",
@@ -15445,7 +15445,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 29,
+      "version": 30,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16258,8 +16258,8 @@
           "value": "Neue Nachricht"
         },
         {
-          "key": "Suggestion.Notifications.Title",
-          "value": "Verpasse keine Nachricht! 🔔"
+          "key": "Suggestion.Notifications",
+          "value": "Verpasse keine Nachricht! %s"
         },
         {
           "key": "Suggestion.Notifications.Subtitle",
@@ -18611,7 +18611,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 29,
+      "version": 30,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -19425,8 +19425,8 @@
           "value": "Nuevo mensaje"
         },
         {
-          "key": "Suggestion.Notifications.Title",
-          "value": "¡No te pierdas ningún mensaje! 🔔"
+          "key": "Suggestion.Notifications",
+          "value": "¡No te pierdas ningún mensaje! %s"
         },
         {
           "key": "Suggestion.Notifications.Subtitle",
@@ -21771,7 +21771,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 30,
+      "version": 31,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -22592,8 +22592,8 @@
           "value": "Нове повідомлення"
         },
         {
-          "key": "Suggestion.Notifications.Title",
-          "value": "Не пропускайте повідомлення! 🔔"
+          "key": "Suggestion.Notifications",
+          "value": "Не пропускайте повідомлення! %s"
         },
         {
           "key": "Suggestion.Notifications.Subtitle",

@@ -58,7 +58,10 @@ describe('appDialogsManager: разметка после start()', () => {
     const [suggestion, gradient, scrollable] = Array.from(overlay.children) as HTMLElement[]
 
     expect(overlay.children).toHaveLength(3)
-    expect(suggestion).toBe(mounted.manager.suggestionContainer)
+    // контейнер плашки — голый `div` владельца (`:1384-1386`); что в нём, пинит
+    // `components/sidebarLeft/pendingSuggestion.solid.test.tsx`
+    expect(suggestion.tagName).toBe('DIV')
+    expect(suggestion.className).toBe('')
     expect(scrollable.className).toBe('menu-horizontal-scrollable folders-tabs-scrollable hide')
     // ОБЪЯВЛЕННОЕ РАСХОЖДЕНИЕ (стенд, задачи 4–9). У tweb `hide` из ref градиента
     // (`appDialogsManager.ts:678-681`) затирает class-эффект `Tabs.MenuGradient`
