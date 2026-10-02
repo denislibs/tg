@@ -461,6 +461,20 @@ selection (`canSelectBubble`); клик по `.time` на десктопе не 
 scheduled и т.д. — **TODO: см. popups.md**. Пункт меню Delete
 показывает TTL-подпись через `ContextMenuDeleteOptionText` (contextMenu.ts:1266–1278).
 
+## 6.4 Превью строки чатлиста после удаления
+
+`onUpdateDeleteMessages` (appMessagesManager.ts:11451–11600; `updateDeleteMessages` и
+`updateDeleteChannelMessages` — один обработчик, :791–792): удалённые снимаются из истории ДО
+цикла по диалогам, затем, если среди них `dialog.top_message` (:11577), — низ истории загружен
+(`slice.isEnd(SliceEnd.Bottom)`) и в нём есть не временные номера → `setDialogTopMessage(slice[0])`
+(:4954–4973); иначе → `reloadConversation(peerId)` (:6247–6366: пачка пиров за `pause(0)` →
+`messages.getPeerDialogs` → `dialogsStorage.applyDialogs`). Удалено всё — сервер отдаёт строку с
+пустым `top_message`, превью пустое.
+
+**У нас:** `dialogsManager.applyDeletedMessages` (воркер) по снимку
+`messagesManager.getHistoryFirstSlice`; перечитывание — `GET /peer_dialogs?peers=` →
+`messages.peerDialogs` (без `state`: pts этот владелец не видит, повтора при разошедшемся pts нет).
+
 ---
 
 # 7. Реакции

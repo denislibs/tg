@@ -134,7 +134,7 @@ Postgres (назначает монотонный `seq`) → `message_ack` от�
 **Защищённые** (основные группы):
 
 - **Профиль/сессии:** `GET/PATCH /me`, `PUT /me/username`, `GET /username/available`, `PUT /me/avatar`, `GET /sessions`, `DELETE /sessions/{deviceID}`, `POST /auth/logout`, `POST /auth/qr/confirm`, `POST /auth/web_token`
-- **Чаты/сообщения:** `POST /chats`, `POST /saved`, `GET /chats`, `POST /chats/{id}/messages`, `PATCH|DELETE /chats/{id}/messages/{msgID}`, `POST /chats/{id}/forward`, `POST|DELETE /chats/{id}/messages/{msgID}/pin`, `GET /chats/{id}/pins`, `GET /chats/{id}/messages/{msgID}/viewers`, `GET /chats/{id}/history`, `GET /chats/{id}/search`, `POST /chats/{id}/read`
+- **Чаты/сообщения:** `POST /chats`, `POST /saved`, `GET /chats`, `GET /peer_dialogs?peers=` (messages.getPeerDialogs), `POST /chats/{id}/messages`, `PATCH|DELETE /chats/{id}/messages/{msgID}`, `POST /chats/{id}/forward`, `POST|DELETE /chats/{id}/messages/{msgID}/pin`, `GET /chats/{id}/pins`, `GET /chats/{id}/messages/{msgID}/viewers`, `GET /chats/{id}/history`, `GET /chats/{id}/search`, `POST /chats/{id}/read`
 - **Sync:** `GET /sync` — апдейты с момента последнего запроса
 - **Реакции:** `POST|DELETE|GET /chats/{id}/messages/{msgID}/reactions[/{emoji}]`
 - **Группы:** `POST /groups`, `GET /chats/{id}/card`, `GET /chats/{id}/members`, `PATCH /chats/{id}`, `GET /chats/{id}/username/available` (channels.checkUsername; имена пользователей и чатов — одно пространство), `POST|DELETE /chats/{id}/members[/{userID}]`, `POST|DELETE /chats/{id}/admins[/{userID}]`, `POST /chats/{id}/mute`, `POST|GET /chats/{id}/invite_links`, `POST /join/{token}`, `GET /chats/{id}/join_requests`, `POST /chats/{id}/join_requests/{userID}/approve|decline`

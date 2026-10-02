@@ -7,6 +7,7 @@ import type { NewMessageEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt,
 import { RT } from '../realtime/events'
 import type { MessageOp } from '../realtime/messageOps'
 import { generateMessageId } from '../history/messageId'
+import { SliceEnd } from '../history/slicedArray'
 import { makeRawMessage } from '../messages/testMessage'
 import { getDocumentFromMessage, getMediaFromMessage, pollOptionKey, type MessageMedia, type MessageMediaPoll, type MessageMediaToDo } from '../media/messageMedia'
 
@@ -763,6 +764,25 @@ describe('MessagesManager.cacheDelete', () => {
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
     mgr.cacheDelete({ _: 'updateDeletePeerMessages', peer: { _: 'peerUser', user_id: 1 }, messages: [2, 999] })
     expect(deleted).toEqual([{ peerId: 1, ids: [cid(2)] }])
+  })
+
+  // Владелец диалогов решает по этому срезу, кто станет последним после
+  // удаления верхнего (tweb onUpdateDeleteMessages :11579 — `history.first`):
+  // к моменту onMessagesDeleted удалённого в срезе уже нет, а низ — загружен.
+  it('getHistoryFirstSlice: к onMessagesDeleted срез уже без удалённого и с известным низом', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    let seen: { ids: number[]; bottom: boolean } | undefined
+    const mgr = newMessagesManager({
+      rest,
+      onMessagesDeleted: (peerId) => {
+        const slice = mgr.getHistoryFirstSlice(peerId)!
+        seen = { ids: [...slice], bottom: slice.isEnd(SliceEnd.Bottom) }
+      },
+    })
+    expect(mgr.getHistoryFirstSlice(1)).toBeUndefined()
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    mgr.cacheDelete({ _: 'updateDeletePeerMessages', peer: { _: 'peerUser', user_id: 1 }, messages: [3] })
+    expect(seen).toEqual({ ids: [cid(2), cid(1)], bottom: true })
   })
 
   // Многооконность для remove: ключи окон обязаны вычисляться ДО evictMsg — после
