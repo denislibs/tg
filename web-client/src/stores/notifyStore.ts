@@ -53,12 +53,12 @@ export function notifyTypeForChat(peerId: PeerId | undefined, chat: Chat | undef
  *
  * Правило читают три несвязанных потребителя: витрина списка
  * (`core/hooks/useChatList.ts` — серая иконка и бейдж), фильтр папок
- * (`core/hooks/useDialogListSource.ts` — правило `excludeMuted`) и
+ * (`components/autonomousDialogList/dialogs.ts::testDialogForFilter` — правило `excludeMuted`) и
  * foreground-уведомления (`client/uiNotifications.ts` — гейт звука и
  * Notification). Разъехавшиеся копии выражения — не косметика: у списка и у
  * СЧЁТЧИКА набора папки разошлись бы ответы, фетчер счёл бы нужное количество
  * набранным, и папка с `excludeMuted` перестала бы наполняться вовсе (этот
- * дефект уже ловили — см. докблок `matchesThisFolder` в useDialogListSource).
+ * дефект уже ловили — его разбор — у `testDialogForFilter` списка папки).
  * Пин на единственность — `stores/noDuplicateMuteRule.test.ts`.
  *
  * `dialog` опционален: уведомление приходит и по чату, которого ещё нет в

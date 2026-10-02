@@ -49,3 +49,21 @@
 .scroll.collapsed .bottom {
   height: 0;
 }
+
+// В7-1 (секретные чаты — наш продукт, у tweb их нет): строка секретного чата —
+// замок перед именем и зелёное имя, приглашение до рукопожатия — зелёным
+// (`AppDialogsManager.addListDialog`, `setLastMessage`).
+.secret :global(.peer-title) {
+  color: var(--green-color);
+}
+
+.secretLock {
+  flex-shrink: 0;
+  margin-inline-end: 3px;
+  font-size: 1rem;
+  color: var(--green-color);
+}
+
+.secretInvite {
+  color: var(--green-color);
+}

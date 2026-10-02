@@ -3,7 +3,7 @@
 // `loadingDialogSkeleton.solid.tsx`. Сценарии перенесены с React-носителя
 // `components/virtual/LoadingDialogSkeleton.test.tsx` (спека § 5: «тесты-
 // предохранители переписываются, а не удаляются»); React-носитель живёт, пока
-// его держат React-потребители (`ChatList`, `TopicsPanel`, снимаются в 1-4, 1-6).
+// его держат React-потребитель (`TopicsPanel`, снимается в 1-6; `ChatList` снят в 1-4).
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'solid-js/web'
 

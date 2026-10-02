@@ -170,9 +170,11 @@ messages» и правая панель «Saved Messages / 4 chats» с вкла
    `fwd_from_*` + `GET /chats/{self}/history?saved_peer_id=`; клиент: `ChatType.Saved` в
    `bubbles.ts`/`Chat.tsx`, `meAsNotes` в шапке). Сейчас клик открывает оригинальный чат пира
    (`savedDialogsTab.solid.tsx`, шапка).
-2. **`PeerTitle` `withIcons`** в ванильной строке (`chat/peerTitle.ts`) не портирован: в строках
-   поиска/`appSelectPeers`/участников галочки у имени нет. React-строки (список чатов, шапка,
-   «Поделиться») её рисуют.
+2. **`PeerTitle` `withIcons`** (`chat/peerTitle.ts` + `components/generateTitleIcons.ts`) включён
+   только у строки списка чатов (задача 1-4 волны 7): галочка, премиум/эмодзи-статус; fake/scam,
+   monoforum и `bot_verification_icon` — без предмета в модели пира. В строках
+   поиска/`appSelectPeers`/участников галочки у имени нет. React-места (шапка, «Поделиться») рисуют
+   её своими значками.
 3. **Спойлер кода входа** в превью сообщения 777000 (`messageForReply.ts:381-392`) — не
    портирован вместе с `wrapMessageForReply` (шапка `components/wrappers/messageForReply.ts`).
 4. **Звонки** 777000 скрыты по id (`ChatHeader.tsx`, `HeaderMenu.tsx`), у оригинала — по

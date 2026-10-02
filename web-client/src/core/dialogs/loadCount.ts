@@ -2,7 +2,7 @@
 // `components/autonomousDialogList/base.ts:23,216-219`.
 //
 // Отдельный модуль (а не экспорт из хука-потребителя): чистые константы и
-// функции без React. `guessLoadCount()` читает `core/hooks/useDialogListSource.ts`
+// функции без React. `guessLoadCount()` читает `components/autonomousDialogList/base.ts`
 // (размер страницы догрузки), `DIALOG_LOAD_COUNT` — владелец списка
 // (`core/managers/dialogsManager.ts::doRefresh`: окно первичной загрузки на
 // пустом кэше) и тест холодного старта `client/boot.firstPage.test.tsx`, где

@@ -30,14 +30,17 @@
 //  • `options` в оригинале богаче (`dialog`, `onlyFirstName`, `limitSymbols`,
 //    `withIcons`/`withPremiumIcon`, `threadId`, `asAllChats`, …) — у каждого из
 //    них свой предмет (Saved Messages, топики форума, значки премиума/скам,
-//    monoforum), которого у ленты на этом этапе нет. Оставлены четыре:
+//    monoforum), которого у ленты на этом этапе нет. Оставлены пять:
 //    `peerId` (обычный автор), `fromName` (имя строкой, когда пира нет —
 //    порт того же поля tweb: скрытый форвард, а у нас send-as, где заголовок
 //    личности приезжает прямо в сообщении), `onlyFirstName` — автор в превью
 //    строки чатлиста (`lib/appDialogsManager.ts::setLastMessageN`, tweb
-//    `appDialogsManager.ts:2168-2171`) и `dialog` — свой пир как «Избранное»
+//    `appDialogsManager.ts:2168-2171`), `dialog` — свой пир как «Избранное»
 //    (peerTitle.ts:140-148; потребитель — чип пира глобального поиска,
-//    `components/selectorEntity.ts`; ветка `meAsNotes` — без предмета).
+//    `components/selectorEntity.ts`; ветка `meAsNotes` — без предмета), и
+//    `withIcons` — значки после имени в строке списка чатов
+//    (`components/generateTitleIcons.ts`, синхронно из зеркала;
+//    `withPremiumIcon` — без потребителя).
 //  • Имя идёт через `wrapEmojiText` (`lib/richtext/wrapEmojiText.ts`) — как в
 //    оригинале, где его прогоняет `getPeerTitle` (`wrappers/getPeerTitle.ts:91`,
 //    `plainText` там не передаётся) и ветка `fromName` самого `PeerTitle`
@@ -51,6 +54,7 @@ import { wrapEmojiText } from '@lib/richtext'
 import { i18n } from '@lib/langPack'
 import rootScope from '@lib/rootScope'
 import replaceContent from '@helpers/dom/replaceContent'
+import generateTitleIcons from '@components/generateTitleIcons'
 
 /** Срез менеджеров, который нужен узлу имени: объявить пробел зеркала. */
 export interface PeerTitleManagers {
@@ -66,6 +70,8 @@ export interface PeerTitleOptions {
   onlyFirstName?: boolean
   /** свой пир — «Избранное» (tweb `dialog`, peerTitle.ts:140) */
   dialog?: boolean
+  /** значки после имени: эмодзи-статус/премиум, верификация (tweb `withIcons`) */
+  withIcons?: boolean
   middleware: Middleware
   managers: PeerTitleManagers
 }
@@ -111,10 +117,13 @@ export default class PeerTitle {
 
   /** Порт tweb `update` в применимом объёме (peerTitle.ts:104-200). */
   public update() {
-    const { fromName, peerId, onlyFirstName, dialog, managers, middleware } = this.options
+    const { fromName, peerId, onlyFirstName, dialog, withIcons, managers, middleware } = this.options
     if (!middleware()) {
       return
     }
+
+    // peerTitle.ts:98-103 `setHasInner` — флаг ставит только ветка со значками
+    this.element.classList.remove('with-icons')
 
     if (fromName !== undefined) {
       this.setTitle(fromName)
@@ -160,7 +169,20 @@ export default class PeerTitle {
     // (`getPeerTitle.ts:62`), то есть промах кэша и удалённый аккаунт дают одну
     // и ту же надпись. Иначе пир, которого владелец отдать не может (удалён,
     // недоступен), остался бы пустым узлом навсегда.
-    this.setTitle(getPeerTitle({ peerId, peer, onlyFirstName }))
+    const title = getPeerTitle({ peerId, peer, onlyFirstName })
+    // peerTitle.ts:196-229 — значки есть: имя во внутреннем `span.peer-title-inner`
+    // (обрезка многоточием), значки — после него
+    const icons = withIcons ? generateTitleIcons({ peerId, peer }) : []
+    if (!icons.length) {
+      this.setTitle(title)
+      return
+    }
+
+    const inner = document.createElement('span')
+    inner.classList.add('peer-title-inner')
+    inner.append(wrapEmojiText(title))
+    this.element.replaceChildren(inner, ...icons)
+    this.element.classList.add('with-icons')
   }
 
   /** Порт `setInnerHTML(this.element, wrapEmojiText(title))` (peerTitle.ts:114,

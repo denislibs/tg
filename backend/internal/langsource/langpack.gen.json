@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 43,
+      "version": 44,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -3641,6 +3641,98 @@
           "value": "Email"
         },
         {
+          "key": "Peer.Activity.Chat.Multi.RecordingAudio1",
+          "value": "%@ and %d others are recording voice"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.RecordingVideo1",
+          "value": "%@ and %d others are recording video"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.SendingFile1",
+          "value": "%@ and %d others are sending files"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.SendingPhoto1",
+          "value": "%@ and %d others are sending photos"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.SendingVideo1",
+          "value": "%@ and %d others are sending videos"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.TypingText1",
+          "value": "%@ and %d others are typing"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.RecordingAudio",
+          "value": "%1$@ and %2$@ are recording voice"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.RecordingVideo",
+          "value": "%1$@ and %2$@ are recording video"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.SendingFile",
+          "value": "%1$@ and %2$@ are sending files"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.SendingPhoto",
+          "value": "%1$@ and %2$@ are sending photos"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.SendingVideo",
+          "value": "%1$@ and %2$@ are sending videos"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.TypingText",
+          "value": "%1$@ and %2$@ are typing"
+        },
+        {
+          "key": "Peer.Activity.Chat.RecordingAudio",
+          "value": "%@ is recording voice"
+        },
+        {
+          "key": "Peer.Activity.Chat.RecordingVideo",
+          "value": "%@ is recording video"
+        },
+        {
+          "key": "Peer.Activity.Chat.SendingFile",
+          "value": "%@ is sending a file"
+        },
+        {
+          "key": "Peer.Activity.Chat.SendingPhoto",
+          "value": "%@ is sending a photo"
+        },
+        {
+          "key": "Peer.Activity.Chat.SendingVideo",
+          "value": "%@ is sending a video"
+        },
+        {
+          "key": "Peer.Activity.Chat.TypingText",
+          "value": "%@ is typing"
+        },
+        {
+          "key": "Peer.Activity.User.RecordingAudio",
+          "value": "recording voice"
+        },
+        {
+          "key": "Peer.Activity.User.RecordingVideo",
+          "value": "recording video"
+        },
+        {
+          "key": "Peer.Activity.User.SendingFile",
+          "value": "sending file"
+        },
+        {
+          "key": "Peer.Activity.User.SendingPhoto",
+          "value": "sending a photo"
+        },
+        {
+          "key": "Peer.Activity.User.SendingVideo",
+          "value": "sending a video"
+        },
+        {
           "key": "Peer.Activity.User.TypingText",
           "value": "typing"
         },
@@ -5952,7 +6044,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 43,
+      "version": 44,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -7725,6 +7817,98 @@
         {
           "key": "Peer.Activity.User.TypingText",
           "value": "печатает…"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.RecordingAudio1",
+          "value": "%@ и ещё %d записывают голосовое"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.RecordingVideo1",
+          "value": "%@ и ещё %d записывают видео"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.SendingFile1",
+          "value": "%@ и ещё %d отправляют файлы"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.SendingPhoto1",
+          "value": "%@ и ещё %d отправляют фото"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.SendingVideo1",
+          "value": "%@ и ещё %d отправляют видео"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.TypingText1",
+          "value": "%@ и ещё %d печатают"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.RecordingAudio",
+          "value": "%1$@ и %2$@ записывают голосовое"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.RecordingVideo",
+          "value": "%1$@ и %2$@ записывают видео"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.SendingFile",
+          "value": "%1$@ и %2$@ отправляют файлы"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.SendingPhoto",
+          "value": "%1$@ и %2$@ отправляют фото"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.SendingVideo",
+          "value": "%1$@ и %2$@ отправляют видео"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.TypingText",
+          "value": "%1$@ и %2$@ печатают"
+        },
+        {
+          "key": "Peer.Activity.Chat.RecordingAudio",
+          "value": "%@ записывает голосовое"
+        },
+        {
+          "key": "Peer.Activity.Chat.RecordingVideo",
+          "value": "%@ записывает видео"
+        },
+        {
+          "key": "Peer.Activity.Chat.SendingFile",
+          "value": "%@ отправляет файл"
+        },
+        {
+          "key": "Peer.Activity.Chat.SendingPhoto",
+          "value": "%@ отправляет фото"
+        },
+        {
+          "key": "Peer.Activity.Chat.SendingVideo",
+          "value": "%@ отправляет видео"
+        },
+        {
+          "key": "Peer.Activity.Chat.TypingText",
+          "value": "%@ печатает"
+        },
+        {
+          "key": "Peer.Activity.User.RecordingAudio",
+          "value": "записывает голосовое"
+        },
+        {
+          "key": "Peer.Activity.User.RecordingVideo",
+          "value": "записывает видео"
+        },
+        {
+          "key": "Peer.Activity.User.SendingFile",
+          "value": "отправляет файл"
+        },
+        {
+          "key": "Peer.Activity.User.SendingPhoto",
+          "value": "отправляет фото"
+        },
+        {
+          "key": "Peer.Activity.User.SendingVideo",
+          "value": "отправляет видео"
         },
         {
           "key": "Chat.Accessory.Reply",
@@ -21311,7 +21495,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 27,
+      "version": 28,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -22215,6 +22399,98 @@
         {
           "key": "Peer.Activity.User.TypingText",
           "value": "друкує…"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.RecordingAudio1",
+          "value": "%@ і ще %d записують голосове"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.RecordingVideo1",
+          "value": "%@ і ще %d записують відео"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.SendingFile1",
+          "value": "%@ і ще %d надсилають файли"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.SendingPhoto1",
+          "value": "%@ і ще %d надсилають фото"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.SendingVideo1",
+          "value": "%@ і ще %d надсилають відео"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.TypingText1",
+          "value": "%@ і ще %d друкують"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.RecordingAudio",
+          "value": "%1$@ і %2$@ записують голосове"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.RecordingVideo",
+          "value": "%1$@ і %2$@ записують відео"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.SendingFile",
+          "value": "%1$@ і %2$@ надсилають файли"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.SendingPhoto",
+          "value": "%1$@ і %2$@ надсилають фото"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.SendingVideo",
+          "value": "%1$@ і %2$@ надсилають відео"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.TypingText",
+          "value": "%1$@ і %2$@ друкують"
+        },
+        {
+          "key": "Peer.Activity.Chat.RecordingAudio",
+          "value": "%@ записує голосове"
+        },
+        {
+          "key": "Peer.Activity.Chat.RecordingVideo",
+          "value": "%@ записує відео"
+        },
+        {
+          "key": "Peer.Activity.Chat.SendingFile",
+          "value": "%@ надсилає файл"
+        },
+        {
+          "key": "Peer.Activity.Chat.SendingPhoto",
+          "value": "%@ надсилає фото"
+        },
+        {
+          "key": "Peer.Activity.Chat.SendingVideo",
+          "value": "%@ надсилає відео"
+        },
+        {
+          "key": "Peer.Activity.Chat.TypingText",
+          "value": "%@ друкує"
+        },
+        {
+          "key": "Peer.Activity.User.RecordingAudio",
+          "value": "записує голосове"
+        },
+        {
+          "key": "Peer.Activity.User.RecordingVideo",
+          "value": "записує відео"
+        },
+        {
+          "key": "Peer.Activity.User.SendingFile",
+          "value": "надсилає файл"
+        },
+        {
+          "key": "Peer.Activity.User.SendingPhoto",
+          "value": "надсилає фото"
+        },
+        {
+          "key": "Peer.Activity.User.SendingVideo",
+          "value": "надсилає відео"
         },
         {
           "key": "Chat.Accessory.Reply",

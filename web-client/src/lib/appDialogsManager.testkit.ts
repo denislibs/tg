@@ -9,12 +9,13 @@
 // управлением, как в `components/appSearchSuper.scroll.test.ts`) и
 // `ResizeObserver`, которого в happy-dom нет.
 //
-// Список папки — роль React-`ChatListFolder` из задачи 6 — здесь дублёр
-// `mountList`: он рисует `ul.chatlist` в `.chatlist-top` владельца и
-// регистрирует хэндл `{clear, reset, onChatsScroll}` так же, как это сделает
-// настоящий список (`list.register(...)`). Его `clear` пустит `ul`, как
-// `deferredSortedVirtualList.tsx:157-168` у tweb, `onChatsScroll` — рисует первую
-// страницу.
+// Список папки — настоящий `AutonomousDialogList` (задача 1-4 волны 7), но его
+// `clear`/`onChatsScroll` подменены дублёром (`installListProbes`): владельца
+// проверяют по оркестровке папок, а не по загрузке страниц (её пины —
+// `components/autonomousDialogList/dialogs.test.ts`). Дублёр `clear` пустит `ul`,
+// как `deferredSortedVirtualList.tsx:157-168` у tweb, `onChatsScroll` — рисует
+// первую страницу. Подмена ставится на ПРОТОТИП до `mountOwner`: первую страницу
+// «Всех чатов» владелец просит ещё внутри `start()` (`:1064-1065`).
 import { expect, vi } from 'vitest'
 import { useAppStateStore } from '@stores/appState'
 import { applyFolderUpdate, useFoldersStore } from '@stores/foldersStore'
@@ -25,7 +26,8 @@ import { initialState } from '@core/state/state'
 import { ALL_FOLDER_ID } from '@core/folderIds'
 import { fastRaf } from '@helpers/schedulers'
 import type { RawFolder } from '@core/managers/foldersManager'
-import { AppDialogsManager, type AppDialogsManagerHooks, type FolderList } from './appDialogsManager'
+import { AppDialogsManager, type AppDialogsManagerHooks } from './appDialogsManager'
+import { AutonomousDialogList } from '@components/autonomousDialogList/dialogs'
 
 /** ширина кадра папки — её читает `slideTabs` (`transition.ts:102-116`) */
 export const WIDTH = 400
@@ -151,55 +153,63 @@ export function stubGeometry(folders: HTMLElement) {
   })
 }
 
-// ── Дублёр списка папки (роль `ChatListFolder` задачи 6) ───────────────────
+// ── Дублёр загрузки списка папки ───────────────────────────────────────────
 export type ListProbe = {
-  ul: HTMLUListElement
-  calls: { clear: number; reset: number; onChatsScroll: number }
-  unregister: () => void
+  ul: HTMLElement
+  calls: { clear: number; onChatsScroll: number }
 }
 
+const probes = new Map<AutonomousDialogList, ListProbe>()
+
+/** `data-filter-id` скроллера — у списка своего поля под папку снаружи нет (у tweb оно `protected`). */
+export const filterIdOf = (xd: AutonomousDialogList) => +xd.scrollable.container.dataset.filterId!
+
 /**
- * `ul.chatlist` в `.chatlist-top` + хэндл. `scrollTop` скроллера зажат
+ * Пробы на всех списках, которые построит владелец. `scrollTop` скроллера зажат
  * содержимым, как у браузера после layout: пустой `ul` — прокручивать нечего.
  */
-export function mountList(list: FolderList): ListProbe {
-  const ul = document.createElement('ul')
-  ul.className = 'chatlist virtual-chatlist'
-  list.top.append(ul)
+export function installListProbes() {
+  probes.clear()
+  const probeOf = (xd: AutonomousDialogList) => {
+    let probe = probes.get(xd)
+    if(probe) return probe
 
-  const container = list.scrollable.container
-  let top = 0
-  const max = () => Math.max(0, ul.children.length * ROW - VIEWPORT)
-  Object.defineProperty(container, 'scrollTop', {
-    configurable: true,
-    get: () => top,
-    set: (value: number) => { top = Math.min(Math.max(0, value), max()) },
+    const ul = xd.sortedList.list
+    const container = xd.scrollable.container
+    let top = 0
+    const max = () => Math.max(0, ul.children.length * ROW - VIEWPORT)
+    Object.defineProperty(container, 'scrollTop', {
+      configurable: true,
+      get: () => top,
+      set: (value: number) => { top = Math.min(Math.max(0, value), max()) },
+    })
+    // браузерный layout после смены содержимого: позиция зажимается им
+    const layout = () => { top = Math.min(top, max()) }
+
+    probe = { ul, calls: { clear: 0, onChatsScroll: 0 } }
+    ;(probe as ListProbe & { layout: () => void }).layout = layout
+    probes.set(xd, probe)
+    return probe
+  }
+
+  vi.spyOn(AutonomousDialogList.prototype, 'clear').mockImplementation(function(this: AutonomousDialogList) {
+    const probe = probeOf(this)
+    ++probe.calls.clear
+    probe.ul.replaceChildren()
+    ;(probe as ListProbe & { layout: () => void }).layout()
   })
-  // браузерный layout после смены содержимого: позиция зажимается им
-  const layout = () => { top = Math.min(top, max()) }
-
-  const calls = { clear: 0, reset: 0, onChatsScroll: 0 }
-  const unregister = list.register({
-    clear: () => {
-      ++calls.clear
-      ul.replaceChildren()
-      layout()
-    },
-    reset: () => {
-      ++calls.reset
-    },
-    onChatsScroll: () => {
-      ++calls.onChatsScroll
-      ul.replaceChildren(...Array.from({ length: PAGE }, (_, i) => {
-        const li = document.createElement('li')
-        li.textContent = `#${i + 1}`
-        return li
-      }))
-      layout()
-    },
+  vi.spyOn(AutonomousDialogList.prototype, 'onChatsScroll').mockImplementation(function(this: AutonomousDialogList) {
+    const probe = probeOf(this)
+    ++probe.calls.onChatsScroll
+    probe.ul.replaceChildren(...Array.from({ length: PAGE }, (_, i) => {
+      const li = document.createElement('li')
+      li.textContent = `#${i + 1}`
+      return li
+    }))
+    ;(probe as ListProbe & { layout: () => void }).layout()
   })
 
-  return { ul, calls, unregister }
+  return (xd: AutonomousDialogList) => probeOf(xd)
 }
 
 // ── Владелец ───────────────────────────────────────────────────────────────
@@ -215,7 +225,12 @@ export type Mounted = {
  * Колонка, какой её отдаст `Sidebar.tsx` в задаче 6: `#chatlist-container` и
  * внутри React-`.connection-status-bottom` — хост владельца.
  */
-export function mountOwner(options: { close?: () => boolean | Promise<boolean>; forumOpen?: () => boolean } = {}): Mounted {
+export function mountOwner(options: {
+  close?: () => boolean | Promise<boolean>
+  forumOpen?: () => boolean
+  /** страницы владельца диалогов — у тестов списка свои (`autonomousDialogList/dialogs.test.ts`) */
+  getDialogs?: AppDialogsManagerHooks['managers']['dialogs']['getDialogs']
+} = {}): Mounted {
   const chatsContainer = document.createElement('div')
   chatsContainer.id = 'chatlist-container'
   const host = document.createElement('div')
@@ -235,10 +250,16 @@ export function mountOwner(options: { close?: () => boolean | Promise<boolean>; 
       closeTabsBefore: vi.fn((clb: () => void) => clb()),
       openEditFolderTab: vi.fn(),
       openChatFoldersTab: vi.fn(),
+      isCollapsed: () => false,
+      openArchiveTab: vi.fn(),
     },
     managers: {
       folders: { del: vi.fn(async (_id: number) => {}) },
+      dialogs: { getDialogs: options.getDialogs ?? vi.fn(async () => ({ dialogs: [], count: 0, isEnd: true })) },
+      peers: { fillMirror: async () => {} },
+      presence: { get: async () => [] },
     },
+    openForum: vi.fn(),
   }
 
   const manager = new AppDialogsManager()

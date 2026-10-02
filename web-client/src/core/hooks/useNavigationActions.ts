@@ -19,7 +19,7 @@ export function useNavigationActions() {
   // кладём его поверх стека (tweb setInnerPeer). Субтитр темы (имя группы)
   // готовим здесь, чтобы chatStackStore не импортировал chatsStore.
   //
-  // (Fix ревью Task 5, Critical.) `useForumPanel.handleSelect` зовёт этот путь
+  // (Fix ревью Task 5, Critical.) панель тем (`useForumPanel`, открывает её `openForum`) зовёт этот путь
   // «с чистого листа» — форум в списке чатов НЕ выбран (клик по форуму открывает
   // панель тем локальным стейтом Sidebar, минуя `selectChat`). Без корня стек
   // получал бы РОВНО один элемент (саму тему) — `selectedId` оставался бы `null`

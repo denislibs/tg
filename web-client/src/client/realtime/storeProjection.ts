@@ -296,7 +296,7 @@ export function registerStoreProjection(managers: Managers): void {
       useSecretChatStore.getState().setStatus(r.peer_id, 'requested')
       // Живьём чат ещё не в списке диалогов у получателя — подтянуть /chats, чтобы
       // строка-заявка появилась сверху (дебаунс внутри). Статус 'requested' даёт
-      // pending-превью «Приглашение в секретный чат» в ChatListItem.
+      // pending-превью «Приглашение в секретный чат» в строке списка (`lib/appDialogsManager.ts::setLastMessage`, В7-1).
       if (!useChatsStore.getState().dialogs.some((d) => d.peerId === r.peer_id)) {
         scheduleChatsReload(managers)
       }

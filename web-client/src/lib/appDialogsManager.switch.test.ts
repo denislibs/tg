@@ -2,7 +2,7 @@
 // порт tweb `src/lib/appDialogsManager.ts:729-822, :851-858, :1092-1101`).
 //
 // Последовательность клика (`docs/tweb/folders-tabs.md` § 1.6, «для пинов»):
-// полоса → `selectFolderByIndex` (выбор в стор, `clear()` цели, `reset()` +
+// полоса → `selectFolderByIndex` (выбор в стор, `clear()` цели,
 // `onChatsScroll()` через `onTabChange`) → `TransitionSlider.slideTabs` (`from`/
 // `to`/`animating`/`backwards`, инлайновые сдвиги ±width) → по `transitionend`
 // уходящий теряет `active from` и сдвиг, а `onTransitionEnd` полосы чистит все
@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import '@/test/lang'
 import {
   FakeResizeObserver, PAGE, WIDTH, expectActiveOnly, finishTransition, frameOf, installFrames,
-  mountList, mountOwner, putFolders, raw, resetStores, settle, tabEls, transformAtReflow,
+  filterIdOf, installListProbes, mountOwner, putFolders, raw, resetStores, settle, tabEls, transformAtReflow,
   uninstallFrames, type ListProbe, type Mounted,
 } from './appDialogsManager.testkit'
 import { resetPeerMirror } from '@core/peerCache'
@@ -40,9 +40,10 @@ const fetchSpy = vi.fn()
 /** три папки: «Все чаты» (0), «Работа» (3), «Шум» (4) — индексы вкладок 0, 1, 2 */
 async function setup(options?: Parameters<typeof mountOwner>[0]) {
   putFolders(raw(3, 1, 'Работа'), raw(4, 2, 'Шум'))
+  const probeOf = installListProbes()
   mounted = mountOwner(options)
   await settle()
-  lists = new Map(mounted.manager.getRendered().map((list) => [list.id, mountList(list)]))
+  lists = new Map(Array.from(mounted.manager.xds.values()).map((xd) => [filterIdOf(xd), probeOf(xd)]))
   return mounted
 }
 
@@ -51,7 +52,7 @@ const clickTab = (index: number) => {
 }
 
 const resetCalls = () => lists.forEach((probe) => {
-  probe.calls.clear = probe.calls.reset = probe.calls.onChatsScroll = 0
+  probe.calls.clear = probe.calls.onChatsScroll = 0
 })
 
 beforeEach(() => {
@@ -69,6 +70,7 @@ afterEach(() => {
   mounted = undefined
   uninstallFrames()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
   document.body.replaceChildren()
   resetStores()
   resetPeerMirror()
@@ -84,7 +86,7 @@ describe('appDialogsManager: первый показ', () => {
     expect(lists.get(3)!.calls.onChatsScroll).toBe(0)
     expect(lists.get(0)!.ul.children).toHaveLength(PAGE)
     expect(tabEls(mounted!.host)[0].classList.contains('active')).toBe(true)
-    expect(mounted!.manager.xd).toBe(mounted!.manager.getRendered().find((list) => list.id === 0))
+    expect(mounted!.manager.xd).toBe(mounted!.manager.xds.get(0))
   })
 })
 
@@ -112,7 +114,7 @@ describe('appDialogsManager: клик по вкладке', () => {
     expect(tabEls(mounted!.host)[1].classList.contains('active')).toBe(true)
   })
 
-  it('по transitionend: уходящий теряет active/from и сдвиг, неактивный список очищен ровно раз, у активного reset + onChatsScroll', async () => {
+  it('по transitionend: уходящий теряет active/from и сдвиг, неактивный список очищен ровно раз, у активного onChatsScroll', async () => {
     const { folders } = await setup()
     const [all, work] = [frameOf(folders, 0), frameOf(folders, 3)]
     resetCalls()
@@ -130,10 +132,10 @@ describe('appDialogsManager: клик по вкладке', () => {
     expect(lists.get(0)!.calls.clear).toBe(1)
     expect(lists.get(4)!.calls.clear).toBe(1)
     // у активной — `clear()` перед переключением (:786) и `onTabChange` (:1092-1101)
-    expect(lists.get(3)!.calls).toEqual({ clear: 1, reset: 1, onChatsScroll: 1 })
+    expect(lists.get(3)!.calls).toEqual({ clear: 1, onChatsScroll: 1 })
     expect(lists.get(0)!.ul.children).toHaveLength(0)
     expect(lists.get(3)!.ul.children).toHaveLength(PAGE)
-    expect(mounted!.manager.xd!.id).toBe(3)
+    expect(filterIdOf(mounted!.manager.xd!)).toBe(3)
   })
 
   it('клик обратно на меньший индекс добавляет backwards; сдвиги зеркальные', async () => {
@@ -247,7 +249,7 @@ describe('appDialogsManager: особые ветки selectFolderByIndex', () =>
     expect(fastSmoothScrollToStart).toHaveBeenCalledWith(frameOf(folders, 3), 'y')
     expect(useFoldersStore.getState().selectedId).toBe(3)
     expect(folders.classList.contains('animating')).toBe(false)
-    expect(lists.get(3)!.calls).toEqual({ clear: 0, reset: 0, onChatsScroll: 0 })
+    expect(lists.get(3)!.calls).toEqual({ clear: 0, onChatsScroll: 0 })
   })
 
   it('closeEverythingInsideNaturally ответил false — вкладка не переключилась (selectTarget, horizontalMenu.ts:55-62)', async () => {
@@ -275,35 +277,5 @@ describe('appDialogsManager: особые ветки selectFolderByIndex', () =>
 
     expectActiveOnly(folders, 4)
     expect(tabEls(mounted!.host)[2].classList.contains('active')).toBe(true)
-  })
-})
-
-describe('appDialogsManager: список папки регистрируется позже первого запроса (FolderList)', () => {
-  it('onChatsScroll до регистрации хэндла выполняется один раз при register, после — сразу', async () => {
-    putFolders(raw(3, 1, 'Работа'))
-    mounted = mountOwner()
-    await settle()
-    const list = mounted.manager.xd!
-    const onChatsScroll = vi.fn()
-
-    const unregister = list.register({ clear: vi.fn(), reset: vi.fn(), onChatsScroll })
-    expect(onChatsScroll).toHaveBeenCalledTimes(1)
-
-    list.onChatsScroll()
-    expect(onChatsScroll).toHaveBeenCalledTimes(2)
-    unregister()
-  })
-
-  it('clear() до регистрации снимает отложенный запрос — как отмена загрузки у tweb (base.ts:353-362)', async () => {
-    putFolders(raw(3, 1, 'Работа'))
-    mounted = mountOwner()
-    await settle()
-    const list = mounted.manager.xd!
-    const onChatsScroll = vi.fn()
-
-    list.clear()
-    list.register({ clear: vi.fn(), reset: vi.fn(), onChatsScroll })
-
-    expect(onChatsScroll).not.toHaveBeenCalled()
   })
 })

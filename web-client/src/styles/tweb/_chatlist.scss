@@ -500,29 +500,11 @@ ul.chatlist {
       }
     }
 
-    // ВРЕМЕННО до 1-4: прежняя (до tweb 3f974c341) flex-раскладка подзаголовка —
-    // её ещё рисуют React `ChatListItem.tsx` (снимается в 1-4) и
-    // `conversation/TopbarSearch.tsx`; строка `DialogElement` — на `-parts` выше.
-    &-flex {
-      display: flex;
-
-      .has-only-pinned-badge:not(.animating) & {
-        margin-inline-end: 1.5rem;
-      }
-    }
-
     &-span {
       unicode-bidi: isolate;
       // * the prefixes keep their trailing space, the message flattens its own
       // * newlines into the single preview line
       white-space: pre;
-
-      // ВРЕМЕННО до 1-4: часть `-flex`-раскладки (см. выше)
-      &-overflow {
-        text-overflow: ellipsis;
-        overflow: hidden;
-        white-space: pre;
-      }
 
       &-last {
         white-space: nowrap;

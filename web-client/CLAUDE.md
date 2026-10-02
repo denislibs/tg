@@ -507,10 +507,10 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
   обслуживает и вертикальный, и горизонтальный скролл). **Инстанцирован в
   ВОСЬМИ местах, у каждого — свой узел**: `components/chat/bubbles.ts::setScroll`
   (императивная лента, порт tweb `ChatBubbles`), `components/sliderTab.ts`
-  (скроллер вкладки слайдера, порт `SliderSuperTab`), `lib/appDialogsManager.ts::FolderList`
-  (скроллер `.folders-scrollable` одной папки чатлиста, порт `generateScrollable`
-  tweb `autonomousDialogList/dialogs.ts:207-212`; владелец встроен в колонку
-  `Sidebar.tsx`, React-список папки рисует в него только свой `ul`) и
+  (скроллер вкладки слайдера, порт `SliderSuperTab`), `components/autonomousDialogList/dialogs.ts::generateScrollable`
+  (скроллер `.folders-scrollable` одной папки чатлиста, порт tweb
+  `autonomousDialogList/dialogs.ts:298-336`; список папки — `AutonomousDialogList`
+  владельца `lib/appDialogsManager.ts`, встроенного в колонку `Sidebar.tsx`) и
   `core/hooks/useSearchSuper.ts` (скроллер панели профиля поверх её `bodyRef`
   — та же роль `SliderSuperTab` для React-панели; общий для шапки панели,
   класса `AppSearchSuper` и `PeerProfileAvatars`, роняет его только хук —

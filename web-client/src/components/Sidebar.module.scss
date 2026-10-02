@@ -124,35 +124,14 @@
 
 .archiveList {
   flex: 1;
-  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 
-  &::-webkit-scrollbar {
-    width: 6px;
+  // скроллер списка архива — узел владельца (`AutonomousDialogList`, ВРЕМЕННО до 1-5)
+  > :global(.scrollable) {
+    flex: 1;
   }
-  &::-webkit-scrollbar-thumb {
-    background: transparent;
-    border-radius: 3px;
-    transition: background 0.2s;
-  }
-  &:hover::-webkit-scrollbar-thumb {
-    background: var(--secondary-text-color);
-  }
-}
-
-// `ul` виртуального списка архива. Строки лежат в нём абсолютом (класс `.Item`
-// из `virtual/DeferredSortedVirtualList.module.scss`), поэтому containing block
-// обязан быть на самом `ul`: без `position: relative` строки отсчитывались бы от
-// `.archiveOverlay` и не прокручивались бы вместе со списком. У основного списка
-// то же самое делает `.virtual-chatlist` (_chatlist.scss:471).
-//
-// Классы `chatlist virtual-chatlist` сюда НЕ переезжают, хотя в tweb они у
-// архива есть (там это тот же `SortedDialogList`): они принесли бы боковые поля
-// .5rem, которых у строк нашего оверлея никогда не было, — а задача этапа
-// механика рендера, а не редизайн. `margin: 0` гасит браузерный отступ списка
-// (глобальный сброс в `styles/index.scss:109` снимает только padding и маркеры).
-.archiveVirtualList {
-  position: relative;
-  margin: 0;
 }
 
 // Панель форум-тем (tweb .topics-container.is-floating, _topics.scss:19-45):
@@ -193,9 +172,3 @@
   }
 }
 
-// Форум открыт: список слева стал колонкой аватаров — прячем поиск в шапке
-// (tweb .is-forum-visible .input-search opacity 0), в 80px-полосе остаётся бургер.
-.hasForum .search {
-  opacity: 0;
-  pointer-events: none;
-}

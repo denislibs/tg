@@ -140,9 +140,11 @@ describe('appDialogsManager: разметка после start()', () => {
   it('ResizeObserver оверлея пишет --chatlist-overlay-height на хост (:601-604)', async () => {
     mounted = mountOwner()
     await settle()
-    const observer = FakeResizeObserver.instances[FakeResizeObserver.instances.length - 1]
+    // наблюдатели заводит и ядро виртуального списка папки — берём тот, что смотрит на оверлей
+    const overlay = mounted.host.querySelector('.chatlist-overlay')!
+    const observer = FakeResizeObserver.instances.find((instance) => instance.observed.includes(overlay))!
 
-    expect(observer.observed).toEqual([mounted.host.querySelector('.chatlist-overlay')])
+    expect(observer.observed).toEqual([overlay])
     observer.fire(96)
     expect(mounted.host.style.getPropertyValue('--chatlist-overlay-height')).toBe('96px')
   })
@@ -152,7 +154,8 @@ describe('appDialogsManager: разметка после start()', () => {
     mounted = mountOwner()
     await settle()
     const { manager, host, chatsContainer } = mounted
-    const observer = FakeResizeObserver.instances[FakeResizeObserver.instances.length - 1]
+    const overlay = host.querySelector('.chatlist-overlay')!
+    const observer = FakeResizeObserver.instances.find((instance) => instance.observed.includes(overlay))!
 
     manager.destroy()
     mounted = undefined
@@ -164,7 +167,7 @@ describe('appDialogsManager: разметка после start()', () => {
     expect(chatsContainer.classList.contains('has-filters')).toBe(false)
     expect(observer.disconnected).toBe(true)
     expect(useFolders().onClick()).toBeUndefined()
-    expect(manager.getRendered()).toEqual([])
+    expect(manager.xds.size).toBe(0)
 
     // подписка на папки снята: новая папка кадра не рождает
     putFolders(raw(4, 2, 'Шум'))

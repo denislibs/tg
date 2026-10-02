@@ -173,8 +173,10 @@ function MessageRow({ chatId, senderId, name, photoId, preview, date, query, act
     >
       {ripple}
       <div className="row-row row-subtitle-row dialog-subtitle">
-        <div className="row-subtitle no-wrap dialog-subtitle-flex">
-          <span className="dialog-subtitle-span dialog-subtitle-span-overflow dialog-subtitle-span-last">
+        {/* tweb HEAD (3f974c341): части подзаголовка — одна inline-строка
+            `.dialog-subtitle-parts`, у каждой `dir="auto"` (`wrappers/dialogSubtitle.ts`) */}
+        <div className="row-subtitle no-wrap dialog-subtitle-parts">
+          <span className="dialog-subtitle-span dialog-subtitle-span-last" dir="auto">
             <Highlighted text={preview} query={query} />
           </span>
         </div>
