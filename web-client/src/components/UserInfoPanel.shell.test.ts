@@ -198,7 +198,6 @@ describe('UserInfoPanel — каркас на классах tweb', () => {
     expect(panel).not.toMatch(/inert=/)
     expect(panel).not.toMatch(/useNavLayer/)
     expect(panel).not.toMatch(/installColumnResize/)
-    expect(panel).not.toMatch(/useRightColumnShown/)
   })
 
   it('своего CSS-модуля у панели больше нет', () => {

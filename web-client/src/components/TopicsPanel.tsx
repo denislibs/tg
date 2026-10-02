@@ -80,7 +80,7 @@ const TOPIC_ITEM_HEIGHT = 64
  * вместо константы» — `TopicsPanel.test.tsx` остаётся зелёным).
  *
  * У архива своего `NO_ITEM_REQUEST` больше нет: `Sidebar.tsx` теперь просит
- * страницы настоящим курсором (`useDialogListSource`), а список «Чаты»
+ * страницы настоящим курсором (`AutonomousDialogList` архива, задача 1-4), а список «Чаты»
  * правой колонки ушёл на Solid-ядро (`sidebarRight/savedDialogsTab.solid.tsx`).
  */
 const NO_ITEM_REQUEST = () => {}
@@ -256,7 +256,7 @@ export default function TopicsPanel({ chatId, chatName, activeRootMsgId, onClose
   // ResizeObserver), поэтому это состояние: первый рендер идёт с null, второй —
   // с живым узлом. Ref-колбэк обязан быть СТАБИЛЬНЫМ: смена идентичности
   // заставила бы React переприсваивать его на каждом рендере, то есть на каждом
-  // рендере пересобирать окно видимости. Всё — как в `ChatList`/`ArchiveList`.
+  // рендере пересобирать окно видимости. Тот же приём был у снесённых `ChatList`/`ArchiveList` (задача 1-4).
   const [scrollHost, setScrollHost] = useState<HTMLElement | null>(null)
   const setListEl = useCallback((ul: HTMLUListElement | null) => {
     setScrollHost(ul?.parentElement ?? null)

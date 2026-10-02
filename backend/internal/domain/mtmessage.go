@@ -832,34 +832,33 @@ func NewMessageActionSuggestedPostApproval(rejected bool, channelID int64) Messa
 // messageActionPhoneCall#80e11a7f flags:# video:flags.2?true call_id:long
 // reason:flags.0?PhoneCallDiscardReason duration:flags.1?int = MessageAction;
 //
-// Лог звонка. Сегодня это сообщение с `type == 'call'`, чей text — JSON
-// {video, reason, duration}, то есть та же подделка дискриминатора, что у
-// служебных действий, но в другом поле.
+// Лог звонка. Его кладёт СЕРВЕР, когда звонок кончился (usecase/chat/
+// phonecall.go), — как у оригинала, где служебное сообщение рождает
+// phone.discardCall, а клиент ничего в чат не отправляет. Строка при этом
+// хранится с type == 'call': по нему идёт выборка журнала звонков.
 //
-// call_id (ОБЯЗАТЕЛЬНЫЙ) не производится: идентификатор звонка у нас — uuid,
-// живущий только в сигнальных кадрах (callEngine), на сообщение он не
-// сохраняется. На фазе 2 станет заглушкой-нулём в потоке.
+// call_id (ОБЯЗАТЕЛЬНЫЙ) не производится: идентификатор звонка у нас — uuid
+// сигнальных кадров, в long схемы он не ложится и на сообщение не сохраняется.
 //
-// Наши четыре причины ложатся на схему так: `missed` → Missed, `busy` → Busy,
-// `ok` и `cancelled` → ОДИН Hangup, различаемые НАЛИЧИЕМ duration. Именно так
-// читает оригинал (у соединившегося звонка есть длительность, у сорвавшегося
-// нет), и лишнего конструктора для этого не нужно.
+// Исход читается так же, как у оригинала: состоявшийся звонок несёт duration,
+// сорвавшийся — нет; причина говорит, как именно он кончился.
 type MessageActionPhoneCall struct {
 	Underscore string          `json:"_"`
 	PFlags     map[string]bool `json:"pFlags,omitempty"`
 	// Reason — flags.0?PhoneCallDiscardReason: почему звонок кончился.
 	Reason PhoneCallDiscardReason `json:"reason,omitempty"`
-	// Duration — flags.1?int: секунды разговора. Отсутствует, когда соединения
-	// не случилось, и именно отсутствие отличает «отменён» от «состоялся».
-	Duration int `json:"duration,omitempty"`
+	// Duration — flags.1?int: секунды разговора. Есть у звонка, на который
+	// ответили (даже если он длился меньше секунды, — тогда 0), и отсутствует
+	// у сорвавшегося: именно присутствие ключа отличает «состоялся» от
+	// «не состоялся».
+	Duration *int `json:"duration,omitempty"`
 }
 
 func (MessageActionPhoneCall) isMessageAction() {}
 func (a MessageActionPhoneCall) Tag() string    { return a.Underscore }
 
-// NewMessageActionPhoneCall — лог звонка. Нулевая duration означает «соединения
-// не было» и ключа не даёт: это не «разговор длиной ноль».
-func NewMessageActionPhoneCall(video bool, reason PhoneCallDiscardReason, duration int) MessageActionPhoneCall {
+// NewMessageActionPhoneCall — лог звонка. duration nil — ответа не было.
+func NewMessageActionPhoneCall(video bool, reason PhoneCallDiscardReason, duration *int) MessageActionPhoneCall {
 	a := MessageActionPhoneCall{Underscore: MessageActionPhoneCallTag, Reason: reason, Duration: duration}
 	setPFlag(&a.PFlags, "video", video)
 	return a
@@ -908,9 +907,10 @@ func NewMessageActionRestrict(userID int64, rights ChatBannedRights) MessageActi
 // phoneCallDiscardReasonBusy | phoneCallDiscardReasonDisconnect |
 // phoneCallDiscardReasonHangup | phoneCallDiscardReasonMigrateConferenceCall.
 //
-// Производим три — ровно те, у которых есть предмет (см. MessageActionPhoneCall).
-// Disconnect (обрыв связи) наш движок от «отменён» не отличает, а
-// MigrateConferenceCall — переход в групповой звонок, которого у нас нет.
+// Производим четыре — ровно те, у которых есть предмет. Причину выбирает
+// СЕРВЕР по ходу звонка (usecase/chat/phonecall.go), а не клиент: так у
+// оригинала сообщение кладёт phone.discardCall. MigrateConferenceCall —
+// переход в групповой звонок, которого у нас нет.
 type PhoneCallDiscardReason interface {
 	isPhoneCallDiscardReason()
 	// Tag — дискриминатор `_` (predicate схемы).
@@ -919,14 +919,16 @@ type PhoneCallDiscardReason interface {
 
 // Значения дискриминатора `_` объединения PhoneCallDiscardReason.
 const (
-	PhoneCallDiscardReasonMissedTag = "phoneCallDiscardReasonMissed"
-	PhoneCallDiscardReasonBusyTag   = "phoneCallDiscardReasonBusy"
-	PhoneCallDiscardReasonHangupTag = "phoneCallDiscardReasonHangup"
+	PhoneCallDiscardReasonMissedTag     = "phoneCallDiscardReasonMissed"
+	PhoneCallDiscardReasonBusyTag       = "phoneCallDiscardReasonBusy"
+	PhoneCallDiscardReasonHangupTag     = "phoneCallDiscardReasonHangup"
+	PhoneCallDiscardReasonDisconnectTag = "phoneCallDiscardReasonDisconnect"
 )
 
 // phoneCallDiscardReasonMissed#85e42301 = PhoneCallDiscardReason;
 //
-// Не ответили — наш `missed`.
+// Не ответили: звонящий сдался (сам или по таймауту) либо у адресата
+// истёк звонок. У звонящего это «Отменённый», у адресата «Пропущенный».
 type PhoneCallDiscardReasonMissed struct {
 	Underscore string `json:"_"`
 }
@@ -940,7 +942,9 @@ func NewPhoneCallDiscardReasonMissed() PhoneCallDiscardReasonMissed {
 
 // phoneCallDiscardReasonBusy#faf7e8c9 = PhoneCallDiscardReason;
 //
-// Занято либо отклонено — наш `busy` (включая отказ по правилу приватности).
+// Адресат отклонил звонок или уже разговаривает (tdesktop Call::hangup:
+// отказ на входящем — Busy). Отказ по правилу приватности сообщения не
+// порождает вовсе: звонок не заводится, как USER_PRIVACY_RESTRICTED.
 type PhoneCallDiscardReasonBusy struct {
 	Underscore string `json:"_"`
 }
@@ -954,8 +958,8 @@ func NewPhoneCallDiscardReasonBusy() PhoneCallDiscardReasonBusy {
 
 // phoneCallDiscardReasonHangup#57adc690 = PhoneCallDiscardReason;
 //
-// Положили трубку — наши `ok` И `cancelled` сразу. Различает их duration:
-// состоявшийся разговор её несёт, отменённый — нет.
+// Положили трубку после ответа (с duration) либо собеседник отказался уже
+// после ответа. Сорвавшийся до ответа звонок — Missed или Busy.
 type PhoneCallDiscardReasonHangup struct {
 	Underscore string `json:"_"`
 }
@@ -965,6 +969,22 @@ func (r PhoneCallDiscardReasonHangup) Tag() string             { return r.Unders
 
 func NewPhoneCallDiscardReasonHangup() PhoneCallDiscardReasonHangup {
 	return PhoneCallDiscardReasonHangup{Underscore: PhoneCallDiscardReasonHangupTag}
+}
+
+// phoneCallDiscardReasonDisconnect#e095c1a0 = PhoneCallDiscardReason;
+//
+// Состоявшийся разговор оборвался связью, а не кнопкой: сторона, у которой
+// соединение умерло, кончает звонок с этой причиной (tweb callInstance.ts:697,
+// hangUp('phoneCallDiscardReasonDisconnect')).
+type PhoneCallDiscardReasonDisconnect struct {
+	Underscore string `json:"_"`
+}
+
+func (PhoneCallDiscardReasonDisconnect) isPhoneCallDiscardReason() {}
+func (r PhoneCallDiscardReasonDisconnect) Tag() string             { return r.Underscore }
+
+func NewPhoneCallDiscardReasonDisconnect() PhoneCallDiscardReasonDisconnect {
+	return PhoneCallDiscardReasonDisconnect{Underscore: PhoneCallDiscardReasonDisconnectTag}
 }
 
 // ── MessageReactions ────────────────────────────────────────────────────────

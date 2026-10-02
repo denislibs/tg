@@ -4,8 +4,8 @@
 // fallback ядра `deferredSortedVirtualList.solid.tsx` (tweb `:366-376`).
 //
 // React-копия того же оригинала — `components/virtual/LoadingDialogSkeleton.tsx`;
-// она живёт, пока её держат React-потребители (`ChatList`, `TopicsPanel`), и
-// уходит вместе с ними (задачи 1-4, 1-6 волны 7). SCSS у обеих один —
+// она живёт, пока её держит React-потребитель (`TopicsPanel`), и
+// уходит вместе с ним (задача 1-6 волны 7; `ChatList` снят в 1-4). SCSS у обеих один —
 // `loadingDialogSkeleton.module.scss`, на месте оригинала.
 //
 // Отличие только в типах: `[props.class]` под `strict` — `props.class ?? ''`

@@ -134,10 +134,11 @@
 // `index.html` (`generateVerifiedIcon`: `span.verified-icon > svg.verified-icon-svg`
 // с `use` на `#verified-icon-check`/`#verified-icon-background`). Потребитель —
 // строка «This bot is verified…» профиля (`peerProfile.solid.tsx`,
-// `BotVerification`). Общее правило размера `.verified-icon, .premium-icon,
-// .emoji-status` (:1556-1566) не перенесено: React-значки у имени
-// (`VerifiedBadge.tsx`, класс `verified-icon` в списке чатов) задают размер
-// сами, и глобальная коробка 1.25rem легла бы на них поверх.
+// `BotVerification`), и значки `generateTitleIcons` в `.peer-title` строки
+// списка чатов. Общее правило размера `.verified-icon, .premium-icon,
+// .emoji-status` (:1556-1566) перенесено только внутрь `.peer-title`
+// (`_chatlistRow.scss`): React-значки у имени (`VerifiedBadge.tsx`) задают
+// размер сами, и глобальная коробка 1.25rem легла бы на них поверх.
 .verified-icon {
   &-svg {
     width: 1rem;

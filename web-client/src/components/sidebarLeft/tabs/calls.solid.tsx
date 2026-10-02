@@ -129,7 +129,6 @@ function callUser(peerId: PeerId, video: boolean) {
       photoId: user?._ === 'user' ? getPeerPhotoId(user.photo) : 0,
     },
     video,
-    peerId,
   )
 }
 

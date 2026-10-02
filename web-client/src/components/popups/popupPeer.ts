@@ -256,10 +256,6 @@ export default class PopupPeer extends PopupElement {
 export type ConfirmationPopupRejectReason = 'canceled' | 'closed'
 
 export function confirmationPopup(options: {
-  /** аватар пира в заголовке (tweb `PopupConfirmationOptions = PopupPeerOptions & …`,
-   *  `confirmationPopup.ts:6`); потребитель — `components/clearHistory.ts` */
-  peerId?: PeerId
-  managers?: AvatarManagers
   titleLangKey?: LangPackKey
   titleLangArgs?: FormatterArguments
   descriptionLangKey?: LangPackKey
@@ -280,7 +276,13 @@ export function confirmationPopup(options: {
    * инстанс отдаётся синхронно, ДО `show()`, тем же вызовом.
    */
   getPopup?: (popup: PopupPeer) => void
-}): Promise<void> {
+} & (
+  // tweb `PopupConfirmationOptions = PopupPeerOptions & …` (confirmationPopup.ts:8):
+  // аватар пира в подтверждении — первый вызывающий `confirmDeleteContacts`
+  // (`popups/deleteContacts.ts`, задача 0б-10 волны 7).
+  | { peerId?: undefined, managers?: undefined }
+  | { peerId: PeerId, managers: AvatarManagers }
+)): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     let resolved = false // simpleConfirmation.ts:33
 
@@ -299,17 +301,15 @@ export function confirmationPopup(options: {
       }
     }
 
-    const peerOptions: PopupPeerOptions = { // simpleConfirmation.ts:50-55
+    const popup = PopupElement.createPopup(PopupPeer, 'popup-confirmation', { // simpleConfirmation.ts:50-55
       titleLangKey: options.titleLangKey,
       titleLangArgs: options.titleLangArgs,
       descriptionLangKey: options.descriptionLangKey,
       descriptionLangArgs: options.descriptionLangArgs,
       buttons,
       zIndex: options.zIndex,
-    }
-    const popup = PopupElement.createPopup(PopupPeer, 'popup-confirmation', options.peerId ?
-      { ...peerOptions, peerId: options.peerId, managers: options.managers! } :
-      peerOptions)
+      ...(options.peerId !== undefined ? { peerId: options.peerId, managers: options.managers } : { peerId: undefined }),
+    })
     options.getPopup?.(popup)
 
     // simpleConfirmation.ts:57-62 — реджект на закрытие БЕЗ клика по кнопке

@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 43,
+      "version": 45,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -43,6 +43,10 @@
         {
           "key": "AddContact",
           "value": "Add to contacts"
+        },
+        {
+          "key": "AddContactTitle",
+          "value": "Add Contact"
         },
         {
           "key": "AddFactCheck",
@@ -163,6 +167,10 @@
         {
           "key": "AreYouSureDeleteAndExitName",
           "value": "Are you sure you want to delete and leave the group **%1$s**?"
+        },
+        {
+          "key": "AreYouSureDeleteContact",
+          "value": "Are you sure you want to delete this contact?"
         },
         {
           "key": "AreYouSureDeleteFewMessages",
@@ -1505,6 +1513,10 @@
           "value": "Waiting for network..."
         },
         {
+          "key": "ContactNoteRow",
+          "value": "Notes"
+        },
+        {
           "key": "Contacts",
           "value": "Contacts"
         },
@@ -1590,6 +1602,21 @@
         {
           "key": "DeleteChatUser",
           "value": "Delete chat"
+        },
+        {
+          "key": "DeleteContact",
+          "value": "Delete contact"
+        },
+        {
+          "key": "DeleteContactsSubtitle",
+          "value": "Are you sure you want to delete these contacts?"
+        },
+        {
+          "key": "DeleteContactsTitle",
+          "forms": {
+            "one_value": "Delete %d contact",
+            "other_value": "Delete %d contacts"
+          }
         },
         {
           "key": "DeleteForEveryone",
@@ -1763,8 +1790,8 @@
           "value": "What can this admin do?"
         },
         {
-          "key": "EditContact.PhotoHint",
-          "value": "You can suggest a new profile photo to your contact — or change their photo just for yourself."
+          "key": "EditContact.OriginalName",
+          "value": "original name"
         },
         {
           "key": "EditFactCheck",
@@ -3119,6 +3146,14 @@
           }
         },
         {
+          "key": "MobileHidden",
+          "value": "Mobile hidden"
+        },
+        {
+          "key": "MobileHiddenExceptionInfo",
+          "value": "Phone number will be visible once %1$s adds you as a contact."
+        },
+        {
           "key": "Months",
           "forms": {
             "one_value": "%1$d month",
@@ -3179,6 +3214,14 @@
         {
           "key": "NewChecklist.TaskPlaceholder",
           "value": "Task"
+        },
+        {
+          "key": "NewContact.Exception.ShareMyPhoneNumber",
+          "value": "Share My Phone Number"
+        },
+        {
+          "key": "NewContact.Exception.ShareMyPhoneNumber.Desc",
+          "value": "You can make your phone visible to %@."
         },
         {
           "key": "NewGroup",
@@ -3670,6 +3713,98 @@
           "value": "Email"
         },
         {
+          "key": "Peer.Activity.Chat.Multi.RecordingAudio1",
+          "value": "%@ and %d others are recording voice"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.RecordingVideo1",
+          "value": "%@ and %d others are recording video"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.SendingFile1",
+          "value": "%@ and %d others are sending files"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.SendingPhoto1",
+          "value": "%@ and %d others are sending photos"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.SendingVideo1",
+          "value": "%@ and %d others are sending videos"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.TypingText1",
+          "value": "%@ and %d others are typing"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.RecordingAudio",
+          "value": "%1$@ and %2$@ are recording voice"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.RecordingVideo",
+          "value": "%1$@ and %2$@ are recording video"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.SendingFile",
+          "value": "%1$@ and %2$@ are sending files"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.SendingPhoto",
+          "value": "%1$@ and %2$@ are sending photos"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.SendingVideo",
+          "value": "%1$@ and %2$@ are sending videos"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.TypingText",
+          "value": "%1$@ and %2$@ are typing"
+        },
+        {
+          "key": "Peer.Activity.Chat.RecordingAudio",
+          "value": "%@ is recording voice"
+        },
+        {
+          "key": "Peer.Activity.Chat.RecordingVideo",
+          "value": "%@ is recording video"
+        },
+        {
+          "key": "Peer.Activity.Chat.SendingFile",
+          "value": "%@ is sending a file"
+        },
+        {
+          "key": "Peer.Activity.Chat.SendingPhoto",
+          "value": "%@ is sending a photo"
+        },
+        {
+          "key": "Peer.Activity.Chat.SendingVideo",
+          "value": "%@ is sending a video"
+        },
+        {
+          "key": "Peer.Activity.Chat.TypingText",
+          "value": "%@ is typing"
+        },
+        {
+          "key": "Peer.Activity.User.RecordingAudio",
+          "value": "recording voice"
+        },
+        {
+          "key": "Peer.Activity.User.RecordingVideo",
+          "value": "recording video"
+        },
+        {
+          "key": "Peer.Activity.User.SendingFile",
+          "value": "sending file"
+        },
+        {
+          "key": "Peer.Activity.User.SendingPhoto",
+          "value": "sending a photo"
+        },
+        {
+          "key": "Peer.Activity.User.SendingVideo",
+          "value": "sending a video"
+        },
+        {
           "key": "Peer.Activity.User.TypingText",
           "value": "typing"
         },
@@ -3711,6 +3846,10 @@
         {
           "key": "PeerInfo.DeleteChannel",
           "value": "Delete Channel"
+        },
+        {
+          "key": "PeerInfo.DeleteContact",
+          "value": "Delete Contact"
         },
         {
           "key": "PeerInfo.Discussion",
@@ -4654,6 +4793,10 @@
           "value": "Search GIFs"
         },
         {
+          "key": "SearchGifsTitle",
+          "value": "Search GIFs"
+        },
+        {
           "key": "SearchInAllChats",
           "value": "Search in All Chats"
         },
@@ -5116,6 +5259,10 @@
           "value": "Remove from Favorites"
         },
         {
+          "key": "Stickers.SearchAdd",
+          "value": "Add"
+        },
+        {
           "key": "Stickers.SearchAdded",
           "value": "Added"
         },
@@ -5313,6 +5460,10 @@
             "one_value": "%1$d subscriber",
             "other_value": "%1$d subscribers"
           }
+        },
+        {
+          "key": "SuggestBirthdayRow",
+          "value": "Suggest Date of Birth"
         },
         {
           "key": "SuggestStickersAll",
@@ -5706,8 +5857,48 @@
           "value": "Bio"
         },
         {
+          "key": "UserInfo.CustomPhotoHelp",
+          "value": "Set a photo for this contact that only you will see, or suggest a new profile photo to them."
+        },
+        {
+          "key": "UserInfo.PhotoResetToast",
+          "value": "Custom photo removed"
+        },
+        {
+          "key": "UserInfo.PhotoSetToast",
+          "value": "You will now always see this photo for %1$s's account."
+        },
+        {
+          "key": "UserInfo.PhotoSuggestedToast",
+          "value": "Photo suggested to %1$s"
+        },
+        {
+          "key": "UserInfo.RemovePersonalPhoto",
+          "value": "Reset to Original Photo"
+        },
+        {
+          "key": "UserInfo.ResetCustomPhoto",
+          "value": "Reset to Original Photo"
+        },
+        {
+          "key": "UserInfo.ResetCustomPhotoDescription",
+          "value": "The custom photo for this contact will be removed and their profile photo will be shown instead."
+        },
+        {
+          "key": "UserInfo.SetPhotoFor",
+          "value": "Set Photo for %1$s"
+        },
+        {
           "key": "UserInfo.SetPhotoTitle",
           "value": "Set Photo"
+        },
+        {
+          "key": "UserInfo.SuggestPhotoFor",
+          "value": "Suggest Photo for %1$s"
+        },
+        {
+          "key": "UserInfo.UpdatePhotoFor",
+          "value": "Change Photo for %1$s"
         },
         {
           "key": "UserPermissions.Duration",
@@ -5925,7 +6116,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 43,
+      "version": 45,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -7698,6 +7889,98 @@
         {
           "key": "Peer.Activity.User.TypingText",
           "value": "печатает…"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.RecordingAudio1",
+          "value": "%@ и ещё %d записывают голосовое"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.RecordingVideo1",
+          "value": "%@ и ещё %d записывают видео"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.SendingFile1",
+          "value": "%@ и ещё %d отправляют файлы"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.SendingPhoto1",
+          "value": "%@ и ещё %d отправляют фото"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.SendingVideo1",
+          "value": "%@ и ещё %d отправляют видео"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.TypingText1",
+          "value": "%@ и ещё %d печатают"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.RecordingAudio",
+          "value": "%1$@ и %2$@ записывают голосовое"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.RecordingVideo",
+          "value": "%1$@ и %2$@ записывают видео"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.SendingFile",
+          "value": "%1$@ и %2$@ отправляют файлы"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.SendingPhoto",
+          "value": "%1$@ и %2$@ отправляют фото"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.SendingVideo",
+          "value": "%1$@ и %2$@ отправляют видео"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.TypingText",
+          "value": "%1$@ и %2$@ печатают"
+        },
+        {
+          "key": "Peer.Activity.Chat.RecordingAudio",
+          "value": "%@ записывает голосовое"
+        },
+        {
+          "key": "Peer.Activity.Chat.RecordingVideo",
+          "value": "%@ записывает видео"
+        },
+        {
+          "key": "Peer.Activity.Chat.SendingFile",
+          "value": "%@ отправляет файл"
+        },
+        {
+          "key": "Peer.Activity.Chat.SendingPhoto",
+          "value": "%@ отправляет фото"
+        },
+        {
+          "key": "Peer.Activity.Chat.SendingVideo",
+          "value": "%@ отправляет видео"
+        },
+        {
+          "key": "Peer.Activity.Chat.TypingText",
+          "value": "%@ печатает"
+        },
+        {
+          "key": "Peer.Activity.User.RecordingAudio",
+          "value": "записывает голосовое"
+        },
+        {
+          "key": "Peer.Activity.User.RecordingVideo",
+          "value": "записывает видео"
+        },
+        {
+          "key": "Peer.Activity.User.SendingFile",
+          "value": "отправляет файл"
+        },
+        {
+          "key": "Peer.Activity.User.SendingPhoto",
+          "value": "отправляет фото"
+        },
+        {
+          "key": "Peer.Activity.User.SendingVideo",
+          "value": "отправляет видео"
         },
         {
           "key": "Chat.Accessory.Reply",
@@ -10456,11 +10739,19 @@
           "value": "Поиск стикеров"
         },
         {
+          "key": "Stickers.SearchAdd",
+          "value": "Добавить"
+        },
+        {
           "key": "Stickers.SearchAdded",
           "value": "Добавлен"
         },
         {
           "key": "SearchGIFs",
+          "value": "Поиск GIF"
+        },
+        {
+          "key": "SearchGifsTitle",
           "value": "Поиск GIF"
         },
         {
@@ -10919,10 +11210,6 @@
         {
           "key": "QrLogin.Confirm.Action",
           "value": "Подтвердить"
-        },
-        {
-          "key": "EditContact.PhotoHint",
-          "value": "Вы можете предложить контакту установить новую фотографию профиля — или изменить его фотографию только у себя."
         },
         {
           "key": "MoreBoosts",
@@ -11765,6 +12052,103 @@
         {
           "key": "SharedFolder.Toast.NoPrivate",
           "value": "Личными чатами делиться нельзя."
+        },
+        {
+          "key": "AddContactTitle",
+          "value": "Добавить контакт"
+        },
+        {
+          "key": "AreYouSureDeleteContact",
+          "value": "Вы точно хотите удалить этот контакт?"
+        },
+        {
+          "key": "ContactNoteRow",
+          "value": "Заметки"
+        },
+        {
+          "key": "SuggestBirthdayRow",
+          "value": "Предложить дату рождения"
+        },
+        {
+          "key": "DeleteContact",
+          "value": "Удалить контакт"
+        },
+        {
+          "key": "DeleteContactsSubtitle",
+          "value": "Вы точно хотите удалить эти контакты?"
+        },
+        {
+          "key": "DeleteContactsTitle",
+          "forms": {
+            "one_value": "Удалить %d контакт",
+            "few_value": "Удалить %d контакта",
+            "many_value": "Удалить %d контактов",
+            "other_value": "Удалить %d контакта"
+          }
+        },
+        {
+          "key": "EditContact.OriginalName",
+          "value": "исходное имя"
+        },
+        {
+          "key": "MobileHidden",
+          "value": "Номер скрыт"
+        },
+        {
+          "key": "MobileHiddenExceptionInfo",
+          "value": "Номер телефона станет виден, когда %1$s добавит вас в контакты."
+        },
+        {
+          "key": "NewContact.Exception.ShareMyPhoneNumber",
+          "value": "Показать мой номер"
+        },
+        {
+          "key": "NewContact.Exception.ShareMyPhoneNumber.Desc",
+          "value": "Вы можете сделать свой номер видимым для %@."
+        },
+        {
+          "key": "PeerInfo.DeleteContact",
+          "value": "Удалить контакт"
+        },
+        {
+          "key": "UserInfo.CustomPhotoHelp",
+          "value": "Установите для этого контакта фотографию, которую будете видеть только вы, или предложите ему новую фотографию профиля."
+        },
+        {
+          "key": "UserInfo.PhotoResetToast",
+          "value": "Установленное фото удалено"
+        },
+        {
+          "key": "UserInfo.PhotoSetToast",
+          "value": "Теперь вы всегда будете видеть это фото в аккаунте %1$s."
+        },
+        {
+          "key": "UserInfo.PhotoSuggestedToast",
+          "value": "Фото предложено: %1$s"
+        },
+        {
+          "key": "UserInfo.RemovePersonalPhoto",
+          "value": "Сбросить к исходному фото"
+        },
+        {
+          "key": "UserInfo.ResetCustomPhoto",
+          "value": "Сбросить к исходному фото"
+        },
+        {
+          "key": "UserInfo.ResetCustomPhotoDescription",
+          "value": "Установленная вами фотография этого контакта будет удалена, и вместо неё снова будет показано фото его профиля."
+        },
+        {
+          "key": "UserInfo.SetPhotoFor",
+          "value": "Установить фото для %1$s"
+        },
+        {
+          "key": "UserInfo.SuggestPhotoFor",
+          "value": "Предложить фото для %1$s"
+        },
+        {
+          "key": "UserInfo.UpdatePhotoFor",
+          "value": "Изменить фото для %1$s"
         },
         {
           "key": "HideReadTime",
@@ -21231,7 +21615,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 28,
+      "version": 29,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -22135,6 +22519,98 @@
         {
           "key": "Peer.Activity.User.TypingText",
           "value": "друкує…"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.RecordingAudio1",
+          "value": "%@ і ще %d записують голосове"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.RecordingVideo1",
+          "value": "%@ і ще %d записують відео"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.SendingFile1",
+          "value": "%@ і ще %d надсилають файли"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.SendingPhoto1",
+          "value": "%@ і ще %d надсилають фото"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.SendingVideo1",
+          "value": "%@ і ще %d надсилають відео"
+        },
+        {
+          "key": "Peer.Activity.Chat.Multi.TypingText1",
+          "value": "%@ і ще %d друкують"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.RecordingAudio",
+          "value": "%1$@ і %2$@ записують голосове"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.RecordingVideo",
+          "value": "%1$@ і %2$@ записують відео"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.SendingFile",
+          "value": "%1$@ і %2$@ надсилають файли"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.SendingPhoto",
+          "value": "%1$@ і %2$@ надсилають фото"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.SendingVideo",
+          "value": "%1$@ і %2$@ надсилають відео"
+        },
+        {
+          "key": "Peer.Activity.Chat.Pair.TypingText",
+          "value": "%1$@ і %2$@ друкують"
+        },
+        {
+          "key": "Peer.Activity.Chat.RecordingAudio",
+          "value": "%@ записує голосове"
+        },
+        {
+          "key": "Peer.Activity.Chat.RecordingVideo",
+          "value": "%@ записує відео"
+        },
+        {
+          "key": "Peer.Activity.Chat.SendingFile",
+          "value": "%@ надсилає файл"
+        },
+        {
+          "key": "Peer.Activity.Chat.SendingPhoto",
+          "value": "%@ надсилає фото"
+        },
+        {
+          "key": "Peer.Activity.Chat.SendingVideo",
+          "value": "%@ надсилає відео"
+        },
+        {
+          "key": "Peer.Activity.Chat.TypingText",
+          "value": "%@ друкує"
+        },
+        {
+          "key": "Peer.Activity.User.RecordingAudio",
+          "value": "записує голосове"
+        },
+        {
+          "key": "Peer.Activity.User.RecordingVideo",
+          "value": "записує відео"
+        },
+        {
+          "key": "Peer.Activity.User.SendingFile",
+          "value": "надсилає файл"
+        },
+        {
+          "key": "Peer.Activity.User.SendingPhoto",
+          "value": "надсилає фото"
+        },
+        {
+          "key": "Peer.Activity.User.SendingVideo",
+          "value": "надсилає відео"
         },
         {
           "key": "Chat.Accessory.Reply",

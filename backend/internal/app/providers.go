@@ -200,6 +200,10 @@ func newGroupCallStore(client *redis.Client) usecasechat.GroupCallStore {
 	return cacheredis.NewGroupCallStore(client)
 }
 
+func newPhoneCallStore(client *redis.Client) usecasechat.PhoneCallStore {
+	return cacheredis.NewPhoneCallStore(client)
+}
+
 func newDialogsCache(client *redis.Client) usecasechat.DialogsCache {
 	return cacheredis.NewDialogsCache(client)
 }

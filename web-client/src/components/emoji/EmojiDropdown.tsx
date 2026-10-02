@@ -45,8 +45,8 @@ import { CATEGORIES, DEFAULT_FREQUENT, QUICK_CHIPS, searchEmojisByWord } from '.
 import { useT } from '../../i18n'
 import classNames from '../../shared/lib/classNames'
 import { useNavLayer } from '../../core/hooks/useNavLayer'
-import { openGifsSearchTab } from '../rightSidebar/GifsSearchTab'
-import { openStickersSearchTab } from '../rightSidebar/StickersSearchTab'
+import appSidebarRight from '../sidebarRight'
+import { AppGifsTab, AppStickersTab } from '../solidJsTabs/tabs'
 
 // tweb DropdownHover: ANIMATION_DURATION = 200 (scale/fade). Hover-открытие живёт
 // отдельным модулем useDropdownHover (Composer держит его в главном чанке).
@@ -697,8 +697,10 @@ export default function EmojiDropdown({
           tabs.length <= 1 ? 'hide' : '',
         )}
       >
-        {/* search: экраны поиска правой колонки — tweb index.ts:295-303
-            (вкладка стикеров → AppStickersTab, иначе → AppGifsTab) */}
+        {/* search: вкладки поиска правой колонки — tweb index.ts:300-310
+            (вкладка стикеров → AppStickersTab, иначе → AppGifsTab; уже открытую
+            вторым экземпляром не кладём). Отправляют они сами — через
+            `appImManager.chat` (мост `sidebarRight/tabs/emoticonsSearchBridge.ts`). */}
         <IconButton
           noRipple
           data-tab={-1}
@@ -708,11 +710,17 @@ export default function EmojiDropdown({
             'justify-self-start',
             tab === 'emoji' ? 'hide' : '',
           )}
-          onClick={() =>
-            tab === 'stickers'
-              ? openStickersSearchTab({ onPickSticker })
-              : openGifsSearchTab({ onPick: onPickGif })
-          }
+          onClick={() => {
+            if (tab === 'stickers') {
+              if (!appSidebarRight.isTabExists(AppStickersTab)) {
+                void appSidebarRight.createTab(AppStickersTab).open()
+              }
+            } else {
+              if (!appSidebarRight.isTabExists(AppGifsTab)) {
+                void appSidebarRight.createTab(AppGifsTab).open()
+              }
+            }
+          }}
         >
           <TgIcon name="search" size="inherit" className="button-icon" />
         </IconButton>

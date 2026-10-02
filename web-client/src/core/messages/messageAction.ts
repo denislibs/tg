@@ -136,12 +136,14 @@ export interface MessageActionSuggestedPostApproval {
   channel_id?: PeerId
 }
 
-/** phoneCallDiscardReason* — почему звонок кончился. Три конструктора: `ok` и
- *  `cancelled` оба Hangup, различает их НАЛИЧИЕ `duration`. */
+/** phoneCallDiscardReason* — почему звонок кончился. Причину выбирает сервер
+ *  по ходу звонка (backend usecase/chat/phonecall.go); состоялся ли звонок,
+ *  говорит НАЛИЧИЕ `duration`, а не причина. */
 export type PhoneCallDiscardReason =
   | { _: 'phoneCallDiscardReasonMissed' }
   | { _: 'phoneCallDiscardReasonBusy' }
   | { _: 'phoneCallDiscardReasonHangup' }
+  | { _: 'phoneCallDiscardReasonDisconnect' }
 
 /** messageActionPhoneCall#80e11a7f flags:# video:flags.2?true call_id:long
  *  reason:flags.0?PhoneCallDiscardReason duration:flags.1?int = MessageAction;

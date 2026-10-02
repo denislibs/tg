@@ -6,15 +6,7 @@ import PendingSuggestion from './sidebarLeft/pendingSuggestion'
 import classNames from '../shared/lib/classNames'
 import s from './Sidebar.module.scss'
 import { useChatsStore } from '../stores/chatsStore'
-import { ARCHIVE_FOLDER_ID } from '../core/folderIds'
-import ChatList from './ChatList'
-import ChatListItem from './ChatListItem'
-import DeferredSortedVirtualList, {
-  type DeferredSortedVirtualListRenderItemProps,
-} from './virtual/DeferredSortedVirtualList'
-import { useDialogListSource } from '../core/hooks/useDialogListSource'
-import { useEvent } from '../core/hooks/useEvent'
-import type { Chat } from '../data'
+import { isDialogArchived } from '../core/models'
 import FoldersSidebar from './folders/FoldersSidebar'
 import type { FolderContextMenuSidebar } from '../helpers/dom/createFolderContextMenu'
 import { createColumnSlider, destroyColumnSlider, openContactsTab } from './sidebarLeft/columnSlider'
@@ -35,7 +27,6 @@ import SidebarEmojiStatusButton from './SidebarEmojiStatusButton'
 import ComposeFab from './ComposeFab'
 import StoriesRow from './StoriesRow'
 import { useManagers } from '../core/hooks/useManagers'
-import { useChatList } from '../core/hooks/useChatList'
 import { useNavigationStore } from '../stores/navigationStore'
 import { useChatStackStore, selectOpenThreadDesc } from '../stores/chatStackStore'
 import { useNavigationActions } from '../core/hooks/useNavigationActions'
@@ -47,7 +38,6 @@ import { useForumPanel } from '../core/hooks/useForumPanel'
 import { useImperativeIsland } from '../core/hooks/useImperativeIsland'
 import { useFolders } from '../stores/foldersStore'
 import { AppDialogsManager } from '../lib/appDialogsManager'
-import DialogsContextMenu from './dialogsContextMenu'
 import { useFoldersSidebarShown, useIsLeftSearchActive, useIsSidebarCollapsed } from '../stores/foldersSidebar.solid'
 import ConnectionStatusComponent from './connectionStatus'
 import type { InputSearchStatus } from '../shared/ui/InputSearch'
@@ -72,7 +62,6 @@ export default function Sidebar({
 }: Props) {
   const managers = useManagers()
   const t = useT()
-  const loaded = useChatsStore((st) => st.loaded)
   const passcodeEnabled = useSettingsStore((st) => st.passcodeEnabled)
   // Кнопка эмодзи-статуса в шапке — только у подписчика Premium (tweb
   // `onPremium` → `toggleRightButtons`, `sidebarLeft/index.ts`).
@@ -111,10 +100,10 @@ export default function Sidebar({
   // монтируется и размонтируется (расхождение 1 его шапки).
   const [dialogsManager] = useState(() => new AppDialogsManager())
 
-  // Навигация — из navigationStore/useNavigationActions напрямую; список чатов —
-  // свой селектор (та же useChatList, что и в Shell; вторая подписка — норма).
-  const chats = useChatList()
-  const selectedId = useNavigationStore((st) => st.selectedId) ?? ''
+  // Навигация — из navigationStore/useNavigationActions напрямую. Список чатов
+  // рисует владелец (`AppDialogsManager`, задача 1-4 волны 7) из зеркала сам;
+  // колонке нужны лишь архивные диалоги — для бургера и оверлея архива.
+  const dialogs = useChatsStore((st) => st.dialogs)
   // Возвращает примитив (не сам дескриптор) — селектор подписки безопасен и
   // без selectOpenThreadDesc, но переиспользуем её ради единого API «открыт ли
   // тред» (см. её докблок в chatStackStore.ts про безопасность подписки по ссылке).
@@ -139,7 +128,7 @@ export default function Sidebar({
   // замок, `has-open-tabs`. Классы перехода React не ставит — см. разметку.
   const [searching, setSearching] = useState(false)
   const stories = useSidebarStories()
-  const { handleSelect, forumChat, closeForum, panel: forumPanel } = useForumPanel({ chats, onSelect, activeTopicId, onOpenTopic })
+  const { openForum, forumChat, closeForum, panel: forumPanel } = useForumPanel({ onSelect, activeTopicId, onOpenTopic })
   // Владелец поиска (порт `initSearch`, `components/sidebarLeft/globalSearch.ts`);
   // шов и расхождения — шапка `core/hooks/useGlobalSearch.ts`.
   // Отражение пишется и в сигнал `useIsLeftSearchActive` — его читает морф
@@ -188,9 +177,7 @@ export default function Sidebar({
     void sliderRef.current!.createTab(ctor).open(...args)
   }
 
-  // Мемоизировано, чтобы <ChatList> получал стабильный проп — ре-рендер
-  // сайдбара под тогл оверлея не пересоздаёт массив и не бьёт его memo.
-  const archivedChats = useMemo(() => chats.filter((c) => !!c.archived), [chats])
+  const archivedDialogs = useMemo(() => dialogs.filter(isDialogArchived), [dialogs])
 
   // «Расположение папок → Слева от чатов» (tweb tabsInSidebar): вертикальная колонка
   // вместо горизонтальных табов; на узких экранах скрыта (tweb until-floating-left-sidebar).
@@ -278,7 +265,7 @@ export default function Sidebar({
   // получают владелец папок (хуки `start()`), бургер шапки и вертикальная
   // колонка. Состояние React читается через ref — объект создаётся один раз.
   // ВРЕМЕННО до 2-1: объектом станет класс `AppSidebarLeft`.
-  const bridgeRef = useRef({ collapsed: false, archivedChats: [] as Chat[], openMyStories: () => {}, onToggleMode })
+  const bridgeRef = useRef({ collapsed: false, archivedDialogs: [] as typeof dialogs, openMyStories: () => {}, onToggleMode })
   const [appSidebarLeft] = useState<FolderContextMenuSidebar & ToolsMenuSidebar>(() => ({
     managers,
     // tweb `sidebarLeft/index.ts:1755-1758`: пауза — на уход закрытой вкладки
@@ -291,8 +278,8 @@ export default function Sidebar({
     isCollapsed: () => bridgeRef.current.collapsed,
     // ВРЕМЕННО до 1-5: оверлей архива вместо `AppArchivedTab` (tweb `:1760-1764`)
     openArchiveTab: () => appSidebarLeft.closeTabsBefore(() => setArchiveOpen(true)),
-    hasArchivedDialogs: () => bridgeRef.current.archivedChats.length > 0,
-    getArchivedUnreadCount: () => bridgeRef.current.archivedChats.reduce((sum, c) => sum + (c.unread ?? 0), 0),
+    hasArchivedDialogs: () => bridgeRef.current.archivedDialogs.length > 0,
+    getArchivedUnreadCount: () => bridgeRef.current.archivedDialogs.reduce((sum, d) => sum + d.unread_count, 0),
     // ВРЕМЕННО до Э4-3: `appImManager.setPeer({peerId: myId})` (tweb `:707-713`)
     openSavedMessages: () => {
       void (async () => {
@@ -315,6 +302,11 @@ export default function Sidebar({
   }
   const forumOpenRef = useRef(false)
   forumOpenRef.current = !!forumChat
+  // ВРЕМЕННО до 1-6: панель тем — React (`useForumPanel`); клик по строке форума
+  // владелец списка отдаёт сюда (хук `openForum`). Хуки владельцу отдаются один
+  // раз — актуальное замыкание через ref.
+  const openForumRef = useRef(openForum)
+  openForumRef.current = openForum
   // Плашка-подсказка рисуется порталом в узел владельца (tweb `:1079-1082`);
   // узел появляется со `start()`, поэтому это состояние.
   const [suggestionContainer, setSuggestionContainer] = useState<HTMLElement>()
@@ -341,19 +333,11 @@ export default function Sidebar({
       isForumOpen: () => forumOpenRef.current,
       appSidebarLeft,
       managers,
+      openForum: (peerId) => openForumRef.current(peerId),
     })
     setSuggestionContainer(dialogsManager.suggestionContainer)
     return () => dialogsManager.destroy()
   }, [], { host: bottomPartRef })
-
-  // ВРЕМЕННО до 1-5: меню диалога на оверлее архива. У tweb его вешает `l()` на xd
-  // архива (`archivedTab.tsx:86-95` → `appDialogsManager.ts:1478`), а `filterId`
-  // архива ставит `setFilterIdAndChangeTab(FOLDER_ID_ARCHIVE)` (`:108`); у оверлея
-  // ни xd, ни папки нет, поэтому список архива слушает свой экземпляр с
-  // `useDialogFolder` — папку строки ему даёт сам диалог (расхождение 7 меню).
-  const archiveListRef = useImperativeIsland((host) => {
-    return new DialogsContextMenu(managers, dialogsManager, { useDialogFolder: true }).attach(host).destroy
-  }, [managers])
 
   // Кнопка замка (tweb `toggleRightButtons`, `sidebarLeft/index.ts:345-352`) —
   // ванильный узел порта `sidebarLeft/lockButton.solid.tsx`: при включённом коде
@@ -374,8 +358,25 @@ export default function Sidebar({
   useLayoutEffect(() => {
     dialogsManager.setCollapsed(!!forumChat)
   }, [dialogsManager, forumChat])
+  // ВРЕМЕННО до 1-6: половина tweb `toggleForumTab` — бейджи на аватарах узкой
+  // колонки и `is-forum-visible` колонки (тексты строк гаснут, `_leftSidebar.scss`).
+  // Первый проход (форум закрыт, класса нет) переходом ничего не делает.
+  const forumShownRef = useRef(false)
+  useLayoutEffect(() => {
+    if (forumShownRef.current === !!forumChat) return
+    forumShownRef.current = !!forumChat
+    dialogsManager.onForumToggle(!!forumChat, columnRef.current!)
+  }, [dialogsManager, forumChat])
+  // ВРЕМЕННО до 2-1: tweb `onCollapsedChange` (`sidebarLeft/index.ts:503-507`) —
+  // бейджи непрочитанного на аватарах свёрнутой колонки.
+  const collapsedShownRef = useRef(false)
+  useLayoutEffect(() => {
+    if (collapsedShownRef.current === collapsed) return
+    collapsedShownRef.current = collapsed
+    dialogsManager.onCollapsedChange(collapsed)
+  }, [dialogsManager, collapsed])
 
-  bridgeRef.current = { collapsed, archivedChats, openMyStories: stories.openArchive, onToggleMode }
+  bridgeRef.current = { collapsed, archivedDialogs, openMyStories: stories.openArchive, onToggleMode }
 
   // Кнопка бургера (tweb `construct` :165-172, :244, морф :431-442) — узлы
   // колонки `.animated-menu-icon` и `.sidebar-back-button` статичны, кнопку
@@ -388,7 +389,7 @@ export default function Sidebar({
       // остальные ширины колонок пишет core/dom/updateColumnWidths.
       id="column-left"
       ref={columnRef}
-      className={classNames(s.root, 'tabs-tab', 'chatlist-container', 'sidebar', 'sidebar-left', 'main-column', 'sidebar-left-common', 'can-menu-have-z-index', collapsed ? 'is-collapsed' : '', somethingOpenInside ? 'has-open-tabs' : '', fullWidth ? s.fullWidth : '', forumChat ? s.hasForum : '')}
+      className={classNames(s.root, 'tabs-tab', 'chatlist-container', 'sidebar', 'sidebar-left', 'main-column', 'sidebar-left-common', 'can-menu-have-z-index', collapsed ? 'is-collapsed' : '', somethingOpenInside ? 'has-open-tabs' : '', fullWidth ? s.fullWidth : '')}
     >
       {/* tweb #folders-sidebar — вертикальная колонка папок в поле страницы */}
       {foldersSidebarShown && (
@@ -469,25 +470,12 @@ export default function Sidebar({
       {/* tweb appDialogsManager.start(): bottomPart = .connection-status-bottom,
           в него prepend'ится .chatlist-overlay (плашка-подсказка, градиент, ряд
           вкладок папок) и append'ится #folders-container с контейнерами папок.
-          Всё это — узлы владельца (`lib/appDialogsManager.ts`); высоту оверлея
+          Всё это — узлы владельца (`lib/appDialogsManager.ts`), и списки папок с
+          их строками — тоже (`AutonomousDialogList`, задача 1-4); высоту оверлея
           он же кладёт в --chatlist-overlay-height, её читает padding-top у
           .folders-scrollable — так табы никогда не накрывают первый ряд списка.
-          React рисует сюда только оверлей архива; списки папок — порталами в
-          `.chatlist-top` их контейнеров (<ChatList>). */}
+          React рисует сюда только плашку-подсказку и оверлей архива. */}
       <div ref={bottomPartRef} className="connection-status-bottom">
-        <ChatList
-          manager={dialogsManager}
-          // Витрина зеркала ЦЕЛИКОМ: по папке список фильтрует себя сам
-          // (`useDialogListSource`) — там это правило одно и на строки, и на
-          // размер набора для пагинации.
-          chats={chats}
-          selectedId={selectedId}
-          onSelect={handleSelect}
-          loaded={loaded}
-          archived={archivedChats}
-          onOpenArchive={() => setArchiveOpen(true)}
-          collapsed={!!forumChat}
-        />
         {suggestionContainer && createPortal(<PendingSuggestion collapsed={collapsed} />, suggestionContainer)}
 
         {/* Архив — в tweb отдельная вкладка слайдера (AppArchivedTab,
@@ -506,18 +494,18 @@ export default function Sidebar({
                   {t('ArchivedChats')}
                 </Text>
               </div>
-              {/* Контейнер прокрутки оверлея — он же `scrollableHost` списка;
-                  заглушка пустого архива рендерится ВМЕСТО `ul`, а не внутри
-                  него (у виртуального `ul` своя геометрия под весь набор). */}
-              <div className={s.archiveList} ref={archiveListRef}>
-                {archivedChats.length === 0 ? (
+              {/* Список архива — `AutonomousDialogList(FOLDER_ID_ARCHIVE)` владельца
+                  (`mountArchivedList`, как вкладка tweb `archivedTab.tsx`);
+                  заглушка пустого архива — ВМЕСТО его скроллера. */}
+              {archivedDialogs.length === 0 ? (
+                <div className={s.archiveList}>
                   <div style={{ padding: '3rem 1rem', textAlign: 'center' }}>
                     <Text size={15} color="var(--secondary-text-color)">{t('Archive.Empty')}</Text>
                   </div>
-                ) : (
-                  <ArchiveList chats={chats} selectedId={selectedId} onSelect={handleSelect} />
-                )}
-              </div>
+                </div>
+              ) : (
+                <ArchiveList dialogsManager={dialogsManager} />
+              )}
             </div>
         )}
       </div>
@@ -554,102 +542,12 @@ export default function Sidebar({
 }
 
 /**
- * Строка архива — той же высоты, что и строка списка чатов: в tweb вкладка
- * архива это ТОТ ЖЕ `AutonomousDialogList`, только с `FOLDER_ID_ARCHIVE`
- * (`sidebarLeft/tabs/archivedTab.tsx:80-96`), а высоту строки он берёт из
- * `autonomousDialogList/dialogs.ts:221` — `itemSize: 72`.
+ * ВРЕМЕННО до 1-5: список архивного оверлея — `AutonomousDialogList` с
+ * `FOLDER_ID_ARCHIVE`, тот же, что строит вкладка tweb `archivedTab.tsx:80-110`
+ * (`l({id: FOLDER_ID_ARCHIVE})` + `setFilterIdAndChangeTab`). Скроллер списка —
+ * узел владельца, остров его кладёт и уносит (`mountArchivedList`).
  */
-const ARCHIVE_ITEM_HEIGHT = 72
-
-/**
- * Архивные чаты — тот же виртуальный список, что и у папки (`ChatList`): строки
- * лежат абсолютом в `ul` фиксированной высоты, в DOM живут только те, что попали
- * в окно видимости. Оригинал — `tweb/src/components/sidebarLeft/tabs/archivedTab.tsx`:
- * там архив это обычный `AutonomousDialogList` с `FOLDER_ID_ARCHIVE`
- * (`archivedTab.tsx:19,80-96`), то есть то же ядро
- * `createDeferredSortedVirtualList` и ТОТ ЖЕ курсор догрузки, что у остальных
- * списков диалогов, — поэтому источник здесь общий, `useDialogListSource`:
- * фильтр выборки, размер набора, признак конца и запрос страницы у владельца
- * считаются ровно там же, где у папки, вторых правил не заводится.
- *
- * Своей пагинации у архива не было (список жил тем, что случайно оказалось в
- * зеркале) — и это делало его недостижимым, как только первичная загрузка стала
- * страничной: страницы «Всех чатов» уходят с `folder_id=0` и архивных диалогов
- * не приносят вовсе (спека `2026-08-13-dialogs-count-and-refresh-design.md`,
- * «Дополнение: вход в архив»). Теперь оверлей просит свои страницы сам —
- * `getDialogs({filterId: ARCHIVE_FOLDER_ID})` уходит с `folder_id=1` и приносит
- * настоящий размер архивной выборки.
- *
- * Отличие от списка папки одно и оно от нашей модели данных, а не от tweb:
- * **закреплённых строк нет** — закреплён сам архив, и не здесь, а в списке
- * уровнем выше (`ChatList`, `pinnedItems`).
- *
- * Следствие своей пагинации: `wasAtLeastOnceFetched` и `animate` — ЖИВЫЕ
- * значения источника, а не константы (константами они стояли ровно потому, что
- * первой загрузки у архива не существовало). Наблюдаемы они только ПОКА первая
- * страница архива летит: до ответа `ul` ростом с хост, а переезд строки не
- * анимируется (глушилка `blockedAnimationCount`, порт `dialogs.ts:248-256`).
- * Оба пина — `Sidebar.archive.test.tsx`, describe «первая страница архива ещё
- * летит»: он краснеет и на возврате любого из двух пропов в константу.
- *
- * `chats` — витрина зеркала ЦЕЛИКОМ (как у `ChatList`), а не отфильтрованная:
- * архивность строки решает тот же `useDialogListSource`, что и её набор.
- */
-function ArchiveList({ chats, selectedId, onSelect }: {
-  chats: Chat[]
-  selectedId: string
-  onSelect: (id: string) => void
-}) {
-  // Хост нужен ядру ЗНАЧЕНИЕМ (оно вешает на него слушатель скролла и
-  // ResizeObserver), поэтому это состояние: первый рендер идёт с null, второй —
-  // с живым узлом. Ref-колбэк обязан быть СТАБИЛЬНЫМ: смена идентичности
-  // заставила бы React переприсваивать его на каждом рендере, то есть на каждом
-  // рендере пересобирать окно видимости. Всё — как в `ChatList.ChatListFolder`.
-  const [scrollHost, setScrollHost] = useState<HTMLElement | null>(null)
-  const setListEl = useCallback((ul: HTMLUListElement | null) => {
-    setScrollHost(ul?.parentElement ?? null)
-  }, [])
-
-  // Обёртки строк, размер набора, признак «хоть раз загружались», глушилка
-  // анимации первой загрузки и запрос страницы — всё из общего источника списка
-  // диалогов (там же живут и кэш обёрток, без которого `useShouldAnimate`
-  // сравнивал бы по ссылке всегда разные элементы, и правило принадлежности
-  // строки выборке).
-  const { items, totalCount, wasAtLeastOnceFetched, animate, requestItemForIdx } =
-    useDialogListSource(ARCHIVE_FOLDER_ID, chats)
-
-  // Порт `AutonomousDialogList.onChatsScroll()` (`base.ts:144-146` —
-  // `requestItemForIdx(0)`): показанный список просит нулевой индекс. Это
-  // ЕДИНСТВЕННЫЙ старт его первой загрузки — тот же эффект, что у
-  // `ChatList.ChatListFolder` на первом показе папки.
-  useEffect(() => {
-    requestItemForIdx(0)
-  }, [requestItemForIdx])
-
-  // `handleSelect` Sidebar пересоздаётся на каждом его рендере, а `renderItem`
-  // обязан быть стабильным: он входит в пропсы `memo`-строки, и его смена
-  // перерисовывает ВСЁ окно.
-  const selectChat = useEvent(onSelect)
-
-  const renderItem = useCallback(
-    ({ value, itemRef }: DeferredSortedVirtualListRenderItemProps<Chat>) => (
-      <ChatListItem ref={itemRef} chat={value} selected={value.id === selectedId} onSelect={selectChat} />
-    ),
-    [selectedId, selectChat],
-  )
-
-  return (
-    <DeferredSortedVirtualList<Chat>
-      listRef={setListEl}
-      className={s.archiveVirtualList}
-      scrollableHost={scrollHost}
-      items={items}
-      totalCount={totalCount}
-      wasAtLeastOnceFetched={wasAtLeastOnceFetched}
-      itemSize={ARCHIVE_ITEM_HEIGHT}
-      animate={animate}
-      requestItemForIdx={requestItemForIdx}
-      renderItem={renderItem}
-    />
-  )
+function ArchiveList({ dialogsManager }: { dialogsManager: AppDialogsManager }) {
+  const hostRef = useImperativeIsland((container) => dialogsManager.mountArchivedList(container), [dialogsManager])
+  return <div ref={hostRef} className={s.archiveList} />
 }

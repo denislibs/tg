@@ -48,8 +48,9 @@
 //  6. Закреп в пользовательской папке (`filterId > 1` → `filter.pinnedPeerIds`,
 //     `filtersStorage.toggleDialogPin`) — у папок нет закрепов (О-70): в такой
 //     папке пунктов закрепа нет вовсе.
-//  7. `useDialogFolder` (`:128-129`): папка диалога на проводе — 0/1, у нас
-//     архив — `ARCHIVE_FOLDER_ID` (−1, `core/folderIds.ts`), значение переводится.
+//  7. Опций конструктора (`:83`: `useDialogFolder`, `recentSearch`) нет: обе —
+//     у меню выдачи поиска (`sidebarLeft/index.ts:1235-1244`, задача 2-3). На
+//     списках папок и архива `filterId` — всегда владельца (`:128-131`).
 //  8. Отступление В7-1: строка секретного чата (наш продукт, у tweb нет) —
 //     «Очистить историю» не предлагается (шапка секретного чата его тоже не
 //     даёт: очистка и удаление там одно действие), удаление — как у лички
@@ -109,7 +110,6 @@ export default class DialogsContextMenu {
   constructor(
     private managers: DialogsContextMenuManagers,
     private appDialogsManager: DialogsContextMenuOwner,
-    private options: { useDialogFolder?: boolean } = {},
   ) {
 
   }
@@ -124,9 +124,7 @@ export default class DialogsContextMenu {
         this.peerId = +li.dataset.peerId!
 
         this.dialog = getAnyDialog(this.peerId)
-        this.filterId = this.options.useDialogFolder ?
-          (this.dialog && isDialogArchived(this.dialog) ? ARCHIVE_FOLDER_ID : ALL_FOLDER_ID) : // расхождение 7
-          this.appDialogsManager.filterId
+        this.filterId = this.appDialogsManager.filterId // расхождение 7
         this.canDelete = this.checkIfCanDelete()
       },
       onOpenBefore: () => {

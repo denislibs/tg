@@ -230,7 +230,7 @@ func TestMessageWire_MatchesSchema(t *testing.T) {
 
 	call := wireMessage()
 	call.Type = "call"
-	call.Action = NewMessageActionPhoneCall(true, NewPhoneCallDiscardReasonHangup(), 42)
+	call.Action = NewMessageActionPhoneCall(true, NewPhoneCallDiscardReasonHangup(), ptr(42))
 
 	scheduled := ScheduledMessage{
 		ID: 3, ChatID: 9, SenderID: 42, Text: "потом",

@@ -110,7 +110,7 @@ const topic: TopicRow = {
   unread: 0, unreadMentions: 0, muted: false, lastMsgSeq: 0,
 }
 
-// (Fix ревью Task 5, Critical.) `useForumPanel.handleSelect` зовёт openTopicThread
+// (Fix ревью Task 5, Critical.) панель тем (`useForumPanel`, открывает её `openForum`) зовёт openTopicThread
 // «с чистого листа» — клик по форуму в списке чатов открывает панель тем локальным
 // стейтом Sidebar, МИНУЯ selectChat. Старый navigationStore.openTopicThread одним
 // set() выставлял и тред, и selectedId; новая проводка обязана давать тот же

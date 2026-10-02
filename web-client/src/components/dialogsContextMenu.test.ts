@@ -2,15 +2,18 @@
 // `src/components/dialogsContextMenu.ts:64-702`), задача 1-2 волны 7
 // (`docs/superpowers/plans/2026-09-30-wave-7-shell-sidebars.md`).
 //
-// Меню проверяется через НАСТОЯЩЕГО владельца: `AppDialogsManager.start` создаёт
-// его (tweb `appDialogsManager.ts:850`), `l(filter)` вешает на список папки
-// (`:1478` → `:2337-2339`). Строки — `<a data-peer-id>` в `.chatlist-top`, как у
-// React-списка до 1-4 и у `SortedDialogList` после: меню ищет строку
-// `findDialogListElement`, а не держит её.
+// Меню проверяется через НАСТОЯЩЕГО владельца и его списки (задача 1-4):
+// `AppDialogsManager.start` создаёт меню (tweb `appDialogsManager.ts:850`),
+// `l(filter)` → `setListClickListener({withContext: true})` вешает его на `ul`
+// списка папки (`:1478` → `:2337-2339`). Строки — `DialogElement` списка
+// `AutonomousDialogList` поверх зеркала; меню ищет строку `findDialogListElement`.
+// Страницы — фейк владельца поверх зеркала (`ownerPages`, как в
+// `autonomousDialogList/dialogs.test.ts`), геометрия скроллера — стаб.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import '@/test/lang'
 import {
-  FakeResizeObserver, frameOf, installFrames, mountOwner, resetStores, settle, uninstallFrames, type Mounted,
+  FakeResizeObserver, finishTransition, installFrames, mountOwner, putFolders, raw, resetStores, settle, tabEls,
+  uninstallFrames, type Mounted,
 } from '@lib/appDialogsManager.testkit'
 import contextMenuController from '@helpers/contextMenuController'
 import { hideToast } from '@components/toast'
@@ -19,13 +22,25 @@ import rootScope from '@lib/rootScope'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import { EMPTY_NOTIFY_SETTINGS, MUTE_UNTIL_FOREVER } from '@core/dialogs/notifySettings'
 import { getOutputPeer } from '@core/peers/peerId'
-import type { Dialog } from '@core/models'
+import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '@core/folderIds'
+import { dialogMatchesFolder } from '@core/folderFilter'
+import { isDialogArchived, type Dialog } from '@core/models'
+import type { DialogsPage } from '@core/managers/dialogsManager'
 import { useChatsStore } from '@stores/chatsStore'
-import { useFoldersStore } from '@stores/foldersStore'
+import { useAppStateStore } from '@stores/appState'
 
 // «Открыть в новой вкладке» — `verify: IS_SHARED_WORKER_SUPPORTED` (:188); в
 // happy-dom `SharedWorker` нет, а пины — про браузер, где он есть.
 vi.mock('@environment/sharedWorkerSupport', () => ({ default: true }))
+
+// Apple-тач (`attachContextMenuListener.ts`: `IS_APPLE && IS_TOUCH_SUPPORTED`) —
+// меню по долгому нажатию, а не по `contextmenu`. Флаг читается при `attach`.
+const env = vi.hoisted(() => ({ appleTouch: false }))
+vi.mock('@environment/touchSupport', () => ({ get default() { return env.appleTouch } }))
+vi.mock('@environment/userAgent', async(importOriginal) => {
+  const actual = await importOriginal<typeof import('@environment/userAgent')>()
+  return { ...actual, get IS_APPLE() { return env.appleTouch || actual.IS_APPLE } }
+})
 
 const ME = 1
 const USER = 7
@@ -52,7 +67,21 @@ function dialog(peerId: PeerId, patch: Partial<Dialog> = {}): Dialog {
   }
 }
 
-function seed(dialogs: Dialog[], viewer: 'member' | 'creator' = 'member') {
+/** Владелец диалогов: страница из зеркала по правилу папки (как `dialogsManager.forFilter`). */
+const ownerPages = vi.fn(async(query: { offsetIndex?: number, limit: number, filterId: number }): Promise<DialogsPage> => {
+  const { dialogs, dialogIndexById } = useChatsStore.getState()
+  const folder = useAppStateStore.getState().folders.find((f) => f.id === query.filterId)
+  const matching = dialogs.filter((d) => {
+    if(query.filterId === ARCHIVE_FOLDER_ID) return isDialogArchived(d)
+    if(isDialogArchived(d)) return false
+    if(query.filterId === ALL_FOLDER_ID) return true
+    return !!folder && dialogMatchesFolder(d, undefined, folder, new Set())
+  })
+  const after = matching.filter((d) => query.offsetIndex === undefined || dialogIndexById[d.peerId] < query.offsetIndex)
+  return { dialogs: after.slice(0, query.limit), count: matching.length, isEnd: after.length <= query.limit }
+})
+
+function setPeers(viewer: 'member' | 'creator') {
   applyPeerOps([{ op: 'upsert', peers: [
     { _: 'user', id: ME, first_name: 'Я', pFlags: { self: true } },
     { _: 'user', id: USER, first_name: 'Алиса', pFlags: {} },
@@ -62,34 +91,40 @@ function seed(dialogs: Dialog[], viewer: 'member' | 'creator' = 'member') {
     },
     { _: 'channel', id: 200, title: 'Канал', date: 0, photo: { _: 'chatPhotoEmpty' }, pFlags: { broadcast: true } },
   ] }])
-  useChatsStore.setState({ dialogs })
 }
 
-/** строки списка папки — в `.chatlist-top` владельца, как у React-`ChatList` */
-function mountRows(filterId = 0, peerIds: PeerId[] = [USER, GROUP, CHANNEL, ME]) {
-  const top = frameOf(mounted!.folders, filterId).querySelector<HTMLElement>('.chatlist-top')!
-  const ul = document.createElement('ul')
-  ul.className = 'chatlist'
-  for(const peerId of peerIds) {
-    const a = document.createElement('a')
-    a.className = 'row chatlist-chat'
-    a.dataset.peerId = '' + peerId
-    const title = document.createElement('span')
-    title.className = 'peer-title'
-    a.append(title)
-    ul.append(a)
-  }
-  top.append(ul)
-  return ul
+/** пиры и диалоги — в зеркало тем же путём, что проектор; владелец со списками — поверх */
+async function seed(dialogs: Dialog[], viewer: 'member' | 'creator' = 'member') {
+  setPeers(viewer)
+  useChatsStore.setState({ dialogs: [], dialogIndexById: {}, loaded: true })
+  useChatsStore.getState().applyDialogOps([{ op: 'reset', items: dialogs.map((dialog, i) => ({ dialog, index: (1000 - i) * 0x10000 })) }])
+  mounted = mountOwner({ getDialogs: ownerPages })
+  await settle()
 }
 
-const rowOf = (peerId: PeerId) => document.querySelector<HTMLElement>(`.chatlist-chat[data-peer-id="${peerId}"]`)!
+/** строка диалога в списке папки — `DialogElement` списка (`xds[filterId]`) */
+async function rowIn(filterId: number, peerId: PeerId) {
+  return vi.waitFor(() => {
+    const row = mounted!.manager.xds.get(filterId)?.sortedList.list.querySelector<HTMLElement>(`a.chatlist-chat[data-peer-id="${peerId}"]`)
+    expect(row).toBeTruthy()
+    return row!
+  })
+}
 
-async function open(peerId: PeerId, page?: { pageX: number, pageY: number }) {
+/** вкладка архива — список `xds[FOLDER_ID_ARCHIVE]` и `filterId` архива (`archivedTab.tsx:86-108`) */
+function openArchive() {
+  const container = document.createElement('div')
+  document.body.append(container)
+  return mounted!.manager.mountArchivedList(container)
+}
+
+async function open(peerId: PeerId, options: { page?: { pageX: number, pageY: number }, filterId?: number } = {}) {
+  const row = await rowIn(options.filterId ?? mounted!.manager.filterId, peerId)
   const e = new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
   // `positionMenu` читает `pageX`/`pageY` (:197-203); happy-dom их не выводит
+  const { page } = options
   if(page) Object.defineProperties(e, { pageX: { value: page.pageX }, pageY: { value: page.pageY } })
-  rowOf(peerId).querySelector('.peer-title')!.dispatchEvent(e)
+  row.querySelector('.dialog-title')!.dispatchEvent(e)
   await settle()
   return document.querySelector<HTMLElement>('.btn-menu.contextmenu.active')
 }
@@ -103,15 +138,22 @@ function click(menu: HTMLElement, label: string) {
   item.dispatchEvent(new MouseEvent('click', { bubbles: true }))
 }
 
-beforeEach(async() => {
+beforeEach(() => {
   resetStores()
   resetPeerMirror()
+  ownerPages.mockClear()
+  env.appleTouch = false
   expect(installFrames(), 'очередь fastRaf досталась этому файлу непрокрученной').toBe(true)
   FakeResizeObserver.instances = []
   vi.stubGlobal('ResizeObserver', FakeResizeObserver)
+  // высоту скроллеров папок читает ядро списка при создании
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function(this: HTMLElement) {
+    if(this.classList.contains('scrollable')) {
+      return { width: 360, height: 720, top: 0, left: 0, right: 360, bottom: 720, x: 0, y: 0, toJSON() {} } as DOMRect
+    }
+    return { width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0, toJSON() {} } as DOMRect
+  })
   rootScope.myId = ME
-  mounted = mountOwner()
-  await settle()
 })
 
 afterEach(() => {
@@ -130,8 +172,7 @@ afterEach(() => {
 
 describe('DialogsContextMenu: пункты по verify tweb', () => {
   it('ПКМ по строке лички → div.btn-menu.contextmenu, строка помечена menu-open', async() => {
-    seed([dialog(USER)])
-    mountRows()
+    await seed([dialog(USER)])
     const menu = await open(USER)
 
     expect(menu).not.toBeNull()
@@ -140,17 +181,20 @@ describe('DialogsContextMenu: пункты по verify tweb', () => {
     expect(labels(menu)).toEqual(['Open in new tab', 'Pin', 'Mute', 'Archive', 'Clear history', 'Delete Chat'])
     // «Удалить» — `className: 'danger'` (:450)
     expect(menu!.lastElementChild!.classList.contains('danger')).toBe(true)
-    expect(rowOf(USER).classList.contains('menu-open')).toBe(true)
+    expect((await rowIn(ALL_FOLDER_ID, USER)).classList.contains('menu-open')).toBe(true)
   })
 
-  it('непрочитанная, закреплённая, заглушённая, в архиве личка: Mark as read и обратные пункты', async() => {
-    seed([dialog(USER, {
+  it('архив: непрочитанная, закреплённая, заглушённая личка — Mark as read и обратные пункты', async() => {
+    await seed([dialog(USER, {
       unread_count: 3,
       pFlags: { pinned: true },
       folder_id: 1,
       notify_settings: { _: 'peerNotifySettings', mute_until: MUTE_UNTIL_FOREVER },
     })])
-    mountRows()
+    // меню архива — то же меню владельца на списке `l({id: FOLDER_ID_ARCHIVE})`;
+    // закреп в архиве есть (`filterId` архива — не пользовательская папка)
+    openArchive()
+    expect(mounted!.manager.filterId).toBe(ARCHIVE_FOLDER_ID)
 
     expect(labels(await open(USER))).toEqual([
       'Open in new tab', 'Mark as read', 'Unpin', 'Unmute', 'Unarchive', 'Clear history', 'Delete Chat',
@@ -158,53 +202,45 @@ describe('DialogsContextMenu: пункты по verify tweb', () => {
   })
 
   it('группа участником — «Leave Group»; создателем — «Delete Group» (getDeleteButtonText :373-375)', async() => {
-    seed([dialog(GROUP)])
-    mountRows()
+    await seed([dialog(GROUP)])
     expect(labels(await open(GROUP))).toEqual(['Open in new tab', 'Pin', 'Mute', 'Archive', 'Clear history', 'Leave Group'])
     contextMenuController.close()
     await settle()
 
-    seed([dialog(GROUP)], 'creator')
+    setPeers('creator')
     expect(labels(await open(GROUP))).toEqual(['Open in new tab', 'Pin', 'Mute', 'Archive', 'Clear history', 'Delete Group'])
   })
 
   it('канал подписчиком: без «Clear history» (canClearHistory), «Leave Channel»', async() => {
-    seed([dialog(CHANNEL)])
-    mountRows()
+    await seed([dialog(CHANNEL)])
     expect(labels(await open(CHANNEL))).toEqual(['Open in new tab', 'Pin', 'Mute', 'Archive', 'Leave Channel'])
   })
 
   it('«Избранное»: без mute и архива (peerId !== myId), без удаления (О-89)', async() => {
-    seed([dialog(ME)])
-    mountRows()
+    await seed([dialog(ME)])
     expect(labels(await open(ME))).toEqual(['Open in new tab', 'Pin', 'Clear history'])
   })
 
-  it('пользовательская папка — пунктов закрепа нет (О-70)', async() => {
-    useFoldersStore.setState({ selectedId: 5 })
-    mounted!.manager.filterId = 5
-    seed([dialog(USER)])
-    mountRows()
+  it('пользовательская папка — меню на её списке, пунктов закрепа нет (О-70)', async() => {
+    putFolders({ ...raw(5, 1, 'Папка'), include_peers: [USER] })
+    await seed([dialog(USER)])
+    tabEls(mounted!.host)[1].dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await settle()
+    finishTransition(mounted!.folders)
+    expect(mounted!.manager.filterId).toBe(5)
+
     expect(labels(await open(USER))).toEqual(['Open in new tab', 'Mute', 'Archive', 'Clear history', 'Delete Chat'])
   })
 
   it('секретный чат (В7-1): без «Clear history», удаление — как у лички', async() => {
-    seed([dialog(GROUP, { secret: true })])
-    mountRows()
+    await seed([dialog(GROUP, { secret: true })])
     expect(labels(await open(GROUP))).toEqual(['Open in new tab', 'Pin', 'Mute', 'Archive', 'Delete Chat'])
-  })
-
-  it('строки без диалога — меню не открывается иначе как с «Open in new tab»', async() => {
-    seed([])
-    mountRows()
-    expect(labels(await open(USER))).toEqual(['Open in new tab'])
   })
 })
 
 describe('DialogsContextMenu: действия', () => {
   it('«Pin» зовёт менеджер, меню закрывается сразу (tweb buttonMenu.ts:210-217), закреп в зеркале — только ответом', async() => {
-    seed([dialog(USER)])
-    mountRows()
+    await seed([dialog(USER)])
     let resolvePin!: () => void
     vi.mocked(mounted!.hooks.managers.groups.setPin).mockImplementationOnce(() => new Promise<void>((resolve) => resolvePin = resolve))
 
@@ -213,7 +249,7 @@ describe('DialogsContextMenu: действия', () => {
 
     expect(mounted!.hooks.managers.groups.setPin).toHaveBeenCalledWith(USER, true)
     expect(menu!.classList.contains('active')).toBe(false)
-    expect(rowOf(USER).classList.contains('menu-open')).toBe(false)
+    expect((await rowIn(ALL_FOLDER_ID, USER)).classList.contains('menu-open')).toBe(false)
     // меню ничего не переставляет само: зеркало двигает владелец после ответа
     expect(useChatsStore.getState().dialogs[0].pFlags?.pinned).toBeUndefined()
     resolvePin()
@@ -221,8 +257,7 @@ describe('DialogsContextMenu: действия', () => {
   })
 
   it('«Unpin» закреплённого — setPin(peerId, false); отказ лимита — тост', async() => {
-    seed([dialog(USER, { pFlags: { pinned: true } })])
-    mountRows()
+    await seed([dialog(USER, { pFlags: { pinned: true } })])
     vi.mocked(mounted!.hooks.managers.groups.setPin).mockRejectedValueOnce(Object.assign(new Error('pin limit reached'), { type: 'pin limit reached' }))
 
     click((await open(USER))!, 'Unpin')
@@ -233,20 +268,19 @@ describe('DialogsContextMenu: действия', () => {
   })
 
   it('«Archive» переносит диалог в архив, «Unarchive» — обратно (editPeerFolders :543-548)', async() => {
-    seed([dialog(USER), dialog(GROUP, { folder_id: 1 })])
-    mountRows()
+    await seed([dialog(USER), dialog(GROUP, { folder_id: 1 })])
 
     click((await open(USER))!, 'Archive')
     expect(mounted!.hooks.managers.groups.setArchive).toHaveBeenLastCalledWith(USER, true)
     await settle()
 
+    openArchive()
     click((await open(GROUP))!, 'Unarchive')
     expect(mounted!.hooks.managers.groups.setArchive).toHaveBeenLastCalledWith(GROUP, false)
   })
 
   it('«Mute» открывает попап сроков, «Unmute» снимает сразу', async() => {
-    seed([dialog(USER), dialog(GROUP, { notify_settings: { _: 'peerNotifySettings', mute_until: MUTE_UNTIL_FOREVER } })])
-    mountRows()
+    await seed([dialog(USER), dialog(GROUP, { notify_settings: { _: 'peerNotifySettings', mute_until: MUTE_UNTIL_FOREVER } })])
 
     click((await open(USER))!, 'Mute')
     const popup = document.querySelector<HTMLElement>('.popup-mute')!
@@ -260,15 +294,13 @@ describe('DialogsContextMenu: действия', () => {
   })
 
   it('«Mark as read» читает до top_message', async() => {
-    seed([dialog(USER, { unread_count: 2, top_message: 77 })])
-    mountRows()
+    await seed([dialog(USER, { unread_count: 2, top_message: 77 })])
     click((await open(USER))!, 'Mark as read')
     expect(mounted!.hooks.managers.realtime.markRead).toHaveBeenCalledWith({ peerId: USER, upToId: 77 })
   })
 
   it('«Delete Chat» лички — попап popup-delete-chat, подтверждение выходит из чата', async() => {
-    seed([dialog(USER)])
-    mountRows()
+    await seed([dialog(USER)])
     click((await open(USER))!, 'Delete Chat')
 
     const popup = document.querySelector<HTMLElement>('.popup-delete-chat')!
@@ -281,8 +313,7 @@ describe('DialogsContextMenu: действия', () => {
   })
 
   it('«Delete Group» создателем с отмеченным «для всех» — deleteGroup', async() => {
-    seed([dialog(GROUP)], 'creator')
-    mountRows()
+    await seed([dialog(GROUP)], 'creator')
     click((await open(GROUP))!, 'Delete Group')
 
     const popup = document.querySelector<HTMLElement>('.popup-delete-chat')!
@@ -295,8 +326,7 @@ describe('DialogsContextMenu: действия', () => {
   })
 
   it('«Clear history» — подтверждение, затем chats.clearHistory', async() => {
-    seed([dialog(USER)])
-    mountRows()
+    await seed([dialog(USER)])
     click((await open(USER))!, 'Clear history')
 
     const popup = document.querySelector<HTMLElement>('.popup-confirmation')!
@@ -310,15 +340,14 @@ describe('DialogsContextMenu: действия', () => {
 
 describe('DialogsContextMenu: закрытие, позиция, снятие', () => {
   it('Esc закрывает меню — запись \'menu\' в навигационном стеке', async() => {
-    seed([dialog(USER)])
-    mountRows()
+    await seed([dialog(USER)])
     const menu = await open(USER)
     expect(menu).not.toBeNull()
 
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
 
     expect(menu!.classList.contains('active')).toBe(false)
-    expect(rowOf(USER).classList.contains('menu-open')).toBe(false)
+    expect((await rowIn(ALL_FOLDER_ID, USER)).classList.contains('menu-open')).toBe(false)
   })
 
   // `positionMenu` (tweb `positionMenu.ts:189-313`) меряет само собранное меню
@@ -326,8 +355,7 @@ describe('DialogsContextMenu: закрытие, позиция, снятие', (
   // захардкоженный размер (как у прежнего React-меню, `MW=220, MH=320`) флип по
   // факту не повторит.
   it('позиция — по фактическому размеру меню: низкое не флипается, высокое уходит вверх', async() => {
-    seed([dialog(USER)])
-    mountRows()
+    await seed([dialog(USER)])
     let menuHeight = 100
     vi.spyOn(document.body, 'getBoundingClientRect').mockReturnValue({ width: 1000, height: 800 } as DOMRect)
     const proto = HTMLElement.prototype
@@ -336,14 +364,14 @@ describe('DialogsContextMenu: закрытие, позиция, снятие', (
     Object.defineProperty(proto, 'scrollHeight', { configurable: true, get(this: HTMLElement) { return this.classList.contains('btn-menu') ? menuHeight : 0 } })
     Object.defineProperty(proto, 'scrollWidth', { configurable: true, get() { return 200 } })
     try {
-      const low = await open(USER, { pageX: 300, pageY: 600 })
+      const low = await open(USER, { page: { pageX: 300, pageY: 600 } })
       expect(low!.style.top).toBe('600px')
       expect(low!.classList.contains('bottom-right')).toBe(true)
       contextMenuController.close()
       await settle()
 
       menuHeight = 300
-      const high = await open(USER, { pageX: 300, pageY: 600 })
+      const high = await open(USER, { page: { pageX: 300, pageY: 600 } })
       // 600 + 300 + 8 > 800 → сторона `center`, верх = 800 − 300 − 8
       expect(high!.style.top).toBe('492px')
       expect(high!.classList.contains('center-right')).toBe(true)
@@ -357,20 +385,19 @@ describe('DialogsContextMenu: закрытие, позиция, снятие', (
     }
   })
 
-  it('destroy() владельца снимает слушатели меню со списка папки', async() => {
-    seed([dialog(USER)])
-    const ul = mountRows()
-    expect(await open(USER)).not.toBeNull()
-    contextMenuController.close()
-    await settle()
-
-    mounted!.manager.destroy()
-    mounted = undefined
-    await settle()
-    // узел папки снят из DOM, но событие по оторванному поддереву всплывает
-    // до `.chatlist-top` — слушать его больше некому
-    ul.querySelector('a')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+  it('Apple-тач: долгое нажатие на строку (400 мс) открывает меню', async() => {
+    env.appleTouch = true
+    await seed([dialog(USER)])
+    const row = await rowIn(ALL_FOLDER_ID, USER)
+    const touch = new Event('touchstart', { bubbles: true, cancelable: true })
+    Object.defineProperty(touch, 'touches', { value: [{ pageX: 10, pageY: 10, clientX: 10, clientY: 10 }] })
+    row.querySelector('.dialog-title')!.dispatchEvent(touch)
     await settle()
     expect(document.querySelector('.btn-menu.contextmenu.active')).toBeNull()
+
+    await new Promise((resolve) => setTimeout(resolve, 450))
+    await settle()
+    const menu = document.querySelector<HTMLElement>('.btn-menu.contextmenu.active')
+    expect(labels(menu)).toEqual(['Open in new tab', 'Pin', 'Mute', 'Archive', 'Clear history', 'Delete Chat'])
   })
 })

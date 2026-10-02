@@ -2,11 +2,11 @@
 // ШОВ задачи 6 плана папок (`docs/superpowers/plans/2026-09-07-solid-wave-3-folders-tabs.md`):
 // TS-владелец контейнеров папок `lib/appDialogsManager.ts` встроен в ЖИВОЙ
 // сайдбар. Здесь то, что видно только из колонки целиком:
-// (1) узлами папок владеет владелец, React кладёт в них только свои `ul`
-//     (порталом в `.chatlist-top`) и не держит своих контейнеров;
+// (1) узлами папок владеет владелец, и списками папок с их `ul` — тоже
+//     (`AutonomousDialogList`, задача 1-4 волны 7); React своих контейнеров не держит;
 // (2) переключение папки = список с начала (памяти `scrollTop` у папок в tweb
 //     НЕТ, поправка 1 плана), страница просится на каждый показ, сети нет;
-// (3) первая страница — ровно одна (late binding хэндла списка);
+// (3) первая страница — ровно одна (её просит владелец в `start()`);
 // (4) следы владельца на узлах React (`has-filters`, `--chatlist-overlay-height`)
 //     переживают ре-рендер колонки;
 // (5) размонтирование колонки не оставляет узлов и не пишет ошибок.
@@ -56,9 +56,15 @@ const FOLDER = {
 }
 
 // Весь слой менеджеров — рекурсивный Proxy (приём `Sidebar.connectionStatus.test.tsx`);
-// настоящий ответ нужен двум методам: пуллу автомата соединения и странице диалогов.
+// настоящий ответ нужен двум методам: пуллу автомата соединения и странице диалогов
+// (владелец отдаёт страницу из зеркала по курсору — индексу, `dialogsManager.forFilter`).
 function fakeManagers() {
-  const getDialogs = vi.fn(async (_o: { filterId: number }) => ({ dialogs: [], count: DIALOGS, isEnd: true }))
+  const getDialogs = vi.fn(async (o: { filterId: number, offsetIndex?: number, limit?: number }) => {
+    const { dialogs, dialogIndexById } = useChatsStore.getState()
+    const after = dialogs.filter((d) => o.offsetIndex === undefined || dialogIndexById[d.peerId] < o.offsetIndex)
+    const page = o.filterId === -1 ? [] : after.slice(0, o.limit ?? 20)
+    return { dialogs: page, count: o.filterId === -1 ? 0 : DIALOGS, isEnd: o.filterId === -1 || after.length <= (o.limit ?? 20) }
+  })
   const managers = new Proxy({}, {
     get: (_target, ns: string) => new Proxy({}, {
       get: (_t, method: string) => {
@@ -83,9 +89,9 @@ const firstRowIn = (frame: HTMLElement) => listIn(frame).querySelector<HTMLEleme
 const chatlistContainer = () => document.getElementById('chatlist-container')!
 /** Узел, на котором владелец держит --chatlist-overlay-height (tweb bottomPart). */
 const overlayHost = () => document.querySelector<HTMLElement>('.connection-status-bottom')!
-/** Запросы страниц конкретной папки (строка «Архив» гидрируется отдельно). */
+/** ПЕРВЫЕ страницы конкретной папки — без курсора (строка «Архив» гидрируется отдельно, догрузка по скроллу — с курсором). */
 const pagesOf = (getDialogs: ReturnType<typeof fakeManagers>['getDialogs'], id: number) =>
-  getDialogs.mock.calls.filter(([o]) => o.filterId === id && !('limit' in o && (o as { limit?: number }).limit === 10)).length
+  getDialogs.mock.calls.filter(([o]) => o.filterId === id && o.offsetIndex === undefined && o.limit !== 10).length
 
 /** Доводка: троттлинг измерения скролла (24 мс) + фолбэк-таймер слайда (200+100). */
 async function settle(ms: number) {
@@ -138,6 +144,13 @@ beforeEach(() => {
       get(this: HTMLElement) { return this.classList.contains('folders-scrollable') ? 360 : 0 },
     })
   }
+  // высоту скроллера папки ядро списка читает `getBoundingClientRect` (`useElementSize`)
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function(this: HTMLElement) {
+    if (this.classList.contains('folders-scrollable') || this.classList.contains('scrollable')) {
+      return { width: 360, height: HOST_HEIGHT, top: 0, left: 0, right: 360, bottom: HOST_HEIGHT, x: 0, y: 0, toJSON() {} } as DOMRect
+    }
+    return { width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0, toJSON() {} } as DOMRect
+  })
 })
 
 afterEach(() => {
@@ -200,8 +213,8 @@ describe('Sidebar — узлами папок владеет владелец', 
   it('первая папка просит страницу РОВНО один раз, вторая — только при первом показе', async () => {
     const { getDialogs } = await renderSidebar()
 
-    // Мутация: вернуть `useEffect(() => requestItemForIdx(0))` в ChatListFolder —
-    // у «Всех чатов» станет две страницы, у «Работы» — одна без показа.
+    // Мутация: звать `onChatsScroll` у списка при его создании (`l()`), а не в
+    // `onTabChange` — у «Всех чатов» станет две страницы, у «Работы» — одна без показа.
     expect(pagesOf(getDialogs, ALL_FOLDER_ID)).toBe(1)
     expect(pagesOf(getDialogs, FOLDER.id)).toBe(0)
 

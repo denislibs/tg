@@ -472,6 +472,23 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // lang.ts:2017-2025 — `NoRecentCalls`, `NoRecentCallsInfo`, `Calls.Status.Group`,
 // `CallBack` (`Calls` уже завела 2-2); −1 наш `Calls.Empty` снесённого React-экрана
 // `CallsView` (у tweb пустой журнал — `NoRecentCalls`). Итог: ru 1415.
+// Задача 0б-10 волны 7 (вкладка «Изменить контакт», порт tweb editContact.tsx +
+// popups/deleteContacts.ts): у ru +23 ключа tweb lang.ts — `AddContactTitle`,
+// `ContactNoteRow`, `SuggestBirthdayRow`, `EditContact.OriginalName`, `MobileHidden`,
+// `MobileHiddenExceptionInfo`, `NewContact.Exception.ShareMyPhoneNumber{,.Desc}`,
+// `PeerInfo.DeleteContact`, десять `UserInfo.*` личного фото, `DeleteContact`,
+// `AreYouSureDeleteContact`, `DeleteContactsSubtitle` и числовой `DeleteContactsTitle`.
+// Врезкой той же задачи снят наш `EditContact.PhotoHint` (подпись снесённого
+// React-экрана `EditContactView`; у tweb — `UserInfo.CustomPhotoHelp`).
+// Итог (поверх 0а-4): ru 1437 (форм числа 45).
+// Задача 0б-11 волны 7 (вкладки «Поиск стикеров» и «Поиск GIF» правой колонки):
+// у ru +2 ключа tweb lang.ts — `Stickers.SearchAdd` (кнопка набора, tweb
+// `stickers.tsx:49`) и `SearchGifsTitle` (заголовок/плейсхолдер `AppGifsTab`,
+// `tabs.ts:460`, `gifs.tsx:92`). Итог: ru 1417.
+// Задача 1-4 волны 7 (строка списка чатов на `DialogElement`): «печатает» в строке —
+// порт tweb `getPeerTyping` (`lib/appImManager.ts`), +23 ключа tweb lang.ts
+// `Peer.Activity.{User,Chat,Chat.Multi,Chat.Pair}.*` в объёме наших действий набора —
+// русскому и украинскому. Итог: ru 1438, uk 782.
 // Задача 1-2 волны 7 (меню диалога — порт tweb `dialogsContextMenu.ts`,
 // `popups/deleteDialog.ts`, `clearHistory.ts`): у ru +20 ключей tweb lang.ts — `MarkAsRead`,
 // `ClearHistory`, `ChannelDelete`, `AlertClearHistory`, четыре `AreYouSureClearHistory*`,
@@ -480,10 +497,10 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `AreYouSureDeleteThisChatWithUser`, `DeleteMegaMenu`, `AreYouSureDeleteAndExit`,
 // `LeaveMegaMenu`, `AreYouSureDeleteAndExitName`. У всех пяти −2: снесённое React-меню строки
 // было единственным читателем `MarkAsUnread` (пункт — О-72) и `ChatList.Context.Preview`
-// (пункт — О-86). Итог (поверх 0а-4): ru 1433, uk 757, es 754, de 755, fr 749.
+// (пункт — О-86). Итог (поверх 1-4): ru 1480, uk 780, es 754, de 755, fr 749.
 const COMPOSITION = {
-  ru: { keys: 1433, plural: 44 },
-  uk: { keys: 757, plural: 33 },
+  ru: { keys: 1480, plural: 45 },
+  uk: { keys: 780, plural: 33 },
   es: { keys: 754, plural: 32 },
   de: { keys: 755, plural: 33 },
   fr: { keys: 749, plural: 32 },
@@ -639,12 +656,16 @@ const COMPOSITION = {
 // `NewGroup.DefaultTitle` снесённого React-экрана (разбор — там же).
 // Задачей 0а-4 волны 7 — у ru +4 ключа вкладки «Звонки» и −1 `Calls.Empty`
 // снесённого React-экрана (разбор — там же).
+// Задачей 0б-10 волны 7 — у ru +23 ключа вкладки «Изменить контакт» (разбор — там же).
+// Задачей 0б-11 волны 7 — у ru +2 ключа tweb (разбор — у `COMPOSITION` выше).
+// Задачей 1-4 волны 7 — у ru и uk +23 ключа `Peer.Activity.*` tweb (разбор — у
+// `COMPOSITION` выше).
 // Задачей 1-2 волны 7 — у ru +20 ключей меню диалога и его попапов, у всех пяти минус
 // `MarkAsUnread` и `ChatList.Context.Preview` снесённого React-меню (разбор — у
 // `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: 'bf48220f',
-  uk: '6a2125df',
+  ru: '908b0084',
+  uk: '5517859f',
   es: 'fa206f0e',
   de: '1df82eb9',
   fr: '1773852f',

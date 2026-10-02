@@ -83,7 +83,7 @@ export function chatMatchesFolder(chat: ChatVM, folder: Folder, contactIds: Read
  * нет): вид чата с провода снят, и отвечают на него те же предикаты, что и
  * везде (`core/peers/predicates.ts`); у пользователя из неё читается `bot`. Заглушённость считается по СРОКУ —
  * `notify_settings.mute_until`, — а не по булеву полю строки; правило типов
- * чатов поверх этого накладывает витрина (`useDialogListSource`).
+ * чатов поверх этого накладывает список папки (`components/autonomousDialogList/dialogs.ts::testDialogForFilter`).
  */
 export function dialogMatchesFolder(
   dialog: Dialog,

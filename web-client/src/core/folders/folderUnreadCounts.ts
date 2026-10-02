@@ -28,7 +28,7 @@
  *     `unread_mark` и сумма по топикам форума; ни того, ни другого на нашем
  *     проводе нет (`core/models.ts::RawDialog`).
  *  3. Принадлежность папке — та же, что у её списка
- *     (`core/hooks/useDialogListSource.ts::matchesThisFolder`,
+ *     (`components/autonomousDialogList/dialogs.ts::testDialogForFilter`,
  *     воркерный `dialogsManager.forFilter`): архив не входит ни в «Все чаты», ни
  *     в пользовательскую папку. У оригинала пользовательская папка может
  *     включать архив (флаг `exclude_archived` фильтра) — у нашей `Folder` такого

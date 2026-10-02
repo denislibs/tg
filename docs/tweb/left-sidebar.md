@@ -626,9 +626,23 @@ a.row.no-wrap.chatlist-chat.chatlist-chat-bigger.row-big  href="#<peerId>" data-
 «✓/✓✓» — по `read_outbox_max_id` (`components/sendingStatus.ts`). Не портировано, с номерами:
 закреп внутри пользовательской папки (О-70), непрочитанное форума по темам (О-71), `unread_mark`
 (О-72), бейдж голосов опроса (О-73), перекраска частиц спойлера активной строки b2df09771 (О-74),
-иконки у имени (`PeerTitle` `withIcons` — `special-peers.md` § 3.3 п. 2). Онлайн-точка, «печатает»,
-звонок — методы `AutonomousDialogList`, задача 1-4; активность (`setDialogActive`) — 1-8. Главный
-список пока рисует React `ChatListItem.tsx` (снимается в 1-4).
+иконки у имени (`PeerTitle` `withIcons` — `special-peers.md` § 3.3 п. 2).
+
+**У нас (задача 1-4 волны 7):** главный список — классы tweb: `SortedDialogList`
+(`components/sortedDialogList.ts`) поверх Solid-ядра и `AutonomousDialogList`
+(`components/autonomousDialogList/{base,dialogs,constants}.ts`), список на папку — `xds[filterId]`
+владельца (`appDialogsManager.l`). Источник — зеркало `chatsStore` (Отступление В7-5): подписка на
+стор вместо `dialogs_multiupdate`/`dialog_drop`/…, страницы — `managers.dialogs.getDialogs`.
+Онлайн-точка (`setOnlineStatus` по `presence`), «печатает» (`setDialogTyping` → `getPeerTyping`,
+`lib/appImManager.ts` до 5-3), активная строка открытого чата (`setDialogActive` по
+`navigationStore.selectedId`, `lastActiveElements`) и бейджи на аватарах узкой колонки
+(`toggleAvatarUnreadBadges`) — портированы. Строка «Архив» — React-`ArchiveRow` островом в
+`<archive-dialog>` (ВРЕМЕННО до 1-5), панель тем — React (ВРЕМЕННО до 1-6). Иконка звонка — О-96,
+потоковые черновики — О-97, контекст-меню строки — задача 1-2. React-список
+(`ChatList.tsx`, `ChatListItem.tsx`, `useDialogListSource.ts`) снесён. Значки у имени — `PeerTitle`
+`withIcons` (`components/generateTitleIcons.ts`: галочка, премиум/эмодзи-статус). Строка над
+списком (`.item` ядра) держится правилом `.virtual-chatlist > .chatlist-chat` в `_chatlistRow.scss`:
+CSS-модуль ядра у нас ложится в бандл раньше глобальных `.row`/`.rp` — разбор у правила.
 
 ## 5. Онлайн-точка, typing, draft
 
@@ -768,10 +782,10 @@ Close/RestartTopic `:224` · ChargeFee `:238` · Delete `:248`.
 | `src/components/sidebarLeft/tabs/settings.solid.tsx` + `sidebarLeft/columnSlider.ts` | корень настроек — вкладка `AppSettingsTab` колоночного слайдера (задача 28 плана 2D); подэкраны — вкладки того же слайдера (`tab.slider.createTab`), все Solid: «Стикеры» (задача 15), «Конфиденциальность» (задача 23, `sidebarLeft/tabs/privacyAndSecurity.solid.tsx`), «Динамики» (задача 26), «Профиль» (задача 27, `sidebarLeft/tabs/editProfile.solid.tsx`) | `AppSettingsTab` + дерево части 2 |
 | `src/components/settings/*` | экранов настроек здесь БОЛЬШЕ НЕТ (последний — «Конфиденциальность» — снесён задачей 23 плана 2D, хаб и все его дети — вкладки `sidebarLeft/tabs/*`); остались React-кит `kit.tsx` и попапы (`AvatarCropper`, `BirthdayModal`, `ConfirmDialog`, `PasskeyIntroPopup` до 2C-10) для потребителей ВНЕ настроек — задачи 30–31 плана 2D | `sidebarLeft/tabs/*` |
 | `src/lib/appDialogsManager.ts` | папочный срез владельца: `.chatlist-overlay` с Solid-рядом вкладок, `#folders-container`, скроллер на папку, переключение (`horizontalMenu` + `TransitionSlider`); встроен в колонку `Sidebar.tsx` (план папок, задача 6). Строка диалога `DialogElement` + `setLastMessage`/`setUnreadMessages`/`setListClickListener`/`createChatList`/`addDialogNew` (задача 1-1 волны 7) | `AppDialogsManager` (папки, строка) |
-| `src/components/ChatList.tsx` / `ChatListItem.tsx` | списки папок на виртуальном ядре — порталом в `.chatlist-top` контейнеров владельца (до задачи 1-4 волны 7; строка `DialogElement` уже портирована — `lib/appDialogsManager.ts`) | `AutonomousDialogList` (строки) + `DialogElement` |
+| ~~`src/components/ChatList.tsx` / `ChatListItem.tsx`~~ (снесены задачей 1-4) → `components/sortedDialogList.ts` + `components/autonomousDialogList/*` | списки папок на виртуальном ядре — порталом в `.chatlist-top` контейнеров владельца (до задачи 1-4 волны 7; строка `DialogElement` уже портирована — `lib/appDialogsManager.ts`) | `AutonomousDialogList` (строки) + `DialogElement` |
 | `src/components/virtual/DeferredSortedVirtualList.*` | React-порт `deferredSortedVirtualList` (данными не владеет; shrink не портирован; reveal по одной строке) — держат React-`ChatList`/`ArchiveList`/`TopicsPanel`, уходит с последним из них (волна 7, 1-6) | с отступлениями (спека `2026-08-13-virtual-chatlist-design.md`) |
-| `src/components/deferredSortedVirtualList.solid.tsx` + `loadingDialogSkeleton.solid.tsx` | Solid-ядро tweb файлом (волна 7, 1-3): владение элементами, скелетоны, reveal пачкой (108d3f301), shrink `EXTRA_ITEMS_TO_KEEP`, `onItemDiscard` (2b00c4dae), `onItemMount`; поверх `verticalVirtualList.solid.tsx`. Потребителя пока нет — список диалогов переключается в 1-4 (`SortedDialogList`) | 1:1 |
-| `src/core/hooks/useDialogListSource.ts` | источник набора папки/архива (фильтр, размер, курсор) | `AutonomousDialogListBase` |
+| `src/components/deferredSortedVirtualList.solid.tsx` + `loadingDialogSkeleton.solid.tsx` | Solid-ядро tweb файлом (волна 7, 1-3): владение элементами, скелетоны, reveal пачкой (108d3f301), shrink `EXTRA_ITEMS_TO_KEEP`, `onItemDiscard` (2b00c4dae), `onItemMount`; поверх `verticalVirtualList.solid.tsx`. Потребитель — список диалогов (`SortedDialogList`, 1-4) | 1:1 |
+| ~~`src/core/hooks/useDialogListSource.ts`~~ (снесён задачей 1-4) → `components/autonomousDialogList/{base,dialogs}.ts` | курсор, страница, правило папки, гидратация строки «Архив» | `AutonomousDialogListBase`/`AutonomousDialogList` |
 | `src/core/managers/dialogsManager.ts` (воркер) | владелец диалогов: сортировка, пагинация, refresh | `dialogsStorage` (воркерная сторона) |
 | `src/core/dialogs/{dialogIndex,dialogOps,loadCount}.ts` | индексы, операции, размер страницы | `getDialogIndex*`, `DIALOG_LOAD_COUNT` |
 | `src/components/chatlist/dialogsPlaceholder.ts` | canvas-шиммер | `helpers/dialogsPlaceholder.ts` |
@@ -811,8 +825,10 @@ DOM-паритет первого таба выдержан сознательн
    вкладки `apps`/`posts`, лента «люди», «SimilarChannels» — «Отложено» плана (нет ручек);
    исполнителя внутренних t.me-ссылок нет (Enter со ссылкой — расхождение 1 шапки шва).
 4. **Чатлист — уже портирован программой, не переизобретать.** Порт «виртуальный список диалогов 1:1»
-   смержен целиком (4 этапа, `0d41dc41`): ядро `components/virtual/`, владелец диалогов в воркере
-   `core/managers/dialogsManager.ts`, источник `useDialogListSource`. Спеки:
+   смержен целиком (4 этапа, `0d41dc41`): владелец диалогов в воркере
+   `core/managers/dialogsManager.ts`; представление с волны 7 — классы tweb (Solid-ядро 1-3,
+   `SortedDialogList`/`AutonomousDialogList` 1-4), React-ядро `components/virtual/` держит только
+   `TopicsPanel` (до 1-6). Спеки:
    `docs/superpowers/specs/2026-08-12-dialogs-ownership-and-virtual-list-design.md`,
    `2026-08-13-dialogs-pagination-design.md`, `2026-08-13-virtual-chatlist-design.md`,
    `2026-08-13-remaining-lists-design.md`, `2026-08-13-dialogs-count-and-refresh-design.md`
@@ -820,9 +836,8 @@ DOM-паритет первого таба выдержан сознательн
    `worktree-dialogs-count-refresh` готова и проверена на стенде, на момент снятия не смержена.
 5. **Архив — оверлей, не таб.** tweb: `AppArchivedTab` в слайдере, переиспользующий `l(FOLDER_ID_ARCHIVE)`.
    У нас: оверлей внутри `.connection-status-bottom` (React-ребёнок хоста владельца папок; в
-   `#folders-container` ему нельзя — там кадры папок, адресуемые индексом) с тем же виртуальным ядром и
-   `useDialogListSource(ARCHIVE_FOLDER_ID)` (`ArchiveList`, Sidebar.tsx:467-524) — отступление названо
-   в комментариях там же.
+   `#folders-container` ему нельзя — там кадры папок, адресуемые индексом); список в нём — тот же
+   `AutonomousDialogList(FOLDER_ID_ARCHIVE)` владельца (`mountArchivedList`, ВРЕМЕННО до 1-5, задача 1-4).
 6. **Бургер-меню — порт tweb 812502980** (задача 2-2 волны 7, `sidebarLeft/toolsMenu.ts`). Состав и
    порядок — по `verify` оригинала: аккаунты (текущий → настройки, другие — переключение) + «Добавить
    аккаунт», «Создать» (только у свёрнутой колонки), «Избранное», «Архив» (при архивных диалогах, с
@@ -863,17 +878,19 @@ DOM-паритет первого таба выдержан сознательн
    `components/dialogsContextMenu.ts` (класс `DialogsContextMenu`, tweb `:64`) на
    `createContextMenu` (`ButtonMenu` + `positionMenu` по фактическому размеру меню +
    `contextMenuController`, запись `'menu'` — Esc/Back). Создаёт его `AppDialogsManager.start`
-   (tweb `:850`), вешает `l(filter)` на `.chatlist-top` каждой папки — ВРЕМЕННО до 1-4, пока `ul`
-   React (расхождение 22 `lib/appDialogsManager.ts`); оверлей архива — свой экземпляр с
-   `useDialogFolder` (ВРЕМЕННО до 1-5, `Sidebar.tsx`). Пункты: «Открыть в новой вкладке» (наш хэш
-   `#<peerId>`, расхождение 23), «Прочитано», закреп, mute (vanilla `PopupMute`, ВРЕМЕННО до 2C-7),
+   (tweb `:850`), вешает `setListClickListener({withContext: true})` на `ul` списка каждой папки из
+   `l(filter)` (`:1478` → `:2337-2339`), в том числе архива (`mountArchivedList` → `l({id:
+   FOLDER_ID_ARCHIVE})`, `filterId` архива) — расхождение 23 `lib/appDialogsManager.ts`; меню
+   строки «Архив» (`withArchiveContext`) — задача 1-5. Пункты: «Открыть в новой вкладке» (наш хэш
+   `#<peerId>`, расхождение 24), «Прочитано», закреп, mute (vanilla `PopupMute`, ВРЕМЕННО до 2C-7),
    архив, «Очистить историю» (`components/clearHistory.ts`), «Удалить/покинуть»
    (`components/popups/deleteDialog.ts`, подпись — `core/peers/dialogType.ts::getDeleteButtonText`;
    оба попапа — vanilla `PopupPeer`, ВРЕМЕННО до 2C-6). Чего нет — шапка файла: превью (О-86),
    «вид темами/сообщениями» (О-88), выделение (О-30), «непрочитанным» (О-72), «в папку» (О-85),
    темы форума (1-6), выдача поиска (2-3), сообщества/монофорум (О-5/О-4), закреп в папке (О-70),
    имя отказа лимита закрепа и `PopupLimit` (О-87), «удалить у обоих»/удаление «Избранного» (О-89).
-   React-меню строки `ChatListItem.tsx` (`MW=220, MH=320`) и хелпер `cornerFrom` удалены.
+   React-меню строки `ChatListItem.tsx` (`MW=220, MH=320`, строка снесена задачей 1-4) и хелпер
+   `cornerFrom` удалены.
    Секция Contacts при <10 чатах — по-прежнему нет.
    (Меню ПАПКИ — не оно: порт `createFolderContextMenu` на оба ряда, задача 7 плана папок.)
 8. **Фолдеры**: контейнеры, ряд вкладок и переключение — у владельца `lib/appDialogsManager.ts`
