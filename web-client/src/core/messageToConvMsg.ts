@@ -1,4 +1,4 @@
-import type { CallLog, ConvMsg } from '../data'
+import type { ConvMsg } from '../data'
 import { getMessageText, isOutMessage, type MyMessage } from './models'
 import { getMediaId, getMessageKind, mediaKind, type MessageKind } from './messages/messageKind'
 import { serviceMsgText } from './serviceMsg'
@@ -130,7 +130,6 @@ export function messageToConvMsg(
             ? 'read'
             : 'sent'
       : undefined,
-    call: action?._ === 'messageActionPhoneCall' ? callLog(action) : undefined,
     // Подарок — САМО действие пилюли, а не его пересборка: вид бабла выбран по
     // конструктору сообщения (`getMessageKind`), рисовать надо ровно то, что в
     // нём лежит.
@@ -212,17 +211,3 @@ function convKind(kind: MessageKind): ConvMsg['type'] {
   }
 }
 
-/** Лог звонка из действия. Прежде это был JSON внутри текста сообщения — та же
- *  подделка дискриминатора, что у служебных действий, но в другом поле.
- *
- *  Наши четыре исхода ложатся на схему так: Missed → `missed`, Busy → `busy`,
- *  Hangup → `ok` либо `cancelled`, и различает их НАЛИЧИЕ длительности (у
- *  соединившегося звонка она есть, у сорвавшегося нет). */
-function callLog(a: Extract<import('./messages/messageAction').MessageAction, { _: 'messageActionPhoneCall' }>): CallLog {
-  const reason: CallLog['reason'] =
-    a.reason?._ === 'phoneCallDiscardReasonMissed' ? 'missed'
-    : a.reason?._ === 'phoneCallDiscardReasonBusy' ? 'busy'
-    : a.duration ? 'ok'
-    : 'cancelled'
-  return { video: !!a.pFlags?.video, reason, duration: a.duration }
-}

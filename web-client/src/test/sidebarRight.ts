@@ -1,7 +1,7 @@
 // Правая колонка для компонентных тестов: статичный `#column-right` (как
 // рисует `App.tsx`), синглтон `AppSidebarRight` и вкладка №0 активного чата.
-// Нужна экранам, которые открывают колонку классом (мост `useRightColumnShown`,
-// будущие вкладки `appSidebarRight.createTab(…).open()`): без синглтона их
+// Нужна экранам, которые открывают колонку классом (вкладки
+// `appSidebarRight.createTab(…).open()`): без синглтона их
 // обработчики обращаются к пустой привязке, как в приложении до монтирования шелла.
 import appNavigationController from '@core/navigation/appNavigationController'
 import { createAppSidebarRight } from '@components/sidebarRight'

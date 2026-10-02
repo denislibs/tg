@@ -210,23 +210,4 @@ describe('messageToConvMsg — actions', () => {
   it('no forwardFrom when not forwarded', () => {
     expect(messageToConvMsg(base, 7).forwardFrom).toBeUndefined()
   })
-
-  // Лог звонка — служебное сообщение с `messageActionPhoneCall`; прежде это был
-  // `type === 'call'` с JSON `{video, reason, duration}` внутри текста.
-  it('лог звонка читается из действия, а не из JSON внутри текста', () => {
-    const c = messageToConvMsg(makeServiceMessage({
-      id: 3, peerId: 9, fromId: 9,
-      action: { _: 'messageActionPhoneCall', pFlags: { video: true }, reason: { _: 'phoneCallDiscardReasonHangup' }, duration: 42 },
-    }), 7)
-    expect(c.type).toBe('call')
-    expect(c.call).toEqual({ video: true, reason: 'ok', duration: 42 })
-  })
-
-  it('«отменён» от «состоялся» отличает НАЛИЧИЕ длительности', () => {
-    const c = messageToConvMsg(makeServiceMessage({
-      id: 3, peerId: 9, fromId: 9,
-      action: { _: 'messageActionPhoneCall', reason: { _: 'phoneCallDiscardReasonHangup' } },
-    }), 7)
-    expect(c.call).toEqual({ video: false, reason: 'cancelled', duration: undefined })
-  })
 })

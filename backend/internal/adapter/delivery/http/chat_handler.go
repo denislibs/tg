@@ -365,29 +365,6 @@ type sendBody struct {
 	MediaSpoiler bool `json:"media_spoiler"`
 	// Отправка от имени канала/группы (Telegram send_as); nil — от себя.
 	SendAsPeerID *domain.PeerID `json:"send_as_peer_id"`
-	// Call — исход звонка: сервер кладёт в чат СЛУЖЕБНОЕ сообщение
-	// messageActionPhoneCall. Прежде клиент присылал type == "call" и JSON
-	// {video, reason, duration} внутри ТЕКСТА — та же подделка дискриминатора,
-	// что у служебных действий, только в другом поле.
-	Call *callBody `json:"call"`
-}
-
-// callBody — исход завершившегося 1:1 звонка глазами клиента, который его вёл.
-type callBody struct {
-	Video    bool   `json:"video"`
-	Reason   string `json:"reason"` // missed|busy|cancelled|ok
-	Duration int    `json:"duration"`
-}
-
-// callAction — конструктор лога звонка из тела запроса (nil — звонка нет).
-// Единственный способ, которым клиент может создать СЛУЖЕБНОЕ сообщение:
-// произвольное действие он назначить не может, поле action на входе не
-// существует вовсе.
-func callAction(b *callBody) domain.MessageAction {
-	if b == nil {
-		return nil
-	}
-	return usecasechat.PhoneCallAction(b.Video, b.Reason, b.Duration)
 }
 
 func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
@@ -400,9 +377,9 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	// «Служебное ли» и «лог звонка ли» — ВЫБОР КОНСТРУКТОРА, а не значение
-	// поля type: клиент называет исход звонка полем call, всё остальное
-	// служебное производит сервер.
+	// Служебных сообщений клиент не создаёт вовсе: «служебное ли» — выбор
+	// конструктора, и все они, включая лог звонка (по концу звонка,
+	// usecase/chat/phonecall.go), рождаются на сервере.
 	if body.Type == "service" || body.Type == "call" {
 		writeError(w, http.StatusBadRequest, "invalid type")
 		return
@@ -437,7 +414,6 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		PaidMediaPrice: body.PaidMediaPrice,
 		MediaSpoiler:   body.MediaSpoiler,
 		SendAsChatID:   sendAsChatID(body.SendAsPeerID),
-		Action:         callAction(body.Call),
 	})
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")

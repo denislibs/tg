@@ -223,10 +223,9 @@ describe('вкладка «Звонки» — действия строки', ()
 
     callButton(videoRow)!.click()
     expect(startOutgoing).toHaveBeenCalledTimes(1)
-    const [peer, video, peerId] = startOutgoing.mock.calls[0]
+    const [peer, video] = startOutgoing.mock.calls[0]
     expect(peer).toMatchObject({ id: 2, name: 'Борис' })
     expect(video).toBe(true)
-    expect(peerId).toBe(2)
     expect(openPeer).not.toHaveBeenCalled()
 
     callButton(voiceRow)!.click()

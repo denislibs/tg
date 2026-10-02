@@ -127,8 +127,8 @@ function eagerGraph(): Set<string> {
  */
 const MUST_STAY_LAZY: Record<string, string> = {
   // Попап набора стикеров (сетка набора). Открывается кликом по
-  // стикеру в ленте (`components/Chat.tsx`) и по строке набора в поиске
-  // стикеров (`rightSidebar/StickersSearchTab.tsx` — сам внутри EmojiDropdown).
+  // стикеру в ленте (`components/Chat.tsx`), по строке набора во вкладке поиска
+  // стикеров (`sidebarRight/tabs/stickers.solid.tsx` — сама ленивый чанк вкладки).
   'components/stickers/StickerSetModal.tsx': 'components/Chat.tsx',
   // Пикер эмодзи/стикеров/гифок — `Composer.tsx:63`.
   'components/emoji/EmojiDropdown.tsx': 'components/Composer.tsx',

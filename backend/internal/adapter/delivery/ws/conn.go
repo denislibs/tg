@@ -346,9 +346,9 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		if json.Unmarshal(f.D, &d) != nil {
 			return
 		}
-		// «Служебное ли» и «лог звонка ли» — ВЫБОР КОНСТРУКТОРА, а не значение
-		// поля type: клиент называет исход звонка полем call, всё остальное
-		// служебное производит сервер.
+		// Служебных сообщений клиент не создаёт вовсе: «служебное ли» — выбор
+		// конструктора, и все они, включая лог звонка (по концу звонка,
+		// usecase/chat/phonecall.go), рождаются на сервере.
 		if d.Type == "service" || d.Type == "call" {
 			return
 		}
@@ -406,7 +406,6 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			PaidMediaPrice: d.PaidMediaPrice,
 			MediaSpoiler:   d.MediaSpoiler,
 			SendAsChatID:   sendAsChatID(d.SendAsPeerID),
-			Action:         callAction(d.Call),
 		})
 		if err != nil {
 			// NACK the sender so the client stops retrying and can clear the bubble.
