@@ -10,6 +10,7 @@ import pause from '@helpers/schedulers/pause'
 import mediaSizes, { ScreenSize } from '@core/dom/mediaSizes'
 import appNavigationController, { type NavigationItem } from '@core/navigation/appNavigationController'
 import { ChatType } from '@components/chat/chatType'
+import { generateMessageId } from '@core/history/messageId'
 import type { Managers } from '@/client/bootstrap'
 import { returnToStaticMarkup } from '@/test/staticMarkup'
 import { APP_TABS, AppImManager, LEFT_COLUMN_ACTIVE_CLASSNAME } from './appImManager'
@@ -239,6 +240,16 @@ describe('хэш (tweb :1912-2031)', () => {
     const openUsername = vi.spyOn(AppImManager.prototype, 'openUsername').mockResolvedValue(undefined)
     construct()
     expect(openUsername).toHaveBeenCalledWith({ userName: '@durov', lastMsgId: 5, threadId: undefined })
+  })
+
+  it('`#@имя?post=N` (кнопка публичной страницы, PR #380): `op` переводит серверный номер в клиентский (tweb :2084-2096)', async() => {
+    withHash('#@lenta_news?post=30')
+    ;(managers.peers as unknown as { resolveUsername: ReturnType<typeof vi.fn> }).resolveUsername
+      .mockResolvedValueOnce({ _: 'channel', id: 1, username: 'lenta_news', pFlags: {} })
+    const setInnerPeer = vi.spyOn(AppImManager.prototype, 'setInnerPeer').mockResolvedValue(undefined)
+    construct()
+    await settle()
+    expect(setInnerPeer).toHaveBeenCalledWith(expect.objectContaining({ peerId: -1, lastMsgId: generateMessageId(30) }))
   })
 
   it('`#column-center` (якорь страницы) ничего не открывает', async() => {

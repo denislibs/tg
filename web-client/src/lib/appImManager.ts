@@ -54,8 +54,7 @@
 //  8. Хэш: `tgaddr` и чужие действия уходят в `openUrl` → `openSearchUrl`
 //     (исполнителя внутренних ссылок нет, Б-8); `story`/`community`/`call` в
 //     `#/im` — нет предметов. `op()` без форума (`toggleForumTabByPeerId`, Б-3),
-//     `migrated_to`, ботфорума, `generateMessageId` (номер сообщения у нас — `seq`
-//     чата, без пересчёта). В канал, где мы не состоим, `op()` ВСТУПАЕТ: наш
+//     `migrated_to`, ботфорума. В канал, где мы не состоим, `op()` ВСТУПАЕТ: наш
 //     `GET /chats/{id}/history` не-участнику отдаёт 403 (перенесено из прежнего
 //     `useUrlSync.applyHash`, долг — `docs/readiness/port-divergences.md`).
 //  9. `setPeer` без `getPeerMigratedTo` и `min`-пиров (`:3293-3317`) — в нашей
@@ -73,6 +72,7 @@
 //     импорте, а `appImManager` импортируют и лёгкие подписчики (`uiNotifications`,
 //     `soundSubscriber`). Узел тот же (`sidebarLeft/index.ts`, `super({sidebarEl})`).
 import PeerTitle, { type PeerTitleManagers } from '@components/chat/peerTitle'
+import { generateMessageId } from '@core/history/messageId'
 import type { Middleware } from '@helpers/middleware'
 import { i18n, type FormatterArguments } from '@lib/langPack'
 import type { LangPackKey } from '@/lang'
@@ -544,6 +544,11 @@ export class AppImManager extends EventListenerBase<{
     }
 
     const peerId = peerKey(peer)
+    // tweb `:2084-2096`: номера из ссылки — серверные, в ленту идут клиентские
+    // (`core/history/messageId.ts`, порт `appMessagesIdsManager.generateMessageId`)
+    for(const key of ['commentId', 'lastMsgId', 'threadId'] as const) {
+      if(rest[key]) rest[key] = generateMessageId(rest[key])
+    }
     const { commentId, threadId, lastMsgId } = rest
 
     // расхождение 8 шапки: вступить в публичный канал, где мы не состоим
