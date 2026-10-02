@@ -24,7 +24,7 @@ vi.mock('@core/hooks/useGroupEdit', async(importOriginal) => ({
   ...(await importOriginal<typeof import('@core/hooks/useGroupEdit')>()),
   useGroupEdit: (): Partial<GroupEdit> => ({
     card: { peerId: -30, chat: GROUP, fullChat: FULL },
-    members: [], admins: [], invites: [], revokedInvites: [], bans: [], restricted: [],
+    members: [], admins: [], invites: [], bans: [], restricted: [],
     canBan: true, canManageAdmins: true, isCreator: true,
     reload,
   }),

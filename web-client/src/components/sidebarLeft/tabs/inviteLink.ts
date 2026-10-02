@@ -1,8 +1,9 @@
 // Порт tweb `src/components/sidebarLeft/tabs/inviteLink.ts:1-132` (812502980) —
 // виджет ссылки-приглашения (класс, не вкладка): плашка с адресом, срезанным
 // посередине, кнопка справа (меню ⋮ или «копировать») и кнопка под плашкой.
-// Потребитель у нас — вкладка ссылки папки (`sharedFolder.solid.tsx`); у
-// оригинала ещё бусты, ссылка-подарок и ссылка звонка — этих экранов у нас нет.
+// Потребители у нас — вкладка ссылки папки (`sharedFolder.solid.tsx`) и ссылки
+// чата правой колонки (`sidebarRight/tabs/chatInviteLinkShared.ts::ChatInviteLink`);
+// у оригинала ещё бусты, ссылка-подарок и ссылка звонка — этих экранов у нас нет.
 //
 //   div.invite-link-container[.{class}]
 //     div.invite-link.rp-overflow (+ ripple) > div.invite-link-text > middle-ellipsis-element
@@ -10,13 +11,9 @@
 //     [button.btn-primary.btn-color-primary.invite-link-button | div.invite-link-buttons > …]
 //
 // Расхождения с оригиналом:
-//  1. Кнопки по умолчанию «Share Link» (`:73-80`) с `onButtonClick`/`buttonText`
-//     и `shareLink` (`:129-131`) нет: `shareUrlToPeers` — попап выбора
-//     получателей над `pickUser`/`forward`, у нас он только React-ом (волна 2C,
-//     задачи 16/24 плана 2C), а Solid-код React не открывает. Без попапа кнопка
-//     ничего бы не делала; своего действия под ссылкой (`onButtonClick`) не
-//     передаёт ни один наш вызывающий. Возвращается вместе с Solid-попапом.
-//     Явные кнопки под ссылкой (`button`) — как у оригинала.
+//  1. `shareLink` (`:129-131`) зовёт мост `popups/shareUrl.bridge.ts` —
+//     React-выбор получателей (ВРЕМЕННО до 2C-24): Solid-попапа
+//     `shareUrlToPeers` над `pickUser` у нас ещё нет.
 //  2. `ariaLabel` кнопок ставится атрибутом `aria-label`: у нашего `ButtonIcon`
 //     такой опции нет (шапка `editFolder.solid.tsx`, расхождение 9).
 //  3. `wrapPlainText(s)` (`:118`) — без сущностей это тождество
@@ -25,22 +22,27 @@ import { copyTextToClipboard } from '@helpers/clipboard'
 import { attachClickEvent } from '@helpers/dom/clickEvent'
 import type ListenerSetter from '@helpers/listenerSetter'
 import I18n from '@lib/langPack'
+import Button from '@components/button'
 import ButtonIcon from '@components/buttonIcon'
 import ButtonMenuToggle from '@components/buttonMenuToggle'
 import { MiddleEllipsisElement } from '@components/middleEllipsis'
 import ripple from '@components/ripple'
 import { toastNew } from '@components/toast'
+import shareUrlToPeers from '@components/popups/shareUrl.bridge' // ВРЕМЕННО до 2C-24
 
 export class InviteLink {
   public container: HTMLDivElement
   public textElement: HTMLDivElement
   public button?: HTMLButtonElement
+  public buttonText?: HTMLSpanElement
+  public onButtonClick?: () => void
 
   public url!: string
 
   constructor({
     buttons,
     button,
+    onButtonClick,
     listenerSetter,
     url,
     noRightButton,
@@ -53,6 +55,7 @@ export class InviteLink {
      * the Call Link box needs Share and Copy together.
      */
     button?: HTMLButtonElement | HTMLButtonElement[] | false,
+    onButtonClick?: () => void,
     listenerSetter: ListenerSetter,
     url?: string,
     noRightButton?: boolean,
@@ -60,6 +63,8 @@ export class InviteLink {
     /** Extra class on the container, for a caller that places it itself. */
     class?: string
   }) {
+    this.onButtonClick = onButtonClick
+
     const linkContainer = this.container = document.createElement('div')
     linkContainer.classList.add('invite-link-container')
     if(className) linkContainer.classList.add(...className.split(' ').filter(Boolean))
@@ -88,7 +93,14 @@ export class InviteLink {
 
     if(rightButton) rightButton.classList.add('invite-link-menu')
 
-    // :73-80 — кнопки по умолчанию нет (расхождение 1)
+    if(!button && button !== false) {
+      button = Button('', { text: 'ShareLink' })
+      this.buttonText = button.lastElementChild as HTMLSpanElement
+      attachClickEvent(button, () => {
+        if(this.onButtonClick) this.onButtonClick()
+        else this.shareLink()
+      }, { listenerSetter })
+    }
 
     const buttonElements = button ? (Array.isArray(button) ? button : [button]) : []
     buttonElements.forEach((element) => {
@@ -135,5 +147,10 @@ export class InviteLink {
   public copyLink = (url: string = this.url) => {
     void copyTextToClipboard(url)
     toastNew({ langPackKey: 'LinkCopied' })
+  }
+
+  // расхождение 1
+  public shareLink = (url: string = this.url) => {
+    shareUrlToPeers({ url, openAfter: true })
   }
 }

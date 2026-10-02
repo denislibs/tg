@@ -695,6 +695,15 @@ tweb. Чего нет у tweb — удалить, и написать об эт�
   `RealMember` — вью-модель React-панели. Права и медленный режим — один вызов
   `groups.editChatDefaultBannedRights` (одна ручка бэкенда); регистрация — eventable
   `// ВРЕМЕННО до 0б-1` (мосту `GroupEditFlow` нужен `close`). Отложено — О-115…О-119.
+- **0б-3:** **итог врезки** — три вкладки `sidebarRight/tabs/chatInviteLink{s,,Shared}` +
+  `editChatInviteLink.solid.tsx`; адрес ссылки — публичный `t.me/+<хеш>` (`core/publicLink.ts`),
+  ручки — порт `appChatInvitesManager` в `groupsManager.ts`; основная ссылка — общий с вкладкой
+  типа `getChatInviteLink` (О-120). Попутно портированы `UsernameRow`,
+  `InputRightNumber` (`popups/payment.ts`), `peerType: 'custom'` у `AppSelectPeers`, кнопка
+  «Share Link» `InviteLink` по умолчанию (мост `popups/shareUrl.bridge.ts` ВРЕМЕННО до 2C-24;
+  кнопка появилась и у «Share Folder»), календарь — `popups/datePicker.bridge.ts` ВРЕМЕННО до
+  2C-23. Бэкенд: карточки создателей и вступивших — в векторе `users` (`ListInvites`,
+  `InviteImporters`). QR из этих вкладок tweb не открывает — моста не нужно.
 - **0б-9:** графики у tweb — `lovely-chart` (`statistics.tsx`). Если его нет в зависимостях, решение
   «взять пакет tweb» выносится в PR. Свою `StatChart` внутрь Solid-вкладки не тащить (React).
 - **Не входит в 0б:** `QrModal.tsx` (**2C-17**), `components/secret/KeyVerificationPopup.tsx`
@@ -1452,6 +1461,11 @@ tweb так и делает (`sharedMediaTabs[]`), снимает их `destroyS
 | О-15 | Секция вступления вкладки типа чата: «вступать, чтобы писать», заявки на вступление, бот-привратник `guard_bot_id` (`chatType.tsx:270-372`) | флагов `join_to_send`/`join_request` у `channel` нет (`domain/mtchat.go`, `ChannelFlags`) | секция 1:1 |
 | О-16 | «Запрет копирования» (`noforwards`, `messages.toggleNoForwards`, `chatType.tsx:374-407`) | флаг не объявлен у `channel`, механики нет | секция 1:1 и гейт копирования/пересылки |
 | О-17 | Коллекция имён `usernames` (несколько имён, порядок, скрытие, покупка на Fragment): `UsernamesSection`, `purchaseUsernameCaption` | у чата одно поле `username` (`core/peers/predicates.ts`, `isPublic`) | `usernamesSection.tsx` 1:1 |
+| О-120 | Постоянная ссылка-приглашение: `channelFull.exported_invite`, `chatInviteExported.pFlags.permanent`, отзыв с заменой (`messages.exportedChatInviteReplaced` с `new_invite`), `legacy_revoke_permanent`. Аналог у клиента — `getChatInviteLink` (`sidebarRight/tabs/chatInviteLinkShared.ts`): самая старая неотозванная ссылка без имени, срока, лимита и одобрения, нет — выпускается; отзыв основной — отзыв + выпуск (0б-3; им же пользуется вкладка типа 0б-2) | признака постоянной ссылки нет ни в `invite_links`, ни в `domain/mtinvite.go`; у канала ссылки при рождении нет вовсе (`usecase/chat/group.go:122-125` — только у группы) | основная ссылка 1:1 (и строка `Link` профиля) |
+| О-121 | Ссылки других админов: `messages.getAdminsWithInvites`, фильтр `admin_id` у `getExportedChatInvites`/`deleteRevokedExportedChatInvites`, режим вкладки `adminId` (секция `LinksCreatedByOtherAdmins`, подписи `ManageLinks.Admin.Permanent.Desc`, `LinksCreatedByThisAdmin`, `InviteLinkCount`; `chatInviteLinks.tsx:170-290`) (0б-3) | ручек нет (`router.go:345-350`) | секция и вкладка админа 1:1 |
+| О-122 | Заявки по ссылке: `chatInviteExported.requested`, `getChatInviteImporters({link, requested: true})`, секция «JoinRequests» вкладки ссылки с меню «Добавить/Отклонить» (`hideChatJoinRequest`, `chatInviteLink.tsx:120-201`), подпись `JoinRequests` строк списка (0б-3) | токен заявки хранится (`joinReqs.Create(…, token)`), но ни счётчика у ссылки, ни выборки заявок по ссылке на проводе нет (`group_handler.go::JoinRequests` — все заявки чата) | заявки по ссылке 1:1 |
+| О-123 | Платные ссылки-подписки за звёзды: `subscription_pricing`, `exportChatInvite({stars})`, `InputStarsField`, `appConfig.stars_subscription_amount_max`/`stars_usd_sell_rate_x1000`, секция «InviteLink.Observe.Fee», иконка `link_paid`, `StarsAmount` в строке (`editChatInviteLink.tsx:113-150`, `chatInviteLink.tsx:91-107`, `chatInviteLinks.tsx:409-414`) (0б-3) | подписок на бэкенде нет | платные ссылки 1:1 |
+| О-124 | Страницы и поиск вступивших по ссылке: `offset_date`/`offset_user`/`limit`/`q` у `getChatInviteImporters` (`chatInviteLinkShared.ts:87-130`); клиент берёт одну страницу (`isEnd: true`) (0б-3) | `usecase InviteImporters` отдаёт первые 50 без смещения (`group.go:415-420`) | полный список вступивших |
 | О-20 | ~~Заметка контакта во вкладке «Изменить контакт» (`editContact.tsx:178-192`, `:356-358`)~~ — **закрыто** PR #345: `userFull.note`, `contacts.addContact.note` без затирания, `PUT /contacts/{id}/note`; вкладка читает `fullUser.note` и пишет `profile.updateUserNote` только изменённой | — | — |
 | О-21 | ~~Личное фото и флаг контакта в профиле `/users/{id}`~~ — **закрыто** PR #345: `userFull.personal_photo`, `user.photo.pFlags.personal`, `pFlags.contact`/`mutual_contact`; секция фото вкладки читает профиль | — | — |
 | О-22 | ~~«Предложить дату рождения» (`editContact.tsx:254-266`)~~ — **закрыто** PR #345: `POST /users/{id}/suggest_birthday` → служебка `messageActionSuggestBirthday` (пилюля ключами tweb); строка вкладки открывает React `BirthdayModal` мостом `popups/birthday.bridge.tsx` (ВРЕМЕННО до 2C-14) | — | — |

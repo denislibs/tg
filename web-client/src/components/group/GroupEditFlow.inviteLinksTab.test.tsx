@@ -1,11 +1,11 @@
-// Мост React-редактора чата на Solid-вкладку «Тип» (задача 0б-2 волны 7,
-// ВРЕМЕННО до 0б-1). Строка «Тип канала» открывает `AppChatTypeTab` настоящим
-// `appSidebarRight.createTab(…).open(…)` (как tweb `editChat.tsx`), а не React-экран.
+// Мост React-редактора чата на Solid-вкладку «Пригласительные ссылки» (задача
+// 0б-3 волны 7, ВРЕМЕННО до 0б-1). Строка «Invite Links» открывает
+// `AppChatInviteLinksTab` настоящим `appSidebarRight.createTab(…).open(…)` с
+// предзагрузкой `getInitArgs` (как tweb `editChat.tsx:689-692`), а не React-экран.
 //
-// Шов, который здесь закреплён: React-оверлей `GroupEditFlow` лежит СОСЕДОМ вкладок
-// в `.sidebar-slider` со своим `z-index: 60`, поэтому открытая из него вкладка
-// слайдера оказалась бы ПОД ним. Пока вкладка открыта — оверлей спрятан (`hide`);
-// Esc/Back закрывают только вкладку, оверлей возвращается и перечитывает карточку.
+// Шов тот же, что у вкладки типа (0б-2): оверлей `GroupEditFlow` — сосед вкладок
+// в `.sidebar-slider` со своим `z-index: 60`; пока вкладка открыта, он спрятан,
+// Esc закрывает только вкладку, оверлей возвращается и перечитывает карточку.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, render } from '@testing-library/react'
 import { createPortal } from 'react-dom'
@@ -31,7 +31,8 @@ vi.mock('@core/hooks/useGroupEdit', async(importOriginal) => ({
     reload,
   }),
 }))
-vi.mock('@core/hooks/useManagers', () => ({ useManagers: () => ({}) }))
+const managers = vi.hoisted(() => ({ value: {} as unknown }))
+vi.mock('@core/hooks/useManagers', () => ({ useManagers: () => managers.value }))
 vi.mock('@core/hooks/useMediaUrl', () => ({ useMediaUrl: () => '' }))
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -39,27 +40,20 @@ const settle = async() => {
   for(let i = 0; i < 12; ++i) await act(() => pause(0))
 }
 const click = (el: Element) => el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
-/** Клик по строке и ожидание открытой вкладки: модуль вкладки грузится `import()`. */
-const openTypeTab = async(overlay: HTMLElement) => {
-  await act(async() => { click(typeRow(overlay)) })
-  await vi.waitFor(() => {
-    if(!column.slider.querySelector(':scope > .group-type-container.active')) throw new Error('вкладка ещё не открыта')
-  }, { timeout: 5000 })
-  await settle()
-}
 
 let column: ReturnType<typeof installSidebarRight>
+let getExportedChatInvites: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   resetPeerMirror()
   applyPeerOps([{ op: 'upsert', peers: [CHANNEL] }])
   reload.mockReset()
-  column = installSidebarRight({
-    groups: {
-      getExportedChatInvites: vi.fn(async() => ({ _: 'messages.exportedChatInvites', count: 1, invites: [{ _: 'chatInviteExported', link: 'https://t.me.local/+primary', admin_id: 1, date: 0 }] })),
-      setType: vi.fn(async() => {}),
-    },
-  } as unknown as Managers)
+  getExportedChatInvites = vi.fn(async() => ({
+    _: 'messages.exportedChatInvites', count: 1,
+    invites: [{ _: 'chatInviteExported', link: 'https://t.me.local/+primary', admin_id: 1, date: 0 }],
+  }))
+  managers.value = { groups: { getExportedChatInvites, exportChatInvite: vi.fn() } }
+  column = installSidebarRight(managers.value as Managers)
 })
 
 afterEach(async() => {
@@ -76,34 +70,45 @@ const renderFlow = () => {
   return column.slider.querySelector<HTMLElement>(':scope > .tabs-container')!
 }
 
-const typeRow = (overlay: HTMLElement) =>
-  [...overlay.querySelectorAll<HTMLElement>('.row')].find((row) => row.textContent?.includes(lang.ChannelType))!
+const linksRow = (overlay: HTMLElement) =>
+  [...overlay.querySelectorAll<HTMLElement>('.row')].find((row) => row.textContent?.includes(lang.InviteLinks))!
 
-describe('GroupEditFlow → AppChatTypeTab (мост 0б-2)', () => {
-  it('строка «Тип канала» открывает Solid-вкладку в слайдере колонки и прячет оверлей', async() => {
+const openLinksTab = async(overlay: HTMLElement) => {
+  await act(async() => { click(linksRow(overlay)) })
+  await vi.waitFor(() => {
+    if(!column.slider.querySelector(':scope > .chat-folders-container.active')) throw new Error('вкладка ещё не открыта')
+  }, { timeout: 5000 })
+  await settle()
+}
+
+describe('GroupEditFlow → AppChatInviteLinksTab (мост 0б-3)', () => {
+  it('строка «Invite Links» открывает Solid-вкладку с предзагрузкой и прячет оверлей', async() => {
     const overlay = renderFlow()
     expect(overlay.classList.contains('hide')).toBe(false)
 
-    await openTypeTab(overlay)
+    await openLinksTab(overlay)
 
-    const tab = column.slider.querySelector<HTMLElement>(':scope > .group-type-container')
-    expect(tab).not.toBeNull()
+    const tab = column.slider.querySelector<HTMLElement>(':scope > .chat-folders-container.chat-discussion-container')
     expect(tab!.classList.contains('active')).toBe(true)
     expect(overlay.classList.contains('hide')).toBe(true)
-    // React-экрана типа больше нет — внутри оверлея второй вкладки не появилось
+    // `getInitArgs` — активные и отозванные (tweb `chatInviteLinkShared.ts:148-149`)
+    // и «постоянная» (порт `getChatInviteLink`, О-120)
+    expect(getExportedChatInvites).toHaveBeenCalledWith({ chatId: 20 })
+    expect(getExportedChatInvites).toHaveBeenCalledWith({ chatId: 20, revoked: true })
+    // React-экрана ссылок больше нет — внутри оверлея второй вкладки не появилось
     expect(overlay.querySelectorAll('.sidebar-slider-item')).toHaveLength(1)
   })
 
   it('Esc закрывает только вкладку: оверлей снова виден и перечитывает карточку', async() => {
     const overlay = renderFlow()
-    await openTypeTab(overlay)
+    await openLinksTab(overlay)
 
     await act(async() => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
       await pause(400)
     })
 
-    expect(column.slider.querySelector('.group-type-container')).toBeNull()
+    expect(column.slider.querySelector('.chat-folders-container')).toBeNull()
     expect(overlay.isConnected).toBe(true)
     expect(overlay.classList.contains('hide')).toBe(false)
     expect(reload).toHaveBeenCalledTimes(1)

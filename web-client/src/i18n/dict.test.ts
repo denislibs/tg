@@ -526,7 +526,7 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Задача 2-4 волны 7 (кнопка `#new-menu`, tweb `sidebarLeft/index.ts:1113-1129`): у ru
 // +1 ключ tweb lang.ts:66 `ChatAutomation.NewChats` — `aria-label` кнопки. Итог: ru 1519.
 const COMPOSITION = {
-  ru: { keys: 1519, plural: 47 },
+  ru: { keys: 1530, plural: 48 },
   uk: { keys: 827, plural: 35 },
   es: { keys: 798, plural: 34 },
   de: { keys: 799, plural: 35 },
@@ -535,6 +535,10 @@ const COMPOSITION = {
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
 // снимок считается по ключам, а не по текстам.
+// Сдвиг задачей 0б-3 волны 7 у русского: −10 наших ключей снесённого React-экрана
+// ссылок (`InviteLinks.{Caption,Description.*,Expires,Limit*,NameLabel,*Help,View}`),
+// +21 ключ tweb вкладок ссылок (`chatInviteLink*.solid.tsx`), из них одна форма
+// числа — `InviteLink.JoinedNew`.
 // Снимок обновлён задачей 6: ключ 'Login.Passkey.Error' переименован в
 // 'Error.SomethingWentWrong' — его звали пять мест, и ни одно из них не про вход
 // (папки, истории, близкие друзья). Состав словарей не изменился: те же строки под
@@ -698,7 +702,7 @@ const COMPOSITION = {
 // Задачей 2-1 волны 7 — у ru +1 ключ tweb `StarsRating.Back` (разбор — там же).
 // Задачей 2-4 волны 7 — у ru +1 ключ tweb `ChatAutomation.NewChats` (разбор — там же).
 const FINGERPRINT = {
-  ru: '1f9be3cb',
+  ru: '9a90c28d',
   uk: 'ffe46f66',
   es: '1c8d911a',
   de: 'dcd1c9f9',

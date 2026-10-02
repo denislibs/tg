@@ -13,14 +13,17 @@
  *  1. Ссылка-приглашение (`:101`) читается не из `chatFull.exported_invite` —
  *     такого поля в нашем `ChannelFull` нет (докблок `Link` в
  *     `peerProfile.solid.tsx`), — а портом `appProfileManager.getChatInviteLink`
- *     (`:561-582`) ниже: основная ссылка — первая активная из `groups.listInvites`,
- *     нет её — создаётся. Первый `await` вкладки стоит там, где у оригинала
- *     `await isBroadcast` (`:40`), поэтому узлы секций ложатся после корня острова.
+ *     (`chatInviteLinkShared.ts`, общий со вкладкой ссылок 0б-3, О-120 волны 7):
+ *     основная — самая старая неотозванная ссылка без имени, срока, лимита и
+ *     одобрения, нет её — выпускается. Первый `await` вкладки стоит там, где у
+ *     оригинала `await isBroadcast` (`:40`), поэтому узлы секций ложатся после
+ *     корня острова.
  *  2. Отзыв ссылки (`getChatInviteLink(chatId, true)`, `:112`) — отзыв текущей
- *     основной ссылки и выпуск новой (`editInvite(revoked)` + `createInvite`):
- *     `messages.exportChatInvite` у нас нет, а видимый исход тот же — прежняя
- *     ссылка перестаёт работать, в строке новая. Адрес — `origin + /join/<токен>`,
- *     как у строки `Link` профиля (у tweb `t.me/+…`).
+ *     основной ссылки и выпуск новой (`editExportedChatInvite({revoked})` +
+ *     `exportChatInvite`): `legacy_revoke_permanent` у нас нет, а видимый исход
+ *     тот же — прежняя ссылка перестаёт работать, в строке новая. Адрес —
+ *     публичный `t.me/+<хеш>` нашего хоста ссылок (`core/publicLink.ts`), как у
+ *     оригинала.
  *  3. `isBroadcast` (`:40`) — синхронно из зеркала пиров (`isBroadcastPeer`),
  *     `chat` (`:87`, `:217`) — `cachedChat`: вкладку открывают из загруженного чата.
  *  4. `migrateChat` (`:206`) не зовётся: базовых групп сервер не производит
@@ -69,21 +72,7 @@ import type { AppChatTypeTab } from '@components/solidJsTabs/tabs'
 import { cachedChat, isBroadcastPeer } from '@core/peerCache'
 import { toPeerId } from '@core/peers/peerId'
 import type { Channel } from '@core/peers/peer'
-import type { Managers } from '@/client/bootstrap'
-
-/** Порт tweb `appProfileManager.getChatInviteLink` (`:561-582`) — расхождения 1, 2 шапки. */
-async function getChatInviteLink(managers: Managers, peerId: PeerId, force?: boolean) {
-  const [primary] = await managers.groups.listInvites(peerId)
-  if(!force && primary) {
-    return location.origin + primary.url
-  }
-
-  if(primary) {
-    await managers.groups.editInvite(peerId, primary.token, { revoked: true })
-  }
-
-  return location.origin + (await managers.groups.createInvite(peerId)).url
-}
+import { getChatInviteLink } from './chatInviteLinkShared'
 
 const ChatType: Component = () => {
   const [tab] = useSuperTab<typeof AppChatTypeTab>()
@@ -97,7 +86,7 @@ const ChatType: Component = () => {
 
     const isBroadcast = isBroadcastPeer(peerId)
     // :101 — первый `await` вкладки, на месте `await isBroadcast` (:40), расхождение 1
-    const inviteLinkSignal = createSignal(await getChatInviteLink(managers, peerId))
+    const inviteLinkSignal = createSignal((await getChatInviteLink(managers, chatId)).link)
     const privacySignal = createSignal<'private' | 'public'>()
     const privacyValues: RadioFormTsxValue<'private' | 'public'>[] = [{
       langPackKey: isBroadcast ? 'ChannelPrivate' : 'MegaPrivate',
@@ -145,9 +134,9 @@ const ChatType: Component = () => {
           callback: () => {
             const toggle = toggleDisability([btnRevoke], true)
 
-            void getChatInviteLink(managers, peerId, true).then((link) => {
+            void getChatInviteLink(managers, chatId, true).then((invite) => {
               toggle()
-              inviteLinkSignal[1](link)
+              inviteLinkSignal[1](invite.link)
             })
           },
         }],

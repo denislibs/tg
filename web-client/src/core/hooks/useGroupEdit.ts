@@ -52,18 +52,6 @@ export interface RestrictedRow {
   untilDate?: string
 }
 
-// Строка вступившего по инвайт-ссылке (Telegram chatInviteImporter): имя резолвится.
-export interface ImporterRow {
-  userId: number
-  name: string
-  photoId?: number
-  joinedAt: string
-}
-
-// Аргументы создания ссылки (tweb editChatInviteLink «Save»).
-export interface CreateInviteOpts { title?: string; usageLimit?: number; requiresApproval?: boolean; expireSeconds?: number }
-// Частичный патч ссылки (Telegram editExportedChatInvite).
-export interface InvitePatch { title?: string; usageLimit?: number | null; requiresApproval?: boolean; expireSeconds?: number; revoked?: boolean }
 // Инфо о связанной группе-обсуждении (для экрана Discussion).
 export interface DiscussionGroup { peerId: PeerId; title: string; username: string; memberCount: number }
 
@@ -75,11 +63,6 @@ interface Managers {
     setReactions(chatId: number, mode: 'all' | 'some' | 'none', emojis: string[]): Promise<void>
     setHistory(chatId: number, visible: boolean): Promise<void>
     listInvites(chatId: number, revoked?: boolean): Promise<InviteLink[]>
-    createInvite(chatId: number, opts?: CreateInviteOpts): Promise<InviteLink>
-    editInvite(chatId: number, token: string, patch: InvitePatch): Promise<InviteLink>
-    inviteImporters(chatId: number, token: string): Promise<{ importers: { userId: number; joinedAt: string }[]; count: number }>
-    deleteInvite(chatId: number, token: string): Promise<void>
-    deleteAllRevoked(chatId: number): Promise<void>
     listBans(chatId: number): Promise<{ userId: number; bannedBy: number }[]>
     ban(chatId: number, userId: number): Promise<void>
     unban(chatId: number, userId: number): Promise<void>
@@ -118,7 +101,6 @@ export interface GroupEdit {
   members: EditMember[]
   admins: EditMember[]
   invites: InviteLink[]
-  revokedInvites: InviteLink[]
   bans: BannedRow[]
   restricted: RestrictedRow[]
   canBan: boolean
@@ -130,11 +112,6 @@ export interface GroupEdit {
   saveReactions: (mode: 'all' | 'some' | 'none', emojis: string[]) => Promise<void>
   saveHistory: (visible: boolean) => Promise<void>
   saveSignatures: (signatures: boolean, profiles: boolean) => Promise<void>
-  createInvite: (opts?: CreateInviteOpts) => Promise<void>
-  editInvite: (token: string, patch: InvitePatch) => Promise<void>
-  loadImporters: (token: string) => Promise<ImporterRow[]>
-  deleteInvite: (token: string) => Promise<void>
-  deleteAllRevoked: () => Promise<void>
   enableDiscussion: () => Promise<void>
   linkDiscussion: (groupId: number) => Promise<void>
   unlinkDiscussion: () => Promise<void>
@@ -156,7 +133,6 @@ export function useGroupEdit(chatId: number): GroupEdit {
   const [card, setCard] = useState<ChatCard | null>(null)
   const [members, setMembers] = useState<EditMember[]>([])
   const [invites, setInvites] = useState<InviteLink[]>([])
-  const [revokedInvites, setRevokedInvites] = useState<InviteLink[]>([])
   const [bans, setBans] = useState<BannedRow[]>([])
   const [restricted, setRestricted] = useState<RestrictedRow[]>([])
   const [tick, setTick] = useState(0)
@@ -192,8 +168,6 @@ export function useGroupEdit(chatId: number): GroupEdit {
         if (canInvite) {
           const inv = await managers.groups.listInvites(chatId)
           if (alive) setInvites(inv)
-          const revoked = await managers.groups.listInvites(chatId, true).catch(() => [])
-          if (alive) setRevokedInvites(revoked)
           const bs = await managers.groups.listBans(chatId).catch(() => [])
           const banUsers = await managers.peers.getUsers(bs.map((b) => b.userId))
           const banById = new Map(banUsers.map((u) => [u.id, u]))
@@ -231,7 +205,7 @@ export function useGroupEdit(chatId: number): GroupEdit {
   const refreshDialogs = () => managers.dialogs.refresh()
 
   return {
-    card, members, admins, invites, revokedInvites, bans, restricted, canBan, canManageAdmins, isCreator, reload,
+    card, members, admins, invites, bans, restricted, canBan, canManageAdmins, isCreator, reload,
     saveInfo: async (title, about) => {
       await managers.groups.editInfo(chatId, { title, about, username: card?.chat.username ?? '' })
       reload()
@@ -254,33 +228,6 @@ export function useGroupEdit(chatId: number): GroupEdit {
     },
     saveSignatures: async (signatures, profiles) => {
       await managers.channels.setSignatures(chatId, signatures, profiles)
-      reload()
-    },
-    createInvite: async (opts?: CreateInviteOpts) => {
-      await managers.groups.createInvite(chatId, opts)
-      reload()
-    },
-    editInvite: async (token, patch) => {
-      await managers.groups.editInvite(chatId, token, patch)
-      reload()
-    },
-    loadImporters: async (token) => {
-      const { importers } = await managers.groups.inviteImporters(chatId, token)
-      const users = await managers.peers.getUsers(importers.map((i) => i.userId))
-      const byId = new Map(users.map((u) => [u.id, u]))
-      return importers.map((i) => ({
-        userId: i.userId,
-        name: getUserTitle(byId.get(i.userId)),
-        photoId: getPeerPhotoId(byId.get(i.userId)?.photo) || undefined,
-        joinedAt: i.joinedAt,
-      }))
-    },
-    deleteInvite: async (token) => {
-      await managers.groups.deleteInvite(chatId, token)
-      reload()
-    },
-    deleteAllRevoked: async () => {
-      await managers.groups.deleteAllRevoked(chatId)
       reload()
     },
     enableDiscussion: async () => {

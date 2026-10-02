@@ -178,6 +178,29 @@ tweb: `sharedMediaTab` + `peerProfile`. Табы (`sharedMedia.tsx:449-462, 604-
 (ВРЕМЕННО до 0б-1: пока вкладка открыта, React-оверлей спрятан — он лежит соседом
 вкладок в `.sidebar-slider` с `z-index: 60`); React-экран `ChatTypeScreen.tsx` снесён.
 
+`Invite Links` (`chatInviteLinks.tsx` + `chatInviteLink.tsx` + `editChatInviteLink.tsx`,
+общее — `chatInviteLinkShared.ts`, 812502980): заставка `UtyanLinks`, основная ссылка
+виджетом `ChatInviteLink` (⋮ «Копировать / Поделиться / Изменить / Отозвать / Удалить»,
+кнопка «Поделиться» — или «Удалить» у отозванной, «Возобновить» у неактивной),
+дополнительные строками `UsernameRow` с кольцом остатка срока/лимита (тик раз в секунду),
+ссылки других админов (`getAdminsWithInvites`), отозванные с «Удалить все»; одна ссылка —
+кто создал, «сможет вступить N», заявки по ссылке, вступившие селектором; редактор — имя,
+подписка за звёзды и одобрение (только канал), срок и лимит ступенями; сеть — по угловой галке.
+У нас — порт тремя вкладками `AppChatInviteLinksTab`/`AppChatInviteLinkTab`/
+`AppEditChatInviteLinkTab` (`web-client/src/components/sidebarRight/tabs/chatInviteLink*.solid.tsx`,
+задача 0б-3 волны 7): разметка, меню, кольцо, сеть по галке — 1:1; адрес ссылки — публичный
+`t.me/+<хеш>` нашего хоста (`core/publicLink.ts`, ручки `appChatInvitesManager` в
+`groupsManager.ts` переводят серверный путь `/join/<хеш>`); «Поделиться» — React-мост
+`popups/shareUrl.bridge.ts` (ВРЕМЕННО до 2C-24), календарь срока —
+`popups/datePicker.bridge.ts` (ВРЕМЕННО до 2C-23). Нет на бэкенде (шапки вкладок):
+постоянная ссылка `exported_invite`/`permanent`/`…Replaced` (О-120, аналог — самая старая
+ссылка без параметров, общий с вкладкой типа `getChatInviteLink`), ссылки других админов
+(О-121), заявки по ссылке (О-122), подписки за звёзды (О-123), страницы и поиск вступивших
+(О-124). Карточки создателей и вступивших сервер теперь кладёт в вектор `users` ответов
+(`group_handler.go::ListInvites`/`InviteImporters`). Открывает список React-редактор мостом
+(ВРЕМЕННО до 0б-1, тот же шов с оверлеем); React-экран `InviteLinkScreens.tsx` снесён.
+QR из этих вкладок tweb не открывает.
+
 ## 7. Права админа
 
 tweb различает набор прав broadcast vs megagroup и умеет кастомный «титул» админа.
