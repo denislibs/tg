@@ -35,6 +35,7 @@ import useCollapsable from '../core/hooks/useCollapsable'
 import { fastRaf } from '@helpers/schedulers'
 import PeerProfileAvatars from './peerProfileAvatars'
 import { useManagers } from '../core/hooks/useManagers'
+import { useIsContact } from '../core/hooks/useIsContact'
 // Каркас карточки (Task 2, план `docs/superpowers/plans/
 // 2026-09-05-profile-card-solid.md`): `.profile-content` теперь рисует Solid,
 // смонтированный мостом `mountSolid` — см. докблок у `profileContentHostRef`.
@@ -588,6 +589,11 @@ export default function UserInfoPanel({ profileTab, chat, onOpenPeer, canAddMemb
   // «Это человек» — вопрос к ЗНАКУ ключа, а не связка трёх отрицаний по виду
   // диалога (`peerId != null` там же было мёртвым: ключ есть у любого пира).
   const isUser = !isSaved && isUserPeer(peerId)
+  // Карандаш «Изменить контакт» — tweb `sharedMedia.tsx::toggleEditBtn`:
+  // `peerId !== myId && canEdit(userId)` (себя || isContact || bot_can_edit),
+  // перечитывается на `contacts_update`. Ветки `bot_can_edit` (вкладка
+  // AppEditBotTab) у нас нет — карандаш остаётся только у контакта.
+  const isContact = useIsContact(peerId)
 
   const [keyPopupOpen, setKeyPopupOpen] = useState<boolean | null>(null)
 
@@ -654,9 +660,9 @@ export default function UserInfoPanel({ profileTab, chat, onOpenPeer, canAddMemb
                 <TgIcon name="edit" />
               </IconButton>
             )}
-            {/* Приватный чат: карандаш открывает экран «Изменить контакт»
+            {/* Контакт: карандаш открывает экран «Изменить контакт»
                 (редактируемые поля живут там, инфо-панель — только просмотр). */}
-            {isUser && peerId !== meId && onEditContact && (
+            {isUser && peerId !== meId && isContact === true && onEditContact && (
               <IconButton onClick={onEditContact}>
                 <TgIcon name="edit" />
               </IconButton>

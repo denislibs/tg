@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('../core/hooks/useHeaderMenuActions', () => ({
   useHeaderMenuActions: () => ({ blocked: false, toggleBlock: () => {}, setChatTtl: () => {} }),
 }))
+vi.mock('../core/hooks/useIsContact', () => ({ useIsContact: () => false }))
 
 import { applyPeerOps, resetPeerMirror } from '../core/peerCache'
 import { applyLang } from '../test/lang'

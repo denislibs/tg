@@ -8,11 +8,13 @@ import { startCallForChat } from './call/CallProvider'
 import { SERVICE_USER_ID } from '../core/dialogToChat'
 import { cachedUser } from '../core/peerCache'
 import canReportBot from '../core/peers/canReportBot'
+import { isBot } from '../core/peers/predicates'
 import { useSearchStore } from '../stores/searchStore'
 import useMediaQuery from '../shared/lib/useMediaQuery'
 import type { Chat } from '../data'
 import { useT, useTArgs } from '../i18n'
 import { useHeaderMenuActions } from '../core/hooks/useHeaderMenuActions'
+import { useIsContact } from '../core/hooks/useIsContact'
 import { useReportStore } from '../stores/reportStore'
 import { chatPeerId, isDialogChat } from '../core/chatEntity'
 
@@ -79,6 +81,12 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
   const peerId = numericChatId
   const canBlock = chat.type === 'private' && peerId !== SERVICE_USER_ID
   const { blocked, toggleBlock, setChatTtl } = useHeaderMenuActions({ peerId, canBlock, close })
+  // «Добавить в контакты» — tweb `topbar.ts:605-610`, verify
+  // `!isBot && isUser && !appPeersManager.isContact(peerId)`: тому, кто уже в
+  // книге (или пришёл с сервера с `pFlags.contact`), пункта нет. Пока ответ
+  // не пришёл — тоже нет.
+  const isContact = useIsContact(peerId)
+  const canAddContact = chat.type === 'private' && !isBot(cachedUser(peerId)) && isContact === false
 
   // «Очистить историю» у себя (tweb PeerInfo.Action.ClearHistory): приватные чаты
   // и группы, где ты участник. Глиф broom в наш tgico-набор не портирован — берём
@@ -127,7 +135,9 @@ export default function HeaderMenu({ chat, anchor, onClose, onToggleMute, onAddM
       { icon: <TgIcon name="checkround" size={20} />, label: 'Chat.Menu.SelectMessages', onClick: onSelectMessages ? () => { onSelectMessages(); close() } : undefined },
       ...(!isService
         ? ([
-            { icon: <TgIcon name="adduser" size={20} />, label: 'AddContact', onClick: onAddContact ? () => { onAddContact(); close() } : undefined },
+            ...(canAddContact
+              ? ([{ icon: <TgIcon name="adduser" size={20} />, label: 'AddContact', onClick: onAddContact ? () => { onAddContact(); close() } : undefined }] satisfies Item[])
+              : []),
             { icon: <TgIcon name="gift" size={20} />, label: 'Chat.Menu.SendGift', onClick: onSendGift ? () => { onSendGift(); close() } : undefined },
             blocked
               ? { icon: <TgIcon name="lockoff" size={20} />, label: 'UnblockUser', onClick: toggleBlock }
