@@ -809,6 +809,15 @@ time|code-header-button|reaction|bubble-beside-button|poll-message-content`; ц�
 7. **Реакции**: у нас нет оптимистики уровня менеджера с локальным
    `updateMessageReactions` + откатом по `REACTION_INVALID`, нет тегов Saved Messages и
    paid-реакций (последние нам и не нужны).
+8. **Закреп (§5)** — порт П-5 волны 7: плашка `chat/pinnedMessage.solid.tsx` (1:1, примитив
+   `chat/topbarPlate.solid.tsx`, полоса `pinnedMessageBorder.ts`, `animatedSuper.ts`/
+   `animatedCounter.ts`), попап `popups/unpinMessage.ts` целиком, экран закрепов —
+   `ChatType.Pinned` в `chat/bubbles.ts` (страница — список закрепов, «перейти к оригиналу»,
+   удаление на откреплении). Источник — `core/pinnedMessages.ts` над `GET /chats/{id}/pins`
+   (весь список; страница вокруг номера режется из него), кадр `rt:pin_message` →
+   `peer_pinned_messages`. Не портировано: кнопка действия плашки (инлайн-кнопка бота,
+   «Присоединиться к звонку»), закрепы темы форума, кнопка «Открепить все» вместо композера
+   на экране закрепов — Б-89, Б-90 плана каркаса.
 
 ---
 

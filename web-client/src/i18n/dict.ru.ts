@@ -2056,6 +2056,9 @@ const ru = {
     other_value: '%1$d закреплённого сообщения',
   },
   AudioUnknownArtist: 'Неизвестный исполнитель',
+  'AccDescr.PlaybackSpeed': 'Скорость воспроизведения',
+  Play: 'Воспроизвести',
+  Pause: 'Пауза',
   'Schedule.Repeat': 'Повторять',
 } satisfies LangPackDict
 

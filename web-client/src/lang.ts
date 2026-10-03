@@ -11,6 +11,7 @@
 const lang = {
   'ALongTimeAgo': 'last seen a long time ago',
   'AccDescr.MicrophoneLevel': 'Microphone level',
+  'AccDescr.PlaybackSpeed': 'Playback speed',
   'AccountSettings.Filters': 'Chat Folders',
   'AccountSettings.Language': 'Language',
   'AccountSettings.Notifications': 'Notifications and Sounds',
@@ -1029,6 +1030,7 @@ const lang = {
     other_value: '%d passkeys',
   },
   PasswordAsHintError: 'Hint must be different from your password',
+  Pause: 'Pause',
   'Payment.DemoNotice': 'This is a demo checkout. No real payment is processed.',
   'Payment.Expiry': 'Expiry',
   'Payment.Failed': 'Payment failed. Please try again.',
@@ -1113,6 +1115,7 @@ const lang = {
   'Pip.ActiveHint': 'To return to the tab, click the button here or the icon in the floating window.',
   'Pip.ActiveTitle': 'Telegram is open in Picture-in-Picture mode',
   'Pip.BackToTab': 'Back to Tab',
+  Play: 'Play',
   PlaybackRateNormal: 'Normal',
   PleaseEnterCurrentPassword: 'Enter your password',
   PleaseEnterFirstPassword: 'Enter a password',

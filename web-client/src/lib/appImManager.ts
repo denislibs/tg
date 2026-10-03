@@ -32,7 +32,7 @@
 //     `appMediaPlaybackController.construct` (у нас модуль без конструктора),
 //     `idleController` → `updateStatus`/`goOffline` (Б-14), предкэш обоев
 //     `SETTINGS_INIT.themes` (наш фон резолвит обои сам), `chatTips` (Б-13),
-//     `join_chat_webview_decision`/звонки/`topbarCall`/`chatAudio` (П-4, П-5),
+//     `join_chat_webview_decision`/звонки/`topbarCall` (П-4); `chatAudio` — портирован (П-5),
 //     `peer_typings` (эмодзи-интеракций нет), `peer_title_edit` (события нет),
 //     `message_error` слоумода (П-6), `ephemeral_*`/`service_notification`/…
 //     (Б-16), `singleInstance`/t.me (Б-17), хоткеи/копирование/autologin/цвета
@@ -102,6 +102,7 @@ import animationIntersector from '@components/animationIntersector'
 import appChatBackground, { type AppChatBackground } from '@components/chat/bubbles/chatBackground.solid'
 import { ChatType } from '@components/chat/chatType'
 import Chat from '@components/chat/chat'
+import createChatAudio, { type ChatAudioController } from '@components/chat/audio.solid'
 import { splitFullMid } from '@components/chat/bubbles'
 import { startOutgoing } from '@core/calls/callEngine'
 import { getUserTitle } from '@core/peers/getPeerTitle'
@@ -358,6 +359,8 @@ export class AppImManager extends EventListenerBase<{
   private tabId: APP_TABS | undefined
 
   public chats: Chat[] = []
+  /** tweb `:290` */
+  public chatAudio?: ChatAudioController
   /** tweb `:292`, `:846` */
   private chatPositions: { [key: string]: ChatSavedPosition } = {}
   private prevTab: HTMLElement | undefined
@@ -446,6 +449,10 @@ export class AppImManager extends EventListenerBase<{
 
       this.overrideHash(peerId)
     })
+
+    // `:854-855` — плашка аудиоплеера над колонкой (П-5, Б-22)
+    this.chatAudio = createChatAudio(this, managers)
+    this.columnEl.append(this.chatAudio.container)
 
     // `:630` и автоблокировка (`lib/mainWorker/useAutoLock.ts` у tweb — в воркере)
     useLockScreenShortcut()

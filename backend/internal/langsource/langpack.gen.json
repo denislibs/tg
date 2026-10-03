@@ -17,6 +17,10 @@
           "value": "Microphone level"
         },
         {
+          "key": "AccDescr.PlaybackSpeed",
+          "value": "Playback speed"
+        },
+        {
           "key": "AccountSettings.Filters",
           "value": "Chat Folders"
         },
@@ -3884,6 +3888,10 @@
           "value": "Hint must be different from your password"
         },
         {
+          "key": "Pause",
+          "value": "Pause"
+        },
+        {
           "key": "Payment.DemoNotice",
           "value": "This is a demo checkout. No real payment is processed."
         },
@@ -4191,6 +4199,10 @@
         {
           "key": "Pip.BackToTab",
           "value": "Back to Tab"
+        },
+        {
+          "key": "Play",
+          "value": "Play"
         },
         {
           "key": "PlaybackRateNormal",
@@ -13010,6 +13022,18 @@
         {
           "key": "AudioUnknownArtist",
           "value": "Неизвестный исполнитель"
+        },
+        {
+          "key": "AccDescr.PlaybackSpeed",
+          "value": "Скорость воспроизведения"
+        },
+        {
+          "key": "Play",
+          "value": "Воспроизвести"
+        },
+        {
+          "key": "Pause",
+          "value": "Пауза"
         },
         {
           "key": "Schedule.Repeat",

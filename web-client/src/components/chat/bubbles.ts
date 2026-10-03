@@ -1222,6 +1222,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
           mid: message.id,
           peerId: this.peerId,
           date: message.date,
+          fromId: message.fromId,
           mediaUnread: !!message.pFlags?.media_unread,
           // Свой кружок «просмотренным» не отмечается — гейт оригинала
           // (`message.fromId !== rootScope.myId`, appMediaPlaybackController.ts:452).
@@ -1453,6 +1454,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
         mid: message.id,
         peerId: this.peerId,
         date: message.date,
+        fromId: message.fromId,
         mediaUnread: !!message.pFlags?.media_unread,
         out: !!message.pFlags?.out,
       },
