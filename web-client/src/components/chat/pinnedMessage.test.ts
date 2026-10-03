@@ -197,12 +197,11 @@ describe('плашка треда комментариев (setStaticMessage, р
     const { putMirrorPage, resetMessagesMirror } = await import('@core/history/messagesMirror')
     resetMessagesMirror()
     const THREAD = 45
-    const threadChat = {
-      ...makeChat(),
+    const threadChat = Object.assign(makeChat(), {
       threadId: THREAD,
       messagesStorageKey: 'thread-key',
       isPinnedMessagesNeeded: () => false,
-    } as unknown as Chat & { setMessageId: ReturnType<typeof vi.fn> }
+    })
     const managers = {
       messages: { listPins, pin: vi.fn(), unpin: vi.fn() },
       media: { meta: vi.fn(async() => ({ hasThumb: false })), downloadMediaURL: vi.fn() },
