@@ -111,6 +111,8 @@ import cancelSelection from '@helpers/dom/cancelSelection'
 import findUpClassName from '@helpers/dom/findUpClassName'
 import isInputEmpty from '@helpers/dom/isInputEmpty'
 import isSendShortcutPressed from '@helpers/dom/isSendShortcutPressed'
+import focusInput from '@helpers/dom/focusInput'
+import { getAppWindow } from '@helpers/appWindow'
 import placeCaretAtEnd from '@helpers/dom/placeCaretAtEnd'
 import getRichValueWithCaret from '@helpers/dom/getRichValueWithCaret'
 import { handleMarkdownShortcut, processCurrentFormatting } from '@helpers/dom/markdown'
@@ -1360,6 +1362,19 @@ export default class ChatInput {
     } else {
       this.inputMessageContainer.append(this.messageInputField.input, this.messageInputField.placeholder!, this.messageInputField.inputFake)
     }
+  }
+
+  /** tweb `:3169-3175` — «печать в любом месте» блока F `appImManager` (П-4). */
+  public passEventToInput(e: KeyboardEvent): void {
+    if(!isSendShortcutPressed(e)) {
+      focusInput(this.messageInput, e)
+      return
+    }
+
+    void this.sendMessage()
+    getAppWindow().document.addEventListener('keyup', () => {
+      focusInput(this.messageInput)
+    }, { once: true })
   }
 
   /** tweb `:3177-3328` — без эмодзи-дропдауна, автокомплита и цитат (нет предмета). */

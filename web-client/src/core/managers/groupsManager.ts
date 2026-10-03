@@ -681,13 +681,16 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
       return r
     },
     /**
-     * Войти по ссылке. Ответ — конструктор `chatInviteImporter`: «вошёл» и
-     * «заявка отправлена» это ОДИН предмет с флагом `requested`, а не строка
-     * состояния. Тот же конструктор приезжает и в списке заявок.
+     * Порт `appChatInvitesManager.importChatInvite` (tweb 812502980
+     * `appChatInvitesManager.ts:92-104`): ответ — `Updates` с чатом ссылки в
+     * `chats[0]`, пиры пачки — в зеркало (`processUpdateMessage` оригинала),
+     * наружу — ключ чата. Заявка на вступление — отказ `INVITE_REQUEST_SENT`
+     * (имя отказа доезжает до вызывающего, `HttpError.type`).
      */
-    async joinByToken(token: string): Promise<{ status: 'requested' | 'joined' }> {
-      const r = await rest.post<ChatInviteImporter>(`/join/${token}`, {})
-      return { status: r.pFlags?.requested ? 'requested' : 'joined' }
+    async importChatInvite(hash: string): Promise<PeerId> {
+      const r = await rest.post<MessagesInvitedUsers['updates']>(`/join/${hash}`, {})
+      peers.saveApiPeers(r)
+      return toPeerId(r.chats[0].id, true)
     },
     async listJoinRequests(peerId: number): Promise<number[]> {
       const r = await rest.get<MessagesChatInviteImporters>(`/chats/${peerId}/join_requests`)

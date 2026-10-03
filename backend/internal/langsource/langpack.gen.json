@@ -13,12 +13,24 @@
           "value": "last seen a long time ago"
         },
         {
+          "key": "AccDescr.ChatInfo",
+          "value": "Chat info"
+        },
+        {
+          "key": "AccDescr.ChatList",
+          "value": "Chat list"
+        },
+        {
           "key": "AccDescr.MicrophoneLevel",
           "value": "Microphone level"
         },
         {
           "key": "AccDescr.PlaybackSpeed",
           "value": "Playback speed"
+        },
+        {
+          "key": "AccDescr.SkipToConversation",
+          "value": "Skip to conversation"
         },
         {
           "key": "AccDescrEditing",
@@ -95,6 +107,10 @@
         {
           "key": "Administrators",
           "value": "Administrators"
+        },
+        {
+          "key": "Alert.BotAppDoesntExist",
+          "value": "Sorry, this application doesn't exist."
         },
         {
           "key": "Alert.Confirm.Discard",
@@ -646,6 +662,54 @@
         {
           "key": "Call.CameraOn",
           "value": "Turn on camera"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.Header",
+          "value": "Call in Progress"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToCall.Text",
+          "value": "End call with \"%1$@\" and start a video chat in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToLive.Text",
+          "value": "End call with \"%1$@\" and start a live stream in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToVoice.Text",
+          "value": "End call with \"%1$@\" and start a video chat in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.Header",
+          "value": "Live Stream in Progress"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToCall.Text",
+          "value": "Leave live stream in \"%1$@\" and start a call with \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToLive.Text",
+          "value": "Leave live stream in \"%1$@\" and start a new one in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToVoice.Text",
+          "value": "Leave live stream in \"%1$@\" and start a video chat in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.Header",
+          "value": "Video Chat in Progress"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToCall.Text",
+          "value": "Leave video chat in \"%1$@\" and start a call with \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToLive.Text",
+          "value": "Leave video chat in \"%1$@\" and start a live stream in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToVoice.Text",
+          "value": "Leave video chat in \"%1$@\" and start a new one in \"%2$@\"?"
         },
         {
           "key": "Call.Decline",
@@ -1784,6 +1848,18 @@
           "value": "Copy Link"
         },
         {
+          "key": "CopyRestricted.Channel",
+          "value": "Sorry, copying from this channel is disabled by its admins."
+        },
+        {
+          "key": "CopyRestricted.Group",
+          "value": "Sorry, copying from this group is disabled by its admins."
+        },
+        {
+          "key": "CopyRestricted.User",
+          "value": "Copying is restricted in this chat."
+        },
+        {
           "key": "Country",
           "value": "Country"
         },
@@ -1923,6 +1999,10 @@
         {
           "key": "DescriptionPlaceholder",
           "value": "Description"
+        },
+        {
+          "key": "DeselectAll",
+          "value": "deselect all"
         },
         {
           "key": "Devices",
@@ -2373,6 +2453,10 @@
           "value": "No chats currently belong to this folder."
         },
         {
+          "key": "FilterPersonal",
+          "value": "Personal"
+        },
+        {
           "key": "FilterRemoveChats",
           "value": "Remove Chats"
         },
@@ -2406,22 +2490,6 @@
         {
           "key": "Folder.Added",
           "value": "Folder added"
-        },
-        {
-          "key": "Folder.Invite.Adding",
-          "value": "Adding…"
-        },
-        {
-          "key": "Folder.Invite.Invalid",
-          "value": "This link is invalid or has expired."
-        },
-        {
-          "key": "Folder.Invite.Question",
-          "value": "Do you want to add «%1$s» and join its chats?"
-        },
-        {
-          "key": "Folder.Invite.Question.Folder",
-          "value": "Do you want to add the folder «%1$s»?"
         },
         {
           "key": "ForumTopic.Closed",
@@ -2662,6 +2730,10 @@
         {
           "key": "InstantView.OpenInBrowser",
           "value": "Open in browser"
+        },
+        {
+          "key": "InviteExpired",
+          "value": "This invite link has expired."
         },
         {
           "key": "InviteLink",
@@ -2933,6 +3005,10 @@
           "value": "Link is invalid"
         },
         {
+          "key": "Link.NotSupported",
+          "value": "This link is not supported on Telegram Web."
+        },
+        {
           "key": "Link.Taken",
           "value": "Link is already taken"
         },
@@ -2959,6 +3035,10 @@
         {
           "key": "LinkNameHint",
           "value": "Link Name (Optional)"
+        },
+        {
+          "key": "LinkNotFound",
+          "value": "Unfortunately, you can't access this message. You are not a member of the chat where it was posted."
         },
         {
           "key": "LiteMode.DisableAlert",
@@ -5028,6 +5108,10 @@
           "value": "There were no results for \"%@\".\nTry a new search."
         },
         {
+          "key": "RequestToJoinSent",
+          "value": "Join request sent"
+        },
+        {
           "key": "Resend",
           "value": "Resend"
         },
@@ -5138,6 +5222,10 @@
         {
           "key": "Rtmp.Topbar.NoViewers",
           "value": "No viewers"
+        },
+        {
+          "key": "Rtmp.Topbar.StartVideoChat",
+          "value": "Start Video Chat"
         },
         {
           "key": "Rtmp.Topbar.Title",
@@ -5333,6 +5421,10 @@
           "value": "Secret chat rejected"
         },
         {
+          "key": "SelectAll",
+          "value": "select all"
+        },
+        {
           "key": "Send",
           "value": "Send"
         },
@@ -5451,6 +5543,18 @@
         {
           "key": "SharedFolder.Includes",
           "value": "Includes %s"
+        },
+        {
+          "key": "SharedFolder.Link.Chats",
+          "value": "%s in folder to join"
+        },
+        {
+          "key": "SharedFolder.Link.Description",
+          "value": "Do you want to add a new chat folder and join its groups and channels?"
+        },
+        {
+          "key": "SharedFolder.Link.Expired",
+          "value": "The folder link has expired."
         },
         {
           "key": "SharedFolder.Link.Title",
@@ -8294,6 +8398,54 @@
           "value": "Ввод"
         },
         {
+          "key": "Call.Confirm.Discard.Call.Header",
+          "value": "Звонок уже идёт"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToCall.Text",
+          "value": "Завершить звонок с «%1$@» и начать видеочат в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToLive.Text",
+          "value": "Завершить звонок с «%1$@» и начать трансляцию в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToVoice.Text",
+          "value": "Завершить звонок с «%1$@» и начать видеочат в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.Header",
+          "value": "Трансляция уже идёт"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToCall.Text",
+          "value": "Покинуть трансляцию в «%1$@» и позвонить «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToLive.Text",
+          "value": "Покинуть трансляцию в «%1$@» и начать новую в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToVoice.Text",
+          "value": "Покинуть трансляцию в «%1$@» и начать видеочат в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.Header",
+          "value": "Видеочат уже идёт"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToCall.Text",
+          "value": "Покинуть видеочат в «%1$@» и позвонить «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToLive.Text",
+          "value": "Покинуть видеочат в «%1$@» и начать трансляцию в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToVoice.Text",
+          "value": "Покинуть видеочат в «%1$@» и начать новый в «%2$@»?"
+        },
+        {
           "key": "CallSettings.InputDevice",
           "value": "Устройство ввода"
         },
@@ -8316,6 +8468,18 @@
         {
           "key": "AccDescr.MicrophoneLevel",
           "value": "Уровень микрофона"
+        },
+        {
+          "key": "AccDescr.SkipToConversation",
+          "value": "Перейти к переписке"
+        },
+        {
+          "key": "AccDescr.ChatList",
+          "value": "Список чатов"
+        },
+        {
+          "key": "AccDescr.ChatInfo",
+          "value": "Информация о чате"
         },
         {
           "key": "ConferenceCall.Media.MicrophoneError",
@@ -8489,6 +8653,18 @@
         {
           "key": "Copy",
           "value": "Копировать"
+        },
+        {
+          "key": "CopyRestricted.Channel",
+          "value": "Копирование из этого канала запрещено администраторами."
+        },
+        {
+          "key": "CopyRestricted.Group",
+          "value": "Копирование из этой группы запрещено администраторами."
+        },
+        {
+          "key": "CopyRestricted.User",
+          "value": "В этом чате запрещено копирование."
         },
         {
           "key": "Resend",
@@ -8853,6 +9029,10 @@
         {
           "key": "Rtmp.Topbar.Title",
           "value": "Прямой эфир"
+        },
+        {
+          "key": "Rtmp.Topbar.StartVideoChat",
+          "value": "Начать видеочат"
         },
         {
           "key": "BoostChannel",
@@ -12145,22 +12325,6 @@
           "value": "отозвана"
         },
         {
-          "key": "Folder.Invite.Adding",
-          "value": "Добавляем…"
-        },
-        {
-          "key": "Folder.Invite.Invalid",
-          "value": "Ссылка недействительна или устарела."
-        },
-        {
-          "key": "Folder.Invite.Question",
-          "value": "Добавить «%1$s» и вступить в её чаты?"
-        },
-        {
-          "key": "Folder.Invite.Question.Folder",
-          "value": "Добавить папку «%1$s»?"
-        },
-        {
           "key": "Group.RestrictedBadge",
           "value": "ограничен"
         },
@@ -13408,6 +13572,50 @@
             "many_value": "Отправить %d сообщений сейчас?",
             "other_value": "Отправить %d сообщения сейчас?"
           }
+        },
+        {
+          "key": "Alert.BotAppDoesntExist",
+          "value": "К сожалению, такого приложения не существует."
+        },
+        {
+          "key": "DeselectAll",
+          "value": "снять выбор"
+        },
+        {
+          "key": "FilterPersonal",
+          "value": "Личные"
+        },
+        {
+          "key": "InviteExpired",
+          "value": "Срок действия ссылки-приглашения истёк."
+        },
+        {
+          "key": "Link.NotSupported",
+          "value": "Эта ссылка не поддерживается в веб-версии."
+        },
+        {
+          "key": "LinkNotFound",
+          "value": "К сожалению, у вас нет доступа к этому сообщению: вы не состоите в чате, где оно опубликовано."
+        },
+        {
+          "key": "RequestToJoinSent",
+          "value": "Заявка на вступление отправлена"
+        },
+        {
+          "key": "SelectAll",
+          "value": "выбрать все"
+        },
+        {
+          "key": "SharedFolder.Link.Chats",
+          "value": "%s в папке для вступления"
+        },
+        {
+          "key": "SharedFolder.Link.Description",
+          "value": "Добавить новую папку и вступить в её группы и каналы?"
+        },
+        {
+          "key": "SharedFolder.Link.Expired",
+          "value": "Срок действия ссылки на папку истёк."
         },
         {
           "key": "AccDescrEditing",

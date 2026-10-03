@@ -37,8 +37,8 @@
 //     `attachPinnedReorder` (`:395-418`, перестановка закрепов перетаскиванием) —
 //     выделения чатов (`DialogsSelection`) нет (О-30); `getDialogFromElement` —
 //     его потребитель контекст-меню (задача 1-2).
-//  6. `setDialogTyping` получает зону и менеджеры узлов имени: `getPeerTyping` у нас
-//     функция модуля `lib/appImManager.ts` (до задачи 5-3), а не метод синглтона.
+//  6. `setDialogTyping` получает зону и менеджеры узлов имени и отдаёт их
+//     `appImManager.getPeerTyping` (расхождение Н3 блока L `lib/appImManager.ts`).
 //  7. Индекс диалога — метод списка `getDialogIndex(dialog)` (у оригинала функция
 //     `getDialogIndex(dialog, this.indexKey)`, `:172`, `:276`): у диалога папки он
 //     в зеркале (расхождение 1), у сохранённого и темы — в их странице
@@ -50,7 +50,7 @@ import { getMiddleware, type Middleware, type MiddlewareHelper } from '@helpers/
 import throttle from '@helpers/schedulers/throttle'
 import { SequentialCursorFetcher, type SequentialCursorFetcherResult } from '@helpers/sequentialCursorFetcher'
 import { logger } from '@lib/logger'
-import { getPeerTyping } from '@lib/appImManager'
+import appImManager from '@lib/appImManager'
 import type { AppDialogsManager, DialogDom } from '@lib/appDialogsManager'
 import type { PeerTitleManagers } from '@components/chat/peerTitle'
 import type Scrollable from '@components/scrollable'
@@ -81,7 +81,7 @@ export function setDialogTyping({ dom, peerId, middleware, managers }: {
   managers: PeerTitleManagers,
 }) {
   const oldTypingElement = dom.lastMessageSpan.querySelector<HTMLElement>('.peer-typing-container') ?? undefined
-  const newTypingElement = getPeerTyping(peerId, { container: oldTypingElement, middleware, managers })
+  const newTypingElement = appImManager.getPeerTyping(peerId, { container: oldTypingElement, middleware, managers })
   if(newTypingElement) {
     if(!oldTypingElement) {
       replaceContent(dom.lastMessageSpan, newTypingElement)

@@ -218,9 +218,13 @@ function WebAppInner() {
           if (typeof d.url === 'string') safeOpen(d.url)
           break
         case 'web_app_open_tg_link':
+          // tweb `webApp.tsx:1101-1104`: `appImManager.openUrl(getWebViewTgLink(path_full))` —
+          // ссылку исполняет `internalLinkProcessor` в самом клиенте, не новая вкладка.
+          // Импорт ленивый: остров оверлеев не тянет класс в свой чанк (он уже поднят
+          // `bootstrapIm` к моменту, когда открыт мини-апп).
           if (typeof d.path_full === 'string') {
             const href = tgLinkUrl(d.path_full)
-            if (href) safeOpen(href)
+            if (href) void import('@lib/appImManager').then(({ default: appImManager }) => appImManager.openUrl(href))
           }
           break
         case 'web_app_data_send':

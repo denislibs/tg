@@ -46,8 +46,8 @@
  *     (`components/avatar.ts`) и `PeerTitle` (`components/chat/peerTitle.ts`)
  *     узлом в `Row.Media`/`Row.Title`, как у строки `DialogElement`.
  *     `withIcons` (значки верификации/премиума) у нашего `PeerTitle` нет.
- *  8. Вызовы `appImManager` — до его порта (этап 4/5 волны 7): перезвон —
- *     наш движок звонков (ВРЕМЕННО до 5-5), «Показать в чате» —
+ *  8. Перезвон — `appImManager.callUser` (:108), без ветки конференции
+ *     (`joinConference`, :96-105 — конференций нет, Б-46); «Показать в чате» —
  *     `appImManager.setInnerPeer({peerId, lastMsgId})`, удаление — vanilla-попап
  *     `openDeleteMessageDialog` (ВРЕМЕННО до 2C-8).
  *  9. Отступление В7-6: кнопка перезвона есть и в Firefox — `IS_CALL_SUPPORTED`
@@ -73,12 +73,9 @@ import { formatFullSentTime, formatTime } from '@helpers/date'
 import { i18n } from '@lib/langPack'
 import { logger } from '@lib/logger'
 import rootScope from '@lib/rootScope'
-import { startOutgoing } from '@core/calls/callEngine'
-import { gradientFor } from '@core/dialogToChat'
+import noop from '@helpers/noop'
 import appImManager from '@lib/appImManager'
-import { cachedUser, peerTitle } from '@core/peerCache'
-import { getUserTitle } from '@core/peers/getPeerTitle'
-import { getPeerPhotoId } from '@core/peers/peer'
+import { peerTitle } from '@core/peerCache'
 import { isUser } from '@core/peers/peerId'
 import type { Managers } from '@/client/bootstrap'
 import type SidebarSlider from '@components/slider'
@@ -109,26 +106,6 @@ function isToday(dateSec: number) {
 
 /** Ключ сообщения журнала: номер живёт внутри чата (расхождение 5 в шапке). */
 const messageKey = (message: CallLogMessage) => `${message.peerId}_${message.id}`
-
-/**
- * ВРЕМЕННО до 5-5: роль `appImManager.callUser(peerId.toUserId(), type)`
- * (tweb :108). Движок звонков берёт КАРТОЧКУ собеседника, а не ключ, — собирается
- * она так же, как у перезвона по баблу (`AppImManager.callUser`, `lib/appImManager.ts`).
- */
-function callUser(peerId: PeerId, video: boolean) {
-  const user = cachedUser(peerId)
-  const name = getUserTitle(user)
-  startOutgoing(
-    {
-      id: peerId,
-      name,
-      avatar: gradientFor(peerId),
-      avatarText: name.charAt(0).toUpperCase(),
-      photoId: user?._ === 'user' ? getPeerPhotoId(user.photo) : 0,
-    },
-    video,
-  )
-}
 
 /**
  * «12:30» сегодня, «вчера в 12:30» накануне, «3 февр. в 12:30» раньше —
@@ -171,7 +148,7 @@ function CallRow(props: {
   const title = new PeerTitle({ peerId: props.group.peerId, middleware: middlewareHelper.get(), managers }).element
 
   const callBack = () => {
-    callUser(props.group.peerId, props.group.video)
+    appImManager.callUser(props.group.peerId, props.group.video ? 'video' : 'voice').catch(noop)
   }
 
   const showInChat = () => {

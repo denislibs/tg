@@ -570,12 +570,28 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Баг-фиксы после П-5: +8 ключей tweb превью лога звонка (`ChatList.Service.{Call,VideoCall}.*`,
 // tweb lib/langPack.ts:51-58) и `ForwardedFrom` шапки пересылки вместо нашего мёртвого
 // `Chat.ForwardedFrom` (был только у ru) — ru +8, у остальных +9.
+// Пачка П-4 волны 7 (хоткеи, ориентиры экранного доступа): у ru +6 ключей tweb lang.ts —
+// `AccDescr.SkipToConversation`/`ChatList`/`ChatInfo` (:4612, :4615, :4617; ссылка
+// «пропустить к чату» и имена колонок, `helpers/dom/appLandmarks.ts`) и
+// `CopyRestricted.Channel`/`Group`/`User` (:4768-4770; защита копирования,
+// `appImManager.attachCopyListener`). Итог: ru 1546.
+// Пачка П-4 волны 7 («звонки», блок H `appImManager`): у ru +13 ключей tweb —
+// подтверждение «покинуть текущий звонок» `Call.Confirm.Discard.{Call,Live,Voice}.*`
+// (12: заголовок и три перехода на каждый вид звонка, `discardAnyCallConfirmation`
+// `:2276-2299`) и пункт меню эфира в шапке `Rtmp.Topbar.StartVideoChat` (`topbar.ts`
+// `btnGroupCallMenu`, :1041-1057). Итог (с хоткеями): ru 1559.
+// Пачка П-4 волны 7, агент «ссылки» (`lib/internalLinkProcessor.ts`, попап папки
+// `popups/sharedFolderInvite.solid.tsx`): у ru +11 ключей tweb lang.ts (тосты ссылок
+// `Link.NotSupported`, `LinkNotFound`, `InviteExpired`, `RequestToJoinSent`,
+// `Alert.BotAppDoesntExist`, `SharedFolder.Link.Expired`; попап
+// `SharedFolder.Link.{Description,Chats}`, `SelectAll`, `DeselectAll`, `FilterPersonal`) и −4
+// своих ключа снесённого React-попапа папки `Folder.Invite.*`. Итог пачки П-4 поверх К-4 и П-5: ru 1638, `plural` 55.
 // Б-12 пачки П-6 волны 7 (вынос клиента в Document PiP, порт tweb `clientPip.tsx`):
 // у ru +4 ключа tweb lang.ts:205-208 — заглушка вкладки `ClientPip.Placeholder{Title,
 // Description}`, `ClientPip.ReturnToTab`, тост плеера `ClientPip.FullscreenHint`; минус
-// наши `Pip.{ActiveTitle,ActiveHint,BackToTab}` снесённой заглушки `core/pip.ts`. Итог: ru 1621.
+// наши `Pip.{ActiveTitle,ActiveHint,BackToTab}` снесённой заглушки `core/pip.ts`.
 const COMPOSITION = {
-  ru: { keys: 1621, plural: 55 },
+  ru: { keys: 1650, plural: 55 },
   uk: { keys: 838, plural: 35 },
   es: { keys: 809, plural: 34 },
   de: { keys: 810, plural: 35 },
@@ -762,9 +778,11 @@ const COMPOSITION = {
 // Шагом К-4 волны 7 — у ru +1 ключ tweb `Chat.Input.Attach` (разбор — там же).
 // Шагом К-4 волны 7 (строка ввода) — у ru +14 ключей `chat/input.ts` (разбор — там же).
 // Баг-фиксами после П-5 — превью звонка и `ForwardedFrom` (разбор — там же).
-// Б-12 пачки П-6 волны 7 — у ru +4 ключа `ClientPip.*`, −3 `Pip.*` (разбор — там же).
+// Пачкой П-4 волны 7 — у ru +6 ключей tweb `AccDescr.*` и `CopyRestricted.*` (разбор — там же).
+// Пачкой П-4 волны 7 — у ru +13 ключей tweb звонков (разбор — у `COMPOSITION` выше).
+// Пачкой П-4 волны 7 (агент «ссылки») — у ru +11 ключей tweb и −4 `Folder.Invite.*` (разбор — там же).
 const FINGERPRINT = {
-  ru: 'e162ced6',
+  ru: 'a27812f1',
   uk: 'af81524a',
   es: '57ce09fe',
   de: '3224cfc5',

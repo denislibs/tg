@@ -1,6 +1,6 @@
-// Порт tweb `src/lib/richTextProcessor/validators.ts:1-29` (812502980) — дословно.
-// `isWebAppNameValid` (:31-33) не перенесён: его зовут только мини-приложения
-// ботов, которых у нас нет. Первый потребитель — `components/usernameInputField.ts`.
+// Порт tweb `src/lib/richTextProcessor/validators.ts` (812502980) — дословно.
+// Потребители — `components/usernameInputField.ts` и разбор ссылок t.me
+// (`lib/internalLinkProcessor.ts`, `isWebAppNameValid`).
 
 // https://github.com/tdlib/td/blob/c95598e5e1493881d31211c1329bdbe4630f6136/td/telegram/misc.cpp#L246
 export function isUsernameValid(username: string) {
@@ -30,4 +30,8 @@ export function isUsernameValid(username: string) {
   }
 
   return true
+}
+
+export function isWebAppNameValid(name: string) {
+  return name.length >= 3 && isUsernameValid(name)
 }

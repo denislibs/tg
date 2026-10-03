@@ -60,6 +60,7 @@ import { replaceButtonIcon } from '@components/mediaViewer/base'
 import { formatVideoTime, rateToString, VIDEO_RATES } from '@components/messages/videoPlayback'
 import { useSettingsStore } from '../../settings'
 import { _i18n } from '@lib/langPack'
+import { toggleUninteruptableActivity } from '@/client/tabState'
 
 // tweb playbackRateButton geometricFontMap: подпись скорости — по глифу на
 // символ моноширинной «геометрической» гарнитуры (как в React-плеере).
@@ -229,7 +230,7 @@ export default class VideoPlayer extends ControlsHover {
 
     this.isPlaying = isPlaying
 
-    // toggleActivity tweb :286 — не портирован (см. шапку)
+    this.toggleActivity(isPlaying)
 
     this.wrapper.classList.toggle('is-playing', isPlaying)
     this.toggles.forEach((toggle) => {
@@ -650,6 +651,13 @@ export default class VideoPlayer extends ControlsHover {
       this.onPip =
       this.onPipClose =
       undefined
+
+    this.toggleActivity(false)
+  }
+
+  /** tweb `:687-692` — видео держит приложение от автоблокировки (`lib/mainWorker/useAutoLock.ts`) */
+  private toggleActivity(active: boolean) {
+    toggleUninteruptableActivity('UsingVideoPlayer', active)
   }
 
   get inPip() {

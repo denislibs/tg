@@ -30,6 +30,10 @@ import contextMenuController from '@helpers/contextMenuController'
 import type SliderSuperTab from '@components/sliderTab'
 import { AppChatFoldersTab, AppEditFolderTab } from '@components/solidJsTabs/tabs'
 import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
+import { publicLinkFromTelegramPath } from '@core/publicLink'
+
+/** Хост ссылок-приглашений (`core/publicLink`): адрес папки живёт на нём, как `t.me/addlist/…` у tweb. */
+const TME_HOST = new URL(publicLinkFromTelegramPath('')).host
 
 const confirmationPopup = vi.hoisted(() => vi.fn(async(_options: unknown) => {}))
 vi.mock('@components/popups/popupPeer', async(importOriginal) => ({
@@ -413,7 +417,7 @@ describe('редактор папки — ссылки-приглашения', 
     await settle()
     const row = tab.scrollable.container.querySelector<HTMLElement>('.folder-list-links .usernames-username')!
     expect(row.classList.contains('active')).toBe(true)
-    expect(row.querySelector('.row-title')!.textContent).toBe(location.host + '/addlist/abc')
+    expect(row.querySelector('.row-title')!.textContent).toBe(TME_HOST + '/addlist/abc')
     expect(row.querySelector('.row-subtitle')!.textContent).toBe('Includes 2 chats')
     expect(row.querySelector('.usernames-username-icon .tgico')).not.toBeNull()
   })
@@ -433,7 +437,7 @@ describe('редактор папки — ссылки-приглашения', 
     let items = await openMenu()
     expect(items.map(text)).toEqual(['Copy Link', 'Delete'])
     click(items[0])
-    expect(copyTextToClipboard).toHaveBeenCalledWith(location.origin + '/addlist/abc')
+    expect(copyTextToClipboard).toHaveBeenCalledWith(publicLinkFromTelegramPath('addlist/abc'))
     contextMenuController.close()
     await pause(350)
 
@@ -462,7 +466,7 @@ describe('редактор папки — ссылки-приглашения', 
     expect(folders.createInvite).toHaveBeenCalledWith(3)
     // tweb `openChatlistInvite(invite).finally(() => wrapLink(invite))` (:672-674)
     const shared = await waitTab('shared-folder-container')
-    expect(shared.querySelector('.invite-link-text')!.textContent).toBe(location.host + '/addlist/new')
+    expect(shared.querySelector('.invite-link-text')!.textContent).toBe(TME_HOST + '/addlist/new')
     await vi.waitFor(() => {
       expect(tab.scrollable.container.querySelectorAll('.folder-list-links .usernames-username')).toHaveLength(1)
     })
@@ -480,7 +484,7 @@ describe('редактор папки → вкладка ссылки «Share Fo
 
     const shared = await waitTab('shared-folder-container')
     expect(shared.querySelector('.sidebar-header__title')!.textContent).toBe('Share Folder')
-    expect(shared.querySelector('.invite-link-text')!.textContent).toBe(location.host + '/addlist/abc')
+    expect(shared.querySelector('.invite-link-text')!.textContent).toBe(TME_HOST + '/addlist/abc')
   })
 
   it('удаление ссылки во вкладке снимает её строку в редакторе', async() => {
