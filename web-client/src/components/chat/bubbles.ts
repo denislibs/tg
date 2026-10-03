@@ -108,7 +108,7 @@ import { messageToConvMsg } from '@core/messageToConvMsg'
 import { dayLabel, SEND_WHEN_ONLINE_TIMESTAMP } from '@core/format/dayLabel'
 import { fmtViews } from '@core/format/fmtViews'
 import { getMessageText, isOurMessage, isOutMessage, type MessageReal, type MessageReplies, type MessageService, type MyMessage, type OurMessageChat, type Reaction } from '@core/models'
-import { getOutputPeer, getPeerId, isAnyChat, toPeerId } from '@core/peers/peerId'
+import { getOutputPeer, getPeerId, isAnyChat, NULL_PEER_ID, toPeerId } from '@core/peers/peerId'
 import { hasReactionEmoticon } from '@core/reactions/messageReactions'
 import type { HistoryArgs, HistoryResult } from '@core/managers/messagesManager'
 import { bubbleClasses, type BubbleCtx } from '../messages/bubbleClasses'
@@ -165,7 +165,7 @@ import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePr
 import { animateLadderLists, type LadderStep } from '@core/dom/ladder'
 import appChatBackground from '@components/chat/bubbles/chatBackground.solid'
 import type { ChatAutoDownload } from '@core/chat/autoDownloadSettings'
-import I18n, { i18n } from '@lib/langPack'
+import I18n, { i18n, type FormatterArgument } from '@lib/langPack'
 import { useI18nStore } from '../../i18n'
 
 /** Адрес бабла — порт tweb `FullMid` (`${peerId}_${mid}`, bubbles.ts:440-449).
@@ -986,9 +986,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *
    * `iPostedAsSomeoneElse` (tweb :9325 — `message.fromId !== rootScope.myId`)
    * держит send-as: пост от имени канала/группы подписывается именем ДАЖЕ у
-   * своего сообщения. Наш `fromId` считает `bubbleGroups.getMessageFromId` —
-   * тот же ключ автора, по которому бьются серии (у send-as это знаковый ключ
-   * личности прямо с провода, как `fromId` в самом tweb).
+   * своего сообщения. `fromId` — сам `message.fromId` с фолбэком на пир (у
+   * send-as это знаковый ключ личности прямо с провода, как в самом tweb), а
+   * не ключ серии `getMessageFromId`: тот у своей пересылки в «Избранное» уже
+   * не мой id (bubbleGroups.ts:709-712 оригинала).
    *
    * ПЕРВОЕ СООБЩЕНИЕ СЕРИИ здесь НЕ проверяется — и это тоже 1:1 с tweb: узел
    * имени рисуется у КАЖДОГО бабла серии, а прячет его у всех, кроме первого,
@@ -997,7 +998,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * серии требовал бы пересборки узлов, а не одного класса.
    */
   private needName(message: MyMessage): boolean {
-    const iPostedAsSomeoneElse = this.bubbleGroups.getMessageFromId(message) !== rootScope.myId
+    const iPostedAsSomeoneElse = (message.fromId ?? message.peerId) !== rootScope.myId
     // tweb :9331 берёт здесь `isOut` (сторону бабла), а не `our`
     return (iPostedAsSomeoneElse || !this.isOutMessage(message)) && !!this.chat.isLikeGroup
   }
@@ -1028,6 +1029,161 @@ export default class ChatBubbles implements BubbleGroupsHost {
     if (message._ !== 'message' || message.media?._ !== 'messageMediaDocument') return false
     const doc = message.media.document
     return !!doc && (!!doc.sticker || doc.type === 'round')
+  }
+
+  /**
+   * Шапка бабла: имя автора либо «Переслано от …». Порт блока
+   * `if(needName || fwdFrom || replyTo)` (tweb bubbles.ts:10725-11019) в
+   * применимом объёме; `nameContainer` оригинала — `bubbleContainer`, а у
+   * standalone-медиа — плашка `name-with-reply` (:10956-10961).
+   *
+   * Ветка ПЕРЕСЫЛКИ (:10746-10883). Автор — `fwdFromId` (`fwd_from.from_id`),
+   * а не отправитель копии: в «Избранном» (`isRegularSaved`) и у автофорварда
+   * поста в группу обсуждения (`isForwardFromChannel`) — просто цветное имя
+   * автора оригинала, иначе — «Переслано от» с аватаркой 20px. Скрытая
+   * атрибуция (`from_name` без `from_id`) — имя строкой и `hidden-profile`.
+   *
+   * Чего нет и почему — предмета нет в модели (`backend/internal/domain/
+   * mtfwd.go`: `post_author`, `saved_from_id`, `saved_from_name` не
+   * производятся): подписи автора поста (`ForwardedFromAuthor`), второго
+   * заголовка форварда-форварда (`hasTwoTitles`, `isForwardOfForward` всегда
+   * ложно), истории-репоста (`storyFromPeerId`), `via @bot`, guest-chat, кода
+   * верификации и эфемерных сообщений. `ChatType.Saved` (окно сохранённого
+   * диалога, О-110) у нас нет, поэтому `isForward` не гасится у своей
+   * пересылки в «Избранное», а `isRegularSaved` — это просто `peerId === myId`.
+   * Ранги участников (:10979-11012) не портированы — их нет у ленты вовсе.
+   */
+  private renderName(message: MyMessage, bubble: HTMLElement, bubbleContainer: HTMLElement, messageDiv: HTMLElement, replyContainer: HTMLElement | undefined): void {
+    const isStandaloneMedia = this.isStandaloneMedia(message)
+    const fwdFrom = message._ === 'message' ? message.fwd_from : undefined
+    const fwdFromId = message._ === 'message' ? message.fwdFromId : undefined
+    const fromId = message.fromId ?? message.peerId // tweb `message.fromId`
+    const needName = this.needName(message)
+    if(!needName && !fwdFrom) {
+      // tweb :11017-11019 (`hide-name`) ставит `bubbleClasses`; standalone-бабл
+      // без имени делает плавающей плашкой сам ответ (:10974-10976).
+      if(replyContainer && isStandaloneMedia) replyContainer.classList.add('floating-part')
+      return
+    }
+
+    let nameDiv: HTMLElement | undefined
+    let mustHaveName = false
+    // tweb :10746 — у нас ветки `storyFromPeerId`/верификации нет.
+    const isForward = !!fwdFrom
+    if(isForward) {
+      // tweb :10732-10735, :10751-10759
+      const isForwardFromChannel = message.from_id?._ === 'peerChannel' && fromId === fwdFromId
+      const fwdFromName = fwdFrom.from_name // tweb `getFwdFromName`: `saved_from_name` не производится
+      const isHidden = !!(!fwdFrom.from_id || fwdFromName)
+      let title: HTMLElement
+      if(isHidden && !fwdFromId) {
+        title = document.createElement('span')
+        title.classList.add('peer-title')
+        title.append(wrapEmojiText(fwdFrom.from_name ?? ''))
+        bubble.classList.add('hidden-profile')
+      } else {
+        title = this.createTitle(fwdFromId || fromId).element
+      }
+
+      // tweb :10799-10808
+      const isRegularSaved = this.peerId === rootScope.myId
+      if(!isRegularSaved && !isForwardFromChannel) {
+        bubble.classList.add('forwarded')
+      }
+
+      if(message._ === 'message' && message.savedFrom) {
+        title.dataset.savedFrom = message.savedFrom
+      }
+
+      nameDiv = document.createElement('div')
+      const titlePeerId = fwdFromId ?? NULL_PEER_ID
+      title.dataset.peerId = '' + titlePeerId
+
+      if((isRegularSaved || isForwardFromChannel) && !isStandaloneMedia) {
+        // tweb :10813-10822
+        nameDiv.classList.add('colored-name')
+        nameDiv.append(title)
+      } else {
+        // tweb :10823-10862
+        mustHaveName = true
+        bubble.classList.remove('hide-name')
+        const firstArgs: FormatterArgument[] = [title]
+
+        if(titlePeerId) {
+          const avatar = avatarNew({
+            middleware: this.getMiddleware(),
+            size: 20,
+            peerId: titlePeerId,
+            isDialog: false,
+            managers: this.managers,
+          })
+          avatar.node.classList.add('bubble-name-forwarded-avatar')
+          firstArgs.unshift(avatar.node)
+        } else {
+          title.classList.add('text-normal')
+        }
+
+        const br = document.createElement('br')
+        br.classList.add('hide-ol')
+        firstArgs.unshift(br)
+
+        const span = i18n('ForwardedFrom', [firstArgs])
+        span.classList.add('bubble-name-forwarded')
+        nameDiv.append(span)
+      }
+    } else if(this.showName(message)) {
+      // tweb :10887-10907. `noColor` в оригинале не присваивается никогда, так
+      // что ветка всегда живая; `our` для мегагруппы — ровно `pFlags.out`
+      // (chat.ts:1375-1377 `isOurMessage` при `isMegagroup`), поэтому у своей
+      // отправки от лица канала имя есть, но НЕ цветное.
+      nameDiv = document.createElement('div')
+      nameDiv.append(this.createTitle(fromId).element)
+      if(!this.isOurMessage(message)) {
+        nameDiv.classList.add('colored-name')
+      }
+      nameDiv.dataset.peerId = '' + fromId
+    }
+
+    // tweb :10946-10977
+    if(nameDiv && !bubble.classList.contains('hide-name')) {
+      nameDiv.classList.add('name')
+      nameDiv.setAttribute('dir', 'auto') // tweb setDirection(nameDiv)
+
+      // tweb `updateMessageDiv`: имя вплотную к телу сообщения съедает верхний
+      // отступ тела.
+      const updateMessageDiv = (insertedElement: HTMLElement) => {
+        if(insertedElement.nextElementSibling === messageDiv) {
+          insertedElement.classList.add('next-is-message')
+        }
+      }
+
+      let nameContainer = bubbleContainer
+      if(isStandaloneMedia) {
+        const newNameContainer = document.createElement('div')
+        newNameContainer.classList.add('name-with-reply', 'floating-part')
+        nameContainer.prepend(newNameContainer)
+        updateMessageDiv(newNameContainer)
+        nameContainer = newNameContainer
+      } else {
+        nameDiv.classList.add('floating-part')
+      }
+
+      nameContainer.prepend(nameDiv)
+      if(!isStandaloneMedia) {
+        updateMessageDiv(nameDiv)
+      }
+
+      if(isStandaloneMedia && replyContainer) {
+        nameDiv.after(replyContainer)
+      }
+    } else if(isStandaloneMedia && replyContainer) {
+      replyContainer.classList.add('floating-part')
+    }
+
+    // tweb :11014-11016
+    if(mustHaveName) {
+      bubble.classList.add('must-have-name')
+    }
   }
 
   /** Порт tweb `createTitle` (bubbles.ts:9984). Цвет пира
@@ -1844,10 +2000,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
       }
     }
 
-    // Экран закрепов — tweb :11021-11040: у каждого бабла сбоку «перейти к оригиналу»,
-    // адрес — сам закреп в чате (`savedFrom`). Ветка `fwd_from.saved_from_msg_id`
-    // оригинала (пересланное с адресом источника) предмета не имеет: модель его не несёт.
-    if(this.chat.type === ChatType.Pinned) {
+    // «Перейти к оригиналу» сбоку — tweb :11021-11040: на экране закрепов адрес —
+    // сам закреп в чате, у пересланного с адресом источника
+    // (`fwd_from.saved_from_msg_id`) — оригинал (`message.savedFrom`).
+    const savedFrom = this.chat.type === ChatType.Pinned ?
+      makeFullMid(this.chat.peerId, message.id) :
+      (message._ === 'message' && message.fwd_from?.saved_from_msg_id ? message.savedFrom : undefined)
+    if(savedFrom) {
       const goto = document.createElement('div')
       goto.classList.add('bubble-beside-button', 'with-hover', 'goto-original')
       goto.setAttribute('role', 'button')
@@ -1855,7 +2014,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
       goto.tabIndex = 0
       goto.append(Icon('arrow_next'))
       bubbleContainer.append(goto)
-      bubble.dataset.savedFrom = makeFullMid(this.chat.peerId, message.id)
+      bubble.dataset.savedFrom = savedFrom
       bubble.classList.add('with-beside-button')
     }
 
@@ -1887,48 +2046,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     this.renderMessageMeta(message, bubble, bubbleContainer, messageDiv, setUnreadObserver)
 
-    // Имя автора. Порт обычной ветки `nameDiv` (tweb bubbles.ts:9498-9514) и
-    // её вставки (:9567-9590); `nameContainer` в оригинале — тот же
-    // `bubbleContainer`, пока сообщение не standalone-медиа (:7782).
-    //
-    // НЕ портирована ветка ПЕРЕСЫЛКИ (:9410-9497) — «Переслано от …» с
-    // аватаркой 20px, вторым заголовком форварда-форварда и `post_author`.
-    // У неё нет ни данных (модель форварда у нас — плоские `fwdFrom*`, без
-    // `saved_from`/`from_name`/`post_author`), ни подсистем (`avatarNew`,
-    // langPack-ключи `ForwardedFrom*`); классы `forwarded`/`must-have-name`
-    // при этом уже ставит `bubbleClasses`, так что шапка форварда приедет
-    // сюда же вместе с самим форвардом — отдельной работой, как и медиа.
-    //
-    // Узел имени рисуется только у НЕ standalone-медиа (`showName`), поэтому
-    // обёртки `name-with-reply` (:10956-10961, «имя + ответ одной плашкой над
-    // стикером») здесь нет: её строит лишь эфемерное сообщение, которого в
-    // нашей модели нет. Standalone-бабл без имени делает плавающей плашкой сам
-    // ответ (:10974-10976).
-    if (this.showName(message)) {
-      const fromId = this.bubbleGroups.getMessageFromId(message)
-      const nameDiv = document.createElement('div')
-      nameDiv.append(this.createTitle(fromId).element)
-      // tweb :9502-9513. `noColor` в оригинале не присваивается никогда, так что
-      // ветка всегда живая; `our` для мегагруппы — ровно `pFlags.out`
-      // (chat.ts:1375-1377 `isOurMessage` при `isMegagroup`), поэтому у своей
-      // отправки от лица канала имя есть, но НЕ цветное.
-      if (!this.isOurMessage(message)) {
-        nameDiv.classList.add('colored-name')
-      }
-      nameDiv.dataset.peerId = '' + fromId
-
-      nameDiv.classList.add('name')
-      nameDiv.setAttribute('dir', 'auto') // tweb setDirection(nameDiv), :9569
-      nameDiv.classList.add('floating-part') // :9584
-      bubbleContainer.prepend(nameDiv)
-      // tweb `updateMessageDiv` (:9571-9575): имя вплотную к телу сообщения
-      // съедает верхний отступ тела.
-      if (nameDiv.nextElementSibling === messageDiv) {
-        nameDiv.classList.add('next-is-message')
-      }
-    } else if (replyContainer && this.isStandaloneMedia(message)) {
-      replyContainer.classList.add('floating-part')
-    }
+    this.renderName(message, bubble, bubbleContainer, messageDiv, replyContainer)
 
     // Хвост бабла — порт tweb :9707-9712. `canHaveTail` уже посчитан в
     // `bubbleClasses` (класс `can-have-tail` стоит на `bubble` с самой сборки
@@ -2782,16 +2900,19 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  бабла. */
   public createAvatar(message: MyMessage, middleware: Middleware): GroupAvatar {
     // tweb bubbleGroups.ts:140-145 — размер 40 и автор из `getAvatarOptions`
-    // (:83-88). Ветка «переслано из канала» там подменяет пира на источник
-    // пересылки; у нас предмета нет. `fwdFromId` — ПРОИЗВОДНОЕ поле tweb: в
-    // сгенерированном типе оно есть (`layer.d.ts:1059`), но на провод не
-    // выводится (значится в списке невыводимых полей конструктора `message`,
-    // `backend/internal/pkg/tl/schema_gen.go:8477`) и не заполняется ни бэком,
-    // ни клиентом. Поэтому автор берётся тем же способом, что и для имени в
-    // шапке бабла (`needName` → `getMessageFromId`), — второго правила «кто
-    // автор» не заводим.
+    // (:110-143): `message.fromId`, а у автофорварда поста канала в группу
+    // обсуждения (`isForwardFromChannel`) — сам канал-источник (`fwdFromId`).
+    // Ветка `REPLIES_PEER_ID`/бота-верификатора предмета не имеет. Автор без
+    // карточки (скрытая атрибуция в «Избранном», `NULL_PEER_ID`) рисуется
+    // именем `from_name` — `peerTitle` оригинала.
+    const fwdFrom = message._ === 'message' ? message.fwd_from : undefined
+    const fwdFromId = message._ === 'message' ? message.fwdFromId : undefined
+    const fromId = message.fromId ?? message.peerId
+    const isForwardFromChannel = message.from_id?._ === 'peerChannel' && fromId === fwdFromId
+    const peerId = (isForwardFromChannel ? fwdFromId : fromId) || NULL_PEER_ID
     return avatarNew({
-      peerId: this.bubbleGroups.getMessageFromId(message),
+      peerId,
+      peerTitle: peerId === NULL_PEER_ID ? fwdFrom?.from_name : undefined,
       size: 40,
       middleware,
       managers: this.managers,
@@ -3356,8 +3477,18 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // Имя автора / упоминание — tweb bubbles.ts:3360-3364: peerId берётся из
     // `data-peer-id` у `.peer-title` либо из `data-follow` у упоминания
     // (`a.follow`, wrapRichText.ts:408-409).
-    const nameDiv = target.closest<HTMLElement>('.peer-title[data-peer-id], [data-follow]')
+    const nameDiv = target.closest<HTMLElement>('.peer-title[data-peer-id], [data-saved-from], [data-follow]')
     if (!nameDiv || nameDiv.classList.contains('bubble')) {
+      return
+    }
+
+    // tweb :3810-3836 — имя автора пересылки с адресом оригинала ведёт к
+    // самому оригиналу, а не в профиль автора.
+    const savedFromAttr = nameDiv.dataset.savedFrom as FullMid | undefined
+    if (savedFromAttr) {
+      cancelEvent(e)
+      const { peerId, mid } = splitFullMid(savedFromAttr)
+      void this.chat.appImManager.setInnerPeer({ peerId, lastMsgId: mid })
       return
     }
 
