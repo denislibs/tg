@@ -3207,7 +3207,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
       // tweb :3194 `this.chat.appImManager.callUser(this.peerId.toUserId(), type)`:
       // звонок бывает только личный (у нас «группа или канал» — знак ключа).
       if (!isAnyChat(this.peerId)) {
-        this.chat.appImManager.callUser(this.peerId, callDiv.dataset.type as 'voice' | 'video')
+        void this.chat.appImManager.callUser(this.peerId, callDiv.dataset.type as 'voice' | 'video')
       }
       return
     }

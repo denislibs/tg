@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 49,
+      "version": 50,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -587,6 +587,54 @@
         {
           "key": "Call.CameraOn",
           "value": "Turn on camera"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.Header",
+          "value": "Call in Progress"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToCall.Text",
+          "value": "End call with \"%1$@\" and start a video chat in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToLive.Text",
+          "value": "End call with \"%1$@\" and start a live stream in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToVoice.Text",
+          "value": "End call with \"%1$@\" and start a video chat in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.Header",
+          "value": "Live Stream in Progress"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToCall.Text",
+          "value": "Leave live stream in \"%1$@\" and start a call with \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToLive.Text",
+          "value": "Leave live stream in \"%1$@\" and start a new one in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToVoice.Text",
+          "value": "Leave live stream in \"%1$@\" and start a video chat in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.Header",
+          "value": "Video Chat in Progress"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToCall.Text",
+          "value": "Leave video chat in \"%1$@\" and start a call with \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToLive.Text",
+          "value": "Leave video chat in \"%1$@\" and start a live stream in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToVoice.Text",
+          "value": "Leave video chat in \"%1$@\" and start a new one in \"%2$@\"?"
         },
         {
           "key": "Call.Decline",
@@ -4846,6 +4894,10 @@
           "value": "No viewers"
         },
         {
+          "key": "Rtmp.Topbar.StartVideoChat",
+          "value": "Start Video Chat"
+        },
+        {
           "key": "Rtmp.Topbar.Title",
           "value": "Live Stream"
         },
@@ -6374,7 +6426,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 49,
+      "version": 50,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -7916,6 +7968,54 @@
           "value": "Ввод"
         },
         {
+          "key": "Call.Confirm.Discard.Call.Header",
+          "value": "Звонок уже идёт"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToCall.Text",
+          "value": "Завершить звонок с «%1$@» и начать видеочат в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToLive.Text",
+          "value": "Завершить звонок с «%1$@» и начать трансляцию в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToVoice.Text",
+          "value": "Завершить звонок с «%1$@» и начать видеочат в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.Header",
+          "value": "Трансляция уже идёт"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToCall.Text",
+          "value": "Покинуть трансляцию в «%1$@» и позвонить «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToLive.Text",
+          "value": "Покинуть трансляцию в «%1$@» и начать новую в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToVoice.Text",
+          "value": "Покинуть трансляцию в «%1$@» и начать видеочат в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.Header",
+          "value": "Видеочат уже идёт"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToCall.Text",
+          "value": "Покинуть видеочат в «%1$@» и позвонить «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToLive.Text",
+          "value": "Покинуть видеочат в «%1$@» и начать трансляцию в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToVoice.Text",
+          "value": "Покинуть видеочат в «%1$@» и начать новый в «%2$@»?"
+        },
+        {
           "key": "CallSettings.InputDevice",
           "value": "Устройство ввода"
         },
@@ -8475,6 +8575,10 @@
         {
           "key": "Rtmp.Topbar.Title",
           "value": "Прямой эфир"
+        },
+        {
+          "key": "Rtmp.Topbar.StartVideoChat",
+          "value": "Начать видеочат"
         },
         {
           "key": "BoostChannel",
