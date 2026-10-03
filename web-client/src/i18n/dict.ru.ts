@@ -2018,6 +2018,26 @@ const ru = {
   },
   FilterNoChatsToDisplay: 'Папка пуста',
   FilterNoChatsToDisplayInfo: 'Сейчас в этой папке нет чатов.',
+  // ── Строка ввода: плашка ответа/правки/пересылки, кнопка отправки, права (tweb chat/input.ts, К-4) ──
+  AccDescrEditing: 'Редактирование',
+  'Alert.Confirm.Discard': 'Отменить',
+  AndOther: {
+    one_value: 'и ещё %1$d',
+    few_value: 'и ещё %1$d',
+    many_value: 'и ещё %1$d',
+    other_value: 'и ещё %1$d',
+  },
+  'Channel.Persmission.MessageBlock': 'Отправка сообщений запрещена',
+  ChannelBroadcast: 'Публикация',
+  'Chat.Accessory.Forward.From': 'От',
+  'Chat.Accessory.Forward.You': 'Вы',
+  'Chat.Edit.Cancel.Text': 'Отменить все изменения?',
+  'ChatAutomation.Stop': 'Остановить',
+  GlobalAttachMediaRestricted: 'Отправка медиа в этой группе запрещена.',
+  ReplyTo: 'Ответ %s',
+  ReplyToQuote: 'Ответ на цитату %s',
+  UserRestrictionsSendRound: 'Отправка видеосообщений',
+  UserRestrictionsSendVoices: 'Отправка голосовых сообщений',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

@@ -10,7 +10,7 @@ import ChatSelection, {
   type SelectionManagers,
 } from './selection'
 import ListenerSetter from '@helpers/listenerSetter'
-import type ChatInput from './reactChatInput'
+import type ChatInput from './input'
 import { createTestChat } from './testChat'
 
 const PEER = 1

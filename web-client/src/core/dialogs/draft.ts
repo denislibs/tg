@@ -22,6 +22,7 @@
 // где было изменение.
 
 import type { DraftMessage, DraftMessageReal } from '../models'
+import deepEqual from '@helpers/object/deepEqual'
 
 /** Настоящий черновик, если он есть (пустой конструктор — не черновик). */
 export function realDraft(draft: DraftMessage | undefined): DraftMessageReal | undefined {
@@ -55,4 +56,16 @@ export function newDraft(text: string, replyToId: number | null, date: number): 
   const d: DraftMessageReal = { _: 'draftMessage', message: text, date }
   if (replyToId != null) d.reply_to = { _: 'inputReplyToMessage', reply_to_msg_id: replyToId }
   return d
+}
+
+/**
+ * Порт tweb `appManagers/utils/drafts/draftsAreEqual.ts`: черновики равны без
+ * даты и ссылки ответа, а ответ сравнивается отдельно (`repliesAreEqual` — у нас
+ * у `InputReplyToMessage` предметно только `reply_to_msg_id`). Сравнение глубокое:
+ * поле ввода собирает черновик заново на каждый вызов (`ChatInput.getCurrentInputAsDraft`).
+ */
+export function draftsAreEqual(draft1: DraftMessage | undefined, draft2: DraftMessage | undefined): boolean {
+  const d1 = realDraft(draft1), d2 = realDraft(draft2)
+  return deepEqual(d1 as DraftMessageReal, d2 as DraftMessageReal, ['date', 'reply_to']) &&
+    d1?.reply_to?.reply_to_msg_id === d2?.reply_to?.reply_to_msg_id
 }
