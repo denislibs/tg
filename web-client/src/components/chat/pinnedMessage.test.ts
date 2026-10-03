@@ -191,3 +191,34 @@ describe('плашка закрепа', () => {
     expect(plate.container.dataset.mid).toBe('20')
   })
 })
+
+describe('плашка треда комментариев (setStaticMessage, расхождение 6)', () => {
+  it('корень — автопересланное зеркало поста; приезжает со страницей ленты — плашка дорисовывается', async() => {
+    const { putMirrorPage, resetMessagesMirror } = await import('@core/history/messagesMirror')
+    resetMessagesMirror()
+    const THREAD = 45
+    const threadChat = {
+      ...makeChat(),
+      threadId: THREAD,
+      messagesStorageKey: 'thread-key',
+      isPinnedMessagesNeeded: () => false,
+    } as unknown as Chat & { setMessageId: ReturnType<typeof vi.fn> }
+    const managers = {
+      messages: { listPins, pin: vi.fn(), unpin: vi.fn() },
+      media: { meta: vi.fn(async() => ({ hasThumb: false })), downloadMediaURL: vi.fn() },
+    } as unknown as PinnedMessageManagers
+    const staticPlate = createChatPinnedMessage(topbar, threadChat, managers)
+    document.body.append(staticPlate.container)
+
+    staticPlate.setStaticMessage(THREAD)
+    await flush()
+    expect(staticPlate.container.querySelector('.pinned-message-subtitle')?.textContent).toBe('')
+
+    const root = { ...makeMessage({ id: 77, peerId: PEER, fromId: 1, text: 'пост канала' }), fwd_from: { _: 'messageFwdHeader', date: 0, saved_from_peer: { _: 'peerChannel', channel_id: 4 }, saved_from_msg_id: THREAD } } as MyMessage
+    putMirrorPage('thread-key', [root, msg(78, 'комментарий')])
+    await flush()
+    expect(staticPlate.container.querySelector('.pinned-message-subtitle')?.textContent).toContain('пост канала')
+
+    staticPlate.destroy()
+  })
+})

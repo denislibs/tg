@@ -24,6 +24,13 @@
 //     звонка: `has-custom-action-button` не ставится никогда. Бэклог Б-89.
 //  5. Шапка описана срезом `PinnedMessageTopbar` — ровно теми членами tweb `ChatTopbar`,
 //     которые зовёт плашка (`setFloating`, `openPinned`); их пишет агент «шапка».
+//  6. Тред комментариев (`setStaticMessage(threadId)`): у tweb корень треда берётся адресно
+//     из кэша менеджера. У нас клиент адресует тред номером ПОСТА, а в окне треда лежит его
+//     зеркало в группе обсуждения с другим номером (`usecase/chat/sync.go:27-33`, то же
+//     расхождение у ленты — `bubbles.ts::threadServiceStartMessage`), и приезжает оно с
+//     первой страницей ленты, уже после `setupPinnedMessageForPeer`. Поэтому корень —
+//     автопересланное сообщение окна (`fwd_from.saved_from_peer`), а плашка дорисовывается
+//     подпиской на зеркало, когда оно появится.
 import { createSignal, type JSX } from 'solid-js'
 import type { Managers } from '@/client/bootstrap'
 import showPinMessagePopup from '@components/popups/unpinMessage'
@@ -51,6 +58,7 @@ import { ensureMediaUrl } from '@core/media/ensureMediaUrl'
 import { getMediaId } from '@core/messages/messageKind'
 import type { MyMessage } from '@core/models'
 import { canPinMessage, getPinnedHistory, getPinnedMessage, getPinnedMessageByMid } from '@core/pinnedMessages'
+import { mirrorWindow, subscribeMirror } from '@core/history/messagesMirror'
 
 /** Расхождение 5: члены `ChatTopbar`, которые зовёт плашка. */
 export type PinnedMessageTopbar = {
@@ -225,8 +233,14 @@ export default function createChatPinnedMessage(
   // расхождение 4: кнопки действия нет — флаг всегда снят
   const [hasCustomActionButton] = createSignal(false)
 
+  /** расхождение 6: корень треда в окне — зеркало поста, автопересланное в группу обсуждения */
+  const getThreadRoot = () => mirrorWindow(chat.messagesStorageKey)?.find((message) => message._ === 'message' && !!message.fwd_from?.saved_from_peer)
+
   /** расхождение 1: закреп вне окна ленты — из кэша списка закрепов */
-  const getMessage = (mid: number) => chat.getMessage(mid) ?? getPinnedMessageByMid(chat.peerId, mid, chat.threadId)
+  const getMessage = (mid: number) => chat.getMessage(mid) ??
+    getPinnedMessageByMid(chat.peerId, mid, chat.threadId) ??
+    (staticMessage && mid === pinnedMid ? getThreadRoot() : undefined)
+  let staticMessage = false
 
   // ────────────────────────────────────────────────────────────────────────
   // DOM bits that live as siblings of the Body inside the plate root.
@@ -607,7 +621,7 @@ export default function createChatPinnedMessage(
       return
     }
 
-    void chat.setMessageId({ lastMsgId: mid })
+    void chat.setMessageId({ lastMsgId: message.id }) // расхождение 6: у корня треда номер зеркала
     void (chat.setPeerPromise || Promise.resolve()).then(() => { // * debounce fast clicker
       void handleFollowingPinnedMessage()
       // wrap to the newest pin from the last one. `pinnedMaxMid` is still 0 when
@@ -701,10 +715,21 @@ export default function createChatPinnedMessage(
     handleFollowingPinnedMessage,
     unsetScrollDownListener,
     setStaticMessage: (mid: number) => {
+      staticMessage = true
       pinnedMid = mid
       count = 1
       pinnedIndex = 0
       void _setPinnedMessage()
+
+      // расхождение 6: корень приезжает с первой страницей ленты
+      if(!getMessage(mid)) {
+        const unsubscribe = subscribeMirror(() => {
+          if(!getMessage(mid)) return
+          unsubscribe()
+          void _setPinnedMessage()
+        })
+        listenerSetter.addCleanup(unsubscribe)
+      }
     },
     get pinnedMessages() {
       return pinnedMid ? { mid: pinnedMid, index: pinnedIndex, count } : undefined
