@@ -82,7 +82,7 @@ export interface DialogsDeps {
    * приёму, что `getMeId`/`savePinnedOrders`: тесты, которых папки не
    * касаются, его не задают.
    */
-  loadState: () => Promise<{ pinnedOrders: Record<number, number[]>; folders?: Folder[] }>
+  loadState: () => Promise<{ pinnedOrders: Record<number, number[]>; folders?: Folder[]; allDialogsLoaded?: Record<number, boolean> }>
   /** id текущего пользователя — нужен applyNewMessage (не бампить бейдж на своё же
    * эхо). Разрешается лениво (воркер узнаёт `me` асинхронно), поэтому геттер, а не
    * значение — тот же приём, что у `newMessagesManager` (messagesManager.ts). */
@@ -108,6 +108,14 @@ export interface DialogsDeps {
    * его не задают.
    */
   saveCache?: (dialogs: Dialog[]) => Promise<void>
+  /**
+   * Запись State-ключа `allDialogsLoaded` — порт tweb `saveAllDialogsLoaded`
+   * (lib/storages/dialogs.ts:342-344). Признак «выборка загружена целиком»
+   * переживает перезагрузку вместе с кэшем списка: без него короткий список
+   * (меньше страницы) после F5 шёл бы в сеть за тем, что уже лежит на диске.
+   * Опционален по тому же приёму, что `savePinnedOrders`.
+   */
+  saveDialogsLoaded?: (value: Record<number, boolean>) => Promise<void>
   /**
    * Владелец карточек пиров. Контейнер `/chats` несёт векторы `chats`/`users` —
    * тела групп и собеседников, — и они втекают в УЖЕ существующий приёмник
@@ -142,7 +150,7 @@ export interface DialogsDeps {
  * каждое изменение. */
 const PERSIST_DEBOUNCE_MS = 1000
 
-export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, getMeId, savePinnedOrders, mirrorStateKey, saveCache, peers, messages }: DialogsDeps) {
+export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, getMeId, savePinnedOrders, mirrorStateKey, saveCache, saveDialogsLoaded, peers, messages }: DialogsDeps) {
   let items: DialogItem[] = []
   // Полный State-ключ (все папки) — нужен целиком, чтобы applyPinned не затёр
   // чужие записи при записи на диск (порт tweb: `{...orders, [ALL_FOLDER_ID]: …}`,
@@ -199,10 +207,16 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
   const dialogsLoaded: Record<'all' | 'archive', boolean> = { all: false, archive: false }
   const isLoaded = (scope: Scope): boolean =>
     scope === 'global' ? dialogsLoaded.all && dialogsLoaded.archive : dialogsLoaded[scope]
-  /** Порт `setDialogsLoaded` (dialogs.ts:276-288): GLOBAL поднимает обе реальные. */
+  /**
+   * Порт `setDialogsLoaded` (dialogs.ts:317-340): GLOBAL поднимает обе реальные,
+   * и признак уходит в State (`saveAllDialogsLoaded`, :342-344) ключами
+   * проводных папок — как у оригинала, `FOLDER_ID_ALL`/`FOLDER_ID_ARCHIVE`.
+   */
   function setLoaded(scope: Scope): void {
+    const was = isLoaded(scope)
     if (scope === 'global') { dialogsLoaded.all = true; dialogsLoaded.archive = true }
     else dialogsLoaded[scope] = true
+    if (!was) void saveDialogsLoaded?.({ [0]: dialogsLoaded.all, [WIRE_FOLDER_ARCHIVE]: dialogsLoaded.archive })
   }
 
   /** `count` последнего сетевого ответа ПО ВЫБОРКЕ (аналог tweb
@@ -527,17 +541,61 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     return next
   }
 
-  function patchDialog(peerId: number, fields: Partial<Dialog>): void {
+  /**
+   * Слить `fields` в строку кэша и пересчитать её место, НИЧЕГО не объявляя.
+   * `null` — строки нет или значения не изменились; иначе — сдвинулся ли индекс.
+   * Общая часть `patchDialog` (объявляет сразу) и `setDialogTopMessage`
+   * (объявляет пачкой, см. `scheduleHandleNewDialogs`).
+   */
+  function mergeDialog(peerId: number, fields: Partial<Dialog>): { index: number; moved: boolean } | null {
     const idx = items.findIndex((i) => i.dialog.peerId === peerId)
-    if (idx === -1) return
+    if (idx === -1) return null
     const prev = items[idx].dialog
     const dialog = merge(prev, fields)
-    if (equal(prev, dialog)) return
+    if (equal(prev, dialog)) return null
     const index = dialogIndex(dialog, pinnedOrder)
     const moved = index !== items[idx].index
     items[idx] = { dialog, index }
     if (moved) items = [...items].sort((a, b) => b.index - a.index)
-    publish([{ op: 'patch', peerId, fields, ...(moved ? { index } : {}) }])
+    return { index, moved }
+  }
+
+  function patchDialog(peerId: number, fields: Partial<Dialog>): void {
+    const r = mergeDialog(peerId, fields)
+    if (!r) return
+    publish([{ op: 'patch', peerId, fields, ...(r.moved ? { index: r.index } : {}) }])
+  }
+
+  // Порт tweb `scheduleHandleNewDialogs`/`handleNewDialogs`
+  // (appMessagesManager.ts:8946-8976, :8882-8943): строка, получившая новое
+  // последнее сообщение, не объявляется сразу — она копится в карте, и через
+  // `pause(0)` ВСЕ накопленные за такт уходят ОДНИМ событием
+  // (`dialogs_multiupdate`, у нас — одна операция `upsert` в одном кадре
+  // `rt:dialog_op`). Догон (`/sync`) применяет десятки сообщений подряд в одном
+  // такте — без пачки каждое из них было отдельным кадром, отдельной
+  // сортировкой и отдельной анимацией строки на главном потоке.
+  //
+  // Значение строки берётся В МОМЕНТ РАССЫЛКИ, а не в момент планирования —
+  // как у оригинала, где в карте лежит сам объект диалога.
+  const newDialogsToHandle = new Set<number>()
+  let newDialogsHandlePromise: Promise<void> | undefined
+  function scheduleHandleNewDialogs(peerId: number): void {
+    newDialogsToHandle.add(peerId)
+    newDialogsHandlePromise ??= pause(0).then(() => {
+      newDialogsHandlePromise = undefined
+      handleNewDialogs()
+    })
+  }
+  function handleNewDialogs(): void {
+    const changed: DialogItem[] = []
+    for (const peerId of newDialogsToHandle) {
+      // tweb :8907 — «can be already dropped»: строку успели снять
+      // (`applyRemoved`, смена сессии) — объявлять нечего.
+      const item = items.find((i) => i.dialog.peerId === peerId)
+      if (item) changed.push(item)
+    }
+    newDialogsToHandle.clear()
+    if (changed.length) publish([{ op: 'upsert', items: changed }])
   }
 
   /**
@@ -595,10 +653,16 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
   /**
    * Порт `appMessagesManager.setDialogTopMessage` (tweb :4954-4973): последним
    * становится известное сообщение — превью и место строки пересчитываются
-   * от него (`patchDialog` → `dialogIndex`, у оригинала `generateIndexForDialog`).
+   * от него (`mergeDialog` → `dialogIndex`, у оригинала `generateIndexForDialog`),
+   * а объявляется строка пачкой (`scheduleHandleNewDialogs`, :4972).
+   *
+   * `extra` — счётчики, которые `onUpdateNewMessage` меняет на том же объекте
+   * диалога перед этим вызовом (:10507-10512): у нас объект неизменяемый, и
+   * слить их надо одним шагом с превью.
    */
-  function setDialogTopMessage(message: MyMessage): void {
-    patchDialog(message.peerId, { top_message: message.id, lastMessage: message })
+  function setDialogTopMessage(message: MyMessage, extra: Partial<Dialog> = {}): void {
+    if (!mergeDialog(message.peerId, { ...extra, top_message: message.id, lastMessage: message })) return
+    scheduleHandleNewDialogs(message.peerId)
   }
 
   // Порт `appMessagesManager.reloadConversation` (tweb :6247-6366): строки
@@ -665,6 +729,11 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       const [cached] = await Promise.all([loadCache(), peers?.hydrateFromDisk()])
       if (gen !== sessionGen) return
       setAll(cached)
+      // tweb dialogs.ts:262 — признак «загружено целиком» поднимается с диска
+      // ВМЕСТЕ с кэшем: `getDialogs` отвечает из кэша без сети и тогда, когда
+      // строк меньше страницы (dialogs.ts:1903-1905, `loadedAll`).
+      dialogsLoaded.all = !!state.allDialogsLoaded?.[0]
+      dialogsLoaded.archive = !!state.allDialogsLoaded?.[WIRE_FOLDER_ARCHIVE]
     }
     hydrated = true
     // Мьют — СРОК; ближайший из них надо погасить самому (порт checkMuteUntil).
@@ -864,9 +933,18 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     const gen = sessionGen
     const scope = scopeFor(filterId)
     // Курсор — докуда дочерпала пагинация СВОЕЙ выборки (`serverCursor`); пока
-    // её страниц не было, отталкиваемся от хвоста того, что держим, — это кэш
-    // прошлой сессии с диска, поднятый гидрацией (для пользовательской папки
-    // хвост берётся по всему кэшу, см. докблок `scopeList`).
+    // страниц реальной папки не было, отталкиваемся от хвоста того, что держим
+    // в ней, — это кэш прошлой сессии с диска, поднятый гидрацией (у tweb
+    // `setDialogsFromState` → `pushDialog` так же выводит смещение папки из
+    // кэша, dialogs.ts:1209-1227).
+    //
+    // У ГЛОБАЛЬНОЙ выборки (пользовательская папка) смещения из кэша нет:
+    // гидрация его не сохраняет (`saveGlobalOffset` не передан), и
+    // `getOffsetDate(GLOBAL_FOLDER_ID)` без сохранённого отдаёт начало набора
+    // (dialogs.ts:464-468). Хвост всего кэша здесь врал бы: страница архива
+    // кладёт туда самый старый архивный диалог (см. докблок `serverCursor`).
+    // Прежде это закрывал сетевой `refresh()` на каждом старте — он продвигал
+    // глобальный курсор раньше первой страницы папки; старта с сетью больше нет.
     //
     // Опорный чат обязан ЛЕЖАТЬ в кэше выборки: `peer_id`, которого мы больше
     // не держим (диалог выпал при слиянии окна, ушёл в архив, был удалён),
@@ -878,7 +956,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     const heldTail = cursorList.length ? cursorList[cursorList.length - 1].dialog.peerId : 0
     const saved = serverCursor[scope]
     const held = saved !== null && cursorList.some((i) => i.dialog.peerId === saved.peerId)
-    const offsetPeerId = useCursor ? (held ? saved.peerId : heldTail) : 0
+    const offsetPeerId = useCursor ? (held ? saved.peerId : scope === 'global' ? 0 : heldTail) : 0
     const wire = WIRE_FOLDER[scope]
     const query: Record<string, string | number> = { limit, offset_peer_id: offsetPeerId }
     if (wire !== undefined) query.folder_id = wire
@@ -1383,6 +1461,9 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       sessionGen++
       items = []
       reloadPeers.clear()
+      // Пачка строк с новым сообщением — тоже про прошлую сессию (tweb
+      // `handleNewDialogs` и так пропустил бы снятые строки, а `items` пуст).
+      newDialogsToHandle.clear()
       dialogsIndex = createSearchIndex()
       pinnedOrders = {}
       pinnedOrder = []
@@ -1457,22 +1538,27 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       // открытый чат — `appImManager.chat` вкладки (спека docs/superpowers/specs/
       // 2026-08-12-dialogs-ownership-and-virtual-list-design.md, «Что остаётся на main»).
       // Блип бейджа для открытого чата гасит немедленный markRead активной вкладки.
-      const incoming = m.fromId !== meId
-      const nextUnread = incoming ? cur.unread_count + 1 : cur.unread_count
-      // Непрочитанное упоминание зрителя (сервер ставит упомянутому
-      // pFlags.mentioned + media_unread) бампит бейдж «@» тем же кадром —
-      // порт tweb appMessagesManager.ts:10510-10512.
-      const nextMentions = incoming && isMentionUnread(m) ? cur.unread_mentions_count + 1 : cur.unread_mentions_count
+      const inboxUnread = m.fromId !== meId
+      // Защита от отката — порт tweb appMessagesManager.ts:10500-10520. Кадр
+      // может нести сообщение, которое строка уже видела или видела более
+      // новое: повтор журнала (`/sync`), дубль мимо дедупа по pts. Такое
+      // сообщение не двигает ни превью, ни место строки (`mid >= top_message`),
+      // а счётчик растёт только на действительно НОВОМ входящем, которое ещё
+      // не покрыл курсор прочтения (`isPastReadCursor`). Условие `!isSaved`
+      // оригинала у нас всегда истинно: `isSavedDialog` — подстрока «Избранного»
+      // (`savedDialog`), а здесь только строки списка `dialog`.
+      const isPastReadCursor = m.id <= cur.read_inbox_max_id
+      const counters: Partial<Dialog> = {}
+      if (inboxUnread && m.id > cur.top_message && !isPastReadCursor) {
+        counters.unread_count = cur.unread_count + 1
+        // Непрочитанное упоминание зрителя (сервер ставит упомянутому
+        // pFlags.mentioned + media_unread) бампит бейдж «@» тем же кадром —
+        // порт tweb appMessagesManager.ts:10510-10512.
+        if (isMentionUnread(m)) counters.unread_mentions_count = cur.unread_mentions_count + 1
+      }
       // Превью строится из ЦЕЛОГО сообщения — тем же единственным маппером
       // живого кадра, что и вставка в окно (`messages.cacheLive` зовёт его же).
-      // Прежняя девятиполевая выжимка (`senderName` от сервера, `mediaType`
-      // строкой) исчезла вместе с выжимкой на проводе.
-      patchDialog(m.peerId, {
-        top_message: m.id,
-        lastMessage: m,
-        unread_count: nextUnread,
-        unread_mentions_count: nextMentions,
-      })
+      if (m.id >= cur.top_message) setDialogTopMessage(m, counters)
     },
 
     /**

@@ -29,6 +29,13 @@ export interface Cursor {
   advance(pts: number, date?: number): void
   /** Безусловная установка (полный ресинк / too_long), персист дебаунсится. */
   set(pts: number, date: number): void
+  /**
+   * Забыть состояние апдейтов — переход сессии (вход/выход). Курсор прошлой
+   * сессии к новой отношения не имеет; следующий hello станет базой заново
+   * (tweb `apiUpdatesManager.attach` без сохранённого state, :886-906 — у
+   * оригинала state живёт в хранилище аккаунта и уходит вместе с ним).
+   */
+  reset(): void
 }
 
 export function newCursor(store: KV, persistDelay = 1000): Cursor {
@@ -66,6 +73,9 @@ export function newCursor(store: KV, persistDelay = 1000): Cursor {
     },
     set(nextPts, nextDate) {
       pts = nextPts; date = nextDate; persist()
+    },
+    reset() {
+      pts = 0; date = 0; persist()
     },
   }
 }

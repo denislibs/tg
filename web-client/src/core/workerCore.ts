@@ -171,11 +171,16 @@ export function createWorkerCore() {
     // общий на все вкладки), без сброса следующий `fillMirror()` под другим
     // аккаунтом отдал бы чужой список — см. докблок `resetForLogout()`.
     // `contacts.resetForLogout()` — то же для книги контактов и её индекса.
-    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); contacts.resetForLogout(); broadcast(RT.loggingOut, e) },
+    //
+    // `cursor.reset()` — курсор апдейтов тоже про сессию: он лежит в общем
+    // `msgr/kv` вне скоупа персиста, и без сброса вход после выхода догонял бы
+    // `/sync` от курсора ПРОШЛОЙ сессии (а то и чужого аккаунта) вместо того,
+    // чтобы взять базой текущее состояние сервера (hello, см. onFrame).
+    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); contacts.resetForLogout(); cursor.reset(); broadcast(RT.loggingOut, e) },
     // Симметричный кадр входа (порт tweb `account_logged_in`) — тем же веером и
     // с тем же сбросом: активный токен сменился, а значит медиа-токен, добытый
     // до входа, принадлежит прошлой сессии; то же — про кэш диалогов.
-    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); contacts.resetForLogout(); broadcast(RT.loggedIn, e) },
+    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); contacts.resetForLogout(); cursor.reset(); broadcast(RT.loggedIn, e) },
   })
   const profile = newProfileManager({ rest, onMeChanged: setMe, getMe: () => me })
   const premium = newPremiumManager({ rest, onMeChanged: setMe })
@@ -298,7 +303,7 @@ export function createWorkerCore() {
       // `getDialogs({filterId})`. Читаются С ДИСКА, а не ждут `setStateKey`:
       // на холодном старте State никто не ПИШЕТ (boot.ts поднимает его
       // `setAppStateSilent`), значит канал зеркала ключа в этом кадре молчит.
-      return { pinnedOrders: gated.pinnedOrders ?? {}, folders: gated.folders ?? [] }
+      return { pinnedOrders: gated.pinnedOrders ?? {}, folders: gated.folders ?? [], allDialogsLoaded: gated.allDialogsLoaded ?? {} }
     },
     // Task 3 (realtime-кадры применяет владелец): applyNewMessage не бампит
     // бейдж на своё же эхо — тот же приём, что у messages выше (getMeId, а не
@@ -309,6 +314,9 @@ export function createWorkerCore() {
     // (saveStateKey + mirrorStateKey), второй писатель того же ключа не заводим.
     savePinnedOrders: (value) => saveStateKey('pinnedOrders', value),
     mirrorStateKey,
+    // Признак «выборка загружена целиком» — тот же State-канал (tweb
+    // `saveAllDialogsLoaded` → `pushToState`, dialogs.ts:342-344).
+    saveDialogsLoaded: (value) => { mirrorStateKey('allDialogsLoaded', value); return saveStateKey('allDialogsLoaded', value) },
     // Task 5 (персист переезжает к владельцу): физический writer офлайн-кэша
     // списка — та же `saveDialogs` (core/store/persist.ts), что раньше звал
     // persistManager.dialogs(...) по снапшоту с main. Дебаунс — внутри
@@ -735,7 +743,23 @@ export function createWorkerCore() {
           // хвосте кроет и его отказ, и любой бросок из самого колбэка. cursor.ready()
           // не отклоняется по построению (cursor.ts терминирует его .catch'ем).
           void cursor.ready().then(() => {
-            const catchingUp = want !== cursor.get().pts ? (funnel.clear(), sync.catchUp()) : undefined
+            // Сохранённого состояния апдейтов нет (свежий вход, чистый профиль) —
+            // базой становится ТЕКУЩЕЕ состояние сервера, и догонять нечего:
+            // порт tweb `apiUpdatesManager.attach` (apiUpdatesManager.ts:886-906),
+            // где без `state.pts`/`state.date` зовётся `updates.getState`, а не
+            // `getDifference`. Наш `updates.getState` — сам hello: тот же
+            // `{pts, date}` пользователя (`ws/frames.go::helloFrame`). Без этого
+            // `/sync` от нуля переигрывал после входа ВЕСЬ журнал — сотни
+            // старых сообщений, удалений и переездов чатов поверх только что
+            // загруженного списка. С сохранённым состоянием (F5) — догон от него
+            // (tweb `getDifference(true)`, :907-929).
+            const saved = cursor.get()
+            if (!saved.pts || !saved.date) {
+              cursor.set(want, typeof p.date === 'number' ? p.date : 0)
+              syncWait.attach(undefined)
+              return
+            }
+            const catchingUp = want !== saved.pts ? (funnel.clear(), sync.catchUp()) : undefined
             // tweb 1dc32d889 — точка attach: первый hello после старта воркера
             // решает, какой difference «начальный» (или что догонять нечего).
             syncWait.attach(catchingUp)

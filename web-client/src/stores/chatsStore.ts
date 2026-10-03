@@ -244,6 +244,26 @@ export function degradeExpiredPresence(now = Math.floor(Date.now() / 1000)): voi
 export const PRESENCE_DEGRADE_INTERVAL_MS = 60_000
 
 /**
+ * Зеркало получило первые строки списка — точка, после которой есть кого сеять
+ * презенсом (`loadPresence` берёт цели из зеркала). Прежде этим был промис
+ * сетевого догона boot'а (`bootData.dialogsReady`), но boot в сеть за списком
+ * больше не ходит: строки приезжают кэшем до первого рендера либо первой
+ * страницей самого списка (tweb `getDialogs`, lib/storages/dialogs.ts:1903-1914).
+ * У tweb отдельного сида нет вовсе — статусы едут в векторе `users` тех же
+ * ответов; у нас презенс — своя ручка, и ждать ей нужно именно строк.
+ */
+export function whenDialogsLoaded(): Promise<void> {
+  if (useChatsStore.getState().dialogs.length) return Promise.resolve()
+  return new Promise((resolve) => {
+    const unsubscribe = useChatsStore.subscribe((s) => {
+      if (!s.dialogs.length) return
+      unsubscribe()
+      resolve()
+    })
+  })
+}
+
+/**
  * Запустить проверку. В оригинале интервал заводит сам менеджер пользователей
  * в `after()`; у нас карточка пира и её статус разъехались по двум владельцам
  * (пиры — воркерный `peersManager`, присутствие — этот стор на главном

@@ -101,7 +101,7 @@ async function seedHistory(core: ReturnType<typeof createWorkerCore>, messages: 
 }
 
 describe('createWorkerCore(): realtime-кадры применяет владелец (Task 3)', () => {
-  it('new_message (без pts) → dialogs.applyNewMessage → rt:dialog_op patch', async () => {
+  it('new_message (без pts) → dialogs.applyNewMessage → rt:dialog_op upsert пачкой', async () => {
     const { dialogOps } = await bootWithSeededDialog()
 
     // Кадр несёт сообщение ЦЕЛИКОМ под ключом `message` — форма
@@ -111,10 +111,14 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
       message: makeRawMessage({ id: 2, peerId: 1, fromId: 9, text: 'привет', createdAt: '2026-08-01T00:00:01Z' }),
     })
 
+    // Строка с новым сообщением объявляется пачкой через `pause(0)` (tweb
+    // `scheduleHandleNewDialogs`, appMessagesManager.ts:8946-8976).
+    await new Promise((r) => setTimeout(r, 0))
     expect(dialogOps).toHaveLength(1)
-    const op = dialogOps[0] as Extract<DialogOp, { op: 'patch' }>
-    expect(op.peerId).toBe(1)
-    expect((op.fields.lastMessage as { message?: string } | undefined)?.message).toBe('привет')
+    const op = dialogOps[0] as Extract<DialogOp, { op: 'upsert' }>
+    expect(op.op).toBe('upsert')
+    expect(op.items.map((i) => i.dialog.peerId)).toEqual([1])
+    expect((op.items[0].dialog.lastMessage as { message?: string } | undefined)?.message).toBe('привет')
   })
 
   // `core.start()` здесь не звался (см. докблок выше) — `me` в воркере null,
@@ -293,7 +297,8 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
     })
     await seedHistory(core, [mention(5)])
     capturedConnDeps!.onFrame('new_message', { _: 'updateNewMessage', message: mention(6) })
-    expect((dialogOps[dialogOps.length - 1] as Extract<DialogOp, { op: 'patch' }>).fields.unread_mentions_count).toBe(1)
+    await new Promise((r) => setTimeout(r, 0)) // пачка строк — через `pause(0)`
+    expect((dialogOps[dialogOps.length - 1] as Extract<DialogOp, { op: 'upsert' }>).items[0].dialog.unread_mentions_count).toBe(1)
     dialogOps.length = 0
 
     capturedConnDeps!.onFrame('media_read', {

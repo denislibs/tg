@@ -13,7 +13,7 @@ installFakeCanvas()
 const managers = {
   auth: { me: vi.fn(async () => null) },
   persist: { stateKey: vi.fn(async () => {}), scopeToSession: vi.fn(async () => false) },
-  dialogs: { fillMirror: vi.fn(async () => ({ op: 'reset' as const, items: [] })), refresh: vi.fn(async () => null) },
+  dialogs: { fillMirror: vi.fn(async () => ({ op: 'reset' as const, items: [] })) },
 }
 
 vi.mock('./bootstrap', () => ({

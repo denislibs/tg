@@ -8,11 +8,11 @@
 // логика вынесена в fillDialogsMirror/applyDialogsMirror — их тестируем здесь
 // напрямую с фейковым managers.dialogs, без SharedWorker/IDB.
 //
-// Первичная сетевая загрузка — `refresh()`, и страничность живёт ВНУТРИ него
-// (`dialogsManager.ts::doRefresh` просит окно удерживаемого, на пустом кэше —
-// одну страницу). Здесь пинится только развилка boot: догон идёт через
-// `refresh()` и без единой собственной страницы `getDialogs` — иначе у boot
-// появился бы второй, свой размер первого окна. Сквозной путь до самих списков
+// Сети на старте boot НЕ зовёт вовсе — старт списка как у tweb
+// `dialogsStorage.getDialogs` (lib/storages/dialogs.ts:1903-1914): кэш отдаёт
+// страницу, если его хватает, иначе один запрос, и решает это сам список.
+// Прежний безусловный `refresh()` приходил вторым `reset` поверх кэша и
+// перетасовывал уже нарисованный список. Сквозной путь до самих списков
 // (архив, папки) — `client/boot.firstPage.test.tsx`.
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { fillDialogsMirror, applyDialogsMirror } from './boot'
@@ -24,20 +24,15 @@ import { makeDialog } from '../core/dialogs/testDialog'
 
 const dialog = (peerId: number): Dialog => makeDialog({ peerId })
 
-/**
- * `netOp` — то, чем отвечает сетевой догон (`refresh()`); `op` тесты передают
- * в `applyDialogsMirror` аргументом, как это делает `bootstrap()` ответом
- * `fillMirror()`. `getDialogs` фейк держит, чтобы мутация «вернуть постраничный
- * догон» дошла до ассерта, а не упала на отсутствующем методе.
- */
-function fakeManagers(op: DialogOp, netOp: DialogOp | null = null) {
-  const calls: string[] = []
-  const fillMirror = vi.fn(async () => { calls.push('fillMirror'); return op })
-  const getDialogs = vi.fn(async () => { calls.push('getDialogs'); return { dialogs: [], count: 0, isEnd: false } })
-  const refresh = vi.fn(async () => { calls.push('refresh'); return netOp })
+/** `getDialogs`/`refresh` фейк держит, чтобы мутация «вернуть сетевой догон
+ *  в boot» дошла до ассерта, а не упала на отсутствующем методе. */
+function fakeManagers(op: DialogOp) {
+  const fillMirror = vi.fn(async () => op)
+  const getDialogs = vi.fn(async () => ({ dialogs: [], count: 0, isEnd: false }))
+  const refresh = vi.fn(async () => null)
   return {
     managers: { dialogs: { fillMirror, getDialogs, refresh } } as unknown as Pick<Managers, 'dialogs'>,
-    fillMirror, getDialogs, refresh, calls,
+    fillMirror, getDialogs, refresh,
   }
 }
 
@@ -54,72 +49,34 @@ describe('boot: холодный старт диалогов — зеркало 
       expect(fillMirror).toHaveBeenCalledTimes(1)
       expect(result).toEqual(op)
     })
-
   })
 
   describe('applyDialogsMirror', () => {
-    it('op не null — применяет его к витрине ДО возврата (холодный старт ждёт применения, не только ответа RPC)', async () => {
+    it('применяет ответ владельца к витрине синхронно, до первого рендера', () => {
       const op: DialogOp = { op: 'reset', items: [{ dialog: dialog(1), index: 10 }, { dialog: dialog(2), index: 20 }] }
-      const { managers } = fakeManagers(op)
 
-      await applyDialogsMirror(op, managers)
+      applyDialogsMirror(op)
 
       expect(useChatsStore.getState().dialogs.map((d) => d.peerId)).toEqual([2, 1])
       expect(useChatsStore.getState().loaded).toBe(true)
     })
 
-    // Fix (финальное ревью, Important #2): единственным каналом доставки reset'а
-    // от догона был бродкаст `rt:dialog_op`, а насос поднимается только в
-    // `startRealtime()` (эффект useAppBootstrap) — ПОСЛЕ первого рендера, и кадры
-    // до подписки никто не буферизует. Ответивший раньше `/chats` (localhost,
-    // быстрая сеть) уходил в никуда, и вкладка весь сеанс жила на дисковом кэше.
-    // Правило то же, что у fillMirror: пробел закрывает ОТВЕТ RPC.
-    it('ответ сетевого догона применяется из результата RPC, а не только бродкастом', async () => {
-      const cacheOp: DialogOp = { op: 'reset', items: [{ dialog: dialog(1), index: 10 }] }
-      const netOp: DialogOp = { op: 'reset', items: [{ dialog: dialog(1), index: 10 }, { dialog: dialog(2), index: 30 }] }
-      const { managers } = fakeManagers(cacheOp, netOp)
-
-      await applyDialogsMirror(cacheOp, managers)
-
-      expect(useChatsStore.getState().dialogs.map((d) => d.peerId)).toEqual([2, 1])
-    })
-
-    it('догон вернул null (ответ совпал с памятью) — зеркало не трогаем', async () => {
-      const cacheOp: DialogOp = { op: 'reset', items: [{ dialog: dialog(1), index: 10 }] }
-      const { managers } = fakeManagers(cacheOp, null)
-
-      await applyDialogsMirror(cacheOp, managers)
-
-      expect(useChatsStore.getState().dialogs.map((d) => d.peerId)).toEqual([1])
-    })
-
-    // Minor #3: refresh() пробрасывает HttpError — промис догона, который уезжает
-    // в bootData (на нём висит сид презенса), отклоняться наружу не должен.
-    it('догон упал (401/5xx) — промис резолвится, витрина остаётся на кэше', async () => {
-      const cacheOp: DialogOp = { op: 'reset', items: [{ dialog: dialog(1), index: 10 }] }
-      const { managers, refresh } = fakeManagers(cacheOp)
-      ;(refresh as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('401'))
-
-      await expect(applyDialogsMirror(cacheOp, managers)).resolves.toBeUndefined()
-      expect(useChatsStore.getState().dialogs.map((d) => d.peerId)).toEqual([1])
+    it('null — витрину не трогает', () => {
+      applyDialogsMirror(null)
+      expect(useChatsStore.getState().loaded).toBe(false)
     })
   })
 
-  // Размер первого окна знает ровно один слой — владелец (`doRefresh`). Своей
-  // страницы boot не просит: второй размер первого окна на витрине разошёлся бы
-  // с владельцем при первой же правке одного из них.
-  describe('applyDialogsMirror: догон идёт через refresh(), а не своей страницей', () => {
-    it('зовёт refresh() и ни одной страницы getDialogs', async () => {
-      const op: DialogOp = { op: 'reset', items: [] }
-      const { managers, refresh, getDialogs } = fakeManagers(op)
+  // Старт из кэша без сети: ни сетевого догона (`refresh()`), ни своей
+  // страницы boot не просит — страницы решает список через `getDialogs`.
+  it('bootstrap-часть диалогов не ходит в сеть: ни refresh(), ни getDialogs', async () => {
+    const op: DialogOp = { op: 'reset', items: [{ dialog: dialog(1), index: 10 }] }
+    const { managers, refresh, getDialogs } = fakeManagers(op)
 
-      await applyDialogsMirror(op, managers)
+    applyDialogsMirror(await fillDialogsMirror(managers))
+    await new Promise((r) => setTimeout(r, 0))
 
-      // Мутация: вернуть `getDialogs({limit: guessLoadCount()})` вместо
-      // `refresh()` — оба ассерта краснеют.
-      expect(refresh).toHaveBeenCalledTimes(1)
-      expect(refresh).toHaveBeenCalledWith() // окно выбирает владелец, а не boot
-      expect(getDialogs).not.toHaveBeenCalled()
-    })
+    expect(refresh).not.toHaveBeenCalled()
+    expect(getDialogs).not.toHaveBeenCalled()
   })
 })

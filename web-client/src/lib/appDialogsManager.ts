@@ -234,7 +234,7 @@ import { cachedChat } from '@core/peerCache'
 import { getOutputPeer, isAnyChat, isUser } from '@core/peers/peerId'
 import { isForum } from '@core/peers/predicates'
 import { isUserStatusOnline } from '@core/peers/peer'
-import { loadChats, loadPresence, startPresenceDegradation, useChatsStore } from '@stores/chatsStore'
+import { loadChats, loadPresence, startPresenceDegradation, useChatsStore, whenDialogsLoaded } from '@stores/chatsStore'
 import { isDialogMuted, loadNotifySettings, useNotifyStore } from '@stores/notifyStore'
 import { useSecretChatStore } from '@stores/secretChatStore'
 import { AutonomousDialogList } from '@components/autonomousDialogList/dialogs'
@@ -1167,15 +1167,12 @@ export class AppDialogsManager {
   private onStateLoaded(managers: Managers) {
     // Префетч старта (`client/boot.ts`) одноразовый: данные аккаунта, под
     // которым страница загрузилась. Без него — сеть под текущим токеном.
-    const prefetch = bootPrefetch() ?? undefined
-    void loadChats(managers, prefetch)
-    // На холодном старте список уже применён к зеркалу до первого кадра
-    // (`client/boot.ts::applyDialogsMirror`) — берём ПРОМИС его догона; без
-    // префетча это единственное место, которое подтягивает диалоги. `loadPresence`
-    // читает цели из зеркала, поэтому идёт после него; `.catch` — `refresh()`
-    // пробрасывает HttpError.
-    const dialogsReady = prefetch ? prefetch.dialogsReady : managers.dialogs.refresh()
-    void dialogsReady.catch(() => {}).then(() => loadPresence(managers)).catch(() => {})
+    void loadChats(managers, bootPrefetch() ?? undefined)
+    // Сети за списком здесь нет: страницы просит сам список (`getDialogs`,
+    // cache-first — tweb lib/storages/dialogs.ts:1903-1914), холодный старт уже
+    // применил кэш к зеркалу (`client/boot.ts::applyDialogsMirror`).
+    // `loadPresence` читает цели из зеркала — ждёт его первых строк.
+    void whenDialogsLoaded().then(() => loadPresence(managers)).catch(() => {})
     void loadStories(managers)
     void loadNotifySettings(managers)
     void loadFolders(managers)

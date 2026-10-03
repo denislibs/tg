@@ -40,6 +40,10 @@ function setup(initial: Status) {
   const component = new ConnectionStatusComponent()
   live.push(component)
   act(() => component.construct(managers, statusRef.current!))
+  // Стартовый pull «идёт ли догон» (`seedUpdating`) уходит прямо из construct;
+  // счёт вызовов ниже — про pull состояния соединения, поэтому его не считаем.
+  // Сам стартовый pull пинит describe «догон, начавшийся до подписки».
+  getStatus.mockClear()
 
   return {
     component,
@@ -289,6 +293,35 @@ describe('ConnectionStatusComponent — «обновляется» из ФАКТ
   })
 })
 
+// Догон после F5 начинается раньше, чем вкладка подписана (его запускает
+// hello сокета в воркере), и `state_synchronizing` уходит в никуда. У tweb
+// подписка стоит раньше старта догона (appDialogsManager.ts:989-990), поэтому
+// факт «догон идёт» спрашивается у владельца сразу, без INITIAL_DELAY.
+describe('ConnectionStatusComponent — догон, начавшийся до подписки', () => {
+  it('«Updating...» без ожидания INITIAL_DELAY', async () => {
+    const h = setup({ state: 'ready', syncing: true })
+    await act(async () => {})
+    h.flushShow()
+    expect(h.text()).toBe('Updating...')
+    expect(h.isLoading()).toBe(true)
+  })
+
+  it('состояние соединения стартовый pull догона не трогает: «Ожидание сети» по-прежнему через INITIAL_DELAY', async () => {
+    const h = setup({ state: 'connecting', syncing: false })
+    await act(async () => {})
+    h.flushShow()
+    expect(h.text()).toBe('Search')
+    expect(h.isLoading()).toBe(false)
+  })
+
+  it('событие конца догона, пришедшее раньше ответа, ответом не перебивается', async () => {
+    const h = setup({ state: 'ready', syncing: true })
+    await notifySyncEnd() // догон кончился раньше, чем вернулся стартовый pull
+    h.flushShow()
+    expect(h.text()).toBe('Search')
+  })
+})
+
 describe('ConnectionStatusComponent — липкий hadConnect (tweb :108-110)', () => {
   it('ready → offline даёт «Reconnecting...», а не «Waiting for network...»', async () => {
     const h = setup({ state: 'ready', syncing: false })
@@ -527,10 +560,11 @@ describe('ConnectionStatusComponent — монтирование хостом', 
     const root = document.querySelector<HTMLElement>('.input-search')!
     expect(root.querySelector('.input-search-placeholder')?.textContent).toBe('Search')
 
-    // размонтирование хоста снимает подписки автомата
+    // размонтирование хоста снимает подписки автомата (единственный вызов —
+    // стартовый pull «идёт ли догон» из construct)
     view.unmount()
     act(() => { rootScope.dispatchEventSingle(RT.state, { state: 'ready' }) })
-    expect(getStatus).not.toHaveBeenCalled()
+    expect(getStatus).toHaveBeenCalledTimes(1)
   })
 })
 
