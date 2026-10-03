@@ -283,13 +283,34 @@ func threadTop(t *testing.T, raw []byte) *int64 {
 	return m.ReplyTo.ReplyToTopID
 }
 
+// discussionRoot — номер корня треда комментариев поста (зеркала в группе
+// обсуждения) через GET /channels/{ch}/posts/{post}/discussion — порт
+// messages.getDiscussionMessage: им клиент дальше адресует тред.
+func discussionRoot(t *testing.T, h http.Handler, token, cid string, postSeq int64) int64 {
+	t.Helper()
+	rec := authedReq(t, h, http.MethodGet, "/channels/"+cid+"/posts/"+itoa(postSeq)+"/discussion", token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("discussion message: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Messages []struct {
+			ID int64 `json:"id"`
+		} `json:"messages"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if len(out.Messages) != 1 || out.Messages[0].ID == 0 {
+		t.Fatalf("discussion message: want ровно одно зеркало, got %s", rec.Body.String())
+	}
+	return out.Messages[0].ID
+}
+
 // Комментарий обязан нести ОДИН И ТОТ ЖЕ корень треда что через
 // /comments, что через generic-историю группы обсуждения (GET
-// /chats/{id}/history?thread_root=<postId>) — именно так текущий клиент
-// читает тред комментариев. Плюс: (b) чтение по thread_root=<id поста>
-// обязано найти комментарий, а не вернуть пусто (тред физически висит на id
-// ЗЕРКАЛА, не поста — без перевода на входе страница молча пустая), и (c)
-// редактирование не меняет наружный id.
+// /chats/{id}/history?thread_root=<номер зеркала>) — именно так клиент
+// читает тред комментариев (как tweb: тред адресуется номером зеркала из
+// getDiscussionMessage). Плюс: (b) GET /discussion отдаёт то же зеркало, и
+// чтение по его номеру находит комментарий, и (c) редактирование не меняет
+// наружный номер корня.
 func TestComments_ThreadRootID_ConsistentAcrossHTTPPaths(t *testing.T) {
 	h, pool := newMessagingRouter(t)
 	tokenA, _ := signUp(t, h, pool, "+79990005001")
@@ -338,9 +359,12 @@ func TestComments_ThreadRootID_ConsistentAcrossHTTPPaths(t *testing.T) {
 		t.Fatalf("POST /comments не отдал корень треда: %s", rec.Body.String())
 	}
 
-	// (b) generic-история группы обсуждения по thread_root=<id поста> находит
-	// комментарий (а не пустую страницу).
-	rec = authedReq(t, h, http.MethodGet, "/chats/"+discCid+"/history?thread_root="+pid, tokenB, nil)
+	// (b) корень из GET /discussion — тот же номер, что reply_to_top_id
+	// комментария, и generic-история группы по нему находит комментарий.
+	if root := discussionRoot(t, h, tokenB, cid, post.ID); root != *viaComments {
+		t.Fatalf("GET /discussion = %d, want %d (reply_to_top_id комментария)", root, *viaComments)
+	}
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+discCid+"/history?thread_root="+itoa(*viaComments), tokenB, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("generic history: %d %s", rec.Code, rec.Body.String())
 	}
@@ -382,10 +406,9 @@ func TestComments_ThreadRootID_ConsistentAcrossHTTPPaths(t *testing.T) {
 }
 
 // Блокер 2 (финальное ревью 2026-08-14): generic-история треда
-// (?thread_root=<postId>) не должна возвращать текст поста дважды.
-// resolveThreadRootForQuery переводит входящий thread_root (id поста) в id
-// ЗЕРКАЛА для SQL-запроса; зеркало (копия поста, включая текст) приезжает в
-// выборке само (SQL: thread_root_id=root OR id=root). Раньше
+// (?thread_root=<номер зеркала>) не должна возвращать текст поста дважды:
+// зеркало (копия поста, включая текст) приезжает в выборке само (SQL:
+// thread_root_id=root OR id=root). Раньше
 // prependForeignThreadRoot сверялась по СЫРОМУ id поста, а не по id
 // зеркала — совпадения не находила и синтетически подшивала СВЕРХУ ещё и
 // оригинал поста из канала: тот же текст приезжал клиенту дважды.
@@ -430,7 +453,8 @@ func TestComments_ThreadRootHistory_RootAppearsOnce(t *testing.T) {
 		t.Fatalf("post comment: %d %s", rec.Code, rec.Body.String())
 	}
 
-	rec = authedReq(t, h, http.MethodGet, "/chats/"+discCid+"/history?thread_root="+pid, tokenB, nil)
+	root := discussionRoot(t, h, tokenB, cid, post.ID)
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+discCid+"/history?thread_root="+itoa(root), tokenB, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("generic history: %d %s", rec.Code, rec.Body.String())
 	}
@@ -456,13 +480,10 @@ func TestComments_ThreadRootHistory_RootAppearsOnce(t *testing.T) {
 
 // Блокер 4 (финальное ревью 2026-08-14): generic-отправка (POST
 // /chats/{chatID}/messages, тот же путь, которым идёт WS send_message) с
-// thread_root_id = id ПОСТА обязана приземлить сообщение в тот же тред, что
-// и штатный POST /channels/{ch}/posts/{id}/comments — resolveThreadRootForQuery
-// применялась только на чтении (GetHistory/GetHistoryAround), а вход в Send
-// шёл нерезолвленным (chat_handler.go/conn.go передавали body.ThreadRootID
-// как есть) — комментарий, отправленный generic-путём, ложился на
-// буквальный id поста и в треде не появлялся вовсе.
-func TestGenericSend_ThreadRootID_PostID_LandsInSameThreadAsComments(t *testing.T) {
+// thread_root_id = номер ЗЕРКАЛА обязана приземлить сообщение в тот же тред,
+// что и штатный POST /channels/{ch}/posts/{id}/comments: номер переводится в
+// ключ строки на входе (ResolveThreadRootForSend), а не уходит в INSERT как есть.
+func TestGenericSend_ThreadRootID_MirrorSeq_LandsInSameThreadAsComments(t *testing.T) {
 	h, pool := newMessagingRouter(t)
 	tokenA, _ := signUp(t, h, pool, "+79990007001")
 	tokenB, _ := signUp(t, h, pool, "+79990007002")
@@ -508,9 +529,9 @@ func TestGenericSend_ThreadRootID_PostID_LandsInSameThreadAsComments(t *testing.
 		t.Fatalf("/comments не отдал корень треда: %s", rec.Body.String())
 	}
 
-	// Тот же тред, но generic-путём: thread_root_id в теле = id ПОСТА.
+	// Тот же тред, но generic-путём: thread_root_id в теле = номер зеркала.
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+discCid+"/messages", tokenB, map[string]any{
-		"text": "через generic send", "thread_root_id": pid, "client_msg_id": "k2",
+		"text": "через generic send", "thread_root_id": *viaComments, "client_msg_id": "k2",
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("generic send: %d %s", rec.Code, rec.Body.String())
@@ -555,10 +576,13 @@ func TestGenericSend_ThreadRootID_PostID_LandsInSameThreadAsComments(t *testing.
 // домиграционным постам оказывался ОДИНАКОВЫЙ thread_root_id=0 — треды
 // схлопывались в один.
 //
-// Проверяем: (а) generic-send приземляет комментарий в тот же тред, что и
-// штатный POST /comments, thread_root_id в ответе — id ПОСТА, а не 0;
-// (б) комментарии к ДВУМ разным домиграционным постам не схлопываются —
-// GET /history?thread_root=<post1> отдаёт только свой, не чужой.
+// Теперь зеркало домиграционного поста дозаводит GET /discussion (порт
+// messages.getDiscussionMessage — им клиент узнаёт номер корня треда), а
+// generic-send берёт номер корня в группе как есть. Проверяем: (а) корни двух
+// постов разные и не 0, generic-send и штатный POST /comments приземляют
+// комментарий в один тред; (б) треды не схлопываются — GET
+// /history?thread_root=<корень post1> отдаёт только свой; (в) несуществующий
+// корень — 404, а не sentinel 0 в INSERT.
 func TestGenericSend_ThreadRootID_PreMigrationPost_NoSentinelZeroCollapse(t *testing.T) {
 	h, pool := newMessagingRouter(t)
 	tokenA, _ := signUp(t, h, pool, "+79990008001")
@@ -606,9 +630,18 @@ func TestGenericSend_ThreadRootID_PreMigrationPost_NoSentinelZeroCollapse(t *tes
 	disc := createdPeerFrom(t, rec)
 	discCid := itoa(disc)
 
-	// generic-send к ОБОИМ домиграционным постам — зеркала дозаводятся лениво.
+	// Зеркала ОБОИХ домиграционных постов дозаводятся лениво — открытием треда.
+	root1 := discussionRoot(t, h, tokenB, cid, post1.ID)
+	root2 := discussionRoot(t, h, tokenB, cid, post2.ID)
+	if root1 == root2 {
+		t.Fatalf("корни тредов совпали (%d) — треды схлопнулись", root1)
+	}
+	if again := discussionRoot(t, h, tokenB, cid, post1.ID); again != root1 {
+		t.Fatalf("повторный GET /discussion завёл второе зеркало: %d != %d", again, root1)
+	}
+
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+discCid+"/messages", tokenB, map[string]any{
-		"text": "comment on post1", "thread_root_id": post1.ID, "client_msg_id": "c1",
+		"text": "comment on post1", "thread_root_id": root1, "client_msg_id": "c1",
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("generic send к post1: %d %s", rec.Code, rec.Body.String())
@@ -618,12 +651,12 @@ func TestGenericSend_ThreadRootID_PreMigrationPost_NoSentinelZeroCollapse(t *tes
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &c1)
 	top1 := threadTop(t, rec.Body.Bytes())
-	if top1 == nil || *top1 == 0 {
-		t.Fatalf("корень треда комментария к post1 = %v (не должен быть sentinel 0)", top1)
+	if top1 == nil || *top1 != root1 {
+		t.Fatalf("корень треда комментария к post1 = %v, want %d", top1, root1)
 	}
 
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+discCid+"/messages", tokenB, map[string]any{
-		"text": "comment on post2", "thread_root_id": post2.ID, "client_msg_id": "c2",
+		"text": "comment on post2", "thread_root_id": root2, "client_msg_id": "c2",
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("generic send к post2: %d %s", rec.Code, rec.Body.String())
@@ -633,12 +666,16 @@ func TestGenericSend_ThreadRootID_PreMigrationPost_NoSentinelZeroCollapse(t *tes
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &c2)
 	top2 := threadTop(t, rec.Body.Bytes())
-	if top2 == nil || *top2 == 0 {
-		t.Fatalf("корень треда комментария к post2 = %v (не должен быть sentinel 0)", top2)
+	if top2 == nil || *top2 != root2 {
+		t.Fatalf("корень треда комментария к post2 = %v, want %d", top2, root2)
 	}
-	// Корни РАЗНЫЕ: схлопывание в sentinel 0 давало один и тот же.
-	if *top1 == *top2 {
-		t.Fatalf("корни тредов совпали (%d) — треды схлопнулись", *top1)
+
+	// (в) корня с таким номером в группе нет — 404, а не запись sentinel 0.
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+discCid+"/messages", tokenB, map[string]any{
+		"text": "в никуда", "thread_root_id": root2 + 1000, "client_msg_id": "c3",
+	})
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("generic send в несуществующий корень: %d %s, want 404", rec.Code, rec.Body.String())
 	}
 
 	// (а) тот же тред, что и штатный /comments.
@@ -653,7 +690,7 @@ func TestGenericSend_ThreadRootID_PreMigrationPost_NoSentinelZeroCollapse(t *tes
 	}
 
 	// (б) треды НЕ схлопнулись: history для post1 не содержит комментарий post2 и наоборот.
-	rec = authedReq(t, h, http.MethodGet, "/chats/"+discCid+"/history?thread_root="+itoa(post1.ID), tokenB, nil)
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+discCid+"/history?thread_root="+itoa(root1), tokenB, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("history post1: %d %s", rec.Code, rec.Body.String())
 	}
@@ -669,7 +706,7 @@ func TestGenericSend_ThreadRootID_PreMigrationPost_NoSentinelZeroCollapse(t *tes
 		}
 	}
 
-	rec = authedReq(t, h, http.MethodGet, "/chats/"+discCid+"/history?thread_root="+itoa(post2.ID), tokenB, nil)
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+discCid+"/history?thread_root="+itoa(root2), tokenB, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("history post2: %d %s", rec.Code, rec.Body.String())
 	}
@@ -773,7 +810,7 @@ func TestCommentThreadHistory_HiddenMirrorRoot_NotForceShown(t *testing.T) {
 
 	// Читаем тред тем же generic-путём, каким клиент открывает комментарии —
 	// зеркало скрыто персонально для B и НЕ обязано принудительно вернуться.
-	rec = authedReq(t, h, http.MethodGet, "/chats/"+discCid+"/history?thread_root="+itoa(post.ID), tokenB, nil)
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+discCid+"/history?thread_root="+itoa(mirrorID), tokenB, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("thread history: %d %s", rec.Code, rec.Body.String())
 	}

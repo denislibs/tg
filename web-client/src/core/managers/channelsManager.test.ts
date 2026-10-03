@@ -115,41 +115,6 @@ describe('ChannelsManager.enableDiscussion', () => {
   })
 })
 
-describe('ChannelsManager.postComment', () => {
-  it('POSTs comment and returns a mapped Message with the thread root inside reply_to', async () => {
-    const post = vi.fn(async () => raw(9, 3))
-    const rest = { post, get: vi.fn() } as unknown as RestClient
-    const mgr = newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers(), cacheViews: () => {} })
-    const m = await mgr.postComment(7, 3, 'hi', 'c2')
-    expect(post).toHaveBeenCalledWith('/channels/7/posts/3/comments', { text: 'hi', client_msg_id: 'c2' })
-    expect(m.id).toBe(cid(9))
-    // Корень треда живёт ВНУТРИ ссылки на ответ (`reply_to.reply_to_top_id`) —
-    // отдельного поля рядом с сообщением больше нет.
-    expect(m.reply_to?.reply_to_top_id).toBe(cid(3))
-  })
-})
-
-describe('ChannelsManager.listComments', () => {
-  it('GETs comments and maps {messages,count}', async () => {
-    const get = vi.fn(async () => ({ messages: [raw(1), raw(2)], count: 2 }))
-    const rest = { post: vi.fn(), get } as unknown as RestClient
-    const mgr = newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers(), cacheViews: () => {} })
-    const r = await mgr.listComments(7, 3)
-    expect(get).toHaveBeenCalledWith('/channels/7/posts/3/comments', { offset: 0, limit: 50 })
-    expect(r.count).toBe(2)
-    expect(r.messages.map((m) => m.id)).toEqual([cid(1), cid(2)])
-    expect(r.messages[0].reply_to).toBeUndefined()
-  })
-
-  it('handles missing messages array', async () => {
-    const get = vi.fn(async () => ({ count: 0 }))
-    const rest = { post: vi.fn(), get } as unknown as RestClient
-    const mgr = newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers(), cacheViews: () => {} })
-    const r = await mgr.listComments(7, 3)
-    expect(r.messages).toEqual([])
-  })
-})
-
 describe('ChannelsManager suggested posts', () => {
   function rawSp(id: number, status = 'pending') {
     return { id, peer_id: 7, author_id: 8, author_name: 'Bob', text: `p${id}`, status, created_at: 1000 }
