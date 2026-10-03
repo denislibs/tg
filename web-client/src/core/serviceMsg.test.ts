@@ -88,3 +88,31 @@ describe('serviceMsgText', () => {
     })
   })
 })
+
+// Лог звонка пилюлей не рисуется, но ТЕКСТОМ он есть — превью строки списка
+// чатов и плашки ответа. Порт tweb: вид `action.type`
+// (appMessagesManager.ts:7303-7314) → ключ `messageActionPhoneCall.<type>`
+// (lib/langPack.ts:51-58) с длительностью аргументом
+// (messageActionTextNewUnsafe.ts:248-253). Прежде строка была пустой.
+describe('serviceMsgText: лог звонка', () => {
+  const call = (action: Omit<Extract<MessageAction, { _: 'messageActionPhoneCall' }>, '_'>, out = false) =>
+    serviceMsgText(pill({ _: 'messageActionPhoneCall', ...action }, { out }))
+
+  it('несостоявшийся: пропущен по причине Missed, иначе отменён — сторона не важна', () => {
+    expect(call({ reason: { _: 'phoneCallDiscardReasonMissed' } }, true)).toBe('Missed Call')
+    expect(call({ reason: { _: 'phoneCallDiscardReasonMissed' } })).toBe('Missed Call')
+    expect(call({ reason: { _: 'phoneCallDiscardReasonHangup' } }, true)).toBe('Canceled Call')
+    expect(call({ reason: { _: 'phoneCallDiscardReasonBusy' } })).toBe('Canceled Call')
+  })
+
+  it('состоявшийся: сторона из pFlags.out и длительность двумя разрядами', () => {
+    expect(call({ duration: 65 }, true)).toBe('Outgoing Call (1 minute, 5 seconds)')
+    expect(call({ duration: 3 })).toBe('Incoming Call (3 seconds)')
+  })
+
+  it('видеозвонок — свои ключи', () => {
+    expect(call({ pFlags: { video: true }, reason: { _: 'phoneCallDiscardReasonMissed' } })).toBe('Missed Video Call')
+    expect(call({ pFlags: { video: true }, reason: { _: 'phoneCallDiscardReasonHangup' } }, true)).toBe('Canceled Video Call')
+    expect(call({ pFlags: { video: true }, duration: 3 }, true)).toBe('Outgoing Video Call (3 seconds)')
+  })
+})

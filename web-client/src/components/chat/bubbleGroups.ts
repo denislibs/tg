@@ -510,7 +510,17 @@ export default class BubbleGroups {
    *  ЗНАКОВЫЙ уже на проводе (`send_as.peer_id`), поэтому кодировать чат
    *  минусом здесь больше нечем — и не нужно. */
   public getMessageFromId(message: MyMessage): PeerId {
-    return message.fromId ?? message.peerId
+    let fromId = message.fromId ?? message.peerId
+
+    // tweb :709-712 — «fix for saved messages forward to self»: своя пересылка
+    // в «Избранное» (автор оригинала — я сам) стоит своей серией, отдельно от
+    // моих непересланных сообщений там же. Ключ серии — знаковый ключ ЧАТА с
+    // тем же числом (`fromId.toPeerId(true)`), личностью он не является.
+    if(fromId === rootScope.myId && message.peerId === rootScope.myId && message._ === 'message' && message.fwdFromId === fromId) {
+      fromId = -fromId
+    }
+
+    return fromId
   }
 
   /** Срез чата для `isOurMessage`/`isOutMessage` — то, что в tweb лежит на самом
@@ -530,8 +540,9 @@ export default class BubbleGroups {
    *  первого бабла (остальные прячет CSS у не-`is-group-first`). Пост
    *  вещательного канала терма не касается: чат не мегагруппа, `pFlags.post`
    *  уводит `isOurMessage` в `false`, и подряд идущие посты остаются одной
-   *  серией. `fromId` — тот же ключ автора, что у `getMessageFromId`
-   *  (у tweb `message.fromId` с фолбэком на `peerId`).
+   *  серией. Здесь — САМ `message.fromId` (с фолбэком на `peerId`, как у
+   *  tweb), а не ключ серии `getMessageFromId`: тот у своей пересылки в
+   *  «Избранное» уже не мой id.
    *
    *  Терм `|| this.chat.isMonoforum` не портирован — монофорума у нас нет. */
   public canItemsBeGrouped(item1: GroupItem, item2: GroupItem): boolean {
@@ -543,7 +554,7 @@ export default class BubbleGroups {
       !item1.single &&
       !item2.single &&
       isOut1 === isOutMessage(item2.message, chat) &&
-      (!isOut1 || this.getMessageFromId(item1.message) === chat.myId) && // * group anonymous sending
+      (!isOut1 || (item1.message.fromId ?? item1.message.peerId) === chat.myId) && // * group anonymous sending
       item1.message.peerId === item2.message.peerId
   }
 

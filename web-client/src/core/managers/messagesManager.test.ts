@@ -333,6 +333,38 @@ describe('MessagesManager.cacheLive', () => {
     })))
     expect(ops).toEqual([])
   })
+
+  // Комментарий канала: окно треда адресовано номером ПОСТА (`hkey(группа,
+  // пост)`), а эхо несёт корень номером ЗЕРКАЛА в группе. Эхо, обогнавшее ack,
+  // обязано финализировать бабл в том окне, где он лежал (tweb
+  // checkPendingMessage → `storageKey: pendingData.storage.key`), — иначе окно
+  // треда навсегда держит «отправляется…», а ack после эха уже no-op.
+  it('эхо раньше ack финализирует бабл в окне треда, даже если корень в эхе — номер зеркала', async () => {
+    const POST = 100
+    const MIRROR = 200
+    // Окно треда спрошено номером поста, а приезжает в нём ЗЕРКАЛО поста в
+    // группе — под своим номером (backend usecase/chat/sync.go:27-33).
+    const mirror = makeRawMessage({ id: MIRROR, peerId: -5, fromId: -5, text: 'пост', createdAt: '2026-06-24T09:00:00Z' }) as RawMessage
+    const rest = {
+      get: async () => ({ messages: [mirror], count: 1 }),
+      post: async () => ({}),
+    } as unknown as RestClient
+    const ops: MessageOp[] = []
+    const mgr = newMessagesManager({ rest, broadcast: (e, p) => { if (e === RT.messageOp) ops.push(...(p as { ops: MessageOp[] }).ops) } })
+    await mgr.getHistory({ peerId: -5, offsetId: 0, addOffset: 0, limit: 40, threadRoot: cid(POST) })
+    await mgr.sendText({ peerId: -5, text: 'коммент', clientMsgId: 'c-thread-1', threadId: cid(POST), optimistic: { senderId: 1 } })
+    const threadKey = `-5:${cid(POST)}`
+    expect(ops.find((o) => o.key === threadKey)?.op).toBe('insert') // временный бабл в окне треда
+
+    const echoOps = mgr.cacheLive(liveEvt(makeRawMessage({
+      id: 7, peerId: -5, fromId: 1, text: 'коммент', threadRootId: MIRROR, randomId: 'c-thread-1', createdAt: '2026-06-24T10:00:00Z',
+    })))
+
+    const thread = echoOps.find((o) => o.key === threadKey)
+    expect(thread).toEqual({ op: 'insert', key: threadKey, msg: expect.objectContaining({ id: cid(7), random_id: 'c-thread-1' }), sequential: true })
+    // ack после эха — no-op: финализировать больше нечего, и это не потеря
+    expect(mgr.ackPendingMessage({ client_msg_id: 'c-thread-1', id: 7, created_at: '2026-06-24T10:00:00Z' })).toEqual([])
+  })
 })
 
 // Пин на СПОСОБ: `cacheLive` не имеет своего маппера. Раньше их было два —

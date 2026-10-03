@@ -22,8 +22,9 @@
 // `serviceMsgText` — их же, склеенные в строку (для превью в списке чатов, где
 // узлы не нужны).
 import { peerTitle } from './peerCache'
-import I18n from '@lib/langPack'
-import type { MessageAction } from './messages/messageAction'
+import I18n, { type LangPackKey } from '@lib/langPack'
+import { wrapCallDuration } from '@components/wrappers/wrapDuration'
+import type { MessageAction, MessageActionPhoneCall } from './messages/messageAction'
 import type { MessageService, MyMessage } from './models'
 
 /** Кусок фразы сервисной пилюли: обычный текст, имя-пир или ссылка на сообщение.
@@ -113,12 +114,44 @@ export function serviceMsgSegs(m: MessageService, pinnedPreview?: string): Servi
     case 'messageActionRestrict': return [actor, t(' ограничил(а) права '), user(a.user_id)]
     // Клиентская плашка ветки комментариев — её ставит витрина треда.
     case 'messageActionDiscussionStarted': return plain('Обсуждение началось')
-    // Лог звонка пилюлей не рисуется — у него свой бабл (`MessageKind` 'call').
-    case 'messageActionPhoneCall': return plain('')
+    // Лог звонка пилюлей не рисуется — у него свой бабл (`MessageKind` 'call'),
+    // но ТЕКСТОМ он есть: превью строки списка чатов и плашки ответа (tweb
+    // `messageActionTextNewUnsafe.ts:248-253` — ключ `_ + '.' + action.type`
+    // с длительностью аргументом).
+    case 'messageActionPhoneCall': {
+      const key = PHONE_CALL_LANG_KEYS[getPhoneCallType(a, out)]
+      return plain(I18n.format(key, true, a.duration !== undefined ? [wrapCallDuration(a.duration, true)] : undefined))
+    }
     // Конструктор есть, а ветки для него нет: показать сырой объект тут НЕЛЬЗЯ —
     // пользователь увидел бы служебную кишку вместо фразы.
     default: return plain(UNSUPPORTED_ACTION)
   }
+}
+
+/** Вид лога звонка — порт производного `action.type`, которое tweb выводит при
+ *  сохранении сообщения (appMessagesManager.ts:7303-7314): видео ли, состоялся
+ *  ли (есть `duration`) и в какую сторону, а несостоявшийся — пропущен
+ *  (`phoneCallDiscardReasonMissed`) или отменён. У оригинала `reason` на
+ *  несостоявшемся звонке есть всегда; у нас параметр опционален, и без него
+ *  звонок — отменённый (та же ветка `else`). */
+function getPhoneCallType(a: MessageActionPhoneCall, out: boolean): PhoneCallType {
+  return ((a.pFlags?.video ? 'video_' : '') +
+    (a.duration !== undefined ? (out ? 'out_' : 'in_') : '') +
+    (a.duration !== undefined ? 'ok' : (a.reason?._ === 'phoneCallDiscardReasonMissed' ? 'missed' : 'cancelled'))) as PhoneCallType
+}
+
+type PhoneCallType = 'video_in_ok' | 'video_out_ok' | 'video_missed' | 'video_cancelled' | 'in_ok' | 'out_ok' | 'missed' | 'cancelled'
+
+/** tweb lib/langPack.ts:51-58 — ключи `messageActionPhoneCall.<type>`. */
+const PHONE_CALL_LANG_KEYS: Record<PhoneCallType, LangPackKey> = {
+  video_in_ok: 'ChatList.Service.VideoCall.incoming',
+  video_out_ok: 'ChatList.Service.VideoCall.outgoing',
+  video_missed: 'ChatList.Service.VideoCall.Missed',
+  video_cancelled: 'ChatList.Service.VideoCall.Cancelled',
+  in_ok: 'ChatList.Service.Call.incoming',
+  out_ok: 'ChatList.Service.Call.outgoing',
+  missed: 'ChatList.Service.Call.Missed',
+  cancelled: 'ChatList.Service.Call.Cancelled',
 }
 
 /** Метка места аргумента в строке словаря: `superFormatter` кладёт строковый

@@ -567,6 +567,9 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (`GlobalAttachMediaRestricted`), подписи кнопки отправки (`UserRestrictionsSend{Voices,Round}`,
 // `ChatAutomation.Stop`). Итог: ru 1555, `plural` 50 → 51.
 // Вместе (П-5: шапка, закреп и аудио, действия, поиск и отложенные — +57; К-4 — +15): ru 1612, `plural` 55.
+// Баг-фиксы после П-5: +8 ключей tweb превью лога звонка (`ChatList.Service.{Call,VideoCall}.*`,
+// tweb lib/langPack.ts:51-58) и `ForwardedFrom` шапки пересылки вместо нашего мёртвого
+// `Chat.ForwardedFrom` (был только у ru) — ru +8, у остальных +9.
 // Шаг К-5 волны 7, задача 0б-1 (вкладка «Изменить» группы и канала, порт tweb
 // `editChat.tsx`): у ru +4 ключа tweb lang.ts — `TypePrivateGroup`, `TypePublicGroup`
 // (подпись строки типа группы), `ForumToggleDescription` (подпись секции с темами),
@@ -583,11 +586,11 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `StarGiftsCount`, `Files`, `Links`, `MusicFiles`, `Voice` (`plural` 51 → 58). 
 // Вместе с П-5 и К-4 из main: ru 1608, `plural` 62.
 const COMPOSITION = {
-  ru: { keys: 1608, plural: 62 },
-  uk: { keys: 829, plural: 35 },
-  es: { keys: 800, plural: 34 },
-  de: { keys: 801, plural: 35 },
-  fr: { keys: 796, plural: 34 },
+  ru: { keys: 1616, plural: 62 },
+  uk: { keys: 838, plural: 35 },
+  es: { keys: 809, plural: 34 },
+  de: { keys: 810, plural: 35 },
+  fr: { keys: 805, plural: 34 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -769,15 +772,16 @@ const COMPOSITION = {
 // Пачкой П-5 волны 7 — у ru +10 ключей поиска по чату и «отправить сейчас» (разбор — там же).
 // Шагом К-4 волны 7 — у ru +1 ключ tweb `Chat.Input.Attach` (разбор — там же).
 // Шагом К-4 волны 7 (строка ввода) — у ru +14 ключей `chat/input.ts` (разбор — там же).
+// Баг-фиксами после П-5 — превью звонка и `ForwardedFrom` (разбор — там же).
 // Шагом К-5 волны 7 (0б-1) — у ru +4 ключа tweb `editChat` и −18 наших ключей снесённых
 // экранов `group/*` (разбор — у `COMPOSITION` выше); вкладкой профиля — +10 ключей
 // tweb `sharedMedia.tsx` (разбор — там же).
 const FINGERPRINT = {
-  ru: '506f6ccc',
-  uk: 'a02f363c',
-  es: '89e8ae98',
-  de: '0fed7933',
-  fr: 'e3cd93c6',
+  ru: 'f5859380',
+  uk: 'af81524a',
+  es: '57ce09fe',
+  de: '3224cfc5',
+  fr: '61cdac88',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

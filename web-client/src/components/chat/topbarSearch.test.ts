@@ -191,6 +191,27 @@ describe('поиск по чату (tweb topbarSearch.tsx)', () => {
     expect(rows[1].classList.contains('active')).toBe(true)
   })
 
+  // tweb topbarSearch.tsx:81 — `meAsSaved: searchType === 'my'`: в поиске по чату
+  // своё сообщение подписано своим именем; «Избранное» там только у выдачи
+  // «в моих сообщениях», которой у нас нет.
+  it('своё сообщение в выдаче подписано своим именем, а не «Избранным»', async() => {
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'user', id: ME, first_name: 'Алиса', pFlags: { self: true } } as UserReal] }])
+    const found = [makeMessage({ id: 42, peerId: GROUP, fromId: ME, text: 'мой мир', date: 1_700_000_000 })]
+    const { c } = await openChat(GROUP, found)
+    c.initSearch()
+    const input = searchInput(c)!
+    input.dispatchEvent(new FocusEvent('focusin'))
+    await type(input, 'мир')
+
+    const row = await vi.waitFor(() => {
+      const el = c.topbar.container.querySelector<HTMLElement>('.topbar-search-left-chatlist .chatlist-chat')
+      expect(el).toBeTruthy()
+      return el!
+    })
+    const title = row.querySelector<HTMLElement>('.peer-title')
+    await vi.waitFor(() => expect(title?.textContent).toBe('Алиса'))
+  })
+
   it('пустая выдача — «Нет результатов» с запросом', async() => {
     const { c } = await openChat(FRIEND, [])
     c.initSearch()

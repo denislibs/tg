@@ -1109,10 +1109,6 @@
           "value": "Are you sure you want to discard all changes?"
         },
         {
-          "key": "Chat.ForwardedFrom",
-          "value": "Forwarded from"
-        },
-        {
           "key": "Chat.Frozen.LearnMore",
           "value": "Learn more..."
         },
@@ -1478,6 +1474,38 @@
         {
           "key": "ChatList.Mute.8Hours",
           "value": "For 8 Hours"
+        },
+        {
+          "key": "ChatList.Service.Call.Cancelled",
+          "value": "Canceled Call"
+        },
+        {
+          "key": "ChatList.Service.Call.Missed",
+          "value": "Missed Call"
+        },
+        {
+          "key": "ChatList.Service.Call.incoming",
+          "value": "Incoming Call (%@)"
+        },
+        {
+          "key": "ChatList.Service.Call.outgoing",
+          "value": "Outgoing Call (%@)"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.Cancelled",
+          "value": "Canceled Video Call"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.Missed",
+          "value": "Missed Video Call"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.incoming",
+          "value": "Incoming Video Call (%@)"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.outgoing",
+          "value": "Outgoing Video Call (%@)"
         },
         {
           "key": "ChatLocation",
@@ -2413,6 +2441,10 @@
         {
           "key": "Forward",
           "value": "Forward"
+        },
+        {
+          "key": "ForwardedFrom",
+          "value": "Forwarded from %s"
         },
         {
           "key": "FromYou",
@@ -7682,6 +7714,38 @@
           "value": "На 8 часов"
         },
         {
+          "key": "ChatList.Service.Call.Cancelled",
+          "value": "Отменённый звонок"
+        },
+        {
+          "key": "ChatList.Service.Call.Missed",
+          "value": "Пропущенный звонок"
+        },
+        {
+          "key": "ChatList.Service.Call.incoming",
+          "value": "Входящий звонок (%@)"
+        },
+        {
+          "key": "ChatList.Service.Call.outgoing",
+          "value": "Исходящий звонок (%@)"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.Cancelled",
+          "value": "Отменённый видеозвонок"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.Missed",
+          "value": "Пропущенный видеозвонок"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.incoming",
+          "value": "Входящий видеозвонок (%@)"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.outgoing",
+          "value": "Исходящий видеозвонок (%@)"
+        },
+        {
           "key": "ChatList.Mute.1Day",
           "value": "На 1 день"
         },
@@ -8420,6 +8484,10 @@
           "value": "Переслать"
         },
         {
+          "key": "ForwardedFrom",
+          "value": "Переслано от %s"
+        },
+        {
           "key": "Message.Context.Select",
           "value": "Выбрать"
         },
@@ -8595,10 +8663,6 @@
         {
           "key": "DeleteForMe",
           "value": "Удалить у себя"
-        },
-        {
-          "key": "Chat.ForwardedFrom",
-          "value": "Переслано от"
         },
         {
           "key": "ShareModal.Search.ForwardPlaceholder",
@@ -13431,7 +13495,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 32,
+      "version": 33,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -13732,6 +13796,38 @@
         {
           "key": "ChatList.Mute.8Hours",
           "value": "Pendant 8 heures"
+        },
+        {
+          "key": "ChatList.Service.Call.Cancelled",
+          "value": "Appel annulé"
+        },
+        {
+          "key": "ChatList.Service.Call.Missed",
+          "value": "Appel manqué"
+        },
+        {
+          "key": "ChatList.Service.Call.incoming",
+          "value": "Appel entrant (%@)"
+        },
+        {
+          "key": "ChatList.Service.Call.outgoing",
+          "value": "Appel sortant (%@)"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.Cancelled",
+          "value": "Appel vidéo annulé"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.Missed",
+          "value": "Appel vidéo manqué"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.incoming",
+          "value": "Appel vidéo entrant (%@)"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.outgoing",
+          "value": "Appel vidéo sortant (%@)"
         },
         {
           "key": "ChatList.Mute.1Day",
@@ -14306,6 +14402,10 @@
         {
           "key": "Forward",
           "value": "Transférer"
+        },
+        {
+          "key": "ForwardedFrom",
+          "value": "Transféré de %s"
         },
         {
           "key": "Message.Context.Select",
@@ -16725,7 +16825,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 32,
+      "version": 33,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -17025,6 +17125,38 @@
         {
           "key": "ChatList.Mute.8Hours",
           "value": "Für 8 Stunden"
+        },
+        {
+          "key": "ChatList.Service.Call.Cancelled",
+          "value": "Abgebrochener Anruf"
+        },
+        {
+          "key": "ChatList.Service.Call.Missed",
+          "value": "Verpasster Anruf"
+        },
+        {
+          "key": "ChatList.Service.Call.incoming",
+          "value": "Eingehender Anruf (%@)"
+        },
+        {
+          "key": "ChatList.Service.Call.outgoing",
+          "value": "Ausgehender Anruf (%@)"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.Cancelled",
+          "value": "Abgebrochener Videoanruf"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.Missed",
+          "value": "Verpasster Videoanruf"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.incoming",
+          "value": "Eingehender Videoanruf (%@)"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.outgoing",
+          "value": "Ausgehender Videoanruf (%@)"
         },
         {
           "key": "ChatList.Mute.1Day",
@@ -17607,6 +17739,10 @@
         {
           "key": "Forward",
           "value": "Weiterleiten"
+        },
+        {
+          "key": "ForwardedFrom",
+          "value": "Weitergeleitet von %s"
         },
         {
           "key": "Message.Context.Select",
@@ -20041,7 +20177,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 32,
+      "version": 33,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -20346,6 +20482,38 @@
         {
           "key": "ChatList.Mute.8Hours",
           "value": "Durante 8 horas"
+        },
+        {
+          "key": "ChatList.Service.Call.Cancelled",
+          "value": "Llamada cancelada"
+        },
+        {
+          "key": "ChatList.Service.Call.Missed",
+          "value": "Llamada perdida"
+        },
+        {
+          "key": "ChatList.Service.Call.incoming",
+          "value": "Llamada entrante (%@)"
+        },
+        {
+          "key": "ChatList.Service.Call.outgoing",
+          "value": "Llamada saliente (%@)"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.Cancelled",
+          "value": "Videollamada cancelada"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.Missed",
+          "value": "Videollamada perdida"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.incoming",
+          "value": "Videollamada entrante (%@)"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.outgoing",
+          "value": "Videollamada saliente (%@)"
         },
         {
           "key": "ChatList.Mute.1Day",
@@ -20924,6 +21092,10 @@
         {
           "key": "Forward",
           "value": "Reenviar"
+        },
+        {
+          "key": "ForwardedFrom",
+          "value": "Reenviado de %s"
         },
         {
           "key": "Message.Context.Select",
@@ -23351,7 +23523,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 33,
+      "version": 34,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -23657,6 +23829,38 @@
         {
           "key": "ChatList.Mute.8Hours",
           "value": "На 8 годин"
+        },
+        {
+          "key": "ChatList.Service.Call.Cancelled",
+          "value": "Скасований дзвінок"
+        },
+        {
+          "key": "ChatList.Service.Call.Missed",
+          "value": "Пропущений дзвінок"
+        },
+        {
+          "key": "ChatList.Service.Call.incoming",
+          "value": "Вхідний дзвінок (%@)"
+        },
+        {
+          "key": "ChatList.Service.Call.outgoing",
+          "value": "Вихідний дзвінок (%@)"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.Cancelled",
+          "value": "Скасований відеодзвінок"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.Missed",
+          "value": "Пропущений відеодзвінок"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.incoming",
+          "value": "Вхідний відеодзвінок (%@)"
+        },
+        {
+          "key": "ChatList.Service.VideoCall.outgoing",
+          "value": "Вихідний відеодзвінок (%@)"
         },
         {
           "key": "ChatList.Mute.1Day",
@@ -24243,6 +24447,10 @@
         {
           "key": "Forward",
           "value": "Переслати"
+        },
+        {
+          "key": "ForwardedFrom",
+          "value": "Переслано від %s"
         },
         {
           "key": "Message.Context.Select",
