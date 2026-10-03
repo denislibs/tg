@@ -2,8 +2,7 @@
 // (`components/popups/indexTsx.solid.tsx`, расхождение 2; у tweb —
 // `appDialogsManager.ts:980`). Без присвоения любой `showXxxPopup`, не передавший
 // `managers` пропом, получил бы `undefined` вместо RPC-прокси (web-client/CLAUDE.md,
-// «Делегирующий вызов — тоже строка проводки»). Окружение — то же фейковое, что у
-// `boot.maskedAnchor.test.ts`.
+// «Делегирующий вызов — тоже строка проводки»).
 import { describe, expect, it, vi } from 'vitest'
 import { installFakeCanvas } from '@/test/fakeCanvas'
 

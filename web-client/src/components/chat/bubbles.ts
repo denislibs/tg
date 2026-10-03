@@ -3096,9 +3096,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
     }
 
     // Внутренняя ссылка Telegram (`data-anchor-action`) — tweb исполняет её
-    // глобалью из `addAnchorListener` (`internalLinkProcessor`, бэклог Б-8). До
-    // него остаётся поведение браузера: `setBlankToAnchor` проставил
-    // `target="_blank"`, и ветки ниже по такому клику не идут.
+    // inline-`onclick` якоря; у нас — делегированный слушатель на `document`
+    // (`helpers/addAnchorListener.ts::listenForAnchorClicks`, обработчики —
+    // `lib/internalLinkProcessor.ts`). Ветки ниже по такому клику не идут.
     const anchor = target.closest<HTMLElement>(`[${ANCHOR_ACTION_ATTRIBUTE}]`)
     if (anchor) {
       return

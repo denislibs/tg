@@ -1650,10 +1650,6 @@ const ru = {
   SetAsEmojiStatus: 'Установить как статус',
   'ExportedInvitation.Status.Expired': 'истекла',
   'ExportedInvitation.Status.Revoked': 'отозвана',
-  'Folder.Invite.Adding': 'Добавляем…',
-  'Folder.Invite.Invalid': 'Ссылка недействительна или устарела.',
-  'Folder.Invite.Question': 'Добавить «%1$s» и вступить в её чаты?',
-  'Folder.Invite.Question.Folder': 'Добавить папку «%1$s»?',
   'Group.RestrictedBadge': 'ограничен',
   'InviteLinks.LimitReached': 'лимит исчерпан',
   LinkNameHint: 'Название ссылки (необязательно)',
@@ -2018,6 +2014,21 @@ const ru = {
   },
   FilterNoChatsToDisplay: 'Папка пуста',
   FilterNoChatsToDisplayInfo: 'Сейчас в этой папке нет чатов.',
+  // ── Внутренние ссылки, ориентиры колонок, попап папки по ссылке (П-4 волны 7) ──
+  'AccDescr.ChatInfo': 'Информация о чате',
+  'AccDescr.ChatList': 'Список чатов',
+  'AccDescr.SkipToConversation': 'Перейти к переписке',
+  'Alert.BotAppDoesntExist': 'К сожалению, такого приложения не существует.',
+  DeselectAll: 'снять выбор',
+  FilterPersonal: 'Личные',
+  InviteExpired: 'Срок действия ссылки-приглашения истёк.',
+  'Link.NotSupported': 'Эта ссылка не поддерживается в веб-версии.',
+  LinkNotFound: 'К сожалению, у вас нет доступа к этому сообщению: вы не состоите в чате, где оно опубликовано.',
+  RequestToJoinSent: 'Заявка на вступление отправлена',
+  SelectAll: 'выбрать все',
+  'SharedFolder.Link.Chats': '%s в папке для вступления',
+  'SharedFolder.Link.Description': 'Добавить новую папку и вступить в её группы и каналы?',
+  'SharedFolder.Link.Expired': 'Срок действия ссылки на папку истёк.',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

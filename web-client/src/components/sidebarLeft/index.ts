@@ -132,8 +132,7 @@
  *  6. «Switch to A version» (`ChatList.Menu.SwitchTo.A`, :985-997) — verify
  *     `App.isMainDomain` у нас всегда ложь (своего домена версии A нет),
  *     пункта нет; поэтому `separator` у «Telegram Features» — всегда.
- *  7. «Telegram Features» — `appImManager.openUrl(url)` (:1002) → новая
- *     вкладка: обработчика внутренних ссылок нет, ВРЕМЕННО до Э5-4.
+ *  7. (снято П-4: «Telegram Features» — `appImManager.openUrl(url)`, как у tweb :973.)
  *  8. PiP — наш вынос клиента `enterAppPip` (`core/pip.ts`) вместо
  *     `openClientPip`; «выйти» закрывает окно выноса.
  *  9. Клавиатурная навигация меню (фокус в подменю) — О-84 волны 7
@@ -165,7 +164,6 @@ import createNewGroupTab from '@components/sidebarLeft/tabs/createNewGroupTab'
 import InputSearch from '@components/inputSearch'
 import GlobalSearch from '@components/sidebarLeft/globalSearch'
 import type { AppDialogsManager } from '@lib/appDialogsManager'
-import { openSearchUrl } from '@core/hooks/openSearchUrl'
 import appImManager from '@lib/appImManager'
 import { switchTheme } from '@core/theme/themeTransition'
 import type { User, UserReal } from '@core/peers/peer'
@@ -346,7 +344,7 @@ export class AppSidebarLeft extends SidebarSlider {
         this.isSearchActive = active
         this.onSomethingOpenInsideChange()
       },
-      openUrl: (url) => openSearchUrl(url),
+      openUrl: (url) => appImManager.openUrl(url),
     })
 
     // :233-258 — `folder_unread` архива; у нас — движение зеркала диалогов (расхождение 4 бургера)
@@ -914,8 +912,7 @@ export class AppSidebarLeft extends SidebarSlider {
       text: 'TelegramFeatures',
       onClick: () => {
         const url = I18n.format('TelegramFeaturesUrl', true)
-        // ВРЕМЕННО до Э5-4: `appImManager.openUrl(url)` (расхождение 7 бургера)
-        window.open(url, '_blank', 'noopener')
+        appImManager.openUrl(url)
       },
       separator: true,
     }, {

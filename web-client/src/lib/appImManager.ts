@@ -24,12 +24,9 @@
 // ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
 //  1. `columnEl` берётся в `construct`, а не инициализатором поля: модуль
 //     импортируется тестами и соседями до того, как в документе есть `#column-center`.
-//  2. Ссылка «пропустить к чату» и имена ориентиров (`attachSkipToContent`,
-//     `setStaticLandmarkLabels`, `:349-352`, `:3199-3201`) не портированы: ключей
-//     `AccDescr.*` в нашем лангпаке нет — бэклог Б-47. `inert` колонок
-//     (`updateColumnAccessibility`) — портирован.
-//  3. Нет предмета у подписок `construct`: `internalLinkProcessor` (Б-8),
-//     `appMediaPlaybackController.construct` (у нас модуль без конструктора),
+//  2. (снято П-4: ссылка «пропустить к чату» и имена ориентиров — `attachSkipToContent`,
+//     `setStaticLandmarkLabels`, `:349-352`, `:3199-3201`, Б-47.)
+//  3. Нет предмета у подписок `construct`: `appMediaPlaybackController.construct` (у нас модуль без конструктора),
 //     `idleController` → `updateStatus`/`goOffline` (Б-14), предкэш обоев
 //     `SETTINGS_INIT.themes` (наш фон резолвит обои сам), `chatTips` (Б-13),
 //     `join_chat_webview_decision`/звонки/`topbarCall`/`chatAudio` (П-4, П-5),
@@ -51,9 +48,7 @@
 //     автоплей/зацикливание стикеров и тема по выбору (бывший `client/liteModeSettings.ts`
 //     и `useThemeToggle`). `chatsSelectTabDebounced` (закреп, очередь загрузок) — нет
 //     предмета до К-3.
-//  8. Хэш: `tgaddr` и чужие действия уходят в `openUrl` → `openSearchUrl`
-//     (исполнителя внутренних ссылок нет, Б-8); `story`/`community`/`call` в
-//     `#/im` — нет предметов. `op()` без `migrated_to` и ботфорума. В канал, где мы не состоим, `op()` ВСТУПАЕТ: наш
+//  8. Хэш: `story`/`community`/`call` в `#/im` — нет предметов. `op()` без `migrated_to` и ботфорума. В канал, где мы не состоим, `op()` ВСТУПАЕТ: наш
 //     `GET /chats/{id}/history` не-участнику отдаёт 403 (перенесено из прежнего
 //     `useUrlSync.applyHash`, долг — `docs/readiness/port-divergences.md`).
 //  9. `setPeer` без `getPeerMigratedTo` и `min`-пиров (`:3293-3317`) — в нашей
@@ -97,7 +92,11 @@ import { isForum } from '@core/peers/predicates'
 import { setTheme } from '@core/theme/themeController'
 import { useAutoLock } from '@core/hooks/useAutoLock'
 import { useLockScreenShortcut } from '@core/hooks/useLockScreenShortcut'
-import { openSearchUrl } from '@core/hooks/openSearchUrl'
+import internalLinkProcessor from '@lib/internalLinkProcessor'
+import { getAnchorListener } from '@helpers/addAnchorListener'
+import { wrapUrl } from '@lib/richtext/url'
+import { attachSkipToContent, setLandmarkLabels } from '@helpers/dom/appLandmarks'
+import { openWebApp } from '@core/webapp'
 import animationIntersector from '@components/animationIntersector'
 import appChatBackground, { type AppChatBackground } from '@components/chat/bubbles/chatBackground.solid'
 import { ChatType } from '@components/chat/chatType'
@@ -372,10 +371,18 @@ export class AppImManager extends EventListenerBase<{
 
   public construct(managers: Managers) {
     this.managers = managers
+    // `:326`
+    internalLinkProcessor.construct(managers)
     this.columnEl = document.getElementById('column-center') as HTMLDivElement
     this.columnLeftEl = document.getElementById('column-left')
 
     void this.selectTab(APP_TABS.CHATLIST)
+
+    // `:349-352`
+    const skipLink = document.getElementById('skip-to-content')
+    if(skipLink) attachSkipToContent(skipLink, this.columnEl)
+    this.setStaticLandmarkLabels()
+    rootScope.addEventListener('language_change', this.setStaticLandmarkLabels)
 
     this.appChatBackground = appChatBackground
 
@@ -462,14 +469,27 @@ export class AppImManager extends EventListenerBase<{
       })
     }
 
+    this.checkForLoginToken()
     this.onHashChange(true)
   }
 
   // ── G. Хэш и открытие пиров ─────────────────────────────────────────────
 
-  /** tweb `:1897-1910` — расхождение 8 шапки */
-  public openUrl(url: string) {
-    openSearchUrl(url)
+  /** tweb `:1897-1910`; `window[onclick]` оригинала — реестр `addAnchorListener`. */
+  public openUrl(url: string, newWindowIfNoClick?: boolean) {
+    const { url: wrappedUrl, action } = wrapUrl(url)
+    const callback = getAnchorListener(action)
+    if(!callback) {
+      if(newWindowIfNoClick) {
+        window.open(wrappedUrl, '_blank', 'noopener,noreferrer')
+      }
+
+      return
+    }
+
+    const a = document.createElement('a')
+    a.href = wrappedUrl
+    return callback(a)
   }
 
   private onHashChange = (saveState?: boolean) => {
@@ -635,6 +655,52 @@ export class AppImManager extends EventListenerBase<{
     }
 
     appNavigationController.overrideHash(str)
+  }
+
+  // ── D. Боты, вебапп (`:1024-1609`) ────────────────────────────────────
+  //
+  // ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ БЛОКА (строки бэклога Б-76, Б-79):
+  //  D1. `openWebApp` (`:1200-1331`): ручек `requestWebView`/`requestMainWebView`
+  //      (подписанные `initData`, `query_id`), attach-меню ботов
+  //      (`getAttachMenuBot`/`toggleBotInAttachMenu` `:1124-1170`) и подтверждений
+  //      (`confirmBotWebView*` `:1050-1110`, `appState.confirmedWebViews`) у нас нет:
+  //      адрес приложения приходит готовым (кнопка-меню бота `bots.menuButton`), окно —
+  //      React `WebAppModal` острова оверлеев (`core/webapp.ts`, ВРЕМЕННО до программы
+  //      вебаппа), `startParam` в него не доезжает (его кладёт сервер в `initData`).
+  //  D2. `checkForShare` (`:1024-1048`, Web Share Target `apiManagerProxy.share`),
+  //      `openJoinChatWebView`/`JoinChatFlow` (`:1333-1392`, бот-страж вступления),
+  //      `playGame` (`:1394`), `handleUrlAuth` (`:1419`), `handleAutologinDomains`
+  //      (`:1511`), `handlePeerColors` (`:1594`) — предметов нет (бэкенд), не портированы.
+
+  /** tweb `:1200-1331` — расхождение D1. */
+  public openWebApp(options: {
+    botId: PeerId,
+    url: string,
+    startParam?: string,
+    main?: boolean,
+  }) {
+    const user = cachedUser(options.botId)
+    openWebApp({
+      url: options.url,
+      botName: getUserTitle(user),
+      botId: +options.botId,
+    })
+  }
+
+  /**
+   * НАШЕ РАСШИРЕНИЕ: подтверждение QR-входа. Код в QR — адрес клиента
+   * `/qr/<token>` (`auth/cards/SignQRCard.solid.tsx`); у tweb QR-подтверждения нет
+   * вовсе (веб не подтверждает вход). Адрес зачищается единственным писателем
+   * истории (`overrideAddress`), вопрос задаёт `internalLinkProcessor`.
+   */
+  private checkForLoginToken() {
+    const m = location.pathname.match(/^\/qr\/([\w-]+)$/)
+    if(!m) {
+      return
+    }
+
+    appNavigationController.overrideAddress(new URL('/' + location.hash, location.origin))
+    void internalLinkProcessor.processLoginTokenLink(m[1])
   }
 
   // ── I. Фон, тема, настройки ─────────────────────────────────────────────
@@ -837,6 +903,11 @@ export class AppImManager extends EventListenerBase<{
   }
 
   /** tweb `:3203-3208` */
+  /** tweb `:3199-3201` (узел колонки — расхождение 13 шапки) */
+  private setStaticLandmarkLabels = () => {
+    setLandmarkLabels(this.columnLeftEl, document.getElementById('column-right'))
+  }
+
   private updateColumnAccessibility() {
     // On mobile these columns slide outside the viewport but stay mounted.
     // Match their keyboard/AT visibility to the selected screen, including PiP.
