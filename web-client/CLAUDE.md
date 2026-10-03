@@ -482,17 +482,31 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
 
 - **НИКОГДА не рендерить пользовательский контент как сырую HTML-строку** (ни raw-HTML React-пропами,
   ни присваиванием разметки в DOM). Сущности и код — только React-нодами (`RichText.tsx`, `CodeBlock.tsx`);
-  DOM строить через `createElement`/`createTextNode`.
+  DOM строить через `createElement`/`createTextNode`. Единственное исключение — `execCommand('insertHTML')`
+  поля ввода (ради родной истории undo): на вход только сериализация фрагмента, собранного узлами
+  (`wrapDraftText` → `documentFragmentToHTML`), не строка пользователя.
 - Ссылки — только по allow-list схем (`http/https/mailto/tel/tg`); остальное отбрасывать.
 - Лимит длины кода в prism (ReDoS), лимит числа entities (O(n²) рендер) — не убирать.
 
-## Rich-text (`src/core/richtext/markdown.ts`)
+## Rich-text и поле ввода (модель tweb)
 
 - Модель `MessageEntity` совпадает с бэком: offset/length в **UTF-16** (обычные индексы JS-строки).
-- Инпут хранит **сырые** markdown-маркеры; разбор — на **отправке** (`parseMarkdown`), как в tweb.
-  Не делать live-WYSIWYG для блоков кода.
+- Поле ввода — **rich-DOM tweb** (`components/inputField.ts`, `inputFieldAnimated.ts`): разметку
+  хранит сам DOM поля — markup-span'ы (`font-family: markup-bold-italic`, `.is-markup[data-markup]`,
+  стили `styles/tweb/_markup.scss`). Их ставит браузер по `execCommand('fontName')`
+  (`helpers/dom/markdown.ts::applyMarkdown`, хоткеи `handleMarkdownShortcut`) или строит
+  `lib/richtext/wrapDraftText.ts` (черновик, правка сообщения, вставка). Значение и сущности
+  читаются **из DOM** — `helpers/dom/getRichValueWithCaret.ts` (обход — `getRichElementValue.ts`).
+  Второй модели поля (свой сериализатор, «текст + сущности» в стейте) не заводить.
+- Набранные руками маркеры (`**жир**`, ```` ``` ````-блоки) остаются в поле текстом и разбираются
+  на **отправке** (`parseMarkdown`), сливаясь с сущностями из DOM, — как в tweb.
+- Undo/redo — родная история браузера. Поэтому поле правится только через `execCommand`
+  (`insertHTML`, `fontName`, `createLink`, `unlink`), а не прямой мутацией DOM — иначе история
+  рвётся; после undo/redo `processCurrentFormatting(input, undefined, inputType)` чинит классы.
+- Вставка — глобальный перехватчик `paste` (`inputField.ts::init`, ставит первый rich-`InputField`):
+  HTML буфера разбирается в инертном `DOMParser`-документе в сущности и вставляется
+  `insertRichTextAsHTML` — сериализацией фрагмента, собранного узлами (`documentFragmentToHTML`).
 - Язык блока кода = текст **до первого перевода строки** во fence (точное правило tweb), не угадывать по содержимому.
-- Большая вставка — одним text-node через Range, **не** `execCommand('insertText', …)` (иначе фриз на тысячах нод).
 
 ## Скролл
 

@@ -9,9 +9,17 @@
 // другой, дробится на несколько одинаковых элементов (две `<a class="anchor-url">`
 // вместо одной с вложенным `<strong>`).
 //
+// РЕЖИМ ЧЕРНОВИКА `wrappingDraft` (tweb — тот же флаг; вход — `wrapDraftText.ts`): DOM поля
+// ввода. Форматирование — markup-span'ы `createMarkupFormatting` (`font-family: markup-bold`,
+// `[data-markup]`, `.is-markup`), их потом читает `helpers/dom/getRichElementValue.ts`;
+// блочные сущности не оборачиваются в `div`; свои эмодзи — `img.custom-emoji-placeholder`.
+// Из режима НЕ перенесены: `isSelectable`/`wrapSomething`/BOM-филлеры (`createCustomFiller`,
+// `insertCustomFillers`, tweb :151-176, :1030-1072) — в черновике они не рождаются (ветка
+// своих эмодзи выходит раньше `wrapSomething`), а вне черновика `isSelectable` никто не просит;
+// прозрачный `src` плейсхолдера своего эмодзи (tweb :451) — рисовать поверх некому (рендерера
+// нет, см. ниже), без `src` браузер показывает `alt`-глиф.
+//
 // ЧТО НЕ ПОРТИРОВАНО (и почему):
-//   • `wrappingDraft` целиком (черновик поля ввода: markup-шрифты, каретка, BOM-филлеры,
-//     `insertCustomFillers`) — поле ввода живёт своей веткой (`core/richtext/markdown.ts`);
 //   • `messageEntityFormattedDate` (solid-js), `messageEntityDiff*`, `messageEntityTimestamp`,
 //     `messageEntityBotCommand`, `messageEntityAnchor`, `messageEntitySubscript`/`Superscript`,
 //     `messageEntityPhone`, `messageEntityCaret` — конструкторы в
@@ -76,6 +84,8 @@ export type WrapRichTextOptions = Partial<{
   middleware: () => boolean
   /** сюда складываются промисы отложенной работы (подсветка кода) — как в tweb */
   loadPromises: Promise<unknown>[]
+  /** DOM поля ввода (tweb :49) — см. «РЕЖИМ ЧЕРНОВИКА» в шапке */
+  wrappingDraft: boolean
 
   // ! recursive, do not provide
   nasty: {
@@ -118,6 +128,15 @@ function findIndexFrom<T>(arr: T[], predicate: (item: T) => boolean, i: number):
     }
   }
   return -1
+}
+
+/** tweb :83-89 — span разметки поля ввода (`font-family` её и хранит, см. `helpers/dom/markdown.ts`). */
+function createMarkupFormatting(formatting: string, element = document.createElement('span')) {
+  const str = 'markup-' + formatting
+  element.style.fontFamily = str
+  element.classList.add('is-markup')
+  element.dataset.markup = str
+  return element
 }
 
 /**
@@ -191,7 +210,11 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
     switch (entity._) {
       case 'messageEntityBold': {
         if (!options.noTextFormat) {
-          element = document.createElement('strong')
+          if (options.wrappingDraft) {
+            element = createMarkupFormatting('bold')
+          } else {
+            element = document.createElement('strong')
+          }
         }
 
         break
@@ -199,7 +222,11 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
 
       case 'messageEntityItalic': {
         if (!options.noTextFormat) {
-          element = document.createElement('em')
+          if (options.wrappingDraft) {
+            element = createMarkupFormatting('italic')
+          } else {
+            element = document.createElement('em')
+          }
         }
 
         break
@@ -207,13 +234,19 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
 
       case 'messageEntityStrike': {
         // 1:1 tweb (:239-251): `del` ставится и при noTextFormat
-        element = document.createElement('del')
+        if (options.wrappingDraft) {
+          element = createMarkupFormatting('strikethrough')
+        } else {
+          element = document.createElement('del')
+        }
 
         break
       }
 
       case 'messageEntityUnderline': {
-        if (!options.noTextFormat) {
+        if (options.wrappingDraft) {
+          element = createMarkupFormatting('underline')
+        } else if (!options.noTextFormat) {
           element = document.createElement('u')
         }
 
@@ -223,7 +256,12 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
       case 'messageEntityPre':
       case 'messageEntityCode': {
         const entityLanguage = (entity as MessageEntity.messageEntityPre).language
-        if (entity._ === 'messageEntityPre' && !options.noTextFormat) {
+        if (options.wrappingDraft) {
+          element = createMarkupFormatting('monospace')
+          if (entityLanguage) {
+            element.dataset.language = entityLanguage
+          }
+        } else if (entity._ === 'messageEntityPre' && !options.noTextFormat) {
           const container = document.createElement('pre')
           const content = document.createElement('div')
           content.classList.add('code-content')
@@ -295,6 +333,20 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
         // при пустом partText — символы уже «съедены» циклом выше), потому что поверх
         // узла рисует общий рендерер. Пока рендерера нет, кладём глиф текстом внутрь
         // узла — иначе эмодзи просто пропадает из сообщения.
+        // tweb :442-454 — в поле ввода свой эмодзи живёт картинкой-плейсхолдером:
+        // `alt` — его текст для `getRichElementValue`, `data-doc-id`/`data-sticker-emoji` —
+        // источник `messageEntityCustomEmoji` (см. «РЕЖИМ ЧЕРНОВИКА» в шапке про `src`).
+        if (options.wrappingDraft) {
+          const placeholder = document.createElement('img')
+          placeholder.alt = fullEntityText
+          placeholder.dataset.docId = '' + entity.document_id
+          placeholder.dataset.stickerEmoji = fullEntityText
+          placeholder.classList.add('custom-emoji-placeholder')
+          element = placeholder
+          property = 'alt'
+          break
+        }
+
         const customEmoji = document.createElement('custom-emoji-element')
         customEmoji.classList.add('custom-emoji')
         customEmoji.dataset.docId = '' + entity.document_id
@@ -318,7 +370,7 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
           img.className = 'emoji emoji-image'
           element = img
           property = 'alt'
-        } else {
+        } else if (!options.wrappingDraft) {
           element = document.createElement('span')
           element.className = 'emoji emoji-native'
         }
@@ -327,8 +379,12 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
       }
 
       case 'messageEntityLinebreak': {
-        // перевод строки внутри/вокруг блочной сущности уже «съеден» ею
-        if (options.ignoreNextIndex === nasty.i) {
+        // перевод строки внутри/вокруг блочной сущности уже «съеден» ею;
+        // в черновике — и перевод строки прямо перед цитатой (tweb :540)
+        if (options.ignoreNextIndex === nasty.i || (options.wrappingDraft && nextEntity?._ === 'messageEntityBlockquote' && nextEntity.offset === endOffset)) {
+          usedText = true
+        } else if (options.wrappingDraft && IS_FIREFOX) {
+          element = document.createElement('br')
           usedText = true
         }
 
@@ -500,6 +556,9 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
           }
 
           break
+        } else if (options.wrappingDraft) {
+          element = createMarkupFormatting('spoiler')
+          break
         }
 
         const container = document.createElement('span')
@@ -522,11 +581,20 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
           break
         }
 
-        const quote = document.createElement('blockquote')
-        quote.classList.add('quote', 'quote-block')
-        // здесь у tweb (:793-796) ветка `entity.pFlags?.collapsed` →
-        // `makeQuoteCollapsable`; не портирована вместе со своей цепочкой —
-        // см. «ЧТО НЕ ПОРТИРОВАНО» в шапке файла
+        let quote: HTMLElement
+        if (options.wrappingDraft) {
+          quote = createMarkupFormatting('quote')
+          // * ? because of layer migration
+          if (entity.pFlags?.collapsed) {
+            quote.dataset.collapsed = '1'
+          }
+        } else {
+          quote = document.createElement('blockquote')
+          quote.classList.add('quote', 'quote-block')
+          // здесь у tweb (:793-796) ветка `entity.pFlags?.collapsed` →
+          // `makeQuoteCollapsable`; не портирована вместе со своей цепочкой —
+          // см. «ЧТО НЕ ПОРТИРОВАНО» в шапке файла
+        }
         quote.classList.add('quote-like', 'quote-like-border', 'quote-like-icon')
         quote.setAttribute('dir', 'auto') // tweb setDirection()
         element = quote
@@ -550,7 +618,7 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
         foundNextLinebreakIndex = -1
       }
 
-      if (endOffset < nasty.text.length) {
+      if (!options.wrappingDraft && endOffset < nasty.text.length) {
         // * ignore inner linebreak if found and double next linebreak
         if (!element.parentElement) {
           const container = document.createElement('div')
@@ -577,6 +645,10 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
         } else if (foundNextLinebreakIndex !== -1) {
           options.ignoreNextIndex = foundNextLinebreakIndex
         }
+      }
+
+      if (options.wrappingDraft && foundNextLinebreakIndex !== -1) {
+        options.ignoreNextIndex = foundNextLinebreakIndex
       }
     }
 

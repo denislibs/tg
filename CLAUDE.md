@@ -43,7 +43,9 @@ docker compose up -d --build          # приложение на http://localho
 ## Кросс-каттинг (общее для обеих частей)
 
 - **Rich-text:** `MessageEntity` (bold/italic/underline/strike/code/pre/spoiler/blockquote/text_link),
-  offset/length в **UTF-16**. Инпут хранит сырые markdown-маркеры, разбор — на отправке; на бэке сущности санитизируются.
+  offset/length в **UTF-16**. Поле ввода — rich-DOM tweb: разметку хранит DOM поля, сущности читаются
+  из DOM (`getRichValueWithCaret`); набранные руками маркеры (`**`, `` ` ``) разбирает `parseMarkdown`
+  на отправке; на бэке сущности санитизируются.
 - **Realtime:** WebSocket `/ws?token=` с кадрами `{t, d}`; `send_message` → `message_ack`/`message_error`.
   На фронте кадр применяется к окну сообщений один раз — в воркере, главный поток лишь переигрывает
   готовые типизированные операции; подробности — в [`web-client/CLAUDE.md`](web-client/CLAUDE.md).
