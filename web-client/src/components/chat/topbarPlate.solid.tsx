@@ -1,35 +1,16 @@
 /** @jsxImportSource solid-js */
-// Порт tweb `src/components/chat/topbarPlate.tsx` (812502980, 307 строк) — общий
-// примитив плашек под шапкой чата (закреп, аудиоплеер, заявки, действия, перевод…).
-// Пачка П-5 волны 7 (Б-19, Б-21, Б-22). Порт 1:1: имена, разметка и классы
-// `pinned-container`/`pinned-${modifier}-*` (стили — `styles/tweb/_chatPinned.scss`).
+// Порт tweb `src/components/chat/topbarPlate.tsx` (812502980, 307 строк) — общая плашка
+// под шапкой чата (`.pinned-container`): ей пользуются закреп (`pinnedMessage`), аудио
+// (`chat/audio`), заявки (`requests`), настройки пира (`actions`), звонок/эфир
+// (`topbarGroupCall`/`topbarLive`). Пачка П-5 волны 7 (Б-21).
 //
-// Расхождений с оригиналом нет.
-
-/**
- * Solid replacement for the imperative `PinnedContainer`.
- *
- * Composable namespace component (shape mirrors `tabs.tsx`):
- *
- *   <TopbarPlate modifier="message" hidden={hidden()}>
- *     <TopbarPlate.Body onClick={onFollow}>
- *       <TopbarPlate.Content>
- *         <TopbarPlate.Title>{title}</TopbarPlate.Title>
- *         <TopbarPlate.Subtitle>{subtitle}</TopbarPlate.Subtitle>
- *       </TopbarPlate.Content>
- *       <TopbarPlate.CloseButton onClick={onClose} />
- *     </TopbarPlate.Body>
- *   </TopbarPlate>
- *
- * Class names match the existing `pinned-${modifier}` SCSS so legacy
- * stylesheets (`_chatPinned.scss`) keep working. Anything single-use lives
- * in the consuming plate, not here.
- *
- * `createTopbarPlate(...)` is a bridge for class-based callers (currently
- * `topbar.ts`) that need an imperative controller with `.container` /
- * `.height` / `.isVisible()`. Once the topbar itself is rewritten to TSX
- * the bridge can be dropped — drop `<TopbarPlate>` straight into the JSX.
- */
+// Составной компонент `<TopbarPlate>` с подкомпонентами и императивный контроллер
+// `createTopbarPlate` для классов (`topbar.ts`). Классы — `pinned-${modifier}-*`, их держит
+// портированный `styles/tweb/_chatPinned.scss`.
+//
+// РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
+//  1. `Button.Icon` у нас берёт `aria-label` строкой, а не узлом: `I18n.format('Close', true)`
+//     оригинала — та же строка.
 import { createContext, createSignal, useContext, type Accessor, type JSX, type Ref } from 'solid-js'
 import { render } from 'solid-js/web'
 import classNames from '@helpers/string/classNames'
@@ -53,11 +34,11 @@ const modCls = (modifier: string, suffix: string) => `pinned-${modifier}-${suffi
 
 const TopbarPlate = (props: {
   /** Modifier identifier (e.g. `message`, `audio`, `translation`, `live`) — drives `pinned-${modifier}-*` classes. */
-  modifier: string,
+  modifier: string
   /** Controlled hidden state. When true, applies `hide` class. */
-  hidden?: boolean,
-  class?: string,
-  ref?: Ref<HTMLDivElement>,
+  hidden?: boolean
+  class?: string
+  ref?: Ref<HTMLDivElement>
   children: JSX.Element
 }) => {
   return (
@@ -78,10 +59,10 @@ const TopbarPlate = (props: {
 }
 
 TopbarPlate.Body = (props: {
-  ref?: Ref<HTMLDivElement>,
-  noRipple?: boolean,
-  class?: string,
-  onClick?: (e: MouseEvent) => void,
+  ref?: Ref<HTMLDivElement>
+  noRipple?: boolean
+  class?: string
+  onClick?: (e: MouseEvent) => void
   children: JSX.Element
 }) => {
   const modifier = useModifier()
@@ -89,6 +70,7 @@ TopbarPlate.Body = (props: {
     <PlateBodyContext.Provider value={!!props.onClick}>
       <RippleElement
         component="div"
+        ref={props.ref}
         noRipple={props.noRipple}
         class={classNames(baseCls('wrapper'), modCls(modifier, 'wrapper'), props.class)}
         onClick={props.onClick}
@@ -100,10 +82,10 @@ TopbarPlate.Body = (props: {
 }
 
 TopbarPlate.Content = (props: {
-  class?: string,
-  children: JSX.Element,
-  ripple?: boolean,
-  clickable?: boolean,
+  class?: string
+  children: JSX.Element
+  ripple?: boolean
+  clickable?: boolean
   disabled?: boolean
 }) => {
   const modifier = useModifier()
@@ -122,7 +104,7 @@ TopbarPlate.Content = (props: {
 }
 
 TopbarPlate.Title = (props: {
-  class?: string,
+  class?: string
   children: JSX.Element
 }) => {
   const modifier = useModifier()
@@ -134,7 +116,7 @@ TopbarPlate.Title = (props: {
 }
 
 TopbarPlate.Subtitle = (props: {
-  class?: string,
+  class?: string
   children: JSX.Element
 }) => {
   const modifier = useModifier()
@@ -146,8 +128,8 @@ TopbarPlate.Subtitle = (props: {
 }
 
 TopbarPlate.CloseButton = (props: {
-  onClick?: (e: MouseEvent) => void,
-  class?: string,
+  onClick?: (e: MouseEvent) => void
+  class?: string
   ref?: Ref<HTMLElement>
 }) => {
   const modifier = useModifier()
@@ -165,11 +147,11 @@ TopbarPlate.CloseButton = (props: {
 
 TopbarPlate.ActionButton = (props: {
   /** Set true while the previous button cross-fades out. Adds `is-leaving`. */
-  leaving?: boolean,
-  as?: 'button' | 'a',
-  class?: string,
-  onClick?: (e: MouseEvent) => void,
-  ref?: Ref<HTMLElement>,
+  leaving?: boolean
+  as?: 'button' | 'a'
+  class?: string
+  onClick?: (e: MouseEvent) => void
+  ref?: Ref<HTMLElement>
   children: JSX.Element
 }) => {
   const modifier = useModifier()
@@ -201,12 +183,12 @@ TopbarPlate.ActionButton = (props: {
 }
 
 TopbarPlate.PrimaryButton = (props: {
-  onClick: () => void,
-  children: JSX.Element,
-  class?: string,
-  danger?: boolean,
+  onClick: () => void
+  children: JSX.Element
+  class?: string
+  danger?: boolean
   /** Plain label: default text colour and a neutral hover, no primary tint. */
-  quiet?: boolean,
+  quiet?: boolean
   ref?: Ref<HTMLElement>
 }) => {
   const modifier = useModifier()
@@ -236,38 +218,35 @@ export default TopbarPlate
 
 export type TopbarPlateController = {
   /** The plate's root DOM element. Append it wherever needed. */
-  container: HTMLElement,
+  container: HTMLElement
   /** Height read by `topbar.setFloating()`. `'auto'` = measured at runtime. */
-  height: number | 'auto',
+  height: number | 'auto'
   /** Reactive hidden state — useful for outer effects that depend on visibility. */
-  hidden: Accessor<boolean>,
-  setHidden: (hidden: boolean) => void,
+  hidden: Accessor<boolean>
+  setHidden: (hidden: boolean) => void
   /** Convenience for legacy `pinnedContainer.isVisible()` callers. */
-  isVisible: () => boolean,
+  isVisible: () => boolean
   destroy: () => void
 }
 
 export type CreateTopbarPlateOptions = {
-  modifier: string,
-  height: number | 'auto',
+  modifier: string
+  height: number | 'auto'
   /** Defaults to `true` — plate stays hidden until first content is ready. */
-  initiallyHidden?: boolean,
+  initiallyHidden?: boolean
   /**
    * Reactive class accessor applied to the plate root in addition to the
    * built-in `pinned-container` / `pinned-${modifier}` / `hide` classes.
-   * Use this instead of mutating `controller.container.classList` from
-   * imperative callers so class state stays in the Solid reactive system.
    */
-  class?: Accessor<string>,
+  class?: Accessor<string>
   /** Called every time `hidden` flips — typically wires `topbar.setFloating`. */
-  onVisibilityChange?: (visible: boolean) => void,
+  onVisibilityChange?: (visible: boolean) => void
   /**
    * Render fn for the plate body. Receives the live `hidden` accessor and
-   * its setter so consumers can drive visibility from inside (e.g. via
-   * `createEffect(() => setHidden(!shouldShow()))`).
+   * its setter so consumers can drive visibility from inside.
    */
   render: (api: {
-    hidden: Accessor<boolean>,
+    hidden: Accessor<boolean>
     setHidden: (hidden: boolean) => void
   }) => JSX.Element
 }
