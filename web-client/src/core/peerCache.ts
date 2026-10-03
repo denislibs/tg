@@ -124,6 +124,18 @@ export const isPublicPeer = (peerId: PeerId): boolean => isPublic(cachedChat(pee
 export const hasRightsPeer = (peerId: PeerId, action: ChatRights): boolean =>
   hasRights(cachedChat(peerId), action)
 
+/** Порт `appPeersManager.getStarsAmount` → `appChatsManager.getStarsAmount`
+ *  (appChatsManager.ts:494-499): плата за сообщение в звёздах; админ (`admin_rights`
+ *  зрителя) пишет бесплатно — так же решает бэкенд (`usecase/chat/stars.go::
+ *  chargePaidMessage`). У пользователя платы нет: `requirementToContactPaidMessages`
+ *  (`appUsersManager.getStarsAmount`) бэкенд не производит — `undefined`. */
+export const getStarsAmount = (peerId: PeerId): number | undefined => {
+  const chat = cachedChat(peerId)
+  if(chat?._ !== 'channel') return
+
+  return !chat.admin_rights && +(chat.send_paid_messages_stars ?? 0) || undefined
+}
+
 /** Применить операции, посчитанные владельцем. Единственный вызывающий —
  *  проектор (`APPLY[RT.peerOp]`). Не изменившая ничего пачка подписчиков не
  *  будит (идемпотентный реплей / повторный ответ на пробел не даёт ре-рендера).

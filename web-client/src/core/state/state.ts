@@ -41,6 +41,10 @@ export interface AppState {
    * не различить.
    */
   starsBalance: number | null
+  /** пиры, у которых отключено подтверждение платного сообщения («Больше не
+   *  спрашивать», tweb `dontShowPaidMessageWarningFor`, config/state.ts:264). Пишет
+   *  `chat/paidMessagesInterceptor.ts`. */
+  dontShowPaidMessageWarningFor: PeerId[]
 }
 
 // 2 — черновик переехал в САМ ДИАЛОГ (`dialog.draft`), ключа `drafts` в State
@@ -59,6 +63,7 @@ export const STATE_INIT: AppState = {
   pinnedOrders: {},
   allDialogsLoaded: {},
   starsBalance: null,
+  dontShowPaidMessageWarningFor: [],
 }
 
 /** tweb `ALL_KEYS = Object.keys(STATE_INIT)` (loadState.ts:43) */

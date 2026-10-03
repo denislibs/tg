@@ -597,8 +597,13 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (`ChatTips.{Appearance,Chats,Stickers}.Description`, `ChatTips.Chats.DescriptionMac`): без
 // аргумента-узла такую строку не разобрать, поэтому она переводится во всех пяти, как
 // `PasscodeLock.ForgotPasscode.*` и `Privacy.Passkeys.Caption`.
+// Пачка П-6 волны 7, медленный режим и платные сообщения (Б-37, tweb `chat/input.ts:4005-4069`,
+// `chat/paidMessagesInterceptor.ts`): у ru +9 ключей tweb lang.ts — `SlowModeHint`,
+// `SlowmodeSendError{,TooLong}`, `ConfirmPayment`, `DontAskAgain`,
+// `PaidMessages.UserChargesFor{One,Multiple}MessageWarning`, плюральный
+// `PaidMessages.PayForMessages`, тост нехватки `Stars.Subscription.MissingBalance`.
 const COMPOSITION = {
-  ru: { keys: 1667, plural: 55 },
+  ru: { keys: 1676, plural: 56 },
   uk: { keys: 842, plural: 35 },
   es: { keys: 813, plural: 34 },
   de: { keys: 814, plural: 35 },
@@ -789,8 +794,9 @@ const COMPOSITION = {
 // Пачкой П-4 волны 7 — у ru +13 ключей tweb звонков (разбор — у `COMPOSITION` выше).
 // Пачкой П-4 волны 7 (агент «ссылки») — у ru +11 ключей tweb и −4 `Folder.Invite.*` (разбор — там же).
 // Б-13 волны 7 — у ru +17 ключей карточек пустой колонки, у остальных +4 (разбор — там же).
+// Пачкой П-6 волны 7 — у ru +9 ключей медленного режима и платных сообщений (разбор — там же).
 const FINGERPRINT = {
-  ru: '4efe967f',
+  ru: 'e9ff04af',
   uk: 'de4c59fd',
   es: 'f330c581',
   de: '95a1d0fe',
