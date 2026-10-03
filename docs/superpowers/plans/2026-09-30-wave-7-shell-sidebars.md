@@ -706,6 +706,11 @@ tweb. Чего нет у tweb — удалить, и написать об эт�
   `InviteImporters`). QR из этих вкладок tweb не открывает — моста не нужно.
 - **0б-9:** графики у tweb — `lovely-chart` (`statistics.tsx`). Если его нет в зависимостях, решение
   «взять пакет tweb» выносится в PR. Свою `StatChart` внутрь Solid-вкладки не тащить (React).
+  **Итог (П-1):** в 812502980 `statistics.tsx` рисует не `lovely-chart`, а собственный пакет tweb
+  `src/lib/tchart` (6,8 тыс. строк, ванильный канвас, без зависимостей) — он и взят: порт файлами в
+  `web-client/src/lib/tchart` (`// @ts-nocheck` вендора, в `ignorePatterns` oxlint), ленивый
+  `import()` как `ensureTChart`. Новых npm-зависимостей нет. `StatChart.tsx` остаётся у React
+  `StoryStats` (волна 4). Остаток — Б-121…Б-124 плана каркаса.
 - **Не входит в 0б:** `QrModal.tsx` (**2C-17**), `components/secret/KeyVerificationPopup.tsx`
   (наш продукт, пары у tweb нет — Отступление В7-2: переводится на `PopupElement` 2C-5 в задаче
   3-1, где уходит его вызывающий), `PinnedStoriesSection.tsx` (часть `sharedMedia` — задача 3-1).

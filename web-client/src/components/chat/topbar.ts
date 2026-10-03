@@ -30,7 +30,7 @@
 //     `BotAddToGroupOrChannel`/`AddToChannel` (нет `bot_info` и попапа
 //     `showAddBotToChat`), `ShareContact` (выбор получателя — только React-мост
 //     `popups/shareUrl.bridge.ts`, до 2C-24), `Chat.Menu.SendGift` (`showSendGiftPopup` —
-//     заглушка до 2C-20), `Statistics` (вкладки нет, Б-43), `BoostChannel`/`BoostGroup`
+//     заглушка до 2C-20), `BoostChannel`/`BoostGroup`
 //     (`openBoosts` не портирован), бот-`Settings` (нет `attachMenuBots`), `Translate`
 //     (перевода нет), `DisableSharing`/`EnableSharing` (нет флагов `noforwards_*` у
 //     `userFull`), `WelcomeMessages.DeleteAll` и обёртка `ChatType.Welcome` (секции нет).
@@ -76,6 +76,8 @@
 //  9. Подсказка «Chat.Menu.Hint» после «Выбрать сообщения» помнится настройкой
 //     `chatContextMenuHintWasShown` нашего `useSettingsStore` (tweb `appSettings`).
 import type { AppSidebarRight } from '@components/sidebarRight'
+import AppStatisticsTab from '@components/sidebarRight/tabs/statistics.solid'
+import { canViewStatistics } from '@core/chatFullCache'
 import { RIGHT_COLUMN_ACTIVE_CLASSNAME } from '@components/sidebarRight'
 import type { Managers } from '@/client/bootstrap'
 import { getPeerTyping, LEFT_COLUMN_ACTIVE_CLASSNAME } from '@lib/appImManager'
@@ -438,6 +440,15 @@ export default class ChatTopbar {
         this.addContact()
       },
       verify: async() => !this.chat.isBot && isUser(this.peerId) && this.peerId !== rootScope.myId && !(await this.managers.contacts.isContact(this.peerId)),
+    }, {
+      // tweb `:682-689`; `monoforumThreadId` — монофорума у нас нет (О-4)
+      icon: 'statistics_chart',
+      text: 'Statistics',
+      onClick: () => {
+        void this.appSidebarRight.createTab(AppStatisticsTab).open(this.peerId)
+        void this.appSidebarRight.toggleSidebar(true)
+      },
+      verify: () => canViewStatistics(this.peerId),
     }, {
       icon: 'lock',
       text: 'BlockUser',

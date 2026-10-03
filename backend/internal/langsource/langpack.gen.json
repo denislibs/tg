@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 53,
+      "version": 54,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -43,6 +43,10 @@
         {
           "key": "AccountSettings.SpeakersAndCamera",
           "value": "Speakers and Camera"
+        },
+        {
+          "key": "ActionsChartTitle",
+          "value": "Actions"
         },
         {
           "key": "Add",
@@ -975,6 +979,10 @@
         {
           "key": "ChannelsTab",
           "value": "Channels"
+        },
+        {
+          "key": "Chart.Tooltip.All",
+          "value": "All"
         },
         {
           "key": "Chat.Accessory.Edit",
@@ -2161,6 +2169,10 @@
           "value": "Hide with spoiler"
         },
         {
+          "key": "EnabledNotifications",
+          "value": "Enabled Notifications"
+        },
+        {
           "key": "EnterChannelName",
           "value": "Channel name"
         },
@@ -2371,6 +2383,10 @@
           "value": "Do you want to add the folder «%1$s»?"
         },
         {
+          "key": "FollowersChartTitle",
+          "value": "Followers"
+        },
+        {
           "key": "ForumToggleDescription",
           "value": "The group chat will be divided into topics created by admins or users."
         },
@@ -2545,6 +2561,14 @@
           "value": "Group Checklist"
         },
         {
+          "key": "GroupMembersChartTitle",
+          "value": "Group members"
+        },
+        {
+          "key": "GroupStats.Title",
+          "value": "Group Statistics"
+        },
+        {
           "key": "GroupType",
           "value": "Group Type"
         },
@@ -2558,6 +2582,10 @@
         {
           "key": "GroupsOnly",
           "value": "Group Chats"
+        },
+        {
+          "key": "GrowthChartTitle",
+          "value": "Growth"
         },
         {
           "key": "Hide",
@@ -2579,6 +2607,10 @@
           }
         },
         {
+          "key": "IVInteractionsChartTitle",
+          "value": "IV Interactions"
+        },
+        {
           "key": "InactiveChannel.Broadcast",
           "value": "channel"
         },
@@ -2597,6 +2629,10 @@
         {
           "key": "InstantView.OpenInBrowser",
           "value": "Open in browser"
+        },
+        {
+          "key": "InteractionsChartTitle",
+          "value": "Interactions"
         },
         {
           "key": "InviteLink",
@@ -2813,6 +2849,10 @@
           "value": "English"
         },
         {
+          "key": "LanguagesChartTitle",
+          "value": "Languages"
+        },
+        {
           "key": "LastName",
           "value": "Last name (optional)"
         },
@@ -2997,6 +3037,14 @@
         {
           "key": "Loading",
           "value": "Loading..."
+        },
+        {
+          "key": "LoadingStats",
+          "value": "Loading stats..."
+        },
+        {
+          "key": "LoadingStatsDescription",
+          "value": "Please wait a few moments while\nwe generate your stats."
         },
         {
           "key": "LogOut",
@@ -3377,6 +3425,14 @@
           }
         },
         {
+          "key": "MembersLanguageChartTitle",
+          "value": "Members' primary language"
+        },
+        {
+          "key": "MembersOverviewTitle",
+          "value": "Members"
+        },
+        {
           "key": "MenuTelegramStars",
           "value": "My Stars"
         },
@@ -3454,6 +3510,14 @@
             "one_value": "Seen",
             "other_value": "%1$d Seen"
           }
+        },
+        {
+          "key": "MessagesChartTitle",
+          "value": "Messages"
+        },
+        {
+          "key": "MessagesOverview",
+          "value": "Messages"
         },
         {
           "key": "Minutes",
@@ -3559,12 +3623,20 @@
           "value": "You can make your phone visible to %@."
         },
         {
+          "key": "NewFollowersBySourceChartTitle",
+          "value": "New subscribers by source"
+        },
+        {
           "key": "NewGroup",
           "value": "New Group"
         },
         {
           "key": "NewLink",
           "value": "New Link"
+        },
+        {
+          "key": "NewMembersBySourceChartTitle",
+          "value": "New members by source"
         },
         {
           "key": "NewPoll",
@@ -4425,6 +4497,10 @@
           "value": "Post Statistics"
         },
         {
+          "key": "PostingMembers",
+          "value": "Posting Members"
+        },
+        {
           "key": "PostsSearch.TabName",
           "value": "Posts"
         },
@@ -4840,6 +4916,10 @@
           "value": "Private Chat"
         },
         {
+          "key": "PrivateShares",
+          "value": "Private Shares"
+        },
+        {
           "key": "Profile.ChannelDescription",
           "value": "Channel description."
         },
@@ -4866,6 +4946,10 @@
         {
           "key": "ProfileStories",
           "value": "Posts"
+        },
+        {
+          "key": "PublicShares",
+          "value": "Public Shares"
         },
         {
           "key": "QRCode.Copied",
@@ -4900,12 +4984,28 @@
           "value": "Reactions"
         },
         {
+          "key": "ReactionsByEmotionChartTitle",
+          "value": "Reactions"
+        },
+        {
+          "key": "ReactionsPerPost",
+          "value": "Reactions Per Post"
+        },
+        {
+          "key": "ReactionsPerStory",
+          "value": "Reactions Per Story"
+        },
+        {
           "key": "Recent",
           "value": "Recent"
         },
         {
           "key": "RecentActions",
           "value": "Recent Actions"
+        },
+        {
+          "key": "RecentPosts",
+          "value": "Recent posts"
         },
         {
           "key": "RecentSessions.Error.FreshReset",
@@ -5484,6 +5584,14 @@
           "value": "Voice"
         },
         {
+          "key": "SharesPerPost",
+          "value": "Shares Per Post"
+        },
+        {
+          "key": "SharesPerStory",
+          "value": "Shares Per Story"
+        },
+        {
           "key": "ShowTranslateButton",
           "value": "Show Translate Button"
         },
@@ -5690,40 +5798,8 @@
           "value": "Statistics"
         },
         {
-          "key": "Statistics.Forwards",
-          "value": "Forwards"
-        },
-        {
           "key": "Statistics.Loading",
           "value": "Loading statistics…"
-        },
-        {
-          "key": "Statistics.MediaPost",
-          "value": "Media post"
-        },
-        {
-          "key": "Statistics.MemberGrowth",
-          "value": "Member growth"
-        },
-        {
-          "key": "Statistics.Posts",
-          "value": "Posts"
-        },
-        {
-          "key": "Statistics.PostsByDay",
-          "value": "Posts by day"
-        },
-        {
-          "key": "Statistics.SubscriberGrowth",
-          "value": "Subscriber growth"
-        },
-        {
-          "key": "Statistics.TopPosts",
-          "value": "Top posts"
-        },
-        {
-          "key": "Statistics.TotalViews",
-          "value": "Total views"
         },
         {
           "key": "Statistics.Unavailable",
@@ -5933,8 +6009,16 @@
           "value": "Viewers"
         },
         {
+          "key": "StoryInteractionsChartTitle",
+          "value": "Story Views and Shares"
+        },
+        {
           "key": "StoryJustNow",
           "value": "just now"
+        },
+        {
+          "key": "StoryReactionsByEmotionChartTitle",
+          "value": "Story Reactions"
         },
         {
           "key": "StoryStatistics",
@@ -6118,6 +6202,14 @@
         {
           "key": "TimeLimitHelp",
           "value": "You can make the link expire after a certain time."
+        },
+        {
+          "key": "TopDaysOfWeekChartTitle",
+          "value": "Top days of week"
+        },
+        {
+          "key": "TopHoursChartTitle",
+          "value": "Views by hours (UTC)"
         },
         {
           "key": "TopicProfileStatus",
@@ -6542,8 +6634,35 @@
           "value": "View discussion"
         },
         {
+          "key": "ViewStatistics",
+          "value": "View Statistics"
+        },
+        {
+          "key": "ViewingMembers",
+          "value": "Viewing Members"
+        },
+        {
+          "key": "Views",
+          "forms": {
+            "one_value": "%1$s view",
+            "other_value": "%1$s views"
+          }
+        },
+        {
+          "key": "ViewsAndSharesChartTitle",
+          "value": "Views and Shares"
+        },
+        {
+          "key": "ViewsBySourceChartTitle",
+          "value": "Views by source"
+        },
+        {
           "key": "ViewsPerPost",
           "value": "Views Per Post"
+        },
+        {
+          "key": "ViewsPerStory",
+          "value": "Views Per Story"
         },
         {
           "key": "Voice",
@@ -6666,6 +6785,10 @@
           "value": "Your Name"
         },
         {
+          "key": "ZoomOut",
+          "value": "Zoom out"
+        },
+        {
           "key": "messages",
           "forms": {
             "one_value": "%1$d message",
@@ -6681,7 +6804,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 53,
+      "version": 54,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -9365,36 +9488,169 @@
           "value": "Просмотров на пост"
         },
         {
-          "key": "Statistics.TotalViews",
-          "value": "Всего просмотров"
-        },
-        {
           "key": "PostsSearch.TabName",
           "value": "Постов"
-        },
-        {
-          "key": "Statistics.TopPosts",
-          "value": "Топ постов"
-        },
-        {
-          "key": "Statistics.MediaPost",
-          "value": "Медиа-пост"
-        },
-        {
-          "key": "Statistics.SubscriberGrowth",
-          "value": "Рост подписчиков"
-        },
-        {
-          "key": "Statistics.MemberGrowth",
-          "value": "Рост участников"
         },
         {
           "key": "Statistics.ViewsByDay",
           "value": "Просмотры по дням"
         },
         {
-          "key": "Statistics.PostsByDay",
-          "value": "Посты по дням"
+          "key": "GroupStats.Title",
+          "value": "Статистика группы"
+        },
+        {
+          "key": "RecentPosts",
+          "value": "Недавние публикации"
+        },
+        {
+          "key": "GrowthChartTitle",
+          "value": "Рост"
+        },
+        {
+          "key": "FollowersChartTitle",
+          "value": "Подписчики"
+        },
+        {
+          "key": "TopHoursChartTitle",
+          "value": "Просмотры по часам (UTC)"
+        },
+        {
+          "key": "ViewsBySourceChartTitle",
+          "value": "Просмотры по источникам"
+        },
+        {
+          "key": "NewFollowersBySourceChartTitle",
+          "value": "Новые подписчики по источникам"
+        },
+        {
+          "key": "LanguagesChartTitle",
+          "value": "Языки"
+        },
+        {
+          "key": "InteractionsChartTitle",
+          "value": "Взаимодействия"
+        },
+        {
+          "key": "IVInteractionsChartTitle",
+          "value": "Взаимодействия с IV"
+        },
+        {
+          "key": "ReactionsByEmotionChartTitle",
+          "value": "Реакции"
+        },
+        {
+          "key": "StoryInteractionsChartTitle",
+          "value": "Просмотры и пересылки историй"
+        },
+        {
+          "key": "StoryReactionsByEmotionChartTitle",
+          "value": "Реакции на истории"
+        },
+        {
+          "key": "GroupMembersChartTitle",
+          "value": "Участники группы"
+        },
+        {
+          "key": "NewMembersBySourceChartTitle",
+          "value": "Новые участники по источникам"
+        },
+        {
+          "key": "MembersLanguageChartTitle",
+          "value": "Основной язык участников"
+        },
+        {
+          "key": "MessagesChartTitle",
+          "value": "Сообщения"
+        },
+        {
+          "key": "ActionsChartTitle",
+          "value": "Действия"
+        },
+        {
+          "key": "TopDaysOfWeekChartTitle",
+          "value": "Активность по дням недели"
+        },
+        {
+          "key": "ViewsAndSharesChartTitle",
+          "value": "Просмотры и пересылки"
+        },
+        {
+          "key": "EnabledNotifications",
+          "value": "Включили уведомления"
+        },
+        {
+          "key": "ViewsPerStory",
+          "value": "Просмотров на историю"
+        },
+        {
+          "key": "SharesPerPost",
+          "value": "Пересылок на пост"
+        },
+        {
+          "key": "SharesPerStory",
+          "value": "Пересылок на историю"
+        },
+        {
+          "key": "ReactionsPerPost",
+          "value": "Реакций на пост"
+        },
+        {
+          "key": "ReactionsPerStory",
+          "value": "Реакций на историю"
+        },
+        {
+          "key": "MembersOverviewTitle",
+          "value": "Участники"
+        },
+        {
+          "key": "MessagesOverview",
+          "value": "Сообщения"
+        },
+        {
+          "key": "ViewingMembers",
+          "value": "Просматривающие участники"
+        },
+        {
+          "key": "PostingMembers",
+          "value": "Пишущие участники"
+        },
+        {
+          "key": "PublicShares",
+          "value": "Публичные пересылки"
+        },
+        {
+          "key": "PrivateShares",
+          "value": "Приватные пересылки"
+        },
+        {
+          "key": "Views",
+          "forms": {
+            "one_value": "%1$s просмотр",
+            "few_value": "%1$s просмотра",
+            "many_value": "%1$s просмотров",
+            "other_value": "%1$s просмотра"
+          }
+        },
+        {
+          "key": "LoadingStats",
+          "value": "Загрузка статистики..."
+        },
+        {
+          "key": "LoadingStatsDescription",
+          "value": "Пожалуйста, подождите немного,\nпока мы готовим вашу статистику."
+        },
+        {
+          "key": "ViewStatistics",
+          "value": "Статистика"
+        },
+        {
+          "key": "ZoomOut",
+          "value": "Уменьшить"
+        },
+        {
+          "key": "Chart.Tooltip.All",
+          "value": "Все"
         },
         {
           "key": "PostStatistics",
@@ -9507,10 +9763,6 @@
         {
           "key": "StatisticViews",
           "value": "Просмотры"
-        },
-        {
-          "key": "Statistics.Forwards",
-          "value": "Пересылки"
         },
         {
           "key": "NewTopic",
@@ -12490,10 +12742,6 @@
         {
           "key": "AutoDeleteMessages.Disable",
           "value": "Отключить"
-        },
-        {
-          "key": "Statistics.Posts",
-          "value": "Посты"
         },
         {
           "key": "NoUsernameFound",
