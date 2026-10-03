@@ -47,7 +47,7 @@ import TopbarPlate, { createTopbarPlate, type TopbarPlateController } from '@com
 import classNames from '@helpers/string/classNames'
 import type { Middleware } from '@helpers/middleware'
 import wrapMessageForReply from '@components/wrappers/messageForReply'
-import { cachedMediaUrl } from '@core/mediaCache'
+import { ensureMediaUrl } from '@core/media/ensureMediaUrl'
 import { getMediaId } from '@core/messages/messageKind'
 import type { MyMessage } from '@core/models'
 import { canPinMessage, getPinnedHistory, getPinnedMessage, getPinnedMessageByMid } from '@core/pinnedMessages'
@@ -154,7 +154,8 @@ async function wrapPinnedMedia(mediaEl: HTMLElement, message: MyMessage, manager
     return false
   }
 
-  const url = cachedMediaUrl(mediaId, true) ?? await managers.media.downloadMediaURL(mediaId, { thumb: true }).catch(() => undefined)
+  // ванильная точка входа к владельцу URL: попадание в зеркало либо запрос с записью в него
+  const url = await ensureMediaUrl(mediaId, { thumb: true, middleware }).catch(() => undefined)
   if(!url || !middleware()) {
     return false
   }
