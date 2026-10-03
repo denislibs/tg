@@ -67,7 +67,7 @@ import type { AppImManager } from '@lib/appImManager'
 import rootScope from '@lib/rootScope'
 import I18n, { i18n, join, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 import { RT } from '@core/realtime/events'
-import type { DraftMessage, DraftMessageReal, MessageEntity, MyMessage } from '@core/models'
+import type { Dialog, DraftMessage, DraftMessageReal, MessageEntity, MyMessage } from '@core/models'
 import { getMessageText } from '@core/models'
 import type { MessageSendingParams } from '@core/managers/messages/sendingParams'
 import type { MessageOp } from '@core/realtime/messageOps'
@@ -121,8 +121,8 @@ import { toastNew } from '@components/toast'
 import PopupElement from '@components/popups/popupElement'
 import PopupPeer from '@components/popups/popupPeer'
 import showNewMediaPopup, { getCurrentNewMediaPopup } from '@components/popups/newMedia'
-import { openCreatePollPopup } from '@components/popups/createPoll'
-import showChecklistPopup from '@components/popups/checklist'
+import { openCreatePollPopup } from '@components/popups/createPoll.bridge'
+import showChecklistPopup from '@components/popups/checklist.bridge'
 import wrapReply from '@components/wrappers/reply'
 import wrapMessageForReply from '@components/wrappers/messageForReply'
 import AttachMenuButton from './attachMenuButton.solid'
@@ -220,6 +220,10 @@ export default class ChatInput {
   private peerChanging = false
 
   private inputHelperNavigationItem?: NavigationItem
+
+  /** Точка отсчёта подписки на зеркало диалогов (`setChatListeners`): диалог открытого пира. */
+  private lastDialogPeerId?: PeerId
+  private lastDialog?: Dialog
 
   /**
    * Расхождение 3 шапки: черновик диалога, который отправка уже сняла локально
@@ -506,13 +510,18 @@ export default class ChatInput {
     // tweb `draft_updated` (:1711-1727), `dialogs_multiupdate` (:1772-1780),
     // `dialog_notify_settings` (:1805-1810) и непрочитанное кнопки «вниз»
     // (`setUnreadCount`, :2219) — одно зеркало диалогов.
-    let lastDialog = this.getDialog()
     const unsubscribe = useChatsStore.subscribe(() => {
-      const dialog = this.getDialog()
-      if(dialog === lastDialog) return
-      const prev = lastDialog
-      lastDialog = dialog
-      if(!this.chat.peerId || prev?.peerId !== dialog?.peerId) return
+      const peerId = this.chat.peerId
+      const dialog = this.getDialog(peerId)
+      if(peerId !== this.lastDialogPeerId) {
+        // пир сменился, а `finishPeerChange` ещё не отработал — точку отсчёта ставит он
+        return
+      }
+
+      const prev = this.lastDialog
+      if(dialog === prev) return
+      this.lastDialog = dialog
+      if(!peerId) return
 
       if(prev?.draft !== dialog?.draft) this.onDraftUpdated(dialog?.draft)
       if(!!prev !== !!dialog) void this.center(true)
@@ -857,15 +866,13 @@ export default class ChatInput {
 
     const { goDownBtn, chatInput, attachMenu } = this
 
+    const isBroadcast = isBroadcastPeer(peerId)
+    const isBot = isUser(peerId) && isBotPeer(cachedUser(peerId))
     const [
-      isBroadcast,
-      isBot,
       canSend,
       canSendPlain,
       neededFakeContainer,
     ] = await Promise.all([
-      isBroadcastPeer(peerId),
-      isUser(peerId) && isBotPeer(cachedUser(peerId)),
       this.chat.canSend('send_messages'),
       this.chat.canSend('send_messages'),
       this.getNeededFakeContainer(startParam),
@@ -874,6 +881,9 @@ export default class ChatInput {
     const placeholderParams = this.messageInput ? await this.getPlaceholderParams(canSendPlain) : undefined
 
     return () => {
+      this.lastDialogPeerId = peerId
+      this.lastDialog = this.getDialog(peerId)
+
       chatInput.classList.remove('hide')
 
       goDownBtn.classList.toggle('is-broadcast', isBroadcast)
@@ -905,7 +915,7 @@ export default class ChatInput {
         )
         this.messageInput.dataset.peerId = '' + peerId
 
-        void Promise.all(this.attachMenuButtons.map((button) => button.verify ? button.verify() : true)).then((verified) => {
+        void Promise.all(this.attachMenuButtons.map((button) => Promise.resolve(button.verify ? button.verify() : true))).then((verified) => {
           if(!options.middleware()) return
           const visible = verified.some(Boolean)
           attachMenu.toggleAttribute('disabled', !visible)

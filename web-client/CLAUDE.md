@@ -47,7 +47,7 @@ npx vite build --outDir ../client-build
 - Лента сообщений — НЕ React: это императивный порт tweb `ChatBubbles`
   (`components/chat/bubbles.ts`) внутри класса `Chat` (`components/chat/chat.ts`, порт
   tweb `chat.ts`, шаг К-3): `Chat` владеет шапкой (`topbar.ts`), лентой, меню, выделением
-  и строкой ввода (`ChatInput`, `components/chat/input.ts`, шаг К-4), а лента берёт у
+  и строкой ввода (`input.ts`, порт tweb `ChatInput`, шаг К-4), а лента берёт у
   него пир, вид чата, права и стек колонки (`chat.appImManager`), как у tweb.
 - **Импорт-алиасы** (tsconfig + vite + vitest, держать синхронно): `@core @stores @shared @rpc
   @lib @helpers @components @config @environment @vendor @customEmoji @types @/*`. Раскладка кросс-каттинга:
@@ -303,7 +303,7 @@ read-marker (markRead живого сообщения при вьюпорте у
 наблюдателем за непрочитанными баблами (`components/chat/bubbles.ts`, порт tweb
 bubbles.ts:2941-3012): «прочитано» это «увидено», а видимость бабла знает только
 его владелец. Счётчик unread-below остался **производным из стора**
-(`newestSeq − lastReadSeq`, кнопка «вниз» `ChatInput`), а не накапливается из
+(`dialog.unread_count`, `ChatInput.setUnreadCount` — кнопка «вниз»), а не накапливается из
 потока событий.
 
 ## Владение фактами (воркер публикует, витрина зеркалит)
