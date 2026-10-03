@@ -104,6 +104,7 @@ const ru = {
   BlockedEmpty: 'Нет',
   ChannelSettingsJoinRequest: 'По заявке',
 
+  'Chat.Input.Attach': 'Прикрепить',
   'Chat.Input.Attach.PhotoOrVideo': 'Фото или видео',
   'Chat.Input.Attach.Document': 'Файл',
   Poll: 'Опрос',

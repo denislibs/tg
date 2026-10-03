@@ -279,6 +279,7 @@ const lang = {
   'Chat.DropTitle': 'Drop files here to send them',
   'Chat.ForwardedFrom': 'Forwarded from',
   'Chat.Frozen.LearnMore': 'Learn more...',
+  'Chat.Input.Attach': 'Attach',
   'Chat.Input.Attach.Document': 'Document',
   'Chat.Input.Attach.PhotoOrVideo': 'Photo or Video',
   'Chat.Input.FrozenButton1': 'Your Account is Frozen',

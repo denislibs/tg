@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 49,
+      "version": 50,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -1032,6 +1032,10 @@
         {
           "key": "Chat.Frozen.LearnMore",
           "value": "Learn more..."
+        },
+        {
+          "key": "Chat.Input.Attach",
+          "value": "Attach"
         },
         {
           "key": "Chat.Input.Attach.Document",
@@ -6374,7 +6378,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 49,
+      "version": 50,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -6707,6 +6711,10 @@
         {
           "key": "ChannelSettingsJoinRequest",
           "value": "По заявке"
+        },
+        {
+          "key": "Chat.Input.Attach",
+          "value": "Прикрепить"
         },
         {
           "key": "Chat.Input.Attach.PhotoOrVideo",
