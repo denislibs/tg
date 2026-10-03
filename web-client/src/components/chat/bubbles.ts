@@ -128,6 +128,7 @@ import { attachReplySwipe, findDoubleClickReplyBubble } from './replySwipe'
 import type Chat from './chat'
 import type { ChatSavedPosition, ChatSetPeerOptions } from '@lib/appImManager'
 import { ChatType } from './chatType'
+import { getPinnedMessage, getPinnedMessages } from '@core/pinnedMessages'
 import showDatePickerPopup from '@components/popups/datePicker.bridge'
 import wrapPhoto from '@components/wrappers/photo'
 import wrapVideo from '@components/wrappers/video'
@@ -1811,9 +1812,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
       // Кнопка «переслать» сбоку от поста — tweb :7675-7682. Из двух слагаемых
       // условия оригинала переносится первое (`!fwd_from.saved_from_msg_id` —
       // у пересылки, ведущей к оригиналу, сбоку висит «перейти к оригиналу», а
-      // не «переслать»); второе (`chat.type !== ChatType.Pinned`) предмета не
-      // имеет — ленты закреплённых у нас нет как понятия.
-      if(!message.fwd_from?.saved_from_msg_id) {
+      // не «переслать»); второе — на экране закрепов (`ChatType.Pinned`) сбоку
+      // «перейти к оригиналу» (ниже).
+      if(!message.fwd_from?.saved_from_msg_id && this.chat.type !== ChatType.Pinned) {
         const forward = document.createElement('div')
         forward.classList.add('bubble-beside-button', 'with-hover', 'forward')
         forward.append(Icon('forward_filled'))
@@ -1833,6 +1834,21 @@ export default class ChatBubbles implements BubbleGroupsHost {
       if(!isLocalMessageId(message.id)) {
         this.observer?.observe(bubble, this.viewsObserverCallback)
       }
+    }
+
+    // Экран закрепов — tweb :11021-11040: у каждого бабла сбоку «перейти к оригиналу»,
+    // адрес — сам закреп в чате (`savedFrom`). Ветка `fwd_from.saved_from_msg_id`
+    // оригинала (пересланное с адресом источника) предмета не имеет: модель его не несёт.
+    if(this.chat.type === ChatType.Pinned) {
+      const goto = document.createElement('div')
+      goto.classList.add('bubble-beside-button', 'with-hover', 'goto-original')
+      goto.setAttribute('role', 'button')
+      goto.setAttribute('aria-label', I18n.format('Message.Context.Goto', true))
+      goto.tabIndex = 0
+      goto.append(Icon('arrow_next'))
+      bubbleContainer.append(goto)
+      bubble.dataset.savedFrom = makeFullMid(this.chat.peerId, message.id)
+      bubble.classList.add('with-beside-button')
     }
 
     // Медиа — после сборки каркаса: ветке нужен и `bubbleContainer` (куда
@@ -3255,6 +3271,18 @@ export default class ChatBubbles implements BubbleGroupsHost {
     //
     // Попапа пересылки (`showForwardPopup`) нет до П-5 (бэклог Б-28): клик
     // гасится, чтобы не провалиться в ветки ниже.
+    // «Перейти к оригиналу» сбоку от бабла экрана закрепов — tweb bubbles.ts:3944-3952.
+    const gotoOriginal = target.closest<HTMLElement>('.bubble-beside-button.goto-original')
+    if (gotoOriginal && bubble?.dataset.savedFrom) {
+      cancelEvent(e)
+      const { peerId, mid } = splitFullMid(bubble.dataset.savedFrom as FullMid)
+      void this.chat.appImManager.setInnerPeer({
+        peerId,
+        lastMsgId: mid,
+      })
+      return
+    }
+
     const forwardButton = target.closest<HTMLElement>('.bubble-beside-button.forward')
     if (forwardButton && bubble) {
       cancelEvent(e)
@@ -3697,6 +3725,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *     Размер окна тот же, что у оригинала после разворота, — `loadCount +
    *     backLimit`. */
   private requestHistory(maxId: FullMid, loadCount: number, backLimit: number): Promise<HistoryResult> {
+    // ЭКРАН ЗАКРЕПОВ — третья форма страницы (tweb :11793-11803: `getHistory` с
+    // `inputFilter: {_: 'inputMessagesFilterPinned'}`). Фильтра по закрепам у бэкенда нет,
+    // есть весь список закрепов чата (`core/pinnedMessages.ts`, его расхождение 1) — он и
+    // отдаётся одной страницей, сведённой с обоих концов.
+    if(this.chat.type === ChatType.Pinned) {
+      return this.requestPinnedHistory()
+    }
+
     // ФИЛЬТР ПО ТЕГУ — ВТОРАЯ ФОРМА СТРАНИЦЫ, и она у оригинала тоже отдельная:
     // `requestHistory` под `savedReaction` уходит НЕ методом
     // `messages.getHistory`, а `messages.search` (appMessagesManager.ts:9947,
@@ -3722,6 +3758,17 @@ export default class ChatBubbles implements BubbleGroupsHost {
       addOffset: backLimit ? -backLimit : (offsetId ? 1 : 0),
       limit: loadCount || backLimit,
     })
+  }
+
+  /** Страница экрана закрепов (`ChatType.Pinned`) — см. ветку в `requestHistory`. */
+  private async requestPinnedHistory(): Promise<HistoryResult> {
+    const messages = await getPinnedMessages(this.chat.managers, this.chat.peerId, this.chat.threadId)
+    return {
+      messages: messages.slice().reverse(),
+      count: messages.length,
+      reachedTop: true,
+      reachedBottom: true,
+    }
   }
 
   /**
@@ -4046,7 +4093,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // гейта «вниз к непрочитанному» ниже. Третьим — «горизонт, если есть
     // непрочитанное» (tweb `getReadMaxIdIfUnread`, :5896-5901). Владелец всех
     // трёх фактов — тот же `dialogsManager`.
-    const [historyMaxId, readState, readMaxId] = await m(Promise.all([
+    //
+    // Экран закрепов (tweb :5866-5867): последнее сообщение — новейший закреп
+    // (`getPinnedMessagesMaxId`), а курсора прочтения у списка закрепов нет.
+    const [historyMaxId, readState, readMaxId] = await m(this.chat.type === ChatType.Pinned ? Promise.all([
+      getPinnedMessage(this.chat.managers, peerId, this.chat.threadId).then((pinned) => pinned.maxId ?? 0),
+      Promise.resolve(undefined),
+      Promise.resolve(0),
+    ]) : Promise.all([
       this.managers.dialogs.getHistoryMaxSeq(peerId),
       this.managers.dialogs.getDialogReadState(peerId),
       this.managers.dialogs.getReadMaxSeqIfUnread(peerId),
@@ -4129,14 +4183,19 @@ export default class ChatBubbles implements BubbleGroupsHost {
         bubble = this.getFirstUnreadBubble(readMaxId) || bubble
       }
 
+      // `dispatchEvent('setPeer', …)` — tweb :5961-5976: по нему плашка закрепа
+      // (`topbar` → `pinnedMessage.testMid`) встаёт на закреп цели.
       if(bubble) {
         if(followingUnread) {
           void this.scrollToBubble(bubble, 'start')
+          this.chat.dispatchEvent('setPeer', lastMsgId!, false)
         } else if(isTarget) {
           void this.scrollToBubble(bubble, 'center')
           this.highlightBubble(bubble)
+          this.chat.dispatchEvent('setPeer', lastMsgId!, false)
         } else if(topMessageFullMid !== EMPTY_FULL_MID && !isJump) {
           void this.scrollToEnd()
+          this.chat.dispatchEvent('setPeer', lastMsgId!, true)
         }
 
         finishSetPeer()
@@ -4392,6 +4451,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
       scrollable.updateThumb(scrollable.lastScrollPosition)
       this.onRenderScrollSet()
       this.onScroll()
+
+      // tweb :6352
+      this.chat.dispatchEvent('setPeer', lastMsgId!, !isJump)
 
       // tweb :5431-5434 + :5500-5505 — окно доехало, но список мог оказаться короче
       // вьюпорта: позицию скролла надо пересчитать, а не сверять с прошлой.
@@ -5727,6 +5789,20 @@ export default class ChatBubbles implements BubbleGroupsHost {
       if (peerId !== this.peerId) return
       this.deleteMessagesByIds([...msgs].map((mid) => makeFullMid(peerId, mid)))
     })
+
+    // * pinned part start — tweb bubbles.ts:2544-2555
+    this.listenerSetter.add(rootScope)('peer_pinned_messages', ({ peerId, mids, pinned }) => {
+      if(this.chat.type !== ChatType.Pinned || peerId !== this.peerId) {
+        return
+      }
+
+      if(mids) {
+        if(!pinned) {
+          this.deleteMessagesByIds(mids.map((mid) => makeFullMid(peerId, mid)))
+        }
+      }
+    })
+    // * pinned part end
   }
 
   /**

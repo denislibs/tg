@@ -2027,6 +2027,36 @@ const ru = {
   },
   FilterNoChatsToDisplay: 'Папка пуста',
   FilterNoChatsToDisplayInfo: 'Сейчас в этой папке нет чатов.',
+  // ── Закреплённые сообщения и аудиоплеер (П-5 волны 7, Б-19/Б-22; tweb popups/unpinMessage.ts,
+  //    chat/pinnedMessage.tsx, chat/audio.tsx) ──
+  PinMessageAlertTitle: 'Закрепить сообщение',
+  PinMessageAlert: 'Закрепить это сообщение в группе?',
+  PinMessageAlertChannel: 'Закрепить это сообщение в канале?',
+  PinMessageAlertChat: 'Закрепить это сообщение в начале чата?',
+  PinNotify: 'Уведомить всех участников',
+  PinAlsoFor: 'Закрепить также для %1$s',
+  PinMessage: 'Закрепить',
+  UnpinMessageAlertTitle: 'Открепить сообщение',
+  'Chat.Confirm.Unpin': 'Открепить это сообщение?',
+  'Popup.Unpin.AllTitle': 'Открепить все сообщения',
+  'Chat.UnpinAllMessagesConfirmation': {
+    one_value: 'Открепить %d сообщение в этом чате?',
+    few_value: 'Открепить все %d сообщения в этом чате?',
+    many_value: 'Открепить все %d сообщений в этом чате?',
+    other_value: 'Открепить все %d сообщения в этом чате?',
+  },
+  'Popup.Unpin.HideTitle': 'Скрыть закреплённые сообщения',
+  'Popup.Unpin.HideDescription': 'Скрыть панель закреплённых сообщений? Она не появится, пока не закрепят новое сообщение.',
+  'Popup.Unpin.Hide': 'Скрыть',
+  'Chat.Pinned.DontShow': 'Скрыть закреплённые',
+  PinnedMessagesCount: {
+    one_value: '%1$d закреплённое сообщение',
+    few_value: '%1$d закреплённых сообщения',
+    many_value: '%1$d закреплённых сообщений',
+    other_value: '%1$d закреплённого сообщения',
+  },
+  AudioUnknownArtist: 'Неизвестный исполнитель',
+  'Schedule.Repeat': 'Повторять',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

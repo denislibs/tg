@@ -542,8 +542,13 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `UserUnblocked`, подписи своего срока автоудаления `AutoDeleteMessages.InfoChat`/
 // `InfoChannel`, заголовок отложенных «Избранного» `Reminders`, кнопка плашки видеочата
 // `VoiceChat.Topbar.Join`, подпись темы форума `TopicProfileStatus`. Итог: ru 1549.
+// Пачка П-5 волны 7, закреп и аудиоплеер (tweb `popups/unpinMessage.ts`, `chat/pinnedMessage.tsx`,
+// `chat/audio.tsx`, заголовок экрана закрепов `topbar.ts:1557-1559`): у ru +18 ключей tweb lang.ts,
+// из них плюральные `Chat.UnpinAllMessagesConfirmation` и `PinnedMessagesCount`. Итог: ru 1558,
+// `plural` 50 → 52.
+// Вместе (меню ⋮ + закреп и аудио): ru 1540 + 9 + 18 = 1567, `plural` 52.
 const COMPOSITION = {
-  ru: { keys: 1549, plural: 50 },
+  ru: { keys: 1567, plural: 52 },
   uk: { keys: 829, plural: 35 },
   es: { keys: 800, plural: 34 },
   de: { keys: 801, plural: 35 },
@@ -723,8 +728,9 @@ const COMPOSITION = {
 // Задачей 1-8 волны 7 — у ru +6 ключей пустого списка и контактов (разбор — там же).
 // Шагом К-3 волны 7 — у ru +1 ключ tweb `Chat.Title.Comments` (разбор — там же).
 // Пачкой П-5 волны 7 — у ru +9 ключей меню ⋮ и плашек шапки (разбор — там же).
+// Пачкой П-5 волны 7 (закреп и аудиоплеер) — у ru +18 ключей (разбор — там же).
 const FINGERPRINT = {
-  ru: '632bb0b3',
+  ru: 'f3e4f8df',
   uk: 'a02f363c',
   es: '89e8ae98',
   de: '0fed7933',
