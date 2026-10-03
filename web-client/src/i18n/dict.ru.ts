@@ -104,6 +104,7 @@ const ru = {
   BlockedEmpty: 'Нет',
   ChannelSettingsJoinRequest: 'По заявке',
 
+  'Chat.Input.Attach': 'Прикрепить',
   'Chat.Input.Attach.PhotoOrVideo': 'Фото или видео',
   'Chat.Input.Attach.Document': 'Файл',
   Poll: 'Опрос',
@@ -2099,6 +2100,26 @@ const ru = {
     many_value: 'Отправить %d сообщений сейчас?',
     other_value: 'Отправить %d сообщения сейчас?',
   },
+  // ── Строка ввода: плашка ответа/правки/пересылки, кнопка отправки, права (tweb chat/input.ts, К-4) ──
+  AccDescrEditing: 'Редактирование',
+  'Alert.Confirm.Discard': 'Отменить',
+  AndOther: {
+    one_value: 'и ещё %1$d отправитель',
+    few_value: 'и ещё %1$d отправителя',
+    many_value: 'и ещё %1$d отправителей',
+    other_value: 'и ещё %1$d отправителя',
+  },
+  'Channel.Persmission.MessageBlock': 'Отправка сообщений запрещена',
+  ChannelBroadcast: 'Публикация',
+  'Chat.Accessory.Forward.From': 'От',
+  'Chat.Accessory.Forward.You': 'Вы',
+  'Chat.Edit.Cancel.Text': 'Отменить все изменения?',
+  'ChatAutomation.Stop': 'Остановить',
+  GlobalAttachMediaRestricted: 'Отправка медиа в этой группе запрещена.',
+  ReplyTo: 'Ответ %s',
+  ReplyToQuote: 'Ответ на цитату %s',
+  UserRestrictionsSendRound: 'Отправка видеосообщений',
+  UserRestrictionsSendVoices: 'Отправка голосовых сообщений',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

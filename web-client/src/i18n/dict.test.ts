@@ -556,9 +556,19 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `popups/sendNow.ts`): у ru +10 ключей — tweb lang.ts `Chat.Search.{Next,Previous}Result`,
 // `Of`, `SearchAs{Chat,List}`, `Search.EmptyHashtag` и наши `Chat.SendNow.{Title,Text}[Multiple]`
 // (у оригинала — литералы, `popups/sendNow.ts:6-7`). Итог: ru 1550, `plural` 50 → 51.
-// Вместе (шапка + закреп и аудио + действия + поиск и отложенные): ru 1597, `plural` 54.
+// Шаг К-4 волны 7 (кнопка-скрепка `chat/attachMenuButton.solid.tsx`, tweb
+// `attachMenuButton.tsx:29-32`): у ru +1 ключ tweb lang.ts:170 `Chat.Input.Attach` —
+// `aria-label` кнопки. Итог: ru 1541.
+// Шаг К-4 волны 7 (ядро строки ввода `chat/input.ts`): у ru +14 ключей tweb lang.ts —
+// плашка правки/ответа/пересылки (`AccDescrEditing`, `ReplyTo`, `ReplyToQuote`,
+// `Chat.Accessory.Forward.{From,You}`, плюральный `AndOther`), отказ от правки
+// (`Alert.Confirm.Discard`, `Chat.Edit.Cancel.Text`), плейсхолдеры
+// (`Channel.Persmission.MessageBlock`, `ChannelBroadcast`), запрет медиа
+// (`GlobalAttachMediaRestricted`), подписи кнопки отправки (`UserRestrictionsSend{Voices,Round}`,
+// `ChatAutomation.Stop`). Итог: ru 1555, `plural` 50 → 51.
+// Вместе (П-5: шапка, закреп и аудио, действия, поиск и отложенные — +57; К-4 — +15): ru 1612, `plural` 55.
 const COMPOSITION = {
-  ru: { keys: 1597, plural: 54 },
+  ru: { keys: 1612, plural: 55 },
   uk: { keys: 829, plural: 35 },
   es: { keys: 800, plural: 34 },
   de: { keys: 801, plural: 35 },
@@ -742,8 +752,10 @@ const COMPOSITION = {
 // Пачкой П-5 «действия» — у ru +24 ключа tweb попапов закрепа, удаления, пересылки и
 // проверки фактов (разбор — там же).
 // Пачкой П-5 волны 7 — у ru +10 ключей поиска по чату и «отправить сейчас» (разбор — там же).
+// Шагом К-4 волны 7 — у ru +1 ключ tweb `Chat.Input.Attach` (разбор — там же).
+// Шагом К-4 волны 7 (строка ввода) — у ru +14 ключей `chat/input.ts` (разбор — там же).
 const FINGERPRINT = {
-  ru: '655b7357',
+  ru: 'efe5ac21',
   uk: 'a02f363c',
   es: '89e8ae98',
   de: '0fed7933',

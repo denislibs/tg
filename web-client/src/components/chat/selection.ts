@@ -42,9 +42,8 @@
  *    (`onToggleSelection` :1145-1272, `onUpdateContainer` :1274-1293,
  *    `removeSelectionContainer` :1295-1308): «удалить» · «N сообщений» ·
  *    «переслать» в `ChatInputPlate` (`chat/controlPlate.solid.tsx`) внутри
- *    `input.inputContainer`. Композер до К-4 — React-остров
- *    (`chat/reactChatInput.ts`), у него для панели есть `chatInput`,
- *    `inputContainer` и `center` — члены tweb `ChatInput`. Кнопка «отправить
+ *    `input.inputContainer`. Строка ввода — класс `ChatInput` (`chat/input.ts`,
+ *    К-4): панель берёт его `chatInput`, `inputContainer` и `center`, как tweb. Кнопка «отправить
  *    сейчас» отложенных (`ChatType.Scheduled`, :1239-1245, `showSendNowPopup`)
  *    — сосед П-5 «поиск+отложенные» (Б-25); report-режим
  *    (`enterReportSelection` :929-952, `showSelectedMessagesReport`) — у
@@ -113,7 +112,7 @@ import type AppSearchSuper from '@components/appSearchSuper'
 import { getSharedMediaMessage } from '@components/sharedMediaHistories'
 import type Chat from './chat'
 import { ChatType } from './chatType'
-import type ChatInput from './reactChatInput'
+import type ChatInput from './input'
 
 /** tweb selection.ts:51-53 (812502980) — обобщён в 79b9c44c1 */
 const accumulateMapSet = <T extends { size: number }>(map: Map<number, T>): number => {

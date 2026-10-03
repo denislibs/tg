@@ -10,7 +10,7 @@ import ChatSelection, {
   type SelectionManagers,
 } from './selection'
 import ListenerSetter from '@helpers/listenerSetter'
-import type ChatInput from './reactChatInput'
+import type ChatInput from './input'
 import { createTestChat } from './testChat'
 import { ChatType } from './chatType'
 import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'

@@ -1,11 +1,14 @@
-// Порт tweb `src/helpers/dom/placeCaretAtEnd.ts` (812502980) 1:1 (без
-// `window.placeCaretAtEnd` — отладочной глобали оригинала).
 /*
  * Originally from:
  * https://github.com/zhukov/webogram
  * Copyright (C) 2014 Igor Zhukov <igor.beatle@gmail.com>
  * https://github.com/zhukov/webogram/blob/master/LICENSE
  */
+
+// Порт tweb `helpers/dom/placeCaretAtEnd.ts` — 1:1, с проверкой касаний: на
+// тач-устройстве каретку не ставим (иначе всплывает клавиатура), пока не
+// попросили явно (`ignoreTouchCheck`) и фокус уже на редактируемом поле.
+// Безусловный вариант без этой проверки — `@shared/lib/caret` (формы входа).
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 
 export default function placeCaretAtEnd(el: HTMLElement, ignoreTouchCheck = false, focus = true) {

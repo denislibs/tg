@@ -58,17 +58,16 @@ const ALLOWED: Record<string, number> = {
   // автора истории, из вьювера историй. Плашки ответа там нет, тредов нет,
   // send-as нет — собирать в пакет нечего.
   'core/hooks/useStoryViewer.ts': 1,
-  // Пост канала: эндпоинт POST /channels/{id}/messages принимает ровно
-  // {text, entities, client_msg_id} (backend channel_handler.go:65-71 →
-  // PostToChannel с позиционной сигнатурой). Довести пакет = менять сигнатуру
-  // usecase и её тест-вызовы — отдельная работа по бэкенду; плашку этот путь
-  // при этом гасит (useChatSend.test.tsx).
-  'core/hooks/useChatSend.ts': 1,
   // «Поделиться ссылкой» (мост `components/popups/shareUrl.bridge.ts`, ВРЕМЕННО до
   // 2C-24): адрес уходит голым текстом в выбранные чаты, как tweb `shareUrlToPeers`
   // (`sendText({peerId, threadId, text})`) — ни ответа, ни треда, ни send-as у
   // выбора чатом `ForwardPicker` нет, собирать в пакет нечего.
   'components/popups/shareUrl.bridge.ts': 1,
+  // Пост канала (`ChatInput.sendText`, расхождение 4 шапки `components/chat/input.ts`):
+  // ручка `POST /channels/{id}/messages` принимает ровно {text, entities,
+  // client_msg_id} (`channel_handler.go`) — пакету некуда уехать; тред поста
+  // уходит полем `threadRootId` бабла.
+  'components/chat/input.ts': 1,
 }
 
 /** Аргументы вызова: от `(` до парной `)`. */

@@ -24,7 +24,7 @@ import ChatContextMenu, { type ContextMenuManagers } from './contextMenu'
 import ChatSelection, { type SelectionBubbles, type SelectionManagers } from './selection'
 import { ChatType } from './chatType'
 import type Chat from './chat'
-import type ChatInput from './reactChatInput'
+import type ChatInput from './input'
 
 export type TestChatInput = {
   messageInput?: HTMLElement

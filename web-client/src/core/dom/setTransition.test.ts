@@ -1,10 +1,9 @@
 // src/core/dom/setTransition.test.ts
 // Машина классов перехода tweb (`components/singleTransition.ts`) — один
-// экземпляр на императивный `setTransition` и на React-обёртку `useSetTransition`.
+// экземпляр на императивный `setTransition` (React-обёртка `useSetTransition`
+// снесена вместе с React-композером, шаг К-4).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
 import { setTransition, transitionClasses } from './setTransition'
-import { useSetTransition } from '../hooks/useSetTransition'
 import { useSettingsStore } from '../../settings'
 
 beforeEach(() => {
@@ -37,7 +36,7 @@ describe('transitionClasses', () => {
   it('прямой ход снимает backwards, оставшийся от прерванного обратного (tweb :75)', () => {
     // `toggle('backwards', !forwards)` у tweb — симметрично `toggle('forwards', forwards)`:
     // `forwards` и `backwards` на узле одновременно быть не могут, а `.backwards` —
-    // живой селектор у потребителей useSetTransition
+    // живой селектор стилей tweb
     expect(transitionClasses(['is-visible', 'backwards', 'animating'], 'is-visible', true, true))
       .toEqual(['is-visible', 'animating', 'forwards'])
   })
@@ -122,24 +121,5 @@ describe('setTransition', () => {
     setTransition({ element, className: 'is-connecting', forwards: true, duration: 250, onTransitionEnd })
     expect([...element.classList]).toEqual(['is-connecting', 'forwards'])
     expect(onTransitionEnd).toHaveBeenCalledTimes(1)
-  })
-})
-
-describe('useSetTransition поверх того же ядра', () => {
-  it('строки классов те же, что до выноса ядра', () => {
-    const { result, rerender } = renderHook(({ forwards }) => useSetTransition(forwards, 'is-selecting', 200), {
-      initialProps: { forwards: false },
-    })
-    expect(result.current).toBe('')
-
-    rerender({ forwards: true })
-    expect(result.current).toBe('is-selecting forwards animating')
-    act(() => { vi.advanceTimersByTime(200) })
-    expect(result.current).toBe('is-selecting forwards')
-
-    rerender({ forwards: false })
-    expect(result.current).toBe('is-selecting backwards animating')
-    act(() => { vi.advanceTimersByTime(200) })
-    expect(result.current).toBe('')
   })
 })

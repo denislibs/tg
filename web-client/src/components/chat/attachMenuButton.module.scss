@@ -1,0 +1,12 @@
+// Порт tweb `src/components/chat/attachMenuButton.module.scss` (812502980) в
+// объёме покоя кнопки: правила загрузки (`.disabled`, `.close`, `.hidden`,
+// `.LoadingContainer`, `.Loader` и `@keyframes rotate`) — у состояния правки
+// медиа, которого нет (Б-38, шапка `attachMenuButton.solid.tsx`).
+.Container {
+  position: relative;
+  overflow: hidden;
+}
+
+.Icon {
+  transition: opacity 0.2s;
+}

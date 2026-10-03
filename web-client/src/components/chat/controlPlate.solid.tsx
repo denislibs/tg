@@ -1,7 +1,11 @@
 /** @jsxImportSource solid-js */
-// Порт tweb `src/components/chat/controlPlate.tsx` (812502980) 1:1 — единая
-// плашка вместо строки ввода: панель выделения (`chat/selection.ts`), а с К-4 —
-// плашки управления (вступить, разблокировать, «Начать» у бота…). Стили —
+// Порт tweb `src/components/chat/controlPlate.tsx` (812502980, 43 строки) —
+// файлом, без расхождений. Единая плашка вместо строки ввода
+// (`.chat-input-control`): «Начать», «Разблокировать», «Вступить»,
+// «Без звука», «Открепить все» и т.п. живут в центральном слоте, боковые —
+// кнопки-иконки (`directControlBtn` слева, `giftControlBtn` справа). Зовёт её
+// `ChatInput.constructPeerHelpers` (tweb `input.ts:1660-1682`) вне реактивного
+// корня, как оригинал: `ChatInputPlate({...}) as HTMLElement`. Стили —
 // `styles/tweb/_chat.scss` (`.chat-input-plate`).
 import type { JSX } from 'solid-js'
 import classNames from '@helpers/string/classNames'
@@ -35,7 +39,7 @@ export default function ChatInputPlate(props: {
   /** Main centered button (`Button`). */
   center: JSX.Element,
   /** Optional trailing icon button (`Button.Icon`). */
-  right?: JSX.Element
+  right?: JSX.Element,
 }): JSX.Element {
   return (
     <div class={classNames(CHAT_INPUT_PLATE_CLASS, 'rows-wrapper-row', props.class)}>

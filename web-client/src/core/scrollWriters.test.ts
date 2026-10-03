@@ -90,6 +90,10 @@ const ALLOWED: Record<string, number> = {
   // tweb 1:1 (`topbarSearch.tsx:706` центровка цели стрелками, `:832` сброс на
   // новую выдачу): узел — `Scrollable` (scrollable2) самого поиска, ленты он не касается.
   'components/chat/topbarSearch.solid.tsx': 2,
+  // components/chat/input.ts (`ChatInput.setInputValue`, tweb `input.ts:5348`) — после
+  // подстановки черновика/текста правки поле ввода прокручивается к концу. Узел — само
+  // поле (`.input-message-input`), не лента: ни подгрузки, ни второго писателя позиции.
+  'components/chat/input.ts': 1,
 }
 
 describe('scrollTop: единственный владелец — Scrollable/ScrollSaver', () => {

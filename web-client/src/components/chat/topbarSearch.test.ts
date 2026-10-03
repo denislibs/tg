@@ -31,7 +31,7 @@ vi.mock('./topbar', () => ({
   },
 }))
 
-vi.mock('./reactChatInput', () => ({
+vi.mock('./input', () => ({
   default: class {
     public chatInput = document.createElement('div')
     public messageInput = document.createElement('div')
