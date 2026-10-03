@@ -16,7 +16,7 @@ import { useMemo, useSyncExternalStore } from 'react'
 import type { OpenPeer } from '@/data'
 import { useChatList } from '@core/hooks/useChatList'
 import { usePeers } from '@core/hooks/usePeers'
-import { isDialogChat, resolveChatEntity } from '@core/chatEntity'
+import { resolveChatEntity } from '@core/chatEntity'
 import type { SearchSuperActions } from '@core/hooks/useSearchSuper'
 import appImManager from '@lib/appImManager'
 import UserInfoPanel from '@components/UserInfoPanel'
@@ -50,7 +50,6 @@ export default function ReactProfileTabView({ tab, peerId }: ReactProfileTabView
   const chatList = useChatList()
   usePeers(useMemo(() => [peerId], [peerId]))
   const chat = resolveChatEntity({ peerId }, chatList)
-  const canAddMembers = isDialogChat(chat) && chat.type === 'group'
 
   return (
     <UserInfoPanel
@@ -58,7 +57,6 @@ export default function ReactProfileTabView({ tab, peerId }: ReactProfileTabView
       isActive={isActive}
       chat={chat}
       onOpenPeer={onOpenPeer}
-      canAddMembers={canAddMembers}
       // ВРЕМЕННО до 3-1 — карандаш профиля tweb (`sharedMedia.tsx:675-686`):
       // вкладка «Изменить контакт» в тот же слайдер правой колонки.
       onEditContact={() => { void appSidebarRight.createTab(AppEditContactTab).open(Number(chat.id)) }}

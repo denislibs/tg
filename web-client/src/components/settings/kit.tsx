@@ -43,7 +43,6 @@ export function SettingsScreen({
   headerRight,
   zIndex = 60,
   sub = null,
-  hidden = false,
   children,
 }: {
   title?: LangPackKey
@@ -54,12 +53,6 @@ export function SettingsScreen({
   zIndex?: number
   /** вложенный экран (обычно другой SettingsScreen); null — закрыт */
   sub?: ReactNode
-  /**
-   * ВРЕМЕННО до 0б-1: экран спрятан (`hide`), пока поверх открыта Solid-вкладка
-   * правой колонки. Оверлей лежит соседом вкладок в `.sidebar-slider` со своим
-   * `z-index`, и открытая из него вкладка слайдера оказалась бы ПОД ним.
-   */
-  hidden?: boolean
   children: ReactNode
 }) {
   const t = useT()
@@ -165,7 +158,7 @@ export function SettingsScreen({
   return (
     <div
       ref={containerRef}
-      className={classNames('tabs-container', s.screen, hidden ? 'hide' : '')}
+      className={classNames('tabs-container', s.screen)}
       data-animation="navigation"
       style={{ zIndex }}
     >

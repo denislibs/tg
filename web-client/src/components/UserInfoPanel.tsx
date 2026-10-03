@@ -5,8 +5,6 @@ import QrModal from './QrModal'
 import TgIcon from './TgIcon'
 import ChannelStats from './ChannelStats'
 import { useMediaUrl } from '../core/hooks/useMediaUrl'
-import GroupEditFlow from './group/GroupEditFlow'
-import AddMembersScreen from './group/AddMembersScreen'
 import PinnedStoriesSection from './PinnedStoriesSection'
 import classNames from '../shared/lib/classNames'
 import type { Chat, OpenPeer } from '../data'
@@ -18,8 +16,10 @@ import KeyVerificationPopup from './secret/KeyVerificationPopup'
 import RightsEditor from './userInfo/RightsEditor'
 import { countLabel, isSharedMediaReached, shouldForceFold } from './userInfo/helpers'
 import appSidebarRight from './sidebarRight'
+// ВРЕМЕННО до К-5 (агент А): карандаш группы/канала — `AppEditChatTab` (0б-1)
+import { AppEditChatTab } from './solidJsTabs/tabs'
 import type AppReactProfileTab from './sidebarRight/reactProfileTab'
-import { isUser as isUserPeer } from '../core/peers/peerId'
+import { isUser as isUserPeer, toChatId } from '../core/peers/peerId'
 import { cachedUser } from '../core/peerCache'
 import { getUserTitle } from '../core/peers/getPeerTitle'
 import { getPeerPhotoId } from '../core/peers/peer'
@@ -56,7 +56,7 @@ import type { SearchSuperMediaType } from './appSearchSuper'
  * (`components/sidebarRight/index.ts`), панель лишь рисует вкладку: портал в
  * `profileTab.container`, как Solid `sharedMedia.tsx` рисует в свою вкладку у tweb.
  */
-export default function UserInfoPanel({ profileTab, isActive: isActiveInstance, chat, onOpenPeer, canAddMembers, onEditContact, searchSuperActions }: { profileTab: AppReactProfileTab; isActive: boolean; chat: Chat; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean; onEditContact?: () => void; searchSuperActions?: SearchSuperActions }) {
+export default function UserInfoPanel({ profileTab, isActive: isActiveInstance, chat, onOpenPeer, onEditContact, searchSuperActions }: { profileTab: AppReactProfileTab; isActive: boolean; chat: Chat; onOpenPeer?: (peer: OpenPeer) => void; onEditContact?: () => void; searchSuperActions?: SearchSuperActions }) {
   const t = useT()
   const isSaved = chat.type === 'saved'
   // «Избранное» — панель БЕЗ профиля (tweb sharedMediaTab.tsx:73
@@ -77,8 +77,6 @@ export default function UserInfoPanel({ profileTab, isActive: isActiveInstance, 
   // `onChangeTab` (`sharedMedia.tsx:650-668`); панель только показывает её
   // счётчик в залитой шапке.
   const [tab, setTab] = useState<SearchSuperMediaType | null>(null)
-  const [editing, setEditing] = useState(false)
-  const [addingMembers, setAddingMembers] = useState(false)
   const [showStats, setShowStats] = useState(false)
   const headerAvatarSrc = useMediaUrl(chat.photoId ?? null)
 
@@ -571,17 +569,6 @@ export default function UserInfoPanel({ profileTab, isActive: isActiveInstance, 
     el.classList.toggle('header-filled', headerFilled)
   }, [headerFilled])
 
-  // `can-add-members` (`_profile.scss`: `.shared-media-container.can-add-members`
-  // поднимает FAB добавления участников) — статическая по факту (меняется
-  // только сменой самого чата, не скроллом/сворачиванием), но ЭТОТ узел
-  // больше не отдан React на пересчёт целиком — тот же classList.toggle,
-  // чтобы не заводить второй, «немного другой» механизм записи на нём же.
-  useLayoutEffect(() => {
-    const el = setCollapsedOnRef.current
-    if (!el) return
-    el.classList.toggle('can-add-members', isGroup && !!canAddMembers && isRealChat)
-  }, [isGroup, canAddMembers, isRealChat])
-
   const meId = useChatsStore((st) => st.meId)
   // «Это человек» — вопрос к ЗНАКУ ключа, а не связка трёх отрицаний по виду
   // диалога (`peerId != null` там же было мёртвым: ключ есть у любого пира).
@@ -653,7 +640,7 @@ export default function UserInfoPanel({ profileTab, isActive: isActiveInstance, 
           <div className={classNames('transition-item', headerSlider.itemClass(0))}>
             <div className="sidebar-header__title">{t(title)}</div>
             {(isGroup || isChannel) && (
-              <IconButton onClick={() => setEditing(true)}>
+              <IconButton onClick={() => { void appSidebarRight.createTab(AppEditChatTab).open({ chatId: toChatId(peerId) }) }}>
                 <TgIcon name="edit" />
               </IconButton>
             )}
@@ -756,19 +743,13 @@ export default function UserInfoPanel({ profileTab, isActive: isActiveInstance, 
       </div>
       </div>
 
-      {/* Group add-member FAB (tweb btnAddMembers): `.btn-circle.btn-corner`
-          внутри самой вкладки — её `.can-add-members` и поднимает
-          (`_profile.scss` → `.shared-media-container.can-add-members`). */}
-      {isGroup && canAddMembers && isRealChat && (
-        <button type="button" className="btn-circle btn-corner rp" onClick={() => setAddingMembers(true)}>
-          <TgIcon name="adduser" />
-        </button>
-      )}
+      {/* FAB добавления участников (tweb btnAddMembers) снят с
+          `group/AddMembersScreen` — Б-42 бэклога каркаса. */}
     </>,
     profileTab.container,
   )
 
-  // Оверлеи-подэкраны (ВРЕМЕННО до 0б-1…0б-9 — каждый уходит в Solid-вкладку
+  // Оверлеи-подэкраны (ВРЕМЕННО до 0б-7, 0б-9 — каждый уходит в Solid-вкладку
   // своей задачей): въезд справа играет CSS самого экрана. Лежат СОСЕДЯМИ
   // вкладки №0 в `.sidebar-slider` колонки, как до 0б-0, а не внутри неё:
   // правила `_profile.scss` для `.profile-container .sidebar-header`
@@ -780,19 +761,6 @@ export default function UserInfoPanel({ profileTab, isActive: isActiveInstance, 
       {panel}
       {isActiveInstance && sliderEl && createPortal(
         <>
-          {editing && isRealChat && (isGroup || isChannel) && (
-            <GroupEditFlow chatId={Number(chat.id)} chat={chat} onClose={() => setEditing(false)} />
-          )}
-          {/* Список участников после добавления перечитает сам класс
-              (`rt:chat_update`, расхождение 32 `appSearchSuper.ts`). */}
-          {addingMembers && isRealChat && (
-            <AddMembersScreen
-              chatId={Number(chat.id)}
-              onClose={() => setAddingMembers(false)}
-              onAdded={() => setAddingMembers(false)}
-            />
-          )}
-
           {/* Статистика канала/супергруппы (slide-in сабвью, tweb statistics) */}
           {showStats && isRealChat && (
             <ChannelStats

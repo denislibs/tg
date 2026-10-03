@@ -112,7 +112,7 @@ describe('UserInfoPanel — каркас на классах tweb', () => {
     // Оверлеи-подэкраны — соседями вкладки в `.sidebar-slider`, не внутри неё
     // (правила `.profile-container .sidebar-header` задели бы их шапки), и
     // только у активного инстанса чата.
-    expect(panel).toMatch(/\{isActiveInstance && sliderEl && createPortal\(\s*<>\s*\{editing && isRealChat/)
+    expect(panel).toMatch(/\{isActiveInstance && sliderEl && createPortal\(\s*<>\s*\{\/\*[^*]*\*\/\}\s*\{showStats && isRealChat/)
     // НАХОДКА РЕВЬЮ (Critical, раунд правок 3): ни один из четырёх динамических
     // классов состояния (is-collapsed/need-white/header-filled/can-add-members)
     // не вычисляется строкой — React className этого узла не владеет (узел
@@ -127,7 +127,8 @@ describe('UserInfoPanel — каркас на классах tweb', () => {
     // см. useLayoutEffect'ы у setCollapsedOnRef); ни один литерал-кавычка этих
     // классов внутри classNames(...) для ЭТОГО узла быть не должен.
     expect(panel).toMatch(/classList\.toggle\('header-filled', headerFilled\)/)
-    expect(panel).toMatch(/classList\.toggle\('can-add-members', isGroup && !!canAddMembers && isRealChat\)/)
+    // `can-add-members` снят вместе с FAB (`group/AddMembersScreen`, К-5 — Б-42)
+    expect(panel).not.toMatch(/classList\.toggle\('can-add-members'/)
     expect(panel).not.toMatch(/'is-collapsed'/)
     expect(panel).not.toMatch(/'need-white'/)
   })
