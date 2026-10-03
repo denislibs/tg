@@ -18,12 +18,14 @@ export { MediaSizes, ScreenSize, setAttachmentSize, default } from '@core/dom/me
 // Solid-стор оригинала (`createStore` + `useMediaSizes()`, tweb mediaSizes.ts:46-52,
 // :157-163, :196-198): у нас он собран здесь, поверх событий того же инстанса, а
 // не внутри класса — `core/dom/mediaSizes.ts` читают и невизуальные пути (шапка
-// файла). Стор заводится лениво на первом вызове; потребитель — поиск по чату
-// (`components/chat/topbarSearch.solid.tsx`, tweb `topbarSearch.tsx:363`).
+// файла). Стор заводится лениво на первом вызове; потребители — поиск по чату
+// (`components/chat/topbarSearch.solid.tsx`, tweb `topbarSearch.tsx:363`) и
+// карточки пустой колонки (`components/chatTips/index.solid.tsx`, tweb `index.tsx:63`).
 
 type MediaSizesStore = {
   isMobile: boolean,
   isFloatingLeftSidebar: boolean,
+  isLessThanFloatingLeftSidebar: boolean,
   activeScreen: Screen
 }
 
@@ -33,6 +35,7 @@ export function useMediaSizes(): MediaSizesStore {
     const read = (): MediaSizesStore => ({
       isMobile: mediaSizesInstance.isMobile,
       isFloatingLeftSidebar: mediaSizesInstance.isFloatingLeftSidebar,
+      isLessThanFloatingLeftSidebar: mediaSizesInstance.isLessThanFloatingLeftSidebar,
       activeScreen: mediaSizesInstance.activeScreen,
     })
     const [s, setStore] = createStore<MediaSizesStore>(read())

@@ -21,6 +21,12 @@ export interface AppState {
    * храним строки: разница модели, не поведения.
    */
   recentSearch: string[]
+  /**
+   * чаты, которые пользователь закрыл или откуда ушёл (tweb `recentlyClosedChats`,
+   * `config/state.ts:248`) — фильтр «Closed» карточки чатов пустой колонки
+   * (`components/chatTips/chatsCard.solid.tsx`). Ключ пира — строка, как у `recentSearch`.
+   */
+  recentlyClosedChats: string[]
   /** порядок закреплённых по папкам: folderId → peerId[] (tweb `pinnedOrders`) */
   pinnedOrders: Record<number, number[]>
   /**
@@ -49,6 +55,7 @@ export const STATE_INIT: AppState = {
   folders: [],
   hiddenPinnedMessages: {},
   recentSearch: [],
+  recentlyClosedChats: [],
   pinnedOrders: {},
   allDialogsLoaded: {},
   starsBalance: null,

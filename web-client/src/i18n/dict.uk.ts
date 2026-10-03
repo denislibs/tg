@@ -1084,6 +1084,11 @@ const uk = {
     many_value: '%d зірок',
     other_value: '%d зірки',
   },
+  // ── Карточки пустой колонки (tweb components/chatTips, Б-13): строки со ссылкой `[…]()` ──
+  'ChatTips.Appearance.Description': 'Ці та багато інших параметрів можна змінити в розділі Налаштування > [Загальні налаштування]().',
+  'ChatTips.Chats.Description': 'Натисніть **Ctrl+F**, щоб перейти в режим [пошуку]().',
+  'ChatTips.Chats.DescriptionMac': 'Натисніть **Cmd+F**, щоб перейти в режим [пошуку]().',
+  'ChatTips.Stickers.Description': 'Більше популярних стікерів — у розділі [Популярні стікери]().',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(uk)

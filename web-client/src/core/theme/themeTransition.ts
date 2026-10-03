@@ -120,15 +120,20 @@ export function switchThemeWithTransition(
 }
 
 /**
- * Порт tweb `themeController.switchTheme` (`helpers/themeController.ts`, вызов —
- * бургер `sidebarLeft/index.ts:924`): день ↔ ночь от ПРИМЕНЁННОЙ темы (системную мог
- * сменить слушатель `setThemeListener`). Выбор пишется в настройки, тему применяет
- * их подписчик (`appImManager.applyCurrentTheme`) синхронно — внутри снапшота
- * перехода. Бывший `core/hooks/useThemeToggle.ts` шелла.
+ * Порт tweb `themeController.switchTheme` (`helpers/themeController.ts:470-487`).
+ * Без `name` — бургер (`sidebarLeft/index.ts:924`): день ↔ ночь от ПРИМЕНЁННОЙ темы
+ * (системную мог сменить слушатель `setThemeListener`); с `name` — кнопки карточки
+ * «Оформление» пустой колонки (`components/chatTips/appearanceCard.solid.tsx`).
+ * Выбор пишется в настройки, тему применяет их подписчик
+ * (`appImManager.applyCurrentTheme`) синхронно — внутри снапшота перехода. Бывший
+ * `core/hooks/useThemeToggle.ts` шелла.
+ *
+ * Расхождение: `settings.lastThemeNames` (последний выбранный вариант каждой
+ * стороны, `:474-483`) у нас нет — сторона берёт запасную пару оригинала night/day.
  */
-export function switchTheme(coordinates?: { x: number, y: number }): void {
+export function switchTheme(name?: ThemeChoice, coordinates?: { x: number, y: number }): void {
   const { themeChoice, update } = useSettingsStore.getState()
   const isNight = PRESET_MODE[getCurrentPreset() ?? resolvePreset(themeChoice)] === 'dark'
-  const next: ThemeChoice = isNight ? 'day' : 'night'
+  const next: ThemeChoice = name ?? (isNight ? 'day' : 'night')
   switchThemeWithTransition(() => update({ themeChoice: next }), coordinates, isNight)
 }

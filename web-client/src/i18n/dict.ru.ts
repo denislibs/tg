@@ -2128,6 +2128,24 @@ const ru = {
   ReplyToQuote: 'Ответ на цитату %s',
   UserRestrictionsSendRound: 'Отправка видеосообщений',
   UserRestrictionsSendVoices: 'Отправка голосовых сообщений',
+  // ── Карточки пустой колонки (tweb components/chatTips, Б-13) ──
+  'ChatTips.Appearance': 'Оформление',
+  'ChatTips.Appearance.Dark': 'Тёмная',
+  'ChatTips.Appearance.Description': 'Эти и многие другие параметры можно изменить в разделе Настройки > [Общие настройки]().',
+  'ChatTips.Appearance.Light': 'Светлая',
+  'ChatTips.Appearance.System': 'Системная',
+  'ChatTips.Chats': 'Чаты',
+  'ChatTips.Chats.Description': 'Нажмите **Ctrl+F**, чтобы перейти в режим [поиска]().',
+  'ChatTips.Chats.DescriptionMac': 'Нажмите **Cmd+F**, чтобы перейти в режим [поиска]().',
+  'ChatTips.Chats.Empty': 'Здесь пока ничего нет.',
+  'ChatTips.Chats.RecentSearch': 'Найденные',
+  'ChatTips.Chats.RecentlyClosed': 'Закрытые',
+  'ChatTips.NextTip': 'Следующая',
+  'ChatTips.PreviousTip': 'Предыдущая',
+  'ChatTips.Stickers.Description': 'Больше популярных стикеров — в разделе [Популярные стикеры]().',
+  'ChatTips.Title': 'Подсказки',
+  'EmptyPeer.Description': 'Выберите, кому хотели бы написать',
+  'Stickers.Trending': 'Популярные стикеры',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

@@ -570,12 +570,19 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Баг-фиксы после П-5: +8 ключей tweb превью лога звонка (`ChatList.Service.{Call,VideoCall}.*`,
 // tweb lib/langPack.ts:51-58) и `ForwardedFrom` шапки пересылки вместо нашего мёртвого
 // `Chat.ForwardedFrom` (был только у ru) — ru +8, у остальных +9.
+// Б-13 волны 7 (карточки пустой колонки, tweb `components/chatTips`): у ru +17 ключей tweb
+// lang.ts:5678-5695 и :4527 — `ChatTips.*` (без `ChatTips.Chats.Popular`: фильтра топа
+// собеседников у нас нет), `EmptyPeer.Description`, `Stickers.Trending`. Итог: ru 1637.
+// У остальных четырёх +4 — строки подписей карточек со ссылкой `[…]()`
+// (`ChatTips.{Appearance,Chats,Stickers}.Description`, `ChatTips.Chats.DescriptionMac`): без
+// аргумента-узла такую строку не разобрать, поэтому она переводится во всех пяти, как
+// `PasscodeLock.ForgotPasscode.*` и `Privacy.Passkeys.Caption`.
 const COMPOSITION = {
-  ru: { keys: 1620, plural: 55 },
-  uk: { keys: 838, plural: 35 },
-  es: { keys: 809, plural: 34 },
-  de: { keys: 810, plural: 35 },
-  fr: { keys: 805, plural: 34 },
+  ru: { keys: 1637, plural: 55 },
+  uk: { keys: 842, plural: 35 },
+  es: { keys: 813, plural: 34 },
+  de: { keys: 814, plural: 35 },
+  fr: { keys: 809, plural: 34 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -758,12 +765,13 @@ const COMPOSITION = {
 // Шагом К-4 волны 7 — у ru +1 ключ tweb `Chat.Input.Attach` (разбор — там же).
 // Шагом К-4 волны 7 (строка ввода) — у ru +14 ключей `chat/input.ts` (разбор — там же).
 // Баг-фиксами после П-5 — превью звонка и `ForwardedFrom` (разбор — там же).
+// Б-13 волны 7 — у ru +17 ключей карточек пустой колонки, у остальных +4 (разбор — там же).
 const FINGERPRINT = {
-  ru: '3de96527',
-  uk: 'af81524a',
-  es: '57ce09fe',
-  de: '3224cfc5',
-  fr: '61cdac88',
+  ru: 'c33f1e43',
+  uk: 'de4c59fd',
+  es: 'f330c581',
+  de: '95a1d0fe',
+  fr: '59be948d',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

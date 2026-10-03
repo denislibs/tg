@@ -117,6 +117,9 @@ export interface Settings {
   // Подсказка «Chat.Menu.Hint» после «Выбрать сообщения» меню ⋮ показана
   // (tweb appSettings.chatContextMenuHintWasShown, chat/topbar.ts:583-589).
   chatContextMenuHintWasShown: boolean
+  // Карточки пустой колонки (tweb settings.chatTips, config/state.ts:109-114):
+  // какая карточка показана и свёрнута ли колода до пилюли «выберите чат».
+  chatTips: { index: number, hidden: boolean }
 }
 
 // Галочки автозагрузки по типам чатов (tweb AutoDownloadPeerTypeSettings).
@@ -198,6 +201,7 @@ export const DEFAULTS: Settings = {
   seenSidebarResizeTip: false,
   notifySuggested: false,
   chatContextMenuHintWasShown: false,
+  chatTips: { index: 0, hidden: false }, // tweb SETTINGS_INIT.chatTips (`config/state.ts:512-515`)
 }
 
 const KEY = 'tg-settings'
@@ -315,6 +319,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       seenSidebarResizeTip: s.seenSidebarResizeTip,
       notifySuggested: s.notifySuggested,
       chatContextMenuHintWasShown: s.chatContextMenuHintWasShown,
+      chatTips: s.chatTips,
     }
     try {
       localStorage.setItem(KEY, JSON.stringify(toSave))

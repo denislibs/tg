@@ -979,6 +979,11 @@ const es = {
     one_value: '%d Estrella',
     other_value: '%d Estrellas',
   },
+  // ── Карточки пустой колонки (tweb components/chatTips, Б-13): строки со ссылкой `[…]()` ──
+  'ChatTips.Appearance.Description': 'Puedes cambiar estos y muchos otros parámetros en Ajustes > [Ajustes generales]().',
+  'ChatTips.Chats.Description': 'Usa **Ctrl+F** para entrar en el modo de [búsqueda]().',
+  'ChatTips.Chats.DescriptionMac': 'Usa **Cmd+F** para entrar en el modo de [búsqueda]().',
+  'ChatTips.Stickers.Description': 'Hay más stickers populares en [Stickers populares]().',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(es)

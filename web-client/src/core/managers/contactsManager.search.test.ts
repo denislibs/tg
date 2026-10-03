@@ -197,6 +197,61 @@ describe('contactsManager.pushRecentSearch / clearRecentSearch', () => {
   })
 })
 
+// tweb `pushRecentlyClosedChat` (:323-329) — тот же `pushRecentPeer`, но свой ключ State:
+// фильтр «Closed» карточки чатов пустой колонки (`components/chatTips/chatsCard.solid.tsx`).
+describe('contactsManager.pushRecentlyClosedChat', () => {
+  beforeEach(async () => {
+    await saveStateKey('recentSearch', [])
+    await saveStateKey('recentlyClosedChats', [])
+  })
+
+  const closed = async () => (await loadStateAll()).recentlyClosedChats
+
+  it('закрытый чат — первым, в свой ключ State и зеркалом во вкладки; «недавние» поиска не трогает', async () => {
+    const { mgr, mirror } = setup()
+
+    await mgr.pushRecentlyClosedChat(5)
+    await mgr.pushRecentlyClosedChat(-7)
+
+    expect(await closed()).toEqual(['-7', '5'])
+    expect(mirror).toHaveBeenLastCalledWith('recentlyClosedChats', ['-7', '5'])
+    expect((await loadStateAll()).recentSearch).toEqual([])
+  })
+
+  it('повторно закрытый поднимается наверх без дубля; уже первый — без записи', async () => {
+    const { mgr, mirror } = setup()
+
+    await mgr.pushRecentlyClosedChat(1)
+    await mgr.pushRecentlyClosedChat(2)
+    await mgr.pushRecentlyClosedChat(1)
+    expect(await closed()).toEqual(['1', '2'])
+
+    mirror.mockClear()
+    await mgr.pushRecentlyClosedChat(1)
+    expect(mirror).not.toHaveBeenCalled()
+  })
+
+  it('держит не больше 20 (`RECENT_PEERS_LIMIT`)', async () => {
+    const { mgr } = setup()
+
+    for (let id = 1; id <= 21; ++id) await mgr.pushRecentlyClosedChat(id)
+
+    const list = await closed()
+    expect(list).toHaveLength(20)
+    expect(list?.[0]).toBe('21')
+    expect(list).not.toContain('1')
+  })
+
+  it('запись поиска и закрытого чата вперемешку не теряет ни одну (общая очередь)', async () => {
+    const { mgr } = setup()
+
+    await Promise.all([mgr.pushRecentSearch(1), mgr.pushRecentlyClosedChat(2), mgr.pushRecentSearch(3)])
+
+    expect((await loadStateAll()).recentSearch).toEqual(['3', '1'])
+    expect(await closed()).toEqual(['2'])
+  })
+})
+
 describe('contactsManager.isContact — порт `isContact` (:897-899)', () => {
   it('в книге — контакт; книга дочитывается до ответа (первое чтение ленивое)', async () => {
     const { mgr, get } = setup({ contacts: [user(5, 'Book')] })

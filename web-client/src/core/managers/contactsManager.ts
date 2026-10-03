@@ -73,8 +73,14 @@ const SEARCH_OPTIONS = {
   includeTag: true,
 }
 
-/** Порт лимита `recentSearch` (tweb `appUsersManager.ts:283-285`). */
-const RECENT_SEARCH_LIMIT = 20
+/**
+ * Списки «недавних» пиров в State (tweb `RECENT_PEER_LISTS`, `appUsersManager.ts:39-41`):
+ * ключ State; пополняются и обрезаются одинаково (`pushRecentPeer`).
+ */
+type RecentPeerList = 'recentSearch' | 'recentlyClosedChats'
+
+/** Порт `RECENT_PEERS_LIMIT` (tweb `appUsersManager.ts:46`) — сколько держит каждый список. */
+const RECENT_PEERS_LIMIT = 20
 
 export interface ContactsDeps {
   rest: RestClient
@@ -94,7 +100,7 @@ export interface ContactsDeps {
    * заводим.
    */
   state: {
-    getState: () => Promise<Partial<Pick<AppState, 'recentSearch'>>>
+    getState: () => Promise<Partial<Pick<AppState, RecentPeerList>>>
     pushToState: <K extends keyof AppState>(key: K, value: AppState[K]) => Promise<void>
   }
   /**
@@ -110,11 +116,11 @@ export interface ContactsDeps {
  * `appUsersManager`, отвечающая за контакты: `contactsList` + `contactsIndex`
  * (`appUsersManager.ts:52,253,387-396`), `fillContacts` (:307-345),
  * `getContacts`/`getContactsPeerIds` (:417-481), `testSelfSearch` (:501-506),
- * `pushRecentSearch`/`clearRecentSearch` (:277-305).
+ * `pushRecentSearch`/`pushRecentlyClosedChat`/`clearRecentSearch` (:284-341).
  *
  * Расхождения с оригиналом:
- *  1. `recentSearch` хранит ключ пира СТРОКОЙ (`core/state/state.ts:22`,
- *     разница модели), поэтому `pushRecentSearch` принимает `PeerId`, а пишет
+ *  1. `recentSearch`/`recentlyClosedChats` хранят ключ пира СТРОКОЙ (`core/state/state.ts:22`,
+ *     разница модели), поэтому `pushRecentPeer` принимает `PeerId`, а пишет
  *     `'' + peerId`.
  *  2. `peersStorage.requestPeer/releasePeer(peerId, 'recentSearch')` не
  *     перенесены: удержания карточек от выселения у нас нет — хранилище
@@ -146,6 +152,29 @@ export function newContactsManager({ rest, peers, getMe, state, onContactsUpdate
    *  ответ книги, отправленный под прошлым аккаунтом, не применяется. */
   let sessionGen = 0
   let recentQueue: Promise<unknown> = Promise.resolve()
+
+  /** Порт `pushRecentPeer` (:284-302): пир — первым, повтор не дублирует, список
+   *  не длиннее `RECENT_PEERS_LIMIT`. Запись — через State: диск + зеркало во вкладки. */
+  function pushRecentPeer(peerId: PeerId, stateKey: RecentPeerList): Promise<void> {
+    const key = '' + peerId
+    const run = recentQueue.then(async () => {
+      const list = [...((await state.getState())[stateKey] ?? [])]
+      if (list[0] === key) {
+        return
+      }
+
+      const idx = list.indexOf(key)
+      if (idx !== -1) list.splice(idx, 1)
+      list.unshift(key)
+      if (list.length > RECENT_PEERS_LIMIT) {
+        list.length = RECENT_PEERS_LIMIT
+      }
+
+      await state.pushToState(stateKey, list)
+    })
+    recentQueue = run.catch(() => {})
+    return run
+  }
 
   const userSearchText = (userId: number) => {
     const peer = peers.cachedPeer(userId)
@@ -264,25 +293,18 @@ export function newContactsManager({ rest, peers, getMe, state, onContactsUpdate
       return peerIds
     },
 
-    /** Порт `pushRecentSearch` (:277-293): пир — первым, повтор не дублирует,
-     *  список не длиннее 20. Запись — через State: диск + зеркало во вкладки. */
+    /** Порт `pushRecentSearch` (:315-317). */
     pushRecentSearch(peerId: PeerId): Promise<void> {
-      const key = '' + peerId
-      const run = recentQueue.then(async () => {
-        const recentSearch = [...((await state.getState()).recentSearch ?? [])]
-        if (recentSearch[0] !== key) {
-          const idx = recentSearch.indexOf(key)
-          if (idx !== -1) recentSearch.splice(idx, 1)
-          recentSearch.unshift(key)
-          if (recentSearch.length > RECENT_SEARCH_LIMIT) {
-            recentSearch.length = RECENT_SEARCH_LIMIT
-          }
+      return pushRecentPeer(peerId, 'recentSearch')
+    },
 
-          await state.pushToState('recentSearch', recentSearch)
-        }
-      })
-      recentQueue = run.catch(() => {})
-      return run
+    /**
+     * Порт `pushRecentlyClosedChat` (:323-329) — чат, который закрыли или откуда
+     * ушли; питает фильтр «Closed» карточки чатов пустой колонки
+     * (`components/chatTips/chatsCard.solid.tsx`). Зовёт `appImManager` на `peer_changed`.
+     */
+    pushRecentlyClosedChat(peerId: PeerId): Promise<void> {
+      return pushRecentPeer(peerId, 'recentlyClosedChats')
     },
 
     /** Порт `clearRecentSearch` (:295-305). */
