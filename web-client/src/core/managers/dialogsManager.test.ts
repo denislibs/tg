@@ -1405,7 +1405,7 @@ describe('dialogsManager: непрочитанные упоминания', () =
     })
     await mgr.fillMirror()
     ops.length = 0
-    const patched = () => (ops.at(-1) as Extract<DialogOp, { op: 'patch' }>).fields
+    const patched = () => (ops[ops.length - 1] as Extract<DialogOp, { op: 'patch' }>).fields
     return { mgr, ops, patched }
   }
   const raw = (id: number, fromId: number, pFlags: Record<string, true>) =>
