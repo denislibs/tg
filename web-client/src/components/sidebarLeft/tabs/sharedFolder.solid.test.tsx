@@ -26,6 +26,7 @@ import { resetPeerMirror } from '@core/peerCache'
 import contextMenuController from '@helpers/contextMenuController'
 import { AppSharedFolderTab } from '@components/solidJsTabs/tabs'
 import { installSidebarLeft, type InstalledSidebarLeft } from '@/test/sidebarLeft'
+import { publicLinkFromTelegramPath } from '@core/publicLink'
 
 const toastNew = vi.hoisted(() => vi.fn())
 vi.mock('@components/toast', async(importOriginal) => ({
@@ -176,7 +177,7 @@ describe('вкладка «Share Folder» — разметка', () => {
   it('плашка ссылки: адрес без схемы, срезанный посередине элементом middle-ellipsis-element; справа ⋮', async() => {
     const tab = await open(INVITE)
     const link = tab.container.querySelector<HTMLElement>('.invite-link-container > .invite-link.rp-overflow')!
-    expect(link.querySelector('.invite-link-text > middle-ellipsis-element')!.textContent).toBe(location.host + '/addlist/abc')
+    expect(link.querySelector('.invite-link-text > middle-ellipsis-element')!.textContent).toBe(new URL(publicLinkFromTelegramPath('addlist/abc')).host + '/addlist/abc')
     expect(link.lastElementChild!.classList.contains('btn-menu-toggle')).toBe(true)
     expect(link.lastElementChild!.classList.contains('invite-link-menu')).toBe(true)
     // под плашкой — «Share Link» по умолчанию (`inviteLink.ts:73-80`), как у оригинала
@@ -189,7 +190,7 @@ describe('вкладка «Share Folder» — ссылка', () => {
     const tab = await open(INVITE)
     click(tab.container.querySelector('.invite-link-text')!)
     expect(copyTextToClipboard).toHaveBeenCalledTimes(1)
-    expect(copyTextToClipboard).toHaveBeenCalledWith(location.origin + '/addlist/abc')
+    expect(copyTextToClipboard).toHaveBeenCalledWith(publicLinkFromTelegramPath('addlist/abc'))
     expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'LinkCopied' })
   })
 
@@ -204,7 +205,7 @@ describe('вкладка «Share Folder» — ссылка', () => {
     expect(items.map(text)).toEqual(['Copy Link', 'Delete Link'])
     expect(items[1].classList.contains('danger')).toBe(true)
     click(items[0])
-    expect(copyTextToClipboard).toHaveBeenLastCalledWith(location.origin + '/addlist/abc')
+    expect(copyTextToClipboard).toHaveBeenLastCalledWith(publicLinkFromTelegramPath('addlist/abc'))
 
     await pause(350)
     click(tab.container.querySelector('.invite-link-menu')!)

@@ -188,7 +188,7 @@ nobody had opened when the passcode was enabled». UI экрана блокир�
 |---|---|---|
 | П-1 | Офлайн-стор `msgr-store` (диалоги/сообщения/юзеры) под кодом не шифруется, а стирается и не пишется (гард `locked()`); tweb шифрует БД аккаунта | прежнее поведение сохранено, отдельная задача (порт `AppStorage.toggleEncryptedForAll`) |
 | П-2 | Флаг «код включён» для воркера и SW — наличие записи `passcode` в `msgr/kv`, а не `settings.passcode.enabled` | наши настройки в localStorage, воркеру и SW недоступном |
-| П-3 | Автоблокировка — в окне (UI-замок одной вкладки, ключ остаётся в памяти); у tweb — в воркере по простою всех вкладок с `terminate` | перенос требует учёта простоя вкладок в воркере; открытый вопрос |
+| П-3 | ~~Автоблокировка — в окне~~ — снято пачкой П-4 волны 7: порт `lib/mainWorker/useAutoLock.ts` в воркере (`core/workerCore.ts`), простой вкладок — `lib/appManagers/appTabsManager.ts` (вкладка шлёт `tabState` из `client/tabState.ts`), видео — `toggleUninteruptableActivity`. Остаток: настройки (`enabled`/`autoLockTimeoutMins`) воркеру сообщает вкладка задачей `setAutoLockSettings` (как П-2 — настройки в localStorage); самозавершения воркера без вкладок (`index.worker.ts:401-403`) нет — Б-17 | — |
 | П-4 | Передачу ключа пишет каждая перезагружающаяся вкладка, не только единственная | у нас активный аккаунт один на все вкладки, переход перезагружает все, и SharedWorker может не пережить |
 | П-5 | ~~«Забыли код» — прежние тексты экрана~~ — снято портом экрана: ключи tweb `ForgotPasscode.OneAccount/MultipleAccounts` по открытому `number_of_accounts` | — |
 | П-6 | Шифрование в своём реалме через WebCrypto, без крипто-воркера | у нас нет `cryptoMessagePort` |

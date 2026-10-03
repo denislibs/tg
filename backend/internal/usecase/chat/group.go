@@ -441,12 +441,26 @@ func (i *Interactor) DeleteAllRevoked(ctx context.Context, chatID, actorID int64
 // JoinByToken resolves an invite link and either joins the user immediately or,
 // for approval-required links, records a pending join request. The returned
 // requested bool is true when a request was filed (approval needed) and false
-// when the user was added as a member.
-func (i *Interactor) JoinByToken(ctx context.Context, token string, userID int64) (requested bool, err error) {
+// when the user was added as a member. chatID — чат ссылки: по нему ручка
+// отдаёт его карточку (`messages.importChatInvite` оригинала возвращает
+// `Updates` с чатом в `chats[0]`, tweb `appChatInvitesManager.ts:92-104`).
+//
+// Уже участник — не ошибка: у оригинала это `chatInviteAlready`, по которому
+// клиент просто открывает чат (tweb `internalLinkProcessor.ts:1129-1137`), —
+// поэтому без повторного вступления, служебного сообщения и счёта использований.
+func (i *Interactor) JoinByToken(ctx context.Context, token string, userID int64) (chatID int64, requested bool, err error) {
 	link, err := i.invites.GetByToken(ctx, token)
 	if err != nil {
-		return false, err
+		return 0, false, err
 	}
+	if _, e := i.groups.GetMember(ctx, link.ChatID, userID); e == nil {
+		return link.ChatID, false, nil
+	}
+	requested, err = i.joinByLink(ctx, link, token, userID)
+	return link.ChatID, requested, err
+}
+
+func (i *Interactor) joinByLink(ctx context.Context, link domain.InviteLink, token string, userID int64) (requested bool, err error) {
 	// Просроченная ссылка недействительна (tweb: expired invite → нельзя войти).
 	if link.ExpiresAt != nil && link.ExpiresAt.Before(time.Now()) {
 		return false, domain.ErrForbidden
