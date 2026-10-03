@@ -1,7 +1,6 @@
 // ВРЕМЕННО до К-5: мост «React-остров внутри класса tweb» (правило 2 плана
 // `docs/superpowers/plans/2026-10-02-wave-7-carcass-first.md`). У tweb React нет —
 // оригинала у файла нет. Острова, которые им монтируются:
-// - композер инстанса чата (`components/chat/reactChatInput.ts`, до К-4);
 // - панель профиля во вкладке №0 (`components/sidebarRight/reactProfileTab.ts`, до К-5);
 // - глобальные оверлеи `#react-overlays` (`components/shell/GlobalOverlays.tsx`, до
 //   порта своих пачек).
@@ -12,8 +11,8 @@
 // снимает корень; узлы в `host` React убирает сам.
 //
 // Рендер синхронный (`flushSync`): классу нужен DOM острова сразу после вызова —
-// `Chat` меряет строку ввода и анимирует инстанс в том же кадре, что и
-// `finishPeerChange` (tweb `appImManager.ts:3219-3290`). Вызов из рендера или
+// вкладка №0 входит в слайдер правой колонки в том же кадре, что и
+// `finishPeerChange` чата (tweb `appImManager.ts:3219-3290`). Вызов из рендера или
 // эффекта другого React-дерева `flushSync` не сбросит (React предупредит) — такой
 // вызывающий получит DOM на следующем такте.
 import { Component, StrictMode, createElement, type ComponentType, type ErrorInfo, type ReactNode } from 'react'

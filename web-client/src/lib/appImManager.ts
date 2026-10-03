@@ -82,8 +82,8 @@
 //     медленного режима (`showSlowModeTooltipIfNeeded`, Б-37), монофорум (`canPaste`) —
 //     бэклог Б-82. `.mov` считается медиа без `isConvertibleMov` (конвертера в mp4
 //     у нас нет: файл уходит видео как есть).
-// K-4. Попап медиа — шов `components/popups/newMedia.ts` (до К-4 его рисует остров
-//     композера). Зон сброса внутри открытого попапа (`mediaDropsContainer`,
+// K-4. Попап медиа — мост `components/popups/newMedia.ts` (React `SendMediaPopup`
+//     через `popupStore`, ВРЕМЕННО до порта newMedia.tsx, решение Р-2). Зон сброса внутри открытого попапа (`mediaDropsContainer`,
 //     `appendDrops`, `Preview.Dragging.AddItems`) нет — бэклог Б-83; вставка в открытый
 //     попап дописывает файлы (`addFiles`).
 // 14. Блок F (`attachKeydownListener` `:1703-1852`, `attachCopyListener` `:1854-1895`):
@@ -91,8 +91,8 @@
 //         портированы — Б-80: нужны члены `ChatInput` К-4 (`editMsgId`, `replyToMsgId`,
 //         `isInputEmpty`, `onHelperCancel`) и `getFirstMessageToEdit` воркера. Ветка
 //         стрелок осталась (нет права писать — прокрутка ленты, иначе клавиша гаснет).
-//     F2. `chat.input` — через узкий тип `KeydownChatInput` (`// ВРЕМЕННО до К-4`):
-//         остров композера К-3 не даёт `recording`/`passEventToInput`.
+//     F2. `chat.input.recording` (`:1841`) — записи голоса у класса `ChatInput` нет
+//         (Б-30): условие «не во время записи» снято.
 //     F3. `appDialogsManager.contextMenu?.hasAddToFolderOpen()` (`:1767`) — только в
 //         ветке правки (F1).
 //     F4. Защита копирования инертна, пока у баблов нет класса `no-forwards` — Б-81.
@@ -311,15 +311,6 @@ function getCurrentCall() {
 
 /** tweb `:250` */
 class CallSwitchCancelledError extends Error {}
-
-/** Члены `ChatInput` (tweb `input.ts`), которые читает блок F — расхождение 14 F2.
- *  ВРЕМЕННО до К-4: остров композера К-3 даёт не все. */
-type KeydownChatInput = {
-  messageInput?: HTMLElement,
-  canSendPlain(): boolean,
-  recording?: boolean,
-  passEventToInput?(e: KeyboardEvent): void
-}
 
 export class AppImManager extends EventListenerBase<{
   chat_changing: (details: { from: Chat, to: Chat }) => void,
@@ -1279,7 +1270,7 @@ export class AppImManager extends EventListenerBase<{
       const targetIsInput = isTargetAnInput(target)
 
       const chat = this.chat
-      const input = chat?.input as KeydownChatInput | undefined // ВРЕМЕННО до К-4 (F2)
+      const input = chat?.input
       if(targetIsInput && target !== input?.messageInput) return
 
       // Hand keyboard focus to the bubbles scroll container so the browser scrolls it natively.
@@ -1337,10 +1328,10 @@ export class AppImManager extends EventListenerBase<{
         !IS_TOUCH_SUPPORTED &&
         (!mediaSizes.isMobile || this.tabId === APP_TABS.CHAT) &&
         !chat.selection.isSelecting &&
-        !input.recording &&
+        // `!chat.input.recording` — расхождение 14 F2
         input.messageInput.isContentEditable
       ) {
-        input.passEventToInput?.(e)
+        input.passEventToInput(e)
       }
     }
 

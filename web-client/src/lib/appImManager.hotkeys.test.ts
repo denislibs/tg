@@ -33,7 +33,6 @@ vi.mock('@core/peerCache', async(importOriginal) => ({
 const parts = vi.hoisted(() => ({
   canSendPlain: true,
   isSelecting: false,
-  recording: false,
   passEventToInput: (() => {}) as (e: KeyboardEvent) => void,
 }))
 type FakeAppImManager = {
@@ -72,7 +71,6 @@ const FakeChat = vi.hoisted(() => class {
       this.input = {
         messageInput,
         canSendPlain: () => parts.canSendPlain,
-        get recording() { return parts.recording },
         passEventToInput: (e: KeyboardEvent) => parts.passEventToInput(e),
       }
       this.bubbles = { scrollable: { container: scrollContainer } }
@@ -137,7 +135,7 @@ afterAll(() => {
 })
 
 beforeEach(() => {
-  Object.assign(parts, { canSendPlain: true, isSelecting: false, recording: false, passEventToInput })
+  Object.assign(parts, { canSendPlain: true, isSelecting: false, passEventToInput })
   im.isShiftLockShortcut = false
 })
 
@@ -216,13 +214,11 @@ describe('печать в любом месте → поле ввода (tweb :1
     expect(passEventToInput).toHaveBeenCalledWith(event)
   })
 
-  it('не уходит: идёт выделение сообщений, запись голоса, Shift — часть сочетания блокировки', () => {
+  // запись голоса (`chat.input.recording`) — расхождение 14 F2: записи у `ChatInput` нет (Б-30)
+  it('не уходит: идёт выделение сообщений, Shift — часть сочетания блокировки', () => {
     parts.isSelecting = true
     press({ key: 'a' })
     parts.isSelecting = false
-    parts.recording = true
-    press({ key: 'a' })
-    parts.recording = false
     im.isShiftLockShortcut = true
     press({ key: 'A', shiftKey: true })
     expect(passEventToInput).not.toHaveBeenCalled()

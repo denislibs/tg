@@ -15,8 +15,8 @@
 //    `isOutMessage` `:1375-1399`, `toggleChatIfMedium`/`pop`/`popIfMoreThanOne` `:1662-1690`.
 //
 // ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
-//  1. Композер — React-остров `components/chat/reactChatInput.ts` (`// ВРЕМЕННО до К-4`),
-//     у него члены `ChatInput`, которые зовут `Chat`, лента и меню (контракт К-3).
+//  1. Пакет параметров отправки (`getMessageSendingParams`, :1378) собирает `ChatInput`
+//     (`components/chat/input.ts`, расхождение 1 его шапки).
 //  2. Флаги `onChangePeer` — синхронно из зеркала пиров (`core/peerCache.ts`), а не
 //     вызовами `appPeersManager`: карточку пира, если её нет, объявляет пробел
 //     (`peers.fillMirror`) и ждёт. Нет предметов у `noForwards`, `isRestricted`,
@@ -43,7 +43,7 @@
 //     `dialog_drop` (события нет: удаление закрывает чат само — `popups/deleteDialog.ts` →
 //     `appImManager.setPeer({isDeleting})`), `monoforum_dialogs_drop`, `botforum_pending_topic_created`, `chat_update` →
 //     звёзды, `sendReaction` (лента ставит реакции сама, `chat/reactions.ts`),
-//     `getMessageSendingParams` (параметры отправки собирает остров композера),
+//     `getMessageSendingParams` (расхождение 1),
 //     веб-аппы, автоудаление, `isStartButtonNeeded`.
 import { createMemo, createRoot, createSignal, type Accessor, type Signal } from 'solid-js'
 import type { Managers } from '@/client/bootstrap'
@@ -81,7 +81,7 @@ import noop from '@helpers/noop'
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import ChatBubbles, { PEER_CHANGED_ERROR } from './bubbles'
 import ChatContextMenu from './contextMenu'
-import ChatInput from './reactChatInput'
+import ChatInput from './input'
 import ChatSelection from './selection'
 import ChatTopbar from './topbar'
 import { ChatType } from './chatType'
@@ -371,7 +371,7 @@ export default class Chat extends EventListenerBase<{
   public init() {
     this.topbar = new ChatTopbar(this, appSidebarRight, this.managers)
     this.bubbles = new ChatBubbles(this, this.managers)
-    this.input = new ChatInput(this, this.appImManager, this.managers)
+    this.input = new ChatInput(this, this.appImManager, this.managers, 'chat-input-main')
     this.contextMenu = new ChatContextMenu(this, this.managers)
     // менеджер прав (`cantForwardDeleteMids`) — нет предмета, задача #73 (`selection.ts`)
     this.selection = new ChatSelection(this, this.bubbles, this.input, { messages: {} })

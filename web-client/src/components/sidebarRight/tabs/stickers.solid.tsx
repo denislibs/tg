@@ -39,8 +39,6 @@
  *  • `showStickersPopup` (`:205-206`) → React `openStickerSetModal` — ВРЕМЕННО
  *    до 2C-15 (порт `popups/stickers.solid.tsx`). Полный набор перед попапом не
  *    запрашиваем: попап грузит его сам по адресу.
- *  • `appImManager.chat.input` — React-остров композера
- *    (`components/chat/reactChatInput.ts`, ВРЕМЕННО до К-4).
  */
 import { onCleanup, onMount, type Component } from 'solid-js'
 import animationIntersector from '@components/animationIntersector'

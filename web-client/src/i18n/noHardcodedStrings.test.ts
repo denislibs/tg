@@ -56,10 +56,6 @@ const NOT_UI: Record<string, string> = {
   'src/helpers/string/removeAccents.ts': 'таблица свёртки акцентов ключа сортировки контактов (порт tweb/tdesktop, «ё → е») — ДАННЫЕ',
   'src/core/dom/loadFonts.ts': 'глиф-образец для замера готовности шрифта, на экран не попадает',
   'src/core/stickers/testSticker.ts': 'фабрика фикстур для тестов — заголовок набора, а не интерфейс',
-  'src/components/emoji/emojiData.ts':
-    'ПОИСКОВЫЕ КЛЮЧЕВЫЕ СЛОВА эмодзи (`NAMES`), они не показываются: у tweb они приезжают с сервера '
-    + 'per-язык, у нас лежат локально двуязычным списком. Подписи категорий рядом — уже ключи '
-    + '(`Emoji.Activity`). Отдельный долг, свой предмет — ручки «ключевые слова по языку» у нас нет',
   // Диагностика для разработчика: текст уходит в `Error`/консоль, а не на экран.
   'src/core/lazyLoadQueue.ts': 'причина отмены задачи очереди — текст `Error` для разработчика',
   'src/core/managers/mediaManager.ts': 'причина отказа воркера — текст `Error` для разработчика',
@@ -83,16 +79,12 @@ const DEBT: Record<string, number> = {
   'src/client/realtime/storeProjection.ts': 1,
   'src/components/AddStorySheet.tsx': 13,
   'src/components/CodeBlock.tsx': 2,
-  'src/components/Composer.tsx': 2,
   'src/components/EditStorySheet.tsx': 5,
   'src/components/GroupCallScreen.tsx': 1,
-  'src/components/LocationPicker.tsx': 6,
-  'src/components/MarkupTooltip.tsx': 9,
   'src/components/NewContactPopup.tsx': 7,
   'src/components/RepostStorySheet.tsx': 2,
   'src/components/StoryViewer.tsx': 4,
   'src/components/auth/cards/SignUpCard.solid.tsx': 1,
-  'src/components/composer/helpers.ts': 12,
   'src/components/group/GroupEditFlow.tsx': 3,
   'src/components/mediaViewer/collectLightboxItems.ts': 1,
   'src/components/messages/SendMediaPopup.tsx': 3,
@@ -303,6 +295,6 @@ describe('разбор литералов', () => {
 
   it('номер строки указывает на строку ФАЙЛА', () => {
     const source = ['/**', ' * докблок', ' */', '', "const s = 'привет'"].join('\n')
-    expect(cyrillicLiterals(source, 'x.ts')).toEqual(["x.ts:5: \"привет\""])
+    expect(cyrillicLiterals(source, 'x.ts')).toEqual(['x.ts:5: "привет"'])
   })
 })

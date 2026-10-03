@@ -39,12 +39,17 @@
 //    правилом, что у серии, — `fromId ?? peerId`.
 //  • Poll-option reply (:195-204) и story-reply — таких ответов наша модель не
 //    производит.
-import type { MessageReplyHeader, MyMessage } from '@core/models'
+import type { MessageEntity, MessageReplyHeader, MyMessage } from '@core/models'
 import { getPeerId } from '@core/peers/peerId'
 import type { Middleware } from '@helpers/middleware'
 import replaceContent from '@helpers/dom/replaceContent'
+import limitSymbols from '@helpers/string/limitSymbols'
 import { i18n } from '@lib/langPack'
+import wrapEmojiText from '@lib/richtext/wrapEmojiText'
+import wrapRichText from '@lib/richtext/wrapRichText'
+import DivAndCaption from '@components/divAndCaption'
 import wrapMessageForReply from '@components/wrappers/messageForReply'
+import type { WrapReplyOptions } from '@components/wrappers/reply'
 import PeerTitle, { type PeerTitleManagers } from './peerTitle'
 
 export interface ReplyContainerOptions {
@@ -56,7 +61,7 @@ export interface ReplyContainerOptions {
   managers: PeerTitleManagers
 }
 
-export interface ReplyContainer {
+export interface BubbleReplyContainer {
   container: HTMLElement
   /** заголовок — «Загрузка»: оригинал надо запросить у владельца
    *  (tweb зовёт `fetchMessageReplyTo` в этой же ветке, messageRender.ts:527) */
@@ -74,7 +79,7 @@ export interface ReplyContainer {
  * wrappers/reply.ts:66-69); у атрибуции `reply_from` сообщением служит
  * вложение атрибуции (`reply_media`, messageRender.ts:584-593).
  */
-export function createReplyContainer({ replyTo, original, middleware, managers }: ReplyContainerOptions): ReplyContainer {
+export function createReplyContainer({ replyTo, original, middleware, managers }: ReplyContainerOptions): BubbleReplyContainer {
   const container = document.createElement('div')
   container.className = 'reply quote-like quote-like-hoverable quote-like-border'
   // Цитата у оригинала помечает себя иконкой кавычки (bubbles.md §4.19).
@@ -119,4 +124,62 @@ export function createReplyContainer({ replyTo, original, middleware, managers }
 
   container.append(border, content)
   return { container, loading }
+}
+
+// ─── tweb `ReplyContainer` / `wrapReplyDivAndCaption` (replyContainer.ts:167-294) ──
+// Плашка над строкой ввода (`ChatInput.setTopInfo` → `wrapReply`) собирается уже
+// классом оригинала. Расхождения: превью медиа (`wrapReplyMedia`, :43-165) не
+// рендерится — та же причина, что у бабла выше (узел `.reply-media` не создаётся,
+// `is-media` не ставится); истории и варианта опроса в ответе нет (нет предмета).
+
+export async function wrapReplyDivAndCaption(options: {
+  title?: string | HTMLElement | DocumentFragment
+  titleEl: HTMLElement
+  subtitle?: string | HTMLElement | DocumentFragment
+  subtitleEl: HTMLElement
+  message?: MyMessage
+  quote?: { text: string, entities?: MessageEntity[] }
+}) {
+  const { titleEl, subtitleEl, message, quote } = options
+
+  let wrappedTitle = options.title
+  if(wrappedTitle !== undefined) {
+    if(typeof(wrappedTitle) === 'string') {
+      wrappedTitle = wrapEmojiText(limitSymbols(wrappedTitle, 140))
+    }
+
+    replaceContent(titleEl, wrappedTitle)
+  }
+
+  if(options.subtitle !== undefined) {
+    let wrappedSubtitle = options.subtitle
+    if(typeof(wrappedSubtitle) === 'string') {
+      wrappedSubtitle = wrapEmojiText(limitSymbols(wrappedSubtitle, 140))
+    }
+
+    replaceContent(subtitleEl, wrappedSubtitle || '')
+  } else if(quote) {
+    subtitleEl.replaceChildren(wrapRichText(limitSymbols(quote.text, 200), {
+      entities: quote.entities,
+      noLinks: true,
+    }))
+  } else if(message) {
+    subtitleEl.replaceChildren(wrapMessageForReply({ message, plain: false }))
+  }
+
+  return false
+}
+
+export default class ReplyContainer extends DivAndCaption<(options: WrapReplyOptions) => Promise<void>> {
+  constructor(protected className: string) {
+    super(className, async(options) => {
+      const isMediaSet = await wrapReplyDivAndCaption({
+        ...options,
+        titleEl: this.title,
+        subtitleEl: this.subtitle,
+      })
+
+      this.container.classList.toggle('is-media', isMediaSet)
+    })
+  }
 }

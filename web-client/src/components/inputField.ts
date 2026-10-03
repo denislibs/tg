@@ -1,40 +1,245 @@
 /**
  * Порт tweb `src/components/inputField.ts` (812502980, 904 строки) — класс поля
- * ввода `div.input-field`: contenteditable-`div.input-field-input` или (при
- * `plainText`) `<input type=text>`, рамка, плавающая подпись `label`,
+ * ввода `div.input-field`: contenteditable-`div.input-field-input` (rich-поле) или
+ * (при `plainText`) `<input type=text>`, рамка, плавающая подпись `label`,
  * плейсхолдер, счётчик остатка по `maxLength`, ошибка уровня поля
  * (`span.input-field-error-label[role=alert]`, 472e3e76b), исходное значение и
- * «изменено». Первый потребитель — Solid-обёртка `inputFieldTsx.solid.tsx`
- * (волна 2D: профиль, 2FA, редактор папки). Порт — в объёме НЕ-rich поля;
- * стили — `styles/tweb/_input.scss`.
+ * «изменено». Стили — `styles/tweb/_input.scss`.
  *
- * Отличия от оригинала (не портировано — у потребителей волны нет ни
- * форматирования, ни своих эмодзи в поле):
- *  1. Глобальная вставка (`init`, `insertRichTextAsHTML`, `:28-395`): разбор
- *     HTML буфера в сущности, свои эмодзи, `RichInputHandler`/BOM. Вставка в
- *     contenteditable-поле идёт браузерной по умолчанию — ОТЛОЖЕНО, О-28
- *     плана 2D (до первого потребителя с contenteditable-полем — профиль,
- *     задача 27; строку О-28 в таблицу «Отложено» вносит план, PR #285).
- *  2. Обработка своих эмодзи (`processCustomEmojisInInput`,
- *     `createCustomEmojiRendererForInput`, `insertCustomFillers`, клик по
- *     IMG-плейсхолдеру, `:434-493`, `:549-565`, `:588-608`), `can-format`
- *     (`canHaveFormatting`), `canWrapCustomEmojis`.
- *  3. Значение contenteditable — `textContent`, а не
- *     `getRichValueWithCaret(...).value` (`:747`): без п. 1-2 в поле нет ни
- *     эмодзи-узлов, ни сущностей. Черновик (`setDraftValue`, `:790-801`)
- *     кладётся строкой, без `wrapDraftText`.
- *  4. `<input>` для `plainText` собирается `createElement`, а не
- *     `innerHTML`-шаблоном (`:633-636`): у нас правило «не строить DOM из
- *     строки» (`web-client/CLAUDE.md`, «Безопасность»); атрибуты те же.
- *  5. `simulateEvent` → `new Event('input', {bubbles, cancelable})` — хелпера
- *     `dispatchEvent` у нас нет (как в `checkboxField.ts`).
+ * Модель rich-поля — tweb: разметку хранит DOM поля (markup-span'ы
+ * `wrapDraftText`/`applyMarkdown`), значение и сущности (UTF-16) читает из DOM
+ * `getRichValueWithCaret`. Глобальная вставка (`init`) разбирает HTML буфера в
+ * сущности и вставляет их размеченным DOM через `insertRichTextAsHTML`
+ * (`execCommand('insertHTML')` — правка попадает в родную историю undo).
+ *
+ * Отличия от оригинала:
+ *  1. Свои эмодзи в поле не оживают: портов `CustomEmojiElement`/
+ *     `CustomEmojiRendererElement` (`lib/customEmoji/{element,renderer}`) у нас
+ *     нет, поэтому `processCustomEmojisInInput`/`createCustomEmojiRendererForInput`
+ *     (`:434-496`) и перепривязка `customEmojiElement` к плейсхолдерам в
+ *     `insertRichTextAsHTML` (`:56-59`, `:97-102`) не перенесены. Плейсхолдер —
+ *     `img.custom-emoji-placeholder` с `alt`-глифом (см. шапку `wrapRichText.ts`),
+ *     в сущность он читается.
+ *  2. BOM-ветки под `USING_BOMS = false` (`:46`, `:95`, `:118`, `:618-624`) и
+ *     филлеры своих эмодзи (`.input-selectable`/`[contenteditable="false"]`/`.pc`
+ *     в `insertRichTextAsHTML`, `:34-44`, `:106-108`; `insertCustomFillers` в
+ *     `onInput`, `:626`) мертвы и не перенесены — см. шапку `richInputHandler.ts`.
+ *  3. Разметка поля собирается `createElement`, а не `innerHTML`-шаблонами
+ *     (`:538`, `:636-638`): правило «не строить DOM из строки»
+ *     (`web-client/CLAUDE.md`, «Безопасность»); атрибуты те же.
+ *     Исключение — сама вставка: `execCommand('insertHTML')` получает
+ *     сериализацию фрагмента, собранного `wrapDraftText` из узлов
+ *     (`documentFragmentToHTML`), не пользовательскую строку.
  */
 import labelControl from '@helpers/dom/labelControl'
+import { bindActiveWindowListener } from '@helpers/appWindow'
+import cancelEvent from '@helpers/dom/cancelEvent'
+import simulateEvent from '@helpers/dom/dispatchEvent'
+import documentFragmentToHTML from '@helpers/dom/documentFragmentToHTML'
+import findUpAttribute from '@helpers/dom/findUpAttribute'
+import findUpTag from '@helpers/dom/findUpTag'
+import getCaretPosNew from '@helpers/dom/getCaretPosNew'
+import getRichValueWithCaret from '@helpers/dom/getRichValueWithCaret'
+import type { MarkdownType } from '@helpers/dom/getRichElementValue'
 import isInputEmpty from '@helpers/dom/isInputEmpty'
 import replaceContent from '@helpers/dom/replaceContent'
+import RichInputHandler from '@helpers/dom/richInputHandler'
 import setInnerHTML, { setDirection } from '@helpers/dom/setInnerHTML'
 import { selectElementContents } from '@shared/lib/caret'
+import type { MessageEntity } from '@layer'
 import { i18n, _i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
+import { NULL_PEER_ID } from '@core/peers/peerId'
+import { mergeEntities } from '@lib/richtext/entities'
+import parseEntities from '@lib/richtext/parseEntities'
+import wrapDraftText from '@lib/richtext/wrapDraftText'
+import forEachReverse from '@helpers/array/forEachReverse'
+import findAndSpliceAll from '@helpers/array/findAndSpliceAll'
+
+export async function insertRichTextAsHTML(input: HTMLElement, text: string, entities?: MessageEntity[], wrappingForPeerId?: PeerId) {
+  const loadPromises: Promise<unknown>[] = []
+  const fragment = wrapDraftText(text, { entities, wrappingForPeerId, loadPromises })
+
+  if(loadPromises.length) await Promise.all(loadPromises)
+
+  const html = documentFragmentToHTML(fragment)
+
+  const pre = getCaretPosNew(input)
+  if(!pre.node) {
+    const range = input.ownerDocument.createRange()
+    let node = input.lastChild
+    if(!node) {
+      input.append(node = input.ownerDocument.createTextNode(''))
+    }
+
+    range.setStartAfter(node)
+    range.collapse(true)
+    pre.selection.removeAllRanges()
+    pre.selection.addRange(range)
+  }
+
+  input.addEventListener('input', cancelEvent, { capture: true, once: true, passive: false })
+  input.ownerDocument.execCommand('insertHTML', false, html)
+  simulateEvent(input, 'input')
+}
+
+let init: (() => void) | undefined = () => {
+  // Global rich-paste for every contenteditable; follow the active window so paste into a popped-out
+  // (Document PiP) input is still intercepted.
+  bindActiveWindowListener((w) => w.document, 'paste', (e) => {
+    const input = findUpAttribute(e.target!, 'contenteditable="true"')
+    if(!input) {
+      return
+    }
+
+    const noLinebreaks = !!input.dataset.noLinebreaks
+    e.preventDefault()
+    let text: string | undefined, entities: MessageEntity[] | undefined
+
+    let plainText: string = e.clipboardData!.getData('text/plain').replace(/\r/g, '')
+    let usePlainText = true
+
+    let html: string = e.clipboardData!.getData('text/html') || plainText
+
+    const filterEntity = (e: MessageEntity) => e._ === 'messageEntityEmoji' || (e._ === 'messageEntityLinebreak' && !noLinebreaks)
+    if(noLinebreaks) {
+      const regExp = /[\r\n]/g
+      plainText = plainText.replace(regExp, '')
+      html = html.replace(regExp, '')
+    }
+
+    const peerId: PeerId = input.dataset.peerId ? Number(input.dataset.peerId) : NULL_PEER_ID
+    if(html.trim()) {
+      html = html.replace(/<style([\s\S]*)<\/style>/, '')
+      html = html.replace(/<!--([\s\S]*?)-->/g, '')
+      html = html.replace('<br class="Apple-interchange-newline">', '')
+      html = html.replace(/\r/g, '')
+      html = html.replace(/<hr([\s\S]*?)</g, '<')
+
+      const match = html.match(/<body>([\s\S]*)<\/body>/)
+      if(match) {
+        html = match[1].trim()
+      }
+
+      // * инертный документ: скрипты и обработчики не исполняются, из него читаются
+      // * только текст и сущности (`getRichValueWithCaret`)
+      const parser = new DOMParser()
+      const doc = parser.parseFromString(html, 'text/html')
+      const span = doc.body || document.createElement('body')
+
+      const richValue = getRichValueWithCaret(span, true, false)
+
+      const canWrapCustomEmojis = !!input.dataset.canWrapCustomEmojis || !!peerId
+      if(!canWrapCustomEmojis) {
+        richValue.entities = richValue.entities.filter((entity) => entity._ !== 'messageEntityCustomEmoji')
+      }
+
+      const hasCustomEmoji = richValue.entities.some((entity) => entity._ === 'messageEntityCustomEmoji')
+
+      // * fix new lines
+      // * if we have custom emoji, plain text will miss plain emoji
+      // * so we won't be able to fix new lines
+      // * hopefully we won't have same problem from other websites
+      if(!hasCustomEmoji) {
+        // * first we clear all the new lines from rich value
+        const richValueSplitted = richValue.value.split('')
+        forEachReverse(richValueSplitted, (char, index, arr) => {
+          if(char === '\n') {
+            arr!.splice(index!, 1)
+            richValue.entities.forEach((entity) => {
+              // * entity starts after the removed char — shift it left
+              if(entity.offset! > index!) {
+                entity.offset! -= 1
+              } else if(entity.offset! + entity.length! > index!) {
+                // * removed char is inside the entity — shrink it
+                entity.length! -= 1
+              }
+            })
+          }
+        })
+
+        // * then we add new lines to rich value
+        const plainTextLines = plainText.split('\n')
+        const plainTextLinesLength = plainTextLines.length
+        let plainTextLength = 0
+        for(let lineIndex = 0; lineIndex < plainTextLinesLength - 1; ++lineIndex) {
+          const line = plainTextLines[lineIndex]
+          plainTextLength += line.length
+          richValueSplitted.splice(plainTextLength, 0, '\n')
+          richValue.entities.forEach((entity) => {
+            // * plainTextLength is the index the new line is inserted at
+            if(entity.offset! >= plainTextLength) {
+              entity.offset! += 1
+            } else if(entity.offset! + entity.length! > plainTextLength) {
+              // * new line falls inside the entity — grow it
+              entity.length! += 1
+            }
+          })
+
+          plainTextLength += 1
+        }
+
+        richValue.value = richValueSplitted.join('')
+      }
+
+      const richTextNoWhitespace = richValue.value.replace(/\s/g, '')
+      const plainTextNoWhitespace = plainText.replace(/\s/g, '')
+      const richTextLength = richTextNoWhitespace.length
+      const plainTextLength = plainTextNoWhitespace.length
+
+      // * the html-derived rich value can be shorter than text/plain when the source ships markdown
+      // * on text/plain (`code`, **bold**, ```fence```) but real formatting in the html — the markers
+      // * are literal chars in plain yet zero-width entities in rich. requiring exact length parity
+      // * there throws away perfectly good formatting and dumps the raw markdown into the input. so
+      // * also accept the rich value when every one of its (non-whitespace) chars still appears, in
+      // * order, inside the plain text — i.e. plain is just a marked-up rendering of the same content.
+      const isRichSubsetOfPlain = () => {
+        if(richTextLength > plainTextLength) {
+          return false
+        }
+
+        let i = 0
+        for(let j = 0; i < richTextLength && j < plainTextLength; ++j) {
+          if(richTextNoWhitespace[i] === plainTextNoWhitespace[j]) {
+            ++i
+          }
+        }
+
+        return i === richTextLength
+      }
+
+      if(richTextLength === plainTextLength || hasCustomEmoji || (richValue.entities.length && isRichSubsetOfPlain())) {
+        text = richValue.value
+        entities = richValue.entities
+        usePlainText = false
+
+        let entities2 = parseEntities(text)
+        entities2 = entities2.filter(filterEntity)
+        entities = mergeEntities(entities, entities2)
+      }
+    }
+
+    if(usePlainText) {
+      text = plainText
+      entities = parseEntities(text)
+      entities = entities.filter(filterEntity)
+    }
+
+    if(entities?.length) {
+      const ignoreEntities = new Set<MessageEntity['_']>([
+        'messageEntityPhone',
+        // * wrapDraftText renders line breaks from the text itself; passing explicit linebreak
+        // * entities makes wrapRichText slice the one before a blockquote (losing a \n on e.g.
+        // * `text\n\nquote`). Strip them so paste matches the edit/draft path.
+        'messageEntityLinebreak',
+      ])
+      findAndSpliceAll(entities, (entity) => ignoreEntities.has(entity._))
+    }
+
+    void insertRichTextAsHTML(input, text!, entities, peerId)
+  })
+
+  init = undefined
+}
 
 export enum InputState {
   Neutral = 0,
@@ -60,6 +265,9 @@ export type InputFieldOptions = {
   withBorder?: boolean
   allowStartingSpace?: boolean
   onRawInput?: (value: string) => void
+  /** что тултип разметки (Б-33) предложит в поле — атрибут `can-format`; тип — tweb `MarkupTooltipTypes` (`markupTooltip.ts:22`) */
+  canHaveFormatting?: Array<Extract<MarkdownType, 'bold' | 'italic' | 'underline' | 'strikethrough' | 'monospace' | 'spoiler' | 'quote' | 'link' | 'date'>>
+  canWrapCustomEmojis?: boolean
 }
 
 let inputFieldErrorIdSeed = 0
@@ -91,13 +299,17 @@ export default class InputField {
       options.showLengthOn = Math.min(40, Math.round(options.maxLength / 3))
     }
 
-    const { placeholder, maxLength, showLengthOn, name, plainText, canBeEdited = true, autocomplete, withBorder, allowStartingSpace } = options
+    const { placeholder, maxLength, showLengthOn, name, plainText, canBeEdited = true, autocomplete, withBorder, allowStartingSpace, canHaveFormatting, canWrapCustomEmojis } = options
     const label = options.label || options.labelText
     this.allowStartingSpace = allowStartingSpace
 
     const onInputCallbacks: Array<() => void> = []
     let input: HTMLElement
     if(!plainText) {
+      if(init) {
+        init()
+      }
+
       input = document.createElement('div')
       input.classList.add('input-field-input')
       this.container.append(input)
@@ -109,6 +321,35 @@ export default class InputField {
       // * so the value read back from the DOM is the translated one — with broken entities and custom emojis
       input.translate = false
 
+      RichInputHandler.getInstance()
+
+      // * клик по картинке (эмодзи-картинка, плейсхолдер своего эмодзи) ставит каретку
+      // * до или после неё — по половине, в которую попал клик
+      input.addEventListener('mousedown', (e) => {
+        const selection = input.ownerDocument.defaultView!.getSelection()!
+        if(!selection.isCollapsed) {
+          return
+        }
+
+        const placeholder = findUpTag(e.target!, 'IMG')
+        if(!placeholder) {
+          return
+        }
+
+        const rect = placeholder.getBoundingClientRect()
+        const centerX = rect.left + rect.width / 2
+        const focusOnNext = e.clientX >= centerX
+
+        const range = input.ownerDocument.createRange()
+        range.setStartAfter(focusOnNext ? placeholder : placeholder.previousSibling ?? placeholder)
+        selection.removeAllRanges()
+        selection.addRange(range)
+      })
+
+      if(canHaveFormatting) {
+        input.setAttribute('can-format', canHaveFormatting.join(','))
+      }
+
       onInputCallbacks.push(() => {
         // * because if delete all characters there will br left
         const isEmpty = this.isEmpty()
@@ -119,7 +360,7 @@ export default class InputField {
         this.setEmpty(isEmpty)
       })
     } else {
-      // см. шапку, п. 4 — атрибуты те же, что у шаблона tweb `:633-636`
+      // см. шапку, п. 3 — атрибуты те же, что у шаблона tweb `:636-638`
       const plainInput = document.createElement('input')
       plainInput.type = 'text'
       if(name) plainInput.name = name
@@ -177,7 +418,7 @@ export default class InputField {
       const onInput = () => {
         const wasError = input.classList.contains('error')
         // * https://stackoverflow.com/a/54369605 #2 to count emoji as 1 symbol
-        const inputLength = plainText ? (input as HTMLInputElement).value.length : [...this.value].length
+        const inputLength = plainText ? (input as HTMLInputElement).value.length : [...getRichValueWithCaret(input, false, false).value].length
         const diff = maxLength - inputLength
         const isError = diff < 0
         input.classList.toggle('error', isError)
@@ -218,6 +459,8 @@ export default class InputField {
       })
     }
 
+    if(canWrapCustomEmojis) input.dataset.canWrapCustomEmojis = '1'
+
     this.input = input
     this.setEmpty(true)
   }
@@ -245,8 +488,7 @@ export default class InputField {
   }
 
   get value(): string {
-    // см. шапку, п. 3
-    return this.options.plainText ? (this.input as HTMLInputElement).value : (this.input.textContent ?? '')
+    return this.options.plainText ? (this.input as HTMLInputElement).value : getRichValueWithCaret(this.input, false, false).value
   }
 
   set value(value: Parameters<typeof replaceContent>[1]) {
@@ -255,7 +497,7 @@ export default class InputField {
   }
 
   public simulateInputEvent() {
-    this.input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true })) // см. шапку, п. 5
+    simulateEvent(this.input, 'input')
   }
 
   public setValueSilently(value: Parameters<typeof replaceContent>[1], _fromSet?: boolean) {
@@ -298,11 +540,15 @@ export default class InputField {
   }
 
   public setDraftValue(value = '', silent?: boolean) {
-    // см. шапку, п. 3 — без `wrapDraftText`
+    let _value: Parameters<typeof replaceContent>[1] = value
+    if(!this.options.plainText) {
+      _value = wrapDraftText(value)
+    }
+
     if(silent) {
-      this.setValueSilently(value, false)
+      this.setValueSilently(_value, false)
     } else {
-      this.value = value
+      this.value = _value
     }
   }
 

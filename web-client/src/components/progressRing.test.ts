@@ -192,8 +192,10 @@ describe('progress-ring: единственная реализация — compo
     expect(offenders).toEqual({})
   })
 
-  it('оба потребителя берут кольцо из общего модуля', () => {
-    for (const rel of ['components/wrappers/video.ts', 'components/composer/RoundRecordPreview.tsx']) {
+  // Второй потребитель — превью записи кружка `composer/RoundRecordPreview.tsx` —
+  // снесён с React-композером (шаг К-4; запись кружков — Б-30).
+  it('потребитель берёт кольцо из общего модуля', () => {
+    for (const rel of ['components/wrappers/video.ts']) {
       expect(codeOf(join(SRC, rel))).toContain("from '@components/progressRing'")
     }
   })
