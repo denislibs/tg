@@ -881,14 +881,19 @@ layout-эффект шелла (`createAppSidebarRight()` + `construct(managers)
 
 | Панель | Файл | Где живёт | Когда |
 |---|---|---|---|
-| Профиль/группа/канал | `src/components/UserInfoPanel.tsx` | портал в `tab.container` вкладки №0 — `AppReactProfileTab` (`sidebarRight/reactProfileTab.ts`, ВРЕМЕННО до 3-1, роль `AppSharedMediaTab`) | вкладку создаёт каждый инстанс `Chat.tsx` на монтировании (`createSharedMediaTab`), активный ставит её в слайдер (`replaceSharedMediaTab`, ВРЕМЕННО до Э6) |
+| Профиль/группа/канал/тред | `sidebarRight/tabs/sharedMediaTab.ts` (`AppSharedMediaTab`) + содержимое `sidebarRight/tabs/sharedMedia.solid.tsx` (порт tweb `sharedMediaTab.tsx`/`sharedMedia.tsx`, шаг К-5): `PeerProfile` (`peerProfile.solid.tsx`) и класс `AppSearchSuper` в одной прокрутке вкладки, карусель — `PeerProfileAvatars` + Solid-`useCollapsable` | вкладка у инстанса класса `Chat` (`chat.ts` `onChangePeer` → `createSharedMediaTab()` + `setPeer(peerId, threadId)`; `finishPeerChange` → `fillProfileElements`/`loadSidebarMedia(true)`/`replaceSharedMediaTab`; `destroySharedMediaTab`) | тред комментариев: `peerId` — группа обсуждения, участники — вся группа (`canViewMembers`), медиа — только треда (`thread_root` у `/media` и `/search_counters`), истории/подарки скрыты. Расхождения — шапка `sharedMedia.solid.tsx` (нет ⋮ шапки — Б-100, нет вкладок темы/бота — Б-101, нет строки инвайта — Б-102) |
 | Поиск стикеров/GIF | `sidebarRight/tabs/stickers.solid.tsx`, `gifs.solid.tsx` (`AppStickersTab`/`AppGifsTab`, порт tweb 1:1, 0б-11) | Solid-вкладки слайдера `AppSidebarRight` | лупа нижней полосы панели эмодзи — `isTabExists` → `appSidebarRight.createTab(…).open()` (tweb `emoticonsDropdown/index.ts:303-308`); отправка — `appImManager.chat.input.sendMessageWithDocument` через мост `sidebarRight/tabs/emoticonsSearchBridge.ts` (ВРЕМЕННО до Э4-3, ставит активный `Chat.tsx`); попап набора — React `openStickerSetModal` (ВРЕМЕННО до 2C-15). Расхождения: выдача GIF — Tenor, а не `@gif` (О-27); кладка — `components/gifsMasonry.ts` |
-| Изменить/добавить контакт | `sidebarRight/tabs/editContact.solid.tsx` (`AppEditContactTab`, 0б-10) | вкладка слайдера правой колонки, как у tweb | карандаш профиля (`Chat.tsx` `onEditContact`, ВРЕМЕННО до 3-1) — только у контакта, как `toggleEditBtn` (`canEdit`; ветки `bot_can_edit` → `AppEditBotTab` у нас нет); ⋮ «AddContact» (`useChatPopups::openAddContact` — порт `topbar.addContact`, ВРЕМЕННО до Э6-2) — только не-контакту и не боту (verify `topbar.ts:605-610`). Оба гейта — `core/hooks/useIsContact.ts` поверх `contacts.isContact` (книга ИЛИ `pFlags.contact`, флаг сервер ставит в любом ответе с пользователем) |
+| Изменить/добавить контакт | `sidebarRight/tabs/editContact.solid.tsx` (`AppEditContactTab`, 0б-10) | вкладка слайдера правой колонки, как у tweb | карандаш профиля (`sharedMedia.solid.tsx`, `toggleEditBtn` → `canEditPeer`) — только у контакта (`canEdit`; ветки `bot_can_edit` → `AppEditBotTab` у нас нет, Б-101); ⋮ «AddContact» (`useChatPopups::openAddContact` — порт `topbar.addContact`, ВРЕМЕННО до Э6-2) — только не-контакту и не боту (verify `topbar.ts:605-610`). Оба гейта — `core/hooks/useIsContact.ts` поверх `contacts.isContact` (книга ИЛИ `pFlags.contact`, флаг сервер ставит в любом ответе с пользователем) |
 
 Открыть подэкран правой колонки — как у tweb: `appSidebarRight.createTab(AppXxxTab).open(payload)`
-(+ `toggleSidebar(true)`, если колонка могла быть закрыта). React-оверлеи подэкранов
-(`GroupEditFlow`, `AddMembersScreen`, `ChannelStats`, `RightsEditor`) пока лежат внутри узла
-вкладки №0 и уходят в Solid-вкладки задачами 0б-1…0б-9.
+(+ `toggleSidebar(true)`, если колонка могла быть закрыта). React-оверлеев подэкранов больше нет
+(шаг К-5): «Изменить» группы/канала — `AppEditChatTab`, «Добавить участников» — `addChatUsers`
+(`AppAddMembersTab`); статистика, права участника, обсуждение — вкладки пачки П-1 (Б-40…Б-43).
+
+> **Разделы 1–7 ниже описывают React-панель `UserInfoPanel.tsx` до шага К-5** (снесена вместе
+> с `reactProfileTab.ts`, `useSearchSuper.ts`, `useGroupInfo.ts`, `useTransitionSlider.ts`,
+> React-`useCollapsable.ts`) и оставлены как история находок. Текущая проводка — строка
+> «Профиль» таблицы выше и шапки `sidebarRight/tabs/sharedMediaTab.ts`/`sharedMedia.solid.tsx`.
 
 ## 1. Компоненты правой колонки
 
@@ -968,8 +973,7 @@ DOM/лента/жесты/сворачивание живут в отдельн�
 
 - `src/components/userInfo/RightsEditor.tsx` (136) — права админа (`.user-permissions-container`).
 - `src/components/ChannelStats.tsx` (152) — статистика (`.statistics-container`, `useChannelStats`).
-- `src/components/group/GroupEditFlow.tsx` — «Изменить группу/канал» + подэкраны в `group/screens/*` (`ReactionsScreen`, `DiscussionScreen`, `AdminScreens`, `MembersScreen`, `MemberScreens` — banned/restricted). «Тип» (0б-2), «Разрешения» (0б-6) и «Пригласительные ссылки» (0б-3) — уже Solid-вкладки слайдера колонки: `sidebarRight/tabs/chatType.solid.tsx`, `sidebarRight/tabs/groupPermissions/groupPermissions.solid.tsx` (кит `sharedPermissions.ts` файлом tweb: `ChatPermissions`, `ChatAdministratorRights`, `createSolidTabState`) и `sidebarRight/tabs/{chatInviteLinks,chatInviteLink,editChatInviteLink}.solid.tsx`; редактор открывает их мостом `appSidebarRight.createTab(…).open(…)` и прячет свой оверлей, пока вкладка открыта (`// ВРЕМЕННО до 0б-1`). Права группы и ссылки сохраняются, как у tweb, галочкой в шапке (права — ещё «Save» подтверждения на закрытии), а не на каждом изменении. Чего нет у бэкенда — О-115…О-119 и О-120…О-124 плана волны 7. `ChatTypeScreen`, `PermissionsScreen`, `InviteLinkScreens` снесены.
-- `src/components/group/AddMembersScreen.tsx` (118) — селектор участников.
+- «Изменить группу/канал» — Solid-вкладка `AppEditChatTab` (`sidebarRight/tabs/editChat.solid.tsx`, задача 0б-1, шаг К-5; порт `editChat.tsx`): название, описание и фото уходят в сеть угловой галочкой, тумблеры (темы, подписи, история) пишут сразу; «Тип» (0б-2), «Разрешения» (0б-6) и «Пригласительные ссылки» (0б-3) она открывает родным `createTab(…).open(…)` — `sidebarRight/tabs/chatType.solid.tsx`, `sidebarRight/tabs/groupPermissions/groupPermissions.solid.tsx` (кит `sharedPermissions.ts` файлом tweb: `ChatPermissions`, `ChatAdministratorRights`, `createSolidTabState`) и `sidebarRight/tabs/{chatInviteLinks,chatInviteLink,editChatInviteLink}.solid.tsx`. Строки реакций, обсуждения, админов/участников/удалённых/заявок скрыты до пачки П-1 (Б-39…Б-41 плана каркаса). React-`GroupEditFlow`, `group/screens/*`, `group/AddMembersScreen.tsx` и `useGroupEdit` снесены (добавление участников из профиля — Б-42). Чего нет у бэкенда — О-115…О-119, О-120…О-124 плана волны 7, Б-105/Б-106 плана каркаса.
 - `src/components/PinnedStoriesSection.tsx` (49).
 
 ### 1.4 Хелперы/хуки

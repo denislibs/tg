@@ -586,8 +586,23 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `Alert.BotAppDoesntExist`, `SharedFolder.Link.Expired`; попап
 // `SharedFolder.Link.{Description,Chats}`, `SelectAll`, `DeselectAll`, `FilterPersonal`) и −4
 // своих ключа снесённого React-попапа папки `Folder.Invite.*`. Итог пачки П-4 поверх К-4 и П-5: ru 1638, `plural` 55.
+// Шаг К-5 волны 7, задача 0б-1 (вкладка «Изменить» группы и канала, порт tweb
+// `editChat.tsx`): у ru +4 ключа tweb lang.ts — `TypePrivateGroup`, `TypePublicGroup`
+// (подпись строки типа группы), `ForumToggleDescription` (подпись секции с темами),
+// `ChannelTopicsDiscussionForbidden` (тост тем у группы с обсуждением); −18 наших
+// ключей снесённого `GroupEditFlow` и экранов `group/*` (`ChannelAddAdmin`,
+// `ChatHistoryHint`, `Discussion.{Link.Question,Linked,Unlink.Text}`,
+// `ForumTopic.EnableHint`, `Group.{MemberBadge,RestrictedBadge}`,
+// `Reactions.{All,None,Some}.Info`, `RemovedUsers.Description`, `RestrictedUsers{,.Description}`,
+// `Unban`, `UserRestrictions.{Action,CanDoMember,Title}`). Ключи tweb тех же экранов
+// оставлены — их читают вкладки пачки П-1. 
+// Шаг К-5 волны 7, вкладка профиля `AppSharedMediaTab` (порт tweb `sharedMedia.tsx`):
+// у ru +10 ключей tweb lang.ts — заголовки `Profile.Info.{Topic,Bot}`,
+// `PeerInfo.SharedMedia` и счётчики вкладок `SavedDialogsTabCount`, `MediaFiles`,
+// `StarGiftsCount`, `Files`, `Links`, `MusicFiles`, `Voice` (`plural` 51 → 58). 
+// Вместе с П-5 и К-4 из main: ru 1608, `plural` 62.
 const COMPOSITION = {
-  ru: { keys: 1646, plural: 55 },
+  ru: { keys: 1642, plural: 62 },
   uk: { keys: 838, plural: 35 },
   es: { keys: 809, plural: 34 },
   de: { keys: 810, plural: 35 },
@@ -777,8 +792,11 @@ const COMPOSITION = {
 // Пачкой П-4 волны 7 — у ru +6 ключей tweb `AccDescr.*` и `CopyRestricted.*` (разбор — там же).
 // Пачкой П-4 волны 7 — у ru +13 ключей tweb звонков (разбор — у `COMPOSITION` выше).
 // Пачкой П-4 волны 7 (агент «ссылки») — у ru +11 ключей tweb и −4 `Folder.Invite.*` (разбор — там же).
+// Шагом К-5 волны 7 (0б-1) — у ru +4 ключа tweb `editChat` и −18 наших ключей снесённых
+// экранов `group/*` (разбор — у `COMPOSITION` выше); вкладкой профиля — +10 ключей
+// tweb `sharedMedia.tsx` (разбор — там же).
 const FINGERPRINT = {
-  ru: 'db753b24',
+  ru: 'd16a9685',
   uk: 'af81524a',
   es: '57ce09fe',
   de: '3224cfc5',
