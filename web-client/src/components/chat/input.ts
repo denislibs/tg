@@ -36,7 +36,7 @@
 //    `:3836`, `:4571-4604`, `:4800-4814`;
 //  - запись голоса и кружков (П-6, Б-30): `recordingController` (`recording/chatRecording.ts`)
 //    `:312-315`, `:482-485`, `constructRecorder` `:1048-1053`, `setShrinking` `:3988-3996`,
-//    ветки записи в `onBtnSendClick` и `updateSendBtn`.
+//    ветки записи в `onBtnSendClick`, `updateSendBtn` и `SendMenu` `:1429-1464`.
 //
 // В бэклоге (строки раздела 5 плана): меню плашек и превью ссылки (Б-72), плашки без
 // предмета (Б-73), эффекты сообщений (Б-125), повтор отложенных (Б-126), сохранение
@@ -556,22 +556,33 @@ export default class ChatInput {
     this.sendMenu = new SendMenu({
       onSilentClick: () => {
         this.sendSilent = true
-        void this.sendMessage()
+        if(this.recording) this.recordingController!.finishRecordingFromMenu()
+        else void this.sendMessage()
       },
       onScheduleClick: () => {
-        void this.scheduleSending(undefined)
+        if(this.recording) void this.scheduleSending(() => this.recordingController!.finishRecordingFromMenu())
+        else void this.scheduleSending(undefined)
       },
       onSendWhenOnlineClick: () => {
-        this.setScheduleTimestamp(SEND_WHEN_ONLINE_TIMESTAMP, () => void this.sendMessage(true))
+        if(this.recording) this.setScheduleTimestamp(SEND_WHEN_ONLINE_TIMESTAMP, () => this.recordingController!.finishRecordingFromMenu())
+        else this.setScheduleTimestamp(SEND_WHEN_ONLINE_TIMESTAMP, () => void this.sendMessage(true))
       },
       middleware: this.chat.destroyMiddlewareHelper.get(),
       openSide: 'top-left',
       onContextElement: this.btnSend,
       onOpen: () => {
         return this.chat.type !== ChatType.Scheduled &&
-          (!this.isInputEmpty() || !!(this.forwarding && Object.keys(this.forwarding).length)) &&
+          (this.recording || !this.isInputEmpty() || !!(this.forwarding && Object.keys(this.forwarding).length)) &&
           !this.editMsgId
       },
+      // While recording, the send button is the only visible original control —
+      // the trash / pause-toggle / play buttons of the recording panel are also
+      // live. Without this guard, a left-click on any of them while the
+      // schedule/silent menu is open would close the menu AND trigger that
+      // button's action (cancel recording, pause, etc.). Capturing clicks at
+      // the document level keeps the behaviour consistent: any click anywhere
+      // outside the menu just dismisses the menu, no action fires.
+      onToggle: (open) => this.recordingController?.setVoiceRecordingMenuGuard(open),
       canSendWhenOnline: this.canSendWhenOnline,
       onRef: (element) => {
         this.btnSendContainer.append(element)
