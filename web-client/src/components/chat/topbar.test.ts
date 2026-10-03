@@ -40,6 +40,7 @@ const managers = {
   contacts: { isContact },
   messages: { groupCallParticipants: vi.fn(async() => [] as number[]) },
   livestream: { status: vi.fn(async() => ({ active: false, viewers: 0, isAdmin: false })) },
+  groups: { listTopics: vi.fn(async() => [{ id: 7, title: 'Новости', iconColor: 0x6FB9F0, iconEmoji: '', isGeneral: false }]) },
 } as unknown as Managers
 
 let sidebar: { toggleSidebar: ReturnType<typeof vi.fn>, isTabExists: ReturnType<typeof vi.fn>, createTab: ReturnType<typeof vi.fn> }
@@ -50,6 +51,7 @@ type FakeChatOptions = {
   threadId?: number
   type?: ChatType
   isForum?: boolean
+  isForumTopic?: boolean
   isBot?: boolean
   isBroadcast?: boolean
   fullPeer?: PeerFull
@@ -197,6 +199,16 @@ describe('ChatTopbar: заголовок и подпись по виду пир�
 
     setMirrorHistoryCount(winKey(CHANNEL, 50), 1)
     expect(q(topbar, '.user-title').textContent).toBe('1 Comment')
+  })
+
+  it('тема форума (Б-57): заголовок — тема, аватар — значок темы, подпись «In <группа>»', async() => {
+    const topbar = await open(makeChat({ peerId: GROUP, threadId: 7, isForum: true, isForumTopic: true }))
+    expect(q(topbar, '.user-title .peer-title').textContent).toBe('Новости')
+    const avatar = q(topbar, '.avatar')
+    expect(avatar.classList.contains('is-topic')).toBe(true)
+    expect(avatar.dataset.threadId).toBe('7')
+    expect(avatar.querySelector('.topic-icon')).toBeTruthy()
+    expect(q(topbar, '.info').textContent).toBe('In Группа')
   })
 
   it('смена пира на том же топбаре меняет аватар и заголовок', async() => {

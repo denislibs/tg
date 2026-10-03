@@ -36,9 +36,11 @@
 //  2. Плашки — только с предметом (`topbarPlates.ts`, его шапка): видеочат и эфир.
 //     Закреп (`setupPinnedMessageForPeer`/`revealPreparedPinnedMessage`) — сосед П-5.
 //  3. `chat.isPreview`, `ChatType.Search` (`resetSearch`), монофорум, `autoDeletePeriod`
-//     аватарки, `welcome_*`, ветки заголовка `Pinned`/`Welcome` — предметов нет.
-//     Ветка статуса темы форума (`TopicProfileStatus`, `:1736-1742`) и заголовок темы
-//     (`wrapPeerTitle({threadId})`) — Б-57, с форумом: наш `PeerTitle` темы не знает.
+//     аватарки, `welcome_*`, ветка заголовка `Welcome` — предметов нет. Тема форума
+//     (заголовок `wrapPeerTitle({threadId})`, аватар `avatarNew({threadId})`, статус
+//     `TopicProfileStatus` `:1736-1742`) — тема приходит не из кэша, а ручкой списка тем
+//     (`loadForumTopic`). Замка закрытой темы в шапке у tweb нет (`pFlags.closed` темы
+//     шапка не читает) — его рисовал прежний React `ChatHeader`, в порт он не идёт.
 //  4. Статус (`appImManager.setPeerStatus`, `:3677-3797`) — функции модуля ниже, ВРЕМЕННО до
 //     П-4 (Б-29): у tweb они в `appImManager`. Источники — зеркала, а не события:
 //     набор и присутствие — `chatsStore.typing`/`presence` (вместо `peer_typings`/
@@ -115,6 +117,7 @@ import showDeleteDialogPopup from '@components/popups/deleteDialog'
 import clearHistoryWithConfirmation from '@components/clearHistory'
 import { AppEditContactTab } from '@components/solidJsTabs/tabs'
 import { createTopbarPlates, type TopbarPlates } from './topbarPlates'
+import type { TopicIconSource } from '@components/topicAvatar'
 import type Chat from './chat'
 import { ChatType } from './chatType'
 
@@ -146,6 +149,8 @@ export default class ChatTopbar {
 
   private titleMiddlewareHelper?: MiddlewareHelper
   private status?: ReturnType<ChatTopbar['createStatus']>
+  /** Б-57: тема форума открытого чата — см. `loadForumTopic` */
+  private forumTopic?: TopicIconSource
 
   constructor(
     private chat: Chat,
@@ -600,20 +605,45 @@ export default class ChatTopbar {
     }
   }
 
+  /**
+   * Б-57: тема форума — у tweb её отдаёт кэш `dialogsStorage.getForumTopic` (заголовок —
+   * `wrapPeerTitle({threadId})`, аватар — `avatarNew({threadId})`). Хранилища тем на главном
+   * потоке у нас нет: список тем перечитывается ручкой, как у форум-таба
+   * (`autonomousDialogList/forumTopics.ts`). Темы нет — заголовок и аватар пира (как у tweb,
+   * когда `getForumTopicById` ничего не нашёл, `peerTitle.ts:160-170`).
+   */
+  private async loadForumTopic(): Promise<TopicIconSource | undefined> {
+    const { peerId, threadId } = this.chat
+    if(!this.chat.isForumTopic) return
+
+    const topics = await this.managers.groups.listTopics(peerId).catch(() => [])
+    const topic = topics.find((topic) => topic.id === threadId)
+    return topic && {
+      title: topic.title,
+      icon_color: topic.iconColor,
+      icon_emoji: topic.iconEmoji,
+      isGeneral: topic.isGeneral,
+    }
+  }
+
   public async finishPeerChange(options: { middleware: () => boolean }) {
     const { peerId, threadId } = this.chat
     const { middleware } = options
+
+    this.forumTopic = await this.loadForumTopic()
 
     let newAvatar: ChatTopbar['avatar'], newAvatarMiddlewareHelper: ChatTopbar['avatarMiddlewareHelper']
     const isSaved = this.chat.type === ChatType.Saved
     const needArrowBack = this.chat.type === ChatType.Search
     if([ChatType.Chat, ChatType.Static, ChatType.Logs].includes(this.chat.type) || isSaved) {
       const usePeerId = isSaved ? threadId as PeerId : peerId
+      const useThreadId = isSaved || !this.forumTopic ? undefined : threadId
       const avatar = this.avatar
 
       if(
         !avatar ||
         avatar.node.dataset.peerId !== '' + usePeerId ||
+        avatar.node.dataset.threadId !== (useThreadId ? '' + useThreadId : undefined) ||
         peerId === rootScope.myId
       ) {
         newAvatar = avatarNew({
@@ -621,6 +651,8 @@ export default class ChatTopbar {
           isDialog: true,
           size: 40,
           peerId: usePeerId,
+          threadId: useThreadId,
+          topic: useThreadId ? this.forumTopic : undefined,
           meAsNotes: isSaved,
           managers: this.managers,
         })
@@ -708,6 +740,7 @@ export default class ChatTopbar {
         dialog: true,
         withIcons: !threadId,
         meAsNotes: this.chat.type === ChatType.Saved,
+        topic: this.chat.type === ChatType.Saved ? undefined : this.forumTopic, // Б-57: `threadId`
         middleware,
         managers: this.managers,
       }).element
@@ -811,6 +844,14 @@ export default class ChatTopbar {
 
       prepare = async() => {
         return () => replaceContent(this.subtitle, el.element)
+      }
+    } else if(this.chat.threadId) {
+      // tweb :1737-1743 — тема форума: «в <группа>»
+      prepare = async() => {
+        const title = new PeerTitle({ peerId: this.peerId, dialog: true, middleware, managers: this.managers }).element
+        const span = i18n('TopicProfileStatus', [title])
+
+        return () => replaceContent(this.subtitle, span)
       }
     } else {
       const peerId = this.peerId

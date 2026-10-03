@@ -831,6 +831,7 @@ const ru = {
   'Chat.Send.WithoutSound': 'Отправить без звука',
   ScheduledMessages: 'Запланированные сообщения',
   Reminders: 'Напоминания',
+  TopicProfileStatus: 'в %s',
   MessageScheduleSend: 'Отправить сейчас',
   // ── Предложка постов (Telegram suggested posts) ──
   'SuggestedPosts.Title': 'Предложенные посты',

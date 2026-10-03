@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 50,
+      "version": 51,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -5860,6 +5860,10 @@
           "value": "You can make the link expire after a certain time."
         },
         {
+          "key": "TopicProfileStatus",
+          "value": "In %s"
+        },
+        {
           "key": "Topics",
           "value": "Topics"
         },
@@ -6406,7 +6410,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 50,
+      "version": 51,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -9245,6 +9249,10 @@
         {
           "key": "Reminders",
           "value": "Напоминания"
+        },
+        {
+          "key": "TopicProfileStatus",
+          "value": "в %s"
         },
         {
           "key": "MessageScheduleSend",

@@ -537,13 +537,13 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Шаг К-3 волны 7 (ядро шапки чата `chat/topbar.ts`): у ru +1 ключ tweb lang.ts:4172
 // `Chat.Title.Comments` (с формами числа) — заголовок треда комментариев
 // (`topbar.ts` `setTitleManual`, tweb :1596-1610). Итог: ru 1540, `plural` 49 → 50.
-// Пачка П-5 волны 7 (меню ⋮ и плашки шапки чата, tweb `chat/topbar.ts`): у ru +8 ключей
+// Пачка П-5 волны 7 (меню ⋮ и плашки шапки чата, tweb `chat/topbar.ts`): у ru +9 ключей
 // tweb — подсказка `Chat.Menu.Hint`, блокировка `AreYouSureBlockContact2`/`UserBlocked`/
 // `UserUnblocked`, подписи своего срока автоудаления `AutoDeleteMessages.InfoChat`/
 // `InfoChannel`, заголовок отложенных «Избранного» `Reminders`, кнопка плашки видеочата
-// `VoiceChat.Topbar.Join`. Итог: ru 1548.
+// `VoiceChat.Topbar.Join`, подпись темы форума `TopicProfileStatus`. Итог: ru 1549.
 const COMPOSITION = {
-  ru: { keys: 1548, plural: 50 },
+  ru: { keys: 1549, plural: 50 },
   uk: { keys: 829, plural: 35 },
   es: { keys: 800, plural: 34 },
   de: { keys: 801, plural: 35 },
@@ -722,9 +722,9 @@ const COMPOSITION = {
 // Пачкой П-3 волны 7 — у ru +1 ключ tweb `Update` (разбор — там же).
 // Задачей 1-8 волны 7 — у ru +6 ключей пустого списка и контактов (разбор — там же).
 // Шагом К-3 волны 7 — у ru +1 ключ tweb `Chat.Title.Comments` (разбор — там же).
-// Пачкой П-5 волны 7 — у ru +8 ключей меню ⋮ и плашек шапки (разбор — там же).
+// Пачкой П-5 волны 7 — у ru +9 ключей меню ⋮ и плашек шапки (разбор — там же).
 const FINGERPRINT = {
-  ru: '1ac4d935',
+  ru: '632bb0b3',
   uk: 'a02f363c',
   es: '89e8ae98',
   de: '0fed7933',

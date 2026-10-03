@@ -1547,6 +1547,7 @@ const lang = {
   ThemeNight: 'Night',
   ThemeTinted: 'Dark',
   TimeLimitHelp: 'You can make the link expire after a certain time.',
+  TopicProfileStatus: 'In %s',
   Topics: 'Topics',
   TopicsCount: {
     one_value: '%d topic',
