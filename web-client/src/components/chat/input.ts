@@ -23,9 +23,12 @@
 //    `sendMessageWithDocument` `:4749`;
 //  - правка/пересылка/ответ: `initMessageEditing` `:4859`, `initMessagesForward` `:4963`,
 //    `getChatInputReplyToFromMessage` `:5082`, `initMessageReply` `:5099`, `setReplyTo` `:5249`,
-//    `setInputValue` `:5332`.
+//    `setInputValue` `:5332`;
+//  - запись голоса и кружков (П-6, Б-30): `recordingController` (`recording/chatRecording.ts`)
+//    `:312-315`, `:482-485`, `constructRecorder` `:1048-1053`, `setShrinking` `:3988-3996`,
+//    ветки записи в `onBtnSendClick` и `updateSendBtn`.
 //
-// В бэклоге (строки раздела 5 плана): запись голоса и кружков (Б-30), send-as (Б-31),
+// В бэклоге (строки раздела 5 плана): send-as (Б-31),
 // меню отправки и расписание (Б-32), тултип разметки (Б-33), автокомплит (Б-34),
 // эмодзи-дропдаун (Б-35), клавиатура бота и команды (Б-36), медленный режим и платные
 // (Б-37), правка медиа (Б-38), меню плашек и превью ссылки (Б-72), плашки без предмета
@@ -126,6 +129,7 @@ import showChecklistPopup from '@components/popups/checklist.bridge'
 import wrapReply from '@components/wrappers/reply'
 import wrapMessageForReply from '@components/wrappers/messageForReply'
 import AttachMenuButton from './attachMenuButton.solid'
+import ChatRecording from './recording/chatRecording'
 import ChatInputPlate from './controlPlate.solid'
 import PeerTitle from './peerTitle'
 import type Chat from './chat'
@@ -162,6 +166,7 @@ export default class ChatInput {
   public fileInput!: HTMLInputElement
   public inputMessageContainer!: HTMLDivElement
   public btnSend!: HTMLButtonElement
+  public btnCancelRecord!: HTMLButtonElement
   private lastTimeType = 0
 
   public chatInput!: HTMLElement
@@ -216,6 +221,9 @@ export default class ChatInput {
 
   private restoreInputLock?: () => void
 
+  // tweb :312-315 — запись голоса и кружков (Б-30); геттер `recording` ниже.
+  private recordingController?: ChatRecording
+
   /** True while `finishPeerChange` runs — suppresses animated plate centering. */
   private peerChanging = false
 
@@ -240,6 +248,11 @@ export default class ChatInput {
   ) {
     this.listenerSetter = new ListenerSetter()
     this.middlewareHelper = getMiddleware()
+  }
+
+  /** tweb `:482-485` */
+  public get recording() {
+    return this.recordingController?.active ?? false
   }
 
   /** tweb `:487-574` */
@@ -324,6 +337,14 @@ export default class ChatInput {
   }
 
   /** tweb `:1055-1682` — расхождение 6 шапки. */
+  /** tweb `:1048-1053` */
+  private constructRecorder() {
+    // All recording state + behaviour lives in ChatRecording now; constructing
+    // it wires the recorders, mounts the voice + video panels, and installs the
+    // record-mode switch menu (the same work this method used to do inline).
+    this.recordingController = new ChatRecording(this)
+  }
+
   public constructPeerHelpers() {
     this.constructReplyElements()
 
@@ -410,6 +431,8 @@ export default class ChatInput {
     this.rowsWrapper.append(this.replyElements.container)
     this.rowsWrapper.append(this.newMessageWrapper)
 
+    this.btnCancelRecord = this.createButtonIcon('bin_filled btn-circle btn-record-cancel chat-input-secondary-button chat-secondary-button', { ariaLabel: 'Delete' }) as HTMLButtonElement
+
     this.btnSendContainer = document.createElement('div')
     this.btnSendContainer.classList.add('btn-send-container')
 
@@ -429,11 +452,16 @@ export default class ChatInput {
     this.btnSendContainer.append(this.btnSend)
 
     // Move the morphing send/record button into the input row as the last button.
+    // btnCancelRecord is built above but intentionally not appended to the DOM.
     this.newMessageWrapper.append(this.btnSendContainer)
 
     this.attachMessageInputField()
 
     this.setChatListeners()
+
+    // Builds the ChatRecording controller, which wires the recorders, mounts the
+    // voice + round-video panels, and installs the record-mode switch menu.
+    this.constructRecorder()
 
     this.updateSendBtn()
 
@@ -790,6 +818,10 @@ export default class ChatInput {
     appNavigationController.removeItem(this.inputHelperNavigationItem!)
     this.listenerSetter.removeAll()
     this.middlewareHelper.destroy()
+    // Tears down the round-video waveform/playback, releases the camera, drops
+    // any in-flight recording navigation item, and removes the body-mounted
+    // round-preview element.
+    this.recordingController?.destroy()
     this.saveDraftDebounced?.clearTimeout()
   }
 
@@ -1177,10 +1209,30 @@ export default class ChatInput {
     this.fileInput.click()
   }
 
-  /** tweb `:4086-4117` — без записи (Б-30): пустое поле тоже «отправить». */
+  /** tweb `:4086-4117` — без историй и потока бота (нет предмета). */
   private onBtnSendClick = (e: Event) => {
     cancelEvent(e)
-    void this.sendMessage()
+
+    // This click is the release of a long-press that already opened the
+    // record-mode menu — swallow it so it doesn't also start a recording.
+    if(this.recordingController!.consumeLongPressSuppression()) {
+      return
+    }
+
+    const isInputEmpty = this.isInputEmpty()
+    const hasAnyRecorder = this.recordingController!.hasAnyRecorder()
+    if(!hasAnyRecorder || this.recording || !isInputEmpty || this.forwarding || this.editMsgId) {
+      if(this.recording) {
+        this.recordingController!.handleSendButtonClick()
+      } else {
+        void this.sendMessage()
+      }
+    } else {
+      // Empty input + not recording: LMB starts recording in the active media
+      // type. Switching voice ↔ video is done via the button's context menu
+      // (right-click / long-press), not by clicking.
+      this.recordingController!.startActive()
+    }
   }
 
   /** tweb `:4119-4221` — без превью ссылки (Б-72). */
@@ -1256,17 +1308,31 @@ export default class ChatInput {
     }
   }
 
+  /** tweb `:3988-3996` */
+  public setShrinking(value?: boolean, classNames?: string[]) {
+    value ||= this.recording
+    SetTransition({
+      element: this.chatInput,
+      className: 'is-shrinking' + (classNames ? ' ' + classNames.join(' ') : ''),
+      forwards: value,
+      duration: 200,
+    })
+  }
+
   /** tweb `:4343-4345` */
   public isInputEmpty() {
     return isInputEmpty(this.messageInput)
   }
 
-  /** tweb `:4390-4442` — без записи (Б-30), историй и потока бота (нет предмета). */
+  /** tweb `:4390-4442` — без историй и потока бота (нет предмета). */
   public updateSendBtn() {
     let icon: ChatSendBtnIcon
 
+    const isInputEmpty = this.isInputEmpty()
+
     if(this.editMsgId) icon = 'edit'
-    else icon = this.chat.type === ChatType.Scheduled ? 'schedule' : 'send'
+    else if(!this.recordingController?.hasVoiceRecorder() || this.recording || !isInputEmpty || this.forwarding) icon = this.chat.type === ChatType.Scheduled ? 'schedule' : 'send'
+    else icon = this.recordingController.getActiveRecordingMediaType() === 'video' ? 'record-video' : 'record'
 
     ;(['send', 'record', 'record-video', 'edit', 'schedule', 'forward', 'stop'] as ChatSendBtnIcon[]).forEach((i) => {
       this.btnSend.classList.toggle(i, icon === i)
