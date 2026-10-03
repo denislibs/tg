@@ -55,10 +55,8 @@ import rootScope from '@lib/rootScope'
 import indexOfAndSplice from '@helpers/array/indexOfAndSplice'
 import forEachReverse from '@helpers/array/forEachReverse'
 import type { Middleware, MiddlewareHelper } from '@helpers/middleware'
-import { startOfDayMs } from '@core/format/dayLabel'
 import { isOutMessage, type MyMessage, type OurMessageChat } from '@core/models'
 import { isServicePill } from '@core/serviceMsg'
-import { messageDateISO } from '@core/messageToConvMsg'
 import { filterReplyMarkupRows, type KeyboardButtonRow } from '@core/markup/replyMarkup'
 
 /** Порт tweb `bubbles.ts:306`. Позиция первой группы внутри контейнера дня:
@@ -96,6 +94,10 @@ export interface BubbleGroupsHost {
   /** порт `chat.bubbles.getDateContainerByTimestamp` (bubbles.ts:4823);
    *  аргумент — СЕКУНДЫ, как в оригинале */
   getDateContainerByTimestamp(timestamp: number): DateContainer
+  /** порт `chat.bubbles.getDateForDateContainer` (bubbles.ts:5575): ключ секции дня
+   *  по СЕКУНДАМ сообщения — локальная полночь, а у отложенного «когда появится в
+   *  сети» — сама дата (`createItem`, bubbleGroups.ts:727) */
+  getDateForDateContainer(timestamp: number): number
   /** порт `chat.bubbles.deleteEmptyDateGroups` (bubbles.ts:11616) */
   deleteEmptyDateGroups(): void
   /** порт `chat.bubbles.getMiddleware` (bubbles.ts:6030) */
@@ -495,7 +497,7 @@ export default class BubbleGroups {
       fromId: this.getMessageFromId(message),
       mid: message.id,
       timestamp: message.date,
-      dateTimestamp: startOfDayMs(messageDateISO(message.date)),
+      dateTimestamp: this.host.getDateForDateContainer(message.date),
       mounted: false,
       single: isServicePill(message),
       message,

@@ -170,6 +170,59 @@ describe('MessagesManager scheduled', () => {
   })
 })
 
+// Лента отложенных (`ChatType.Scheduled`): набор по возрастанию даты отправки и
+// события `scheduled_new`/`scheduled_delete` после ответа ручки (tweb
+// rootScope.ts:131-132) — их ловит лента (`chat/bubbles.ts`).
+describe('MessagesManager — лента отложенных', () => {
+  const rawScheduled = (id: number, date: number) => ({
+    ...makeRawMessage({ id, peerId: 1, fromId: 1, text: 'later', createdAt: '2026-07-19T10:00:00Z' }),
+    date, send_at: date,
+  })
+
+  it('getScheduledMessages отдаёт набор по возрастанию даты отправки', async () => {
+    const rest = { get: async () => ({ _: 'messages.messages', messages: [rawScheduled(2, 300), rawScheduled(1, 100), rawScheduled(3, 200)], users: [], chats: [] }) } as unknown as RestClient
+    const mgr = newMessagesManager({ rest })
+    const list = await mgr.getScheduledMessages(1)
+    expect(list.map((m) => m.date)).toEqual([100, 200, 300])
+  })
+
+  it('sendScheduledMessages шлёт send_now по каждому и объявляет scheduled_delete', async () => {
+    const paths: string[] = []
+    const events: [string, unknown][] = []
+    const rest = { post: async (p: string) => { paths.push(p); return {} } } as unknown as RestClient
+    const mgr = newMessagesManager({ rest, broadcast: (e, p) => { events.push([e, p]) } })
+    await mgr.sendScheduledMessages(1, [cid(7), cid(8)])
+    expect(paths).toEqual(['/chats/1/scheduled/7/send_now', '/chats/1/scheduled/8/send_now'])
+    expect(events).toEqual([['scheduled_delete', { peerId: 1, mids: [cid(7), cid(8)] }]])
+  })
+
+  it('deleteScheduledMessages удаляет по каждому и объявляет scheduled_delete', async () => {
+    const paths: string[] = []
+    const events: [string, unknown][] = []
+    const rest = { del: async (p: string) => { paths.push(p); return {} } } as unknown as RestClient
+    const mgr = newMessagesManager({ rest, broadcast: (e, p) => { events.push([e, p]) } })
+    await mgr.deleteScheduledMessages(1, [cid(9)])
+    expect(paths).toEqual(['/chats/1/scheduled/9'])
+    expect(events).toEqual([['scheduled_delete', { peerId: 1, mids: [cid(9)] }]])
+  })
+
+  it('отказ ручки не объявляет scheduled_delete', async () => {
+    const events: string[] = []
+    const rest = { del: async () => { throw new Error('500') } } as unknown as RestClient
+    const mgr = newMessagesManager({ rest, broadcast: (e) => { events.push(e) } })
+    await expect(mgr.deleteScheduledMessages(1, [cid(9)])).rejects.toThrow()
+    expect(events).toEqual([])
+  })
+
+  it('scheduleMessage объявляет scheduled_new созданным сообщением', async () => {
+    const events: [string, unknown][] = []
+    const rest = { post: async () => rawScheduled(4, 500) } as unknown as RestClient
+    const mgr = newMessagesManager({ rest, broadcast: (e, p) => { events.push([e, p]) } })
+    const s = await mgr.scheduleMessage(1, { text: 'later', sendAt: 500 })
+    expect(events).toEqual([['scheduled_new', s]])
+  })
+})
+
 /** Кадр `new_message` несёт сообщение ЦЕЛИКОМ под ключом `message` — форма
  *  `updateNewMessage` (решение Р5). Второй проводной формы сообщения (плоские
  *  `msg_id`/`seq`/`sender_id`/`text` прямо в кадре) и второго маппера к ней

@@ -1,26 +1,26 @@
 // Кадр закрепления — конструктор `updatePinnedMessages`, и пир у него тоже
 // конструктор (`Peer`), а не знаковое число рядом с телом.
 //
-// Пин держит проводку: подписчик обязан взять ключ пира из конструктора и
-// перечитать закреплённые ИМЕННО этого чата. Прежде кадр вёз `peer_id` числом,
-// и та же строка молча брала бы `undefined` — список закреплённых просто не
-// обновился бы, а тестов на этот путь не было вовсе.
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+// Пин держит проводку: подписчик обязан взять ключ пира из конструктора, сбросить
+// кэш закрепов и объявить `peer_pinned_messages` (tweb `resetPinnedMessagesCache`)
+// ИМЕННО этого чата — по нему плашка и экран закрепов перечитывают список.
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { RT, type PinMessageEvt } from '../../core/realtime/events'
 import type { Managers } from '../bootstrap'
 
 import { registerRefetchSubscriber } from './refetchSubscriber'
 
-const listPins = vi.fn().mockResolvedValue([])
-
-describe('refetchSubscriber: закрепление перечитывает пины по ключу из конструктора', () => {
-  beforeEach(() => {
-    listPins.mockClear()
+describe('refetchSubscriber: закрепление объявляет peer_pinned_messages по ключу из конструктора', () => {
+  const listener = vi.fn()
+  afterEach(() => {
+    rootScope.removeEventListener('peer_pinned_messages', listener)
+    listener.mockClear()
   })
 
-  it('пир из peerChannel → отрицательный ключ', async () => {
-    registerRefetchSubscriber({ messages: { listPins } } as unknown as Managers)
+  it('пир из peerChannel → отрицательный ключ, номера и бит закрепления', () => {
+    registerRefetchSubscriber({} as unknown as Managers)
+    rootScope.addEventListener('peer_pinned_messages', listener)
 
     const frame: PinMessageEvt = {
       _: 'updatePinnedMessages',
@@ -29,8 +29,16 @@ describe('refetchSubscriber: закрепление перечитывает п�
       pFlags: { pinned: true },
     }
     rootScope.dispatchEventSingle(RT.pinMessage, frame)
-    await Promise.resolve()
 
-    expect(listPins).toHaveBeenCalledWith(-42)
+    expect(listener).toHaveBeenCalledWith({ peerId: -42, mids: [7], pinned: true })
+  })
+
+  it('открепление — тот же конструктор без бита', () => {
+    registerRefetchSubscriber({} as unknown as Managers)
+    rootScope.addEventListener('peer_pinned_messages', listener)
+
+    rootScope.dispatchEventSingle(RT.pinMessage, { _: 'updatePinnedMessages', peer: { _: 'peerUser', user_id: 5 }, messages: [3] })
+
+    expect(listener).toHaveBeenCalledWith({ peerId: 5, mids: [3], pinned: false })
   })
 })

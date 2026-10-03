@@ -204,3 +204,56 @@ func TestGroupRepo_Restrictions(t *testing.T) {
 		t.Fatal("restriction should be gone")
 	}
 }
+
+// ListMembers с query — `channelParticipantsSearch` поиска по чату (выбор
+// отправителя, tweb `topbarSearch.tsx:184-190`): префикс имени профиля или
+// @username, без учёта регистра; пустой query — все участники.
+func TestGroupRepo_ListMembersQuery(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	alice := seedUser(t, pool, "+7101")
+	bob := seedUser(t, pool, "+7102")
+	carol := seedUser(t, pool, "+7103")
+	if _, err := pool.Exec(ctx, `UPDATE users SET display_name='Alice Liddell' WHERE id=$1`, alice); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE users SET display_name='Bob', username='bobby' WHERE id=$1`, bob); err != nil {
+		t.Fatal(err)
+	}
+	r := NewGroupRepo(pool)
+	chatID, err := r.CreateMultiMember(ctx, "group", "G", "", "", false, alice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int64{alice, bob, carol} {
+		if err := r.AddMember(ctx, chatID, id, domain.RoleMember, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ids := func(query string) []int64 {
+		t.Helper()
+		ms, err := r.ListMembers(ctx, chatID, query, 0, 50)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := make([]int64, 0, len(ms))
+		for _, m := range ms {
+			out = append(out, m.UserID)
+		}
+		return out
+	}
+
+	if got := ids(""); len(got) != 3 {
+		t.Fatalf("пустой query: %v, want все 3", got)
+	}
+	if got := ids("ali"); len(got) != 1 || got[0] != alice {
+		t.Fatalf("query «ali»: %v, want [%d]", got, alice)
+	}
+	if got := ids("BOBB"); len(got) != 1 || got[0] != bob {
+		t.Fatalf("query «BOBB» по @username: %v, want [%d]", got, bob)
+	}
+	if got := ids("liddell"); len(got) != 0 {
+		t.Fatalf("query «liddell» (не префикс): %v, want пусто", got)
+	}
+}

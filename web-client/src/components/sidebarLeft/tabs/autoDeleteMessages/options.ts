@@ -5,17 +5,15 @@
 // иначе — `formatDuration`).
 //
 // Расхождения с оригиналом:
-//  1. `allTimeOptionsForAutoDeleteIcon`/`findMatchingAutoDeleteIconOption`
-//     (`:57-67`, `:82-84`) не перенесены: их зовёт иконка автоудаления в шапке
-//     чата (`chat/topbar`), у нас её нет — потребителя нет.
-//  2. Константы срока — локальные, как в `dataAndStorage/storageQuota.solid.tsx`
+//  1. Константы срока — локальные, как в `dataAndStorage/storageQuota.solid.tsx`
 //     (у tweb `lib/constants.ts:20-24`, модуля с ними у нас нет); месяц — 31 день.
 //     Прежний React-экран писал месяц как 30 дней: такие периоды ±10% сводятся к
 //     тем же «k месяцев» (`findMatchingCustomOption`).
 import formatDuration, { DurationType } from '@helpers/formatDuration'
 import { wrapFormattedDuration } from '@components/wrappers/wrapDuration'
 
-const oneDayInSeconds = 24 * 60 * 60
+const oneHourInSeconds = 60 * 60
+const oneDayInSeconds = 24 * oneHourInSeconds
 const oneWeekInSeconds = oneDayInSeconds * 7
 const oneMonthInSeconds = oneDayInSeconds * 31
 const oneYearInSeconds = oneDayInSeconds * 365
@@ -70,6 +68,18 @@ export const customTimeOptions: DetailedOption[] = [
   makeOption(oneYearInSeconds, 1, DurationType.Years),
 ]
 
+export const allTimeOptionsForAutoDeleteIcon = [
+  makeOption(oneHourInSeconds, 1, DurationType.Hours),
+  makeOption(oneHourInSeconds * 2, 2, DurationType.Hours),
+  makeOption(oneHourInSeconds * 3, 3, DurationType.Hours),
+  makeOption(oneHourInSeconds * 4, 4, DurationType.Hours),
+  makeOption(oneHourInSeconds * 5, 5, DurationType.Hours),
+  makeOption(oneHourInSeconds * 6, 6, DurationType.Hours),
+  makeOption(oneHourInSeconds * 7, 7, DurationType.Hours),
+  makeOption(oneHourInSeconds * 8, 8, DurationType.Hours),
+  ...customTimeOptions,
+]
+
 export function findBestMatchingOption<T extends Option>(period: number, options: T[]) {
   const threshold = 0.1
   const isCloseTo = (period: number, targetPeriod: number) => targetPeriod > 0 && Math.abs(period - targetPeriod) / targetPeriod < threshold
@@ -83,6 +93,10 @@ export function findBestMatchingOption<T extends Option>(period: number, options
 
 export function findMatchingCustomOption(period: number) {
   return findBestMatchingOption(period, customTimeOptions)
+}
+
+export function findMatchingAutoDeleteIconOption(period: number) {
+  return findBestMatchingOption(period, allTimeOptionsForAutoDeleteIcon)
 }
 
 export function findExistingOrCreateCustomOption(period: number): Option {

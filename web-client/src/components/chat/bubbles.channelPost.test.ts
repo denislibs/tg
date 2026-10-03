@@ -1,7 +1,7 @@
 // Признаки ПОСТА КАНАЛА на бабле — порт блока tweb bubbles.ts:7671-7691:
 // класс `channel-post`, кнопка «переслать» сбоку (`bubble-beside-button
 // with-hover forward` + `with-beside-button` на бабле) и её клик
-// (`showForwardPopup`, :3511-3517; попапа у нас нет до П-5 — клик только гасится).
+// (`showForwardPopup`, :3511-3517 — мост `popups/forward.bridge.ts`, П-5).
 //
 // ПИН ГЕЙТА: признак поста выводится из САМОГО сообщения — `isMessage &&
 // message.views` (:7672), а не из вида чата. До починки лента звала
@@ -22,6 +22,9 @@ import type { BubblesManagers } from './bubbles'
 import { createTestChat, mountTestBubbles, type TestChatOptions } from './testChat'
 
 const CHAT: PeerId = -700
+
+const showForwardPopup = vi.hoisted(() => vi.fn())
+vi.mock('@components/popups/forward.bridge', () => ({ default: showForwardPopup }))
 
 const chatContext = (over: TestChatOptions = {}) => createTestChat({ peerId: CHAT, ...over })
 
@@ -125,7 +128,7 @@ describe('ChatBubbles — признаки поста канала', () => {
     expect(bubble.querySelector('.bubble-beside-button.forward')).not.toBeNull()
   })
 
-  it('клик по кнопке гасится и ничего не открывает — попапа пересылки нет до П-5 (Б-28)', async () => {
+  it('клик по кнопке открывает попап пересылки этим постом, дальше по веткам не идёт (:3511-3517)', async () => {
     const setInnerPeer = vi.fn()
     bubbles = mountTestBubbles(
       chatContext({ isBroadcast: true, appImManager: { setInnerPeer } }),
@@ -143,5 +146,7 @@ describe('ChatBubbles — признаки поста канала', () => {
 
     expect(click.defaultPrevented).toBe(true)
     expect(setInnerPeer).not.toHaveBeenCalled()
+    expect(showForwardPopup).toHaveBeenCalledTimes(1)
+    expect(showForwardPopup).toHaveBeenCalledWith({ [CHAT]: [1] })
   })
 })

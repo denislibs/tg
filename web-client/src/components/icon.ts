@@ -33,10 +33,10 @@ type IconWithClass = {
 }
 
 /**
- * tweb icon.ts:15-26 — иконка с наложенной поверх «плавающей» иконкой. Вызывающих
- * у неё пока нет (как и CSS `.overlayed-icon` — оба приедут с UI, который её
- * использует: бейджи звёзд/подарков); модуль портирован целиком, чтобы у формы
- * оригинала не было выборочных дыр. Поведенческий тест — `icon.test.ts`.
+ * tweb icon.ts:15-26 — иконка с наложенной поверх «плавающей» иконкой. Первый
+ * вызывающий — `components/autoDeleteIcon.ts` (подменю автоудаления в меню ⋮ шапки
+ * чата), CSS `.overlayed-icon` — выдержка `styles/tweb/_overlayedIcon.scss`.
+ * Поведенческий тест — `icon.test.ts`.
  */
 export function OverlayedIcon(icons: (IconName | IconWithClass)[], className?: string) {
   const span = document.createElement('span')

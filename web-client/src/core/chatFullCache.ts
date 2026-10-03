@@ -121,6 +121,22 @@ export function applyChatTheme(peerId: PeerId, themeId: string): void {
   bump()
 }
 
+/**
+ * Событие `peer_block` (своя или чужая вкладка заблокировала пира): tweb
+ * `appProfileManager.onUpdatePeerBlocked` (`:1506-1532`) правит `pFlags.blocked`
+ * той же `userFull`, из которой его читают пункты «Заблокировать»/«Разблокировать»
+ * меню ⋮ шапки. Карточки нет — патчить нечего, флаг приедет вместе с ней.
+ */
+export function applyPeerBlocked(peerId: PeerId, blocked: boolean | undefined): void {
+  const prev = fullMirror.get(peerId)
+  if (prev?._ !== 'userFull' || !!prev.pFlags?.blocked === !!blocked) return
+  const pFlags = { ...prev.pFlags }
+  if (blocked) pFlags.blocked = true
+  else delete pFlags.blocked
+  fullMirror.set(peerId, { ...prev, pFlags })
+  bump()
+}
+
 /** Смена аккаунта: карточки прошлой сессии чужие (та же причина, что у
  *  `resetPeerMirror`). */
 export function resetChatFullMirror(): void {

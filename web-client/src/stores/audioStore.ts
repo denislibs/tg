@@ -21,6 +21,9 @@ export interface AudioTrack {
    *  ветку выбирает наличие поля, а тех двух исходов нет вовсе — расхождение
    *  названо ЗАДАЧЕЙ #127. */
   date?: number
+  /** АВТОР сообщения — заголовок голосового и кружка в плашке плеера
+   *  (tweb `chat/audio.tsx:213`: `new PeerTitle({peerId: message.fromId})`). */
+  fromId?: number
   peerId?: number
   msgId?: number
   /** Вид медиа (tweb doc.type): голосовое, кружок или музыка. Голос и кружок —
@@ -51,6 +54,10 @@ interface AudioState {
   rate: number
   muted: boolean
   volume: number
+  /** tweb `appMediaPlaybackController.loop` — повтор трека (музыка) */
+  loop: boolean
+  /** tweb `appMediaPlaybackController.round` — повтор плейлиста */
+  round: boolean
   // actions (делегаты в mediaPlaybackController)
   playQueue: (queue: AudioTrack[], index: number) => void
   /** Внешний медиа-элемент (видео кружка) как текущий трек: плашка плеера
@@ -81,6 +88,8 @@ export const useAudioStore = create<AudioState>((set) => ({
   rate: 1,
   muted: false,
   volume: 1,
+  loop: false,
+  round: false,
 
   playQueue: (queue, index) => mediaPlayback.playQueue(queue, index),
   playExternal: (queue, index, media) => mediaPlayback.playExternal(queue, index, media),

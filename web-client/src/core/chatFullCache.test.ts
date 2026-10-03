@@ -8,6 +8,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   applyChatTheme,
+  applyPeerBlocked,
   beginPeerFullFetch,
   cachedPeerFull,
   cachedPeerTheme,
@@ -118,5 +119,34 @@ describe('chatFullCache: билет beginPeerFullFetch — защита от у�
     beginPeerFullFetch(-9) // билет выдан, но НЕ передан ниже
     saveChatFull(-9, channelFull(9, 'sunset'))
     expect(cachedPeerTheme(-9)).toBe('sunset')
+  })
+})
+
+describe('chatFullCache: peer_block патчит pFlags.blocked той же userFull (tweb appProfileManager :1506-1532)', () => {
+  beforeEach(() => resetChatFullMirror())
+
+  it('блок и разблок меняют флаг и будят подписчиков; повтор — нет', () => {
+    saveChatFull(7, userFull(7))
+    let calls = 0
+    const unsubscribe = subscribeChatFullMirror(() => { calls++ })
+
+    applyPeerBlocked(7, true)
+    expect((cachedPeerFull(7) as UserFull).pFlags?.blocked).toBe(true)
+    applyPeerBlocked(7, true)
+    expect(calls).toBe(1)
+
+    applyPeerBlocked(7, undefined)
+    expect((cachedPeerFull(7) as UserFull).pFlags?.blocked).toBeUndefined()
+    expect(calls).toBe(2)
+    unsubscribe()
+  })
+
+  it('карточки нет или она чата — патчить нечего', () => {
+    applyPeerBlocked(7, true)
+    expect(cachedPeerFull(7)).toBeUndefined()
+    saveChatFull(-100, channelFull(100))
+    const version = chatFullMirrorVersion()
+    applyPeerBlocked(-100, true)
+    expect(chatFullMirrorVersion()).toBe(version)
   })
 })

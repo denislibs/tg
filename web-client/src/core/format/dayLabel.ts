@@ -34,17 +34,30 @@ export function startOfDayMs(iso: string): number {
  * `bubbles.ts::getDateForDateContainer`): оригиналу сюда тоже приходит уже
  * нормализованная дата, и сравнение с `today` идёт по началам суток.
  *
- * Ветка «запланировано» оригинала (`:4790-4796`: `Chat.Date.ScheduledForToday`,
- * `MessageScheduledUntilOnline`, `Chat.Date.ScheduledFor`) сюда не переносится:
- * у нас запланированные живут не типом чата, а отдельным оверлеем, и подпись им
- * строит он сам (`components/ScheduledView.tsx::ScheduledLabel`) — теми же тремя
- * ключами оригинала.
+ * Ветка «запланировано» оригинала (`isScheduled`, tweb `chat/dateBubble.ts:18-27`) —
+ * лента отложенных (`ChatType.Scheduled`): «сегодня» → `Chat.Date.ScheduledForToday`,
+ * дата «когда появится в сети» (`SEND_WHEN_ONLINE_TIMESTAMP`, её день не обнуляется —
+ * `bubbles.ts::getDateForDateContainer`) → `MessageScheduledUntilOnline`, иначе
+ * `Chat.Date.ScheduledFor` с датой аргументом.
  */
-export function dayLabel(dayStartMs: number): HTMLElement {
+export function dayLabel(dayStartMs: number, isScheduled = false): HTMLElement {
   const date = new Date(dayStartMs)
 
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
-  return today.getTime() === date.getTime() ? i18n('Date.Today') : formatDate(date, { today })
+  if(today.getTime() === date.getTime()) {
+    return i18n(isScheduled ? 'Chat.Date.ScheduledForToday' : 'Date.Today')
+  }
+
+  if(isScheduled && dayStartMs === SEND_WHEN_ONLINE_TIMESTAMP * 1000) {
+    return i18n('MessageScheduledUntilOnline')
+  }
+
+  const dateElement = formatDate(date, { today })
+  return isScheduled ? i18n('Chat.Date.ScheduledFor', [dateElement]) : dateElement
 }
+
+/** tweb `appManagers/constants.ts:29` — дата отложенного «отправить, когда
+ *  собеседник появится в сети» (её ставит сервер, `domain.SendWhenOnlineTimestamp`). */
+export const SEND_WHEN_ONLINE_TIMESTAMP = 0x7FFFFFFE

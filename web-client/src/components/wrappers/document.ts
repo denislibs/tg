@@ -118,6 +118,7 @@ export default function wrapDocument(options: WrapDocumentOptions): HTMLElement 
       title: audioAttribute?.title ?? doc.file_name ?? '',
       performer: audioAttribute?.performer,
       date: message.date,
+      fromId: message.fromId,
       peerId: message.peerId,
       msgId: message.mid,
       type,

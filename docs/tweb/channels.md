@@ -109,23 +109,23 @@ div.bubbles-group                                    ← нет bubbles-group-av
 
 ## 4. Шапка чата
 
-| Пункт | tweb (`chat/topbar.ts`) | у нас (`HeaderMenu.tsx`) |
+| Пункт | tweb (`chat/topbar.ts`) | у нас (`components/chat/topbar.ts`, П-5 волны 7) |
 |---|---|---|
 | сабтайтл | «N subscribers» | ✅ |
-| Search | ✅ | ✅ |
-| Pinned Messages | ✅ | ❌ |
-| Mute / Unmute | ✅ | ✅ |
-| ViewDiscussion | `getChannelFull().linked_chat_id` → `setInnerPeer` (`topbar.ts:496`) | 🟡 пункт есть, `onClick` пустой |
-| Live Stream / Voice Chat | ✅ | ✅ (`Live Stream`) |
+| Search | ✅ | ✅ лупа `btnSearch` + пункт на мобильном (`chat.initSearch`) |
+| Pinned Messages | ✅ | плашка закрепа — `pinnedMessage.solid.tsx` (П-5 «закреп») |
+| Mute / Unmute | ✅ | ✅ (`PopupMute`, `groups.setMute`) |
+| ViewDiscussion | `getChannelFull().linked_chat_id` → `setInnerPeer` (`topbar.ts:514-527`) | ✅ (`chat.fullPeer().linked_chat_id`) |
+| Live Stream / Voice Chat | ✅ | пункты — после влития П-4 (Б-88 плана волны 7); плашки видеочата/эфира — ✅ (`topbarPlates.ts`) |
 | Select Messages | ✅ | ✅ |
-| Send Gift | ✅ | 🟡 пункт есть, `onClick` пустой |
-| Statistics | ✅ (`topbar.ts:662`) | ❌ в меню шапки нет (`ChannelStats` открывается из профиля) |
-| Boost Channel | ✅ | ✅ |
-| Translate | ✅ | ❌ в меню канала |
-| Auto-delete | ✅ | ✅ |
-| Report | ✅ | ✅ |
-| Delete / Leave Channel | ✅ | ✅ |
-| ChannelDirectMessages.Manage / ViewChats | ✅ | ❌ |
+| Send Gift | ✅ | ❌ Б-85 (`showSendGiftPopup` — заглушка до 2C-20) |
+| Statistics | ✅ (`topbar.ts:682-689`) | ❌ Б-85 (вкладки статистики нет, Б-43) |
+| Boost Channel | ✅ | ❌ Б-85 (`openBoosts` не портирован) |
+| Translate | ✅ | ❌ Б-85 (перевода нет) |
+| Auto-delete | ✅ (подменю) | ✅ (подменю `createAutoDeleteSubmenu`, иконка срока `autoDeleteIcon.ts`) |
+| Report | ✅ | ✅ (`ReportPopup` острова оверлеев через `reportStore`) |
+| Delete / Leave Channel | ✅ | ✅ (`popups/deleteDialog.ts`, текст — `getDeleteButtonText`) |
+| ChannelDirectMessages.Manage / ViewChats | ✅ | ❌ Б-85 (монофорума нет, О-4) |
 
 ## 5. Профиль канала (правый сайдбар)
 
