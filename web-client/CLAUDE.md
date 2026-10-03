@@ -34,7 +34,7 @@ npx vite build --outDir ../client-build
   рядом с ней — это норма (не растаскивать по `stores/` в ущерб когезии). Не плодить
   React-контексты под то, что уже в сторах.
 - **Анимации — только CSS-классами tweb**; JS их лишь переключает. **framer-motion убран** — не возвращать
-  (как и MUI). Механика: `core/hooks/useSetTransition` (порт `singleTransition.ts` — классы
+  (как и MUI). Механика: `core/dom/setTransition` (порт `singleTransition.ts` — классы
   `forwards`/`backwards`/`animating`) и `core/hooks/useMountTransition` (роль `AnimatePresence`: узел живёт
   в DOM, пока играет exit). Гейт — `body.animation-level-0/2`, ставит подписчик настройки «Энергосбережение»
   (`appImManager.setSettings`, `lib/appImManager.ts`).
@@ -266,7 +266,7 @@ npx vite build --outDir ../client-build
 **МОЖНО:**
 - Фетчить через `managers` (REST) из хука — это read/command-путь, не подписка на сокет.
 - `store.getState()/.setState()` из не-React кода (worker/`realtimeBridge`).
-- Вынести кластер логики в свой `core/hooks/useChat*.ts` (как `useChatInfoCard`/`usePinnedBar`/`useChatSend`).
+- Вынести кластер логики React-экрана в свой `core/hooks/use*.ts`.
 - **Грузить медиа-bytes НЕ-картинок прямым `fetch` к аутентифицированному media-эндпоинту**
   (токен-URL строит `core/mediaUrl`: `mediaContentUrl`/`primeMediaToken`), НЕ через `managers`.
   Бинарь идёт на main-thread, а не сериализуется через worker-RPC (SuperMessagePort) — как в tweb
@@ -548,12 +548,9 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
   продакшн-коде (плюс тесты и упоминания в комментариях). Рост числа = новый владелец скролла, это
   осознанное решение, а не побочный эффект — правь правило руками.
 
-  `MessageInput.tsx` несёт
-  только классы `scrollable scrollable-y no-scrollbar` в разметке (комментарий
-  над JSX: «в tweb приходят от `new Scrollable(...)`») — визуальный слепок
-  чужого инстанса, не свой; как и ещё ~13 других `.scrollable`-элементов
-  приложения (`EmojiDropdown`/`StickersTab`/`GifsTab`,
-  `MentionsHelper`, `StoriesRow`, …), это часть TODO в
+  Ещё ~10 `.scrollable`-элементов приложения несут только классы
+  `scrollable scrollable-y` в разметке (визуальный слепок чужого инстанса,
+  не свой) — это часть TODO в
   `core/dom/rootClasses.ts` — «Scrollable для остальных скроллеров», отдельная
   задача.
 - **`helpers/scrollSaver.ts`** (`ScrollSaver`, порт `TWEB/src/helpers/scrollSaver.ts`)
