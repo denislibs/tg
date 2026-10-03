@@ -6,6 +6,7 @@
 // что пики доезжают до отправки и до панели.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import EventListenerBase from '@helpers/eventListenerBase'
+import { getMiddleware } from '@helpers/middleware'
 import { useChatsStore } from '@stores/chatsStore'
 import { useSettingsStore } from '@/settings'
 import { winKey } from '@core/history/messagesMirror'
@@ -14,6 +15,7 @@ import appNavigationController from '@core/navigation/appNavigationController'
 import type { MyMessage } from '@core/models'
 import ChatInput from '../input'
 import { ChatType } from '../chatType'
+import { PAYMENT_REJECTED } from '../paidMessagesInterceptor'
 import { RECORD_MIN_TIME } from './chatRecording'
 
 const WAVEFORM = vi.hoisted(() => new Uint8Array([1, 2, 3, 4]))
@@ -106,10 +108,13 @@ async function mountInput(type = ChatType.Chat) {
     messages: {
       sendText: vi.fn(async() => ({ ok: true })),
       sendFile: vi.fn(async() => ({ mediaId: 1 })),
+      getScheduledMessages: vi.fn(async() => [] as MyMessage[]),
+      scheduleMessage: vi.fn(async() => ({})),
       editMessage: vi.fn(async() => ({})),
       getMessageByPeer: vi.fn(async(_peerId: number, mid: number) => messages.get(mid)),
       reloadMessage: vi.fn(async(_peerId: number, mid: number) => messages.get(mid)),
     },
+    media: { upload: vi.fn(async() => 77) },
     chats: { createPrivate: vi.fn(async(peerId: number) => peerId) },
     dialogs: { refresh: vi.fn(async() => {}) },
     drafts: { save: vi.fn(async() => ({ _: 'draftMessageEmpty' })) },
@@ -131,7 +136,8 @@ async function mountInput(type = ChatType.Chat) {
     updateChatInputHeight: vi.fn(),
     getMessage: (mid: number) => messages.get(mid),
     setMessageId: vi.fn(),
-    bubbles: { onGoDownClick: vi.fn() },
+    bubbles: { onGoDownClick: vi.fn(), getMiddleware: () => () => true },
+    destroyMiddlewareHelper: getMiddleware(),
     selection: { isSelecting: false },
     managers,
   }
@@ -363,6 +369,40 @@ describe('ChatRecording: голосовое', () => {
     await vi.waitFor(() => expect(managers.messages.sendFile).toHaveBeenCalledTimes(1))
     expect((managers.messages.sendFile.mock.calls[0] as unknown[])[0]).toMatchObject({ replyToMsgId: 9 })
     expect(input.replyToMsgId).toBeUndefined()
+  })
+})
+
+describe('ChatRecording: меню отправки и плата', () => {
+  it('«запланировать» во время записи: файл закачан, затем ОДНА отложенная отправка с его media_id', async() => {
+    mounted = await mountInput()
+    const { input, managers } = mounted
+
+    await startRecording(input)
+    now += 2_000
+    input.scheduleDate = 1_800_000_000 // ставит `scheduleSending` перед `finishRecordingFromMenu`
+    input.btnSend.click()
+
+    await vi.waitFor(() => expect(managers.messages.scheduleMessage).toHaveBeenCalledTimes(1))
+    expect(managers.media.upload).toHaveBeenCalledWith(expect.objectContaining({ mime: 'audio/ogg', duration: 2, waveform: WAVEFORM, fileName: 'audio.ogg' }))
+    expect(managers.messages.scheduleMessage).toHaveBeenCalledWith(PEER, expect.objectContaining({
+      type: 'voice', mediaId: 77, sendAt: 1_800_000_000, whenOnline: false,
+    }))
+    expect(managers.messages.sendFile).not.toHaveBeenCalled()
+    expect(input.scheduleDate).toBeUndefined()
+  })
+
+  it('отказ от платы за сообщение — запись не уходит (tweb :224-225)', async() => {
+    mounted = await mountInput()
+    const { input, managers } = mounted
+    vi.spyOn(input.paidMessageInterceptor, 'prepareStarsForPayment').mockResolvedValue(PAYMENT_REJECTED)
+
+    await startRecording(input)
+    now += 2_000
+    input.btnSend.click()
+
+    await vi.waitFor(() => expect(input.recording).toBe(false))
+    await Promise.resolve()
+    expect(managers.messages.sendFile).not.toHaveBeenCalled()
   })
 })
 

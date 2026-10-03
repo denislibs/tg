@@ -1410,9 +1410,11 @@ CSS — `T/scss/partials/_videoRecordingPanel.scss` целиком:
 `W/core/audio/voiceWaveformAnalyser.ts`. Опус-рекордер (fallback без WebCodecs) грузит
 `W/pages/bootstrapIm.ts` тегом из `public/opus/` (вендор нетронут), путь энкодера — конфигом.
 Расхождения — в шапке `chatRecording.ts`: отправка — один `messages.sendFile` (тип
-`voice`/`roundVideo`, без wav-`objectURLBlob` и без превью кружка — Б-134), право — `send_media`,
-нет эфемерного режима/платных/медленного режима (Б-37) и заранней проверки приватности голосовых
-(Б-135), тип записи — лист `appSettings.recordingMediaType`.
+`voice`/`roundVideo`, без wav-`objectURLBlob` и без превью кружка — Б-134; отложенная запись —
+`media.upload` + `messages.scheduleMessage`), право — `send_media`, медленный режим и плата — общие
+с отправкой (`showSlowModeTooltipIfNeeded`, `paidMessageInterceptor`), нет эфемерного режима и заранней
+проверки приватности голосовых (Б-135), тип записи — лист `appSettings.recordingMediaType`. Меню
+отправки (`SendMenu`) во время записи шлёт её «без звука»/«запланировать»/«когда в сети».
 
 ---
 
