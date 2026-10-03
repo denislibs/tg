@@ -58,6 +58,8 @@ export type TestChatOptions = {
   canSend?: () => boolean | Promise<boolean>
   input?: Partial<TestChatInput>
   appImManager?: Partial<TestAppImManager>
+  /** `Chat.managers` — полный набор; лента берёт из него только закрепы (`ChatType.Pinned`) */
+  managers?: unknown
 }
 
 const noop = () => {}
@@ -106,6 +108,9 @@ export function createTestChat(options: TestChatOptions = {}): Chat {
     finishPeerChange: () => Promise.resolve(),
     revealPreparedBackground: noop,
     initSearch: noop,
+    // `EventListenerBase` класса: событие `setPeer` (tweb bubbles.ts:5961-5976, :6352)
+    dispatchEvent: noop,
+    managers: options.managers,
     setMessageId(this: Chat, o: { lastMsgId?: number } = {}) {
       return this.bubbles.setMessageId(o)
     },

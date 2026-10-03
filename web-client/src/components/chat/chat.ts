@@ -496,7 +496,10 @@ export default class Chat extends EventListenerBase<{
       this.selection.isScheduled = type === ChatType.Scheduled
     }
 
-    this.messagesStorageKey = winKey(this.peerId, this.threadId)
+    // У tweb экран закрепов читает отдельное хранилище истории (`getHistoryStorage` с
+    // `inputFilter: pinned`); у нас окно — зеркало по ключу, поэтому свой ключ, чтобы
+    // страница закрепов не легла в окно самого чата.
+    this.messagesStorageKey = winKey(this.peerId, this.threadId) + (type === ChatType.Pinned ? ':pinned' : '')
 
     this.sharedMediaTab = appSidebarRight.createSharedMediaTab()
     this.sharedMediaTabs.push(this.sharedMediaTab)
