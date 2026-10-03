@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 49,
+      "version": 51,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -15,6 +15,10 @@
         {
           "key": "AccDescr.MicrophoneLevel",
           "value": "Microphone level"
+        },
+        {
+          "key": "AccDescrEditing",
+          "value": "Editing"
         },
         {
           "key": "AccountSettings.Filters",
@@ -89,6 +93,10 @@
           "value": "Administrators"
         },
         {
+          "key": "Alert.Confirm.Discard",
+          "value": "Discard"
+        },
+        {
           "key": "Alert.UserDoesntExists",
           "value": "Sorry, this user doesn't seem to exist."
         },
@@ -103,6 +111,13 @@
         {
           "key": "AllReactions",
           "value": "All reactions"
+        },
+        {
+          "key": "AndOther",
+          "forms": {
+            "one_value": "and %1$d other",
+            "other_value": "and %1$d others"
+          }
         },
         {
           "key": "AppName",
@@ -787,6 +802,10 @@
           "value": "Add Subscribers"
         },
         {
+          "key": "Channel.Persmission.MessageBlock",
+          "value": "Text is not Allowed"
+        },
+        {
           "key": "Channel.UsernameAboutChannel",
           "value": "People can share this link with others and can find your channel using Telegram search."
         },
@@ -805,6 +824,10 @@
         {
           "key": "ChannelAddSubscribers",
           "value": "Add Subscribers"
+        },
+        {
+          "key": "ChannelBroadcast",
+          "value": "Broadcast"
         },
         {
           "key": "ChannelCreator",
@@ -921,6 +944,14 @@
           }
         },
         {
+          "key": "Chat.Accessory.Forward.From",
+          "value": "From"
+        },
+        {
+          "key": "Chat.Accessory.Forward.You",
+          "value": "You"
+        },
+        {
           "key": "Chat.Accessory.Hidden",
           "forms": {
             "one_value": "Forward Message (sender's name hidden)",
@@ -1026,12 +1057,20 @@
           "value": "Drop files here to send them"
         },
         {
+          "key": "Chat.Edit.Cancel.Text",
+          "value": "Are you sure you want to discard all changes?"
+        },
+        {
           "key": "Chat.ForwardedFrom",
           "value": "Forwarded from"
         },
         {
           "key": "Chat.Frozen.LearnMore",
           "value": "Learn more..."
+        },
+        {
+          "key": "Chat.Input.Attach",
+          "value": "Attach"
         },
         {
           "key": "Chat.Input.Attach.Document",
@@ -1213,6 +1252,10 @@
         {
           "key": "ChatAutomation.NewChats",
           "value": "New Chats"
+        },
+        {
+          "key": "ChatAutomation.Stop",
+          "value": "Stop"
         },
         {
           "key": "ChatBackground",
@@ -2349,6 +2392,10 @@
         {
           "key": "Giveaway.YouWon",
           "value": "You won the giveaway!"
+        },
+        {
+          "key": "GlobalAttachMediaRestricted",
+          "value": "Sending media isn't allowed in this group."
         },
         {
           "key": "GlobalSearch",
@@ -4686,8 +4733,16 @@
           "value": "Reply"
         },
         {
+          "key": "ReplyTo",
+          "value": "Reply to %s"
+        },
+        {
           "key": "ReplyToAnotherChat",
           "value": "Reply in Another Chat"
+        },
+        {
+          "key": "ReplyToQuote",
+          "value": "Reply to quote by %s"
         },
         {
           "key": "Report.DetailsPlaceholder",
@@ -6199,6 +6254,14 @@
           "value": "Send Media"
         },
         {
+          "key": "UserRestrictionsSendRound",
+          "value": "Send Video Messages"
+        },
+        {
+          "key": "UserRestrictionsSendVoices",
+          "value": "Send Voice Messages"
+        },
+        {
           "key": "Username",
           "value": "Username"
         },
@@ -6374,7 +6437,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 49,
+      "version": 51,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -6707,6 +6770,10 @@
         {
           "key": "ChannelSettingsJoinRequest",
           "value": "По заявке"
+        },
+        {
+          "key": "Chat.Input.Attach",
+          "value": "Прикрепить"
         },
         {
           "key": "Chat.Input.Attach.PhotoOrVideo",
@@ -12782,6 +12849,67 @@
         {
           "key": "FilterNoChatsToDisplayInfo",
           "value": "Сейчас в этой папке нет чатов."
+        },
+        {
+          "key": "AccDescrEditing",
+          "value": "Редактирование"
+        },
+        {
+          "key": "Alert.Confirm.Discard",
+          "value": "Отменить"
+        },
+        {
+          "key": "AndOther",
+          "forms": {
+            "one_value": "и ещё %1$d отправитель",
+            "few_value": "и ещё %1$d отправителя",
+            "many_value": "и ещё %1$d отправителей",
+            "other_value": "и ещё %1$d отправителя"
+          }
+        },
+        {
+          "key": "Channel.Persmission.MessageBlock",
+          "value": "Отправка сообщений запрещена"
+        },
+        {
+          "key": "ChannelBroadcast",
+          "value": "Публикация"
+        },
+        {
+          "key": "Chat.Accessory.Forward.From",
+          "value": "От"
+        },
+        {
+          "key": "Chat.Accessory.Forward.You",
+          "value": "Вы"
+        },
+        {
+          "key": "Chat.Edit.Cancel.Text",
+          "value": "Отменить все изменения?"
+        },
+        {
+          "key": "ChatAutomation.Stop",
+          "value": "Остановить"
+        },
+        {
+          "key": "GlobalAttachMediaRestricted",
+          "value": "Отправка медиа в этой группе запрещена."
+        },
+        {
+          "key": "ReplyTo",
+          "value": "Ответ %s"
+        },
+        {
+          "key": "ReplyToQuote",
+          "value": "Ответ на цитату %s"
+        },
+        {
+          "key": "UserRestrictionsSendRound",
+          "value": "Отправка видеосообщений"
+        },
+        {
+          "key": "UserRestrictionsSendVoices",
+          "value": "Отправка голосовых сообщений"
         }
       ]
     },

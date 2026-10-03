@@ -34,7 +34,7 @@ npx vite build --outDir ../client-build
   рядом с ней — это норма (не растаскивать по `stores/` в ущерб когезии). Не плодить
   React-контексты под то, что уже в сторах.
 - **Анимации — только CSS-классами tweb**; JS их лишь переключает. **framer-motion убран** — не возвращать
-  (как и MUI). Механика: `core/hooks/useSetTransition` (порт `singleTransition.ts` — классы
+  (как и MUI). Механика: `core/dom/setTransition` (порт `singleTransition.ts` — классы
   `forwards`/`backwards`/`animating`) и `core/hooks/useMountTransition` (роль `AnimatePresence`: узел живёт
   в DOM, пока играет exit). Гейт — `body.animation-level-0/2`, ставит подписчик настройки «Энергосбережение»
   (`appImManager.setSettings`, `lib/appImManager.ts`).
@@ -47,7 +47,7 @@ npx vite build --outDir ../client-build
 - Лента сообщений — НЕ React: это императивный порт tweb `ChatBubbles`
   (`components/chat/bubbles.ts`) внутри класса `Chat` (`components/chat/chat.ts`, порт
   tweb `chat.ts`, шаг К-3): `Chat` владеет шапкой (`topbar.ts`), лентой, меню, выделением
-  и композером (React-остров `reactChatInput.ts`, `ВРЕМЕННО до К-4`), а лента берёт у
+  и строкой ввода (`input.ts`, порт tweb `ChatInput`, шаг К-4), а лента берёт у
   него пир, вид чата, права и стек колонки (`chat.appImManager`), как у tweb.
 - **Импорт-алиасы** (tsconfig + vite + vitest, держать синхронно): `@core @stores @shared @rpc
   @lib @helpers @components @config @environment @vendor @customEmoji @types @/*`. Раскладка кросс-каттинга:
@@ -266,7 +266,7 @@ npx vite build --outDir ../client-build
 **МОЖНО:**
 - Фетчить через `managers` (REST) из хука — это read/command-путь, не подписка на сокет.
 - `store.getState()/.setState()` из не-React кода (worker/`realtimeBridge`).
-- Вынести кластер логики в свой `core/hooks/useChat*.ts` (как `useChatInfoCard`/`usePinnedBar`/`useChatSend`).
+- Вынести кластер логики React-экрана в свой `core/hooks/use*.ts`.
 - **Грузить медиа-bytes НЕ-картинок прямым `fetch` к аутентифицированному media-эндпоинту**
   (токен-URL строит `core/mediaUrl`: `mediaContentUrl`/`primeMediaToken`), НЕ через `managers`.
   Бинарь идёт на main-thread, а не сериализуется через worker-RPC (SuperMessagePort) — как в tweb
@@ -303,7 +303,7 @@ read-marker (markRead живого сообщения при вьюпорте у
 наблюдателем за непрочитанными баблами (`components/chat/bubbles.ts`, порт tweb
 bubbles.ts:2941-3012): «прочитано» это «увидено», а видимость бабла знает только
 его владелец. Счётчик unread-below остался **производным из стора**
-(`newestSeq − lastReadSeq`, остров композера — кнопка «вниз»), а не накапливается из
+(`dialog.unread_count`, `ChatInput.setUnreadCount` — кнопка «вниз»), а не накапливается из
 потока событий.
 
 ## Владение фактами (воркер публикует, витрина зеркалит)
@@ -482,17 +482,31 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
 
 - **НИКОГДА не рендерить пользовательский контент как сырую HTML-строку** (ни raw-HTML React-пропами,
   ни присваиванием разметки в DOM). Сущности и код — только React-нодами (`RichText.tsx`, `CodeBlock.tsx`);
-  DOM строить через `createElement`/`createTextNode`.
+  DOM строить через `createElement`/`createTextNode`. Единственное исключение — `execCommand('insertHTML')`
+  поля ввода (ради родной истории undo): на вход только сериализация фрагмента, собранного узлами
+  (`wrapDraftText` → `documentFragmentToHTML`), не строка пользователя.
 - Ссылки — только по allow-list схем (`http/https/mailto/tel/tg`); остальное отбрасывать.
 - Лимит длины кода в prism (ReDoS), лимит числа entities (O(n²) рендер) — не убирать.
 
-## Rich-text (`src/core/richtext/markdown.ts`)
+## Rich-text и поле ввода (модель tweb)
 
 - Модель `MessageEntity` совпадает с бэком: offset/length в **UTF-16** (обычные индексы JS-строки).
-- Инпут хранит **сырые** markdown-маркеры; разбор — на **отправке** (`parseMarkdown`), как в tweb.
-  Не делать live-WYSIWYG для блоков кода.
+- Поле ввода — **rich-DOM tweb** (`components/inputField.ts`, `inputFieldAnimated.ts`): разметку
+  хранит сам DOM поля — markup-span'ы (`font-family: markup-bold-italic`, `.is-markup[data-markup]`,
+  стили `styles/tweb/_markup.scss`). Их ставит браузер по `execCommand('fontName')`
+  (`helpers/dom/markdown.ts::applyMarkdown`, хоткеи `handleMarkdownShortcut`) или строит
+  `lib/richtext/wrapDraftText.ts` (черновик, правка сообщения, вставка). Значение и сущности
+  читаются **из DOM** — `helpers/dom/getRichValueWithCaret.ts` (обход — `getRichElementValue.ts`).
+  Второй модели поля (свой сериализатор, «текст + сущности» в стейте) не заводить.
+- Набранные руками маркеры (`**жир**`, ```` ``` ````-блоки) остаются в поле текстом и разбираются
+  на **отправке** (`parseMarkdown`), сливаясь с сущностями из DOM, — как в tweb.
+- Undo/redo — родная история браузера. Поэтому поле правится только через `execCommand`
+  (`insertHTML`, `fontName`, `createLink`, `unlink`), а не прямой мутацией DOM — иначе история
+  рвётся; после undo/redo `processCurrentFormatting(input, undefined, inputType)` чинит классы.
+- Вставка — глобальный перехватчик `paste` (`inputField.ts::init`, ставит первый rich-`InputField`):
+  HTML буфера разбирается в инертном `DOMParser`-документе в сущности и вставляется
+  `insertRichTextAsHTML` — сериализацией фрагмента, собранного узлами (`documentFragmentToHTML`).
 - Язык блока кода = текст **до первого перевода строки** во fence (точное правило tweb), не угадывать по содержимому.
-- Большая вставка — одним text-node через Range, **не** `execCommand('insertText', …)` (иначе фриз на тысячах нод).
 
 ## Скролл
 
@@ -534,12 +548,9 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
   продакшн-коде (плюс тесты и упоминания в комментариях). Рост числа = новый владелец скролла, это
   осознанное решение, а не побочный эффект — правь правило руками.
 
-  `MessageInput.tsx` несёт
-  только классы `scrollable scrollable-y no-scrollbar` в разметке (комментарий
-  над JSX: «в tweb приходят от `new Scrollable(...)`») — визуальный слепок
-  чужого инстанса, не свой; как и ещё ~13 других `.scrollable`-элементов
-  приложения (`EmojiDropdown`/`StickersTab`/`GifsTab`,
-  `MentionsHelper`, `StoriesRow`, …), это часть TODO в
+  Ещё ~10 `.scrollable`-элементов приложения несут только классы
+  `scrollable scrollable-y` в разметке (визуальный слепок чужого инстанса,
+  не свой) — это часть TODO в
   `core/dom/rootClasses.ts` — «Scrollable для остальных скроллеров», отдельная
   задача.
 - **`helpers/scrollSaver.ts`** (`ScrollSaver`, порт `TWEB/src/helpers/scrollSaver.ts`)

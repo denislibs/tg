@@ -713,6 +713,13 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       return seq ? msgsByChat.get(peerId)?.get(seq) : undefined
     },
 
+    /** Порт `appMessagesManager.reloadMessage` (tweb :13609) — сообщение по адресу,
+     *  догрузкой, если его нет в SSOT. Зовёт плашка ответа композера
+     *  (`ChatInput.initMessageReply`, input.ts:5108-5126). */
+    async reloadMessage(peerId: number, mid: number): Promise<MyMessage | undefined> {
+      return reloadMessage(peerId, mid)
+    },
+
     /**
      * Порт `getHistoryStorage(peerId).history.first` (tweb, читает
      * `onUpdateDeleteMessages` :11579): самый свежий срез основного окна чата,
@@ -995,7 +1002,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     ): Promise<MyMessage[]> {
       const r = await rest.post<MessagesContainer>(`/chats/${toPeerId}/forward`, {
         from_peer_id: fromPeerId,
-        msg_ids: msgIds.map(getServerMessageId),
+        ids: msgIds.map(getServerMessageId),
         drop_author: opts?.dropAuthor ?? false,
         drop_caption: opts?.dropCaption ?? false,
       })

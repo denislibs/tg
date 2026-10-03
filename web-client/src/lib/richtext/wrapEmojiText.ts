@@ -7,10 +7,8 @@
 // ссылкой, а полный конвейер `wrapMessageText` именно это и сделает.
 //
 // Расхождение с оригиналом одно: аргументов `isDraft` (→ `wrappingDraft`) и
-// готовых `entities` здесь нет — опции `wrappingDraft` у нашего `wrapRichText`
-// не существует (разметка композера у нас своя, `core/richtext/markdown.ts`), а
-// второго вызова с готовыми сущностями (`wrapEmojiTextWithEntities`) в клиенте
-// нет ни одного.
+// готовых `entities` здесь нет — ни одного вызова с ними (`wrapEmojiTextWithEntities`,
+// эмодзи в поле ввода) в клиенте нет; черновик поля строит `wrapDraftText.ts`.
 import parseEntities from './parseEntities'
 import wrapRichText from './wrapRichText'
 

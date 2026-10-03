@@ -4,7 +4,7 @@ import { useMemo, useRef, useState, type ReactNode } from 'react'
 // picker, the reacted/seen list. Each is dumb — it self-sources i18n +
 // motion constants and emits its actions via callbacks; the parent owns the
 // state. Discard-voice confirm переехал на портированный `confirmationPopup`
-// (задача 3 плана solid-wave-1) и вызывается напрямую из `Composer.tsx`;
+// (задача 3 плана solid-wave-1);
 // delete confirm — на прямой `PopupPeer` (раунд правок 3, см. докблок
 // `openDeleteMessageDialog` ниже) — самостоятельных React-компонентов под них
 // больше нет.
@@ -19,7 +19,6 @@ import PeerSelector from '../../shared/ui/PeerSelector'
 import PopupElement from '../popups/popupElement'
 import PopupPeer from '../popups/popupPeer'
 import type { AvatarManagers } from '../avatar'
-import { peerColor } from '../peerColor'
 import UserAvatar from '../UserAvatar'
 import { useMediaUrl } from '../../core/hooks/useMediaUrl'
 import { dialogToChat, SAVED_GRADIENT } from '../../core/dialogToChat'
@@ -32,8 +31,7 @@ import { isUser } from '../../core/peers/peerId'
 import { filterByRights } from '../../core/peers/filterByRights'
 import type { ChatRights } from '../../core/peers/rights'
 import { usePeers } from '../../core/hooks/usePeers'
-import { useContactPeerIds } from '../../core/hooks/useContactPeerIds'
-import { getUserTitle, SAVED_MESSAGES_TITLE } from '../../core/peers/getPeerTitle'
+import { SAVED_MESSAGES_TITLE } from '../../core/peers/getPeerTitle'
 import { useFolders, useFoldersStore } from '../../stores/foldersStore'
 import { ALL_FOLDER_ID } from '../../core/folderIds'
 import { useImperativeIsland } from '../../core/hooks/useImperativeIsland'
@@ -345,57 +343,6 @@ export function ForwardPicker({ dialogs, onPick, onClose, chatRightsActions = DE
           </>
         }
       />
-    </Popup>
-  )
-}
-
-// Пикер контакта для attach-меню — порт `showContactPickerPopup`
-// (tweb `popups/pickUser.tsx:838-856`: `peerType: ['contacts']`): строки —
-// АДРЕСНАЯ КНИГА (`useContactPeerIds`), без себя, служебного «Telegram» и
-// собеседников вне книги. Выбор — отправить сообщение-контакт.
-export function ContactPicker({ onPick, onClose }: {
-  onPick: (userId: number, name: string) => void
-  onClose: () => void
-}) {
-  const t = useT()
-  const [q, setQ] = useState('')
-  const [open, setOpen] = useState(true)
-  const picked = useRef<{ userId: number; name: string } | null>(null)
-  const pick = (userId: number, name: string) => { picked.current = { userId, name }; setOpen(false) }
-  const contactIds = useContactPeerIds(q)
-  const cards = usePeers(contactIds ?? [])
-  const rows = (contactIds ?? []).flatMap((userId) => {
-    const user = cards.get(userId)
-    return user?._ === 'user' ? [{ userId, name: getUserTitle(user) }] : []
-  })
-  return (
-    <Popup
-      open={open}
-      title={t('AttachContact')}
-      onClose={() => setOpen(false)}
-      onExitComplete={() => { const p = picked.current; if (p) onPick(p.userId, p.name); else onClose() }}
-      width={440}
-    >
-      <div className={s.pickerSearch}>
-        <TgIcon name="search" size={20} color="var(--secondary-text-color)" />
-        <input
-          className={s.pickerSearchInput}
-          autoFocus
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={t('Search')}
-        />
-      </div>
-      <div className={s.pickerList}>
-        {rows.map((r) => (
-          <div key={r.userId} className={s.listRow} data-peer-id={r.userId} onClick={() => pick(r.userId, r.name)}>
-            <Avatar background={peerColor(r.name)} text={r.name[0] ?? '?'} size="md" />
-            <div className={s.pickerBody}>
-              <Text noWrap size={15.5} weight={500} color="var(--primary-text-color)">{r.name}</Text>
-            </div>
-          </div>
-        ))}
-      </div>
     </Popup>
   )
 }

@@ -86,6 +86,10 @@ const ALLOWED: Record<string, number> = {
   // гасится `cancelAnimationByKey` прямо перед записью, как у оригинала.
   'components/sidebarLeft/contactsList.solid.tsx': 1,
   'components/sectionIndex.solid.tsx': 1,
+  // components/chat/input.ts (`ChatInput.setInputValue`, tweb `input.ts:5348`) — после
+  // подстановки черновика/текста правки поле ввода прокручивается к концу. Узел — само
+  // поле (`.input-message-input`), не лента: ни подгрузки, ни второго писателя позиции.
+  'components/chat/input.ts': 1,
 }
 
 describe('scrollTop: единственный владелец — Scrollable/ScrollSaver', () => {
