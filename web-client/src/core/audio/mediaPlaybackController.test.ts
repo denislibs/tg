@@ -303,6 +303,48 @@ describe('общая очередь voice+round (tweb inputMessagesFilterRoundVo
   })
 })
 
+describe('повтор: плейлист (round) и трек (loop) — tweb сеттеры :240-262, onEnded :928', () => {
+  afterEach(() => {
+    mediaPlayback.setRound(false)
+    mediaPlayback.setLoop(false)
+  })
+
+  it('с round конец очереди возвращает к первому треку', async () => {
+    mediaPlayback.setRound(true)
+    mediaPlayback.playQueue([music(1), music(2)], 1)
+    await settle()
+
+    el(2).dispatchEvent(new Event('ended'))
+    await settle()
+
+    expect(useAudioStore.getState().track?.mediaId).toBe(1)
+    expect(useAudioStore.getState().index).toBe(0)
+  })
+
+  it('без round «назад» с первого трека никуда не ведёт, с round — к последнему', async () => {
+    mediaPlayback.playQueue([music(1), music(2), music(3)], 0)
+    await settle()
+    mediaPlayback.prev()
+    expect(useAudioStore.getState().track?.mediaId).toBe(1)
+
+    mediaPlayback.setRound(true)
+    mediaPlayback.prev()
+    await settle()
+    expect(useAudioStore.getState().track?.mediaId).toBe(3)
+  })
+
+  it('loop ставит повтор на элемент музыки, а не голоса', async () => {
+    mediaPlayback.playQueue([music(1)], 0)
+    await settle()
+    mediaPlayback.setLoop(true)
+    expect(el(1).loop).toBe(true)
+
+    mediaPlayback.playQueue([voice(2)], 0)
+    await settle()
+    expect(el(2).loop).toBe(false)
+  })
+})
+
 describe('скорость — своя на тип медиа (tweb playbackRates)', () => {
   it('persist по типу: голос и музыка не мешают друг другу', async () => {
     mediaPlayback.playQueue([voice(1)], 0)

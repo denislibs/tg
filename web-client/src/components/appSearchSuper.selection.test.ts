@@ -17,6 +17,13 @@ const { downloadMediaURL, downloadToDisc } = vi.hoisted(() => ({
   downloadToDisc: vi.fn((_options: { mediaId: number }) => Promise.resolve()),
 }))
 vi.mock('@lib/appDownloadManager', () => ({ downloadToDisc }))
+// Пересылку и удаление класс зовёт попапами tweb напрямую (П-5) — граница модуля.
+const popups = vi.hoisted(() => ({
+  showForwardPopup: vi.fn<(peerIdMids: Record<number, number[]>, onSelect?: () => void) => void>(),
+  showDeleteMessagesPopup: vi.fn<(peerId: number, mids: number[], type: string, onConfirm?: () => void, getMessage?: unknown) => void>(),
+}))
+vi.mock('@components/popups/forward.bridge', () => ({ default: popups.showForwardPopup }))
+vi.mock('@components/popups/deleteMessages', () => ({ default: popups.showDeleteMessagesPopup }))
 vi.mock('../client/bootstrap', () => ({
   startClient: () => ({ managers: { media: { downloadMediaURL } } }),
 }))
@@ -90,10 +97,12 @@ const mediaTabs = (): SearchSuperMediaTab[] => [
 ]
 
 function hostActions() {
+  popups.showForwardPopup.mockClear()
+  popups.showDeleteMessagesPopup.mockClear()
   return {
     setInnerPeer: vi.fn<NonNullable<AppSearchSuperOptions['setInnerPeer']>>(),
-    showForwardPopup: vi.fn<NonNullable<AppSearchSuperOptions['showForwardPopup']>>(),
-    showDeleteMessagesPopup: vi.fn<NonNullable<AppSearchSuperOptions['showDeleteMessagesPopup']>>(),
+    showForwardPopup: popups.showForwardPopup,
+    showDeleteMessagesPopup: popups.showDeleteMessagesPopup,
   }
 }
 
@@ -112,7 +121,7 @@ async function build(all: MyMessage[], options: Partial<AppSearchSuperOptions> =
     mediaTabs: mediaTabs(),
     scrollable,
     managers: fakeBackend(all),
-    ...actions,
+    setInnerPeer: actions.setInnerPeer,
     ...options,
   })
   host.append(searchSuper.container)
@@ -242,7 +251,7 @@ describe('SearchContextMenu: меню элемента (tweb appSearchSuper.ts:1
 
     await openMenuOn(tile)
     click(menuItem('Delete'))
-    expect(actions.showDeleteMessagesPopup).toHaveBeenCalledWith(PEER, [2])
+    expect(actions.showDeleteMessagesPopup).toHaveBeenCalledWith(PEER, [2], 'chat', undefined, expect.any(Function))
   })
 
   it('«Копировать медиа»: запись в буфер, прелоадер в пункте, по итогу меню закрыто', async() => {
@@ -359,7 +368,7 @@ describe('SearchSelection: выделение элементов (tweb chat/sele
     expect(fwd).toEqual({ [PEER]: [1, 2] })
 
     click(plate.querySelector('.search-super-selection-delete')!)
-    const [peerId, mids, onConfirm] = actions.showDeleteMessagesPopup.mock.calls[0]
+    const [peerId, mids, , onConfirm] = actions.showDeleteMessagesPopup.mock.calls[0]
     expect([peerId, mids]).toEqual([PEER, [1, 2]])
 
     onConfirm!()

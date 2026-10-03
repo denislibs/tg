@@ -12,6 +12,17 @@ import ChatSelection, {
 import ListenerSetter from '@helpers/listenerSetter'
 import type ChatInput from './input'
 import { createTestChat } from './testChat'
+import { ChatType } from './chatType'
+import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
+
+// Панель выделения зовёт попапы tweb напрямую (`showDeleteMessagesPopup`,
+// `showForwardPopup`) — граница модуля.
+const popups = vi.hoisted(() => ({
+  showDeleteMessagesPopup: vi.fn(),
+  showForwardPopup: vi.fn(),
+}))
+vi.mock('@components/popups/deleteMessages', () => ({ default: popups.showDeleteMessagesPopup }))
+vi.mock('@components/popups/forward.bridge', () => ({ default: popups.showForwardPopup }))
 
 const PEER = 1
 
@@ -86,7 +97,7 @@ function setup(bubbles: HTMLElement[]) {
   const selection = new ChatSelection(chat, port, chat.input as unknown as ChatInput, managers)
   selection.attachListeners(container, new ListenerSetter())
 
-  return { container, inner, selection, cantForwardDeleteMids }
+  return { container, inner, selection, cantForwardDeleteMids, chat }
 }
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
@@ -144,7 +155,7 @@ describe('toggleByElement (tweb :901-937)', () => {
     expect(checkbox(bubble)!.checked).toBe(true)
     expect(bubble.classList.contains('is-selected')).toBe(true)
 
-    // класс режима на самой ленте (плашки вместо композера нет до П-5, Б-23)
+    // класс режима на самой ленте (панель действий — describe ниже)
     await flush()
     expect(container.classList.contains('is-selecting')).toBe(true)
     expect(container.classList.contains('no-select')).toBe(true)
@@ -535,5 +546,99 @@ describe('протяжка по альбому (tweb 79b9c44c1, d064fdb85)', () 
     selection.toggleByElement(text, true)
     selection.toggleByElement(text, true)
     expect(selection.getSelectedMids()).toEqual([104])
+  })
+})
+
+describe('панель действий (tweb 812502980 :1145-1308, Б-23)', () => {
+  beforeEach(() => {
+    popups.showDeleteMessagesPopup.mockClear()
+    popups.showForwardPopup.mockClear()
+  })
+
+  const click = (element: Element) => element.dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
+
+  async function selectTwo() {
+    const b1 = makeBubble(1)
+    const b2 = makeBubble(2)
+    const env = setup([b1, b2])
+    env.selection.toggleByElement(b1)
+    env.selection.toggleByElement(b2)
+    await flush()
+    const wrapper = env.chat.input.inputContainer!.querySelector<HTMLElement>(':scope > .chat-input-wrapper.selection-wrapper')
+    return { ...env, wrapper }
+  }
+
+  it('выделение собирает плашку «удалить · N сообщений · переслать» в inputContainer композера', async() => {
+    const { wrapper, chat } = await selectTwo()
+
+    expect(wrapper).not.toBeNull()
+    const plate = wrapper!.querySelector(':scope > .chat-input-plate.rows-wrapper-row.selection-container')!
+    expect(plate).not.toBeNull()
+    const sides = plate.querySelectorAll(':scope > .chat-input-plate-side')
+    expect(sides[0].querySelector('.selection-container-delete.danger')).not.toBeNull()
+    expect(sides[1].querySelector('.selection-container-forward')).not.toBeNull()
+    expect(plate.querySelector('.chat-input-plate-center .selection-container-count')!.textContent).toBe('2 messages')
+    expect(chat.input.chatInput.classList.contains('is-selecting')).toBe(true)
+  })
+
+  it('«переслать» отдаёт попапу {peerId: mids} по возрастанию; выбор получателя снимает выделение (:1246-1256)', async() => {
+    const { wrapper, selection } = await selectTwo()
+
+    click(wrapper!.querySelector('.selection-container-forward')!)
+
+    expect(popups.showForwardPopup).toHaveBeenCalledTimes(1)
+    const [obj, onSelect] = popups.showForwardPopup.mock.calls[0]
+    expect(obj).toEqual({ [PEER]: [1, 2] })
+    onSelect()
+    expect(selection.isSelecting).toBe(false)
+  })
+
+  it('«удалить» отдаёт попапу пир, выбранные номера и тип чата; подтверждение снимает выделение (:1225-1235)', async() => {
+    const { wrapper, selection } = await selectTwo()
+
+    click(wrapper!.querySelector('.selection-container-delete')!)
+
+    expect(popups.showDeleteMessagesPopup).toHaveBeenCalledTimes(1)
+    const [peerId, mids, type, onConfirm] = popups.showDeleteMessagesPopup.mock.calls[0]
+    expect([peerId, mids, type]).toEqual([PEER, [1, 2], ChatType.Chat])
+    onConfirm()
+    expect(selection.isSelecting).toBe(false)
+  })
+
+  it('клик по счётчику снимает выделение (:1218-1221)', async() => {
+    const { wrapper, selection } = await selectTwo()
+    click(wrapper!.querySelector('.chat-input-plate-button')!)
+    expect(selection.isSelecting).toBe(false)
+  })
+
+  it('нельзя переслать / удалить — кнопки выключены (`onUpdateContainer` :1289-1291)', async() => {
+    const b1 = makeBubble(1)
+    const env = setup([b1])
+    env.cantForwardDeleteMids.mockResolvedValue({ cantForward: true, cantDelete: true })
+    env.selection.toggleByElement(b1)
+    await flush()
+    await flush()
+
+    const wrapper = env.chat.input.inputContainer!.querySelector('.selection-wrapper')!
+    expect(wrapper.querySelector('.selection-container-forward')!.hasAttribute('disabled')).toBe(true)
+    expect(wrapper.querySelector('.selection-container-delete')!.hasAttribute('disabled')).toBe(true)
+  })
+
+  it('снятие выделения убирает плашку после перехода (`removeSelectionContainer` :1295-1308)', async() => {
+    vi.useFakeTimers()
+    try {
+      const b1 = makeBubble(1)
+      const env = setup([b1])
+      env.selection.toggleByElement(b1)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(env.chat.input.inputContainer!.querySelector('.selection-wrapper')).not.toBeNull()
+
+      env.selection.cancelSelection()
+      await vi.advanceTimersByTimeAsync(300)
+      expect(env.chat.input.inputContainer!.querySelector('.selection-wrapper')).toBeNull()
+      expect(env.selection.selectionForwardBtn).toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

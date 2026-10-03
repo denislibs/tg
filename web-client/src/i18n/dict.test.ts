@@ -537,6 +537,25 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Шаг К-3 волны 7 (ядро шапки чата `chat/topbar.ts`): у ru +1 ключ tweb lang.ts:4172
 // `Chat.Title.Comments` (с формами числа) — заголовок треда комментариев
 // (`topbar.ts` `setTitleManual`, tweb :1596-1610). Итог: ru 1540, `plural` 49 → 50.
+// Пачка П-5 волны 7 (меню ⋮ и плашки шапки чата, tweb `chat/topbar.ts`): у ru +9 ключей
+// tweb — подсказка `Chat.Menu.Hint`, блокировка `AreYouSureBlockContact2`/`UserBlocked`/
+// `UserUnblocked`, подписи своего срока автоудаления `AutoDeleteMessages.InfoChat`/
+// `InfoChannel`, заголовок отложенных «Избранного» `Reminders`, кнопка плашки видеочата
+// `VoiceChat.Topbar.Join`, подпись темы форума `TopicProfileStatus`. Итог: ru 1549.
+// Пачка П-5 волны 7, закреп и аудиоплеер (tweb `popups/unpinMessage.ts`, `chat/pinnedMessage.tsx`,
+// `chat/audio.tsx`, `playbackRateButton.ts`, заголовок экрана закрепов `topbar.ts:1557-1559`): у ru
+// +21 ключ tweb lang.ts, из них плюральные `Chat.UnpinAllMessagesConfirmation` и
+// `PinnedMessagesCount`. Итог: ru 1561, `plural` 50 → 52.
+// Пачка П-5 «действия» (попапы меню сообщения, Б-28): у ru +24 ключа tweb lang.ts —
+// закреп (`PinMessage*`, `UnpinMessageAlertTitle`, `Chat.Confirm.Unpin`), удаление
+// (`DeleteMessagesTitle`, `AreYouSureDelete*{Mega,Bot}`, `BoostingGiveawayDeleteMsg*`),
+// тосты пересылки (`FwdMessage*`, плюральный `FwdMessagesToChats`), проверка фактов
+// (`FactCheck{Dialog,Edited,Deleted}`, `Done`), `Message.Context.Selection.Copy`.
+// Итог: ru 1564, `plural` 50 → 51.
+// Пачка П-5 волны 7 (поиск по чату `chat/topbarSearch.solid.tsx` и лента отложенных
+// `popups/sendNow.ts`): у ru +10 ключей — tweb lang.ts `Chat.Search.{Next,Previous}Result`,
+// `Of`, `SearchAs{Chat,List}`, `Search.EmptyHashtag` и наши `Chat.SendNow.{Title,Text}[Multiple]`
+// (у оригинала — литералы, `popups/sendNow.ts:6-7`). Итог: ru 1550, `plural` 50 → 51.
 // Шаг К-4 волны 7 (кнопка-скрепка `chat/attachMenuButton.solid.tsx`, tweb
 // `attachMenuButton.tsx:29-32`): у ru +1 ключ tweb lang.ts:170 `Chat.Input.Attach` —
 // `aria-label` кнопки. Итог: ru 1541.
@@ -547,8 +566,9 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (`Channel.Persmission.MessageBlock`, `ChannelBroadcast`), запрет медиа
 // (`GlobalAttachMediaRestricted`), подписи кнопки отправки (`UserRestrictionsSend{Voices,Round}`,
 // `ChatAutomation.Stop`). Итог: ru 1555, `plural` 50 → 51.
+// Вместе (П-5: шапка, закреп и аудио, действия, поиск и отложенные — +57; К-4 — +15): ru 1612, `plural` 55.
 const COMPOSITION = {
-  ru: { keys: 1555, plural: 51 },
+  ru: { keys: 1612, plural: 55 },
   uk: { keys: 829, plural: 35 },
   es: { keys: 800, plural: 34 },
   de: { keys: 801, plural: 35 },
@@ -727,10 +747,15 @@ const COMPOSITION = {
 // Пачкой П-3 волны 7 — у ru +1 ключ tweb `Update` (разбор — там же).
 // Задачей 1-8 волны 7 — у ru +6 ключей пустого списка и контактов (разбор — там же).
 // Шагом К-3 волны 7 — у ru +1 ключ tweb `Chat.Title.Comments` (разбор — там же).
+// Пачкой П-5 волны 7 — у ru +9 ключей меню ⋮ и плашек шапки (разбор — там же).
+// Пачкой П-5 волны 7 (закреп и аудиоплеер) — у ru +21 ключ (разбор — там же).
+// Пачкой П-5 «действия» — у ru +24 ключа tweb попапов закрепа, удаления, пересылки и
+// проверки фактов (разбор — там же).
+// Пачкой П-5 волны 7 — у ru +10 ключей поиска по чату и «отправить сейчас» (разбор — там же).
 // Шагом К-4 волны 7 — у ru +1 ключ tweb `Chat.Input.Attach` (разбор — там же).
 // Шагом К-4 волны 7 (строка ввода) — у ru +14 ключей `chat/input.ts` (разбор — там же).
 const FINGERPRINT = {
-  ru: '664aec89',
+  ru: 'efe5ac21',
   uk: 'a02f363c',
   es: '89e8ae98',
   de: '0fed7933',

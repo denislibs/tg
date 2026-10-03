@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 51,
+      "version": 52,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -15,6 +15,10 @@
         {
           "key": "AccDescr.MicrophoneLevel",
           "value": "Microphone level"
+        },
+        {
+          "key": "AccDescr.PlaybackSpeed",
+          "value": "Playback speed"
         },
         {
           "key": "AccDescrEditing",
@@ -156,6 +160,10 @@
           "value": "Archived Chats"
         },
         {
+          "key": "AreYouSureBlockContact2",
+          "value": "Are you sure you want to block **%1$s**?"
+        },
+        {
           "key": "AreYouSureClearDrafts",
           "value": "Are you sure you want to delete all cloud drafts?"
         },
@@ -200,8 +208,24 @@
           "value": "Are you sure you want to delete these messages?"
         },
         {
+          "key": "AreYouSureDeleteFewMessagesBot",
+          "value": "Do you want to delete these messages?\nThis will delete them just for you."
+        },
+        {
+          "key": "AreYouSureDeleteFewMessagesMega",
+          "value": "Are you sure you want to delete these messages for everyone?"
+        },
+        {
           "key": "AreYouSureDeleteSingleMessage",
           "value": "Are you sure you want to delete this message?"
+        },
+        {
+          "key": "AreYouSureDeleteSingleMessageBot",
+          "value": "Do you want to delete this message?\nThis will delete it just for you."
+        },
+        {
+          "key": "AreYouSureDeleteSingleMessageMega",
+          "value": "Are you sure you want to delete this message for everyone?"
         },
         {
           "key": "AreYouSureDeleteThisChatWithUser",
@@ -264,6 +288,10 @@
           "value": "Video"
         },
         {
+          "key": "AudioUnknownArtist",
+          "value": "Unknown artist"
+        },
+        {
           "key": "AuthSessions.IncompleteAttempts",
           "value": "Incomplete login attempts"
         },
@@ -306,6 +334,14 @@
         {
           "key": "AutoDeleteMessages.Disable",
           "value": "Disable"
+        },
+        {
+          "key": "AutoDeleteMessages.InfoChannel",
+          "value": "Automatically delete messages for everyone in this channel after a certain amount of time."
+        },
+        {
+          "key": "AutoDeleteMessages.InfoChat",
+          "value": "Automatically delete messages for everyone in this chat after a certain amount of time."
         },
         {
           "key": "AutoDeleteMessages.InfoDefault",
@@ -530,6 +566,14 @@
         {
           "key": "BoostingGiveaway",
           "value": "Giveaway"
+        },
+        {
+          "key": "BoostingGiveawayDeleteMsgText",
+          "value": "Deleting this message won't cancel the giveaway — the winners will still be selected on **%s**.\n\nOnce deleted, the Giveaway Announcement cannot be restored."
+        },
+        {
+          "key": "BoostingGiveawayDeleteMsgTitle",
+          "value": "Delete announcement"
         },
         {
           "key": "BoostingGiveawayEnd",
@@ -1003,6 +1047,10 @@
           "value": "Comments"
         },
         {
+          "key": "Chat.Confirm.Unpin",
+          "value": "Would you like to unpin this message?"
+        },
+        {
           "key": "Chat.Context.LinkCopiedPrivate",
           "value": "Link copied. This link will only work for chat members."
         },
@@ -1113,6 +1161,10 @@
           "value": "Clear Selection"
         },
         {
+          "key": "Chat.Menu.Hint",
+          "value": "To **edit** or **reply**, close this menu.\nThen tap next to a message."
+        },
+        {
           "key": "Chat.Menu.SelectMessages",
           "value": "Select Messages"
         },
@@ -1127,6 +1179,10 @@
         {
           "key": "Chat.OwnerBadge",
           "value": "owner"
+        },
+        {
+          "key": "Chat.Pinned.DontShow",
+          "value": "Hide Pinned Messages"
         },
         {
           "key": "Chat.Poll.MembersVoted",
@@ -1191,8 +1247,16 @@
           "value": "Channels you joined"
         },
         {
+          "key": "Chat.Search.NextResult",
+          "value": "Next search result"
+        },
+        {
           "key": "Chat.Search.NothingFound",
           "value": "Nothing interesting here yet..."
+        },
+        {
+          "key": "Chat.Search.PreviousResult",
+          "value": "Previous search result"
         },
         {
           "key": "Chat.Selection.Selected",
@@ -1227,6 +1291,25 @@
           "value": "Your channels"
         },
         {
+          "key": "Chat.SendNow.Text",
+          "value": "Send message now?"
+        },
+        {
+          "key": "Chat.SendNow.TextMultiple",
+          "forms": {
+            "one_value": "Send %d message now?",
+            "other_value": "Send %d messages now?"
+          }
+        },
+        {
+          "key": "Chat.SendNow.Title",
+          "value": "Send Message Now"
+        },
+        {
+          "key": "Chat.SendNow.TitleMultiple",
+          "value": "Send Messages Now"
+        },
+        {
           "key": "Chat.Service.Call.Missed",
           "value": "Missed"
         },
@@ -1240,6 +1323,13 @@
         {
           "key": "Chat.UnpinAll.Text",
           "value": "Are you sure you want to unpin all messages?"
+        },
+        {
+          "key": "Chat.UnpinAllMessagesConfirmation",
+          "forms": {
+            "one_value": "Do you want to unpin %d message in this chat?",
+            "other_value": "Do you want to unpin all %d messages in this chat?"
+          }
         },
         {
           "key": "Chat.VoiceChat.JoinLink.Participants_ZeroValueHolder",
@@ -1763,6 +1853,10 @@
           "value": "Also delete for %1$s"
         },
         {
+          "key": "DeleteMessagesTitle",
+          "value": "Delete %1$s"
+        },
+        {
           "key": "DeleteSingleMessagesTitle",
           "value": "Delete message"
         },
@@ -1865,6 +1959,10 @@
         {
           "key": "DoNotTranslate",
           "value": "Do Not Translate"
+        },
+        {
+          "key": "Done",
+          "value": "Done"
         },
         {
           "key": "DoubleTapSetting",
@@ -2115,6 +2213,18 @@
           "value": "Delete Fact Check"
         },
         {
+          "key": "FactCheckDeleted",
+          "value": "Fact check removed."
+        },
+        {
+          "key": "FactCheckDialog",
+          "value": "Fact Check"
+        },
+        {
+          "key": "FactCheckEdited",
+          "value": "Fact check updated."
+        },
+        {
           "key": "FactCheckPlaceholder",
           "value": "Add Fact or Context"
         },
@@ -2316,6 +2426,28 @@
         {
           "key": "FromYou",
           "value": "You"
+        },
+        {
+          "key": "FwdMessageTo",
+          "value": "Message forwarded to %s."
+        },
+        {
+          "key": "FwdMessageToSavedMessages",
+          "value": "Message forwarded to **Saved Messages**."
+        },
+        {
+          "key": "FwdMessagesTo",
+          "value": "Messages forwarded to %s."
+        },
+        {
+          "key": "FwdMessagesToChats",
+          "forms": {
+            "other_value": "%d chats"
+          }
+        },
+        {
+          "key": "FwdMessagesToSavedMessages",
+          "value": "Messages forwarded to **Saved Messages**."
         },
         {
           "key": "General",
@@ -3272,6 +3404,10 @@
           "value": "Clear selection"
         },
         {
+          "key": "Message.Context.Selection.Copy",
+          "value": "Copy selected"
+        },
+        {
           "key": "Message.Context.Selection.Delete",
           "value": "Delete selected"
         },
@@ -3614,6 +3750,10 @@
           "value": "OK"
         },
         {
+          "key": "Of",
+          "value": "%1$d of %2$d"
+        },
+        {
           "key": "Off",
           "value": "Off"
         },
@@ -3896,6 +4036,10 @@
           "value": "Hint must be different from your password"
         },
         {
+          "key": "Pause",
+          "value": "Pause"
+        },
+        {
           "key": "Payment.DemoNotice",
           "value": "This is a demo checkout. No real payment is processed."
         },
@@ -4134,8 +4278,36 @@
           "value": "Picture-in-Picture"
         },
         {
+          "key": "PinAlsoFor",
+          "value": "Also pin for %1$s"
+        },
+        {
           "key": "PinFolderLimitReached",
           "value": "Sorry, you can't pin any more chats to the top."
+        },
+        {
+          "key": "PinMessage",
+          "value": "Pin"
+        },
+        {
+          "key": "PinMessageAlert",
+          "value": "Pin this message in the group?"
+        },
+        {
+          "key": "PinMessageAlertChannel",
+          "value": "Do you want to pin this message in this channel?"
+        },
+        {
+          "key": "PinMessageAlertChat",
+          "value": "Do you want to pin this message at the top of the chat?"
+        },
+        {
+          "key": "PinMessageAlertTitle",
+          "value": "Pin message"
+        },
+        {
+          "key": "PinNotify",
+          "value": "Notify all members"
         },
         {
           "key": "PinnedJoinCall",
@@ -4158,6 +4330,13 @@
           "value": "Pinned Messages"
         },
         {
+          "key": "PinnedMessagesCount",
+          "forms": {
+            "one_value": "Pinned Message",
+            "other_value": "%1$d Pinned Messages"
+          }
+        },
+        {
           "key": "Pip.ActiveHint",
           "value": "To return to the tab, click the button here or the icon in the floating window."
         },
@@ -4168,6 +4347,10 @@
         {
           "key": "Pip.BackToTab",
           "value": "Back to Tab"
+        },
+        {
+          "key": "Play",
+          "value": "Play"
         },
         {
           "key": "PlaybackRateNormal",
@@ -4212,6 +4395,22 @@
         {
           "key": "Popup.Attach.RemoveSpoilers",
           "value": "Remove all spoilers"
+        },
+        {
+          "key": "Popup.Unpin.AllTitle",
+          "value": "Unpin all messages"
+        },
+        {
+          "key": "Popup.Unpin.Hide",
+          "value": "Hide"
+        },
+        {
+          "key": "Popup.Unpin.HideDescription",
+          "value": "Do you want to hide the pinned message bar? It wil stay hidden until a new message is pinned."
+        },
+        {
+          "key": "Popup.Unpin.HideTitle",
+          "value": "Hide pinned messages"
         },
         {
           "key": "PostStatistics",
@@ -4717,6 +4916,10 @@
           "value": "Recovery Email"
         },
         {
+          "key": "Reminders",
+          "value": "Reminders"
+        },
+        {
           "key": "Remove",
           "value": "Remove"
         },
@@ -4943,6 +5146,10 @@
           "value": "Filter by Tag"
         },
         {
+          "key": "Schedule.Repeat",
+          "value": "Repeat"
+        },
+        {
           "key": "Schedule.SendOn",
           "value": "Send on"
         },
@@ -4983,6 +5190,10 @@
           "value": "There were no messages from **%@**."
         },
         {
+          "key": "Search.EmptyHashtag",
+          "value": "There were no results for \"%@\". Try another hashtag."
+        },
+        {
           "key": "Search.EmptyQuery",
           "value": "Try searching."
         },
@@ -5009,6 +5220,14 @@
         {
           "key": "SearchAllChatsShort",
           "value": "Chats"
+        },
+        {
+          "key": "SearchAsChat",
+          "value": "Show as Chat"
+        },
+        {
+          "key": "SearchAsList",
+          "value": "Show as List"
         },
         {
           "key": "SearchEmoji",
@@ -5895,6 +6114,10 @@
           "value": "You can make the link expire after a certain time."
         },
         {
+          "key": "TopicProfileStatus",
+          "value": "In %s"
+        },
+        {
           "key": "Topics",
           "value": "Topics"
         },
@@ -6106,6 +6329,10 @@
           "value": "Unpin"
         },
         {
+          "key": "UnpinMessageAlertTitle",
+          "value": "Unpin message"
+        },
+        {
           "key": "UnreadMessages",
           "value": "Unread Messages"
         },
@@ -6136,6 +6363,10 @@
         {
           "key": "UserBio",
           "value": "Bio"
+        },
+        {
+          "key": "UserBlocked",
+          "value": "User blocked"
         },
         {
           "key": "UserInfo.CustomPhotoHelp",
@@ -6262,6 +6493,10 @@
           "value": "Send Voice Messages"
         },
         {
+          "key": "UserUnblocked",
+          "value": "User unblocked"
+        },
+        {
           "key": "Username",
           "value": "Username"
         },
@@ -6334,6 +6569,10 @@
         {
           "key": "VoiceChat.Status.You",
           "value": "This is you"
+        },
+        {
+          "key": "VoiceChat.Topbar.Join",
+          "value": "Join"
         },
         {
           "key": "VoipUnmute",
@@ -6437,7 +6676,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 51,
+      "version": 52,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -9008,6 +9247,10 @@
           "value": "Трансляция идёт"
         },
         {
+          "key": "VoiceChat.Topbar.Join",
+          "value": "Войти"
+        },
+        {
           "key": "VoiceChat.Status.Members",
           "forms": {
             "one_value": "%d участник",
@@ -9272,6 +9515,14 @@
         {
           "key": "ScheduledMessages",
           "value": "Запланированные сообщения"
+        },
+        {
+          "key": "Reminders",
+          "value": "Напоминания"
+        },
+        {
+          "key": "TopicProfileStatus",
+          "value": "в %s"
         },
         {
           "key": "MessageScheduleSend",
@@ -10416,6 +10667,14 @@
           "value": "Автоматически удалять сообщения для всех в начатых вами чатах через заданное время."
         },
         {
+          "key": "AutoDeleteMessages.InfoChat",
+          "value": "Автоматически удалять сообщения для всех в этом чате через заданное время."
+        },
+        {
+          "key": "AutoDeleteMessages.InfoChannel",
+          "value": "Автоматически удалять сообщения для всех в этом канале через заданное время."
+        },
+        {
           "key": "UnsavedChanges",
           "value": "Несохранённые изменения"
         },
@@ -11128,6 +11387,10 @@
           "value": "Снять выделение"
         },
         {
+          "key": "Message.Context.Selection.Copy",
+          "value": "Копировать выбранные"
+        },
+        {
           "key": "Message.Context.Selection.Delete",
           "value": "Удалить выбранные"
         },
@@ -11742,6 +12005,10 @@
           "value": "Снять выделение"
         },
         {
+          "key": "Chat.Menu.Hint",
+          "value": "Чтобы **изменить** сообщение или **ответить** на него, закройте это меню.\nЗатем нажмите рядом с сообщением."
+        },
+        {
           "key": "Chat.Send.SetReminder",
           "value": "Напомнить"
         },
@@ -12049,6 +12316,18 @@
         {
           "key": "Unblock",
           "value": "Разблокировать"
+        },
+        {
+          "key": "UserBlocked",
+          "value": "Пользователь заблокирован"
+        },
+        {
+          "key": "UserUnblocked",
+          "value": "Пользователь разблокирован"
+        },
+        {
+          "key": "AreYouSureBlockContact2",
+          "value": "Вы действительно хотите заблокировать **%1$s**?"
         },
         {
           "key": "UserRestrictions.Action",
@@ -12849,6 +13128,214 @@
         {
           "key": "FilterNoChatsToDisplayInfo",
           "value": "Сейчас в этой папке нет чатов."
+        },
+        {
+          "key": "PinMessageAlertTitle",
+          "value": "Закрепить сообщение"
+        },
+        {
+          "key": "PinMessageAlert",
+          "value": "Закрепить это сообщение в группе?"
+        },
+        {
+          "key": "PinMessageAlertChannel",
+          "value": "Закрепить это сообщение в канале?"
+        },
+        {
+          "key": "PinMessageAlertChat",
+          "value": "Закрепить это сообщение в начале чата?"
+        },
+        {
+          "key": "PinNotify",
+          "value": "Уведомить всех участников"
+        },
+        {
+          "key": "PinAlsoFor",
+          "value": "Закрепить также для %1$s"
+        },
+        {
+          "key": "PinMessage",
+          "value": "Закрепить"
+        },
+        {
+          "key": "UnpinMessageAlertTitle",
+          "value": "Открепить сообщение"
+        },
+        {
+          "key": "Chat.Confirm.Unpin",
+          "value": "Открепить это сообщение?"
+        },
+        {
+          "key": "Popup.Unpin.AllTitle",
+          "value": "Открепить все сообщения"
+        },
+        {
+          "key": "Chat.UnpinAllMessagesConfirmation",
+          "forms": {
+            "one_value": "Открепить %d сообщение в этом чате?",
+            "few_value": "Открепить все %d сообщения в этом чате?",
+            "many_value": "Открепить все %d сообщений в этом чате?",
+            "other_value": "Открепить все %d сообщения в этом чате?"
+          }
+        },
+        {
+          "key": "Popup.Unpin.HideTitle",
+          "value": "Скрыть закреплённые сообщения"
+        },
+        {
+          "key": "Popup.Unpin.HideDescription",
+          "value": "Скрыть панель закреплённых сообщений? Она не появится, пока не закрепят новое сообщение."
+        },
+        {
+          "key": "Popup.Unpin.Hide",
+          "value": "Скрыть"
+        },
+        {
+          "key": "Chat.Pinned.DontShow",
+          "value": "Скрыть закреплённые"
+        },
+        {
+          "key": "PinnedMessagesCount",
+          "forms": {
+            "one_value": "%1$d закреплённое сообщение",
+            "few_value": "%1$d закреплённых сообщения",
+            "many_value": "%1$d закреплённых сообщений",
+            "other_value": "%1$d закреплённого сообщения"
+          }
+        },
+        {
+          "key": "AudioUnknownArtist",
+          "value": "Неизвестный исполнитель"
+        },
+        {
+          "key": "AccDescr.PlaybackSpeed",
+          "value": "Скорость воспроизведения"
+        },
+        {
+          "key": "Play",
+          "value": "Воспроизвести"
+        },
+        {
+          "key": "Pause",
+          "value": "Пауза"
+        },
+        {
+          "key": "Schedule.Repeat",
+          "value": "Повторять"
+        },
+        {
+          "key": "AreYouSureDeleteFewMessagesBot",
+          "value": "Удалить эти сообщения?\nОни будут удалены только у вас."
+        },
+        {
+          "key": "AreYouSureDeleteFewMessagesMega",
+          "value": "Удалить эти сообщения для всех участников?"
+        },
+        {
+          "key": "AreYouSureDeleteSingleMessageBot",
+          "value": "Удалить это сообщение?\nОно будет удалено только у вас."
+        },
+        {
+          "key": "AreYouSureDeleteSingleMessageMega",
+          "value": "Удалить это сообщение для всех участников?"
+        },
+        {
+          "key": "BoostingGiveawayDeleteMsgText",
+          "value": "Удаление сообщения не отменит розыгрыш — победители всё равно будут выбраны **%s**.\n\nУдалённое объявление о розыгрыше восстановить нельзя."
+        },
+        {
+          "key": "BoostingGiveawayDeleteMsgTitle",
+          "value": "Удалить объявление"
+        },
+        {
+          "key": "DeleteMessagesTitle",
+          "value": "Удалить %1$s"
+        },
+        {
+          "key": "Done",
+          "value": "Готово"
+        },
+        {
+          "key": "FactCheckDeleted",
+          "value": "Проверка фактов удалена."
+        },
+        {
+          "key": "FactCheckDialog",
+          "value": "Проверка фактов"
+        },
+        {
+          "key": "FactCheckEdited",
+          "value": "Проверка фактов обновлена."
+        },
+        {
+          "key": "FwdMessageTo",
+          "value": "Сообщение переслано: %s."
+        },
+        {
+          "key": "FwdMessageToSavedMessages",
+          "value": "Сообщение переслано в **Избранное**."
+        },
+        {
+          "key": "FwdMessagesTo",
+          "value": "Сообщения пересланы: %s."
+        },
+        {
+          "key": "FwdMessagesToChats",
+          "forms": {
+            "one_value": "%d чат",
+            "few_value": "%d чата",
+            "many_value": "%d чатов",
+            "other_value": "%d чата"
+          }
+        },
+        {
+          "key": "FwdMessagesToSavedMessages",
+          "value": "Сообщения пересланы в **Избранное**."
+        },
+        {
+          "key": "Chat.Search.NextResult",
+          "value": "Следующий результат поиска"
+        },
+        {
+          "key": "Chat.Search.PreviousResult",
+          "value": "Предыдущий результат поиска"
+        },
+        {
+          "key": "Of",
+          "value": "%1$d из %2$d"
+        },
+        {
+          "key": "SearchAsChat",
+          "value": "Показать как чат"
+        },
+        {
+          "key": "SearchAsList",
+          "value": "Показать списком"
+        },
+        {
+          "key": "Search.EmptyHashtag",
+          "value": "Ничего не найдено по хэштегу «%@». Попробуйте другой."
+        },
+        {
+          "key": "Chat.SendNow.Title",
+          "value": "Отправить сообщение сейчас"
+        },
+        {
+          "key": "Chat.SendNow.TitleMultiple",
+          "value": "Отправить сообщения сейчас"
+        },
+        {
+          "key": "Chat.SendNow.Text",
+          "value": "Отправить сообщение сейчас?"
+        },
+        {
+          "key": "Chat.SendNow.TextMultiple",
+          "forms": {
+            "one_value": "Отправить %d сообщение сейчас?",
+            "few_value": "Отправить %d сообщения сейчас?",
+            "many_value": "Отправить %d сообщений сейчас?",
+            "other_value": "Отправить %d сообщения сейчас?"
+          }
         },
         {
           "key": "AccDescrEditing",

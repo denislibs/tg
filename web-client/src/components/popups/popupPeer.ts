@@ -17,9 +17,10 @@
 // `titleLangKey`, `descriptionLangKey`, `buttons`, и — с раунда правок 1,
 // см. ниже — `peerId`/аватар. Не портировано (см. комментарии по месту,
 // каждое — «нет потребителя», а не недосмотр):
-//  • `inputField`/`noTitle`/`old`/`threadId` (peer.ts:22-30, :44-124) — их
-//    не просит ни `confirmationPopup`, ни задача 3. `checkboxes` из этого же
-//    списка выбыл в раунде правок 3, см. ниже — нашёлся реальный потребитель.
+//  • `noTitle`/`old`/`threadId` (peer.ts:22-30, :44-124) — их не просит ни
+//    `confirmationPopup`, ни задача 3. `checkboxes` из этого же списка выбыл в
+//    раунде правок 3, `inputField` — в П-5 (редактор проверки фактов меню
+//    сообщения, по `peer.tsx` 812502980 :92-102, :143): нашлись потребители.
 //
 // РАУНД ПРАВОК 1: `peerId`/аватар (peer.ts:44-55) — ПОРТИРОВАН, отчёт задачи 2
 // назвал это находкой («нет потребителя» — до того, как выяснилось обратное:
@@ -62,15 +63,15 @@
 // tweb `PopupPeerButtonCallback = (e, checkboxes?: Set<LangPackKey>) => void`
 // (у нас без `MouseEvent` первым параметром — та же урезка, что была у
 // `PopupButton.callback` изначально, см. докблок `popupPeer.ts` про
-// `titleLangArgs`). `inputField`/`onlyWithCheckbox` (peer.ts:22, :29, :107-124)
-// НЕ портированы — ни один вызывающий (ни `confirmationPopup`, ни
-// `DeleteMessageDialog`) их не просит; `checkboxField.ts` объясняет, почему
+// `titleLangArgs`). `onlyWithCheckbox` (peer.ts:22, :29, :107-124)
+// НЕ портирован — ни один вызывающий его не просит; `checkboxField.ts` объясняет, почему
 // `withRipple` (peer.ts:98, безусловно для чекбоксов `PopupPeer`) тоже не
 // портирован ЦЕЛИКОМ.
 import PopupElement, { type PopupButton } from './popupElement'
 import CheckboxField from '@components/checkboxField'
 import { avatarNew, type AvatarManagers } from '@components/avatar'
 import { i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
+import type InputField from '@components/inputField'
 
 /** peer.ts:16-31, сужено до полей с потребителем в волне 1 (задача 2) + двух
  *  добавленных в задаче 3, у которых нашёлся реальный потребитель уже здесь:
@@ -107,6 +108,10 @@ export type PopupPeerOptions = {
    *  (`checkboxField.ts`). Подпись — КЛЮЧ (задача 7): раньше здесь стояла
    *  готовая строка, и вызывающий склеивал «Also delete for» с именем руками. */
   checkboxes?: { text: LangPackKey, textArgs?: FormatterArguments, checked?: boolean }[]
+  /** tweb `peer.tsx:48`, :92-102, :143 — поле ввода под описанием; кнопка
+   *  действия (первая не-«Отмена») выключена, пока поле невалидно. Потребитель —
+   *  редактор проверки фактов (`chat/contextMenu.ts::onEditFactCheckClick`). */
+  inputField?: InputField
 } & (
   | { peerId?: undefined, managers?: AvatarManagers }
   | { peerId: PeerId, managers: AvatarManagers }
@@ -154,6 +159,7 @@ export default class PopupPeer extends PopupElement {
   // то есть подкласс придёт. Поэтому поле остаётся — снос заставил бы дописать
   // его обратно на следующем же шаге.
   protected description?: HTMLParagraphElement
+  private inputField?: InputField
 
   constructor(className: string, options: PopupPeerOptions) {
     super('popup-peer' + (className ? ' ' + className : ''), { // peer.ts:37
@@ -217,6 +223,16 @@ export default class PopupPeer extends PopupElement {
 
     this.setButtons(addCancelButton(buttons)) // peer.ts:41
 
+    // peer.tsx:92-102 — кнопка, которая действует полем, ждёт валидного ввода
+    const { inputField } = options
+    if(inputField) {
+      const inputButton = this.buttons.find((button) => !button.isCancel)?.element
+      const verify = () => inputButton?.toggleAttribute('disabled', !inputField.isValid())
+      verify()
+      this.listenerSetter.add(inputField.input)('input', verify)
+      this.inputField = inputField
+    }
+
     // peer.ts:63-125 — один `DocumentFragment` на описание + чекбоксы, один
     // `this.header.after(fragment)` (peer.ts:126): порядок в DOM решает
     // порядок append НИЖЕ, а не порядок вызовов setButtons/фрагмента выше.
@@ -227,12 +243,21 @@ export default class PopupPeer extends PopupElement {
       p.append(i18n(options.descriptionLangKey, options.descriptionLangArgs)) // peer.ts:70
       fragment.append(p)
     }
+    if(inputField) { // peer.tsx:143
+      fragment.append(inputField.container)
+    }
     for(const { field } of checkboxFields) { // peer.ts:110 — `fragment.append(checkboxField.label)`
       fragment.append(field.label)
     }
     if(fragment.childNodes.length) {
       this.header.after(fragment) // peer.ts:126
     }
+  }
+
+  /** peer.tsx:95 — `onMount(() => inputField.input.focus())` */
+  public override show(animate = true): void {
+    super.show(animate)
+    this.inputField?.input.focus()
   }
 }
 
@@ -266,6 +291,8 @@ export function confirmationPopup(options: {
   /** НАШЕ расширение, не из tweb — см. докблок `PopupOptions.zIndex`
    *  (`popupElement.ts`). Потребитель — мост `ConfirmDialog.tsx` (задача 3). */
   zIndex?: number
+  /** confirmationPopup.ts:11 — поле ввода под описанием (`PopupPeerOptions.inputField`) */
+  inputField?: InputField
   /**
    * НАШЕ расширение, не из tweb — у оригинала вызывающий и попап живут в
    * одном (классовом) мире и владеют друг другом естественно; у нас
@@ -308,6 +335,7 @@ export function confirmationPopup(options: {
       descriptionLangArgs: options.descriptionLangArgs,
       buttons,
       zIndex: options.zIndex,
+      inputField: options.inputField,
       ...(options.peerId !== undefined ? { peerId: options.peerId, managers: options.managers } : { peerId: undefined }),
     })
     options.getPopup?.(popup)

@@ -529,7 +529,7 @@ func (r *fakeGroupRepo) SetPhoto(_ context.Context, chatID, mediaID int64) error
 	return nil
 }
 
-func (r *fakeGroupRepo) ListMembers(_ context.Context, chatID int64, offset, limit int) ([]domain.Member, error) {
+func (r *fakeGroupRepo) ListMembers(_ context.Context, chatID int64, _ string, offset, limit int) ([]domain.Member, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if limit <= 0 || limit > 200 {
@@ -882,12 +882,12 @@ func TestListMembers_RequiresMembership(t *testing.T) {
 	_ = fg.AddMember(context.Background(), id, 8, domain.RoleMember, 0)
 
 	// Non-member 99 → forbidden.
-	if _, err := i.ListMembers(context.Background(), id, 99, 0, 200); !errors.Is(err, domain.ErrForbidden) {
+	if _, err := i.ListMembers(context.Background(), id, 99, "", 0, 200); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("non-member want ErrForbidden, got %v", err)
 	}
 
 	// Member 8 sees the full list (creator 7 + member 8).
-	ms, err := i.ListMembers(context.Background(), id, 8, 0, 200)
+	ms, err := i.ListMembers(context.Background(), id, 8, "", 0, 200)
 	if err != nil {
 		t.Fatalf("member list: %v", err)
 	}
@@ -944,7 +944,7 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ms, _ := in.ListMembers(ctx, id, 7, 0, 100); len(ms) != 3 {
+	if ms, _ := in.ListMembers(ctx, id, 7, "", 0, 100); len(ms) != 3 {
 		t.Fatalf("members = %d; want 3", len(ms))
 	}
 	for _, uid := range []int64{7, 8, 9} {
@@ -1058,7 +1058,7 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 	if len(s.messages[id]) != svcCount {
 		t.Fatal("kick of non-member posted a service message")
 	}
-	if ms, _ := in.ListMembers(ctx, id, 7, 0, 100); len(ms) != 2 {
+	if ms, _ := in.ListMembers(ctx, id, 7, "", 0, 100); len(ms) != 2 {
 		t.Fatalf("members after leave+kick = %d; want 2", len(ms))
 	}
 }

@@ -41,8 +41,10 @@
 //    avatarNew.tsx:280-400) — подсистемы историй у ленты нет;
 //  • видео-аватарки (`loadAvatarVideoOverlay`, :147-186) — `pFlags.has_video`
 //    и размеров `photo_video`/`photo_video_full` наша модель фото не объявляет;
-//  • топики форума (`threadId` → `wrapTopicIcon`, :773-784), монофорум
-//    (:756-760, :806) — ни того, ни другого в модели нет;
+//  • монофорум (:756-760, :806) — его в модели нет. Тема форума (`threadId` →
+//    `wrapTopicIcon`, :786-796) портирована опцией `topic`: хранилища тем
+//    (`dialogsStorage.getForumTopic`) на главном потоке нет, тему приносит
+//    вызывающий — как у `PeerTitle` (`chat/peerTitle.ts`, опция `topic`);
 //  • `asAllChats` и `savedAsForum` у «Избранного» (:729-753) — «всех чатов» и
 //    настройки «Избранное как форум» у нас нет. Сама ветка «Избранного»
 //    (`isDialog` + свой пир → иконка `saved_filled`) портирована, вместе с
@@ -90,6 +92,7 @@ import type { IconName } from '@core/tgico-icons'
 import rootScope from '@lib/rootScope'
 import { MOUNT_CLASS_TO } from '@config/debug'
 import findUpClassName from '@helpers/dom/findUpClassName'
+import { wrapTopicIcon, type TopicIconSource } from '@components/topicAvatar'
 
 /** tweb avatarNew.tsx:52 — та же длительность, что у `.fade-in` в `_avatar.scss:126`. */
 const FADE_IN_DURATION = 200
@@ -133,6 +136,10 @@ export interface AvatarOptions {
   /** вместе с `isDialog`: свой пир — это «Мои заметки» (иконка `mynotes`,
    *  :736), источник сообщений «Избранного», а не само «Избранное». */
   meAsNotes?: boolean
+  /** тема форума (tweb `threadId`, :786-796) — значок темы вместо аватарки
+   *  пира; номер темы — `threadId` (уезжает в `data-thread-id`, :1077) */
+  topic?: TopicIconSource
+  threadId?: number
   middleware: Middleware
   managers: AvatarManagers
 }
@@ -190,6 +197,7 @@ class Avatar {
   private abbreviature?: Node[]
   private color?: AvatarColorName
   private isForum = false
+  private isTopic = false
 
   constructor(private readonly options: AvatarOptions) {
     // tweb :479 — дочерний scope: `render()` гасит прошлое поколение своим
@@ -202,6 +210,9 @@ class Avatar {
     node.className = `avatar avatar-like avatar-${options.size} avatar-gradient`
     if (options.peerId !== undefined) {
       node.dataset.peerId = '' + options.peerId // :1076
+    }
+    if (options.threadId) {
+      node.dataset.threadId = '' + options.threadId // :1077
     }
 
     // :1113-1119 — рендер запускается сразу, если есть чем рисовать.
@@ -261,6 +272,13 @@ class Avatar {
 
     if (peerId === undefined) {
       return false
+    }
+
+    // :786-796 — тема форума: значок темы медиа узла
+    if (this.options.topic) {
+      this.set({ isTopic: true })
+      this.setMedia(wrapTopicIcon(this.options.topic))
+      return true
     }
 
     // :735-738 — «Избранное» / «Мои заметки». `savedAsForum` — см. шапку.
@@ -414,6 +432,7 @@ class Avatar {
     icon?: IconName
     color?: AvatarColorName
     isForum?: boolean
+    isTopic?: boolean
   }): void {
     this.thumb = undefined
     this.media = undefined
@@ -423,6 +442,7 @@ class Avatar {
     this.abbreviature = state.abbreviature ? Array.from(state.abbreviature.childNodes) : undefined
     this.color = state.color
     this.isForum = !!state.isForum
+    this.isTopic = !!state.isTopic
     this.apply()
   }
 
@@ -469,6 +489,7 @@ class Avatar {
     else delete this.node.dataset.color
 
     this.node.classList.toggle('is-forum', this.isForum) // :997
+    this.node.classList.toggle('is-topic', this.isTopic) // :1028
     // :1003 — подложка и фотография стакаются только когда обе в дереве.
     this.node.classList.toggle('avatar-relative', !!this.thumb)
   }

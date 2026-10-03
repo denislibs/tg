@@ -136,7 +136,9 @@ type GroupRepo interface {
 	// UsersByIDs — карточки глазами viewerID (domain.UserReal.SeenBy): имя из
 	// его книги и pFlags.contact. viewerID 0 — без зрителя (профильные имена).
 	UsersByIDs(ctx context.Context, viewerID int64, ids []int64) ([]domain.UserReal, error)
-	ListMembers(ctx context.Context, chatID int64, offset, limit int) ([]domain.Member, error)
+	// ListMembers — страница участников; query — фильтр `channelParticipantsSearch`
+	// (префикс имени профиля или @username), пустой — все.
+	ListMembers(ctx context.Context, chatID int64, query string, offset, limit int) ([]domain.Member, error)
 	// AdminIDs — id владельца и админов чата (role in creator/admin), для адресной
 	// рассылки (напр. новые предложенные посты уходят только тем, кто их решает).
 	AdminIDs(ctx context.Context, chatID int64) ([]int64, error)

@@ -24,7 +24,6 @@ vi.mock('@helpers/clipboard', () => ({
 
 import ChatContextMenu, {
   type ContextMenuManagers,
-  type ContextMenuPopups,
 } from './contextMenu'
 import type { SelectionBubbles } from './selection'
 import type Chat from './chat'
@@ -94,19 +93,11 @@ const makeManagers = () => ({
     votePoll: vi.fn().mockResolvedValue(undefined),
     closePoll: vi.fn().mockResolvedValue(undefined),
     viewers: vi.fn().mockResolvedValue([]),
+    setFactCheck: vi.fn().mockResolvedValue(undefined),
+    removeFactCheck: vi.fn().mockResolvedValue(undefined),
   },
   chats: { getReadDate: vi.fn().mockResolvedValue(null) },
 } satisfies ContextMenuManagers)
-
-const makePopups = () => ({
-  showPinMessage: vi.fn(),
-  showDeleteMessages: vi.fn(),
-  showForward: vi.fn(),
-  showMessageReport: vi.fn(),
-  showReactedList: vi.fn(),
-  showStatistics: vi.fn(),
-  showFactCheckEditor: vi.fn(),
-} satisfies ContextMenuPopups)
 
 function makeChat(): Chat {
   const chat = createTestChat({ peerId: PEER, messagesStorageKey: KEY })
@@ -158,12 +149,12 @@ describe('копирование нескольких сообщений — м�
     chat.selection.toggleByElement(first.bubble)
     chat.selection.toggleByElement(second.bubble)
 
-    const menu = new ChatContextMenu(chat, makeManagers(), makePopups())
+    const menu = new ChatContextMenu(chat, makeManagers())
     menu.attachTo(container)
 
     rightClick(first.content)
     await flush()
-    clickItem('Copy')
+    clickItem('Copy selected')
 
     expect(copied).toHaveLength(1)
     // Именно так, и никак иначе: `04.` — ведущий ноль дня, `.06.` — месяц
@@ -179,7 +170,7 @@ describe('копирование нескольких сообщений — м�
     const { bubble, content } = makeBubble(1)
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat(), makeManagers(), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeManagers())
     menu.attachTo(container)
 
     rightClick(content)

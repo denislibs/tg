@@ -1,0 +1,22 @@
+// Выдержка из tweb `src/scss/base.scss:2438-2455` — иконка с наложенной поверх
+// (`components/icon.ts::OverlayedIcon`) и сдвиг цифры у иконки автоудаления
+// (`components/autoDeleteIcon.ts`). Целиком base.scss не портируем — та же причина,
+// что у `_selectorBase.scss`. Скопировано дословно.
+.overlayed-icon {
+  position: relative;
+  display: inline-flex;
+
+  &__floating-icon {
+    --original-transform: translate(-50%, -50%);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: var(--original-transform);
+  }
+}
+
+.auto-delete-icon {
+  &--shifted {
+    transform: var(--original-transform) translateX(1px);
+  }
+}

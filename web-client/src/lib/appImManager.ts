@@ -8,7 +8,8 @@
 //         поля, синглтон (`:3989-3991`);
 //  J    — `selectTab` (`:3137-3197`), `updateColumnAccessibility` (`:3203-3208`), стек
 //         чатов: `createNewChat` `:3219`, `spliceChats` `:3233-3290`, `setPeer` `:3292-3390`,
-//         `setInnerPeer` `:3392-3434`, `chatsSelectTab` `:2766-2805`, `isSamePeer` `:3809`;
+//         `setInnerPeer` `:3392-3434`, `openScheduled` `:3436`, `chatsSelectTab` `:2766-2805`,
+//         `isSamePeer` `:3809`;
 //  G    — `overrideHash` `:3127`, `onHashChange` `:1912-2031`, `open`/`op` `:2050-2157`,
 //         `openUsername` `:2165`, `openThread` `:2186`, `openUrl` `:1897`;
 //  I    — `setCurrentBackground`/`setBackground`/`applyCurrentTheme` `:2607-2713`,
@@ -32,7 +33,7 @@
 //     `appMediaPlaybackController.construct` (у нас модуль без конструктора),
 //     `idleController` → `updateStatus`/`goOffline` (Б-14), предкэш обоев
 //     `SETTINGS_INIT.themes` (наш фон резолвит обои сам), `chatTips` (Б-13),
-//     `join_chat_webview_decision`/звонки/`topbarCall`/`chatAudio` (П-4, П-5),
+//     `join_chat_webview_decision`/звонки/`topbarCall` (П-4); `chatAudio` — портирован (П-5),
 //     `peer_typings` (эмодзи-интеракций нет), `peer_title_edit` (события нет),
 //     `message_error` слоумода (П-6), `ephemeral_*`/`service_notification`/…
 //     (Б-16), `singleInstance`/t.me (Б-17), хоткеи/копирование/autologin/цвета
@@ -102,6 +103,7 @@ import animationIntersector from '@components/animationIntersector'
 import appChatBackground, { type AppChatBackground } from '@components/chat/bubbles/chatBackground.solid'
 import { ChatType } from '@components/chat/chatType'
 import Chat from '@components/chat/chat'
+import createChatAudio, { type ChatAudioController } from '@components/chat/audio.solid'
 import { splitFullMid } from '@components/chat/bubbles'
 import { startOutgoing } from '@core/calls/callEngine'
 import { getUserTitle } from '@core/peers/getPeerTitle'
@@ -319,9 +321,11 @@ export type ChatSetPeerOptions = {
 }
 
 /** tweb `:148-165` — расхождение 6 шапки. */
+/** tweb `:148-165`: позиция ленты и/или подсказка плашки закрепа (`pinnedMessages`). */
 export type ChatSavedPosition = {
-  mids: number[],
-  top: number
+  mids?: number[],
+  top?: number,
+  pinnedMessages?: { mid: number, index: number, count: number }
 }
 
 /** tweb `:204-207` */
@@ -356,6 +360,8 @@ export class AppImManager extends EventListenerBase<{
   private tabId: APP_TABS | undefined
 
   public chats: Chat[] = []
+  /** tweb `:290` */
+  public chatAudio?: ChatAudioController
   /** tweb `:292`, `:846` */
   private chatPositions: { [key: string]: ChatSavedPosition } = {}
   private prevTab: HTMLElement | undefined
@@ -444,6 +450,10 @@ export class AppImManager extends EventListenerBase<{
 
       this.overrideHash(peerId)
     })
+
+    // `:854-855` — плашка аудиоплеера над колонкой (П-5, Б-22)
+    this.chatAudio = createChatAudio(this, managers)
+    this.columnEl.append(this.chatAudio.container)
 
     // `:630` и автоблокировка (`lib/mainWorker/useAutoLock.ts` у tweb — в воркере)
     useLockScreenShortcut()
@@ -661,6 +671,7 @@ export class AppImManager extends EventListenerBase<{
     const key = chat.peerId + (chat.threadId ? '_' + chat.threadId : '')
 
     const chatPositions = this.chatPositions
+    const pinnedMessages = chat.topbar?.pinnedMessage?.pinnedMessages
     const shouldSavePosition =
       !(chatBubbles.scrollable.getDistanceToEnd() <= 16 && chatBubbles.scrollable.loadedAll.bottom) &&
       chatBubbles.getRenderedLength() &&
@@ -672,8 +683,14 @@ export class AppImManager extends EventListenerBase<{
       const position: ChatSavedPosition = {
         mids: chatBubbles.getRenderedHistory('desc', true).map((fullMid) => splitFullMid(fullMid).mid),
         top: chatBubbles.scrollable.scrollPosition,
+        pinnedMessages,
       }
       chatPositions[key] = position
+    } else if(pinnedMessages) {
+      // Position itself isn't worth restoring, but the pinned hint is —
+      // keep it so the next prepareInitial paints the plate with the
+      // real count/index instead of the fullPeer fallback (count=1).
+      chatPositions[key] = { pinnedMessages }
     } else {
       delete chatPositions[key]
     }
@@ -1014,6 +1031,14 @@ export class AppImManager extends EventListenerBase<{
     this.dispatchEvent('chat_changing', { from: oldChat, to: chat })
 
     return this.setPeer(options)
+  }
+
+  /** tweb `:3436-3441` — лента отложенных пира (`ChatType.Scheduled`) поверх чата */
+  public openScheduled(peerId: PeerId) {
+    void this.setInnerPeer({
+      peerId,
+      type: ChatType.Scheduled,
+    })
   }
 
   /** tweb `:3809-3816` */
