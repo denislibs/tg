@@ -137,9 +137,8 @@ export default function showSharedFolderInvitePopup(options: {
   const onConfirm = async() => {
     await managers.folders.joinInvite(slug, [...selector.selected] as PeerId[])
     // расхождение 4
-    void managers.dialogs.refresh()
-      .then(() => loadFolders(managers, { overwrite: true }))
-      .catch(() => { /* список догонит следующий refresh */ })
+    // список догонит следующий refresh
+    void managers.dialogs.refresh().then(() => loadFolders(managers, { overwrite: true })).catch(() => {})
   }
 
   selector.addInitial(peerIds)
