@@ -24,7 +24,7 @@ import Text from '../../shared/ui/Text'
 import classNames from '../../shared/lib/classNames'
 import TgIcon, { type IconName } from '../TgIcon'
 import ConfirmDialog from '../settings/ConfirmDialog'
-import { usePortalContainer } from '../../core/pip'
+import { usePortalContainer } from '@shared/react/usePortalContainer'
 import { useT } from '../../i18n'
 import {
   ADJUSTMENTS, ASPECT_PRESETS, CROP_HANDLES, ENHANCE_DEFAULTS,

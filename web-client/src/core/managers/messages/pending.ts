@@ -823,5 +823,19 @@ export function newPendingMethods(ctx: PendingCtx) {
     hasPending(clientMsgId: string): boolean {
       return pendingByClientId.has(clientMsgId)
     },
+
+    /** Порт tweb `hasOutgoingMessage` (appMessagesManager.ts:10047-10055): есть ли у
+     *  пира неотправленное — в пути или с ошибкой (регистрация переживает ошибку, как
+     *  у оригинала). Читатель — подсказка медленного режима
+     *  (`chat/showSlowModeTooltipIfNeeded.ts`). */
+    hasOutgoingMessage(peerId: number): boolean {
+      for (const d of pendingByClientId.values()) {
+        if (d.peerId === peerId) {
+          return true
+        }
+      }
+
+      return false
+    },
   }
 }

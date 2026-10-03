@@ -4,15 +4,11 @@
 // Воркерная половина — `core/passcode/passcodeWorker.ts`.
 import type { SuperMessagePort } from '../rpc/superMessagePort'
 import { startClient } from './bootstrap'
-import { PASSCODE_CHANNEL, type PasscodeEvent, type PasscodeTask } from '../core/passcode/protocol'
+import { PASSCODE_CHANNEL, RELOAD_CHANNEL, type PasscodeEvent, type PasscodeTask } from '../core/passcode/protocol'
 import DeferredIsUsingPasscode from '@lib/passcode/deferredIsUsingPasscode'
 import EncryptionKeyStore from '@lib/passcode/keyStore'
 import { sendPasscodeStateToServiceWorker } from './passcodeServiceWorker'
 import { useSettingsStore } from '../settings'
-
-/** tweb `mainBroadcastChannel.emitVoid('reload')` — достаёт и вкладки со своим
- *  воркером (`?noSharedWorker=1`), которых воркерная рассылка не видит. */
-const RELOAD_CHANNEL = 'msgr-passcode-reload'
 
 export function invokePasscode<R = void>(task: PasscodeTask): Promise<R> {
   return startClient().smp.invoke<R>(PASSCODE_CHANNEL, task)
@@ -53,6 +49,22 @@ export function installPasscodeListener(smp: SuperMessagePort, deps: PasscodeLis
   if(typeof BroadcastChannel !== 'undefined') {
     new BroadcastChannel(RELOAD_CHANNEL).onmessage = () => { location.reload() }
   }
+
+  // Настройки автоблокировки — воркеру (расхождение 1 `lib/mainWorker/useAutoLock.ts`:
+  // у tweb он читает `settings.passcode` из общего хранилища сам).
+  const sendAutoLockSettings = () => {
+    const { passcodeEnabled, passcodeAutoLockMins } = useSettingsStore.getState()
+    smp.invoke(PASSCODE_CHANNEL, {
+      method: 'setAutoLockSettings',
+      payload: { enabled: passcodeEnabled, autoLockTimeoutMins: passcodeAutoLockMins || null },
+    } satisfies PasscodeTask).catch(() => {})
+  }
+  useSettingsStore.subscribe((state, prev) => {
+    if(state.passcodeEnabled !== prev.passcodeEnabled || state.passcodeAutoLockMins !== prev.passcodeAutoLockMins) {
+      sendAutoLockSettings()
+    }
+  })
+  sendAutoLockSettings()
 }
 
 /** tweb `apiManagerProxy.lock()`: воркер завершается вместе с ключом, все

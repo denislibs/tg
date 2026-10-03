@@ -26,8 +26,9 @@ import { getThreadRootId, mapMyMessage, type MyMessage, type MessageReal, type M
 import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
 import pause from '@helpers/schedulers/pause'
 import { getPeerId, type Peer } from '../peers/peerId'
-import type { UserReal, Chat } from '../peers/peer'
-import { generateMessageId, getServerMessageId } from '../history/messageId'
+import type { UserReal, User, Chat } from '../peers/peer'
+import canEditMessage from '../messages/canEditMessage'
+import { generateMessageId, getServerMessageId, isLocalMessageId } from '../history/messageId'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, PaidMediaUnlockEvt, SendMessageAction } from '../realtime/events'
 import type { SendArgs as WireSendArgs } from '../realtime/connectionManager'
 import type { UploadArgs } from './mediaManager'
@@ -182,6 +183,10 @@ export interface MessagesDeps {
    *  Опционален по той же причине, что и остальные инъекции: юнит-тесты
    *  кэш-методов собирают менеджер одним `rest`. */
   isBroadcastChat?: (peerId: number) => boolean
+  /** Порт `appPeersManager.getPeer` — карточка из кэша `peersManager` для
+   *  `canEditMessage` (`getFirstMessageToEdit`, правка по ↑). Опционален по той же
+   *  причине, что и остальные инъекции. */
+  getPeer?: (peerId: PeerId) => User | Chat | undefined
   /** Эхо операций остальным вкладкам для RPC-путей, у которых нет WS-эха с тем же
    * эффектом (напр. deleteMessage: вкладка-инициатор чинит своё окно сама через
    * applyDelete, а остальным вкладкам операции нужно разослать отсюда). Опционален —
@@ -208,7 +213,7 @@ export interface MessagesDeps {
   onMessagesDeleted?: (peerId: number, deleted: MyMessage[]) => void
 }
 
-export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium, meReady, isBroadcastChat, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers, onMessagesDeleted }: MessagesDeps) {
+export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium, meReady, isBroadcastChat, getPeer, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers, onMessagesDeleted }: MessagesDeps) {
   // ── Граница маппинга ────────────────────────────────────────────────────────
   // `pFlags.out` производит СЕРВЕР (решение Р7 разбора отменено): после порта у
   // сообщения от лица канала автором на проводе становится сам канал, и прежней
@@ -735,6 +740,72 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     },
 
     /**
+     * Порт `appMessagesManager.getFirstMessageToEdit` (tweb :7728-7792) — сообщение для
+     * правки по ↑ или для ответа по Ctrl/Cmd+↑↓ (`appImManager` блок F, `:1758-1846`).
+     * Ищется в самом свежем срезе окна, только если низ истории загружен; альбом
+     * отвечает своим первым сообщением (`getGroupsFirstMessage`, :6901). Права —
+     * общий `core/messages/canEditMessage.ts`, карточки — кэш `peersManager`.
+     */
+    async getFirstMessageToEdit({ peerId, threadId, forReply, mid, up }: {
+      peerId: PeerId,
+      threadId?: number,
+      forReply?: boolean,
+      mid?: number,
+      up?: boolean,
+    }): Promise<MyMessage | undefined> {
+      const slice = slices.get(hkey(peerId, threadId))?.first
+      if (!slice?.isEnd(SliceEnd.Bottom)) {
+        return
+      }
+
+      const getGroupsFirstMessage = (message: MyMessage | undefined) => {
+        const groupedId = message?._ === 'message' ? message.grouped_id : undefined
+        if (!message || !groupedId) return message
+        let first = message
+        for (const m of msgsFor(peerId).values()) {
+          if (m._ === 'message' && m.grouped_id === groupedId && m.id < first.id) first = m
+        }
+        return first
+      }
+
+      let mids = [...slice]
+      if (mid) {
+        const index = mids.indexOf(mid)
+        if (index === -1) {
+          return
+        }
+
+        if (up) {
+          mids = mids.slice(index + 1)
+        } else {
+          mids = mids.slice(0, index).reverse()
+        }
+
+        mids = mids.filter((mid) => {
+          const message = readMsg(peerId, mid)
+          return getGroupsFirstMessage(message) === message
+        })
+      }
+
+      const myId = getMeId?.() ?? 0
+      for (const mid of mids) {
+        const message = readMsg(peerId, mid)
+        if (!message) continue
+        const good = forReply ?
+          !isLocalMessageId(message.id) :
+          (myId === peerId ? message.fromId === myId : !!message.pFlags.out)
+
+        if (good) {
+          if (forReply || canEditMessage(message, 'text', { myId, getPeer: (id) => getPeer?.(id) })) {
+            return getGroupsFirstMessage(message)
+          }
+        }
+      }
+
+      return undefined
+    },
+
+    /**
      * Порт `appMessagesManager.fetchMessageReplyTo` (tweb :13826-13880) —
      * оригинал ответа `mid` чата `peerId`, которого у спросившего нет.
      *
@@ -1153,9 +1224,14 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     //
     // whenOnline (tweb Schedule.SendWhenOnline): очередь ждёт появления
     // собеседника в сети — send_at игнорируется бэком (только приватный чат).
-    async scheduleMessage(peerId: number, p: { text: string; entities?: MessageEntity[]; sendAt: number; replyToId?: number; whenOnline?: boolean }): Promise<MyMessage> {
+    //
+    // `type`/`mediaId` — отложенный стикер или сохранённая гифка (tweb
+    // `sendMessageWithDocument` под `scheduleDate`): ручка берёт `media_id` готового
+    // файла, как кадр `send_message`.
+    async scheduleMessage(peerId: number, p: { text: string; entities?: MessageEntity[]; sendAt: number; replyToId?: number; whenOnline?: boolean; type?: 'text' | 'sticker' | 'video'; mediaId?: number }): Promise<MyMessage> {
       const r = await rest.post<RawMyMessage>(`/chats/${peerId}/scheduled`, {
-        type: 'text', text: p.text, entities: p.entities ?? null,
+        type: p.type ?? 'text', text: p.text, entities: p.entities ?? null,
+        media_id: p.mediaId ?? null,
         reply_to_id: p.replyToId != null ? getServerMessageId(p.replyToId) : null, send_at: p.sendAt,
         when_online: p.whenOnline ?? false,
       })
@@ -1178,9 +1254,16 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     },
     // Перепланировать (tweb MessageScheduleEditTime): сменить время отправки.
     // Сброс when_online делает бэк (появляется конкретная дата).
+    // Лента отложенных узнаёт о новом времени теми же событиями владельца, что и о
+    // появлении/удалении (`scheduled_delete` + `scheduled_new`): у tweb правку
+    // приносит `updateEditMessage` отложенного, а у нас кадра правки отложенного нет —
+    // бабл переезжает на новое место по дате, как у оригинала.
     async editScheduled(peerId: number, id: number, sendAt: number): Promise<MyMessage> {
       const r = await rest.patch<RawMyMessage>(`/chats/${peerId}/scheduled/${getServerMessageId(id)}`, { send_at: sendAt })
-      return mapNet(r)
+      const message = await mapNet(r)
+      broadcast?.('scheduled_delete', { peerId, mids: [id] })
+      broadcast?.('scheduled_new', message)
+      return message
     },
     // tweb `sendScheduledMessages` (`:12420`, `messages.sendScheduledMessages`):
     // отправить немедленно. Само сообщение в окно истории кладёт ВЕЕР сервера

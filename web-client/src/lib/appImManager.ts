@@ -14,9 +14,15 @@
 //         `openUsername` `:2165`, `openThread` `:2186`, `openUrl` `:1897`;
 //  I    — `setCurrentBackground`/`setBackground`/`applyCurrentTheme` `:2607-2713`,
 //         `setSettings` `:2715-2762`;
-//  C    — `construct` (`:324-1018`) в объёме предметов, которые у нас есть.
-// Статус набора (`getTypingElement`/`getPeerTyping`, блок L) — функции модуля ниже
-// класса, как было до К-2 (их зовёт строка чатлиста); в класс их переносит П-4.
+//  C    — `construct` (`:324-1018`) в объёме предметов, которые у нас есть;
+//  L    — статус и набор (`:3454-3807`, пачка П-4): `getTypingElement`, `getPeerTyping`,
+//         `getChatStatus`/`getUserStatus`/`getPeerStatus`/`setPeerStatus`, «N онлайн»
+//         (`appProfileManager.getOnlines`), расхождения Н1–Н6 — у таблицы ключей ниже;
+//  H    — звонки (`:2227-2605`, пачка П-4): `callUser`, `discardCurrentCall` и
+//         подтверждения, `joinGroupCall`, `joinLiveStream`, очередь переходов
+//         (`lib/calls/callTransitionCoordinator.ts`), расхождения З1–З5 — у секции.
+//  K    — `init` `:2807`, `attachDragAndDropListeners` `:2815-3035`, `canDrag` `:3037`,
+//         `onDocumentPaste` `:3052-3125` (П-4, Б-24); зона — `components/chat/dragAndDrop.ts`.
 //
 // Инстанс стека — класс `Chat` (`components/chat/chat.ts`, шаг К-3): `createNewChat`
 // строит `new Chat(this, managers, true)` (tweb `:3220`). Позицию ленты (`chatPositions`,
@@ -25,19 +31,18 @@
 // ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
 //  1. `columnEl` берётся в `construct`, а не инициализатором поля: модуль
 //     импортируется тестами и соседями до того, как в документе есть `#column-center`.
-//  2. Ссылка «пропустить к чату» и имена ориентиров (`attachSkipToContent`,
-//     `setStaticLandmarkLabels`, `:349-352`, `:3199-3201`) не портированы: ключей
-//     `AccDescr.*` в нашем лангпаке нет — бэклог Б-47. `inert` колонок
-//     (`updateColumnAccessibility`) — портирован.
-//  3. Нет предмета у подписок `construct`: `internalLinkProcessor` (Б-8),
-//     `appMediaPlaybackController.construct` (у нас модуль без конструктора),
+//  2. (снято П-4: ссылка «пропустить к чату» и имена ориентиров — `attachSkipToContent`,
+//     `setStaticLandmarkLabels`, `:349-352`, `:3199-3201`, Б-47.)
+//  3. Нет предмета у подписок `construct`: `appMediaPlaybackController.construct` (у нас модуль без конструктора),
 //     `idleController` → `updateStatus`/`goOffline` (Б-14), предкэш обоев
-//     `SETTINGS_INIT.themes` (наш фон резолвит обои сам), `chatTips` (Б-13),
-//     `join_chat_webview_decision`/звонки/`topbarCall` (П-4); `chatAudio` — портирован (П-5),
+//     `SETTINGS_INIT.themes` (наш фон резолвит обои сам),
+//     `join_chat_webview_decision` (П-4), `topbarCall` (П-5), `chatAudio` — портирован (П-5); подписки
+//     звонков (`:880-947`): попап входящего — остров `CallOverlay` по `callStore`,
+//     `acceptCallOverride` и `incompatible` — бэклог Б-95,
 //     `peer_typings` (эмодзи-интеракций нет), `peer_title_edit` (события нет),
 //     `message_error` слоумода (П-6), `ephemeral_*`/`service_notification`/…
-//     (Б-16), `singleInstance`/t.me (Б-17), хоткеи/копирование/autologin/цвета
-//     пиров/шаринг/drag&drop (Б-9, Б-24, П-4), `savedReactionTags`.
+//     (Б-16), `singleInstance`/t.me (Б-17), autologin/цвета
+//     пиров/шаринг (П-4), `savedReactionTags`.
 //  4. `useHeavyAnimationCheck` (`:436-442`) не нужен здесь: `animationIntersector`
 //     подписан на тяжёлую анимацию сам (`components/animationIntersector.ts:177`).
 //  5. `appChatBackground.attach` и первый `setBackground` делает `client/boot.ts`
@@ -52,15 +57,12 @@
 //     автоплей/зацикливание стикеров и тема по выбору (бывший `client/liteModeSettings.ts`
 //     и `useThemeToggle`). `chatsSelectTabDebounced` (закреп, очередь загрузок) — нет
 //     предмета до К-3.
-//  8. Хэш: `tgaddr` и чужие действия уходят в `openUrl` → `openSearchUrl`
-//     (исполнителя внутренних ссылок нет, Б-8); `story`/`community`/`call` в
-//     `#/im` — нет предметов. `op()` без `migrated_to` и ботфорума. В канал, где мы не состоим, `op()` ВСТУПАЕТ: наш
+//  8. Хэш: `story`/`community`/`call` в `#/im` — нет предметов. `op()` без `migrated_to` и ботфорума. В канал, где мы не состоим, `op()` ВСТУПАЕТ: наш
 //     `GET /chats/{id}/history` не-участнику отдаёт 403 (перенесено из прежнего
 //     `useUrlSync.applyHash`, долг — `docs/readiness/port-divergences.md`).
 //  9. `setPeer` без `getPeerMigratedTo` и `min`-пиров (`:3293-3317`) — в нашей
 //     модели их нет; `spliceChats` не закрывает `AppPrivateSearchTab` (вкладки нет).
-// 10. `callUser` (`:2227`) — без `callTransitions`/`phone_calls_private`: наш движок
-//     звонков (`core/calls/callEngine.ts::startOutgoing`) берёт карточку собеседника.
+// 10. Звонки (блок H) — расхождения З1–З5 у секции `── H. Звонки ──`.
 // 11. `notificationBuild` (`:805-822`) — `client/uiNotifications.ts` спрашивает
 //     `appImManager.chat` сам; звук отправки (`:857-877`) — `soundSubscriber.ts`.
 // 12. Клик по системному уведомлению (`sw.js` → `open-chat`) открывает чат здесь
@@ -69,10 +71,38 @@
 //     модуль класса колонки тянет за собой поиск и регистрирует custom elements при
 //     импорте, а `appImManager` импортируют и лёгкие подписчики (`uiNotifications`,
 //     `soundSubscriber`). Узел тот же (`sidebarLeft/index.ts`, `super({sidebarEl})`).
+// K-1. `init` (`:2807-2813`) — без `MarkupTooltip.handleSelection` и
+//     `showDatePickerPopup`: тултип разметки — бэклог Б-33.
+// K-2. Права по видам вложений (`canSendNewMedia`, `send_photos`/`send_videos`/
+//     `send_docs`) не сужают зоны: гранулярных прав у нас нет (`core/peers/rights.ts`),
+//     а с `onlyVisible: true` оригинал и сам отвечает «можно» на все. Отладочный лог
+//     (`this.log.bindPrefix('dragAndDrop')`, `debug = false`) снят.
+// K-3. Нет предметов у `ChatInput`: правка с заменой медиа (`editMessage`,
+//     `canUploadAsWhenEditing`, Б-38), эфемерный композер (`isEphemeralComposerMode`,
+//     `getEphemeralSendingSnapshot`, тост `Ephemeral.SingleAttachment`), тултип
+//     медленного режима (`showSlowModeTooltipIfNeeded`, Б-37), монофорум (`canPaste`) —
+//     бэклог Б-82. `.mov` считается медиа без `isConvertibleMov` (конвертера в mp4
+//     у нас нет: файл уходит видео как есть).
+// K-4. Попап медиа — мост `components/popups/newMedia.ts` (React `SendMediaPopup`
+//     через `popupStore`, ВРЕМЕННО до порта newMedia.tsx, решение Р-2). Зон сброса внутри открытого попапа (`mediaDropsContainer`,
+//     `appendDrops`, `Preview.Dragging.AddItems`) нет — бэклог Б-83; вставка в открытый
+//     попап дописывает файлы (`addFiles`).
+// 14. Блок F (`attachKeydownListener` `:1703-1852`, `attachCopyListener` `:1854-1895`):
+//     F1. Правка последнего и ответ на соседнее по ↑/Ctrl+↑↓ (`:1758-1846`, Б-80, П-6) —
+//         `messages.getFirstMessageToEdit` воркера; обработчик синхронный, а ожидание —
+//         асинхронный хвост (у tweb весь `onKeyDown` — `async`): `cancelEvent` до него.
+//         Без `lastMsgPeerId` у `setMessageId` — окна по чужому пиру у ленты нет.
+//     F2. `chat.input.recording` (`:1841`) — записи голоса у класса `ChatInput` нет
+//         (Б-30): условие «не во время записи» снято.
+//     F3. `appDialogsManager.contextMenu?.hasAddToFolderOpen()` (`:1767`) — только в
+//         ветке правки (F1).
+//     F4. Защита копирования инертна, пока у баблов нет класса `no-forwards` — Б-81.
+//     Автоблокировка (`:630` рядом — только сочетание) — как у tweb, в воркере
+//     (`lib/mainWorker/useAutoLock.ts`, проводка `core/workerCore.ts`).
 import PeerTitle, { type PeerTitleManagers } from '@components/chat/peerTitle'
 import { generateMessageId } from '@core/history/messageId'
 import type { Middleware } from '@helpers/middleware'
-import { i18n, type FormatterArguments } from '@lib/langPack'
+import I18n, { i18n, type FormatterArguments } from '@lib/langPack'
 import type { LangPackKey } from '@/lang'
 import type { SendMessageAction } from '@core/realtime/events'
 import { cachedChat, cachedPeer, cachedUser } from '@core/peerCache'
@@ -94,18 +124,33 @@ import mediaSizes, { ScreenSize } from '@core/dom/mediaSizes'
 import appNavigationController, { USE_NAVIGATION_API } from '@core/navigation/appNavigationController'
 import { isPeerId, NULL_PEER_ID } from '@core/peers/peerId'
 import { peerKey, type Chat as MTChat, type User } from '@core/peers/peer'
-import { isForum } from '@core/peers/predicates'
+import { isBroadcast, isForum } from '@core/peers/predicates'
 import { setTheme } from '@core/theme/themeController'
-import { useAutoLock } from '@core/hooks/useAutoLock'
-import { useLockScreenShortcut } from '@core/hooks/useLockScreenShortcut'
-import { openSearchUrl } from '@core/hooks/openSearchUrl'
+import internalLinkProcessor from '@lib/internalLinkProcessor'
+import { getAnchorListener } from '@helpers/addAnchorListener'
+import { wrapUrl } from '@lib/richtext/url'
+import { openWebApp } from '@core/webapp'
 import animationIntersector from '@components/animationIntersector'
 import appChatBackground, { type AppChatBackground } from '@components/chat/bubbles/chatBackground.solid'
 import { ChatType } from '@components/chat/chatType'
 import Chat from '@components/chat/chat'
 import createChatAudio, { type ChatAudioController } from '@components/chat/audio.solid'
 import { splitFullMid } from '@components/chat/bubbles'
-import { startOutgoing } from '@core/calls/callEngine'
+import { hangup, startOutgoing } from '@core/calls/callEngine'
+import { joinGroupCall as joinGroupCallEngine, leaveGroupCall } from '@core/calls/groupCallEngine'
+import { leaveLivestream, watchLivestream } from '@core/calls/livestreamEngine'
+import callTransitionCoordinator from '@lib/calls/callTransitionCoordinator'
+import type { CallType } from '@lib/calls/types'
+import type { AckedResult } from '@lib/twebMessagePort'
+import { useCallStore } from '@stores/callStore'
+import { useGroupCallStore } from '@stores/groupCallStore'
+import { useLivestreamStore } from '@stores/livestreamStore'
+import { confirmationPopup } from '@components/popups/popupPeer'
+import { getChatStatusString, getParticipantsCount } from '@components/wrappers/getChatMembersString'
+import { getUserStatusString } from '@core/presence'
+import { hasRights as hasChatRights } from '@core/peers/rights'
+import replaceContent from '@helpers/dom/replaceContent'
+import { getMiddleware } from '@helpers/middleware'
 import { getUserTitle } from '@core/peers/getPeerTitle'
 import { getPeerPhotoId } from '@core/peers/peer'
 import { gradientFor } from '@core/dialogToChat'
@@ -115,58 +160,55 @@ import { toast, toastNew } from '@components/toast'
 import rootScope from '@lib/rootScope'
 import { useSettingsStore } from '@/settings'
 import { resolvePreset } from '@/theme'
+// блок K — drag&drop и вставка файлов
+import ChatDragAndDrop from '@components/chat/dragAndDrop'
+import showNewMediaPopup, { getCurrentNewMediaPopup, type WillAttachType } from '@components/popups/newMedia'
+import { bindActiveWindowListener, getOverlayRoot } from '@helpers/appWindow'
+import overlayCounter from '@helpers/overlayCounter'
+import cancelEvent from '@helpers/dom/cancelEvent'
+import findUpClassName from '@helpers/dom/findUpClassName'
+import partition from '@helpers/array/partition'
+import getFileMimeType from '@helpers/files/getFileMimeType'
+import getFilesFromEvent from '@helpers/files/getFilesFromEvent'
+import { setTransition } from '@core/dom/setTransition'
+import MEDIA_MIME_TYPES_SUPPORTED from '@environment/mediaMimeTypesSupport'
+// блок F (хоткеи, копирование, ориентиры) и сочетание блокировки
+import useLockScreenShortcut from '@lib/appManagers/utils/useLockScreenShortcut'
+import { attachSkipToContent, setLandmarkLabels } from '@helpers/dom/appLandmarks'
+import { shouldPreserveKeyboardFocus } from '@helpers/dom/isKeyboardControl'
+import isTargetAnInput from '@helpers/dom/isTargetAnInput'
+import getSelectedNodes from '@helpers/dom/getSelectedNodes'
+import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 
-// ═══ СТАТУС НАБОРА (блок L, `:3454-3675`) ═══════════════════════════════════
+// ═══ СТАТУС И НАБОР (блок L, `:3454-3816`) — методы класса ниже ═════════════
 //
-// Расхождения статуса набора с оригиналом:
+// Расхождения блока L с оригиналом:
 //  Н1. Набор пира — синхронно из зеркала `chatsStore.typing` (мост чтения п. 2 плана
 //      волны 7), а не `appProfileManager.getPeerTypings`; срок жизни записи ведёт
 //      проектор (`client/realtime/storeProjection.ts`, `TYPING_TTL`). Бот — по
-//      `pFlags.bot` карточки зеркала (`appUsersManager.isBot`).
+//      `pFlags.bot` карточки зеркала (`appUsersManager.isBot`). Поэтому
+//      `getPeerTyping` синхронен, а не `async`.
 //  Н2. Таблица ключей — только действия, которые производит наш клиент
 //      (`core/realtime/events.ts::SendMessageAction`): игры, стикеры, кружки и
 //      эмодзи-интеракции на проводе не бывают, их ключей и веток
-//      (`peer-typing-choosing-sticker`, `peer-typing-flex`) нет.
+//      (`peer-typing-choosing-sticker`, `peer-typing-flex`) нет; нет и
+//      `setChoosingStickerTyping` (`:3805`).
 //  Н3. Имя печатающего — узел нашего `PeerTitle` (синхронный, сам перерисуется,
-//      когда карточка доедет); ему нужны зона и менеджеры — они приходят опцией.
-
-/** tweb `:3454-3506` без веток стикера и эмодзи (Н2). */
-export function getTypingElement(action: SendMessageAction) {
-  const el = document.createElement('span')
-  let c = 'peer-typing'
-  el.classList.add(c)
-  el.dataset.action = action._
-  switch(action._) {
-    case 'sendMessageTypingAction': {
-      c += '-text'
-      for(let i = 0; i < 3; ++i) {
-        const cc = c + '-dot'
-        const dot = document.createElement('span')
-        dot.className = cc + (i === 0 ? ' ' + cc + '-first' : (i === 2 ? ' ' + cc + '-last' : ''))
-        el.append(dot)
-      }
-      break
-    }
-
-    case 'sendMessageUploadAudioAction':
-    case 'sendMessageUploadDocumentAction':
-    case 'sendMessageUploadVideoAction':
-    case 'sendMessageUploadPhotoAction': {
-      c += '-upload'
-      break
-    }
-
-    case 'sendMessageRecordAudioAction':
-    case 'sendMessageRecordVideoAction': {
-      c += '-record'
-      break
-    }
-  }
-
-  el.classList.add(c)
-
-  return el
-}
+//      когда карточка доедет); ему нужны зона и менеджеры — они приходят опцией
+//      (строка чатлиста и шапка живут и в тестах без `construct`).
+//  Н4. Карточка пользователя и его присутствие — зеркала (`peerCache`,
+//      `chatsStore.presence`), а не `appUsersManager.getUser`; присутствие из
+//      `presence` новее `user.status` карточки и идёт первым.
+//  Н5. Подпись чата — краткая карточка (`participants_count` зеркала,
+//      `getChatMembersString`), а не `getChatFull`: полной карточки чата в этом
+//      слое нет. «N онлайн» (`getOnlines`, у tweb — `appProfileManager.ts:1170-1210`)
+//      считается здесь по присутствию «недавних» участников, страница которых
+//      кэшируется на 60 с, как `invokeApiCacheable` оригинала. Ручки
+//      `messages.getOnlines` у бэкенда нет — у группы больше 100 участников
+//      онлайн не считается (бэклог Б-84). Фильтра «недавние» у ручки участников
+//      нет — берётся её первая страница из 100.
+//  Н6. `setPeerStatus` без `useWhitespace` (`NBSP` вместо пустой подписи): все наши
+//      вызывающие (шапка, форум-таб) передают `false`, как и у tweb.
 
 type ActivityKeys = { [action in SendMessageAction['_']]: LangPackKey }
 
@@ -210,98 +252,6 @@ const langPackKeys: { [peerType in 'private' | 'chat' | 'multi' | 'pair']: Activ
   },
 }
 
-/** Набор пира из зеркала: кто и что делает (Н1). */
-function getPeerTypings(peerId: PeerId) {
-  const typing = useChatsStore.getState().typing[peerId]
-  return typing ?
-    Object.entries(typing).map(([userId, entry]) => ({ userId: +userId, action: entry.action })) :
-    []
-}
-
-/**
- * tweb `:3508-3675`. Возвращает `span.online.peer-typing-container` (либо
- * переиспользует переданный `container`), если пир что-то делает и его можно
- * назвать, иначе `undefined`.
- */
-export function getPeerTyping(peerId: PeerId, options: {
-  container?: HTMLElement,
-  middleware: Middleware,
-  managers: PeerTitleManagers,
-}) {
-  // * asked for every dialog element that gets built, so the cheap check that
-  // * answers "no" for almost every peer goes first
-  const allTypings = getPeerTypings(peerId)
-  if(!allTypings.length) {
-    return
-  }
-
-  const isUserPeer = isUser(peerId)
-  const peer = cachedPeer(peerId)
-  if(isUserPeer && peer?._ === 'user' && peer.pFlags?.bot) {
-    return
-  }
-
-  // * a peer that hasn't reached the mirror yet has no title to render and would be
-  // * named "Deleted", so it doesn't get counted either — a private chat never names anyone
-  const typings = isUserPeer ?
-    allTypings :
-    allTypings.filter(({ userId }) => !!cachedPeer(userId))
-  if(!typings.length) {
-    return
-  }
-
-  const typing = typings[0]
-
-  // * with exactly two typings there's no point in hiding the second one behind "1 other"
-  const isPair = typings.length === 2
-  const mapa = isUserPeer ? langPackKeys.private : (isPair ? langPackKeys.pair : (typings.length > 1 ? langPackKeys.multi : langPackKeys.chat))
-  let action = typing.action
-
-  if(typings.length > 1) {
-    const s = new Set(typings.map((typing) => typing.action._))
-    if(s.size > 1) {
-      action = { _: 'sendMessageTypingAction' }
-    }
-  }
-
-  const langPackKey = mapa[action._]
-
-  let args: FormatterArguments | undefined
-  if(isAnyChat(peerId)) {
-    args = typings.slice(0, isPair ? 2 : 1).map((typing) => new PeerTitle({
-      peerId: typing.userId,
-      onlyFirstName: true,
-      middleware: options.middleware,
-      managers: options.managers,
-    }).element)
-    if(!isPair) {
-      args.push(typings.length - 1)
-    }
-  }
-
-  let { container } = options
-  if(!container) {
-    container = document.createElement('span')
-    container.classList.add('online', 'peer-typing-container')
-  }
-
-  let typingElement = container.firstElementChild as HTMLElement | null
-  if(!typingElement) {
-    typingElement = getTypingElement(action)
-    container.prepend(typingElement)
-  } else if(typingElement.dataset.action !== action._) {
-    typingElement.replaceWith(getTypingElement(action))
-  }
-
-  const descriptionElement = i18n(langPackKey, args)
-  descriptionElement.classList.add('peer-typing-description')
-
-  if(container.childElementCount > 1) container.lastElementChild!.replaceWith(descriptionElement)
-  else container.append(descriptionElement)
-
-  return container
-}
-
 // ═══ AppImManager ═══════════════════════════════════════════════════════════
 
 /** tweb `sidebarLeft/index.ts:110` */
@@ -343,6 +293,29 @@ export enum APP_TABS {
 
 type SamePeerOptions = { peerId: PeerId, threadId?: number, monoforumThreadId?: PeerId, type?: ChatType }
 
+/** Зона подписи и менеджеры её узлов (Н3); `groups` — для «N онлайн» (Н5). */
+type StatusOptions = {
+  middleware: Middleware,
+  managers: PeerTitleManagers & Pick<Managers, 'groups'>
+}
+
+type StatusElement = HTMLElement | string | undefined
+
+/** `invokeApiCacheable(..., {cacheSeconds: 60})` у `getChannelParticipants` (Н5). */
+const ONLINES_CACHE_SECONDS = 60
+
+/** Тип звонка в подтверждении «покинуть текущий» (tweb `:2269`) — расхождение З4. */
+type DiscardCallType = 'Live' | 'Voice' | 'Call'
+
+/** `callsController.currentCall` (З1): закрывающийся звонок (`ended`, у tweb `isClosing`) не в счёт. */
+function getCurrentCall() {
+  const call = useCallStore.getState().call
+  return call && call.phase !== 'ended' ? call : undefined
+}
+
+/** tweb `:250` */
+class CallSwitchCancelledError extends Error {}
+
 export class AppImManager extends EventListenerBase<{
   chat_changing: (details: { from: Chat, to: Chat }) => void,
   peer_changed: (chat: Chat) => void,
@@ -360,6 +333,10 @@ export class AppImManager extends EventListenerBase<{
   private tabId: APP_TABS | undefined
 
   public chats: Chat[] = []
+  /** tweb `:278` */
+  private callTransitions = callTransitionCoordinator
+  /** участники для «N онлайн» на время кэша (Н5) */
+  private onlinesParticipants = new Map<PeerId, { userIds: number[], expires: number }>()
   /** tweb `:290` */
   public chatAudio?: ChatAudioController
   /** tweb `:292`, `:846` */
@@ -367,6 +344,9 @@ export class AppImManager extends EventListenerBase<{
   private prevTab: HTMLElement | undefined
 
   public managers!: Managers
+
+  /** tweb `:288` — пишет `useLockScreenShortcut`, читает `attachKeydownListener` */
+  public isShiftLockShortcut = false
 
   get myId() {
     return rootScope.myId
@@ -378,10 +358,18 @@ export class AppImManager extends EventListenerBase<{
 
   public construct(managers: Managers) {
     this.managers = managers
+    // `:326`
+    internalLinkProcessor.construct(managers)
     this.columnEl = document.getElementById('column-center') as HTMLDivElement
     this.columnLeftEl = document.getElementById('column-left')
 
     void this.selectTab(APP_TABS.CHATLIST)
+
+    // `:349-352`
+    const skipLink = document.getElementById('skip-to-content')
+    if(skipLink) attachSkipToContent(skipLink, this.columnEl)
+    this.setStaticLandmarkLabels()
+    rootScope.addEventListener('language_change', this.setStaticLandmarkLabels)
 
     this.appChatBackground = appChatBackground
 
@@ -390,6 +378,10 @@ export class AppImManager extends EventListenerBase<{
     this.chatsContainer.dataset.animation = 'navigation'
 
     this.columnEl.append(this.chatsContainer)
+
+    // `:375-377` — Tip cards for the empty column. Imported lazily so this module isn't part of
+    // an import cycle with the components the cards use.
+    void import('@components/chatTips/index.solid').then(({ renderChatTips }) => renderChatTips(this.chatsContainer))
 
     this.createNewChat()
     this.chatsSelectTab(this.chat)
@@ -444,6 +436,17 @@ export class AppImManager extends EventListenerBase<{
 
     this.addEventListener('peer_changed', onPeerChanged)
 
+    // `:824-833` — Remember the chat we're leaving behind (closed outright, or switched away
+    // from) so the tip cards shown on the empty column can offer it back under "Recently closed".
+    let lastOpenedPeerId: PeerId = NULL_PEER_ID
+    this.addEventListener('peer_changed', ({ peerId }) => {
+      if(lastOpenedPeerId && lastOpenedPeerId !== peerId) {
+        void this.managers.contacts.pushRecentlyClosedChat(lastOpenedPeerId)
+      }
+
+      lastOpenedPeerId = peerId
+    })
+
     // `:835-843`
     this.addEventListener('peer_changed', ({ peerId }) => {
       document.body.classList.toggle('has-chat', !!peerId)
@@ -455,9 +458,8 @@ export class AppImManager extends EventListenerBase<{
     this.chatAudio = createChatAudio(this, managers)
     this.columnEl.append(this.chatAudio.container)
 
-    // `:630` и автоблокировка (`lib/mainWorker/useAutoLock.ts` у tweb — в воркере)
+    // `:630`
     useLockScreenShortcut()
-    useAutoLock()
 
     // Глобальный тост приложения (`ui:toast`) — бывший `useGlobalToast` шелла.
     rootScope.addEventListener('ui:toast', (text) => toast(String(text)))
@@ -472,14 +474,30 @@ export class AppImManager extends EventListenerBase<{
       })
     }
 
+    this.checkForLoginToken()
     this.onHashChange(true)
+    this.init()
+    this.attachKeydownListener()
+    this.attachCopyListener()
   }
 
   // ── G. Хэш и открытие пиров ─────────────────────────────────────────────
 
-  /** tweb `:1897-1910` — расхождение 8 шапки */
-  public openUrl(url: string) {
-    openSearchUrl(url)
+  /** tweb `:1897-1910`; `window[onclick]` оригинала — реестр `addAnchorListener`. */
+  public openUrl(url: string, newWindowIfNoClick?: boolean) {
+    const { url: wrappedUrl, action } = wrapUrl(url)
+    const callback = getAnchorListener(action)
+    if(!callback) {
+      if(newWindowIfNoClick) {
+        window.open(wrappedUrl, '_blank', 'noopener,noreferrer')
+      }
+
+      return
+    }
+
+    const a = document.createElement('a')
+    a.href = wrappedUrl
+    return callback(a)
   }
 
   private onHashChange = (saveState?: boolean) => {
@@ -647,6 +665,52 @@ export class AppImManager extends EventListenerBase<{
     appNavigationController.overrideHash(str)
   }
 
+  // ── D. Боты, вебапп (`:1024-1609`) ────────────────────────────────────
+  //
+  // ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ БЛОКА (строки бэклога Б-76, Б-79):
+  //  D1. `openWebApp` (`:1200-1331`): ручек `requestWebView`/`requestMainWebView`
+  //      (подписанные `initData`, `query_id`), attach-меню ботов
+  //      (`getAttachMenuBot`/`toggleBotInAttachMenu` `:1124-1170`) и подтверждений
+  //      (`confirmBotWebView*` `:1050-1110`, `appState.confirmedWebViews`) у нас нет:
+  //      адрес приложения приходит готовым (кнопка-меню бота `bots.menuButton`), окно —
+  //      React `WebAppModal` острова оверлеев (`core/webapp.ts`, ВРЕМЕННО до программы
+  //      вебаппа), `startParam` в него не доезжает (его кладёт сервер в `initData`).
+  //  D2. `checkForShare` (`:1024-1048`, Web Share Target `apiManagerProxy.share`),
+  //      `openJoinChatWebView`/`JoinChatFlow` (`:1333-1392`, бот-страж вступления),
+  //      `playGame` (`:1394`), `handleUrlAuth` (`:1419`), `handleAutologinDomains`
+  //      (`:1511`), `handlePeerColors` (`:1594`) — предметов нет (бэкенд), не портированы.
+
+  /** tweb `:1200-1331` — расхождение D1. */
+  public openWebApp(options: {
+    botId: PeerId,
+    url: string,
+    startParam?: string,
+    main?: boolean,
+  }) {
+    const user = cachedUser(options.botId)
+    openWebApp({
+      url: options.url,
+      botName: getUserTitle(user),
+      botId: +options.botId,
+    })
+  }
+
+  /**
+   * НАШЕ РАСШИРЕНИЕ: подтверждение QR-входа. Код в QR — адрес клиента
+   * `/qr/<token>` (`auth/cards/SignQRCard.solid.tsx`); у tweb QR-подтверждения нет
+   * вовсе (веб не подтверждает вход). Адрес зачищается единственным писателем
+   * истории (`overrideAddress`), вопрос задаёт `internalLinkProcessor`.
+   */
+  private checkForLoginToken() {
+    const m = location.pathname.match(/^\/qr\/([\w-]+)$/)
+    if(!m) {
+      return
+    }
+
+    appNavigationController.overrideAddress(new URL('/' + location.hash, location.origin))
+    void internalLinkProcessor.processLoginTokenLink(m[1])
+  }
+
   // ── I. Фон, тема, настройки ─────────────────────────────────────────────
 
   /** tweb `:2607-2627` — обои темы резолвит наш фон сам (расхождение 3 шапки). */
@@ -709,20 +773,155 @@ export class AppImManager extends EventListenerBase<{
     return this.chatPositions[key]
   }
 
-  /** tweb `:2227-2290` — расхождение 10 шапки. */
-  public callUser(userId: PeerId, type: 'voice' | 'video') {
-    const user = cachedUser(userId)
-    const name = getUserTitle(user)
-    startOutgoing(
-      {
-        id: userId,
-        name,
-        avatar: gradientFor(userId),
-        avatarText: name.charAt(0).toUpperCase(),
-        photoId: user?._ === 'user' ? getPeerPhotoId(user.photo) : 0,
-      },
-      type === 'video',
-    )
+  // ── H. Звонки (`:2227-2605`) ────────────────────────────────────────────
+  //
+  // Расхождения блока H с оригиналом:
+  //  З1. Движок звонков — наш (`core/calls/*`: 1:1 — `callEngine`, видеочат — mesh
+  //      `groupCallEngine`, RTMP-зритель — `livestreamEngine`), состояние — их сторы
+  //      (`callStore`, `groupCallStore`, `livestreamStore`) вместо `callsController`/
+  //      `groupCallsController`/`rtmpCallsController`. Экраны звонка — React-остров
+  //      `#react-overlays` (`CallOverlay`, `GroupCallScreen`, `LivestreamScreen`): они
+  //      открываются сами по сторам, поэтому `showCallPopup`/`openRtmpCallViewer` не зовутся.
+  //  З2. `callUser` без ветки `phone_calls_private` (`Call.PrivacyErrorMessage`): такого
+  //      признака в `userFull` нет — бэкенд гасит `phone_calls_available` и отвечает на
+  //      звонок `call_decline reason=privacy` (бэклог Б-96).
+  //  З3. `joinGroupCall` без `groupCallId`/`getGroupCallFull` (`VoiceChat.Chat.Ended`/
+  //      `StartNew`) и без `getChatFull().call`: полной карточки звонка нет, видеочат идёт,
+  //      пока в нём кто-то есть (`groupCallStore.activeByChat`, кадр `group_call_update`), а
+  //      заводит его тот же вход движка (`groupCallEngine.joinGroupCall`). Право
+  //      `manage_call` — `hasRights(chat, 'just_admin')`: бита `manage_call` у нас нет
+  //      (`core/peers/rights.ts`), ближайшее — «создатель или любой админ».
+  //  З4. Конференции (`joinConference`/`createConference`, `:2344-2582`) — бэкенда нет
+  //      (бэклог Б-46); `discardCurrentCall` поэтому без типа `Conference` и без
+  //      параметров `ignore*` — их передаёт только `acceptCallOverride` (Б-95).
+  //  З5. `joinLiveStream` — `watchLivestream` регистрирует зрителя без медиа (своего
+  //      RTMP-ingest нет, шапка `core/calls/livestreamEngine.ts`); его ошибок нет — ветки
+  //      `Error.AnError` тоже.
+
+  /** tweb `:2227-2267` — расхождения З1, З2. */
+  public callUser(userId: PeerId, type: CallType): Promise<void> {
+    return this.callTransitions.run(async() => {
+      const call = getCurrentCall()
+      if(call?.peer.id === userId) { // * `callsController.getCallByUserId`
+        return
+      }
+
+      await this.discardCurrentCall(userId, 'Call')
+
+      const user = cachedUser(userId)
+      const name = getUserTitle(user)
+      startOutgoing(
+        {
+          id: userId,
+          name,
+          avatar: gradientFor(userId),
+          avatarText: name.charAt(0).toUpperCase(),
+          photoId: user?._ === 'user' ? getPeerPhotoId(user.photo) : 0,
+        },
+        type === 'video',
+      )
+    })
+  }
+
+  /** tweb `:2269-2274` — расхождение З4. */
+  private discardCurrentCall(toPeerId: PeerId, toType: DiscardCallType): Promise<void> {
+    if(useGroupCallStore.getState().peerId != null) return this.discardGroupCallConfirmation(toPeerId, toType)
+    else if(getCurrentCall()) return this.discardCallConfirmation(toPeerId, toType)
+    else if(useLivestreamStore.getState().watchingPeerId != null) return this.discardLiveConfirmation(toPeerId, toType)
+    else return Promise.resolve()
+  }
+
+  /** tweb `:2276-2299` */
+  private async discardAnyCallConfirmation(fromPeerId: PeerId, toPeerId: PeerId, fromType: DiscardCallType, toType: DiscardCallType) {
+    // * `wrapPeerTitle` — узел нашего `PeerTitle` живёт, пока открыт попап
+    const middlewareHelper = getMiddleware()
+    const middleware = middlewareHelper.get()
+    const [title1, title2] = [fromPeerId, toPeerId].map((peerId) => new PeerTitle({
+      peerId,
+      middleware,
+      managers: this.managers,
+    }).element)
+
+    try {
+      await confirmationPopup({
+        titleLangKey: `Call.Confirm.Discard.${fromType}.Header`,
+        descriptionLangKey: `Call.Confirm.Discard.${fromType}.To${toType}.Text`,
+        descriptionLangArgs: [title1, title2],
+        button: {
+          langKey: 'OK',
+        },
+      })
+    } catch{
+      // confirmationPopup rejects when the user cancels/closes it. Give that
+      // expected outcome its own identity so a later hangUp/leave rejection
+      // is not mistaken for cancellation.
+      throw new CallSwitchCancelledError()
+    } finally {
+      middlewareHelper.destroy()
+    }
+  }
+
+  /** tweb `:2308-2324` */
+  private async discardGroupCallConfirmation(toPeerId: PeerId, toType: DiscardCallType) {
+    const currentPeerId = useGroupCallStore.getState().peerId
+    if(currentPeerId != null) {
+      await this.discardAnyCallConfirmation(currentPeerId, toPeerId, 'Voice', toType)
+
+      if(useGroupCallStore.getState().peerId === currentPeerId) {
+        leaveGroupCall()
+      }
+    }
+  }
+
+  /** tweb `:2326-2335` */
+  private async discardCallConfirmation(toPeerId: PeerId, toType: DiscardCallType) {
+    const currentCall = getCurrentCall()
+    if(currentCall) {
+      await this.discardAnyCallConfirmation(currentCall.peer.id, toPeerId, 'Call', toType)
+
+      if(getCurrentCall()?.callId === currentCall.callId) { // * `!currentCall.isClosing`
+        hangup()
+      }
+    }
+  }
+
+  /** tweb `:2337-2346` */
+  private async discardLiveConfirmation(toPeerId: PeerId, toType: DiscardCallType) {
+    const currentPeerId = useLivestreamStore.getState().watchingPeerId
+    if(currentPeerId != null) {
+      await this.discardAnyCallConfirmation(currentPeerId, toPeerId, 'Live', toType)
+
+      if(useLivestreamStore.getState().watchingPeerId === currentPeerId) {
+        leaveLivestream()
+      }
+    }
+  }
+
+  /** tweb `:2348-2389` — расхождение З3. */
+  public joinGroupCall(peerId: PeerId): Promise<void> {
+    return this.callTransitions.run(async() => {
+      const hasRights = hasChatRights(cachedChat(peerId), 'just_admin')
+      const next = async() => {
+        const isCallActive = !!useGroupCallStore.getState().activeByChat[peerId]?.length
+        if(!isCallActive && !hasRights) {
+          return
+        }
+
+        await joinGroupCallEngine(peerId)
+      }
+
+      await this.discardCurrentCall(peerId, 'Voice')
+      await next()
+    })
+  }
+
+  /** tweb `:2584-2605` — расхождения З1, З5. */
+  public joinLiveStream(peerId: PeerId): Promise<void> {
+    return this.callTransitions.run(async() => {
+      await this.discardCurrentCall(peerId, 'Live')
+
+      watchLivestream(peerId)
+    })
   }
 
   /** tweb `:2690-2713` */
@@ -804,6 +1003,225 @@ export class AppImManager extends EventListenerBase<{
     this.prevTab = tab
   }
 
+  // ── K. Drag&drop и вставка файлов (`:2807-3125`) ───────────────────────
+
+  /** tweb `:2807-2813` — расхождение K-1 шапки */
+  private init() {
+    // Follow the active app window so paste-to-send keeps working in a Document PiP window.
+    bindActiveWindowListener((w) => w.document, 'paste', this.onDocumentPaste, true)
+    this.attachDragAndDropListeners()
+  }
+
+  /** tweb `:2815-3035` — расхождения K-2…K-4 шапки */
+  private attachDragAndDropListeners() {
+    const drops: ChatDragAndDrop[] = []
+    let mounted = false, lastDialogElement: HTMLElement | undefined
+
+    function clearLastDialogElement() {
+      if(!lastDialogElement) {
+        return
+      }
+
+      lastDialogElement.classList.remove('is-dragover')
+      lastDialogElement = undefined
+    }
+
+    const toggle = async(e: DragEvent, mount: boolean) => {
+      if(mount === mounted) {
+        return
+      }
+
+      const _types = e.dataTransfer!.types
+      const isFiles = _types.indexOf('Files') >= 0
+
+      const newMediaPopup = getCurrentNewMediaPopup()
+      const types = await getFilesFromEvent(e, true)
+      if(mount) {
+        // * skip dragging text case; зоны внутри открытого попапа — Б-83
+        if(!isFiles || !(await this.canDrag()) || newMediaPopup) {
+          mount = false
+        }
+
+        if(mount === mounted) {
+          return
+        }
+      }
+
+      if(mount && !drops.length) {
+        const force = isFiles && !types.length // * can't get file items not from 'drop' on Safari
+
+        // * a .mov counts as media — it gets converted to mp4 in the send popup
+        const [foundMedia, foundDocuments] = partition(types, (t) => MEDIA_MIME_TYPES_SUPPORTED.has(t) || t === 'video/quicktime')
+        foundDocuments.push(...foundMedia)
+
+        if(foundDocuments.length || force) {
+          drops.push(new ChatDragAndDrop(dropsContainer, {
+            icon: 'dragfiles',
+            header: 'Chat.DropTitle',
+            subtitle: 'Chat.DropAsFilesDesc',
+            onDrop: (e: DragEvent) => {
+              void toggle(e, false)
+              void this.onDocumentPaste(e, 'document')
+            },
+          }))
+        }
+
+        if(foundMedia.length || force) {
+          drops.push(new ChatDragAndDrop(dropsContainer, {
+            icon: 'dragmedia',
+            header: 'Chat.DropTitle',
+            subtitle: 'Chat.DropQuickDesc',
+            onDrop: (e: DragEvent) => {
+              void toggle(e, false)
+              void this.onDocumentPaste(e, 'media')
+            },
+          }))
+        }
+
+        this.chat.container.append(dropsContainer)
+      }
+
+      setTransition({
+        element: dropsContainer,
+        className: 'is-visible',
+        forwards: mount,
+        duration: 200,
+        onTransitionEnd: () => {
+          if(!mount) {
+            drops.forEach((drop) => {
+              drop.destroy()
+            })
+
+            drops.length = 0
+          }
+        },
+      })
+
+      if(mount) {
+        drops.forEach((drop) => {
+          drop.setPath()
+        })
+      } else {
+        counter = 0
+        clearTimeout(dragTimeout)
+        clearLastDialogElement()
+      }
+
+      getOverlayRoot().classList.toggle('is-dragging', mount)
+      mounted = mount
+    }
+
+    let counter = 0
+    let dragTimeout: number | undefined
+    // Drag-and-drop listeners follow the active app window so dropping a file onto the popped-out
+    // Document PiP client still sends it (the drag events fire on the PiP body, not the tab's).
+    bindActiveWindowListener((w) => w.document.body, 'dragenter', () => {
+      ++counter
+    })
+
+    bindActiveWindowListener((w) => w.document.body, 'dragover', (e) => {
+      void toggle(e, true)
+      cancelEvent(e)
+
+      // 'dragover' keeps firing (at least every ~350ms) while a drag is held over the
+      // page, and stops the instant the drag leaves the window or is released outside it.
+      // For an external file drag there is no in-document source, so neither 'drop' nor
+      // 'dragend' fires in that case — without this watchdog the overlay (and the
+      // body.is-dragging pointer-events lock) would stay stuck over the chat. Re-arm on
+      // every 'dragover' so a lapse force-hides it; a still-active drag re-shows it at once.
+      clearTimeout(dragTimeout)
+      dragTimeout = window.setTimeout(() => {
+        counter = 0
+        void toggle(e, false)
+      }, 500)
+
+      const target = e.target as HTMLElement
+      const dialogElement = findUpClassName(target, 'chatlist-chat')
+      if(dialogElement && !dialogElement.dataset.communityId) {
+        if(lastDialogElement !== dialogElement) {
+          dialogElement.classList.add('is-dragover')
+          lastDialogElement = dialogElement
+        }
+      } else {
+        clearLastDialogElement()
+      }
+    })
+
+    bindActiveWindowListener((w) => w.document.body, 'dragleave', (e) => {
+      if(--counter === 0) {
+        void toggle(e, false)
+      }
+
+      clearLastDialogElement()
+    })
+
+    bindActiveWindowListener((w) => w.document.body, 'drop', async(e) => {
+      if(lastDialogElement) {
+        cancelEvent(e)
+        const peerId = +lastDialogElement.dataset.peerId!
+        const files = await getFilesFromEvent(e)
+        void this.setPeer({
+          peerId,
+        }).then(() => {
+          void this.onDocumentPaste(e, undefined, files)
+          clearLastDialogElement()
+        })
+      }
+
+      void toggle(e, false)
+    })
+
+    const dropsContainer = document.createElement('div')
+    dropsContainer.classList.add('drops-container')
+  }
+
+  /** tweb `:3037-3050` — расхождение K-3 шапки */
+  private async canDrag() {
+    const chat = this.chat
+    const peerId = chat?.peerId
+    return !(!peerId || overlayCounter.isOverlayActive || !(await chat.canSend('send_media')))
+  }
+
+  /** tweb `:3052-3125` — расхождение K-3 шапки */
+  private onDocumentPaste = async(
+    e: ClipboardEvent | DragEvent,
+    attachType?: WillAttachType,
+    files?: File[],
+  ) => {
+    const newMediaPopup = getCurrentNewMediaPopup()
+
+    if('dataTransfer' in e && e.dataTransfer) { // cross-realm-safe `instanceof DragEvent` (Document PiP window)
+      const _types = e.dataTransfer.types
+      const isFiles = _types.indexOf('Files') >= 0
+      if(isFiles) {
+        cancelEvent(e)
+      }
+    }
+
+    files ??= await getFilesFromEvent(e)
+    if(!(await this.canDrag()) && !newMediaPopup) {
+      return
+    }
+
+    if(!files.length) {
+      return
+    }
+
+    if(newMediaPopup) {
+      newMediaPopup.addFiles(files)
+      return
+    }
+
+    const chatInput = this.chat.input
+    const mimeType = getFileMimeType(files[0])
+    chatInput.willAttachType = attachType || ((MEDIA_MIME_TYPES_SUPPORTED.has(mimeType) || mimeType === 'video/quicktime') ? 'media' : 'document')
+    showNewMediaPopup(
+      this.chat,
+      files,
+      chatInput.willAttachType,
+    )
+  }
+
   /** tweb `:3137-3197` */
   public selectTab(id: APP_TABS, animate?: boolean) {
     if(animate === false) { // * will be used for Safari iOS history swipe
@@ -853,12 +1271,208 @@ export class AppImManager extends EventListenerBase<{
     return animationPromise
   }
 
+  /** tweb `:3199-3201` (узел левой колонки — расхождение 13 шапки) */
+  private setStaticLandmarkLabels = () => {
+    setLandmarkLabels(this.columnLeftEl, document.getElementById('column-right'))
+  }
+
   /** tweb `:3203-3208` */
   private updateColumnAccessibility() {
     // On mobile these columns slide outside the viewport but stay mounted.
     // Match their keyboard/AT visibility to the selected screen, including PiP.
     if(this.columnLeftEl) this.columnLeftEl.inert = mediaSizes.isMobile && this.tabId !== APP_TABS.CHATLIST
     if(this.columnEl) this.columnEl.inert = mediaSizes.isMobile && this.tabId !== APP_TABS.CHAT
+  }
+
+  // ── F. Хоткеи и защита копирования (расхождение 14 шапки) ───────────────
+
+  /** tweb `:1703-1852` */
+  private attachKeydownListener() {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const key = e.key
+      const isSelectionCollapsed = document.getSelection()?.isCollapsed ?? true
+      if(
+        shouldPreserveKeyboardFocus(e) ||
+        overlayCounter.isOverlayActive ||
+        !e.isTrusted // * ignore synthetic events
+      ) return
+
+      const target = e.target as HTMLElement
+
+      const targetIsInput = isTargetAnInput(target)
+
+      const chat = this.chat
+      const input = chat?.input
+      if(targetIsInput && target !== input?.messageInput) return
+
+      // Hand keyboard focus to the bubbles scroll container so the browser scrolls it natively.
+      // (overflow:auto + outline:none → focus is invisible.)
+      const handoffScroll = () => {
+        const container = chat?.bubbles?.scrollable?.container
+        if(container && document.activeElement !== container) {
+          container.focus({ preventScroll: true })
+        }
+      }
+
+      if(this.isShiftLockShortcut && e.shiftKey) return
+
+      if((key.startsWith('Arrow') || (e.shiftKey && key === 'Shift')) && !isSelectionCollapsed) {
+        return
+      } else if(e.code === 'KeyC' && (e.ctrlKey || e.metaKey) && !targetIsInput) {
+        return
+      } else if(
+        (key === 'PageUp' || key === 'PageDown') &&
+        !targetIsInput &&
+        !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey
+      ) {
+        handoffScroll()
+        return
+      } else if(e.altKey && (key === 'ArrowUp' || key === 'ArrowDown')) {
+        cancelEvent(e)
+        void this.managers.dialogs.getNextDialog(
+          this.chat.peerId,
+          key === 'ArrowDown',
+          appDialogsManager.filterId,
+        ).then((dialog) => {
+          if(dialog) {
+            void this.setPeer({ peerId: dialog.peerId })
+          }
+        })
+        return
+      } else if((key === 'ArrowUp' || key === 'ArrowDown') && this.chat?.type !== ChatType.Scheduled && this.chat?.type !== ChatType.Welcome) {
+        // In chats/channels where the user can't post (read-only broadcasts, restricted groups,
+        // unjoined chats), there's no message to edit, so let ArrowUp/Down scroll the chat instead.
+        if(input && !input.canSendPlain()) {
+          handoffScroll()
+          return
+        }
+
+        // tweb `:1766-1835` (F1): правка последнего своего по ↑, ответ на соседнее по Ctrl/Cmd+↑↓
+        // (`hasAddToFolderOpen` — F3: меню «Добавить в папку» не портировано, О-85)
+        if(input && !input.editMsgId) {
+          const forReply = e.metaKey || e.ctrlKey
+          if(!forReply && !input.isInputEmpty()) {
+            return
+          }
+
+          const up = key === 'ArrowUp'
+          const { replyToMsgId } = input
+          const { peerId, threadId } = chat
+          if((!forReply && !up) || (forReply && !up && !replyToMsgId)) {
+            return
+          }
+
+          cancelEvent(e)
+          const middleware = chat.bubbles.getMiddleware()
+          void (async() => {
+            if(forReply && !(await chat.canSend())) {
+              return
+            }
+
+            if(!middleware()) {
+              return
+            }
+
+            const message = await this.managers.messages.getFirstMessageToEdit({
+              peerId,
+              threadId,
+              forReply,
+              mid: forReply ? replyToMsgId ?? undefined : undefined,
+              up,
+            })
+            if(chat !== this.chat || !middleware()) {
+              return
+            }
+
+            if(!message) {
+              if(forReply && input.replyToMsgId === replyToMsgId) {
+                void input.onHelperCancel()
+              }
+
+              return
+            }
+
+            if(forReply) {
+              const bubble = chat.bubbles.getBubble(message.peerId, message.id)
+              await input.initMessageReply(input.getChatInputReplyToFromMessage(message))
+              if(bubble) {
+                chat.bubbles.scrollToBubble(bubble, 'center')
+                chat.bubbles.highlightBubble(bubble)
+              } else {
+                void chat.setMessageId({ lastMsgId: message.id })
+              }
+            } else {
+              void input.initMessageEditing(message.id)
+            }
+          })()
+        }
+
+        return
+      } else if(key === 'ArrowDown') {
+        return
+      }
+
+      if(
+        input?.messageInput &&
+        target !== input.messageInput &&
+        !targetIsInput &&
+        !IS_TOUCH_SUPPORTED &&
+        (!mediaSizes.isMobile || this.tabId === APP_TABS.CHAT) &&
+        !chat.selection.isSelecting &&
+        // `!chat.input.recording` — расхождение 14 F2
+        input.messageInput.isContentEditable
+      ) {
+        input.passEventToInput(e)
+      }
+    }
+
+    // Follow the active app window so the global "type anywhere → focus input" + shortcut handler
+    // keeps firing when the client is popped into a Document PiP window.
+    bindActiveWindowListener((w) => w.document.body, 'keydown', onKeyDown)
+  }
+
+  /** tweb `:1854-1895` — restrict copying no forwards content (F4) */
+  private attachCopyListener() {
+    // Follow the active app window so the restricted-copy guard still fires in a Document PiP window
+    // (SECURITY: if it never rebinds there, no-forwards text becomes copyable out of PiP).
+    bindActiveWindowListener((w) => w.document, 'copy', (e) => {
+      let peerId: PeerId | undefined
+      const nodes = getSelectedNodes()
+      const foundRestrictedNode = nodes.some((node) => {
+        let element = node as HTMLElement | null
+        if(node.nodeType !== node.ELEMENT_NODE) {
+          element = node.parentElement
+        }
+
+        if(!element || !findUpClassName(element, 'no-forwards')) {
+          return false
+        }
+
+        const bubble = findUpClassName(element, 'bubble')
+        if(!bubble) {
+          return false
+        }
+
+        peerId = Number(bubble.dataset.peerId)
+        return true
+      })
+
+      if(foundRestrictedNode && peerId !== undefined) {
+        e.preventDefault()
+
+        let langPackKey: LangPackKey
+        if(isUser(peerId)) {
+          langPackKey = 'CopyRestricted.User'
+        } else {
+          const chat = cachedChat(peerId)
+          langPackKey = chat?._ === 'channel' && chat.pFlags?.broadcast ?
+            'CopyRestricted.Channel' :
+            'CopyRestricted.Group'
+        }
+
+        toastNew({ langPackKey })
+      }
+    })
   }
 
   /** tweb `:3219-3231` */
@@ -1031,6 +1645,272 @@ export class AppImManager extends EventListenerBase<{
     this.dispatchEvent('chat_changing', { from: oldChat, to: chat })
 
     return this.setPeer(options)
+  }
+
+  // ── L. Статус и набор (`:3454-3807`) — расхождения Н1–Н6 у таблицы ключей ──
+
+  /** tweb `:3454-3506` без веток стикера и эмодзи (Н2). */
+  public getTypingElement(action: SendMessageAction) {
+    const el = document.createElement('span')
+    let c = 'peer-typing'
+    el.classList.add(c)
+    el.dataset.action = action._
+    switch(action._) {
+      case 'sendMessageTypingAction': {
+        c += '-text'
+        for(let i = 0; i < 3; ++i) {
+          const cc = c + '-dot'
+          const dot = document.createElement('span')
+          dot.className = cc + (i === 0 ? ' ' + cc + '-first' : (i === 2 ? ' ' + cc + '-last' : ''))
+          el.append(dot)
+        }
+        break
+      }
+
+      case 'sendMessageUploadAudioAction':
+      case 'sendMessageUploadDocumentAction':
+      case 'sendMessageUploadVideoAction':
+      case 'sendMessageUploadPhotoAction': {
+        c += '-upload'
+        break
+      }
+
+      case 'sendMessageRecordAudioAction':
+      case 'sendMessageRecordVideoAction': {
+        c += '-record'
+        break
+      }
+    }
+
+    el.classList.add(c)
+
+    return el
+  }
+
+  /**
+   * tweb `:3508-3675` (Н1, Н3). Возвращает `span.online.peer-typing-container` (либо
+   * переиспользует переданный `container`), если пир что-то делает и его можно
+   * назвать, иначе `undefined`.
+   */
+  public getPeerTyping(peerId: PeerId, options: {
+    container?: HTMLElement,
+    middleware: Middleware,
+    managers: PeerTitleManagers,
+  }) {
+    // * asked for every dialog element that gets built, so the cheap check that
+    // * answers "no" for almost every peer goes first
+    const typing = useChatsStore.getState().typing[peerId]
+    const allTypings = typing ?
+      Object.entries(typing).map(([userId, entry]) => ({ userId: +userId, action: entry.action })) :
+      []
+    if(!allTypings.length) {
+      return
+    }
+
+    const isUserPeer = isUser(peerId)
+    const peer = cachedPeer(peerId)
+    if(isUserPeer && peer?._ === 'user' && peer.pFlags?.bot) {
+      return
+    }
+
+    // * a peer that hasn't reached the mirror yet has no title to render and would be
+    // * named "Deleted", so it doesn't get counted either — a private chat never names anyone
+    const typings = isUserPeer ?
+      allTypings :
+      allTypings.filter(({ userId }) => !!cachedPeer(userId))
+    if(!typings.length) {
+      return
+    }
+
+    const first = typings[0]
+
+    // * with exactly two typings there's no point in hiding the second one behind "1 other"
+    const isPair = typings.length === 2
+    const mapa = isUserPeer ? langPackKeys.private : (isPair ? langPackKeys.pair : (typings.length > 1 ? langPackKeys.multi : langPackKeys.chat))
+    let action = first.action
+
+    if(typings.length > 1) {
+      const s = new Set(typings.map((typing) => typing.action._))
+      if(s.size > 1) {
+        action = { _: 'sendMessageTypingAction' }
+      }
+    }
+
+    const langPackKey = mapa[action._]
+
+    let args: FormatterArguments | undefined
+    if(isAnyChat(peerId)) {
+      args = typings.slice(0, isPair ? 2 : 1).map((typing) => new PeerTitle({
+        peerId: typing.userId,
+        onlyFirstName: true,
+        middleware: options.middleware,
+        managers: options.managers,
+      }).element)
+      if(!isPair) {
+        args.push(typings.length - 1)
+      }
+    }
+
+    let { container } = options
+    if(!container) {
+      container = document.createElement('span')
+      container.classList.add('online', 'peer-typing-container')
+    }
+
+    let typingElement = container.firstElementChild as HTMLElement | null
+    if(!typingElement) {
+      typingElement = this.getTypingElement(action)
+      container.prepend(typingElement)
+    } else if(typingElement.dataset.action !== action._) {
+      typingElement.replaceWith(this.getTypingElement(action))
+    }
+
+    const descriptionElement = i18n(langPackKey, args)
+    descriptionElement.classList.add('peer-typing-description')
+
+    if(container.childElementCount > 1) container.lastElementChild!.replaceWith(descriptionElement)
+    else container.append(descriptionElement)
+
+    return container
+  }
+
+  /** tweb `:3677-3710` (Н5). */
+  private getChatStatus(peerId: PeerId, options: StatusOptions & { noTyping?: boolean }): AckedResult<StatusElement> {
+    const typingEl = options.noTyping ? undefined : this.getPeerTyping(peerId, options)
+    if(typingEl) {
+      return { cached: true, result: Promise.resolve(typingEl) }
+    }
+
+    const onlinesResult = this.getOnlines(peerId, options.managers)
+    return {
+      cached: onlinesResult.cached,
+      result: onlinesResult.result.then((onlines) => {
+        return getChatStatusString(cachedChat(peerId), onlines, (key, args) => I18n.format(key, true, args))
+      }),
+    }
+  }
+
+  /** tweb `:3712-3741` (Н4). */
+  private getUserStatus(peerId: PeerId, options: StatusOptions & { ignoreSelf?: boolean }): AckedResult<StatusElement> {
+    const result: AckedResult<StatusElement> = {
+      cached: true,
+      result: Promise.resolve(undefined),
+    }
+
+    const user = cachedUser(peerId)
+    const real = user?._ === 'user' ? user : undefined
+    const status = useChatsStore.getState().presence[peerId] ?? real?.status
+    if((!user && !status) || (real?.pFlags?.self && !options.ignoreSelf)) {
+      return result
+    }
+
+    const subtitle = getUserStatusString(user, status)
+
+    if(!real?.pFlags?.bot && !real?.pFlags?.support) {
+      let typingEl = this.getPeerTyping(peerId, options)
+      if(!typingEl && status?._ === 'userStatusOnline') {
+        typingEl = document.createElement('span')
+        typingEl.classList.add('online')
+        typingEl.append(subtitle)
+      }
+
+      if(typingEl) {
+        result.result = Promise.resolve(typingEl)
+        return result
+      }
+    }
+
+    result.result = Promise.resolve(subtitle)
+    return result
+  }
+
+  /** tweb `:3743-3753` */
+  private getPeerStatus(peerId: PeerId, options: StatusOptions & { ignoreSelf?: boolean, noTyping?: boolean }) {
+    if(!peerId) return
+    if(isAnyChat(peerId)) {
+      return this.getChatStatus(peerId, options)
+    } else {
+      return this.getUserStatus(peerId, options)
+    }
+  }
+
+  /** tweb `:3755-3803` (Н6). */
+  public async setPeerStatus(options: StatusOptions & {
+    peerId: PeerId,
+    element: HTMLElement,
+    needClear: boolean,
+    ignoreSelf?: boolean,
+    noTyping?: boolean
+  }): Promise<(() => unknown) | undefined> {
+    const { peerId, element, needClear, middleware } = options
+
+    if(!needClear) {
+      // * good good good
+      const typingContainer = element.querySelector<HTMLElement>('.peer-typing-container')
+      if(typingContainer && this.getPeerTyping(peerId, { ...options, container: typingContainer })) {
+        return
+      }
+    }
+
+    const result = this.getPeerStatus(peerId, options)
+    if(!middleware()) {
+      return
+    }
+
+    const set = async() => {
+      const subtitle = result && await result.result
+      if(!middleware()) {
+        return
+      }
+
+      return () => replaceContent(element, subtitle || placeholder)
+    }
+
+    const placeholder = '' // * `useWhitespace` (Н6)
+    if(!result || result.cached || needClear === undefined) {
+      return set()
+    } else if(needClear) {
+      return () => {
+        element.textContent = placeholder
+        return set().then((callback) => callback?.())
+      }
+    }
+  }
+
+  /**
+   * `appProfileManager.getOnlines` (`appProfileManager.ts:1159-1210`) — Н5. Участников
+   * спрашивает фильтром «недавние» (`channelParticipantsRecent`, первая страница из 100),
+   * онлайн каждого читает в момент подсчёта (`verifyParticipantForOnlineCount`).
+   */
+  private getOnlines(peerId: PeerId, managers: Pick<Managers, 'groups'>): AckedResult<number> {
+    const minOnline = 1
+    const chat = cachedChat(peerId)
+    if(isBroadcast(chat) || getParticipantsCount(chat) < 2 || getParticipantsCount(chat) > 100) {
+      return { cached: true, result: Promise.resolve(minOnline) }
+    }
+
+    const reduce = (userIds: number[]) => {
+      const presence = useChatsStore.getState().presence
+      return userIds.reduce((acc, userId) => {
+        const user = cachedUser(userId)
+        const status = presence[userId] ?? (user?._ === 'user' ? user.status : undefined)
+        return acc + +(!!user && status?._ === 'userStatusOnline')
+      }, 0)
+    }
+
+    const cached = this.onlinesParticipants.get(peerId)
+    if(cached && cached.expires > Date.now()) {
+      return { cached: true, result: Promise.resolve(reduce(cached.userIds)) }
+    }
+
+    return {
+      cached: false,
+      result: managers.groups.channelParticipants(peerId, 0, 100).then((r) => {
+        const userIds = (r.participants ?? []).map((p) => 'user_id' in p ? p.user_id : 0).filter(Boolean)
+        this.onlinesParticipants.set(peerId, { userIds, expires: Date.now() + ONLINES_CACHE_SECONDS * 1000 })
+        return reduce(userIds)
+      }, () => minOnline),
+    }
   }
 
   /** tweb `:3436-3441` — лента отложенных пира (`ChatType.Scheduled`) поверх чата */

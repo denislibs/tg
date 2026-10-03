@@ -29,14 +29,13 @@
 //   • меню скоростей — vanilla btn-menu по образцу setBtnMenuToggle
 //     (appMediaViewer.ts, тот же порт классов contextMenuController tweb);
 //     solid-createPlaybackRateButton не портируется (React/solid в ядре нет);
-//   • PiP — наш core/pip.ts::enterPip; emptyPipVideo/createCanvasStream tweb
-//     (:575-596, PiP до готовности метаданных) не портированы — до duration
-//     кнопка no-op, как и первый гейт tweb;
+//   • PiP: emptyPipVideo/createCanvasStream tweb (:575-596, PiP до готовности
+//     метаданных) не портированы — до duration кнопка no-op, как и первый гейт
+//     tweb; checkInteraction (:570) не зовётся — как и у клика по видео (:376);
 //   • не портированы за отсутствием фич: live/RTMP, quality-меню (HLS нет),
 //     storyboard-превью кадра, speedDragHandler (long-press 2x — вместе с ним
 //     contextmenu-глушилка :431-433), toggleActivity (:687-692, категории
-//     «непрерываемой активности» воркера нет), isClientPipOpen-тост (:663-666,
-//     Document-PiP приложения живёт иначе — core/pip.ts), Alt+± смена
+//     «непрерываемой активности» воркера нет), Alt+± смена
 //     скорости (:402-404, ходила в playbackRateButton.changeRateByAmount).
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import { IS_APPLE_MOBILE, IS_MOBILE } from '@environment/userAgent'
@@ -52,7 +51,8 @@ import ListenerSetter, { type Listener } from '@helpers/listenerSetter'
 import indexOfAndSplice from '@helpers/array/indexOfAndSplice'
 import debounce from '@helpers/schedulers/debounce'
 import type { IconName } from '@core/tgico-icons'
-import { enterPip } from '@core/pip'
+import { isClientPipOpen } from '@components/clientPip.solid'
+import { toastNew } from '@components/toast'
 import MediaProgressLine from '@components/mediaProgressLine'
 import VolumeSelector from '@components/volumeSelector'
 import Icon from '@components/icon'
@@ -60,6 +60,7 @@ import { replaceButtonIcon } from '@components/mediaViewer/base'
 import { formatVideoTime, rateToString, VIDEO_RATES } from '@components/messages/videoPlayback'
 import { useSettingsStore } from '../../settings'
 import { _i18n } from '@lib/langPack'
+import { toggleUninteruptableActivity } from '@/client/tabState'
 
 // tweb playbackRateButton geometricFontMap: подпись скорости — по глифу на
 // символ моноширинной «геометрической» гарнитуры (как в React-плеере).
@@ -229,7 +230,7 @@ export default class VideoPlayer extends ControlsHover {
 
     this.isPlaying = isPlaying
 
-    // toggleActivity tweb :286 — не портирован (см. шапку)
+    this.toggleActivity(isPlaying)
 
     this.wrapper.classList.toggle('is-playing', isPlaying)
     this.toggles.forEach((toggle) => {
@@ -264,7 +265,7 @@ export default class VideoPlayer extends ControlsHover {
     const rightControls = wrapper.querySelector('.right-controls') as HTMLElement
     this.rateButton = this.createPlaybackRateButton()
     // Гейт tweb :328 — кнопка PiP только на десктопе и при поддержке браузером
-    // именно видео-PiP (pictureInPictureEnabled — его же проверяет enterPip)
+    // именно видео-PiP (pictureInPictureEnabled)
     if (!IS_MOBILE && document.pictureInPictureEnabled) {
       const pipButton = this.pipButton = document.createElement('button')
       pipButton.className = `btn-icon pip ${skin}__button`
@@ -554,14 +555,13 @@ export default class VideoPlayer extends ControlsHover {
 
   public requestPictureInPicture = () => {
     // emptyPipVideo-ветка tweb (:575-596, PiP до метаданных через canvas-стрим)
-    // не портирована — см. шапку; enterPip (core/pip.ts) сам гейтится
-    // pictureInPictureEnabled/disablePictureInPicture
+    // не портирована — см. шапку
     if (!this.video.duration) return
     if (this.isFullScreen()) {
       // tweb :566-568 (onFullScreenToPip): PiP из фуллскрина — сперва выйти
       this.cancelFullScreen()
     }
-    void enterPip(this.video)
+    void this.video.requestPictureInPicture()
   }
 
   protected togglePlay(isPaused = this.video.paused) {
@@ -613,6 +613,16 @@ export default class VideoPlayer extends ControlsHover {
     }
 
     if (!isFullScreen()) {
+      // Fullscreen genuinely can't be entered while the client is popped into a Document PiP window:
+      // the Fullscreen API is disabled there by spec, AND Chrome won't carry the click's user-activation
+      // from the PiP window over to the tab — so there's no single gesture that can fullscreen the tab's
+      // video either. Rather than silently fail (or close PiP with nothing to show for it), tell the user
+      // to return to the tab first. Outside PiP this branch is a no-op. (tweb :658-666)
+      if (isClientPipOpen()) {
+        toastNew({ langPackKey: 'ClientPip.FullscreenHint' })
+        return
+      }
+
       requestFullScreen(player)
     } else {
       cancelFullScreen()
@@ -641,6 +651,13 @@ export default class VideoPlayer extends ControlsHover {
       this.onPip =
       this.onPipClose =
       undefined
+
+    this.toggleActivity(false)
+  }
+
+  /** tweb `:687-692` — видео держит приложение от автоблокировки (`lib/mainWorker/useAutoLock.ts`) */
+  private toggleActivity(active: boolean) {
+    toggleUninteruptableActivity('UsingVideoPlayer', active)
   }
 
   get inPip() {

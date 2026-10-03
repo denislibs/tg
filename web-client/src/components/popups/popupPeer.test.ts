@@ -297,3 +297,49 @@ describe('PopupPeer — checkboxes, раунд правок 3 (peer.ts:22, :96-1
     expect(onDelete).toHaveBeenCalledWith() // ноль аргументов — не (new Set())
   })
 })
+
+describe('confirmationPopup — checkbox (confirmationPopup.ts:10, :22-24, :36; Б-37)', () => {
+  const click = (selector: string) => document.querySelector<HTMLElement>(selector)!.dispatchEvent(
+    new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }),
+  )
+
+  it('чекбокс отмечен — промис отдаёт true', async() => {
+    const promise = confirmationPopup({
+      titleLangKey: 'ConfirmPayment',
+      checkbox: { text: 'DontAskAgain' },
+      button: { langKey: 'OK' },
+    })
+
+    const label = document.querySelector('.popup-confirmation .checkbox-field')!
+    expect(label.querySelector('.checkbox-caption')!.textContent).toBe('Don\'t ask again')
+    document.querySelector<HTMLInputElement>('.popup-confirmation .checkbox-field-input')!.click()
+    click('.popup-confirmation .popup-button') // первая — подтверждение, «Отмена» добавлена после
+
+    await expect(promise).resolves.toBe(true)
+  })
+
+  it('чекбокс не отмечен — промис отдаёт false, а не undefined', async() => {
+    const promise = confirmationPopup({
+      titleLangKey: 'ConfirmPayment',
+      checkbox: { text: 'DontAskAgain' },
+      button: { langKey: 'OK' },
+    })
+
+    click('.popup-confirmation .popup-button') // первая — подтверждение, «Отмена» добавлена после
+
+    await expect(promise).resolves.toBe(false)
+  })
+
+  it('без checkbox — чекбокса в разметке нет, промис отдаёт undefined', async() => {
+    const promise = confirmationPopup({
+      titleLangKey: 'ConfirmPayment',
+      checkbox: undefined,
+      button: { langKey: 'OK' },
+    })
+
+    expect(document.querySelector('.popup-confirmation .checkbox-field')).toBeNull()
+    click('.popup-confirmation .popup-button') // первая — подтверждение, «Отмена» добавлена после
+
+    await expect(promise).resolves.toBeUndefined()
+  })
+})

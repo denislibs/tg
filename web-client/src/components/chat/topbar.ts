@@ -10,7 +10,11 @@
 //    `appSidebarRight.toggleSidebar` (`:259-286`), «назад» → `chat.pop()` (`:288-306`);
 //  - `constructUtils` (`:462-902`): меню ⋮ — пункты с `verify` (расхождение 1), лупа;
 //    подменю автоудаления `createAutoDeleteSubmenu` (`:1849-1872`);
-//  - `constructPeerHelpers` (`:1030-1175`) в объёме подписи и бейджа «назад»;
+//  - `constructPeerHelpers` (`:1030-1175`) в объёме подписи, бейджа «назад» и кнопок
+//    звонка (`btnCall`/`btnGroupCall`/`btnGroupCallMenu`, `:1039-1060`, пачка П-4);
+//  - проверка кнопок звонка (`pushButtonToVerify`/`verifyButtons` `:309-338`,
+//    `verifyRtmpButton`/`verifyVideoChatButton`/`verifyCallButton` `:340-415`),
+//    `onCallClick`/`onJoinGroupCallClick` (`:969-998`) — пачка П-4 (расхождение 10);
 //  - `addContact` (`:904`), `blockUser` (`:921-959`), `attachClickEvent` (`:961-967`),
 //    `onMuteClick`/`onUnmuteClick` (`:1220-1226`), `onResize`/`onChangeScreen`;
 //  - `finishPeerChange` (`:1383-1549`): аватар, заголовок, статус, видимость лупы и ⋮,
@@ -34,8 +38,8 @@
 //     (`openBoosts` не портирован), бот-`Settings` (нет `attachMenuBots`), `Translate`
 //     (перевода нет), `DisableSharing`/`EnableSharing` (нет флагов `noforwards_*` у
 //     `userFull`), `WelcomeMessages.DeleteAll` и обёртка `ChatType.Welcome` (секции нет).
-//     Пункты звонков (`Call`/`VideoCall`/`LiveStream`/`VoiceChat`, `:528-547`) и кнопки
-//     звонка — П-4 (контракт `p5-contract.md`): их `verify*` живут там.
+//     Пункты звонков (`Call`/`VideoCall`/`LiveStream`/`VoiceChat`, `:528-547`) — П-5
+//     (контракт `p5-contract.md`); их `verify*` и кнопки звонка — здесь (П-4, расхождение 10).
 //  2. Плашки — только с предметом (`topbarPlates.ts`, его шапка): видеочат и эфир.
 //     Закреп — `pinnedMessage.solid.tsx`, цикл `setupPinnedMessageForPeer`/
 //     `revealPreparedPinnedMessage` (`:1256-1381`) 1:1; скрытие плашки — `isPinnedMessagesHidden`
@@ -47,11 +51,9 @@
 //     `TopicProfileStatus` `:1736-1742`) — тема приходит не из кэша, а ручкой списка тем
 //     (`loadForumTopic`). Замка закрытой темы в шапке у tweb нет (`pFlags.closed` темы
 //     шапка не читает) — его рисовал прежний React `ChatHeader`, в порт он не идёт.
-//  4. Статус (`appImManager.setPeerStatus`, `:3677-3797`) — функции модуля ниже, ВРЕМЕННО до
-//     П-4 (Б-29): у tweb они в `appImManager`. Источники — зеркала, а не события:
-//     набор и присутствие — `chatsStore.typing`/`presence` (вместо `peer_typings`/
-//     `user_update`), карточка — `peerCache`, число участников — `participants_count`
-//     краткой карточки; «N онлайн» (`getOnlines`) нет — Б-29.
+//  4. Статус — `appImManager.setPeerStatus` (блок L, его расхождения Н1–Н6). Поводы
+//     перерисовки — зеркала, а не события: набор и присутствие — `chatsStore.typing`/
+//     `presence` (вместо `peer_typings`/`user_update`), карточка — `peerCache`.
 //  5. Счёт истории (`historyStorage.count`, `createEffect` в `messagesCounter`) — зеркало
 //     `messagesMirror.mirrorHistoryCount` с подпиской `subscribeMirror`. Пока счёт не
 //     объявлен, счётчик показывает `Loading` во всех ветках (у tweb — только у «Избранного»
@@ -75,10 +77,22 @@
 //     Удаление темы/сохранённого диалога (`threadId` в `showDeleteDialogPopup`) — О-3.
 //  9. Подсказка «Chat.Menu.Hint» после «Выбрать сообщения» помнится настройкой
 //     `chatContextMenuHintWasShown` нашего `useSettingsStore` (tweb `appSettings`).
+// 10. Кнопки звонка (расхождения З1, З3 блока H `lib/appImManager.ts`): `call_active` —
+//     идущий видеочат или эфир чата из сторов звонков (`groupCallStore.activeByChat`,
+//     `livestreamStore.activeByChat`), `groupCallsController.groupCall` — `groupCallStore.peerId`,
+//     `rtmp_stream` звонка — `livestreamStore.activeByChat`, `manage_call` —
+//     `hasRights(chat, 'just_admin')`, `IS_GROUP_CALL_SUPPORTED` — `IS_CALL_SUPPORTED` (оба
+//     движка просят у браузера одно и то же), `getCachedFullUser` — `cachedPeerFull`.
+//     Поводы перепроверки: `peer_full_update` — зеркало полных карточек, `chat_update` —
+//     зеркало кратких, а смена `call_active` (у tweb едет в `chat_update`) — подписка на
+//     сторы звонков. Пункт меню «Stream With...» (`showRtmpStartStreamPopup`) — нет попапа
+//     (`StreamSettingsPopup` снят на К-3, Б-18), в меню эфира только «Начать видеочат».
+//     Пункты ⋮ проверяет `ButtonMenuToggle` (`verify` пункта), поэтому `buttonsToVerify` —
+//     только кнопки звонка.
 import type { AppSidebarRight } from '@components/sidebarRight'
 import { RIGHT_COLUMN_ACTIVE_CLASSNAME } from '@components/sidebarRight'
 import type { Managers } from '@/client/bootstrap'
-import { getPeerTyping, LEFT_COLUMN_ACTIVE_CLASSNAME } from '@lib/appImManager'
+import { LEFT_COLUMN_ACTIVE_CLASSNAME } from '@lib/appImManager'
 import mediaSizes, { ScreenSize } from '@core/dom/mediaSizes'
 import rootScope from '@lib/rootScope'
 import ButtonIcon from '@components/buttonIcon'
@@ -106,15 +120,20 @@ import { useChatsStore } from '@stores/chatsStore'
 import { showPeerReport } from '@components/popups/reportAd.bridge'
 import { useSettingsStore } from '@/settings'
 import { countUnmutedUnreadPeers } from '@/client/appBadge'
-import { cachedChat, cachedPeer, cachedUser, subscribePeerMirror } from '@core/peerCache'
-import { isAnyChat, isUser } from '@core/peers/peerId'
+import { cachedChat, cachedPeer, subscribePeerMirror } from '@core/peerCache'
+import { isUser } from '@core/peers/peerId'
 import { getLinkedChatPeerId } from '@core/peers/peer'
-import { getUserStatusString } from '@core/presence'
 import { isPeerMuted } from '@core/dialogs/notifySettings'
 import canClearHistory from '@core/peers/canClearHistory'
 import canReportBot from '@core/peers/canReportBot'
 import { getDeleteButtonText } from '@core/peers/dialogType'
-import { getChatMembersString } from '@components/wrappers/getChatMembersString'
+import { isBroadcast } from '@core/peers/predicates'
+import { hasRights } from '@core/peers/rights'
+import { cachedPeerFull, subscribeChatFullMirror } from '@core/chatFullCache'
+import IS_CALL_SUPPORTED from '@environment/callSupport'
+import { useGroupCallStore } from '@stores/groupCallStore'
+import { useLivestreamStore } from '@stores/livestreamStore'
+import type { CallType } from '@lib/calls/types'
 import { mirrorHistoryCount, subscribeMirror, winKey } from '@core/history/messagesMirror'
 import PopupElement from '@components/popups/popupElement'
 import PopupMute from '@components/popups/popupMute'
@@ -130,6 +149,14 @@ import type { TopicIconSource } from '@components/topicAvatar'
 import type { TopbarPlateController } from './topbarPlate.solid'
 import type Chat from './chat'
 import { ChatType } from './chatType'
+
+type ButtonToVerify = { element: HTMLElement, verify: () => boolean | Promise<boolean> }
+
+/** `chat.pFlags.call_active` (расхождение 10): идёт видеочат или эфир. */
+function isCallActive(peerId: PeerId) {
+  return !!useGroupCallStore.getState().activeByChat[peerId]?.length ||
+    !!useLivestreamStore.getState().activeByChat[peerId]
+}
 
 export default class ChatTopbar {
   public container!: HTMLDivElement
@@ -155,6 +182,10 @@ export default class ChatTopbar {
   public listenerSetter: ListenerSetter
 
   private menuButtons: ButtonMenuItemOptionsVerifiable[]
+  private btnCall!: HTMLButtonElement
+  private btnGroupCall!: HTMLButtonElement
+  private btnGroupCallMenu!: HTMLElement
+  private buttonsToVerify: ButtonToVerify[]
   private chatInfoContainer!: HTMLDivElement
   private person!: HTMLDivElement
 
@@ -171,6 +202,7 @@ export default class ChatTopbar {
     this.listenerSetter = new ListenerSetter()
 
     this.menuButtons = []
+    this.buttonsToVerify = []
   }
 
   public construct() {
@@ -252,9 +284,16 @@ export default class ChatTopbar {
     }
 
     this.chatUtils.append(...[
+      this.btnCall,
+      this.btnGroupCall,
+      this.btnGroupCallMenu,
       this.btnSearch,
       this.btnMore,
     ].filter(Boolean) as HTMLElement[])
+
+    this.pushButtonToVerify(this.btnCall, this.verifyCallButton.bind(this, 'voice'))
+    this.pushButtonToVerify(this.btnGroupCall, this.verifyVideoChatButton.bind(this, 'nonadmin'))
+    this.pushButtonToVerify(this.btnGroupCallMenu, this.verifyRtmpButton.bind(this))
 
     this.chatInfoContainer.append(this.btnBack, this.chatInfo, this.chatUtils)
     this.container.append(this.chatInfoContainer)
@@ -552,6 +591,110 @@ export default class ChatTopbar {
     }, { listenerSetter: this.listenerSetter })
   }
 
+  private pushButtonToVerify(element: HTMLElement, verify: ButtonToVerify['verify']) {
+    if(!element) {
+      return
+    }
+
+    element.classList.add('hide')
+    this.buttonsToVerify.push({ element, verify })
+  }
+
+  /** tweb `:318-338`; `menuButtons` ⋮ — П-5 (расхождение 1). */
+  private verifyButtons = (e?: Event) => {
+    if(e) cancelEvent(e)
+
+    const r = async() => {
+      const buttons = this.buttonsToVerify
+      const results = await Promise.all(buttons.map(async(button) => {
+        return {
+          result: await button.verify(),
+          button,
+        }
+      }))
+
+      results.forEach(({ button, result }) => {
+        button.element?.classList.toggle('hide', !result)
+      })
+    }
+
+    void r()
+  }
+
+  /** tweb `:340-362` — расхождение 10. */
+  private verifyRtmpButton = () => {
+    if(!this.chat.isBroadcast || this.chat.type !== ChatType.Chat) {
+      return false
+    }
+
+    if(useGroupCallStore.getState().peerId === this.peerId) {
+      return false
+    }
+
+    const chat = cachedChat(this.peerId)
+    if(!chat) {
+      return false
+    }
+
+    if(isCallActive(this.peerId)) {
+      return false
+    }
+
+    return hasRights(chat, 'just_admin')
+  }
+
+  /** tweb `:364-407` — расхождение 10. */
+  public verifyVideoChatButton = (type?: 'group' | 'broadcast' | 'nonadmin') => {
+    if(
+      !IS_CALL_SUPPORTED ||
+      isUser(this.peerId) ||
+      this.chat.type !== ChatType.Chat ||
+      this.chat.threadId
+    ) return false
+
+    if(useGroupCallStore.getState().peerId === this.peerId) {
+      return false
+    }
+
+    if(type) {
+      if(((type === 'group' && !this.chat.isAnyGroup)) ||
+        ((type === 'broadcast' && !this.chat.isBroadcast))) {
+        return false
+      }
+    }
+
+    const chat = cachedChat(this.peerId)
+    const canManageCall = hasRights(chat, 'just_admin')
+    if(type === 'nonadmin' && canManageCall && isBroadcast(chat)) {
+      return false // * hide live stream top button
+    }
+    const needActiveCall = !canManageCall
+    if(!isCallActive(this.peerId)) {
+      return !needActiveCall
+    }
+
+    // * `groupCall.pFlags.rtmp_stream`
+    return !useLivestreamStore.getState().activeByChat[this.peerId]
+  }
+
+  /** tweb `:409-415` — расхождение 10. */
+  public verifyCallButton = (type?: CallType) => {
+    if(!IS_CALL_SUPPORTED || !isUser(this.peerId) || this.chat.type !== ChatType.Chat) return false
+    const userFull = cachedPeerFull(this.peerId)
+
+    return userFull?._ === 'userFull' && !!(type === 'voice' ? userFull.pFlags?.phone_calls_available : userFull.pFlags?.video_calls_available)
+  }
+
+  /** tweb `:969-971` */
+  public onCallClick(type: CallType) {
+    void this.chat.appImManager.callUser(this.peerId, type)
+  }
+
+  /** tweb `:996-998` */
+  public onJoinGroupCallClick = () => {
+    void this.chat.appImManager.joinGroupCall(this.peerId)
+  }
+
   private get peerId() {
     return this.chat.peerId
   }
@@ -559,6 +702,22 @@ export default class ChatTopbar {
   public constructPeerHelpers() {
     this.subtitle = document.createElement('div')
     this.subtitle.classList.add('info')
+
+    this.btnCall = ButtonIcon('phone', { ariaLabel: 'Call' })
+    this.btnGroupCall = ButtonIcon('videochat', { ariaLabel: 'PeerInfo.Action.VoiceChat' })
+    this.btnGroupCallMenu = ButtonMenuToggle({
+      buttonOptions: { ariaLabel: 'PeerInfo.Action.VoiceChat' },
+      listenerSetter: this.listenerSetter,
+      direction: 'bottom-left',
+      buttons: [{
+        icon: 'videochat',
+        text: 'Rtmp.Topbar.StartVideoChat',
+        onClick: this.onJoinGroupCallClick,
+      }],
+      icon: 'videochat',
+    })
+    this.attachClickEvent(this.btnCall, this.onCallClick.bind(this, 'voice'))
+    this.attachClickEvent(this.btnGroupCall, this.onJoinGroupCallClick)
 
     // расхождение 6: `folder_unread` по папке «Все»
     this.listenerSetter.addCleanup(useChatsStore.subscribe((state, prev) => {
@@ -593,6 +752,50 @@ export default class ChatTopbar {
         this.setTitle()
       }
     })
+
+    // * `chat_update` (`:1081-1090`) — расхождение 10
+    let chat = cachedChat(this.peerId)
+    this.listenerSetter.addCleanup(subscribePeerMirror(() => {
+      const newChat = cachedChat(this.peerId)
+      if(newChat === chat) {
+        return
+      }
+
+      chat = newChat
+      if(!isBroadcast(chat)) {
+        return
+      }
+
+      this.verifyButtons()
+    }))
+
+    // * `peer_full_update` (`:1092-1096`) — расхождение 10
+    let full = cachedPeerFull(this.peerId)
+    this.listenerSetter.addCleanup(subscribeChatFullMirror(() => {
+      const newFull = cachedPeerFull(this.peerId)
+      if(newFull === full) {
+        return
+      }
+
+      full = newFull
+      this.verifyButtons()
+    }))
+
+    // * `call_active` чата — расхождение 10
+    const onCallsChange = <T extends { activeByChat: Record<number, unknown> }>(state: T, prev: T) => {
+      if(state.activeByChat[this.peerId] !== prev.activeByChat[this.peerId]) {
+        this.verifyButtons()
+      }
+    }
+    this.listenerSetter.addCleanup(useGroupCallStore.subscribe((state, prev) => {
+      if(state.peerId !== prev.peerId) {
+        this.verifyButtons()
+        return
+      }
+
+      onCallsChange(state, prev)
+    }))
+    this.listenerSetter.addCleanup(useLivestreamStore.subscribe(onCallsChange))
 
     return this
   }
@@ -868,6 +1071,8 @@ export default class ChatTopbar {
 
       this.subtitle.classList.toggle('hide', !setStatusCallback)
 
+      this.verifyButtons()
+
       this.container.classList.remove('hide')
 
       this.plates?.live?.setPeerId(peerId)
@@ -1062,7 +1267,7 @@ export default class ChatTopbar {
       })
 
       prepare = (needClear) => {
-        return setPeerStatus({
+        return this.chat.appImManager.setPeerStatus({
           peerId,
           element: this.subtitle,
           needClear,
@@ -1111,74 +1316,4 @@ export default class ChatTopbar {
 
     return menu
   }
-}
-
-// ═══ СТАТУС ПИРА — ВРЕМЕННО до П-4 (Б-29): tweb `appImManager.ts:3677-3797` ═══
-
-type StatusOptions = {
-  peerId: PeerId,
-  middleware: Middleware,
-  managers: Managers
-}
-
-/** tweb `:3677-3710` без `getOnlines` (расхождение 4). */
-function getChatStatus({ peerId, middleware, managers }: StatusOptions): HTMLElement | string {
-  const typingEl = getPeerTyping(peerId, { middleware, managers })
-  if(typingEl) {
-    return typingEl
-  }
-
-  return getChatMembersString(cachedChat(peerId), (key, args) => I18n.format(key, true, args))
-}
-
-/** tweb `:3712-3741`; присутствие — `chatsStore.presence`, иначе статус карточки. */
-function getUserStatus({ peerId, middleware, managers }: StatusOptions): HTMLElement | undefined {
-  const user = cachedUser(peerId)
-  const real = user?._ === 'user' ? user : undefined
-  const status = useChatsStore.getState().presence[peerId] ?? real?.status
-  if((!user && !status) || real?.pFlags?.self) {
-    return
-  }
-
-  const subtitle = getUserStatusString(user, status)
-
-  if(!real?.pFlags?.bot && !real?.pFlags?.support) {
-    let typingEl = getPeerTyping(peerId, { middleware, managers })
-    if(!typingEl && status?._ === 'userStatusOnline') {
-      typingEl = document.createElement('span')
-      typingEl.classList.add('online')
-      typingEl.append(subtitle)
-    }
-
-    if(typingEl) {
-      return typingEl
-    }
-  }
-
-  return subtitle
-}
-
-/** tweb `:3755-3797` (`useWhitespace: false`). Данные синхронные — ответ всегда «из кэша». */
-async function setPeerStatus(options: StatusOptions & {
-  element: HTMLElement,
-  needClear: boolean
-}): Promise<(() => void) | undefined> {
-  const { peerId, element, needClear, middleware, managers } = options
-
-  if(!needClear) {
-    // * good good good
-    const typingContainer = element.querySelector<HTMLElement>('.peer-typing-container')
-    if(typingContainer && getPeerTyping(peerId, { container: typingContainer, middleware, managers })) {
-      return
-    }
-  }
-
-  const subtitle = isAnyChat(peerId) ?
-    getChatStatus({ peerId, middleware, managers }) :
-    getUserStatus({ peerId, middleware, managers })
-  if(!middleware()) {
-    return
-  }
-
-  return () => replaceContent(element, subtitle || '')
 }

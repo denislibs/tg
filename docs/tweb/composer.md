@@ -415,7 +415,8 @@ Computed корневых узлов (из дампа, тёмная тема, ш
 **У нас (К-4).** Плашка — `W/components/chat/controlPlate.solid.tsx` (`ChatInputPlate`, порт файлом
 без расхождений; её же берёт панель выделения П-5). Кнопки и цепочку `haveSomethingInControl` строит
 `ChatInput` (`W/components/chat/input.ts`). React-плашка `conversation/ChatInputControl.tsx` и
-`controlPlates.ts` снесены.
+`controlPlates.ts` снесены. С П-6 в центре плашки и «Открепить все»/«Скрыть закреплённые» экрана закрепов
+(`pinnedControlBtn`, `can-pin` на `.chat-input`, Б-90).
 
 Анимация подмены — `_center()` (`input.ts:1703-1777`): считает `scale = widthTo / widthFrom`,
 `initTranslateX = (widthFrom - widthTo) / 2`, `transform = translateX(…) scaleX(scale)`,
@@ -653,6 +654,14 @@ Long-press (**400 ms**, только ЛКМ, только не-тач) откр�
 через `setTimeout(…, 400)` (`sendContextMenu.ts:146-147`).
 
 Позиционирование — `_chat.scss:36-39`: `.menu-send { top: auto; bottom: calc(100% + .5rem); }`.
+
+**У нас (П-6, 2026-10-03).** `W/components/chat/sendContextMenu.ts` (`SendMenu`, порт файлом) — тот же
+`ButtonMenuSync` с `menu-send top-left` внутри `.btn-send-container`, гейт `onOpen` и пересоздание на закрытии
+1:1; ряда эффектов нет (бэклог Б-125). «Запланировать» — `W/components/popups/scheduleSendingPopup.ts` поверх моста
+`datePicker.bridge.ts` (ВРЕМЕННО до 2C-23: без `SilentToggle`/`RepeatRow`, Б-126); отложенное уходит ручкой
+`messages.scheduleMessage`, а не `scheduleDate` кадра (расхождение 9 шапки `input.ts`). Send-as —
+`W/components/chat/sendAs.ts` (`.new-message-send-as-container` в начале `.new-message-wrapper`,
+`data-offset="as"` + `has-offset`), личность по умолчанию — первая из `getSendAs` (Б-127).
 
 ### 3.7 Бейдж эффекта (`selectedEffect.tsx`)
 
@@ -1989,8 +1998,18 @@ body.is-dragging {
 ### 9.4 Тексты
 
 Тексты приходят из `options.header` / `options.subtitle` в местах создания
-(`appImManager.ts:2358`, `:2373`, `:2386`) — конкретные langKey в рамках этой разведки
-**не выписаны**; смотреть по месту при реализации.
+(812502980: `appImManager.ts:2879-2925`): заголовок обеих зон чата — `Chat.DropTitle`,
+подзаголовок — `Chat.DropAsFilesDesc` (иконка `dragfiles`, вложение «файлом») и
+`Chat.DropQuickDesc` (иконка `dragmedia`, «медиа»); зона в открытом попапе медиа —
+`Preview.Dragging.AddItems` с числом файлов, без иконки.
+
+### 9.5 У нас
+
+Порт — пачка П-4 (Б-24): зона `web-client/src/components/chat/dragAndDrop.ts` 1:1, создаёт и
+снимает её блок K `web-client/src/lib/appImManager.ts` (`attachDragAndDropListeners`,
+`onDocumentPaste`), стили `styles/tweb/_chatDrop.scss` и `.chat .drops-container` в `_chat.scss`.
+Попап — шов `components/popups/newMedia.ts` (до К-4 его открывает остров композера). Нет зон
+внутри открытого попапа (Б-83) и сужения зон по правке медиа/правам по видам вложений (Б-82).
 
 ---
 
@@ -2090,7 +2109,7 @@ body.is-dragging {
 | — | `button…bubbles-go-down` / `bubbles-go-mention` / `bubbles-go-reaction` | у нас живут вне композера |
 | — | `div.autocomplete-helper…bot-commands` | **у нас нет** хелпера команд бота |
 | — | `div.autocomplete-helper…commands-helper` | **у нас нет** автокомплита `/команд` |
-| — | `div.reply-keyboard` | у нас — `s.replyKeyboardBtn` в `Chat.tsx:1245`, вне композера |
+| — | `div.reply-keyboard` | **портировано** (Б-36): `chat/replyKeyboard.solid.tsx` (`ReplyKeyboard extends DropdownHover`), разметка — `bubbleParts/replyMarkupLayout.solid.tsx`, кнопки — `wrappers/keyboardButton.ts`, стили — `styles/tweb/_replyKeyboard.scss`; источник — свёртка `mergeReplyKeyboard` по зеркалу окна (`core/markup/replyMarkup.ts`) вместо `historyStorage.replyMarkup`. Врезка в `input.ts` (`constructReplyMarkup`) — у ведущего П-6 |
 | — | `input[type=file][style="display:none"]` | у нас файловый инпут в `AttachMenu`/родителе |
 | — | `span.btn-send-stars-badge.stars-badge-base` | у нас платность показана плашкой `.paidBar` |
 | — | `div.reply-in-topic-overlay` | у нас нет |
@@ -2132,7 +2151,7 @@ body.is-dragging {
 | `canvas.voice-recording-waveform` | волна |
 | `div.autocomplete-helper…bot-commands` | список команд бота |
 | `div.autocomplete-helper…commands-helper` | автокомплит `/команд` |
-| `div.reply-keyboard` внутри `.rows-wrapper` | клавиатура бота (у нас снаружи) |
+| `div.reply-keyboard` внутри `.rows-wrapper` | клавиатура бота (класс портирован, Б-36; врезка в `input.ts` — П-6) |
 | `input[type=file][multiple][style="display:none"]` внутри `.new-message-wrapper` | скрытый файловый инпут |
 | `span.btn-send-stars-badge.stars-badge-base` | бейдж стоимости сообщения |
 | `div.drop` / `div.drops-container` | визуальная drop-зона с пунктирной обводкой |
@@ -2308,7 +2327,9 @@ React будет пытаться синхронизировать его сод
 - конкретные langKey для текстов drop-зоны (`appImManager.ts:2358, 2373, 2386`) — **не выписаны**;
 - SCSS для `.mentions-helper` и `.commands-helper` — **не найдено** (стилизуются только базой
   `_autocompletePeerHelper.scss`);
-- DOM-дерево `.reply-keyboard` (`input.ts:912-921`) — **не разбиралось** в этой разведке;
+- DOM-дерево `.reply-keyboard`: `div.reply-keyboard` > `div.scrollable.scrollable-y` > `div.reply-markup` >
+  `div.reply-markup-row.reply-keyboard-row` > `button.reply-markup-button.reply-keyboard-button.btn`
+  (`replyKeyboard.tsx:117-145`, `replyMarkupLayout.tsx`); порт — Б-36;
 - `.stars-badge-base` (внутреннее дерево и стили) — **не разбиралось**;
 - живой DOM состояний edit / forward / запись / выделение / плашка-замена — в дампе снят
   **только покой + reply**; остальное восстановлено по исходникам. Если нужна 100% уверенность

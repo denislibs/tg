@@ -6,8 +6,7 @@
 // `appImManager.onHashChange` по схеме tweb: `#@имя`, `#<peerId>`, `#@имя?post=<seq>`,
 // `#<peerId>?message=<seq>`, `#/im?p=…&post=` (`onHashChangeUnsafe`); кнопка
 // публичной страницы бэкенда ведёт на ту же форму (PR #380). Ссылку своего хоста
-// (`<tme>/имя/<seq>`) из поиска открывает `appImManager.openUsername` напрямую
-// (`core/hooks/openSearchUrl.ts`, роль tweb `internalLinkProcessor`).
+// (`<tme>/имя/<seq>`) открывает `internalLinkProcessor` (действие `im`).
 //
 // Якорь сообщения — `seq` (порядковый номер сообщения В ЧАТЕ), а не глобальный
 // `id`: именно им оперирует прыжок (`appImManager.setInnerPeer({lastMsgId})`), и

@@ -4,7 +4,8 @@
  * позиционные клавиши (`KeyL`) — по `event.code` (не зависят от раскладки),
  * прочие — по `event.key`. Из нескольких сочетаний срабатывает самое длинное.
  * Первый потребитель — сочетание блокировки код-паролем
- * (`core/hooks/useLockScreenShortcut.ts`).
+ * (`lib/appManagers/utils/useLockScreenShortcut.ts`), затем Ctrl+F/Ctrl+0
+ * колонки (`components/sidebarLeft/index.ts`, tweb `:457-468`).
  *
  * Расхождение: слушатель висит на `window`, а не на активном окне приложения
  * (`bindActiveWindowListener`, tweb `helpers/appWindow.ts`) — окна Document PiP,

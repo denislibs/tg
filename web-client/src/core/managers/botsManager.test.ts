@@ -8,6 +8,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { newBotsManager } from './botsManager'
+import { generateMessageId } from '../history/messageId'
 
 function fakeRest() {
   const post = vi.fn().mockResolvedValue({ text: 'ок', alert: false })
@@ -22,6 +23,13 @@ describe('BotsManager.callback', () => {
     await newBotsManager({ rest }).callback(42, 7, 'YWxlcnQ=', 100)
 
     expect(post).toHaveBeenCalledWith('/bots/42/callback', { peer_id: 7, message_id: 100, data: 'YWxlcnQ=' })
+  })
+
+  it('клиентский номер сообщения уходит серверным (getServerMessageId)', async () => {
+    const { rest, post } = fakeRest()
+    await newBotsManager({ rest }).callback(1, 2, 'Y2I=', generateMessageId(15))
+
+    expect(post).toHaveBeenCalledWith('/bots/1/callback', { peer_id: 2, message_id: 15, data: 'Y2I=' })
   })
 
   it('message_id необязателен — уходит 0, как ждёт ручка', async () => {

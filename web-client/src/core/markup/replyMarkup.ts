@@ -21,18 +21,23 @@
 //  • `style:flags.10?KeyboardButtonStyle` — предмета нет: цвета/иконки кнопок
 //    наш бэкенд не производит, а второй источник того же вида кнопки — это
 //    ровно тот подделанный признак, который модель устраняет.
-//  • клиентские поля оригинала `mid`/`fromId`/`pFlags.hidden`/`pFlags.used`
-//    (`schema_additional_params.json`) — их заполняет `mergeReplyKeyboard`
-//    (tweb `appMessagesManager.ts:5854-5932`), ведущий `historyStorage
-//    .replyMarkup`. Этого механизма у нас нет: клавиатуру над композером мы
-//    ищем сканом окна (`Chat.tsx`), а не отдельным хранилищем. Порт
-//    `mergeReplyKeyboard` — отдельная работа, до неё полям нечего хранить.
+//  • флаг `force_reply` на `replyKeyboardMarkup`/`replyInlineMarkup` (слой 229
+//    оригинала) — в нашей схеме его нет; «попросить ответ» умеет только
+//    отдельный конструктор `replyKeyboardForceReply` (`isForceReplyMarkup`).
+//
+// Клиентские поля оригинала `mid`/`fromId`/`pFlags.hidden`/`pFlags.used`
+// (`schema_additional_params.json`) — есть: их заполняет `mergeReplyKeyboard`
+// (порт ниже), складывая «последнюю клавиатуру» окна. На проводе их нет.
 //  • остальные конструкторы `KeyboardButton` схемы (switch-inline, buy,
 //    url-auth, game, request-peer/phone/poll/geo, copy, user-profile,
 //    simple-web-view) — бэкенд их не производит; в отличие от вариантов
 //    `PhotoSize`, объявленных «под кодек фазы 2», кнопка на провод попадает
 //    только целиком со своим поведением, поэтому пустое объявление здесь ничего
 //    не даёт.
+
+import type { MyMessage } from '../models'
+import { isLocalMessageId } from '../history/messageId'
+import { toPeerId } from '../peers/peerId'
 
 // ── KeyboardButton: объединение схемы, конструктор за конструктором ─────────
 
@@ -69,6 +74,8 @@ export interface KeyboardButtonRow { _: 'keyboardButtonRow'; buttons: KeyboardBu
 export interface ReplyKeyboardHide {
   _: 'replyKeyboardHide'
   pFlags?: Partial<{ selective: true }>
+  /** клиентский: сообщение, которое сняло клавиатуру (`mergeReplyKeyboard`) */
+  mid?: number
 }
 /** replyKeyboardForceReply#86b40b08 flags:# single_use:flags.1?true
  * selective:flags.2?true placeholder:flags.3?string = ReplyMarkup;
@@ -78,8 +85,12 @@ export interface ReplyKeyboardHide {
  * и «форс-ответ» снова сольются в одну ветку. */
 export interface ReplyKeyboardForceReply {
   _: 'replyKeyboardForceReply'
-  pFlags?: Partial<{ single_use: true; selective: true }>
+  /** `hidden`/`used` — клиентские (`mergeReplyKeyboard`, `ReplyKeyboard.checkForceReply`) */
+  pFlags?: Partial<{ single_use: true; selective: true; hidden: true; used: true }>
   placeholder?: string
+  /** клиентские: сообщение с разметкой и его автор (`mergeReplyKeyboard`) */
+  mid?: number
+  fromId?: PeerId
 }
 /** replyKeyboardMarkup#85dd99d1 flags:# resize:flags.0?true single_use:flags.1?true
  * selective:flags.2?true persistent:flags.4?true rows:Vector<KeyboardButtonRow>
@@ -89,9 +100,13 @@ export interface ReplyKeyboardForceReply {
  * `resize`, но переехал в `pFlags`. */
 export interface ReplyKeyboardMarkup {
   _: 'replyKeyboardMarkup'
-  pFlags?: Partial<{ resize: true; single_use: true; selective: true; persistent: true }>
+  /** `hidden` — клиентский (`mergeReplyKeyboard`: одноразовую клавиатуру уже использовали) */
+  pFlags?: Partial<{ resize: true; single_use: true; selective: true; persistent: true; hidden: true }>
   rows: KeyboardButtonRow[]
   placeholder?: string
+  /** клиентские: сообщение с разметкой и его автор — бот (`mergeReplyKeyboard`) */
+  mid?: number
+  fromId?: PeerId
 }
 /** replyInlineMarkup#48a30254 rows:Vector<KeyboardButtonRow> = ReplyMarkup; */
 export interface ReplyInlineMarkup { _: 'replyInlineMarkup'; rows: KeyboardButtonRow[] }
@@ -121,31 +136,161 @@ export function getInlineMarkupRows(markup: ReplyMarkup | undefined): KeyboardBu
 }
 
 /**
- * Клавиатура над композером: ряды последней подходящей разметки окна или `null`,
- * если её показывать не надо.
- *
- * Сведение двух мест оригинала в нашем периметре:
- *  • какую разметку считать текущей — `mergeReplyKeyboard`
- *    (tweb `appMessagesManager.ts:5854-5932`): `replyInlineMarkup` она
- *    ПРОПУСКАЕТ (:5867-5869) и оставляет прошлую клавиатуру, поэтому кнопки под
- *    баблом не гасят клавиатуру над строкой ввода;
- *  • показывать ли её — `ReplyKeyboard.checkAvailability`
- *    (tweb `replyKeyboard.tsx:145-149`): скрыто у `replyKeyboardHide` и у
- *    разметки без рядов.
- *
- * Отличие от оригинала одно: у нас нет `historyStorage.replyMarkup`, поэтому
- * «последняя разметка» ищется сканом окна, а не читается из хранилища. Порт
- * самого хранилища (вместе с `mid`/`fromId`/`single_use`-скрытием) — отдельная
- * работа.
+ * Порт tweb `appManagers/utils/messages/isForceReplyMarkup.ts`. У оригинала
+ * (слой 229) «попросить ответ» может и клавиатура с флагом `force_reply`; в
+ * нашей схеме флага нет, остаётся отдельный конструктор.
  */
-export function findReplyKeyboardRows(
-  messages: readonly { replyMarkup?: ReplyMarkup }[],
-): KeyboardButtonRow[] | null {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const markup = messages[i].replyMarkup
-    if (!markup || markup._ === 'replyInlineMarkup') continue
-    if (markup._ !== 'replyKeyboardMarkup' || !markup.rows.length) return null
-    return markup.rows
+export function isForceReplyMarkup(replyMarkup: ReplyMarkup | undefined): replyMarkup is ReplyKeyboardForceReply {
+  return replyMarkup?._ === 'replyKeyboardForceReply'
+}
+
+/**
+ * Последняя клавиатура окна — поля `HistoryStorage` оригинала, которые ведёт
+ * `mergeReplyKeyboard`: `replyMarkup` и `maxOutId` (номер последнего своего
+ * сообщения, по нему гасится одноразовая клавиатура).
+ */
+export interface ReplyKeyboardState {
+  replyMarkup?: ReplyMarkup
+  maxOutId?: number
+}
+
+type MarkupMessage = Pick<MyMessage, '_' | 'id' | 'pFlags' | 'peerId' | 'fromId'> & {
+  reply_markup?: ReplyMarkup
+  message?: string
+  reply_to?: { reply_to_msg_id?: number }
+  action?: { _: string, user_id?: number }
+}
+
+/** tweb `appMessagesManager.ts:8419-8434`. Эфемерных номеров у нас нет —
+ *  остаётся сравнение номеров. */
+function isAfterReplyMarkup(message: MarkupMessage, replyMarkup: ReplyMarkup): boolean {
+  const mid = (replyMarkup as { mid?: number }).mid
+  if (message.id === mid) {
+    return false
   }
-  return null
+
+  return message.id > (mid ?? 0)
+}
+
+/**
+ * Порт tweb `mergeReplyKeyboard` (`appMessagesManager.ts:8436-8532`): свести
+ * сообщение в «последнюю клавиатуру» окна; `true` — клавиатура сменилась
+ * (у оригинала по этому сигналу летит `history_reply_markup`).
+ *
+ * Расхождения:
+ *  • оригинал ПИШЕТ клиентские поля в разметку самого сообщения
+ *    (`messageReplyMarkup.mid = message.mid`, `pFlags.hidden = true`); у нас
+ *    сообщение лежит в зеркале окна, которое правит только проектор, поэтому
+ *    в состояние кладётся КОПИЯ разметки с этими полями;
+ *  • эфемерных сообщений нет (`isEphemeralMessageId`), «ещё не отправлено»
+ *    (`pFlags.is_outgoing`) — дробный номер (`isLocalMessageId`);
+ *  • `isBot` — предикат вызывающего (у оригинала `appUsersManager.isBot`).
+ */
+export function mergeReplyKeyboard(
+  state: ReplyKeyboardState,
+  message: MarkupMessage | undefined,
+  isBot: (userId: number) => boolean,
+): boolean {
+  if (!message) {
+    return false
+  }
+
+  const messageReplyMarkup = message.reply_markup
+  const isService = message._ === 'messageService'
+  if (!messageReplyMarkup && !message.pFlags?.out && !isService) {
+    return false
+  }
+
+  // инлайн-разметка живёт целиком в своём бабле (флага `force_reply` у нас нет)
+  if (messageReplyMarkup?._ === 'replyInlineMarkup') {
+    return false
+  }
+
+  const lastReplyMarkup = state.replyMarkup
+  if (messageReplyMarkup) {
+    if (lastReplyMarkup && !isAfterReplyMarkup(message, lastReplyMarkup)) {
+      return false
+    }
+
+    if (messageReplyMarkup.pFlags?.selective) {
+      return false
+    }
+
+    let hidden: true | undefined
+    if (state.maxOutId &&
+      message.id < state.maxOutId &&
+      (messageReplyMarkup._ === 'replyKeyboardMarkup' || messageReplyMarkup._ === 'replyKeyboardForceReply') &&
+      messageReplyMarkup.pFlags?.single_use) {
+      hidden = true
+    }
+
+    if (messageReplyMarkup._ === 'replyKeyboardHide') {
+      state.replyMarkup = { ...messageReplyMarkup, mid: message.id }
+    } else {
+      state.replyMarkup = {
+        ...messageReplyMarkup,
+        pFlags: { ...messageReplyMarkup.pFlags, ...(hidden && { hidden }) },
+        mid: message.id,
+        fromId: message.fromId ?? message.peerId,
+      } as ReplyKeyboardMarkup | ReplyKeyboardForceReply
+    }
+
+    return true
+  }
+
+  if (message.pFlags?.out) {
+    if (lastReplyMarkup) {
+      const last = lastReplyMarkup as ReplyKeyboardMarkup | ReplyKeyboardForceReply
+      // одноразовую клавиатуру тратит следующее сообщение, форс-ответ — ответ на него
+      const answersForceReply = isForceReplyMarkup(last) &&
+        message.reply_to?.reply_to_msg_id === last.mid
+      if ((last.pFlags?.single_use || answersForceReply) &&
+        !last.pFlags?.hidden &&
+        (answersForceReply || isAfterReplyMarkup(message, last) || isLocalMessageId(message.id)) &&
+        message.message) {
+        state.replyMarkup = {
+          ...last,
+          pFlags: { ...last.pFlags, hidden: true },
+        } as ReplyKeyboardMarkup | ReplyKeyboardForceReply
+        return true
+      }
+    } else if (!state.maxOutId || message.id > state.maxOutId) {
+      state.maxOutId = message.id
+    }
+  }
+
+  const action = isService ? message.action : undefined
+  if (action?._ === 'messageActionChatDeleteUser' &&
+    (lastReplyMarkup ?
+      toPeerId(action.user_id!, false) === (lastReplyMarkup as ReplyKeyboardMarkup).fromId :
+      isBot(action.user_id!)
+    )
+  ) {
+    state.replyMarkup = {
+      _: 'replyKeyboardHide',
+      mid: message.id,
+      pFlags: {},
+    }
+    return true
+  }
+
+  return false
+}
+
+/**
+ * «Последняя клавиатура» окна — свёртка `mergeReplyKeyboard` по окну в
+ * порядке номеров. У оригинала она копится в `historyStorage.replyMarkup` по
+ * мере доезда сообщений; у нас окно — зеркало (`core/history/messagesMirror`),
+ * и состояние выводится из него целиком.
+ */
+export function getHistoryReplyMarkup(
+  messages: readonly MarkupMessage[],
+  isBot: (userId: number) => boolean,
+): ReplyMarkup | undefined {
+  const state: ReplyKeyboardState = {}
+  for (const message of messages) {
+    mergeReplyKeyboard(state, message, isBot)
+  }
+
+  return state.replyMarkup
 }

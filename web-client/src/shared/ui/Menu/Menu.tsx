@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { CSSProperties, ReactNode } from 'react'
 import classNames from '../../lib/classNames'
-import { usePortalContainer } from '../../../core/pip'
+import { usePortalContainer } from '@shared/react/usePortalContainer'
 import { useNavLayer } from '../../../core/hooks/useNavLayer'
 import s from './Menu.module.scss'
 
