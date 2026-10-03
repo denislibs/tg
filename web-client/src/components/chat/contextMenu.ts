@@ -1613,11 +1613,11 @@ export default class ChatContextMenu {
 
   /** Порт `onPinClick`/`onUnpinClick` (812502980 :2220-2226). */
   private onPinClick = () => {
-    showPinMessagePopup(this.messagePeerId, this.mid)
+    void showPinMessagePopup(this.messagePeerId, this.mid)
   }
 
   private onUnpinClick = () => {
-    showPinMessagePopup(this.messagePeerId, this.mid, true)
+    void showPinMessagePopup(this.messagePeerId, this.mid, true)
   }
 
   /** Порт `onRetractVote`/`onStopPoll` (:2024-2030). */
