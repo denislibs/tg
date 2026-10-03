@@ -158,7 +158,7 @@ func TestMessagesRepo_SearchCounters(t *testing.T) {
 	}
 
 	filters := []string{"media", "files", "links", "music", "voice", "gifs"}
-	got, err := msgs.SearchCounters(ctx, chatID, a, filters)
+	got, err := msgs.SearchCounters(ctx, chatID, a, filters, nil)
 	if err != nil {
 		t.Fatalf("counters: %v", err)
 	}

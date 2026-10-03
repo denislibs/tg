@@ -125,6 +125,9 @@ export type SearchHistoryOptions = {
   peerId: number
   inputFilter: { _: MyInputMessagesFilter }
   query?: string
+  /** тред (комментарии / тема форума) — клиентский номер корня; вкладки
+   *  профиля треда листают только его (tweb `top_msg_id`, `:9978`) */
+  threadId?: number
   /** номер последнего уже показанного сообщения; 0 — с начала */
   offsetId?: number
   limit?: number
@@ -446,9 +449,10 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
   //
   // Номер наружу КЛИЕНТСКИЙ, в URL уходит серверный: `getServerMessageId` —
   // ровно та граница пространств, о которой `core/history/messageId.ts`.
-  const mediaHistory = async (peerId: number, filter: MessagesWireFilter, offsetId = 0, limit = 30): Promise<{ messages: MyMessage[]; count: number }> => {
+  const mediaHistory = async (peerId: number, filter: MessagesWireFilter, offsetId = 0, limit = 30, threadId?: number): Promise<{ messages: MyMessage[]; count: number }> => {
     const r = await rest.get<MessagesContainer>(`/chats/${peerId}/media`, {
       filter, offset_id: getServerMessageId(offsetId), limit,
+      ...(threadId ? { thread_root: getServerMessageId(threadId) } : {}),
     })
     return { messages: await mapContainer(r), count: r.count ?? 0 }
   }
@@ -546,15 +550,16 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
   // ветки (`:9990`, `:9996`) на провод не идут: «rate» нашего сервера — номер
   // последнего отданного сообщения в глобально монотонной нумерации
   // (`docs/tweb/global-search.md` часть 3), второй половины курсора ему не
-  // нужно. `threadId` (`top_msg_id`, `:9978`) ни одна из трёх ручек не
-  // принимает — поиск по треду у бэкенда отсутствует.
+  // нужно. `threadId` (`top_msg_id`, `:9978`) принимает только ручка
+  // шаред-медиа (`thread_root`, вкладки профиля треда); текстового поиска по
+  // треду у бэкенда нет.
   const searchHistory = async ({
-    peerId, inputFilter, query = '', offsetId = 0, limit = 20, nextRate, folderId, minDate, maxDate, chatType,
+    peerId, inputFilter, query = '', threadId, offsetId = 0, limit = 20, nextRate, folderId, minDate, maxDate, chatType,
   }: SearchHistoryOptions): Promise<{ messages: MyMessage[]; count: number; nextRate?: number }> => {
     const filter = getWireFilter(inputFilter._)
     if (peerId && !nextRate && folderId === undefined) {
       if (filter && !query && !minDate && !maxDate) {
-        return mediaHistory(peerId, filter, offsetId, limit)
+        return mediaHistory(peerId, filter, offsetId, limit, threadId)
       }
 
       return searchMessages(peerId, query, { offsetId, limit, filter, minDate, maxDate })
@@ -1063,9 +1068,11 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     // счётчики всех вкладок правой колонки сразу (tweb
     // `appSearchSuper.ts:2375-2377`). Ответ идёт в порядке запроса и содержит
     // запись на каждый фильтр: неизвестный вид — ноль, а не пропуск.
-    async searchCounters(peerId: number, filters: string[]): Promise<{ filter: string; count: number }[]> {
+    // `threadId` — счётчики только треда (вкладки профиля треда, `top_msg_id`).
+    async searchCounters(peerId: number, filters: string[], threadId?: number): Promise<{ filter: string; count: number }[]> {
       const r = await rest.get<{ counters?: { filter: string; count: number }[] }>(
-        `/chats/${peerId}/search_counters`, { filters: filters.join(',') },
+        `/chats/${peerId}/search_counters`,
+        { filters: filters.join(','), ...(threadId ? { thread_root: getServerMessageId(threadId) } : {}) },
       )
       return r.counters ?? []
     },

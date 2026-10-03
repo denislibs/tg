@@ -489,10 +489,7 @@ func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
 	}
 	limit := int(queryInt(r, "limit", 40))
 	// Тред (форум-топик / комментарии): ?thread_root=<номер корня> ограничивает окно.
-	var threadRoot *int64
-	if tr := queryInt(r, "thread_root", 0); tr > 0 {
-		threadRoot = &tr
-	}
+	threadRoot := threadRootQuery(r)
 	// Jump-to-message: ?around=<seq> returns a window centered on that message.
 	if around := queryInt(r, "around", 0); around > 0 {
 		a, err := h.svc.GetHistoryAround(r.Context(), chatID, h.meID(r), around, limit, threadRoot)
@@ -996,8 +993,18 @@ func (h *ChatHandler) NextMention(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, seq)
 }
 
+// threadRootQuery — `?thread_root=<номер корня>`: тред (форум-топик /
+// комментарии) у истории, шаред-медиа и их счётчиков. Нет или не больше нуля —
+// nil (весь чат).
+func threadRootQuery(r *http.Request) *int64 {
+	if tr := queryInt(r, "thread_root", 0); tr > 0 {
+		return &tr
+	}
+	return nil
+}
+
 // MediaHistory serves the profile's shared-media tabs:
-// GET /chats/{chatID}/media?filter=media|files|links|music|voice&offset_id=&limit=
+// GET /chats/{chatID}/media?filter=media|files|links|music|voice&offset_id=&limit=&thread_root=
 //
 // offset_id — seq последнего уже показанного сообщения (0/нет — с начала), как
 // в оригинале (tweb appSearchSuper.ts:2278-2279). Смещения у ручки нет вовсе:
@@ -1009,8 +1016,9 @@ func (h *ChatHandler) MediaHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	filter := r.URL.Query().Get("filter")
 	page := usecasechat.MediaPage{
-		OffsetID: queryInt(r, "offset_id", 0),
-		Limit:    int(queryInt(r, "limit", 30)),
+		OffsetID:   queryInt(r, "offset_id", 0),
+		Limit:      int(queryInt(r, "limit", 30)),
+		ThreadRoot: threadRootQuery(r),
 	}
 	res, err := h.svc.MediaHistory(r.Context(), chatID, h.meID(r), filter, page)
 	if errors.Is(err, domain.ErrNotFound) {
@@ -1025,7 +1033,7 @@ func (h *ChatHandler) MediaHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 // SearchCounters serves the shared-media tab counters in one call:
-// GET /chats/{chatID}/search_counters?filters=media,files,links,music,voice
+// GET /chats/{chatID}/search_counters?filters=media,files,links,music,voice&thread_root=
 //
 // Аналог MTProto messages.getSearchCounters: оригинал спрашивает все вкладки
 // разом (tweb appSearchSuper.ts:2375-2377), у нас это стоило пяти запросов на
@@ -1058,7 +1066,7 @@ func (h *ChatHandler) SearchCounters(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"counters": out})
 		return
 	}
-	counters, err := h.svc.SearchCounters(r.Context(), chatID, h.meID(r), filters)
+	counters, err := h.svc.SearchCounters(r.Context(), chatID, h.meID(r), filters, threadRootQuery(r))
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
 		return

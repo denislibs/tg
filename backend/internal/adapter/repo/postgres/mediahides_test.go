@@ -48,14 +48,14 @@ func TestMessagesRepo_HiddenForViewerExcludedFromMediaAndSearch(t *testing.T) {
 	}
 
 	// Счётчики вкладок.
-	counters, err := msgs.SearchCounters(ctx, chatID, a, []string{"media", "links"})
+	counters, err := msgs.SearchCounters(ctx, chatID, a, []string{"media", "links"}, nil)
 	if err != nil {
 		t.Fatalf("SearchCounters(a): %v", err)
 	}
 	if counters["media"] != 1 || counters["links"] != 0 {
 		t.Fatalf("счётчики у a = %v; ждали media=1 links=0", counters)
 	}
-	counters, err = msgs.SearchCounters(ctx, chatID, b, []string{"media", "links"})
+	counters, err = msgs.SearchCounters(ctx, chatID, b, []string{"media", "links"}, nil)
 	if err != nil {
 		t.Fatalf("SearchCounters(b): %v", err)
 	}
