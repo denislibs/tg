@@ -15,6 +15,7 @@ function fakeCursor(pts = 0, date = 0): Cursor {
     get: () => ({ pts, date }),
     advance: (p, d) => { if (p > pts) pts = p; if (typeof d === 'number' && d > date) date = d },
     set: (p, d) => { pts = p; date = d },
+    reset: () => { pts = 0; date = 0 },
   }
 }
 const nm = (pts: number, id: number): SyncItem => ({ t: 'new_message', pts, d: { msg_id: id } })

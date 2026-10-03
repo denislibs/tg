@@ -46,8 +46,7 @@ export function fillDialogsMirror(managers: Pick<Managers, 'dialogs'>): Promise<
  * Применить ответ владельца к витрине ДО первого рендера (подписка на
  * rt:dialog_op ещё не поднята — startRealtime() стартует позже, из
  * `appDialogsManager.start()`; кадры, случившиеся раньше её подписки, никто не
- * буферизует, см. web-client/CLAUDE.md «Владение фактами»). Сеть догоняет
- * отдельно (refresh) — её НЕ ждём здесь, чтобы не блокировать рендер сетью.
+ * буферизует, см. web-client/CLAUDE.md «Владение фактами»).
  *
  * `applyDialogOps` здесь — allow-listed исключение из «пишет только проектор»
  * (см. stores/noDuplicateDialogs.test.ts, как и у сброса зеркала на выходе):
@@ -55,27 +54,17 @@ export function fillDialogsMirror(managers: Pick<Managers, 'dialogs'>): Promise<
  * просто вызванный отсюда до того, как подписка на rt:dialog_op вообще
  * поднята — не второй вывод факта.
  *
- * Fix (финальное ревью, Important #2/#3): ответ догона применяется ЗДЕСЬ ЖЕ,
- * из результата RPC, а не только бродкастом — до подъёма насоса (startRealtime()
- * из `appDialogsManager.start()`) кадр `rt:dialog_op` доставить некому, и на быстрой
- * сети reset уходил в никуда. Возвращаем промис этого догона: он уезжает в
- * `bootData` и на нём висит сид презенса (`loadPresence`), которому нужен
- * честный сигнал «сетевой список приехал» — на пустом кэше зеркало в момент
- * старта мессенджера ещё пусто. Промис намеренно НЕ отклоняется (401/5xx у
- * `refresh()` пробрасываются): остаёмся на кэше, презенс сеется тем, что есть,
- * unhandled rejection не плодим (Minor #3).
- *
- * Первичная сетевая загрузка — `refresh()`, и она страничная: на пустом кэше
- * владелец просит одну страницу (`dialogsManager.ts::doRefresh`). Дальше список
- * догружает сам сайдбар через `getDialogs` + `helpers/sequentialCursorFetcher`,
- * опираясь на размер набора своей выборки (`countFor`).
+ * Сети здесь НЕТ — старт списка как у tweb `dialogsStorage.getDialogs`
+ * (lib/storages/dialogs.ts:1903-1914): страницу отдаёт кэш, если его хватает
+ * на страницу или выборка уже загружена целиком, иначе ОДИН запрос — и решает
+ * это сам список (`autonomousDialogList/base.ts::loadDialogsInner` →
+ * `dialogsManager.getDialogs`), а не boot. Прежний безусловный сетевой догон
+ * (`refresh()`) приходил вторым `reset` поверх кэша и перетасовывал уже
+ * нарисованный список; всё, что случилось с прошлой сессии, догоняет журнал
+ * апдейтов (`/sync` от сохранённого курсора, tweb `getDifference`).
  */
-export function applyDialogsMirror(op: DialogOp | null, managers: Pick<Managers, 'dialogs'>): Promise<void> {
+export function applyDialogsMirror(op: DialogOp | null): void {
   if (op) useChatsStore.getState().applyDialogOps([op])
-  return managers.dialogs.refresh().then(
-    (netOp) => { if (netOp) useChatsStore.getState().applyDialogOps([netOp]) },
-    () => { /* офлайн/401 — витрина остаётся на кэше владельца */ },
-  )
 }
 
 /**
@@ -253,19 +242,8 @@ export async function bootstrap(): Promise<{ managers: Managers; hasToken: boole
   // applyDialogsMirror); dialogsOp был запущен выше, ещё до чтения State —
   // здесь просто дожидаемся уже летящего промиса, а не начинаем round-trip заново.
   const op = await dialogsOp
-  // Fix (ревью Task 6, Important #1): `bootData` больше не несёт `dialogs` —
-  // диалоги уже применены к зеркалу СТРОКОЙ НИЖЕ (applyDialogsMirror), второго
-  // потребителя этого снимка (старый `useAppBootstrap → loadChats(managers,
-  // prefetch).dialogs`) нет с самой правки Task 6 (диалоговая половина
-  // `loadChats` снесена — см. `stores/chatsStore.ts`).
-  //
-  // Fix (финальное ревью, Minor #1 + Important #3): вместо мёртвого
-  // `hydratedFromCache` (его никто не читал: ChatList решает по `loaded`)
-  // в bootData уезжает промис СЕТЕВОГО догона — на нём висит сид презенса в
-  // `appDialogsManager.start()`, см. докблок `applyDialogsMirror`. Сам догон НЕ ждём:
-  // рендер не должен упираться в сеть.
-  const dialogsReady = applyDialogsMirror(op, managers)
-  setBootData({ me, dialogsReady, hasToken })
+  applyDialogsMirror(op)
+  setBootData({ me, hasToken })
 
   // Смена языка в СОСЕДНЕЙ вкладке (порт tweb index.ts:519-521). Выбор делают в
   // одной вкладке, а `localStorage` соседи перечитывают только на перезагрузке —

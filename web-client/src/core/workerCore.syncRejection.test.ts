@@ -41,6 +41,7 @@ vi.mock('./realtime/connectionManager', async (importOriginal) => {
 })
 
 import { createWorkerCore } from './workerCore'
+import { idbSet } from './store/idbKv'
 import type { Endpoint } from '../rpc/superMessagePort'
 
 function pair(): [Endpoint, Endpoint] {
@@ -124,9 +125,12 @@ describe('createWorkerCore(): упавший /sync не даёт Unhandled Rejec
   })
 
   // Вызыватель №2: hello-кадр реконнекта с расхождением pts. Курсор здесь
-  // гидрируется штатно (пустой IDB → 0), серверный pts=5 с ним не совпал —
-  // ветка просит догон, и он падает.
+  // гидрируется из IDB (сохранённое состояние прошлой сессии — без него hello
+  // стал бы базой, а не поводом для догона, tweb `attach`), серверный pts=5
+  // с ним не совпал — ветка просит догон, и он падает.
   it('догон, запрошенный hello-кадром реконнекта с расхождением pts', async () => {
+    await idbSet('pts', 1)
+    await idbSet('date', 1)
     boot()
 
     capturedConnDeps!.onFrame('hello', { pts: 5, date: 1787334148 })
