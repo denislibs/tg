@@ -15,21 +15,13 @@
 // (docs/superpowers/specs/2026-08-12-dialogs-ownership-and-virtual-list-design.md).
 // `boot.ts::applyDialogsMirror` по-прежнему применяет диалоги к зеркалу СРАЗУ,
 // синхронно в bootstrap() — этому не нужен отдельный промис в bootData.
+// Промиса сетевого догона (`dialogsReady`) здесь тоже больше нет: boot в сеть
+// за списком не ходит (старт как tweb `getDialogs`, см. `applyDialogsMirror`),
+// а сид презенса ждёт первых строк зеркала (`chatsStore.ts::whenDialogsLoaded`).
 import type { PeerProfile } from '../core/managers/authManager'
 
 export interface BootData {
   me: Promise<PeerProfile | null>
-  /**
-   * Сетевой догон списка диалогов, запущенный boot'ом (`applyDialogsMirror`):
-   * резолвится, когда ответ `/chats` УЖЕ применён к зеркалу; не отклоняется
-   * никогда (офлайн/401 остаются на кэше владельца). Fix (финальное ревью,
-   * Important #3): на нём висит сид презенса в `useAppBootstrap` — раньше он
-   * читал зеркало сразу и на пустом кэше (смена аккаунта, очищенное хранилище,
-   * вход в соседней вкладке) молча выходил без единой цели, оставляя сеанс без
-   * онлайн-точек и «был(а) в сети». Заменил мёртвый `hydratedFromCache`:
-   * скелетон списка решает по `loaded` (`autonomousDialogList/base.ts::checkForDialogsPlaceholder`), флаг не читал никто.
-   */
-  dialogsReady: Promise<void>
   // Есть ли локальный session_token (у воркера, `persist.scopeToSession`). По нему
   // useAuthGate решает authed до ответа сети (как tweb — auth из локального
   // состояния), без промежуточного null.
@@ -69,13 +61,11 @@ export function setBootData(d: BootData): void {
  * Снимка диалогов здесь нет (Fix, ревью Task 6, Important #1): та половина
  * `loadChats` снесена, диалогами владеет `dialogsManager` (`fillMirror()`/
  * `refresh()`), и `boot.ts::applyDialogsMirror` применяет их к зеркалу СРАЗУ,
- * синхронно внутри `bootstrap()`. `dialogsReady` — не снимок, а ПРОМИС уже
- * запущенного сетевого догона: он ровно так же одноразов (принадлежит сессии,
- * под которой страница загрузилась) и потому ходит тем же каналом, что `me`.
+ * синхронно внутри `bootstrap()`.
  */
-export function bootPrefetch(): { me: Promise<PeerProfile | null>; dialogsReady: Promise<void> } | null {
+export function bootPrefetch(): { me: Promise<PeerProfile | null> } | null {
   if (!bootData || !prefetchValid) return null
-  return { me: bootData.me, dialogsReady: bootData.dialogsReady }
+  return { me: bootData.me }
 }
 
 /**

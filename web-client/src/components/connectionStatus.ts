@@ -90,6 +90,30 @@ export default class ConnectionStatusComponent {
       this.setConnectionStatus,
       ConnectionStatusComponent.INITIAL_DELAY,
     )
+
+    // Догон, начавшийся ДО подписки, — сразу, а не через INITIAL_DELAY. У tweb
+    // такого окна нет: `apiUpdatesManager.attach()` зовёт `appImManager.construct`
+    // (uiNotificationsManager.ts:760, appImManager.ts:328) строкой ВЫШЕ этого
+    // `construct` (appDialogsManager.ts:989-990), и `state_synchronizing`
+    // (apiUpdatesManager.ts:521) приходит уже подписанному автомату. У нас
+    // догон запускает hello сокета, который воркер получает независимо от
+    // вкладки, — после F5 догон обычно начинается раньше, чем поднят насос
+    // (`startRealtime`), его `state_synchronizing` уходит в никуда, а
+    // `state_synchronized` прилетает раньше стартового pull — «Обновление…» не
+    // показывалось ни разу. Поэтому факт «догон идёт» спрашиваем у владельца
+    // сразу; состояние соединения по-прежнему ждёт INITIAL_DELAY (tweb
+    // :66-69 — не мигать «Ожидание сети» на старте).
+    this.seedUpdating()
+  }
+
+  /** Засеять `updating` ответом владельца, пока событий синхронизации не было. */
+  private seedUpdating = () => {
+    const middleware = this.middlewareHelper.get()
+    void this.managers.realtime.getStatus().then(({ syncing }) => {
+      if (!middleware() || this.sawSyncEvent || !syncing) return
+      this.updating = true
+      this.setState()
+    })
   }
 
   /**
