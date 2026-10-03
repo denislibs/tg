@@ -2,8 +2,7 @@
  * Порт tweb `components/progressRing.tsx` — кольцо прогресса на SVG. Один модуль
  * на ВСЕХ потребителей, как в оригинале: кружок в ленте
  * (`components/wrappers/video.ts`, ветка `doc.type === 'round'`) и превью записи
- * кружка (`components/composer/RoundRecordPreview.tsx`, порт
- * `chat/recording/videoRecordingPanel.tsx`). Разметка/классы/атрибуты — 1:1 с
+ * кружка (`components/chat/recording/videoRecordingPanel.solid.tsx`). Разметка/классы/атрибуты — 1:1 с
  * оригиналом, потому что на них построены CSS-правила (`.progress-ring`,
  * `.progress-ring__circle`). Размер живого кольца меняет `setSize` хендла
  * (tweb 1faad1d59 — им пользуется resize кружков в `wrappers/video.ts`).
