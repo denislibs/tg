@@ -10,51 +10,45 @@ type StatPoint struct {
 	Value int64
 }
 
-// TopPost — пост канала в топе по числу просмотров.
-//
-// Конструктором `message` НЕ становится, и основание одно — предмет ДРУГОЙ: это
-// строка АГРЕГАТА (пост + его метрика + сутки), а не сообщение. У оригинала на
-// её месте stats.megagroupStats.top_posters / statsGroupTopPoster — тоже
-// собственные конструкторы статистики, ссылающиеся на сообщение НОМЕРОМ, а не
-// несущие его. Текст здесь — подпись строки таблицы, и его короткая выжимка
-// вторым сериализатором сообщения не является.
-type TopPost struct {
+// RecentPost — недавний пост канала со счётчиками взаимодействий: строка
+// `recent_posts_interactions` (`postInteractionCountersMessage`). Сам пост клиент
+// догружает по номеру (tweb `statistics.tsx:1006-1015`).
+type RecentPost struct {
 	// Seq — адрес поста (номер в канале); второго числа у поста нет.
 	Seq       int64
-	Text      string
 	Views     int64
-	CreatedAt time.Time
+	Forwards  int64
+	Reactions int64
 }
 
-// ChannelStatsSummary — числовой обзор (карточки Overview) статистики канала.
+// ChannelStatsSummary — числовой обзор статистики канала/группы.
 type ChannelStatsSummary struct {
 	Members         int64 // текущее число подписчиков/участников
 	TotalViews      int64 // суммарные просмотры всех постов
+	TotalForwards   int64 // суммарные пересылки всех постов
+	TotalReactions  int64 // суммарные реакции на все посты
 	PostsCount      int64 // число постов (не удалённых)
-	AvgReach        int64 // средний охват = TotalViews / PostsCount
 	NotificationsOn int64 // участников с включёнными уведомлениями (не muted)
 }
 
-// ChannelStats — полная статистика канала: обзор + временные ряды + топ-посты.
+// ChannelStats — статистика канала/группы: обзор, временные ряды и недавние
+// посты. Форму схемы собирают ToBroadcastWire/ToMegagroupWire (mtstats.go).
 type ChannelStats struct {
+	// Broadcast — канал (stats.broadcastStats); иначе группа (stats.megagroupStats).
+	Broadcast     bool
 	Summary       ChannelStatsSummary
 	MembersGrowth []StatPoint // кумулятивный рост участников по дням
+	JoinedByDay   []StatPoint // присоединившиеся по дням
 	ViewsByDay    []StatPoint // просмотры по дням
 	PostsByDay    []StatPoint // посты по дням
-	TopPosts      []TopPost   // топ-посты по просмотрам
+	RecentPosts   []RecentPost
 }
 
-// PostStats — статистика одного поста канала (аналог tweb stats.getMessageStats):
-// обзор (просмотры/пересылки/реакции), разбивка реакций по эмодзи и динамика
-// просмотров по дням. Всё считается на лету из реальных данных
-// (messages.views/forwards, message_views, reactions). Разбивка реакций
-// переиспользует ReactionCount.
+// PostStats — статистика одного поста канала (stats.getMessageStats): динамика
+// просмотров по дням (message_views.viewed_at). Числа обзора клиент берёт из
+// самого сообщения.
 type PostStats struct {
-	Views          int64           // messages.views — канонический счётчик просмотров поста
-	Forwards       int64           // messages.forwards — сколько раз переслали
-	ReactionsTotal int64           // сумма всех реакций (эмодзи + star)
-	Reactions      []ReactionCount // разбивка реакций по эмодзи
-	ViewsByDay     []StatPoint     // просмотры по дням (message_views.viewed_at)
+	ViewsByDay []StatPoint
 }
 
 // StoryStats — статистика истории (аналог tweb stats.getStoryStats): просмотры и

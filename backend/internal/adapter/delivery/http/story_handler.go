@@ -460,3 +460,14 @@ func (h *StoryHandler) Edit(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
+
+const statDayFmt = "2006-01-02"
+
+// seriesJSON сериализует ряд точек в [{date, value}], даты — YYYY-MM-DD.
+func seriesJSON(points []domain.StatPoint) []map[string]any {
+	out := make([]map[string]any, 0, len(points))
+	for _, p := range points {
+		out = append(out, map[string]any{"date": p.Day.Format(statDayFmt), "value": p.Value})
+	}
+	return out
+}
