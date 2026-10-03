@@ -295,6 +295,6 @@ describe('разбор литералов', () => {
 
   it('номер строки указывает на строку ФАЙЛА', () => {
     const source = ['/**', ' * докблок', ' */', '', "const s = 'привет'"].join('\n')
-    expect(cyrillicLiterals(source, 'x.ts')).toEqual(["x.ts:5: \"привет\""])
+    expect(cyrillicLiterals(source, 'x.ts')).toEqual(['x.ts:5: "привет"'])
   })
 })
