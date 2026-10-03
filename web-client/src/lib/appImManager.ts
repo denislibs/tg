@@ -8,7 +8,8 @@
 //         поля, синглтон (`:3989-3991`);
 //  J    — `selectTab` (`:3137-3197`), `updateColumnAccessibility` (`:3203-3208`), стек
 //         чатов: `createNewChat` `:3219`, `spliceChats` `:3233-3290`, `setPeer` `:3292-3390`,
-//         `setInnerPeer` `:3392-3434`, `chatsSelectTab` `:2766-2805`, `isSamePeer` `:3809`;
+//         `setInnerPeer` `:3392-3434`, `openScheduled` `:3436`, `chatsSelectTab` `:2766-2805`,
+//         `isSamePeer` `:3809`;
 //  G    — `overrideHash` `:3127`, `onHashChange` `:1912-2031`, `open`/`op` `:2050-2157`,
 //         `openUsername` `:2165`, `openThread` `:2186`, `openUrl` `:1897`;
 //  I    — `setCurrentBackground`/`setBackground`/`applyCurrentTheme` `:2607-2713`,
@@ -1014,6 +1015,14 @@ export class AppImManager extends EventListenerBase<{
     this.dispatchEvent('chat_changing', { from: oldChat, to: chat })
 
     return this.setPeer(options)
+  }
+
+  /** tweb `:3436-3441` — лента отложенных пира (`ChatType.Scheduled`) поверх чата */
+  public openScheduled(peerId: PeerId) {
+    void this.setInnerPeer({
+      peerId,
+      type: ChatType.Scheduled,
+    })
   }
 
   /** tweb `:3809-3816` */

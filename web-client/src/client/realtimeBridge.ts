@@ -30,7 +30,9 @@ let started = false
 // книги (`contactsManager::onContactUpdated`), а не кадр провода.
 // `peer_block` — то же: его шлёт менеджер приватности после ответа сервера
 // (`privacyManager.toggleBlock`, tweb `appProfileManager.ts:1528`).
-const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change', 'contacts_update', 'peer_block']
+// `scheduled_new`/`scheduled_delete` — менеджер сообщений после ответа ручек
+// отложенных (tweb `appMessagesManager.ts:11799`, `:11813`).
+const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change', 'contacts_update', 'peer_block', 'scheduled_new', 'scheduled_delete']
 
 // Subscribe to worker realtime events exactly once per page.
 export function startRealtime(): void {

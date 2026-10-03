@@ -135,6 +135,9 @@ export type SearchHistoryOptions = {
   minDate?: number
   maxDate?: number
   chatType?: SearchHistoryChatType
+  /** tweb `RequestHistoryOptions.fromPeerId` (`from_id`, `:9973`) — фильтр по
+   *  отправителю поиска по чату (`chat/topbarSearch.solid.tsx`); ручка — `sender_id` */
+  fromPeerId?: number
 }
 
 export interface SendArgs {
@@ -549,15 +552,15 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
   // нужно. `threadId` (`top_msg_id`, `:9978`) ни одна из трёх ручек не
   // принимает — поиск по треду у бэкенда отсутствует.
   const searchHistory = async ({
-    peerId, inputFilter, query = '', offsetId = 0, limit = 20, nextRate, folderId, minDate, maxDate, chatType,
+    peerId, inputFilter, query = '', offsetId = 0, limit = 20, nextRate, folderId, minDate, maxDate, chatType, fromPeerId,
   }: SearchHistoryOptions): Promise<{ messages: MyMessage[]; count: number; nextRate?: number }> => {
     const filter = getWireFilter(inputFilter._)
     if (peerId && !nextRate && folderId === undefined) {
-      if (filter && !query && !minDate && !maxDate) {
+      if (filter && !query && !minDate && !maxDate && !fromPeerId) {
         return mediaHistory(peerId, filter, offsetId, limit)
       }
 
-      return searchMessages(peerId, query, { offsetId, limit, filter, minDate, maxDate })
+      return searchMessages(peerId, query, { offsetId, limit, filter, minDate, maxDate, senderId: fromPeerId })
     }
 
     return searchGlobal(query, filter ?? '', {
@@ -1107,7 +1110,8 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     // ── Запланированные сообщения (Telegram scheduled) ──
     //
     // Собственной проводной формы у отложенного больше НЕТ: сервер отдаёт тот же
-    // конструктор `message` с клиентским флагом `pFlags.is_scheduled` и нашими
+    // конструктор `message` с клиентским флагом `pFlags.is_scheduled`, датой
+    // `date` = время отправки (или `SEND_WHEN_ONLINE_TIMESTAMP`) и нашими
     // параметрами `send_at`/`when_online` — ровно как у оригинала, где
     // отложенные едут вектором `messages.Message`.
     //
@@ -1116,7 +1120,10 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     // `scheduled_messages`, а адрес — `/chats/{peerID}/scheduled/{schedID}`.
     // Клиентское пространство при этом ОБЩЕЕ (`generateMessageId` применяется на
     // границе разбора ко всему), значит и обратно оно приводится тем же
-    // `getServerMessageId`.
+    // `getServerMessageId`. В окна истории они не попадают: лента отложенных
+    // (`ChatType.Scheduled`) держит их под своим ключом и узнаёт о переменах
+    // событиями `scheduled_new`/`scheduled_delete` (tweb rootScope.ts:131-132) —
+    // их объявляет этот владелец ПОСЛЕ ответа ручки, всем вкладкам.
     //
     // whenOnline (tweb Schedule.SendWhenOnline): очередь ждёт появления
     // собеседника в сети — send_at игнорируется бэком (только приватный чат).
@@ -1126,16 +1133,22 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
         reply_to_id: p.replyToId != null ? getServerMessageId(p.replyToId) : null, send_at: p.sendAt,
         when_online: p.whenOnline ?? false,
       })
-      return mapNet(r)
+      const message = await mapNet(r)
+      broadcast?.('scheduled_new', message)
+      return message
     },
-    // Отложенные едут ТЕМ ЖЕ контейнером, что история: набор отдан целиком,
-    // поэтому `messages.messages`. Карточка автора приезжает вектором `users`
-    // и публикуется до отдачи страницы — как у любого другого контейнера.
-    async listScheduled(peerId: number): Promise<MyMessage[]> {
-      return mapContainer(await rest.get<MessagesContainer>(`/chats/${peerId}/scheduled`))
+    // tweb `getScheduledMessages` (`appMessagesManager.ts:12394`): набор отдан
+    // целиком тем же контейнером, что история (`messages.messages`), по
+    // возрастанию даты отправки — порядок ленты. Карточка автора приезжает
+    // вектором `users` и публикуется до отдачи страницы.
+    async getScheduledMessages(peerId: number): Promise<MyMessage[]> {
+      const messages = await mapContainer(await rest.get<MessagesContainer>(`/chats/${peerId}/scheduled`))
+      return messages.sort((a, b) => a.date - b.date || a.id - b.id)
     },
-    async deleteScheduled(peerId: number, id: number): Promise<void> {
-      await rest.del(`/chats/${peerId}/scheduled/${getServerMessageId(id)}`)
+    // tweb `deleteScheduledMessages` (`:12606`): по ответу — `scheduled_delete`.
+    async deleteScheduledMessages(peerId: number, mids: number[]): Promise<void> {
+      await Promise.all(mids.map((mid) => rest.del(`/chats/${peerId}/scheduled/${getServerMessageId(mid)}`)))
+      broadcast?.('scheduled_delete', { peerId, mids })
     },
     // Перепланировать (tweb MessageScheduleEditTime): сменить время отправки.
     // Сброс when_online делает бэк (появляется конкретная дата).
@@ -1143,10 +1156,13 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       const r = await rest.patch<RawMyMessage>(`/chats/${peerId}/scheduled/${getServerMessageId(id)}`, { send_at: sendAt })
       return mapNet(r)
     },
-    // Отправить запланированное немедленно; возвращает созданное сообщение.
-    async sendScheduledNow(peerId: number, id: number): Promise<MyMessage> {
-      const r = await rest.post<RawMyMessage>(`/chats/${peerId}/scheduled/${getServerMessageId(id)}/send_now`, {})
-      return mapNet(r)
+    // tweb `sendScheduledMessages` (`:12420`, `messages.sendScheduledMessages`):
+    // отправить немедленно. Само сообщение в окно истории кладёт ВЕЕР сервера
+    // (`new_message` → операция `insert`, бэкенд шлёт его и автору); отсюда —
+    // только `scheduled_delete`: из ленты отложенных оно уходит.
+    async sendScheduledMessages(peerId: number, mids: number[]): Promise<void> {
+      await Promise.all(mids.map((mid) => rest.post(`/chats/${peerId}/scheduled/${getServerMessageId(mid)}/send_now`, {})))
+      broadcast?.('scheduled_delete', { peerId, mids })
     },
 
     // Кто сейчас в видеочате группы (для баннера Join).

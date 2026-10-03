@@ -71,6 +71,13 @@ class TestHost implements BubbleGroupsHost {
   public middlewareHelper: MiddlewareHelper = getMiddleware()
   public avatarsCreated = 0
 
+  /** `bubbles.ts::getDateForDateContainer` — полночь дня (отложенных здесь нет) */
+  public getDateForDateContainer(timestamp: number): number {
+    const date = new Date(timestamp * 1000)
+    date.setHours(0, 0, 0, 0)
+    return date.getTime()
+  }
+
   public getDateContainerByTimestamp(timestamp: number): DateContainer {
     const dateTimestamp = timestamp * 1000
     const found = this.dateMessages.get(dateTimestamp)

@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 49,
+      "version": 50,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -1152,8 +1152,16 @@
           "value": "Channels you joined"
         },
         {
+          "key": "Chat.Search.NextResult",
+          "value": "Next search result"
+        },
+        {
           "key": "Chat.Search.NothingFound",
           "value": "Nothing interesting here yet..."
+        },
+        {
+          "key": "Chat.Search.PreviousResult",
+          "value": "Previous search result"
         },
         {
           "key": "Chat.Selection.Selected",
@@ -1186,6 +1194,25 @@
         {
           "key": "Chat.SendAs.YourChannels",
           "value": "Your channels"
+        },
+        {
+          "key": "Chat.SendNow.Text",
+          "value": "Send message now?"
+        },
+        {
+          "key": "Chat.SendNow.TextMultiple",
+          "forms": {
+            "one_value": "Send %d message now?",
+            "other_value": "Send %d messages now?"
+          }
+        },
+        {
+          "key": "Chat.SendNow.Title",
+          "value": "Send Message Now"
+        },
+        {
+          "key": "Chat.SendNow.TitleMultiple",
+          "value": "Send Messages Now"
         },
         {
           "key": "Chat.Service.Call.Missed",
@@ -3567,6 +3594,10 @@
           "value": "OK"
         },
         {
+          "key": "Of",
+          "value": "%1$d of %2$d"
+        },
+        {
           "key": "Off",
           "value": "Off"
         },
@@ -4670,6 +4701,10 @@
           "value": "Recovery Email"
         },
         {
+          "key": "Reminders",
+          "value": "Reminders"
+        },
+        {
           "key": "Remove",
           "value": "Remove"
         },
@@ -4928,6 +4963,10 @@
           "value": "There were no messages from **%@**."
         },
         {
+          "key": "Search.EmptyHashtag",
+          "value": "There were no results for \"%@\". Try another hashtag."
+        },
+        {
           "key": "Search.EmptyQuery",
           "value": "Try searching."
         },
@@ -4954,6 +4993,14 @@
         {
           "key": "SearchAllChatsShort",
           "value": "Chats"
+        },
+        {
+          "key": "SearchAsChat",
+          "value": "Show as Chat"
+        },
+        {
+          "key": "SearchAsList",
+          "value": "Show as List"
         },
         {
           "key": "SearchEmoji",
@@ -6374,7 +6421,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 49,
+      "version": 50,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -12782,6 +12829,51 @@
         {
           "key": "FilterNoChatsToDisplayInfo",
           "value": "Сейчас в этой папке нет чатов."
+        },
+        {
+          "key": "Chat.Search.NextResult",
+          "value": "Следующий результат поиска"
+        },
+        {
+          "key": "Chat.Search.PreviousResult",
+          "value": "Предыдущий результат поиска"
+        },
+        {
+          "key": "Of",
+          "value": "%1$d из %2$d"
+        },
+        {
+          "key": "SearchAsChat",
+          "value": "Показать как чат"
+        },
+        {
+          "key": "SearchAsList",
+          "value": "Показать списком"
+        },
+        {
+          "key": "Search.EmptyHashtag",
+          "value": "Ничего не найдено по хэштегу «%@». Попробуйте другой."
+        },
+        {
+          "key": "Chat.SendNow.Title",
+          "value": "Отправить сообщение сейчас"
+        },
+        {
+          "key": "Chat.SendNow.TitleMultiple",
+          "value": "Отправить сообщения сейчас"
+        },
+        {
+          "key": "Chat.SendNow.Text",
+          "value": "Отправить сообщение сейчас?"
+        },
+        {
+          "key": "Chat.SendNow.TextMultiple",
+          "forms": {
+            "one_value": "Отправить %d сообщение сейчас?",
+            "few_value": "Отправить %d сообщения сейчас?",
+            "many_value": "Отправить %d сообщений сейчас?",
+            "other_value": "Отправить %d сообщения сейчас?"
+          }
         }
       ]
     },

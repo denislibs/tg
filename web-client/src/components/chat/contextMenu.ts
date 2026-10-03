@@ -26,9 +26,12 @@
  *  • сабменю пункта чеклиста (:888-896) и варианта опроса (:896-908) —
  *    чек-листы (`messageMediaToDo`) лента не рисует (`createSubmenuTrigger`/
  *    `floatingButtonMenu` портированы задачей 2-2 волны 7 — бургер);
- *  • `MessageScheduleSend`/`Selection.SendNow`/`MessageScheduleEditTime`
- *    (:908-938) — `ChatType.Scheduled` у императивной ленты нет: окно
- *    отложенных живёт отдельным экраном, а не типом чата;
+ *  • `Message.Context.Selection.SendNow` (:964-972) — сверяется с кнопкой
+ *    «отправить сейчас» панели выделения (`selectionSendNowBtn`), панели нет
+ *    (Б-23); `MessageScheduleEditTime` (:973-987) — `chat.input.scheduleSending`,
+ *    расписания у композера нет (Б-32). `MessageScheduleSend` (:959-963) —
+ *    портирован (лента отложенных `ChatType.Scheduled`, `popups/sendNow.ts`);
+ *    «Изменить» у отложенного скрыт: ручки правки текста отложенного нет (Б-92);
  *  • `Quote` (:938-954) — `getRichSelection` стоит на `getRichValueWithCaret`
  *    (разбор contenteditable в текст+сущности), которого в проекте нет;
  *  • `ViewReplies`/`ViewAllReplies` (:965-997) — поля `replies`
@@ -210,6 +213,8 @@ import { _i18n, i18n } from '@lib/langPack'
 import type ChatSelection from './selection'
 import type Chat from './chat'
 import { downloadToDisc } from '@lib/appDownloadManager'
+import showSendNowPopup from '@components/popups/sendNow'
+import { ChatType } from './chatType'
 
 /** Срез менеджеров — только те вызовы, которые делают пункты меню. */
 export interface ContextMenuManagers {
@@ -221,6 +226,10 @@ export interface ContextMenuManagers {
     /** Порт `appMessagesManager.getMessageReadParticipants` — кто просмотрел
      *  (групповая ветка пункта `views`, :1596-1644) */
     viewers(peerId: number, msgId: number): Promise<number[]>
+    /** Порт `appMessagesManager.sendScheduledMessages` (:12420) — «отправить
+     *  сейчас» в ленте отложенных (`popups/sendNow.ts`). Необязателен: без него
+     *  пункта нет (тест, которому отложенные не нужны). */
+    sendScheduledMessages?(peerId: number, mids: number[]): Promise<void>
     /**
      * Порт `chat.sendReaction` (chat.ts:1457 → `appReactionsManager
      * .sendReaction`) — выбор в панели быстрых реакций. Пара, а не один вызов:
@@ -667,18 +676,27 @@ export default class ChatContextMenu {
         return this.canViewReadTime !== undefined
       },
     }, {
+      // tweb :959-963
+      icon: 'send2',
+      text: 'MessageScheduleSend',
+      onClick: this.onSendScheduledClick,
+      verify: () => this.chat.type === ChatType.Scheduled && !!this.managers.messages.sendScheduledMessages &&
+        !!this.message && !this.isOutgoing(this.message),
+    }, {
       icon: 'reply',
       text: 'Reply',
       onClick: this.onReplyClick,
       verify: async() => !!this.message &&
         !this.isOutgoing(this.message) &&
         !!this.chat.input.messageInput &&
+        this.chat.type !== ChatType.Scheduled &&
         (this.canForward(this.message) || !!await this.chat.canSend()),
     }, {
       icon: 'edit',
       text: 'Edit',
       onClick: this.onEditClick,
-      verify: () => this.canEditMessage(this.message, 'text') && !!this.chat.input.messageInput,
+      // `chat.type !== Scheduled` — наше: см. шапку (Б-92)
+      verify: () => this.chat.type !== ChatType.Scheduled && this.canEditMessage(this.message, 'text') && !!this.chat.input.messageInput,
     }, {
       icon: 'factcheck',
       // tweb :1026 — текст зависит от наличия проверки у ГЛАВНОГО сообщения
@@ -764,7 +782,8 @@ export default class ChatContextMenu {
         !this.isOutgoing(this.message) &&
         this.message._ !== 'messageService' &&
         !this.message.pFlags.pinned &&
-        this.canPinMessage(this.message.peerId),
+        this.canPinMessage(this.message.peerId) &&
+        this.chat.type !== ChatType.Scheduled,
     }, {
       icon: 'unpin',
       text: 'Message.Context.Unpin',
@@ -811,6 +830,7 @@ export default class ChatContextMenu {
       onClick: this.onForwardClick,
       verify: () => !!this.popups && !this.noForwards &&
         !!this.message &&
+        this.chat.type !== ChatType.Scheduled &&
         (!this.isOutgoing(this.message) || this.message.fromId === SERVICE_PEER_ID) &&
         this.message._ !== 'messageService',
     }, {
@@ -1632,6 +1652,14 @@ export default class ChatContextMenu {
   /** Порт `onClearSelectionClick` (:2050-2052). */
   private onClearSelectionClick = () => {
     this.selection.cancelSelection()
+  }
+
+  /** Порт `onSendScheduledClick` (:2042-2048) без ветки выделения — кнопки
+   *  «отправить сейчас» у панели выделения нет (шапка, Б-23). */
+  private onSendScheduledClick = () => {
+    const { messages } = this.managers
+    if(!this.message || !messages.sendScheduledMessages) return
+    showSendNowPopup((peerId, mids) => messages.sendScheduledMessages!(peerId, mids), this.messagePeerId, this.getMidsByMid(this.message.id))
   }
 
   /** Порт `onDeleteClick` (:2054-2065) — та же развилка «выбранное / это

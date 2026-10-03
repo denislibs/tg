@@ -19,9 +19,10 @@
 // поведенческая половина у них одна.
 //
 // ── Расхождения с оригиналом ───────────────────────────────────────────────
-//  1. Опций `verifyDebounce`/`onDebounce`/`onFocusChange`/`arrowBack`/
-//     `alwaysShowClear` нет: у единственного потребителя (поле шапки левой
-//     колонки, `sidebarLeft/index.ts:151`) они не заданы.
+//  1. Опции `onDebounce` нет — ни у одного потребителя она не задана.
+//     `verifyDebounce` (:209-213) — есть (поиск по чату, `chat/topbarSearch.solid.tsx`);
+//     `onFocusChange`/`arrowBack`/`alwaysShowClear` — у ванильного
+//     `components/inputSearch.ts`, они про узлы, а не про поведение.
 //  2. `set value` не шлёт синтетическое `input` (`inputField.ts:756-758`): у
 //     оригинала оно доходит до `onInput`, где `value === prevValue` и
 //     обработчик выходит сразу (:204-206), — наблюдаемого эффекта нет, кроме
@@ -39,6 +40,8 @@ export default class InputSearchHandle {
   public onChange?: (value: string) => void
   public onClear?: (e?: MouseEvent, wasEmpty?: boolean) => void
   public onEnter?: (value: string) => void
+  /** :35, :208-213 — `false` отправляет значение сразу, мимо debounce */
+  public verifyDebounce?: (value: string, prevValue: string) => boolean
 
   private listenerSetter = new ListenerSetter()
   /** `debounceTime` (:77, по умолчанию 300) — ванильный `components/inputSearch.ts`
@@ -58,7 +61,7 @@ export default class InputSearchHandle {
     attachClickEvent(clearBtn, this.onClearClick, { listenerSetter: this.listenerSetter, cancelMouseDown: true })
   }
 
-  // :200-220 (без `verifyDebounce` — расхождение 1)
+  // :200-220
   private onInput = () => {
     this.setEmpty()
     if(!this.onChange) return
@@ -69,6 +72,12 @@ export default class InputSearchHandle {
     }
 
     this.prevValue = value
+    if(this.verifyDebounce?.(value, prevValue) === false) {
+      this.clearTimeout()
+      this.onChange(value)
+      return
+    }
+
     this.clearTimeout()
     this.timeout = window.setTimeout(() => {
       this.onChange?.(value)
@@ -117,6 +126,7 @@ export default class InputSearchHandle {
   // :251-255
   public remove() {
     this.clearTimeout()
+    this.verifyDebounce = undefined
     this.listenerSetter.removeAll()
   }
 }

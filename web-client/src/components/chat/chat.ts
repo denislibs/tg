@@ -30,9 +30,10 @@
 //     `revealPreparedBackground` применяет только тему контейнера. Тема контейнера —
 //     `applyChatTheme`/`clearChatTheme` (`core/theme/themeController.ts`), а не
 //     `themeController.applyTheme(theme, container)`.
-//  4. Поиск по чату (`searchSignal`, `TopbarSearch`, `ChatSearchKeys` кроме
-//     `savedReaction`) — бэклог Б-20: `initSearch` пуст. Ключ `savedReaction` держит
-//     лента (`ChatBubbles.savedReaction`), как до К-3.
+//  4. Поиск по чату (`searchSignal` → `TopbarSearch`, `:740-834`) — без `setInChatQuery`
+//     (журнала админов `ChatType.Logs` нет) и без `reaction` (теги «Избранного» — Б-26);
+//     расхождения самого поиска — шапка `chat/topbarSearch.solid.tsx`. Из ключей поиска
+//     `ChatSearchKeys` у нас только `savedReaction` (держит лента, `ChatBubbles.savedReaction`).
 //  5. `historyStorage`/`changeHistoryStorageKey` (`:1129-1186`) — у нас окно — зеркало
 //     `messagesMirror` по ключу `messagesStorageKey` (`winKey`), подписки воркеру не нужны.
 //  6. Первая загрузка ленты повторяется при отказе (`FIRST_LOAD_RETRIES`): у tweb
@@ -45,7 +46,7 @@
 //     звёзды, `sendReaction` (лента ставит реакции сама, `chat/reactions.ts`),
 //     `getMessageSendingParams` (параметры отправки собирает остров композера),
 //     веб-аппы, автоудаление, `isStartButtonNeeded`.
-import { createMemo, createRoot, createSignal, type Accessor, type Signal } from 'solid-js'
+import { createEffect, createMemo, createRoot, createSignal, untrack, type Accessor, type Signal } from 'solid-js'
 import type { Managers } from '@/client/bootstrap'
 import type { AppImManager, ChatSetPeerOptions } from '@lib/appImManager'
 import { APP_TABS, LEFT_COLUMN_ACTIVE_CLASSNAME } from '@lib/appImManager'
@@ -79,12 +80,15 @@ import callbackify from '@helpers/callbackify'
 import indexOfAndSplice from '@helpers/array/indexOfAndSplice'
 import noop from '@helpers/noop'
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
+import liteMode from '@helpers/liteMode'
+import createUnifiedSignal, { type UnifiedSignal } from '@helpers/solid/createUnifiedSignal'
 import ChatBubbles, { PEER_CHANGED_ERROR } from './bubbles'
 import ChatContextMenu from './contextMenu'
 import ChatInput from './reactChatInput'
 import ChatSelection from './selection'
 import ChatTopbar from './topbar'
 import { ChatType } from './chatType'
+import TopbarSearch from './topbarSearch.solid'
 
 // * after this long an in-flight peer change is treated as abandoned rather than as a reason to
 // * ignore further attempts to open the same chat
@@ -145,6 +149,8 @@ export default class Chat extends EventListenerBase<{
 
   public animationGroup: AnimationItemGroup
 
+  /** tweb `:175` — открыт ли поиск по чату и с чем (`initSearch`) */
+  public searchSignal?: UnifiedSignal<Parameters<Chat['initSearch']>[0] | undefined>
   /** tweb `:271` — полная карточка пира (`useFullPeer` грузит её и держит свежей по TTL). */
   public fullPeer!: Accessor<PeerFull | undefined>
 
@@ -429,12 +435,94 @@ export default class Chat extends EventListenerBase<{
       freezeObservers(this.appImManager.chat !== this || offScreenOnMobile)
       this.setBackgroundHidden(offScreenOnMobile)
     })
+
+    // tweb `:746-834` — расхождение 4 шапки
+    const searchSignal = this.searchSignal = createUnifiedSignal<Parameters<Chat['initSearch']>[0] | undefined>()
+    createRoot((dispose) => {
+      this.middlewareHelper.get().onDestroy(dispose)
+
+      const animateElements = async(topbarSearch: HTMLElement, visible: boolean) => {
+        const animate = liteMode.isAvailable('animations')
+        const keyframes: Keyframe[] = [{ opacity: 0 }, { opacity: 1 }]
+        const options: KeyframeAnimationOptions = { fill: 'forwards', duration: animate ? 200 : 0, easing: 'ease-in-out' }
+        if(!visible) {
+          keyframes.reverse()
+        }
+
+        const elements = this.topbar.container.querySelectorAll<HTMLElement>('.content, .chat-utils')
+
+        const promises: Promise<unknown>[] = []
+        const promise = topbarSearch.animate(keyframes, options).finished
+        keyframes.reverse()
+        const otherPromises = Array.from(elements).map((element) => element.animate(keyframes, options).finished)
+        promises.push(promise, ...otherPromises)
+        return Promise.all(promises)
+      }
+
+      const [needSearch, setNeedSearch] = createSignal(false)
+      const [query, setQuery] = createSignal<string | undefined>('', { equals: false })
+      const [filterPeerId, setFilterPeerId] = createSignal<PeerId | undefined>(undefined, { equals: false })
+      createEffect<HTMLElement | undefined>((topbarSearch) => {
+        if(!needSearch()) {
+          if(!topbarSearch) {
+            return
+          }
+
+          const element = topbarSearch
+          void animateElements(element, false).then(() => {
+            element.remove()
+          })
+          return
+        }
+
+        topbarSearch = untrack(() => TopbarSearch({
+          chat: this,
+          peerId: this.peerId,
+          threadId: this.threadId,
+          canFilterSender: this.isAnyGroup,
+          query,
+          filterPeerId,
+          onClose: () => {
+            searchSignal(undefined)
+          },
+          onDatePick: (timestamp) => {
+            this.bubbles.onDatePick(timestamp)
+          },
+          onActive: (active, showingReactions, isSmallScreen) => {
+            const className = 'is-search-active'
+            const isActive = !!(active && (showingReactions || isSmallScreen))
+            const wasActive = this.container.classList.contains(className)
+            if(wasActive === isActive) {
+              return
+            }
+
+            const scrollSaver = this.bubbles.createScrollSaver()
+            scrollSaver.save()
+            this.container.classList.toggle(className, !isSmallScreen && isActive)
+            // `this.topbar.setFloating()` (:810) — плашки шапки — Б-21 (П-5, шапка)
+            this.topbar.container.classList.toggle('hide-pinned', isSmallScreen)
+            scrollSaver.restore()
+          },
+        })) as HTMLElement
+        this.topbar.container.append(topbarSearch)
+        void animateElements(topbarSearch, true)
+        return topbarSearch
+      })
+
+      createEffect(() => {
+        const s = searchSignal()
+        setQuery(s?.query)
+        setFilterPeerId(s?.filterPeerId)
+        setNeedSearch(!!s)
+      })
+    })
   }
 
   /** tweb `:837-841` */
   public beforeDestroy() {
     this.destroyPromise = deferredPromise()
     this.bubbles?.cleanup()
+    this.searchSignal?.(undefined)
   }
 
   /** tweb `:843-869` */
@@ -455,11 +543,14 @@ export default class Chat extends EventListenerBase<{
     this.container.remove()
   }
 
-  /** tweb `:871-879` — расхождение 4 шапки (поиска нет). */
+  /** tweb `:871-879` */
   public cleanup(helperToo = true) {
     this.input?.cleanup(helperToo)
     this.topbar?.cleanup()
     this.selection?.cleanup()
+    // `ignoreSearchCleaning` (:877-878) ставит только смена типа поиска по хэштегу
+    // (`onSearchTypeChange`) — её нет (расхождение 2 `chat/topbarSearch.solid.tsx`)
+    this.searchSignal?.(undefined)
   }
 
   public get isForumTopic() {
@@ -496,7 +587,12 @@ export default class Chat extends EventListenerBase<{
       this.selection.isScheduled = type === ChatType.Scheduled
     }
 
-    this.messagesStorageKey = winKey(this.peerId, this.threadId)
+    // tweb `:995-999`: у отложенных своё хранилище пира (`${peerId}_scheduled`) — живые
+    // кадры окна истории (`history_append`/`history_update`/…, ключ `winKey`) в него не
+    // попадают, ленту отложенных ведут `scheduled_new`/`scheduled_delete`
+    this.messagesStorageKey = type === ChatType.Scheduled ?
+      `${this.peerId}_scheduled` :
+      winKey(this.peerId, this.threadId)
 
     this.sharedMediaTab = appSidebarRight.createSharedMediaTab()
     this.sharedMediaTabs.push(this.sharedMediaTab)
@@ -685,8 +781,20 @@ export default class Chat extends EventListenerBase<{
     return isAnyGroupPeer(peerId)
   }
 
-  /** tweb `:1333-1340` — расхождение 4 шапки. */
-  public initSearch(_options: { query?: string, filterPeerId?: PeerId } = {}): void {}
+  /** tweb `:1328-1330` */
+  public resetSearch() {
+    this.searchSignal?.(undefined)
+  }
+
+  /**
+   * tweb `:1331-1340` — расхождение 4 шапки (без `reaction`). `focus`
+   * (`focusSearchInput`) зовёт только `internalLinkProcessor` (`activateSearch`) — П-4.
+   */
+  public initSearch(options: { query?: string, filterPeerId?: PeerId } = {}): void {
+    if(!this.peerId) return
+    options.query ||= ''
+    this.searchSignal?.(options)
+  }
 
   /**
    * tweb `:1342-1353` → `appMessagesManager.canSendToPeer` (`:8851-8863`): у чата —

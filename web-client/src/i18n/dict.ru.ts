@@ -2018,6 +2018,22 @@ const ru = {
   },
   FilterNoChatsToDisplay: 'Папка пуста',
   FilterNoChatsToDisplayInfo: 'Сейчас в этой папке нет чатов.',
+  // ── Поиск по чату и лента отложенных (tweb chat/topbarSearch.tsx, popups/sendNow.ts) ──
+  'Chat.Search.NextResult': 'Следующий результат поиска',
+  'Chat.Search.PreviousResult': 'Предыдущий результат поиска',
+  Of: '%1$d из %2$d',
+  SearchAsChat: 'Показать как чат',
+  SearchAsList: 'Показать списком',
+  'Search.EmptyHashtag': 'Ничего не найдено по хэштегу «%@». Попробуйте другой.',
+  'Chat.SendNow.Title': 'Отправить сообщение сейчас',
+  'Chat.SendNow.TitleMultiple': 'Отправить сообщения сейчас',
+  'Chat.SendNow.Text': 'Отправить сообщение сейчас?',
+  'Chat.SendNow.TextMultiple': {
+    one_value: 'Отправить %d сообщение сейчас?',
+    few_value: 'Отправить %d сообщения сейчас?',
+    many_value: 'Отправить %d сообщений сейчас?',
+    other_value: 'Отправить %d сообщения сейчас?',
+  },
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

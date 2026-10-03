@@ -682,7 +682,8 @@ func (h *GroupHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
-	members, err := h.uc.ListMembers(r.Context(), chatID, user.ID, offset, limit)
+	// q — фильтр `channelParticipantsSearch` (выбор отправителя в поиске по чату).
+	members, err := h.uc.ListMembers(r.Context(), chatID, user.ID, r.URL.Query().Get("q"), offset, limit)
 	if err != nil {
 		h.mapErr(w, err)
 		return

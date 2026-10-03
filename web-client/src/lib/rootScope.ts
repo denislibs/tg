@@ -222,6 +222,13 @@ export type BroadcastEvents = {
   // (`sidebarLeft/contactsList.solid.tsx`).
   'contacts_update': [UserId]
 
+  // tweb rootScope.ts:131-132 — лента отложенных (`ChatType.Scheduled`): появилось
+  // отложенное / отложенные ушли (отправлены сейчас или удалены). Шлёт воркер
+  // (`messagesManager` — `scheduleMessage`/`sendScheduledMessages`/
+  // `deleteScheduledMessages`), слушает лента (`chat/bubbles.ts`, tweb :2558-2575).
+  'scheduled_new': [MyMessage]
+  'scheduled_delete': [{ peerId: PeerId; mids: number[] }]
+
   // ── UI-команды (бывший core/hooks/uiEvents.ts, удалён) ──
   'ui:toast': [string]
   'ui:savedTagsChanged': [void]

@@ -104,7 +104,7 @@ import { ANCHOR_ACTION_ATTRIBUTE, wrapEmojiText, wrapMessageText } from '@lib/ri
 import { mirrorWindow, putMirrorPage, replaceMirrorWindow } from '@core/history/messagesMirror'
 import { generateTempMessageId, isLocalMessageId } from '@core/history/messageId'
 import { messageToConvMsg } from '@core/messageToConvMsg'
-import { dayLabel } from '@core/format/dayLabel'
+import { dayLabel, SEND_WHEN_ONLINE_TIMESTAMP } from '@core/format/dayLabel'
 import { fmtViews } from '@core/format/fmtViews'
 import { getMessageText, isOurMessage, isOutMessage, type MessageReal, type MessageReplies, type MessageService, type MyMessage, type OurMessageChat, type Reaction } from '@core/models'
 import { getOutputPeer, getPeerId, isAnyChat, toPeerId } from '@core/peers/peerId'
@@ -290,6 +290,11 @@ export interface BubblesManagers extends PeerTitleManagers {
      * которому ответы не нужны.
      */
     fetchMessageReplyTo?(peerId: number, mid: number): Promise<MyMessage | undefined>
+    /** Лента отложенных (`ChatType.Scheduled`) — порт ветки `requestHistory`
+     *  (tweb bubbles.ts:11822-11834, `appMessagesManager.getScheduledMessages`):
+     *  набор целиком, по возрастанию даты отправки. Опциональна: без неё лента
+     *  отложенных пуста. */
+    getScheduledMessages?(peerId: number): Promise<MyMessage[]>
     /** Страница фильтра `media` для листания вьювера за пределами окна
      *  (`openMediaViewerFor`). Опциональна: без неё вьювер листает загруженное. */
     mediaHistory?(peerId: number, filter: 'media', offsetId?: number, limit?: number): Promise<{ messages: MyMessage[] }>
@@ -414,7 +419,7 @@ const SCROLLED_DOWN_THRESHOLD = 300
  *  (tweb bubbles.ts, объединение имён веток `renderEmptyPlaceholder`) в том
  *  объёме, у которого есть предмет; разбор пропущенных — у
  *  `checkIfEmptyPlaceholderNeeded`. */
-type EmptyPlaceholderType = 'saved' | 'greeting' | 'noMessages'
+type EmptyPlaceholderType = 'saved' | 'greeting' | 'noMessages' | 'noScheduledMessages'
 
 /** Бокс стикера-приветствия — `_chatBubble.scss:4051-4058`
  *  (`.empty-bubble-placeholder-sticker { width: 200px; height: 200px }`). */
@@ -2582,7 +2587,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *
    * Не портированы: треды/монофорум-фильтр (`getMessageThreadId` — окно треда у
    * нас отдельное, чужое сюда не приезжает), `cancelPreservePaddingScroll`
-   * (нижняя распорка композера — окружение `Chat`), ветка `ChatType.Scheduled`.
+   * (нижняя распорка композера — окружение `Chat`).
    */
   private async _renderNewMessage(message: MyMessage, scrolledDown?: boolean): Promise<void> {
     if (!this.scrollable.loadedAll.bottom) { // seems search active or sliced
@@ -2619,7 +2624,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
       void promise.then(() => {
         if (!middleware()) return
 
-        const scrollPromise = this.scrollToEnd()
+        // tweb :5254-5257 — новое отложенное встаёт по своей дате, не обязательно вниз
+        const bubble = this.chat.type === ChatType.Scheduled ? this.getBubble(fullMid) : undefined
+        const scrollPromise = bubble ? this.scrollToBubbleEnd(bubble) : this.scrollToEnd()
         if (isPaddingNeeded) {
           // it will be called only once even if was set multiple times (that won't happen)
           void scrollPromise.then(unsetPadding)
@@ -2639,9 +2646,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  группы разъехались бы по ключу. Пары `{date, dateTimestamp}`, как в tweb,
    *  здесь нет: сам `Date` нужен там только чтобы отдать его в
    *  `createDateBubble`, а наш строит подпись по числу. */
-  private getDateForDateContainer(timestamp: number): number {
+  public getDateForDateContainer(timestamp: number): number {
     const date = new Date(timestamp * 1000)
-    date.setHours(0, 0, 0, 0)
+    // tweb :5582-5584 — «когда появится в сети» — своя секция, день не обнуляется
+    if(timestamp !== SEND_WHEN_ONLINE_TIMESTAMP) {
+      date.setHours(0, 0, 0, 0)
+    }
     return date.getTime()
   }
 
@@ -2657,7 +2667,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  адресуется в реестре `dateMessages` и в наблюдателе липких дат
    *  (`constructPeerHelpers`). */
   private createDateBubble(dateTimestamp: number): HTMLElement {
-    const bubble = createServiceDateBubble(dayLabel(dateTimestamp))
+    // tweb :5567-5573 — у ленты отложенных подпись «Scheduled for …»
+    const bubble = createServiceDateBubble(dayLabel(dateTimestamp, this.chat.type === ChatType.Scheduled))
     bubble.dataset.date = `day-${dateTimestamp}`
     return bubble
   }
@@ -2875,10 +2886,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
   private onBubblesMouseMove = async(e: MouseEvent) => {
     const target = e.target as HTMLElement
 
-    // tweb :2712-2722. `chat.type !== ChatType.Scheduled` не портирован: видов
-    // чата у ленты нет как понятия (тот же вычет у `attachContainerListeners`).
+    // tweb :2712-2722 (без `ChatType.Welcome` — приветственных сообщений нет).
     const content = findUpClassName(target, 'bubble-content')
     if (!(
+      this.chat.type !== ChatType.Scheduled &&
       content &&
       !this.chat.selection.isSelecting &&
       !findUpClassName(target, 'service') &&
@@ -3628,8 +3639,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *
    *  Предзагрузка следующей страницы (`justLoad`, :11346-11358) перенесена как
    *  есть: она и делает пагинацию бесшовной — пока пользователь смотрит на
-   *  доехавшую страницу, следующая уже в кэше. `ChatType.Chat`-гейт снят: типов
-   *  чата (`Scheduled`/`Pinned`/`Search`) у ленты нет.
+   *  доехавшую страницу, следующая уже в кэше. `ChatType.Chat`-гейт снят: у
+   *  отложенных (единственного нашего типа без пагинации) оба края сведены
+   *  первой же страницей, и предзагрузке нечего догружать.
    *
    *  `replaceWindow` — наш параметр, у оригинала его нет (см. докблок
    *  `getHistory`): «эта страница НАЧИНАЕТ окно, а не продолжает его». Едет
@@ -3706,6 +3718,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
       return this.requestSavedReactionHistory(maxId, loadCount || backLimit)
     }
 
+    // tweb :11822-11834 — у отложенных страница одна: весь набор, оба края сведены.
+    if(this.chat.type === ChatType.Scheduled) {
+      return this.requestScheduledHistory()
+    }
+
     const { mid } = splitFullMid(maxId)
     const offsetId = mid || 0
 
@@ -3749,6 +3766,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  • ВЕРХ СВЕДЁН, когда страница короче запрошенной — ветка оригинала без
    *    `offset_id_offset` (appMessagesManager.ts:9512-9518).
    */
+  /** tweb :11822-11834 — ветка `ChatType.Scheduled` у `requestHistory`. */
+  private async requestScheduledHistory(): Promise<HistoryResult> {
+    const messages = await this.managers.messages.getScheduledMessages?.(this.chat.peerId) ?? []
+    return { messages, count: messages.length, reachedTop: true, reachedBottom: true }
+  }
+
   private async requestSavedReactionHistory(maxId: FullMid, limit: number): Promise<HistoryResult> {
     const reaction = this.savedReaction
     const search = this.managers.messages.searchMessages
@@ -3970,7 +3993,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *    окружении `Chat`.
    *  • sponsored (:5279), плейсхолдеры (:5410-5414),
    *    `mediaTimestamp`/`startParam`/`pollOption`,
-   *    `ChatType.Search/Pinned/Scheduled/Logs`, `lazyLoadQueue`,
+   *    `ChatType.Search/Pinned/Logs`, `lazyLoadQueue`,
    *    `dispatchEvent('setPeer')`, `setFetchHistoryInterval` — подсистем нет.
    *
    * Возвращает то же, что оригинал: `null`, если окно перерисовывать не
@@ -4034,7 +4057,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
       await m(this.chat.onChangePeer(options, m))
     }
 
-    let lastMsgFullMid: FullMid = lastMsgId ? makeFullMid(peerId, lastMsgId) : EMPTY_FULL_MID
+    // tweb :5856-5858 — у отложенных цели прыжка нет: набор один, встаём вниз.
+    const isScheduled = this.chat.type === ChatType.Scheduled
+    let lastMsgFullMid: FullMid = lastMsgId && !isScheduled ? makeFullMid(peerId, lastMsgId) : EMPTY_FULL_MID
 
     // tweb :5079-5081 берёт `historyStorage.maxId` синхронно; у нас последнее
     // сообщение чата знает воркерный `dialogsManager` (`dialog.lastMessage.id`),
@@ -4046,11 +4071,17 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // гейта «вниз к непрочитанному» ниже. Третьим — «горизонт, если есть
     // непрочитанное» (tweb `getReadMaxIdIfUnread`, :5896-5901). Владелец всех
     // трёх фактов — тот же `dialogsManager`.
-    const [historyMaxId, readState, readMaxId] = await m(Promise.all([
-      this.managers.dialogs.getHistoryMaxSeq(peerId),
-      this.managers.dialogs.getDialogReadState(peerId),
-      this.managers.dialogs.getReadMaxSeqIfUnread(peerId),
-    ]))
+    //
+    // У отложенных (tweb :5866-5875 — `topMessageFullMid` они не спрашивают,
+    // :6019 — `additionalMid` нет) ни последнего сообщения истории, ни курсора
+    // прочтения нет: их номера — ключи строк очереди, а не номера чата.
+    const [historyMaxId, readState, readMaxId] = isScheduled ?
+      [0, undefined, 0] :
+      await m(Promise.all([
+        this.managers.dialogs.getHistoryMaxSeq(peerId),
+        this.managers.dialogs.getDialogReadState(peerId),
+        this.managers.dialogs.getReadMaxSeqIfUnread(peerId),
+      ]))
     const topMessageFullMid: FullMid = historyMaxId ? makeFullMid(peerId, historyMaxId) : EMPTY_FULL_MID
     const isTarget = lastMsgFullMid !== EMPTY_FULL_MID
 
@@ -5332,10 +5363,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * РАСХОЖДЕНИЕ по той же причине, что в `requestHistory`: «новее прочитанного»
    * сравнивается по `seq` (порядковый ключ), а адресуется бабл по `id`.
    *
-   * Не портированы гейты типа чата (`ChatType.Chat/Discussion`) и
-   * `canManageDirectMessages` — этих понятий у ленты нет.
+   * Гейт типа чата (`ChatType.Chat/Discussion`, :11557-11559) — оригинала;
+   * `canManageDirectMessages` не портирован — монофорумов нет.
    */
   public async setUnreadDelimiter() {
+    if(!(this.chat.type === ChatType.Chat || this.chat.type === ChatType.Discussion)) {
+      return
+    }
+
     if(this.attachedUnreadBubble) {
       return
     }
@@ -5380,7 +5415,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
   private setTopPadding(middleware = this.getMiddleware()) {
     let isPaddingNeeded = false
     let setPaddingTo: HTMLElement | undefined
-    if(!this.isTopPaddingSet) {
+    if(!this.isTopPaddingSet && this.chat.type !== ChatType.Scheduled) {
       const { clientHeight, scrollHeight } = this.scrollable.container
       isPaddingNeeded = clientHeight === scrollHeight
 
@@ -5664,11 +5699,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
      * взводится один раз на бабл — второй узел переписывается уже безусловно,
      * чтобы дубль не разъехался с видимой копией.
      *
-     * Гейт `chat.type === Scheduled` (:2095) предмета не имеет: отложенные у нас
-     * живут отдельным экраном, а не типом ленты. `GLOBAL_MIDS` — тоже (окно
+     * Гейт `chat.type === Scheduled` (:2095) — у отложенных просмотров нет, а их
+     * номера пересекаются с номерами чата. `GLOBAL_MIDS` предмета не имеет (окно
      * всегда одного пира).
      */
     this.listenerSetter.add(rootScope)('messages_views', (arr) => {
+      if(this.chat.type === ChatType.Scheduled) return
       fastRaf(() => {
         let scrollSaver: ScrollSaver | undefined
         for (const { peerId, mid, views } of arr) {
@@ -5722,11 +5758,34 @@ export default class ChatBubbles implements BubbleGroupsHost {
       elements.forEach((element) => { setRepliesElementCount(element, replies.replies) })
     })
 
-    // tweb bubbles.ts:1903
+    // tweb bubbles.ts:1903, гейт отложенных — :2283 (их номера — ключи очереди,
+    // с номерами чата пересекаются)
     this.listenerSetter.add(rootScope)('history_delete', ({ peerId, msgs }) => {
-      if (peerId !== this.peerId) return
+      if (peerId !== this.peerId || this.chat.type === ChatType.Scheduled) return
       this.deleteMessagesByIds([...msgs].map((mid) => makeFullMid(peerId, mid)))
     })
+
+    // * scheduled part start — tweb :2558-2575. Окно отложенных — страница самой
+    // ленты (`requestScheduledHistory` → `replaceMirrorWindow`), поэтому и
+    // перемены в нём записывает она: живых операций окна (`rt:message_op`) у
+    // очереди нет. Счётчик в заголовке (`topbar.setTitle(size)`, :2559-2561) —
+    // у шапки заголовок отложенных без числа (Б-25 в П-5, шапка).
+    this.listenerSetter.add(rootScope)('scheduled_new', (message) => {
+      if(this.chat.type !== ChatType.Scheduled || message.peerId !== this.peerId) return
+
+      putMirrorPage(this.chat.messagesStorageKey, [message])
+      void this.renderNewMessage(message)
+    })
+
+    this.listenerSetter.add(rootScope)('scheduled_delete', ({ peerId, mids }) => {
+      if(this.chat.type !== ChatType.Scheduled || peerId !== this.peerId) return
+
+      const deleted = new Set(mids)
+      const window = mirrorWindow(this.chat.messagesStorageKey) ?? []
+      replaceMirrorWindow(this.chat.messagesStorageKey, window.filter((message) => !deleted.has(message.id)))
+      this.deleteMessagesByIds(mids.map((mid) => makeFullMid(peerId, mid)))
+    })
+    // * scheduled part end
   }
 
   /**
@@ -5929,19 +5988,19 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * Второе слагаемое оригинала на том же месте — `Object.keys(this.bubbles)
    * .length && !this.getRenderedLength()` — не портировано: оно обслуживает
    * ПРОПУЩЕННЫЕ при рендере сообщения (`skippedMids`), которых у нас не бывает
-   * (см. кэш-ветку `setPeer`). Не портированы и `chat.isRestricted`/
-   * `ChatType.Logs`/`ChatType.Scheduled` — типов чата и ограничений у ленты нет
-   * как понятия; `shouldShowUnknownUserPlaceholder`/`isBotforum` — подсистемы,
-   * которых нет.
+   * (см. кэш-ветку `setPeer`). Не портированы `chat.isRestricted`/`ChatType.Logs`
+   * — ограничений и журнала админов нет; `shouldShowUnknownUserPlaceholder`/
+   * `isBotforum` — подсистемы, которых нет. Пустая лента отложенных — через то же
+   * условие «окно пусто»: её окно в зеркале — набор очереди (`requestScheduledHistory`).
    *
    * ВЕТКА выбирается цепочкой оригинала (:10798-10857) в применимом объёме:
    *  • `saved` — «Избранное» (`rootScope.myId === peerId`, :10837);
    *  • `greeting` — личный чат, куда можно писать (:10839-10850), не бот
    *    (`chat.isBot`); `premiumRequired`/`paidMessages` — подсистем нет;
+   *  • `noScheduledMessages` — лента отложенных (:12370-12371);
    *  • `noMessages` — всё остальное (:10856), последняя ветка и у оригинала.
    * Пропущены ветки, у которых нет предмета: `restricted`, `directChannelMessages`,
-   * `group` (нужен `pFlags.creator` пира), `noScheduledMessages`, `topic`,
-   * `logs`, бот и sponsored.
+   * `group` (нужен `pFlags.creator` пира), `topic`, `logs`, бот и sponsored.
    */
   private async checkIfEmptyPlaceholderNeeded(): Promise<void> {
     if(
@@ -5955,6 +6014,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     const middleware = this.getMiddleware()
     const type: EmptyPlaceholderType =
+      this.chat.type === ChatType.Scheduled ? 'noScheduledMessages' :
       rootScope.myId === this.peerId ? 'saved' :
       !isAnyChat(this.peerId) && !this.chat.isBot && await this.chat.canSend() ? 'greeting' :
       'noMessages'
@@ -6022,8 +6082,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
       return span
     }
 
+    // tweb :12006-12008 — заголовок по виду
     const elements: HTMLElement[] = [
-      line(type === 'saved' ? 'ChatYourSelfTitle' : 'NoMessages', `${BASE_CLASS}-title`),
+      line(
+        type === 'saved' ? 'ChatYourSelfTitle' : type === 'noScheduledMessages' ? 'NoScheduledMessages' : 'NoMessages',
+        `${BASE_CLASS}-title`,
+      ),
     ]
 
     if(type === 'saved') {
