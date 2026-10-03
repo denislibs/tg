@@ -193,6 +193,21 @@ describe('стек чатов (tweb :3219-3434)', () => {
     expect(navTypes()).toEqual(['im', 'chat'])
   })
 
+  it('`openScheduled` (tweb :3436-3441) — лента отложенных того же пира поверх чата: новый инстанс `Scheduled`', async() => {
+    construct()
+    await im.setInnerPeer({ peerId: 1 })
+    await settle()
+    const root = im.chat
+
+    im.openScheduled(1)
+    await settle()
+    expect(im.chats).toHaveLength(2)
+    expect(im.chat).not.toBe(root)
+    expect(im.chat.type).toBe(ChatType.Scheduled)
+    expect(im.chat.peerId).toBe(1)
+    expect(navTypes()).toEqual(['im', 'chat'])
+  })
+
   it('`existingIndex`: тот же пир ниже по стеку — срез до него, инстанс переиспользуется', async() => {
     construct()
     await im.setInnerPeer({ peerId: 1 })

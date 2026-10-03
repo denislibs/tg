@@ -2,7 +2,7 @@
 // пира (`setPeer` → `init` один раз → `onChangePeer` → `finishPeerChange`), флаги и
 // права по виду пира и снос (`destroy`). Лента, меню и выделение — настоящие
 // (`ChatBubbles`/`ChatContextMenu`/`ChatSelection` на фейковых менеджерах), шапка и
-// остров композера — дублёры (их предмет — `topbar.test.ts`, `reactChatInput.test.ts`),
+// строка ввода — дублёры (их предмет — `topbar.test.ts`, тесты `input.ts`),
 // стек колонки — дублёр `AppImManager` с его `isSamePeer` и событиями.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import EventListenerBase from '@helpers/eventListenerBase'
@@ -30,6 +30,7 @@ const parts = vi.hoisted(() => ({
 vi.mock('./topbar', () => ({
   default: class {
     public container = document.createElement('div')
+    public constructUtils = vi.fn()
     public constructPeerHelpers = vi.fn()
     public construct = vi.fn()
     public finishPeerChange = vi.fn(async() => () => {})

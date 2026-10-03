@@ -2,7 +2,7 @@
 //
 // Меню поднимается ровно так, как его поднимает `Chat.init`: фейковый `Chat`
 // (`testChat.ts`) с настоящим `ChatSelection`, узкие `ContextMenuManagers`/
-// `ContextMenuPopups` + настоящие зеркала (`messagesMirror` — окно чата,
+// замоканные попапы пунктов (`popups/*` — граница модуля) + настоящие зеркала (`messagesMirror` — окно чата,
 // `peerCache` — карточки пиров) и настоящие `contextMenuController`/`ButtonMenu`. Ничего из проверяемого не подменено:
 // подмена ButtonMenu превратила бы тест состава пунктов в тест мока.
 //
@@ -12,12 +12,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ChatContextMenu, {
   type ContextMenuManagers,
-  type ContextMenuPopups,
 } from './contextMenu'
 import type { SelectionBubbles } from './selection'
+import { ChatType } from './chatType'
 import type Chat from './chat'
 import { attachTestSelection, createTestChat, type TestChatOptions } from './testChat'
 import contextMenuController from '@helpers/contextMenuController'
+import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
 import rootScope from '@lib/rootScope'
 import { putMirrorPage, resetMessagesMirror } from '@core/history/messagesMirror'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
@@ -27,6 +28,24 @@ import wrapSticker from '@components/wrappers/sticker'
 // Панель быстрых реакций рисует стикеры ролей; сами файлы к меню отношения не
 // имеют — важен только факт встраивания панели и её отступ.
 vi.mock('@components/wrappers/sticker', () => ({ default: vi.fn() }))
+
+// Попапы пунктов меню tweb зовёт напрямую (`PopupPinMessage`, `showForwardPopup`, …);
+// тест меню проверяет, ЧТО и С ЧЕМ меню у них просит, — граница модуля.
+const popups = vi.hoisted(() => ({
+  showPinMessagePopup: vi.fn(),
+  showDeleteMessagesPopup: vi.fn(),
+  showForwardPopup: vi.fn(),
+  showMessageReport: vi.fn(),
+  showReactedListPopup: vi.fn(),
+}))
+vi.mock('@components/popups/unpinMessage', () => ({ default: popups.showPinMessagePopup }))
+vi.mock('@components/popups/deleteMessages', () => ({ default: popups.showDeleteMessagesPopup }))
+vi.mock('@components/popups/forward.bridge', () => ({ default: popups.showForwardPopup }))
+vi.mock('@components/popups/reportAd.bridge', () => ({ showMessageReport: popups.showMessageReport }))
+vi.mock('@components/popups/reactedList.bridge', () => ({ default: popups.showReactedListPopup }))
+// тост держит свой слой кликов (`OverlayClickHandler`) и съел бы правый клик
+// следующего теста
+vi.mock('@components/toast', () => ({ toastNew: vi.fn(), toast: vi.fn() }))
 
 const PEER = 5 // ключ ≥ 0 — личный чат (core/peers/peerId.ts)
 const CHANNEL = -7
@@ -86,6 +105,8 @@ function makeManagers() {
       votePoll: vi.fn().mockResolvedValue(undefined),
       closePoll: vi.fn().mockResolvedValue(undefined),
       viewers: vi.fn().mockResolvedValue([]),
+      setFactCheck: vi.fn().mockResolvedValue(undefined),
+      removeFactCheck: vi.fn().mockResolvedValue(undefined),
     },
     chats: { getReadDate: vi.fn().mockResolvedValue(null) },
   } satisfies ContextMenuManagers
@@ -110,18 +131,6 @@ function makeReactionManagers(...emojis: string[]) {
       }))),
     },
   } satisfies ContextMenuManagers
-}
-
-function makePopups() {
-  return {
-    showPinMessage: vi.fn(),
-    showDeleteMessages: vi.fn(),
-    showForward: vi.fn(),
-    showMessageReport: vi.fn(),
-    showReactedList: vi.fn(),
-    showStatistics: vi.fn(),
-    showFactCheckEditor: vi.fn(),
-  } satisfies ContextMenuPopups
 }
 
 /** `Chat` лички с композером и выделением поверх баблов `container`. */
@@ -153,7 +162,12 @@ function itemTexts(): string[] {
 
 let container: HTMLElement
 
+function makePopups() {
+  return popups
+}
+
 beforeEach(() => {
+  Object.values(popups).forEach((fn) => fn.mockClear())
   resetMessagesMirror()
   resetPeerMirror()
   document.body.innerHTML = ''
@@ -172,7 +186,7 @@ describe('ChatContextMenu — открытие (tweb :246-585)', () => {
     const { bubble, content } = makeBubble(1)
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat(), makeManagers(), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeManagers())
     menu.attachTo(container)
 
     rightClick(content)
@@ -194,7 +208,7 @@ describe('ChatContextMenu — открытие (tweb :246-585)', () => {
     const { bubble, content } = makeBubble(1, { classes: ['bubble-first'] })
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat(), makeManagers(), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeManagers())
     menu.attachTo(container)
 
     rightClick(content)
@@ -208,7 +222,7 @@ describe('ChatContextMenu — открытие (tweb :246-585)', () => {
     const { bubble, content } = makeBubble(1)
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat(), makeManagers(), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeManagers())
     menu.attachTo(container)
 
     rightClick(content)
@@ -227,7 +241,7 @@ describe('ChatContextMenu — открытие (tweb :246-585)', () => {
     const { bubble, content } = makeBubble(1)
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat(), makeManagers(), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeManagers())
     menu.attachTo(container)
 
     rightClick(content)
@@ -246,7 +260,7 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
     const { bubble, content } = makeBubble(1)
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat(), makeManagers(), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeManagers())
     menu.attachTo(container)
 
     rightClick(content)
@@ -255,26 +269,12 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
     expect(itemTexts()).toEqual(['Reply', 'Copy', 'Pin', 'Forward', 'Select', 'Delete'])
   })
 
-  it('без носителей попапов (до П-5, Б-28) пунктов закрепа, пересылки и удаления нет', async() => {
-    putMirrorPage(KEY, [message(1)])
-    const { bubble, content } = makeBubble(1)
-    container.append(bubble)
-
-    const menu = new ChatContextMenu(makeChat(), makeManagers())
-    menu.attachTo(container)
-
-    rightClick(content)
-    await flush()
-
-    expect(itemTexts()).toEqual(['Reply', 'Copy', 'Select'])
-  })
-
   it('без композера (`chat.input.messageInput`) «Ответить» нет (verify :984)', async() => {
     putMirrorPage(KEY, [message(1)])
     const { bubble, content } = makeBubble(1)
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat({ input: { messageInput: undefined } }), makeManagers(), makePopups())
+    const menu = new ChatContextMenu(makeChat({ input: { messageInput: undefined } }), makeManagers())
     menu.attachTo(container)
 
     rightClick(content)
@@ -289,7 +289,7 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
     container.append(bubble)
 
     const managers = makeManagers()
-    const menu = new ChatContextMenu(makeChat(), managers, makePopups())
+    const menu = new ChatContextMenu(makeChat(), managers)
     menu.attachTo(container)
 
     rightClick(content)
@@ -307,7 +307,7 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
     // ответ висит в полёте — ровно то состояние, ради которого в оригинале
     // существует шиммер
     managers.chats.getReadDate.mockReturnValue(new Promise(() => {}))
-    const menu = new ChatContextMenu(makeChat(), managers, makePopups())
+    const menu = new ChatContextMenu(makeChat(), managers)
     menu.attachTo(container)
 
     rightClick(content)
@@ -327,7 +327,7 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
     container.append(bubble)
 
     const managers = makeManagers() // getReadDate → null
-    const menu = new ChatContextMenu(makeChat(), managers, makePopups())
+    const menu = new ChatContextMenu(makeChat(), managers)
     menu.attachTo(container)
 
     rightClick(content)
@@ -353,7 +353,7 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
 
     const managers = makeManagers()
     managers.chats.getReadDate.mockResolvedValue({ readAt: readAt.toISOString() })
-    const menu = new ChatContextMenu(makeChat(), managers, makePopups())
+    const menu = new ChatContextMenu(makeChat(), managers)
     menu.attachTo(container)
 
     rightClick(content)
@@ -384,7 +384,7 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
 
     const managers = makeManagers()
     managers.chats.getReadDate.mockResolvedValue({ readAt: 'не дата' })
-    const menu = new ChatContextMenu(makeChat(), managers, makePopups())
+    const menu = new ChatContextMenu(makeChat(), managers)
     menu.attachTo(container)
 
     rightClick(content)
@@ -406,7 +406,7 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
 
     const managers = makeManagers()
     managers.chats.getReadDate.mockResolvedValue({ restricted: true })
-    const menu = new ChatContextMenu(makeChat(), managers, makePopups())
+    const menu = new ChatContextMenu(makeChat(), managers)
     menu.attachTo(container)
 
     rightClick(content)
@@ -423,7 +423,7 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
     const { bubble, content } = makeBubble(1, { peerId: CHANNEL })
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat({ peerId: CHANNEL }), makeManagers(), makePopups())
+    const menu = new ChatContextMenu(makeChat({ peerId: CHANNEL }), makeManagers())
     menu.attachTo(container)
 
     rightClick(content)
@@ -444,13 +444,15 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
     chat.selection.toggleByElement(bubble)
     expect(chat.selection.isSelecting).toBe(true)
 
-    const menu = new ChatContextMenu(chat, makeManagers(), makePopups())
+    const menu = new ChatContextMenu(chat, makeManagers())
     menu.attachTo(container)
 
     rightClick(content)
     await flush()
 
-    expect(itemTexts()).toEqual(['Copy', 'Forward', 'Clear Selection', 'Delete'])
+    // tweb :1316-1318, :1442-1444 — «Переслать/Удалить выбранные» сверяются с
+    // кнопками панели выделения, она уже собрана (`ChatSelection.onToggleSelection`)
+    expect(itemTexts()).toEqual(['Copy selected', 'Forward selected', 'Clear selection', 'Delete selected'])
   })
 })
 
@@ -462,7 +464,7 @@ describe('ChatContextMenu — действия пунктов', () => {
     const chat = makeChat({ ...options.chat, input: { initMessageReply, ...options.chat?.input } })
     const managers = makeManagers()
     const popups = makePopups()
-    const menu = new ChatContextMenu(chat, managers, popups)
+    const menu = new ChatContextMenu(chat, managers)
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -496,7 +498,8 @@ describe('ChatContextMenu — действия пунктов', () => {
 
     clickItem('Delete')
 
-    expect(popups.showDeleteMessages).toHaveBeenCalledWith(PEER, [10, 11])
+    expect(popups.showDeleteMessagesPopup).toHaveBeenCalledTimes(1)
+    expect(popups.showDeleteMessagesPopup).toHaveBeenCalledWith(PEER, [10, 11], ChatType.Chat, undefined, expect.any(Function))
   })
 
   it('«Переслать» открывает попап пересылки альбомом (:2032-2044)', async() => {
@@ -508,7 +511,8 @@ describe('ChatContextMenu — действия пунктов', () => {
 
     clickItem('Forward')
 
-    expect(popups.showForward).toHaveBeenCalledWith({ [PEER]: [10, 11] })
+    expect(popups.showForwardPopup).toHaveBeenCalledTimes(1)
+    expect(popups.showForwardPopup).toHaveBeenCalledWith({ [PEER]: [10, 11] })
   })
 
   it('«Закрепить» открывает попап закрепления (:2016-2018)', async() => {
@@ -517,7 +521,8 @@ describe('ChatContextMenu — действия пунктов', () => {
 
     clickItem('Pin')
 
-    expect(popups.showPinMessage).toHaveBeenCalledWith(PEER, 1)
+    expect(popups.showPinMessagePopup).toHaveBeenCalledTimes(1)
+    expect(popups.showPinMessagePopup).toHaveBeenCalledWith(PEER, 1)
   })
 
   // Пункт `views` группы (:1543-1644 + :1245-1251): у сообщения есть недавние
@@ -543,7 +548,7 @@ describe('ChatContextMenu — действия пунктов', () => {
     container.append(bubble)
 
     const popups = makePopups()
-    const menu = new ChatContextMenu(makeChat({ peerId: GROUP }), makeManagers(), popups)
+    const menu = new ChatContextMenu(makeChat({ peerId: GROUP }), makeManagers())
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -555,7 +560,7 @@ describe('ChatContextMenu — действия пунктов', () => {
     const click = new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 42, clientY: 84 })
     item.dispatchEvent(click)
 
-    expect(popups.showReactedList).toHaveBeenCalledWith(GROUP, 1, { x: 42, y: 84 })
+    expect(popups.showReactedListPopup).toHaveBeenCalledWith(expect.objectContaining({ id: 1, peerId: GROUP }), { x: 42, y: 84 })
   })
 })
 
@@ -583,7 +588,7 @@ describe('ChatContextMenu — «кто просмотрел» (views без ре
   async function openInGroup(managers: ReturnType<typeof makeManagers>, popups = makePopups()) {
     const { bubble, content } = makeBubble(1, { out: true, peerId: GROUP })
     container.append(bubble)
-    const menu = new ChatContextMenu(makeChat({ peerId: GROUP }), managers, popups)
+    const menu = new ChatContextMenu(makeChat({ peerId: GROUP }), managers)
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -634,7 +639,7 @@ describe('ChatContextMenu — «кто просмотрел» (views без ре
 
     expect(itemTexts()).toContain('Nobody viewed')
     viewsItem()!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
-    expect(popups.showReactedList).not.toHaveBeenCalled()
+    expect(popups.showReactedListPopup).not.toHaveBeenCalled()
   })
 
   it('просмотревшие есть — клик по пункту открывает список якорем (:1632-1641, :1245-1251)', async() => {
@@ -647,7 +652,7 @@ describe('ChatContextMenu — «кто просмотрел» (views без ре
     await flush()
 
     viewsItem()!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 7, clientY: 9 }))
-    expect(popups.showReactedList).toHaveBeenCalledWith(GROUP, 1, { x: 7, y: 9 })
+    expect(popups.showReactedListPopup).toHaveBeenCalledWith(expect.objectContaining({ id: 1, peerId: GROUP }), { x: 7, y: 9 })
   })
 
   it('чужое сообщение — пункта нет вовсе, `messages.viewers` не спрашивается (appMessagesManager.ts:9109-9123)', async() => {
@@ -657,7 +662,7 @@ describe('ChatContextMenu — «кто просмотрел» (views без ре
     const managers = makeManagers()
     const { bubble, content } = makeBubble(1, { peerId: GROUP })
     container.append(bubble)
-    const menu = new ChatContextMenu(makeChat({ peerId: GROUP }), managers, makePopups())
+    const menu = new ChatContextMenu(makeChat({ peerId: GROUP }), managers)
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -694,7 +699,7 @@ describe('ChatContextMenu — пункт `views` в вещательном ка�
     const managers = makeManagers()
     const { bubble, content } = makeBubble(1, { out: true, peerId: CHANNEL })
     container.append(bubble)
-    const menu = new ChatContextMenu(makeChat({ peerId: CHANNEL }), managers, makePopups())
+    const menu = new ChatContextMenu(makeChat({ peerId: CHANNEL }), managers)
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -721,7 +726,7 @@ describe('ChatContextMenu — панель быстрых реакций (tweb :
     const { bubble, content } = makeBubble(1)
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat(), makeReactionManagers('👍', '❤️'), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeReactionManagers('👍', '❤️'))
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -741,7 +746,7 @@ describe('ChatContextMenu — панель быстрых реакций (tweb :
     container.append(bubble)
 
     const emojis = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
-    const menu = new ChatContextMenu(makeChat(), makeReactionManagers(...emojis), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeReactionManagers(...emojis))
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -754,7 +759,7 @@ describe('ChatContextMenu — панель быстрых реакций (tweb :
     const { bubble, content } = makeBubble(1)
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat(), makeManagers(), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeManagers())
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -769,7 +774,7 @@ describe('ChatContextMenu — панель быстрых реакций (tweb :
     const { bubble, content } = makeBubble(1)
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat(), makeReactionManagers('👍'), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeReactionManagers('👍'))
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -777,7 +782,7 @@ describe('ChatContextMenu — панель быстрых реакций (tweb :
     contextMenuController.close()
     menuElement()!.remove()
 
-    const plain = new ChatContextMenu(makeChat(), makeManagers(), makePopups())
+    const plain = new ChatContextMenu(makeChat(), makeManagers())
     plain.attachTo(container)
     rightClick(content)
     await flush()
@@ -795,7 +800,7 @@ describe('ChatContextMenu — панель быстрых реакций (tweb :
     container.append(bubble)
 
     const managers = makeReactionManagers('👍', '❤️')
-    const menu = new ChatContextMenu(makeChat(), managers, makePopups())
+    const menu = new ChatContextMenu(makeChat(), managers)
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -818,7 +823,7 @@ describe('ChatContextMenu — панель быстрых реакций (tweb :
     container.append(bubble)
 
     const managers = makeReactionManagers('👍')
-    const menu = new ChatContextMenu(makeChat(), managers, makePopups())
+    const menu = new ChatContextMenu(makeChat(), managers)
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -839,7 +844,7 @@ describe('ChatContextMenu — панель быстрых реакций (tweb :
     container.append(bubble)
 
     const managers = makeReactionManagers('👍')
-    const menu = new ChatContextMenu(makeChat(), managers, makePopups())
+    const menu = new ChatContextMenu(makeChat(), managers)
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -865,7 +870,7 @@ describe('ChatContextMenu — панель быстрых реакций (tweb :
     const { bubble, content } = makeBubble(1.5)
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat(), makeReactionManagers('👍'), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeReactionManagers('👍'))
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -901,12 +906,250 @@ describe('ChatContextMenu — «Выбрать» у служебного соо�
     const { bubble, content } = makeBubble(1, { classes: ['service'] })
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat(), makeManagers(), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeManagers())
     menu.attachTo(container)
 
     rightClick(content)
     await flush()
 
     expect(itemTexts()).toContain('Select')
+  })
+})
+
+// П-5 (Б-28): пункты действий вернулись — их `verify` 1:1 с tweb 812502980
+// (`contextMenu.ts:1088-1093` факт-чек, :1222-1247 закреп, :1302-1310
+// пересылка, :1336-1353 жалоба, :1424-1427 удаление), а клик зовёт попап tweb.
+describe('ChatContextMenu — пункты действий: видимость по verify (П-5)', () => {
+  const GROUP = -9
+
+  function upsertChannel(id: number, pFlags: Record<string, true>, adminRights?: Record<string, true>) {
+    applyPeerOps([{ op: 'upsert', peers: [{
+      _: 'channel', id, title: 'c', pFlags, photo: undefined, date: 0,
+      ...(adminRights ? { admin_rights: { _: 'chatAdminRights', pFlags: adminRights } } : {}),
+    } as never] }])
+  }
+
+  async function itemsOn(peerId: number, msg: MyMessage, out = false): Promise<string[]> {
+    putMirrorPage(KEY, [msg])
+    const { bubble, content } = makeBubble(msg.id, { peerId, out })
+    container.append(bubble)
+    const menu = new ChatContextMenu(makeChat({ peerId }), makeManagers())
+    menu.attachTo(container)
+    rightClick(content)
+    await flush()
+    return itemTexts()
+  }
+
+  it('своё в личке: правка, закреп, пересылка, удаление; жалобы нет', async() => {
+    const texts = await itemsOn(PEER, message(1, { pFlags: { out: true } }), true)
+    expect(texts).toEqual(expect.arrayContaining(['Edit', 'Pin', 'Forward', 'Delete']))
+    expect(texts).not.toContain('Report')
+  })
+
+  it('чужое в личке: закреп, пересылка, удаление (личка — всегда, canDeleteMessage); жалобы нет', async() => {
+    const texts = await itemsOn(PEER, message(1))
+    expect(texts).toEqual(expect.arrayContaining(['Pin', 'Forward', 'Delete']))
+    expect(texts).not.toContain('Report')
+    expect(texts).not.toContain('Edit')
+  })
+
+  it('закреплённое: «Unpin» вместо «Pin» (:1238-1247)', async() => {
+    const texts = await itemsOn(PEER, message(1, { pFlags: { pinned: true } }))
+    expect(texts).toContain('Unpin')
+    expect(texts).not.toContain('Pin')
+  })
+
+  it('канал без прав: пересылка и жалоба есть; закрепа, удаления и факт-чека нет', async() => {
+    upsertChannel(7, { broadcast: true })
+    const texts = await itemsOn(CHANNEL, message(1, { peerId: CHANNEL, fromId: CHANNEL }))
+    expect(texts).toEqual(expect.arrayContaining(['Forward', 'Report']))
+    expect(texts).not.toContain('Pin')
+    expect(texts).not.toContain('Delete')
+    expect(texts).not.toContain('Add Fact Check')
+  })
+
+  it('канал, я админ с правами закрепа и удаления: закреп, удаление и факт-чек есть', async() => {
+    upsertChannel(7, { broadcast: true }, { pin_messages: true, delete_messages: true })
+    const texts = await itemsOn(CHANNEL, message(1, { peerId: CHANNEL, fromId: CHANNEL }))
+    expect(texts).toEqual(expect.arrayContaining(['Add Fact Check', 'Pin', 'Forward', 'Report', 'Delete']))
+  })
+
+  it('факт-чек уже стоит — пункт «Edit Fact Check» (:1090)', async() => {
+    upsertChannel(7, { broadcast: true }, { pin_messages: true })
+    const texts = await itemsOn(CHANNEL, message(1, {
+      peerId: CHANNEL, fromId: CHANNEL,
+      factcheck: { _: 'factCheck', text: { _: 'textWithEntities', text: 'old', entities: [] } },
+    } as Partial<MyMessage>))
+    expect(texts).toContain('Edit Fact Check')
+  })
+
+  it('мегагруппа, чужое, я не админ: жалоба есть, закрепа и удаления нет', async() => {
+    upsertChannel(9, { megagroup: true })
+    const texts = await itemsOn(GROUP, message(1, { peerId: GROUP, fromId: 77 }))
+    expect(texts).toContain('Report')
+    expect(texts).not.toContain('Pin')
+    expect(texts).not.toContain('Delete')
+  })
+
+  it('ещё не отправленное (дробный номер): ни закрепа, ни пересылки, ни удаления', async() => {
+    const texts = await itemsOn(PEER, message(1.5, { pFlags: { out: true } }), true)
+    expect(texts).not.toContain('Pin')
+    expect(texts).not.toContain('Forward')
+    expect(texts).not.toContain('Delete')
+  })
+})
+
+describe('ChatContextMenu — действия П-5: попап и RPC', () => {
+  function clickText(text: string, init: MouseEventInit = {}) {
+    const item = Array.from(menuElement()!.querySelectorAll<HTMLElement>('.btn-menu-item'))
+      .find((el) => el.querySelector('.btn-menu-item-text')?.textContent === text)
+    expect(item, `пункт «${text}» не найден`).toBeTruthy()
+    item!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...init }))
+  }
+
+  async function openChannelAsAdmin(msg: MyMessage, managers = makeManagers()) {
+    applyPeerOps([{ op: 'upsert', peers: [{
+      _: 'channel', id: 7, title: 'c', pFlags: { broadcast: true }, photo: undefined, date: 0,
+      admin_rights: { _: 'chatAdminRights', pFlags: { pin_messages: true, delete_messages: true } },
+    } as never] }])
+    putMirrorPage(KEY, [msg])
+    const { bubble, content } = makeBubble(msg.id, { peerId: CHANNEL })
+    container.append(bubble)
+    const menu = new ChatContextMenu(makeChat({ peerId: CHANNEL }), managers)
+    menu.attachTo(container)
+    rightClick(content)
+    await flush()
+    return managers
+  }
+
+  it('«Открепить» зовёт PopupPinMessage с unpin (:2224-2226)', async() => {
+    putMirrorPage(KEY, [message(1, { pFlags: { pinned: true } })])
+    const { bubble, content } = makeBubble(1)
+    container.append(bubble)
+    const menu = new ChatContextMenu(makeChat(), makeManagers())
+    menu.attachTo(container)
+    rightClick(content)
+    await flush()
+
+    clickText('Unpin')
+    expect(popups.showPinMessagePopup).toHaveBeenCalledWith(PEER, 1, true)
+  })
+
+  it('«Пожаловаться» зовёт showMessageReport одним сообщением (:1339-1348)', async() => {
+    await openChannelAsAdmin(message(1, { peerId: CHANNEL, fromId: CHANNEL }))
+    clickText('Report')
+    expect(popups.showMessageReport).toHaveBeenCalledTimes(1)
+    expect(popups.showMessageReport).toHaveBeenCalledWith(CHANNEL, [1], undefined)
+  })
+
+  it('«Удалить» в канале отдаёт попапу пир, номер и тип чата (:2269-2287)', async() => {
+    await openChannelAsAdmin(message(1, { peerId: CHANNEL, fromId: CHANNEL }))
+    clickText('Delete')
+    expect(popups.showDeleteMessagesPopup).toHaveBeenCalledWith(CHANNEL, [1], ChatType.Chat, undefined, expect.any(Function))
+  })
+
+  it('факт-чек: попап с полем, «Done» шлёт ОДИН setFactCheck с текстом (:2110-2162)', async() => {
+    const managers = await openChannelAsAdmin(message(1, { peerId: CHANNEL, fromId: CHANNEL }))
+    clickText('Add Fact Check')
+    await flush()
+
+    const popup = document.querySelector('.popup.popup-confirmation')!
+    expect(popup.querySelector('.popup-title')!.textContent).toBe('Fact Check')
+    const input = popup.querySelector<HTMLElement>('.input-field-input')!
+    input.textContent = 'Проверено'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+
+    const done = Array.from(popup.querySelectorAll<HTMLButtonElement>('.popup-buttons > button'))
+      .find((button) => button.textContent === 'Done')!
+    done.dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
+    await flush()
+
+    expect(managers.messages.setFactCheck).toHaveBeenCalledTimes(1)
+    expect(managers.messages.setFactCheck).toHaveBeenCalledWith(CHANNEL, 1, 'Проверено')
+    expect(managers.messages.removeFactCheck).not.toHaveBeenCalled()
+  })
+
+  it('факт-чек: стёртый текст — кнопка «Remove», снимает проверку (:2119-2128, :2152-2156)', async() => {
+    const managers = await openChannelAsAdmin(message(1, {
+      peerId: CHANNEL, fromId: CHANNEL,
+      factcheck: { _: 'factCheck', text: { _: 'textWithEntities', text: 'old', entities: [] } },
+    } as Partial<MyMessage>))
+    clickText('Edit Fact Check')
+    await flush()
+
+    const popup = document.querySelector('.popup.popup-confirmation')!
+    const input = popup.querySelector<HTMLElement>('.input-field-input')!
+    expect(input.textContent).toBe('old')
+    input.textContent = ''
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+
+    const action = popup.querySelector<HTMLButtonElement>('.popup-buttons > button.danger')!
+    expect(action.textContent).toBe('Remove')
+    action.dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
+    await flush()
+
+    expect(managers.messages.removeFactCheck).toHaveBeenCalledTimes(1)
+    expect(managers.messages.removeFactCheck).toHaveBeenCalledWith(CHANNEL, 1)
+    expect(managers.messages.setFactCheck).not.toHaveBeenCalled()
+  })
+})
+
+// Лента отложенных (`ChatType.Scheduled`, tweb :959-972, гейты Reply/Pin/Forward —
+// :1017, :1235, :1310): «Отправить сейчас» → подтверждение (`popups/sendNow.ts`) →
+// `sendScheduledMessages`; правка текста отложенного скрыта (Б-92).
+describe('ChatContextMenu — лента отложенных', () => {
+  const SCHEDULED_KEY = `${PEER}_scheduled`
+
+  async function openScheduled(mid: number) {
+    putMirrorPage(SCHEDULED_KEY, [message(mid, { pFlags: { out: true, is_scheduled: true } })])
+    const { bubble, content } = makeBubble(mid, { out: true })
+    container.append(bubble)
+    const chat = makeChat({ type: ChatType.Scheduled, messagesStorageKey: SCHEDULED_KEY })
+    const managers = { ...makeManagers(), messages: { ...makeManagers().messages, sendScheduledMessages: vi.fn().mockResolvedValue(undefined) } }
+    const menu = new ChatContextMenu(chat, managers)
+    menu.attachTo(container)
+    rightClick(content)
+    await flush()
+    return { managers }
+  }
+
+  it('пункты: «Отправить сейчас» первым; ответа, правки, закрепа и пересылки нет', async() => {
+    await openScheduled(1)
+    const items = itemTexts()
+    expect(items[0]).toBe('Send Now')
+    expect(items).not.toContain('Reply')
+    expect(items).not.toContain('Edit')
+    expect(items).not.toContain('Pin')
+    expect(items).not.toContain('Forward')
+    expect(items).toContain('Delete')
+  })
+
+  it('«Отправить сейчас» спрашивает подтверждение и шлёт `sendScheduledMessages`', async() => {
+    const { managers } = await openScheduled(1)
+    const item = Array.from(menuElement()!.querySelectorAll<HTMLElement>('.btn-menu-item'))
+      .find((el) => el.querySelector('.btn-menu-item-text')?.textContent === 'Send Now')!
+    item.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    expect(managers.messages.sendScheduledMessages).not.toHaveBeenCalled()
+
+    const popup = document.querySelector<HTMLElement>('.popup-peer.popup-delete-chat')
+    expect(popup).toBeTruthy()
+    expect(popup!.querySelector('.popup-title')?.textContent).toBe('Send Message Now')
+    const send = Array.from(popup!.querySelectorAll<HTMLElement>('.popup-button'))
+      .find((button) => button.textContent === 'Send')!
+    send.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+
+    expect(managers.messages.sendScheduledMessages).toHaveBeenCalledWith(PEER, [1])
+  })
+
+  it('в обычном чате пункта «Отправить сейчас» нет', async() => {
+    putMirrorPage(KEY, [message(1)])
+    const { bubble, content } = makeBubble(1)
+    container.append(bubble)
+    const managers = { ...makeManagers(), messages: { ...makeManagers().messages, sendScheduledMessages: vi.fn() } }
+    const menu = new ChatContextMenu(makeChat(), managers)
+    menu.attachTo(container)
+    rightClick(content)
+    await flush()
+    expect(itemTexts()).not.toContain('Send Now')
   })
 })

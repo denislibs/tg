@@ -358,8 +358,11 @@ bubbles.ts:2941-3012): «прочитано» это «увидено», а ви
 (`bubbles.setPeer` → `chat.onChangePeer` → `chat.finishPeerChange`, tweb :5848/:6183);
 распорки считает `Chat.recomputePaddings` → `ChatBubbles.setPaddings`. Тесты ленты
 поднимают её на фабрике `chat/testChat.ts` (`createTestChat` + `mountTestBubbles`,
-порядок `Chat.init`). Попапов пунктов меню (закреп, пересылка, удаление, жалоба,
-статистика, проверка фактов) до П-5 нет — их пункты скрыты `verify` (Б-28).
+порядок `Chat.init`). Пункты меню и панель выделения зовут попапы tweb напрямую (П-5):
+`popups/unpinMessage.ts`, `popups/deleteMessages.ts` (vanilla `PopupPeer` до 2C-6),
+мосты в React-попапы острова оверлеев `popups/forward.bridge.ts` (до 2C-24),
+`reportAd.bridge.ts` (до 2C-27), `reactedList.bridge.ts` (до 2C-25); статистики поста
+нет до `AppStatisticsTab` (Б-93).
 
 React-лента (`components/messages/ChatFeed` и её ~18 модулей), флаг
 `VITE_VANILLA_FEED`, zustand-копия окна `stores/messagesStore` и ленточные хуки

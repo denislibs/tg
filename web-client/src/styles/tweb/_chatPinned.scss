@@ -249,6 +249,10 @@
 .pinned-container {
   --container-height: var(--pinned-container-height);
   --pc-button-height: 2.5rem;
+  // Width of a pill centred between two button slots — one at each end of the
+  // plate, whether or not both actually carry a button (`.pinned-translation`,
+  // `.pinned-requests`).
+  --pc-centered-button-width: calc(100% - var(--pc-button-height) * 2 - 1rem);
   position: relative;
   inset-inline: 0;
   margin: 0;
@@ -274,6 +278,8 @@
 
   &-content {
     flex: 1 1 auto;
+    color: inherit;
+    text-align: inherit;
     overflow: hidden;
     position: relative;
     pointer-events: none;
@@ -377,8 +383,19 @@
     }
   }
 
-  &.has-custom-action-button .pinned-message-wrapper {
-    padding-inline-end: var(--action-button-width, 8rem);
+  &.has-custom-action-button {
+    .pinned-message-wrapper {
+      padding-inline-end: var(--action-button-width, 8rem);
+    }
+
+    // The action button is absolutely positioned over the unpin button and
+    // covers it completely — the bar shows one control, not two. Its box still
+    // spaces the wrapper, so it stays in the layout, but a control nobody can
+    // see must not be a tab stop or be announced; `visibility` takes it out of
+    // both without moving anything.
+    .pinned-message-unpin {
+      visibility: hidden;
+    }
   }
 
   &-content {
@@ -518,6 +535,20 @@
     display: none !important;
   }
 
+  // No glyph on the plate is painted primary — a toggle that is on (repeat, playback rate) takes the
+  // same gray plate the chat input's buttons do.
+  .btn-icon {
+    &.active {
+      @include btn-icon-active-plate();
+    }
+
+    // Slotted playback has no next track to advance to, so the glyph dims to say so. The button
+    // stays enabled — its click is a safe no-op on the empty list loader.
+    &.pinned-audio-no-next {
+      color: var(--secondary-text-color);
+    }
+  }
+
   &-wrapper {
     overflow: visible !important;
     z-index: 1 !important;
@@ -560,6 +591,13 @@
     padding-inline: .5rem .25rem;
     border-radius: .5rem;
     cursor: pointer;
+
+    // Nothing to open behind this track (see `inert` in chat/audio.tsx) — handing the events back
+    // to the wrapper drops the hover tint, the ripple and the pointer cursor in one go.
+    &-inert {
+      pointer-events: none;
+      cursor: default;
+    }
   }
 
   &-progress {
@@ -672,92 +710,174 @@
   }
 }
 
+.pinned-requests,
+.pinned-actions,
+.pinned-translation {
+  color: var(--primary-color);
+  justify-content: center;
+}
+
+.pinned-requests-primary-button,
+.pinned-actions-primary-button,
+.pinned-translation-primary-button {
+  width: var(--pc-centered-button-width);
+}
+
 .pinned-requests {
-  &-title {
-    color: var(--primary-color);
-    font-weight: var(--font-weight-bold);
-  }
-
-  &-title,
+  // The faces take the start slot exactly the way the close button takes the
+  // end one — out of flow, so neither of them shifts the centred label. Same
+  // .25rem inset: an avatar is `--pc-button-height` tall, like that button.
   .stacked-avatars {
+    position: absolute;
+    inset-inline-start: .25rem;
     pointer-events: none;
+
+    // A phone's plate is too narrow for the full-size stack: the label is
+    // centred on the plate, so it would run under the faces. Same trade-off as
+    // `.pinned-group-call` — shrink the stack (the avatars are still rendered
+    // at full size, so they stay sharp) rather than give up the centring.
+    // `!important` because StackedAvatars writes the var as an inline style.
+    @include respond-to(handhelds) {
+      --avatar-size: 2rem !important;
+    }
   }
 
-  &-wrapper {
-    justify-content: space-between;
+  &-close {
+    position: absolute;
+    inset-inline-end: .25rem;
   }
 }
 
 .pinned-actions {
-  &-button {
-    flex: 0 0 auto;
-    text-transform: uppercase;
-    font-weight: var(--font-weight-bold);
-    height: 100%;
-    width: 100%;
-    cursor: pointer;
-    line-height: var(--container-height);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  // The join-request line and the emoji-status note both wrap, so the plate measures
+  // itself; a plain row of buttons still keeps the usual plate height.
+  --container-height: auto;
+  min-height: var(--pinned-container-height);
+  // a column: the buttons keep their own row, the note goes under it
+  flex-direction: column;
+  gap: .25rem;
+  opacity: 1;
 
-    &.half {
-      @include respond-to(not-large-screens) {
-        flex: 1 1 auto;
-      }
+  @include animation-level(2) {
+    transition: opacity var(--transition-standard-in);
+  }
 
-      @include respond-to(large-screens) {
-        width: 50%;
-      }
-    }
+  &-primary-button {
+    min-width: 0;
 
     &-text {
-      display: block;
       pointer-events: none;
     }
   }
 
-  &-wrapper {
+  &-close {
+    position: absolute;
+    top: .25rem;
+    inset-inline-end: .25rem;
+  }
+
+  &-row {
+    display: flex;
     align-items: center;
-    padding: 0 !important;
-    opacity: 1;
+    justify-content: center;
+    gap: .25rem;
+    width: 100%;
+  }
 
-    @include animation-level(2) {
-      transition: opacity var(--transition-standard-in);
+  &-text {
+    width: 100%;
+    padding: 0 .75rem;
+
+    // the link carries no `href`, so it gets neither the UA pointer nor a way to beat
+    // the `cursor: default` the plate inherits from `.sidebar-header`
+    a {
+      cursor: pointer;
     }
 
-    &-utils {
-      margin-inline-end: 1rem;
-
-      @include respond-to(handhelds) {
-        margin-inline-end: .5rem;
-      }
-
-      @include respond-to(large-screens) {
-        // 2.5rem = button size, 1rem = container padding
-        margin-inline: -3.5rem 0;
-      }
+    // `.emoji-status` is a `display: flex` box built for the peer title, where it is a
+    // flex item next to the name; inside a sentence it has to stay inline or it breaks
+    // the line, sit on the baseline, and drop the spacing meant for the title
+    .emoji-status {
+      display: inline-flex;
+      vertical-align: sub;
+      margin: 0;
     }
+  }
 
-    &.is-disabled {
-      pointer-events: none;
-      opacity: var(--disabled-opacity);
+  &-primary-button-icon {
+    font-size: 1.25rem;
+    margin-inline-end: .375rem;
+  }
+
+  // Join-request line: the plate's own button, just quiet and free to wrap —
+  // tdesktop's `_requestChatBg` + `_requestChatInfo`. Width, ripple and centring
+  // come from `.pinned-container-primary-button`.
+  &-info {
+    // no cross to leave an end slot free for, so drop the centred pill width
+    width: 100%;
+    height: auto;
+    min-height: var(--pc-button-height);
+    // the line grows instead of being clipped; the ripple is kept inside by the
+    // `rp-overflow` utility, which clips `.c-ripple` rather than the button
+    overflow: visible;
+    padding-block: .375rem;
+    font-size: var(--font-size-14);
+    font-weight: var(--font-weight-normal);
+    line-height: var(--line-height-14);
+    // the chat's title is server-supplied and can be one long unbreakable word
+    word-break: break-word;
+  }
+
+  // Either the buttons share the row (`is-multiple`), or a lone button has no
+  // close beside it to keep an end slot free for (`is-single`) — both stretch
+  // instead of sitting in the centred pill width.
+  &.is-multiple,
+  &.is-single {
+    .pinned-actions-primary-button {
+      flex: 1 1 0;
+      width: auto;
     }
+  }
+
+  &.is-multiple {
+    .pinned-actions-close {
+      position: static;
+    }
+  }
+
+  &.is-disabled {
+    pointer-events: none;
+    opacity: var(--disabled-opacity);
+  }
+}
+
+.pinned-automation {
+  &-wrapper {
+    gap: 0;
+    padding: 0;
+    cursor: default;
+  }
+
+  &-action-button {
+    flex: 0 0 auto;
+    margin-inline-end: .25rem;
+  }
+
+  &-menu {
+    flex: 0 0 auto;
+    color: var(--secondary-text-color);
   }
 }
 
 .pinned-translation {
   height: var(--pinned-translation-height) !important;
-  color: var(--primary-color);
   font-size: var(--font-size);
-  justify-content: center;
 
   &-primary-button {
-    width: calc(100% - var(--pc-button-height) * 2 - 1rem);
     gap: .375rem;
 
     &-icon {
-      font-size: 1.25rem;
+      font-size: 1.375rem;
     }
   }
 
@@ -845,6 +965,19 @@
       line-height: 1;
       overflow: hidden;
       cursor: pointer;
+    }
+
+    &-side-btn,
+    &-center {
+      &:focus-visible {
+        outline: 2px solid #fff;
+        outline-offset: -2px;
+      }
+
+      &:disabled {
+        cursor: default;
+        opacity: .65;
+      }
     }
 
     &-mic-btn {
@@ -1001,13 +1134,21 @@
   }
 }
 
+// Explanatory line inside a plate: the fee notice above its button, the emoji-status
+// note below the contact-status buttons.
+.pinned-remove-fee-text,
+.pinned-actions-text {
+  font-size: var(--font-size-14);
+  text-align: center;
+  color: var(--secondary-text-color);
+  line-height: var(--line-height-14);
+  word-break: break-word;
+}
+
 .pinned-remove-fee {
   --container-height: var(--pinned-fee-height);
 
   &-text {
-    font-size: var(--font-size-14);
-    text-align: center;
-    color: var(--secondary-text-color);
     margin-bottom: .125rem;
   }
 

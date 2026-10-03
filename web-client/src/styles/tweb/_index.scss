@@ -84,6 +84,9 @@
 @use "topbarSearch"; // :74
 @use "foldersSidebar"; // :75
 @use "animatedSuper"; // :77
+@use "skeleton"; // components/skeleton/skeleton.scss (подпись плашки эфира, П-5)
+@use "topbarGroupCall"; // components/chat/topbarGroupCall/topbarGroupCall.scss (П-5)
+@use "topbarLive"; // components/chat/topbarLive/topbarLive.scss (П-5)
 
 // Попапы (tweb style.scss:83 и далее — по одному партиалу на попап).
 @use "popups/popup"; // :83
@@ -103,6 +106,7 @@
 @use "storiesList";
 @use "whole"; // выдержка `.whole` из base.scss:513-522 (не путать с pages/pages)
 @use "toast"; // выдержка `.toast`/`.toasts-container` из base.scss:740-780
+@use "overlayedIcon"; // выдержка `.overlayed-icon`/`.auto-delete-icon` из base.scss:2438-2455
 @use "appearZoom"; // выдержка `.overflow-hidden`/`.appear-zoom` из base.scss:674-676, :2357-2367
 @use "pages/pages"; // :124
 @use "pages/chats"; // :125

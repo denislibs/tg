@@ -1,0 +1,19 @@
+// Порт tweb `src/components/chat/topbarLive/topbarLive.scss` (812502980) — у tweb
+// импортируется компонентом, у нас — партиалом. Правка пути @use (правило (а)).
+@use "../foundation" as *;
+
+.pinned-live {
+  height: var(--pinned-live-height) !important;
+  gap: .25rem;
+
+  &-content {
+    flex: 1 1 auto;
+    font-size: var(--font-size-14);
+    line-height: var(--line-height-14);
+    padding-inline: .25rem;
+  }
+
+  .skeleton {
+    min-width: 6rem;
+  }
+}

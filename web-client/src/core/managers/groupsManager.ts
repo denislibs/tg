@@ -582,9 +582,15 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
      *
      * `members` выше остаётся плоской формой без пагинации для экранов
      * редактирования группы; эта ручка — для списка, который листает.
+     *
+     * `q` — фильтр `channelParticipantsSearch` (`appProfileManager.getParticipants`
+     * с `filter: {_: 'channelParticipantsSearch', q}`): выбор отправителя в поиске
+     * по чату (`components/chat/topbarSearch.solid.tsx`, tweb `topbarSearch.tsx:184-190`).
      */
-    async channelParticipants(peerId: PeerId, offset: number, limit: number): Promise<ChannelsChannelParticipants> {
-      const r = await rest.get<ChannelsChannelParticipants>(`/chats/${peerId}/members`, { offset, limit })
+    async channelParticipants(peerId: PeerId, offset: number, limit: number, q?: string): Promise<ChannelsChannelParticipants> {
+      const query: Record<string, string | number> = { offset, limit }
+      if (q) query.q = q
+      const r = await rest.get<ChannelsChannelParticipants>(`/chats/${peerId}/members`, query)
       // `chats` контейнера у этой ручки пуст всегда (`group_handler.go::ListMembers`
       // кладёт только карточки участников) — в зеркало едут `users`.
       peers.saveApiPeers({ users: r.users })

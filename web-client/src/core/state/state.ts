@@ -12,8 +12,9 @@ export interface AppState {
   version: number
   /** папки-фильтры (tweb `filtersArr`) */
   folders: Folder[]
-  /** свёрнутые пользователем пин-плашки: peerId → msgId (tweb `hiddenPinnedMessages`) */
-  hiddenPinnedMessages: Record<number, number>
+  /** свёрнутые пользователем пин-плашки: ключ `getPinnedMessagesKey(peerId, threadId)` → msgId
+   *  (tweb `hiddenPinnedMessages`) */
+  hiddenPinnedMessages: Record<string, number>
   /**
    * недавние в глобальном поиске (tweb `recentSearch`). У tweb там числовые
    * `PeerId[]`, у нас id чата — строка (`Chat.id`, data.ts:134), поэтому и

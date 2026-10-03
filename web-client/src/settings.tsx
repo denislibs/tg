@@ -114,6 +114,9 @@ export interface Settings {
   // Плашка-подсказка «Never miss a message!» отклонена или отработана
   // (tweb appSettings.notifications.suggested, notificationsSuggestion.tsx:14).
   notifySuggested: boolean
+  // Подсказка «Chat.Menu.Hint» после «Выбрать сообщения» меню ⋮ показана
+  // (tweb appSettings.chatContextMenuHintWasShown, chat/topbar.ts:583-589).
+  chatContextMenuHintWasShown: boolean
 }
 
 // Галочки автозагрузки по типам чатов (tweb AutoDownloadPeerTypeSettings).
@@ -194,6 +197,7 @@ export const DEFAULTS: Settings = {
   sidebarRightWidth: undefined,
   seenSidebarResizeTip: false,
   notifySuggested: false,
+  chatContextMenuHintWasShown: false,
 }
 
 const KEY = 'tg-settings'
@@ -310,6 +314,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       sidebarRightWidth: s.sidebarRightWidth,
       seenSidebarResizeTip: s.seenSidebarResizeTip,
       notifySuggested: s.notifySuggested,
+      chatContextMenuHintWasShown: s.chatContextMenuHintWasShown,
     }
     try {
       localStorage.setItem(KEY, JSON.stringify(toSave))

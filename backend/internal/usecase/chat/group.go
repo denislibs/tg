@@ -371,7 +371,7 @@ func (i *Interactor) UsersByIDs(ctx context.Context, viewerID int64, ids []int64
 // ListMembers returns the chat's members (role + rights + mute). The viewer must
 // be a member of the chat; discussion-группа канала — исключение (комментарии
 // и @-упоминания доступны подписчику до вступления, как чтение треда).
-func (i *Interactor) ListMembers(ctx context.Context, chatID, viewerID int64, offset, limit int) ([]domain.Member, error) {
+func (i *Interactor) ListMembers(ctx context.Context, chatID, viewerID int64, query string, offset, limit int) ([]domain.Member, error) {
 	ok, err := i.chats.IsMember(ctx, chatID, viewerID)
 	if err != nil {
 		return nil, err
@@ -382,7 +382,7 @@ func (i *Interactor) ListMembers(ctx context.Context, chatID, viewerID int64, of
 			return nil, domain.ErrForbidden
 		}
 	}
-	return i.groups.ListMembers(ctx, chatID, offset, limit)
+	return i.groups.ListMembers(ctx, chatID, query, offset, limit)
 }
 
 func (i *Interactor) CreateInvite(ctx context.Context, chatID, actorID int64, title string, usageLimit *int, requiresApproval bool, expiresAt *time.Time) (domain.InviteLink, error) {

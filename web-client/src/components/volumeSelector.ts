@@ -4,12 +4,17 @@
 // ховером из партиала _ckin.scss), пороги иконок tweb (off/mute/down/up),
 // mute-клик по иконке, скраб громкости.
 //
+// `useGlobalVolume: 'auto'` (tweb :20-26, :45-86, :105-120, :176-180) — селектор без своего
+// элемента, привязанный к громкости контроллера голоса/музыки
+// (`core/audio/mediaPlaybackController.ts`, витрина `useAudioStore`): им пользуется плашка
+// аудиоплеера (`chat/audio.solid.tsx`, П-5 волны 7). Глобальное событие `playbackParams`
+// оригинала — подписка на `useAudioStore`.
+//
 // Не портированы (помечено):
-//   • useGlobalVolume / appMediaPlaybackController — глобальная громкость у нас
-//     обслуживает только голос/музыку (core/audio/mediaPlaybackController.ts);
-//     громкость видео вьювера НЕ персистится — ровно как в снесённом (Task 16)
-//     React-плеере лайтбокса, персист скорости — на плеере;
-//   • maxVolume > 1 (буст голосовых) и setMaxVolume — потребителя нет.
+//   • `useGlobalVolume: 'no-init'` и глобальная громкость вьювера — громкость видео
+//     вьювера НЕ персистится, ровно как в снесённом (Task 16) React-плеере лайтбокса,
+//     персист скорости — на плеере;
+//   • maxVolume > 1 (буст голосовых) и setMaxVolume — буста у контроллера нет.
 import cancelEvent from '@helpers/dom/cancelEvent'
 import { attachClickEvent } from '@helpers/dom/clickEvent'
 import findUpClassName from '@helpers/dom/findUpClassName'
@@ -18,6 +23,7 @@ import safeAssign from '@helpers/object/safeAssign'
 import type { IconName } from '@core/tgico-icons'
 import { replaceButtonIcon } from './mediaViewer/base'
 import RangeSelector from './rangeSelector'
+import { useAudioStore } from '@stores/audioStore'
 
 const className = 'player-volume'
 
@@ -26,11 +32,14 @@ export default class VolumeSelector extends RangeSelector {
   public btn: HTMLElement
   protected listenerSetter!: ListenerSetter
   protected media?: HTMLMediaElement
+  protected useGlobalVolume?: 'auto'
+  private ignoreGlobalEvents?: boolean
 
   constructor(options: {
     listenerSetter: ListenerSetter,
     vertical?: boolean,
-    media?: HTMLMediaElement
+    media?: HTMLMediaElement,
+    useGlobalVolume?: 'auto'
   }) {
     super({
       step: 0.01,
@@ -45,6 +54,15 @@ export default class VolumeSelector extends RangeSelector {
     this.setHandlers({
       onScrub: (_value) => {
         const value = Math.max(Math.min(_value, this.max), 0)
+
+        if (this.useGlobalVolume) {
+          this.modifyGlobal(() => {
+            const state = useAudioStore.getState()
+            if (state.muted) state.toggleMute()
+            state.setVolume(value)
+          })
+        }
+
         this.setVolume({ volume: value, muted: false })
       },
     })
@@ -60,11 +78,33 @@ export default class VolumeSelector extends RangeSelector {
       this.onMuteClick(e)
     }, { listenerSetter: this.listenerSetter })
 
-    if (this.media) {
+    if (this.useGlobalVolume) {
+      this.listenerSetter.addCleanup(useAudioStore.subscribe((state, prev) => {
+        if (this.ignoreGlobalEvents || (state.volume === prev.volume && state.muted === prev.muted)) {
+          return
+        }
+
+        this.setVolume({ volume: state.volume, muted: state.muted })
+      }))
+
+      this.setGlobalVolume()
+    } else if (this.media) {
       this.setVolume({ volume: this.media.volume, muted: this.media.muted })
     }
 
     btn.append(this.container)
+  }
+
+  private modifyGlobal(callback: () => void) {
+    this.ignoreGlobalEvents = true
+    callback()
+    this.ignoreGlobalEvents = false
+  }
+
+  /** tweb :176-180 */
+  public setGlobalVolume = () => {
+    const { volume, muted } = useAudioStore.getState()
+    this.setVolume({ volume, muted })
   }
 
   // В tweb protected (клавишу M обслуживает глобальный контроллер); у нас его
@@ -72,7 +112,14 @@ export default class VolumeSelector extends RangeSelector {
   public onMuteClick(e?: Event) {
     if (e) cancelEvent(e)
 
-    const { volume, muted } = this.media ?? { volume: 1, muted: false }
+    const global = useAudioStore.getState()
+    const { volume, muted } = this.media ?? (this.useGlobalVolume ? global : { volume: 1, muted: false })
+
+    if (this.useGlobalVolume) {
+      this.modifyGlobal(() => {
+        global.toggleMute()
+      })
+    }
 
     this.setVolume({
       volume,

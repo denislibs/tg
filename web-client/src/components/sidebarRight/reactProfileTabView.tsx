@@ -10,8 +10,8 @@
 //  - переход к сообщению из shared media — `appImManager.setInnerPeer({peerId,
 //    lastMsgId})`, как у tweb (`appSearchSuper.ts:1569`), а не прыжок ленты
 //    напрямую: тот же пир — тот же инстанс, `setPeer` прыгает сам;
-//  - пересылка, удаление и «скачать» из меню элемента shared media не
-//    передаются: их попапы ушли в бэклог (Б-28).
+//  - пересылку, удаление и «скачать» из меню элемента shared media класс
+//    `AppSearchSuper` зовёт сам (П-5), хосту передавать нечего.
 import { useMemo, useSyncExternalStore } from 'react'
 import type { OpenPeer } from '@/data'
 import { useChatList } from '@core/hooks/useChatList'

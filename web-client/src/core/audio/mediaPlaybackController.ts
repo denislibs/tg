@@ -346,6 +346,8 @@ function setMedia(entry: MediaEntry): void {
   media.playbackRate = rate
   media.muted = state.muted
   media.volume = state.volume
+  // tweb `setMedia` (:1195) — повтор трека только у музыки (сеттер `loop`, :256)
+  media.loop = playbackMediaType(track) === 'audio' && state.loop
 
   // tweb ищет трек в listLoader'е и подвигает его курсор (onPlay, :770-801);
   // у нас очередь — значение в сторе, поэтому это findIndex, а трека вне
@@ -463,10 +465,17 @@ function handleTimeUpdate(media: HTMLMediaElement): void {
   if (media.paused) syncProgress(media)
 }
 
-/** tweb `go` (:976-987) — шаг по очереди; вернёт false, если идти некуда. */
+/**
+ * tweb `go` (:976-987) — шаг по очереди; вернёт false, если идти некуда. С `round`
+ * (повтор плейлиста, tweb :928 и `listLoader` с закольцовкой) очередь закольцована.
+ */
 function go(delta: 1 | -1): boolean {
-  const { queue, index } = useAudioStore.getState()
-  for (let j = index + delta; j >= 0 && j < queue.length; j += delta) {
+  const { queue, index, round } = useAudioStore.getState()
+  const length = queue.length
+  for (let step = 1; step < (round ? length : Infinity); ++step) {
+    let j = index + delta * step
+    if (round) j = ((j % length) + length) % length
+    else if (j < 0 || j >= length) break
     const media = mediaFor(queue[j])
     if (!media) continue
     playMedia(media)
@@ -528,6 +537,16 @@ export const mediaPlayback = {
     if (playingMedia) playingMedia.playbackRate = r
     useAudioStore.setState({ rate: r })
     persistRate(playbackMediaType(useAudioStore.getState().track), r)
+  },
+  /** tweb сеттер `loop` (:240-262): повтор трека — только музыке. */
+  setLoop(loop: boolean): void {
+    useAudioStore.setState({ loop })
+    const track = useAudioStore.getState().track
+    if (playingMedia && playbackMediaType(track) === 'audio') playingMedia.loop = loop
+  },
+  /** tweb сеттер `round` (:240-262): повтор плейлиста. */
+  setRound(round: boolean): void {
+    useAudioStore.setState({ round })
   },
   toggleMute(): void {
     const m = !useAudioStore.getState().muted

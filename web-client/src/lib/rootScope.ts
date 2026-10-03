@@ -222,6 +222,13 @@ export type BroadcastEvents = {
   // (`sidebarLeft/contactsList.solid.tsx`).
   'contacts_update': [UserId]
 
+  // tweb rootScope.ts:131-132 — лента отложенных (`ChatType.Scheduled`): появилось
+  // отложенное / отложенные ушли (отправлены сейчас или удалены). Шлёт воркер
+  // (`messagesManager` — `scheduleMessage`/`sendScheduledMessages`/
+  // `deleteScheduledMessages`), слушает лента (`chat/bubbles.ts`, tweb :2558-2575).
+  'scheduled_new': [MyMessage]
+  'scheduled_delete': [{ peerId: PeerId; mids: number[] }]
+
   // ── UI-команды (бывший core/hooks/uiEvents.ts, удалён) ──
   'ui:toast': [string]
   'ui:savedTagsChanged': [void]
@@ -256,6 +263,14 @@ export type BroadcastEvents = {
   // components/sidebarRight/index.ts:101, :135). Местное (`dispatchEventSingle`):
   // колонку открыла/закрыла эта вкладка.
   'right_sidebar_toggle': [boolean]
+
+  // ── закрепы (порт tweb rootScope.ts:50-51). Местное (`dispatchEventSingle`):
+  // `peer_pinned_messages` вкладка выводит из своего кадра `rt:pin_message`, сбросив
+  // кэш закрепов главного потока (`core/pinnedMessages.ts::onPinnedMessagesUpdate`);
+  // `peer_pinned_hidden` — пользователь скрыл плашку в этой вкладке (`hidePinnedMessages`).
+  // Подписчики — плашка закрепа (`chat/pinnedMessage.solid.tsx`), лента экрана закрепов.
+  'peer_pinned_messages': [{ peerId: PeerId; threadId?: number; mids?: number[]; pinned?: boolean; unpinAll?: true }]
+  'peer_pinned_hidden': [{ peerId: PeerId; threadId?: number; maxId: number }]
 
   // ── ширина левой колонки (порт tweb rootScope.ts:238, отправители —
   // helpers/installColumnResize.ts:89, components/sidebarLeft/index.ts:574).
