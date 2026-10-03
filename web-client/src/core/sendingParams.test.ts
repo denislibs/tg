@@ -63,6 +63,11 @@ const ALLOWED: Record<string, number> = {
   // (`sendText({peerId, threadId, text})`) — ни ответа, ни треда, ни send-as у
   // выбора чатом `ForwardPicker` нет, собирать в пакет нечего.
   'components/popups/shareUrl.bridge.ts': 1,
+  // Пост канала (`ChatInput.sendText`, расхождение 4 шапки `components/chat/input.ts`):
+  // ручка `POST /channels/{id}/messages` принимает ровно {text, entities,
+  // client_msg_id} (`channel_handler.go`) — пакету некуда уехать; тред поста
+  // уходит полем `threadRootId` бабла.
+  'components/chat/input.ts': 1,
 }
 
 /** Аргументы вызова: от `(` до парной `)`. */

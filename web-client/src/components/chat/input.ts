@@ -358,11 +358,14 @@ export default class ChatInput {
 
         openCreatePollPopup({
           isBroadcast: this.chat.isBroadcast,
-          onSubmit: (payload) => this.managers.messages.sendPoll(this.chat.peerId, {
-            ...payload,
-            clientMsgId: crypto.randomUUID(),
-            ...this.getMessageSendingParams(),
-          }),
+          onSubmit: (payload) => {
+            const sendingParams = this.getMessageSendingParams()
+            void this.managers.messages.sendPoll(this.chat.peerId, {
+              ...payload,
+              clientMsgId: crypto.randomUUID(),
+              ...sendingParams,
+            })
+          },
         })
       },
       verify: () => {
