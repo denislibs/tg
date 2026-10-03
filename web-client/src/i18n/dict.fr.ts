@@ -751,7 +751,6 @@ const fr = {
   'KeyboardShortcuts.Action.Strikethrough': 'Barré',
   'KeyboardShortcuts.Action.Monospace': 'Monospace',
   'KeyboardShortcuts.Action.Spoiler': 'Spoiler',
-  'Composer.CancelRecording': 'Annuler l’enregistrement',
   'KeyboardShortcuts.Section.Formatting': 'Mise en forme du texte',
   'KeyboardShortcuts.Section.Chat': 'Discussion',
   'KeyboardShortcuts.Section.Navigation': 'Navigation',

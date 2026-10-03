@@ -33,7 +33,10 @@
 //    клавиатура бота `constructReplyMarkup` `:948-960` (`chat/replyKeyboard.solid.tsx`),
 //    медленный режим `showSlowModeTooltipIfNeeded` `:4005-4084` (`chat/showSlowModeTooltipIfNeeded.ts`)
 //    и плата `paidMessageInterceptor` (`chat/paidMessagesInterceptor.ts`) в путях отправки
-//    `:3836`, `:4571-4604`, `:4800-4814`.
+//    `:3836`, `:4571-4604`, `:4800-4814`;
+//  - запись голоса и кружков (П-6, Б-30): `recordingController` (`recording/chatRecording.ts`)
+//    `:312-315`, `:482-485`, `constructRecorder` `:1048-1053`, `setShrinking` `:3988-3996`,
+//    ветки записи в `onBtnSendClick` и `updateSendBtn`.
 //
 // В бэклоге (строки раздела 5 плана): меню плашек и превью ссылки (Б-72), плашки без
 // предмета (Б-73), эффекты сообщений (Б-125), повтор отложенных (Б-126), сохранение
@@ -150,6 +153,7 @@ import { canPinMessage } from '@core/pinnedMessages'
 import { getUserStatusForSort } from '@core/presence'
 import { SEND_WHEN_ONLINE_TIMESTAMP } from '@core/format/dayLabel'
 import AttachMenuButton from './attachMenuButton.solid'
+import ChatRecording from './recording/chatRecording'
 import ChatInputPlate from './controlPlate.solid'
 import ChatSendAs from './sendAs'
 import ReplyKeyboard from './replyKeyboard.solid'
@@ -191,6 +195,7 @@ export default class ChatInput {
   public fileInput!: HTMLInputElement
   public inputMessageContainer!: HTMLDivElement
   public btnSend!: HTMLButtonElement
+  public btnCancelRecord!: HTMLButtonElement
   private lastTimeType = 0
 
   public chatInput!: HTMLElement
@@ -265,6 +270,9 @@ export default class ChatInput {
 
   private restoreInputLock?: () => void
 
+  // tweb :312-315 — запись голоса и кружков (Б-30); геттер `recording` ниже.
+  private recordingController?: ChatRecording
+
   /** True while `finishPeerChange` runs — suppresses animated plate centering. */
   private peerChanging = false
 
@@ -289,6 +297,11 @@ export default class ChatInput {
   ) {
     this.listenerSetter = new ListenerSetter()
     this.middlewareHelper = getMiddleware()
+  }
+
+  /** tweb `:482-485` */
+  public get recording() {
+    return this.recordingController?.active ?? false
   }
 
   /** tweb `:487-574` */
@@ -417,6 +430,14 @@ export default class ChatInput {
   }
 
   /** tweb `:1055-1682` — расхождение 6 шапки. */
+  /** tweb `:1048-1053` */
+  private constructRecorder() {
+    // All recording state + behaviour lives in ChatRecording now; constructing
+    // it wires the recorders, mounts the voice + video panels, and installs the
+    // record-mode switch menu (the same work this method used to do inline).
+    this.recordingController = new ChatRecording(this)
+  }
+
   public constructPeerHelpers() {
     this.constructReplyElements()
 
@@ -512,6 +533,8 @@ export default class ChatInput {
     this.rowsWrapper.append(this.replyElements.container)
     this.rowsWrapper.append(this.newMessageWrapper)
 
+    this.btnCancelRecord = this.createButtonIcon('bin_filled btn-circle btn-record-cancel chat-input-secondary-button chat-secondary-button', { ariaLabel: 'Delete' }) as HTMLButtonElement
+
     this.btnSendContainer = document.createElement('div')
     this.btnSendContainer.classList.add('btn-send-container')
 
@@ -533,22 +556,29 @@ export default class ChatInput {
     this.sendMenu = new SendMenu({
       onSilentClick: () => {
         this.sendSilent = true
-        void this.sendMessage()
+        if(this.recording) this.recordingController!.finishRecordingFromMenu()
+        else void this.sendMessage()
       },
       onScheduleClick: () => {
-        void this.scheduleSending(undefined)
+        if(this.recording) void this.scheduleSending(() => this.recordingController!.finishRecordingFromMenu())
+        else void this.scheduleSending(undefined)
       },
       onSendWhenOnlineClick: () => {
-        this.setScheduleTimestamp(SEND_WHEN_ONLINE_TIMESTAMP, () => void this.sendMessage(true))
+        if(this.recording) this.setScheduleTimestamp(SEND_WHEN_ONLINE_TIMESTAMP, () => this.recordingController!.finishRecordingFromMenu())
+        else this.setScheduleTimestamp(SEND_WHEN_ONLINE_TIMESTAMP, () => void this.sendMessage(true))
       },
       middleware: this.chat.destroyMiddlewareHelper.get(),
       openSide: 'top-left',
       onContextElement: this.btnSend,
       onOpen: () => {
         return this.chat.type !== ChatType.Scheduled &&
-          (!this.isInputEmpty() || !!(this.forwarding && Object.keys(this.forwarding).length)) &&
+          (this.recording || !this.isInputEmpty() || !!(this.forwarding && Object.keys(this.forwarding).length)) &&
           !this.editMsgId
       },
+      // While recording, the send button is the only visible original control —
+      // the trash / pause-toggle / play buttons of the recording panel are also
+      // live; any click outside the menu just dismisses it (tweb :1457-1464).
+      onToggle: (open) => this.recordingController?.setVoiceRecordingMenuGuard(open),
       canSendWhenOnline: this.canSendWhenOnline,
       onRef: (element) => {
         this.btnSendContainer.append(element)
@@ -556,11 +586,16 @@ export default class ChatInput {
     })
 
     // Move the morphing send/record button into the input row as the last button.
+    // btnCancelRecord is built above but intentionally not appended to the DOM.
     this.newMessageWrapper.append(this.btnSendContainer)
 
     this.attachMessageInputField()
 
     this.setChatListeners()
+
+    // Builds the ChatRecording controller, which wires the recorders, mounts the
+    // voice + round-video panels, and installs the record-mode switch menu.
+    this.constructRecorder()
 
     this.updateSendBtn()
 
@@ -1007,6 +1042,10 @@ export default class ChatInput {
     appNavigationController.removeItem(this.inputHelperNavigationItem!)
     this.listenerSetter.removeAll()
     this.middlewareHelper.destroy()
+    // Tears down the round-video waveform/playback, releases the camera, drops
+    // any in-flight recording navigation item, and removes the body-mounted
+    // round-preview element.
+    this.recordingController?.destroy()
     this.saveDraftDebounced?.clearTimeout()
   }
 
@@ -1540,10 +1579,30 @@ export default class ChatInput {
     })
   }
 
-  /** tweb `:4086-4117` — без записи (Б-30): пустое поле тоже «отправить». */
+  /** tweb `:4086-4117` — без историй и потока бота (нет предмета). */
   private onBtnSendClick = (e: Event) => {
     cancelEvent(e)
-    void this.sendMessage()
+
+    // This click is the release of a long-press that already opened the
+    // record-mode menu — swallow it so it doesn't also start a recording.
+    if(this.recordingController!.consumeLongPressSuppression()) {
+      return
+    }
+
+    const isInputEmpty = this.isInputEmpty()
+    const hasAnyRecorder = this.recordingController!.hasAnyRecorder()
+    if(!hasAnyRecorder || this.recording || !isInputEmpty || this.forwarding || this.editMsgId) {
+      if(this.recording) {
+        this.recordingController!.handleSendButtonClick()
+      } else {
+        void this.sendMessage()
+      }
+    } else {
+      // Empty input + not recording: LMB starts recording in the active media
+      // type. Switching voice ↔ video is done via the button's context menu
+      // (right-click / long-press), not by clicking.
+      this.recordingController!.startActive()
+    }
   }
 
   /** tweb `:4119-4221` — без превью ссылки (Б-72). */
@@ -1619,17 +1678,31 @@ export default class ChatInput {
     }
   }
 
+  /** tweb `:3988-3996` */
+  public setShrinking(value?: boolean, classNames?: string[]) {
+    value ||= this.recording
+    SetTransition({
+      element: this.chatInput,
+      className: 'is-shrinking' + (classNames ? ' ' + classNames.join(' ') : ''),
+      forwards: value,
+      duration: 200,
+    })
+  }
+
   /** tweb `:4343-4345` */
   public isInputEmpty() {
     return isInputEmpty(this.messageInput)
   }
 
-  /** tweb `:4390-4442` — без записи (Б-30), историй и потока бота (нет предмета). */
+  /** tweb `:4390-4442` — без историй и потока бота (нет предмета). */
   public updateSendBtn() {
     let icon: ChatSendBtnIcon
 
+    const isInputEmpty = this.isInputEmpty()
+
     if(this.editMsgId) icon = 'edit'
-    else icon = this.chat.type === ChatType.Scheduled ? 'schedule' : 'send'
+    else if(!this.recordingController?.hasVoiceRecorder() || this.recording || !isInputEmpty || this.forwarding) icon = this.chat.type === ChatType.Scheduled ? 'schedule' : 'send'
+    else icon = this.recordingController.getActiveRecordingMediaType() === 'video' ? 'record-video' : 'record'
 
     ;(['send', 'record', 'record-video', 'edit', 'schedule', 'forward', 'stop'] as ChatSendBtnIcon[]).forEach((i) => {
       this.btnSend.classList.toggle(i, icon === i)

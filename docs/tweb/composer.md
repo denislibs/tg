@@ -502,9 +502,9 @@ Computed корневых узлов (из дампа, тёмная тема, ш
 Вызовы `updateSendBtn()`: `input.ts:600, 1430, 2867, 3177, 3644, 3856, 3889, 3915, 4103, 4908` +
 `chatRecording.ts:793`.
 
-**У нас (К-4, 2026-10-03).** `ChatInput.updateSendBtn` (`W/components/chat/input.ts`) — порт без записи
-(Б-30) и без историй/потока бота: иконки `edit` (правка) и `send`/`schedule`; узел кнопки — 7 иконок 1:1.
-React-`SendButton.tsx` снесён.
+**У нас (К-4, 2026-10-03; запись — П-6).** `ChatInput.updateSendBtn` (`W/components/chat/input.ts`) —
+порт без историй/потока бота: `edit`, `send`/`schedule` и, с рекордером, `record`/`record-video` по
+`recordingController.getActiveRecordingMediaType()`; узел кнопки — 7 иконок 1:1. React-`SendButton.tsx` снесён.
 
 ### 3.3 CSS-морф иконок
 
@@ -1401,6 +1401,18 @@ CSS — `T/scss/partials/_videoRecordingPanel.scss` целиком:
 - `mousedown`-guard в capture-фазе на `document.body`: клик вне `.chat-input` показывает
   `PopupPeer 'popup-cancel-record'` (`chatRecording.ts:1006-1012`); для кружка исключение —
   клик по `.video-recording-stage` не считается «снаружи» (`chatRecording.ts:1154`).
+
+**У нас (П-6, 2026-10-03).** Порт файлами: `W/components/chat/recording/chatRecording.ts`,
+`recording/videoRecordingPanel.solid.tsx` (кольцо — наш ванильный `createProgressRing`),
+`voiceRecording/{voiceRecordingPanel,liveWaveform}.ts`, `W/helpers/voiceRecorder/*`
+(`isNativeSupported`, `nativeVoiceRecorder`, `oggOpusWriter`, `liveWaveformAnalyser`),
+`W/helpers/videoRecorder/nativeVideoRecorder.ts`; пики сообщения — уже портированный
+`W/core/audio/voiceWaveformAnalyser.ts`. Опус-рекордер (fallback без WebCodecs) грузит
+`W/pages/bootstrapIm.ts` тегом из `public/opus/` (вендор нетронут), путь энкодера — конфигом.
+Расхождения — в шапке `chatRecording.ts`: отправка — один `messages.sendFile` (тип
+`voice`/`roundVideo`, без wav-`objectURLBlob` и без превью кружка — Б-134), право — `send_media`,
+нет эфемерного режима/платных/медленного режима (Б-37) и заранней проверки приватности голосовых
+(Б-135), тип записи — лист `appSettings.recordingMediaType`.
 
 ---
 
@@ -2331,7 +2343,7 @@ React будет пытаться синхронизировать его сод
 
 - [ ] Морф кнопки: пустой инпут → микрофон, набранный текст → самолётик, режим правки → галочка.
 - [ ] Плашка reply / edit / forward: появление, крестик, клик по плашке ведёт к сообщению.
-- [ ] Запись голоса и кружка: таймер, отмена свайпом, отправка.
+- [ ] Запись голоса и кружка: клик по микрофону — старт, таймер и волна, пауза и прослушивание, корзина и клик мимо строки (попап «выбросить»), повторный клик — отправка; выбор голос/кружок — правый клик или удержание кнопки.
 - [ ] Автокомплиты: `@` упоминание, `/` команда, `:` эмодзи, стикер по эмодзи, инлайн-бот.
 - [ ] Эмодзи-дропдаун: табы эмодзи / стикеры / гифки, поиск внутри каждого.
 - [ ] Drag & drop файла: зона появляется и исчезает, отпускание открывает попап отправки.

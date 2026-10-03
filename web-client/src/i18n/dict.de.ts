@@ -760,7 +760,6 @@ const de = {
   'KeyboardShortcuts.Action.Strikethrough': 'Durchgestrichen',
   'KeyboardShortcuts.Action.Monospace': 'Monospace',
   'KeyboardShortcuts.Action.Spoiler': 'Spoiler',
-  'Composer.CancelRecording': 'Aufnahme abbrechen',
   'KeyboardShortcuts.Section.Formatting': 'Textformatierung',
   'KeyboardShortcuts.Section.Chat': 'Chat',
   'KeyboardShortcuts.Section.Navigation': 'Navigation',

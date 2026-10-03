@@ -514,6 +514,21 @@ export const mediaPlayback = {
     if (!media.paused) handlePlay(media)
     else playMedia(media)
   },
+  /**
+   * tweb `setSingleMedia` (:1204-1272) — только ветка без `media` («maybe it's
+   * voice recording», :1233): запись голоса/кружка глушит играющее, возврат
+   * доигрывает его, если оно играло (`playPaused = wasPlaying`). Ветки с
+   * собственным элементом (видео в PiP, :1218-1232) и `toggleSwitchers` нет —
+   * их потребителей у нас нет.
+   */
+  setSingleMedia(): (playPaused?: boolean) => void {
+    const media = playingMedia
+    const wasPlaying = !!media && !media.paused
+    if (wasPlaying) media.pause()
+    return (playPaused = wasPlaying) => {
+      if (playPaused && media && playingMedia === media) playMedia(media)
+    }
+  },
   /** tweb `toggle` (:860-880). */
   toggle(): void {
     const media = playingMedia

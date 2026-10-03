@@ -605,12 +605,17 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Пачка П-6 волны 7, Б-36 (клавиатура бота, `chat/replyKeyboard.solid.tsx`): у ru +2 ключа
 // tweb lang.ts — `General.Keyboard` (тумблер клавиатуры) и `Chat.BotCommands` (кнопка
 // команд бота).
+// Пачка П-6 волны 7, запись (`chat/recording/chatRecording.ts`, `voiceRecording/voiceRecordingPanel.ts`):
+// у ru +7 ключей tweb lang.ts — `Chat.Input.Record.{Voice,Video,VideoLimitReached}`,
+// `DiscardVoiceMessage{Description,Action}`, `NoMicrophoneAccess`, `AccDescr.ResumeRecording`;
+// минус ключи снесённого React-композера `Composer.{CancelRecording,DiscardVoice.Text,RecordRound,RecordVoice}`
+// (у ru все четыре, у остальных — `Composer.CancelRecording`).
 const COMPOSITION = {
-  ru: { keys: 1678, plural: 56 },
-  uk: { keys: 842, plural: 35 },
-  es: { keys: 813, plural: 34 },
-  de: { keys: 814, plural: 35 },
-  fr: { keys: 809, plural: 34 },
+  ru: { keys: 1681, plural: 56 },
+  uk: { keys: 841, plural: 35 },
+  es: { keys: 812, plural: 34 },
+  de: { keys: 813, plural: 35 },
+  fr: { keys: 808, plural: 34 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -798,12 +803,14 @@ const COMPOSITION = {
 // Пачкой П-4 волны 7 (агент «ссылки») — у ru +11 ключей tweb и −4 `Folder.Invite.*` (разбор — там же).
 // Б-13 волны 7 — у ru +17 ключей карточек пустой колонки, у остальных +4 (разбор — там же).
 // Пачкой П-6 волны 7 — у ru +9 ключей медленного режима и платных сообщений (разбор — там же).
+// Пачкой П-6 волны 7 (запись) — у ru +7 ключей tweb, у всех пяти минус ключи снесённого
+// React-композера `Composer.*Record*` (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: 'beb09293',
-  uk: 'de4c59fd',
-  es: 'f330c581',
-  de: '95a1d0fe',
-  fr: '59be948d',
+  ru: '8ed922b8',
+  uk: '4ea851a8',
+  es: 'fae2c364',
+  de: 'bcccb16f',
+  fr: '08b682e2',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

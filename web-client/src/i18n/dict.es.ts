@@ -755,7 +755,6 @@ const es = {
   'KeyboardShortcuts.Action.Strikethrough': 'Tachado',
   'KeyboardShortcuts.Action.Monospace': 'Monoespaciado',
   'KeyboardShortcuts.Action.Spoiler': 'Spoiler',
-  'Composer.CancelRecording': 'Cancelar grabación',
   'KeyboardShortcuts.Section.Formatting': 'Formato de texto',
   'KeyboardShortcuts.Section.Chat': 'Chat',
   'KeyboardShortcuts.Section.Navigation': 'Navegación',
