@@ -31,8 +31,14 @@
 // ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
 //  1. `columnEl` берётся в `construct`, а не инициализатором поля: модуль
 //     импортируется тестами и соседями до того, как в документе есть `#column-center`.
-//  2. (снято П-4: ссылка «пропустить к чату» и имена ориентиров — `attachSkipToContent`,
-//     `setStaticLandmarkLabels`, `:349-352`, `:3199-3201`, Б-47.)
+//  2. Имена ориентиров колонок (`setStaticLandmarkLabels`, `:349-352`, `:3199-3201`)
+//     переставляются на `language_apply`, а не на `language_change`: у нас пакет кэша
+//     старта может не знать ключей `AccDescr.*` (снимок старше словаря — строки падают на
+//     английский), а свежий пакет ТОГО ЖЕ языка с сервера (`catchUpLangPack`) объявляет
+//     только `language_apply` — на `language_change` подписи так и остались бы
+//     английскими (Б-141). `language_change` из соседней вкладки к тому же приходит ДО
+//     применения пакета (`client/boot.ts`). Ссылка «пропустить к чату» — узел `i18n`
+//     (`helpers/dom/appLandmarks.ts`).
 //  3. Нет предмета у подписок `construct`: `appMediaPlaybackController.construct` (у нас модуль без конструктора),
 //     `idleController` → `updateStatus`/`goOffline` (Б-14), предкэш обоев
 //     `SETTINGS_INIT.themes` (наш фон резолвит обои сам), `chatTips` (Б-13),
@@ -369,7 +375,7 @@ export class AppImManager extends EventListenerBase<{
     const skipLink = document.getElementById('skip-to-content')
     if(skipLink) attachSkipToContent(skipLink, this.columnEl)
     this.setStaticLandmarkLabels()
-    rootScope.addEventListener('language_change', this.setStaticLandmarkLabels)
+    rootScope.addEventListener('language_apply', this.setStaticLandmarkLabels) // расхождение 2
 
     this.appChatBackground = appChatBackground
 

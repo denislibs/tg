@@ -17,6 +17,9 @@ import { returnToStaticMarkup } from '@/test/staticMarkup'
 import { APP_TABS, AppImManager, LEFT_COLUMN_ACTIVE_CLASSNAME } from './appImManager'
 import internalLinkProcessor from './internalLinkProcessor'
 import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
+import I18n from '@lib/langPack'
+import rootScope from '@lib/rootScope'
+import { applyLang } from '@/test/lang'
 
 const columnRight = vi.hoisted(() => ({ sidebarEl: undefined as HTMLElement | undefined, toggleSidebar: () => Promise.resolve(), hide: () => {}, replaceSharedMediaTab: () => {} }))
 vi.mock('@components/sidebarRight', () => ({ default: columnRight, RIGHT_COLUMN_ACTIVE_CLASSNAME: 'is-right-column-shown' }))
@@ -429,6 +432,31 @@ describe('внутренние ссылки и ориентиры колонок
     skip.dispatchEvent(e)
     expect(focus).toHaveBeenCalled()
     expect(e.defaultPrevented).toBe(true)
+  })
+
+  it('пакет ТОГО ЖЕ языка после старта (кэш без `AccDescr.*` → свежий с сервера) переводит ссылку и ориентиры (Б-141)', async() => {
+    // Кэш старта — русский, но без ключей ориентиров: строки падают на английский.
+    I18n.setLangCode('ru')
+    await I18n.applyServerLangPack({ _: 'langPackDifference', lang_code: 'ru', from_version: 0, version: 1, strings: [] }, 'ru')
+    try {
+      document.getElementById('skip-to-content')?.replaceChildren() // подпись прошлых `construct` этого файла
+      const { left } = construct()
+      const skip = document.getElementById('skip-to-content')!
+      expect(skip.textContent).toBe('Skip to conversation')
+
+      // `catchUpLangPack`: тот же язык — `language_change` не объявляется, только `language_apply`.
+      const languageChange = vi.fn()
+      rootScope.addEventListener('language_change', languageChange)
+      await applyLang('ru')
+      rootScope.removeEventListener('language_change', languageChange)
+      expect(languageChange).not.toHaveBeenCalled()
+
+      expect(skip.textContent).toBe('Перейти к переписке')
+      expect(left.getAttribute('aria-label')).toBe('Список чатов')
+      expect(document.getElementById('column-right')!.getAttribute('aria-label')).toBe('Информация о чате')
+    } finally {
+      await applyLang('en')
+    }
   })
 })
 
