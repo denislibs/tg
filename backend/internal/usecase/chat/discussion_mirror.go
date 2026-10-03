@@ -15,6 +15,7 @@ type mirrorDelivery struct {
 	msg        domain.Message
 	recipients []int64
 	ptsByUser  map[int64]int64
+	mentions   map[int64]bool
 }
 
 // mirrorChannelPost кладёт зеркало поста канала в его группу обсуждения.
@@ -135,12 +136,12 @@ func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message)
 	if err != nil {
 		return nil, err
 	}
-	recipients, ptsByUser, err := i.fanOutNewMessage(
+	recipients, ptsByUser, mentions, err := i.fanOutNewMessage(
 		ctx, disc, post.SenderID, mirror.ID, mirror.Seq, i.messageUpdatePayload(ctx, mirror), nil, mentioned)
 	if err != nil {
 		return nil, err
 	}
-	return &mirrorDelivery{msg: mirror, recipients: recipients, ptsByUser: ptsByUser}, nil
+	return &mirrorDelivery{msg: mirror, recipients: recipients, ptsByUser: ptsByUser, mentions: mentions}, nil
 }
 
 // ExternalizeThreadRoots переводит thread_root_id из внутреннего ключа строки в

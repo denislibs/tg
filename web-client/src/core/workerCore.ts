@@ -53,7 +53,7 @@ import { newChannelFunnel, type ChannelDiff } from './realtime/channelFunnel'
 import { newSyncWait } from './realtime/syncWait'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type RepliesUpdateEvt, type Update } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type RepliesUpdateEvt, type MediaReadEvt, type Update } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { generateMessageId } from './history/messageId'
 import { getPeerId, toPeerId } from './peers/peerId'
@@ -522,6 +522,10 @@ export function createWorkerCore() {
     // окно уже содержало бы новое состояние. Порядок здесь и есть ответ.
     const reactionsGrew = pred === 'updateMessageReactions'
       && messages.reactionsGrewOnMyMessage(getPeerId((d as ReactionEvt).peer), (d as ReactionEvt).msg_id, (d as ReactionEvt).reactions)
+    // Тот же порядок для бейджа «@»: было ли упоминание непрочитанным, решает
+    // окно ДО снятия media_unread (tweb onUpdateReadMessagesContents).
+    const mentionsRead = pred === 'updateReadPeerMessagesContents'
+      ? messages.mentionsUnreadAmong(d as MediaReadEvt) : 0
     const ops = CACHE[pred]?.(d as never)
     if (ops && ops.length) broadcast(RT.messageOp, { ops }, meta)
     // Task 3 (владение диалогами, «realtime-кадры применяет владелец»): кадры,
@@ -529,6 +533,9 @@ export function createWorkerCore() {
     // rt:dialog_op сам (через onDialogOps), отдельно от сырого кадра ниже
     // (тот доезжает витрине как и раньше, если у него остались другие потребители).
     if (pred === 'updateReadHistoryInbox' || pred === 'updateReadHistoryOutbox') dialogs.applyRead(d as ReadEvt)
+    else if (pred === 'updateReadPeerMessagesContents') {
+      if (mentionsRead) dialogs.applyMentionsRead(getPeerId((d as MediaReadEvt).peer), mentionsRead)
+    }
     else if (pred === 'updateChatFullSnapshot' || pred === 'updateChannelFullSnapshot') {
       // Порт `apiUpdatesManager.processUpdateMessage` (`:239-240`): пиры,
       // приехавшие ВМЕСТЕ с апдейтом, сохраняются ПЕРВЫМИ — до того, как

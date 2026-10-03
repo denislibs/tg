@@ -122,7 +122,7 @@ func (r *TopicsRepo) ListByChat(ctx context.Context, chatID, userID int64) ([]do
 		    -- thread_root_id сообщения); text_mention детектится при вставке.
 		    SELECT count(*) AS n FROM message_mentions mm
 		     JOIN messages m ON m.id = mm.message_id
-		     WHERE mm.chat_id = t.chat_id AND mm.user_id = $2
+		     WHERE mm.chat_id = t.chat_id AND mm.user_id = $2 AND mm.unread
 		       AND m.thread_root_id = t.root_msg_id AND m.deleted_at IS NULL
 		       AND mm.seq > COALESCE(st.last_read_seq, 0)
 		  ) men ON true

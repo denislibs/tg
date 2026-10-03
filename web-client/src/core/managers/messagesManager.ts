@@ -36,6 +36,7 @@ import type { MessageOp } from '../realtime/messageOps'
 import SlicedArray, { SliceEnd, type Slice } from '../history/slicedArray'
 import { saveMessageMedia } from '../media/messageMedia'
 import { getWireFilter, type MessagesWireFilter, type MyInputMessagesFilter } from '../messages/inputMessagesFilter'
+import isMentionUnread from '../messages/isMentionUnread'
 import { mergeReactions } from '../reactions/messageReactions'
 import { saveMessages, loadMessages, deletePersistedMessage } from '../store/persist'
 import { newPollMethods } from './messages/pollMethods'
@@ -1399,6 +1400,18 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     cacheDelete(evt: DeleteMessageEvt): MessageOp[] {
       const peerId = getPeerId(evt.peer)
       return evt.messages.flatMap((id) => evictAndBuildRemoveOps(peerId, generateMessageId(id)))
+    },
+
+    // Сколько из номеров кадра прочтения содержимого — ВХОДЯЩИЕ непрочитанные
+    // упоминания в окне. Спрашивается ДО cacheMediaRead: после снятия
+    // media_unread ответить было бы не из чего (tweb
+    // onUpdateReadMessagesContents, appMessagesManager.ts:11009-11013).
+    mentionsUnreadAmong(evt: MediaReadEvt): number {
+      const peerId = getPeerId(evt.peer)
+      return evt.messages.filter((id) => {
+        const m = readMsg(peerId, generateMessageId(id))
+        return !!m && !m.pFlags.out && isMentionUnread(m)
+      }).length
     },
 
     // Голосовое/кружок прослушано → точка media_unread гаснет. Без кэша переоткрытие

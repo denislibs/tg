@@ -78,7 +78,7 @@ func frameChannelMessage(t string, base map[string]any, pts int64) []byte {
 // схемы), и peer_id там ПАРАМЕТР САМОГО СООБЩЕНИЯ, а не поле конверта. Поэтому
 // у такого кадра ключ пира кладётся внутрь сообщения: положить его рядом
 // значило бы завести на конструкторе поле, которого в схеме нет.
-func withPeer(base map[string]any, peer domain.PeerID, out bool) map[string]any {
+func withPeer(base map[string]any, peer domain.PeerID, vf viewerFlags) map[string]any {
 	d := make(map[string]any, len(base)+1)
 	for k, v := range base {
 		d[k] = v
@@ -91,12 +91,12 @@ func withPeer(base map[string]any, peer domain.PeerID, out bool) map[string]any 
 		if peer != domain.NullPeerID {
 			withinMsg["peer_id"] = domain.NewPeer(peer)
 		}
-		// `out` — тоже пер-зритель, как и ключ пира, и по той же причине
-		// дописывается ЗДЕСЬ, а не в общем теле: тело одно на всех получателей.
-		// «Выключено» — отсутствие ключа в pFlags, а не false; пустой pFlags при
-		// этом не появляется вовсе — иначе кадр разошёлся бы с витриной, где у
-		// поля стоит omitempty.
-		if flags := pFlagsWithOut(msg["pFlags"], out); len(flags) > 0 {
+		// `out` и упоминание — тоже пер-зритель, как и ключ пира, и по той же
+		// причине дописываются ЗДЕСЬ, а не в общем теле: тело одно на всех
+		// получателей. «Выключено» — отсутствие ключа в pFlags, а не false;
+		// пустой pFlags при этом не появляется вовсе — иначе кадр разошёлся бы
+		// с витриной, где у поля стоит omitempty.
+		if flags := pFlagsFor(msg["pFlags"], vf); len(flags) > 0 {
 			withinMsg["pFlags"] = flags
 		}
 		d[frameMessageKey] = withinMsg
@@ -108,17 +108,34 @@ func withPeer(base map[string]any, peer domain.PeerID, out bool) map[string]any 
 	return d
 }
 
-// pFlagsWithOut — копия pFlags сообщения с добавленным (или НЕ добавленным)
-// флагом out. Копия, а не правка на месте: общее тело кадра делится между
-// получателями, и правка испортила бы его следующему.
-func pFlagsWithOut(base any, out bool) map[string]bool {
+// viewerFlags — флаги сообщения, зависящие от ЗРИТЕЛЯ: out (отправил он сам)
+// и упоминание. Упомянутому сообщение приходит с pFlags.mentioned, а пока
+// упоминание не прочитано — и с pFlags.media_unread: ровно эта пара делает его
+// «непрочитанным упоминанием» у клиента (tweb isMentionUnread) и бампит бейдж
+// «@» живым кадром (appMessagesManager.ts:10510).
+type viewerFlags struct {
+	out           bool
+	mentioned     bool
+	mentionUnread bool
+}
+
+// pFlagsFor — копия pFlags сообщения с пер-зрительскими флагами. Копия, а не
+// правка на месте: общее тело кадра делится между получателями, и правка
+// испортила бы его следующему.
+func pFlagsFor(base any, vf viewerFlags) map[string]bool {
 	src, _ := base.(map[string]bool)
-	flags := make(map[string]bool, len(src)+1)
+	flags := make(map[string]bool, len(src)+3)
 	for k, v := range src {
 		flags[k] = v
 	}
-	if out {
+	if vf.out {
 		flags["out"] = true
+	}
+	if vf.mentioned {
+		flags["mentioned"] = true
+		if vf.mentionUnread {
+			flags["media_unread"] = true
+		}
 	}
 	return flags
 }

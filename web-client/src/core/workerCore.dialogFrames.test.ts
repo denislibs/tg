@@ -282,6 +282,33 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
     expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { unread_reactions_count: 1 } }])
   })
 
+  // Бейдж «@»: прочтение содержимого упоминания (updateReadPeerMessagesContents)
+  // снимает его, но решение «было ли упоминание непрочитанным» принимает окно
+  // ДО снятия media_unread (tweb onUpdateReadMessagesContents :11009-11016).
+  it('прочтение содержимого непрочитанного упоминания → dialogs.applyMentionsRead', async () => {
+    const { dialogOps, core } = await bootWithSeededDialog()
+    const mention = (id: number) => ({
+      ...makeRawMessage({ id, peerId: 1, fromId: 9, text: '@me', createdAt: `2026-08-01T00:00:0${id}Z` }),
+      pFlags: { mentioned: true, media_unread: true },
+    })
+    await seedHistory(core, [mention(5)])
+    capturedConnDeps!.onFrame('new_message', { _: 'updateNewMessage', message: mention(6) })
+    expect((dialogOps.at(-1) as Extract<DialogOp, { op: 'patch' }>).fields.unread_mentions_count).toBe(1)
+    dialogOps.length = 0
+
+    capturedConnDeps!.onFrame('media_read', {
+      _: 'updateReadPeerMessagesContents', peer: { _: 'peerUser', user_id: 1 }, messages: [5],
+    })
+    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { unread_mentions_count: 0 } }])
+
+    // Повтор того же кадра: media_unread уже снят — упоминания нет, бейдж не трогаем.
+    dialogOps.length = 0
+    capturedConnDeps!.onFrame('media_read', {
+      _: 'updateReadPeerMessagesContents', peer: { _: 'peerUser', user_id: 1 }, messages: [5],
+    })
+    expect(dialogOps).toEqual([])
+  })
+
   // Курсор кадра реакций едет в КОНВЕРТЕ: у конструктора updateMessageReactions
   // параметра pts в схеме нет вовсе. Воронка обязана его увидеть — иначе кадр
   // пройдёт как «беспцовый», курсор не сдвинется, и следующий кадр окажется
