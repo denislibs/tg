@@ -23,14 +23,16 @@
 //     `commonStateStorage.clear()`), после чего вкладкам — `reload`, а воркер
 //     завершается: его память (флаг кода, ждущая ключа загрузка токена) принадлежит
 //     стёртому состоянию, новый воркер поднимется с чистого диска.
-//  4. Автоблокировки в воркере нет (`mainWorker/useAutoLock.ts`) — см.
-//     docs/tweb/passcode-encryption.md, П-3.
+//  4. `setAutoLockSettings` — задачи у tweb нет: настройки автоблокировки воркер у
+//     оригинала читает сам (`commonStateStorage`), у нас их сообщает вкладка
+//     (расхождение 1 `lib/mainWorker/useAutoLock.ts`). Сама автоблокировка —
+//     `useAutoLock` в `core/workerCore.ts`, ей отсюда нужны `getIsLocked` и настройки.
 import DeferredIsUsingPasscode from '@lib/passcode/deferredIsUsingPasscode'
 import EncryptionKeyStore from '@lib/passcode/keyStore'
 import CacheStorageController from '../files/cacheStorage'
 import { ensureIsUsingPasscode, sessionKv } from '../store/sessionKv'
 import { idbDel, idbSet } from '../store/idbKv'
-import { PASSCODE_CHANNEL, PASSCODE_KV_KEY, type PasscodeEvent, type PasscodeTask } from './protocol'
+import { PASSCODE_CHANNEL, PASSCODE_KV_KEY, type AutoLockSettingsPayload, type PasscodeEvent, type PasscodeTask } from './protocol'
 
 export interface PasscodePort { emit(event: string, payload: unknown): void }
 
@@ -46,6 +48,7 @@ export interface PasscodeWorkerDeps {
 export function newPasscodeWorker({ ports, clearPersist, selfTerminate }: PasscodeWorkerDeps) {
   // tweb index.worker.ts:54 — воркер стартует запертым
   let isLocked = true
+  let autoLockSettings: AutoLockSettingsPayload | undefined
 
   const emit = (port: PasscodePort, event: PasscodeEvent) => port.emit(PASSCODE_CHANNEL, event)
   const emitExceptSource = (source: PasscodePort, event: PasscodeEvent) => {
@@ -131,8 +134,19 @@ export function newPasscodeWorker({ ports, clearPersist, selfTerminate }: Passco
         selfTerminate()
         return
       }
+
+      case 'setAutoLockSettings': {
+        autoLockSettings = task.payload
+        return
+      }
     }
   }
 
-  return { handle }
+  return {
+    handle,
+    /** tweb `index.worker.ts:388` `getIsLocked: () => isLocked` */
+    getIsLocked: () => isLocked,
+    /** расхождение 4 */
+    getAutoLockSettings: () => autoLockSettings,
+  }
 }

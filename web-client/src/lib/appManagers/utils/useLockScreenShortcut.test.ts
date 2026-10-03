@@ -12,15 +12,18 @@ import { act } from '@testing-library/react'
 import { useSettingsStore } from '@/settings'
 import { useLockStore } from '@/stores/lockStore'
 import PasscodeLockScreenController from '@components/passcodeLock/passcodeLockScreenController.solid'
-import { useLockScreenShortcut } from './useLockScreenShortcut'
+import useLockScreenShortcut from './useLockScreenShortcut'
 
 const lockAndReload = vi.hoisted(() => vi.fn())
 vi.mock('@/client/passcodeClient', () => ({ lockAndReload, invokePasscode: vi.fn(async() => undefined) }))
 vi.mock('@components/passcodeLock/passcodeLockScreen.solid', () => ({ default: () => null }))
+// флаг `isShiftLockShortcut` читает обработчик клавиш класса (`appImManager.ts:1733`)
+const appImManager = vi.hoisted(() => ({ isShiftLockShortcut: false }))
+vi.mock('@lib/appImManager', () => ({ default: appImManager }))
 
 const disposers: (() => void)[] = []
 const mount = () => {
-  const dispose = useLockScreenShortcut()
+  const { dispose } = useLockScreenShortcut()
   disposers.push(dispose)
   return dispose
 }
@@ -83,9 +86,10 @@ describe('useLockScreenShortcut', () => {
     expect(useLockStore.getState().locked).toBe(true)
   })
 
-  it('Shift+L не блокирует, пока фокус в поле ввода (tweb :60-66)', () => {
+  it('Shift+L не блокирует, пока фокус в поле ввода (tweb :60-66); флаг `isShiftLockShortcut` у класса', () => {
     act(() => useSettingsStore.getState().update({ passcodeLockShortcut: ['Shift'] }))
-    mount()
+    const unmount = mount()
+    expect(appImManager.isShiftLockShortcut).toBe(true)
     const input = document.createElement('input')
     document.body.append(input)
     input.focus()
@@ -95,6 +99,8 @@ describe('useLockScreenShortcut', () => {
     input.blur()
     press({ shiftKey: true })
     expect(useLockStore.getState().locked).toBe(true)
+    unmount()
+    expect(appImManager.isShiftLockShortcut).toBe(false)
   })
 
   it('под блокировкой слушателя нет; размонтирование снимает его', () => {
@@ -111,11 +117,13 @@ describe('useLockScreenShortcut', () => {
 })
 
 // Проводка: сочетание живёт, пока его зовёт конструктор `appImManager`
-// (tweb `appImManager.ts:630`). Вызов проверяется сканом исходника — приём
-// `components/Chat.feedMount.test.ts`: `construct` тянет за собой всё приложение.
+// (tweb `appImManager.ts:630`). Вызов проверяется сканом исходника: `construct`
+// тянет за собой всё приложение. Автоблокировка — в воркере
+// (`lib/mainWorker/useAutoLock.ts`), у класса её вызова нет.
 describe('проводка', () => {
-  it('appImManager.construct зовёт useLockScreenShortcut() рядом с useAutoLock()', () => {
+  it('appImManager.construct зовёт useLockScreenShortcut()', () => {
     const src = readFileSync(resolve(process.cwd(), 'src/lib/appImManager.ts'), 'utf8')
-    expect(src).toMatch(/^\s*useLockScreenShortcut\(\)\n\s*useAutoLock\(\)$/m)
+    expect(src).toMatch(/^\s*useLockScreenShortcut\(\)$/m)
+    expect(src).not.toMatch(/useAutoLock\(/)
   })
 })

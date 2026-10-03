@@ -695,8 +695,8 @@ describe('ChatBubbles — серии и секции дней', () => {
 // Делегированный слушатель контейнера — порт tweb `attachContainerListeners`
 // (bubbles.ts:1460) в объёме разметки rich-text. Имя автора и упоминание ведут в
 // `chat.appImManager.setInnerPeer` (tweb :3360-3364). Внутренние ссылки
-// (`data-anchor-action`) tweb исполняет `internalLinkProcessor` — у нас его нет
-// до Б-8: лента такой клик не трогает и не гасит, он остаётся браузеру.
+// (`data-anchor-action`) лента не трогает и не гасит: их исполняет делегат документа
+// (`helpers/addAnchorListener.ts::listenForAnchorClicks`, роль inline-`onclick` tweb).
 describe('ChatBubbles — делегированный слушатель кликов', () => {
   const withPeer = (setInnerPeer: () => unknown, messages: MyMessage[], over: TestChatOptions = {}) =>
     mountTestBubbles(chatContext(CHAT, { ...over, appImManager: { setInnerPeer } }), managersWith(messages))
@@ -718,7 +718,7 @@ describe('ChatBubbles — делегированный слушатель кли
     return seen
   }
 
-  it('t.me-ссылка (`data-anchor-action`) остаётся браузеру: лента её не гасит и никуда не ведёт (Б-8)', async () => {
+  it('t.me-ссылка (`data-anchor-action`) — не ветка ленты: лента её не гасит и никуда не ведёт', async () => {
     const setInnerPeer = vi.fn()
     bubbles = withPeer(setInnerPeer, [msg({
       id: 1, text: 'канал',

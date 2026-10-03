@@ -5,9 +5,8 @@
 // звонка (`callSubscriber`, 5-5), mini-app бота (`webApp`, 5-6), жалобы
 // (`popups/report`) и стек React-попапов `popupStore` (`PopupHost`, П-6/Р-2).
 //
-// Ушли на К-2 в бэклог: тост (`ui:toast` теперь `toastNew`), QR-подтверждение
-// входа и приглашение в папку (Б-8, Б-15 — у оригинала их открывает
-// `internalLinkProcessor`).
+// Ушли на К-2: тост (`ui:toast` теперь `toastNew`); QR-подтверждение входа и
+// приглашение в папку открывает `internalLinkProcessor` (П-4, как у оригинала).
 import { useChatList } from '@core/hooks/useChatList'
 import { useGroupCallStore } from '@stores/groupCallStore'
 import { useLivestreamStore } from '@stores/livestreamStore'

@@ -243,6 +243,8 @@ function fakeManagers(getDialogs?: (...args: never[]) => unknown) {
       removeMember: vi.fn(async (_peerId: number, _userId: number) => {}),
       // темы форум-таба (задача 1-6 волны 7)
       listTopics: vi.fn(async (_peerId: number): Promise<TopicRow[]> => []),
+      // «N онлайн» подписи форум-таба (`appImManager.getOnlines`, пачка П-4)
+      channelParticipants: vi.fn(async (_peerId: number, _offset: number, _limit: number) => ({ _: 'channels.channelParticipants' as const, count: 0, participants: [], chats: [], users: [] })),
     },
     chats: { clearHistory: vi.fn(async (_peerId: number) => {}) },
     realtime: {
