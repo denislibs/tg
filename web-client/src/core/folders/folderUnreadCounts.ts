@@ -14,7 +14,7 @@
  *   muted = !unreadUnmutedCount && !!unreadCount && !unreadMentionsCount (`:28`)
  *
  * Одна чистая функция на оба ряда — горизонтальный (`stores/folders.solid.ts`)
- * и вертикальную колонку (React-`components/folders/FoldersSidebar.tsx`);
+ * и вертикальную колонку (`sidebarLeft/foldersSidebarContent`, через ту же проекцию);
  * второго вывода того же счётчика быть не должно.
  *
  * Расхождения с оригиналом:
@@ -107,4 +107,18 @@ export function folderUnreadCounts(
     }
   }
   return out
+}
+
+/**
+ * `getFolderUnreadCount(FOLDER_ID_ARCHIVE, true).unreadCount` оригинала — чатов
+ * архива с непрочитанным. Читают строка «Архив» (`archiveDialog.tsx:300-326`) и
+ * бейдж пункта «Архив» бургера (`sidebarLeft/index.ts:230-247`). Расхождения 1 и 2
+ * выше — те же: только диалоги зеркала, «непрочитан» = `unread_count > 0`.
+ */
+export function archiveUnreadCount(dialogs: readonly Dialog[]): number {
+  let count = 0
+  for (const dialog of dialogs) {
+    if (isDialogArchived(dialog) && dialog.unread_count > 0) ++count
+  }
+  return count
 }

@@ -44,8 +44,8 @@ func (i *Interactor) replyAuthorName(ctx context.Context, orig domain.Message) s
 
 // mentionedUserIDs collects the distinct target users of a message's
 // "text_mention" entities (Telegram's mention-of-a-user-without-username, which
-// carries the user id inline). Plain "@username" mentions aren't resolved here —
-// they don't carry a user id — so they don't feed the unread-mentions counter.
+// carries the user id inline). Plain "@username" mentions carry no user id —
+// they're resolved against the chat's members by mentionedUsers.
 func mentionedUserIDs(entities domain.MessageEntities) map[int64]bool {
 	var out map[int64]bool
 	for _, e := range entities {
@@ -59,6 +59,71 @@ func mentionedUserIDs(entities domain.MessageEntities) map[int64]bool {
 		out[v.UserID] = true
 	}
 	return out
+}
+
+// mentionedUsers — кого упоминает сообщение в чате chatID: адресаты
+// text_mention (user_id в сущности) плюс участники чата, чьё «@username»
+// стоит в тексте. Второе сервер распознаёт сам, как Telegram: клиент шлёт
+// @username голым текстом, без сущности (разметка — на показе). Отправителя
+// отсекает fanOutNewMessage — упоминание считается только у получателей.
+func (i *Interactor) mentionedUsers(ctx context.Context, chatID int64, text string, entities domain.MessageEntities) (map[int64]bool, error) {
+	out := mentionedUserIDs(entities)
+	names := domain.MentionedUsernames(text, entities)
+	if len(names) == 0 {
+		return out, nil
+	}
+	ids, err := i.chats.MemberIDsByUsernames(ctx, chatID, names)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		if out == nil {
+			out = map[int64]bool{}
+		}
+		out[id] = true
+	}
+	return out, nil
+}
+
+// messageMentions — кого упоминает сообщение msg в его чате: mentionedUsers
+// плюс автор сообщения, на которое msg отвечает. Ответ на твоё сообщение в
+// группе — упоминание (Telegram: reply → message.mentioned у автора
+// оригинала). Только группа: в личке упоминать некого сверх собеседника, а
+// пост канала адресатов не имеет. Ответ на сообщение от лица канала (send-as)
+// и на зеркало поста канала человека не упоминает — автор там канал.
+// Служебное сообщение не упоминает никого.
+func (i *Interactor) messageMentions(ctx context.Context, msg domain.Message) (map[int64]bool, error) {
+	// Служебное сообщение (пилюля) не упоминает: у messageService флага
+	// mentioned нет, а его reply_to — цель действия (закреп), не ответ.
+	if msg.Action != nil {
+		return nil, nil
+	}
+	out, err := i.mentionedUsers(ctx, msg.ChatID, msg.Text, msg.Entities)
+	if err != nil {
+		return nil, err
+	}
+	if msg.ReplyToID == nil || msg.ReplyToPeerID != nil {
+		return out, nil
+	}
+	typ, err := i.chats.ChatType(ctx, msg.ChatID)
+	if err != nil || typ != domain.ChatTypeGroup {
+		return out, err
+	}
+	orig, err := i.messageBySeq(ctx, msg.ChatID, *msg.ReplyToID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return out, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if orig.Deleted || orig.SendAsChatID != nil || orig.IsDiscussionMirror || orig.SenderID <= 0 {
+		return out, nil
+	}
+	if out == nil {
+		out = map[int64]bool{}
+	}
+	out[orig.SenderID] = true
+	return out, nil
 }
 
 // Send inserts a message, appends a new_message update to every member (bumping
@@ -335,7 +400,8 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	}
 
 	var msg domain.Message
-	var recipients []int64 // non-nil only when a NEW message was inserted
+	var recipients []int64      // non-nil only when a NEW message was inserted
+	var mentions map[int64]bool // упомянутые получатели (pFlags.mentioned в кадре)
 	// channelPts — курсор журнала канала, полученный при записи поста; 0 значит
 	// «в журнал ничего не легло» (не канал либо дедуп по client_msg_id).
 	// channelPayload — ТО ЖЕ тело, что легло в журнал: живой кадр строится из
@@ -458,10 +524,11 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			channelPts, err = i.channels.AppendUpdate(ctx, in.ChatID, "new_message", payload)
 			return err
 		}
-		// Упоминания: пользователи, явно указанные в тексте (text_mention несёт
-		// user_id). @username-упоминания сервер не резолвит — их user_id нет в
-		// entity (клиентский mention), поэтому в счётчик они не попадают.
-		mentioned := mentionedUserIDs(msg.Entities)
+		// Упоминания: text_mention, «@username» участников, автор отвечаемого.
+		mentioned, e := i.messageMentions(ctx, msg)
+		if e != nil {
+			return e
+		}
 		// Корень треда едет ВНУТРИ сообщения (reply_to.reply_to_top_id) —
 		// messageUpdatePayload его туда и кладёт. Отдельного ключа на уровне
 		// кадра больше нет: это был второй источник того же факта, и именно
@@ -478,7 +545,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		// запроса) + IncUnread — под локом строки chats это O(M) запросов в
 		// одной транзакции (замер: 0.34 мс/участник, 200 → 70 мс). Общий с
 		// доставкой зеркала поста канала — см. fanOutNewMessage.
-		recipients, ptsByUser, e = i.fanOutNewMessage(
+		recipients, ptsByUser, mentions, e = i.fanOutNewMessage(
 			ctx, in.ChatID, in.SenderID, msg.ID, msg.Seq, outMsg, outLocked, mentioned)
 		return e
 	})
@@ -501,7 +568,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	if recipients != nil {
 		// Кэш диалогов + realtime-кадры получателям — общий с доставкой
 		// зеркала поста канала путь (см. publishMessageDelivery/fanout.go).
-		i.publishMessageDelivery(ctx, msg, in.SenderID, recipients, ptsByUser)
+		i.publishMessageDelivery(ctx, msg, in.SenderID, recipients, ptsByUser, mentions)
 		if i.notifier != nil && !in.Silent {
 			for _, uid := range recipients {
 				if uid != in.SenderID {
@@ -525,7 +592,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	// выше: зеркало живёт в ДРУГОМ чате (группе обсуждения), не in.ChatID.
 	if mirrorDeliv != nil {
 		i.publishMessageDelivery(ctx, mirrorDeliv.msg, mirrorDeliv.msg.SenderID,
-			mirrorDeliv.recipients, mirrorDeliv.ptsByUser)
+			mirrorDeliv.recipients, mirrorDeliv.ptsByUser, mirrorDeliv.mentions)
 	}
 	// Серверное превью ссылки (Telegram-семантика: превью строит сервер и
 	// рассылает всем): для нового текстового сообщения с http/https-ссылкой —
@@ -868,7 +935,16 @@ func (i *Interactor) ReadMedia(ctx context.Context, chatID, userID, msgID int64)
 	if err != nil {
 		return err
 	}
-	if msg.ChatID != chatID || msg.SenderID == userID || !msg.MediaUnread {
+	if msg.ChatID != chatID || msg.SenderID == userID {
+		return nil
+	}
+	// Упоминание зрителя в этом сообщении: прочтение содержимого гасит его
+	// «непрочитано» (Telegram readMessageContents снимает media_unread
+	// упомянутому) — у него одного, факт упоминания остаётся.
+	if err := i.readMentionContents(ctx, chatID, userID, msg); err != nil {
+		return err
+	}
+	if !msg.MediaUnread {
 		return nil
 	}
 	var members []int64
@@ -914,6 +990,44 @@ func (i *Interactor) ReadMedia(ctx context.Context, chatID, userID, msgID int64)
 			body := mediaReadPayload(mediaReadAddr.forViewer(uid), msg.Seq)
 			_ = i.publisher.PublishToUser(ctx, uid, framePts("media_read", body, ptsByUser[uid]))
 		}
+	}
+	return nil
+}
+
+// readMentionContents снимает «непрочитано» с упоминания зрителя в msg и
+// шлёт ЕМУ (всем его устройствам) кадр прочтения содержимого — тот же
+// updateReadPeerMessagesContents, что у прослушанного голосового: клиент
+// снимает pFlags.media_unread и с ним бейдж «@» (tweb
+// onUpdateReadMessagesContents). Не упомянут или уже прочитано — no-op.
+func (i *Interactor) readMentionContents(ctx context.Context, chatID, userID int64, msg domain.Message) error {
+	var pts int64
+	var addr chatAddress
+	var read bool
+	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		r, e := i.chats.ReadMention(ctx, chatID, msg.ID, userID)
+		if e != nil || !r {
+			return e
+		}
+		read = true
+		if addr, e = i.peerAddress(ctx, chatID); e != nil {
+			return e
+		}
+		payload, e := json.Marshal(mediaReadPayload(addr.forViewer(userID), msg.Seq))
+		if e != nil {
+			return e
+		}
+		pts, e = i.updates.AppendUpdate(ctx, userID, 1, nowMillis(), "media_read", payload)
+		return e
+	})
+	if err != nil || !read {
+		return err
+	}
+	if i.dialogsCache != nil {
+		i.dialogsCache.Invalidate(ctx, userID)
+	}
+	if i.publisher != nil {
+		body := mediaReadPayload(addr.forViewer(userID), msg.Seq)
+		_ = i.publisher.PublishToUser(ctx, userID, framePts("media_read", body, pts))
 	}
 	return nil
 }

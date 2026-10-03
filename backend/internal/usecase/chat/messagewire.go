@@ -78,9 +78,14 @@ func (i *Interactor) messagesWire(
 	}
 	ext = i.HydrateMessagePeers(ctx, ext)
 
+	mentions, err := i.viewerMentions(ctx, viewerID, ext)
+	if err != nil {
+		return nil, err
+	}
 	peers := make(map[int64]domain.PeerID, 1)
 	out := make([]domain.MTMessage, 0, len(ext))
 	for _, m := range ext {
+		unread, mentioned := mentions[m.ID]
 		peer, ok := peers[m.ChatID]
 		if !ok {
 			// Ключ пира тоже не деградирует до нуля: peerUser(0) — существующая
@@ -104,9 +109,32 @@ func (i *Interactor) messagesWire(
 			// (domain.CanSeeReactionsList). Второго запроса за ним нет.
 			CanSeeReactionsList:  domain.CanSeeReactionsList(kinds[m.ChatID]),
 			CanViewReactionsList: domain.CanViewReactionsList(kinds[m.ChatID]),
+			// Упоминание — пер-зрительское: строка message_mentions на пару
+			// «сообщение + зритель», одним запросом на пачку (viewerMentions).
+			Mentioned:     mentioned,
+			MentionUnread: unread,
 		}))
 	}
 	return out, nil
+}
+
+// viewerMentions — какие сообщения пачки упоминают зрителя: ключ строки ->
+// упоминание не прочитано. Один запрос на пачку; чужое сообщение без упоминаний
+// в карту не попадает.
+func (i *Interactor) viewerMentions(ctx context.Context, viewerID int64, msgs []domain.Message) (map[int64]bool, error) {
+	if i.chats == nil || viewerID == 0 {
+		return nil, nil
+	}
+	ids := make([]int64, 0, len(msgs))
+	for _, m := range msgs {
+		if m.SenderID != viewerID && m.Action == nil {
+			ids = append(ids, m.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	return i.chats.ViewerMentions(ctx, viewerID, ids)
 }
 
 // repliesOf — тред сообщения из карты пачки. «Треда нет» — nil, а не пустой

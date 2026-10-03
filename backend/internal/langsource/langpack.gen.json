@@ -1319,6 +1319,18 @@
           "value": "Read"
         },
         {
+          "key": "ChatList.Main.EmptyPlaceholder.Subtitle",
+          "value": "You have %s on Telegram"
+        },
+        {
+          "key": "ChatList.Main.EmptyPlaceholder.SubtitleNoContacts",
+          "value": "Use Telegram app on your [Android](https://telegram.org/android) or [iOS](https://telegram.org/dl/ios) device to sync your contacts"
+        },
+        {
+          "key": "ChatList.Main.EmptyPlaceholder.Title",
+          "value": "Your chats will appear here"
+        },
+        {
           "key": "ChatList.Mute.1Day",
           "value": "For 1 Day"
         },
@@ -1570,6 +1582,13 @@
         {
           "key": "Contacts",
           "value": "Contacts"
+        },
+        {
+          "key": "Contacts.Count",
+          "forms": {
+            "one_value": "%d contact",
+            "other_value": "%d contacts"
+          }
         },
         {
           "key": "Contacts.Empty",
@@ -2147,6 +2166,14 @@
         {
           "key": "FilterNew",
           "value": "New Folder"
+        },
+        {
+          "key": "FilterNoChatsToDisplay",
+          "value": "Folder is empty"
+        },
+        {
+          "key": "FilterNoChatsToDisplayInfo",
+          "value": "No chats currently belong to this folder."
         },
         {
           "key": "FilterRemoveChats",
@@ -3313,6 +3340,10 @@
           "value": "My Stories"
         },
         {
+          "key": "MyStory",
+          "value": "My Story"
+        },
+        {
           "key": "Never",
           "value": "Never"
         },
@@ -3565,6 +3596,10 @@
         {
           "key": "OpenInNewTab",
           "value": "Open in new tab"
+        },
+        {
+          "key": "OpenStory",
+          "value": "OPEN STORY"
         },
         {
           "key": "OpenUrlAlert2",
@@ -6036,6 +6071,10 @@
           "value": "You have changed some privacy settings. Save changes?"
         },
         {
+          "key": "Update",
+          "value": "UPDATE"
+        },
+        {
           "key": "Updating",
           "value": "Updating..."
         },
@@ -7969,6 +8008,10 @@
           "value": "Мои истории"
         },
         {
+          "key": "MyStory",
+          "value": "Моя история"
+        },
+        {
           "key": "Contacts",
           "value": "Контакты"
         },
@@ -8564,6 +8607,10 @@
         {
           "key": "OpenInNewTab",
           "value": "Открыть в новой вкладке"
+        },
+        {
+          "key": "OpenStory",
+          "value": "ОТКРЫТЬ ИСТОРИЮ"
         },
         {
           "key": "Archive",
@@ -9768,6 +9815,10 @@
         {
           "key": "Updating",
           "value": "Обновление..."
+        },
+        {
+          "key": "Update",
+          "value": "ОБНОВИТЬ"
         },
         {
           "key": "DiscardVoiceMessageTitle",
@@ -12702,6 +12753,35 @@
         {
           "key": "ChatAutomation.NewChats",
           "value": "Новые чаты"
+        },
+        {
+          "key": "ChatList.Main.EmptyPlaceholder.Title",
+          "value": "Здесь будут ваши чаты"
+        },
+        {
+          "key": "ChatList.Main.EmptyPlaceholder.Subtitle",
+          "value": "У вас %s в Telegram"
+        },
+        {
+          "key": "ChatList.Main.EmptyPlaceholder.SubtitleNoContacts",
+          "value": "Используйте приложение Telegram на [Android](https://telegram.org/android) или [iOS](https://telegram.org/dl/ios), чтобы синхронизировать контакты"
+        },
+        {
+          "key": "Contacts.Count",
+          "forms": {
+            "one_value": "%d контакт",
+            "few_value": "%d контакта",
+            "many_value": "%d контактов",
+            "other_value": "%d контакта"
+          }
+        },
+        {
+          "key": "FilterNoChatsToDisplay",
+          "value": "Папка пуста"
+        },
+        {
+          "key": "FilterNoChatsToDisplayInfo",
+          "value": "Сейчас в этой папке нет чатов."
         }
       ]
     },
@@ -12712,7 +12792,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 31,
+      "version": 32,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -13498,6 +13578,10 @@
           "value": "Mes stories"
         },
         {
+          "key": "MyStory",
+          "value": "Ma story"
+        },
+        {
           "key": "Contacts",
           "value": "Contacts"
         },
@@ -13730,6 +13814,10 @@
         {
           "key": "OpenInNewTab",
           "value": "Ouvrir dans un nouvel onglet"
+        },
+        {
+          "key": "OpenStory",
+          "value": "OUVRIR LA STORY"
         },
         {
           "key": "Archive",
@@ -15998,7 +16086,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 31,
+      "version": 32,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16791,6 +16879,10 @@
           "value": "Meine Storys"
         },
         {
+          "key": "MyStory",
+          "value": "Meine Story"
+        },
+        {
           "key": "Contacts",
           "value": "Kontakte"
         },
@@ -17023,6 +17115,10 @@
         {
           "key": "OpenInNewTab",
           "value": "In neuem Tab öffnen"
+        },
+        {
+          "key": "OpenStory",
+          "value": "STORY ÖFFNEN"
         },
         {
           "key": "Archive",
@@ -19306,7 +19402,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 31,
+      "version": 32,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -20100,6 +20196,10 @@
           "value": "Mis historias"
         },
         {
+          "key": "MyStory",
+          "value": "Mi historia"
+        },
+        {
           "key": "Contacts",
           "value": "Contactos"
         },
@@ -20332,6 +20432,10 @@
         {
           "key": "OpenInNewTab",
           "value": "Abrir en pestaña nueva"
+        },
+        {
+          "key": "OpenStory",
+          "value": "ABRIR HISTORIA"
         },
         {
           "key": "Archive",
@@ -22608,7 +22712,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 32,
+      "version": 33,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -23409,6 +23513,10 @@
           "value": "Мої історії"
         },
         {
+          "key": "MyStory",
+          "value": "Моя історія"
+        },
+        {
           "key": "Contacts",
           "value": "Контакти"
         },
@@ -23737,6 +23845,10 @@
         {
           "key": "OpenInNewTab",
           "value": "Відкрити в новій вкладці"
+        },
+        {
+          "key": "OpenStory",
+          "value": "ВІДКРИТИ ІСТОРІЮ"
         },
         {
           "key": "Archive",

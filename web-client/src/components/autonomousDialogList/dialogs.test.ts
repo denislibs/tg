@@ -17,7 +17,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import '@/test/lang'
 import {
-  FakeResizeObserver, finishTransition, flushFrames, installFrames, mountOwner, putFolders, raw,
+  FakeResizeObserver, finishTransition, installFrames, mountOwner, putFolders, raw,
   resetStores, settle, tabEls, uninstallFrames, type Mounted,
 } from '@lib/appDialogsManager.testkit'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
@@ -49,11 +49,14 @@ let calls: Query[]
 /** ответ владельца, который тест придержал (`hold`) */
 let held: ((page: DialogsPage) => void)[]
 let hold = false
+/** страница строки «Архив» падает (офлайн) */
+let failArchiveRow = false
 
 /** Владелец диалогов: страница из зеркала по правилу папки, курсор — индекс (как `dialogsManager.forFilter`). */
 const ownerPages = vi.fn(async (query: Query): Promise<DialogsPage> => {
   calls.push(query)
   if(calls.length > 40) throw new Error('getDialogs зациклился')
+  if(failArchiveRow && query.filterId === ARCHIVE_FOLDER_ID && query.limit === ARCHIVE_ROW_LIMIT) throw new Error('offline')
   const { dialogs, dialogIndexById } = useChatsStore.getState()
   const folder = useAppStateStore.getState().folders.find((f) => f.id === query.filterId)
   const matching = dialogs.filter((d) => {
@@ -104,6 +107,7 @@ beforeEach(() => {
   calls = []
   held = []
   hold = false
+  failArchiveRow = false
   ownerPages.mockClear()
   expect(installFrames(), 'очередь fastRaf досталась этому файлу непрокрученной').toBe(true)
   vi.stubGlobal('ResizeObserver', FakeResizeObserver)
@@ -145,11 +149,12 @@ describe('AutonomousDialogList: строки — производная зерк
 
     await waitRows([1, 3])
 
-    const container = document.createElement('div')
-    document.body.append(container)
-    const unmount = mounted!.manager.mountArchivedList(container)
+    // тело вкладки архива (`archivedTab.tsx:86-108`); сама вкладка — `archivedTab.solid.test.tsx`
+    const { scrollable, ul } = mounted!.manager.l({ id: ARCHIVE_FOLDER_ID, localId: ARCHIVE_FOLDER_ID })
+    scrollable.append(ul)
+    document.body.append(scrollable.container)
+    mounted!.manager.setFilterIdAndChangeTab(ARCHIVE_FOLDER_ID)
     await waitRows([2], xd(ARCHIVE_FOLDER_ID))
-    unmount()
   })
 
   it('пользовательская папка — тот же правило, что у владельца; определения ещё нет — список пуст', async () => {
@@ -338,31 +343,49 @@ describe('AutonomousDialogList: постраничная догрузка (base.
   })
 })
 
-describe('AutonomousDialogList: строка «Архив» (`ensureArchiveDialogHydrated`, расхождение 2)', () => {
-  it('архива в зеркале нет — загрузка «Всех чатов» тянет страницу архивной выборки', async () => {
+describe('AutonomousDialogList: строка «Архив» (`ensureArchiveDialogHydrated`, tweb `:413-425`)', () => {
+  it('загрузка «Всех чатов» тянет первую страницу архивной выборки — один раз', async () => {
     await start()
     expect(archiveRowCalls()).toHaveLength(1)
   })
 
-  it('архив в зеркале — строка «Архив» закреплена первой, страница строки не запрашивается', async () => {
+  it('архив в зеркале — строка «Архив» закреплена первой', async () => {
     applyPeerOps([{ op: 'upsert', peers: [user(1), user(2)] }])
     seed([dialogOf(1), dialogOf(2, { archived: true })])
     await start()
 
-    expect(archiveRowCalls()).toHaveLength(0)
     await vi.waitFor(() => {
       const first = Array.from(xd().sortedList.list.children).find((el) => (el as HTMLElement).style.top === '0px')
-      expect(first?.querySelector('.chatlist-chat:not(a)')).not.toBeNull()
+      expect(first?.tagName).toBe('ARCHIVE-DIALOG')
     })
     await waitRows([1])
   })
 
-  it('владелец ответил «архива нет» — на следующих загрузках не переспрашиваем', async () => {
+  it('страница архива уже получена — на следующих загрузках не переспрашиваем, строку закрепляем снова', async () => {
+    applyPeerOps([{ op: 'upsert', peers: [user(1), user(2)] }])
+    seed([dialogOf(1), dialogOf(2, { archived: true })])
     await start()
+    const pinned = () => xd().sortedList.list.querySelector('archive-dialog')
+    await vi.waitFor(() => expect(pinned()).not.toBeNull())
+
     xd().clear()
+    expect(pinned()).toBeNull()
     xd().onChatsScroll()
     await settle()
     expect(archiveRowCalls()).toHaveLength(1)
+    await vi.waitFor(() => expect(pinned()).not.toBeNull())
+  })
+
+  it('упавший запрос страницы архива — следующая загрузка спрашивает снова', async () => {
+    failArchiveRow = true
+    await start()
+    failArchiveRow = false
+    expect(archiveRowCalls()).toHaveLength(1)
+
+    xd().clear()
+    xd().onChatsScroll()
+    await settle()
+    expect(archiveRowCalls()).toHaveLength(2)
   })
 
   it('архив появился в зеркале позже — строка закрепляется подпиской; исчез — снимается', async () => {
@@ -377,6 +400,25 @@ describe('AutonomousDialogList: строка «Архив» (`ensureArchiveDialo
 
     useChatsStore.getState().applyDialogOps([{ op: 'remove', peerId: 2 }])
     await vi.waitFor(() => expect(pinned()).toBeNull())
+  })
+
+  it('архив убыл ниже страницы, а он не исчерпан — страница строки перезапрашивается (tweb `archiveDialog.tsx:174-183`)', async () => {
+    const ids = Array.from({ length: 12 }, (_, i) => 100 + i)
+    applyPeerOps([{ op: 'upsert', peers: [user(1), ...ids.map((id) => user(id))] }])
+    seed([dialogOf(1), ...ids.map((id) => dialogOf(id, { archived: true }))])
+    await start()
+    expect(archiveRowCalls()).toHaveLength(1)
+
+    // 12 → 10: в зеркале не меньше полученной страницы — не спрашиваем
+    useChatsStore.getState().applyDialogOps([{ op: 'remove', peerId: 100 }])
+    useChatsStore.getState().applyDialogOps([{ op: 'remove', peerId: 101 }])
+    await settle()
+    expect(archiveRowCalls()).toHaveLength(1)
+
+    // 9 < 10 — строке не хватает диалогов
+    useChatsStore.getState().applyDialogOps([{ op: 'remove', peerId: 102 }])
+    await settle()
+    expect(archiveRowCalls()).toHaveLength(2)
   })
 
   it('список пользовательской папки строку архива не гидрирует', async () => {
@@ -467,29 +509,6 @@ describe('В7-1: строка секретного чата (наш продук
   })
 })
 
-describe('Панель тем и свёрнутая колонка (`ВРЕМЕННО до 1-6`/`2-1`)', () => {
-  it('форум открыт — `is-forum-visible` колонки и бейджи на аватарах непрочитанных строк; закрыт — сняты', async () => {
-    applyPeerOps([{ op: 'upsert', peers: [user(1)] }])
-    seed([dialogOf(1, { unread: 3 })])
-    await start()
-    await waitRows([1])
-    const dom = xd().getDialogElement(1)!.dom
-    await vi.waitFor(() => expect(dom.unreadBadge?.textContent).toBe('3'))
-    const column = document.createElement('div')
-
-    mounted!.manager.onForumToggle(true, column)
-    expect(column.classList.contains('is-forum-visible')).toBe(true)
-    expect(dom.unreadAvatarBadge?.textContent).toBe('3')
-
-    mounted!.manager.onForumToggle(false, column)
-    // уход бейджа — переход с отложенным на два кадра стартом (`toggleBadgeByKey`, `useRafs`)
-    await vi.waitFor(() => {
-      flushFrames()
-      expect(dom.unreadAvatarBadge).toBeUndefined()
-    })
-  })
-})
-
 describe('AppDialogsManager + списки: папки, активная строка, destroy', () => {
   it('смена папки не пересоздаёт списки: `xds` держит список на папку (tweb `:1474`)', async () => {
     putFolders(raw(3, 1, 'Работа'))
@@ -533,17 +552,6 @@ describe('AppDialogsManager + списки: папки, активная стр�
     peerChanged(0)
     expect(row(2).classList.contains('active')).toBe(false)
     expect(xd().sortedList.list.querySelectorAll('.chatlist-chat.active')).toHaveLength(0)
-  })
-
-  it('клик по строке форума чат не открывает (`toggleForumTabByPeerId` — бэклог Б-3)', async () => {
-    const setPeer = vi.spyOn(appImManager, 'setPeer').mockResolvedValue(undefined)
-    applyPeerOps([{ op: 'upsert', peers: [{ _: 'channel', id: 50, title: 'Форум', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true, forum: true } }] }])
-    seed([dialogOf(-50)])
-    await start()
-    await waitRows([-50])
-
-    xd().getDialogElement(-50)!.dom.listEl.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
-    expect(setPeer).not.toHaveBeenCalled()
   })
 
   it('`destroy()` списка снимает все его строки и гасит их зоны (DoD 5)', async () => {

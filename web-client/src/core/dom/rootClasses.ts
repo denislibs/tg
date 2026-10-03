@@ -29,7 +29,7 @@
 // инстанса висит ещё примерно на 15 других скроллерах (`ChatList`,
 // `EmojiDropdown`/`EmoticonsTab`/`StickersTab`/`GifsTab`, `MentionsHelper`,
 // `StickersHelper`, `InlineResultsHelper`, `CountryInput`, медиавьювер,
-// `TopbarSearch`, `StoriesRow`, `Tabs`, …).
+// `TopbarSearch`, `Tabs`, …).
 //   • `custom-scroll` (Задача 4, ревью-блокер Б-2): в tweb безопасен, потому
 //     что КАЖДЫЙ `.scrollable`-узел рождён конструктором `Scrollable` и у
 //     каждого поэтому есть свой JS-палец — `html.custom-scroll .scrollable

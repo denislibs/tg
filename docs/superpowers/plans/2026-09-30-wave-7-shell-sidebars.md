@@ -920,6 +920,14 @@ React-оверлей архива снесён вместе с `Sidebar.tsx` (2-
 
 **Оценка:** 2 дня. **Зависимости:** 1-4, 2D-28.
 
+**Сделано** (пачка П-2 плана каркаса, ветка `feat/w7-p2-archive`): строка — `components/archiveDialog.solid.tsx`
+(custom element на зеркале диалогов, состояние `createArchiveDialogState`), вкладка —
+`sidebarLeft/tabs/archivedTab.solid.tsx` (`AppArchivedTab`), `openArchiveTab` и пункт «Архив» бургера с
+бейджем; `ArchiveRow.tsx` снесён, `mountArchivedList` владельца снимает агент «ядро» (контракт П-2). Пины —
+`archiveDialog.solid.test.tsx`, `archivedTab.solid.test.tsx`, раздел строки «Архив» в
+`autonomousDialogList/dialogs.test.ts`, бургер — `index.toolsMenu.test.ts`. Меню архива и истории архива —
+Б-50, Б-51 плана каркаса.
+
 ### Задача 1-6: форум — `AutonomousForumTopicList` и форум-таб
 
 **Порт:** tweb `autonomousDialogList/forumTopics.ts` (125), `forumTab/{forumTab 177, groupForumTab 230,
@@ -933,13 +941,25 @@ register 24, fillRegister 32, findForumTabByPeerId 10}.ts`, менеджерна
 (О-3); `monoforumTab.ts` (106) + `monoforumThreads.ts` (47) — монофорума нет (О-4); сообщества —
 О-5. Отступления `remaining-lists` п. 1, 4, 5 пересматриваются по tweb `forumTopics.ts`.
 
-- [ ] **Тесты:** клик по форуму открывает таб тем поверх списка (`.topics-slider`, класс
+- [x] **Тесты:** клик по форуму открывает таб тем поверх списка (`.topics-slider`, класс
   перехода tweb); Esc/Back закрывает (запись `'forum'`); открытие темы → `setInnerPeer` с
   `threadId`; скрытые темы — секция. **Мутация:** не снимать запись `'forum'` при закрытии → Esc
   второй раз закрывает не то (пин порядка).
 - [ ] **Стенд:** GR-15 (P2), NAV-02 для темы.
 
 **Оценка:** 4 дня. **Зависимости:** 1-3, 1-4.
+
+**Сделано** (ветка `feat/w7-p2-forum`, пачка П-2 ускоренного плана). Порт `autonomousDialogList/forumTopics.ts`,
+`forumTab/{forumTab,groupForumTab,register,fillRegister,findForumTabByPeerId,getGroupForumMembershipAction}.ts`,
+`topicAvatar.ts`, `_topics.scss`; менеджерная часть — в `lib/appDialogsManager.ts` (расхождение 25, С11) поверх
+ядра 1-8. `TopicsPanel` и `components/virtual/*` снесены. Пины — `components/forumTab/forumTab.test.ts` (12).
+**Поправки по коду tweb:** (1) тема открывается `appImManager.setPeer({peerId, threadId})`, а не `setInnerPeer`:
+список таба вешается без `openInner` (`groupForumTab.ts:50`), его `openChat` — `setPeerFunc` = `setPeer`
+(`appDialogsManager.ts:2094`); мету треда острову чата отдаёт `onFound` таба (`// ВРЕМЕННО до К-3`).
+(2) Секции скрытых тем у tweb нет: `CAN_HIDE_TOPIC = false` (`constants.ts:27`) → `skipMigrated` ложен, скрытая
+тема — обычная строка того же списка, а `canUpdateDialog` снимает её на обновлении (`forumTopics.ts:122-125`);
+пины держат именно это. Остаток — Б-53 (меню строки темы, выделение), Б-54 (создание темы, инфо, вступление,
+живые апдейты тем).
 
 ### Задача 1-7: сохранённые диалоги — `AutonomousSavedDialogList` в `AppSearchSuper`
 

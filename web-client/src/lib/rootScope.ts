@@ -257,6 +257,12 @@ export type BroadcastEvents = {
   // колонку открыла/закрыла эта вкладка.
   'right_sidebar_toggle': [boolean]
 
+  // ── ширина левой колонки (порт tweb rootScope.ts:238, отправители —
+  // helpers/installColumnResize.ts:89, components/sidebarLeft/index.ts:574).
+  // Местное (`dispatchEventSingle`): колонку тянут в этой вкладке. Подписчик — ряд
+  // историй (`components/stories/list.solid.tsx`, tweb list.tsx:305).
+  'resizing_left_sidebar': [void]
+
   // ── чёрный список (порт tweb rootScope.ts:53, отправитель —
   // appProfileManager.ts:1528). Шлёт воркер после ответа сервера
   // (`privacyManager.toggleBlock`), подписчик — вкладка «Заблокированные»

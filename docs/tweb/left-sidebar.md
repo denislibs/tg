@@ -651,8 +651,8 @@ a.row.no-wrap.chatlist-chat.chatlist-chat-bigger.row-big  href="#<peerId>" data-
 Онлайн-точка (`setOnlineStatus` по `presence`), «печатает» (`setDialogTyping` → `getPeerTyping`,
 `lib/appImManager.ts` до 5-3), активная строка открытого чата (`setDialogActive` по
 `navigationStore.selectedId`, `lastActiveElements`) и бейджи на аватарах узкой колонки
-(`toggleAvatarUnreadBadges`) — портированы. Строка «Архив» — React-`ArchiveRow` островом в
-`<archive-dialog>` (ВРЕМЕННО до 1-5), панель тем — React (ВРЕМЕННО до 1-6). Иконка звонка — О-96,
+(`toggleAvatarUnreadBadges`) — портированы. Строка «Архив» — порт `components/archiveDialog.solid.tsx`
+(custom element `<archive-dialog>` на зеркале диалогов, задача 1-5), панель тем — React (ВРЕМЕННО до 1-6). Иконка звонка — О-96,
 потоковые черновики — О-97, контекст-меню строки — задача 1-2. React-список
 (`ChatList.tsx`, `ChatListItem.tsx`, `useDialogListSource.ts`) снесён. Значки у имени — `PeerTitle`
 `withIcons` (`components/generateTitleIcons.ts`: галочка, премиум/эмодзи-статус). Строка над
@@ -798,14 +798,15 @@ Close/RestartTopic `:224` · ChargeFee `:238` · Delete `:248`.
 | `src/components/settings/*` | экранов настроек здесь БОЛЬШЕ НЕТ (последний — «Конфиденциальность» — снесён задачей 23 плана 2D, хаб и все его дети — вкладки `sidebarLeft/tabs/*`); остались React-кит `kit.tsx` и попапы (`AvatarCropper`, `BirthdayModal`, `ConfirmDialog`, `PasskeyIntroPopup` до 2C-10) для потребителей ВНЕ настроек — задачи 30–31 плана 2D | `sidebarLeft/tabs/*` |
 | `src/lib/appDialogsManager.ts` | папочный срез владельца: `.chatlist-overlay` с Solid-рядом вкладок, `#folders-container`, скроллер на папку, переключение (`horizontalMenu` + `TransitionSlider`); поднимает его шелл `App.tsx` на `.connection-status-bottom` статичной колонки, `start()` конструирует класс колонки и автомат соединения (2-1). Строка диалога `DialogElement` + `setLastMessage`/`setUnreadMessages`/`setListClickListener`/`createChatList`/`addDialogNew` (задача 1-1 волны 7) | `AppDialogsManager` (папки, строка) |
 | ~~`src/components/ChatList.tsx` / `ChatListItem.tsx`~~ (снесены задачей 1-4) → `components/sortedDialogList.ts` + `components/autonomousDialogList/*` | списки папок на виртуальном ядре — порталом в `.chatlist-top` контейнеров владельца (до задачи 1-4 волны 7; строка `DialogElement` уже портирована — `lib/appDialogsManager.ts`) | `AutonomousDialogList` (строки) + `DialogElement` |
-| `src/components/virtual/DeferredSortedVirtualList.*` | React-порт `deferredSortedVirtualList` (данными не владеет; shrink не портирован; reveal по одной строке) — держат React-`ChatList`/`ArchiveList`/`TopicsPanel`, уходит с последним из них (волна 7, 1-6) | с отступлениями (спека `2026-08-13-virtual-chatlist-design.md`) |
+| ~~`src/components/virtual/*`~~ (React-ядро виртуального списка — снесено задачей 1-6 волны 7 вместе с последним потребителем `TopicsPanel`) | — | — |
+| `src/components/forumTab/*` + `autonomousDialogList/forumTopics.ts` | форум-таб tweb (волна 7, 1-6): `GroupForumTab` плавающим в `.topics-slider` владельца (`appDialogsManager.toggleForumTab`/`toggleForumTabByPeerId`, запись навигации `forum`, `is-forum-visible` колонки) или вкладкой слайдера, если в колонке уже открыта вкладка; темы — строки `DialogElement` без аватара (С11 шапки `lib/appDialogsManager.ts`); страница — `groups.listTopics` целиком, живых апдейтов тем нет; меню строки темы, создание темы, ботфорум/монофорум/сообщества — нет (Б-53, Б-54, О-3…О-5) | `ForumTab`/`GroupForumTab`/`AutonomousForumTopicList` |
 | `src/components/deferredSortedVirtualList.solid.tsx` + `loadingDialogSkeleton.solid.tsx` | Solid-ядро tweb файлом (волна 7, 1-3): владение элементами, скелетоны, reveal пачкой (108d3f301), shrink `EXTRA_ITEMS_TO_KEEP`, `onItemDiscard` (2b00c4dae), `onItemMount`; поверх `verticalVirtualList.solid.tsx`. Потребитель — список диалогов (`SortedDialogList`, 1-4) | 1:1 |
 | ~~`src/core/hooks/useDialogListSource.ts`~~ (снесён задачей 1-4) → `components/autonomousDialogList/{base,dialogs}.ts` | курсор, страница, правило папки, гидратация строки «Архив» | `AutonomousDialogListBase`/`AutonomousDialogList` |
 | `src/core/managers/dialogsManager.ts` (воркер) | владелец диалогов: сортировка, пагинация, refresh | `dialogsStorage` (воркерная сторона) |
 | `src/core/dialogs/{dialogIndex,dialogOps,loadCount}.ts` | индексы, операции, размер страницы | `getDialogIndex*`, `DIALOG_LOAD_COUNT` |
 | `src/components/chatlist/dialogsPlaceholder.ts` | canvas-шиммер | `helpers/dialogsPlaceholder.ts` |
 | `src/components/foldersTabs.solid.tsx` + `src/helpers/dom/createFolderContextMenu.ts` | горизонтальный ряд (Solid, узлами владельца); меню папки — фабрика `createFolderContextMenu` в форме tweb (`appSidebarLeft` + классы вкладок аргументами, 2-1). Вертикальной колонки папок нет — React `FoldersSidebar.tsx` снесён с `Sidebar.tsx`, порт `foldersSidebarContent` — задача 2-7 | `foldersTabs` + `foldersSidebarContent` + `createFolderContextMenu` |
-| — (снесено с `Sidebar.tsx`, 2-1) | сторис-ленты над списком нет до задачи 2-6; React-вьювер `StoryViewer.tsx` остался без входа | `stories/list.tsx` |
+| `src/components/stories/list.solid.tsx` (+ `list.module.scss`, `viewer.ts`), монтаж — `lib/appDialogsManager.ts::_renderStories` | ряд историй (задача 2-6): порт `StoriesList` на Solid-`useCollapsable`, данные — мост чтения `stores/storiesStore.ts` (там же позиция `generateSortIndexForCache` — свои первыми — и `toggleSorting`); кольцо — `DashedCircle` + `.avatar-stories-simple` (срез `AvatarNew` в файле ряда); вьювер — React `StoryViewer.tsx` через `createStoriesViewer` (`mountReact`, ВРЕМЕННО до волны 4); меню ряда — только «Отправить сообщение», ряд в архиве — нет (расхождения 4 шапки) | `stories/list.tsx` + `appDialogsManager.ts:1095-1116` |
 | `src/components/sidebarLeft/index.ts` (+ `createSubmenuTrigger.ts`, `floatingButtonMenu.ts`, `positionFloatingMenu`) | бургер — методы класса `createToolsMenu`/`createMoreSubmenu`/`createNewChatsSubmenu`/`addAccount` и `getVersionLink` (задача 2-2, перенос в класс — 2-1); кнопка в шапке и морф ≡ ↔ ← одним Solid-эффектом в `construct` (`useFoldersSidebarShown() \|\| useIsLeftSearchActive()`); «Архив» и «Мои истории» скрыты до своих вкладок (1-5, О-82) | `createToolsMenu` + animated-menu-icon + `this.backBtn` |
 | `src/components/sidebarLeft/globalSearch.ts` + шов `src/core/hooks/useGlobalSearch.ts` + `shared/ui/InputSearch` (режим ручки `searchRef` → `inputSearchHandle.ts`) | глобальный поиск: владелец (порт `initSearch`) строит и сносит детей постоянного `#search-container`, ведёт `zoom-fade` и `is-search-active`; поле — объект tweb с debounce 300 мс (задача 13 плана `2026-09-07-solid-wave-3-global-search.md`; разбор — `global-search.md`) | `initSearch` + `AppSearchSuper` + `InputSearch` |
 | `src/components/connectionStatus.ts` | автомат плейсхолдера/спиннера поля поиска; заводит `appDialogsManager.start` на `appSidebarLeft.inputSearch` (tweb `:990`) | `ConnectionStatusComponent` |
@@ -843,17 +844,19 @@ DOM-паритет первого таба выдержан сознательн
 4. **Чатлист — уже портирован программой, не переизобретать.** Порт «виртуальный список диалогов 1:1»
    смержен целиком (4 этапа, `0d41dc41`): владелец диалогов в воркере
    `core/managers/dialogsManager.ts`; представление с волны 7 — классы tweb (Solid-ядро 1-3,
-   `SortedDialogList`/`AutonomousDialogList` 1-4), React-ядро `components/virtual/` держит только
-   `TopicsPanel` (до 1-6). Спеки:
+   `SortedDialogList`/`AutonomousDialogList` 1-4, темы форума 1-6); React-ядро
+   `components/virtual/` снесено (1-6). Спеки:
    `docs/superpowers/specs/2026-08-12-dialogs-ownership-and-virtual-list-design.md`,
    `2026-08-13-dialogs-pagination-design.md`, `2026-08-13-virtual-chatlist-design.md`,
    `2026-08-13-remaining-lists-design.md`, `2026-08-13-dialogs-count-and-refresh-design.md`
    (разделы «Отступления» читать перед правкой ядра). Ветка оживления пагинации
    `worktree-dialogs-count-refresh` готова и проверена на стенде, на момент снятия не смержена.
-5. **Архив — оверлей, не таб.** tweb: `AppArchivedTab` в слайдере, переиспользующий `l(FOLDER_ID_ARCHIVE)`.
-   У нас: оверлей внутри `.connection-status-bottom` (React-ребёнок хоста владельца папок; в
-   `#folders-container` ему нельзя — там кадры папок, адресуемые индексом); список в нём — тот же
-   `AutonomousDialogList(FOLDER_ID_ARCHIVE)` владельца (`mountArchivedList`, ВРЕМЕННО до 1-5, задача 1-4).
+5. **Архив — вкладка, как у tweb** (задача 1-5 волны 7): `AppArchivedTab`
+   (`sidebarLeft/tabs/archivedTab.solid.tsx`, объявление — `solidJsTabs/tabs.ts`) в колоночном
+   слайдере, переиспользует `l({id: FOLDER_ID_ARCHIVE})` владельца; открывает её
+   `appSidebarLeft.openArchiveTab()` — клик по строке «Архив» и пункт бургера. Чего нет: истории
+   архива (Б-51), меню архива — ⋮ вкладки и ПКМ по строке, «скрыть из списка», «прочитать всё»,
+   настройки архива (Б-50).
 6. **Бургер-меню — порт tweb 812502980** (задача 2-2 волны 7, методы класса `AppSidebarLeft` с 2-1). Состав и
    порядок — по `verify` оригинала: аккаунты (текущий → настройки, другие — переключение) + «Добавить
    аккаунт», «Создать» (только у свёрнутой колонки), «Избранное», «Архив» (при архивных диалогах, с
@@ -864,7 +867,7 @@ DOM-паритет первого таба выдержан сознательн
    звёзды в секции Premium корня настроек), «Telegram Premium» (там же), «Выйти» (⋮ корня настроек,
    `showLogOutPopup`). Расхождения — «Расхождения бургера» шапки `sidebarLeft/index.ts`: мультиаккаунт в нашей модели (В7-4), боты
    меню вложений (О-80), бейдж других аккаунтов (О-81), «Мои истории» — наш лист архива (О-82),
-   verify архива без «не догружен»/архива историй (О-83), клавиатура меню (О-84), конференции (О-1),
+   verify архива — по зеркалу, без архива историй (расхождение 4 бургера, Б-51), клавиатура меню (О-84), конференции (О-1),
    «Switch to A version» нет (своего домена версии A нет).
    **Кнопка эмодзи-статуса в шапке** (`statusBtnIcon`) — `SidebarEmojiStatusButton.tsx`: только у
    подписчика Premium, `button.btn-icon.sidebar-emoji-status` без ripple справа от поиска, глиф
@@ -895,9 +898,9 @@ DOM-паритет первого таба выдержан сознательн
    `createContextMenu` (`ButtonMenu` + `positionMenu` по фактическому размеру меню +
    `contextMenuController`, запись `'menu'` — Esc/Back). Создаёт его `AppDialogsManager.start`
    (tweb `:850`), вешает `setListClickListener({withContext: true})` на `ul` списка каждой папки из
-   `l(filter)` (`:1478` → `:2337-2339`), в том числе архива (`mountArchivedList` → `l({id:
+   `l(filter)` (`:1478` → `:2337-2339`), в том числе архива (вкладка архива → `l({id:
    FOLDER_ID_ARCHIVE})`, `filterId` архива) — расхождение 23 `lib/appDialogsManager.ts`; меню
-   строки «Архив» (`withArchiveContext`) — задача 1-5. Пункты: «Открыть в новой вкладке» (наш хэш
+   строки «Архив» (`withArchiveContext`) — Б-50. Пункты: «Открыть в новой вкладке» (наш хэш
    `#<peerId>`, расхождение 24), «Прочитано», закреп, mute (vanilla `PopupMute`, ВРЕМЕННО до 2C-7),
    архив, «Очистить историю» (`components/clearHistory.ts`), «Удалить/покинуть»
    (`components/popups/deleteDialog.ts`, подпись — `core/peers/dialogType.ts::getDeleteButtonText`;

@@ -3,7 +3,7 @@
 // горизонтальный ряд владельца папок (`lib/appDialogsManager.ts`; tweb
 // `appDialogsManager.ts:814-821`, `listenTo: folders.menu`,
 // `className: 'menu-horizontal-div-item'`) и вертикальная колонка
-// (`components/folders/FoldersSidebar.tsx`; tweb
+// (`components/sidebarLeft/foldersSidebarContent/index.solid.tsx`; tweb
 // `foldersSidebarContent/index.tsx:84-92`, `className: 'folders-sidebar__folder-item'`).
 //
 // Поверх портированного `createContextMenu`: пункты фильтруются `verify` перед

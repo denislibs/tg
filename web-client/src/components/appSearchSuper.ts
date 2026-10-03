@@ -2410,7 +2410,7 @@ export default class AppSearchSuper {
       // `indexKey: 'index_0'` — у оригинала это и делает строку `isMainList`
       filterId: ALL_FOLDER_ID,
       virtualFilterId: rootScope.myId,
-      savedDialogs: xd,
+      virtualDialogs: xd,
       extraPaddingBottom: 0,
     })
 

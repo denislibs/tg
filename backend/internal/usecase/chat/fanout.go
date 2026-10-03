@@ -31,15 +31,15 @@ import (
 func (i *Interactor) fanOutNewMessage(
 	ctx context.Context, chatID, senderID, msgID, msgSeq int64,
 	out, outLocked map[string]any, mentioned map[int64]bool,
-) (recipients []int64, ptsByUser map[int64]int64, err error) {
+) (recipients []int64, ptsByUser map[int64]int64, mentions map[int64]bool, err error) {
 	members, err := i.chats.MemberIDs(ctx, chatID)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	slices.Sort(members)
 	pp, err := i.newPeerPayloads(ctx, chatID, out)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	// Автор строки — с ним peerPayloads сравнивает получателя, чтобы поставить
 	// пер-зрительский pFlags.out и, что важнее, разложить журнальные батчи по
@@ -49,7 +49,7 @@ func (i *Interactor) fanOutNewMessage(
 	if outLocked != nil {
 		ppLocked, err = i.newPeerPayloads(ctx, chatID, outLocked)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		ppLocked.sender = senderID
 	}
@@ -62,6 +62,17 @@ func (i *Interactor) fanOutNewMessage(
 			continue
 		}
 		others = append(others, uid)
+		// Упомянутый получатель (не автор) — свежее упоминание, непрочитано.
+		if mentioned[uid] {
+			if mentions == nil {
+				mentions = map[int64]bool{}
+			}
+			mentions[uid] = true
+		}
+	}
+	pp.mentions = mentions
+	if ppLocked != nil {
+		ppLocked.mentions = mentions
 	}
 	date := nowMillis()
 	// pts-лог: автору — обычный payload, получателям — обычный или locked
@@ -72,17 +83,17 @@ func (i *Interactor) fanOutNewMessage(
 	case ppLocked != nil:
 		if senderIn {
 			if e := i.appendByPeer(ctx, pp, []int64{senderID}, date, ptsByUser); e != nil {
-				return nil, nil, e
+				return nil, nil, nil, e
 			}
 		}
 		if len(others) > 0 {
 			if e := i.appendByPeer(ctx, ppLocked, others, date, ptsByUser); e != nil {
-				return nil, nil, e
+				return nil, nil, nil, e
 			}
 		}
 	case len(members) > 0:
 		if e := i.appendByPeer(ctx, pp, members, date, ptsByUser); e != nil {
-			return nil, nil, e
+			return nil, nil, nil, e
 		}
 	}
 	// Непрочитанные — одним запросом всем получателям (кроме автора).
@@ -94,18 +105,16 @@ func (i *Interactor) fanOutNewMessage(
 	// диалога и с кадром прочтения (updateReadHistoryInbox.still_unread_count).
 	if len(others) > 0 {
 		if _, e := i.chats.IncUnreadBulk(ctx, chatID, others); e != nil {
-			return nil, nil, e
+			return nil, nil, nil, e
 		}
-		// Упоминания редки — точечно (по остатку text_mention).
-		for _, uid := range others {
-			if mentioned[uid] {
-				if e := i.chats.AddMention(ctx, chatID, msgID, msgSeq, uid); e != nil {
-					return nil, nil, e
-				}
+		// Упоминания редки — точечно (кто упомянут — см. messageMentions).
+		for uid := range mentions {
+			if e := i.chats.AddMention(ctx, chatID, msgID, msgSeq, uid); e != nil {
+				return nil, nil, nil, e
 			}
 		}
 	}
-	return members, ptsByUser, nil
+	return members, ptsByUser, mentions, nil
 }
 
 // publishMessageDelivery — пост-коммитная половина доставки, парная
@@ -121,7 +130,7 @@ func (i *Interactor) fanOutNewMessage(
 // каждый вызывающий сам.
 func (i *Interactor) publishMessageDelivery(
 	ctx context.Context, msg domain.Message, senderID int64,
-	recipients []int64, ptsByUser map[int64]int64,
+	recipients []int64, ptsByUser map[int64]int64, mentions map[int64]bool,
 ) {
 	if len(recipients) == 0 {
 		return
@@ -142,6 +151,7 @@ func (i *Interactor) publishMessageDelivery(
 	// Автор строки — с ним peerPayloads сравнивает получателя, чтобы поставить
 	// пер-зрительский pFlags.out.
 	pp.sender = msg.SenderID
+	pp.mentions = mentions
 	ppLocked := pp
 	if msg.PaidMediaPrice != nil {
 		baseLocked := i.messageUpdatePayload(ctx, lockedPaidCopy(msg))
@@ -149,6 +159,7 @@ func (i *Interactor) publishMessageDelivery(
 			return
 		}
 		ppLocked.sender = msg.SenderID
+		ppLocked.mentions = mentions
 	}
 	// Realtime-кадры всем получателям — одним pipeline'ом (было бы M
 	// последовательных PUBLISH). У каждого свой кадр: курсор пер-юзерный.

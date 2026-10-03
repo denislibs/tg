@@ -21,7 +21,6 @@ vi.mock('./client/boot', () => ({
 vi.mock('./client/bootData', () => ({ bootPrefetch: () => null, invalidateBootPrefetch: vi.fn() }))
 vi.mock('./components/auth/mountAuthFlow.solid', () => ({ mountAuthFlow }))
 vi.mock('./pages/bootstrapIm', () => ({ bootstrapIm }))
-vi.mock('./core/version/versionCheck', () => ({ startVersionCheck: vi.fn() }))
 vi.mock('./core/navigation/appNavigationController', () => ({ default: { reload } }))
 vi.mock('@lib/passcode/keyHandoff', () => ({ saveEncryptionKeyForHandoff: saveKey }))
 

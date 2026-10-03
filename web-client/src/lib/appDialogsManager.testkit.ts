@@ -26,6 +26,7 @@ import { initialState } from '@core/state/state'
 import { ALL_FOLDER_ID } from '@core/folderIds'
 import { fastRaf } from '@helpers/schedulers'
 import type { RawFolder } from '@core/managers/foldersManager'
+import type { TopicRow } from '@core/managers/groupsManager'
 import appDialogsManager, { type AppDialogsManager } from './appDialogsManager'
 import type { AppSidebarLeft } from '@components/sidebarLeft'
 import { installSidebarLeft } from '@/test/sidebarLeft'
@@ -222,7 +223,13 @@ function fakeManagers(getDialogs?: (...args: never[]) => unknown) {
     folders: { del: vi.fn(async (_id: number) => {}) },
     peers: { fillMirror: vi.fn(async (_ids: number[]) => {}) },
     presence: { get: async () => [] },
+    // контакты под коротким списком и подпись пустого плейсхолдера (задача 1-8 волны 7)
+    contacts: {
+      getContactsPeerIds: vi.fn(async (..._args: unknown[]): Promise<number[]> => []),
+      isContact: vi.fn(async (_peerId: number) => false),
+    },
     dialogs: {
+      hasDialog: vi.fn(async (_peerId: number) => false),
       getDialogs: getDialogs ?? vi.fn(async () => ({ dialogs: [], count: 0, isEnd: true })),
       // меню диалога (задача 1-2 волны 7) — дублёры ручек его пунктов
       applyRemoved: vi.fn(async (_peerId: number) => {}),
@@ -234,6 +241,8 @@ function fakeManagers(getDialogs?: (...args: never[]) => unknown) {
       setArchive: vi.fn(async (_peerId: number, _archived: boolean) => {}),
       deleteGroup: vi.fn(async (_peerId: number) => {}),
       removeMember: vi.fn(async (_peerId: number, _userId: number) => {}),
+      // темы форум-таба (задача 1-6 волны 7)
+      listTopics: vi.fn(async (_peerId: number): Promise<TopicRow[]> => []),
     },
     chats: { clearHistory: vi.fn(async (_peerId: number) => {}) },
     realtime: {

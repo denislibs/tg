@@ -8,7 +8,7 @@
 // сайдбаре, дала бы пользователю мёртвый клик.
 //
 // Сегодня предмета нет: ни в английском источнике, ни в одном из пяти словарей такой
-// разметки НЕТ. Поэтому вместо делегата, поднятого «на будущее» (инфраструктура без
+// разметки с ВНУТРЕННЕЙ ссылкой НЕТ (внешняя работает без делегата — `internalAnchors` ниже). Поэтому вместо делегата, поднятого «на будущее» (инфраструктура без
 // потребителя — то, что здесь сносят как мёртвый код), стоит эта проверка: она
 // краснеет в тот момент, когда первая такая строка появится, и тогда решение о
 // делегате принимается ПО ФАКТУ, с живым вызывающим на руках.
@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import lang, { type LangPackValue } from '../lang'
+import { wrapUrl } from '@lib/richtext/url'
 import ru from './dict.ru'
 import uk from './dict.uk'
 import es from './dict.es'
@@ -39,7 +40,19 @@ import fr from './dict.fr'
  * экрана блокировки `PasscodeLock.ForgotPasscode.OneAccount/MultipleAccounts`
  * (кнопка «выйти» — аргумент, `passcodeLock/passcodeLockScreen.solid.tsx`).
  */
-const ANCHOR = /\[.+?\]\(.+?\)/
+const ANCHOR = /\[.+?\]\((.+?)\)/g
+
+/**
+ * Мёртвым клик бывает только у ВНУТРЕННЕЙ ссылки: её `<a>` несёт имя действия
+ * (`data-anchor-action`), а исполнитель живёт в ленте. Внешняя ссылка (`wrapUrl` без
+ * `action`) — обычный `<a href target="_blank">` (`setBlankToAnchor`), браузер открывает
+ * её сам где угодно. Первые такие строки — ключи tweb пустого списка чатов
+ * `ChatList.Main.EmptyPlaceholder.SubtitleNoContacts` (telegram.org/android и /dl/ios,
+ * задача 1-8 волны 7, `lib/appDialogsManager.ts::updateContactsLength`).
+ */
+const internalAnchors = (text: string) => Array.from(text.matchAll(ANCHOR))
+.map((match) => match[1])
+.filter((url) => !!wrapUrl(url).action)
 
 /** Корень исходников — от МЕСТА ЭТОГО ФАЙЛА: `process.cwd()` зависит от того, откуда
  *  запустили прогон, и молча уводит скан в пустоту при запуске из корня монорепо. */
@@ -82,16 +95,21 @@ function* allStrings(): Generator<{ where: string; key: string; text: string }> 
 }
 
 describe('в словаре нет ссылочной разметки, пока клик по ней некому исполнить', () => {
-  it('ни одна строка не несёт `[текст](url)` с адресом', () => {
+  it('ни одна строка не несёт `[текст](url)` с адресом внутренней ссылки', () => {
     const offenders: string[] = []
     let seen = 0
     for (const { where, key, text } of allStrings()) {
       seen++
-      if (ANCHOR.test(text)) offenders.push(`${where}: ${key} — «${text}»`)
+      if (internalAnchors(text).length) offenders.push(`${where}: ${key} — «${text}»`)
     }
     // Иначе «разметки нет» означало бы «строк не нашлось».
     expect(seen).toBeGreaterThan(4000)
     expect(offenders).toEqual([])
+  })
+
+  it('внешняя ссылка пропускается, внутренняя — нет (пин самой проверки)', () => {
+    expect(internalAnchors('on your [Android](https://telegram.org/android) device')).toEqual([])
+    expect(internalAnchors('join [chat](https://t.me/+abcdef)')).toEqual(['https://t.me/+abcdef'])
   })
 
   // Вторая половина того же вопроса: даже появись строка со ссылкой, кликом по ней

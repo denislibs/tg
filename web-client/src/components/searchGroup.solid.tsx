@@ -33,7 +33,7 @@ import classNames from '@helpers/string/classNames'
 import type { Middleware } from '@helpers/middleware'
 import Section from '@components/section.solid'
 import Scrollable from '@components/scrollable2.solid'
-import { createChatList, setListClickListener, type DialogListElement } from '@lib/appDialogsManager'
+import appDialogsManager, { createChatList, type DialogListElement } from '@lib/appDialogsManager'
 
 // `(string & {})` вместо голого `string` оригинала (:9): тот же набор значений,
 // но известные имена не растворяются в `string` (`no-redundant-type-constituents`)
@@ -53,7 +53,7 @@ export function createSearchGroup(options: {
   className?: string,
   clickable?: boolean,
   autonomous?: boolean,
-  onFound?: Parameters<typeof setListClickListener>[0]['onFound'],
+  onFound?: Parameters<typeof appDialogsManager.setListClickListener>[0]['onFound'],
   noIcons?: boolean,
   middleware?: Middleware,
   scrollableX?: boolean,
@@ -149,7 +149,7 @@ export function createSearchGroup(options: {
   })
 
   if(clickable) {
-    setListClickListener({
+    appDialogsManager.setListClickListener({
       list,
       onFound,
       autonomous,

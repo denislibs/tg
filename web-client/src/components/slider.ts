@@ -250,8 +250,25 @@ export default class SidebarSlider {
    * отказавшая вкладка и всё под ней остаются открытыми. В отличие от
    * `closeAllTabs`, который закрывает всё силой и подтверждения не спрашивает.
    */
-  public async closeAllTabsNaturally(): Promise<boolean> {
-    while(this.historyTabIds.length) {
+  public closeAllTabsNaturally(): Promise<boolean> {
+    return this.closeTabsNaturallyUntil()
+  }
+
+  /** tweb `:200-206` — закрыть «естественно» всё над `target` (форум-таб, задача 1-6 волны 7). */
+  public closeTabsUntilTab(target: SliderSuperTab): Promise<boolean> {
+    if(!this.historyTabIds.includes(target)) {
+      return Promise.resolve(false)
+    }
+
+    return this.closeTabsNaturallyUntil(target)
+  }
+
+  /** tweb `:162-189` */
+  private async closeTabsNaturallyUntil(target?: SliderSuperTab): Promise<boolean> {
+    while(
+      this.historyTabIds.length &&
+      this.historyTabIds[this.historyTabIds.length - 1] !== target
+    ) {
       const tabId = this.historyTabIds[this.historyTabIds.length - 1]
       const tab = tabId instanceof SliderSuperTab ? tabId : this.tabs.get(tabId)
 
@@ -271,7 +288,7 @@ export default class SidebarSlider {
       this.closeTab(tabId, undefined, false)
     }
 
-    return true
+    return !target || this.historyTabIds.includes(target)
   }
 
   public sliceTabsUntilTab(tabConstructor: SliderSuperTabConstructable, preserveTab: SliderSuperTab) {

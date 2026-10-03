@@ -20,6 +20,7 @@ import { DIALOG_LOAD_COUNT } from '../dialogs/loadCount'
 import type { DialogItem, DialogOp } from '../dialogs/dialogOps'
 import type { NewMessageEvt, ReadEvt } from '../realtime/events'
 import { equal } from '../store/reconcile'
+import isMentionUnread from '../messages/isMentionUnread'
 import { dialogMatchesFolder } from '../folderFilter'
 // Наше закрепление пер-юзерное и на весь список сразу — запись одна (см.
 // chatsStore), поэтому `pinnedOrders` ключуется тем же ALL_FOLDER_ID.
@@ -1434,6 +1435,10 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       // Блип бейджа для открытого чата гасит немедленный markRead активной вкладки.
       const incoming = m.fromId !== meId
       const nextUnread = incoming ? cur.unread_count + 1 : cur.unread_count
+      // Непрочитанное упоминание зрителя (сервер ставит упомянутому
+      // pFlags.mentioned + media_unread) бампит бейдж «@» тем же кадром —
+      // порт tweb appMessagesManager.ts:10510-10512.
+      const nextMentions = incoming && isMentionUnread(m) ? cur.unread_mentions_count + 1 : cur.unread_mentions_count
       // Превью строится из ЦЕЛОГО сообщения — тем же единственным маппером
       // живого кадра, что и вставка в окно (`messages.cacheLive` зовёт его же).
       // Прежняя девятиполевая выжимка (`senderName` от сервера, `mediaType`
@@ -1442,7 +1447,22 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
         top_message: m.id,
         lastMessage: m,
         unread_count: nextUnread,
+        unread_mentions_count: nextMentions,
       })
+    },
+
+    /**
+     * Прочитано содержимое упоминаний (`updateReadPeerMessagesContents` по
+     * сообщениям, которые были непрочитанным упоминанием) — бейдж «@» минус
+     * столько же. Порт tweb `onUpdateReadMessagesContents`
+     * (appMessagesManager.ts:11009-11016): решение «было ли упоминание
+     * непрочитанным» принимается ДО снятия media_unread — его задаёт вызывающий
+     * (воркер спрашивает окно сообщений до применения кадра).
+     */
+    applyMentionsRead(peerId: number, count: number): void {
+      const cur = findDialog(peerId)
+      if (!cur || count <= 0 || !cur.unread_mentions_count) return
+      patchDialog(peerId, { unread_mentions_count: Math.max(0, cur.unread_mentions_count - count) })
     },
 
     /** `read` — моё прочтение гасит unread/горизонт, чужое двигает peerReadSeq (✓✓). */

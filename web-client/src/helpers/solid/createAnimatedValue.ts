@@ -1,6 +1,6 @@
 // Порт tweb `src/helpers/solid/createAnimatedValue.ts` (47 строк) — 1:1.
-// Solid-аналог React-хука `components/virtual/useAnimatedTop.ts` (тот же
-// оригинал, портированный ранее под React); здесь форма оригинала — сигналы
+// Solid-аналог снесённого (задача 1-6 волны 7) React-хука
+// `components/virtual/useAnimatedTop.ts` (тот же оригинал); здесь форма оригинала — сигналы
 // `current`/`animating`, потребитель кладёт их в стиль сам.
 //
 // `simpleEasing` у tweb лежит в `helpers/animateValue`, у нас — в

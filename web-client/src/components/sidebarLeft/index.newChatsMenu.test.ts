@@ -68,7 +68,7 @@ afterEach(async() => {
 // синглтон вечен (К-2): `construct` — один раз на прогон, как в приложении
 let constructed = false
 function construct() {
-  if(!constructed) installed.sidebar.construct(managers, { xd: undefined } as unknown as AppDialogsManager)
+  if(!constructed) installed.sidebar.construct(managers, { xd: undefined, toggleForumTab: vi.fn() } as unknown as AppDialogsManager)
   constructed = true
   return installed.column.querySelector<HTMLElement>('#new-menu')!
 }
@@ -90,11 +90,12 @@ async function openSubmenu() {
 }
 
 describe('construct — кнопка #new-menu (:198-200, :1113-1129)', () => {
-  it('последний ребёнок .sidebar-content вкладки №0; разметка, роль, иконки морфа ✎ ↔ ✕, подпись', () => {
+  it('ребёнок .sidebar-content вкладки №0 перед кнопкой «Обновить» (:198-227); разметка, роль, иконки морфа ✎ ↔ ✕, подпись', () => {
     const btn = construct()
 
     expect(btn.parentElement).toBe(installed.header.nextElementSibling)
-    expect(btn.parentElement!.lastElementChild).toBe(btn)
+    expect(btn.nextElementSibling).toBe(btn.parentElement!.lastElementChild)
+    expect(btn.nextElementSibling!.classList.contains('btn-update')).toBe(true)
     expect(btn.className).toBe('btn-new-menu btn-circle rp btn-corner z-depth-1 btn-menu-toggle animated-button-icon')
     expect(btn.getAttribute('role')).toBe('button')
     expect(btn.tabIndex).toBe(0)
