@@ -21,10 +21,8 @@
  *  2. `singleInstance`, вход по t.me, `tgWebAuthToken`-импорт до развилки,
  *     состояние вкладок — Б-17 плана волны 7 (вне волны); `tgWebAuthToken`
  *     разбирает сам экран входа (`mountAuthFlow.solid.tsx::initialCardSpec`).
- *  3. Сверх оригинала: опрос версии сборки (`startVersionCheck`, у tweb —
- *     `checkForUpdates` бургера, О-100).
- *  4. `setSidebarLeftWidth`: «свёрнута» — запомненная настройка и НЕ плавающий
- *     диапазон (≤ 925px), а у tweb — и не мобильный (расхождение 3 шапки
+ *  3. `setSidebarLeftWidth`: «свёрнута» — запомненная настройка и НЕ плавающий
+ *     диапазон (≤ 925px), а у tweb — и не мобильный (расхождение 2 шапки
  *     `stores/foldersSidebar.solid.ts`); плюс наш полноширинный режим колонки
  *     на узком экране (≤ 900px, класс `is-full-width`,
  *     `components/sidebarLeft/columnLeft.scss`).
@@ -42,7 +40,6 @@ import mediaSizes from './core/dom/mediaSizes'
 import { ANIMATE_MAIN_KEY } from './core/accountTransition'
 import { RT } from './core/realtime/events'
 import appNavigationController from './core/navigation/appNavigationController'
-import { startVersionCheck } from './core/version/versionCheck'
 import { mountAuthFlow } from './components/auth/mountAuthFlow.solid'
 import { useIsSidebarCollapsed } from './stores/foldersSidebar.solid'
 import { saveEncryptionKeyForHandoff } from '@lib/passcode/keyHandoff'
@@ -50,10 +47,10 @@ import rootScope from '@lib/rootScope'
 import { doubleRaf } from '@helpers/schedulers'
 import pause from '@helpers/schedulers/pause'
 
-/** Ширина колонки «во всю ширину» — наша раскладка (расхождение 4). */
+/** Ширина колонки «во всю ширину» — наша раскладка (расхождение 3). */
 const FULL_WIDTH_QUERY = '(max-width:900px)'
 
-/** tweb `:205-235` — см. расхождение 4. */
+/** tweb `:205-235` — см. расхождение 3. */
 export function setSidebarLeftWidth() {
   const columnEl = document.getElementById('column-left')!
   const fullWidth = window.matchMedia(FULL_WIDTH_QUERY)
@@ -134,7 +131,6 @@ export async function start() {
   setSidebarLeftWidth()
 
   const { managers, hasToken } = await bootstrap()
-  startVersionCheck()
   listenSessionTransitions(managers)
 
   if(!hasToken) {

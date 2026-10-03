@@ -480,6 +480,7 @@
       } */
       &:not(.is-hidden) {
         transform: translateZ(0);
+        visibility: visible;
       }
     }
 

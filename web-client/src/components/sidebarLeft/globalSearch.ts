@@ -71,13 +71,12 @@
 //     обработчика.
 //  8. `newBtnMenu` (`#new-menu`, поле колонки `AppSidebarLeft.newBtnMenu`)
 //     владелец получает опцией: у оригинала тело `initSearch` — метод самой
-//     колонки. `is-hidden` и таймер возврата — как у оригинала (812502980
-//     :1514, :1550-1558, :1571); таймер снимает и `destroy()` (расхождение 10). `updateBtn` (проверка новой
-//     версии клиента, :365-383) не портирован — его нет у колонки. Не
+//     колонки, так же — `updateBtn` и `hasUpdate` (кнопка «Обновить»). `is-hidden`
+//     и таймер возврата — как у оригинала (812502980 :1514, :1550-1558,
+//     :1571-1572); таймер снимает и `destroy()` (расхождение 10). Не
 //     портировано — у нас этим владеет хозяин: `buttonsContainer.is-visible`
-//     и `appear-animated` (:1471-1482, :1495) — морф бургера по
-//     сигналу `useIsLeftSearchActive` (`sidebarLeft/index.ts`), свёрнутой
-//     колонки с триггером поиска у нас нет. `isAnimatingCollapse` в `onPop` (:1463) — анимации сворачивания
+//     и `appear-animated` (:1586-1599, :1613) ставит колонка в `onSearchActive`
+//     (`sidebarLeft/index.ts`), морф бургера — по сигналу `useIsLeftSearchActive`. `isAnimatingCollapse` в `onPop` (:1463) — анимации сворачивания
 //     колонки нет.
 //  9. Ctrl+F: у оригинала `addShortcutListener(['ctrl+f', …])` (:451-454), у
 //     нас сочетание разбирает `core/hotkeys.ts` и объявляет событием
@@ -144,6 +143,9 @@ export type GlobalSearchOptions = {
   onSearchActive?: (active: boolean) => void
   /** `this.newBtnMenu` колонки — расхождение 8 */
   newBtnMenu?: HTMLElement
+  /** `this.updateBtn`/`this.hasUpdate` колонки — расхождение 8 */
+  updateBtn?: HTMLElement
+  hasUpdate?: () => boolean
   openUrl: (url: string) => void
 }
 
@@ -201,6 +203,8 @@ export default class GlobalSearch {
   private managers: GlobalSearchManagers
   private onSearchActive?: (active: boolean) => void
   private newBtnMenu?: HTMLElement
+  private updateBtn?: HTMLElement
+  private hasUpdate?: () => boolean
   /** tweb `hideNewBtnMenuTimeout` (:1514) — полем, чтобы его снял `destroy()` */
   private hideNewBtnMenuTimeout = 0
   private openUrl: (url: string) => void
@@ -212,6 +216,8 @@ export default class GlobalSearch {
     this.managers = options.managers
     this.onSearchActive = options.onSearchActive
     this.newBtnMenu = options.newBtnMenu
+    this.updateBtn = options.updateBtn
+    this.hasUpdate = options.hasUpdate
     this.openUrl = options.openUrl
 
     // :220
@@ -575,6 +581,7 @@ export default class GlobalSearch {
           this.hideNewBtnMenuTimeout = window.setTimeout(() => {
             this.hideNewBtnMenuTimeout = 0
             this.newBtnMenu?.classList.remove('is-hidden')
+            if(this.hasUpdate?.()) this.updateBtn?.classList.remove('is-hidden')
           }, 150)
         }
 
@@ -587,6 +594,7 @@ export default class GlobalSearch {
     // :1451-1486
     const onFocus = () => {
       this.newBtnMenu?.classList.add('is-hidden')
+      this.updateBtn?.classList.add('is-hidden')
 
       const navigationType: NavigationItem['type'] = 'global-search'
       if(!IS_MOBILE_SAFARI && !appNavigationController.findItemByType(navigationType)) {

@@ -528,12 +528,14 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Задача 2-6 волны 7 (ряд историй, tweb `stories/list.tsx:173-180`, `:205`): у всех пяти
 // +2 ключа tweb lang.ts `MyStory` (:482) и `OpenStory` (:502) — подпись своего элемента
 // и `aria-label` элементов ряда. Итог: ru 1532, uk 829, es 800, de 801, fr 796.
+// Пачка П-3 волны 7 (кнопка «Обновить» шапки колонки, tweb `sidebarLeft/index.ts:211-227`):
+// у ru +1 ключ tweb lang.ts:2077 `Update`. Итог: ru 1531.
 // Задача 1-8 волны 7 (пустой список чатов и секция «Контакты», tweb
 // `appDialogsManager.ts:1649-1772`): у ru +6 ключей tweb lang.ts — заголовок и две подписи
 // `ChatList.Main.EmptyPlaceholder.*`, плюральный `Contacts.Count`, пустая папка
-// `FilterNoChatsToDisplay{,Info}`. Итог: ru 1538, плюральных 49.
+// `FilterNoChatsToDisplay{,Info}`. Итог: ru 1539, плюральных 49.
 const COMPOSITION = {
-  ru: { keys: 1538, plural: 49 },
+  ru: { keys: 1539, plural: 49 },
   uk: { keys: 829, plural: 35 },
   es: { keys: 800, plural: 34 },
   de: { keys: 801, plural: 35 },
@@ -709,9 +711,10 @@ const COMPOSITION = {
 // Задачей 2-1 волны 7 — у ru +1 ключ tweb `StarsRating.Back` (разбор — там же).
 // Задачей 2-4 волны 7 — у ru +1 ключ tweb `ChatAutomation.NewChats` (разбор — там же).
 // Задачей 2-6 волны 7 — у всех пяти +2 ключа tweb `MyStory`, `OpenStory` (разбор — там же).
+// Пачкой П-3 волны 7 — у ru +1 ключ tweb `Update` (разбор — там же).
 // Задачей 1-8 волны 7 — у ru +6 ключей пустого списка и контактов (разбор — там же).
 const FINGERPRINT = {
-  ru: '77ea9c36',
+  ru: '8152889f',
   uk: 'a02f363c',
   es: '89e8ae98',
   de: '0fed7933',
