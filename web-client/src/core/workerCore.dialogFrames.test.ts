@@ -293,7 +293,7 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
     })
     await seedHistory(core, [mention(5)])
     capturedConnDeps!.onFrame('new_message', { _: 'updateNewMessage', message: mention(6) })
-    expect((dialogOps.at(-1) as Extract<DialogOp, { op: 'patch' }>).fields.unread_mentions_count).toBe(1)
+    expect((dialogOps[dialogOps.length - 1] as Extract<DialogOp, { op: 'patch' }>).fields.unread_mentions_count).toBe(1)
     dialogOps.length = 0
 
     capturedConnDeps!.onFrame('media_read', {
