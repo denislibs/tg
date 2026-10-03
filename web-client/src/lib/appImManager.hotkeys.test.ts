@@ -34,6 +34,13 @@ const parts = vi.hoisted(() => ({
   canSendPlain: true,
   isSelecting: false,
   passEventToInput: (() => {}) as (e: KeyboardEvent) => void,
+  // правка/ответ по стрелкам (Б-80): члены `ChatInput`, которые читает ветка F1
+  inputEmpty: true,
+  editMsgId: undefined as number | undefined,
+  replyToMsgId: undefined as number | undefined,
+  initMessageEditing: (_mid: number) => {},
+  initMessageReply: async(_replyTo: { replyToMsgId?: number }) => {},
+  onHelperCancel: async() => {},
 }))
 type FakeAppImManager = {
   isSamePeer(a: object, b: object): boolean
@@ -47,7 +54,7 @@ const FakeChat = vi.hoisted(() => class {
   public inited?: boolean
   public sharedMediaTab = undefined
   public input?: object
-  public bubbles?: { scrollable: { container: HTMLElement } }
+  public bubbles?: { scrollable: { container: HTMLElement }, getMiddleware: () => () => boolean, getBubble: () => undefined }
   public selection = {
     get isSelecting() { return parts.isSelecting },
   }
@@ -72,8 +79,19 @@ const FakeChat = vi.hoisted(() => class {
         messageInput,
         canSendPlain: () => parts.canSendPlain,
         passEventToInput: (e: KeyboardEvent) => parts.passEventToInput(e),
+        isInputEmpty: () => parts.inputEmpty,
+        get editMsgId() { return parts.editMsgId },
+        get replyToMsgId() { return parts.replyToMsgId },
+        initMessageEditing: (mid: number) => parts.initMessageEditing(mid),
+        initMessageReply: (replyTo: { replyToMsgId?: number }) => parts.initMessageReply(replyTo),
+        getChatInputReplyToFromMessage: (message: { id: number }) => ({ replyToMsgId: message.id }),
+        onHelperCancel: () => parts.onHelperCancel(),
       }
-      this.bubbles = { scrollable: { container: scrollContainer } }
+      this.bubbles = {
+        scrollable: { container: scrollContainer },
+        getMiddleware: () => () => true,
+        getBubble: () => undefined,
+      }
     }
 
     if(!this.appImManager.isSamePeer(this, options)) {
@@ -84,6 +102,14 @@ const FakeChat = vi.hoisted(() => class {
     this.type = type
     this.appImManager.dispatchEvent('peer_changed', this)
     return peerId ? { cached: true, promise: Promise.resolve() } : undefined
+  }
+
+  public canSend() {
+    return Promise.resolve(true)
+  }
+
+  public setMessageId() {
+    return Promise.resolve()
   }
 
   public publishBackground() {
@@ -98,12 +124,14 @@ const FakeChat = vi.hoisted(() => class {
 })
 vi.mock('@components/chat/chat', () => ({ default: FakeChat }))
 
+const getFirstMessageToEdit = vi.fn(async(_options: { peerId: number, forReply?: boolean, mid?: number, up?: boolean }): Promise<{ id: number, peerId: number } | undefined> => undefined)
 const getNextDialog = vi.fn(async(_peerId: number, _next: boolean, _filterId: number): Promise<{ peerId: number } | undefined> => undefined)
 const managers = {
   peers: { getPeers: async(ids: number[]) => ids.map((id) => ({ _: 'user', id, pFlags: {} })), fillMirror: async() => {}, resolveUsername: vi.fn() },
   presence: { get: async() => [] },
   dialogs: { hasDialog: async() => true, refresh: async() => null, getNextDialog },
   channels: { join: async() => {} },
+  messages: { getFirstMessageToEdit },
 } as unknown as Managers
 
 const settle = () => pause(20)
@@ -135,7 +163,11 @@ afterAll(() => {
 })
 
 beforeEach(() => {
-  Object.assign(parts, { canSendPlain: true, isSelecting: false, passEventToInput })
+  Object.assign(parts, {
+    canSendPlain: true, isSelecting: false, passEventToInput,
+    inputEmpty: true, editMsgId: undefined, replyToMsgId: undefined,
+    initMessageEditing: vi.fn(), initMessageReply: vi.fn(async() => {}), onHelperCancel: vi.fn(async() => {}),
+  })
   im.isShiftLockShortcut = false
 })
 
@@ -243,17 +275,53 @@ describe('PageUp/PageDown и стрелки — прокрутка ленты (t
     expect(passEventToInput).not.toHaveBeenCalled()
   })
 
-  it('↑ там, где писать нельзя, — прокрутка ленты; где можно — клавиша гаснет (правка — Б-80)', () => {
+  it('↑ там, где писать нельзя, — прокрутка ленты; ↓ без ответа — гаснет', () => {
     parts.canSendPlain = false
     press({ key: 'ArrowUp' })
     expect(document.activeElement).toBe(scrollContainer())
 
     scrollContainer().blur()
     parts.canSendPlain = true
-    press({ key: 'ArrowUp' })
     press({ key: 'ArrowDown' })
     expect(document.activeElement).not.toBe(scrollContainer())
     expect(passEventToInput).not.toHaveBeenCalled()
+    expect(getFirstMessageToEdit).not.toHaveBeenCalled()
+  })
+})
+
+describe('правка и ответ по стрелкам (tweb :1758-1835, Б-80)', () => {
+  afterEach(() => getFirstMessageToEdit.mockReset())
+
+  it('↑ в пустом поле — правка последнего своего (`getFirstMessageToEdit` → `initMessageEditing`)', async() => {
+    getFirstMessageToEdit.mockResolvedValueOnce({ id: 42, peerId: 1 })
+    const event = press({ key: 'ArrowUp' })
+    expect(event.defaultPrevented).toBe(true)
+    await settle()
+    expect(getFirstMessageToEdit).toHaveBeenCalledWith({ peerId: 1, threadId: undefined, forReply: false, mid: undefined, up: true })
+    expect(parts.initMessageEditing).toHaveBeenCalledWith(42)
+  })
+
+  it('↑ с текстом в поле или во время правки — ничего', async() => {
+    parts.inputEmpty = false
+    press({ key: 'ArrowUp' })
+    parts.inputEmpty = true
+    parts.editMsgId = 5
+    press({ key: 'ArrowUp' })
+    await settle()
+    expect(getFirstMessageToEdit).not.toHaveBeenCalled()
+  })
+
+  it('Ctrl+↑ — ответ на соседнее от текущего ответа; Ctrl+↓ мимо конца — снять ответ', async() => {
+    parts.replyToMsgId = 10
+    getFirstMessageToEdit.mockResolvedValueOnce({ id: 9, peerId: 1 })
+    press({ key: 'ArrowUp', ctrlKey: true })
+    await settle()
+    expect(getFirstMessageToEdit).toHaveBeenLastCalledWith({ peerId: 1, threadId: undefined, forReply: true, mid: 10, up: true })
+    expect(parts.initMessageReply).toHaveBeenCalledWith({ replyToMsgId: 9 })
+
+    press({ key: 'ArrowDown', ctrlKey: true })
+    await settle()
+    expect(parts.onHelperCancel).toHaveBeenCalled()
   })
 })
 

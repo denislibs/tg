@@ -88,10 +88,10 @@
 //     `appendDrops`, `Preview.Dragging.AddItems`) нет — бэклог Б-83; вставка в открытый
 //     попап дописывает файлы (`addFiles`).
 // 14. Блок F (`attachKeydownListener` `:1703-1852`, `attachCopyListener` `:1854-1895`):
-//     F1. Правка последнего и ответ на предыдущее по ↑/Ctrl+↑ (`:1758-1846`) не
-//         портированы — Б-80: нужны члены `ChatInput` К-4 (`editMsgId`, `replyToMsgId`,
-//         `isInputEmpty`, `onHelperCancel`) и `getFirstMessageToEdit` воркера. Ветка
-//         стрелок осталась (нет права писать — прокрутка ленты, иначе клавиша гаснет).
+//     F1. Правка последнего и ответ на соседнее по ↑/Ctrl+↑↓ (`:1758-1846`, Б-80, П-6) —
+//         `messages.getFirstMessageToEdit` воркера; обработчик синхронный, а ожидание —
+//         асинхронный хвост (у tweb весь `onKeyDown` — `async`): `cancelEvent` до него.
+//         Без `lastMsgPeerId` у `setMessageId` — окна по чужому пиру у ленты нет.
 //     F2. `chat.input.recording` (`:1841`) — записи голоса у класса `ChatInput` нет
 //         (Б-30): условие «не во время записи» снято.
 //     F3. `appDialogsManager.contextMenu?.hasAddToFolderOpen()` (`:1767`) — только в
@@ -1347,7 +1347,66 @@ export class AppImManager extends EventListenerBase<{
           return
         }
 
-        // правка последнего / ответ на предыдущее (`:1766-1846`) — Б-80 (F1)
+        // tweb `:1766-1835` (F1): правка последнего своего по ↑, ответ на соседнее по Ctrl/Cmd+↑↓
+        // (`hasAddToFolderOpen` — F3: меню «Добавить в папку» не портировано, О-85)
+        if(input && !input.editMsgId) {
+          const forReply = e.metaKey || e.ctrlKey
+          if(!forReply && !input.isInputEmpty()) {
+            return
+          }
+
+          const up = key === 'ArrowUp'
+          const { replyToMsgId } = input
+          const { peerId, threadId } = chat
+          if((!forReply && !up) || (forReply && !up && !replyToMsgId)) {
+            return
+          }
+
+          cancelEvent(e)
+          const middleware = chat.bubbles.getMiddleware()
+          void (async() => {
+            if(forReply && !(await chat.canSend())) {
+              return
+            }
+
+            if(!middleware()) {
+              return
+            }
+
+            const message = await this.managers.messages.getFirstMessageToEdit({
+              peerId,
+              threadId,
+              forReply,
+              mid: forReply ? replyToMsgId ?? undefined : undefined,
+              up,
+            })
+            if(chat !== this.chat || !middleware()) {
+              return
+            }
+
+            if(!message) {
+              if(forReply && input.replyToMsgId === replyToMsgId) {
+                void input.onHelperCancel()
+              }
+
+              return
+            }
+
+            if(forReply) {
+              const bubble = chat.bubbles.getBubble(message.peerId, message.id)
+              await input.initMessageReply(input.getChatInputReplyToFromMessage(message))
+              if(bubble) {
+                chat.bubbles.scrollToBubble(bubble, 'center')
+                chat.bubbles.highlightBubble(bubble)
+              } else {
+                void chat.setMessageId({ lastMsgId: message.id })
+              }
+            } else {
+              void input.initMessageEditing(message.id)
+            }
+          })()
+        }
+
         return
       } else if(key === 'ArrowDown') {
         return
