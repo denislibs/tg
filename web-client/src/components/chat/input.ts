@@ -30,6 +30,7 @@
 //    `:2145-2217` (`popups/scheduleSendingPopup.ts`), `resetSendingFlags` `:4491`,
 //    send-as `createSendAs`/`updateOffset` `:2485-2520`, `:2817-2852` (`chat/sendAs.ts`),
 //    «Открепить все» экрана закрепов `pinnedControlBtn` `:1618-1633`, `:2697-2702`,
+//    клавиатура бота `constructReplyMarkup` `:948-960` (`chat/replyKeyboard.solid.tsx`),
 //    медленный режим `showSlowModeTooltipIfNeeded` `:4005-4084` (`chat/showSlowModeTooltipIfNeeded.ts`)
 //    и плата `paidMessageInterceptor` (`chat/paidMessagesInterceptor.ts`) в путях отправки
 //    `:3836`, `:4571-4604`, `:4800-4814`.
@@ -151,6 +152,7 @@ import { SEND_WHEN_ONLINE_TIMESTAMP } from '@core/format/dayLabel'
 import AttachMenuButton from './attachMenuButton.solid'
 import ChatInputPlate from './controlPlate.solid'
 import ChatSendAs from './sendAs'
+import ReplyKeyboard from './replyKeyboard.solid'
 import PaidMessagesInterceptor, { PAYMENT_REJECTED } from './paidMessagesInterceptor'
 import showSlowModeTooltipIfNeeded, { type ShowSlowModeTooltipOptions } from './showSlowModeTooltipIfNeeded'
 import SendMenu from './sendContextMenu'
@@ -221,6 +223,9 @@ export default class ChatInput {
 
   /** tweb `:254` */
   private sendMenu!: SendMenu
+  /** tweb `:238`, `:244` — клавиатура бота (Б-36) */
+  private btnToggleReplyMarkup?: HTMLButtonElement
+  private replyKeyboard?: ReplyKeyboard
   /** tweb `:354`, `constructScheduledButton` `:922-945` */
   private btnScheduled!: HTMLButtonElement
   /** tweb `:398-400` */
@@ -377,6 +382,20 @@ export default class ChatInput {
     })
   }
 
+  /** tweb `:948-960` */
+  private constructReplyMarkup() {
+    this.btnToggleReplyMarkup = this.createButtonIcon('botcom toggle-reply-markup float hide', { noRipple: true, ariaLabel: 'General.Keyboard' }) as HTMLButtonElement
+    this.replyKeyboard = new ReplyKeyboard({
+      appendTo: this.rowsWrapper,
+      listenerSetter: this.listenerSetter,
+      btnHover: this.btnToggleReplyMarkup,
+      chatInput: this,
+      middleware: this.middlewareHelper.get(),
+    })
+    this.listenerSetter.add(this.replyKeyboard)('open', () => this.btnToggleReplyMarkup!.classList.add('active'))
+    this.listenerSetter.add(this.replyKeyboard)('close', () => this.btnToggleReplyMarkup!.classList.remove('active'))
+  }
+
   /** tweb `:629-650` — меню плашки (`ButtonMenuSync` + `DropdownHover`) — Б-72. */
   private constructReplyElements() {
     this.replyElements.container = document.createElement('div')
@@ -411,6 +430,7 @@ export default class ChatInput {
     this.goDownBtn.append(this.goDownUnreadBadge)
 
     this.constructScheduledButton()
+    this.constructReplyMarkup()
 
     this.attachMenuButtons = [{
       icon: 'image',
@@ -485,8 +505,9 @@ export default class ChatInput {
       this.attachMenu,
       this.inputMessageContainer,
       this.btnScheduled,
+      this.btnToggleReplyMarkup,
       this.fileInput,
-    ].filter(Boolean))
+    ].filter((node): node is NonNullable<typeof node> => !!node))
 
     this.rowsWrapper.append(this.replyElements.container)
     this.rowsWrapper.append(this.newMessageWrapper)
@@ -1063,7 +1084,7 @@ export default class ChatInput {
 
     this.peerChanging = true
 
-    const { goDownBtn, chatInput, attachMenu, btnScheduled, sendMenu } = this
+    const { goDownBtn, chatInput, attachMenu, btnScheduled, sendMenu, replyKeyboard } = this
 
     const previousSendAs = this.sendAs
     const sendAs = this.createSendAs()
@@ -1113,6 +1134,7 @@ export default class ChatInput {
 
       previousSendAs?.destroy()
       setSendAsCallback?.()
+      replyKeyboard?.setPeer(peerId)
       sendMenu?.setPeerParams({ peerId, isPaid: !!getStarsAmount(peerId) })
 
       let haveSomethingInControl = false
@@ -1627,6 +1649,10 @@ export default class ChatInput {
 
     if(this.btnScheduled) {
       this.btnScheduled.classList.toggle('show', this.isInputEmpty() && this.chat.type !== ChatType.Scheduled)
+    }
+
+    if(this.btnToggleReplyMarkup) {
+      this.btnToggleReplyMarkup.classList.toggle('show', this.isInputEmpty() && this.chat.type !== ChatType.Scheduled)
     }
   }
 

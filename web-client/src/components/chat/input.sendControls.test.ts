@@ -9,6 +9,7 @@
 //  - экран закрепов (Б-90): плашка «Открепить все»/«Скрыть закреплённые»;
 //  - send-as (`chat/sendAs.ts`): одна личность — кнопки нет, две — аватарка, пакет
 //    отправки несёт `sendAsPeerId`, плейсхолдер «Отправить анонимно»;
+//  - клавиатура бота (Б-36): кнопка `toggle-reply-markup` по разметке окна;
 //  - медленный режим и платные (Б-37): врезка `showSlowModeTooltipIfNeeded` и
 //    `paidMessageInterceptor.prepareStarsForPayment` в путь отправки.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -16,7 +17,7 @@ import EventListenerBase from '@helpers/eventListenerBase'
 import { getMiddleware } from '@helpers/middleware'
 import I18n from '@lib/langPack'
 import { useChatsStore } from '@stores/chatsStore'
-import { winKey } from '@core/history/messagesMirror'
+import { putMirrorPage, resetMessagesMirror, winKey } from '@core/history/messagesMirror'
 import { makeDialog } from '@core/dialogs/testDialog'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import type { MyMessage } from '@core/models'
@@ -343,5 +344,23 @@ describe('ChatInput: медленный режим и платные (Б-37)', (
     prepare.mockResolvedValue(undefined)
     await mounted.input.sendMessage()
     expect(mounted.managers.messages.sendText).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('ChatInput: клавиатура бота (Б-36)', () => {
+  it('последняя разметка окна — клавиатура: кнопка в строке видна, пока поле пустое', async() => {
+    putMirrorPage(winKey(BOB), [{
+      _: 'message', id: 1, pFlags: {}, peer_id: { _: 'peerUser', user_id: BOB }, peerId: BOB, fromId: BOB, date: 1, message: 'меню',
+      reply_markup: { _: 'replyKeyboardMarkup', rows: [{ _: 'keyboardButtonRow', buttons: [{ _: 'keyboardButton', text: 'Да' }] }] },
+    } as MyMessage])
+    mounted = await mountInput()
+    const btn = mounted.input.newMessageWrapper.querySelector<HTMLElement>('.toggle-reply-markup')!
+    expect(btn.classList.contains('hide')).toBe(false)
+    expect(btn.classList.contains('show')).toBe(true)
+
+    mounted.input.messageInputField.setValueSilently('текст')
+    mounted.input.onMessageInput()
+    expect(btn.classList.contains('show')).toBe(false)
+    resetMessagesMirror()
   })
 })
