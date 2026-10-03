@@ -1588,6 +1588,66 @@
           "value": "Chat Theme"
         },
         {
+          "key": "ChatTips.Appearance",
+          "value": "Appearance"
+        },
+        {
+          "key": "ChatTips.Appearance.Dark",
+          "value": "Dark"
+        },
+        {
+          "key": "ChatTips.Appearance.Description",
+          "value": "You can change these parameters and many others in Settings \u003e [General Settings]()."
+        },
+        {
+          "key": "ChatTips.Appearance.Light",
+          "value": "Light"
+        },
+        {
+          "key": "ChatTips.Appearance.System",
+          "value": "System"
+        },
+        {
+          "key": "ChatTips.Chats",
+          "value": "Chats"
+        },
+        {
+          "key": "ChatTips.Chats.Description",
+          "value": "Use **Ctrl+F** to enter [search]() mode."
+        },
+        {
+          "key": "ChatTips.Chats.DescriptionMac",
+          "value": "Use **Cmd+F** to enter [search]() mode."
+        },
+        {
+          "key": "ChatTips.Chats.Empty",
+          "value": "Nothing here yet."
+        },
+        {
+          "key": "ChatTips.Chats.RecentSearch",
+          "value": "Searched"
+        },
+        {
+          "key": "ChatTips.Chats.RecentlyClosed",
+          "value": "Closed"
+        },
+        {
+          "key": "ChatTips.NextTip",
+          "value": "Next Tip"
+        },
+        {
+          "key": "ChatTips.PreviousTip",
+          "value": "Previous Tip"
+        },
+        {
+          "key": "ChatTips.Stickers.Description",
+          "value": "More trending stickers are available in [Trending Stickers]()."
+        },
+        {
+          "key": "ChatTips.Title",
+          "value": "Tips"
+        },
+        {
           "key": "ChatYourSelf",
           "value": "forward here to save"
         },
@@ -2287,6 +2347,10 @@
         {
           "key": "EmojiStatus.Set",
           "value": "Set Emoji Status"
+        },
+        {
+          "key": "EmptyPeer.Description",
+          "value": "Select a chat to start messaging"
         },
         {
           "key": "EnableAnimations",
@@ -5893,6 +5957,10 @@
         {
           "key": "Stickers.SuggestStickers",
           "value": "Suggest Stickers by Emoji"
+        },
+        {
+          "key": "Stickers.Trending",
+          "value": "Trending Stickers"
         },
         {
           "key": "StickersBotInfo",
@@ -13677,6 +13745,74 @@
         {
           "key": "UserRestrictionsSendVoices",
           "value": "Отправка голосовых сообщений"
+        },
+        {
+          "key": "ChatTips.Appearance",
+          "value": "Оформление"
+        },
+        {
+          "key": "ChatTips.Appearance.Dark",
+          "value": "Тёмная"
+        },
+        {
+          "key": "ChatTips.Appearance.Description",
+          "value": "Эти и многие другие параметры можно изменить в разделе Настройки \u003e [Общие настройки]()."
+        },
+        {
+          "key": "ChatTips.Appearance.Light",
+          "value": "Светлая"
+        },
+        {
+          "key": "ChatTips.Appearance.System",
+          "value": "Системная"
+        },
+        {
+          "key": "ChatTips.Chats",
+          "value": "Чаты"
+        },
+        {
+          "key": "ChatTips.Chats.Description",
+          "value": "Нажмите **Ctrl+F**, чтобы перейти в режим [поиска]()."
+        },
+        {
+          "key": "ChatTips.Chats.DescriptionMac",
+          "value": "Нажмите **Cmd+F**, чтобы перейти в режим [поиска]()."
+        },
+        {
+          "key": "ChatTips.Chats.Empty",
+          "value": "Здесь пока ничего нет."
+        },
+        {
+          "key": "ChatTips.Chats.RecentSearch",
+          "value": "Найденные"
+        },
+        {
+          "key": "ChatTips.Chats.RecentlyClosed",
+          "value": "Закрытые"
+        },
+        {
+          "key": "ChatTips.NextTip",
+          "value": "Следующая"
+        },
+        {
+          "key": "ChatTips.PreviousTip",
+          "value": "Предыдущая"
+        },
+        {
+          "key": "ChatTips.Stickers.Description",
+          "value": "Больше популярных стикеров — в разделе [Популярные стикеры]()."
+        },
+        {
+          "key": "ChatTips.Title",
+          "value": "Подсказки"
+        },
+        {
+          "key": "EmptyPeer.Description",
+          "value": "Выберите, кому хотели бы написать"
+        },
+        {
+          "key": "Stickers.Trending",
+          "value": "Популярные стикеры"
         }
       ]
     },
@@ -13687,7 +13823,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 33,
+      "version": 34,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -17007,6 +17143,22 @@
             "one_value": "%d Étoile",
             "other_value": "%d Étoiles"
           }
+        },
+        {
+          "key": "ChatTips.Appearance.Description",
+          "value": "Vous pouvez modifier ces paramètres et bien d'autres dans Paramètres \u003e [Paramètres généraux]()."
+        },
+        {
+          "key": "ChatTips.Chats.Description",
+          "value": "Utilisez **Ctrl+F** pour passer en mode [recherche]()."
+        },
+        {
+          "key": "ChatTips.Chats.DescriptionMac",
+          "value": "Utilisez **Cmd+F** pour passer en mode [recherche]()."
+        },
+        {
+          "key": "ChatTips.Stickers.Description",
+          "value": "D'autres stickers tendance sont disponibles dans [Stickers tendance]()."
         }
       ]
     },
@@ -17017,7 +17169,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 33,
+      "version": 34,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -20359,6 +20511,22 @@
             "one_value": "%d Stern",
             "other_value": "%d Sterne"
           }
+        },
+        {
+          "key": "ChatTips.Appearance.Description",
+          "value": "Diese und viele weitere Parameter kannst du unter Einstellungen \u003e [Allgemeine Einstellungen]() ändern."
+        },
+        {
+          "key": "ChatTips.Chats.Description",
+          "value": "Mit **Strg+F** öffnest du die [Suche]()."
+        },
+        {
+          "key": "ChatTips.Chats.DescriptionMac",
+          "value": "Mit **Cmd+F** öffnest du die [Suche]()."
+        },
+        {
+          "key": "ChatTips.Stickers.Description",
+          "value": "Weitere angesagte Sticker findest du unter [Angesagte Sticker]()."
         }
       ]
     },
@@ -20369,7 +20537,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 33,
+      "version": 34,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -23705,6 +23873,22 @@
             "one_value": "%d Estrella",
             "other_value": "%d Estrellas"
           }
+        },
+        {
+          "key": "ChatTips.Appearance.Description",
+          "value": "Puedes cambiar estos y muchos otros parámetros en Ajustes \u003e [Ajustes generales]()."
+        },
+        {
+          "key": "ChatTips.Chats.Description",
+          "value": "Usa **Ctrl+F** para entrar en el modo de [búsqueda]()."
+        },
+        {
+          "key": "ChatTips.Chats.DescriptionMac",
+          "value": "Usa **Cmd+F** para entrar en el modo de [búsqueda]()."
+        },
+        {
+          "key": "ChatTips.Stickers.Description",
+          "value": "Hay más stickers populares en [Stickers populares]()."
         }
       ]
     },
@@ -23715,7 +23899,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 34,
+      "version": 35,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -27240,6 +27424,22 @@
             "many_value": "%d зірок",
             "other_value": "%d зірки"
           }
+        },
+        {
+          "key": "ChatTips.Appearance.Description",
+          "value": "Ці та багато інших параметрів можна змінити в розділі Налаштування \u003e [Загальні налаштування]()."
+        },
+        {
+          "key": "ChatTips.Chats.Description",
+          "value": "Натисніть **Ctrl+F**, щоб перейти в режим [пошуку]()."
+        },
+        {
+          "key": "ChatTips.Chats.DescriptionMac",
+          "value": "Натисніть **Cmd+F**, щоб перейти в режим [пошуку]()."
+        },
+        {
+          "key": "ChatTips.Stickers.Description",
+          "value": "Більше популярних стікерів — у розділі [Популярні стікери]()."
         }
       ]
     }

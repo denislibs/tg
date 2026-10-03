@@ -35,7 +35,7 @@
 //     `setStaticLandmarkLabels`, `:349-352`, `:3199-3201`, Б-47.)
 //  3. Нет предмета у подписок `construct`: `appMediaPlaybackController.construct` (у нас модуль без конструктора),
 //     `idleController` → `updateStatus`/`goOffline` (Б-14), предкэш обоев
-//     `SETTINGS_INIT.themes` (наш фон резолвит обои сам), `chatTips` (Б-13),
+//     `SETTINGS_INIT.themes` (наш фон резолвит обои сам),
 //     `join_chat_webview_decision` (П-4), `topbarCall` (П-5), `chatAudio` — портирован (П-5); подписки
 //     звонков (`:880-947`): попап входящего — остров `CallOverlay` по `callStore`,
 //     `acceptCallOverride` и `incompatible` — бэклог Б-95,
@@ -379,6 +379,10 @@ export class AppImManager extends EventListenerBase<{
 
     this.columnEl.append(this.chatsContainer)
 
+    // `:375-377` — Tip cards for the empty column. Imported lazily so this module isn't part of
+    // an import cycle with the components the cards use.
+    void import('@components/chatTips/index.solid').then(({ renderChatTips }) => renderChatTips(this.chatsContainer))
+
     this.createNewChat()
     this.chatsSelectTab(this.chat)
 
@@ -431,6 +435,17 @@ export class AppImManager extends EventListenerBase<{
     }
 
     this.addEventListener('peer_changed', onPeerChanged)
+
+    // `:824-833` — Remember the chat we're leaving behind (closed outright, or switched away
+    // from) so the tip cards shown on the empty column can offer it back under "Recently closed".
+    let lastOpenedPeerId: PeerId = NULL_PEER_ID
+    this.addEventListener('peer_changed', ({ peerId }) => {
+      if(lastOpenedPeerId && lastOpenedPeerId !== peerId) {
+        void this.managers.contacts.pushRecentlyClosedChat(lastOpenedPeerId)
+      }
+
+      lastOpenedPeerId = peerId
+    })
 
     // `:835-843`
     this.addEventListener('peer_changed', ({ peerId }) => {

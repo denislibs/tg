@@ -889,7 +889,7 @@ export class AppSidebarLeft extends SidebarSlider {
       const item = btns[0].element!
       const icon = item.querySelector('.tgico')!
       const rect = icon.getBoundingClientRect()
-      switchTheme({
+      switchTheme(undefined, {
         x: rect.left + rect.width / 2,
         y: rect.top + rect.height / 2,
       })

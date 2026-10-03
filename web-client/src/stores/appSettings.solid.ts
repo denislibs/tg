@@ -177,6 +177,9 @@ const APP_SETTINGS_KEYS = {
   },
   // tweb `config/state.ts:199-201` — порядок вкладки контактов (`sidebarLeft/tabs/contacts.solid.tsx`)
   contactsSortMode: 'contactsSortMode',
+  // tweb `config/state.ts:109-114` — карточки пустой колонки (`components/chatTips`):
+  // какая показана и свёрнута ли колода
+  chatTips: 'chatTips',
 } as const satisfies KeyTable
 
 type Table = typeof APP_SETTINGS_KEYS

@@ -80,6 +80,9 @@ const FakeChat = vi.hoisted(() => class {
   }
 })
 vi.mock('@components/chat/chat', () => ({ default: FakeChat }))
+// колода карточек пустой колонки — свой предмет (`components/chatTips/chatTips.solid.test.tsx`)
+const chatTips = vi.hoisted(() => ({ renderChatTips: vi.fn() }))
+vi.mock('@components/chatTips/index.solid', () => chatTips)
 
 const getPeers = vi.fn(async(ids: PeerId[]) => ids.map((id) => ({ _: 'user', id, pFlags: {} })))
 const managers = {
@@ -87,6 +90,7 @@ const managers = {
   presence: { get: async() => [] },
   dialogs: { hasDialog: async() => true, refresh: async() => null },
   channels: { join: async() => {} },
+  contacts: { pushRecentlyClosedChat: vi.fn(async() => {}) },
 } as unknown as Managers
 
 let im: AppImManager
@@ -469,5 +473,36 @@ describe('позиция ленты (tweb :479-486, :2640-2688)', () => {
 
     im.saveChatPosition({ peerId: 3, type: ChatType.Scheduled, bubbles: bubblesAt({ distanceToEnd: 500 }) } as never)
     expect(im.getChatSavedPosition({ peerId: 3, type: ChatType.Chat } as never)).toBeUndefined()
+  })
+})
+
+describe('карточки пустой колонки (tweb :375-377, :824-833)', () => {
+  const pushRecentlyClosedChat = vi.mocked(managers.contacts.pushRecentlyClosedChat)
+
+  beforeEach(() => {
+    chatTips.renderChatTips.mockClear()
+    pushRecentlyClosedChat.mockClear()
+  })
+
+  it('колода монтируется один раз — якорем служит `.chats-container`', async() => {
+    construct()
+    await settle()
+    expect(chatTips.renderChatTips).toHaveBeenCalledTimes(1)
+    expect(chatTips.renderChatTips).toHaveBeenCalledWith(im.chatsContainer)
+  })
+
+  it('чат, из которого ушли или который закрыли, уходит в «недавно закрытые»; первое открытие — нет', async() => {
+    construct()
+    await im.setInnerPeer({ peerId: 1 })
+    await settle()
+    expect(pushRecentlyClosedChat).not.toHaveBeenCalled()
+
+    await im.setPeer({ peerId: 2 })
+    await settle()
+    expect(pushRecentlyClosedChat.mock.calls).toEqual([[1]])
+
+    await im.setPeer({})
+    await settle()
+    expect(pushRecentlyClosedChat.mock.calls).toEqual([[1], [2]])
   })
 })

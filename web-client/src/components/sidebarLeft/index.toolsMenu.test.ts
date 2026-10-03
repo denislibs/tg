@@ -350,7 +350,7 @@ describe('createMoreSubmenu — «Ещё»', () => {
 
     item(more, 'Enable Dark Mode').click()
     expect(switchTheme).toHaveBeenCalledTimes(1)
-    expect(switchTheme).toHaveBeenCalledWith({ x: expect.any(Number), y: expect.any(Number) })
+    expect(switchTheme).toHaveBeenCalledWith(undefined, { x: expect.any(Number), y: expect.any(Number) })
     await vi.waitFor(() => expect(contextMenuController.isOpened()).toBe(false))
   })
 })

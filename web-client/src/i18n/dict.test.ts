@@ -590,12 +590,19 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // у ru +4 ключа tweb lang.ts:205-208 — заглушка вкладки `ClientPip.Placeholder{Title,
 // Description}`, `ClientPip.ReturnToTab`, тост плеера `ClientPip.FullscreenHint`; минус
 // наши `Pip.{ActiveTitle,ActiveHint,BackToTab}` снесённой заглушки `core/pip.ts`.
+// Б-13 волны 7 (карточки пустой колонки, tweb `components/chatTips`): у ru +17 ключей tweb
+// lang.ts:5678-5695 и :4527 — `ChatTips.*` (без `ChatTips.Chats.Popular`: фильтра топа
+// собеседников у нас нет), `EmptyPeer.Description`, `Stickers.Trending`.
+// У остальных четырёх +4 — строки подписей карточек со ссылкой `[…]()`
+// (`ChatTips.{Appearance,Chats,Stickers}.Description`, `ChatTips.Chats.DescriptionMac`): без
+// аргумента-узла такую строку не разобрать, поэтому она переводится во всех пяти, как
+// `PasscodeLock.ForgotPasscode.*` и `Privacy.Passkeys.Caption`.
 const COMPOSITION = {
-  ru: { keys: 1650, plural: 55 },
-  uk: { keys: 838, plural: 35 },
-  es: { keys: 809, plural: 34 },
-  de: { keys: 810, plural: 35 },
-  fr: { keys: 805, plural: 34 },
+  ru: { keys: 1667, plural: 55 },
+  uk: { keys: 842, plural: 35 },
+  es: { keys: 813, plural: 34 },
+  de: { keys: 814, plural: 35 },
+  fr: { keys: 809, plural: 34 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -781,12 +788,13 @@ const COMPOSITION = {
 // Пачкой П-4 волны 7 — у ru +6 ключей tweb `AccDescr.*` и `CopyRestricted.*` (разбор — там же).
 // Пачкой П-4 волны 7 — у ru +13 ключей tweb звонков (разбор — у `COMPOSITION` выше).
 // Пачкой П-4 волны 7 (агент «ссылки») — у ru +11 ключей tweb и −4 `Folder.Invite.*` (разбор — там же).
+// Б-13 волны 7 — у ru +17 ключей карточек пустой колонки, у остальных +4 (разбор — там же).
 const FINGERPRINT = {
-  ru: 'a27812f1',
-  uk: 'af81524a',
-  es: '57ce09fe',
-  de: '3224cfc5',
-  fr: '61cdac88',
+  ru: '4efe967f',
+  uk: 'de4c59fd',
+  es: 'f330c581',
+  de: '95a1d0fe',
+  fr: '59be948d',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

@@ -15,3 +15,5 @@
 // splitColor — генератор производных --light-*/--dark-*; у нас те же производные
 // эмитит рантайм themeController, миксин нужен статическим партиалам tweb.
 @forward "mixins/splitColor";
+// service-plate — плашка цвета служебного сообщения (карточки пустой колонки, `components/chatTips`).
+@forward "mixins/servicePlate";
