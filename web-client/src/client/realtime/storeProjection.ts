@@ -4,7 +4,7 @@
 // (звук/уведомления) не делает. Раньше жил внутри realtimeBridge.
 import { useChatsStore } from '../../stores/chatsStore'
 import { applyPeerOps, resetPeerMirror } from '../../core/peerCache'
-import { applyChatTheme, resetChatFullMirror } from '../../core/chatFullCache'
+import { applyChatTheme, applyPeerBlocked, resetChatFullMirror } from '../../core/chatFullCache'
 import { applyStateMirror } from '../../stores/appState'
 import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
@@ -166,6 +166,10 @@ const APPLY: Projector = {
   // `core/chatFullCache.ts` здесь, на главном потоке. Патчим ту же карточку, а
   // не заводим рядом второе хранилище тем.
   [RT.chatThemeUpdate]: (e) => { applyChatTheme(getPeerId(e.peer), e.theme_id) },
+  // Флаг блокировки — то же исключение, что у темы: он живёт в `userFull.pFlags`
+  // (tweb `appProfileManager.onUpdatePeerBlocked`, `:1506-1532`), зеркало карточек —
+  // здесь. Событие объявляет владелец блокировки (`privacy.toggleBlock`).
+  peer_block: (e) => { applyPeerBlocked(e.peerId, e.blocked) },
   // [RT.editMessage] / [RT.geoLiveUpdate] здесь БОЛЬШЕ НЕТ: правку и координаты
   // гео-трансляции применяет владелец окна (`messages.cacheEdit` /
   // `messages.cacheGeoLive`) и объявляет их операцией `rt:message_op`. Строки

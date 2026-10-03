@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 49,
+      "version": 50,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -139,6 +139,10 @@
         {
           "key": "ArchivedChats",
           "value": "Archived Chats"
+        },
+        {
+          "key": "AreYouSureBlockContact2",
+          "value": "Are you sure you want to block **%1$s**?"
         },
         {
           "key": "AreYouSureClearDrafts",
@@ -291,6 +295,14 @@
         {
           "key": "AutoDeleteMessages.Disable",
           "value": "Disable"
+        },
+        {
+          "key": "AutoDeleteMessages.InfoChannel",
+          "value": "Automatically delete messages for everyone in this channel after a certain amount of time."
+        },
+        {
+          "key": "AutoDeleteMessages.InfoChat",
+          "value": "Automatically delete messages for everyone in this chat after a certain amount of time."
         },
         {
           "key": "AutoDeleteMessages.InfoDefault",
@@ -1072,6 +1084,10 @@
         {
           "key": "Chat.Menu.ClearSelection",
           "value": "Clear Selection"
+        },
+        {
+          "key": "Chat.Menu.Hint",
+          "value": "To **edit** or **reply**, close this menu.\nThen tap next to a message."
         },
         {
           "key": "Chat.Menu.SelectMessages",
@@ -4670,6 +4686,10 @@
           "value": "Recovery Email"
         },
         {
+          "key": "Reminders",
+          "value": "Reminders"
+        },
+        {
           "key": "Remove",
           "value": "Remove"
         },
@@ -6083,6 +6103,10 @@
           "value": "Bio"
         },
         {
+          "key": "UserBlocked",
+          "value": "User blocked"
+        },
+        {
           "key": "UserInfo.CustomPhotoHelp",
           "value": "Set a photo for this contact that only you will see, or suggest a new profile photo to them."
         },
@@ -6199,6 +6223,10 @@
           "value": "Send Media"
         },
         {
+          "key": "UserUnblocked",
+          "value": "User unblocked"
+        },
+        {
           "key": "Username",
           "value": "Username"
         },
@@ -6271,6 +6299,10 @@
         {
           "key": "VoiceChat.Status.You",
           "value": "This is you"
+        },
+        {
+          "key": "VoiceChat.Topbar.Join",
+          "value": "Join"
         },
         {
           "key": "VoipUnmute",
@@ -6374,7 +6406,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 49,
+      "version": 50,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -8941,6 +8973,10 @@
           "value": "Трансляция идёт"
         },
         {
+          "key": "VoiceChat.Topbar.Join",
+          "value": "Войти"
+        },
+        {
           "key": "VoiceChat.Status.Members",
           "forms": {
             "one_value": "%d участник",
@@ -9205,6 +9241,10 @@
         {
           "key": "ScheduledMessages",
           "value": "Запланированные сообщения"
+        },
+        {
+          "key": "Reminders",
+          "value": "Напоминания"
         },
         {
           "key": "MessageScheduleSend",
@@ -10347,6 +10387,14 @@
         {
           "key": "AutoDeleteMessages.InfoDefault",
           "value": "Автоматически удалять сообщения для всех в начатых вами чатах через заданное время."
+        },
+        {
+          "key": "AutoDeleteMessages.InfoChat",
+          "value": "Автоматически удалять сообщения для всех в этом чате через заданное время."
+        },
+        {
+          "key": "AutoDeleteMessages.InfoChannel",
+          "value": "Автоматически удалять сообщения для всех в этом канале через заданное время."
         },
         {
           "key": "UnsavedChanges",
@@ -11675,6 +11723,10 @@
           "value": "Снять выделение"
         },
         {
+          "key": "Chat.Menu.Hint",
+          "value": "Чтобы **изменить** сообщение или **ответить** на него, закройте это меню.\nЗатем нажмите рядом с сообщением."
+        },
+        {
           "key": "Chat.Send.SetReminder",
           "value": "Напомнить"
         },
@@ -11982,6 +12034,18 @@
         {
           "key": "Unblock",
           "value": "Разблокировать"
+        },
+        {
+          "key": "UserBlocked",
+          "value": "Пользователь заблокирован"
+        },
+        {
+          "key": "UserUnblocked",
+          "value": "Пользователь разблокирован"
+        },
+        {
+          "key": "AreYouSureBlockContact2",
+          "value": "Вы действительно хотите заблокировать **%1$s**?"
         },
         {
           "key": "UserRestrictions.Action",

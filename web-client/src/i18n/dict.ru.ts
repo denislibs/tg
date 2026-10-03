@@ -751,6 +751,7 @@ const ru = {
   'Rtmp.StreamPopup.KeyCopied': 'Ключ скопирован',
   'Rtmp.Topbar.NoViewers': 'Нет зрителей',
   'Livestream.IsLive': 'Трансляция идёт',
+  'VoiceChat.Topbar.Join': 'Войти',
   'VoiceChat.Status.Members': {
     one_value: '%d участник',
     few_value: '%d участника',
@@ -829,6 +830,7 @@ const ru = {
   'Chat.Send.ScheduledMessage': 'Запланировать сообщение',
   'Chat.Send.WithoutSound': 'Отправить без звука',
   ScheduledMessages: 'Запланированные сообщения',
+  Reminders: 'Напоминания',
   MessageScheduleSend: 'Отправить сейчас',
   // ── Предложка постов (Telegram suggested posts) ──
   'SuggestedPosts.Title': 'Предложенные посты',
@@ -1172,6 +1174,8 @@ const ru = {
     'Включите, чтобы все новые сообщения в Ваших чатах, созданных после изменения настройки, автоматически удалялись для всех участников спустя выбранное время. Автоудаление в ранее созданных чатах включается отдельно.',
   'AutoDeleteMessages.SetOtherTime': 'Выбрать другой срок',
   'AutoDeleteMessages.InfoDefault': 'Автоматически удалять сообщения для всех в начатых вами чатах через заданное время.',
+  'AutoDeleteMessages.InfoChat': 'Автоматически удалять сообщения для всех в этом чате через заданное время.',
+  'AutoDeleteMessages.InfoChannel': 'Автоматически удалять сообщения для всех в этом канале через заданное время.',
   UnsavedChanges: 'Несохранённые изменения',
   'UnsavedChangesDescription.Privacy': 'Вы изменили настройки конфиденциальности. Сохранить изменения?',
   // Разряды длительности (`components/wrappers/wrapDuration.ts`, задача 7 плана 2D)
@@ -1634,6 +1638,7 @@ const ru = {
   'Chat.Input.FrozenButton1': 'Ваш аккаунт заморожен',
   'Chat.Input.FrozenButton2': 'Нажмите, чтобы узнать подробности',
   'Chat.Menu.ClearSelection': 'Снять выделение',
+  'Chat.Menu.Hint': 'Чтобы **изменить** сообщение или **ответить** на него, закройте это меню.\nЗатем нажмите рядом с сообщением.',
   'Chat.Send.SetReminder': 'Напомнить',
   Close: 'Закрыть',
   'Common.Menu': 'Меню',
@@ -1717,6 +1722,9 @@ const ru = {
   StoryJustNow: 'только что',
   'Translate.SectionCaption': 'Показывать кнопку перевода в меню сообщения.',
   Unblock: 'Разблокировать',
+  UserBlocked: 'Пользователь заблокирован',
+  UserUnblocked: 'Пользователь разблокирован',
+  AreYouSureBlockContact2: 'Вы действительно хотите заблокировать **%1$s**?',
   'UserRestrictions.Action': 'Ограничить',
   'WebApp.CameraDenied': 'Доступ к камере запрещён',
   'WebApp.CloseConfirm': 'Закрыть мини-приложение?',

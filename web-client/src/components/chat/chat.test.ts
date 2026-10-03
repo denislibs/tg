@@ -30,6 +30,7 @@ const parts = vi.hoisted(() => ({
 vi.mock('./topbar', () => ({
   default: class {
     public container = document.createElement('div')
+    public constructUtils = vi.fn()
     public constructPeerHelpers = vi.fn()
     public construct = vi.fn()
     public finishPeerChange = vi.fn(async() => () => {})

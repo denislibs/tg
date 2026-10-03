@@ -8,7 +8,7 @@
 // бессмысленно: предмет задачи — что владелец и витрина НЕ расходятся.
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import rootScope from '@lib/rootScope'
-import { cachedPeerTheme, resetChatFullMirror, saveChatFull } from '../../core/chatFullCache'
+import { cachedPeerFull, cachedPeerTheme, resetChatFullMirror, saveChatFull } from '../../core/chatFullCache'
 import { RT } from '../../core/realtime/events'
 import { useChatsStore } from '../../stores/chatsStore'
 import { newDialogsManager } from '../../core/managers/dialogsManager'
@@ -164,5 +164,16 @@ describe('storeProjection — тема чата живёт в карточке, 
     rootScope.dispatchEventSingle(RT.chatThemeUpdate, { _: 'updateChatTheme', peer: { _: 'peerChannel', channel_id: 9 }, theme_id: 'sunset' })
 
     expect(cachedPeerTheme(-9)).toBe('sunset')
+  })
+
+  // Тот же приём у флага блокировки (меню ⋮ шапки читает его из `userFull.pFlags`):
+  // мутация «убрать строку peer_block из APPLY» оставила бы «Заблокировать» после блока.
+  it('peer_block патчит pFlags.blocked той же userFull', () => {
+    resetChatFullMirror()
+    saveChatFull(7, { _: 'userFull', id: 7 })
+
+    rootScope.dispatchEventSingle('peer_block', { peerId: 7, blocked: true })
+
+    expect(cachedPeerFull(7)).toMatchObject({ pFlags: { blocked: true } })
   })
 })

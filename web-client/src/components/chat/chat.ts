@@ -12,7 +12,7 @@
 //  - `onChangePeer` `:893-1012`: тип, флаги, `sharedMediaTab`;
 //  - `setPeer` `:1035-1156`, `setMessageId` `:1188`, `finishPeerChange` `:1198-1254`;
 //  - `getMessage` `:1256`, `_isLikeGroup` `:1308`, `canSend` `:1342`, `isOurMessage`/
-//    `isOutMessage` `:1375-1399`, `toggleChatIfMedium`/`pop`/`popIfMoreThanOne` `:1662-1690`.
+//    `isOutMessage` `:1375-1399`, автоудаление `:1603-1660`, `toggleChatIfMedium`/`pop`/`popIfMoreThanOne` `:1662-1690`.
 //
 // ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
 //  1. Композер — React-остров `components/chat/reactChatInput.ts` (`// ВРЕМЕННО до К-4`),
@@ -65,6 +65,9 @@ import { cachedPeerTheme, subscribeChatFullMirror, type PeerFull } from '@core/c
 import { applyChatTheme, clearChatTheme } from '@core/theme/themeController'
 import getAutoDownloadSettings, { type ChatAutoDownload } from '@core/chat/autoDownloadSettings'
 import { useFullPeer } from '@stores/fullPeers.solid'
+import { useChatsStore } from '@stores/chatsStore'
+import { SERVICE_USER_ID } from '@core/dialogToChat'
+import showAutoDeleteMessagesCustomTimePopup from '@components/sidebarLeft/tabs/autoDeleteMessages/customTimePopup/index.solid'
 import { chatThemeById, type ChatTheme } from '@/chatThemes'
 import { PRESET_MODE, resolvePreset } from '@/theme'
 import { getChatThemeBackground } from '@/wallpapers'
@@ -376,6 +379,7 @@ export default class Chat extends EventListenerBase<{
     // менеджер прав (`cantForwardDeleteMids`) — нет предмета, задача #73 (`selection.ts`)
     this.selection = new ChatSelection(this, this.bubbles, this.input, { messages: {} })
 
+    this.topbar.constructUtils()
     this.topbar.constructPeerHelpers()
 
     this.topbar.construct()
@@ -703,6 +707,50 @@ export default class Chat extends EventListenerBase<{
     }
 
     return Promise.resolve(!!cachedChat(this.peerId) && hasRightsPeer(this.peerId, action))
+  }
+
+  /**
+   * tweb `:1603-1627` — срок автоудаления: из строки диалога, иначе из полной карточки.
+   * Ответ синхронный (зеркала `chatsStore`/`chatFullCache`), форма `AckedResult` не нужна.
+   */
+  public getAutoDeletePeriod(): number {
+    const dialog = useChatsStore.getState().dialogs.find((dialog) => dialog.peerId === this.peerId)
+    if(dialog) return dialog.ttl_period ?? 0
+
+    return this.fullPeer()?.ttl_period ?? 0
+  }
+
+  /**
+   * tweb `:1629-1646`. `setAutoDeletePeriodFor` у нас — `privacy.setChatAutoDelete`;
+   * апдейта срока на проводе нет (`updatePeerHistoryTTL`), поэтому строка диалога
+   * перечитывается (`dialogs.refresh`), как делал прежний React-пункт.
+   */
+  public openAutoDeleteMessagesCustomTimePopup() {
+    showAutoDeleteMessagesCustomTimePopup({
+      descriptionLangKey: this.isBroadcast ? 'AutoDeleteMessages.InfoChannel' : 'AutoDeleteMessages.InfoChat',
+      period: this.getAutoDeletePeriod(),
+      onFinish: (period) => {
+        void this.setAutoDeletePeriod(period)
+      },
+    })
+  }
+
+  /** tweb `appPrivacyManager.setAutoDeletePeriodFor` — см. `openAutoDeleteMessagesCustomTimePopup`. */
+  public setAutoDeletePeriod(period: number) {
+    return this.managers.privacy.setChatAutoDelete(this.peerId, period).then(() => this.managers.dialogs.refresh())
+  }
+
+  /**
+   * tweb `:1648-1660`. Служебных пиров оригинала (`REPLIES_PEER_ID`, бот кодов, скрытый
+   * пир) у нас нет — остаются служебный аккаунт и «Избранное»; монофорума нет.
+   */
+  public canManageAutoDelete = () => {
+    const specialChats: PeerId[] = [SERVICE_USER_ID, rootScope.myId]
+    if(specialChats.includes(this.peerId)) return false
+
+    if(isUser(this.peerId)) return true
+
+    return hasRightsPeer(this.peerId, 'change_info')
   }
 
   /** tweb `:1375-1397` — `core/models.ts::isOurMessage` */
