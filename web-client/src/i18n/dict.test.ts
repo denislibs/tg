@@ -537,15 +537,20 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Шаг К-3 волны 7 (ядро шапки чата `chat/topbar.ts`): у ru +1 ключ tweb lang.ts:4172
 // `Chat.Title.Comments` (с формами числа) — заголовок треда комментариев
 // (`topbar.ts` `setTitleManual`, tweb :1596-1610). Итог: ru 1540, `plural` 49 → 50.
+// Пачка П-4 волны 7 («звонки», блок H `appImManager`): у ru +13 ключей tweb —
+// подтверждение «покинуть текущий звонок» `Call.Confirm.Discard.{Call,Live,Voice}.*`
+// (12: заголовок и три перехода на каждый вид звонка, `discardAnyCallConfirmation`
+// `:2276-2299`) и пункт меню эфира в шапке `Rtmp.Topbar.StartVideoChat` (`topbar.ts`
+// `btnGroupCallMenu`, :1041-1057). Итог: ru 1553.
 // Пачка П-4 волны 7, агент «ссылки» (`lib/internalLinkProcessor.ts`, попап папки
 // `popups/sharedFolderInvite.solid.tsx`, ориентиры колонок `helpers/dom/appLandmarks.ts`):
 // у ru +14 ключей tweb lang.ts (тосты ссылок `Link.NotSupported`, `LinkNotFound`,
 // `InviteExpired`, `RequestToJoinSent`, `Alert.BotAppDoesntExist`, `SharedFolder.Link.Expired`;
 // попап `SharedFolder.Link.{Description,Chats}`, `SelectAll`, `DeselectAll`, `FilterPersonal`;
 // `AccDescr.{SkipToConversation,ChatList,ChatInfo}`) и −4 своих ключа снесённого React-попапа
-// папки `Folder.Invite.*`. Итог: ru 1550.
+// папки `Folder.Invite.*`. Итог вместе со «звонками»: ru 1563.
 const COMPOSITION = {
-  ru: { keys: 1550, plural: 50 },
+  ru: { keys: 1563, plural: 50 },
   uk: { keys: 829, plural: 35 },
   es: { keys: 800, plural: 34 },
   de: { keys: 801, plural: 35 },
@@ -724,9 +729,10 @@ const COMPOSITION = {
 // Пачкой П-3 волны 7 — у ru +1 ключ tweb `Update` (разбор — там же).
 // Задачей 1-8 волны 7 — у ru +6 ключей пустого списка и контактов (разбор — там же).
 // Шагом К-3 волны 7 — у ru +1 ключ tweb `Chat.Title.Comments` (разбор — там же).
+// Пачкой П-4 волны 7 — у ru +13 ключей tweb звонков (разбор — у `COMPOSITION` выше).
 // Пачкой П-4 волны 7 (агент «ссылки») — у ru +14 ключей tweb и −4 `Folder.Invite.*` (разбор — там же).
 const FINGERPRINT = {
-  ru: 'c42c063c',
+  ru: '95dc9297',
   uk: 'a02f363c',
   es: '89e8ae98',
   de: '0fed7933',

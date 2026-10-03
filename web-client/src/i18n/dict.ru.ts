@@ -450,6 +450,20 @@ const ru = {
   'CallSettings.Camera': 'Устройство',
   Save: 'Сохранить',
   'Call.Input': 'Ввод',
+  // Задача П-4 «звонки» волны 7: подтверждение «покинуть текущий звонок»
+  // (tweb `appImManager.discardAnyCallConfirmation`, `:2276-2299`).
+  'Call.Confirm.Discard.Call.Header': 'Звонок уже идёт',
+  'Call.Confirm.Discard.Call.ToCall.Text': 'Завершить звонок с «%1$@» и начать видеочат в «%2$@»?',
+  'Call.Confirm.Discard.Call.ToLive.Text': 'Завершить звонок с «%1$@» и начать трансляцию в «%2$@»?',
+  'Call.Confirm.Discard.Call.ToVoice.Text': 'Завершить звонок с «%1$@» и начать видеочат в «%2$@»?',
+  'Call.Confirm.Discard.Live.Header': 'Трансляция уже идёт',
+  'Call.Confirm.Discard.Live.ToCall.Text': 'Покинуть трансляцию в «%1$@» и позвонить «%2$@»?',
+  'Call.Confirm.Discard.Live.ToLive.Text': 'Покинуть трансляцию в «%1$@» и начать новую в «%2$@»?',
+  'Call.Confirm.Discard.Live.ToVoice.Text': 'Покинуть трансляцию в «%1$@» и начать видеочат в «%2$@»?',
+  'Call.Confirm.Discard.Voice.Header': 'Видеочат уже идёт',
+  'Call.Confirm.Discard.Voice.ToCall.Text': 'Покинуть видеочат в «%1$@» и позвонить «%2$@»?',
+  'Call.Confirm.Discard.Voice.ToLive.Text': 'Покинуть видеочат в «%1$@» и начать трансляцию в «%2$@»?',
+  'Call.Confirm.Discard.Voice.ToVoice.Text': 'Покинуть видеочат в «%1$@» и начать новый в «%2$@»?',
   'CallSettings.InputDevice': 'Устройство ввода',
   'CallSettings.OutputSection': 'Динамики',
   'CallSettings.InputSection': 'Микрофон',
@@ -626,6 +640,7 @@ const ru = {
   DeleteMega: 'Удалить группу',
   'ChatList.Context.LeaveGroup': 'Покинуть группу',
   'Rtmp.Topbar.Title': 'Прямой эфир',
+  'Rtmp.Topbar.StartVideoChat': 'Начать видеочат',
   BoostChannel: 'Бустить канал',
   // ── Бусты каналов и розыгрыши ──
   BoostsLevel2: 'Уровень',
