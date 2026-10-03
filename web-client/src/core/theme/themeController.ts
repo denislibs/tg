@@ -320,6 +320,15 @@ export function getCurrentPreset(): ThemePresetName | null {
   return currentPreset
 }
 
+/**
+ * Порт tweb `themeController.isNight` (helpers/themeController.ts:489-491):
+ * применённая тема — тёмная (`NIGHT_THEME_NAMES`, у нас `DARK_PRESETS`).
+ * Потребитель — графики статистики (`sidebarRight/tabs/statistics.solid.tsx`).
+ */
+export function isNight(): boolean {
+  return currentPreset !== null && DARK_PRESETS.has(currentPreset)
+}
+
 let getThemeChoice: (() => ThemeChoice) | undefined
 let isListeningToSystemTheme = false
 

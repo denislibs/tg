@@ -601,8 +601,15 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `PeerInfo.SharedMedia` и счётчики вкладок `SavedDialogsTabCount`, `MediaFiles`,
 // `StarGiftsCount`, `Files`, `Links`, `MusicFiles`, `Voice` (`plural` 51 → 58). 
 // Вместе с П-5 и К-4 из main: ru 1608, `plural` 62.
+// Пачка П-1, вкладка статистики `AppStatisticsTab` (0б-9, порт tweb `statistics.tsx`):
+// у ru +38 ключей tweb lang.ts — заголовки графиков (`*ChartTitle`), строки обзора
+// (`ViewsPerPost`… `PostingMembers`, `PublicShares`/`PrivateShares`), `GroupStats.Title`,
+// `RecentPosts`, `LoadingStats{,Description}`, `ViewStatistics`, `ZoomOut`,
+// `Chart.Tooltip.All` и `Views` (`plural` 62 → 63); −8 наших ключей снесённой
+// `ChannelStats.tsx` (`Statistics.{Forwards,MediaPost,MemberGrowth,Posts,PostsByDay,
+// SubscriberGrowth,TopPosts,TotalViews}`). Итого ru 1638.
 const COMPOSITION = {
-  ru: { keys: 1666, plural: 62 },
+  ru: { keys: 1696, plural: 63 },
   uk: { keys: 838, plural: 35 },
   es: { keys: 809, plural: 34 },
   de: { keys: 810, plural: 35 },
@@ -795,8 +802,9 @@ const COMPOSITION = {
 // Шагом К-5 волны 7 (0б-1) — у ru +4 ключа tweb `editChat` и −18 наших ключей снесённых
 // экранов `group/*` (разбор — у `COMPOSITION` выше); вкладкой профиля — +10 ключей
 // tweb `sharedMedia.tsx` (разбор — там же).
+// Пачкой П-1 (статистика, 0б-9) — у ru +38 ключей tweb и −8 наших (разбор — там же).
 const FINGERPRINT = {
-  ru: '1f49c4d5',
+  ru: 'de317d55',
   uk: 'af81524a',
   es: '57ce09fe',
   de: '3224cfc5',

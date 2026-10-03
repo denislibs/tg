@@ -179,3 +179,24 @@ func TestChatRecord_ChannelDateIsJoinDate(t *testing.T) {
 		t.Errorf("снимок без зрителя: date = %d; want 0", got)
 	}
 }
+
+// can_view_stats — глазами зрителя: статистику видят создатель и админы канала
+// или группы. Снимок без зрителя (chat_update — один на всех) флага не несёт,
+// иначе права админа разошлись бы всем участникам.
+func TestChatRecord_CanViewStatsForAdminViewer(t *testing.T) {
+	cases := []struct {
+		name string
+		rec  ChatRecord
+		want bool
+	}{
+		{"создатель канала", ChatRecord{ID: 8, Type: ChatTypeChannel, ViewerID: 1, MyRole: RoleCreator}, true},
+		{"админ группы", ChatRecord{ID: 8, Type: ChatTypeGroup, ViewerID: 1, MyRole: RoleAdmin}, true},
+		{"подписчик", ChatRecord{ID: 8, Type: ChatTypeChannel, ViewerID: 1, MyRole: RoleSubscriber}, false},
+		{"снимок без зрителя", ChatRecord{ID: 8, Type: ChatTypeChannel, MyRole: RoleCreator}, false},
+	}
+	for _, tc := range cases {
+		if got := tc.rec.ToChannelFull().PFlags["can_view_stats"]; got != tc.want {
+			t.Errorf("%s: can_view_stats = %v; want %v", tc.name, got, tc.want)
+		}
+	}
+}
