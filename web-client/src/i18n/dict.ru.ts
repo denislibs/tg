@@ -479,6 +479,7 @@ const ru = {
   SavedMessages: 'Избранное',
   MyNotes: 'Мои заметки',
   'MyStories.Title': 'Мои истории',
+  MyStory: 'Моя история',
   Contacts: 'Контакты',
   MenuTelegramStars: 'Мои звёзды',
   'MultiAccount.More': 'Ещё',
@@ -662,6 +663,7 @@ const ru = {
   'ChatList.Context.LeaveChannel': 'Покинуть канал',
   
   OpenInNewTab: 'Открыть в новой вкладке',
+  OpenStory: 'ОТКРЫТЬ ИСТОРИЮ',
   Archive: 'Архивировать',
   'Profile.Info.User': 'Информация',
   'Profile.Info.Group': 'Информация о группе',

@@ -83,3 +83,49 @@ func TestMarkRead_ClearsMentions(t *testing.T) {
 		t.Fatalf("NextMention when none: want ErrNotFound, got %v", err)
 	}
 }
+
+// «@username» в тексте (без сущности — клиент шлёт его голым текстом) сервер
+// резолвит сам: упомянутый участник получает упоминание; отправитель, не
+// упомянутый участник и не-участник — нет. Прочтение снимает бейдж.
+func TestSend_UsernameMentionBumpsUnreadMentions(t *testing.T) {
+	in, s := newInteractor()
+	ctx := context.Background()
+	const alice, bob, carol, dave int64 = 1, 2, 3, 4
+	chatID, _ := in.CreatePrivateChat(ctx, alice, bob)
+	s.chatType[chatID] = "group"
+	s.members[chatID][carol] = &member{}
+	s.seedUsername(alice, "alice_ivanova")
+	s.seedUsername(bob, "bob_petrov")
+	s.seedUsername(carol, "carol_x")
+	s.seedUsername(dave, "dave_out") // не участник
+
+	m, err := in.Send(ctx, SendInput{
+		ChatID: chatID, SenderID: alice,
+		Text: "@Bob_Petrov тест, @bob_petrov ещё раз, @alice_ivanova и @dave_out; carol@carol_x.com",
+	})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	want := map[int64]int{alice: 0, bob: 1, carol: 0}
+	for uid, n := range want {
+		d, _ := in.ListDialogs(ctx, uid)
+		if d[0].UnreadMentionsCount != n {
+			t.Fatalf("user %d unread mentions = %d, want %d", uid, d[0].UnreadMentionsCount, n)
+		}
+	}
+	for _, r := range s.mentions {
+		if r.userID == dave {
+			t.Fatalf("не-участник получил упоминание: %+v", r)
+		}
+	}
+	if len(m.Entities) != 0 {
+		t.Fatalf("entities сообщения изменены: %v", m.Entities)
+	}
+
+	if err := in.MarkRead(ctx, chatID, bob, m.Seq); err != nil {
+		t.Fatalf("MarkRead: %v", err)
+	}
+	if d, _ := in.ListDialogs(ctx, bob); d[0].UnreadMentionsCount != 0 {
+		t.Fatalf("after read = %d, want 0", d[0].UnreadMentionsCount)
+	}
+}

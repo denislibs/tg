@@ -78,7 +78,8 @@
 //     до папок, `:1044-1057`) нет; `xd.preloadDialogs()` и `doNotRenderChatList`
 //     (`:1340-1351`) — тоже: зеркало диалогов поднято до первого кадра
 //     (`client/boot.ts::applyDialogsMirror`), первую страницу список рисует сам.
-//     Сторис (`renderStories`) — пачка П-3 (Б-4); `fillConversations` — бэклог П-2.
+//     `fillConversations` — бэклог П-2. Ряд историй (`renderStories`, `:1366`) —
+//     после `addFilters`, как у tweb.
 //     Остальной `onStateLoaded` — первичные загрузки и realtime (бывший
 //     `core/hooks/useAppBootstrap.ts`), метод `onStateLoaded`.
 //     `suggestionContainer` создаётся в `startDialogs()` (у tweb — в конце
@@ -171,6 +172,8 @@ import DialogsContextMenu from '@components/dialogsContextMenu'
 import { getProxiedManagers, type Managers } from '@/client/bootstrap'
 import type { ScrollableContextValue } from '@components/scrollable2.solid'
 import { renderPendingSuggestion } from '@components/sidebarLeft/pendingSuggestion.solid'
+import { render } from 'solid-js/web'
+import StoriesList from '@components/stories/list.solid'
 import appSidebarLeft from '@components/sidebarLeft'
 import appSidebarRight from '@components/sidebarRight'
 import appImManager from '@lib/appImManager'
@@ -892,6 +895,10 @@ export class AppDialogsManager {
   private foldersOverlay!: HTMLElement
   private suggestionContainer: HTMLElement | undefined
   private disposeSuggestion: (() => void) | undefined
+  /** tweb `:834-837` — ряд историй (задача 2-6) */
+  private storiesListContainer: HTMLDivElement | undefined
+  private disposeStories: (() => void) | undefined
+  public resizeStoriesList: (() => void) | undefined
 
   private listenerSetter = new ListenerSetter()
   private middlewareHelper = getMiddleware()
@@ -984,6 +991,10 @@ export class AppDialogsManager {
     })
     this.resizeObserver.observe(this.foldersOverlay)
 
+    // tweb `:876-877`
+    const storiesListContainer = this.storiesListContainer = document.createElement('div')
+    storiesListContainer.classList.add('stories-list')
+
     if(IS_TOUCH_SUPPORTED) {
       this.swipeHandler = handleTabSwipe({
         element: container,
@@ -1050,6 +1061,8 @@ export class AppDialogsManager {
     // срез `onStateLoaded` (`:1014-1090`), расхождение 8
     this.addFilters()
 
+    this.renderStories() // `:1366`
+
     this.filterId = -1
     untrack(folders.onClick)?.(0, false)
 
@@ -1087,6 +1100,13 @@ export class AppDialogsManager {
     this.disposeTabs = undefined
     this.disposeSuggestion?.()
     this.disposeSuggestion = undefined
+    // `:1326-1329`
+    this.disposeStories?.()
+    this.disposeStories =
+      this.resizeStoriesList =
+      undefined
+    this.storiesListContainer?.remove()
+    this.storiesListContainer = undefined
     this.listenerSetter.removeAll()
     this.swipeHandler?.removeListeners()
     this.swipeHandler = undefined
@@ -1169,6 +1189,31 @@ export class AppDialogsManager {
     watchPushConditions()
     // Ассеты реакций — фоном, через 7.5 с после входа (tweb appReactionsManager.ts:88-115)
     setTimeout(() => { void preloadReactionAssets(managers) }, REACTIONS_PRELOAD_DELAY)
+  }
+
+  /** tweb `:1095-1112`; `bottomPart` у нас — `this.host` (`.connection-status-bottom`). */
+  private _renderStories() {
+    this.chatsContainer.parentElement!.parentElement!.firstElementChild!.after(this.storiesListContainer!)
+    return StoriesList({
+      foldInto: document.querySelector('.item-main .input-search input') as HTMLElement,
+      setScrolledOn: this.chatsContainer,
+      getScrollable: () => this.xd!.scrollable.container,
+      listenWheelOn: this.host!,
+      offsetX: -1,
+      resizeCallback: (callback) => {
+        this.resizeStoriesList = callback
+      },
+      onExpand: () => {
+        const container = this.xd!.scrollable.container
+        container.classList.add('scrolled-start')
+        void fastSmoothScrollToStart(container, 'y')
+      },
+    })
+  }
+
+  /** tweb `:1114-1116` */
+  private renderStories() {
+    this.disposeStories = render(() => this._renderStories(), this.storiesListContainer!)
   }
 
   private onRef(scrollableContext: ScrollableContextValue | undefined) {

@@ -87,6 +87,8 @@ export default function installColumnResize(opts: InstallColumnResizeOptions): (
       if (isShift) setUserPreferredLeft(rawWidth)
     }
 
+    // tweb :89 — пересчитать ряд историй под новую ширину колонки
+    rootScope.dispatchEventSingle('resizing_left_sidebar')
     onSwipeTick?.()
   }
 

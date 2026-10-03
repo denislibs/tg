@@ -220,6 +220,7 @@ const fr = {
   'MultiAccount.AddAccount': 'Ajouter un compte',
   SavedMessages: 'Messages enregistrés',
   'MyStories.Title': 'Mes stories',
+  MyStory: 'Ma story',
   Contacts: 'Contacts',
   'MultiAccount.More': 'Plus',
   NewChannel: 'Nouveau canal',
@@ -287,6 +288,7 @@ const fr = {
   'ChatList.Context.LeaveChannel': 'Quitter le canal',
   
   OpenInNewTab: 'Ouvrir dans un nouvel onglet',
+  OpenStory: 'OUVRIR LA STORY',
   Archive: 'Archiver',
   'Profile.Info.User': 'Infos',
   'Profile.Info.Group': 'Infos du groupe',

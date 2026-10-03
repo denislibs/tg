@@ -90,7 +90,7 @@ func TestMessagesWire_MatchesFramePayload(t *testing.T) {
 	// Кадр: ключ пира и pFlags.out приклеиваются на выходе, глазами ТОГО ЖЕ
 	// получателя (b). Оба пер-зрительные, поэтому и там и там их ставит не
 	// общее тело, а развёртка по получателю.
-	payload := withPeer(in.messageUpdatePayload(ctx, msg), domain.PeerID(a), msg.SenderID == b)
+	payload := withPeer(in.messageUpdatePayload(ctx, msg), domain.PeerID(a), viewerFlags{out: msg.SenderID == b})
 	fromFrame, _ := json.Marshal(payload["message"])
 
 	if !jsonEqual(t, fromShowcase, fromFrame) {

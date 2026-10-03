@@ -1388,3 +1388,57 @@ describe('dialogsManager.applyDeletedMessages: последнее сообщен
     expect(get).toHaveBeenCalledWith('/peer_dialogs', { peers: `${PEER},${OTHER}` })
   })
 })
+
+// Бейдж «@» живым кадром: упомянутому сервер ставит pFlags.mentioned +
+// media_unread, клиент бампит unread_mentions_count сам (tweb
+// appMessagesManager.ts:10510-10512); прочтение содержимого упоминания
+// снимает его (tweb onUpdateReadMessagesContents :11009-11016).
+describe('dialogsManager: непрочитанные упоминания', () => {
+  const setup = async () => {
+    const ops: DialogOp[] = []
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: (o) => ops.push(...o),
+      loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
+      loadState: async () => ({ pinnedOrders: {} }),
+      getMeId: () => 7,
+    })
+    await mgr.fillMirror()
+    ops.length = 0
+    const patched = () => (ops.at(-1) as Extract<DialogOp, { op: 'patch' }>).fields
+    return { mgr, ops, patched }
+  }
+  const raw = (id: number, fromId: number, pFlags: Record<string, true>) =>
+    ({ ...makeRawMessage({ id, peerId: 1, fromId, text: '@me', createdAt: `2026-08-01T00:00:0${id}Z` }), pFlags })
+
+  it('входящее непрочитанное упоминание: +1 к unread_mentions_count', async () => {
+    const { mgr, patched } = await setup()
+    mgr.applyNewMessage({ _: 'updateNewMessage', message: raw(2, 9, { mentioned: true, media_unread: true }) })
+    expect(patched().unread_mentions_count).toBe(1)
+  })
+
+  it('без упоминания, прочитанное упоминание и своё эхо — без бампа', async () => {
+    const { mgr, patched } = await setup()
+    mgr.applyNewMessage({ _: 'updateNewMessage', message: raw(2, 9, {}) })
+    expect(patched().unread_mentions_count).toBe(0)
+    mgr.applyNewMessage({ _: 'updateNewMessage', message: raw(3, 9, { mentioned: true }) })
+    expect(patched().unread_mentions_count).toBe(0)
+    mgr.applyNewMessage({ _: 'updateNewMessage', message: raw(4, 7, { mentioned: true, media_unread: true, out: true }) })
+    expect(patched().unread_mentions_count).toBe(0)
+  })
+
+  it('applyMentionsRead снимает прочитанные упоминания, не уходя ниже нуля', async () => {
+    const { mgr, ops, patched } = await setup()
+    mgr.applyNewMessage({ _: 'updateNewMessage', message: raw(2, 9, { mentioned: true, media_unread: true }) })
+    mgr.applyNewMessage({ _: 'updateNewMessage', message: raw(3, 9, { mentioned: true, media_unread: true }) })
+    expect(patched().unread_mentions_count).toBe(2)
+    mgr.applyMentionsRead(1, 1)
+    expect(patched().unread_mentions_count).toBe(1)
+    mgr.applyMentionsRead(1, 5)
+    expect(patched().unread_mentions_count).toBe(0)
+    ops.length = 0
+    mgr.applyMentionsRead(1, 1) // уже ноль — операции нет
+    mgr.applyMentionsRead(99, 1) // неизвестный чат — no-op
+    expect(ops).toHaveLength(0)
+  })
+})

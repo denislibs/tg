@@ -1,4 +1,5 @@
-// Порт tweb `src/hooks/useCollapsable.ts` — сворачивание ряда историй по колесу.
+// Порт tweb `src/hooks/useCollapsable.ts` — React-двойник для правой панели
+// (`UserInfoPanel`); ряд историй сидит на Solid-порте `helpers/solid/useCollapsable.ts`.
 //
 // Состояние ДВОИЧНОЕ: в tweb `onMove` начинается с `if(isWheel || true)`, то есть
 // дробная ветка (плавное протаскивание по 1/600 дельты) намеренно закорочена и
