@@ -21,7 +21,8 @@ import AppSharedMediaTab from './sharedMediaTab'
 
 const profiles = vi.hoisted(() => ({ mounted: 0, disposed: 0, last: undefined as undefined | { peerId: PeerId, threadId?: number } }))
 vi.mock('@components/peerProfile.solid', () => ({
-  default: (props: PeerProfileProps) => {
+  // как настоящий корень (`PeerProfileContext.Provider`) — аксессор, а не узел
+  default: (props: PeerProfileProps) => () => {
     ++profiles.mounted
     profiles.last = { peerId: props.peerId, threadId: props.threadId }
     onCleanup(() => ++profiles.disposed)

@@ -46,7 +46,7 @@
  *     та же, что и у tweb, — новая (`chat.ts:1003`), но второй корень в одной
  *     прокрутке не нужен ни при каком вызове.
  */
-import { createEffect, createRoot, onCleanup } from 'solid-js'
+import { children, createEffect, createRoot, onCleanup } from 'solid-js'
 import AppSearchSuper, { type SearchSuperMediaTab, type SearchSuperMediaType } from '@components/appSearchSuper'
 import { getHistoryStorage, subscribeSharedMediaLiveUpdates } from '@components/sharedMediaHistories'
 import TransitionSlider from '@components/transition'
@@ -246,7 +246,9 @@ const SharedMedia = () => {
         avatars.cleanup()
       })
 
-      tab.scrollable.append((
+      // корень `PeerProfile` — `Context.Provider`, он отдаёт аксессор, а не узел:
+      // узлы разрешает `children` (у tweb — `renderPeerProfile`, `peerProfile.tsx:1535-1544`)
+      const profile = children(() => (
         <PeerProfile
           peerId={tab.peerId}
           threadId={tab.threadId}
@@ -257,7 +259,8 @@ const SharedMedia = () => {
           avatarsContainer={avatars.container}
           avatarsInfo={avatars.info}
         />
-      ) as HTMLElement)
+      ))
+      tab.scrollable.append(...profile.toArray().filter((node): node is Node => node instanceof Node))
     })
   }
 
