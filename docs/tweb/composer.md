@@ -2078,7 +2078,7 @@ body.is-dragging {
 | — | `button…bubbles-go-down` / `bubbles-go-mention` / `bubbles-go-reaction` | у нас живут вне композера |
 | — | `div.autocomplete-helper…bot-commands` | **у нас нет** хелпера команд бота |
 | — | `div.autocomplete-helper…commands-helper` | **у нас нет** автокомплита `/команд` |
-| — | `div.reply-keyboard` | у нас — `s.replyKeyboardBtn` в `Chat.tsx:1245`, вне композера |
+| — | `div.reply-keyboard` | **портировано** (Б-36): `chat/replyKeyboard.solid.tsx` (`ReplyKeyboard extends DropdownHover`), разметка — `bubbleParts/replyMarkupLayout.solid.tsx`, кнопки — `wrappers/keyboardButton.ts`, стили — `styles/tweb/_replyKeyboard.scss`; источник — свёртка `mergeReplyKeyboard` по зеркалу окна (`core/markup/replyMarkup.ts`) вместо `historyStorage.replyMarkup`. Врезка в `input.ts` (`constructReplyMarkup`) — у ведущего П-6 |
 | — | `input[type=file][style="display:none"]` | у нас файловый инпут в `AttachMenu`/родителе |
 | — | `span.btn-send-stars-badge.stars-badge-base` | у нас платность показана плашкой `.paidBar` |
 | — | `div.reply-in-topic-overlay` | у нас нет |
@@ -2120,7 +2120,7 @@ body.is-dragging {
 | `canvas.voice-recording-waveform` | волна |
 | `div.autocomplete-helper…bot-commands` | список команд бота |
 | `div.autocomplete-helper…commands-helper` | автокомплит `/команд` |
-| `div.reply-keyboard` внутри `.rows-wrapper` | клавиатура бота (у нас снаружи) |
+| `div.reply-keyboard` внутри `.rows-wrapper` | клавиатура бота (класс портирован, Б-36; врезка в `input.ts` — П-6) |
 | `input[type=file][multiple][style="display:none"]` внутри `.new-message-wrapper` | скрытый файловый инпут |
 | `span.btn-send-stars-badge.stars-badge-base` | бейдж стоимости сообщения |
 | `div.drop` / `div.drops-container` | визуальная drop-зона с пунктирной обводкой |
@@ -2296,7 +2296,9 @@ React будет пытаться синхронизировать его сод
 - конкретные langKey для текстов drop-зоны (`appImManager.ts:2358, 2373, 2386`) — **не выписаны**;
 - SCSS для `.mentions-helper` и `.commands-helper` — **не найдено** (стилизуются только базой
   `_autocompletePeerHelper.scss`);
-- DOM-дерево `.reply-keyboard` (`input.ts:912-921`) — **не разбиралось** в этой разведке;
+- DOM-дерево `.reply-keyboard`: `div.reply-keyboard` > `div.scrollable.scrollable-y` > `div.reply-markup` >
+  `div.reply-markup-row.reply-keyboard-row` > `button.reply-markup-button.reply-keyboard-button.btn`
+  (`replyKeyboard.tsx:117-145`, `replyMarkupLayout.tsx`); порт — Б-36;
 - `.stars-badge-base` (внутреннее дерево и стили) — **не разбиралось**;
 - живой DOM состояний edit / forward / запись / выделение / плашка-замена — в дампе снят
   **только покой + reply**; остальное восстановлено по исходникам. Если нужна 100% уверенность

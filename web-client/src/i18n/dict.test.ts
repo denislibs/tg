@@ -570,8 +570,11 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Баг-фиксы после П-5: +8 ключей tweb превью лога звонка (`ChatList.Service.{Call,VideoCall}.*`,
 // tweb lib/langPack.ts:51-58) и `ForwardedFrom` шапки пересылки вместо нашего мёртвого
 // `Chat.ForwardedFrom` (был только у ru) — ru +8, у остальных +9.
+// Пачка П-6 волны 7, Б-36 (клавиатура бота, `chat/replyKeyboard.solid.tsx`): у ru +2 ключа
+// tweb lang.ts — `General.Keyboard` (тумблер клавиатуры) и `Chat.BotCommands` (кнопка
+// команд бота). Итог: ru 1622.
 const COMPOSITION = {
-  ru: { keys: 1620, plural: 55 },
+  ru: { keys: 1622, plural: 55 },
   uk: { keys: 838, plural: 35 },
   es: { keys: 809, plural: 34 },
   de: { keys: 810, plural: 35 },
@@ -759,7 +762,7 @@ const COMPOSITION = {
 // Шагом К-4 волны 7 (строка ввода) — у ru +14 ключей `chat/input.ts` (разбор — там же).
 // Баг-фиксами после П-5 — превью звонка и `ForwardedFrom` (разбор — там же).
 const FINGERPRINT = {
-  ru: '3de96527',
+  ru: '154b3b3f',
   uk: 'af81524a',
   es: '57ce09fe',
   de: '3224cfc5',
