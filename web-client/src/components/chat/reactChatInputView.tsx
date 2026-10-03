@@ -54,6 +54,7 @@ import LocationPicker from '@components/LocationPicker'
 import { ContactPicker } from '@components/messages/ChatDialogs'
 import SendGiftPopup from '@components/stars/SendGiftPopup'
 import SuggestPostPopup from '@components/SuggestPostPopup'
+import { getCurrentNewMediaPopup, setCurrentNewMediaPopup, type WillAttachType } from '@components/popups/newMedia'
 import type ReactChatInput from './reactChatInput'
 
 export type ReactChatInputViewProps = {
@@ -297,6 +298,11 @@ export default function ReactChatInputView({ input, peerId, threadId }: ReactCha
     setForward(null)
   })
   const canSendPlainNow = useEvent(() => composerUsable && !secretLocked)
+  // Попап медиа из вставки и сброса файлов (блок K `appImManager` →
+  // `popups/newMedia.ts`): «как файл» — `willAttachType === 'document'`.
+  const onShowNewMediaPopup = useEvent((files: File[], willAttachType: WillAttachType) => {
+    setPendingMedia({ files, asFile: willAttachType === 'document' })
+  })
   useLayoutEffect(() => {
     const handle = {
       canSendPlain: canSendPlainNow,
@@ -304,12 +310,32 @@ export default function ReactChatInputView({ input, peerId, threadId }: ReactCha
       initMessageEditing: onEditMid,
       sendDocument: onSendDocument,
       clearHelper: onClearHelper,
+      showNewMediaPopup: onShowNewMediaPopup,
     }
     input.handle = handle
+    const pending = input.pendingNewMediaPopup
+    if (pending) {
+      input.pendingNewMediaPopup = undefined
+      handle.showNewMediaPopup(...pending)
+    }
     return () => {
       if (input.handle === handle) input.handle = undefined
     }
-  }, [input, canSendPlainNow, onReplyTo, onEditMid, onSendDocument, onClearHelper])
+  }, [input, canSendPlainNow, onReplyTo, onEditMid, onSendDocument, onClearHelper, onShowNewMediaPopup])
+
+  // Открытый попап медиа — `getCurrentNewMediaPopup()` (tweb `newMedia.tsx:156`):
+  // вставка файлов дописывает их в выборку (`addFiles`).
+  const mediaPopupOpen = !!pendingMedia
+  useEffect(() => {
+    if (!mediaPopupOpen) return
+    const popup = {
+      addFiles: (files: File[]) => setPendingMedia((pm) => (pm ? { ...pm, files: [...pm.files, ...files] } : pm)),
+    }
+    setCurrentNewMediaPopup(popup)
+    return () => {
+      if (getCurrentNewMediaPopup() === popup) setCurrentNewMediaPopup(undefined)
+    }
+  }, [mediaPopupOpen, setPendingMedia])
 
   const onComposerCancelReply = useEvent(() => setReply(null))
   const onComposerCancelEdit = useEvent(() => setEditing(null))

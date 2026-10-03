@@ -14,6 +14,8 @@
 //  I    — `setCurrentBackground`/`setBackground`/`applyCurrentTheme` `:2607-2713`,
 //         `setSettings` `:2715-2762`;
 //  C    — `construct` (`:324-1018`) в объёме предметов, которые у нас есть.
+//  K    — `init` `:2807`, `attachDragAndDropListeners` `:2815-3035`, `canDrag` `:3037`,
+//         `onDocumentPaste` `:3052-3125` (П-4, Б-24); зона — `components/chat/dragAndDrop.ts`.
 // Статус набора (`getTypingElement`/`getPeerTyping`, блок L) — функции модуля ниже
 // класса, как было до К-2 (их зовёт строка чатлиста); в класс их переносит П-4.
 //
@@ -33,7 +35,7 @@
 //     `peer_typings` (эмодзи-интеракций нет), `peer_title_edit` (события нет),
 //     `message_error` слоумода (П-6), `ephemeral_*`/`service_notification`/…
 //     (Б-16), `singleInstance`/t.me (Б-17), хоткеи/копирование/autologin/цвета
-//     пиров/шаринг/drag&drop (Б-9, Б-24, П-4), `savedReactionTags`.
+//     пиров/шаринг (Б-9, П-4), `savedReactionTags`.
 //  4. `useHeavyAnimationCheck` (`:436-442`) не нужен здесь: `animationIntersector`
 //     подписан на тяжёлую анимацию сам (`components/animationIntersector.ts:177`).
 //  5. `appChatBackground.attach` и первый `setBackground` делает `client/boot.ts`
@@ -63,6 +65,22 @@
 //     модуль класса колонки тянет за собой поиск и регистрирует custom elements при
 //     импорте, а `appImManager` импортируют и лёгкие подписчики (`uiNotifications`,
 //     `soundSubscriber`). Узел тот же (`sidebarLeft/index.ts`, `super({sidebarEl})`).
+// K-1. `init` (`:2807-2813`) — без `MarkupTooltip.handleSelection` и
+//     `showDatePickerPopup`: тултип разметки — бэклог Б-33.
+// K-2. Права по видам вложений (`canSendNewMedia`, `send_photos`/`send_videos`/
+//     `send_docs`) не сужают зоны: гранулярных прав у нас нет (`core/peers/rights.ts`),
+//     а с `onlyVisible: true` оригинал и сам отвечает «можно» на все. Отладочный лог
+//     (`this.log.bindPrefix('dragAndDrop')`, `debug = false`) снят.
+// K-3. Нет предметов у `ChatInput`: правка с заменой медиа (`editMessage`,
+//     `canUploadAsWhenEditing`, Б-38), эфемерный композер (`isEphemeralComposerMode`,
+//     `getEphemeralSendingSnapshot`, тост `Ephemeral.SingleAttachment`), тултип
+//     медленного режима (`showSlowModeTooltipIfNeeded`, Б-37), монофорум (`canPaste`) —
+//     бэклог Б-82. `.mov` считается медиа без `isConvertibleMov` (конвертера в mp4
+//     у нас нет: файл уходит видео как есть).
+// K-4. Попап медиа — шов `components/popups/newMedia.ts` (до К-4 его рисует остров
+//     композера). Зон сброса внутри открытого попапа (`mediaDropsContainer`,
+//     `appendDrops`, `Preview.Dragging.AddItems`) нет — бэклог Б-83; вставка в открытый
+//     попап дописывает файлы (`addFiles`).
 import PeerTitle, { type PeerTitleManagers } from '@components/chat/peerTitle'
 import { generateMessageId } from '@core/history/messageId'
 import type { Middleware } from '@helpers/middleware'
@@ -112,6 +130,18 @@ import { toast, toastNew } from '@components/toast'
 import rootScope from '@lib/rootScope'
 import { useSettingsStore } from '@/settings'
 import { resolvePreset } from '@/theme'
+// блок K — drag&drop и вставка файлов
+import ChatDragAndDrop from '@components/chat/dragAndDrop'
+import showNewMediaPopup, { getCurrentNewMediaPopup, type WillAttachType } from '@components/popups/newMedia'
+import { bindActiveWindowListener, getOverlayRoot } from '@helpers/appWindow'
+import overlayCounter from '@helpers/overlayCounter'
+import cancelEvent from '@helpers/dom/cancelEvent'
+import findUpClassName from '@helpers/dom/findUpClassName'
+import partition from '@helpers/array/partition'
+import getFileMimeType from '@helpers/files/getFileMimeType'
+import getFilesFromEvent from '@helpers/files/getFilesFromEvent'
+import { setTransition } from '@core/dom/setTransition'
+import MEDIA_MIME_TYPES_SUPPORTED from '@environment/mediaMimeTypesSupport'
 
 // ═══ СТАТУС НАБОРА (блок L, `:3454-3675`) ═══════════════════════════════════
 //
@@ -471,6 +501,7 @@ export class AppImManager extends EventListenerBase<{
 
     this.checkForLoginToken()
     this.onHashChange(true)
+    this.init()
   }
 
   // ── G. Хэш и открытие пиров ─────────────────────────────────────────────
@@ -851,6 +882,225 @@ export class AppImManager extends EventListenerBase<{
 
     tab.classList.add('active')
     this.prevTab = tab
+  }
+
+  // ── K. Drag&drop и вставка файлов (`:2807-3125`) ───────────────────────
+
+  /** tweb `:2807-2813` — расхождение K-1 шапки */
+  private init() {
+    // Follow the active app window so paste-to-send keeps working in a Document PiP window.
+    bindActiveWindowListener((w) => w.document, 'paste', this.onDocumentPaste, true)
+    this.attachDragAndDropListeners()
+  }
+
+  /** tweb `:2815-3035` — расхождения K-2…K-4 шапки */
+  private attachDragAndDropListeners() {
+    const drops: ChatDragAndDrop[] = []
+    let mounted = false, lastDialogElement: HTMLElement | undefined
+
+    function clearLastDialogElement() {
+      if(!lastDialogElement) {
+        return
+      }
+
+      lastDialogElement.classList.remove('is-dragover')
+      lastDialogElement = undefined
+    }
+
+    const toggle = async(e: DragEvent, mount: boolean) => {
+      if(mount === mounted) {
+        return
+      }
+
+      const _types = e.dataTransfer!.types
+      const isFiles = _types.indexOf('Files') >= 0
+
+      const newMediaPopup = getCurrentNewMediaPopup()
+      const types = await getFilesFromEvent(e, true)
+      if(mount) {
+        // * skip dragging text case; зоны внутри открытого попапа — Б-83
+        if(!isFiles || !(await this.canDrag()) || newMediaPopup) {
+          mount = false
+        }
+
+        if(mount === mounted) {
+          return
+        }
+      }
+
+      if(mount && !drops.length) {
+        const force = isFiles && !types.length // * can't get file items not from 'drop' on Safari
+
+        // * a .mov counts as media — it gets converted to mp4 in the send popup
+        const [foundMedia, foundDocuments] = partition(types, (t) => MEDIA_MIME_TYPES_SUPPORTED.has(t) || t === 'video/quicktime')
+        foundDocuments.push(...foundMedia)
+
+        if(foundDocuments.length || force) {
+          drops.push(new ChatDragAndDrop(dropsContainer, {
+            icon: 'dragfiles',
+            header: 'Chat.DropTitle',
+            subtitle: 'Chat.DropAsFilesDesc',
+            onDrop: (e: DragEvent) => {
+              void toggle(e, false)
+              void this.onDocumentPaste(e, 'document')
+            },
+          }))
+        }
+
+        if(foundMedia.length || force) {
+          drops.push(new ChatDragAndDrop(dropsContainer, {
+            icon: 'dragmedia',
+            header: 'Chat.DropTitle',
+            subtitle: 'Chat.DropQuickDesc',
+            onDrop: (e: DragEvent) => {
+              void toggle(e, false)
+              void this.onDocumentPaste(e, 'media')
+            },
+          }))
+        }
+
+        this.chat.container.append(dropsContainer)
+      }
+
+      setTransition({
+        element: dropsContainer,
+        className: 'is-visible',
+        forwards: mount,
+        duration: 200,
+        onTransitionEnd: () => {
+          if(!mount) {
+            drops.forEach((drop) => {
+              drop.destroy()
+            })
+
+            drops.length = 0
+          }
+        },
+      })
+
+      if(mount) {
+        drops.forEach((drop) => {
+          drop.setPath()
+        })
+      } else {
+        counter = 0
+        clearTimeout(dragTimeout)
+        clearLastDialogElement()
+      }
+
+      getOverlayRoot().classList.toggle('is-dragging', mount)
+      mounted = mount
+    }
+
+    let counter = 0
+    let dragTimeout: number | undefined
+    // Drag-and-drop listeners follow the active app window so dropping a file onto the popped-out
+    // Document PiP client still sends it (the drag events fire on the PiP body, not the tab's).
+    bindActiveWindowListener((w) => w.document.body, 'dragenter', () => {
+      ++counter
+    })
+
+    bindActiveWindowListener((w) => w.document.body, 'dragover', (e) => {
+      void toggle(e, true)
+      cancelEvent(e)
+
+      // 'dragover' keeps firing (at least every ~350ms) while a drag is held over the
+      // page, and stops the instant the drag leaves the window or is released outside it.
+      // For an external file drag there is no in-document source, so neither 'drop' nor
+      // 'dragend' fires in that case — without this watchdog the overlay (and the
+      // body.is-dragging pointer-events lock) would stay stuck over the chat. Re-arm on
+      // every 'dragover' so a lapse force-hides it; a still-active drag re-shows it at once.
+      clearTimeout(dragTimeout)
+      dragTimeout = window.setTimeout(() => {
+        counter = 0
+        void toggle(e, false)
+      }, 500)
+
+      const target = e.target as HTMLElement
+      const dialogElement = findUpClassName(target, 'chatlist-chat')
+      if(dialogElement && !dialogElement.dataset.communityId) {
+        if(lastDialogElement !== dialogElement) {
+          dialogElement.classList.add('is-dragover')
+          lastDialogElement = dialogElement
+        }
+      } else {
+        clearLastDialogElement()
+      }
+    })
+
+    bindActiveWindowListener((w) => w.document.body, 'dragleave', (e) => {
+      if(--counter === 0) {
+        void toggle(e, false)
+      }
+
+      clearLastDialogElement()
+    })
+
+    bindActiveWindowListener((w) => w.document.body, 'drop', async(e) => {
+      if(lastDialogElement) {
+        cancelEvent(e)
+        const peerId = +lastDialogElement.dataset.peerId!
+        const files = await getFilesFromEvent(e)
+        void this.setPeer({
+          peerId,
+        }).then(() => {
+          void this.onDocumentPaste(e, undefined, files)
+          clearLastDialogElement()
+        })
+      }
+
+      void toggle(e, false)
+    })
+
+    const dropsContainer = document.createElement('div')
+    dropsContainer.classList.add('drops-container')
+  }
+
+  /** tweb `:3037-3050` — расхождение K-3 шапки */
+  private async canDrag() {
+    const chat = this.chat
+    const peerId = chat?.peerId
+    return !(!peerId || overlayCounter.isOverlayActive || !(await chat.canSend('send_media')))
+  }
+
+  /** tweb `:3052-3125` — расхождение K-3 шапки */
+  private onDocumentPaste = async(
+    e: ClipboardEvent | DragEvent,
+    attachType?: WillAttachType,
+    files?: File[],
+  ) => {
+    const newMediaPopup = getCurrentNewMediaPopup()
+
+    if('dataTransfer' in e && e.dataTransfer) { // cross-realm-safe `instanceof DragEvent` (Document PiP window)
+      const _types = e.dataTransfer.types
+      const isFiles = _types.indexOf('Files') >= 0
+      if(isFiles) {
+        cancelEvent(e)
+      }
+    }
+
+    files ??= await getFilesFromEvent(e)
+    if(!(await this.canDrag()) && !newMediaPopup) {
+      return
+    }
+
+    if(!files.length) {
+      return
+    }
+
+    if(newMediaPopup) {
+      newMediaPopup.addFiles(files)
+      return
+    }
+
+    const chatInput = this.chat.input
+    const mimeType = getFileMimeType(files[0])
+    chatInput.willAttachType = attachType || ((MEDIA_MIME_TYPES_SUPPORTED.has(mimeType) || mimeType === 'video/quicktime') ? 'media' : 'document')
+    showNewMediaPopup(
+      this.chat,
+      files,
+      chatInput.willAttachType,
+    )
   }
 
   /** tweb `:3137-3197` */
