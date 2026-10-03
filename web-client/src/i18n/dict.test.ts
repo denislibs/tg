@@ -602,7 +602,7 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `StarGiftsCount`, `Files`, `Links`, `MusicFiles`, `Voice` (`plural` 51 → 58). 
 // Вместе с П-5 и К-4 из main: ru 1608, `plural` 62.
 const COMPOSITION = {
-  ru: { keys: 1642, plural: 62 },
+  ru: { keys: 1666, plural: 62 },
   uk: { keys: 838, plural: 35 },
   es: { keys: 809, plural: 34 },
   de: { keys: 810, plural: 35 },
@@ -796,7 +796,7 @@ const COMPOSITION = {
 // экранов `group/*` (разбор — у `COMPOSITION` выше); вкладкой профиля — +10 ключей
 // tweb `sharedMedia.tsx` (разбор — там же).
 const FINGERPRINT = {
-  ru: 'd16a9685',
+  ru: '1f49c4d5',
   uk: 'af81524a',
   es: '57ce09fe',
   de: '3224cfc5',
