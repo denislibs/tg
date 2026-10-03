@@ -35,7 +35,7 @@
  *    `wrapVideo`/`wrapPhoto` (у нас менеджеры берутся из точки входа).
  */
 import type { AnimationItemGroup } from '@components/animationIntersector'
-import type { ChatAutoDownload } from '@core/hooks/useChatAutoDownload'
+import type { ChatAutoDownload } from '@core/chat/autoDownloadSettings'
 import mediaSizes from '@core/dom/mediaSizes'
 import type { LazyLoadQueue } from '@core/lazyLoadQueue'
 import generatePhotoForExtendedMediaPreview from '@core/media/generatePhotoForExtendedMediaPreview'

@@ -19,36 +19,30 @@
 // `history_delete`).
 //
 // ─── Где мы сознательно расходимся с tweb (и почему) ───────────────────────
-//  • `ChatContext` вместо `Chat`. tweb передаёт в конструктор весь объект
-//    `Chat` (топбар, инпут, выделение, контекстное меню, `bubbleGroups`…).
-//    У нас из него нужны peerId, threadId, ключ окна
-//    (`chat.messagesStorageKey`), два узла окружения (`container` — колонка
-//    `.chat`, `bubblesViewport` — видимая зона ленты) и адресат кликов
-//    (`navigation`), — поэтому конструктор берёт узкий структурный тип. Полный
-//    `Chat` — этап 7, когда лента заберёт себе и остальное окружение; узлы
-//    окружения до тех пор создаёт хост (`VanillaFeed`, порт `chat.ts:640-643`).
+//  • Конструктор получает `Chat` (`components/chat/chat.ts`, шаг К-3), как tweb:
+//    пир, тред, ключ окна (`chat.messagesStorageKey`), узлы окружения
+//    (`chat.container`, `chat.bubblesViewport`), флаги вида чата, права
+//    (`chat.canSend()`), композер (`chat.input`, остров до К-4), меню и выделение
+//    (`chat.contextMenu`/`chat.selection`) и стек колонки (`chat.appImManager`).
 //  • `BubblesManagers` вместо всего `AppManagers`: ленте нужен узкий набор
 //    методов — три формы страницы (`messages.getHistory`/`getAround`),
 //    `messages.messageByDate` под календарь, `peers.fillMirror` (объявить
 //    пробел зеркала карточек, см. `peerTitle.ts`) и пара `dialogs.*` под
 //    границу непрочитанных и последнее сообщение чата. Узкий тип позволяет
 //    поднять ленту в тесте без RPC-моста.
-//  • `setPeer` портирован БЕЗ ветки смены пира: у нас пир меняет хост,
-//    пересоздавая ленту эффектом по `peerId` (`VanillaFeed.tsx`), поэтому «тот
-//    же инстанс на новый пир» предмета не имеет — построчный разбор того, что
-//    из ветки `!samePeer` перенесено, а что нет, лежит у самого метода. Всё
-//    остальное в пагинации 1:1: `loadMoreHistory` → `getHistory1` (гейт стороны
-//    + предзагрузка) → `getHistory`.
+//  • `setPeer`: пир меняет `Chat.setPeer` на том же инстансе ленты, а ветка
+//    `!samePeer` зовёт `chat.onChangePeer` и `chat.finishPeerChange` (tweb
+//    :5848, :6183, :6200); построчный разбор перенесённого — у самого метода.
+//    Пагинация 1:1: `loadMoreHistory` → `getHistory1` (гейт стороны +
+//    предзагрузка) → `getHistory`.
 //  • `attachContainerListeners()` портирован ЧАСТИЧНО — ровно тем составом, у
 //    которого уже есть предмет: делегирование кликов по размеченным узлам
 //    rich-text и ответ жестом (даблклик на десктопе / свайп на таче, порт
 //    bubbles.ts:1496-1572), плюс контекстное меню (:1478) и выделение (:1479) —
-//    оба лента поднимает фабрикой хоста (`createContextMenu`/`createSelection`)
-//    — ховер-реакция (`setReactionsHoverListeners`, :2830) и предпросмотр
-//    стикера по зажатию (`attachStickerViewerListeners`, :1591; у tweb — в
-//    конструкторе ленты).
-//    Зовёт его конструктор: в tweb это делает `Chat` (`chat.ts:638`), а у нас
-//    `Chat`-хоста нет.
+//    `chat.contextMenu`/`chat.selection` — и предпросмотр стикера по зажатию
+//    (`attachStickerViewerListeners`, :1591; у tweb — в конструкторе ленты).
+//    Зовёт его `Chat.init` (`chat.ts:643`), ховер-реакцию
+//    (`setReactionsHoverListeners`, :2830) — тоже он (`chat.ts:639-641`).
 //  • `processBatch` портирован вместе со скроллом (`changedTop`/`changedBottom`
 //    → `reverse` → `prepareToSaveScroll`/`restoreScroll`) и ожиданиями
 //    (`getHeavyAnimationPromise`, `setUnreadDelimiter`, `fastRafPromise`) и
@@ -106,7 +100,7 @@ import idleController from '@helpers/idleController'
 import { getHeavyAnimationPromise, interruptHeavyAnimation, onHeavyAnimation as useHeavyAnimationCheck } from '@core/dom/heavyAnimation'
 import { cancelAnimationByKey } from '@helpers/animation'
 import rootScope from '@lib/rootScope'
-import { ANCHOR_ACTION_ATTRIBUTE, wrapEmojiText, wrapMessageText, type AnchorAction } from '@lib/richtext'
+import { ANCHOR_ACTION_ATTRIBUTE, wrapEmojiText, wrapMessageText } from '@lib/richtext'
 import { mirrorWindow, putMirrorPage, replaceMirrorWindow } from '@core/history/messagesMirror'
 import { generateTempMessageId, isLocalMessageId } from '@core/history/messageId'
 import { messageToConvMsg } from '@core/messageToConvMsg'
@@ -131,10 +125,10 @@ import { createMessageTime, setRepliesCount, setSendingStatus } from './messageT
 import { renderReactionsElement, getAvailableReactions, getAvailableReactionsForPeer, sendReaction, type ReactionsManagers } from './reactions'
 import { renderReplies, setRepliesElementCount } from './replies'
 import { attachReplySwipe, findDoubleClickReplyBubble } from './replySwipe'
-import type ChatContextMenu from './contextMenu'
-import type { ContextMenuBubbles } from './contextMenu'
-import type ChatSelection from './selection'
-import type { SelectionBubbles } from './selection'
+import type Chat from './chat'
+import type { ChatSavedPosition, ChatSetPeerOptions } from '@lib/appImManager'
+import { ChatType } from './chatType'
+import showDatePickerPopup from '@components/popups/datePicker.bridge'
 import wrapPhoto from '@components/wrappers/photo'
 import wrapVideo from '@components/wrappers/video'
 import wrapSticker from '@components/wrappers/sticker'
@@ -146,10 +140,12 @@ import { createMessageSpoilerOverlay } from '@components/messages/messageSpoiler
 import { createPollMessageContent, type PollMessageContentHandle } from '@components/messages/pollMessageContent'
 import wrapMessageForReply from '@components/wrappers/messageForReply'
 import { setAttachmentSize } from '@core/dom/mediaSizes'
-import { openMediaViewer, type OpenMediaViewerArgs } from '@components/mediaViewer/openMediaViewer'
-import { collectLightboxItems } from '@components/mediaViewer/collectLightboxItems'
+import { openMediaViewer } from '@components/mediaViewer/openMediaViewer'
+import { collectLightboxItems, messageToViewerItem } from '@components/mediaViewer/collectLightboxItems'
+import { createMediaNeighboursLoader, type MediaNeighboursLoader } from '@components/mediaViewer/mediaNeighbours'
+import type { ViewerItem } from '@components/mediaViewer/appMediaViewer'
 import { cachedPeer } from '@core/peerCache'
-import { getBubbleMedia, getStrippedThumb, isMediaSpoiler, type InputStickerSetID, type MyDocument } from '@core/media/messageMedia'
+import { getBubbleMedia, getStrippedThumb, isMediaSpoiler, type MyDocument } from '@core/media/messageMedia'
 import { getMediaId, getMessageKind } from '@core/messages/messageKind'
 import { isCallLogMessage, type CallLogMessage } from '@lib/calls/helpers/callLog'
 import wrapCallBubble from '@components/wrappers/callBubble'
@@ -165,9 +161,8 @@ import ProgressivePreloader from '@components/preloader'
 import liteMode from '@helpers/liteMode'
 import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
 import { animateLadderLists, type LadderStep } from '@core/dom/ladder'
-import { deleteChatPosition, getChatPosition, saveChatPosition, type ChatPosition } from '@core/chat/chatPositions'
 import appChatBackground from '@components/chat/bubbles/chatBackground.solid'
-import type { ChatAutoDownload } from '@core/hooks/useChatAutoDownload'
+import type { ChatAutoDownload } from '@core/chat/autoDownloadSettings'
 import I18n, { i18n } from '@lib/langPack'
 import { useI18nStore } from '../../i18n'
 
@@ -197,222 +192,6 @@ export function splitFullMid(fullMid: string): { peerId: number, mid: number } {
  *  им `loadMoreHistory` затыкает пустую отрисованную историю, и с него же
  *  начинается первая страница окна. */
 const EMPTY_FULL_MID = makeFullMid(0, 0)
-
-/**
- * Куда лента адресует клики по размеченным узлам rich-text — точка расширения
- * для навигации. Порт ДВУХ путей tweb, которые у него ведут в `appImManager`:
- *   • внутренние ссылки Telegram (`t.me/...`, `tg://...`). tweb вешает на такой
- *     `<a>` inline `onclick` с именем глобальной функции (`addAnchorListener`,
- *     исполняет `internalLinkProcessor`); у нас inline-обработчики запрещены
- *     (`web-client/CLAUDE.md`, «Безопасность»), поэтому имя действия лежит в
- *     `data-anchor-action` (`lib/richtext/url.ts`), а слушателя вешает лента;
- *   • клик по имени/упоминанию автора — `onBubblesClick` (bubbles.ts:3360:
- *     `findUpClassName(target, 'peer-title') || findUpAttribute(target,
- *     'data-follow')` → `setInnerPeer`).
- *
- * Обработчик возвращает `true`, если действие исполнено, — тогда лента гасит
- * событие ровно как tweb (`cancelEvent`). Без обработчика (или при `false`)
- * остаётся браузерное поведение ссылки: `setBlankToAnchor` проставил
- * `target="_blank"`, то есть t.me открывается новой вкладкой — ровно то, что
- * делает сегодня React-лента (`components/RichText.tsx:73`). Своей навигации
- * лента не изобретает: и `openPeer`, и разбор внутренних ссылок живут выше
- * (`core/hooks/useNavigationActions`, стор навигации), куда ленте ходить
- * нельзя.
- */
-export interface BubblesNavigation {
-  /** имя действия из `data-anchor-action` + сам `<a>` (у него `href` уже
-   *  прошёл allow-list схем) */
-  openInternalLink?(action: AnchorAction, anchor: HTMLElement): boolean
-  /** peerId из `.peer-title[data-peer-id]` / `a.follow[data-follow]` */
-  openPeer?(peerId: number, element: HTMLElement): boolean
-  /**
-   * Показать календарь — порт `showDatePickerPopup({initDate, onPick:
-   * this.onDatePick})` из ветки клика по ДАТА-баблу (tweb bubbles.ts:3075-3078).
-   *
-   * Здесь, а не внутри ленты, потому что попап у нас React-компонент
-   * (`components/DatePickerPopup.tsx`), а монтирует его владелец слоя попапов —
-   * то есть хост. Лента отдаёт ровно то, что отдаёт оригинал: день секции
-   * (`initDate`, мс) и ЧТО ДЕЛАТЬ с выбранным днём — `onDatePick`. Решение «день
-   * → номер → прыжок» остаётся у ленты, как в tweb (bubbles.ts:10205).
-   *
-   * Не переносятся `canMultiSelect`/`multiSelectAction` (:3081-3105) — выбор
-   * диапазона дней ради «Очистить историю»: наш попап такого режима не знает.
-   */
-  openDatePicker?(initDate: number, onPick: (timestamp: number) => void): void
-  /**
-   * Открыть тред комментариев поста канала — порт ветки клика по футеру
-   * (tweb bubbles.ts:3315-3343): `setInnerPeer({peerId: replies.channel_id
-   * .toPeerId(true), type: ChatType.Discussion, threadId})`.
-   *
-   * Здесь, а не внутри ленты, по той же причине, что календарь: тред у нас
-   * открывается стеком колонки чата (`appImManager.setInnerPeer` через
-   * `Chat.tsx::onOpenThread`), а стеком владеет хост. Лента отдаёт то же, что
-   * отдаёт оригинал: КЛЮЧ ГРУППЫ ОБСУЖДЕНИЯ (не канала — :3335) и номер поста.
-   *
-   * Расхождение одно: у оригинала `threadId` — номер ЗЕРКАЛА поста в группе,
-   * который приезжает ответом `getDiscussionMessage` (:3332); у нас корнем
-   * треда служит номер САМОГО ПОСТА (`Chat.tsx::onOpenThread` → `rootMsgId`), и
-   * зеркало остаётся деталью бэкенда (`usecase/chat/discussion.go::CommentCounts`
-   * — «ключи результата остаются НОМЕРАМИ ПОСТОВ»). Поэтому лишнего запроса
-   * перед открытием нет.
-   */
-  openDiscussion?(args: { peerId: PeerId, postMid: number }): void
-  /**
-   * Попап пересылки — порт ветки клика по кнопке «переслать» сбоку от поста
-   * канала (tweb bubbles.ts:3511-3517: `showForwardPopup({[this.peerId]:
-   * getMidsByMessage(message)})`).
-   *
-   * Здесь, а не внутри ленты, по той же причине, что календарь и тред: попап у
-   * нас React-компонент, его владелец — хост. Форма записи взята у оригинала
-   * (`{[peerId]: mids}`) и совпадает с той, которой пользуется пункт меню
-   * (`ContextMenuPopups.showForward`) — открывается тот же попап.
-   */
-  showForward?(fromPeerIdsMids: Record<number, number[]>): void
-  /**
-   * ПЕРЕЗВОНИТЬ по баблу лога звонка — порт ветки tweb bubbles.ts:3192-3196
-   * (`this.chat.appImManager.callUser(this.peerId.toUserId(), callDiv.dataset
-   * .type)`).
-   *
-   * Здесь, а не внутри ленты, ровно по адресу самого поля `navigation`: у
-   * оригинала это вызов `appImManager` — окружения, а не ленты. Наш звонок
-   * поднимает `core/calls/callEngine::startOutgoing`, и ему нужна КАРТОЧКА
-   * собеседника (имя, градиент, id фотографии), которой лента не владеет;
-   * собирает её хост (`VanillaFeed`) — тем же способом, что список звонков
-   * (`sidebarLeft/tabs/calls.solid.tsx::callUser`).
-   *
-   * Тип едет тем же значением, что лежит в `data-type` бабла: `'voice'` либо
-   * `'video'` (tweb `CallType`). Не передан — клик по баблу звонка ничего не
-   * делает, как и любая другая непереданная ручка навигации.
-   */
-  callUser?(type: 'voice' | 'video'): void
-}
-
-/** Срез `Chat`, которым пользуется лента (см. расхождения в шапке). */
-export interface ChatContext {
-  peerId: number
-  /** окно треда (форум-топик / комментарии); undefined — основное окно чата */
-  threadId?: number
-  /** ключ окна в зеркале — аналог tweb `chat.messagesStorageKey`, которым
-   *  подписки сверяют «событие про ТЕКУЩИЙ чат» */
-  messagesStorageKey: string
-  /** Порт tweb `chat.isLikeGroup` (chat.ts:145, считается
-   *  `appPeersManager.isLikeGroup`): «чат, где у сообщений есть подписанный
-   *  автор» — любая группа, а также канал с `signature_profiles`. Единственный
-   *  гейт показа имени автора в бабле (`needName`, bubbles.ts:9331).
-   *  `signature_profiles` в нашей модели нет, поэтому хост передаёт сюда просто
-   *  «это группа» (`Chat.tsx`). */
-  isLikeGroup?: boolean
-  /** Порт tweb `chat.isBroadcast` (chat.ts) — канал. Единственный потребитель
-   *  здесь — размер страницы истории (tweb bubbles.ts:11389: у канала 20). */
-  isBroadcast?: boolean
-  /** Порт tweb `chat.isMegagroup` (chat.ts:141). Читает его РОВНО одно место —
-   *  `isOurMessage` (chat.ts:1375), то есть сторона бабла: в мегагруппе она
-   *  берётся из сырого `pFlags.out`, и сообщение от лица канала (send-as)
-   *  рисуется исходящим. Вид чата знает `Chat`, а не лента, поэтому он
-   *  приезжает сюда — как `isLikeGroup` и `isBroadcast`. */
-  isMegagroup?: boolean
-  /** Порт tweb `chat.container` (chat.ts:80) — узел `.chat`. Лента вешает на
-   *  него класс `is-go-down-visible` (`updateGoDownVisibility`, tweb
-   *  bubbles.ts:4907) и читает `is-toggling-helper` (`scrollToBubble`, :4677). */
-  container: HTMLElement
-  /** Порт tweb `chat.bubblesViewport` (chat.ts:640) — узел `.bubbles-viewport`,
-   *  сосед `.bubbles` внутри `.chat`. Реально видимая зона ленты: сам
-   *  скролл-контейнер уезжает под топбар и композер
-   *  (`inset-block: -page-chats-padding`), поэтому все позиции скролла
-   *  `scrollToBubble` считает относительно ЭТОГО прямоугольника, а не
-   *  контейнера. */
-  bubblesViewport: HTMLElement
-  /** адресат кликов по ссылкам/именам — аналог tweb `chat.appImManager` */
-  navigation?: BubblesNavigation
-  /**
-   * Порт tweb `Chat.selection` (chat.ts:615 `new ChatSelection(this,
-   * this.bubbles, this.input, this.managers)`) — режим выделения сообщений.
-   *
-   * ФАБРИКА, а не готовый объект, потому что связь двусторонняя: выделению
-   * нужна лента (её баблы), а ленте — выделение (гейты кликов). В tweb узел
-   * разрубает `Chat`, который держит обоих; у нас роль `Chat` исполняет хост
-   * (`VanillaFeed`), и он отдаёт сюда СПОСОБ создать выделение — лента зовёт
-   * его, передав себя. Так владельцем остаётся хост: это он знает про плашку
-   * действий и попапы.
-   */
-  createSelection?(bubbles: SelectionBubbles): ChatSelection
-  /**
-   * Порт tweb `Chat.contextMenu` (chat.ts:614 `new ChatContextMenu(this,
-   * this.managers)`, лента вешает его в `attachContainerListeners`,
-   * bubbles.ts:1478) — контекстное меню сообщения.
-   *
-   * ФАБРИКА по той же причине, что `createSelection`: связь двусторонняя —
-   * меню читает у ленты живой режим выделения (`ContextMenuBubbles.selection`),
-   * а лента отдаёт меню свой контейнер. Узел разрубает тот, кто держит обоих:
-   * в tweb `Chat`, у нас хост (`VanillaFeed`). Он же владелец попапов, которые
-   * открывают пункты, — поэтому собрать меню может только он.
-   */
-  createContextMenu?(bubbles: ContextMenuBubbles): ChatContextMenu
-  /**
-   * Порт tweb `chat.autoDownload` (chat.ts:137) — пороги автозагрузки медиа
-   * ОТКРЫТОГО чата: `{photo, video, file}` в байтах, 0 = «не качать само,
-   * только по клику». Лента их не считает, а раздаёт врапперам ровно там же,
-   * где оригинал (bubbles.ts:7901 альбом, :7919 фото, :8542/:8561 видео и
-   * кружок, :8597 документ) — считает их роль `Chat` (chat.ts:1055
-   * `useAutoDownloadSettings`), у нас `Chat.tsx`.
-   *
-   * ФУНКЦИЯ, а не значение, по той же причине, что `canSend`: у оригинала это
-   * поле, которое `createEffect` держит свежим на смену настроек, то есть
-   * чтение всегда живое. Не передана — врапперы качают всё (у tweb это
-   * `autoDownload: undefined` → `noAutoDownload = autoDownloadSize === 0`
-   * не взводится).
-   */
-  autoDownload?(): ChatAutoDownload | undefined
-  /** Порт tweb `chat.canSend()` (chat.ts, без аргумента — действие
-   *  `send_messages`): гейт СВАЙП-ответа (bubbles.ts:1548). Асинхронный, как в
-   *  оригинале. Не передан — жест не начинается вовсе. */
-  canSend?(): boolean | Promise<boolean>
-  /** Порт tweb `chat.input.canSendPlain()` — гейт ДАБЛКЛИК-ответа
-   *  (bubbles.ts:1503). У оригинала это отдельное право (`send_plain`), не то
-   *  же самое, что `canSend()`: в чате можно быть вправе слать медиа, но не
-   *  текст. Не передан — даблклик ничего не делает. */
-  canSendPlain?(): boolean
-  /** Порт tweb `chat.input.initMessageReply(chat.input
-   *  .getChatInputReplyToFromMessage(message))` (bubbles.ts:1539, :1699) — вход
-   *  в reply-флоу композера. Композер — окружение `Chat`, которого у ленты
-   *  нет, поэтому сюда едет только номер: собрать по нему плашку умеет
-   *  владелец композера (`Chat.tsx` через `draftReplyState`). */
-  initMessageReply?(mid: number): void
-  /**
-   * ОТПРАВИТЬ СТИКЕР — порт клика по стикеру-приветствию пустого чата
-   * (tweb bubbles.ts:10586-10589: `attachClickEvent(stickerDiv, … this.chat
-   * .input.emoticonsDropdown.onMediaClick({target}, undefined, undefined,
-   * true))`).
-   *
-   * Здесь, а не внутри ленты, ровно по адресу оригинала: отправкой владеет
-   * КОМПОЗЕР (`chat.input`), которого у ленты нет. Хост отдаёт тот же путь,
-   * которым стикер уходит из панели эмодзи (`Chat.tsx::onComposerPickSticker`).
-   * Не передан — стикер приветствия просто не кликается.
-   */
-  sendSticker?(doc: MyDocument): void
-  /**
-   * ПОКАЗАТЬ НАБОР кликнутого стикера — порт tweb bubbles.ts:3432-3442
-   * (`showStickersPopup(doc.stickerSetInput, undefined, this.chat.input)`).
-   *
-   * Здесь, а не внутри ленты, по адресу оригинала: третий аргумент
-   * `showStickersPopup` — КОМПОЗЕР (`chat.input`), которым попап отправляет
-   * выбранный стикер; композера у ленты нет. Не передан — клик по стикеру
-   * ничего не открывает (и во вьювер всё равно не проваливается, как в tweb).
-   */
-  showStickerSet?(input: InputStickerSetID): void
-  /**
-   * Действия МЕДИАВЬЮВЕРА, которых у самой ленты быть не может: прыжок к
-   * сообщению, пересылка, удаление и догрузка соседей за пределами окна.
-   *
-   * В tweb это роль `AppMediaViewer`, собранного вокруг `SearchListLoader` и
-   * `appImManager` (`mediaViewer.ts`); у нас вьювер общий на весь клиент
-   * (`components/mediaViewer/*`), а перечисленные четыре ручки знает окружение
-   * чата — попапы пересылки/удаления, стек колонки и REST-пагинация
-   * `/chats/{id}/media`. Поэтому их отдаёт хост, как и попапы контекстного
-   * меню. Не переданы — вьювер открывается, листает загруженное и закрывается.
-   */
-  mediaViewerActions?: Pick<OpenMediaViewerArgs, 'jumpToMessage' | 'onForward' | 'onDelete' | 'loadMoreMedia'>
-}
 
 /** Срез менеджеров, которым пользуется лента (см. расхождения в шапке). */
 export interface BubblesManagers extends PeerTitleManagers {
@@ -511,6 +290,9 @@ export interface BubblesManagers extends PeerTitleManagers {
      * которому ответы не нужны.
      */
     fetchMessageReplyTo?(peerId: number, mid: number): Promise<MyMessage | undefined>
+    /** Страница фильтра `media` для листания вьювера за пределами окна
+     *  (`openMediaViewerFor`). Опциональна: без неё вьювер листает загруженное. */
+    mediaHistory?(peerId: number, filter: 'media', offsetId?: number, limit?: number): Promise<{ messages: MyMessage[] }>
   }
   /**
    * Порт `appStickersManager.getGreetingSticker`
@@ -565,6 +347,10 @@ export interface BubblesManagers extends PeerTitleManagers {
    *     уже отправленному рубежу (`connectionManager.ts:178`). */
   realtime: {
     markRead(args: { peerId: number, upToId: number }): Promise<unknown>
+    /** Живая подписка канала на время окна (см. хвост `setPeer`). Опциональна: без
+     *  неё лента рисует канал, но живых постов не ждёт. */
+    subscribeChannel?(args: { peerId: number }): Promise<unknown>
+    unsubscribeChannel?(args: { peerId: number }): Promise<unknown>
   }
   /** Порт `appMessagesManager.incrementMessageViews(peerId, mids)` — РЕГИСТРАЦИЯ
    *  просмотра показавшихся постов (tweb bubbles.ts:2145 из
@@ -589,9 +375,9 @@ export interface BubblesManagers extends PeerTitleManagers {
  *  когда поколение ленты умерло за время её обработки: для ждущего это не сбой,
  *  а «дальше не работаем».
  *
- *  Экспортирована (у оригинала она модульная): хост ленты обязан отличать её от
- *  НАСТОЯЩЕГО отказа первой загрузки — см. `VanillaFeed.tsx`, где по этому
- *  различию и решается, повторять попытку или нет. */
+ *  Экспортирована (у оригинала она модульная): `Chat` отличает её от НАСТОЯЩЕГО
+ *  отказа первой загрузки — по этому различию решается, повторять ли попытку
+ *  (`Chat.setBubblesPeer`). */
 export const PEER_CHANGED_ERROR = new Error('peer changed')
 
 /** Кнопка быстрой реакции над баблом. Свою зону актуальности она держит на
@@ -749,7 +535,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
   // был бы не портом, а нашей развилкой: у оригинала вопрос «что сейчас видно»
   // задаёт РОВНО ОДИН объект, и снятие наблюдения адресуется КОЛБЭКУ, а не
   // узлу (tweb :4314-4329 снимает семь колбэков с одного бабла по одному).
-  private observer?: SuperIntersectionObserver
+  public observer?: SuperIntersectionObserver
   // tweb :551/553. Карта «наблюдаемый узел → номер, до которого он читает» и
   // набор УВИДЕННЫХ номеров, ждущих отправки.
   private unreaded = new Map<HTMLElement, number>()
@@ -759,6 +545,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
   // ручки не пустой (`{ok: true}`), а гасить его лишним `.then(noop)` значило
   // бы завести строку ради типа.
   private readPromise?: Promise<unknown>
+  /** tweb :759 — чей это набор непрочитанных (см. `isUnreadedChatChanged`). */
+  private unreadedChat?: { peerId: PeerId, threadId?: number, monoforumThreadId?: PeerId }
   // ─── просмотры поста канала (tweb bubbles.ts:601-602) ─────────────────────
   // Номера постов, которые ПОКАЗАЛИСЬ и ещё не зарегистрированы, и дебаунс
   // регистрации. У оригинала в наборе `FullMid` (пир + номер), потому что его
@@ -811,7 +599,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * `Chat.tsx`) — то есть показывала не «все сообщения с этим тегом», а «те из
    * последних сорока, у которых он есть». Это была наша выдумка, а не порт.
    */
-  private savedReaction?: string
+  public savedReaction?: string
 
   /** Порт tweb bubbles.ts:599 — бабл-плейсхолдер пустого чата, если он сейчас
    *  показан. Он же гейт «второй раз не рисуем»
@@ -850,23 +638,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * место — `animateAsLadder` (:10318), чтобы отложить каскад до монтирования.
    *
    * В оригинале поле живёт на `Chat`, потому что `Chat.setPeer` — обёртка
-   * вокруг `bubbles.setPeer` и промис у неё под рукой ДО того, как лента уйдёт
-   * в запрос. У нас роль `Chat` исполняет хост (`VanillaFeed`), но факт
-   * «идёт смена окна» целиком выводится внутри ленты, а хосту он не нужен, —
-   * поэтому поле здесь, а промис отложенный: свой собственный возвращаемый
-   * промис асинхронный метод назвать не может.
+   * вокруг `bubbles.setPeer`. У нас `Chat.setPeerPromise` тоже есть (им `Chat`
+   * гасит повторный `setPeer`), но прыжок внутри окна (`setMessageId` ленты:
+   * reply-заголовок, календарь) идёт мимо `Chat`, — поэтому признак для лестницы
+   * лента держит сама, промис отложенный: свой собственный возвращаемый промис
+   * асинхронный метод назвать не может.
    */
   private setPeerPromise?: CancellablePromise<void>
-
-  /** Порт tweb `this.chat.selection` — им лента гейтит клики и жесты.
-   *  Живёт здесь, а не в `ChatContext`, потому что создаётся уже с готовой
-   *  лентой (см. `createSelection`). */
-  public selection?: ChatSelection
-
-  /** Порт tweb `this.chat.contextMenu` (bubbles.ts:1478). Живёт здесь, а не в
-   *  `ChatContext`, по той же причине, что `selection`: создаётся уже с готовой
-   *  лентой (см. `createContextMenu`). */
-  private contextMenu?: ChatContextMenu
 
   /** Порт поля tweb `this.replySwipeHandler` (bubbles.ts:1543) — слушатели
    *  жеста висят на контейнере и снимаются на `destroy`. */
@@ -891,7 +669,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
    */
   private uploads = new Map<string, CancellablePromise<unknown>>()
 
-  private listenerSetter = new ListenerSetter()
+  public listenerSetter = new ListenerSetter()
   public middlewareHelper = getMiddleware()
 
   /**
@@ -928,7 +706,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
    */
   private pollContents = new Map<HTMLElement, PollMessageContentHandle>()
 
-  constructor(private chat: ChatContext, private managers: BubblesManagers) {
+  constructor(private chat: Chat, private managers: BubblesManagers) {
     this.constructBubbles()
     // Порядок как в tweb (bubbles.ts:743-751): очередь заводится сразу после
     // построения дерева и ДО подписок — первая же из них может в неё положить.
@@ -943,7 +721,6 @@ export default class ChatBubbles implements BubbleGroupsHost {
       cancelable: false,
     })
     this.constructPeerHelpers()
-    this.attachContainerListeners()
   }
 
   /** Порт tweb bubbles.ts:2190. */
@@ -962,8 +739,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     return !!this.chat.isMegagroup
   }
 
-  /** Срез чата для обоих предикатов стороны — то, что в tweb лежит на самом
-   *  `Chat`/`rootScope`, а у нас приезжает сюда (`ChatContext`) и берётся из шины. */
+  /** Срез чата для обоих предикатов стороны (`core/models.ts::isOurMessage`). */
   private get ourChat(): OurMessageChat {
     return { myId: rootScope.myId, isMegagroup: this.chat.isMegagroup }
   }
@@ -983,7 +759,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
   /** Порт чтения `this.chat.autoDownload` (tweb bubbles.ts:7901 и соседи) —
    *  живое, на каждый рендер медиа: настройка могла смениться, пока чат открыт. */
   private get autoDownload(): ChatAutoDownload | undefined {
-    return this.chat.autoDownload?.()
+    return this.chat.autoDownload
   }
 
   /**
@@ -1004,13 +780,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * ставится тут же, а не при создании: в `constructBubbles()` `this.chat`
    * применять рано (лента только строится), а забыть `remover` при повторном
    * `setPeer` значило бы рассинхронить анимацию удаления бабла
-   * (`.bubbles-remover`) с самой лентой. Вызов на `remover` идемпотентен —
-   * `isLikeGroup`/`isBroadcast` неизменны на весь срок жизни инстанса (см. ниже).
+   * (`.bubbles-remover`) с самой лентой. Вызов на `remover` — `toggle` с явным
+   * булем: при смене пира он переставляет классы под новый вид чата.
    *
    * `isLikeGroup`/`isBroadcast` читаются с `this.chat` — как в оригинале
-   * `Chat.isLikeGroup`/`Chat.isBroadcast` (chat.ts:145, appPeersManager).
-   * Оба поля на `ChatContext` неизменны на весь срок жизни инстанса ленты
-   * (хост, `VanillaFeed.tsx`, пересоздаёт `ChatBubbles` целиком при их смене).
+   * `Chat.isLikeGroup`/`Chat.isBroadcast` (chat.ts:145); `Chat.onChangePeer`
+   * считает их ДО разбора цели (tweb :5848), поэтому к пересборке окна они верны.
    *
    * ВЫЧЕТЫ (два соседних тумблера того же forEach — предмета нет):
    *  - `no-messages` — нужен асинхронный `Chat.hasMessages()` (chat.ts),
@@ -1031,9 +806,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
     const chatInner = this.chatInner = document.createElement('div')
     chatInner.classList.add('bubbles-inner')
     // `is-chat`/`is-broadcast` тут НЕ ставятся: этот `chatInner` — временный,
-    // первый же `setPeer()` (host `VanillaFeed.tsx` зовёт его сразу после
-    // конструктора) пересоздаёт `this.chatInner` целиком и переносит классы
-    // туда (см. докблок `applyChatTypeClasses`). `remover`, наоборот, живёт
+    // первый же `setPeer()` (`Chat.setPeer`) пересоздаёт `this.chatInner`
+    // целиком и переносит классы туда (см. докблок `applyChatTypeClasses`). `remover`, наоборот, живёт
     // весь срок инстанса — но классы на него ставит тот же вызов в `setPeer`,
     // а не этот конструктор.
 
@@ -1173,15 +947,6 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * возрастанию номера. Именно оно получает бабл, остальные не рисуются вовсе
    * (tweb bubbles.ts:6600-6605).
    */
-  /** Порт `appMessagesManager.getMidsByMessage` (tweb, зовётся из
-   *  bubbles.ts:3514): номера ВСЕГО альбома либо один номер. У поста-альбома
-   *  бабл один, а пересылать надо все его части. */
-  private midsByMessage(message: MyMessage): number[] {
-    const groupedId = message._ === 'message' ? message.grouped_id : undefined
-    if (!groupedId) return [message.id]
-    return this.groupedMessages(groupedId).map((m) => m.id)
-  }
-
   private mainGroupedMessage(message: MyMessage): MyMessage | undefined {
     const groupedId = message._ === 'message' ? message.grouped_id : undefined
     if (!groupedId) return undefined
@@ -1422,7 +1187,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
         messages: albumMessages,
         attachmentDiv,
         middleware,
-        animationGroup: 'chat',
+        animationGroup: this.chat.animationGroup,
         spoilered: isMediaSpoiler(message),
         // tweb album.ts:97 — у альбома отдача СВОЯ у каждой ячейки
         // (`uploadingFileName?.[idx]`): фотографии уходят по одной, и крестик
@@ -1450,7 +1215,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
         uploadPromise,
         boxWidth: mediaSizes.active.regular.width,
         boxHeight: mediaSizes.active.regular.height,
-        group: 'chat',
+        group: this.chat.animationGroup,
         hasMessageBlock,
         message: {
           mid: message.id,
@@ -1491,7 +1256,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // bubbles.ts:6034-6058): крышка живёт поверх того же attachment.
     if (isMediaSpoiler(message)) {
       void promise
-        .then(() => wrapMediaSpoiler({ media: mediaObject, middleware, animationGroup: 'chat' }))
+        .then(() => wrapMediaSpoiler({ media: mediaObject, middleware, animationGroup: this.chat.animationGroup }))
         .then((cover) => {
           if (cover && middleware()) attachmentDiv.append(cover)
         })
@@ -1888,7 +1653,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     wrapSticker({
       mediaId: doc.id,
       div: attachmentDiv,
-      group: 'chat',
+      group: this.chat.animationGroup,
       middleware: this.getMiddleware(),
       width: parseInt(attachmentDiv.style.width, 10) || boxSize.width,
       height: parseInt(attachmentDiv.style.height, 10) || boxSize.height,
@@ -2568,9 +2333,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
   /** Порт tweb `groupBubbles` (bubbles.ts:5984-6028) в применимом объёме: ветка
    *  `ChatType.Scheduled` и аватары серий не портированы. Аватар в tweb
    *  заводится здесь же по `isAvatarNeeded` (bubbles.ts:6008 →
-   *  `chat.isLikeGroup && !isOutMessage`), а `isLikeGroup` — знание о типе
-   *  пира, которого в `ChatContext` ещё нет; поэтому и гейт, и сам узел
-   *  аватара приедут одной работой (см. `createAvatar` ниже). */
+   *  `chat.isLikeGroup && !isOutMessage`, см. `isAvatarNeeded`). */
   public groupBubbles(items: { bubble: HTMLElement, message: MyMessage }[]): BubbleGroup[] {
     items.forEach(({ bubble, message }) => {
       this.bubbleGroups.prepareForGrouping(bubble, message)
@@ -2660,8 +2423,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     // Догрузка в режиме выделения: новым баблам сразу нужен чекбокс, иначе
     // подгруженная страница приехала бы без него (tweb bubbles.ts:5931-5935).
-    if (this.selection?.isSelecting) {
-      queue.forEach(({ bubble }) => this.selection!.toggleElementCheckbox(bubble, true))
+    if (this.chat.selection.isSelecting) {
+      queue.forEach(({ bubble }) => this.chat.selection.toggleElementCheckbox(bubble, true))
     }
 
     const firstGroup: BubbleGroup | undefined = this.bubbleGroups.firstGroup
@@ -3010,7 +2773,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
   /** Порт tweb `attachContainerListeners` (bubbles.ts:1460) в применимом
    *  объёме — ОДИН делегированный слушатель на контейнере ленты. Разбирает
    *  разметку, которую оставляет rich-text вместо inline-обработчиков tweb
-   *  (см. докблок `BubblesNavigation`), и крышку спойлера медиа.
+   *  (`data-anchor-action`, `lib/richtext/url.ts`), и крышку спойлера медиа.
    *
    *  ПОРЯДОК ВЕТОК ЗНАЧИМ, и он взят у оригинала (`onBubblesClick`,
    *  bubbles.ts:3014-3627): первый совпавший выигрывает. Поэтому спойлер
@@ -3027,11 +2790,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *  Контекстное меню и выделение вешаются ПЕРЕД ним и в этом же порядке —
    *  тем же, что у оригинала (:1478 `contextMenu.attachTo`, :1479
    *  `selection.attachListeners`). */
-  private attachContainerListeners() {
+  public attachContainerListeners() {
     // Контекстное меню — tweb bubbles.ts:1478. Слушатели оно вешает себе само
     // (внутри `attachTo` собственный `ListenerSetter`), лента отдаёт только узел.
-    this.contextMenu = this.chat.createContextMenu?.(this)
-    this.contextMenu?.attachTo(this.container)
+    this.chat.contextMenu.attachTo(this.container)
 
     // Предпросмотр стикера/GIF по зажатию — tweb bubbles.ts:1591-1599, на
     // скроллере ленты и раньше разбора кликов: отпускание после удержания
@@ -3053,8 +2815,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // контейнер, но своим `ListenerSetter`: их снимает сам режим, когда его
     // отвязывают, — у оригинала ровно так же (`new ListenerSetter()` прямо в
     // аргументе).
-    this.selection = this.chat.createSelection?.(this)
-    this.selection?.attachListeners(this.container, new ListenerSetter())
+    this.chat.selection.attachListeners(this.container, new ListenerSetter())
 
     // Ответ жестом — tweb bubbles.ts:1496-1572. Развилка ровно оригинала и
     // ВЗАИМОИСКЛЮЧАЮЩАЯ: на десктопе ответ даёт даблклик, на таче — свайп.
@@ -3067,31 +2828,18 @@ export default class ChatBubbles implements BubbleGroupsHost {
       this.listenerSetter.add(this.container)('dblclick', this.onContainerDoubleClick)
     } else if (IS_TOUCH_SUPPORTED) {
       this.replySwipeHandler = attachReplySwipe(this.container, {
-        isSelecting: () => !!this.selection?.isSelecting, // tweb :1547
-        canSend: () => this.chat.canSend?.() ?? false,
-        initMessageReply: (mid) => this.chat.initMessageReply?.(mid),
+        isSelecting: () => this.chat.selection.isSelecting, // tweb :1547
+        canSend: () => this.chat.canSend(),
+        initMessageReply: (mid) => this.initMessageReply(mid),
       })
-    }
-
-    // Ховер-реакция — tweb chat.ts:633-635: `if(!IS_TOUCH_SUPPORTED)
-    // this.bubbles.setReactionsHoverListeners()`. У оригинала строка стоит
-    // РАНЬШЕ `attachContainerListeners` (chat.ts:637), потому что режим
-    // выделения там уже создан (chat.ts:615); у нас его создаёт этот же метод
-    // строкой выше — отсюда и место вызова.
-    if (!IS_TOUCH_SUPPORTED) {
-      this.setReactionsHoverListeners()
     }
   }
 
   /** Порт tweb bubbles.ts:2830-2835. */
-  private setReactionsHoverListeners() {
+  public setReactionsHoverListeners() {
     this.listenerSetter.add(contextMenuController)('toggle', this.unhoverPrevious)
     this.listenerSetter.add(overlayCounter)('change', this.unhoverPrevious)
-    // Режима выделения может не быть вовсе (`chat.createSelection` опционален —
-    // см. `attachContainerListeners`); у оригинала он есть всегда.
-    if (this.selection) {
-      this.listenerSetter.add(this.selection)('toggle', this.unhoverPrevious)
-    }
+    this.listenerSetter.add(this.chat.selection)('toggle', this.unhoverPrevious)
     this.listenerSetter.add(this.container)('mousemove', this.onBubblesMouseMove)
   }
 
@@ -3132,7 +2880,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     const content = findUpClassName(target, 'bubble-content')
     if (!(
       content &&
-      !this.selection?.isSelecting &&
+      !this.chat.selection.isSelecting &&
       !findUpClassName(target, 'service') &&
       !findUpClassName(target, 'bubble-beside-button') &&
       this.peerId !== rootScope.myId
@@ -3141,11 +2889,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
       return
     }
 
-    // tweb :2724-2728. Без режима выделения правило «этот бабл вообще
-    // интерактивен?» проверить нечем — считаем, что да (у оригинала тот же
-    // `canSelectBubble` заодно отсекает и «бабла нет вовсе»).
+    // tweb :2724-2728.
     const bubble = findUpClassName(content, 'bubble')
-    if (!bubble || (this.selection && !this.selection.canSelectBubble(bubble))) {
+    if (!bubble || !this.chat.selection.canSelectBubble(bubble)) {
       this.unhoverPrevious()
       return
     }
@@ -3228,7 +2974,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
       width: 18,
       height: 18,
       middleware,
-      group: 'chat',
+      group: this.chat.animationGroup,
       withThumb: false,
       needFadeIn: false,
     }).render.catch(() => undefined)
@@ -3318,8 +3064,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
       // `ChatType.Pinned`/`ChatType.Logs` у ленты пока не существуют как
       // понятия — вернуть вместе с ними.
       isPinnedOrLogs: false,
-      isSelecting: !!this.selection?.isSelecting, // tweb :1502
-      canSendPlain: this.chat.canSendPlain?.() ?? false,
+      isSelecting: this.chat.selection.isSelecting, // tweb :1502
+      canSendPlain: this.chat.input.canSendPlain(),
       isRepliable: (b) => {
         // Отрицание tweb `message.pFlags.is_outgoing || message.peerId !==
         // this.peerId` (:1535-1538). Проверки пира здесь нет: лента владеет
@@ -3331,7 +3077,16 @@ export default class ChatBubbles implements BubbleGroupsHost {
     })
     if (!bubble) return
 
-    this.chat.initMessageReply?.(Number(bubble.dataset.mid))
+    this.initMessageReply(Number(bubble.dataset.mid))
+  }
+
+  /** tweb `this.chat.input.initMessageReply(this.chat.input.getChatInputReplyToFromMessage(message))`
+   *  (bubbles.ts:1892, :2053) — у ленты на руках номер бабла. */
+  private initMessageReply(mid: number) {
+    const message = this.getMessage(mid)
+    if(!message) return
+    const input = this.chat.input
+    input.initMessageReply(input.getChatInputReplyToFromMessage(message))
   }
 
   private onContainerClick = (e: Event) => {
@@ -3340,17 +3095,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
       return
     }
 
-    const navigation = this.chat.navigation
-
     // Внутренняя ссылка Telegram (`data-anchor-action`) — tweb исполняет её
-    // глобалью из `addAnchorListener`.
+    // глобалью из `addAnchorListener` (`internalLinkProcessor`, бэклог Б-8). До
+    // него остаётся поведение браузера: `setBlankToAnchor` проставил
+    // `target="_blank"`, и ветки ниже по такому клику не идут.
     const anchor = target.closest<HTMLElement>(`[${ANCHOR_ACTION_ATTRIBUTE}]`)
     if (anchor) {
-      const action = anchor.getAttribute(ANCHOR_ACTION_ATTRIBUTE)!
-      if (navigation?.openInternalLink?.(action, anchor)) {
-        cancelEvent(e)
-      }
-
       return
     }
 
@@ -3378,7 +3128,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
       for (const timestamp in this.dateMessages) {
         if (this.dateMessages[timestamp].div === dateBubble) {
-          navigation?.openDatePicker?.(+timestamp, this.onDatePick)
+          showDatePickerPopup({ initDate: new Date(+timestamp), onPick: this.onDatePick, peerId: this.peerId })
           break
         }
       }
@@ -3390,9 +3140,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // Ветка стоит ПЕРЕД спойлером и реакциями, как у оригинала: время лежит в
     // теле сообщения, и на таче по нему открывается меню, а не выделение —
     // поэтому гейт по `IS_TOUCH_SUPPORTED` тоже оригинала.
-    if (this.selection && bubble) {
+    const selection = this.chat.selection
+    if (bubble) {
       if (!IS_TOUCH_SUPPORTED && findUpClassName(target, 'time')) {
-        this.selection.toggleByElement(bubble)
+        selection.toggleByElement(bubble)
         return
       }
 
@@ -3400,7 +3151,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
       // — и перебивает все ветки ниже: ни вьювер, ни прыжок к оригиналу в этом
       // режиме не срабатывают. `isTrusted` — страховка оригинала от
       // автокликов аудио-элемента.
-      if (this.selection.isSelecting && e.isTrusted) {
+      if (selection.isSelecting && e.isTrusted) {
         // Служебный бабл без номера выбирать нечем.
         if (bubble.classList.contains('service') && !bubble.dataset.mid) {
           return
@@ -3410,12 +3161,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
         // На таче выделение текста заканчивается тем же кликом — он не должен
         // ещё и переключать выбор (tweb :3164-3167).
-        if (IS_TOUCH_SUPPORTED && this.selection.selectedText) {
-          this.selection.selectedText = undefined
+        if (IS_TOUCH_SUPPORTED && selection.selectedText) {
+          selection.selectedText = undefined
           return
         }
 
-        this.selection.toggleByElement(findUpClassName(target, 'grouped-item') || bubble)
+        selection.toggleByElement(findUpClassName(target, 'grouped-item') || bubble)
         return
       }
     }
@@ -3441,7 +3192,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     if (contactDiv) {
       const peerId = Number(contactDiv.dataset.peerId)
       if (peerId) {
-        navigation?.openPeer?.(peerId, contactDiv)
+        void this.chat.appImManager.setInnerPeer({ peerId })
       } else {
         const phone = contactDiv.querySelector<HTMLElement>('.contact-number')
         void copyTextToClipboard((phone?.textContent ?? '').replace(/\s/g, ''))
@@ -3453,7 +3204,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     const callDiv = target.closest<HTMLElement>('.bubble-call')
     if (callDiv) {
-      navigation?.callUser?.(callDiv.dataset.type as 'voice' | 'video')
+      // tweb :3194 `this.chat.appImManager.callUser(this.peerId.toUserId(), type)`:
+      // звонок бывает только личный (у нас «группа или канал» — знак ключа).
+      if (!isAnyChat(this.peerId)) {
+        this.chat.appImManager.callUser(this.peerId, callDiv.dataset.type as 'voice' | 'video')
+      }
       return
     }
 
@@ -3497,11 +3252,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // Расхождение одно: оригинал читает класс с самого кликнутого узла
     // (`target.classList.contains('forward')`, :3511), у нас — `closest`.
     // Внутри кнопки лежит узел иконки, и клик по нему приходит с него же.
+    //
+    // Попапа пересылки (`showForwardPopup`) нет до П-5 (бэклог Б-28): клик
+    // гасится, чтобы не провалиться в ветки ниже.
     const forwardButton = target.closest<HTMLElement>('.bubble-beside-button.forward')
     if (forwardButton && bubble) {
       cancelEvent(e)
-      const message = this.getMessage(Number(bubble.dataset.mid))
-      if (message) this.chat.navigation?.showForward?.({ [this.peerId]: this.midsByMessage(message) })
       return
     }
 
@@ -3524,8 +3280,18 @@ export default class ChatBubbles implements BubbleGroupsHost {
       const message = this.getMessage(Number(bubble.dataset.mid))
       const media = message?._ === 'message' ? message.media : undefined
       const doc = media?._ === 'messageMediaDocument' ? media.document : undefined
-      if (doc?.stickerSetInput) {
-        this.chat.showStickerSet?.(doc.stickerSetInput)
+      // tweb `showStickersPopup(doc.stickerSetInput, undefined, this.chat.input)`:
+      // попап набора у нас — React `StickerSetModal` в острове оверлеев (тот же
+      // приём, что `popups/datePicker.bridge.ts`), выбранный стикер уходит
+      // композером. Чанк попапа — по клику: до него он не нужен ни разу.
+      const stickerSetInput = doc?.stickerSetInput
+      if (stickerSetInput) {
+        const input = this.chat.input
+        void import('@components/stickers/StickerSetModal').then((m) => {
+          m.openStickerSetModal({ id: stickerSetInput.id }, (sticker) => {
+            void input.sendMessageWithDocument({ document: sticker })
+          })
+        })
       }
 
       return
@@ -3553,9 +3319,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
       return
     }
 
-    if (navigation?.openPeer?.(peerId, nameDiv)) {
-      cancelEvent(e)
-    }
+    // tweb :3360-3364 — `setInnerPeer({peerId})`
+    cancelEvent(e)
+    void this.chat.appImManager.setInnerPeer({ peerId })
   }
 
   /**
@@ -3575,9 +3341,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
     if (!found?.replies.channel_id) return
 
     // tweb :3335 — пир треда это ГРУППА ОБСУЖДЕНИЯ, а не канал.
-    this.chat.navigation?.openDiscussion?.({
+    void this.chat.appImManager.setInnerPeer({
       peerId: toPeerId(found.replies.channel_id, true),
-      postMid: found.mid,
+      type: ChatType.Discussion,
+      threadId: found.mid,
     })
   }
 
@@ -3622,8 +3389,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * окно вокруг номера. У нас ровно так же — `setMessageId`.
    *
    * ОГРАНИЧЕНИЕ, которое остаётся: чужой чат. Оригинал прыгает и в него (по
-   * `reply_to_peer_id`), а лента владеет ОДНИМ окном — открыть другой чат может
-   * только хост. Стека возврата (`followStack`, :3585) тоже нет: кнопка
+   * `reply_to_peer_id`, `appImManager.setInnerPeer`), а `reply_to_peer_id` у нас
+   * на проводе не бывает — ответ всегда в этом же окне. Стека возврата (`followStack`, :3585) тоже нет: кнопка
    * «вернуться» живёт в окружении `Chat`.
    *
    * `.catch(noop)` — как `Chat.setPeer` у оригинала (chat.ts:1122): прыжок,
@@ -3644,12 +3411,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * (`collectLightboxItems`) — второй такой же был бы вторым ответом на вопрос
    * «что считается просматриваемым медиа».
    *
-   * Прыжок к сообщению, пересылка, удаление и догрузка медиа
-   * (`jumpToMessage`/`onForward`/`onDelete`/`loadMoreMedia`) — это окружение
-   * `Chat`: попапы, стек колонки и REST-пагинация. Оно отдаёт их одним полем
-   * `ChatContext.mediaViewerActions`, и они расстилаются в аргументы вьювера
-   * ниже. Все четыре у вьювера ОПЦИОНАЛЬНЫ: не переданы — он открывается,
-   * листает загруженное и закрывается.
+   * Прыжок к сообщению — `setMessageId` этой же ленты; догрузка соседей за
+   * пределами окна — REST `/chats/{id}/media` (`messages.mediaHistory`, наш
+   * источник вместо tweb `SearchListLoader`): страницы фильтра `media` копит
+   * `mediaNeighbours.ts`, кэш живёт одно открытие вьювера, листается КУРСОРОМ
+   * (`offset_id`, tweb appSearchSuper.ts:2278-2279). Пересылка и удаление из
+   * вьювера — попапы П-5 (бэклог Б-28): у вьювера они опциональны.
    */
   private openMediaViewerFor(attachment: HTMLElement): boolean {
     const bubble = attachment.closest<HTMLElement>('.bubble')
@@ -3686,7 +3453,40 @@ export default class ChatBubbles implements BubbleGroupsHost {
     if (!items[index]) return false
 
     items[index].element = attachment // источник полёта — кликнутая миниатюра
-    void openMediaViewer({ items, index, target: attachment, reverse: true, ...this.chat.mediaViewerActions })
+
+    const peerId = this.peerId
+    const lang = useI18nStore.getState().lang
+    const messagesManager = this.managers.messages
+    let loader: MediaNeighboursLoader | undefined
+    const loadMoreMedia = messagesManager.mediaHistory && (async(older: boolean, anchor: ViewerItem | undefined, loadCount: number): Promise<ViewerItem[]> => {
+      if(!anchor) return []
+      loader ??= createMediaNeighboursLoader({
+        fetchPage: async(offsetId, limit) => (await messagesManager.mediaHistory!(peerId, 'media', offsetId, limit)).messages,
+      })
+      try {
+        const slice = await loader.neighbours(anchor.mid, older, loadCount)
+        const slicePeers = new Map<number, NonNullable<ReturnType<typeof cachedPeer>>>()
+        for(const m of slice) {
+          const peer = m.fromId != null ? cachedPeer(m.fromId) : undefined
+          if(peer) slicePeers.set(m.fromId!, peer)
+        }
+        // порядок newest-first сохраняем — ListLoader (reverse: true) сам разложит
+        return slice.map((m) => messageToViewerItem(m, { meId: rootScope.myId, peers: slicePeers, lang }, this.getBubble(makeFullMid(peerId, m.id))?.querySelector<HTMLElement>('.attachment') ?? null))
+      } catch{
+        return [] // ошибка сети = край списка: вьювер листает уже загруженное
+      }
+    })
+
+    void openMediaViewer({
+      items,
+      index,
+      target: attachment,
+      reverse: true,
+      jumpToMessage: (item) => {
+        if(item.seq != null) void this.setMessageId({ lastMsgId: item.seq }).catch(noop)
+      },
+      loadMoreMedia,
+    })
     return true
   }
 
@@ -4150,16 +3950,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *    смонтированного бабла, позиция `center`/`end`, подсветка цели.
    *
    * ЧЕГО ЗДЕСЬ НЕТ И ПОЧЕМУ (каждый пункт — с предметом, а не «потом»):
-   *  • СМЕНА ПИРА. Ветка `!samePeer` портирована ровно в тех строках, которые
-   *    ничего не требуют от окружения (класс нового `chatInner` :5249,
-   *    мгновенный скролл `FocusDirection.Static` :5468, спиннер первой
-   *    загрузки :5378-5379, сохранённая позиция :5100-5103/:5437-5438). Всё
-   *    остальное в ней — `chat.onChangePeer` (:5061), `chat.finishPeerChange`
-   *    (:5372/:5389), фон чата `revealPreparedBackground` (:5377/:5407),
-   *    ранги админов (:5282-5335), `sharedMediaTab` — это окружение `Chat`, которого
-   *    у ленты нет. У нас пир меняет ХОСТ, пересоздавая ленту эффектом по
-   *    `peerId` (`VanillaFeed.tsx`), поэтому «тот же инстанс на новый пир»
-   *    предмета пока не имеет.
+   *  • СМЕНА ПИРА (шаг К-3): пир на этом же инстансе меняет `Chat.setPeer`, а
+   *    ветка `!samePeer` зовёт `chat.onChangePeer` (tweb :5848) и
+   *    `chat.finishPeerChange` (:6183 некэш / :6200 кэш), за ними —
+   *    `chat.revealPreparedBackground` (:6188/:6218). Не портированы ранги
+   *    админов (нет предмета) и опрос реакций (`fetchReactions`).
    *  • `followingUnread` при ОТКРЫТИИ чата (`!samePeer`, :5908-5924) — окно
    *    сразу на первом непрочитанном. Портирована только половина
    *    `samePeer` (tweb ce37ebeb3: «вниз» в открытом чате ведёт к первому
@@ -4181,25 +3976,26 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * Возвращает то же, что оригинал: `null`, если окно перерисовывать не
    * пришлось (кэш-ветка), иначе `{cached, promise}` — промис доводки.
    */
-  public async setPeer(options: {
-    /** порт `ChatSetPeerOptions.lastMsgId` — номер, ВОКРУГ которого собирается
-     *  окно; без него лента уходит в самый низ истории */
-    lastMsgId?: number,
+  public async setPeer(options: Partial<ChatSetPeerOptions> & {
     /** порт вычисленного `Chat.setPeer` признака (chat.ts:1032
-     *  `appImManager.isSamePeer`): «этот же чат уже показан». У нас его знает
-     *  ХОСТ — первый вызов после создания ленты идёт с `false`, прыжок внутри
-     *  открытого чата (`setMessageId`) — с `true`. */
+     *  `appImManager.isSamePeer`): «этот же чат уже показан». Прыжок внутри
+     *  открытого чата (`setMessageId`) — `true`.
+     *
+     *  Ключ поиска `savedReaction` (tweb `ChatSearchKeys`, chat.ts:73) держится
+     *  на `hasOwnProperty` (chat.ts:1093-1098): САМО ПРИСУТСТВИЕ ключа в
+     *  `options` означает «поиск задан заново», отсюда `'savedReaction' in
+     *  options` ниже, а не сравнение значений. */
     samePeer?: boolean,
-    /**
-     * Порт КЛЮЧА ПОИСКА `savedReaction` из `ChatSearchKeys` (tweb chat.ts:73).
-     * Механика оригинала дословная и держится на `hasOwnProperty`
-     * (chat.ts:1093-1098): САМО ПРИСУТСТВИЕ ключа в `options` означает «поиск
-     * задан заново», даже если значение то же; отсюда `'savedReaction' in
-     * options` ниже, а не сравнение значений.
-     */
-    savedReaction?: string,
   } = {}): Promise<{ cached: boolean, promise: Promise<void> } | null> {
     const { lastMsgId, samePeer = false } = options
+
+    // tweb :5830-5834
+    if(!this.peerId) {
+      ++this.setPeerTempId
+      this.cleanup(true)
+      this.preloader.detach()
+      return null
+    }
 
     // tweb chat.ts:1092-1099. Ключ поиска переписывается, если пир сменился ЛИБО
     // вызывающий назвал ключ; `sameSearch` — «выдача та же, что была». Дальше он
@@ -4231,6 +4027,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
       }
 
       setPeerDeferred.resolve?.()
+    }
+
+    // tweb :5846-5849 — тип, флаги и права чата считает `Chat` до разбора цели.
+    if(!samePeer) {
+      await m(this.chat.onChangePeer(options, m))
     }
 
     let lastMsgFullMid: FullMid = lastMsgId ? makeFullMid(peerId, lastMsgId) : EMPTY_FULL_MID
@@ -4268,12 +4069,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // Ветка `savedPosition?.mids` (:5109) в оригинале ПУСТА — она лишь
     // перехватывает управление у «уйти к последнему сообщению» ниже. Здесь она
     // выражена тем же условием в `else if`.
-    let savedPosition: ChatPosition | undefined
+    let savedPosition: ChatSavedPosition | undefined
     // tweb :5886-5924 — «вести к первому непрочитанному», а не в конец.
     let followingUnread = false
     if(!isTarget) {
       if(!samePeer) {
-        savedPosition = getChatPosition(peerId, this.chat.threadId)
+        savedPosition = this.chat.appImManager.getChatSavedPosition(this.chat)
       }
 
       if(!savedPosition && topMessageFullMid !== EMPTY_FULL_MID) {
@@ -4477,10 +4278,23 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     const { promise, cached } = result
 
+    // tweb :6171-6180
+    const finishPeerChangeOptions: Parameters<Chat['finishPeerChange']>[0] = {
+      peerId,
+      isTarget,
+      isJump,
+      lastMsgId,
+      middleware,
+    }
+
     // Вторая половина гейта `!cached` (tweb :5375): страница пришла из кэша —
     // окно встанет мгновенно, спиннеру предмета нет. См. разбор выше.
     if(cached) {
       this.preloader.detach()
+    } else if(!samePeer) {
+      // tweb :6182-6190 — шапка, композер и фон доезжают, пока страница в полёте.
+      await m(this.chat.finishPeerChange(finishPeerChangeOptions))
+      this.chat.revealPreparedBackground()
     }
 
     const setPeerPromise: Promise<void> = m(promise).then(async() => {
@@ -4488,6 +4302,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
       const mountedByLastMsgId = haveToScrollToBubble ?
         await m(lastMsgFullMid !== EMPTY_FULL_MID ? this.getMountedBubble(lastMsgFullMid) : { bubble: this.getLastBubble() }) :
         undefined
+
+      // tweb :6197-6202
+      if(cached && !samePeer) {
+        await m(this.chat.finishPeerChange(finishPeerChangeOptions)) // * костыль
+      }
 
       // tweb :5393. Окно собрано — спиннеру конец, ещё ДО того, как дерево
       // въедет в документ: `detach` уводит его переходом, и они не мигают друг
@@ -4506,6 +4325,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
       const scrollable = this.scrollable
       scrollable.lastScrollDirection = 0
       scrollable.lastScrollPosition = 0
+      // tweb :6216-6219 — фон и дерево ленты одним синхронным блоком
+      this.chat.revealPreparedBackground()
       scrollable.replaceChildren(this.paddingTop, chatInner, this.paddingBottom)
 
       // tweb :5410-5412.
@@ -4599,6 +4420,22 @@ export default class ChatBubbles implements BubbleGroupsHost {
       throw err
     }).catch(noop).finally(finishSetPeer)
 
+    // tweb :6489-6525 (`setFetchHistoryInterval`) — живая подписка канала на
+    // время окна: посты и метаданные едут per-channel funnel воркера, пропущенное
+    // добирается `/difference` при открытии (`realtime.subscribeChannel`).
+    // Отписка — на смене окна или сносе ленты (`middleware.onClean`).
+    if(this.chat.isBroadcast && this.managers.realtime.subscribeChannel) {
+      const channelMiddleware = this.getMiddleware()
+      const { realtime } = this.managers
+      void setPeerPromise.then(() => {
+        if(!channelMiddleware()) return
+        channelMiddleware.onClean(() => {
+          void realtime.unsubscribeChannel?.({ peerId })
+        })
+        void realtime.subscribeChannel?.({ peerId })
+      }, noop)
+    }
+
     return { cached, promise: setPeerPromise }
   }
 
@@ -4620,6 +4457,25 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // необработанным отказом промиса.
     void promise.then((result) => result?.promise).catch(noop)
     return promise
+  }
+
+  /** Порт tweb `onGoDownClick` (bubbles.ts:4300-4314): стека возврата
+   *  (`followStack`) у ленты нет — остаётся первая ветка, `chat.setMessageId()`. */
+  public onGoDownClick() {
+    void this.chat.setMessageId()?.catch(noop)
+  }
+
+  /** Порт tweb `finishPeerChange` (bubbles.ts:6585-6620) — права на запись.
+   *  `is-chat`/`is-broadcast` ставит `setPeer` на новый `chatInner` и `remover`
+   *  (`applyChatTypeClasses`); `no-messages`/`with-message-avatars` — без
+   *  предмета (см. докблок `applyChatTypeClasses`). */
+  public async finishPeerChange() {
+    const canWrite = await this.chat.canSend()
+
+    return () => {
+      this.chatInner.classList.toggle('has-rights', canWrite)
+      this.container.classList.toggle('is-chat-input-hidden', !canWrite)
+    }
   }
 
   /** Порт tweb `onDatePick` (bubbles.ts:10205-10222) — выбранный в календаре
@@ -4768,10 +4624,6 @@ export default class ChatBubbles implements BubbleGroupsHost {
   // как в tweb, где ту же точку гасит `AudioElement`. Заводить здесь второй путь
   // к тому же факту нельзя.
   //
-  // НЕ ПОРТИРОВАН `unreadedChat`/`isUnreadedChatChanged` (:2928-2939): он
-  // закрывает окно между синхронной сменой пира в `Chat.setPeer` и `cleanup()`,
-  // а у нас пир ленты не меняется никогда — новый пир это новый инстанс
-  // (`VanillaFeed`), см. шапку файла.
 
   /** Порт tweb :2289-2295. */
   private unreadedObserverCallback = (entry: IntersectionObserverEntry) => {
@@ -4826,12 +4678,27 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * Расхождения: гейт `chat.isPreview` (:2942) и лог (:2974-2975, :3001)
    * предмета не имеют; ветка `'content'` — см. комментарий секции выше.
    */
+  /** tweb :3352-3362 — whether `this.chat` has moved on from the chat the unreaded mids were
+   *  collected in. True in the window between the synchronous peer flip in `Chat.setPeer` and
+   *  `cleanup()` — the unreaded sets still hold the previous chat's mids there and must not be
+   *  read against the new peer. */
+  private isUnreadedChatChanged() {
+    const { unreadedChat, chat } = this
+    return !!unreadedChat && (
+      unreadedChat.peerId !== chat.peerId ||
+      unreadedChat.threadId !== chat.threadId ||
+      unreadedChat.monoforumThreadId !== chat.monoforumThreadId
+    )
+  }
+
   private readUnreaded() {
     if(this.readPromise) return
 
     const middleware = this.getMiddleware()
     this.readPromise = idleController.getFocusPromise().then(async() => {
-      if(!middleware()) return
+      // like a failed middleware, a stale unreadedChat leaves `this.readPromise` latched —
+      // `cleanup()` is what resets both the promise and the sets
+      if(!middleware() || this.isUnreadedChatChanged()) return
 
       const peerId = this.peerId
 
@@ -4884,6 +4751,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
   private setUnreadObserver(element: HTMLElement, mid: number) {
     if(!this.observer) return
 
+    // tweb :7458-7462 — registration always happens while rendering the current chat, so this
+    // snapshot is the authoritative owner of every mid in the unreaded maps/sets
+    const { peerId, threadId, monoforumThreadId } = this.chat
+    this.unreadedChat = { peerId, threadId, monoforumThreadId }
     this.observer.observe(element, this.unreadedObserverCallback)
     this.unreaded.set(element, mid)
   }
@@ -6065,10 +5936,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *
    * ВЕТКА выбирается цепочкой оригинала (:10798-10857) в применимом объёме:
    *  • `saved` — «Избранное» (`rootScope.myId === peerId`, :10837);
-   *  • `greeting` — личный чат, куда можно писать (:10839-10850). Слагаемое
-   *    `!isBot` опущено: признака «это бот» у ленты нет вовсе (в `ChatContext`
-   *    его не передаёт никто); `premiumRequired`/`paidMessages` — подсистем
-   *    нет;
+   *  • `greeting` — личный чат, куда можно писать (:10839-10850), не бот
+   *    (`chat.isBot`); `premiumRequired`/`paidMessages` — подсистем нет;
    *  • `noMessages` — всё остальное (:10856), последняя ветка и у оригинала.
    * Пропущены ветки, у которых нет предмета: `restricted`, `directChannelMessages`,
    * `group` (нужен `pFlags.creator` пира), `noScheduledMessages`, `topic`,
@@ -6087,7 +5956,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     const middleware = this.getMiddleware()
     const type: EmptyPlaceholderType =
       rootScope.myId === this.peerId ? 'saved' :
-      !isAnyChat(this.peerId) && await this.chat.canSend?.() ? 'greeting' :
+      !isAnyChat(this.peerId) && !this.chat.isBot && await this.chat.canSend() ? 'greeting' :
       'noMessages'
 
     if(!middleware()) {
@@ -6229,7 +6098,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     wrapSticker({
       mediaId: doc.id,
       div,
-      group: 'chat',
+      group: this.chat.animationGroup,
       middleware,
       width: GREETING_STICKER_SIZE,
       height: GREETING_STICKER_SIZE,
@@ -6244,11 +6113,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
     }).render.catch(noop)
 
     // tweb :10586-10589 — тап по стикеру ОТПРАВЛЯЕТ его (у оригинала через
-    // `emoticonsDropdown.onMediaClick`, у нас — ручкой хоста, см.
-    // `ChatContext.sendSticker`).
+    // `emoticonsDropdown.onMediaClick`, у нас — `chat.input.sendMessageWithDocument`).
     div.addEventListener('click', (e) => {
       cancelEvent(e)
-      this.chat.sendSticker?.(doc)
+      void this.chat.input.sendMessageWithDocument({ document: doc })
     })
   }
 
@@ -6300,6 +6168,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.observer?.disconnect()
     this.unreaded.clear()
     this.unreadedSeen.clear()
+    this.unreadedChat = undefined
     // tweb bubbles.ts:4982 — накопленные видимые посты принадлежат ПРОШЛОМУ окну.
     this.viewsMids.clear()
     // Реестр отдач держит промисы, к которым привязаны кольца ПРОШЛОГО окна:
@@ -6350,78 +6219,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.middlewareHelper.clean()
   }
 
-  /**
-   * Порт `appImManager.saveChatPosition` (tweb lib/appImManager.ts:2111-2149)
-   * — «запомнить, где пользователь оставил чат».
-   *
-   * ГДЕ ЭТО ЖИВЁТ В ОРИГИНАЛЕ и почему здесь. В tweb метод висит на
-   * `appImManager`, потому что там же лежит и карта позиций, но ВСЕ факты,
-   * которыми он оперирует, он берёт у ленты — `chatBubbles.scrollable`,
-   * `getRenderedLength`, `getViewportSlice`, `sliceViewport`,
-   * `getRenderedHistory`. У нас карта осталась отдельным модулем
-   * (`core/chat/chatPositions.ts`), а решение — здесь, у владельца фактов.
-   *
-   * КОГДА ЗОВЁТСЯ. В оригинале — по событию `peer_changing`
-   * (appImManager.ts:378-380), то есть «этот чат сейчас уйдёт». У нас чат
-   * уходит вместе с инстансом ленты: пир меняет хост, пересоздавая её
-   * (`VanillaFeed.tsx`), — поэтому точка одна и это `destroy()`.
-   *
-   * КОГДА ПОЗИЦИЯ НЕ СОХРАНЯЕТСЯ (`shouldSavePosition`, :2122-2126) — три
-   * условия оригинала, и каждое отсекает свой случай:
-   *  • чат оставлен ПРИЖАТЫМ К НИЗУ (`getDistanceToEnd() <= 16` вместе с
-   *    `loadedAll.bottom`) — восстанавливать нечего, чат и должен открыться
-   *    внизу;
-   *  • окно пустое (`getRenderedLength()`);
-   *  • НИЖЕ ВЬЮПОРТА НИЧЕГО НЕТ (`getViewportSlice().invisibleBottom.length`)
-   *    — то же «мы у низа», но измеренное по баблам, а не по пикселям.
-   * И тогда прошлая запись УДАЛЯЕТСЯ (:2144), а не остаётся: она увела бы
-   * следующее открытие в середину истории.
-   *
-   * Четвёртое условие оригинала — `!chat.savedReaction` (:2125): позиция в
-   * ОТФИЛЬТРОВАННОЙ по тегу выдаче к обычной истории отношения не имеет, и
-   * восстанавливать по ней следующее открытие чата нельзя.
-   *
-   * Ветка `pinnedMessages` (:2119, :2133, :2140-2142) не портирована вместе с
-   * плашкой закрепа — это окружение чата, у ленты его нет. Гейт по типу чата
-   * (:2112) предмета не имеет — типов чата у ленты нет.
-   */
-  private saveChatPosition() {
-    const peerId = this.peerId
-    if(!peerId) {
-      return
-    }
-
-    const threadId = this.chat.threadId
-    const shouldSavePosition =
-      !(this.scrollable.getDistanceToEnd() <= 16 && this.scrollable.loadedAll.bottom) &&
-      this.getRenderedLength() &&
-      !this.savedReaction &&
-      this.getViewportSlice().invisibleBottom.length // * don't save if we're close to the end
-
-    if(!shouldSavePosition) {
-      deleteChatPosition(peerId, threadId)
-      return
-    }
-
-    // tweb :2128-2134. Подрезка ПЕРЕД снятием списка — не оптимизация: без неё
-    // в позицию уехало бы всё окно целиком, и следующее открытие рисовало бы
-    // сотни баблов вместо экрана.
-    this.sliceViewport(true)
-    saveChatPosition(peerId, threadId, {
-      mids: this.getRenderedHistory('desc', true).map((fullMid) => splitFullMid(fullMid).mid),
-      top: this.scrollable.scrollPosition,
-    })
-  }
-
   /** Порт tweb bubbles.ts:4880. `batchProcessor.clear()` здесь — наше
-   *  дополнение: в tweb очередь гасит `cleanup()`, который лента обязательно
-   *  проходит на смене пира, а у нас `destroy()` — единственная точка гашения
-   *  (`VanillaFeed` зовёт только его). Без этой строки уже стартовавшая пачка
-   *  домонтировала бы серии в оторванное от документа дерево. */
+   *  дополнение: в tweb очередь гасит `cleanup()`, а `Chat.beforeDestroy` зовёт
+   *  его до `destroy` не всегда (снос инстанса без ухода с пира). Без этой строки
+   *  уже стартовавшая пачка домонтировала бы серии в оторванное дерево.
+   *  Позицию ленты на уходе пишет `appImManager.saveChatPosition` по
+   *  `peer_changing` (tweb `appImManager.ts:479-486`). */
   public destroy() {
-    // ПЕРВОЙ строкой, до `destroyScrollable()`: позиция читается с живого
-    // скролл-контейнера. См. докблок метода.
-    this.saveChatPosition()
     // Поколение окна — НАША строка, по той же причине, что `batchProcessor
     // .clear()` ниже: в tweb `setPeerTempId` вытесняет следующий `setPeer`,
     // который его лента обязательно проходит на смене пира, а у нас лента
@@ -6444,10 +6248,6 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // tweb отвязывает меню и выделение через `Chat.destroy` (chat.ts:845-846:
     // `this.contextMenu?.destroy()`, затем `selection?.attachListeners(undefined,
     // undefined)`); у нас владелец обеих связок — лента, она же их и рвёт.
-    this.contextMenu?.destroy()
-    this.contextMenu = undefined
-    this.selection?.attachListeners(undefined, undefined)
-    this.selection?.cleanup()
     this.sliceViewportDebounced?.clearTimeout()
     // Дебаунс просмотров переживает ленту (таймер висит на окне) и на срабатывании
     // прочитал бы `this.peerId` уже умершего инстанса — гасим вместе с ней, тем же

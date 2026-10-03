@@ -11,7 +11,8 @@
 // любом языке пакета. Именно так выглядел дефект «разнобой языка интерфейса»:
 // на браузере с локалью `en-US` подписи опроса шли по-английски (они через
 // ядро, `I18n.i18n('Chat.Poll.Type.Anonymous')`), а шапка чата — по-русски
-// («0 подписчиков», `Chat.tsx:869`). Язык при этом выбирался ОДИН и правильно
+// («0 подписчиков», `Chat.tsx:869`; файл снесён шагом К-3, шапка — класс
+// `components/chat/topbar.ts`). Язык при этом выбирался ОДИН и правильно
 // (`I18n.lastRequestedLangCode`, `lib/langPack.ts:239`) — вторым «источником»
 // был сам литерал.
 //
@@ -102,7 +103,6 @@ const DEBT: Record<string, number> = {
   'src/core/dialogToChat.ts': 1,
   'src/core/hooks/useGroupInfo.ts': 8,
   'src/core/hooks/useStoryViewer.ts': 3,
-  'src/core/hooks/useTypingLabel.ts': 32,
   'src/core/messageToConvMsg.ts': 13,
   'src/core/peers/getPeerTitle.ts': 5,
   'src/core/serviceMsg.ts': 36,
@@ -276,11 +276,6 @@ describe('интерфейсная строка приходит из слова
     }
   })
 
-  it('шапка чата больше не пишет подпись литералом', () => {
-    // Именно тот файл и тот дефект, ради которого пин заведён.
-    const rel = 'src/components/Chat.tsx'
-    expect(cyrillicLiterals(readFileSync(resolve(SRC, '..', rel), 'utf8'), rel)).toEqual([])
-  })
 })
 
 describe('разбор литералов', () => {

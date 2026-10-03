@@ -8,7 +8,9 @@ import { makeMessage } from '@core/messages/testMessage'
 import type { UserReal } from '@core/peers/peer'
 import type { MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles } from './testChat'
 
 /** Открыть окно ленты и дождаться ОТРИСОВКИ. `setPeer` (как в оригинале)
  *  возвращает управление, едва отправив запрос: рендер и доводка живут во
@@ -21,12 +23,7 @@ async function openFeed(feed: ChatBubbles) {
 const CHAT = 70
 const AUTHOR = 2
 
-const chatContext = (): ChatContext => ({
-  peerId: CHAT,
-  messagesStorageKey: String(CHAT),
-  container: document.createElement('div'),
-  bubblesViewport: document.createElement('div'),
-})
+const chatContext = () => createTestChat({ peerId: CHAT })
 
 const managersWith = (messages: MyMessage[]): BubblesManagers => ({
   messages: {
@@ -81,7 +78,7 @@ const bubbleOf = (b: ChatBubbles, mid: number) =>
 
 describe('ChatBubbles — reply-заголовок', () => {
   it('ответ несёт шапку с именем автора и превью оригинала', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([plain(1, 'оригинал'), replying(2, 1)]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([plain(1, 'оригинал'), replying(2, 1)]))
     await openFeed(bubbles)
     await settle()
 
@@ -95,7 +92,7 @@ describe('ChatBubbles — reply-заголовок', () => {
   })
 
   it('шапка встаёт ПЕРЕД телом сообщения', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([plain(1, 'оригинал'), replying(2, 1)]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([plain(1, 'оригинал'), replying(2, 1)]))
     await openFeed(bubbles)
     await settle()
 
@@ -106,7 +103,7 @@ describe('ChatBubbles — reply-заголовок', () => {
   it('ответ НА КОРЕНЬ ТРЕДА шапки не даёт (tweb :9377-9378)', async () => {
     // Иначе каждое сообщение комментариев несло бы ссылку на сам пост, который
     // пользователь и так видит сверху.
-    bubbles = new ChatBubbles(chatContext(), managersWith([plain(1, 'пост'), replying(2, 1, { topId: 1 })]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([plain(1, 'пост'), replying(2, 1, { topId: 1 })]))
     await openFeed(bubbles)
     await settle()
 
@@ -115,7 +112,7 @@ describe('ChatBubbles — reply-заголовок', () => {
 
   it('цитата сильнее оригинала: показывается выделенный фрагмент', async () => {
     // Выделенный фрагмент нельзя вывести из сообщения, которое потом изменили.
-    bubbles = new ChatBubbles(chatContext(), managersWith([
+    bubbles = mountTestBubbles(chatContext(), managersWith([
       plain(1, 'длинный оригинал целиком'), replying(2, 1, { quote: 'оригинал' }),
     ]))
     await openFeed(bubbles)
@@ -131,7 +128,7 @@ describe('ChatBubbles — reply-заголовок', () => {
     let answer!: (m: MyMessage | undefined) => void
     const fetchMessageReplyTo = vi.fn((_peerId: number, _mid: number) => new Promise<MyMessage | undefined>((resolve) => { answer = resolve }))
     managers.messages.fetchMessageReplyTo = fetchMessageReplyTo
-    bubbles = new ChatBubbles(chatContext(), managers)
+    bubbles = mountTestBubbles(chatContext(), managers)
     await openFeed(bubbles)
     await settle()
 
@@ -156,7 +153,7 @@ describe('ChatBubbles — reply-заголовок', () => {
     const managers = managersWith([plain(1, 'своё сообщение'), crossChat])
     const fetchMessageReplyTo = vi.fn(async (_peerId: number, _mid: number): Promise<MyMessage | undefined> => undefined)
     managers.messages.fetchMessageReplyTo = fetchMessageReplyTo
-    bubbles = new ChatBubbles(chatContext(), managers)
+    bubbles = mountTestBubbles(chatContext(), managers)
     await openFeed(bubbles)
     await settle()
 
@@ -165,7 +162,7 @@ describe('ChatBubbles — reply-заголовок', () => {
   })
 
   it('клик по шапке прыгает к оригиналу и подсвечивает его', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([plain(1, 'оригинал'), replying(2, 1)]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([plain(1, 'оригинал'), replying(2, 1)]))
     await openFeed(bubbles)
     await settle()
 

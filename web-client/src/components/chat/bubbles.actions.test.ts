@@ -22,7 +22,9 @@ import rootScope from '@lib/rootScope'
 import type { MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
 import { mediaPlayback } from '@core/audio/mediaPlaybackController'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles } from './testChat'
 
 // Отметка «просмотрено/прослушано» уходит в воркер; мокается ГРАНИЦА — сама
 // ручка, как и остальные менеджеры этого стенда.
@@ -61,13 +63,7 @@ const CHAT = 77
 const cancelPending = vi.fn(async () => ({ ok: true }))
 const callUser = vi.fn()
 
-const chatContext = (): ChatContext => ({
-  peerId: CHAT,
-  messagesStorageKey: String(CHAT),
-  container: document.createElement('div'),
-  bubblesViewport: document.createElement('div'),
-  navigation: { callUser },
-})
+const chatContext = () => createTestChat({ peerId: CHAT, appImManager: { callUser } })
 
 const managersWith = (messages: MyMessage[]): BubblesManagers => ({
   messages: {
@@ -158,7 +154,7 @@ const bubbleOf = (b: ChatBubbles, mid: number) =>
 describe('ChatBubbles — отмена отдачи файла с бабла', () => {
   it('у неотправленного медиа-бабла кольцо ОТМЕНЯЕМОЕ: клик по нему рвёт отправку', async () => {
     const message = pendingPhoto('c-1')
-    bubbles = new ChatBubbles(chatContext(), managersWith([message]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([message]))
     await openFeed(bubbles)
     await settle()
 
@@ -178,7 +174,7 @@ describe('ChatBubbles — отмена отдачи файла с бабла', (
 
   it('кадр media:upload_progress двигает кольцо, а done его снимает', async () => {
     const message = pendingPhoto('c-2')
-    bubbles = new ChatBubbles(chatContext(), managersWith([message]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([message]))
     await openFeed(bubbles)
     await settle()
 
@@ -211,7 +207,7 @@ describe('ChatBubbles — отмена отдачи файла с бабла', (
       peerId: CHAT, fromId: 1, id: generateTempMessageId(first.id), out: true, text: '',
       createdAt: '2026-08-20T10:00:00Z', media: photoMedia(), randomId: 'a-2', groupedId: 9,
     })
-    bubbles = new ChatBubbles(chatContext(), managersWith([first, second]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([first, second]))
     await openFeed(bubbles)
     await settle()
 
@@ -233,7 +229,7 @@ describe('ChatBubbles — отмена отдачи файла с бабла', (
       peerId: CHAT, fromId: 1, id: 5, out: true, text: '',
       createdAt: '2026-08-20T10:00:00Z', media: photoMedia(),
     })
-    bubbles = new ChatBubbles(chatContext(), managersWith([sent]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([sent]))
     await openFeed(bubbles)
     await settle()
 
@@ -246,7 +242,7 @@ describe('ChatBubbles — отмена отдачи файла с бабла', (
 
   it('у УПАВШЕЙ отправки отдавать уже нечего: клик по кольцу отмену не зовёт', async () => {
     const failed = pendingPhoto('c-3', { failed: true })
-    bubbles = new ChatBubbles(chatContext(), managersWith([failed]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([failed]))
     await openFeed(bubbles)
     await settle()
 
@@ -266,7 +262,7 @@ describe('ChatBubbles — «прослушано» у голосового и к
       peerId: CHAT, fromId: CHAT, id: 3, text: '',
       createdAt: '2026-08-20T10:00:00Z', media: roundDoc(), mediaUnread: true,
     })
-    bubbles = new ChatBubbles(chatContext(), managersWith([message]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([message]))
     await openFeed(bubbles)
     await settle()
 
@@ -283,7 +279,7 @@ describe('ChatBubbles — «прослушано» у голосового и к
       peerId: CHAT, fromId: CHAT, id: 3, text: '',
       createdAt: '2026-08-20T10:00:00Z', media: roundDoc(),
     })
-    bubbles = new ChatBubbles(chatContext(), managersWith([message]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([message]))
     await openFeed(bubbles)
     await settle()
 
@@ -295,7 +291,7 @@ describe('ChatBubbles — «прослушано» у голосового и к
       peerId: CHAT, fromId: CHAT, id: 4, text: '',
       createdAt: '2026-08-20T10:00:00Z', media: voiceDoc(), mediaUnread: true,
     })
-    bubbles = new ChatBubbles(chatContext(), managersWith([message]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([message]))
     await openFeed(bubbles)
     await settle()
 
@@ -313,7 +309,7 @@ describe('ChatBubbles — «прослушано» у голосового и к
       peerId: CHAT, fromId: 1, id: 6, out: true, text: '',
       createdAt: '2026-08-20T10:00:00Z', media: voiceDoc(), mediaUnread: true,
     })
-    bubbles = new ChatBubbles(chatContext(), managersWith([message]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([message]))
     await openFeed(bubbles)
     await settle()
 
@@ -330,7 +326,7 @@ describe('ChatBubbles — «прослушано» у голосового и к
       peerId: CHAT, fromId: CHAT, id: 7, text: '',
       createdAt: '2026-08-20T10:00:00Z', media: roundDoc(220), mediaUnread: true,
     })
-    bubbles = new ChatBubbles(chatContext(), managersWith([message]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([message]))
     await openFeed(bubbles)
     await settle()
 
@@ -347,7 +343,7 @@ describe('ChatBubbles — «прослушано» у голосового и к
       peerId: CHAT, fromId: 1, id: 7, out: true, text: '',
       createdAt: '2026-08-20T10:00:00Z', media: roundDoc(221), mediaUnread: true,
     })
-    bubbles = new ChatBubbles(chatContext(), managersWith([message]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([message]))
     await openFeed(bubbles)
     await settle()
 
@@ -364,7 +360,7 @@ describe('ChatBubbles — «прослушано» у голосового и к
 describe('ChatBubbles — лог звонка', () => {
   it('исходящий видеозвонок: .bubble-call с data-type=video внутри тела', async () => {
     const message = callMessage({ id: 8, out: true, video: true, duration: 65, reason: 'phoneCallDiscardReasonHangup' })
-    bubbles = new ChatBubbles(chatContext(), managersWith([message]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([message]))
     await openFeed(bubbles)
     await settle()
 
@@ -387,7 +383,7 @@ describe('ChatBubbles — лог звонка', () => {
 
   it('у бабла звонка НЕТ блока времени: время печатает строка статуса (tweb `noMessageInfo`)', async () => {
     const message = callMessage({ id: 12, out: true, duration: 3, reason: 'phoneCallDiscardReasonHangup' })
-    bubbles = new ChatBubbles(chatContext(), managersWith([message]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([message]))
     await openFeed(bubbles)
     await settle()
 
@@ -399,7 +395,7 @@ describe('ChatBubbles — лог звонка', () => {
 
   it('отменённый исходящий у звонящего — «Cancelled Call», красная стрелка, только время', async () => {
     const message = callMessage({ id: 9, out: true, reason: 'phoneCallDiscardReasonMissed' })
-    bubbles = new ChatBubbles(chatContext(), managersWith([message]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([message]))
     await openFeed(bubbles)
     await settle()
 
@@ -412,7 +408,7 @@ describe('ChatBubbles — лог звонка', () => {
 
   it('отклонённый — у адресата «Declined Call»', async () => {
     const message = callMessage({ id: 13, reason: 'phoneCallDiscardReasonBusy' })
-    bubbles = new ChatBubbles(chatContext(), managersWith([message]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([message]))
     await openFeed(bubbles)
     await settle()
 
@@ -421,19 +417,19 @@ describe('ChatBubbles — лог звонка', () => {
 
   it('клик по баблу звонка перезванивает ТЕМ ЖЕ типом, что лежит на узле', async () => {
     const message = callMessage({ id: 10, out: true, video: true, duration: 12 })
-    bubbles = new ChatBubbles(chatContext(), managersWith([message]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([message]))
     await openFeed(bubbles)
     await settle()
 
     const title = bubbleOf(bubbles, 10).querySelector<HTMLElement>('.bubble-call-title')!
     title.dispatchEvent(new MouseEvent('click', { bubbles: true }))
 
-    expect(callUser).toHaveBeenCalledWith('video')
+    expect(callUser).toHaveBeenCalledWith(CHAT, 'video')
   })
 
   it('клик по обычному баблу перезвон не запускает', async () => {
     const plain = makeMessage({ peerId: CHAT, fromId: CHAT, id: 11, text: 'привет', createdAt: '2026-08-20T10:00:00Z' })
-    bubbles = new ChatBubbles(chatContext(), managersWith([plain]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([plain]))
     await openFeed(bubbles)
     await settle()
 

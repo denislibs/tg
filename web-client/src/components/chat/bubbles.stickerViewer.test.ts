@@ -13,7 +13,9 @@ import type { HistoryResult } from '@core/managers/messagesManager'
 import type LottiePlayer from '@lib/lottie/lottiePlayer'
 import lottieLoader from '@lib/lottie/lottieLoader'
 import * as stickerContent from '@components/wrappers/stickerContent'
-import ChatBubbles, { type BubblesManagers } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles } from './testChat'
 
 // Реестр документов воркера (`managers.docs.getDoc`) — та же функция модуля:
 // документ стикера проходит `saveDocument`.
@@ -21,6 +23,10 @@ vi.mock('@/client/bootstrap', async () => {
   const { getDoc } = await import('@core/media/messageMedia')
   return { startClient: () => ({ managers: { docs: { getDoc: async (id: number) => getDoc(id) } } }) }
 })
+
+// Попап набора, который открыл бы клик по стикеру (tweb :3432-3442).
+const { openStickerSetModal } = vi.hoisted(() => ({ openStickerSetModal: vi.fn() }))
+vi.mock('@components/stickers/StickerSetModal', () => ({ openStickerSetModal }))
 
 const CHAT = 60
 const SET: InputStickerSetID = { _: 'inputStickerSetID', id: 777 }
@@ -76,11 +82,7 @@ beforeEach(() => {
 describe('ChatBubbles — предпросмотр стикера по зажатию', () => {
   it('зажатие на стикере бабла открывает .sticker-viewer с этим стикером; отпускание закрывает, а клик набор не открывает', async () => {
     const load = vi.spyOn(lottieLoader, 'loadAnimationWorker').mockImplementation(async () => stubPlayer())
-    const showStickerSet = vi.fn()
-    bubbles = new ChatBubbles(
-      { peerId: CHAT, messagesStorageKey: String(CHAT), container: document.createElement('div'), bubblesViewport: document.createElement('div'), showStickerSet },
-      managersWith([withSticker(1, stickerDoc(22))]),
-    )
+    bubbles = mountTestBubbles(createTestChat({ peerId: CHAT }), managersWith([withSticker(1, stickerDoc(22))]))
     await (await bubbles.setPeer())?.promise
     await settle()
     document.body.append(bubbles.container)
@@ -104,6 +106,8 @@ describe('ChatBubbles — предпросмотр стикера по зажа�
     expect(document.querySelector('.sticker-viewer')).toBeNull()
 
     mouse('click', media)
-    expect(showStickerSet).not.toHaveBeenCalled()
+    vi.useRealTimers()
+    for (let i = 0; i < 5; ++i) await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(openStickerSetModal).not.toHaveBeenCalled()
   })
 })

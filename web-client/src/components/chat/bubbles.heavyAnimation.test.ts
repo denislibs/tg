@@ -15,7 +15,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
-import { clearChatPositions } from '@core/chat/chatPositions'
 import { dispatchHeavyAnimationEvent, getHeavyAnimationPromise, interruptHeavyAnimation, onHeavyAnimation } from '@core/dom/heavyAnimation'
 import { animateSingle } from '@helpers/animation'
 import { useSettingsStore } from '@/settings'
@@ -23,7 +22,9 @@ import animationIntersector from '@components/animationIntersector'
 import type { MyMessage } from '@core/models'
 import { makeMessage } from '@core/messages/testMessage'
 import type { HistoryResult } from '@core/managers/messagesManager'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles } from './testChat'
 
 const CHAT = 50
 const VIEWPORT_H = 500
@@ -85,13 +86,7 @@ let offHeavy: (() => void) | undefined
 function mount(ids: number[]) {
   const container = document.createElement('div')
   container.classList.add('chat')
-  const ctx: ChatContext = {
-    peerId: CHAT,
-    messagesStorageKey: String(CHAT),
-    container,
-    bubblesViewport: document.createElement('div'),
-  }
-  const b = feed = new ChatBubbles(ctx, managersFor(page(ids)))
+  const b = feed = mountTestBubbles(createTestChat({ peerId: CHAT, container }), managersFor(page(ids)))
   installFakeLayout(b.scrollable.container)
   return b
 }
@@ -121,7 +116,6 @@ const setAnimations = (on: boolean) =>
 beforeEach(() => {
   resetMessagesMirror()
   resetPeerMirror()
-  clearChatPositions()
   interruptHeavyAnimation()
   rootScope.myId = 999
   HTMLElement.prototype.getBoundingClientRect = function(this: HTMLElement) {
@@ -145,7 +139,6 @@ afterEach(() => {
   feed?.destroy()
   feed = undefined
   HTMLElement.prototype.getBoundingClientRect = originalRect
-  clearChatPositions()
   interruptHeavyAnimation()
   setAnimations(true)
 })

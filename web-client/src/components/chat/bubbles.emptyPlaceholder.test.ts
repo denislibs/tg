@@ -17,13 +17,14 @@ import { applyLang } from '@/test/lang'
 import rootScope from '@lib/rootScope'
 import { resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
-import { clearChatPositions } from '@core/chat/chatPositions'
 import { useSettingsStore } from '@/settings'
 import { makeMessage } from '@core/messages/testMessage'
 import type { MyMessage } from '@core/models'
 import type { MyDocument } from '@core/media/messageMedia'
 import type { HistoryResult } from '@core/managers/messagesManager'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles, type TestChatOptions } from './testChat'
 
 const ME = 1
 const FRIEND = 8
@@ -31,13 +32,7 @@ const GROUP = -20
 
 const GREETING: MyDocument = { id: 555, type: 'sticker', w: 512, h: 512 } as MyDocument
 
-const chatContext = (peerId: number, over: Partial<ChatContext> = {}): ChatContext => ({
-  peerId,
-  messagesStorageKey: String(peerId),
-  container: document.createElement('div'),
-  bubblesViewport: document.createElement('div'),
-  ...over,
-})
+const chatContext = (peerId: number, over: TestChatOptions = {}) => createTestChat({ peerId, ...over })
 
 function managersWith(messages: MyMessage[], stickers?: BubblesManagers['stickers']) {
   const managers: BubblesManagers = {
@@ -67,7 +62,6 @@ afterEach(() => { bubbles?.destroy(); bubbles = undefined })
 beforeEach(() => {
   resetMessagesMirror()
   resetPeerMirror()
-  clearChatPositions()
   useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: true } })
   rootScope.myId = ME
 })
@@ -75,7 +69,7 @@ beforeEach(() => {
 describe('ChatBubbles — плейсхолдер пустого чата', () => {
   it('личный чат, куда можно писать, → приветствие со стикером', async () => {
     const searchByEmoji = vi.fn(async () => [GREETING])
-    bubbles = new ChatBubbles(
+    bubbles = mountTestBubbles(
       chatContext(FRIEND, { canSend: () => true }),
       managersWith([], { searchByEmoji }),
     )
@@ -97,7 +91,7 @@ describe('ChatBubbles — плейсхолдер пустого чата', () =>
   })
 
   it('«Избранное» → своя карточка с четырьмя буллетами', async () => {
-    bubbles = new ChatBubbles(chatContext(ME, { canSend: () => true }), managersWith([]))
+    bubbles = mountTestBubbles(chatContext(ME, { canSend: () => true }), managersWith([]))
     await (await bubbles.setPeer())?.promise
     await settle()
 
@@ -110,8 +104,19 @@ describe('ChatBubbles — плейсхолдер пустого чата', () =>
     expect(node.querySelector('.empty-bubble-placeholder-sticker')).toBeNull()
   })
 
+  it('личный чат с ботом приветствия не получает (tweb :10839 `!isBot`)', async () => {
+    bubbles = mountTestBubbles(
+      chatContext(FRIEND, { canSend: () => true, isBot: true }),
+      managersWith([], { searchByEmoji: vi.fn(async () => [GREETING]) }),
+    )
+    await (await bubbles.setPeer())?.promise
+    await settle()
+
+    expect(placeholder(bubbles)!.classList.contains('empty-bubble-placeholder-noMessages')).toBe(true)
+  })
+
   it('группа → последняя ветка цепочки', async () => {
-    bubbles = new ChatBubbles(chatContext(GROUP, { canSend: () => true }), managersWith([]))
+    bubbles = mountTestBubbles(chatContext(GROUP, { canSend: () => true }), managersWith([]))
     await (await bubbles.setPeer())?.promise
     await settle()
 
@@ -123,7 +128,7 @@ describe('ChatBubbles — плейсхолдер пустого чата', () =>
 
   it('непустой чат карточки не получает', async () => {
     const message = makeMessage({ peerId: FRIEND, fromId: FRIEND, id: 1, text: 'привет', createdAt: '2026-08-15T12:00:00Z' })
-    bubbles = new ChatBubbles(chatContext(FRIEND, { canSend: () => true }), managersWith([message]))
+    bubbles = mountTestBubbles(chatContext(FRIEND, { canSend: () => true }), managersWith([message]))
     await (await bubbles.setPeer())?.promise
     await settle()
 
@@ -131,7 +136,7 @@ describe('ChatBubbles — плейсхолдер пустого чата', () =>
   })
 
   it('карточка одна, и живёт она в `.bubbles`, а не в окне', async () => {
-    bubbles = new ChatBubbles(chatContext(FRIEND, { canSend: () => true }), managersWith([]))
+    bubbles = mountTestBubbles(chatContext(FRIEND, { canSend: () => true }), managersWith([]))
     await (await bubbles.setPeer())?.promise
     await settle()
     // Ещё один прогон обоих краёв не должен породить вторую карточку.
@@ -143,16 +148,16 @@ describe('ChatBubbles — плейсхолдер пустого чата', () =>
   })
 
   it('тап по стикеру приветствия отправляет его', async () => {
-    const sendSticker = vi.fn()
-    bubbles = new ChatBubbles(
-      chatContext(FRIEND, { canSend: () => true, sendSticker }),
+    const sendMessageWithDocument = vi.fn(() => true)
+    bubbles = mountTestBubbles(
+      chatContext(FRIEND, { canSend: () => true, input: { sendMessageWithDocument } }),
       managersWith([], { searchByEmoji: vi.fn(async () => [GREETING]) }),
     )
     await (await bubbles.setPeer())?.promise
     await settle()
 
     placeholder(bubbles)!.querySelector<HTMLElement>('.empty-bubble-placeholder-sticker')!.click()
-    expect(sendSticker).toHaveBeenCalledWith(GREETING)
+    expect(sendMessageWithDocument).toHaveBeenCalledWith({ document: GREETING })
   })
 
   // ── ПИН ЗАДАЧИ #122 ────────────────────────────────────────────────────────
@@ -166,7 +171,7 @@ describe('ChatBubbles — плейсхолдер пустого чата', () =>
   // Проверяется не текст (он был верным и с дефектом), а то, ЧЕМ строка
   // является: узлом ядра, который ядро может переписать.
   it('строки карточки — узлы ядра и следуют за языком', async () => {
-    bubbles = new ChatBubbles(chatContext(ME, { canSend: () => true }), managersWith([]))
+    bubbles = mountTestBubbles(chatContext(ME, { canSend: () => true }), managersWith([]))
     await (await bubbles.setPeer())?.promise
     await settle()
 

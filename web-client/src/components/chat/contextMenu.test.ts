@@ -1,10 +1,9 @@
 // Тесты порта `components/chat/contextMenu.ts` (tweb `ChatContextMenu`).
 //
-// Меню поднимается ровно так, как его поднимет лента: узкие порт-интерфейсы
-// (`ContextMenuChat`/`ContextMenuBubbles`/`ContextMenuManagers`/
-// `ContextMenuPopups`) + настоящие зеркала (`messagesMirror` — окно чата,
-// `peerCache` — карточки пиров), настоящий `ChatSelection` и настоящие
-// `contextMenuController`/`ButtonMenu`. Ничего из проверяемого не подменено:
+// Меню поднимается ровно так, как его поднимает `Chat.init`: фейковый `Chat`
+// (`testChat.ts`) с настоящим `ChatSelection`, узкие `ContextMenuManagers`/
+// `ContextMenuPopups` + настоящие зеркала (`messagesMirror` — окно чата,
+// `peerCache` — карточки пиров) и настоящие `contextMenuController`/`ButtonMenu`. Ничего из проверяемого не подменено:
 // подмена ButtonMenu превратила бы тест состава пунктов в тест мока.
 //
 // DOM бабла — разметка ленты (`bubbles.ts:903-921`):
@@ -12,11 +11,12 @@
 //                      > .bubble-content-wrapper > .bubble-content
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ChatContextMenu, {
-  type ContextMenuChat,
   type ContextMenuManagers,
   type ContextMenuPopups,
 } from './contextMenu'
-import ChatSelection, { type SelectionBubbles } from './selection'
+import type { SelectionBubbles } from './selection'
+import type Chat from './chat'
+import { attachTestSelection, createTestChat, type TestChatOptions } from './testChat'
 import contextMenuController from '@helpers/contextMenuController'
 import rootScope from '@lib/rootScope'
 import { putMirrorPage, resetMessagesMirror } from '@core/history/messagesMirror'
@@ -88,7 +88,6 @@ function makeManagers() {
       viewers: vi.fn().mockResolvedValue([]),
     },
     chats: { getReadDate: vi.fn().mockResolvedValue(null) },
-    media: { downloadToDisc: vi.fn() },
   } satisfies ContextMenuManagers
 }
 
@@ -125,17 +124,11 @@ function makePopups() {
   } satisfies ContextMenuPopups
 }
 
-function makeChat(overrides: Partial<ContextMenuChat> = {}): ContextMenuChat {
-  return {
-    peerId: PEER,
-    messagesStorageKey: KEY,
-    canSend: () => true,
-    hasMessageInput: () => true,
-    initMessageReply: vi.fn(),
-    initMessageEditing: vi.fn(),
-    initSearch: vi.fn(),
-    ...overrides,
-  }
+/** `Chat` лички с композером и выделением поверх баблов `container`. */
+function makeChat(options: TestChatOptions = {}): Chat {
+  const chat = createTestChat({ peerId: PEER, messagesStorageKey: KEY, ...options })
+  attachTestSelection(chat, new FakeBubbles(container))
+  return chat
 }
 
 /** Правый клик (десктопный путь `attachContextMenuListener`). */
@@ -179,7 +172,7 @@ describe('ChatContextMenu — открытие (tweb :246-585)', () => {
     const { bubble, content } = makeBubble(1)
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat(), {}, makeManagers(), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeManagers(), makePopups())
     menu.attachTo(container)
 
     rightClick(content)
@@ -201,7 +194,7 @@ describe('ChatContextMenu — открытие (tweb :246-585)', () => {
     const { bubble, content } = makeBubble(1, { classes: ['bubble-first'] })
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat(), {}, makeManagers(), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeManagers(), makePopups())
     menu.attachTo(container)
 
     rightClick(content)
@@ -215,7 +208,7 @@ describe('ChatContextMenu — открытие (tweb :246-585)', () => {
     const { bubble, content } = makeBubble(1)
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat(), {}, makeManagers(), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeManagers(), makePopups())
     menu.attachTo(container)
 
     rightClick(content)
@@ -234,7 +227,7 @@ describe('ChatContextMenu — открытие (tweb :246-585)', () => {
     const { bubble, content } = makeBubble(1)
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat(), {}, makeManagers(), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeManagers(), makePopups())
     menu.attachTo(container)
 
     rightClick(content)
@@ -248,18 +241,46 @@ describe('ChatContextMenu — открытие (tweb :246-585)', () => {
 })
 
 describe('ChatContextMenu — состав пунктов (setButtons, tweb :715-1315)', () => {
-  it('входящее текстовое в личке: Reply, Copy, Pin, Forward, Delete — в порядке tweb', async() => {
+  it('входящее текстовое в личке: Reply, Copy, Pin, Forward, Select, Delete — в порядке tweb', async() => {
     putMirrorPage(KEY, [message(1)])
     const { bubble, content } = makeBubble(1)
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat(), {}, makeManagers(), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeManagers(), makePopups())
     menu.attachTo(container)
 
     rightClick(content)
     await flush()
 
-    expect(itemTexts()).toEqual(['Reply', 'Copy', 'Pin', 'Forward', 'Delete'])
+    expect(itemTexts()).toEqual(['Reply', 'Copy', 'Pin', 'Forward', 'Select', 'Delete'])
+  })
+
+  it('без носителей попапов (до П-5, Б-28) пунктов закрепа, пересылки и удаления нет', async() => {
+    putMirrorPage(KEY, [message(1)])
+    const { bubble, content } = makeBubble(1)
+    container.append(bubble)
+
+    const menu = new ChatContextMenu(makeChat(), makeManagers())
+    menu.attachTo(container)
+
+    rightClick(content)
+    await flush()
+
+    expect(itemTexts()).toEqual(['Reply', 'Copy', 'Select'])
+  })
+
+  it('без композера (`chat.input.messageInput`) «Ответить» нет (verify :984)', async() => {
+    putMirrorPage(KEY, [message(1)])
+    const { bubble, content } = makeBubble(1)
+    container.append(bubble)
+
+    const menu = new ChatContextMenu(makeChat({ input: { messageInput: undefined } }), makeManagers(), makePopups())
+    menu.attachTo(container)
+
+    rightClick(content)
+    await flush()
+
+    expect(itemTexts()).toEqual(['Copy', 'Pin', 'Forward', 'Select', 'Delete'])
   })
 
   it('«Изменить» появляется только у своего сообщения (verify canEditMessage, :1007-1014)', async() => {
@@ -268,7 +289,7 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
     container.append(bubble)
 
     const managers = makeManagers()
-    const menu = new ChatContextMenu(makeChat(), {}, managers, makePopups())
+    const menu = new ChatContextMenu(makeChat(), managers, makePopups())
     menu.attachTo(container)
 
     rightClick(content)
@@ -286,7 +307,7 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
     // ответ висит в полёте — ровно то состояние, ради которого в оригинале
     // существует шиммер
     managers.chats.getReadDate.mockReturnValue(new Promise(() => {}))
-    const menu = new ChatContextMenu(makeChat(), {}, managers, makePopups())
+    const menu = new ChatContextMenu(makeChat(), managers, makePopups())
     menu.attachTo(container)
 
     rightClick(content)
@@ -306,7 +327,7 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
     container.append(bubble)
 
     const managers = makeManagers() // getReadDate → null
-    const menu = new ChatContextMenu(makeChat(), {}, managers, makePopups())
+    const menu = new ChatContextMenu(makeChat(), managers, makePopups())
     menu.attachTo(container)
 
     rightClick(content)
@@ -332,7 +353,7 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
 
     const managers = makeManagers()
     managers.chats.getReadDate.mockResolvedValue({ readAt: readAt.toISOString() })
-    const menu = new ChatContextMenu(makeChat(), {}, managers, makePopups())
+    const menu = new ChatContextMenu(makeChat(), managers, makePopups())
     menu.attachTo(container)
 
     rightClick(content)
@@ -363,7 +384,7 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
 
     const managers = makeManagers()
     managers.chats.getReadDate.mockResolvedValue({ readAt: 'не дата' })
-    const menu = new ChatContextMenu(makeChat(), {}, managers, makePopups())
+    const menu = new ChatContextMenu(makeChat(), managers, makePopups())
     menu.attachTo(container)
 
     rightClick(content)
@@ -385,7 +406,7 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
 
     const managers = makeManagers()
     managers.chats.getReadDate.mockResolvedValue({ restricted: true })
-    const menu = new ChatContextMenu(makeChat(), {}, managers, makePopups())
+    const menu = new ChatContextMenu(makeChat(), managers, makePopups())
     menu.attachTo(container)
 
     rightClick(content)
@@ -402,7 +423,7 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
     const { bubble, content } = makeBubble(1, { peerId: CHANNEL })
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat({ peerId: CHANNEL }), {}, makeManagers(), makePopups())
+    const menu = new ChatContextMenu(makeChat({ peerId: CHANNEL }), makeManagers(), makePopups())
     menu.attachTo(container)
 
     rightClick(content)
@@ -419,11 +440,11 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
     const { bubble, content } = makeBubble(1)
     container.append(bubble)
 
-    const selection = new ChatSelection(new FakeBubbles(container), { messages: {} })
-    selection.toggleByElement(bubble)
-    expect(selection.isSelecting).toBe(true)
+    const chat = makeChat()
+    chat.selection.toggleByElement(bubble)
+    expect(chat.selection.isSelecting).toBe(true)
 
-    const menu = new ChatContextMenu(makeChat(), { selection }, makeManagers(), makePopups())
+    const menu = new ChatContextMenu(chat, makeManagers(), makePopups())
     menu.attachTo(container)
 
     rightClick(content)
@@ -434,17 +455,18 @@ describe('ChatContextMenu — состав пунктов (setButtons, tweb :715
 })
 
 describe('ChatContextMenu — действия пунктов', () => {
-  async function openOn(mid: number, options: { chat?: Partial<ContextMenuChat>, target?: 'content' } = {}) {
+  async function openOn(mid: number, options: { chat?: TestChatOptions, target?: 'content' } = {}) {
     const { bubble, content } = makeBubble(mid)
     container.append(bubble)
-    const chat = makeChat(options.chat)
+    const initMessageReply = vi.fn()
+    const chat = makeChat({ ...options.chat, input: { initMessageReply, ...options.chat?.input } })
     const managers = makeManagers()
     const popups = makePopups()
-    const menu = new ChatContextMenu(chat, {}, managers, popups)
+    const menu = new ChatContextMenu(chat, managers, popups)
     menu.attachTo(container)
     rightClick(content)
     await flush()
-    return { chat, managers, popups, bubble }
+    return { chat, managers, popups, bubble, initMessageReply }
   }
 
   function clickItem(text: string) {
@@ -454,14 +476,14 @@ describe('ChatContextMenu — действия пунктов', () => {
     item!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
   }
 
-  it('«Ответить» зовёт композер номером сообщения и закрывает меню (:1861-1872)', async() => {
+  it('«Ответить» зовёт композер ответом на сообщение и закрывает меню (:1861-1872)', async() => {
     putMirrorPage(KEY, [message(1)])
-    const { chat } = await openOn(1)
+    const { initMessageReply } = await openOn(1)
 
     const element = menuElement()!
     clickItem('Reply')
 
-    expect(chat.initMessageReply).toHaveBeenCalledWith(1)
+    expect(initMessageReply).toHaveBeenCalledWith({ replyToMsgId: 1 })
     expect(element.classList.contains('active')).toBe(false)
   })
 
@@ -521,7 +543,7 @@ describe('ChatContextMenu — действия пунктов', () => {
     container.append(bubble)
 
     const popups = makePopups()
-    const menu = new ChatContextMenu(makeChat({ peerId: GROUP }), {}, makeManagers(), popups)
+    const menu = new ChatContextMenu(makeChat({ peerId: GROUP }), makeManagers(), popups)
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -561,7 +583,7 @@ describe('ChatContextMenu — «кто просмотрел» (views без ре
   async function openInGroup(managers: ReturnType<typeof makeManagers>, popups = makePopups()) {
     const { bubble, content } = makeBubble(1, { out: true, peerId: GROUP })
     container.append(bubble)
-    const menu = new ChatContextMenu(makeChat({ peerId: GROUP }), {}, managers, popups)
+    const menu = new ChatContextMenu(makeChat({ peerId: GROUP }), managers, popups)
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -635,7 +657,7 @@ describe('ChatContextMenu — «кто просмотрел» (views без ре
     const managers = makeManagers()
     const { bubble, content } = makeBubble(1, { peerId: GROUP })
     container.append(bubble)
-    const menu = new ChatContextMenu(makeChat({ peerId: GROUP }), {}, managers, makePopups())
+    const menu = new ChatContextMenu(makeChat({ peerId: GROUP }), managers, makePopups())
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -672,7 +694,7 @@ describe('ChatContextMenu — пункт `views` в вещательном ка�
     const managers = makeManagers()
     const { bubble, content } = makeBubble(1, { out: true, peerId: CHANNEL })
     container.append(bubble)
-    const menu = new ChatContextMenu(makeChat({ peerId: CHANNEL }), {}, managers, makePopups())
+    const menu = new ChatContextMenu(makeChat({ peerId: CHANNEL }), managers, makePopups())
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -699,7 +721,7 @@ describe('ChatContextMenu — панель быстрых реакций (tweb :
     const { bubble, content } = makeBubble(1)
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat(), {}, makeReactionManagers('👍', '❤️'), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeReactionManagers('👍', '❤️'), makePopups())
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -719,7 +741,7 @@ describe('ChatContextMenu — панель быстрых реакций (tweb :
     container.append(bubble)
 
     const emojis = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
-    const menu = new ChatContextMenu(makeChat(), {}, makeReactionManagers(...emojis), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeReactionManagers(...emojis), makePopups())
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -732,7 +754,7 @@ describe('ChatContextMenu — панель быстрых реакций (tweb :
     const { bubble, content } = makeBubble(1)
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat(), {}, makeManagers(), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeManagers(), makePopups())
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -747,7 +769,7 @@ describe('ChatContextMenu — панель быстрых реакций (tweb :
     const { bubble, content } = makeBubble(1)
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat(), {}, makeReactionManagers('👍'), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeReactionManagers('👍'), makePopups())
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -755,7 +777,7 @@ describe('ChatContextMenu — панель быстрых реакций (tweb :
     contextMenuController.close()
     menuElement()!.remove()
 
-    const plain = new ChatContextMenu(makeChat(), {}, makeManagers(), makePopups())
+    const plain = new ChatContextMenu(makeChat(), makeManagers(), makePopups())
     plain.attachTo(container)
     rightClick(content)
     await flush()
@@ -773,7 +795,7 @@ describe('ChatContextMenu — панель быстрых реакций (tweb :
     container.append(bubble)
 
     const managers = makeReactionManagers('👍', '❤️')
-    const menu = new ChatContextMenu(makeChat(), {}, managers, makePopups())
+    const menu = new ChatContextMenu(makeChat(), managers, makePopups())
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -796,7 +818,7 @@ describe('ChatContextMenu — панель быстрых реакций (tweb :
     container.append(bubble)
 
     const managers = makeReactionManagers('👍')
-    const menu = new ChatContextMenu(makeChat(), {}, managers, makePopups())
+    const menu = new ChatContextMenu(makeChat(), managers, makePopups())
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -817,7 +839,7 @@ describe('ChatContextMenu — панель быстрых реакций (tweb :
     container.append(bubble)
 
     const managers = makeReactionManagers('👍')
-    const menu = new ChatContextMenu(makeChat(), {}, managers, makePopups())
+    const menu = new ChatContextMenu(makeChat(), managers, makePopups())
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -843,7 +865,7 @@ describe('ChatContextMenu — панель быстрых реакций (tweb :
     const { bubble, content } = makeBubble(1.5)
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat(), {}, makeReactionManagers('👍'), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeReactionManagers('👍'), makePopups())
     menu.attachTo(container)
     rightClick(content)
     await flush()
@@ -879,8 +901,7 @@ describe('ChatContextMenu — «Выбрать» у служебного соо�
     const { bubble, content } = makeBubble(1, { classes: ['service'] })
     container.append(bubble)
 
-    const selection = new ChatSelection(new FakeBubbles(container), { messages: {} })
-    const menu = new ChatContextMenu(makeChat(), { selection }, makeManagers(), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeManagers(), makePopups())
     menu.attachTo(container)
 
     rightClick(content)

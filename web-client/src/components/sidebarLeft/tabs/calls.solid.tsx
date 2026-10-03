@@ -113,7 +113,7 @@ const messageKey = (message: CallLogMessage) => `${message.peerId}_${message.id}
 /**
  * ВРЕМЕННО до 5-5: роль `appImManager.callUser(peerId.toUserId(), type)`
  * (tweb :108). Движок звонков берёт КАРТОЧКУ собеседника, а не ключ, — собирается
- * она так же, как у перезвона по баблу (`components/chat/VanillaFeed.tsx:268-282`).
+ * она так же, как у перезвона по баблу (`AppImManager.callUser`, `lib/appImManager.ts`).
  */
 function callUser(peerId: PeerId, video: boolean) {
   const user = cachedUser(peerId)

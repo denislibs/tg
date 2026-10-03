@@ -89,6 +89,7 @@ import { wrapAbbreviation } from '@lib/richtext/abbreviation'
 import type { IconName } from '@core/tgico-icons'
 import rootScope from '@lib/rootScope'
 import { MOUNT_CLASS_TO } from '@config/debug'
+import findUpClassName from '@helpers/dom/findUpClassName'
 
 /** tweb avatarNew.tsx:52 — та же длительность, что у `.fade-in` в `_avatar.scss:126`. */
 const FADE_IN_DURATION = 200
@@ -531,4 +532,13 @@ export function avatarNew(options: AvatarOptions): {
     readyThumbPromise: avatar.readyThumbPromise,
     setIcon: (icon) => avatar.setIcon(icon),
   }
+}
+
+/** Порт tweb `findUpAvatar` (avatarNew.tsx:181-185) — аватарка под целью клика
+ *  (шапка чата, `chat/topbar.ts`). Кольцо историй `has-stories` у нас не рисуется
+ *  (см. шапку файла), поэтому вторая ступень поиска отвечает той же аватаркой. */
+export function findUpAvatar(target: EventTarget) {
+  let avatar = findUpClassName(target, 'avatar')
+  if (avatar) avatar = findUpClassName(avatar, 'has-stories') || avatar
+  return avatar
 }

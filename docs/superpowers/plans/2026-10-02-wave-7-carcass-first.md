@@ -564,8 +564,8 @@ React-`GroupEditFlow`.
 | Б-6 | Кнопка статус-эмодзи в шапке колонки (`SidebarEmojiStatusButton.tsx`) | К-1 | `sidebarLeft/index.ts:262`, `emojiStatusPicker.tsx` | **закрыто пачкой П-3**: кнопка и `toggleRightButtons` — `AppSidebarLeft.construct`; выбор — `sidebarLeft/emojiStatusPicker.solid.tsx` (остаток — Б-50) |
 | Б-7 | Кнопка замка в шапке колонки | К-1 | `sidebarLeft/index.ts:264`, `:345-361` (у нас `lockButton.solid.tsx` есть) | **закрыто пачкой П-3**: `createLockButton()` по `passcode.enabled`, `is-input-the-last-child` — `AppSidebarLeft.construct` |
 | Б-8 | Диплинки `/join/`, `/addlist/`, `?domain=&start=`, QR-подтверждение входа с десктопа (`useDeepLinks.ts` 160, `GlobalOverlays.tsx` QR, `FolderInvitePopup`) | К-2 | `lib/internalLinkProcessor.ts` (1661), `appImManager.ts:1043` | П-4 |
-| Б-9 | Хоткеи приложения: Ctrl+F, Ctrl+0 «Избранное», Alt+↑↓, мьют (`useAppHotkeys.ts`, `core/hotkeys.ts`) | К-2 | `appImManager.ts:1703-1853` | П-4 |
-| Б-10 | Фон в теме чата (публикация по активному чату, `useShellTheme`) | К-2 | `chat.ts:372-433` | К-3 (возвращается шагом) |
+| Б-9 | Хоткеи приложения: Ctrl+F, Ctrl+0 «Избранное», Alt+↑↓, мьют (`useAppHotkeys.ts`, `core/hotkeys.ts`); с К-3 — и Ctrl/Cmd+PageUp/PageDown ленты (`useFeedPageHotkeys.ts`, удалён) | К-2, К-3 | `appImManager.ts:1703-1853` | П-4 |
+| Б-10 | Фон в теме чата (публикация по активному чату, `useShellTheme`) | К-2 | `chat.ts:372-433` | **закрыто К-3**: `Chat.publishBackground`/`handleBackgrounds` (`components/chat/chat.ts`), возврат по стеку — `spliceChats` (`appImManager.ts:3266-3270`) |
 | Б-11 | Автоблокировка по таймеру и Ctrl+L (`useAutoLock`, `useLockScreenShortcut`) — если не переносятся вызовом функции | К-2 | `lib/mainWorker/useAutoLock.ts`, `appImManager.ts:630` | П-4 |
 | Б-12 | Вынос клиента в окно PiP (`core/pip.ts` переносит `#root`, которого больше нет) | К-2 | `components/clientPip.tsx` (196) | П-6 |
 | Б-13 | Карточки пустой колонки и «недавно закрытые» | К-2 | `components/chatTips/*` (734), `appImManager.ts:377`, `:824-833` | П-6 |
@@ -573,26 +573,26 @@ React-`GroupEditFlow`.
 | Б-15 | Тост вступления по ссылке (`GlobalOverlays.tsx` `joinToast`) | К-2 | `toastNew` | П-4 (с диплинками) |
 | Б-16 | Подписки `construct` без предмета: `ephemeral_*`, `file_speed_limited`, `service_notification`, `payment_sent` | К-2 (не было) | `appImManager.ts:567-628` | бэкенд |
 | Б-17 | `singleInstance`, t.me-вход, состояние вкладок (`updateTabState`) | К-2 (не было) | `index.ts:443`, `:487-494`, `appImManager.ts:842`, `:951-957` | вне волны |
-| Б-18 | Меню ⋮ шапки (39 пунктов с `verify`; `HeaderMenu.tsx` 274) | К-3 | `topbar.ts:462-903` | П-5 |
+| Б-18 | Меню ⋮ шапки (39 пунктов с `verify`; `HeaderMenu.tsx` 274) и попапы его пунктов из `useChatPopups`: тема чата (`ChatThemesPicker`), мьют на срок, удалить/выйти и очистить историю, буст (`BoostPopup`), эфир (`StreamSettingsPopup`), розыгрыш (`CreateGiveawayPopup`), «выбрать сообщения», ⋮ треда («закрыть тему»), кнопки звонка (`CallProvider`) | К-3 | `topbar.ts:462-903` | П-5 |
 | Б-19 | Закреп (`PinnedBar`, `PinnedBorder`, `AnimatedSuper`, `usePinnedBar`, экран закрепов) | К-3 | `pinnedMessage.tsx` (841), `pinnedMessageBorder.ts` (204), `ChatType.Pinned` | П-5 |
-| Б-20 | Поиск по чату (`TopbarSearch.tsx`, `useChatHeaderSearch.ts`) | К-3 | `topbarSearch.tsx` (1352) | П-5 |
+| Б-20 | Поиск по чату (`TopbarSearch.tsx`, `useChatHeaderSearch.ts`, `useChatSearch.ts`, `stores/searchStore.ts`, `.chat.is-search-active`) | К-3 | `topbarSearch.tsx` (1352) | П-5 |
 | Б-21 | Плашки шапки: заявки, настройки пира, звонок, эфир | К-3 | `topbarPlates.ts`, `topbarPlate.tsx`, `requests.tsx`, `actions.tsx`, `topbarGroupCall/*`, `topbarLive/*` | П-5 |
 | Б-22 | Аудиоплеер (`NowPlayingBar.tsx` 265) и плашка звонка | К-3 | `chat/audio.tsx` (326), `appImManager.ts:849-855` | П-5 |
 | Б-23 | Панель выделения (`SelectionBar.tsx`) — кнопки над выделением | К-3 | `chat/selection.ts` (у нас класс, панель — tweb `selection.ts`) | П-5 |
 | Б-24 | Drag&drop и вставка файлов (`ChatDrops.tsx`, `ChatDragAndDrop.tsx`) | К-3 | `appImManager.ts:2807-3125`, `chat/dragAndDrop.ts` | П-4 |
-| Б-25 | Отложенные (`ScheduledView.tsx`), предложенные посты (`SuggestedPostsView.tsx`) | К-3 | `ChatType.Scheduled`, `appImManager.openScheduled` `:3436` | П-5 |
+| Б-25 | Отложенные (`ScheduledView.tsx`, `useScheduledMessages`, календарик-счётчик в композере), предложенные посты (`SuggestedPostsView.tsx`) | К-3 | `ChatType.Scheduled`, `appImManager.openScheduled` `:3436` | П-5 |
 | Б-26 | Теги сохранённых (`SavedTagsPanel.tsx`) | К-3 | `chat/topbar` + `savedReactionTags` | П-5 |
-| Б-27 | Кнопки-углы ленты («вниз», упоминания, реакции: `CornerButton`, `ScrollDownFab`) | К-3 | `input.ts:638` (`constructGoDownButton`) | К-4 (часть ядра ввода) |
-| Б-28 | Попапы действий над сообщением из `Chat.tsx` (`ChatMsgActionPopups.tsx`, `useChatPopups.tsx` 327) | К-3 | попапы 2C | П-5 |
-| Б-29 | Статус и «печатает» в шапке — ядро шапки берёт `getPeerStatus`; полная модель статуса | К-3 | `appImManager.ts:3454-3816` | П-4 |
+| Б-27 | Кнопки-углы ленты: упоминания, реакции, опросы (`CornerButton` ×3, без данных); «вниз» (`ScrollDownFab`) живёт в острове композера до К-4 | К-3 | `input.ts:638` (`constructGoDownButton`) | К-4 (часть ядра ввода) |
+| Б-28 | Попапы действий над сообщением из `Chat.tsx` (`ChatMsgActionPopups.tsx`, `useMessageActions.tsx`, `useChatPopups.tsx` 327): удалить, переслать (и плашка пересылки в один чат), закрепить, жалоба, кто реагировал, статистика поста (`PostStats`), факт-чек (`FactCheckEditor`); те же действия из вьювера и из меню элемента shared media профиля, кнопка «переслать» сбоку от поста канала (клик гасится). В меню сообщения эти пункты скрыты `verify` (`ChatContextMenu` без `popups`); «Скачать» остался — `appDownloadManager.downloadToDisc` (tweb `contextMenu.ts:2189`), и в меню shared media тоже | К-3 | попапы 2C | П-5 |
+| Б-29 | Статус и «печатает» в шапке — ядро шапки (`chat/topbar.ts`) держит `setPeerStatus`/`getUserStatus`/`getChatStatus` функциями модуля на зеркалах `chatsStore`/`peerCache`; полная модель статуса и «N онлайн» у групп (`getOnlines`, было в `useChatInfoCard` по присутствию участников) | К-3 | `appImManager.ts:3454-3816` | П-4 |
 | Б-30 | Запись голоса и кружков (`useVoiceRecorder.ts` 366, `VoiceRecordingPanel`, `RoundRecordPreview`) | К-4 | `chat/recording/*`, `nativeVideoRecorder.ts` | П-6 |
 | Б-31 | Send-as (`SendAsButton.tsx`, `useSendAs.ts`) | К-4 | `chat/sendAs.ts` (418) | П-6 |
-| Б-32 | Меню отправки, расписание, без звука (`SendMenu`, `SchedulePopup`) | К-4 | `sendContextMenu.ts` (154), `scheduleSendingPopup.tsx` | П-6 |
+| Б-32 | Меню отправки, расписание, без звука (`SendMenu`, `SchedulePopup`); расписание и «отправить, когда будет в сети» отключены уже на К-3 (их колбэки и счётчик жили в `Chat.tsx`) | К-3/К-4 | `sendContextMenu.ts` (154), `scheduleSendingPopup.tsx` | П-6 |
 | Б-33 | Тултип разметки (`MarkupTooltip.tsx` 395) | К-4 | `chat/markupTooltip.ts` (582) | П-6 |
 | Б-34 | Автокомплит: упоминания, стикеры, эмодзи, команды, инлайн-боты | К-4 | `autocompleteHelper.ts` и соседи (~1 260) | П-6 |
 | Б-35 | Эмодзи/стикер/GIF-дропдаун (`emoji/EmojiDropdown.tsx` 746); вкладки поиска стикеров и GIF открывались из него | К-4 | `emoticonsDropdown/**` (4315) | П-6 |
 | Б-36 | Клавиатура бота (`Chat.tsx` инлайн) и плашка управления | К-3/К-4 | `replyKeyboard.tsx` (188), `controlPlate.tsx` | П-6 |
-| Б-37 | Медленный режим, платные сообщения | К-4 | `input.ts:4005-4085`, `paidMessagesInterceptor.ts` | П-6 |
+| Б-37 | Медленный режим, платные сообщения (`useSlowmode`, `chargeStars`): пропадают на К-3 — им нужна полная карточка чата из `useChatInfoCard` | К-3 | `input.ts:4005-4085`, `paidMessagesInterceptor.ts` | П-6 |
 | Б-38 | Правка медиа в сообщении | К-4 | `editMessageMedia.ts` (133) | П-6 |
 | Б-39 | Реакции чата (0б-4) | К-5 (строка `editChat` скрыта) | `chatReactions.tsx` (208) | П-1 |
 | Б-40 | Обсуждение канала (0б-5) | К-5 | `chatDiscussion.tsx` (317) | П-1 |
@@ -610,10 +610,15 @@ React-`GroupEditFlow`.
 | Б-52 | Плашка «N новых чатов» над папкой, вступившей по ссылке (`createTopNotification`/`toggleTopNotification`, `chatlistTopNotification.tsx`), опрос `getChatlistUpdates` по `chatlist_update_period` в `onTabChange` | П-2 (не было) | `appDialogsManager.ts:1406-1548`, `sidebarLeft/chatlistTopNotification.tsx` | бэкенд: нет `chatlists.getChatlistUpdates`/`hideChatlistUpdates` и признака `dialogFilterChatlist` у папки (`domain.DialogFilter`) |
 | Б-53 | Меню строки темы (закрепить, заглушить, закрыть/открыть, удалить; у `TopicsPanel` были ещё «Изменить» и «Скрыть») и выделение тем пачкой (`ForumTopicsSelection`, перестановка закрепов `attachPinnedReorder`) | П-2 (1-6) | ветки `threadId` в `dialogsContextMenu.ts` (`:224`, `canManageTopics`), `forumTopicsSelection.ts`, `dialogsPinnedReorder.ts` | П-2 (вторая очередь) / О-30 (выделение) |
 | Б-54 | Форум-таб: «Создать тему» и правка темы (`AppEditTopicTab`; у `TopicsPanel` был свой попап), «Информация о группе» из меню ⋮ (`AppSharedMediaTab` в левой колонке), «Вступить»/«Подать заявку» (`joinChat`); живые апдейты списка тем (`dialogs_multiupdate` с `topics`, `dialog_unread`/`dialog_drop`/`peer_typings` темы) — у нас темы перечитываются на каждый показ таба | П-2 (1-6) | `sidebarRight/tabs/editTopic.tsx`, `groupForumTab.ts:96-147`, `autonomousDialogList/forumTopics.ts:24-104` | П-1 (вкладки) / воркер: хранилища тем и событий тем на главном потоке нет |
+| Б-55 | Кнопки звонка в шапке (голос и видео в `ChatHeader.tsx`; у tweb — `btnCall` с `verifyCallButton` по `userFull.phone_calls_available`, видео — пункт меню ⋮; групповой звонок `btnGroupCall`/RTMP) | К-3 | `topbar.ts:1035-1057`, `:361-416`, `appImManager.callUser` | П-4 (звонки 5-5) |
+| Б-56 | Замок и зелёное имя секретного чата в шапке (наше расширение, у tweb секретных чатов нет) | К-3 | — | вне волны: секретные чаты на паузе (`SECRET_CHATS_ENABLED=false`) |
+| Б-57 | Шапка темы форума: имя темы, иконка, замок закрытой темы, подпись «В <группа>» (`TopicProfileStatus`); наш `PeerTitle` темы не знает | К-3 | `topbar.ts:1625-1636` (`wrapPeerTitle({threadId})`), `:1736-1742` | П-2 (с форумом, Б-3) |
 | Б-60 | Меню ряда историй: «Опубликованные/архив историй» (`AppMyStoriesTab`, О-82), уведомления об историях пира (`toggleStoriesMute`), stealth-режим из меню (`showStoriesStealthModePopup`), скрыть/вернуть истории пира (`toggleStoriesHidden`) и ряд в архиве (`archive: true`) | 2-6 (не было) | `stories/list.tsx:363-439`, `sidebarLeft/tabs/archivedTab.tsx:22-72` | П-3 / бэкенд (`stories_hidden`, уведомления об историях) |
 | Б-61 | Вход во вьювер с аватарки с кольцом (`appImManager.openStoriesFromAvatar`/`openStoriesForPeer`): у строки списка и профиля кольца историй нет — `components/avatar.ts` без `StoriesSegments` | — (не было) | `avatarNew.tsx:280-410`, `appImManager.ts:1619-1632`, `appDialogsManager.ts:2104` | П-2 (1-8) / П-1 |
 | Б-62 | Публикация своей истории, лист «близкие друзья», архив истёкших (`useSidebarStories`: MediaEditor → `AddStorySheet`/`CloseFriendsSheet`/`StoriesArchiveSheet`) — у tweb публикации нет | К-1 | — | вне волны (решение пользователя: вернуть или снести листы) |
 | Б-63 | Выбор статус-эмодзи — настоящий `EmoticonsDropdown` с `EmojiTab({noRegularEmoji: true})` у якоря кнопки и анимация `fireAroundAnimation` нового статуса: сейчас `openEmojiStatusPicker` открывает попап с сеткой юникод-эмодзи (бывший React `EmojiStatusPicker.tsx`), статус — юникод `emoji_status_emoticon` | П-3 (не было) | `sidebarLeft/emojiStatusPicker.tsx`, `sidebarLeft/index.ts:285-314` | П-6 (с эмодзи-дропдауном Б-35); кастомные эмодзи-статусы — бэкенд |
+| Б-64 | Клик по внутренней ссылке Telegram (`data-anchor-action`, t.me) в бабле открывает её новой вкладкой: `internalLinkProcessor` нет (было так и до К-3 — `BubblesNavigation.openInternalLink` никто не передавал) | К-3 (не было) | `bubbles.ts:3014` (`addAnchorListener`), `internalLinkProcessor.ts` | П-4 (с Б-8) |
+| Б-65 | Заморозка наблюдателя ленты на неактивном инстансе (`bubbles.observer.toggleObservingNew`, `chat.ts:715`): у нашего `superIntersectionObserver.ts` её нет, `Chat` замораживает только группу анимаций | К-3 (не было) | `helpers/dom/superIntersectionObserver.ts` | П-5 |
 
 ### Пачки бэклога
 

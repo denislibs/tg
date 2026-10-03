@@ -2,8 +2,7 @@ import { useLayoutEffect, useRef } from 'react'
 import { mountSolid } from './mountSolid.solid'
 
 /**
- * React-хост Solid-острова. Та же форма, которой у нас уже монтируются
- * ванильные порты (`components/chat/VanillaFeed.tsx`): узел-хост объявлен
+ * React-хост Solid-острова. Узел-хост объявлен
  * `display: contents`, чтобы не появляться в бокс-дереве и не ломать flex
  * родителя, а инстанс поднимается layout-эффектом и гасится в его cleanup.
  *

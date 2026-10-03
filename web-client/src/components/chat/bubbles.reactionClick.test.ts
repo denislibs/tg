@@ -17,7 +17,9 @@ import type { MessageReactions, MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
 import LottiePlayer from '@lib/lottie/lottiePlayer'
 import wrapSticker from '@components/wrappers/sticker'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles } from './testChat'
 
 vi.mock('@components/wrappers/sticker', () => ({ default: vi.fn() }))
 const wrapStickerMock = vi.mocked(wrapSticker)
@@ -25,12 +27,7 @@ const wrapStickerMock = vi.mocked(wrapSticker)
 const CHAT = 80
 const CENTER_ID = 222
 
-const chatContext = (): ChatContext => ({
-  peerId: CHAT,
-  messagesStorageKey: String(CHAT),
-  container: document.createElement('div'),
-  bubblesViewport: document.createElement('div'),
-})
+const chatContext = () => createTestChat({ peerId: CHAT })
 
 const reactions: MessageReactions = {
   _: 'messageReactions',
@@ -109,7 +106,7 @@ beforeEach(() => {
 
 async function openWith(agg: MessageReactions) {
   const s = stand(agg)
-  bubbles = new ChatBubbles(chatContext(), s.managers)
+  bubbles = mountTestBubbles(chatContext(), s.managers)
   await (await bubbles.setPeer())?.promise
   await settle()
   document.body.append(bubbles.container)

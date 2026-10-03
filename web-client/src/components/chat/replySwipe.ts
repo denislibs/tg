@@ -23,8 +23,7 @@
  *     `contextMenuController` в проекте сейчас портируется отдельно; когда он
  *     появится, вызов возвращается ровно в помеченное ниже место.
  *   • сам reply-флоу композера (`chat.input.initMessageReply`) — здесь только
- *     узкий порт-интерфейс `ReplyGestureChat`, как `ChatContext`/`BubblesManagers`
- *     в `bubbles.ts`.
+ *     узкий порт-интерфейс `ReplyGestureChat`, как `BubblesManagers` в `bubbles.ts`.
  */
 import Icon from '@components/icon'
 import { setTransition } from '@core/dom/setTransition'

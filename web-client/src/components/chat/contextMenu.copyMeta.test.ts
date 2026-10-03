@@ -23,11 +23,12 @@ vi.mock('@helpers/clipboard', () => ({
 }))
 
 import ChatContextMenu, {
-  type ContextMenuChat,
   type ContextMenuManagers,
   type ContextMenuPopups,
 } from './contextMenu'
-import ChatSelection, { type SelectionBubbles } from './selection'
+import type { SelectionBubbles } from './selection'
+import type Chat from './chat'
+import { attachTestSelection, createTestChat } from './testChat'
 import contextMenuController from '@helpers/contextMenuController'
 import { putMirrorPage, resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
@@ -95,7 +96,6 @@ const makeManagers = () => ({
     viewers: vi.fn().mockResolvedValue([]),
   },
   chats: { getReadDate: vi.fn().mockResolvedValue(null) },
-  media: { downloadToDisc: vi.fn() },
 } satisfies ContextMenuManagers)
 
 const makePopups = () => ({
@@ -108,15 +108,11 @@ const makePopups = () => ({
   showFactCheckEditor: vi.fn(),
 } satisfies ContextMenuPopups)
 
-const makeChat = (): ContextMenuChat => ({
-  peerId: PEER,
-  messagesStorageKey: KEY,
-  canSend: () => true,
-  hasMessageInput: () => true,
-  initMessageReply: vi.fn(),
-  initMessageEditing: vi.fn(),
-  initSearch: vi.fn(),
-})
+function makeChat(): Chat {
+  const chat = createTestChat({ peerId: PEER, messagesStorageKey: KEY })
+  attachTestSelection(chat, new FakeBubbles(container))
+  return chat
+}
 
 function rightClick(target: HTMLElement) {
   const e = new MouseEvent('contextmenu', { bubbles: true, cancelable: true })
@@ -158,11 +154,11 @@ describe('копирование нескольких сообщений — м�
     const second = makeBubble(2)
     container.append(first.bubble, second.bubble)
 
-    const selection = new ChatSelection(new FakeBubbles(container), { messages: {} })
-    selection.toggleByElement(first.bubble)
-    selection.toggleByElement(second.bubble)
+    const chat = makeChat()
+    chat.selection.toggleByElement(first.bubble)
+    chat.selection.toggleByElement(second.bubble)
 
-    const menu = new ChatContextMenu(makeChat(), { selection }, makeManagers(), makePopups())
+    const menu = new ChatContextMenu(chat, makeManagers(), makePopups())
     menu.attachTo(container)
 
     rightClick(first.content)
@@ -183,7 +179,7 @@ describe('копирование нескольких сообщений — м�
     const { bubble, content } = makeBubble(1)
     container.append(bubble)
 
-    const menu = new ChatContextMenu(makeChat(), {}, makeManagers(), makePopups())
+    const menu = new ChatContextMenu(makeChat(), makeManagers(), makePopups())
     menu.attachTo(container)
 
     rightClick(content)

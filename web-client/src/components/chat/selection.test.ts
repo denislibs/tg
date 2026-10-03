@@ -8,9 +8,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ChatSelection, {
   type SelectionBubbles,
   type SelectionManagers,
-  type SelectionPlate,
 } from './selection'
 import ListenerSetter from '@helpers/listenerSetter'
+import type ChatInput from './reactChatInput'
+import { createTestChat } from './testChat'
 
 const PEER = 1
 
@@ -77,20 +78,15 @@ function setup(bubbles: HTMLElement[]) {
   inner.append(...bubbles)
   layout(bubbles)
 
-  const plate = {
-    toggle: vi.fn<SelectionPlate['toggle']>(),
-    update: vi.fn<SelectionPlate['update']>(),
-    remove: vi.fn<SelectionPlate['remove']>(),
-  } satisfies SelectionPlate
-
   const cantForwardDeleteMids = vi.fn(async () => ({ cantForward: false, cantDelete: false }))
   const managers: SelectionManagers = { messages: { cantForwardDeleteMids } }
 
   const port = new FakeBubbles(inner)
-  const selection = new ChatSelection(port, managers, plate)
+  const chat = createTestChat({ peerId: PEER })
+  const selection = new ChatSelection(chat, port, chat.input as unknown as ChatInput, managers)
   selection.attachListeners(container, new ListenerSetter())
 
-  return { container, inner, selection, plate, cantForwardDeleteMids }
+  return { container, inner, selection, cantForwardDeleteMids }
 }
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
@@ -131,7 +127,7 @@ describe('canSelectBubble (tweb selection.ts:999-1006; e9428f2a9 — 812502980 :
 describe('toggleByElement (tweb :901-937)', () => {
   it('первый выбор включает режим, ставит чекбокс и is-selected', async() => {
     const bubble = makeBubble(1)
-    const { selection, container, plate } = setup([bubble])
+    const { selection, container } = setup([bubble])
 
     selection.toggleByElement(bubble)
 
@@ -148,13 +144,10 @@ describe('toggleByElement (tweb :901-937)', () => {
     expect(checkbox(bubble)!.checked).toBe(true)
     expect(bubble.classList.contains('is-selected')).toBe(true)
 
-    // класс режима на самой ленте — ПОСЛЕ плашки: tweb тоже ждёт композер
-    // (`await chat.input.center(animate)`, :1010) прежде чем красить ленту
-    expect(container.classList.contains('is-selecting')).toBe(false)
+    // класс режима на самой ленте (плашки вместо композера нет до П-5, Б-23)
     await flush()
     expect(container.classList.contains('is-selecting')).toBe(true)
     expect(container.classList.contains('no-select')).toBe(true)
-    expect(plate.toggle).toHaveBeenCalledWith(true, true)
   })
 
   it('повторный выбор снимает выделение и выключает режим', () => {
@@ -371,32 +364,28 @@ describe('drag-выделение мышью (tweb :163-306)', () => {
 })
 
 describe('updateContainer (tweb :385-403)', () => {
-  it('дизейбл кнопок плашки считается по выбранным мидам', async() => {
+  it('права «переслать/удалить» спрашиваются по выбранным мидам', async() => {
     const b1 = makeBubble(1)
-    const { selection, plate, cantForwardDeleteMids } = setup([b1])
-    cantForwardDeleteMids.mockResolvedValue({ cantForward: true, cantDelete: false })
+    const { selection, cantForwardDeleteMids } = setup([b1])
 
     selection.toggleByElement(b1)
     await flush()
 
     expect(cantForwardDeleteMids).toHaveBeenCalledWith(PEER, [1], false)
-    expect(plate.update).toHaveBeenCalledWith(true, false, false)
   })
 
-  it('на нуле выбранных плашка не пересчитывается (ранний выход :387)', async() => {
+  it('на нуле выбранных права не спрашиваются (ранний выход :387)', async() => {
     const b1 = makeBubble(1)
-    const { selection, plate, cantForwardDeleteMids } = setup([b1])
+    const { selection, cantForwardDeleteMids } = setup([b1])
 
     selection.toggleByElement(b1)
     await flush()
-    plate.update.mockClear()
     cantForwardDeleteMids.mockClear()
 
     selection.toggleByElement(b1) // снятие — выбранных не осталось
     await flush()
 
     expect(cantForwardDeleteMids).not.toHaveBeenCalled()
-    expect(plate.update).not.toHaveBeenCalled()
   })
 })
 

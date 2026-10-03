@@ -17,7 +17,9 @@ import { makeMessage } from '@core/messages/testMessage'
 import rootScope from '@lib/rootScope'
 import type { MessageReactions, MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles } from './testChat'
 
 /** Открыть окно ленты и дождаться ОТРИСОВКИ (см. bubbles.meta.test.ts). */
 async function openFeed(feed: ChatBubbles) {
@@ -26,12 +28,7 @@ async function openFeed(feed: ChatBubbles) {
 
 const CHAT = 95
 
-const chatContext = (): ChatContext => ({
-  peerId: CHAT,
-  messagesStorageKey: String(CHAT),
-  container: document.createElement('div'),
-  bubblesViewport: document.createElement('div'),
-})
+const chatContext = () => createTestChat({ peerId: CHAT })
 
 const managersWith = (messages: MyMessage[]): BubblesManagers => ({
   messages: {
@@ -90,7 +87,7 @@ const withText = (id: number, over: { reactions?: MessageReactions } = {}): MyMe
 
 describe('ChatBubbles — время и реакции у медиа без подписи (has-floating-time)', () => {
   it('has-floating-time стоит у стикера без подписи (гарантия предпосылки теста)', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([withSticker(1)]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([withSticker(1)]))
     await openFeed(bubbles)
     await settle()
 
@@ -103,7 +100,7 @@ describe('ChatBubbles — время и реакции у медиа без по
   // классом `is-floating` (CSS `_chatBubble.scss:1818` — `position: absolute`,
   // прижимает время к правому нижнему углу МЕДИА, а не к краю колонки).
   it('время у стикера без подписи — на .bubble-content с классом is-floating, а не в .message', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([withSticker(1)]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([withSticker(1)]))
     await openFeed(bubbles)
     await settle()
 
@@ -121,7 +118,7 @@ describe('ChatBubbles — время и реакции у медиа без по
   // ребёнок `.bubble-content-wrapper`, а НЕ `.message` (в оригинале `.message`
   // у этой ветки вовсе снесён из DOM).
   it('реакции у стикера без подписи — ребёнок .bubble-content-wrapper, а не .message', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([withSticker(1, { reactions })]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([withSticker(1, { reactions })]))
     await openFeed(bubbles)
     await settle()
 
@@ -142,7 +139,7 @@ describe('ChatBubbles — время и реакции у медиа без по
   // `.bubble-content-wrapper` (родителя reactions-element), а не медиа —
   // ровно тот дефект, который чинила эта задача.
   it('время у стикера С реакциями остаётся на .bubble-content, а не переезжает в контейнер реакций', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([withSticker(1, { reactions })]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([withSticker(1, { reactions })]))
     await openFeed(bubbles)
     await settle()
 
@@ -161,7 +158,7 @@ describe('ChatBubbles — время и реакции у медиа без по
   // реакции — тоже ребёнок `.message`, как раньше (bubbles.meta.test.ts).
   describe('обычный текстовый бабл — без изменений', () => {
     it('время лежит в конце .message, без is-floating', async () => {
-      bubbles = new ChatBubbles(chatContext(), managersWith([withText(1)]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([withText(1)]))
       await openFeed(bubbles)
       await settle()
 
@@ -177,7 +174,7 @@ describe('ChatBubbles — время и реакции у медиа без по
     })
 
     it('реакции — ребёнок .message, а не .bubble-content-wrapper', async () => {
-      bubbles = new ChatBubbles(chatContext(), managersWith([withText(1, { reactions })]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([withText(1, { reactions })]))
       await openFeed(bubbles)
       await settle()
 

@@ -13,7 +13,9 @@ import { generateTempMessageId } from '@core/history/messageId'
 import { makeMessage } from '@core/messages/testMessage'
 import type { MessageReactions, MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles } from './testChat'
 
 /** Открыть окно ленты и дождаться ОТРИСОВКИ. `setPeer` (как в оригинале)
  *  возвращает управление, едва отправив запрос: рендер и доводка живут во
@@ -25,12 +27,7 @@ async function openFeed(feed: ChatBubbles) {
 
 const CHAT = 80
 
-const chatContext = (): ChatContext => ({
-  peerId: CHAT,
-  messagesStorageKey: String(CHAT),
-  container: document.createElement('div'),
-  bubblesViewport: document.createElement('div'),
-})
+const chatContext = () => createTestChat({ peerId: CHAT })
 
 const managersWith = (messages: MyMessage[]): BubblesManagers => ({
   messages: {
@@ -78,7 +75,7 @@ const bubbleOf = (b: ChatBubbles, mid: number) =>
 
 describe('ChatBubbles — время и реакции в бабле', () => {
   it('лента заводит время в конце тела сообщения', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([msg(1)]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([msg(1)]))
     await openFeed(bubbles)
     await settle()
 
@@ -103,7 +100,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
       ...msg(1), message: 'цитата',
       entities: [{ _: 'messageEntityBlockquote', offset: 0, length: 6 }],
     } as MyMessage
-    bubbles = new ChatBubbles(chatContext(), managersWith([quote]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([quote]))
     await openFeed(bubbles)
     await settle()
 
@@ -117,7 +114,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
   it('у сообщения С РЕАКЦИЯМИ время лежит ВНУТРИ контейнера реакций', async () => {
     // tweb :9855 — чипы и время образуют одну строку-обёртку. Останься время
     // соседом реакций, оно уехало бы на свою строку под чипами.
-    bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, { reactions })]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([msg(1, { reactions })]))
     await openFeed(bubbles)
     await settle()
 
@@ -148,7 +145,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
       peerId: CHAT, fromId: 1, id: tempId, out: true, text: 'привет',
       createdAt: '2026-08-15T12:34:00',
     })
-    bubbles = new ChatBubbles(chatContext(), managersWith([pending]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([pending]))
     await openFeed(bubbles)
     await settle()
 
@@ -158,7 +155,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
   })
 
   it('ЧУЖОЕ сообщение значка отправки не несёт', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([msg(1)]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([msg(1)]))
     await openFeed(bubbles)
     await settle()
 
@@ -188,7 +185,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
 
     it('чужая реакция — СТАВИТСЯ', async () => {
       const { managers, react, unreact } = withToggle([msg(1, { reactions })])
-      bubbles = new ChatBubbles(chatContext(), managers)
+      bubbles = mountTestBubbles(chatContext(), managers)
       await openFeed(bubbles)
       await settle()
 
@@ -203,7 +200,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
 
     it('СВОЯ реакция (is-chosen) — СНИМАЕТСЯ', async () => {
       const { managers, react, unreact } = withToggle([msg(1, { reactions: mine })])
-      bubbles = new ChatBubbles(chatContext(), managers)
+      bubbles = mountTestBubbles(chatContext(), managers)
       await openFeed(bubbles)
       await settle()
 
@@ -230,7 +227,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
     }
 
     it('время остаётся в конце тела', async () => {
-      bubbles = new ChatBubbles(chatContext(), managersWith([msg(1)]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([msg(1)]))
       await openFeed(bubbles)
       await settle()
 
@@ -247,7 +244,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
     })
 
     it('чипы реакций остаются, и время лежит ВНУТРИ их контейнера', async () => {
-      bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, { reactions })]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([msg(1, { reactions })]))
       await openFeed(bubbles)
       await settle()
 
@@ -271,7 +268,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
      * клик убивал анимацию через десятки миллисекунд после старта.
      */
     it('правка НЕ пересобирает ряд: узлы ряда, чипа и его иконки те же', async () => {
-      bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, { reactions })]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([msg(1, { reactions })]))
       await openFeed(bubbles)
       await settle()
 
@@ -320,7 +317,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
      * текстом, сразу под именем автора.
      */
     it('после правки текст стоит ПЕРЕД рядом реакций, ряд — последний в теле', async () => {
-      bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, { reactions })]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([msg(1, { reactions })]))
       await openFeed(bubbles)
       await settle()
 
@@ -339,7 +336,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
     })
 
     it('реакция, приехавшая ПАТЧЕМ, и следующий патч оставляют ряд под текстом', async () => {
-      bubbles = new ChatBubbles(chatContext(), managersWith([msg(1)]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([msg(1)]))
       await openFeed(bubbles)
       await settle()
 
@@ -355,7 +352,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
     })
 
     it('в переиспользованном ряду остаётся РОВНО ОДНО время', async () => {
-      bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, { reactions })]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([msg(1, { reactions })]))
       await openFeed(bubbles)
       await settle()
 
@@ -368,7 +365,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
     })
 
     it('приехавшая с правкой реакция ПОЯВЛЯЕТСЯ (её и объявляет `patch {reactions}`)', async () => {
-      bubbles = new ChatBubbles(chatContext(), managersWith([msg(1)]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([msg(1)]))
       await openFeed(bubbles)
       await settle()
       expect(bubbleOf(bubbles, 1).querySelector('.reactions')).toBeNull()
@@ -379,7 +376,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
     })
 
     it('исчезнувшая реакция УБИРАЕТСЯ, а время возвращается в тело', async () => {
-      bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, { reactions })]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([msg(1, { reactions })]))
       await openFeed(bubbles)
       await settle()
 
@@ -399,7 +396,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
         peerId: CHAT, fromId: 1, id: tempId, out: true, text: 'привет',
         createdAt: '2026-08-15T12:34:00',
       })
-      bubbles = new ChatBubbles(chatContext(), managersWith([pending]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([pending]))
       await openFeed(bubbles)
       await settle()
 
@@ -428,7 +425,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
     // `CHAT = 80` — положительный ключ, то есть ЛИЧКА (`isUser`), а реакций
     // меньше четырёх: обе половины условия `canRenderAvatars` (tweb
     // reactions.ts:304-307) истинны — но только если `options` доехали.
-    bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, { reactions: withRecent })]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([msg(1, { reactions: withRecent })]))
     await openFeed(bubbles)
     await settle()
 
@@ -440,7 +437,7 @@ describe('ChatBubbles — время и реакции в бабле', () => {
   })
 
   it('без реакций контейнера нет вовсе — пустой занял бы строку', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([msg(1)]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([msg(1)]))
     await openFeed(bubbles)
     await settle()
 

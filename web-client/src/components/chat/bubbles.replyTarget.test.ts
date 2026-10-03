@@ -21,7 +21,9 @@ import type { UserReal } from '@core/peers/peer'
 import type { MessageOp } from '@core/realtime/messageOps'
 import { RT } from '@core/realtime/events'
 import { generateMessageId } from '@core/history/messageId'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles } from './testChat'
 
 const CHAT = -7
 const PEER = { _: 'peerChannel' as const, channel_id: 7 }
@@ -133,13 +135,7 @@ function stand(page: RawMessage[], opts: { known?: RawMessage[]; coldPeers?: boo
     dialogs: { getReadMaxSeqIfUnread: async () => 0, getHistoryMaxSeq: async () => 0, getDialogReadState: async () => undefined },
     realtime: { markRead: async () => ({ ok: true }) },
   }
-  const chat: ChatContext = {
-    peerId: CHAT,
-    messagesStorageKey: String(CHAT),
-    container: document.createElement('div'),
-    bubblesViewport: document.createElement('div'),
-    isMegagroup: true,
-  }
+  const chat = createTestChat({ peerId: CHAT, isMegagroup: true })
   return { mgr, managers, chat, calls, ops, fillMirror }
 }
 
@@ -166,7 +162,7 @@ describe('ChatBubbles — оригинал ответа вне окна (сте�
     let release!: () => void
     const gate = new Promise<void>((resolve) => { release = resolve })
     s.managers.messages.fetchMessageReplyTo = async (peerId, mid) => { await gate; return s.mgr.fetchMessageReplyTo(peerId, mid) }
-    bubbles = new ChatBubbles(s.chat, s.managers)
+    bubbles = mountTestBubbles(s.chat, s.managers)
 
     await (await bubbles.setPeer())?.promise
     await settle()
@@ -185,7 +181,7 @@ describe('ChatBubbles — оригинал ответа вне окна (сте�
 
   it('оригинал догружается ручкой адресов, и шапка перерисовывается автором и текстом', async () => {
     const s = stand([MSG_7, MSG_8, MSG_9])
-    bubbles = new ChatBubbles(s.chat, s.managers)
+    bubbles = mountTestBubbles(s.chat, s.managers)
     await (await bubbles.setPeer())?.promise
     await settle()
 
@@ -206,7 +202,7 @@ describe('ChatBubbles — оригинал ответа вне окна (сте�
 
   it('оригинала нет и на сервере — «Удалённое сообщение» ОДИН раз, в заголовке (tweb :522-523)', async () => {
     const s = stand([MSG_7, MSG_8, MSG_9], { known: [MSG_7, MSG_8, MSG_9] })
-    bubbles = new ChatBubbles(s.chat, s.managers)
+    bubbles = mountTestBubbles(s.chat, s.managers)
     await (await bubbles.setPeer())?.promise
     await settle()
 
@@ -222,7 +218,7 @@ describe('ChatBubbles — оригинал ответа вне окна (сте�
 
   it('оригинал в окне — сети нет, шапка сразу с автором', async () => {
     const s = stand([MSG_5, MSG_6, MSG_7, MSG_8, MSG_9])
-    bubbles = new ChatBubbles(s.chat, s.managers)
+    bubbles = mountTestBubbles(s.chat, s.managers)
     await (await bubbles.setPeer())?.promise
     await settle()
 
@@ -236,7 +232,7 @@ describe('ChatBubbles — оригинал ответа вне окна (сте�
 describe('ChatBubbles — автор цитаты при холодном зеркале пиров (K3)', () => {
   it('после перезагрузки шапка подхватывает карточку автора, а не застывает «Удалённым аккаунтом»', async () => {
     const s = stand([MSG_8, MSG_9], { coldPeers: true })
-    bubbles = new ChatBubbles(s.chat, s.managers)
+    bubbles = mountTestBubbles(s.chat, s.managers)
     await (await bubbles.setPeer())?.promise
     await settle()
 

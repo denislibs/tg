@@ -5,11 +5,11 @@
 //
 // Расхождения с оригиналом:
 //  1. Клик по теме — `onFound` таба, а не `openChat` слушателя списка
-//     (`onFound: null`, `:50`): теме нужна мета треда (`ThreadInfo`: заголовок,
-//     цвет значка, «закрыта») для React-острова чата — `// ВРЕМЕННО до К-3`
-//     (расхождение 10 шапки `lib/appImManager.ts`). Тема открывается, как у tweb,
-//     `appImManager.setPeer({peerId, threadId})` (`appDialogsManager.ts:2094`,
-//     `openInner` у списка темы ложен).
+//     (`onFound: null`, `:50`): наш `openChat` номер темы в `setPeer` не передаёт
+//     (`lib/appDialogsManager.ts`, расхождение `setPeerFunc` без `threadId`). Тема
+//     открывается, как у tweb, `appImManager.setPeer({peerId, threadId})`
+//     (`appDialogsManager.ts:2094`, `openInner` у списка темы ложен); шапку темы
+//     рисует `ChatTopbar` (Б-57).
 //  2. Меню строки темы (`withContext`, ветки `threadId` в `dialogsContextMenu.ts`)
 //     и выделение тем (`ForumTopicsSelection`, `attachPinnedReorder`) не
 //     портированы — бэклог Б-53 и О-30.
@@ -29,7 +29,7 @@
 //     (Б-29); заголовок — `PeerTitle` (`wrapPeerTitle({dialog: true})`).
 import appDialogsManager from '@lib/appDialogsManager'
 import appImManager, { type AppImManager } from '@lib/appImManager'
-import { AutonomousForumTopicList, type ForumTopic } from '@components/autonomousDialogList/forumTopics'
+import { AutonomousForumTopicList } from '@components/autonomousDialogList/forumTopics'
 import ButtonMenuToggle from '@components/buttonMenuToggle'
 import { ChatType } from '@components/chat/chatType'
 import PeerTitle from '@components/chat/peerTitle'
@@ -41,7 +41,6 @@ import { getChatMembersString } from '@components/wrappers/getChatMembersString'
 import { ALL_FOLDER_ID } from '@core/folderIds'
 import { cachedChat, subscribePeerMirror } from '@core/peerCache'
 import { isForum } from '@core/peers/predicates'
-import { getPeerTitle } from '@core/peers/getPeerTitle'
 import { useI18nStore } from '@/i18n'
 
 export class GroupForumTab extends ForumTab {
@@ -116,10 +115,7 @@ export class GroupForumTab extends ForumTab {
     this.header.append(btnMenu)
   }
 
-  /**
-   * Расхождение 1 (`// ВРЕМЕННО до К-3`): тема — `setPeer({peerId, threadId})`,
-   * как `openChat` слушателя списка, плюс мета треда для острова чата.
-   */
+  /** Расхождение 1: тема — `setPeer({peerId, threadId})`. */
   private onTopicFound = (elem: HTMLElement) => {
     const threadId = +elem.dataset.threadId! || undefined
     const topic = threadId !== undefined ? this.xd.getDialog(threadId) : undefined
@@ -131,7 +127,6 @@ export class GroupForumTab extends ForumTab {
       peerId: this.peerId,
       threadId: topic.id,
       type: ChatType.Chat,
-      thread: getTopicThreadInfo(topic),
     })
     return false
   }
@@ -162,18 +157,5 @@ export class GroupForumTab extends ForumTab {
     const peerId = this.peerId
     this._close()
     void appImManager[chat?.peerId === peerId ? 'setPeer' : 'setInnerPeer'](this.getOptionsForMessages())
-  }
-}
-
-/** Мета треда темы для острова чата — расхождение 1 (`// ВРЕМЕННО до К-3`). */
-function getTopicThreadInfo(topic: ForumTopic) {
-  return {
-    rootMsgId: topic.id,
-    title: topic.title,
-    subtitle: getPeerTitle({ peerId: topic.peerId, peer: cachedChat(topic.peerId) }) || undefined,
-    iconColor: topic.icon_color,
-    closed: !!topic.pFlags.closed,
-    topicId: topic.topicId,
-    kind: 'topic' as const,
   }
 }

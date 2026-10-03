@@ -19,7 +19,10 @@ import type { HistoryResult } from '@core/managers/messagesManager'
 import LottiePlayer from '@lib/lottie/lottiePlayer'
 import lottieLoader from '@lib/lottie/lottieLoader'
 import wrapSticker from '@components/wrappers/sticker'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import rootScope from '@lib/rootScope'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles } from './testChat'
 
 vi.mock('@components/wrappers/sticker', () => ({ default: vi.fn() }))
 vi.mock('@lib/lottie/lottieLoader', () => ({
@@ -33,12 +36,7 @@ const CHAT = 80
 const SELECT_ID = 555
 const STATIC_ID = 333
 
-const chatContext = (): ChatContext => ({
-  peerId: CHAT,
-  messagesStorageKey: String(CHAT),
-  container: document.createElement('div'),
-  bubblesViewport: document.createElement('div'),
-})
+const chatContext = () => createTestChat({ peerId: CHAT })
 
 const mine: MessageReactions = {
   _: 'messageReactions',
@@ -111,7 +109,7 @@ beforeEach(() => {
 
 async function open(agg?: MessageReactions) {
   const s = stand(agg)
-  bubbles = new ChatBubbles(chatContext(), s.managers)
+  bubbles = mountTestBubbles(chatContext(), s.managers)
   await (await bubbles.setPeer())?.promise
   await settle()
   document.body.append(bubbles.container)
@@ -236,17 +234,19 @@ describe('ховер-реакция над баблом', () => {
   })
 
   it('в «Избранном» кнопки нет вовсе (tweb :2719 `peerId !== myId`)', async() => {
-    const s = stand()
-    bubbles = new ChatBubbles({ ...chatContext(), peerId: 0 }, s.managers)
-    await (await bubbles.setPeer())?.promise
-    await settle()
-    document.body.append(bubbles.container)
+    // Пустой пир лента не открывает вовсе (tweb :5830), поэтому «Избранное» —
+    // это чат, чей пир совпал с `rootScope.myId`.
+    const prevMyId = rootScope.myId
+    rootScope.myId = CHAT
+    try {
+      const { content } = await open()
+      hover(content)
+      await settleHover()
 
-    const content = bubbles.container.querySelector<HTMLElement>('.bubble[data-mid] .bubble-content')!
-    hover(content)
-    await settleHover()
-
-    expect(button()).toBeNull()
+      expect(button()).toBeNull()
+    } finally {
+      rootScope.myId = prevMyId
+    }
   })
 
   it('над служебным баблом (дата) кнопки нет (tweb :2717 `service`)', async() => {

@@ -21,7 +21,10 @@ import type { MessageReplies, MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
 import I18n from '@lib/langPack'
 import { applyLang } from '@/test/lang'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles, type TestChatOptions } from './testChat'
+import { ChatType } from './chatType'
 import { renderReplies } from './replies'
 
 async function openFeed(feed: ChatBubbles) {
@@ -35,13 +38,7 @@ const CHAT: PeerId = -700
  *  знак раскладывает клиент (`toPeerId(id, true)`, tweb `.toPeerId(true)`). */
 const DISCUSSION_ID = 900
 
-const chatContext = (over: Partial<ChatContext> = {}): ChatContext => ({
-  peerId: CHAT,
-  messagesStorageKey: String(CHAT),
-  container: document.createElement('div'),
-  bubblesViewport: document.createElement('div'),
-  ...over,
-})
+const chatContext = (over: TestChatOptions = {}) => createTestChat({ peerId: CHAT, ...over })
 
 const managersWith = (messages: MyMessage[]): BubblesManagers => ({
   messages: {
@@ -93,7 +90,7 @@ const bubbleOf = (b: ChatBubbles, mid: number) =>
 describe('ChatBubbles — тред под сообщением', () => {
   describe('пост КАНАЛА с обсуждением — футер', () => {
     it('футер лежит в `.bubble-content` и несёт классы оригинала', async () => {
-      bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managersWith([post(1, commentThread(8))]))
+      bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managersWith([post(1, commentThread(8))]))
       await openFeed(bubbles)
       await settle()
 
@@ -122,7 +119,7 @@ describe('ChatBubbles — тред под сообщением', () => {
     // своей перерисовки у ванильного узла не бывает: счётчик застывал в языке
     // момента постройки бабла.
     it('текст футера — узел ядра и следует за языком', async () => {
-      bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managersWith([post(1, commentThread(8))]))
+      bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managersWith([post(1, commentThread(8))]))
       await openFeed(bubbles)
       await settle()
 
@@ -146,7 +143,7 @@ describe('ChatBubbles — тред под сообщением', () => {
     // Прежде его у нас не было вовсе, и на нуле писалось «Комментарии» — то самое
     // расхождение, что было записано в docs/tweb/comments.md:339.
     it('на нуле комментариев — «оставьте комментарий», а не счётчик', async () => {
-      bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managersWith([post(1, commentThread(0))]))
+      bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managersWith([post(1, commentThread(0))]))
       await openFeed(bubbles)
       await settle()
 
@@ -155,7 +152,7 @@ describe('ChatBubbles — тред под сообщением', () => {
     })
 
     it('счётчика у времени при этом НЕТ — это другая ветка', async () => {
-      bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managersWith([post(1, commentThread(8))]))
+      bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managersWith([post(1, commentThread(8))]))
       await openFeed(bubbles)
       await settle()
 
@@ -163,7 +160,7 @@ describe('ChatBubbles — тред под сообщением', () => {
     })
 
     it('есть комментаторы — стек аватарок, нет — иконка (tweb replies.ts:56-84)', async () => {
-      bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managersWith([
+      bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managersWith([
         post(1, commentThread(3, [11, 12])),
         post(2, commentThread(3)),
       ]))
@@ -184,7 +181,7 @@ describe('ChatBubbles — тред под сообщением', () => {
     it('у АЛЬБОМА футер один и адресован НЕСУЩИМ тред сообщением', async () => {
       // tweb `getMessageWithReplies` (appMessagesManager.ts:9233-9235): у
       // альбома тред живёт на ОДНОМ сообщении группы, а бабл у альбома один.
-      bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managersWith([
+      bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managersWith([
         post(1, undefined, { groupedId: 5 }),
         post(2, commentThread(4), { groupedId: 5 }),
       ]))
@@ -199,7 +196,7 @@ describe('ChatBubbles — тред под сообщением', () => {
 
   describe('сообщение ГРУППЫ с ответами — счётчик у времени', () => {
     it('число стоит в ОБОИХ узлах времени, футера нет', async () => {
-      bubbles = new ChatBubbles(chatContext(), managersWith([post(1, groupThread(1234))]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([post(1, groupThread(1234))]))
       await openFeed(bubbles)
       await settle()
 
@@ -220,7 +217,7 @@ describe('ChatBubbles — тред под сообщением', () => {
       // `hydrateThreads` каналу без привязанного обсуждения тред не даёт вовсе
       // (CommentCounts отдаёт пустоту, discussion.go:255); но даже приехавший
       // голый счёт постом не рисуется — гейт :9698 требует НЕ канал.
-      bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managersWith([post(1, groupThread(3))]))
+      bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managersWith([post(1, groupThread(3))]))
       await openFeed(bubbles)
       await settle()
 
@@ -235,7 +232,7 @@ describe('ChatBubbles — тред под сообщением', () => {
         peerId, fromId: 2, id: 1, text: 'привет', createdAt: '2026-08-15T12:34:00',
         replies: groupThread(3),
       })
-      bubbles = new ChatBubbles(
+      bubbles = mountTestBubbles(
         chatContext({ peerId, messagesStorageKey: String(peerId) }),
         managersWith([message]),
       )
@@ -246,7 +243,7 @@ describe('ChatBubbles — тред под сообщением', () => {
     })
 
     it('ВНУТРИ треда счётчика нет (tweb :6411 `if(this.chat.threadId) return`)', async () => {
-      bubbles = new ChatBubbles(
+      bubbles = mountTestBubbles(
         chatContext({ threadId: 7, messagesStorageKey: `${CHAT}:7` }),
         managersWith([post(1, groupThread(3))]),
       )
@@ -259,9 +256,9 @@ describe('ChatBubbles — тред под сообщением', () => {
 
   describe('клик по футеру открывает тред', () => {
     it('адресат — ГРУППА ОБСУЖДЕНИЯ и номер поста (tweb :3332-3338)', async () => {
-      const openDiscussion = vi.fn()
-      bubbles = new ChatBubbles(
-        chatContext({ isBroadcast: true, navigation: { openDiscussion } }),
+      const setInnerPeer = vi.fn()
+      bubbles = mountTestBubbles(
+        chatContext({ isBroadcast: true, appImManager: { setInnerPeer } }),
         managersWith([post(1, commentThread(8))]),
       )
       await openFeed(bubbles)
@@ -274,13 +271,13 @@ describe('ChatBubbles — тред под сообщением', () => {
 
       // tweb :3335 — пир треда это группа обсуждения, а не канал; знак
       // раскладывает `toPeerId(channel_id, true)`.
-      expect(openDiscussion).toHaveBeenCalledWith({ peerId: -DISCUSSION_ID, postMid: 1 })
+      expect(setInnerPeer).toHaveBeenCalledWith({ peerId: -DISCUSSION_ID, type: ChatType.Discussion, threadId: 1 })
     })
 
     it('клик по баблу БЕЗ футера тред не открывает', async () => {
-      const openDiscussion = vi.fn()
-      bubbles = new ChatBubbles(
-        chatContext({ navigation: { openDiscussion } }),
+      const setInnerPeer = vi.fn()
+      bubbles = mountTestBubbles(
+        chatContext({ appImManager: { setInnerPeer } }),
         managersWith([post(1, groupThread(3))]),
       )
       await openFeed(bubbles)
@@ -291,7 +288,7 @@ describe('ChatBubbles — тред под сообщением', () => {
         .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
       bubbles.container.remove()
 
-      expect(openDiscussion).not.toHaveBeenCalled()
+      expect(setInnerPeer).not.toHaveBeenCalled()
     })
   })
 
@@ -303,7 +300,7 @@ describe('ChatBubbles — тред под сообщением', () => {
     }
 
     it('футер не удваивается', async () => {
-      bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managersWith([post(1, commentThread(8))]))
+      bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managersWith([post(1, commentThread(8))]))
       await openFeed(bubbles)
       await settle()
 
@@ -315,7 +312,7 @@ describe('ChatBubbles — тред под сообщением', () => {
     })
 
     it('исчезнувший тред снимает и футер, и класс `with-replies`', async () => {
-      bubbles = new ChatBubbles(chatContext({ isBroadcast: true }), managersWith([post(1, commentThread(8))]))
+      bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managersWith([post(1, commentThread(8))]))
       await openFeed(bubbles)
       await settle()
 
@@ -327,7 +324,7 @@ describe('ChatBubbles — тред под сообщением', () => {
     })
 
     it('счётчик группы переезжает на новое число, а ноль его снимает', async () => {
-      bubbles = new ChatBubbles(chatContext(), managersWith([post(1, groupThread(3))]))
+      bubbles = mountTestBubbles(chatContext(), managersWith([post(1, groupThread(3))]))
       await openFeed(bubbles)
       await settle()
 

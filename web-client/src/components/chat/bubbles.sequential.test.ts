@@ -33,7 +33,9 @@ import { generateMessageId } from '@core/history/messageId'
 import { makeMessage, makeRawMessage } from '@core/messages/testMessage'
 import type { MessageOp } from '@core/realtime/messageOps'
 import type { HistoryResult } from '@core/managers/messagesManager'
-import ChatBubbles, { makeFullMid, type BubblesManagers } from './bubbles'
+import type ChatBubbles from './bubbles'
+import { makeFullMid, type BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles } from './testChat'
 
 /** Открыть окно ленты и дождаться ОТРИСОВКИ. `setPeer` (как в оригинале)
  *  возвращает управление, едва отправив запрос: рендер и доводка живут во
@@ -191,7 +193,7 @@ describe('sequential: ветка ленты (порт tweb bubbles.ts:802-819)',
   // разложил заново (`removeAndUnmountBubble` + `groupBubbles`).
   it('с признаком: бабл НЕ перекладывается, сообщение подменяется на месте', async () => {
     const { pending, ops, ack } = owner()
-    bubbles = new ChatBubbles({ peerId: CHAT, messagesStorageKey: KEY, container: document.createElement('div'), bubblesViewport: document.createElement('div') }, managers)
+    bubbles = mountTestBubbles(createTestChat({ peerId: CHAT, messagesStorageKey: KEY }), managers)
     await openFeed(bubbles)
 
     await sendAndRender(pending, 'c1', 'привет')
@@ -221,7 +223,7 @@ describe('sequential: ветка ленты (порт tweb bubbles.ts:802-819)',
   // снимать статус обязаны обе, а расходятся они именно здесь.
   it('ack снимает «отправляется» — короткая дорога (sequential)', async () => {
     const { pending, ops, ack } = owner()
-    bubbles = new ChatBubbles({ peerId: CHAT, messagesStorageKey: KEY, container: document.createElement('div'), bubblesViewport: document.createElement('div') }, managers)
+    bubbles = mountTestBubbles(createTestChat({ peerId: CHAT, messagesStorageKey: KEY }), managers)
     await openFeed(bubbles)
 
     await sendAndRender(pending, 'c1', 'привет')
@@ -238,7 +240,7 @@ describe('sequential: ветка ленты (порт tweb bubbles.ts:802-819)',
 
   it('ack снимает «отправляется» — общая дорога (sendFile, перегруппировка)', async () => {
     const { pending, ops, ack } = owner()
-    bubbles = new ChatBubbles({ peerId: CHAT, messagesStorageKey: KEY, container: document.createElement('div'), bubblesViewport: document.createElement('div') }, managers)
+    bubbles = mountTestBubbles(createTestChat({ peerId: CHAT, messagesStorageKey: KEY }), managers)
     await openFeed(bubbles)
 
     await pending.sendFile({
@@ -259,7 +261,7 @@ describe('sequential: ветка ленты (порт tweb bubbles.ts:802-819)',
   // путём — снять бабл и разложить заново.
   it('без признака: тот же ack идёт общим путём (перегруппировка)', async () => {
     const { pending, ops, ack } = owner()
-    bubbles = new ChatBubbles({ peerId: CHAT, messagesStorageKey: KEY, container: document.createElement('div'), bubblesViewport: document.createElement('div') }, managers)
+    bubbles = mountTestBubbles(createTestChat({ peerId: CHAT, messagesStorageKey: KEY }), managers)
     await openFeed(bubbles)
 
     await pending.sendFile({
@@ -283,7 +285,7 @@ describe('sequential: ветка ленты (порт tweb bubbles.ts:802-819)',
   // совпал), ветка обязана пропустить его на общий путь.
   it('признак есть, но позиция изменилась — ветка отдаёт бабл общему пути', async () => {
     const { pending, ops, ack } = owner()
-    bubbles = new ChatBubbles({ peerId: CHAT, messagesStorageKey: KEY, container: document.createElement('div'), bubblesViewport: document.createElement('div') }, managers)
+    bubbles = mountTestBubbles(createTestChat({ peerId: CHAT, messagesStorageKey: KEY }), managers)
     await openFeed(bubbles)
 
     await sendAndRender(pending, 'c1', 'привет')
@@ -332,7 +334,7 @@ describe('sequential: эхо своей отправки раньше ack (по�
     // Срез окна владельца доведён до низа истории — только в такой встаёт бабл.
     await mgr.getHistory({ peerId: CHAT, offsetId: 0, addOffset: 0, limit: 40 })
 
-    bubbles = new ChatBubbles({ peerId: CHAT, messagesStorageKey: KEY, container: document.createElement('div'), bubblesViewport: document.createElement('div') }, managers)
+    bubbles = mountTestBubbles(createTestChat({ peerId: CHAT, messagesStorageKey: KEY }), managers)
     await openFeed(bubbles)
 
     const send = (clientMsgId: string) => mgr.sendText({

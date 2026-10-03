@@ -1427,6 +1427,12 @@ const ru = {
   'Message.Context.Selection.Delete': 'Удалить выбранные',
   'Message.Context.Selection.Download': 'Загрузить выбранные',
   'Message.Context.Selection.Forward': 'Переслать выбранные',
+  'Chat.Title.Comments': {
+    one_value: '%d комментарий',
+    few_value: '%d комментария',
+    many_value: '%d комментариев',
+    other_value: '%d комментария',
+  },
   messages: {
     one_value: '%1$d сообщение',
     few_value: '%1$d сообщения',
