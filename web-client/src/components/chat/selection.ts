@@ -103,7 +103,7 @@ import type { MyMessage } from '@core/models'
 import type AppSearchSuper from '@components/appSearchSuper'
 import { getSharedMediaMessage } from '@components/sharedMediaHistories'
 import type Chat from './chat'
-import type ChatInput from './reactChatInput'
+import type ChatInput from './input'
 
 /** tweb selection.ts:51-53 (812502980) — обобщён в 79b9c44c1 */
 const accumulateMapSet = <T extends { size: number }>(map: Map<number, T>): number => {
