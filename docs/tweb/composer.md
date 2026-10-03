@@ -501,6 +501,10 @@ Computed корневых узлов (из дампа, тёмная тема, ш
 Вызовы `updateSendBtn()`: `input.ts:600, 1430, 2867, 3177, 3644, 3856, 3889, 3915, 4103, 4908` +
 `chatRecording.ts:793`.
 
+**У нас (К-4, 2026-10-03).** `ChatInput.updateSendBtn` (`W/components/chat/input.ts`) — порт без записи
+(Б-30) и без историй/потока бота: иконки `edit` (правка) и `send`/`schedule`; узел кнопки — 7 иконок 1:1.
+React-`SendButton.tsx` снесён.
+
 ### 3.3 CSS-морф иконок
 
 Базовое состояние всех шести иконок — `T/scss/partials/_animatedIcon.scss:159-170`:
@@ -718,6 +722,12 @@ div.reply-wrapper.rows-wrapper-row                      input.ts:625-626
 находится `.reply-title`, берётся `I18n.IntlElement`, меняется `i.key` (`input.ts:732-740`).
 
 Сброс — `clearHelper()` (`input.ts:4745-4794`).
+
+**У нас (К-4, 2026-10-03).** `setTopInfo`/`clearHelper`/`t()` — `W/components/chat/input.ts` 1:1; плашка
+собирается `wrapReply` (`W/components/wrappers/reply.ts`) поверх `ReplyContainer`/`DivAndCaption`
+(`W/components/chat/replyContainer.ts`, `W/components/divAndCaption.ts`). Не перенесено: цвет автора
+(`setPeerColorToElement`, подсистемы цветов пира нет), превью медиа в плашке (`wrapReplyMedia`), меню
+плашек (`DropdownHover`) и плашка ссылки (`webpage`) — Б-72. React-`ReplyWrapper.tsx` снесён.
 
 ### 4.3 Внутреннее дерево `div.reply` (из `DivAndCaption`)
 
