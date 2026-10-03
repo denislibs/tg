@@ -1,16 +1,16 @@
 // Порт tweb `src/components/wrappers/wrapDuration.ts:1-44` (812502980) — подпись
 // длительности формами числа langPack.
 //
-// Расхождение с оригиналом: только не-plain ветки `wrapFormattedDuration`
-// (`:24-29`), `wrapCallDuration` (`:32-34`) и `wrapLeftDuration` (`:36-44`).
-// Plain-ветку (`:19-22`), `wrapSlowModeLeftDuration` и
-// `wrapStoriesStealthModeDuration` (`:46-57`) никто не зовёт; потребители —
-// «Данные и память» (`storageQuota.tsx:145`), «Автоудаление»
-// (`autoDeleteMessages/options.ts`), бабл звонка (`wrappers/callBubble.ts`) и
-// ссылки-приглашения правой колонки (`sidebarRight/tabs/chatInviteLinks.solid.tsx`,
-// `editChatInviteLink.solid.tsx` — там `wrapFormattedDuration(formatted, false)`
-// оригинала зовётся без второго аргумента: он и есть не-plain).
-import { i18n, join, type LangPackKey } from '@lib/langPack'
+// Расхождение с оригиналом: `wrapSlowModeLeftDuration` и
+// `wrapStoriesStealthModeDuration` (`:46-57`) никто не зовёт и они не портированы.
+// Потребители — «Данные и память» (`storageQuota.tsx:145`), «Автоудаление»
+// (`autoDeleteMessages/options.ts`), бабл звонка (`wrappers/callBubble.ts`),
+// превью лога звонка строкой (`core/serviceMsg.ts`, plain-ветка — порт
+// `messageActionTextNewUnsafe.ts:248-253`) и ссылки-приглашения правой колонки
+// (`sidebarRight/tabs/chatInviteLinks.solid.tsx`, `editChatInviteLink.solid.tsx` —
+// там `wrapFormattedDuration(formatted, false)` оригинала зовётся без второго
+// аргумента: он и есть не-plain).
+import I18n, { i18n, join, type LangPackKey } from '@lib/langPack'
 import formatDuration, { DurationType, type FormattedDuration } from '@helpers/formatDuration'
 import toHHMMSS from '@helpers/string/toHHMMSS'
 
@@ -24,7 +24,15 @@ export const DURATION_LANG_KEYS: { [type in DurationType]: LangPackKey } = {
   [DurationType.Years]: 'Years',
 }
 
-export function wrapFormattedDuration(formatted: FormattedDuration): HTMLSpanElement {
+export function wrapFormattedDuration(formatted: FormattedDuration, plain: true): string
+export function wrapFormattedDuration(formatted: FormattedDuration, plain?: false): HTMLSpanElement
+export function wrapFormattedDuration(formatted: FormattedDuration, plain?: boolean): string | HTMLSpanElement {
+  // tweb :19-22
+  if(plain) {
+    const strings = formatted.map((d) => I18n.format(DURATION_LANG_KEYS[d.type], true, [d.duration]))
+    return join(strings, false, plain)
+  }
+
   const elements = formatted.map((d) => i18n(DURATION_LANG_KEYS[d.type], [d.duration]))
 
   const fragment = document.createElement('span')
@@ -34,8 +42,10 @@ export function wrapFormattedDuration(formatted: FormattedDuration): HTMLSpanEle
 }
 
 /** tweb :32-34 — длительность звонка: два старших разряда («1 минута, 5 секунд»). */
-export function wrapCallDuration(duration: number): HTMLSpanElement {
-  return wrapFormattedDuration(formatDuration(duration, 2))
+export function wrapCallDuration(duration: number, plain: true): string
+export function wrapCallDuration(duration: number, plain?: false): HTMLSpanElement
+export function wrapCallDuration(duration: number, plain?: boolean): string | HTMLSpanElement {
+  return plain ? wrapFormattedDuration(formatDuration(duration, 2), true) : wrapFormattedDuration(formatDuration(duration, 2))
 }
 
 /** tweb :36-44 — остаток срока: до суток — `ч:мм:сс`, дольше — один старший разряд. */

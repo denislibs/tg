@@ -3,7 +3,7 @@ import type { ReplyMarkup } from './markup/replyMarkup'
 import type { EmojiEffectKind } from './effects/emojiEffects'
 import { saveMessageMedia, type MessageMedia, type TextWithEntities } from './media/messageMedia'
 import type { MessageEntity } from '@layer'
-import { getPeerId, type Peer } from './peers/peerId'
+import { getPeerId, NULL_PEER_ID, type Peer } from './peers/peerId'
 import type { PeerNotifySettings } from './dialogs/notifySettings'
 import { generateMessageId } from './history/messageId'
 import { refineMessageAction, type MessageAction } from './messages/messageAction'
@@ -300,6 +300,14 @@ interface MessageCommon {
 export interface MessageReal extends MessageCommon {
   _: 'message'
   fwd_from?: MessageFwdHeader
+  /** КЛИЕНТСКИЙ параметр: автор оригинала пересылки (`fwd_from.from_id`)
+   *  знаковым ключом; у скрытой атрибуции — `NULL_PEER_ID`. Порт tweb
+   *  `message.fwdFromId` (appMessagesManager.ts:7158), выводит граница разбора. */
+  fwdFromId?: PeerId
+  /** КЛИЕНТСКИЙ параметр: адрес оригинала пересылки «пир_номер» — переход к
+   *  нему с имени и кнопкой сбоку. Порт tweb `message.savedFrom`
+   *  (appMessagesManager.ts:7143-7149), выводит граница разбора. */
+  savedFrom?: `${number}_${number}`
   /** текст. Обязательный по схеме и едет ВСЕГДА, даже пустой: у картинки без
    *  подписи это пустая строка, а не отсутствие ключа. */
   message: string
@@ -782,7 +790,7 @@ export interface MessageReactions {
  * `peerId`/`fromId` — знаковые ключи (объявлены клиентскими у самого
  * оригинала, `schema/schema_additional_params.json`); остальные три наши.
  */
-type MessageClientKeys = 'peerId' | 'fromId' | 'failed' | 'localUrl' | 'transcription'
+type MessageClientKeys = 'peerId' | 'fromId' | 'fwdFromId' | 'savedFrom' | 'failed' | 'localUrl' | 'transcription'
 
 /**
  * Проводное сообщение — ТОТ ЖЕ тип, что модель, минус клиентские параметры и с
@@ -815,6 +823,19 @@ export type RawMessage = RawMessageEmpty | RawMessageReal | RawMessageService
  */
 export type RawMyMessage = RawMessageReal | RawMessageService
 
+/** Клиентские параметры пересылки — порт tweb appMessagesManager.ts:7139-7158
+ *  (ветка `if(fwdHeader)` в `saveMessage`). Адрес оригинала — пара
+ *  `saved_from_peer`+`saved_from_msg_id` либо, у поста канала, `from_id`+
+ *  `channel_post`; номер переводится в клиентское пространство. */
+function forwardClientParams(h: MessageFwdHeader): Pick<MessageReal, 'fwdFromId' | 'savedFrom'> {
+  const peer = h.saved_from_peer ?? h.from_id
+  const msgId = h.saved_from_msg_id ?? h.channel_post
+  return {
+    fwdFromId: getPeerId(h.from_id),
+    ...(peer && msgId ? { savedFrom: `${getPeerId(peer)}_${generateMessageId(msgId)}` as const } : {}),
+  }
+}
+
 /** Ссылка на отвечаемое: единственное, что меняется, — пространство номеров. */
 function mapReplyHeader(h: MessageReplyHeader | undefined): MessageReplyHeader | undefined {
   if (!h) return undefined
@@ -841,7 +862,17 @@ export function mapMessage(r: RawMessage, meId: PeerId | null = null): Message {
   const peerId = getPeerId(r.peer_id)
   if (r._ === 'messageEmpty') return { _: 'messageEmpty', id: generateMessageId(r.id), peer_id: r.peer_id, peerId }
 
-  const fromId = r.from_id ? getPeerId(r.from_id) : undefined
+  const fwdHeader = r._ === 'message' ? r.fwd_from : undefined
+  let fromId = r.from_id ? getPeerId(r.from_id) : undefined
+  // «Избранное» — порт tweb appMessagesManager.ts:7111-7131: автор сообщения
+  // там — автор ОРИГИНАЛА пересылки (имя, аватарка и серия баблов — его), у
+  // скрытой атрибуции — никто (`NULL_PEER_ID`), а своё непересланное — я.
+  // `saved_from_id`/`saved_from_name` у нас не производятся
+  // (`backend/internal/domain/mtfwd.go`), поэтому ступень одна — `from_id`, а
+  // `getFwdFromName` вырождается в `from_name`.
+  if (meId != null && peerId === meId) {
+    fromId = fwdHeader ? (fwdHeader.from_id && !fwdHeader.from_name ? getPeerId(fwdHeader.from_id) : NULL_PEER_ID) : meId
+  }
   const common = {
     pFlags: r.pFlags ?? {},
     id: generateMessageId(r.id),
@@ -869,6 +900,7 @@ export function mapMessage(r: RawMessage, meId: PeerId | null = null): Message {
     ...common,
     _: 'message',
     fwd_from: r.fwd_from,
+    ...(fwdHeader ? forwardClientParams(fwdHeader) : {}),
     message: r.message,
     // Вложение нормализуется здесь один раз: `saveMessageMedia` выводит
     // `doc.type`/`w`/`h`/`duration`/`file_name` из атрибутов и mime — порт

@@ -139,8 +139,9 @@ export function bubbleClasses(m: ConvMsg, ctx: BubbleCtx): string[] {
   if (canHaveTail && isMessageEmpty && (m.type === 'photo' || m.type === 'video')) cls.push('has-plain-media-tail')
 
   if (m.reply) cls.push('is-reply')
-  // Пересланное всегда показывает шапку «Forwarded from» (tweb bubbles.ts:9413,9645).
-  if (m.forwardFrom) cls.push('forwarded', 'must-have-name')
+  // У пересланного шапка есть всегда (tweb bubbles.ts:10725), поэтому
+  // `hide-name` ему не ставится; `forwarded`/`must-have-name` зависят от вида
+  // чата и решаются там же, где строится шапка (`ChatBubbles.renderName`).
   if (!ctx.showName && !m.forwardFrom) cls.push('hide-name')
   // Пост канала — tweb bubbles.ts:7672-7673: гейт стоит на САМОМ сообщении
   // (`isMessage && message.views`), а не на виде чата. Счётчик просмотров есть
