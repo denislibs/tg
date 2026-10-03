@@ -92,8 +92,7 @@
 //         `messages.getFirstMessageToEdit` воркера; обработчик синхронный, а ожидание —
 //         асинхронный хвост (у tweb весь `onKeyDown` — `async`): `cancelEvent` до него.
 //         Без `lastMsgPeerId` у `setMessageId` — окна по чужому пиру у ленты нет.
-//     F2. `chat.input.recording` (`:1841`) — записи голоса у класса `ChatInput` нет
-//         (Б-30): условие «не во время записи» снято.
+//     F2. (снято П-6: `chat.input.recording` (`:1841`) — запись голоса Б-30 портирована.)
 //     F3. `appDialogsManager.contextMenu?.hasAddToFolderOpen()` (`:1767`) — только в
 //         ветке правки (F1).
 //     F4. Защита копирования инертна, пока у баблов нет класса `no-forwards` — Б-81.
@@ -1419,7 +1418,7 @@ export class AppImManager extends EventListenerBase<{
         !IS_TOUCH_SUPPORTED &&
         (!mediaSizes.isMobile || this.tabId === APP_TABS.CHAT) &&
         !chat.selection.isSelecting &&
-        // `!chat.input.recording` — расхождение 14 F2
+        !input.recording &&
         input.messageInput.isContentEditable
       ) {
         input.passEventToInput(e)
