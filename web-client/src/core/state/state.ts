@@ -23,6 +23,12 @@ export interface AppState {
   /** порядок закреплённых по папкам: folderId → peerId[] (tweb `pinnedOrders`) */
   pinnedOrders: Record<number, number[]>
   /**
+   * выборки списка, загруженные целиком: проводная папка (0 — все, 1 — архив)
+   * → признак (tweb `allDialogsLoaded`, lib/storages/dialogs.ts:262, :342-344).
+   * Пишет и читает только владелец диалогов в воркере.
+   */
+  allDialogsLoaded: Record<number, boolean>
+  /**
    * баланс звёзд; null — ни разу не загружался. Отличие от списков: у баланса `0`
    * это ЗАКОННОЕ значение, поэтому «пусто» и «не загружено» без явного null
    * не различить.
@@ -43,6 +49,7 @@ export const STATE_INIT: AppState = {
   hiddenPinnedMessages: {},
   recentSearch: [],
   pinnedOrders: {},
+  allDialogsLoaded: {},
   starsBalance: null,
 }
 

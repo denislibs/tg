@@ -336,6 +336,16 @@ Zustand-сторы (`stores/chatsStore.ts` и др.), а интерфейс чи
 (`web-client/CLAUDE.md`, «Архитектура клиента»). У tweb UI подписывается на `rootScope` напрямую.
 Сторы уезжают последними, в волне 8 (план, «Мосты чтения»).
 
+Пример §2.4 у нас: шаги 4–6 — `core/managers/dialogsManager.ts::applyNewMessage` (защита от
+отката `mid >= top_message` и курсор прочтения для счётчика, tweb `:10500-10520`) →
+`setDialogTopMessage` → `scheduleHandleNewDialogs`/`handleNewDialogs` (`pause(0)`, одна операция
+`upsert` в одном кадре `rt:dialog_op` на пачку); шаги 7–9 — `client/realtime/storeProjection.ts` →
+`chatsStore.applyDialogOps` (одна сортировка на кадр) → `autonomousDialogList/dialogs.ts::onDialogsChange`.
+Старт апдейтов — как `apiUpdatesManager.attach` (`:886-929`): без сохранённого курсора базой
+становится hello сокета (аналог `updates.getState`), с сохранённым — догон `/sync`
+(`core/workerCore.ts`, ветка `hello`). Старт списка — без сети, как `dialogsStorage.getDialogs`
+(`client/boot.ts::applyDialogsMirror`; признак `allDialogsLoaded` — в State).
+
 ---
 
 ## 3. Синглтоны и кто чем владеет

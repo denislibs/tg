@@ -59,3 +59,18 @@ describe('newCursor', () => {
     expect(c.get().pts).toBe(10) // max(10, 3) — not rolled back to 3
   })
 })
+
+describe('newCursor.reset (переход сессии)', () => {
+  it('забывает состояние и пишет ноль на диск — следующий hello станет базой', async () => {
+    const store = memStore()
+    store._m.set('pts', 42); store._m.set('date', 7)
+    const c = newCursor(store, 0)
+    await c.ready()
+
+    c.reset()
+    expect(c.get()).toEqual({ pts: 0, date: 0 })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(store._m.get('pts')).toBe(0)
+    expect(store._m.get('date')).toBe(0)
+  })
+})

@@ -36,7 +36,7 @@ vi.mock('./bootstrap', () => ({
     managers: {
       auth: { me: vi.fn(async () => null) },
       persist: { stateKey: vi.fn(async () => {}), scopeToSession: vi.fn(async () => true) },
-      dialogs: { fillMirror: vi.fn(async () => null), refresh: vi.fn(async () => null) },
+      dialogs: { fillMirror: vi.fn(async () => null) },
       langPack,
     },
     ep: {},

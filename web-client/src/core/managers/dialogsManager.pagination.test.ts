@@ -9,7 +9,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { newDialogsManager } from './dialogsManager'
 import { DIALOG_LOAD_COUNT } from '../dialogs/loadCount'
-import { ARCHIVE_FOLDER_ID } from '../folderIds'
+import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '../folderIds'
 import { mapMyMessage, type Dialog, type MyMessage, type RawDialog, type RawMessage, type RawMessageReal } from '../models'
 import { generateMessageId } from '../history/messageId'
 import { makeDialog } from '../dialogs/testDialog'
@@ -403,26 +403,27 @@ describe('dialogsManager.getDialogs: догрузка страницы (порт
     // а знак ключа плюс флаги карточки (решение Р8).
     const server = Array.from({ length: 8 }, (_, i) => raw(i === 7 ? -(i + 1) : i + 1, 8 - i))
     const rest = {
-      get: vi.fn(async (_path: string, q: Record<string, number>) => (q.offset_peer_id
-        // опорный чат курсора исчез — страница приходит с начала и нового не несёт
-        ? containerOf({ chats: [raw(1, 8), raw(2, 7)], count: 40, is_end: false })
-        : containerOf({ chats: server.slice(0, q.limit), count: server.length, is_end: q.limit >= server.length }))),
+      get: vi.fn(async (_path: string, q: Record<string, number>) =>
+        containerOf({ chats: server.slice(0, q.limit), count: server.length, is_end: q.limit >= server.length })),
     }
     const mgr = newDialogsManager({
     messages: fakeMessages(),
       rest: rest as never,
       onDialogOps: () => {},
-      // держим три ГЛОБАЛЬНЫХ диалога, из которых в папку 7 не попадает ни один
-      loadCache: async () => [dialog(1, 8), dialog(2, 7), dialog(3, 6)],
+      // держим пять ГЛОБАЛЬНЫХ диалогов, из которых в папку 7 не попадает ни один
+      loadCache: async () => [dialog(1, 8), dialog(2, 7), dialog(3, 6), dialog(4, 5), dialog(5, 4)],
       loadState: async () => ({ pinnedOrders: {}, folders: [folder({ id: 7, groups: true })] }),
     })
 
     const page = await mgr.getDialogs({ limit: 5, filterId: 7 })
 
-    // Фолбэк просит 3 (весь кэш) + 5, доходит до восьмого чата и приносит его;
-    // по длине папки (0 + 5) страница закончилась бы на пятом, и папка осталась
-    // бы пустой при завышенном count.
-    expect(rest.get.mock.calls[1][1]).toEqual({ limit: 8, offset_peer_id: 0 })
+    // Глобального смещения ещё нет — первая страница с начала набора (tweb
+    // `getOffsetDate(GLOBAL_FOLDER_ID)`, dialogs.ts:464-468) и приносит только
+    // известное: курсор залип. Фолбэк просит 5 (весь кэш) + 5, доходит до
+    // восьмого чата и приносит его; по длине папки (0 + 5) страница
+    // закончилась бы на пятом, и папка осталась бы пустой при завышенном count.
+    expect(rest.get.mock.calls[0][1]).toEqual({ limit: 5, offset_peer_id: 0 })
+    expect(rest.get.mock.calls[1][1]).toEqual({ limit: 10, offset_peer_id: 0 })
     expect(page.dialogs.map((d) => d.peerId)).toEqual([-8])
   })
 
@@ -980,8 +981,9 @@ describe('размер набора по выборке (порт dialogs.ts:170
 
     const q = rest.get.mock.calls[0][1] as Record<string, unknown>
     expect(q.folder_id).toBeUndefined()
-    // И курсор — хвост ВСЕГО кэша (peer_id 1): выборка папки и есть глобальная.
-    expect(q.offset_peer_id).toBe(1)
+    // И курсор — начало набора: смещения глобальной выборки гидрация из кэша
+    // не выводит (tweb `getOffsetDate(GLOBAL_FOLDER_ID)`, dialogs.ts:464-468).
+    expect(q.offset_peer_id).toBe(0)
   })
 
   // Тот же порт `dialogsLength >= count`, что у «Всех чатов» (см. «страница по
@@ -1490,5 +1492,72 @@ describe('refresh перечитывает удерживаемое окно, а
     await mgr.getDialogs({ limit: 5 })
 
     expect(rest.get).toHaveBeenCalled()
+  })
+})
+
+// Старт списка — tweb `dialogsStorage.getDialogs` (lib/storages/dialogs.ts:
+// 1903-1914): кэша хватает на страницу или выборка загружена целиком — ответ из
+// кэша без сети; иначе ОДИН запрос. Признак «загружено целиком» переживает
+// перезагрузку в State (`allDialogsLoaded`, dialogs.ts:262, :342-344) — без
+// него короткий список (меньше страницы) после F5 шёл бы в сеть за тем, что
+// уже лежит на диске.
+describe('старт списка из кэша (порт dialogs.ts:1903-1914, allDialogsLoaded)', () => {
+  const setup = (cache: Dialog[], allDialogsLoaded?: Record<number, boolean>) => {
+    const rest = restStub({ chats: [raw(9, 9)], count: 40, is_end: false })
+    const saveDialogsLoaded = vi.fn(async () => {})
+    const mgr = newDialogsManager({
+      messages: fakeMessages(),
+      rest: rest as never,
+      loadCache: async () => cache,
+      loadState: async () => ({ pinnedOrders: {}, allDialogsLoaded }),
+      saveDialogsLoaded,
+    })
+    return { mgr, rest, saveDialogsLoaded }
+  }
+
+  it('кэша хватает на страницу — без сети', async () => {
+    const { mgr, rest } = setup([dialog(1, 5), dialog(2, 4), dialog(3, 3)])
+    const page = await mgr.getDialogs({ limit: 3, filterId: ALL_FOLDER_ID })
+    expect(rest.get).not.toHaveBeenCalled()
+    expect(page.dialogs.map((d) => d.peerId)).toEqual([1, 2, 3])
+  })
+
+  it('кэш короче страницы, но выборка загружена целиком (с диска) — без сети', async () => {
+    const { mgr, rest } = setup([dialog(1, 5), dialog(2, 4)], { 0: true })
+    const page = await mgr.getDialogs({ limit: 20, filterId: ALL_FOLDER_ID })
+    expect(rest.get).not.toHaveBeenCalled()
+    expect(page).toMatchObject({ count: 2, isEnd: true })
+  })
+
+  it('кэш короче страницы и признака нет — один запрос в сеть', async () => {
+    const { mgr, rest } = setup([dialog(1, 5), dialog(2, 4)])
+    await mgr.getDialogs({ limit: 20, filterId: ALL_FOLDER_ID })
+    expect(rest.get).toHaveBeenCalledTimes(1)
+  })
+
+  it('пустой кэш — один запрос в сеть', async () => {
+    const { mgr, rest } = setup([])
+    await mgr.getDialogs({ limit: 20, filterId: ALL_FOLDER_ID })
+    expect(rest.get).toHaveBeenCalledTimes(1)
+    expect(rest.get.mock.calls[0]).toEqual(['/chats', { limit: 20, offset_peer_id: 0, folder_id: 0 }])
+  })
+
+  it('выборка дочерпана — признак уходит в State ключами проводных папок', async () => {
+    const rest = restStub({ chats: [raw(1, 5)], is_end: true })
+    const saveDialogsLoaded = vi.fn(async () => {})
+    const mgr = newDialogsManager({
+      messages: fakeMessages(),
+      rest: rest as never,
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {} }),
+      saveDialogsLoaded,
+    })
+    await mgr.getDialogs({ limit: 20, filterId: ALL_FOLDER_ID })
+    expect(saveDialogsLoaded).toHaveBeenCalledWith({ 0: true, 1: false })
+
+    // повторная страница уже загруженной выборки признак не переписывает
+    saveDialogsLoaded.mockClear()
+    await mgr.getDialogs({ limit: 20, filterId: ALL_FOLDER_ID })
+    expect(saveDialogsLoaded).not.toHaveBeenCalled()
   })
 })

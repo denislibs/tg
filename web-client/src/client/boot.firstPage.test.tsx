@@ -13,9 +13,10 @@
 // Завышенная оценка и есть механизм: она рождает дырку, дырка дёргает
 // `requestItemForIdx`, тот тянет страницы.
 //
-// Сценарии сохранены, ожидания инвертированы: первичный `refresh()` уходит с
-// `limit` (`dialogsManager.ts::doRefresh`), зеркало получает первую страницу, а
-// архив и папка всё равно наполняются — уже догрузкой сайдбара.
+// Сценарии сохранены, ожидания инвертированы: boot в сеть за списком не ходит
+// вовсе (старт как tweb `getDialogs`, lib/storages/dialogs.ts:1903-1914) —
+// первую страницу просит сам список «Всех чатов», а архив и папка наполняются
+// догрузкой сайдбара.
 //
 // Поэтому данные здесь сеются ТОЛЬКО через путь загрузки (владелец →
 // `rt:dialog_op` → проектор → зеркало), как в `realtime/storeProjection.dialogs.
@@ -53,7 +54,8 @@ import { makeDialog } from '../core/dialogs/testDialog'
 
 const HOST_HEIGHT = 720
 
-/** Окно первичного `refresh()` на пустом кэше — `Math.max(0, DIALOG_LOAD_COUNT)`. */
+/** Первая страница списка на пустом кэше — `guessLoadCount()` (в happy-dom это
+ *  нижняя граница `DIALOG_LOAD_COUNT`). */
 const FIRST_PAGE = DIALOG_LOAD_COUNT
 /**
  * Набор — ЧЕТЫРЕ первых страницы. Двух мало: одна страница догрузки
@@ -162,8 +164,7 @@ async function coldStart() {
     messages: fakeMessagesOwner(),
   })
   const managers = { dialogs } as unknown as Managers
-  const op = await fillDialogsMirror(managers)
-  await applyDialogsMirror(op, managers)
+  applyDialogsMirror(await fillDialogsMirror(managers))
   return { dialogs, requests }
 }
 
@@ -238,13 +239,19 @@ describe('boot: холодный старт грузит ПЕРВУЮ СТРАН
     expect(SERVER.findIndex((r) => peerIdOf(r) === FOLDER_CHAT_ID)).toBeGreaterThanOrEqual(FIRST_PAGE)
   })
 
-  it('зеркало получает первую страницу, а не весь список', async () => {
-    const { requests } = await coldStart()
+  it('boot в сеть не ходит; первую страницу просит сам список, а не весь набор', async () => {
+    const { dialogs, requests } = await coldStart()
 
-    // Единственный запрос сеанса — окно удерживаемого (кэш пуст → страница),
-    // по ГЛОБАЛЬНОЙ выборке и без курсора: `refresh()` обслуживает весь кэш.
-    expect(requests).toEqual([{ limit: FIRST_PAGE }])
-    expect(useChatsStore.getState().dialogs).toHaveLength(FIRST_PAGE)
+    // Старт без сети: ни сетевого догона, ни своей страницы у boot нет.
+    expect(requests).toEqual([])
+
+    await renderSidebar(dialogs)
+    await settle(350)
+
+    // Кэш пуст — ОДНА страница «Всех чатов» (tweb `getDialogs` → `getTopMessages`).
+    expect(requests[0]).toEqual({ limit: FIRST_PAGE, offset_peer_id: 0, folder_id: 0 })
+    expect(requests.filter((q) => q?.folder_id === 0)).toHaveLength(1)
+    expect(useChatsStore.getState().dialogs.length).toBeLessThan(TOTAL)
   })
 
   it('строка «Архив» есть, хотя архивных чатов нет среди первых DIALOG_LOAD_COUNT диалогов', async () => {
@@ -280,22 +287,27 @@ describe('boot: холодный старт грузит ПЕРВУЮ СТРАН
     await act(async () => { fireEvent.click(screen.getByText(FOLDER.title)) })
     await settle(350) // слайд доигран, активна вкладка папки
 
-    // Страницы папки — те, что ушли с курсором и БЕЗ `folder_id` (порт
-    // `realFolderId`: у пользовательской папки серверного набора нет, её
-    // страницы вычерпывают глобальный). Первичный `refresh()` уходит без
-    // курсора, страница строки «Архив» — со своим `folder_id`.
+    // Страницы папки — те, что ушли БЕЗ `folder_id` (порт `realFolderId`: у
+    // пользовательской папки серверного набора нет, её страницы вычерпывают
+    // глобальный). Страницы «Всех чатов» и строки «Архив» — со своим `folder_id`.
     const folderPages = requests.filter((q) => q?.folder_id === undefined && q?.offset_peer_id !== undefined)
     const cursors = folderPages.map((q) => Number(q!.offset_peer_id))
 
     expect(cursors.length).toBeGreaterThan(0)
-    // Продолжили ровно за окном первичного `refresh()`, а не с начала набора.
-    expect(cursors[0]).toBe(FIRST_PAGE)
+    // Глобального смещения ещё не было — первая страница папки идёт с начала
+    // набора (tweb `getOffsetDate(GLOBAL_FOLDER_ID)`, dialogs.ts:464-468), а не
+    // от хвоста кэша, куда страница архива положила самый старый архивный.
+    expect(cursors[0]).toBe(0)
     // Курсор продвигается и ни разу не повторяется — иначе страница вечно
-    // приносила бы уже известное (мутация: вернуть курсор выборки к хвосту
-    // кэша — страница архива кладёт туда самый старый архивный диалог, и
-    // глобальный курсор прыгает в конец набора).
-    expect(cursors).toEqual([...cursors].sort((a, b) => a - b))
-    expect(new Set(cursors).size).toBe(cursors.length)
+    // приносила бы уже известное. Нули — начало набора: первая страница и
+    // фолбэк залипшего курсора (он намеренно без курсора, `getDialogs`), —
+    // первая страница с начала приносит лишь то, что уже дала страница «Всех
+    // чатов». Мутация «вернуть курсор глобальной выборки к хвосту кэша»
+    // красит `cursors[0]` выше: страница архива кладёт туда самый старый
+    // архивный диалог, и папка просила бы «всё, что после него».
+    const moved = cursors.filter((c) => c !== 0)
+    expect(moved).toEqual([...moved].sort((a, b) => a - b))
+    expect(new Set(moved).size).toBe(moved.length)
     // Зеркало выросло за пределы первой страницы — выборка реально черпается.
     expect(useChatsStore.getState().dialogs.length).toBeGreaterThan(FIRST_PAGE + 1)
 
