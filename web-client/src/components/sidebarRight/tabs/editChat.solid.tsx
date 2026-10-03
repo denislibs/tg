@@ -23,19 +23,20 @@
  * ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
  *
  *  1. Данные (`loadEditChatData`, :79-99) — одна карточка `groups.card(peerId)`
- *     (`chat` + `fullChat`). `appConfig`, `availableReactions`,
- *     `joinedCommunities` не грузятся: их потребители — строки п. 3–5.
+ *     (`chat` + `fullChat`) и каталог реакций `getAvailableReactions` (общий кэш
+ *     сессии, `chat/reactions.ts`; поле `inactive` вместо `pFlags.inactive`).
+ *     `appConfig`, `joinedCommunities` не грузятся: их потребители — строки п. 4–5.
  *  2. Миграции группы нет (`dialog_migrate`, `onMigrate`, :102-131, :371-375):
  *     базовых групп сервер не производит, любая наша группа — уже `channel`
  *     (как у `chatType.solid.tsx`, расхождение 4). Поэтому вместо ресурса по
  *     сигналу `chatId` — один запрос.
- *  3. Строки во вкладки, которых ещё нет, скрыты до пачки П-1: реакции
- *     (:710-718) — Б-39, обсуждение (:743-761) — Б-40. Условие показа секции
- *     (`hasMainSettings`, :230-239) собрано из оставшихся строк, иначе у админа
- *     без них осталась бы пустая секция с подписью. Заявки, админы, участники и
- *     удалённые (:700-708, :849-873) — с 0б-7; их счётчиков (`admins_count`,
- *     `kicked_count`, `requests_pending`) сервер не производит (Б-115): строка
- *     «Заявки» поэтому не показывается, админов — «1», удалённых — «нет».
+ *  3. Заявки (:700-708), реакции (:710-718), обсуждение (:743-761) и
+ *     админы/участники/удалённые (:849-873) вернула пачка П-1 (Б-39…Б-41).
+ *     Счётчиков `admins_count`, `kicked_count`, `requests_pending` сервер не
+ *     производит (Б-115): строка «Заявки» поэтому не показывается, у админов —
+ *     «1», у удалённых — «нет». `PeerTitleTsx` подписи обсуждения — узел
+ *     `PeerTitle` (`chat/peerTitle.ts`) на своей миддлвари, как
+ *     `AvatarPlaceholder` (п. 9).
  *  4. Строк без предмета у нас нет совсем (Б-105): личные сообщения канала
  *     (монофорум, :720-731), приветственные сообщения (layer 229, :377-406,
  *     :763-771), «Недавние действия» (админ-лог, :773-790).
@@ -75,13 +76,17 @@ import { InputFieldTsx } from '@components/inputFieldTsx.solid'
 import Row from '@components/rowTsx.solid'
 import Section from '@components/section.solid'
 import { toastNew } from '@components/toast'
+import PeerTitle from '@components/chat/peerTitle'
+import { getAvailableReactions } from '@components/chat/reactions'
 import showDeleteDialogPopup from '@components/popups/deleteDialog'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
 import { usePromiseCollector } from '@components/solidJsTabs/promiseCollector.solid'
 import {
   AppChatAdministratorsTab,
+  AppChatDiscussionTab,
   AppChatInviteLinksTab,
   AppChatMembersTab,
+  AppChatReactionsTab,
   AppChatRequestsTab,
   AppChatTypeTab,
   AppGroupPermissionsTab,
@@ -115,11 +120,15 @@ type EditChatTab = InstanceType<typeof AppEditChatTab>
 
 async function loadEditChatData(tab: EditChatTab, chatId: ChatId) {
   // расхождение 1
-  const card = await tab.managers!.groups.card(toPeerId(chatId as number, true))
+  const [card, availableReactions] = await Promise.all([
+    tab.managers!.groups.card(toPeerId(chatId as number, true)),
+    getAvailableReactions(tab.managers!) ?? [],
+  ])
   return card && {
     chatId,
     chatFull: card.fullChat,
     chat: card.chat,
+    availableReactions,
   }
 }
 
@@ -159,6 +168,17 @@ function AvatarPlaceholder(props: { peerId: PeerId, managers: Managers }) {
   return avatar.node
 }
 
+/** `PeerTitleTsx` оригинала (расхождение 3). */
+function PeerTitleNode(props: { peerId: PeerId, managers: Managers }) {
+  const middlewareHelper = getMiddleware()
+  onCleanup(() => middlewareHelper.destroy())
+  return new PeerTitle({
+    peerId: props.peerId,
+    middleware: middlewareHelper.get(),
+    managers: props.managers,
+  }).element
+}
+
 function EditChatForm(props: { data: EditChatData }) {
   const [tab] = useSuperTab<typeof AppEditChatTab>()
   const managers = tab.managers!
@@ -192,6 +212,9 @@ function EditChatForm(props: { data: EditChatData }) {
   const canPostMessages = () => hasRights(chat(), 'post_messages')
   const canManageInviteLinks = () => hasRights(chat(), 'invite_links')
   const linkedChatId = () => chatFull().linked_chat_id
+  const availableReactionsLength = props.data.availableReactions.filter((reaction) => {
+    return !reaction.inactive
+  }).length
 
   const avatarEdit = new AvatarEdit((payload) => {
     uploadAvatar = payload
@@ -210,12 +233,17 @@ function EditChatForm(props: { data: EditChatData }) {
   const showTopics = createMemo(() => {
     return canToggleForum() && !isBroadcast()
   })
+  const showDiscussion = createMemo(() => {
+    return isAdmin() && (isBroadcast() || !!linkedChatId())
+  })
   // расхождение 3: только строки, которые здесь есть
   const hasMainSettings = createMemo(() => {
     return canChangeType() ||
       canManageInviteLinks() ||
       (canInviteUsers() && isAdmin()) ||
+      (canChangeInfo() && isAdmin()) ||
       (canChangePermissions() && !isBroadcast()) ||
+      showDiscussion() ||
       showTopics()
   })
   const mainCaption = createMemo<LangPackKey | undefined>(() => {
@@ -226,6 +254,18 @@ function EditChatForm(props: { data: EditChatData }) {
     if(isAdmin()) {
       return 'DiscussionInfo'
     }
+  })
+
+  const reactionsSubtitle = createMemo(() => {
+    const reactions = chatFull().available_reactions ?? { _: 'chatReactionsNone' } as const
+    if(reactions._ === 'chatReactionsSome') {
+      const length = reactions.reactions.length
+      return length === availableReactionsLength ?
+        i18n('ReactionsAll') :
+        `${length}/${availableReactionsLength}`
+    }
+
+    return i18n(reactions._ === 'chatReactionsAll' ? 'ReactionsAll' : 'Checkbox.Disabled')
   })
 
   // :282-291; `PrivacySettingsController.Paid` — у 0б-6 (`send_paid_messages_stars`)
@@ -499,7 +539,17 @@ function EditChatForm(props: { data: EditChatData }) {
             </Row>
           </Show>
 
-          {/* Б-39 — реакции (:710-718); Б-105 — личные сообщения канала (:720-731) */}
+          <Show when={canChangeInfo() && isAdmin()}>
+            <Row clickable={() => {
+              void slider.createTab(AppChatReactionsTab).open({ chatId: chatId() })
+            }}>
+              <Row.Icon icon="reactions_filled" />
+              <Row.Title>{i18n('Reactions')}</Row.Title>
+              <Row.Subtitle>{reactionsSubtitle()}</Row.Subtitle>
+            </Row>
+          </Show>
+
+          {/* Б-105 — личные сообщения канала (:720-731) */}
 
           <Show when={canChangePermissions() && !isBroadcast()}>
             <Row clickable={() => {
@@ -511,8 +561,25 @@ function EditChatForm(props: { data: EditChatData }) {
             </Row>
           </Show>
 
-          {/* Б-40 — обсуждение (:743-761); Б-105 — приветственные сообщения
-              (:763-771), «Недавние действия» (:773-790) */}
+          <Show when={showDiscussion()}>
+            <Row clickable={() => {
+              void slider.createTab(AppChatDiscussionTab).open({
+                chatId: chatId(),
+                linkedChatId: linkedChatId(),
+              })
+            }}>
+              <Row.Icon icon="bubble_filled" />
+              <Row.Title>{i18n(isBroadcast() ? 'PeerInfo.Discussion' : 'LinkedChannel')}</Row.Title>
+              <Row.Subtitle>
+                <Show when={linkedChatId()} fallback={i18n('PeerInfo.Discussion.Add')} keyed>
+                  {(id) => <PeerTitleNode peerId={toPeerId(id, true)} managers={managers} />}
+                </Show>
+              </Row.Subtitle>
+            </Row>
+          </Show>
+
+          {/* Б-105 — приветственные сообщения (:763-771), «Недавние действия»
+              (:773-790) */}
 
           <Show when={showTopics()}>
             <Row clickable={linkedChatId() ? (event) => {

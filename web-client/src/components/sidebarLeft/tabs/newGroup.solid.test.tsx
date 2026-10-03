@@ -324,3 +324,25 @@ describe('вкладка «New Group» — создание', () => {
     expect(container.isConnected).toBe(false)
   })
 })
+
+describe('«Новая группа» с нагрузкой обсуждения (tweb newGroup.tsx:38, :186-189, :247-257)', () => {
+  it('`title` — имя-черновик; `onCreate` — до закрытия; `openAfter: false` — чат не открывается', async() => {
+    const order: string[] = []
+    const onCreate = vi.fn(async(chatId: ChatId) => { order.push('onCreate:' + chatId) })
+    const tab = slider.createTab(AppNewGroupTab)
+    await tab.open({ peerIds: [], onCreate, openAfter: false, title: 'News Chat', asChannel: true })
+    await settle()
+
+    expect(nameInput(tab).textContent).toBe('News Chat')
+    const close = vi.spyOn(tab, 'close').mockImplementation(() => { order.push('close') })
+
+    nextBtn(tab).click()
+    await settle()
+
+    expect(createChat).toHaveBeenCalledWith('News Chat', [])
+    expect(onCreate).toHaveBeenCalledWith(50)
+    expect(order).toEqual(['onCreate:50', 'close'])
+    expect(openPeerMock).not.toHaveBeenCalled()
+    close.mockRestore()
+  })
+})

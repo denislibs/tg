@@ -2033,6 +2033,10 @@
           "value": "Remove spoiler"
         },
         {
+          "key": "DisableReactionsInfo",
+          "value": "Members of the group can’t add any reactions to messages."
+        },
+        {
           "key": "DisableSharing",
           "value": "Disable Sharing"
         },
@@ -2045,12 +2049,56 @@
           "value": "Discard Voice Message"
         },
         {
+          "key": "Discussion.Set.Modal.Text.PublicChannelPublicGroup",
+          "value": "Do you want to make **%@** the discussion board for **%@**?"
+        },
+        {
+          "key": "Discussion.Set.PrivateChannel",
+          "value": "Any member of this group will be able to see messages in the channel."
+        },
+        {
+          "key": "Discussion.Set.PrivateGroup",
+          "value": "Anyone from the channel will be able to see messages in this group."
+        },
+        {
+          "key": "DiscussionChannelGroupSetHelp2",
+          "value": "**%1$s** is selected as the group that hosts comments for your channel."
+        },
+        {
+          "key": "DiscussionChannelHelp2",
+          "value": "Everything you post in the channel will be forwarded to this group."
+        },
+        {
           "key": "DiscussionChannelHelp3",
           "value": "Select a group chat that will host comments from your channel."
         },
         {
+          "key": "DiscussionController.Channel.Title",
+          "value": "Discussion Group"
+        },
+        {
+          "key": "DiscussionController.Group.Title",
+          "value": "Linked Channel"
+        },
+        {
+          "key": "DiscussionController.PrivateChannel",
+          "value": "private channel"
+        },
+        {
+          "key": "DiscussionController.PrivateGroup",
+          "value": "private group"
+        },
+        {
           "key": "DiscussionCreateGroup",
           "value": "Create a New Group"
+        },
+        {
+          "key": "DiscussionGroupHelp",
+          "value": "This group is linked as the discussion board for %1$s."
+        },
+        {
+          "key": "DiscussionGroupHelp2",
+          "value": "All new posts from this channel are forwarded to the group."
         },
         {
           "key": "DiscussionInfo",
@@ -2061,6 +2109,10 @@
           "value": "Link Group"
         },
         {
+          "key": "DiscussionLinkGroupAlertHistory",
+          "value": "\"Chat history for new members\" will be switched to Visible."
+        },
+        {
           "key": "DiscussionStarted",
           "value": "Discussion started"
         },
@@ -2069,8 +2121,20 @@
           "value": "Unlink"
         },
         {
+          "key": "DiscussionUnlinkChannel",
+          "value": "Unlink Channel"
+        },
+        {
+          "key": "DiscussionUnlinkChannelAlert",
+          "value": "Are you sure you want to unlink **%1$s** from this channel?"
+        },
+        {
           "key": "DiscussionUnlinkGroup",
           "value": "Unlink Group"
+        },
+        {
+          "key": "DiscussionUnlinkGroupAlert",
+          "value": "Are you sure you want to unlink **%1$s** from this group?"
         },
         {
           "key": "Dismiss",
@@ -2289,6 +2353,10 @@
           "value": "Set Emoji Status"
         },
         {
+          "key": "EnableAllReactionsInfo",
+          "value": "Members of the group can use any emoji as reactions to messages."
+        },
+        {
           "key": "EnableAnimations",
           "value": "Enable Animations"
         },
@@ -2299,6 +2367,18 @@
         {
           "key": "EnablePhotoSpoiler",
           "value": "Hide with spoiler"
+        },
+        {
+          "key": "EnableReactions",
+          "value": "Enable Reactions"
+        },
+        {
+          "key": "EnableReactionsChannelInfo",
+          "value": "Allow subscribers to react to channel posts."
+        },
+        {
+          "key": "EnableSomeReactionsInfo",
+          "value": "Members of the group can use only certain approved emoji as reactions to messages."
         },
         {
           "key": "EnabledNotifications",
@@ -3086,6 +3166,10 @@
         {
           "key": "LinkNotFound",
           "value": "Unfortunately, you can't access this message. You are not a member of the chat where it was posted."
+        },
+        {
+          "key": "LinkedChannel",
+          "value": "Linked Channel"
         },
         {
           "key": "Links",
@@ -4459,6 +4543,10 @@
           "value": "Discussion"
         },
         {
+          "key": "PeerInfo.Discussion.Add",
+          "value": "Add"
+        },
+        {
           "key": "PeerInfo.SetAboutDescription",
           "value": "You can provide an optional description for your group."
         },
@@ -5158,6 +5246,10 @@
         {
           "key": "Reactions",
           "value": "Reactions"
+        },
+        {
+          "key": "ReactionsAll",
+          "value": "All"
         },
         {
           "key": "ReactionsByEmotionChartTitle",
@@ -14133,6 +14225,98 @@
         {
           "key": "ExceptionModal.Search.Placeholder",
           "value": "Добавить исключение..."
+        },
+        {
+          "key": "EnableReactions",
+          "value": "Включить реакции"
+        },
+        {
+          "key": "EnableReactionsChannelInfo",
+          "value": "Разрешить подписчикам реагировать на посты канала."
+        },
+        {
+          "key": "EnableAllReactionsInfo",
+          "value": "Участники группы могут реагировать на сообщения любыми эмодзи."
+        },
+        {
+          "key": "EnableSomeReactionsInfo",
+          "value": "Участники группы могут реагировать на сообщения только выбранными эмодзи."
+        },
+        {
+          "key": "DisableReactionsInfo",
+          "value": "Участники группы не могут реагировать на сообщения."
+        },
+        {
+          "key": "ReactionsAll",
+          "value": "Все"
+        },
+        {
+          "key": "LinkedChannel",
+          "value": "Привязанный канал"
+        },
+        {
+          "key": "PeerInfo.Discussion.Add",
+          "value": "Добавить"
+        },
+        {
+          "key": "DiscussionController.Channel.Title",
+          "value": "Группа обсуждения"
+        },
+        {
+          "key": "DiscussionController.Group.Title",
+          "value": "Привязанный канал"
+        },
+        {
+          "key": "DiscussionController.PrivateGroup",
+          "value": "частная группа"
+        },
+        {
+          "key": "DiscussionController.PrivateChannel",
+          "value": "частный канал"
+        },
+        {
+          "key": "DiscussionChannelHelp2",
+          "value": "Всё, что вы публикуете в канале, будет пересылаться в эту группу."
+        },
+        {
+          "key": "DiscussionGroupHelp2",
+          "value": "Все новые посты канала пересылаются в группу."
+        },
+        {
+          "key": "DiscussionChannelGroupSetHelp2",
+          "value": "**%1$s** выбрана группой для комментариев к постам канала."
+        },
+        {
+          "key": "DiscussionGroupHelp",
+          "value": "Эта группа привязана как обсуждение канала %1$s."
+        },
+        {
+          "key": "DiscussionUnlinkChannel",
+          "value": "Отвязать канал"
+        },
+        {
+          "key": "DiscussionUnlinkChannelAlert",
+          "value": "Отвязать **%1$s** от этого канала?"
+        },
+        {
+          "key": "DiscussionUnlinkGroupAlert",
+          "value": "Отвязать **%1$s** от этой группы?"
+        },
+        {
+          "key": "Discussion.Set.Modal.Text.PublicChannelPublicGroup",
+          "value": "Сделать **%@** группой обсуждения для **%@**?"
+        },
+        {
+          "key": "Discussion.Set.PrivateChannel",
+          "value": "Любой участник этой группы сможет видеть сообщения канала."
+        },
+        {
+          "key": "Discussion.Set.PrivateGroup",
+          "value": "Любой подписчик канала сможет видеть сообщения этой группы."
+        },
+        {
+          "key": "DiscussionLinkGroupAlertHistory",
+          "value": "«История чата для новых участников» станет видимой."
         }
       ]
     },
