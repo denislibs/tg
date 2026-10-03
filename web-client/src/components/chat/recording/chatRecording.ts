@@ -19,12 +19,15 @@
 //  2. Пакет параметров — `ChatInput.getMessageSendingParams()` (расхождение 1 шапки
 //     `input.ts`); первое сообщение пиру без диалога сначала заводит диалог
 //     (`chats.createPrivate`) — как `ChatInput.sendText` (расхождение 4 там же).
-//  3. Без предмета: эфемерный режим (`verifyEphemeralCommand`, `pinnedEphemeralSendingParams`),
-//     платные сообщения (`paidMessageInterceptor`) и медленный режим
-//     (`showSlowModeTooltipIfNeeded`) — Б-37; запрет голосовых в приватности собеседника
-//     заранее (`userFull.voice_messages_forbidden` → тост `Chat.SendVoice.PrivacyError`) —
-//     признака у клиента нет, запрет проверяет сервер (`ErrPrivacy`, Б-135);
-//     `inputState`/`onRecording` — их читателей у нас нет.
+//  3. Без предмета: эфемерный режим (`verifyEphemeralCommand`, `pinnedEphemeralSendingParams`);
+//     запрет голосовых в приватности собеседника заранее (`userFull.voice_messages_forbidden`
+//     → тост `Chat.SendVoice.PrivacyError`) — признака у клиента нет, запрет проверяет сервер
+//     (`ErrPrivacy`, Б-135); `inputState`/`onRecording` — их читателей у нас нет. Плата за
+//     сообщение (`prepareStarsForPayment(1)`) только подтверждается: `confirmedPaymentResult`
+//     в пакет некуда положить (шапка `core/managers/messages/sendingParams.ts`).
+//  7. Отложенная запись («запланировать»/«когда будет в сети» из меню отправки): отложенное у
+//     нас — своя REST-ручка, а не поле пакета `sendFile` (расхождение 9 шапки `input.ts`), поэтому
+//     файл сначала закачивается (`media.upload`), затем `messages.scheduleMessage` с его `media_id`.
 //  4. Право — `send_media` (расхождение 5 шапки `input.ts`): отдельного `send_voices` у нас нет.
 //  5. Тип записи читается из `appSettings.recordingMediaType` (лист таблицы
 //     `stores/appSettings.solid.ts`), а не из `chat.appSettings`: у нашего `Chat` поля нет.
@@ -37,6 +40,8 @@
 import type ChatInput from '../input'
 import { getAppWindow, getOverlayRoot } from '@helpers/appWindow'
 import { POSTING_NOT_ALLOWED_MAP } from '../input'
+import { PAYMENT_REJECTED } from '../paidMessagesInterceptor'
+import { SEND_WHEN_ONLINE_TIMESTAMP } from '@core/format/dayLabel'
 import { ChatType } from '../chatType'
 import opusDecodeController from '@core/audio/opusDecodeController'
 import VoiceWaveformAnalyser from '@core/audio/voiceWaveformAnalyser'
@@ -342,12 +347,41 @@ export default class ChatRecording {
     height?: number,
   }) {
     const sendingParams: MessageSendingParams = this.input.getMessageSendingParams()
+    const { scheduleDate } = this.input
     const { peerId } = this.input.chat
+
+    // tweb :223-228, :299-303 (расхождение 3)
+    if(await this.input.paidMessageInterceptor.prepareStarsForPayment(1) === PAYMENT_REJECTED) return
+
     this.input.onMessageSent(false, true)
 
     if(isUser(peerId) && !useChatsStore.getState().dialogs.some((dialog) => dialog.peerId === peerId)) {
       await this.input.managers.chats.createPrivate(peerId)
       void this.input.managers.dialogs.refresh().catch(() => {})
+    }
+
+    if(scheduleDate) { // расхождение 7
+      const { managers } = this.input
+      const mediaId = await managers.media.upload({
+        blob: file.file,
+        mime: file.mime,
+        size: file.file.size,
+        width: file.width,
+        height: file.height,
+        duration: file.duration,
+        fileName: file.fileName,
+        waveform: file.waveform,
+      })
+      const whenOnline = scheduleDate === SEND_WHEN_ONLINE_TIMESTAMP
+      await managers.messages.scheduleMessage(peerId, {
+        text: '',
+        type: file.type,
+        mediaId,
+        sendAt: whenOnline ? 0 : scheduleDate,
+        replyToId: sendingParams.replyToMsgId ?? undefined,
+        whenOnline,
+      })
+      return
     }
 
     await this.input.managers.messages.sendFile({
@@ -980,6 +1014,10 @@ export default class ChatRecording {
       return
     }
 
+    if(await this.input.showSlowModeTooltipIfNeeded()) {
+      return
+    }
+
     this.input.chatInput.classList.add('is-locked')
     blurActiveElement()
 
@@ -1107,6 +1145,10 @@ export default class ChatRecording {
     const flag: ChatRights = 'send_media'
     if(!isUser(this.input.chat.peerId) && !(await this.input.chat.canSend(flag))) {
       toastNew({ langPackKey: POSTING_NOT_ALLOWED_MAP[flag]! })
+      return
+    }
+
+    if(await this.input.showSlowModeTooltipIfNeeded()) {
       return
     }
 

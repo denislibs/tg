@@ -1228,7 +1228,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     // `type`/`mediaId` — отложенный стикер или сохранённая гифка (tweb
     // `sendMessageWithDocument` под `scheduleDate`): ручка берёт `media_id` готового
     // файла, как кадр `send_message`.
-    async scheduleMessage(peerId: number, p: { text: string; entities?: MessageEntity[]; sendAt: number; replyToId?: number; whenOnline?: boolean; type?: 'text' | 'sticker' | 'video'; mediaId?: number }): Promise<MyMessage> {
+    async scheduleMessage(peerId: number, p: { text: string; entities?: MessageEntity[]; sendAt: number; replyToId?: number; whenOnline?: boolean; type?: 'text' | 'sticker' | 'video' | 'voice' | 'roundVideo'; mediaId?: number }): Promise<MyMessage> {
       const r = await rest.post<RawMyMessage>(`/chats/${peerId}/scheduled`, {
         type: p.type ?? 'text', text: p.text, entities: p.entities ?? null,
         media_id: p.mediaId ?? null,
