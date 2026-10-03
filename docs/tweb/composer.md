@@ -415,7 +415,8 @@ Computed корневых узлов (из дампа, тёмная тема, ш
 **У нас (К-4).** Плашка — `W/components/chat/controlPlate.solid.tsx` (`ChatInputPlate`, порт файлом
 без расхождений; её же берёт панель выделения П-5). Кнопки и цепочку `haveSomethingInControl` строит
 `ChatInput` (`W/components/chat/input.ts`). React-плашка `conversation/ChatInputControl.tsx` и
-`controlPlates.ts` снесены.
+`controlPlates.ts` снесены. С П-6 в центре плашки и «Открепить все»/«Скрыть закреплённые» экрана закрепов
+(`pinnedControlBtn`, `can-pin` на `.chat-input`, Б-90).
 
 Анимация подмены — `_center()` (`input.ts:1703-1777`): считает `scale = widthTo / widthFrom`,
 `initTranslateX = (widthFrom - widthTo) / 2`, `transform = translateX(…) scaleX(scale)`,
@@ -653,6 +654,14 @@ Long-press (**400 ms**, только ЛКМ, только не-тач) откр�
 через `setTimeout(…, 400)` (`sendContextMenu.ts:146-147`).
 
 Позиционирование — `_chat.scss:36-39`: `.menu-send { top: auto; bottom: calc(100% + .5rem); }`.
+
+**У нас (П-6, 2026-10-03).** `W/components/chat/sendContextMenu.ts` (`SendMenu`, порт файлом) — тот же
+`ButtonMenuSync` с `menu-send top-left` внутри `.btn-send-container`, гейт `onOpen` и пересоздание на закрытии
+1:1; ряда эффектов нет (бэклог Б-125). «Запланировать» — `W/components/popups/scheduleSendingPopup.ts` поверх моста
+`datePicker.bridge.ts` (ВРЕМЕННО до 2C-23: без `SilentToggle`/`RepeatRow`, Б-126); отложенное уходит ручкой
+`messages.scheduleMessage`, а не `scheduleDate` кадра (расхождение 9 шапки `input.ts`). Send-as —
+`W/components/chat/sendAs.ts` (`.new-message-send-as-container` в начале `.new-message-wrapper`,
+`data-offset="as"` + `has-offset`), личность по умолчанию — первая из `getSendAs` (Б-127).
 
 ### 3.7 Бейдж эффекта (`selectedEffect.tsx`)
 
