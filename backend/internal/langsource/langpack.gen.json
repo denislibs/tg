@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 51,
+      "version": 52,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -2123,6 +2123,13 @@
           "value": "Favorites"
         },
         {
+          "key": "Files",
+          "forms": {
+            "one_value": "%d file",
+            "other_value": "%d files"
+          }
+        },
+        {
           "key": "FilterAllBots",
           "value": "All Bots"
         },
@@ -2781,6 +2788,13 @@
           "value": "Link Name (Optional)"
         },
         {
+          "key": "Links",
+          "forms": {
+            "one_value": "%d link",
+            "other_value": "%d links"
+          }
+        },
+        {
           "key": "LiteMode.DisableAlert",
           "value": "Disable Power Saving Mode"
         },
@@ -3213,6 +3227,13 @@
           "value": "Unmute video"
         },
         {
+          "key": "MediaFiles",
+          "forms": {
+            "one_value": "%d media file",
+            "other_value": "%d media files"
+          }
+        },
+        {
           "key": "MediaViewer.Context.Copy",
           "value": "Copy Media"
         },
@@ -3369,6 +3390,13 @@
         {
           "key": "MultiAccount.More",
           "value": "More"
+        },
+        {
+          "key": "MusicFiles",
+          "forms": {
+            "one_value": "%d music file",
+            "other_value": "%d music files"
+          }
         },
         {
           "key": "MyNotes",
@@ -4071,6 +4099,10 @@
           "value": "You can provide an optional description for your group."
         },
         {
+          "key": "PeerInfo.SharedMedia",
+          "value": "Shared Media"
+        },
+        {
           "key": "PeerInfo.Subscribers",
           "value": "Subscribers"
         },
@@ -4637,12 +4669,20 @@
           "value": "Channel description."
         },
         {
+          "key": "Profile.Info.Bot",
+          "value": "Bot Info"
+        },
+        {
           "key": "Profile.Info.Channel",
           "value": "Channel Info"
         },
         {
           "key": "Profile.Info.Group",
           "value": "Group Info"
+        },
+        {
+          "key": "Profile.Info.Topic",
+          "value": "Topic Info"
         },
         {
           "key": "Profile.Info.User",
@@ -4917,6 +4957,13 @@
         {
           "key": "Saved",
           "value": "Saved"
+        },
+        {
+          "key": "SavedDialogsTabCount",
+          "forms": {
+            "one_value": "%d chat",
+            "other_value": "%d chats"
+          }
         },
         {
           "key": "SavedGifsLimitTitle",
@@ -5384,6 +5431,13 @@
         {
           "key": "StarGiftTitle",
           "value": "Gift"
+        },
+        {
+          "key": "StarGiftsCount",
+          "forms": {
+            "one_value": "%d gift",
+            "other_value": "%d gifts"
+          }
         },
         {
           "key": "Stars",
@@ -6313,6 +6367,13 @@
           "value": "Views Per Post"
         },
         {
+          "key": "Voice",
+          "forms": {
+            "one_value": "%d voice message",
+            "other_value": "%d voice messages"
+          }
+        },
+        {
           "key": "VoiceChat.Leave",
           "value": "Leave"
         },
@@ -6437,7 +6498,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 51,
+      "version": 52,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -8694,6 +8755,81 @@
         {
           "key": "Profile.Info.Channel",
           "value": "Информация о канале"
+        },
+        {
+          "key": "Profile.Info.Topic",
+          "value": "Информация о теме"
+        },
+        {
+          "key": "Profile.Info.Bot",
+          "value": "Информация о боте"
+        },
+        {
+          "key": "PeerInfo.SharedMedia",
+          "value": "Общие медиа"
+        },
+        {
+          "key": "SavedDialogsTabCount",
+          "forms": {
+            "one_value": "%d чат",
+            "few_value": "%d чата",
+            "many_value": "%d чатов",
+            "other_value": "%d чата"
+          }
+        },
+        {
+          "key": "MediaFiles",
+          "forms": {
+            "one_value": "%d медиафайл",
+            "few_value": "%d медиафайла",
+            "many_value": "%d медиафайлов",
+            "other_value": "%d медиафайла"
+          }
+        },
+        {
+          "key": "StarGiftsCount",
+          "forms": {
+            "one_value": "%d подарок",
+            "few_value": "%d подарка",
+            "many_value": "%d подарков",
+            "other_value": "%d подарка"
+          }
+        },
+        {
+          "key": "Files",
+          "forms": {
+            "one_value": "%d файл",
+            "few_value": "%d файла",
+            "many_value": "%d файлов",
+            "other_value": "%d файла"
+          }
+        },
+        {
+          "key": "Links",
+          "forms": {
+            "one_value": "%d ссылка",
+            "few_value": "%d ссылки",
+            "many_value": "%d ссылок",
+            "other_value": "%d ссылки"
+          }
+        },
+        {
+          "key": "MusicFiles",
+          "forms": {
+            "one_value": "%d аудиофайл",
+            "few_value": "%d аудиофайла",
+            "many_value": "%d аудиофайлов",
+            "other_value": "%d аудиофайла"
+          }
+        },
+        {
+          "key": "Voice",
+          "forms": {
+            "one_value": "%d голосовое сообщение",
+            "few_value": "%d голосовых сообщения",
+            "many_value": "%d голосовых сообщений",
+            "other_value": "%d голосовых сообщения"
+          }
         },
         {
           "key": "Profile.ChannelDescription",

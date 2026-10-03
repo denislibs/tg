@@ -881,14 +881,19 @@ layout-эффект шелла (`createAppSidebarRight()` + `construct(managers)
 
 | Панель | Файл | Где живёт | Когда |
 |---|---|---|---|
-| Профиль/группа/канал | `src/components/UserInfoPanel.tsx` | портал в `tab.container` вкладки №0 — `AppReactProfileTab` (`sidebarRight/reactProfileTab.ts`, ВРЕМЕННО до 3-1, роль `AppSharedMediaTab`) | вкладку создаёт каждый инстанс `Chat.tsx` на монтировании (`createSharedMediaTab`), активный ставит её в слайдер (`replaceSharedMediaTab`, ВРЕМЕННО до Э6) |
+| Профиль/группа/канал/тред | `sidebarRight/tabs/sharedMediaTab.ts` (`AppSharedMediaTab`) + содержимое `sidebarRight/tabs/sharedMedia.solid.tsx` (порт tweb `sharedMediaTab.tsx`/`sharedMedia.tsx`, шаг К-5): `PeerProfile` (`peerProfile.solid.tsx`) и класс `AppSearchSuper` в одной прокрутке вкладки, карусель — `PeerProfileAvatars` + Solid-`useCollapsable` | вкладка у инстанса класса `Chat` (`chat.ts` `onChangePeer` → `createSharedMediaTab()` + `setPeer(peerId, threadId)`; `finishPeerChange` → `fillProfileElements`/`loadSidebarMedia(true)`/`replaceSharedMediaTab`; `destroySharedMediaTab`) | тред комментариев: `peerId` — группа обсуждения, участники — вся группа (`canViewMembers`), медиа — только треда (`thread_root` у `/media` и `/search_counters`), истории/подарки скрыты. Расхождения — шапка `sharedMedia.solid.tsx` (нет ⋮ шапки — Б-100, нет вкладок темы/бота — Б-101, нет строки инвайта — Б-102) |
 | Поиск стикеров/GIF | `sidebarRight/tabs/stickers.solid.tsx`, `gifs.solid.tsx` (`AppStickersTab`/`AppGifsTab`, порт tweb 1:1, 0б-11) | Solid-вкладки слайдера `AppSidebarRight` | лупа нижней полосы панели эмодзи — `isTabExists` → `appSidebarRight.createTab(…).open()` (tweb `emoticonsDropdown/index.ts:303-308`); отправка — `appImManager.chat.input.sendMessageWithDocument` через мост `sidebarRight/tabs/emoticonsSearchBridge.ts` (ВРЕМЕННО до Э4-3, ставит активный `Chat.tsx`); попап набора — React `openStickerSetModal` (ВРЕМЕННО до 2C-15). Расхождения: выдача GIF — Tenor, а не `@gif` (О-27); кладка — `components/gifsMasonry.ts` |
-| Изменить/добавить контакт | `sidebarRight/tabs/editContact.solid.tsx` (`AppEditContactTab`, 0б-10) | вкладка слайдера правой колонки, как у tweb | карандаш профиля (`Chat.tsx` `onEditContact`, ВРЕМЕННО до 3-1) — только у контакта, как `toggleEditBtn` (`canEdit`; ветки `bot_can_edit` → `AppEditBotTab` у нас нет); ⋮ «AddContact» (`useChatPopups::openAddContact` — порт `topbar.addContact`, ВРЕМЕННО до Э6-2) — только не-контакту и не боту (verify `topbar.ts:605-610`). Оба гейта — `core/hooks/useIsContact.ts` поверх `contacts.isContact` (книга ИЛИ `pFlags.contact`, флаг сервер ставит в любом ответе с пользователем) |
+| Изменить/добавить контакт | `sidebarRight/tabs/editContact.solid.tsx` (`AppEditContactTab`, 0б-10) | вкладка слайдера правой колонки, как у tweb | карандаш профиля (`sharedMedia.solid.tsx`, `toggleEditBtn` → `canEditPeer`) — только у контакта (`canEdit`; ветки `bot_can_edit` → `AppEditBotTab` у нас нет, Б-101); ⋮ «AddContact» (`useChatPopups::openAddContact` — порт `topbar.addContact`, ВРЕМЕННО до Э6-2) — только не-контакту и не боту (verify `topbar.ts:605-610`). Оба гейта — `core/hooks/useIsContact.ts` поверх `contacts.isContact` (книга ИЛИ `pFlags.contact`, флаг сервер ставит в любом ответе с пользователем) |
 
 Открыть подэкран правой колонки — как у tweb: `appSidebarRight.createTab(AppXxxTab).open(payload)`
-(+ `toggleSidebar(true)`, если колонка могла быть закрыта). React-оверлеи подэкранов
-(`GroupEditFlow`, `AddMembersScreen`, `ChannelStats`, `RightsEditor`) пока лежат внутри узла
-вкладки №0 и уходят в Solid-вкладки задачами 0б-1…0б-9.
+(+ `toggleSidebar(true)`, если колонка могла быть закрыта). React-оверлеев подэкранов больше нет
+(шаг К-5): «Изменить» группы/канала — `AppEditChatTab`, «Добавить участников» — `addChatUsers`
+(`AppAddMembersTab`); статистика, права участника, обсуждение — вкладки пачки П-1 (Б-40…Б-43).
+
+> **Разделы 1–7 ниже описывают React-панель `UserInfoPanel.tsx` до шага К-5** (снесена вместе
+> с `reactProfileTab.ts`, `useSearchSuper.ts`, `useGroupInfo.ts`, `useTransitionSlider.ts`,
+> React-`useCollapsable.ts`) и оставлены как история находок. Текущая проводка — строка
+> «Профиль» таблицы выше и шапки `sidebarRight/tabs/sharedMediaTab.ts`/`sharedMedia.solid.tsx`.
 
 ## 1. Компоненты правой колонки
 

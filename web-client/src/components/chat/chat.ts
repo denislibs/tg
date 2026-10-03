@@ -51,7 +51,7 @@ import type { AppImManager, ChatSetPeerOptions } from '@lib/appImManager'
 import { APP_TABS, LEFT_COLUMN_ACTIVE_CLASSNAME } from '@lib/appImManager'
 import rootScope from '@lib/rootScope'
 import appSidebarRight from '@components/sidebarRight'
-import type AppReactProfileTab from '@components/sidebarRight/reactProfileTab'
+import type AppSharedMediaTab from '@components/sidebarRight/tabs/sharedMediaTab'
 import animationIntersector, { type AnimationItemGroup } from '@components/animationIntersector'
 import appNavigationController from '@core/navigation/appNavigationController'
 import mediaSizes, { ScreenSize } from '@core/dom/mediaSizes'
@@ -132,8 +132,8 @@ export default class Chat extends EventListenerBase<{
 
   public inited?: boolean
 
-  public sharedMediaTab?: AppReactProfileTab
-  public sharedMediaTabs: AppReactProfileTab[]
+  public sharedMediaTab?: AppSharedMediaTab
+  public sharedMediaTabs: AppSharedMediaTab[]
 
   public isBot = false
   public isChannel = false
@@ -650,7 +650,7 @@ export default class Chat extends EventListenerBase<{
       this.handleBackgrounds(),
     ])
 
-    sharedMediaTab?.loadSidebarMedia(true)
+    void sharedMediaTab?.loadSidebarMedia(true)
 
     if(!middleware()) {
       return

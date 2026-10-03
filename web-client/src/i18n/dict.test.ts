@@ -548,7 +548,7 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (`GlobalAttachMediaRestricted`), подписи кнопки отправки (`UserRestrictionsSend{Voices,Round}`,
 // `ChatAutomation.Stop`). Итог: ru 1555, `plural` 50 → 51.
 const COMPOSITION = {
-  ru: { keys: 1555, plural: 51 },
+  ru: { keys: 1565, plural: 58 },
   uk: { keys: 829, plural: 35 },
   es: { keys: 800, plural: 34 },
   de: { keys: 801, plural: 35 },
@@ -730,7 +730,7 @@ const COMPOSITION = {
 // Шагом К-4 волны 7 — у ru +1 ключ tweb `Chat.Input.Attach` (разбор — там же).
 // Шагом К-4 волны 7 (строка ввода) — у ru +14 ключей `chat/input.ts` (разбор — там же).
 const FINGERPRINT = {
-  ru: '664aec89',
+  ru: '90fdd3cf',
   uk: 'a02f363c',
   es: '89e8ae98',
   de: '0fed7933',
