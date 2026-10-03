@@ -2128,6 +2128,9 @@ const ru = {
   ReplyToQuote: 'Ответ на цитату %s',
   UserRestrictionsSendRound: 'Отправка видеосообщений',
   UserRestrictionsSendVoices: 'Отправка голосовых сообщений',
+  SendMessageAsTitle: 'Отправить сообщение от имени…',
+  'VoiceChat.DiscussionGroup': 'группа обсуждения',
+  SendAnonymously: 'Отправить анонимно',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

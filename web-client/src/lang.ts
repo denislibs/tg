@@ -1416,8 +1416,10 @@ const lang = {
   'SecretChat.Reject': 'Decline',
   'SecretChat.Rejected': 'Secret chat rejected',
   Send: 'Send',
+  SendAnonymously: 'Send anonymously',
   SendAsFile: 'Send as file',
   SendMessage: 'Send Message',
+  SendMessageAsTitle: 'Send message as...',
   SendMessageTo: 'Add people...',
   'Separator.ShowLess': 'show less',
   'Separator.ShowMore': 'show more',
@@ -1736,6 +1738,7 @@ const lang = {
   VideoCall: 'Video Call',
   ViewDiscussion: 'View discussion',
   ViewsPerPost: 'Views Per Post',
+  'VoiceChat.DiscussionGroup': 'discussion group',
   'VoiceChat.Leave': 'Leave',
   'VoiceChat.Status.Listening': 'listening',
   'VoiceChat.Status.Members': {

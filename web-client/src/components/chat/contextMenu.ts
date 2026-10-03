@@ -28,8 +28,8 @@
  *    `floatingButtonMenu` портированы задачей 2-2 волны 7 — бургер);
  *  • `Message.Context.Selection.SendNow` (:964-972) — сверяется с кнопкой
  *    «отправить сейчас» панели выделения (`selectionSendNowBtn`), панели нет
- *    (Б-23); `MessageScheduleEditTime` (:973-987) — `chat.input.scheduleSending`,
- *    расписания у композера нет (Б-32). `MessageScheduleSend` (:959-963) —
+ *    (Б-23). `MessageScheduleEditTime` (:973-987) портирован (П-6, Б-32) — время
+ *    меняет `messages.editScheduled`. `MessageScheduleSend` (:959-963) —
  *    портирован (лента отложенных `ChatType.Scheduled`, `popups/sendNow.ts`);
  *    «Изменить» у отложенного скрыт: ручки правки текста отложенного нет (Б-92);
  *  • `Quote` (:938-954) — `getRichSelection` стоит на `getRichValueWithCaret`
@@ -247,6 +247,8 @@ export interface ContextMenuManagers {
      *  сейчас» в ленте отложенных (`popups/sendNow.ts`). Необязателен: без него
      *  пункта нет (тест, которому отложенные не нужны). */
     sendScheduledMessages?(peerId: number, mids: number[]): Promise<void>
+    /** «Изменить время» отложенного (tweb `MessageScheduleEditTime`, :973-987) */
+    editScheduled?(peerId: number, id: number, sendAt: number): Promise<unknown>
     /**
      * Порт `chat.sendReaction` (chat.ts:1457 → `appReactionsManager
      * .sendReaction`) — выбор в панели быстрых реакций. Пара, а не один вызов:
@@ -662,6 +664,23 @@ export default class ChatContextMenu {
       onClick: this.onSendScheduledClick,
       verify: () => this.chat.type === ChatType.Scheduled && !!this.managers.messages.sendScheduledMessages &&
         !!this.message && !this.isOutgoing(this.message),
+    }, {
+      // tweb :973-987 — время отложенного меняет `messages.editScheduled` (текст не
+      // трогается: ручки правки текста отложенного нет, Б-92)
+      icon: 'schedule',
+      text: 'MessageScheduleEditTime',
+      onClick: () => {
+        const message = this.message!
+        void this.chat.input.scheduleSending(() => {
+          const { scheduleDate } = this.chat.input
+          if(scheduleDate) {
+            void this.managers.messages.editScheduled?.(message.peerId, message.id, scheduleDate).catch(() => {})
+          }
+
+          this.chat.input.onMessageSent(false, false)
+        }, new Date(message.date * 1000))
+      },
+      verify: () => this.chat.type === ChatType.Scheduled && !!this.managers.messages.editScheduled,
     }, {
       icon: 'reply',
       text: 'Reply',

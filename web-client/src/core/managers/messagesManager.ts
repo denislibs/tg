@@ -1153,9 +1153,14 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     //
     // whenOnline (tweb Schedule.SendWhenOnline): очередь ждёт появления
     // собеседника в сети — send_at игнорируется бэком (только приватный чат).
-    async scheduleMessage(peerId: number, p: { text: string; entities?: MessageEntity[]; sendAt: number; replyToId?: number; whenOnline?: boolean }): Promise<MyMessage> {
+    //
+    // `type`/`mediaId` — отложенный стикер или сохранённая гифка (tweb
+    // `sendMessageWithDocument` под `scheduleDate`): ручка берёт `media_id` готового
+    // файла, как кадр `send_message`.
+    async scheduleMessage(peerId: number, p: { text: string; entities?: MessageEntity[]; sendAt: number; replyToId?: number; whenOnline?: boolean; type?: 'text' | 'sticker' | 'video'; mediaId?: number }): Promise<MyMessage> {
       const r = await rest.post<RawMyMessage>(`/chats/${peerId}/scheduled`, {
-        type: 'text', text: p.text, entities: p.entities ?? null,
+        type: p.type ?? 'text', text: p.text, entities: p.entities ?? null,
+        media_id: p.mediaId ?? null,
         reply_to_id: p.replyToId != null ? getServerMessageId(p.replyToId) : null, send_at: p.sendAt,
         when_online: p.whenOnline ?? false,
       })
@@ -1178,9 +1183,16 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     },
     // Перепланировать (tweb MessageScheduleEditTime): сменить время отправки.
     // Сброс when_online делает бэк (появляется конкретная дата).
+    // Лента отложенных узнаёт о новом времени теми же событиями владельца, что и о
+    // появлении/удалении (`scheduled_delete` + `scheduled_new`): у tweb правку
+    // приносит `updateEditMessage` отложенного, а у нас кадра правки отложенного нет —
+    // бабл переезжает на новое место по дате, как у оригинала.
     async editScheduled(peerId: number, id: number, sendAt: number): Promise<MyMessage> {
       const r = await rest.patch<RawMyMessage>(`/chats/${peerId}/scheduled/${getServerMessageId(id)}`, { send_at: sendAt })
-      return mapNet(r)
+      const message = await mapNet(r)
+      broadcast?.('scheduled_delete', { peerId, mids: [id] })
+      broadcast?.('scheduled_new', message)
+      return message
     },
     // tweb `sendScheduledMessages` (`:12420`, `messages.sendScheduledMessages`):
     // отправить немедленно. Само сообщение в окно истории кладёт ВЕЕР сервера

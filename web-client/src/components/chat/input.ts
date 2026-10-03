@@ -24,12 +24,16 @@
 //  - правка/пересылка/ответ: `initMessageEditing` `:4859`, `initMessagesForward` `:4963`,
 //    `getChatInputReplyToFromMessage` `:5082`, `initMessageReply` `:5099`, `setReplyTo` `:5249`,
 //    `setInputValue` `:5332`.
+//  - пачка П-6 «отправка»: кнопка отложенных `constructScheduledButton` `:922-946`, меню
+//    отправки `SendMenu` `:1426-1472` (`chat/sendContextMenu.ts`), расписание
+//    `getReadyToSend`/`canSendWhenOnline`/`setScheduleTimestamp`/`scheduleSending`
+//    `:2145-2217` (`popups/scheduleSendingPopup.ts`), `resetSendingFlags` `:4491`,
+//    send-as `createSendAs`/`updateOffset` `:2485-2520`, `:2817-2852` (`chat/sendAs.ts`),
+//    «Открепить все» экрана закрепов `pinnedControlBtn` `:1618-1633`, `:2697-2702`.
 //
-// В бэклоге (строки раздела 5 плана): запись голоса и кружков (Б-30), send-as (Б-31),
-// меню отправки и расписание (Б-32), тултип разметки (Б-33), автокомплит (Б-34),
-// эмодзи-дропдаун (Б-35), клавиатура бота и команды (Б-36), медленный режим и платные
-// (Б-37), правка медиа (Б-38), меню плашек и превью ссылки (Б-72), плашки без предмета
-// (Б-73).
+// В бэклоге (строки раздела 5 плана): меню плашек и превью ссылки (Б-72), плашки без
+// предмета (Б-73), эффекты сообщений (Б-125), повтор отложенных (Б-126), сохранение
+// личности send-as (Б-127).
 //
 // ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
 //  1. Пакет параметров отправки собирает `ChatInput.getMessageSendingParams()`, а не
@@ -62,6 +66,13 @@
 //     (`fwd_from.from_name`) не различается — отправитель берётся `fromId ?? peerId`.
 //  8. Пустая правка (`sendMessage`, ветка `showDeleteMessagesPopup`) не делает ничего —
 //     попап удаления у П-5 (`popups/deleteMessages`).
+//  9. Отложенная отправка — своя ручка `messages.scheduleMessage` (`POST /chats/{id}/
+//     scheduled`), а не поле `scheduleDate` пакета `sendText`/`sendFile` (у кадра
+//     `send_message` его нет, `core/managers/messages/sendingParams.ts`): текст, стикер
+//     и сохранённая гифка; пересылку, файлы и Tenor-гифку отложить нечем — уходят сразу
+//     (Б-126). «Когда будет в сети» — `when_online`, а не метка `SEND_WHEN_ONLINE_TIMESTAMP`.
+// 10. `SendMenu` без ряда эффектов и `SelectedEffect` (Б-125); `isPaid` у
+//     `setPeerParams` — `false`, пока нет `Chat.starsAmount` (платные — Б-37).
 import type { Managers } from '@/client/bootstrap'
 import type { AppImManager } from '@lib/appImManager'
 import rootScope from '@lib/rootScope'
@@ -125,8 +136,15 @@ import { openCreatePollPopup } from '@components/popups/createPoll.bridge'
 import showChecklistPopup from '@components/popups/checklist.bridge'
 import wrapReply from '@components/wrappers/reply'
 import wrapMessageForReply from '@components/wrappers/messageForReply'
+import showScheduleSendingPopup from '@components/popups/scheduleSendingPopup'
+import showPinMessagePopup from '@components/popups/unpinMessage'
+import { canPinMessage } from '@core/pinnedMessages'
+import { getUserStatusForSort } from '@core/presence'
+import { SEND_WHEN_ONLINE_TIMESTAMP } from '@core/format/dayLabel'
 import AttachMenuButton from './attachMenuButton.solid'
 import ChatInputPlate from './controlPlate.solid'
+import ChatSendAs from './sendAs'
+import SendMenu from './sendContextMenu'
 import PeerTitle from './peerTitle'
 import type Chat from './chat'
 import { ChatType } from './chatType'
@@ -186,8 +204,23 @@ export default class ChatInput {
   public replyToPeerId: MessageSendingParams['replyToPeerId']
   public editMsgId?: number
   public editMessage?: MyMessage
+  /** tweb `:302-303` — время отложенной отправки (секунды) и период повтора (Б-126) */
+  public scheduleDate?: number
+  public scheduleRepeatPeriod?: number
   public sendSilent?: true
   public startParam?: string
+
+  /** tweb `:254` */
+  private sendMenu!: SendMenu
+  /** tweb `:354`, `constructScheduledButton` `:922-945` */
+  private btnScheduled!: HTMLButtonElement
+  /** tweb `:398-400` */
+  private sendAs?: ChatSendAs
+  public sendAsPeerId?: PeerId
+  /** tweb `:434` — сдвиг строки под send-as/команды бота */
+  private hasOffset?: { type: 'commands' | 'as' | null, forwards: boolean }
+  /** tweb `:343`, «Открепить все»/«Скрыть закреплённые» экрана закрепов (Б-90) */
+  private pinnedControlBtn!: HTMLButtonElement
 
   public helperType?: Exclude<ChatInputHelperType, 'webpage'>
   /** tweb `:322` — перерисовать плашку (превью ссылки возвращает прежнюю, Б-72) */
@@ -303,6 +336,33 @@ export default class ChatInput {
     }, { listenerSetter: this.listenerSetter })
   }
 
+  /** tweb `:922-946` */
+  private constructScheduledButton() {
+    this.btnScheduled = this.createButtonIcon('schedule btn-scheduled float hide', { noRipple: true, ariaLabel: 'ScheduledMessages' }) as HTMLButtonElement
+
+    attachClickEvent(this.btnScheduled, () => {
+      this.appImManager.openScheduled(this.chat.peerId)
+    }, { listenerSetter: this.listenerSetter })
+
+    this.listenerSetter.add(rootScope)('scheduled_new', ({ peerId }: MyMessage) => {
+      if(this.chat.peerId !== peerId) {
+        return
+      }
+
+      this.btnScheduled.classList.remove('hide')
+    })
+
+    this.listenerSetter.add(rootScope)('scheduled_delete', ({ peerId }: { peerId: PeerId }) => {
+      if(this.chat.peerId !== peerId) {
+        return
+      }
+
+      void this.managers.messages.getScheduledMessages(this.chat.peerId).then((value) => {
+        this.btnScheduled.classList.toggle('hide', !value.length)
+      })
+    })
+  }
+
   /** tweb `:629-650` — меню плашки (`ButtonMenuSync` + `DropdownHover`) — Б-72. */
   private constructReplyElements() {
     this.replyElements.container = document.createElement('div')
@@ -335,6 +395,8 @@ export default class ChatInput {
 
     this.goDownUnreadBadge = createBadge('span', 24, 'primary')
     this.goDownBtn.append(this.goDownUnreadBadge)
+
+    this.constructScheduledButton()
 
     this.attachMenuButtons = [{
       icon: 'image',
@@ -405,7 +467,12 @@ export default class ChatInput {
     this.fileInput.multiple = true
     this.fileInput.style.display = 'none'
 
-    this.newMessageWrapper.append(this.attachMenu, this.inputMessageContainer, this.fileInput)
+    this.newMessageWrapper.append(...[
+      this.attachMenu,
+      this.inputMessageContainer,
+      this.btnScheduled,
+      this.fileInput,
+    ].filter(Boolean))
 
     this.rowsWrapper.append(this.replyElements.container)
     this.rowsWrapper.append(this.newMessageWrapper)
@@ -427,6 +494,31 @@ export default class ChatInput {
     this.btnSend.append(...icons.map(([name, type]) => Icon(name, 'animated-button-icon-icon', 'btn-send-icon-' + type)))
 
     this.btnSendContainer.append(this.btnSend)
+
+    this.sendMenu = new SendMenu({
+      onSilentClick: () => {
+        this.sendSilent = true
+        void this.sendMessage()
+      },
+      onScheduleClick: () => {
+        void this.scheduleSending(undefined)
+      },
+      onSendWhenOnlineClick: () => {
+        this.setScheduleTimestamp(SEND_WHEN_ONLINE_TIMESTAMP, () => void this.sendMessage(true))
+      },
+      middleware: this.chat.destroyMiddlewareHelper.get(),
+      openSide: 'top-left',
+      onContextElement: this.btnSend,
+      onOpen: () => {
+        return this.chat.type !== ChatType.Scheduled &&
+          (!this.isInputEmpty() || !!(this.forwarding && Object.keys(this.forwarding).length)) &&
+          !this.editMsgId
+      },
+      canSendWhenOnline: this.canSendWhenOnline,
+      onRef: (element) => {
+        this.btnSendContainer.append(element)
+      },
+    })
 
     // Move the morphing send/record button into the input row as the last button.
     this.newMessageWrapper.append(this.btnSendContainer)
@@ -474,10 +566,27 @@ export default class ChatInput {
       void this.managers.groups.setMute(peerId, !this.isPeerMuted(peerId))
     }, { listenerSetter: this.listenerSetter })
 
+    // * pinned part start — tweb `:1618-1633` (Б-90)
+    this.pinnedControlBtn = Button('btn-primary btn-transparent text-bold chat-input-control-button chat-input-plate-button', { icon: 'unpin' }) as HTMLButtonElement
+
+    this.listenerSetter.add(this.pinnedControlBtn)('click', () => {
+      const peerId = this.chat.peerId
+
+      void showPinMessagePopup(peerId, 0, true, () => {
+        void this.chat.appImManager.setPeer({ isDeleting: true }) // * close tab
+
+        // ! костыль, это скроет закреплённые сообщения сразу, вместо того, чтобы ждать пока анимация перехода закончится
+        const originalChat = this.chat.appImManager.chat
+        originalChat?.topbar?.pinnedMessage?.setHidden(true)
+      }, this.chat.threadId)
+    })
+    // * pinned part end
+
     const controlPlate = ChatInputPlate({
       center: [
         this.botStartBtn,
         this.channelMuteBtn,
+        this.pinnedControlBtn,
       ],
     }) as HTMLElement
 
@@ -706,11 +815,83 @@ export default class ChatInput {
     if(this.chat.selection?.isSelecting) {
       return this.fakeSelectionWrapper
     } else if(
+      this.chat.type === ChatType.Pinned ||
       this.isStartButtonNeeded() ||
       await this.isChannelControlNeeded()
     ) {
       return this.controlContainer
     }
+  }
+
+  /** tweb `:2145-2147` */
+  public getReadyToSend(callback: () => void) {
+    return this.chat.type === ChatType.Scheduled ? (void this.scheduleSending(callback), true) : (callback(), false)
+  }
+
+  /** tweb `:2149-2161` — статус из зеркала присутствия (`chatsStore.presence`) или карточки. */
+  public canSendWhenOnline = () => {
+    const peerId = this.chat.peerId
+    if(rootScope.myId === peerId || !isUser(peerId)) {
+      return false
+    }
+
+    const user = cachedUser(peerId)
+    const status = useChatsStore.getState().presence[peerId] ?? (user?._ === 'user' ? user.status : undefined)
+    // tweb `appUsersManager.isUserOnlineVisible` — `getUserStatusForSort > 3`
+    if(!(getUserStatusForSort(status) > 3)) {
+      return false
+    }
+
+    return status?._ !== 'userStatusOnline'
+  }
+
+  /** tweb `:2163-2184` */
+  public setScheduleTimestamp(timestamp: number | undefined, callback: () => void, repeatPeriod?: number) {
+    const middleware = this.chat.bubbles.getMiddleware()
+    const minTimestamp = (Date.now() / 1000 | 0) + 10
+    if(timestamp !== undefined && timestamp <= minTimestamp) {
+      timestamp = undefined
+    }
+
+    this.scheduleDate = timestamp
+    this.scheduleRepeatPeriod = repeatPeriod
+    callback()
+
+    if(this.chat.type !== ChatType.Scheduled && this.chat.type !== ChatType.Stories && timestamp) {
+      setTimeout(() => { // ! need timeout here because .forwardMessages will be called after timeout
+        if(!middleware()) {
+          return
+        }
+
+        this.appImManager.openScheduled(this.chat.peerId)
+      }, 0)
+    }
+  }
+
+  /** tweb `:2190-2217` — без эфемерного режима (нет предмета). */
+  public scheduleSending = async(
+    callback: () => void = () => void this.sendMessage(true),
+    initDate?: Date,
+    initRepeatPeriod?: number,
+  ) => {
+    const middleware = this.chat.bubbles.getMiddleware()
+    const canSendWhenOnline = this.canSendWhenOnline()
+    if(!middleware()) {
+      return
+    }
+
+    showScheduleSendingPopup({
+      initDate,
+      onPick: (timestamp, repeatPeriod) => {
+        if(!middleware()) {
+          return
+        }
+
+        this.setScheduleTimestamp(timestamp, callback, repeatPeriod)
+      },
+      canSendWhenOnline,
+      initRepeatPeriod,
+    })
   }
 
   /** tweb `:2219-2243` */
@@ -787,6 +968,7 @@ export default class ChatInput {
 
   /** tweb `:2365-2388` */
   public destroy() {
+    this.sendAs?.destroy()
     appNavigationController.removeItem(this.inputHelperNavigationItem!)
     this.listenerSetter.removeAll()
     this.middlewareHelper.destroy()
@@ -867,18 +1049,27 @@ export default class ChatInput {
 
     this.peerChanging = true
 
-    const { goDownBtn, chatInput, attachMenu } = this
+    const { goDownBtn, chatInput, attachMenu, btnScheduled, sendMenu } = this
+
+    const previousSendAs = this.sendAs
+    const sendAs = this.createSendAs()
 
     const isBroadcast = isBroadcastPeer(peerId)
     const isBot = isUser(peerId) && isBotPeer(cachedUser(peerId))
+    const canPin = canPinMessage(peerId)
     const [
       canSend,
       canSendPlain,
       neededFakeContainer,
+      scheduledMessagesPromise,
+      setSendAsCallback,
     ] = await Promise.all([
       this.chat.canSend('send_messages'),
       this.chat.canSend('send_messages'),
       this.getNeededFakeContainer(startParam),
+      // tweb `:2570`: у нас ответ не «acked» — показ ждёт его после смены пира
+      btnScheduled && !this.chat.threadId ? this.managers.messages.getScheduledMessages(peerId).catch(() => []) : undefined,
+      sendAs ? (sendAs.setPeerId(peerId), sendAs.updateManual(true)) : undefined,
     ])
 
     const placeholderParams = this.messageInput ? await this.getPlaceholderParams(canSendPlain) : undefined
@@ -894,6 +1085,22 @@ export default class ChatInput {
 
       this.setUnreadCount()
 
+      if(this.chat.type === ChatType.Pinned) {
+        chatInput.classList.toggle('can-pin', canPin)
+      }
+
+      if(btnScheduled) {
+        btnScheduled.classList.toggle('hide', !scheduledMessagesPromise?.length)
+      }
+
+      if(this.newMessageWrapper) {
+        this.updateOffset(null, false, true)
+      }
+
+      previousSendAs?.destroy()
+      setSendAsCallback?.()
+      sendMenu?.setPeerParams({ peerId, isPaid: false })
+
       let haveSomethingInControl = false
 
       {
@@ -906,6 +1113,13 @@ export default class ChatInput {
         if(good) {
           this.updateChannelMuteButton()
         }
+      }
+
+      if(this.pinnedControlBtn) {
+        const good = !haveSomethingInControl && this.chat.type === ChatType.Pinned
+        haveSomethingInControl ||= good
+        this.pinnedControlBtn.classList.toggle('hide', !good)
+        this.pinnedControlBtn.replaceChildren(i18n(canPin ? 'Chat.Input.UnpinAll' : 'Chat.Pinned.DontShow'))
       }
 
       this.botStartBtn.classList.toggle('hide', haveSomethingInControl || !isBot)
@@ -936,6 +1150,79 @@ export default class ChatInput {
     }
   }
 
+  /** tweb `:2485-2520` */
+  private createSendAs() {
+    this.sendAsPeerId = undefined
+
+    if(this.chat && (this.chat.type === ChatType.Chat || this.chat.type === ChatType.Discussion)) {
+      let firstChange = true
+      this.sendAs = new ChatSendAs({
+        managers: this.managers,
+        onReady: (container, skipAnimation) => {
+          let useRafs = 0
+          if(!container.parentElement) {
+            this.newMessageWrapper.prepend(container)
+            useRafs = 2
+          }
+
+          this.updateOffset('as', true, skipAnimation, useRafs)
+        },
+        onChange: (sendAsPeerId) => {
+          this.sendAsPeerId = sendAsPeerId
+
+          // do not change placeholder earlier than finishPeerChange does
+          if(firstChange) {
+            firstChange = false
+            return
+          }
+
+          void this.getPlaceholderParams().then((params) => {
+            this.updateMessageInputPlaceholder(params)
+          })
+        },
+      })
+    } else {
+      this.sendAs = undefined
+    }
+
+    return this.sendAs
+  }
+
+  /** tweb `:2817-2852` */
+  private updateOffset(
+    type: NonNullable<ChatInput['hasOffset']>['type'],
+    forwards: boolean,
+    skipAnimation?: boolean,
+    useRafs?: number,
+    applySameType?: boolean, // ! WARNING
+  ) {
+    const prevOffset = this.hasOffset
+    const newOffset: ChatInput['hasOffset'] = { type, forwards }
+    if(prevOffset?.type === newOffset.type && prevOffset.forwards === newOffset.forwards && !applySameType) {
+      return
+    }
+
+    this.hasOffset = newOffset
+
+    if(type) {
+      this.newMessageWrapper.dataset.offset = type
+    } else {
+      delete this.newMessageWrapper.dataset.offset
+    }
+
+    if(prevOffset?.forwards === newOffset.forwards && !applySameType) {
+      return
+    }
+
+    SetTransition({
+      element: this.newMessageWrapper,
+      className: 'has-offset',
+      forwards,
+      duration: skipAnimation ? 0 : 300,
+      useRafs,
+    })
+  }
+
   /** tweb `:2959-3018` — без звёзд, монофорума, бот-форума и историй (нет предмета). */
   public async getPlaceholderParams(canSend?: boolean): Promise<{ key: LangPackKey, args?: FormatterArguments }> {
     canSend ??= await this.chat.canSend('send_messages')
@@ -947,6 +1234,8 @@ export default class ChatInput {
       key = 'Comment'
     } else if(isBroadcastPeer(peerId)) {
       key = 'ChannelBroadcast'
+    } else if(this.sendAsPeerId !== undefined && this.sendAsPeerId !== rootScope.myId) {
+      key = 'SendAnonymously'
     } else {
       key = 'Message'
     }
@@ -1283,11 +1572,24 @@ export default class ChatInput {
       'stop': 'ChatAutomation.Stop',
     }
     this.btnSend.setAttribute('aria-label', I18n.format(sendBtnLabelKey[icon], true))
+
+    if(this.btnScheduled) {
+      this.btnScheduled.classList.toggle('show', this.isInputEmpty() && this.chat.type !== ChatType.Scheduled)
+    }
+  }
+
+  // Flags that apply to a single send only. Every send path must drop them,
+  // otherwise the next message silently inherits the schedule date / silence.
+  /** tweb `:4491-4496` */
+  public resetSendingFlags() {
+    this.scheduleDate = undefined
+    this.scheduleRepeatPeriod = undefined
+    this.sendSilent = undefined
   }
 
   /** tweb `:4499-4533` — без недавних эмодзи (их ведёт дропдаун, Б-35). */
   public onMessageSent(clearInput = true, clearReply?: boolean) {
-    this.sendSilent = undefined
+    this.resetSendingFlags()
 
     if(clearInput) {
       void this.clearInput()
@@ -1309,6 +1611,8 @@ export default class ChatInput {
       replyToQuote: replyTo?.replyToQuote ?? null,
       replyToPeerId: replyTo?.replyToPeerId != null && replyTo.replyToPeerId !== this.chat.peerId ? replyTo.replyToPeerId : null,
       silent: this.sendSilent,
+      // tweb `chat.ts:1394`: `sendAsPeerId` — только чужая личность
+      sendAsPeerId: this.sendAsPeerId !== undefined && this.sendAsPeerId !== rootScope.myId ? this.sendAsPeerId : null,
     }
   }
 
@@ -1326,6 +1630,7 @@ export default class ChatInput {
 
     const splitted = splitStringByLength(value, MESSAGE_LENGTH_MAX)
     const isChannel = isBroadcastPeer(peerId)
+    const { scheduleDate } = this
     let partOffset = 0
     for(const part of splitted) {
       const partEntities = splitted.length > 1 && entities.length ? sliceMessageEntities(entities, partOffset, part.length) : entities
@@ -1333,7 +1638,17 @@ export default class ChatInput {
       const [text, parsedEntities] = parseMarkdown(part, partEntities)
       const clientMsgId = crypto.randomUUID()
       const sendEntities = parsedEntities.length ? parsedEntities : undefined
-      if(isChannel) {
+      if(scheduleDate) {
+        // расхождение 9: отложенное — своя ручка, а не поле кадра `send_message`
+        const whenOnline = scheduleDate === SEND_WHEN_ONLINE_TIMESTAMP
+        void this.managers.messages.scheduleMessage(peerId, {
+          text,
+          entities: sendEntities,
+          sendAt: whenOnline ? 0 : scheduleDate,
+          replyToId: sendingParams.replyToMsgId ?? undefined,
+          whenOnline,
+        }).catch(() => {})
+      } else if(isChannel) {
         void this.managers.channels.post(peerId, text, clientMsgId, sendEntities, { senderId: rootScope.myId, threadRootId: this.chat.threadId })
       } else {
         void this.managers.messages.sendText({
@@ -1389,6 +1704,7 @@ export default class ChatInput {
   public async sendMessage(force = false) {
     const { editMsgId, chat } = this
     if(chat.type === ChatType.Scheduled && !force && !editMsgId) {
+      void this.scheduleSending()
       return
     }
 
@@ -1427,11 +1743,16 @@ export default class ChatInput {
   }
 
   /** tweb `:4749-4833` — расхождение 5 шапки; медленный режим и платные — Б-37. */
-  public async sendMessageWithDocument({ document }: { document: Sticker | GifItem, target?: HTMLElement }): Promise<boolean> {
+  public async sendMessageWithDocument({ document, force = false, target }: { document: Sticker | GifItem, force?: boolean, target?: HTMLElement }): Promise<boolean> {
     const isSticker = '_' in document
     const flag: ChatRights = 'send_media'
     if(!isUser(this.chat.peerId) && !(await this.chat.canSend(flag))) {
       toastNew({ langPackKey: POSTING_NOT_ALLOWED_MAP[flag]! })
+      return false
+    }
+
+    if(this.chat.type === ChatType.Scheduled && !force) {
+      void this.scheduleSending(() => void this.sendMessageWithDocument({ document, force: true, target }))
       return false
     }
 
@@ -1443,7 +1764,21 @@ export default class ChatInput {
       void this.managers.dialogs.refresh().catch(() => {})
     }
 
-    if(isSticker) {
+    const { scheduleDate } = this
+    const mediaId = isSticker ? document.id : document.mediaId
+    if(scheduleDate && mediaId != null) {
+      // расхождение 9: отложенное — своя ручка; Tenor-гифку без `mediaId` (её сначала
+      // надо закачать) отложить нечем — она уходит сразу (Б-126)
+      const whenOnline = scheduleDate === SEND_WHEN_ONLINE_TIMESTAMP
+      void this.managers.messages.scheduleMessage(peerId, {
+        text: '',
+        type: isSticker ? 'sticker' : 'video',
+        mediaId,
+        sendAt: whenOnline ? 0 : scheduleDate,
+        replyToId: sendingParams.replyToMsgId ?? undefined,
+        whenOnline,
+      }).catch(() => {})
+    } else if(isSticker) {
       void this.managers.messages.sendText({
         peerId,
         text: '',
