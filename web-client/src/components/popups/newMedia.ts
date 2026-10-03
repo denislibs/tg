@@ -14,7 +14,7 @@
 //  - `getCurrentNewMediaPopup` (tweb `:156`) — открытый попап, чтобы дописать
 //    в него файлы (`addFiles`).
 // Отправку, как у оригинала, делает сам попап (`newMedia.tsx:1022-1106`): пакет
-// параметров снимается ОДИН раз на всю выборку (`chat.getMessageSendingParams()`),
+// параметров снимается ОДИН раз на всю выборку (`getMessageSendingParams()`),
 // несколько фото/видео «как медиа» уходят одним альбомом, плашка ответа гаснет
 // после цикла (`input.onHelperCancel()`, :1104-1106).
 //
@@ -30,6 +30,9 @@
 //     (`appendDrops`, `Preview.Dragging.AddItems`) у `SendMediaPopup` нет.
 //  4. Секретный чат (E2E-путь `secret.sendMedia`) не поддержан: секретные чаты
 //     на паузе (`SECRET_CHATS_ENABLED=false`, Б-56).
+//  5. Пакет параметров берётся у `chat.input.getMessageSendingParams()`, а не у
+//     `chat` (tweb `chat.ts:1352`): в К-4 `ChatInput` держит его у себя, перенос
+//     на `Chat` — после влития П-5 (контракт К-4).
 import { createElement, useLayoutEffect, useRef, useState } from 'react'
 import SendMediaPopup from '@components/messages/SendMediaPopup'
 import { openPopup } from '@stores/popupStore'
@@ -58,9 +61,10 @@ export function getCurrentNewMediaPopup() {
 export interface NewMediaChat {
   peerId: PeerId
   managers: Managers
-  /** tweb `chat.ts:1352` */
-  getMessageSendingParams(): MessageSendingParams
   input: {
+    /** tweb `chat.ts:1352` `chat.getMessageSendingParams()`; у нас до К-4
+     *  включительно лежит на `ChatInput` (расхождение 5) */
+    getMessageSendingParams(): MessageSendingParams
     /** tweb `input.ts` — гасит плашку ответа после отправки */
     onHelperCancel(): void
   }
@@ -157,7 +161,7 @@ function send(
   spoilers?: boolean[],
 ) {
   // tweb :1022 — пакет один на всю выборку
-  const sendingParams = chat.getMessageSendingParams()
+  const sendingParams = chat.input.getMessageSendingParams()
   // Несколько фото/видео «как медиа» → один альбом (grouped_id).
   const asAlbum = !asFile &&
     files.length > 1 &&

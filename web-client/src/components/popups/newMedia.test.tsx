@@ -38,8 +38,7 @@ function makeChat(params: MessageSendingParams) {
   const chat = {
     peerId: 5 as PeerId,
     managers: { messages: { sendFile } } as never,
-    getMessageSendingParams,
-    input: { onHelperCancel },
+    input: { getMessageSendingParams, onHelperCancel },
   }
   return { chat, sendFile, onHelperCancel, getMessageSendingParams }
 }
