@@ -273,6 +273,25 @@ describe('открытие темы', () => {
     expect(forumItems()).toBe(1)
   })
 
+  // У нас General — тема с номером корня 0 (`forum_topics.root_msg_id = 0`, её сообщения
+  // без темы); у tweb это `GENERAL_TOPIC_ID` 1. Строка всё равно строка темы, а клик
+  // открывает сам чат форума — его поток и есть General (найдено на стенде, чат 62).
+  it('General (номер 0) — строка темы, клик открывает чат форума без треда', async () => {
+    const setPeer = vi.spyOn(appImManager, 'setPeer').mockResolvedValue(undefined)
+    await start([topic(0, { isGeneral: true, title: 'General' }), topic(2)])
+    await openForum()
+
+    const general = topicRows().find((el) => el.dataset.threadId === '0')!
+    expect(general).toBeDefined()
+    expect(general.querySelector('.dialog-avatar')).toBeNull()
+    expect(general.querySelector('.peer-title-inner')!.textContent).toBe('General')
+
+    press(general)
+    expect(setPeer).toHaveBeenCalledTimes(1)
+    expect(setPeer.mock.calls[0][0]).toMatchObject({ peerId: FORUM_ID })
+    expect((setPeer.mock.calls[0][0] as { threadId?: number }).threadId).toBeUndefined()
+  })
+
   it('`peer_changed` с темой подсвечивает её строку в табе, а не строку форума', async () => {
     await start()
     await openForum()

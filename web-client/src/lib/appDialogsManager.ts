@@ -540,7 +540,7 @@ export class DialogElement {
     attachRowController(this, {
       clickable: true,
       noRipple: !rippleEnabled,
-      havePadding: !threadId,
+      havePadding: !threadId && !topic,
       title: true,
       titleRightSecondary: true,
       subtitle: true,
@@ -557,7 +557,9 @@ export class DialogElement {
 
     // tweb `:345-348`
     const isSavedDialog = !!threadId && peerId === rootScope.myId
-    const isForumTopic = !!threadId && !isSavedDialog
+    // тема — и по номеру, и по самой теме: у General номер корня 0 (у нас его
+    // сообщения без темы, `forum_topics.root_msg_id = 0`), у tweb — `GENERAL_TOPIC_ID` 1
+    const isForumTopic = !!topic || (!!threadId && !isSavedDialog)
 
     const usePeerId = isSavedDialog ? threadId! : peerId
 
@@ -607,7 +609,8 @@ export class DialogElement {
 
     li.dataset.peerId = '' + peerId
 
-    if(threadId) li.dataset.threadId = '' + threadId
+    // у General номер 0 — ключ строки темы всё равно нужен (`getDialogKeyFromElement`)
+    if(threadId || isForumTopic) li.dataset.threadId = '' + (threadId ?? 0)
 
     // tweb `:448-458`
     const statusSpan = document.createElement('span')
