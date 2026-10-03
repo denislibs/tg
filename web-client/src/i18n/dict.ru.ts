@@ -359,6 +359,9 @@ const ru = {
     other_value: '%1$d пользователя',
   },
   'General.TextSize': 'Размер текста',
+  // ── Клавиатура и команды бота в строке ввода (Б-36) ──
+  'General.Keyboard': 'Клавиатура',
+  'Chat.BotCommands': 'Команды бота',
   'ChatBackground.Title': 'Фон чата',
   'LiteMode.Title': 'Энергосбережение',
   'Checkbox.Disabled': 'Выключено',

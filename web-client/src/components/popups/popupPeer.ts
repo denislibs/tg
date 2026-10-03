@@ -72,6 +72,7 @@ import CheckboxField from '@components/checkboxField'
 import { avatarNew, type AvatarManagers } from '@components/avatar'
 import { i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 import type InputField from '@components/inputField'
+import setInnerHTML from '@helpers/dom/setInnerHTML'
 
 /** peer.ts:16-31, сужено до полей с потребителем в волне 1 (задача 2) + двух
  *  добавленных в задаче 3, у которых нашёлся реальный потребитель уже здесь:
@@ -98,6 +99,9 @@ export type PopupPeerOptions = {
   descriptionLangKey?: LangPackKey
   /** peer.ts:26 — то же, что `titleLangArgs`, для описания. */
   descriptionLangArgs?: FormatterArguments
+  /** peer.tsx:42, :66 — готовое описание (ответ callback-кнопки бота,
+   *  `wrappers/keyboardButton.ts`); ключ, если задан, важнее. */
+  description?: string | DocumentFragment
   buttons: PopupPeerButton[] // peer.ts:41 — `addCancelButton(options.buttons)`
   body?: boolean
   zIndex?: number
@@ -237,10 +241,11 @@ export default class PopupPeer extends PopupElement {
     // `this.header.after(fragment)` (peer.ts:126): порядок в DOM решает
     // порядок append НИЖЕ, а не порядок вызовов setButtons/фрагмента выше.
     const fragment = document.createDocumentFragment()
-    if(options.descriptionLangKey) { // peer.ts:65
+    if(options.descriptionLangKey || options.description) { // peer.tsx:77
       const p = this.description = document.createElement('p') // peer.ts:68
       p.classList.add('popup-description') // peer.ts:69
-      p.append(i18n(options.descriptionLangKey, options.descriptionLangArgs)) // peer.ts:70
+      if(options.descriptionLangKey) p.append(i18n(options.descriptionLangKey, options.descriptionLangArgs)) // peer.ts:70
+      else setInnerHTML(p, options.description) // peer.tsx:66
       fragment.append(p)
     }
     if(inputField) { // peer.tsx:143
@@ -288,6 +293,8 @@ export type PopupConfirmationOptions = {
   titleLangArgs?: FormatterArguments
   descriptionLangKey?: LangPackKey
   descriptionLangArgs?: FormatterArguments
+  /** peer.tsx:42 — готовое описание */
+  description?: string | DocumentFragment
   button: PopupButton
   buttons?: PopupButton[]
   rejectWithReason?: boolean
@@ -351,6 +358,7 @@ export function confirmationPopup(options: PopupConfirmationOptions): Promise<bo
       titleLangArgs: options.titleLangArgs,
       descriptionLangKey: options.descriptionLangKey,
       descriptionLangArgs: options.descriptionLangArgs,
+      description: options.description,
       buttons,
       zIndex: options.zIndex,
       inputField: options.inputField,

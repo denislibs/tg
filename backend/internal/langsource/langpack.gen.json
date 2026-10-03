@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 55,
+      "version": 56,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -1089,6 +1089,10 @@
         {
           "key": "Chat.Alert.Forward.ShowSenderName",
           "value": "Show sender name"
+        },
+        {
+          "key": "Chat.BotCommands",
+          "value": "Bot commands"
         },
         {
           "key": "Chat.CallMessage.TimeAndDuration",
@@ -2640,6 +2644,10 @@
         {
           "key": "General",
           "value": "General"
+        },
+        {
+          "key": "General.Keyboard",
+          "value": "Keyboard"
         },
         {
           "key": "General.TextSize",
@@ -6935,7 +6943,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 55,
+      "version": 56,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -8147,6 +8155,14 @@
         {
           "key": "General.TextSize",
           "value": "Размер текста"
+        },
+        {
+          "key": "General.Keyboard",
+          "value": "Клавиатура"
+        },
+        {
+          "key": "Chat.BotCommands",
+          "value": "Команды бота"
         },
         {
           "key": "ChatBackground.Title",

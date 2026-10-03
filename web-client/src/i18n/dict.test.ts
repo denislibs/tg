@@ -602,8 +602,11 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `SlowmodeSendError{,TooLong}`, `ConfirmPayment`, `DontAskAgain`,
 // `PaidMessages.UserChargesFor{One,Multiple}MessageWarning`, плюральный
 // `PaidMessages.PayForMessages`, тост нехватки `Stars.Subscription.MissingBalance`.
+// Пачка П-6 волны 7, Б-36 (клавиатура бота, `chat/replyKeyboard.solid.tsx`): у ru +2 ключа
+// tweb lang.ts — `General.Keyboard` (тумблер клавиатуры) и `Chat.BotCommands` (кнопка
+// команд бота).
 const COMPOSITION = {
-  ru: { keys: 1676, plural: 56 },
+  ru: { keys: 1678, plural: 56 },
   uk: { keys: 842, plural: 35 },
   es: { keys: 813, plural: 34 },
   de: { keys: 814, plural: 35 },
@@ -796,7 +799,7 @@ const COMPOSITION = {
 // Б-13 волны 7 — у ru +17 ключей карточек пустой колонки, у остальных +4 (разбор — там же).
 // Пачкой П-6 волны 7 — у ru +9 ключей медленного режима и платных сообщений (разбор — там же).
 const FINGERPRINT = {
-  ru: 'e9ff04af',
+  ru: 'beb09293',
   uk: 'de4c59fd',
   es: 'f330c581',
   de: '95a1d0fe',

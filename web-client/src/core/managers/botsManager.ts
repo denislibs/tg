@@ -1,6 +1,7 @@
 import type { RestClient } from '../net/restClient'
 import type { UserReal } from '../peers/peer'
 import { getPeerId, type Peer } from '../peers/peerId'
+import { getServerMessageId } from '../history/messageId'
 
 // Боты (демо-бот @demobot). Реальных ботов нет — есть один демо-бот, который
 // авто-отвечает на сервере; клиент рендерит его клавиатуры и шлёт callback.
@@ -61,11 +62,14 @@ export function newBotsManager({ rest }: { rest: Pick<RestClient, 'get' | 'post'
     // ту же `bytes` (`bot_handler.go::BotCallback`): одна форма байтов на всём
     // пути, разворачивает их сервер. Развернуть здесь значило бы завести на
     // витрине вторую форму того же значения и переделывать это место на фазе 2.
+    //
+    // `messageId` — КЛИЕНТСКИЙ номер (кнопку жмут в окне); на провод уходит
+    // серверный, как у оригинала (`msg_id: getServerMessageId(mid)`).
     async callback(botId: number, peerId: number, data: string, messageId?: number): Promise<CallbackAnswer> {
       // Ответ — конструктор `messages.botCallbackAnswer`. «Показать плашкой»
       // это ФЛАГ: его ОТСУТСТВИЕ и есть «тостом».
       const r = await rest.post<{ _: 'messages.botCallbackAnswer'; pFlags?: { alert?: true }; message?: string }>(
-        `/bots/${botId}/callback`, { peer_id: peerId, message_id: messageId ?? 0, data })
+        `/bots/${botId}/callback`, { peer_id: peerId, message_id: messageId ? getServerMessageId(messageId) : 0, data })
       return { text: r.message ?? '', alert: !!r.pFlags?.alert }
     },
     // Кнопка-меню mini-app бота (пусто — не задана).
