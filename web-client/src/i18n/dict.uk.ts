@@ -231,6 +231,7 @@ const uk = {
   'MultiAccount.AddAccount': 'Додати акаунт',
   SavedMessages: 'Збережене',
   'MyStories.Title': 'Мої історії',
+  MyStory: 'Моя історія',
   Contacts: 'Контакти',
   'MultiAccount.More': 'Більше',
   NewChannel: 'Створити канал',
@@ -324,6 +325,7 @@ const uk = {
   'ChatList.Context.LeaveChannel': 'Покинути канал',
   
   OpenInNewTab: 'Відкрити в новій вкладці',
+  OpenStory: 'ВІДКРИТИ ІСТОРІЮ',
   Archive: 'Архівувати',
   'Profile.Info.User': 'Інформація',
   'Profile.Info.Group': 'Про групу',

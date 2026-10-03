@@ -5,7 +5,8 @@
 // — `views`, закреп и правка — флаги `pFlags`, а «моя» в чипе разбивки это
 // `chosen_order`, а не булево поле.
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useStoriesStore, loadStories } from './storiesStore'
+import { useStoriesStore, loadStories, getStoriesSortIndex, getStoriesSegments } from './storiesStore'
+import rootScope from '@lib/rootScope'
 import type { StoryGroup } from '../core/managers/storiesManager'
 import type { ReactionCount } from '../core/models'
 import type { StoryItem, StoryItemReal } from '../core/stories/story'
@@ -160,5 +161,61 @@ describe('storiesStore', () => {
     expect(storyCaption(first())).toBe('newer')
     expect(storyPrivacy(first())).toBe('close')
     expect(isStoryEdited(first())).toBe(true)
+  })
+})
+
+// Порядок ленты — позиция tweb `generateSortIndexForCache` (appStoriesManager.ts:197-221):
+// свои → непрочитанные → премиум → свежесть последней истории; заморозка
+// `toggleSorting` (stories/store.tsx:495-510) держит порядок, пока на него смотрят.
+describe('storiesStore — порядок ленты', () => {
+  const g = (id: number, maxReadId: number, ids: number[], premium = false): StoryGroup => ({
+    author: { _: 'user', id, first_name: 'U' + id, ...(premium ? { pFlags: { premium: true as const } } : {}) },
+    stories: ids.map((sid) => mkStory({ id: sid, date: 1787334148 + sid })),
+    maxReadId,
+  })
+  const order = () => useStoriesStore.getState().groups.map((x) => x.author.id)
+
+  beforeEach(() => {
+    rootScope.myId = 7
+    useStoriesStore.setState({ groups: [], loaded: false })
+  })
+
+  it('свои первыми даже прочитанные, затем непрочитанные, премиум, свежие', () => {
+    useStoriesStore.getState().setGroups([
+      g(2, 9, [9]), // прочитан
+      g(3, 0, [1]), // непрочитан, старый
+      g(7, 5, [5]), // свои, прочитаны
+      g(4, 0, [2]), // непрочитан, свежее
+      g(5, 0, [1], true), // непрочитан, премиум
+    ])
+    expect(order()).toEqual([7, 5, 4, 3, 2])
+    expect(getStoriesSortIndex(g(2, 0, []))).toBeUndefined()
+  })
+
+  it('заморозка держит порядок, снятие последней пересортирует; новые под заморозкой — в конец', () => {
+    useStoriesStore.getState().setGroups([g(3, 0, [1]), g(2, 0, [2])])
+    expect(order()).toEqual([2, 3])
+
+    const st = useStoriesStore.getState()
+    st.toggleSorting('list', true)
+    st.toggleSorting('viewer', true)
+    st.markRead(2, 2)
+    st.setGroups([g(2, 2, [2]), g(3, 0, [1]), g(9, 0, [5])])
+    expect(order()).toEqual([2, 3, 9])
+
+    st.toggleSorting('viewer', false)
+    expect(order()).toEqual([2, 3, 9])
+    st.toggleSorting('list', false)
+    expect(order()).toEqual([9, 3, 2])
+  })
+
+  it('сегменты кольца: подряд идущие одного типа сливаются, close — непрочитанная для близких', () => {
+    const group = g(2, 2, [1, 2, 3, 4])
+    group.stories[3] = mkStory({ id: 4, pFlags: { close_friends: true } })
+    expect(getStoriesSegments(group)).toEqual([
+      { type: 'read', length: 2 },
+      { type: 'unread', length: 1 },
+      { type: 'close', length: 1 },
+    ])
   })
 })

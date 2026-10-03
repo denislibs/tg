@@ -23,8 +23,9 @@
 //   • пользовательская ширина лежит не в отдельных localStorage-ключах
 //     ('sidebar-left-width'/'sidebar-right-width'), а в общем сторе настроек
 //     (`settings.tsx`) — у нас так принято для всего, что переживает перезагрузку;
-//   • нет rootScope-события 'resizing_left_sidebar': пересчёт дёргается прямо из
-//     сеттеров, а побочные эффекты драга висят на `onSwipeTick` ручки ресайза.
+//   • rootScope-событие 'resizing_left_sidebar' этот модуль не слушает (у tweb
+//     :386): пересчёт дёргается прямо из сеттеров. Само событие есть — его шлёт
+//     ручка ресайза (`installColumnResize.ts`), читает ряд историй.
 import clamp from '@helpers/number/clamp'
 import throttle from '@helpers/schedulers/throttle'
 import mediaSizes from './mediaSizes'

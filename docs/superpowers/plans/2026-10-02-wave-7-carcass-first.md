@@ -559,7 +559,7 @@ React-`GroupEditFlow`.
 | Б-1 | Архив: пункт бургера, бейдж, список архива (сейчас оверлей `Sidebar.tsx` + `mountArchivedList`) | К-1 | `sidebarLeft/tabs/archivedTab.tsx`, `sidebarLeft/index.ts:681-685`, `:1760` | П-2 |
 | Б-2 | Строка «Архив» в списке — React-остров (`autonomousDialogList/dialogs.ts:56`, `:378`) | К-1 | `components/archiveDialog.tsx` | П-2 |
 | Б-3 | Форум: панель тем `TopicsPanel.tsx` (583), открытие форума из списка | К-1 | `forumTab/*`, `autonomousDialogList/forumTopics.ts` | П-2 |
-| Б-4 | Ряд историй над списком (`StoriesRow.tsx` 405, `useSidebarStories.tsx`), просмотр из ряда | К-1 | `components/stories/list.tsx` (474), `appDialogsManager.ts:1095-1125` | П-3 |
+| Б-4 | Ряд историй над списком (`StoriesRow.tsx` 405, `useSidebarStories.tsx`), просмотр из ряда | К-1 | `components/stories/list.tsx` (474), `appDialogsManager.ts:1095-1125` | **закрыто задачей 2-6** (П-3, PR #383): `components/stories/list.solid.tsx`, вьювер — `stories/viewer.ts` (ВРЕМЕННО до волны 4); остаток — Б-60…Б-62 |
 | Б-5 | Вертикальная колонка папок (`FoldersSidebar.tsx` 238) | К-1 | `sidebarLeft/foldersSidebarContent/*` | П-3 |
 | Б-6 | Кнопка статус-эмодзи в шапке колонки (`SidebarEmojiStatusButton.tsx`) | К-1 | `sidebarLeft/index.ts:262`, `emojiStatusPicker.tsx` | П-3 |
 | Б-7 | Кнопка замка в шапке колонки | К-1 | `sidebarLeft/index.ts:264`, `:345-361` (у нас `lockButton.solid.tsx` есть) | П-3 |
@@ -605,6 +605,9 @@ React-`GroupEditFlow`.
 | Б-47 | Ссылка «пропустить к чату» и имена ориентиров колонок (`attachSkipToContent`, `setLandmarkLabels`): ключей `AccDescr.SkipToConversation`/`ChatList`/`ChatInfo` в лангпаке нет | К-2 (не было) | `helpers/dom/appLandmarks.ts`, `appImManager.ts:349-352`, `:3199-3201` | П-4 |
 | Б-48 | Хэши страницы бэкенда `#@имя/<seq>` и `#<peerId>/<seq>` (кнопка публичной страницы, `public_page.go:40-41`) — `onHashChange` tweb принимает только `#@имя`, `#<peerId>`, `#/im?p=…&post=` | К-2 | `appImManager.ts:1912-2031` | **закрыто PR #380**: кнопка поста публичной страницы ведёт на `#@имя?post=<seq>` (схема tweb `onHashChangeUnsafe` → `openUsername({lastMsgId})`) |
 | Б-49 | Пилюля «доступна новая сборка» (`useUpdateStore`) — только в мессенджере (остров `#react-overlays` монтирует `bootstrapIm`), на экране входа её нет; бейдж `api: ok/down` (dev-индикатор `App.tsx`, не tweb) снят без замены | К-2 | `sidebarLeft/index.ts:202-216`, `:367-384` (`updateBtn`, `checkForUpdates`) | О-100 / П-3 (кнопка «Обновить» в шапке колонки) |
+| Б-60 | Меню ряда историй: «Опубликованные/архив историй» (`AppMyStoriesTab`, О-82), уведомления об историях пира (`toggleStoriesMute`), stealth-режим из меню (`showStoriesStealthModePopup`), скрыть/вернуть истории пира (`toggleStoriesHidden`) и ряд в архиве (`archive: true`) | 2-6 (не было) | `stories/list.tsx:363-439`, `sidebarLeft/tabs/archivedTab.tsx:22-72` | П-3 / бэкенд (`stories_hidden`, уведомления об историях) |
+| Б-61 | Вход во вьювер с аватарки с кольцом (`appImManager.openStoriesFromAvatar`/`openStoriesForPeer`): у строки списка и профиля кольца историй нет — `components/avatar.ts` без `StoriesSegments` | — (не было) | `avatarNew.tsx:280-410`, `appImManager.ts:1619-1632`, `appDialogsManager.ts:2104` | П-2 (1-8) / П-1 |
+| Б-62 | Публикация своей истории, лист «близкие друзья», архив истёкших (`useSidebarStories`: MediaEditor → `AddStorySheet`/`CloseFriendsSheet`/`StoriesArchiveSheet`) — у tweb публикации нет | К-1 | — | вне волны (решение пользователя: вернуть или снести листы) |
 
 ### Пачки бэклога
 

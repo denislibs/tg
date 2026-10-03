@@ -67,7 +67,7 @@ interface InputSearchCommonProps {
   /**
    * Хэндл трёх методов выше. Отдельный ref, а НЕ основной: основной `ref`
    * компонента — сам `HTMLInputElement`, на нём висят `focus()`/`blur()`,
-   * `parentElement` (`EmoticonsTab`) и `foldInto` (`StoriesRow`). Слить их в
+   * `parentElement` (`EmoticonsTab`). Слить их в
    * один объект можно только расширив тип-параметр `forwardRef`, а тогда
    * `useRef<HTMLInputElement>` и `RefObject<HTMLInputElement | null>` у
    * существующих вызывающих перестают подходить по типу — правка ради удобства

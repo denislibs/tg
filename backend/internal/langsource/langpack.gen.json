@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 48,
+      "version": 49,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -3306,6 +3306,10 @@
           "value": "My Stories"
         },
         {
+          "key": "MyStory",
+          "value": "My Story"
+        },
+        {
           "key": "Never",
           "value": "Never"
         },
@@ -3558,6 +3562,10 @@
         {
           "key": "OpenInNewTab",
           "value": "Open in new tab"
+        },
+        {
+          "key": "OpenStory",
+          "value": "OPEN STORY"
         },
         {
           "key": "OpenUrlAlert2",
@@ -6328,7 +6336,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 48,
+      "version": 49,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -7962,6 +7970,10 @@
           "value": "Мои истории"
         },
         {
+          "key": "MyStory",
+          "value": "Моя история"
+        },
+        {
           "key": "Contacts",
           "value": "Контакты"
         },
@@ -8557,6 +8569,10 @@
         {
           "key": "OpenInNewTab",
           "value": "Открыть в новой вкладке"
+        },
+        {
+          "key": "OpenStory",
+          "value": "ОТКРЫТЬ ИСТОРИЮ"
         },
         {
           "key": "Archive",
@@ -12696,7 +12712,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 31,
+      "version": 32,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -13482,6 +13498,10 @@
           "value": "Mes stories"
         },
         {
+          "key": "MyStory",
+          "value": "Ma story"
+        },
+        {
           "key": "Contacts",
           "value": "Contacts"
         },
@@ -13714,6 +13734,10 @@
         {
           "key": "OpenInNewTab",
           "value": "Ouvrir dans un nouvel onglet"
+        },
+        {
+          "key": "OpenStory",
+          "value": "OUVRIR LA STORY"
         },
         {
           "key": "Archive",
@@ -15982,7 +16006,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 31,
+      "version": 32,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16775,6 +16799,10 @@
           "value": "Meine Storys"
         },
         {
+          "key": "MyStory",
+          "value": "Meine Story"
+        },
+        {
           "key": "Contacts",
           "value": "Kontakte"
         },
@@ -17007,6 +17035,10 @@
         {
           "key": "OpenInNewTab",
           "value": "In neuem Tab öffnen"
+        },
+        {
+          "key": "OpenStory",
+          "value": "STORY ÖFFNEN"
         },
         {
           "key": "Archive",
@@ -19290,7 +19322,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 31,
+      "version": 32,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -20084,6 +20116,10 @@
           "value": "Mis historias"
         },
         {
+          "key": "MyStory",
+          "value": "Mi historia"
+        },
+        {
           "key": "Contacts",
           "value": "Contactos"
         },
@@ -20316,6 +20352,10 @@
         {
           "key": "OpenInNewTab",
           "value": "Abrir en pestaña nueva"
+        },
+        {
+          "key": "OpenStory",
+          "value": "ABRIR HISTORIA"
         },
         {
           "key": "Archive",
@@ -22592,7 +22632,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 32,
+      "version": 33,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -23393,6 +23433,10 @@
           "value": "Мої історії"
         },
         {
+          "key": "MyStory",
+          "value": "Моя історія"
+        },
+        {
           "key": "Contacts",
           "value": "Контакти"
         },
@@ -23721,6 +23765,10 @@
         {
           "key": "OpenInNewTab",
           "value": "Відкрити в новій вкладці"
+        },
+        {
+          "key": "OpenStory",
+          "value": "ВІДКРИТИ ІСТОРІЮ"
         },
         {
           "key": "Archive",
