@@ -1093,3 +1093,63 @@ describe('ChatContextMenu — действия П-5: попап и RPC', () => {
     expect(managers.messages.setFactCheck).not.toHaveBeenCalled()
   })
 })
+
+// Лента отложенных (`ChatType.Scheduled`, tweb :959-972, гейты Reply/Pin/Forward —
+// :1017, :1235, :1310): «Отправить сейчас» → подтверждение (`popups/sendNow.ts`) →
+// `sendScheduledMessages`; правка текста отложенного скрыта (Б-92).
+describe('ChatContextMenu — лента отложенных', () => {
+  const SCHEDULED_KEY = `${PEER}_scheduled`
+
+  async function openScheduled(mid: number) {
+    putMirrorPage(SCHEDULED_KEY, [message(mid, { pFlags: { out: true, is_scheduled: true } })])
+    const { bubble, content } = makeBubble(mid, { out: true })
+    container.append(bubble)
+    const chat = makeChat({ type: ChatType.Scheduled, messagesStorageKey: SCHEDULED_KEY })
+    const managers = { ...makeManagers(), messages: { ...makeManagers().messages, sendScheduledMessages: vi.fn().mockResolvedValue(undefined) } }
+    const menu = new ChatContextMenu(chat, managers)
+    menu.attachTo(container)
+    rightClick(content)
+    await flush()
+    return { managers }
+  }
+
+  it('пункты: «Отправить сейчас» первым; ответа, правки, закрепа и пересылки нет', async() => {
+    await openScheduled(1)
+    const items = itemTexts()
+    expect(items[0]).toBe('Send Now')
+    expect(items).not.toContain('Reply')
+    expect(items).not.toContain('Edit')
+    expect(items).not.toContain('Pin')
+    expect(items).not.toContain('Forward')
+    expect(items).toContain('Delete')
+  })
+
+  it('«Отправить сейчас» спрашивает подтверждение и шлёт `sendScheduledMessages`', async() => {
+    const { managers } = await openScheduled(1)
+    const item = Array.from(menuElement()!.querySelectorAll<HTMLElement>('.btn-menu-item'))
+      .find((el) => el.querySelector('.btn-menu-item-text')?.textContent === 'Send Now')!
+    item.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    expect(managers.messages.sendScheduledMessages).not.toHaveBeenCalled()
+
+    const popup = document.querySelector<HTMLElement>('.popup-peer.popup-delete-chat')
+    expect(popup).toBeTruthy()
+    expect(popup!.querySelector('.popup-title')?.textContent).toBe('Send Message Now')
+    const send = Array.from(popup!.querySelectorAll<HTMLElement>('.popup-button'))
+      .find((button) => button.textContent === 'Send')!
+    send.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+
+    expect(managers.messages.sendScheduledMessages).toHaveBeenCalledWith(PEER, [1])
+  })
+
+  it('в обычном чате пункта «Отправить сейчас» нет', async() => {
+    putMirrorPage(KEY, [message(1)])
+    const { bubble, content } = makeBubble(1)
+    container.append(bubble)
+    const managers = { ...makeManagers(), messages: { ...makeManagers().messages, sendScheduledMessages: vi.fn() } }
+    const menu = new ChatContextMenu(makeChat(), managers)
+    menu.attachTo(container)
+    rightClick(content)
+    await flush()
+    expect(itemTexts()).not.toContain('Send Now')
+  })
+})

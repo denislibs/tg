@@ -460,18 +460,27 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 	return c, nil
 }
 
-func (r *GroupRepo) ListMembers(ctx context.Context, chatID int64, offset, limit int) ([]domain.Member, error) {
+func (r *GroupRepo) ListMembers(ctx context.Context, chatID int64, query string, offset, limit int) ([]domain.Member, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 200
 	}
 	if offset < 0 {
 		offset = 0
 	}
+	// query — `channelParticipantsSearch`: префикс имени профиля или @username,
+	// тем же правилом, что поиск людей (`SearchRepo.SearchUsers`).
+	like := ""
+	if query != "" {
+		like = escapeLike(query) + "%"
+	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT chat_id, user_id, role, rights
-		   FROM chat_members
-		  WHERE chat_id=$1 ORDER BY role DESC, user_id LIMIT $2 OFFSET $3`,
-		chatID, limit, offset)
+		`SELECT m.chat_id, m.user_id, m.role, m.rights
+		   FROM chat_members m
+		   JOIN users u ON u.id = m.user_id
+		  WHERE m.chat_id=$1
+		    AND ($4 = '' OR u.display_name ILIKE $4 OR u.username ILIKE $4)
+		  ORDER BY m.role DESC, m.user_id LIMIT $2 OFFSET $3`,
+		chatID, limit, offset, like)
 	if err != nil {
 		return nil, err
 	}

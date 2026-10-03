@@ -15,13 +15,10 @@
  * debounce-логики нет.
  *
  * Расхождения с оригиналом:
- *  1. Опций `onFocusChange`/`onDebounce`/`onBack`/`verifyDebounce`/
- *     `alwaysShowClear`/`arrowBack` нет, как и `setArrowBack` (:119-133) — ни
- *     у одного потребителя они не заданы. Состояние, которое
- *     `setArrowBack(undefined)` оставляет в конструкторе (:116), — «стрелки
- *     нет»: классы `with-arrow-back`/`hide`/`always-visible` при нём не
- *     ставятся, их здесь и нет; поэтому «другая» иконка `toggleLoading` —
- *     всегда лупа (ветка `clearBtn` :148, :166 мертва).
+ *  1. Опции `onDebounce` нет — ни у одного потребителя она не задана.
+ *     `onFocusChange`/`onBack`/`verifyDebounce`/`alwaysShowClear`/`arrowBack` и
+ *     `setArrowBack` (:119-133) — есть: их задаёт поиск по чату
+ *     (`components/chat/topbarSearch.solid.tsx`, tweb `topbarSearch.tsx:476-490`).
  *  2. (снято задачей 2-1 волны 7: `setPlaceholder` — с кросс-фейдом старого
  *     узла и дедупом по ключу, как :175-198.)
  *  3. `set value` не шлёт синтетическое `input` — расхождение 2
@@ -36,13 +33,20 @@ import { CONNECTION_ANIMATION_DURATION } from '@shared/ui/InputSearch/InputSearc
 import type { IconName } from '@core/tgico-icons'
 import I18n, { i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 import InputSearchHandle from '@shared/ui/InputSearch/inputSearchHandle'
+import { attachClickEvent } from '@helpers/dom/clickEvent'
 
 export default class InputSearch extends InputSearchHandle {
   public inputField: InputField
   public searchIcon: HTMLElement
   public currentPlaceholder?: HTMLElement
+  public backBtn?: HTMLElement
+  public onBack?: () => void
 
   private noPlaceholderAnimation?: boolean
+  private alwaysShowClear?: boolean
+  private arrowBack?: boolean
+  private onFocusIn?: () => void
+  private onFocusOut?: () => void
   private statusPreloader?: ProgressivePreloader
   private currentLangPackKey?: LangPackKey
 
@@ -51,6 +55,11 @@ export default class InputSearch extends InputSearchHandle {
     onChange?: (value: string) => void,
     onClear?: InputSearchHandle['onClear'],
     onEnter?: (value: string) => void,
+    onFocusChange?: (isFocused: boolean) => void,
+    onBack?: () => void,
+    alwaysShowClear?: boolean,
+    verifyDebounce?: InputSearchHandle['verifyDebounce'],
+    arrowBack?: boolean,
     noBorder?: boolean,
     noFocusEffect?: boolean,
     debounceTime?: number,
@@ -78,7 +87,10 @@ export default class InputSearch extends InputSearchHandle {
     this.onChange = options.onChange
     this.onClear = options.onClear
     this.onEnter = options.onEnter
+    this.onBack = options.onBack
     this.debounceTime = options.debounceTime ?? 300
+    this.verifyDebounce = options.verifyDebounce
+    this.alwaysShowClear = options.alwaysShowClear
     this.noPlaceholderAnimation = options.noPlaceholderAnimation
 
     // :80-85
@@ -103,8 +115,38 @@ export default class InputSearch extends InputSearchHandle {
       this.setPlaceholder(options.placeholder)
     }
 
+    // :100-108
+    const { onFocusChange } = options
+    if(onFocusChange) {
+      this.onFocusIn = () => onFocusChange(true)
+      this.onFocusOut = () => onFocusChange(false)
+      input.addEventListener('focusin', this.onFocusIn)
+      input.addEventListener('focusout', this.onFocusOut)
+    }
+
     // :110
     container.append(searchIcon, clearBtn)
+
+    // :112
+    this.setArrowBack(!!options.arrowBack)
+  }
+
+  // :115-129
+  public setArrowBack = (arrowBack: boolean) => {
+    if(this.arrowBack === arrowBack) return
+    this.arrowBack = arrowBack
+
+    this.container.classList.toggle('with-arrow-back', arrowBack)
+
+    if(arrowBack && !this.backBtn) {
+      this.backBtn = this.createButtonIcon('arrow_prev', 'input-search-icon', 'input-search-back')
+      this.container.append(this.backBtn)
+      attachClickEvent(this.backBtn, () => this.onBack?.(), { cancelMouseDown: true })
+    }
+
+    this.searchIcon.classList.toggle('hide', arrowBack)
+    this.backBtn?.classList.toggle('hide', !arrowBack)
+    this.clearBtn.classList.toggle('always-visible', !arrowBack && !!this.alwaysShowClear)
   }
 
   // :131-135
@@ -123,9 +165,9 @@ export default class InputSearch extends InputSearchHandle {
     return this.container.classList.contains('is-connecting')
   }
 
-  // :147-173 (расхождение 1: «другая» иконка — лупа)
+  // :147-173
   public toggleLoading(loading: boolean) {
-    const another = this.searchIcon
+    const another = this.arrowBack ? this.clearBtn : this.searchIcon
     if(!this.statusPreloader) {
       this.statusPreloader = new ProgressivePreloader({ cancelable: false })
       this.statusPreloader.constructContainer({ color: 'transparent', bold: true })
@@ -140,7 +182,7 @@ export default class InputSearch extends InputSearchHandle {
     }
 
     preloader.classList.toggle('is-hiding', !loading)
-    another.classList.toggle('is-hiding', loading)
+    another.classList.toggle('is-hiding', loading || (another === this.clearBtn && this.inputField.isEmpty()))
     setTransition({
       element: this.container,
       className: 'is-connecting',
@@ -180,5 +222,12 @@ export default class InputSearch extends InputSearchHandle {
     // The visible placeholder is a custom element, not the native attribute,
     // so the input has no accessible name without this.
     this.input.setAttribute('aria-label', I18n.format(langPackKey, true))
+  }
+
+  // :251-255 — плюс слушатели фокуса этого класса (у оригинала они в общем `listenerSetter`)
+  public remove() {
+    super.remove()
+    if(this.onFocusIn) this.input.removeEventListener('focusin', this.onFocusIn)
+    if(this.onFocusOut) this.input.removeEventListener('focusout', this.onFocusOut)
   }
 }

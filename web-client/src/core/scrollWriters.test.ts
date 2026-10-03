@@ -86,6 +86,10 @@ const ALLOWED: Record<string, number> = {
   // гасится `cancelAnimationByKey` прямо перед записью, как у оригинала.
   'components/sidebarLeft/contactsList.solid.tsx': 1,
   'components/sectionIndex.solid.tsx': 1,
+  // components/chat/topbarSearch.solid.tsx — выпадающий список поиска по чату, порт
+  // tweb 1:1 (`topbarSearch.tsx:706` центровка цели стрелками, `:832` сброс на
+  // новую выдачу): узел — `Scrollable` (scrollable2) самого поиска, ленты он не касается.
+  'components/chat/topbarSearch.solid.tsx': 2,
 }
 
 describe('scrollTop: единственный владелец — Scrollable/ScrollSaver', () => {

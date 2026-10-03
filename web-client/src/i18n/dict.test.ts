@@ -552,9 +552,13 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // тосты пересылки (`FwdMessage*`, плюральный `FwdMessagesToChats`), проверка фактов
 // (`FactCheck{Dialog,Edited,Deleted}`, `Done`), `Message.Context.Selection.Copy`.
 // Итог: ru 1564, `plural` 50 → 51.
-// Вместе (меню ⋮ + закреп и аудио + действия): 1570 + 24 − 7 общих ключей закрепа = 1587, `plural` 53.
+// Пачка П-5 волны 7 (поиск по чату `chat/topbarSearch.solid.tsx` и лента отложенных
+// `popups/sendNow.ts`): у ru +10 ключей — tweb lang.ts `Chat.Search.{Next,Previous}Result`,
+// `Of`, `SearchAs{Chat,List}`, `Search.EmptyHashtag` и наши `Chat.SendNow.{Title,Text}[Multiple]`
+// (у оригинала — литералы, `popups/sendNow.ts:6-7`). Итог: ru 1550, `plural` 50 → 51.
+// Вместе (шапка + закреп и аудио + действия + поиск и отложенные): ru 1597, `plural` 54.
 const COMPOSITION = {
-  ru: { keys: 1587, plural: 53 },
+  ru: { keys: 1597, plural: 54 },
   uk: { keys: 829, plural: 35 },
   es: { keys: 800, plural: 34 },
   de: { keys: 801, plural: 35 },
@@ -737,8 +741,9 @@ const COMPOSITION = {
 // Пачкой П-5 волны 7 (закреп и аудиоплеер) — у ru +21 ключ (разбор — там же).
 // Пачкой П-5 «действия» — у ru +24 ключа tweb попапов закрепа, удаления, пересылки и
 // проверки фактов (разбор — там же).
+// Пачкой П-5 волны 7 — у ru +10 ключей поиска по чату и «отправить сейчас» (разбор — там же).
 const FINGERPRINT = {
-  ru: '6c387345',
+  ru: '655b7357',
   uk: 'a02f363c',
   es: '89e8ae98',
   de: '0fed7933',
