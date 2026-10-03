@@ -85,7 +85,6 @@ const DEBT: Record<string, number> = {
   'src/components/RepostStorySheet.tsx': 2,
   'src/components/StoryViewer.tsx': 4,
   'src/components/auth/cards/SignUpCard.solid.tsx': 1,
-  'src/components/group/GroupEditFlow.tsx': 3,
   'src/components/mediaViewer/collectLightboxItems.ts': 1,
   'src/components/messages/SendMediaPopup.tsx': 3,
   'src/components/peerProfile.solid.tsx': 1,

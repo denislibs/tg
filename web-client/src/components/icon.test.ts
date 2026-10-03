@@ -119,7 +119,6 @@ const ALLOWED_TSX: Record<string, number> = {
   // peerProfileAvatars.ts`, `Icon('avatarprevious'/'avatarnext', …)` через
   // ванильный `components/icon.ts` — тот самый общий модуль, единственность
   // которого пинует этот файл, счётчику здесь взяться неоткуда).
-  'components/group/GroupEditFlow.tsx': 1,
 }
 
 describe('tgico: единственный ванильный строитель глифа — components/icon.ts', () => {

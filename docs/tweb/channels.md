@@ -145,22 +145,27 @@ tweb: `sharedMediaTab` + `peerProfile`. Табы (`sharedMedia.tsx:449-462, 604-
 
 Порядок строк для broadcast, как в исходнике:
 
-| Строка | tweb | у нас (`GroupEditFlow`) |
+| Строка | tweb | у нас (`editChat.solid.tsx`) |
 |---|---|---|
-| аватар · название · описание | ✅ | ✅ |
+| аватар · название · описание | ✅ | ✅ (сеть — по угловой галочке, как у tweb) |
 | Channel Type (публичный/приватный, username, ссылка) | ✅ | ✅ |
 | Invite Links | ✅ | ✅ |
-| Subscribe Requests | ✅ (`SubscribeRequests`) | 🟡 API есть, отдельного экрана заявок канала не видно |
-| Reactions | ✅ | ✅ |
-| Direct Messages (монофорум) | ✅ (`ChannelDirectMessages.*`) | ❌ |
-| Discussion | ✅ | ✅ |
-| Recent Actions (админ-лог) | ✅ — таб `adminRecentActions` **или** отдельный тип чата `ChatType.Logs` | ❌ полностью |
-| Administrators | ✅ | ✅ |
-| Subscribers | ✅ | ✅ |
-| Removed Users | ✅ | ✅ |
-| Channel Autotranslation | ✅, гейт по `channel_autotranslation_level_min`, иначе тост со ссылкой на буст (`editChat.tsx:594-637`) | ❌ |
-| Sign Messages + Show Profiles | ✅ (`editChat.tsx:640-676`) | 🟡 тумблеры есть, на рендер ленты не влияют |
-| Delete Channel | ✅ | ✅ |
+| Subscribe Requests | ✅ (`SubscribeRequests`) | ❌ скрыта до П-1 (Б-41) |
+| Reactions | ✅ | ❌ скрыта до П-1 (Б-39) |
+| Direct Messages (монофорум) | ✅ (`ChannelDirectMessages.*`) | ❌ нет предмета (Б-105) |
+| Discussion | ✅ | ❌ скрыта до П-1 (Б-40) |
+| Recent Actions (админ-лог) | ✅ — таб `adminRecentActions` **или** отдельный тип чата `ChatType.Logs` | ❌ нет предмета (Б-105) |
+| Administrators | ✅ | ❌ скрыта до П-1 (Б-41) |
+| Subscribers | ✅ | ❌ скрыта до П-1 (Б-41) |
+| Removed Users | ✅ | ❌ скрыта до П-1 (Б-41) |
+| Channel Autotranslation | ✅, гейт по `channel_autotranslation_level_min`, иначе тост со ссылкой на буст (`editChat.tsx:875-893`) | ❌ нет бэкенда (Б-106) |
+| Sign Messages + Show Profiles | ✅ (`editChat.tsx:895-922`) | 🟡 тумблеры есть, на рендер ленты не влияют |
+| Delete Channel | ✅ | ✅ (попап `popups/deleteDialog.ts`) |
+
+Вкладка — `AppEditChatTab` (`web-client/src/components/sidebarRight/tabs/editChat.solid.tsx`,
+задача 0б-1 волны 7, шаг К-5): порт `editChat.tsx` 812502980, у группы ещё «Разрешения»,
+тумблер тем (`setForum`) и «История чата»; права строк — `hasRights` с действиями
+`change_type`/`toggle_forum`/`change_permissions` (`core/peers/rights.ts`). Расхождения — шапка файла.
 
 `Channel Type` внутри (`chatType.tsx`, 812502980): радио приватный/публичный, приватная
 ссылка + Revoke (попап `revoke-link`), публичный username (`UsernameInputField`, голова `t.me/`)
@@ -173,10 +178,9 @@ tweb: `sharedMediaTab` + `peerProfile`. Табы (`sharedMedia.tsx:449-462, 604-
 Занятость имени — ручкой чата `GET /chats/{id}/username/available` (`groups.checkUsername`,
 порт `channels.checkUsername`; имена пользователей и чатов — одно пространство).
 Нет на бэкенде (шапка вкладки): вступление и бот-привратник (О-15), **`noforwards` ❌** (О-16),
-коллекция имён `usernames` и покупка имени (О-17). Открывает её React-редактор
-`group/GroupEditFlow.tsx` мостом `appSidebarRight.createTab(AppChatTypeTab).open(…)`
-(ВРЕМЕННО до 0б-1: пока вкладка открыта, React-оверлей спрятан — он лежит соседом
-вкладок в `.sidebar-slider` с `z-index: 60`); React-экран `ChatTypeScreen.tsx` снесён.
+коллекция имён `usernames` и покупка имени (О-17). Открывает её вкладка «Изменить»
+(`editChat.solid.tsx`) родным `createTab(AppChatTypeTab).open(…)`; React-экран
+`ChatTypeScreen.tsx` снесён.
 
 `Invite Links` (`chatInviteLinks.tsx` + `chatInviteLink.tsx` + `editChatInviteLink.tsx`,
 общее — `chatInviteLinkShared.ts`, 812502980): заставка `UtyanLinks`, основная ссылка
@@ -197,8 +201,8 @@ tweb: `sharedMediaTab` + `peerProfile`. Табы (`sharedMedia.tsx:449-462, 604-
 ссылка без параметров, общий с вкладкой типа `getChatInviteLink`), ссылки других админов
 (О-121), заявки по ссылке (О-122), подписки за звёзды (О-123), страницы и поиск вступивших
 (О-124). Карточки создателей и вступивших сервер теперь кладёт в вектор `users` ответов
-(`group_handler.go::ListInvites`/`InviteImporters`). Открывает список React-редактор мостом
-(ВРЕМЕННО до 0б-1, тот же шов с оверлеем); React-экран `InviteLinkScreens.tsx` снесён.
+(`group_handler.go::ListInvites`/`InviteImporters`). Открывает список вкладка «Изменить»
+(`editChat.solid.tsx`); React-экран `InviteLinkScreens.tsx` снесён.
 QR из этих вкладок tweb не открывает.
 
 ## 7. Права админа

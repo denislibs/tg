@@ -124,8 +124,7 @@ export function getSharedMediaTitleKey(options: {
  * tweb `:131-163` (`toggleEditBtn`) — виден ли карандаш «Изменить» (без
  * расхождения 4 вид вкладки решал бы клик). Канал — любой админ или право
  * `change_info` (зеркало tdesktop `EditPeerInfoBox::Available`), группа —
- * `change_info` или `change_permissions` (у нас — `ban_users`, та же ветка
- * `hasRights`). Пользователь — `appUsersManager.canEdit`: не я и контакт
+ * `change_info` или `change_permissions`. Пользователь — `appUsersManager.canEdit`: не я и контакт
  * (`bot_can_edit` на проводе нет; бот — расхождение 4).
  */
 export async function canEditPeer(peerId: PeerId, threadId: number | undefined, isContact: (peerId: PeerId) => Promise<boolean>): Promise<boolean> {
@@ -142,7 +141,7 @@ export async function canEditPeer(peerId: PeerId, threadId: number | undefined, 
     return hasRights(chat, 'just_admin') || hasRights(chat, 'change_info')
   }
 
-  return hasRights(chat, 'change_info') || hasRights(chat, 'ban_users')
+  return hasRights(chat, 'change_info') || hasRights(chat, 'change_permissions')
 }
 
 const SharedMedia = () => {

@@ -35,10 +35,12 @@ import type { Chat, ChatAdminRights, ChatBannedRights } from './peer'
  * Не объявлены (предмета нет ни бита, ни механики): `anonymous`, `manage_call`,
  * `manage_topics`, `manage_ranks`, `post/edit/delete_stories`,
  * `manage_direct_messages`, гранулярные запреты новых слоёв
- * (`send_photos`/`send_videos`/…/`view_messages`), а также `change_type`/
- * `toggle_forum`/`create_giveaway`. `delete_chat` (только создатель,
- * `hasRights.ts:113-118`) — потребитель меню диалога и попап удаления чата
- * (`core/peers/dialogType.ts`, `components/popups/deleteDialog.ts`).
+ * (`send_photos`/`send_videos`/…/`view_messages`), а также `create_giveaway`.
+ * `delete_chat` (только создатель, `hasRights.ts:113-118`) — потребитель меню
+ * диалога и попап удаления чата (`core/peers/dialogType.ts`,
+ * `components/popups/deleteDialog.ts`); `change_type`/`toggle_forum` (тоже
+ * только создатель) и `change_permissions` (`ban_users` админа) — редактор чата
+ * (`sidebarRight/tabs/editChat.solid.tsx`).
  *
  * `view_participants` — третье синтетическое действие: бита у него нет и в
  * оригинале, ответ складывается из вида чата и флагов (`hasRights.ts:140-142`).
@@ -59,6 +61,9 @@ export type ChatRights =
   | 'just_admin'
   | 'view_participants'
   | 'delete_chat'
+  | 'change_type'
+  | 'toggle_forum'
+  | 'change_permissions'
 
 /**
  * Порт `hasRights(chat, action, rights?)`. Ветвление и порядок проверок — как в
@@ -131,6 +136,7 @@ export function hasRights(
       return isAdmin && !!myFlags[action]
 
     case 'ban_users':
+    case 'change_permissions':
       return isAdmin && !!myFlags.ban_users
 
     case 'just_admin':
@@ -138,6 +144,8 @@ export function hasRights(
 
     // * only creator can do that (`hasRights.ts:113-118`) — создатель ответил
     // «да» выше
+    case 'toggle_forum':
+    case 'change_type':
     case 'delete_chat':
       return false
 
@@ -171,18 +179,6 @@ const MEMBER_PERM_FLAGS = [
 export const ALL_MEMBER_PERMS = 31
 
 /**
- * Битмаск «что обычному участнику МОЖНО» — из `chat.default_banned_rights`.
- *
- * ⚠ ЗДЕСЬ ЖИВЁТ ИНВЕРСИЯ. Прежнее поле витрины `default_permissions` было
- * «что можно», конструктор схемы — «что НЕЛЬЗЯ»: выставленный флаг означает
- * запрет. Прочитать его как разрешения значит перевернуть права всей группы
- * задом наперёд, поэтому знак читается ровно в одной функции.
- *
- * Карточки чата ещё нет (или запретов у него нет вовсе) — «можно всё»: то же
- * значение по умолчанию, что и у колонки `chats.default_permissions` (31), и
- * тот же оптимистичный ответ, что был у прежнего `?? 31`.
- */
-/**
  * Битмаск «что участнику НЕЛЬЗЯ» — из `chatBannedRights` персонального
  * ограничения. Та же таблица флагов, что и выше, но БЕЗ инверсии: выставленный
  * флаг конструктора и есть запрет.
@@ -194,15 +190,20 @@ export function deniedMask(pFlags: Record<string, true> | undefined): number {
   return out
 }
 
-export function allowedMemberPerms(chat: Chat | undefined): number {
-  return allowedFromBannedRights(chat && (chat._ === 'chat' || chat._ === 'channel') ? chat.default_banned_rights : undefined)
-}
-
 /**
- * Тот же перевод для ГОТОВОГО набора запретов — его собирает вкладка прав группы
- * (`ChatPermissions.takeOut`, `sidebarRight/tabs/groupPermissions/sharedPermissions.ts`),
- * а ручка `PUT /chats/{id}/permissions` ждёт наш битмаск «что можно»
+ * Битмаск «что обычному участнику МОЖНО» из набора запретов — его собирает
+ * вкладка прав группы (`ChatPermissions.takeOut`,
+ * `sidebarRight/tabs/groupPermissions/sharedPermissions.ts`), а ручка
+ * `PUT /chats/{id}/permissions` ждёт наш битмаск «что можно»
  * (`groupsManager.editChatDefaultBannedRights`).
+ *
+ * ⚠ ЗДЕСЬ ЖИВЁТ ИНВЕРСИЯ. Прежнее поле витрины `default_permissions` было
+ * «что можно», конструктор схемы — «что НЕЛЬЗЯ»: выставленный флаг означает
+ * запрет. Прочитать его как разрешения значит перевернуть права всей группы
+ * задом наперёд, поэтому знак читается ровно в одной функции.
+ *
+ * Запретов нет вовсе — «можно всё»: то же значение по умолчанию, что и у
+ * колонки `chats.default_permissions` (31).
  */
 export function allowedFromBannedRights(banned: ChatBannedRights | undefined): number {
   if (!banned) return ALL_MEMBER_PERMS
