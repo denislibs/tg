@@ -685,6 +685,13 @@ export default class Chat extends EventListenerBase<{
     return isAnyGroupPeer(peerId)
   }
 
+  /** tweb `:1434-1441` */
+  public isPinnedMessagesNeeded() {
+    // A forum topic (and the view-as-messages mode) is a `Chat` like any other,
+    // so the type alone decides.
+    return this.type === ChatType.Chat
+  }
+
   /** tweb `:1333-1340` — расхождение 4 шапки. */
   public initSearch(_options: { query?: string, filterPeerId?: PeerId } = {}): void {}
 

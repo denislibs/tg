@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 49,
+      "version": 50,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -247,6 +247,10 @@
         {
           "key": "AttachVideo",
           "value": "Video"
+        },
+        {
+          "key": "AudioUnknownArtist",
+          "value": "Unknown artist"
         },
         {
           "key": "AuthSessions.IncompleteAttempts",
@@ -972,6 +976,10 @@
           "value": "Comments"
         },
         {
+          "key": "Chat.Confirm.Unpin",
+          "value": "Would you like to unpin this message?"
+        },
+        {
           "key": "Chat.Context.LinkCopiedPrivate",
           "value": "Link copied. This link will only work for chat members."
         },
@@ -1090,6 +1098,10 @@
           "value": "owner"
         },
         {
+          "key": "Chat.Pinned.DontShow",
+          "value": "Hide Pinned Messages"
+        },
+        {
           "key": "Chat.Poll.MembersVoted",
           "forms": {
             "one_value": "%d member voted",
@@ -1201,6 +1213,13 @@
         {
           "key": "Chat.UnpinAll.Text",
           "value": "Are you sure you want to unpin all messages?"
+        },
+        {
+          "key": "Chat.UnpinAllMessagesConfirmation",
+          "forms": {
+            "one_value": "Do you want to unpin %d message in this chat?",
+            "other_value": "Do you want to unpin all %d messages in this chat?"
+          }
         },
         {
           "key": "Chat.VoiceChat.JoinLink.Participants_ZeroValueHolder",
@@ -4087,8 +4106,36 @@
           "value": "Picture-in-Picture"
         },
         {
+          "key": "PinAlsoFor",
+          "value": "Also pin for %1$s"
+        },
+        {
           "key": "PinFolderLimitReached",
           "value": "Sorry, you can't pin any more chats to the top."
+        },
+        {
+          "key": "PinMessage",
+          "value": "Pin"
+        },
+        {
+          "key": "PinMessageAlert",
+          "value": "Pin this message in the group?"
+        },
+        {
+          "key": "PinMessageAlertChannel",
+          "value": "Do you want to pin this message in this channel?"
+        },
+        {
+          "key": "PinMessageAlertChat",
+          "value": "Do you want to pin this message at the top of the chat?"
+        },
+        {
+          "key": "PinMessageAlertTitle",
+          "value": "Pin message"
+        },
+        {
+          "key": "PinNotify",
+          "value": "Notify all members"
         },
         {
           "key": "PinnedJoinCall",
@@ -4109,6 +4156,13 @@
         {
           "key": "PinnedMessages",
           "value": "Pinned Messages"
+        },
+        {
+          "key": "PinnedMessagesCount",
+          "forms": {
+            "one_value": "Pinned Message",
+            "other_value": "%1$d Pinned Messages"
+          }
         },
         {
           "key": "Pip.ActiveHint",
@@ -4165,6 +4219,22 @@
         {
           "key": "Popup.Attach.RemoveSpoilers",
           "value": "Remove all spoilers"
+        },
+        {
+          "key": "Popup.Unpin.AllTitle",
+          "value": "Unpin all messages"
+        },
+        {
+          "key": "Popup.Unpin.Hide",
+          "value": "Hide"
+        },
+        {
+          "key": "Popup.Unpin.HideDescription",
+          "value": "Do you want to hide the pinned message bar? It wil stay hidden until a new message is pinned."
+        },
+        {
+          "key": "Popup.Unpin.HideTitle",
+          "value": "Hide pinned messages"
         },
         {
           "key": "PostStatistics",
@@ -4886,6 +4956,10 @@
         {
           "key": "SavedTagFilterByTag",
           "value": "Filter by Tag"
+        },
+        {
+          "key": "Schedule.Repeat",
+          "value": "Repeat"
         },
         {
           "key": "Schedule.SendOn",
@@ -6051,6 +6125,10 @@
           "value": "Unpin"
         },
         {
+          "key": "UnpinMessageAlertTitle",
+          "value": "Unpin message"
+        },
+        {
           "key": "UnreadMessages",
           "value": "Unread Messages"
         },
@@ -6374,7 +6452,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 49,
+      "version": 50,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -12782,6 +12860,88 @@
         {
           "key": "FilterNoChatsToDisplayInfo",
           "value": "Сейчас в этой папке нет чатов."
+        },
+        {
+          "key": "PinMessageAlertTitle",
+          "value": "Закрепить сообщение"
+        },
+        {
+          "key": "PinMessageAlert",
+          "value": "Закрепить это сообщение в группе?"
+        },
+        {
+          "key": "PinMessageAlertChannel",
+          "value": "Закрепить это сообщение в канале?"
+        },
+        {
+          "key": "PinMessageAlertChat",
+          "value": "Закрепить это сообщение в начале чата?"
+        },
+        {
+          "key": "PinNotify",
+          "value": "Уведомить всех участников"
+        },
+        {
+          "key": "PinAlsoFor",
+          "value": "Закрепить также для %1$s"
+        },
+        {
+          "key": "PinMessage",
+          "value": "Закрепить"
+        },
+        {
+          "key": "UnpinMessageAlertTitle",
+          "value": "Открепить сообщение"
+        },
+        {
+          "key": "Chat.Confirm.Unpin",
+          "value": "Открепить это сообщение?"
+        },
+        {
+          "key": "Popup.Unpin.AllTitle",
+          "value": "Открепить все сообщения"
+        },
+        {
+          "key": "Chat.UnpinAllMessagesConfirmation",
+          "forms": {
+            "one_value": "Открепить %d сообщение в этом чате?",
+            "few_value": "Открепить все %d сообщения в этом чате?",
+            "many_value": "Открепить все %d сообщений в этом чате?",
+            "other_value": "Открепить все %d сообщения в этом чате?"
+          }
+        },
+        {
+          "key": "Popup.Unpin.HideTitle",
+          "value": "Скрыть закреплённые сообщения"
+        },
+        {
+          "key": "Popup.Unpin.HideDescription",
+          "value": "Скрыть панель закреплённых сообщений? Она не появится, пока не закрепят новое сообщение."
+        },
+        {
+          "key": "Popup.Unpin.Hide",
+          "value": "Скрыть"
+        },
+        {
+          "key": "Chat.Pinned.DontShow",
+          "value": "Скрыть закреплённые"
+        },
+        {
+          "key": "PinnedMessagesCount",
+          "forms": {
+            "one_value": "%1$d закреплённое сообщение",
+            "few_value": "%1$d закреплённых сообщения",
+            "many_value": "%1$d закреплённых сообщений",
+            "other_value": "%1$d закреплённого сообщения"
+          }
+        },
+        {
+          "key": "AudioUnknownArtist",
+          "value": "Неизвестный исполнитель"
+        },
+        {
+          "key": "Schedule.Repeat",
+          "value": "Повторять"
         }
       ]
     },

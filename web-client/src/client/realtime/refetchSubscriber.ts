@@ -9,7 +9,7 @@ import rootScope from '@lib/rootScope'
 import { RT, type PinMessageEvt } from '../../core/realtime/events'
 import { getPeerId } from '../../core/peers/peerId'
 import { useChatsStore } from '../../stores/chatsStore'
-import { usePinsStore } from '../../stores/pinsStore'
+import { onPinnedMessagesUpdate } from '../../core/pinnedMessages'
 import { applyFolderUpdate, type FolderUpdateEvt } from '../../stores/foldersStore'
 import type { Managers } from '../bootstrap'
 
@@ -44,13 +44,14 @@ export function __resetChatsReloadTimerForTests(): void {
 }
 
 export function registerRefetchSubscriber(managers: Managers): void {
-  // Pin/unpin: перечитать пины чата (usePinnedBar читает из стора).
+  // Pin/unpin: сбросить кэш закрепов пира и объявить `peer_pinned_messages` (tweb
+  // `resetPinnedMessagesCache`, appMessagesManager.ts:14290) — плашка и экран закрепов
+  // перечитают список сами.
   rootScope.addEventListener(RT.pinMessage, (raw) => {
     const e = raw as PinMessageEvt
     // Пир кадра — конструктор `Peer` (как у прочтения): ключ считает getPeerId,
     // а не сервер числом.
-    const peerId = getPeerId(e.peer)
-    void managers.messages.listPins(peerId).then((p) => usePinsStore.getState().setPins(peerId, p))
+    onPinnedMessagesUpdate(getPeerId(e.peer), e.messages, !!e.pFlags?.pinned)
   })
   // Метаданные чата сменились (title/photo/права/участники/…). Бэкенд шлёт
   // АБСОЛЮТНЫЙ снимок (backend chat_update.go:18-42). Карточка чата (число

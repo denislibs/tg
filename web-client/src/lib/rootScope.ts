@@ -257,6 +257,14 @@ export type BroadcastEvents = {
   // колонку открыла/закрыла эта вкладка.
   'right_sidebar_toggle': [boolean]
 
+  // ── закрепы (порт tweb rootScope.ts:50-51). Местное (`dispatchEventSingle`):
+  // `peer_pinned_messages` вкладка выводит из своего кадра `rt:pin_message`, сбросив
+  // кэш закрепов главного потока (`core/pinnedMessages.ts::onPinnedMessagesUpdate`);
+  // `peer_pinned_hidden` — пользователь скрыл плашку в этой вкладке (`hidePinnedMessages`).
+  // Подписчики — плашка закрепа (`chat/pinnedMessage.solid.tsx`), лента экрана закрепов.
+  'peer_pinned_messages': [{ peerId: PeerId; threadId?: number; mids?: number[]; pinned?: boolean; unpinAll?: true }]
+  'peer_pinned_hidden': [{ peerId: PeerId; threadId?: number; maxId: number }]
+
   // ── ширина левой колонки (порт tweb rootScope.ts:238, отправители —
   // helpers/installColumnResize.ts:89, components/sidebarLeft/index.ts:574).
   // Местное (`dispatchEventSingle`): колонку тянут в этой вкладке. Подписчик — ряд
