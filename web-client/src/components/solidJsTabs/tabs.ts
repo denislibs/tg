@@ -25,6 +25,7 @@ import type { LangPackKey } from '@/lang'
 import type { MaybePromise } from '@types'
 import type { PasscodeActions } from '@lib/passcode/actions'
 import type SidebarSlider from '@components/slider'
+import { getParticipantPeerId } from '@core/peers/participant'
 
 // tweb :327-329 — вкладка получает УЖЕ загруженный список сессий, а не ходит
 // за ним сама: запрос делает открывающая сторона (корень настроек —
@@ -285,6 +286,7 @@ type AppAddMembersTabPayload = {
   skippable: boolean
   selectedPeerIds?: PeerId[]
   peerType?: import('@components/appSelectPeers.solid').SelectSearchPeerType[]
+  channelParticipantsPeerId?: PeerId
   exceptSelf?: boolean
   filterPeerTypeBy?: import('@components/appSelectPeers.solid').IsPeerType[]
   attachToPromise?: (promise: Promise<unknown>) => void
@@ -784,3 +786,74 @@ export const AppArchivedTab =
       (this as ArchivedTabHooks)._onCloseAfterTimeout?.()
     },
   })
+
+// ── П-1 0б-7: админы, участники, удалённые, заявки, права участника ──────────
+// tweb :450-456, :464-468, :476-480, :494-501, :543-590. Вкладки правой колонки
+// `sidebarRight/tabs/{removedUsers,chatRequests,chatMembers,chatAdministrators,
+// userPermissions}.solid.tsx`; открывает их редактор чата (`editChat`), меню
+// участника (`createParticipantContextMenu`) и исключения прав группы.
+// Сообществ у нас нет (О-5): полезная нагрузка — только ветка `{chatId}`, а у
+// прав участника — без `addingBot` (добавления бота админом нет, бэкенд).
+type AppRemovedUsersTabPayload = {
+  chatId: ChatId
+}
+
+export const AppRemovedUsersTab =
+  scaffoldSolidJSTabEventable<AppRemovedUsersTabPayload>({
+    title: 'ChannelBlacklist',
+    getComponentModule: () => import('../sidebarRight/tabs/removedUsers.solid'),
+  })
+
+export const AppChatRequestsTab =
+  scaffoldSolidJSTabEventable<ChatId, { finish: (changedLength: number) => void }>({
+    title: 'MemberRequests',
+    getComponentModule: () => import('../sidebarRight/tabs/chatRequests.solid'),
+  })
+
+export const AppChatMembersTab =
+  scaffoldSolidJSTabEventable<ChatId>({
+    title: 'GroupMembers',
+    getComponentModule: () => import('../sidebarRight/tabs/chatMembers.solid'),
+  })
+
+type AppChatAdministratorsTabPayload = {
+  chatId: ChatId
+}
+
+export const AppChatAdministratorsTab =
+  scaffoldSolidJSTabEventable<AppChatAdministratorsTabPayload>({
+    title: 'PeerInfo.Administrators',
+    getComponentModule: () => import('../sidebarRight/tabs/chatAdministrators.solid'),
+  })
+
+type AppUserPermissionsTabPayload = {
+  participant: import('@core/peers/participant').ChannelParticipant,
+  chatId: ChatId,
+  userId: UserId,
+  editingAdmin?: boolean,
+  initialAdminRights?: import('@core/peers/peer').ChatAdminRights,
+  existingAdminRights?: import('@core/peers/peer').ChatAdminRights
+}
+
+export const AppUserPermissionsTab =
+  scaffoldSolidJSTabEventable<AppUserPermissionsTabPayload>({
+    title: (p) => p.editingAdmin ? 'EditAdmin' : 'UserRestrictions',
+    getComponentModule: () => import('../sidebarRight/tabs/userPermissions.solid'),
+  })
+
+// Replaces the legacy AppUserPermissionsTab.openTab static.
+export function openUserPermissionsTab(
+  slider: SidebarSlider,
+  chatId: ChatId,
+  participant: import('@core/peers/participant').ChannelParticipant,
+  isAdmin?: boolean,
+  options?: Pick<AppUserPermissionsTabPayload, 'initialAdminRights' | 'existingAdminRights'>,
+) {
+  void slider.createTab(AppUserPermissionsTab).open({
+    participant,
+    chatId,
+    userId: getParticipantPeerId(participant) as UserId,
+    editingAdmin: isAdmin,
+    ...options,
+  })
+}

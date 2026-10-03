@@ -39,8 +39,9 @@
  *  6. `profile-container` на вкладку ставит этот компонент, а не `PeerProfile`
  *     (tweb `peerProfile.tsx:183`): наш `PeerProfile` монтирует и корень
  *     настроек, у которого класса нет.
- *  7. Меню участника: «Назначить админом»/«Изменить права»/«Ограничить» скрыты
- *     — вкладки прав участника нет (Б-41), `openUserPermissions` не передаётся.
+ *  7. Меню участника: права открывает колбэк `openUserPermissions` →
+ *     `openUserPermissionsTab` со слайдером вкладки (0б-7; у tweb слайдер берёт
+ *     сам `AppSearchSuper`, его расхождение 33).
  *  8. Прежний корень профиля гасится на повторном `fillProfileElements` (у
  *     оригинала — только на смерти вкладки): вкладка на другого пира у нас
  *     та же, что и у tweb, — новая (`chat.ts:1003`), но второй корень в одной
@@ -63,7 +64,7 @@ import PeerProfileAvatars from '@components/peerProfileAvatars'
 import { useCollapsable } from '@helpers/solid/useCollapsable'
 import { ADDITIONAL_OFFSET, HEADER_H, isSharedMediaReached, shouldForceFold } from '@components/userInfo/helpers'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
-import { AppEditChatTab, AppEditContactTab } from '@components/solidJsTabs/tabs'
+import { AppEditChatTab, AppEditContactTab, openUserPermissionsTab } from '@components/solidJsTabs/tabs'
 import type SidebarSlider from '@components/slider'
 import type AppSharedMediaTab from './sharedMediaTab'
 import rootScope from '@lib/rootScope'
@@ -516,6 +517,10 @@ const SharedMedia = () => {
     },
     setInnerPeer: ({ peerId, lastMsgId, threadId }) => {
       void appImManager.setInnerPeer({ peerId, lastMsgId, threadId })
+    },
+    // tweb `createParticipantContextMenu.ts:36-38` — расхождение 7
+    openUserPermissions: (participant, isAdmin) => {
+      openUserPermissionsTab(tab.slider as SidebarSlider, toChatId(tab.peerId!), participant, isAdmin)
     },
     scrollOffset: OFFSET,
   })

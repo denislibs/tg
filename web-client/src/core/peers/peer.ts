@@ -318,6 +318,9 @@ export interface ChatAdminRights {
 export interface ChatBannedRights {
   _: 'chatBannedRights'
   pFlags?: Partial<{
+    /** «выгнан» — сервер его не производит (выгнанный — `channelParticipantBanned`
+     *  с `left`), ставит клиент на записи: `groupsManager.kickFromChannel`. */
+    view_messages: true
     send_messages: true
     send_media: true
     invite_users: true
@@ -460,6 +463,12 @@ export interface ChannelFull {
   unread_count: number
   chat_photo: MyPhoto | null
   participants_count?: number
+  /** `admins_count:flags.1?int`, `kicked_count:flags.2?int`,
+   *  `requests_pending:flags2.17?int` — сервер их пока не производит (Б-115):
+   *  счётчики строк редактора чата и строка «Заявки» (`editChat.solid.tsx`). */
+  admins_count?: number
+  kicked_count?: number
+  requests_pending?: number
   pinned_msg_id?: number
   /** чат обсуждения канала; отсутствует — обсуждения нет */
   linked_chat_id?: number

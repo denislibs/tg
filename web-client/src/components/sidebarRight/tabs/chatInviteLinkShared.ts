@@ -25,10 +25,10 @@
  *     фильтр `admin_id` у `getExportedChatInvites`): `adminsInvites` — `false`
  *     (`:150`, как у оригинала без права `change_type`), `adminId` у выборок не
  *     передаётся.
- *  3. (О-122) Заявок по ссылке нет на проводе (`requested` у ссылки, выборка
- *     `requested: true` у `getChatInviteImporters`) — параметр `requested`
- *     загрузчика не портирован, как и `deleteImporter` (`:132-135`: его зовёт
- *     только список заявок `chatRequests.tsx`, 0б-7).
+ *  3. (О-122) Заявок ПО ССЫЛКЕ нет на проводе (`requested` у ссылки). Заявки
+ *     чата целиком (`requested` без ссылки, вкладка «Заявки»
+ *     `chatRequests.solid.tsx`, 0б-7) — ручка `/join_requests`
+ *     (`groups.getChatInviteImporters`), `deleteImporter` (`:132-135`) портирован.
  *  4. (О-124) Вступившие — одна страница сервера (первые 50, без смещения и
  *     поиска `q`): `load` отдаёт `isEnd: true` сразу, иначе селектор переспросил
  *     бы ту же страницу.
@@ -129,11 +129,13 @@ export class ChatInviteLink extends InviteLink {
 export function getImportersLoader({
   chatId,
   managers,
+  requested,
   link,
 }: {
   chatId: ChatId,
   managers: Managers,
-  link: string
+  requested?: boolean,
+  link: string | undefined
 }) {
   const importers: ChatInviteImporter[] = []
   const importersMap: Map<PeerId, ChatInviteImporter> = new Map()
@@ -145,7 +147,7 @@ export function getImportersLoader({
       lastQuery = q
     }
 
-    const result = await managers.groups.getChatInviteImporters({ chatId, link })
+    const result = await managers.groups.getChatInviteImporters({ chatId, link, requested })
 
     importers.push(...result.importers)
 
@@ -159,10 +161,16 @@ export function getImportersLoader({
     }
   }
 
+  const deleteImporter = (peerId: PeerId) => {
+    importers.splice(importers.findIndex((importer) => toPeerId(importer.user_id, false) === peerId), 1)
+    importersMap.delete(peerId)
+  }
+
   return {
     importers,
     importersMap,
     load,
+    deleteImporter,
   }
 }
 

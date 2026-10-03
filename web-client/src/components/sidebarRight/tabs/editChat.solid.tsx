@@ -29,11 +29,13 @@
  *     базовых групп сервер не производит, любая наша группа — уже `channel`
  *     (как у `chatType.solid.tsx`, расхождение 4). Поэтому вместо ресурса по
  *     сигналу `chatId` — один запрос.
- *  3. Строки во вкладки, которых ещё нет, скрыты до пачки П-1: заявки
- *     (`AppChatRequestsTab`, :700-708) и админы/участники/удалённые (:849-873) —
- *     Б-41, реакции (:710-718) — Б-39, обсуждение (:743-761) — Б-40. Условие
- *     показа секции (`hasMainSettings`, :230-239) собрано из оставшихся строк,
- *     иначе у админа без них осталась бы пустая секция с подписью.
+ *  3. Строки во вкладки, которых ещё нет, скрыты до пачки П-1: реакции
+ *     (:710-718) — Б-39, обсуждение (:743-761) — Б-40. Условие показа секции
+ *     (`hasMainSettings`, :230-239) собрано из оставшихся строк, иначе у админа
+ *     без них осталась бы пустая секция с подписью. Заявки, админы, участники и
+ *     удалённые (:700-708, :849-873) — с 0б-7; их счётчиков (`admins_count`,
+ *     `kicked_count`, `requests_pending`) сервер не производит (Б-115): строка
+ *     «Заявки» поэтому не показывается, админов — «1», удалённых — «нет».
  *  4. Строк без предмета у нас нет совсем (Б-105): личные сообщения канала
  *     (монофорум, :720-731), приветственные сообщения (layer 229, :377-406,
  *     :763-771), «Недавние действия» (админ-лог, :773-790).
@@ -77,13 +79,18 @@ import showDeleteDialogPopup from '@components/popups/deleteDialog'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
 import { usePromiseCollector } from '@components/solidJsTabs/promiseCollector.solid'
 import {
+  AppChatAdministratorsTab,
   AppChatInviteLinksTab,
+  AppChatMembersTab,
+  AppChatRequestsTab,
   AppChatTypeTab,
   AppGroupPermissionsTab,
+  AppRemovedUsersTab,
   type AppEditChatTab,
 } from '@components/solidJsTabs/tabs'
 import type SidebarSlider from '@components/slider'
 import cancelEvent from '@helpers/dom/cancelEvent'
+import numberThousandSplitter from '@helpers/number/numberThousandSplitter'
 import { getMiddleware } from '@helpers/middleware'
 import { subscribeOn } from '@helpers/solid/subscribeOn'
 import { i18n, type LangPackKey } from '@lib/langPack'
@@ -175,6 +182,8 @@ function EditChatForm(props: { data: EditChatData }) {
   const isBroadcast = () => !!channel().pFlags?.broadcast
   const isForum = () => !!channel().pFlags?.forum
   const isAdmin = () => hasRights(chat(), 'just_admin')
+  const isChannel = () => chat()._ === 'channel'
+  const canInviteUsers = () => hasRights(chat(), 'invite_users')
   const canChangeType = () => hasRights(chat(), 'change_type')
   const canChangePermissions = () => hasRights(chat(), 'change_permissions')
   const canToggleForum = () => hasRights(chat(), 'toggle_forum')
@@ -205,6 +214,7 @@ function EditChatForm(props: { data: EditChatData }) {
   const hasMainSettings = createMemo(() => {
     return canChangeType() ||
       canManageInviteLinks() ||
+      (canInviteUsers() && isAdmin()) ||
       (canChangePermissions() && !isBroadcast()) ||
       showTopics()
   })
@@ -223,6 +233,19 @@ function EditChatForm(props: { data: EditChatData }) {
     return PERMISSION_FLAGS.reduce((count, flag) => {
       return count + +hasRights(chat(), flag, chat().default_banned_rights)
     }, 0) + '/' + PERMISSION_FLAGS.length
+  })
+
+  // :303-321 (у базовой группы — `chatParticipants`; базовых групп нет, расхождение 2)
+  const administratorsCount = createMemo(() => {
+    const count = chatFull().admins_count
+    return count || 1
+  })
+  const membersCount = createMemo(() => {
+    return numberThousandSplitter(chatFull().participants_count ?? 0)
+  })
+  const removedUsersSubtitle = createMemo(() => {
+    const count = chatFull().kicked_count || 0
+    return count ? numberThousandSplitter(count) : i18n('NoBlockedUsers')
   })
 
   const [topics, setTopics] = createSignal(isForum())
@@ -466,8 +489,17 @@ function EditChatForm(props: { data: EditChatData }) {
             </Row>
           </Show>
 
-          {/* Б-41 — заявки (:700-708); Б-39 — реакции (:710-718); Б-105 — личные
-              сообщения канала (:720-731) */}
+          <Show when={canInviteUsers() && isAdmin() && !!chatFull().requests_pending}>
+            <Row clickable={() => {
+              void slider.createTab(AppChatRequestsTab).open(chatId())
+            }}>
+              <Row.Icon icon="adduser" />
+              <Row.Title>{i18n(isBroadcast() ? 'SubscribeRequests' : 'MemberRequests')}</Row.Title>
+              <Row.Subtitle>{chatFull().requests_pending}</Row.Subtitle>
+            </Row>
+          </Show>
+
+          {/* Б-39 — реакции (:710-718); Б-105 — личные сообщения канала (:720-731) */}
 
           <Show when={canChangePermissions() && !isBroadcast()}>
             <Row clickable={() => {
@@ -502,8 +534,35 @@ function EditChatForm(props: { data: EditChatData }) {
         </Section>
       </Show>
 
-      {/* Б-106 — доходы (:812-816), стикеры группы (:818-847); Б-41 — админы,
-          участники, удалённые (:849-873); Б-106 — автоперевод (:875-893) */}
+      {/* Б-106 — доходы (:812-816), стикеры группы (:818-847) */}
+
+      <Section>
+        <Row clickable={() => {
+          void slider.createTab(AppChatAdministratorsTab).open({ chatId: chatId() })
+        }}>
+          <Row.Icon icon="admin_filled" />
+          <Row.Title>{i18n('PeerInfo.Administrators')}</Row.Title>
+          <Row.Subtitle>{administratorsCount()}</Row.Subtitle>
+        </Row>
+        <Row clickable={() => {
+          void slider.createTab(AppChatMembersTab).open(chatId())
+        }}>
+          <Row.Icon icon="newgroup_filled" />
+          <Row.Title>{i18n(isBroadcast() ? 'PeerInfo.Subscribers' : 'GroupMembers')}</Row.Title>
+          <Row.Subtitle>{membersCount()}</Row.Subtitle>
+        </Row>
+        <Show when={isChannel()}>
+          <Row clickable={() => {
+            void slider.createTab(AppRemovedUsersTab).open({ chatId: chatId() })
+          }}>
+            <Row.Icon icon="person_crossed_filled" />
+            <Row.Title>{i18n('ChannelBlockedUsers')}</Row.Title>
+            <Row.Subtitle>{removedUsersSubtitle()}</Row.Subtitle>
+          </Row>
+        </Show>
+      </Section>
+
+      {/* Б-106 — автоперевод (:875-893) */}
 
       <Show when={isBroadcast() && canPostMessages()}>
         <Section caption={showProfiles() ? 'ChannelSignProfilesInfo' : 'ChannelSignMessagesInfo'}>

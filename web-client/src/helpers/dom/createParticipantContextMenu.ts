@@ -16,16 +16,17 @@
 //     'change_permissions'` (`hasRights.ts:135-138`), а в нашем `ChatRights`
 //     объявлено только первое имя;
 //   • `slider` + `openUserPermissionsTab(slider, chatId, participant, isAdmin)`
-//     (Solid-вкладка `AppUserPermissionsTab`, у нас не портирована) →
-//     колбэк `openUserPermissions(participant, isAdmin)`; кто его исполняет —
-//     решает владелец меню. Без колбэка пункты прав скрыты: вкладки прав
-//     участника нет (Б-41), владелец меню профиля колбэк не передаёт;
+//     → колбэк `openUserPermissions(participant, isAdmin)`: владелец меню
+//     профиля (`AppSearchSuper`) слайдера не знает (его расхождение 33),
+//     вкладки правой колонки (0б-7) передают `openUserPermissionsTab` со своим
+//     слайдером. Без колбэка пункты прав скрыты;
 //   • `appImManager.setInnerPeer({peerId})` → колбэк `openPeer(peerId)` у владельца меню;
-//   • действия — наши ручки `groups.addMember`/`unban`/`removeMember` вместо
-//     `appChatsManager.addToChat`/`editBanned(…, пустые права)`/`kickFromChat`;
-//     `handleMissingInvitees` после добавления (:53-55) не портирован — наша
-//     ручка «кого не удалось пригласить» не отдаёт;
-//   • `canEditAdmin(chat, participant, myId)` → `canEditAdmin(chat)` (шапка
+//   • действия — `groups.addMember` вместо `appChatsManager.addToChat`;
+//     `editBanned(…, пустые права)` и `kickFromChat` — те же имена
+//     (`groupsManager`, порт `appChatsManager`). `handleMissingInvitees` после
+//     добавления (:53-55) не портирован — наша ручка «кого не удалось
+//     пригласить» не отдаёт;
+//   • `canEditAdmin(chat, participant, myId)` → `canEditAdmin(chat, participant)` (шапка
 //     `core/peers/participant.ts`: `promoted_by` на проводе нет).
 // Правки под строгий tsconfig: состояние меню (`target`, `participant`, …)
 // объявлено с `!`/`| undefined`, `pFlags` участника читается через `?.`.
@@ -46,7 +47,7 @@ export type Participant = ChannelParticipant
 
 /** Ручки, которыми меню действует: добавить обратно, снять бан, выгнать. */
 export type ParticipantContextMenuManagers = {
-  groups: Pick<Managers['groups'], 'addMember' | 'removeMember' | 'unban'>
+  groups: Pick<Managers['groups'], 'addMember' | 'editBanned' | 'kickFromChat'>
 }
 
 export default function createParticipantContextMenu(options: {
@@ -107,7 +108,7 @@ export default function createParticipantContextMenu(options: {
       icon: 'admin',
       text: 'EditAdminRights',
       onClick: () => openPermissions(true),
-      verify: () => !!openUserPermissions && isParticipantAdmin(participant) && canEditAdmin(chat),
+      verify: () => !!openUserPermissions && isParticipantAdmin(participant) && canEditAdmin(chat, participant),
     }, {
       icon: 'restrict',
       text: 'KickFromSupergroup',
@@ -121,7 +122,15 @@ export default function createParticipantContextMenu(options: {
       text: 'Delete',
       onClick: () => {
         if(isBanned) {
-          void managers.groups.unban(chatPeerId, participantPeerId)
+          void managers.groups.editBanned(
+            chatId,
+            participant,
+            {
+              _: 'chatBannedRights',
+              pFlags: {},
+              until_date: 0,
+            },
+          )
         }
       },
       verify: () => {
@@ -135,12 +144,12 @@ export default function createParticipantContextMenu(options: {
       icon: 'delete',
       text: 'KickFromGroup',
       onClick: () => {
-        void managers.groups.removeMember(chatPeerId, participantPeerId)
+        void managers.groups.kickFromChat(chatId, participantPeerId)
       },
       verify: () => canChangePermissions &&
         participantPeerId !== rootScope.myId &&
         !isParticipantCreator(participant) &&
-        (!isParticipantAdmin(participant) || canEditAdmin(chat)) &&
+        (!isParticipantAdmin(participant) || canEditAdmin(chat, participant)) &&
         (participant._ === 'channelParticipant' || !isBanned),
     }]
   }

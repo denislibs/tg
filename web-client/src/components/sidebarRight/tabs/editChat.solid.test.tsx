@@ -27,10 +27,14 @@ import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import appNavigationController from '@core/navigation/appNavigationController'
 import SidebarSlider from '@components/slider'
 import {
+  AppChatAdministratorsTab,
   AppChatInviteLinksTab,
+  AppChatMembersTab,
+  AppChatRequestsTab,
   AppChatTypeTab,
   AppEditChatTab,
   AppGroupPermissionsTab,
+  AppRemovedUsersTab,
 } from '@components/solidJsTabs/tabs'
 
 const toastNew = vi.hoisted(() => vi.fn())
@@ -61,6 +65,10 @@ const channel = (extra: Partial<Channel> = {}): Channel => ({
 const fullOf = (id: number, extra: Partial<ChannelFull> = {}): ChannelFull => ({
   _: 'channelFull', id, about: 'About', read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0, chat_photo: null, ...extra,
 })
+
+// секция «Администраторы / Участники / Удалённые» (`editChat.tsx:849-873`, 0б-7)
+const GROUP_PEOPLE = [lang['PeerInfo.Administrators'], lang.GroupMembers, lang.ChannelBlockedUsers]
+const CHANNEL_PEOPLE = [lang['PeerInfo.Administrators'], lang['PeerInfo.Subscribers'], lang.ChannelBlockedUsers]
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const settle = async() => {
@@ -208,7 +216,7 @@ describe('вкладка «Изменить» — строки по виду ч�
   it('создатель группы: тип, ссылки, разрешения, темы с подписью тем; история; «Удалить и выйти»', async() => {
     const tab = await open(group({ pFlags: { megagroup: true, creator: true } }))
 
-    expect(rowTitles(tab)).toEqual([lang.GroupType, lang.InviteLinks, lang.ChannelPermissions, lang.Topics, lang.ChatHistory])
+    expect(rowTitles(tab)).toEqual([lang.GroupType, lang.InviteLinks, lang.ChannelPermissions, lang.Topics, ...GROUP_PEOPLE, lang.ChatHistory])
     expect(text(row(tab, 'GroupType')!.querySelector('.row-subtitle'))).toBe(lang.TypePrivateGroup)
     expect(tab.scrollable.container.textContent).toContain(lang.ForumToggleDescription)
     expect(text(deleteButton(tab))).toBe(lang.DeleteAndExitButton)
@@ -220,7 +228,7 @@ describe('вкладка «Изменить» — строки по виду ч�
   it('создатель канала: тип и ссылки, без разрешений и тем; подписи; «Удалить канал»', async() => {
     const tab = await open(channel({ username: 'pub', pFlags: { broadcast: true, creator: true } }))
 
-    expect(rowTitles(tab)).toEqual([lang.ChannelType, lang.InviteLinks, lang.ChannelSignMessages])
+    expect(rowTitles(tab)).toEqual([lang.ChannelType, lang.InviteLinks, ...CHANNEL_PEOPLE, lang.ChannelSignMessages])
     expect(text(row(tab, 'ChannelType')!.querySelector('.row-subtitle'))).toBe(lang.TypePublic)
     expect(tab.scrollable.container.textContent).toContain(lang.DiscussionInfo)
     expect(tab.scrollable.container.textContent).toContain(lang.ChannelSignMessagesInfo)
@@ -230,7 +238,7 @@ describe('вкладка «Изменить» — строки по виду ч�
   it('админ группы (инфо, приглашения, баны): ссылки и разрешения, без типа, тем, истории и удаления', async() => {
     const tab = await open(group({ admin_rights: ADMIN_ALL }))
 
-    expect(rowTitles(tab)).toEqual([lang.InviteLinks, lang.ChannelPermissions])
+    expect(rowTitles(tab)).toEqual([lang.InviteLinks, lang.ChannelPermissions, ...GROUP_PEOPLE])
     expect(tab.scrollable.container.textContent).toContain(lang.DiscussionInfo)
     expect(deleteButton(tab)).toBeNull()
   })
@@ -238,7 +246,7 @@ describe('вкладка «Изменить» — строки по виду ч�
   it('админ канала без прав инфо и приглашений: аватар не редактируется, поля выключены, только подписи', async() => {
     const tab = await open(channel({ admin_rights: { _: 'chatAdminRights', pFlags: { post_messages: true } } }))
 
-    expect(rowTitles(tab)).toEqual([lang.ChannelSignMessages])
+    expect(rowTitles(tab)).toEqual([...CHANNEL_PEOPLE, lang.ChannelSignMessages])
     expect(tab.scrollable.container.querySelector('.avatar-edit.disable-hover')).not.toBeNull()
     expect(fields(tab).every((field) => field.hasAttribute('disabled'))).toBe(true)
     expect(deleteButton(tab)).toBeNull()
@@ -247,7 +255,7 @@ describe('вкладка «Изменить» — строки по виду ч�
   it('участник группы с запретом менять инфо: ни одной строки, поля выключены', async() => {
     const tab = await open(group({ default_banned_rights: { _: 'chatBannedRights', until_date: 0, pFlags: { change_info: true } } }))
 
-    expect(rowTitles(tab)).toEqual([])
+    expect(rowTitles(tab)).toEqual(GROUP_PEOPLE)
     expect(fields(tab).every((field) => field.hasAttribute('disabled'))).toBe(true)
     expect(corner(tab)).toBeNull()
     expect(deleteButton(tab)).toBeNull()
@@ -255,12 +263,28 @@ describe('вкладка «Изменить» — строки по виду ч�
 
   it('права меняются в зеркале пиров — строки следом (`chat_update`)', async() => {
     const tab = await open(group({ admin_rights: ADMIN_ALL }))
-    expect(rowTitles(tab)).toEqual([lang.InviteLinks, lang.ChannelPermissions])
+    expect(rowTitles(tab)).toEqual([lang.InviteLinks, lang.ChannelPermissions, ...GROUP_PEOPLE])
 
     applyPeerOps([{ op: 'upsert', peers: [group({ admin_rights: { _: 'chatAdminRights', pFlags: { invite_users: true } } })] }])
     await settle()
 
-    expect(rowTitles(tab)).toEqual([lang.InviteLinks])
+    expect(rowTitles(tab)).toEqual([lang.InviteLinks, ...GROUP_PEOPLE])
+  })
+
+  // `editChat.tsx:700-708`: строка «Заявки» — у админа с правом приглашать и
+  // только при `requests_pending`; сервер счётчика пока не шлёт (Б-115)
+  it('«Заявки» — только при `requests_pending`; счётчики секции участников — как у оригинала', async() => {
+    const tab = await open(
+      group({ admin_rights: ADMIN_ALL, participants_count: 1234 }),
+      fullOf(GROUP_ID, { requests_pending: 3, participants_count: 1234 }),
+    )
+
+    expect(rowTitles(tab)).toEqual([lang.InviteLinks, lang.MemberRequests, lang.ChannelPermissions, ...GROUP_PEOPLE])
+    expect(text(row(tab, 'MemberRequests')!.querySelector('.row-subtitle'))).toBe('3')
+    // `administratorsCount` — `count || 1` (:303-312); удалённых нет — `NoBlockedUsers` (:318-321)
+    expect(text(row(tab, 'PeerInfo.Administrators')!.querySelector('.row-subtitle'))).toBe('1')
+    expect(text(row(tab, 'GroupMembers')!.querySelector('.row-subtitle'))).toBe('1 234')
+    expect(text(row(tab, 'ChannelBlockedUsers')!.querySelector('.row-subtitle'))).toBe(lang.NoBlockedUsers)
   })
 })
 
@@ -283,6 +307,26 @@ describe('вкладка «Изменить» — переходы и тумбл
     expect(opened[0].payload).toMatchObject({ chatId: GROUP_ID, chatFull: { about: 'x' } })
     expect(opened[1].payload).toMatchObject({ chatId: GROUP_ID })
     expect(opened[2].payload).toEqual({ chatId: GROUP_ID })
+  })
+
+  // `editChat.tsx:700-708`, `:849-873` — вкладки 0б-7
+  it('строки участников открывают вкладки 0б-7 с полезной нагрузкой оригинала', async() => {
+    const tab = await open(group({ pFlags: { megagroup: true, creator: true } }), fullOf(GROUP_ID, { requests_pending: 1 }))
+    const opened: { ctor: unknown, payload: unknown }[] = []
+    vi.spyOn(slider, 'createTab').mockImplementation(((ctor: unknown) => ({
+      open: (payload: unknown) => {
+        opened.push({ ctor, payload })
+        return Promise.resolve()
+      },
+    })) as never)
+
+    click(row(tab, 'MemberRequests')!)
+    click(row(tab, 'PeerInfo.Administrators')!)
+    click(row(tab, 'GroupMembers')!)
+    click(row(tab, 'ChannelBlockedUsers')!)
+
+    expect(opened.map((o) => o.ctor)).toEqual([AppChatRequestsTab, AppChatAdministratorsTab, AppChatMembersTab, AppRemovedUsersTab])
+    expect(opened.map((o) => o.payload)).toEqual([GROUP_ID, { chatId: GROUP_ID }, GROUP_ID, { chatId: GROUP_ID }])
   })
 
   it('тумблер тем пишет сразу и перечитывает карточку; история — сразу', async() => {
