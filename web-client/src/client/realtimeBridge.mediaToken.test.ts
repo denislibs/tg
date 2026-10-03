@@ -23,6 +23,12 @@ vi.mock('./bootstrap', () => ({
   }),
 }))
 
+// Класс `Chat` (`components/chat/chat.ts`) входит в граф насоса через подписчиков
+// (`soundSubscriber` → `appImManager`) и тянет ленту, меню и shared media вплоть до
+// Solid-элементов колонки: их `customElements.define` под `vi.resetModules()` в каждом
+// тесте сработал бы повторно. Насосу инстанс чата не нужен — дублёр.
+vi.mock('@components/chat/chat', () => ({ default: class {} }))
+
 const TOK = (token: string) => ({ token, expiresAt: Date.now() + 900_000 })
 
 async function setup() {

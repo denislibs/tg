@@ -35,6 +35,12 @@ class FakeWorker implements Endpoint {
   addEventListener(_type: 'message', cb: (ev: MessageEvent) => void): void { lastListener = cb }
 }
 
+// Класс `Chat` (`components/chat/chat.ts`) входит в граф насоса через подписчиков
+// (`soundSubscriber` → `appImManager`) и тянет ленту, меню и shared media вплоть до
+// Solid-элементов колонки: их `customElements.define` под `vi.resetModules()` в каждом
+// тесте сработал бы повторно. Насосу инстанс чата не нужен — дублёр.
+vi.mock('@components/chat/chat', () => ({ default: class {} }))
+
 async function setup() {
   vi.resetModules()
   lastListener = undefined
