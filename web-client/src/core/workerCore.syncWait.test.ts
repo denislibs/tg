@@ -26,6 +26,7 @@ vi.mock('./realtime/connectionManager', async (importOriginal) => {
 })
 
 import { createWorkerCore } from './workerCore'
+import { idbSet } from './store/idbKv'
 import { SuperMessagePort, type Endpoint } from '../rpc/superMessagePort'
 import { makeRawMessage } from './messages/testMessage'
 
@@ -109,7 +110,12 @@ describe('createWorkerCore(): ожидание догона для уведом�
     expect(metas).toEqual([undefined])
   })
 
+  /** Состояние апдейтов прошлой сессии — без него hello станет базой, а не
+   *  поводом для догона (tweb `apiUpdatesManager.attach`, :886-906). */
+  const savedCursor = async () => { await idbSet('pts', 1); await idbSet('date', 1) }
+
   it('hello с расхождением — начальная синхронизация длится до конца догона', async () => {
+    await savedCursor()
     const { metas } = boot()
 
     capturedConnDeps!.onFrame('hello', { pts: 5, date: 0 })
@@ -123,7 +129,29 @@ describe('createWorkerCore(): ожидание догона для уведом�
     expect(metas[metas.length - 1]).toBeUndefined()
   })
 
+  // Свежий вход: сохранённого состояния нет — база = текущее состояние сервера
+  // из hello, `/sync` не зовётся вовсе, начальная синхронизация кончилась сразу
+  // (tweb `apiUpdatesManager.attach` → `updates.getState`, :886-906).
+  it('hello без сохранённого состояния становится базой: догона нет', async () => {
+    const { metas } = boot()
+
+    capturedConnDeps!.onFrame('hello', { pts: 750, date: 1790998660 })
+    await settle()
+    newMessage()
+
+    expect(releaseSync).toBeNull() // /sync не запрашивался
+    expect(metas).toEqual([undefined])
+
+    // Реконнект с расхождением — догон уже ОТ ВЗЯТОЙ базы, а не от нуля.
+    capturedConnDeps!.onFrame('hello', { pts: 760, date: 1790998670 })
+    await settle()
+    expect(releaseSync).not.toBeNull()
+    const syncUrl = vi.mocked(fetch).mock.calls.map((c) => c[0] as string).find((u) => u.includes('/sync?'))
+    expect(syncUrl).toContain('pts=750')
+  })
+
   it('realtime.waitForSync отпускает только после РЕАЛЬНОГО догона', async () => {
+    await savedCursor()
     const { waitForSync } = boot()
 
     capturedConnDeps!.onFrame('hello', { pts: 5, date: 0 })

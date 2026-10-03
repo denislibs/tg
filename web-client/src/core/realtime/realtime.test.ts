@@ -115,7 +115,7 @@ describe('realtime.getStatus — иммунность к потере push-ув�
   }
   function fakeCursor(): Cursor {
     let pts = 0; let date = 0
-    return { ready: async () => {}, get: () => ({ pts, date }), advance: (p, d) => { if (p > pts) pts = p; if (typeof d === 'number' && d > date) date = d }, set: (p, d) => { pts = p; date = d } }
+    return { ready: async () => {}, get: () => ({ pts, date }), advance: (p, d) => { if (p > pts) pts = p; if (typeof d === 'number' && d > date) date = d }, set: (p, d) => { pts = p; date = d }, reset: () => { pts = 0; date = 0 } }
   }
 
   it('поздний подписчик, пропустивший и rt:state, и rt:state_synchronizing, получает актуальные state/retryAt/syncing через pull', async () => {

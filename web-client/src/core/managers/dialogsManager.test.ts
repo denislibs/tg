@@ -25,6 +25,15 @@ const ids = (op: DialogOp): number[] => (op as { items: { dialog: Dialog }[] }).
 const isMuted = (d: Dialog): boolean => isPeerMuted(d.notify_settings, Math.floor(Date.now() / 1000))
 const isPinned = (d: Dialog): boolean => !!d.pFlags?.pinned
 
+/** Пачка строк с новым сообщением уходит через `pause(0)` (tweb
+ *  `scheduleHandleNewDialogs`) — дождаться её. */
+const flushNewDialogs = () => new Promise((r) => setTimeout(r, 0))
+/** Строка из операции пачки (`upsert`, tweb `dialogs_multiupdate`). */
+const upserted = (op: DialogOp | undefined, peerId: number): Dialog => {
+  expect(op?.op).toBe('upsert')
+  return (op as Extract<DialogOp, { op: 'upsert' }>).items.find((i) => i.dialog.peerId === peerId)!.dialog
+}
+
 /**
  * Ответ `/chats` — КОНТЕЙНЕР (`messages.dialogs` / `messages.dialogsSlice`).
  * `count` не передан — «список отдан целиком», то есть конец набора; это и
@@ -250,8 +259,9 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     ops.length = 0
 
     mgr.applyNewMessage({ _: 'updateNewMessage', message: makeRawMessage({ id: 2, peerId: 1, fromId: 7, text: 'hi', createdAt: '2026-08-01T00:00:01Z' }) })
+    await flushNewDialogs()
 
-    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_count).toBe(0)
+    expect(upserted(ops[0], 1).unread_count).toBe(0)
   })
 
   it('applyNewMessage: verbatim unread из кадра (Wave 3), fallback +1 без поля', async () => {
@@ -270,11 +280,13 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     // Авторитетного значения кадр не несёт — у конструктора updateNewMessage
     // такого параметра нет.
     mgr.applyNewMessage({ _: 'updateNewMessage', message: makeRawMessage({ id: 2, peerId: 1, fromId: 9, text: 'a', createdAt: '2026-08-01T00:00:01Z' }) })
-    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_count).toBe(1)
+    await flushNewDialogs()
+    expect(upserted(ops[0], 1).unread_count).toBe(1)
 
     ops.length = 0
     mgr.applyNewMessage({ _: 'updateNewMessage', message: makeRawMessage({ id: 3, peerId: 1, fromId: 9, text: 'b', createdAt: '2026-08-01T00:00:02Z' }) })
-    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_count).toBe(2)
+    await flushNewDialogs()
+    expect(upserted(ops[0], 1).unread_count).toBe(2)
   })
 
   it('новое сообщение в закреплённом диалоге не двигает блок закреплённых', async () => {
@@ -291,16 +303,18 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     })
     await mgr.fillMirror()
     expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([1, 2, 3])
+    const before = mgr.getSnapshot().find((i) => i.dialog.peerId === 2)!.index
     ops.length = 0
 
     mgr.applyNewMessage({ _: 'updateNewMessage', message: makeRawMessage({ id: 4, peerId: 2, fromId: 5, text: 'yo', createdAt: '2026-08-09T23:00:00Z' }) })
+    await flushNewDialogs()
 
     // закреплённые держатся своим порядком (pinnedOrders), а не датой
     expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([1, 2, 3])
     expect(ops).toHaveLength(1)
-    const op = ops[0] as Extract<DialogOp, { op: 'patch' }>
-    expect(op.peerId).toBe(2)
-    expect(op.index).toBeUndefined() // индекс внутри блока закреплённых не сдвинулся
+    const op = ops[0] as Extract<DialogOp, { op: 'upsert' }>
+    expect(op.items.map((i) => i.dialog.peerId)).toEqual([2])
+    expect(op.items[0].index).toBe(before) // индекс внутри блока закреплённых не сдвинулся
   })
 
   it('applyRead: Inbox несёт мой счётчик; Outbox двигает горизонт собеседника, не мой unread; устаревший Outbox не регрессирует и не публикует операцию', async () => {
@@ -1314,7 +1328,8 @@ describe('dialogsManager.applyDeletedMessages: последнее сообщен
 
     expect(row(mgr).top_message).toBe(generateMessageId(2))
     expect(row(mgr).lastMessage).toMatchObject({ id: generateMessageId(2), message: 'два' })
-    expect(ops).toContainEqual(expect.objectContaining({ op: 'patch', peerId: PEER, fields: expect.objectContaining({ top_message: generateMessageId(2) }) }))
+    // tweb :4972 — `setDialogTopMessage` объявляет строку пачкой (`dialogs_multiupdate`).
+    expect(ops).toEqual([{ op: 'upsert', items: [expect.objectContaining({ dialog: expect.objectContaining({ peerId: PEER, top_message: generateMessageId(2) }) })] }])
     expect(get).not.toHaveBeenCalled()
   })
 
@@ -1405,7 +1420,9 @@ describe('dialogsManager: непрочитанные упоминания', () =
     })
     await mgr.fillMirror()
     ops.length = 0
-    const patched = () => (ops[ops.length - 1] as Extract<DialogOp, { op: 'patch' }>).fields
+    // Строка владельца: новое сообщение объявляется пачкой (`upsert` через
+    // `pause(0)`), прочтение — сразу (`patch`); значение одно — в кэше.
+    const patched = () => mgr.getSnapshot().find((i) => i.dialog.peerId === 1)!.dialog
     return { mgr, ops, patched }
   }
   const raw = (id: number, fromId: number, pFlags: Record<string, true>) =>
@@ -1440,5 +1457,102 @@ describe('dialogsManager: непрочитанные упоминания', () =
     mgr.applyMentionsRead(1, 1) // уже ноль — операции нет
     mgr.applyMentionsRead(99, 1) // неизвестный чат — no-op
     expect(ops).toHaveLength(0)
+  })
+})
+
+// Защита от отката и пачка — порт tweb `onUpdateNewMessage`
+// (appMessagesManager.ts:10500-10520) и `scheduleHandleNewDialogs`/
+// `handleNewDialogs` (:8946-8976, :8882-8943). Повтор журнала после входа
+// переигрывал старые сообщения, и каждое из них ставило строке старое превью
+// отдельным кадром — список перетасовывался и возвращался обратно.
+describe('dialogsManager.applyNewMessage: защита от отката и пачка', () => {
+  const at = (s: number) => `2026-08-01T00:00:${String(s).padStart(2, '0')}Z`
+  const setup = async (cache: Dialog[]) => {
+    const calls: DialogOp[][] = []
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: (o) => calls.push(o),
+      loadCache: async () => cache,
+      loadState: async () => ({ pinnedOrders: {} }),
+      getMeId: () => 7,
+    })
+    await mgr.fillMirror()
+    calls.length = 0
+    const row = (peerId: number) => mgr.getSnapshot().find((i) => i.dialog.peerId === peerId)!.dialog
+    return { mgr, calls, row }
+  }
+  /** Строка с последним сообщением `seq` (номер уже клиентский) и курсором прочтения. */
+  const rowAt = (peerId: number, seq: number, sec: number, readInbox = 0, unread = 0): Dialog => makeDialog({
+    peerId, unread, readInboxMaxId: generateMessageId(readInbox),
+    lastMessage: mapMyMessage(rawMessage(peerId, seq, 'top', 9, at(sec))),
+  })
+  const incoming = (peerId: number, seq: number, sec: number, text = 'x') =>
+    ({ _: 'updateNewMessage' as const, message: rawMessage(peerId, seq, text, 9, at(sec)) })
+
+  it('старое сообщение (mid < top_message) не двигает строку и не растит счётчик', async () => {
+    const { mgr, calls, row } = await setup([rowAt(1, 10, 30), rowAt(2, 5, 20)])
+    const before = row(1)
+
+    mgr.applyNewMessage(incoming(1, 3, 5, 'старое'))
+    await flushNewDialogs()
+
+    expect(row(1)).toBe(before)
+    expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([1, 2])
+    expect(calls).toEqual([])
+  })
+
+  it('равное (mid === top_message) ставит превью заново, но счётчик не растит', async () => {
+    const { mgr, calls, row } = await setup([rowAt(1, 10, 30)])
+
+    mgr.applyNewMessage(incoming(1, 10, 30, 'правка того же'))
+    await flushNewDialogs()
+
+    expect(row(1).lastMessage).toMatchObject({ message: 'правка того же' })
+    expect(row(1).unread_count).toBe(0)
+    expect(calls).toHaveLength(1)
+  })
+
+  it('новее строки, но уже за курсором прочтения — превью двигается, счётчик нет', async () => {
+    const { mgr, row } = await setup([rowAt(1, 10, 30, 12)])
+
+    mgr.applyNewMessage(incoming(1, 11, 31))
+    await flushNewDialogs()
+
+    expect(row(1).top_message).toBe(generateMessageId(11))
+    expect(row(1).unread_count).toBe(0)
+
+    mgr.applyNewMessage(incoming(1, 13, 32))
+    await flushNewDialogs()
+    expect(row(1).top_message).toBe(generateMessageId(13))
+    expect(row(1).unread_count).toBe(1)
+  })
+
+  it('N сообщений за такт — ОДИН вызов onDialogOps с одной операцией на все строки', async () => {
+    const { mgr, calls } = await setup([rowAt(1, 10, 30), rowAt(2, 10, 20), rowAt(3, 10, 10)])
+
+    mgr.applyNewMessage(incoming(3, 11, 40))
+    mgr.applyNewMessage(incoming(2, 11, 41))
+    mgr.applyNewMessage(incoming(3, 12, 42))
+    expect(calls).toEqual([]) // до конца такта — ничего
+    await flushNewDialogs()
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toHaveLength(1)
+    const op = calls[0][0] as Extract<DialogOp, { op: 'upsert' }>
+    expect(op.op).toBe('upsert')
+    expect(op.items.map((i) => i.dialog.peerId).sort((a, b) => a - b)).toEqual([2, 3])
+    // значение — на момент рассылки, а не планирования
+    expect(op.items.find((i) => i.dialog.peerId === 3)!.dialog.top_message).toBe(generateMessageId(12))
+    expect(mgr.getSnapshot().map((i) => i.dialog.peerId)).toEqual([3, 2, 1])
+  })
+
+  it('строку сняли до конца такта — в пачку она не попадает (tweb «can be already dropped»)', async () => {
+    const { mgr, calls } = await setup([rowAt(1, 10, 30), rowAt(2, 10, 20)])
+
+    mgr.applyNewMessage(incoming(2, 11, 40))
+    mgr.applyRemoved(2)
+    await flushNewDialogs()
+
+    expect(calls).toEqual([[{ op: 'remove', peerId: 2 }]])
   })
 })
