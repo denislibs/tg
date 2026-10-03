@@ -816,7 +816,6 @@ const uk = {
   'KeyboardShortcuts.Action.Strikethrough': 'Закреслений',
   'KeyboardShortcuts.Action.Monospace': 'Моноширинний',
   'KeyboardShortcuts.Action.Spoiler': 'Спойлер',
-  'Composer.CancelRecording': 'Скасувати запис',
   'KeyboardShortcuts.Section.Formatting': 'Форматування тексту',
   'KeyboardShortcuts.Section.Chat': 'Чат',
   'KeyboardShortcuts.Section.Navigation': 'Навігація',

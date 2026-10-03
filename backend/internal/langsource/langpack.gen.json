@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 53,
+      "version": 54,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -19,6 +19,10 @@
         {
           "key": "AccDescr.PlaybackSpeed",
           "value": "Playback speed"
+        },
+        {
+          "key": "AccDescr.ResumeRecording",
+          "value": "Resume recording"
         },
         {
           "key": "AccDescrEditing",
@@ -1133,6 +1137,18 @@
           "value": "Click to view details"
         },
         {
+          "key": "Chat.Input.Record.Video",
+          "value": "Video Message"
+        },
+        {
+          "key": "Chat.Input.Record.VideoLimitReached",
+          "value": "Maximum video message length reached"
+        },
+        {
+          "key": "Chat.Input.Record.Voice",
+          "value": "Voice Message"
+        },
+        {
           "key": "Chat.Input.UnpinAll",
           "value": "Unpin All Messages"
         },
@@ -1689,14 +1705,6 @@
           "value": "Tag"
         },
         {
-          "key": "Composer.CancelRecording",
-          "value": "Cancel Recording"
-        },
-        {
-          "key": "Composer.DiscardVoice.Text",
-          "value": "Are you sure you want to discard this voice message?"
-        },
-        {
           "key": "Composer.Formatting",
           "value": "Formatting"
         },
@@ -1707,14 +1715,6 @@
         {
           "key": "Composer.MessageEffect",
           "value": "Message effect"
-        },
-        {
-          "key": "Composer.RecordRound",
-          "value": "Record video message"
-        },
-        {
-          "key": "Composer.RecordVoice",
-          "value": "Record voice message"
         },
         {
           "key": "ConferenceCall.Media.CameraError",
@@ -1935,6 +1935,14 @@
         {
           "key": "Discard",
           "value": "Discard"
+        },
+        {
+          "key": "DiscardVoiceMessageAction",
+          "value": "Discard"
+        },
+        {
+          "key": "DiscardVoiceMessageDescription",
+          "value": "Are you sure you want to stop recording and discard your voice message?"
         },
         {
           "key": "DiscardVoiceMessageTitle",
@@ -3645,6 +3653,10 @@
         {
           "key": "NoMessagesGreetingsDescription",
           "value": "Send a message or tap the greeting below."
+        },
+        {
+          "key": "NoMicrophoneAccess",
+          "value": "Please allow access to your microphone"
         },
         {
           "key": "NoReactions",
@@ -6708,7 +6720,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 53,
+      "version": 54,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -8148,14 +8160,6 @@
         {
           "key": "AttachRound",
           "value": "Видеосообщение"
-        },
-        {
-          "key": "Composer.RecordVoice",
-          "value": "Записать голосовое"
-        },
-        {
-          "key": "Composer.RecordRound",
-          "value": "Записать видеосообщение"
         },
         {
           "key": "SharedMedia.Audio",
@@ -10087,6 +10091,10 @@
           "value": "Отправьте сообщение или нажмите на приветствие ниже."
         },
         {
+          "key": "NoMicrophoneAccess",
+          "value": "Пожалуйста, разрешите доступ к микрофону"
+        },
+        {
           "key": "ChatYourSelfTitle",
           "value": "Ваше облачное хранилище"
         },
@@ -10207,8 +10215,12 @@
           "value": "Удалить голосовое сообщение?"
         },
         {
-          "key": "Composer.DiscardVoice.Text",
-          "value": "Вы уверены, что хотите удалить это голосовое сообщение?"
+          "key": "DiscardVoiceMessageDescription",
+          "value": "Вы действительно хотите остановить запись и удалить голосовое сообщение?"
+        },
+        {
+          "key": "DiscardVoiceMessageAction",
+          "value": "Удалить"
         },
         {
           "key": "Cancel",
@@ -11597,10 +11609,6 @@
           "value": "Спойлер"
         },
         {
-          "key": "Composer.CancelRecording",
-          "value": "Отменить запись"
-        },
-        {
           "key": "KeyboardShortcuts.Section.Formatting",
           "value": "Форматирование текста"
         },
@@ -12063,6 +12071,18 @@
         {
           "key": "Chat.Input.FrozenButton2",
           "value": "Нажмите, чтобы узнать подробности"
+        },
+        {
+          "key": "Chat.Input.Record.Video",
+          "value": "Видеосообщение"
+        },
+        {
+          "key": "Chat.Input.Record.VideoLimitReached",
+          "value": "Достигнута максимальная длина видеосообщения"
+        },
+        {
+          "key": "Chat.Input.Record.Voice",
+          "value": "Голосовое сообщение"
         },
         {
           "key": "Chat.Menu.ClearSelection",
@@ -13276,6 +13296,10 @@
           "value": "Скорость воспроизведения"
         },
         {
+          "key": "AccDescr.ResumeRecording",
+          "value": "Продолжить запись"
+        },
+        {
           "key": "Play",
           "value": "Воспроизвести"
         },
@@ -13471,7 +13495,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 33,
+      "version": 34,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16152,10 +16176,6 @@
           "value": "Spoiler"
         },
         {
-          "key": "Composer.CancelRecording",
-          "value": "Annuler l’enregistrement"
-        },
-        {
           "key": "KeyboardShortcuts.Section.Formatting",
           "value": "Mise en forme du texte"
         },
@@ -16801,7 +16821,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 33,
+      "version": 34,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -19504,10 +19524,6 @@
           "value": "Spoiler"
         },
         {
-          "key": "Composer.CancelRecording",
-          "value": "Aufnahme abbrechen"
-        },
-        {
           "key": "KeyboardShortcuts.Section.Formatting",
           "value": "Textformatierung"
         },
@@ -20153,7 +20169,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 33,
+      "version": 34,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -22850,10 +22866,6 @@
           "value": "Spoiler"
         },
         {
-          "key": "Composer.CancelRecording",
-          "value": "Cancelar grabación"
-        },
-        {
           "key": "KeyboardShortcuts.Section.Formatting",
           "value": "Formato de texto"
         },
@@ -23499,7 +23511,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 34,
+      "version": 35,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -26327,10 +26339,6 @@
         {
           "key": "KeyboardShortcuts.Action.Spoiler",
           "value": "Спойлер"
-        },
-        {
-          "key": "Composer.CancelRecording",
-          "value": "Скасувати запис"
         },
         {
           "key": "KeyboardShortcuts.Section.Formatting",

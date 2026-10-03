@@ -570,12 +570,17 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Баг-фиксы после П-5: +8 ключей tweb превью лога звонка (`ChatList.Service.{Call,VideoCall}.*`,
 // tweb lib/langPack.ts:51-58) и `ForwardedFrom` шапки пересылки вместо нашего мёртвого
 // `Chat.ForwardedFrom` (был только у ru) — ru +8, у остальных +9.
+// Пачка П-6 волны 7, запись (`chat/recording/chatRecording.ts`, `voiceRecording/voiceRecordingPanel.ts`):
+// у ru +7 ключей tweb lang.ts — `Chat.Input.Record.{Voice,Video,VideoLimitReached}`,
+// `DiscardVoiceMessage{Description,Action}`, `NoMicrophoneAccess`, `AccDescr.ResumeRecording`;
+// минус ключи снесённого React-композера `Composer.{CancelRecording,DiscardVoice.Text,RecordRound,RecordVoice}`
+// (у ru все четыре, у остальных — `Composer.CancelRecording`). Итог: ru 1623, у остальных −1.
 const COMPOSITION = {
-  ru: { keys: 1620, plural: 55 },
-  uk: { keys: 838, plural: 35 },
-  es: { keys: 809, plural: 34 },
-  de: { keys: 810, plural: 35 },
-  fr: { keys: 805, plural: 34 },
+  ru: { keys: 1623, plural: 55 },
+  uk: { keys: 837, plural: 35 },
+  es: { keys: 808, plural: 34 },
+  de: { keys: 809, plural: 35 },
+  fr: { keys: 804, plural: 34 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -758,12 +763,14 @@ const COMPOSITION = {
 // Шагом К-4 волны 7 — у ru +1 ключ tweb `Chat.Input.Attach` (разбор — там же).
 // Шагом К-4 волны 7 (строка ввода) — у ru +14 ключей `chat/input.ts` (разбор — там же).
 // Баг-фиксами после П-5 — превью звонка и `ForwardedFrom` (разбор — там же).
+// Пачкой П-6 волны 7 (запись) — у ru +7 ключей tweb, у всех пяти минус ключи снесённого
+// React-композера `Composer.*Record*` (разбор — у `COMPOSITION` выше).
 const FINGERPRINT = {
-  ru: '3de96527',
-  uk: 'af81524a',
-  es: '57ce09fe',
-  de: '3224cfc5',
-  fr: '61cdac88',
+  ru: 'd7968a9c',
+  uk: 'aafc886d',
+  es: 'e90d1dc5',
+  de: 'f26fbf52',
+  fr: 'f124960d',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
