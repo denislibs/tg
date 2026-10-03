@@ -692,12 +692,17 @@ export const AppNewChannelTab =
 ;(AppNewChannelTab as unknown as { noSame: boolean }).noSame = true
 // ── «Новая группа» (tweb :282-296) — задача 0а-2 плана волны 7 ───────────────
 // Второй шаг флоу `createNewGroupTab` (`sidebarLeft/tabs/createNewGroupTab.ts`):
-// открывает его `takeOut` вкладки выбора участников. Из нагрузки оригинала —
-// только `peerIds`: `isGeoChat` у tweb без вызывающих (группа «рядом» снята),
-// а `onCreate`/`openAfter`/`title`/`asChannel` передаёт лишь добавление чата в
-// сообщество (`communities/addChatToCommunity.tsx:35`) — сообществ нет (О-5).
+// открывает его `takeOut` вкладки выбора участников. Из нагрузки оригинала нет
+// только `isGeoChat` — у tweb без вызывающих (группа «рядом» снята).
+// `onCreate`/`openAfter`/`title`/`asChannel` передаёт «Создать новую группу»
+// вкладки обсуждения (`chatDiscussion.solid.tsx`, tweb `chatDiscussion.tsx:56-66`,
+// П-1 0б-5).
 type AppNewGroupTabPayload = {
-  peerIds: PeerId[]
+  peerIds: PeerId[],
+  onCreate?: (chatId: ChatId) => void | Promise<void>,
+  openAfter?: boolean,
+  title?: string,
+  asChannel?: boolean
 }
 
 export const AppNewGroupTab =
@@ -783,4 +788,22 @@ export const AppArchivedTab =
     onCloseAfterTimeout: function() {
       (this as ArchivedTabHooks)._onCloseAfterTimeout?.()
     },
+  })
+
+// П-1 0б-4/0б-5 ─────────────────────────────────────────────────────────────
+// ── «Реакции» (tweb :471-475) и «Обсуждение» (tweb :528-532) ──────────────────
+// Вкладки правой колонки (`sidebarRight/tabs/chatReactions.solid.tsx`,
+// `chatDiscussion.solid.tsx`); открывают их строки редактора чата
+// (`editChat.solid.tsx`). Форма eventable, как у оригинала: «Реакции» сбрасывают
+// отложенную запись по событию `destroy` вкладки.
+export const AppChatReactionsTab =
+  scaffoldSolidJSTabEventable<{ chatId: ChatId }>({
+    title: 'Reactions',
+    getComponentModule: () => import('../sidebarRight/tabs/chatReactions.solid'),
+  })
+
+export const AppChatDiscussionTab =
+  scaffoldSolidJSTabEventable<{ chatId: ChatId, linkedChatId?: ChatId }>({
+    title: 'DiscussionController.Channel.Title',
+    getComponentModule: () => import('../sidebarRight/tabs/chatDiscussion.solid'),
   })

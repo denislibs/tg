@@ -151,9 +151,9 @@ tweb: `sharedMediaTab` + `peerProfile`. Табы (`sharedMedia.tsx:449-462, 604-
 | Channel Type (публичный/приватный, username, ссылка) | ✅ | ✅ |
 | Invite Links | ✅ | ✅ |
 | Subscribe Requests | ✅ (`SubscribeRequests`) | ❌ скрыта до П-1 (Б-41) |
-| Reactions | ✅ | ❌ скрыта до П-1 (Б-39) |
+| Reactions | ✅ | ✅ (`AppChatReactionsTab`, `chatReactions.solid.tsx`; запись — отложенно 3 с и на закрытии, как tweb) |
 | Direct Messages (монофорум) | ✅ (`ChannelDirectMessages.*`) | ❌ нет предмета (Б-105) |
-| Discussion | ✅ | ❌ скрыта до П-1 (Б-40) |
+| Discussion | ✅ | ✅ (`AppChatDiscussionTab`, `chatDiscussion.solid.tsx`; сторона группы — Б-119: `linked_chat_id` у группы обсуждения сервер не отдаёт) |
 | Recent Actions (админ-лог) | ✅ — таб `adminRecentActions` **или** отдельный тип чата `ChatType.Logs` | ❌ нет предмета (Б-105) |
 | Administrators | ✅ | ❌ скрыта до П-1 (Б-41) |
 | Subscribers | ✅ | ❌ скрыта до П-1 (Б-41) |

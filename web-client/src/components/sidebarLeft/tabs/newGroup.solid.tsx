@@ -18,10 +18,12 @@
  *     её никто не открывает (`AppNewGroupTab` открывают только
  *     `createNewGroupTab.ts:9` и сообщества). Поле «Location» оставлено скрытым,
  *     как у оригинала вне этой ветки (:212-213), — разметка та же.
- *  2. `onCreate`/`openAfter`/`title`/`asChannel` (:39, :152-167, :186-188) —
- *     нагрузка добавления чата в сообщество (`communities/addChatToCommunity.tsx`),
- *     сообществ нет (О-5 волны 7): группа всегда создаётся `createChat`, после
- *     создания всегда открывается, имя-черновик — всегда из участников.
+ *  2. `asChannel` (:152-167, `createChannel({megagroup: true})` +
+ *     `inviteToChannel`) — тот же `createChat`: любая наша группа уже
+ *     мегагруппа (`channel`, решение №2 `domain/mtchat.go`), отдельной ручки
+ *     «создать мегагруппу» нет. `onCreate`/`openAfter`/`title` (:39, :186-188,
+ *     :247-257) — как у оригинала; их передаёт «Создать новую группу» вкладки
+ *     обсуждения (`sidebarRight/tabs/chatDiscussion.solid.tsx`, П-1 0б-5).
  *  3. `appChatsManager.createChat` → `managers.groups.createChat` (тот же
  *     ответ `{chatId, missingInvitees}`), `editPhoto(chatId, inputFile)` →
  *     `managers.groups.setPhoto(peerId, mediaId)` — фото ставится ключом пира
@@ -58,7 +60,7 @@ const NewGroup = () => {
   const promiseCollector = usePromiseCollector()
   const managers = tab.managers!
 
-  const { peerIds } = tab.payload
+  const { peerIds, onCreate, openAfter = true, title } = tab.payload
 
   let uploadAvatar: AvatarEditPayload | null = null
   let nextBtn!: HTMLButtonElement
@@ -120,9 +122,10 @@ const NewGroup = () => {
 
         return result
       })
-      .then(({ chatId }) => {
+      .then(async({ chatId }) => {
+        await onCreate?.(chatId)
         tab.close()
-        void appImManager.setInnerPeer({ peerId: toPeerId(chatId, true) })
+        if(openAfter) void appImManager.setInnerPeer({ peerId: toPeerId(chatId, true) })
         // О-35 волна 7: `handleMissingInvitees(chatId, missingInvitees)` (расхождение 5)
       }).catch((err: unknown) => {
         console.error('createGroup error', err)
@@ -175,14 +178,21 @@ const NewGroup = () => {
       })
     })
 
-    // :239-253 (без `title` из нагрузки — расхождение 2)
-    const setTitlePromise = peerIds.length > 0 && peerIds.length < 5 ? Promise.all([usersPromise, myUserPromise]).then(([users, myUser]) => {
-      const names = users.map((user) => [user.first_name, user.last_name, user.username].find(Boolean))
-      names.unshift(myUser?.first_name)
+    // :239-257
+    let setTitlePromise: Promise<void>
 
-      names[0] = names[0] + ' & ' + names.splice(1, 1)[0]
-      groupNameInputField.setDraftValue(names.join(', '))
-    }) : Promise.resolve()
+    if(!title) {
+      setTitlePromise = peerIds.length > 0 && peerIds.length < 5 ? Promise.all([usersPromise, myUserPromise]).then(([users, myUser]) => {
+        const names = users.map((user) => [user.first_name, user.last_name, user.username].find(Boolean))
+        names.unshift(myUser?.first_name)
+
+        names[0] = names[0] + ' & ' + names.splice(1, 1)[0]
+        groupNameInputField.setDraftValue(names.join(', '))
+      }) : Promise.resolve()
+    } else {
+      groupNameInputField.setDraftValue(title)
+      setTitlePromise = Promise.resolve()
+    }
 
     promiseCollector.collect(Promise.all([a, setTitlePromise]))
   })

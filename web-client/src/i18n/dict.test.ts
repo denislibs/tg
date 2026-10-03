@@ -582,8 +582,14 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `PeerInfo.SharedMedia` и счётчики вкладок `SavedDialogsTabCount`, `MediaFiles`,
 // `StarGiftsCount`, `Files`, `Links`, `MusicFiles`, `Voice` (`plural` 51 → 58). 
 // Вместе с П-5 и К-4 из main: ru 1608, `plural` 62.
+// Пачка П-1 (0б-4 «Реакции», 0б-5 «Обсуждение», порт tweb `chatReactions.tsx`,
+// `chatDiscussion.tsx`): у ru +23 ключа tweb lang.ts — подписи режимов реакций
+// (`Enable{,All,Some}ReactionsInfo`, `DisableReactionsInfo`, `EnableReactions{,ChannelInfo}`,
+// `ReactionsAll`), строка обсуждения (`LinkedChannel`, `PeerInfo.Discussion.Add`) и вкладка
+// обсуждения (`DiscussionController.*`, `Discussion{ChannelHelp2,GroupHelp2,…}`,
+// `Discussion.Set.*`, `DiscussionLinkGroupAlertHistory`, `DiscussionUnlink*Alert`).
 const COMPOSITION = {
-  ru: { keys: 1608, plural: 62 },
+  ru: { keys: 1631, plural: 62 },
   uk: { keys: 829, plural: 35 },
   es: { keys: 800, plural: 34 },
   de: { keys: 801, plural: 35 },
@@ -772,8 +778,9 @@ const COMPOSITION = {
 // Шагом К-5 волны 7 (0б-1) — у ru +4 ключа tweb `editChat` и −18 наших ключей снесённых
 // экранов `group/*` (разбор — у `COMPOSITION` выше); вкладкой профиля — +10 ключей
 // tweb `sharedMedia.tsx` (разбор — там же).
+// Пачкой П-1 (0б-4, 0б-5) — у ru +23 ключа вкладок реакций и обсуждения (разбор — там же).
 const FINGERPRINT = {
-  ru: '506f6ccc',
+  ru: '7bd8dd78',
   uk: 'a02f363c',
   es: '89e8ae98',
   de: '0fed7933',
