@@ -601,8 +601,7 @@ export class AppImManager extends EventListenerBase<{
     if(threadId) {
       return this.openThread({ ...rest, peerId, lastMsgId, threadId, isForum: peerIsForum })
     } else if(commentId) {
-      // `openComment` (`:2212`) — ручки `getDiscussionMessage` нет, открываем пост
-      return this.setInnerPeer({ ...rest, peerId, lastMsgId })
+      return this.openComment({ peerId, msgId: lastMsgId!, commentId })
     }
 
     return this.setInnerPeer({ ...rest, peerId })
@@ -632,6 +631,22 @@ export class AppImManager extends EventListenerBase<{
     return this.setInnerPeer({
       ...rest,
       type: isForum ? ChatType.Chat : ChatType.Discussion,
+    })
+  }
+
+  /**
+   * tweb `:2208-2224` — комментарий прямо из канала: тред адресуется номером
+   * ЗЕРКАЛА поста в группе обсуждения (`getDiscussionMessage`), тем же, которым
+   * его открывает клик по футеру поста (`bubbles.openDiscussion`), — окно одно.
+   */
+  public openComment(options: { peerId: PeerId, msgId: number, commentId: number }) {
+    return this.managers.messages.getDiscussionMessage(options.peerId, options.msgId).then((message) => {
+      if(!message) return
+      return this.openThread({
+        peerId: message.peerId,
+        lastMsgId: options.commentId,
+        threadId: message.id,
+      })
     })
   }
 

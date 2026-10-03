@@ -85,6 +85,7 @@ const managers = {
   presence: { get: async() => [] },
   dialogs: { hasDialog: async() => true, refresh: async() => null },
   channels: { join: async() => {} },
+  messages: { getDiscussionMessage: vi.fn() },
 } as unknown as Managers
 
 let im: AppImManager
@@ -346,6 +347,32 @@ describe('хэш (tweb :1912-2031)', () => {
     await im.setInnerPeer({ peerId: 77 })
     await settle()
     expect(overrideHash).toHaveBeenCalledWith('77')
+  })
+})
+
+describe('тред комментариев адресуется номером зеркала (Б-110)', () => {
+  const GROUP = -900
+  const MIRROR = 50
+
+  it('`op({commentId})` — `openComment` (tweb :2208-2224): `getDiscussionMessage(канал, пост)` → тред группы по номеру зеркала', async() => {
+    const getDiscussionMessage = (managers.messages as unknown as { getDiscussionMessage: ReturnType<typeof vi.fn> }).getDiscussionMessage
+    getDiscussionMessage.mockResolvedValueOnce({ _: 'message', peerId: GROUP, id: generateMessageId(MIRROR) })
+    const setInnerPeer = vi.spyOn(AppImManager.prototype, 'setInnerPeer').mockResolvedValue(undefined)
+    construct()
+    await im.op({ peer: { _: 'channel', id: 1, pFlags: {} } as never, lastMsgId: 30, commentId: 7 })
+    expect(getDiscussionMessage).toHaveBeenCalledWith(-1, generateMessageId(30))
+    expect(setInnerPeer).toHaveBeenCalledWith({
+      peerId: GROUP, lastMsgId: generateMessageId(7), threadId: generateMessageId(MIRROR), type: ChatType.Discussion,
+    })
+  })
+
+  it('ссылка на тред группы (`?thread=` номер зеркала) — то же окно, что клик по футеру поста', async() => {
+    const setInnerPeer = vi.spyOn(AppImManager.prototype, 'setInnerPeer').mockResolvedValue(undefined)
+    construct()
+    await im.op({ peer: { _: 'channel', id: 900, pFlags: { megagroup: true } } as never, threadId: MIRROR })
+    expect(setInnerPeer).toHaveBeenCalledWith(expect.objectContaining({
+      peerId: GROUP, threadId: generateMessageId(MIRROR), type: ChatType.Discussion,
+    }))
   })
 })
 

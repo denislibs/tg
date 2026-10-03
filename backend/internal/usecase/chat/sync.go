@@ -24,12 +24,11 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	if err != nil {
 		return HistoryResult{}, err
 	}
-	// Комментарии: клиент адресует тред id ПОСТА (внешний контракт), а
-	// физически он висит на id ЗЕРКАЛА в группе обсуждения — резолвим перед
-	// запросом к хранилищу (см. resolveThreadRootForQuery). queryRoot (не
-	// исходный threadRoot) отдаёт хранилищу условие `thread_root_id=root OR
-	// id=root`, поэтому корневой бабл треда приезжает окном сам: зеркало лежит
-	// в ЭТОМ чате под id queryRoot, а не под id поста в канале.
+	// Тред адресуется номером корня В ЭТОМ ЧАТЕ (у комментариев — номером
+	// зеркала поста в группе обсуждения, см. resolveThreadRootForQuery).
+	// queryRoot — ключ строки корня: хранилище берёт окно условием
+	// `thread_root_id=root OR id=root`, поэтому корневой бабл треда приезжает
+	// окном сам.
 	//
 	// Синтетической подшивки корня ИЗ ДРУГОГО чата здесь больше нет. Она
 	// существовала только ради вырожденного пути (thread_root долетел
@@ -299,7 +298,7 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	if err != nil {
 		return AroundResult{}, err
 	}
-	// см. GetHistory — тот же перевод id поста -> id зеркала для запроса.
+	// см. GetHistory — тот же перевод номера корня в ключ строки.
 	queryRoot := i.resolveThreadRootForQuery(ctx, chatID, threadRoot)
 	msgs, err := i.msgs.GetAround(ctx, chatID, userID, centerSeq, limit, queryRoot, cleared)
 	if err != nil {

@@ -370,11 +370,10 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			nack("not_found")
 			return
 		}
-		// thread_root_id с клиента — НОМЕР ПОСТА (внешний контракт); в discussion-группе
-		// физически нужен id зеркала (см. ResolveThreadRootForSend). Резолвим здесь,
-		// на входе, а не внутри Send — PostComment туда уже шлёт id зеркала.
-		// Ошибка (нет зеркала и дозавести нечего) — понятный NACK, а не запись
-		// sentinel-нуля в thread_root_id (см. комментарий ResolveThreadRootForSend).
+		// thread_root_id с клиента — НОМЕР корня в этом чате (у комментария — номер
+		// зеркала поста); в Send уходит ключ строки (см. ResolveThreadRootForSend).
+		// Резолвим здесь, на входе, а не внутри Send — PostComment туда уже шлёт ключ.
+		// Корня нет — понятный NACK, а не запись sentinel-нуля в thread_root_id.
 		// Адрес пира → внутренний chatID; приватного диалога может ещё не быть —
 		// первое сообщение собеседнику его и заводит (как в оригинале, где
 		// «создать чат» отдельной операцией не существует).
