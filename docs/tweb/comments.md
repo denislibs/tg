@@ -243,6 +243,9 @@ div.sidebar-header.topbar [data-floating="1"]        ← has-avatar НЕТ
 
 Меню ⋮ в треде (`20-cm-08-topbar-menu.json`): `Select Messages`, `Send a Gift`, `Boost Group`
 — т.е. пункты пира-группы, без «Mute»/«View discussion».
+**У нас** (`components/chat/topbar.ts`, П-5 волны 7): `Select Messages` (+ `Search` на мобильном,
+автоудаление — админу группы); `Send a Gift` и `Boost Group` — Б-85 плана волны 7
+(`showSendGiftPopup`/`openBoosts` не портированы). Пин — `topbar.test.ts` «тред комментариев».
 
 **Плашка закрепа = сам пост** (`20-cm-03-pinned.json`): в Discussion `topbar.ts:1246`
 вызывает `newPlate.setStaticMessage(this.chat.threadId)` — обычный
