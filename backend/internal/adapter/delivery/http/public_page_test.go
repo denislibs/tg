@@ -170,9 +170,9 @@ func TestPublicPages(t *testing.T) {
 
 		{"/+good", 200, []string{
 			"Messenger: Вступить в группу", "Закрытая", "5 участников", "секрет",
-			`href="https://web.msgr.test/join/good">Присоединиться</a>`, "вступить в группу",
+			`href="https://web.msgr.test/#?tgaddr=tg%3A%2F%2Fjoin%3Finvite%3Dgood">Присоединиться</a>`, "вступить в группу",
 		}, nil},
-		{"/joinchat/good", 200, []string{"Закрытая", `href="https://web.msgr.test/join/good"`}, nil},
+		{"/joinchat/good", 200, []string{"Закрытая", `href="https://web.msgr.test/#?tgaddr=tg%3A%2F%2Fjoin%3Finvite%3Dgood"`}, nil},
 		{"/+chan", 200, []string{"Messenger: Вступить в канал", "1 подписчик", "подписаться на канал"}, nil},
 		{"/+revoked", 404, []string{"Вас пригласили в <strong>групповой чат</strong>", `class="tgme_action_button"`}, []string{"Отозванная"}},
 		{"/+expired", 404, []string{"групповой чат"}, []string{"Просроченная"}},
@@ -186,6 +186,8 @@ func TestPublicPages(t *testing.T) {
 		}, nil},
 		{"/addemoji/smile", 200, []string{"набор эмодзи <strong>Смайлы</strong>", "Добавить эмодзи", "tg%3A%2F%2Faddemoji%3Fset%3Dsmile"}, nil},
 		{"/addstickers/nope", 404, []string{"noindex", "<strong>набор стикеров</strong>", "tg%3A%2F%2Faddstickers%3Fset%3Dnope"}, nil},
+		// папка — сразу в клиент (`AddList`): редирект на `tg://addlist?slug=`
+		{"/addlist/work", 302, []string{`href="https://web.msgr.test/#?tgaddr=tg%3A%2F%2Faddlist%3Fslug%3Dwork"`}, nil},
 	}
 	for _, c := range cases {
 		code, body := getPublic(t, h, c.path)

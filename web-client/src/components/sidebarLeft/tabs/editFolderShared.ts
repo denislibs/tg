@@ -11,8 +11,9 @@
 // Имена tweb ключуют кнопки категорий и в редакторе, и в выборе чатов
 // (`includedChats.tsx:57-72`, `data-peer-id`), а поле — плоское у нас. И
 // `inviteUrl`: полный адрес ссылки-приглашения — у tweb `chatlistInvite.url`
-// уже полный, у нас сервер отдаёт путь (`/addlist/<slug>`); нужен редактору и
-// вкладке ссылки (`sharedFolder.solid.tsx`).
+// уже полный (`t.me/addlist/<slug>`), у нас сервер отдаёт путь (`/addlist/<slug>`)
+// на хосте ссылок (`core/publicLink`); нужен редактору и вкладке ссылки
+// (`sharedFolder.solid.tsx`). Открывает его `internalLinkProcessor` (`addlist`).
 //
 // Адаптации (каждая — из-за отсутствующей у нас подсистемы):
 //   • ветка shared-папки (`:16-23`: `dialogFilterChatlist` без своих ссылок →
@@ -41,9 +42,10 @@ import lottieLoader, { type LottieAssetName } from '@lib/lottie/lottieLoader'
 import noop from '@helpers/noop'
 import type { Folder, FolderInvite } from '@core/managers/foldersManager'
 import type { Managers } from '@/client/bootstrap'
+import { publicLinkFromTelegramPath } from '@core/publicLink'
 
-/** Полный адрес ссылки-приглашения в папку (сервер отдаёт путь от корня SPA). */
-export const inviteUrl = (invite: FolderInvite) => location.origin + invite.url
+/** Полный адрес ссылки-приглашения в папку (сервер отдаёт путь на хосте ссылок). */
+export const inviteUrl = (invite: FolderInvite) => publicLinkFromTelegramPath(invite.url.replace(/^\/+/, ''))
 
 /** Ручки, которыми удаляется папка. */
 export type EditFolderManagers = {
