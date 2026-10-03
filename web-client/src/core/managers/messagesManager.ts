@@ -1233,9 +1233,15 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       // «отправляется…» рядом с уже отправленным. Слияние полей (random_id,
       // localUrl, secret) делает потребитель — messageOps.insert. Признак
       // `sequential` снятого бабла едет в `insert` финального — как у ack.
-      const sequential = pending.checkPendingMessage(m.random_id)
+      const finalized = pending.checkPendingMessage(m.random_id)
+      const sequential = finalized?.sequential
       const root = getThreadRootId(m)
       const keys = root ? [hkey(m.peerId), hkey(m.peerId, root)] : [hkey(m.peerId)]
+      // Окна, где лежал временный бабл, финализируются ВСЕГДА — даже если ключ
+      // эха с ними не совпал (тред комментариев: окно по номеру поста, корень
+      // в эхе — номер зеркала). Порт `storageKey: pendingData.storage.key`
+      // (tweb appMessagesManager.ts:11946), см. `checkPendingMessage`.
+      for (const key of finalized?.keys ?? []) if (!keys.includes(key)) keys.push(key)
       const ops: MessageOp[] = []
       for (const key of keys) {
         // Только в срез, уже державший низ истории — иначе позиция неизвестна.

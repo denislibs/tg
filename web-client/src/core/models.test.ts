@@ -363,3 +363,32 @@ describe('isOutMessage — сторона бабла', () => {
     expect(isOutMessage(m, chat)).toBe(false)
   })
 })
+
+/**
+ * Производные поля пересылки — порт `saveMessage` tweb
+ * (appMessagesManager.ts:7111-7158): автор в «Избранном» — автор ОРИГИНАЛА,
+ * `fwdFromId` и адрес оригинала `savedFrom`.
+ */
+describe('mapMessage — пересылка', () => {
+  const ME = 7
+  const fwd = (peerId: number, header: Omit<RawMessageReal['fwd_from'] & object, '_' | 'date'>) =>
+    mapMessage({ ...makeRawMessage({ id: 1, peerId, fromId: ME, out: true }), fwd_from: { _: 'messageFwdHeader', date: 1, ...header } } as RawMessageReal, ME)
+
+  it('«Избранное»: автор — from_id оригинала; скрытый — NULL_PEER_ID; своё непересланное — я', () => {
+    expect(fwd(ME, { from_id: { _: 'peerUser', user_id: 42 } })).toMatchObject({ fromId: 42, fwdFromId: 42 })
+    expect(fwd(ME, { from_name: 'Тайный' })).toMatchObject({ fromId: 0, fwdFromId: 0 })
+    expect(mapMyMessage(makeRawMessage({ id: 1, peerId: ME, fromId: ME, out: true }), ME).fromId).toBe(ME)
+  })
+
+  it('вне «Избранного» автор копии остаётся отправителем', () => {
+    expect(fwd(42, { from_id: { _: 'peerUser', user_id: 43 } })).toMatchObject({ fromId: ME, fwdFromId: 43 })
+  })
+
+  it('savedFrom — saved_from_peer+saved_from_msg_id, у поста канала — from_id+channel_post', () => {
+    expect(fwd(42, { from_id: { _: 'peerUser', user_id: 43 }, saved_from_peer: { _: 'peerChannel', channel_id: 5 }, saved_from_msg_id: 9 }))
+      .toMatchObject({ savedFrom: `-5_${generateMessageId(9)}` })
+    expect(fwd(42, { from_id: { _: 'peerChannel', channel_id: 6 }, channel_post: 3 }))
+      .toMatchObject({ savedFrom: `-6_${generateMessageId(3)}` })
+    expect(fwd(42, { from_id: { _: 'peerUser', user_id: 43 } })).not.toHaveProperty('savedFrom')
+  })
+})

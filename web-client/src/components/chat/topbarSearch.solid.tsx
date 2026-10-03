@@ -113,6 +113,11 @@ const renderHistoryResult = ({ middleware, managers, peerId, messages, query }: 
       peerId: fromPeerId || peerId,
       container: false,
       avatarSize: 'abitbigger',
+      // tweb :81 `meAsSaved: searchType === 'my'` — своё сообщение подписано
+      // своим именем, а не «Избранным». Типов поиска у нас нет (расхождение 2),
+      // то есть `searchType` всегда пуст и слагаемое ложно; без него строка
+      // брала умолчание конструктора (`meAsSaved = true`, appDialogsManager).
+      meAsSaved: false,
       wrapOptions: { middleware },
       autonomous: true,
       managers,
