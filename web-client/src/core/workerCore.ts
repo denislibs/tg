@@ -62,7 +62,9 @@ import { CHANNEL_CURSOR, UPDATE_RT, channelPeerId, frameKey, updatePredicate } f
 import { idbGet, idbSet } from './store/idbKv'
 import { sessionKv } from './store/sessionKv'
 import { newPasscodeWorker } from './passcode/passcodeWorker'
-import { PASSCODE_CHANNEL, type PasscodeTask } from './passcode/protocol'
+import { PASSCODE_CHANNEL, RELOAD_CHANNEL, type PasscodeTask } from './passcode/protocol'
+import { AppTabsManager, TAB_STATE_CHANNEL, TOGGLE_UNINTERUPTABLE_ACTIVITY_CHANNEL, type TabState, type ToggleUninteruptableActivityPayload } from '@lib/appManagers/appTabsManager'
+import { useAutoLock } from '@lib/mainWorker/useAutoLock'
 import { persistClearAll, persistScope, loadDialogs, loadStateAll, saveStateKey, saveDialogs, saveMe, loadMe } from './store/persist'
 import { STATE_VERSION, initialState } from './state/state'
 import { newWorkerScope } from './realtime/workerScope'
@@ -438,11 +440,37 @@ export function createWorkerCore() {
   const workerScope = newWorkerScope({ ports })
   // Код-пароль (порт хендлеров tweb index.worker.ts:246-333): свой канал на
   // каждом порту — хендлеру нужен источник вызова, см. core/passcode/passcodeWorker.ts.
+  const selfTerminate = () => { (self as unknown as { close(): void }).close() }
   const passcode = newPasscodeWorker({
     ports,
     clearPersist: persistClearAll,
-    selfTerminate: () => { (self as unknown as { close(): void }).close() },
+    selfTerminate,
   })
+  // Реестр вкладок и автоблокировка (tweb index.worker.ts:381-404): все вкладки
+  // простаивают дольше `autoLockTimeoutMins` — вкладкам перезагрузка, воркер
+  // завершается вместе с ключом, и вкладки поднимаются на экране блокировки.
+  // Самозавершение воркера без вкладок под кодом (`:401-403`) не портировано:
+  // перезагружаемая вкладка подключается раньше, чем уходит старая, и до своего
+  // `tabState` выглядит «без состояния» — воркер закрылся бы у неё под ногами (Б-17).
+  const appTabsManager = new AppTabsManager<SuperMessagePort>()
+  const autoLockControls = useAutoLock<SuperMessagePort>({
+    getSettings: async() => passcode.getAutoLockSettings(),
+    getIsLocked: () => passcode.getIsLocked(),
+    onLock: () => {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const channel = new BroadcastChannel(RELOAD_CHANNEL)
+        channel.postMessage('reload')
+        channel.close()
+      }
+      selfTerminate()
+    },
+  })
+  appTabsManager.onTabStateChange = () => {
+    const tabs = appTabsManager.getTabs()
+    const areAllIdle = tabs.every((tab) => !!tab.state.idleStartTime)
+
+    autoLockControls.setAreAllIdle(areAllIdle)
+  }
   const broadcast = (event: string, payload: unknown, meta?: EventMeta) => workerScope.broadcast(event, payload, meta)
 
   // ── Wave 3 funnel ────────────────────────────────────────────────────────────
@@ -889,12 +917,25 @@ export function createWorkerCore() {
     // Канал код-пароля (isLocked/разблокировка/включение…) — с источником вызова:
     // рассылка «всем, кроме источника», ключ на isLocked — только спросившему.
     smp.handle(PASSCODE_CHANNEL, (task) => passcode.handle(smp, task as PasscodeTask))
+    // Состояние вкладки и её «непрерываемые» занятия — для автоблокировки
+    // (tweb index.worker.ts:335-337, :407-408 `appTabsManager.addTab`).
+    appTabsManager.addTab(smp)
+    smp.handle(TAB_STATE_CHANNEL, (state) => { appTabsManager.setTabState(smp, state as TabState) })
+    smp.handle(TOGGLE_UNINTERUPTABLE_ACTIVITY_CHANNEL, (payload) => {
+      const { activity, active } = payload as ToggleUninteruptableActivityPayload
+      autoLockControls.toggleUninteruptableActivity(smp, activity, active)
+    })
     // Задача 2 (worker-rootscope): вкладка закрылась (Web Lock освободился, либо
     // фолбэк beforeunload) — снять мёртвый порт из ports[], иначе он копится там
     // до конца жизни воркера и получает все broadcast/receiveFrom вечно. Сам лок
     // берёт и держит вкладка (src/client/bootstrap.ts); superMessagePort.ts здесь
     // лишь запрашивает тот же лок и ждёт его освобождения (handleLockTask).
-    smp.setOnPortDisconnect(() => { indexOfAndSplice(ports, smp) })
+    smp.setOnPortDisconnect(() => {
+      indexOfAndSplice(ports, smp)
+      // tweb index.worker.ts:424-428 (`onTabDisconnect`)
+      appTabsManager.deleteTab(smp)
+      autoLockControls.removeTab(smp)
+    })
     // Событие, порождённое вкладкой (rootScope.dispatchEvent на главном потоке) —
     // workerScope.receiveFrom: сначала ЛОКАЛЬНО (только воркерные подписчики, БЕЗ
     // обратной отправки в порт), затем ретрансляция ОСТАЛЬНЫМ вкладкам (источнику не

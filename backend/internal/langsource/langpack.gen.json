@@ -6,15 +6,27 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 49,
+      "version": 50,
       "strings": [
         {
           "key": "ALongTimeAgo",
           "value": "last seen a long time ago"
         },
         {
+          "key": "AccDescr.ChatInfo",
+          "value": "Chat info"
+        },
+        {
+          "key": "AccDescr.ChatList",
+          "value": "Chat list"
+        },
+        {
           "key": "AccDescr.MicrophoneLevel",
           "value": "Microphone level"
+        },
+        {
+          "key": "AccDescr.SkipToConversation",
+          "value": "Skip to conversation"
         },
         {
           "key": "AccountSettings.Filters",
@@ -1605,6 +1617,18 @@
         {
           "key": "CopyLink",
           "value": "Copy Link"
+        },
+        {
+          "key": "CopyRestricted.Channel",
+          "value": "Sorry, copying from this channel is disabled by its admins."
+        },
+        {
+          "key": "CopyRestricted.Group",
+          "value": "Sorry, copying from this group is disabled by its admins."
+        },
+        {
+          "key": "CopyRestricted.User",
+          "value": "Copying is restricted in this chat."
         },
         {
           "key": "Country",
@@ -6374,7 +6398,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 49,
+      "version": 50,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -7940,6 +7964,18 @@
           "value": "Уровень микрофона"
         },
         {
+          "key": "AccDescr.SkipToConversation",
+          "value": "Перейти к переписке"
+        },
+        {
+          "key": "AccDescr.ChatList",
+          "value": "Список чатов"
+        },
+        {
+          "key": "AccDescr.ChatInfo",
+          "value": "Информация о чате"
+        },
+        {
           "key": "ConferenceCall.Media.MicrophoneError",
           "value": "Не удалось изменить состояние микрофона. Проверьте доступ к микрофону и попробуйте ещё раз."
         },
@@ -8111,6 +8147,18 @@
         {
           "key": "Copy",
           "value": "Копировать"
+        },
+        {
+          "key": "CopyRestricted.Channel",
+          "value": "Копирование из этого канала запрещено администраторами."
+        },
+        {
+          "key": "CopyRestricted.Group",
+          "value": "Копирование из этой группы запрещено администраторами."
+        },
+        {
+          "key": "CopyRestricted.User",
+          "value": "В этом чате запрещено копирование."
         },
         {
           "key": "Resend",

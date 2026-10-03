@@ -56,7 +56,7 @@ export interface Settings {
   passcodeAutoLockMins: number
   // Сочетание блокировки (tweb settings.passcode.lockShortcutEnabled/lockShortcut,
   // `config/state.ts:151-152`): модификаторы + L, слушатель —
-  // `core/hooks/useLockScreenShortcut.ts`.
+  // `lib/appManagers/utils/useLockScreenShortcut.ts`.
   passcodeLockShortcutEnabled: boolean
   passcodeLockShortcut: PasscodeLockShortcutKey[]
   // tweb settings.passcode.canAttemptAgainOn (`passcodeLockScreen.tsx:136-149`):

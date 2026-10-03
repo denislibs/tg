@@ -428,7 +428,6 @@ describe('жизненный цикл: создание по фокусу, сн�
     expect(appNavigationController.findItemByType('global-search')).toBeUndefined()
 
     focus(inputSearch)
-    window.dispatchEvent(new Event('tg-focus-search'))
     await settle()
     expect(searchContainer.childElementCount).toBe(0)
   })
@@ -684,20 +683,6 @@ describe('навигация: Escape, Enter, Ctrl+F (:1312-1321, :1458-1467, ind
     expect(openedUrls).toEqual(['t.me/durov'])
     expect(inputSearch.value).toBe('')
     expect(searchActive).toEqual([true, false])
-  })
-
-  it('Ctrl+F (tg-focus-search) открывает поиск и фокусирует поле; под попапом — нет', async() => {
-    const { inputSearch, searchContainer, searchActive } = build()
-    const popupItem = appNavigationController.pushItem({ type: 'popup', onPop: () => {} })
-    window.dispatchEvent(new Event('tg-focus-search'))
-    expect(searchContainer.childElementCount).toBe(0)
-    appNavigationController.removeItem(popupItem)
-
-    window.dispatchEvent(new Event('tg-focus-search'))
-    await settle()
-    expect(searchContainer.querySelector('.search-super')).not.toBeNull()
-    expect(document.activeElement).toBe(inputSearch.input)
-    expect(searchActive[0]).toBe(true)
   })
 })
 

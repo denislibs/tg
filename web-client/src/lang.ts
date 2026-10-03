@@ -10,7 +10,10 @@
 // с `src/i18n/dict.*.ts`.
 const lang = {
   'ALongTimeAgo': 'last seen a long time ago',
+  'AccDescr.ChatInfo': 'Chat info',
+  'AccDescr.ChatList': 'Chat list',
   'AccDescr.MicrophoneLevel': 'Microphone level',
+  'AccDescr.SkipToConversation': 'Skip to conversation',
   'AccountSettings.Filters': 'Chat Folders',
   'AccountSettings.Language': 'Language',
   'AccountSettings.Notifications': 'Notifications and Sounds',
@@ -424,6 +427,9 @@ const lang = {
   Continue: 'Continue',
   Copy: 'Copy',
   CopyLink: 'Copy Link',
+  'CopyRestricted.Channel': 'Sorry, copying from this channel is disabled by its admins.',
+  'CopyRestricted.Group': 'Sorry, copying from this group is disabled by its admins.',
+  'CopyRestricted.User': 'Copying is restricted in this chat.',
   Country: 'Country',
   Create: 'Create',
   CreateANew: 'Create a New',

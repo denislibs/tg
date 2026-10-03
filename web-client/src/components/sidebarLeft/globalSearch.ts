@@ -78,9 +78,8 @@
 //     и `appear-animated` (:1586-1599, :1613) ставит колонка в `onSearchActive`
 //     (`sidebarLeft/index.ts`), морф бургера — по сигналу `useIsLeftSearchActive`. `isAnimatingCollapse` в `onPop` (:1463) — анимации сворачивания
 //     колонки нет.
-//  9. Ctrl+F: у оригинала `addShortcutListener(['ctrl+f', …])` (:451-454), у
-//     нас сочетание разбирает `core/hotkeys.ts` и объявляет событием
-//     `tg-focus-search` — владелец слушает его; гейт «не под попапом» тот же.
+//  9. (снято П-4) Ctrl+F — как у оригинала, `addShortcutListener` в
+//     `AppSidebarLeft.construct` (`sidebarLeft/index.ts`, tweb :457-460).
 // 10. `destroy()` — метода у оригинала нет (колонка живёт столько же, сколько
 //     вкладка); у нас хозяин — React-компонент, и на размонтировании владелец
 //     снимает сеанс поиска сразу, без перехода, и свои подписки.
@@ -222,17 +221,10 @@ export default class GlobalSearch {
 
     // :220
     this.inputSearch.input.addEventListener('focus', this.onFirstFocus, { once: true })
-    // :451-454 — расхождение 9
-    window.addEventListener('tg-focus-search', this.onFocusShortcut)
   }
 
   private onFirstFocus = () => {
     this.initSearch()
-  }
-
-  private onFocusShortcut = () => {
-    if(appNavigationController.findItemByType('popup')) return
-    this.initSearch().open()
   }
 
   public initSearch(): SearchInitResult {
@@ -711,7 +703,6 @@ export default class GlobalSearch {
     if(this.destroyed) return
     this.destroyed = true
     this.inputSearch.input.removeEventListener('focus', this.onFirstFocus)
-    window.removeEventListener('tg-focus-search', this.onFocusShortcut)
     clearTimeout(this.hideNewBtnMenuTimeout)
     this.teardownSearch?.()
     this.middlewareHelper.destroy()

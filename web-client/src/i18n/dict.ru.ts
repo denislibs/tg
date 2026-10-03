@@ -457,6 +457,9 @@ const ru = {
     'Микрофон недоступен. Проверьте доступ к микрофону и попробуйте ещё раз.',
   'CallSettings.CameraUnavailable': 'Камера недоступна. Проверьте доступ к камере и попробуйте ещё раз.',
   'AccDescr.MicrophoneLevel': 'Уровень микрофона',
+  'AccDescr.SkipToConversation': 'Перейти к переписке',
+  'AccDescr.ChatList': 'Список чатов',
+  'AccDescr.ChatInfo': 'Информация о чате',
   'ConferenceCall.Media.MicrophoneError':
     'Не удалось изменить состояние микрофона. Проверьте доступ к микрофону и попробуйте ещё раз.',
   'ConferenceCall.Media.CameraError':
@@ -513,6 +516,9 @@ const ru = {
   Reply: 'Ответить',
   Edit: 'Изменить',
   Copy: 'Копировать',
+  'CopyRestricted.Channel': 'Копирование из этого канала запрещено администраторами.',
+  'CopyRestricted.Group': 'Копирование из этой группы запрещено администраторами.',
+  'CopyRestricted.User': 'В этом чате запрещено копирование.',
   Resend: 'Переотправить',
   'ChatList.Context.Pin': 'Закрепить',
   Forward: 'Переслать',

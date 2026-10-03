@@ -537,8 +537,13 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Шаг К-3 волны 7 (ядро шапки чата `chat/topbar.ts`): у ru +1 ключ tweb lang.ts:4172
 // `Chat.Title.Comments` (с формами числа) — заголовок треда комментариев
 // (`topbar.ts` `setTitleManual`, tweb :1596-1610). Итог: ru 1540, `plural` 49 → 50.
+// Пачка П-4 волны 7 (хоткеи, ориентиры экранного доступа): у ru +6 ключей tweb lang.ts —
+// `AccDescr.SkipToConversation`/`ChatList`/`ChatInfo` (:4612, :4615, :4617; ссылка
+// «пропустить к чату» и имена колонок, `helpers/dom/appLandmarks.ts`) и
+// `CopyRestricted.Channel`/`Group`/`User` (:4768-4770; защита копирования,
+// `appImManager.attachCopyListener`). Итог: ru 1546.
 const COMPOSITION = {
-  ru: { keys: 1540, plural: 50 },
+  ru: { keys: 1546, plural: 50 },
   uk: { keys: 829, plural: 35 },
   es: { keys: 800, plural: 34 },
   de: { keys: 801, plural: 35 },
@@ -717,8 +722,9 @@ const COMPOSITION = {
 // Пачкой П-3 волны 7 — у ru +1 ключ tweb `Update` (разбор — там же).
 // Задачей 1-8 волны 7 — у ru +6 ключей пустого списка и контактов (разбор — там же).
 // Шагом К-3 волны 7 — у ru +1 ключ tweb `Chat.Title.Comments` (разбор — там же).
+// Пачкой П-4 волны 7 — у ru +6 ключей tweb `AccDescr.*` и `CopyRestricted.*` (разбор — там же).
 const FINGERPRINT = {
-  ru: 'e41ac8af',
+  ru: '1d1ba723',
   uk: 'a02f363c',
   es: '89e8ae98',
   de: '0fed7933',
