@@ -17,9 +17,6 @@
  *  2. Клик достаёт элемент у кладки по `data-doc-id` (`masonry.getItem`) и
  *     отдаёт в отправку САМ элемент, а не `docId` (`:77-78`): Tenor-результат не
  *     документ, по id его никто, кроме кладки, не знает.
- *
- * Временное (с номерами): `appImManager.chat.input` — React-остров композера
- * (`components/chat/reactChatInput.ts`, ВРЕМЕННО до К-4).
  */
 import { onCleanup, onMount, type Component } from 'solid-js'
 import animationIntersector, { type AnimationItemGroup } from '@components/animationIntersector'
