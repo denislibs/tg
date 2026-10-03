@@ -1671,6 +1671,18 @@
           "value": "Copy Link"
         },
         {
+          "key": "CopyRestricted.Channel",
+          "value": "Sorry, copying from this channel is disabled by its admins."
+        },
+        {
+          "key": "CopyRestricted.Group",
+          "value": "Sorry, copying from this group is disabled by its admins."
+        },
+        {
+          "key": "CopyRestricted.User",
+          "value": "Copying is restricted in this chat."
+        },
+        {
           "key": "Country",
           "value": "Country"
         },
@@ -6466,7 +6478,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 50,
+      "version": 51,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -8080,6 +8092,18 @@
           "value": "Уровень микрофона"
         },
         {
+          "key": "AccDescr.SkipToConversation",
+          "value": "Перейти к переписке"
+        },
+        {
+          "key": "AccDescr.ChatList",
+          "value": "Список чатов"
+        },
+        {
+          "key": "AccDescr.ChatInfo",
+          "value": "Информация о чате"
+        },
+        {
           "key": "ConferenceCall.Media.MicrophoneError",
           "value": "Не удалось изменить состояние микрофона. Проверьте доступ к микрофону и попробуйте ещё раз."
         },
@@ -8251,6 +8275,18 @@
         {
           "key": "Copy",
           "value": "Копировать"
+        },
+        {
+          "key": "CopyRestricted.Channel",
+          "value": "Копирование из этого канала запрещено администраторами."
+        },
+        {
+          "key": "CopyRestricted.Group",
+          "value": "Копирование из этой группы запрещено администраторами."
+        },
+        {
+          "key": "CopyRestricted.User",
+          "value": "В этом чате запрещено копирование."
         },
         {
           "key": "Resend",
@@ -12910,18 +12946,6 @@
         {
           "key": "FilterNoChatsToDisplayInfo",
           "value": "Сейчас в этой папке нет чатов."
-        },
-        {
-          "key": "AccDescr.ChatInfo",
-          "value": "Информация о чате"
-        },
-        {
-          "key": "AccDescr.ChatList",
-          "value": "Список чатов"
-        },
-        {
-          "key": "AccDescr.SkipToConversation",
-          "value": "Перейти к переписке"
         },
         {
           "key": "Alert.BotAppDoesntExist",

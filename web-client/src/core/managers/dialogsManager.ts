@@ -1219,6 +1219,30 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
     },
 
     /**
+     * Порт `dialogsStorage.getNextDialog` (tweb `storages/dialogs.ts:527-543`) —
+     * соседний диалог папки для Alt+↑/↓ (`appImManager.attachKeydownListener`,
+     * tweb `appImManager.ts:1746-1757`). Папка — `forFilter` (tweb
+     * `getFolderDialogs(filterId, true)`); посчитать её нечем — соседа нет.
+     */
+    getNextDialog(currentPeerId: PeerId, next: boolean, filterId: number): Dialog | undefined {
+      const folder = forFilter(filterId) ?? []
+      let dialog: Dialog | undefined
+      if (!currentPeerId) {
+        if (next) {
+          dialog = folder[0]?.dialog
+        }
+      } else {
+        const idx = folder.findIndex((item) => item.dialog.peerId === currentPeerId)
+        if (idx !== -1) {
+          const nextIndex = next ? idx + 1 : idx - 1
+          dialog = folder[nextIndex]?.dialog
+        }
+      }
+
+      return dialog
+    },
+
+    /**
      * Порт tweb `appMessagesManager.getReadMaxIdIfUnread` — горизонт прочтения,
      * но ТОЛЬКО если в диалоге реально есть непрочитанное, иначе 0. На этом
      * гейте стоит граница «Непрочитанные сообщения» в ленте

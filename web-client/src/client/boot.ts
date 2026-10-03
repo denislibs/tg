@@ -20,6 +20,7 @@ import appChatBackground, { watchWallPaperSettings } from '../components/chat/bu
 import { useSettingsStore } from '../settings'
 import PopupElement from '@components/popups/indexTsx.solid'
 import { installPasscodeListener } from './passcodeClient'
+import { installTabState } from './tabState'
 import { listenServiceWorkerHello, sendPasscodeStateToServiceWorker } from './passcodeServiceWorker'
 import { preventCrossTabDynamicImportDeadlock } from '../core/preventDeadlock'
 import { useChatsStore } from '../stores/chatsStore'
@@ -131,6 +132,8 @@ export async function bootstrap(): Promise<{ managers: Managers; hasToken: boole
     lock: () => PasscodeLockScreenController.lock(),
     unlock: () => PasscodeLockScreenController.unlock(),
   })
+  // простой вкладки — воркеру, для автоблокировки (tweb apiManagerProxy.ts:645-648)
+  installTabState(smp)
   listenServiceWorkerHello()
   await PasscodeLockScreenController.waitForUnlock(async () => {
     // Экран блокировки рисуется ДО приложения, а тему ставило только оно

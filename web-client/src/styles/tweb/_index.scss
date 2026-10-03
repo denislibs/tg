@@ -107,3 +107,5 @@
 @use "pages/pages"; // :124
 @use "pages/chats"; // :125
 @use "passcodeLockScreen"; // :127
+
+@use "accessibility"; // :129 — последним: перебивает `outline: none` компонентов

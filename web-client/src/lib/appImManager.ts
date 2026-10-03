@@ -40,8 +40,8 @@
 //     `acceptCallOverride` и `incompatible` — бэклог Б-95,
 //     `peer_typings` (эмодзи-интеракций нет), `peer_title_edit` (события нет),
 //     `message_error` слоумода (П-6), `ephemeral_*`/`service_notification`/…
-//     (Б-16), `singleInstance`/t.me (Б-17), хоткеи/копирование/autologin/цвета
-//     пиров/шаринг (Б-9, П-4), `savedReactionTags`.
+//     (Б-16), `singleInstance`/t.me (Б-17), autologin/цвета
+//     пиров/шаринг (П-4), `savedReactionTags`.
 //  4. `useHeavyAnimationCheck` (`:436-442`) не нужен здесь: `animationIntersector`
 //     подписан на тяжёлую анимацию сам (`components/animationIntersector.ts:177`).
 //  5. `appChatBackground.attach` и первый `setBackground` делает `client/boot.ts`
@@ -86,6 +86,18 @@
 //     композера). Зон сброса внутри открытого попапа (`mediaDropsContainer`,
 //     `appendDrops`, `Preview.Dragging.AddItems`) нет — бэклог Б-83; вставка в открытый
 //     попап дописывает файлы (`addFiles`).
+// 14. Блок F (`attachKeydownListener` `:1703-1852`, `attachCopyListener` `:1854-1895`):
+//     F1. Правка последнего и ответ на предыдущее по ↑/Ctrl+↑ (`:1758-1846`) не
+//         портированы — Б-80: нужны члены `ChatInput` К-4 (`editMsgId`, `replyToMsgId`,
+//         `isInputEmpty`, `onHelperCancel`) и `getFirstMessageToEdit` воркера. Ветка
+//         стрелок осталась (нет права писать — прокрутка ленты, иначе клавиша гаснет).
+//     F2. `chat.input` — через узкий тип `KeydownChatInput` (`// ВРЕМЕННО до К-4`):
+//         остров композера К-3 не даёт `recording`/`passEventToInput`.
+//     F3. `appDialogsManager.contextMenu?.hasAddToFolderOpen()` (`:1767`) — только в
+//         ветке правки (F1).
+//     F4. Защита копирования инертна, пока у баблов нет класса `no-forwards` — Б-81.
+//     Автоблокировка (`:630` рядом — только сочетание) — как у tweb, в воркере
+//     (`lib/mainWorker/useAutoLock.ts`, проводка `core/workerCore.ts`).
 import PeerTitle, { type PeerTitleManagers } from '@components/chat/peerTitle'
 import { generateMessageId } from '@core/history/messageId'
 import type { Middleware } from '@helpers/middleware'
@@ -113,12 +125,9 @@ import { isPeerId, NULL_PEER_ID } from '@core/peers/peerId'
 import { peerKey, type Chat as MTChat, type User } from '@core/peers/peer'
 import { isBroadcast, isForum } from '@core/peers/predicates'
 import { setTheme } from '@core/theme/themeController'
-import { useAutoLock } from '@core/hooks/useAutoLock'
-import { useLockScreenShortcut } from '@core/hooks/useLockScreenShortcut'
 import internalLinkProcessor from '@lib/internalLinkProcessor'
 import { getAnchorListener } from '@helpers/addAnchorListener'
 import { wrapUrl } from '@lib/richtext/url'
-import { attachSkipToContent, setLandmarkLabels } from '@helpers/dom/appLandmarks'
 import { openWebApp } from '@core/webapp'
 import animationIntersector from '@components/animationIntersector'
 import appChatBackground, { type AppChatBackground } from '@components/chat/bubbles/chatBackground.solid'
@@ -161,6 +170,13 @@ import getFileMimeType from '@helpers/files/getFileMimeType'
 import getFilesFromEvent from '@helpers/files/getFilesFromEvent'
 import { setTransition } from '@core/dom/setTransition'
 import MEDIA_MIME_TYPES_SUPPORTED from '@environment/mediaMimeTypesSupport'
+// блок F (хоткеи, копирование, ориентиры) и сочетание блокировки
+import useLockScreenShortcut from '@lib/appManagers/utils/useLockScreenShortcut'
+import { attachSkipToContent, setLandmarkLabels } from '@helpers/dom/appLandmarks'
+import { shouldPreserveKeyboardFocus } from '@helpers/dom/isKeyboardControl'
+import isTargetAnInput from '@helpers/dom/isTargetAnInput'
+import getSelectedNodes from '@helpers/dom/getSelectedNodes'
+import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 
 // ═══ СТАТУС И НАБОР (блок L, `:3454-3816`) — методы класса ниже ═════════════
 //
@@ -296,6 +312,15 @@ function getCurrentCall() {
 /** tweb `:250` */
 class CallSwitchCancelledError extends Error {}
 
+/** Члены `ChatInput` (tweb `input.ts`), которые читает блок F — расхождение 14 F2.
+ *  ВРЕМЕННО до К-4: остров композера К-3 даёт не все. */
+type KeydownChatInput = {
+  messageInput?: HTMLElement,
+  canSendPlain(): boolean,
+  recording?: boolean,
+  passEventToInput?(e: KeyboardEvent): void
+}
+
 export class AppImManager extends EventListenerBase<{
   chat_changing: (details: { from: Chat, to: Chat }) => void,
   peer_changed: (chat: Chat) => void,
@@ -322,6 +347,9 @@ export class AppImManager extends EventListenerBase<{
   private prevTab: HTMLElement | undefined
 
   public managers!: Managers
+
+  /** tweb `:288` — пишет `useLockScreenShortcut`, читает `attachKeydownListener` */
+  public isShiftLockShortcut = false
 
   get myId() {
     return rootScope.myId
@@ -414,9 +442,8 @@ export class AppImManager extends EventListenerBase<{
       this.overrideHash(peerId)
     })
 
-    // `:630` и автоблокировка (`lib/mainWorker/useAutoLock.ts` у tweb — в воркере)
+    // `:630`
     useLockScreenShortcut()
-    useAutoLock()
 
     // Глобальный тост приложения (`ui:toast`) — бывший `useGlobalToast` шелла.
     rootScope.addEventListener('ui:toast', (text) => toast(String(text)))
@@ -434,6 +461,8 @@ export class AppImManager extends EventListenerBase<{
     this.checkForLoginToken()
     this.onHashChange(true)
     this.init()
+    this.attachKeydownListener()
+    this.attachCopyListener()
   }
 
   // ── G. Хэш и открытие пиров ─────────────────────────────────────────────
@@ -1219,17 +1248,149 @@ export class AppImManager extends EventListenerBase<{
     return animationPromise
   }
 
-  /** tweb `:3203-3208` */
-  /** tweb `:3199-3201` (узел колонки — расхождение 13 шапки) */
+  /** tweb `:3199-3201` (узел левой колонки — расхождение 13 шапки) */
   private setStaticLandmarkLabels = () => {
     setLandmarkLabels(this.columnLeftEl, document.getElementById('column-right'))
   }
 
+  /** tweb `:3203-3208` */
   private updateColumnAccessibility() {
     // On mobile these columns slide outside the viewport but stay mounted.
     // Match their keyboard/AT visibility to the selected screen, including PiP.
     if(this.columnLeftEl) this.columnLeftEl.inert = mediaSizes.isMobile && this.tabId !== APP_TABS.CHATLIST
     if(this.columnEl) this.columnEl.inert = mediaSizes.isMobile && this.tabId !== APP_TABS.CHAT
+  }
+
+  // ── F. Хоткеи и защита копирования (расхождение 14 шапки) ───────────────
+
+  /** tweb `:1703-1852` */
+  private attachKeydownListener() {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const key = e.key
+      const isSelectionCollapsed = document.getSelection()?.isCollapsed ?? true
+      if(
+        shouldPreserveKeyboardFocus(e) ||
+        overlayCounter.isOverlayActive ||
+        !e.isTrusted // * ignore synthetic events
+      ) return
+
+      const target = e.target as HTMLElement
+
+      const targetIsInput = isTargetAnInput(target)
+
+      const chat = this.chat
+      const input = chat?.input as KeydownChatInput | undefined // ВРЕМЕННО до К-4 (F2)
+      if(targetIsInput && target !== input?.messageInput) return
+
+      // Hand keyboard focus to the bubbles scroll container so the browser scrolls it natively.
+      // (overflow:auto + outline:none → focus is invisible.)
+      const handoffScroll = () => {
+        const container = chat?.bubbles?.scrollable?.container
+        if(container && document.activeElement !== container) {
+          container.focus({ preventScroll: true })
+        }
+      }
+
+      if(this.isShiftLockShortcut && e.shiftKey) return
+
+      if((key.startsWith('Arrow') || (e.shiftKey && key === 'Shift')) && !isSelectionCollapsed) {
+        return
+      } else if(e.code === 'KeyC' && (e.ctrlKey || e.metaKey) && !targetIsInput) {
+        return
+      } else if(
+        (key === 'PageUp' || key === 'PageDown') &&
+        !targetIsInput &&
+        !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey
+      ) {
+        handoffScroll()
+        return
+      } else if(e.altKey && (key === 'ArrowUp' || key === 'ArrowDown')) {
+        cancelEvent(e)
+        void this.managers.dialogs.getNextDialog(
+          this.chat.peerId,
+          key === 'ArrowDown',
+          appDialogsManager.filterId,
+        ).then((dialog) => {
+          if(dialog) {
+            void this.setPeer({ peerId: dialog.peerId })
+          }
+        })
+        return
+      } else if((key === 'ArrowUp' || key === 'ArrowDown') && this.chat?.type !== ChatType.Scheduled && this.chat?.type !== ChatType.Welcome) {
+        // In chats/channels where the user can't post (read-only broadcasts, restricted groups,
+        // unjoined chats), there's no message to edit, so let ArrowUp/Down scroll the chat instead.
+        if(input && !input.canSendPlain()) {
+          handoffScroll()
+          return
+        }
+
+        // правка последнего / ответ на предыдущее (`:1766-1846`) — Б-80 (F1)
+        return
+      } else if(key === 'ArrowDown') {
+        return
+      }
+
+      if(
+        input?.messageInput &&
+        target !== input.messageInput &&
+        !targetIsInput &&
+        !IS_TOUCH_SUPPORTED &&
+        (!mediaSizes.isMobile || this.tabId === APP_TABS.CHAT) &&
+        !chat.selection.isSelecting &&
+        !input.recording &&
+        input.messageInput.isContentEditable
+      ) {
+        input.passEventToInput?.(e)
+      }
+    }
+
+    // Follow the active app window so the global "type anywhere → focus input" + shortcut handler
+    // keeps firing when the client is popped into a Document PiP window.
+    bindActiveWindowListener((w) => w.document.body, 'keydown', onKeyDown)
+  }
+
+  /** tweb `:1854-1895` — restrict copying no forwards content (F4) */
+  private attachCopyListener() {
+    // Follow the active app window so the restricted-copy guard still fires in a Document PiP window
+    // (SECURITY: if it never rebinds there, no-forwards text becomes copyable out of PiP).
+    bindActiveWindowListener((w) => w.document, 'copy', (e) => {
+      let peerId: PeerId | undefined
+      const nodes = getSelectedNodes()
+      const foundRestrictedNode = nodes.some((node) => {
+        let element = node as HTMLElement | null
+        if(node.nodeType !== node.ELEMENT_NODE) {
+          element = node.parentElement
+        }
+
+        if(!element || !findUpClassName(element, 'no-forwards')) {
+          return false
+        }
+
+        const bubble = findUpClassName(element, 'bubble')
+        if(!bubble) {
+          return false
+        }
+
+        peerId = Number(bubble.dataset.peerId)
+        return true
+      })
+
+      if(foundRestrictedNode && peerId !== undefined) {
+        e.preventDefault()
+
+        let langPackKey: LangPackKey
+        if(isUser(peerId)) {
+          langPackKey = 'CopyRestricted.User'
+        } else {
+          const chat = cachedChat(peerId)
+          langPackKey = chat?._ === 'channel' && chat.pFlags?.broadcast ?
+            'CopyRestricted.Channel' :
+            'CopyRestricted.Group'
+        }
+
+        toastNew({ langPackKey })
+      }
+    })
   }
 
   /** tweb `:3219-3231` */

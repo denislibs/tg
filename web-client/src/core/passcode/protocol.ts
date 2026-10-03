@@ -8,6 +8,17 @@ export const PASSCODE_KV_KEY = 'passcode'
 
 export const PASSCODE_CHANNEL = 'passcode'
 
+/** tweb `mainBroadcastChannel.emitVoid('reload')` — достаёт и вкладки со своим
+ *  воркером (`?noSharedWorker=1`), которых воркерная рассылка не видит. Слушает
+ *  вкладка (`client/passcodeClient.ts`), шлют вкладка (`lockAndReload`) и воркер
+ *  (автоблокировка, `core/workerCore.ts`). */
+export const RELOAD_CHANNEL = 'msgr-passcode-reload'
+
+/** Настройки автоблокировки (tweb `settings.passcode.enabled`/`autoLockTimeoutMins`,
+ *  `config/state.ts`) — воркер читает их не из общего хранилища, а от вкладки
+ *  (расхождение 1 `lib/mainWorker/useAutoLock.ts`). */
+export type AutoLockSettingsPayload = { enabled: boolean, autoLockTimeoutMins: number | null }
+
 /** Запись кода в `msgr/kv` — tweb `PasscodeStorageValue` (`commonStateStorage.ts:11-30`). */
 export interface PasscodeStorageValue {
   verificationHash: Uint8Array | number[]
@@ -29,6 +40,7 @@ export type PasscodeTask =
   | { method: 'resetEncryptableCacheStorages' }
   | { method: 'forceLogout' }
   | { method: 'terminate' }
+  | { method: 'setAutoLockSettings', payload: AutoLockSettingsPayload }
 
 /** Воркер → вкладка. */
 export type PasscodeEvent =

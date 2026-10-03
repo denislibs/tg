@@ -1,5 +1,6 @@
-// Порт tweb `src/helpers/dom/appLandmarks.ts` (812502980) — дословно.
 /*
+ * Порт tweb `src/helpers/dom/appLandmarks.ts` (812502980) — 1:1.
+ *
  * https://github.com/morethanwords/tweb
  * Copyright (C) 2019-2021 Eduard Kuzmenko
  * https://github.com/morethanwords/tweb/blob/master/LICENSE
@@ -36,7 +37,7 @@ export function attachSkipToContent(link: HTMLElement, target: HTMLElement) {
  * cannot be written into the markup. These are plain attributes rather than
  * `i18n()` elements, so they are re-applied whenever the language changes.
  */
-export function setLandmarkLabels(navigation: HTMLElement | null, complementary: HTMLElement | null) {
+export function setLandmarkLabels(navigation: HTMLElement | null | undefined, complementary: HTMLElement | null | undefined) {
   navigation?.setAttribute('aria-label', I18n.format('AccDescr.ChatList', true))
   complementary?.setAttribute('aria-label', I18n.format('AccDescr.ChatInfo', true))
 }

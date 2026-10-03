@@ -35,14 +35,14 @@
  * замок и `toggleRightButtons` с `is-input-the-last-child` (:237-361), кнопка
  * поиска свёрнутой колонки `sidebar-header-search-trigger` (:392-421) с
  * сигналом `useHasOpenLeftTabs` (:561).
+ * Пачкой П-4 волны 7: Ctrl/Alt/Cmd+F — поиск и Ctrl/Cmd+0 — «Избранное»
+ * (`addShortcutListener`, :457-468).
  *
  * Не перенесено — у каждого пункта задача или номер «Отложено»:
  *  • тело `initSearch` (:1137-1691) — класс `GlobalSearch`
  *    (`sidebarLeft/globalSearch.ts`, порт по старой базе), его перенос в метод и
  *    дельта до HEAD, `showCtrlFTip` (:636-650, вызов в `onCollapsedChange`
- *    :511-513), `watchChannelsTabVisibility` (:1692) — задача 2-3. Ctrl+F
- *    (:458-461) — наш `core/hotkeys.ts` → событие `tg-focus-search` владельцу
- *    (его расхождение 9);
+ *    :511-513), `watchChannelsTabVisibility` (:1692) — задача 2-3;
  *  • «Мои истории» (`AppMyStoriesTab`, :715-722) — О-82, пункт скрыт;
  *  • бейдж уведомлений других аккаунтов (:186-210; и у бургера колонки папок —
  *    `allNotificationsCount`) — О-81;
@@ -50,7 +50,6 @@
  *  • `onResize`/`fastRaf(updateColumnWidths)` (:386-391) — пересчёт ширин
  *    ставит `core/dom/updateColumnWidths.ts` (`installColumnWidthsUpdater`);
  *  • `getTopPeers('correspondents')` (:363) — прогрев выдачи поиска, задача 2-3;
- *  • Ctrl+0 (:463-470) — наш `core/hotkeys.ts`, задача 5-1;
  *  • `onSwipeTick: appImManager.adjustChatPatternBackground` (:670) — Э4-5;
  *  • `appDialogsManager.onChatListNarrowChange()` в `onCollapsedChange` (:507) —
  *    задача 1-8; `resizeStoriesList()` после `toggleRightButtons` (:342) — с
@@ -93,6 +92,9 @@
  *     :285-302) нет — ей нужен тот же документ; `emoji_status_change` —
  *     подписка на смену статуса в `me` зеркала. Выбор статуса — Б-63
  *     (`emojiStatusPicker.solid.tsx`).
+ *  9. Ctrl/Cmd+0 (:462-468) открывает «Избранное» тем же путём, что пункт бургера
+ *     (`openSavedMessages`: `chats.saved()` заводит чат на бэкенде, потом
+ *     `appImManager.setPeer`), а не голым `setPeer({peerId: myId})`.
  *
  * Расхождения бургера (`createToolsMenu`/`createMoreSubmenu`, задача 2-2):
  *  1. Отступление В7-4 — мультиаккаунт в нашей модели «одна сессия на
@@ -193,6 +195,7 @@ import IS_CALL_SUPPORTED from '@environment/callSupport'
 import DOCUMENT_PICTURE_IN_PICTURE_SUPPORTED from '@environment/documentPictureInPictureSupport'
 import contextMenuController from '@helpers/contextMenuController'
 import { attachClickEvent, CLICK_EVENT_NAME, simulateClickEvent } from '@helpers/dom/clickEvent'
+import { addShortcutListener } from '@helpers/shortcutListener'
 import filterAsync from '@helpers/array/filterAsync'
 import createBadge from '@helpers/createBadge'
 import setBadgeContent from '@helpers/setBadgeContent'
@@ -319,7 +322,7 @@ export class AppSidebarLeft extends SidebarSlider {
     sidebarHeader.nextElementSibling!.append(this.updateBtn)
 
     // `inputSearch.input focus → initSearch` (:226) вешает владелец поиска сам
-    // (расхождение 6); он же слушает Ctrl+F (`tg-focus-search`).
+    // (расхождение 6); Ctrl+F — `addShortcutListener` в конце `construct` (:457-460).
     this.globalSearch = new GlobalSearch({
       searchContainer: this.sidebarEl.querySelector('#search-container') as HTMLElement,
       inputSearch: this.inputSearch,
@@ -516,6 +519,19 @@ export class AppSidebarLeft extends SidebarSlider {
     dialogsManager.onSomeDrawerToggle = () => {
       this.onSomethingOpenInsideChange()
     }
+
+    // `:457-460`
+    addShortcutListener(['ctrl+f', 'alt+f', 'meta+f'], () => {
+      if(appNavigationController.findItemByType('popup')) return
+      this.initSearch().open()
+    })
+
+    // `:462-468` — расхождение 9
+    addShortcutListener(['ctrl+0', 'meta+0'], () => {
+      if(appNavigationController.findItemByType('popup') ||
+        appImManager.chat.peerId === appImManager.myId) return
+      this.openSavedMessages()
+    })
   }
 
   /**

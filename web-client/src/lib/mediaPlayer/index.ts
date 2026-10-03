@@ -34,8 +34,7 @@
 //     кнопка no-op, как и первый гейт tweb;
 //   • не портированы за отсутствием фич: live/RTMP, quality-меню (HLS нет),
 //     storyboard-превью кадра, speedDragHandler (long-press 2x — вместе с ним
-//     contextmenu-глушилка :431-433), toggleActivity (:687-692, категории
-//     «непрерываемой активности» воркера нет), isClientPipOpen-тост (:663-666,
+//     contextmenu-глушилка :431-433), isClientPipOpen-тост (:663-666,
 //     Document-PiP приложения живёт иначе — core/pip.ts), Alt+± смена
 //     скорости (:402-404, ходила в playbackRateButton.changeRateByAmount).
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
@@ -60,6 +59,7 @@ import { replaceButtonIcon } from '@components/mediaViewer/base'
 import { formatVideoTime, rateToString, VIDEO_RATES } from '@components/messages/videoPlayback'
 import { useSettingsStore } from '../../settings'
 import { _i18n } from '@lib/langPack'
+import { toggleUninteruptableActivity } from '@/client/tabState'
 
 // tweb playbackRateButton geometricFontMap: подпись скорости — по глифу на
 // символ моноширинной «геометрической» гарнитуры (как в React-плеере).
@@ -229,7 +229,7 @@ export default class VideoPlayer extends ControlsHover {
 
     this.isPlaying = isPlaying
 
-    // toggleActivity tweb :286 — не портирован (см. шапку)
+    this.toggleActivity(isPlaying)
 
     this.wrapper.classList.toggle('is-playing', isPlaying)
     this.toggles.forEach((toggle) => {
@@ -641,6 +641,13 @@ export default class VideoPlayer extends ControlsHover {
       this.onPip =
       this.onPipClose =
       undefined
+
+    this.toggleActivity(false)
+  }
+
+  /** tweb `:687-692` — видео держит приложение от автоблокировки (`lib/mainWorker/useAutoLock.ts`) */
+  private toggleActivity(active: boolean) {
+    toggleUninteruptableActivity('UsingVideoPlayer', active)
   }
 
   get inPip() {
