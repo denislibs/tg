@@ -94,6 +94,7 @@
 @use "popups/stickers"; // :88
 @use "popups/datePicker"; // :89
 @use "popups/forward"; // :90
+@use "popups/chatlistInvite"; // :108
 @use "popups/call"; // :93 (выдержка — `.call-video-mirror`)
 @use "popups/premium"; // :110
 @use "popups/confirmation"; // :114
@@ -110,3 +111,5 @@
 @use "pages/pages"; // :124
 @use "pages/chats"; // :125
 @use "passcodeLockScreen"; // :127
+
+@use "accessibility"; // :129 — последним: перебивает `outline: none` компонентов

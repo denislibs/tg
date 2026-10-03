@@ -103,10 +103,14 @@ describe('bubbleClasses', () => {
     expect(cls).toEqual(expect.arrayContaining(['is-album', 'is-grouped', 'video']))
   })
 
-  it('пересланное: forwarded + must-have-name, hide-name не ставится', () => {
+  // `forwarded`/`must-have-name` решает шапка пересылки в ленте
+  // (`ChatBubbles.renderName`, tweb bubbles.ts:10799-10824): в «Избранном» и у
+  // автофорварда поста их нет. Здесь — только то, что шапка у пересланного
+  // есть всегда.
+  it('пересланное: hide-name не ставится, forwarded здесь не решается', () => {
     const cls = bubbleClasses(msg({ forwardFrom: { name: 'канал' } as ConvMsg['forwardFrom'] }), ctx({ out: true }))
-    expect(cls).toEqual(expect.arrayContaining(['forwarded', 'must-have-name']))
     expect(cls).not.toContain('hide-name')
+    expect(cls).not.toContain('forwarded')
   })
 
   // Пост канала — гейт tweb bubbles.ts:7672-7673: `isMessage && message.views`.

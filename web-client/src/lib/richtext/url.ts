@@ -10,7 +10,8 @@
 //    рисуется `<span>`, а не `<a>` (см. wrapRichText).
 // 2. **Никаких inline-обработчиков.** tweb вешает `setAttribute('onclick', name + '(this)')`
 //    и рассчитывает на глобали из `addAnchorListener`. Мы кладём имя действия в
-//    `dataset.anchorAction`, а слушателя вешает лента одним делегированием.
+//    `data-anchor-action`, а исполняет его один делегированный слушатель
+//    (`helpers/addAnchorListener.ts::listenForAnchorClicks`).
 import { matchUrlProtocolText, SAFE_SCHEMES, safeUrl } from '@core/safeUrl'
 import matchTelegramUrlHost, { matchUrlHost, TELESCOPE_LINK_HOST } from './matchTelegramUrlHost'
 import { URL_REG_EXP } from './parseEntities'
@@ -20,14 +21,15 @@ export const ANCHOR_ACTION_ATTRIBUTE = 'data-anchor-action'
 
 /**
  * Действия внутренних ссылок Telegram (имена — 1:1 tweb `addAnchorListener.ts`,
- * там это имена глобальных функций). Кто их исполняет — забота ленты.
+ * там это имена глобальных функций). Исполняет их реестр `helpers/addAnchorListener.ts`.
  * Строка, а не объединение литералов: читатель берёт значение из DOM-атрибута
  * (`components/chat/bubbles.ts:2364`). Какие имена допустимы — держит реестр
  * `KNOWN_ANCHOR_ACTIONS` ниже.
  */
 export type AnchorAction = string
 
-const PHONE_NUMBER_REG_EXP = /^\+\d+$/
+/** tweb `richTextProcessor/index.ts:107` */
+export const PHONE_NUMBER_REG_EXP = /^\+\d+$/
 // Первые сегменты t.me-пути, которые сами по себе являются действием (tweb wrapUrl.ts:36-48).
 const T_ME_ACTION_PATHS = new Set([
   'm', 'addlist', 'joinchat', 'addstickers', 'addemoji', 'voicechat', 'call',
@@ -67,11 +69,10 @@ const T_ME_ACTION_PATHS = new Set([
  *    `tg://voicechat` (`internalLinkProcessor.ts:216-217`). То есть
  *    `window.voicechat` не существует никогда и гейт ОРИГИНАЛА это действие
  *    снимает. Снимаем и мы.
- *  • Всё семейство `tg_*` — у tweb для него зарегистрирован 21 обработчик
- *    (`tg_resolve` :404-405, `tg_settings` :717-718, `tg_iv` :676-677, …), у нас
- *    исполнителя нет НИ ОДНОГО: единственный читатель атрибута — делегирование
- *    ленты (`components/chat/bubbles.ts::onContainerClick`), и оно клик не
- *    исполняет (`internalLinkProcessor` — бэклог Б-8). Сюда же попадает `tg_iv` из задачи #33 — см. ниже.
+ *  • Семейство `tg_*`, кроме зарегистрированных у нас (`lib/internalLinkProcessor.ts`,
+ *    записи `tg_*` ниже): у tweb их 21 (`tg_settings` :786, `tg_iv` :736, …), у нас
+ *    исполнителя у остальных нет (бэклог Б-75, Б-77). Сюда же попадает `tg_iv` из
+ *    задачи #33 — см. ниже.
  *  • `execBotCommand` (tweb `internalLinkProcessor.ts:90`, ставится в
  *    `wrapRichText.ts:393`) и `setMediaTimestamp` (:119 / `wrapRichText.ts:725`):
  *    сущностей `messageEntityBotCommand`/`messageEntityTimestamp` наш
@@ -95,6 +96,15 @@ export const KNOWN_ANCHOR_ACTIONS: ReadonlySet<string> = new Set([
   'share', //       :612
   'nft', //         :645
   'addstyle', //    :781
+  // Ставит ветка `tg:` `wrapUrl` (конкатенация `'tg_' + имя`, :65). В реестре — ровно
+  // те, у которых есть обработчик `lib/internalLinkProcessor.ts` (держит его тест).
+  'tg_addstickers', // :218-229
+  'tg_addemoji', //    :218-229
+  'tg_resolve', //     :434-501
+  'tg_privatepost', // :503-517
+  'tg_addlist', //     :533-545
+  'tg_joinchat', //    :547-560
+  'tg_join', //        :547-560
   // Ставит `wrapRichText` (`:377`, `:417`), МИМО `wrapUrl` — ровно как в tweb:
   // там оба имени присваиваются уже после возврата `wrapUrl`
   // (`wrapRichText.ts:590` и `:637`), так что гейт оригинала их тоже не видит.

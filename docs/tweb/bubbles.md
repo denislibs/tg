@@ -683,7 +683,18 @@ div.reply.quote-like.quote-like-hoverable.quote-like-border[.quote-like-icon.rep
 модели нет), `isStandaloneMedia` — стикер и кружок (большого эмодзи в ванильной ленте нет:
 такие сообщения рисуются обычным текстом). `showName` решает и узел, и класс `hide-name`
 (через `bubbleClasses`); у standalone-бабла без имени ответ получает `floating-part`.
-`name-with-reply` не портирован — у него нет пути без эфемерных сообщений. Раньше узел
+Шапка ПЕРЕСЫЛКИ портирована (`ChatBubbles.renderName`, tweb 812502980 :10725-11019): автор —
+`fwdFromId`, а не отправитель копии; в «Избранном» (`peerId === myId`) и у автофорварда поста в
+группу обсуждения — цветное имя автора оригинала, иначе `bubble-name-forwarded` («Forwarded from»
++ `br.hide-ol` + аватарка 20px + имя), классы `forwarded`/`must-have-name` ставит она же, а не
+`bubbleClasses`. Скрытая атрибуция — `hidden-profile` и имя `from_name` строкой. Производные поля
+tweb (`fwdFromId`, `savedFrom`, автор в «Избранном» = автор оригинала, appMessagesManager.ts
+:7111-7158) выводит граница разбора `core/models.ts::mapMessage`; ключ серии своей пересылки в
+«Избранное» — `-myId` (bubbleGroups.ts:709-712), аватарка серии — `getAvatarOptions` (:110-143).
+Адрес оригинала (`saved_from_msg_id`) даёт кнопку `goto-original` сбоку и переход с имени.
+`name-with-reply` строится у standalone-медиа с шапкой пересылки. Нет предмета: `post_author`
+(`ForwardedFromAuthor`), форвард-форварда (`saved_from_*` не производятся), via-бот, story-форвард.
+Пины — `chat/bubbles.forward.test.ts`. Раньше узел
 имени вставлялся и стикеру/кружку, и `.floating-part` у `just-media` становился
 абсолютной плашкой в стороне от стикера. Пины — `chat/bubbles.stickers.test.ts`,
 `chat/bubbles.media.test.ts` (describe «имя автора у стикера/кружка в группе»).

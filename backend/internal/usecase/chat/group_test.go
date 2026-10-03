@@ -1104,7 +1104,7 @@ func TestJoinByToken_NoApproval(t *testing.T) {
 	id, _, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
 	link, _ := i.CreateInvite(context.Background(), id, 7, "", nil, false, nil)
 
-	requested, err := i.JoinByToken(context.Background(), link.Token, 9)
+	_, requested, err := i.JoinByToken(context.Background(), link.Token, 9)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1147,7 +1147,7 @@ func TestJoinByToken_PostsJoinedByLinkService(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := len(s.messages[id])
-	if _, err := in.JoinByToken(ctx, link.Token, 9); err != nil {
+	if _, _, err := in.JoinByToken(ctx, link.Token, 9); err != nil {
 		t.Fatal(err)
 	}
 	msgs := s.messages[id]
@@ -1174,7 +1174,7 @@ func TestJoinByToken_RequiresApproval(t *testing.T) {
 	id, _, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
 	link, _ := i.CreateInvite(context.Background(), id, 7, "", nil, true, nil)
 
-	requested, err := i.JoinByToken(context.Background(), link.Token, 9)
+	_, requested, err := i.JoinByToken(context.Background(), link.Token, 9)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1226,7 +1226,7 @@ func TestInviteImporters_TracksJoins(t *testing.T) {
 
 	// direct join via a no-approval link → recorded.
 	direct, _ := i.CreateInvite(ctx, id, 7, "", nil, false, nil)
-	if _, err := i.JoinByToken(ctx, direct.Token, 9); err != nil {
+	if _, _, err := i.JoinByToken(ctx, direct.Token, 9); err != nil {
 		t.Fatal(err)
 	}
 	imps, count, err := i.InviteImporters(ctx, id, 7, direct.Token)
@@ -1236,7 +1236,7 @@ func TestInviteImporters_TracksJoins(t *testing.T) {
 
 	// approval-flow join → recorded only at approval time.
 	appr, _ := i.CreateInvite(ctx, id, 7, "", nil, true, nil)
-	if _, err := i.JoinByToken(ctx, appr.Token, 10); err != nil {
+	if _, _, err := i.JoinByToken(ctx, appr.Token, 10); err != nil {
 		t.Fatal(err)
 	}
 	if imps, count, _ := i.InviteImporters(ctx, id, 7, appr.Token); count != 0 || len(imps) != 0 {
@@ -1366,7 +1366,7 @@ func TestApproveJoinRequest(t *testing.T) {
 	i, fg, fjr := newGroupTestInteractor(t)
 	id, _, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
 	link, _ := i.CreateInvite(context.Background(), id, 7, "", nil, true, nil)
-	if _, err := i.JoinByToken(context.Background(), link.Token, 9); err != nil {
+	if _, _, err := i.JoinByToken(context.Background(), link.Token, 9); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1468,13 +1468,13 @@ func TestGroupSettings_Enforcement(t *testing.T) {
 	if bans, _ := in.ListBanned(ctx, id, 7); len(bans) != 1 || bans[0].UserID != 8 {
 		t.Fatalf("bans = %+v; want [8]", bans)
 	}
-	if _, err := in.JoinByToken(ctx, link.Token, 8); !errors.Is(err, domain.ErrForbidden) {
+	if _, _, err := in.JoinByToken(ctx, link.Token, 8); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("banned join by link: err = %v; want ErrForbidden", err)
 	}
 	if err := in.UnbanMember(ctx, id, 7, 8); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := in.JoinByToken(ctx, link.Token, 8); err != nil {
+	if _, _, err := in.JoinByToken(ctx, link.Token, 8); err != nil {
 		t.Fatalf("join after unban: %v", err)
 	}
 

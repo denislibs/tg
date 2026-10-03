@@ -22,13 +22,30 @@ afterEach(() => {
 
 function fakeSmp() {
   const listeners = new Map<string, (e: unknown) => void>()
+  const smpInvoke = vi.fn(async(_type: string, _task: unknown): Promise<unknown> => undefined)
   return {
-    smp: { on: (event: string, cb: (e: unknown) => void) => { listeners.set(event, cb) } },
+    smp: { on: (event: string, cb: (e: unknown) => void) => { listeners.set(event, cb) }, invoke: smpInvoke },
     emit: (e: unknown) => listeners.get('passcode')!(e),
+    smpInvoke,
   }
 }
 
 describe('installPasscodeListener', () => {
+  it('настройки автоблокировки уходят воркеру на старте и на каждой их смене (lib/mainWorker/useAutoLock.ts, расхождение 1)', async() => {
+    const { installPasscodeListener } = await import('./passcodeClient')
+    const { useSettingsStore } = await import('@/settings')
+    useSettingsStore.getState().update({ passcodeEnabled: true, passcodeAutoLockMins: 5 })
+    const { smp, smpInvoke } = fakeSmp()
+    installPasscodeListener(smp as never, { lock: vi.fn(), unlock: vi.fn() })
+    expect(smpInvoke).toHaveBeenLastCalledWith('passcode', { method: 'setAutoLockSettings', payload: { enabled: true, autoLockTimeoutMins: 5 } })
+
+    useSettingsStore.getState().update({ passcodeAutoLockMins: 0 })
+    expect(smpInvoke).toHaveBeenLastCalledWith('passcode', { method: 'setAutoLockSettings', payload: { enabled: true, autoLockTimeoutMins: null } })
+    const calls = smpInvoke.mock.calls.length
+    useSettingsStore.getState().update({ tabsInSidebar: !useSettingsStore.getState().tabsInSidebar })
+    expect(smpInvoke.mock.calls.length).toBe(calls)
+  })
+
   it('saveEncryptionKey/toggleUsingPasscode кладут ключ и флаг в память вкладки; toggleLock зовёт замок', async() => {
     const { installPasscodeListener } = await import('./passcodeClient')
     const EncryptionKeyStore = (await import('@lib/passcode/keyStore')).default
