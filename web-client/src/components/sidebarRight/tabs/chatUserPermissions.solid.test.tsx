@@ -148,7 +148,7 @@ describe('права админа', () => {
 
   it('тумблер сеть не трогает; галочка шлёт `editAdmin` с правами и закрывает вкладку', async() => {
     const tab = await open(admin, true)
-    const addAdmins = toggles(tab).at(-1)!
+    const addAdmins = toggles(tab)[toggles(tab).length - 1]
 
     flip(addAdmins)
     await waitFor(() => saveIcon(tab).classList.contains('appear-zoom--active'))

@@ -178,15 +178,6 @@ describe('GroupsManager', () => {
     expect(getLinkedChatPeerId((await b.card(-5))!.fullChat)).toBe(NULL_PEER_ID)
   })
 
-  it('promoteAdmin POSTs /chats/{id}/admins with user_id + rights bitmask', async () => {
-    const { rest, posts } = fakeRest({})
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-    await mgr.promoteAdmin(5, 11, 129)
-    expect(posts).toHaveLength(1)
-    expect(posts[0].path).toBe('/chats/5/admins')
-    expect(posts[0].body).toEqual({ user_id: 11, rights: 129 })
-  })
-
   // Порт пары `editChatDefaultBannedRights` + `toggleSlowMode` одним вызовом
   // (задача 0б-6 волны 7): ЗАПРЕТЫ вкладки прав уходят нашим битмаском «что
   // можно» — инверсия только в `allowedFromBannedRights`.
@@ -204,14 +195,6 @@ describe('GroupsManager', () => {
     const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
     expect(await mgr.channelParticipantsBanned(-5)).toBe(reply)
     expect(gets).toEqual(['/chats/-5/restrictions'])
-  })
-
-  it('demoteAdmin DELETEs /chats/{id}/admins/{userId}', async () => {
-    const { rest, dels } = fakeRest({})
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-    await mgr.demoteAdmin(5, 11)
-    expect(dels).toHaveLength(1)
-    expect(dels[0]).toBe('/chats/5/admins/11')
   })
 
   it('createInvite POSTs /chats/{id}/invite_links and maps requires_approval', async () => {
@@ -349,41 +332,6 @@ describe('GroupsManager', () => {
     expect(posts[0].body).toEqual({})
     expect(peerId).toBe(-77)
     expect(peers.saveApiPeers).toHaveBeenCalledWith(expect.objectContaining({ chats: [chat] }))
-  })
-
-  // Заявки — тот же контейнер импортёров, отфильтрованный по флагу `requested`.
-  it('listJoinRequests читает импортёров контейнера', async () => {
-    const { rest, gets } = fakeRest({
-      getReturn: {
-        _: 'messages.chatInviteImporters', count: 2,
-        importers: [
-          { _: 'chatInviteImporter', user_id: 11, date: 1, pFlags: { requested: true } },
-          { _: 'chatInviteImporter', user_id: 22, date: 1, pFlags: { requested: true } },
-        ],
-      },
-    })
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-    const ids = await mgr.listJoinRequests(5)
-    expect(gets[0]).toBe('/chats/5/join_requests')
-    expect(ids).toEqual([11, 22])
-  })
-
-  it('approveRequest POSTs /chats/{id}/join_requests/{userId}/approve', async () => {
-    const { rest, posts } = fakeRest({})
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-    await mgr.approveRequest(5, 11)
-    expect(posts).toHaveLength(1)
-    expect(posts[0].path).toBe('/chats/5/join_requests/11/approve')
-    expect(posts[0].body).toEqual({})
-  })
-
-  it('declineRequest POSTs /chats/{id}/join_requests/{userId}/decline', async () => {
-    const { rest, posts } = fakeRest({})
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-    await mgr.declineRequest(5, 11)
-    expect(posts).toHaveLength(1)
-    expect(posts[0].path).toBe('/chats/5/join_requests/11/decline')
-    expect(posts[0].body).toEqual({})
   })
 
   // Список тем — КОНТЕЙНЕР `messages.forumTopics`: строка несёт состояние
@@ -581,81 +529,8 @@ describe('card кормит зеркало пиров (иначе предика
   })
 })
 
-// Участник — КОНСТРУКТОР объединения, а не строка `role` в записи. Пины держат
-// именно это: подмена ветки роли или чтение статуса со строки участника вместо
-// карточки красят их.
-describe('GroupsManager: участники — объединение конструкторов', () => {
-  const participants = () => ({
-    _: 'channels.channelParticipants',
-    count: 3,
-    participants: [
-      { _: 'channelParticipantCreator', user_id: 7, admin_rights: { _: 'chatAdminRights' } },
-      { _: 'channelParticipantAdmin', user_id: 8, date: 1, admin_rights: { _: 'chatAdminRights' } },
-      { _: 'channelParticipant', user_id: 9, date: 2 },
-    ],
-    chats: [],
-    users: [{ _: 'user', id: 9, first_name: 'Аня', status: { _: 'userStatusRecently' } }],
-  })
-
-  it('роль выводится из КОНСТРУКТОРА, а присутствие — с карточки пользователя', async () => {
-    const { rest } = fakeRest({ getReturn: participants() })
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-
-    const mem = await mgr.members(-5)
-
-    expect(mem.map((m) => [m.userId, m.role])).toEqual([[7, 'creator'], [8, 'admin'], [9, 'member']])
-    // Статус пришёл с `users`, а не со строки участника: у оригинала он живёт
-    // на карточке, и второго дома у него нет.
-    expect(mem[2].status).toEqual({ _: 'userStatusRecently' })
-    expect(mem[0].status).toBeUndefined()
-  })
-
-  // Выгнанный и ограниченный — ОДИН конструктор, разница во флаге `left`.
-  it('бан и ограничение читаются из одного конструктора', async () => {
-    const banned = {
-      _: 'channels.channelParticipants',
-      count: 1,
-      participants: [{
-        _: 'channelParticipantBanned',
-        pFlags: { left: true },
-        peer: { _: 'peerUser', user_id: 11 },
-        kicked_by: 7,
-        date: 3,
-        banned_rights: { _: 'chatBannedRights', until_date: 0 },
-      }],
-      chats: [], users: [],
-    }
-    const bans = await newGroupsManager({
-      rest: fakeRest({ getReturn: banned }).rest, dialogs: fakeDialogs(), peers: fakePeers(),
-    }).listBans(-5)
-    expect(bans).toEqual([{ userId: 11, bannedBy: 7 }])
-
-    const limited = {
-      ...banned,
-      participants: [{
-        _: 'channelParticipantBanned',
-        peer: { _: 'peerUser', user_id: 12 },
-        kicked_by: 7,
-        date: 3,
-        // Запреты — маска ВНУТРИ конструктора: выставленный флаг это запрет.
-        banned_rights: { _: 'chatBannedRights', until_date: 1787420548, pFlags: { send_messages: true, invite_users: true } },
-      }],
-    }
-    const res = await newGroupsManager({
-      rest: fakeRest({ getReturn: limited }).rest, dialogs: fakeDialogs(), peers: fakePeers(),
-    }).listRestrictions(-5)
-    expect(res).toEqual([{
-      userId: 12,
-      deniedRights: 1 | 4,
-      untilDate: new Date(1787420548 * 1000).toISOString(),
-      restrictedBy: 7,
-    }])
-  })
-})
-
 // Вкладка «Участники» shared media листает страницами (tweb `getChannelParticipants`,
-// LOAD_COUNT 50 → 200) и читает конструкторы участников как есть: плоская
-// форма `members` ей не подходит ни пагинацией, ни потерей конструктора.
+// LOAD_COUNT 50 → 200) и читает конструкторы участников как есть.
 describe('GroupsManager.channelParticipants', () => {
   const page = () => ({
     _: 'channels.channelParticipants',

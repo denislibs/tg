@@ -2,7 +2,7 @@
 import type { RestClient } from '../net/restClient'
 import type { DialogsManager } from './dialogsManager'
 import type { PeersManager } from './peersManager'
-import type { Channel, ChannelFull, ChatAdminRights, ChatBannedRights, MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
+import type { Channel, ChannelFull, ChatAdminRights, ChatBannedRights, MessagesChatFull, UserReal } from '../peers/peer'
 import { getPeerId } from '../peers/peerId'
 import type { Peer } from '../peers/peerId'
 import { adminRightsMask, allowedFromBannedRights, deniedMask } from '../peers/rights'
@@ -18,9 +18,6 @@ import { isPeerMuted } from '../dialogs/notifySettings'
 import { publicLinkFromTelegramPath } from '../publicLink'
 import { toPeerId } from '../peers/peerId'
 import tsNow from '@helpers/tsNow'
-
-/** Участник чата: наша роль + статус присутствия (объединение `UserStatus`). */
-export interface ChatMember { userId: number; role: string; status?: UserStatus }
 
 /**
  * Ответ `POST /groups` — `messages.invitedUsers` (ответ `messages.createChat`
@@ -109,15 +106,6 @@ export interface ChannelsChannelParticipants {
   participants: ChannelParticipantWire[]
   chats: unknown[]
   users: UserReal[]
-}
-
-/** Роль по конструктору — обратный перевод для экранов, которые ей оперируют. */
-export function participantRole(p: ChannelParticipantWire): string {
-  switch (p._) {
-    case 'channelParticipantCreator': return 'creator'
-    case 'channelParticipantAdmin': return 'admin'
-    default: return 'member'
-  }
 }
 
 /** id участника: у забаненного и ушедшего он лежит в ссылке на пир. */
@@ -545,41 +533,10 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
     async setChargeStars(peerId: number, chargeStars: number): Promise<void> {
       await rest.put(`/chats/${peerId}/charge_stars`, { charge_stars: chargeStars })
     },
-    async listBans(peerId: number): Promise<{ userId: number; bannedBy: number }[]> {
-      const r = await rest.get<ChannelsChannelParticipants>(`/chats/${peerId}/bans`)
-      return (r.participants ?? []).map((p) => ({
-        userId: participantUserId(p),
-        bannedBy: p._ === 'channelParticipantBanned' ? p.kicked_by : 0,
-      }))
-    },
-    async ban(peerId: number, userId: number): Promise<void> {
-      await rest.post(`/chats/${peerId}/bans`, { user_id: userId })
-    },
-    async unban(peerId: number, userId: number): Promise<void> {
-      await rest.del(`/chats/${peerId}/bans/${userId}`)
-    },
-    // Гранулярные ограничения участника (Telegram editBanned / ChatBannedRights):
-    // deniedRights — битовая маска запрещённых прав (PERMS), untilSeconds — срок
-    // (0/undefined — бессрочно).
-    async listRestrictions(peerId: number): Promise<{ userId: number; deniedRights: number; untilDate?: string; restrictedBy: number }[]> {
-      const r = await rest.get<ChannelsChannelParticipants>(`/chats/${peerId}/restrictions`)
-      // Ограниченный — ТОТ ЖЕ конструктор, что и выгнанный, только без флага
-      // `left`. Чем именно ограничен — маска запретов внутри `banned_rights`;
-      // `until_date` в СЕКУНДАХ эпохи, 0 значит «бессрочно».
-      return (r.participants ?? []).flatMap((p) => {
-        if (p._ !== 'channelParticipantBanned') return []
-        return [{
-          userId: participantUserId(p),
-          deniedRights: deniedMask(p.banned_rights.pFlags),
-          untilDate: p.banned_rights.until_date ? new Date(p.banned_rights.until_date * 1000).toISOString() : undefined,
-          restrictedBy: p.kicked_by,
-        }]
-      })
-    },
     /**
      * Ограниченные участники — порт `appProfileManager.getChannelParticipants`
      * с фильтром `channelParticipantsBanned` (`:744-790`): ограниченный остаётся в
-     * чате (у выгнанного — `left`, его список `listBans`). Ручка отдаёт список
+     * чате (у выгнанного — `left`, его список — `getParticipants` с `channelParticipantsKicked`). Ручка отдаёт список
      * целиком, без `offset`/`limit`; карточек `users` в ответе нет — строки
      * объявляют пробел зеркала сами (`peers.fillMirror` у `PeerTitle`/`avatar`).
      */
@@ -587,12 +544,6 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
       const r = await rest.get<ChannelsChannelParticipants>(`/chats/${peerId}/restrictions`)
       peers.saveApiPeers({ users: r.users ?? [] })
       return r
-    },
-    async restrictMember(peerId: number, userId: number, deniedRights: number, untilSeconds?: number): Promise<void> {
-      await rest.post(`/chats/${peerId}/restrictions`, { user_id: userId, denied_rights: deniedRights, until_seconds: untilSeconds ?? 0 })
-    },
-    async unrestrictMember(peerId: number, userId: number): Promise<void> {
-      await rest.del(`/chats/${peerId}/restrictions/${userId}`)
     },
     async removeMember(peerId: number, userId: number): Promise<void> {
       await rest.del(`/chats/${peerId}/members/${userId}`)
@@ -606,18 +557,6 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
       await rest.del(`/chats/${peerId}`)
       dialogs.applyRemoved(peerId)
     },
-    // Участники чата: id + роль + СТАТУС (объединение `UserStatus`, а не
-    // булев `online` без срока годности — см. PresenceEvt).
-    async members(peerId: PeerId): Promise<ChatMember[]> {
-      const r = await rest.get<ChannelsChannelParticipants>(`/chats/${peerId}/members`)
-      // Присутствие берётся с КАРТОЧКИ пользователя (`user.status`), а не со
-      // строки участника: у оригинала оно живёт там, и второго дома у него нет.
-      const byId = new Map((r.users ?? []).map((u) => [u.id, u]))
-      return (r.participants ?? []).map((p) => {
-        const id = participantUserId(p)
-        return { userId: id, role: participantRole(p), status: byId.get(id)?.status }
-      })
-    },
     /**
      * Страница участников КОНТЕЙНЕРОМ — порт `appProfileManager.getChannelParticipants`
      * в объёме вкладки «Участники» shared media (`components/appSearchSuper.ts::
@@ -627,9 +566,6 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
      * Карточки из вектора `users` сразу уезжают в зеркало (`saveApiPeers`),
      * как у оригинала (`appProfileManager.ts:653-656` — `saveApiUsers`): строка
      * списка читает карточку синхронно, и к моменту ответа она уже там.
-     *
-     * `members` выше остаётся плоской формой без пагинации для экранов
-     * редактирования группы; эта ручка — для списка, который листает.
      *
      * `q` — фильтр `channelParticipantsSearch` (`appProfileManager.getParticipants`
      * с `filter: {_: 'channelParticipantsSearch', q}`): выбор отправителя в поиске
@@ -643,12 +579,6 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
       // кладёт только карточки участников) — в зеркало едут `users`.
       peers.saveApiPeers({ users: r.users })
       return r
-    },
-    async promoteAdmin(peerId: number, userId: number, rights: number): Promise<void> {
-      await rest.post(`/chats/${peerId}/admins`, { user_id: userId, rights })
-    },
-    async demoteAdmin(peerId: number, userId: number): Promise<void> {
-      await rest.del(`/chats/${peerId}/admins/${userId}`)
     },
     // ── Участники в форме оригинала — порт `appProfileManager.getParticipants`
     // и мутаций `appChatsManager` (`editAdmin`, `editBanned`, `kickFromChat`,
@@ -827,12 +757,6 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
       peers.saveApiPeers(r)
       return toPeerId(r.chats[0].id, true)
     },
-    async listJoinRequests(peerId: number): Promise<number[]> {
-      const r = await rest.get<MessagesChatInviteImporters>(`/chats/${peerId}/join_requests`)
-      return (r.importers ?? []).map((x) => x.user_id)
-    },
-    async approveRequest(peerId: number, userId: number): Promise<void> { await rest.post(`/chats/${peerId}/join_requests/${userId}/approve`, {}) },
-    async declineRequest(peerId: number, userId: number): Promise<void> { await rest.post(`/chats/${peerId}/join_requests/${userId}/decline`, {}) },
   }
 }
 export type GroupsManager = ReturnType<typeof newGroupsManager>

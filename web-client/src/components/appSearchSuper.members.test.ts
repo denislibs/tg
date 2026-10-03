@@ -63,8 +63,8 @@ function fakeBackend(n: number) {
         return { _: 'channels.channelParticipants', count: ids.length, participants: page.map(participant), chats: [], users }
       },
       addMember: vi.fn(async () => {}),
-      removeMember: vi.fn(async () => {}),
-      unban: vi.fn(async () => {}),
+      editBanned: vi.fn(async () => {}),
+      kickFromChat: vi.fn(async () => {}),
     },
   } as unknown as SearchSuperManagers
 

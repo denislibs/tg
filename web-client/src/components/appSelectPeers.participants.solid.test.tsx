@@ -133,7 +133,7 @@ describe('AppSelectPeers — участники канала', () => {
     rootScope.dispatchEventSingle(RT.chatUpdate, { peer: { _: 'peerChannel', channel_id: CHAT_ID } } as never)
     await settle()
 
-    expect(rowIds(selector).sort()).toEqual([5, 8])
+    expect(rowIds(selector).sort((a, b) => a - b)).toEqual([5, 8])
     expect(selector.participants.has(7)).toBe(false)
     expect(selector.participants.get(8)).toEqual(admin(8))
   })
