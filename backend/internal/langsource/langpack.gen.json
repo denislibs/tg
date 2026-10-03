@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 50,
+      "version": 51,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -15,6 +15,10 @@
         {
           "key": "AccDescr.MicrophoneLevel",
           "value": "Microphone level"
+        },
+        {
+          "key": "AccDescr.PlaybackSpeed",
+          "value": "Playback speed"
         },
         {
           "key": "AccountSettings.Filters",
@@ -3868,6 +3872,10 @@
           "value": "Hint must be different from your password"
         },
         {
+          "key": "Pause",
+          "value": "Pause"
+        },
+        {
           "key": "Payment.DemoNotice",
           "value": "This is a demo checkout. No real payment is processed."
         },
@@ -4175,6 +4183,10 @@
         {
           "key": "Pip.BackToTab",
           "value": "Back to Tab"
+        },
+        {
+          "key": "Play",
+          "value": "Play"
         },
         {
           "key": "PlaybackRateNormal",
@@ -6452,7 +6464,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 50,
+      "version": 51,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -12938,6 +12950,18 @@
         {
           "key": "AudioUnknownArtist",
           "value": "Неизвестный исполнитель"
+        },
+        {
+          "key": "AccDescr.PlaybackSpeed",
+          "value": "Скорость воспроизведения"
+        },
+        {
+          "key": "Play",
+          "value": "Воспроизвести"
+        },
+        {
+          "key": "Pause",
+          "value": "Пауза"
         },
         {
           "key": "Schedule.Repeat",

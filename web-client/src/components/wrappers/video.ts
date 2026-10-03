@@ -192,6 +192,8 @@ export interface WrapVideoMessage {
   /** дата отправки, СЕКУНДЫ (tweb `message.date`) — подзаголовок кружка в
    *  плашке плеера (`chat/audio.tsx:214`) */
   date?: number
+  /** автор (tweb `message.fromId`) — заголовок кружка в плашке плеера (`chat/audio.tsx:213`) */
+  fromId?: PeerId
 }
 
 export interface WrapVideoOptions {
@@ -801,6 +803,7 @@ function wrapRound({
       mediaId: doc.id,
       title: '',
       date: message?.date,
+      fromId: message?.fromId,
       peerId: message?.peerId,
       msgId: message?.mid,
       type: 'round' as const,

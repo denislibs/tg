@@ -74,6 +74,8 @@ export type SetTransitionOptions = {
   duration: number
   onTransitionEnd?: () => void
   useRafs?: number
+  /** tweb :65 — зовётся в момент запуска перехода (после raf-отсрочки) */
+  onTransitionStart?: () => void
 }
 
 /**
@@ -84,11 +86,11 @@ export type SetTransitionOptions = {
  * `useRafs` (tweb :38-48) — отложить запуск на N кадров: узлу, только что
  * вставленному в DOM, класс в том же кадре не даст CSS-перехода. Довезён
  * вместе с потребителем — `ProgressivePreloader` (`components/preloader.ts`,
- * attach/detach). `onTransitionStart` (tweb :65) по-прежнему не портирован:
- * потребителей нет, мёртвый код не заводим.
+ * attach/detach). `onTransitionStart` (tweb :65) — с потребителем: плашка аудиоплеера
+ * (`chat/audio.solid.tsx`) по нему ставит `body.is-pinned-audio-shown`.
  */
 export function setTransition(options: SetTransitionOptions) {
-  const { element, className, forwards, duration, onTransitionEnd, useRafs } = options
+  const { element, className, forwards, duration, onTransitionEnd, onTransitionStart, useRafs } = options
   const pending = (element as unknown as WithTimeout)[TRANSITION_TIMEOUT]
   if (pending !== undefined) clearTimeout(pending)
 
@@ -127,6 +129,7 @@ export function setTransition(options: SetTransitionOptions) {
   // `liteMode.isAvailable('animations')`, что и в оригинале (`singleTransition.ts:38,67`);
   // у нас он читает настройку «Без анимаций», из которой `App.tsx:272-274` выводит
   // и классы `body.animation-level-*` для CSS.
+  onTransitionStart?.()
   if (!liteMode.isAvailable('animations') || !duration) {
     afterTimeout()
     return
