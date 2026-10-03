@@ -827,7 +827,7 @@ export default class ChatTopbar {
       Promise.resolve(newAvatar?.readyThumbPromise),
       this.setTitleManual(),
       Promise.resolve(status?.prepare(true)),
-      this.setupPinnedMessageForPeer(),
+      Promise.resolve(this.setupPinnedMessageForPeer()),
     ] as const)
 
     if(!middleware() && newAvatarMiddlewareHelper) {
