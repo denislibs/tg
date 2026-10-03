@@ -17,6 +17,26 @@ declare global {
     middlewareHelper?: MiddlewareHelper
   }
 
+  // tweb `global.d.ts:46-65` — Document Picture-in-Picture (вынос клиента,
+  // `components/clientPip.solid.tsx`); `Prism` из того же `Window` не нужен.
+  interface Window {
+    documentPictureInPicture?: DocumentPictureInPicture
+  }
+
+  // https://developer.chrome.com/docs/web-platform/document-picture-in-picture
+  interface DocumentPictureInPictureOptions {
+    width?: number
+    height?: number
+    disallowReturnToOpener?: boolean
+    preferInitialWindowPlacement?: boolean
+  }
+
+  interface DocumentPictureInPicture extends EventTarget {
+    readonly window: Window | null
+    requestWindow(options?: DocumentPictureInPictureOptions): Promise<Window>
+    onenter: ((this: DocumentPictureInPicture, ev: Event) => unknown) | null
+  }
+
   // ── Глобальные типы, на которые ссылается `layer.d.ts` ────────────────────
   //
   // Сгенерированный `layer.d.ts` импортов не содержит вовсе — он рассчитывает,

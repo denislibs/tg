@@ -103,6 +103,13 @@ const EMITTED_BY_WRAP_URL: Record<string, string> = {
   share: 't.me/share/url?url=https%3A%2F%2Fexample.com',
   nft: 't.me/nft/abc',
   addstyle: 't.me/addstyle/abc',
+  tg_addstickers: 'tg://addstickers?set=abc',
+  tg_addemoji: 'tg://addemoji?set=abc',
+  tg_resolve: 'tg://resolve?domain=durov',
+  tg_privatepost: 'tg://privatepost?channel=1&post=2',
+  tg_addlist: 'tg://addlist?slug=abc',
+  tg_joinchat: 'tg://joinchat?invite=abc',
+  tg_join: 'tg://join?invite=abc',
 }
 
 /** Оба оставшихся имени ставит `wrapRichText`, минуя `wrapUrl`, — берём их с готового DOM. */
@@ -124,7 +131,6 @@ describe('#95 действие — только из реестра, а не и�
     'tg://evilaction?url=https%3A%2F%2Fevil.example',
     'tg://evilaction/sub?x=1',
     'tg://EVILACTION', // регистр имени тоже не спасает
-    'tg://resolve?domain=durov', // зарегистрировано у tweb (`internalLinkProcessor.ts:404-405`), но исполнителя нет у нас
     'tg://settings', // то же самое (`:717-718`)
     'tg://iv?url=' + encodeURIComponent('javascript:alert(1)'), // задача #33 — теперь под общим гейтом
   ]

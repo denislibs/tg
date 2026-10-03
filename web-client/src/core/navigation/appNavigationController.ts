@@ -162,7 +162,7 @@ export class AppNavigationController {
     }
 
     // tweb :77-79: слушатель следует за активным окном — в выносе клиента в
-    // Document PiP (`core/pip.ts`) нажатия приходят в окно PiP, а не во вкладку.
+    // Document PiP (`components/clientPip.solid.tsx`) нажатия приходят в окно PiP, а не во вкладку.
     bindActiveWindowListener((w) => w, 'keydown', this.onKeyDown, { capture: true, passive: false })
 
     if(IS_MOBILE_SAFARI) {
@@ -336,10 +336,11 @@ export class AppNavigationController {
   /**
    * ОТСТУПЛЕНИЕ ОТ ОРИГИНАЛА, НАЗВАННОЕ (по образцу докблока файла выше). У
    * tweb такого метода нет: там диплинки живут в ХЭШЕ, и зачистка идёт через
-   * `overrideHash` (`tweb/src/index.ts:579`). У нас часть диплинков
-   * (`/join/:token`, `/qr/:token`, `/addlist/:slug`, `?domain=&start=`,
-   * `core/hooks/useDeepLinks.ts`) несёт параметр в ПУТИ или в query, а не в
-   * хэше — `overrideHash` их не увидит, он трогает только `location.hash`.
+   * `overrideHash` (`tweb/src/index.ts:579`). У нас один диплинк — код
+   * QR-входа `/qr/:token` (наше расширение, `appImManager.checkForLoginToken`) —
+   * несёт параметр в ПУТИ, а не в хэше: `overrideHash` его не увидит, он трогает
+   * только `location.hash`. Остальные (вступление, папка, набор) — в хэше по
+   * схеме tweb `#?tgaddr=`.
    *
    * Метод — честное расширение того же единственного писателя (не третий
    * механизм: он зовёт тот же приватный `replaceState`, ту же очередь), а не
@@ -355,10 +356,7 @@ export class AppNavigationController {
    *     возвращается. Пин на это — `appNavigationController.test.ts`
    *     (describe «адрес целиком»).
    *  2) идёт через `modifyHistoryFromEvent`, ту же очередь мутаций, что и
-   *     остальные записи истории — вызовы `confirmQr`/`cancelQr`/
-   *     `closeAddlist` происходят по клику в произвольный момент, когда в
-   *     стеке контроллера уже могут жить другие оверлеи (см. докблок файла
-   *     про гонку `back()`/`push()`).
+   *     остальные записи истории (см. докблок файла про гонку `back()`/`push()`).
    *
    * В отличие от `overrideHash` — БЕЗ раннего выхода по совпадению хэша:
    * здесь меняется путь/query, а не только хэш, и у наших диплинков хэш пуст

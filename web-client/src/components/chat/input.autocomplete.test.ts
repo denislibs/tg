@@ -9,6 +9,7 @@
 // хелпер → вставка → сущности из DOM», а не браузерный редактор.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import EventListenerBase from '@helpers/eventListenerBase'
+import { getMiddleware } from '@helpers/middleware'
 import getRichValueWithCaret from '@helpers/dom/getRichValueWithCaret'
 import { useChatsStore } from '@stores/chatsStore'
 import { useSettingsStore } from '@/settings'
@@ -35,6 +36,8 @@ const users: User[] = [
 function makeManagers() {
   return {
     messages: {
+      getScheduledMessages: vi.fn(async() => []),
+      scheduleMessage: vi.fn(async() => ({})),
       sendText: vi.fn(async(_args: Record<string, unknown>) => ({ ok: true })),
       editMessage: vi.fn(async() => ({})),
       forwardMessages: vi.fn(async() => []),
@@ -43,7 +46,10 @@ function makeManagers() {
     },
     drafts: { save: vi.fn(async() => ({ _: 'draftMessageEmpty' })) },
     realtime: { sendTyping: vi.fn(async() => ({ ok: true })) },
-    chats: { createPrivate: vi.fn(async(id: number) => id) },
+    chats: {
+      createPrivate: vi.fn(async(id: number) => id),
+      getSendAs: vi.fn(async() => ({ _: 'channels.sendAsPeers', peers: [], chats: [], users: [] })),
+    },
     dialogs: { refresh: vi.fn(async() => {}) },
     channels: { post: vi.fn(async() => ({})) },
     groups: {
@@ -97,7 +103,8 @@ async function mountInput(peerId: PeerId) {
     updateChatInputHeight: vi.fn(),
     getMessage: () => undefined,
     setMessageId: vi.fn(),
-    bubbles: { onGoDownClick: vi.fn() },
+    bubbles: { onGoDownClick: vi.fn(), getMiddleware: () => () => true },
+    destroyMiddlewareHelper: getMiddleware(),
     selection: { isSelecting: false },
     managers,
     input: undefined as unknown as ChatInput,

@@ -15,6 +15,8 @@ import { generateMessageId } from '@core/history/messageId'
 import type { Managers } from '@/client/bootstrap'
 import { returnToStaticMarkup } from '@/test/staticMarkup'
 import { APP_TABS, AppImManager, LEFT_COLUMN_ACTIVE_CLASSNAME } from './appImManager'
+import internalLinkProcessor from './internalLinkProcessor'
+import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
 
 const columnRight = vi.hoisted(() => ({ sidebarEl: undefined as HTMLElement | undefined, toggleSidebar: () => Promise.resolve(), hide: () => {}, replaceSharedMediaTab: () => {} }))
 vi.mock('@components/sidebarRight', () => ({ default: columnRight, RIGHT_COLUMN_ACTIVE_CLASSNAME: 'is-right-column-shown' }))
@@ -78,6 +80,9 @@ const FakeChat = vi.hoisted(() => class {
   }
 })
 vi.mock('@components/chat/chat', () => ({ default: FakeChat }))
+// колода карточек пустой колонки — свой предмет (`components/chatTips/chatTips.solid.test.tsx`)
+const chatTips = vi.hoisted(() => ({ renderChatTips: vi.fn() }))
+vi.mock('@components/chatTips/index.solid', () => chatTips)
 
 const getPeers = vi.fn(async(ids: PeerId[]) => ids.map((id) => ({ _: 'user', id, pFlags: {} })))
 const managers = {
@@ -85,6 +90,7 @@ const managers = {
   presence: { get: async() => [] },
   dialogs: { hasDialog: async() => true, refresh: async() => null },
   channels: { join: async() => {} },
+  contacts: { pushRecentlyClosedChat: vi.fn(async() => {}) },
 } as unknown as Managers
 
 let im: AppImManager
@@ -349,6 +355,60 @@ describe('хэш (tweb :1912-2031)', () => {
   })
 })
 
+describe('внутренние ссылки и ориентиры колонок (П-4: tweb :326, :349-352, :1897, :3199)', () => {
+  it('`construct` поднимает `internalLinkProcessor` (tweb :326)', () => {
+    const constructLinks = vi.spyOn(internalLinkProcessor, 'construct')
+    construct()
+    expect(constructLinks).toHaveBeenCalledWith(managers)
+  })
+
+  it('`#?tgaddr=tg://resolve?domain=…` — `openUrl` → обработчик `tg_resolve` → `openUsername`', async() => {
+    history.replaceState(null, '', location.pathname + '#?tgaddr=' + encodeURIComponent('tg://resolve?domain=durov&post=3'))
+    const openUsername = vi.spyOn(AppImManager.prototype, 'openUsername').mockResolvedValue(undefined)
+    construct()
+    await settle()
+    expect(openUsername).toHaveBeenCalledWith({ userName: 'durov', lastMsgId: 3, commentId: undefined, threadId: undefined })
+  })
+
+  it('`openUrl` внешней ссылки без действия ничего не открывает, с `newWindowIfNoClick` — новая вкладка', () => {
+    construct()
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    im.openUrl('https://example.com/')
+    expect(open).not.toHaveBeenCalled()
+    im.openUrl('https://example.com/', true)
+    expect(open).toHaveBeenCalledWith('https://example.com/', '_blank', 'noopener,noreferrer')
+  })
+
+  it('стартовый `/qr/<token>` — вопрос подтверждения входа, адрес зачищен', async() => {
+    const pathname = location.pathname
+    history.replaceState(null, '', '/qr/abc123')
+    try {
+      const confirmLogin = vi.spyOn(internalLinkProcessor, 'processLoginTokenLink').mockResolvedValue(undefined)
+      construct()
+      expect(confirmLogin).toHaveBeenCalledWith('abc123')
+      await settle()
+      expect(location.pathname).toBe('/')
+    } finally {
+      history.replaceState(null, '', pathname)
+    }
+  })
+
+  it('ссылка «пропустить к чату» показана и ведёт фокус в центр; имена ориентиров колонок', () => {
+    const { left, center } = construct()
+    const skip = document.getElementById('skip-to-content')!
+    expect(skip.hidden).toBe(false)
+    expect(skip.textContent).toContain('Skip to conversation')
+    expect(left.getAttribute('aria-label')).toBe('Chat list')
+    expect(document.getElementById('column-right')!.getAttribute('aria-label')).toBe('Chat info')
+
+    const focus = vi.spyOn(center, 'focus')
+    const e = new MouseEvent(CLICK_EVENT_NAME, { bubbles: true, cancelable: true })
+    skip.dispatchEvent(e)
+    expect(focus).toHaveBeenCalled()
+    expect(e.defaultPrevented).toBe(true)
+  })
+})
+
 describe('позиция ленты (tweb :479-486, :2640-2688)', () => {
   /** Лента в том состоянии, которое читает `saveChatPosition`. */
   const bubblesAt = ({ distanceToEnd, loadedBottom = true, rendered = 30, invisibleBottom = 5, savedReaction }: {
@@ -413,5 +473,36 @@ describe('позиция ленты (tweb :479-486, :2640-2688)', () => {
 
     im.saveChatPosition({ peerId: 3, type: ChatType.Scheduled, bubbles: bubblesAt({ distanceToEnd: 500 }) } as never)
     expect(im.getChatSavedPosition({ peerId: 3, type: ChatType.Chat } as never)).toBeUndefined()
+  })
+})
+
+describe('карточки пустой колонки (tweb :375-377, :824-833)', () => {
+  const pushRecentlyClosedChat = vi.mocked(managers.contacts.pushRecentlyClosedChat)
+
+  beforeEach(() => {
+    chatTips.renderChatTips.mockClear()
+    pushRecentlyClosedChat.mockClear()
+  })
+
+  it('колода монтируется один раз — якорем служит `.chats-container`', async() => {
+    construct()
+    await settle()
+    expect(chatTips.renderChatTips).toHaveBeenCalledTimes(1)
+    expect(chatTips.renderChatTips).toHaveBeenCalledWith(im.chatsContainer)
+  })
+
+  it('чат, из которого ушли или который закрыли, уходит в «недавно закрытые»; первое открытие — нет', async() => {
+    construct()
+    await im.setInnerPeer({ peerId: 1 })
+    await settle()
+    expect(pushRecentlyClosedChat).not.toHaveBeenCalled()
+
+    await im.setPeer({ peerId: 2 })
+    await settle()
+    expect(pushRecentlyClosedChat.mock.calls).toEqual([[1]])
+
+    await im.setPeer({})
+    await settle()
+    expect(pushRecentlyClosedChat.mock.calls).toEqual([[1], [2]])
   })
 })

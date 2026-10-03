@@ -12,8 +12,7 @@
 //  2. Команда ставится в поле текстом (`textContent`), а не `innerHTML` узла
 //     имени: правило «не строить DOM из строки» (`web-client/CLAUDE.md`); имя
 //     команды — латиница без разметки, значение то же.
-//  3. `getReadyToSend` (отложенная отправка, Б-32) не зовётся — отправка сразу;
-//     эфемерных команд (`ephemeralReceiverId`) у бэкенда нет.
+//  3. Эфемерных команд (`ephemeralReceiverId`) у бэкенда нет.
 import type { Managers } from '@/client/bootstrap'
 import { cachedUser } from '@core/peerCache'
 import { isUser } from '@core/peers/peerId'
@@ -37,8 +36,10 @@ export default class CommandsHelper extends AutocompletePeerHelper {
       (target) => {
         const name = target.querySelector(`.${AutocompletePeerHelper.BASE_CLASS_LIST_ELEMENT}-name`)!.textContent!
         hideCommandAutocomplete(controller)
-        chatInput.messageInput.textContent = name
-        void chatInput.sendMessage(true)
+        return chatInput.getReadyToSend(() => {
+          chatInput.messageInput.textContent = name
+          void chatInput.sendMessage(true)
+        })
       },
       'Chat.BotCommands',
       managers,

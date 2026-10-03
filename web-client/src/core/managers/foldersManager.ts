@@ -76,7 +76,7 @@ const toRaw = (f: FolderInput) => ({
 // вступает в расшаренные группы/каналы и получает копию папки.
 export interface FolderInvite {
   slug: string
-  url: string // относительный путь '/addlist/<slug>' — обрабатывает SPA
+  url: string // путь '/addlist/<slug>' на хосте ссылок (`core/publicLink`)
   title: string
   peerIds: number[]
 }
@@ -97,7 +97,7 @@ const mapInvite = (r: RawFolderInvite): FolderInvite => ({
 
 // Карточка расшаренного чата на экране вступления по ссылке.
 export interface FolderInvitePreviewChat {
-  id: number
+  peer_id: PeerId
   title: string
   type: string // 'group' | 'channel'
   members: number

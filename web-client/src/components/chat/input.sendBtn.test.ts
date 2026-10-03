@@ -5,6 +5,7 @@
 // поле — тоже «отправить», как у tweb без `recordingController`.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import EventListenerBase from '@helpers/eventListenerBase'
+import { getMiddleware } from '@helpers/middleware'
 import I18n from '@lib/langPack'
 import { useChatsStore } from '@stores/chatsStore'
 import { winKey } from '@core/history/messagesMirror'
@@ -22,6 +23,8 @@ async function mountInput(type = ChatType.Chat) {
   const messages = new Map<number, MyMessage>()
   const managers = {
     messages: {
+      getScheduledMessages: vi.fn(async() => [] as MyMessage[]),
+      scheduleMessage: vi.fn(async() => ({})),
       sendText: vi.fn(async() => ({ ok: true })),
       editMessage: vi.fn(async() => ({})),
       getMessageByPeer: vi.fn(async(_peerId: number, mid: number) => messages.get(mid)),
@@ -46,7 +49,8 @@ async function mountInput(type = ChatType.Chat) {
     updateChatInputHeight: vi.fn(),
     getMessage: (mid: number) => messages.get(mid),
     setMessageId: vi.fn(),
-    bubbles: { onGoDownClick: vi.fn() },
+    bubbles: { onGoDownClick: vi.fn(), getMiddleware: () => () => true },
+    destroyMiddlewareHelper: getMiddleware(),
     selection: { isSelecting: false },
     managers,
   }

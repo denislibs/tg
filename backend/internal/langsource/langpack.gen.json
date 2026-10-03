@@ -6,11 +6,19 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 54,
+      "version": 57,
       "strings": [
         {
           "key": "ALongTimeAgo",
           "value": "last seen a long time ago"
+        },
+        {
+          "key": "AccDescr.ChatInfo",
+          "value": "Chat info"
+        },
+        {
+          "key": "AccDescr.ChatList",
+          "value": "Chat list"
         },
         {
           "key": "AccDescr.MicrophoneLevel",
@@ -19,6 +27,10 @@
         {
           "key": "AccDescr.PlaybackSpeed",
           "value": "Playback speed"
+        },
+        {
+          "key": "AccDescr.SkipToConversation",
+          "value": "Skip to conversation"
         },
         {
           "key": "AccDescrEditing",
@@ -95,6 +107,10 @@
         {
           "key": "Administrators",
           "value": "Administrators"
+        },
+        {
+          "key": "Alert.BotAppDoesntExist",
+          "value": "Sorry, this application doesn't exist."
         },
         {
           "key": "Alert.Confirm.Discard",
@@ -646,6 +662,54 @@
         {
           "key": "Call.CameraOn",
           "value": "Turn on camera"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.Header",
+          "value": "Call in Progress"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToCall.Text",
+          "value": "End call with \"%1$@\" and start a video chat in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToLive.Text",
+          "value": "End call with \"%1$@\" and start a live stream in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToVoice.Text",
+          "value": "End call with \"%1$@\" and start a video chat in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.Header",
+          "value": "Live Stream in Progress"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToCall.Text",
+          "value": "Leave live stream in \"%1$@\" and start a call with \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToLive.Text",
+          "value": "Leave live stream in \"%1$@\" and start a new one in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToVoice.Text",
+          "value": "Leave live stream in \"%1$@\" and start a video chat in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.Header",
+          "value": "Video Chat in Progress"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToCall.Text",
+          "value": "Leave video chat in \"%1$@\" and start a call with \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToLive.Text",
+          "value": "Leave video chat in \"%1$@\" and start a live stream in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToVoice.Text",
+          "value": "Leave video chat in \"%1$@\" and start a new one in \"%2$@\"?"
         },
         {
           "key": "Call.Decline",
@@ -1528,6 +1592,66 @@
           "value": "Chat Theme"
         },
         {
+          "key": "ChatTips.Appearance",
+          "value": "Appearance"
+        },
+        {
+          "key": "ChatTips.Appearance.Dark",
+          "value": "Dark"
+        },
+        {
+          "key": "ChatTips.Appearance.Description",
+          "value": "You can change these parameters and many others in Settings \u003e [General Settings]()."
+        },
+        {
+          "key": "ChatTips.Appearance.Light",
+          "value": "Light"
+        },
+        {
+          "key": "ChatTips.Appearance.System",
+          "value": "System"
+        },
+        {
+          "key": "ChatTips.Chats",
+          "value": "Chats"
+        },
+        {
+          "key": "ChatTips.Chats.Description",
+          "value": "Use **Ctrl+F** to enter [search]() mode."
+        },
+        {
+          "key": "ChatTips.Chats.DescriptionMac",
+          "value": "Use **Cmd+F** to enter [search]() mode."
+        },
+        {
+          "key": "ChatTips.Chats.Empty",
+          "value": "Nothing here yet."
+        },
+        {
+          "key": "ChatTips.Chats.RecentSearch",
+          "value": "Searched"
+        },
+        {
+          "key": "ChatTips.Chats.RecentlyClosed",
+          "value": "Closed"
+        },
+        {
+          "key": "ChatTips.NextTip",
+          "value": "Next Tip"
+        },
+        {
+          "key": "ChatTips.PreviousTip",
+          "value": "Previous Tip"
+        },
+        {
+          "key": "ChatTips.Stickers.Description",
+          "value": "More trending stickers are available in [Trending Stickers]()."
+        },
+        {
+          "key": "ChatTips.Title",
+          "value": "Tips"
+        },
+        {
           "key": "ChatYourSelf",
           "value": "forward here to save"
         },
@@ -1638,6 +1762,22 @@
           "value": "Exit Picture-in-Picture"
         },
         {
+          "key": "ClientPip.FullscreenHint",
+          "value": "Return to the tab to enter fullscreen"
+        },
+        {
+          "key": "ClientPip.PlaceholderDescription",
+          "value": "Switch back to this tab to bring it here, or use the button below."
+        },
+        {
+          "key": "ClientPip.PlaceholderTitle",
+          "value": "Telegram is in Picture-in-Picture"
+        },
+        {
+          "key": "ClientPip.ReturnToTab",
+          "value": "Return to tab"
+        },
+        {
           "key": "Close",
           "value": "Close"
         },
@@ -1729,6 +1869,10 @@
           "value": "Could not change the microphone state. Check microphone access and try again."
         },
         {
+          "key": "ConfirmPayment",
+          "value": "Confirm Payment"
+        },
+        {
           "key": "ConnectionStatus.ReconnectInPlain",
           "value": "Reconnect in %ds"
         },
@@ -1770,6 +1914,18 @@
         {
           "key": "CopyLink",
           "value": "Copy Link"
+        },
+        {
+          "key": "CopyRestricted.Channel",
+          "value": "Sorry, copying from this channel is disabled by its admins."
+        },
+        {
+          "key": "CopyRestricted.Group",
+          "value": "Sorry, copying from this group is disabled by its admins."
+        },
+        {
+          "key": "CopyRestricted.User",
+          "value": "Copying is restricted in this chat."
         },
         {
           "key": "Country",
@@ -1913,6 +2069,10 @@
           "value": "Description"
         },
         {
+          "key": "DeselectAll",
+          "value": "deselect all"
+        },
+        {
           "key": "Devices",
           "value": "Devices"
         },
@@ -1995,6 +2155,10 @@
         {
           "key": "Done",
           "value": "Done"
+        },
+        {
+          "key": "DontAskAgain",
+          "value": "Don't ask again"
         },
         {
           "key": "DoubleTapSetting",
@@ -2197,6 +2361,10 @@
           "value": "Set Emoji Status"
         },
         {
+          "key": "EmptyPeer.Description",
+          "value": "Select a chat to start messaging"
+        },
+        {
           "key": "EnableAnimations",
           "value": "Enable Animations"
         },
@@ -2361,6 +2529,10 @@
           "value": "No chats currently belong to this folder."
         },
         {
+          "key": "FilterPersonal",
+          "value": "Personal"
+        },
+        {
           "key": "FilterRemoveChats",
           "value": "Remove Chats"
         },
@@ -2394,22 +2566,6 @@
         {
           "key": "Folder.Added",
           "value": "Folder added"
-        },
-        {
-          "key": "Folder.Invite.Adding",
-          "value": "Adding…"
-        },
-        {
-          "key": "Folder.Invite.Invalid",
-          "value": "This link is invalid or has expired."
-        },
-        {
-          "key": "Folder.Invite.Question",
-          "value": "Do you want to add «%1$s» and join its chats?"
-        },
-        {
-          "key": "Folder.Invite.Question.Folder",
-          "value": "Do you want to add the folder «%1$s»?"
         },
         {
           "key": "ForumTopic.Closed",
@@ -2488,6 +2644,10 @@
         {
           "key": "General",
           "value": "General"
+        },
+        {
+          "key": "General.Keyboard",
+          "value": "Keyboard"
         },
         {
           "key": "General.TextSize",
@@ -2654,6 +2814,10 @@
         {
           "key": "InstantView.OpenInBrowser",
           "value": "Open in browser"
+        },
+        {
+          "key": "InviteExpired",
+          "value": "This invite link has expired."
         },
         {
           "key": "InviteLink",
@@ -2925,6 +3089,10 @@
           "value": "Link is invalid"
         },
         {
+          "key": "Link.NotSupported",
+          "value": "This link is not supported on Telegram Web."
+        },
+        {
           "key": "Link.Taken",
           "value": "Link is already taken"
         },
@@ -2951,6 +3119,10 @@
         {
           "key": "LinkNameHint",
           "value": "Link Name (Optional)"
+        },
+        {
+          "key": "LinkNotFound",
+          "value": "Unfortunately, you can't access this message. You are not a member of the chat where it was posted."
         },
         {
           "key": "LiteMode.DisableAlert",
@@ -3893,8 +4065,23 @@
           "value": "Charge for Messages"
         },
         {
+          "key": "PaidMessages.PayForMessages",
+          "forms": {
+            "one_value": "Pay for %d message",
+            "other_value": "Pay for %d messages"
+          }
+        },
+        {
           "key": "PaidMessages.SetPrice",
           "value": "Set your price per message"
+        },
+        {
+          "key": "PaidMessages.UserChargesForMultipleMessageWarning",
+          "value": "**%s** charges **%s** per incoming message. Would you like to pay **%s** to send **%d messages**?"
+        },
+        {
+          "key": "PaidMessages.UserChargesForOneMessageWarning",
+          "value": "**%s** charges **%s** per incoming message. Would you like to pay **%s** to send one message?"
         },
         {
           "key": "PasscodeLock.AutoLock",
@@ -4379,18 +4566,6 @@
             "one_value": "Pinned Message",
             "other_value": "%1$d Pinned Messages"
           }
-        },
-        {
-          "key": "Pip.ActiveHint",
-          "value": "To return to the tab, click the button here or the icon in the floating window."
-        },
-        {
-          "key": "Pip.ActiveTitle",
-          "value": "Telegram is open in Picture-in-Picture mode"
-        },
-        {
-          "key": "Pip.BackToTab",
-          "value": "Back to Tab"
         },
         {
           "key": "Play",
@@ -5036,6 +5211,10 @@
           "value": "There were no results for \"%@\".\nTry a new search."
         },
         {
+          "key": "RequestToJoinSent",
+          "value": "Join request sent"
+        },
+        {
           "key": "Resend",
           "value": "Resend"
         },
@@ -5146,6 +5325,10 @@
         {
           "key": "Rtmp.Topbar.NoViewers",
           "value": "No viewers"
+        },
+        {
+          "key": "Rtmp.Topbar.StartVideoChat",
+          "value": "Start Video Chat"
         },
         {
           "key": "Rtmp.Topbar.Title",
@@ -5341,8 +5524,16 @@
           "value": "Secret chat rejected"
         },
         {
+          "key": "SelectAll",
+          "value": "select all"
+        },
+        {
           "key": "Send",
           "value": "Send"
+        },
+        {
+          "key": "SendAnonymously",
+          "value": "Send anonymously"
         },
         {
           "key": "SendAsFile",
@@ -5351,6 +5542,10 @@
         {
           "key": "SendMessage",
           "value": "Send Message"
+        },
+        {
+          "key": "SendMessageAsTitle",
+          "value": "Send message as..."
         },
         {
           "key": "SendMessageTo",
@@ -5461,6 +5656,18 @@
           "value": "Includes %s"
         },
         {
+          "key": "SharedFolder.Link.Chats",
+          "value": "%s in folder to join"
+        },
+        {
+          "key": "SharedFolder.Link.Description",
+          "value": "Do you want to add a new chat folder and join its groups and channels?"
+        },
+        {
+          "key": "SharedFolder.Link.Expired",
+          "value": "The folder link has expired."
+        },
+        {
           "key": "SharedFolder.Link.Title",
           "value": "Add Folder"
         },
@@ -5545,6 +5752,10 @@
           "value": "Similar Channels"
         },
         {
+          "key": "SlowModeHint",
+          "value": "Slow Mode is active. You can send\nyour next message in %1$s."
+        },
+        {
           "key": "Slowmode",
           "value": "Slow Mode"
         },
@@ -5571,6 +5782,14 @@
         {
           "key": "SlowmodeSeconds",
           "value": "%1$ds"
+        },
+        {
+          "key": "SlowmodeSendError",
+          "value": "Slow Mode is active. You can't send more than one message at once."
+        },
+        {
+          "key": "SlowmodeSendErrorTooLong",
+          "value": "This text is too long to send as one message.\n\nSlow Mode is active. You can't send more than one message at once."
         },
         {
           "key": "SomeReactions",
@@ -5670,6 +5889,10 @@
         {
           "key": "Stars.RecentTransactions",
           "value": "Recent Transactions"
+        },
+        {
+          "key": "Stars.Subscription.MissingBalance",
+          "value": "Insufficient Stars"
         },
         {
           "key": "Stars.Subscriptions.PerMonth",
@@ -5797,6 +6020,10 @@
         {
           "key": "Stickers.SuggestStickers",
           "value": "Suggest Stickers by Emoji"
+        },
+        {
+          "key": "Stickers.Trending",
+          "value": "Trending Stickers"
         },
         {
           "key": "StickersBotInfo",
@@ -6592,6 +6819,10 @@
           "value": "Views Per Post"
         },
         {
+          "key": "VoiceChat.DiscussionGroup",
+          "value": "discussion group"
+        },
+        {
           "key": "VoiceChat.Leave",
           "value": "Leave"
         },
@@ -6720,7 +6951,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 54,
+      "version": 57,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -7584,6 +7815,22 @@
           "value": "Выйти из режима «Картинка в картинке»"
         },
         {
+          "key": "ClientPip.PlaceholderTitle",
+          "value": "Telegram открыт в режиме «Картинка в картинке»"
+        },
+        {
+          "key": "ClientPip.PlaceholderDescription",
+          "value": "Вернитесь на эту вкладку, чтобы открыть его здесь, или нажмите кнопку ниже."
+        },
+        {
+          "key": "ClientPip.ReturnToTab",
+          "value": "Вернуть во вкладку"
+        },
+        {
+          "key": "ClientPip.FullscreenHint",
+          "value": "Вернитесь во вкладку, чтобы включить полноэкранный режим"
+        },
+        {
           "key": "CreateANew",
           "value": "Создать"
         },
@@ -7618,18 +7865,6 @@
         {
           "key": "OK",
           "value": "OK"
-        },
-        {
-          "key": "Pip.ActiveTitle",
-          "value": "Telegram открыт в режиме «картинка в картинке»"
-        },
-        {
-          "key": "Pip.ActiveHint",
-          "value": "Чтобы вернуться к отображению во вкладке, нажмите на кнопку здесь или на значок в плавающем окне."
-        },
-        {
-          "key": "Pip.BackToTab",
-          "value": "Назад во вкладку"
         },
         {
           "key": "Notifications.Web",
@@ -7928,6 +8163,14 @@
         {
           "key": "General.TextSize",
           "value": "Размер текста"
+        },
+        {
+          "key": "General.Keyboard",
+          "value": "Клавиатура"
+        },
+        {
+          "key": "Chat.BotCommands",
+          "value": "Команды бота"
         },
         {
           "key": "ChatBackground.Title",
@@ -8298,6 +8541,54 @@
           "value": "Ввод"
         },
         {
+          "key": "Call.Confirm.Discard.Call.Header",
+          "value": "Звонок уже идёт"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToCall.Text",
+          "value": "Завершить звонок с «%1$@» и начать видеочат в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToLive.Text",
+          "value": "Завершить звонок с «%1$@» и начать трансляцию в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToVoice.Text",
+          "value": "Завершить звонок с «%1$@» и начать видеочат в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.Header",
+          "value": "Трансляция уже идёт"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToCall.Text",
+          "value": "Покинуть трансляцию в «%1$@» и позвонить «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToLive.Text",
+          "value": "Покинуть трансляцию в «%1$@» и начать новую в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToVoice.Text",
+          "value": "Покинуть трансляцию в «%1$@» и начать видеочат в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.Header",
+          "value": "Видеочат уже идёт"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToCall.Text",
+          "value": "Покинуть видеочат в «%1$@» и позвонить «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToLive.Text",
+          "value": "Покинуть видеочат в «%1$@» и начать трансляцию в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToVoice.Text",
+          "value": "Покинуть видеочат в «%1$@» и начать новый в «%2$@»?"
+        },
+        {
           "key": "CallSettings.InputDevice",
           "value": "Устройство ввода"
         },
@@ -8320,6 +8611,18 @@
         {
           "key": "AccDescr.MicrophoneLevel",
           "value": "Уровень микрофона"
+        },
+        {
+          "key": "AccDescr.SkipToConversation",
+          "value": "Перейти к переписке"
+        },
+        {
+          "key": "AccDescr.ChatList",
+          "value": "Список чатов"
+        },
+        {
+          "key": "AccDescr.ChatInfo",
+          "value": "Информация о чате"
         },
         {
           "key": "ConferenceCall.Media.MicrophoneError",
@@ -8493,6 +8796,18 @@
         {
           "key": "Copy",
           "value": "Копировать"
+        },
+        {
+          "key": "CopyRestricted.Channel",
+          "value": "Копирование из этого канала запрещено администраторами."
+        },
+        {
+          "key": "CopyRestricted.Group",
+          "value": "Копирование из этой группы запрещено администраторами."
+        },
+        {
+          "key": "CopyRestricted.User",
+          "value": "В этом чате запрещено копирование."
         },
         {
           "key": "Resend",
@@ -8857,6 +9172,10 @@
         {
           "key": "Rtmp.Topbar.Title",
           "value": "Прямой эфир"
+        },
+        {
+          "key": "Rtmp.Topbar.StartVideoChat",
+          "value": "Начать видеочат"
         },
         {
           "key": "BoostChannel",
@@ -12149,22 +12468,6 @@
           "value": "отозвана"
         },
         {
-          "key": "Folder.Invite.Adding",
-          "value": "Добавляем…"
-        },
-        {
-          "key": "Folder.Invite.Invalid",
-          "value": "Ссылка недействительна или устарела."
-        },
-        {
-          "key": "Folder.Invite.Question",
-          "value": "Добавить «%1$s» и вступить в её чаты?"
-        },
-        {
-          "key": "Folder.Invite.Question.Folder",
-          "value": "Добавить папку «%1$s»?"
-        },
-        {
           "key": "Group.RestrictedBadge",
           "value": "ограничен"
         },
@@ -13414,6 +13717,50 @@
           }
         },
         {
+          "key": "Alert.BotAppDoesntExist",
+          "value": "К сожалению, такого приложения не существует."
+        },
+        {
+          "key": "DeselectAll",
+          "value": "снять выбор"
+        },
+        {
+          "key": "FilterPersonal",
+          "value": "Личные"
+        },
+        {
+          "key": "InviteExpired",
+          "value": "Срок действия ссылки-приглашения истёк."
+        },
+        {
+          "key": "Link.NotSupported",
+          "value": "Эта ссылка не поддерживается в веб-версии."
+        },
+        {
+          "key": "LinkNotFound",
+          "value": "К сожалению, у вас нет доступа к этому сообщению: вы не состоите в чате, где оно опубликовано."
+        },
+        {
+          "key": "RequestToJoinSent",
+          "value": "Заявка на вступление отправлена"
+        },
+        {
+          "key": "SelectAll",
+          "value": "выбрать все"
+        },
+        {
+          "key": "SharedFolder.Link.Chats",
+          "value": "%s в папке для вступления"
+        },
+        {
+          "key": "SharedFolder.Link.Description",
+          "value": "Добавить новую папку и вступить в её группы и каналы?"
+        },
+        {
+          "key": "SharedFolder.Link.Expired",
+          "value": "Срок действия ссылки на папку истёк."
+        },
+        {
           "key": "AccDescrEditing",
           "value": "Редактирование"
         },
@@ -13455,10 +13802,6 @@
           "value": "Остановить"
         },
         {
-          "key": "Chat.BotCommands",
-          "value": "Команды бота"
-        },
-        {
           "key": "GlobalAttachInlineRestricted",
           "value": "Отправка инлайн-контента в этой группе запрещена."
         },
@@ -13485,6 +13828,127 @@
         {
           "key": "UserRestrictionsSendVoices",
           "value": "Отправка голосовых сообщений"
+        },
+        {
+          "key": "SendMessageAsTitle",
+          "value": "Отправить сообщение от имени…"
+        },
+        {
+          "key": "VoiceChat.DiscussionGroup",
+          "value": "группа обсуждения"
+        },
+        {
+          "key": "SendAnonymously",
+          "value": "Отправить анонимно"
+        },
+        {
+          "key": "ChatTips.Appearance",
+          "value": "Оформление"
+        },
+        {
+          "key": "ChatTips.Appearance.Dark",
+          "value": "Тёмная"
+        },
+        {
+          "key": "ChatTips.Appearance.Description",
+          "value": "Эти и многие другие параметры можно изменить в разделе Настройки \u003e [Общие настройки]()."
+        },
+        {
+          "key": "ChatTips.Appearance.Light",
+          "value": "Светлая"
+        },
+        {
+          "key": "ChatTips.Appearance.System",
+          "value": "Системная"
+        },
+        {
+          "key": "ChatTips.Chats",
+          "value": "Чаты"
+        },
+        {
+          "key": "ChatTips.Chats.Description",
+          "value": "Нажмите **Ctrl+F**, чтобы перейти в режим [поиска]()."
+        },
+        {
+          "key": "ChatTips.Chats.DescriptionMac",
+          "value": "Нажмите **Cmd+F**, чтобы перейти в режим [поиска]()."
+        },
+        {
+          "key": "ChatTips.Chats.Empty",
+          "value": "Здесь пока ничего нет."
+        },
+        {
+          "key": "ChatTips.Chats.RecentSearch",
+          "value": "Найденные"
+        },
+        {
+          "key": "ChatTips.Chats.RecentlyClosed",
+          "value": "Закрытые"
+        },
+        {
+          "key": "ChatTips.NextTip",
+          "value": "Следующая"
+        },
+        {
+          "key": "ChatTips.PreviousTip",
+          "value": "Предыдущая"
+        },
+        {
+          "key": "ChatTips.Stickers.Description",
+          "value": "Больше популярных стикеров — в разделе [Популярные стикеры]()."
+        },
+        {
+          "key": "ChatTips.Title",
+          "value": "Подсказки"
+        },
+        {
+          "key": "EmptyPeer.Description",
+          "value": "Выберите, кому хотели бы написать"
+        },
+        {
+          "key": "Stickers.Trending",
+          "value": "Популярные стикеры"
+        },
+        {
+          "key": "ConfirmPayment",
+          "value": "Подтвердите оплату"
+        },
+        {
+          "key": "DontAskAgain",
+          "value": "Больше не спрашивать"
+        },
+        {
+          "key": "PaidMessages.PayForMessages",
+          "forms": {
+            "one_value": "Оплатить %d сообщение",
+            "few_value": "Оплатить %d сообщения",
+            "many_value": "Оплатить %d сообщений",
+            "other_value": "Оплатить %d сообщения"
+          }
+        },
+        {
+          "key": "PaidMessages.UserChargesForMultipleMessageWarning",
+          "value": "**%s** берёт **%s** за каждое входящее сообщение. Заплатить **%s** за отправку сообщений (**%d**)?"
+        },
+        {
+          "key": "PaidMessages.UserChargesForOneMessageWarning",
+          "value": "**%s** берёт **%s** за каждое входящее сообщение. Заплатить **%s**, чтобы отправить одно сообщение?"
+        },
+        {
+          "key": "SlowModeHint",
+          "value": "Включён медленный режим. Следующее сообщение\nможно отправить через %1$s."
+        },
+        {
+          "key": "SlowmodeSendError",
+          "value": "Включён медленный режим. Нельзя отправить больше одного сообщения за раз."
+        },
+        {
+          "key": "SlowmodeSendErrorTooLong",
+          "value": "Текст слишком длинный для одного сообщения.\n\nВключён медленный режим. Нельзя отправить больше одного сообщения за раз."
+        },
+        {
+          "key": "Stars.Subscription.MissingBalance",
+          "value": "Недостаточно звёзд"
         }
       ]
     },
@@ -13495,7 +13959,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 33,
+      "version": 34,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16815,6 +17279,22 @@
             "one_value": "%d Étoile",
             "other_value": "%d Étoiles"
           }
+        },
+        {
+          "key": "ChatTips.Appearance.Description",
+          "value": "Vous pouvez modifier ces paramètres et bien d'autres dans Paramètres \u003e [Paramètres généraux]()."
+        },
+        {
+          "key": "ChatTips.Chats.Description",
+          "value": "Utilisez **Ctrl+F** pour passer en mode [recherche]()."
+        },
+        {
+          "key": "ChatTips.Chats.DescriptionMac",
+          "value": "Utilisez **Cmd+F** pour passer en mode [recherche]()."
+        },
+        {
+          "key": "ChatTips.Stickers.Description",
+          "value": "D'autres stickers tendance sont disponibles dans [Stickers tendance]()."
         }
       ]
     },
@@ -16825,7 +17305,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 33,
+      "version": 34,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -20167,6 +20647,22 @@
             "one_value": "%d Stern",
             "other_value": "%d Sterne"
           }
+        },
+        {
+          "key": "ChatTips.Appearance.Description",
+          "value": "Diese und viele weitere Parameter kannst du unter Einstellungen \u003e [Allgemeine Einstellungen]() ändern."
+        },
+        {
+          "key": "ChatTips.Chats.Description",
+          "value": "Mit **Strg+F** öffnest du die [Suche]()."
+        },
+        {
+          "key": "ChatTips.Chats.DescriptionMac",
+          "value": "Mit **Cmd+F** öffnest du die [Suche]()."
+        },
+        {
+          "key": "ChatTips.Stickers.Description",
+          "value": "Weitere angesagte Sticker findest du unter [Angesagte Sticker]()."
         }
       ]
     },
@@ -20177,7 +20673,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 33,
+      "version": 34,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -23513,6 +24009,22 @@
             "one_value": "%d Estrella",
             "other_value": "%d Estrellas"
           }
+        },
+        {
+          "key": "ChatTips.Appearance.Description",
+          "value": "Puedes cambiar estos y muchos otros parámetros en Ajustes \u003e [Ajustes generales]()."
+        },
+        {
+          "key": "ChatTips.Chats.Description",
+          "value": "Usa **Ctrl+F** para entrar en el modo de [búsqueda]()."
+        },
+        {
+          "key": "ChatTips.Chats.DescriptionMac",
+          "value": "Usa **Cmd+F** para entrar en el modo de [búsqueda]()."
+        },
+        {
+          "key": "ChatTips.Stickers.Description",
+          "value": "Hay más stickers populares en [Stickers populares]()."
         }
       ]
     },
@@ -23523,7 +24035,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 34,
+      "version": 35,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -27048,6 +27560,22 @@
             "many_value": "%d зірок",
             "other_value": "%d зірки"
           }
+        },
+        {
+          "key": "ChatTips.Appearance.Description",
+          "value": "Ці та багато інших параметрів можна змінити в розділі Налаштування \u003e [Загальні налаштування]()."
+        },
+        {
+          "key": "ChatTips.Chats.Description",
+          "value": "Натисніть **Ctrl+F**, щоб перейти в режим [пошуку]()."
+        },
+        {
+          "key": "ChatTips.Chats.DescriptionMac",
+          "value": "Натисніть **Cmd+F**, щоб перейти в режим [пошуку]()."
+        },
+        {
+          "key": "ChatTips.Stickers.Description",
+          "value": "Більше популярних стікерів — у розділі [Популярні стікери]()."
         }
       ]
     }

@@ -337,15 +337,18 @@ describe('GroupsManager', () => {
     expect(peers.saveApiPeers).toHaveBeenCalledWith({ users })
   })
 
-  it('joinByToken POSTs /join/{token} and returns status', async () => {
-    // «Вошёл» и «заявка» — один конструктор с флагом, а не строка состояния.
-    const { rest, posts } = fakeRest({ postReturn: { _: 'chatInviteImporter', user_id: 1, date: 1, pFlags: { requested: true } } })
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-    const r = await mgr.joinByToken('tok123')
+  it('importChatInvite: POST /join/{hash}, чат из updates.chats[0] — в зеркало и наружу ключом', async () => {
+    // tweb `appChatInvitesManager.importChatInvite` (:92-104).
+    const chat = { _: 'channel', id: 77, title: 'G', pFlags: { megagroup: true } }
+    const { rest, posts } = fakeRest({ postReturn: { _: 'updates', updates: [], users: [], chats: [chat], date: 1, seq: 0 } })
+    const peers = fakePeers()
+    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers })
+    const peerId = await mgr.importChatInvite('tok123')
     expect(posts).toHaveLength(1)
     expect(posts[0].path).toBe('/join/tok123')
     expect(posts[0].body).toEqual({})
-    expect(r).toEqual({ status: 'requested' })
+    expect(peerId).toBe(-77)
+    expect(peers.saveApiPeers).toHaveBeenCalledWith(expect.objectContaining({ chats: [chat] }))
   })
 
   // Заявки — тот же контейнер импортёров, отфильтрованный по флагу `requested`.

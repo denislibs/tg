@@ -570,15 +570,50 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Баг-фиксы после П-5: +8 ключей tweb превью лога звонка (`ChatList.Service.{Call,VideoCall}.*`,
 // tweb lib/langPack.ts:51-58) и `ForwardedFrom` шапки пересылки вместо нашего мёртвого
 // `Chat.ForwardedFrom` (был только у ru) — ru +8, у остальных +9.
-// Пачка П-6 волны 7 (автокомплит строки ввода `chat/{mentions,commands,inline}Helper.ts`):
-// у ru +3 ключа tweb lang.ts — `Mention`, `Chat.BotCommands` (`aria-label` списков) и
-// `GlobalAttachInlineRestricted` (запрет инлайна). Итог: ru 1623.
+// Пачка П-4 волны 7 (хоткеи, ориентиры экранного доступа): у ru +6 ключей tweb lang.ts —
+// `AccDescr.SkipToConversation`/`ChatList`/`ChatInfo` (:4612, :4615, :4617; ссылка
+// «пропустить к чату» и имена колонок, `helpers/dom/appLandmarks.ts`) и
+// `CopyRestricted.Channel`/`Group`/`User` (:4768-4770; защита копирования,
+// `appImManager.attachCopyListener`). Итог: ru 1546.
+// Пачка П-4 волны 7 («звонки», блок H `appImManager`): у ru +13 ключей tweb —
+// подтверждение «покинуть текущий звонок» `Call.Confirm.Discard.{Call,Live,Voice}.*`
+// (12: заголовок и три перехода на каждый вид звонка, `discardAnyCallConfirmation`
+// `:2276-2299`) и пункт меню эфира в шапке `Rtmp.Topbar.StartVideoChat` (`topbar.ts`
+// `btnGroupCallMenu`, :1041-1057). Итог (с хоткеями): ru 1559.
+// Пачка П-4 волны 7, агент «ссылки» (`lib/internalLinkProcessor.ts`, попап папки
+// `popups/sharedFolderInvite.solid.tsx`): у ru +11 ключей tweb lang.ts (тосты ссылок
+// `Link.NotSupported`, `LinkNotFound`, `InviteExpired`, `RequestToJoinSent`,
+// `Alert.BotAppDoesntExist`, `SharedFolder.Link.Expired`; попап
+// `SharedFolder.Link.{Description,Chats}`, `SelectAll`, `DeselectAll`, `FilterPersonal`) и −4
+// своих ключа снесённого React-попапа папки `Folder.Invite.*`. Итог пачки П-4 поверх К-4 и П-5: ru 1638, `plural` 55.
+// Б-12 пачки П-6 волны 7 (вынос клиента в Document PiP, порт tweb `clientPip.tsx`):
+// у ru +4 ключа tweb lang.ts:205-208 — заглушка вкладки `ClientPip.Placeholder{Title,
+// Description}`, `ClientPip.ReturnToTab`, тост плеера `ClientPip.FullscreenHint`; минус
+// наши `Pip.{ActiveTitle,ActiveHint,BackToTab}` снесённой заглушки `core/pip.ts`.
+// Б-13 волны 7 (карточки пустой колонки, tweb `components/chatTips`): у ru +17 ключей tweb
+// lang.ts:5678-5695 и :4527 — `ChatTips.*` (без `ChatTips.Chats.Popular`: фильтра топа
+// собеседников у нас нет), `EmptyPeer.Description`, `Stickers.Trending`.
+// У остальных четырёх +4 — строки подписей карточек со ссылкой `[…]()`
+// (`ChatTips.{Appearance,Chats,Stickers}.Description`, `ChatTips.Chats.DescriptionMac`): без
+// аргумента-узла такую строку не разобрать, поэтому она переводится во всех пяти, как
+// `PasscodeLock.ForgotPasscode.*` и `Privacy.Passkeys.Caption`.
+// Пачка П-6 волны 7, медленный режим и платные сообщения (Б-37, tweb `chat/input.ts:4005-4069`,
+// `chat/paidMessagesInterceptor.ts`): у ru +9 ключей tweb lang.ts — `SlowModeHint`,
+// `SlowmodeSendError{,TooLong}`, `ConfirmPayment`, `DontAskAgain`,
+// `PaidMessages.UserChargesFor{One,Multiple}MessageWarning`, плюральный
+// `PaidMessages.PayForMessages`, тост нехватки `Stars.Subscription.MissingBalance`.
+// Пачка П-6 волны 7, Б-36 (клавиатура бота, `chat/replyKeyboard.solid.tsx`): у ru +2 ключа
+// tweb lang.ts — `General.Keyboard` (тумблер клавиатуры) и `Chat.BotCommands` (кнопка
+// команд бота).
+// Пачка П-6 волны 7 (автокомплит строки ввода `chat/{mentions,inline}Helper.ts`): у ru +2
+// ключа tweb lang.ts — `Mention` (`aria-label` списка упоминаний) и
+// `GlobalAttachInlineRestricted` (запрет инлайна); `Chat.BotCommands` уже принесла Б-36. Итог: ru 1680.
 const COMPOSITION = {
-  ru: { keys: 1623, plural: 55 },
-  uk: { keys: 838, plural: 35 },
-  es: { keys: 809, plural: 34 },
-  de: { keys: 810, plural: 35 },
-  fr: { keys: 805, plural: 34 },
+  ru: { keys: 1680, plural: 56 },
+  uk: { keys: 842, plural: 35 },
+  es: { keys: 813, plural: 34 },
+  de: { keys: 814, plural: 35 },
+  fr: { keys: 809, plural: 34 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -761,13 +796,18 @@ const COMPOSITION = {
 // Шагом К-4 волны 7 — у ru +1 ключ tweb `Chat.Input.Attach` (разбор — там же).
 // Шагом К-4 волны 7 (строка ввода) — у ru +14 ключей `chat/input.ts` (разбор — там же).
 // Баг-фиксами после П-5 — превью звонка и `ForwardedFrom` (разбор — там же).
-// Пачкой П-6 волны 7 — у ru +3 ключа автокомплита (разбор — там же).
+// Пачкой П-4 волны 7 — у ru +6 ключей tweb `AccDescr.*` и `CopyRestricted.*` (разбор — там же).
+// Пачкой П-4 волны 7 — у ru +13 ключей tweb звонков (разбор — у `COMPOSITION` выше).
+// Пачкой П-4 волны 7 (агент «ссылки») — у ru +11 ключей tweb и −4 `Folder.Invite.*` (разбор — там же).
+// Б-13 волны 7 — у ru +17 ключей карточек пустой колонки, у остальных +4 (разбор — там же).
+// Пачкой П-6 волны 7 — у ru +9 ключей медленного режима и платных сообщений (разбор — там же).
+// Пачкой П-6 волны 7 — у ru +2 ключа автокомплита (разбор — там же).
 const FINGERPRINT = {
-  ru: '61577236',
-  uk: 'af81524a',
-  es: '57ce09fe',
-  de: '3224cfc5',
-  fr: '61cdac88',
+  ru: '113aa7ff',
+  uk: 'de4c59fd',
+  es: 'f330c581',
+  de: '95a1d0fe',
+  fr: '59be948d',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

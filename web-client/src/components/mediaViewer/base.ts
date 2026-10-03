@@ -40,10 +40,6 @@
 //     мувера, пауза на время картинки-в-картинке) живёт ЗДЕСЬ, как в оригинале;
 //     наружу вынесена только механика стека — контроллер openMediaViewer.ts
 //     (Task 16) отдаёт её инъекцией `navigation` (pushEsc + pushLayer)
-//   • `getOverlayRoot()` в tweb (`helpers/appWindow.ts:33`) возвращает body
-//     АКТИВНОГО окна (приложение целиком умеет переезжать в Document-PiP);
-//     у нас в PiP уходит только видео (`core/pip.ts`) — всегда body главного
-//     документа
 //   • `lazyLoadQueue` tweb не портирован — понадобится только соседям по
 //     листанию (Task 14); load в _openMedia запускается напрямую
 //   • `middlewareHelper` мувера в tweb лежит прямо на HTMLElement (global.d.ts);
@@ -53,6 +49,7 @@ import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import { formatFullSentTime } from '@helpers/date'
 import EventListenerBase from '@helpers/eventListenerBase'
+import { getOverlayRoot } from '@helpers/appWindow'
 import { getMiddleware, type MiddlewareHelper } from '@helpers/middleware'
 import deferredPromise from '@helpers/cancellablePromise'
 import cancelEvent from '@helpers/dom/cancelEvent'
@@ -1347,9 +1344,10 @@ export default class AppMediaViewerBase<
     }
   }
 
-  // См. шапку файла: у tweb — body активного окна (Document-PiP), у нас — body.
+  // tweb — `getOverlayRoot()` (`helpers/appWindow.ts:33`): body активного окна,
+  // в выносе клиента (`components/clientPip.solid.tsx`) — окна Document PiP.
   protected getOverlayRoot(): HTMLElement {
-    return document.body
+    return getOverlayRoot()
   }
 
   // Порт tweb base.ts:2452-2455 (внутри _openMedia): вьювер живёт в body,

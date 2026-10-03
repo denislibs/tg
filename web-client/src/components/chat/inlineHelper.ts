@@ -12,8 +12,7 @@
 //  2. Отправка: ручки `messages.sendInlineBotResult` нет — выбор шлёт текст
 //     статьи (`send_message.message`) обычным сообщением через
 //     `ChatInput.sendMessageWithForward` (без `via_bot_id`), затем
-//     `onMessageSent(true, true)` — как у tweb после `sendInlineResult`.
-//     `getReadyToSend` (отложенная отправка, Б-32) не зовётся; эфемерного
+//     `onMessageSent(true, true)` — как у tweb после `sendInlineResult`. Эфемерного
 //     режима (`isEphemeralComposerMode`) и гостевых ботов (`bot_guestchat`) нет.
 //  3. Право `send_inline` — наш `send_messages` (расхождение 5 `input.ts`), текст
 //     запрета — ключ tweb `GlobalAttachInlineRestricted`.
@@ -54,13 +53,15 @@ export default class InlineHelper extends AutocompleteHelper {
         const result = this.results.get((target as HTMLElement).dataset.resultId!)
         if(!result) return false
         const input = this.chat.input
-        void input.sendMessageWithForward({
-          value: result.messageText,
-          entities: [],
-          sendingParams: input.getMessageSendingParams(),
-        })
+        return input.getReadyToSend(() => {
+          void input.sendMessageWithForward({
+            value: result.messageText,
+            entities: [],
+            sendingParams: input.getMessageSendingParams(),
+          })
 
-        input.onMessageSent(true, true)
+          input.onMessageSent(true, true)
+        })
       },
     })
 

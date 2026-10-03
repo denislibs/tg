@@ -68,6 +68,7 @@
 @use "transition"; // :51
 @use "row"; // :52
 @use "colorPicker"; // :53
+@use "replyKeyboard"; // :54 (клавиатура бота над композером, Б-36)
 @use "spoiler"; // :55
 @use "emojiAnimation"; // :56
 @use "reactions"; // :57
@@ -81,6 +82,7 @@
 @use "callSettingsPopup"; // components/call/settingsPopup.scss (вкладка «Динамики и камера», задача 26 плана 2D)
 @use "markup"; // :69
 @use "quote"; // :70
+@use "tooltip"; // :72 (подсказка `showTooltip` — `components/tooltip.solid.tsx`, Б-37)
 @use "topbarSearch"; // :74
 @use "foldersSidebar"; // :75
 @use "animatedSuper"; // :77
@@ -94,6 +96,7 @@
 @use "popups/stickers"; // :88
 @use "popups/datePicker"; // :89
 @use "popups/forward"; // :90
+@use "popups/chatlistInvite"; // :108
 @use "popups/call"; // :93 (выдержка — `.call-video-mirror`)
 @use "popups/premium"; // :110
 @use "popups/confirmation"; // :114
@@ -110,3 +113,5 @@
 @use "pages/pages"; // :124
 @use "pages/chats"; // :125
 @use "passcodeLockScreen"; // :127
+
+@use "accessibility"; // :129 — последним: перебивает `outline: none` компонентов

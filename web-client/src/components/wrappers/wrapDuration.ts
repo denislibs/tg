@@ -1,8 +1,9 @@
 // Порт tweb `src/components/wrappers/wrapDuration.ts:1-44` (812502980) — подпись
 // длительности формами числа langPack.
 //
-// Расхождение с оригиналом: `wrapSlowModeLeftDuration` и
-// `wrapStoriesStealthModeDuration` (`:46-57`) никто не зовёт и они не портированы.
+// Расхождение с оригиналом: `wrapStoriesStealthModeDuration` (`:55-57`) никто не
+// зовёт, он не портирован. `wrapSlowModeLeftDuration` (`:46-53`) — с потребителем:
+// таймер медленного режима `chat/utils.ts::slowModeTimer` (Б-37).
 // Потребители — «Данные и память» (`storageQuota.tsx:145`), «Автоудаление»
 // (`autoDeleteMessages/options.ts`), бабл звонка (`wrappers/callBubble.ts`),
 // превью лога звонка строкой (`core/serviceMsg.ts`, plain-ветка — порт
@@ -56,5 +57,15 @@ export function wrapLeftDuration(timeLeft: number) {
   } else {
     formatted.splice(1, Infinity)
     return wrapFormattedDuration(formatted)
+  }
+}
+
+/** tweb :46-53 — остаток медленного режима: секунды — словами, дольше — `ч:мм:сс`. */
+export function wrapSlowModeLeftDuration(timeLeft: number) {
+  const formatted = formatDuration(timeLeft, 3)
+  if(formatted[0].type === DurationType.Seconds) {
+    return wrapFormattedDuration(formatted)
+  } else {
+    return toHHMMSS(timeLeft, true)
   }
 }

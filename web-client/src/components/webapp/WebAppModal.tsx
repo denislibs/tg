@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import TgIcon from '../TgIcon'
 import Text from '../../shared/ui/Text'
-import { usePortalContainer } from '../../core/pip'
+import { usePortalContainer } from '@shared/react/usePortalContainer'
 import { useWebAppStore, closeWebApp, webAppTheme } from '../../core/webapp'
 import rootScope from '@lib/rootScope'
 import { useManagers } from '../../core/hooks/useManagers'
@@ -218,9 +218,13 @@ function WebAppInner() {
           if (typeof d.url === 'string') safeOpen(d.url)
           break
         case 'web_app_open_tg_link':
+          // tweb `webApp.tsx:1101-1104`: `appImManager.openUrl(getWebViewTgLink(path_full))` —
+          // ссылку исполняет `internalLinkProcessor` в самом клиенте, не новая вкладка.
+          // Импорт ленивый: остров оверлеев не тянет класс в свой чанк (он уже поднят
+          // `bootstrapIm` к моменту, когда открыт мини-апп).
           if (typeof d.path_full === 'string') {
             const href = tgLinkUrl(d.path_full)
-            if (href) safeOpen(href)
+            if (href) void import('@lib/appImManager').then(({ default: appImManager }) => appImManager.openUrl(href))
           }
           break
         case 'web_app_data_send':
