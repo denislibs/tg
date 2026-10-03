@@ -26,7 +26,7 @@ function setDialog(draft?: DraftMessage) {
 function makeManagers(messages: Map<number, MyMessage>) {
   return {
     messages: {
-      sendText: vi.fn(async() => ({ ok: true })),
+      sendText: vi.fn(async(_args: Record<string, unknown>) => ({ ok: true })),
       editMessage: vi.fn(async() => ({})),
       forwardMessages: vi.fn(async() => []),
       getMessageByPeer: vi.fn(async(_peerId: number, mid: number) => messages.get(mid)),
@@ -105,8 +105,7 @@ describe('ChatInput: отправка', () => {
     await input.sendMessage()
 
     expect(managers.messages.sendText).toHaveBeenCalledTimes(1)
-    const [args] = managers.messages.sendText.mock.calls[0] as unknown as [Record<string, unknown>]
-    expect(args).toMatchObject({
+    expect(managers.messages.sendText.mock.calls[0][0]).toMatchObject({
       peerId: PEER,
       text: 'жирный текст',
       entities: [{ _: 'messageEntityBold', offset: 0, length: 6 }],
@@ -150,7 +149,8 @@ describe('ChatInput: отправка', () => {
     await input.initMessageEditing(7)
     expect(input.editMsgId).toBe(7)
     expect(input.messageInput.textContent).toBe('старый')
-    expect(input.btnSend.classList.contains('edit')).toBe(true)
+    // tweb `setTopInfo` морфит кнопку следующим тиком (`setTimeout(updateSendBtn)`, :5419)
+    await vi.waitFor(() => expect(input.btnSend.classList.contains('edit')).toBe(true))
 
     input.messageInputField.setValueSilently('новый')
     await input.sendMessage()
