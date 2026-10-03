@@ -6037,6 +6037,10 @@
           "value": "You have changed some privacy settings. Save changes?"
         },
         {
+          "key": "Update",
+          "value": "UPDATE"
+        },
+        {
           "key": "Updating",
           "value": "Updating..."
         },
@@ -9777,6 +9781,10 @@
         {
           "key": "Updating",
           "value": "Обновление..."
+        },
+        {
+          "key": "Update",
+          "value": "ОБНОВИТЬ"
         },
         {
           "key": "DiscardVoiceMessageTitle",

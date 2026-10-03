@@ -1,8 +1,9 @@
 // Скрим, центровка, радиус, фон карточки и показ/скрытие — глобальные
 // `.popup`/`.popup-container` (портированный `styles/tweb/popups/_popup.scss`,
 // оригинал `tweb src/scss/partials/popups/_popup.scss`). Здесь — только слой и
-// геометрия; классы продублированы, потому что партиалы эмитятся ПОСЛЕ
-// CSS-модулей и при равной специфичности побеждают.
+// геометрия сетки (расхождение 1 шапки `emojiStatusPicker.solid.tsx`); классы
+// продублированы, потому что партиалы эмитятся ПОСЛЕ CSS-модулей и при равной
+// специфичности побеждают.
 .overlay.overlay {
   z-index: 2000;
   --popup-width: min(90vw, 320px);
@@ -10,20 +11,6 @@
 
 .dialog.dialog {
   padding: 16px;
-}
-
-.head {
-  display: flex;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.remove {
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--primary-color);
 }
 
 .grid {
@@ -41,6 +28,7 @@
   height: 36px;
   border-radius: 8px;
   cursor: pointer;
+  color: var(--primary-color);
 }
 
 .itemActive {

@@ -9,13 +9,15 @@
 //       `appDialogsManager.ts:1315-1316`), `destroy()` его снимает;
 //   (3) статического класса в `index.html` нет;
 //   (4) при «папки слева» ряд под настоящими стилями не виден.
-// Проводка сигналов из колонки — `components/Sidebar.foldersMode.test.tsx`.
+// (5) `body.has-folders-sidebar` и место колонки — настройка и ширина экрана;
+// колонка папок — `sidebarLeft/foldersSidebarContent/index.solid.test.tsx`.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as sass from 'sass'
 import '@/test/lang'
-import { useFoldersSidebarShown, useHasFolders, useIsSidebarCollapsed } from './foldersSidebar.solid'
+import useHasFoldersSidebar, { useFoldersSidebarShown, useHasFolders, useIsSidebarCollapsed } from './foldersSidebar.solid'
+import { useSettingsStore } from '@/settings'
 import mediaSizes, { ScreenSize } from '@core/dom/mediaSizes'
 import {
   FakeResizeObserver, installFrames, mountOwner, putFolders, raw, resetStores, settle,
@@ -25,7 +27,8 @@ import { resetPeerMirror } from '@core/peerCache'
 import { applyFolderUpdate } from './foldersStore'
 
 const [, setHasFolders] = useHasFolders()
-const [, setShown] = useFoldersSidebarShown()
+/** Настройка «Расположение папок → Слева от чатов» (`settings.tabsInSidebar`). */
+const setShown = (tabsInSidebar: boolean) => useSettingsStore.getState().update({ tabsInSidebar })
 const [, setCollapsed] = useIsSidebarCollapsed()
 
 const bodyClasses = () => ['has-horizontal-folders', 'has-vertical-folders']
@@ -40,10 +43,17 @@ function changeScreen(to: ScreenSize) {
 
 const initialScreen = mediaSizes.activeScreen
 
+/** Сужение/расширение окна — тем же событием `resize`, что шлёт `mediaSizes.handleResize`. */
+function setLessThanFloating(value: boolean) {
+  mediaSizes.isLessThanFloatingLeftSidebar = value
+  mediaSizes.dispatchEvent('resize')
+}
+
 function resetMode() {
   setHasFolders(false)
   setShown(false)
   setCollapsed(false)
+  setLessThanFloating(false)
   changeScreen(initialScreen)
 }
 
@@ -87,6 +97,30 @@ describe('foldersSidebar: body-классы режима (foldersSidebar.ts:90-1
 
     changeScreen(ScreenSize.mobile)
     expect(bodyClasses()).toEqual(['has-horizontal-folders'])
+  })
+
+  it('body.has-folders-sidebar = настройка ∧ экран шире 925px (:25-34)', () => {
+    const [hasFoldersSidebar] = useHasFoldersSidebar()
+    const [shown] = useFoldersSidebarShown()
+    const hasClass = () => document.body.classList.contains('has-folders-sidebar')
+    expect(hasClass()).toBe(false)
+
+    setShown(true)
+    expect(hasFoldersSidebar()).toBe(true)
+    expect(shown()).toBe(true)
+    expect(hasClass()).toBe(true)
+
+    // ≤ 925px колонку прячет SCSS — класс снят, сырая настройка осталась
+    setLessThanFloating(true)
+    expect(hasFoldersSidebar()).toBe(true)
+    expect(shown()).toBe(false)
+    expect(hasClass()).toBe(false)
+
+    setLessThanFloating(false)
+    expect(hasClass()).toBe(true)
+
+    setShown(false)
+    expect(hasClass()).toBe(false)
   })
 
   it('показ колонки резервирует ей место в раскладке (setFoldersSidebarShown, :30-34)', () => {

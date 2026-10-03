@@ -36,16 +36,14 @@ function walk(dir: string, acc: string[] = []): string[] {
  *    воркерный `/me` может разрешиться раньше и разослать `rt:me` в пустоту.
  *    Заодно тестируется в изоляции без живого воркера/rootScope
  *    (chatsStore.test.ts: «loadChats populates me/meId»).
- *  - `components/EmojiStatusPicker.tsx`, `components/PremiumCheckout.tsx`:
- *    мгновенный отклик на действие пользователя (попап закрывается/оплата
- *    проходит) —
+ *  - `components/PremiumCheckout.tsx`:
+ *    мгновенный отклик на действие пользователя (оплата проходит) —
  *    не ждём round-trip broadcast'а; воркер параллельно публикует тот же
  *    снимок остальным вкладкам (rt:me), повторное применение идемпотентно.
  */
 const ALLOWED = [
   'client/realtime/storeProjection.ts',
   'stores/chatsStore.ts',
-  'components/EmojiStatusPicker.tsx',
   'components/PremiumCheckout.tsx',
 ]
 
