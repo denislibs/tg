@@ -412,6 +412,11 @@ Computed корневых узлов (из дампа, тёмная тема, ш
 1915 }
 ```
 
+**У нас (К-4).** Плашка — `W/components/chat/controlPlate.solid.tsx` (`ChatInputPlate`, порт файлом
+без расхождений; её же берёт панель выделения П-5). Кнопки и цепочку `haveSomethingInControl` строит
+`ChatInput` (`W/components/chat/input.ts`). React-плашка `conversation/ChatInputControl.tsx` и
+`controlPlates.ts` снесены.
+
 Анимация подмены — `_center()` (`input.ts:1703-1777`): считает `scale = widthTo / widthFrom`,
 `initTranslateX = (widthFrom - widthTo) / 2`, `transform = translateX(…) scaleX(scale)`,
 `borderRadius = 16 + 16 * (1 - scale)` px при `scale < 1`, `duration = animate ? 200 : 0`.
@@ -1851,6 +1856,16 @@ Computed: `.btn-menu` 180×168, `padding: 4px 0`, `border-radius: 16px`,
 `.Container { position: relative; overflow: hidden; }`, `.disabled { pointer-events: none !important; }`,
 `.Icon { transition: opacity 0.2s; } .close { transform: scale(0.8); } .hidden { opacity: 0; }`,
 `.Loader { position: absolute; inset: 0; width/height: 100%; animation: rotate 2s linear infinite; }`.
+
+**У нас (К-4, 2026-10-03).** Кнопка — `W/components/chat/attachMenuButton.solid.tsx` (custom element
+`attach-menu-button`, порт файлом; суффикс `.solid.tsx` — граница JSX-рантаймов) + модуль стилей в объёме
+покоя. Состояние правки медиа (`isReplacingMedia`/`isLoading`, кольцо `ProgressCircleSVG`, `.disabled`,
+`.close`, `.hidden`, `.Loader`) не перенесено — правки медиа нет (Б-38). Пункты меню и `ButtonMenuToggle`
+вешает `ChatInput` (`W/components/chat/input.ts`). Попапы пунктов — временные мосты в React через
+`popupStore` (решение Р-2): `W/components/popups/newMedia.ts` (имя и экспорты tweb: `showNewMediaPopup`,
+`getCurrentNewMediaPopup().addFiles`; отправку делает сам мост), `popups/createPoll.bridge.ts`,
+`popups/checklist.bridge.ts`, `popups/sendGift.bridge.ts`. «Геопозиции» и «Контакта» в меню tweb нет —
+сняты (Б-70).
 
 ---
 

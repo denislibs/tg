@@ -287,6 +287,7 @@ const lang = {
   'Chat.Edit.Cancel.Text': 'Are you sure you want to discard all changes?',
   'Chat.ForwardedFrom': 'Forwarded from',
   'Chat.Frozen.LearnMore': 'Learn more...',
+  'Chat.Input.Attach': 'Attach',
   'Chat.Input.Attach.Document': 'Document',
   'Chat.Input.Attach.PhotoOrVideo': 'Photo or Video',
   'Chat.Input.FrozenButton1': 'Your Account is Frozen',
