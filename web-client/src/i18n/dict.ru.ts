@@ -2123,6 +2123,10 @@ const ru = {
   'Chat.Accessory.Forward.You': 'Вы',
   'Chat.Edit.Cancel.Text': 'Отменить все изменения?',
   'ChatAutomation.Stop': 'Остановить',
+  // ── Автокомплит строки ввода (П-6, Б-34) ──
+  'Chat.BotCommands': 'Команды бота',
+  GlobalAttachInlineRestricted: 'Отправка инлайн-контента в этой группе запрещена.',
+  Mention: 'Упомянуть',
   GlobalAttachMediaRestricted: 'Отправка медиа в этой группе запрещена.',
   ReplyTo: 'Ответ %s',
   ReplyToQuote: 'Ответ на цитату %s',

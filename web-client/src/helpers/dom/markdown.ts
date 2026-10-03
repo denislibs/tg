@@ -15,14 +15,7 @@
  *     перенесён: в tweb он мёртв — `createMarkdownCache` возвращает `undefined`
  *     первой строкой (`:33`), карта кэша никогда не наполняется, остальные пять
  *     выходят на `if(!cache) return`.
- *  2. `MarkupTooltip` (тултип разметки, Б-33) не портирован:
- *     `MarkupTooltip.DISPLAY_MARKUP_PARTLY` (static `false`, tweb
- *     `markupTooltip.ts:26`) подставлен значением — снимается формат, покрывающий
- *     выделение ЦЕЛИКОМ; `setActiveMarkupButton()` после применения (`:295`) не
- *     зовётся; Ctrl+K в `handleMarkdownShortcut` (`:515-516`, `showLinkEditor`)
- *     не делает ничего, кроме гашения события, — ссылку ставит `applyMarkdown({type:
- *     'link', href})`, его позовёт тултип.
- *  3. `RichInputHandler.prepareApplyingMarkdown()`/`restore()` вокруг команды
+ *  2. `RichInputHandler.prepareApplyingMarkdown()`/`restore()` вокруг команды
  *     (`:252-253`, `:291`) не зовутся — см. шапку `richInputHandler.ts`.
  */
 import { FontFamilyName } from '@config/font'
@@ -35,9 +28,7 @@ import getMarkupInSelection from '@helpers/dom/getMarkupInSelection'
 import isSelectionEmpty from '@helpers/dom/isSelectionEmpty'
 import { setDirection } from '@helpers/dom/setInnerHTML'
 import filterUnique from '@helpers/array/filterUnique'
-
-/** tweb `MarkupTooltip.DISPLAY_MARKUP_PARTLY` (`markupTooltip.ts:26`) — см. шапку, п. 2. */
-const DISPLAY_MARKUP_PARTLY = false
+import MarkupTooltip from '@components/chat/markupTooltip'
 
 export function joinMarkupNames(types: MarkdownType[]) {
   return 'markup-' + filterUnique(types).join('-')
@@ -69,7 +60,7 @@ export function applyMarkdown({ input, type, href, dateSuffix }: { input: HTMLEl
     }
 
     const currentType = hasMarkup[type]
-    const isRemoving = !!(DISPLAY_MARKUP_PARTLY ? currentType?.partly : currentType?.fully) && !dateSuffix
+    const isRemoving = !!(MarkupTooltip.DISPLAY_MARKUP_PARTLY ? currentType?.partly : currentType?.fully) && !dateSuffix
     const k = canHaveTypes.filter((type) => hasMarkup[type]?.fully)
     if(isRemoving) {
       indexOfAndSplice(k, type)
@@ -137,6 +128,8 @@ export function applyMarkdown({ input, type, href, dateSuffix }: { input: HTMLEl
 
   input.removeEventListener('input', cancelEvent, listenerOptions)
   simulateEvent(input, 'input')
+
+  MarkupTooltip.getInstance().setActiveMarkupButton()
 
   return true
 }
@@ -317,8 +310,10 @@ export function handleMarkdownShortcut(input: HTMLElement, e: KeyboardEvent) {
 
   const selection = input.ownerDocument.defaultView!.getSelection()
   if(!isSelectionEmpty(selection) && markdownType) {
-    // * костыльчик: Ctrl+K — редактор ссылки тултипа разметки (см. шапку, п. 2)
-    if(code !== 'KeyK') {
+    // * костыльчик
+    if(code === 'KeyK') {
+      MarkupTooltip.getInstance().showLinkEditor()
+    } else {
       applyMarkdown({ input, type: markdownType })
     }
 

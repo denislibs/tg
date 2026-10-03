@@ -196,7 +196,7 @@ describe('handleMarkdownShortcut', () => {
     expect(exec).not.toHaveBeenCalled()
   })
 
-  test('Ctrl+K гасится без команды — редактор ссылки у тултипа разметки (Б-33)', () => {
+  test('Ctrl+K не ставит формат командой — открывает редактор ссылки тултипа (`chat/markupTooltip.test.ts`)', () => {
     const exec = stubFontName()
     const input = mountInput('abc')
     select(input.firstChild!, 0, 3)

@@ -70,6 +70,7 @@
 //     импорте, а `appImManager` импортируют и лёгкие подписчики (`uiNotifications`,
 //     `soundSubscriber`). Узел тот же (`sidebarLeft/index.ts`, `super({sidebarEl})`).
 import PeerTitle, { type PeerTitleManagers } from '@components/chat/peerTitle'
+import MarkupTooltip from '@components/chat/markupTooltip'
 import { generateMessageId } from '@core/history/messageId'
 import type { Middleware } from '@helpers/middleware'
 import { i18n, type FormatterArguments } from '@lib/langPack'
@@ -473,6 +474,11 @@ export class AppImManager extends EventListenerBase<{
     }
 
     this.onHashChange(true)
+
+    // tweb `init` `:2811` (зов — `:1004`): тултип разметки над выделением (П-6, Б-33).
+    // `init` с drag&drop и вставкой приходит пачкой П-4 (#393) — при слиянии строка
+    // уезжает туда; `showDatePickerPopup` не ставится (кнопки даты нет, Б-139).
+    MarkupTooltip.getInstance().handleSelection()
   }
 
   // ── G. Хэш и открытие пиров ─────────────────────────────────────────────

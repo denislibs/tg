@@ -23,8 +23,8 @@
  *     `textarea`/`contenteditable` (`:250`), но подтверждение ждёт просто Enter:
  *     `isSendShortcutPressed` (`:254`) читает настройку `sendShortcut`, которой у нас нет
  *     (`sidebarLeft/tabs/keyboardShortcuts.solid.tsx`, расхождение 1) — О-1 2C.
- *  4. `MarkupTooltip.getInstance().hide()` (`:290`) не зовётся: наш тултип разметки —
- *     React (`components/MarkupTooltip.tsx`), синглтона нет — О-2 2C.
+ *  4. (снято пачкой П-6: `MarkupTooltip.getInstance().hide()`, `:290`, зовётся — тултип
+ *     разметки стал синглтоном tweb, `components/chat/markupTooltip.ts`.)
  *  5. `zIndex` — НАШЕ временное расширение (проп → инлайн `z-index` у `.popup`): только ради
  *     подтверждения поверх `MediaEditor` (`z-index: 4200`), у tweb у всех слоёв `4` и
  *     порядок решает DOM — О-3 2C.
@@ -63,6 +63,7 @@ import { IconTsx } from '@components/iconTsx.solid'
 import I18n, { i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 import type { Managers } from '@/client/bootstrap'
 import overlayCounter from '@helpers/overlayCounter'
+import MarkupTooltip from '@components/chat/markupTooltip'
 import { getMiddleware, type MiddlewareHelper } from '@helpers/middleware'
 import findUpClassName from '@helpers/dom/findUpClassName'
 import animationIntersector, { type AnimationItemGroup } from '@components/animationIntersector'
@@ -335,7 +336,7 @@ const PopupElement = (props: {
       setHiding(false)
       middlewareHelper.destroy()
       controllerContext.dispose() // * call it here for the content
-      // Расхождение 4 (О-2 2C): у tweb здесь MarkupTooltip.getInstance().hide()
+      MarkupTooltip.getInstance().hide()
 
       if(!withoutOverlay) {
         overlayCounter.isOverlayActive = false

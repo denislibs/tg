@@ -1680,6 +1680,25 @@ SCSS (`_chatInlineHelper.scss`):
 `-description { font-size: .875rem; color: var(--secondary-text-color); -webkit-line-clamp: 2; white-space: pre-wrap; }` (`:101-121`);
 `&.cant-send { width: 100% !important; height: 3rem; .scrollable-y { display: none } .inline-helper-cant-send { display: block } }` (`:129-140`).
 
+
+**У нас (П-6, 2026-10-03).** Хелперы — порт файлами в `W/components/chat/`:
+`autocompleteHelper.ts`, `autocompleteHelperController.ts`, `autocompletePeerHelper.ts`,
+`mentionsHelper.ts`, `commandsHelper.ts` (+ `processPeerFullForCommands.ts`,
+`hideCommandAutocomplete.ts`), `emojiHelper.ts`, `stickersHelper.ts`, `inlineHelper.ts`;
+создание в `ChatInput.constructPeerHelpers` в порядке tweb `:1384-1393` (дерево `.rows-wrapper`
+§7.1 совпадает, кроме `reply-keyboard`/`bot-commands` — Б-36). `checkAutocomplete`,
+`insertAtCaret`, `mentionUser`, `onEmojiSelected` — `W/components/chat/input.ts` (блок в конце
+класса, расхождение 9 шапки). Расхождения — в шапке каждого файла: у `init` наследников —
+поле-стрелка (под `useDefineForClassFields` метод затёрся бы полем базы); упоминания — ручкой
+`GET /chats/{id}/members?q=` без топ-ботов (Б-136); команды — только в чате с ботом через
+`GET /bots/{id}/commands` (Б-137); эмодзи — без пакета ключевых слов и своих эмодзи (Б-138),
+`appendEmoji`/`getEmojiFromElement`/поиск — ВРЕМЕННО до Б-35 в `emojiHelper.ts`; стикеры —
+ячейка `wrapSticker` вместо `SuperStickerRenderer` (ВРЕМЕННО до Б-35); инлайн — только
+списочный режим, выбор шлёт текст статьи (Б-139). Тултип разметки (§11.4, Б-33) —
+`W/components/chat/markupTooltip.ts` 1:1 без кнопки даты (Б-139), `handleSelection` ставит
+`appImManager.construct`. Пины — `chat/input.autocomplete.test.ts`,
+`chat/autocompleteHelper.test.ts`, `chat/markupTooltip.test.ts`.
+
 ---
 
 ## 8. Эмодзи-дропдаун
