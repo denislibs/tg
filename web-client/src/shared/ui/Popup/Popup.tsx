@@ -21,7 +21,7 @@ import classNames from '../../lib/classNames'
 import IconButton from '../IconButton'
 import { useRipple } from '../Ripple/useRipple'
 import TgIcon from '../../../components/TgIcon'
-import { usePortalContainer } from '../../../core/pip'
+import { usePortalContainer } from '@shared/react/usePortalContainer'
 import { useNavLayer } from '../../../core/hooks/useNavLayer'
 import s from './Popup.module.scss'
 

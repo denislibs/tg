@@ -10,7 +10,8 @@
  * колбэк (тема и язык, `boot.ts`) и экран. Экран — Solid-корень в
  * `getOverlayRoot()` на момент `lock()`: запертый в выносе клиента (Document PiP)
  * встаёт в body окна выноса, а при возврате его вместе с прочими временными
- * корнями переносит `core/pip.ts` (tweb `clientPip.tsx:106-120`). Модуль экрана —
+ * корнями переносит `moveAppBack` (`components/clientPip.solid.tsx`, tweb
+ * `clientPip.tsx:106-120`). Модуль экрана —
  * ленивый чанк (`Promise.race` с паузой 100 мс, как у оригинала), снятие — через
  * `--hidden` и паузы 120 + 250 + 120 мс под `startViewTransition`.
  *

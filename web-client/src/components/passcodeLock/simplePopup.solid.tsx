@@ -8,7 +8,7 @@
  * до старта приложения, без навигационного стека.
  *
  * Портал — в `getOverlayRoot()`, Esc — `bindActiveWindowListener` на документ
- * активного окна: в выносе клиента (Document PiP, `core/pip.ts`) попап и его
+ * активного окна: в выносе клиента (Document PiP, `components/clientPip.solid.tsx`) попап и его
  * клавиша живут в окне выноса и переезжают вместе с ним.
  *
  * Расхождения с tweb:

@@ -134,8 +134,7 @@
  *     пункта нет; поэтому `separator` у «Telegram Features» — всегда.
  *  7. «Telegram Features» — `appImManager.openUrl(url)` (:1002) → новая
  *     вкладка: обработчика внутренних ссылок нет, ВРЕМЕННО до Э5-4.
- *  8. PiP — наш вынос клиента `enterAppPip` (`core/pip.ts`) вместо
- *     `openClientPip`; «выйти» закрывает окно выноса.
+ *  8. (снято на Б-12) PiP — порт `clientPip.tsx` (`components/clientPip.solid.tsx`).
  *  9. Клавиатурная навигация меню (фокус в подменю) — О-84 волны 7
  *     (`components/floatingButtonMenu.ts`).
  */
@@ -179,7 +178,6 @@ import {
 } from '@core/accountTransition'
 import { getCurrentPreset } from '@core/theme/themeController'
 import { usePwaStore } from '@core/pwa'
-import { enterAppPip, usePipStore } from '@core/pip'
 import mediaSizes from '@core/dom/mediaSizes'
 import { setOpenTabsLeftSidebar } from '@core/dom/updateColumnWidths'
 import installColumnResize from '@core/dom/installColumnResize'
@@ -193,6 +191,7 @@ import { useSettingsStore } from '@/settings'
 import { PRESET_MODE, resolvePreset } from '@/theme'
 import IS_CALL_SUPPORTED from '@environment/callSupport'
 import DOCUMENT_PICTURE_IN_PICTURE_SUPPORTED from '@environment/documentPictureInPictureSupport'
+import openClientPip, { closeClientPip, isClientPipOpen } from '@components/clientPip.solid'
 import contextMenuController from '@helpers/contextMenuController'
 import { attachClickEvent, CLICK_EVENT_NAME, simulateClickEvent } from '@helpers/dom/clickEvent'
 import filterAsync from '@helpers/array/filterAsync'
@@ -885,7 +884,6 @@ export class AppSidebarLeft extends SidebarSlider {
     const darkModeText = document.createElement('span')
     darkModeText.append(i18n(isNight() ? 'DisableDarkMode' : 'EnableDarkMode'))
     const animationsText = document.createElement('span')
-    const isPipOpen = usePipStore.getState().active
 
     const btns: ButtonMenuItemOptionsVerifiable[] = [{
       icon: 'darkmode',
@@ -942,23 +940,17 @@ export class AppSidebarLeft extends SidebarSlider {
       icon: 'pip',
       // The More submenu is rebuilt on every open, so reading the live pip state
       // here keeps the label in sync: while popped out the entry flips to "Exit".
-      text: isPipOpen ? 'ClientPip.Exit' : 'PictureInPicture',
+      text: isClientPipOpen() ? 'ClientPip.Exit' : 'PictureInPicture',
       onClick: () => {
-        // расхождение 8 бургера
-        if(usePipStore.getState().active) {
-          usePipStore.getState().win?.close()
+        // The click is the user gesture `requestWindow` needs; closing the menu doesn't consume it.
+        if(isClientPipOpen()) {
+          closeClientPip()
         } else {
-          void enterAppPip({
-            title: I18n.format('Pip.ActiveTitle', true),
-            hint: I18n.format('Pip.ActiveHint', true),
-            back: I18n.format('Pip.BackToTab', true),
-          })
+          void openClientPip()
         }
       },
       // Document Picture-in-Picture is Chromium-only — gate the entry on actual support.
-      // Б-12 (К-2): вынос переносил `#root`, которого с точкой входа tweb нет, —
-      // пункт скрыт до порта `components/clientPip.tsx`.
-      verify: () => DOCUMENT_PICTURE_IN_PICTURE_SUPPORTED && !!document.getElementById('root'),
+      verify: () => DOCUMENT_PICTURE_IN_PICTURE_SUPPORTED,
     }]
 
     const hasAnimations = () => {

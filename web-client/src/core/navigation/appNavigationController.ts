@@ -162,7 +162,7 @@ export class AppNavigationController {
     }
 
     // tweb :77-79: слушатель следует за активным окном — в выносе клиента в
-    // Document PiP (`core/pip.ts`) нажатия приходят в окно PiP, а не во вкладку.
+    // Document PiP (`components/clientPip.solid.tsx`) нажатия приходят в окно PiP, а не во вкладку.
     bindActiveWindowListener((w) => w, 'keydown', this.onKeyDown, { capture: true, passive: false })
 
     if(IS_MOBILE_SAFARI) {

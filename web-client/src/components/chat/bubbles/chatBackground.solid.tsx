@@ -31,7 +31,7 @@
  *  • Не перенесено то, у чего у нас нет потребителя: проп `peerId` с
  *    `resolveFromPeer` (`:141-157`, превью чата и попапы), `class` (`fakeBubbles`),
  *    `themeController`/`managers` (горячая перезагрузка экрана блокировки),
- *    `onCachedStatus`, `reRender` (Document PiP), `resize` (`appImManager.ts:1021`;
+ *    `onCachedStatus`, `resize` (`appImManager.ts:1021`;
  *    холсты сам пересчитывает слушатель `resize` компонента).
  *  • `untrack` в `resolveBackgroundSync` (`:170`) не нужен: наша тема и обои —
  *    не Solid-сигналы, подписки из чтения не возникает.
@@ -666,6 +666,18 @@ const appChatBackground = (() => {
       }
     },
     getReadyPromise: () => latestReady,
+    /**
+     * Force a full re-render of the CURRENT background, bypassing the reference-equality
+     * short-circuits. Needed after the whole client moves between documents (Document PiP): the
+     * canvas / gradient renderer does not survive the cross-window move, so the same bg has to be
+     * rebuilt fresh in the now-current document. Cloning the theme yields a new reference so BOTH the
+     * wrapper's `lastAppliedTheme` guard and the inner `on([theme, wallPaper])` effect re-fire.
+     */
+    reRender: () => setBackground({
+      theme: backgroundOwnedByChat ? (ownedTheme && { ...ownedTheme }) : { ...getGlobalTheme() },
+      wallPaper: backgroundOwnedByChat ? ownedWallPaper : undefined,
+      transition: 'instant',
+    }),
   }
 })()
 

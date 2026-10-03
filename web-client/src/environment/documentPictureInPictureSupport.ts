@@ -5,6 +5,6 @@
 // Chromium-only as of 2026; absent everywhere else, so the chat-PiP entry point is gated on this.
 const DOCUMENT_PICTURE_IN_PICTURE_SUPPORTED = typeof window !== 'undefined' &&
   'documentPictureInPicture' in window &&
-  typeof (window as { documentPictureInPicture?: { requestWindow?: unknown } }).documentPictureInPicture?.requestWindow === 'function'
+  typeof window.documentPictureInPicture?.requestWindow === 'function'
 
 export default DOCUMENT_PICTURE_IN_PICTURE_SUPPORTED
