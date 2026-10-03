@@ -108,6 +108,11 @@ export function createTestChat(options: TestChatOptions = {}): Chat {
     finishPeerChange: () => Promise.resolve(),
     revealPreparedBackground: noop,
     initSearch: noop,
+    // tweb `chat.ts:1434` — плашка закрепа нужна обычному чату; шапки (`topbar`) у
+    // фейка нет, лента зовёт её через `?.`
+    isPinnedMessagesNeeded(this: Chat) {
+      return this.type === ChatType.Chat
+    },
     // `EventListenerBase` класса: событие `setPeer` (tweb bubbles.ts:5961-5976, :6352)
     dispatchEvent: noop,
     managers: options.managers,

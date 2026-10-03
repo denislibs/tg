@@ -4123,12 +4123,17 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // Ветка `savedPosition?.mids` (:5109) в оригинале ПУСТА — она лишь
     // перехватывает управление у «уйти к последнему сообщению» ниже. Здесь она
     // выражена тем же условием в `else if`.
-    let savedPosition: ChatSavedPosition | undefined
+    let savedPosition: Required<Pick<ChatSavedPosition, 'mids' | 'top'>> | undefined
     // tweb :5886-5924 — «вести к первому непрочитанному», а не в конец.
     let followingUnread = false
     if(!isTarget) {
       if(!samePeer) {
-        savedPosition = this.chat.appImManager.getChatSavedPosition(this.chat)
+        // tweb :5109 `savedPosition?.mids` — запись может нести только подсказку
+        // плашки закрепа (`appImManager.saveChatPosition`, tweb :2664-2670)
+        const position = this.chat.appImManager.getChatSavedPosition(this.chat)
+        if(position?.mids && position.top !== undefined) {
+          savedPosition = { mids: position.mids, top: position.top }
+        }
       }
 
       if(!savedPosition && topMessageFullMid !== EMPTY_FULL_MID) {
@@ -4391,6 +4396,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
       // tweb :5410-5412.
       if(oldPlaceholderBubble) {
         this.cleanupPlaceholders(oldPlaceholderBubble)
+      }
+
+      // tweb :6227-6229
+      if(!isTarget && this.chat.isPinnedMessagesNeeded()) {
+        this.chat.topbar?.pinnedMessage?.setCorrectIndex(0)
       }
 
       // tweb :5420.
@@ -4882,8 +4892,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *
    * Не портированы (нет предмета): `sliceViewportDebounced?.clearTimeout()` в
    * ветке тяжёлой анимации остался (подрезка есть), а вот
-   * `chat.topbar.pinnedMessage.setCorrectIndexThrottled` (плашка закреплённого —
-   * окружение `Chat`), `setStickyDateManually` (тело метода в оригинале
+   * `setStickyDateManually` (тело метода в оригинале
    * закомментировано целиком), `checkIntersectingVideos` и
    * `scheduleReadMetricsBatch` (наблюдатели видео и метрик чтения) — их нет.
    */
@@ -4896,6 +4905,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
         return
       }
     } else {
+      this.chat.topbar?.pinnedMessage?.setCorrectIndexThrottled(this.scrollable.lastScrollDirection) // tweb :4675
       void this.sliceViewportDebounced?.()
     }
 

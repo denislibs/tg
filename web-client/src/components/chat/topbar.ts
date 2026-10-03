@@ -15,6 +15,9 @@
 //    `onMuteClick`/`onUnmuteClick` (`:1220-1226`), `onResize`/`onChangeScreen`;
 //  - `finishPeerChange` (`:1383-1549`): аватар, заголовок, статус, видимость лупы и ⋮,
 //    `peerId` плашек; `cleanup`/`destroy` (`:1236-1254`);
+//  - закреп: `appendPinnedMessage`/`setupPinnedMessageForPeer`/`revealPreparedPinnedMessage`
+//    (`:1256-1381`), `openPinned` (`:1177-1187`), подписки `setPeer`/`peer_pinned_messages`
+//    (`:1134-1157`);
 //  - `setTitleManual`/`setTitle` (`:1550-1641`), `setFloating` (`:1645-1683`),
 //    `messagesCounter` (`:1685-1716`), `createStatus` (`:1718-1845`).
 //
@@ -34,9 +37,12 @@
 //     Пункты звонков (`Call`/`VideoCall`/`LiveStream`/`VoiceChat`, `:528-547`) и кнопки
 //     звонка — П-4 (контракт `p5-contract.md`): их `verify*` живут там.
 //  2. Плашки — только с предметом (`topbarPlates.ts`, его шапка): видеочат и эфир.
-//     Закреп (`setupPinnedMessageForPeer`/`revealPreparedPinnedMessage`) — сосед П-5.
+//     Закреп — `pinnedMessage.solid.tsx`, цикл `setupPinnedMessageForPeer`/
+//     `revealPreparedPinnedMessage` (`:1256-1381`) 1:1; скрытие плашки — `isPinnedMessagesHidden`
+//     (`core/pinnedMessages.ts`) вместо `appState.hiddenPinnedMessages`.
 //  3. `chat.isPreview`, `ChatType.Search` (`resetSearch`), монофорум, `autoDeletePeriod`
-//     аватарки, `welcome_*`, ветка заголовка `Welcome` — предметов нет. Тема форума
+//     аватарки, `welcome_*`, ветка заголовка `Welcome` — предметов нет. Заголовок
+//     экрана закрепов (`:1557-1585`) — счёт `core/pinnedMessages.ts::getPinnedMessage`. Тема форума
 //     (заголовок `wrapPeerTitle({threadId})`, аватар `avatarNew({threadId})`, статус
 //     `TopicProfileStatus` `:1736-1742`) — тема приходит не из кэша, а ручкой списка тем
 //     (`loadForumTopic`). Замка закрытой темы в шапке у tweb нет (`pFlags.closed` темы
@@ -117,7 +123,11 @@ import showDeleteDialogPopup from '@components/popups/deleteDialog'
 import clearHistoryWithConfirmation from '@components/clearHistory'
 import { AppEditContactTab } from '@components/solidJsTabs/tabs'
 import { createTopbarPlates, type TopbarPlates } from './topbarPlates'
+import createChatPinnedMessage, { type ChatPinnedMessageController } from './pinnedMessage.solid'
+import { getPinnedMessage, isPinnedMessagesHidden } from '@core/pinnedMessages'
+import { untrack } from 'solid-js'
 import type { TopicIconSource } from '@components/topicAvatar'
+import type { TopbarPlateController } from './topbarPlate.solid'
 import type Chat from './chat'
 import { ChatType } from './chatType'
 
@@ -140,6 +150,7 @@ export default class ChatTopbar {
   private deleteChatBtnMenuOptions?: ButtonMenuItemOptionsVerifiable
 
   public plates?: TopbarPlates
+  public pinnedMessage?: ChatPinnedMessageController
 
   public listenerSetter: ListenerSetter
 
@@ -251,6 +262,9 @@ export default class ChatTopbar {
     this.floatingPlatesWrapper = document.createElement('div')
     this.floatingPlatesWrapper.classList.add('topbar-floating-plates', 'hide')
     this.container.append(this.floatingPlatesWrapper)
+
+    // the pinned plate is prepended here by `revealPreparedPinnedMessage`, in the
+    // same frame as the bubbles it belongs to
 
     this.plates.mount(this.floatingPlatesWrapper)
 
@@ -554,7 +568,47 @@ export default class ChatTopbar {
       }
     }))
 
+    // tweb :1134-1147
+    this.chat.addEventListener('setPeer', (mid, isTopMessage) => {
+      const middleware = this.chat.bubbles.getMiddleware()
+      if(!middleware() || !this.pinnedMessage) return
+
+      this.pinnedMessage.setUserHidden(isPinnedMessagesHidden(this.chat.peerId, this.chat.threadId))
+
+      if(isTopMessage) {
+        this.pinnedMessage.unsetScrollDownListener()
+        this.pinnedMessage.testMid(mid, 0) // * because slider will not let get bubble by document.elementFromPoint
+      } else if(!this.pinnedMessage.isLocked()) {
+        void this.pinnedMessage.handleFollowingPinnedMessage()
+        this.pinnedMessage.testMid(mid)
+      }
+    })
+
+    // tweb :1149-1157
+    this.listenerSetter.add(rootScope)('peer_pinned_messages', ({ peerId, mids }) => {
+      if(this.chat.type !== ChatType.Pinned || peerId !== this.peerId) {
+        return
+      }
+
+      if(mids) {
+        this.setTitle()
+      }
+    })
+
     return this
+  }
+
+  /** tweb `:1177-1187` */
+  public openPinned(byCurrent: boolean) {
+    const currentMid = byCurrent ? +this.pinnedMessage!.container.dataset.mid! : 0
+    void this.chat.appImManager.setInnerPeer({
+      peerId: this.peerId,
+      // the pinned list is per-topic in a forum — without the thread the tab
+      // would list every pin of the forum instead of this topic's
+      threadId: this.chat.threadId,
+      lastMsgId: currentMid || 0,
+      type: ChatType.Pinned,
+    })
   }
 
   private updateBackBadge() {
@@ -594,8 +648,10 @@ export default class ChatTopbar {
     this.status?.destroy()
     this.titleMiddlewareHelper?.destroy()
     this.avatarMiddlewareHelper?.destroy()
+    this.pinnedMessage?.destroy()
     this.plates?.destroy()
 
+    this.pinnedMessage = undefined
     this.plates = undefined
   }
 
@@ -603,6 +659,108 @@ export default class ChatTopbar {
     if(!this.chat.peerId) {
       this.container.classList.add('hide')
     }
+  }
+
+  /** tweb `:1256-1263` */
+  private appendPinnedMessage(pinnedMessage: ChatPinnedMessageController) {
+    const container = pinnedMessage.container
+    if(this.pinnedMessage && this.pinnedMessage !== pinnedMessage) {
+      this.pinnedMessage.container.replaceWith(container)
+    } else {
+      this.floatingPlatesWrapper.prepend(container)
+    }
+  }
+
+  private pinnedMessageSetupForKey: string | undefined
+  /**
+   * Plate swap deferred from `setupPinnedMessageForPeer` until the
+   * bubbles-mount moment (tweb :1265-1278): `kind='install'` carries a detached
+   * new plate and (optionally) a `prepareInitialPromise`; `kind='destroy'` means
+   * the new peer has no plate, but the old one must stay visible until bubbles swap.
+   */
+  private pendingPinnedSetup:
+    | { kind: 'install', newPlate: ChatPinnedMessageController, prepareInitialPromise?: Promise<void> }
+    | { kind: 'destroy' }
+    | null = null
+
+  /**
+   * tweb `:1280-1354` — подготовить плашку закрепа для текущего пира, не трогая DOM;
+   * применяет `revealPreparedPinnedMessage` вместе с баблами. Скрытие плашки — наш
+   * `isPinnedMessagesHidden` (`appState.hiddenPinnedMessages` оригинала).
+   */
+  public setupPinnedMessageForPeer(): Promise<void> | undefined {
+    const peerId = this.chat.peerId
+    const threadId = this.chat.threadId
+    // The pinned list is per-topic in a forum, and on mobile the same chat
+    // instance is reused across peer changes — keying on peerId alone would
+    // keep the previous topic's plate on a topic switch.
+    const setupKey = peerId + (threadId ? '_' + threadId : '')
+    if(this.pinnedMessageSetupForKey === setupKey) {
+      return this.pendingPinnedSetup?.kind === 'install' ?
+        this.pendingPinnedSetup.prepareInitialPromise :
+        undefined
+    }
+    this.pinnedMessageSetupForKey = setupKey
+
+    // Drop an orphaned pending plate from an even earlier peer change.
+    if(this.pendingPinnedSetup?.kind === 'install') {
+      this.pendingPinnedSetup.newPlate.destroy()
+    }
+    this.pendingPinnedSetup = null
+
+    const isPinnedMessagesNeeded = this.chat.isPinnedMessagesNeeded()
+    const wantsPlate = isPinnedMessagesNeeded || this.chat.type === ChatType.Discussion
+    if(!wantsPlate) {
+      if(this.pinnedMessage) {
+        this.pendingPinnedSetup = { kind: 'destroy' }
+      }
+      return
+    }
+
+    const newPlate = createChatPinnedMessage(this, this.chat, this.managers)
+    let prepareInitialPromise: Promise<void> | undefined
+
+    if(this.chat.type === ChatType.Discussion) {
+      newPlate.setStaticMessage(this.chat.threadId!)
+    } else {
+      newPlate.setUserHidden(isPinnedMessagesHidden(peerId, threadId))
+      const savedPosition = this.chat.appImManager.getChatSavedPosition(this.chat)
+      const cachedFull = untrack(() => this.chat.fullPeer())
+      // `pinned_msg_id` is peer-scoped. In a forum topic the pinned list is
+      // per-topic, so seeding from it would paint a foreign pin.
+      const pinnedMessageId = !threadId && cachedFull && 'pinned_msg_id' in cachedFull ?
+        cachedFull.pinned_msg_id :
+        undefined
+      const hint = savedPosition?.pinnedMessages ||
+        (pinnedMessageId ? { mid: pinnedMessageId, index: 0, count: 1 } : undefined)
+      if(hint) {
+        prepareInitialPromise = newPlate.prepareInitial(hint)
+      }
+    }
+
+    this.pendingPinnedSetup = { kind: 'install', newPlate, prepareInitialPromise }
+    return prepareInitialPromise
+  }
+
+  /** tweb `:1356-1381` */
+  public revealPreparedPinnedMessage() {
+    const pending = this.pendingPinnedSetup
+    if(!pending) {
+      this.pinnedMessage?.revealPrepared()
+      return
+    }
+    this.pendingPinnedSetup = null
+
+    const old = this.pinnedMessage
+    if(pending.kind === 'install') {
+      this.appendPinnedMessage(pending.newPlate)
+      this.pinnedMessage = pending.newPlate
+      pending.newPlate.revealPrepared()
+    } else {
+      this.pinnedMessage = undefined
+    }
+    old?.destroy()
+    this.setFloating()
   }
 
   /**
@@ -669,6 +827,7 @@ export default class ChatTopbar {
       Promise.resolve(newAvatar?.readyThumbPromise),
       this.setTitleManual(),
       Promise.resolve(status?.prepare(true)),
+      this.setupPinnedMessageForPeer(),
     ] as const)
 
     if(!middleware() && newAvatarMiddlewareHelper) {
@@ -704,6 +863,7 @@ export default class ChatTopbar {
         this.btnMore.classList.toggle('hide', !canHaveMore)
       }
 
+      this.revealPreparedPinnedMessage()
       setTitleCallback()
       setStatusCallback?.()
 
@@ -718,13 +878,36 @@ export default class ChatTopbar {
     }
   }
 
-  public async setTitleManual() {
+  public async setTitleManual(count?: number) {
     const { peerId, threadId } = this.chat
     let titleEl: HTMLElement | undefined
     this.titleMiddlewareHelper?.destroy()
     const middlewareHelper = this.titleMiddlewareHelper = getMiddleware()
     const middleware = middlewareHelper.get()
-    if(this.chat.type === ChatType.Scheduled) {
+    if(this.chat.type === ChatType.Pinned) {
+      if(count === undefined) titleEl = i18n('Loading')
+      else titleEl = i18n('PinnedMessagesCount', [count])
+
+      if(count === undefined) {
+        // tweb :1562-1584 — счёт берётся у того же поиска закрепов, из которого
+        // строится лента экрана (`core/pinnedMessages.ts::getPinnedMessage`)
+        void getPinnedMessage(this.managers, peerId, this.chat.threadId).then(({ count }) => {
+          if(!middleware()) return
+          this.setTitle(count)
+
+          // ! костыль х2, это нужно делать в другом месте
+          if(!count) {
+            void this.chat.appImManager.setPeer() // * close tab
+
+            // ! костыль, это скроет закреплённые сообщения сразу, вместо того, чтобы ждать пока анимация перехода закончится
+            const originalChat = this.chat.appImManager.chat
+            if(originalChat.topbar.pinnedMessage) {
+              originalChat.topbar.pinnedMessage.setHidden(true)
+            }
+          }
+        })
+      }
+    } else if(this.chat.type === ChatType.Scheduled) {
       titleEl = i18n(peerId === rootScope.myId ? 'Reminders' : 'ScheduledMessages')
     } else if(this.chat.type === ChatType.Discussion) {
       titleEl = this.messagesCounter({
@@ -757,15 +940,16 @@ export default class ChatTopbar {
     }
   }
 
-  public setTitle() {
-    void this.setTitleManual().then((setTitleCallback) => setTitleCallback())
+  public setTitle(count?: number) {
+    void this.setTitleManual(count).then((setTitleCallback) => setTitleCallback())
   }
 
-  /** tweb `:1645-1683` — расхождение 2 (закреп — сосед П-5). */
+  /** tweb `:1645-1683` */
   public setFloating = () => {
     const containers = [
+      this.pinnedMessage,
       ...(this.plates?.all || []),
-    ]
+    ].filter(Boolean) as TopbarPlateController[]
     const TOPBAR_GAP = 8
     const PLATE_DIVIDER = 1
 

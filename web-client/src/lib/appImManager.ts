@@ -319,9 +319,11 @@ export type ChatSetPeerOptions = {
 }
 
 /** tweb `:148-165` — расхождение 6 шапки. */
+/** tweb `:148-165`: позиция ленты и/или подсказка плашки закрепа (`pinnedMessages`). */
 export type ChatSavedPosition = {
-  mids: number[],
-  top: number
+  mids?: number[],
+  top?: number,
+  pinnedMessages?: { mid: number, index: number, count: number }
 }
 
 /** tweb `:204-207` */
@@ -661,6 +663,7 @@ export class AppImManager extends EventListenerBase<{
     const key = chat.peerId + (chat.threadId ? '_' + chat.threadId : '')
 
     const chatPositions = this.chatPositions
+    const pinnedMessages = chat.topbar?.pinnedMessage?.pinnedMessages
     const shouldSavePosition =
       !(chatBubbles.scrollable.getDistanceToEnd() <= 16 && chatBubbles.scrollable.loadedAll.bottom) &&
       chatBubbles.getRenderedLength() &&
@@ -672,8 +675,14 @@ export class AppImManager extends EventListenerBase<{
       const position: ChatSavedPosition = {
         mids: chatBubbles.getRenderedHistory('desc', true).map((fullMid) => splitFullMid(fullMid).mid),
         top: chatBubbles.scrollable.scrollPosition,
+        pinnedMessages,
       }
       chatPositions[key] = position
+    } else if(pinnedMessages) {
+      // Position itself isn't worth restoring, but the pinned hint is —
+      // keep it so the next prepareInitial paints the plate with the
+      // real count/index instead of the fullPeer fallback (count=1).
+      chatPositions[key] = { pinnedMessages }
     } else {
       delete chatPositions[key]
     }

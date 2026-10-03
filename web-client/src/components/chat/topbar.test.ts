@@ -24,6 +24,30 @@ import { useLivestreamStore } from '@stores/livestreamStore'
 import I18n from '@lib/langPack'
 import type { LangPackKey } from '@/lang'
 import ChatTopbar from './topbar'
+
+// Плашка закрепа — предмет `pinnedMessage.test.ts`; здесь проверяется только её цикл в
+// шапке (`setupPinnedMessageForPeer`/`revealPreparedPinnedMessage`, tweb :1256-1381).
+const pinnedPlates = vi.hoisted(() => [] as Array<Record<string, unknown> & { container: HTMLElement }>)
+vi.mock('./pinnedMessage.solid', () => ({
+  default: () => {
+    const container = document.createElement('div')
+    container.classList.add('pinned-container', 'pinned-message')
+    let visible = false
+    const plate = {
+      container,
+      height: 48,
+      isVisible: () => visible,
+      setStaticMessage: vi.fn(() => { visible = true }),
+      setUserHidden: vi.fn(),
+      prepareInitial: vi.fn(async() => { visible = true }),
+      revealPrepared: vi.fn(),
+      setHidden: vi.fn(),
+      destroy: vi.fn(() => container.remove()),
+    }
+    pinnedPlates.push(plate)
+    return plate
+  },
+}))
 import type Chat from './chat'
 import { ChatType } from './chatType'
 
@@ -48,6 +72,7 @@ let topbars: ChatTopbar[]
 
 type FakeChatOptions = {
   peerId: PeerId
+  pinnedNeeded?: boolean
   threadId?: number
   type?: ChatType
   isForum?: boolean
@@ -62,7 +87,7 @@ type FakeChatOptions = {
 type FakeChat = Chat & { pop: ReturnType<typeof vi.fn>, updatePinnedFloatingHeight: ReturnType<typeof vi.fn> }
 
 function makeChat(options: FakeChatOptions): FakeChat {
-  const { fullPeer, renderedLength, canManageAutoDelete, ...fields } = options
+  const { fullPeer, renderedLength, canManageAutoDelete, pinnedNeeded, ...fields } = options
   const container = document.createElement('div')
   container.classList.add('chat')
   document.body.append(container)
@@ -73,6 +98,9 @@ function makeChat(options: FakeChatOptions): FakeChat {
     managers,
     updatePinnedFloatingHeight: vi.fn(),
     initSearch: vi.fn(),
+    addEventListener: vi.fn(),
+    // плашка закрепа — предмет `pinnedMessage.test.ts`; здесь её цикл не поднимается
+    isPinnedMessagesNeeded: () => !!pinnedNeeded,
     canManageAutoDelete: () => !!canManageAutoDelete,
     getAutoDeletePeriod: () => 0,
     setAutoDeletePeriod: vi.fn(async() => {}),
@@ -80,7 +108,7 @@ function makeChat(options: FakeChatOptions): FakeChat {
     fullPeer: () => fullPeer,
     selection: { isSelecting: false, toggleSelection: vi.fn(), cancelSelection: vi.fn(), toggleByElement: vi.fn() },
     bubbles: { getRenderedLength: () => renderedLength ?? 1 },
-    appImManager: { setInnerPeer: vi.fn() },
+    appImManager: { setInnerPeer: vi.fn(), getChatSavedPosition: () => undefined },
     ...fields,
   }
   return chat as unknown as FakeChat
@@ -103,6 +131,7 @@ const q = (topbar: ChatTopbar, selector: string) => topbar.container.querySelect
 
 beforeEach(() => {
   topbars = []
+  pinnedPlates.length = 0
   sidebar = { toggleSidebar: vi.fn(() => Promise.resolve()), isTabExists: vi.fn(() => false), createTab: vi.fn() }
   isContact.mockImplementation(async() => false)
   useGroupCallStore.setState({ peerId: null, activeByChat: {} })
@@ -489,5 +518,35 @@ describe('ChatTopbar: плашки и setFloating (tweb :1645-1683)', () => {
     useLivestreamStore.getState().setActive(ALICE, true)
     const dm = await open(makeChat({ peerId: ALICE }))
     expect(q(dm, '.pinned-live').classList.contains('hide')).toBe(true)
+  })
+})
+
+describe('ChatTopbar: плашка закрепа в шапке (tweb :1256-1381)', () => {
+  it('тред комментариев: статичное сообщение треда, плашка в стеке плашек первой и в высоте', async() => {
+    const chat = makeChat({ peerId: GROUP, threadId: 50, type: ChatType.Discussion })
+    const topbar = await open(chat)
+    expect(pinnedPlates).toHaveLength(1)
+    expect(pinnedPlates[0].setStaticMessage).toHaveBeenCalledWith(50)
+    const wrapper = q(topbar, '.topbar-floating-plates')
+    expect(wrapper.firstElementChild).toBe(pinnedPlates[0].container)
+    expect(wrapper.classList.contains('hide')).toBe(false)
+    expect(chat.updatePinnedFloatingHeight).toHaveBeenLastCalledWith(48 + 8)
+  })
+
+  it('чат с закрепом: подсказка — pinned_msg_id полной карточки; смена на пира без плашки снимает её', async() => {
+    const fullPeer: PeerFull = { _: 'channelFull', id: 100, about: '', read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0, chat_photo: null, pinned_msg_id: 9 }
+    const chat = makeChat({ peerId: GROUP, pinnedNeeded: true, fullPeer })
+    const topbar = await open(chat)
+    expect(pinnedPlates[0].prepareInitial).toHaveBeenCalledWith({ mid: 9, index: 0, count: 1 })
+    expect(pinnedPlates[0].revealPrepared).toHaveBeenCalled()
+    expect(topbar.pinnedMessage).toBe(pinnedPlates[0])
+
+    chat.peerId = ALICE
+    ;(chat as unknown as { isPinnedMessagesNeeded: () => boolean }).isPinnedMessagesNeeded = () => false
+    const callback = await topbar.finishPeerChange({ middleware: getMiddleware().get() })
+    callback()
+    expect(pinnedPlates[0].destroy).toHaveBeenCalled()
+    expect(topbar.pinnedMessage).toBeUndefined()
+    expect(q(topbar, '.topbar-floating-plates').classList.contains('hide')).toBe(true)
   })
 })
