@@ -9,7 +9,6 @@ vi.mock('@environment/touchSupport', () => ({ default: true }))
 
 import ChatContextMenu, {
   type ContextMenuManagers,
-  type ContextMenuPopups,
 } from './contextMenu'
 import type { SelectionBubbles } from './selection'
 import type Chat from './chat'
@@ -89,20 +88,10 @@ function makeManagers(): ContextMenuManagers {
       votePoll: vi.fn().mockResolvedValue(undefined),
       closePoll: vi.fn().mockResolvedValue(undefined),
       viewers: vi.fn().mockResolvedValue([]),
+      setFactCheck: vi.fn().mockResolvedValue(undefined),
+      removeFactCheck: vi.fn().mockResolvedValue(undefined),
     },
     chats: { getReadDate: vi.fn().mockResolvedValue(null) },
-  }
-}
-
-function makePopups(): ContextMenuPopups {
-  return {
-    showPinMessage: vi.fn(),
-    showDeleteMessages: vi.fn(),
-    showForward: vi.fn(),
-    showMessageReport: vi.fn(),
-    showReactedList: vi.fn(),
-    showStatistics: vi.fn(),
-    showFactCheckEditor: vi.fn(),
   }
 }
 
@@ -151,7 +140,7 @@ afterEach(() => {
   contextMenuController.close()
 })
 
-function attach(menu = new ChatContextMenu(makeChat(), makeManagers(), makePopups())) {
+function attach(menu = new ChatContextMenu(makeChat(), makeManagers())) {
   menu.attachTo(container)
   return menu
 }
@@ -193,7 +182,7 @@ describe('тач: долгое нажатие по чипу реакции (tweb
     chat.selection.toggleByElement(bubble)
     expect(chat.selection.isSelecting).toBe(true)
 
-    attach(new ChatContextMenu(chat, makeManagers(), makePopups()))
+    attach(new ChatContextMenu(chat, makeManagers()))
 
     touch('touchstart', chip)
     await wait(LONG_PRESS)

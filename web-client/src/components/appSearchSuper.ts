@@ -288,13 +288,11 @@
 // 51. Действия меню элемента и плашки выделения — колбэки хоста в опциях,
 //     как `openPeer`/`openUserPermissions` (расхождение 33):
 //     `setInnerPeer` — вместо `appImManager.setInnerPeer` (812502980 `:342-348`,
-//     `chat/selection.ts:782-793`), `showForwardPopup`/`showDeleteMessagesPopup`
-//     — вместо одноимённых попапов (`:357-385`, `selection.ts:795-822`).
-//     «Скачать» (`ChatContextMenu.onDownloadClick`, `:297`, `:302`) — сам,
-//     через `appDownloadManager`, как у оригинала. Попапы пересылки и
-//     удаления у нас живут в React-хосте чата (`Chat.tsx`), вызвать их
-//     напрямую из класса нечем. Обратный вызов «по подтверждению» (снять
-//     выделение) едет тем же аргументом, что у оригинала.
+//     `chat/selection.ts:782-793`). «Скачать» (`ChatContextMenu.onDownloadClick`,
+//     `:297`, `:302`) — сам, через `appDownloadManager`, как у оригинала.
+//     Пересылка и удаление (`:357-385`, `selection.ts:795-822`) с П-5 зовут
+//     попапы напрямую, как оригинал: `popups/forward.bridge.ts` (ВРЕМЕННО до
+//     2C-24) и `popups/deleteMessages.ts`.
 // 52. `SearchContextMenu` берёт сообщение из кэша shared media
 //     (`getSharedMediaMessage`) — тот, из которого элемент и нарисован, —
 //     а не RPC `getMessageByPeer` (`:233`); выбранные — так же
@@ -397,6 +395,9 @@ import type { Managers } from '@/client/bootstrap'
 import { isDialogArchived, type MyMessage } from '@core/models'
 import { getMessageKind } from '@core/messages/messageKind'
 import { getSharedMediaMessage, saveSharedMediaMessages } from '@components/sharedMediaHistories'
+import showForwardPopup from '@components/popups/forward.bridge'
+import showDeleteMessagesPopup from '@components/popups/deleteMessages'
+import { ChatType } from '@components/chat/chatType'
 import { getHeavyAnimationPromise } from '@core/dom/heavyAnimation'
 import windowSize from '@helpers/windowSize'
 import { attachClickEvent } from '@helpers/dom/clickEvent'
@@ -748,7 +749,7 @@ class SearchContextMenu {
     if(selection.isSelecting) {
       simulateClickEvent(selection.selectionForwardBtn!)
     } else {
-      this.searchSuper.showForwardPopup?.({
+      void showForwardPopup({
         [this.peerId]: [this.mid],
       })
     }
@@ -770,9 +771,12 @@ class SearchContextMenu {
     if(selection.isSelecting) {
       simulateClickEvent(selection.selectionDeleteBtn!)
     } else {
-      this.searchSuper.showDeleteMessagesPopup?.(
+      showDeleteMessagesPopup(
         this.peerId,
         [this.mid],
+        ChatType.Chat,
+        undefined,
+        (mid) => getSharedMediaMessage(this.peerId, mid),
       )
     }
   }
@@ -870,10 +874,6 @@ export type AppSearchSuperOptions = {
   openUserPermissions?: (participant: Participant, isAdmin?: boolean) => void
   /** tweb `appImManager.setInnerPeer` — «перейти к сообщению»; расхождение 51. */
   setInnerPeer?: (options: { peerId: PeerId, lastMsgId: number, threadId?: number }) => void
-  /** tweb `showForwardPopup(fromPeerIdsMids, onSelect)`; расхождение 51. */
-  showForwardPopup?: (fromPeerIdsMids: Record<PeerId, number[]>, onSelect?: () => void) => void
-  /** tweb `showDeleteMessagesPopup(peerId, mids, ChatType.Chat, onConfirm)`; расхождение 51. */
-  showDeleteMessagesPopup?: (peerId: PeerId, mids: number[], onConfirm?: () => void) => void
 }
 
 export default class AppSearchSuper {
@@ -962,8 +962,6 @@ export default class AppSearchSuper {
   public openPeer?: (peerId: PeerId) => void
   public openUserPermissions?: (participant: Participant, isAdmin?: boolean) => void
   public setInnerPeer?: AppSearchSuperOptions['setInnerPeer']
-  public showForwardPopup?: AppSearchSuperOptions['showForwardPopup']
-  public showDeleteMessagesPopup?: AppSearchSuperOptions['showDeleteMessagesPopup']
 
   /** tweb `:459-460` (812502980) — меню элемента и выделение (задача 14). */
   private searchContextMenu?: SearchContextMenu

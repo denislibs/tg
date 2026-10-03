@@ -17,9 +17,10 @@
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 import type { ChatSavedPosition } from '@lib/appImManager'
 import type { MyMessage } from '@core/models'
+import { mirrorWindow } from '@core/history/messagesMirror'
 import type { ChatAutoDownload } from '@core/chat/autoDownloadSettings'
 import ChatBubbles, { type BubblesManagers } from './bubbles'
-import ChatContextMenu, { type ContextMenuManagers, type ContextMenuPopups } from './contextMenu'
+import ChatContextMenu, { type ContextMenuManagers } from './contextMenu'
 import ChatSelection, { type SelectionBubbles, type SelectionManagers } from './selection'
 import { ChatType } from './chatType'
 import type Chat from './chat'
@@ -32,6 +33,11 @@ export type TestChatInput = {
   initMessageReply(replyTo: { replyToMsgId: number }): void
   initMessageEditing(mid: number): void
   sendMessageWithDocument(options: { document: unknown, target?: HTMLElement }): boolean | Promise<boolean>
+  /** члены, которые зовут панель выделения и пересылка (tweb `ChatInput`) */
+  chatInput: HTMLElement
+  inputContainer?: HTMLElement
+  center(animate?: boolean): Promise<void>
+  initMessagesForward(fromPeerIdsMids: { [fromPeerId: PeerId]: number[] }): void
 }
 
 export type TestAppImManager = {
@@ -65,7 +71,16 @@ const noop = () => {}
 /** Фейковый `Chat`: поля — как у класса, методы — безопасные заглушки. */
 export function createTestChat(options: TestChatOptions = {}): Chat {
   const peerId = options.peerId ?? 50
+  const chatInput = document.createElement('div')
+  chatInput.classList.add('chat-input')
+  const inputContainer = document.createElement('div')
+  inputContainer.classList.add('chat-input-container')
+  chatInput.append(inputContainer)
   const input: TestChatInput = {
+    chatInput,
+    inputContainer,
+    center: () => Promise.resolve(),
+    initMessagesForward: noop,
     messageInput: document.createElement('div'),
     canSendPlain: () => true,
     getChatInputReplyToFromMessage: (message) => ({ replyToMsgId: message.id }),
@@ -106,6 +121,9 @@ export function createTestChat(options: TestChatOptions = {}): Chat {
     finishPeerChange: () => Promise.resolve(),
     revealPreparedBackground: noop,
     initSearch: noop,
+    getMessage(this: Chat, mid: number) {
+      return mirrorWindow(this.messagesStorageKey)?.find((message) => message.id === mid)
+    },
     setMessageId(this: Chat, o: { lastMsgId?: number } = {}) {
       return this.bubbles.setMessageId(o)
     },
@@ -116,11 +134,10 @@ export function createTestChat(options: TestChatOptions = {}): Chat {
 /** Поднять ленту на фейковом `Chat` в порядке `Chat.init` (tweb `chat.ts:616-643`). */
 export function mountTestBubbles(chat: Chat, managers: BubblesManagers, options: {
   menuManagers?: ContextMenuManagers,
-  popups?: ContextMenuPopups,
 } = {}): ChatBubbles {
   const bubbles = new ChatBubbles(chat, managers)
   chat.bubbles = bubbles
-  chat.contextMenu = new ChatContextMenu(chat, options.menuManagers ?? (managers as unknown as ContextMenuManagers), options.popups)
+  chat.contextMenu = new ChatContextMenu(chat, options.menuManagers ?? (managers as unknown as ContextMenuManagers))
   chat.selection = new ChatSelection(chat, bubbles, chat.input as unknown as ChatInput, { messages: {} })
   if(!IS_TOUCH_SUPPORTED) {
     bubbles.setReactionsHoverListeners()

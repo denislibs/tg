@@ -14,12 +14,12 @@
 //   • модель данных: вместо MyMessage+managers (getMediaFromMessage, RPC
 //     appMessagesManager) — готовый `ViewerItem` (лайтбокс-модель useLightbox:
 //     медиа/автор/подпись собирает вызывающий из окна сообщений);
-//   • действия над сообщением — инжектируемые колбэки opts (onForward/onDelete/
-//     jumpToMessage): наши флоу пересылки/удаления — React-попапы чата
-//     (проводка — Chat.tsx, Task 16), PopupDeleteMessages/showForwardPopup tweb (:23-24)
-//     не портируются. Кнопка без колбэка получает класс hide — как tweb прячет
-//     по canForward/canDelete (setMessageActionVisibility :396-418);
-//     permissionsPromise (:457-498) не портирован — прав-модели MTProto нет;
+//   • пересылка и удаление — попапы tweb напрямую (`showForwardPopup` —
+//     мост `popups/forward.bridge.ts`, ВРЕМЕННО до 2C-24;
+//     `popups/deleteMessages.ts`), П-5. Кнопки прячутся по сообщению
+//     (`canForward`/`canDeleteMessage`, permissionsPromise 812502980 :525-570)
+//     синхронно: факты читаются из самого сообщения и зеркала карточек, RPC
+//     не нужен. Переход к сообщению — колбэк opts.jumpToMessage;
 //   • SearchListLoader (MTProto-поиск по инпут-фильтрам) не портирован — наш
 //     ListLoader (Task 3) + колбэк opts.loadMoreMedia (REST `/chats/{id}/media`,
 //     проводка — Chat.tsx, Task 16); без колбэка пустой ответ ⇒ loadedAll — вьювер листает
@@ -43,6 +43,11 @@ import { attachClickEvent } from '@helpers/dom/clickEvent'
 import findUpClassName from '@helpers/dom/findUpClassName'
 import { positionMenuTrigger } from '@helpers/positionMenu'
 import { doubleRaf } from '@helpers/schedulers'
+import showForwardPopup from '@components/popups/forward.bridge'
+import showDeleteMessagesPopup from '@components/popups/deleteMessages'
+import { ChatType } from '@components/chat/chatType'
+import canDeleteMessage from '@core/messages/canDeleteMessage'
+import { isLocalMessageId } from '@core/history/messageId'
 import type { IconName } from '@core/tgico-icons'
 import type { MessageEntity } from '@core/models'
 import { startClient } from '@/client/bootstrap'
@@ -87,12 +92,6 @@ export type ViewerTarget = {
 }
 
 export type AppMediaViewerOptions = {
-  /** флоу пересылки (React-попап чата, Task 16); tweb: showForwardPopup(...,
-   * () => this.close()) — закрытие по выбору получателя через close */
-  onForward?: (mid: number, close: () => Promise<void> | null) => void
-  /** флоу удаления с подтверждением (React-попап, Task 16); по подтверждению
-   * звать closeFromMedia — close перецелится в отцентрованное медиа (tweb :249-252) */
-  onDelete?: (mid: number, closeFromMedia: () => void) => void
   /** переход к сообщению из клика по автору (tweb appImManager.setInnerPeer);
    * получает весь item — вызывающему нужен seq (jump ленты ходит по seq) */
   jumpToMessage?: (item: ViewerItem) => void
@@ -147,13 +146,12 @@ export default class AppMediaViewer extends AppMediaViewerBase<'caption', 'delet
 
     this.setBtnMenuToggle() // tweb index.ts:147-162 + base :970-973
 
-    // Адаптация tweb permissionsPromise/setMessageActionVisibility: право на
-    // действие статично — задан ли колбэк (см. шапку файла).
+    // tweb 812502980 :525 — до первого `openMedia` действия выключены
     this.setMessageActionVisibility({
-      cantForward: !opts.onForward,
+      cantForward: true,
       cantCopy: true,
       cantDownload: false,
-      cantDelete: !opts.onDelete,
+      cantDelete: true,
     })
 
     // Порт tweb onAuthorClick (index.ts:268-290): закрыть и перейти к сообщению.
@@ -214,25 +212,36 @@ export default class AppMediaViewer extends AppMediaViewerBase<'caption', 'delet
     void this.openMedia({ items: [target.item], index: 0, target: target.element ?? undefined, fromRight: 1 })
   }
 
-  // Порт tweb onDeleteClick (index.ts:222-254) без deleteAsChatPhoto-ветки
-  // (:224-242, аватар-вариант — вне Task 14). PopupDeleteMessages заменяет
-  // колбэк opts.onDelete; по подтверждению close перецеливается в
-  // отцентрованное медиа — полёт «в никуда» гаснет opacity (tweb :249-252).
+  // Порт tweb onDeleteClick (812502980 index.ts:243-275) без
+  // deleteAsChatPhoto-ветки (:246-264, аватар-вариант — вне Task 14): по
+  // подтверждению close перецеливается в отцентрованное медиа — полёт «в
+  // никуда» гаснет opacity (:270-271).
   protected onDeleteClick = () => {
     const target = this.target
-    if (!target?.mid) return
-    this.opts.onDelete?.(target.mid, () => {
-      this.target = { element: this.content.media } as ViewerTarget // tweb :250 `as any`
-      void this.close()
-    })
+    const message = target?.item.message
+    if (!target?.mid || !message) return
+    showDeleteMessagesPopup(
+      message.peerId,
+      [target.mid],
+      ChatType.Chat,
+      () => {
+        this.target = { element: this.content.media } as ViewerTarget // tweb :270 `as any`
+        void this.close()
+      },
+      () => message,
+    )
   }
 
-  // Порт tweb onForwardClick (index.ts:256-266): showForwardPopup заменяет
-  // колбэк opts.onForward, закрытие — через переданный close (tweb :262-264).
+  // Порт tweb onForwardClick (812502980 index.ts:296-306)
   protected onForwardClick = () => {
     const target = this.target
-    if (!target?.mid) return
-    this.opts.onForward?.(target.mid, () => this.close())
+    const message = target?.item.message
+    if (!target?.mid || !message) return
+    void showForwardPopup({
+      [message.peerId]: [target.mid],
+    }, () => {
+      return this.close() ?? undefined
+    })
   }
 
   // Адаптация tweb onDownloadClick (index.ts:292-302): appDownloadManager.
@@ -439,11 +448,14 @@ export default class AppMediaViewer extends AppMediaViewerBase<'caption', 'delet
     // !canCopyMediaToClipboard(media)`. Право скачать у нас статично
     // (`cantDownload: false` в конструкторе), поэтому решает только медиа
     // сообщения; у не-сообщения (`message` нет) копировать нечего.
+    // tweb 812502980 :525-570 — `canForward` (не служебное, не неотправленное)
+    // и `canDeleteMessage`; у не-сообщения (фото профиля) обоих действий нет.
+    const message = item.message
     this.setMessageActionVisibility({
-      cantForward: !this.opts.onForward,
+      cantForward: !message || message._ !== 'message' || isLocalMessageId(message.id),
       cantCopy: !canCopyMediaToClipboard(getMediaFromMessage(item.message)),
       cantDownload: false,
-      cantDelete: !this.opts.onDelete,
+      cantDelete: !canDeleteMessage(message),
     })
 
     const promise = this._openMedia({

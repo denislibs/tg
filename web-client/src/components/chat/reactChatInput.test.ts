@@ -20,6 +20,8 @@ const fns = {
   initMessageEditing: vi.fn(),
   sendDocument: vi.fn(() => true),
   clearHelper: vi.fn(),
+  initMessagesForward: vi.fn(),
+  center: vi.fn(),
 }
 const updateChatInputHeight = vi.fn()
 
@@ -135,6 +137,32 @@ describe('ReactChatInput: члены tweb ChatInput — ручки дерева'
     expect(fns.clearHelper).toHaveBeenCalled()
 
     expect(input.canSendPlain()).toBe(true)
+  })
+})
+
+describe('ReactChatInput: члены для пересылки и панели выделения (П-5)', () => {
+  it('пересылка до монтирования ждёт в `forwarding`, clearHelper её снимает (tweb input.ts:285)', () => {
+    const input = makeInput()
+    input.initMessagesForward({ 5: [1, 2] })
+    expect(input.forwarding).toEqual({ 5: [1, 2] })
+    expect(fns.initMessagesForward).not.toHaveBeenCalled()
+
+    input.clearHelper()
+    expect(input.forwarding).toBeUndefined()
+  })
+
+  it('после монтирования пересылка и центрирование уходят в дерево, inputContainer — его `.chat-input-container`', async() => {
+    const input = makeInput()
+    ;(await input.finishPeerChange())()
+
+    input.initMessagesForward({ 5: [3] })
+    expect(fns.initMessagesForward).toHaveBeenCalledWith({ 5: [3] })
+    expect(input.forwarding).toBeUndefined()
+
+    await input.center(true)
+    expect(fns.center).toHaveBeenCalledTimes(1)
+
+    expect(input.inputContainer).toBe(input.chatInput.querySelector('.chat-input-container'))
   })
 })
 

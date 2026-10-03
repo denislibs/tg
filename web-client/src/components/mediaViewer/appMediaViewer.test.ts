@@ -1,12 +1,13 @@
 // Тесты message-варианта вьювера `AppMediaViewer` (порт tweb
 // `mediaViewer/index.ts`, Task 14): раскладка соседей в listLoader, листание
 // prev/next через onJump (fromRight ±1), hide на краях, caption-остров RichText,
-// видимость/действия кнопок forward/delete по колбэкам, close→jumpToMessage,
+// видимость/действия кнопок forward/delete по сообщению (попапы tweb), close→jumpToMessage,
 // download через downloadMediaURL, префетч listLoader.loadMore, ⋮-меню.
 // Среда — как base.open.test.ts: happy-dom + fake timers, RPC managers замокан.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AppMediaViewer, { type AppMediaViewerOptions, type ViewerItem } from './appMediaViewer'
 import { applyLang } from '@/test/lang'
+import type { MyMessage } from '@core/models'
 
 const { downloadMediaURL, meta } = vi.hoisted(() => ({
   downloadMediaURL: vi.fn<(id: number) => Promise<string>>(),
@@ -17,6 +18,14 @@ const { downloadMediaURL, meta } = vi.hoisted(() => ({
 vi.mock('@/client/bootstrap', () => ({
   startClient: () => ({ managers: { media: { downloadMediaURL, meta } } }),
 }))
+
+// Пересылка и удаление — попапы tweb (П-5): граница модуля
+const popups = vi.hoisted(() => ({
+  showForwardPopup: vi.fn<(peerIdMids: Record<number, number[]>, onSelect?: () => unknown) => Promise<void>>(async() => {}),
+  showDeleteMessagesPopup: vi.fn<(peerId: number, mids: number[], type: string, onConfirm?: () => void, getMessage?: unknown) => void>(),
+}))
+vi.mock('@components/popups/forward.bridge', () => ({ default: popups.showForwardPopup }))
+vi.mock('@components/popups/deleteMessages', () => ({ default: popups.showDeleteMessagesPopup }))
 
 // blur грузит Image из data:-URI — в happy-dom onload не гарантирован
 vi.mock('@helpers/blur', () => ({
@@ -56,6 +65,10 @@ class TestViewer extends AppMediaViewer {
   }
 }
 
+const PEER = 5
+/** сообщение-источник медиа: личка — пересылать и удалять можно */
+const message = (mid: number): MyMessage => ({ _: 'message', id: mid, peerId: PEER, pFlags: {}, date: 0, message: '' } as MyMessage)
+
 const item = (mid: number, over: Partial<ViewerItem> = {}): ViewerItem => ({
   element: null, // сосед вне вьюпорта (tweb processItem: element null)
   mid,
@@ -79,6 +92,8 @@ beforeEach(() => {
   downloadMediaURL.mockResolvedValue('blob:full')
   meta.mockReset()
   meta.mockResolvedValue({ fileName: 'photo.jpg' })
+  popups.showForwardPopup.mockClear()
+  popups.showDeleteMessagesPopup.mockClear()
 })
 
 afterEach(() => {
@@ -162,8 +177,8 @@ describe('caption: RichText-остров (tweb setCaption :304-356)', () => {
   })
 })
 
-describe('forward/delete: видимость и действия по колбэкам (адаптация :396-418)', () => {
-  it('без колбэков кнопки и пункты меню несут hide', () => {
+describe('forward/delete: видимость по сообщению и попапы tweb (812502980 :243-306, :525-570)', () => {
+  it('до первого openMedia и у медиа без сообщения кнопки и пункты меню несут hide', async () => {
     const v = makeViewer()
     expect(v.buttonsMap.forward.classList.contains('hide')).toBe(true)
     expect(v.buttonsMap.delete.classList.contains('hide')).toBe(true)
@@ -172,38 +187,47 @@ describe('forward/delete: видимость и действия по колбэ
     // download — всегда доступен
     expect(v.buttonsMap.download.classList.contains('hide')).toBe(false)
     expect(v.menu.download.classList.contains('hide')).toBe(false)
+
+    const p = v.openMedia({ items: [item(5)], index: 0 }) // фото профиля — сообщения нет
+    await settleOpen(p)
+    expect(v.buttonsMap.forward.classList.contains('hide')).toBe(true)
+    expect(v.buttonsMap.delete.classList.contains('hide')).toBe(true)
   })
 
-  it('с колбэками — видимы и кликабельны: приходит mid текущего медиа', async () => {
-    const onForward = vi.fn()
-    const onDelete = vi.fn()
-    const v = makeViewer({ onForward, onDelete })
+  it('медиа сообщения — видимы; клик открывает попап пересылки и удаления этим сообщением', async () => {
+    const v = makeViewer()
+    const p = v.openMedia({ items: [item(5, { message: message(5) })], index: 0 })
+    await settleOpen(p)
     expect(v.buttonsMap.forward.classList.contains('hide')).toBe(false)
     expect(v.buttonsMap.delete.classList.contains('hide')).toBe(false)
 
-    const p = v.openMedia({ items: [item(5)], index: 0 })
-    await settleOpen(p)
-
     v.buttonsMap.forward.click()
-    expect(onForward).toHaveBeenCalledTimes(1)
-    expect(onForward.mock.calls[0][0]).toBe(5)
+    expect(popups.showForwardPopup).toHaveBeenCalledTimes(1)
+    expect(popups.showForwardPopup.mock.calls[0][0]).toEqual({ [PEER]: [5] })
 
     v.buttonsMap.delete.click()
-    expect(onDelete).toHaveBeenCalledTimes(1)
-    expect(onDelete.mock.calls[0][0]).toBe(5)
+    expect(popups.showDeleteMessagesPopup).toHaveBeenCalledTimes(1)
+    expect(popups.showDeleteMessagesPopup.mock.calls[0].slice(0, 3)).toEqual([PEER, [5], 'chat'])
   })
 
-  it('closeFromMedia из onDelete перецеливает close в отцентрованное медиа и закрывает', async () => {
-    const onDelete = vi.fn()
-    const v = makeViewer({ onDelete })
-    const p = v.openMedia({ items: [item(5)], index: 0 })
+  it('неотправленное сообщение (дробный номер) — ни пересылки, ни удаления', async () => {
+    const v = makeViewer()
+    const p = v.openMedia({ items: [item(5.5, { message: message(5.5) })], index: 0 })
+    await settleOpen(p)
+    expect(v.buttonsMap.forward.classList.contains('hide')).toBe(true)
+    expect(v.buttonsMap.delete.classList.contains('hide')).toBe(true)
+  })
+
+  it('подтверждение удаления перецеливает close в отцентрованное медиа и закрывает (:270-271)', async () => {
+    const v = makeViewer()
+    const p = v.openMedia({ items: [item(5, { message: message(5) })], index: 0 })
     await settleOpen(p)
     expect(document.body.contains(v.whole)).toBe(true)
 
     v.buttonsMap.delete.click()
-    const closeFromMedia = onDelete.mock.calls[0][1] as () => void
-    closeFromMedia()
-    // tweb :250: target перецелен в content.media — полёт «в никуда» (opacity)
+    const onConfirm = popups.showDeleteMessagesPopup.mock.calls[0][3]!
+    onConfirm()
+    // tweb :270: target перецелен в content.media — полёт «в никуда» (opacity)
     expect(v.lastCloseTarget).toBe(v.contentMap.media)
     await vi.advanceTimersByTimeAsync(800)
     expect(document.body.contains(v.whole)).toBe(false)
@@ -353,7 +377,7 @@ describe('мобильное ⋮-меню (порт base :970-973 + минима
   // `document.querySelectorAll('.i18n')`, и до узла в памяти обход не доходит —
   // ограничение оригинала, оно же у нас (пин — `lib/langPack.live.test.ts`).
   it('смена языка при открытом меню переводит его пункты', async () => {
-    const v = makeViewer({ onForward: vi.fn() })
+    const v = makeViewer()
     await openMenu(v.menu.toggle)
     const text = v.menu.forward.querySelector('.btn-menu-item-text')!
     expect(text.textContent).toBe('Forward')
@@ -366,14 +390,13 @@ describe('мобильное ⋮-меню (порт base :970-973 + минима
   })
 
   it('пункт меню зовёт действие и закрывает меню', async () => {
-    const onForward = vi.fn()
-    const v = makeViewer({ onForward })
-    const p = v.openMedia({ items: [item(3)], index: 0 })
+    const v = makeViewer()
+    const p = v.openMedia({ items: [item(3, { message: message(3) })], index: 0 })
     await settleOpen(p)
     await openMenu(v.menu.toggle)
     v.menu.forward.click()
-    expect(onForward).toHaveBeenCalledTimes(1)
-    expect(onForward.mock.calls[0][0]).toBe(3)
+    expect(popups.showForwardPopup).toHaveBeenCalledTimes(1)
+    expect(popups.showForwardPopup.mock.calls[0][0]).toEqual({ [PEER]: [3] })
     expect(v.menu.element.classList.contains('active')).toBe(false)
   })
 

@@ -41,8 +41,10 @@
  *  • `TranslateMessage` (:1095-1127) — verify это ОПРЕДЕЛЁННЫЙ язык сообщения
  *    (`detectLanguageForTranslation` → tinyld); детектора нет, а «показывать
  *    всегда» — расхождение React-версии, а не порт;
- *  • `PollStats.View` (:1184-1189) — статистики опроса нет ни в менеджере, ни
- *    в оверлее;
+ *  • `ViewStatistics` (:1293-1298, `onStatisticsClick` :2333-2336) — пункт
+ *    открывает вкладку `AppStatisticsTab` правой колонки, а её у нас нет
+ *    (статистика канала — Б-43, П-1); `PollStats.View` (:1299-1304) — тот же
+ *    таб в режиме опроса. Бэклог Б-93;
  *  • `Resend` (:1260-1265) — `repayRequest` (платные сообщения) отсутствует;
  *  • sponsored-блок (:107-183, :1292-1302) — рекламных сообщений нет;
  *  • «Message contains emoji pack(s)» (:1303-1314) — пункт показывает НАЗВАНИЕ
@@ -134,21 +136,26 @@
  *    пункт показывает только текст со счётчиком;
  *  • список за пунктом `views` группы у оригинала ОБЩИЙ: `PopupReactedList`
  *    рисует и реакции, и просмотревших — их одним ответом отдаёт
- *    `getMessageReactionsListAndReadParticipants` (:1586). У нас он теперь
- *    тоже общий: `popups.showReactedList` → `useMessageActions.showReactedUsers`
- *    сливает `messages.reactionUsers` и `messages.viewers` тем же правилом
- *    (реакции, следом не-реагировавшие просмотревшие);
+ *    `getMessageReactionsListAndReadParticipants` (:1586). У нас он тоже общий:
+ *    мост `popups/reactedList.bridge.ts` (ВРЕМЕННО до 2C-25) сливает
+ *    `messages.reactionUsers` и `messages.viewers` тем же правилом (реакции,
+ *    следом не-реагировавшие просмотревшие);
  *  • `ContextMenuDeleteOptionText` (:1268-1279) — вторая строка под «Удалить»
  *    с датой самоуничтожения: компонент подписи не портирован, пункт остаётся
  *    однострочным (класс `with-subtitle` вместе с ним не ставится);
- *  • числа в подписях пунктов режима выделения (`Message.Context.Selection.*`
- *    у tweb это «Copy N messages») — падежные формы даёт langPack, которого
- *    нет: текст остаётся тем же, что и у одиночного пункта.
+ *  • редактор проверки фактов (`onEditFactCheckClick`, :2110-2162) берёт
+ *    плоский текст поля (`inputField.value`), а не `getRichValueWithCaret` с
+ *    разметкой `bold`/`italic`/`link` (`canHaveFormatting`), — ВРЕМЕННО до К-4:
+ *    rich-поле ввода портирует К-4 (`inputField.ts`, `richInputHandler.ts`).
  *
  * ─── Адаптации ──────────────────────────────────────────────────────────────
  *  • `Chat` — настоящий класс (`components/chat/chat.ts`, К-3), `AppManagers` →
- *    узкий `ContextMenuManagers`, попапы — порт `ContextMenuPopups` (до П-5 его
- *    не отдаёт никто, Б-28);
+ *    узкий `ContextMenuManagers`. Попапы пунктов зовутся напрямую, как у
+ *    оригинала: `popups/unpinMessage.ts`, `popups/deleteMessages.ts` (порты,
+ *    ВРЕМЕННО до 2C-6 на vanilla `PopupPeer`), мосты в React-попапы острова
+ *    оверлеев `popups/forward.bridge.ts` (ВРЕМЕННО до 2C-24),
+ *    `popups/reportAd.bridge.ts` (до 2C-27), `popups/reactedList.bridge.ts`
+ *    (до 2C-25);
  *  • `pFlags.is_outgoing` («ещё не отправлено») у нас — ДРОБНЫЙ номер
  *    (`isLocalMessageId`), `message.error` — флаг `failed`;
  *  • `PeerId.isUser()` → `isUser(peerId)` (`core/peers/peerId.ts`), права —
@@ -182,7 +189,7 @@ import contextMenuController from '@helpers/contextMenuController'
 import { formatFullSentTime, getFullDate, isValidTimestamp } from '@helpers/date'
 import { attachContextMenuListener } from '@helpers/dom/attachContextMenuListener'
 import cancelEvent from '@helpers/dom/cancelEvent'
-import { attachClickEvent } from '@helpers/dom/clickEvent'
+import { attachClickEvent, simulateClickEvent } from '@helpers/dom/clickEvent'
 import findUpClassName from '@helpers/dom/findUpClassName'
 import isSelectionEmpty from '@helpers/dom/isSelectionEmpty'
 import ListenerSetter from '@helpers/listenerSetter'
@@ -210,6 +217,17 @@ import { _i18n, i18n } from '@lib/langPack'
 import type ChatSelection from './selection'
 import type Chat from './chat'
 import { downloadToDisc } from '@lib/appDownloadManager'
+import showPinMessagePopup from '@components/popups/unpinMessage'
+import showDeleteMessagesPopup from '@components/popups/deleteMessages'
+import showForwardPopup from '@components/popups/forward.bridge'
+import { showMessageReport } from '@components/popups/reportAd.bridge'
+import showReactedListPopup from '@components/popups/reactedList.bridge'
+import { confirmationPopup } from '@components/popups/popupPeer'
+import type { PopupButton } from '@components/popups/popupElement'
+import InputField from '@components/inputField'
+import { toastNew } from '@components/toast'
+import replaceContent from '@helpers/dom/replaceContent'
+import { ChatType } from './chatType'
 
 /** Срез менеджеров — только те вызовы, которые делают пункты меню. */
 export interface ContextMenuManagers {
@@ -235,6 +253,10 @@ export interface ContextMenuManagers {
      */
     react?(peerId: number, msgId: number, emoji: string): Promise<void>
     unreact?(peerId: number, msgId: number, emoji: string): Promise<void>
+    /** Порт `appMessagesManager.updateFactCheck` (:2152-2161): есть текст —
+     *  поставить, пусто — снять */
+    setFactCheck(peerId: number, msgId: number, text: string): Promise<unknown>
+    removeFactCheck(peerId: number, msgId: number): Promise<void>
   }
   /** Каталог доступных реакций — содержимое панели быстрых реакций
    *  (tweb `apiManagerProxy.getAvailableReactions()`, reactionsMenu.ts:235). */
@@ -248,41 +270,6 @@ export interface ContextMenuManagers {
     /** Порт `appMessagesManager.getOutboxReadDate` (:1518) */
     getReadDate(peerId: number, msgId: number): Promise<ReadDateResult>
   }
-}
-
-/**
- * Срез НОСИТЕЛЕЙ ПОПАПОВ. В tweb это прямые `PopupElement.createPopup(...)` /
- * `showForwardPopup(...)` / таб правой колонки; ни одного из этих попапов в
- * ванильном виде у нас нет — их владелец React-хост, поэтому меню объявляет
- * намерение, а исполняет его реализация (та же граница, что у
- * `SelectionPlate` в `selection.ts`).
- */
-export interface ContextMenuPopups {
-  /** `PopupPinMessage(peerId, mid)` / `(…, true)` (:1994-2000) */
-  showPinMessage(peerId: PeerId, mid: number, unpin?: boolean): void
-  /** `PopupDeleteMessages(peerId, mids, chatType)` (:2056-2061) */
-  showDeleteMessages(peerId: PeerId, mids: number[]): void
-  /** `showForwardPopup({[peerId]: mids})` (:2028-2030) */
-  showForward(fromPeerIdsMids: Record<number, number[]>): void
-  /** `showMessageReport(peerId, mids, onSuccess?)` (:1216-1220) */
-  showMessageReport(peerId: PeerId, mids: number[], onSuccess?: () => void): void
-  /**
-   * `PopupElement.createPopup(PopupReactedList, message)` (:1245-1251).
-   *
-   * ТРЕТИЙ аргумент — адаптация, а не порт: у tweb это МОДАЛЬНЫЙ попап по
-   * центру экрана, которому якорь не нужен, а у нашей реализации список
-   * позиционируемый (`ReactedUsersPopup` в `components/messages/ChatDialogs`,
-   * его открывает `useMessageActions.showReactedUsers(msgId, x, y)`). Ровно тот
-   * же якорь React-меню добывает перехватом последнего `MouseEvent` на
-   * `.btn-menu-items` ради «Кто просмотрел» (в снесённом React-меню);
-   * здесь событие приезжает прямо в `onClick` пункта (`buttonMenu.ts`
-   * `ButtonMenuItemOptions.onClick`), перехватывать нечего.
-   */
-  showReactedList(peerId: PeerId, mid: number, at: { x: number, y: number }): void
-  /** таб `AppStatisticsTab` правой колонки (:2108-2112) */
-  showStatistics(peerId: PeerId, mid: number): void
-  /** `confirmationPopup` + `InputField` редактора проверки фактов (:1916-1992) */
-  showFactCheckEditor(peerId: PeerId, mid: number): void
 }
 
 /** Порт tweb `ChatContextMenuButton` (:99-105) в применимом составе:
@@ -326,8 +313,8 @@ const BAD_SELECTORS = [
   '.bubble-service-button',
 ]
 
-/** Точка клика по пункту меню — якорь позиционируемого попапа реализации
- *  (см. докблок `ContextMenuPopups.showReactedList`). */
+/** Точка клика по пункту меню — якорь позиционируемого списка реакций
+ *  (расхождение моста `popups/reactedList.bridge.ts`). */
 function pointerPosition(e: MouseEvent | TouchEvent): { x: number, y: number } {
   const point = 'changedTouches' in e ? e.changedTouches[0] : e
   return { x: point.clientX, y: point.clientY }
@@ -371,16 +358,10 @@ export default class ChatContextMenu {
   /** tweb :231 — живёт ровно столько, сколько открыто меню. */
   private reactionsMenu?: ChatReactionsMenu
 
-  /**
-   * tweb `new ChatContextMenu(chat, managers)` (chat.ts:619). Третий аргумент —
-   * носители попапов (`ContextMenuPopups`): ВРЕМЕННО до П-5 (бэклог Б-28) `Chat` их
-   * не отдаёт, и пункты, которым нужен попап (закреп, пересылка, удаление, жалоба,
-   * статистика, проверка фактов), скрыты своим `verify`.
-   */
+  /** tweb `new ChatContextMenu(chat, managers)` (chat.ts:619). */
   constructor(
     private chat: Chat,
     private managers: ContextMenuManagers,
-    private popups?: ContextMenuPopups,
   ) {}
 
   private get selection(): ChatSelection {
@@ -684,7 +665,7 @@ export default class ChatContextMenu {
       // tweb :1026 — текст зависит от наличия проверки у ГЛАВНОГО сообщения
       text: (this.mainMessage as MessageReal | undefined)?.factcheck ? 'EditFactCheck' : 'AddFactCheck',
       onClick: this.onEditFactCheckClick,
-      verify: () => !!this.popups && !!this.mainMessage && this.canUpdateFactCheck(this.mainMessage),
+      verify: () => !!this.mainMessage && this.canUpdateFactCheck(this.mainMessage),
     }, {
       icon: 'copy',
       text: 'Copy',
@@ -717,7 +698,7 @@ export default class ChatContextMenu {
       verify: () => !!this.message && !!getMessageText(this.message) && this.isTextSelected,
     }, {
       icon: 'copy',
-      text: 'Copy',
+      text: 'Message.Context.Selection.Copy',
       onClick: this.onCopyClick,
       verify: () => {
         if(!this.isSelected || this.noForwards) {
@@ -760,16 +741,19 @@ export default class ChatContextMenu {
       icon: 'pin',
       text: 'Message.Context.Pin',
       onClick: this.onPinClick,
-      verify: () => !!this.popups && !!this.message &&
+      // tweb :1228-1237; эфемерных сообщений, монофорумов и заморозки
+      // аккаунта (`useIsFrozen`) у нас нет
+      verify: () => !!this.message &&
         !this.isOutgoing(this.message) &&
         this.message._ !== 'messageService' &&
         !this.message.pFlags.pinned &&
-        this.canPinMessage(this.message.peerId),
+        this.canPinMessage(this.message.peerId) &&
+        this.chat.type !== ChatType.Scheduled,
     }, {
       icon: 'unpin',
       text: 'Message.Context.Unpin',
       onClick: this.onUnpinClick,
-      verify: () => !!this.popups && !!this.message?.pFlags.pinned && this.canPinMessage(this.message.peerId),
+      verify: () => !!this.message?.pFlags.pinned && this.canPinMessage(this.message.peerId),
     }, {
       icon: 'download',
       text: 'MediaViewer.Context.Download',
@@ -800,32 +784,28 @@ export default class ChatContextMenu {
           !!this.message && !this.isOutgoing(this.message)
       },
     }, {
-      icon: 'statistics_chart',
-      text: 'Statistics',
-      onClick: this.onStatisticsClick,
-      verify: this.canViewMessageStatistics,
-    }, {
+      // `ViewStatistics`/`PollStats.View` (:1293-1304) — нет `AppStatisticsTab`, шапка файла
       icon: 'forward',
       text: 'Forward',
       // let forward the message if it's outgoing but not ours (like a changelog)
       onClick: this.onForwardClick,
-      verify: () => !!this.popups && !this.noForwards &&
+      verify: () => !this.noForwards &&
         !!this.message &&
+        this.chat.type !== ChatType.Scheduled &&
         (!this.isOutgoing(this.message) || this.message.fromId === SERVICE_PEER_ID) &&
         this.message._ !== 'messageService',
     }, {
       icon: 'forward',
-      text: 'Forward',
+      text: 'Message.Context.Selection.Forward',
       onClick: this.onForwardClick,
-      // tweb :1202 сверяется с кнопкой плашки (`selectionForwardBtn` +
-      // её `disabled`); плашка у нас — порт-интерфейс без узлов, а факта
-      // «нельзя переслать выбранное» не существует (см. `selection.ts`),
-      // поэтому остаётся сам признак «есть выбранное».
-      verify: () => !!this.popups && this.isSelected && !!this.selection.length(),
+      // tweb :1316-1318 — сверка с кнопкой панели выделения
+      verify: () => !!this.selection.selectionForwardBtn &&
+        this.isSelected &&
+        !this.selection.selectionForwardBtn.hasAttribute('disabled'),
       withSelection: true,
     }, {
       icon: 'download',
-      text: 'MediaViewer.Context.Download',
+      text: 'Message.Context.Selection.Download',
       onClick: () => ChatContextMenu.onDownloadClick(this.selectedMessages, this.noForwards),
       verify: () => !!this.selectedMessages &&
         ChatContextMenu.canDownload(this.selectedMessages, null, this.noForwards),
@@ -838,13 +818,13 @@ export default class ChatContextMenu {
         const selectedMids = selection?.isSelecting && this.isSelected ?
           selection.selectedMids.get(this.messagePeerId) :
           undefined
-        this.popups?.showMessageReport(
+        showMessageReport(
           this.messagePeerId,
           selectedMids?.size ? [...selectedMids] : [this.mid],
           selectedMids?.size ? () => selection?.cancelSelection() : undefined,
         )
       },
-      verify: () => !!this.popups && !!this.message &&
+      verify: () => !!this.message &&
         !this.message.pFlags.out &&
         this.message._ === 'message' &&
         !this.isOutgoing(this.message) &&
@@ -859,7 +839,7 @@ export default class ChatContextMenu {
       withSelection: true,
     }, {
       icon: 'select',
-      text: 'Chat.Menu.ClearSelection',
+      text: 'Message.Context.Selection.Clear',
       onClick: this.onClearSelectionClick,
       verify: () => this.isSelected,
       withSelection: true,
@@ -868,7 +848,7 @@ export default class ChatContextMenu {
       // просмотрел», клик открывает список.
       onClick: (e) => {
         if(this.canOpenReactedList && this.message) {
-          this.popups?.showReactedList(this.messagePeerId, this.message.id, pointerPosition(e))
+          void showReactedListPopup(this.message, pointerPosition(e))
         }
       },
       verify: () => !isUser(this.peerId) &&
@@ -879,14 +859,16 @@ export default class ChatContextMenu {
       className: 'danger',
       text: 'Delete',
       onClick: this.onDeleteClick,
-      verify: () => !!this.popups && canDeleteMessage(this.message),
+      verify: () => canDeleteMessage(this.message),
     }, {
       icon: 'delete',
       className: 'danger',
-      text: 'Delete',
+      text: 'Message.Context.Selection.Delete',
       onClick: this.onDeleteClick,
-      // tweb :1287 сверяется с `selectionDeleteBtn.disabled` — см. Forward выше
-      verify: () => !!this.popups && this.isSelected && !!this.selection.length(),
+      // tweb :1442-1444 — сверка с кнопкой панели выделения
+      verify: () => !!this.selection.selectionDeleteBtn &&
+        this.isSelected &&
+        !this.selection.selectionDeleteBtn.hasAttribute('disabled'),
       withSelection: true,
     }]
   }
@@ -1325,14 +1307,6 @@ export default class ChatContextMenu {
     return true
   }
 
-  /** Порт `canViewMessageStatistics` (:2113-2117). `appProfileManager
-   *  .canViewStatistics` у нас — право `just_admin` (`useGroupInfo.ts`). */
-  private canViewMessageStatistics = () => {
-    return !!this.popups && isBroadcastPeer(this.messagePeerId) &&
-      hasRightsPeer(this.messagePeerId, 'just_admin') &&
-      !!this.message && !this.isOutgoing(this.message)
-  }
-
   /** Порт `appMessagesManager.canUpdateFactCheck` (:10797-10809) без
    *  `appConfig.can_edit_factcheck` — своего `appConfig` у нас нет. */
   private canUpdateFactCheck(message: MyMessage): boolean {
@@ -1527,13 +1501,59 @@ export default class ChatContextMenu {
     this.chat.input.initMessageEditing(this.isTargetAGroupedItem ? this.mid : message.id)
   }
 
-  /** Порт `onEditFactCheckClick` (:1916-1992): у оригинала попап собирается
-   *  прямо здесь (`confirmationPopup` + `InputField`), у нас его владелец —
-   *  реализация порта. */
-  private onEditFactCheckClick = () => {
+  /** Порт `onEditFactCheckClick` (812502980 :2110-2162). Плоский текст —
+   *  см. шапку («Механика, которой здесь нет»). */
+  private onEditFactCheckClick = async() => {
     const message = this.mainMessage
-    if(!message) return
-    this.popups?.showFactCheckEditor(message.peerId, message.id)
+    if(message?._ !== 'message') return
+    const factCheck = message.factcheck
+    const buttonOptions: PopupButton = {
+      langKey: 'Done',
+    }
+
+    const inputField = new InputField({
+      placeholder: 'FactCheckPlaceholder',
+      withLinebreaks: true,
+      onRawInput: factCheck ? (value) => {
+        // tweb :2121 `buttonTextElement.compareAndUpdate({key: value ? 'Done' : 'Remove'})`
+        if(!buttonOptions.element) {
+          return
+        }
+
+        replaceContent(buttonOptions.element, i18n(value ? 'Done' : 'Remove'))
+        buttonOptions.element.classList.toggle('primary', !!value)
+        buttonOptions.element.classList.toggle('danger', !value)
+      } : undefined,
+    })
+
+    if(factCheck) {
+      inputField.setValueSilently(factCheck.text?.text ?? '')
+    }
+
+    try {
+      await confirmationPopup({
+        titleLangKey: 'FactCheckDialog',
+        inputField,
+        button: buttonOptions,
+      })
+    } catch {
+      return
+    }
+
+    const text = inputField.value
+    if(factCheck && (factCheck.text?.text ?? '') === text) {
+      return
+    }
+
+    const { peerId, id } = message
+    const promise = text ?
+      this.managers.messages.setFactCheck(peerId, id, text) :
+      this.managers.messages.removeFactCheck(peerId, id)
+    void promise.then(() => {
+      toastNew({
+        langPackKey: text ? 'FactCheckEdited' : 'FactCheckDeleted',
+      })
+    })
   }
 
   /** tweb `onCopyMediaClick` (:2200-2205, 812502980, 508acd4f5) */
@@ -1574,13 +1594,13 @@ export default class ChatContextMenu {
     void copyTextToClipboard(url)
   }
 
-  /** Порт `onPinClick`/`onUnpinClick` (:2016-2022). */
+  /** Порт `onPinClick`/`onUnpinClick` (812502980 :2220-2226). */
   private onPinClick = () => {
-    this.popups?.showPinMessage(this.messagePeerId, this.mid)
+    showPinMessagePopup(this.messagePeerId, this.mid)
   }
 
   private onUnpinClick = () => {
-    this.popups?.showPinMessage(this.messagePeerId, this.mid, true)
+    showPinMessagePopup(this.messagePeerId, this.mid, true)
   }
 
   /** Порт `onRetractVote`/`onStopPoll` (:2024-2030). */
@@ -1596,28 +1616,18 @@ export default class ChatContextMenu {
     void this.managers.messages.closePoll(media.poll.id)
   }
 
-  /** Порт `onStatisticsClick` (:2108-2112). */
-  private onStatisticsClick = () => {
-    if(!this.message) return
-    this.popups?.showStatistics(this.messagePeerId, this.message.id)
-  }
-
-  /** Порт `onForwardClick` (:2032-2044). Ветка selection у оригинала кликает
-   *  по кнопке плашки; у нас плашка это порт-интерфейс без узлов, поэтому
-   *  попап forward открывается тем же вызовом, что и из неё. */
+  /** Порт `onForwardClick` (812502980 :2249-2260). */
   private onForwardClick = () => {
-    const peerId = this.messagePeerId
     if(this.selection.isSelecting) {
-      const mids = this.selection.getSelectedMids()
-      if(mids.length) {
-        this.popups?.showForward({ [peerId]: mids })
-      }
-
-      return
+      const button = this.selection.selectionForwardBtn
+      if(button) simulateClickEvent(button)
+    } else {
+      const peerId = this.messagePeerId
+      const mids = this.isTargetAGroupedItem ? [this.mid] : this.getMidsByMid(this.mid)
+      void showForwardPopup({
+        [peerId]: mids,
+      })
     }
-
-    const mids = this.isTargetAGroupedItem ? [this.mid] : this.getMidsByMid(this.mid)
-    this.popups?.showForward({ [peerId]: mids })
   }
 
   /** Порт `onSelectClick` (:2046-2048). */
@@ -1634,22 +1644,23 @@ export default class ChatContextMenu {
     this.selection.cancelSelection()
   }
 
-  /** Порт `onDeleteClick` (:2054-2065) — та же развилка «выбранное / это
-   *  сообщение», что у forward. */
+  /** Порт `onDeleteClick` (812502980 :2269-2287). */
   private onDeleteClick = () => {
-    const peerId = this.messagePeerId
     if(this.selection.isSelecting) {
-      const mids = this.selection.getSelectedMids()
-      if(mids.length) {
-        this.popups?.showDeleteMessages(peerId, mids)
-      }
-
+      const button = this.selection.selectionDeleteBtn
+      if(button) simulateClickEvent(button)
       return
     }
 
     if(!this.message) return
-    const mid = this.message.id
-    this.popups?.showDeleteMessages(peerId, this.isTargetAGroupedItem ? [mid] : this.getMidsByMid(mid))
+    const { peerId, id: mid } = this.message
+    showDeleteMessagesPopup(
+      peerId,
+      this.isTargetAGroupedItem ? [mid] : this.getMidsByMid(mid),
+      this.chat.type,
+      undefined,
+      (mid) => this.getMessageByPeer(mid),
+    )
   }
 
   /** Порт `onDownloadClick` (:2178-2190) — статический, как в tweb: его зовёт и

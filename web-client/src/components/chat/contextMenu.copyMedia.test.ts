@@ -24,7 +24,7 @@ vi.mock('@components/toast', async(importOriginal) => ({
   toastNew: mocks.toastNew,
 }))
 
-import ChatContextMenu, { type ContextMenuManagers, type ContextMenuPopups } from './contextMenu'
+import ChatContextMenu, { type ContextMenuManagers } from './contextMenu'
 import type Chat from './chat'
 import { attachTestSelection, createTestChat } from './testChat'
 import contextMenuController from '@helpers/contextMenuController'
@@ -90,21 +90,11 @@ function makeManagers() {
       votePoll: vi.fn().mockResolvedValue(undefined),
       closePoll: vi.fn().mockResolvedValue(undefined),
       viewers: vi.fn().mockResolvedValue([]),
+      setFactCheck: vi.fn().mockResolvedValue(undefined),
+      removeFactCheck: vi.fn().mockResolvedValue(undefined),
     },
     chats: { getReadDate: vi.fn().mockResolvedValue(null) },
   } satisfies ContextMenuManagers
-}
-
-function makePopups() {
-  return {
-    showPinMessage: vi.fn(),
-    showDeleteMessages: vi.fn(),
-    showForward: vi.fn(),
-    showMessageReport: vi.fn(),
-    showReactedList: vi.fn(),
-    showStatistics: vi.fn(),
-    showFactCheckEditor: vi.fn(),
-  } satisfies ContextMenuPopups
 }
 
 function makeChat(): Chat {
@@ -140,7 +130,7 @@ async function openOn(message: MyMessage) {
   const { bubble, media } = makeMediaBubble(message.id)
   container.append(bubble)
 
-  const menu = new ChatContextMenu(makeChat(), makeManagers(), makePopups())
+  const menu = new ChatContextMenu(makeChat(), makeManagers())
   menu.attachTo(container)
 
   rightClick(media)

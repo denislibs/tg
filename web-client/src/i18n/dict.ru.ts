@@ -1424,6 +1424,7 @@ const ru = {
   // ── Меню элемента и выделение shared media (tweb SearchContextMenu/SearchSelection) ──
   'Message.Context.Goto': 'Показать в чате',
   'Message.Context.Selection.Clear': 'Снять выделение',
+  'Message.Context.Selection.Copy': 'Копировать выбранные',
   'Message.Context.Selection.Delete': 'Удалить выбранные',
   'Message.Context.Selection.Download': 'Загрузить выбранные',
   'Message.Context.Selection.Forward': 'Переслать выбранные',
@@ -2018,6 +2019,35 @@ const ru = {
   },
   FilterNoChatsToDisplay: 'Папка пуста',
   FilterNoChatsToDisplayInfo: 'Сейчас в этой папке нет чатов.',
+  // ── П-5 «действия»: попапы закрепа, удаления, пересылки, проверки фактов (tweb lang.ts) ──
+  AreYouSureDeleteFewMessagesBot: 'Удалить эти сообщения?\nОни будут удалены только у вас.',
+  AreYouSureDeleteFewMessagesMega: 'Удалить эти сообщения для всех участников?',
+  AreYouSureDeleteSingleMessageBot: 'Удалить это сообщение?\nОно будет удалено только у вас.',
+  AreYouSureDeleteSingleMessageMega: 'Удалить это сообщение для всех участников?',
+  BoostingGiveawayDeleteMsgText: 'Удаление сообщения не отменит розыгрыш — победители всё равно будут выбраны **%s**.\n\nУдалённое объявление о розыгрыше восстановить нельзя.',
+  BoostingGiveawayDeleteMsgTitle: 'Удалить объявление',
+  'Chat.Confirm.Unpin': 'Открепить это сообщение?',
+  DeleteMessagesTitle: 'Удалить %1$s',
+  Done: 'Готово',
+  FactCheckDeleted: 'Проверка фактов удалена.',
+  FactCheckDialog: 'Проверка фактов',
+  FactCheckEdited: 'Проверка фактов обновлена.',
+  FwdMessageTo: 'Сообщение переслано: %s.',
+  FwdMessageToSavedMessages: 'Сообщение переслано в **Избранное**.',
+  FwdMessagesTo: 'Сообщения пересланы: %s.',
+  FwdMessagesToChats: {
+    one_value: '%d чат',
+    few_value: '%d чата',
+    many_value: '%d чатов',
+    other_value: '%d чата',
+  },
+  FwdMessagesToSavedMessages: 'Сообщения пересланы в **Избранное**.',
+  PinMessage: 'Закрепить',
+  PinMessageAlert: 'Закрепить это сообщение в группе?',
+  PinMessageAlertChannel: 'Закрепить это сообщение в канале?',
+  PinMessageAlertChat: 'Закрепить это сообщение вверху чата?',
+  PinMessageAlertTitle: 'Закрепить сообщение',
+  UnpinMessageAlertTitle: 'Открепить сообщение',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

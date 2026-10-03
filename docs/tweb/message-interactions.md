@@ -682,13 +682,22 @@ around-анимация снимает себя сама, как только е
   выделяются: вместо `service` отсекаются `is-date`, лог админа и `service` в report-режиме;
   «Выбрать» есть и у служебного, контент служебной пилюли под `.bubbles.is-selecting`
   без `pointer-events`. У нас перенесено (волна 1 дельты); лога админа и report-режима
-  нет, «Переслать» на служебном гасит `Chat.tsx` (`selectedHasService`).
+  нет. «Переслать» на служебном: пункт меню отсеивает его своим `verify`
+  (`message._ !== 'messageService'`), а кнопку панели выделения — пока никто
+  (`cantForwardDeleteMids` менеджера нет, задача #73).
 - Альбомы: выбор group-контейнера = выбор всех элементов; чекбокс контейнера отражает
   «все выбраны» (стр. 900–976).
 - Вход из меню: пункт Select → `toggleByElement` (contextMenu.ts:2035–2037); также клик по
   `.time` бабла на десктопе (bubbles.ts:3118–3121). В режиме selection любой клик по баблу
   тогглит выбор (bubbles.ts:3156–3172).
-- **Панель действий** — плашка вместо композера, `onToggleSelection` (стр. 1008–1136):
+- **Панель действий** — плашка вместо композера, `onToggleSelection` (стр. 1008–1136;
+  по 812502980 — :1145-1308, `ChatInputPlate` из `chat/controlPlate.tsx`).
+  **У нас** (П-5): порт в `chat/selection.ts` (`ChatSelection.onToggleSelection`,
+  `onUpdateContainer`, `removeSelectionContainer`) + `chat/controlPlate.solid.tsx`;
+  кладётся в `input.inputContainer` острова композера, морф строки ввода —
+  `input.center` → `useChatInputCenter('selection')`. Нет: «отправить сейчас»
+  отложенных (Б-25) и report-режима (2C-27). Пины — `chat/selection.test.ts`
+  («панель действий»):
   `chatInput` и контейнер получают класс `is-selecting` (SetTransition 200мс), создаётся
   `.chat-input-wrapper.selection-wrapper` → `ChatInputPlate`:
   - слева `delete` (danger) → `PopupDeleteMessages` (стр. 1085–1096);
@@ -791,22 +800,32 @@ time|code-header-button|reaction|bubble-beside-button|poll-message-content`; ц�
    стеком возврата (`followStack`) и подсветки `is-highlighted` (2с).
 3. **Edit**: нет попапа discard-editing при отмене с изменённым текстом, нет media-edit,
    нет «пустой текст при edit → попап удаления».
-4. **Forward**: нет плашки forward над композером и радиогрупп hide sender/caption.
-5. **Selection**: ядро портировано в `web-client/src/components/chat/selection.ts`
-   (`AppSelection` + `ChatSelection`): стейт `selectedMids`, drag-выделение мышью с
-   `getElementsBetween`, чекбоксы (`components/checkboxField.ts`, урезан до формы
-   `{round: true}`), альбомы, `canSelectBubble`, `updateContainer`. Порт живёт без
-   окружения `Chat`, поэтому НЕ портированы: плашка delete/count/forward вместо
-   композера (вынесена в порт-интерфейс `SelectionPlate`), попапы delete/forward/sendNow,
-   report-режим, вход на таче по long-press (нужен `attachContextMenuListener`),
-   `SearchSelection`. Лента даёт порт `SelectionBubbles`
-   (`getRenderedHistory`/`getBubble`/`getBubbleGroupedItems`/`getMountedBubble`).
-6. **Свайп-ответ** портирован в `web-client/src/components/chat/replySwipe.ts`
+4. **Forward**: плашка пересылки и её опции «без имени/подписи» живут в React-острове
+   композера до К-4 (`chat/reactChatInput.ts::initMessagesForward`, П-5).
+5. **Selection**: портировано в `web-client/src/components/chat/selection.ts`
+   (`AppSelection` + `ChatSelection` + `SearchSelection`): стейт `selectedMids`,
+   drag-выделение мышью с `getElementsBetween`, чекбоксы, альбомы, `canSelectBubble`,
+   `updateContainer`, панель delete · «N messages» · forward (П-5, см. §8.2).
+   НЕ портированы: «отправить сейчас» отложенных, report-режим, вход на таче по
+   long-press. Лента даёт порт `SelectionBubbles`.
+6. **Попапы действий** (П-5, Б-28): меню, панель выделения, кнопка «переслать» у
+   поста канала, вьювер и меню shared media зовут их напрямую, как tweb —
+   `popups/unpinMessage.ts` (`showPinMessagePopup`), `popups/deleteMessages.ts`
+   (`showDeleteMessagesPopup`) — порты на vanilla `PopupPeer` (ВРЕМЕННО до 2C-6);
+   `popups/forward.bridge.ts` (до 2C-24, React `ForwardPicker`; один получатель —
+   открыть чат + `input.initMessagesForward`, несколько — пересылка сразу и тост),
+   `popups/reportAd.bridge.ts` (до 2C-27), `popups/reactedList.bridge.ts` (до 2C-25).
+   Расхождения: у закрепа нет чекбоксов «уведомить всех»/«закрепить у обоих» (бэкенд
+   не принимает `silent`/`pm_oneside`), у удаления — попапа «чужие сообщения в
+   мегагруппе» (`deleteMegagroupMessages`) — Б-94; «Статистика» поста ждёт
+   `AppStatisticsTab` — Б-93; факт-чек — плоский текст до rich-поля К-4. Пины —
+   `popups/messageActions.test.ts`, `chat/contextMenu.test.ts` (П-5).
+7. **Свайп-ответ** портирован в `web-client/src/components/chat/replySwipe.ts`
    (`createReplySwipeController` + привязка + предикат даблклика) и заведён в
    императивную ленту развилкой оригинала: даблклик на десктопе, свайп на таче.
    НЕ портированы: трекпадный `attachReplyWheelSwipe` (форк-специфика, см.
    предупреждение в шапке этого дока) и `cancelContextMenuOpening` в `move`.
-7. **Реакции**: у нас нет оптимистики уровня менеджера с локальным
+8. **Реакции**: у нас нет оптимистики уровня менеджера с локальным
    `updateMessageReactions` + откатом по `REACTION_INVALID`, нет тегов Saved Messages и
    paid-реакций (последние нам и не нужны).
 
