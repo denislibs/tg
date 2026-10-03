@@ -28,6 +28,10 @@
 //  4. Плашка ответа, правки и пересылки при `finishPeerChange` не
 //     восстанавливается из черновика классом — это делает дерево
 //     (`reactChatInputView.tsx`, ответ черновика).
+//  5. Попап медиа (`SendMediaPopup`) рисует дерево острова, поэтому шов
+//     `popups/newMedia.ts::showNewMediaPopup` (вставка и сброс файлов, блок K
+//     `appImManager`) открывает его ручкой `showNewMediaPopup`. Файлы, пришедшие
+//     до монтирования ручки (сброс на строку чатлиста открывает чат), ждут её.
 import { mountReact, type ReactIsland } from '@shared/react/mountReact'
 import type { Managers } from '@/client/bootstrap'
 import type { GifItem } from '@core/gifs'
@@ -36,6 +40,7 @@ import type { Sticker } from '@core/managers/stickersManager'
 import type { AppImManager } from '@lib/appImManager'
 import type { ChatRights } from '@core/peers/rights'
 import type { ChatType } from './chatType'
+import type { WillAttachType } from '@components/popups/newMedia'
 import type { ReactChatInputViewProps } from './reactChatInputView'
 
 /** tweb `ChatInputReplyTo` в объёме, у которого есть предмет: цитаты, истории
@@ -66,6 +71,7 @@ export interface ReactChatInputHandle {
   initMessageEditing(mid: number): void
   sendDocument(document: Sticker | GifItem): boolean
   clearHelper(): void
+  showNewMediaPopup(files: File[], willAttachType: WillAttachType): void
 }
 
 /** Базовая строка ввода — 3rem; всё выше неё — излишек (`chat.ts:283`). */
@@ -76,6 +82,10 @@ export default class ReactChatInput {
   public chatInput!: HTMLElement
   /** ручки дерева — пишет и снимает `reactChatInputView.tsx` */
   public handle?: ReactChatInputHandle
+  /** tweb `input.ts:326` — как отправить вложение: медиа или файлом */
+  public willAttachType?: WillAttachType
+  /** файлы попапа медиа до монтирования ручки (расхождение 5 шапки) */
+  public pendingNewMediaPopup?: [File[], WillAttachType]
 
   private island?: ReactIsland<ReactChatInputViewProps>
   private resizeObserver?: ResizeObserver
@@ -167,6 +177,15 @@ export default class ReactChatInput {
   /** tweb `input.ts:4749`: ответ — «ушло ли». */
   public async sendMessageWithDocument({ document }: { document: Sticker | GifItem, target?: HTMLElement }): Promise<boolean> {
     return this.handle?.sendDocument(document) ?? false
+  }
+
+  /** Расхождение 5 шапки: открыть попап медиа острова. */
+  public showNewMediaPopup(files: File[], willAttachType: WillAttachType) {
+    if(this.handle) {
+      this.handle.showNewMediaPopup(files, willAttachType)
+    } else if(!this.destroyed) {
+      this.pendingNewMediaPopup = [files, willAttachType]
+    }
   }
 
   private onResize() {

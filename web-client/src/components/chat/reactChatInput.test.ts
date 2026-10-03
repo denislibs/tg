@@ -20,6 +20,7 @@ const fns = {
   initMessageEditing: vi.fn(),
   sendDocument: vi.fn(() => true),
   clearHelper: vi.fn(),
+  showNewMediaPopup: vi.fn(),
 }
 const updateChatInputHeight = vi.fn()
 
@@ -135,6 +136,27 @@ describe('ReactChatInput: члены tweb ChatInput — ручки дерева'
     expect(fns.clearHelper).toHaveBeenCalled()
 
     expect(input.canSendPlain()).toBe(true)
+  })
+})
+
+describe('ReactChatInput: попап медиа (шов popups/newMedia.ts, блок K appImManager)', () => {
+  it('с ручкой — файлы уходят в дерево; до монтирования — ждут ручку; после destroy — нет', async() => {
+    const file = new File(['x'], 'a.png', { type: 'image/png' })
+
+    const early = makeInput()
+    early.showNewMediaPopup([file], 'media')
+    expect(fns.showNewMediaPopup).not.toHaveBeenCalled()
+    expect(early.pendingNewMediaPopup).toEqual([[file], 'media'])
+
+    const input = makeInput()
+    ;(await input.finishPeerChange())()
+    input.showNewMediaPopup([file], 'document')
+    expect(fns.showNewMediaPopup).toHaveBeenCalledWith([file], 'document')
+    expect(input.pendingNewMediaPopup).toBeUndefined()
+
+    input.destroy()
+    input.showNewMediaPopup([file], 'media')
+    expect(input.pendingNewMediaPopup).toBeUndefined()
   })
 })
 

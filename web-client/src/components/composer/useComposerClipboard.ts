@@ -2,6 +2,10 @@
 // Вставка в инпут: каретка, буфер обмена и drop. Вынесено из Composer.tsx —
 // сам компонент остаётся про рендер и состояние.
 //
+// Файлы из буфера и сброса сюда не приходят: их, как у tweb, ловит документ —
+// `onDocumentPaste` и зоны сброса блока K `lib/appImManager.ts` (П-4, Б-24);
+// здесь, как у tweb `inputField.ts:158`, только текст.
+//
 // Ключевое правило (CLAUDE.md, «Безопасность»): пользовательский контент никогда
 // не попадает в DOM сырой HTML-строкой — только своими узлами через Range.
 import { useCallback, type ClipboardEvent, type DragEvent, type RefObject } from 'react'
@@ -10,13 +14,12 @@ import { htmlToRich } from './helpers'
 
 interface Args {
   editorRef: RefObject<HTMLDivElement | null>
-  onPasteFiles?: (files: File[]) => void
   syncEmpty: () => void
   autosize: () => void
   onTyping: () => void
 }
 
-export function useComposerClipboard({ editorRef, onPasteFiles, syncEmpty, autosize, onTyping }: Args) {
+export function useComposerClipboard({ editorRef, syncEmpty, autosize, onTyping }: Args) {
   // Вставка простого текста ОДНОЙ текстовой нодой. Критично для больших вставок:
   // `execCommand('insertText')` делает из каждого '\n' отдельный <div>, и вставка
   // 1000 строк рождает ~1000 узлов с рефлоу — вкладка замирает на секунды. Одна
@@ -55,9 +58,9 @@ export function useComposerClipboard({ editorRef, onPasteFiles, syncEmpty, autos
     }
   }, [editorRef])
 
-  // Порядок разбора: (1) файлы → поток вложений; (2) HTML → сущности (сохранить
-  // форматирование), но только если его видимый текст совпал с plain-версией
-  // (иначе это мусор из таблиц/списков); (3) иначе простой текст.
+  // Порядок разбора: (1) HTML → сущности (сохранить форматирование), но только
+  // если его видимый текст совпал с plain-версией (иначе это мусор из
+  // таблиц/списков); (2) иначе простой текст.
   const insertClipboard = useCallback((plain: string, html: string) => {
     if (html && html.trim()) {
       const rich = htmlToRich(html)
@@ -73,22 +76,18 @@ export function useComposerClipboard({ editorRef, onPasteFiles, syncEmpty, autos
 
   const onPaste = useCallback((e: ClipboardEvent) => {
     e.preventDefault()
-    const files = Array.from(e.clipboardData.files || [])
-    if (files.length && onPasteFiles) { onPasteFiles(files); return }
     insertClipboard(e.clipboardData.getData('text/plain').replace(/\r/g, ''), e.clipboardData.getData('text/html'))
     syncEmpty()
     autosize()
     onTyping()
-  }, [autosize, insertClipboard, onPasteFiles, onTyping, syncEmpty])
+  }, [autosize, insertClipboard, onTyping, syncEmpty])
 
   const onDrop = useCallback((e: DragEvent) => {
     e.preventDefault()
-    const files = Array.from(e.dataTransfer.files || [])
-    if (files.length && onPasteFiles) { onPasteFiles(files); return }
     insertClipboard(e.dataTransfer.getData('text/plain').replace(/\r/g, ''), e.dataTransfer.getData('text/html'))
     syncEmpty()
     autosize()
-  }, [autosize, insertClipboard, onPasteFiles, syncEmpty])
+  }, [autosize, insertClipboard, syncEmpty])
 
   return { insertFragment, onPaste, onDrop }
 }

@@ -96,7 +96,7 @@ interface Props {
   onForwardAnother: () => void
   // Open the attach menu anchored to the paperclip button.
   onOpenAttach: (rect: DOMRect) => void
-  // Files pasted/dropped into the input (images, etc.) — routed to the attach flow.
+  // Files picked by the input's hidden file picker — routed to the attach flow.
   onPasteFiles?: (files: File[]) => void
   // Облачный черновик: текст для восстановления при маунте (композер
   // пересоздаётся per-chat через key) + колбэк на каждое изменение текста
@@ -381,7 +381,7 @@ function Composer({
   }
 
   const { insertFragment, onPaste, onDrop } = useComposerClipboard({
-    editorRef, onPasteFiles, syncEmpty, autosize, onTyping,
+    editorRef, syncEmpty, autosize, onTyping,
   })
 
   const insertEmoji = (em: string) => {
