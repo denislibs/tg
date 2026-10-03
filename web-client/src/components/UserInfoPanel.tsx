@@ -19,7 +19,6 @@ import RightsEditor from './userInfo/RightsEditor'
 import { countLabel, isSharedMediaReached, shouldForceFold } from './userInfo/helpers'
 import appSidebarRight from './sidebarRight'
 import type AppReactProfileTab from './sidebarRight/reactProfileTab'
-import { useIsActiveChat } from '../core/chat/chatInstanceContext'
 import { isUser as isUserPeer } from '../core/peers/peerId'
 import { cachedUser } from '../core/peerCache'
 import { getUserTitle } from '../core/peers/getPeerTitle'
@@ -57,7 +56,7 @@ import type { SearchSuperMediaType } from './appSearchSuper'
  * (`components/sidebarRight/index.ts`), панель лишь рисует вкладку: портал в
  * `profileTab.container`, как Solid `sharedMedia.tsx` рисует в свою вкладку у tweb.
  */
-export default function UserInfoPanel({ profileTab, chat, onOpenPeer, canAddMembers, onEditContact, searchSuperActions }: { profileTab: AppReactProfileTab; chat: Chat; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean; onEditContact?: () => void; searchSuperActions?: SearchSuperActions }) {
+export default function UserInfoPanel({ profileTab, isActive: isActiveInstance, chat, onOpenPeer, canAddMembers, onEditContact, searchSuperActions }: { profileTab: AppReactProfileTab; isActive: boolean; chat: Chat; onOpenPeer?: (peer: OpenPeer) => void; canAddMembers?: boolean; onEditContact?: () => void; searchSuperActions?: SearchSuperActions }) {
   const t = useT()
   const isSaved = chat.type === 'saved'
   // «Избранное» — панель БЕЗ профиля (tweb sharedMediaTab.tsx:73
@@ -175,9 +174,8 @@ export default function UserInfoPanel({ profileTab, chat, onOpenPeer, canAddMemb
   // трогает `className` этого узла после первого рендера.
   // Узел — контейнер вкладки: классы профиля tweb ставит на `tab.container`
   // (`sharedMedia.tsx:193` `profile-container`, `:399` `shared-media-container`).
-  // Вкладка одна на инстанс чата и живёт дольше панели (`Chat.tsx`).
+  // Вкладка одна на пир инстанса чата и живёт дольше панели (`reactProfileTab.ts`).
   const setCollapsedOnRef = useRef<HTMLElement>(profileTab.container)
-  const isActiveInstance = useIsActiveChat()
   useLayoutEffect(() => {
     profileTab.container.classList.add('shared-media-container', 'profile-container')
   }, [profileTab])

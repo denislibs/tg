@@ -40,16 +40,11 @@
  * ── Границы порта (у каждой — предмет, а не «у нас так») ────────────────────
  *  • ПАНЕЛЬ ДЕЙСТВИЙ (`onToggleSelection` :1008-1136, `onUpdateContainer`
  *    :1138-1157, `removeSelectionContainer` :1159-1173) — плашка вместо
- *    композера. Её носитель у tweb — `chat.input` (`ChatInputPlate`,
- *    `inputContainer`), у императивной ленты композера нет вовсе. Плашка
- *    вынесена в узкий порт `SelectionPlate` (ниже); класс `is-selecting` на
- *    самой ленте (`listenElement`) остаётся здесь — это узел ленты, а не
- *    композера.
+ *    композера в `chat.input` — бэклог Б-23 (П-5): композер до К-4 — React-остров.
+ *    Класс `is-selecting` на самой ленте (`listenElement`) — здесь.
  *  • ПОПАПЫ delete/forward/sendNow (:1085-1118) и report-режим
- *    (`enterReportSelection` :832-845, `showSelectedMessagesReport`) — их
- *    носители (`PopupDeleteMessages`, `showForwardPopup`, `PopupSendNow`,
- *    `PopupElement`) не портированы; действия принадлежат реализации
- *    `SelectionPlate`, ей же принадлежит и вызов `cancelSelection()` после.
+ *    (`enterReportSelection` :832-845, `showSelectedMessagesReport`) — вместе с
+ *    плашкой (Б-23, Б-28).
  *  • ВХОД НА ТАЧЕ через long-press (:117-157) требует
  *    `helpers/dom/attachContextMenuListener`, которого в репо ещё нет. Ветка
  *    `IS_TOUCH_SUPPORTED` в `attachListeners` СОХРАНЕНА (иначе на таче
@@ -107,6 +102,8 @@ import { i18n } from '@lib/langPack'
 import type { MyMessage } from '@core/models'
 import type AppSearchSuper from '@components/appSearchSuper'
 import { getSharedMediaMessage } from '@components/sharedMediaHistories'
+import type Chat from './chat'
+import type ChatInput from './reactChatInput'
 
 /** tweb selection.ts:51-53 (812502980) — обобщён в 79b9c44c1 */
 const accumulateMapSet = <T extends { size: number }>(map: Map<number, T>): number => {
@@ -155,24 +152,6 @@ export interface SelectionManagers {
       isScheduled: boolean,
     ): Promise<{ cantForward: boolean, cantDelete: boolean }>
   }
-}
-
-/**
- * Узкий порт ПЛАШКИ действий (tweb `onToggleSelection`/`onUpdateContainer`/
- * `removeSelectionContainer`, :1008-1173). Реализация владеет и разметкой
- * плашки, и попапами delete/forward/sendNow; ссылку на `ChatSelection` она
- * получает от хоста — оттуда ей доступны `getSelectedMids()`, `selectedMids`,
- * `length()` и `cancelSelection()`.
- */
-export interface SelectionPlate {
-  /** Показать/скрыть плашку вместо композера. Возвращённый промис ждут перед
-   *  переходом самой ленты — у tweb это `await chat.input.center(animate)`. */
-  toggle(forwards: boolean, animate: boolean): void | Promise<void>
-  /** Пересчитать счётчик и дизейбл кнопок (tweb :1138-1157). Число выбранных
-   *  реализация берёт у `ChatSelection.length()` — ровно как tweb. */
-  update(cantForward: boolean, cantDelete: boolean, cantSend: boolean): void
-  /** Снести плашку по концу обратного перехода (tweb :1159-1173). */
-  remove(): void
 }
 
 export type AppSelectionOptions = {
@@ -895,9 +874,10 @@ export class SearchSelection extends AppSelection {
 /** Порт tweb `ChatSelection` (selection.ts:764-1189). */
 export default class ChatSelection extends AppSelection {
   private bubbles: SelectionBubbles
-  private plate?: SelectionPlate
 
-  constructor(bubbles: SelectionBubbles, managers: SelectionManagers, plate?: SelectionPlate) {
+  /** tweb `new ChatSelection(chat, bubbles, input, managers)` (chat.ts:620); `input`
+   *  нужен оригиналу ради плашки действий — у нас она в бэклоге (Б-23). */
+  constructor(public chat: Chat, bubbles: SelectionBubbles, _input: ChatInput, managers: SelectionManagers) {
     super({
       managers,
       // tweb :798
@@ -926,7 +906,6 @@ export default class ChatSelection extends AppSelection {
     })
 
     this.bubbles = bubbles
-    this.plate = plate
   }
 
   /** tweb :900-902 (812502980, d064fdb85) */
@@ -1116,9 +1095,7 @@ export default class ChatSelection extends AppSelection {
   }
 
   /** tweb :1008-1136 в части, которая принадлежит ленте (см. шапку) */
-  protected override onToggleSelection = async(forwards: boolean, animate: boolean): Promise<void> => {
-    await this.plate?.toggle(forwards, animate)
-
+  protected override onToggleSelection = (forwards: boolean, animate: boolean) => {
     const listenElement = this.listenElement
     if (!listenElement) return
 
@@ -1129,16 +1106,9 @@ export default class ChatSelection extends AppSelection {
       duration: animate ? SELECTION_TRANSITION_DURATION : 0,
       onTransitionEnd: () => {
         if (!this.isSelecting) {
-          this.plate?.remove()
           this.selectedText = undefined
         }
       },
     })
-  }
-
-  /** tweb :1138-1157 в части, которая принадлежит ленте (счётчик и дизейбл —
-   *  внутри плашки, она читает `length()` сама, как и оригинал) */
-  protected override onUpdateContainer = (cantForward: boolean, cantDelete: boolean, cantSend: boolean) => {
-    this.plate?.update(cantForward, cantDelete, cantSend)
   }
 }

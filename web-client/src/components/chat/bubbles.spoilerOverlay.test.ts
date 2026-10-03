@@ -54,19 +54,14 @@ vi.mock('@lib/spoiler/spoilerSupport', () => ({
   isWorkerSimSupported: () => true,
 }))
 
-const ChatBubbles = (await import('./bubbles')).default
+const { createTestChat, mountTestBubbles } = await import('./testChat')
 type BubblesManagers = import('./bubbles').BubblesManagers
-type ChatContext = import('./bubbles').ChatContext
+type ChatBubbles = import('./bubbles').default
 
 const CHAT = 90
 const SPOILER: MessageEntity[] = [{ _: 'messageEntitySpoiler', offset: 0, length: 6 }]
 
-const chatContext = (): ChatContext => ({
-  peerId: CHAT,
-  messagesStorageKey: String(CHAT),
-  container: document.createElement('div'),
-  bubblesViewport: document.createElement('div'),
-})
+const chatContext = () => createTestChat({ peerId: CHAT })
 
 const managersWith = (messages: MyMessage[]): BubblesManagers => ({
   messages: {
@@ -84,7 +79,7 @@ const managersWith = (messages: MyMessage[]): BubblesManagers => ({
 const msg = (id: number, entities?: MessageEntity[]): MyMessage =>
   makeMessage({ peerId: CHAT, fromId: 2, id, text: 'secret rest', entities, createdAt: '2026-08-15T12:34:00' }) as MyMessage
 
-async function openFeed(feed: InstanceType<typeof ChatBubbles>) {
+async function openFeed(feed: ChatBubbles) {
   await (await feed.setPeer())?.promise
 }
 
@@ -115,7 +110,7 @@ Element.prototype.getClientRects = function getClientRects(this: Element) {
   return (this.classList.contains('spoiler-text') ? [SPAN_RECT] : []) as unknown as DOMRectList
 }
 
-let bubbles: InstanceType<typeof ChatBubbles> | undefined
+let bubbles: ChatBubbles | undefined
 afterEach(() => { bubbles?.destroy(); bubbles = undefined })
 beforeEach(() => {
   resetMessagesMirror()
@@ -126,12 +121,12 @@ beforeEach(() => {
   spies.attachTextSpoilerOverlay.mockClear()
 })
 
-const messageDivOf = (feed: InstanceType<typeof ChatBubbles>, mid: number) =>
+const messageDivOf = (feed: ChatBubbles, mid: number) =>
   feed.chatInner.querySelector<HTMLElement>(`.bubble[data-mid="${mid}"] .message`)!
 
 describe('ChatBubbles — оверлей спойлеров', () => {
   it('у сообщения СО спойлером лента вешает оверлей в тело сообщения', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, SPOILER)]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([msg(1, SPOILER)]))
     await openFeed(bubbles)
     await settle()
 
@@ -141,7 +136,7 @@ describe('ChatBubbles — оверлей спойлеров', () => {
   })
 
   it('у сообщения БЕЗ спойлера оверлея нет, и симуляцию никто не поднимает', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([msg(1)]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([msg(1)]))
     await openFeed(bubbles)
     await settle()
 
@@ -150,7 +145,7 @@ describe('ChatBubbles — оверлей спойлеров', () => {
   })
 
   it('симуляция получает ЗАДАЧУ — прямоугольники спойлерных слов', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, SPOILER)]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([msg(1, SPOILER)]))
     await openFeed(bubbles)
     await settle()
 
@@ -161,7 +156,7 @@ describe('ChatBubbles — оверлей спойлеров', () => {
   // Правка пересобирает тело (`renderMessageContent`) и уносит прежний оверлей;
   // в tweb вопроса нет — там правка пересоздаёт бабл целиком (:6338).
   it('правка сообщения оверлей не теряет', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, SPOILER)]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([msg(1, SPOILER)]))
     await openFeed(bubbles)
     await settle()
 
@@ -177,7 +172,7 @@ describe('ChatBubbles — оверлей спойлеров', () => {
   // tweb гасит оверлей побабльным middleware (:4408/:4416); у нас его нет,
   // поэтому лента снимает оверлей адресно — см. `spoilerOverlays`.
   it('снятие бабла гасит оверлей: задача симуляции протухает', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, SPOILER)]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([msg(1, SPOILER)]))
     await openFeed(bubbles)
     await settle()
 
@@ -194,7 +189,7 @@ describe('ChatBubbles — оверлей спойлеров', () => {
   // а подмена `chatInner` внутри `setPeer` — оверлеи гасит слив карты
   // (`disposeSpoilerOverlays`).
   it('пересборка окна гасит оверлеи прошлого окна', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, SPOILER)]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([msg(1, SPOILER)]))
     await openFeed(bubbles)
     await settle()
 
@@ -207,10 +202,10 @@ describe('ChatBubbles — оверлей спойлеров', () => {
     expect(middleware()).toBe(false)
   })
 
-  // Смена собеседника у нас — снос инстанса ленты хостом (`VanillaFeed`), а
-  // `destroy` через `cleanup` НЕ проходит: слив карты нужен и здесь.
+  // Снос инстанса ленты (`Chat.destroy`) через `cleanup` НЕ проходит: слив
+  // карты нужен и здесь.
   it('снос ленты гасит оверлеи', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([msg(1, SPOILER)]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([msg(1, SPOILER)]))
     await openFeed(bubbles)
     await settle()
 

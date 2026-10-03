@@ -78,7 +78,7 @@ export function messageToConvMsg(
     /** закреплённое сообщение (цель `messageActionPinMessage`), тоже разрешённое */
     pinnedTarget?: MyMessage
     /** порт `chat.isMegagroup` — вид ОТКРЫТОГО чата; знает его вызывающий
-     *  (`ChatBubbles` ← `ChatContext` ← `Chat.tsx`). */
+     *  (`ChatBubbles` ← `Chat.isMegagroup`). */
     isMegagroup?: boolean
   },
 ): ConvMsg {

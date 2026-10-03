@@ -52,7 +52,7 @@
  *     обратен пути tweb: `autoDownloadNew.pFlags.disabled` (`true | undefined`,
  *     tweb `dataAndStorage/index.tsx:57`, `:69`) ↔ наш `autoDownloadEnabled`.
  *     Переименовать ключ zustand ради формы tweb нельзя — его читает лента
- *     (`core/hooks/useChatAutoDownload.ts`) и он лежит в `localStorage`.
+ *     (`core/chat/autoDownloadSettings.ts`) и он лежит в `localStorage`.
  *  7. `SETTINGS_INIT` — то же представление над `DEFAULTS` (`settings.tsx`), а
  *     не отдельная копия дефолтов в форме tweb (`config/state.ts:450-588`):
  *     дефолт у нас один. В нём только пути таблицы.

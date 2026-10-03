@@ -88,7 +88,7 @@ describe('chatFullCache: зеркало полных карточек', () => {
 })
 
 // Task 1.5 (ревью задачи 1, п.2): у полной карточки теперь два независимых
-// писателя (useChatInfoCard.ts, stores/fullPeers.solid.ts) — сеть может
+// писателя (chat/reactions.ts, stores/fullPeers.solid.ts) — сеть может
 // ответить в любом порядке, и ответ, СОБРАННЫЙ раньше, не должен затирать
 // карточку, которую уже применил запрос, ОТКРЫТЫЙ позже.
 describe('chatFullCache: билет beginPeerFullFetch — защита от устаревшего ответа', () => {

@@ -17,11 +17,19 @@ import { mirrorWindow, resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
 import { interruptHeavyAnimation } from '@core/dom/heavyAnimation'
 import { useSettingsStore } from '@/settings'
-import { clearChatPositions } from '@core/chat/chatPositions'
 import type { MyMessage } from '@core/models'
 import { makeMessage, type MessageFixture } from '@core/messages/testMessage'
 import type { HistoryArgs, HistoryResult } from '@core/managers/messagesManager'
-import ChatBubbles, { makeFullMid, type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import { makeFullMid, type BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles, type TestChatOptions } from './testChat'
+
+// Календарь лента открывает сама (tweb bubbles.ts:3075 `showDatePickerPopup`);
+// попап — мост `popups/datePicker.bridge`, мокается граница.
+const { showDatePickerPopup } = vi.hoisted(() => ({
+  showDatePickerPopup: vi.fn<(options: { initDate: Date, onPick: (timestamp: number) => void, peerId?: PeerId }) => void>(),
+}))
+vi.mock('@components/popups/datePicker.bridge', () => ({ default: showDatePickerPopup }))
 
 /** Открыть окно ленты и дождаться ОТРИСОВКИ. `setPeer` (как в оригинале)
  *  возвращает управление, едва отправив запрос: рендер и доводка живут во
@@ -42,19 +50,11 @@ function msg(id: number, over: Partial<MessageFixture> = {}): MyMessage {
   return makeMessage({ id, peerId: CHAT, fromId: 2, text: `m${id}`, createdAt: '2026-08-15T12:00:00Z', ...over })
 }
 
-type ContextExtras = Partial<ChatContext>
-
-function makeContext(over: ContextExtras = {}) {
+function makeContext(over: TestChatOptions = {}) {
   const container = document.createElement('div')
   container.classList.add('chat')
   const bubblesViewport = document.createElement('div')
-  const ctx: ChatContext = {
-    peerId: CHAT,
-    messagesStorageKey: String(CHAT),
-    container,
-    bubblesViewport,
-    ...over,
-  }
+  const ctx = createTestChat({ peerId: CHAT, container, bubblesViewport, ...over })
   return { ctx, container, bubblesViewport }
 }
 
@@ -197,7 +197,6 @@ beforeEach(() => {
   // пишет в неё (порт `peer_changing` → `saveChatPosition`). Без сброса
   // следующий тест открывал бы «тот же чат» ВОЗВРАТОМ: окно восстановилось бы
   // из прошлых номеров, и страницу у менеджера никто бы не спросил.
-  clearChatPositions()
 })
 
 afterEach(() => {
@@ -208,9 +207,9 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function mount(managers: BubblesManagers, over: ContextExtras = {}) {
+function mount(managers: BubblesManagers, over: TestChatOptions = {}) {
   const { ctx, container: chatColumn } = makeContext(over)
-  const b = new ChatBubbles(ctx, managers)
+  const b = mountTestBubbles(ctx, managers)
   restoreLayout = installFakeLayout(b.scrollable.container)
   bubbles = b
   return { b, chatColumn }
@@ -672,15 +671,15 @@ describe('ChatBubbles — переход к сообщению', () => {
     expect(b.getBubble(makeFullMid(CHAT, 7))!.classList.contains('is-highlighted')).toBe(true)
   })
 
-  // Календарь: клик по дата-баблу отдаёт хосту день секции и КОЛБЭК выбора
-  // (порт tweb bubbles.ts:3075-3078 `showDatePickerPopup({initDate, onPick:
-  // this.onDatePick})`), а выбранный день лента сама превращает в прыжок
-  // (:10205).
+  // Календарь: клик по дата-баблу открывает попап с днём секции и КОЛБЭКОМ
+  // выбора (порт tweb bubbles.ts:3075-3078 `showDatePickerPopup({initDate,
+  // onPick: this.onDatePick})`), а выбранный день лента сама превращает в
+  // прыжок (:10205).
   it('клик по дата-баблу открывает календарь, а выбранный день уводит прыжком', async () => {
-    const openDatePicker = vi.fn<(initDate: number, onPick: (timestamp: number) => void) => void>()
+    showDatePickerPopup.mockClear()
     const managers = pagingManagers({ first: page([1, 2, 3], true, true) })
     managers.getHistoryMaxSeq.mockResolvedValue(3)
-    const { b } = mount(managers, { navigation: { openDatePicker } })
+    const { b } = mount(managers)
     await openFeed(b)
     await settle()
 
@@ -693,11 +692,11 @@ describe('ChatBubbles — переход к сообщению', () => {
     // Первый аргумент — ЛОКАЛЬНАЯ полночь дня секции (порт
     // `getDateForDateContainer`, tweb bubbles.ts:4815).
     const day = new Date(msg(1).date * 1000).setHours(0, 0, 0, 0)
-    expect(openDatePicker).toHaveBeenCalledWith(day, expect.any(Function))
+    expect(showDatePickerPopup).toHaveBeenCalledWith({ initDate: new Date(day), onPick: expect.any(Function), peerId: CHAT })
 
     // Выбор дня: «день → номер» спрашивается у владельца, дальше — обычный прыжок.
     managers.messageByDate.mockResolvedValue(2)
-    openDatePicker.mock.calls[0][1](1_755_216_000)
+    showDatePickerPopup.mock.calls[0][0].onPick(1_755_216_000)
     await settle()
 
     expect(managers.messageByDate).toHaveBeenCalledWith(CHAT, 1_755_216_000)

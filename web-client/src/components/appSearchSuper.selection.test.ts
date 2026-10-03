@@ -5,14 +5,18 @@
 // Предмет проверок — DOM: меню `.search-contextmenu` и видимые в нём пункты,
 // плашка `.search-super-selection-container` на месте ряда вкладок, классы
 // `is-selecting`/`is-selected`, чекбоксы плиток; действия наружу — то, ЧТО
-// получил хост (пересылка/удаление/переход/скачивание). Класс, меню, выделение,
+// получил хост (пересылка/удаление/переход) и `appDownloadManager` (скачивание,
+// как у tweb `ChatContextMenu.onDownloadClick`). Класс, меню, выделение,
 // `ButtonMenu` и `contextMenuController` — настоящие; замоканы только границы:
-// выдача URL медиа воркером (`startClient`), буфер обмена браузера, `fetch`.
+// выдача URL медиа воркером (`startClient`), скачивание на диск, буфер обмена
+// браузера, `fetch`.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
-const { downloadMediaURL } = vi.hoisted(() => ({
+const { downloadMediaURL, downloadToDisc } = vi.hoisted(() => ({
   downloadMediaURL: vi.fn<(id: number, opts?: { thumb?: boolean }) => Promise<string>>(),
+  downloadToDisc: vi.fn((_options: { mediaId: number }) => Promise.resolve()),
 }))
+vi.mock('@lib/appDownloadManager', () => ({ downloadToDisc }))
 vi.mock('../client/bootstrap', () => ({
   startClient: () => ({ managers: { media: { downloadMediaURL } } }),
 }))
@@ -90,7 +94,6 @@ function hostActions() {
     setInnerPeer: vi.fn<NonNullable<AppSearchSuperOptions['setInnerPeer']>>(),
     showForwardPopup: vi.fn<NonNullable<AppSearchSuperOptions['showForwardPopup']>>(),
     showDeleteMessagesPopup: vi.fn<NonNullable<AppSearchSuperOptions['showDeleteMessagesPopup']>>(),
-    downloadToDisc: vi.fn<NonNullable<AppSearchSuperOptions['downloadToDisc']>>(),
   }
 }
 
@@ -221,7 +224,7 @@ describe('SearchContextMenu: меню элемента (tweb appSearchSuper.ts:1
     expect(menu()?.classList.contains('active') ?? false).toBe(false)
   })
 
-  it('пункты зовут хоста: переслать, скачать, перейти к сообщению, удалить', async() => {
+  it('пункты: переслать, скачать, перейти к сообщению, удалить', async() => {
     const { searchSuper, actions } = await build([photo(2), photo(1)])
     const [tile] = tiles(searchSuper)
 
@@ -231,7 +234,7 @@ describe('SearchContextMenu: меню элемента (tweb appSearchSuper.ts:1
 
     await openMenuOn(tile)
     click(menuItem('Download'))
-    expect(actions.downloadToDisc.mock.calls[0][0].id).toBe(2)
+    expect(downloadToDisc).toHaveBeenCalledWith(expect.objectContaining({ mediaId: 2 }))
 
     await openMenuOn(tile)
     click(menuItem('Show in chat'))

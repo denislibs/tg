@@ -23,7 +23,10 @@ export default function showDatePickerPopup(options: {
   initDate: Date,
   withTime?: boolean,
   onPick: (timestamp: number) => void,
-  btnConfirmLangKey?: LangPackKey
+  btnConfirmLangKey?: LangPackKey,
+  /** чат, по дням которого попап отмечает сообщения (`messages.calendarMonth`) — клик
+   *  по дата-баблу ленты (`bubbles.ts::onContainerClick`, tweb :3075-3078) */
+  peerId?: PeerId
 }) {
   openPopup((p) => createElement(DatePickerPopup, {
     open: p.open,
@@ -31,6 +34,7 @@ export default function showDatePickerPopup(options: {
     onExitComplete: p.onExitComplete,
     initDate: options.initDate.getTime(),
     withTime: options.withTime,
+    chatId: options.peerId,
     // режим `withTime` попап сам не закрывает (его закрывает вызывающий
     // планирования, `SchedulePopup.tsx`); у оригинала выбор закрывает попап
     onPick: (timestamp: number) => {

@@ -257,17 +257,17 @@ describe('Esc/Back закрывает форум-таб (запись навиг
 })
 
 describe('открытие темы', () => {
-  it('клик по теме — `appImManager.setPeer({peerId, threadId})` с метой треда; таб остаётся открытым', async () => {
+  it('клик по теме — `appImManager.setPeer({peerId, threadId})`; таб остаётся открытым', async () => {
     const setPeer = vi.spyOn(appImManager, 'setPeer').mockResolvedValue(undefined)
     await start([topic(1), topic(2, { closed: true })])
     await openForum()
 
     press(topicRows()[1])
     expect(setPeer).toHaveBeenCalledTimes(1)
-    expect(setPeer.mock.calls[0][0]).toMatchObject({
+    expect(setPeer.mock.calls[0][0]).toEqual({
       peerId: FORUM_ID,
       threadId: 2,
-      thread: { rootMsgId: 2, title: 'Тема 2', closed: true, topicId: 1002, kind: 'topic' },
+      type: 'chat',
     })
     expect(mounted!.manager.forumTab).toBeDefined()
     expect(forumItems()).toBe(1)

@@ -8,11 +8,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('@environment/touchSupport', () => ({ default: true }))
 
 import ChatContextMenu, {
-  type ContextMenuChat,
   type ContextMenuManagers,
   type ContextMenuPopups,
 } from './contextMenu'
-import ChatSelection, { type SelectionBubbles } from './selection'
+import type { SelectionBubbles } from './selection'
+import type Chat from './chat'
+import { attachTestSelection, createTestChat } from './testChat'
 import contextMenuController from '@helpers/contextMenuController'
 import { putMirrorPage, resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
@@ -90,7 +91,6 @@ function makeManagers(): ContextMenuManagers {
       viewers: vi.fn().mockResolvedValue([]),
     },
     chats: { getReadDate: vi.fn().mockResolvedValue(null) },
-    media: { downloadToDisc: vi.fn() },
   }
 }
 
@@ -106,16 +106,10 @@ function makePopups(): ContextMenuPopups {
   }
 }
 
-function makeChat(): ContextMenuChat {
-  return {
-    peerId: PEER,
-    messagesStorageKey: KEY,
-    canSend: () => true,
-    hasMessageInput: () => true,
-    initMessageReply: vi.fn(),
-    initMessageEditing: vi.fn(),
-    initSearch: vi.fn(),
-  }
+function makeChat(): Chat {
+  const chat = createTestChat({ peerId: PEER, messagesStorageKey: KEY })
+  attachTestSelection(chat, new FakeBubbles(container))
+  return chat
 }
 
 /** jsdom не умеет конструировать `TouchEvent` — важны только поля, которые
@@ -157,7 +151,7 @@ afterEach(() => {
   contextMenuController.close()
 })
 
-function attach(menu = new ChatContextMenu(makeChat(), {}, makeManagers(), makePopups())) {
+function attach(menu = new ChatContextMenu(makeChat(), makeManagers(), makePopups())) {
   menu.attachTo(container)
   return menu
 }
@@ -195,11 +189,11 @@ describe('тач: долгое нажатие по чипу реакции (tweb
     // Выделение НАСТОЯЩЕЕ: без гейта меню бы открылось — режим выделения имеет
     // свой набор пунктов (`filterButtons` по `withSelection`), см.
     // `contextMenu.test.ts`.
-    const selection = new ChatSelection(new FakeBubbles(container), { messages: {} })
-    selection.toggleByElement(bubble)
-    expect(selection.isSelecting).toBe(true)
+    const chat = makeChat()
+    chat.selection.toggleByElement(bubble)
+    expect(chat.selection.isSelecting).toBe(true)
 
-    attach(new ChatContextMenu(makeChat(), { selection }, makeManagers(), makePopups()))
+    attach(new ChatContextMenu(chat, makeManagers(), makePopups()))
 
     touch('touchstart', chip)
     await wait(LONG_PRESS)

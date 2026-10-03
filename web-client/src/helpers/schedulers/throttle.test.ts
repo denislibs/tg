@@ -5,11 +5,12 @@
 //  1. поведение обоих режимов оригинала. Сквозной («вызвал — исполнилось»)
 //     троттлинг обязан красить эти тесты: на нём держится и таймкод видео
 //     (`timeupdate` летит ~4 Гц, перерисовка раз в секунду), и персист ширины
-//     колонок (запись настроек на каждый тик драга), и выбор пина по скроллу;
+//     колонок (запись настроек на каждый тик драга);
 //  2. отсутствие локальных копий — сканом исходников (по образцу
 //     `core/scrollWriters.test.ts`): копии уже расходились с оригиналом
-//     (`wrappers/video.ts` — trailing-only на setTimeout, `usePinnedBar` —
-//     свой leading, `core/dom/updateColumnWidths.ts` — свой leading+trailing).
+//     (`wrappers/video.ts` — trailing-only на setTimeout, снесённый на К-3
+//     `usePinnedBar` — свой leading, `core/dom/updateColumnWidths.ts` — свой
+//     leading+trailing).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -181,7 +182,6 @@ describe('троттлинг: единственная реализация — 
     for (const rel of [
       'components/wrappers/video.ts',
       'core/dom/updateColumnWidths.ts',
-      'core/hooks/usePinnedBar.ts',
     ]) {
       expect(codeOf(join(SRC, rel))).toContain("from '@helpers/schedulers/throttle'")
     }

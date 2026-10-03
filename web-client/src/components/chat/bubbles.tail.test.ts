@@ -20,7 +20,9 @@ import { makeMessage } from '@core/messages/testMessage'
 import rootScope from '@lib/rootScope'
 import type { MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import { createTestChat, mountTestBubbles } from './testChat'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -39,12 +41,7 @@ async function settle() {
 const CHAT = 90
 const ME = 1
 
-const chatContext = (): ChatContext => ({
-  peerId: CHAT,
-  messagesStorageKey: String(CHAT),
-  container: document.createElement('div'),
-  bubblesViewport: document.createElement('div'),
-})
+const chatContext = () => createTestChat({ peerId: CHAT })
 
 const managersWith = (messages: MyMessage[]): BubblesManagers => ({
   messages: {
@@ -107,7 +104,7 @@ describe('index.html — спрайт хвоста', () => {
 
 describe('ChatBubbles — узел хвоста', () => {
   it('can-have-tail: svg.bubble-tail > use[href] последним ребёнком .bubble-content', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([textOut(1)]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([textOut(1)]))
     await openFeed(bubbles)
     await settle()
 
@@ -128,7 +125,7 @@ describe('ChatBubbles — узел хвоста', () => {
   })
 
   it('кружок: узел есть, а can-have-tail нет (tweb bubbles.ts:9707 гейтит !isRound)', async () => {
-    bubbles = new ChatBubbles(chatContext(), managersWith([roundVideo(1)]))
+    bubbles = mountTestBubbles(chatContext(), managersWith([roundVideo(1)]))
     await openFeed(bubbles)
     await settle()
 

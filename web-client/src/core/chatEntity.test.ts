@@ -8,7 +8,7 @@
 // имён нет вовсе: пир без диалога открывается тем же `setInnerPeer({peerId})`
 // (tweb appImManager.ts:3392), `chat.peerId` — число.
 //
-// Резолв — тот, что делает остров инстанса чата (`components/chat/reactChatInstance.ts`):
+// Резолв — тот, что делают острова инстанса чата (композер, вкладка №0 профиля):
 // пир, открытый `appImManager.setInnerPeer({peerId})`, + список диалогов.
 import { beforeEach, describe, expect, it } from 'vitest'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
@@ -27,7 +27,7 @@ beforeEach(() => {
 describe('чат с пиром без диалога: ключ сущности — число', () => {
   it('человек без диалога открывается сущностью с ключом пира из карточки зеркала, а не NaN', () => {
     const chat = resolveChatEntity({ peerId: ALICE }, [])
-    // Все дети колонки берут ключ так: лента (`VanillaFeed peerId`), профиль
+    // Все дети колонки берут ключ так: лента (`chat.peerId`), профиль
     // (`/users/{id}/gifts`, `/chats/{id}/search_counters`), шапка.
     expect(Number(chat.id)).toBe(ALICE)
     expect(chatPeerId(chat)).toBe(ALICE)

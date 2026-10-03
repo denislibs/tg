@@ -534,8 +534,11 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `appDialogsManager.ts:1649-1772`): у ru +6 ключей tweb lang.ts — заголовок и две подписи
 // `ChatList.Main.EmptyPlaceholder.*`, плюральный `Contacts.Count`, пустая папка
 // `FilterNoChatsToDisplay{,Info}`. Итог: ru 1539, плюральных 49.
+// Шаг К-3 волны 7 (ядро шапки чата `chat/topbar.ts`): у ru +1 ключ tweb lang.ts:4172
+// `Chat.Title.Comments` (с формами числа) — заголовок треда комментариев
+// (`topbar.ts` `setTitleManual`, tweb :1596-1610). Итог: ru 1540, `plural` 49 → 50.
 const COMPOSITION = {
-  ru: { keys: 1539, plural: 49 },
+  ru: { keys: 1540, plural: 50 },
   uk: { keys: 829, plural: 35 },
   es: { keys: 800, plural: 34 },
   de: { keys: 801, plural: 35 },
@@ -713,8 +716,9 @@ const COMPOSITION = {
 // Задачей 2-6 волны 7 — у всех пяти +2 ключа tweb `MyStory`, `OpenStory` (разбор — там же).
 // Пачкой П-3 волны 7 — у ru +1 ключ tweb `Update` (разбор — там же).
 // Задачей 1-8 волны 7 — у ru +6 ключей пустого списка и контактов (разбор — там же).
+// Шагом К-3 волны 7 — у ru +1 ключ tweb `Chat.Title.Comments` (разбор — там же).
 const FINGERPRINT = {
-  ru: '8152889f',
+  ru: 'e41ac8af',
   uk: 'a02f363c',
   es: '89e8ae98',
   de: '0fed7933',

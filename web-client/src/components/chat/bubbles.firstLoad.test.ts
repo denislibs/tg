@@ -7,7 +7,9 @@
 //   • «лестница» появления баблов (`animateAsLadder`, :10313-10464; вооружение
 //     в `getHistory` :11467/:11540, отложенный запуск :5395-5397);
 //   • восстановление позиции между открытиями (`savedPosition`, :5100-5103,
-//     :5337-5352, :5437-5438 + `appImManager.saveChatPosition` :2111-2149).
+//     :5337-5352, :5437-5438). Сохраняет её `appImManager.saveChatPosition` по
+//     `peer_changing` — это пины `lib/appImManager.test.ts`; здесь лента лишь
+//     ЧИТАЕТ её через `chat.appImManager.getChatSavedPosition(chat)`.
 //
 // happy-dom не считает layout — здесь та же фейковая геометрия, что в
 // `bubbles.scroll.test.ts` (вьюпорт 500px, бабл 100px, позиция по индексу в
@@ -17,13 +19,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
-import { clearChatPositions, getChatPosition, saveChatPosition } from '@core/chat/chatPositions'
 import { dispatchHeavyAnimationEvent, interruptHeavyAnimation } from '@core/dom/heavyAnimation'
 import { useSettingsStore } from '@/settings'
 import type { MyMessage } from '@core/models'
 import { makeMessage, type MessageFixture } from '@core/messages/testMessage'
 import type { HistoryArgs, HistoryResult } from '@core/managers/messagesManager'
-import ChatBubbles, { type BubblesManagers, type ChatContext } from './bubbles'
+import type ChatBubbles from './bubbles'
+import type { BubblesManagers } from './bubbles'
+import type { ChatSavedPosition } from '@lib/appImManager'
+import { createTestChat, mountTestBubbles, type TestChatOptions } from './testChat'
 
 const CHAT = 50
 const VIEWPORT_H = 500
@@ -85,31 +89,15 @@ const originalRect = HTMLElement.prototype.getBoundingClientRect
 let feeds: ChatBubbles[] = []
 let current: ChatBubbles | undefined
 
-function mount(managers: BubblesManagers, over: Partial<ChatContext> = {}) {
+function mount(managers: BubblesManagers, over: TestChatOptions = {}) {
   const container = document.createElement('div')
   container.classList.add('chat')
   const bubblesViewport = document.createElement('div')
-  const ctx: ChatContext = {
-    peerId: CHAT,
-    messagesStorageKey: String(CHAT),
-    container,
-    bubblesViewport,
-    ...over,
-  }
-  const b = new ChatBubbles(ctx, managers)
+  const b = mountTestBubbles(createTestChat({ peerId: CHAT, container, bubblesViewport, ...over }), managers)
   installFakeLayout(b.scrollable.container)
   feeds.push(b)
   current = b
   return b
-}
-
-/** Уход из чата: у нас его исполняет смерть инстанса ленты (порт события
- *  tweb `peer_changing` → `appImManager.saveChatPosition`). */
-function leaveChat(b: ChatBubbles) {
-  b.destroy()
-  const idx = feeds.indexOf(b)
-  if(idx !== -1) feeds.splice(idx, 1)
-  if(current === b) current = undefined
 }
 
 /** Открыть окно и дождаться ОТРИСОВКИ — как `Chat.setPeer` (tweb chat.ts:1119-1122). */
@@ -134,7 +122,6 @@ const spinnerOf = (b: ChatBubbles) => b.container.querySelector('.preloader-cont
 beforeEach(() => {
   resetMessagesMirror()
   resetPeerMirror()
-  clearChatPositions()
   interruptHeavyAnimation()
   rootScope.myId = 999
   useSettingsStore.setState({ liteMode: { ...useSettingsStore.getState().liteMode, all: false } })
@@ -158,7 +145,6 @@ afterEach(() => {
   feeds = []
   current = undefined
   HTMLElement.prototype.getBoundingClientRect = originalRect
-  clearChatPositions()
   interruptHeavyAnimation()
 })
 
@@ -403,56 +389,21 @@ describe('ChatBubbles — сохранённая позиция чата (пор
   })
 
   const twelve = () => page([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], true, true)
+  /** Позиция, которую `appImManager` отдаёт ленте по `getChatSavedPosition`. */
+  const savedAt = (position: ChatSavedPosition | undefined): TestChatOptions =>
+    ({ appImManager: { getChatSavedPosition: () => position } })
 
-  it('уход из СЕРЕДИНЫ истории запоминает номера окна (по убыванию) и позицию скролла', async () => {
-    const b = mount(managersFor(twelve()))
-    await openFeed(b)
-    await settle(2)
-
-    b.scrollable.container.scrollTop = 300
-    leaveChat(b)
-
-    expect(getChatPosition(CHAT)).toEqual({
-      mids: [12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1],
-      top: 300,
-    })
-  })
-
-  it('уход У НИЗА истории ничего не запоминает и СТИРАЕТ прошлую запись (tweb :2144)', async () => {
-    saveChatPosition(CHAT, undefined, { mids: [9, 8, 7], top: 999 })
-
-    const b = mount(managersFor(twelve()))
-    await openFeed(b)
-    await settle(2)
-
-    // `setPeer` уже увёл ленту в самый низ, но туда же её приводит и колесо —
-    // важен итог, а не дорога.
-    b.scrollable.container.scrollTop = 99999
-    leaveChat(b)
-
-    expect(getChatPosition(CHAT)).toBeUndefined()
-  })
-
-  it('пустое окно ничего не запоминает', async () => {
-    saveChatPosition(CHAT, undefined, { mids: [9, 8, 7], top: 999 })
-
-    const b = mount(managersFor(page([], true, true)))
-    await openFeed(b)
-    await settle(2)
-    leaveChat(b)
-
-    expect(getChatPosition(CHAT)).toBeUndefined()
-  })
-
-  it('чат, открытый заново, восстанавливает окно и позицию БЕЗ запроса истории', async () => {
+  it('чат с сохранённой позицией восстанавливает окно и позицию БЕЗ запроса истории', async () => {
+    // Окно собирается из ЗЕРКАЛА по запомненным номерам — в него сообщения
+    // кладёт первое открытие чата.
     const first = mount(managersFor(twelve()))
     await openFeed(first)
     await settle(2)
-    first.scrollable.container.scrollTop = 300
-    leaveChat(first)
+    first.destroy()
+    feeds.splice(feeds.indexOf(first), 1)
 
     const managers = managersFor(twelve())
-    const second = mount(managers)
+    const second = mount(managers, savedAt({ mids: [12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1], top: 300 }))
     await openFeed(second)
 
     // tweb :5346-5350 — окно собирается из ЗАПОМНЕННЫХ номеров: страницы
@@ -468,15 +419,13 @@ describe('ChatBubbles — сохранённая позиция чата (пор
   })
 
   it('открытие С ЦЕЛЬЮ сохранённую позицию игнорирует (гейт `!isTarget`, tweb :5101)', async () => {
-    saveChatPosition(CHAT, undefined, { mids: [3, 2, 1], top: 250 })
-
     const managers = managersFor(twelve())
     managers.getAround.mockImplementation(async () => ({
       messages: [msg(5), msg(6), msg(7)],
       reachedTop: false,
       reachedBottom: false,
     }))
-    const b = mount(managers)
+    const b = mount(managers, savedAt({ mids: [3, 2, 1], top: 250 }))
     await openFeed(b, { lastMsgId: 6 })
 
     expect(managers.getAround).toHaveBeenCalled()
@@ -484,18 +433,21 @@ describe('ChatBubbles — сохранённая позиция чата (пор
   })
 
   it('прыжок внутри ОТКРЫТОГО чата сохранённую позицию не читает (гейт `!samePeer`, tweb :5102)', async () => {
+    const getChatSavedPosition = vi.fn((): ChatSavedPosition | undefined => undefined)
     const managers = managersFor(twelve())
-    const b = mount(managers)
+    const b = mount(managers, { appImManager: { getChatSavedPosition } })
     await openFeed(b)
     await settle(2)
 
     // Запись появляется «из ниоткуда» намеренно: проверяется, что кнопка
     // «вниз» (`setMessageId()` без цели) её не подхватит.
-    saveChatPosition(CHAT, undefined, { mids: [3, 2, 1], top: 250 })
+    getChatSavedPosition.mockClear()
+    getChatSavedPosition.mockReturnValue({ mids: [3, 2, 1], top: 250 })
 
     await openFeed(b, { samePeer: true })
     await settle(2)
 
+    expect(getChatSavedPosition).not.toHaveBeenCalled()
     expect(bubblesOf(b)).toHaveLength(12)
     expect(b.scrollable.container.scrollTop).not.toBe(250)
   })

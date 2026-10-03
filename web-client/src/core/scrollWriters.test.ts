@@ -62,17 +62,13 @@ const ALLOWED: Record<string, number> = {
   // открытии попапа календаря (месяц initDate), ДО первого показа. Попап, не
   // лента; нет ни подгрузки контента, ни необходимости восстанавливать позицию.
   'components/DatePickerPopup.tsx': 1,
-  // components/conversation/TopbarSearch.tsx:219 — центрирование активной строки
-  // выдачи поиска по стрелкам, формула 1:1 из tweb (topbarSearch.tsx:678-681).
-  // Изолированный дропдаун, не лента сообщений.
-  'components/conversation/TopbarSearch.tsx': 1,
-  // components/verticalVirtualList.solid.tsx — компенсатор сдвига в исходной
-  // Solid-форме tweb (`verticalVirtualList.tsx:49-53`, `onScrollShift` под
-  // `untrack`): когда ВСЕ видимые строки виртуального списка сдвинулись на
-  // одинаковое число позиций, анимация `top` отменяется и ВМЕСТО неё
-  // компенсируется scrollTop — список визуально стоит на месте. Порт файлом 1:1,
-  // ядро Solid-списков диалогов (`deferredSortedVirtualList.solid.tsx`) и
-  // контактов; второго писателя позиции у этих скроллеров нет.
+  // components/verticalVirtualList.solid.tsx — компенсатор сдвига строк
+  // (`verticalVirtualList.tsx:49-53`, `onScrollShift` под `untrack`): когда ВСЕ
+  // видимые строки виртуального списка сдвинулись на одинаковое число позиций,
+  // их анимация `top` отменяется, а `scrollTop` сдвигается на ту же величину —
+  // список визуально стоит на месте. Порт файлом 1:1, ядро Solid-списков
+  // диалогов (`deferredSortedVirtualList.solid.tsx`) и контактов; подгрузки НАД
+  // вьюпортом и второго писателя позиции у списка нет.
   'components/verticalVirtualList.solid.tsx': 1,
   // components/verticalOptionWheel.solid.tsx — барабан выбора (порт tweb
   // `verticalOptionWheel.tsx` 1:1, попап своего срока автоудаления): начальная

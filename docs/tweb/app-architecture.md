@@ -947,7 +947,7 @@ group, observeElement, ...})` (`:256`), видимость узнаёт чере
 | центр, стек чатов | `appImManager.chats[]`, `chatsContainer` | React `components/chat/ChatsContainer.tsx` + `stores/chatStackStore.ts`, `stores/navigationStore.ts`; срез `selectTab` — `core/navigation/chatHistory.ts:504` (`selectProfileTab`) | **4-2** каркас `AppImManager`, **4-3** стек + временный `ChatFacade` |
 | хэш, фон, тема, хоткеи, звонки, боты | блоки `appImManager` (§6.2) | разнесено по React-хукам и `core/*` | **4-4…4-6**, **5-1…5-7** |
 | чат (`Chat` + `ChatTopbar`) | классы `chat.ts`, `topbar.ts` | React `components/Chat.tsx` (1592 строки) | **6** |
-| лента | класс `ChatBubbles` | **класс** `components/chat/bubbles.ts` (порт tweb), React-хост `VanillaFeed.tsx` | хост уйдёт с этапом 6 |
+| лента | класс `ChatBubbles` | **класс** `components/chat/bubbles.ts` (порт tweb) внутри класса `Chat` (`components/chat/chat.ts`, К-3) | — |
 | композер | класс `ChatInput` | React `components/Composer.tsx` + `composer/*` | **7** (на этапе 6 — React-остров за `ChatInputFacade`) |
 | навигация Back/Esc | `appNavigationController` | порт `core/navigation/appNavigationController.ts` | — (уже есть) |
 | анимации | `SetTransition`, `TransitionSlider`, heavy animation | `core/dom/setTransition.ts` + хук `useSetTransition`, `components/transition.ts`, `core/dom/heavyAnimation.ts` | — (уже есть) |

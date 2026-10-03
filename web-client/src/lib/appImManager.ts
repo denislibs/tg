@@ -17,8 +17,9 @@
 // Статус набора (`getTypingElement`/`getPeerTyping`, блок L) — функции модуля ниже
 // класса, как было до К-2 (их зовёт строка чатлиста); в класс их переносит П-4.
 //
-// Инстанс чата на К-2 — React-остров (`components/chat/reactChatInstance.ts`,
-// `// ВРЕМЕННО до К-3`), с минимальным интерфейсом `Chat`, который зовёт класс.
+// Инстанс стека — класс `Chat` (`components/chat/chat.ts`, шаг К-3): `createNewChat`
+// строит `new Chat(this, managers, true)` (tweb `:3220`). Позицию ленты (`chatPositions`,
+// `saveChatPosition`/`getChatSavedPosition`, `:2640-2688`) держит класс, как у tweb.
 //
 // ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
 //  1. `columnEl` берётся в `construct`, а не инициализатором поля: модуль
@@ -40,11 +41,10 @@
 //     подписан на тяжёлую анимацию сам (`components/animationIntersector.ts:177`).
 //  5. `appChatBackground.attach` и первый `setBackground` делает `client/boot.ts`
 //     (фон нужен ещё экрану входа); `theme_changed` (`:494-504`) фон переигрывает
-//     сам (`chatBackground.solid.tsx`, подписка на `theme_changed`); тема чата
-//     в фоне (`publishBackground`) — Б-10.
-//  6. Позицию ленты пишет `ChatBubbles` сам (`bubbles.ts`, `saveChatPosition` на
-//     `destroy()`), поэтому `saveChatPosition`/`getChatSavedPosition`/`peer_changing`
-//     → позиция (`:479-492`, `:2640-2688`) здесь не портированы.
+//     сам (`chatBackground.solid.tsx`, подписка на `theme_changed`); тему чата
+//     публикует `Chat.publishBackground` (`chat.ts`).
+//  6. Позиция ленты (`ChatSavedPosition`) — без `pinnedMessages` (закреп — Б-19), без
+//     персиста (у tweb он тоже закомментирован, `:845`).
 //  7. `settings_updated` → подписка на `useSettingsStore` (единственный владелец
 //     настроек). `--messages-text-size`, `customEmojiSize`, формат времени живут у
 //     своих настроек; из `setSettings` — `animation-level-*`, `no-backdrop`,
@@ -57,11 +57,9 @@
 //     `GET /chats/{id}/history` не-участнику отдаёт 403 (перенесено из прежнего
 //     `useUrlSync.applyHash`, долг — `docs/readiness/port-divergences.md`).
 //  9. `setPeer` без `getPeerMigratedTo` и `min`-пиров (`:3293-3317`) — в нашей
-//     модели их нет; `spliceChats` не зовёт `publishBackground` (Б-10), не
-//     закрывает `AppPrivateSearchTab` (вкладки нет) и не меняет вкладку №0 правой
-//     колонки — её держит React-`Chat.tsx` до К-3 (`replaceSharedMediaTab`).
-// 10. Мета треда (`ThreadInfo`: заголовок темы/комментариев) едет опцией
-//     `thread` в `setInnerPeer` — у tweb её читает сам `Chat` из менеджеров.
+//     модели их нет; `spliceChats` не закрывает `AppPrivateSearchTab` (вкладки нет).
+// 10. `callUser` (`:2227`) — без `callTransitions`/`phone_calls_private`: наш движок
+//     звонков (`core/calls/callEngine.ts::startOutgoing`) берёт карточку собеседника.
 // 11. `notificationBuild` (`:805-822`) — `client/uiNotifications.ts` спрашивает
 //     `appImManager.chat` сам; звук отправки (`:857-877`) — `soundSubscriber.ts`.
 // 12. Клик по системному уведомлению (`sw.js` → `open-chat`) открывает чат здесь
@@ -76,7 +74,7 @@ import type { Middleware } from '@helpers/middleware'
 import { i18n, type FormatterArguments } from '@lib/langPack'
 import type { LangPackKey } from '@/lang'
 import type { SendMessageAction } from '@core/realtime/events'
-import { cachedChat, cachedPeer } from '@core/peerCache'
+import { cachedChat, cachedPeer, cachedUser } from '@core/peerCache'
 import { isAnyChat, isUser } from '@core/peers/peerId'
 import { useChatsStore } from '@stores/chatsStore'
 import { MOUNT_CLASS_TO } from '@config/debug'
@@ -103,8 +101,12 @@ import { openSearchUrl } from '@core/hooks/openSearchUrl'
 import animationIntersector from '@components/animationIntersector'
 import appChatBackground, { type AppChatBackground } from '@components/chat/bubbles/chatBackground.solid'
 import { ChatType } from '@components/chat/chatType'
-import ReactChatInstance from '@components/chat/reactChatInstance'
-import type { ThreadInfo } from '@components/Chat'
+import Chat from '@components/chat/chat'
+import { splitFullMid } from '@components/chat/bubbles'
+import { startOutgoing } from '@core/calls/callEngine'
+import { getUserTitle } from '@core/peers/getPeerTitle'
+import { getPeerPhotoId } from '@core/peers/peer'
+import { gradientFor } from '@core/dialogToChat'
 import appSidebarRight, { RIGHT_COLUMN_ACTIVE_CLASSNAME } from '@components/sidebarRight'
 import appDialogsManager from '@lib/appDialogsManager'
 import { toast, toastNew } from '@components/toast'
@@ -312,8 +314,14 @@ export type ChatSetPeerOptions = {
   commentId?: number,
   type?: ChatType,
   isDeleting?: boolean,
-  /** расхождение 10 шапки */
-  thread?: ThreadInfo
+  /** tweb `ChatSearchKeys` (`chat.ts:73`) — у нас из ключей поиска только тег «Избранного» */
+  savedReaction?: string
+}
+
+/** tweb `:148-165` — расхождение 6 шапки. */
+export type ChatSavedPosition = {
+  mids: number[],
+  top: number
 }
 
 /** tweb `:204-207` */
@@ -332,9 +340,9 @@ export enum APP_TABS {
 type SamePeerOptions = { peerId: PeerId, threadId?: number, monoforumThreadId?: PeerId, type?: ChatType }
 
 export class AppImManager extends EventListenerBase<{
-  chat_changing: (details: { from: ReactChatInstance, to: ReactChatInstance }) => void,
-  peer_changed: (chat: ReactChatInstance) => void,
-  peer_changing: (chat: ReactChatInstance) => void,
+  chat_changing: (details: { from: Chat, to: Chat }) => void,
+  peer_changed: (chat: Chat) => void,
+  peer_changing: (chat: Chat) => void,
   tab_changing: (tabId: number) => void,
   premium_toggle: (premium: boolean) => void
 }> {
@@ -347,7 +355,9 @@ export class AppImManager extends EventListenerBase<{
 
   private tabId: APP_TABS | undefined
 
-  public chats: ReactChatInstance[] = []
+  public chats: Chat[] = []
+  /** tweb `:292`, `:846` */
+  private chatPositions: { [key: string]: ChatSavedPosition } = {}
   private prevTab: HTMLElement | undefined
 
   public managers!: Managers
@@ -356,7 +366,7 @@ export class AppImManager extends EventListenerBase<{
     return rootScope.myId
   }
 
-  get chat(): ReactChatInstance {
+  get chat(): Chat {
     return this.chats[this.chats.length - 1]
   }
 
@@ -416,6 +426,17 @@ export class AppImManager extends EventListenerBase<{
 
       this.updateColumnAccessibility()
     })
+
+    // `:479-486`
+    const onPeerChanging = (chat: Chat) => {
+      this.saveChatPosition(chat)
+    }
+
+    const onPeerChanged = () => {
+      this.addEventListener('peer_changing', onPeerChanging, { once: true })
+    }
+
+    this.addEventListener('peer_changed', onPeerChanged)
 
     // `:835-843`
     this.addEventListener('peer_changed', ({ peerId }) => {
@@ -601,7 +622,6 @@ export class AppImManager extends EventListenerBase<{
     return this.setInnerPeer({
       ...rest,
       type: isForum ? ChatType.Chat : ChatType.Discussion,
-      thread: rest.thread ?? { rootMsgId: rest.threadId, title: '', kind: isForum ? 'topic' : 'comments' },
     })
   }
 
@@ -629,6 +649,63 @@ export class AppImManager extends EventListenerBase<{
     return this.appChatBackground.setBackground({
       transition: skipAnimation ? 'instant' : 'fade',
     })
+  }
+
+  /** tweb `:2640-2678` — расхождение 6 шапки. */
+  public saveChatPosition(chat: Chat) {
+    if(!([ChatType.Chat, ChatType.Discussion, ChatType.Saved] as ChatType[]).includes(chat.type) || !chat.peerId || !chat.bubbles) {
+      return
+    }
+
+    const chatBubbles = chat.bubbles
+    const key = chat.peerId + (chat.threadId ? '_' + chat.threadId : '')
+
+    const chatPositions = this.chatPositions
+    const shouldSavePosition =
+      !(chatBubbles.scrollable.getDistanceToEnd() <= 16 && chatBubbles.scrollable.loadedAll.bottom) &&
+      chatBubbles.getRenderedLength() &&
+      !chatBubbles.savedReaction &&
+      chatBubbles.getViewportSlice().invisibleBottom.length // * don't save if we're close to the end (or sponsored is below)
+
+    if(shouldSavePosition) {
+      chatBubbles.sliceViewport(true)
+      const position: ChatSavedPosition = {
+        mids: chatBubbles.getRenderedHistory('desc', true).map((fullMid) => splitFullMid(fullMid).mid),
+        top: chatBubbles.scrollable.scrollPosition,
+      }
+      chatPositions[key] = position
+    } else {
+      delete chatPositions[key]
+    }
+
+    this.chatPositions = chatPositions
+  }
+
+  /** tweb `:2680-2688` */
+  public getChatSavedPosition(chat: Chat): ChatSavedPosition | undefined {
+    if(!([ChatType.Chat, ChatType.Discussion, ChatType.Saved] as ChatType[]).includes(chat.type) || !chat.peerId) {
+      return
+    }
+
+    const threadId = chat.threadId || chat.monoforumThreadId
+    const key = chat.peerId + (threadId ? '_' + threadId : '')
+    return this.chatPositions[key]
+  }
+
+  /** tweb `:2227-2290` — расхождение 10 шапки. */
+  public callUser(userId: PeerId, type: 'voice' | 'video') {
+    const user = cachedUser(userId)
+    const name = getUserTitle(user)
+    startOutgoing(
+      {
+        id: userId,
+        name,
+        avatar: gradientFor(userId),
+        avatarText: name.charAt(0).toUpperCase(),
+        photoId: user?._ === 'user' ? getPeerPhotoId(user.photo) : 0,
+      },
+      type === 'video',
+    )
   }
 
   /** tweb `:2690-2713` */
@@ -670,7 +747,7 @@ export class AppImManager extends EventListenerBase<{
   // * не могу использовать тут TransitionSlider, так как мне нужен отрисованный блок рядом
   // * (или под текущим чатом) чтобы правильно отрендерить чат (напр. scrollTop)
   /** tweb `:2766-2805` */
-  private chatsSelectTab(chat: ReactChatInstance, animate?: boolean) {
+  private chatsSelectTab(chat: Chat, animate?: boolean) {
     const tab = chat.container
     if(this.prevTab === tab) {
       return
@@ -769,7 +846,7 @@ export class AppImManager extends EventListenerBase<{
 
   /** tweb `:3219-3231` */
   private createNewChat() {
-    const chat = new ReactChatInstance(this, this.managers)
+    const chat = new Chat(this, this.managers, true)
 
     this.chatsContainer.append(chat.container)
 
@@ -779,7 +856,7 @@ export class AppImManager extends EventListenerBase<{
   }
 
   /** tweb `:3233-3290` — расхождение 9 шапки */
-  private spliceChats(fromIndex: number, justReturn = true, animate?: boolean, spliced?: ReactChatInstance[]) {
+  private spliceChats(fromIndex: number, justReturn = true, animate?: boolean, spliced?: Chat[]) {
     if(fromIndex >= this.chats.length) return
 
     // When `spliced` is passed in, the caller already trimmed the stack (so `this.chat` is
@@ -810,8 +887,17 @@ export class AppImManager extends EventListenerBase<{
 
     this.chatsSelectTab(chatTo, animate)
 
+    // Re-publish the destination's background when returning to it — the chat we left may have
+    // applied its own theme/wallpaper to the global background. Skip when `justReturn` is false:
+    // the caller is rebuilding the stack and its recursive `setPeer` publishes the new background.
+    if(justReturn && chatTo !== chatFrom && chatTo.peerId) {
+      void chatTo.publishBackground(animate === false ? 'auto' : 'crossfade-backwards')
+    }
+
     if(justReturn) {
       this.dispatchEvent('peer_changed', chatTo)
+
+      appSidebarRight.replaceSharedMediaTab(chatTo.sharedMediaTab)
     }
 
     const toDestroy = spliced

@@ -75,6 +75,12 @@ export function applyDialogsMirror(op: DialogOp | null): void {
  * и сюда не перенесена. Зовётся раз на старт, как и там (:462/:570) — смена
  * языка без перезагрузки направление не меняет.
  */
+/** tweb `index.ts:500-503` — строка `.is-first-unread:before` (`_chatBubble.scss:307`). */
+function setUnreadMessagesText() {
+  const text = I18n.format('UnreadMessages', true)
+  document.documentElement.style.setProperty('--unread-messages-text', `"${text}"`)
+}
+
 function setDocumentLangPackProperties(langPack: LangPackDifference) {
   if (langPack.lang_code === 'ar') {
     document.documentElement.classList.add('is-rtl')
@@ -197,11 +203,15 @@ export async function bootstrap(): Promise<{ managers: Managers; hasToken: boole
   ])
   setDocumentLangPackProperties(langPack)
   // Названия месяцев и дней для чипов дат поиска (`helpers/date.ts::fillTipDates`)
-  // — порт tweb index.ts:482-491 (`onLanguageApply`): сразу после применения
-  // пакета старта и затем на каждую смену строк. Счётчик непрочитанных, который
-  // оригинал обновляет там же, у нас пишет лента (`Chat.tsx`).
-  fillLocalizedDates()
-  rootScope.addEventListener('language_apply', fillLocalizedDates)
+  // и текст границы непрочитанных (`--unread-messages-text`, tweb index.ts:500-503)
+  // — порт tweb index.ts:505-515 (`onLanguageApply`): сразу после применения
+  // пакета старта и затем на каждую смену строк.
+  const onLanguageApply = () => {
+    fillLocalizedDates()
+    setUnreadMessagesText()
+  }
+  onLanguageApply()
+  rootScope.addEventListener('language_apply', onLanguageApply)
   // tweb index.ts:534 — тема и слежение за системной на обычном старте (под
   // замком подписка уже стоит, повторный вызов лишь применяет тему).
   setThemeListener(() => useSettingsStore.getState().themeChoice)

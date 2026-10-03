@@ -317,6 +317,10 @@ const lang = {
   'Chat.SendAs.Title': 'Send As…',
   'Chat.SendAs.YourChannels': 'Your channels',
   'Chat.Service.Call.Missed': 'Missed',
+  'Chat.Title.Comments': {
+    one_value: '%d Comment',
+    other_value: '%d Comments',
+  },
   'Chat.UnpinAll.Text': 'Are you sure you want to unpin all messages?',
   'Chat.VoiceChat.JoinLink.Participants_ZeroValueHolder': 'no one joined yet',
   ChatAdmin: 'admin',

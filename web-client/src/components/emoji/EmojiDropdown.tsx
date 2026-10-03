@@ -700,7 +700,7 @@ export default function EmojiDropdown({
         {/* search: вкладки поиска правой колонки — tweb index.ts:300-310
             (вкладка стикеров → AppStickersTab, иначе → AppGifsTab; уже открытую
             вторым экземпляром не кладём). Отправляют они сами — через
-            `appImManager.chat.input` (остров `components/chat/reactChatInstance.ts`). */}
+            `appImManager.chat.input` (остров `components/chat/reactChatInput.ts`). */}
         <IconButton
           noRipple
           data-tab={-1}
