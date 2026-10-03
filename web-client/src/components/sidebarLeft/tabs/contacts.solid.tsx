@@ -26,7 +26,7 @@
  *  6. `setListClickListener` — наш порт (`lib/appDialogsManager.ts`).
  */
 import { createEffect, createSignal, onMount, type Component } from 'solid-js'
-import { setListClickListener } from '@lib/appDialogsManager'
+import appDialogsManager from '@lib/appDialogsManager'
 import InputSearch from '@components/inputSearch'
 import { IS_MOBILE } from '@environment/userAgent'
 import { canFocus } from '@helpers/dom/canFocus'
@@ -66,7 +66,7 @@ const Contacts: Component = () => {
   const sortMode = () => appSettings.contactsSortMode
 
   const onList = (list: HTMLUListElement) => {
-    setListClickListener({
+    appDialogsManager.setListClickListener({
       list,
       autonomous: true,
       // Отступление В7-1: секретный чат вместо личного

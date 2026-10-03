@@ -24,14 +24,13 @@ import { makeDialog } from '@core/dialogs/testDialog'
 import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '@core/folderIds'
 import type { Dialog } from '@core/models'
 import { useNotifyStore } from '@stores/notifyStore'
-import {
+import appDialogsManager, {
   addDialogNew,
   createChatList,
   DIALOG_LIST_ELEMENT_TAG,
   getDialog,
   initDialog,
   setLastMessageN,
-  setListClickListener,
   type DialogListContext,
 } from './appDialogsManager'
 
@@ -221,7 +220,7 @@ describe('setListClickListener', () => {
     document.body.append(list)
     const row = makeRow(list, GROUP)
     const onFound = vi.fn()
-    setListClickListener({ list, onFound, autonomous: true })
+    appDialogsManager.setListClickListener({ list, onFound, autonomous: true })
 
     mousedown(row.dom.titleSpan)
 
@@ -235,7 +234,7 @@ describe('setListClickListener', () => {
     document.body.append(list)
     const row = makeRow(list, GROUP)
     row.container.dataset.mid = '42'
-    setListClickListener({ list })
+    appDialogsManager.setListClickListener({ list })
 
     mousedown(row.container)
 
@@ -246,7 +245,7 @@ describe('setListClickListener', () => {
     const list = createChatList()
     document.body.append(list)
     const row = makeRow(list, GROUP)
-    setListClickListener({ list, onFound: () => false })
+    appDialogsManager.setListClickListener({ list, onFound: () => false })
 
     mousedown(row.container)
     mousedown(row.container, { button: 2 })
@@ -259,7 +258,7 @@ describe('setListClickListener', () => {
     document.body.append(list)
     const a = makeRow(list, GROUP)
     const b = makeRow(list, ALICE)
-    setListClickListener({ list, autonomous: true })
+    appDialogsManager.setListClickListener({ list, autonomous: true })
 
     mousedown(a.container)
     expect(a.container.classList.contains('active')).toBe(true)
@@ -268,11 +267,46 @@ describe('setListClickListener', () => {
     expect(b.container.classList.contains('active')).toBe(true)
   })
 
+  // tweb `:2307-2311`: Ctrl/⌘ — чат в новой вкладке браузера (`openDialogInNewTab`,
+  // маршрут `#/im?p=`), текущая вкладка пира не меняет
+  it.each(['ctrlKey', 'metaKey'] as const)('%s-клик открывает новую вкладку и не трогает текущую', (key) => {
+    const list = createChatList()
+    document.body.append(list)
+    const row = makeRow(list, GROUP)
+    row.container.dataset.mid = '' + (0xFFFFFFFF + 42)
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    appDialogsManager.setListClickListener({ list, autonomous: true })
+
+    const e = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, [key]: true })
+    row.container.dispatchEvent(e)
+
+    expect(open).toHaveBeenCalledWith(`#/im?p=${GROUP}&message=42`, '_blank')
+    expect(setPeer).not.toHaveBeenCalled()
+    expect(e.defaultPrevented).toBe(true)
+    // и подсветка текущей вкладки не переезжает
+    expect(row.container.classList.contains('active')).toBe(false)
+    open.mockRestore()
+  })
+
+  // tweb `:2299-2303`: строка форума (`.is-forum` на аватаре) чат не открывает —
+  // её открывает форум-таб (задача 1-6)
+  it('строка форума чат не открывает', () => {
+    const list = createChatList()
+    document.body.append(list)
+    const row = makeRow(list, GROUP)
+    row.dom.avatarEl!.node.classList.add('is-forum')
+    appDialogsManager.setListClickListener({ list })
+
+    mousedown(row.container)
+
+    expect(setPeer).not.toHaveBeenCalled()
+  })
+
   it('click по строке гасится (переход по ссылке-строке не нужен, tweb :2307-2325)', () => {
     const list = createChatList()
     document.body.append(list)
     const row = makeRow(list, GROUP)
-    setListClickListener({ list })
+    appDialogsManager.setListClickListener({ list })
 
     const click = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 })
     row.container.dispatchEvent(click)

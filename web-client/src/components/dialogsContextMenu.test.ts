@@ -111,11 +111,13 @@ async function rowIn(filterId: number, peerId: PeerId) {
   })
 }
 
-/** вкладка архива — список `xds[FOLDER_ID_ARCHIVE]` и `filterId` архива (`archivedTab.tsx:86-108`) */
+/** тело вкладки архива — список `xds[FOLDER_ID_ARCHIVE]` и `filterId` архива (`archivedTab.tsx:86-108`);
+ *  сама вкладка — `sidebarLeft/tabs/archivedTab.solid.test.tsx` */
 function openArchive() {
-  const container = document.createElement('div')
-  document.body.append(container)
-  return mounted!.manager.mountArchivedList(container)
+  const { scrollable, ul } = mounted!.manager.l({ id: ARCHIVE_FOLDER_ID, localId: ARCHIVE_FOLDER_ID })
+  scrollable.append(ul)
+  document.body.append(scrollable.container)
+  mounted!.manager.setFilterIdAndChangeTab(ARCHIVE_FOLDER_ID)
 }
 
 async function open(peerId: PeerId, options: { page?: { pageX: number, pageY: number }, filterId?: number } = {}) {

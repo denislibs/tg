@@ -17,8 +17,12 @@
 // по списку) — ниже, раздел «СТРОКА ДИАЛОГА» со своими расхождениями С1–С9
 // (задача 1-1 волны 7, `docs/superpowers/plans/2026-09-30-wave-7-shell-sidebars.md`).
 // Контекстное меню диалога (`DialogsContextMenu`, `:850`, `:2337-2339`) — задача
-// 1-2, расхождение 23. Остальной менеджер (форум-табы, сторис, активность) —
-// задачи 1-3…1-8 той же программы.
+// 1-2, расхождение 23. Ядро менеджера — клик по строке (`setListClickListener`
+// `:2072-2346`, Ctrl/⌘ — `openDialogInNewTab`), активная строка (`setDialogActive`
+// `:1300`, `peer_changed`), пустые плейсхолдеры и секция «Контакты» под коротким
+// списком (`:1624-1817`) — задача 1-8; форум-табы (`toggleForumTab`,
+// `toggleForumTabByPeerId`, `.topics-slider`, `:1819-2054`) — задача 1-6,
+// расхождение 25; сторис — пачка П-3.
 //
 // Список папки — `AutonomousDialogList` (`components/autonomousDialogList/dialogs.ts`,
 // задача 1-4 волны 7): его создаёт `l(filter)` на каждую отрисованную папку и
@@ -70,9 +74,12 @@
 //  8. Из `onStateLoaded` (`:1014-1090`) папочный срез — в `startDialogs`: `addFilter`
 //     на каждую папку, гидрация стора, `filterId = -1; onClick(0, false)`,
 //     `suggestionContainer`. Папки у нас известны синхронно (подняты из State в
-//     `client/boot.ts`), поэтому ветки `!haveFilters` с плейсхолдером
-//     (`:1044-1057`) нет; `fillConversations` — бэклог П-2. Ряд историй
-//     (`renderStories`, `:1366`) — после `addFilters`, как у tweb.
+//     `client/boot.ts`), поэтому ветки `!haveFilters` (показать плейсхолдер
+//     до папок, `:1044-1057`) нет; `xd.preloadDialogs()` и `doNotRenderChatList`
+//     (`:1340-1351`) — тоже: зеркало диалогов поднято до первого кадра
+//     (`client/boot.ts::applyDialogsMirror`), первую страницу список рисует сам.
+//     `fillConversations` — бэклог П-2. Ряд историй (`renderStories`, `:1366`) —
+//     после `addFilters`, как у tweb.
 //     Остальной `onStateLoaded` — первичные загрузки и realtime (бывший
 //     `core/hooks/useAppBootstrap.ts`), метод `onStateLoaded`.
 //     `suggestionContainer` создаётся в `startDialogs()` (у tweb — в конце
@@ -97,8 +104,12 @@
 //     (`has-horizontal-folders`/`has-vertical-folders`), п. 1.
 // 13. `changeFiltersAllChatsKey` (`:1292-1296`, `:1320`) и слушатель `resize`
 //     (`:700-702`) не портированы — мёртвый код форка (поправка 2 плана).
-// 14. `onTabChange` (`:1092-1168`): плашка «N новых чатов» shared-папки
-//     (`:1103-1165`, `getChatlistUpdates`) — отложенная задача 13.
+// 14. `onTabChange` (`:1397-1472`): плашка «N новых чатов» папки по ссылке
+//     (`:1406-1469`, `createTopNotification`/`toggleTopNotification` `:1483-1548`,
+//     `chatlistTopNotification.tsx`) не портирована: у бэкенда нет ни
+//     `chatlists.getChatlistUpdates`/`hideChatlistUpdates`, ни признака
+//     `dialogFilterChatlist` у папки, вступившей по ссылке (`domain.DialogFilter`) —
+//     плашке не из чего взяться (бэклог Б-52).
 // 15. `setFilterIdAndChangeTab` синхронный (у tweb `async`, `:855-858`): его
 //     обещание разрешается `undefined` — `onChatsScroll` ничего не возвращает
 //     (`base.ts:144-146`), — и полоса ждала бы пустоту.
@@ -128,19 +139,29 @@
 //     на холодном старте оставляет градиент видимым под плашкой-подсказкой.
 //     У нас мёртвой строки в ref нет, а `onFiltersLengthChange` синхронизирует
 //     `hide` градиента с показом ряда на каждом проходе.
-// 22. `peer_changed` (`:1176-1229`) — событие `appImManager`; тред/тема у строки
-//     не сравниваются (`isSamePeer` c `threadId`): строки тем — бэклог Б-3.
+// 22. `peer_changed` (`:1176-1229`) — событие `appImManager`, сравнение —
+//     `appImManager.isSamePeer` с `threadId`; строки тем — в `forumTab.xd`.
+//     `isForum` события у нас не едет — его считает владелец по зеркалу
+//     (`isForum(cachedChat)`), ботфорума и монофорума нет (О-3, О-4).
 // 23. Меню диалога (`this.contextMenu`, `:850`): менеджеры владельца, вторым аргументом — сам
 //     владелец (расхождение 1 шапки `components/dialogsContextMenu.ts`). Вешает
 //     его `setListClickListener({withContext: true})` (`:2337-2339`) на `ul`
 //     списка папки из `l(filter)` (`:1478`), как у tweb; `withArchiveContext`
-//     (меню строки «Архив») — задача 1-5.
-// 24. `openDialogInNewTab` (`:2055-2070`): маршрута `#/im?p=…` у нас нет (разбор
-//     хэша — `core/messageLink.ts::parseNavHash`, ссылки — `internalLinkProcessor`,
-//     Э5-4), адрес чата — наш хэш `#<peerId>` (`appImManager.overrideHash`).
-//     Параметров `message`/`thread`/`community` нет: строки с `data-mid` и
-//     `data-thread-id` (выдача поиска, темы форума) меню получают в 2-3 и 1-6,
-//     сообществ нет (О-5).
+//     (меню строки «Архив») — бэклог Б-50.
+// 24. `openDialogInNewTab` (`:2055-2070`): `message`/`thread` в адресе —
+//     серверные номера (`getServerMessageId`): наш `appImManager.op` переводит
+//     номера из ссылки в клиентские всегда (его `:2084-2096`), а у tweb перевод
+//     идемпотентен для неканалов. Параметра `community` нет — сообществ нет (О-5).
+// 25. Форум-табы (`:1819-2054`, задача 1-6): только `GroupForumTab` — в реестре
+//     нет ботфорума и монофорума (О-3, О-4); ветки сообществ
+//     (`CommunityForumTab`, `isCommunityChat`, `shouldOpenForumAsNavigationTab`
+//     с `isCommunity`) и «Избранного» как форума (`peerId === myId` →
+//     `AppSharedMediaTab`, `:1950-1962`; настройки `savedAsForum` нет, О-88) не
+//     портированы: вкладкой слайдера форум открывается, ровно когда в колонке
+//     уже открыта вкладка (`hasNavigationHistory`). `view_forum_as_messages`
+//     (`:1985-1993`) — флага нет на бэкенде (`domain/mtdialog.go:47`), форум
+//     всегда открывается табом. Плавающий таб гасит клиренс под FAB списка
+//     (`setCollapsed`, расхождение 19).
 
 import { createEffect, createRoot, on, untrack } from 'solid-js'
 import Scrollable from '@components/scrollable'
@@ -156,12 +177,21 @@ import StoriesList from '@components/stories/list.solid'
 import appSidebarLeft from '@components/sidebarLeft'
 import appSidebarRight from '@components/sidebarRight'
 import appImManager from '@lib/appImManager'
+import { ChatType } from '@components/chat/chatType'
+import { createChatlistContacts, type ChatlistContacts } from '@components/sidebarLeft/chatlistContacts.solid'
+import Button from '@components/button'
+import wrapStickerEmoji from '@components/wrappers/stickerEmoji'
+import { attachClickEvent } from '@helpers/dom/clickEvent'
+import { renderImageFromUrlPromise } from '@helpers/dom/renderImageFromUrl'
+import { fastRafPromise } from '@helpers/schedulers'
+import { getServerMessageId } from '@core/history/messageId'
 import { AppChatFoldersTab, AppEditFolderTab } from '@components/solidJsTabs/tabs'
 import ConnectionStatusComponent from '@components/connectionStatus'
 import { createSolidNodes } from '@shared/solid/mountSolid.solid'
 import useFolders from '@stores/folders.solid'
 import { useHasFolders } from '@stores/foldersSidebar.solid'
 import { useFoldersStore } from '@stores/foldersStore'
+import { useAppStateStore } from '@stores/appState'
 import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '@core/folderIds'
 import appNavigationController, { type NavigationItem } from '@core/navigation/appNavigationController'
 import type SwipeHandler from '@core/dom/swipeHandler'
@@ -194,7 +224,7 @@ import formatNumber from '@helpers/number/formatNumber'
 import { formatDateAccordingToTodayNew } from '@helpers/date'
 import { logger, LogTypes } from '@lib/logger'
 import rootScope from '@lib/rootScope'
-import { i18n } from '@lib/langPack'
+import I18n, { _i18n, i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 import { choosePhotoSize, getMediaFromMessage, isMediaSpoiler, type MyDocument } from '@core/media/messageMedia'
 import { getMessageText, type Dialog, type DraftMessageReal, type MyMessage } from '@core/models'
 import { realDraft } from '@core/dialogs/draft'
@@ -207,7 +237,8 @@ import { isUserStatusOnline } from '@core/peers/peer'
 import { loadChats, loadPresence, startPresenceDegradation, useChatsStore } from '@stores/chatsStore'
 import { isDialogMuted, loadNotifySettings, useNotifyStore } from '@stores/notifyStore'
 import { useSecretChatStore } from '@stores/secretChatStore'
-import { ARCHIVE_DIALOG_TAG_NAME, AutonomousDialogList } from '@components/autonomousDialogList/dialogs'
+import { AutonomousDialogList } from '@components/autonomousDialogList/dialogs'
+import { archiveDialogTagName } from '@components/archiveDialog.solid'
 import { setDialogTyping } from '@components/autonomousDialogList/base'
 import { MOUNT_CLASS_TO } from '@config/debug'
 import { loadStories } from '@stores/storiesStore'
@@ -221,9 +252,19 @@ import { watchPushConditions } from '@/client/pushSetup'
 import { initAppBadge } from '@/client/appBadge'
 import { bootPrefetch } from '@/client/bootData'
 import { preloadReactionAssets } from '@components/chat/reactions'
+import { ForumTab } from '@components/forumTab/forumTab'
+import findForumTabByPeerId from '@components/forumTab/findForumTabByPeerId'
+import { fillForumTabRegister } from '@components/forumTab/fillRegister'
+import { getForumTopicMuted, isForumTopic, type ForumTopic } from '@components/autonomousDialogList/forumTopics'
+import { APP_TABS } from '@lib/appImManager'
+import { dispatchHeavyAnimationEvent } from '@core/dom/heavyAnimation'
+import shake from '@helpers/dom/shake'
 import styles from './appDialogsManager.module.scss'
 
 const log = logger('DIALOGS', LogTypes.Error)
+
+/** tweb `:136` — столько строк во «Всех чатах», и контакты под списком уже не нужны */
+const MIN_DIALOGS_WITHOUT_CONTACTS = 10
 
 /** tweb appReactionsManager.ts:94-96 — предзагрузка ассетов реакций через 7.5 с после `user_auth`. */
 const REACTIONS_PRELOAD_DELAY = 7.5e3
@@ -262,8 +303,8 @@ const REACTIONS_PRELOAD_DELAY = 7.5e3
 //      не ставятся, а «✓/✓✓» считаются по `read_outbox_max_id` диалога
 //      (`components/sendingStatus.ts`, расхождение 1).
 //  С3. Чего нет в модели, того нет и в строке (ветки удалены, а не заглушены):
-//      темы форума строкой (`isForumTopic`, `closed`, `not-visited`
-//      — задача 1-6), монофорум и «все чаты» (`monoforumParentPeerId`,
+//      метка `not-visited` темы (`read_inbox_max_id` в строке темы нет, С11),
+//      монофорум и «все чаты» (`monoforumParentPeerId`,
 //      `asAllChats`, О-4), сообщества (`subtitlePeerId`, `getEmptySubtitle`, О-5),
 //      ограничения/чувствительное/самоуничтожающееся медиа (`isMessageRestricted`,
 //      `isMessageSensitive`, `ttl_seconds` — признаков нет в `core/models.ts`).
@@ -285,8 +326,8 @@ const REACTIONS_PRELOAD_DELAY = 7.5e3
 //      (очередь аватару не передаётся). Подсветка активного диалога при сборке
 //      (`isActive` → `setDialogActive`, `:383-390`, `:488-490`) — у менеджера
 //      (`addListDialog`, задача 1-4): строку строит его экземпляр, конструктор
-//      синглтона не видит; `is-forum-open` и `dialogDom` на узле — их читают
-//      форум-таб (1-6) и `setDialogActive` для `callIcon`/`titleWrapOptions` (О-96, С5).
+//      синглтона не видит; там же `is-forum-open` (`:480-485`). `dialogDom` на
+//      узле читает `setDialogActive` для `callIcon`/`titleWrapOptions` (О-96, С5).
 //      `titleWrapOptions`/`textColor` — рендерера кастом-эмодзи у нас нет.
 //  С5. `setDialogActiveStatus` — только класс `active`: кастом-эмодзи
 //      (`setTextColor`), эмодзи-статус (`changeTitleEmojiColor`) в строке у нас
@@ -296,7 +337,8 @@ const REACTIONS_PRELOAD_DELAY = 7.5e3
 //      `highlightText` поверх частей (f57dbcec3 не портирован, `delta/part-3.md`);
 //      `disposeTextHighlight` и `data-search-query` вместе с ним.
 //  С7. `data-thread-id` у строки найденного ответа в теме форума и
-//      `getEmptySubtitle` — читать их некому (клик по теме форума — 1-6).
+//      `getEmptySubtitle` — читать их некому: найденные ответы в темах поиск не
+//      отдаёт, бот-форума и сообществ нет (О-3, О-5).
 //  С8. `initDialog` разделён: подзаголовок с бейджами — функция модуля (её зовут и
 //      строки вне списка), онлайн-точка (`xd.setOnlineStatus`) и «печатает»
 //      (`setDialogTyping`) — метод экземпляра менеджера (у них предмет — список
@@ -311,6 +353,14 @@ const REACTIONS_PRELOAD_DELAY = 7.5e3
 //      (`chats.savedDialogs`). Подсветка активной строки при сборке не ставится:
 //      у оригинала она сравнивает с открытым окном `ChatType.Saved` (`:384-390`),
 //      а такого окна у нас нет (`// О-110 волна 7`).
+// С11. Тема форума строкой (`isForumTopic`: пир форума + номер темы в `threadId`,
+//      задача 1-6, `autonomousDialogList/forumTopics.ts`): без аватара, заголовок —
+//      значок и название темы. Тему `PeerTitle` и бейджи получают объектом
+//      `ForumTopic` (опция `topic` строки, `dialog` списка), а не из
+//      `dialogsStorage.getForumTopic(peerId, threadId)` (`peerTitle.ts:152-187`,
+//      `:2836-2843`): хранилища тем у нас нет. Мьют темы — `getForumTopicMuted`,
+//      «✓/✓✓» последнего своего — по горизонту чтения форума
+//      (`read_outbox_max_id` темы в модели нет), черновика у темы нет.
 //  С9. Порядок частей строки задаёт HEAD `rowTsx.tsx:247-257` (заголовок →
 //      подпись → аватар), живые дампы `docs/tweb/dom/dumps/15-right-14…` сняты со
 //      старой базы (подпись → заголовок); вид не меняется — места раскладывает
@@ -418,8 +468,10 @@ export type DialogElementOptions = {
   /** строка НЕ в главном списке чатов: без `href` (tweb `:428-430`) */
   autonomous?: boolean,
   wrapOptions: { middleware?: Middleware },
-  /** tweb `:253`: у своего пира — пир-источник сохранённого диалога (С10); темы форума — 1-6 */
+  /** tweb `:253`: у своего пира — пир-источник сохранённого диалога (С10), у форума — тема (С11) */
   threadId?: number,
+  /** С11: тема строки — её заголовок и значок (у tweb `PeerTitle` достаёт тему по `threadId` сам) */
+  topic?: ForumTopic,
   /** строка главного списка — ей положен бейдж на аватаре в узкой колонке (`:2770`) */
   isMainList?: boolean,
   /** менеджеры строки (у оригинала — синглтон, С1) */
@@ -473,6 +525,7 @@ export class DialogElement {
     avatarSize = 'bigger',
     autonomous,
     threadId,
+    topic,
     wrapOptions,
     isMainList,
     managers,
@@ -487,7 +540,7 @@ export class DialogElement {
     attachRowController(this, {
       clickable: true,
       noRipple: !rippleEnabled,
-      havePadding: !threadId,
+      havePadding: !threadId && !topic,
       title: true,
       titleRightSecondary: true,
       subtitle: true,
@@ -502,23 +555,30 @@ export class DialogElement {
     this.subtitleRight.remove()
     this.managers = managers
 
-    // tweb `:345-348` — темы форума строкой (`isForumTopic`) — задача 1-6 (С3)
+    // tweb `:345-348`
     const isSavedDialog = !!threadId && peerId === rootScope.myId
+    // тема — и по номеру, и по самой теме: у General номер корня 0 (у нас его
+    // сообщения без темы, `forum_topics.root_msg_id = 0`), у tweb — `GENERAL_TOPIC_ID` 1
+    const isForumTopic = !!topic || (!!threadId && !isSavedDialog)
 
     const usePeerId = isSavedDialog ? threadId! : peerId
 
     // tweb `:350-374`
-    const avatar = avatarNew({
-      middleware,
-      size: avatarSizeMap[avatarSize]!,
-      peerId: usePeerId,
-      isDialog: !!meAsSaved,
-      meAsNotes: isSavedDialog,
-      managers,
-    })
-    const avatarEl = avatar.node
-    avatarEl.classList.add('dialog-avatar')
-    this.applyMediaElement(avatarEl, avatarSize)
+    const avatar = isForumTopic ?
+      undefined :
+      avatarNew({
+        middleware,
+        size: avatarSizeMap[avatarSize]!,
+        peerId: usePeerId,
+        isDialog: !!meAsSaved,
+        meAsNotes: isSavedDialog,
+        managers,
+      })
+    const avatarEl = avatar?.node
+    if(avatarEl) {
+      avatarEl.classList.add('dialog-avatar')
+      this.applyMediaElement(avatarEl, avatarSize)
+    }
 
     const captionDiv = this.container
 
@@ -528,8 +588,8 @@ export class DialogElement {
 
     this.titleRow.classList.add('dialog-title')
 
-    // tweb `:397-411` — имя пира узлом `.peer-title`
-    const peerTitle = new PeerTitle({ peerId: usePeerId, dialog: meAsSaved, withIcons: true, meAsNotes: isSavedDialog, middleware, managers })
+    // tweb `:397-411` — имя пира узлом `.peer-title`; у темы — её заголовок (С11)
+    const peerTitle = new PeerTitle({ peerId: usePeerId, dialog: meAsSaved, withIcons: true, meAsNotes: isSavedDialog, topic: isForumTopic ? topic : undefined, middleware, managers })
     titleSpanContainer.append(peerTitle.element)
 
     const span = this.subtitle
@@ -549,7 +609,8 @@ export class DialogElement {
 
     li.dataset.peerId = '' + peerId
 
-    if(threadId) li.dataset.threadId = '' + threadId
+    // у General номер 0 — ключ строки темы всё равно нужен (`getDialogKeyFromElement`)
+    if(threadId || isForumTopic) li.dataset.threadId = '' + (threadId ?? 0)
 
     // tweb `:448-458`
     const statusSpan = document.createElement('span')
@@ -808,10 +869,25 @@ export class AppDialogsManager {
   public xds = new Map<number, AutonomousDialogList>()
   public contextMenu: DialogsContextMenu | undefined
 
+  /** tweb `:822-826` — форум-табы (расхождение 25) */
+  private forumsTabs = new Map<PeerId, ForumTab>()
+  private forumsSlider: HTMLElement | undefined
+  private forumTabByPeerIdPromises = new Map<PeerId, Promise<void>>()
+  public forumTab: ForumTab | undefined
+  private forumNavigationItem: NavigationItem | undefined
+  /** tweb `:1817` — ставит класс колонки (`sidebarLeft/index.ts:453-455`) */
+  public onSomeDrawerToggle?: () => void
+
   private folders!: { [k in 'menu' | 'container' | 'menuScrollContainer' | 'menuGradient']: HTMLElement }
   private filtersRendered = new Map<number, FilterRendered>()
   /** tweb `:801` — строки, подсвеченные активными (`setDialogActive`) */
   private lastActiveElements = new Set<HTMLElement>()
+
+  /** tweb `:803-811` — секция «Контакты» под коротким списком и подпись пустого плейсхолдера */
+  private contactsPlaceholder: ChatlistContacts | undefined
+  public onListLengthChange: (() => void) | undefined
+  private emptyDialogsPlaceholderSubtitle: I18n.IntlElement | undefined
+  private updateContactsLengthPromise: Promise<number> | undefined
   private showFiltersPromise: Promise<void> | undefined
   private filtersNavigationItem: NavigationItem | undefined
 
@@ -866,6 +942,18 @@ export class AppDialogsManager {
     this.chatsContainer = document.getElementById('chatlist-container') as HTMLElement
 
     this.contextMenu = new DialogsContextMenu(managers, this) // `:850`, расхождение 23
+
+    // `:854-855`
+    this.onListLengthChange = () => this._onListLengthChange()
+
+    // `:879-885` — форум-табы (расхождение 25)
+    fillForumTabRegister()
+
+    this.forumsTabs = new Map()
+    this.forumsSlider = document.createElement('div')
+    this.forumsSlider.classList.add('topics-slider')
+
+    this.chatsContainer.parentElement!.parentElement!.append(this.forumsSlider)
 
     // `:857-859`, `:974` — `bottomPart` с `#folders-container` внутри
     const host = this.host = document.createElement('div')
@@ -922,7 +1010,9 @@ export class AppDialogsManager {
           )
           folders.onClick()?.(newIndex)
         },
-        // `verifyTouchTarget: () => !this.forumTab` (`:631-633`) — форум-таба нет (Б-3)
+        verifyTouchTarget: () => {
+          return !this.forumTab
+        },
       })
     }
 
@@ -982,7 +1072,7 @@ export class AppDialogsManager {
     this.initListeners()
 
     // `peer_changed` (`:1176-1229`) — расхождение 22
-    const onPeerChanged = ({ peerId }: { peerId: PeerId }) => this.onPeerChanged(peerId)
+    const onPeerChanged = (chat: { peerId: PeerId, threadId?: number }) => this.onPeerChanged(chat)
     appImManager.addEventListener('peer_changed', onPeerChanged)
     this.disposePeerChanged = () => appImManager.removeEventListener('peer_changed', onPeerChanged)
 
@@ -1035,8 +1125,27 @@ export class AppDialogsManager {
     this.xds.clear()
     this.filtersRendered.clear()
     this.lastActiveElements.clear()
+    if(this.contactsPlaceholder) {
+      this.contactsPlaceholder.destroy()
+      this.contactsPlaceholder = undefined
+    }
+    this.onListLengthChange = undefined
+    this.emptyDialogsPlaceholderSubtitle = undefined
+    this.updateContactsLengthPromise = undefined
     this.xd = undefined
     this.contextMenu = undefined
+
+    // расхождение 1: форум-табы вечного владельца снимает только тестовый `destroy()`
+    if(this.forumNavigationItem) {
+      appNavigationController.removeItem(this.forumNavigationItem)
+      this.forumNavigationItem = undefined
+    }
+    this.forumTab = undefined
+    this.forumsTabs.forEach((tab) => tab.onCloseAfterTimeout())
+    this.forumsTabs.clear()
+    this.forumTabByPeerIdPromises.clear()
+    this.forumsSlider?.remove()
+    this.forumsSlider = undefined
 
     this.foldersOverlay.remove()
     this.folders.container.remove()
@@ -1224,6 +1333,11 @@ export class AppDialogsManager {
    * бейджа сюда не доходит.
    */
   private initListeners() {
+    // `:1172-1174`
+    this.listenerSetter.add(rootScope)('contacts_update', (userId) => {
+      this.processContact(+userId)
+    })
+
     const { folderItems, onClick } = useFolders()
     this.disposeListeners = createRoot((dispose) => {
       createEffect(on(() => folderItems.map((item) => item.id), (ids) => {
@@ -1266,8 +1380,8 @@ export class AppDialogsManager {
     const xd = new AutonomousDialogList({ filterId: filter.id, appDialogsManager: this })
     this.xds.set(filter.id, xd)
     const { scrollable, list } = xd.generateScrollable(filter)
-    // `withArchiveContext: filter.id === FOLDER_ID_ALL` — меню строки «Архив», задача 1-5
-    this.setListClickListener({ list, withContext: true })
+    // `withArchiveContext: filter.id === FOLDER_ID_ALL` — меню строки «Архив», бэклог Б-50
+    this.setListClickListener({ list, onFound: undefined, withContext: true })
 
     return { ul: list, xd, scrollable }
   }
@@ -1275,8 +1389,14 @@ export class AppDialogsManager {
   /** `:2055-2070` — расхождение 24 */
   public openDialogInNewTab(element: HTMLElement) {
     const peerId = +element.dataset.peerId!
+    const lastMsgId = +element.dataset.mid! || undefined
+    const threadId = +element.dataset.threadId! || undefined
 
-    const url = `#${peerId}`
+    const params = new URLSearchParams()
+    params.set('p', '' + peerId)
+    if(lastMsgId) params.set('message', '' + getServerMessageId(lastMsgId))
+    if(threadId) params.set('thread', '' + getServerMessageId(threadId))
+    const url = `#/im?${params.toString()}`
     window.open(url, '_blank')
   }
 
@@ -1348,9 +1468,217 @@ export class AppDialogsManager {
     })
   }
 
-  /** tweb `:1127-1129` без `!!this.forumTab` — форум-таба нет (Б-3) */
+  /** tweb `:1624-1647` */
+  private generateEmptyPlaceholder(options: {
+    title: LangPackKey,
+    subtitle?: LangPackKey,
+    subtitleArgs?: FormatterArguments,
+    classNameType: string,
+  }) {
+    const BASE_CLASS = 'empty-placeholder'
+    const container = document.createElement('div')
+    container.classList.add(BASE_CLASS, BASE_CLASS + '-' + options.classNameType)
+
+    const header = document.createElement('div')
+    header.classList.add(BASE_CLASS + '-header')
+    _i18n(header, options.title)
+
+    const subtitle = document.createElement('div')
+    subtitle.classList.add(BASE_CLASS + '-subtitle')
+    if(options.subtitle) {
+      _i18n(subtitle, options.subtitle, options.subtitleArgs)
+    }
+
+    container.append(header, subtitle)
+
+    return { container, header, subtitle }
+  }
+
+  /**
+   * tweb `:1649-1738`: пустой список — плейсхолдер в `.chatlist-top`. «Все чаты» —
+   * картинка `EmptyChats.svg` и число контактов, пользовательская папка —
+   * стикер 📂 и «Изменить папку»; у архива плейсхолдера нет.
+   */
+  private checkIfPlaceholderNeeded() {
+    if(this.filterId === ARCHIVE_FOLDER_ID) {
+      return
+    }
+
+    const chatList = this.chatList
+    const part = chatList.parentElement as HTMLElement
+    let placeholderContainer = (Array.from(part.children) as HTMLElement[]).find((el) => el.matches('.empty-placeholder'))
+    const needPlaceholder = !this.xd!.sortedList.itemsLength()
+
+    if(needPlaceholder && placeholderContainer) {
+      return
+    } else if(!needPlaceholder) {
+      if(placeholderContainer) {
+        part.classList.remove('with-placeholder')
+        placeholderContainer.remove()
+      }
+
+      return
+    }
+
+    let type: 'dialogs' | 'folder'
+    if(!this.filterId) {
+      const placeholder = this.generateEmptyPlaceholder({
+        title: 'ChatList.Main.EmptyPlaceholder.Title',
+        classNameType: type = 'dialogs',
+      })
+
+      const container = placeholderContainer = placeholder.container
+
+      const img = document.createElement('img')
+      img.classList.add('empty-placeholder-dialogs-icon')
+
+      this.emptyDialogsPlaceholderSubtitle = new I18n.IntlElement({
+        element: placeholder.subtitle,
+      })
+
+      void Promise.all([
+        this.updateContactsLength(false),
+        renderImageFromUrlPromise(img, 'assets/img/EmptyChats.svg'),
+        fastRafPromise(),
+      ]).then(([usersLength]) => {
+        container.classList.add('visible')
+        part.classList.toggle('has-contacts', !!usersLength)
+      })
+
+      container.prepend(img)
+    } else {
+      const placeholder = this.generateEmptyPlaceholder({
+        title: 'FilterNoChatsToDisplay',
+        subtitle: 'FilterNoChatsToDisplayInfo',
+        classNameType: type = 'folder',
+      })
+
+      placeholderContainer = placeholder.container
+
+      const div = document.createElement('div')
+      const emoji = '📂'
+      const size = 128
+      wrapStickerEmoji({
+        div,
+        emoji: emoji,
+        width: size,
+        height: size,
+        middleware: this.middlewareHelper.get(),
+      }).catch(() => {})
+
+      placeholderContainer.prepend(div)
+
+      const button = Button('btn-primary btn-color-primary btn-control', {
+        text: 'FilterHeaderEdit',
+        icon: 'settings',
+      })
+
+      const filterId = this.filterId
+      attachClickEvent(button, () => {
+        // `filtersStorage.getFilter` (`:1729`) — определение папки синхронно в `appState`
+        const filter = useAppStateStore.getState().folders.find((folder) => folder.id === filterId)
+        void appSidebarLeft.createTab(AppEditFolderTab).open({ ...AppEditFolderTab.getInitArgs(), initFilter: filter })
+      })
+
+      placeholderContainer.append(button)
+    }
+
+    part.append(placeholderContainer)
+    part.classList.add('with-placeholder')
+    part.dataset.placeholderType = type
+  }
+
+  /** tweb `:1740-1772` */
+  private updateContactsLength(updatePartClassName: boolean) {
+    return this.updateContactsLengthPromise ??= this.managers.contacts.getContactsPeerIds().then((peerIds) => {
+      const subtitle = this.emptyDialogsPlaceholderSubtitle
+      if(subtitle) {
+        let key: LangPackKey, args: FormatterArguments
+
+        if(peerIds.length) {
+          key = 'ChatList.Main.EmptyPlaceholder.Subtitle'
+          args = [i18n('Contacts.Count', [peerIds.length])]
+        } else {
+          key = 'ChatList.Main.EmptyPlaceholder.SubtitleNoContacts'
+          args = []
+        }
+
+        subtitle.compareAndUpdate({
+          key,
+          args,
+        })
+      }
+
+      if(updatePartClassName && this.xd) {
+        const part = this.chatList.parentElement as HTMLElement
+        part.classList.toggle('has-contacts', !!peerIds.length)
+      }
+
+      this.updateContactsLengthPromise = undefined
+
+      return peerIds.length
+    })
+  }
+
+  /** tweb `:1774-1780` */
+  private removeContactsPlaceholder() {
+    const parts = this.chatList.parentElement!.parentElement!
+    parts.classList.remove('with-contacts')
+    this.contactsPlaceholder!.element.remove()
+    this.contactsPlaceholder!.destroy()
+    this.contactsPlaceholder = undefined
+  }
+
+  /** The chat list scrolled to its end — render the next page of contacts, if they are shown. */
+  public loadContacts = () => {
+    this.contactsPlaceholder?.loadMore()
+  }
+
+  /** A dialog for this peer appeared or went away — the contacts below the chat list follow. */
+  public processContact = (peerId: PeerId) => {
+    void this.contactsPlaceholder?.processContact(peerId)
+  }
+
+  /** tweb `:1792-1817` */
+  private _onListLengthChange = () => {
+    if(!this.xd) return
+
+    this.checkIfPlaceholderNeeded()
+
+    if(this.filterId !== ALL_FOLDER_ID) return
+
+    const count = this.xd.sortedList.itemsLength() || 0
+
+    if(count >= MIN_DIALOGS_WITHOUT_CONTACTS) {
+      if(this.contactsPlaceholder) {
+        this.removeContactsPlaceholder()
+      }
+
+      return
+    } else if(this.contactsPlaceholder) return
+
+    const chatList = this.chatList
+    const parts = chatList.parentElement!.parentElement!
+    const bottom = chatList.parentElement!.nextElementSibling as HTMLElement
+    parts.classList.add('with-contacts')
+
+    this.contactsPlaceholder = createChatlistContacts({
+      managers: this.managers,
+      onLengthChange: () => void this.updateContactsLength(true),
+      attachToList: (list) => this.setListClickListener({ list }),
+    })
+
+    bottom.append(this.contactsPlaceholder.element)
+  }
+
+  /** tweb `:1114-1116` */
+  public get chatList() {
+    return this.xd!.sortedList.list
+  }
+
+  /** tweb `:1122-1129` */
   public isChatListNarrow() {
-    return appSidebarLeft.isCollapsed()
+    return !!this.forumTab || appSidebarLeft.isCollapsed()
   }
 
   /** Контекст списка для строки (С1 раздела «СТРОКА ДИАЛОГА»): то, что оригинал читает у себя. */
@@ -1367,12 +1695,19 @@ export class AppDialogsManager {
     return setLastMessageN({ ...options, list: this.getListContext() })
   }
 
-  /**
-   * tweb `:1300-1317`. Звонок в группе (`callIcon`) — О-96; `is-forum-open` —
-   * панель тем у нас React (`// ВРЕМЕННО до 1-6`), класс не ставится.
-   */
+  /** tweb `:1281-1298` в объёме С5 — только класс `active`. */
+  public setDialogActiveStatus(listEl: HTMLElement, active: boolean) {
+    listEl.classList.toggle('active', active)
+  }
+
+  /** tweb `:1300-1317`. Звонок в группе (`callIcon`) — О-96. */
   public setDialogActive(listEl: HTMLElement, active: boolean) {
-    setDialogActiveStatus(listEl, active)
+    this.setDialogActiveStatus(listEl, active)
+    listEl.classList.toggle(
+      'is-forum-open',
+      this.forumTab?.peerId === +listEl.dataset.peerId! &&
+        !listEl.dataset.threadId,
+    )
     if(active) {
       this.lastActiveElements.add(listEl)
     } else {
@@ -1382,43 +1717,68 @@ export class AppDialogsManager {
 
   /**
    * tweb `peer_changed` (`:1176-1229`): прежние активные строки гаснут, строка
-   * нового чата подсвечивается; закрытый чат (`peerId` 0) гасит подсветку целиком.
-   * Тред/тема у строки не сравниваются (`isSamePeer` с `threadId`) — расхождение 22.
+   * нового чата — в списке папки и в открытом форум-табе — подсвечивается;
+   * закрытый чат (`peerId` 0) гасит подсветку целиком. Монофорума и бот-форума
+   * нет (О-3, О-4) — `monoforumParentPeerId` строки не читается.
    */
-  private onPeerChanged(peerId: PeerId | undefined) {
+  private onPeerChanged({ peerId, threadId }: { peerId: PeerId, threadId?: number }) {
+    // tweb `threadId: isForum || rootScope.myId ? threadId : undefined` — `myId` у
+    // вошедшего всегда есть, так что тред сравнивается всегда
+    const options = { peerId, threadId }
+
+    const getOptionsForElement = (element: HTMLElement) => ({
+      peerId: +element.dataset.peerId!,
+      threadId: +element.dataset.threadId! || undefined,
+    })
+
     for(const element of this.lastActiveElements) {
-      if(+element.dataset.peerId! !== peerId) {
+      if(!appImManager.isSamePeer(getOptionsForElement(element), options)) {
         this.setDialogActive(element, false)
       }
     }
 
-    if(!peerId) return
-    const element = this.xd?.getDialogElement(peerId)?.dom.listEl
-    if(element) {
-      this.setDialogActive(element, true)
-    }
+    const dialogElements = [
+      this.xd?.getDialogElement(peerId),
+      this.forumTab?.xd?.getDialogElement(threadId || peerId),
+    ].filter(Boolean) as DialogElement[]
+
+    dialogElements.forEach((dialogElement) => {
+      const element = dialogElement.dom.listEl
+      if(appImManager.isSamePeer(getOptionsForElement(element), options)) {
+        this.setDialogActive(element, true)
+      }
+    })
   }
 
   /**
    * tweb `:2873-2929` — строка главного списка: `addDialogNew` + `initDialog`.
    * Активная при сборке (у tweb — в конструкторе `DialogElement`, `:383-390`,
-   * `:488-490`) — строка открытого чата. Ленивая догрузка истории по видимости
+   * `:488-490`) — строка открытого чата или темы; `is-forum-open` у строки форума,
+   * чей таб открыт (`:480-485`). Ленивая догрузка истории по видимости
    * (`lazyLoadQueue`, `:2889-2926`) не портирована: очереди нет (шапка
    * `components/avatar.ts`).
    */
-  public addListDialog(options: Omit<Parameters<typeof addDialogNew>[0], 'managers'> & { isBatch?: boolean, dialog?: SavedDialog }) {
-    const ret = addDialogNew({ ...options, managers: this.managers, autonomous: false })
+  public addListDialog(options: Omit<Parameters<typeof addDialogNew>[0], 'managers'> & { isBatch?: boolean, dialog?: SavedDialog | ForumTopic }) {
+    const topic = options.dialog && isForumTopic(options.dialog) ? options.dialog : undefined
+    const ret = addDialogNew({ ...options, topic, managers: this.managers, autonomous: false })
 
     // В7-1: строка секретного чата — замок и зелёное имя (у tweb секретных чатов нет)
-    if(getDialog(options.peerId).secret) {
+    if(!options.threadId && getDialog(options.peerId).secret) {
       ret.dom.listEl.classList.add(styles.secret)
       ret.dom.titleSpanContainer.prepend(Icon('lock', styles.secretLock))
     }
 
+    if(options.isMainList && this.forumTab?.peerId === options.peerId && !options.threadId) {
+      ret.dom.listEl.classList.add('is-forum-open')
+    }
+
     void this.initDialog(ret, options)
 
-    // С10: окна сохранённого диалога нет — его строка активной не бывает
-    if(!options.threadId && appImManager.chat?.peerId === options.peerId) {
+    // tweb `:383-390`; С10: окна сохранённого диалога нет — его строка активной не бывает
+    const isSavedDialog = !!options.threadId && options.peerId === rootScope.myId
+    const isActive = !isSavedDialog && !!appImManager.chat &&
+      appImManager.isSamePeer(appImManager.chat, { peerId: options.peerId, threadId: options.threadId, type: ChatType.Chat })
+    if(isActive) {
       this.setDialogActive(ret.dom.listEl, true)
     }
 
@@ -1427,11 +1787,13 @@ export class AppDialogsManager {
 
   /**
    * tweb `:2931-2983`: подзаголовок с бейджами, онлайн-точка и «печатает».
-   * Звонок в группе (`processDialogForCallStatus`) — О-96.
+   * Звонок в группе (`processDialogForCallStatus`) — О-96. «Печатает» в теме
+   * (`setDialogTyping({threadId})`) — набора по темам в зеркале нет
+   * (расхождение 4 `autonomousDialogList/forumTopics.ts`).
    */
-  public initDialog(dialogElement: DialogElement, options: { peerId: PeerId, isBatch?: boolean, lastMessage?: MyMessage, dialog?: SavedDialog }) {
+  public initDialog(dialogElement: DialogElement, options: { peerId: PeerId, isBatch?: boolean, lastMessage?: MyMessage, dialog?: SavedDialog | ForumTopic }) {
     const { peerId } = options
-    // `getDialog(options.dialog || peerId, {threadOrSavedId})` (`:2932-2935`) — С10
+    // `getDialog(options.dialog || peerId, {threadOrSavedId})` (`:2932-2935`) — С10, С11
     const dialog = options.dialog ?? getDialog(peerId)
 
     if(peerId !== rootScope.myId && isUser(peerId)) {
@@ -1449,6 +1811,10 @@ export class AppDialogsManager {
       list: this.getListContext(),
     })
 
+    if(isForumTopic(dialog)) {
+      return promise
+    }
+
     // * a row built while the peer is already typing gets no `peer_typings` event
     // * of its own, so the indicator has to be restored here — after the subtitle
     // * is rendered, and off the returned promise so it never delays the row
@@ -1463,75 +1829,333 @@ export class AppDialogsManager {
   }
 
   /**
-   * Клик по строке главного списка — `setListClickListener` (`:2072-2346`) модуля
-   * с поведением главного списка: строка форума открывает панель тем
-   * (`toggleForumTabByPeerId`, `:2206-2210` — бэклог Б-3, до него строка форума
-   * ничего не открывает), остальное — открыть чат; подсветку ставит `peer_changed`, а не клик.
-   * `withContext` — меню диалога (`:2337-2339`, расхождение 23).
+   * tweb `:2072-2346` — клик по строке списка. Строку ищет `mousedown` в фазе
+   * захвата (раньше ripple и чужих обработчиков), а `click` по `a` гасится: у
+   * строки главного списка есть `href`, переход по нему не нужен. Подсветку
+   * строки главного списка ставит `peer_changed`, а не клик; автономный список
+   * (выдача, контакты) подсвечивает нажатую строку сам.
+   *
+   * Не портировано (предмета нет или он в других задачах):
+   *   1. истории на аватаре (`findAvatarWithStories`/`getOpenStoryCallback`,
+   *      `willOpenStory`, `isOpeningStoriesDisabled`) — историй у `avatarNew`
+   *      нет (`has-stories` не ставится), ряд историй — пачка П-3 (Б-4);
+   *   2. выделение строк (`selection`, `pendingPress`, `SELECTION_BY_LIST`) —
+   *      `DialogsSelectionBase` не портирован (О-30);
+   *   3. `data-dialog-list-action` — таких узлов в строках у нас никто не ставит;
+   *   4. реклама (`dataset.sponsored`), сообщества (`community`), монофорум и
+   *      бот-форум (`monoforumParentPeerId`, `linked_monoforum_id`,
+   *      `bot_forum_view`) — О-4, О-5, О-3;
+   *   5. Shift-клик → превью чата (`showChatPreviewPopup`) — попапа нет;
+   *   6. подсветка запроса в открытом чате (`highlight` по `data-search-query`) — С6;
+   *   7. `withArchiveContext` (меню строки «Архив») — бэклог Б-50.
    */
-  public setListClickListener({ list, withContext = false }: { list: HTMLElement, withContext?: boolean }) {
-    setListClickListener({
-      list,
-      openArchiveTab: () => this.openArchiveTab(),
-      onFound: (elem) => {
-        const peerId: PeerId = +elem.dataset.peerId!
-        if(!elem.dataset.mid && isForum(cachedChat(peerId))) {
-          // форум-таб (`toggleForumTabByPeerId`, `:2206-2210`) — бэклог Б-3
-          return false
+  public setListClickListener({
+    list,
+    onFound,
+    withContext = false,
+    autonomous = false,
+    openInner = false,
+  }: {
+    list: HTMLElement,
+    onFound?: (target: HTMLElement) => void | boolean,
+    withContext?: boolean,
+    autonomous?: boolean,
+    /** tweb `:2086` — открыть поверх стека (`setInnerPeer`), а не вместо (`setPeer`) */
+    openInner?: boolean,
+  }) {
+    let lastActiveListElement: HTMLElement | undefined
+
+    const setPeerFunc = (openInner ? appImManager.setInnerPeer : appImManager.setPeer).bind(appImManager)
+
+    list.dataset.autonomous = '' + +autonomous
+
+    const onPress = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+
+      const archiveElem = findUpTag(target, archiveDialogTagName)
+      if(archiveElem) {
+        appSidebarLeft.openArchiveTab()
+        return
+      }
+
+      const elem = findDialogListElement(target)
+
+      if(!elem) {
+        return
+      }
+
+      const peerId: PeerId = +elem.dataset.peerId!
+      const lastMsgId = +elem.dataset.mid! || undefined
+      const threadId = +elem.dataset.threadId! || undefined
+
+      const openChat = () => {
+        // О-110 волна 7: окна сохранённого диалога (`setInnerPeer({peerId: myId, threadId})`
+        // → `ChatType.Saved`, tweb `appImManager.ts:3400-3404`) у нас нет — строка
+        // сохранённого диалога открывает чат самого источника
+        if(threadId && peerId === rootScope.myId) {
+          return setPeerFunc({ peerId: threadId })
         }
-      },
-    })
+
+        return setPeerFunc({ peerId, lastMsgId, threadId })
+      }
+
+      if(onFound?.(elem) === false) {
+        return
+      }
+
+      const isForum = !!elem.querySelector('.is-forum')
+      if(isForum && !e.shiftKey && !lastMsgId) {
+        void this.toggleForumTabByPeerId(peerId, undefined, false)
+        return
+      }
+
+      if(e.ctrlKey || e.metaKey) {
+        this.openDialogInNewTab(elem)
+        cancelEvent(e)
+        return
+      }
+
+      if(autonomous) {
+        const sameElement = lastActiveListElement === elem
+        if(lastActiveListElement && !sameElement) {
+          this.setDialogActiveStatus(lastActiveListElement, false)
+        }
+
+        this.setDialogActiveStatus(elem, true)
+        lastActiveListElement = elem
+        this.lastActiveElements.add(elem)
+      }
+
+      if(
+        (!threadId || lastMsgId) &&
+        this.xd?.sortedList.list === list &&
+        this.xd !== this.xds.get(ARCHIVE_FOLDER_ID)
+      ) {
+        void this.toggleForumTab()
+      }
+
+      void openChat()
+    }
+
+    list.addEventListener('mousedown', (e) => {
+      if(e.button !== 0) {
+        return
+      }
+
+      onPress(e)
+    }, { capture: true })
+
+    // cancel link click
+    // ! do not change it to attachClickEvent
+    list.addEventListener('click', (e) => {
+      // Native links activate with a click alone from a keyboard or assistive
+      // technology. Pointer activation already ran on mousedown.
+      if(e.detail === 0) {
+        onPress(e)
+      }
+
+      if(e.button === 0) {
+        cancelEvent(e)
+      }
+    }, { capture: true })
 
     if(withContext) {
       this.contextMenu!.attach(list)
     }
   }
 
-  /** tweb `appSidebarLeft.openArchiveTab()` (`sidebarLeft/index.ts:1760-1763`) — клик по строке «Архив» */
-  public openArchiveTab() {
-    appSidebarLeft.openArchiveTab()
-  }
-
-  /**
-   * ВРЕМЕННО до 1-5: список архива для React-оверлея архива колонки — то, что
-   * делает вкладка tweb `archivedTab.tsx:46-110` (`l({id: FOLDER_ID_ARCHIVE})`,
-   * `setFilterIdAndChangeTab`, на закрытии — возврат к прежней папке и `destroy`).
-   */
-  public mountArchivedList(container: HTMLElement) {
-    const filterId = ARCHIVE_FOLDER_ID
-    const wasFilterId = this.filterId
-
-    if(!this.xds.get(filterId)) {
-      const { ul, scrollable } = this.l({ id: filterId, localId: filterId })
-      scrollable.append(ul)
+  /** tweb `:1819-1876` (расхождение 25) */
+  public async toggleForumTab(newTab?: ForumTab, hideTab = this.forumTab) {
+    if(!hideTab && !newTab) {
+      return
     }
 
-    const xd = this.xds.get(filterId)!
-    container.append(xd.scrollable.container)
-    this.setFilterIdAndChangeTab(filterId)
-
-    return () => {
-      this.xds.delete(filterId)
-      if(this.xd === xd) this.setFilterIdAndChangeTab(wasFilterId)
-      xd.destroy()
-      xd.scrollable.container.remove()
+    if(hideTab) {
+      this.xd?.getListElement(hideTab.peerId)
+      ?.classList.remove('is-forum-open')
     }
+
+    if(hideTab === newTab) {
+      newTab = undefined
+    }
+
+    if(newTab) {
+      appSidebarLeft.closeSearch()
+    }
+
+    void hideTab?.toggle(false)
+    const promise = newTab?.toggle(true)
+    if(hideTab === this.forumTab) {
+      this.forumTab = newTab
+      this.onSomeDrawerToggle?.()
+      // `onChatListNarrowChange` (`:1132-1136`) — выделения чатов нет (О-30)
+    }
+
+    if(newTab) {
+      this.xd?.getListElement(newTab.peerId)
+      ?.classList.add('is-forum-open')
+
+      void appImManager.selectTab(APP_TABS.CHATLIST)
+    }
+
+    if(promise) {
+      await promise
+    }
+
+    if(newTab && !this.forumNavigationItem) {
+      this.forumNavigationItem = {
+        type: 'forum',
+        onPop: () => {
+          this.forumNavigationItem = undefined
+          void this.toggleForumTab()
+        },
+      }
+
+      appNavigationController.pushItem(this.forumNavigationItem)
+    } else if(!newTab && this.forumNavigationItem) {
+      appNavigationController.removeItem(this.forumNavigationItem)
+      this.forumNavigationItem = undefined
+    }
+
+    const forwards = !!newTab
+    const useRafs = promise ? 2 : undefined
+    this.xd?.toggleAvatarUnreadBadges(forwards)
+
+    this.transitionDrawersParent(forwards, useRafs)
+    this.setCollapsed(forwards) // расхождение 19
   }
 
-  /**
-   * Панель тем открыта/закрыта — половина tweb `toggleForumTab` (`:1819-1876`):
-   * бейджи на аватарах узкой колонки (`xd.toggleAvatarUnreadBadges`) и класс
-   * `is-forum-visible` колонки (`transitionDrawersParent`, `:1878-1893`).
-   * `// ВРЕМЕННО до 1-6`: сама панель — React-`TopicsPanel` колонки.
-   */
-  public onForumToggle(open: boolean, sidebarEl: HTMLElement) {
-    this.xd?.toggleAvatarUnreadBadges(open)
+  /** tweb `:1878-1893` */
+  private transitionDrawersParent(forwards: boolean, useRafs?: number) {
+    const deferred = deferredPromise<void>()
+    const duration = 300
     setTransition({
-      element: sidebarEl,
+      element: appSidebarLeft.sidebarEl,
       className: 'is-forum-visible',
-      duration: 300,
-      forwards: open,
+      duration,
+      forwards,
+      useRafs,
+      onTransitionEnd: () => {
+        deferred.resolve!()
+      },
     })
+
+    void dispatchHeavyAnimationEvent(deferred, duration).then(() => deferred.resolve!())
+  }
+
+  /** tweb `:1895-1897` */
+  public hasForumOpenFor(peerId: PeerId) {
+    return !!this.forumsTabs.get(peerId)
+  }
+
+  /** tweb `:1899-1924` — вызовы по одному пиру встают в очередь */
+  public toggleForumTabByPeerId(
+    peerId: PeerId,
+    show?: boolean,
+    asInnerIfAsMessages?: boolean,
+    ForumTabConstructorOverride?: typeof ForumTab,
+  ) {
+    const previousPromise = this.forumTabByPeerIdPromises.get(peerId)
+    const run = () => this.toggleForumTabByPeerIdInternal(
+      peerId,
+      show,
+      asInnerIfAsMessages,
+      ForumTabConstructorOverride,
+    )
+    const promise = previousPromise ?
+      previousPromise.then(run, run) :
+      run()
+    this.forumTabByPeerIdPromises.set(peerId, promise)
+
+    const cleanup = () => {
+      if(this.forumTabByPeerIdPromises.get(peerId) === promise) {
+        this.forumTabByPeerIdPromises.delete(peerId)
+      }
+    }
+    promise.then(cleanup, cleanup)
+    return promise
+  }
+
+  /**
+   * tweb `:1926-2053` без «Избранного», сообществ и `view_forum_as_messages`
+   * (расхождение 25). `asInnerIfAsMessages` — у оригинала он решает только ветку
+   * «форум как сообщения»; её нет, параметр держится ради формы вызовов.
+   */
+  private async toggleForumTabByPeerIdInternal(
+    peerId: PeerId,
+    show?: boolean,
+    _asInnerIfAsMessages?: boolean,
+    ForumTabConstructorOverride?: typeof ForumTab,
+  ) {
+    const { managers } = this
+    const ForumTabConstructor = ForumTabConstructorOverride ?? ForumTab.register.getEntry(peerId)
+    if(!ForumTabConstructor) return
+
+    const history = appSidebarLeft.getHistory()
+    const lastTab = history[history.length - 1]
+    let forumTab: ForumTab | undefined
+    // `shouldOpenForumAsNavigationTab` (`communityOpenMode.ts`) без сообществ
+    const asNavigationTab = !!lastTab
+    if(asNavigationTab) {
+      const isSameTab = lastTab instanceof ForumTab &&
+        lastTab.peerId === peerId
+      const existingTab = findForumTabByPeerId(history, peerId)
+      if(show === false) {
+        if(isSameTab) {
+          void lastTab.close()
+        }
+        return
+      }
+
+      if(isSameTab) {
+        appSidebarLeft.closeSearch()
+        if(show) {
+          shake(lastTab.container)
+        }
+        return
+      }
+
+      if(existingTab) {
+        if(!await appSidebarLeft.closeTabsUntilTab(existingTab)) {
+          return
+        }
+
+        appSidebarLeft.closeSearch()
+        return
+      }
+
+      forumTab = appSidebarLeft.createTab(ForumTabConstructor)
+      appSidebarLeft.closeSearch()
+      await forumTab.open({ peerId, managers })
+      return
+    }
+
+    forumTab = this.forumsTabs.get(peerId)
+    const isSameTab = !!this.forumTab && this.forumTab === forumTab
+    show ??= !isSameTab
+    if(show === isSameTab) {
+      if(show) {
+        appSidebarLeft.closeSearch()
+        shake(forumTab!.container)
+      }
+
+      return
+    }
+
+    if(show && !forumTab) {
+      const tab = forumTab = new ForumTabConstructor(undefined)
+      void tab.init({ peerId, managers })
+
+      this.forumsTabs.set(peerId, tab)
+      this.forumsSlider!.append(tab.container)
+
+      tab.managers = this.managers
+      tab.eventListener.addEventListener('destroy', () => {
+        this.forumsTabs.delete(peerId)
+      })
+    }
+
+    return this.toggleForumTab(forumTab)
   }
 }
 
@@ -1579,7 +2203,7 @@ export function isSavedDialog(dialog: PossibleDialog): dialog is SavedDialog {
  * Диалог строки. У поиска это только пир (`{_: 'dialog', peerId} as any`,
  * tweb `:2992`), у списка — диалог зеркала целиком либо сохранённый (С10).
  */
-export type PossibleDialog = Dialog | SavedDialog | { _?: undefined, peerId: PeerId }
+export type PossibleDialog = Dialog | SavedDialog | ForumTopic | { _?: undefined, peerId: PeerId }
 
 const isFullDialog = (dialog: PossibleDialog): dialog is Dialog => dialog._ === 'dialog'
 
@@ -1602,11 +2226,12 @@ export function isDialogUnread(dialog: Dialog) {
 }
 
 /**
- * tweb `:2348-2380` — `ul.chatlist`. Из опций оригинала портирован `new`
- * (`chatlist-new`, список участников вкладки «Новая группа», `newGroup.tsx:64-66`);
- * `dialogSize` у наших потребителей не читается.
+ * tweb `:2348-2380` — `ul.chatlist`: `new` (`chatlist-new`, список участников
+ * вкладки «Новая группа», `newGroup.tsx:64-66`) и `dialogSize` (`chatlist-48`
+ * секции «Контакты» под списком, `chatlistContacts.solid.tsx`); `ignoreClick` у
+ * оригинала закомментирован.
  */
-export function createChatList(options: { new?: boolean } = {}) {
+export function createChatList(options: { new?: boolean, dialogSize?: number } = {}) {
   const list = document.createElement('ul')
   // Legacy layout host: its direct children are native links, not li elements.
   // Keep those links exposed without announcing an invalid list structure.
@@ -1617,128 +2242,11 @@ export function createChatList(options: { new?: boolean } = {}) {
     list.classList.add('chatlist-new')
   }
 
-  return list
-}
-
-/**
- * tweb `:1281-1298` в объёме С5 — только класс `active`.
- */
-export function setDialogActiveStatus(listEl: HTMLElement, active: boolean) {
-  listEl.classList.toggle('active', active)
-}
-
-/**
- * tweb `:2072-2346` — клик по строке списка. Строку ищет `mousedown` в фазе
- * захвата (раньше ripple и чужих обработчиков), а `click` по `a` гасится: у
- * строки главного списка есть `href`, переход по нему не нужен.
- *
- * Не портировано (предмета нет или он в других задачах):
- *   1. истории на аватаре (`findAvatarWithStories`/`getOpenStoryCallback`,
- *      `willOpenStory`) — историй у `avatarNew` нет; строку архива узнаём по её
- *      тегу (`ARCHIVE_DIALOG_TAG_NAME`), открывает архив хук `openArchiveTab`;
- *   2. выделение строк (`selection`, `pendingPress`, `SELECTION_BY_LIST`) —
- *      `DialogsSelectionBase` не портирован (О-30);
- *   3. `data-dialog-list-action` — таких узлов в строках у нас никто не ставит;
- *   4. реклама (`dataset.sponsored`), сообщества (`community`), монофорум и
- *      бот-форум (`linked_monoforum_id`, `bot_forum_view`) — О-4, О-5, О-3;
- *   5. Shift-клик → превью чата (`showChatPreviewPopup`), Ctrl/Cmd-клик → новая
- *      вкладка (`openDialogInNewTab`) — ни попапа, ни маршрута у нас нет;
- *   6. форум (`toggleForumTabByPeerId`, `toggleForumTab` главного списка) —
- *      форум-таб задача 1-6, главный список — 1-4;
- *   7. `lastActiveElements` — реестр менеджера, задача 1-8 (С4);
- *   8. `withContext` — меню диалога вешает метод владельца
- *      `setListClickListener` (расхождение 23), на выдачу поиска — задача 2-3; `withArchiveContext`/
- *      `openInner` — архив, задача 1-5;
- *   9. `setPeerFunc({peerId, lastMsgId})` без `threadId`/`highlight` — С6, С7.
- */
-export function setListClickListener({
-  list,
-  onFound,
-  autonomous = false,
-  openInner,
-  openArchiveTab,
-}: {
-  list: HTMLElement,
-  onFound?: (target: HTMLElement) => void | boolean,
-  autonomous?: boolean,
-  /** tweb `:2086` — открыть поверх стека (`setInnerPeer`), а не вместо (`setPeer`) */
-  openInner?: boolean,
-  /** `appSidebarLeft.openArchiveTab` (`:2137-2141`) — у списка со строкой «Архив» (С1) */
-  openArchiveTab?: () => void,
-}) {
-  let lastActiveListElement: HTMLElement | undefined
-
-  list.dataset.autonomous = '' + +autonomous
-
-  const onPress = (e: MouseEvent) => {
-    const archiveElem = openArchiveTab && findUpTag(e.target!, ARCHIVE_DIALOG_TAG_NAME)
-    if(archiveElem) {
-      openArchiveTab()
-      return
-    }
-
-    const elem = findDialogListElement(e.target!)
-    if(!elem) {
-      return
-    }
-
-    const peerId: PeerId = +elem.dataset.peerId!
-    const lastMsgId = +elem.dataset.mid! || undefined
-    const threadId = +elem.dataset.threadId! || undefined
-
-    // tweb `setPeerFunc({peerId, lastMsgId, threadId})` (`:2094`, `:2153-2159`);
-    // прыжок к `lastMsgId` ставит инстанс чата до рендера ленты.
-    const setPeerFunc = (openInner ? appImManager.setInnerPeer : appImManager.setPeer).bind(appImManager)
-    const openChat = () => {
-      // О-110 волна 7: окна сохранённого диалога (`setInnerPeer({peerId: myId, threadId})`
-      // → `ChatType.Saved`, tweb `appImManager.ts:3400-3404`) у нас нет — строка
-      // сохранённого диалога открывает чат самого источника
-      if(threadId && peerId === rootScope.myId) {
-        void setPeerFunc({ peerId: threadId })
-        return
-      }
-
-      void setPeerFunc({ peerId, lastMsgId })
-    }
-
-    if(onFound?.(elem) === false) {
-      return
-    }
-
-    if(autonomous) {
-      const sameElement = lastActiveListElement === elem
-      if(lastActiveListElement && !sameElement) {
-        setDialogActiveStatus(lastActiveListElement, false)
-      }
-
-      setDialogActiveStatus(elem, true)
-      lastActiveListElement = elem
-    }
-
-    openChat()
+  if(options.dialogSize) {
+    list.classList.add('chatlist-' + options.dialogSize)
   }
 
-  list.addEventListener('mousedown', (e) => {
-    if(e.button !== 0) {
-      return
-    }
-
-    onPress(e)
-  }, { capture: true })
-
-  // cancel link click
-  // ! do not change it to attachClickEvent
-  list.addEventListener('click', (e) => {
-    // Native links activate with a click alone from a keyboard or assistive
-    // technology. Pointer activation already ran on mousedown.
-    if(e.detail === 0) {
-      onPress(e)
-    }
-
-    if(e.button === 0) {
-      cancelEvent(e)
-    }
-  }, { capture: true })
+  return list
 }
 
 /** tweb `:2382-2389` */
@@ -1757,8 +2265,8 @@ export function setLastMessageN(options: SetLastMessageOptions) {
  */
 function getLastMessageForDialog(dialog: PossibleDialog, lastMessage?: MyMessage) {
   let draftMessage: DraftMessageReal | undefined
-  // С10: у сохранённого диалога черновика нет, последнее — его `topMessage`
-  if(!lastMessage && isSavedDialog(dialog)) {
+  // С10, С11: у сохранённого диалога и темы черновика нет, последнее — их `topMessage`
+  if(!lastMessage && (isSavedDialog(dialog) || isForumTopic(dialog))) {
     lastMessage = dialog.lastMessage
   } else if(!lastMessage && isFullDialog(dialog)) {
     const draft = realDraft(dialog.draft)
@@ -1850,7 +2358,7 @@ async function setLastMessage({
 
   const isSearch = !setUnread
   // * do not uncomment `setUnread` - unsetTyping right after this call will interrupt setting unread badges
-  if(!isSearch && (isFullDialog(dialog) || isSaved)) {
+  if(!isSearch && (isFullDialog(dialog) || isSaved || isForumTopic(dialog))) {
     void setUnreadMessagesN({ dialog, dialogElement, isBatch, setLastMessagePromise: promise, list })
   }
 
@@ -1982,7 +2490,7 @@ async function setLastMessage({
 }
 
 export type SetUnreadMessagesOptions = {
-  dialog: Dialog | SavedDialog,
+  dialog: Dialog | SavedDialog | ForumTopic,
   dialogElement: DialogElement,
   isBatch?: boolean,
   setLastMessagePromise?: Promise<void>,
@@ -2014,19 +2522,27 @@ async function setUnreadMessages({
   const { deferred, middleware } = setPromiseMiddleware(dom, 'setUnreadMessagePromise')
 
   const { peerId } = dialog
+  const isTopic = isForumTopic(dialog)
   const isSaved = isSavedDialog(dialog)
-  // `isPeerLocalMuted({peerId})` (`:2707`) — у сохранённого `peerId` свой, мьют «Избранного»
-  const isMuted = isDialogMuted(isSaved ? getDialog(peerId) : dialog, cachedChat(peerId), useNotifyStore.getState().settings)
+  // `isPeerLocalMuted({peerId, threadId})` (`:2707`) — у сохранённого `peerId` свой,
+  // мьют «Избранного»; у темы — свой либо форума (С11)
+  const isMuted = isTopic ?
+    getForumTopicMuted(dialog) :
+    isDialogMuted(isSaved ? getDialog(peerId) : dialog, cachedChat(peerId), useNotifyStore.getState().settings)
   const { draftMessage, lastMessage } = !isSaved ? getLastMessageForDialog(dialog) : {}
   // О-111 волна 7: закрепа сохранённых диалогов на бэкенде нет (`dialog.pFlags.pinned`, `:2709`)
-  const isPinned = isSaved ? false : isDialogPinned(dialog, list.filterId)
-  const isUnread = isSaved ? false : isDialogUnread(dialog)
+  const isPinned = isTopic ? !!dialog.pFlags.pinned : isSaved ? false : isDialogPinned(dialog, list.filterId)
+  const isUnread = isTopic ? !!dialog.unread_count : isSaved ? false : isDialogUnread(dialog)
 
   // tweb `:2723-2726`: значок у своего последнего исходящего, не в «Избранном»;
-  // «прочитан ли» — по горизонту собеседника (С2)
+  // «прочитан ли» — по горизонту собеседника (С2), у темы — форума (С11);
+  // закрытая тема — замок (`:2763`)
   let sendingStatus: SendingStatusIcon | undefined
-  if(!isSaved && !draftMessage && lastMessage && lastMessage.pFlags.out && lastMessage.peerId !== rootScope.myId) {
-    sendingStatus = lastMessage.id > dialog.read_outbox_max_id ? 'check' : 'checks'
+  if(isTopic && dialog.pFlags.closed) {
+    sendingStatus = 'premium_lock'
+  } else if(!isSaved && !draftMessage && lastMessage && lastMessage.pFlags.out && lastMessage.peerId !== rootScope.myId) {
+    const readOutboxMaxId = isTopic ? getDialog(peerId).read_outbox_max_id : (dialog as Dialog).read_outbox_max_id
+    sendingStatus = lastMessage.id > readOutboxMaxId ? 'check' : 'checks'
   }
 
   const unreadCount = isSaved ? 0 : dialog.unread_count
@@ -2049,6 +2565,7 @@ async function setUnreadMessages({
   const hasUnreadBadge = isUnread
   const hasUnreadAvatarBadge = dialogElement.isMainList !== false &&
     !list.isArchive &&
+    !isTopic &&
     list.isChatListNarrow() &&
     isUnread
   // * `unreadCount` counts the unread topics for a forum, so the mention state
@@ -2118,12 +2635,14 @@ export function getDialog(dialog: Dialog | PeerId): Dialog {
  */
 export function initDialog(dialogElement: DialogElement, options: {
   peerId: PeerId,
-  dialog?: Dialog | SavedDialog,
+  dialog?: Dialog | SavedDialog | ForumTopic,
   isBatch?: boolean,
   lastMessage?: MyMessage,
   list?: DialogListContext,
 }) {
-  const dialog = options.dialog && isSavedDialog(options.dialog) ? options.dialog : getDialog(options.dialog || options.peerId)
+  const dialog = options.dialog && (isSavedDialog(options.dialog) || isForumTopic(options.dialog)) ?
+    options.dialog :
+    getDialog(options.dialog || options.peerId)
   return setLastMessageN({
     dialog,
     dialogElement,

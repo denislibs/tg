@@ -1,0 +1,51 @@
+// Порт tweb `components/archiveDialog.module.scss` (812502980). Всё, что есть в
+// партиалах ряда (`.row-big`, `.chatlist-chat`, `.row-media-bigger`), сюда не
+// дублируется — здесь только собственные правила оригинала.
+//
+// Расхождения: `.Container` оригинала пуст, а `.Media` несёт лишь ветку
+// `&.hasStories` (истории архива не портированы, Б-51) — оба не заведены;
+// `:global(.night) &` — у нас тёмные темы это `html[data-theme]`.
+
+.MediaContent {
+  width: 100%;
+  height: 100%;
+
+  border-radius: 50%;
+  background: linear-gradient(#5caffa, #408acf);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: white;
+}
+
+.MediaIcon {
+  font-size: 28px;
+}
+
+.Title {
+  font-weight: var(--font-weight-bold);
+}
+
+.Subtitle {
+  color: var(--secondary-text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unreadPeerTitle {
+  color: hsl(from var(--secondary-text-color) h s calc(l - 5));
+
+  font-weight: var(--font-weight-bold);
+
+  :global(html[data-theme='night']) &,
+  :global(html[data-theme='tinted']) & {
+    color: var(--primary-text-color);
+  }
+}
+
+.UnreadBadge {
+  flex-shrink: 0;
+  margin-inline-start: 0.5rem;
+}

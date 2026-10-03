@@ -163,7 +163,6 @@ const ALLOWED: Record<string, number> = {
   // вхождения повторяют оригинал файл-в-файл.
   'components/scrollable.ts': 1,
   'components/scrollable2.solid.tsx': 1,
-  'components/virtual/VerticalVirtualList.tsx': 1,
 }
 
 describe('троттлинг: единственная реализация — helpers/schedulers/throttle.ts', () => {

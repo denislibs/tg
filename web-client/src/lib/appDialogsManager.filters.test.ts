@@ -17,6 +17,7 @@ import { resetPeerMirror } from '@core/peerCache'
 import { applyFolderUpdate, useFoldersStore } from '@stores/foldersStore'
 import useFolders from '@stores/folders.solid'
 import type { SwipeEvent, SwipeHandlerHorizontalOptions } from '@helpers/dom/handleHorizontalSwipe'
+import type { ForumTab } from '@components/forumTab/forumTab'
 
 // Тач-устройство: свайп между папками заводится только при нём (`:617`).
 vi.mock('@environment/touchSupport', () => ({ default: true }))
@@ -236,10 +237,13 @@ describe('appDialogsManager: свайп — это клик по соседне�
     expectActiveOnly(mounted!.folders, 4)
   })
 
-  it('destroy снимает распознаватель (форум-таба, гасящего жест, нет — Б-3)', async () => {
+  it('открытый форум-таб гасит жест (`verifyTouchTarget`, :900-902); destroy снимает распознаватель', async () => {
     const options = await setupSwipe()
 
-    expect(options.verifyTouchTarget).toBeUndefined()
+    expect(options.verifyTouchTarget!(new TouchEvent('touchstart') as unknown as SwipeEvent)).toBe(true)
+    mounted!.manager.forumTab = {} as ForumTab
+    expect(options.verifyTouchTarget!(new TouchEvent('touchstart') as unknown as SwipeEvent)).toBe(false)
+    mounted!.manager.forumTab = undefined
     mounted!.manager.destroy()
     mounted = undefined
     expect(swipeRemoved).toHaveBeenCalledTimes(1)

@@ -41,6 +41,7 @@ import type { SearchHistoryOptions } from '@core/managers/messagesManager'
 import type { ContactsFound } from '@core/managers/channelsManager'
 import type { Dialog } from '@core/models'
 import appNavigationController from '@core/navigation/appNavigationController'
+import appImManager from '@lib/appImManager'
 import { CLICK_EVENT_NAME, simulateClickEvent } from '@helpers/dom/clickEvent'
 import { fillTipDates, type DateData } from '@helpers/date'
 import rootScope from '@lib/rootScope'
@@ -227,6 +228,9 @@ beforeEach(() => {
   ] as never }])
   useAppStateStore.setState({ recentSearch: [] })
   useChatsStore.setState({ dialogs: [] })
+  // клик по строке выдачи открывает чат (`appDialogsManager.setListClickListener`), а стек
+  // чатов `appImManager` в этом файле не поднят — его открытие здесь предмет не проверки
+  vi.spyOn(appImManager, 'setPeer').mockResolvedValue(undefined)
 })
 
 afterEach(() => {

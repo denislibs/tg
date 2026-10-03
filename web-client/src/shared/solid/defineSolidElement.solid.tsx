@@ -20,10 +20,12 @@
 // размонтирование: стор оборачивает тот же объект.
 //
 // Расхождения с оригиналом:
-//  1. Горячая замена модуля (`swapComponentFromHMR`, список `instances`,
-//     `HotReloadGuard`, повторный вызов с тем же `name`) не перенесена: у нас
-//     нет dev-сервера с HMR — `npm run dev` это watch-сборка (web-client/CLAUDE.md),
-//     модуль в рантайме не переисполняется.
+//  1. Горячая замена модуля (`swapComponentFromHMR` по списку `instances`,
+//     `HotReloadGuard`) не перенесена: у нас нет dev-сервера с HMR — `npm run dev`
+//     это watch-сборка (web-client/CLAUDE.md). Повторный вызов с тем же `name`
+//     (tweb :74-80) перенесён без перерисовки живых узлов: прежний класс
+//     возвращается, а новые вставки рисует новый компонент. Модуль переисполняют
+//     тесты (`vi.resetModules`), и второй `customElements.define` бросил бы.
 //  2. `observedAttributes`/`attributesStore`/`attributeChangedCallback`,
 //     `shadow` и `controls` не перенесены: ни один портированный потребитель
 //     ими не пользуется; приедут с первым, кому нужны.
@@ -47,7 +49,14 @@ export default function defineSolidElement<Props extends object>({
   name: string
   component: CustomElementComponent<Props>
 }) {
+  let currentComponent = component
+
   const SolidElement = class extends HTMLElement {
+    /** расхождение 1 — `swapComponentFromHMR` (tweb :118-130) без перерисовки живых узлов */
+    public static swapComponent(newComponent: CustomElementComponent<Props>) {
+      currentComponent = newComponent
+    }
+
     private propsStore?: PassedProps<Props>
     private disposeContent?: () => void
     private disposeStores?: () => void
@@ -94,7 +103,7 @@ export default function defineSolidElement<Props extends object>({
             return null
           }}
         >
-          {untrack(() => component(props))}
+          {untrack(() => currentComponent(props))}
         </ErrorBoundary>
       ), this)
     }
@@ -107,6 +116,13 @@ export default function defineSolidElement<Props extends object>({
 
       this.replaceChildren() // Don't leave trash in there
     }
+  }
+
+  // tweb :74-80 — имя уже определено (расхождение 1)
+  const previousElementClass = customElements.get(name) as typeof SolidElement | undefined
+  if(previousElementClass) {
+    previousElementClass.swapComponent(component)
+    return previousElementClass
   }
 
   customElements.define(name, SolidElement)

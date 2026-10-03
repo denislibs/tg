@@ -3,9 +3,8 @@
 // Скелетон строки на месте ещё не загруженного индекса виртуального списка —
 // fallback ядра `deferredSortedVirtualList.solid.tsx` (tweb `:366-376`).
 //
-// React-копия того же оригинала — `components/virtual/LoadingDialogSkeleton.tsx`;
-// она живёт, пока её держит React-потребитель (`TopicsPanel`), и
-// уходит вместе с ним (задача 1-6 волны 7; `ChatList` снят в 1-4). SCSS у обеих один —
+// React-копия того же оригинала (`components/virtual/LoadingDialogSkeleton.tsx`)
+// снесена задачей 1-6 волны 7 вместе с последним потребителем. SCSS —
 // `loadingDialogSkeleton.module.scss`, на месте оригинала.
 //
 // Отличие только в типах: `[props.class]` под `strict` — `props.class ?? ''`

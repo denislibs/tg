@@ -2,7 +2,7 @@
 // Пины `useShouldAnimate` Solid-ядра `verticalVirtualList.solid.tsx` (порт tweb
 // `verticalVirtualList.tsx:129-189`, 812502980). Сценарии перенесены с React-носителя
 // `components/virtual/useShouldAnimate.test.ts` (спека § 5: «тесты-предохранители
-// переписываются, а не удаляются»; React-ядро уходит в задаче 1-6 волны 7). Сценарии
+// переписываются, а не удаляются»; React-ядро снесено задачей 1-6 волны 7). Сценарии
 // уровня списка диалогов (вставка сверху, перестановка видимых и за краем вьюпорта) —
 // в `deferredSortedVirtualList.solid.test.tsx`; здесь — границы самого правила.
 //

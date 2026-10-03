@@ -21,7 +21,6 @@ import HeaderMenu from '../../components/HeaderMenu'
 import AttachMenu from '../../components/AttachMenu'
 import Menu, { MenuItem } from '../../shared/ui/Menu'
 import TgIcon from '../../components/TgIcon'
-import { TopicIcon as _TopicIcon } from '../../components/TopicsPanel'
 import ConfirmDialog from '../../components/settings/ConfirmDialog'
 import PopupElement from '../../components/popups/popupElement'
 import PopupMute from '../../components/popups/popupMute'
@@ -41,9 +40,6 @@ import CreateChecklistPopup from '../../components/CreateChecklistPopup'
 import { getUserTitle } from '../peers/getPeerTitle'
 import appSidebarRight from '../../components/sidebarRight'
 import { AppEditContactTab } from '../../components/solidJsTabs/tabs'
-
-// TopicIcon импортируется на случай будущего использования в тред-меню (аватар темы).
-void _TopicIcon
 
 export interface ChatPopupDeps {
   chat: Chat

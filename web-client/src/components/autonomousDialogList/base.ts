@@ -41,8 +41,8 @@
 //     функция модуля `lib/appImManager.ts` (до задачи 5-3), а не метод синглтона.
 //  7. Индекс диалога — метод списка `getDialogIndex(dialog)` (у оригинала функция
 //     `getDialogIndex(dialog, this.indexKey)`, `:172`, `:276`): у диалога папки он
-//     в зеркале (расхождение 1), у сохранённого — в его странице
-//     (`autonomousDialogList/savedDialogs.ts`, задача 1-7).
+//     в зеркале (расхождение 1), у сохранённого и темы — в их странице
+//     (`autonomousDialogList/savedDialogs.ts`, задача 1-7; `forumTopics.ts`, 1-6).
 import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
 import replaceContent from '@helpers/dom/replaceContent'
 import ListenerSetter from '@helpers/listenerSetter'
@@ -60,6 +60,7 @@ import { guessLoadCount } from '@core/dialogs/loadCount'
 import type { DialogsPage } from '@core/managers/dialogsManager'
 import type { Dialog } from '@core/models'
 import type { SavedDialog } from '@lib/appDialogsManager'
+import type { ForumTopic } from '@components/autonomousDialogList/forumTopics'
 import { useChatsStore } from '@stores/chatsStore'
 
 /** tweb `:23` */
@@ -105,8 +106,8 @@ export type BaseConstructorArgs = {
   appDialogsManager: AppDialogsManager,
 }
 
-/** tweb `PossibleDialog` (`:57`) в объёме нашей модели: диалог зеркала либо сохранённый. */
-export type ListDialog = Dialog | SavedDialog
+/** tweb `PossibleDialog` (`:57`) в объёме нашей модели: диалог зеркала, сохранённый или тема форума. */
+export type ListDialog = Dialog | SavedDialog | ForumTopic
 
 export type LoadDialogsInnerArgs = {
   offsetIndex?: number,
