@@ -546,9 +546,15 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `chat/audio.tsx`, `playbackRateButton.ts`, заголовок экрана закрепов `topbar.ts:1557-1559`): у ru
 // +21 ключ tweb lang.ts, из них плюральные `Chat.UnpinAllMessagesConfirmation` и
 // `PinnedMessagesCount`. Итог: ru 1561, `plural` 50 → 52.
-// Вместе (меню ⋮ + закреп и аудио): ru 1540 + 9 + 21 = 1570, `plural` 52.
+// Пачка П-5 «действия» (попапы меню сообщения, Б-28): у ru +24 ключа tweb lang.ts —
+// закреп (`PinMessage*`, `UnpinMessageAlertTitle`, `Chat.Confirm.Unpin`), удаление
+// (`DeleteMessagesTitle`, `AreYouSureDelete*{Mega,Bot}`, `BoostingGiveawayDeleteMsg*`),
+// тосты пересылки (`FwdMessage*`, плюральный `FwdMessagesToChats`), проверка фактов
+// (`FactCheck{Dialog,Edited,Deleted}`, `Done`), `Message.Context.Selection.Copy`.
+// Итог: ru 1564, `plural` 50 → 51.
+// Вместе (меню ⋮ + закреп и аудио + действия): 1570 + 24 − 7 общих ключей закрепа = 1587, `plural` 53.
 const COMPOSITION = {
-  ru: { keys: 1570, plural: 52 },
+  ru: { keys: 1587, plural: 53 },
   uk: { keys: 829, plural: 35 },
   es: { keys: 800, plural: 34 },
   de: { keys: 801, plural: 35 },
@@ -729,8 +735,10 @@ const COMPOSITION = {
 // Шагом К-3 волны 7 — у ru +1 ключ tweb `Chat.Title.Comments` (разбор — там же).
 // Пачкой П-5 волны 7 — у ru +9 ключей меню ⋮ и плашек шапки (разбор — там же).
 // Пачкой П-5 волны 7 (закреп и аудиоплеер) — у ru +21 ключ (разбор — там же).
+// Пачкой П-5 «действия» — у ru +24 ключа tweb попапов закрепа, удаления, пересылки и
+// проверки фактов (разбор — там же).
 const FINGERPRINT = {
-  ru: '51781a3d',
+  ru: '6c387345',
   uk: 'a02f363c',
   es: '89e8ae98',
   de: '0fed7933',

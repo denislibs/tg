@@ -984,6 +984,25 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       emitOps(evictAndBuildRemoveOps(peerId, msgId))
     },
 
+    // Порт `appMessagesManager.deleteMessages(peerId, mids, revoke)` — ОДИН вызов
+    // на пачку, как у оригинала (его зовут попап удаления и панель выделения,
+    // `components/popups/deleteMessages.ts`). Пакетной ручки у бэкенда нет
+    // (`DELETE /chats/{p}/messages/{seq}`, `router.go`), поэтому пачка
+    // разворачивается ЗДЕСЬ, а не у вызывающего: каждое сообщение — свой
+    // `deleteMessage` со своей операцией `remove`, упавшее не роняет соседей.
+    async deleteMessages(peerId: number, msgIds: number[], revoke: boolean): Promise<void> {
+      // Тело `deleteMessage` повторено, а не вызвано через `this`: реестр RPC
+      // зовёт метод отвязанным от объекта.
+      await Promise.all(msgIds.map(async(msgId) => {
+        try {
+          await rest.del(`/chats/${peerId}/messages/${getServerMessageId(msgId)}?revoke=${revoke ? 'true' : 'false'}`)
+          emitOps(evictAndBuildRemoveOps(peerId, msgId))
+        } catch (err) {
+          console.error('[messages] delete failed', { peerId, msgId }, err)
+        }
+      }))
+    },
+
     // Forward messages from one chat into another; returns the created copies.
     // dropAuthor — скрыть отправителя (копия как своё сообщение), dropCaption —
     // убрать подпись у пересылаемого медиа (tweb dropAuthor/dropCaptions).

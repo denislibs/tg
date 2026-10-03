@@ -28,6 +28,12 @@
 //  4. Плашка ответа, правки и пересылки при `finishPeerChange` не
 //     восстанавливается из черновика классом — это делает дерево
 //     (`reactChatInputView.tsx`, ответ черновика).
+//  5. `initMessagesForward` (`input.ts:4462`), `inputContainer` и `center`
+//     (`input.ts:1963`) — члены, которые зовут попап пересылки и панель
+//     выделения (П-5, `popups/forward.bridge.ts`, `chat/selection.ts`).
+//     Пересылка, пришедшая до монтирования дерева, ждёт его в `forwarding`
+//     (tweb хранит её там же); морф строки ввода в панель выделения делает
+//     дерево (`useChatInputCenter`, цель `'selection'`).
 import { mountReact, type ReactIsland } from '@shared/react/mountReact'
 import type { Managers } from '@/client/bootstrap'
 import type { GifItem } from '@core/gifs'
@@ -37,6 +43,9 @@ import type { AppImManager } from '@lib/appImManager'
 import type { ChatRights } from '@core/peers/rights'
 import type { ChatType } from './chatType'
 import type { ReactChatInputViewProps } from './reactChatInputView'
+
+/** tweb `ChatInput.forwarding` — `{[fromPeerId]: mids}` (`input.ts:4462`) */
+export type ChatInputForwarding = { [fromPeerId: PeerId]: number[] }
 
 /** tweb `ChatInputReplyTo` в объёме, у которого есть предмет: цитаты, истории
  *  и варианта опроса в ответе у нас нет. */
@@ -57,6 +66,8 @@ export interface ReactChatInputHost {
   updateChatInputHeight(surplus: number): void
   /** tweb `bubbles.ts:3852` — кнопка «вниз» (`input.ts:648`) */
   bubbles?: { onGoDownClick(): void }
+  /** tweb `input.ts:1899-1918` (`getNeededFakeContainer`) — идёт ли выделение */
+  selection?: { isSelecting: boolean }
 }
 
 /** Ручки, которые дерево острова отдаёт классу (расхождение 1 шапки). */
@@ -66,6 +77,8 @@ export interface ReactChatInputHandle {
   initMessageEditing(mid: number): void
   sendDocument(document: Sticker | GifItem): boolean
   clearHelper(): void
+  initMessagesForward(fromPeerIdsMids: ChatInputForwarding): void
+  center(): void
 }
 
 /** Базовая строка ввода — 3rem; всё выше неё — излишек (`chat.ts:283`). */
@@ -76,6 +89,8 @@ export default class ReactChatInput {
   public chatInput!: HTMLElement
   /** ручки дерева — пишет и снимает `reactChatInputView.tsx` */
   public handle?: ReactChatInputHandle
+  /** tweb `input.ts:285` — пересылка, ждущая дерева (расхождение 5) */
+  public forwarding?: ChatInputForwarding
 
   private island?: ReactIsland<ReactChatInputViewProps>
   private resizeObserver?: ResizeObserver
@@ -131,7 +146,28 @@ export default class ReactChatInput {
 
   /** tweb `input.ts:5265` */
   public clearHelper() {
+    this.forwarding = undefined
     this.handle?.clearHelper()
+  }
+
+  /** tweb `input.ts:227` — `.chat-input-container`, его рисует дерево */
+  public get inputContainer(): HTMLElement | undefined {
+    return this.chatInput?.querySelector<HTMLElement>('.chat-input-container') ?? undefined
+  }
+
+  /** tweb `input.ts:1963` — морф строки ввода в плашку (расхождение 5) */
+  public async center(_animate = false) {
+    this.handle?.center()
+  }
+
+  /** tweb `input.ts:4462` — плашка пересылки (расхождение 5) */
+  public initMessagesForward(fromPeerIdsMids: ChatInputForwarding) {
+    if(this.handle) {
+      this.forwarding = undefined
+      this.handle.initMessagesForward(fromPeerIdsMids)
+    } else {
+      this.forwarding = fromPeerIdsMids
+    }
   }
 
   /** tweb `input.ts:2365` */

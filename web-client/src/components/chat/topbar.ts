@@ -65,8 +65,8 @@
 //     полная карточка — `chat.fullPeer()` (`getCachedFullUser`/`getCachedFullChat`),
 //     пир — `cachedPeer` (`chat.peer`). Мьют и снятие мьюта — `groups.setMute`, попап —
 //     vanilla `PopupMute` (ВРЕМЕННО до 2C-7, как `dialogsContextMenu.ts`). Жалоба —
-//     глобальный `ReportPopup` острова оверлеев через `reportStore` (`showPeerReport`
-//     оригинала; тот же вход, что у строки профиля `peerProfile.solid.tsx`).
+//     `showPeerReport` (`popups/reportAd.bridge.ts`, ВРЕМЕННО до 2C-27: React `ReportPopup`
+//     острова оверлеев).
 //  8. Мьют темы форума (`isPeerLocalMuted({threadId})`, `togglePeerMute({threadId})`) — ручки
 //     мьюта темы нет (`groups.setMute` глушит весь чат), поэтому в теме (`threadId`) пунктов
 //     «Без звука»/«Со звуком» нет (Б-85).
@@ -103,7 +103,7 @@ import setBadgeContent from '@helpers/setBadgeContent'
 import createBadge from '@helpers/createBadge'
 import formatNumber from '@helpers/number/formatNumber'
 import { useChatsStore } from '@stores/chatsStore'
-import { useReportStore } from '@stores/reportStore'
+import { showPeerReport } from '@components/popups/reportAd.bridge'
 import { useSettingsStore } from '@/settings'
 import { countUnmutedUnreadPeers } from '@/client/appBadge'
 import { cachedChat, cachedPeer, cachedUser, subscribePeerMirror } from '@core/peerCache'
@@ -462,8 +462,7 @@ export default class ChatTopbar {
       icon: 'flag',
       text: 'ReportChat',
       onClick: () => {
-        // расхождение 7: `showPeerReport(peerId)`
-        useReportStore.getState().open({ peerId: this.peerId })
+        showPeerReport(this.peerId)
       },
       verify: this.verifyIfCanReportChat,
     }, {

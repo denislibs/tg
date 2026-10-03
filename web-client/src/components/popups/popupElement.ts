@@ -110,8 +110,9 @@ import { i18n, _i18n, type FormatterArguments, type LangPackKey } from '@lib/lan
  * кладётся — `append` принимает узлы, а `LangPackKey` живёт в своём поле.
  *
  * Не портированы (нет потребителя): промис-результат колбэка (`toggleDisability`
- * во время ожидания, tweb :283-295), `iconLeft`/`iconRight`, `noRipple`,
- * `element`.
+ * во время ожидания, tweb :283-295), `iconLeft`/`iconRight`, `noRipple`.
+ * `element` (tweb :306 — узел кнопки отдаётся вызывающему) портирован под
+ * редактор проверки фактов (`chat/contextMenu.ts::onEditFactCheckClick`).
  */
 export type PopupButton = {
   /** ГОТОВОЕ содержимое кнопки — узел. Ключ кладётся в `langKey`, не сюда. */
@@ -121,6 +122,8 @@ export type PopupButton = {
   callback?: () => void,
   isDanger?: boolean,
   isCancel?: boolean,
+  /** tweb :306 — узел кнопки, пишет `setButtons` */
+  element?: HTMLButtonElement,
 }
 
 /** tweb :39-55, сужено до опций, у которых есть потребитель в волне 1. */
@@ -292,7 +295,7 @@ export default class PopupElement<E extends EventListenerListeners = {}> extends
         this.hide()
       }, { listenerSetter: this.buttonsListenerSetter }) // tweb :307 (1a5b40d8b)
 
-      return button
+      return b.element = button // tweb :306
     })
 
     if(!this.btnConfirmOnEnter && buttons.length === 2) { // tweb :307-312

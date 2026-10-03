@@ -101,6 +101,7 @@ import { getHeavyAnimationPromise, interruptHeavyAnimation, onHeavyAnimation as 
 import { cancelAnimationByKey } from '@helpers/animation'
 import rootScope from '@lib/rootScope'
 import { ANCHOR_ACTION_ATTRIBUTE, wrapEmojiText, wrapMessageText } from '@lib/richtext'
+import showForwardPopup from '@components/popups/forward.bridge'
 import { mirrorWindow, putMirrorPage, replaceMirrorWindow } from '@core/history/messagesMirror'
 import { generateTempMessageId, isLocalMessageId } from '@core/history/messageId'
 import { messageToConvMsg } from '@core/messageToConvMsg'
@@ -3270,9 +3271,6 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // Расхождение одно: оригинал читает класс с самого кликнутого узла
     // (`target.classList.contains('forward')`, :3511), у нас — `closest`.
     // Внутри кнопки лежит узел иконки, и клик по нему приходит с него же.
-    //
-    // Попапа пересылки (`showForwardPopup`) нет до П-5 (бэклог Б-28): клик
-    // гасится, чтобы не провалиться в ветки ниже.
     // «Перейти к оригиналу» сбоку от бабла экрана закрепов — tweb bubbles.ts:3944-3952.
     const gotoOriginal = target.closest<HTMLElement>('.bubble-beside-button.goto-original')
     if (gotoOriginal && bubble?.dataset.savedFrom) {
@@ -3288,6 +3286,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
     const forwardButton = target.closest<HTMLElement>('.bubble-beside-button.forward')
     if (forwardButton && bubble) {
       cancelEvent(e)
+      const message = this.getMessage(+(bubble.dataset.mid ?? NaN))
+      if (message) {
+        // `getMidsByMessage` (:3515) — альбом пересылается целиком
+        const grouped = message._ === 'message' && message.grouped_id ? this.groupedMessages(message.grouped_id) : []
+        void showForwardPopup({
+          [message.peerId]: grouped.length ? grouped.map((m) => m.id) : [message.id],
+        })
+      }
       return
     }
 
@@ -3445,8 +3451,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * пределами окна — REST `/chats/{id}/media` (`messages.mediaHistory`, наш
    * источник вместо tweb `SearchListLoader`): страницы фильтра `media` копит
    * `mediaNeighbours.ts`, кэш живёт одно открытие вьювера, листается КУРСОРОМ
-   * (`offset_id`, tweb appSearchSuper.ts:2278-2279). Пересылка и удаление из
-   * вьювера — попапы П-5 (бэклог Б-28): у вьювера они опциональны.
+   * (`offset_id`, tweb appSearchSuper.ts:2278-2279). Пересылку и удаление
+   * вьювер зовёт сам — попапы tweb (П-5).
    */
   private openMediaViewerFor(attachment: HTMLElement): boolean {
     const bubble = attachment.closest<HTMLElement>('.bubble')

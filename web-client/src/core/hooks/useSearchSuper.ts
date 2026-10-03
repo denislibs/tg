@@ -88,12 +88,11 @@ export type UseSearchSuperOptions = {
 } & SearchSuperActions
 
 /**
- * Действия меню элемента и плашки выделения (задача 14) — колбэки хоста
- * класса, расхождение 51 в шапке `components/appSearchSuper.ts`: попапы
- * пересылки/удаления и переход к сообщению живут в хосте чата (`Chat.tsx`).
+ * Действие меню элемента (задача 14) — колбэк хоста класса, расхождение 51 в
+ * шапке `components/appSearchSuper.ts`: переход к сообщению. Пересылку и
+ * удаление класс зовёт сам (П-5).
  */
-export type SearchSuperActions = Pick<AppSearchSuperOptions,
-  'setInnerPeer' | 'showForwardPopup' | 'showDeleteMessagesPopup'>
+export type SearchSuperActions = Pick<AppSearchSuperOptions, 'setInnerPeer'>
 
 export type SearchSuperSeam = {
   searchSuper: AppSearchSuper
@@ -142,8 +141,6 @@ export function useSearchSuper(options: UseSearchSuperOptions): SearchSuperSeam 
       openPeer: (peerId) => optionsRef.current.openPeer?.(peerId),
       openUserPermissions: (participant, isAdmin) => optionsRef.current.openUserPermissions?.(participant, isAdmin),
       setInnerPeer: (options) => optionsRef.current.setInnerPeer?.(options),
-      showForwardPopup: (fromPeerIdsMids, onSelect) => optionsRef.current.showForwardPopup?.(fromPeerIdsMids, onSelect),
-      showDeleteMessagesPopup: (peerId, mids, onConfirm) => optionsRef.current.showDeleteMessagesPopup?.(peerId, mids, onConfirm),
       scrollOffset: SCROLL_OFFSET,
     }), dispose] as const)
 

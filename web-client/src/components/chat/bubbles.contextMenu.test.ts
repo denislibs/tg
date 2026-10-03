@@ -75,6 +75,8 @@ const menuManagers: ContextMenuManagers = {
     votePoll: vi.fn().mockResolvedValue(undefined),
     closePoll: vi.fn().mockResolvedValue(undefined),
     viewers: vi.fn().mockResolvedValue([]),
+    setFactCheck: vi.fn().mockResolvedValue(undefined),
+    removeFactCheck: vi.fn().mockResolvedValue(undefined),
   },
   chats: { getReadDate: vi.fn().mockResolvedValue(null) },
 }

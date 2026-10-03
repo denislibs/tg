@@ -1,7 +1,7 @@
 /**
  * Порт tweb `src/components/chat/selection.ts` — режим выделения сообщений
- * (`AppSelection` + `ChatSelection`) в объёме, который живёт БЕЗ окружения
- * `Chat`: у императивной ленты пока нет ни композера, ни попапов.
+ * (`AppSelection` + `ChatSelection`) вместе с панелью действий вместо строки
+ * ввода (П-5, Б-23).
  *
  * ── Что портировано ─────────────────────────────────────────────────────────
  *  • стейт `selectedMids: Map<peerId, Set<mid>>` + `isSelecting` (tweb :54-55);
@@ -38,13 +38,17 @@
  * (e9428f2a9) перенесены позже — волной 1 дельты.
  *
  * ── Границы порта (у каждой — предмет, а не «у нас так») ────────────────────
- *  • ПАНЕЛЬ ДЕЙСТВИЙ (`onToggleSelection` :1008-1136, `onUpdateContainer`
- *    :1138-1157, `removeSelectionContainer` :1159-1173) — плашка вместо
- *    композера в `chat.input` — бэклог Б-23 (П-5): композер до К-4 — React-остров.
- *    Класс `is-selecting` на самой ленте (`listenElement`) — здесь.
- *  • ПОПАПЫ delete/forward/sendNow (:1085-1118) и report-режим
- *    (`enterReportSelection` :832-845, `showSelectedMessagesReport`) — вместе с
- *    плашкой (Б-23, Б-28).
+ *  • ПАНЕЛЬ ДЕЙСТВИЙ `ChatSelection` портирована по 812502980
+ *    (`onToggleSelection` :1145-1272, `onUpdateContainer` :1274-1293,
+ *    `removeSelectionContainer` :1295-1308): «удалить» · «N сообщений» ·
+ *    «переслать» в `ChatInputPlate` (`chat/controlPlate.solid.tsx`) внутри
+ *    `input.inputContainer`. Композер до К-4 — React-остров
+ *    (`chat/reactChatInput.ts`), у него для панели есть `chatInput`,
+ *    `inputContainer` и `center` — члены tweb `ChatInput`. Кнопка «отправить
+ *    сейчас» отложенных (`ChatType.Scheduled`, :1239-1245, `showSendNowPopup`)
+ *    — сосед П-5 «поиск+отложенные» (Б-25); report-режим
+ *    (`enterReportSelection` :929-952, `showSelectedMessagesReport`) — у
+ *    жалобы нет дерева вариантов с сервера (2C-27, О-12).
  *  • ВХОД НА ТАЧЕ через long-press (:117-157) требует
  *    `helpers/dom/attachContextMenuListener`, которого в репо ещё нет. Ветка
  *    `IS_TOUCH_SUPPORTED` в `attachListeners` СОХРАНЕНА (иначе на таче
@@ -98,11 +102,17 @@ import replaceContent from '@helpers/dom/replaceContent'
 import EventListenerBase from '@helpers/eventListenerBase'
 import ListenerSetter from '@helpers/listenerSetter'
 import ButtonIcon from '@components/buttonIcon'
+import Button from '@components/button'
+import ChatInputPlate from './controlPlate.solid'
+import showDeleteMessagesPopup from '@components/popups/deleteMessages'
+import showForwardPopup from '@components/popups/forward.bridge'
+import { createRoot } from 'solid-js'
 import { i18n } from '@lib/langPack'
 import type { MyMessage } from '@core/models'
 import type AppSearchSuper from '@components/appSearchSuper'
 import { getSharedMediaMessage } from '@components/sharedMediaHistories'
 import type Chat from './chat'
+import { ChatType } from './chatType'
 import type ChatInput from './reactChatInput'
 
 /** tweb selection.ts:51-53 (812502980) — обобщён в 79b9c44c1 */
@@ -673,12 +683,10 @@ export class AppSelection extends EventListenerBase<{
  * (`_searchSuper.scss`, правила `is-selecting`).
  *
  * ── Адаптации ────────────────────────────────────────────────────────────────
- *  • действия плашки — колбэки хоста у `AppSearchSuper` (расхождение 51 в
- *    шапке класса): `appImManager.setInnerPeer` → `searchSuper.setInnerPeer`,
- *    `showForwardPopup` → `searchSuper.showForwardPopup`,
- *    `showDeleteMessagesPopup` → `searchSuper.showDeleteMessagesPopup`;
- *    обратный вызов «снять выделение по подтверждению» едет тем же аргументом,
- *    что у оригинала;
+ *  • «перейти к сообщению» — колбэк хоста у `AppSearchSuper` (расхождение 51
+ *    в шапке класса): `appImManager.setInnerPeer` → `searchSuper.setInnerPeer`;
+ *    пересылка и удаление — попапы tweb напрямую (`popups/forward.bridge.ts`,
+ *    `popups/deleteMessages.ts`, П-5);
  *  • `ariaLabel` кнопок плашки (472e3e76b, a11y) не переносится — своя задача;
  *  • `getSelectedMessages` (у tweb — базовый, `:482-490`, из хранилища
  *    сообщений менеджера) — здесь, поверх кэша shared media
@@ -833,7 +841,7 @@ export class SearchSelection extends AppSelection {
             obj[fromPeerId] = Array.from(mids).sort((a, b) => a - b)
           }
 
-          this.searchSuper.showForwardPopup?.(obj, () => {
+          void showForwardPopup(obj, () => {
             this.cancelSelection()
           })
         }, attachClickOptions)
@@ -842,12 +850,14 @@ export class SearchSelection extends AppSelection {
           this.selectionDeleteBtn = ButtonIcon(`delete danger ${BASE_CLASS}-delete`)
           attachClickEvent(this.selectionDeleteBtn, () => {
             const peerId = this.searchSuper.searchContext.peerId
-            this.searchSuper.showDeleteMessagesPopup?.(
+            showDeleteMessagesPopup(
               peerId,
               this.getSelectedMids(),
+              ChatType.Chat,
               () => {
                 this.cancelSelection()
               },
+              (mid) => getSharedMediaMessage(peerId, mid),
             )
           }, attachClickOptions)
         }
@@ -874,10 +884,25 @@ export class SearchSelection extends AppSelection {
 /** Порт tweb `ChatSelection` (selection.ts:764-1189). */
 export default class ChatSelection extends AppSelection {
   private bubbles: SelectionBubbles
+  private input: ChatInput
 
-  /** tweb `new ChatSelection(chat, bubbles, input, managers)` (chat.ts:620); `input`
-   *  нужен оригиналу ради плашки действий — у нас она в бэклоге (Б-23). */
-  constructor(public chat: Chat, bubbles: SelectionBubbles, _input: ChatInput, managers: SelectionManagers) {
+  // tweb :842-847 (812502980)
+  protected selectionInputWrapper?: HTMLElement
+  protected selectionContainer?: HTMLElement
+  protected selectionCountEl?: HTMLElement
+  public selectionForwardBtn?: HTMLElement
+  public selectionDeleteBtn?: HTMLElement
+
+  // * plate-scoped: this.listenerSetter lives until peer change, so plate button
+  // * listeners must not accumulate there across selection sessions
+  private containerListenerSetter?: ListenerSetter
+  /** Плашка — Solid-компонент (`ChatInputPlate`); его корень снимается вместе с
+   *  панелью. У tweb вызов без корня (:1257) — у нас корень, чтобы не оставлять
+   *  вычислений вне `createRoot`. */
+  private disposePlate?: () => void
+
+  /** tweb `new ChatSelection(chat, bubbles, input, managers)` (chat.ts:620) */
+  constructor(public chat: Chat, bubbles: SelectionBubbles, input: ChatInput, managers: SelectionManagers) {
     super({
       managers,
       // tweb :798
@@ -906,6 +931,7 @@ export default class ChatSelection extends AppSelection {
     })
 
     this.bubbles = bubbles
+    this.input = input
   }
 
   /** tweb :900-902 (812502980, d064fdb85) */
@@ -1094,21 +1120,128 @@ export default class ChatSelection extends AppSelection {
       !bubble.classList.contains('avoid-selection')
   }
 
-  /** tweb :1008-1136 в части, которая принадлежит ленте (см. шапку) */
-  protected override onToggleSelection = (forwards: boolean, animate: boolean) => {
-    const listenElement = this.listenElement
-    if (!listenElement) return
+  /** tweb 812502980 :1145-1272 без report-режима и «отправить сейчас» (шапка) */
+  protected override onToggleSelection = async(forwards: boolean, animate: boolean) => {
+    // Every plate is the same width now, so this just cross-fades.
+    await this.input.center(animate)
 
     setTransition({
-      element: listenElement,
+      element: this.input.chatInput,
       className: 'is-selecting',
       forwards,
       duration: animate ? SELECTION_TRANSITION_DURATION : 0,
-      onTransitionEnd: () => {
-        if (!this.isSelecting) {
-          this.selectedText = undefined
-        }
-      },
     })
+
+    const listenElement = this.listenElement
+    if (listenElement) {
+      setTransition({
+        element: listenElement,
+        className: 'is-selecting',
+        forwards,
+        duration: animate ? SELECTION_TRANSITION_DURATION : 0,
+        onTransitionEnd: () => {
+          if (!this.isSelecting) {
+            this.removeSelectionContainer()
+            this.selectedText = undefined
+          }
+        },
+      })
+    }
+
+    const inputContainer = this.input.inputContainer
+    if (this.isSelecting && !this.selectionContainer && inputContainer) {
+      this.selectionInputWrapper = document.createElement('div')
+      this.selectionInputWrapper.classList.add('chat-input-wrapper', 'selection-wrapper')
+
+      const containerListenerSetter = this.containerListenerSetter = new ListenerSetter()
+      const attachClickOptions = { listenerSetter: containerListenerSetter }
+
+      this.selectionCountEl = document.createElement('div')
+      this.selectionCountEl.classList.add('selection-container-count')
+
+      // Centre slot — the "N selected" count, styled as a transparent button;
+      // tapping it clears the selection.
+      const countButton = Button('btn-primary btn-transparent text-bold chat-input-plate-button')
+      countButton.append(this.selectionCountEl)
+      attachClickEvent(countButton, () => this.cancelSelection(), attachClickOptions)
+
+      // Left slot — delete.
+      const selectionDeleteBtn = this.selectionDeleteBtn = ButtonIcon('delete danger selection-container-delete', { ariaLabel: 'Delete' })
+      attachClickEvent(selectionDeleteBtn, () => {
+        showDeleteMessagesPopup(
+          this.chat.peerId,
+          this.getSelectedMids(),
+          this.chat.type,
+          () => {
+            this.cancelSelection()
+          },
+          (mid) => this.chat.getMessage(mid),
+        )
+      }, attachClickOptions)
+
+      // Right slot — forward («send now» for scheduled messages — шапка файла).
+      const selectionForwardBtn = this.selectionForwardBtn = ButtonIcon('forward selection-container-forward', { ariaLabel: 'Forward' })
+      attachClickEvent(selectionForwardBtn, () => {
+        const obj: { [fromPeerId: PeerId]: number[] } = {}
+        for (const [fromPeerId, mids] of this.selectedMids) {
+          obj[fromPeerId] = Array.from(mids).sort((a, b) => a - b)
+        }
+
+        void showForwardPopup(obj, () => {
+          this.cancelSelection()
+        })
+      }, attachClickOptions)
+
+      this.selectionContainer = createRoot((dispose) => {
+        this.disposePlate = dispose
+        return ChatInputPlate({
+          class: 'selection-container',
+          left: selectionDeleteBtn,
+          center: countButton,
+          right: selectionForwardBtn,
+        }) as HTMLElement
+      })
+
+      this.selectionInputWrapper.style.opacity = '0'
+      this.selectionInputWrapper.append(this.selectionContainer)
+      inputContainer.append(this.selectionInputWrapper)
+
+      void this.selectionInputWrapper.offsetLeft // reflow
+      this.selectionInputWrapper.style.opacity = ''
+
+      // Счётчик пишет `onUpdateContainer`; у tweb его вызов после включения
+      // режима (`updateElementSelection`) успевает ПОСЛЕ сборки панели, потому что
+      // ждёт воркер (`cantForwardDeleteMids`). У нас этого ожидания нет — панель
+      // заполняется сама, как только собрана.
+      void this.updateContainer()
+    }
+  }
+
+  /** tweb 812502980 :1274-1293 без report-режима */
+  protected override onUpdateContainer = (cantForward: boolean, cantDelete: boolean) => {
+    if (!this.selectionCountEl) {
+      return
+    }
+
+    const length = this.length()
+    replaceContent(this.selectionCountEl, i18n('messages', [length]))
+
+    this.selectionForwardBtn?.toggleAttribute('disabled', cantForward)
+    this.selectionDeleteBtn?.toggleAttribute('disabled', cantDelete)
+  }
+
+  /** tweb 812502980 :1295-1308 */
+  private removeSelectionContainer() {
+    this.containerListenerSetter?.removeAll()
+    this.containerListenerSetter = undefined
+    this.disposePlate?.()
+    this.disposePlate = undefined
+    this.selectionInputWrapper?.remove()
+    this.selectionInputWrapper =
+      this.selectionContainer =
+      this.selectionCountEl =
+      this.selectionForwardBtn =
+      this.selectionDeleteBtn =
+      undefined
   }
 }

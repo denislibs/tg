@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 51,
+      "version": 52,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -193,8 +193,24 @@
           "value": "Are you sure you want to delete these messages?"
         },
         {
+          "key": "AreYouSureDeleteFewMessagesBot",
+          "value": "Do you want to delete these messages?\nThis will delete them just for you."
+        },
+        {
+          "key": "AreYouSureDeleteFewMessagesMega",
+          "value": "Are you sure you want to delete these messages for everyone?"
+        },
+        {
           "key": "AreYouSureDeleteSingleMessage",
           "value": "Are you sure you want to delete this message?"
+        },
+        {
+          "key": "AreYouSureDeleteSingleMessageBot",
+          "value": "Do you want to delete this message?\nThis will delete it just for you."
+        },
+        {
+          "key": "AreYouSureDeleteSingleMessageMega",
+          "value": "Are you sure you want to delete this message for everyone?"
         },
         {
           "key": "AreYouSureDeleteThisChatWithUser",
@@ -535,6 +551,14 @@
         {
           "key": "BoostingGiveaway",
           "value": "Giveaway"
+        },
+        {
+          "key": "BoostingGiveawayDeleteMsgText",
+          "value": "Deleting this message won't cancel the giveaway — the winners will still be selected on **%s**.\n\nOnce deleted, the Giveaway Announcement cannot be restored."
+        },
+        {
+          "key": "BoostingGiveawayDeleteMsgTitle",
+          "value": "Delete announcement"
         },
         {
           "key": "BoostingGiveawayEnd",
@@ -1759,6 +1783,10 @@
           "value": "Also delete for %1$s"
         },
         {
+          "key": "DeleteMessagesTitle",
+          "value": "Delete %1$s"
+        },
+        {
           "key": "DeleteSingleMessagesTitle",
           "value": "Delete message"
         },
@@ -1861,6 +1889,10 @@
         {
           "key": "DoNotTranslate",
           "value": "Do Not Translate"
+        },
+        {
+          "key": "Done",
+          "value": "Done"
         },
         {
           "key": "DoubleTapSetting",
@@ -2111,6 +2143,18 @@
           "value": "Delete Fact Check"
         },
         {
+          "key": "FactCheckDeleted",
+          "value": "Fact check removed."
+        },
+        {
+          "key": "FactCheckDialog",
+          "value": "Fact Check"
+        },
+        {
+          "key": "FactCheckEdited",
+          "value": "Fact check updated."
+        },
+        {
           "key": "FactCheckPlaceholder",
           "value": "Add Fact or Context"
         },
@@ -2312,6 +2356,28 @@
         {
           "key": "FromYou",
           "value": "You"
+        },
+        {
+          "key": "FwdMessageTo",
+          "value": "Message forwarded to %s."
+        },
+        {
+          "key": "FwdMessageToSavedMessages",
+          "value": "Message forwarded to **Saved Messages**."
+        },
+        {
+          "key": "FwdMessagesTo",
+          "value": "Messages forwarded to %s."
+        },
+        {
+          "key": "FwdMessagesToChats",
+          "forms": {
+            "other_value": "%d chats"
+          }
+        },
+        {
+          "key": "FwdMessagesToSavedMessages",
+          "value": "Messages forwarded to **Saved Messages**."
         },
         {
           "key": "General",
@@ -3262,6 +3328,10 @@
         {
           "key": "Message.Context.Selection.Clear",
           "value": "Clear selection"
+        },
+        {
+          "key": "Message.Context.Selection.Copy",
+          "value": "Copy selected"
         },
         {
           "key": "Message.Context.Selection.Delete",
@@ -6500,7 +6570,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 51,
+      "version": 52,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -11207,6 +11277,10 @@
           "value": "Снять выделение"
         },
         {
+          "key": "Message.Context.Selection.Copy",
+          "value": "Копировать выбранные"
+        },
+        {
           "key": "Message.Context.Selection.Delete",
           "value": "Удалить выбранные"
         },
@@ -13038,6 +13112,75 @@
         {
           "key": "Schedule.Repeat",
           "value": "Повторять"
+        },
+        {
+          "key": "AreYouSureDeleteFewMessagesBot",
+          "value": "Удалить эти сообщения?\nОни будут удалены только у вас."
+        },
+        {
+          "key": "AreYouSureDeleteFewMessagesMega",
+          "value": "Удалить эти сообщения для всех участников?"
+        },
+        {
+          "key": "AreYouSureDeleteSingleMessageBot",
+          "value": "Удалить это сообщение?\nОно будет удалено только у вас."
+        },
+        {
+          "key": "AreYouSureDeleteSingleMessageMega",
+          "value": "Удалить это сообщение для всех участников?"
+        },
+        {
+          "key": "BoostingGiveawayDeleteMsgText",
+          "value": "Удаление сообщения не отменит розыгрыш — победители всё равно будут выбраны **%s**.\n\nУдалённое объявление о розыгрыше восстановить нельзя."
+        },
+        {
+          "key": "BoostingGiveawayDeleteMsgTitle",
+          "value": "Удалить объявление"
+        },
+        {
+          "key": "DeleteMessagesTitle",
+          "value": "Удалить %1$s"
+        },
+        {
+          "key": "Done",
+          "value": "Готово"
+        },
+        {
+          "key": "FactCheckDeleted",
+          "value": "Проверка фактов удалена."
+        },
+        {
+          "key": "FactCheckDialog",
+          "value": "Проверка фактов"
+        },
+        {
+          "key": "FactCheckEdited",
+          "value": "Проверка фактов обновлена."
+        },
+        {
+          "key": "FwdMessageTo",
+          "value": "Сообщение переслано: %s."
+        },
+        {
+          "key": "FwdMessageToSavedMessages",
+          "value": "Сообщение переслано в **Избранное**."
+        },
+        {
+          "key": "FwdMessagesTo",
+          "value": "Сообщения пересланы: %s."
+        },
+        {
+          "key": "FwdMessagesToChats",
+          "forms": {
+            "one_value": "%d чат",
+            "few_value": "%d чата",
+            "many_value": "%d чатов",
+            "other_value": "%d чата"
+          }
+        },
+        {
+          "key": "FwdMessagesToSavedMessages",
+          "value": "Сообщения пересланы в **Избранное**."
         }
       ]
     },

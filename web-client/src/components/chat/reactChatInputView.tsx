@@ -8,9 +8,9 @@
 //
 // Что сюда НЕ переехало из `Chat.tsx` — разбор в контракте К-3 и строки
 // бэклога плана: отложенные и расписание (Б-25, Б-32), медленный режим и
-// платные сообщения (Б-37), клавиатура бота (Б-36), панель выделения (Б-23),
-// угловые кнопки упоминаний/реакций (Б-27), «переслать в другой чат» и
-// пересылка в один чат (Б-28).
+// платные сообщения (Б-37), клавиатура бота (Б-36), угловые кнопки
+// упоминаний/реакций (Б-27). Плашку пересылки ставит `initMessagesForward`
+// острова (попап пересылки, П-5), панель выделения — `chat/selection.ts` (П-5).
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useManagers } from '@core/hooks/useManagers'
 import { useChatList } from '@core/hooks/useChatList'
@@ -28,9 +28,15 @@ import { NULL_PEER_ID } from '@core/peers/peerId'
 import { isPeerMuted } from '@core/dialogs/notifySettings'
 import { draftReplyToId as draftReplyOf } from '@core/dialogs/draft'
 import { windowReplyState } from '@core/draftReply'
-import { winKey } from '@core/history/messagesMirror'
+import { mirrorWindow, winKey } from '@core/history/messagesMirror'
 import { messageToConvMsg } from '@core/messageToConvMsg'
-import { getMessageText, type MessageEntity } from '@core/models'
+import { getMessageText, type MessageEntity, type MyMessage } from '@core/models'
+import { mediaLabel } from '@core/dialogToChat'
+import { getMediaId, getMessageKind } from '@core/messages/messageKind'
+import { peerTitle } from '@core/peerCache'
+import I18n from '@lib/langPack'
+import showForwardPopup from '@components/popups/forward.bridge'
+import type { ForwardState } from '@core/hooks/useChatSend'
 import type { InlineResult } from '@core/managers/botsManager'
 import type { Sticker } from '@core/managers/stickersManager'
 import type { GifItem } from '@core/gifs'
@@ -55,6 +61,50 @@ import { ContactPicker } from '@components/messages/ChatDialogs'
 import SendGiftPopup from '@components/stars/SendGiftPopup'
 import SuggestPostPopup from '@components/SuggestPostPopup'
 import type ReactChatInput from './reactChatInput'
+import type { ChatInputForwarding } from './reactChatInput'
+
+/**
+ * Плашка пересылки из `{[fromPeerId]: mids}` — порт заголовка и подзаголовка
+ * `initMessagesForward` (tweb `input.ts:4462-4558`) в форме нашего
+ * `ForwardState`: одно сообщение — «Отправитель: текст», несколько —
+ * «Переслано от: имена» (до двух имён). Сообщения — из окна источника в
+ * зеркале. `ForwardState` несёт ОДИН источник: пачка из нескольких чатов
+ * (пересылка из shared media поиска) плашкой не собирается — берётся первый.
+ */
+function buildForwardState(forwarding: ChatInputForwarding, meId: number | null): ForwardState {
+  const [fromPeerIdStr] = Object.keys(forwarding)
+  if (fromPeerIdStr === undefined) return null
+  const sourcePeerId = +fromPeerIdStr
+  const msgIds = forwarding[sourcePeerId]
+  const window = mirrorWindow(winKey(sourcePeerId)) ?? []
+  const picked = msgIds.map((id) => window.find((m) => m.id === id)).filter((m): m is MyMessage => !!m)
+  // tweb :4471-4505 — автор: «Вы», скрытое имя пересылки или карточка пира
+  const senderLabel = (m: MyMessage): string => {
+    if (m.fromId != null && m.fromId === meId) return I18n.format('FromYou', true)
+    const hidden = m._ === 'message' ? m.fwd_from?.from_name : undefined
+    if (hidden && m.fromId == null) return hidden
+    return (m.fromId != null ? peerTitle(m.fromId) : '') || hidden || peerTitle(sourcePeerId)
+  }
+  const senders = [...new Set(picked.map(senderLabel))]
+  let text: string
+  if (msgIds.length === 1 && picked[0]) {
+    const body = getMessageText(picked[0]) || mediaLabel(getMessageKind(picked[0])) || ''
+    text = body ? `${senders[0]}: ${body}` : senders[0]
+  } else {
+    const names = senders.length <= 2 ? senders.join(', ') : `${senders.slice(0, 2).join(', ')} …`
+    text = `${I18n.format('Chat.ForwardedFrom', true)}: ${names}`
+  }
+  return {
+    sourcePeerId,
+    msgIds,
+    count: msgIds.length,
+    text,
+    // tweb :4477-4486 — вложение с подписью
+    hasCaption: picked.some((m) => getMediaId(m) != null && !!getMessageText(m)),
+    dropAuthor: false,
+    dropCaption: false,
+  }
+}
 
 export type ReactChatInputViewProps = {
   input: ReactChatInput
@@ -249,7 +299,9 @@ export default function ReactChatInputView({ input, peerId, threadId }: ReactCha
 
   // Порт `_center()` (tweb `input.ts:1963`): морф `.rows-wrapper` в плашку.
   const inputContainerRef = useRef<HTMLDivElement | null>(null)
-  useChatInputCenter(inputContainerRef, isControlNeeded(controlFlags) ? 'control' : null)
+  // идёт ли выделение — пишет `center` острова (панель выделения, `chat/selection.ts`)
+  const [selecting, setSelecting] = useState(false)
+  useChatInputCenter(inputContainerRef, selecting ? 'selection' : isControlNeeded(controlFlags) ? 'control' : null)
 
   // Инлайн-режим: «@username» → id бота (кэш), затем выдача бэком.
   const inlineBotCache = useRef<Map<string, number | null>>(new Map())
@@ -296,6 +348,17 @@ export default function ReactChatInputView({ input, peerId, threadId }: ReactCha
     setEditing(null)
     setForward(null)
   })
+  // tweb `initMessagesForward` (:4462): плашка пересылки вместо ответа и правки
+  const onInitMessagesForward = useEvent((forwarding: ChatInputForwarding) => {
+    const state = buildForwardState(forwarding, meId)
+    if (!state) return
+    setReply(null)
+    setEditing(null)
+    setForward(state)
+  })
+  // tweb `center` (:1963) → `getNeededFakeContainer` (:1899-1918): идёт
+  // выделение — строка ввода морфится в панель выделения
+  const onCenter = useEvent(() => setSelecting(!!input.chat.selection?.isSelecting))
   const canSendPlainNow = useEvent(() => composerUsable && !secretLocked)
   useLayoutEffect(() => {
     const handle = {
@@ -304,23 +367,33 @@ export default function ReactChatInputView({ input, peerId, threadId }: ReactCha
       initMessageEditing: onEditMid,
       sendDocument: onSendDocument,
       clearHelper: onClearHelper,
+      initMessagesForward: onInitMessagesForward,
+      center: onCenter,
     }
     input.handle = handle
+    // пересылка, пришедшая до монтирования (расхождение 5 `reactChatInput.ts`)
+    if (input.forwarding) {
+      const forwarding = input.forwarding
+      input.forwarding = undefined
+      onInitMessagesForward(forwarding)
+    }
     return () => {
       if (input.handle === handle) input.handle = undefined
     }
-  }, [input, canSendPlainNow, onReplyTo, onEditMid, onSendDocument, onClearHelper])
+  }, [input, canSendPlainNow, onReplyTo, onEditMid, onSendDocument, onClearHelper, onInitMessagesForward, onCenter])
 
   const onComposerCancelReply = useEvent(() => setReply(null))
   const onComposerCancelEdit = useEvent(() => setEditing(null))
   const onComposerCancelForward = useEvent(() => setForward(null))
   const onComposerForwardOption = useEvent((opt: { dropAuthor?: boolean, dropCaption?: boolean }) =>
     setForward((f) => (f ? { ...f, ...opt } : f)))
-  // Плашку пересылки ставил только пикер пересылки (`useMessageActions.doForward`
-  // → `pendingForward`), а он ушёл в бэклог (Б-28): до его возврата плашки нет,
-  // и пункт «переслать в другой чат» недостижим. Закрывает плашку, если она
-  // всё же есть.
-  const onComposerForwardAnother = useEvent(() => setForward(null))
+  // tweb `changeForwardRecipient` (input.ts:3882-3905): снова попап пересылки
+  // теми же сообщениями; плашка снимается, когда выбран новый получатель (у
+  // оригинала она прячется сразу и возвращается на отмене — итог тот же).
+  const onComposerForwardAnother = useEvent(() => {
+    if (!forward) return
+    void showForwardPopup({ [forward.sourcePeerId]: forward.msgIds }, () => setForward(null))
+  })
 
   // Меню вложений (tweb `input.ts:1115-1352`): фото/видео, файл, опрос,
   // чек-лист, геопозиция, контакт.
