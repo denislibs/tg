@@ -109,6 +109,24 @@ describe('MessagesManager.sendMessage', () => {
   })
 })
 
+describe('MessagesManager.forwardMessages', () => {
+  // Тело ручки `POST /chats/{id}/forward` — `forwardBody` бэкенда
+  // (`chat_handler.go:858-865`): номера едут ключом `ids` (схема
+  // `messages.forwardMessages`, `id:Vector<int>`), СЕРВЕРНЫМИ. Под ключом `msg_ids`
+  // ручка отвечала 400, и пересылка не уходила вовсе — входа в неё не было с К-3.
+  it('шлёт номера ключом ids в серверном пространстве', async () => {
+    let path = ''
+    let body: Record<string, unknown> = {}
+    const rest = {
+      post: async (p: string, b: Record<string, unknown>) => { path = p; body = b; return { messages: [], users: [], chats: [] } },
+    } as unknown as RestClient
+    const mgr = newMessagesManager({ rest })
+    await mgr.forwardMessages(1, 2, [cid(3), cid(4)], { dropAuthor: true })
+    expect(path).toBe('/chats/1/forward')
+    expect(body).toEqual({ from_peer_id: 2, ids: [3, 4], drop_author: true, drop_caption: false })
+  })
+})
+
 describe('MessagesManager scheduled', () => {
   // Отдельной формы «запланированного» на проводе больше НЕТ: это обычное
   // сообщение (`message`) с нашим параметром `send_at` — отложенность выражена

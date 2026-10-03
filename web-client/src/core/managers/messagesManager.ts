@@ -1002,7 +1002,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     ): Promise<MyMessage[]> {
       const r = await rest.post<MessagesContainer>(`/chats/${toPeerId}/forward`, {
         from_peer_id: fromPeerId,
-        msg_ids: msgIds.map(getServerMessageId),
+        ids: msgIds.map(getServerMessageId),
         drop_author: opts?.dropAuthor ?? false,
         drop_caption: opts?.dropCaption ?? false,
       })
