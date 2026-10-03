@@ -866,15 +866,13 @@ export default class ChatInput {
 
     const { goDownBtn, chatInput, attachMenu } = this
 
+    const isBroadcast = isBroadcastPeer(peerId)
+    const isBot = isUser(peerId) && isBotPeer(cachedUser(peerId))
     const [
-      isBroadcast,
-      isBot,
       canSend,
       canSendPlain,
       neededFakeContainer,
     ] = await Promise.all([
-      isBroadcastPeer(peerId),
-      isUser(peerId) && isBotPeer(cachedUser(peerId)),
       this.chat.canSend('send_messages'),
       this.chat.canSend('send_messages'),
       this.getNeededFakeContainer(startParam),
@@ -917,7 +915,7 @@ export default class ChatInput {
         )
         this.messageInput.dataset.peerId = '' + peerId
 
-        void Promise.all(this.attachMenuButtons.map((button) => button.verify ? button.verify() : true)).then((verified) => {
+        void Promise.all(this.attachMenuButtons.map((button) => Promise.resolve(button.verify ? button.verify() : true))).then((verified) => {
           if(!options.middleware()) return
           const visible = verified.some(Boolean)
           attachMenu.toggleAttribute('disabled', !visible)
