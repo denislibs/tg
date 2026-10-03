@@ -2128,6 +2128,22 @@ const ru = {
   ReplyToQuote: 'Ответ на цитату %s',
   UserRestrictionsSendRound: 'Отправка видеосообщений',
   UserRestrictionsSendVoices: 'Отправка голосовых сообщений',
+  // ── Медленный режим и платные сообщения (tweb chat/input.ts:4005-4069,
+  //    chat/paidMessagesInterceptor.ts, Б-37) ──
+  ConfirmPayment: 'Подтвердите оплату',
+  DontAskAgain: 'Больше не спрашивать',
+  'PaidMessages.PayForMessages': {
+    one_value: 'Оплатить %d сообщение',
+    few_value: 'Оплатить %d сообщения',
+    many_value: 'Оплатить %d сообщений',
+    other_value: 'Оплатить %d сообщения',
+  },
+  'PaidMessages.UserChargesForMultipleMessageWarning': '**%s** берёт **%s** за каждое входящее сообщение. Заплатить **%s** за отправку сообщений (**%d**)?',
+  'PaidMessages.UserChargesForOneMessageWarning': '**%s** берёт **%s** за каждое входящее сообщение. Заплатить **%s**, чтобы отправить одно сообщение?',
+  SlowModeHint: 'Включён медленный режим. Следующее сообщение\nможно отправить через %1$s.',
+  SlowmodeSendError: 'Включён медленный режим. Нельзя отправить больше одного сообщения за раз.',
+  SlowmodeSendErrorTooLong: 'Текст слишком длинный для одного сообщения.\n\nВключён медленный режим. Нельзя отправить больше одного сообщения за раз.',
+  'Stars.Subscription.MissingBalance': 'Недостаточно звёзд',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

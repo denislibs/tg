@@ -81,6 +81,7 @@
 @use "callSettingsPopup"; // components/call/settingsPopup.scss (вкладка «Динамики и камера», задача 26 плана 2D)
 @use "markup"; // :69
 @use "quote"; // :70
+@use "tooltip"; // :72 (подсказка `showTooltip` — `components/tooltip.solid.tsx`, Б-37)
 @use "topbarSearch"; // :74
 @use "foldersSidebar"; // :75
 @use "animatedSuper"; // :77

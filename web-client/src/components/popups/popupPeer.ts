@@ -280,7 +280,10 @@ export default class PopupPeer extends PopupElement {
  */
 export type ConfirmationPopupRejectReason = 'canceled' | 'closed'
 
-export function confirmationPopup(options: {
+/** tweb `PopupPeerCheckboxOptions` (peer.ts) — в объёме `PopupPeerOptions.checkboxes`. */
+export type PopupPeerCheckboxOptions = NonNullable<PopupPeerOptions['checkboxes']>[number]
+
+export type PopupConfirmationOptions = {
   titleLangKey?: LangPackKey
   titleLangArgs?: FormatterArguments
   descriptionLangKey?: LangPackKey
@@ -303,14 +306,25 @@ export function confirmationPopup(options: {
    * инстанс отдаётся синхронно, ДО `show()`, тем же вызовом.
    */
   getPopup?: (popup: PopupPeer) => void
+  /** confirmationPopup.ts:10 — один чекбокс под описанием; промис тогда отдаёт его
+   *  состояние (`boolean`). Потребитель — «Больше не спрашивать» подтверждения
+   *  платного сообщения (`chat/paidMessagesInterceptor.ts`, Б-37). */
+  checkbox?: PopupPeerCheckboxOptions
 } & (
   // tweb `PopupConfirmationOptions = PopupPeerOptions & …` (confirmationPopup.ts:8):
   // аватар пира в подтверждении — первый вызывающий `confirmDeleteContacts`
   // (`popups/deleteContacts.ts`, задача 0б-10 волны 7).
   | { peerId?: undefined, managers?: undefined }
   | { peerId: PeerId, managers: AvatarManagers }
-)): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
+)
+
+// confirmationPopup.ts:17-19 — тип исхода выводится из опций: с `checkbox` промис
+// отдаёт его состояние, без — `void`.
+export function confirmationPopup(options: PopupConfirmationOptions & { checkbox: PopupPeerCheckboxOptions }): Promise<boolean>
+export function confirmationPopup(options: PopupConfirmationOptions & { checkbox?: undefined }): Promise<void>
+export function confirmationPopup(options: PopupConfirmationOptions): Promise<boolean | void>
+export function confirmationPopup(options: PopupConfirmationOptions): Promise<boolean | void> {
+  return new Promise<boolean | void>((resolve, reject) => {
     let resolved = false // simpleConfirmation.ts:33
 
     const buttons = addCancelButton(options.buttons || [options.button]) // confirmationPopup.ts:29
@@ -321,12 +335,16 @@ export function confirmationPopup(options: {
         resolved = true
       }
     }
-    options.button.callback = () => { // simpleConfirmation.ts:43-48
+    // simpleConfirmation.ts:43-48; с чекбоксом — confirmationPopup.ts:22-24
+    // (`resolve(set ? !!set.size : undefined)`): `PopupPeer` передаёт отмеченные
+    // подписи вторым параметром только при непустых `checkboxes`.
+    const callback: PopupPeerButton['callback'] = (checked) => {
       if(!resolved) {
-        resolve()
+        resolve(checked ? !!checked.size : undefined)
         resolved = true
       }
     }
+    options.button.callback = callback
 
     const popup = PopupElement.createPopup(PopupPeer, 'popup-confirmation', { // simpleConfirmation.ts:50-55
       titleLangKey: options.titleLangKey,
@@ -336,6 +354,7 @@ export function confirmationPopup(options: {
       buttons,
       zIndex: options.zIndex,
       inputField: options.inputField,
+      checkboxes: options.checkbox && [options.checkbox], // confirmationPopup.ts:36
       ...(options.peerId !== undefined ? { peerId: options.peerId, managers: options.managers } : { peerId: undefined }),
     })
     options.getPopup?.(popup)
