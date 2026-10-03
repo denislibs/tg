@@ -65,6 +65,10 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 		}
 		slices.Sort(mem)
 		members = mem
+		mentions, e := i.syncEditMentions(ctx, msg, members)
+		if e != nil {
+			return e
+		}
 		pp, e = i.newPeerPayloads(ctx, chatID, i.editMessagePayload(ctx, msg))
 		if e != nil {
 			return e
@@ -72,12 +76,14 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 		// Автор строки — с ним peerPayloads сравнивает получателя, чтобы
 		// поставить пер-зрительский pFlags.out (своё сообщение у автора).
 		pp.sender = msg.SenderID
+		pp.mentions = mentions
 		ppLocked = pp
 		if msg.PaidMediaPrice != nil {
 			if ppLocked, e = i.newPeerPayloads(ctx, chatID, i.editMessagePayload(ctx, lockedPaidCopy(msg))); e != nil {
 				return e
 			}
 			ppLocked.sender = msg.SenderID
+			ppLocked.mentions = mentions
 		}
 		date := nowMillis()
 		for _, uid := range members {
@@ -102,6 +108,44 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 		}
 	}
 	return msg, nil
+}
+
+// syncEditMentions пересобирает упоминания правленого сообщения: новые
+// адресаты (участник, не автор) получают упоминание и +1 к счётчику, у
+// снятых строка message_mentions удаляется и счётчик пересчитывается.
+// Прежние упоминания остаются как были — вместе с их «прочитано».
+// Возвращает итог: userID -> упоминание не прочитано (флаги кадра правки).
+func (i *Interactor) syncEditMentions(ctx context.Context, msg domain.Message, members []int64) (map[int64]bool, error) {
+	want, err := i.messageMentions(ctx, msg)
+	if err != nil {
+		return nil, err
+	}
+	have, err := i.chats.MessageMentions(ctx, msg.ID)
+	if err != nil {
+		return nil, err
+	}
+	for _, uid := range members {
+		if uid == msg.SenderID || !want[uid] {
+			continue
+		}
+		if _, ok := have[uid]; ok {
+			continue
+		}
+		if err := i.chats.AddMention(ctx, msg.ChatID, msg.ID, msg.Seq, uid); err != nil {
+			return nil, err
+		}
+		have[uid] = true
+	}
+	for uid := range have {
+		if want[uid] {
+			continue
+		}
+		if err := i.chats.RemoveMention(ctx, msg.ChatID, msg.ID, uid); err != nil {
+			return nil, err
+		}
+		delete(have, uid)
+	}
+	return have, nil
 }
 
 // DeleteMessage removes a message. revoke=true deletes for everyone (soft-delete

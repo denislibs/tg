@@ -1,5 +1,5 @@
 // Выдержка из tweb `src/components/stories/list.module.scss` — блок `:global(.stories-list)`
-// (остальное там — CSS-модуль solid-компонента, он лежит в StoriesRow.module.scss).
+// (остальное там — CSS-модуль ряда, `components/stories/list.module.scss`).
 //
 // Ключевое: `height: 0`. Ряд историй НЕ занимает места в потоке — он высотой в ноль
 // и выпадает поверх списка, а место под него освобождает `.connection-status-bottom`,

@@ -86,6 +86,14 @@ type MessageContext struct {
 	// recent_reactions: аватарки в чипе личного чата рисуются из него, а флага
 	// в личке не бывает.
 	CanViewReactionsList bool
+	// Mentioned — сообщение упоминает ЗРИТЕЛЯ (message.pFlags.mentioned):
+	// строка message_mentions на пару «сообщение + зритель». Строка messages
+	// этого не знает — упоминание у каждого получателя своё.
+	// MentionUnread — то упоминание ещё не прочитано: на проводе это
+	// pFlags.media_unread, и именно пара mentioned+media_unread — «непрочитанное
+	// упоминание» у клиента (tweb isMentionUnread).
+	Mentioned     bool
+	MentionUnread bool
 }
 
 // ToWire собирает конструктор схемы: messageService, когда у сообщения есть
@@ -154,7 +162,8 @@ func (m Message) toService(ctx MessageContext, action MessageAction) MessageServ
 
 func (m Message) toReal(ctx MessageContext) MessageReal {
 	r := NewMessage(m.Seq, ctx.Peer, m.CreatedAt, m.Text, MessageFlags{
-		MediaUnread: m.MediaUnread,
+		Mentioned:   ctx.Mentioned,
+		MediaUnread: m.MediaUnread || (ctx.Mentioned && ctx.MentionUnread),
 		Post:        ctx.Post,
 		Out:         ctx.Out,
 	})

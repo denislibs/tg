@@ -17,7 +17,7 @@
  *     пачка П-6), а статус у нас — юникод-эмодзи (`emoji_status_emoticon`,
  *     `core/peers/peer.ts`), не документ кастомного эмодзи: наборов статусов
  *     (`inputStickerSetEmojiDefaultStatuses`, недавние/дефолтные статусы,
- *     недавние кастомные эмодзи — `:30-52`) на бэкенде нет. Строка бэклога Б-50.
+ *     недавние кастомные эмодзи — `:30-52`) на бэкенде нет. Строка бэклога Б-63.
  *  2. Запись — `managers.profile.setEmojiStatus(emoji)` (`''` — снять), а не
  *     `appUsersManager.updateEmojiStatus(emojiStatus)`.
  */

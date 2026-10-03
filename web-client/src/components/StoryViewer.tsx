@@ -30,7 +30,7 @@ import { getUserTitle } from '../core/peers/getPeerTitle'
 import { getPeerPhotoId, type UserReal } from '../core/peers/peer'
 import { useMediaUrl } from '../core/hooks/useMediaUrl'
 
-/** Узел, из которого вьювер вылетает и куда садится, — у кружка группы ряда историй (задача 2-6 волны 7, `stories/list.tsx`). */
+/** Узел, из которого вьювер вылетает и куда садится, — аватарка группы в ряду историй (`stories/list.solid.tsx`, вход — `stories/viewer.ts`). */
 type StoryTargetGetter = (groupIndex: number) => Element | null
 import s from './StoryViewer.module.scss'
 

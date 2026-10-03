@@ -37,8 +37,7 @@
 // `useT()`. У tweb это ключи i18n-пакета (`Loading`, `AddStickersCount`,
 // `RemoveStickersCount` + плюрал `Stickers: '%1$d stickers'` — число есть у ОБЕИХ
 // кнопок), которых в нашем `i18n/dict.*` нет — заводить их ради одной этой
-// модалки не стали (как `StoriesRow`'s aria-label — тоже литеральный русский
-// без ключа), но число и падеж — как в tweb, через ту же `stickerWord(count)`.
+// модалки не стали, но число и падеж — как в tweb, через ту же `stickerWord(count)`.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import rootScope from '@lib/rootScope'
 import { openPopup } from '../../stores/popupStore'

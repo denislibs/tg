@@ -82,6 +82,9 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 	// Per-message, per-recipient pts + authoritative unread (parallel to created):
 	// a forward fans out one new_message per copy, each with its own cursor.
 	var ptsMaps []map[int64]int64
+	// Упомянутые в тексте копии получатели (parallel to created): упоминание в
+	// пересланном тексте считается так же, как при обычной отправке.
+	var mentionMaps []map[int64]bool
 	// Канал-приёмник: тела и курсоры журнала (parallel to created) вместо
 	// пер-получательских карт выше. Живой кадр строится из ТОГО ЖЕ тела, что
 	// легло в журнал, — иначе догон разрыва и live разъедутся.
@@ -204,11 +207,28 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 				channelPtsList = append(channelPtsList, pts)
 				continue
 			}
+			mentioned, e := i.mentionedUsers(ctx, in.ToChatID, msg.Text, msg.Entities)
+			if e != nil {
+				return e
+			}
+			var mentions map[int64]bool
+			for _, uid := range members {
+				if uid != in.SenderID && mentioned[uid] {
+					if e := i.chats.AddMention(ctx, in.ToChatID, msg.ID, msg.Seq, uid); e != nil {
+						return e
+					}
+					if mentions == nil {
+						mentions = map[int64]bool{}
+					}
+					mentions[uid] = true
+				}
+			}
 			fwdOut := i.messageUpdatePayload(ctx, msg)
 			pp, e := i.newPeerPayloads(ctx, in.ToChatID, fwdOut)
 			if e != nil {
 				return e
 			}
+			pp.mentions = mentions
 			ptsByUser := make(map[int64]int64, len(members))
 			for _, uid := range members {
 				payload, e := pp.payload(uid)
@@ -230,6 +250,7 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 			}
 			created = append(created, msg)
 			ptsMaps = append(ptsMaps, ptsByUser)
+			mentionMaps = append(mentionMaps, mentions)
 		}
 		return nil
 	})
@@ -252,6 +273,7 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 			if e != nil {
 				break
 			}
+			pp.mentions = mentionMaps[idx]
 			for _, uid := range members {
 				extra := map[string]any{"pts": ptsMaps[idx][uid]}
 				_ = i.publisher.PublishToUser(ctx, uid, pp.frame("new_message", uid, extra))
@@ -269,7 +291,7 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 		if md == nil {
 			continue
 		}
-		i.publishMessageDelivery(ctx, md.msg, md.msg.SenderID, md.recipients, md.ptsByUser)
+		i.publishMessageDelivery(ctx, md.msg, md.msg.SenderID, md.recipients, md.ptsByUser, md.mentions)
 	}
 	return created, nil
 }

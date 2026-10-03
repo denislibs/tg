@@ -223,6 +223,7 @@ const de = {
   'MultiAccount.AddAccount': 'Konto hinzufügen',
   SavedMessages: 'Gespeicherte Nachrichten',
   'MyStories.Title': 'Meine Storys',
+  MyStory: 'Meine Story',
   Contacts: 'Kontakte',
   'MultiAccount.More': 'Mehr',
   NewChannel: 'Neuer Kanal',
@@ -290,6 +291,7 @@ const de = {
   'ChatList.Context.LeaveChannel': 'Kanal verlassen',
   
   OpenInNewTab: 'In neuem Tab öffnen',
+  OpenStory: 'STORY ÖFFNEN',
   Archive: 'Archivieren',
   'Profile.Info.User': 'Info',
   'Profile.Info.Group': 'Gruppeninfo',

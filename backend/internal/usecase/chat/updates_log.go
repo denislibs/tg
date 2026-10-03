@@ -129,19 +129,23 @@ func (i *Interactor) logAndPublishPerPeer(ctx context.Context, chatID int64, rec
 type peerPayloads struct {
 	addr chatAddress
 	base map[string]any
-	// Ключ развёртки — ПАРА «ключ пира + свой ли это отправитель». Одного
-	// ключа пира мало: `pFlags.out` зависит от ЗРИТЕЛЯ, а не от чата, и в
-	// группе ключ у всех общий — мемоизация по одному пиру раздала бы всем
-	// участникам флаг того, кого обслужили первым.
+	// Ключ развёртки — «ключ пира + пер-зрительские флаги» (out, упоминание).
+	// Одного ключа пира мало: `pFlags.out` и `pFlags.mentioned` зависят от
+	// ЗРИТЕЛЯ, а не от чата, и в группе ключ у всех общий — мемоизация по
+	// одному пиру раздала бы всем участникам флаги того, кого обслужили первым.
 	byPeer map[payloadKey]json.RawMessage
 	// sender — автор строки сообщения; с ним сравнивается получатель. 0 — кадр
 	// не несёт сообщения (реакции, чтение, папки), тогда `out` не при чём.
 	sender int64
+	// mentions — кого сообщение упоминает: userID -> упоминание ещё не
+	// прочитано (pFlags.mentioned + media_unread у адресата, см. viewerFlags).
+	// nil — кадр без сообщения либо без упоминаний.
+	mentions map[int64]bool
 }
 
 type payloadKey struct {
 	peer domain.PeerID
-	out  bool
+	vf   viewerFlags
 }
 
 // newPeerPayloads готовит развёртку. chatID == 0 — кадр без чата (баланс звёзд,
@@ -169,13 +173,13 @@ func (p *peerPayloads) peer(viewerID int64) domain.PeerID {
 
 // payload — журнальное тело кадра для получателя; мемоизировано по ключу пира.
 func (p *peerPayloads) payload(viewerID int64) (json.RawMessage, error) {
-	key := payloadKey{peer: p.peer(viewerID), out: p.outFor(viewerID)}
+	key := p.key(viewerID)
 	if raw, ok := p.byPeer[key]; ok {
 		return raw, nil
 	}
 	d := p.base
-	if key.peer != domain.NullPeerID || key.out {
-		d = withPeer(p.base, key.peer, key.out)
+	if key.peer != domain.NullPeerID || key.vf != (viewerFlags{}) {
+		d = withPeer(p.base, key.peer, key.vf)
 	}
 	raw, err := json.Marshal(d)
 	if err != nil {
@@ -185,9 +189,14 @@ func (p *peerPayloads) payload(viewerID int64) (json.RawMessage, error) {
 	return raw, nil
 }
 
-// outFor — отправил ли кадр сам получатель (message.pFlags.out).
-func (p *peerPayloads) outFor(viewerID int64) bool {
-	return p.sender != 0 && p.sender == viewerID
+// key — ключ развёртки: пир и пер-зрительские флаги сообщения получателя.
+func (p *peerPayloads) key(viewerID int64) payloadKey {
+	unread, mentioned := p.mentions[viewerID]
+	return payloadKey{peer: p.peer(viewerID), vf: viewerFlags{
+		out:           p.sender != 0 && p.sender == viewerID,
+		mentioned:     mentioned,
+		mentionUnread: mentioned && unread,
+	}}
 }
 
 // frame — живой кадр получателю: тело журнала плюс его пер-юзерные поля (pts,
@@ -204,26 +213,25 @@ func (p *peerPayloads) framePts(t string, viewerID int64, pts int64) []byte {
 
 // bodyFor — тело кадра ГЛАЗАМИ получателя (ключ пира и `out` — пер-зрительские).
 func (p *peerPayloads) bodyFor(viewerID int64) map[string]any {
-	peer := p.peer(viewerID)
-	out := p.outFor(viewerID)
-	if peer != domain.NullPeerID || out {
-		return withPeer(p.base, peer, out)
+	key := p.key(viewerID)
+	if key.peer != domain.NullPeerID || key.vf != (viewerFlags{}) {
+		return withPeer(p.base, key.peer, key.vf)
 	}
 	return p.base
 }
 
 // appendByPeer пишет кадр в персональные журналы получателей БАТЧАМИ.
 //
-// Ключ батча — ПАРА «ключ пира + свой ли отправитель», а не один ключ пира.
-// Ключа пира мало: `pFlags.out` зависит от зрителя, а в группе ключ у всех
-// общий — батч взял бы тело первого получателя и раздал его всем, то есть
-// своё сообщение выглядело бы чужим у автора (или чужое своим у остальных).
-// Автор при этом ровно один, поэтому батчей становится максимум на один
-// больше, а не по батчу на человека.
+// Ключ батча — «ключ пира + пер-зрительские флаги» (out, упоминание), а не
+// один ключ пира. Ключа пира мало: `pFlags.out` зависит от зрителя, а в группе
+// ключ у всех общий — батч взял бы тело первого получателя и раздал его всем,
+// то есть своё сообщение выглядело бы чужим у автора (или чужое своим у
+// остальных); то же с упоминанием. Автор ровно один, упомянутых — единицы,
+// поэтому батчей становится на пару больше, а не по батчу на человека.
 func (i *Interactor) appendByPeer(ctx context.Context, pp *peerPayloads, users []int64, date int64, ptsByUser map[int64]int64) error {
 	byPeer := make(map[payloadKey][]int64, 3)
 	for _, uid := range users {
-		key := payloadKey{peer: pp.peer(uid), out: pp.outFor(uid)}
+		key := pp.key(uid)
 		byPeer[key] = append(byPeer[key], uid)
 	}
 	for _, group := range byPeer {

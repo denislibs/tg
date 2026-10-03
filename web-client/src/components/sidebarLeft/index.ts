@@ -54,11 +54,9 @@
  *  • `getTopPeers('correspondents')` (:363) — прогрев выдачи поиска, задача 2-3;
  *  • Ctrl+0 (:463-470) — наш `core/hotkeys.ts`, задача 5-1;
  *  • `onSwipeTick: appImManager.adjustChatPatternBackground` (:670) — Э4-5;
- *  • `appDialogsManager.onChatListNarrowChange()`/`resizeStoriesList()` в
- *    `onCollapsedChange` (:507, :515) — задачи 1-8 и 2-6;
- *  • событие `resizing_left_sidebar` (:571-576) — его читатель, ряд историй, —
- *    задача 2-6 (у нас пересчёт ширин зовётся напрямую, шапка
- *    `core/dom/updateColumnWidths.ts`).
+ *  • `appDialogsManager.onChatListNarrowChange()` в `onCollapsedChange` (:507) —
+ *    задача 1-8; `resizeStoriesList()` после `toggleRightButtons` (:342) — с
+ *    кнопками шапки, задача 2-8.
  *
  * Расхождения с оригиналом (временные — с номером задачи, которая снимает):
  *  1. (снято на К-2) Синглтон создаётся при импорте, как у tweb (:1798), над
@@ -95,7 +93,7 @@
  *     `wrapEmojiStatus` над документом кастомного эмодзи (:304-314); анимации
  *     вокруг нового статуса (`fireOnNew` + `ReactionElement.fireAroundAnimation`,
  *     :285-302) нет — ей нужен тот же документ; `emoji_status_change` —
- *     подписка на смену статуса в `me` зеркала. Выбор статуса — Б-50
+ *     подписка на смену статуса в `me` зеркала. Выбор статуса — Б-63
  *     (`emojiStatusPicker.solid.tsx`).
  *
  * Расхождения бургера (`createToolsMenu`/`createMoreSubmenu`, задача 2-2):
@@ -529,7 +527,8 @@ export class AppSidebarLeft extends SidebarSlider {
     this.chatListContainer.parentElement!.classList.toggle('zoom-fade', !this.isCollapsed())
     this.dialogsManager?.xd?.toggleAvatarUnreadBadges(this.isCollapsed())
     // `appDialogsManager.onChatListNarrowChange()` (:507) — задача 1-8;
-    // `showCtrlFTip` (:509-513) — задача 2-3; `resizeStoriesList` (:515) — 2-6.
+    // `showCtrlFTip` (:509-513) — задача 2-3.
+    if(!this.isCollapsed()) this.dialogsManager?.resizeStoriesList?.() // :515
   }
 
   public hasSomethingOpenInside() {
@@ -582,7 +581,10 @@ export class AppSidebarLeft extends SidebarSlider {
     setOpenTabsLeftSidebar(isFloating)
 
     if(!isCollapsed && !this.hasSomethingOpenInside()) {
-      // `resizing_left_sidebar` (:571-576) — задача 2-6, см. шапку
+      void pause(300).then(() => {
+        // Mainly for stories when changing tabs view left <-> top
+        rootScope.dispatchEventSingle('resizing_left_sidebar')
+      })
       return
     }
 

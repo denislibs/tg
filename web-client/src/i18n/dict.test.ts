@@ -525,14 +525,17 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // (`sidebarLeft/index.ts:163`). Итог: ru 1518.
 // Задача 2-4 волны 7 (кнопка `#new-menu`, tweb `sidebarLeft/index.ts:1113-1129`): у ru
 // +1 ключ tweb lang.ts:66 `ChatAutomation.NewChats` — `aria-label` кнопки. Итог: ru 1519.
+// Задача 2-6 волны 7 (ряд историй, tweb `stories/list.tsx:173-180`, `:205`): у всех пяти
+// +2 ключа tweb lang.ts `MyStory` (:482) и `OpenStory` (:502) — подпись своего элемента
+// и `aria-label` элементов ряда. Итог: ru 1532, uk 829, es 800, de 801, fr 796.
 // Пачка П-3 волны 7 (кнопка «Обновить» шапки колонки, tweb `sidebarLeft/index.ts:211-227`):
 // у ru +1 ключ tweb lang.ts:2077 `Update`. Итог: ru 1531.
 const COMPOSITION = {
-  ru: { keys: 1531, plural: 48 },
-  uk: { keys: 827, plural: 35 },
-  es: { keys: 798, plural: 34 },
-  de: { keys: 799, plural: 35 },
-  fr: { keys: 794, plural: 34 },
+  ru: { keys: 1533, plural: 48 },
+  uk: { keys: 829, plural: 35 },
+  es: { keys: 800, plural: 34 },
+  de: { keys: 801, plural: 35 },
+  fr: { keys: 796, plural: 34 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -703,13 +706,14 @@ const COMPOSITION = {
 // снесённого `PermissionsScreen` (разбор — у `COMPOSITION` выше).
 // Задачей 2-1 волны 7 — у ru +1 ключ tweb `StarsRating.Back` (разбор — там же).
 // Задачей 2-4 волны 7 — у ru +1 ключ tweb `ChatAutomation.NewChats` (разбор — там же).
+// Задачей 2-6 волны 7 — у всех пяти +2 ключа tweb `MyStory`, `OpenStory` (разбор — там же).
 // Пачкой П-3 волны 7 — у ru +1 ключ tweb `Update` (разбор — там же).
 const FINGERPRINT = {
-  ru: '08b433ee',
-  uk: 'ffe46f66',
-  es: '1c8d911a',
-  de: 'dcd1c9f9',
-  fr: 'b3dccb74',
+  ru: '7131aa5a',
+  uk: 'a02f363c',
+  es: '89e8ae98',
+  de: '0fed7933',
+  fr: 'e3cd93c6',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

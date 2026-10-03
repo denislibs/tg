@@ -7,8 +7,9 @@
  *
  * Первый потребитель — корень настроек (`sidebarLeft/tabs/settings.solid.tsx`,
  * своя шапка профиля: `PeerProfileAvatars` + этот хук, как tweb
- * `peerProfileAvatars.ts:350-373` делает внутри класса). React-двойник для
- * правой панели и ряда историй — `core/hooks/useCollapsable.ts` (долг
+ * `peerProfileAvatars.ts:350-373` делает внутри класса), второй — ряд историй
+ * (`components/stories/list.solid.tsx`). React-двойник для правой панели —
+ * `core/hooks/useCollapsable.ts` (долг
  * `backlogs/frontend/collapsable-solid-owner.md`: сведётся к этому файлу, когда
  * владельцы переедут на Solid).
  *

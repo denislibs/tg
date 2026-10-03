@@ -824,6 +824,19 @@ func (c groupChats) LastReadAt(context.Context, int64, int64) (time.Time, bool, 
 	return time.Time{}, false, nil
 }
 func (c groupChats) AddMention(context.Context, int64, int64, int64, int64) error { return nil }
+func (c groupChats) ReadMention(context.Context, int64, int64, int64) (bool, error) {
+	return false, nil
+}
+func (c groupChats) RemoveMention(context.Context, int64, int64, int64) error { return nil }
+func (c groupChats) MessageMentions(context.Context, int64) (map[int64]bool, error) {
+	return nil, nil
+}
+func (c groupChats) ViewerMentions(context.Context, int64, []int64) (map[int64]bool, error) {
+	return nil, nil
+}
+func (c groupChats) MemberIDsByUsernames(context.Context, int64, []string) ([]int64, error) {
+	return nil, nil
+}
 func (c groupChats) ClearMentions(context.Context, int64, int64, int64) (int, error) {
 	return 0, nil
 }
