@@ -214,6 +214,8 @@ export function createWorkerCore() {
     // до эха и прыгал влево (см. `PendingCtx.isBroadcastChat`). Стрелка ленивая
     // ровно как send/upload ниже: `peers` объявлен дальше по файлу.
     isBroadcastChat: (peerId) => isBroadcast(peers.cachedPeer(peerId) as Chat | undefined),
+    // Порт `appPeersManager.getPeer` для `canEditMessage` (`getFirstMessageToEdit`).
+    getPeer: (peerId) => peers.cachedPeer(peerId),
     // Гейт вывода `out` (см. объявление meReady выше).
     meReady: () => meReady,
     broadcast: (event, payload) => broadcast(event, payload),

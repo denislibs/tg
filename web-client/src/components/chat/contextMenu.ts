@@ -188,6 +188,7 @@ import { copyTextToClipboard } from '@helpers/clipboard'
 import { canCopyMediaToClipboard } from '@helpers/copyMediaToClipboard'
 import copyMessageMediaWithFeedback from '@components/copyMessageMediaWithFeedback'
 import canDeleteMessage from '@core/messages/canDeleteMessage'
+import canEditMessage from '@core/messages/canEditMessage'
 import contextMenuController from '@helpers/contextMenuController'
 import { formatFullSentTime, getFullDate, isValidTimestamp } from '@helpers/date'
 import { attachContextMenuListener } from '@helpers/dom/attachContextMenuListener'
@@ -207,13 +208,13 @@ import { buildMessageLink } from '@core/messageLink'
 import { getMessageText, type MyMessage, type MessageReal, type Reaction } from '@core/models'
 import {
   cachedChat,
-  cachedUser,
+  cachedPeer,
   hasRightsPeer,
   isBroadcastPeer,
   isChannelPeer,
   peerTitle,
 } from '@core/peerCache'
-import { isAnyChat, isUser, NULL_PEER_ID, SERVICE_PEER_ID } from '@core/peers/peerId'
+import { isUser, NULL_PEER_ID, SERVICE_PEER_ID } from '@core/peers/peerId'
 import type { ReadDateResult } from '@core/managers/chatsManager'
 import { useI18nStore } from '../../i18n'
 import { _i18n, i18n } from '@lib/langPack'
@@ -1262,67 +1263,10 @@ export default class ChatContextMenu {
     return isUser(peerId) || hasRightsPeer(peerId, 'pin_messages')
   }
 
-  /** Порт `appMessagesManager.canMessageBeEdited` (:5773-5804).
-   *
-   *  Не портированы (фактов нет): `via_bot_id` и `messageMediaToDo` в модели
-   *  отсутствуют. */
-  private canMessageBeEdited(message: MyMessage | undefined, kind: 'text' | 'poll'): boolean {
-    if(!message) return false
-    if(this.isOutgoing(message)) return false
-
-    const goodMedias = ['messageMediaPhoto', 'messageMediaDocument', 'messageMediaWebPage']
-    if(kind === 'poll') {
-      goodMedias.push('messageMediaPoll')
-    }
-
-    if(message._ !== 'message' ||
-      message.fwd_from ||
-      (message.media && goodMedias.indexOf(message.media._) === -1) ||
-      this.isBot(message.fromId)) {
-      return false
-    }
-
-    if(message.media?._ === 'messageMediaDocument') {
-      const doc = message.media.document as MyDocument | undefined
-      if(!doc || doc.type === 'sticker' || doc.type === 'round') {
-        return false
-      }
-    }
-
-    return true
-  }
-
-  /** Порт `appUsersManager.isBot` через зеркало карточек. */
-  private isBot(peerId: PeerId | undefined): boolean {
-    if(peerId === undefined) return false
-    const user = cachedUser(peerId)
-    return user?._ === 'user' && !!user.pFlags?.bot
-  }
-
-  /** Порт `appMessagesManager.canEditMessage` (:5806-5839).
-   *
-   *  Не портированы: ограничение по времени (`config.edit_time_limit` — своего
-   *  `appConfig` у нас нет), монофорумы и миграция базовой группы. Право
-   *  `send_plain` оригинала здесь `send_messages` — гранулярных запретов новых
-   *  слоёв в нашем `ChatRights` нет (`core/peers/rights.ts`). */
+  /** Порт `appMessagesManager.canEditMessage` — общий `core/messages/canEditMessage.ts`
+   *  (его же зовёт воркер для правки по ↑), карточки — из зеркала. */
   private canEditMessage(message: MyMessage | undefined, kind: 'text' | 'poll' = 'text'): boolean {
-    if(!message || !this.canMessageBeEdited(message, kind)) {
-      return false
-    }
-
-    // * second rule for saved messages, because there is no 'out' flag
-    if(message.peerId === rootScope.myId) {
-      return true
-    }
-
-    const { peerId } = message
-    return isBroadcastPeer(peerId) ?
-      hasRightsPeer(peerId, 'edit_messages') :
-      (
-        isAnyChat(peerId) && kind === 'text' ?
-          (hasRightsPeer(peerId, 'send_messages') || hasRightsPeer(peerId, 'send_media')) :
-          true
-      ) && !!message.pFlags.out
+    return canEditMessage(message, kind, { myId: rootScope.myId, getPeer: cachedPeer })
   }
 
   /** Порт `appMessagesManager.canViewMessageReadParticipants` (:9109-9130) в
