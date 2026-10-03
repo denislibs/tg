@@ -29,7 +29,10 @@
 //    `getReadyToSend`/`canSendWhenOnline`/`setScheduleTimestamp`/`scheduleSending`
 //    `:2145-2217` (`popups/scheduleSendingPopup.ts`), `resetSendingFlags` `:4491`,
 //    send-as `createSendAs`/`updateOffset` `:2485-2520`, `:2817-2852` (`chat/sendAs.ts`),
-//    «Открепить все» экрана закрепов `pinnedControlBtn` `:1618-1633`, `:2697-2702`.
+//    «Открепить все» экрана закрепов `pinnedControlBtn` `:1618-1633`, `:2697-2702`,
+//    медленный режим `showSlowModeTooltipIfNeeded` `:4005-4084` (`chat/showSlowModeTooltipIfNeeded.ts`)
+//    и плата `paidMessageInterceptor` (`chat/paidMessagesInterceptor.ts`) в путях отправки
+//    `:3836`, `:4571-4604`, `:4800-4814`.
 //
 // В бэклоге (строки раздела 5 плана): меню плашек и превью ссылки (Б-72), плашки без
 // предмета (Б-73), эффекты сообщений (Б-125), повтор отложенных (Б-126), сохранение
@@ -72,7 +75,9 @@
 //     и сохранённая гифка; пересылку, файлы и Tenor-гифку отложить нечем — уходят сразу
 //     (Б-126). «Когда будет в сети» — `when_online`, а не метка `SEND_WHEN_ONLINE_TIMESTAMP`.
 // 10. `SendMenu` без ряда эффектов и `SelectedEffect` (Б-125); `isPaid` у
-//     `setPeerParams` — `false`, пока нет `Chat.starsAmount` (платные — Б-37).
+//     `setPeerParams` — плата из зеркала пиров (`getStarsAmount`), а не `Chat.starsAmount`
+//     (у `Chat` его нет, расхождение 7 `chat.ts`). Плейсхолдер `PaidMessages.MessageForStars`
+//     и бейдж звёзд кнопки (`addStarsBadge`/`setStarsAmount`) — без `inputState` (Б-129).
 import type { Managers } from '@/client/bootstrap'
 import type { AppImManager } from '@lib/appImManager'
 import rootScope from '@lib/rootScope'
@@ -86,7 +91,7 @@ import type { Sticker } from '@core/managers/stickersManager'
 import type { GifItem } from '@core/gifs'
 import type { ChatRights } from '@core/peers/rights'
 import { isUser } from '@core/peers/peerId'
-import { cachedUser, isBroadcastPeer, isInChatPeer } from '@core/peerCache'
+import { cachedUser, getStarsAmount, isBroadcastPeer, isInChatPeer } from '@core/peerCache'
 import { isBot as isBotPeer } from '@core/peers/predicates'
 import { isPeerMuted } from '@core/dialogs/notifySettings'
 import { draftsAreEqual, realDraft } from '@core/dialogs/draft'
@@ -146,6 +151,8 @@ import { SEND_WHEN_ONLINE_TIMESTAMP } from '@core/format/dayLabel'
 import AttachMenuButton from './attachMenuButton.solid'
 import ChatInputPlate from './controlPlate.solid'
 import ChatSendAs from './sendAs'
+import PaidMessagesInterceptor, { PAYMENT_REJECTED } from './paidMessagesInterceptor'
+import showSlowModeTooltipIfNeeded, { type ShowSlowModeTooltipOptions } from './showSlowModeTooltipIfNeeded'
 import SendMenu from './sendContextMenu'
 import PeerTitle from './peerTitle'
 import type Chat from './chat'
@@ -223,6 +230,8 @@ export default class ChatInput {
   private hasOffset?: { type: 'commands' | 'as' | null, forwards: boolean }
   /** tweb `:343`, «Открепить все»/«Скрыть закреплённые» экрана закрепов (Б-90) */
   private pinnedControlBtn!: HTMLButtonElement
+  /** tweb `:441` — подтверждение платы платного чата (Б-37) */
+  public paidMessageInterceptor!: PaidMessagesInterceptor
 
   public helperType?: Exclude<ChatInputHelperType, 'webpage'>
   /** tweb `:322` — перерисовать плашку (превью ссылки возвращает прежнюю, Б-72) */
@@ -314,6 +323,9 @@ export default class ChatInput {
     const c = this.controlContainer = document.createElement('div')
     c.classList.add('chat-input-control', 'chat-input-wrapper')
     this.inputContainer.append(c)
+
+    // tweb `:595`; dispose нет — очереди отложенной оплаты нет (шапка `paidMessagesInterceptor.ts`)
+    this.paidMessageInterceptor = new PaidMessagesInterceptor(this.chat)
   }
 
   public getMiddleware(additionalCallback?: () => boolean) {
@@ -1101,7 +1113,7 @@ export default class ChatInput {
 
       previousSendAs?.destroy()
       setSendAsCallback?.()
-      sendMenu?.setPeerParams({ peerId, isPaid: false })
+      sendMenu?.setPeerParams({ peerId, isPaid: !!getStarsAmount(peerId) })
 
       let haveSomethingInControl = false
 
@@ -1462,6 +1474,11 @@ export default class ChatInput {
 
   /** tweb `:3813-3884` */
   public onAttachClick = async(documents?: boolean, photos?: boolean, videos?: boolean) => {
+    // tweb `:3836`
+    if(!this.editMessage && await this.showSlowModeTooltipIfNeeded({ element: this.attachMenu, container: this.btnSendContainer.parentElement! })) {
+      return
+    }
+
     this.fileInput.value = ''
 
     if(documents) {
@@ -1479,6 +1496,26 @@ export default class ChatInput {
     }
 
     this.fileInput.click()
+  }
+
+  /** tweb `:4005-4069` — тело в `chat/showSlowModeTooltipIfNeeded.ts` */
+  public static showSlowModeTooltipIfNeeded = showSlowModeTooltipIfNeeded
+
+  /** tweb `:4071-4077` */
+  public getDefaultParamsForSlowModeTooltip(): ShowSlowModeTooltipOptions {
+    return {
+      element: this.btnSendContainer,
+      peerId: this.chat.peerId,
+      managers: this.managers,
+    }
+  }
+
+  /** tweb `:4079-4084` */
+  public showSlowModeTooltipIfNeeded(options: Partial<ShowSlowModeTooltipOptions> = {}) {
+    return ChatInput.showSlowModeTooltipIfNeeded({
+      ...this.getDefaultParamsForSlowModeTooltip(),
+      ...options,
+    })
   }
 
   /** tweb `:4086-4117` — без записи (Б-30): пустое поле тоже «отправить». */
@@ -1703,6 +1740,18 @@ export default class ChatInput {
 
     messageCount += trimmedValue ? splitStringByLength(value, MESSAGE_LENGTH_MAX).length : 0
 
+    // tweb `:4571-4604`: в ленте отложенных у оригинала `messageCount` не считается вовсе —
+    // ни медленного режима, ни платы (у нас счёт нужен ниже для очистки поля)
+    if(this.chat.type !== ChatType.Scheduled) {
+      if(await this.showSlowModeTooltipIfNeeded({ sendingFew: messageCount > 1, textOverflow: value.length > MESSAGE_LENGTH_MAX })) {
+        return false
+      }
+
+      if(messageCount && await this.paidMessageInterceptor.prepareStarsForPayment(messageCount) === PAYMENT_REJECTED) {
+        return false
+      }
+    }
+
     if(trimmedValue) {
       void this.sendText(value, entities, sendingParams)
     }
@@ -1736,7 +1785,7 @@ export default class ChatInput {
         forwarding: this.forwarding,
       })
 
-      if(!result.messageCount) {
+      if(!result || !result.messageCount) {
         return
       }
 
@@ -1768,6 +1817,15 @@ export default class ChatInput {
 
     if(this.chat.type === ChatType.Scheduled && !force) {
       void this.scheduleSending(() => void this.sendMessageWithDocument({ document, force: true, target }))
+      return false
+    }
+
+    // tweb `:4800-4814`
+    if(await this.showSlowModeTooltipIfNeeded({ ...(target ? { element: target } : {}), container: this.btnSendContainer.parentElement! })) {
+      return false
+    }
+
+    if(await this.paidMessageInterceptor.prepareStarsForPayment(1) === PAYMENT_REJECTED) {
       return false
     }
 

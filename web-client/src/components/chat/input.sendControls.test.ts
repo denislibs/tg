@@ -8,7 +8,9 @@
 //  - «отправить, когда будет в сети» (`canSendWhenOnline`);
 //  - экран закрепов (Б-90): плашка «Открепить все»/«Скрыть закреплённые»;
 //  - send-as (`chat/sendAs.ts`): одна личность — кнопки нет, две — аватарка, пакет
-//    отправки несёт `sendAsPeerId`, плейсхолдер «Отправить анонимно».
+//    отправки несёт `sendAsPeerId`, плейсхолдер «Отправить анонимно»;
+//  - медленный режим и платные (Б-37): врезка `showSlowModeTooltipIfNeeded` и
+//    `paidMessageInterceptor.prepareStarsForPayment` в путь отправки.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import EventListenerBase from '@helpers/eventListenerBase'
 import { getMiddleware } from '@helpers/middleware'
@@ -21,6 +23,7 @@ import type { MyMessage } from '@core/models'
 import type { Chat as MTChat, UserReal } from '@core/peers/peer'
 import { SEND_WHEN_ONLINE_TIMESTAMP } from '@core/format/dayLabel'
 import { ChatType } from './chatType'
+import { PAYMENT_REJECTED } from './paidMessagesInterceptor'
 
 const scheduleSpy = vi.hoisted(() => ({ opts: undefined as undefined | { onPick: (ts: number, repeat: number | undefined, silent: boolean) => void, canSendWhenOnline?: boolean, initDate?: Date } }))
 vi.mock('@components/popups/scheduleSendingPopup', () => ({
@@ -49,6 +52,7 @@ function makeManagers() {
       getMessageByPeer: vi.fn(async() => undefined),
       reloadMessage: vi.fn(async() => undefined),
       sendPoll: vi.fn(),
+      hasOutgoingMessage: vi.fn(async(_peerId: number) => false),
     },
     drafts: { save: vi.fn(async() => ({ _: 'draftMessageEmpty' })) },
     realtime: { sendTyping: vi.fn(async() => ({ ok: true })) },
@@ -310,5 +314,34 @@ describe('ChatInput: send-as', () => {
     void (input as unknown as { sendAs: { changeSendAsPeerId(id: PeerId): Promise<void> } }).sendAs.changeSendAsPeerId(CHANNEL)
     expect(input.getMessageSendingParams().sendAsPeerId).toBe(CHANNEL)
     expect((await input.getPlaceholderParams(true)).key).toBe('SendAnonymously')
+  })
+})
+
+describe('ChatInput: медленный режим и платные (Б-37)', () => {
+  it('медленный режим и неотправленное в пути — отправка остановлена подсказкой', async() => {
+    applyPeerOps([{ op: 'upsert', peers: [
+      { _: 'channel', id: 100, title: 'Группа', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true, slowmode_enabled: true } } as unknown as MTChat,
+    ] }])
+    const managers = makeManagers()
+    managers.messages.hasOutgoingMessage.mockResolvedValue(true)
+    mounted = await mountInput({ peerId: GROUP, managers })
+    mounted.input.messageInputField.setValueSilently('ещё')
+    await mounted.input.sendMessage()
+    expect(managers.messages.hasOutgoingMessage).toHaveBeenCalledWith(GROUP)
+    expect(managers.messages.sendText).not.toHaveBeenCalled()
+    document.querySelectorAll('.tooltip').forEach((node) => node.remove())
+  })
+
+  it('платный чат — отказ от оплаты останавливает отправку', async() => {
+    mounted = await mountInput({ peerId: GROUP })
+    const prepare = vi.spyOn(mounted.input.paidMessageInterceptor, 'prepareStarsForPayment').mockResolvedValue(PAYMENT_REJECTED)
+    mounted.input.messageInputField.setValueSilently('платно')
+    await mounted.input.sendMessage()
+    expect(prepare).toHaveBeenCalledWith(1)
+    expect(mounted.managers.messages.sendText).not.toHaveBeenCalled()
+
+    prepare.mockResolvedValue(undefined)
+    await mounted.input.sendMessage()
+    expect(mounted.managers.messages.sendText).toHaveBeenCalledTimes(1)
   })
 })
