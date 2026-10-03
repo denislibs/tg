@@ -2128,6 +2128,23 @@ const ru = {
   ReplyToQuote: 'Ответ на цитату %s',
   UserRestrictionsSendRound: 'Отправка видеосообщений',
   UserRestrictionsSendVoices: 'Отправка голосовых сообщений',
+  // ── Эмодзи-дропдаун (П-6, tweb emoticonsDropdown/**) ──
+  'AccDescr.DeleteLastCharacter': 'Удалить последний символ',
+  'AccDescr.GifNumber': 'GIF %s',
+  'AccDescr.Gifs': 'GIF',
+  'AccDescr.StickerNumber': 'Стикер %s',
+  'AccDescr.Stickers': 'Стикеры',
+  ClearRecentStickersAlertMessage: 'Очистить список недавних стикеров?',
+  'Context.ViewStickerSet': 'Открыть набор стикеров',
+  'CustomEmoji.PremiumAlert': 'Оформите Telegram Premium, чтобы использовать этот эмодзи. [Подробнее]()',
+  DeleteFromFavorites: 'Удалить из избранного',
+  DeleteFromRecent: 'Удалить из недавних',
+  'Emoji.ActivityAndSport': 'Спорт и активности',
+  'Message.Context.RemoveGif': 'Удалить GIF',
+  SaveToGIFs: 'Добавить в GIF',
+  SearchStickers: 'Поиск стикеров',
+  'Stickers.Recent': 'Недавние',
+  ViewPackPreview: 'Открыть набор',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

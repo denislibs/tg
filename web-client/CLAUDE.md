@@ -525,7 +525,7 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
   буквальным присваиванием, а через динамическое свойство
   (`this.container[this.scrollPositionProperty] = value` — один класс
   обслуживает и вертикальный, и горизонтальный скролл). **Инстанцирован в
-  ВОСЬМИ местах, у каждого — свой узел**: `components/chat/bubbles.ts::setScroll`
+  ДЕВЯТИ местах, у каждого — свой узел**: `components/chat/bubbles.ts::setScroll`
   (императивная лента, порт tweb `ChatBubbles`), `components/sliderTab.ts`
   (скроллер вкладки слайдера, порт `SliderSuperTab`), `components/autonomousDialogList/dialogs.ts::generateScrollable`
   (скроллер `.folders-scrollable` одной папки чатлиста, порт tweb
@@ -541,13 +541,14 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
   (скроллер React-экранов кита — с задачи 23 плана 2D их в настройках нет, остались группа и
   кошелёк звёзд; снос кита — задачи 30–31 плана 2D),
   `components/appSelectPeers.solid.tsx` (скроллер селектора пиров, порт tweb
-  `appSelectPeers.tsx:399`; вкладка может отдать свой — опция `scrollable`) и
+  `appSelectPeers.tsx:399`; вкладка может отдать свой — опция `scrollable`),
   `components/selectorSearch.solid.tsx` (строка чипов над полем поиска селектора,
-  tweb `selectorSearch.tsx:63`). У каждого скроллера ОДИН владелец позиции,
+  tweb `selectorSearch.tsx:63`) и `components/emoticonsDropdown/tab.ts`
+  (содержимое вкладки эмодзи-дропдауна, tweb `emoticonsDropdown/tab.ts:116`). У каждого скроллера ОДИН владелец позиции,
   конкурирующего писателя на том же узле нет. Прежде у ленты инстансов было два
   (React-лента держала свой в `core/hooks/useChatScroll.ts`), и они жили под
   взаимоисключающим флагом `VITE_VANILLA_FEED`; этап 7 снёс и React-ленту, и
-  флаг. `grep -rn "new Scrollable(" src` держит это число: **восемь** вызовов в
+  флаг. `grep -rn "new Scrollable(" src` держит это число: **девять** вызовов в
   продакшн-коде (плюс тесты и упоминания в комментариях). Рост числа = новый владелец скролла, это
   осознанное решение, а не побочный эффект — правь правило руками.
 

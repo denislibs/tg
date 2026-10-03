@@ -1,7 +1,7 @@
 // Порт tweb `src/helpers/dom/attachListNavigation.ts` (812502980) — навигация
 // стрелками/Enter по списку. Потребитель — поиск по чату
-// (`components/chat/topbarSearch.tsx`). `attachPickerGrid` (сетки эмодзи/стикеров)
-// не портирован: его потребители — эмодзи-дропдаун (Б-35, П-6).
+// (`components/chat/topbarSearch.tsx`); `attachPickerGrid` (`:246-290`) — сетки эмодзи,
+// стикеров и GIF эмодзи-дропдауна (`components/emoticonsDropdown/{category,tabs/gifs}.ts`).
 import fastSmoothScroll from '@helpers/fastSmoothScroll'
 import cancelEvent from '@helpers/dom/cancelEvent'
 import { attachClickEvent } from '@helpers/dom/clickEvent'
@@ -236,5 +236,51 @@ export default function attachListNavigation({
     attach,
     detach,
     resetTarget,
+  }
+}
+
+export function attachPickerGrid(list: HTMLElement, itemSelector: string, getLabel?: (item: HTMLElement, index: number) => string) {
+  const sync = (records?: MutationRecord[]) => {
+    const controls = (Array.from(list.children) as HTMLElement[]).filter((item) => item.matches(itemSelector))
+    // The one tab stop stays on the focused item while focus is inside; otherwise Tab enters a
+    // single-choice grid on its chosen item — following the choice when it moves without the
+    // keyboard (a click, a change made elsewhere) — and any other grid on its first item.
+    const focused = controls.find((item) => item.contains(list.ownerDocument.activeElement))
+    const pressed = controls.find((item) => item.getAttribute('aria-pressed') === 'true')
+    const choiceMoved = records?.some((record) => record.type === 'attributes')
+    // By the attribute: a native button reports `tabIndex` 0 before anything has set it.
+    const current = focused ||
+      (choiceMoved && pressed) ||
+      controls.find((item) => item.getAttribute('tabindex') === '0') ||
+      pressed ||
+      controls[0]
+    controls.forEach((item, index) => {
+      if(item.tagName !== 'BUTTON') item.setAttribute('role', 'button')
+      item.tabIndex = item === current ? 0 : -1
+      if(getLabel) item.setAttribute('aria-label', getLabel(item, index))
+    })
+    return current
+  }
+  const observer = new MutationObserver(sync)
+  observer.observe(list, { childList: true })
+  // Separate, as `subtree` here would also report every node a lazy grid item loads into itself.
+  const choiceObserver = new MutationObserver(sync)
+  choiceObserver.observe(list, { subtree: true, attributeFilter: ['aria-pressed'] })
+  // Handed over as the starting target, or the navigation would put a second tab stop on the
+  // first item of a grid that already has its items.
+  const initialTarget = sync()
+  const navigation = attachListNavigation({
+    list,
+    type: 'xy',
+    focusable: true,
+    itemSelector,
+    activeClassName: 'keyboard-focused',
+    target: initialTarget,
+    onSelect: (target) => { (target as HTMLElement).click() },
+  })
+  return () => {
+    observer.disconnect()
+    choiceObserver.disconnect()
+    navigation.detach()
   }
 }

@@ -19,7 +19,8 @@
 // поведенческая половина у них одна.
 //
 // ── Расхождения с оригиналом ───────────────────────────────────────────────
-//  1. Опции `onDebounce` нет — ни у одного потребителя она не задана.
+//  1. `onDebounce` (:24, :219-224, :236-239) — есть (поиск вкладки стикеров
+//     эмодзи-дропдауна, `components/emoticonsDropdown/search.solid.tsx`);
 //     `verifyDebounce` (:209-213) — есть (поиск по чату, `chat/topbarSearch.solid.tsx`);
 //     `onFocusChange`/`arrowBack`/`alwaysShowClear` — у ванильного
 //     `components/inputSearch.ts`, они про узлы, а не про поведение.
@@ -40,6 +41,8 @@ export default class InputSearchHandle {
   public onChange?: (value: string) => void
   public onClear?: (e?: MouseEvent, wasEmpty?: boolean) => void
   public onEnter?: (value: string) => void
+  /** :24 — `true` на старте ожидания debounce, `false` — по его концу или сбросу */
+  public onDebounce?: (start: boolean) => void
   /** :35, :208-213 — `false` отправляет значение сразу, мимо debounce */
   public verifyDebounce?: (value: string, prevValue: string) => boolean
 
@@ -73,13 +76,14 @@ export default class InputSearchHandle {
 
     this.prevValue = value
     if(this.verifyDebounce?.(value, prevValue) === false) {
-      this.clearTimeout()
+      this.clearTimeout(false)
       this.onChange(value)
       return
     }
 
-    this.clearTimeout()
+    this.clearTimeout(true)
     this.timeout = window.setTimeout(() => {
+      this.onDebounce?.(false)
       this.onChange?.(value)
     }, this.debounceTime)
   }
@@ -101,8 +105,9 @@ export default class InputSearchHandle {
   }
 
   // :236-239
-  private clearTimeout = () => {
+  private clearTimeout = (debounceStart = false) => {
     clearTimeout(this.timeout)
+    this.onDebounce?.(debounceStart)
   }
 
   /** `inputField.ts:776-780` — `is-empty` на самом поле */

@@ -35,6 +35,12 @@ export interface AppState {
    * не различить.
    */
   starsBalance: number | null
+  /** недавние эмодзи вкладки эмодзи-дропдауна (tweb `recentEmoji`, `lib/appManagers/appEmojiManager.ts`) */
+  recentEmoji: string[]
+  /** недавние свои эмодзи — id документов (tweb `recentCustomEmoji`) */
+  recentCustomEmoji: DocId[]
+  /** выбранный тон кожи по базовому эмодзи (tweb `emojiVariants`) */
+  emojiVariants: { [emoji: string]: 0 | 1 | 2 | 3 | 4 | 5 }
 }
 
 // 2 — черновик переехал в САМ ДИАЛОГ (`dialog.draft`), ключа `drafts` в State
@@ -52,6 +58,9 @@ export const STATE_INIT: AppState = {
   pinnedOrders: {},
   allDialogsLoaded: {},
   starsBalance: null,
+  recentEmoji: [],
+  recentCustomEmoji: [],
+  emojiVariants: {},
 }
 
 /** tweb `ALL_KEYS = Object.keys(STATE_INIT)` (loadState.ts:43) */

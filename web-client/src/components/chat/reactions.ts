@@ -899,7 +899,10 @@ export async function preloadReactionAssets(managers: ReactionsCatalogManagers):
  *    кастом-эмодзи (:1529) — своих подсистем нет.
  */
 export function fireAroundAnimation(options: {
-  chip: ReactionChip
+  /** tweb `options.cache` — держатель гейта; у статус-эмодзи шапки колонки это сама кнопка */
+  chip: Pick<ReactionChip, 'hasAroundAnimation' | 'wrapStickerPromise'> & HTMLElement
+  /** tweb `options.stickerContainer` — у чипа его `.reaction-sticker` (по умолчанию) */
+  stickerContainer?: HTMLElement
   reaction: Reaction
   middleware: Middleware
   managers: ReactionsManagers
@@ -920,7 +923,7 @@ export function fireAroundAnimation(options: {
   const lookup = getAvailableReaction(managers, reaction.emoticon)
   if (!lookup) return
 
-  const stickerContainer = chip.querySelector<HTMLElement>('.reaction-sticker')
+  const stickerContainer = options.stickerContainer ?? chip.querySelector<HTMLElement>('.reaction-sticker')
   if (!stickerContainer) return
 
   // Зона бабла уже мертва — `create()` на убранной зоне бросает MIDDLEWARE

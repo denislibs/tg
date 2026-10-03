@@ -13,13 +13,12 @@
  * (`execCommand('insertHTML')` — правка попадает в родную историю undo).
  *
  * Отличия от оригинала:
- *  1. Свои эмодзи в поле не оживают: портов `CustomEmojiElement`/
- *     `CustomEmojiRendererElement` (`lib/customEmoji/{element,renderer}`) у нас
- *     нет, поэтому `processCustomEmojisInInput`/`createCustomEmojiRendererForInput`
- *     (`:434-496`) и перепривязка `customEmojiElement` к плейсхолдерам в
- *     `insertRichTextAsHTML` (`:56-59`, `:97-102`) не перенесены. Плейсхолдер —
- *     `img.custom-emoji-placeholder` с `alt`-глифом (см. шапку `wrapRichText.ts`),
- *     в сущность он читается.
+ *  1. Свои эмодзи в поле (`processCustomEmojisInInput`/`createCustomEmojiRendererForInput`,
+ *     `:434-496`; перепривязка `customEmojiElement` к плейсхолдерам в `insertRichTextAsHTML`,
+ *     `:56-59`, `:97-102`): слой рендерера (`lib/customEmoji/renderer.ts`, расхождение 2)
+ *     ставится СОСЕДОМ поля (`input.after`), а не первым ребёнком, и хранится на поле
+ *     (`customEmojiRenderer`), а не ищется `querySelector`; узел без привязки (поле
+ *     заполнено разметкой, а не `wrapDraftText`) заводится по `data-doc-id` плейсхолдера.
  *  2. BOM-ветки под `USING_BOMS = false` (`:46`, `:95`, `:118`, `:618-624`) и
  *     филлеры своих эмодзи (`.input-selectable`/`[contenteditable="false"]`/`.pc`
  *     в `insertRichTextAsHTML`, `:34-44`, `:106-108`; `insertCustomFillers` в
@@ -54,12 +53,23 @@ import parseEntities from '@lib/richtext/parseEntities'
 import wrapDraftText from '@lib/richtext/wrapDraftText'
 import forEachReverse from '@helpers/array/forEachReverse'
 import findAndSpliceAll from '@helpers/array/findAndSpliceAll'
+import type { AnimationItemGroup } from '@components/animationIntersector'
+import CustomEmojiElement, { type CustomEmojiElements } from '@lib/customEmoji/element'
+import { CustomEmojiRendererElement } from '@lib/customEmoji/renderer'
+
+type CustomEmojiPlaceholder = HTMLImageElement & { customEmojiElement?: CustomEmojiElement }
+type InputWithCustomEmojiRenderer = HTMLElement & { customEmojiRenderer?: CustomEmojiRendererElement }
 
 export async function insertRichTextAsHTML(input: HTMLElement, text: string, entities?: MessageEntity[], wrappingForPeerId?: PeerId) {
   const loadPromises: Promise<unknown>[] = []
   const fragment = wrapDraftText(text, { entities, wrappingForPeerId, loadPromises })
 
   if(loadPromises.length) await Promise.all(loadPromises)
+
+  const customEmojiElements = Array.from(fragment.querySelectorAll<CustomEmojiPlaceholder>('.custom-emoji-placeholder')).map((el) => {
+    el.dataset.ces = '1'
+    return el.customEmojiElement!
+  })
 
   const html = documentFragmentToHTML(fragment)
 
@@ -79,7 +89,74 @@ export async function insertRichTextAsHTML(input: HTMLElement, text: string, ent
 
   input.addEventListener('input', cancelEvent, { capture: true, once: true, passive: false })
   input.ownerDocument.execCommand('insertHTML', false, html)
+  Array.from(input.querySelectorAll<CustomEmojiPlaceholder>('[data-ces]')).forEach((el, idx) => {
+    delete el.dataset.ces
+    const customEmojiElement = customEmojiElements[idx]
+    if(!customEmojiElement) return
+    el.customEmojiElement = customEmojiElement
+    customEmojiElement.placeholder = el
+  })
   simulateEvent(input, 'input')
+}
+
+function createCustomEmojiRendererForInput(input: HTMLElement) {
+  const renderer = CustomEmojiRendererElement.create({
+    isSelectable: true,
+    animationGroup: input.dataset.animationGroup as AnimationItemGroup | undefined,
+    observeResizeElement: input,
+  })
+
+  return renderer
+}
+
+export function processCustomEmojisInInput(input: InputWithCustomEmojiRenderer) {
+  const placeholders = Array.from(input.querySelectorAll<CustomEmojiPlaceholder>('.custom-emoji-placeholder'))
+  let renderer = input.customEmojiRenderer
+  if(!renderer && placeholders.length) {
+    renderer = input.customEmojiRenderer = createCustomEmojiRendererForInput(input)
+    input.after(renderer)
+  } else if(renderer && !placeholders.length) {
+    renderer.remove()
+    input.customEmojiRenderer = undefined
+    return
+  }
+
+  if(!renderer) {
+    return
+  }
+
+  const customEmojis: Map<DocId, CustomEmojiElements> = new Map()
+  placeholders.forEach((placeholder) => {
+    let customEmojiElement = placeholder.customEmojiElement
+    if(!customEmojiElement) {
+      customEmojiElement = placeholder.customEmojiElement = CustomEmojiElement.create(placeholder.dataset.docId)
+      customEmojiElement.placeholder = placeholder
+    }
+
+    const { docId } = customEmojiElement
+    let set = customEmojis.get(docId)
+    if(!set) {
+      customEmojis.set(docId, set = new Set())
+    }
+
+    set.add(customEmojiElement)
+  })
+
+  for(const [docId, hasSet] of renderer.customEmojis) {
+    const customEmojiElements = customEmojis.get(docId)
+    for(const customEmojiElement of [...hasSet]) {
+      if(!customEmojiElements?.has(customEmojiElement)) {
+        // the node sits in the layer, not detached as at tweb — take it out of there too
+        customEmojiElement.remove()
+      }
+    }
+  }
+
+  renderer.add({
+    addCustomEmojis: customEmojis,
+    lazyLoadQueue: false,
+  })
+  renderer.forceRender()
 }
 
 let init: (() => void) | undefined = () => {
@@ -358,6 +435,9 @@ export default class InputField {
         }
 
         this.setEmpty(isEmpty)
+
+        // tweb :628
+        processCustomEmojisInInput(input)
       })
     } else {
       // см. шапку, п. 3 — атрибуты те же, что у шаблона tweb `:636-638`
@@ -505,6 +585,7 @@ export default class InputField {
       (this.input as HTMLInputElement).value = value as string
     } else {
       replaceContent(this.input, value)
+      processCustomEmojisInInput(this.input)
     }
 
     this.setEmpty()

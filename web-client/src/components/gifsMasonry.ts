@@ -35,9 +35,10 @@
  *     живым геттером видимости цели. `clear()` снимает ещё не начатые задачи
  *     (промис отклоняется — ловим) и отключает наблюдатель
  *     (`lazyLoadQueueIntersector.ts:38-41`).
- *  4. Портирован объём потребителя: `add`/`clear`/`detach`. `addBatch`/`update`/
- *     `delete` (`:150-203`) нужны вкладке GIF дропдауна (сохранённые GIF) —
- *     придут с ней.
+ *  4. `addBatch`/`update`/`delete` (`:150-203`) — для вкладки GIF эмодзи-дропдауна
+ *     (`emoticonsDropdown/tabs/gifs.ts`, сохранённые GIF); элемент сохранённого GIF —
+ *     `savedGifToItem` (`core/gifs.ts`): видео стримится с медиа-эндпоинта
+ *     (`resolveStreamUrl`), превью — stripped-миниатюра документа.
  *  5. `clear()` забывает ячейки (`map` и их `middlewareHelper`), а не только
  *     очередь (`:70-72`). Единственный вызывающий оригинала — `reset()` вкладки
  *     поиска (`gifs.tsx:28-33`), который тут же вычищает кладку
@@ -58,6 +59,8 @@ import { getMiddleware, type Middleware, type MiddlewareHelper } from '@helpers/
 import noop from '@helpers/noop'
 import onMediaLoad from '@helpers/onMediaLoad'
 import { doubleRaf } from '@helpers/schedulers'
+import positionElementByIndex from '@helpers/dom/positionElementByIndex'
+import { resolveStreamUrl } from '@core/mediaUrl'
 
 /**
  * Превью ячейки — ветка `onlyPreview` tweb `wrapVideo` для гифки
@@ -116,7 +119,13 @@ function wrapGifVideo(item: GifItem, container: HTMLElement, group: AnimationIte
     throw err
   })
 
-  video.src = item.mp4Url!
+  if(item.mp4Url) {
+    video.src = item.mp4Url
+  } else {
+    const url = resolveStreamUrl(item.mediaId!)
+    if(typeof url === 'string') video.src = url
+    else void url.then((url) => { if(middleware()) video.src = url })
+  }
 
   return { video, loadPromise }
 }
@@ -272,5 +281,33 @@ export default class GifsMasonry {
     this.intersector.observe(div)
 
     wrapGifPreview(item, div, div.middlewareHelper.get())
+  }
+
+  public addBatch(items: GifItem[]) {
+    items.forEach((item) => this.add(item))
+  }
+
+  public update(items: GifItem[]) {
+    for(const [key] of this.map) {
+      if(!items.some((item) => item.key === key)) {
+        this.delete(key)
+      }
+    }
+
+    this.addBatch(items)
+    for(let i = 0, length = items.length; i < length; ++i) {
+      const element = this.map.get(items[i].key)
+      if(element) positionElementByIndex(element.div, this.element, i)
+    }
+  }
+
+  public delete(key: string) {
+    const element = this.map.get(key)
+    if(element) {
+      element.div.remove()
+      element.div.middlewareHelper!.destroy()
+      this.intersector.unobserve(element.div)
+      this.map.delete(key)
+    }
   }
 }

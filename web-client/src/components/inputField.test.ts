@@ -14,6 +14,7 @@ import InputField, { insertRichTextAsHTML } from './inputField'
 import InputFieldAnimated from './inputFieldAnimated'
 import getRichValueWithCaret from '@helpers/dom/getRichValueWithCaret'
 import wrapDraftText from '@lib/richtext/wrapDraftText'
+import rootScope from '@lib/rootScope'
 
 function mountField(options: ConstructorParameters<typeof InputField>[0] = {}) {
   const field = new InputField({ withLinebreaks: true, ...options })
@@ -119,11 +120,41 @@ describe('сущности из DOM поля — UTF-16', () => {
     const text = 'a🔥b'
     const entities: MessageEntity[] = [{ _: 'messageEntityCustomEmoji', offset: 1, length: 2, document_id: '777' }]
     const field = mountField()
-    field.setValueSilently(wrapDraftText(text, { entities }))
+    // «Избранное» — свои эмодзи без Premium (tweb wrapDraftText.ts:13-15)
+    field.setValueSilently(wrapDraftText(text, { entities, wrappingForPeerId: rootScope.myId }))
     const img = field.input.querySelector<HTMLImageElement>('img.custom-emoji-placeholder')!
     expect(img.alt).toBe('🔥')
     expect(field.isEmpty()).toBe(false)
     expect(getRichValueWithCaret(field.input, true, false)).toMatchObject({ value: text, entities })
+  })
+
+  test('свой эмодзи без Premium в чужом чате снимается до глифа (tweb wrapDraftText.ts:13-15)', () => {
+    const text = 'a🔥b'
+    const entities: MessageEntity[] = [{ _: 'messageEntityCustomEmoji', offset: 1, length: 2, document_id: '777' }]
+    const field = mountField()
+    field.setValueSilently(wrapDraftText(text, { entities, wrappingForPeerId: rootScope.myId + 1 }))
+    expect(field.input.querySelector('img.custom-emoji-placeholder')).toBeNull()
+    expect(getRichValueWithCaret(field.input, true, false).value).toBe(text)
+  })
+
+  test('свой эмодзи живёт в слое рендерера над полем, на месте своего плейсхолдера (Б-74)', () => {
+    const text = 'a🔥b'
+    const entities: MessageEntity[] = [{ _: 'messageEntityCustomEmoji', offset: 1, length: 2, document_id: '777' }]
+    const field = mountField()
+    field.setValueSilently(wrapDraftText(text, { entities, wrappingForPeerId: rootScope.myId }))
+    const img = field.input.querySelector('img.custom-emoji-placeholder') as HTMLImageElement & { customEmojiElement?: HTMLElement }
+    const layer = field.input.nextElementSibling as HTMLElement
+    expect(layer.classList.contains('custom-emoji-renderer')).toBe(true)
+    expect(layer.classList.contains('is-selectable')).toBe(true)
+    // узел привязан к плейсхолдеру и лежит в слое, а не в поле
+    expect(img.customEmojiElement?.parentElement).toBe(layer)
+    expect(img.customEmojiElement?.dataset.docId).toBe('777')
+    expect(field.input.querySelector('.custom-emoji')).toBeNull()
+
+    // плейсхолдер стёрт — слой уходит вместе с узлом
+    img.remove()
+    field.simulateInputEvent()
+    expect(field.input.nextElementSibling?.classList.contains('custom-emoji-renderer')).toBeFalsy()
   })
 
   test('сущность внутри кода снимается — код с форматом не комбинируется', () => {

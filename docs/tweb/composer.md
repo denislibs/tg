@@ -1822,6 +1822,17 @@ div.emoji-dropdown.active [style=""]                              T/components/e
 `super-emoji`: 42×42, `padding: 5px 4px`, `border-radius: 12px`, `font-size: 34px`.
 Поиск: 366×38, `border-radius: 16px`.
 
+**У нас (П-6, 2026-10-03).** Порт файлами в `W/components/emoticonsDropdown/`: `index.ts`
+(`EmoticonsDropdown` поверх `W/helpers/dropdownHover.ts`, синглтон + автономные копии), `tab.ts`
+(`EmoticonsTabC`), `category.ts`, `search.solid.tsx` (без ряда групп — Б-131), `emojiTonePicker.solid.tsx`,
+`tabs/{emoji,stickers,gifs,SuperStickerRenderer}.ts`; ряд вкладок — `Tabs.Menu`/`Tabs.MenuIconTab`/
+`Tabs.MenuInner` (`W/components/tabs.solid.tsx`). Данные: `W/config/emoji.ts` (таблица tweb),
+`W/lib/appManagers/appEmojiManager.ts` (недавние/тон — ключи State, поиск — локальный пакет слов),
+стикеры/GIF — `managers.stickers` (REST). Свои эмодзи — `W/lib/customEmoji/{element,renderer}.ts` без общего
+холста (медиа в узле; в поле — слой соседом поля). Монтаж в `ChatInput`: `.toggle-emoticons` после
+`.input-message-container`, `attachButtonListener`, `is-under` по `resize`, `insertAtCaret`/`onEmojiSelected`,
+закрытие на меню вложений. Расхождения — в шапках файлов; остаток — Б-130…Б-133 плана волны 7.
+
 ### 8.4 Attach-меню (`D/04-attach-menu.json`)
 
 ```text
