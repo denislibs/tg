@@ -1,5 +1,12 @@
 /*
- * Порт tweb `src/helpers/dom/appLandmarks.ts` (812502980) — 1:1.
+ * Порт tweb `src/helpers/dom/appLandmarks.ts` (812502980).
+ *
+ * Расхождение: подпись ссылки — живой узел `i18n()`, а не строка
+ * `I18n.format(…, true)`. У нас пакет кэша старта может не знать ключа (строка
+ * падает на английский), а свежий пакет того же языка приезжает с сервера уже после
+ * `appImManager.construct` (`catchUpLangPack`); строку он бы не переписал, узел
+ * `.i18n` переписывает `applyLangPack` (Б-141). Имена ориентиров — атрибуты, их
+ * переставляет `appImManager` на `language_apply` (его расхождение 2).
  *
  * https://github.com/morethanwords/tweb
  * Copyright (C) 2019-2021 Eduard Kuzmenko
@@ -8,7 +15,7 @@
 
 import { attachClickEvent } from '@helpers/dom/clickEvent'
 import cancelEvent from '@helpers/dom/cancelEvent'
-import I18n from '@lib/langPack'
+import I18n, { i18n } from '@lib/langPack'
 
 /**
  * WCAG 2.4.1 Bypass Blocks.
@@ -23,7 +30,7 @@ export function attachSkipToContent(link: HTMLElement, target: HTMLElement) {
   // It ships `hidden`, because index.html is served before the language pack:
   // an empty link left in the tab order is itself a violation (axe `link-name`),
   // and there is nothing to skip to until the chat UI exists. Name it, then show it.
-  link.append(I18n.format('AccDescr.SkipToConversation', true))
+  link.append(i18n('AccDescr.SkipToConversation'))
   link.hidden = false
 
   return attachClickEvent(link, (e) => {
@@ -35,7 +42,7 @@ export function attachSkipToContent(link: HTMLElement, target: HTMLElement) {
 /**
  * index.html is served before the language pack exists, so the landmark names
  * cannot be written into the markup. These are plain attributes rather than
- * `i18n()` elements, so they are re-applied whenever the language changes.
+ * `i18n()` elements, so they are re-applied whenever a language pack is applied.
  */
 export function setLandmarkLabels(navigation: HTMLElement | null | undefined, complementary: HTMLElement | null | undefined) {
   navigation?.setAttribute('aria-label', I18n.format('AccDescr.ChatList', true))

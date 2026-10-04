@@ -422,11 +422,10 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// thread_root_id с клиента — НОМЕР ПОСТА (внешний контракт); в discussion-группе
-	// физически нужен id зеркала (см. ResolveThreadRootForSend). Резолвим здесь,
-	// на входе, а не внутри Send — PostComment туда уже шлёт id зеркала.
-	// Ошибка (нет зеркала и дозавести нечего) — понятный 404, а не запись
-	// sentinel-нуля в thread_root_id (см. комментарий ResolveThreadRootForSend).
+	// thread_root_id с клиента — НОМЕР корня в этом чате (у комментария — номер
+	// зеркала поста); в Send уходит ключ строки (см. ResolveThreadRootForSend).
+	// Резолвим здесь, на входе, а не внутри Send — PostComment туда уже шлёт ключ.
+	// Корня нет — понятный 404, а не запись sentinel-нуля в thread_root_id.
 	threadRoot, terr := h.svc.ResolveThreadRootForSend(r.Context(), chatID, body.ThreadRootID)
 	if errors.Is(terr, domain.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "comment thread not found")
@@ -1262,7 +1261,7 @@ func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// thread_root_id с клиента — НОМЕР ПОСТА (внешний контракт), см. Send.
+	// thread_root_id с клиента — НОМЕР корня в этом чате, см. Send.
 	threadRoot, terr := h.svc.ResolveThreadRootForSend(r.Context(), chatID, b.ThreadRootID)
 	if errors.Is(terr, domain.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "comment thread not found")

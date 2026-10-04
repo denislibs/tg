@@ -1046,6 +1046,20 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       await rest.del(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/pin`)
     },
 
+    /**
+     * Корень треда комментариев поста — его зеркало в группе обсуждения. Порт
+     * `appMessagesManager.getDiscussionMessage` (tweb :8814-8864): тред
+     * комментариев адресуется номером ЗЕРКАЛА (`threadId` = mid в группе), и
+     * им же — окно, отправка, живые кадры (`reply_to_top_id` комментария).
+     * Счётчики прочитанного (`max_id`/`read_*_max_id`) у нас окно треда считает
+     * само — в ответе только сообщение.
+     */
+    async getDiscussionMessage(peerId: number, mid: number): Promise<MyMessage | undefined> {
+      const r = await rest.get<MessagesContainer>(`/channels/${peerId}/posts/${getServerMessageId(mid)}/discussion`)
+      const [message] = await mapContainer(r)
+      return message?._ === 'message' ? message : undefined
+    },
+
     async listPins(peerId: number): Promise<MyMessage[]> {
       const r = await rest.get<MessagesContainer>(`/chats/${peerId}/pins`)
       return decryptPage(await mapContainer(r))
@@ -1240,15 +1254,13 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       // «отправляется…» рядом с уже отправленным. Слияние полей (random_id,
       // localUrl, secret) делает потребитель — messageOps.insert. Признак
       // `sequential` снятого бабла едет в `insert` финального — как у ack.
-      const finalized = pending.checkPendingMessage(m.random_id)
-      const sequential = finalized?.sequential
+      const sequential = pending.checkPendingMessage(m.random_id)
+      // Окно треда адресовано номером корня в том же пире, что и `reply_to_top_id`
+      // эха (у комментария — номер зеркала поста, tweb `getDiscussionMessage`),
+      // поэтому окна временного бабла (tweb `pendingData.storage.key`,
+      // appMessagesManager.ts:11946) и окна эха совпадают по построению.
       const root = getThreadRootId(m)
       const keys = root ? [hkey(m.peerId), hkey(m.peerId, root)] : [hkey(m.peerId)]
-      // Окна, где лежал временный бабл, финализируются ВСЕГДА — даже если ключ
-      // эха с ними не совпал (тред комментариев: окно по номеру поста, корень
-      // в эхе — номер зеркала). Порт `storageKey: pendingData.storage.key`
-      // (tweb appMessagesManager.ts:11946), см. `checkPendingMessage`.
-      for (const key of finalized?.keys ?? []) if (!keys.includes(key)) keys.push(key)
       const ops: MessageOp[] = []
       for (const key of keys) {
         // Только в срез, уже державший низ истории — иначе позиция неизвестна.
