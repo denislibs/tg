@@ -338,6 +338,13 @@ type MediaPage struct {
 	// строго ниже него. 0 — с начала (самые новые).
 	OffsetID int64
 	Limit    int
+	// ThreadRoot — тред (комментарии / тема форума), номер корня, как у
+	// истории (`?thread_root=`): вкладки профиля треда показывают медиа ТОЛЬКО
+	// этого треда (tweb appSearchSuper.ts:2282-2290 — `threadId` в контексте
+	// поиска → `top_msg_id`). nil — весь чат. Читает только MediaHistory;
+	// хранилищу уходит уже переведённый ключ строки корня
+	// (resolveThreadRootForQuery).
+	ThreadRoot *int64
 }
 
 // SearchCounter — число сообщений чата одного вида (аналог MTProto
@@ -349,13 +356,12 @@ type SearchCounter struct {
 
 // MediaHistory lists a chat's shared media of one kind (profile tabs).
 func (i *Interactor) MediaHistory(ctx context.Context, chatID, userID int64, filter string, page MediaPage) (HistoryResult, error) {
-	ok, err := i.chats.IsMember(ctx, chatID, userID)
-	if err != nil {
+	// Тред комментариев читается и не-членом группы обсуждения — тот же
+	// допуск, что у истории треда (checkHistoryAccess).
+	if err := i.checkHistoryAccess(ctx, chatID, userID, page.ThreadRoot); err != nil {
 		return HistoryResult{}, err
 	}
-	if !ok {
-		return HistoryResult{}, domain.ErrNotFound
-	}
+	page.ThreadRoot = i.resolveThreadRootForQuery(ctx, chatID, page.ThreadRoot)
 	if page.Limit <= 0 || page.Limit > 60 {
 		page.Limit = 30
 	}
@@ -387,15 +393,15 @@ func (i *Interactor) MediaHistory(ctx context.Context, chatID, userID int64, fil
 // вкладка ищет СВОЮ запись по имени фильтра и разыменовывает её без проверки
 // (`counters.find(...).count`, tweb src/components/appSearchSuper.ts:2429-2434),
 // то есть пропущенный фильтр там — не пустая вкладка, а исключение.
-func (i *Interactor) SearchCounters(ctx context.Context, chatID, userID int64, filters []string) ([]SearchCounter, error) {
-	ok, err := i.chats.IsMember(ctx, chatID, userID)
-	if err != nil {
+//
+// threadRoot != nil — счётчики ТОЛЬКО треда (номер корня, как у истории):
+// вкладки профиля треда комментариев (tweb appSearchSuper.ts:2375-2377 —
+// `getSearchCounters` с `top_msg_id`).
+func (i *Interactor) SearchCounters(ctx context.Context, chatID, userID int64, filters []string, threadRoot *int64) ([]SearchCounter, error) {
+	if err := i.checkHistoryAccess(ctx, chatID, userID, threadRoot); err != nil {
 		return nil, err
 	}
-	if !ok {
-		return nil, domain.ErrNotFound
-	}
-	counts, err := i.msgs.SearchCounters(ctx, chatID, userID, filters)
+	counts, err := i.msgs.SearchCounters(ctx, chatID, userID, filters, i.resolveThreadRootForQuery(ctx, chatID, threadRoot))
 	if err != nil {
 		return nil, err
 	}

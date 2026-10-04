@@ -24,7 +24,7 @@
  *     :213).
  *  2. Шапка профиля — наш класс `PeerProfileAvatars` СНАРУЖИ `PeerProfile`
  *     (`avatarsContainer`/`avatarsInfo`, тот же контракт узлов-пропов, что у
- *     правой панели `UserInfoPanel.tsx`), а не `PeerProfile.AutoAvatar`
+ *     вкладки профиля `sidebarRight/tabs/sharedMedia.solid.tsx`), а не `PeerProfile.AutoAvatar`
  *     внутри него (tweb `peerProfile.tsx:223-277`). Сворачивание —
  *     Solid-порт `useCollapsable` (`helpers/solid/useCollapsable.ts`) с тем же
  *     эффектом, что tweb `peerProfileAvatars.ts:350-373`. Ожидание аватара

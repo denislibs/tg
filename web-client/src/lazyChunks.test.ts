@@ -131,9 +131,9 @@ const MUST_STAY_LAZY: Record<string, string> = {
   // поиска стикеров (`sidebarRight/tabs/stickers.solid.tsx` — сама ленивый чанк
   // вкладки).
   'components/stickers/StickerSetModal.tsx': 'components/sidebarRight/tabs/stickers.solid.tsx',
-  // Инфо-панель чата — не первый кадр: корень вкладки №0 (`UserInfoPanel`)
-  // грузит сама вкладка на первом `setPeer`.
-  'components/sidebarRight/reactProfileTabView.tsx': 'components/sidebarRight/reactProfileTab.ts',
+  // Профиль чата — не первый кадр: содержимое вкладки №0 (`sharedMedia.solid.tsx`)
+  // грузит сама вкладка на первом `setPeer` (tweb `sharedMediaTab.tsx:40`).
+  'components/sidebarRight/tabs/sharedMedia.solid.tsx': 'components/sidebarRight/tabs/sharedMediaTab.ts',
   // Корень настроек — вкладка колоночного слайдера, открывается из бургера.
   'components/sidebarLeft/tabs/settings.solid.tsx': 'components/solidJsTabs/tabs.ts',
   // Редактор медиа — самый тяжёлый узел, нужен только при отправке/сторис.

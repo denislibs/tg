@@ -1,8 +1,9 @@
 // AppSidebarRight — класс правой колонки (порт tweb `sidebarRight/index.ts`,
 // задача 0б-0 волны 7). Реальный DOM (happy-dom), реальный
-// `appNavigationController`, реальная вкладка №0 (`AppReactProfileTab`);
-// замоканного здесь нет ничего — предмет тестов как раз проводка класса к
-// контроллеру навигации, `body` и слайдеру.
+// `appNavigationController`, реальная вкладка №0 (`AppSharedMediaTab`);
+// заглушено только её содержимое (`tabs/sharedMedia.solid.tsx` — профиль и
+// `AppSearchSuper`, предмет `tabs/sharedMediaTab.solid.test.tsx`): предмет
+// тестов — проводка класса к контроллеру навигации, `body` и слайдеру.
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -15,6 +16,15 @@ import SliderSuperTab from '@components/sliderTab'
 import type { Managers } from '../../client/bootstrap'
 import { returnToStaticMarkup } from '@/test/staticMarkup'
 import appSidebarRight, { RIGHT_COLUMN_ACTIVE_CLASSNAME, type AppSidebarRight } from './index'
+
+vi.mock('./tabs/sharedMedia.solid', () => ({ default: () => null }))
+
+/** `open()` вкладки №0 ждёт её `init` (рендер содержимого динамическим
+ *  импортом, tweb `sharedMediaTab.tsx:59-61`) — и только потом `selectTab`. */
+async function opened() {
+  await vi.dynamicImportSettled()
+  for(let i = 0; i < 10; ++i) await Promise.resolve()
+}
 
 /** Статичный `#column-right` из `index.html` (`test/staticMarkup.ts`) — в `body` на время теста. */
 function mountColumn() {
@@ -82,12 +92,18 @@ describe('AppSidebarRight.toggleSidebar', () => {
     return tab
   }
 
-  it('(а) открытие: класс на body, колонка не inert, одна запись `right`, вкладка №0 открыта', () => {
+  // Записей `right` две, как у tweb: `toggleSidebar` кладёт свою сразу
+  // (:131-133), а `open()` вкладки №0 доходит до `selectTab` (вторая запись)
+  // только после своего `init` (:122 — без `await`). Первый же Esc закрывает
+  // колонку и снимает обе (`hide` → `removeByType`) — пин (г).
+  it('(а) открытие: класс на body, колонка не inert, записи `right`, вкладка №0 открыта', async() => {
     const tab = withProfileTab()
     void sidebar.toggleSidebar(true)
+    expect(rightItems()).toBe(1)
+    await opened()
     expect(shown()).toBe(true)
     expect(dom.column.inert).toBe(false)
-    expect(rightItems()).toBe(1)
+    expect(rightItems()).toBe(2)
     expect(sidebar.getHistory()).toEqual([tab])
     expect(tab.container.classList.contains('active')).toBe(true)
   })
@@ -141,9 +157,10 @@ describe('AppSidebarRight.toggleSidebar', () => {
     expect(shown()).toBe(false)
   })
 
-  it('(з′) вкладка поверх профиля: первый Esc снимает её, колонка открыта; второй — закрывает колонку', () => {
+  it('(з′) вкладка поверх профиля: первый Esc снимает её, колонка открыта; второй — закрывает колонку', async() => {
     withProfileTab()
     void sidebar.toggleSidebar(true)
+    await opened()
     const sub = sidebar.createTab(SliderSuperTab)
     void sub.open()
     expect(rightItems()).toBe(2)
@@ -169,10 +186,11 @@ describe('AppSidebarRight.toggleSidebar', () => {
 })
 
 describe('AppSidebarRight.replaceSharedMediaTab', () => {
-  it('(д) b на месте активной a: b в DOM с `active`, a из DOM ушла, история указывает на b', () => {
+  it('(д) b на месте активной a: b в DOM с `active`, a из DOM ушла, история указывает на b', async() => {
     const a = sidebar.createSharedMediaTab()
     sidebar.replaceSharedMediaTab(a)
     void sidebar.toggleSidebar(true)
+    await opened()
     const b = sidebar.createSharedMediaTab()
     sidebar.replaceSharedMediaTab(b)
     expect(b.container.parentElement).toBe(dom.slider)
@@ -248,7 +266,7 @@ describe('один писатель `is-right-column-shown`', () => {
   })
 
   // Узел колонки один и статичный (tweb `index.html:110-112`): его рисует
-  // шелл, а не портал каждой панели профиля, как раньше `UserInfoPanel`.
+  // шелл, а не портал каждой панели профиля (как было до К-5).
   it('`id="column-right"` — ровно один, статикой в index.html (tweb :110-112); в коде — ни одного', () => {
     const hosts = walk(SRC).flatMap((p) => {
       const n = readFileSync(p, 'utf8').match(/id="column-right"/g)?.length ?? 0
