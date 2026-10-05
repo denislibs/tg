@@ -122,11 +122,26 @@ type viewerFlags struct {
 // pFlagsFor — копия pFlags сообщения с пер-зрительскими флагами. Копия, а не
 // правка на месте: общее тело кадра делится между получателями, и правка
 // испортила бы его следующему.
+//
+// Базовые флаги приходят из Message.ToWireMap, а тот собирает тело через JSON:
+// pFlags там — map[string]any, а не map[string]bool. Принимаются обе формы,
+// иначе пер-зрительский out/mentioned ЗАМЕНЯЛ бы базовые флаги (media_unread
+// своего голосового, post) вместо того, чтобы дописаться к ним.
 func pFlagsFor(base any, vf viewerFlags) map[string]bool {
-	src, _ := base.(map[string]bool)
-	flags := make(map[string]bool, len(src)+3)
-	for k, v := range src {
-		flags[k] = v
+	flags := make(map[string]bool, 8)
+	switch src := base.(type) {
+	case map[string]bool:
+		for k, v := range src {
+			if v {
+				flags[k] = true
+			}
+		}
+	case map[string]any:
+		for k, v := range src {
+			if on, ok := v.(bool); ok && on {
+				flags[k] = true
+			}
+		}
 	}
 	if vf.out {
 		flags["out"] = true

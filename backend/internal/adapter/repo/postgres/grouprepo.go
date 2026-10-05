@@ -418,11 +418,18 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 		        c.history_for_new, c.charge_stars, COALESCE(c.auto_delete_period,0),
 		        -- pinned_msg_id: наружу едет НОМЕР сообщения в чате (в схеме
 		        -- chatFull.pinned_msg_id адресует сообщение в его пире), а
-		        -- pinned_messages.msg_id — внутренний ключ строки.
+		        -- pinned_messages.msg_id — внутренний ключ строки. Удалённый
+		        -- закреп (и невидимый зрителю) не в счёт: закрепом становится
+		        -- предыдущий живой, как у списка /pins (Telegram сдвигает
+		        -- pinned_msg_id при удалении закреплённого).
 		        COALESCE((SELECT pinm.seq FROM pinned_messages p JOIN messages pinm ON pinm.id=p.msg_id
-		                   WHERE p.chat_id=c.id ORDER BY p.pinned_at DESC LIMIT 1),0),
+		                   WHERE p.chat_id=c.id AND `+messageVisibleTo("pinm", "$2")+`
+		                   ORDER BY p.pinned_at DESC LIMIT 1),0),
 		        COALESCE(m.last_read_seq,0), COALESCE(m.unread_count,0),
-		        COALESCE((SELECT MIN(om.last_read_seq) FROM chat_members om WHERE om.chat_id=c.id AND om.user_id<>$2),0),
+		        -- ✓✓ в группе — когда прочитал ХОТЯ БЫ ОДИН (Telegram
+		        -- read_outbox_max_id группы; живой кадр двигает горизонт по
+		        -- любому читателю), значит снимок — MAX, а не MIN.
+		        COALESCE((SELECT MAX(om.last_read_seq) FROM chat_members om WHERE om.chat_id=c.id AND om.user_id<>$2),0),
 		        m.role, m.rights, m.muted_until, m.notify_preview, m.notify_sound,
 		        COALESCE(ct.theme_id,''),
 		        -- Дата вступления ЗРИТЕЛЯ — из той же строки членства, что role

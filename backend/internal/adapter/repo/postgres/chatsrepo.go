@@ -227,7 +227,8 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		        m.notify_preview, m.notify_sound,
 		        COALESCE(CASE
 		          WHEN c.type = 'private' THEN (SELECT om.last_read_seq FROM chat_members om WHERE om.chat_id = c.id AND om.user_id <> $1 LIMIT 1)
-		          WHEN c.type = 'group'   THEN (SELECT MIN(om.last_read_seq) FROM chat_members om WHERE om.chat_id = c.id AND om.user_id <> $1)
+		          -- Группа: ✓✓, когда прочитал ХОТЯ БЫ ОДИН (как живой кадр).
+		          WHEN c.type = 'group'   THEN (SELECT MAX(om.last_read_seq) FROM chat_members om WHERE om.chat_id = c.id AND om.user_id <> $1)
 		          ELSE 0
 		        END, 0) AS peer_read_seq,
 		        lm.id, COALESCE(lm.seq, 0),
