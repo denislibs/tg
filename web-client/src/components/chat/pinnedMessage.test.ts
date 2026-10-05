@@ -193,14 +193,16 @@ describe('плашка закрепа', () => {
 })
 
 describe('плашка треда комментариев (setStaticMessage, расхождение 6)', () => {
-  it('корень — автопересланное зеркало поста; приезжает со страницей ленты — плашка дорисовывается', async() => {
-    const { putMirrorPage, resetMessagesMirror } = await import('@core/history/messagesMirror')
+  it('корень — зеркало поста под номером треда; приезжает со страницей ленты — плашка дорисовывается', async() => {
+    const { putMirrorPage, resetMessagesMirror, mirrorWindow } = await import('@core/history/messagesMirror')
     resetMessagesMirror()
     const THREAD = 45
     const threadChat = Object.assign(makeChat(), {
       threadId: THREAD,
       messagesStorageKey: 'thread-key',
       isPinnedMessagesNeeded: () => false,
+      // как `Chat.getMessage` — окно ленты по ключу инстанса
+      getMessage: (mid: number) => mirrorWindow('thread-key')?.find((message) => message.id === mid),
     })
     const managers = {
       messages: { listPins, pin: vi.fn(), unpin: vi.fn() },
@@ -213,7 +215,8 @@ describe('плашка треда комментариев (setStaticMessage, р
     await flush()
     expect(staticPlate.container.querySelector('.pinned-message-subtitle')?.textContent).toBe('')
 
-    const root = { ...makeMessage({ id: 77, peerId: PEER, fromId: 1, text: 'пост канала' }), fwd_from: { _: 'messageFwdHeader', date: 0, saved_from_peer: { _: 'peerChannel', channel_id: 4 }, saved_from_msg_id: THREAD } } as MyMessage
+    // Тред адресован номером зеркала (`getDiscussionMessage`): корень лежит в окне под ним.
+    const root = makeMessage({ id: THREAD, peerId: PEER, fromId: 1, text: 'пост канала' }) as MyMessage
     putMirrorPage('thread-key', [root, msg(78, 'комментарий')])
     await flush()
     expect(staticPlate.container.querySelector('.pinned-message-subtitle')?.textContent).toContain('пост канала')

@@ -504,3 +504,46 @@ func TestPostComment_WSFrame_ThreadRootMatchesPost(t *testing.T) {
 			env.D.Message.ReplyTo, mirror.Seq)
 	}
 }
+
+// GetDiscussionMessage — порт messages.getDiscussionMessage: корень треда
+// комментариев поста — его зеркало в группе обсуждения (им клиент дальше
+// адресует тред, как tweb). Домиграционному посту зеркало дозаводится тем же
+// lazyMirrorPost, что у первого комментария; повторный вызов — то же зеркало.
+func TestGetDiscussionMessage_MirrorAndLazy(t *testing.T) {
+	i, _, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+
+	if _, err := i.GetDiscussionMessage(ctx, ch, 1, 8); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("без обсуждения = %v, want ErrNotFound", err)
+	}
+
+	old, _ := i.PostToChannel(ctx, ch, 7, "до обсуждения", nil, "")
+	gid, err := i.EnableDiscussion(ctx, ch, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh, _ := i.PostToChannel(ctx, ch, 7, "после", nil, "")
+
+	m, err := i.GetDiscussionMessage(ctx, ch, fresh.ID, 8)
+	if err != nil {
+		t.Fatalf("GetDiscussionMessage: %v", err)
+	}
+	mirrorID, _ := i.msgs.MirrorByPost(ctx, ch, fresh.ID)
+	if m.ID != mirrorID || m.ChatID != gid {
+		t.Fatalf("корень = %d в %d, want зеркало %d в группе %d", m.ID, m.ChatID, mirrorID, gid)
+	}
+
+	lazy, err := i.GetDiscussionMessage(ctx, ch, old.ID, 8)
+	if err != nil || lazy.ID == 0 || lazy.ChatID != gid {
+		t.Fatalf("домиграционный пост: %+v err=%v", lazy, err)
+	}
+	again, _ := i.GetDiscussionMessage(ctx, ch, old.ID, 8)
+	if again.ID != lazy.ID {
+		t.Fatalf("повтор завёл второе зеркало: %d != %d", again.ID, lazy.ID)
+	}
+
+	if _, err := i.GetDiscussionMessage(ctx, ch, 999999, 8); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("несуществующий пост = %v, want ErrNotFound", err)
+	}
+}

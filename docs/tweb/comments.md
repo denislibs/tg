@@ -342,7 +342,7 @@ div#column-right > .sidebar-content.sidebar-slider
 | Футер поста | `replies-element` внутри `.bubble-content`, порядок `avatars → text → icon → rp` | React-лента — `CommentsBar.tsx`; ВАНИЛЬНАЯ (`components/chat/replies.ts`, порт `replies.ts` + `MessageRender.renderReplies`) — те же классы и порядок, `beside`-вариант ЕСТЬ, стек аватарок есть. Нет `is-unread`-точки (нужны `read_max_id`/`max_id` треда, сервер их не производит) и нет узла `.c-ripple` внутри `div.rp` (ванильного `ripple` в проекте нет); при `count === 0` пишем «Комментарии», а tweb — «Leave a comment» (ключа `LeaveAComment` не заведено) |
 | Счётчик ответов в ГРУППЕ | число у времени, `setBubbleRepliesCount` (bubbles.ts:6410-6431), ветка `message.replies && isAnyGroup` (:9698) | портирован — `chat/messageTime.ts::setRepliesCount` + развилка `chat/bubbles.ts::renderMessageReplies`; в React-ленте предмета нет вовсе |
 | Данные счётчика | `message.replies` + `replies_updated` + `getDiscussionMessage` | `message.replies` ВНУТРИ сообщения истории (`usecase/chat/messagescontainer.go::hydrateThreads`); отдельной актуализации (`subscribeRepliesThread`, событие `replies_updated`) нет — перерисовку объявляет `message_edit` |
-| Открытие треда | `setInnerPeer({peerId: ГРУППА, type: Discussion, threadId: mid зеркала В ГРУППЕ})` | `Chat.tsx::onOpenThread({chatId: discussionChatId, rootMsgId: postId})` — пир группы совпадает, но корень треда = **id поста в канале**, а не id зеркала в группе. Ванильная лента отдаёт ключ группы СНИЗУ, из самого поста (`replies.channel_id` → `toPeerId(id, true)`, как tweb :3335), порт — `BubblesNavigation.openDiscussion`; React-лента берёт его из карточки канала (`useChatInfoCard.discussionPeerId`) |
+| Открытие треда | `setInnerPeer({peerId: ГРУППА, type: Discussion, threadId: mid зеркала В ГРУППЕ})` | так же (Б-110): `bubbles.ts::openDiscussion` спрашивает `messages.getDiscussionMessage` (`GET /channels/{id}/posts/{seq}/discussion`) и открывает тред номером зеркала; `appImManager.openComment` — тем же путём. Окно, отправка (`thread_root_id`), живые кадры (`reply_to_top_id`) и плашка-корень адресуются одним номером |
 | Шапка треда | без аватара, title = `N Comments` (счётчик из `historyStorage.count`), сабтайтл `.info.hide` | `Chat.tsx:1301` — `has-avatar`, иконка `comments`, title = статичное «Comments», сабтайтл = имя канала |
 | Плашка сверху | `pinned-message` со **статическим** постом | пинов в треде нет (`!thread` гейт) |
 | Лента треда | зеркало поста + сервисное «Discussion started» + комментарии как обычные групповые сообщения | только комментарии |
@@ -350,14 +350,12 @@ div#column-right > .sidebar-content.sidebar-slider
 | Ссылки | `?comment=`/`?thread=` → `openComment`/`openThread` | не разбираются |
 | Просмотры | IntersectionObserver + дебаунс 1 с + `getMessagesViews(increment)` | есть счётчик просмотров, инкремент по своей схеме |
 
-Самое структурное расхождение — **что считается корнем треда**. В tweb корень — mid
-**зеркала поста в группе обсуждения** (его отдаёт `messages.getDiscussionMessage`), и
-именно он идёт в `threadId`, в `getReplies`, в `readDiscussion` и в `reply_to.top_msg_id`.
-У нас корень — id поста **в канале**, а сопоставление канал↔группа живёт на бэкенде
-(`/channels/{id}/posts/{postId}/comments`). Пока это внутреннее дело бэка, разница
-не видна; она вылезет там, где tweb работает с тредом как с обычной историей группы:
-плашка-родитель, сервисное «Discussion started», переход к оригиналу (`data-saved-from`),
-ссылки `?comment=`, правый сайдбар с `data-thread-id`.
+Корень треда — как у tweb: mid **зеркала поста в группе обсуждения** (его отдаёт
+`messages.getDiscussionMessage`), и именно он идёт в `threadId`, в историю треда
+(`?thread_root=`) и в `thread_root_id` отправки. Бэкенд принимает номер корня в том же
+пире (`discussion_mirror.go::resolveThreadRootForQuery`/`ResolveThreadRootForSend`);
+перевод «пост канала → зеркало» — только в `GetDiscussionMessage` (с ленивой дозаводкой
+зеркала домиграционного поста).
 
 ## 9. Где это делать
 
