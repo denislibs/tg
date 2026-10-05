@@ -53,12 +53,12 @@ import { newChannelFunnel, type ChannelDiff } from './realtime/channelFunnel'
 import { newSyncWait } from './realtime/syncWait'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type RepliesUpdateEvt, type MediaReadEvt, type Update } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type RepliesUpdateEvt, type MediaReadEvt, type Update } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { generateMessageId } from './history/messageId'
 import { getPeerId, toPeerId } from './peers/peerId'
 import { LOGGED_WITHOUT_CONSTRUCTOR, PASS_THROUGH } from './realtime/transportFrames'
-import { CHANNEL_CURSOR, UPDATE_RT, channelPeerId, frameKey, updatePredicate } from './realtime/updateCatalog'
+import { CHANNEL_CURSOR, UPDATE_RT, channelPeerId, channelTwin, frameKey, updatePredicate } from './realtime/updateCatalog'
 import { idbGet, idbSet } from './store/idbKv'
 import { sessionKv } from './store/sessionKv'
 import { newPasscodeWorker } from './passcode/passcodeWorker'
@@ -552,6 +552,11 @@ export function createWorkerCore() {
     if (key === LOGGED_WITHOUT_CONSTRUCTOR) { broadcast(RT.folderUpdate, d, meta); return }
     const pred = updatePredicate(d)
     if (!pred || pred !== key) return
+    // Канальный близнец правки/удаления/закрепа (журнал broadcast-канала):
+    // курсор его уже применила канальная воронка, дальше — путь пары
+    // (tweb разбирает обе одним обработчиком).
+    const twin = channelTwin(d as Update)
+    if (twin) { dispatch(twin._, twin, meta); return }
     if (pred === 'updateNewMessage' || pred === 'updateNewChannelMessage') {
       routeNewMessage(d as NewMessageEvt, meta); return
     }
@@ -589,6 +594,7 @@ export function createWorkerCore() {
       peers.saveApiPeers((d as ChatUpdateEvt).chat_full)
     }
     else if (pred === 'updateChatRemoved') dialogs.applyRemoved(getPeerId((d as ChatRemovedEvt).peer))
+    else if (pred === 'updateChannel') dialogs.applyChannel(toPeerId((d as ChannelEvt).channel_id, true))
     // Черновик — ПОЛЕ диалога, поэтому его применяет владелец списка: от даты
     // черновика зависит место строки, и считать её на витрине значило бы
     // держать порядок в двух местах.
@@ -762,6 +768,9 @@ export function createWorkerCore() {
               return
             }
             const catchingUp = want !== saved.pts ? (funnel.clear(), sync.catchUp()) : undefined
+            // Каналы с известным курсором — их кадры топиков за время без
+            // сокета пропали; пер-юзерный /sync их не несёт (журналы разные).
+            channelFunnel.catchUpAll()
             // tweb 1dc32d889 — точка attach: первый hello после старта воркера
             // решает, какой difference «начальный» (или что догонять нечего).
             syncWait.attach(catchingUp)

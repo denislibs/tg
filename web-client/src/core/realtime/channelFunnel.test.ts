@@ -171,3 +171,25 @@ describe('channelFunnel.syncState', () => {
     }
   })
 })
+
+// Переподключение (Ф-2): кадры топиков, пропавшие без сокета, добираются по
+// каждому каналу с известным курсором — аналог updateChannelTooLong в ответе
+// getDifference у tweb. Канал без курсора не трогается.
+describe('channelFunnel.catchUpAll', () => {
+  it('догоняет каждый сидированный канал от его курсора, несидированный — нет', async () => {
+    const h = harness([
+      { updates: [{ t: 'new_message', pts: 6, d: { a: 1 } }], pts: 6, slice: false },
+      { updates: [], pts: 100, slice: false },
+    ])
+    h.funnel.applyLive(1, 'new_message', 5, {})
+    h.funnel.applyLive(2, 'new_message', 100, {})
+    await h.funnel.open(3) // курсора нет ни в памяти, ни в IDB
+    h.getDifference.mockClear()
+
+    h.funnel.catchUpAll()
+    await vi.waitFor(() => expect(h.getDifference).toHaveBeenCalledTimes(2))
+    expect(h.getDifference.mock.calls.map((c) => c[0]).sort((a, b) => a - b)).toEqual([1, 2])
+    expect(h.getDifference).toHaveBeenCalledWith(1, 5)
+    await vi.waitFor(() => expect(h.saved.get(1)).toBe(6))
+  })
+})

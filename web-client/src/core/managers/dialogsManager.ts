@@ -1538,7 +1538,11 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       // открытый чат — `appImManager.chat` вкладки (спека docs/superpowers/specs/
       // 2026-08-12-dialogs-ownership-and-virtual-list-design.md, «Что остаётся на main»).
       // Блип бейджа для открытого чата гасит немедленный markRead активной вкладки.
-      const inboxUnread = m.fromId !== meId
+      // Своё сообщение — ещё и `pFlags.out` (tweb `inboxUnread =
+      // !message.pFlags.out && …`, appMessagesManager.ts:10498): у поста
+      // канала автора в `from_id` нет (подписи выключены), и сравнение с собой
+      // своё не узнаёт — свою копию поста сервер шлёт автору с `out`.
+      const inboxUnread = m.fromId !== meId && !m.pFlags?.out
       // Защита от отката — порт tweb appMessagesManager.ts:10500-10520. Кадр
       // может нести сообщение, которое строка уже видела или видела более
       // новое: повтор журнала (`/sync`), дубль мимо дедупа по pts. Такое
@@ -1656,6 +1660,18 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       const top = slice?.isEnd(SliceEnd.Bottom) && hasMessages ? messages?.getMessageByPeer(peerId, slice[0]) : undefined
       if (top) setDialogTopMessage(top)
       else reloadConversation(peerId)
+    },
+
+    /**
+     * Вступил в broadcast-канал (`updateChannel`) — порт tweb `onUpdateChannel`
+     * (appMessagesManager.ts:11605-11642): участник, у которого строки нет,
+     * получает её перечитыванием (`reloadConversation`). Выбытие у нас — свой
+     * кадр (`chat_removed` → applyRemoved), поэтому вторая половина оригинала
+     * («не участник — убрать строку») здесь не нужна.
+     */
+    applyChannel(peerId: number): void {
+      if (findDialog(peerId)) return
+      reloadConversation(peerId)
     },
 
     // Меня удалили из группы / вышел сам (chat_removed) — диалог исчезает из списка.

@@ -173,6 +173,22 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
       }
     },
 
+    /**
+     * Переподключение: добрать каждый канал с известным курсором. Пока сокета
+     * не было, кадры топиков терялись, а следующий живой кадр может не прийти
+     * долго — без догона строка канала в списке стояла бы до перезагрузки.
+     * Аналог tweb, где `getDifference` после реконнекта приносит
+     * `updateChannelTooLong` по каналам с известным состоянием и те идут в
+     * `getChannelDifference` (apiUpdatesManager.ts:354, :632-662). Каналы без
+     * курсора не трогаются: их базу примет первый живой кадр, а текущее
+     * состояние строки — список диалогов.
+     */
+    catchUpAll(): void {
+      for (const [peerId, st] of states) {
+        if (st.seeded) void catchUp(peerId)
+      }
+    },
+
     /** Состояние догона канала для `syncWait`; у пира без канального курсора — `undefined`. */
     syncState(peerId: number): SyncState | undefined {
       const st = states.get(peerId)

@@ -13,7 +13,7 @@ import { RT } from '@core/realtime/events'
 import type {
   NewMessageEvt, EditMessageEvt, DeleteMessageEvt, PinMessageEvt, ReadEvt, MediaReadEvt,
   TypingEvt, PresenceEvt, ReactionEvt, AckEvt, MessageErrorEvt, CallFrameEvt,
-  ChatRemovedEvt, DraftUpdateEvt, ChatThemeUpdateEvt, ChatUpdateEvt, SuggestedPostEvt, BotCallbackAnswerEvt,
+  ChatRemovedEvt, ChannelEvt, DraftUpdateEvt, ChatThemeUpdateEvt, ChatUpdateEvt, SuggestedPostEvt, BotCallbackAnswerEvt,
   GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, StoryUpdateEvt,
   SentStoryReactionEvt, ReadStoriesEvt, ConnState, UserUpdateEvt, DialogPinEvt, DialogArchiveEvt, DialogMuteEvt,
   PollUpdateEvt, ChecklistUpdateEvt, GiveawayUpdateEvt, BoostUpdateEvt, BalanceUpdateEvt,
@@ -56,6 +56,7 @@ export type BroadcastEvents = {
   [RT.mediaRead]: [MediaReadEvt, EventMeta?]
   [RT.reaction]: [ReactionEvt, EventMeta?]
   [RT.chatRemoved]: [ChatRemovedEvt, EventMeta?]
+  [RT.channel]: [ChannelEvt, EventMeta?]
   [RT.draftUpdate]: [DraftUpdateEvt, EventMeta?]
   [RT.chatThemeUpdate]: [ChatThemeUpdateEvt, EventMeta?]
   [RT.chatUpdate]: [ChatUpdateEvt, EventMeta?]

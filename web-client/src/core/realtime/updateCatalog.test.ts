@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest'
 import schema from '../../../../schema/schema.json'
 import additionalParams from '../../../../schema/schema_additional_params.json'
 
-import { CHANNEL_CURSOR, UPDATE_RT, frameKey, updatePredicate } from './updateCatalog'
+import { CHANNEL_CURSOR, UPDATE_RT, channelPeerId, channelTwin, frameKey, updatePredicate } from './updateCatalog'
 import { LOGGED_WITHOUT_CONSTRUCTOR, TRANSPORT_FRAMES } from './transportFrames'
 
 const schemaPredicates = new Set(
@@ -80,5 +80,37 @@ describe('updateCatalog', () => {
 
   it('кадры без конструктора и кадры-апдейты не пересекаются', () => {
     for (const t of Object.keys(TRANSPORT_FRAMES)) expect(UPDATE_RT).not.toHaveProperty(t)
+  })
+})
+
+// Ф-2: правка, удаление и закреп поста broadcast-канала едут журналом канала
+// своими конструкторами схемы. Курсор у них канальный, а предмет — тот же, что
+// у пер-юзерной пары: tweb разбирает обе одним обработчиком.
+describe('канальные близнецы', () => {
+  it('канальные — в канальном курсоре, ключ канала читается', () => {
+    for (const p of ['updateEditChannelMessage', 'updateDeleteChannelMessages', 'updatePinnedChannelMessages']) {
+      expect(CHANNEL_CURSOR.has(p)).toBe(true)
+    }
+    expect(CHANNEL_CURSOR.has('updateEditMessage')).toBe(false)
+    expect(channelPeerId({ _: 'updateDeleteChannelMessages', channel_id: 42, messages: [3], pts: 9 })).toBe(-42)
+    expect(channelPeerId({ _: 'updatePinnedChannelMessages', channel_id: 42, messages: [3], pts: 9 })).toBe(-42)
+    expect(channelPeerId({
+      _: 'updateEditChannelMessage', pts: 9,
+      message: { _: 'message', id: 3, date: 1, message: 'x', peer_id: { _: 'peerChannel', channel_id: 42 }, pFlags: {} },
+    } as never)).toBe(-42)
+  })
+
+  it('channelTwin переводит в форму пары, сохраняя номера, бит и pts', () => {
+    expect(channelTwin({ _: 'updateDeleteChannelMessages', channel_id: 42, messages: [3, 4], pts: 9 })).toEqual({
+      _: 'updateDeletePeerMessages', peer: { _: 'peerChannel', channel_id: 42 }, messages: [3, 4], pts: 9,
+    })
+    expect(channelTwin({ _: 'updatePinnedChannelMessages', pFlags: { pinned: true }, channel_id: 42, messages: [3], pts: 10 })).toEqual({
+      _: 'updatePinnedMessages', pFlags: { pinned: true }, peer: { _: 'peerChannel', channel_id: 42 }, messages: [3], pts: 10,
+    })
+    // «Открепили» — отсутствие бита и у пары.
+    expect(channelTwin({ _: 'updatePinnedChannelMessages', channel_id: 42, messages: [3], pts: 11 })).not.toHaveProperty('pFlags')
+    const msg = { _: 'message', id: 3, date: 1, message: 'x', peer_id: { _: 'peerChannel', channel_id: 42 }, pFlags: {} }
+    expect(channelTwin({ _: 'updateEditChannelMessage', message: msg, pts: 12 } as never)).toEqual({ _: 'updateEditMessage', message: msg, pts: 12 })
+    expect(channelTwin({ _: 'updateEditMessage', message: msg, pts: 12 } as never)).toBeUndefined()
   })
 })
