@@ -38,6 +38,7 @@ export default function createContextMenu<T extends ButtonMenuItemOptionsVerifia
   onCloseAfter,
   onElementReady,
   onOpenBefore,
+  onOpenAfter,
   listenerSetter: attachListenerSetter,
   middleware,
   listenForClick,
@@ -51,6 +52,8 @@ export default function createContextMenu<T extends ButtonMenuItemOptionsVerifia
   onClose?: () => unknown,
   onCloseAfter?: () => unknown,
   onOpenBefore?: () => unknown,
+  /** tweb `:53`, `:149` — меню уже открыто (выбор тона эмодзи ставит свою панель над ним) */
+  onOpenAfter?: (element: HTMLElement, target: HTMLElement) => unknown,
   onElementReady?: (element: HTMLElement) => void,
   listenerSetter?: ListenerSetter,
   middleware?: Middleware,
@@ -106,6 +109,7 @@ export default function createContextMenu<T extends ButtonMenuItemOptionsVerifia
           destroy()
         }, 300)
       }, target)
+      onOpenAfter?.(_element, target)
     }
 
     void r()

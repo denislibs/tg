@@ -1,4 +1,4 @@
-// Порт tweb `helpers/dom/ensureButtonSemantics.ts` (812502980) 1:1.
+// Порт tweb `src/helpers/dom/ensureButtonSemantics.ts` (812502980) 1:1.
 /** Shared semantics for legacy/custom-element triggers using attachClickEvent. */
 export default function ensureButtonSemantics(element: HTMLElement) {
   if(element.matches('button, input, select, textarea, a[href]')) {

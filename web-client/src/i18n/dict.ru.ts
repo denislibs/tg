@@ -2231,6 +2231,23 @@ const ru = {
   SlowmodeSendError: 'Включён медленный режим. Нельзя отправить больше одного сообщения за раз.',
   SlowmodeSendErrorTooLong: 'Текст слишком длинный для одного сообщения.\n\nВключён медленный режим. Нельзя отправить больше одного сообщения за раз.',
   'Stars.Subscription.MissingBalance': 'Недостаточно звёзд',
+  // ── Эмодзи-дропдаун (П-6, tweb emoticonsDropdown/**) ──
+  'AccDescr.DeleteLastCharacter': 'Удалить последний символ',
+  'AccDescr.GifNumber': 'Анимация %s',
+  'AccDescr.Gifs': 'GIF',
+  'AccDescr.StickerNumber': 'Стикер %s',
+  'AccDescr.Stickers': 'Стикеры',
+  ClearRecentStickersAlertMessage: 'Очистить список недавних стикеров?',
+  'Context.ViewStickerSet': 'Открыть набор стикеров',
+  'CustomEmoji.PremiumAlert': 'Оформите Telegram Premium, чтобы использовать этот эмодзи. [Подробнее]()',
+  DeleteFromFavorites: 'Удалить из избранного',
+  DeleteFromRecent: 'Удалить из недавних',
+  'Emoji.ActivityAndSport': 'Спорт и активности',
+  'Message.Context.RemoveGif': 'Удалить GIF',
+  SaveToGIFs: 'Добавить в GIF',
+  SearchStickers: 'Поиск стикеров',
+  'Stickers.Recent': 'Недавние',
+  ViewPackPreview: 'Открыть набор',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)

@@ -1,14 +1,20 @@
-// Порт tweb `helpers/dropdownHover.ts` (812502980, 310 строк) 1:1 — база выпадашек по
-// наведению: клавиатура бота (`chat/replyKeyboard.ts`) и эмодзи-дропдаун
-// (`emoticonsDropdown/index.ts`). Правки — только под строгий tsconfig (поля с `!`/`?`,
-// `toElement` — нестандартное поле события).
+// Порт tweb `src/helpers/dropdownHover.ts` (812502980, 310 строк) — панель, которая
+// открывается по наведению (на тач-устройствах — по клику) и закрывается по уводу
+// курсора, по клику вне и по Back/Esc. База `EmoticonsDropdown`
+// (`components/emoticonsDropdown/index.ts`). Анимация — классом `active`
+// (`styles/tweb/_emojiDropdown.scss`), `display: none` ставится после неё.
+//
+// Расхождение с оригиналом одно: «уже инициализирован» — флаг `inited` (у tweb он
+// объявлен, но не используется), а не обнуление метода (`this.init = null`,
+// `:200-205`) — в строгом TS метод нельзя занулить. Наследник проверяет
+// `this.inited` там, где tweb проверяет `this.init`. Закомментированные ветки
+// оригинала (прокрутка ленты на тач-клавиатуре) не переносились.
 import { attachClickEvent } from '@helpers/dom/clickEvent'
 import { getAppWindow } from '@helpers/appWindow'
 import findUpAsChild from '@helpers/dom/findUpAsChild'
 import EventListenerBase from '@helpers/eventListenerBase'
 import type ListenerSetter from '@helpers/listenerSetter'
 import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
-import safeAssign from '@helpers/object/safeAssign'
 import appNavigationController, { type NavigationItem } from '@core/navigation/appNavigationController'
 import findUpClassName from '@helpers/dom/findUpClassName'
 import liteMode from '@helpers/liteMode'
@@ -23,10 +29,10 @@ export type IgnoreMouseOutType = 'click' | 'menu' | 'popup' | 'tooltip'
 type DropdownHoverTimeoutType = 'toggle' | 'done'
 
 export default class DropdownHover extends EventListenerBase<{
-  open: () => Promise<unknown> | void,
-  openAfterLayout: () => void,
-  opened: () => unknown,
-  close: () => unknown,
+  open: () => Promise<unknown> | void
+  openAfterLayout: () => void
+  opened: () => unknown
+  close: () => unknown
   closed: () => unknown
 }> {
   protected element!: HTMLElement
@@ -42,11 +48,12 @@ export default class DropdownHover extends EventListenerBase<{
   private keyboardTrigger?: HTMLElement
 
   constructor(options: {
-    element: DropdownHover['element'],
+    element: HTMLElement
     ignoreOutClickClassName?: string
   }) {
     super(false)
-    safeAssign(this, options)
+    this.element = options.element
+    this.ignoreOutClickClassName = options.ignoreOutClickClassName
     this.forceClose = false
     this.inited = false
     this.ignoreMouseOut = new Set()
@@ -62,14 +69,14 @@ export default class DropdownHover extends EventListenerBase<{
     ensureButtonSemantics(button)
     const popupRole = this.element.getAttribute('role') || 'dialog'
     this.element.setAttribute('role', popupRole)
-    const label = button.getAttribute('aria-label') || button.textContent?.trim()
+    const label = button.getAttribute('aria-label') || button.textContent!.trim()
     if(label && !this.element.hasAttribute('aria-label')) this.element.setAttribute('aria-label', label)
     button.setAttribute('aria-haspopup', popupRole)
     button.setAttribute('aria-expanded', 'false')
     listenerSetter.add(this)('open', () => button.setAttribute('aria-expanded', 'true'))
     listenerSetter.add(this)('close', () => button.setAttribute('aria-expanded', 'false'))
     attachClickEvent(button, (event) => {
-      this.keyboardTrigger = event.type === 'click' && event.detail === 0 ? button : undefined
+      this.keyboardTrigger = event.type === 'click' && (event as MouseEvent).detail === 0 ? button : undefined
       if(IS_TOUCH_SUPPORTED) {
         if(firstTime) {
           firstTime = false
@@ -78,7 +85,7 @@ export default class DropdownHover extends EventListenerBase<{
           void this.toggle()
         }
       } else {
-        this.onButtonClick(button, event)
+        this.onButtonClick(button, event as MouseEvent)
       }
     }, { listenerSetter })
     if(!IS_TOUCH_SUPPORTED) {
@@ -118,7 +125,7 @@ export default class DropdownHover extends EventListenerBase<{
             w.removeEventListener('click', this.onClickOut, options)
           }
         } else {
-          this.detachClickEvent = attachClickEvent(w, this.onClickOut, { capture: true })
+          this.detachClickEvent = attachClickEvent(w as unknown as HTMLElement, this.onClickOut as (e: Event) => void, { capture: true })
         }
       }, 0)
     }
@@ -164,7 +171,7 @@ export default class DropdownHover extends EventListenerBase<{
       return
     }
 
-    const toElement = (e as MouseEvent & { toElement?: HTMLElement }).toElement
+    const toElement = ((e as MouseEvent & { toElement?: HTMLElement }).toElement ?? e.relatedTarget) as HTMLElement | null
     if(toElement && findUpAsChild(toElement, this.element)) {
       return
     }
@@ -189,7 +196,8 @@ export default class DropdownHover extends EventListenerBase<{
     }, timeout)
   }
 
-  public init(): void {
+  /** Первое открытие (`toggle`) зовёт `init` один раз; наследник в конце зовёт `super.init()`. */
+  public init(): unknown {
     if(!IS_TOUCH_SUPPORTED) {
       this.element.onmouseout = this.onMouseOut
       this.element.onmouseover = () => {
@@ -200,34 +208,35 @@ export default class DropdownHover extends EventListenerBase<{
         this.clearTimeout('toggle')
       }
     }
+
+    return undefined
   }
 
   public toggle = async(enable?: boolean) => {
-    const willBeActive = (!!this.element.style.display && enable === undefined) || enable
-    // tweb `if(this.init)`: первый показ зовёт `init` и обнуляет его (одноразовый)
-    if(this.init) {
+    const willBeActive = (!!this.element.style.display && enable === undefined) || !!enable
+    if(!this.inited) {
       if(willBeActive) {
+        this.inited = true
         this.init()
-        ;(this as { init: (() => void) | null }).init = null
       } else {
         return
       }
     }
 
-    if(!!willBeActive === this.isActive()) {
+    if(willBeActive === this.isActive()) {
       return
     }
 
     const delay = IS_TOUCH_SUPPORTED || !liteMode.isAvailable('animations') ? 0 : ANIMATION_DURATION
     if((this.element.style.display && enable === undefined) || enable) {
-      const res = this.dispatchResultableEvent('open')
-      await Promise.all(res.map((r) => Promise.resolve(r)))
+      const res = this.dispatchResultableEvent('open') as (Promise<unknown> | void)[]
+      await Promise.all(res.map((result) => Promise.resolve(result)))
 
       this.element.style.display = ''
       void this.element.offsetLeft // reflow
       this.element.classList.add('active')
       if(this.keyboardTrigger) {
-        this.element.ownerDocument.defaultView?.requestAnimationFrame(() => {
+        this.element.ownerDocument.defaultView!.requestAnimationFrame(() => {
           if(this.isActive()) getFocusableElements(this.element)[0]?.focus()
         })
       }

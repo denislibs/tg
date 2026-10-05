@@ -1,8 +1,6 @@
-// Порт tweb `src/lib/richTextProcessor/getEmojiEntityFromEmoji.ts` (812502980) 1:1:
-// сущность эмодзи для вставки в поле (`ChatInput.onEmojiSelected`). `unicode` —
-// `toCodePoints(...).join('-')` без `fe0f`, как у оригинала.
+// Порт tweb `src/lib/richTextProcessor/getEmojiEntityFromEmoji.ts` (812502980) 1:1.
 import type { MessageEntity } from '@layer'
-import { toCodePoints } from './emoji'
+import { toCodePoints } from '@vendor/emoji'
 
 export default function getEmojiEntityFromEmoji(emoji: string): MessageEntity.messageEntityEmoji {
   return {

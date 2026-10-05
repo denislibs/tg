@@ -8,6 +8,7 @@
 // выведенный `saveDocument` из `documentAttributeAnimated` и mime (порт
 // `appDocsManager.saveDoc`), и спрашивают его так же, как tweb.
 import type { TenorGif } from './managers/stickersManager'
+import { getStrippedThumb, type MyDocument } from './media/messageMedia'
 
 /**
  * Элемент вкладки GIF. Ровно один источник:
@@ -36,3 +37,19 @@ export const tenorToItem = (g: TenorGif): GifItem => ({
   mp4Url: g.mp4Url,
   previewUrl: g.previewUrl,
 })
+
+/** Сохранённый GIF (документ `/gifs/saved`) → элемент кладки вкладки GIF эмодзи-дропдауна.
+ *  Ключ — id документа (он же id медиа), превью — stripped-миниатюра документа. */
+export const savedGifToItem = (doc: MyDocument): GifItem => {
+  const stripped = getStrippedThumb(doc)
+  return {
+    key: '' + doc.id,
+    width: doc.w || 0,
+    height: doc.h || 0,
+    mediaId: doc.id,
+    mime: doc.mime_type,
+    size: doc.size,
+    fileName: doc.file_name,
+    previewUrl: stripped ? 'data:image/jpeg;base64,' + stripped : undefined,
+  }
+}

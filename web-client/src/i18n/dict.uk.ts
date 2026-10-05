@@ -1088,6 +1088,8 @@ const uk = {
   'ChatTips.Chats.Description': 'Натисніть **Ctrl+F**, щоб перейти в режим [пошуку]().',
   'ChatTips.Chats.DescriptionMac': 'Натисніть **Cmd+F**, щоб перейти в режим [пошуку]().',
   'ChatTips.Stickers.Description': 'Більше популярних стікерів — у розділі [Популярні стікери]().',
+  // ── Эмодзи-дропдаун (П-6): ключ со ссылкой — строковый режим без аргумента не читается ──
+  'CustomEmoji.PremiumAlert': 'Оформіть Telegram Premium, щоб використовувати цей емодзі. [Докладніше]()',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(uk)

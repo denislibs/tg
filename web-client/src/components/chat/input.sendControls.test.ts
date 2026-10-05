@@ -66,6 +66,10 @@ function makeManagers() {
     groups: { setMute: vi.fn(async() => {}) },
     stickers: { use: vi.fn(async() => {}), saveGif: vi.fn(async() => {}) },
     peers: { fillMirror: vi.fn(async() => {}) },
+    bots: {
+      commands: vi.fn(async(_botId: number) => [] as { command: string, description: string }[]),
+      menuButton: vi.fn(async(_botId: number) => ({ text: '', url: '' })),
+    },
   }
 }
 
@@ -362,5 +366,25 @@ describe('ChatInput: клавиатура бота (Б-36)', () => {
     mounted.input.onMessageInput()
     expect(btn.classList.contains('show')).toBe(false)
     resetMessagesMirror()
+  })
+})
+
+describe('ChatInput: команды бота (Б-36)', () => {
+  it('у бота с командами — кнопка команд первой в строке, сдвиг `commands`; набранный текст её прячет', async() => {
+    applyPeerOps([{ op: 'upsert', peers: [
+      { _: 'user', id: BOB, first_name: 'Бот', pFlags: { bot: true } } as UserReal,
+    ] }])
+    const managers = makeManagers()
+    managers.bots.commands.mockResolvedValue([{ command: 'start', description: 'Начать' }])
+    mounted = await mountInput({ managers })
+    await flush()
+    const toggle = mounted.input.newMessageWrapper.firstElementChild as HTMLElement
+    expect(toggle.classList.contains('new-message-bot-commands')).toBe(true)
+    expect(mounted.input.newMessageWrapper.dataset.offset).toBe('commands')
+    expect(toggle.getAttribute('aria-hidden')).toBe('false')
+
+    mounted.input.messageInputField.setValueSilently('текст')
+    mounted.input.onMessageInput()
+    expect(toggle.getAttribute('aria-hidden')).toBe('true')
   })
 })

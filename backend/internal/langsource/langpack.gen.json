@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 59,
+      "version": 60,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -19,6 +19,18 @@
         {
           "key": "AccDescr.ChatList",
           "value": "Chat list"
+        },
+        {
+          "key": "AccDescr.DeleteLastCharacter",
+          "value": "Delete last character"
+        },
+        {
+          "key": "AccDescr.GifNumber",
+          "value": "GIF %s"
+        },
+        {
+          "key": "AccDescr.Gifs",
+          "value": "GIFs"
         },
         {
           "key": "AccDescr.MicrophoneLevel",
@@ -35,6 +47,14 @@
         {
           "key": "AccDescr.SkipToConversation",
           "value": "Skip to conversation"
+        },
+        {
+          "key": "AccDescr.StickerNumber",
+          "value": "Sticker %s"
+        },
+        {
+          "key": "AccDescr.Stickers",
+          "value": "Stickers"
         },
         {
           "key": "AccDescrEditing",
@@ -1766,6 +1786,10 @@
           "value": "clear"
         },
         {
+          "key": "ClearRecentStickersAlertMessage",
+          "value": "Do you want to clear all your recent stickers?"
+        },
+        {
           "key": "ClearRecentStickersAlertTitle",
           "value": "Clear recent stickers"
         },
@@ -1900,6 +1924,10 @@
           "value": "No contacts"
         },
         {
+          "key": "Context.ViewStickerSet",
+          "value": "View Sticker Set"
+        },
+        {
           "key": "Continue",
           "value": "Continue"
         },
@@ -1950,6 +1978,10 @@
         {
           "key": "CurrentSession",
           "value": "This device"
+        },
+        {
+          "key": "CustomEmoji.PremiumAlert",
+          "value": "Subscribe to Telegram Premium to unlock this emoji. [Read More]()"
         },
         {
           "key": "DataSettings",
@@ -2012,6 +2044,14 @@
         {
           "key": "DeleteForMe",
           "value": "Delete for me"
+        },
+        {
+          "key": "DeleteFromFavorites",
+          "value": "Delete from Favorites"
+        },
+        {
+          "key": "DeleteFromRecent",
+          "value": "Remove from Recent"
         },
         {
           "key": "DeleteLink",
@@ -2315,6 +2355,10 @@
         {
           "key": "Emoji.Activity",
           "value": "Activity"
+        },
+        {
+          "key": "Emoji.ActivityAndSport",
+          "value": "Activity \u0026 Sport"
         },
         {
           "key": "Emoji.AnimalsAndNature",
@@ -3615,6 +3659,10 @@
         {
           "key": "Message.Context.Pin",
           "value": "Pin"
+        },
+        {
+          "key": "Message.Context.RemoveGif",
+          "value": "Remove GIF"
         },
         {
           "key": "Message.Context.Select",
@@ -5349,6 +5397,10 @@
           "value": "Save"
         },
         {
+          "key": "SaveToGIFs",
+          "value": "Add to GIFs"
+        },
+        {
           "key": "Saved",
           "value": "Saved"
         },
@@ -5490,6 +5542,10 @@
         {
           "key": "SearchMessages",
           "value": "Messages"
+        },
+        {
+          "key": "SearchStickers",
+          "value": "Search Stickers"
         },
         {
           "key": "Seconds",
@@ -6022,6 +6078,10 @@
         {
           "key": "Stickers.ClearRecent.Text",
           "value": "Are you sure you want to clear your recent stickers?"
+        },
+        {
+          "key": "Stickers.Recent",
+          "value": "Recent"
         },
         {
           "key": "Stickers.RemoveFromFavorites",
@@ -6825,6 +6885,10 @@
           "value": "View discussion"
         },
         {
+          "key": "ViewPackPreview",
+          "value": "View Pack"
+        },
+        {
           "key": "ViewsPerPost",
           "value": "Views Per Post"
         },
@@ -6968,7 +7032,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 59,
+      "version": 60,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -13997,6 +14061,70 @@
         {
           "key": "Stars.Subscription.MissingBalance",
           "value": "Недостаточно звёзд"
+        },
+        {
+          "key": "AccDescr.DeleteLastCharacter",
+          "value": "Удалить последний символ"
+        },
+        {
+          "key": "AccDescr.GifNumber",
+          "value": "Анимация %s"
+        },
+        {
+          "key": "AccDescr.Gifs",
+          "value": "GIF"
+        },
+        {
+          "key": "AccDescr.StickerNumber",
+          "value": "Стикер %s"
+        },
+        {
+          "key": "AccDescr.Stickers",
+          "value": "Стикеры"
+        },
+        {
+          "key": "ClearRecentStickersAlertMessage",
+          "value": "Очистить список недавних стикеров?"
+        },
+        {
+          "key": "Context.ViewStickerSet",
+          "value": "Открыть набор стикеров"
+        },
+        {
+          "key": "CustomEmoji.PremiumAlert",
+          "value": "Оформите Telegram Premium, чтобы использовать этот эмодзи. [Подробнее]()"
+        },
+        {
+          "key": "DeleteFromFavorites",
+          "value": "Удалить из избранного"
+        },
+        {
+          "key": "DeleteFromRecent",
+          "value": "Удалить из недавних"
+        },
+        {
+          "key": "Emoji.ActivityAndSport",
+          "value": "Спорт и активности"
+        },
+        {
+          "key": "Message.Context.RemoveGif",
+          "value": "Удалить GIF"
+        },
+        {
+          "key": "SaveToGIFs",
+          "value": "Добавить в GIF"
+        },
+        {
+          "key": "SearchStickers",
+          "value": "Поиск стикеров"
+        },
+        {
+          "key": "Stickers.Recent",
+          "value": "Недавние"
+        },
+        {
+          "key": "ViewPackPreview",
+          "value": "Открыть набор"
         }
       ]
     },
@@ -14007,7 +14135,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 35,
+      "version": 36,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -17339,6 +17467,10 @@
         {
           "key": "ChatTips.Stickers.Description",
           "value": "D'autres stickers tendance sont disponibles dans [Stickers tendance]()."
+        },
+        {
+          "key": "CustomEmoji.PremiumAlert",
+          "value": "Abonnez-vous à Telegram Premium pour débloquer cet emoji. [En savoir plus]()"
         }
       ]
     },
@@ -17349,7 +17481,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 35,
+      "version": 36,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -20703,6 +20835,10 @@
         {
           "key": "ChatTips.Stickers.Description",
           "value": "Weitere angesagte Sticker findest du unter [Angesagte Sticker]()."
+        },
+        {
+          "key": "CustomEmoji.PremiumAlert",
+          "value": "Abonniere Telegram Premium, um dieses Emoji freizuschalten. [Mehr erfahren]()"
         }
       ]
     },
@@ -20713,7 +20849,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 35,
+      "version": 36,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -24061,6 +24197,10 @@
         {
           "key": "ChatTips.Stickers.Description",
           "value": "Hay más stickers populares en [Stickers populares]()."
+        },
+        {
+          "key": "CustomEmoji.PremiumAlert",
+          "value": "Suscríbete a Telegram Premium para desbloquear este emoji. [Más información]()"
         }
       ]
     },
@@ -24071,7 +24211,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 36,
+      "version": 37,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -27608,6 +27748,10 @@
         {
           "key": "ChatTips.Stickers.Description",
           "value": "Більше популярних стікерів — у розділі [Популярні стікери]()."
+        },
+        {
+          "key": "CustomEmoji.PremiumAlert",
+          "value": "Оформіть Telegram Premium, щоб використовувати цей емодзі. [Докладніше]()"
         }
       ]
     }

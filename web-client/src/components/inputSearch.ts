@@ -15,7 +15,7 @@
  * debounce-логики нет.
  *
  * Расхождения с оригиналом:
- *  1. Опции `onDebounce` нет — ни у одного потребителя она не задана.
+ *  1. (снято: `onDebounce` есть — поиск вкладки стикеров эмодзи-дропдауна.)
  *     `onFocusChange`/`onBack`/`verifyDebounce`/`alwaysShowClear`/`arrowBack` и
  *     `setArrowBack` (:119-133) — есть: их задаёт поиск по чату
  *     (`components/chat/topbarSearch.solid.tsx`, tweb `topbarSearch.tsx:476-490`).
@@ -56,6 +56,7 @@ export default class InputSearch extends InputSearchHandle {
     onClear?: InputSearchHandle['onClear'],
     onEnter?: (value: string) => void,
     onFocusChange?: (isFocused: boolean) => void,
+    onDebounce?: (start: boolean) => void,
     onBack?: () => void,
     alwaysShowClear?: boolean,
     verifyDebounce?: InputSearchHandle['verifyDebounce'],
@@ -87,6 +88,7 @@ export default class InputSearch extends InputSearchHandle {
     this.onChange = options.onChange
     this.onClear = options.onClear
     this.onEnter = options.onEnter
+    this.onDebounce = options.onDebounce
     this.onBack = options.onBack
     this.debounceTime = options.debounceTime ?? 300
     this.verifyDebounce = options.verifyDebounce

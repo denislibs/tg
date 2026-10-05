@@ -87,11 +87,13 @@
  *     `premium_toggle` класса приходит раньше `construct` колонки.
  *  8. Статус — юникод-эмодзи `me.emoji_status_emoticon` (`core/peers/peer.ts`)
  *     текстом `wrapEmojiText` в `.sidebar-emoji-status-emoji`, а не
- *     `wrapEmojiStatus` над документом кастомного эмодзи (:304-314); анимации
- *     вокруг нового статуса (`fireOnNew` + `ReactionElement.fireAroundAnimation`,
- *     :285-302) нет — ей нужен тот же документ; `emoji_status_change` —
- *     подписка на смену статуса в `me` зеркала. Выбор статуса — Б-63
- *     (`emojiStatusPicker.solid.tsx`).
+ *     `wrapEmojiStatus` над документом кастомного эмодзи (:304-314); анимация
+ *     вокруг нового статуса (`fireOnNew` + `fireAroundAnimation`, :285-302) — та же
+ *     ветка обычной эмодзи-реакции (`reactionEmoji` по эмодзи статуса,
+ *     `chat/reactions.ts`), а не `reactionCustomEmoji` документа: играет, если
+ *     эмодзи статуса есть в каталоге реакций; `emoji_status_change` —
+ *     подписка на смену статуса в `me` зеркала. Выбор статуса —
+ *     `emojiStatusPicker.solid.tsx` (Б-63).
  *  9. Ctrl/Cmd+0 (:462-468) открывает «Избранное» тем же путём, что пункт бургера
  *     (`openSavedMessages`: `chats.saved()` заводит чат на бэкенде, потом
  *     `appImManager.setPeer`), а не голым `setPeer({peerId: myId})`.
@@ -150,6 +152,8 @@ import { replaceButtonIcon } from '@components/button'
 import ripple from '@components/ripple'
 import createLockButton from '@components/sidebarLeft/lockButton.solid'
 import { openEmojiStatusPicker } from '@components/sidebarLeft/emojiStatusPicker.solid'
+import { fireAroundAnimation } from '@components/chat/reactions'
+import type { MiddlewareHelper } from '@helpers/middleware'
 import { renderFoldersSidebarContent } from '@components/sidebarLeft/foldersSidebarContent/index.solid'
 import type { IconName } from '@core/tgico-icons'
 import createSubmenuTrigger, { type CreateSubmenuArgs } from '@components/createSubmenuTrigger'
@@ -366,11 +370,14 @@ export class AppSidebarLeft extends SidebarSlider {
 
     const lockButton = createLockButton()
 
+    let statusMiddlewareHelper: MiddlewareHelper | undefined, fireOnNew = false
     attachClickEvent(statusBtnIcon, () => {
-      // `onChosen` → `fireOnNew` — взвод анимации вокруг нового статуса, расхождение 8
       openEmojiStatusPicker({
         managers,
         anchorElement: statusBtnIcon,
+        onChosen: () => {
+          fireOnNew = true
+        },
       })
     })
 
@@ -382,7 +389,19 @@ export class AppSidebarLeft extends SidebarSlider {
         return
       }
 
-      // `fireOnNew && ReactionElement.fireAroundAnimation` (:285-302) — расхождение 8
+      // :285-302 — расхождение 8
+      if(fireOnNew) {
+        statusMiddlewareHelper ??= this.getMiddleware().create()
+        fireAroundAnimation({
+          middleware: statusMiddlewareHelper.get(),
+          reaction: { _: 'reactionEmoji', emoticon: emojiStatus },
+          chip: statusBtnIcon as HTMLElement & { hasAroundAnimation?: Promise<unknown> },
+          stickerContainer: statusBtnIcon,
+          managers,
+        })
+      }
+
+      fireOnNew = false
 
       const container = document.createElement('span')
       container.classList.add('sidebar-emoji-status-emoji')

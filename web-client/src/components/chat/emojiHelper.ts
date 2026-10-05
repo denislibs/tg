@@ -8,95 +8,21 @@
 //     `CustomEmojiRendererElement`, фильтра `canUseEmoji` без Premium и
 //     `checkEmoticon` (свои варианты к набранному эмодзи, `searchCustomEmoji`)
 //     нет — их предмет появится с кастомными эмодзи.
-//  2. `appendEmoji`/`getEmojiFromElement` (tweb `emoticonsDropdown/tabs/emoji.ts:66-151`)
-//     и поиск `appEmojiManager.prepareAndSearchEmojis` (`appEmojiManager.ts:200-268`)
-//     — ниже, ВРЕМЕННО до Б-35: их дом — порт эмодзи-дропдауна (`emoticonsDropdown/**`,
-//     соседняя ветка П-6). Индекс ключевых слов пуст: у бэкенда нет
-//     `messages.getEmojiKeywordsDifference` (Б-138), поэтому `:` без слова даёт
-//     популярные эмодзи (`POPULAR_EMOJI`, недавних — нет до Б-35), а поиск по слову —
-//     пустую выдачу и скрытый хелпер, как у tweb без пакета ключевых слов.
+//  2. Поиск — `appEmojiManager.prepareAndSearchEmojis` главного потока (у tweb — менеджер
+//     воркера, `appEmojiManager.ts:200-268`); `appendEmoji`/`getEmojiFromElement` —
+//     `emoticonsDropdown/tabs/emoji.ts` (порт Б-35). Ключевые слова — локальный пакет
+//     `config/emojiKeywords.ts` (нет `messages.getEmojiKeywordsDifference`, Б-131/Б-138).
 import type { Managers } from '@/client/bootstrap'
 import { ScrollableX } from '@components/scrollable'
 import type { Middleware } from '@helpers/middleware'
-import findUpClassName from '@helpers/dom/findUpClassName'
-import SearchIndex from '@lib/searchIndex'
-import wrapEmojiText from '@lib/richtext/wrapEmojiText'
+import appEmojiManager from '@lib/appManagers/appEmojiManager'
+import { appendEmoji, getEmojiFromElement } from '@components/emoticonsDropdown/tabs/emoji'
 import AutocompleteHelper from './autocompleteHelper'
 import type AutocompleteHelperController from './autocompleteHelperController'
 import type StickersHelper from './stickersHelper'
 import type ChatInput from './input'
 
-/** tweb `AppEmoji` (`appEmojiManager.ts`) — без `docId` своих эмодзи (расхождение 1). */
-export type AppEmoji = { emoji: string, docId?: DocId }
-
-// ── ВРЕМЕННО до Б-35 (расхождение 2) ────────────────────────────────────────
-
-/** tweb `appEmojiManager.ts:37` */
-const POPULAR_EMOJI = ['😂', '😘', '❤️', '😍', '😊', '😁', '👍', '☺️', '😔', '😄', '😭', '💋', '😒', '😳', '😜', '🙈', '😉', '😃', '😢', '😝', '😱', '😡', '😏', '😞', '😅', '😚', '🙊', '😌', '😀', '😋', '😆', '👌', '😐', '😕']
-/** tweb `appEmojiManager.ts:31` */
-const RECENT_MAX_LENGTH = 32
-
-/** Пакет ключевых слов (tweb `EmojiLangPack.keywords`) — пуст до Б-138. */
-const keywords: { [keyword: string]: string[] } = {}
-let index: SearchIndex<string[]> | undefined
-
-/** tweb `appEmojiManager.searchEmojis` (`:200-251`) без своих эмодзи (`addCustom`). */
-export function searchEmojis({ q, limit = 40, minChars = 2 }: { q: string, limit?: number, minChars?: number }): AppEmoji[] {
-  if(!index) {
-    index = new SearchIndex({ minChars: 2, fullWords: true })
-    for(const keyword in keywords) {
-      index.indexObject(keywords[keyword], keyword)
-    }
-  }
-
-  q = q.toLowerCase().replace(/_/g, ' ')
-
-  let emojis: string[]
-  if(q.trim()) {
-    const set = index.search(q, minChars)
-    emojis = [...new Set(Array.from(set).flat())]
-    emojis.length = Math.min(40, emojis.length)
-  } else {
-    emojis = POPULAR_EMOJI.slice(0, RECENT_MAX_LENGTH)
-  }
-
-  const appEmojis: AppEmoji[] = emojis.map((emoji) => ({ emoji }))
-  appEmojis.length = Math.min(limit, appEmojis.length)
-  return appEmojis
-}
-
-/** tweb `emoticonsDropdown/tabs/emoji.ts:66-134` — ветка обычного эмодзи. */
-export function appendEmoji(_emoji: AppEmoji) {
-  const { emoji } = _emoji
-  const spanEmoji = document.createElement('span')
-  spanEmoji.classList.add('super-emoji', 'super-emoji-regular')
-  spanEmoji.dataset.emoji = emoji
-
-  spanEmoji.append(wrapEmojiText(emoji))
-
-  if(spanEmoji.children.length > 1) {
-    const first = spanEmoji.firstElementChild!
-    spanEmoji.replaceChildren(first)
-  }
-
-  return spanEmoji
-}
-
-/** tweb `emoticonsDropdown/tabs/emoji.ts:136-151` — без ветки своего эмодзи. */
-export function getEmojiFromElement(element: HTMLElement): AppEmoji | undefined {
-  const superEmoji = findUpClassName(element, 'super-emoji')
-  if(!superEmoji) return
-
-  if(element.nodeType === element.TEXT_NODE) return { emoji: element.nodeValue! }
-  if(element.tagName === 'SPAN' && !element.classList.contains('emoji') && element.firstElementChild) {
-    element = element.firstElementChild as HTMLElement
-  }
-
-  return { emoji: element.getAttribute('alt') || element.innerText || element.textContent! }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
+/** tweb `AppEmoji` — глобальный тип (`global.d.ts`); реэкспорт для `ChatInput`. */
 export default class EmojiHelper extends AutocompleteHelper {
   private scrollable!: ScrollableX
   private innerList?: HTMLElement
@@ -105,7 +31,7 @@ export default class EmojiHelper extends AutocompleteHelper {
     appendTo: HTMLElement,
     controller: AutocompleteHelperController,
     private chatInput: ChatInput,
-    // * у tweb — `appEmojiManager` воркера; у нас поиск ВРЕМЕННО локальный (расхождение 2)
+    // * у tweb — `appEmojiManager` воркера; у нас — главного потока (расхождение 2)
     _managers: Managers,
   ) {
     super({
@@ -182,7 +108,7 @@ export default class EmojiHelper extends AutocompleteHelper {
   public checkQuery(query: string, firstChar: string) {
     const middleware = this.getMiddleware()
     const q = query.replace(/^:/, '')
-    void Promise.resolve(searchEmojis({ q })).then((emojis) => {
+    void appEmojiManager.prepareAndSearchEmojis({ q, addCustom: true }).then((emojis) => {
       if(!middleware()) {
         return
       }

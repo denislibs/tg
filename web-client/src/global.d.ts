@@ -56,6 +56,8 @@ declare global {
   // type PeerId = number;
   type BotId = UserId;
   type DocId = Document.document['id'];
+  // tweb global.d.ts:135 — эмодзи вкладки эмодзи-дропдауна: юникод либо свой (по документу).
+  type AppEmoji = {emoji: string, docId?: DocId};
   type Long = string | number;
   // `int256` в схеме есть (методы DH-обмена MTProto), а объявления типа в
   // оригинале нет — кодогенератор его не разбирает и печатает имя как есть.

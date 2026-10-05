@@ -42,6 +42,12 @@
 //    `:312-315`, `:482-485`, `constructRecorder` `:1048-1053`, `setShrinking` `:3988-3996`,
 //    ветки записи в `onBtnSendClick`, `updateSendBtn` и `SendMenu` `:1429-1464`.
 //
+// Эмодзи-дропдаун (П-6, `components/emoticonsDropdown`): кнопка `.toggle-emoticons` `:1074`,
+// `:1379`, привязка `:1484-1497`, `onEmoticonsToggle` `:2125-2143`, закрытие на меню вложений
+// `:1346`, тач-клик по полю `:3254-3258`, `insertAtCaret` `:3635-3678`, `onEmojiSelected`
+// `:3759-3771`, недавние эмодзи в `onMessageSent` `:4506-4519`. `is-under` — по `resize` окна
+// (наш `windowSize` не реактивен, у tweb — `createEffect`).
+//
 // В бэклоге (строки раздела 5 плана): меню плашек и превью ссылки (Б-72), плашки без
 // предмета (Б-73), эффекты сообщений (Б-125), повтор отложенных (Б-126), сохранение
 // личности send-as (Б-127).
@@ -67,7 +73,7 @@
 //     обе ветки перенесены из снесённого `useChatSend.ts`.
 //  5. Права — наш `ChatRights`: `send_plain` → `send_messages`, стикеры/GIF/медиа →
 //     `send_media`.
-//  6. Кнопки без предмета не строятся: эмодзи (Б-35), подарок, предложенный пост,
+//  6. Кнопки без предмета не строятся: подарок, предложенный пост,
 //     автоудаление, клавиатура бота, отложенные (Б-32), упоминания/реакции/голоса
 //     (Б-27 — угловые кнопки), «Вступить»/«Разблокировать»/премиум/заморозка/закреп/
 //     «Открыть чат» на плашке (Б-73). Состояния ввода (`inputState`), эфемерный режим,
@@ -92,8 +98,7 @@
 //     эфемерного и приветственного режимов, `globalMentions`, `topMsgId` упоминаний (Б-136)
 //     и перепроверки по `settings_updated`/`peer_full_update` (своих событий нет). Права
 //     `send_stickers`/`send_inline` — наши `send_media`/`send_messages` (расхождение 5).
-//     `insertAtCaret`/`onEmojiSelected` общие с эмодзи-дропдауном (Б-35): при его влитии
-//     остаётся одна копия.
+//     `insertAtCaret`/`onEmojiSelected` — одна копия, у эмодзи-дропдауна (Б-35).
 import type { Managers } from '@/client/bootstrap'
 import type { AppImManager } from '@lib/appImManager'
 import rootScope from '@lib/rootScope'
@@ -106,8 +111,8 @@ import type { MessageOp } from '@core/realtime/messageOps'
 import type { Sticker } from '@core/managers/stickersManager'
 import type { GifItem } from '@core/gifs'
 import type { ChatRights } from '@core/peers/rights'
-import { isUser } from '@core/peers/peerId'
-import { cachedUser, getStarsAmount, isBroadcastPeer, isInChatPeer } from '@core/peerCache'
+import { isUser, toUserId } from '@core/peers/peerId'
+import { cachedUser, getStarsAmount, isBroadcastPeer, isInChatPeer, peerTitle } from '@core/peerCache'
 import { isBot as isBotPeer } from '@core/peers/predicates'
 import { isPeerMuted } from '@core/dialogs/notifySettings'
 import { draftsAreEqual, realDraft } from '@core/dialogs/draft'
@@ -175,7 +180,7 @@ import ChatRecording from './recording/chatRecording'
 import AutocompleteHelperController from './autocompleteHelperController'
 import type AutocompleteHelper from './autocompleteHelper'
 import StickersHelper from './stickersHelper'
-import EmojiHelper, { type AppEmoji } from './emojiHelper'
+import EmojiHelper from './emojiHelper'
 import CommandsHelper from './commandsHelper'
 import MentionsHelper from './mentionsHelper'
 import InlineHelper from './inlineHelper'
@@ -184,9 +189,23 @@ import isPlausibleEmojiQuery from './isPlausibleEmojiQuery'
 import ChatInputPlate from './controlPlate.solid'
 import ChatSendAs from './sendAs'
 import ReplyKeyboard from './replyKeyboard.solid'
+import ChatBotCommands from './botCommands'
+import type { BotCommand } from '@core/managers/botsManager'
+import getTextWidth from '@helpers/canvas/getTextWidth'
+import { FontFull } from '@config/font'
+import replaceContent from '@helpers/dom/replaceContent'
+import wrapEmojiText from '@lib/richtext/wrapEmojiText'
+import { openWebApp } from '@core/webapp'
 import PaidMessagesInterceptor, { PAYMENT_REJECTED } from './paidMessagesInterceptor'
 import showSlowModeTooltipIfNeeded, { type ShowSlowModeTooltipOptions } from './showSlowModeTooltipIfNeeded'
 import SendMenu from './sendContextMenu'
+import emoticonsDropdown, { type EmoticonsDropdown } from '@components/emoticonsDropdown'
+import type { getEmojiFromElement } from '@components/emoticonsDropdown/tabs/emoji'
+import appEmojiManager from '@lib/appManagers/appEmojiManager'
+import blurActiveElement from '@helpers/dom/blurActiveElement'
+import { replaceButtonIcon } from '@components/button'
+import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
+import { emojiFromCodePoints } from '@vendor/emoji'
 import PeerTitle from './peerTitle'
 import type Chat from './chat'
 import { ChatType } from './chatType'
@@ -206,6 +225,7 @@ export type ChatInputReplyTo = Pick<MessageSendingParams, 'replyToMsgId' | 'repl
 export type AttachedMediaType = 'media' | 'document'
 
 const CLASS_NAME = 'chat-input'
+let botCommandsListId = 0
 const PEER_EXCEPTIONS = new Set<ChatType>([ChatType.Scheduled, ChatType.Stories, ChatType.Saved, ChatType.Welcome])
 
 /** tweb `config.message_length_max` — у нас константа бэкенда (`maxMessageRunes`). */
@@ -215,6 +235,7 @@ const MESSAGE_LENGTH_MAX = 4096
 const TYPING_THROTTLE_MS = 6000
 
 export default class ChatInput {
+  /** tweb `:214` */
   private static AUTO_COMPLETE_REG_EXP = /(\s|^)((?:(?:@|^\/)\S*)|(?::|^[^:@/])(?!.*[:@/]).*)$/
 
   public messageInput!: HTMLElement
@@ -241,6 +262,8 @@ export default class ChatInput {
   private inlineHelper!: InlineHelper
   private previousQuery?: string
   private btnPreloader?: HTMLButtonElement
+  public btnToggleEmoticons?: HTMLButtonElement
+  public emoticonsDropdown: EmoticonsDropdown
 
   public attachMenu!: InstanceType<typeof AttachMenuButton>
   private attachMenuButtons!: ButtonMenuItemOptionsVerifiable[]
@@ -269,6 +292,13 @@ export default class ChatInput {
   /** tweb `:238`, `:244` — клавиатура бота (Б-36) */
   private btnToggleReplyMarkup?: HTMLButtonElement
   private replyKeyboard?: ReplyKeyboard
+  /** tweb `:388-393` — команды и кнопка-меню бота (Б-36) */
+  private botCommandsToggle?: HTMLElement
+  private botCommands?: ChatBotCommands
+  private botCommandsIcon!: HTMLElement
+  private botCommandsView!: HTMLElement
+  private botMenuButton?: { text: string, url: string }
+  private hasBotCommands?: boolean
   /** tweb `:354`, `constructScheduledButton` `:922-945` */
   private btnScheduled!: HTMLButtonElement
   /** tweb `:398-400` */
@@ -335,6 +365,7 @@ export default class ChatInput {
   ) {
     this.listenerSetter = new ListenerSetter()
     this.middlewareHelper = getMiddleware()
+    this.emoticonsDropdown = emoticonsDropdown
   }
 
   /** tweb `:482-485` */
@@ -447,6 +478,54 @@ export default class ChatInput {
     this.listenerSetter.add(this.replyKeyboard)('close', () => this.btnToggleReplyMarkup!.classList.remove('active'))
   }
 
+  /** tweb `:962-1046` — меню бота открывает `openWebApp` (`core/webapp.ts`), а не `chat.openWebApp` */
+  private constructBotCommands() {
+    this.botCommands = new ChatBotCommands(this.rowsWrapper, this, this.managers)
+    this.botCommands.container.id = `chat-bot-commands-${++botCommandsListId}`
+    this.botCommands.container.setAttribute('aria-hidden', 'true')
+    const toggle = this.botCommandsToggle = document.createElement('div')
+    toggle.classList.add('new-message-bot-commands')
+    toggle.setAttribute('role', 'button')
+    toggle.setAttribute('aria-label', I18n.format('Chat.BotCommands', true))
+    toggle.tabIndex = -1
+    toggle.append(Icon('webview', 'new-message-bot-commands-view-icon'))
+    const scaler = document.createElement('div')
+    scaler.classList.add('new-message-bot-commands-icon-scale')
+    const icon = this.botCommandsIcon = document.createElement('div')
+    icon.classList.add('animated-menu-icon', 'animated-menu-close-icon')
+    scaler.append(icon)
+    this.botCommandsView = document.createElement('div')
+    this.botCommandsView.classList.add('new-message-bot-commands-view')
+    toggle.append(scaler, this.botCommandsView)
+
+    attachClickEvent(toggle, (e) => {
+      cancelEvent(e)
+      if(this.hasOffset?.type !== 'commands' || !this.hasOffset.forwards) return
+      const botId = toUserId(this.chat.peerId)
+      const { botMenuButton } = this
+      if(botMenuButton) {
+        // tweb :993-1015 (webViewTempId): наш openWebApp синхронный
+        openWebApp({ url: botMenuButton.url, botId, botName: peerTitle(this.chat.peerId) })
+        return
+      }
+
+      const middleware = this.getMiddleware()
+      if(icon.classList.contains('state-back')) this.botCommands!.toggle(true)
+      else void this.botCommands!.setUserId(botId, middleware)
+    }, { listenerSetter: this.listenerSetter })
+
+    this.botCommands.addEventListener('visible', () => {
+      icon.classList.add('state-back')
+      this.botCommands!.container.removeAttribute('aria-hidden')
+      if(!this.botMenuButton) toggle.setAttribute('aria-expanded', 'true')
+    })
+    this.botCommands.addEventListener('hiding', () => {
+      icon.classList.remove('state-back')
+      this.botCommands!.container.setAttribute('aria-hidden', 'true')
+      if(!this.botMenuButton) toggle.setAttribute('aria-expanded', 'false')
+    })
+  }
+
   /** tweb `:629-650` — меню плашки (`ButtonMenuSync` + `DropdownHover`) — Б-72. */
   private constructReplyElements() {
     this.replyElements.container = document.createElement('div')
@@ -490,6 +569,7 @@ export default class ChatInput {
 
     this.constructScheduledButton()
     this.constructReplyMarkup()
+    this.constructBotCommands()
 
     this.attachMenuButtons = [{
       icon: 'image',
@@ -552,6 +632,9 @@ export default class ChatInput {
       listenerSetter: this.listenerSetter,
       direction: 'top-right',
       buttons: this.attachMenuButtons,
+      onOpen: () => {
+        void this.emoticonsDropdown?.toggle(false)
+      },
     })
     this.attachMenu.classList.add('attach-file')
 
@@ -560,11 +643,15 @@ export default class ChatInput {
     this.fileInput.multiple = true
     this.fileInput.style.display = 'none'
 
+    this.btnToggleEmoticons = this.createButtonIcon('smile toggle-emoticons', { noRipple: true, ariaLabel: 'Emoji' }) as HTMLButtonElement
+
     this.newMessageWrapper.append(...[
+      this.botCommandsToggle,
       this.attachMenu,
       this.inputMessageContainer,
       this.btnScheduled,
       this.btnToggleReplyMarkup,
+      this.btnToggleEmoticons,
       this.fileInput,
     ].filter((node): node is NonNullable<typeof node> => !!node))
 
@@ -618,9 +705,14 @@ export default class ChatInput {
       openSide: 'top-left',
       onContextElement: this.btnSend,
       onOpen: () => {
-        return this.chat.type !== ChatType.Scheduled &&
+        const good = this.chat.type !== ChatType.Scheduled &&
           (this.recording || !this.isInputEmpty() || !!(this.forwarding && Object.keys(this.forwarding).length)) &&
           !this.editMsgId
+        if(good) {
+          void this.emoticonsDropdown?.toggle(false)
+        }
+
+        return good
       },
       // While recording, the send button is the only visible original control —
       // the trash / pause-toggle / play buttons of the recording panel are also
@@ -639,6 +731,22 @@ export default class ChatInput {
     // Move the morphing send/record button into the input row as the last button.
     // btnCancelRecord is built above but intentionally not appended to the DOM.
     this.newMessageWrapper.append(this.btnSendContainer)
+
+    if(this.btnToggleEmoticons) {
+      this.emoticonsDropdown.attachButtonListener(this.btnToggleEmoticons, this.listenerSetter)
+      this.listenerSetter.add(this.emoticonsDropdown)('open', this.onEmoticonsOpen)
+      this.listenerSetter.add(this.emoticonsDropdown)('close', this.onEmoticonsClose)
+
+      if(emoticonsDropdown === this.emoticonsDropdown) {
+        const toggleIsUnder = () => {
+          const shouldBeTop = windowSize.height >= 570 && windowSize.width > 600
+          this.emoticonsDropdown.getElement().classList.toggle('is-under', !shouldBeTop)
+        }
+
+        this.listenerSetter.add(window)('resize', toggleIsUnder)
+        toggleIsUnder()
+      }
+    }
 
     this.attachMessageInputField()
 
@@ -1184,7 +1292,7 @@ export default class ChatInput {
 
     this.peerChanging = true
 
-    const { goDownBtn, chatInput, attachMenu, btnScheduled, sendMenu, replyKeyboard } = this
+    const { goDownBtn, chatInput, attachMenu, btnScheduled, sendMenu, replyKeyboard, botCommandsToggle } = this
 
     const previousSendAs = this.sendAs
     const sendAs = this.createSendAs()
@@ -1192,6 +1300,11 @@ export default class ChatInput {
     const isBroadcast = isBroadcastPeer(peerId)
     const isBot = isUser(peerId) && isBotPeer(cachedUser(peerId))
     const canPin = canPinMessage(peerId)
+    // расхождение 1 `chat/botCommands.ts`: команды и кнопка-меню — ручками, а не `userFull.bot_info`
+    const botInfoPromise = isBot && botCommandsToggle ? Promise.all([
+      this.managers.bots.commands(toUserId(peerId)).catch((): BotCommand[] => []),
+      this.managers.bots.menuButton(toUserId(peerId)).catch(() => undefined),
+    ]) : undefined
     const [
       canSend,
       canSendPlain,
@@ -1230,6 +1343,18 @@ export default class ChatInput {
 
       if(this.newMessageWrapper) {
         this.updateOffset(null, false, true)
+      }
+
+      if(botCommandsToggle) {
+        this.hasBotCommands = undefined
+        this.botMenuButton = undefined
+        this.botCommands!.toggle(true, undefined, true)
+        this.updateBotCommandsToggle(true)
+        botCommandsToggle.remove()
+        void botInfoPromise?.then(([commands, menuButton]) => {
+          if(!options.middleware()) return
+          this.updateBotCommands({ commands, menuButton })
+        })
       }
 
       previousSendAs?.destroy()
@@ -1357,6 +1482,57 @@ export default class ChatInput {
       duration: skipAnimation ? 0 : 300,
       useRafs,
     })
+  }
+
+  /** tweb `:2891-2925` — расхождение 1 `chat/botCommands.ts` (ручки вместо `bot_info`). */
+  private updateBotCommands(botInfo: { commands: BotCommand[], menuButton?: { text: string, url: string } }, skipAnimation?: boolean) {
+    const toggle = this.botCommandsToggle!
+    this.hasBotCommands = !!botInfo.commands.length
+    this.botMenuButton = botInfo.menuButton?.url ? botInfo.menuButton : undefined
+    if(this.botMenuButton && this.botCommandsIcon.classList.contains('state-back')) this.botCommands!.toggle(true)
+    replaceContent(this.botCommandsView, this.botMenuButton ? wrapEmojiText(this.botMenuButton.text) : '')
+    toggle.setAttribute('aria-label', this.botMenuButton?.text || I18n.format('Chat.BotCommands', true))
+    if(this.botMenuButton) {
+      toggle.removeAttribute('aria-haspopup')
+      toggle.removeAttribute('aria-controls')
+      toggle.removeAttribute('aria-expanded')
+    } else {
+      toggle.setAttribute('aria-haspopup', 'listbox')
+      toggle.setAttribute('aria-controls', this.botCommands!.container.id)
+      toggle.setAttribute('aria-expanded', '' + this.botCommandsIcon.classList.contains('state-back'))
+    }
+
+    this.botCommandsIcon.classList.toggle('hide', !!this.botMenuButton)
+    this.botCommandsView.classList.toggle('hide', !this.botMenuButton)
+    toggle.classList.toggle('is-view', !!this.botMenuButton)
+    this.updateBotCommandsToggle(skipAnimation)
+  }
+
+  /** tweb `:2927-2957` */
+  private updateBotCommandsToggle(skipAnimation?: boolean) {
+    const { botCommandsToggle, hasBotCommands, botMenuButton } = this
+    if(!botCommandsToggle) return
+    const isNeeded = !!(hasBotCommands || botMenuButton)
+    const isInputEmpty = this.isInputEmpty()
+    const show = isNeeded && (isInputEmpty || !!botMenuButton)
+    botCommandsToggle.tabIndex = show ? 0 : -1
+    botCommandsToggle.setAttribute('aria-hidden', '' + !show)
+    if(!isNeeded) {
+      if(!botCommandsToggle.parentElement) return
+      botCommandsToggle.remove()
+    }
+
+    const useRafs = botCommandsToggle.parentElement ? 0 : 2
+    if(botMenuButton && isInputEmpty) {
+      // padding + icon size + icon margin
+      const width = getTextWidth(botMenuButton.text, FontFull) + 24 + 20 + 6
+      this.newMessageWrapper.style.setProperty('--commands-size', `${Math.ceil(width)}px`)
+    } else {
+      this.newMessageWrapper.style.removeProperty('--commands-size')
+    }
+
+    if(!botCommandsToggle.parentElement) this.newMessageWrapper.prepend(botCommandsToggle)
+    this.updateOffset('commands', show, skipAnimation, useRafs, true)
   }
 
   /** tweb `:2959-3018` — без звёзд, монофорума, бот-форума и историй (нет предмета). */
@@ -1545,6 +1721,17 @@ export default class ChatInput {
       }
     }, { listenerSetter: this.listenerSetter })
 
+    // tweb :3253-3264
+    if(IS_TOUCH_SUPPORTED) {
+      attachClickEvent(this.messageInput, (e) => {
+        if(this.emoticonsDropdown.isActive()) {
+          void this.emoticonsDropdown.toggle(false)
+          blurActiveElement()
+          cancelEvent(e)
+        }
+      }, { listenerSetter: this.listenerSetter })
+    }
+
     this.listenerSetter.add(this.messageInput)('input', this.onMessageInput)
     // tweb `:3298-3307`
     this.listenerSetter.add(this.messageInput)('keyup', (e: KeyboardEvent) => {
@@ -1558,6 +1745,81 @@ export default class ChatInput {
 
       void this.checkAutocomplete()
     })
+  }
+
+  /** tweb `:2125-2143` */
+  private onEmoticonsToggle = (open: boolean) => {
+    if(!this.btnToggleEmoticons) {
+      return
+    }
+
+    if(!IS_TOUCH_SUPPORTED) {
+      this.btnToggleEmoticons.classList.toggle('active', open)
+    } else {
+      replaceButtonIcon(this.btnToggleEmoticons, open ? 'keyboard' : 'smile')
+    }
+  }
+
+  private onEmoticonsOpen = () => {
+    this.onEmoticonsToggle(true)
+  }
+
+  private onEmoticonsClose = () => {
+    this.onEmoticonsToggle(false)
+  }
+
+  /** tweb `:3635-3678` */
+  public insertAtCaret(insertText: string, insertEntity?: MessageEntity, isHelper = true, replaceText?: string) {
+    if(!this.canSendPlain()) {
+      toastNew({
+        langPackKey: POSTING_NOT_ALLOWED_MAP.send_messages!,
+      })
+      return
+    }
+
+    RichInputHandler.getInstance().makeFocused(this.messageInput)
+
+    const { value: fullValue, caretPos } = getRichValueWithCaret(this.messageInput)
+    const pos = caretPos >= 0 ? caretPos : fullValue.length
+    const prefix = fullValue.substr(0, pos)
+
+    const matches = isHelper ? prefix.match(ChatInput.AUTO_COMPLETE_REG_EXP) : null
+
+    if(isHelper && caretPos !== -1) {
+      const match = replaceText ?? (matches ? matches[2] : fullValue)
+
+      const selection = document.getSelection()!
+      // * a typed emoji can be an <img> on platforms without native emoji support, so the
+      // * selected text has to be resolved back to its rich value instead of selection.toString()
+      const getSelectedValue = replaceText !== undefined ?
+        () => getRichValueWithCaret(selection.getRangeAt(0).cloneContents(), false, false).value :
+        () => selection.toString()
+      let counter = 0
+      while(getSelectedValue() !== match) {
+        if(++counter >= 10000) {
+          throw new Error('lolwhat')
+        }
+
+        selection.modify('extend', 'backward', 'character')
+      }
+    }
+
+    void insertRichTextAsHTML(this.messageInput, insertText, insertEntity ? [insertEntity] : undefined, this.chat.peerId)
+  }
+
+  /** tweb `:3759-3771` */
+  public onEmojiSelected = (emoji: NonNullable<ReturnType<typeof getEmojiFromElement>>, autocomplete: boolean, replaceText?: string) => {
+    const entity: MessageEntity = emoji.docId ? {
+      _: 'messageEntityCustomEmoji',
+      document_id: emoji.docId,
+      length: emoji.emoji.length,
+      offset: 0,
+    } : getEmojiEntityFromEmoji(emoji.emoji)
+    // * inserting a custom emoji can leave the rich text identical (same character, different
+    // * entity type) — clear previousQuery so checkAutocomplete re-evaluates the new entities
+    this.previousQuery = undefined
+    this.insertAtCaret(emoji.emoji, entity, autocomplete, replaceText)
+    return true
   }
 
   /** tweb `:3330-3332` */
@@ -1595,6 +1857,12 @@ export default class ChatInput {
         this.lastTimeType = time
         void this.managers.realtime.sendTyping({ peerId: this.chat.peerId })
       }
+
+      void this.botCommands?.toggle(true)
+    }
+
+    if(this.botCommands) {
+      this.updateBotCommandsToggle()
     }
 
     if(!this.editMsgId) {
@@ -1648,6 +1916,8 @@ export default class ChatInput {
       element: this.btnSendContainer,
       peerId: this.chat.peerId,
       managers: this.managers,
+      // tweb `_emoticonsDropdown ??= emoticonsDropdown` (`:4026`)
+      emoticonsDropdown: this.emoticonsDropdown,
     }
   }
 
@@ -1818,9 +2088,27 @@ export default class ChatInput {
     this.sendSilent = undefined
   }
 
-  /** tweb `:4499-4533` — без недавних эмодзи (их ведёт дропдаун, Б-35). */
+  /** tweb `:4499-4533` */
   public onMessageSent(clearInput = true, clearReply?: boolean) {
     this.resetSendingFlags()
+
+    // tweb :4506-4519 — эмодзи отправленного текста встают в недавние дропдауна
+    const { entities: totalEntities } = getRichValueWithCaret(this.messageInput, true, false)
+    let nextOffset = 0
+    const emojiEntities = (totalEntities || []).filter((entity) => {
+      if(entity._ === 'messageEntityEmoji' || entity._ === 'messageEntityCustomEmoji') {
+        const endOffset = entity.offset + entity.length
+        return endOffset <= nextOffset ? false : (nextOffset = endOffset, true)
+      }
+
+      return false
+    })
+    emojiEntities.forEach((entity) => {
+      const emoji: AppEmoji = entity._ === 'messageEntityEmoji' ?
+        { emoji: emojiFromCodePoints(entity.unicode) } :
+        { docId: (entity as MessageEntity.messageEntityCustomEmoji).document_id, emoji: '' }
+      appEmojiManager.pushRecentEmoji(emoji)
+    })
 
     if(clearInput) {
       void this.clearInput()
@@ -2432,55 +2720,6 @@ export default class ChatInput {
       str += ' '
       void this.insertAtCaret(str, entity, isHelper)
     })
-  }
-
-  /** tweb `:3635-3757` */
-  public async insertAtCaret(insertText: string, insertEntity?: MessageEntity, isHelper = true, replaceText?: string) {
-    if(!this.canSendPlain()) {
-      toastNew({
-        langPackKey: POSTING_NOT_ALLOWED_MAP.send_messages!,
-      })
-      return
-    }
-
-    RichInputHandler.getInstance().makeFocused(this.messageInput)
-
-    const { value: fullValue, caretPos } = getRichValueWithCaret(this.messageInput)
-    const pos = caretPos >= 0 ? caretPos : fullValue.length
-    const prefix = fullValue.substr(0, pos)
-
-    const matches = isHelper ? prefix.match(ChatInput.AUTO_COMPLETE_REG_EXP) : null
-
-    if(isHelper && caretPos !== -1) {
-      const match = replaceText ?? (matches ? matches[2] : fullValue)
-
-      const selection = document.getSelection()!
-      // * a typed emoji can be an <img> on platforms without native emoji support, so the
-      // * selected text has to be resolved back to its rich value instead of selection.toString()
-      const getSelectedValue = replaceText !== undefined ?
-        () => getRichValueWithCaret(selection.getRangeAt(0).cloneContents(), false, false).value :
-        () => selection.toString()
-      let counter = 0
-      while(getSelectedValue() !== match) {
-        if(++counter >= 10000) {
-          throw new Error('lolwhat')
-        }
-
-        selection.modify('extend', 'backward', 'character')
-      }
-    }
-
-    await insertRichTextAsHTML(this.messageInput, insertText, insertEntity ? [insertEntity] : undefined, this.chat.peerId)
-  }
-
-  /** tweb `:3759-3771` — без своих эмодзи (расхождение 9). */
-  public onEmojiSelected = (emoji: AppEmoji, autocomplete: boolean, replaceText?: string) => {
-    const entity: MessageEntity = getEmojiEntityFromEmoji(emoji.emoji)
-    // * inserting a custom emoji can leave the rich text identical (same character, different
-    // * entity type) — clear previousQuery so checkAutocomplete re-evaluates the new entities
-    this.previousQuery = undefined
-    void this.insertAtCaret(emoji.emoji, entity, autocomplete, replaceText)
-    return true
   }
 
   /** tweb `:3796-3903` — расхождение 9. */

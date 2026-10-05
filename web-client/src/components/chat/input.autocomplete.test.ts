@@ -68,6 +68,7 @@ function makeManagers() {
       }),
     },
     bots: {
+      menuButton: vi.fn(async() => ({ text: '', url: '' })),
       commands: vi.fn(async() => [
         { command: 'start', description: 'Начать' },
         { command: 'help', description: 'Помощь' },

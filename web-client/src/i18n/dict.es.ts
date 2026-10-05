@@ -983,6 +983,8 @@ const es = {
   'ChatTips.Chats.Description': 'Usa **Ctrl+F** para entrar en el modo de [búsqueda]().',
   'ChatTips.Chats.DescriptionMac': 'Usa **Cmd+F** para entrar en el modo de [búsqueda]().',
   'ChatTips.Stickers.Description': 'Hay más stickers populares en [Stickers populares]().',
+  // ── Эмодзи-дропдаун (П-6): ключ со ссылкой — строковый режим без аргумента не читается ──
+  'CustomEmoji.PremiumAlert': 'Suscríbete a Telegram Premium para desbloquear este emoji. [Más información]()',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(es)

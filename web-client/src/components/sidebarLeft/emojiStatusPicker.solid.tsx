@@ -1,47 +1,31 @@
 /** @jsxImportSource solid-js */
 /**
- * Порт tweb `components/sidebarLeft/emojiStatusPicker.tsx` (812502980) —
- * `openEmojiStatusPicker({managers, anchorElement, onChosen})`: выбор своего
- * эмодзи-статуса по кнопке `.sidebar-emoji-status` шапки левой колонки
- * (`sidebarLeft/index.ts:258-269`). Взято у оригинала: повторный клик по той же
- * кнопке закрывает открытый выбор (`openPickers`, `:11`, `:20-24`), первым в
- * наборе — звезда «без статуса» (`:103-114`, выбор — `emojiStatusEmpty`,
- * `:56-62`), выбор статуса зовёт `onChosen` (`:68`) и запись статуса в
- * менеджер (`:71`), а применённое значение приходит обратно событием
- * (у нас — `rt:me`, его же слушает кнопка шапки).
+ * Порт tweb `components/sidebarLeft/emojiStatusPicker.tsx` (812502980, 117 строк) —
+ * `openEmojiStatusPicker({managers, anchorElement, onChosen})`: выбор своего эмодзи-статуса по
+ * кнопке `.sidebar-emoji-status` шапки левой колонки (`sidebarLeft/index.ts:258-269`).
+ * Автономный `EmoticonsDropdown` с одной вкладкой `EmojiTab` у якоря кнопки (`getOpenPosition`,
+ * `is-standalone`, `customParentElement: getOverlayRoot`, `suppressOutClick`), цвет текста
+ * `primary-color`, первым в наборе — звезда «без статуса» (`:103-114`, выбор —
+ * `emojiStatusEmpty`), повторный клик по кнопке закрывает открытый выбор (`openPickers`),
+ * закрытый — уничтожается (`hideAndDestroy`); выбор статуса зовёт `onChosen` (анимация вокруг
+ * нового статуса — `sidebarLeft/index.ts`, `fireOnNew`).
  *
- * Расхождения:
- *  1. Вместо `EmoticonsDropdown` с `EmojiTab({noRegularEmoji: true})`, у якоря
- *     кнопки (`:76-87`) — попап со своей сеткой юникод-эмодзи (бывший React
- *     `components/EmojiStatusPicker.tsx`). Дропдаун эмодзи не портирован (Б-35,
- *     пачка П-6), а статус у нас — юникод-эмодзи (`emoji_status_emoticon`,
- *     `core/peers/peer.ts`), не документ кастомного эмодзи: наборов статусов
- *     (`inputStickerSetEmojiDefaultStatuses`, недавние/дефолтные статусы,
- *     недавние кастомные эмодзи — `:30-52`) на бэкенде нет. Строка бэклога Б-63.
+ * Расхождения (статус у бэкенда — юникод-эмодзи `emoji_status_emoticon`, `PUT /me/emoji_status`,
+ * а не документ своего эмодзи, Б-63):
+ *  1. Вкладка — юникод-эмодзи (`EmojiTab` без `noRegularEmoji`) без своих наборов и ряда
+ *     категорий (`noPacks`), а не `noRegularEmoji: true` над наборами статусов: наборов статусов
+ *     (`inputStickerSetEmojiDefaultStatuses`, недавние/дефолтные статусы `:30-52`) на бэкенде нет.
+ *     `mainSets` отдаёт пустой список своих эмодзи — в «своей» категории остаётся одна звезда.
  *  2. Запись — `managers.profile.setEmojiStatus(emoji)` (`''` — снять), а не
- *     `appUsersManager.updateEmojiStatus(emojiStatus)`.
+ *     `appUsersManager.updateEmojiStatus(emojiStatus)`; статус на срок (`canHaveEmojiTimer`) — нет.
  */
-import { createSignal, For, onMount } from 'solid-js'
-import { render } from 'solid-js/web'
-import classNames from '@helpers/string/classNames'
-import { IconTsx } from '@components/iconTsx.solid'
-import { useChatsStore } from '@stores/chatsStore'
 import type { Managers } from '@/client/bootstrap'
-import s from './emojiStatusPicker.module.scss'
+import { EmoticonsDropdown } from '@components/emoticonsDropdown'
+import EmojiTab from '@components/emoticonsDropdown/tabs/emoji'
+import Icon, { getIconContent } from '@components/icon'
+import { getOverlayRoot } from '@helpers/appWindow'
 
-/** Набор статусов — расхождение 1. */
-const STATUS_EMOJIS = [
-  '⭐', '🔥', '❤️', '😎', '🚀', '🎉', '💎', '👑',
-  '🌟', '⚡', '🌈', '🍀', '☕', '🎮', '🎧', '📚',
-  '💻', '✈️', '🏔️', '🌙', '🐱', '🐶', '🌸', '🎯',
-]
-
-/** Время затухания скрима (`--popup-transition-time`) с запасом — как у `PopupElement`. */
-const HIDE_DURATION = 300
-
-type Picker = { close: () => void }
-
-const openPickers = new WeakMap<HTMLElement, Picker>()
+const openPickers = new WeakMap<HTMLElement, EmoticonsDropdown>()
 
 export function openEmojiStatusPicker(options: {
   managers: Managers
@@ -52,66 +36,63 @@ export function openEmojiStatusPicker(options: {
 
   const openPicker = openPickers.get(anchorElement)
   if(openPicker) {
-    openPicker.close()
+    void openPicker.toggle(false)
     return
   }
 
-  const current = useChatsStore.getState().me?.user.emoji_status_emoticon ?? ''
-  const host = document.createElement('div')
-  document.body.append(host)
+  const emojiTab = new EmojiTab({
+    managers,
+    noPacks: true,
+    mainSets: () => [Promise.resolve([])],
+    onClick: (emoji) => {
+      void emoticonsDropdown.toggle(false)
 
-  const [active, setActive] = createSignal(false)
-  const [hiding, setHiding] = createSignal(false)
+      const noStatus = getIconContent('star') === emoji.emoji
+      if(!noStatus) {
+        options.onChosen?.()
+      }
 
-  const picker: Picker = {
-    close: () => {
-      if(openPickers.get(anchorElement) !== picker) return
-      openPickers.delete(anchorElement)
-      setActive(false)
-      setHiding(true)
-      window.setTimeout(() => {
-        dispose()
-        host.remove()
-      }, HIDE_DURATION)
+      void managers.profile.setEmojiStatus(noStatus ? '' : emoji.emoji || '')
     },
-  }
+  })
 
-  const onClick = (emoji: string) => {
-    picker.close()
+  const emoticonsDropdown = new EmoticonsDropdown({
+    tabsToRender: [emojiTab],
+    customParentElement: getOverlayRoot,
+    suppressOutClick: true,
+    getOpenPosition: () => {
+      const rect = anchorElement.getBoundingClientRect()
+      return {
+        left: rect.left + rect.width / 2,
+        top: rect.top + rect.height / 2,
+      }
+    },
+  })
 
-    const noStatus = !emoji
-    if(!noStatus) {
-      options.onChosen?.()
-    }
+  const textColor = 'primary-color'
 
-    void managers.profile.setEmojiStatus(emoji)
-  }
+  emoticonsDropdown.setTextColor(textColor)
 
-  const dispose = render(() => {
-    onMount(() => {
-      requestAnimationFrame(() => setActive(true))
+  openPickers.set(anchorElement, emoticonsDropdown)
+
+  emoticonsDropdown.addEventListener('closed', () => {
+    openPickers.delete(anchorElement)
+    void emoticonsDropdown.hideAndDestroy()
+  })
+
+  emoticonsDropdown.onButtonClick()
+
+  void emojiTab.initPromise?.then(() => {
+    const emojiElement = Icon('star', 'super-emoji-premium-icon')
+    emojiElement.style.color = `var(--${textColor})`
+
+    const category = emojiTab.getCustomCategory()
+
+    emojiTab.addEmojiToCategory({
+      category,
+      element: emojiElement,
+      batch: false,
+      prepend: true,
     })
-
-    return (
-      <div
-        class={classNames('popup', active() && 'active', hiding() && 'hiding', s.overlay)}
-        onClick={() => picker.close()}
-      >
-        <div class={classNames('popup-container', s.dialog)} onClick={(e) => e.stopPropagation()}>
-          <div class={s.grid}>
-            <div class={classNames(s.item, !current && s.itemActive)} onClick={() => onClick('')}>
-              <IconTsx icon="star" class="super-emoji-premium-icon" />
-            </div>
-            <For each={STATUS_EMOJIS}>{(emoji) => (
-              <div class={classNames(s.item, current === emoji && s.itemActive)} onClick={() => onClick(emoji)}>
-                {emoji}
-              </div>
-            )}</For>
-          </div>
-        </div>
-      </div>
-    )
-  }, host)
-
-  openPickers.set(anchorElement, picker)
+  })
 }

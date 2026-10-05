@@ -112,11 +112,19 @@ export interface WrapStickerOptions {
   /** натуральные пиксели документа (tweb `doc.w`/`doc.h`) — система координат контура */
   docWidth?: number
   docHeight?: number
+  /**
+   * только превью, без файла (tweb `onlyThumb`, `:245`, `:255`, `:412-414`) — ячейка панели
+   * стикеров до попадания в вид (`emoticonsDropdown/tabs/SuperStickerRenderer.ts`);
+   * `render` такого вызова — пустой
+   */
+  onlyThumb?: boolean
 }
+
+export type WrappedStickerMedia = LottiePlayer | HTMLVideoElement | HTMLImageElement
 
 export interface WrappedSticker {
   /** tweb `ret.render` — медиа этого поколения; реджектится `MIDDLEWARE` у протухшего */
-  render: Promise<LottiePlayer | HTMLVideoElement | HTMLImageElement>
+  render: Promise<WrappedStickerMedia>
   /** tweb `ret.width`/`ret.height` */
   width: number
   height: number
@@ -124,7 +132,10 @@ export interface WrappedSticker {
   destroy: () => void
 }
 
-export default function wrapSticker(options: WrapStickerOptions): WrappedSticker {
+export default function wrapSticker(options: WrapStickerOptions & { onlyThumb: true }): Omit<WrappedSticker, 'render'> & { render: Promise<undefined> }
+export default function wrapSticker(options: WrapStickerOptions & { onlyThumb?: false }): WrappedSticker
+export default function wrapSticker(options: WrapStickerOptions): Omit<WrappedSticker, 'render'> & { render: Promise<WrappedStickerMedia | undefined> }
+export default function wrapSticker(options: WrapStickerOptions): Omit<WrappedSticker, 'render'> & { render: Promise<WrappedStickerMedia | undefined> } {
   const {
     mediaId,
     div,
@@ -140,6 +151,7 @@ export default function wrapSticker(options: WrapStickerOptions): WrappedSticker
     pathThumb,
     docWidth,
     docHeight,
+    onlyThumb,
   } = options
   // tweb: `liteModeKey ??= 'stickers_panel'` (sticker.ts:111)
   const liteModeKey = options.liteModeKey === undefined ? 'stickers_panel' : options.liteModeKey
@@ -181,6 +193,7 @@ export default function wrapSticker(options: WrapStickerOptions): WrappedSticker
     // ключ тот же, что у кэша кадров (`core/stickers/stickerThumbs`).
     thumbKey: String(mediaId),
     middleware,
+    replacePreviousMedia: !!onlyThumb,
   })
 
   // tweb sticker.ts:222-225. `downloaded` — байты файла уже в кэше и кроссфейд
@@ -197,12 +210,11 @@ export default function wrapSticker(options: WrapStickerOptions): WrappedSticker
   // `saveStickerThumb*` зовут ровно эти две ветки, у статики кадра не бывает.
   const lottieCachedThumb = getStickerThumb(mediaId)
 
-  // tweb sticker.ts:247-258 — гейт превью целиком (без терма `onlyThumb`:
-  // режима «только превью» у нас нет). `doc.thumbs?.length` у нас — это наличие
+  // tweb sticker.ts:247-258 — гейт превью целиком. `doc.thumbs?.length` у нас — это наличие
   // хоть какого-то присланного превью: stripped-JPEG или векторного контура.
   if (
     (!!(thumb || pathThumb) || lottieCachedThumb) &&
-    (!downloaded || isThumbNeededForType) &&
+    (!downloaded || isThumbNeededForType || onlyThumb) &&
     withThumb !== false
   ) {
     // tweb:259 `let thumb = lottieCachedThumb || doc.thumbs[0]` — СОХРАНЁННЫЙ
@@ -230,6 +242,16 @@ export default function wrapSticker(options: WrapStickerOptions): WrappedSticker
         if (!middleware()) return
         appearance.upgradeToImage(thumbImage)
       })
+    }
+  }
+
+  // tweb :412-414 — «for sticker panel»
+  if (onlyThumb) {
+    return {
+      render: Promise.resolve(undefined),
+      width,
+      height,
+      destroy: () => helper.destroy(),
     }
   }
 

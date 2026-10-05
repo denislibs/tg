@@ -630,11 +630,11 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `GlobalAttachInlineRestricted` (запрет инлайна); `Chat.BotCommands` уже принесла Б-36.
 // Вместе с К-5 из main (+10 −18 +4 ключей, `plural` 56 → 63): ru 1676.
 const COMPOSITION = {
-  ru: { keys: 1679, plural: 63 },
-  uk: { keys: 841, plural: 35 },
-  es: { keys: 812, plural: 34 },
-  de: { keys: 813, plural: 35 },
-  fr: { keys: 808, plural: 34 },
+  ru: { keys: 1695, plural: 63 },
+  uk: { keys: 842, plural: 35 },
+  es: { keys: 813, plural: 34 },
+  de: { keys: 814, plural: 35 },
+  fr: { keys: 809, plural: 34 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -834,11 +834,11 @@ const COMPOSITION = {
 // Пачкой П-6 волны 7 — у ru +9 ключей медленного режима и платных сообщений (разбор — там же).
 // Пачкой П-6 волны 7 — у ru +2 ключа автокомплита (разбор — там же).
 const FINGERPRINT = {
-  ru: 'f3c135a3',
-  uk: '4ea851a8',
-  es: 'fae2c364',
-  de: 'bcccb16f',
-  fr: '08b682e2',
+  ru: '01dfb38b',
+  uk: 'e72f8ee2',
+  es: 'ff56151a',
+  de: '39848741',
+  fr: 'fb42ab2a',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */
