@@ -245,8 +245,9 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus }: {
     let changed: (User | Chat)[] = []
     if (missing.length) {
       try {
-        const r = await rest.get<{ users: UserReal[] }>('/users', { ids: missing.join(',') })
-        changed = save(r.users ?? []).replaced
+        // Ответ — сам вектор `Vector<User>`: обёртки `{users}` у ручки нет.
+        const users = await rest.get<UserReal[]>('/users', { ids: missing.join(',') })
+        changed = save(users ?? []).replaced
       } catch (e) {
         // Сеть недоступна — поднимаем персистнутых юзеров в память, чтобы имена
         // и аватарки резолвились офлайн. Не глотаем HTTP-ошибки (401/500 и т.п.).
