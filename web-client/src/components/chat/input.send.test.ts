@@ -222,6 +222,13 @@ describe('ChatInput: черновик', () => {
     await flush()
     expect(input.isInputEmpty()).toBe(true)
 
+    // новое сообщение пересобрало строку диалога раньше кадра очистки: тот же черновик
+    // новым объектом не возвращается в поле (найдено на стенде П-6)
+    setDialog({ _: 'draftMessage', message: 'привет', date: 1 })
+    await flush()
+    await flush()
+    expect(input.isInputEmpty()).toBe(true)
+
     // сервер снял черновик своим кадром — поле так и остаётся пустым, лишнего save нет
     setDialog(undefined)
     await flush()

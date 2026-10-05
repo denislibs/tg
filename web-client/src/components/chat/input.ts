@@ -889,6 +889,9 @@ export default class ChatInput {
   /** tweb `:1711-1727` */
   private onDraftUpdated(draft: DraftMessage | undefined) {
     if(PEER_EXCEPTIONS.has(this.chat.type) || this.chat.threadId) return
+    // расхождение 3 шапки: снятый отправкой черновик сервер ещё может прислать с новой
+    // строкой диалога (новое сообщение раньше кадра очистки) — его не возвращаем
+    if(realDraft(draft) && this.isClearedDraft(draft)) return
     if(!realDraft(draft)) {
       // a pending local save means the user is actively typing newer content —
       // let it win and sync normally instead of clobbering it with the remote clear.
@@ -1148,11 +1151,18 @@ export default class ChatInput {
   private getDraft(): DraftMessageReal | undefined {
     const { peerId } = this.chat
     const draft = this.getDialog(peerId)?.draft
-    if(this.clearedDraft?.peerId === peerId && this.clearedDraft.draft === draft) {
+    if(this.isClearedDraft(draft)) {
       return undefined
     }
 
     return realDraft(draft)
+  }
+
+  /** Расхождение 3 шапки: тот же (по содержимому) черновик, что сняла отправка. Строка
+   *  диалога пересоздаётся на каждом апдейте, поэтому сравнение по ссылке не годится. */
+  private isClearedDraft(draft: DraftMessage | undefined) {
+    const { clearedDraft } = this
+    return !!clearedDraft && clearedDraft.peerId === this.chat.peerId && draftsAreEqual(draft, clearedDraft.draft)
   }
 
   /** tweb `:2271-2313` */
