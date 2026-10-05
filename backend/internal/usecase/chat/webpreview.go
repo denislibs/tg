@@ -50,13 +50,19 @@ func firstURL(text string, entities domain.MessageEntities) string {
 // кадр web_page_update всем участникам. Догоняющее и best-effort: любая ошибка
 // просто оставляет сообщение без карточки (история при /sync отдаст web_page,
 // если UPDATE успел). Секретные чаты исключены — сервер их контент не трогает.
+//
+// Пост broadcast-канала получает карточку правкой поста журналом канала
+// (updateEditChannelMessage, publishChannelEdit): веера по подписчикам у
+// канала нет, а догон канала (/channels/{id}/difference) обязан привезти
+// карточку тому, кто пропустил живой кадр. recipients у канала не нужны.
 func (i *Interactor) attachWebPreview(msg domain.Message, url string, recipients []int64) {
 	// Фоновая горутина над чужим HTML (парсинг og/readability) — паника не должна
 	// ронять процесс.
 	defer saferun.Recover("chat.attachWebPreview")
 	ctx, cancel := context.WithTimeout(context.Background(), previewTimeout)
 	defer cancel()
-	if typ, err := i.chats.ChatType(ctx, msg.ChatID); err != nil || typ == domain.ChatTypeSecret {
+	typ, err := i.chats.ChatType(ctx, msg.ChatID)
+	if err != nil || typ == domain.ChatTypeSecret {
 		return
 	}
 	wp, err := i.preview.Preview(ctx, url)
@@ -81,6 +87,14 @@ func (i *Interactor) attachWebPreview(msg domain.Message, url string, recipients
 	// быть уже исчерпан, а терять собранную карточку из-за этого нельзя.
 	withBudget(writeTimeout, func(wctx context.Context) {
 		if err := i.msgs.SetWebPage(wctx, msg.ID, wp); err != nil {
+			return
+		}
+		if typ == domain.ChatTypeChannel {
+			if m, err := i.msgs.GetByID(wctx, msg.ID); err == nil {
+				if m, err = i.hydrateBroadcastMessage(wctx, m); err == nil {
+					_ = i.publishChannelEdit(wctx, m)
+				}
+			}
 			return
 		}
 		// Логируем + шлём web_page_update всем получателям: догоняющее превью доезжает

@@ -380,10 +380,17 @@ right (creator/admins only).
 subscribers. Each post is one message insert + one bump of the channel's own
 `channel_pts` counter + one row appended to the channel's `channel_updates` log +
 **one** `PUBLISH channel:{id}` to Redis (no per-subscriber `pts` rows, no
-per-subscriber publishes). Live clients receive the post by subscribing the
-`channel:{id}` topic over WS (see `subscribe_channel` below); offline/lagging
-clients catch up by pulling `GET /channels/{chatID}/difference?pts=`. The
-per-channel `pts` is **independent** of the per-user `/sync` `pts` cursor.
+per-subscriber publishes). Every WS connection of a subscriber is subscribed to
+the `channel:{id}` topics of all its channels on connect (and on joining a
+channel — per-user `updateChannel{channel_id}`), so posts, edits, deletions,
+pins, reactions, card/boost/views/replies frames reach the chat list live, as in
+Telegram; offline/lagging clients catch up by pulling
+`GET /channels/{chatID}/difference?pts=`. The per-channel `pts` is
+**independent** of the per-user `/sync` `pts` cursor. Edits, deletions and pins
+of posts go to the channel log (`updateEditChannelMessage`,
+`updateDeleteChannelMessages`, `updatePinnedChannelMessages`); a read goes only
+to the reader. Unread of a channel is computed on read (`count(seq >
+last_read_seq, not own, not deleted)`), push goes to subscribers in one batch.
 
 ### POST /channels  · auth
 Create a channel; the caller becomes its `creator` (with all rights) and first member.
@@ -1188,10 +1195,12 @@ MTProto, которых мы не портируем):
   reconciles via `/sync`.
 - **Channels** use a separate, **topic-based** delivery path that scales O(1) per
   post: each post is published **once** to the Redis topic `channel:{id}` (no
-  per-subscriber fan-out, no per-subscriber `pts` rows). A client opts in per
-  channel via `subscribe_channel {peer_id}`; the Hub joins the `channel:{id}` topic
-  on the first local subscriber and routes incoming posts (`new_message`) only to
-  the connections that subscribed it, leaving the topic once the last one drops.
+  per-subscriber fan-out, no per-subscriber `pts` rows). The Hub subscribes each
+  connection to the topics of all its user's channels on connect and on
+  `updateChannel` (joined), gated by the same read rule as `subscribe_channel
+  {peer_id}` (which remains for public channels read without joining); it joins
+  the `channel:{id}` topic on the first local subscriber and leaves it once the
+  last one drops (`chat_removed` unsubscribes the user's sockets).
   Missed channel posts are recovered per-channel via
   `GET /channels/{id}/difference?pts=` (the channel's own `pts`, independent of the
   per-user `/sync` cursor); channel **history** is the regular

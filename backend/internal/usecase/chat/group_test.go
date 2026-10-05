@@ -832,6 +832,9 @@ func (c groupChats) MemberIDs(_ context.Context, chatID int64) ([]int64, error) 
 	}
 	return ids, nil
 }
+func (c groupChats) BroadcastChannelIDs(context.Context, int64, int) ([]int64, error) {
+	return nil, nil
+}
 func (c groupChats) ListDialogs(context.Context, int64) ([]domain.DialogRecord, error) {
 	return nil, nil
 }

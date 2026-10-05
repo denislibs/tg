@@ -72,6 +72,7 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 	// Тело кадра собирается один раз, чтобы журнал и живой кадр не разъехались:
 	// абсолютный агрегат, посчитанный в транзакции после Add/Remove. Реплей из
 	// /sync идемпотентен по построению — состояние абсолютное, а не дельта.
+	broadcast := i.isBroadcast(ctx, chatID)
 	var members []int64
 	var aggregate *domain.MessageReactions
 	var reactionAddr chatAddress
@@ -118,6 +119,11 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 			return e
 		}
 		aggregate = &agg
+		// broadcast-канал: веера по подписчикам нет — агрегат уходит одним
+		// кадром в топик канала после коммита (см. ниже).
+		if broadcast {
+			return nil
+		}
 		m, e := i.chats.MemberIDs(ctx, chatID)
 		if e != nil {
 			return e
@@ -144,6 +150,16 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 	})
 	if err != nil {
 		return err
+	}
+	// Канал: агрегат реакций — одним кадром в топик, без журнала. У оригинала
+	// updateMessageReactions курсора не несёт вовсе (в схеме у него нет pts), а
+	// пропустивший кадр получает абсолютный агрегат с историей поста.
+	if broadcast {
+		if i.chPub != nil {
+			_ = i.chPub.PublishToChannel(ctx, chatID,
+				frame("reaction", reactionsPayload(domain.ToPeerID(chatID, true), msg.Seq, *aggregate)))
+		}
+		return nil
 	}
 	if i.publisher != nil {
 		// Кадр с per-recipient pts (клиент двигает по нему курсор); payload несёт

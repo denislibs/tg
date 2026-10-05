@@ -236,6 +236,22 @@ func (r fakeChats) MemberIDs(_ context.Context, chatID int64) ([]int64, error) {
 	return ids, nil
 }
 
+func (r fakeChats) BroadcastChannelIDs(_ context.Context, userID int64, limit int) ([]int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var ids []int64
+	for cid, typ := range r.s.chatType {
+		if typ == domain.ChatTypeChannel && r.s.members[cid][userID] != nil {
+			ids = append(ids, cid)
+		}
+	}
+	slices.Sort(ids)
+	if len(ids) > limit {
+		ids = ids[:limit]
+	}
+	return ids, nil
+}
+
 func (r fakeChats) IsMember(_ context.Context, chatID, userID int64) (bool, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
@@ -2088,12 +2104,20 @@ func (p *fakePublisher) reset() {
 type fakeNotifier struct {
 	mu         sync.Mutex
 	recipients []int64
+	titles     []string // заголовки пушей поста канала (NotifyChannelPost)
 }
 
 func (n *fakeNotifier) NotifyNewMessage(_ context.Context, recipientID, _, _, _ int64, _ string, _ domain.PeerID) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.recipients = append(n.recipients, recipientID)
+}
+
+func (n *fakeNotifier) NotifyChannelPost(_ context.Context, _ int64, recipients []int64, _ int64, title, _ string, _ domain.PeerID) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.recipients = append(n.recipients, recipients...)
+	n.titles = append(n.titles, title)
 }
 
 // newInteractor wires the interactor against a fresh in-memory store.

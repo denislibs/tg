@@ -593,11 +593,13 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			i.publishBalance(ctx, charge.creatorID, charge.creatorBal)
 		}
 	}
-	// Канал: одна публикация в топик канала вместо веера. Кадр несёт
-	// channel_pts — тот же конверт, который переигрывает /difference, поэтому
-	// клиент гейтит его по пер-канальному курсору и не получает дубля.
-	if channelPts != 0 && i.chPub != nil {
-		_ = i.chPub.PublishToChannel(ctx, in.ChatID, frameChannelMessage("new_message", channelPayload, channelPts))
+	// Канал: кадр в топик (тем же телом, что легло в журнал, — его переигрывает
+	// /difference), кэш списка, пуш, черновик и превью — без веера по
+	// подписчикам (channel_fanout.go).
+	if channelPts != 0 {
+		i.deliverChannelPost(ctx, msg, channelPayload, channelPts, channelPostOpts{
+			silent: in.Silent, clearDraft: in.Action == nil, preview: in.Type == "text",
+		})
 	}
 	if recipients != nil {
 		// Кэш диалогов + realtime-кадры получателям — общий с доставкой
@@ -713,6 +715,7 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 	if !ok {
 		return domain.ErrNotFound
 	}
+	broadcast := i.isBroadcast(ctx, chatID)
 	var members []int64
 	var effective int64
 	var advanced bool
@@ -759,8 +762,14 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 		if e := i.msgs.SetDestructOnRead(ctx, chatID, userID, effective); e != nil {
 			return e
 		}
-		m, e := i.chats.MemberIDs(ctx, chatID)
-		if e != nil {
+		// broadcast-канал: прочтение — дело одного читателя (у оригинала
+		// updateReadChannelInbox уходит только ему, а чужого горизонта
+		// подписчикам канала не шлют вовсе). Веер по подписчикам писал N строк
+		// журнала на каждое прочтение и раздавал всем чужое «прочитано».
+		var m []int64
+		if broadcast {
+			m = []int64{userID}
+		} else if m, e = i.chats.MemberIDs(ctx, chatID); e != nil {
 			return e
 		}
 		slices.Sort(m)
@@ -1126,6 +1135,12 @@ func (i *Interactor) Typing(ctx context.Context, chatID, userID int64, action do
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil || !ok {
 		return err
+	}
+	// В broadcast-канале «печатает» не рассылается: пишет канал, а не человек,
+	// и сервер Telegram typing в канале подписчикам не шлёт (гейта у tweb нет —
+	// его держит сервер). Веер по подписчикам был O(N) на каждое нажатие.
+	if i.isBroadcast(ctx, chatID) {
+		return nil
 	}
 	members, err := i.chats.MemberIDs(ctx, chatID)
 	if err != nil {

@@ -36,6 +36,9 @@ type ChatRepo interface {
 	FindSaved(ctx context.Context, userID int64) (int64, error) // domain.ErrNotFound if none
 	CreateSaved(ctx context.Context, userID int64) (int64, error)
 	MemberIDs(ctx context.Context, chatID int64) ([]int64, error)
+	// BroadcastChannelIDs — broadcast-каналы, где пользователь состоит (не
+	// больше limit): на их топики подписывается его новое соединение.
+	BroadcastChannelIDs(ctx context.Context, userID int64, limit int) ([]int64, error)
 	IsMember(ctx context.Context, chatID, userID int64) (bool, error)
 	// Access — снимок доступа зрителя к чату одним запросом (вид, публичность,
 	// членство с ролью, бан); domain.ErrNotFound — чата нет. Решение «пускать
@@ -620,6 +623,11 @@ type PushNotifier interface {
 	// peer — ключ пира ГЛАЗАМИ получателя (у приватного диалога он у сторон
 	// разный); chatID остаётся внутренним и наружу из пуша не выходит.
 	NotifyNewMessage(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID)
+	// NotifyChannelPost — пуш о посте broadcast-канала его подписчикам
+	// (recipients, без автора) одним батчем: кто онлайн и кому канал не
+	// замьючен, нотификатор решает пачкой. title — название канала (автор поста
+	// у канала скрыт).
+	NotifyChannelPost(ctx context.Context, chatID int64, recipients []int64, seq int64, title, text string, peer domain.PeerID)
 }
 
 // --- DTOs ---

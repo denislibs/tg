@@ -97,8 +97,14 @@ func (i *Interactor) JoinPublic(ctx context.Context, username string, userID int
 	if err != nil {
 		return err
 	}
-	_, err = i.admit(ctx, id, userID, userID, admitSelf)
-	return err
+	joined, err := i.admit(ctx, id, userID, userID, admitSelf)
+	if err != nil {
+		return err
+	}
+	if joined {
+		i.announceChannelJoin(ctx, id, userID)
+	}
+	return nil
 }
 
 // PeerSearchResult — выдача поиска пиров (contacts.search): «свои»

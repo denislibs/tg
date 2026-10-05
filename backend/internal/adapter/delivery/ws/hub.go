@@ -45,7 +45,19 @@ type Hub struct {
 	channelSubs map[domain.PeerID]map[Sink]struct{} // by channel peer id (live channel posts)
 	rdb         *redis.Client
 	pubsub      *redis.PubSub
+	// channelGate — читает ли пользователь топик пира (usecase
+	// CanSubscribeChannel). nil — подписок по кадру updateChannel нет.
+	channelGate ChannelGate
 }
+
+// ChannelGate — правило «кто читает топик пира»: то же, что у кадра
+// subscribe_channel (Interactor.CanSubscribeChannel).
+type ChannelGate func(ctx context.Context, userID int64, peer domain.PeerID) bool
+
+// SetChannelGate связывает хаб с правилом доступа к топикам: по нему хаб
+// подписывает сокеты пользователя на канал, в который тот вступил (кадр
+// updateChannel). Зовётся при сборке, до первого соединения.
+func (h *Hub) SetChannelGate(g ChannelGate) { h.channelGate = g }
 
 func NewHub(ctx context.Context, rdb *redis.Client) *Hub {
 	h := &Hub{
@@ -90,6 +102,11 @@ func (h *Hub) route(msg *redis.Message) {
 		frame := []byte(msg.Payload)
 		if peer, removed := chatRemovedPeer(frame); removed {
 			h.unsubscribeUserChannel(context.Background(), userID, peer)
+		}
+		// Подписка ДО доставки: клиент по updateChannel перечитывает диалог, и
+		// пост, вышедший сразу после, обязан застать сокет уже на топике.
+		if peer, joined := channelJoinedPeer(frame); joined {
+			h.subscribeUserChannel(context.Background(), userID, peer)
 		}
 		h.deliver(userID, frame)
 	} else if deviceID, ok := idFromChannel(msg.Channel, "device:"); ok {
@@ -239,6 +256,46 @@ func (h *Hub) unsubscribeUserChannel(ctx context.Context, userID int64, peer dom
 	h.mu.RUnlock()
 	for _, s := range sinks {
 		h.UnsubscribeChannel(ctx, peer, s)
+	}
+}
+
+// channelJoinedFrame — признак кадра updateChannel в теле (дешёвый отсев).
+var channelJoinedFrame = []byte(`"updateChannel"`)
+
+// channelJoinedPeer — канал, в который пользователь вступил (кадр
+// updateChannel, его шлёт announceChannelJoin). ok=false — другой кадр.
+func channelJoinedPeer(frame []byte) (domain.PeerID, bool) {
+	if !bytes.Contains(frame, channelJoinedFrame) {
+		return domain.NullPeerID, false
+	}
+	var f struct {
+		D struct {
+			Underscore string `json:"_"`
+			ChannelID  int64  `json:"channel_id"`
+		} `json:"d"`
+	}
+	if json.Unmarshal(frame, &f) != nil || f.D.Underscore != domain.UpdateChannelTag || f.D.ChannelID <= 0 {
+		return domain.NullPeerID, false
+	}
+	return domain.ToPeerID(f.D.ChannelID, true), true
+}
+
+// subscribeUserChannel подписывает все локальные сокеты пользователя на
+// топик канала, в который он вступил, — через то же правило доступа, что и
+// кадр subscribe_channel. Пара к unsubscribeUserChannel: кадр приходит в
+// каждую реплику, где у пользователя есть сокеты.
+func (h *Hub) subscribeUserChannel(ctx context.Context, userID int64, peer domain.PeerID) {
+	if h.channelGate == nil || !h.channelGate(ctx, userID, peer) {
+		return
+	}
+	h.mu.RLock()
+	sinks := make([]Sink, 0, len(h.conns[userID]))
+	for s := range h.conns[userID] {
+		sinks = append(sinks, s)
+	}
+	h.mu.RUnlock()
+	for _, s := range sinks {
+		h.SubscribeChannel(ctx, peer, s)
 	}
 }
 

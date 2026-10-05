@@ -244,3 +244,72 @@ func TestChatRemovedPeer(t *testing.T) {
 		t.Fatal("new_message с текстом chat_removed принят за выбытие")
 	}
 }
+
+// Вступивший в канал получает его посты сразу, без перезагрузки и без
+// открытия канала (A2-02): кадр updateChannel подписывает все его локальные
+// сокеты на топик — через гейт доступа. Посторонний (гейт отказал) — нет.
+func TestHub_UpdateChannelSubscribesUserSockets(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+	subRDB := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	pubRDB := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer subRDB.Close()
+	defer pubRDB.Close()
+	ctx := context.Background()
+
+	hub := NewHub(ctx, subRDB)
+	defer hub.Close()
+	hub.SetChannelGate(func(_ context.Context, userID int64, peer domain.PeerID) bool {
+		return userID == 7 && peer == domain.ToPeerID(5, true)
+	})
+
+	tab1, tab2, stranger := newFakeSink(), newFakeSink(), newFakeSink()
+	hub.Register(ctx, 7, 100, tab1)
+	hub.Register(ctx, 7, 101, tab2)
+	hub.Register(ctx, 8, 200, stranger)
+	time.Sleep(100 * time.Millisecond)
+
+	pub := rtredis.NewRedisPublisher(pubRDB)
+	for _, uid := range []int64{7, 8} {
+		joined := []byte(`{"d":{"_":"updateChannel","channel_id":5},"pts":4,"t":"channel"}`)
+		if err := pub.PublishToUser(ctx, uid, joined); err != nil {
+			t.Fatalf("publish updateChannel: %v", err)
+		}
+	}
+	for _, s := range []*fakeSink{tab1, tab2, stranger} {
+		select {
+		case <-s.ch: // сам кадр доходит
+		case <-time.After(2 * time.Second):
+			t.Fatal("updateChannel not delivered")
+		}
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	if err := pub.PublishToChannel(ctx, 5, []byte(`post`)); err != nil {
+		t.Fatalf("publish post: %v", err)
+	}
+	for name, s := range map[string]*fakeSink{"tab1": tab1, "tab2": tab2} {
+		select {
+		case got := <-s.ch:
+			if string(got) != "post" {
+				t.Fatalf("%s: got %q", name, got)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%s вступившего не получил пост канала", name)
+		}
+	}
+	select {
+	case got := <-stranger.ch:
+		t.Fatalf("гейт отказал, но посторонний получил пост: %q", got)
+	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+func TestChannelJoinedPeer(t *testing.T) {
+	if p, ok := channelJoinedPeer([]byte(`{"t":"channel","d":{"_":"updateChannel","channel_id":9}}`)); !ok || p != domain.ToPeerID(9, true) {
+		t.Fatalf("updateChannel: %v %v", p, ok)
+	}
+	if _, ok := channelJoinedPeer([]byte(`{"t":"new_message","d":{"message":"updateChannel"}}`)); ok {
+		t.Fatal("текст updateChannel в чужом кадре принят за вступление")
+	}
+}

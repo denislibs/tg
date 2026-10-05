@@ -236,6 +236,9 @@ func registerServer(p serverParams) {
 		// Диспетчеру запланированных «отправить когда онлайн» нужен запрос presence.
 		p.ChatUC.SetPresence(presenceMgr)
 		hub := ws.NewHub(p.Ctx, p.Redis.Client)
+		// Вступившего в канал хаб подписывает на топик тем же правилом, что
+		// кадр subscribe_channel.
+		hub.SetChannelGate(p.ChatUC.CanSubscribeChannel)
 		p.LC.Append(fx.Hook{OnStop: func(context.Context) error { return hub.Close() }})
 		wsHandler = ws.NewHandler(hub, p.AuthUC, p.ChatUC, presenceMgr, p.Cfg.WebAuthnOrigins, p.Cfg.DNPServerPrivKey)
 		log.Printf("session cache + realtime + presence enabled (redis)")

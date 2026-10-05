@@ -40,6 +40,11 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 	}
 	entities = domain.SanitizeEntities(entities)
 
+	broadcast := i.isBroadcast(ctx, chatID)
+	// broadcast-канал: правка — одна запись журнала канала (channelBody/
+	// channelPts) вместо строки в журнале каждого подписчика.
+	var channelBody map[string]any
+	var channelPts int64
 	var msg domain.Message
 	var members []int64
 	var pp, ppLocked *peerPayloads
@@ -62,6 +67,11 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 		// без гидрации правка подписи у фото приезжала без media, а без
 		// агрегата реакций клиент их гасил.
 		if msg, e = i.hydrateBroadcastMessage(ctx, m); e != nil {
+			return e
+		}
+		if broadcast {
+			channelBody = i.channelEditPayload(ctx, msg)
+			channelPts, e = i.appendChannelUpdate(ctx, chatID, "edit_message", channelBody)
 			return e
 		}
 		mem, e := i.chats.MemberIDs(ctx, chatID)
@@ -106,6 +116,10 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 	})
 	if err != nil {
 		return domain.Message{}, err
+	}
+	if broadcast {
+		i.publishChannelUpdate(ctx, chatID, "edit_message", channelBody, channelPts, msg.SenderID)
+		return msg, nil
 	}
 	if i.publisher != nil {
 		for _, uid := range members {
@@ -274,6 +288,11 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 		}
 	}
 
+	// broadcast-канал, «удалить у всех»: одна запись журнала канала
+	// (updateDeleteChannelMessages) вместо строки у каждого подписчика.
+	channelDelete := revoke && i.isBroadcast(ctx, chatID)
+	var channelBody map[string]any
+	var channelPts int64
 	var members []int64
 	ptsByUser := map[int64]int64{}
 	addr, err := i.peerAddress(ctx, chatID)
@@ -285,6 +304,17 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 	}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		date := nowMillis()
+		if channelDelete {
+			if e := i.msgs.SoftDelete(ctx, msgID); e != nil {
+				return e
+			}
+			// Непрочитанное канала считается на чтении — удалённый пост выпадает
+			// из него сам, хранимых счётчиков править не нужно.
+			channelBody = channelDeletePayload(chatID, []int64{cur.Seq})
+			p, e := i.appendChannelUpdate(ctx, chatID, "delete_message", channelBody)
+			channelPts = p
+			return e
+		}
 		if revoke {
 			if e := i.msgs.SoftDelete(ctx, msgID); e != nil {
 				return e
@@ -334,13 +364,18 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 	if err != nil {
 		return err
 	}
+	if channelDelete {
+		i.publishChannelUpdate(ctx, chatID, "delete_message", channelBody, channelPts, 0)
+		// Подписчики — только ради сброса снимка списка ниже.
+		members, _ = i.chats.MemberIDs(ctx, chatID)
+	}
 	// Удаление могло снять последнее сообщение диалога (top_message и порядок
 	// списка) — снимок списка чатов затронутых пользователей сбрасываем, иначе
 	// /chats до истечения TTL показывал бы последним удалённое.
 	if i.dialogsCache != nil {
 		i.dialogsCache.Invalidate(ctx, members...)
 	}
-	if i.publisher != nil {
+	if i.publisher != nil && !channelDelete {
 		for _, uid := range members {
 			body := deletePayload(addr.forViewer(uid), cur.Seq)
 			_ = i.publisher.PublishToUser(ctx, uid, framePts("delete_message", body, ptsByUser[uid]))

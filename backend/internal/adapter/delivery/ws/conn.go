@@ -231,6 +231,14 @@ func (c *Conn) run(ctx context.Context) {
 	// лишний catch-up на клиенте, но не потеря. Сбой чтения state не фатален —
 	// просто без hello (клиент сделает полный catch-up).
 	c.hub.Register(ctx, c.userID, c.deviceID, c)
+	// Топики всех своих каналов — сразу, а не по открытию: пост, правка,
+	// карточка и счётчики канала доходят до списка чатов живьём, как у
+	// оригинала (сервер шлёт updateNewChannelMessage всем онлайн-сессиям
+	// участников). Пропущенное между Register и подпиской клиент добирает
+	// догоном канала по разрыву pts.
+	for _, peer := range c.svc.ChannelSubscriptions(ctx, c.userID) {
+		c.hub.SubscribeChannel(ctx, peer, c)
+	}
 	if st, err := c.svc.UserState(ctx, c.userID); err == nil {
 		c.Send(helloFrame(st))
 	}

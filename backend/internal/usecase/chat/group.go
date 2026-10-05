@@ -185,6 +185,7 @@ func (i *Interactor) AddMember(ctx context.Context, chatID, actorID, userID int6
 	if err != nil || !joined {
 		return err
 	}
+	i.announceChannelJoin(ctx, chatID, userID)
 	targetID := userID
 	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionChatAddUser([]int64{targetID}))
 	// Число участников изменилось — рассылаем свежий снимок метаданных чата.
@@ -550,6 +551,7 @@ func (i *Interactor) joinByLink(ctx context.Context, link domain.InviteLink, tok
 	if err != nil {
 		return false, err
 	}
+	i.announceChannelJoin(ctx, link.ChatID, userID)
 	// Вступление по инвайт-ссылке — отдельный конструктор
 	// (messageActionChatJoinedByLink), а не add_user: добавил не админ,
 	// пользователь вошёл сам.
@@ -588,7 +590,7 @@ func (i *Interactor) ApproveJoinRequest(ctx context.Context, chatID, actorID, us
 	if !ok {
 		return domain.ErrNotFound
 	}
-	return i.tx.WithinTx(ctx, func(ctx context.Context) error {
+	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if _, e := i.admit(ctx, chatID, userID, actorID, admitApproved); e != nil {
 			return e
 		}
@@ -599,6 +601,11 @@ func (i *Interactor) ApproveJoinRequest(ctx context.Context, chatID, actorID, us
 		}
 		return i.joinReqs.Delete(ctx, chatID, userID)
 	})
+	if err != nil {
+		return err
+	}
+	i.announceChannelJoin(ctx, chatID, userID)
+	return nil
 }
 
 // DeclineJoinRequest drops a pending join request. The actor must hold

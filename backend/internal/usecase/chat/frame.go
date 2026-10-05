@@ -57,19 +57,6 @@ func frameEnvelopePts(t string, d map[string]any, pts int64) []byte {
 	return b
 }
 
-// frameChannelMessage — кадр ПОСТА КАНАЛА: пер-канальный курсор кладётся в
-// `pts` самого конструктора.
-//
-// Своего имени у канального курсора в схеме нет: `updateNewChannelMessage.pts`
-// — обычный pts, а «канальный» он потому, что таков КОНСТРУКТОР. Наш ключ
-// `channel_pts` был вторым именем того же поля, и клиенту приходилось решать
-// вид кадра по имени ключа вместо дискриминатора. Второго имени больше нет
-// нигде: метаданные канала (chat_update, boost_update) тоже несут курсор
-// параметром своего конструктора.
-func frameChannelMessage(t string, base map[string]any, pts int64) []byte {
-	return frameFields(t, base, map[string]any{"pts": pts})
-}
-
 // withPeer — копия базового payload с ключом пира ПОЛУЧАТЕЛЯ. base общий для
 // всех получателей (он же маршалится в журнал) и никогда не мутируется: у
 // приватного диалога peer_id у двух сторон РАЗНЫЙ, см. peeraddr.go.

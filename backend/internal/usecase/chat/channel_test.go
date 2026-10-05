@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -218,6 +219,27 @@ func (c groupMembershipChats) FindSaved(context.Context, int64) (int64, error) {
 }
 func (c groupMembershipChats) CreateSaved(context.Context, int64) (int64, error) { return 0, nil }
 func (c groupMembershipChats) MemberIDs(context.Context, int64) ([]int64, error) { return nil, nil }
+func (c groupMembershipChats) BroadcastChannelIDs(ctx context.Context, userID int64, limit int) ([]int64, error) {
+	c.fg.mu.Lock()
+	var ids []int64
+	for cid, ms := range c.fg.members {
+		if _, ok := ms[userID]; ok {
+			ids = append(ids, cid)
+		}
+	}
+	c.fg.mu.Unlock()
+	out := ids[:0]
+	for _, cid := range ids {
+		if typ, _ := c.ChatType(ctx, cid); typ == domain.ChatTypeChannel {
+			out = append(out, cid)
+		}
+	}
+	slices.Sort(out)
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
 
 // groupMembershipChatsFanout — groupMembershipChats с настоящим MemberIDs.
 // Обычный стаб выше всегда отдаёт nil: часть тестов канала не заводит

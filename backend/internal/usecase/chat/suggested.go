@@ -254,10 +254,7 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 	if err != nil {
 		return domain.Message{}, err
 	}
-	if i.chPub != nil {
-		base := i.channelPostPayload(ctx, msg)
-		_ = i.chPub.PublishToChannel(ctx, sp.ChatID, frameChannelMessage("new_message", base, pts))
-	}
+	i.deliverChannelPost(ctx, msg, i.channelPostPayload(ctx, msg), pts, channelPostOpts{preview: msgType == "text"})
 	if mirrorDeliv != nil {
 		i.publishMessageDelivery(ctx, mirrorDeliv.msg, mirrorDeliv.msg.SenderID,
 			mirrorDeliv.recipients, mirrorDeliv.ptsByUser, mirrorDeliv.mentions)
