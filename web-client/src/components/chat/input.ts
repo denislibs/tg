@@ -1858,7 +1858,7 @@ export default class ChatInput {
         void this.managers.realtime.sendTyping({ peerId: this.chat.peerId })
       }
 
-      void this.botCommands?.toggle(true)
+      this.botCommands?.toggle(true)
     }
 
     if(this.botCommands) {
@@ -2718,7 +2718,7 @@ export default class ChatInput {
       }
 
       str += ' '
-      void this.insertAtCaret(str, entity, isHelper)
+      this.insertAtCaret(str, entity, isHelper)
     })
   }
 

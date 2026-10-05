@@ -1420,7 +1420,7 @@ export class AppImManager extends EventListenerBase<{
               const bubble = chat.bubbles.getBubble(message.peerId, message.id)
               await input.initMessageReply(input.getChatInputReplyToFromMessage(message))
               if(bubble) {
-                chat.bubbles.scrollToBubble(bubble, 'center')
+                void chat.bubbles.scrollToBubble(bubble, 'center')
                 chat.bubbles.highlightBubble(bubble)
               } else {
                 void chat.setMessageId({ lastMsgId: message.id })
