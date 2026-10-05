@@ -297,8 +297,21 @@ func (i *Interactor) AddProfilePhoto(ctx context.Context, userID, mediaID int64,
 	return ph, err
 }
 
-// ListProfilePhotos returns a user's profile-photo gallery, newest first.
-func (i *Interactor) ListProfilePhotos(ctx context.Context, userID int64) ([]domain.ProfilePhoto, error) {
+// ListProfilePhotos returns a user's profile-photo gallery, newest first, глазами
+// viewerID: галерею видит тот, кому правило profile_photo владельца открывает
+// фото (privacy.Check учитывает и блок) — то же правило, что гасит фото в
+// карточках (photos.getUserPhotos оригинала фильтрует им же). Иначе — пустая
+// галерея: о скрытом фото зритель не узнаёт и id его медиа.
+func (i *Interactor) ListProfilePhotos(ctx context.Context, viewerID, userID int64) ([]domain.ProfilePhoto, error) {
+	if viewerID != userID && i.privacy != nil {
+		ok, err := i.privacy.Check(ctx, userID, viewerID, domain.PrivacyProfilePhoto)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return []domain.ProfilePhoto{}, nil
+		}
+	}
 	return i.users.ListProfilePhotos(ctx, userID)
 }
 

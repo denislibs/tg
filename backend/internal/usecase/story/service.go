@@ -24,8 +24,9 @@ const maxCaptionRunes = 2048
 // allowedPeriods are the story lifetimes a client may pick (seconds): 6h/12h/24h/48h.
 var allowedPeriods = map[int64]bool{21600: true, 43200: true, 86400: true, 172800: true}
 
-// allowedPrivacy — допустимые режимы приватности истории. everyone/contacts —
-// широкий показ, close — только близкие друзья автора, selected — явный список.
+// allowedPrivacy — допустимые режимы приватности истории. everyone — все,
+// contacts — контакты автора, close — только близкие друзья автора, selected —
+// явный список.
 var allowedPrivacy = map[string]bool{"everyone": true, "contacts": true, "close": true, "selected": true}
 
 // stealth-периоды (tweb appConfig stories_stealth_past/future_period) и кулдаун
@@ -657,13 +658,10 @@ func (s *Service) resolve(ctx context.Context, authorID, seq int64) (int64, erro
 }
 
 // canSee reports whether viewerID may see storyID under the current privacy
-// rules (own/everyone/contacts-with-partner/close-friend/selected-allow).
+// rules (own/everyone/contacts of the author/close-friend/selected-allow, блок
+// автором закрывает всё) — то же правило, что у ленты (StoryRepo.Visible).
 func (s *Service) canSee(ctx context.Context, storyID, viewerID int64) (bool, error) {
-	partners, err := s.partners.ChatPartners(ctx, viewerID)
-	if err != nil {
-		return false, err
-	}
-	return s.repo.Visible(ctx, storyID, viewerID, partners)
+	return s.repo.Visible(ctx, storyID, viewerID)
 }
 
 // recipients returns the users a freshly posted story is visible to: the author

@@ -33,7 +33,10 @@ type StoryRepo interface {
 	Stats(ctx context.Context, storyID int64) (domain.StoryStats, error)
 	GetAuthor(ctx context.Context, storyID int64) (int64, error) // domain.ErrNotFound
 	Delete(ctx context.Context, storyID, authorID int64) error
-	Visible(ctx context.Context, storyID, viewerID int64, partnerIDs []int64) (bool, error)
+	// Visible — видит ли зритель историю (одно правило с лентой, закреплёнными и
+	// скачиванием медиа: everyone, контакты автора, близкие друзья, список; блок
+	// автором закрывает всё).
+	Visible(ctx context.Context, storyID, viewerID int64) (bool, error)
 	// SetReaction ставит/меняет реакцию пользователя на историю (upsert по
 	// PRIMARY KEY(story_id,user_id)); RemoveReaction снимает её.
 	SetReaction(ctx context.Context, storyID, userID int64, reaction string) error

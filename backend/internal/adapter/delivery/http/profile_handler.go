@@ -420,10 +420,12 @@ func (h *ProfileHandler) AddPhoto(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListPhotos returns a user's profile-photo gallery, newest first
-// (GET /users/{userID}/photos). MVP: no per-photo privacy filtering yet — the
-// media GET endpoint still enforces access when bytes are served.
+// (GET /users/{userID}/photos), отфильтрованную правилом profile_photo владельца
+// глазами зрителя (usecase ListProfilePhotos); байты тем же правилом гейтит
+// /media/{id}/content (CanAccessMedia).
 func (h *ProfileHandler) ListPhotos(w http.ResponseWriter, r *http.Request) {
-	if _, ok := UserFromContext(r.Context()); !ok {
+	viewer, ok := UserFromContext(r.Context())
+	if !ok {
 		writeError(w, http.StatusUnauthorized, "no user")
 		return
 	}
@@ -432,7 +434,7 @@ func (h *ProfileHandler) ListPhotos(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid user id")
 		return
 	}
-	photos, err := h.uc.ListProfilePhotos(r.Context(), userID)
+	photos, err := h.uc.ListProfilePhotos(r.Context(), viewer.ID, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "list photos failed")
 		return

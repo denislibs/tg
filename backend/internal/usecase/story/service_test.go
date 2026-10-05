@@ -131,7 +131,7 @@ func (f *fakeRepo) Delete(ctx context.Context, storyID, authorID int64) error {
 	f.deleted = true
 	return f.deleteErr
 }
-func (f *fakeRepo) Visible(ctx context.Context, storyID, viewerID int64, partnerIDs []int64) (bool, error) {
+func (f *fakeRepo) Visible(ctx context.Context, storyID, viewerID int64) (bool, error) {
 	return f.visible, f.visibleErr
 }
 func (f *fakeRepo) SetReaction(ctx context.Context, storyID, userID int64, reaction string) error {

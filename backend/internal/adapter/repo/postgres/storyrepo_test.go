@@ -38,6 +38,8 @@ func TestStoryRepo_FeedViewViewersDelete(t *testing.T) {
 
 	future := time.Now().Add(24 * time.Hour)
 	storyID := createStory(t, pool, u1, "contacts", future, nil)
+	// «Контакты» — книга автора (A5-18): u2 у u1 в контактах.
+	mustExec(t, pool, `INSERT INTO contacts (owner_id, user_id, first_name) VALUES ($1,$2,'K')`, u1, u2)
 
 	// u2 sees u1's contacts story, unviewed.
 	groups, err := repo.ActiveFeed(ctx, u2, []int64{u1})
@@ -144,7 +146,7 @@ func TestStoryRepo_Visible_SelectedAllowlist(t *testing.T) {
 	storyID := createStory(t, pool, u1, "selected", future, []int64{u2})
 
 	// u2 is on the allowlist -> visible.
-	ok, err := repo.Visible(ctx, storyID, u2, nil)
+	ok, err := repo.Visible(ctx, storyID, u2)
 	if err != nil {
 		t.Fatalf("Visible(u2): %v", err)
 	}
@@ -152,7 +154,7 @@ func TestStoryRepo_Visible_SelectedAllowlist(t *testing.T) {
 		t.Fatal("u2 should see the selected story")
 	}
 	// u3 is not on the allowlist -> not visible.
-	ok, err = repo.Visible(ctx, storyID, u3, nil)
+	ok, err = repo.Visible(ctx, storyID, u3)
 	if err != nil {
 		t.Fatalf("Visible(u3): %v", err)
 	}
@@ -160,7 +162,7 @@ func TestStoryRepo_Visible_SelectedAllowlist(t *testing.T) {
 		t.Fatal("u3 should NOT see the selected story")
 	}
 	// Author always sees own story.
-	ok, _ = repo.Visible(ctx, storyID, u1, nil)
+	ok, _ = repo.Visible(ctx, storyID, u1)
 	if !ok {
 		t.Fatal("author should see own story")
 	}
@@ -259,10 +261,10 @@ func TestStoryRepo_CloseFriends_SetGetAndVisibility(t *testing.T) {
 	storyID := createStory(t, pool, author, "close", future, nil)
 
 	// Close friend sees it; a stranger does not.
-	if ok, _ := repo.Visible(ctx, storyID, friend, nil); !ok {
+	if ok, _ := repo.Visible(ctx, storyID, friend); !ok {
 		t.Fatal("close friend should see the close story")
 	}
-	if ok, _ := repo.Visible(ctx, storyID, stranger, nil); ok {
+	if ok, _ := repo.Visible(ctx, storyID, stranger); ok {
 		t.Fatal("stranger should NOT see the close story")
 	}
 
@@ -270,10 +272,10 @@ func TestStoryRepo_CloseFriends_SetGetAndVisibility(t *testing.T) {
 	if err := repo.SetCloseFriends(ctx, author, []int64{stranger}); err != nil {
 		t.Fatalf("SetCloseFriends replace: %v", err)
 	}
-	if ok, _ := repo.Visible(ctx, storyID, friend, nil); ok {
+	if ok, _ := repo.Visible(ctx, storyID, friend); ok {
 		t.Fatal("former close friend should no longer see the close story")
 	}
-	if ok, _ := repo.Visible(ctx, storyID, stranger, nil); !ok {
+	if ok, _ := repo.Visible(ctx, storyID, stranger); !ok {
 		t.Fatal("new close friend should see the close story")
 	}
 }
@@ -425,10 +427,10 @@ func TestStoryRepo_Edit_CaptionPrivacyAndFlag(t *testing.T) {
 	}
 
 	// Now selected → only the allowlisted user sees it.
-	if ok, _ := repo.Visible(ctx, storyID, allowed, nil); !ok {
+	if ok, _ := repo.Visible(ctx, storyID, allowed); !ok {
 		t.Fatal("allowlisted user should see the edited selected story")
 	}
-	if ok, _ := repo.Visible(ctx, storyID, viewer, nil); ok {
+	if ok, _ := repo.Visible(ctx, storyID, viewer); ok {
 		t.Fatal("non-allowlisted user should NOT see the edited selected story")
 	}
 }
