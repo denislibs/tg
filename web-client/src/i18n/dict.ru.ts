@@ -2130,7 +2130,7 @@ const ru = {
   UserRestrictionsSendVoices: 'Отправка голосовых сообщений',
   // ── Эмодзи-дропдаун (П-6, tweb emoticonsDropdown/**) ──
   'AccDescr.DeleteLastCharacter': 'Удалить последний символ',
-  'AccDescr.GifNumber': 'GIF %s',
+  'AccDescr.GifNumber': 'Анимация %s',
   'AccDescr.Gifs': 'GIF',
   'AccDescr.StickerNumber': 'Стикер %s',
   'AccDescr.Stickers': 'Стикеры',

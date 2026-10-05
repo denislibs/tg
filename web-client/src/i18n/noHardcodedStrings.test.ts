@@ -56,6 +56,7 @@ const NOT_UI: Record<string, string> = {
   'src/helpers/string/removeAccents.ts': 'таблица свёртки акцентов ключа сортировки контактов (порт tweb/tdesktop, «ё → е») — ДАННЫЕ',
   'src/core/dom/loadFonts.ts': 'глиф-образец для замера готовности шрифта, на экран не попадает',
   'src/core/stickers/testSticker.ts': 'фабрика фикстур для тестов — заголовок набора, а не интерфейс',
+  'src/config/emojiKeywords.ts': 'ключевые слова поиска эмодзи (en + ru) — ДАННЫЕ индекса «слово → эмодзи», на экран не попадают',
   // Диагностика для разработчика: текст уходит в `Error`/консоль, а не на экран.
   'src/core/lazyLoadQueue.ts': 'причина отмены задачи очереди — текст `Error` для разработчика',
   'src/core/managers/mediaManager.ts': 'причина отказа воркера — текст `Error` для разработчика',
