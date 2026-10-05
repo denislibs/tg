@@ -638,6 +638,47 @@ func (r *GroupRepo) ChatBriefs(ctx context.Context, ids []int64) (map[int64]doma
 	return out, rows.Err()
 }
 
+// KnownUserIDs — кто из ids ИЗВЕСТЕН зрителю viewerID: сам он; пользователь
+// с публичным @именем (его и так отдаёт resolveUsername); контакт в любую
+// сторону; общий чат; участник публичного чата (его состав виден всем);
+// автор или источник пересылки сообщения в чате, где зритель состоит
+// (вышедший участник и пересланный автор приезжают в его ленту). Остальных
+// по голому id не отдать — в Telegram для этого нужен access_hash
+// (users.getUsers с чужим даёт USER_ID_INVALID).
+func (r *GroupRepo) KnownUserIDs(ctx context.Context, viewerID int64, ids []int64) (map[int64]bool, error) {
+	out := make(map[int64]bool, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT u.id FROM users u
+		  WHERE u.id = ANY($1) AND (
+		        u.id = $2
+		     OR COALESCE(u.username, '') <> ''
+		     OR EXISTS (SELECT 1 FROM contacts c
+		                 WHERE (c.owner_id = $2 AND c.user_id = u.id) OR (c.owner_id = u.id AND c.user_id = $2))
+		     OR EXISTS (SELECT 1 FROM chat_members a JOIN chat_members b ON b.chat_id = a.chat_id
+		                 WHERE a.user_id = $2 AND b.user_id = u.id)
+		     OR EXISTS (SELECT 1 FROM chat_members pm JOIN chats pc ON pc.id = pm.chat_id AND pc.is_public
+		                 WHERE pm.user_id = u.id)
+		     OR EXISTS (SELECT 1 FROM messages m JOIN chat_members vm ON vm.chat_id = m.chat_id AND vm.user_id = $2
+		                 WHERE m.sender_id = u.id)
+		     OR EXISTS (SELECT 1 FROM messages m JOIN chat_members vm ON vm.chat_id = m.chat_id AND vm.user_id = $2
+		                 WHERE m.fwd_from_user_id = u.id))`, ids, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		if e := rows.Scan(&id); e != nil {
+			return nil, e
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
 // UsersByIDs — карточки пользователей глазами viewerID (userSeenCols).
 func (r *GroupRepo) UsersByIDs(ctx context.Context, viewerID int64, ids []int64) ([]domain.UserReal, error) {
 	if len(ids) == 0 {

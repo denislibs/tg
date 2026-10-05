@@ -13,13 +13,20 @@ import (
 
 const boostDuration = 30 * 24 * time.Hour
 
-// BoostStatus — состояние бустов канала для зрителя viewerID (0 — «никто»).
+// BoostStatus — состояние бустов канала для зрителя viewerID (0 — «никто»:
+// внутренний снимок для кадра boost_update). Зритель должен читать канал
+// (RequireChatRead) — бусты приватного канала постороннему не отдаются.
 func (i *Interactor) BoostStatus(ctx context.Context, chatID, viewerID int64) (domain.BoostStatus, error) {
 	if i.boosts == nil {
 		return domain.BoostStatus{}, domain.ErrNotFound
 	}
 	if err := i.requireChannel(ctx, chatID); err != nil {
 		return domain.BoostStatus{}, err
+	}
+	if viewerID != 0 {
+		if err := i.RequireChatRead(ctx, chatID, viewerID); err != nil {
+			return domain.BoostStatus{}, err
+		}
 	}
 	total, err := i.boosts.ActiveBoosts(ctx, chatID)
 	if err != nil {

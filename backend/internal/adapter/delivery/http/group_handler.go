@@ -743,7 +743,7 @@ func (h *GroupHandler) Users(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	viewer, _ := UserFromContext(r.Context())
-	cards, err := h.uc.UsersByIDs(r.Context(), viewer.ID, ids)
+	cards, err := h.uc.KnownUsersByIDs(r.Context(), viewer.ID, ids)
 	if err != nil {
 		h.mapErr(w, err)
 		return

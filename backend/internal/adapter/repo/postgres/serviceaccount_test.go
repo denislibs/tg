@@ -109,11 +109,14 @@ func TestMessagesRepo_CountMessagesIsViewerVisible(t *testing.T) {
 	if err := msgs.HideForUser(ctx, a, ids[3]); err != nil {
 		t.Fatal(err)
 	}
-	if n, err := msgs.CountMessages(ctx, chatID, a, 1); err != nil || n != 2 {
+	if err := NewChatsRepo(pool).SetClearedSeq(ctx, chatID, a, 1); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := msgs.CountMessages(ctx, chatID, a); err != nil || n != 2 {
 		t.Fatalf("CountMessages(a, cleared=1) = %d, %v; want 2", n, err)
 	}
 	// У b ничего не скрыто и не очищено.
-	if n, err := msgs.CountMessages(ctx, chatID, b, 0); err != nil || n != 4 {
+	if n, err := msgs.CountMessages(ctx, chatID, b); err != nil || n != 4 {
 		t.Fatalf("CountMessages(b) = %d, %v; want 4", n, err)
 	}
 }

@@ -60,7 +60,7 @@ func TestRegisterViews_ListedPostsOnly_DedupsAndPublishesFrame(t *testing.T) {
 	}
 	// Пост, которого в списке не было, просмотра не получает: это регистрация
 	// ПОКАЗА, а не отметка «дочитал до сюда».
-	all, _ := i.ViewCounts(ctx, []int64{unseen.ID})
+	all, _ := i.ViewCounts(ctx, ch, 8, []int64{unseen.ID})
 	if all[unseen.ID] != 0 {
 		t.Fatalf("просмотры не показывавшегося поста = %d, want 0", all[unseen.ID])
 	}

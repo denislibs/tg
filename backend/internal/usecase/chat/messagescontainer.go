@@ -37,28 +37,30 @@ import (
 // чат уже известен клиенту из списка диалогов.
 func (i *Interactor) MessagesContainer(ctx context.Context, viewerID int64, msgs []domain.Message) ([]domain.MTMessage, []domain.UserReal, error) {
 	kinds := i.chatKinds(ctx, msgs)
+	shown := i.postAuthorsShown(ctx, kinds)
 	threads, repliers := i.threadReplies(ctx, viewerID, msgs, kinds)
-	wire, err := i.messagesWire(ctx, viewerID, msgs, kinds, threads)
+	wire, err := i.messagesWire(ctx, viewerID, msgs, kinds, shown, threads)
 	if err != nil {
 		return nil, nil, err
 	}
-	users := mergeUserCards(i.messageAuthors(ctx, viewerID, msgs), repliers)
+	users := mergeUserCards(i.messageAuthors(ctx, viewerID, msgs, kinds, shown), repliers)
 	i.gateAuthorPhotos(ctx, viewerID, users)
 	return wire, users, nil
 }
 
-// messageAuthors — карточки авторов пачки, по одной на автора.
+// messageAuthors — карточки авторов пачки, по одной на автора. Автор поста
+// канала без подписей профилями в вектор не едет (postAuthorHidden).
 //
 // Сбой запроса не роняет выдачу: список сообщений полезен и без подписей, а
 // упавшая история полезна никому. Порядок тот же, что у диалогов.
-func (i *Interactor) messageAuthors(ctx context.Context, viewerID int64, msgs []domain.Message) []domain.UserReal {
+func (i *Interactor) messageAuthors(ctx context.Context, viewerID int64, msgs []domain.Message, kinds map[int64]string, shown map[int64]bool) []domain.UserReal {
 	if i.groups == nil {
 		return nil
 	}
 	seen := make(map[int64]bool, len(msgs))
 	ids := make([]int64, 0, len(msgs))
 	for _, m := range msgs {
-		if m.SenderID != 0 && !seen[m.SenderID] {
+		if m.SenderID != 0 && !seen[m.SenderID] && !postAuthorHidden(m, kinds, shown) {
 			seen[m.SenderID] = true
 			ids = append(ids, m.SenderID)
 		}

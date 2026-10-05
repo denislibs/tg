@@ -148,6 +148,25 @@ func (r *ChatsRepo) ChatType(ctx context.Context, chatID int64) (string, error) 
 	return t, err
 }
 
+// Access — снимок доступа зрителя к чату одним запросом (domain.ChatAccess):
+// вид, публичность, членство с ролью, бан. domain.ErrNotFound — чата нет.
+func (r *ChatsRepo) Access(ctx context.Context, chatID, userID int64) (domain.ChatAccess, error) {
+	var a domain.ChatAccess
+	var role *string
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT c.type, c.is_public,
+		        (SELECT cm.role FROM chat_members cm WHERE cm.chat_id = c.id AND cm.user_id = $2),
+		        EXISTS (SELECT 1 FROM chat_bans b WHERE b.chat_id = c.id AND b.user_id = $2)
+		   FROM chats c WHERE c.id = $1`, chatID, userID).Scan(&a.Type, &a.Public, &role, &a.Banned)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ChatAccess{}, domain.ErrNotFound
+	}
+	if role != nil {
+		a.Member, a.Role = true, *role
+	}
+	return a, err
+}
+
 func (r *ChatsRepo) IsMember(ctx context.Context, chatID, userID int64) (bool, error) {
 	q := querier(ctx, r.pool)
 	var one int
@@ -324,13 +343,17 @@ func (r *ChatsRepo) IncUnread(ctx context.Context, chatID, userID int64) (int, e
 
 // ForgetUnread — см. ChatRepo.ForgetUnread. Условие «ещё непрочитано» то же,
 // что у пересчёта при прочтении (MessagesRepo.CountUnread: не автор, seq выше
-// горизонта), плюс очистка истории: сообщение за cleared_max_seq зритель не
-// видит и в счётчик оно не входило.
+// горизонта), плюс поле зрения участника (messageInViewOf): сообщение, которое
+// он не видит — очищенное, скрытое у себя, предыстория до его вступления, —
+// в его счётчик не входило, и вычитать его нечего.
 func (r *ChatsRepo) ForgetUnread(ctx context.Context, chatID, senderID, seq int64) error {
 	_, err := querier(ctx, r.pool).Exec(ctx,
-		`UPDATE chat_members SET unread_count = unread_count - 1
-		  WHERE chat_id=$1 AND user_id<>$2 AND last_read_seq < $3 AND cleared_max_seq < $3
-		    AND unread_count > 0`, chatID, senderID, seq)
+		`UPDATE chat_members cm SET unread_count = cm.unread_count - 1
+		   FROM messages m
+		  WHERE m.chat_id = $1 AND m.seq = $3
+		    AND cm.chat_id = $1 AND cm.user_id <> $2 AND cm.last_read_seq < $3
+		    AND cm.unread_count > 0
+		    AND `+messageInViewOf("m", "cm.user_id"), chatID, senderID, seq)
 	return err
 }
 
@@ -640,20 +663,6 @@ func (r *ChatsRepo) MaxSeq(ctx context.Context, chatID int64) (int64, error) {
 	err := q.QueryRow(ctx, `SELECT last_seq FROM chats WHERE id=$1`, chatID).Scan(&seq)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, domain.ErrNotFound
-	}
-	return seq, err
-}
-
-// ClearedSeq returns a member's «очищенный» horizon (cleared_max_seq); 0 when
-// there is no such member row (nothing cleared).
-func (r *ChatsRepo) ClearedSeq(ctx context.Context, chatID, userID int64) (int64, error) {
-	q := querier(ctx, r.pool)
-	var seq int64
-	err := q.QueryRow(ctx,
-		`SELECT cleared_max_seq FROM chat_members WHERE chat_id=$1 AND user_id=$2`,
-		chatID, userID).Scan(&seq)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, nil
 	}
 	return seq, err
 }

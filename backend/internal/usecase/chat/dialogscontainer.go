@@ -161,9 +161,17 @@ func (i *Interactor) dialogsContainer(ctx context.Context, viewerID int64, recor
 	// Их не было в ответе вовсе, из-за чего сервер склеивал имя автора сам
 	// (last_sender_name) — последний живой экземпляр той болезни, которую у
 	// пиров снял уход display_name. С автором-пиром имя собирает клиент.
+	// Автор поста канала без подписей профилями не едет (postAuthorHidden):
+	// вид чата и подписи — из тех же строк витрины.
+	kinds := make(map[int64]string, len(records))
+	shown := make(map[int64]bool, len(records))
+	for _, d := range records {
+		kinds[d.ChatID] = d.Type
+		shown[d.ChatID] = d.SignatureProfiles
+	}
 	missing := make([]int64, 0, len(messages))
 	for _, m := range messages {
-		if m.SenderID != 0 && !seen[m.SenderID] {
+		if m.SenderID != 0 && !seen[m.SenderID] && !postAuthorHidden(m, kinds, shown) {
 			seen[m.SenderID] = true
 			missing = append(missing, m.SenderID)
 		}

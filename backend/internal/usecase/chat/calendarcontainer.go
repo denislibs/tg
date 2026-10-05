@@ -22,14 +22,10 @@ type CalendarPage struct {
 }
 
 // CalendarMonth — календарь медиа за месяц, которому принадлежит [from, to).
-// Не участник — domain.ErrNotFound.
+// Чат зрителю не читается — domain.ErrNotFound.
 func (i *Interactor) CalendarMonth(ctx context.Context, chatID, userID int64, from, to time.Time) (CalendarPage, error) {
-	ok, err := i.chats.IsMember(ctx, chatID, userID)
-	if err != nil {
+	if err := i.RequireChatRead(ctx, chatID, userID); err != nil {
 		return CalendarPage{}, err
-	}
-	if !ok {
-		return CalendarPage{}, domain.ErrNotFound
 	}
 
 	days, err := i.msgs.CalendarMonth(ctx, chatID, userID, from, to)

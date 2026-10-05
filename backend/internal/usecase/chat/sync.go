@@ -8,9 +8,9 @@ import (
 )
 
 // GetHistory returns a window of messages plus the chat's total count.
-// threadRoot != nil ограничивает окно тредом (форум-топик / комментарии поста);
-// тред discussion-группы читается и не-членом (как ListComments — комментарии
-// канала доступны подписчикам без вступления в группу).
+// threadRoot != nil ограничивает окно тредом (форум-топик / комментарии поста).
+// Кто читает — решает checkHistoryAccess: публичный чат читается без
+// вступления, тред группы обсуждения — подписчиком канала.
 // tag (optional) — фильтр «Избранного» по тегу-реакции: возвращаются только
 // сообщения, помеченные зрителем реакцией tag (Telegram search by saved tag).
 func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRoot *int64, tag string) (HistoryResult, error) {
@@ -19,10 +19,6 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	}
 	if limit <= 0 || limit > 100 {
 		limit = 40
-	}
-	cleared, err := i.chats.ClearedSeq(ctx, chatID, userID)
-	if err != nil {
-		return HistoryResult{}, err
 	}
 	// Тред адресуется номером корня В ЭТОМ ЧАТЕ (у комментариев — номером
 	// зеркала поста в группе обсуждения, см. resolveThreadRootForQuery).
@@ -36,7 +32,7 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	// содержимом: наружу сообщение адресуется парой «пир + seq», номера чужого
 	// чата в этом пространстве не существует вовсе, а 0 значит «самое новое».
 	queryRoot := i.resolveThreadRootForQuery(ctx, chatID, threadRoot)
-	msgs, err := i.msgs.GetHistory(ctx, chatID, userID, offsetSeq, addOffset, limit, queryRoot, cleared, tag)
+	msgs, err := i.msgs.GetHistory(ctx, chatID, userID, offsetSeq, addOffset, limit, queryRoot, tag)
 	if err != nil {
 		return HistoryResult{}, err
 	}
@@ -51,7 +47,7 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	case threadRoot != nil:
 		count, err = i.msgs.CountThread(ctx, chatID, *queryRoot)
 	default:
-		count, err = i.msgs.CountMessages(ctx, chatID, userID, cleared)
+		count, err = i.msgs.CountMessages(ctx, chatID, userID)
 	}
 	if err != nil {
 		return HistoryResult{}, err
@@ -95,7 +91,7 @@ func (i *Interactor) hydrateBroadcastMessage(ctx context.Context, m domain.Messa
 // пер-зрительские части, paidViewerID — для кого решается блокировка платного
 // медиа (у ленты это один и тот же зритель).
 func (i *Interactor) hydrateMessagesFor(ctx context.Context, viewerID, paidViewerID int64, msgs []domain.Message) error {
-	if err := i.hydrateReplies(ctx, msgs); err != nil {
+	if err := i.hydrateReplies(ctx, viewerID, msgs); err != nil {
 		return err
 	}
 	if err := i.hydrateMedia(ctx, msgs); err != nil {
@@ -111,22 +107,15 @@ func (i *Interactor) hydrateMessagesFor(ctx context.Context, viewerID, paidViewe
 	return nil
 }
 
-// checkHistoryAccess: член чата — всегда; не-член — только тред в discussion-
-// группе канала (комментарии читаются без вступления, tweb).
+// checkHistoryAccess — кто читает историю чата: тот, кто читает сам чат
+// (RequireChatRead: участник либо публичный, не бан); тред — ещё и подписчик
+// канала, чьё это обсуждение (RequireDiscussionRead: комментарии читаются без
+// вступления в группу, но только при доступе к каналу).
 func (i *Interactor) checkHistoryAccess(ctx context.Context, chatID, userID int64, threadRoot *int64) error {
-	ok, err := i.chats.IsMember(ctx, chatID, userID)
-	if err != nil {
-		return err
+	if threadRoot != nil {
+		return i.RequireDiscussionRead(ctx, chatID, userID)
 	}
-	if ok {
-		return nil
-	}
-	if threadRoot != nil && i.groups != nil {
-		if disc, e := i.groups.IsDiscussionGroup(ctx, chatID); e == nil && disc {
-			return nil
-		}
-	}
-	return domain.ErrNotFound
+	return i.RequireChatRead(ctx, chatID, userID)
 }
 
 // hydrateReactions fills Reactions (emoji aggregates + the viewer's mine flag) on
@@ -164,7 +153,12 @@ func (i *Interactor) hydrateReactions(ctx context.Context, viewerID int64, msgs 
 // из разных чатов (глобальный поиск), и группировка по чату здесь не
 // оптимизация, а условие корректности — один и тот же номер в двух чатах
 // означает два разных сообщения.
-func (i *Interactor) hydrateReplies(ctx context.Context, msgs []domain.Message) error {
+//
+// Превью — только видимого зрителю viewerID оригинала (visibleMessages): ответ
+// на сообщение из скрытой предыстории, очищенное или скрытое у себя не
+// раскрывает его текст. viewerID 0 — тело кадра одно на всех (правка), там
+// снимается лишь удалённое.
+func (i *Interactor) hydrateReplies(ctx context.Context, viewerID int64, msgs []domain.Message) error {
 	seqsByChat := map[int64][]int64{}
 	seen := map[[2]int64]bool{}
 	for _, m := range msgs {
@@ -189,6 +183,11 @@ func (i *Interactor) hydrateReplies(ctx context.Context, msgs []domain.Message) 
 		targets, err := i.msgs.GetBySeqs(ctx, chatID, seqs)
 		if err != nil {
 			return err
+		}
+		if viewerID != 0 {
+			if targets, err = i.visibleMessages(ctx, viewerID, targets); err != nil {
+				return err
+			}
 		}
 		for _, t := range targets {
 			byAddr[[2]int64{t.ChatID, t.Seq}] = t
@@ -294,13 +293,9 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	if limit <= 0 || limit > 100 {
 		limit = 40
 	}
-	cleared, err := i.chats.ClearedSeq(ctx, chatID, userID)
-	if err != nil {
-		return AroundResult{}, err
-	}
 	// см. GetHistory — тот же перевод номера корня в ключ строки.
 	queryRoot := i.resolveThreadRootForQuery(ctx, chatID, threadRoot)
-	msgs, err := i.msgs.GetAround(ctx, chatID, userID, centerSeq, limit, queryRoot, cleared)
+	msgs, err := i.msgs.GetAround(ctx, chatID, userID, centerSeq, limit, queryRoot)
 	if err != nil {
 		return AroundResult{}, err
 	}
@@ -311,7 +306,7 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	if threadRoot != nil {
 		count, err = i.msgs.CountThread(ctx, chatID, *queryRoot)
 	} else {
-		count, err = i.msgs.CountMessages(ctx, chatID, userID, cleared)
+		count, err = i.msgs.CountMessages(ctx, chatID, userID)
 	}
 	if err != nil {
 		return AroundResult{}, err
@@ -437,12 +432,8 @@ type SearchFilter struct {
 // запрос уходит, если есть query ИЛИ peerId ИЛИ minDate). Топбар-поиск
 // пустую строку на сервер не шлёт сам (useChatSearch: idle).
 func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q string, f SearchFilter, page MediaPage) (HistoryResult, error) {
-	ok, err := i.chats.IsMember(ctx, chatID, userID)
-	if err != nil {
+	if err := i.RequireChatRead(ctx, chatID, userID); err != nil {
 		return HistoryResult{}, err
-	}
-	if !ok {
-		return HistoryResult{}, domain.ErrNotFound
 	}
 	page.Limit = clampSearchLimit(page.Limit)
 	if page.OffsetID < 0 {
@@ -465,14 +456,10 @@ func (i *Interactor) SearchMessages(ctx context.Context, chatID, userID int64, q
 
 // MessageSeqByDate возвращает seq сообщения для jump-to-date: самое раннее
 // сообщение на/после указанной даты (или самое новое, если дата позже всей
-// истории). domain.ErrNotFound — не участник чата либо чат пуст.
+// истории). domain.ErrNotFound — чат зрителю не читается либо пуст.
 func (i *Interactor) MessageSeqByDate(ctx context.Context, chatID, userID int64, from time.Time) (int64, error) {
-	ok, err := i.chats.IsMember(ctx, chatID, userID)
-	if err != nil {
+	if err := i.RequireChatRead(ctx, chatID, userID); err != nil {
 		return 0, err
-	}
-	if !ok {
-		return 0, domain.ErrNotFound
 	}
 	return i.msgs.MessageSeqByDate(ctx, chatID, from)
 }

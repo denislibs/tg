@@ -14,9 +14,11 @@ function fakeRest(users: UserReal[]) {
   const rest = {
     async get<R>(path: string, query?: Record<string, string | number>): Promise<R> {
       calls.push({ path, query })
-      // Echo back only the requested ids, like the real /users endpoint.
+      // Как настоящая ручка: голый вектор `Vector<User>` только запрошенных id
+      // (`group_handler.go` Users). Обёртки `{users}` нет — прежняя подделка
+      // её добавляла и прятала, что добор карточек возвращал пустоту.
       const requested = new Set(String(query?.ids ?? '').split(',').filter(Boolean).map(Number))
-      return { users: users.filter((u) => requested.has(u.id)) } as unknown as R
+      return users.filter((u) => requested.has(u.id)) as unknown as R
     },
   } as unknown as RestClient
   return { rest, calls }

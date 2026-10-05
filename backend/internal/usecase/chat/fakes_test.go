@@ -70,6 +70,14 @@ type store struct {
 	usernames map[int64]string               // userID -> users.username (seedUsername)
 	readMarks map[int64]map[int64][]readMark // chatID -> userID -> история горизонта чтения
 
+	// public/bans/roles — доступ к чату (ChatRepo.Access): chats.is_public,
+	// chat_bans, роль строки chat_members (нет записи — member).
+	public map[int64]bool
+	bans   map[int64]map[int64]bool
+	roles  map[int64]map[int64]string
+	// avatars — mediaID -> чьё это фото профиля (MediaAccessRepo.AvatarOwners).
+	avatars map[int64][]int64
+
 	// discussionChat — channelID -> текущая привязанная группа обсуждения
 	// (chats.discussion_chat_id в реальной БД); 0/отсутствие — не привязана.
 	// Заполняется тестами напрямую (seedDiscussion), как и chatType.
@@ -545,13 +553,77 @@ func (r fakeChats) MaxSeq(_ context.Context, chatID int64) (int64, error) {
 	return r.s.chatSeq[chatID], nil
 }
 
-func (r fakeChats) ClearedSeq(_ context.Context, chatID, userID int64) (int64, error) {
+// Access — снимок доступа из store (chats.is_public, chat_bans, роль).
+func (r fakeChats) Access(_ context.Context, chatID, userID int64) (domain.ChatAccess, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
-	if m := r.s.members[chatID][userID]; m != nil {
-		return m.clearedSeq, nil
+	typ, ok := r.s.chatType[chatID]
+	if !ok {
+		return domain.ChatAccess{}, domain.ErrNotFound
 	}
-	return 0, nil
+	a := domain.ChatAccess{Type: typ, Public: r.s.public[chatID], Banned: r.s.bans[chatID][userID]}
+	if r.s.members[chatID][userID] != nil {
+		a.Member, a.Role = true, domain.RoleMember
+		if role := r.s.roles[chatID][userID]; role != "" {
+			a.Role = role
+		}
+	}
+	return a, nil
+}
+
+// clearedOf — горизонт очистки участника (cleared_max_seq); 0 — не участник
+// или ничего не очищено. Звать под s.mu.
+func (s *store) clearedOf(chatID, userID int64) int64 {
+	if m := s.members[chatID][userID]; m != nil {
+		return m.clearedSeq
+	}
+	return 0
+}
+
+// seesLocked — тот же предикат видимости, что у хранилища (messageVisibleTo),
+// в объёме фейка: не удалено, не скрыто зрителем, выше его горизонта
+// очистки. Звать под s.mu.
+func (s *store) seesLocked(viewerID int64, m domain.Message) bool {
+	if m.Deleted || m.Seq <= s.clearedOf(m.ChatID, viewerID) {
+		return false
+	}
+	return s.hidden == nil || s.hidden[viewerID] == nil || !s.hidden[viewerID][m.ID]
+}
+
+// seedPublic помечает чат публичным (chats.is_public).
+func (s *store) seedPublic(chatID int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.public == nil {
+		s.public = map[int64]bool{}
+	}
+	s.public[chatID] = true
+}
+
+// seedBan кладёт строку chat_bans.
+func (s *store) seedBan(chatID, userID int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.bans == nil {
+		s.bans = map[int64]map[int64]bool{}
+	}
+	if s.bans[chatID] == nil {
+		s.bans[chatID] = map[int64]bool{}
+	}
+	s.bans[chatID][userID] = true
+}
+
+// seedRole задаёт роль участника (chat_members.role).
+func (s *store) seedRole(chatID, userID int64, role string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.roles == nil {
+		s.roles = map[int64]map[int64]string{}
+	}
+	if s.roles[chatID] == nil {
+		s.roles[chatID] = map[int64]string{}
+	}
+	s.roles[chatID][userID] = role
 }
 
 func (r fakeChats) SetClearedSeq(_ context.Context, chatID, userID, seq int64) error {
@@ -760,9 +832,10 @@ func (r fakeMsgs) GetByID(_ context.Context, msgID int64) (domain.Message, error
 	return domain.Message{}, domain.ErrNotFound
 }
 
-func (r fakeMsgs) GetAround(_ context.Context, chatID, userID, centerSeq int64, limit int, _ *int64, clearedSeq int64) ([]domain.Message, error) {
+func (r fakeMsgs) GetAround(_ context.Context, chatID, userID, centerSeq int64, limit int, _ *int64) ([]domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
+	clearedSeq := r.s.clearedOf(chatID, userID)
 	if limit <= 0 {
 		limit = 40
 	}
@@ -1196,6 +1269,25 @@ func (r fakeMsgs) SeqsByIDs(_ context.Context, ids []int64) (map[int64]int64, er
 	return out, nil
 }
 
+// VisibleIDs — seesLocked по каждому ключу (тот же предикат, что у истории фейка).
+func (r fakeMsgs) VisibleIDs(_ context.Context, viewerID int64, ids []int64) (map[int64]bool, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	want := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+	out := map[int64]bool{}
+	for _, msgs := range r.s.messages {
+		for _, m := range msgs {
+			if want[m.ID] && r.s.seesLocked(viewerID, m) {
+				out[m.ID] = true
+			}
+		}
+	}
+	return out, nil
+}
+
 func (r fakeMsgs) GetBySeqs(_ context.Context, chatID int64, seqs []int64) ([]domain.Message, error) {
 	want := map[int64]bool{}
 	for _, s := range seqs {
@@ -1341,9 +1433,10 @@ func (r fakeMsgs) HideForUser(_ context.Context, userID, msgID int64) error {
 	return nil
 }
 
-func (r fakeMsgs) GetHistory(_ context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, _ *int64, clearedSeq int64, tag string) ([]domain.Message, error) {
+func (r fakeMsgs) GetHistory(_ context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, _ *int64, tag string) ([]domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
+	clearedSeq := r.s.clearedOf(chatID, userID)
 	all := r.s.messages[chatID]
 	isHidden := func(m domain.Message) bool {
 		if m.Deleted {
@@ -1394,7 +1487,7 @@ func (r fakeMsgs) GetHistory(_ context.Context, chatID, userID, offsetSeq int64,
 	return picked, nil
 }
 
-func (r fakeMsgs) ListThread(_ context.Context, chatID, threadRootID int64, offset, limit int) ([]domain.Message, error) {
+func (r fakeMsgs) ListThread(_ context.Context, chatID, _, threadRootID int64, offset, limit int) ([]domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	var picked []domain.Message
@@ -1591,9 +1684,10 @@ func (r fakeMsgs) ThreadReplyCounts(_ context.Context, chatID int64, rootIDs []i
 	return out, nil
 }
 
-func (r fakeMsgs) CountMessages(_ context.Context, chatID, userID, clearedSeq int64) (int, error) {
+func (r fakeMsgs) CountMessages(_ context.Context, chatID, userID int64) (int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
+	clearedSeq := r.s.clearedOf(chatID, userID)
 	n := 0
 	for _, m := range r.s.messages[chatID] {
 		if m.Deleted || m.Seq <= clearedSeq || (r.s.hidden != nil && r.s.hidden[userID] != nil && r.s.hidden[userID][m.ID]) {
@@ -1902,6 +1996,12 @@ func (r fakeMedia) DimsByIDs(_ context.Context, ids []int64) (map[int64]domain.M
 		}
 	}
 	return out, nil
+}
+
+func (r fakeMedia) AvatarOwners(_ context.Context, mediaID int64) ([]int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	return r.s.avatars[mediaID], nil
 }
 
 func (r fakeMedia) OwnerID(_ context.Context, mediaID int64) (int64, error) {

@@ -35,7 +35,8 @@ import (
 // пространстве чисел, поэтому утёкший ключ почти наверняка попадёт в
 // существующее сообщение другого чата — молчаливая подмена вместо промаха.
 func (i *Interactor) MessagesWire(ctx context.Context, viewerID int64, msgs []domain.Message) ([]domain.MTMessage, error) {
-	return i.messagesWire(ctx, viewerID, msgs, i.chatKinds(ctx, msgs), nil)
+	kinds := i.chatKinds(ctx, msgs)
+	return i.messagesWire(ctx, viewerID, msgs, kinds, i.postAuthorsShown(ctx, kinds), nil)
 }
 
 // chatKinds — вид чата каждого сообщения пачки (chatID ->
@@ -59,6 +60,33 @@ func (i *Interactor) chatKinds(ctx context.Context, msgs []domain.Message) map[i
 	return kinds
 }
 
+// postAuthorsShown — у каких каналов пачки автор-человек поста виден
+// (channel.signature_profiles), по одному запросу на КАНАЛ. Остальные чаты в
+// карту не попадают: вне поста вопрос не стоит. Сбой чтения карточки — автор
+// скрыт: показать лишнего хуже, чем не показать подпись.
+func (i *Interactor) postAuthorsShown(ctx context.Context, kinds map[int64]string) map[int64]bool {
+	out := make(map[int64]bool, 1)
+	if i.groups == nil {
+		return out
+	}
+	for chatID, kind := range kinds {
+		if kind != domain.ChatTypeChannel {
+			continue
+		}
+		if c, err := i.groups.Card(ctx, chatID, 0); err == nil {
+			out[chatID] = c.SignatureProfiles
+		}
+	}
+	return out
+}
+
+// postAuthorHidden — автор сообщения m не виден подписчикам: это пост
+// вещательного канала без подписей профилями. Его карточка не едет и
+// вектором users — иначе подписчик узнал бы автора и без from_id.
+func postAuthorHidden(m domain.Message, kinds map[int64]string, shown map[int64]bool) bool {
+	return kinds[m.ChatID] == domain.ChatTypeChannel && !shown[m.ChatID]
+}
+
 // messagesWire — тот же перевод, но с уже готовыми видами чатов и тредами.
 //
 // threads — тред по КЛЮЧУ СТРОКИ сообщения (см. threadReplies); nil значит «у
@@ -70,7 +98,7 @@ func (i *Interactor) chatKinds(ctx context.Context, msgs []domain.Message) map[i
 // адресуют сообщения по позиции.
 func (i *Interactor) messagesWire(
 	ctx context.Context, viewerID int64, msgs []domain.Message,
-	kinds map[int64]string, threads map[int64]domain.MessageReplies,
+	kinds map[int64]string, shown map[int64]bool, threads map[int64]domain.MessageReplies,
 ) ([]domain.MTMessage, error) {
 	ext, err := i.ExternalizeThreadRoots(ctx, msgs)
 	if err != nil {
@@ -97,8 +125,9 @@ func (i *Interactor) messagesWire(
 			peers[m.ChatID] = peer
 		}
 		out = append(out, m.ToWire(domain.MessageContext{
-			Peer: domain.NewPeer(peer),
-			Post: kinds[m.ChatID] == domain.ChatTypeChannel,
+			Peer:            domain.NewPeer(peer),
+			Post:            kinds[m.ChatID] == domain.ChatTypeChannel,
+			PostAuthorShown: shown[m.ChatID],
 			// Автор строки — ЗРИТЕЛЬ. Именно строки, а не проводного from_id: у
 			// сообщения от лица канала автором на проводе становится канал, но
 			// отправил его всё равно человек.

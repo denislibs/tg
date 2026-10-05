@@ -85,6 +85,10 @@ func (r *TopicsRepo) EnsureGeneralTopic(ctx context.Context, chatID, createdBy i
 // для зрителя userID (unread/mentions/mute/last_out — как обычный dialog-ряд).
 // Порядок (как в tweb): General первой, затем закреплённые (по pos), затем
 // остальные (свежие сверху).
+//
+// Последнее сообщение темы и её счётчики — только из видимого зрителю
+// (messageVisibleTo): после «очистить историю» тема не держит старое превью и
+// бейджи, скрытое у себя и скрытая предыстория в них тоже не входят.
 func (r *TopicsRepo) ListByChat(ctx context.Context, chatID, userID int64) ([]domain.TopicRow, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx, `
 		SELECT t.id, t.chat_id, t.root_msg_id, COALESCE(rm.seq, 0), t.title, t.icon_color, t.icon_emoji,
@@ -107,14 +111,14 @@ func (r *TopicsRepo) ListByChat(ctx context.Context, chatID, userID int64) ([]do
 		  LEFT JOIN LATERAL (
 		    SELECT m.id, m.created_at, m.seq FROM messages m
 		     WHERE m.chat_id = t.chat_id AND (m.thread_root_id = t.root_msg_id OR m.id = t.root_msg_id)
-		       AND m.deleted_at IS NULL
+		       AND `+messageVisibleTo("m", "$2")+`
 		     ORDER BY m.seq DESC LIMIT 1
 		  ) lm ON true
 		  LEFT JOIN LATERAL (
 		    -- непрочитанные темы: чужие сообщения треда с seq > last_read_seq
 		    SELECT count(*) AS n FROM messages m
 		     WHERE m.chat_id = t.chat_id AND m.thread_root_id = t.root_msg_id
-		       AND m.deleted_at IS NULL AND m.sender_id <> $2
+		       AND `+messageVisibleTo("m", "$2")+` AND m.sender_id <> $2
 		       AND m.seq > COALESCE(st.last_read_seq, 0)
 		  ) unr ON true
 		  LEFT JOIN LATERAL (
@@ -123,7 +127,7 @@ func (r *TopicsRepo) ListByChat(ctx context.Context, chatID, userID int64) ([]do
 		    SELECT count(*) AS n FROM message_mentions mm
 		     JOIN messages m ON m.id = mm.message_id
 		     WHERE mm.chat_id = t.chat_id AND mm.user_id = $2 AND mm.unread
-		       AND m.thread_root_id = t.root_msg_id AND m.deleted_at IS NULL
+		       AND m.thread_root_id = t.root_msg_id AND `+messageVisibleTo("m", "$2")+`
 		       AND mm.seq > COALESCE(st.last_read_seq, 0)
 		  ) men ON true
 		 WHERE t.chat_id = $1

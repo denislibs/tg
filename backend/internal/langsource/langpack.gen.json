@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 61,
+      "version": 63,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -1442,6 +1442,10 @@
           "value": "Missed"
         },
         {
+          "key": "Chat.Subscribe",
+          "value": "SUBSCRIBE"
+        },
+        {
           "key": "Chat.Title.Comments",
           "forms": {
             "one_value": "%d Comment",
@@ -2363,6 +2367,10 @@
         {
           "key": "EditAdminRights",
           "value": "Edit admin rights"
+        },
+        {
+          "key": "EditAdminSendAnonymously",
+          "value": "Remain Anonymous"
         },
         {
           "key": "EditAdminWhatCanDo",
@@ -3597,6 +3605,10 @@
         {
           "key": "ManageLinks.DeleteAll.Confirm",
           "value": "Are you sure you want to delete all revoked links?"
+        },
+        {
+          "key": "ManageTopicsPermission",
+          "value": "Manage topics"
         },
         {
           "key": "MarkAsRead",
@@ -7343,7 +7355,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 61,
+      "version": 63,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -8839,6 +8851,10 @@
         {
           "key": "Chat.Service.Call.Missed",
           "value": "Пропущенный"
+        },
+        {
+          "key": "Chat.Subscribe",
+          "value": "ПОДПИСАТЬСЯ"
         },
         {
           "key": "NoRecentCalls",
@@ -13936,6 +13952,14 @@
         {
           "key": "EditAdminAddAdmins",
           "value": "Назначение администраторов"
+        },
+        {
+          "key": "EditAdminSendAnonymously",
+          "value": "Анонимность"
+        },
+        {
+          "key": "ManageTopicsPermission",
+          "value": "Управление темами"
         },
         {
           "key": "EditAdminCantEdit",

@@ -321,6 +321,12 @@ func TestChatsRepo_ForgetUnread(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// Удаляемые сообщения существуют (мягкое удаление строку оставляет):
+	// поле зрения участника считается по самой строке (messageInViewOf).
+	msgs := NewMessagesRepo(pool)
+	for i := 0; i < 10; i++ {
+		insertMsg(t, msgs, chatID, a, "text", "m")
+	}
 
 	// seq 2 от a: b его не читал — минус один; у автора нуль и остаётся.
 	if err := repo.ForgetUnread(ctx, chatID, a, 2); err != nil {
@@ -493,22 +499,22 @@ func TestMessagesRepo_SeqAndInsertAndHistory(t *testing.T) {
 		}
 	}
 
-	n, _ := msgs.CountMessages(ctx, chatID, a, 0)
+	n, _ := msgs.CountMessages(ctx, chatID, a)
 	if n != 3 {
 		t.Fatalf("CountMessages = %d, want 3", n)
 	}
 
-	hist, err := msgs.GetHistory(ctx, chatID, a, 0, 0, 10, nil, 0, "")
+	hist, err := msgs.GetHistory(ctx, chatID, a, 0, 0, 10, nil, "")
 	if err != nil || len(hist) != 3 || hist[0].Seq != 3 {
 		t.Fatalf("history from end: %+v err=%v", hist, err)
 	}
 
-	older, _ := msgs.GetHistory(ctx, chatID, a, 3, 1, 2, nil, 0, "")
+	older, _ := msgs.GetHistory(ctx, chatID, a, 3, 1, 2, nil, "")
 	if len(older) != 2 || older[0].Seq != 3 || older[1].Seq != 2 {
 		t.Fatalf("older window: %+v", older)
 	}
 
-	newer, _ := msgs.GetHistory(ctx, chatID, a, 1, -1, 10, nil, 0, "")
+	newer, _ := msgs.GetHistory(ctx, chatID, a, 1, -1, 10, nil, "")
 	if len(newer) != 2 || newer[0].Seq != 2 {
 		t.Fatalf("newer window: %+v", newer)
 	}
@@ -589,7 +595,7 @@ func TestMessagesRepo_Thread(t *testing.T) {
 		t.Fatalf("normal message ThreadRootID = %v; want nil", normal.ThreadRootID)
 	}
 
-	thread, err := msgs.ListThread(ctx, chatID, root, 0, 50)
+	thread, err := msgs.ListThread(ctx, chatID, a, root, 0, 50)
 	if err != nil {
 		t.Fatalf("ListThread: %v", err)
 	}
@@ -611,7 +617,7 @@ func TestMessagesRepo_Thread(t *testing.T) {
 	}
 
 	// GetHistory still scans correctly and the normal message has nil thread root.
-	hist, err := msgs.GetHistory(ctx, chatID, a, 0, 0, 10, nil, 0, "")
+	hist, err := msgs.GetHistory(ctx, chatID, a, 0, 0, 10, nil, "")
 	if err != nil || len(hist) != 3 {
 		t.Fatalf("GetHistory = %+v, %v; want 3", hist, err)
 	}
@@ -853,7 +859,9 @@ func TestMediaAccessRepo_StoryMedia(t *testing.T) {
 	createPrivate(t, pool, author, partner)
 	createPrivate(t, pool, author, selected)
 
-	// A 'contacts' story: visible to any chat partner, not to strangers.
+	// A 'contacts' story: visible to the author's contacts (как privacy.Check —
+	// книга автора), not to a mere chat partner or a stranger (A5-18).
+	mustExec(t, pool, `INSERT INTO contacts (owner_id, user_id, first_name) VALUES ($1,$2,'K')`, author, partner)
 	contactsMedia := seedMedia(t, pool, author, "story-contacts")
 	_, _, err := stories.Create(ctx, domain.Story{
 		AuthorID: author, MediaID: contactsMedia, Privacy: "contacts",
@@ -866,7 +874,10 @@ func TestMediaAccessRepo_StoryMedia(t *testing.T) {
 		t.Fatal("author should access own story media")
 	}
 	if ok, _ := repo.CanAccess(ctx, partner, contactsMedia); !ok {
-		t.Fatal("chat partner should access a 'contacts' story's media")
+		t.Fatal("author's contact should access a 'contacts' story's media")
+	}
+	if ok, _ := repo.CanAccess(ctx, selected, contactsMedia); ok {
+		t.Fatal("chat partner outside the author's contacts should not access a 'contacts' story's media")
 	}
 	if ok, _ := repo.CanAccess(ctx, stranger, contactsMedia); ok {
 		t.Fatal("stranger should not access a 'contacts' story's media")

@@ -457,8 +457,12 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			_ = c.svc.Typing(ctx, chatID, c.userID, domain.SendMessageActionByTag(d.Action.Underscore))
 		}
 	case "subscribe_channel":
+		// Топик пира — живые посты, правки, просмотры и счётчики комментариев:
+		// подписывается только тот, кто чат читает (участник либо публичный, не
+		// бан). Иначе посторонний получал бы приватный канал по id. Отказ
+		// молчаливый, как у любого кадра с неверными данными.
 		var d peerData
-		if json.Unmarshal(f.D, &d) == nil && d.PeerID.IsAnyChat() {
+		if json.Unmarshal(f.D, &d) == nil && d.PeerID.IsAnyChat() && c.svc.CanSubscribeChannel(ctx, c.userID, d.PeerID) {
 			c.hub.SubscribeChannel(ctx, d.PeerID, c)
 		}
 	case "unsubscribe_channel":

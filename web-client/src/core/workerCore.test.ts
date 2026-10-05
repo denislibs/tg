@@ -463,9 +463,10 @@ describe('createWorkerCore(): карточки пиров — воркер пу�
   it('ответ на объявленный пробел зеркала уходит вкладкам операцией upsert', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
       if (String(url).includes('/users?ids=2')) {
-        return new Response(JSON.stringify({
-          users: [{ _: 'user', id: 2, username: 'bob', first_name: 'Боб', photo: { _: 'userProfilePhoto', photo_id: 9 } }],
-        }), { status: 200 })
+        // Ответ ручки — голый Vector<User>, без обёртки `{users}`.
+        return new Response(JSON.stringify([
+          { _: 'user', id: 2, username: 'bob', first_name: 'Боб', photo: { _: 'userProfilePhoto', photo_id: 9 } },
+        ]), { status: 200 })
       }
       throw new Error('unexpected fetch ' + String(url))
     }))
