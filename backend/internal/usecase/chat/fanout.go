@@ -175,3 +175,24 @@ func (i *Interactor) publishMessageDelivery(
 	}
 	_ = i.publisher.PublishToUsers(ctx, uids, frames)
 }
+
+// notifyNewMessage — пуш-уведомления о новом сообщении получателям (кроме
+// автора). Упомянутым и тем, кому ответили (mentions — те же, что пометил
+// fanOutNewMessage), мьют не мешает; тема сообщения — корень его треда.
+// Звать после коммита, не для тихой отправки.
+func (i *Interactor) notifyNewMessage(ctx context.Context, msg domain.Message, senderID int64, recipients []int64, mentions map[int64]bool) {
+	if i.notifier == nil {
+		return
+	}
+	var topic int64
+	if msg.ThreadRootID != nil {
+		topic = *msg.ThreadRootID
+	}
+	for _, uid := range recipients {
+		if uid == senderID {
+			continue
+		}
+		peer, _ := i.ChatIDToPeer(ctx, uid, msg.ChatID)
+		i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.Seq, msg.SenderID, msg.Text, peer, mentions[uid], topic)
+	}
+}

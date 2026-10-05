@@ -2165,12 +2165,19 @@ func (p *fakePublisher) reset() {
 type fakeNotifier struct {
 	mu         sync.Mutex
 	recipients []int64
+	mentioned  map[int64]bool
 }
 
-func (n *fakeNotifier) NotifyNewMessage(_ context.Context, recipientID, _, _, _ int64, _ string, _ domain.PeerID) {
+func (n *fakeNotifier) NotifyNewMessage(_ context.Context, recipientID, _, _, _ int64, _ string, _ domain.PeerID, mentioned bool, _ int64) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.recipients = append(n.recipients, recipientID)
+	if mentioned {
+		if n.mentioned == nil {
+			n.mentioned = map[int64]bool{}
+		}
+		n.mentioned[recipientID] = true
+	}
 }
 
 // newInteractor wires the interactor against a fresh in-memory store.

@@ -604,13 +604,8 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		// Кэш диалогов + realtime-кадры получателям — общий с доставкой
 		// зеркала поста канала путь (см. publishMessageDelivery/fanout.go).
 		i.publishMessageDelivery(ctx, msg, in.SenderID, recipients, ptsByUser, mentions)
-		if i.notifier != nil && !in.Silent {
-			for _, uid := range recipients {
-				if uid != in.SenderID {
-					peer, _ := i.ChatIDToPeer(ctx, uid, msg.ChatID)
-					i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.Seq, msg.SenderID, msg.Text, peer)
-				}
-			}
+		if !in.Silent {
+			i.notifyNewMessage(ctx, msg, in.SenderID, recipients, mentions)
 		}
 		// Отправка сообщения снимает черновик чата (Telegram-семантика);
 		// служебное — например, лог звонка — черновика не трогает.

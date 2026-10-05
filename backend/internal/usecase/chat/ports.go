@@ -626,7 +626,10 @@ type ChannelPublisher interface {
 type PushNotifier interface {
 	// peer — ключ пира ГЛАЗАМИ получателя (у приватного диалога он у сторон
 	// разный); chatID остаётся внутренним и наружу из пуша не выходит.
-	NotifyNewMessage(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID)
+	// mentioned — получатель упомянут или ему ответили (pFlags.mentioned):
+	// это пробивает мьют чата, типа и темы, как в Telegram. topicRootID —
+	// корень темы (ключ topic_user_state, 0 — вне темы): мьют темы гасит пуш.
+	NotifyNewMessage(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, mentioned bool, topicRootID int64)
 }
 
 // --- DTOs ---
