@@ -139,11 +139,12 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		// авто-джойн, как PostComment (tweb: sendMessage в тред вступает в группу).
 		// Вступление — общей точкой (admit): забаненный ответом в тред не
 		// возвращается.
-		// ВРЕМЕННО до влития Ф-1а (fix/backend-1a-access): IsDiscussionGroup →
-		// RequireDiscussionRead(in.ChatID).
+		// Вступать может только читатель обсуждения: читает группу или её
+		// канал и не забанен в группе (RequireDiscussionRead).
 		joined := false
 		if in.ThreadRootID != nil && i.groups != nil {
-			if disc, e := i.groups.IsDiscussionGroup(ctx, in.ChatID); e == nil && disc {
+			if disc, e := i.groups.IsDiscussionGroup(ctx, in.ChatID); e == nil && disc &&
+				i.RequireDiscussionRead(ctx, in.ChatID, in.SenderID) == nil {
 				if _, e := i.admit(ctx, in.ChatID, in.SenderID, in.SenderID, admitSelf); e == nil {
 					joined = true
 				}

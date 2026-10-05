@@ -877,9 +877,8 @@ func (c groupChats) NextMention(context.Context, int64, int64, int64) (int64, er
 	return 0, domain.ErrNotFound
 }
 func (c groupChats) MaxSeq(context.Context, int64) (int64, error) { return 0, nil }
-func (c groupChats) Access(ctx context.Context, chatID, userID int64) (domain.ChatAccess, error) {
-	typ, _ := c.ChatType(ctx, chatID)
-	return c.fg.access(chatID, userID, typ), nil
+func (c groupChats) Access(_ context.Context, chatID, userID int64) (domain.ChatAccess, error) {
+	return c.fg.access(chatID, userID, "group"), nil
 }
 func (c groupChats) SetClearedSeq(context.Context, int64, int64, int64) error { return nil }
 func (c groupChats) ChatType(_ context.Context, chatID int64) (string, error) {

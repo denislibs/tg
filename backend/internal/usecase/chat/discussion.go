@@ -104,7 +104,13 @@ func (i *Interactor) DiscussionCandidates(ctx context.Context, actorID int64) ([
 // канала (тредить действительно некуда). The commenter is auto-joined to the
 // discussion group (idempotent) before posting.
 func (i *Interactor) PostComment(ctx context.Context, channelID, postID, userID int64, text, clientMsgID string) (domain.Message, error) {
-	disc, _ := i.groups.GetDiscussion(ctx, channelID)
+	// Комментировать может тот, кто читает канал и не забанен в группе
+	// обсуждения — до ленивой дозаводки зеркала, чтобы посторонний не плодил
+	// зеркала постов приватного канала.
+	disc, err := i.RequireChannelCommentsRead(ctx, channelID, userID)
+	if err != nil {
+		return domain.Message{}, err
+	}
 	if disc == 0 {
 		return domain.Message{}, domain.ErrNotFound
 	}
@@ -131,8 +137,6 @@ func (i *Interactor) PostComment(ctx context.Context, channelID, postID, userID 
 	}
 	// Автовступление комментатора — общей точкой: забаненный в группе
 	// обсуждения комментарием не возвращается.
-	// ВРЕМЕННО до влития Ф-1а (fix/backend-1a-access): перед admit —
-	// RequireChannelCommentsRead(channelID).
 	if _, err := i.admit(ctx, disc, userID, userID, admitSelf); err != nil {
 		return domain.Message{}, err
 	}
