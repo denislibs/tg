@@ -792,16 +792,25 @@ func (r fakeMsgs) SetTranscription(_ context.Context, msgID int64, text string) 
 	return domain.Message{}, domain.ErrNotFound
 }
 
-func (r fakeMsgs) LastMessageAt(_ context.Context, chatID, senderID int64) (time.Time, error) {
+func (r fakeMsgs) LastMessageAt(_ context.Context, chatID, senderID int64) (time.Time, int64, int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	msgs := r.s.messages[chatID]
 	for i := len(msgs) - 1; i >= 0; i-- {
 		if msgs[i].SenderID == senderID && !msgs[i].Deleted {
-			return msgs[i].CreatedAt, nil
+			if msgs[i].GroupedID == nil {
+				return msgs[i].CreatedAt, 0, 0, nil
+			}
+			g, size := *msgs[i].GroupedID, 0
+			for _, m := range msgs {
+				if m.SenderID == senderID && !m.Deleted && m.GroupedID != nil && *m.GroupedID == g {
+					size++
+				}
+			}
+			return msgs[i].CreatedAt, g, size, nil
 		}
 	}
-	return time.Time{}, domain.ErrNotFound
+	return time.Time{}, 0, 0, domain.ErrNotFound
 }
 
 func (r fakeMsgs) SavedDialogs(_ context.Context, _, _ int64) ([]domain.SavedDialogRecord, error) {

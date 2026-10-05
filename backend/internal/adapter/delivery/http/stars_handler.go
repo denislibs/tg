@@ -154,12 +154,8 @@ func (h *ChatHandler) SendGift(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	msg, _, err := h.svc.SendGift(r.Context(), h.meID(r), b.ToUserID, b.GiftID, b.Message, b.Anonymous)
-	if errors.Is(err, domain.ErrForbidden) {
+	if errors.Is(err, domain.ErrPaidRequired) {
 		writeError(w, http.StatusPaymentRequired, "not enough stars")
-		return
-	}
-	if errors.Is(err, domain.ErrTooLong) {
-		writeError(w, http.StatusBadRequest, "message too long")
 		return
 	}
 	if errors.Is(err, domain.ErrNotFound) {
@@ -167,7 +163,7 @@ func (h *ChatHandler) SendGift(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not send gift")
+		writeSendError(w, err, "gift not found")
 		return
 	}
 	// Ответ — само СООБЩЕНИЕ. Баланса рядом больше нет: его владелец —

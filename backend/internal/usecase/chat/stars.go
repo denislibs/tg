@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"unicode/utf8"
 
@@ -62,6 +63,12 @@ func (i *Interactor) GiftCatalog(ctx context.Context) ([]domain.StarGift, error)
 // SendGift дарит подарок пользователю: списывает звёзды у отправителя, выдаёт
 // подарок получателю и отправляет ему в ЛС сообщение типа 'gift'. Возвращает
 // сообщение и новый баланс отправителя.
+//
+// Порядок — как у payments.sendStarsForm: сначала все проверки получателя
+// (блок, приватность, удалённый аккаунт — гейты Send), потом списание. Списание,
+// выдача, журнал движения звёзд и само сообщение — одна транзакция (prepare в
+// Send): отказ на любом шаге не оставляет ни списанных звёзд, ни подарка в
+// профиле того, кто отправителя заблокировал.
 func (i *Interactor) SendGift(ctx context.Context, fromID, toID, giftID int64, message string, anonymous bool) (domain.Message, int64, error) {
 	if i.stars == nil {
 		return domain.Message{}, 0, domain.ErrNotFound
@@ -77,32 +84,43 @@ func (i *Interactor) SendGift(ctx context.Context, fromID, toID, giftID int64, m
 	if gift.SoldOut {
 		return domain.Message{}, 0, domain.ErrForbidden
 	}
-	// Списываем звёзды атомарно (ErrForbidden при нехватке средств).
-	bal, err := i.stars.AddBalance(ctx, fromID, -gift.PriceStars)
-	if err != nil {
-		return domain.Message{}, 0, err
-	}
-	_ = i.stars.DecRemains(ctx, giftID)
-	// from при анонимном подарке всё равно хранится (для «Разблокировать»
-	// отправителя владельцем), но раскрытие имени контролирует read-модель.
-	from := fromID
-	savedID, err := i.stars.SaveGift(ctx, toID, &from, giftID, message, anonymous)
-	if err != nil {
-		return domain.Message{}, 0, err
-	}
 	chatID, err := i.CreatePrivateChat(ctx, fromID, toID)
 	if err != nil {
 		return domain.Message{}, 0, err
 	}
+	var bal int64
 	msg, err := i.Send(ctx, SendInput{
-		ChatID: chatID, SenderID: fromID, Type: "gift", GiftID: &savedID,
+		ChatID: chatID, SenderID: fromID, Type: "gift",
+		prepare: func(ctx context.Context, in *SendInput) error {
+			// Списываем звёзды атомарно; нехватка — ErrPaidRequired (отличить
+			// от запретов гейтов отправки).
+			b, e := i.stars.AddBalance(ctx, fromID, -gift.PriceStars)
+			if errors.Is(e, domain.ErrForbidden) {
+				return domain.ErrPaidRequired
+			}
+			if e != nil {
+				return e
+			}
+			bal = b
+			if e := i.stars.DecRemains(ctx, giftID); e != nil {
+				return e
+			}
+			// from при анонимном подарке всё равно хранится (для «Разблокировать»
+			// отправителя владельцем), но раскрытие имени контролирует read-модель.
+			from := fromID
+			savedID, e := i.stars.SaveGift(ctx, toID, &from, giftID, message, anonymous)
+			if e != nil {
+				return e
+			}
+			in.GiftID = &savedID
+			return i.stars.RecordTx(ctx, fromID, -gift.PriceStars, "gift_sent", gift.Title, &toID)
+		},
 	})
 	if err != nil {
 		return domain.Message{}, 0, err
 	}
-	_ = i.stars.RecordTx(ctx, fromID, -gift.PriceStars, "gift_sent", gift.Title, &toID)
 	i.publishBalance(ctx, fromID, bal)
-	if info, e := i.stars.GiftInfo(ctx, savedID, fromID); e == nil {
+	if info, e := i.stars.GiftInfo(ctx, *msg.GiftID, fromID); e == nil {
 		msg.Gift = &info
 	}
 	return msg, bal, nil

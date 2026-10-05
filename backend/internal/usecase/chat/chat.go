@@ -226,6 +226,12 @@ func (i *Interactor) CreatePrivateChat(ctx context.Context, me, other int64) (in
 	} else if !errors.Is(err, domain.ErrNotFound) {
 		return 0, err
 	}
+	// С удалённым аккаунтом новой переписки не завести (Telegram
+	// INPUT_USER_DEACTIVATED); старая остаётся, но писать в неё нельзя
+	// (checkPrivateSendPrivacy).
+	if other != me && i.userCard(ctx, other).Deleted() {
+		return 0, domain.ErrForbidden
+	}
 
 	var chatID int64
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {

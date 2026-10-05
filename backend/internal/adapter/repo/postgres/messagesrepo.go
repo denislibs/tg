@@ -1038,16 +1038,25 @@ func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq
 }
 
 // LastMessageAt is the newest non-deleted message time by senderID in chatID
-// (slowmode check); domain.ErrNotFound when they haven't posted yet.
-func (r *MessagesRepo) LastMessageAt(ctx context.Context, chatID, senderID int64) (time.Time, error) {
+// (slowmode check) plus its album: grouped_id (0 — not in one) and how many of
+// the sender's live messages in the chat carry it. domain.ErrNotFound when they
+// haven't posted yet.
+func (r *MessagesRepo) LastMessageAt(ctx context.Context, chatID, senderID int64) (time.Time, int64, int, error) {
 	var at time.Time
+	var grouped int64
+	var size int
 	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT created_at FROM messages WHERE chat_id=$1 AND sender_id=$2 AND deleted_at IS NULL
-		 ORDER BY seq DESC LIMIT 1`, chatID, senderID).Scan(&at)
+		`SELECT m.created_at, COALESCE(m.grouped_id, 0),
+		        CASE WHEN m.grouped_id IS NULL THEN 0 ELSE (
+		          SELECT count(*) FROM messages g
+		           WHERE g.chat_id = m.chat_id AND g.sender_id = m.sender_id
+		             AND g.grouped_id = m.grouped_id AND g.deleted_at IS NULL) END
+		   FROM messages m WHERE m.chat_id=$1 AND m.sender_id=$2 AND m.deleted_at IS NULL
+		  ORDER BY m.seq DESC LIMIT 1`, chatID, senderID).Scan(&at, &grouped, &size)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return time.Time{}, domain.ErrNotFound
+		return time.Time{}, 0, 0, domain.ErrNotFound
 	}
-	return at, err
+	return at, grouped, size, err
 }
 
 // SavedDialogs groups the saved-messages chat by forward origin («Избранное» →
