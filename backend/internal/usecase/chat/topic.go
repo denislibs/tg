@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"unicode/utf8"
 
@@ -14,12 +15,13 @@ import (
 
 const maxTopicTitle = 128
 
-// SetForum включает/выключает темы у группы (право CHANGE_INFO, как в tweb).
+// SetForum включает/выключает темы у группы — только владелец (tweb hasRights
+// 'toggle_forum': у не-создателя false).
 func (i *Interactor) SetForum(ctx context.Context, chatID, actorID int64, enabled bool) error {
 	if i.topics == nil {
 		return domain.ErrNotFound
 	}
-	if err := i.requireRight(ctx, chatID, actorID, domain.RightChangeInfo); err != nil {
+	if err := i.requireCreator(ctx, chatID, actorID); err != nil {
 		return err
 	}
 	if err := i.groups.SetForum(ctx, chatID, enabled); err != nil {
@@ -130,16 +132,38 @@ func (i *Interactor) SetTopicMuted(ctx context.Context, chatID, rootMsgID, userI
 	return i.topics.SetTopicMuted(ctx, chatID, rootMsgID, userID, muted)
 }
 
-// topicManagerOK — создатель темы или админ/создатель чата (mirror tweb manage_topics).
-func (i *Interactor) topicManagerOK(ctx context.Context, t domain.ForumTopicRecord, userID int64) bool {
-	if t.CreatedBy == userID {
-		return true
-	}
+// canManageTopic — порт tweb dialogsStorage.canManageTopic: своя тема
+// (pFlags.my) или право manage_topics (у владельца — всегда). Управлять темами
+// чата можно только из чата: вышедший автор свою тему больше не правит.
+func (i *Interactor) canManageTopic(ctx context.Context, t domain.ForumTopicRecord, userID int64) bool {
 	if i.groups == nil {
 		return false
 	}
-	member, e := i.groups.GetMember(ctx, t.ChatID, userID)
-	return e == nil && (member.Role == "creator" || member.Role == "admin")
+	m, err := i.groups.GetMember(ctx, t.ChatID, userID)
+	if err != nil {
+		return false
+	}
+	return t.CreatedBy == userID || domain.HasRight(m.Role, m.Rights, domain.RightManageTopics)
+}
+
+// checkTopicOpen — в закрытую тему пишет только тот, кто ей управляет (tweb
+// canSendToPeer: closed ∧ ¬canManageTopic → нельзя). Служебные сообщения
+// сервера (in.Action) не гейтятся.
+func (i *Interactor) checkTopicOpen(ctx context.Context, in SendInput) error {
+	if in.ThreadRootID == nil || in.Action != nil || i.topics == nil {
+		return nil
+	}
+	t, err := i.topics.ByRoot(ctx, in.ChatID, *in.ThreadRootID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil // тред — не тема форума
+	}
+	if err != nil {
+		return err
+	}
+	if t.Closed && !i.canManageTopic(ctx, t, in.SenderID) {
+		return domain.ErrForbidden
+	}
+	return nil
 }
 
 // CloseTopic закрывает/открывает тему (создатель темы или админ). General закрыть нельзя.
@@ -154,7 +178,7 @@ func (i *Interactor) CloseTopic(ctx context.Context, topicID, userID int64, clos
 	if t.IsGeneral {
 		return domain.ErrForbidden
 	}
-	if !i.topicManagerOK(ctx, t, userID) {
+	if !i.canManageTopic(ctx, t, userID) {
 		return domain.ErrForbidden
 	}
 	return i.topics.SetClosed(ctx, topicID, closed)
@@ -170,7 +194,7 @@ func (i *Interactor) EditTopic(ctx context.Context, topicID, userID int64, title
 	if err != nil {
 		return err
 	}
-	if !i.topicManagerOK(ctx, t, userID) {
+	if !i.canManageTopic(ctx, t, userID) {
 		return domain.ErrForbidden
 	}
 	title = strings.TrimSpace(title)
@@ -187,7 +211,8 @@ func (i *Interactor) EditTopic(ctx context.Context, topicID, userID int64, title
 	return i.topics.EditTopic(ctx, topicID, title, sanitizeTopicEmoji(iconEmoji), iconColor)
 }
 
-// SetTopicHidden сворачивает/разворачивает тему (право CHANGE_INFO). Разрешено и для General.
+// SetTopicHidden сворачивает/разворачивает тему (canManageTopic, как у tweb
+// пункта «Скрыть»). Разрешено и для General.
 func (i *Interactor) SetTopicHidden(ctx context.Context, topicID, userID int64, hidden bool) error {
 	if i.topics == nil {
 		return domain.ErrNotFound
@@ -196,13 +221,14 @@ func (i *Interactor) SetTopicHidden(ctx context.Context, topicID, userID int64, 
 	if err != nil {
 		return err
 	}
-	if err := i.requireRight(ctx, t.ChatID, userID, domain.RightChangeInfo); err != nil {
-		return err
+	if !i.canManageTopic(ctx, t, userID) {
+		return domain.ErrForbidden
 	}
 	return i.topics.SetHidden(ctx, topicID, hidden)
 }
 
-// SetTopicPinned закрепляет/открепляет тему (право CHANGE_INFO). General и так всегда первая.
+// SetTopicPinned закрепляет/открепляет тему (canManageTopic, как у tweb
+// пункта «Закрепить» темы). General и так всегда первая.
 func (i *Interactor) SetTopicPinned(ctx context.Context, topicID, userID int64, pinned bool) error {
 	if i.topics == nil {
 		return domain.ErrNotFound
@@ -214,8 +240,8 @@ func (i *Interactor) SetTopicPinned(ctx context.Context, topicID, userID int64, 
 	if t.IsGeneral {
 		return domain.ErrForbidden
 	}
-	if err := i.requireRight(ctx, t.ChatID, userID, domain.RightChangeInfo); err != nil {
-		return err
+	if !i.canManageTopic(ctx, t, userID) {
+		return domain.ErrForbidden
 	}
 	return i.topics.SetPinned(ctx, topicID, pinned)
 }

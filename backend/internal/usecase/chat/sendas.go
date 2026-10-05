@@ -23,10 +23,8 @@ func (i *Interactor) isChatAdmin(ctx context.Context, chatID, userID int64) bool
 // For a group it additionally includes:
 //   - the linked discussion channel, when userID is its creator/admin
 //     (posting as the channel that owns the discussion group);
-//   - the group itself, when userID is its creator/admin (anonymous posting).
-//
-// Упрощение vs tweb: Telegram различает анонимных админов отдельным флагом права;
-// у нас анонимный постинг от имени группы доступен любому её админу/владельцу.
+//   - the group itself, when userID is its creator or an admin with the
+//     `anonymous` right (tweb hasRights 'anonymous').
 func (i *Interactor) GetSendAs(ctx context.Context, userID, chatID int64) ([]domain.SendAsPeerRecord, error) {
 	if i.groups == nil {
 		return nil, domain.ErrForbidden
@@ -56,7 +54,7 @@ func (i *Interactor) GetSendAs(ctx context.Context, userID, chatID int64) ([]dom
 		extra = append(extra, ch)
 	}
 	// Сама группа (анонимный админ) → писать от имени группы.
-	if i.isChatAdmin(ctx, chatID, userID) {
+	if m, e := i.groups.GetMember(ctx, chatID, userID); e == nil && domain.HasRight(m.Role, m.Rights, domain.RightAnonymous) {
 		extra = append(extra, chatID)
 	}
 	if len(extra) == 0 {

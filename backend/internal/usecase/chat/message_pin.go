@@ -9,8 +9,8 @@ import (
 )
 
 // SetPin pins or unpins a message in a chat and fans out a pin_message update to
-// all members (so everyone's pinned bar updates live). Gated by the group's
-// default PIN permission for plain members / RightPinMessages for admins.
+// all members (so everyone's pinned bar updates live). Gated by tweb hasRights
+// 'pin_messages' (requirePin).
 func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pin bool) error {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {
@@ -19,10 +19,8 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 	if !ok {
 		return domain.ErrNotFound
 	}
-	if i.groups != nil {
-		if err := i.requirePermOrRight(ctx, chatID, userID, domain.PermPinMessages, domain.RightPinMessages); err != nil {
-			return err
-		}
+	if err := i.requirePin(ctx, chatID, userID); err != nil {
+		return err
 	}
 	cur, err := i.msgs.GetByID(ctx, msgID)
 	if err != nil {
@@ -127,4 +125,33 @@ func (i *Interactor) MessageViewers(ctx context.Context, chatID, msgID, userID i
 		return nil, domain.ErrNotFound
 	}
 	return i.chats.Viewers(ctx, chatID, msg.Seq, msg.SenderID)
+}
+
+// requirePin — порт tweb hasRights 'pin_messages': в канале закрепляет админ с
+// pin_messages ИЛИ post_messages (редактор прав канала бита pin_messages не
+// предлагает вовсе, так что без второго условия закреплял бы один владелец);
+// в группе — дефолт чата ∧ ¬личный запрет у участника, бит у админа. Личный
+// чат прав не знает (i.groups == nil — без гейта).
+func (i *Interactor) requirePin(ctx context.Context, chatID, userID int64) error {
+	if i.groups == nil {
+		return nil
+	}
+	typ, err := i.chats.ChatType(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	if typ != domain.ChatTypeChannel {
+		if typ != domain.ChatTypeGroup {
+			return nil
+		}
+		return i.requirePermOrRight(ctx, chatID, userID, domain.PermPinMessages, domain.RightPinMessages)
+	}
+	m, err := i.groups.GetMember(ctx, chatID, userID)
+	if err != nil {
+		return domain.ErrForbidden
+	}
+	if domain.HasRight(m.Role, m.Rights, domain.RightPinMessages) || domain.HasRight(m.Role, m.Rights, domain.RightPostMessages) {
+		return nil
+	}
+	return domain.ErrForbidden
 }

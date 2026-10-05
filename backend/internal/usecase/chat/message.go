@@ -137,10 +137,14 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	if !ok {
 		// Комментарий в discussion-группе канала: подписчик пишет без вступления —
 		// авто-джойн, как PostComment (tweb: sendMessage в тред вступает в группу).
+		// Вступление — общей точкой (admit): забаненный ответом в тред не
+		// возвращается.
+		// ВРЕМЕННО до влития Ф-1а (fix/backend-1a-access): IsDiscussionGroup →
+		// RequireDiscussionRead(in.ChatID).
 		joined := false
 		if in.ThreadRootID != nil && i.groups != nil {
 			if disc, e := i.groups.IsDiscussionGroup(ctx, in.ChatID); e == nil && disc {
-				if e := i.groups.AddMember(ctx, in.ChatID, in.SenderID, domain.RoleMember, 0); e == nil {
+				if _, e := i.admit(ctx, in.ChatID, in.SenderID, in.SenderID, admitSelf); e == nil {
 					joined = true
 				}
 			}
@@ -148,6 +152,9 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		if !joined {
 			return domain.Message{}, domain.ErrNotFound
 		}
+	}
+	if err := i.checkTopicOpen(ctx, in); err != nil {
+		return domain.Message{}, err
 	}
 	// Вид ДОСТАВКИ — свойство ПИРА, а не ручки. У оригинала метод отправки один
 	// (messages.sendMessage/sendMedia), а «пост канала» получается из того, что
