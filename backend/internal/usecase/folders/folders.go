@@ -310,7 +310,16 @@ func (i *Interactor) JoinInvite(ctx context.Context, userID int64, slug string, 
 				return e
 			}
 			if !member {
-				if e := i.chats.Join(ctx, id, userID); e != nil {
+				// Чат, куда пользователю нельзя (бан), пропускается, а не
+				// валит вход во всю папку: остальные чаты ссылки вступаются,
+				// а этот в его копию папки не попадает. Отказ приходит до
+				// записи (точка вступления проверяет бан первой), транзакцию
+				// он не портит.
+				e := i.chats.Join(ctx, id, userID)
+				if errors.Is(e, domain.ErrForbidden) {
+					continue
+				}
+				if e != nil {
 					return e
 				}
 			}

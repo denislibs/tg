@@ -9,25 +9,35 @@ import (
 	storepostgres "github.com/messenger-denis/backend/internal/store/postgres"
 )
 
-// Миграция 0137 разводит роли по типу чата (A5-07, A5-26): вступившие в КАНАЛ
+// Миграция 0139 разводит роли по типу чата (A5-07, A5-26): вступившие в КАНАЛ
 // по ссылке, добавлением или одобрением лежали 'member' и получали дефолтные
 // права группы, а вступившие в ГРУППУ по @имени — 'subscriber' без прав.
-// Проверяем на настоящих строках: откат на версию назад, строки как их писал
-// прежний код, накат и чтение обычным репозиторием.
-func TestMigration0137_JoinRoleByChatType(t *testing.T) {
+// Заодно админам групп выдаётся manage_topics (темами прежде управлял любой
+// админ), а группе обсуждения открывается история. Проверяем на настоящих
+// строках: откат на версию назад, строки как их писал прежний код, накат и
+// чтение обычным репозиторием.
+func TestMigration0139_JoinRoleByChatType(t *testing.T) {
 	pool, url := storepostgres.NewTestDBWithURL(t)
 	ctx := context.Background()
-	if err := storepostgres.MigrateDownTo(url, 136); err != nil {
-		t.Fatalf("откат до 136: %v", err)
+	if err := storepostgres.MigrateDownTo(url, 138); err != nil {
+		t.Fatalf("откат до 138: %v", err)
 	}
 	owner := seedUser(t, pool, "+79990001370")
 	sub := seedUser(t, pool, "+79990001371")
 	adm := seedUser(t, pool, "+79990001372")
-	var channelID, groupID int64
+	gadm := seedUser(t, pool, "+79990001379")
+	var channelID, groupID, discID int64
 	if err := pool.QueryRow(ctx, `INSERT INTO chats (type, title, creator_id) VALUES ('channel','К',$1) RETURNING id`, owner).Scan(&channelID); err != nil {
 		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, `INSERT INTO chats (type, title, creator_id) VALUES ('group','Г',$1) RETURNING id`, owner).Scan(&groupID); err != nil {
+		t.Fatal(err)
+	}
+	// Группа обсуждения со скрытой историей.
+	if err := pool.QueryRow(ctx, `INSERT INTO chats (type, title, creator_id, history_for_new) VALUES ('group','О',$1,false) RETURNING id`, owner).Scan(&discID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE chats SET discussion_chat_id=$2 WHERE id=$1`, channelID, discID); err != nil {
 		t.Fatal(err)
 	}
 	for _, row := range []struct {
@@ -37,6 +47,7 @@ func TestMigration0137_JoinRoleByChatType(t *testing.T) {
 	}{
 		{channelID, owner, "creator", 255}, {channelID, sub, "member", 0}, {channelID, adm, "admin", 1},
 		{groupID, owner, "creator", 255}, {groupID, sub, "subscriber", 0}, {groupID, adm, "member", 0},
+		{groupID, gadm, "admin", 64},
 	} {
 		if _, err := pool.Exec(ctx, `INSERT INTO chat_members (chat_id, user_id, role, rights) VALUES ($1,$2,$3,$4)`,
 			row.chat, row.user, row.role, row.rights); err != nil {
@@ -58,6 +69,8 @@ func TestMigration0137_JoinRoleByChatType(t *testing.T) {
 		{channelID, owner, domain.RoleCreator, domain.AllRights},
 		{groupID, sub, domain.RoleMember, 0},
 		{groupID, adm, domain.RoleMember, 0},
+		// manage_topics — да, anonymous — нет (A5-37).
+		{groupID, gadm, domain.RoleAdmin, domain.RightChangeInfo | domain.RightManageTopics},
 	} {
 		m, err := r.GetMember(ctx, want.chat, want.user)
 		if err != nil {
@@ -66,6 +79,43 @@ func TestMigration0137_JoinRoleByChatType(t *testing.T) {
 		if m.Role != want.role || m.Rights != want.rights || m.PromotedBy != 0 {
 			t.Errorf("чат %d, пользователь %d: %+v, ждали роль %q и права %d", want.chat, want.user, m, want.role, want.rights)
 		}
+	}
+	if s, err := r.Settings(ctx, discID); err != nil || !s.HistoryForNew {
+		t.Fatalf("у группы обсуждения история осталась скрытой: %+v %v", s, err)
+	}
+}
+
+// Стенды, где эта миграция уже лежала под номером 0137 (до влития 0138):
+// в goose_db_version есть 137 без файла и колонка promoted_by. goose.Up обязан
+// пройти 0138 и 0139 без ошибки, а 0139 — повторно безопасна.
+func TestMigration0139_AfterPhantom0137(t *testing.T) {
+	pool, url := storepostgres.NewTestDBWithURL(t)
+	ctx := context.Background()
+	if err := storepostgres.MigrateDownTo(url, 136); err != nil {
+		t.Fatalf("откат до 136: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `ALTER TABLE chat_members ADD COLUMN promoted_by BIGINT`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO goose_db_version (version_id, is_applied) VALUES (137, true)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := storepostgres.Migrate(url); err != nil {
+		t.Fatalf("накат поверх фантомной 137: %v", err)
+	}
+	var applied []int64
+	rows, err := pool.Query(ctx, `SELECT version_id FROM goose_db_version WHERE version_id >= 137 AND is_applied ORDER BY version_id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var v int64
+		_ = rows.Scan(&v)
+		applied = append(applied, v)
+	}
+	rows.Close()
+	if len(applied) != 3 || applied[1] != 138 || applied[2] != 139 {
+		t.Fatalf("применены версии %v, ждали [137 138 139]", applied)
 	}
 }
 
