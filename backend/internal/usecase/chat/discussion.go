@@ -94,7 +94,13 @@ func (i *Interactor) UnlinkDiscussion(ctx context.Context, channelID, actorID in
 // DiscussionCandidates lists the groups the actor may link as a discussion group
 // (non-forum 'group' chats they own/administer that aren't already linked).
 func (i *Interactor) DiscussionCandidates(ctx context.Context, actorID int64) ([]domain.ChatRecord, error) {
-	return i.groups.DiscussionCandidates(ctx, actorID)
+	ids, err := i.groups.DiscussionCandidates(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	// Отбирает репозиторий, карточки собирает общий сборщик: урезанная строка
+	// без фото затирала аватарки групп админа (A1-01).
+	return i.chatCards(ctx, actorID, ids)
 }
 
 // PostComment posts a comment on a channel post. Тред живёт не на самом посте, а

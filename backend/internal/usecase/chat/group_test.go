@@ -279,14 +279,14 @@ func (r *fakeGroupRepo) IsForum(_ context.Context, chatID int64) (bool, error) {
 	return r.forum[chatID], nil
 }
 
-func (r *fakeGroupRepo) DiscussionCandidates(_ context.Context, actorID int64) ([]domain.ChatRecord, error) {
+func (r *fakeGroupRepo) DiscussionCandidates(_ context.Context, actorID int64) ([]int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	linked := map[int64]bool{}
 	for _, gid := range r.discussion {
 		linked[gid] = true
 	}
-	var out []domain.ChatRecord
+	var out []int64
 	for id, c := range r.cards {
 		if c.Type != "group" || r.forum[id] || linked[id] {
 			continue
@@ -294,9 +294,9 @@ func (r *fakeGroupRepo) DiscussionCandidates(_ context.Context, actorID int64) (
 		if m, ok := r.members[id][actorID]; !ok || (m.Role != domain.RoleCreator && m.Role != domain.RoleAdmin) {
 			continue
 		}
-		out = append(out, c)
+		out = append(out, id)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID })
+	sort.Slice(out, func(i, j int) bool { return out[i] > out[j] })
 	return out, nil
 }
 
@@ -322,7 +322,7 @@ func (r *fakeGroupRepo) ChatBriefs(_ context.Context, ids []int64) (map[int64]do
 	out := map[int64]domain.ChatBrief{}
 	for _, id := range ids {
 		if c, ok := r.cards[id]; ok {
-			out[id] = domain.ChatBrief{ID: id, Type: c.Type, Title: c.Title, PhotoID: c.PhotoID}
+			out[id] = domain.ChatBrief{ID: id, Type: c.Type, Title: c.Title}
 		}
 	}
 	return out, nil
@@ -491,6 +491,17 @@ func (r *fakeGroupRepo) Card(_ context.Context, chatID, viewerID int64) (domain.
 		return domain.ChatRecord{}, domain.ErrNotFound
 	}
 	c.ViewerID = viewerID
+	// Связанный чат в обе стороны и допуск зрителя — как chatCardSelect.
+	if g := r.discussion[chatID]; g != 0 {
+		c.LinkedChatID = g
+	}
+	for ch, g := range r.discussion {
+		if g == chatID {
+			c.LinkedChatID = ch
+		}
+	}
+	c.Hidden = viewerID != 0 && !r.readableLocked(chatID, viewerID)
+	c.IsForum = c.IsForum || r.forum[chatID]
 	if m, ok := r.members[chatID][viewerID]; ok {
 		c.MyRole = m.Role
 		c.MyRights = m.Rights
@@ -506,6 +517,33 @@ func (r *fakeGroupRepo) Card(_ context.Context, chatID, viewerID int64) (domain.
 		}
 	}
 	return c, nil
+}
+
+// readableLocked — двойник SQL-допуска chatCardSelect: участник либо
+// публичный чат, либо группа обсуждения читаемого канала, и не забанен.
+func (r *fakeGroupRepo) readableLocked(chatID, viewerID int64) bool {
+	if r.bans[chatID][viewerID] {
+		return false
+	}
+	if _, ok := r.members[chatID][viewerID]; ok || r.public[chatID] {
+		return true
+	}
+	for ch, g := range r.discussion {
+		if g == chatID && ch != chatID && r.readableLocked(ch, viewerID) {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *fakeGroupRepo) Cards(ctx context.Context, viewerID int64, ids []int64) ([]domain.ChatRecord, error) {
+	out := []domain.ChatRecord{}
+	for _, id := range ids {
+		if c, err := r.Card(ctx, id, viewerID); err == nil {
+			out = append(out, c)
+		}
+	}
+	return out, nil
 }
 
 func (r *fakeGroupRepo) EditInfo(_ context.Context, chatID int64, title, about, username string) error {

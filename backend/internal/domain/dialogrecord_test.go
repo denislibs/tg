@@ -172,12 +172,12 @@ func TestDialogRecord_ToChannelMatchesCard(t *testing.T) {
 	d := DialogRecord{
 		ChatID: 6, Type: ChatTypeGroup, Title: "Команда", JoinedAt: joined,
 		MemberCount: 6, MyRole: RoleCreator, MyRights: AllRights,
-		Signatures: true, DiscussionChatID: 9, Settings: settings,
+		Signatures: true, LinkedChatID: 9, Settings: settings,
 	}
 	card := ChatRecord{
 		ID: 6, Type: ChatTypeGroup, Title: "Команда", ViewerID: 777001, MyJoinedAt: joined,
 		MemberCount: 6, MyRole: RoleCreator, MyRights: AllRights,
-		Signatures: true, DiscussionChatID: 9, Settings: settings,
+		Signatures: true, LinkedChatID: 9, Settings: settings,
 	}
 	got, want := mustJSON(t, d.ToChannel()), mustJSON(t, card.ToChannel())
 	if got != want {

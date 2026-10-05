@@ -24,27 +24,19 @@ var _ usecasechat.SearchRepo = (*SearchRepo)(nil)
 
 func NewSearchRepo(pool *pgxpool.Pool) *SearchRepo { return &SearchRepo{pool: pool} }
 
-func (r *SearchRepo) SearchChats(ctx context.Context, q string, limit int) ([]domain.ChatRecord, error) {
+// SearchChats — публичные чаты по префиксу @username/названия, по убыванию
+// числа участников. Только id: карточки собирает общий сборщик
+// (GroupRepo.Cards) глазами зрителя.
+func (r *SearchRepo) SearchChats(ctx context.Context, q string, limit int) ([]int64, error) {
 	like := escapeLike(q) + "%"
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT c.id, c.type, c.title, COALESCE(c.username,''), c.about, c.member_count,
-		        c.photo_media_id, pm.blur_preview
-		   FROM chats c LEFT JOIN media pm ON pm.id = c.photo_media_id
+		`SELECT c.id FROM chats c
 		  WHERE c.is_public = true AND (c.username ILIKE $1 OR c.title ILIKE $2)
 		  ORDER BY c.member_count DESC LIMIT $3`, like, like, limit)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []domain.ChatRecord
-	for rows.Next() {
-		var c domain.ChatRecord
-		if err := rows.Scan(&c.ID, &c.Type, &c.Title, &c.Username, &c.About, &c.MemberCount, &c.PhotoID, &c.PhotoPreview); err != nil {
-			return nil, err
-		}
-		out = append(out, c)
-	}
-	return out, rows.Err()
+	return pgx.CollectRows(rows, pgx.RowTo[int64])
 }
 
 // SearchUsers — пользователи по @username/имени профиля, карточки глазами
@@ -73,41 +65,34 @@ func (r *SearchRepo) SearchUsers(ctx context.Context, viewerID int64, q string, 
 // Self-join chat_members: подписчики chatID → их другие подписки на публичные
 // каналы, сгруппированные по каналу и упорядоченные по числу общих подписчиков
 // (индекс idx_chat_members_user покрывает выборку «другие подписки юзера»).
-// count(*) OVER() — общее число похожих каналов до применения LIMIT.
-func (r *SearchRepo) SimilarChannels(ctx context.Context, chatID, viewerID int64, limit int) ([]domain.ChatRecord, int, error) {
+// count(*) OVER() — общее число похожих каналов до применения LIMIT. Зритель по
+// построению (NOT EXISTS) не состоит ни в одном из них. Только id: карточки
+// собирает общий сборщик (GroupRepo.Cards).
+func (r *SearchRepo) SimilarChannels(ctx context.Context, chatID, viewerID int64, limit int) ([]int64, int, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT c.id, c.type, c.title, COALESCE(c.username,''), c.about, c.member_count,
-		        c.photo_media_id, pm.blur_preview, c.created_at, count(*) OVER() AS total
+		`SELECT c.id, count(*) OVER() AS total
 		   FROM chat_members m
 		   JOIN chats c ON c.id = m.chat_id
-		   LEFT JOIN media pm ON pm.id = c.photo_media_id
 		  WHERE m.user_id IN (SELECT user_id FROM chat_members WHERE chat_id = $1)
 		    AND m.chat_id <> $1
 		    AND c.type = 'channel'
 		    AND c.is_public = true
 		    AND NOT EXISTS (SELECT 1 FROM chat_members me WHERE me.chat_id = c.id AND me.user_id = $2)
-		  GROUP BY c.id, pm.blur_preview, c.created_at
+		  GROUP BY c.id
 		  ORDER BY count(DISTINCT m.user_id) DESC, c.member_count DESC
 		  LIMIT $3`, chatID, viewerID, limit)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer rows.Close()
-	var out []domain.ChatRecord
+	var out []int64
 	total := 0
 	for rows.Next() {
-		var c domain.ChatRecord
-		var t int
-		if err := rows.Scan(&c.ID, &c.Type, &c.Title, &c.Username, &c.About, &c.MemberCount, &c.PhotoID, &c.PhotoPreview, &c.CreatedAt, &t); err != nil {
+		var id int64
+		if err := rows.Scan(&id, &total); err != nil {
 			return nil, 0, err
 		}
-		// Зритель здесь ЕСТЬ, и он по построению выборки (NOT EXISTS выше) не
-		// состоит ни в одном из этих каналов. Отсюда два следствия краткой
-		// формы: pFlags.left выставлен, а channel.date — дата создания, как
-		// схема и предписывает для не-участника (ChatRecord.ChannelDate).
-		c.ViewerID = viewerID
-		total = t
-		out = append(out, c)
+		out = append(out, id)
 	}
 	return out, total, rows.Err()
 }

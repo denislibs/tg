@@ -45,21 +45,24 @@ func eqIDs(got []int64, want ...int64) bool {
 // :1977); без q — пусто, и в базу не ходим.
 func TestSearchPeers_MyResultsAndLimit(t *testing.T) {
 	fs := newFakeSearchRepo()
-	fs.chats = []domain.ChatRecord{{ID: 10, Type: "channel", Title: "Коты"}, {ID: 11, Type: "channel", Title: "Котики"}}
+	fg := newFakeGroupRepo()
+	ctx := context.Background()
+	c10, _ := fg.CreateMultiMember(ctx, "channel", "Коты", "", "cats", true, 1)
+	c11, _ := fg.CreateMultiMember(ctx, "channel", "Котики", "", "kitties", true, 1)
+	fs.chats = []int64{c10, c11}
 	fs.users = []domain.UserReal{{ID: 42}, {ID: 43}}
-	fs.ownChats = map[int64]bool{10: true}
+	fs.ownChats = map[int64]bool{c10: true}
 	fs.ownUsers = map[int64]bool{43: true}
 	s := newStore()
-	in := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, nil, nil, nil, nil, nil, nil, fs, nil)
-	ctx := context.Background()
+	in := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, nil, nil, nil, fg, nil, nil, fs, nil)
 	const me int64 = 7
 
 	res, err := in.SearchPeers(ctx, me, "кот", 0)
 	if err != nil {
 		t.Fatalf("SearchPeers: %v", err)
 	}
-	if !eqIDs(chatIDsOf(res.MyChats), 10) || !eqIDs(chatIDsOf(res.Chats), 11) {
-		t.Fatalf("чаты: my=%v results=%v, want my=[10] results=[11]", chatIDsOf(res.MyChats), chatIDsOf(res.Chats))
+	if !eqIDs(chatIDsOf(res.MyChats), c10) || !eqIDs(chatIDsOf(res.Chats), c11) {
+		t.Fatalf("чаты: my=%v results=%v, want my=[%d] results=[%d]", chatIDsOf(res.MyChats), chatIDsOf(res.Chats), c10, c11)
 	}
 	if !eqIDs(userIDsOf(res.MyUsers), 43) || !eqIDs(userIDsOf(res.Users), 42) {
 		t.Fatalf("люди: my=%v results=%v, want my=[43] results=[42]", userIDsOf(res.MyUsers), userIDsOf(res.Users))

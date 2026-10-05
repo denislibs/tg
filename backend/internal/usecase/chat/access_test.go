@@ -426,9 +426,13 @@ func (fakeBoostRepo) BoostedByMe(context.Context, int64, int64) (bool, error)   
 // A5-23 (клиентская половина): чужой публичный чат в поиске уходит с
 // pFlags.left — клиент рисует «Вступить», а не вступает сам; свой — без него.
 func TestSearchPeers_ForeignChatIsLeft(t *testing.T) {
-	in, _, fs, _ := newChannelTestInteractor(t)
-	fs.chats = []domain.ChatRecord{{ID: 1, Type: domain.ChatTypeChannel, Title: "чужой"}, {ID: 2, Type: domain.ChatTypeChannel, Title: "свой", MyRole: domain.RoleSubscriber}}
-	fs.ownChats = map[int64]bool{2: true}
+	in, fg, fs, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	foreign, _ := fg.CreateMultiMember(ctx, domain.ChatTypeChannel, "чужой", "", "foreign", true, 7)
+	own, _ := fg.CreateMultiMember(ctx, domain.ChatTypeChannel, "свой", "", "own", true, 7)
+	_ = fg.AddMember(ctx, own, 8, domain.RoleSubscriber, 0)
+	fs.chats = []int64{foreign, own}
+	fs.ownChats = map[int64]bool{own: true}
 	res, err := in.SearchPeers(context.Background(), 8, "ка", 20)
 	if err != nil || len(res.Chats) != 1 || len(res.MyChats) != 1 {
 		t.Fatalf("SearchPeers = %+v %v", res, err)

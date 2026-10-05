@@ -192,7 +192,7 @@ func (f *fakeChat) ChatCard(_ context.Context, chatID, _ int64) (domain.ChatReco
 	}
 	return domain.ChatRecord{
 		ID: c.id, Type: c.typ, Title: c.title, Username: c.username,
-		CreatorID: c.creator, DiscussionChatID: f.discussion[chatID],
+		CreatorID: c.creator, LinkedChatID: f.discussion[chatID],
 	}, nil
 }
 

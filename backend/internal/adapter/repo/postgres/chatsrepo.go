@@ -309,7 +309,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 			&peer.contactName, &peer.mutual,
 			&d.TTLPeriod, &d.JoinedAt,
 			&d.MemberCount, &d.MyRole, &rights, &d.Signatures, &d.SignatureProfiles,
-			&d.DiscussionChatID, &perms, &d.Settings.SlowmodeSeconds, &d.Settings.ChargeStars); err != nil {
+			&d.LinkedChatID, &perms, &d.Settings.SlowmodeSeconds, &d.Settings.ChargeStars); err != nil {
 			return nil, err
 		}
 		d.MyRights = domain.Rights(rights)

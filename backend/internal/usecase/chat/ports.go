@@ -137,6 +137,10 @@ type GroupRepo interface {
 	// SetForum включает темы у группы (chats.is_forum).
 	SetForum(ctx context.Context, chatID int64, enabled bool) error
 	Card(ctx context.Context, chatID, viewerID int64) (domain.ChatRecord, error) // domain.ErrNotFound if no chat
+	// Cards — строки чатов ids глазами viewerID одним запросом, в порядке ids
+	// (отсутствующие пропускаются). Тот же сборщик, что Card: из него едут
+	// все карточки чатов — векторы `chats`, поиск, похожие, send-as.
+	Cards(ctx context.Context, viewerID int64, ids []int64) ([]domain.ChatRecord, error)
 	EditInfo(ctx context.Context, chatID int64, title, about, username string) error
 	SetPhoto(ctx context.Context, chatID, mediaID int64) error
 	// UsersByIDs — карточки глазами viewerID (domain.UserReal.SeenBy): имя из
@@ -159,7 +163,7 @@ type GroupRepo interface {
 	// DiscussionCandidates lists groups (type 'group', non-forum, not already a
 	// discussion group of any channel) where actorID is creator/admin — the
 	// pick-list for linking an existing discussion group.
-	DiscussionCandidates(ctx context.Context, actorID int64) ([]domain.ChatRecord, error)
+	DiscussionCandidates(ctx context.Context, actorID int64) ([]int64, error)
 	// SetSignatures toggles channel post signatures (Telegram
 	// channels.toggleSignatures). profiles is forced off when signatures is off.
 	SetSignatures(ctx context.Context, chatID int64, signatures, profiles bool) error
@@ -169,8 +173,8 @@ type GroupRepo interface {
 	// DiscussionChannel — обратный поиск: канал, чья группа-обсуждение это groupID
 	// (0 — ничья). Нужен send-as: админ привязанного канала пишет от его имени.
 	DiscussionChannel(ctx context.Context, groupID int64) (int64, error)
-	// ChatBriefs — снимки чатов по id (id/type/title/photo) для send-as: список
-	// «личностей отправителя» и отображаемый автор бабла.
+	// ChatBriefs — название и вид чатов по id: подпись там, где карточки пира
+	// у получателя нет (кросс-чатный ответ, апдейт бота).
 	ChatBriefs(ctx context.Context, ids []int64) (map[int64]domain.ChatBrief, error)
 	// Group edit-screen settings + removed-users list.
 	Settings(ctx context.Context, chatID int64) (domain.ChatSettings, error)
@@ -460,7 +464,7 @@ type ChannelRepo interface {
 }
 
 type SearchRepo interface {
-	SearchChats(ctx context.Context, q string, limit int) ([]domain.ChatRecord, error) // public only
+	SearchChats(ctx context.Context, q string, limit int) ([]int64, error) // public only, ranked
 	// SearchUsers — карточки глазами viewerID (domain.UserReal.SeenBy).
 	SearchUsers(ctx context.Context, viewerID int64, q string, limit int) ([]domain.UserReal, error)
 	// OwnPeers — какие из найденных пиров «свои» для viewerID: чаты, где он
@@ -478,7 +482,7 @@ type SearchRepo interface {
 	// что он в этих каналах не состоит, — не умолчание, а следствие самой
 	// выборки. В краткой форме это видно двумя полями сразу (pFlags.left и
 	// channel.date), см. domain.ChatRecord.ChannelDate.
-	SimilarChannels(ctx context.Context, chatID, viewerID int64, limit int) ([]domain.ChatRecord, int, error)
+	SimilarChannels(ctx context.Context, chatID, viewerID int64, limit int) ([]int64, int, error)
 }
 
 type ReactionRepo interface {

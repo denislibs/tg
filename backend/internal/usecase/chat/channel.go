@@ -133,17 +133,13 @@ func (i *Interactor) SearchPeers(ctx context.Context, viewerID int64, q string, 
 	case limit > peerSearchLimitMax:
 		limit = peerSearchLimitMax
 	}
-	chats, err := i.search.SearchChats(ctx, q, limit)
+	chatIDs, err := i.search.SearchChats(ctx, q, limit)
 	if err != nil {
 		return PeerSearchResult{}, err
 	}
 	users, err := i.search.SearchUsers(ctx, viewerID, q, limit)
 	if err != nil {
 		return PeerSearchResult{}, err
-	}
-	chatIDs := make([]int64, len(chats))
-	for k, c := range chats {
-		chatIDs[k] = c.ID
 	}
 	userIDs := make([]int64, len(users))
 	for k, u := range users {
@@ -153,16 +149,21 @@ func (i *Interactor) SearchPeers(ctx context.Context, viewerID int64, q string, 
 	if err != nil {
 		return PeerSearchResult{}, err
 	}
+	// Попадания — ПОЛНЫЕ карточки зрителя, а не строка поиска: клиент сливает
+	// `channel` выдачи поверх лежащей карточки, и урезанная строка с
+	// «запрещено всё» блокировала ввод своей же группы, а форум открывался
+	// обычным чатом (A1-01). Чужой публичный чат уходит той же формой с
+	// pFlags.left — клиент рисует «Вступить»/«Подписаться» (tweb
+	// input.ts:2650-2672), а не вступает сам.
+	cards, err := i.chatCards(ctx, viewerID, chatIDs)
+	if err != nil {
+		return PeerSearchResult{}, err
+	}
 	var res PeerSearchResult
-	for _, c := range chats {
+	for _, c := range cards {
 		if ownChats[c.ID] {
 			res.MyChats = append(res.MyChats, c)
 		} else {
-			// Чужой публичный чат — глазами зрителя, который в нём НЕ состоит:
-			// карточка уходит с pFlags.left, и клиент рисует превью с кнопкой
-			// «Вступить»/«Подписаться» (tweb input.ts:2650-2672), а не вступает
-			// сам. Без зрителя (ViewerID 0) left тождественно ложен.
-			c.ViewerID = viewerID
 			res.Chats = append(res.Chats, c)
 		}
 	}
@@ -181,5 +182,11 @@ func (i *Interactor) SimilarChannels(ctx context.Context, chatID, viewerID int64
 	if limit <= 0 || limit > 50 {
 		limit = 30
 	}
-	return i.search.SimilarChannels(ctx, chatID, viewerID, limit)
+	ids, count, err := i.search.SimilarChannels(ctx, chatID, viewerID, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	// Ранжирует поиск, карточки собирает общий сборщик (см. SearchPeers).
+	cards, err := i.chatCards(ctx, viewerID, ids)
+	return cards, count, err
 }

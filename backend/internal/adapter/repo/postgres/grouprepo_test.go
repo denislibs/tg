@@ -129,8 +129,8 @@ func TestGroupRepo_CreateAndMembership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cc.DiscussionChatID != 0 {
-		t.Fatalf("default channel DiscussionChatID = %d, want 0", cc.DiscussionChatID)
+	if cc.LinkedChatID != 0 {
+		t.Fatalf("default channel LinkedChatID = %d, want 0", cc.LinkedChatID)
 	}
 
 	grpID, err := r.CreateMultiMember(ctx, "group", "Discussion Group", "", "", false, u1)
@@ -144,8 +144,8 @@ func TestGroupRepo_CreateAndMembership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cc2.DiscussionChatID != grpID {
-		t.Fatalf("linked channel DiscussionChatID = %d, want %d", cc2.DiscussionChatID, grpID)
+	if cc2.LinkedChatID != grpID {
+		t.Fatalf("linked channel LinkedChatID = %d, want %d", cc2.LinkedChatID, grpID)
 	}
 }
 
