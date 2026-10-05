@@ -851,6 +851,9 @@ func (c groupChats) RecountUnreadReactions(context.Context, int64, int64) (int, 
 func (c groupChats) ReadReactions(context.Context, int64, int64, int64) ([]domain.Message, error) {
 	return nil, nil
 }
+func (c groupChats) UnarchiveUnmuted(context.Context, int64, []int64) ([]int64, error) {
+	return nil, nil
+}
 func (c groupChats) CurrentReadSeq(context.Context, int64, int64) (int64, error) { return 0, nil }
 func (c groupChats) SetRead(context.Context, int64, int64, int64, int) error     { return nil }
 func (c groupChats) AppendReadMark(context.Context, int64, int64, int64) error   { return nil }

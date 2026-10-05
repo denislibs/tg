@@ -135,11 +135,10 @@ func (i *Interactor) publishMessageDelivery(
 	if len(recipients) == 0 {
 		return
 	}
+	i.unarchiveOnMessage(ctx, msg.ChatID, senderID, recipients)
 	// Список диалогов получателей изменился (unread/порядок/превью) —
 	// сбрасываем их кэш снапшота (следующий /chats пересчитает).
-	if i.dialogsCache != nil {
-		i.dialogsCache.Invalidate(ctx, recipients...)
-	}
+	i.invalidateDialogs(ctx, recipients...)
 	if i.publisher == nil {
 		return
 	}
@@ -195,4 +194,27 @@ func (i *Interactor) notifyNewMessage(ctx context.Context, msg domain.Message, s
 		peer, _ := i.ChatIDToPeer(ctx, uid, msg.ChatID)
 		i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.Seq, msg.SenderID, msg.Text, peer, mentions[uid], topic)
 	}
+}
+
+// unarchiveOnMessage — новое сообщение возвращает архивный НЕзаглушённый чат
+// получателя в основной список, как сервер Telegram (keep_archived_unmuted по
+// умолчанию выключен): строка выходит из архива, а устройствам получателя
+// уходит updateFolderPeers с folder 0 (tweb dialogs.ts applyFolder). Автор
+// сообщения свой архив не теряет; заглушённый чат остаётся в архиве.
+func (i *Interactor) unarchiveOnMessage(ctx context.Context, chatID, senderID int64, recipients []int64) {
+	others := make([]int64, 0, len(recipients))
+	for _, uid := range recipients {
+		if uid != senderID {
+			others = append(others, uid)
+		}
+	}
+	if len(others) == 0 {
+		return
+	}
+	back, err := i.chats.UnarchiveUnmuted(ctx, chatID, others)
+	if err != nil || len(back) == 0 {
+		return
+	}
+	_ = i.logAndPublishPerPeer(ctx, chatID, back, "dialog_archive",
+		func(peer domain.PeerID) map[string]any { return dialogFolderPayload(peer, domain.FolderAll) })
 }

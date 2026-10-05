@@ -699,6 +699,32 @@ func (r *ChatsRepo) MaxSeq(ctx context.Context, chatID int64) (int64, error) {
 	return seq, err
 }
 
+// UnarchiveUnmuted — см. ChatRepo.UnarchiveUnmuted. «Заглушён» — мьют чата
+// сроком в будущем (тот же срок, что читает PeerNotifySettings.Muted).
+func (r *ChatsRepo) UnarchiveUnmuted(ctx context.Context, chatID int64, userIDs []int64) ([]int64, error) {
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`UPDATE chat_members SET archived = false
+		  WHERE chat_id = $1 AND user_id = ANY($2::bigint[]) AND archived
+		    AND (muted_until IS NULL OR muted_until <= now())
+		  RETURNING user_id`, chatID, userIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 // SetClearedSeq raises a member's cleared horizon: messages with seq<=seq are
 // hidden from that member's history reads (non-destructive «clear for me»).
 func (r *ChatsRepo) SetClearedSeq(ctx context.Context, chatID, userID, seq int64) error {

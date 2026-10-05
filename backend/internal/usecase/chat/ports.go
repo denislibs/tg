@@ -105,6 +105,10 @@ type ChatRepo interface {
 	// SetClearedSeq — персональный горизонт участника (cleared_max_seq). Читает
 	// его единый предикат видимости сообщения в хранилище.
 	MaxSeq(ctx context.Context, chatID int64) (int64, error)
+	// UnarchiveUnmuted — из userIDs вернуть из архива тех, у кого чат в архиве
+	// и НЕ заглушён (новое сообщение, Telegram keep_archived_unmuted=false);
+	// возвращает, кого вернули.
+	UnarchiveUnmuted(ctx context.Context, chatID int64, userIDs []int64) ([]int64, error)
 	SetClearedSeq(ctx context.Context, chatID, userID, seq int64) error
 	// Автоудаление: период чата, глобальный период пользователя (для новых чатов).
 	SetAutoDelete(ctx context.Context, chatID int64, seconds int) error

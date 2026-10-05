@@ -33,6 +33,7 @@ type member struct {
 	reactions   int
 	// mutedUntil — срок мьюта, а не булево: «навсегда» это domain.MuteUntilForever.
 	mutedUntil *time.Time
+	archived   bool
 }
 
 // mentionRow mirrors a message_mentions row in the fake store.
@@ -392,6 +393,21 @@ func (r fakeChats) ReadReactions(_ context.Context, chatID, userID, uptoSeq int6
 		}
 	}
 	r.s.recountReactionsLocked(chatID, userID)
+	return out, nil
+}
+
+func (r fakeChats) UnarchiveUnmuted(_ context.Context, chatID int64, userIDs []int64) ([]int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var out []int64
+	for _, uid := range userIDs {
+		m := r.s.members[chatID][uid]
+		if m == nil || !m.archived || (m.mutedUntil != nil && m.mutedUntil.After(time.Now())) {
+			continue
+		}
+		m.archived = false
+		out = append(out, uid)
+	}
 	return out, nil
 }
 
