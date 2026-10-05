@@ -46,21 +46,29 @@ func (i *Interactor) memberCan(ctx context.Context, chatID, userID int64, perm d
 	if s.DefaultPerms&perm != perm {
 		return false, nil
 	}
-	return !i.restricted(ctx, chatID, userID, perm), nil
+	denied, err := i.restricted(ctx, chatID, userID, perm)
+	if err != nil {
+		return false, err
+	}
+	return !denied, nil
 }
 
 // restricted — запрещает ли perm личное ограничение участника (Telegram
 // banned_rights). Истёкшее ограничение не действует и убирается best-effort.
-func (i *Interactor) restricted(ctx context.Context, chatID, userID int64, perm domain.MemberPerms) bool {
+// Сбой чтения — ошибка, а не «не ограничен»: гейт при ней отказывает.
+func (i *Interactor) restricted(ctx context.Context, chatID, userID int64, perm domain.MemberPerms) (bool, error) {
 	res, ok, err := i.groups.GetRestriction(ctx, chatID, userID)
-	if err != nil || !ok {
-		return false
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, nil
 	}
 	if !res.Active(time.Now()) {
 		_ = i.groups.DeleteRestriction(ctx, chatID, userID)
-		return false
+		return false, nil
 	}
-	return res.DeniedRights.Denies(perm)
+	return res.DeniedRights.Denies(perm), nil
 }
 
 // requireCreator — действие только владельца (tweb hasRights: toggle_forum,
@@ -114,11 +122,14 @@ func (i *Interactor) checkSendAllowed(ctx context.Context, in SendInput) error {
 	// Пер-юзерное ограничение (Telegram ChatBannedRights) поверх дефолта чата:
 	// запрет SendMessages блокирует любую отправку, запрет SendMedia — только
 	// медиа.
-	if i.restricted(ctx, in.ChatID, in.SenderID, domain.PermSendMessages) {
-		return domain.ErrForbidden
-	}
-	if media && i.restricted(ctx, in.ChatID, in.SenderID, domain.PermSendMedia) {
-		return domain.ErrForbidden
+	for _, perm := range []domain.MemberPerms{domain.PermSendMessages, domain.PermSendMedia} {
+		if perm == domain.PermSendMedia && !media {
+			continue
+		}
+		denied, err := i.restricted(ctx, in.ChatID, in.SenderID, perm)
+		if err != nil || denied {
+			return domain.ErrForbidden // сбой чтения ограничения — отказ, а не пропуск
+		}
 	}
 	if s.SlowmodeSeconds > 0 {
 		// Пачку (пересылка нескольких сообщений) в медленном режиме не отправить
@@ -239,9 +250,31 @@ func (i *Interactor) SetChatReactions(ctx context.Context, chatID, actorID int64
 }
 
 // SetChatHistoryForNew toggles "Chat history for new members" (tweb ChatHistory).
+//
+// Скрыть историю нельзя у канала (у broadcast её нет: tweb показывает
+// переключатель только не-broadcast) и у группы обсуждения канала — Telegram
+// отвечает CHAT_LINK_EXISTS, а при привязке история открывается
+// (LinkDiscussion). Иначе подписчик, вступивший первым комментарием, терял
+// бы все прежние комментарии.
 func (i *Interactor) SetChatHistoryForNew(ctx context.Context, chatID, actorID int64, visible bool) error {
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightChangeInfo); err != nil {
 		return err
+	}
+	if !visible {
+		typ, err := i.chats.ChatType(ctx, chatID)
+		if err != nil {
+			return err
+		}
+		if typ == domain.ChatTypeChannel {
+			return domain.ErrForbidden
+		}
+		linked, err := i.groups.IsDiscussionGroup(ctx, chatID)
+		if err != nil {
+			return err
+		}
+		if linked {
+			return domain.ErrForbidden
+		}
 	}
 	if err := i.groups.SetHistoryForNew(ctx, chatID, visible); err != nil {
 		return err

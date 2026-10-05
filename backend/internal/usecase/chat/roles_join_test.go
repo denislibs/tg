@@ -478,6 +478,56 @@ func TestCheckSendAllowed_NonTextIsMedia(t *testing.T) {
 	}
 }
 
+// Группа обсуждения: при привязке история открывается, скрыть её нельзя —
+// как и у канала (Telegram CHAT_LINK_EXISTS, tweb setDiscussionGroup).
+func TestDiscussion_HistoryAlwaysVisible(t *testing.T) {
+	i, fg, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	ch, _ := i.CreateChannel(ctx, 7, "Новости", "", "", false)
+	g, _, err := i.CreateGroup(ctx, 7, "Обсуждение", "", "", false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, _, _ := i.CreateGroup(ctx, 7, "Другая", "", "", false, nil)
+	_ = fg.SetHistoryForNew(ctx, g, false)
+	if _, err := i.LinkDiscussion(ctx, ch, g, 7); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := fg.Settings(ctx, g); !s.HistoryForNew {
+		t.Fatal("при привязке история группы обсуждения осталась скрытой")
+	}
+	if err := i.SetChatHistoryForNew(ctx, g, 7, false); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("скрыть историю группы обсуждения = %v, ждали ErrForbidden", err)
+	}
+	if err := i.SetChatHistoryForNew(ctx, ch, 7, false); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("скрыть историю канала = %v, ждали ErrForbidden", err)
+	}
+	if err := i.SetChatHistoryForNew(ctx, other, 7, false); err != nil {
+		t.Fatalf("обычная группа: %v", err)
+	}
+}
+
+// restrictionErrGroups — GroupRepo, у которого чтение личных ограничений падает.
+type restrictionErrGroups struct{ *fakeGroupRepo }
+
+func (restrictionErrGroups) GetRestriction(context.Context, int64, int64) (domain.MemberRestriction, bool, error) {
+	return domain.MemberRestriction{}, false, errors.New("db down")
+}
+
+// Сбой чтения ограничения — отказ, а не пропуск.
+func TestRestricted_ReadErrorDenies(t *testing.T) {
+	i, fg, _ := newGroupTestInteractor(t)
+	ctx := context.Background()
+	g := newGroupWith(t, i, fg, 8)
+	i.groups = restrictionErrGroups{fg}
+	if err := i.EditInfo(ctx, g, 8, "новое", "", ""); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("правка инфо при сбое чтения ограничения = %v, ждали ErrForbidden", err)
+	}
+	if err := i.checkSendAllowed(ctx, SendInput{ChatID: g, SenderID: 8, Text: "т"}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("отправка при сбое чтения ограничения = %v, ждали ErrForbidden", err)
+	}
+}
+
 // ── fake TopicRepo ─────────────────────────────────────────────────────────
 
 type fakeTopicRepo struct {
