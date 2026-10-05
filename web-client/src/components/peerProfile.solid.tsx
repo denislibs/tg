@@ -7,11 +7,9 @@
  * (`renderPeerProfile`), `:217-272` (`Avatar`/`AutoAvatar` — кладут `Name`/
  * `Subtitle` в `avatars.info`), `:273-421` (`Name`/`Subtitle`/`SubtitleStatus`),
  * `:1510-1533` (сборка `MainSection`) и сами строки (адреса — у каждой функции
- * ниже). Наши секции (Statistics/Discussion/JoinRequests/ключ секретного
- * чата) — Task 5 (план, «Задача 5»): перенесены СЮДА, между `<MainSection/>`
- * и `{props.searchSuperContainer}` (см. докблок компонента `PeerProfile`,
- * «Корень и порядок детей», и докблоки самих функций ниже за адресами
- * оригинала и причиной, по которой у нас они не там).
+ * ниже). Наших секций без аналога в профиле оригинала (статистика,
+ * обсуждение, заявки, ключ секретного чата — Task 5) с К-5 нет: их места —
+ * вкладки правой колонки (Б-40, Б-41, Б-43) и проверка ключа (Б-44).
  *
  * ── Task 4: что портировано, что нет (сводная таблица) ──────────────────────
  * Оригинал (`:1517-1529`, порядок строк MainSection): Phone → Username →
@@ -19,7 +17,7 @@
  * BusinessLocation → Notifications → BotAddToChat → BotPrivacyPolicy →
  * BotReport (последняя — 2488f2cf0, по 812502980).
  * Портированы (под них есть предмет — данные из `usePeer`/`useFullPeer`,
- * Task 1): **Phone, Username (+QrButton), Bio, Link, Birthday,
+ * Task 1): **Phone, Username (без QrButton — Б-44), Bio, Link, Birthday,
  * Notifications, BotReport** — см. докблок каждой функции ниже за деталями и частичными
  * расхождениями (у некоторых портирована не вся строка, а её часть с
  * предметом — например, `Username` без `getUsernamesAlso`).
@@ -112,7 +110,7 @@
  * этого же обхода в `peerProfileAvatars.ts` (`scrollableEl: HTMLElement`, тот
  * же докблок объясняет чтение `scrollTop` напрямую вместо
  * `scrollable.scrollPosition`). Здесь то же самое: `props.scrollable` —
- * реальный DOM-узел скролл-контейнера панели (`bodyRef` в `UserInfoPanel.tsx`).
+ * реальный DOM-узел скролл-контейнера вкладки (`tab.scrollable.container`).
  *
  * ── `peer`/`fullPeer` — Accessor, а не объект-стор ──────────────────────────
  * У оригинала `usePeer`/`useFullPeer` читают Solid `createStore` — свойства
@@ -146,9 +144,7 @@
  * `PeerProfileAvatars`, узел приходит ПРОПОМ ровно так же, как
  * `searchSuperContainer`, — с задачи 13 плана shared media, см. ниже),
  * delimiter, `<MainSection />` (Task 4, строки Phone/Username/Bio/Link/
- * Birthday/Notifications — см. её докблок ниже), четыре НАШИХ секции без
- * аналога в оригинале (`<Statistics/>`/`<Discussion/>`/`<JoinRequests/>`/
- * `<EncryptionKey/>`, Task 5 — см. их докблоки за адресами оригинала) и
+ * Birthday/Notifications — см. её докблок ниже), `<BotVerification />` и
  * `{props.searchSuperContainer}` (последним, дословно тот же контракт, что и
  * в оригинале). Задача 3 (`Name`/`Subtitle`) — не прямой ребёнок ЭТОГО узла:
  * она встаёт в `avatars.info` ВНУТРИ узла карусели — см. докблок компонента
@@ -174,7 +170,8 @@
  * Оригинал НЕ хранит один инстанс `PeerProfile` на смену пира: вызывающий
  * (`sidebarLeft/tabs/settings.tsx::fillProfileElements`) на каждый
  * `tab.peerChanged` гасит прежний Solid-корень (`cleanupHTML()`) и создаёт
- * новый (`createRoot` + `renderPeerProfile`). `UserInfoPanel.tsx` делает то же
+ * новый (`createRoot` + `renderPeerProfile`). Вкладка профиля
+ * (`sidebarRight/tabs/sharedMedia.solid.tsx::renderProfile`) делает то же
  * самое (эффект на `[peerId]`, `mountSolid` в cleanup старого перед новым
  * вызовом) — поэтому `peer`/`fullPeer` не нуждаются в отдельном механизме
  * «пробросить новый peerId в живой корень»: новый peerId — это буквально
@@ -187,7 +184,7 @@
  * пересоздании. Ровно так же ведёт себя `tab.searchSuper.container`
  * оригинала (переживает `fillProfileElements`, встраивается заново).
  */
-import { createContext, useContext, createMemo, createSignal, onCleanup, Show, For } from 'solid-js'
+import { createContext, useContext, createMemo, createSignal, onCleanup, Show } from 'solid-js'
 import classNames from '../helpers/string/classNames'
 import { usePeer } from '../stores/peers.solid'
 import { useFullPeer } from '../stores/fullPeers.solid'
@@ -200,7 +197,7 @@ import { mountSolid } from '../shared/solid/mountSolid.solid'
 import { subscribeExternal } from '../helpers/solid/subscribeExternal'
 import { getPeerTitle, SAVED_MESSAGES_TITLE } from '../core/peers/getPeerTitle'
 import { wrapEmojiText, wrapRichText } from '../lib/richtext'
-import { isAnyChat, isUser, HIDDEN_PEER_ID, NULL_PEER_ID } from '../core/peers/peerId'
+import { isAnyChat, isUser, HIDDEN_PEER_ID } from '../core/peers/peerId'
 import generateVerifiedIcon from './generateVerifiedIcon'
 import { isBroadcast, isPublic } from '../core/peers/predicates'
 import { getUserStatusString, userHasPresence } from '../core/presence'
@@ -212,11 +209,9 @@ import typingStyles from './conversation/TypingIndicator.module.scss'
 // ── Task 4: строки MainSection ───────────────────────────────────────────────
 import Section from './section.solid'
 import Row from './rowTsx.solid'
-import Button from './buttonTsx.solid'
 import CheckboxFieldTsx from './checkboxFieldTsx.solid'
 import { copyTextToClipboard } from '../helpers/clipboard'
 import { toastNew } from './toast'
-import cancelEvent from '../helpers/dom/cancelEvent'
 import { formatUserPhone } from '../core/format/phone'
 import { formatBirthday } from '../core/format/birthday'
 import { isPeerMuted } from '../core/dialogs/notifySettings'
@@ -241,53 +236,6 @@ export type PeerProfileContextValue = {
    *  Task 2 сознательно не заводила это поле («заводить неиспользуемый
    *  экспорт — заглушка», её докблок), сегодня он появляется. */
   getDetailsForUse: () => { peerId: PeerId; threadId?: number }
-  /**
-   * Мост Solid → React для QR-попапа (`QrModal.tsx`) — оригинал зовёт
-   * `showMyQrCodePopup(peerId)` (глобальная Solid-функция, `:695,736,971`),
-   * у нас попап — React-компонент, смонтированный и управляемый состоянием
-   * `UserInfoPanel.tsx` (тот же приём проброса узла/колбэка, что и
-   * `avatarsInfo`/`searchSuperContainer` в пропах ниже, не второй способ).
-   * `undefined` у единственного вызывающего быть не должно (передаётся всегда),
-   * опционально — чтобы тесты каркаса (Task 2/3), не знающие про QR, не были
-   * обязаны его передавать. */
-  onOpenQrCode?: (payload: { url: string; label: string }) => void
-  /** Порт ветки `exported_invite` строки `Link` (tweb `:999-1004`): полный URL
-   *  инвайт-ссылки группы/канала БЕЗ публичного username. В оригинале лежит в
-   *  `chatFull.exported_invite`; в нашей модели поля нет — ссылку отдельным
-   *  походом (`groups.listInvites`) знает `useGroupInfo` панели, и она едет
-   *  сюда живым пропом (`update(patch)`), как гейты задачи 5 ниже. Задача 13
-   *  плана shared media: до неё эту ветку рисовал React-сиблинг ПОСЛЕ корня и
-   *  оказывался под absolute-узлом шаред-медиа. */
-  exportedInviteUrl?: string
-
-  // ── Task 5: наши секции без аналога в оригинале ────────────────────────────
-  // Гейты и данные — уже посчитанные значения React `useGroupInfo`
-  // (`UserInfoPanel.tsx`, реальные `useState`, а не поля без писателя — проверено
-  // грепом перед портом, см. бриф задачи и докблоки функций ниже) и `chat.type
-  // === 'secret'`. Второй сетевой поход/второй расчёт этих величин здесь не
-  // заводим — Solid только читает то, что посчитал вызывающий, тем же мостом
-  // пропов, что `onOpenQrCode` выше (второго способа нет).
-  /** Порт `chat/topbar.ts:664` (пункт «Statistics» меню топбара) — см. докблок
-   *  функции `Statistics` ниже. Предикат `isRealChat && isChannel &&
-   *  canViewStats` свёрнут ВЫЗЫВАЮЩИМ (той же логикой, что была у React-строки). */
-  showStatistics?: boolean
-  onOpenStatistics?: () => void
-  /** Порт `editChat.tsx:362` (строка «Discussion»/«LinkedChannel» вкладки
-   *  редактирования) — см. докблок `Discussion` ниже. */
-  showDiscussion?: boolean
-  discussionPeerId?: PeerId
-  enablingDiscussion?: boolean
-  onEnableDiscussion?: () => void
-  /** Порт `editChat.tsx:227` (+ плашка `chat/requests.tsx`) — см. докблок
-   *  `JoinRequests` ниже. */
-  showJoinRequests?: boolean
-  joinRequests?: { userId: number; title: string }[]
-  onApproveJoinRequest?: (userId: number) => void
-  onDeclineJoinRequest?: (userId: number) => void
-  /** У tweb секретных чатов нет вовсе — эталона не существует, см. докблок
-   *  `EncryptionKey` ниже. */
-  isSecret?: boolean
-  onOpenEncryptionKey?: () => void
 }
 
 const PeerProfileContext = createContext<PeerProfileContextValue>()
@@ -304,9 +252,8 @@ export function usePeerProfileContext(): PeerProfileContextValue {
 
 export type PeerProfileProps = {
   peerId: PeerId
-  /** Тема форума — сегодня недостижимо: единственный вызывающий
-   *  (`UserInfoPanel.tsx`) threadId не знает вовсе (панель профиля не открывает
-   *  тему форума отдельно). Поле оставлено ради `isTopic`/типовой параллели с
+  /** Тред вкладки профиля (`sharedMedia.solid.tsx`, `setPeer(peerId, threadId)`):
+   *  комментарии канала или тема форума. Поле оставлено ради `isTopic`/типовой параллели с
    *  оригиналом, а не выдумано под несуществующий сценарий. */
   threadId?: number
   isDialog?: boolean
@@ -314,9 +261,8 @@ export type PeerProfileProps = {
   setCollapsedOn: HTMLElement
   /** Контракт оригинала (tweb `:121`, `:211`, `sharedMedia.tsx:166`) — готовый
    *  DOM-узел подсистемы шаред-медиа, отдаётся ПОСЛЕДНИМ ребёнком. Это
-   *  `container` класса `AppSearchSuper` (хук-шов `core/hooks/useSearchSuper.ts`,
-   *  задача 13): узел один на всю жизнь панели и переезжает в каждый новый
-   *  корень — см. докблок точки монтирования в `UserInfoPanel.tsx`. */
+   *  `container` класса `AppSearchSuper` вкладки профиля
+   *  (`sidebarRight/tabs/sharedMedia.solid.tsx`, tweb `sharedMedia.tsx:184`). */
   searchSuperContainer?: HTMLElement
   /** Место `AutoAvatar` (tweb `:196`) — `container` класса `PeerProfileAvatars`,
    *  ПЕРВЫМ ребёнком. Тот же контракт узла-пропа, что у `searchSuperContainer`
@@ -327,28 +273,8 @@ export type PeerProfileProps = {
    *  его не наполняет (структурный DOM — задача класса, контент — этой
    *  Solid-секции, см. докблок ниже у места монтирования). Опционален по той
    *  же причине, что и `searchSuperContainer`: до монтажа острова аватарок
-   *  (`UserInfoPanel.tsx`) узла ещё нет. */
+   *  узла ещё нет. */
   avatarsInfo?: HTMLElement
-  /** Задача 4, см. докблок поля `onOpenQrCode` контекста выше — тот же
-   *  колбэк, прокинутый пропом (как `avatarsInfo`/`searchSuperContainer`). */
-  onOpenQrCode?: (payload: { url: string; label: string }) => void
-  /** См. одноимённое поле контекста выше. */
-  exportedInviteUrl?: string
-
-  // Задача 5 — см. докблоки одноимённых полей контекста выше, они те же
-  // пропы, прокинутые дальше без изменений (тот же приём, что у `onOpenQrCode`).
-  showStatistics?: boolean
-  onOpenStatistics?: () => void
-  showDiscussion?: boolean
-  discussionPeerId?: PeerId
-  enablingDiscussion?: boolean
-  onEnableDiscussion?: () => void
-  showJoinRequests?: boolean
-  joinRequests?: { userId: number; title: string }[]
-  onApproveJoinRequest?: (userId: number) => void
-  onDeclineJoinRequest?: (userId: number) => void
-  isSecret?: boolean
-  onOpenEncryptionKey?: () => void
 }
 
 /**
@@ -393,67 +319,6 @@ export function createPeerProfileContextValue(props: PeerProfileProps): PeerProf
       value.isSavedDialog
         ? { peerId: value.threadId!, threadId: undefined }
         : { peerId: value.peerId, threadId: value.threadId },
-    // НАХОДКА РЕВЬЮ (Critical, финальный раунд волны): `onOpenQrCode` и ВСЕ
-    // поля задачи 5 ниже раньше лежали здесь ОБЫЧНЫМИ полями (`x: props.x`) —
-    // значение вычислялось РОВНО ОДИН РАЗ, в момент вызова этой функции
-    // (первый рендер, ДО того, как `UserInfoPanel.tsx` вообще узнаёт ответы
-    // `useGroupInfo`/`useState`). `props` здесь — прокси Solid-стора
-    // (`mountSolid.solid.tsx`, единственный вызывающий), и `update(patch)`
-    // пишет В ЭТОТ СТОР уже ПОСЛЕ первого рендера — но обычное поле объекта
-    // `value` эту запись не видит: оно скопировало значение снимком и больше
-    // к `props` не возвращается. `peer`/`fullPeer` выше от этого бага не
-    // страдали ТОЛЬКО потому, что уже были геттерами, перечитывающими свой
-    // аксессор заново при каждом обращении — тот же приём применён здесь.
-    // Живой пример поломки: `showStatistics`/`showDiscussion`/
-    // `showJoinRequests` приходят `false`/`undefined` на первом коммите
-    // (макет монтируется в layout-фазе, `useGroupInfo` отвечает позже
-    // асинхронно) — со снимком секции Statistics/Discussion/JoinRequests не
-    // появлялись НИКОГДА, а для статистики канала это ЕДИНСТВЕННЫЙ вход в
-    // фичу (в топбаре пункта нет) — пин на факт (не на форму вызова моста) —
-    // `peerProfileLiveProps.solid.test.tsx`.
-    get onOpenQrCode() {
-      return props.onOpenQrCode
-    },
-    get exportedInviteUrl() {
-      return props.exportedInviteUrl
-    },
-    // ── Задача 5 — сквозной проброс, см. докблоки полей контекста выше ──────
-    get showStatistics() {
-      return props.showStatistics
-    },
-    get onOpenStatistics() {
-      return props.onOpenStatistics
-    },
-    get showDiscussion() {
-      return props.showDiscussion
-    },
-    get discussionPeerId() {
-      return props.discussionPeerId
-    },
-    get enablingDiscussion() {
-      return props.enablingDiscussion
-    },
-    get onEnableDiscussion() {
-      return props.onEnableDiscussion
-    },
-    get showJoinRequests() {
-      return props.showJoinRequests
-    },
-    get joinRequests() {
-      return props.joinRequests
-    },
-    get onApproveJoinRequest() {
-      return props.onApproveJoinRequest
-    },
-    get onDeclineJoinRequest() {
-      return props.onDeclineJoinRequest
-    },
-    get isSecret() {
-      return props.isSecret
-    },
-    get onOpenEncryptionKey() {
-      return props.onOpenEncryptionKey
-    },
   }
   return value
 }
@@ -473,7 +338,7 @@ const PeerProfile = (props: PeerProfileProps) => {
   // `.profile-content`, — у них общий владелец). У нас `avatars.info`
   // принадлежит классу `PeerProfileAvatars`, который живёт СНАРУЖИ этого
   // корня и переживает смену пира (React-остров, докблок класса «Осознанное
-  // отступление» + докблок `avatarsHostRef` в `UserInfoPanel.tsx`) — прямого
+  // отступление») — прямого
   // JSX-ребёнка туда не положить.
   //
   // Мост — ТОТ ЖЕ `mountSolid`, которым эта панель монтирует ВЕСЬ этот
@@ -488,8 +353,7 @@ const PeerProfile = (props: PeerProfileProps) => {
   // `useFullPeer`, что и этот корень, — те же живые данные, не снимок).
   //
   // Правило владения узла (шапка файла плана): единственный писатель
-  // `avatars.info` — этот мост. React `UserInfoPanel.tsx` в него больше не
-  // пишет вовсе (находка Critical прошлого шага волны — см. план, шапка).
+  // `avatars.info` — этот мост.
   //
   // Пересоздание корня на каждый peerId (см. докблок файла выше) само даёт
   // требуемое поведение «смена пира убирает узлы прежнего»: `mountSolid`
@@ -515,10 +379,6 @@ const PeerProfile = (props: PeerProfileProps) => {
         <div class="profile-content-delimiter" />
         <MainSection />
         <BotVerification />
-        <Statistics />
-        <Discussion />
-        <JoinRequests />
-        <EncryptionKey />
         {props.searchSuperContainer}
       </div>
     </PeerProfileContext.Provider>
@@ -538,8 +398,8 @@ export default PeerProfile
 // поведенческого расхождения нет.
 //
 // `PeerProfile.Avatar`/`AutoAvatar` (`:217-271`) сюда не входят — у нас
-// монтаж класса и `setPeer()` делает React-остров (`UserInfoPanel.tsx`,
-// задача 5 программы шапки), это НЕ секция `.profile-content` в принципе.
+// монтаж класса и `setPeer()` делает хозяин корня (вкладка профиля
+// `sharedMedia.solid.tsx`, корень настроек), это НЕ секция `.profile-content`.
 //
 // `SubtitleRating` (`:306-326`) не портирован — рейтинга (`stars_rating`) у
 // нас нет как предмета нигде в `UserFull` (`core/peers/peer.ts`); Task 1
@@ -1010,35 +870,8 @@ function Username() {
           <Row.Icon icon="mention_filled" />
           <Row.Title>{value()}</Row.Title>
           <Row.Subtitle>{i18n('Username')}</Row.Subtitle>
-          <QrButton url={publicUsernameLink(value())} label={`@${value()}`} />
         </Row>
       )}
-    </Show>
-  )
-}
-
-/**
- * Порт `PeerProfile.QrButton` (tweb `:734-747`) — общий для `Username` и
- * `Link` (как в оригинале). Открытие — не `showMyQrCodePopup` (Solid-функция
- * оригинала), а мост в React (`context.onOpenQrCode`, см. докблок поля
- * контекста): попап QR у нас — React `QrModal.tsx`, которым владеет
- * `UserInfoPanel.tsx`.
- */
-function QrButton(props: { url: string; label: string }) {
-  const context = usePeerProfileContext()
-  const meId = useChatsStore.getState().meId
-
-  return (
-    <Show when={context.peerId !== meId}>
-      <Row.RightContent>
-        <Button.Icon
-          icon="qr"
-          onClick={(e) => {
-            cancelEvent(e)
-            context.onOpenQrCode?.({ url: props.url, label: props.label })
-          }}
-        />
-      </Row.RightContent>
     </Show>
   )
 }
@@ -1150,7 +983,8 @@ function Link() {
     if (isUser(context.peerId)) return undefined
     const peer = context.peer as Channel | undefined
     if (isPublic(peer)) return publicUsernameLink(peer!.username!)
-    return context.exportedInviteUrl
+    // ветка `exported_invite` (`:999-1004`) — поля в нашем `ChannelFull` нет (Б-102)
+    return undefined
   })
   const label = (value: string) => value.replace(/^https?:\/\//, '')
 
@@ -1168,7 +1002,6 @@ function Link() {
           <Row.Icon icon="link_filled" />
           <Row.Title>{label(value())}</Row.Title>
           <Row.Subtitle>{i18n('SetUrlPlaceholder')}</Row.Subtitle>
-          <QrButton url={value()} label={label(value())} />
         </Row>
       )}
     </Show>
@@ -1283,206 +1116,6 @@ function BotReport() {
         <Row.Icon icon="flag" />
         <Row.Title>{i18n('ReportChat')}</Row.Title>
       </Row>
-    </Show>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Задача 5: наши секции без аналога в оригинале
-// (план «карточка профиля на Solid», `docs/superpowers/plans/
-// 2026-09-05-profile-card-solid.md`, «Задача 5»)
-// ─────────────────────────────────────────────────────────────────────────────
-//
-// У tweb `PeerProfile` этих четырёх секций НЕТ вовсе — они переехали из
-// React 1:1 («как есть», перенос без редизайна) в объёме брифа задачи: тот же
-// гейт показа, то же действие по клику, тот же визуал (`Section`/`Row` —
-// те же Solid-примитивы, что уже несёт `MainSection`, четвёртого способа
-// рисовать строку не заводим). Гейты и данные приходят ПРОПОМ из React
-// (`UserInfoPanel.tsx`, `useGroupInfo`/`chat.type`) — вторых зеркал/повторных
-// сетевых походов эта задача не заводит, только относит уже посчитанные
-// значения в правильный узел DOM.
-//
-// Каждая секция вставлена сюда «как есть» — правильное место (там, где стоит
-// в tweb эквивалентный пункт меню/строка вкладки редактирования) остаётся
-// долгом: `web-client/backlogs/frontend/profile-sections-misplaced.md`.
-//
-// Попапы, которые открывают эти строки (`ChannelStats`, `KeyVerificationPopup`)
-// — САМИ остаются React-оверлеями СНАРУЖИ `.profile-content` (тот же приём,
-// что и у `QrModal` в задаче 4): узел строки рисует Solid целиком (единственный
-// писатель), а «открыть попап» — колбэк-мост, а не второй рендер оверлея.
-
-/**
- * Порт пункта «Statistics» меню топбара чата (tweb `chat/topbar.ts:664-671`:
- * `AppStatisticsTab` в правом сайдбаре, гейт `!monoforumThreadId &&
- * canViewStatistics`). У tweb это НЕ строка профиля — этот пункт открывается
- * из меню «⋮» шапки чата, а не из карточки. У нас профиль остаётся
- * единственным местом, где вообще есть доступ к статистике (топбар такого
- * меню/пункта не имеет), поэтому строка живёт здесь — долг на перенос в
- * правильное место (меню топбара) заведён отдельно (см. докблок раздела).
- *
- * `showStatistics` — уже свёрнутый ВЫЗЫВАЮЩИМ предикат `isRealChat &&
- * isChannel && canViewStats` (`useGroupInfo.ts`, реальные `useState`-поля с
- * писателем — `managers.groups.card(...).then(...)`, проверено грепом перед
- * портом). Открытие — мост в React `ChannelStats` (слайд-ин, `UserInfoPanel.tsx`),
- * тот же приём, что `onOpenQrCode` в задаче 4.
- */
-function Statistics() {
-  const context = usePeerProfileContext()
-  return (
-    <Show when={context.showStatistics}>
-      <Section noDelimiter>
-        <Row clickable={() => context.onOpenStatistics?.()}>
-          <Row.Icon icon="statistics_filled" />
-          <Row.Title>{i18n('Statistics')}</Row.Title>
-        </Row>
-      </Section>
-    </Show>
-  )
-}
-
-/**
- * Порт строки «Discussion»/«LinkedChannel» вкладки редактирования канала
- * (tweb `editChat.tsx:362-390`: `AppChatDiscussionTab`, подзаголовок —
- * привязанный чат или `PeerInfo.Discussion.Add`). У tweb это строка ВКЛАДКИ
- * `editChat`, а не профиля — у нас вкладки редактирования (752 строки
- * оригинала) нет вовсе, поэтому упрощённый тумблер «включить обсуждение»
- * живёт здесь; полноценный перенос (с привязкой конкретного чата через
- * `AppChatDiscussionTab`) — тот же долг, что и у `Statistics` выше.
- *
- * Текст строк («Discussion enabled»/«Enable discussion») — БЕЗ i18n-ключа, как
- * и в прежнем React (`translate={false}`): ключей для них не заводили ни разу,
- * не заводим и сейчас — не расширять словарь ради переноса разметки.
- *
- * `discussionPeerId !== NULL_PEER_ID` — ЗНАКОВЫЙ ключ группы обсуждения (`0` —
- * обсуждения нет, не `> 0`), тот же предикат, что был у React-строки
- * (`useGroupInfo.ts`, комментарий у поля `discussionPeerId`). «Enabled»-ветка
- * рисует галочку в `titleRight` (порт `selected` прежнего React `Row` —
- * `settings/kit.tsx`, `titleRight = selected ? <TgIcon name="check".../> :
- * …`), «Enable»-ветка красится классом `primary` (порт `accent` того же
- * компонента, `_bridge.scss:282` — общая утилита цвета текста, не завязана на
- * конкретный тип узла) и гасит клик, пока идёт запрос (`enablingDiscussion`),
- * — дословно то же условие, что было у React `onClick`.
- */
-function Discussion() {
-  const context = usePeerProfileContext()
-  return (
-    <Show when={context.showDiscussion}>
-      <Section noDelimiter name="PeerInfo.Discussion">
-        <Show
-          when={context.discussionPeerId !== NULL_PEER_ID}
-          fallback={
-            <Row
-              clickable={context.enablingDiscussion ? undefined : () => context.onEnableDiscussion?.()}
-              class="primary"
-            >
-              <Row.Icon icon="bubble_filled" />
-              <Row.Title>{'Enable discussion'}</Row.Title>
-            </Row>
-          }
-        >
-          <Row>
-            <Row.Icon icon="bubble_filled" />
-            <Row.Title titleRight={<IconTsx icon="check" style={{ color: 'var(--primary-color)', 'font-size': '22px' }} />}>
-              {'Discussion enabled'}
-            </Row.Title>
-          </Row>
-        </Show>
-      </Section>
-    </Show>
-  )
-}
-
-/**
- * Порт строки «MemberRequests»/«SubscribeRequests» вкладки редактирования
- * (tweb `editChat.tsx:227-244`: `AppChatRequestsTab`, счётчик —
- * `chatFull.requests_pending`) плюс плашка топбара `chat/requests.tsx`
- * (карусель аватарок над лентой — не портирована, у нас нет предмета
- * `StackedAvatars`/`recent_requesters`, см. долг раздела). У tweb это
- * отдельная вкладка, открываемая строкой из `editChat`, а не список ВНУТРИ
- * профиля — у нас список рисуется прямо здесь (перенос «как есть» прежнего
- * React-цикла по `joinRequests`, без вкладки).
- *
- * `showJoinRequests`/`joinRequests` — уже посчитанные `useGroupInfo.ts`
- * (реальные `useState`, писатели — `managers.groups.listJoinRequests` +
- * `managers.peers.getUsers`, проверено грепом перед портом). Одобрение/отклонение
- * — те же мутации, что были у React-кнопок (`approveJoinRequest`/
- * `declineJoinRequest`), поданные мостом-колбэком.
- *
- * Аватар заявки — `RequestAvatar` ниже (текстовый инициал, тот же приём, что
- * у React `shared/ui/Avatar`); Solid-порта `Avatar` в кодовой базе нет, а
- * заводить его ради одной буквы в кружке — за пределами этой задачи.
- */
-function JoinRequests() {
-  const context = usePeerProfileContext()
-  return (
-    <Show when={context.showJoinRequests && (context.joinRequests?.length ?? 0) > 0}>
-      <Section noDelimiter name="SubscribeRequests">
-        <For each={context.joinRequests}>
-          {(req) => (
-            <Row havePadding>
-              <div class="row-icon"><RequestAvatar title={req.title} /></div>
-              <Row.Title>{req.title}</Row.Title>
-              <Row.RightContent>
-                <Button.Icon
-                  icon="check"
-                  aria-label={`Одобрить заявку: ${req.title}`}
-                  onClick={() => context.onApproveJoinRequest?.(req.userId)}
-                />
-                <Button.Icon
-                  icon="close"
-                  class="danger"
-                  aria-label={`Отклонить заявку: ${req.title}`}
-                  onClick={() => context.onDeclineJoinRequest?.(req.userId)}
-                />
-              </Row.RightContent>
-            </Row>
-          )}
-        </For>
-      </Section>
-    </Show>
-  )
-}
-
-/** Текстовый аватар заявки (первая буква имени, заглавная) — дословный слепок
- *  no-photo-веток React `shared/ui/Avatar/Avatar.tsx` (`avatar avatar-like
- *  avatar-{N} avatar-gradient`, `size='md'` → 42px, класс `avatar-42` есть в
- *  наборе известных tweb-размеров): фото у заявки нет никогда (сервер отдаёт
- *  только `userId`+`title`), поэтому остальные ветки того компонента (фото/
- *  эмодзи/онлайн-точка) сюда не переносим — предмета нет. */
-function RequestAvatar(props: { title: string }) {
-  return (
-    <div class="avatar avatar-like avatar-42 avatar-gradient" style={{ background: 'var(--primary-color)' }}>
-      {props.title[0]?.toUpperCase()}
-    </div>
-  )
-}
-
-/**
- * Ключ шифрования секретного чата (tweb `chatEncryptionKey`, emoji-fingerprint
- * E2E-сессии) — В ОРИГИНАЛЕ ПРЕДМЕТА НЕТ ВООБЩЕ: у tweb секретных чатов не
- * существует (`docs/tweb/...` не описывает их ни разу — это НАША подсистема,
- * `core/secret/*`), поэтому ссылки `file:line` на оригинал у этой секции нет и
- * быть не может. Строка стоит в профиле, потому что это единственное место,
- * где у секретного чата вообще есть info-панель — заводить для него отдельную
- * вкладку ради одной строки не входит в объём этой задачи (тот же долг, что у
- * `Statistics`/`Discussion`/`JoinRequests`, хоть и без адреса оригинала —
- * критерий готовности долга не требует «переехать в tweb-эквивалент», которого
- * нет, только «не жить в профиле»).
- *
- * Открытие — мост в React `KeyVerificationPopup` (`UserInfoPanel.tsx`), тот же
- * приём, что `onOpenQrCode`/`onOpenStatistics` выше: узел эмодзи-отпечатка сам
- * попап не строит, дальше решает React.
- */
-function EncryptionKey() {
-  const context = usePeerProfileContext()
-  return (
-    <Show when={context.isSecret}>
-      <Section noDelimiter>
-        <Row clickable={() => context.onOpenEncryptionKey?.()}>
-          <Row.Icon icon="key_filled" />
-          <Row.Title>{i18n('SecretChat.EncryptionKey')}</Row.Title>
-        </Row>
-      </Section>
     </Show>
   )
 }

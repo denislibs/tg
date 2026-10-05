@@ -17,11 +17,9 @@
  * Расхождения с оригиналом (все временные, с номером задачи, которая снимает):
  *  1. (снято на К-2) Синглтон создаётся при импорте, как у tweb (`:141`), над
  *     статичным `#column-right` из `index.html`.
- *  2. ВРЕМЕННО до 3-1. Вкладка «общих медиа» — `AppReactProfileTab`
- *     (`reactProfileTab.ts`, хост React-панели `UserInfoPanel`), а не
- *     `AppSharedMediaTab`. `replaceSharedMediaTab` зовёт `Chat.tsx`, когда
- *     инстанс становится активным (порт смысла `chat.ts:1239-1242`,
- *     `appImManager.ts:3277`) — ВРЕМЕННО до Э6.
+ *  2. (снято на К-5: вкладка общих медиа — `AppSharedMediaTab`,
+ *     `tabs/sharedMediaTab.ts`; `replaceSharedMediaTab` зовёт класс `Chat`,
+ *     `chat.ts:1239-1242`, и `appImManager.ts:3277`.)
  *  3. (снято К-2: `appImManager.selectTab(active ? CHAT : PROFILE, animate)`, `:125`.)
  *  4. `sharedMediaTab` объявлен необязательным (строгие типы: до первого
  *     `replaceSharedMediaTab` его нет и у оригинала); `toggleSidebar` обращается
@@ -29,7 +27,7 @@
  */
 import SidebarSlider, { SliderSuperTab } from '@components/slider'
 import mediaSizes, { ScreenSize } from '@core/dom/mediaSizes'
-import AppReactProfileTab from '@components/sidebarRight/reactProfileTab'
+import AppSharedMediaTab from '@components/sidebarRight/tabs/sharedMediaTab'
 import { MOUNT_CLASS_TO } from '@config/debug'
 import type { Managers } from '../../client/bootstrap'
 import appNavigationController from '@core/navigation/appNavigationController'
@@ -42,7 +40,7 @@ import appImManager, { APP_TABS } from '@lib/appImManager'
 export const RIGHT_COLUMN_ACTIVE_CLASSNAME = 'is-right-column-shown'
 
 export class AppSidebarRight extends SidebarSlider {
-  public sharedMediaTab?: AppReactProfileTab
+  public sharedMediaTab?: AppSharedMediaTab
 
   constructor() {
     super({
@@ -68,13 +66,13 @@ export class AppSidebarRight extends SidebarSlider {
   }
 
   public createSharedMediaTab() {
-    const tab = this.createTab(AppReactProfileTab, false, true)
+    const tab = this.createTab(AppSharedMediaTab, false, true)
     tab.slider = this
     // this.tabsContainer.prepend(tab.container);
     return tab
   }
 
-  public replaceSharedMediaTab(tab?: AppReactProfileTab) {
+  public replaceSharedMediaTab(tab?: AppSharedMediaTab) {
     const previousTab = this.sharedMediaTab
     if(previousTab) {
       const idx = this.historyTabIds.indexOf(previousTab)

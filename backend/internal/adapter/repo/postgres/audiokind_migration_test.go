@@ -96,7 +96,7 @@ func TestMigration0132_AudioDocumentsBecomeAudio(t *testing.T) {
 		t.Errorf("scheduled: type = %q, want audio", schedType)
 	}
 
-	counters, err := msgs.SearchCounters(ctx, chatID, a, []string{"files", "music", "voice"})
+	counters, err := msgs.SearchCounters(ctx, chatID, a, []string{"files", "music", "voice"}, nil)
 	if err != nil {
 		t.Fatalf("counters: %v", err)
 	}

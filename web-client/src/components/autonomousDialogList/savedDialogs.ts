@@ -31,7 +31,7 @@
 //     а ручки «Избранного» в них нет — её приносит вызывающий
 //     (`AppSearchSuper.managers.chats`). У оригинала все менеджеры — `rootScope.managers`.
 //  7. `destroy()` не роняет скроллер: он чужой — общий скроллер панели профиля,
-//     им владеет хук `core/hooks/useSearchSuper.ts` (расхождение 7 шапки
+//     им владеет вкладка профиля `AppSharedMediaTab` (расхождение 7 шапки
 //     `components/appSearchSuper.ts`). У оригинала `base.destroy()` зовёт
 //     `scrollable.destroy()` и у этого списка (`base.ts:420-426`), снимая со
 //     скроллера панели и её собственные колбэки.

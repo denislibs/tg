@@ -17,6 +17,11 @@
 // ниже), клик при `is-collapsed` зовёт его, а НЕ трогает `is-collapsed` сам —
 // это делает владелец состояния СНАРУЖИ (см. «Осознанное отступление» и
 // докблок клика).
+// С шага К-5 хозяев два, оба на Solid: вкладка профиля (`sidebarRight/tabs/
+// sharedMedia.solid.tsx::renderProfile` — новый инстанс на каждый корень
+// профиля, как у tweb) и корень настроек (`settings.solid.tsx`); сворачивание —
+// `helpers/solid/useCollapsable.ts`. Упоминания `UserInfoPanel.tsx` ниже — история
+// задач 3-5 (React-панель снесена на К-5).
 // Задача 5 смонтировала класс: `UserInfoPanel.tsx` через `useImperativeIsland`
 // (host: чужой ref, `strays` чистит `instance.container` на teardown) плюс
 // реальный `useCollapsable()` — эффект `folded → setCollapsed(folded)` (с

@@ -18,7 +18,8 @@
 //   • `slider` + `openUserPermissionsTab(slider, chatId, participant, isAdmin)`
 //     (Solid-вкладка `AppUserPermissionsTab`, у нас не портирована) →
 //     колбэк `openUserPermissions(participant, isAdmin)`; кто его исполняет —
-//     решает владелец меню (сегодня — React-экран прав участника);
+//     решает владелец меню. Без колбэка пункты прав скрыты: вкладки прав
+//     участника нет (Б-41), владелец меню профиля колбэк не передаёт;
 //   • `appImManager.setInnerPeer({peerId})` → колбэк `openPeer(peerId)` у владельца меню;
 //   • действия — наши ручки `groups.addMember`/`unban`/`removeMember` вместо
 //     `appChatsManager.addToChat`/`editBanned(…, пустые права)`/`kickFromChat`;
@@ -101,17 +102,17 @@ export default function createParticipantContextMenu(options: {
       icon: 'promote',
       text: 'SetAsAdmin',
       onClick: () => openPermissions(true),
-      verify: () => canManageAdmins && !isParticipantAdmin(participant),
+      verify: () => !!openUserPermissions && canManageAdmins && !isParticipantAdmin(participant),
     }, {
       icon: 'admin',
       text: 'EditAdminRights',
       onClick: () => openPermissions(true),
-      verify: () => isParticipantAdmin(participant) && canEditAdmin(chat),
+      verify: () => !!openUserPermissions && isParticipantAdmin(participant) && canEditAdmin(chat),
     }, {
       icon: 'restrict',
       text: 'KickFromSupergroup',
       onClick: () => openPermissions(false),
-      verify: () => canChangePermissions && (
+      verify: () => !!openUserPermissions && canChangePermissions && (
         participant._ === 'channelParticipant' ||
         (participant._ === 'channelParticipantBanned' && !participant.pFlags?.left)
       ),

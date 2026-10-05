@@ -47,7 +47,7 @@ func TestSearchCounters_AllFiltersInOneAnswer(t *testing.T) {
 	want := seedSharedMedia(t, in, chatID, a)
 
 	filters := []string{"media", "files", "links", "music", "voice", "gifs"}
-	got, err := in.SearchCounters(ctx, chatID, a, filters)
+	got, err := in.SearchCounters(ctx, chatID, a, filters, nil)
 	if err != nil {
 		t.Fatalf("SearchCounters: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestSearchCounters_AllFiltersInOneAnswer(t *testing.T) {
 	}
 
 	// Чужой чат — 403 (domain.ErrNotFound), а не счётчики.
-	if _, err := in.SearchCounters(ctx, chatID, 999, filters); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := in.SearchCounters(ctx, chatID, 999, filters, nil); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("посторонний получил счётчики: err=%v", err)
 	}
 }
@@ -167,5 +167,55 @@ func TestMediaHistory_HydratesAttachment(t *testing.T) {
 	// размеры доехали — иначе клиент не зарезервирует бокс плитки
 	if w, h := domain.MediaDimensions(photo); w != 1280 || h != 720 {
 		t.Fatalf("dims = %dx%d, want 1280x720", w, h)
+	}
+}
+
+// Вкладки профиля треда (комментарии, тема форума) показывают медиа ТОЛЬКО
+// треда: счётчики и страница с `thread_root` (номер корня, как у истории) —
+// tweb appSearchSuper.ts:2282-2290 и :2375-2377 (`threadId` в контексте поиска
+// → `top_msg_id`). Медиа треда ≠ медиа всего чата; корень в выборку не входит.
+func TestSharedMedia_ThreadRootNarrowsToThread(t *testing.T) {
+	in, _ := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	seedSharedMedia(t, in, chatID, a) // медиа вне треда
+
+	root, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Type: "photo"})
+	if err != nil {
+		t.Fatalf("send root: %v", err)
+	}
+	for _, typ := range []string{"photo", "video", "document"} {
+		if _, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Type: typ, ThreadRootID: &root.ID}); err != nil {
+			t.Fatalf("send %s в тред: %v", typ, err)
+		}
+	}
+
+	thread := root.Seq
+	counters, err := in.SearchCounters(ctx, chatID, a, []string{"media", "files", "voice"}, &thread)
+	if err != nil {
+		t.Fatalf("SearchCounters: %v", err)
+	}
+	want := map[string]int{"media": 2, "files": 1, "voice": 0}
+	for _, c := range counters {
+		if c.Count != want[c.Filter] {
+			t.Fatalf("тред: counter[%s]=%d, want %d", c.Filter, c.Count, want[c.Filter])
+		}
+	}
+
+	res, err := in.MediaHistory(ctx, chatID, a, "media", MediaPage{Limit: 60, ThreadRoot: &thread})
+	if err != nil {
+		t.Fatalf("MediaHistory: %v", err)
+	}
+	if res.Count != 2 || len(res.Messages) != 2 {
+		t.Fatalf("тред: count=%d msgs=%d, want 2 (без корня и без медиа вне треда)", res.Count, len(res.Messages))
+	}
+
+	all, err := in.MediaHistory(ctx, chatID, a, "media", MediaPage{Limit: 60})
+	if err != nil {
+		t.Fatalf("MediaHistory без треда: %v", err)
+	}
+	if all.Count != 3+1+2 {
+		t.Fatalf("весь чат: count=%d, want 6", all.Count)
 	}
 }

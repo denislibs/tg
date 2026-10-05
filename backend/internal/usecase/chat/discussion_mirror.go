@@ -157,11 +157,10 @@ func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message)
 // + номер» была неполна — пир корня ехал неявно. Поля thread_root_id в схеме
 // нет вовсе.
 //
-// Входящий контракт при этом не меняется: комментарии по-прежнему
-// запрашиваются номером ПОСТА (GET /channels/{peerID}/posts/{postSeq}/comments,
-// ?thread_root=), ровно как messages.getReplies у оригинала берёт пир канала и
-// номер поста. Асимметрия «спрашиваю постом, получаю зеркало» — устройство
-// оригинала, где переводит getDiscussionMessage.
+// Входящий контракт симметричен: ?thread_root=/thread_root_id — тоже номер
+// корня в том же пире (у комментария — номер зеркала, см.
+// resolveThreadRootForQuery). Перевод «пост канала → зеркало» — одна ручка
+// GetDiscussionMessage, как messages.getDiscussionMessage у оригинала.
 //
 // Батчевый: один резолв на весь набор, а не запрос на сообщение. Возвращает
 // НОВЫЙ слайс (той же длины и порядка) — входной msgs не мутируется.
@@ -218,129 +217,52 @@ func (i *Interactor) externalThreadRoot(ctx context.Context, m domain.Message) *
 }
 
 // resolveThreadRootForQuery переводит ВХОДЯЩИЙ клиентский thread_root (НОМЕР
-// ПОСТА в канале — внешний контракт) в id ЗЕРКАЛА для запроса к хранилищу —
-// зеркальная (в обоих смыслах) операция к ExternalizeThreadRoots: та
-// переводит наружу при отдаче, эта — внутрь при чтении. Нужна generic-
-// истории чата (GetHistory/GetHistoryAround, ?thread_root=<id>): текущий
-// клиент читает комментарии именно так, передавая id поста, а
-// MessageRepo.GetHistory/GetAround/CountThread фильтруют по буквальному
-// значению — без перевода тред «не находится» (комментарии физически висят
-// на id зеркала), и страница молча возвращается пустой.
+// корня треда В ЭТОМ ЖЕ ЧАТЕ) в ключ строки для запроса к хранилищу —
+// обратная операция к ExternalizeThreadRoots: та переводит наружу при отдаче,
+// эта — внутрь при чтении (GetHistory/GetHistoryAround, ?thread_root=<номер>).
 //
-// chatID — группа обсуждения (только там комментарии читаются нечленами,
-// см. checkHistoryAccess); для форум-топиков (chatID — обычная группа,
-// threadRoot уже настоящий id сообщения темы) отдаёт вход без изменений.
-// threadRoot == nil -> nil. Если резолв не нашёл зеркала для этого id —
-// возвращает указатель на 0: реальные id сообщений всегда положительны, так
-// что запрос с ним гарантированно не совпадёт ни с одним сообщением
-// («треда ещё нет» — не ошибка, как и у ListComments/CommentCounts).
+// Пара «пир + номер» полна: у форум-топика корень — сообщение темы в chatID,
+// у комментариев — ЗЕРКАЛО поста в группе обсуждения (chatID — сама группа).
+// Как у оригинала: тред комментариев адресуется номером зеркала
+// (`messages.getDiscussionMessage` → `threadId` = mid в группе, tweb
+// appImManager.ts:2212-2224, bubbles.ts:3773-3780), а перевод «пост канала →
+// зеркало» делает ровно одна ручка — GetDiscussionMessage.
+//
+// threadRoot == nil -> nil. Номера в чате нет — указатель на 0: реальные id
+// сообщений всегда положительны, так что фильтр гарантированно не совпадёт ни
+// с одним сообщением («треда нет» — не ошибка, пустая страница).
 func (i *Interactor) resolveThreadRootForQuery(ctx context.Context, chatID int64, threadRoot *int64) *int64 {
 	if threadRoot == nil {
 		return nil
 	}
-	miss := int64(0) // номер есть, сообщения по нему нет — фильтр не совпадёт ни с чем
-	postChat, seq := chatID, *threadRoot
-	if i.groups != nil {
-		if disc, err := i.groups.IsDiscussionGroup(ctx, chatID); err == nil && disc {
-			if channelID, e := i.groups.DiscussionChannel(ctx, chatID); e == nil && channelID != 0 {
-				postChat = channelID
-			}
-		}
-	}
-	// Номер корня всегда переводится в ключ строки: для форум-топика это корень
-	// в ЭТОМ чате, для комментариев — пост в канале.
-	rootID, err := i.msgs.IDBySeq(ctx, postChat, seq)
+	rootID, err := i.msgs.IDBySeq(ctx, chatID, *threadRoot)
 	if err != nil {
+		miss := int64(0)
 		return &miss
 	}
-	if postChat == chatID {
-		return &rootID
-	}
-	root, err := i.msgs.MirrorByPost(ctx, postChat, rootID)
-	if err != nil {
-		return &miss
-	}
-	return &root
+	return &rootID
 }
 
-// ResolveThreadRootForSend — трансляция id поста в id зеркала для ВХОДЯЩЕЙ
-// записи (generic Send). Блокер: resolveThreadRootForQuery применялась
-// только на чтении (GetHistory/GetHistoryAround), а thread_root_id,
-// приходящий в Send с HTTP/WS, оставался буквальным id ПОСТА — комментарий,
-// отправленный generic-путём (не через PostComment), приземлялся на
-// несуществующий/чужой корень и в треде никогда не появлялся.
+// ResolveThreadRootForSend — тот же перевод номера корня (в том же чате) в
+// ключ строки для ВХОДЯЩЕЙ записи (generic Send с HTTP/WS).
 //
-// НЕ переиспользует resolveThreadRootForQuery — это отдельная, специально
-// разведённая логика, а не обёртка над ней. Причина: resolveThreadRootForQuery
-// при отсутствии зеркала возвращает указатель на 0 — безопасный sentinel
-// ТОЛЬКО для SQL-фильтра чтения (0 не совпадёт ни с одним реальным id).
-// На записи thread_root_id уходит в INSERT: у колонки нет FK, так что 0
-// молча запишется как валидное значение, а НЕ как «треда нет» — и тогда
-// СХЛОПНЕТ в один «тред» все комментарии к РАЗНЫМ домиграционным постам,
-// у которых зеркала ещё нет (у всех thread_root_id=0 читался бы как один и
-// тот же корень). Ревью на живом стенде воспроизвело это буквально: два
-// поста, опубликованные до EnableDiscussion, generic-send с
-// thread_root_id=<post1> и thread_root_id=<post2> → обе строки получали
-// thread_root_id=0, а GetHistory(thread_root=post1) резолвился в тот же 0 и
-// отдавал ОБА комментария разом.
+// НЕ переиспользует resolveThreadRootForQuery: та при отсутствии корня
+// возвращает указатель на 0 — безопасный sentinel ТОЛЬКО для SQL-фильтра
+// чтения. На записи thread_root_id уходит в INSERT: у колонки нет FK, и 0
+// молча записался бы как валидный корень, схлопнув в один «тред» все
+// сообщения с несуществующим корнем. Поэтому здесь — domain.ErrNotFound.
 //
-// Вместо sentinel запись обязана вести себя как PostComment: если зеркала
-// нет — дозеркалировать пост тем же lazyMirrorPost (включая правило
-// альбома), а если корня и после этого нет — отклонить domain.ErrNotFound,
-// а не писать 0.
-//
-// Резолвить нужно СНАРУЖИ Send, на границе HTTP/WS-хендлера, а не внутри
-// самого Send: PostComment уже вызывает Send с ThreadRootID = id зеркала
-// (см. PostComment в discussion.go) — если бы Send резолвил ещё раз, он
-// попытался бы найти «зеркало зеркала» (несуществующее, root=0) и сломал бы
-// комментарии, отправленные штатным путём PostComment. Экспортирован ровно
-// для того, чтобы единственными легальными вызывающими были пограничные
-// хендлеры (delivery/http.ChatHandler.Send, delivery/ws dispatch
-// send_message), а не usecase-код.
+// Резолвить нужно СНАРУЖИ Send, на границе HTTP/WS-хендлера: PostComment зовёт
+// Send уже с ключом строки зеркала, и второй перевод внутри Send принял бы его
+// за номер. Экспортирован ровно для пограничных хендлеров
+// (delivery/http.ChatHandler.Send, delivery/ws dispatch send_message).
 func (i *Interactor) ResolveThreadRootForSend(ctx context.Context, chatID int64, threadRoot *int64) (*int64, error) {
 	if threadRoot == nil {
 		return nil, nil
 	}
-	postChat := chatID
-	if i.groups != nil {
-		if disc, err := i.groups.IsDiscussionGroup(ctx, chatID); err == nil && disc {
-			if channelID, e := i.groups.DiscussionChannel(ctx, chatID); e == nil && channelID != 0 {
-				postChat = channelID
-			}
-		}
-	}
-	// Клиент адресует корень НОМЕРОМ в его чате: у форум-топика это номер
-	// сообщения темы в chatID, у комментариев — номер поста в канале. Ключ
-	// строки, который уйдёт в INSERT, добывается здесь, а не подставляется
-	// присланным числом: иначе на запись легло бы чужое пространство номеров.
-	postID, err := i.msgs.IDBySeq(ctx, postChat, *threadRoot)
+	rootID, err := i.msgs.IDBySeq(ctx, chatID, *threadRoot)
 	if err != nil {
-		return nil, err // ErrNotFound — тредить некуда, отклоняем (см. ниже)
+		return nil, err // ErrNotFound — тредить некуда, отклоняем
 	}
-	if postChat == chatID {
-		// не discussion-группа (форум-топик и т.п.) — корень это само сообщение.
-		return &postID, nil
-	}
-	channelID := postChat
-	root, err := i.msgs.MirrorByPost(ctx, channelID, postID)
-	if err != nil {
-		return nil, err
-	}
-	if root == 0 {
-		// Зеркала нет — почти наверняка домиграционный пост (опубликован до
-		// EnableDiscussion/LinkDiscussion): дозаводим ровно тем же путём, что
-		// и первый комментарий через PostComment (см. её комментарий и
-		// правило альбома), а не пишем sentinel и не молчим.
-		root, err = i.lazyMirrorPost(ctx, channelID, postID)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if root == 0 {
-		// Дозаводка не помогла (поста нет / чужой канал / удалён) — треда
-		// действительно нет, отклоняем запрос понятной доменной ошибкой
-		// вместо записи 0.
-		return nil, domain.ErrNotFound
-	}
-	return &root, nil
+	return &rootID, nil
 }

@@ -179,14 +179,6 @@ export function newChannelsManager({ rest, beforeSending, peers, cacheViews }: {
     async setSignatures(channelId: number, signatures: boolean, profiles: boolean): Promise<void> {
       await rest.put(`/channels/${channelId}/sign_messages`, { signatures, profiles })
     },
-    async postComment(channelId: number, postId: number, text: string, clientMsgId: string): Promise<MyMessage> {
-      const r = await rest.post<RawMyMessage>(`/channels/${channelId}/posts/${postId}/comments`, { text, client_msg_id: clientMsgId })
-      return mapMyMessage(r)
-    },
-    async listComments(channelId: number, postId: number, offset = 0, limit = 50): Promise<{ messages: MyMessage[]; count: number }> {
-      const r = await rest.get<{ messages: RawMyMessage[]; count: number }>(`/channels/${channelId}/posts/${postId}/comments`, { offset, limit })
-      return { messages: (r.messages ?? []).map((m) => mapMyMessage(m)), count: r.count }
-    },
     // Предложка постов (Telegram suggested posts).
     async suggestPost(peerId: number, args: SuggestPostArgs): Promise<SuggestedPost> {
       const r = await rest.post<RawSuggestedPost>(`/channels/${peerId}/suggested_posts`, {

@@ -281,11 +281,32 @@ func (h *ChannelHandler) PostComment(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	// thread_root_id наружу — НОМЕР поста (messageJSONOut, единый чокпоинт,
-	// см. usecase/chat/discussion_mirror.go): внутри PostComment комментарий
-	// тредится на id зеркала поста в группе обсуждения, но клиент про
-	// зеркало ничего не знает и сверяет thread_root_id с постом, который открыл.
+	// корень треда наружу — НОМЕР зеркала поста в группе обсуждения
+	// (reply_to_top_id, ExternalizeThreadRoots): комментарий живёт в группе.
 	writeMessage(w, r, h.uc, m)
+}
+
+// GetDiscussionMessage — GET /channels/{peerID}/posts/{postSeq}/discussion:
+// корень треда комментариев поста (зеркало в группе обсуждения), порт
+// messages.getDiscussionMessage. Ответ — messages.messages с одним сообщением:
+// полей max_id/read_*_max_id/unread_count конструктора messages.discussionMessage
+// клиент не читает (окно треда считает их сам).
+func (h *ChannelHandler) GetDiscussionMessage(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := peerChatID(w, r, h.uc)
+	if !ok {
+		return
+	}
+	postID, ok := msgSeqIDParam(w, r, h.uc, chatID, "postSeq")
+	if !ok {
+		return
+	}
+	m, err := h.uc.GetDiscussionMessage(r.Context(), chatID, postID, user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeMessagesAll(w, r, h.uc, []domain.Message{m})
 }
 
 func (h *ChannelHandler) ListComments(w http.ResponseWriter, r *http.Request) {

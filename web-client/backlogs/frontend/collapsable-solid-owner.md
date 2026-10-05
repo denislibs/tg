@@ -1,7 +1,11 @@
 # useCollapsable — временный владелец React вместо Solid-компонента
 
-**Статус:** открыт, объявленное отступление (не баг). Живёт до Solid-порта
-шапки профиля.
+**Статус:** открыт, объявленное отступление (не баг). С К-5 (2026-10-03)
+React-владельца нет: оба владельца — Solid-порт `helpers/solid/useCollapsable.ts`
+(корень настроек `settings.solid.tsx` и вкладка профиля
+`sidebarRight/tabs/sharedMedia.solid.tsx`), React-хук `core/hooks/useCollapsable.ts`
+снесён вместе с `UserInfoPanel.tsx`. Остаток — хук живёт СНАРУЖИ класса, а не в
+его конструкторе, как у tweb.
 **Дата фиксации:** волна 3 «Solid-миграция», программа `docs/superpowers/
 plans/2026-09-05-profile-avatars-class.md`, задача 4 (контракт сворачивания
 `PeerProfileAvatars` под внешний `useCollapsable`), ревью 2026-09-05.

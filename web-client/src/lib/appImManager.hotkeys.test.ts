@@ -390,14 +390,14 @@ describe('ориентиры экранного доступа (tweb :349-352, :
     expect(location.hash).toBe(hash)
   })
 
-  it('колонки названы и переименовываются на `language_change`', () => {
+  it('колонки названы и переименовываются на `language_apply` (расхождение 2)', () => {
     const left = document.getElementById('column-left')!
     const right = document.getElementById('column-right')!
     expect(left.getAttribute('aria-label')).toBe('Chat list')
     expect(right.getAttribute('aria-label')).toBe('Chat info')
 
     left.removeAttribute('aria-label')
-    rootScope.dispatchEvent('language_change', 'en')
+    rootScope.dispatchEventSingle('language_apply')
     expect(left.getAttribute('aria-label')).toBe('Chat list')
   })
 })

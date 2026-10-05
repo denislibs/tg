@@ -205,7 +205,10 @@ func (i *Interactor) Profile(ctx context.Context, viewerID, targetID int64) (dom
 	}
 
 	blocked, _ := i.repo.IsBlocked(ctx, viewerID, targetID)
-	calls := check(domain.PrivacyCalls)
+	// Самому себе не звонят: у оригинала phone_calls_available своей карточки
+	// сервер не ставит, и кнопки звонка в «Избранном» нет (tweb topbar.ts
+	// verifyCallButton :409-415 решает только по этим флагам).
+	calls := viewerID != targetID && check(domain.PrivacyCalls)
 	full := domain.NewUserFull(u.ID, domain.UserFullFlags{
 		Blocked: blocked,
 		// Звонок у нас один — правило PrivacyCalls решает и голосовой, и

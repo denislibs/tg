@@ -845,7 +845,7 @@ func (r fakeMsgs) MediaHistory(_ context.Context, chatID, userID int64, filter s
 	all := r.s.messages[chatID]
 	for i := len(all) - 1; i >= 0; i-- { // newest first
 		m := all[i]
-		if !m.Deleted && !r.s.hiddenFor(userID, m.ID) && matchesMediaFilter(m, filter) {
+		if !m.Deleted && !r.s.hiddenFor(userID, m.ID) && matchesMediaFilter(m, filter) && inThread(m, page.ThreadRoot) {
 			out = append(out, m)
 		}
 	}
@@ -866,7 +866,7 @@ func (r fakeMsgs) MediaHistory(_ context.Context, chatID, userID int64, filter s
 	return out, total, nil
 }
 
-func (r fakeMsgs) SearchCounters(_ context.Context, chatID, userID int64, filters []string) (map[string]int, error) {
+func (r fakeMsgs) SearchCounters(_ context.Context, chatID, userID int64, filters []string, threadRootID *int64) (map[string]int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	out := make(map[string]int, len(filters))
@@ -876,13 +876,19 @@ func (r fakeMsgs) SearchCounters(_ context.Context, chatID, userID int64, filter
 		}
 		n := 0
 		for _, m := range r.s.messages[chatID] {
-			if !m.Deleted && !r.s.hiddenFor(userID, m.ID) && matchesMediaFilter(m, f) {
+			if !m.Deleted && !r.s.hiddenFor(userID, m.ID) && matchesMediaFilter(m, f) && inThread(m, threadRootID) {
 				n++
 			}
 		}
 		out[f] = n
 	}
 	return out, nil
+}
+
+// inThread — фильтр треда шаред-медиа (MediaPage.ThreadRoot / SearchCounters):
+// nil — весь чат, иначе только ответы с этим корнем (без самого корня).
+func inThread(m domain.Message, threadRootID *int64) bool {
+	return threadRootID == nil || (m.ThreadRootID != nil && *m.ThreadRootID == *threadRootID)
 }
 
 func isKnownMediaFilter(f string) bool {

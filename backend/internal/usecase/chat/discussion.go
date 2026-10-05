@@ -111,8 +111,8 @@ func (i *Interactor) PostComment(ctx context.Context, channelID, postID, userID 
 		// тогда возвращал 0), и взяться зеркалу больше неоткуда. Комментировать
 		// такие старые посты Telegram позволяет, поэтому дозаводим зеркало по
 		// требованию первого комментария, а не хороним тред навсегда (см.
-		// lazyMirrorPost — тот же путь использует ResolveThreadRootForSend
-		// для generic-записи, чтобы не плодить вторую копию этой логики).
+		// lazyMirrorPost — тот же путь использует GetDiscussionMessage, чтобы
+		// не плодить вторую копию этой логики).
 		root, err = i.lazyMirrorPost(ctx, channelID, postID)
 		if err != nil {
 			return domain.Message{}, err
@@ -132,17 +132,15 @@ func (i *Interactor) PostComment(ctx context.Context, channelID, postID, userID 
 // EnableDiscussion/LinkDiscussion (на вставке mirrorChannelPost был no-op
 // без привязанного обсуждения, взяться зеркалу больше неоткуда). Общий путь
 // для PostComment (комментарий через штатный эндпоинт) И
-// ResolveThreadRootForSend (generic-запись в тред с thread_root_id = id
-// такого домиграционного поста, см. её комментарий про блокер с sentinel
-// 0) — вынесен именно затем, чтобы у ленивой дозаводки было ровно одно
-// место, а не по копии на каждого потребителя.
+// GetDiscussionMessage (открытие треда: клиент узнаёт номер зеркала, которым
+// дальше адресует тред) — вынесен именно затем, чтобы у ленивой дозаводки было
+// ровно одно место, а не по копии на каждого потребителя.
 //
 // Возвращает id корня треда (зеркала) или 0, если дозавести действительно
 // нечего (поста нет / чужой канал / удалён) либо гонка проиграна без
 // зацепившегося корня — в этом случае err может быть nil (пост не найден,
 // не ошибка) или содержать реальный сбой создания зеркала; вызывающий сам
-// решает, во что это мапить (PostComment и ResolveThreadRootForSend — оба в
-// domain.ErrNotFound, но с разной семантикой снаружи).
+// решает, во что это мапить (оба вызывающих — в domain.ErrNotFound).
 func (i *Interactor) lazyMirrorPost(ctx context.Context, channelID, postID int64) (int64, error) {
 	post, e := i.msgs.GetByID(ctx, postID)
 	if e != nil || post.ChatID != channelID || post.Deleted {
@@ -203,6 +201,44 @@ func (i *Interactor) lazyMirrorPost(ctx context.Context, channelID, postID int64
 		return 0, createErr
 	}
 	return root, nil
+}
+
+// GetDiscussionMessage — корень треда комментариев поста: его ЗЕРКАЛО в группе
+// обсуждения, гидрированное той же формой, что сообщения ленты. Порт
+// messages.getDiscussionMessage (tweb appMessagesManager.ts:8814-8864): клиент
+// открывает тред по номеру зеркала (`threadId` = mid в группе, tweb
+// bubbles.ts:3773-3780, appImManager.ts:2212-2224) и дальше адресует им всё —
+// окно, отправку, живые кадры (reply_to_top_id у комментария — тот же номер).
+//
+// Зеркала нет (пост опубликован до привязки обсуждения) — дозаводится тем же
+// lazyMirrorPost, что у первого комментария через PostComment. domain.ErrNotFound,
+// если обсуждения нет или пост не резолвится в пост этого канала.
+func (i *Interactor) GetDiscussionMessage(ctx context.Context, channelID, postID, userID int64) (domain.Message, error) {
+	disc, _ := i.groups.GetDiscussion(ctx, channelID)
+	if disc == 0 {
+		return domain.Message{}, domain.ErrNotFound
+	}
+	root, err := i.msgs.MirrorByPost(ctx, channelID, postID)
+	if err != nil {
+		return domain.Message{}, err
+	}
+	if root == 0 {
+		if root, err = i.lazyMirrorPost(ctx, channelID, postID); err != nil {
+			return domain.Message{}, err
+		}
+		if root == 0 {
+			return domain.Message{}, domain.ErrNotFound
+		}
+	}
+	m, err := i.msgs.GetByID(ctx, root)
+	if err != nil {
+		return domain.Message{}, err
+	}
+	msgs := []domain.Message{m}
+	if err := i.hydrateMessages(ctx, userID, msgs); err != nil {
+		return domain.Message{}, err
+	}
+	return msgs[0], nil
 }
 
 // ListComments returns the comment thread (ascending) for a channel post plus the

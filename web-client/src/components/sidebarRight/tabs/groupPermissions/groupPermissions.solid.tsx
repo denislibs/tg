@@ -5,8 +5,7 @@
  * по умолчанию (`ChatPermissions`), плата за сообщения (`chargeForMessasgesSection`),
  * медленный режим (`RangeStepsSelector`) и исключения — ограниченные участники.
  * Регистрация — `AppGroupPermissionsTab` в `solidJsTabs/tabs.ts` (tweb `:640-648`);
- * открывает её редактор группы (`editChat`, задача 0б-1; до неё — мост React
- * `group/GroupEditFlow.tsx`). Разметка — дамп
+ * открывает её редактор группы (`editChat.solid.tsx`, задача 0б-1). Разметка — дамп
  * `docs/tweb/dom/dumps/15-right-13-group-permissions.json`.
  *
  * Модель сохранения — оригинала: изменения копятся в `createSolidTabState`, а

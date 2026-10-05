@@ -610,8 +610,23 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `DiscardVoiceMessage{Description,Action}`, `NoMicrophoneAccess`, `AccDescr.ResumeRecording`;
 // минус ключи снесённого React-композера `Composer.{CancelRecording,DiscardVoice.Text,RecordRound,RecordVoice}`
 // (у ru все четыре, у остальных — `Composer.CancelRecording`).
+// Шаг К-5 волны 7, задача 0б-1 (вкладка «Изменить» группы и канала, порт tweb
+// `editChat.tsx`): у ru +4 ключа tweb lang.ts — `TypePrivateGroup`, `TypePublicGroup`
+// (подпись строки типа группы), `ForumToggleDescription` (подпись секции с темами),
+// `ChannelTopicsDiscussionForbidden` (тост тем у группы с обсуждением); −18 наших
+// ключей снесённого `GroupEditFlow` и экранов `group/*` (`ChannelAddAdmin`,
+// `ChatHistoryHint`, `Discussion.{Link.Question,Linked,Unlink.Text}`,
+// `ForumTopic.EnableHint`, `Group.{MemberBadge,RestrictedBadge}`,
+// `Reactions.{All,None,Some}.Info`, `RemovedUsers.Description`, `RestrictedUsers{,.Description}`,
+// `Unban`, `UserRestrictions.{Action,CanDoMember,Title}`). Ключи tweb тех же экранов
+// оставлены — их читают вкладки пачки П-1. 
+// Шаг К-5 волны 7, вкладка профиля `AppSharedMediaTab` (порт tweb `sharedMedia.tsx`):
+// у ru +10 ключей tweb lang.ts — заголовки `Profile.Info.{Topic,Bot}`,
+// `PeerInfo.SharedMedia` и счётчики вкладок `SavedDialogsTabCount`, `MediaFiles`,
+// `StarGiftsCount`, `Files`, `Links`, `MusicFiles`, `Voice` (`plural` 51 → 58). 
+// Вместе с П-5 и К-4 из main: ru 1608, `plural` 62.
 const COMPOSITION = {
-  ru: { keys: 1681, plural: 56 },
+  ru: { keys: 1677, plural: 63 },
   uk: { keys: 841, plural: 35 },
   es: { keys: 812, plural: 34 },
   de: { keys: 813, plural: 35 },
@@ -805,8 +820,11 @@ const COMPOSITION = {
 // Пачкой П-6 волны 7 — у ru +9 ключей медленного режима и платных сообщений (разбор — там же).
 // Пачкой П-6 волны 7 (запись) — у ru +7 ключей tweb, у всех пяти минус ключи снесённого
 // React-композера `Composer.*Record*` (разбор — у `COMPOSITION` выше).
+// Шагом К-5 волны 7 (0б-1) — у ru +4 ключа tweb `editChat` и −18 наших ключей снесённых
+// экранов `group/*` (разбор — у `COMPOSITION` выше); вкладкой профиля — +10 ключей
+// tweb `sharedMedia.tsx` (разбор — там же).
 const FINGERPRINT = {
-  ru: '8ed922b8',
+  ru: 'f3ca3949',
   uk: '4ea851a8',
   es: 'fae2c364',
   de: 'bcccb16f',
