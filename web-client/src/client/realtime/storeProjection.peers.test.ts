@@ -36,7 +36,7 @@ function stand(users: UserReal[]) {
       net.calls++
       if (net.offline) throw new TypeError('Failed to fetch')
       const requested = new Set(String(query?.ids ?? '').split(',').filter(Boolean).map(Number))
-      return { users: users.filter((u) => requested.has(u.id)) } as unknown as R
+      return users.filter((u) => requested.has(u.id)) as unknown as R  // как ручка: голый Vector<User>
     },
   } as unknown as RestClient
   // onPeerOps — та самая проводка, которую в проде задаёт workerCore
