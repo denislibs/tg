@@ -18,8 +18,8 @@
  *     портированы: их единственный потребитель — «мини-приложения» в исключениях
  *     приватности (`privacySection.tsx:204-209`, `allowMiniApps`), а мини-приложений
  *     и такого правила у нас нет — О-33. `takeOut` получает только пиров.
- *  2. `channelParticipantsPeerId` (:62-66, :68) — нет: участников канала селектор
- *     не портирует (расхождение 1 `appSelectPeers.solid.tsx`).
+ *  2. (снято 0б-7 волны 7) `channelParticipantsPeerId` (:62-66, :68, :73, :77) —
+ *     участники канала селектора (расхождение 1 `appSelectPeers.solid.tsx`).
  *  3. `peerLoader` (`peerType: 'custom'`), `limit`/`limitCallback` (:85-96) и
  *     `filterPeerTypeBy` функцией — нет: потребители у оригинала — автоматизация
  *     чатов (бизнес-боты), платные сообщения (О-15) и истории, в волне их нет
@@ -43,6 +43,7 @@ const AddMembersTab = () => {
     skippable,
     selectedPeerIds,
     peerType,
+    channelParticipantsPeerId,
     exceptSelf,
     filterPeerTypeBy,
   } = tab.payload
@@ -76,9 +77,14 @@ const AddMembersTab = () => {
     onChange: skippable ? undefined : (length) => {
       nextBtn.classList.toggle('is-visible', !!length)
     },
-    peerType: peerType || [isPrivacy ? 'dialogs' : 'contacts'],
+    peerType: peerType || [
+      channelParticipantsPeerId ?
+        'channelParticipants' :
+        (isPrivacy ? 'dialogs' : 'contacts'),
+    ],
+    peerId: channelParticipantsPeerId,
     placeholder,
-    exceptSelf: exceptSelf ?? isPrivacy,
+    exceptSelf: exceptSelf ?? (isPrivacy || !!channelParticipantsPeerId),
     filterPeerTypeBy: filterPeerTypeBy ??
       (isPrivacy ? ['isAnyGroup', 'isUser'] : undefined),
     managers: tab.managers!,

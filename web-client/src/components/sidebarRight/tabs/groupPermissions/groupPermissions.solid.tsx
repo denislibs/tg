@@ -28,12 +28,16 @@
  *     `boosts_unrestrict` (`domain/mtchat.go::ChannelFull`), секция не портирована.
  *  4. (О-117 волна 7) «Широковещательная группа» (`showConvertToGigagroupPopup`,
  *     :197-217) — гигагрупп у бэкенда нет (`gigagroup`, `megagroup_size_max`).
- *  5. (О-118 волна 7) Исключения только показываются: щелчок по строке и
- *     «Добавить исключение» (:221-247, `openUserPermissionsTab`,
- *     `showPickUserPopup`) открывают права участника — вкладку задачи 0б-7;
- *     до неё у строки «Добавить исключение» нет `clickable`, у списка — щелчка.
- *     Живого обновления списка (`chat_participant`, :307-341) нет: кадра по
- *     участнику на проводе нет (`appSearchSuper.ts`, расхождение 32).
+ *  5. Исключения (О-118 волны 7 закрыт 0б-7): щелчок по строке и «Добавить
+ *     исключение» (:221-261) открывают права участника `openUserPermissionsTab`.
+ *     ВРЕМЕННО до 2C-16: выбор участника (`showPickUserPopup`) — вкладка
+ *     `AppAddMembersTab` на участниках канала (`channelParticipantsPeerId`),
+ *     как у «Заблокированных». `appProfileManager.getParticipant` (:236-243) нет
+ *     на бэкенде — участник не из списка исключений открывается обычным
+ *     (`channelParticipant`). Кадра `chat_participant` (:307-341) на проводе нет:
+ *     список перечитывается и сводится по карте `participants` на `chat_update`
+ *     этого чата; ограничение/снятие его не шлют (Б-115) — тогда список
+ *     обновится при следующем открытии.
  *  6. `isChannel(chatId)` (:385) у нас всегда истина: любая группа — `channel`
  *     (решение №2), поэтому ветки legacy-чата (`setLength` без загрузки и
  *     `dialog_migrate`, :387-396) нет, `chatId` — `const`.
@@ -45,9 +49,15 @@
  *  8. `useHotReloadGuard` (:31) не портирован — обвязка их дев-сборки.
  */
 import { type Component, createSignal, onMount } from 'solid-js'
+import { attachClickEvent } from '@helpers/dom/clickEvent'
+import findUpClassName from '@helpers/dom/findUpClassName'
+import rootScope from '@lib/rootScope'
+import { RT } from '@core/realtime/events'
+import { AppAddMembersTab, openUserPermissionsTab } from '@components/solidJsTabs/tabs'
+import type SidebarSlider from '@components/slider'
 import replaceContent from '@helpers/dom/replaceContent'
 import ScrollableLoader from '@helpers/scrollableLoader'
-import { addDialogNew, createChatList, type DialogDom } from '@lib/appDialogsManager'
+import { addDialogNew, createChatList, type DialogDom, type DialogElement } from '@lib/appDialogsManager'
 import { getPeerId, toPeerId } from '@core/peers/peerId'
 import { i18n, join, type LangPackKey } from '@lib/langPack'
 import Row from '@components/rowTsx.solid'
@@ -77,7 +87,8 @@ const GroupPermissions: Component = () => {
   const peerId = toPeerId(chatId as number, true)
 
   const saveCallbacks: Array<() => unknown> = []
-  // карта `participants` (:39) нужна только `openPermissions` — О-118, расхождение 5
+  // :39
+  const participants: Map<PeerId, ChannelParticipant> = new Map()
 
   const solidState = createSolidTabState<{
     rights?: ChatBannedRights,
@@ -205,20 +216,51 @@ const GroupPermissions: Component = () => {
 
     {
       let addExceptionSubtitle!: HTMLDivElement
-      // `clickable` (showPickUserPopup → openPermissions, :222-234) — О-118, расхождение 5
       const addExceptionRow = wrapSolidComponent(() => (
-        <Row>
+        <Row clickable={() => {
+          // расхождение 5 — ВРЕМЕННО до 2C-16
+          void (tab.slider as SidebarSlider).createTab(AppAddMembersTab).open({
+            type: 'channel',
+            title: 'Exceptions',
+            placeholder: 'ExceptionModal.Search.Placeholder',
+            channelParticipantsPeerId: peerId,
+            exceptSelf: true,
+            skippable: false,
+            takeOut: (peerIds) => {
+              const chosen = peerIds[0]
+              if(chosen !== undefined) {
+                setTimeout(() => {
+                  openPermissions(chosen)
+                }, 0)
+              }
+            },
+          })
+        }}>
           <Row.Icon icon="adduser" />
           <Row.Title>{i18n('ChannelAddException')}</Row.Title>
           <Row.Subtitle ref={(el) => addExceptionSubtitle = el}>{i18n('Loading')}</Row.Subtitle>
         </Row>
       ), tab.middlewareHelper.get())
 
+      // :236-246; `getParticipant` — расхождение 5
+      const openPermissions = (peerId: PeerId) => {
+        const participant: ChannelParticipant = participants.get(peerId) ??
+          { _: 'channelParticipant', user_id: peerId, date: 0 }
+        openUserPermissionsTab(tab.slider as SidebarSlider, chatId, participant)
+      }
+
       exceptionsAdd.append(addExceptionRow)
 
       const list = createChatList({ new: true })
       exceptionsList.append(list)
-      // щелчок по строке → `openPermissions` (:255-261) — О-118, расхождение 5
+
+      attachClickEvent(list, (e) => {
+        const target = findUpClassName(e.target!, 'chatlist-chat')
+        if(!target) return
+
+        const peerId = +target.dataset.peerId!
+        openPermissions(peerId)
+      }, { listenerSetter: tab.listenerSetter })
 
       const setSubtitle = (dom: DialogDom, participant: ChannelParticipantBanned) => {
         const bannedRights = participant.banned_rights
@@ -261,10 +303,67 @@ const GroupPermissions: Component = () => {
           managers,
         })
 
+        participants.set(participantPeerId, participant)
+
         setSubtitle(dialogElement.dom, participant)
       }
 
-      // живое обновление по `chat_participant` (:307-341) — О-118, расхождение 5
+      // :307-341 — свод по `chat_update` вместо `chat_participant` (расхождение 5)
+      const onChatParticipant = (peerId: PeerId, newParticipant: ChannelParticipantBanned | undefined) => {
+        const prevParticipant = participants.get(peerId)
+        const needAdd = newParticipant?._ === 'channelParticipantBanned' &&
+          !newParticipant.banned_rights.pFlags?.view_messages
+
+        if(newParticipant) {
+          participants.set(peerId, newParticipant)
+        } else {
+          participants.delete(peerId)
+        }
+
+        const li = list.querySelector(`[data-peer-id="${peerId}"]`) as (Element & { dialogElement?: DialogElement }) | null
+        if(needAdd) {
+          if(!li) {
+            add(newParticipant, false)
+          } else {
+            setSubtitle(li.dialogElement!.dom, newParticipant)
+          }
+
+          if(prevParticipant?._ !== 'channelParticipantBanned') {
+            ++exceptionsCount
+          }
+        } else {
+          if(li) {
+            li.dialogElement!.remove()
+          }
+
+          if(prevParticipant?._ === 'channelParticipantBanned') {
+            --exceptionsCount
+          }
+        }
+
+        setLength()
+      }
+
+      tab.listenerSetter.add(rootScope)(RT.chatUpdate, (evt) => {
+        if(getPeerId(evt.peer) !== peerId) {
+          return
+        }
+
+        void managers.groups.channelParticipantsBanned(peerId).then((res) => {
+          const processed = new Set<PeerId>()
+          for(const participant of res.participants as ChannelParticipantBanned[]) {
+            const participantPeerId = getPeerId(participant.peer)
+            processed.add(participantPeerId)
+            onChatParticipant(participantPeerId, participant)
+          }
+
+          for(const participantPeerId of participants.keys()) {
+            if(!processed.has(participantPeerId)) {
+              onChatParticipant(participantPeerId, undefined)
+            }
+          }
+        })
+      })
 
       const setLength = () => {
         const el = i18n(exceptionsCount ? 'Permissions.ExceptionsCount' : 'Permissions.NoExceptions', [exceptionsCount])

@@ -72,7 +72,7 @@ function fakeManagers() {
   const managers = {
     messages: { searchCounters, searchHistory },
     peers: { fillMirror: async() => {} },
-    groups: { channelParticipants, addMember: vi.fn(), removeMember: vi.fn(), unban: vi.fn() },
+    groups: { channelParticipants, addMember: vi.fn(), editBanned: vi.fn(), kickFromChat: vi.fn() },
     stories: { pinnedStories: async() => [] },
     chats: { savedDialogs: async() => ({}) },
     stars: { profileGifts },

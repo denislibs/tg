@@ -59,6 +59,26 @@ func TestLinkDiscussion_LinksExistingGroup(t *testing.T) {
 	if cur, _ := fg.GetDiscussion(ctx, ch); cur != gid {
 		t.Fatalf("discussion not set: %d", cur)
 	}
+	// новый linked_chat_id уходит кадром chat_update канала (tweb chat_full_update)
+	assertChannelChatUpdates(t, i, ch, 1)
+}
+
+// assertChannelChatUpdates — число строк chat_update в difference канала.
+func assertChannelChatUpdates(t *testing.T, i *Interactor, ch int64, want int) {
+	t.Helper()
+	ups, err := i.GetChannelDifference(context.Background(), ch, 7, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, u := range ups {
+		if u.Type == "chat_update" {
+			n++
+		}
+	}
+	if n != want {
+		t.Fatalf("chat_update rows = %d, want %d (%+v)", n, want, ups)
+	}
 }
 
 func TestLinkDiscussion_ForumRejected(t *testing.T) {
@@ -102,6 +122,8 @@ func TestUnlinkDiscussion(t *testing.T) {
 	if cur, _ := fg.GetDiscussion(ctx, ch); cur != 0 {
 		t.Fatalf("discussion still set: %d", cur)
 	}
+	// привязка и отвязка — по кадру chat_update
+	assertChannelChatUpdates(t, i, ch, 2)
 }
 
 func TestDiscussionCandidates(t *testing.T) {

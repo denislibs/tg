@@ -61,8 +61,8 @@ function build() {
 
   const groups = {
     addMember: vi.fn(async () => {}),
-    removeMember: vi.fn(async () => {}),
-    unban: vi.fn(async () => {}),
+    editBanned: vi.fn(async () => {}),
+    kickFromChat: vi.fn(async () => {}),
   }
   const openPeer = vi.fn()
   const openUserPermissions = vi.fn()
@@ -169,14 +169,19 @@ describe('createParticipantContextMenu: действия', () => {
     expect(h.openUserPermissions).toHaveBeenLastCalledWith(participants.get(MEMBER), false)
   })
 
+  // tweb :114-118 — `kickFromChat`, :92-100 — `editBanned` с пустыми запретами
   it('«Remove from group» выгоняет участника; «Delete» на выгнанном снимает бан', async () => {
     seedChat('creator')
     const h = build()
     h.click((await h.open(MEMBER))!, 'Remove from group')
-    expect(h.groups.removeMember).toHaveBeenCalledWith(CHAT_PEER, MEMBER)
+    expect(h.groups.kickFromChat).toHaveBeenCalledWith(CHAT_ID, MEMBER)
     await settle()
     h.click((await h.open(BANNED))!, 'Delete')
-    expect(h.groups.unban).toHaveBeenCalledWith(CHAT_PEER, BANNED)
+    expect(h.groups.editBanned).toHaveBeenCalledWith(CHAT_ID, participants.get(BANNED), {
+      _: 'chatBannedRights',
+      pFlags: {},
+      until_date: 0,
+    })
   })
 
   it('закрытие снимает `menu-open`; destroy по middleware убирает меню', async () => {

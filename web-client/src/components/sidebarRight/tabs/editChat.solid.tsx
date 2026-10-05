@@ -23,17 +23,20 @@
  * ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
  *
  *  1. Данные (`loadEditChatData`, :79-99) — одна карточка `groups.card(peerId)`
- *     (`chat` + `fullChat`). `appConfig`, `availableReactions`,
- *     `joinedCommunities` не грузятся: их потребители — строки п. 3–5.
+ *     (`chat` + `fullChat`) и каталог реакций `getAvailableReactions` (общий кэш
+ *     сессии, `chat/reactions.ts`; поле `inactive` вместо `pFlags.inactive`).
+ *     `appConfig`, `joinedCommunities` не грузятся: их потребители — строки п. 4–5.
  *  2. Миграции группы нет (`dialog_migrate`, `onMigrate`, :102-131, :371-375):
  *     базовых групп сервер не производит, любая наша группа — уже `channel`
  *     (как у `chatType.solid.tsx`, расхождение 4). Поэтому вместо ресурса по
  *     сигналу `chatId` — один запрос.
- *  3. Строки во вкладки, которых ещё нет, скрыты до пачки П-1: заявки
- *     (`AppChatRequestsTab`, :700-708) и админы/участники/удалённые (:849-873) —
- *     Б-41, реакции (:710-718) — Б-39, обсуждение (:743-761) — Б-40. Условие
- *     показа секции (`hasMainSettings`, :230-239) собрано из оставшихся строк,
- *     иначе у админа без них осталась бы пустая секция с подписью.
+ *  3. Заявки (:700-708), реакции (:710-718), обсуждение (:743-761) и
+ *     админы/участники/удалённые (:849-873) вернула пачка П-1 (Б-39…Б-41).
+ *     Счётчиков `admins_count`, `kicked_count`, `requests_pending` сервер не
+ *     производит (Б-115): строка «Заявки» поэтому не показывается, у админов —
+ *     «1», у удалённых — «нет». `PeerTitleTsx` подписи обсуждения — узел
+ *     `PeerTitle` (`chat/peerTitle.ts`) на своей миддлвари, как
+ *     `AvatarPlaceholder` (п. 9).
  *  4. Строк без предмета у нас нет совсем (Б-105): личные сообщения канала
  *     (монофорум, :720-731), приветственные сообщения (layer 229, :377-406,
  *     :763-771), «Недавние действия» (админ-лог, :773-790).
@@ -73,17 +76,26 @@ import { InputFieldTsx } from '@components/inputFieldTsx.solid'
 import Row from '@components/rowTsx.solid'
 import Section from '@components/section.solid'
 import { toastNew } from '@components/toast'
+import PeerTitle from '@components/chat/peerTitle'
+import { getAvailableReactions } from '@components/chat/reactions'
 import showDeleteDialogPopup from '@components/popups/deleteDialog'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
 import { usePromiseCollector } from '@components/solidJsTabs/promiseCollector.solid'
 import {
+  AppChatAdministratorsTab,
+  AppChatDiscussionTab,
   AppChatInviteLinksTab,
+  AppChatMembersTab,
+  AppChatReactionsTab,
+  AppChatRequestsTab,
   AppChatTypeTab,
   AppGroupPermissionsTab,
+  AppRemovedUsersTab,
   type AppEditChatTab,
 } from '@components/solidJsTabs/tabs'
 import type SidebarSlider from '@components/slider'
 import cancelEvent from '@helpers/dom/cancelEvent'
+import numberThousandSplitter from '@helpers/number/numberThousandSplitter'
 import { getMiddleware } from '@helpers/middleware'
 import { subscribeOn } from '@helpers/solid/subscribeOn'
 import { i18n, type LangPackKey } from '@lib/langPack'
@@ -108,11 +120,15 @@ type EditChatTab = InstanceType<typeof AppEditChatTab>
 
 async function loadEditChatData(tab: EditChatTab, chatId: ChatId) {
   // расхождение 1
-  const card = await tab.managers!.groups.card(toPeerId(chatId as number, true))
+  const [card, availableReactions] = await Promise.all([
+    tab.managers!.groups.card(toPeerId(chatId as number, true)),
+    getAvailableReactions(tab.managers!) ?? [],
+  ])
   return card && {
     chatId,
     chatFull: card.fullChat,
     chat: card.chat,
+    availableReactions,
   }
 }
 
@@ -152,6 +168,17 @@ function AvatarPlaceholder(props: { peerId: PeerId, managers: Managers }) {
   return avatar.node
 }
 
+/** `PeerTitleTsx` оригинала (расхождение 3). */
+function PeerTitleNode(props: { peerId: PeerId, managers: Managers }) {
+  const middlewareHelper = getMiddleware()
+  onCleanup(() => middlewareHelper.destroy())
+  return new PeerTitle({
+    peerId: props.peerId,
+    middleware: middlewareHelper.get(),
+    managers: props.managers,
+  }).element
+}
+
 function EditChatForm(props: { data: EditChatData }) {
   const [tab] = useSuperTab<typeof AppEditChatTab>()
   const managers = tab.managers!
@@ -175,6 +202,8 @@ function EditChatForm(props: { data: EditChatData }) {
   const isBroadcast = () => !!channel().pFlags?.broadcast
   const isForum = () => !!channel().pFlags?.forum
   const isAdmin = () => hasRights(chat(), 'just_admin')
+  const isChannel = () => chat()._ === 'channel'
+  const canInviteUsers = () => hasRights(chat(), 'invite_users')
   const canChangeType = () => hasRights(chat(), 'change_type')
   const canChangePermissions = () => hasRights(chat(), 'change_permissions')
   const canToggleForum = () => hasRights(chat(), 'toggle_forum')
@@ -183,6 +212,9 @@ function EditChatForm(props: { data: EditChatData }) {
   const canPostMessages = () => hasRights(chat(), 'post_messages')
   const canManageInviteLinks = () => hasRights(chat(), 'invite_links')
   const linkedChatId = () => chatFull().linked_chat_id
+  const availableReactionsLength = props.data.availableReactions.filter((reaction) => {
+    return !reaction.inactive
+  }).length
 
   const avatarEdit = new AvatarEdit((payload) => {
     uploadAvatar = payload
@@ -201,11 +233,17 @@ function EditChatForm(props: { data: EditChatData }) {
   const showTopics = createMemo(() => {
     return canToggleForum() && !isBroadcast()
   })
+  const showDiscussion = createMemo(() => {
+    return isAdmin() && (isBroadcast() || !!linkedChatId())
+  })
   // расхождение 3: только строки, которые здесь есть
   const hasMainSettings = createMemo(() => {
     return canChangeType() ||
       canManageInviteLinks() ||
+      (canInviteUsers() && isAdmin()) ||
+      (canChangeInfo() && isAdmin()) ||
       (canChangePermissions() && !isBroadcast()) ||
+      showDiscussion() ||
       showTopics()
   })
   const mainCaption = createMemo<LangPackKey | undefined>(() => {
@@ -218,11 +256,36 @@ function EditChatForm(props: { data: EditChatData }) {
     }
   })
 
+  const reactionsSubtitle = createMemo(() => {
+    const reactions = chatFull().available_reactions ?? { _: 'chatReactionsNone' } as const
+    if(reactions._ === 'chatReactionsSome') {
+      const length = reactions.reactions.length
+      return length === availableReactionsLength ?
+        i18n('ReactionsAll') :
+        `${length}/${availableReactionsLength}`
+    }
+
+    return i18n(reactions._ === 'chatReactionsAll' ? 'ReactionsAll' : 'Checkbox.Disabled')
+  })
+
   // :282-291; `PrivacySettingsController.Paid` — у 0б-6 (`send_paid_messages_stars`)
   const permissionsSubtitle = createMemo(() => {
     return PERMISSION_FLAGS.reduce((count, flag) => {
       return count + +hasRights(chat(), flag, chat().default_banned_rights)
     }, 0) + '/' + PERMISSION_FLAGS.length
+  })
+
+  // :303-321 (у базовой группы — `chatParticipants`; базовых групп нет, расхождение 2)
+  const administratorsCount = createMemo(() => {
+    const count = chatFull().admins_count
+    return count || 1
+  })
+  const membersCount = createMemo(() => {
+    return numberThousandSplitter(chatFull().participants_count ?? 0)
+  })
+  const removedUsersSubtitle = createMemo(() => {
+    const count = chatFull().kicked_count || 0
+    return count ? numberThousandSplitter(count) : i18n('NoBlockedUsers')
   })
 
   const [topics, setTopics] = createSignal(isForum())
@@ -466,8 +529,27 @@ function EditChatForm(props: { data: EditChatData }) {
             </Row>
           </Show>
 
-          {/* Б-41 — заявки (:700-708); Б-39 — реакции (:710-718); Б-105 — личные
-              сообщения канала (:720-731) */}
+          <Show when={canInviteUsers() && isAdmin() && !!chatFull().requests_pending}>
+            <Row clickable={() => {
+              void slider.createTab(AppChatRequestsTab).open(chatId())
+            }}>
+              <Row.Icon icon="adduser" />
+              <Row.Title>{i18n(isBroadcast() ? 'SubscribeRequests' : 'MemberRequests')}</Row.Title>
+              <Row.Subtitle>{chatFull().requests_pending}</Row.Subtitle>
+            </Row>
+          </Show>
+
+          <Show when={canChangeInfo() && isAdmin()}>
+            <Row clickable={() => {
+              void slider.createTab(AppChatReactionsTab).open({ chatId: chatId() })
+            }}>
+              <Row.Icon icon="reactions_filled" />
+              <Row.Title>{i18n('Reactions')}</Row.Title>
+              <Row.Subtitle>{reactionsSubtitle()}</Row.Subtitle>
+            </Row>
+          </Show>
+
+          {/* Б-105 — личные сообщения канала (:720-731) */}
 
           <Show when={canChangePermissions() && !isBroadcast()}>
             <Row clickable={() => {
@@ -479,8 +561,25 @@ function EditChatForm(props: { data: EditChatData }) {
             </Row>
           </Show>
 
-          {/* Б-40 — обсуждение (:743-761); Б-105 — приветственные сообщения
-              (:763-771), «Недавние действия» (:773-790) */}
+          <Show when={showDiscussion()}>
+            <Row clickable={() => {
+              void slider.createTab(AppChatDiscussionTab).open({
+                chatId: chatId(),
+                linkedChatId: linkedChatId(),
+              })
+            }}>
+              <Row.Icon icon="bubble_filled" />
+              <Row.Title>{i18n(isBroadcast() ? 'PeerInfo.Discussion' : 'LinkedChannel')}</Row.Title>
+              <Row.Subtitle>
+                <Show when={linkedChatId()} fallback={i18n('PeerInfo.Discussion.Add')} keyed>
+                  {(id) => <PeerTitleNode peerId={toPeerId(id, true)} managers={managers} />}
+                </Show>
+              </Row.Subtitle>
+            </Row>
+          </Show>
+
+          {/* Б-105 — приветственные сообщения (:763-771), «Недавние действия»
+              (:773-790) */}
 
           <Show when={showTopics()}>
             <Row clickable={linkedChatId() ? (event) => {
@@ -502,8 +601,35 @@ function EditChatForm(props: { data: EditChatData }) {
         </Section>
       </Show>
 
-      {/* Б-106 — доходы (:812-816), стикеры группы (:818-847); Б-41 — админы,
-          участники, удалённые (:849-873); Б-106 — автоперевод (:875-893) */}
+      {/* Б-106 — доходы (:812-816), стикеры группы (:818-847) */}
+
+      <Section>
+        <Row clickable={() => {
+          void slider.createTab(AppChatAdministratorsTab).open({ chatId: chatId() })
+        }}>
+          <Row.Icon icon="admin_filled" />
+          <Row.Title>{i18n('PeerInfo.Administrators')}</Row.Title>
+          <Row.Subtitle>{administratorsCount()}</Row.Subtitle>
+        </Row>
+        <Row clickable={() => {
+          void slider.createTab(AppChatMembersTab).open(chatId())
+        }}>
+          <Row.Icon icon="newgroup_filled" />
+          <Row.Title>{i18n(isBroadcast() ? 'PeerInfo.Subscribers' : 'GroupMembers')}</Row.Title>
+          <Row.Subtitle>{membersCount()}</Row.Subtitle>
+        </Row>
+        <Show when={isChannel()}>
+          <Row clickable={() => {
+            void slider.createTab(AppRemovedUsersTab).open({ chatId: chatId() })
+          }}>
+            <Row.Icon icon="person_crossed_filled" />
+            <Row.Title>{i18n('ChannelBlockedUsers')}</Row.Title>
+            <Row.Subtitle>{removedUsersSubtitle()}</Row.Subtitle>
+          </Row>
+        </Show>
+      </Section>
+
+      {/* Б-106 — автоперевод (:875-893) */}
 
       <Show when={isBroadcast() && canPostMessages()}>
         <Section caption={showProfiles() ? 'ChannelSignProfilesInfo' : 'ChannelSignMessagesInfo'}>

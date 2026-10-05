@@ -1,6 +1,6 @@
 import { useMemo, useId } from 'react'
 import I18n from '@lib/langPack'
-import type { StatPoint } from '../core/managers/statsManager'
+import type { StoryStatPoint as StatPoint } from '../core/managers/storiesManager'
 
 // Лёгкий self-contained график на inline SVG (без внешних либ), в духе tweb
 // tchart: сглаженная линия с градиентной заливкой-областью под ней + подписи

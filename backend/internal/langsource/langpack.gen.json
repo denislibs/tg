@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 54,
+      "version": 55,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -55,6 +55,10 @@
         {
           "key": "AccountSettings.SpeakersAndCamera",
           "value": "Speakers and Camera"
+        },
+        {
+          "key": "ActionsChartTitle",
+          "value": "Actions"
         },
         {
           "key": "Add",
@@ -894,6 +898,14 @@
           "value": "Channel"
         },
         {
+          "key": "Channel.Admin.AdminAccess",
+          "value": "This admin will be able to add new admins with equal or fewer rights."
+        },
+        {
+          "key": "Channel.Admin.AdminRestricted",
+          "value": "This admin will not be able to add new admins."
+        },
+        {
           "key": "Channel.Admin.Dismiss",
           "value": "Dismiss Admin"
         },
@@ -928,6 +940,18 @@
         {
           "key": "ChannelAddSubscribers",
           "value": "Add Subscribers"
+        },
+        {
+          "key": "ChannelBlacklist",
+          "value": "Removed Users"
+        },
+        {
+          "key": "ChannelBlockUser",
+          "value": "Remove User"
+        },
+        {
+          "key": "ChannelBlockedUsers",
+          "value": "Removed users"
         },
         {
           "key": "ChannelBroadcast",
@@ -1039,6 +1063,10 @@
         {
           "key": "ChannelsTab",
           "value": "Channels"
+        },
+        {
+          "key": "Chart.Tooltip.All",
+          "value": "All"
         },
         {
           "key": "Chat.Accessory.Edit",
@@ -2005,6 +2033,10 @@
           "value": "Remove spoiler"
         },
         {
+          "key": "DisableReactionsInfo",
+          "value": "Members of the group can’t add any reactions to messages."
+        },
+        {
           "key": "DisableSharing",
           "value": "Disable Sharing"
         },
@@ -2017,12 +2049,56 @@
           "value": "Discard Voice Message"
         },
         {
+          "key": "Discussion.Set.Modal.Text.PublicChannelPublicGroup",
+          "value": "Do you want to make **%@** the discussion board for **%@**?"
+        },
+        {
+          "key": "Discussion.Set.PrivateChannel",
+          "value": "Any member of this group will be able to see messages in the channel."
+        },
+        {
+          "key": "Discussion.Set.PrivateGroup",
+          "value": "Anyone from the channel will be able to see messages in this group."
+        },
+        {
+          "key": "DiscussionChannelGroupSetHelp2",
+          "value": "**%1$s** is selected as the group that hosts comments for your channel."
+        },
+        {
+          "key": "DiscussionChannelHelp2",
+          "value": "Everything you post in the channel will be forwarded to this group."
+        },
+        {
           "key": "DiscussionChannelHelp3",
           "value": "Select a group chat that will host comments from your channel."
         },
         {
+          "key": "DiscussionController.Channel.Title",
+          "value": "Discussion Group"
+        },
+        {
+          "key": "DiscussionController.Group.Title",
+          "value": "Linked Channel"
+        },
+        {
+          "key": "DiscussionController.PrivateChannel",
+          "value": "private channel"
+        },
+        {
+          "key": "DiscussionController.PrivateGroup",
+          "value": "private group"
+        },
+        {
           "key": "DiscussionCreateGroup",
           "value": "Create a New Group"
+        },
+        {
+          "key": "DiscussionGroupHelp",
+          "value": "This group is linked as the discussion board for %1$s."
+        },
+        {
+          "key": "DiscussionGroupHelp2",
+          "value": "All new posts from this channel are forwarded to the group."
         },
         {
           "key": "DiscussionInfo",
@@ -2033,6 +2109,10 @@
           "value": "Link Group"
         },
         {
+          "key": "DiscussionLinkGroupAlertHistory",
+          "value": "\"Chat history for new members\" will be switched to Visible."
+        },
+        {
           "key": "DiscussionStarted",
           "value": "Discussion started"
         },
@@ -2041,8 +2121,24 @@
           "value": "Unlink"
         },
         {
+          "key": "DiscussionUnlinkChannel",
+          "value": "Unlink Channel"
+        },
+        {
+          "key": "DiscussionUnlinkChannelAlert",
+          "value": "Are you sure you want to unlink **%1$s** from this channel?"
+        },
+        {
           "key": "DiscussionUnlinkGroup",
           "value": "Unlink Group"
+        },
+        {
+          "key": "DiscussionUnlinkGroupAlert",
+          "value": "Are you sure you want to unlink **%1$s** from this group?"
+        },
+        {
+          "key": "Dismiss",
+          "value": "Dismiss"
         },
         {
           "key": "DoNotForward",
@@ -2257,6 +2353,10 @@
           "value": "Set Emoji Status"
         },
         {
+          "key": "EnableAllReactionsInfo",
+          "value": "Members of the group can use any emoji as reactions to messages."
+        },
+        {
           "key": "EnableAnimations",
           "value": "Enable Animations"
         },
@@ -2269,6 +2369,22 @@
           "value": "Hide with spoiler"
         },
         {
+          "key": "EnableReactions",
+          "value": "Enable Reactions"
+        },
+        {
+          "key": "EnableReactionsChannelInfo",
+          "value": "Allow subscribers to react to channel posts."
+        },
+        {
+          "key": "EnableSomeReactionsInfo",
+          "value": "Members of the group can use only certain approved emoji as reactions to messages."
+        },
+        {
+          "key": "EnabledNotifications",
+          "value": "Enabled Notifications"
+        },
+        {
           "key": "EnterChannelName",
           "value": "Channel name"
         },
@@ -2279,6 +2395,14 @@
         {
           "key": "Error.SomethingWentWrong",
           "value": "Something went wrong"
+        },
+        {
+          "key": "ExceptionModal.Search.Placeholder",
+          "value": "Add exception..."
+        },
+        {
+          "key": "Exceptions",
+          "value": "Exceptions"
         },
         {
           "key": "ExportedInvitation.Status.Expired",
@@ -2467,6 +2591,10 @@
           "value": "Folder added"
         },
         {
+          "key": "FollowersChartTitle",
+          "value": "Followers"
+        },
+        {
           "key": "ForumToggleDescription",
           "value": "The group chat will be divided into topics created by admins or users."
         },
@@ -2645,6 +2773,22 @@
           "value": "Group Checklist"
         },
         {
+          "key": "GroupMembers",
+          "value": "Members"
+        },
+        {
+          "key": "GroupMembersChartTitle",
+          "value": "Group members"
+        },
+        {
+          "key": "GroupPermission.Delete",
+          "value": "Delete Exception"
+        },
+        {
+          "key": "GroupStats.Title",
+          "value": "Group Statistics"
+        },
+        {
           "key": "GroupType",
           "value": "Group Type"
         },
@@ -2658,6 +2802,10 @@
         {
           "key": "GroupsOnly",
           "value": "Group Chats"
+        },
+        {
+          "key": "GrowthChartTitle",
+          "value": "Growth"
         },
         {
           "key": "Hide",
@@ -2679,6 +2827,10 @@
           }
         },
         {
+          "key": "IVInteractionsChartTitle",
+          "value": "IV Interactions"
+        },
+        {
           "key": "InactiveChannel.Broadcast",
           "value": "channel"
         },
@@ -2697,6 +2849,10 @@
         {
           "key": "InstantView.OpenInBrowser",
           "value": "Open in browser"
+        },
+        {
+          "key": "InteractionsChartTitle",
+          "value": "Interactions"
         },
         {
           "key": "InviteExpired",
@@ -2917,6 +3073,10 @@
           "value": "English"
         },
         {
+          "key": "LanguagesChartTitle",
+          "value": "Languages"
+        },
+        {
           "key": "LastName",
           "value": "Last name (optional)"
         },
@@ -3004,15 +3164,19 @@
           "value": "Link Name (Optional)"
         },
         {
+          "key": "LinkNotFound",
+          "value": "Unfortunately, you can't access this message. You are not a member of the chat where it was posted."
+        },
+        {
+          "key": "LinkedChannel",
+          "value": "Linked Channel"
+        },
+        {
           "key": "Links",
           "forms": {
             "one_value": "%d link",
             "other_value": "%d links"
           }
-        },
-        {
-          "key": "LinkNotFound",
-          "value": "Unfortunately, you can't access this message. You are not a member of the chat where it was posted."
         },
         {
           "key": "LiteMode.DisableAlert",
@@ -3109,6 +3273,14 @@
         {
           "key": "Loading",
           "value": "Loading..."
+        },
+        {
+          "key": "LoadingStats",
+          "value": "Loading stats..."
+        },
+        {
+          "key": "LoadingStatsDescription",
+          "value": "Please wait a few moments while\nwe generate your stats."
         },
         {
           "key": "LogOut",
@@ -3482,11 +3654,23 @@
           "value": "Public groups can be found in search, chat history is available to everyone and anyone can join."
         },
         {
+          "key": "MemberRequests",
+          "value": "Join Requests"
+        },
+        {
           "key": "Members",
           "forms": {
             "one_value": "%1$d member",
             "other_value": "%1$d members"
           }
+        },
+        {
+          "key": "MembersLanguageChartTitle",
+          "value": "Members' primary language"
+        },
+        {
+          "key": "MembersOverviewTitle",
+          "value": "Members"
         },
         {
           "key": "MenuTelegramStars",
@@ -3566,6 +3750,14 @@
             "one_value": "Seen",
             "other_value": "%1$d Seen"
           }
+        },
+        {
+          "key": "MessagesChartTitle",
+          "value": "Messages"
+        },
+        {
+          "key": "MessagesOverview",
+          "value": "Messages"
         },
         {
           "key": "Minutes",
@@ -3671,12 +3863,20 @@
           "value": "You can make your phone visible to %@."
         },
         {
+          "key": "NewFollowersBySourceChartTitle",
+          "value": "New subscribers by source"
+        },
+        {
           "key": "NewGroup",
           "value": "New Group"
         },
         {
           "key": "NewLink",
           "value": "New Link"
+        },
+        {
+          "key": "NewMembersBySourceChartTitle",
+          "value": "New members by source"
         },
         {
           "key": "NewPoll",
@@ -3713,6 +3913,18 @@
         {
           "key": "NewTopic",
           "value": "New Topic"
+        },
+        {
+          "key": "NoBlockedChannel2",
+          "value": "Users removed from the channel by admins can't rejoin via invite links."
+        },
+        {
+          "key": "NoBlockedGroup2",
+          "value": "Users removed from the group by admins can't rejoin via invite links."
+        },
+        {
+          "key": "NoBlockedUsers",
+          "value": "No removed users"
         },
         {
           "key": "NoEmojiFound",
@@ -4315,6 +4527,10 @@
           "value": "Video Chat"
         },
         {
+          "key": "PeerInfo.Administrators",
+          "value": "Administrators"
+        },
+        {
           "key": "PeerInfo.DeleteChannel",
           "value": "Delete Channel"
         },
@@ -4325,6 +4541,10 @@
         {
           "key": "PeerInfo.Discussion",
           "value": "Discussion"
+        },
+        {
+          "key": "PeerInfo.Discussion.Add",
+          "value": "Add"
         },
         {
           "key": "PeerInfo.SetAboutDescription",
@@ -4372,6 +4592,10 @@
         {
           "key": "Permissions.NoExceptions",
           "value": "No exceptions"
+        },
+        {
+          "key": "Permissions.RemoveFromGroup",
+          "value": "Are you sure you want to remove **%s** from the group?"
         },
         {
           "key": "Phone",
@@ -4535,6 +4759,10 @@
         {
           "key": "PostStatistics",
           "value": "Post Statistics"
+        },
+        {
+          "key": "PostingMembers",
+          "value": "Posting Members"
         },
         {
           "key": "PostsSearch.TabName",
@@ -4952,6 +5180,10 @@
           "value": "Private Chat"
         },
         {
+          "key": "PrivateShares",
+          "value": "Private Shares"
+        },
+        {
           "key": "Profile.ChannelDescription",
           "value": "Channel description."
         },
@@ -4978,6 +5210,10 @@
         {
           "key": "ProfileStories",
           "value": "Posts"
+        },
+        {
+          "key": "PublicShares",
+          "value": "Public Shares"
         },
         {
           "key": "QRCode.Copied",
@@ -5012,12 +5248,32 @@
           "value": "Reactions"
         },
         {
+          "key": "ReactionsAll",
+          "value": "All"
+        },
+        {
+          "key": "ReactionsByEmotionChartTitle",
+          "value": "Reactions"
+        },
+        {
+          "key": "ReactionsPerPost",
+          "value": "Reactions Per Post"
+        },
+        {
+          "key": "ReactionsPerStory",
+          "value": "Reactions Per Story"
+        },
+        {
           "key": "Recent",
           "value": "Recent"
         },
         {
           "key": "RecentActions",
           "value": "Recent Actions"
+        },
+        {
+          "key": "RecentPosts",
+          "value": "Recent posts"
         },
         {
           "key": "RecentSessions.Error.FreshReset",
@@ -5106,6 +5362,10 @@
         {
           "key": "RequestToJoinSent",
           "value": "Join request sent"
+        },
+        {
+          "key": "RequestedToJoinAt",
+          "value": "requested to join %1$s"
         },
         {
           "key": "Resend",
@@ -5373,6 +5633,10 @@
           "value": "Messages"
         },
         {
+          "key": "SearchPlaceholder",
+          "value": "Search..."
+        },
+        {
           "key": "Seconds",
           "forms": {
             "one_value": "%1$d second",
@@ -5454,6 +5718,10 @@
         {
           "key": "SessionsTitle",
           "value": "Active Sessions"
+        },
+        {
+          "key": "Set",
+          "value": "Set"
         },
         {
           "key": "SetAsAdmin",
@@ -5618,6 +5886,14 @@
         {
           "key": "SharedVoiceTab2",
           "value": "Voice"
+        },
+        {
+          "key": "SharesPerPost",
+          "value": "Shares Per Post"
+        },
+        {
+          "key": "SharesPerStory",
+          "value": "Shares Per Story"
         },
         {
           "key": "ShowTranslateButton",
@@ -5826,40 +6102,8 @@
           "value": "Statistics"
         },
         {
-          "key": "Statistics.Forwards",
-          "value": "Forwards"
-        },
-        {
           "key": "Statistics.Loading",
           "value": "Loading statistics…"
-        },
-        {
-          "key": "Statistics.MediaPost",
-          "value": "Media post"
-        },
-        {
-          "key": "Statistics.MemberGrowth",
-          "value": "Member growth"
-        },
-        {
-          "key": "Statistics.Posts",
-          "value": "Posts"
-        },
-        {
-          "key": "Statistics.PostsByDay",
-          "value": "Posts by day"
-        },
-        {
-          "key": "Statistics.SubscriberGrowth",
-          "value": "Subscriber growth"
-        },
-        {
-          "key": "Statistics.TopPosts",
-          "value": "Top posts"
-        },
-        {
-          "key": "Statistics.TotalViews",
-          "value": "Total views"
         },
         {
           "key": "Statistics.Unavailable",
@@ -6069,8 +6313,16 @@
           "value": "Viewers"
         },
         {
+          "key": "StoryInteractionsChartTitle",
+          "value": "Story Views and Shares"
+        },
+        {
           "key": "StoryJustNow",
           "value": "just now"
+        },
+        {
+          "key": "StoryReactionsByEmotionChartTitle",
+          "value": "Story Reactions"
         },
         {
           "key": "StoryStatistics",
@@ -6254,6 +6506,14 @@
         {
           "key": "TimeLimitHelp",
           "value": "You can make the link expire after a certain time."
+        },
+        {
+          "key": "TopDaysOfWeekChartTitle",
+          "value": "Top days of week"
+        },
+        {
+          "key": "TopHoursChartTitle",
+          "value": "Views by hours (UTC)"
         },
         {
           "key": "TopicProfileStatus",
@@ -6563,8 +6823,24 @@
           "value": "Duration"
         },
         {
+          "key": "UserPermissions.Duration.Custom",
+          "value": "Custom"
+        },
+        {
           "key": "UserPermissions.Duration.Forever",
           "value": "Forever"
+        },
+        {
+          "key": "UserPermissions.RestrictedBy",
+          "value": "Restricted by %s on %s"
+        },
+        {
+          "key": "UserRemovedBy",
+          "value": "Removed by %1$s"
+        },
+        {
+          "key": "UserRestrictions",
+          "value": "User Permissions"
         },
         {
           "key": "UserRestrictionsBlock",
@@ -6573,6 +6849,10 @@
         {
           "key": "UserRestrictionsBy",
           "value": "Restricted by %1$s"
+        },
+        {
+          "key": "UserRestrictionsCanDo",
+          "value": "What can this user do?"
         },
         {
           "key": "UserRestrictionsChangeInfo",
@@ -6678,8 +6958,35 @@
           "value": "View discussion"
         },
         {
+          "key": "ViewStatistics",
+          "value": "View Statistics"
+        },
+        {
+          "key": "ViewingMembers",
+          "value": "Viewing Members"
+        },
+        {
+          "key": "Views",
+          "forms": {
+            "one_value": "%1$s view",
+            "other_value": "%1$s views"
+          }
+        },
+        {
+          "key": "ViewsAndSharesChartTitle",
+          "value": "Views and Shares"
+        },
+        {
+          "key": "ViewsBySourceChartTitle",
+          "value": "Views by source"
+        },
+        {
           "key": "ViewsPerPost",
           "value": "Views Per Post"
+        },
+        {
+          "key": "ViewsPerStory",
+          "value": "Views Per Story"
         },
         {
           "key": "Voice",
@@ -6802,6 +7109,10 @@
           "value": "Your Name"
         },
         {
+          "key": "ZoomOut",
+          "value": "Zoom out"
+        },
+        {
           "key": "messages",
           "forms": {
             "one_value": "%1$d message",
@@ -6817,7 +7128,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 54,
+      "version": 55,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -9609,36 +9920,169 @@
           "value": "Просмотров на пост"
         },
         {
-          "key": "Statistics.TotalViews",
-          "value": "Всего просмотров"
-        },
-        {
           "key": "PostsSearch.TabName",
           "value": "Постов"
-        },
-        {
-          "key": "Statistics.TopPosts",
-          "value": "Топ постов"
-        },
-        {
-          "key": "Statistics.MediaPost",
-          "value": "Медиа-пост"
-        },
-        {
-          "key": "Statistics.SubscriberGrowth",
-          "value": "Рост подписчиков"
-        },
-        {
-          "key": "Statistics.MemberGrowth",
-          "value": "Рост участников"
         },
         {
           "key": "Statistics.ViewsByDay",
           "value": "Просмотры по дням"
         },
         {
-          "key": "Statistics.PostsByDay",
-          "value": "Посты по дням"
+          "key": "GroupStats.Title",
+          "value": "Статистика группы"
+        },
+        {
+          "key": "RecentPosts",
+          "value": "Недавние публикации"
+        },
+        {
+          "key": "GrowthChartTitle",
+          "value": "Рост"
+        },
+        {
+          "key": "FollowersChartTitle",
+          "value": "Подписчики"
+        },
+        {
+          "key": "TopHoursChartTitle",
+          "value": "Просмотры по часам (UTC)"
+        },
+        {
+          "key": "ViewsBySourceChartTitle",
+          "value": "Просмотры по источникам"
+        },
+        {
+          "key": "NewFollowersBySourceChartTitle",
+          "value": "Новые подписчики по источникам"
+        },
+        {
+          "key": "LanguagesChartTitle",
+          "value": "Языки"
+        },
+        {
+          "key": "InteractionsChartTitle",
+          "value": "Взаимодействия"
+        },
+        {
+          "key": "IVInteractionsChartTitle",
+          "value": "Взаимодействия с IV"
+        },
+        {
+          "key": "ReactionsByEmotionChartTitle",
+          "value": "Реакции"
+        },
+        {
+          "key": "StoryInteractionsChartTitle",
+          "value": "Просмотры и пересылки историй"
+        },
+        {
+          "key": "StoryReactionsByEmotionChartTitle",
+          "value": "Реакции на истории"
+        },
+        {
+          "key": "GroupMembersChartTitle",
+          "value": "Участники группы"
+        },
+        {
+          "key": "NewMembersBySourceChartTitle",
+          "value": "Новые участники по источникам"
+        },
+        {
+          "key": "MembersLanguageChartTitle",
+          "value": "Основной язык участников"
+        },
+        {
+          "key": "MessagesChartTitle",
+          "value": "Сообщения"
+        },
+        {
+          "key": "ActionsChartTitle",
+          "value": "Действия"
+        },
+        {
+          "key": "TopDaysOfWeekChartTitle",
+          "value": "Активность по дням недели"
+        },
+        {
+          "key": "ViewsAndSharesChartTitle",
+          "value": "Просмотры и пересылки"
+        },
+        {
+          "key": "EnabledNotifications",
+          "value": "Включили уведомления"
+        },
+        {
+          "key": "ViewsPerStory",
+          "value": "Просмотров на историю"
+        },
+        {
+          "key": "SharesPerPost",
+          "value": "Пересылок на пост"
+        },
+        {
+          "key": "SharesPerStory",
+          "value": "Пересылок на историю"
+        },
+        {
+          "key": "ReactionsPerPost",
+          "value": "Реакций на пост"
+        },
+        {
+          "key": "ReactionsPerStory",
+          "value": "Реакций на историю"
+        },
+        {
+          "key": "MembersOverviewTitle",
+          "value": "Участники"
+        },
+        {
+          "key": "MessagesOverview",
+          "value": "Сообщения"
+        },
+        {
+          "key": "ViewingMembers",
+          "value": "Просматривающие участники"
+        },
+        {
+          "key": "PostingMembers",
+          "value": "Пишущие участники"
+        },
+        {
+          "key": "PublicShares",
+          "value": "Публичные пересылки"
+        },
+        {
+          "key": "PrivateShares",
+          "value": "Приватные пересылки"
+        },
+        {
+          "key": "Views",
+          "forms": {
+            "one_value": "%1$s просмотр",
+            "few_value": "%1$s просмотра",
+            "many_value": "%1$s просмотров",
+            "other_value": "%1$s просмотра"
+          }
+        },
+        {
+          "key": "LoadingStats",
+          "value": "Загрузка статистики..."
+        },
+        {
+          "key": "LoadingStatsDescription",
+          "value": "Пожалуйста, подождите немного,\nпока мы готовим вашу статистику."
+        },
+        {
+          "key": "ViewStatistics",
+          "value": "Статистика"
+        },
+        {
+          "key": "ZoomOut",
+          "value": "Уменьшить"
+        },
+        {
+          "key": "Chart.Tooltip.All",
+          "value": "Все"
         },
         {
           "key": "PostStatistics",
@@ -9751,10 +10195,6 @@
         {
           "key": "StatisticViews",
           "value": "Просмотры"
-        },
-        {
-          "key": "Statistics.Forwards",
-          "value": "Пересылки"
         },
         {
           "key": "NewTopic",
@@ -12720,10 +13160,6 @@
           "value": "Отключить"
         },
         {
-          "key": "Statistics.Posts",
-          "value": "Посты"
-        },
-        {
           "key": "NoUsernameFound",
           "value": "Аккаунта с таким именем пользователя не существует."
         },
@@ -13693,6 +14129,194 @@
         {
           "key": "UserRestrictionsSendVoices",
           "value": "Отправка голосовых сообщений"
+        },
+        {
+          "key": "PeerInfo.Administrators",
+          "value": "Администраторы"
+        },
+        {
+          "key": "GroupMembers",
+          "value": "Участники"
+        },
+        {
+          "key": "ChannelBlockedUsers",
+          "value": "Удалённые пользователи"
+        },
+        {
+          "key": "NoBlockedUsers",
+          "value": "Нет удалённых пользователей"
+        },
+        {
+          "key": "ChannelBlacklist",
+          "value": "Удалённые пользователи"
+        },
+        {
+          "key": "MemberRequests",
+          "value": "Заявки на вступление"
+        },
+        {
+          "key": "UserRestrictions",
+          "value": "Разрешения пользователя"
+        },
+        {
+          "key": "UserRemovedBy",
+          "value": "Удалил(а) %1$s"
+        },
+        {
+          "key": "NoBlockedChannel2",
+          "value": "Пользователи, удалённые из канала администраторами, не смогут вернуться по пригласительным ссылкам."
+        },
+        {
+          "key": "NoBlockedGroup2",
+          "value": "Пользователи, удалённые из группы администраторами, не смогут вернуться по пригласительным ссылкам."
+        },
+        {
+          "key": "RequestedToJoinAt",
+          "value": "заявка подана %1$s"
+        },
+        {
+          "key": "Dismiss",
+          "value": "Отклонить"
+        },
+        {
+          "key": "UserRestrictionsCanDo",
+          "value": "Что может делать этот пользователь?"
+        },
+        {
+          "key": "Channel.Admin.AdminAccess",
+          "value": "Этот администратор сможет назначать новых администраторов с такими же или меньшими правами."
+        },
+        {
+          "key": "Channel.Admin.AdminRestricted",
+          "value": "Этот администратор не сможет назначать новых администраторов."
+        },
+        {
+          "key": "UserPermissions.Duration.Custom",
+          "value": "Другой срок"
+        },
+        {
+          "key": "UserPermissions.RestrictedBy",
+          "value": "Ограничил(а) %s %s"
+        },
+        {
+          "key": "GroupPermission.Delete",
+          "value": "Удалить исключение"
+        },
+        {
+          "key": "Permissions.RemoveFromGroup",
+          "value": "Вы действительно хотите удалить **%s** из группы?"
+        },
+        {
+          "key": "ChannelBlockUser",
+          "value": "Удалить пользователя"
+        },
+        {
+          "key": "SearchPlaceholder",
+          "value": "Поиск..."
+        },
+        {
+          "key": "Set",
+          "value": "Установить"
+        },
+        {
+          "key": "Exceptions",
+          "value": "Исключения"
+        },
+        {
+          "key": "ExceptionModal.Search.Placeholder",
+          "value": "Добавить исключение..."
+        },
+        {
+          "key": "EnableReactions",
+          "value": "Включить реакции"
+        },
+        {
+          "key": "EnableReactionsChannelInfo",
+          "value": "Разрешить подписчикам реагировать на посты канала."
+        },
+        {
+          "key": "EnableAllReactionsInfo",
+          "value": "Участники группы могут реагировать на сообщения любыми эмодзи."
+        },
+        {
+          "key": "EnableSomeReactionsInfo",
+          "value": "Участники группы могут реагировать на сообщения только выбранными эмодзи."
+        },
+        {
+          "key": "DisableReactionsInfo",
+          "value": "Участники группы не могут реагировать на сообщения."
+        },
+        {
+          "key": "ReactionsAll",
+          "value": "Все"
+        },
+        {
+          "key": "LinkedChannel",
+          "value": "Привязанный канал"
+        },
+        {
+          "key": "PeerInfo.Discussion.Add",
+          "value": "Добавить"
+        },
+        {
+          "key": "DiscussionController.Channel.Title",
+          "value": "Группа обсуждения"
+        },
+        {
+          "key": "DiscussionController.Group.Title",
+          "value": "Привязанный канал"
+        },
+        {
+          "key": "DiscussionController.PrivateGroup",
+          "value": "частная группа"
+        },
+        {
+          "key": "DiscussionController.PrivateChannel",
+          "value": "частный канал"
+        },
+        {
+          "key": "DiscussionChannelHelp2",
+          "value": "Всё, что вы публикуете в канале, будет пересылаться в эту группу."
+        },
+        {
+          "key": "DiscussionGroupHelp2",
+          "value": "Все новые посты канала пересылаются в группу."
+        },
+        {
+          "key": "DiscussionChannelGroupSetHelp2",
+          "value": "**%1$s** выбрана группой для комментариев к постам канала."
+        },
+        {
+          "key": "DiscussionGroupHelp",
+          "value": "Эта группа привязана как обсуждение канала %1$s."
+        },
+        {
+          "key": "DiscussionUnlinkChannel",
+          "value": "Отвязать канал"
+        },
+        {
+          "key": "DiscussionUnlinkChannelAlert",
+          "value": "Отвязать **%1$s** от этого канала?"
+        },
+        {
+          "key": "DiscussionUnlinkGroupAlert",
+          "value": "Отвязать **%1$s** от этой группы?"
+        },
+        {
+          "key": "Discussion.Set.Modal.Text.PublicChannelPublicGroup",
+          "value": "Сделать **%@** группой обсуждения для **%@**?"
+        },
+        {
+          "key": "Discussion.Set.PrivateChannel",
+          "value": "Любой участник этой группы сможет видеть сообщения канала."
+        },
+        {
+          "key": "Discussion.Set.PrivateGroup",
+          "value": "Любой подписчик канала сможет видеть сообщения этой группы."
+        },
+        {
+          "key": "DiscussionLinkGroupAlertHistory",
+          "value": "«История чата для новых участников» станет видимой."
         }
       ]
     },

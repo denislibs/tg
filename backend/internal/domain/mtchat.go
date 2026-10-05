@@ -856,7 +856,9 @@ func (f *ChatFull) UnmarshalJSON(b []byte) error {
 // объединение). Шов закроется вместе с ним; здесь его чинить нечем.
 //
 // pts и stats_dc не производятся (реквизиты синхронизации и статистики
-// MTProto); обязательные notify_settings и bot_info — см. список «нет предмета».
+// MTProto: дата-центр у нас один, статистика — ручка `/channels/{id}/stats`);
+// pFlags.can_view_stats — производится для зрителя-админа (ToChannelFull);
+// обязательные notify_settings и bot_info — см. список «нет предмета».
 type ChannelFull struct {
 	Underscore string          `json:"_"`
 	PFlags     map[string]bool `json:"pFlags,omitempty"`
@@ -924,7 +926,7 @@ func (f *ChannelFull) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	*f = ChannelFull(v.plain)
-	f.PFlags = keepPFlags(v.plain.PFlags, "hidden_prehistory")
+	f.PFlags = keepPFlags(v.plain.PFlags, "hidden_prehistory", "can_view_stats")
 	reactions, err := UnmarshalChatReactions(v.AvailableReactions)
 	if err != nil {
 		return err

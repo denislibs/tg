@@ -190,6 +190,32 @@ export function deniedMask(pFlags: Record<string, true> | undefined): number {
   return out
 }
 
+/** Зеркало `backend/internal/domain/mtchat.go::adminRightFlags` (биты
+ *  `domain/rights.go`): права админа на проводе — флаги `chatAdminRights`, а
+ *  ручка `POST /chats/{id}/admins` ждёт наш битмаск `Rights`. */
+const ADMIN_RIGHT_FLAGS = [
+  { bit: 64, flag: 'change_info' },
+  { bit: 1, flag: 'post_messages' },
+  { bit: 2, flag: 'edit_messages' },
+  { bit: 4, flag: 'delete_messages' },
+  { bit: 8, flag: 'ban_users' },
+  { bit: 16, flag: 'invite_users' },
+  { bit: 32, flag: 'pin_messages' },
+  { bit: 128, flag: 'add_admins' },
+] as const
+
+/**
+ * Битмаск прав админа из `chatAdminRights` — его собирает вкладка прав участника
+ * (`ChatAdministratorRights.takeOut`) для `groupsManager.editAdmin`. Знак прямой:
+ * выставленный флаг админа и есть право.
+ */
+export function adminRightsMask(pFlags: Record<string, true | undefined> | undefined): number {
+  if (!pFlags) return 0
+  let out = 0
+  for (const { bit, flag } of ADMIN_RIGHT_FLAGS) if (pFlags[flag]) out |= bit
+  return out
+}
+
 /**
  * Битмаск «что обычному участнику МОЖНО» из набора запретов — его собирает
  * вкладка прав группы (`ChatPermissions.takeOut`,

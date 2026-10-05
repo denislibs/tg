@@ -60,32 +60,52 @@ func TestPostStats_HTTP(t *testing.T) {
 		t.Fatalf("seed reaction: %v", err)
 	}
 
-	// Creator reads post stats.
+	// Creator reads post stats: stats.messageStats с графиком просмотров.
 	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/messages/"+itoa(post.ID)+"/stats", tokenA, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("stats: %d %s", rec.Code, rec.Body.String())
 	}
 	var stats struct {
-		Views          int64 `json:"views"`
-		Forwards       int64 `json:"forwards"`
-		ReactionsTotal int64 `json:"reactions_total"`
-		Reactions      []struct {
-			Emoji string `json:"emoji"`
-			Count int64  `json:"count"`
-		} `json:"reactions"`
-		ViewsByDay []struct {
-			Value int64 `json:"value"`
-		} `json:"views_by_day"`
+		Type       string `json:"_"`
+		ViewsGraph struct {
+			Type string `json:"_"`
+			JSON struct {
+				Data string `json:"data"`
+			} `json:"json"`
+		} `json:"views_graph"`
+		Reactions struct {
+			Type string `json:"_"`
+		} `json:"reactions_by_emotion_graph"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &stats)
-	if stats.Views != 5 || stats.Forwards != 2 {
-		t.Fatalf("overview mismatch: %s", rec.Body.String())
+	if stats.Type != "stats.messageStats" || stats.ViewsGraph.Type != "statsGraph" || stats.ViewsGraph.JSON.Data == "" {
+		t.Fatalf("messageStats mismatch: %s", rec.Body.String())
 	}
-	if stats.ReactionsTotal != 1 || len(stats.Reactions) != 1 || stats.Reactions[0].Emoji != "❤️" {
-		t.Fatalf("reactions mismatch: %s", rec.Body.String())
+	if stats.Reactions.Type != "statsGraphError" {
+		t.Fatalf("reactions_by_emotion_graph: %s", rec.Body.String())
 	}
-	if len(stats.ViewsByDay) != 1 || stats.ViewsByDay[0].Value != 1 {
-		t.Fatalf("views_by_day mismatch: %s", rec.Body.String())
+
+	// Channel stats: stats.broadcastStats, недавний пост со счётчиками.
+	rec = authedReq(t, h, http.MethodGet, "/channels/"+cid+"/stats", tokenA, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("channel stats: %d %s", rec.Code, rec.Body.String())
+	}
+	var channel struct {
+		Type   string `json:"_"`
+		Recent []struct {
+			Type      string `json:"_"`
+			MsgID     int64  `json:"msg_id"`
+			Views     int64  `json:"views"`
+			Forwards  int64  `json:"forwards"`
+			Reactions int64  `json:"reactions"`
+		} `json:"recent_posts_interactions"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &channel)
+	if channel.Type != "stats.broadcastStats" || len(channel.Recent) != 1 {
+		t.Fatalf("broadcastStats mismatch: %s", rec.Body.String())
+	}
+	if r := channel.Recent[0]; r.MsgID != post.ID || r.Views != 5 || r.Forwards != 2 || r.Reactions != 1 {
+		t.Fatalf("recent post mismatch: %s", rec.Body.String())
 	}
 
 	// Non-member is forbidden.

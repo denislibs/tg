@@ -16,11 +16,11 @@ import { useChatsStore } from '@stores/chatsStore'
 import mediaSizes, { ScreenSize } from '@core/dom/mediaSizes'
 import contextMenuController from '@helpers/contextMenuController'
 import appImManager, { LEFT_COLUMN_ACTIVE_CLASSNAME } from '@lib/appImManager'
-import { resetChatFullMirror, saveChatFull } from '@core/chatFullCache'
 import { RIGHT_COLUMN_ACTIVE_CLASSNAME, type AppSidebarRight } from '@components/sidebarRight'
 import { getMiddleware } from '@helpers/middleware'
 import type { Managers } from '@/client/bootstrap'
-import type { PeerFull } from '@core/chatFullCache'
+import { resetChatFullMirror, saveChatFull, type PeerFull } from '@core/chatFullCache'
+import AppStatisticsTab from '@components/sidebarRight/tabs/statistics.solid'
 import { makeDialog } from '@core/dialogs/testDialog'
 import { useGroupCallStore } from '@stores/groupCallStore'
 import { useLivestreamStore } from '@stores/livestreamStore'
@@ -192,6 +192,7 @@ beforeEach(() => {
 
 afterEach(() => {
   contextMenuController.close()
+  resetChatFullMirror()
   topbars.forEach((topbar) => topbar.destroy())
   document.body.replaceChildren()
 })
@@ -594,6 +595,21 @@ describe('ChatTopbar: меню ⋮ — пункты по verify (tweb :462-902)'
       .find((el) => itemText(el) === t('ViewDiscussion'))!
     discussion.click()
     expect(setInnerPeer).toHaveBeenCalledWith({ peerId: -300 })
+  })
+
+  it('«Статистика» — по can_view_stats загруженной карточки; клик открывает AppStatisticsTab и колонку (tweb :682-689)', async() => {
+    // без флага в карточке пункта нет — видно по точному списку теста «канал с обсуждением»
+    saveChatFull(CHANNEL, { _: 'channelFull', id: 200, about: '', read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0, chat_photo: null, pFlags: { can_view_stats: true } })
+    const open_ = vi.fn()
+    sidebar.createTab.mockReturnValue({ open: open_ })
+    const topbar = await open(makeChat({ peerId: CHANNEL, isBroadcast: true }))
+    const menu = await openMenu(topbar)
+    const item = Array.from(menu.querySelectorAll<HTMLElement>('.btn-menu-item'))
+      .find((el) => itemText(el) === t('Statistics'))!
+    item.click()
+    expect(sidebar.createTab).toHaveBeenCalledWith(AppStatisticsTab)
+    expect(open_).toHaveBeenCalledWith(CHANNEL)
+    expect(sidebar.toggleSidebar).toHaveBeenCalledWith(true)
   })
 
   it('«Избранное»: выбрать и очистить, без мьюта, контактов, блокировки и удаления (О-89)', async() => {
