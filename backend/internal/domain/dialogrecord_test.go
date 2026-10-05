@@ -217,8 +217,10 @@ func TestDialogRecord_ToChannelCarriesViewerRights(t *testing.T) {
 	if sub.PFlags["creator"] || sub.AdminRights != nil {
 		t.Errorf("подписчик получил права владельца/админа: %+v", sub)
 	}
-	if sub.DefaultBanned == nil {
-		t.Fatal("default_banned_rights не доехали")
+	// У broadcast-канала дефолтных прав участника нет (VVA5a-01): пустой набор
+	// запретов клиент прочёл бы как «подписчику можно закреплять».
+	if sub.DefaultBanned != nil {
+		t.Fatalf("default_banned_rights у канала: %+v", sub.DefaultBanned)
 	}
 
 	owner := DialogRecord{ChatID: 9, Type: ChatTypeChannel, MyRole: RoleCreator, MyRights: Rights(255), Settings: ChatSettings{DefaultPerms: AllMemberPerms}}.ToChannel()

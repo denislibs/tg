@@ -192,9 +192,12 @@ func (d DialogRecord) ToChannel() Channel {
 	out.ParticipantsCount = d.MemberCount
 	out.SendPaidMessagesStars = int64(d.Settings.ChargeStars)
 	out.SetViewerMembership(d.MyRole, d.MyRights)
-	// Та же инверсия «можно → нельзя», что у карточки (см. ChatRecord.ToChannel).
-	db := NewChatBannedRights(d.Settings.DefaultPerms, time.Time{})
-	out.DefaultBanned = &db
+	// Та же инверсия «можно → нельзя» и то же правило для broadcast, что у
+	// карточки (см. ChatRecord.ToChannel).
+	if d.Type != ChatTypeChannel {
+		db := NewChatBannedRights(d.Settings.DefaultPerms, time.Time{})
+		out.DefaultBanned = &db
+	}
 	return out
 }
 
@@ -271,6 +274,11 @@ type Member struct {
 	ChatID, UserID int64
 	Role           string
 	Rights         Rights
+	// PromotedBy — кто назначил админа (channelParticipantAdmin.promoted_by);
+	// 0 — не админ или назначивший неизвестен (админы до миграции 0137).
+	// Править чужого админа может только владелец или назначивший
+	// (tweb canEditAdmin).
+	PromotedBy int64
 }
 
 // ChatRecord — СТРОКА таблицы chats глазами зрителя, а не объект провода.
@@ -432,8 +440,15 @@ func (c ChatRecord) ToChannel() Channel {
 	// что НЕЛЬЗЯ: NewChatBannedRights инвертирует. Ловушка выписана в его
 	// докблоке; персональные ограничения (MemberRestriction.DeniedRights) —
 	// уже готовые запреты и инверсии НЕ требуют.
-	db := NewChatBannedRights(c.Settings.DefaultPerms, time.Time{})
-	out.DefaultBanned = &db
+	//
+	// У broadcast-канала дефолтных прав участника нет: подписчик не делает
+	// ничего, а права админа едут admin_rights. Клиент оригинала на этом и
+	// стоит — hasRights без admin_rights берёт default_banned_rights, и пустой
+	// набор запретов у канала значил бы «подписчику можно закреплять».
+	if c.Type != ChatTypeChannel {
+		db := NewChatBannedRights(c.Settings.DefaultPerms, time.Time{})
+		out.DefaultBanned = &db
+	}
 	return out
 }
 
@@ -449,7 +464,9 @@ func (c ChatRecord) ToChannel() Channel {
 func (c *Channel) SetViewerMembership(role string, rights Rights) {
 	setPFlag(&c.PFlags, "creator", role == RoleCreator)
 	c.AdminRights = nil
-	if rights != 0 {
+	// Админ без единого права — всё равно админ (tweb just_admin смотрит на сам
+	// конструктор chatAdminRights): по пустой маске конструктор не опускается.
+	if role == RoleCreator || role == RoleAdmin {
 		ar := NewChatAdminRights(rights)
 		c.AdminRights = &ar
 	}
