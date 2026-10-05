@@ -1665,6 +1665,25 @@ func (r fakeMsgs) CountThread(_ context.Context, chatID, threadRootID int64) (in
 	return n, nil
 }
 
+func (r fakeMsgs) ThreadState(_ context.Context, chatID, threadRootID, viewerID, readSeq int64) (int64, int, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var maxSeq int64
+	unread := 0
+	for _, m := range r.s.messages[chatID] {
+		if m.ThreadRootID == nil || *m.ThreadRootID != threadRootID || m.Deleted {
+			continue
+		}
+		if m.Seq > maxSeq {
+			maxSeq = m.Seq
+		}
+		if m.Seq > readSeq && m.SenderID != viewerID {
+			unread++
+		}
+	}
+	return maxSeq, unread, nil
+}
+
 // ThreadReplyCounts — батч CountThread: корни без ответов в карту НЕ попадают
 // (как GROUP BY в Postgres-версии), иначе «тред пуст» стало бы неотличимо от
 // «треда нет».

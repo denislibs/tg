@@ -42,9 +42,8 @@ func NewSearchResultsCalendarPeriod(date, minMsgID, maxMsgID int64, count int) S
 // `messages.messagesSlice` (задача #60): позиции сообщения-смещения в полном
 // наборе мы не считаем.
 //
-// `chats` едет пустым вектором: календарь спрашивают у ОДНОГО чата, и его
-// карточка у клиента уже есть — он же и открыл этот чат. Авторы сообщений
-// нужны (`users`), потому что сообщение ссылается на автора, а не несёт его.
+// `users`/`chats` — карточки тех, на кого ссылаются сообщения (автор, чат,
+// источник пересылки): сообщение ссылается на пира, а не несёт его.
 type MessagesSearchResultsCalendar struct {
 	Underscore string                        `json:"_"`
 	PFlags     map[string]bool               `json:"pFlags,omitempty"`
@@ -62,12 +61,12 @@ type MessagesSearchResultsCalendar struct {
 // `min_date`/`min_msg_id` — самая ранняя граница отданного: у оригинала по ним
 // продолжают листать календарь назад. Пустой ответ оставляет обе нулями, а не
 // выдумывает границу.
-func NewMessagesSearchResultsCalendar(periods []SearchResultsCalendarPeriod, messages []MTMessage, users []UserReal) MessagesSearchResultsCalendar {
+func NewMessagesSearchResultsCalendar(periods []SearchResultsCalendarPeriod, messages []MTMessage, chats []Chat, users []UserReal) MessagesSearchResultsCalendar {
 	out := MessagesSearchResultsCalendar{
 		Underscore: "messages.searchResultsCalendar",
 		Periods:    periods,
 		Messages:   messages,
-		Chats:      []Chat{},
+		Chats:      orEmpty(chats),
 		Users:      users,
 	}
 	if out.Periods == nil {

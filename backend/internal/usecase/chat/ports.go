@@ -330,6 +330,9 @@ type MessageRepo interface {
 	// ListThread — сообщения треда по возрастанию, только видимые зрителю viewerID.
 	ListThread(ctx context.Context, chatID, viewerID, threadRootID int64, offset, limit int) ([]domain.Message, error)
 	CountThread(ctx context.Context, chatID, threadRootID int64) (int, error)
+	// ThreadState — номер последнего видимого зрителю сообщения треда и
+	// сколько из них новее readSeq и написаны не им.
+	ThreadState(ctx context.Context, chatID, threadRootID, viewerID, readSeq int64) (int64, int, error)
 	// ThreadReplyCounts — БАТЧ того же счёта, что и CountThread: rootID ->
 	// число живых сообщений треда. Корни без единого ответа в карту не
 	// попадают («треда нет» и «тред пуст» на проводе неразличимы только для

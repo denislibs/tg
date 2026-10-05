@@ -55,12 +55,12 @@ func (h *ChannelHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	// Ответ действия — СОЗДАННЫЙ объект, тем же конструктором, что у ручки
 	// карточки; адреса в безымянной обёртке больше нет (см. GroupHandler).
-	c, err := h.uc.ChatCard(r.Context(), id, user.ID)
+	out, err := h.uc.ChatFullContainer(r.Context(), id, user.ID)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, domain.NewMessagesChatFull(c.ToChannelFull(), c.ToChannel()))
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h *ChannelHandler) Post(w http.ResponseWriter, r *http.Request) {
@@ -171,14 +171,13 @@ func (h *ChannelHandler) EnableDiscussion(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	disc, err := h.uc.EnableDiscussion(r.Context(), chatID, user.ID)
-	if err != nil {
+	if _, err := h.uc.EnableDiscussion(r.Context(), chatID, user.ID); err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	// Ответ — КОНСТРУКТОР ключа привязанной группы: обёртки вокруг адреса у
-	// оригинала нет (там его читают из `channelFull.linked_chat_id`).
-	writeJSON(w, http.StatusOK, domain.NewPeer(discussionPeer(disc)))
+	// Ответ — Bool, как у channels.setDiscussionGroup оригинала (A4-20): адрес
+	// группы клиент читает из `channelFull.linked_chat_id` карточки.
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // LinkDiscussion links an existing group as the channel's discussion group
@@ -196,14 +195,12 @@ func (h *ChannelHandler) LinkDiscussion(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "group_peer_id required")
 		return
 	}
-	disc, err := h.uc.LinkDiscussion(r.Context(), chatID, b.GroupPeerID.ToChatID(), user.ID)
-	if err != nil {
+	if _, err := h.uc.LinkDiscussion(r.Context(), chatID, b.GroupPeerID.ToChatID(), user.ID); err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	// Ответ — КОНСТРУКТОР ключа привязанной группы: обёртки вокруг адреса у
-	// оригинала нет (там его читают из `channelFull.linked_chat_id`).
-	writeJSON(w, http.StatusOK, domain.NewPeer(discussionPeer(disc)))
+	// Ответ — Bool, как у channels.setDiscussionGroup оригинала (A4-20).
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // UnlinkDiscussion detaches the channel's discussion group
@@ -288,9 +285,8 @@ func (h *ChannelHandler) PostComment(w http.ResponseWriter, r *http.Request) {
 
 // GetDiscussionMessage — GET /channels/{peerID}/posts/{postSeq}/discussion:
 // корень треда комментариев поста (зеркало в группе обсуждения), порт
-// messages.getDiscussionMessage. Ответ — messages.messages с одним сообщением:
-// полей max_id/read_*_max_id/unread_count конструктора messages.discussionMessage
-// клиент не читает (окно треда считает их сам).
+// messages.getDiscussionMessage → messages.discussionMessage (состояние треда
+// и карточки группы обсуждения и канала, см. DiscussionContainer).
 func (h *ChannelHandler) GetDiscussionMessage(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	chatID, ok := peerChatID(w, r, h.uc)
@@ -301,12 +297,12 @@ func (h *ChannelHandler) GetDiscussionMessage(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	m, err := h.uc.GetDiscussionMessage(r.Context(), chatID, postID, user.ID)
+	out, err := h.uc.DiscussionContainer(r.Context(), chatID, postID, user.ID)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeMessagesAll(w, r, h.uc, []domain.Message{m})
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h *ChannelHandler) ListComments(w http.ResponseWriter, r *http.Request) {
@@ -321,12 +317,12 @@ func (h *ChannelHandler) ListComments(w http.ResponseWriter, r *http.Request) {
 	}
 	offset := int(queryInt(r, "offset", 0))
 	limit := int(queryInt(r, "limit", 50))
-	msgs, count, err := h.uc.ListComments(r.Context(), chatID, postID, user.ID, offset, limit)
+	out, err := h.uc.CommentsContainer(r.Context(), chatID, postID, user.ID, offset, limit)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	writeMessagesSlice(w, r, h.uc, count, msgs)
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h *ChannelHandler) CommentCounts(w http.ResponseWriter, r *http.Request) {

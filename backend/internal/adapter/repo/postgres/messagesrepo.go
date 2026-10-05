@@ -1142,6 +1142,20 @@ func (r *MessagesRepo) CountThread(ctx context.Context, chatID, threadRootID int
 	return n, err
 }
 
+// ThreadState — состояние треда глазами зрителя: номер последнего видимого
+// сообщения треда (max_id messages.discussionMessage) и сколько из них новее
+// readSeq и написаны не им (unread_count).
+func (r *MessagesRepo) ThreadState(ctx context.Context, chatID, threadRootID, viewerID, readSeq int64) (int64, int, error) {
+	var maxSeq int64
+	var unread int
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT COALESCE(MAX(m.seq),0), count(*) FILTER (WHERE m.seq > $4 AND m.sender_id <> $3)
+		   FROM messages m
+		  WHERE m.chat_id=$1 AND m.thread_root_id=$2 AND `+messageVisibleTo("m", "$3"),
+		chatID, threadRootID, viewerID, readSeq).Scan(&maxSeq, &unread)
+	return maxSeq, unread, err
+}
+
 // ThreadReplyCounts — батч CountThread: один запрос на всю пачку корней.
 // Корни без ответов в карту не попадают (GROUP BY просто не даёт по ним
 // строки) — вызывающий отличает «ответов нет» по отсутствию ключа.

@@ -387,11 +387,37 @@ func (i *Interactor) SetChatNotify(ctx context.Context, chatID, userID int64, pr
 // Карточку чужого приватного чата — название, описание, фото, число
 // участников, обсуждение — не получить, перебирая id подряд. Создание и
 // вступление зовут её уже после вступления, им гейт не мешает.
+//
+// Карточка бывает только у группы и канала: у лички и «Избранного» пир — это
+// человек (users.getFullUser), и `channel` с внутренним id строки лички
+// выдавал наружу наш ключ (A4-15) — domain.ErrInvalid.
 func (i *Interactor) ChatCard(ctx context.Context, chatID, viewerID int64) (domain.ChatRecord, error) {
 	if err := i.RequireChatRead(ctx, chatID, viewerID); err != nil {
 		return domain.ChatRecord{}, err
 	}
-	return i.groups.Card(ctx, chatID, viewerID)
+	c, err := i.groups.Card(ctx, chatID, viewerID)
+	if err != nil {
+		return domain.ChatRecord{}, err
+	}
+	if c.Type != domain.ChatTypeGroup && c.Type != domain.ChatTypeChannel {
+		return domain.ChatRecord{}, domain.ErrInvalid
+	}
+	return c, nil
+}
+
+// ChatFullContainer — ответ channels.getFullChannel: messages.chatFull, где
+// `chats` везёт сам чат И связанный (группу обсуждения у канала, канал у
+// группы): строка «Обсуждение» и вход в него рисуются по linked_chat_id
+// (tweb topbar.ts:516-519, editChat.tsx:753-755), а группы обсуждения в
+// списке диалогов нет (A4-12).
+func (i *Interactor) ChatFullContainer(ctx context.Context, chatID, viewerID int64) (domain.MessagesChatFull, error) {
+	c, err := i.ChatCard(ctx, chatID, viewerID)
+	if err != nil {
+		return domain.MessagesChatFull{}, err
+	}
+	out := domain.NewMessagesChatFull(c.ToChannelFull(), c.ToChannel())
+	out.Chats = i.withChats(ctx, viewerID, out.Chats, c.LinkedChatID)
+	return out, nil
 }
 
 // UsersByIDs — карточки глазами viewerID (имя из его книги, pFlags.contact).

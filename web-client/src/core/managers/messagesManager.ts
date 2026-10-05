@@ -1122,8 +1122,10 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
      * `appMessagesManager.getDiscussionMessage` (tweb :8814-8864): тред
      * комментариев адресуется номером ЗЕРКАЛА (`threadId` = mid в группе), и
      * им же — окно, отправка, живые кадры (`reply_to_top_id` комментария).
-     * Счётчики прочитанного (`max_id`/`read_*_max_id`) у нас окно треда считает
-     * само — в ответе только сообщение.
+     * Ответ — `messages.discussionMessage`: его `chats` везут группу обсуждения
+     * и канал (без карточки группы композер треда считал «писать нельзя»), и
+     * `mapContainer` сохраняет их до отдачи сообщения. Состояние треда
+     * (`max_id`/`read_*_max_id`) окно треда пока считает само.
      */
     async getDiscussionMessage(peerId: number, mid: number): Promise<MyMessage | undefined> {
       const r = await rest.get<MessagesContainer>(`/channels/${peerId}/posts/${getServerMessageId(mid)}/discussion`)

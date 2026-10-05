@@ -31,21 +31,24 @@ import (
 // авторов с комментаторами: два прогона были бы двумя запросами за одним и тем
 // же правилом, а комментаторы, приехавшие мимо гейта, светили бы фото.
 //
-// Вектор `chats` этой функцией НЕ наполняется, и это названный долг, а не
-// пропуск: карточка нужна там, где автор — канал (пост от лица канала) либо
-// где список пришёл из ГЛОБАЛЬНОГО поиска по чужим чатам. В остальных случаях
-// чат уже известен клиенту из списка диалогов.
-func (i *Interactor) MessagesContainer(ctx context.Context, viewerID int64, msgs []domain.Message) ([]domain.MTMessage, []domain.UserReal, error) {
+// Вектор `chats` (и недостающие `users`) — карточки ВСЕХ пиров, на которых
+// ссылается вектор сообщений: чат самого сообщения, автор-канал (send-as),
+// источник пересылки, кросс-чатный ответ, группа обсуждения из
+// replies.channel_id, упомянутые, контакт, участники действия (peerVectors).
+// Прежде `chats` не наполнялся вовсе, и строка глобального поиска из чужого
+// чата, «Переслано от» канала, автор send-as оставались без имени (A4-03).
+func (i *Interactor) MessagesContainer(ctx context.Context, viewerID int64, msgs []domain.Message) ([]domain.MTMessage, []domain.UserReal, []domain.Chat, error) {
 	kinds := i.chatKinds(ctx, msgs)
 	shown := i.postAuthorsShown(ctx, kinds)
 	threads, repliers := i.threadReplies(ctx, viewerID, msgs, kinds)
 	wire, err := i.messagesWire(ctx, viewerID, msgs, kinds, shown, threads)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	users := mergeUserCards(i.messageAuthors(ctx, viewerID, msgs, kinds, shown), repliers)
-	i.gateAuthorPhotos(ctx, viewerID, users)
-	return wire, users, nil
+	i.viewUsers(ctx, viewerID, users)
+	users, chats := i.peerVectors(ctx, viewerID, domain.CollectPeerRefs(wire), users)
+	return wire, users, chats, nil
 }
 
 // messageAuthors — карточки авторов пачки, по одной на автора. Автор поста

@@ -46,6 +46,8 @@ func (h *GroupHandler) mapErr(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusForbidden, "USER_PRIVACY_RESTRICTED")
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not found")
+	case errors.Is(err, domain.ErrInvalid):
+		writeError(w, http.StatusBadRequest, "PEER_ID_INVALID")
 	default:
 		writeError(w, http.StatusInternalServerError, "server error")
 	}
@@ -624,7 +626,7 @@ func (h *GroupHandler) Card(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	c, err := h.uc.ChatCard(r.Context(), chatID, user.ID)
+	out, err := h.uc.ChatFullContainer(r.Context(), chatID, user.ID)
 	if err != nil {
 		h.mapErr(w, err)
 		return
@@ -645,7 +647,8 @@ func (h *GroupHandler) Card(w http.ResponseWriter, r *http.Request) {
 	// из неё), а `creator_id` — мёртвым: его никто не читал, только хранил.
 	// «Создатель ли я» выражает `pFlags.creator` краткой карточки, а «кто
 	// создатель» — конструктор `channelParticipantCreator` в списке участников.
-	writeJSON(w, http.StatusOK, domain.NewMessagesChatFull(c.ToChannelFull(), c.ToChannel()))
+	// Связанный чат едет тем же вектором `chats` (ChatFullContainer).
+	writeJSON(w, http.StatusOK, out)
 }
 
 // SetChargeStars sets the paid-message price in stars (PUT /chats/{chatID}/charge_stars).

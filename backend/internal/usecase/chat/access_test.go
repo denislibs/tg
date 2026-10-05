@@ -376,7 +376,7 @@ func TestMessagesContainer_BroadcastPostHidesAuthor(t *testing.T) {
 	post, _ := in.PostToChannel(ctx, ch, 7, "пост", nil, "")
 	rows, _ := in.msgs.GetByIDs(ctx, []int64{post.ID})
 
-	wire, users, err := in.MessagesContainer(ctx, 8, rows)
+	wire, users, _, err := in.MessagesContainer(ctx, 8, rows)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -388,7 +388,7 @@ func TestMessagesContainer_BroadcastPostHidesAuthor(t *testing.T) {
 	}
 
 	_ = fg.SetSignatures(ctx, ch, true, true)
-	wire, users, _ = in.MessagesContainer(ctx, 8, rows)
+	wire, users, _, _ = in.MessagesContainer(ctx, 8, rows)
 	if body := wire[0].(domain.MessageReal); body.FromID == nil {
 		t.Fatal("с подписями профилями from_id пропал")
 	}

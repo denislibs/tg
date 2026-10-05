@@ -181,7 +181,7 @@ func (i *Interactor) dialogsContainer(ctx context.Context, viewerID int64, recor
 		if err != nil {
 			return DialogsPage{}, err
 		}
-		i.gateAuthorPhotos(ctx, viewerID, authors)
+		i.viewUsers(ctx, viewerID, authors)
 		users = append(users, authors...)
 	}
 
@@ -193,11 +193,11 @@ func (i *Interactor) dialogsContainer(ctx context.Context, viewerID int64, recor
 	}, nil
 }
 
-// gateAuthorPhotos гасит аватарки тех авторов, кому правило profile_photo не
+// viewUsers гасит аватарки тех авторов, кому правило profile_photo не
 // разрешает показ этому зрителю, — тем же правилом, что и собеседников
 // приватных диалогов (см. ListDialogs). Сбой правила не должен ронять выдачу
 // списка, но и показывать аватарку «на всякий случай» нельзя: при ошибке гасим.
-func (i *Interactor) gateAuthorPhotos(ctx context.Context, viewerID int64, users []domain.UserReal) {
+func (i *Interactor) viewUsers(ctx context.Context, viewerID int64, users []domain.UserReal) {
 	if i.privacy == nil || len(users) == 0 {
 		return
 	}

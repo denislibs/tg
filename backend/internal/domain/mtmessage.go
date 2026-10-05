@@ -1329,6 +1329,42 @@ func NewMessagesMessages(messages []MTMessage, chats []Chat, users []UserReal) M
 	}
 }
 
+// messages.discussionMessage#a6341782 flags:# messages:Vector<Message>
+// max_id:flags.0?int read_inbox_max_id:flags.1?int read_outbox_max_id:flags.2?int
+// unread_count:int chats:Vector<Chat> users:Vector<User> =
+// messages.DiscussionMessage;
+//
+// Корень треда комментариев (зеркало поста в группе обсуждения) вместе с
+// состоянием треда: по max_id/read_*_max_id клиент оригинала ставит
+// readMaxId/maxId окна треда (tweb appMessagesManager.ts:8846-8851), а
+// read_inbox_max_id без значения у него значит «прочитано до корня».
+// Отсутствие — указатель nil, а не ноль: ноль это конкретный номер.
+type MessagesDiscussionMessage struct {
+	Underscore      string      `json:"_"`
+	Messages        []MTMessage `json:"messages"`
+	MaxID           *int64      `json:"max_id,omitempty"`
+	ReadInboxMaxID  *int64      `json:"read_inbox_max_id,omitempty"`
+	ReadOutboxMaxID *int64      `json:"read_outbox_max_id,omitempty"`
+	UnreadCount     int         `json:"unread_count"`
+	Chats           []Chat      `json:"chats"`
+	Users           []UserReal  `json:"users"`
+}
+
+// MessagesDiscussionMessageTag — дискриминатор messages.discussionMessage.
+const MessagesDiscussionMessageTag = "messages.discussionMessage"
+
+// NewMessagesDiscussionMessage — корень треда и его векторы; состояние треда
+// дописывает вызывающий (поля-указатели).
+func NewMessagesDiscussionMessage(messages []MTMessage, unread int, chats []Chat, users []UserReal) MessagesDiscussionMessage {
+	return MessagesDiscussionMessage{
+		Underscore:  MessagesDiscussionMessageTag,
+		Messages:    orEmpty(messages),
+		UnreadCount: unread,
+		Chats:       orEmpty(chats),
+		Users:       orEmpty(users),
+	}
+}
+
 // WithNextRate — тот же кусок с курсором следующей страницы; rate <= 0 —
 // страница последняя, ключа next_rate в ответе нет.
 func (m MessagesMessagesSlice) WithNextRate(rate int64) MessagesMessagesSlice {
