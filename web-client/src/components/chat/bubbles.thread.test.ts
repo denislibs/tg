@@ -24,7 +24,9 @@ import { createTestChat, mountTestBubbles } from './testChat'
 
 const GROUP = -30
 const CHANNEL = -31
-const ROOT_MID = 100
+/** Номер треда — номер ЗЕРКАЛА поста в группе обсуждения (`getDiscussionMessage`),
+ *  тот же, что `reply_to_top_id` комментариев. */
+const ROOT_MID = 1
 const AUTHOR = 5
 
 const chatContext = (threadId?: number) => createTestChat({
@@ -33,13 +35,13 @@ const chatContext = (threadId?: number) => createTestChat({
   messagesStorageKey: threadId ? `${GROUP}_${threadId}` : String(GROUP),
 })
 
-/** Зеркало поста в группе обсуждения — корень треда: номер у него СВОЙ,
- *  не равный номеру поста в канале (`resolveThreadRootForQuery`). */
+/** Зеркало поста в группе обсуждения — корень треда (tweb берёт его адресно,
+ *  `getMessageByPeer(peerId, threadId)`). */
 const rootMirror = (): MyMessage =>
-  makeMessage({ peerId: GROUP, fromId: CHANNEL, id: 1, text: 'пост', createdAt: '2026-08-15T12:00:00Z' })
+  makeMessage({ peerId: GROUP, fromId: CHANNEL, id: ROOT_MID, text: 'пост', createdAt: '2026-08-15T12:00:00Z' })
 
 const comment = (id: number): MyMessage =>
-  makeMessage({ peerId: GROUP, fromId: AUTHOR, id, text: `c${id}`, createdAt: '2026-08-15T12:05:00Z', threadRootId: 1 })
+  makeMessage({ peerId: GROUP, fromId: AUTHOR, id, text: `c${id}`, createdAt: '2026-08-15T12:05:00Z', threadRootId: ROOT_MID })
 
 function managersWith(messages: MyMessage[], reachedTop = true): BubblesManagers {
   return {
@@ -60,7 +62,7 @@ async function settle() {
 }
 
 const plate = (feed: ChatBubbles) =>
-  feed.chatInner.querySelector<HTMLElement>(`.bubble.service[data-mid="${generateTempMessageId(1)}"]`)
+  feed.chatInner.querySelector<HTMLElement>(`.bubble.service[data-mid="${generateTempMessageId(ROOT_MID)}"]`)
 
 let bubbles: ChatBubbles | undefined
 afterEach(() => { bubbles?.destroy(); bubbles = undefined })
@@ -86,7 +88,7 @@ describe('ChatBubbles — плашка «Обсуждение началось»
     const mids = Array.from(bubbles.chatInner.querySelectorAll<HTMLElement>('.bubble[data-mid]'))
       .map((b) => Number(b.dataset.mid))
       .filter((mid) => !Number.isNaN(mid))
-    expect(mids).toEqual([1, generateTempMessageId(1), 2])
+    expect(mids).toEqual([1, generateTempMessageId(ROOT_MID), 2])
   })
 
   it('в обычном чате плашки нет', async () => {
@@ -112,6 +114,6 @@ describe('ChatBubbles — плашка «Обсуждение началось»
     await bubbles.performHistoryResult([rootMirror(), comment(2)], true, { top: true })
     await settle()
 
-    expect(bubbles.chatInner.querySelectorAll(`.bubble[data-mid="${generateTempMessageId(1)}"]`)).toHaveLength(1)
+    expect(bubbles.chatInner.querySelectorAll(`.bubble[data-mid="${generateTempMessageId(ROOT_MID)}"]`)).toHaveLength(1)
   })
 })

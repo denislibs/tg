@@ -276,11 +276,13 @@ type MessageRepo interface {
 	// странице (см. GlobalSearchQuery).
 	GlobalSearchMessages(ctx context.Context, userID int64, q GlobalSearchQuery) (GlobalSearchResult, error)
 	// MediaHistory — шаред-медиа чата одного вида, новые сверху; окно задаётся
-	// курсором MediaPage.OffsetID (см. её комментарий — почему не смещением).
+	// курсором MediaPage.OffsetID (см. её комментарий — почему не смещением),
+	// MediaPage.ThreadRoot != nil — только тред (ключ строки корня).
 	MediaHistory(ctx context.Context, chatID, userID int64, filter string, page MediaPage) ([]domain.Message, int, error)
 	// SearchCounters — число сообщений по каждому виду шаред-медиа ОДНИМ
 	// запросом; неизвестный вид отсутствует в карте (читается как ноль).
-	SearchCounters(ctx context.Context, chatID, userID int64, filters []string) (map[string]int, error)
+	// threadRootID != nil — только сообщения треда (ключ строки корня).
+	SearchCounters(ctx context.Context, chatID, userID int64, filters []string, threadRootID *int64) (map[string]int, error)
 	// CallLog — журнал звонков (type='call' сообщения из личных чатов userID,
 	// обогащённые собеседником). Для вкладки «Звонки».
 	CallLog(ctx context.Context, userID int64, offset, limit int) ([]domain.CallLogEntry, error)

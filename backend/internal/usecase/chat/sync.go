@@ -24,12 +24,11 @@ func (i *Interactor) GetHistory(ctx context.Context, chatID, userID, offsetSeq i
 	if err != nil {
 		return HistoryResult{}, err
 	}
-	// Комментарии: клиент адресует тред id ПОСТА (внешний контракт), а
-	// физически он висит на id ЗЕРКАЛА в группе обсуждения — резолвим перед
-	// запросом к хранилищу (см. resolveThreadRootForQuery). queryRoot (не
-	// исходный threadRoot) отдаёт хранилищу условие `thread_root_id=root OR
-	// id=root`, поэтому корневой бабл треда приезжает окном сам: зеркало лежит
-	// в ЭТОМ чате под id queryRoot, а не под id поста в канале.
+	// Тред адресуется номером корня В ЭТОМ ЧАТЕ (у комментариев — номером
+	// зеркала поста в группе обсуждения, см. resolveThreadRootForQuery).
+	// queryRoot — ключ строки корня: хранилище берёт окно условием
+	// `thread_root_id=root OR id=root`, поэтому корневой бабл треда приезжает
+	// окном сам.
 	//
 	// Синтетической подшивки корня ИЗ ДРУГОГО чата здесь больше нет. Она
 	// существовала только ради вырожденного пути (thread_root долетел
@@ -299,7 +298,7 @@ func (i *Interactor) GetHistoryAround(ctx context.Context, chatID, userID, cente
 	if err != nil {
 		return AroundResult{}, err
 	}
-	// см. GetHistory — тот же перевод id поста -> id зеркала для запроса.
+	// см. GetHistory — тот же перевод номера корня в ключ строки.
 	queryRoot := i.resolveThreadRootForQuery(ctx, chatID, threadRoot)
 	msgs, err := i.msgs.GetAround(ctx, chatID, userID, centerSeq, limit, queryRoot, cleared)
 	if err != nil {
@@ -338,6 +337,13 @@ type MediaPage struct {
 	// строго ниже него. 0 — с начала (самые новые).
 	OffsetID int64
 	Limit    int
+	// ThreadRoot — тред (комментарии / тема форума), номер корня, как у
+	// истории (`?thread_root=`): вкладки профиля треда показывают медиа ТОЛЬКО
+	// этого треда (tweb appSearchSuper.ts:2282-2290 — `threadId` в контексте
+	// поиска → `top_msg_id`). nil — весь чат. Читает только MediaHistory;
+	// хранилищу уходит уже переведённый ключ строки корня
+	// (resolveThreadRootForQuery).
+	ThreadRoot *int64
 }
 
 // SearchCounter — число сообщений чата одного вида (аналог MTProto
@@ -349,13 +355,12 @@ type SearchCounter struct {
 
 // MediaHistory lists a chat's shared media of one kind (profile tabs).
 func (i *Interactor) MediaHistory(ctx context.Context, chatID, userID int64, filter string, page MediaPage) (HistoryResult, error) {
-	ok, err := i.chats.IsMember(ctx, chatID, userID)
-	if err != nil {
+	// Тред комментариев читается и не-членом группы обсуждения — тот же
+	// допуск, что у истории треда (checkHistoryAccess).
+	if err := i.checkHistoryAccess(ctx, chatID, userID, page.ThreadRoot); err != nil {
 		return HistoryResult{}, err
 	}
-	if !ok {
-		return HistoryResult{}, domain.ErrNotFound
-	}
+	page.ThreadRoot = i.resolveThreadRootForQuery(ctx, chatID, page.ThreadRoot)
 	if page.Limit <= 0 || page.Limit > 60 {
 		page.Limit = 30
 	}
@@ -387,15 +392,15 @@ func (i *Interactor) MediaHistory(ctx context.Context, chatID, userID int64, fil
 // вкладка ищет СВОЮ запись по имени фильтра и разыменовывает её без проверки
 // (`counters.find(...).count`, tweb src/components/appSearchSuper.ts:2429-2434),
 // то есть пропущенный фильтр там — не пустая вкладка, а исключение.
-func (i *Interactor) SearchCounters(ctx context.Context, chatID, userID int64, filters []string) ([]SearchCounter, error) {
-	ok, err := i.chats.IsMember(ctx, chatID, userID)
-	if err != nil {
+//
+// threadRoot != nil — счётчики ТОЛЬКО треда (номер корня, как у истории):
+// вкладки профиля треда комментариев (tweb appSearchSuper.ts:2375-2377 —
+// `getSearchCounters` с `top_msg_id`).
+func (i *Interactor) SearchCounters(ctx context.Context, chatID, userID int64, filters []string, threadRoot *int64) ([]SearchCounter, error) {
+	if err := i.checkHistoryAccess(ctx, chatID, userID, threadRoot); err != nil {
 		return nil, err
 	}
-	if !ok {
-		return nil, domain.ErrNotFound
-	}
-	counts, err := i.msgs.SearchCounters(ctx, chatID, userID, filters)
+	counts, err := i.msgs.SearchCounters(ctx, chatID, userID, filters, i.resolveThreadRootForQuery(ctx, chatID, threadRoot))
 	if err != nil {
 		return nil, err
 	}

@@ -43,7 +43,6 @@ export function SettingsScreen({
   headerRight,
   zIndex = 60,
   sub = null,
-  hidden = false,
   children,
 }: {
   title?: LangPackKey
@@ -54,12 +53,6 @@ export function SettingsScreen({
   zIndex?: number
   /** вложенный экран (обычно другой SettingsScreen); null — закрыт */
   sub?: ReactNode
-  /**
-   * ВРЕМЕННО до 0б-1: экран спрятан (`hide`), пока поверх открыта Solid-вкладка
-   * правой колонки. Оверлей лежит соседом вкладок в `.sidebar-slider` со своим
-   * `z-index`, и открытая из него вкладка слайдера оказалась бы ПОД ним.
-   */
-  hidden?: boolean
   children: ReactNode
 }) {
   const t = useT()
@@ -79,7 +72,7 @@ export function SettingsScreen({
   // Прежде кит ставил `scrollable-y-bordered` статически и без слушателя — и
   // плашка с линией стояли на каждом React-экране всегда (задача 3 плана 2D).
   // Пятый аргумент — ГОТОВЫЙ узел: `new Scrollable(el)` переложил бы детей в
-  // свой div, а этим узлом владеет React (тот же приём — `useSearchSuper.ts`).
+  // свой div, а этим узлом владеет React.
   // Кит — временный двойник вкладки до переезда экранов на Solid (снос —
   // задача 31 плана), своего правила шапки не заводит.
   useLayoutEffect(() => {
@@ -165,7 +158,7 @@ export function SettingsScreen({
   return (
     <div
       ref={containerRef}
-      className={classNames('tabs-container', s.screen, hidden ? 'hide' : '')}
+      className={classNames('tabs-container', s.screen)}
       data-animation="navigation"
       style={{ zIndex }}
     >

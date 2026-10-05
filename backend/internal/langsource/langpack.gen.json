@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 57,
+      "version": 55,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -922,10 +922,6 @@
           "value": "People can share this link with others and find your group using Telegram search."
         },
         {
-          "key": "ChannelAddAdmin",
-          "value": "Add Admin"
-        },
-        {
           "key": "ChannelAddException",
           "value": "Add Exception"
         },
@@ -1012,6 +1008,10 @@
         {
           "key": "ChannelSignProfilesInfo",
           "value": "Add names and photos of admins to the messages they post, linking to their profiles."
+        },
+        {
+          "key": "ChannelTopicsDiscussionForbidden",
+          "value": "Topics are not yet available in the discussion groups of channels."
         },
         {
           "key": "ChannelType",
@@ -1430,10 +1430,6 @@
         {
           "key": "ChatHistory",
           "value": "Chat history for new members"
-        },
-        {
-          "key": "ChatHistoryHint",
-          "value": "New members will see earlier messages when this is on."
         },
         {
           "key": "ChatList.Context.DeleteChat",
@@ -2105,18 +2101,6 @@
           "value": "Discard Voice Message"
         },
         {
-          "key": "Discussion.Link.Question",
-          "value": "Do you want to set «%1$s» as the discussion board for this channel?"
-        },
-        {
-          "key": "Discussion.Linked",
-          "value": "Users can now discuss your posts in the linked group."
-        },
-        {
-          "key": "Discussion.Unlink.Text",
-          "value": "Are you sure you want to unlink this group from the channel?"
-        },
-        {
           "key": "DiscussionChannelHelp3",
           "value": "Select a group chat that will host comments from your channel."
         },
@@ -2433,6 +2417,13 @@
           "value": "Favorites"
         },
         {
+          "key": "Files",
+          "forms": {
+            "one_value": "%d file",
+            "other_value": "%d files"
+          }
+        },
+        {
           "key": "FilterAllBots",
           "value": "All Bots"
         },
@@ -2568,6 +2559,10 @@
           "value": "Folder added"
         },
         {
+          "key": "ForumToggleDescription",
+          "value": "The group chat will be divided into topics created by admins or users."
+        },
+        {
           "key": "ForumTopic.Closed",
           "value": "Topic is closed"
         },
@@ -2582,10 +2577,6 @@
         {
           "key": "ForumTopic.Created",
           "value": "Topic created"
-        },
-        {
-          "key": "ForumTopic.EnableHint",
-          "value": "Group members can discuss different topics in separate threads."
         },
         {
           "key": "ForumTopic.Hidden",
@@ -2740,14 +2731,6 @@
         {
           "key": "Group",
           "value": "Group"
-        },
-        {
-          "key": "Group.MemberBadge",
-          "value": "Member"
-        },
-        {
-          "key": "Group.RestrictedBadge",
-          "value": "Restricted"
         },
         {
           "key": "GroupAddMembers",
@@ -3123,6 +3106,13 @@
         {
           "key": "LinkNotFound",
           "value": "Unfortunately, you can't access this message. You are not a member of the chat where it was posted."
+        },
+        {
+          "key": "Links",
+          "forms": {
+            "one_value": "%d link",
+            "other_value": "%d links"
+          }
         },
         {
           "key": "LiteMode.DisableAlert",
@@ -3557,6 +3547,13 @@
           "value": "Unmute video"
         },
         {
+          "key": "MediaFiles",
+          "forms": {
+            "one_value": "%d media file",
+            "other_value": "%d media files"
+          }
+        },
+        {
           "key": "MediaViewer.Context.Copy",
           "value": "Copy Media"
         },
@@ -3721,6 +3718,13 @@
         {
           "key": "MultiAccount.More",
           "value": "More"
+        },
+        {
+          "key": "MusicFiles",
+          "forms": {
+            "one_value": "%d music file",
+            "other_value": "%d music files"
+          }
         },
         {
           "key": "MyNotes",
@@ -4446,6 +4450,10 @@
           "value": "You can provide an optional description for your group."
         },
         {
+          "key": "PeerInfo.SharedMedia",
+          "value": "Shared Media"
+        },
+        {
           "key": "PeerInfo.Subscribers",
           "value": "Subscribers"
         },
@@ -5055,12 +5063,20 @@
           "value": "Channel description."
         },
         {
+          "key": "Profile.Info.Bot",
+          "value": "Bot Info"
+        },
+        {
           "key": "Profile.Info.Channel",
           "value": "Channel Info"
         },
         {
           "key": "Profile.Info.Group",
           "value": "Group Info"
+        },
+        {
+          "key": "Profile.Info.Topic",
+          "value": "Topic Info"
         },
         {
           "key": "Profile.Info.User",
@@ -5103,18 +5119,6 @@
           "value": "Reactions"
         },
         {
-          "key": "Reactions.All.Info",
-          "value": "Members of this group can use any emoji as reactions to messages."
-        },
-        {
-          "key": "Reactions.None.Info",
-          "value": "Members of this group cannot react to messages."
-        },
-        {
-          "key": "Reactions.Some.Info",
-          "value": "You can select emoji that will allow members of this group to react to messages."
-        },
-        {
           "key": "Recent",
           "value": "Recent"
         },
@@ -5145,10 +5149,6 @@
         {
           "key": "RemovedUsers",
           "value": "Removed Users"
-        },
-        {
-          "key": "RemovedUsers.Description",
-          "value": "Users removed by group admins cannot rejoin via invite links."
         },
         {
           "key": "Reply",
@@ -5237,14 +5237,6 @@
         {
           "key": "RestartTopic",
           "value": "Reopen topic"
-        },
-        {
-          "key": "RestrictedUsers",
-          "value": "Restricted Users"
-        },
-        {
-          "key": "RestrictedUsers.Description",
-          "value": "These members have limited rights in this group."
         },
         {
           "key": "RevokeAlert",
@@ -5347,6 +5339,13 @@
         {
           "key": "Saved",
           "value": "Saved"
+        },
+        {
+          "key": "SavedDialogsTabCount",
+          "forms": {
+            "one_value": "%d chat",
+            "other_value": "%d chats"
+          }
         },
         {
           "key": "SavedGifsLimitTitle",
@@ -5866,6 +5865,13 @@
         {
           "key": "StarGiftTitle",
           "value": "Gift"
+        },
+        {
+          "key": "StarGiftsCount",
+          "forms": {
+            "one_value": "%d gift",
+            "other_value": "%d gifts"
+          }
         },
         {
           "key": "Stars",
@@ -6540,16 +6546,20 @@
           "value": "Private"
         },
         {
+          "key": "TypePrivateGroup",
+          "value": "Private"
+        },
+        {
           "key": "TypePublic",
+          "value": "Public"
+        },
+        {
+          "key": "TypePublicGroup",
           "value": "Public"
         },
         {
           "key": "Unarchive",
           "value": "Unarchive"
-        },
-        {
-          "key": "Unban",
-          "value": "Unban"
         },
         {
           "key": "Unblock",
@@ -6692,18 +6702,6 @@
           "value": "Forever"
         },
         {
-          "key": "UserRestrictions.Action",
-          "value": "Restrict"
-        },
-        {
-          "key": "UserRestrictions.CanDoMember",
-          "value": "What can this member do?"
-        },
-        {
-          "key": "UserRestrictions.Title",
-          "value": "Restrict Member"
-        },
-        {
           "key": "UserRestrictionsBlock",
           "value": "Ban and remove from group"
         },
@@ -6817,6 +6815,13 @@
         {
           "key": "ViewsPerPost",
           "value": "Views Per Post"
+        },
+        {
+          "key": "Voice",
+          "forms": {
+            "one_value": "%d voice message",
+            "other_value": "%d voice messages"
+          }
         },
         {
           "key": "VoiceChat.DiscussionGroup",
@@ -6951,7 +6956,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 57,
+      "version": 55,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -7094,6 +7099,22 @@
           "value": "Публичная"
         },
         {
+          "key": "TypePrivateGroup",
+          "value": "Частная"
+        },
+        {
+          "key": "TypePublicGroup",
+          "value": "Публичная"
+        },
+        {
+          "key": "ForumToggleDescription",
+          "value": "Сообщения в группе будут разделены на темы, созданные администраторами или участниками."
+        },
+        {
+          "key": "ChannelTopicsDiscussionForbidden",
+          "value": "Темы пока недоступны в группах обсуждения каналов."
+        },
+        {
           "key": "MegaPrivate",
           "value": "Частная группа"
         },
@@ -7178,18 +7199,6 @@
           "value": "Разрешить только эти реакции"
         },
         {
-          "key": "Reactions.All.Info",
-          "value": "Участники группы могут использовать любые эмодзи в качестве реакций на сообщения."
-        },
-        {
-          "key": "Reactions.Some.Info",
-          "value": "Выберите эмодзи, которыми участники группы смогут реагировать на сообщения."
-        },
-        {
-          "key": "Reactions.None.Info",
-          "value": "Участники группы не могут реагировать на сообщения."
-        },
-        {
           "key": "ChannelPermissions",
           "value": "Разрешения"
         },
@@ -7218,10 +7227,6 @@
           "value": "Медленный режим"
         },
         {
-          "key": "ChannelAddAdmin",
-          "value": "Добавить администратора"
-        },
-        {
           "key": "EditAdmin",
           "value": "Права администратора"
         },
@@ -7242,20 +7247,8 @@
           "value": "Администратор"
         },
         {
-          "key": "Group.MemberBadge",
-          "value": "Участник"
-        },
-        {
           "key": "RemovedUsers",
           "value": "Чёрный список"
-        },
-        {
-          "key": "RemovedUsers.Description",
-          "value": "Пользователи, которых исключили администраторы группы, не смогут присоединиться снова с помощью ссылки."
-        },
-        {
-          "key": "Unban",
-          "value": "Разблокировать"
         },
         {
           "key": "KickFromGroup",
@@ -7268,10 +7261,6 @@
         {
           "key": "ChatHistory",
           "value": "История чата для новых участников"
-        },
-        {
-          "key": "ChatHistoryHint",
-          "value": "Если включено, новые участники увидят предыдущие сообщения чата."
         },
         {
           "key": "DeleteAndExitButton",
@@ -9330,6 +9319,81 @@
           "value": "Информация о канале"
         },
         {
+          "key": "Profile.Info.Topic",
+          "value": "Информация о теме"
+        },
+        {
+          "key": "Profile.Info.Bot",
+          "value": "Информация о боте"
+        },
+        {
+          "key": "PeerInfo.SharedMedia",
+          "value": "Общие медиа"
+        },
+        {
+          "key": "SavedDialogsTabCount",
+          "forms": {
+            "one_value": "%d чат",
+            "few_value": "%d чата",
+            "many_value": "%d чатов",
+            "other_value": "%d чата"
+          }
+        },
+        {
+          "key": "MediaFiles",
+          "forms": {
+            "one_value": "%d медиафайл",
+            "few_value": "%d медиафайла",
+            "many_value": "%d медиафайлов",
+            "other_value": "%d медиафайла"
+          }
+        },
+        {
+          "key": "StarGiftsCount",
+          "forms": {
+            "one_value": "%d подарок",
+            "few_value": "%d подарка",
+            "many_value": "%d подарков",
+            "other_value": "%d подарка"
+          }
+        },
+        {
+          "key": "Files",
+          "forms": {
+            "one_value": "%d файл",
+            "few_value": "%d файла",
+            "many_value": "%d файлов",
+            "other_value": "%d файла"
+          }
+        },
+        {
+          "key": "Links",
+          "forms": {
+            "one_value": "%d ссылка",
+            "few_value": "%d ссылки",
+            "many_value": "%d ссылок",
+            "other_value": "%d ссылки"
+          }
+        },
+        {
+          "key": "MusicFiles",
+          "forms": {
+            "one_value": "%d аудиофайл",
+            "few_value": "%d аудиофайла",
+            "many_value": "%d аудиофайлов",
+            "other_value": "%d аудиофайла"
+          }
+        },
+        {
+          "key": "Voice",
+          "forms": {
+            "one_value": "%d голосовое сообщение",
+            "few_value": "%d голосовых сообщения",
+            "many_value": "%d голосовых сообщений",
+            "other_value": "%d голосовых сообщения"
+          }
+        },
+        {
           "key": "Profile.ChannelDescription",
           "value": "Описание канала."
         },
@@ -9438,18 +9502,6 @@
           "value": "Добавить подписчиков"
         },
         {
-          "key": "RestrictedUsers",
-          "value": "Ограниченные"
-        },
-        {
-          "key": "UserRestrictions.Title",
-          "value": "Ограничить участника"
-        },
-        {
-          "key": "UserRestrictions.CanDoMember",
-          "value": "Что может этот участник?"
-        },
-        {
           "key": "UserPermissions.Duration",
           "value": "Длительность"
         },
@@ -9468,10 +9520,6 @@
         {
           "key": "ChannelSignProfilesInfo",
           "value": "Добавлять имена и фото админов к их сообщениям со ссылкой на профиль."
-        },
-        {
-          "key": "ForumTopic.EnableHint",
-          "value": "Участники смогут обсуждать разные темы в отдельных ветках."
         },
         {
           "key": "GlobalSendMessageRestricted",
@@ -12424,18 +12472,6 @@
           "value": "Удалённое сообщение"
         },
         {
-          "key": "Discussion.Link.Question",
-          "value": "Сделать «%1$s» группой для обсуждения этого канала?"
-        },
-        {
-          "key": "Discussion.Linked",
-          "value": "Теперь читатели могут обсуждать ваши посты в связанной группе."
-        },
-        {
-          "key": "Discussion.Unlink.Text",
-          "value": "Отвязать эту группу от канала?"
-        },
-        {
           "key": "DiscussionChannelHelp3",
           "value": "Выберите группу, в которой будут комментарии к постам канала."
         },
@@ -12466,10 +12502,6 @@
         {
           "key": "ExportedInvitation.Status.Revoked",
           "value": "отозвана"
-        },
-        {
-          "key": "Group.RestrictedBadge",
-          "value": "ограничен"
         },
         {
           "key": "InviteLinks.LimitReached",
@@ -12645,10 +12677,6 @@
           "value": "Убрать"
         },
         {
-          "key": "RestrictedUsers.Description",
-          "value": "У этих участников ограничены права в группе."
-        },
-        {
           "key": "RevokeAlert",
           "value": "Отозвать эту ссылку? После отзыва по ней нельзя будет вступить."
         },
@@ -12707,10 +12735,6 @@
         {
           "key": "AreYouSureBlockContact2",
           "value": "Вы действительно хотите заблокировать **%1$s**?"
-        },
-        {
-          "key": "UserRestrictions.Action",
-          "value": "Ограничить"
         },
         {
           "key": "WebApp.CameraDenied",

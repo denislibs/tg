@@ -564,14 +564,20 @@ func (r *MessagesRepo) MediaHistory(ctx context.Context, chatID, userID int64, f
 	}
 	qq := querier(ctx, r.pool)
 	where := ` FROM messages m WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND ` + notHiddenFor("$2") + ` AND ` + cond
+	args := []any{chatID, userID}
+	// Тред — сообщения с этим корнем (без самого корня: вкладки треда — его
+	// ответы, как `top_msg_id` у messages.search).
+	if page.ThreadRoot != nil {
+		args = append(args, *page.ThreadRoot)
+		where += fmt.Sprintf(` AND m.thread_root_id=$%d`, len(args))
+	}
 	var count int
-	if err := qq.QueryRow(ctx, `SELECT count(*)`+where, chatID, userID).Scan(&count); err != nil {
+	if err := qq.QueryRow(ctx, `SELECT count(*)`+where, args...).Scan(&count); err != nil {
 		return nil, 0, err
 	}
 	// Курсор дописывается в текст запроса, а не прячется за «($2=0 OR
 	// m.seq<$2)»: такое условие планировщик не умеет превратить в границу
 	// индексного скана и читает весь чат.
-	args := []any{chatID, userID}
 	q := `SELECT ` + messageColsPrefixed("m") + where
 	if page.OffsetID > 0 {
 		args = append(args, page.OffsetID)
@@ -601,7 +607,9 @@ func (r *MessagesRepo) MediaHistory(ctx context.Context, chatID, userID int64, f
 // Одна агрегация с CASE, а не N подзапросов: подзапросы прочитали бы сообщения
 // чата столько раз, сколько вкладок, а вкладок пять. Неизвестные виды в карту не
 // попадают — вызывающий читает их как ноль.
-func (r *MessagesRepo) SearchCounters(ctx context.Context, chatID, userID int64, filters []string) (map[string]int, error) {
+//
+// threadRootID != nil — только сообщения треда (см. MediaHistory).
+func (r *MessagesRepo) SearchCounters(ctx context.Context, chatID, userID int64, filters []string, threadRootID *int64) (map[string]int, error) {
 	out := make(map[string]int, len(filters))
 	var arms, conds []string
 	seen := make(map[string]bool, len(filters))
@@ -618,12 +626,18 @@ func (r *MessagesRepo) SearchCounters(ctx context.Context, chatID, userID int64,
 	if len(arms) == 0 {
 		return out, nil
 	}
+	args := []any{chatID, userID}
+	thread := ""
+	if threadRootID != nil {
+		args = append(args, *threadRootID)
+		thread = ` AND m.thread_root_id=$3`
+	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT CASE `+strings.Join(arms, " ")+` END AS f, count(*)
 		   FROM messages m
-		  WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND `+notHiddenFor("$2")+`
+		  WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND `+notHiddenFor("$2")+thread+`
 		    AND (`+strings.Join(conds, " OR ")+`)
-		  GROUP BY 1`, chatID, userID)
+		  GROUP BY 1`, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -36,10 +36,9 @@ func selfUser(u domain.UserRecord) domain.UserReal {
 }
 
 func userJSON(u domain.UserRecord) domain.UsersUserFull {
-	full := domain.NewUserFull(u.ID, domain.UserFullFlags{
-		PhoneCallsAvailable: true,
-		VideoCallsAvailable: true,
-	})
+	// Флагов звонка у своей карточки нет: самому себе не звонят (как
+	// privacy.Profile при viewer == target).
+	full := domain.NewUserFull(u.ID, domain.UserFullFlags{})
 	full.About = u.Bio
 	// ttl_period своей карточки — глобальный период автоудаления
 	// (messages.setDefaultHistoryTTL): им заводятся новые чаты.

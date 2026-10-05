@@ -794,29 +794,19 @@ export function newPendingMethods(ctx: PendingCtx) {
      *  без неё в SSOT осталось бы два объекта, и переоткрытие чата показало бы
      *  «отправляется…» рядом с отправленным.
      *
-     *  Возвращает окна снятого бабла и его `sequential` — вызывающий кладёт
-     *  `insert` финального В ЭТИ ЖЕ ОКНА, ровно как оригинал объявляет
-     *  `history_update` с `storageKey: pendingData.storage.key` и
-     *  `pendingData.sequential` (tweb appMessagesManager.ts:11940-11953):
-     *  финализируется то хранилище, где лежал временный бабл, а не то, что
-     *  выводится из самого эха. У нас они расходятся у КОММЕНТАРИЯ: окно треда
-     *  адресовано номером поста (`hkey(группа, пост)`), а эхо несёт корень
-     *  номером зеркала в группе (`reply_to_top_id`, backend
-     *  `discussion_mirror.go::ExternalizeThreadRoots`). Без окон бабла эхо,
-     *  обогнавшее ack, снимало регистрацию, а окно треда вставки не получало —
-     *  и бабл навсегда оставался «отправляется…» (ack после этого no-op).
-     *
-     *  `sequential` — та же причина, что у ack: эхо финализирует бабл наравне с
-     *  ним (какой кадр придёт первым, не гарантировано), и без признака лента
-     *  шла общим путём: номер сервера первого из двух баблов подряд больше
+     *  Возвращает `sequential` снятого бабла — вызывающий кладёт его в `insert`
+     *  финального, ровно как оригинал кладёт `pendingData.sequential` в
+     *  `history_update` (:11946-11953). Эхо финализирует бабл наравне с ack
+     *  (какой кадр придёт первым, не гарантировано), и без признака лента шла
+     *  общим путём: номер сервера первого из двух баблов подряд больше
      *  временного номера второго, и первый вставал под ещё неотправленный. */
-    checkPendingMessage(clientMsgId: string | undefined): { keys: string[], sequential?: boolean } | undefined {
+    checkPendingMessage(clientMsgId: string | undefined): boolean | undefined {
       if (!clientMsgId) return undefined
       const d = pendingByClientId.get(clientMsgId)
       if (!d) return undefined
       pendingByClientId.delete(clientMsgId)
       dropTemp(d)
-      return { keys: d.keys, sequential: d.sequential }
+      return d.sequential
     },
 
     /** Есть ли ещё неотправленные — для тестов и диагностики. */

@@ -21,9 +21,12 @@
 //     тем форума (`threadId`) — О-4, О-3, задачи 1-6/1-7 (`core/peers/dialogType.ts`).
 //  4. Отступление В7-1: секретный чат (наш продукт, у tweb его нет) — это личка:
 //     тексты `chat`, действие — выход, как у шапки секретного чата.
-//  5. `onSelect` оригинала у меню не передаётся; закрыть открытый удалённый чат у
-//     tweb — дело класса `Chat` (`dialog_drop`, `chat.ts:658-668`), у нас его нет:
-//     ВРЕМЕННО до К-3 это делает сам попап (`appImManager.setPeer({isDeleting: true})`).
+//  5. `onSelect` оригинала передаёт только редактор чата (`editChat.solid.tsx`,
+//     tweb `editChat.tsx:579`: закрыть вкладку по исходу); меню диалога его не
+//     передаёт. Закрыть открытый удалённый чат у tweb — дело класса `Chat`
+//     (`dialog_drop`, `chat.ts:658-668`), у нас его нет: ВРЕМЕННО до К-3 это
+//     делает сам попап (`appImManager.setPeer({isDeleting: true})`).
+//     Порядок параметров — наш: `managers` вторым, `onSelect` последним.
 //  6. Имя в тексте — `PeerTitle` с миддлварью, которую попап снимает на закрытии
 //     (`wrapPeerTitle` у нас — узел, которому надо знать, когда его снять).
 import type { FormatterArguments, LangPackKey } from '@lib/langPack'
@@ -52,6 +55,7 @@ export default function showDeleteDialogPopup(
   managers: DeleteDialogManagers,
   peerType?: PeerType,
   isSecret?: boolean,
+  onSelect?: (promise: Promise<unknown>) => void,
 ) {
   const middlewareHelper = getMiddleware() // расхождение 6
   const wrapPeerTitle = () => new PeerTitle({ peerId, middleware: middlewareHelper.get(), managers }).element
@@ -62,7 +66,8 @@ export default function showDeleteDialogPopup(
   }
 
   // расхождение 5
-  const onSelect = (promise: Promise<unknown>) => {
+  const select = (promise: Promise<unknown>) => {
+    onSelect?.(promise)
     void promise.then(() => {
       if(appImManager.chat?.peerId === peerId) {
         void appImManager.setPeer({ isDeleting: true }) // ВРЕМЕННО до К-3
@@ -71,7 +76,7 @@ export default function showDeleteDialogPopup(
   }
 
   const callbackLeave = () => {
-    onSelect(leaveChat(peerId, managers))
+    select(leaveChat(peerId, managers))
   }
 
   const callbackDelete = (checked?: Set<LangPackKey>) => {
@@ -87,7 +92,7 @@ export default function showDeleteDialogPopup(
       }
     }
 
-    onSelect(promise)
+    select(promise)
   }
 
   let title: LangPackKey,
