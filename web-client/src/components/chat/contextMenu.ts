@@ -216,6 +216,7 @@ import {
   peerTitle,
 } from '@core/peerCache'
 import { isUser, NULL_PEER_ID, SERVICE_PEER_ID } from '@core/peers/peerId'
+import tsNow from '@helpers/tsNow'
 import type { ReadDateResult } from '@core/managers/chatsManager'
 import { useI18nStore } from '../../i18n'
 import { _i18n, i18n } from '@lib/langPack'
@@ -333,6 +334,10 @@ function pointerPosition(e: MouseEvent | TouchEvent): { x: number, y: number } {
   const point = 'changedTouches' in e ? e.changedTouches[0] : e
   return { x: point.clientX, y: point.clientY }
 }
+
+/** tweb `appConfig.chat_read_mark_size_threshold` / `chat_read_mark_expire_period` (Telegram по умолчанию). */
+const CHAT_READ_MARK_SIZE_THRESHOLD = 100
+const CHAT_READ_MARK_EXPIRE_PERIOD = 7 * 86400
 
 export default class ChatContextMenu {
   private buttons: ChatContextMenuButton[] = []
@@ -1277,9 +1282,11 @@ export default class ChatContextMenu {
     return canEditMessage(message, kind, { myId: rootScope.myId, getPeer: cachedPeer })
   }
 
-  /** Порт `appMessagesManager.canViewMessageReadParticipants` (:9109-9130) в
+  /** Порт `appMessagesManager.canViewMessageReadParticipants` (:12314-12340) в
    *  объёме имеющихся фактов: `pFlags.unread`, боты, монофорумы и
-   *  `pm_read_date_expire_period`/`read_dates_private` у нас не живут. */
+   *  `pm_read_date_expire_period`/`read_dates_private` у нас не живут; пороги
+   *  `chat_read_mark_*` — константы (своего `appConfig` нет), те же, что держит
+   *  сервер (`usecase/chat/message_pin.go`). */
   private canViewMessageReadParticipants(): boolean {
     const message = this.message
     if(
@@ -1292,7 +1299,14 @@ export default class ChatContextMenu {
       return false
     }
 
-    return true
+    if(isUser(message.peerId)) {
+      return true
+    }
+
+    const chat = cachedChat(message.peerId)
+    const diff = tsNow(true) - message.date
+    return (chat && 'participants_count' in chat ? chat.participants_count ?? 0 : 0) <= CHAT_READ_MARK_SIZE_THRESHOLD &&
+      diff < CHAT_READ_MARK_EXPIRE_PERIOD
   }
 
   /** Порт `appMessagesManager.canUpdateFactCheck` (:10797-10809) без
