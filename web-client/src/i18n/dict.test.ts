@@ -643,7 +643,7 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `ChannelStats.tsx` (`Statistics.{Forwards,MediaPost,MemberGrowth,Posts,PostsByDay,
 // SubscriberGrowth,TopPosts,TotalViews}`).
 const COMPOSITION = {
-  ru: { keys: 1772, plural: 64 },
+  ru: { keys: 1773, plural: 64 },
   uk: { keys: 842, plural: 35 },
   es: { keys: 813, plural: 34 },
   de: { keys: 814, plural: 35 },
@@ -848,8 +848,9 @@ const COMPOSITION = {
 // Пачкой П-6 волны 7 — у ru +2 ключа автокомплита (разбор — там же).
 // Пачкой П-1 (0б-4, 0б-5) — у ru +23 ключа вкладок реакций и обсуждения (разбор — там же).
 // Пачкой П-1 (статистика, 0б-9) — у ru +38 ключей tweb и −8 наших (разбор — там же).
+// Пачкой Ф-1а — у ru +1 ключ tweb `Chat.Subscribe` (кнопка «Подписаться» ввода).
 const FINGERPRINT = {
-  ru: '651f2f01',
+  ru: 'a797ff1d',
   uk: 'e72f8ee2',
   es: 'ff56151a',
   de: '39848741',

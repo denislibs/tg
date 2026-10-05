@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 61,
+      "version": 62,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -1440,6 +1440,10 @@
         {
           "key": "Chat.Service.Call.Missed",
           "value": "Missed"
+        },
+        {
+          "key": "Chat.Subscribe",
+          "value": "SUBSCRIBE"
         },
         {
           "key": "Chat.Title.Comments",
@@ -7343,7 +7347,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 61,
+      "version": 62,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -8839,6 +8843,10 @@
         {
           "key": "Chat.Service.Call.Missed",
           "value": "Пропущенный"
+        },
+        {
+          "key": "Chat.Subscribe",
+          "value": "ПОДПИСАТЬСЯ"
         },
         {
           "key": "NoRecentCalls",

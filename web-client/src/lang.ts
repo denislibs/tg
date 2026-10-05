@@ -381,6 +381,7 @@ const lang = {
   'Chat.SendNow.Title': 'Send Message Now',
   'Chat.SendNow.TitleMultiple': 'Send Messages Now',
   'Chat.Service.Call.Missed': 'Missed',
+  'Chat.Subscribe': 'SUBSCRIBE',
   'Chat.Title.Comments': {
     one_value: '%d Comment',
     other_value: '%d Comments',

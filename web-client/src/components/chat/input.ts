@@ -112,7 +112,8 @@ import type { Sticker } from '@core/managers/stickersManager'
 import type { GifItem } from '@core/gifs'
 import type { ChatRights } from '@core/peers/rights'
 import { isUser, toUserId } from '@core/peers/peerId'
-import { cachedUser, getStarsAmount, isBroadcastPeer, isInChatPeer, peerTitle } from '@core/peerCache'
+import { cachedChat, cachedUser, getStarsAmount, isBroadcastPeer, isInChatPeer, peerTitle } from '@core/peerCache'
+import joinChat from '@components/chat/joinChat'
 import { isBot as isBotPeer } from '@core/peers/predicates'
 import { isPeerMuted } from '@core/dialogs/notifySettings'
 import { draftsAreEqual, realDraft } from '@core/dialogs/draft'
@@ -328,6 +329,7 @@ export default class ChatInput {
   private fakeRowsWrapper!: HTMLDivElement
 
   private botStartBtn!: HTMLButtonElement
+  private joinBtn!: HTMLButtonElement
   private channelMuteBtn!: HTMLButtonElement
   private rowsWrapperWrapper!: HTMLDivElement
   private controlContainer!: HTMLElement
@@ -786,10 +788,12 @@ export default class ChatInput {
     }
 
     this.botStartBtn = makeControlButton('BotStart')
+    this.joinBtn = makeControlButton('ChannelJoin', true)
     this.channelMuteBtn = makeControlButton('ChatList.Context.Mute')
     this.channelMuteBtn.classList.add('hide')
 
     attachClickEvent(this.botStartBtn, this.startBot, { listenerSetter: this.listenerSetter })
+    attachClickEvent(this.joinBtn, () => this.onJoinClick(this.joinBtn), { listenerSetter: this.listenerSetter })
     attachClickEvent(this.channelMuteBtn, () => {
       const peerId = this.chat.peerId
       void this.managers.groups.setMute(peerId, !this.isPeerMuted(peerId))
@@ -814,6 +818,7 @@ export default class ChatInput {
     const controlPlate = ChatInputPlate({
       center: [
         this.botStartBtn,
+        this.joinBtn,
         this.channelMuteBtn,
         this.pinnedControlBtn,
       ],
@@ -1031,9 +1036,51 @@ export default class ChatInput {
   }
 
   /**
-   * tweb `:2063-2075` — канал, куда нельзя писать: подписчик видит «Без звука».
-   * «Вступить» (`joinBtn`) — Б-73.
+   * tweb `:2024-2047` — группа, куда не вступил: «Вступить». Флагов `join_request`
+   * и `join_to_send` в нашей модели канала нет (`core/peers/peer.ts`), поэтому
+   * вариант один — `'join'` вне треда.
    */
+  public getJoinButtonType(): 'join' | undefined {
+    const { peerId, threadId } = this.chat
+    if(isUser(peerId)) {
+      return
+    }
+
+    const chat = cachedChat(peerId)
+    if(chat?._ !== 'channel' || !chat.pFlags?.left || chat.pFlags.broadcast) {
+      return
+    }
+
+    if(!threadId) {
+      return 'join'
+    }
+  }
+
+  /**
+   * tweb `topbar.ts:1189-1204` (`onJoinClick`; кнопки «Вступить» в шапке у нас
+   * нет — обработчик живёт у кнопки ввода). После вступления плашка ввода
+   * пересобирается тем же `finishPeerChange`, что у tweb `bubbles.ts:2351-2358`
+   * (`refreshInput` по `chat_update`): своего `chat_update` на главном потоке
+   * у ленты пока нет.
+   */
+  private onJoinClick = async(button: HTMLElement) => {
+    const peerId = this.chat.peerId
+    const middleware = this.getMiddleware()
+    button.setAttribute('disabled', 'true')
+    try {
+      await joinChat({ peerId, managers: this.managers })
+      if(middleware() && this.chat.peerId === peerId) {
+        const callback = await this.finishPeerChange({ peerId, middleware })
+        if(middleware()) {
+          callback()
+        }
+      }
+    } finally {
+      button.removeAttribute('disabled')
+    }
+  }
+
+  /** tweb `:2049-2062` — канал, куда нельзя писать: подписка («Подписаться») или «Без звука». */
   private async isChannelControlNeeded() {
     if(this.chat.type !== ChatType.Chat || isUser(this.chat.peerId) || !isBroadcastPeer(this.chat.peerId)) {
       return false
@@ -1058,6 +1105,7 @@ export default class ChatInput {
     } else if(
       this.chat.type === ChatType.Pinned ||
       this.isStartButtonNeeded() ||
+      this.getJoinButtonType() ||
       await this.isChannelControlNeeded()
     ) {
       return this.controlContainer
@@ -1375,13 +1423,22 @@ export default class ChatInput {
       let haveSomethingInControl = false
 
       {
+        // tweb `:2650-2672`: не вступивший — «Подписаться»/«Вступить», подписчик — «Без звука».
+        const type = this.getJoinButtonType()
         const cantPost = isBroadcast && !canSend && this.chat.type === ChatType.Chat && !isUser(peerId)
-        const showMute = cantPost && isInChatPeer(peerId)
-        const good = !haveSomethingInControl && showMute
+        const left = !isInChatPeer(peerId)
+        const showJoin = !!type || (cantPost && left)
+        const showMute = cantPost && !left
+        const good = !haveSomethingInControl && (showJoin || showMute)
         haveSomethingInControl ||= good
 
-        this.channelMuteBtn.classList.toggle('hide', !good)
-        if(good) {
+        this.joinBtn.classList.toggle('hide', !(good && showJoin))
+        if(good && showJoin) {
+          this.joinBtn.replaceChildren(i18n(isBroadcast ? 'Chat.Subscribe' : 'ChannelJoin'))
+        }
+
+        this.channelMuteBtn.classList.toggle('hide', !(good && showMute))
+        if(good && showMute) {
           this.updateChannelMuteButton()
         }
       }
