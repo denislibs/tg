@@ -1988,8 +1988,18 @@ body.is-dragging {
 ### 9.4 Тексты
 
 Тексты приходят из `options.header` / `options.subtitle` в местах создания
-(`appImManager.ts:2358`, `:2373`, `:2386`) — конкретные langKey в рамках этой разведки
-**не выписаны**; смотреть по месту при реализации.
+(812502980: `appImManager.ts:2879-2925`): заголовок обеих зон чата — `Chat.DropTitle`,
+подзаголовок — `Chat.DropAsFilesDesc` (иконка `dragfiles`, вложение «файлом») и
+`Chat.DropQuickDesc` (иконка `dragmedia`, «медиа»); зона в открытом попапе медиа —
+`Preview.Dragging.AddItems` с числом файлов, без иконки.
+
+### 9.5 У нас
+
+Порт — пачка П-4 (Б-24): зона `web-client/src/components/chat/dragAndDrop.ts` 1:1, создаёт и
+снимает её блок K `web-client/src/lib/appImManager.ts` (`attachDragAndDropListeners`,
+`onDocumentPaste`), стили `styles/tweb/_chatDrop.scss` и `.chat .drops-container` в `_chat.scss`.
+Попап — шов `components/popups/newMedia.ts` (до К-4 его открывает остров композера). Нет зон
+внутри открытого попапа (Б-83) и сужения зон по правке медиа/правам по видам вложений (Б-82).
 
 ---
 

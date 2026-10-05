@@ -199,20 +199,11 @@ func TestJoinRequestFlow_HTTP(t *testing.T) {
 		t.Fatalf("expected link + pFlags.request_needed, got %s", rec.Body.String())
 	}
 
-	// B joins via token → requested (not yet a member).
+	// B joins via token → requested (not yet a member). Как
+	// `messages.importChatInvite`: заявка — отказ с именем INVITE_REQUEST_SENT.
 	rec = authedReq(t, h, http.MethodPost, "/join/"+invToken, tokenB, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("join: %d %s", rec.Code, rec.Body.String())
-	}
-	// «Вошёл» и «заявка отправлена» — ОДИН конструктор chatInviteImporter,
-	// разницу выражает pFlags.requested, а не строка состояния.
-	var jr struct {
-		Underscore string          `json:"_"`
-		PFlags     map[string]bool `json:"pFlags"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &jr)
-	if jr.Underscore != "chatInviteImporter" || !jr.PFlags["requested"] {
-		t.Fatalf("join = %s; ожидался chatInviteImporter с pFlags.requested", rec.Body.String())
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "INVITE_REQUEST_SENT") {
+		t.Fatalf("join = %d %s; ожидался отказ INVITE_REQUEST_SENT", rec.Code, rec.Body.String())
 	}
 
 	// A lists join requests → contains B.
@@ -271,6 +262,43 @@ func TestJoinRequestFlow_HTTP(t *testing.T) {
 	}
 }
 
+// `messages.importChatInvite`: вступление по ссылке без одобрения отдаёт
+// `Updates` с чатом ссылки в chats[0] (по нему клиент открывает чат), повтор —
+// тот же ответ без повторного вступления (`chatInviteAlready` оригинала).
+func TestImportChatInvite_HTTP(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990002011")
+	tokenB, _ := signUp(t, h, pool, "+79990002012")
+
+	rec := authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Direct"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create group: %d %s", rec.Code, rec.Body.String())
+	}
+	peerID := createdPeerID(t, rec)
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(peerID)+"/invite_links", tokenA, map[string]any{})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create invite: %d %s", rec.Code, rec.Body.String())
+	}
+	invToken := inviteToken(t, rec)
+
+	for i := 0; i < 2; i++ {
+		rec = authedReq(t, h, http.MethodPost, "/join/"+invToken, tokenB, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("join #%d: %d %s", i, rec.Code, rec.Body.String())
+		}
+		var out struct {
+			Underscore string `json:"_"`
+			Chats      []struct {
+				ID int64 `json:"id"`
+			} `json:"chats"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		if out.Underscore != "updates" || len(out.Chats) != 1 || -out.Chats[0].ID != peerID {
+			t.Fatalf("join #%d = %s; ожидался updates с чатом %d в chats[0]", i, rec.Body.String(), peerID)
+		}
+	}
+}
+
 func TestInviteEditAndImporters_HTTP(t *testing.T) {
 	h, pool := newMessagingRouter(t)
 	tokenA, _ := signUp(t, h, pool, "+79990005001")
@@ -316,8 +344,8 @@ func TestInviteEditAndImporters_HTTP(t *testing.T) {
 
 	// B joins via the (now approval-required) link → requested, then A approves.
 	rec = authedReq(t, h, http.MethodPost, "/join/"+invToken, tokenB, nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("join: %d %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "INVITE_REQUEST_SENT") {
+		t.Fatalf("join = %d %s; ожидался отказ INVITE_REQUEST_SENT", rec.Code, rec.Body.String())
 	}
 	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/join_requests/"+itoa(idB)+"/approve", tokenA, nil)
 	if rec.Code != http.StatusOK {

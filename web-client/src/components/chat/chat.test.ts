@@ -89,6 +89,8 @@ class FakeAppImManager extends EventListenerBase<{
   public appChatBackground = { setBackground: vi.fn(() => Promise.resolve()) }
   public setInnerPeer = vi.fn()
   public setPeer = vi.fn()
+  /** подпись шапки (блок L) — своя проверка в `topbar.test.ts` */
+  public setPeerStatus = vi.fn(async() => undefined)
   public getChatSavedPosition = vi.fn(() => undefined)
 
   get chat() {

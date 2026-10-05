@@ -1084,6 +1084,8 @@ const uk = {
     many_value: '%d зірок',
     other_value: '%d зірки',
   },
+  // ── Эмодзи-дропдаун (П-6): ключ со ссылкой — строковый режим без аргумента не читается ──
+  'CustomEmoji.PremiumAlert': 'Оформіть Telegram Premium, щоб використовувати цей емодзі. [Докладніше]()',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(uk)

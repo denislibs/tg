@@ -12,7 +12,8 @@
  * (решение пользователя: на вкладке не показывается то, чего у нас нет). Кто слушает:
  * форматирование — `composer/helpers.ts::SHORTCUTS` + Ctrl+K в
  * `composer/useComposerHotkeys.ts`; Enter / Shift+Enter, ↑ и Ctrl+↑ — там же;
- * Alt+↑/↓, Ctrl+F, Ctrl+0 — `core/hotkeys.ts`; Esc — `core/navigation/
+ * Alt+↑/↓ — `appImManager.attachKeydownListener`; Ctrl+F, Ctrl+0 —
+ * `AppSidebarLeft.construct` (`addShortcutListener`); Esc — `core/navigation/
  * appNavigationController`; медиа — `mediaViewer/base.ts::onKeyDown`; истории —
  * `core/hooks/useStoryViewer.ts`; редактор — `mediaEditor/MediaEditor.tsx`.
  *

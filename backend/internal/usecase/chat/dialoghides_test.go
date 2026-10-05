@@ -99,7 +99,7 @@ func TestHiddenForMe_ExcludedFromMediaCountersAndSearch(t *testing.T) {
 		if tc.viewer == a && media.Messages[0].ID != kept.ID {
 			t.Fatalf("у a во вкладке медиа %d, ждали уцелевшее %d", media.Messages[0].ID, kept.ID)
 		}
-		counters, err := in.SearchCounters(ctx, chatID, tc.viewer, []string{"media"})
+		counters, err := in.SearchCounters(ctx, chatID, tc.viewer, []string{"media"}, nil)
 		if err != nil {
 			t.Fatalf("SearchCounters(%d): %v", tc.viewer, err)
 		}

@@ -382,13 +382,10 @@ export default TransitionSlider
 // Два анимированных перехода подряд внутри `transitionTime + 100` — и таймер
 // первого снимет `animating`/`backwards` с контейнера посреди второго.
 //
-// ДОЛГ-3. Императивный вкладочник в репозитории теперь один, но React-слой
-// держит СВОЮ перепись того же оригинала: `core/hooks/useTransitionSlider.ts`
-// (60) — ветка БЕЗ `animationFunction` (`fade`/`slide-fade`/`zoom-fade`, у нас
-// её играют кейфреймы `styles/tweb/_transition.scss`), потребитель
-// `UserInfoPanel.tsx`. Перевести её на этот файл нельзя, не переписав хост:
-// там кадры — JSX-дети, а не заранее лежащие в DOM узлы, адресуемые индексом.
-// Копия уходит вместе со своим React-экраном. Вторая перепись —
+// ДОЛГ-3 (снят на К-5). React-перепись того же оригинала
+// `core/hooks/useTransitionSlider.ts` снесена вместе со своим потребителем
+// `UserInfoPanel.tsx`: шапка профиля теперь зовёт этот файл (`sidebarRight/
+// tabs/sharedMedia.solid.tsx`, tweb `sharedMedia.tsx:640-656`). Вторая перепись —
 // `shared/ui/Tabs/TabSlide.tsx` (ветка `slideTabs`) — снесена задачей 13 плана
 // `docs/superpowers/plans/2026-09-07-solid-wave-3-global-search.md` вместе с
 // последним потребителем (React-экраном поиска): шаред-медиа профиля, папки

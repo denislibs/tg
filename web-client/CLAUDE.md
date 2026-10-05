@@ -525,16 +525,15 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
   буквальным присваиванием, а через динамическое свойство
   (`this.container[this.scrollPositionProperty] = value` — один класс
   обслуживает и вертикальный, и горизонтальный скролл). **Инстанцирован в
-  ДЕВЯТИ местах, у каждого — свой узел**: `components/chat/bubbles.ts::setScroll`
+  ВОСЬМИ местах, у каждого — свой узел**: `components/chat/bubbles.ts::setScroll`
   (императивная лента, порт tweb `ChatBubbles`), `components/sliderTab.ts`
   (скроллер вкладки слайдера, порт `SliderSuperTab`), `components/autonomousDialogList/dialogs.ts::generateScrollable`
   (скроллер `.folders-scrollable` одной папки чатлиста, порт tweb
   `autonomousDialogList/dialogs.ts:298-336`; список папки — `AutonomousDialogList`
-  владельца `lib/appDialogsManager.ts`, встроенного в колонку `Sidebar.tsx`) и
-  `core/hooks/useSearchSuper.ts` (скроллер панели профиля поверх её `bodyRef`
-  — та же роль `SliderSuperTab` для React-панели; общий для шапки панели,
-  класса `AppSearchSuper` и `PeerProfileAvatars`, роняет его только хук —
-  расхождение 7 в шапке класса) и `components/sidebarLeft/globalSearch.ts::initSearch`
+  владельца `lib/appDialogsManager.ts`, встроенного в колонку `Sidebar.tsx`; скроллер
+  вкладки профиля `AppSharedMediaTab` — это скроллер её `SliderSuperTab`, общий для
+  шапки, класса `AppSearchSuper` и `PeerProfileAvatars`, как у tweb) и
+  `components/sidebarLeft/globalSearch.ts::initSearch`
   (скроллер выдачи глобального поиска в `#search-container`, порт tweb
   `sidebarLeft/index.ts:1089`; создаётся на каждое открытие поиска и роняется
   его `cleanup` — расхождение 3 шапки владельца), `components/settings/kit.tsx`
@@ -548,7 +547,7 @@ React-лента (`components/messages/ChatFeed` и её ~18 модулей), ф
   конкурирующего писателя на том же узле нет. Прежде у ленты инстансов было два
   (React-лента держала свой в `core/hooks/useChatScroll.ts`), и они жили под
   взаимоисключающим флагом `VITE_VANILLA_FEED`; этап 7 снёс и React-ленту, и
-  флаг. `grep -rn "new Scrollable(" src` держит это число: **девять** вызовов в
+  флаг. `grep -rn "new Scrollable(" src` держит это число: **восемь** вызовов в
   продакшн-коде (плюс тесты и упоминания в комментариях). Рост числа = новый владелец скролла, это
   осознанное решение, а не побочный эффект — правь правило руками.
 

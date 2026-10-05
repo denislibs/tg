@@ -125,6 +125,9 @@ export type SearchHistoryOptions = {
   peerId: number
   inputFilter: { _: MyInputMessagesFilter }
   query?: string
+  /** тред (комментарии / тема форума) — клиентский номер корня; вкладки
+   *  профиля треда листают только его (tweb `top_msg_id`, `:9978`) */
+  threadId?: number
   /** номер последнего уже показанного сообщения; 0 — с начала */
   offsetId?: number
   limit?: number
@@ -449,9 +452,10 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
   //
   // Номер наружу КЛИЕНТСКИЙ, в URL уходит серверный: `getServerMessageId` —
   // ровно та граница пространств, о которой `core/history/messageId.ts`.
-  const mediaHistory = async (peerId: number, filter: MessagesWireFilter, offsetId = 0, limit = 30): Promise<{ messages: MyMessage[]; count: number }> => {
+  const mediaHistory = async (peerId: number, filter: MessagesWireFilter, offsetId = 0, limit = 30, threadId?: number): Promise<{ messages: MyMessage[]; count: number }> => {
     const r = await rest.get<MessagesContainer>(`/chats/${peerId}/media`, {
       filter, offset_id: getServerMessageId(offsetId), limit,
+      ...(threadId ? { thread_root: getServerMessageId(threadId) } : {}),
     })
     return { messages: await mapContainer(r), count: r.count ?? 0 }
   }
@@ -549,15 +553,16 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
   // ветки (`:9990`, `:9996`) на провод не идут: «rate» нашего сервера — номер
   // последнего отданного сообщения в глобально монотонной нумерации
   // (`docs/tweb/global-search.md` часть 3), второй половины курсора ему не
-  // нужно. `threadId` (`top_msg_id`, `:9978`) ни одна из трёх ручек не
-  // принимает — поиск по треду у бэкенда отсутствует.
+  // нужно. `threadId` (`top_msg_id`, `:9978`) принимает только ручка
+  // шаред-медиа (`thread_root`, вкладки профиля треда); текстового поиска по
+  // треду у бэкенда нет.
   const searchHistory = async ({
-    peerId, inputFilter, query = '', offsetId = 0, limit = 20, nextRate, folderId, minDate, maxDate, chatType, fromPeerId,
+    peerId, inputFilter, query = '', threadId, offsetId = 0, limit = 20, nextRate, folderId, minDate, maxDate, chatType, fromPeerId,
   }: SearchHistoryOptions): Promise<{ messages: MyMessage[]; count: number; nextRate?: number }> => {
     const filter = getWireFilter(inputFilter._)
     if (peerId && !nextRate && folderId === undefined) {
       if (filter && !query && !minDate && !maxDate && !fromPeerId) {
-        return mediaHistory(peerId, filter, offsetId, limit)
+        return mediaHistory(peerId, filter, offsetId, limit, threadId)
       }
 
       return searchMessages(peerId, query, { offsetId, limit, filter, minDate, maxDate, senderId: fromPeerId })
@@ -1041,6 +1046,20 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       await rest.del(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/pin`)
     },
 
+    /**
+     * Корень треда комментариев поста — его зеркало в группе обсуждения. Порт
+     * `appMessagesManager.getDiscussionMessage` (tweb :8814-8864): тред
+     * комментариев адресуется номером ЗЕРКАЛА (`threadId` = mid в группе), и
+     * им же — окно, отправка, живые кадры (`reply_to_top_id` комментария).
+     * Счётчики прочитанного (`max_id`/`read_*_max_id`) у нас окно треда считает
+     * само — в ответе только сообщение.
+     */
+    async getDiscussionMessage(peerId: number, mid: number): Promise<MyMessage | undefined> {
+      const r = await rest.get<MessagesContainer>(`/channels/${peerId}/posts/${getServerMessageId(mid)}/discussion`)
+      const [message] = await mapContainer(r)
+      return message?._ === 'message' ? message : undefined
+    },
+
     async listPins(peerId: number): Promise<MyMessage[]> {
       const r = await rest.get<MessagesContainer>(`/chats/${peerId}/pins`)
       return decryptPage(await mapContainer(r))
@@ -1085,9 +1104,11 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     // счётчики всех вкладок правой колонки сразу (tweb
     // `appSearchSuper.ts:2375-2377`). Ответ идёт в порядке запроса и содержит
     // запись на каждый фильтр: неизвестный вид — ноль, а не пропуск.
-    async searchCounters(peerId: number, filters: string[]): Promise<{ filter: string; count: number }[]> {
+    // `threadId` — счётчики только треда (вкладки профиля треда, `top_msg_id`).
+    async searchCounters(peerId: number, filters: string[], threadId?: number): Promise<{ filter: string; count: number }[]> {
       const r = await rest.get<{ counters?: { filter: string; count: number }[] }>(
-        `/chats/${peerId}/search_counters`, { filters: filters.join(',') },
+        `/chats/${peerId}/search_counters`,
+        { filters: filters.join(','), ...(threadId ? { thread_root: getServerMessageId(threadId) } : {}) },
       )
       return r.counters ?? []
     },
@@ -1233,15 +1254,13 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       // «отправляется…» рядом с уже отправленным. Слияние полей (random_id,
       // localUrl, secret) делает потребитель — messageOps.insert. Признак
       // `sequential` снятого бабла едет в `insert` финального — как у ack.
-      const finalized = pending.checkPendingMessage(m.random_id)
-      const sequential = finalized?.sequential
+      const sequential = pending.checkPendingMessage(m.random_id)
+      // Окно треда адресовано номером корня в том же пире, что и `reply_to_top_id`
+      // эха (у комментария — номер зеркала поста, tweb `getDiscussionMessage`),
+      // поэтому окна временного бабла (tweb `pendingData.storage.key`,
+      // appMessagesManager.ts:11946) и окна эха совпадают по построению.
       const root = getThreadRootId(m)
       const keys = root ? [hkey(m.peerId), hkey(m.peerId, root)] : [hkey(m.peerId)]
-      // Окна, где лежал временный бабл, финализируются ВСЕГДА — даже если ключ
-      // эха с ними не совпал (тред комментариев: окно по номеру поста, корень
-      // в эхе — номер зеркала). Порт `storageKey: pendingData.storage.key`
-      // (tweb appMessagesManager.ts:11946), см. `checkPendingMessage`.
-      for (const key of finalized?.keys ?? []) if (!keys.includes(key)) keys.push(key)
       const ops: MessageOp[] = []
       for (const key of keys) {
         // Только в срез, уже державший низ истории — иначе позиция неизвестна.

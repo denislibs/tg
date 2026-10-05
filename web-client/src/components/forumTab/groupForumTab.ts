@@ -24,9 +24,8 @@
 //  4. `chat_update` (`:156-168`) — подписка на зеркало карточек; `history_reload`
 //     (`:150-154`) и `subscribeToChannelUpdates` (`:178-181`) — предмета нет:
 //     темы перечитываются на каждый показ, отдельной подписки на канал нет.
-//  5. Подпись шапки — `getChatMembersString` («N участников»), а не
-//     `appImManager.setPeerStatus` (`:189-196`): статуса пира классом у нас ещё нет
-//     (Б-29); заголовок — `PeerTitle` (`wrapPeerTitle({dialog: true})`).
+//  5. Заголовок — `PeerTitle` (`wrapPeerTitle({dialog: true})`), синхронный: ждать его
+//     не нужно, ждётся только подпись `appImManager.setPeerStatus` (`:189-210`).
 import appDialogsManager from '@lib/appDialogsManager'
 import appImManager, { type AppImManager } from '@lib/appImManager'
 import { AutonomousForumTopicList } from '@components/autonomousDialogList/forumTopics'
@@ -37,11 +36,9 @@ import showDeleteDialogPopup, { type DeleteDialogManagers } from '@components/po
 import SortedDialogList from '@components/sortedDialogList'
 import { ForumTab } from '@components/forumTab/forumTab'
 import getGroupForumMembershipAction from '@components/forumTab/getGroupForumMembershipAction'
-import { getChatMembersString } from '@components/wrappers/getChatMembersString'
 import { ALL_FOLDER_ID } from '@core/folderIds'
 import { cachedChat, subscribePeerMirror } from '@core/peerCache'
 import { isForum } from '@core/peers/predicates'
-import { useI18nStore } from '@/i18n'
 
 export class GroupForumTab extends ForumTab {
   declare public xd: AutonomousForumTopicList
@@ -139,8 +136,22 @@ export class GroupForumTab extends ForumTab {
     const peerId = this.peerId
 
     const peerTitle = new PeerTitle({ peerId, dialog: true, middleware, managers: this.managers! })
+
+    const setStatus = await appImManager.setPeerStatus({
+      peerId,
+      element: this.subtitle,
+      needClear: true,
+      middleware,
+      managers: this.managers!,
+      noTyping: true,
+    })
+
+    if(!middleware()) {
+      return
+    }
+
     this.title.append(peerTitle.element)
-    this.subtitle.replaceChildren(getChatMembersString(cachedChat(peerId), useI18nStore.getState().tArgs))
+    setStatus?.()
   }
 
   /** tweb `:213-218` */

@@ -32,6 +32,7 @@ var publicPageTpl = template.Must(template.ParseFS(publicPageFS, "templates/publ
 //	GET /c/{id}/{seq}                   пост закрытого чата (только для участников)
 //	GET /+{hash}, /joinchat/{hash}      ссылка-приглашение
 //	GET /addstickers/{name}, /addemoji/{name}  набор стикеров / эмодзи
+//	GET /addlist/{slug}                 приглашение в папку → веб-клиент
 //	GET /                               → веб-клиент
 //
 // и картинки к ним (аватарки, фото поста) — страницу читает аноним, поэтому
@@ -39,7 +40,8 @@ var publicPageTpl = template.Must(template.ParseFS(publicPageFS, "templates/publ
 //
 // Кнопка страницы ведёт в веб-клиент (Config.AppOrigin) по схеме хэша tweb
 // (appImManager.ts `onHashChangeUnsafe`): `#@username`, пост — `#@username?post=<seq>`;
-// `/join/<hash>` (диплинк вступления клиента), набор — `#?tgaddr=<tg://…>`.
+// приглашение, набор, папка — `#?tgaddr=<tg://…>` (tweb `internalLinkProcessor`:
+// `tg://join?invite=`, `tg://addstickers?set=`, `tg://addlist?slug=`).
 type PublicHandler struct {
 	uc    *usecasepublic.Interactor
 	media *usecasemedia.Interactor // nil — MinIO выключен, фото недоступны
@@ -66,6 +68,7 @@ func (h *PublicHandler) Mount(r chi.Router) {
 	r.Get("/joinchat/{hash}/photo", h.InvitePhoto)
 	r.Get("/addstickers/{name}", h.StickerSet)
 	r.Get("/addemoji/{name}", h.StickerSet)
+	r.Get("/addlist/{slug}", h.AddList)
 }
 
 // Root — корень хоста страниц: у t.me это редирект на сайт, у нас — в клиент.
@@ -179,7 +182,7 @@ func gradientOf(title string) template.CSS {
 // указывал бы не туда.
 func (h *PublicHandler) page(path string) string { return h.tme + path }
 
-// inApp — адрес веб-клиента: путь (`/join/…`) или хэш (`#@durov`).
+// inApp — адрес веб-клиента: хэш (`#@durov`, `#?tgaddr=…`).
 func (h *PublicHandler) inApp(target string) string {
 	if strings.HasPrefix(target, "#") {
 		return h.app + "/" + target
@@ -309,7 +312,7 @@ func (h *PublicHandler) Invite(w http.ResponseWriter, r *http.Request) {
 			PageTitle: "Messenger: Вступить в групповой чат", NoIndex: true,
 			OGTitle: "Вступить в групповой чат в Messenger",
 			Icon:    "group", Lead: "invite",
-			ButtonText: "Вступить в группу", ButtonHref: h.inApp("/join/" + token), ButtonGreen: true,
+			ButtonText: "Вступить в группу", ButtonHref: h.tgaddrHref("join", "invite", token), ButtonGreen: true,
 		})
 		return
 	}
@@ -322,7 +325,7 @@ func (h *PublicHandler) Invite(w http.ResponseWriter, r *http.Request) {
 		Title: inv.Title, Description: inv.About,
 		Extras:  []string{membersLine(inv.Kind, inv.MemberCount)},
 		Initial: initialOf(inv.Title), AvatarGradient: gradientOf(inv.Title),
-		ButtonText: "Присоединиться", ButtonHref: h.inApp("/join/" + token), ButtonShine: true,
+		ButtonText: "Присоединиться", ButtonHref: h.tgaddrHref("join", "invite", token), ButtonShine: true,
 	}
 	if inv.Kind == "channel" {
 		v.PageTitle = "Messenger: Вступить в канал"
@@ -386,7 +389,20 @@ func (h *PublicHandler) StickerSet(w http.ResponseWriter, r *http.Request) {
 
 // stickersHref — вход в клиент по схеме tweb `#?tgaddr=<tg://addstickers?set=…>`.
 func (h *PublicHandler) stickersHref(scheme, name string) string {
-	return h.inApp("#?tgaddr=" + url.QueryEscape("tg://"+scheme+"?set="+url.QueryEscape(name)))
+	return h.tgaddrHref(scheme, "set", name)
+}
+
+// tgaddrHref — вход в клиент по схеме tweb `#?tgaddr=<tg://<action>?<param>=…>`
+// (appImManager.ts `onHashChangeUnsafe` → `openUrl` → `internalLinkProcessor`).
+func (h *PublicHandler) tgaddrHref(action, param, value string) string {
+	return h.inApp("#?tgaddr=" + url.QueryEscape("tg://"+action+"?"+param+"="+url.QueryEscape(value)))
+}
+
+// AddList — GET /addlist/{slug}: приглашение в папку. У t.me это страница с
+// кнопкой «Add Folder»; своей вёрстки страницы папки у нас нет — сразу в клиент,
+// где ссылку разбирает `tg://addlist?slug=` (попап `sharedFolderInvite`).
+func (h *PublicHandler) AddList(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, h.tgaddrHref("addlist", "slug", chi.URLParam(r, "slug")), http.StatusFound)
 }
 
 var ruMonths = [...]string{"янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"}

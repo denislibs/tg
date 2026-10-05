@@ -11,7 +11,7 @@
 // `NewMessageReplies(count, 0, nil)`.
 //
 // Пины: футер и счётчик НЕ ПУТАЮТСЯ МЕСТАМИ; клик по футеру открывает тред
-// группы обсуждения (tweb :3315-3343); правка не удваивает футер.
+// группы обсуждения по номеру зеркала (tweb :3757-3782); правка не удваивает футер.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { resetMessagesMirror } from '@core/history/messagesMirror'
@@ -255,11 +255,15 @@ describe('ChatBubbles — тред под сообщением', () => {
   })
 
   describe('клик по футеру открывает тред', () => {
-    it('адресат — ГРУППА ОБСУЖДЕНИЯ и номер поста (tweb :3332-3338)', async () => {
+    it('адресат — ГРУППА ОБСУЖДЕНИЯ и номер ЗЕРКАЛА поста (tweb :3773-3780, Б-110)', async () => {
       const setInnerPeer = vi.fn()
+      const MIRROR = 50
+      const managers = managersWith([post(1, commentThread(8))])
+      const getDiscussionMessage = vi.fn(async () => makeMessage({ peerId: -DISCUSSION_ID, fromId: 2, id: MIRROR, text: 'привет', createdAt: '2026-08-15T12:34:00' }))
+      managers.messages.getDiscussionMessage = getDiscussionMessage
       bubbles = mountTestBubbles(
         chatContext({ isBroadcast: true, appImManager: { setInnerPeer } }),
-        managersWith([post(1, commentThread(8))]),
+        managers,
       )
       await openFeed(bubbles)
       await settle()
@@ -268,10 +272,13 @@ describe('ChatBubbles — тред под сообщением', () => {
       bubbleOf(bubbles, 1).querySelector<HTMLElement>('.replies-footer-text')!
         .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
       bubbles.container.remove()
+      await settle()
 
-      // tweb :3335 — пир треда это группа обсуждения, а не канал; знак
-      // раскладывает `toPeerId(channel_id, true)`.
-      expect(setInnerPeer).toHaveBeenCalledWith({ peerId: -DISCUSSION_ID, type: ChatType.Discussion, threadId: 1 })
+      // Тред адресуется номером зеркала (`getDiscussionMessage(канал, пост)`),
+      // тем же, что `reply_to_top_id` комментариев; пир треда — группа
+      // обсуждения, знак раскладывает `toPeerId(channel_id, true)`.
+      expect(getDiscussionMessage).toHaveBeenCalledWith(CHAT, 1)
+      expect(setInnerPeer).toHaveBeenCalledWith({ peerId: -DISCUSSION_ID, type: ChatType.Discussion, threadId: MIRROR })
     })
 
     it('клик по баблу БЕЗ футера тред не открывает', async () => {

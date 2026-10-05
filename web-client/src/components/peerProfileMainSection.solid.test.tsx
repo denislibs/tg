@@ -2,7 +2,7 @@
 /**
  * Тесты строк `MainSection` (`peerProfile.solid.tsx`, Task 4 плана
  * `docs/superpowers/plans/2026-09-05-profile-card-solid.md`, «Задача 4»):
- * Phone/Username(+QR)/Bio/Link/Birthday/Notifications.
+ * Phone/Username/Bio/Link/Birthday/Notifications (QR-кнопки нет — Б-44).
  *
  * Отдельный файл от `peerProfile.solid.test.tsx` (Task 2, каркас) и
  * `peerProfileNameStatus.solid.test.tsx` (Task 3, имя/статус) — свой,
@@ -179,27 +179,6 @@ describe('Username (tweb :693-732) + QrButton (tweb :734-747)', () => {
     expect(toastNewSpy).toHaveBeenCalledWith({ langPackKey: 'UsernameCopied' })
   })
 
-  it('QR-кнопка есть у ЧУЖОГО пира и зовёт onOpenQrCode с url/label', () => {
-    const onOpenQrCode = vi.fn()
-    peerSignal[1]({ _: 'user', id: 7, username: 'durov' })
-    const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el(), onOpenQrCode })
-    const row = rowByIcon(h, 'mention_filled')!
-    const qr = row.querySelector('button.qr') as HTMLElement
-    expect(qr).not.toBeNull()
-    qr.click()
-    expect(onOpenQrCode).toHaveBeenCalledWith({ url: `${DEFAULT_TME_ORIGIN}/durov`, label: '@durov' })
-  })
-
-  it('QR-кнопки НЕТ у СВОЕГО username (peerId === meId), даже если строка видна', () => {
-    // canBeDetailed() гейтит саму строку Username при peerId===meId&&isDialog,
-    // поэтому проверяем QrButton у isDialog=false (строка видна, meId тот же).
-    meId = 42
-    peerSignal[1]({ _: 'user', id: 42, username: 'me' })
-    const h = mount({ peerId: 42, isDialog: false, scrollable: el(), setCollapsedOn: el() })
-    const row = rowByIcon(h, 'mention_filled')!
-    expect(row.querySelector('.row-title')!.textContent).toBe('me')
-    expect(row.querySelector('button.qr')).toBeNull()
-  })
 })
 
 describe('Bio (tweb :895-967)', () => {
@@ -245,32 +224,21 @@ describe('Bio (tweb :895-967)', () => {
   })
 })
 
-describe('Link (tweb :969-1036): ветка публичного username и фолбэк на инвайт-ссылку (:999-1004)', () => {
-  // Задача 13 плана shared media: фолбэк `exported_invite` оригинала — у нас
-  // проп `exportedInviteUrl` (ссылку знает `useGroupInfo` панели).
-  it('фолбэк: username нет, exportedInviteUrl есть — строка с URL без схемы, клик копирует полный URL', () => {
-    peerSignal[1]({ _: 'channel', id: 100, pFlags: { megagroup: true } })
-    const url = 'https://localhost:38443/join/abc'
-    const h = mount({ peerId: -100, isDialog: true, scrollable: el(), setCollapsedOn: el(), exportedInviteUrl: url })
-    const row = rowByIcon(h, 'link_filled')!
-    expect(row).not.toBeNull()
-    expect(row.querySelector('.row-title')!.textContent).toBe('localhost:38443/join/abc')
-    row.click()
-    expect(copyTextToClipboardSpy).toHaveBeenCalledWith(url)
-    expect(toastNewSpy).toHaveBeenCalledWith({ langPackKey: 'LinkCopied' })
-  })
-
-  it('username и инвайт одновременно — ОДНА строка, и это username (порядок веток оригинала)', () => {
+describe('Link (tweb :969-1036): ветка публичного username', () => {
+  it('публичная группа — строка username', () => {
     peerSignal[1]({ _: 'channel', id: 100, pFlags: { megagroup: true }, username: 'mygroup' })
-    const h = mount({ peerId: -100, isDialog: true, scrollable: el(), setCollapsedOn: el(), exportedInviteUrl: 'https://x/join/abc' })
+    const h = mount({ peerId: -100, isDialog: true, scrollable: el(), setCollapsedOn: el() })
     const rows = Array.from(h.querySelectorAll('.row-icon')).filter((s) => s.textContent === glyph('link_filled'))
     expect(rows).toHaveLength(1)
     expect(rowByIcon(h, 'link_filled')!.querySelector('.row-title')!.textContent).toBe(`${new URL(DEFAULT_TME_ORIGIN).host}/mygroup`)
   })
 
-  it('фолбэк не показывается пользователю даже при переданном exportedInviteUrl', () => {
+  it('строки нет у пользователя и у приватной группы (ветка `exported_invite` — Б-102)', () => {
+    peerSignal[1]({ _: 'channel', id: 100, pFlags: { megagroup: true } })
+    const g = mount({ peerId: -100, isDialog: true, scrollable: el(), setCollapsedOn: el() })
+    expect(rowByIcon(g, 'link_filled')).toBeNull()
     peerSignal[1]({ _: 'user', id: 7 })
-    const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el(), exportedInviteUrl: 'https://x/join/abc' })
+    const h = mount({ peerId: 7, isDialog: true, scrollable: el(), setCollapsedOn: el() })
     expect(rowByIcon(h, 'link_filled')).toBeNull()
   })
 
@@ -299,18 +267,6 @@ describe('Link (tweb :969-1036): ветка публичного username и ф�
     rowByIcon(h, 'link_filled')!.click()
     expect(copyTextToClipboardSpy).toHaveBeenCalledWith(`${DEFAULT_TME_ORIGIN}/mygroup`)
     expect(toastNewSpy).toHaveBeenCalledWith({ langPackKey: 'LinkCopied' })
-  })
-
-  it('QR-кнопка зовёт onOpenQrCode с полным url/label', () => {
-    const onOpenQrCode = vi.fn()
-    peerSignal[1]({ _: 'channel', id: 100, pFlags: { megagroup: true }, username: 'mygroup' })
-    const h = mount({ peerId: -100, isDialog: true, scrollable: el(), setCollapsedOn: el(), onOpenQrCode })
-    const row = rowByIcon(h, 'link_filled')!
-    ;(row.querySelector('button.qr') as HTMLElement).click()
-    expect(onOpenQrCode).toHaveBeenCalledWith({
-      url: `${DEFAULT_TME_ORIGIN}/mygroup`,
-      label: `${new URL(DEFAULT_TME_ORIGIN).host}/mygroup`,
-    })
   })
 })
 

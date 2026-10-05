@@ -6,11 +6,19 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 54,
+      "version": 55,
       "strings": [
         {
           "key": "ALongTimeAgo",
           "value": "last seen a long time ago"
+        },
+        {
+          "key": "AccDescr.ChatInfo",
+          "value": "Chat info"
+        },
+        {
+          "key": "AccDescr.ChatList",
+          "value": "Chat list"
         },
         {
           "key": "AccDescr.DeleteLastCharacter",
@@ -31,6 +39,10 @@
         {
           "key": "AccDescr.PlaybackSpeed",
           "value": "Playback speed"
+        },
+        {
+          "key": "AccDescr.SkipToConversation",
+          "value": "Skip to conversation"
         },
         {
           "key": "AccDescr.StickerNumber",
@@ -115,6 +127,10 @@
         {
           "key": "Administrators",
           "value": "Administrators"
+        },
+        {
+          "key": "Alert.BotAppDoesntExist",
+          "value": "Sorry, this application doesn't exist."
         },
         {
           "key": "Alert.Confirm.Discard",
@@ -668,6 +684,54 @@
           "value": "Turn on camera"
         },
         {
+          "key": "Call.Confirm.Discard.Call.Header",
+          "value": "Call in Progress"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToCall.Text",
+          "value": "End call with \"%1$@\" and start a video chat in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToLive.Text",
+          "value": "End call with \"%1$@\" and start a live stream in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToVoice.Text",
+          "value": "End call with \"%1$@\" and start a video chat in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.Header",
+          "value": "Live Stream in Progress"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToCall.Text",
+          "value": "Leave live stream in \"%1$@\" and start a call with \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToLive.Text",
+          "value": "Leave live stream in \"%1$@\" and start a new one in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToVoice.Text",
+          "value": "Leave live stream in \"%1$@\" and start a video chat in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.Header",
+          "value": "Video Chat in Progress"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToCall.Text",
+          "value": "Leave video chat in \"%1$@\" and start a call with \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToLive.Text",
+          "value": "Leave video chat in \"%1$@\" and start a live stream in \"%2$@\"?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToVoice.Text",
+          "value": "Leave video chat in \"%1$@\" and start a new one in \"%2$@\"?"
+        },
+        {
           "key": "Call.Decline",
           "value": "Decline"
         },
@@ -878,10 +942,6 @@
           "value": "People can share this link with others and find your group using Telegram search."
         },
         {
-          "key": "ChannelAddAdmin",
-          "value": "Add Admin"
-        },
-        {
           "key": "ChannelAddException",
           "value": "Add Exception"
         },
@@ -968,6 +1028,10 @@
         {
           "key": "ChannelSignProfilesInfo",
           "value": "Add names and photos of admins to the messages they post, linking to their profiles."
+        },
+        {
+          "key": "ChannelTopicsDiscussionForbidden",
+          "value": "Topics are not yet available in the discussion groups of channels."
         },
         {
           "key": "ChannelType",
@@ -1384,10 +1448,6 @@
           "value": "Chat history for new members"
         },
         {
-          "key": "ChatHistoryHint",
-          "value": "New members will see earlier messages when this is on."
-        },
-        {
           "key": "ChatList.Context.DeleteChat",
           "value": "Delete Chat"
         },
@@ -1796,6 +1856,18 @@
           "value": "Copy Link"
         },
         {
+          "key": "CopyRestricted.Channel",
+          "value": "Sorry, copying from this channel is disabled by its admins."
+        },
+        {
+          "key": "CopyRestricted.Group",
+          "value": "Sorry, copying from this group is disabled by its admins."
+        },
+        {
+          "key": "CopyRestricted.User",
+          "value": "Copying is restricted in this chat."
+        },
+        {
           "key": "Country",
           "value": "Country"
         },
@@ -1949,6 +2021,10 @@
           "value": "Description"
         },
         {
+          "key": "DeselectAll",
+          "value": "deselect all"
+        },
+        {
           "key": "Devices",
           "value": "Devices"
         },
@@ -1979,18 +2055,6 @@
         {
           "key": "DiscardVoiceMessageTitle",
           "value": "Discard Voice Message"
-        },
-        {
-          "key": "Discussion.Link.Question",
-          "value": "Do you want to set «%1$s» as the discussion board for this channel?"
-        },
-        {
-          "key": "Discussion.Linked",
-          "value": "Users can now discuss your posts in the linked group."
-        },
-        {
-          "key": "Discussion.Unlink.Text",
-          "value": "Are you sure you want to unlink this group from the channel?"
         },
         {
           "key": "DiscussionChannelHelp3",
@@ -2305,6 +2369,13 @@
           "value": "Favorites"
         },
         {
+          "key": "Files",
+          "forms": {
+            "one_value": "%d file",
+            "other_value": "%d files"
+          }
+        },
+        {
           "key": "FilterAllBots",
           "value": "All Bots"
         },
@@ -2401,6 +2472,10 @@
           "value": "No chats currently belong to this folder."
         },
         {
+          "key": "FilterPersonal",
+          "value": "Personal"
+        },
+        {
           "key": "FilterRemoveChats",
           "value": "Remove Chats"
         },
@@ -2436,20 +2511,8 @@
           "value": "Folder added"
         },
         {
-          "key": "Folder.Invite.Adding",
-          "value": "Adding…"
-        },
-        {
-          "key": "Folder.Invite.Invalid",
-          "value": "This link is invalid or has expired."
-        },
-        {
-          "key": "Folder.Invite.Question",
-          "value": "Do you want to add «%1$s» and join its chats?"
-        },
-        {
-          "key": "Folder.Invite.Question.Folder",
-          "value": "Do you want to add the folder «%1$s»?"
+          "key": "ForumToggleDescription",
+          "value": "The group chat will be divided into topics created by admins or users."
         },
         {
           "key": "ForumTopic.Closed",
@@ -2466,10 +2529,6 @@
         {
           "key": "ForumTopic.Created",
           "value": "Topic created"
-        },
-        {
-          "key": "ForumTopic.EnableHint",
-          "value": "Group members can discuss different topics in separate threads."
         },
         {
           "key": "ForumTopic.Hidden",
@@ -2618,14 +2677,6 @@
           "value": "Group"
         },
         {
-          "key": "Group.MemberBadge",
-          "value": "Member"
-        },
-        {
-          "key": "Group.RestrictedBadge",
-          "value": "Restricted"
-        },
-        {
           "key": "GroupAddMembers",
           "value": "Add Members"
         },
@@ -2690,6 +2741,10 @@
         {
           "key": "InstantView.OpenInBrowser",
           "value": "Open in browser"
+        },
+        {
+          "key": "InviteExpired",
+          "value": "This invite link has expired."
         },
         {
           "key": "InviteLink",
@@ -2961,6 +3016,10 @@
           "value": "Link is invalid"
         },
         {
+          "key": "Link.NotSupported",
+          "value": "This link is not supported on Telegram Web."
+        },
+        {
           "key": "Link.Taken",
           "value": "Link is already taken"
         },
@@ -2987,6 +3046,17 @@
         {
           "key": "LinkNameHint",
           "value": "Link Name (Optional)"
+        },
+        {
+          "key": "LinkNotFound",
+          "value": "Unfortunately, you can't access this message. You are not a member of the chat where it was posted."
+        },
+        {
+          "key": "Links",
+          "forms": {
+            "one_value": "%d link",
+            "other_value": "%d links"
+          }
         },
         {
           "key": "LiteMode.DisableAlert",
@@ -3421,6 +3491,13 @@
           "value": "Unmute video"
         },
         {
+          "key": "MediaFiles",
+          "forms": {
+            "one_value": "%d media file",
+            "other_value": "%d media files"
+          }
+        },
+        {
           "key": "MediaViewer.Context.Copy",
           "value": "Copy Media"
         },
@@ -3585,6 +3662,13 @@
         {
           "key": "MultiAccount.More",
           "value": "More"
+        },
+        {
+          "key": "MusicFiles",
+          "forms": {
+            "one_value": "%d music file",
+            "other_value": "%d music files"
+          }
         },
         {
           "key": "MyNotes",
@@ -4295,6 +4379,10 @@
           "value": "You can provide an optional description for your group."
         },
         {
+          "key": "PeerInfo.SharedMedia",
+          "value": "Shared Media"
+        },
+        {
           "key": "PeerInfo.Subscribers",
           "value": "Subscribers"
         },
@@ -4916,12 +5004,20 @@
           "value": "Channel description."
         },
         {
+          "key": "Profile.Info.Bot",
+          "value": "Bot Info"
+        },
+        {
           "key": "Profile.Info.Channel",
           "value": "Channel Info"
         },
         {
           "key": "Profile.Info.Group",
           "value": "Group Info"
+        },
+        {
+          "key": "Profile.Info.Topic",
+          "value": "Topic Info"
         },
         {
           "key": "Profile.Info.User",
@@ -4964,18 +5060,6 @@
           "value": "Reactions"
         },
         {
-          "key": "Reactions.All.Info",
-          "value": "Members of this group can use any emoji as reactions to messages."
-        },
-        {
-          "key": "Reactions.None.Info",
-          "value": "Members of this group cannot react to messages."
-        },
-        {
-          "key": "Reactions.Some.Info",
-          "value": "You can select emoji that will allow members of this group to react to messages."
-        },
-        {
           "key": "Recent",
           "value": "Recent"
         },
@@ -5006,10 +5090,6 @@
         {
           "key": "RemovedUsers",
           "value": "Removed Users"
-        },
-        {
-          "key": "RemovedUsers.Description",
-          "value": "Users removed by group admins cannot rejoin via invite links."
         },
         {
           "key": "Reply",
@@ -5072,6 +5152,10 @@
           "value": "There were no results for \"%@\".\nTry a new search."
         },
         {
+          "key": "RequestToJoinSent",
+          "value": "Join request sent"
+        },
+        {
           "key": "Resend",
           "value": "Resend"
         },
@@ -5094,14 +5178,6 @@
         {
           "key": "RestartTopic",
           "value": "Reopen topic"
-        },
-        {
-          "key": "RestrictedUsers",
-          "value": "Restricted Users"
-        },
-        {
-          "key": "RestrictedUsers.Description",
-          "value": "These members have limited rights in this group."
         },
         {
           "key": "RevokeAlert",
@@ -5184,6 +5260,10 @@
           "value": "No viewers"
         },
         {
+          "key": "Rtmp.Topbar.StartVideoChat",
+          "value": "Start Video Chat"
+        },
+        {
           "key": "Rtmp.Topbar.Title",
           "value": "Live Stream"
         },
@@ -5204,6 +5284,13 @@
         {
           "key": "Saved",
           "value": "Saved"
+        },
+        {
+          "key": "SavedDialogsTabCount",
+          "forms": {
+            "one_value": "%d chat",
+            "other_value": "%d chats"
+          }
         },
         {
           "key": "SavedGifsLimitTitle",
@@ -5385,6 +5472,10 @@
           "value": "Secret chat rejected"
         },
         {
+          "key": "SelectAll",
+          "value": "select all"
+        },
+        {
           "key": "Send",
           "value": "Send"
         },
@@ -5503,6 +5594,18 @@
         {
           "key": "SharedFolder.Includes",
           "value": "Includes %s"
+        },
+        {
+          "key": "SharedFolder.Link.Chats",
+          "value": "%s in folder to join"
+        },
+        {
+          "key": "SharedFolder.Link.Description",
+          "value": "Do you want to add a new chat folder and join its groups and channels?"
+        },
+        {
+          "key": "SharedFolder.Link.Expired",
+          "value": "The folder link has expired."
         },
         {
           "key": "SharedFolder.Link.Title",
@@ -5691,6 +5794,13 @@
         {
           "key": "StarGiftTitle",
           "value": "Gift"
+        },
+        {
+          "key": "StarGiftsCount",
+          "forms": {
+            "one_value": "%d gift",
+            "other_value": "%d gifts"
+          }
         },
         {
           "key": "Stars",
@@ -6361,16 +6471,20 @@
           "value": "Private"
         },
         {
+          "key": "TypePrivateGroup",
+          "value": "Private"
+        },
+        {
           "key": "TypePublic",
+          "value": "Public"
+        },
+        {
+          "key": "TypePublicGroup",
           "value": "Public"
         },
         {
           "key": "Unarchive",
           "value": "Unarchive"
-        },
-        {
-          "key": "Unban",
-          "value": "Unban"
         },
         {
           "key": "Unblock",
@@ -6513,18 +6627,6 @@
           "value": "Forever"
         },
         {
-          "key": "UserRestrictions.Action",
-          "value": "Restrict"
-        },
-        {
-          "key": "UserRestrictions.CanDoMember",
-          "value": "What can this member do?"
-        },
-        {
-          "key": "UserRestrictions.Title",
-          "value": "Restrict Member"
-        },
-        {
           "key": "UserRestrictionsBlock",
           "value": "Ban and remove from group"
         },
@@ -6642,6 +6744,13 @@
         {
           "key": "ViewsPerPost",
           "value": "Views Per Post"
+        },
+        {
+          "key": "Voice",
+          "forms": {
+            "one_value": "%d voice message",
+            "other_value": "%d voice messages"
+          }
         },
         {
           "key": "VoiceChat.Leave",
@@ -6772,7 +6881,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 54,
+      "version": 55,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -6915,6 +7024,22 @@
           "value": "Публичная"
         },
         {
+          "key": "TypePrivateGroup",
+          "value": "Частная"
+        },
+        {
+          "key": "TypePublicGroup",
+          "value": "Публичная"
+        },
+        {
+          "key": "ForumToggleDescription",
+          "value": "Сообщения в группе будут разделены на темы, созданные администраторами или участниками."
+        },
+        {
+          "key": "ChannelTopicsDiscussionForbidden",
+          "value": "Темы пока недоступны в группах обсуждения каналов."
+        },
+        {
           "key": "MegaPrivate",
           "value": "Частная группа"
         },
@@ -6999,18 +7124,6 @@
           "value": "Разрешить только эти реакции"
         },
         {
-          "key": "Reactions.All.Info",
-          "value": "Участники группы могут использовать любые эмодзи в качестве реакций на сообщения."
-        },
-        {
-          "key": "Reactions.Some.Info",
-          "value": "Выберите эмодзи, которыми участники группы смогут реагировать на сообщения."
-        },
-        {
-          "key": "Reactions.None.Info",
-          "value": "Участники группы не могут реагировать на сообщения."
-        },
-        {
           "key": "ChannelPermissions",
           "value": "Разрешения"
         },
@@ -7039,10 +7152,6 @@
           "value": "Медленный режим"
         },
         {
-          "key": "ChannelAddAdmin",
-          "value": "Добавить администратора"
-        },
-        {
           "key": "EditAdmin",
           "value": "Права администратора"
         },
@@ -7063,20 +7172,8 @@
           "value": "Администратор"
         },
         {
-          "key": "Group.MemberBadge",
-          "value": "Участник"
-        },
-        {
           "key": "RemovedUsers",
           "value": "Чёрный список"
-        },
-        {
-          "key": "RemovedUsers.Description",
-          "value": "Пользователи, которых исключили администраторы группы, не смогут присоединиться снова с помощью ссылки."
-        },
-        {
-          "key": "Unban",
-          "value": "Разблокировать"
         },
         {
           "key": "KickFromGroup",
@@ -7089,10 +7186,6 @@
         {
           "key": "ChatHistory",
           "value": "История чата для новых участников"
-        },
-        {
-          "key": "ChatHistoryHint",
-          "value": "Если включено, новые участники увидят предыдущие сообщения чата."
         },
         {
           "key": "DeleteAndExitButton",
@@ -8350,6 +8443,54 @@
           "value": "Ввод"
         },
         {
+          "key": "Call.Confirm.Discard.Call.Header",
+          "value": "Звонок уже идёт"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToCall.Text",
+          "value": "Завершить звонок с «%1$@» и начать видеочат в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToLive.Text",
+          "value": "Завершить звонок с «%1$@» и начать трансляцию в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Call.ToVoice.Text",
+          "value": "Завершить звонок с «%1$@» и начать видеочат в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.Header",
+          "value": "Трансляция уже идёт"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToCall.Text",
+          "value": "Покинуть трансляцию в «%1$@» и позвонить «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToLive.Text",
+          "value": "Покинуть трансляцию в «%1$@» и начать новую в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Live.ToVoice.Text",
+          "value": "Покинуть трансляцию в «%1$@» и начать видеочат в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.Header",
+          "value": "Видеочат уже идёт"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToCall.Text",
+          "value": "Покинуть видеочат в «%1$@» и позвонить «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToLive.Text",
+          "value": "Покинуть видеочат в «%1$@» и начать трансляцию в «%2$@»?"
+        },
+        {
+          "key": "Call.Confirm.Discard.Voice.ToVoice.Text",
+          "value": "Покинуть видеочат в «%1$@» и начать новый в «%2$@»?"
+        },
+        {
           "key": "CallSettings.InputDevice",
           "value": "Устройство ввода"
         },
@@ -8372,6 +8513,18 @@
         {
           "key": "AccDescr.MicrophoneLevel",
           "value": "Уровень микрофона"
+        },
+        {
+          "key": "AccDescr.SkipToConversation",
+          "value": "Перейти к переписке"
+        },
+        {
+          "key": "AccDescr.ChatList",
+          "value": "Список чатов"
+        },
+        {
+          "key": "AccDescr.ChatInfo",
+          "value": "Информация о чате"
         },
         {
           "key": "ConferenceCall.Media.MicrophoneError",
@@ -8545,6 +8698,18 @@
         {
           "key": "Copy",
           "value": "Копировать"
+        },
+        {
+          "key": "CopyRestricted.Channel",
+          "value": "Копирование из этого канала запрещено администраторами."
+        },
+        {
+          "key": "CopyRestricted.Group",
+          "value": "Копирование из этой группы запрещено администраторами."
+        },
+        {
+          "key": "CopyRestricted.User",
+          "value": "В этом чате запрещено копирование."
         },
         {
           "key": "Resend",
@@ -8911,6 +9076,10 @@
           "value": "Прямой эфир"
         },
         {
+          "key": "Rtmp.Topbar.StartVideoChat",
+          "value": "Начать видеочат"
+        },
+        {
           "key": "BoostChannel",
           "value": "Бустить канал"
         },
@@ -9063,6 +9232,81 @@
           "value": "Информация о канале"
         },
         {
+          "key": "Profile.Info.Topic",
+          "value": "Информация о теме"
+        },
+        {
+          "key": "Profile.Info.Bot",
+          "value": "Информация о боте"
+        },
+        {
+          "key": "PeerInfo.SharedMedia",
+          "value": "Общие медиа"
+        },
+        {
+          "key": "SavedDialogsTabCount",
+          "forms": {
+            "one_value": "%d чат",
+            "few_value": "%d чата",
+            "many_value": "%d чатов",
+            "other_value": "%d чата"
+          }
+        },
+        {
+          "key": "MediaFiles",
+          "forms": {
+            "one_value": "%d медиафайл",
+            "few_value": "%d медиафайла",
+            "many_value": "%d медиафайлов",
+            "other_value": "%d медиафайла"
+          }
+        },
+        {
+          "key": "StarGiftsCount",
+          "forms": {
+            "one_value": "%d подарок",
+            "few_value": "%d подарка",
+            "many_value": "%d подарков",
+            "other_value": "%d подарка"
+          }
+        },
+        {
+          "key": "Files",
+          "forms": {
+            "one_value": "%d файл",
+            "few_value": "%d файла",
+            "many_value": "%d файлов",
+            "other_value": "%d файла"
+          }
+        },
+        {
+          "key": "Links",
+          "forms": {
+            "one_value": "%d ссылка",
+            "few_value": "%d ссылки",
+            "many_value": "%d ссылок",
+            "other_value": "%d ссылки"
+          }
+        },
+        {
+          "key": "MusicFiles",
+          "forms": {
+            "one_value": "%d аудиофайл",
+            "few_value": "%d аудиофайла",
+            "many_value": "%d аудиофайлов",
+            "other_value": "%d аудиофайла"
+          }
+        },
+        {
+          "key": "Voice",
+          "forms": {
+            "one_value": "%d голосовое сообщение",
+            "few_value": "%d голосовых сообщения",
+            "many_value": "%d голосовых сообщений",
+            "other_value": "%d голосовых сообщения"
+          }
+        },
+        {
           "key": "Profile.ChannelDescription",
           "value": "Описание канала."
         },
@@ -9171,18 +9415,6 @@
           "value": "Добавить подписчиков"
         },
         {
-          "key": "RestrictedUsers",
-          "value": "Ограниченные"
-        },
-        {
-          "key": "UserRestrictions.Title",
-          "value": "Ограничить участника"
-        },
-        {
-          "key": "UserRestrictions.CanDoMember",
-          "value": "Что может этот участник?"
-        },
-        {
           "key": "UserPermissions.Duration",
           "value": "Длительность"
         },
@@ -9201,10 +9433,6 @@
         {
           "key": "ChannelSignProfilesInfo",
           "value": "Добавлять имена и фото админов к их сообщениям со ссылкой на профиль."
-        },
-        {
-          "key": "ForumTopic.EnableHint",
-          "value": "Участники смогут обсуждать разные темы в отдельных ветках."
         },
         {
           "key": "GlobalSendMessageRestricted",
@@ -12157,18 +12385,6 @@
           "value": "Удалённое сообщение"
         },
         {
-          "key": "Discussion.Link.Question",
-          "value": "Сделать «%1$s» группой для обсуждения этого канала?"
-        },
-        {
-          "key": "Discussion.Linked",
-          "value": "Теперь читатели могут обсуждать ваши посты в связанной группе."
-        },
-        {
-          "key": "Discussion.Unlink.Text",
-          "value": "Отвязать эту группу от канала?"
-        },
-        {
           "key": "DiscussionChannelHelp3",
           "value": "Выберите группу, в которой будут комментарии к постам канала."
         },
@@ -12199,26 +12415,6 @@
         {
           "key": "ExportedInvitation.Status.Revoked",
           "value": "отозвана"
-        },
-        {
-          "key": "Folder.Invite.Adding",
-          "value": "Добавляем…"
-        },
-        {
-          "key": "Folder.Invite.Invalid",
-          "value": "Ссылка недействительна или устарела."
-        },
-        {
-          "key": "Folder.Invite.Question",
-          "value": "Добавить «%1$s» и вступить в её чаты?"
-        },
-        {
-          "key": "Folder.Invite.Question.Folder",
-          "value": "Добавить папку «%1$s»?"
-        },
-        {
-          "key": "Group.RestrictedBadge",
-          "value": "ограничен"
         },
         {
           "key": "InviteLinks.LimitReached",
@@ -12394,10 +12590,6 @@
           "value": "Убрать"
         },
         {
-          "key": "RestrictedUsers.Description",
-          "value": "У этих участников ограничены права в группе."
-        },
-        {
           "key": "RevokeAlert",
           "value": "Отозвать эту ссылку? После отзыва по ней нельзя будет вступить."
         },
@@ -12456,10 +12648,6 @@
         {
           "key": "AreYouSureBlockContact2",
           "value": "Вы действительно хотите заблокировать **%1$s**?"
-        },
-        {
-          "key": "UserRestrictions.Action",
-          "value": "Ограничить"
         },
         {
           "key": "WebApp.CameraDenied",
@@ -13466,6 +13654,50 @@
           }
         },
         {
+          "key": "Alert.BotAppDoesntExist",
+          "value": "К сожалению, такого приложения не существует."
+        },
+        {
+          "key": "DeselectAll",
+          "value": "снять выбор"
+        },
+        {
+          "key": "FilterPersonal",
+          "value": "Личные"
+        },
+        {
+          "key": "InviteExpired",
+          "value": "Срок действия ссылки-приглашения истёк."
+        },
+        {
+          "key": "Link.NotSupported",
+          "value": "Эта ссылка не поддерживается в веб-версии."
+        },
+        {
+          "key": "LinkNotFound",
+          "value": "К сожалению, у вас нет доступа к этому сообщению: вы не состоите в чате, где оно опубликовано."
+        },
+        {
+          "key": "RequestToJoinSent",
+          "value": "Заявка на вступление отправлена"
+        },
+        {
+          "key": "SelectAll",
+          "value": "выбрать все"
+        },
+        {
+          "key": "SharedFolder.Link.Chats",
+          "value": "%s в папке для вступления"
+        },
+        {
+          "key": "SharedFolder.Link.Description",
+          "value": "Добавить новую папку и вступить в её группы и каналы?"
+        },
+        {
+          "key": "SharedFolder.Link.Expired",
+          "value": "Срок действия ссылки на папку истёк."
+        },
+        {
           "key": "AccDescrEditing",
           "value": "Редактирование"
         },
@@ -13532,7 +13764,7 @@
         },
         {
           "key": "AccDescr.GifNumber",
-          "value": "GIF %s"
+          "value": "Анимация %s"
         },
         {
           "key": "AccDescr.Gifs",
@@ -13599,7 +13831,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 33,
+      "version": 34,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -16919,6 +17151,10 @@
             "one_value": "%d Étoile",
             "other_value": "%d Étoiles"
           }
+        },
+        {
+          "key": "CustomEmoji.PremiumAlert",
+          "value": "Abonnez-vous à Telegram Premium pour débloquer cet emoji. [En savoir plus]()"
         }
       ]
     },
@@ -16929,7 +17165,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 33,
+      "version": 34,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -20271,6 +20507,10 @@
             "one_value": "%d Stern",
             "other_value": "%d Sterne"
           }
+        },
+        {
+          "key": "CustomEmoji.PremiumAlert",
+          "value": "Abonniere Telegram Premium, um dieses Emoji freizuschalten. [Mehr erfahren]()"
         }
       ]
     },
@@ -20281,7 +20521,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 33,
+      "version": 34,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -23617,6 +23857,10 @@
             "one_value": "%d Estrella",
             "other_value": "%d Estrellas"
           }
+        },
+        {
+          "key": "CustomEmoji.PremiumAlert",
+          "value": "Suscríbete a Telegram Premium para desbloquear este emoji. [Más información]()"
         }
       ]
     },
@@ -23627,7 +23871,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 34,
+      "version": 35,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -27152,6 +27396,10 @@
             "many_value": "%d зірок",
             "other_value": "%d зірки"
           }
+        },
+        {
+          "key": "CustomEmoji.PremiumAlert",
+          "value": "Оформіть Telegram Premium, щоб використовувати цей емодзі. [Докладніше]()"
         }
       ]
     }

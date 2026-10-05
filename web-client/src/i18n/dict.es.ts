@@ -979,6 +979,8 @@ const es = {
     one_value: '%d Estrella',
     other_value: '%d Estrellas',
   },
+  // ── Эмодзи-дропдаун (П-6): ключ со ссылкой — строковый режим без аргумента не читается ──
+  'CustomEmoji.PremiumAlert': 'Suscríbete a Telegram Premium para desbloquear este emoji. [Más información]()',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(es)

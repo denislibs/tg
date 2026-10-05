@@ -570,12 +570,43 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Баг-фиксы после П-5: +8 ключей tweb превью лога звонка (`ChatList.Service.{Call,VideoCall}.*`,
 // tweb lib/langPack.ts:51-58) и `ForwardedFrom` шапки пересылки вместо нашего мёртвого
 // `Chat.ForwardedFrom` (был только у ru) — ru +8, у остальных +9.
+// Пачка П-4 волны 7 (хоткеи, ориентиры экранного доступа): у ru +6 ключей tweb lang.ts —
+// `AccDescr.SkipToConversation`/`ChatList`/`ChatInfo` (:4612, :4615, :4617; ссылка
+// «пропустить к чату» и имена колонок, `helpers/dom/appLandmarks.ts`) и
+// `CopyRestricted.Channel`/`Group`/`User` (:4768-4770; защита копирования,
+// `appImManager.attachCopyListener`). Итог: ru 1546.
+// Пачка П-4 волны 7 («звонки», блок H `appImManager`): у ru +13 ключей tweb —
+// подтверждение «покинуть текущий звонок» `Call.Confirm.Discard.{Call,Live,Voice}.*`
+// (12: заголовок и три перехода на каждый вид звонка, `discardAnyCallConfirmation`
+// `:2276-2299`) и пункт меню эфира в шапке `Rtmp.Topbar.StartVideoChat` (`topbar.ts`
+// `btnGroupCallMenu`, :1041-1057). Итог (с хоткеями): ru 1559.
+// Пачка П-4 волны 7, агент «ссылки» (`lib/internalLinkProcessor.ts`, попап папки
+// `popups/sharedFolderInvite.solid.tsx`): у ru +11 ключей tweb lang.ts (тосты ссылок
+// `Link.NotSupported`, `LinkNotFound`, `InviteExpired`, `RequestToJoinSent`,
+// `Alert.BotAppDoesntExist`, `SharedFolder.Link.Expired`; попап
+// `SharedFolder.Link.{Description,Chats}`, `SelectAll`, `DeselectAll`, `FilterPersonal`) и −4
+// своих ключа снесённого React-попапа папки `Folder.Invite.*`. Итог пачки П-4 поверх К-4 и П-5: ru 1638, `plural` 55.
+// Шаг К-5 волны 7, задача 0б-1 (вкладка «Изменить» группы и канала, порт tweb
+// `editChat.tsx`): у ru +4 ключа tweb lang.ts — `TypePrivateGroup`, `TypePublicGroup`
+// (подпись строки типа группы), `ForumToggleDescription` (подпись секции с темами),
+// `ChannelTopicsDiscussionForbidden` (тост тем у группы с обсуждением); −18 наших
+// ключей снесённого `GroupEditFlow` и экранов `group/*` (`ChannelAddAdmin`,
+// `ChatHistoryHint`, `Discussion.{Link.Question,Linked,Unlink.Text}`,
+// `ForumTopic.EnableHint`, `Group.{MemberBadge,RestrictedBadge}`,
+// `Reactions.{All,None,Some}.Info`, `RemovedUsers.Description`, `RestrictedUsers{,.Description}`,
+// `Unban`, `UserRestrictions.{Action,CanDoMember,Title}`). Ключи tweb тех же экранов
+// оставлены — их читают вкладки пачки П-1. 
+// Шаг К-5 волны 7, вкладка профиля `AppSharedMediaTab` (порт tweb `sharedMedia.tsx`):
+// у ru +10 ключей tweb lang.ts — заголовки `Profile.Info.{Topic,Bot}`,
+// `PeerInfo.SharedMedia` и счётчики вкладок `SavedDialogsTabCount`, `MediaFiles`,
+// `StarGiftsCount`, `Files`, `Links`, `MusicFiles`, `Voice` (`plural` 51 → 58). 
+// Вместе с П-5 и К-4 из main: ru 1608, `plural` 62.
 const COMPOSITION = {
-  ru: { keys: 1620, plural: 55 },
-  uk: { keys: 838, plural: 35 },
-  es: { keys: 809, plural: 34 },
-  de: { keys: 810, plural: 35 },
-  fr: { keys: 805, plural: 34 },
+  ru: { keys: 1658, plural: 62 },
+  uk: { keys: 839, plural: 35 },
+  es: { keys: 810, plural: 34 },
+  de: { keys: 811, plural: 35 },
+  fr: { keys: 806, plural: 34 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -758,12 +789,18 @@ const COMPOSITION = {
 // Шагом К-4 волны 7 — у ru +1 ключ tweb `Chat.Input.Attach` (разбор — там же).
 // Шагом К-4 волны 7 (строка ввода) — у ru +14 ключей `chat/input.ts` (разбор — там же).
 // Баг-фиксами после П-5 — превью звонка и `ForwardedFrom` (разбор — там же).
+// Пачкой П-4 волны 7 — у ru +6 ключей tweb `AccDescr.*` и `CopyRestricted.*` (разбор — там же).
+// Пачкой П-4 волны 7 — у ru +13 ключей tweb звонков (разбор — у `COMPOSITION` выше).
+// Пачкой П-4 волны 7 (агент «ссылки») — у ru +11 ключей tweb и −4 `Folder.Invite.*` (разбор — там же).
+// Шагом К-5 волны 7 (0б-1) — у ru +4 ключа tweb `editChat` и −18 наших ключей снесённых
+// экранов `group/*` (разбор — у `COMPOSITION` выше); вкладкой профиля — +10 ключей
+// tweb `sharedMedia.tsx` (разбор — там же).
 const FINGERPRINT = {
-  ru: '3de96527',
-  uk: 'af81524a',
-  es: '57ce09fe',
-  de: '3224cfc5',
-  fr: '61cdac88',
+  ru: '53e7cfeb',
+  uk: '25b691ec',
+  es: 'fbf5f5dc',
+  de: '7f7219a7',
+  fr: 'f2405ee0',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

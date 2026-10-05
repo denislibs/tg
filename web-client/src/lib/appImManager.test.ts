@@ -15,6 +15,11 @@ import { generateMessageId } from '@core/history/messageId'
 import type { Managers } from '@/client/bootstrap'
 import { returnToStaticMarkup } from '@/test/staticMarkup'
 import { APP_TABS, AppImManager, LEFT_COLUMN_ACTIVE_CLASSNAME } from './appImManager'
+import internalLinkProcessor from './internalLinkProcessor'
+import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
+import I18n from '@lib/langPack'
+import rootScope from '@lib/rootScope'
+import { applyLang } from '@/test/lang'
 
 const columnRight = vi.hoisted(() => ({ sidebarEl: undefined as HTMLElement | undefined, toggleSidebar: () => Promise.resolve(), hide: () => {}, replaceSharedMediaTab: () => {} }))
 vi.mock('@components/sidebarRight', () => ({ default: columnRight, RIGHT_COLUMN_ACTIVE_CLASSNAME: 'is-right-column-shown' }))
@@ -85,6 +90,7 @@ const managers = {
   presence: { get: async() => [] },
   dialogs: { hasDialog: async() => true, refresh: async() => null },
   channels: { join: async() => {} },
+  messages: { getDiscussionMessage: vi.fn() },
 } as unknown as Managers
 
 let im: AppImManager
@@ -346,6 +352,111 @@ describe('хэш (tweb :1912-2031)', () => {
     await im.setInnerPeer({ peerId: 77 })
     await settle()
     expect(overrideHash).toHaveBeenCalledWith('77')
+  })
+})
+
+describe('тред комментариев адресуется номером зеркала (Б-110)', () => {
+  const GROUP = -900
+  const MIRROR = 50
+
+  it('`op({commentId})` — `openComment` (tweb :2208-2224): `getDiscussionMessage(канал, пост)` → тред группы по номеру зеркала', async() => {
+    const getDiscussionMessage = (managers.messages as unknown as { getDiscussionMessage: ReturnType<typeof vi.fn> }).getDiscussionMessage
+    getDiscussionMessage.mockResolvedValueOnce({ _: 'message', peerId: GROUP, id: generateMessageId(MIRROR) })
+    const setInnerPeer = vi.spyOn(AppImManager.prototype, 'setInnerPeer').mockResolvedValue(undefined)
+    construct()
+    await im.op({ peer: { _: 'channel', id: 1, pFlags: {} } as never, lastMsgId: 30, commentId: 7 })
+    expect(getDiscussionMessage).toHaveBeenCalledWith(-1, generateMessageId(30))
+    expect(setInnerPeer).toHaveBeenCalledWith({
+      peerId: GROUP, lastMsgId: generateMessageId(7), threadId: generateMessageId(MIRROR), type: ChatType.Discussion,
+    })
+  })
+
+  it('ссылка на тред группы (`?thread=` номер зеркала) — то же окно, что клик по футеру поста', async() => {
+    const setInnerPeer = vi.spyOn(AppImManager.prototype, 'setInnerPeer').mockResolvedValue(undefined)
+    construct()
+    await im.op({ peer: { _: 'channel', id: 900, pFlags: { megagroup: true } } as never, threadId: MIRROR })
+    expect(setInnerPeer).toHaveBeenCalledWith(expect.objectContaining({
+      peerId: GROUP, threadId: generateMessageId(MIRROR), type: ChatType.Discussion,
+    }))
+  })
+})
+
+describe('внутренние ссылки и ориентиры колонок (П-4: tweb :326, :349-352, :1897, :3199)', () => {
+  it('`construct` поднимает `internalLinkProcessor` (tweb :326)', () => {
+    const constructLinks = vi.spyOn(internalLinkProcessor, 'construct')
+    construct()
+    expect(constructLinks).toHaveBeenCalledWith(managers)
+  })
+
+  it('`#?tgaddr=tg://resolve?domain=…` — `openUrl` → обработчик `tg_resolve` → `openUsername`', async() => {
+    history.replaceState(null, '', location.pathname + '#?tgaddr=' + encodeURIComponent('tg://resolve?domain=durov&post=3'))
+    const openUsername = vi.spyOn(AppImManager.prototype, 'openUsername').mockResolvedValue(undefined)
+    construct()
+    await settle()
+    expect(openUsername).toHaveBeenCalledWith({ userName: 'durov', lastMsgId: 3, commentId: undefined, threadId: undefined })
+  })
+
+  it('`openUrl` внешней ссылки без действия ничего не открывает, с `newWindowIfNoClick` — новая вкладка', () => {
+    construct()
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    im.openUrl('https://example.com/')
+    expect(open).not.toHaveBeenCalled()
+    im.openUrl('https://example.com/', true)
+    expect(open).toHaveBeenCalledWith('https://example.com/', '_blank', 'noopener,noreferrer')
+  })
+
+  it('стартовый `/qr/<token>` — вопрос подтверждения входа, адрес зачищен', async() => {
+    const pathname = location.pathname
+    history.replaceState(null, '', '/qr/abc123')
+    try {
+      const confirmLogin = vi.spyOn(internalLinkProcessor, 'processLoginTokenLink').mockResolvedValue(undefined)
+      construct()
+      expect(confirmLogin).toHaveBeenCalledWith('abc123')
+      await settle()
+      expect(location.pathname).toBe('/')
+    } finally {
+      history.replaceState(null, '', pathname)
+    }
+  })
+
+  it('ссылка «пропустить к чату» показана и ведёт фокус в центр; имена ориентиров колонок', () => {
+    const { left, center } = construct()
+    const skip = document.getElementById('skip-to-content')!
+    expect(skip.hidden).toBe(false)
+    expect(skip.textContent).toContain('Skip to conversation')
+    expect(left.getAttribute('aria-label')).toBe('Chat list')
+    expect(document.getElementById('column-right')!.getAttribute('aria-label')).toBe('Chat info')
+
+    const focus = vi.spyOn(center, 'focus')
+    const e = new MouseEvent(CLICK_EVENT_NAME, { bubbles: true, cancelable: true })
+    skip.dispatchEvent(e)
+    expect(focus).toHaveBeenCalled()
+    expect(e.defaultPrevented).toBe(true)
+  })
+
+  it('пакет ТОГО ЖЕ языка после старта (кэш без `AccDescr.*` → свежий с сервера) переводит ссылку и ориентиры (Б-141)', async() => {
+    // Кэш старта — русский, но без ключей ориентиров: строки падают на английский.
+    I18n.setLangCode('ru')
+    await I18n.applyServerLangPack({ _: 'langPackDifference', lang_code: 'ru', from_version: 0, version: 1, strings: [] }, 'ru')
+    try {
+      document.getElementById('skip-to-content')?.replaceChildren() // подпись прошлых `construct` этого файла
+      const { left } = construct()
+      const skip = document.getElementById('skip-to-content')!
+      expect(skip.textContent).toBe('Skip to conversation')
+
+      // `catchUpLangPack`: тот же язык — `language_change` не объявляется, только `language_apply`.
+      const languageChange = vi.fn()
+      rootScope.addEventListener('language_change', languageChange)
+      await applyLang('ru')
+      rootScope.removeEventListener('language_change', languageChange)
+      expect(languageChange).not.toHaveBeenCalled()
+
+      expect(skip.textContent).toBe('Перейти к переписке')
+      expect(left.getAttribute('aria-label')).toBe('Список чатов')
+      expect(document.getElementById('column-right')!.getAttribute('aria-label')).toBe('Информация о чате')
+    } finally {
+      await applyLang('en')
+    }
   })
 })
 

@@ -5,7 +5,7 @@
  *
  * Вкладка НАСТОЯЩАЯ — `AppCallsTab` из `solidJsTabs/tabs.ts`, открытая через
  * колоночный слайдер (`@/test/sidebarLeft` → класс `AppSidebarLeft`).
- * Стабы — только границы: менеджеры воркера, движок звонков (до 5-5 он и есть
+ * Стабы — только границы: менеджеры воркера, движок звонков (за
  * `appImManager.callUser`), открытие чата, попап удаления (до 2C-8) и
  * геометрия (happy-dom её не считает).
  *
@@ -218,14 +218,16 @@ describe('вкладка «Звонки» — действия строки', ()
     expect(callButton(videoRow)!.classList.contains('videocamera')).toBe(true)
     expect(callButton(voiceRow)!.classList.contains('phone')).toBe(true)
 
+    // `appImManager.callUser` идёт очередью переходов (`callTransitions`) — асинхронно
     callButton(videoRow)!.click()
-    expect(startOutgoing).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() => expect(startOutgoing).toHaveBeenCalledTimes(1))
     const [peer, video] = startOutgoing.mock.calls[0]
     expect(peer).toMatchObject({ id: 2, name: 'Борис' })
     expect(video).toBe(true)
     expect(setInnerPeer).not.toHaveBeenCalled()
 
     callButton(voiceRow)!.click()
+    await vi.waitFor(() => expect(startOutgoing).toHaveBeenCalledTimes(2))
     expect(startOutgoing.mock.calls[1][1]).toBe(false)
   })
 

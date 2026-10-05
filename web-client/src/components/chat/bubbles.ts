@@ -292,6 +292,11 @@ export interface BubblesManagers extends PeerTitleManagers {
      * которому ответы не нужны.
      */
     fetchMessageReplyTo?(peerId: number, mid: number): Promise<MyMessage | undefined>
+    /** Корень треда комментариев поста — зеркало в группе обсуждения, порт
+     *  `appMessagesManager.getDiscussionMessage` (tweb :8814). Зовёт клик по
+     *  футеру комментариев (`openDiscussion`). Опционален по той же причине, что
+     *  `react`/`unreact`: без него футер рисуется, но тред не открывается. */
+    getDiscussionMessage?(peerId: number, mid: number): Promise<MyMessage | undefined>
     /** Лента отложенных (`ChatType.Scheduled`) — порт ветки `requestHistory`
      *  (tweb bubbles.ts:11822-11834, `appMessagesManager.getScheduledMessages`):
      *  набор целиком, по возрастанию даты отправки. Опциональна: без неё лента
@@ -3247,9 +3252,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
     }
 
     // Внутренняя ссылка Telegram (`data-anchor-action`) — tweb исполняет её
-    // глобалью из `addAnchorListener` (`internalLinkProcessor`, бэклог Б-8). До
-    // него остаётся поведение браузера: `setBlankToAnchor` проставил
-    // `target="_blank"`, и ветки ниже по такому клику не идут.
+    // inline-`onclick` якоря; у нас — делегированный слушатель на `document`
+    // (`helpers/addAnchorListener.ts::listenForAnchorClicks`, обработчики —
+    // `lib/internalLinkProcessor.ts`). Ветки ниже по такому клику не идут.
     const anchor = target.closest<HTMLElement>(`[${ANCHOR_ACTION_ATTRIBUTE}]`)
     if (anchor) {
       return
@@ -3358,7 +3363,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
       // tweb :3194 `this.chat.appImManager.callUser(this.peerId.toUserId(), type)`:
       // звонок бывает только личный (у нас «группа или канал» — знак ключа).
       if (!isAnyChat(this.peerId)) {
-        this.chat.appImManager.callUser(this.peerId, callDiv.dataset.type as 'voice' | 'video')
+        void this.chat.appImManager.callUser(this.peerId, callDiv.dataset.type as 'voice' | 'video')
       }
       return
     }
@@ -3504,25 +3509,34 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
   /**
    * Открыть тред комментариев кликнутого поста — тело ветки tweb
-   * bubbles.ts:3327-3341 (не-`REPLIES_PEER_ID`).
+   * bubbles.ts:3767-3782 (не-`REPLIES_PEER_ID`).
    *
    * Тред берётся тем же гейтом, что рисовал футер
    * (`getMessageWithCommentReplies` — у оригинала на этом месте
-   * `getMessageWithReplies`, :3329): у альбома он живёт на ОДНОМ сообщении
+   * `getMessageWithReplies`, :3769): у альбома он живёт на ОДНОМ сообщении
    * группы, а бабл у альбома один.
+   *
+   * Тред адресуется номером ЗЕРКАЛА поста в группе обсуждения
+   * (`getDiscussionMessage` → `threadId: message.mid`, :3773-3780): тем же
+   * номером, что `reply_to_top_id` комментариев, — поэтому окно треда, эхо
+   * отправки и живые кадры сходятся по одному ключу (Б-110).
    */
   private openDiscussion(bubble: HTMLElement): void {
     const message = this.getMessage(Number(bubble.dataset.mid))
     const found = message && this.getMessageWithCommentReplies(message)
     // `channel_id` уже гарантирован гейтом — повтор нужен только типу
     // (в схеме параметр опционален, делит бит с `comments`).
-    if (!found?.replies.channel_id) return
+    const channelId = found?.replies.channel_id
+    if (!found || !channelId) return
 
-    // tweb :3335 — пир треда это ГРУППА ОБСУЖДЕНИЯ, а не канал.
-    void this.chat.appImManager.setInnerPeer({
-      peerId: toPeerId(found.replies.channel_id, true),
-      type: ChatType.Discussion,
-      threadId: found.mid,
+    void this.managers.messages.getDiscussionMessage?.(this.peerId, found.mid).then((discussion) => {
+      if (!discussion) return
+      // tweb :3776 — пир треда это ГРУППА ОБСУЖДЕНИЯ, а не канал.
+      void this.chat.appImManager.setInnerPeer({
+        peerId: toPeerId(channelId, true),
+        type: ChatType.Discussion,
+        threadId: discussion.id,
+      })
     })
   }
 
@@ -3697,11 +3711,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
       if (isEnd?.bottom) this.setLoaded('bottom', true)
     }
 
-    let first: MyMessage | undefined
+    let root: MyMessage | undefined
     for (const item of history) {
       const message = typeof item === 'number' ? this.getMessage(item) : item
       if (!message) continue
-      first ??= message
+      if (message.id === this.chat.threadId) root = message
       // `canAnimateLadder: true` — tweb bubbles.ts:10058-10062: страницу
       // истории лестница анимирует, точечную дорисовку — нет.
       this.safeRenderMessage(message, reverse, true)
@@ -3711,8 +3725,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // ТОЙ ЖЕ пачкой, что и корень: у оригинала она и вставляется в тот же
     // слайс истории (appMessagesManager.ts:9782-9797), то есть приезжает в
     // ленту неотличимо от настоящего сообщения.
-    if (isEnd?.top && first) {
-      const service = this.threadServiceStartMessage(first)
+    if (isEnd?.top && root) {
+      const service = this.threadServiceStartMessage(root)
       if (service) {
         this.safeRenderMessage(service, reverse, true)
       }
@@ -3756,15 +3770,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * вместе с проверкой `safeRenderMessage` («бабл с таким адресом уже есть»):
    * второй раз она не появится.
    *
-   * КОРЕНЬ — ПЕРВОЕ сообщение сведённой с верхом страницы. У оригинала он
-   * берётся адресно (`getMessageByPeer(peerId, options.threadId)`), у нас так
-   * нельзя: клиент адресует тред номером ПОСТА (внешний контракт), а в окне
-   * лежит его ЗЕРКАЛО в группе обсуждения — с другим номером
-   * (`usecase/chat/sync.go:27-33`, `resolveThreadRootForQuery`). Зато бэкенд
-   * гарантирует, что корень в сведённом с верхом окне ЕСТЬ и стоит первым:
-   * SQL берёт его условием `thread_root_id=root OR id=root`, а не попавший в
-   * страницу — подшивает синтетическим `seq=0`
-   * (`usecase/chat/sync.go:112-135`, `prependForeignThreadRoot`).
+   * КОРЕНЬ — адресно, сообщение страницы с номером треда, как у оригинала
+   * (`getMessageByPeer(peerId, options.threadId)`, appMessagesManager.ts:13177):
+   * тред комментариев адресуется номером ЗЕРКАЛА поста в группе обсуждения
+   * (`getDiscussionMessage`, см. `openDiscussion`), и бэкенд кладёт корень в
+   * окно сам — условием `thread_root_id=root OR id=root`
+   * (`usecase/chat/sync.go`, `GetHistory`).
    *
    * НОМЕР — дробь поверх корня (`generateTempMessageId`, порт того же вызова в
    * оригинале, :6121): плашка обязана встать сразу за ним, а сортировка окна

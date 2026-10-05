@@ -547,15 +547,12 @@ export const AppSharedFolderTab =
 // ── Права группы (tweb :640-648) — задача 0б-6 волны 7 ───────────────────────
 // Вкладка правой колонки «Разрешения» (`sidebarRight/tabs/groupPermissions/
 // groupPermissions.solid.tsx`); открывает её редактор группы (`editChat`, 0б-1).
-// ВРЕМЕННО до 0б-1: форма eventable, у tweb — обычная `scaffoldSolidJSTab`. Мосту
-// React-`GroupEditFlow` нужно событие `close`, чтобы показать свой оверлей сразу,
-// а не после выезда вкладки; `editChat` этого моста не держит.
 type AppGroupPermissionsTabPayload = {
   chatId: ChatId
 }
 
 export const AppGroupPermissionsTab =
-  scaffoldSolidJSTabEventable<AppGroupPermissionsTabPayload>({
+  scaffoldSolidJSTab<AppGroupPermissionsTabPayload>({
     title: 'ChannelPermissions',
     getComponentModule: () => import('../sidebarRight/tabs/groupPermissions/groupPermissions.solid'),
     onOpenAfterTimeout: function() {
@@ -578,12 +575,12 @@ export const AppChatTypeTab =
 // ── Ссылки-приглашения (tweb :670-712) — задача 0б-3 волны 7 ─────────────────
 // Список (`chatInviteLinks.solid.tsx`), одна ссылка (`chatInviteLink.solid.tsx`) и
 // её редактор (`editChatInviteLink.solid.tsx`); общее — `chatInviteLinkShared.ts`.
-// Список открывает редактор чата (`editChat`, 0б-1; до неё — мост React
-// `GroupEditFlow`), остальные — сам список. `getInitArgs` висит на конструкторе,
-// как у оригинала: предзагрузку зовёт открывающий. Расхождения: `adminId` у
-// списка нет (О-121), `onUpdate` у ссылки — тоже (его зовёт только список
-// заявок, О-122); `getInitArgs` берёт `managers` первым аргументом (DI-ручки вне
-// вкладки нет — расхождение 6 `chatInviteLinkShared.ts`).
+// Список открывает редактор чата (`editChat`, 0б-1), остальные — сам список.
+// `getInitArgs` висит на конструкторе, как у оригинала: предзагрузку зовёт
+// открывающий. Расхождения: `adminId` у списка нет (О-121), `onUpdate` у ссылки —
+// тоже (его зовёт только список заявок, О-122); `getInitArgs` берёт `managers`
+// первым аргументом (DI-ручки вне вкладки нет — расхождение 6
+// `chatInviteLinkShared.ts`).
 import { getChatInviteLinksInitArgs, type ChatInvite, type ChatInviteActions } from '../sidebarRight/tabs/chatInviteLinkShared'
 import type { ButtonMenuItemOptionsVerifiable } from '@components/buttonMenu'
 
@@ -730,6 +727,20 @@ export const AppEditContactTab =
   scaffoldSolidJSTab<PeerId>({
     title: 'Edit',
     getComponentModule: () => import('../sidebarRight/tabs/editContact.solid'),
+  })
+
+// ── «Изменить» группы и канала (tweb :719-727) — задача 0б-1 волны 7 (К-5) ────
+// Корень редактирования чата (`sidebarRight/tabs/editChat.solid.tsx`); открывает
+// его кнопка «Изменить» общих медиа (tweb `sharedMedia.tsx:674-702`). `chatId` —
+// сырой положительный id чата, как у вкладок, которые он открывает.
+type AppEditChatTabPayload = {
+  chatId: ChatId
+}
+
+export const AppEditChatTab =
+  scaffoldSolidJSTab<AppEditChatTabPayload>({
+    title: 'Edit',
+    getComponentModule: () => import('../sidebarRight/tabs/editChat.solid'),
   })
 
 // ── Поиск GIF и стикеров правой колонки (tweb :458-462, :521-525) — задача 0б-11 ─

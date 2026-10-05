@@ -57,8 +57,9 @@
 //     вместе с ним (`sliderTab.ts:109` роняет его же ещё раз), третьих
 //     читателей у него нет. У нас (задача 13 плана) тот же скроллер ОБЩИЙ с
 //     шапкой профиля и переживает подсистему: его создаёт и роняет хозяин —
-//     хук `core/hooks/useSearchSuper.ts` (роль `SliderSuperTab`), на его
-//     `onAdditionalScroll` сидит шапка панели (`sharedMedia.tsx:484-493`).
+//     вкладка (`SliderSuperTab` у `AppSharedMediaTab`, `sidebarRight/tabs/
+//     sharedMediaTab.ts`), на его `onAdditionalScroll` сидит шапка вкладки
+//     (`sharedMedia.solid.tsx`, tweb `sharedMedia.tsx:604-615`).
 //     Развилка закрыта В ПОЛЬЗУ ХОЗЯИНА: `destroy()` скроллер НЕ роняет, а
 //     снимает только то, что класс повесил сам — свой `onScrolledBottom`
 //     (`:616-621`), и только если хозяин не переназначил его после. Отказ при
@@ -1397,9 +1398,9 @@ export default class AppSearchSuper {
 
   /** tweb `:2375-2377` — счётчики нескольких вкладок ОДНИМ запросом. */
   public getSearchCounters(filters: SearchSuperType[]) {
-    const { peerId } = this.searchContext
+    const { peerId, threadId } = this.searchContext
     const wire = filters.map((inputFilter) => WIRE_FILTER[inputFilter]).filter((f): f is MessagesWireFilter => !!f)
-    return this.managers.messages.searchCounters(peerId, wire).then((counters) => filters.map((inputFilter) => ({
+    return this.managers.messages.searchCounters(peerId, wire, threadId).then((counters) => filters.map((inputFilter) => ({
       inputFilter,
       count: counters.find((c) => c.filter === WIRE_FILTER[inputFilter])?.count ?? 0,
     })))
