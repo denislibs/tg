@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf16"
 	"unicode/utf8"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -203,6 +204,8 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	//     нет, ссылка на чужой пир сбрасывается (непроверенный чат наружу не едет).
 	var replyPeerID *int64
 	var snapName string
+	// origText — текст найденного оригинала ответа: цитата сверяется с ним.
+	var origText *string
 	if in.ReplyToID != nil {
 		srcChat := in.ChatID
 		if in.ReplyToPeerID != nil {
@@ -217,6 +220,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		case orig.Deleted:
 			// удалённый оригинал — как ненайденный
 		case orig.ChatID != in.ChatID:
+			origText = &orig.Text
 			ok, err := i.chats.IsMember(ctx, orig.ChatID, in.SenderID)
 			if err != nil {
 				return domain.Message{}, err
@@ -227,10 +231,14 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			src := orig.ChatID
 			replyPeerID = &src
 			snapName = i.replyAuthorName(ctx, orig)
-
+		default:
+			origText = &orig.Text
 		}
 	}
 	// Reply quote: осмыслен только при ответе; обрезаем длину, пустой — сбрасываем.
+	// Цитата — ФРАГМЕНТ оригинала (сервер Telegram: QUOTE_TEXT_INVALID): чужих
+	// слов, которых автор не писал, в «цитате» быть не может. Оригинала нет —
+	// цитировать нечего, ответ остаётся обычным.
 	if in.ReplyToID == nil {
 		in.ReplyQuoteText, in.ReplyQuoteOffset = nil, nil
 	} else if in.ReplyQuoteText != nil {
@@ -238,10 +246,14 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		if utf8.RuneCountInString(q) > maxReplyQuoteRunes {
 			q = string([]rune(q)[:maxReplyQuoteRunes])
 		}
-		if q == "" {
+		if q == "" || origText == nil {
 			in.ReplyQuoteText, in.ReplyQuoteOffset = nil, nil
 		} else {
-			in.ReplyQuoteText = &q
+			off, ok := quoteOffset(*origText, q, in.ReplyQuoteOffset)
+			if !ok {
+				return domain.Message{}, domain.ErrInvalid
+			}
+			in.ReplyQuoteText, in.ReplyQuoteOffset = &q, &off
 		}
 	}
 	if in.MediaID != nil {
@@ -325,10 +337,11 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	in.Effect = sanitizeEffect(in.Effect, in.Type)
 
 	// Групповые дефолтные разрешения + slowmode + приватность получателя.
-	// Служебные сообщения (в том числе лог звонка) генерирует сам сервер — их
-	// не ограничиваем: решение «можно ли» принято там, где родилось действие
-	// (звонок, например, гейтится правилом звонков на call_request).
-	if in.Action == nil {
+	// Служебные сообщения, которые генерирует сам сервер (лог звонка, состав
+	// группы), не ограничиваем: решение «можно ли» принято там, где родилось
+	// действие (звонок, например, гейтится правилом звонков на call_request).
+	// Действие ПО ЗАПРОСУ пользователя (userAction) — та же отправка.
+	if in.Action == nil || in.userAction {
 		switch {
 		case broadcast:
 			// В канал пишут ПО ПРАВУ ПОСТИНГА. Дефолтная маска участника
@@ -440,6 +453,13 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			return e
 		}
 		charge = c
+		// Запись, обязанная лечь в эту же транзакцию (подарок: списание и
+		// выдача) — после всех гейтов, до вставки сообщения.
+		if in.prepare != nil {
+			if e := in.prepare(ctx, &in); e != nil {
+				return e
+			}
+		}
 		seq, e := i.msgs.NextSeq(ctx, in.ChatID)
 		if e != nil {
 			return e
@@ -496,6 +516,12 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		msg.Checklist = preChecklist
 		msg.Giveaway = preGiveaway
 		msg.Gift = preGift
+		if msg.Gift == nil && msg.GiftID != nil && i.stars != nil {
+			// подарок выдан в этой же транзакции (prepare) — до неё id не было
+			if info, e := i.stars.GiftInfo(ctx, *msg.GiftID, 0); e == nil {
+				msg.Gift = &info
+			}
+		}
 		// Медиа-мета в live-кадр (имя/размер/mime/размеры) — как в history read
 		// model, чтобы файл у получателя не рисовался заглушкой до перезагрузки.
 		if msg.MediaID != nil {
@@ -1040,18 +1066,16 @@ func (i *Interactor) readMentionContents(ctx context.Context, chatID, userID int
 	return nil
 }
 
-// checkPrivateSendPrivacy применяет к отправке в приватный чат правила
-// получателя «кто может отправлять мне сообщения/голосовые» и чёрный список
-// (заблокированный отправитель получает message_error reason=privacy).
+// checkPrivateSendPrivacy применяет к отправке в приватный и в секретный чат
+// правила получателя «кто может отправлять мне сообщения/голосовые» и чёрный
+// список (заблокированный отправитель получает message_error reason=privacy).
+// Удалённому аккаунту не пишут вовсе (Telegram INPUT_USER_DEACTIVATED).
 func (i *Interactor) checkPrivateSendPrivacy(ctx context.Context, in SendInput) error {
-	if i.privacy == nil {
-		return nil
-	}
 	typ, err := i.chats.ChatType(ctx, in.ChatID)
 	if err != nil {
 		return err
 	}
-	if typ != domain.ChatTypePrivate {
+	if typ != domain.ChatTypePrivate && typ != domain.ChatTypeSecret {
 		return nil
 	}
 	members, err := i.chats.MemberIDs(ctx, in.ChatID)
@@ -1065,6 +1089,12 @@ func (i *Interactor) checkPrivateSendPrivacy(ctx context.Context, in SendInput) 
 		}
 	}
 	if peer == 0 { // «Избранное»/self — ограничений нет
+		return nil
+	}
+	if i.userCard(ctx, peer).Deleted() {
+		return domain.ErrForbidden
+	}
+	if i.privacy == nil {
 		return nil
 	}
 	keys := []domain.PrivacyKey{domain.PrivacyMessages}
@@ -1115,4 +1145,22 @@ func (i *Interactor) Typing(ctx context.Context, chatID, userID int64, action do
 		_ = i.publisher.PublishToUser(ctx, uid, body)
 	}
 	return nil
+}
+
+// quoteOffset — где цитата q стоит в тексте оригинала, в единицах UTF-16 (так
+// считает offset схема, inputReplyToMessage.quote_offset). Сперва — по
+// присланному offset; не совпало (клиент выделил тот же фрагмент, но посчитал
+// сдвиг иначе) — первое вхождение. Нет вхождения — цитата не из оригинала.
+func quoteOffset(text, q string, hint *int) (int, bool) {
+	t := utf16.Encode([]rune(text))
+	u := utf16.Encode([]rune(q))
+	if hint != nil && *hint >= 0 && *hint+len(u) <= len(t) && slices.Equal(t[*hint:*hint+len(u)], u) {
+		return *hint, true
+	}
+	for at := 0; at+len(u) <= len(t); at++ {
+		if slices.Equal(t[at:at+len(u)], u) {
+			return at, true
+		}
+	}
+	return 0, false
 }

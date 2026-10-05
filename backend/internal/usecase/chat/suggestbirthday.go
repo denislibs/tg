@@ -30,5 +30,8 @@ func (i *Interactor) SuggestBirthday(ctx context.Context, fromUserID, toUserID i
 		ChatID:   chatID,
 		SenderID: fromUserID,
 		Action:   domain.NewMessageActionSuggestBirthday(b),
+		// запрос пользователя: блок и «кто может мне писать» получателя
+		// действуют, как на обычную отправку
+		userAction: true,
 	})
 }

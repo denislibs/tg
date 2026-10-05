@@ -52,6 +52,28 @@ func (i *Interactor) CreateTopic(ctx context.Context, chatID, userID int64, titl
 	if !ok {
 		return domain.ForumTopicRecord{}, domain.ErrNotFound
 	}
+	// Тема бывает только у форума (channels.createForumTopic у не-форума —
+	// CHANNEL_FORUM_MISSING), и создать её вправе тот, кому hasRights
+	// 'manage_topics': админ — по своему биту, участник — если тема не
+	// запрещена правами чата. Отдельного запрета тем у участника у нас нет,
+	// поэтому участника гейтит отправка (userAction ниже: запрет писать,
+	// личное ограничение, медленный режим).
+	if i.groups == nil {
+		return domain.ForumTopicRecord{}, domain.ErrNotFound
+	}
+	if forum, e := i.groups.IsForum(ctx, chatID); e != nil {
+		return domain.ForumTopicRecord{}, e
+	} else if !forum {
+		return domain.ForumTopicRecord{}, domain.ErrForbidden
+	}
+	m, err := i.groups.GetMember(ctx, chatID, userID)
+	if err != nil {
+		return domain.ForumTopicRecord{}, err
+	}
+	if (m.Role == domain.RoleCreator || m.Role == domain.RoleAdmin) &&
+		!domain.HasRight(m.Role, m.Rights, domain.RightManageTopics) {
+		return domain.ForumTopicRecord{}, domain.ErrForbidden
+	}
 	if iconColor < 0 {
 		iconColor = 0
 	}
@@ -62,7 +84,8 @@ func (i *Interactor) CreateTopic(ctx context.Context, chatID, userID int64, titl
 	// едет параметром title.
 	root, err := i.Send(ctx, SendInput{
 		ChatID: chatID, SenderID: userID,
-		Action: domain.NewMessageActionTopicCreate(title, iconColor),
+		Action:     domain.NewMessageActionTopicCreate(title, iconColor),
+		userAction: true,
 	})
 	if err != nil {
 		return domain.ForumTopicRecord{}, err
