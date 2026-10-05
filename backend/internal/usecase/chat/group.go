@@ -42,11 +42,32 @@ func (i *Interactor) requireRight(ctx context.Context, chatID, userID int64, r d
 // опознавал его по `raw.startsWith('{')` — дискриминатор был подделан дважды.
 // actor_id из действия при этом ушёл целиком: автор служебного сообщения и так
 // известен, он from_id.
+//
+// Состав ВЕЩАТЕЛЬНОГО канала служебками не пишется: «вступил», «вышел»,
+// «добавил», «исключил» в ленте канала раскрыли бы каждому подписчику, кто
+// подписан. Сервер Telegram их там не шлёт (список подписчиков видят только
+// админы), а «Вы вступили» tweb рисует локально (insertChannelJoinedService,
+// appMessagesManager.ts:9717-9775). Каналу хватает chat_update (число
+// подписчиков) и chat_removed выбывшему — их шлют сами мутации состава.
 func (i *Interactor) postGroupService(ctx context.Context, chatID, actorID int64, action domain.MessageAction) {
 	if i.msgs == nil || i.updates == nil {
 		return // wired without a message pipeline (some unit-test setups)
 	}
+	if isMembershipAction(action) {
+		if typ, err := i.chats.ChatType(ctx, chatID); err != nil || typ == domain.ChatTypeChannel {
+			return
+		}
+	}
 	_, _ = i.Send(ctx, SendInput{ChatID: chatID, SenderID: actorID, Action: action})
+}
+
+// isMembershipAction — служебное действие о СОСТАВЕ чата (кто вошёл или вышел).
+func isMembershipAction(a domain.MessageAction) bool {
+	switch a.(type) {
+	case domain.MessageActionChatAddUser, domain.MessageActionChatDeleteUser, domain.MessageActionChatJoinedByLink:
+		return true
+	}
+	return false
 }
 
 // postGroupServiceMedia — postGroupService для действий, несущих фото
@@ -359,7 +380,15 @@ func (i *Interactor) SetChatNotify(ctx context.Context, chatID, userID int64, pr
 	return i.groups.SetNotify(ctx, chatID, userID, preview, sound)
 }
 
+// ChatCard — полная карточка чата (channels.getFullChannel) тому, кто чат
+// читает (RequireChatRead): участнику либо любому для публичного чата.
+// Карточку чужого приватного чата — название, описание, фото, число
+// участников, обсуждение — не получить, перебирая id подряд. Создание и
+// вступление зовут её уже после вступления, им гейт не мешает.
 func (i *Interactor) ChatCard(ctx context.Context, chatID, viewerID int64) (domain.ChatRecord, error) {
+	if err := i.RequireChatRead(ctx, chatID, viewerID); err != nil {
+		return domain.ChatRecord{}, err
+	}
 	return i.groups.Card(ctx, chatID, viewerID)
 }
 
@@ -368,19 +397,44 @@ func (i *Interactor) UsersByIDs(ctx context.Context, viewerID int64, ids []int64
 	return i.groups.UsersByIDs(ctx, viewerID, ids)
 }
 
-// ListMembers returns the chat's members (role + rights + mute). The viewer must
-// be a member of the chat; discussion-группа канала — исключение (комментарии
-// и @-упоминания доступны подписчику до вступления, как чтение треда).
-func (i *Interactor) ListMembers(ctx context.Context, chatID, viewerID int64, query string, offset, limit int) ([]domain.Member, error) {
-	ok, err := i.chats.IsMember(ctx, chatID, viewerID)
+// KnownUsersByIDs — карточки по голым id для внешней ручки (/users?ids=,
+// аналог users.getUsers): только тех, кто зрителю известен (KnownUserIDs).
+// Неизвестный id молча выпадает из вектора — как у оригинала, где чужой
+// access_hash не даёт пользователя вовсе. Перебрать каталог по подряд идущим
+// id так нельзя.
+func (i *Interactor) KnownUsersByIDs(ctx context.Context, viewerID int64, ids []int64) ([]domain.UserReal, error) {
+	known, err := i.groups.KnownUserIDs(ctx, viewerID, ids)
 	if err != nil {
 		return nil, err
 	}
-	if !ok {
-		disc, e := i.groups.IsDiscussionGroup(ctx, chatID)
-		if e != nil || !disc {
-			return nil, domain.ErrForbidden
+	keep := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if known[id] {
+			keep = append(keep, id)
 		}
+	}
+	return i.groups.UsersByIDs(ctx, viewerID, keep)
+}
+
+// ListMembers returns the chat's members (role + rights + mute).
+//
+// Кому:
+//   - вещательный канал — только владельцу и админам (tweb hasRights
+//     view_participants: `!broadcast || creator || isAdmin`, сервер иначе
+//     CHAT_ADMIN_REQUIRED): состав подписчиков канала скрыт;
+//   - прочие — тому, кто чат читает, а группу обсуждения ещё и подписчику
+//     канала, не забаненному в ней (RequireDiscussionRead: комментарии и
+//     @-упоминания до вступления — как чтение треда).
+func (i *Interactor) ListMembers(ctx context.Context, chatID, viewerID int64, query string, offset, limit int) ([]domain.Member, error) {
+	a, err := i.chats.Access(ctx, chatID, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	if a.Type == domain.ChatTypeChannel && !a.IsAdmin() {
+		return nil, domain.ErrForbidden
+	}
+	if !a.CanRead() && i.RequireDiscussionRead(ctx, chatID, viewerID) != nil {
+		return nil, domain.ErrForbidden
 	}
 	return i.groups.ListMembers(ctx, chatID, query, offset, limit)
 }

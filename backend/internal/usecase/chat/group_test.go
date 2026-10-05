@@ -28,6 +28,7 @@ type fakeGroupRepo struct {
 	archived     map[int64]map[int64]bool                     // userID -> chatID -> archived
 	forum        map[int64]bool                               // chatID -> темы включены
 	mutedUntil   map[int64]map[int64]*time.Time               // chatID -> userID -> срок мьюта (nil — не замьючен)
+	public       map[int64]bool                               // chatID -> chats.is_public
 	// onCreate — хук «чат создан», зеркалящий строку в общий store. Тип чата
 	// едет ПАРАМЕТРОМ, а не подставляется хуком из головы: доставка сообщения
 	// зависит от вида пира (канал — журнал канала, остальное — веер по
@@ -53,6 +54,7 @@ func newFakeGroupRepo() *fakeGroupRepo {
 		discussion:   map[int64]int64{},
 		bans:         map[int64]map[int64]bool{},
 		restrictions: map[int64]map[int64]domain.MemberRestriction{},
+		public:       map[int64]bool{},
 	}
 }
 
@@ -89,6 +91,7 @@ func (r *fakeGroupRepo) SetType(_ context.Context, chatID int64, isPublic bool, 
 	if !ok {
 		return domain.ErrNotFound
 	}
+	r.public[chatID] = isPublic
 	// Публичность выражена НАЛИЧИЕМ username — отдельного поля у неё больше нет.
 	if isPublic {
 		c.Username = username
@@ -339,6 +342,7 @@ func (r *fakeGroupRepo) CreateMultiMember(_ context.Context, typ, title, about, 
 		Settings:  domain.ChatSettings{DefaultPerms: domain.AllMemberPerms, ReactionsMode: "all", HistoryForNew: true},
 	}
 	r.members[id] = map[int64]domain.Member{}
+	r.public[id] = isPublic
 	if r.onCreate != nil {
 		r.onCreate(id, typ)
 	}
@@ -563,6 +567,31 @@ func (r *fakeGroupRepo) AdminIDs(_ context.Context, chatID int64) ([]int64, erro
 	for uid, m := range r.members[chatID] {
 		if m.Role == domain.RoleCreator || m.Role == domain.RoleAdmin {
 			out = append(out, uid)
+		}
+	}
+	return out, nil
+}
+
+// access — снимок доступа (ChatRepo.Access) поверх фейка: членство и роль,
+// бан, публичность (chats.is_public при создании).
+func (r *fakeGroupRepo) access(chatID, userID int64, typ string) domain.ChatAccess {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	a := domain.ChatAccess{Type: typ, Public: r.public[chatID], Banned: r.bans[chatID][userID]}
+	if m, ok := r.members[chatID][userID]; ok {
+		a.Member, a.Role = true, m.Role
+	}
+	return a
+}
+
+// KnownUserIDs — в фейке известны все заведённые карточки (users).
+func (r *fakeGroupRepo) KnownUserIDs(_ context.Context, _ int64, ids []int64) (map[int64]bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := map[int64]bool{}
+	for _, id := range ids {
+		if _, ok := r.users[id]; ok {
+			out[id] = true
 		}
 	}
 	return out, nil
@@ -843,8 +872,10 @@ func (c groupChats) ClearMentions(context.Context, int64, int64, int64) (int, er
 func (c groupChats) NextMention(context.Context, int64, int64, int64) (int64, error) {
 	return 0, domain.ErrNotFound
 }
-func (c groupChats) MaxSeq(context.Context, int64) (int64, error)              { return 0, nil }
-func (c groupChats) ClearedSeq(context.Context, int64, int64) (int64, error)   { return 0, nil }
+func (c groupChats) MaxSeq(context.Context, int64) (int64, error) { return 0, nil }
+func (c groupChats) Access(_ context.Context, chatID, userID int64) (domain.ChatAccess, error) {
+	return c.fg.access(chatID, userID, "group"), nil
+}
 func (c groupChats) SetClearedSeq(context.Context, int64, int64, int64) error  { return nil }
 func (c groupChats) ChatType(context.Context, int64) (string, error)           { return "group", nil }
 func (c groupChats) PinMessage(context.Context, int64, int64, int64) error     { return nil }

@@ -380,6 +380,7 @@ func (h *ChannelHandler) CommentCounts(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ChannelHandler) ViewCounts(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
 	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
@@ -405,7 +406,7 @@ func (h *ChannelHandler) ViewCounts(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	counts, err := h.uc.ViewCounts(r.Context(), postIDs)
+	counts, err := h.uc.ViewCounts(r.Context(), chatID, user.ID, postIDs)
 	if err != nil {
 		h.mapErr(w, err)
 		return

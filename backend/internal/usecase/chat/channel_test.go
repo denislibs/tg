@@ -298,8 +298,13 @@ func (c groupMembershipChats) ClearMentions(context.Context, int64, int64, int64
 func (c groupMembershipChats) NextMention(context.Context, int64, int64, int64) (int64, error) {
 	return 0, domain.ErrNotFound
 }
-func (c groupMembershipChats) MaxSeq(context.Context, int64) (int64, error)             { return 0, nil }
-func (c groupMembershipChats) ClearedSeq(context.Context, int64, int64) (int64, error)  { return 0, nil }
+func (c groupMembershipChats) MaxSeq(context.Context, int64) (int64, error) { return 0, nil }
+
+// Access — членство/роль/бан/публичность из fakeGroupRepo, тип — из ChatType.
+func (c groupMembershipChats) Access(ctx context.Context, chatID, userID int64) (domain.ChatAccess, error) {
+	typ, _ := c.ChatType(ctx, chatID)
+	return c.fg.access(chatID, userID, typ), nil
+}
 func (c groupMembershipChats) SetClearedSeq(context.Context, int64, int64, int64) error { return nil }
 
 // ChatType отвечает из ОБЩЕГО store — того же, куда onCreate кладёт тип

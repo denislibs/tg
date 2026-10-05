@@ -37,6 +37,10 @@ type ChatRepo interface {
 	CreateSaved(ctx context.Context, userID int64) (int64, error)
 	MemberIDs(ctx context.Context, chatID int64) ([]int64, error)
 	IsMember(ctx context.Context, chatID, userID int64) (bool, error)
+	// Access — снимок доступа зрителя к чату одним запросом (вид, публичность,
+	// членство с ролью, бан); domain.ErrNotFound — чата нет. Решение «пускать
+	// ли» выводит domain.ChatAccess.CanRead (см. access.go).
+	Access(ctx context.Context, chatID, userID int64) (domain.ChatAccess, error)
 	ChatType(ctx context.Context, chatID int64) (string, error) // 'private'|'group'|'channel'|'saved'
 	ListDialogs(ctx context.Context, userID int64) ([]domain.DialogRecord, error)
 	ChatPartners(ctx context.Context, userID int64) ([]int64, error)
@@ -93,9 +97,9 @@ type ChatRepo interface {
 	IncUnreadReactions(ctx context.Context, chatID, userID int64) (int, error)
 	ClearUnreadReactions(ctx context.Context, chatID, userID int64) error
 	// «Очистить историю» у себя: MaxSeq — текущий максимум seq чата (горизонт);
-	// ClearedSeq/SetClearedSeq — персональный горизонт участника (cleared_max_seq).
+	// SetClearedSeq — персональный горизонт участника (cleared_max_seq). Читает
+	// его единый предикат видимости сообщения в хранилище.
 	MaxSeq(ctx context.Context, chatID int64) (int64, error)
-	ClearedSeq(ctx context.Context, chatID, userID int64) (int64, error)
 	SetClearedSeq(ctx context.Context, chatID, userID, seq int64) error
 	// Автоудаление: период чата, глобальный период пользователя (для новых чатов).
 	SetAutoDelete(ctx context.Context, chatID int64, seconds int) error
@@ -136,6 +140,9 @@ type GroupRepo interface {
 	// UsersByIDs — карточки глазами viewerID (domain.UserReal.SeenBy): имя из
 	// его книги и pFlags.contact. viewerID 0 — без зрителя (профильные имена).
 	UsersByIDs(ctx context.Context, viewerID int64, ids []int64) ([]domain.UserReal, error)
+	// KnownUserIDs — кто из ids известен зрителю (сам, @имя, контакт, общий
+	// чат, участник публичного чата, автор/источник пересылки в его чатах).
+	KnownUserIDs(ctx context.Context, viewerID int64, ids []int64) (map[int64]bool, error)
 	// ListMembers — страница участников; query — фильтр `channelParticipantsSearch`
 	// (префикс имени профиля или @username), пустой — все.
 	ListMembers(ctx context.Context, chatID int64, query string, offset, limit int) ([]domain.Member, error)
@@ -287,11 +294,14 @@ type MessageRepo interface {
 	// обогащённые собеседником). Для вкладки «Звонки».
 	CallLog(ctx context.Context, userID int64, offset, limit int) ([]domain.CallLogEntry, error)
 	// threadRootID != nil ограничивает окно тредом (топик/комментарии): сообщения
-	// с этим thread_root_id + само корневое сообщение.
-	// clearedSeq — персональный горизонт «очистки истории»: сообщения с
-	// seq<=clearedSeq скрыты для этого читателя (0 — ничего не очищено).
-	GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRootID *int64, clearedSeq int64) ([]domain.Message, error)
-	GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64, clearedSeq int64, tag string) ([]domain.Message, error)
+	// с этим thread_root_id + само корневое сообщение. В окно попадает только
+	// видимое зрителю userID (единый предикат видимости: удалённое, скрытое у
+	// себя, очищенное, скрытая предыстория — нет).
+	GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRootID *int64) ([]domain.Message, error)
+	GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64, tag string) ([]domain.Message, error)
+	// VisibleIDs — какие из ключей строк ids зритель видит (тот же предикат
+	// видимости, что у истории). Невидимые и несуществующие в карту не попадают.
+	VisibleIDs(ctx context.Context, viewerID int64, ids []int64) (map[int64]bool, error)
 	// LastMessageAt is the newest non-deleted message time by senderID in the chat
 	// (slowmode); domain.ErrNotFound when they haven't posted yet.
 	LastMessageAt(ctx context.Context, chatID, senderID int64) (time.Time, error)
@@ -310,7 +320,8 @@ type MessageRepo interface {
 	// без ttl. Идемпотентно.
 	SetDestructOnRead(ctx context.Context, chatID, readerID, readSeq int64) error
 	HideForUser(ctx context.Context, userID, msgID int64) error
-	ListThread(ctx context.Context, chatID, threadRootID int64, offset, limit int) ([]domain.Message, error)
+	// ListThread — сообщения треда по возрастанию, только видимые зрителю viewerID.
+	ListThread(ctx context.Context, chatID, viewerID, threadRootID int64, offset, limit int) ([]domain.Message, error)
 	CountThread(ctx context.Context, chatID, threadRootID int64) (int, error)
 	// ThreadReplyCounts — БАТЧ того же счёта, что и CountThread: rootID ->
 	// число живых сообщений треда. Корни без единого ответа в карту не
@@ -363,9 +374,9 @@ type MessageRepo interface {
 	// RecentThreadRepliers — авторы последних комментариев по каждому треду
 	// (новейшие первыми, не более limit различных на тред).
 	RecentThreadRepliers(ctx context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]int64, error)
-	// CountMessages — сколько сообщений истории видит зритель userID (без
-	// удалённых, скрытых им для себя и очищенных до clearedSeq).
-	CountMessages(ctx context.Context, chatID, userID, clearedSeq int64) (int, error)
+	// CountMessages — сколько сообщений истории видит зритель userID (тот же
+	// предикат видимости, что у окна истории).
+	CountMessages(ctx context.Context, chatID, userID int64) (int, error)
 	CountUnread(ctx context.Context, chatID, userID, afterSeq int64) (int, error)
 	MessageChatID(ctx context.Context, messageID int64) (int64, error)
 	// RegisterChannelViews records userID's view of every channel post in chatID
@@ -522,6 +533,9 @@ type SavedTagRepo interface {
 type MediaAccessRepo interface {
 	OwnerID(ctx context.Context, mediaID int64) (int64, error) // domain.ErrNotFound if absent
 	CanAccess(ctx context.Context, userID, mediaID int64) (bool, error)
+	// AvatarOwners — чьё это фото профиля (текущая аватарка или снимок
+	// галереи). Пускает к нему правило profile_photo владельца (CanAccessMedia).
+	AvatarOwners(ctx context.Context, mediaID int64) ([]int64, error)
 	// DimsByIDs батчем поднимает метаданные файлов по их id (модель истории:
 	// клиент резервирует бокс медиа до загрузки байтов). Отсутствующие id просто
 	// не попадают в карту.

@@ -61,29 +61,24 @@ func (i *Interactor) messageBySeq(ctx context.Context, chatID, seq int64) (domai
 }
 
 // MessagesBySeqs — сообщения чата по их НОМЕРАМ (аналог messages.getMessages).
-// Возвращает только ЖИВЫЕ: удалённого сообщения в выдаче нет, и именно на его
-// месте граница ставит messageEmpty (см. EmptyMessages). Не член чата —
-// domain.ErrNotFound.
+// Возвращает только ВИДИМЫЕ зрителю (visibleMessages: не удалённые, не скрытые
+// у себя, не очищенные, не скрытая предыстория) — на месте прочих граница
+// ставит messageEmpty (см. EmptyMessages), как channels.getMessages при
+// hidden_prehistory. Чат зрителю не читается — domain.ErrNotFound.
 //
 // Гидрация здесь та же, что у истории: без неё разрешённая ссылка приехала бы
 // беднее того же сообщения в ленте — то есть второй формой.
 func (i *Interactor) MessagesBySeqs(ctx context.Context, chatID, userID int64, seqs []int64) ([]domain.Message, error) {
-	ok, err := i.chats.IsMember(ctx, chatID, userID)
-	if err != nil {
+	if err := i.RequireChatRead(ctx, chatID, userID); err != nil {
 		return nil, err
-	}
-	if !ok {
-		return nil, domain.ErrNotFound
 	}
 	msgs, err := i.msgs.GetBySeqs(ctx, chatID, seqs)
 	if err != nil {
 		return nil, err
 	}
-	live := msgs[:0]
-	for _, m := range msgs {
-		if !m.Deleted {
-			live = append(live, m)
-		}
+	live, err := i.visibleMessages(ctx, userID, msgs)
+	if err != nil {
+		return nil, err
 	}
 	if err := i.hydrateMedia(ctx, live); err != nil {
 		return nil, err
