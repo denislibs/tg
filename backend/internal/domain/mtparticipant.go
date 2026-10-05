@@ -56,26 +56,68 @@ type ChannelParticipantCreator struct {
 	Underscore  string          `json:"_"`
 	UserID      int64           `json:"user_id"`
 	AdminRights ChatAdminRights `json:"admin_rights"`
+	Rank        string          `json:"rank,omitempty"`
 }
 
 func (ChannelParticipantCreator) isChannelParticipant() {}
 func (p ChannelParticipantCreator) Tag() string         { return p.Underscore }
 
+// channelParticipantSelf#a9478a1a flags:# via_request:flags.0?true
+// user_id:long inviter_id:long date:int subscription_until_date:flags.1?int
+// rank:flags.2?string = ChannelParticipant;
+//
+// Сам ЗРИТЕЛЬ, когда он обычный участник: у оригинала строка про себя несёт
+// то, чего о других не говорят, — кто привёл (inviter_id) и вошёл ли он
+// одобренной заявкой (via_request). Себя создатель/админ видит своими
+// конструкторами (у админа — бит self).
+type ChannelParticipantSelf struct {
+	Underscore string          `json:"_"`
+	PFlags     map[string]bool `json:"pFlags,omitempty"`
+	UserID     int64           `json:"user_id"`
+	InviterID  int64           `json:"inviter_id"`
+	Date       int64           `json:"date"`
+}
+
+func (ChannelParticipantSelf) isChannelParticipant() {}
+func (p ChannelParticipantSelf) Tag() string         { return p.Underscore }
+
 // channelParticipantAdmin#34c3bb53 flags:# can_edit:flags.0?true self:flags.1?true
 // user_id:long inviter_id:flags.1?long promoted_by:long date:int
 // admin_rights:ChatAdminRights rank:flags.2?string = ChannelParticipant;
 //
-// Админ: права обязательны, плюс обязателен `promoted_by` — кто назначил.
-// Назначившего мы не храним, и это названный пропуск (OmittedWithoutSubject).
+// Админ: права обязательны, плюс обязателен `promoted_by` — кто назначил
+// (Б-117). Зритель-зависимы два бита: can_edit — зритель вправе править этого
+// админа (tweb canEditAdmin: создатель ∨ назначил он), self — это сам зритель.
+// inviter_id делит бит с self: кто привёл, схема говорит только самому админу.
 type ChannelParticipantAdmin struct {
 	Underscore  string          `json:"_"`
+	PFlags      map[string]bool `json:"pFlags,omitempty"`
 	UserID      int64           `json:"user_id"`
+	InviterID   int64           `json:"inviter_id,omitempty"`
+	PromotedBy  int64           `json:"promoted_by"`
 	Date        int64           `json:"date"`
 	AdminRights ChatAdminRights `json:"admin_rights"`
+	Rank        string          `json:"rank,omitempty"`
 }
 
 func (ChannelParticipantAdmin) isChannelParticipant() {}
 func (p ChannelParticipantAdmin) Tag() string         { return p.Underscore }
+
+// channelParticipantLeft#1b03f006 peer:Peer = ChannelParticipant;
+//
+// Ушёл сам или выгнан без бана: в кадре updateChannelParticipant это
+// new_participant выхода (у оригинала — то же).
+type ChannelParticipantLeft struct {
+	Underscore string `json:"_"`
+	Peer       Peer   `json:"peer"`
+}
+
+func (ChannelParticipantLeft) isChannelParticipant() {}
+func (p ChannelParticipantLeft) Tag() string         { return p.Underscore }
+
+func NewChannelParticipantLeft(userID int64) ChannelParticipantLeft {
+	return ChannelParticipantLeft{Underscore: ChannelParticipantLeftTag, Peer: NewPeerUser(userID)}
+}
 
 // channelParticipantBanned#d5f0ad91 flags:# left:flags.0?true peer:Peer
 // kicked_by:long date:int banned_rights:ChatBannedRights rank:flags.2?string
@@ -97,32 +139,75 @@ type ChannelParticipantBanned struct {
 func (ChannelParticipantBanned) isChannelParticipant() {}
 func (p ChannelParticipantBanned) Tag() string         { return p.Underscore }
 
+// ParticipantViewer — кто смотрит на участника. От него зависят три вещи
+// схемы: бит can_edit у админа (tweb canEditAdmin), бит self и строка самого
+// зрителя — channelParticipantSelf вместо безымянного channelParticipant.
+type ParticipantViewer struct {
+	ID        int64
+	IsCreator bool
+}
+
 // NewChannelParticipant — участник по роли: выбор конструктора делает РОЛЬ.
 //
-// `date` — когда вступил. У создателя параметра нет вовсе, поэтому и не
-// передаётся.
-func NewChannelParticipant(m Member, date int64) ChannelParticipant {
+// `date` — когда вступил (Member.JoinedAt). У создателя параметра нет вовсе.
+func NewChannelParticipant(m Member, v ParticipantViewer) ChannelParticipant {
+	date := unixSecondsInt64(m.JoinedAt)
 	switch m.Role {
 	case RoleCreator:
 		return ChannelParticipantCreator{
 			Underscore:  ChannelParticipantCreatorTag,
 			UserID:      m.UserID,
 			AdminRights: NewChatAdminRights(m.Rights),
+			Rank:        m.Rank,
 		}
 	case RoleAdmin:
-		return ChannelParticipantAdmin{
+		a := ChannelParticipantAdmin{
 			Underscore:  ChannelParticipantAdminTag,
 			UserID:      m.UserID,
+			PromotedBy:  m.PromotedBy,
 			Date:        date,
 			AdminRights: NewChatAdminRights(m.Rights),
+			Rank:        m.Rank,
 		}
+		setPFlag(&a.PFlags, "can_edit", v.ID != m.UserID && (v.IsCreator || (m.PromotedBy != 0 && m.PromotedBy == v.ID)))
+		if v.ID == m.UserID {
+			setPFlag(&a.PFlags, "self", true)
+			a.InviterID = m.inviter()
+		}
+		return a
 	default:
+		if v.ID != 0 && v.ID == m.UserID {
+			s := ChannelParticipantSelf{
+				Underscore: ChannelParticipantSelfTag,
+				UserID:     m.UserID,
+				InviterID:  m.inviter(),
+				Date:       date,
+			}
+			setPFlag(&s.PFlags, "via_request", m.ViaRequest)
+			return s
+		}
 		return ChannelParticipantReal{
 			Underscore: ChannelParticipantTag,
 			UserID:     m.UserID,
 			Date:       date,
 		}
 	}
+}
+
+// inviter — обязательный inviter_id строки про себя: кто привёл, а вошедший
+// сам (по @имени, создатель) — он же и привёл, как у оригинала.
+func (m Member) inviter() int64 {
+	if m.InviterID != 0 {
+		return m.InviterID
+	}
+	return m.UserID
+}
+
+func unixSecondsInt64(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.Unix()
 }
 
 // NewChannelParticipantBanned — выгнанный (`left`) или ограниченный.
@@ -172,5 +257,30 @@ func NewChannelsChannelParticipants(count int, participants []ChannelParticipant
 		Participants: orEmpty(participants),
 		Chats:        []Chat{},
 		Users:        orEmpty(users),
+	}
+}
+
+// ── channels.channelParticipant: один участник ─────────────────────────────
+
+const ChannelsChannelParticipantTag = "channels.channelParticipant"
+
+// channels.channelParticipant#dfb80317 participant:ChannelParticipant
+// chats:Vector<Chat> users:Vector<User> = channels.ChannelParticipant;
+//
+// Ответ channels.getParticipant: участник по ключу плюс карточки тех, кого
+// строка называет (сам он, назначивший, пригласивший).
+type ChannelsChannelParticipant struct {
+	Underscore  string             `json:"_"`
+	Participant ChannelParticipant `json:"participant"`
+	Chats       []Chat             `json:"chats"`
+	Users       []UserReal         `json:"users"`
+}
+
+func NewChannelsChannelParticipant(p ChannelParticipant, users []UserReal) ChannelsChannelParticipant {
+	return ChannelsChannelParticipant{
+		Underscore:  ChannelsChannelParticipantTag,
+		Participant: p,
+		Chats:       []Chat{},
+		Users:       orEmpty(users),
 	}
 }

@@ -59,9 +59,6 @@ var OmittedWithoutSubject = map[string][]string{
 	// Превью ссылки у нас — СНИМОК на сообщении, а не самостоятельный объект
 	// хранилища: адресовать его нечем, и хэша кэша у запросов нет.
 	"webPage": {"id", "hash"},
-	// Кто назначил админа: в chat_members такой колонки нет вовсе. Отсутствует
-	// ЗНАЧЕНИЕ, а не возможность — завести производителя можно не трогая форму.
-	"channelParticipantAdmin": {"promoted_by"},
 	// Адрес расшифровки: у оригинала по нему шлют жалобу на качество, у нас
 	// расшифровка живёт при сообщении и адресуется вместе с ним.
 	"messages.transcribedAudio": {"transcription_id"},
@@ -103,6 +100,10 @@ var OmittedWithoutSubject = map[string][]string{
 	// Курсор ленты историй: лента отдаётся целиком, продолжать нечего
 	// (tl-stories-analysis.md, Р8).
 	"stories.allStories": {"state"},
+
+	// Второй курсор оригинала (qts — ботов и секретных чатов): у нас журнал
+	// один, и кадр участника едет его pts в конверте, как updateNotifySettings.
+	"updateChannelParticipant": {"qts"},
 }
 
 // WireCodec — кодек TL, знающий наши заглушки.

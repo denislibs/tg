@@ -571,6 +571,7 @@ const (
 	MessageActionChatAddUserTag           = "messageActionChatAddUser"
 	MessageActionChatDeleteUserTag        = "messageActionChatDeleteUser"
 	MessageActionChatJoinedByLinkTag      = "messageActionChatJoinedByLink"
+	MessageActionChatJoinedByRequestTag   = "messageActionChatJoinedByRequest"
 	MessageActionPinMessageTag            = "messageActionPinMessage"
 	MessageActionSetMessagesTTLTag        = "messageActionSetMessagesTTL"
 	MessageActionTopicCreateTag           = "messageActionTopicCreate"
@@ -683,6 +684,22 @@ func (a MessageActionChatJoinedByLink) Tag() string    { return a.Underscore }
 
 func NewMessageActionChatJoinedByLink(inviterID int64) MessageActionChatJoinedByLink {
 	return MessageActionChatJoinedByLink{Underscore: MessageActionChatJoinedByLinkTag, InviterID: inviterID}
+}
+
+// messageActionChatJoinedByRequest#ebbca3cb = MessageAction;
+//
+// Вошёл одобренной заявкой (A6-04, Б-86): админ принял запрос на вступление
+// по ссылке с одобрением. Параметров нет — вошедший это from_id сообщения,
+// одобривший в схеме не называется.
+type MessageActionChatJoinedByRequest struct {
+	Underscore string `json:"_"`
+}
+
+func (MessageActionChatJoinedByRequest) isMessageAction() {}
+func (a MessageActionChatJoinedByRequest) Tag() string    { return a.Underscore }
+
+func NewMessageActionChatJoinedByRequest() MessageActionChatJoinedByRequest {
+	return MessageActionChatJoinedByRequest{Underscore: MessageActionChatJoinedByRequestTag}
 }
 
 // messageActionPinMessage#94bd38ed = MessageAction;
