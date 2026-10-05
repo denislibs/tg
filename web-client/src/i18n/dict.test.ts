@@ -625,8 +625,12 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `PeerInfo.SharedMedia` и счётчики вкладок `SavedDialogsTabCount`, `MediaFiles`,
 // `StarGiftsCount`, `Files`, `Links`, `MusicFiles`, `Voice` (`plural` 51 → 58). 
 // Вместе с П-5 и К-4 из main: ru 1608, `plural` 62.
+// Пачка П-6 волны 7 (автокомплит строки ввода `chat/{mentions,inline}Helper.ts`): у ru +2
+// ключа tweb lang.ts — `Mention` (`aria-label` списка упоминаний) и
+// `GlobalAttachInlineRestricted` (запрет инлайна); `Chat.BotCommands` уже принесла Б-36.
+// Вместе с К-5 из main (+10 −18 +4 ключей, `plural` 56 → 63): ru 1676.
 const COMPOSITION = {
-  ru: { keys: 1677, plural: 63 },
+  ru: { keys: 1679, plural: 63 },
   uk: { keys: 841, plural: 35 },
   es: { keys: 812, plural: 34 },
   de: { keys: 813, plural: 35 },
@@ -823,8 +827,14 @@ const COMPOSITION = {
 // Шагом К-5 волны 7 (0б-1) — у ru +4 ключа tweb `editChat` и −18 наших ключей снесённых
 // экранов `group/*` (разбор — у `COMPOSITION` выше); вкладкой профиля — +10 ключей
 // tweb `sharedMedia.tsx` (разбор — там же).
+// Шагом К-5 волны 7 (0б-1) — у ru +4 ключа tweb `editChat` и −18 наших ключей снесённых
+// экранов `group/*` (разбор — у `COMPOSITION` выше); вкладкой профиля — +10 ключей
+// tweb `sharedMedia.tsx` (разбор — там же).
+// Б-13 волны 7 — у ru +17 ключей карточек пустой колонки, у остальных +4 (разбор — там же).
+// Пачкой П-6 волны 7 — у ru +9 ключей медленного режима и платных сообщений (разбор — там же).
+// Пачкой П-6 волны 7 — у ru +2 ключа автокомплита (разбор — там же).
 const FINGERPRINT = {
-  ru: 'f3ca3949',
+  ru: 'f3c135a3',
   uk: '4ea851a8',
   es: 'fae2c364',
   de: 'bcccb16f',

@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 58,
+      "version": 59,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -2721,6 +2721,10 @@
           "value": "You won the giveaway!"
         },
         {
+          "key": "GlobalAttachInlineRestricted",
+          "value": "Sending inline content isn't allowed in this group."
+        },
+        {
           "key": "GlobalAttachMediaRestricted",
           "value": "Sending media isn't allowed in this group."
         },
@@ -3591,6 +3595,10 @@
             "one_value": "%1$d member",
             "other_value": "%1$d members"
           }
+        },
+        {
+          "key": "Mention",
+          "value": "Mention"
         },
         {
           "key": "MenuTelegramStars",
@@ -6960,7 +6968,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 58,
+      "version": 59,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -13840,6 +13848,14 @@
         {
           "key": "ChatAutomation.Stop",
           "value": "Остановить"
+        },
+        {
+          "key": "GlobalAttachInlineRestricted",
+          "value": "Отправка инлайн-контента в этой группе запрещена."
+        },
+        {
+          "key": "Mention",
+          "value": "Упомянуть"
         },
         {
           "key": "GlobalAttachMediaRestricted",

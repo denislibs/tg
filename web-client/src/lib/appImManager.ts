@@ -77,8 +77,8 @@
 //     модуль класса колонки тянет за собой поиск и регистрирует custom elements при
 //     импорте, а `appImManager` импортируют и лёгкие подписчики (`uiNotifications`,
 //     `soundSubscriber`). Узел тот же (`sidebarLeft/index.ts`, `super({sidebarEl})`).
-// K-1. `init` (`:2807-2813`) — без `MarkupTooltip.handleSelection` и
-//     `showDatePickerPopup`: тултип разметки — бэклог Б-33.
+// K-1. `init` (`:2807-2813`) — без `showDatePickerPopup`: кнопки даты у тултипа
+//     разметки нет (Б-139).
 // K-2. Права по видам вложений (`canSendNewMedia`, `send_photos`/`send_videos`/
 //     `send_docs`) не сужают зоны: гранулярных прав у нас нет (`core/peers/rights.ts`),
 //     а с `onlyVisible: true` оригинал и сам отвечает «можно» на все. Отладочный лог
@@ -105,6 +105,7 @@
 //     Автоблокировка (`:630` рядом — только сочетание) — как у tweb, в воркере
 //     (`lib/mainWorker/useAutoLock.ts`, проводка `core/workerCore.ts`).
 import PeerTitle, { type PeerTitleManagers } from '@components/chat/peerTitle'
+import MarkupTooltip from '@components/chat/markupTooltip'
 import { generateMessageId } from '@core/history/messageId'
 import type { Middleware } from '@helpers/middleware'
 import I18n, { i18n, type FormatterArguments } from '@lib/langPack'
@@ -1030,6 +1031,9 @@ export class AppImManager extends EventListenerBase<{
     // Follow the active app window so paste-to-send keeps working in a Document PiP window.
     bindActiveWindowListener((w) => w.document, 'paste', this.onDocumentPaste, true)
     this.attachDragAndDropListeners()
+    // тултип разметки над выделением (П-6, Б-33); `showDatePickerPopup` не ставится —
+    // кнопки даты нет (Б-139)
+    MarkupTooltip.getInstance().handleSelection()
   }
 
   /** tweb `:2815-3035` — расхождения K-2…K-4 шапки */

@@ -40,7 +40,7 @@ import findUpAttribute from '@helpers/dom/findUpAttribute'
 import findUpTag from '@helpers/dom/findUpTag'
 import getCaretPosNew from '@helpers/dom/getCaretPosNew'
 import getRichValueWithCaret from '@helpers/dom/getRichValueWithCaret'
-import type { MarkdownType } from '@helpers/dom/getRichElementValue'
+import type { MarkupTooltipTypes } from '@components/chat/markupTooltip'
 import isInputEmpty from '@helpers/dom/isInputEmpty'
 import replaceContent from '@helpers/dom/replaceContent'
 import RichInputHandler from '@helpers/dom/richInputHandler'
@@ -265,8 +265,8 @@ export type InputFieldOptions = {
   withBorder?: boolean
   allowStartingSpace?: boolean
   onRawInput?: (value: string) => void
-  /** что тултип разметки (Б-33) предложит в поле — атрибут `can-format`; тип — tweb `MarkupTooltipTypes` (`markupTooltip.ts:22`) */
-  canHaveFormatting?: Array<Extract<MarkdownType, 'bold' | 'italic' | 'underline' | 'strikethrough' | 'monospace' | 'spoiler' | 'quote' | 'link' | 'date'>>
+  /** что тултип разметки предложит в поле — атрибут `can-format` (`chat/markupTooltip.ts::show`) */
+  canHaveFormatting?: Array<MarkupTooltipTypes>
   canWrapCustomEmojis?: boolean
 }
 

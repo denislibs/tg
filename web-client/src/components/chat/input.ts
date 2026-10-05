@@ -24,6 +24,10 @@
 //  - правка/пересылка/ответ: `initMessageEditing` `:4859`, `initMessagesForward` `:4963`,
 //    `getChatInputReplyToFromMessage` `:5082`, `initMessageReply` `:5099`, `setReplyTo` `:5249`,
 //    `setInputValue` `:5332`.
+//  - автокомплит и тултип разметки (П-6, Б-33/Б-34): хелперы `:1384-1393`,
+//    `chat_changing` `:1736-1742`, `keyup` `:3298-3307`, `mentionUser` `:2334`,
+//    `insertAtCaret` `:3635`, `onEmojiSelected` `:3759`, `checkAutocomplete` `:3796-3903`,
+//    `checkInlineAutocomplete` `:3911-3986` — блоком в конце класса (расхождение 11).
 //  - пачка П-6 «отправка»: кнопка отложенных `constructScheduledButton` `:922-946`, меню
 //    отправки `SendMenu` `:1426-1472` (`chat/sendContextMenu.ts`), расписание
 //    `getReadyToSend`/`canSendWhenOnline`/`setScheduleTimestamp`/`scheduleSending`
@@ -82,6 +86,14 @@
 //     `setPeerParams` — плата из зеркала пиров (`getStarsAmount`), а не `Chat.starsAmount`
 //     (у `Chat` его нет, расхождение 7 `chat.ts`). Плейсхолдер `PaidMessages.MessageForStars`
 //     и бейдж звёзд кнопки (`addStarsBadge`/`setStarsAmount`) — без `inputState` (Б-129).
+// 11. Автокомплит (П-6): методы — блоком в конце класса, а не на местах tweb (слияние
+//     с соседними ветками П-6 без конфликтов). Без своих эмодзи (`getCustomEmojiSuggestionEmoticon`,
+//     `checkEmoticon` — Б-74/Б-138), гостевых ботов (`knownGuestBots`, `canSendGuestChat`),
+//     эфемерного и приветственного режимов, `globalMentions`, `topMsgId` упоминаний (Б-136)
+//     и перепроверки по `settings_updated`/`peer_full_update` (своих событий нет). Права
+//     `send_stickers`/`send_inline` — наши `send_media`/`send_messages` (расхождение 5).
+//     `insertAtCaret`/`onEmojiSelected` общие с эмодзи-дропдауном (Б-35): при его влитии
+//     остаётся одна копия.
 import type { Managers } from '@/client/bootstrap'
 import type { AppImManager } from '@lib/appImManager'
 import rootScope from '@lib/rootScope'
@@ -124,6 +136,12 @@ import focusInput from '@helpers/dom/focusInput'
 import { getAppWindow } from '@helpers/appWindow'
 import placeCaretAtEnd from '@helpers/dom/placeCaretAtEnd'
 import getRichValueWithCaret from '@helpers/dom/getRichValueWithCaret'
+import classifyInputKeyup from '@helpers/dom/classifyInputKeyup'
+import RichInputHandler from '@helpers/dom/richInputHandler'
+import { putPreloader } from '@components/putPreloader'
+import { insertRichTextAsHTML } from '@components/inputField'
+import getEmojiEntityFromEmoji from '@lib/richtext/getEmojiEntityFromEmoji'
+import { appSettings } from '@stores/appSettings.solid'
 import { handleMarkdownShortcut, processCurrentFormatting } from '@helpers/dom/markdown'
 import toggleDisability from '@helpers/dom/toggleDisability'
 import createBadge from '@helpers/createBadge'
@@ -154,6 +172,15 @@ import { getUserStatusForSort } from '@core/presence'
 import { SEND_WHEN_ONLINE_TIMESTAMP } from '@core/format/dayLabel'
 import AttachMenuButton from './attachMenuButton.solid'
 import ChatRecording from './recording/chatRecording'
+import AutocompleteHelperController from './autocompleteHelperController'
+import type AutocompleteHelper from './autocompleteHelper'
+import StickersHelper from './stickersHelper'
+import EmojiHelper, { type AppEmoji } from './emojiHelper'
+import CommandsHelper from './commandsHelper'
+import MentionsHelper from './mentionsHelper'
+import InlineHelper from './inlineHelper'
+import MarkupTooltip from './markupTooltip'
+import isPlausibleEmojiQuery from './isPlausibleEmojiQuery'
 import ChatInputPlate from './controlPlate.solid'
 import ChatSendAs from './sendAs'
 import ReplyKeyboard from './replyKeyboard.solid'
@@ -188,6 +215,8 @@ const MESSAGE_LENGTH_MAX = 4096
 const TYPING_THROTTLE_MS = 6000
 
 export default class ChatInput {
+  private static AUTO_COMPLETE_REG_EXP = /(\s|^)((?:(?:@|^\/)\S*)|(?::|^[^:@/])(?!.*[:@/]).*)$/
+
   public messageInput!: HTMLElement
   public messageInputField!: InputFieldAnimated
   private inputHeightDelta = 0
@@ -203,6 +232,15 @@ export default class ChatInput {
   public rowsWrapper!: HTMLDivElement
   public newMessageWrapper!: HTMLDivElement
   public btnSendContainer!: HTMLDivElement
+
+  public autocompleteHelperController!: AutocompleteHelperController
+  private stickersHelper!: StickersHelper
+  private emojiHelper!: EmojiHelper
+  private commandsHelper!: CommandsHelper
+  private mentionsHelper!: MentionsHelper
+  private inlineHelper!: InlineHelper
+  private previousQuery?: string
+  private btnPreloader?: HTMLButtonElement
 
   public attachMenu!: InstanceType<typeof AttachMenuButton>
   private attachMenuButtons!: ButtonMenuItemOptionsVerifiable[]
@@ -531,6 +569,15 @@ export default class ChatInput {
     ].filter((node): node is NonNullable<typeof node> => !!node))
 
     this.rowsWrapper.append(this.replyElements.container)
+    // tweb `:1384-1393`
+    this.autocompleteHelperController = new AutocompleteHelperController()
+    this.stickersHelper = new StickersHelper(this.rowsWrapper, this.autocompleteHelperController, this.chat, this.managers)
+    this.emojiHelper = new EmojiHelper(this.rowsWrapper, this.autocompleteHelperController, this, this.managers)
+    this.emojiHelper.addSibling(this.stickersHelper)
+    this.emojiHelper.attachStickersHelper(this.stickersHelper)
+    this.commandsHelper = new CommandsHelper(this.rowsWrapper, this.autocompleteHelperController, this, this.managers)
+    this.mentionsHelper = new MentionsHelper(this.rowsWrapper, this.autocompleteHelperController, this, this.managers)
+    this.inlineHelper = new InlineHelper(this.rowsWrapper, this.autocompleteHelperController, this.chat, this.managers)
     this.rowsWrapper.append(this.newMessageWrapper)
 
     this.btnCancelRecord = this.createButtonIcon('bin_filled btn-circle btn-record-cancel chat-input-secondary-button chat-secondary-button', { ariaLabel: 'Delete' }) as HTMLButtonElement
@@ -672,6 +719,15 @@ export default class ChatInput {
     this.listenerSetter.add(this.appImManager)('peer_changing', (chat: Chat) => {
       if(this.chat === chat && (this.chat.type === ChatType.Chat || this.chat.type === ChatType.Discussion)) {
         this.saveDraft()
+      }
+    })
+
+    // tweb `:1736-1742`
+    this.listenerSetter.add(this.appImManager)('chat_changing', ({ from, to }: { from: Chat, to: Chat }) => {
+      if(this.chat === from) {
+        this.autocompleteHelperController.toggleListNavigation(false)
+      } else if(this.chat === to) {
+        this.autocompleteHelperController.toggleListNavigation(true)
       }
     })
 
@@ -1042,6 +1098,7 @@ export default class ChatInput {
 
   /** tweb `:2365-2388` */
   public destroy() {
+    this.autocompleteHelperController?.destroy()
     this.sendAs?.destroy()
     appNavigationController.removeItem(this.inputHelperNavigationItem!)
     this.listenerSetter.removeAll()
@@ -1489,6 +1546,18 @@ export default class ChatInput {
     }, { listenerSetter: this.listenerSetter })
 
     this.listenerSetter.add(this.messageInput)('input', this.onMessageInput)
+    // tweb `:3298-3307`
+    this.listenerSetter.add(this.messageInput)('keyup', (e: KeyboardEvent) => {
+      // * a content-changing key already fired an `input` event before this `keyup`, and the
+      // * input handler re-parsed + ran checkAutocomplete with the parsed value — re-doing it
+      // * here would just re-walk the DOM and bail at the previousQuery guard. Only re-check on
+      // * a caret-move key (arrows/Home/End/PageUp/PageDown), which never fires `input`.
+      if(classifyInputKeyup(e) !== 'caret-move') {
+        return
+      }
+
+      void this.checkAutocomplete()
+    })
   }
 
   /** tweb `:3330-3332` */
@@ -1496,12 +1565,17 @@ export default class ChatInput {
     return this.messageInput.isContentEditable && !this.chatInput.classList.contains('is-hidden')
   }
 
-  /** tweb `:3458-3532` — без превью ссылки (Б-72), автокомплита (Б-34) и бейджа звёзд. */
+  /** tweb `:3458-3532` — без превью ссылки (Б-72) и бейджа звёзд. */
   public onMessageInput = (e?: Event) => {
-    const { value: richValue } = getRichValueWithCaret(this.messageInputField.input)
+    const { value: richValue, entities: markdownEntities1, caretPos } = getRichValueWithCaret(this.messageInputField.input)
+
+    const [value, markdownEntities] = parseMarkdown(richValue, markdownEntities1, true)
+    const entities = mergeEntities(markdownEntities, parseEntities(value))
 
     const isEmpty = !richValue.trim()
     if(isEmpty) {
+      MarkupTooltip.getInstance().hide()
+
       // * Chrome has a bug - it will preserve the formatting if the input with monospace text is cleared
       // * so have to reset formatting
       if(document.activeElement === this.messageInput && !IS_MOBILE) {
@@ -1526,6 +1600,8 @@ export default class ChatInput {
     if(!this.editMsgId) {
       void this.saveDraftDebounced()
     }
+
+    void this.checkAutocomplete(richValue, caretPos, entities)
 
     processCurrentFormatting(this.messageInput, undefined, (e as InputEvent | undefined)?.inputType as Parameters<typeof processCurrentFormatting>[2])
 
@@ -1910,7 +1986,7 @@ export default class ChatInput {
   }
 
   /** tweb `:4749-4833` — расхождение 5 шапки; медленный режим и платные — Б-37. */
-  public async sendMessageWithDocument({ document, force = false, target }: { document: Sticker | GifItem, force?: boolean, target?: HTMLElement }): Promise<boolean> {
+  public async sendMessageWithDocument({ document, force = false, clearDraft = false, target }: { document: Sticker | GifItem, force?: boolean, clearDraft?: boolean, target?: HTMLElement }): Promise<boolean> {
     const isSticker = '_' in document
     const flag: ChatRights = 'send_media'
     if(!isUser(this.chat.peerId) && !(await this.chat.canSend(flag))) {
@@ -1919,7 +1995,7 @@ export default class ChatInput {
     }
 
     if(this.chat.type === ChatType.Scheduled && !force) {
-      void this.scheduleSending(() => void this.sendMessageWithDocument({ document, force: true, target }))
+      void this.scheduleSending(() => void this.sendMessageWithDocument({ document, force: true, clearDraft, target }))
       return false
     }
 
@@ -2006,7 +2082,7 @@ export default class ChatInput {
       return false
     }
 
-    this.onMessageSent(false, true)
+    this.onMessageSent(clearDraft, true)
     return true
   }
 
@@ -2326,5 +2402,240 @@ export default class ChatInput {
     }, 0)
 
     return container
+  }
+
+  // ── Автокомплит (П-6, Б-34) — блок в конце класса, расхождение 9 шапки ──────
+
+  /** tweb `:2334-2362` — без гостевых ботов (расхождение 9). */
+  public mentionUser(peerId: PeerId, isHelper?: boolean) {
+    void this.managers.peers.getPeers([peerId]).then(([peer]) => {
+      if(!peer) return
+      let str = '', entity: MessageEntity | undefined
+      const username = 'username' in peer ? peer.username : undefined
+      if(username) {
+        str = '@' + username
+      } else {
+        if(peer._ === 'user') {
+          str = peer.first_name || peer.last_name || ''
+        } else {
+          str = 'title' in peer ? peer.title : ''
+        }
+
+        entity = {
+          _: 'messageEntityMentionName',
+          length: str.length,
+          offset: 0,
+          user_id: peer.id,
+        }
+      }
+
+      str += ' '
+      void this.insertAtCaret(str, entity, isHelper)
+    })
+  }
+
+  /** tweb `:3635-3757` */
+  public async insertAtCaret(insertText: string, insertEntity?: MessageEntity, isHelper = true, replaceText?: string) {
+    if(!this.canSendPlain()) {
+      toastNew({
+        langPackKey: POSTING_NOT_ALLOWED_MAP.send_messages!,
+      })
+      return
+    }
+
+    RichInputHandler.getInstance().makeFocused(this.messageInput)
+
+    const { value: fullValue, caretPos } = getRichValueWithCaret(this.messageInput)
+    const pos = caretPos >= 0 ? caretPos : fullValue.length
+    const prefix = fullValue.substr(0, pos)
+
+    const matches = isHelper ? prefix.match(ChatInput.AUTO_COMPLETE_REG_EXP) : null
+
+    if(isHelper && caretPos !== -1) {
+      const match = replaceText ?? (matches ? matches[2] : fullValue)
+
+      const selection = document.getSelection()!
+      // * a typed emoji can be an <img> on platforms without native emoji support, so the
+      // * selected text has to be resolved back to its rich value instead of selection.toString()
+      const getSelectedValue = replaceText !== undefined ?
+        () => getRichValueWithCaret(selection.getRangeAt(0).cloneContents(), false, false).value :
+        () => selection.toString()
+      let counter = 0
+      while(getSelectedValue() !== match) {
+        if(++counter >= 10000) {
+          throw new Error('lolwhat')
+        }
+
+        selection.modify('extend', 'backward', 'character')
+      }
+    }
+
+    await insertRichTextAsHTML(this.messageInput, insertText, insertEntity ? [insertEntity] : undefined, this.chat.peerId)
+  }
+
+  /** tweb `:3759-3771` — без своих эмодзи (расхождение 9). */
+  public onEmojiSelected = (emoji: AppEmoji, autocomplete: boolean, replaceText?: string) => {
+    const entity: MessageEntity = getEmojiEntityFromEmoji(emoji.emoji)
+    // * inserting a custom emoji can leave the rich text identical (same character, different
+    // * entity type) — clear previousQuery so checkAutocomplete re-evaluates the new entities
+    this.previousQuery = undefined
+    void this.insertAtCaret(emoji.emoji, entity, autocomplete, replaceText)
+    return true
+  }
+
+  /** tweb `:3796-3903` — расхождение 9. */
+  private async checkAutocomplete(value?: string, caretPos?: number, entities?: MessageEntity[]) {
+    const hadValue = value !== undefined
+    if(!hadValue) {
+      const r = getRichValueWithCaret(this.messageInputField.input, true, true)
+      value = r.value
+      caretPos = r.caretPos
+      entities = r.entities
+    }
+
+    if(caretPos === -1) {
+      caretPos = value!.length
+    }
+
+    if(entities === undefined || !hadValue) {
+      const [_value, newEntities] = parseMarkdown(value!, entities, true)
+      entities = mergeEntities(newEntities, parseEntities(_value))
+    }
+
+    value = value!.slice(0, caretPos)
+
+    if(this.previousQuery === value) {
+      return
+    }
+
+    this.previousQuery = value
+
+    const foundHelpers = new Set<AutocompleteHelper>()
+
+    const matches = value.match(ChatInput.AUTO_COMPLETE_REG_EXP)
+    if(matches) {
+      const entity = entities[0]
+
+      let query = matches[2]
+      const firstChar = query[0]
+
+      if(
+        this.stickersHelper &&
+        appSettings.stickers.suggest !== 'none' &&
+        await this.chat.canSend('send_media') &&
+        (entity?._ === 'messageEntityEmoji' || entity?._ === 'messageEntityCustomEmoji') &&
+        entity.length === value.length &&
+        !entity.offset
+      ) {
+        foundHelpers.add(this.stickersHelper)
+        this.stickersHelper.checkEmoticon(value)
+      } else if(!foundHelpers.size && firstChar === '@') { // mentions
+        const result = this.mentionsHelper.checkQuery(
+          query,
+          isUser(this.chat.peerId) ? undefined : this.chat.peerId,
+        )
+        if(result) {
+          foundHelpers.add(this.mentionsHelper)
+        }
+      } else if(!foundHelpers.size && !matches[1] && firstChar === '/') { // commands
+        if(this.commandsHelper && await this.commandsHelper.checkQuery(query, this.chat.peerId)) {
+          foundHelpers.add(this.commandsHelper)
+        }
+      } else if(!foundHelpers.size && appSettings.emoji.suggest) { // emoji
+        query = query.replace(/^\s*/, '')
+        // * skip when the input ends with an emoji entity — regular emoji is handled by the
+        // * emoticon-suggestion path above, custom emoji needs no suggestions at all
+        const hasEmojiEntityAtEnd = entities.some((e) =>
+          (e._ === 'messageEntityEmoji' || e._ === 'messageEntityCustomEmoji') &&
+          (e.offset + e.length) === value!.length,
+        )
+        // * gate the SharedWorker emoji search: an explicit `:foo` query always searches, but a
+        // * bare-word query (typing prose) is only searched once it can match the keyword index
+        // * (minChars=2) — a 1-char bare token can never yield a result, so skip the round-trip.
+        if(!hasEmojiEntityAtEnd && !value.match(/^\s*:(.+):\s*$/) && !value.match(/:[;!@#$%^&*()\-=|]/) && isPlausibleEmojiQuery(query, firstChar)) {
+          foundHelpers.add(this.emojiHelper)
+          this.emojiHelper.checkQuery(query, firstChar)
+        }
+      }
+    }
+
+    let canSendInline = false
+    if(!foundHelpers.size) {
+      canSendInline = await this.chat.canSend('send_messages')
+    }
+
+    const inlineResult = this.checkInlineAutocomplete(value, canSendInline, foundHelpers.values().next().value)
+    if(inlineResult === this.inlineHelper) {
+      foundHelpers.add(this.inlineHelper)
+    }
+
+    this.autocompleteHelperController.hideOtherHelpers(foundHelpers)
+  }
+
+  /** tweb `:3911-3986` — без гостевых ботов (расхождение 9). */
+  private checkInlineAutocomplete(value: string, canSendInline: boolean, foundHelper?: AutocompleteHelper): AutocompleteHelper | undefined {
+    let needPlaceholder = false
+
+    const setPreloaderShow = (show: boolean) => {
+      if(!this.btnPreloader) {
+        return
+      }
+
+      if(show && !canSendInline) {
+        show = false
+      }
+
+      SetTransition({
+        element: this.btnPreloader,
+        className: 'show',
+        forwards: show,
+        duration: 400,
+      })
+    }
+
+    if(!foundHelper) {
+      const inlineMatch = value.match(/^@([a-zA-Z\\d_]{3,32})\s/)
+      if(inlineMatch) {
+        const username = inlineMatch[1]
+        const query = value.slice(inlineMatch[0].length)
+        needPlaceholder = inlineMatch[0].length === value.length
+
+        foundHelper = this.inlineHelper
+
+        if(!this.btnPreloader) {
+          this.btnPreloader = this.createButtonIcon('none btn-preloader float show disable-hover', { noRipple: true }) as HTMLButtonElement
+          this.btnPreloader.tabIndex = -1
+          this.btnPreloader.setAttribute('aria-hidden', 'true')
+          putPreloader(this.btnPreloader, true)
+          this.inputMessageContainer.parentElement!.insertBefore(this.btnPreloader, this.inputMessageContainer.nextSibling)
+        } else {
+          setPreloaderShow(true)
+        }
+
+        this.inlineHelper.checkQuery(this.chat.peerId, username, query, canSendInline).then(({ user, renderPromise }) => {
+          if(needPlaceholder && user._ === 'user' && user.bot_inline_placeholder) {
+            this.messageInput.dataset.inlinePlaceholder = user.bot_inline_placeholder
+          }
+
+          void renderPromise.then(() => {
+            setPreloaderShow(false)
+          }).catch(() => {
+            setPreloaderShow(false)
+          })
+        }).catch(() => {
+          setPreloaderShow(false)
+        })
+      }
+    }
+
+    if(!needPlaceholder) {
+      delete this.messageInput.dataset.inlinePlaceholder
+    }
+
+    if(foundHelper !== this.inlineHelper) {
+      setPreloaderShow(false)
+    }
+
+    return foundHelper
   }
 }
