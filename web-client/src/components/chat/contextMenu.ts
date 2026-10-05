@@ -1309,14 +1309,17 @@ export default class ChatContextMenu {
       diff < CHAT_READ_MARK_EXPIRE_PERIOD
   }
 
-  /** Порт `appMessagesManager.canUpdateFactCheck` (:10797-10809) без
-   *  `appConfig.can_edit_factcheck` — своего `appConfig` у нас нет. */
+  /** Порт `appMessagesManager.canUpdateFactCheck` (:14514-14527). Вместо
+   *  `appConfig.can_edit_factcheck` (своего `appConfig` у нас нет) — то же
+   *  правило, что у сервера (`usecase/chat/factcheck.go::requireFactCheckRight`):
+   *  админ канала с `post_messages`. Одно правило на обеих сторонах, чтобы пункт
+   *  не показывался тому, кому сервер откажет (аудит A5-28). */
   private canUpdateFactCheck(message: MyMessage): boolean {
     if(!isBroadcastPeer(message.peerId)) {
       return false
     }
 
-    return message._ === 'message' && hasRightsPeer(message.peerId, 'just_admin')
+    return message._ === 'message' && hasRightsPeer(message.peerId, 'post_messages')
   }
 
   /** Опрос кликнутого сообщения — общий предикат пунктов «отменить голос» и

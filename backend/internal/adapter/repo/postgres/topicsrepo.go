@@ -183,3 +183,17 @@ func (r *TopicsRepo) SetTopicMuted(ctx context.Context, chatID, rootMsgID, userI
 		chatID, rootMsgID, userID, muted)
 	return err
 }
+
+// ByRoot — тема по корню треда (Send в тему проверяет её флаг closed).
+func (r *TopicsRepo) ByRoot(ctx context.Context, chatID, rootMsgID int64) (domain.ForumTopicRecord, error) {
+	var t domain.ForumTopicRecord
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT id, chat_id, root_msg_id, title, icon_color, icon_emoji, closed, hidden, pinned, pos, is_general, created_by, created_at
+		   FROM forum_topics WHERE chat_id=$1 AND root_msg_id=$2`, chatID, rootMsgID).
+		Scan(&t.ID, &t.ChatID, &t.RootMsgID, &t.Title, &t.IconColor, &t.IconEmoji, &t.Closed,
+			&t.Hidden, &t.Pinned, &t.Pos, &t.IsGeneral, &t.CreatedBy, &t.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ForumTopicRecord{}, domain.ErrNotFound
+	}
+	return t, err
+}

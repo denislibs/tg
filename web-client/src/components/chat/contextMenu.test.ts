@@ -987,14 +987,23 @@ describe('ChatContextMenu — пункты действий: видимость 
     expect(texts).not.toContain('Add Fact Check')
   })
 
-  it('канал, я админ с правами закрепа и удаления: закреп, удаление и факт-чек есть', async() => {
+  it('канал, я админ с правами закрепа и удаления: закреп и удаление есть, факт-чека без post_messages нет', async() => {
     upsertChannel(7, { broadcast: true }, { pin_messages: true, delete_messages: true })
     const texts = await itemsOn(CHANNEL, message(1, { peerId: CHANNEL, fromId: CHANNEL }))
-    expect(texts).toEqual(expect.arrayContaining(['Add Fact Check', 'Pin', 'Forward', 'Report', 'Delete']))
+    expect(texts).toEqual(expect.arrayContaining(['Pin', 'Forward', 'Report', 'Delete']))
+    // A5-28: правило сервера — post_messages; пункт не показывается тому, кому
+    // сервер откажет.
+    expect(texts).not.toContain('Add Fact Check')
+  })
+
+  it('канал, я админ с post_messages: факт-чек есть', async() => {
+    upsertChannel(7, { broadcast: true }, { post_messages: true })
+    const texts = await itemsOn(CHANNEL, message(1, { peerId: CHANNEL, fromId: CHANNEL }))
+    expect(texts).toContain('Add Fact Check')
   })
 
   it('факт-чек уже стоит — пункт «Edit Fact Check» (:1090)', async() => {
-    upsertChannel(7, { broadcast: true }, { pin_messages: true })
+    upsertChannel(7, { broadcast: true }, { post_messages: true })
     const texts = await itemsOn(CHANNEL, message(1, {
       peerId: CHANNEL, fromId: CHANNEL,
       factcheck: { _: 'factCheck', text: { _: 'textWithEntities', text: 'old', entities: [] } },
@@ -1029,7 +1038,7 @@ describe('ChatContextMenu — действия П-5: попап и RPC', () => {
   async function openChannelAsAdmin(msg: MyMessage, managers = makeManagers()) {
     applyPeerOps([{ op: 'upsert', peers: [{
       _: 'channel', id: 7, title: 'c', pFlags: { broadcast: true }, photo: undefined, date: 0,
-      admin_rights: { _: 'chatAdminRights', pFlags: { pin_messages: true, delete_messages: true } },
+      admin_rights: { _: 'chatAdminRights', pFlags: { pin_messages: true, delete_messages: true, post_messages: true } },
     } as never] }])
     putMirrorPage(KEY, [msg])
     const { bubble, content } = makeBubble(msg.id, { peerId: CHANNEL })

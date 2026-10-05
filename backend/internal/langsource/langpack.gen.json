@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 62,
+      "version": 63,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -2369,6 +2369,10 @@
           "value": "Edit admin rights"
         },
         {
+          "key": "EditAdminSendAnonymously",
+          "value": "Remain Anonymous"
+        },
+        {
           "key": "EditAdminWhatCanDo",
           "value": "What can this admin do?"
         },
@@ -3601,6 +3605,10 @@
         {
           "key": "ManageLinks.DeleteAll.Confirm",
           "value": "Are you sure you want to delete all revoked links?"
+        },
+        {
+          "key": "ManageTopicsPermission",
+          "value": "Manage topics"
         },
         {
           "key": "MarkAsRead",
@@ -7347,7 +7355,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 62,
+      "version": 63,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -13944,6 +13952,14 @@
         {
           "key": "EditAdminAddAdmins",
           "value": "Назначение администраторов"
+        },
+        {
+          "key": "EditAdminSendAnonymously",
+          "value": "Анонимность"
+        },
+        {
+          "key": "ManageTopicsPermission",
+          "value": "Управление темами"
         },
         {
           "key": "EditAdminCantEdit",

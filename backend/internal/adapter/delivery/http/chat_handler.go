@@ -917,6 +917,11 @@ func (h *ChatHandler) setPin(w http.ResponseWriter, r *http.Request, pin bool) {
 		writeError(w, http.StatusNotFound, "message not found")
 		return
 	}
+	if errors.Is(err, domain.ErrForbidden) {
+		// Нет права закреплять (tweb CHAT_ADMIN_REQUIRED) — отказ, а не сбой.
+		writeError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "pin failed")
 		return
@@ -2452,6 +2457,10 @@ func (h *ChatHandler) SetChatTheme(w http.ResponseWriter, r *http.Request) {
 	err := h.svc.SetChatTheme(r.Context(), chatID, h.meID(r), b.ThemeID)
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "forbidden")
 		return
 	}
 	if err != nil {

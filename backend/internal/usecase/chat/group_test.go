@@ -389,7 +389,7 @@ func (r *fakeGroupRepo) GetMember(_ context.Context, chatID, userID int64) (doma
 	return m, nil
 }
 
-func (r *fakeGroupRepo) SetRole(_ context.Context, chatID, userID int64, role string, rights domain.Rights) error {
+func (r *fakeGroupRepo) SetRole(_ context.Context, chatID, userID int64, role string, rights domain.Rights, promotedBy int64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	m, ok := r.members[chatID][userID]
@@ -398,6 +398,7 @@ func (r *fakeGroupRepo) SetRole(_ context.Context, chatID, userID int64, role st
 	}
 	m.Role = role
 	m.Rights = rights
+	m.PromotedBy = promotedBy
 	r.members[chatID][userID] = m
 	return nil
 }
@@ -726,6 +727,9 @@ func (r *fakeInviteRepo) IncUses(_ context.Context, id int64) error {
 	if !ok {
 		return domain.ErrNotFound
 	}
+	if l.UsageLimit != nil && l.Uses >= *l.UsageLimit {
+		return domain.ErrForbidden // как условный UPDATE репозитория
+	}
 	l.Uses++
 	r.links[id] = l
 	return nil
@@ -780,13 +784,13 @@ func (r *fakeJoinRequestRepo) Create(_ context.Context, chatID, userID int64, in
 	return nil
 }
 
-func (r *fakeJoinRequestRepo) TokenFor(_ context.Context, chatID, userID int64) (string, error) {
+func (r *fakeJoinRequestRepo) TokenFor(_ context.Context, chatID, userID int64) (string, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.tokens[chatID] == nil {
-		return "", nil
+	if _, ok := r.reqs[chatID][userID]; !ok {
+		return "", false, nil
 	}
-	return r.tokens[chatID][userID], nil
+	return r.tokens[chatID][userID], true, nil
 }
 
 func (r *fakeJoinRequestRepo) List(_ context.Context, chatID int64) ([]domain.JoinRequest, error) {
@@ -876,8 +880,15 @@ func (c groupChats) MaxSeq(context.Context, int64) (int64, error) { return 0, ni
 func (c groupChats) Access(_ context.Context, chatID, userID int64) (domain.ChatAccess, error) {
 	return c.fg.access(chatID, userID, "group"), nil
 }
-func (c groupChats) SetClearedSeq(context.Context, int64, int64, int64) error  { return nil }
-func (c groupChats) ChatType(context.Context, int64) (string, error)           { return "group", nil }
+func (c groupChats) SetClearedSeq(context.Context, int64, int64, int64) error { return nil }
+func (c groupChats) ChatType(_ context.Context, chatID int64) (string, error) {
+	c.fg.mu.Lock()
+	defer c.fg.mu.Unlock()
+	if card, ok := c.fg.cards[chatID]; ok && card.Type != "" {
+		return card.Type, nil
+	}
+	return "group", nil
+}
 func (c groupChats) PinMessage(context.Context, int64, int64, int64) error     { return nil }
 func (c groupChats) UnpinMessage(context.Context, int64, int64) error          { return nil }
 func (c groupChats) ListPins(context.Context, int64) ([]domain.Message, error) { return nil, nil }

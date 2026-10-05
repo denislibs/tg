@@ -2082,6 +2082,8 @@ const ru = {
   EditAdminPinMessages: 'Закрепление сообщений',
   'Channel.EditAdmin.PermissionInviteSubscribers': 'Добавление подписчиков',
   EditAdminAddAdmins: 'Назначение администраторов',
+  EditAdminSendAnonymously: 'Анонимность',
+  ManageTopicsPermission: 'Управление темами',
   EditAdminCantEdit: 'Вы не можете изменять права этого администратора.',
   EditCantEditPermissions: 'Вы не можете изменить это разрешение.',
   UnsavedChangesDescription: 'Вы уверены, что хотите отменить все изменения?',

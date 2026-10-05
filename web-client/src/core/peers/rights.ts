@@ -31,9 +31,10 @@ import type { Chat, ChatAdminRights, ChatBannedRights } from './peer'
  * `chatAdminRights` (ровно наш прежний битмаск `Rights`), пять флагов
  * `chatBannedRights` (прежний `MemberPerms`) и два синтетических действия
  * оригинала, у которых есть потребитель — `invite_links` и `just_admin`.
+ * `anonymous` и `manage_topics` — биты админа 1<<8 и 1<<9 (`domain/rights.go`).
  *
- * Не объявлены (предмета нет ни бита, ни механики): `anonymous`, `manage_call`,
- * `manage_topics`, `manage_ranks`, `post/edit/delete_stories`,
+ * Не объявлены (предмета нет ни бита, ни механики): `manage_call`,
+ * `manage_ranks`, `post/edit/delete_stories`,
  * `manage_direct_messages`, гранулярные запреты новых слоёв
  * (`send_photos`/`send_videos`/…/`view_messages`), а также `create_giveaway`.
  * `delete_chat` (только создатель, `hasRights.ts:113-118`) — потребитель меню
@@ -55,6 +56,8 @@ export type ChatRights =
   | 'invite_users'
   | 'pin_messages'
   | 'add_admins'
+  | 'anonymous'
+  | 'manage_topics'
   | 'send_messages'
   | 'send_media'
   | 'invite_links'
@@ -131,9 +134,15 @@ export function hasRights(
       return isAdmin || (chat._ === 'channel' && chat.pFlags?.broadcast) ? !!myFlags[action] : !myFlags[action]
 
     case 'add_admins':
+    case 'anonymous':
     case 'post_messages':
     case 'edit_messages':
       return isAdmin && !!myFlags[action]
+
+    // * regular user can only create a new topic and manage their own topics
+    // * admin can manage all topics (`hasRights.ts:160-164`)
+    case 'manage_topics':
+      return isAdmin ? !!myFlags[action] : !myFlags[action]
 
     case 'ban_users':
     case 'change_permissions':
@@ -202,6 +211,8 @@ const ADMIN_RIGHT_FLAGS = [
   { bit: 16, flag: 'invite_users' },
   { bit: 32, flag: 'pin_messages' },
   { bit: 128, flag: 'add_admins' },
+  { bit: 256, flag: 'anonymous' },
+  { bit: 512, flag: 'manage_topics' },
 ] as const
 
 /**

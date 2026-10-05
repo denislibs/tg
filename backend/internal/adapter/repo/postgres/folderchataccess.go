@@ -12,18 +12,22 @@ import (
 )
 
 // FolderChatAccess реализует folders.Chats поверх тех же таблиц, что и логика
-// чатов (chats/chat_members): переиспользует GroupRepo.Card/AddMember, а тип и
-// членство читает напрямую через querier — так вступление по ссылке-приглашению
-// в папку ничем не отличается от обычного вступления в чат.
+// чатов (chats/chat_members): карточку берёт у GroupRepo.Card, тип и членство
+// читает напрямую через querier, а вступает ОБЩЕЙ точкой вступления usecase
+// чатов (join) — так вступление по ссылке на папку ничем не отличается от
+// обычного: та же роль по типу чата и тот же бан.
 type FolderChatAccess struct {
 	pool   *pgxpool.Pool
 	groups *GroupRepo
+	join   func(ctx context.Context, chatID, userID int64) error
 }
 
 var _ usecasefolders.Chats = (*FolderChatAccess)(nil)
 
-func NewFolderChatAccess(pool *pgxpool.Pool) *FolderChatAccess {
-	return &FolderChatAccess{pool: pool, groups: NewGroupRepo(pool)}
+// NewFolderChatAccess — join: точка вступления usecase чатов
+// (chat.Interactor.JoinFolderChat).
+func NewFolderChatAccess(pool *pgxpool.Pool, join func(ctx context.Context, chatID, userID int64) error) *FolderChatAccess {
+	return &FolderChatAccess{pool: pool, groups: NewGroupRepo(pool), join: join}
 }
 
 func (a *FolderChatAccess) Info(ctx context.Context, chatID int64) (string, bool, error) {
@@ -58,16 +62,7 @@ func (a *FolderChatAccess) IsMember(ctx context.Context, chatID, userID int64) (
 	return err == nil, err
 }
 
-// Join добавляет userID участником: канал — подписчик (read-only), группа —
-// обычный участник. Роль переиспользует ту же семантику, что и join-public.
+// Join вступает в чат общей точкой вступления usecase чатов.
 func (a *FolderChatAccess) Join(ctx context.Context, chatID, userID int64) error {
-	typ, _, err := a.Info(ctx, chatID)
-	if err != nil {
-		return err
-	}
-	role := domain.RoleMember
-	if typ == "channel" {
-		role = domain.RoleSubscriber
-	}
-	return a.groups.AddMember(ctx, chatID, userID, role, 0)
+	return a.join(ctx, chatID, userID)
 }
