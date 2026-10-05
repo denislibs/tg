@@ -131,3 +131,20 @@ func TestWorker_NoSubscriptionsAcks(t *testing.T) {
 		t.Fatalf("expected ack (empty queue), got %d", len(q.jobs))
 	}
 }
+
+// Заголовок пуша поста канала — название канала, имя автора не спрашивается.
+func TestWorker_TitleOverridesSenderName(t *testing.T) {
+	q := &fakeQueue{}
+	_ = q.Enqueue(context.Background(), Job{RecipientID: 7, ChatID: 3, PeerID: -3, Seq: 5, SenderID: 9, Title: "Новости", Text: "пост", Preview: true})
+	subs := &fakeSubs{byUser: map[int64][]domain.PushSubscription{7: {{Endpoint: "e", P256dh: "p", Auth: "a"}}}}
+	sender := &fakeSender{status: http.StatusCreated}
+	w := NewWorker(q, subs, sender, &fakeEnricher{names: map[int64]string{9: "Алиса"}})
+	if err := w.ProcessBatch(context.Background()); err != nil {
+		t.Fatalf("ProcessBatch: %v", err)
+	}
+	var got map[string]any
+	_ = json.Unmarshal(sender.sent[0].payload, &got)
+	if s, _ := got["sender"].(map[string]any); s == nil || s["name"] != "Новости" {
+		t.Fatalf("заголовок пуша = %v, want название канала", got["sender"])
+	}
+}

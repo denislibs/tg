@@ -178,14 +178,47 @@ func (r *ChatsRepo) IsMember(ctx context.Context, chatID, userID int64) (bool, e
 	return err == nil, err
 }
 
-// ChatPartners returns the distinct user ids that share at least one chat with
-// the given user.
+// BroadcastChannelIDs — broadcast-каналы пользователя (не больше limit),
+// стабильно по id: на их топики подписывается его соединение.
+func (r *ChatsRepo) BroadcastChannelIDs(ctx context.Context, userID int64, limit int) ([]int64, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT m.chat_id FROM chat_members m JOIN chats c ON c.id = m.chat_id
+		  WHERE m.user_id = $1 AND c.type = 'channel'
+		  ORDER BY m.chat_id LIMIT $2`, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+// ChatPartners — с кем пользователь «знаком» для живых кадров о нём
+// (присутствие, смена профиля, истории): собеседники по личным диалогам и
+// не-broadcast чатам плюс контакты в обе стороны.
+//
+// Соподписчики broadcast-канала партнёрами не считаются: канал — не общение,
+// у оригинала статус и профиль идут контактам и тем, с кем есть диалог, а
+// веер по каналу раздавал бы каждое «в сети» тысячам незнакомых и раскрывал
+// бы состав подписчиков. Контакт без общего чата, наоборот, статус получает.
 func (r *ChatsRepo) ChatPartners(ctx context.Context, userID int64) ([]int64, error) {
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
-		`SELECT DISTINCT m2.user_id FROM chat_members m1
-		 JOIN chat_members m2 ON m2.chat_id = m1.chat_id AND m2.user_id <> m1.user_id
-		 WHERE m1.user_id = $1`, userID)
+		`SELECT m2.user_id FROM chat_members m1
+		   JOIN chats c ON c.id = m1.chat_id AND c.type <> 'channel'
+		   JOIN chat_members m2 ON m2.chat_id = m1.chat_id AND m2.user_id <> m1.user_id
+		  WHERE m1.user_id = $1
+		 UNION
+		 SELECT ct.user_id FROM contacts ct WHERE ct.owner_id = $1 AND ct.user_id <> $1
+		 UNION
+		 SELECT ct.owner_id FROM contacts ct WHERE ct.user_id = $1 AND ct.owner_id <> $1`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -218,7 +251,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 	rows, err := q.Query(ctx,
 		`SELECT c.id, c.type, c.title, COALESCE(c.username,''),
 		        c.photo_media_id, pm.blur_preview,
-		        m.last_read_seq, m.unread_count, m.unread_mentions_count, m.unread_reactions,
+		        m.last_read_seq, `+dialogUnreadCount("m", "c")+`, m.unread_mentions_count, m.unread_reactions,
 		        -- Мьют едет СРОКОМ, а не булевым: предикат «замьючен ли сейчас»
 		        -- в домене один (PeerNotifySettings.Muted), и пяти копий условия
 		        -- в SQL больше нет.

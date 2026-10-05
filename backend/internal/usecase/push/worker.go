@@ -87,7 +87,10 @@ func (w *Worker) handle(ctx context.Context, job Job) bool {
 // /u/{username}. Ровно так устроен и оригинал: push-payload у него свой
 // (title/body/custom), а не Message.
 func (w *Worker) buildPayload(ctx context.Context, job Job) map[string]any {
-	senderName, _ := w.enrich.SenderName(ctx, job.SenderID)
+	senderName := job.Title
+	if senderName == "" {
+		senderName, _ = w.enrich.SenderName(ctx, job.SenderID)
+	}
 	badge, _ := w.enrich.UnreadBadge(ctx, job.RecipientID)
 	text := job.Text
 	if !job.Preview {

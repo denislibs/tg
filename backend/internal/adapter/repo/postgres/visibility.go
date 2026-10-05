@@ -65,3 +65,20 @@ func storyVisibleTo(alias, viewer string) string {
 		` OR (` + alias + `.privacy = 'close' AND EXISTS (SELECT 1 FROM close_friends scf WHERE scf.owner_id = ` + alias + `.author_id AND scf.user_id = ` + viewer + `))` +
 		` OR EXISTS (SELECT 1 FROM story_allow ssa WHERE ssa.story_id = ` + alias + `.id AND ssa.user_id = ` + viewer + `))))`
 }
+
+// dialogUnreadCount — счётчик непрочитанного строки членства m (алиас
+// chat_members) в чате c (алиас chats).
+//
+// У broadcast-канала счётчик считается НА ЧТЕНИИ: пост канала пишется одной
+// строкой журнала канала, без веера по подписчикам (O(1) на пост), поэтому
+// хранимому chat_members.unread_count расти не от чего. Формула та же, что у
+// пересчёта при прочтении (MessagesRepo.CountUnread → still_unread_count):
+// посты выше горизонта чтения, не свои и не удалённые. Так бейдж совпадает в
+// списке, в папках, в карточке канала и в бейдже пуша, и сам выправляется
+// после удаления поста. У остальных чатов — хранимый счётчик веера.
+func dialogUnreadCount(m, c string) string {
+	return `CASE WHEN ` + c + `.type = 'channel' THEN (SELECT count(*) FROM messages um` +
+		` WHERE um.chat_id = ` + c + `.id AND um.seq > ` + m + `.last_read_seq` +
+		` AND um.sender_id <> ` + m + `.user_id AND um.deleted_at IS NULL)::int` +
+		` ELSE ` + m + `.unread_count END`
+}
