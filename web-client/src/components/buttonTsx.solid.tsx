@@ -36,6 +36,8 @@ import type { IconName } from '@core/tgico-icons'
 type ButtonAccessibilityProps = Pick<JSX.ButtonHTMLAttributes<HTMLButtonElement>,
   | 'aria-label'
   | 'aria-pressed'
+  | 'aria-expanded'
+  | 'aria-controls'
   | 'on:keydown'
 >
 
@@ -99,6 +101,8 @@ const Button = (props: Partial<{
       tabIndex={props.tabIndex}
       aria-label={props['aria-label']}
       aria-pressed={props['aria-pressed']}
+      aria-expanded={props['aria-expanded']}
+      aria-controls={props['aria-controls']}
       on:keydown={props['on:keydown']}
     >
       {props.icon && <IconTsx icon={props.icon} class={classNames('button-icon', props.iconClass)} />}

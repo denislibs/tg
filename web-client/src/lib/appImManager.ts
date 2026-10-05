@@ -41,7 +41,7 @@
 //     (`helpers/dom/appLandmarks.ts`).
 //  3. Нет предмета у подписок `construct`: `appMediaPlaybackController.construct` (у нас модуль без конструктора),
 //     `idleController` → `updateStatus`/`goOffline` (Б-14), предкэш обоев
-//     `SETTINGS_INIT.themes` (наш фон резолвит обои сам), `chatTips` (Б-13),
+//     `SETTINGS_INIT.themes` (наш фон резолвит обои сам),
 //     `join_chat_webview_decision` (П-4), `topbarCall` (П-5), `chatAudio` — портирован (П-5); подписки
 //     звонков (`:880-947`): попап входящего — остров `CallOverlay` по `callStore`,
 //     `acceptCallOverride` и `incompatible` — бэклог Б-95,
@@ -77,8 +77,8 @@
 //     модуль класса колонки тянет за собой поиск и регистрирует custom elements при
 //     импорте, а `appImManager` импортируют и лёгкие подписчики (`uiNotifications`,
 //     `soundSubscriber`). Узел тот же (`sidebarLeft/index.ts`, `super({sidebarEl})`).
-// K-1. `init` (`:2807-2813`) — без `MarkupTooltip.handleSelection` и
-//     `showDatePickerPopup`: тултип разметки — бэклог Б-33.
+// K-1. `init` (`:2807-2813`) — без `showDatePickerPopup`: кнопки даты у тултипа
+//     разметки нет (Б-139).
 // K-2. Права по видам вложений (`canSendNewMedia`, `send_photos`/`send_videos`/
 //     `send_docs`) не сужают зоны: гранулярных прав у нас нет (`core/peers/rights.ts`),
 //     а с `onlyVisible: true` оригинал и сам отвечает «можно» на все. Отладочный лог
@@ -94,18 +94,18 @@
 //     `appendDrops`, `Preview.Dragging.AddItems`) нет — бэклог Б-83; вставка в открытый
 //     попап дописывает файлы (`addFiles`).
 // 14. Блок F (`attachKeydownListener` `:1703-1852`, `attachCopyListener` `:1854-1895`):
-//     F1. Правка последнего и ответ на предыдущее по ↑/Ctrl+↑ (`:1758-1846`) не
-//         портированы — Б-80: нужны члены `ChatInput` К-4 (`editMsgId`, `replyToMsgId`,
-//         `isInputEmpty`, `onHelperCancel`) и `getFirstMessageToEdit` воркера. Ветка
-//         стрелок осталась (нет права писать — прокрутка ленты, иначе клавиша гаснет).
-//     F2. `chat.input.recording` (`:1841`) — записи голоса у класса `ChatInput` нет
-//         (Б-30): условие «не во время записи» снято.
+//     F1. Правка последнего и ответ на соседнее по ↑/Ctrl+↑↓ (`:1758-1846`, Б-80, П-6) —
+//         `messages.getFirstMessageToEdit` воркера; обработчик синхронный, а ожидание —
+//         асинхронный хвост (у tweb весь `onKeyDown` — `async`): `cancelEvent` до него.
+//         Без `lastMsgPeerId` у `setMessageId` — окна по чужому пиру у ленты нет.
+//     F2. (снято П-6: `chat.input.recording` (`:1841`) — запись голоса Б-30 портирована.)
 //     F3. `appDialogsManager.contextMenu?.hasAddToFolderOpen()` (`:1767`) — только в
 //         ветке правки (F1).
 //     F4. Защита копирования инертна, пока у баблов нет класса `no-forwards` — Б-81.
 //     Автоблокировка (`:630` рядом — только сочетание) — как у tweb, в воркере
 //     (`lib/mainWorker/useAutoLock.ts`, проводка `core/workerCore.ts`).
 import PeerTitle, { type PeerTitleManagers } from '@components/chat/peerTitle'
+import MarkupTooltip from '@components/chat/markupTooltip'
 import { generateMessageId } from '@core/history/messageId'
 import type { Middleware } from '@helpers/middleware'
 import I18n, { i18n, type FormatterArguments } from '@lib/langPack'
@@ -385,6 +385,10 @@ export class AppImManager extends EventListenerBase<{
 
     this.columnEl.append(this.chatsContainer)
 
+    // `:375-377` — Tip cards for the empty column. Imported lazily so this module isn't part of
+    // an import cycle with the components the cards use.
+    void import('@components/chatTips/index.solid').then(({ renderChatTips }) => renderChatTips(this.chatsContainer))
+
     this.createNewChat()
     this.chatsSelectTab(this.chat)
 
@@ -437,6 +441,17 @@ export class AppImManager extends EventListenerBase<{
     }
 
     this.addEventListener('peer_changed', onPeerChanged)
+
+    // `:824-833` — Remember the chat we're leaving behind (closed outright, or switched away
+    // from) so the tip cards shown on the empty column can offer it back under "Recently closed".
+    let lastOpenedPeerId: PeerId = NULL_PEER_ID
+    this.addEventListener('peer_changed', ({ peerId }) => {
+      if(lastOpenedPeerId && lastOpenedPeerId !== peerId) {
+        void this.managers.contacts.pushRecentlyClosedChat(lastOpenedPeerId)
+      }
+
+      lastOpenedPeerId = peerId
+    })
 
     // `:835-843`
     this.addEventListener('peer_changed', ({ peerId }) => {
@@ -1016,6 +1031,9 @@ export class AppImManager extends EventListenerBase<{
     // Follow the active app window so paste-to-send keeps working in a Document PiP window.
     bindActiveWindowListener((w) => w.document, 'paste', this.onDocumentPaste, true)
     this.attachDragAndDropListeners()
+    // тултип разметки над выделением (П-6, Б-33); `showDatePickerPopup` не ставится —
+    // кнопки даты нет (Б-139)
+    MarkupTooltip.getInstance().handleSelection()
   }
 
   /** tweb `:2815-3035` — расхождения K-2…K-4 шапки */
@@ -1353,7 +1371,66 @@ export class AppImManager extends EventListenerBase<{
           return
         }
 
-        // правка последнего / ответ на предыдущее (`:1766-1846`) — Б-80 (F1)
+        // tweb `:1766-1835` (F1): правка последнего своего по ↑, ответ на соседнее по Ctrl/Cmd+↑↓
+        // (`hasAddToFolderOpen` — F3: меню «Добавить в папку» не портировано, О-85)
+        if(input && !input.editMsgId) {
+          const forReply = e.metaKey || e.ctrlKey
+          if(!forReply && !input.isInputEmpty()) {
+            return
+          }
+
+          const up = key === 'ArrowUp'
+          const { replyToMsgId } = input
+          const { peerId, threadId } = chat
+          if((!forReply && !up) || (forReply && !up && !replyToMsgId)) {
+            return
+          }
+
+          cancelEvent(e)
+          const middleware = chat.bubbles.getMiddleware()
+          void (async() => {
+            if(forReply && !(await chat.canSend())) {
+              return
+            }
+
+            if(!middleware()) {
+              return
+            }
+
+            const message = await this.managers.messages.getFirstMessageToEdit({
+              peerId,
+              threadId,
+              forReply,
+              mid: forReply ? replyToMsgId ?? undefined : undefined,
+              up,
+            })
+            if(chat !== this.chat || !middleware()) {
+              return
+            }
+
+            if(!message) {
+              if(forReply && input.replyToMsgId === replyToMsgId) {
+                void input.onHelperCancel()
+              }
+
+              return
+            }
+
+            if(forReply) {
+              const bubble = chat.bubbles.getBubble(message.peerId, message.id)
+              await input.initMessageReply(input.getChatInputReplyToFromMessage(message))
+              if(bubble) {
+                void chat.bubbles.scrollToBubble(bubble, 'center')
+                chat.bubbles.highlightBubble(bubble)
+              } else {
+                void chat.setMessageId({ lastMsgId: message.id })
+              }
+            } else {
+              void input.initMessageEditing(message.id)
+            }
+          })()
+        }
+
         return
       } else if(key === 'ArrowDown') {
         return
@@ -1366,7 +1443,7 @@ export class AppImManager extends EventListenerBase<{
         !IS_TOUCH_SUPPORTED &&
         (!mediaSizes.isMobile || this.tabId === APP_TABS.CHAT) &&
         !chat.selection.isSelecting &&
-        // `!chat.input.recording` — расхождение 14 F2
+        !input.recording &&
         input.messageInput.isContentEditable
       ) {
         input.passEventToInput(e)

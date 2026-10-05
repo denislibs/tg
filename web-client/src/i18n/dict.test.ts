@@ -586,6 +586,30 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `Alert.BotAppDoesntExist`, `SharedFolder.Link.Expired`; попап
 // `SharedFolder.Link.{Description,Chats}`, `SelectAll`, `DeselectAll`, `FilterPersonal`) и −4
 // своих ключа снесённого React-попапа папки `Folder.Invite.*`. Итог пачки П-4 поверх К-4 и П-5: ru 1638, `plural` 55.
+// Б-12 пачки П-6 волны 7 (вынос клиента в Document PiP, порт tweb `clientPip.tsx`):
+// у ru +4 ключа tweb lang.ts:205-208 — заглушка вкладки `ClientPip.Placeholder{Title,
+// Description}`, `ClientPip.ReturnToTab`, тост плеера `ClientPip.FullscreenHint`; минус
+// наши `Pip.{ActiveTitle,ActiveHint,BackToTab}` снесённой заглушки `core/pip.ts`.
+// Б-13 волны 7 (карточки пустой колонки, tweb `components/chatTips`): у ru +17 ключей tweb
+// lang.ts:5678-5695 и :4527 — `ChatTips.*` (без `ChatTips.Chats.Popular`: фильтра топа
+// собеседников у нас нет), `EmptyPeer.Description`, `Stickers.Trending`.
+// У остальных четырёх +4 — строки подписей карточек со ссылкой `[…]()`
+// (`ChatTips.{Appearance,Chats,Stickers}.Description`, `ChatTips.Chats.DescriptionMac`): без
+// аргумента-узла такую строку не разобрать, поэтому она переводится во всех пяти, как
+// `PasscodeLock.ForgotPasscode.*` и `Privacy.Passkeys.Caption`.
+// Пачка П-6 волны 7, медленный режим и платные сообщения (Б-37, tweb `chat/input.ts:4005-4069`,
+// `chat/paidMessagesInterceptor.ts`): у ru +9 ключей tweb lang.ts — `SlowModeHint`,
+// `SlowmodeSendError{,TooLong}`, `ConfirmPayment`, `DontAskAgain`,
+// `PaidMessages.UserChargesFor{One,Multiple}MessageWarning`, плюральный
+// `PaidMessages.PayForMessages`, тост нехватки `Stars.Subscription.MissingBalance`.
+// Пачка П-6 волны 7, Б-36 (клавиатура бота, `chat/replyKeyboard.solid.tsx`): у ru +2 ключа
+// tweb lang.ts — `General.Keyboard` (тумблер клавиатуры) и `Chat.BotCommands` (кнопка
+// команд бота).
+// Пачка П-6 волны 7, запись (`chat/recording/chatRecording.ts`, `voiceRecording/voiceRecordingPanel.ts`):
+// у ru +7 ключей tweb lang.ts — `Chat.Input.Record.{Voice,Video,VideoLimitReached}`,
+// `DiscardVoiceMessage{Description,Action}`, `NoMicrophoneAccess`, `AccDescr.ResumeRecording`;
+// минус ключи снесённого React-композера `Composer.{CancelRecording,DiscardVoice.Text,RecordRound,RecordVoice}`
+// (у ru все четыре, у остальных — `Composer.CancelRecording`).
 // Шаг К-5 волны 7, задача 0б-1 (вкладка «Изменить» группы и канала, порт tweb
 // `editChat.tsx`): у ru +4 ключа tweb lang.ts — `TypePrivateGroup`, `TypePublicGroup`
 // (подпись строки типа группы), `ForumToggleDescription` (подпись секции с темами),
@@ -601,6 +625,10 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `PeerInfo.SharedMedia` и счётчики вкладок `SavedDialogsTabCount`, `MediaFiles`,
 // `StarGiftsCount`, `Files`, `Links`, `MusicFiles`, `Voice` (`plural` 51 → 58). 
 // Вместе с П-5 и К-4 из main: ru 1608, `plural` 62.
+// Пачка П-6 волны 7 (автокомплит строки ввода `chat/{mentions,inline}Helper.ts`): у ru +2
+// ключа tweb lang.ts — `Mention` (`aria-label` списка упоминаний) и
+// `GlobalAttachInlineRestricted` (запрет инлайна); `Chat.BotCommands` уже принесла Б-36.
+// Вместе с К-5 из main (+10 −18 +4 ключей, `plural` 56 → 63): ru 1676.
 // Пачка П-1 (0б-4 «Реакции», 0б-5 «Обсуждение», порт tweb `chatReactions.tsx`,
 // `chatDiscussion.tsx`): у ru +23 ключа tweb lang.ts — подписи режимов реакций
 // (`Enable{,All,Some}ReactionsInfo`, `DisableReactionsInfo`, `EnableReactions{,ChannelInfo}`,
@@ -613,13 +641,13 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `RecentPosts`, `LoadingStats{,Description}`, `ViewStatistics`, `ZoomOut`,
 // `Chart.Tooltip.All` и `Views` (`plural` 62 → 63); −8 наших ключей снесённой
 // `ChannelStats.tsx` (`Statistics.{Forwards,MediaPost,MemberGrowth,Posts,PostsByDay,
-// SubscriberGrowth,TopPosts,TotalViews}`). Итого ru 1638.
+// SubscriberGrowth,TopPosts,TotalViews}`).
 const COMPOSITION = {
-  ru: { keys: 1719, plural: 63 },
-  uk: { keys: 838, plural: 35 },
-  es: { keys: 809, plural: 34 },
-  de: { keys: 810, plural: 35 },
-  fr: { keys: 805, plural: 34 },
+  ru: { keys: 1772, plural: 64 },
+  uk: { keys: 842, plural: 35 },
+  es: { keys: 813, plural: 34 },
+  de: { keys: 814, plural: 35 },
+  fr: { keys: 809, plural: 34 },
 }
 
 // es/de/fr совпадают не случайно: у них ОДИН набор ключей и разные переводы —
@@ -805,17 +833,27 @@ const COMPOSITION = {
 // Пачкой П-4 волны 7 — у ru +6 ключей tweb `AccDescr.*` и `CopyRestricted.*` (разбор — там же).
 // Пачкой П-4 волны 7 — у ru +13 ключей tweb звонков (разбор — у `COMPOSITION` выше).
 // Пачкой П-4 волны 7 (агент «ссылки») — у ru +11 ключей tweb и −4 `Folder.Invite.*` (разбор — там же).
+// Б-13 волны 7 — у ru +17 ключей карточек пустой колонки, у остальных +4 (разбор — там же).
+// Пачкой П-6 волны 7 — у ru +9 ключей медленного режима и платных сообщений (разбор — там же).
+// Пачкой П-6 волны 7 (запись) — у ru +7 ключей tweb, у всех пяти минус ключи снесённого
+// React-композера `Composer.*Record*` (разбор — у `COMPOSITION` выше).
 // Шагом К-5 волны 7 (0б-1) — у ru +4 ключа tweb `editChat` и −18 наших ключей снесённых
 // экранов `group/*` (разбор — у `COMPOSITION` выше); вкладкой профиля — +10 ключей
 // tweb `sharedMedia.tsx` (разбор — там же).
+// Шагом К-5 волны 7 (0б-1) — у ru +4 ключа tweb `editChat` и −18 наших ключей снесённых
+// экранов `group/*` (разбор — у `COMPOSITION` выше); вкладкой профиля — +10 ключей
+// tweb `sharedMedia.tsx` (разбор — там же).
+// Б-13 волны 7 — у ru +17 ключей карточек пустой колонки, у остальных +4 (разбор — там же).
+// Пачкой П-6 волны 7 — у ru +9 ключей медленного режима и платных сообщений (разбор — там же).
+// Пачкой П-6 волны 7 — у ru +2 ключа автокомплита (разбор — там же).
 // Пачкой П-1 (0б-4, 0б-5) — у ru +23 ключа вкладок реакций и обсуждения (разбор — там же).
 // Пачкой П-1 (статистика, 0б-9) — у ru +38 ключей tweb и −8 наших (разбор — там же).
 const FINGERPRINT = {
-  ru: '647346bd',
-  uk: 'af81524a',
-  es: '57ce09fe',
-  de: '3224cfc5',
-  fr: '61cdac88',
+  ru: '651f2f01',
+  uk: 'e72f8ee2',
+  es: 'ff56151a',
+  de: '39848741',
+  fr: 'fb42ab2a',
 }
 
 /** FNV-1a по отсортированным ключам: короткий снимок НАБОРА, а не его копия. */

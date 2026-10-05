@@ -9,11 +9,6 @@
 //    ре-рендер React, а императивный код подписывается на `changeScreen`/
 //    `resize`, как в самом tweb (`wrappers/video.ts:54-74`,
 //    `helpers/updateColumnWidths.ts:385`);
-//  • `getAppWindow`/`onAppWindowChange` (`helpers/appWindow.ts`) — Document
-//    Picture-in-Picture, куда tweb переносит весь клиент; фичи нет (тот же
-//    вырез уже задокументирован в `components/animationIntersector.ts`),
-//    поэтому окно ровно одно. `bindWindow` при этом сохранён: он и есть точка,
-//    в которую PiP-окно приедет, когда фича появится;
 //  • гард `typeof window === 'undefined'` — модуль читают и невизуальные пути
 //    (островок lottie через `@helpers/mediaSizes` берёт `isMobile`), где
 //    `window` нет. Приём тот же, что в `helpers/windowSize.ts`; без окна
@@ -26,6 +21,7 @@
 // window-слушателя — ровно как оригинал.
 import { MOUNT_CLASS_TO } from '@config/debug'
 import EventListenerBase from '@helpers/eventListenerBase'
+import { getAppWindow, onAppWindowChange } from '@helpers/appWindow'
 import { makeMediaSize, type MediaSize } from '@helpers/mediaSize'
 
 export type { MediaSize }
@@ -149,7 +145,10 @@ export class MediaSizes extends EventListenerBase<{
       })
     }
 
-    this.bindWindow(typeof window === 'undefined' ? undefined : window)
+    // Track the active app window (the tab, or the Document PiP window while popped out) so the
+    // breakpoint math reads whichever viewport the app is actually rendered in. (tweb :123-126)
+    this.bindWindow(typeof window === 'undefined' ? undefined : getAppWindow())
+    onAppWindowChange((win) => this.bindWindow(win))
   }
 
   private bindWindow(win: Window | undefined) {

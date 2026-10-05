@@ -415,7 +415,8 @@ Computed корневых узлов (из дампа, тёмная тема, ш
 **У нас (К-4).** Плашка — `W/components/chat/controlPlate.solid.tsx` (`ChatInputPlate`, порт файлом
 без расхождений; её же берёт панель выделения П-5). Кнопки и цепочку `haveSomethingInControl` строит
 `ChatInput` (`W/components/chat/input.ts`). React-плашка `conversation/ChatInputControl.tsx` и
-`controlPlates.ts` снесены.
+`controlPlates.ts` снесены. С П-6 в центре плашки и «Открепить все»/«Скрыть закреплённые» экрана закрепов
+(`pinnedControlBtn`, `can-pin` на `.chat-input`, Б-90).
 
 Анимация подмены — `_center()` (`input.ts:1703-1777`): считает `scale = widthTo / widthFrom`,
 `initTranslateX = (widthFrom - widthTo) / 2`, `transform = translateX(…) scaleX(scale)`,
@@ -501,9 +502,9 @@ Computed корневых узлов (из дампа, тёмная тема, ш
 Вызовы `updateSendBtn()`: `input.ts:600, 1430, 2867, 3177, 3644, 3856, 3889, 3915, 4103, 4908` +
 `chatRecording.ts:793`.
 
-**У нас (К-4, 2026-10-03).** `ChatInput.updateSendBtn` (`W/components/chat/input.ts`) — порт без записи
-(Б-30) и без историй/потока бота: иконки `edit` (правка) и `send`/`schedule`; узел кнопки — 7 иконок 1:1.
-React-`SendButton.tsx` снесён.
+**У нас (К-4, 2026-10-03; запись — П-6).** `ChatInput.updateSendBtn` (`W/components/chat/input.ts`) —
+порт без историй/потока бота: `edit`, `send`/`schedule` и, с рекордером, `record`/`record-video` по
+`recordingController.getActiveRecordingMediaType()`; узел кнопки — 7 иконок 1:1. React-`SendButton.tsx` снесён.
 
 ### 3.3 CSS-морф иконок
 
@@ -653,6 +654,14 @@ Long-press (**400 ms**, только ЛКМ, только не-тач) откр�
 через `setTimeout(…, 400)` (`sendContextMenu.ts:146-147`).
 
 Позиционирование — `_chat.scss:36-39`: `.menu-send { top: auto; bottom: calc(100% + .5rem); }`.
+
+**У нас (П-6, 2026-10-03).** `W/components/chat/sendContextMenu.ts` (`SendMenu`, порт файлом) — тот же
+`ButtonMenuSync` с `menu-send top-left` внутри `.btn-send-container`, гейт `onOpen` и пересоздание на закрытии
+1:1; ряда эффектов нет (бэклог Б-125). «Запланировать» — `W/components/popups/scheduleSendingPopup.ts` поверх моста
+`datePicker.bridge.ts` (ВРЕМЕННО до 2C-23: без `SilentToggle`/`RepeatRow`, Б-126); отложенное уходит ручкой
+`messages.scheduleMessage`, а не `scheduleDate` кадра (расхождение 9 шапки `input.ts`). Send-as —
+`W/components/chat/sendAs.ts` (`.new-message-send-as-container` в начале `.new-message-wrapper`,
+`data-offset="as"` + `has-offset`), личность по умолчанию — первая из `getSendAs` (Б-127).
 
 ### 3.7 Бейдж эффекта (`selectedEffect.tsx`)
 
@@ -1393,6 +1402,20 @@ CSS — `T/scss/partials/_videoRecordingPanel.scss` целиком:
   `PopupPeer 'popup-cancel-record'` (`chatRecording.ts:1006-1012`); для кружка исключение —
   клик по `.video-recording-stage` не считается «снаружи» (`chatRecording.ts:1154`).
 
+**У нас (П-6, 2026-10-03).** Порт файлами: `W/components/chat/recording/chatRecording.ts`,
+`recording/videoRecordingPanel.solid.tsx` (кольцо — наш ванильный `createProgressRing`),
+`voiceRecording/{voiceRecordingPanel,liveWaveform}.ts`, `W/helpers/voiceRecorder/*`
+(`isNativeSupported`, `nativeVoiceRecorder`, `oggOpusWriter`, `liveWaveformAnalyser`),
+`W/helpers/videoRecorder/nativeVideoRecorder.ts`; пики сообщения — уже портированный
+`W/core/audio/voiceWaveformAnalyser.ts`. Опус-рекордер (fallback без WebCodecs) грузит
+`W/pages/bootstrapIm.ts` тегом из `public/opus/` (вендор нетронут), путь энкодера — конфигом.
+Расхождения — в шапке `chatRecording.ts`: отправка — один `messages.sendFile` (тип
+`voice`/`roundVideo`, без wav-`objectURLBlob` и без превью кружка — Б-134; отложенная запись —
+`media.upload` + `messages.scheduleMessage`), право — `send_media`, медленный режим и плата — общие
+с отправкой (`showSlowModeTooltipIfNeeded`, `paidMessageInterceptor`), нет эфемерного режима и заранней
+проверки приватности голосовых (Б-135), тип записи — лист `appSettings.recordingMediaType`. Меню
+отправки (`SendMenu`) во время записи шлёт её «без звука»/«запланировать»/«когда в сети».
+
 ---
 
 ## 7. Хелперы автокомплита
@@ -1680,6 +1703,25 @@ SCSS (`_chatInlineHelper.scss`):
 `-description { font-size: .875rem; color: var(--secondary-text-color); -webkit-line-clamp: 2; white-space: pre-wrap; }` (`:101-121`);
 `&.cant-send { width: 100% !important; height: 3rem; .scrollable-y { display: none } .inline-helper-cant-send { display: block } }` (`:129-140`).
 
+
+**У нас (П-6, 2026-10-03).** Хелперы — порт файлами в `W/components/chat/`:
+`autocompleteHelper.ts`, `autocompleteHelperController.ts`, `autocompletePeerHelper.ts`,
+`mentionsHelper.ts`, `commandsHelper.ts` (+ `processPeerFullForCommands.ts`,
+`hideCommandAutocomplete.ts`), `emojiHelper.ts`, `stickersHelper.ts`, `inlineHelper.ts`;
+создание в `ChatInput.constructPeerHelpers` в порядке tweb `:1384-1393` (дерево `.rows-wrapper`
+§7.1 совпадает, кроме `reply-keyboard`/`bot-commands` — Б-36). `checkAutocomplete`,
+`insertAtCaret`, `mentionUser`, `onEmojiSelected` — `W/components/chat/input.ts` (блок в конце
+класса, расхождение 9 шапки). Расхождения — в шапке каждого файла: у `init` наследников —
+поле-стрелка (под `useDefineForClassFields` метод затёрся бы полем базы); упоминания — ручкой
+`GET /chats/{id}/members?q=` без топ-ботов (Б-136); команды — только в чате с ботом через
+`GET /bots/{id}/commands` (Б-137); эмодзи — без пакета ключевых слов и своих эмодзи (Б-138),
+`appendEmoji`/`getEmojiFromElement`/поиск — ВРЕМЕННО до Б-35 в `emojiHelper.ts`; стикеры —
+ячейка `wrapSticker` вместо `SuperStickerRenderer` (ВРЕМЕННО до Б-35); инлайн — только
+списочный режим, выбор шлёт текст статьи (Б-139). Тултип разметки (§11.4, Б-33) —
+`W/components/chat/markupTooltip.ts` 1:1 без кнопки даты (Б-139), `handleSelection` ставит
+`appImManager.construct`. Пины — `chat/input.autocomplete.test.ts`,
+`chat/autocompleteHelper.test.ts`, `chat/markupTooltip.test.ts`.
+
 ---
 
 ## 8. Эмодзи-дропдаун
@@ -1821,6 +1863,17 @@ div.emoji-dropdown.active [style=""]                              T/components/e
 Табы: 382×49, `padding: 0 5px`, `z-index: 4`.
 `super-emoji`: 42×42, `padding: 5px 4px`, `border-radius: 12px`, `font-size: 34px`.
 Поиск: 366×38, `border-radius: 16px`.
+
+**У нас (П-6, 2026-10-03).** Порт файлами в `W/components/emoticonsDropdown/`: `index.ts`
+(`EmoticonsDropdown` поверх `W/helpers/dropdownHover.ts`, синглтон + автономные копии), `tab.ts`
+(`EmoticonsTabC`), `category.ts`, `search.solid.tsx` (без ряда групп — Б-131), `emojiTonePicker.solid.tsx`,
+`tabs/{emoji,stickers,gifs,SuperStickerRenderer}.ts`; ряд вкладок — `Tabs.Menu`/`Tabs.MenuIconTab`/
+`Tabs.MenuInner` (`W/components/tabs.solid.tsx`). Данные: `W/config/emoji.ts` (таблица tweb),
+`W/lib/appManagers/appEmojiManager.ts` (недавние/тон — ключи State, поиск — локальный пакет слов),
+стикеры/GIF — `managers.stickers` (REST). Свои эмодзи — `W/lib/customEmoji/{element,renderer}.ts` без общего
+холста (медиа в узле; в поле — слой соседом поля). Монтаж в `ChatInput`: `.toggle-emoticons` после
+`.input-message-container`, `attachButtonListener`, `is-under` по `resize`, `insertAtCaret`/`onEmojiSelected`,
+закрытие на меню вложений. Расхождения — в шапках файлов; остаток — Б-130…Б-133 плана волны 7.
 
 ### 8.4 Attach-меню (`D/04-attach-menu.json`)
 
@@ -2088,7 +2141,7 @@ body.is-dragging {
 | — | `button…bubbles-go-down` / `bubbles-go-mention` / `bubbles-go-reaction` | у нас живут вне композера |
 | — | `div.autocomplete-helper…bot-commands` | **у нас нет** хелпера команд бота |
 | — | `div.autocomplete-helper…commands-helper` | **у нас нет** автокомплита `/команд` |
-| — | `div.reply-keyboard` | у нас — `s.replyKeyboardBtn` в `Chat.tsx:1245`, вне композера |
+| — | `div.reply-keyboard` | **портировано** (Б-36): `chat/replyKeyboard.solid.tsx` (`ReplyKeyboard extends DropdownHover`), разметка — `bubbleParts/replyMarkupLayout.solid.tsx`, кнопки — `wrappers/keyboardButton.ts`, стили — `styles/tweb/_replyKeyboard.scss`; источник — свёртка `mergeReplyKeyboard` по зеркалу окна (`core/markup/replyMarkup.ts`) вместо `historyStorage.replyMarkup`. Врезка в `input.ts` (`constructReplyMarkup`) — у ведущего П-6 |
 | — | `input[type=file][style="display:none"]` | у нас файловый инпут в `AttachMenu`/родителе |
 | — | `span.btn-send-stars-badge.stars-badge-base` | у нас платность показана плашкой `.paidBar` |
 | — | `div.reply-in-topic-overlay` | у нас нет |
@@ -2130,7 +2183,7 @@ body.is-dragging {
 | `canvas.voice-recording-waveform` | волна |
 | `div.autocomplete-helper…bot-commands` | список команд бота |
 | `div.autocomplete-helper…commands-helper` | автокомплит `/команд` |
-| `div.reply-keyboard` внутри `.rows-wrapper` | клавиатура бота (у нас снаружи) |
+| `div.reply-keyboard` внутри `.rows-wrapper` | клавиатура бота (класс портирован, Б-36; врезка в `input.ts` — П-6) |
 | `input[type=file][multiple][style="display:none"]` внутри `.new-message-wrapper` | скрытый файловый инпут |
 | `span.btn-send-stars-badge.stars-badge-base` | бейдж стоимости сообщения |
 | `div.drop` / `div.drops-container` | визуальная drop-зона с пунктирной обводкой |
@@ -2306,7 +2359,9 @@ React будет пытаться синхронизировать его сод
 - конкретные langKey для текстов drop-зоны (`appImManager.ts:2358, 2373, 2386`) — **не выписаны**;
 - SCSS для `.mentions-helper` и `.commands-helper` — **не найдено** (стилизуются только базой
   `_autocompletePeerHelper.scss`);
-- DOM-дерево `.reply-keyboard` (`input.ts:912-921`) — **не разбиралось** в этой разведке;
+- DOM-дерево `.reply-keyboard`: `div.reply-keyboard` > `div.scrollable.scrollable-y` > `div.reply-markup` >
+  `div.reply-markup-row.reply-keyboard-row` > `button.reply-markup-button.reply-keyboard-button.btn`
+  (`replyKeyboard.tsx:117-145`, `replyMarkupLayout.tsx`); порт — Б-36;
 - `.stars-badge-base` (внутреннее дерево и стили) — **не разбиралось**;
 - живой DOM состояний edit / forward / запись / выделение / плашка-замена — в дампе снят
   **только покой + reply**; остальное восстановлено по исходникам. Если нужна 100% уверенность
@@ -2320,7 +2375,7 @@ React будет пытаться синхронизировать его сод
 
 - [ ] Морф кнопки: пустой инпут → микрофон, набранный текст → самолётик, режим правки → галочка.
 - [ ] Плашка reply / edit / forward: появление, крестик, клик по плашке ведёт к сообщению.
-- [ ] Запись голоса и кружка: таймер, отмена свайпом, отправка.
+- [ ] Запись голоса и кружка: клик по микрофону — старт, таймер и волна, пауза и прослушивание, корзина и клик мимо строки (попап «выбросить»), повторный клик — отправка; выбор голос/кружок — правый клик или удержание кнопки.
 - [ ] Автокомплиты: `@` упоминание, `/` команда, `:` эмодзи, стикер по эмодзи, инлайн-бот.
 - [ ] Эмодзи-дропдаун: табы эмодзи / стикеры / гифки, поиск внутри каждого.
 - [ ] Drag & drop файла: зона появляется и исчезает, отпускание открывает попап отправки.

@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 55,
+      "version": 61,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -21,6 +21,18 @@
           "value": "Chat list"
         },
         {
+          "key": "AccDescr.DeleteLastCharacter",
+          "value": "Delete last character"
+        },
+        {
+          "key": "AccDescr.GifNumber",
+          "value": "GIF %s"
+        },
+        {
+          "key": "AccDescr.Gifs",
+          "value": "GIFs"
+        },
+        {
           "key": "AccDescr.MicrophoneLevel",
           "value": "Microphone level"
         },
@@ -29,8 +41,20 @@
           "value": "Playback speed"
         },
         {
+          "key": "AccDescr.ResumeRecording",
+          "value": "Resume recording"
+        },
+        {
           "key": "AccDescr.SkipToConversation",
           "value": "Skip to conversation"
+        },
+        {
+          "key": "AccDescr.StickerNumber",
+          "value": "Sticker %s"
+        },
+        {
+          "key": "AccDescr.Stickers",
+          "value": "Stickers"
         },
         {
           "key": "AccDescrEditing",
@@ -1119,6 +1143,10 @@
           "value": "Show sender name"
         },
         {
+          "key": "Chat.BotCommands",
+          "value": "Bot commands"
+        },
+        {
           "key": "Chat.CallMessage.TimeAndDuration",
           "value": "%1$@, %2$@"
         },
@@ -1223,6 +1251,18 @@
         {
           "key": "Chat.Input.FrozenButton2",
           "value": "Click to view details"
+        },
+        {
+          "key": "Chat.Input.Record.Video",
+          "value": "Video Message"
+        },
+        {
+          "key": "Chat.Input.Record.VideoLimitReached",
+          "value": "Maximum video message length reached"
+        },
+        {
+          "key": "Chat.Input.Record.Voice",
+          "value": "Voice Message"
         },
         {
           "key": "Chat.Input.UnpinAll",
@@ -1612,6 +1652,66 @@
           "value": "Chat Theme"
         },
         {
+          "key": "ChatTips.Appearance",
+          "value": "Appearance"
+        },
+        {
+          "key": "ChatTips.Appearance.Dark",
+          "value": "Dark"
+        },
+        {
+          "key": "ChatTips.Appearance.Description",
+          "value": "You can change these parameters and many others in Settings \u003e [General Settings]()."
+        },
+        {
+          "key": "ChatTips.Appearance.Light",
+          "value": "Light"
+        },
+        {
+          "key": "ChatTips.Appearance.System",
+          "value": "System"
+        },
+        {
+          "key": "ChatTips.Chats",
+          "value": "Chats"
+        },
+        {
+          "key": "ChatTips.Chats.Description",
+          "value": "Use **Ctrl+F** to enter [search]() mode."
+        },
+        {
+          "key": "ChatTips.Chats.DescriptionMac",
+          "value": "Use **Cmd+F** to enter [search]() mode."
+        },
+        {
+          "key": "ChatTips.Chats.Empty",
+          "value": "Nothing here yet."
+        },
+        {
+          "key": "ChatTips.Chats.RecentSearch",
+          "value": "Searched"
+        },
+        {
+          "key": "ChatTips.Chats.RecentlyClosed",
+          "value": "Closed"
+        },
+        {
+          "key": "ChatTips.NextTip",
+          "value": "Next Tip"
+        },
+        {
+          "key": "ChatTips.PreviousTip",
+          "value": "Previous Tip"
+        },
+        {
+          "key": "ChatTips.Stickers.Description",
+          "value": "More trending stickers are available in [Trending Stickers]()."
+        },
+        {
+          "key": "ChatTips.Title",
+          "value": "Tips"
+        },
+        {
           "key": "ChatYourSelf",
           "value": "forward here to save"
         },
@@ -1714,12 +1814,32 @@
           "value": "clear"
         },
         {
+          "key": "ClearRecentStickersAlertMessage",
+          "value": "Do you want to clear all your recent stickers?"
+        },
+        {
           "key": "ClearRecentStickersAlertTitle",
           "value": "Clear recent stickers"
         },
         {
           "key": "ClientPip.Exit",
           "value": "Exit Picture-in-Picture"
+        },
+        {
+          "key": "ClientPip.FullscreenHint",
+          "value": "Return to the tab to enter fullscreen"
+        },
+        {
+          "key": "ClientPip.PlaceholderDescription",
+          "value": "Switch back to this tab to bring it here, or use the button below."
+        },
+        {
+          "key": "ClientPip.PlaceholderTitle",
+          "value": "Telegram is in Picture-in-Picture"
+        },
+        {
+          "key": "ClientPip.ReturnToTab",
+          "value": "Return to tab"
         },
         {
           "key": "Close",
@@ -1777,14 +1897,6 @@
           "value": "Tag"
         },
         {
-          "key": "Composer.CancelRecording",
-          "value": "Cancel Recording"
-        },
-        {
-          "key": "Composer.DiscardVoice.Text",
-          "value": "Are you sure you want to discard this voice message?"
-        },
-        {
           "key": "Composer.Formatting",
           "value": "Formatting"
         },
@@ -1797,20 +1909,16 @@
           "value": "Message effect"
         },
         {
-          "key": "Composer.RecordRound",
-          "value": "Record video message"
-        },
-        {
-          "key": "Composer.RecordVoice",
-          "value": "Record voice message"
-        },
-        {
           "key": "ConferenceCall.Media.CameraError",
           "value": "Could not change the camera state. Check camera access and try again."
         },
         {
           "key": "ConferenceCall.Media.MicrophoneError",
           "value": "Could not change the microphone state. Check microphone access and try again."
+        },
+        {
+          "key": "ConfirmPayment",
+          "value": "Confirm Payment"
         },
         {
           "key": "ConnectionStatus.ReconnectInPlain",
@@ -1842,6 +1950,10 @@
         {
           "key": "Contacts.Empty",
           "value": "No contacts"
+        },
+        {
+          "key": "Context.ViewStickerSet",
+          "value": "View Sticker Set"
         },
         {
           "key": "Continue",
@@ -1894,6 +2006,10 @@
         {
           "key": "CurrentSession",
           "value": "This device"
+        },
+        {
+          "key": "CustomEmoji.PremiumAlert",
+          "value": "Subscribe to Telegram Premium to unlock this emoji. [Read More]()"
         },
         {
           "key": "DataSettings",
@@ -1956,6 +2072,14 @@
         {
           "key": "DeleteForMe",
           "value": "Delete for me"
+        },
+        {
+          "key": "DeleteFromFavorites",
+          "value": "Delete from Favorites"
+        },
+        {
+          "key": "DeleteFromRecent",
+          "value": "Remove from Recent"
         },
         {
           "key": "DeleteLink",
@@ -2043,6 +2167,14 @@
         {
           "key": "Discard",
           "value": "Discard"
+        },
+        {
+          "key": "DiscardVoiceMessageAction",
+          "value": "Discard"
+        },
+        {
+          "key": "DiscardVoiceMessageDescription",
+          "value": "Are you sure you want to stop recording and discard your voice message?"
         },
         {
           "key": "DiscardVoiceMessageTitle",
@@ -2151,6 +2283,10 @@
         {
           "key": "Done",
           "value": "Done"
+        },
+        {
+          "key": "DontAskAgain",
+          "value": "Don't ask again"
         },
         {
           "key": "DoubleTapSetting",
@@ -2317,6 +2453,10 @@
           "value": "Activity"
         },
         {
+          "key": "Emoji.ActivityAndSport",
+          "value": "Activity \u0026 Sport"
+        },
+        {
           "key": "Emoji.AnimalsAndNature",
           "value": "Animals \u0026 Nature"
         },
@@ -2351,6 +2491,10 @@
         {
           "key": "EmojiStatus.Set",
           "value": "Set Emoji Status"
+        },
+        {
+          "key": "EmptyPeer.Description",
+          "value": "Select a chat to start messaging"
         },
         {
           "key": "EnableAllReactionsInfo",
@@ -2673,6 +2817,10 @@
           "value": "General"
         },
         {
+          "key": "General.Keyboard",
+          "value": "Keyboard"
+        },
+        {
           "key": "General.TextSize",
           "value": "Text Size"
         },
@@ -2743,6 +2891,10 @@
         {
           "key": "Giveaway.YouWon",
           "value": "You won the giveaway!"
+        },
+        {
+          "key": "GlobalAttachInlineRestricted",
+          "value": "Sending inline content isn't allowed in this group."
         },
         {
           "key": "GlobalAttachMediaRestricted",
@@ -3673,6 +3825,10 @@
           "value": "Members"
         },
         {
+          "key": "Mention",
+          "value": "Mention"
+        },
+        {
           "key": "MenuTelegramStars",
           "value": "My Stars"
         },
@@ -3687,6 +3843,10 @@
         {
           "key": "Message.Context.Pin",
           "value": "Pin"
+        },
+        {
+          "key": "Message.Context.RemoveGif",
+          "value": "Remove GIF"
         },
         {
           "key": "Message.Context.Select",
@@ -3943,6 +4103,10 @@
           "value": "Send a message or tap the greeting below."
         },
         {
+          "key": "NoMicrophoneAccess",
+          "value": "Please allow access to your microphone"
+        },
+        {
           "key": "NoReactions",
           "value": "No reactions"
         },
@@ -4177,8 +4341,23 @@
           "value": "Charge for Messages"
         },
         {
+          "key": "PaidMessages.PayForMessages",
+          "forms": {
+            "one_value": "Pay for %d message",
+            "other_value": "Pay for %d messages"
+          }
+        },
+        {
           "key": "PaidMessages.SetPrice",
           "value": "Set your price per message"
+        },
+        {
+          "key": "PaidMessages.UserChargesForMultipleMessageWarning",
+          "value": "**%s** charges **%s** per incoming message. Would you like to pay **%s** to send **%d messages**?"
+        },
+        {
+          "key": "PaidMessages.UserChargesForOneMessageWarning",
+          "value": "**%s** charges **%s** per incoming message. Would you like to pay **%s** to send one message?"
         },
         {
           "key": "PasscodeLock.AutoLock",
@@ -4679,18 +4858,6 @@
             "one_value": "Pinned Message",
             "other_value": "%1$d Pinned Messages"
           }
-        },
-        {
-          "key": "Pip.ActiveHint",
-          "value": "To return to the tab, click the button here or the icon in the floating window."
-        },
-        {
-          "key": "Pip.ActiveTitle",
-          "value": "Telegram is open in Picture-in-Picture mode"
-        },
-        {
-          "key": "Pip.BackToTab",
-          "value": "Back to Tab"
         },
         {
           "key": "Play",
@@ -5490,6 +5657,10 @@
           "value": "Save"
         },
         {
+          "key": "SaveToGIFs",
+          "value": "Add to GIFs"
+        },
+        {
           "key": "Saved",
           "value": "Saved"
         },
@@ -5637,6 +5808,10 @@
           "value": "Search..."
         },
         {
+          "key": "SearchStickers",
+          "value": "Search Stickers"
+        },
+        {
           "key": "Seconds",
           "forms": {
             "one_value": "%1$d second",
@@ -5688,12 +5863,20 @@
           "value": "Send"
         },
         {
+          "key": "SendAnonymously",
+          "value": "Send anonymously"
+        },
+        {
           "key": "SendAsFile",
           "value": "Send as file"
         },
         {
           "key": "SendMessage",
           "value": "Send Message"
+        },
+        {
+          "key": "SendMessageAsTitle",
+          "value": "Send message as..."
         },
         {
           "key": "SendMessageTo",
@@ -5912,6 +6095,10 @@
           "value": "Similar Channels"
         },
         {
+          "key": "SlowModeHint",
+          "value": "Slow Mode is active. You can send\nyour next message in %1$s."
+        },
+        {
           "key": "Slowmode",
           "value": "Slow Mode"
         },
@@ -5938,6 +6125,14 @@
         {
           "key": "SlowmodeSeconds",
           "value": "%1$ds"
+        },
+        {
+          "key": "SlowmodeSendError",
+          "value": "Slow Mode is active. You can't send more than one message at once."
+        },
+        {
+          "key": "SlowmodeSendErrorTooLong",
+          "value": "This text is too long to send as one message.\n\nSlow Mode is active. You can't send more than one message at once."
         },
         {
           "key": "SomeReactions",
@@ -6046,6 +6241,10 @@
           "value": "Recent Transactions"
         },
         {
+          "key": "Stars.Subscription.MissingBalance",
+          "value": "Insufficient Stars"
+        },
+        {
           "key": "Stars.Subscriptions.PerMonth",
           "value": "per month"
         },
@@ -6125,6 +6324,10 @@
           "value": "Are you sure you want to clear your recent stickers?"
         },
         {
+          "key": "Stickers.Recent",
+          "value": "Recent"
+        },
+        {
           "key": "Stickers.RemoveFromFavorites",
           "value": "Remove from Favorites"
         },
@@ -6139,6 +6342,10 @@
         {
           "key": "Stickers.SuggestStickers",
           "value": "Suggest Stickers by Emoji"
+        },
+        {
+          "key": "Stickers.Trending",
+          "value": "Trending Stickers"
         },
         {
           "key": "StickersBotInfo",
@@ -6958,6 +7165,10 @@
           "value": "View discussion"
         },
         {
+          "key": "ViewPackPreview",
+          "value": "View Pack"
+        },
+        {
           "key": "ViewStatistics",
           "value": "View Statistics"
         },
@@ -6994,6 +7205,10 @@
             "one_value": "%d voice message",
             "other_value": "%d voice messages"
           }
+        },
+        {
+          "key": "VoiceChat.DiscussionGroup",
+          "value": "discussion group"
         },
         {
           "key": "VoiceChat.Leave",
@@ -7128,7 +7343,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 55,
+      "version": 61,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -7976,6 +8191,22 @@
           "value": "Выйти из режима «Картинка в картинке»"
         },
         {
+          "key": "ClientPip.PlaceholderTitle",
+          "value": "Telegram открыт в режиме «Картинка в картинке»"
+        },
+        {
+          "key": "ClientPip.PlaceholderDescription",
+          "value": "Вернитесь на эту вкладку, чтобы открыть его здесь, или нажмите кнопку ниже."
+        },
+        {
+          "key": "ClientPip.ReturnToTab",
+          "value": "Вернуть во вкладку"
+        },
+        {
+          "key": "ClientPip.FullscreenHint",
+          "value": "Вернитесь во вкладку, чтобы включить полноэкранный режим"
+        },
+        {
           "key": "CreateANew",
           "value": "Создать"
         },
@@ -8010,18 +8241,6 @@
         {
           "key": "OK",
           "value": "OK"
-        },
-        {
-          "key": "Pip.ActiveTitle",
-          "value": "Telegram открыт в режиме «картинка в картинке»"
-        },
-        {
-          "key": "Pip.ActiveHint",
-          "value": "Чтобы вернуться к отображению во вкладке, нажмите на кнопку здесь или на значок в плавающем окне."
-        },
-        {
-          "key": "Pip.BackToTab",
-          "value": "Назад во вкладку"
         },
         {
           "key": "Notifications.Web",
@@ -8322,6 +8541,14 @@
           "value": "Размер текста"
         },
         {
+          "key": "General.Keyboard",
+          "value": "Клавиатура"
+        },
+        {
+          "key": "Chat.BotCommands",
+          "value": "Команды бота"
+        },
+        {
           "key": "ChatBackground.Title",
           "value": "Фон чата"
         },
@@ -8552,14 +8779,6 @@
         {
           "key": "AttachRound",
           "value": "Видеосообщение"
-        },
-        {
-          "key": "Composer.RecordVoice",
-          "value": "Записать голосовое"
-        },
-        {
-          "key": "Composer.RecordRound",
-          "value": "Записать видеосообщение"
         },
         {
           "key": "SharedMedia.Audio",
@@ -10755,6 +10974,10 @@
           "value": "Отправьте сообщение или нажмите на приветствие ниже."
         },
         {
+          "key": "NoMicrophoneAccess",
+          "value": "Пожалуйста, разрешите доступ к микрофону"
+        },
+        {
           "key": "ChatYourSelfTitle",
           "value": "Ваше облачное хранилище"
         },
@@ -10875,8 +11098,12 @@
           "value": "Удалить голосовое сообщение?"
         },
         {
-          "key": "Composer.DiscardVoice.Text",
-          "value": "Вы уверены, что хотите удалить это голосовое сообщение?"
+          "key": "DiscardVoiceMessageDescription",
+          "value": "Вы действительно хотите остановить запись и удалить голосовое сообщение?"
+        },
+        {
+          "key": "DiscardVoiceMessageAction",
+          "value": "Удалить"
         },
         {
           "key": "Cancel",
@@ -12265,10 +12492,6 @@
           "value": "Спойлер"
         },
         {
-          "key": "Composer.CancelRecording",
-          "value": "Отменить запись"
-        },
-        {
           "key": "KeyboardShortcuts.Section.Formatting",
           "value": "Форматирование текста"
         },
@@ -12731,6 +12954,18 @@
         {
           "key": "Chat.Input.FrozenButton2",
           "value": "Нажмите, чтобы узнать подробности"
+        },
+        {
+          "key": "Chat.Input.Record.Video",
+          "value": "Видеосообщение"
+        },
+        {
+          "key": "Chat.Input.Record.VideoLimitReached",
+          "value": "Достигнута максимальная длина видеосообщения"
+        },
+        {
+          "key": "Chat.Input.Record.Voice",
+          "value": "Голосовое сообщение"
         },
         {
           "key": "Chat.Menu.ClearSelection",
@@ -13900,6 +14135,10 @@
           "value": "Скорость воспроизведения"
         },
         {
+          "key": "AccDescr.ResumeRecording",
+          "value": "Продолжить запись"
+        },
+        {
           "key": "Play",
           "value": "Воспроизвести"
         },
@@ -14111,6 +14350,14 @@
           "value": "Остановить"
         },
         {
+          "key": "GlobalAttachInlineRestricted",
+          "value": "Отправка инлайн-контента в этой группе запрещена."
+        },
+        {
+          "key": "Mention",
+          "value": "Упомянуть"
+        },
+        {
           "key": "GlobalAttachMediaRestricted",
           "value": "Отправка медиа в этой группе запрещена."
         },
@@ -14129,6 +14376,191 @@
         {
           "key": "UserRestrictionsSendVoices",
           "value": "Отправка голосовых сообщений"
+        },
+        {
+          "key": "SendMessageAsTitle",
+          "value": "Отправить сообщение от имени…"
+        },
+        {
+          "key": "VoiceChat.DiscussionGroup",
+          "value": "группа обсуждения"
+        },
+        {
+          "key": "SendAnonymously",
+          "value": "Отправить анонимно"
+        },
+        {
+          "key": "ChatTips.Appearance",
+          "value": "Оформление"
+        },
+        {
+          "key": "ChatTips.Appearance.Dark",
+          "value": "Тёмная"
+        },
+        {
+          "key": "ChatTips.Appearance.Description",
+          "value": "Эти и многие другие параметры можно изменить в разделе Настройки \u003e [Общие настройки]()."
+        },
+        {
+          "key": "ChatTips.Appearance.Light",
+          "value": "Светлая"
+        },
+        {
+          "key": "ChatTips.Appearance.System",
+          "value": "Системная"
+        },
+        {
+          "key": "ChatTips.Chats",
+          "value": "Чаты"
+        },
+        {
+          "key": "ChatTips.Chats.Description",
+          "value": "Нажмите **Ctrl+F**, чтобы перейти в режим [поиска]()."
+        },
+        {
+          "key": "ChatTips.Chats.DescriptionMac",
+          "value": "Нажмите **Cmd+F**, чтобы перейти в режим [поиска]()."
+        },
+        {
+          "key": "ChatTips.Chats.Empty",
+          "value": "Здесь пока ничего нет."
+        },
+        {
+          "key": "ChatTips.Chats.RecentSearch",
+          "value": "Найденные"
+        },
+        {
+          "key": "ChatTips.Chats.RecentlyClosed",
+          "value": "Закрытые"
+        },
+        {
+          "key": "ChatTips.NextTip",
+          "value": "Следующая"
+        },
+        {
+          "key": "ChatTips.PreviousTip",
+          "value": "Предыдущая"
+        },
+        {
+          "key": "ChatTips.Stickers.Description",
+          "value": "Больше популярных стикеров — в разделе [Популярные стикеры]()."
+        },
+        {
+          "key": "ChatTips.Title",
+          "value": "Подсказки"
+        },
+        {
+          "key": "EmptyPeer.Description",
+          "value": "Выберите, кому хотели бы написать"
+        },
+        {
+          "key": "Stickers.Trending",
+          "value": "Популярные стикеры"
+        },
+        {
+          "key": "ConfirmPayment",
+          "value": "Подтвердите оплату"
+        },
+        {
+          "key": "DontAskAgain",
+          "value": "Больше не спрашивать"
+        },
+        {
+          "key": "PaidMessages.PayForMessages",
+          "forms": {
+            "one_value": "Оплатить %d сообщение",
+            "few_value": "Оплатить %d сообщения",
+            "many_value": "Оплатить %d сообщений",
+            "other_value": "Оплатить %d сообщения"
+          }
+        },
+        {
+          "key": "PaidMessages.UserChargesForMultipleMessageWarning",
+          "value": "**%s** берёт **%s** за каждое входящее сообщение. Заплатить **%s** за отправку сообщений (**%d**)?"
+        },
+        {
+          "key": "PaidMessages.UserChargesForOneMessageWarning",
+          "value": "**%s** берёт **%s** за каждое входящее сообщение. Заплатить **%s**, чтобы отправить одно сообщение?"
+        },
+        {
+          "key": "SlowModeHint",
+          "value": "Включён медленный режим. Следующее сообщение\nможно отправить через %1$s."
+        },
+        {
+          "key": "SlowmodeSendError",
+          "value": "Включён медленный режим. Нельзя отправить больше одного сообщения за раз."
+        },
+        {
+          "key": "SlowmodeSendErrorTooLong",
+          "value": "Текст слишком длинный для одного сообщения.\n\nВключён медленный режим. Нельзя отправить больше одного сообщения за раз."
+        },
+        {
+          "key": "Stars.Subscription.MissingBalance",
+          "value": "Недостаточно звёзд"
+        },
+        {
+          "key": "AccDescr.DeleteLastCharacter",
+          "value": "Удалить последний символ"
+        },
+        {
+          "key": "AccDescr.GifNumber",
+          "value": "Анимация %s"
+        },
+        {
+          "key": "AccDescr.Gifs",
+          "value": "GIF"
+        },
+        {
+          "key": "AccDescr.StickerNumber",
+          "value": "Стикер %s"
+        },
+        {
+          "key": "AccDescr.Stickers",
+          "value": "Стикеры"
+        },
+        {
+          "key": "ClearRecentStickersAlertMessage",
+          "value": "Очистить список недавних стикеров?"
+        },
+        {
+          "key": "Context.ViewStickerSet",
+          "value": "Открыть набор стикеров"
+        },
+        {
+          "key": "CustomEmoji.PremiumAlert",
+          "value": "Оформите Telegram Premium, чтобы использовать этот эмодзи. [Подробнее]()"
+        },
+        {
+          "key": "DeleteFromFavorites",
+          "value": "Удалить из избранного"
+        },
+        {
+          "key": "DeleteFromRecent",
+          "value": "Удалить из недавних"
+        },
+        {
+          "key": "Emoji.ActivityAndSport",
+          "value": "Спорт и активности"
+        },
+        {
+          "key": "Message.Context.RemoveGif",
+          "value": "Удалить GIF"
+        },
+        {
+          "key": "SaveToGIFs",
+          "value": "Добавить в GIF"
+        },
+        {
+          "key": "SearchStickers",
+          "value": "Поиск стикеров"
+        },
+        {
+          "key": "Stickers.Recent",
+          "value": "Недавние"
+        },
+        {
+          "key": "ViewPackPreview",
+          "value": "Открыть набор"
         },
         {
           "key": "PeerInfo.Administrators",
@@ -14327,7 +14759,7 @@
       "base_lang_code": "en",
       "plural_code": "fr",
       "position": 3,
-      "version": 33,
+      "version": 36,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -17008,10 +17440,6 @@
           "value": "Spoiler"
         },
         {
-          "key": "Composer.CancelRecording",
-          "value": "Annuler l’enregistrement"
-        },
-        {
           "key": "KeyboardShortcuts.Section.Formatting",
           "value": "Mise en forme du texte"
         },
@@ -17647,6 +18075,26 @@
             "one_value": "%d Étoile",
             "other_value": "%d Étoiles"
           }
+        },
+        {
+          "key": "ChatTips.Appearance.Description",
+          "value": "Vous pouvez modifier ces paramètres et bien d'autres dans Paramètres \u003e [Paramètres généraux]()."
+        },
+        {
+          "key": "ChatTips.Chats.Description",
+          "value": "Utilisez **Ctrl+F** pour passer en mode [recherche]()."
+        },
+        {
+          "key": "ChatTips.Chats.DescriptionMac",
+          "value": "Utilisez **Cmd+F** pour passer en mode [recherche]()."
+        },
+        {
+          "key": "ChatTips.Stickers.Description",
+          "value": "D'autres stickers tendance sont disponibles dans [Stickers tendance]()."
+        },
+        {
+          "key": "CustomEmoji.PremiumAlert",
+          "value": "Abonnez-vous à Telegram Premium pour débloquer cet emoji. [En savoir plus]()"
         }
       ]
     },
@@ -17657,7 +18105,7 @@
       "base_lang_code": "en",
       "plural_code": "de",
       "position": 4,
-      "version": 33,
+      "version": 36,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -20360,10 +20808,6 @@
           "value": "Spoiler"
         },
         {
-          "key": "Composer.CancelRecording",
-          "value": "Aufnahme abbrechen"
-        },
-        {
           "key": "KeyboardShortcuts.Section.Formatting",
           "value": "Textformatierung"
         },
@@ -20999,6 +21443,26 @@
             "one_value": "%d Stern",
             "other_value": "%d Sterne"
           }
+        },
+        {
+          "key": "ChatTips.Appearance.Description",
+          "value": "Diese und viele weitere Parameter kannst du unter Einstellungen \u003e [Allgemeine Einstellungen]() ändern."
+        },
+        {
+          "key": "ChatTips.Chats.Description",
+          "value": "Mit **Strg+F** öffnest du die [Suche]()."
+        },
+        {
+          "key": "ChatTips.Chats.DescriptionMac",
+          "value": "Mit **Cmd+F** öffnest du die [Suche]()."
+        },
+        {
+          "key": "ChatTips.Stickers.Description",
+          "value": "Weitere angesagte Sticker findest du unter [Angesagte Sticker]()."
+        },
+        {
+          "key": "CustomEmoji.PremiumAlert",
+          "value": "Abonniere Telegram Premium, um dieses Emoji freizuschalten. [Mehr erfahren]()"
         }
       ]
     },
@@ -21009,7 +21473,7 @@
       "base_lang_code": "en",
       "plural_code": "es",
       "position": 5,
-      "version": 33,
+      "version": 36,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -23706,10 +24170,6 @@
           "value": "Spoiler"
         },
         {
-          "key": "Composer.CancelRecording",
-          "value": "Cancelar grabación"
-        },
-        {
           "key": "KeyboardShortcuts.Section.Formatting",
           "value": "Formato de texto"
         },
@@ -24345,6 +24805,26 @@
             "one_value": "%d Estrella",
             "other_value": "%d Estrellas"
           }
+        },
+        {
+          "key": "ChatTips.Appearance.Description",
+          "value": "Puedes cambiar estos y muchos otros parámetros en Ajustes \u003e [Ajustes generales]()."
+        },
+        {
+          "key": "ChatTips.Chats.Description",
+          "value": "Usa **Ctrl+F** para entrar en el modo de [búsqueda]()."
+        },
+        {
+          "key": "ChatTips.Chats.DescriptionMac",
+          "value": "Usa **Cmd+F** para entrar en el modo de [búsqueda]()."
+        },
+        {
+          "key": "ChatTips.Stickers.Description",
+          "value": "Hay más stickers populares en [Stickers populares]()."
+        },
+        {
+          "key": "CustomEmoji.PremiumAlert",
+          "value": "Suscríbete a Telegram Premium para desbloquear este emoji. [Más información]()"
         }
       ]
     },
@@ -24355,7 +24835,7 @@
       "base_lang_code": "en",
       "plural_code": "uk",
       "position": 6,
-      "version": 34,
+      "version": 37,
       "strings": [
         {
           "key": "WebPage.InstantView",
@@ -27185,10 +27665,6 @@
           "value": "Спойлер"
         },
         {
-          "key": "Composer.CancelRecording",
-          "value": "Скасувати запис"
-        },
-        {
           "key": "KeyboardShortcuts.Section.Formatting",
           "value": "Форматування тексту"
         },
@@ -27880,6 +28356,26 @@
             "many_value": "%d зірок",
             "other_value": "%d зірки"
           }
+        },
+        {
+          "key": "ChatTips.Appearance.Description",
+          "value": "Ці та багато інших параметрів можна змінити в розділі Налаштування \u003e [Загальні налаштування]()."
+        },
+        {
+          "key": "ChatTips.Chats.Description",
+          "value": "Натисніть **Ctrl+F**, щоб перейти в режим [пошуку]()."
+        },
+        {
+          "key": "ChatTips.Chats.DescriptionMac",
+          "value": "Натисніть **Cmd+F**, щоб перейти в режим [пошуку]()."
+        },
+        {
+          "key": "ChatTips.Stickers.Description",
+          "value": "Більше популярних стікерів — у розділі [Популярні стікери]()."
+        },
+        {
+          "key": "CustomEmoji.PremiumAlert",
+          "value": "Оформіть Telegram Premium, щоб використовувати цей емодзі. [Докладніше]()"
         }
       ]
     }

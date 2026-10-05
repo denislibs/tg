@@ -16,8 +16,8 @@
 // Из режима НЕ перенесены: `isSelectable`/`wrapSomething`/BOM-филлеры (`createCustomFiller`,
 // `insertCustomFillers`, tweb :151-176, :1030-1072) — в черновике они не рождаются (ветка
 // своих эмодзи выходит раньше `wrapSomething`), а вне черновика `isSelectable` никто не просит;
-// прозрачный `src` плейсхолдера своего эмодзи (tweb :451) — рисовать поверх некому (рендерера
-// нет, см. ниже), без `src` браузер показывает `alt`-глиф.
+// прозрачный `src` плейсхолдера своего эмодзи (tweb :451) — поверх рисует рендерер поля
+// (`lib/customEmoji/renderer.ts`, слой над полем).
 //
 // ЧТО НЕ ПОРТИРОВАНО (и почему):
 //   • `messageEntityFormattedDate` (solid-js), `messageEntityDiff*`, `messageEntityTimestamp`,
@@ -26,8 +26,8 @@
 //     схеме есть, но у нас нет ни того, кто их порождает, ни того, кто их показывает;
 //   (bluff-спойлер портирован; ЕДИНСТВЕННОЕ отличие — буквы строятся узлами,
 //    а не `createElementFromMarkup`, см. комментарий в ветке `spoiler`);
-//   • общий рендерер кастом-эмодзи (`CustomEmojiRendererElement`) — портов
-//     `lib/customEmoji/{element,renderer}` у нас нет, здесь только узел-плейсхолдер;
+//   • рендерер своих эмодзи в ленте (`customEmojis`/`customEmojiRenderer` опций, tweb
+//     `wrapMessageText`) — к баблам не подключён (Б-130), узел несёт глиф текстом;
 //     вместе с ним не портированы `w`/`h` (tweb :415-419): размер задаётся классом
 //     `custom-emoji-custom-sized` и переменными `--width`/`--height`, а этих правил
 //     в наших стилях нет — размер плейсхолдеру ставить нечем;
@@ -57,6 +57,7 @@ import type { MessageEntity } from '@layer'
 import { EMOJI_CDN_BASE, isSafeEmojiUnicode } from './emoji'
 import { getCodeLanguage, highlightCodeInto } from './highlightCode'
 import Icon from '@components/icon'
+import CustomEmojiElement from '@lib/customEmoji/element'
 import {
   ANCHOR_ACTION_ATTRIBUTE,
   safeWrapUrl,
@@ -323,34 +324,35 @@ export default function wrapRichText(text: string, options: WrapRichTextOptions 
           nextEntity = entities[nasty.i + 1]
         }
 
-        // Плейсхолдер: тег/класс/датасет — как у tweb `CustomEmojiElement`
-        // (`lib/customEmoji/element.ts:11-42`), но БЕЗ самого рендера — портов
-        // `lib/customEmoji/{element,renderer}` у нас нет (наш `lib/customEmoji/*` —
-        // это композитор стикеров, другая подсистема). Кто оживит плейсхолдер —
-        // задача этапа медиа.
+        // tweb :425-433 — узел `CustomEmojiElement` (`lib/customEmoji/element.ts`); в ленте
+        // его пока никто не оживляет — рендерер к баблам не подключён (Б-130).
         //
         // Расхождение с tweb: там текст глифа никуда не попадает (`property = 'alt'`
         // при пустом partText — символы уже «съедены» циклом выше), потому что поверх
-        // узла рисует общий рендерер. Пока рендерера нет, кладём глиф текстом внутрь
-        // узла — иначе эмодзи просто пропадает из сообщения.
+        // узла рисует общий рендерер. В ленте рендерера нет — кладём глиф текстом внутрь
+        // узла, иначе эмодзи просто пропадает из сообщения.
+        const customEmoji = CustomEmojiElement.create(entity.document_id)
+        customEmoji.dataset.stickerEmoji = fullEntityText
+
         // tweb :442-454 — в поле ввода свой эмодзи живёт картинкой-плейсхолдером:
         // `alt` — его текст для `getRichElementValue`, `data-doc-id`/`data-sticker-emoji` —
-        // источник `messageEntityCustomEmoji` (см. «РЕЖИМ ЧЕРНОВИКА» в шапке про `src`).
+        // источник `messageEntityCustomEmoji`; прозрачный `src` — поверх рисует рендерер поля
+        // (`components/inputField.ts::processCustomEmojisInInput`).
         if (options.wrappingDraft) {
-          const placeholder = document.createElement('img')
+          const placeholder = document.createElement('img') as HTMLImageElement & { customEmojiElement?: CustomEmojiElement }
           placeholder.alt = fullEntityText
-          placeholder.dataset.docId = '' + entity.document_id
-          placeholder.dataset.stickerEmoji = fullEntityText
+          for (const i in customEmoji.dataset) {
+            placeholder.dataset[i] = customEmoji.dataset[i]
+          }
+          placeholder.customEmojiElement = customEmoji
+          customEmoji.placeholder = placeholder
           placeholder.classList.add('custom-emoji-placeholder')
+          placeholder.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAAtJREFUGFdjYAACAAAFAAGq1chRAAAAAElFTkSuQmCC'
           element = placeholder
           property = 'alt'
           break
         }
 
-        const customEmoji = document.createElement('custom-emoji-element')
-        customEmoji.classList.add('custom-emoji')
-        customEmoji.dataset.docId = '' + entity.document_id
-        customEmoji.dataset.stickerEmoji = fullEntityText
         customEmoji.textContent = fullEntityText
         usedText = true
         element = customEmoji

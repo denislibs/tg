@@ -537,6 +537,11 @@ DOM (`:98-121`): `div.tooltip.tooltip-{vertical}` > `.tooltip-background` + `.to
 SCSS `_tooltip.scss`: `.mounted { transform: scale(0.9) }` → `.is-visible.forwards { transform: scale(1) }`,
 `-notch` через `clip-path: url(#tooltip-notch-clip)`.
 
+**У нас** (Б-37, П-6 волны 7): порт файлом — `web-client/src/components/tooltip.solid.tsx`
+(отличия только типовые и линтерные, шапка файла), партиал `styles/tweb/_tooltip.scss` дословно,
+`#tooltip-notch-clip` — в спрайте `index.html`. Первый потребитель — подсказка медленного режима
+`components/chat/showSlowModeTooltipIfNeeded.ts` (tweb `input.ts:4005-4069`).
+
 ## 5.3 `chat/chatToast.tsx` — тост под шапкой чата
 
 Это **не** `toast.ts`, а обёртка над тултипом: `showTooltip({element: chat.container,

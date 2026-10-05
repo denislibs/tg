@@ -1,10 +1,12 @@
 // Морф кнопки отправки `ChatInput` (`components/chat/input.ts`, tweb
 // `input.ts:1398-1416` — узел, `:4390-4442` — `updateSendBtn`): одна кнопка
 // `.btn-send` с семью иконками, состояние — ровно один класс из набора tweb
-// и подпись `aria-label` по нему. Записи голоса нет (Б-30), поэтому пустое
-// поле — тоже «отправить», как у tweb без `recordingController`.
+// и подпись `aria-label` по нему. В happy-dom нет ни WebCodecs, ни `window.Recorder`,
+// рекордера голоса у строки нет — пустое поле тоже «отправить», как у tweb без
+// рекордера (`:4400`). Ветки «записать» — `recording/chatRecording.test.ts`.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import EventListenerBase from '@helpers/eventListenerBase'
+import { getMiddleware } from '@helpers/middleware'
 import I18n from '@lib/langPack'
 import { useChatsStore } from '@stores/chatsStore'
 import { winKey } from '@core/history/messagesMirror'
@@ -22,6 +24,8 @@ async function mountInput(type = ChatType.Chat) {
   const messages = new Map<number, MyMessage>()
   const managers = {
     messages: {
+      getScheduledMessages: vi.fn(async() => [] as MyMessage[]),
+      scheduleMessage: vi.fn(async() => ({})),
       sendText: vi.fn(async() => ({ ok: true })),
       editMessage: vi.fn(async() => ({})),
       getMessageByPeer: vi.fn(async(_peerId: number, mid: number) => messages.get(mid)),
@@ -46,7 +50,8 @@ async function mountInput(type = ChatType.Chat) {
     updateChatInputHeight: vi.fn(),
     getMessage: (mid: number) => messages.get(mid),
     setMessageId: vi.fn(),
-    bubbles: { onGoDownClick: vi.fn() },
+    bubbles: { onGoDownClick: vi.fn(), getMiddleware: () => () => true },
+    destroyMiddlewareHelper: getMiddleware(),
     selection: { isSelecting: false },
     managers,
   }
@@ -94,7 +99,7 @@ describe('ChatInput: кнопка отправки', () => {
     expect(icons).toEqual(STATES)
   })
 
-  it('пустое поле — «отправить» (записи нет, Б-30)', async() => {
+  it('пустое поле без рекордера — «отправить»', async() => {
     mounted = await mountInput()
     expect(activeStates(mounted.input)).toEqual(['send'])
     expect(mounted.input.btnSend.getAttribute('aria-label')).toBe(I18n.format('Send', true))

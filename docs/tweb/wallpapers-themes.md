@@ -364,6 +364,7 @@ container)`).
 | `components/sidebarLeft/tabs/background.solid.tsx` (477; #324 — после правки) | порт вкладки «Обои» (2D-12) поверх адаптера: сетка из `WALLPAPER_PRESETS`, своё фото — `/media/upload` + `customWallpaperMediaId` (шапка `:16-61`) | переписывается на `getWallPapers`/`uploadWallPaper`/`setBackgroundDocument` |
 | `components/sidebarLeft/tabs/backgroundColor.solid.tsx` (164) | «Цвет» (2D-12), пишет `wallpaper: {kind: 'color'}` | → `setWallpaperForCurrentTheme` |
 | `components/sidebarLeft/tabs/generalSettings.solid.tsx` (234) | «Общие» (2D-13); расхождения 1, 2, 5 шапки — О-38/О-11 | + карусель, ряд акцентов, прогрев |
+| `components/chatTips/appearanceCard.solid.tsx` | карточка «Оформление» пустой колонки (Б-13 волны 7): кнопки System/Dark/Light через `switchTheme(name, …)`, **без карусели** — расхождение 1 шапки (О-38); `lastThemeNames` нет — запасная пара night/day | + `<ChatThemesPicker>` и `lastThemeNames` вместе с каруселью |
 | `components/ChatThemesPicker.tsx` (86) + `.module.scss` | React-попап выбора темы ОДНОГО чата (`PUT /chats/{peer}/theme`) | пары в tweb нет — решение пользователя (план, О-4) |
 | `components/QrModal.tsx` (388) | React-QR, свой ряд тем | → 2C-17 (ждёт карусель) |
 | `components/chat/bubbles/chatBackground.solid.tsx` (#324: 697) | порт компонента 1:1; адаптерный кусок `:150-182` (`getResolvedThemeName`, `getWallPaperSettingsState`, `getGlobalTheme`, `resolveBackgroundSync`) и `watchWallPaperSettings` (`:673-691`) | заменяются вызовами `themeController`; сам компонент не меняется |

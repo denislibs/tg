@@ -30,6 +30,12 @@ vi.mock('@core/theme/themeTransition', async(importOriginal) => ({
 }))
 vi.mock('@environment/callSupport', () => ({ get default() { return env.call } }))
 vi.mock('@environment/documentPictureInPictureSupport', () => ({ get default() { return env.pip } }))
+const clientPip = vi.hoisted(() => ({ open: false, openClientPip: vi.fn(), closeClientPip: vi.fn() }))
+vi.mock('@components/clientPip.solid', () => ({
+  default: clientPip.openClientPip,
+  closeClientPip: clientPip.closeClientPip,
+  isClientPipOpen: () => clientPip.open,
+}))
 
 // Содержимое корня настроек — заглушка: пины вкладки — `tabs/settings.solid.test.tsx`.
 vi.mock('./tabs/settings.solid', () => ({
@@ -292,14 +298,38 @@ describe('createMoreSubmenu — «Ещё»', () => {
     }
   })
 
-  it('PWA — по своему verify; PiP скрыт без `#root` (Б-12)', async() => {
+  it('PWA и PiP — каждый по своему verify (tweb :986-1012)', async() => {
     usePwaStore.setState({ canInstall: true })
     env.pip = true
     const { menu } = await openMenu()
     const more = await openMore(menu)
 
-    expect(itemTexts(more).slice(-1)).toEqual(['Install App'])
-    expect(itemTexts(more)).not.toContain('Picture-in-Picture')
+    expect(itemTexts(more).slice(-2)).toEqual(['Install App', 'Picture-in-Picture'])
+  })
+
+  it('PiP: клик выносит клиент (tweb :1003-1009, Б-12)', async() => {
+    env.pip = true
+    clientPip.openClientPip.mockClear()
+    clientPip.closeClientPip.mockClear()
+    const { menu } = await openMenu()
+    item(await openMore(menu), 'Picture-in-Picture').click()
+    expect(clientPip.openClientPip).toHaveBeenCalledOnce()
+    expect(clientPip.closeClientPip).not.toHaveBeenCalled()
+  })
+
+  it('PiP: в выносе пункт — «Выйти» и возвращает клиент (tweb :1002-1007, Б-12)', async() => {
+    env.pip = true
+    clientPip.open = true
+    clientPip.openClientPip.mockClear()
+    clientPip.closeClientPip.mockClear()
+    try {
+      const { menu } = await openMenu()
+      item(await openMore(menu), 'Exit Picture-in-Picture').click()
+      expect(clientPip.closeClientPip).toHaveBeenCalledOnce()
+      expect(clientPip.openClientPip).not.toHaveBeenCalled()
+    } finally {
+      clientPip.open = false
+    }
   })
 
   it('тумблер анимаций пишет liteMode.animations', async() => {
@@ -320,7 +350,7 @@ describe('createMoreSubmenu — «Ещё»', () => {
 
     item(more, 'Enable Dark Mode').click()
     expect(switchTheme).toHaveBeenCalledTimes(1)
-    expect(switchTheme).toHaveBeenCalledWith({ x: expect.any(Number), y: expect.any(Number) })
+    expect(switchTheme).toHaveBeenCalledWith(undefined, { x: expect.any(Number), y: expect.any(Number) })
     await vi.waitFor(() => expect(contextMenuController.isOpened()).toBe(false))
   })
 })

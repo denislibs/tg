@@ -33,7 +33,7 @@ import isInDOM from '@helpers/dom/isInDOM';
 export type AnimationItemGroup = '' | 'none' | 'chat' | 'lock' |
   'STICKERS-POPUP' | 'emoticons-dropdown' | 'STICKERS-SEARCH' | 'GIFS-SEARCH' |
   `CHAT-MENU-REACTIONS-${number}` | 'INLINE-HELPER' | 'GENERAL-SETTINGS' | 'STICKER-VIEWER' | 'EMOJI' |
-  'EMOJI-STATUS' | `chat-${number}` | 'PREMIUM-PROMO' | 'NEW-MEDIA' | 'BLUFF-SPOILER';
+  'EMOJI-STATUS' | `chat-${number}` | 'PREMIUM-PROMO' | 'NEW-MEDIA' | 'BLUFF-SPOILER' | 'CHAT-TIPS';
 
 export type AnimationItemType = 'lottie' | 'dots' | 'video' | 'emoji';
 

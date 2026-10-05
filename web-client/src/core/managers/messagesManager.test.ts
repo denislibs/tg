@@ -221,6 +221,22 @@ describe('MessagesManager — лента отложенных', () => {
     const s = await mgr.scheduleMessage(1, { text: 'later', sendAt: 500 })
     expect(events).toEqual([['scheduled_new', s]])
   })
+
+  it('scheduleMessage стикера шлёт type и media_id (П-6, отложенный стикер)', async () => {
+    let body: Record<string, unknown> = {}
+    const rest = { post: async (_p: string, b: Record<string, unknown>) => { body = b; return rawScheduled(5, 600) } } as unknown as RestClient
+    const mgr = newMessagesManager({ rest })
+    await mgr.scheduleMessage(1, { text: '', sendAt: 600, type: 'sticker', mediaId: 42 })
+    expect(body).toMatchObject({ type: 'sticker', media_id: 42, send_at: 600 })
+  })
+
+  it('editScheduled переставляет бабл ленты: scheduled_delete прежнего и scheduled_new нового', async () => {
+    const events: [string, unknown][] = []
+    const rest = { patch: async () => rawScheduled(7, 900) } as unknown as RestClient
+    const mgr = newMessagesManager({ rest, broadcast: (e, p) => { events.push([e, p]) } })
+    const s = await mgr.editScheduled(1, cid(7), 900)
+    expect(events).toEqual([['scheduled_delete', { peerId: 1, mids: [cid(7)] }], ['scheduled_new', s]])
+  })
 })
 
 /** Кадр `new_message` несёт сообщение ЦЕЛИКОМ под ключом `message` — форма

@@ -4,6 +4,7 @@
 // отправленный текст не возвращается из прежнего черновика зеркала (расхождение 3 шапки).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import EventListenerBase from '@helpers/eventListenerBase'
+import { getMiddleware } from '@helpers/middleware'
 import { useChatsStore } from '@stores/chatsStore'
 import { winKey } from '@core/history/messagesMirror'
 import { makeDialog } from '@core/dialogs/testDialog'
@@ -26,6 +27,8 @@ function setDialog(draft?: DraftMessage) {
 function makeManagers(messages: Map<number, MyMessage>) {
   return {
     messages: {
+      getScheduledMessages: vi.fn(async() => [] as MyMessage[]),
+      scheduleMessage: vi.fn(async() => ({})),
       sendText: vi.fn(async(_args: Record<string, unknown>) => ({ ok: true })),
       editMessage: vi.fn(async() => ({})),
       forwardMessages: vi.fn(async() => []),
@@ -63,7 +66,8 @@ async function mountInput(options: { draft?: DraftMessage } = {}) {
     updateChatInputHeight: vi.fn(),
     getMessage: (mid: number) => messages.get(mid),
     setMessageId: vi.fn(),
-    bubbles: { onGoDownClick: vi.fn() },
+    bubbles: { onGoDownClick: vi.fn(), getMiddleware: () => () => true },
+    destroyMiddlewareHelper: getMiddleware(),
     selection: { isSelecting: false },
     managers,
   }
@@ -214,6 +218,13 @@ describe('ChatInput: черновик', () => {
     await input.sendMessage()
     expect(managers.messages.sendText).toHaveBeenCalledTimes(1)
 
+    await flush()
+    await flush()
+    expect(input.isInputEmpty()).toBe(true)
+
+    // новое сообщение пересобрало строку диалога раньше кадра очистки: тот же черновик
+    // новым объектом не возвращается в поле (найдено на стенде П-6)
+    setDialog({ _: 'draftMessage', message: 'привет', date: 1 })
     await flush()
     await flush()
     expect(input.isInputEmpty()).toBe(true)

@@ -777,3 +777,61 @@ body > .btn-menu {
   }
 }
 
+
+// tweb `scss/partials/_customEmoji.scss` — выдержка для своих эмодзи эмодзи-дропдауна и поля
+// ввода (`lib/customEmoji/{element,renderer}.ts`). Партиал целиком не берётся: его общие правила
+// `.custom-emoji` (ширина/высота `!important`, `:before` во всю ячейку) рассчитаны на пустой узел
+// поверх общего холста, а в ленте наш узел пока несёт глиф текстом (рендерер к баблам не
+// подключён — Б-130). Медиа узла — своё (`wrapSticker`, расхождение 1 рендерера), поэтому
+// правило `.media-sticker`/`.lottie` здесь работает, а `-canvas` — нет.
+.custom-emoji {
+  .media-sticker,
+  .lottie {
+    margin: 0;
+    width: inherit !important;
+    height: inherit !important;
+    max-width: inherit !important;
+    max-height: inherit !important;
+    pointer-events: none;
+    text-indent: -9999px;
+  }
+
+  &-renderer {
+    pointer-events: none;
+
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+  }
+
+  &-placeholder {
+    display: inline;
+    width: var(--messages-custom-emoji-size);
+    height: var(--messages-custom-emoji-size);
+    vertical-align: middle;
+    margin-top: -.125rem;
+  }
+}
+
+.super-emojis .custom-emoji {
+  position: relative;
+  width: var(--custom-emoji-size);
+  height: var(--custom-emoji-size);
+  min-width: var(--custom-emoji-size);
+  min-height: var(--custom-emoji-size);
+}
+
+// наше: слой своих эмодзи поля ввода лежит над полем, узел стоит над своим плейсхолдером
+// (`renderer.ts`, расхождение 2), а не рисуется на холсте
+.custom-emoji-renderer.is-selectable {
+  overflow: hidden;
+
+  > .custom-emoji {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+}

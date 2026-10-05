@@ -308,6 +308,30 @@ describe('pending: ошибка, ретрай, отмена', () => {
     expect(p.ackPendingMessage({ client_msg_id: 'c-1', id: 11, created_at: 'x' })).toHaveLength(1)
   })
 
+  // Порт tweb `hasOutgoingMessage` (appMessagesManager.ts:10047-10055) — его читает
+  // подсказка медленного режима: неотправленное, в том числе упавшее, держит пира.
+  it('hasOutgoingMessage: есть у пира бабл в пути или с ошибкой — до ack/отмены', () => {
+    const { ctx, slices } = makeCtx()
+    openWindow(slices, '1', [cid(10)])
+    openWindow(slices, '2', [cid(10)])
+    const p = newPendingMethods(ctx)
+    expect(p.hasOutgoingMessage(1)).toBe(false)
+
+    p.beforeMessageSending(evt())
+    expect(p.hasOutgoingMessage(1)).toBe(true)
+    expect(p.hasOutgoingMessage(2)).toBe(false)
+
+    p.failPendingMessage('c-1')
+    expect(p.hasOutgoingMessage(1)).toBe(true)
+
+    p.ackPendingMessage({ client_msg_id: 'c-1', id: 11, created_at: 'x' })
+    expect(p.hasOutgoingMessage(1)).toBe(false)
+
+    p.beforeMessageSending(evt({ client_msg_id: 'c-2' }))
+    p.cancelPendingMessage('c-2')
+    expect(p.hasOutgoingMessage(1)).toBe(false)
+  })
+
   it('отмена убирает бабл из SSOT и среза, повторная — no-op', () => {
     const { ctx, slices, msgsFor } = makeCtx()
     openWindow(slices, '1', [cid(10)])

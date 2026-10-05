@@ -175,8 +175,19 @@ const APP_SETTINGS_KEYS = {
     microphoneId: 'micId',
     cameraId: 'cameraId',
   },
+  // tweb `config/state.ts:198` — тип записи кнопкой отправки (`chat/recording/chatRecording.ts`).
+  // Наш ключ держит кружок словом `'round'` (лежит в `localStorage` с React-композера),
+  // у tweb — `'video'`.
+  recordingMediaType: codec(
+    'recordingMediaType',
+    (type): 'voice' | 'video' => type === 'round' ? 'video' : 'voice',
+    (type: 'voice' | 'video') => type === 'video' ? 'round' : 'voice',
+  ),
   // tweb `config/state.ts:199-201` — порядок вкладки контактов (`sidebarLeft/tabs/contacts.solid.tsx`)
   contactsSortMode: 'contactsSortMode',
+  // tweb `config/state.ts:109-114` — карточки пустой колонки (`components/chatTips`):
+  // какая показана и свёрнута ли колода
+  chatTips: 'chatTips',
 } as const satisfies KeyTable
 
 type Table = typeof APP_SETTINGS_KEYS

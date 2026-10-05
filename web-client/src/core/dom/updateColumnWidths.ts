@@ -27,6 +27,7 @@
 //     :386): пересчёт дёргается прямо из сеттеров. Само событие есть — его шлёт
 //     ручка ресайза (`installColumnResize.ts`), читает ряд историй.
 import clamp from '@helpers/number/clamp'
+import { getAppWindow } from '@helpers/appWindow'
 import throttle from '@helpers/schedulers/throttle'
 import mediaSizes from './mediaSizes'
 import { useSettingsStore } from '../../settings'
@@ -195,7 +196,7 @@ let installed = false
 export default function updateColumnWidths(): void {
   loadUserPreferences()
   const root = document.documentElement
-  const vw = window.innerWidth
+  const vw = getAppWindow().innerWidth
   // Брейкпоинты — у `mediaSizes` (порт tweb `helpers/mediaSizes.ts`), ровно как
   // в оригинале (updateColumnWidths.ts:207-208): своих констант 600/925 модуль
   // не держит, это был второй владелец того же факта.

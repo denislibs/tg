@@ -10,7 +10,8 @@
  *     input.innerHTML` (`:102-112`): правило «не присваивать разметку в DOM»
  *     (`web-client/CLAUDE.md`, «Безопасность»). Вырезание
  *     `custom-emoji-renderer-element`/содержимого `custom-emoji-element` (`:103-105`)
- *     не нужно — этих элементов в поле нет (см. шапку `inputField.ts`, п. 1), а
+ *     не нужно — этих элементов в поле нет: слой своих эмодзи стоит соседом поля
+ *     (см. шапку `inputField.ts`, п. 1), в поле только плейсхолдеры, а
  *     замена BOM-span'ов и `<br>` под `USING_BOMS = false` (`:107-109`) мертва.
  *  2. Переход — наш `core/dom/setTransition` (порт `components/singleTransition.ts`).
  */

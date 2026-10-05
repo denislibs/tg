@@ -476,6 +476,10 @@ export interface ChannelFull {
   /** чат обсуждения канала; отсутствует — обсуждения нет */
   linked_chat_id?: number
   slowmode_seconds?: number
+  /** slowmode_next_send_date:flags.18?int — когда зрителю можно писать снова.
+   *  Бэкенд НЕ производит (`domain/mtchat.go`): ветка таймера подсказки медленного
+   *  режима (`chat/showSlowModeTooltipIfNeeded.ts`) без предмета не срабатывает. */
+  slowmode_next_send_date?: number
   ttl_period?: number
   available_reactions?: ChatReactions
   send_paid_messages_stars?: number

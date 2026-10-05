@@ -24,11 +24,10 @@
 //    таймаут): апстримный упаковщик wav бросает на пустом входе
 //    (`requestData()` читает `recordedBuffers[0].length`), и ждать 10 секунд,
 //    чтобы узнать это, — не дело.
-//  • `setKeepAlive`/`isPlaySupported` не портированы. Первый у tweb держит
-//    воркеры поднятыми, ПОКА ИДЁТ ЗАПИСЬ (`chatRecording.ts:989`): он проигрывает
-//    недописанный ogg через тот же декодер. У нас предпрослушивания записи нет, и
-//    единственный потребитель контроллера — воспроизведение. Второй — обёртка над
-//    `IS_OPUS_SUPPORTED`, который гейт читает напрямую.
+//  • `isPlaySupported` не портирован — обёртка над `IS_OPUS_SUPPORTED`, который
+//    гейт читает напрямую. `setKeepAlive` (tweb :77-85) держит воркеры поднятыми,
+//    ПОКА ИДЁТ ЗАПИСЬ (`chat/recording/chatRecording.ts`): предпрослушивание на
+//    паузе гоняет недописанный ogg через тот же декодер.
 import { IS_SAFARI } from '@environment/userAgent'
 
 /** Раздаётся статикой, не бандлером: имя `.wasm` зашито в скрипт воркера
@@ -49,6 +48,7 @@ export class OpusDecodeController {
   private worker: Worker | null = null
   private wavWorker: Worker | null = null
   private tasks: Task[] = []
+  private keepAlive = false
 
   private loadWavWorker(): void {
     if (this.wavWorker) return
@@ -114,8 +114,19 @@ export class OpusDecodeController {
     }
   }
 
+  /** tweb `setKeepAlive` (:77-85) */
+  public setKeepAlive(keepAlive: boolean): void {
+    this.keepAlive = keepAlive
+    if (this.keepAlive) {
+      this.loadWorker()
+      this.loadWavWorker()
+    } else if (!this.tasks.length) {
+      this.terminateWorkers()
+    }
+  }
+
   private terminateWorkers(kill = false): void {
-    if (this.tasks.length && !kill) return
+    if ((this.keepAlive || this.tasks.length) && !kill) return
 
     this.worker?.terminate()
     this.worker = null

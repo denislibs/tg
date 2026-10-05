@@ -24,12 +24,33 @@
 //  - правка/пересылка/ответ: `initMessageEditing` `:4859`, `initMessagesForward` `:4963`,
 //    `getChatInputReplyToFromMessage` `:5082`, `initMessageReply` `:5099`, `setReplyTo` `:5249`,
 //    `setInputValue` `:5332`.
+//  - автокомплит и тултип разметки (П-6, Б-33/Б-34): хелперы `:1384-1393`,
+//    `chat_changing` `:1736-1742`, `keyup` `:3298-3307`, `mentionUser` `:2334`,
+//    `insertAtCaret` `:3635`, `onEmojiSelected` `:3759`, `checkAutocomplete` `:3796-3903`,
+//    `checkInlineAutocomplete` `:3911-3986` — блоком в конце класса (расхождение 11).
+//  - пачка П-6 «отправка»: кнопка отложенных `constructScheduledButton` `:922-946`, меню
+//    отправки `SendMenu` `:1426-1472` (`chat/sendContextMenu.ts`), расписание
+//    `getReadyToSend`/`canSendWhenOnline`/`setScheduleTimestamp`/`scheduleSending`
+//    `:2145-2217` (`popups/scheduleSendingPopup.ts`), `resetSendingFlags` `:4491`,
+//    send-as `createSendAs`/`updateOffset` `:2485-2520`, `:2817-2852` (`chat/sendAs.ts`),
+//    «Открепить все» экрана закрепов `pinnedControlBtn` `:1618-1633`, `:2697-2702`,
+//    клавиатура бота `constructReplyMarkup` `:948-960` (`chat/replyKeyboard.solid.tsx`),
+//    медленный режим `showSlowModeTooltipIfNeeded` `:4005-4084` (`chat/showSlowModeTooltipIfNeeded.ts`)
+//    и плата `paidMessageInterceptor` (`chat/paidMessagesInterceptor.ts`) в путях отправки
+//    `:3836`, `:4571-4604`, `:4800-4814`;
+//  - запись голоса и кружков (П-6, Б-30): `recordingController` (`recording/chatRecording.ts`)
+//    `:312-315`, `:482-485`, `constructRecorder` `:1048-1053`, `setShrinking` `:3988-3996`,
+//    ветки записи в `onBtnSendClick`, `updateSendBtn` и `SendMenu` `:1429-1464`.
 //
-// В бэклоге (строки раздела 5 плана): запись голоса и кружков (Б-30), send-as (Б-31),
-// меню отправки и расписание (Б-32), тултип разметки (Б-33), автокомплит (Б-34),
-// эмодзи-дропдаун (Б-35), клавиатура бота и команды (Б-36), медленный режим и платные
-// (Б-37), правка медиа (Б-38), меню плашек и превью ссылки (Б-72), плашки без предмета
-// (Б-73).
+// Эмодзи-дропдаун (П-6, `components/emoticonsDropdown`): кнопка `.toggle-emoticons` `:1074`,
+// `:1379`, привязка `:1484-1497`, `onEmoticonsToggle` `:2125-2143`, закрытие на меню вложений
+// `:1346`, тач-клик по полю `:3254-3258`, `insertAtCaret` `:3635-3678`, `onEmojiSelected`
+// `:3759-3771`, недавние эмодзи в `onMessageSent` `:4506-4519`. `is-under` — по `resize` окна
+// (наш `windowSize` не реактивен, у tweb — `createEffect`).
+//
+// В бэклоге (строки раздела 5 плана): меню плашек и превью ссылки (Б-72), плашки без
+// предмета (Б-73), эффекты сообщений (Б-125), повтор отложенных (Б-126), сохранение
+// личности send-as (Б-127).
 //
 // ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
 //  1. Пакет параметров отправки собирает `ChatInput.getMessageSendingParams()`, а не
@@ -52,7 +73,7 @@
 //     обе ветки перенесены из снесённого `useChatSend.ts`.
 //  5. Права — наш `ChatRights`: `send_plain` → `send_messages`, стикеры/GIF/медиа →
 //     `send_media`.
-//  6. Кнопки без предмета не строятся: эмодзи (Б-35), подарок, предложенный пост,
+//  6. Кнопки без предмета не строятся: подарок, предложенный пост,
 //     автоудаление, клавиатура бота, отложенные (Б-32), упоминания/реакции/голоса
 //     (Б-27 — угловые кнопки), «Вступить»/«Разблокировать»/премиум/заморозка/закреп/
 //     «Открыть чат» на плашке (Б-73). Состояния ввода (`inputState`), эфемерный режим,
@@ -62,6 +83,22 @@
 //     (`fwd_from.from_name`) не различается — отправитель берётся `fromId ?? peerId`.
 //  8. Пустая правка (`sendMessage`, ветка `showDeleteMessagesPopup`) не делает ничего —
 //     попап удаления у П-5 (`popups/deleteMessages`).
+//  9. Отложенная отправка — своя ручка `messages.scheduleMessage` (`POST /chats/{id}/
+//     scheduled`), а не поле `scheduleDate` пакета `sendText`/`sendFile` (у кадра
+//     `send_message` его нет, `core/managers/messages/sendingParams.ts`): текст, стикер
+//     и сохранённая гифка; пересылку, файлы и Tenor-гифку отложить нечем — уходят сразу
+//     (Б-126). «Когда будет в сети» — `when_online`, а не метка `SEND_WHEN_ONLINE_TIMESTAMP`.
+// 10. `SendMenu` без ряда эффектов и `SelectedEffect` (Б-125); `isPaid` у
+//     `setPeerParams` — плата из зеркала пиров (`getStarsAmount`), а не `Chat.starsAmount`
+//     (у `Chat` его нет, расхождение 7 `chat.ts`). Плейсхолдер `PaidMessages.MessageForStars`
+//     и бейдж звёзд кнопки (`addStarsBadge`/`setStarsAmount`) — без `inputState` (Б-129).
+// 11. Автокомплит (П-6): методы — блоком в конце класса, а не на местах tweb (слияние
+//     с соседними ветками П-6 без конфликтов). Без своих эмодзи (`getCustomEmojiSuggestionEmoticon`,
+//     `checkEmoticon` — Б-74/Б-138), гостевых ботов (`knownGuestBots`, `canSendGuestChat`),
+//     эфемерного и приветственного режимов, `globalMentions`, `topMsgId` упоминаний (Б-136)
+//     и перепроверки по `settings_updated`/`peer_full_update` (своих событий нет). Права
+//     `send_stickers`/`send_inline` — наши `send_media`/`send_messages` (расхождение 5).
+//     `insertAtCaret`/`onEmojiSelected` — одна копия, у эмодзи-дропдауна (Б-35).
 import type { Managers } from '@/client/bootstrap'
 import type { AppImManager } from '@lib/appImManager'
 import rootScope from '@lib/rootScope'
@@ -74,8 +111,8 @@ import type { MessageOp } from '@core/realtime/messageOps'
 import type { Sticker } from '@core/managers/stickersManager'
 import type { GifItem } from '@core/gifs'
 import type { ChatRights } from '@core/peers/rights'
-import { isUser } from '@core/peers/peerId'
-import { cachedUser, isBroadcastPeer, isInChatPeer } from '@core/peerCache'
+import { isUser, toUserId } from '@core/peers/peerId'
+import { cachedUser, getStarsAmount, isBroadcastPeer, isInChatPeer, peerTitle } from '@core/peerCache'
 import { isBot as isBotPeer } from '@core/peers/predicates'
 import { isPeerMuted } from '@core/dialogs/notifySettings'
 import { draftsAreEqual, realDraft } from '@core/dialogs/draft'
@@ -104,6 +141,12 @@ import focusInput from '@helpers/dom/focusInput'
 import { getAppWindow } from '@helpers/appWindow'
 import placeCaretAtEnd from '@helpers/dom/placeCaretAtEnd'
 import getRichValueWithCaret from '@helpers/dom/getRichValueWithCaret'
+import classifyInputKeyup from '@helpers/dom/classifyInputKeyup'
+import RichInputHandler from '@helpers/dom/richInputHandler'
+import { putPreloader } from '@components/putPreloader'
+import { insertRichTextAsHTML } from '@components/inputField'
+import getEmojiEntityFromEmoji from '@lib/richtext/getEmojiEntityFromEmoji'
+import { appSettings } from '@stores/appSettings.solid'
 import { handleMarkdownShortcut, processCurrentFormatting } from '@helpers/dom/markdown'
 import toggleDisability from '@helpers/dom/toggleDisability'
 import createBadge from '@helpers/createBadge'
@@ -127,8 +170,42 @@ import { openCreatePollPopup } from '@components/popups/createPoll.bridge'
 import showChecklistPopup from '@components/popups/checklist.bridge'
 import wrapReply from '@components/wrappers/reply'
 import wrapMessageForReply from '@components/wrappers/messageForReply'
+import showScheduleSendingPopup from '@components/popups/scheduleSendingPopup'
+import showPinMessagePopup from '@components/popups/unpinMessage'
+import { canPinMessage } from '@core/pinnedMessages'
+import { getUserStatusForSort } from '@core/presence'
+import { SEND_WHEN_ONLINE_TIMESTAMP } from '@core/format/dayLabel'
 import AttachMenuButton from './attachMenuButton.solid'
+import ChatRecording from './recording/chatRecording'
+import AutocompleteHelperController from './autocompleteHelperController'
+import type AutocompleteHelper from './autocompleteHelper'
+import StickersHelper from './stickersHelper'
+import EmojiHelper from './emojiHelper'
+import CommandsHelper from './commandsHelper'
+import MentionsHelper from './mentionsHelper'
+import InlineHelper from './inlineHelper'
+import MarkupTooltip from './markupTooltip'
+import isPlausibleEmojiQuery from './isPlausibleEmojiQuery'
 import ChatInputPlate from './controlPlate.solid'
+import ChatSendAs from './sendAs'
+import ReplyKeyboard from './replyKeyboard.solid'
+import ChatBotCommands from './botCommands'
+import type { BotCommand } from '@core/managers/botsManager'
+import getTextWidth from '@helpers/canvas/getTextWidth'
+import { FontFull } from '@config/font'
+import replaceContent from '@helpers/dom/replaceContent'
+import wrapEmojiText from '@lib/richtext/wrapEmojiText'
+import { openWebApp } from '@core/webapp'
+import PaidMessagesInterceptor, { PAYMENT_REJECTED } from './paidMessagesInterceptor'
+import showSlowModeTooltipIfNeeded, { type ShowSlowModeTooltipOptions } from './showSlowModeTooltipIfNeeded'
+import SendMenu from './sendContextMenu'
+import emoticonsDropdown, { type EmoticonsDropdown } from '@components/emoticonsDropdown'
+import type { getEmojiFromElement } from '@components/emoticonsDropdown/tabs/emoji'
+import appEmojiManager from '@lib/appManagers/appEmojiManager'
+import blurActiveElement from '@helpers/dom/blurActiveElement'
+import { replaceButtonIcon } from '@components/button'
+import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
+import { emojiFromCodePoints } from '@vendor/emoji'
 import PeerTitle from './peerTitle'
 import type Chat from './chat'
 import { ChatType } from './chatType'
@@ -148,6 +225,7 @@ export type ChatInputReplyTo = Pick<MessageSendingParams, 'replyToMsgId' | 'repl
 export type AttachedMediaType = 'media' | 'document'
 
 const CLASS_NAME = 'chat-input'
+let botCommandsListId = 0
 const PEER_EXCEPTIONS = new Set<ChatType>([ChatType.Scheduled, ChatType.Stories, ChatType.Saved, ChatType.Welcome])
 
 /** tweb `config.message_length_max` — у нас константа бэкенда (`maxMessageRunes`). */
@@ -157,6 +235,9 @@ const MESSAGE_LENGTH_MAX = 4096
 const TYPING_THROTTLE_MS = 6000
 
 export default class ChatInput {
+  /** tweb `:214` */
+  private static AUTO_COMPLETE_REG_EXP = /(\s|^)((?:(?:@|^\/)\S*)|(?::|^[^:@/])(?!.*[:@/]).*)$/
+
   public messageInput!: HTMLElement
   public messageInputField!: InputFieldAnimated
   private inputHeightDelta = 0
@@ -164,6 +245,7 @@ export default class ChatInput {
   public fileInput!: HTMLInputElement
   public inputMessageContainer!: HTMLDivElement
   public btnSend!: HTMLButtonElement
+  public btnCancelRecord!: HTMLButtonElement
   private lastTimeType = 0
 
   public chatInput!: HTMLElement
@@ -171,6 +253,17 @@ export default class ChatInput {
   public rowsWrapper!: HTMLDivElement
   public newMessageWrapper!: HTMLDivElement
   public btnSendContainer!: HTMLDivElement
+
+  public autocompleteHelperController!: AutocompleteHelperController
+  private stickersHelper!: StickersHelper
+  private emojiHelper!: EmojiHelper
+  private commandsHelper!: CommandsHelper
+  private mentionsHelper!: MentionsHelper
+  private inlineHelper!: InlineHelper
+  private previousQuery?: string
+  private btnPreloader?: HTMLButtonElement
+  public btnToggleEmoticons?: HTMLButtonElement
+  public emoticonsDropdown: EmoticonsDropdown
 
   public attachMenu!: InstanceType<typeof AttachMenuButton>
   private attachMenuButtons!: ButtonMenuItemOptionsVerifiable[]
@@ -188,8 +281,35 @@ export default class ChatInput {
   public replyToPeerId: MessageSendingParams['replyToPeerId']
   public editMsgId?: number
   public editMessage?: MyMessage
+  /** tweb `:302-303` — время отложенной отправки (секунды) и период повтора (Б-126) */
+  public scheduleDate?: number
+  public scheduleRepeatPeriod?: number
   public sendSilent?: true
   public startParam?: string
+
+  /** tweb `:254` */
+  private sendMenu!: SendMenu
+  /** tweb `:238`, `:244` — клавиатура бота (Б-36) */
+  private btnToggleReplyMarkup?: HTMLButtonElement
+  private replyKeyboard?: ReplyKeyboard
+  /** tweb `:388-393` — команды и кнопка-меню бота (Б-36) */
+  private botCommandsToggle?: HTMLElement
+  private botCommands?: ChatBotCommands
+  private botCommandsIcon!: HTMLElement
+  private botCommandsView!: HTMLElement
+  private botMenuButton?: { text: string, url: string }
+  private hasBotCommands?: boolean
+  /** tweb `:354`, `constructScheduledButton` `:922-945` */
+  private btnScheduled!: HTMLButtonElement
+  /** tweb `:398-400` */
+  private sendAs?: ChatSendAs
+  public sendAsPeerId?: PeerId
+  /** tweb `:434` — сдвиг строки под send-as/команды бота */
+  private hasOffset?: { type: 'commands' | 'as' | null, forwards: boolean }
+  /** tweb `:343`, «Открепить все»/«Скрыть закреплённые» экрана закрепов (Б-90) */
+  private pinnedControlBtn!: HTMLButtonElement
+  /** tweb `:441` — подтверждение платы платного чата (Б-37) */
+  public paidMessageInterceptor!: PaidMessagesInterceptor
 
   public helperType?: Exclude<ChatInputHelperType, 'webpage'>
   /** tweb `:322` — перерисовать плашку (превью ссылки возвращает прежнюю, Б-72) */
@@ -218,6 +338,9 @@ export default class ChatInput {
 
   private restoreInputLock?: () => void
 
+  // tweb :312-315 — запись голоса и кружков (Б-30); геттер `recording` ниже.
+  private recordingController?: ChatRecording
+
   /** True while `finishPeerChange` runs — suppresses animated plate centering. */
   private peerChanging = false
 
@@ -242,6 +365,12 @@ export default class ChatInput {
   ) {
     this.listenerSetter = new ListenerSetter()
     this.middlewareHelper = getMiddleware()
+    this.emoticonsDropdown = emoticonsDropdown
+  }
+
+  /** tweb `:482-485` */
+  public get recording() {
+    return this.recordingController?.active ?? false
   }
 
   /** tweb `:487-574` */
@@ -281,6 +410,9 @@ export default class ChatInput {
     const c = this.controlContainer = document.createElement('div')
     c.classList.add('chat-input-control', 'chat-input-wrapper')
     this.inputContainer.append(c)
+
+    // tweb `:595`; dispose нет — очереди отложенной оплаты нет (шапка `paidMessagesInterceptor.ts`)
+    this.paidMessageInterceptor = new PaidMessagesInterceptor(this.chat)
   }
 
   public getMiddleware(additionalCallback?: () => boolean) {
@@ -305,6 +437,95 @@ export default class ChatInput {
     }, { listenerSetter: this.listenerSetter })
   }
 
+  /** tweb `:922-946` */
+  private constructScheduledButton() {
+    this.btnScheduled = this.createButtonIcon('schedule btn-scheduled float hide', { noRipple: true, ariaLabel: 'ScheduledMessages' }) as HTMLButtonElement
+
+    attachClickEvent(this.btnScheduled, () => {
+      this.appImManager.openScheduled(this.chat.peerId)
+    }, { listenerSetter: this.listenerSetter })
+
+    this.listenerSetter.add(rootScope)('scheduled_new', ({ peerId }: MyMessage) => {
+      if(this.chat.peerId !== peerId) {
+        return
+      }
+
+      this.btnScheduled.classList.remove('hide')
+    })
+
+    this.listenerSetter.add(rootScope)('scheduled_delete', ({ peerId }: { peerId: PeerId }) => {
+      if(this.chat.peerId !== peerId) {
+        return
+      }
+
+      void this.managers.messages.getScheduledMessages(this.chat.peerId).then((value) => {
+        this.btnScheduled.classList.toggle('hide', !value.length)
+      })
+    })
+  }
+
+  /** tweb `:948-960` */
+  private constructReplyMarkup() {
+    this.btnToggleReplyMarkup = this.createButtonIcon('botcom toggle-reply-markup float hide', { noRipple: true, ariaLabel: 'General.Keyboard' }) as HTMLButtonElement
+    this.replyKeyboard = new ReplyKeyboard({
+      appendTo: this.rowsWrapper,
+      listenerSetter: this.listenerSetter,
+      btnHover: this.btnToggleReplyMarkup,
+      chatInput: this,
+      middleware: this.middlewareHelper.get(),
+    })
+    this.listenerSetter.add(this.replyKeyboard)('open', () => this.btnToggleReplyMarkup!.classList.add('active'))
+    this.listenerSetter.add(this.replyKeyboard)('close', () => this.btnToggleReplyMarkup!.classList.remove('active'))
+  }
+
+  /** tweb `:962-1046` — меню бота открывает `openWebApp` (`core/webapp.ts`), а не `chat.openWebApp` */
+  private constructBotCommands() {
+    this.botCommands = new ChatBotCommands(this.rowsWrapper, this, this.managers)
+    this.botCommands.container.id = `chat-bot-commands-${++botCommandsListId}`
+    this.botCommands.container.setAttribute('aria-hidden', 'true')
+    const toggle = this.botCommandsToggle = document.createElement('div')
+    toggle.classList.add('new-message-bot-commands')
+    toggle.setAttribute('role', 'button')
+    toggle.setAttribute('aria-label', I18n.format('Chat.BotCommands', true))
+    toggle.tabIndex = -1
+    toggle.append(Icon('webview', 'new-message-bot-commands-view-icon'))
+    const scaler = document.createElement('div')
+    scaler.classList.add('new-message-bot-commands-icon-scale')
+    const icon = this.botCommandsIcon = document.createElement('div')
+    icon.classList.add('animated-menu-icon', 'animated-menu-close-icon')
+    scaler.append(icon)
+    this.botCommandsView = document.createElement('div')
+    this.botCommandsView.classList.add('new-message-bot-commands-view')
+    toggle.append(scaler, this.botCommandsView)
+
+    attachClickEvent(toggle, (e) => {
+      cancelEvent(e)
+      if(this.hasOffset?.type !== 'commands' || !this.hasOffset.forwards) return
+      const botId = toUserId(this.chat.peerId)
+      const { botMenuButton } = this
+      if(botMenuButton) {
+        // tweb :993-1015 (webViewTempId): наш openWebApp синхронный
+        openWebApp({ url: botMenuButton.url, botId, botName: peerTitle(this.chat.peerId) })
+        return
+      }
+
+      const middleware = this.getMiddleware()
+      if(icon.classList.contains('state-back')) this.botCommands!.toggle(true)
+      else void this.botCommands!.setUserId(botId, middleware)
+    }, { listenerSetter: this.listenerSetter })
+
+    this.botCommands.addEventListener('visible', () => {
+      icon.classList.add('state-back')
+      this.botCommands!.container.removeAttribute('aria-hidden')
+      if(!this.botMenuButton) toggle.setAttribute('aria-expanded', 'true')
+    })
+    this.botCommands.addEventListener('hiding', () => {
+      icon.classList.remove('state-back')
+      this.botCommands!.container.setAttribute('aria-hidden', 'true')
+      if(!this.botMenuButton) toggle.setAttribute('aria-expanded', 'false')
+    })
+  }
+
   /** tweb `:629-650` — меню плашки (`ButtonMenuSync` + `DropdownHover`) — Б-72. */
   private constructReplyElements() {
     this.replyElements.container = document.createElement('div')
@@ -326,6 +547,14 @@ export default class ChatInput {
   }
 
   /** tweb `:1055-1682` — расхождение 6 шапки. */
+  /** tweb `:1048-1053` */
+  private constructRecorder() {
+    // All recording state + behaviour lives in ChatRecording now; constructing
+    // it wires the recorders, mounts the voice + video panels, and installs the
+    // record-mode switch menu (the same work this method used to do inline).
+    this.recordingController = new ChatRecording(this)
+  }
+
   public constructPeerHelpers() {
     this.constructReplyElements()
 
@@ -337,6 +566,10 @@ export default class ChatInput {
 
     this.goDownUnreadBadge = createBadge('span', 24, 'primary')
     this.goDownBtn.append(this.goDownUnreadBadge)
+
+    this.constructScheduledButton()
+    this.constructReplyMarkup()
+    this.constructBotCommands()
 
     this.attachMenuButtons = [{
       icon: 'image',
@@ -399,6 +632,9 @@ export default class ChatInput {
       listenerSetter: this.listenerSetter,
       direction: 'top-right',
       buttons: this.attachMenuButtons,
+      onOpen: () => {
+        void this.emoticonsDropdown?.toggle(false)
+      },
     })
     this.attachMenu.classList.add('attach-file')
 
@@ -407,10 +643,31 @@ export default class ChatInput {
     this.fileInput.multiple = true
     this.fileInput.style.display = 'none'
 
-    this.newMessageWrapper.append(this.attachMenu, this.inputMessageContainer, this.fileInput)
+    this.btnToggleEmoticons = this.createButtonIcon('smile toggle-emoticons', { noRipple: true, ariaLabel: 'Emoji' }) as HTMLButtonElement
+
+    this.newMessageWrapper.append(...[
+      this.botCommandsToggle,
+      this.attachMenu,
+      this.inputMessageContainer,
+      this.btnScheduled,
+      this.btnToggleReplyMarkup,
+      this.btnToggleEmoticons,
+      this.fileInput,
+    ].filter((node): node is NonNullable<typeof node> => !!node))
 
     this.rowsWrapper.append(this.replyElements.container)
+    // tweb `:1384-1393`
+    this.autocompleteHelperController = new AutocompleteHelperController()
+    this.stickersHelper = new StickersHelper(this.rowsWrapper, this.autocompleteHelperController, this.chat, this.managers)
+    this.emojiHelper = new EmojiHelper(this.rowsWrapper, this.autocompleteHelperController, this, this.managers)
+    this.emojiHelper.addSibling(this.stickersHelper)
+    this.emojiHelper.attachStickersHelper(this.stickersHelper)
+    this.commandsHelper = new CommandsHelper(this.rowsWrapper, this.autocompleteHelperController, this, this.managers)
+    this.mentionsHelper = new MentionsHelper(this.rowsWrapper, this.autocompleteHelperController, this, this.managers)
+    this.inlineHelper = new InlineHelper(this.rowsWrapper, this.autocompleteHelperController, this.chat, this.managers)
     this.rowsWrapper.append(this.newMessageWrapper)
+
+    this.btnCancelRecord = this.createButtonIcon('bin_filled btn-circle btn-record-cancel chat-input-secondary-button chat-secondary-button', { ariaLabel: 'Delete' }) as HTMLButtonElement
 
     this.btnSendContainer = document.createElement('div')
     this.btnSendContainer.classList.add('btn-send-container')
@@ -430,12 +687,74 @@ export default class ChatInput {
 
     this.btnSendContainer.append(this.btnSend)
 
+    this.sendMenu = new SendMenu({
+      onSilentClick: () => {
+        this.sendSilent = true
+        if(this.recording) this.recordingController!.finishRecordingFromMenu()
+        else void this.sendMessage()
+      },
+      onScheduleClick: () => {
+        if(this.recording) void this.scheduleSending(() => this.recordingController!.finishRecordingFromMenu())
+        else void this.scheduleSending(undefined)
+      },
+      onSendWhenOnlineClick: () => {
+        if(this.recording) this.setScheduleTimestamp(SEND_WHEN_ONLINE_TIMESTAMP, () => this.recordingController!.finishRecordingFromMenu())
+        else this.setScheduleTimestamp(SEND_WHEN_ONLINE_TIMESTAMP, () => void this.sendMessage(true))
+      },
+      middleware: this.chat.destroyMiddlewareHelper.get(),
+      openSide: 'top-left',
+      onContextElement: this.btnSend,
+      onOpen: () => {
+        const good = this.chat.type !== ChatType.Scheduled &&
+          (this.recording || !this.isInputEmpty() || !!(this.forwarding && Object.keys(this.forwarding).length)) &&
+          !this.editMsgId
+        if(good) {
+          void this.emoticonsDropdown?.toggle(false)
+        }
+
+        return good
+      },
+      // While recording, the send button is the only visible original control —
+      // the trash / pause-toggle / play buttons of the recording panel are also
+      // live. Without this guard, a left-click on any of them while the
+      // schedule/silent menu is open would close the menu AND trigger that
+      // button's action (cancel recording, pause, etc.). Capturing clicks at
+      // the document level keeps the behaviour consistent: any click anywhere
+      // outside the menu just dismisses the menu, no action fires.
+      onToggle: (open) => this.recordingController?.setVoiceRecordingMenuGuard(open),
+      canSendWhenOnline: this.canSendWhenOnline,
+      onRef: (element) => {
+        this.btnSendContainer.append(element)
+      },
+    })
+
     // Move the morphing send/record button into the input row as the last button.
+    // btnCancelRecord is built above but intentionally not appended to the DOM.
     this.newMessageWrapper.append(this.btnSendContainer)
+
+    if(this.btnToggleEmoticons) {
+      this.emoticonsDropdown.attachButtonListener(this.btnToggleEmoticons, this.listenerSetter)
+      this.listenerSetter.add(this.emoticonsDropdown)('open', this.onEmoticonsOpen)
+      this.listenerSetter.add(this.emoticonsDropdown)('close', this.onEmoticonsClose)
+
+      if(emoticonsDropdown === this.emoticonsDropdown) {
+        const toggleIsUnder = () => {
+          const shouldBeTop = windowSize.height >= 570 && windowSize.width > 600
+          this.emoticonsDropdown.getElement().classList.toggle('is-under', !shouldBeTop)
+        }
+
+        this.listenerSetter.add(window)('resize', toggleIsUnder)
+        toggleIsUnder()
+      }
+    }
 
     this.attachMessageInputField()
 
     this.setChatListeners()
+
+    // Builds the ChatRecording controller, which wires the recorders, mounts the
+    // voice + round-video panels, and installs the record-mode switch menu.
+    this.constructRecorder()
 
     this.updateSendBtn()
 
@@ -476,10 +795,27 @@ export default class ChatInput {
       void this.managers.groups.setMute(peerId, !this.isPeerMuted(peerId))
     }, { listenerSetter: this.listenerSetter })
 
+    // * pinned part start — tweb `:1618-1633` (Б-90)
+    this.pinnedControlBtn = Button('btn-primary btn-transparent text-bold chat-input-control-button chat-input-plate-button', { icon: 'unpin' }) as HTMLButtonElement
+
+    this.listenerSetter.add(this.pinnedControlBtn)('click', () => {
+      const peerId = this.chat.peerId
+
+      void showPinMessagePopup(peerId, 0, true, () => {
+        void this.chat.appImManager.setPeer({ isDeleting: true }) // * close tab
+
+        // ! костыль, это скроет закреплённые сообщения сразу, вместо того, чтобы ждать пока анимация перехода закончится
+        const originalChat = this.chat.appImManager.chat
+        originalChat?.topbar?.pinnedMessage?.setHidden(true)
+      }, this.chat.threadId)
+    })
+    // * pinned part end
+
     const controlPlate = ChatInputPlate({
       center: [
         this.botStartBtn,
         this.channelMuteBtn,
+        this.pinnedControlBtn,
       ],
     }) as HTMLElement
 
@@ -491,6 +827,15 @@ export default class ChatInput {
     this.listenerSetter.add(this.appImManager)('peer_changing', (chat: Chat) => {
       if(this.chat === chat && (this.chat.type === ChatType.Chat || this.chat.type === ChatType.Discussion)) {
         this.saveDraft()
+      }
+    })
+
+    // tweb `:1736-1742`
+    this.listenerSetter.add(this.appImManager)('chat_changing', ({ from, to }: { from: Chat, to: Chat }) => {
+      if(this.chat === from) {
+        this.autocompleteHelperController.toggleListNavigation(false)
+      } else if(this.chat === to) {
+        this.autocompleteHelperController.toggleListNavigation(true)
       }
     })
 
@@ -544,6 +889,9 @@ export default class ChatInput {
   /** tweb `:1711-1727` */
   private onDraftUpdated(draft: DraftMessage | undefined) {
     if(PEER_EXCEPTIONS.has(this.chat.type) || this.chat.threadId) return
+    // расхождение 3 шапки: снятый отправкой черновик сервер ещё может прислать с новой
+    // строкой диалога (новое сообщение раньше кадра очистки) — его не возвращаем
+    if(realDraft(draft) && this.isClearedDraft(draft)) return
     if(!realDraft(draft)) {
       // a pending local save means the user is actively typing newer content —
       // let it win and sync normally instead of clobbering it with the remote clear.
@@ -708,11 +1056,83 @@ export default class ChatInput {
     if(this.chat.selection?.isSelecting) {
       return this.fakeSelectionWrapper
     } else if(
+      this.chat.type === ChatType.Pinned ||
       this.isStartButtonNeeded() ||
       await this.isChannelControlNeeded()
     ) {
       return this.controlContainer
     }
+  }
+
+  /** tweb `:2145-2147` */
+  public getReadyToSend(callback: () => void) {
+    return this.chat.type === ChatType.Scheduled ? (void this.scheduleSending(callback), true) : (callback(), false)
+  }
+
+  /** tweb `:2149-2161` — статус из зеркала присутствия (`chatsStore.presence`) или карточки. */
+  public canSendWhenOnline = () => {
+    const peerId = this.chat.peerId
+    if(rootScope.myId === peerId || !isUser(peerId)) {
+      return false
+    }
+
+    const user = cachedUser(peerId)
+    const status = useChatsStore.getState().presence[peerId] ?? (user?._ === 'user' ? user.status : undefined)
+    // tweb `appUsersManager.isUserOnlineVisible` — `getUserStatusForSort > 3`
+    if(!(getUserStatusForSort(status) > 3)) {
+      return false
+    }
+
+    return status?._ !== 'userStatusOnline'
+  }
+
+  /** tweb `:2163-2184` */
+  public setScheduleTimestamp(timestamp: number | undefined, callback: () => void, repeatPeriod?: number) {
+    const middleware = this.chat.bubbles.getMiddleware()
+    const minTimestamp = (Date.now() / 1000 | 0) + 10
+    if(timestamp !== undefined && timestamp <= minTimestamp) {
+      timestamp = undefined
+    }
+
+    this.scheduleDate = timestamp
+    this.scheduleRepeatPeriod = repeatPeriod
+    callback()
+
+    if(this.chat.type !== ChatType.Scheduled && this.chat.type !== ChatType.Stories && timestamp) {
+      setTimeout(() => { // ! need timeout here because .forwardMessages will be called after timeout
+        if(!middleware()) {
+          return
+        }
+
+        this.appImManager.openScheduled(this.chat.peerId)
+      }, 0)
+    }
+  }
+
+  /** tweb `:2190-2217` — без эфемерного режима (нет предмета). */
+  public scheduleSending = async(
+    callback: () => void = () => void this.sendMessage(true),
+    initDate?: Date,
+    initRepeatPeriod?: number,
+  ) => {
+    const middleware = this.chat.bubbles.getMiddleware()
+    const canSendWhenOnline = this.canSendWhenOnline()
+    if(!middleware()) {
+      return
+    }
+
+    showScheduleSendingPopup({
+      initDate,
+      onPick: (timestamp, repeatPeriod) => {
+        if(!middleware()) {
+          return
+        }
+
+        this.setScheduleTimestamp(timestamp, callback, repeatPeriod)
+      },
+      canSendWhenOnline,
+      initRepeatPeriod,
+    })
   }
 
   /** tweb `:2219-2243` */
@@ -731,11 +1151,18 @@ export default class ChatInput {
   private getDraft(): DraftMessageReal | undefined {
     const { peerId } = this.chat
     const draft = this.getDialog(peerId)?.draft
-    if(this.clearedDraft?.peerId === peerId && this.clearedDraft.draft === draft) {
+    if(this.isClearedDraft(draft)) {
       return undefined
     }
 
     return realDraft(draft)
+  }
+
+  /** Расхождение 3 шапки: тот же (по содержимому) черновик, что сняла отправка. Строка
+   *  диалога пересоздаётся на каждом апдейте, поэтому сравнение по ссылке не годится. */
+  private isClearedDraft(draft: DraftMessage | undefined) {
+    const { clearedDraft } = this
+    return !!clearedDraft && clearedDraft.peerId === this.chat.peerId && draftsAreEqual(draft, clearedDraft.draft)
   }
 
   /** tweb `:2271-2313` */
@@ -789,9 +1216,15 @@ export default class ChatInput {
 
   /** tweb `:2365-2388` */
   public destroy() {
+    this.autocompleteHelperController?.destroy()
+    this.sendAs?.destroy()
     appNavigationController.removeItem(this.inputHelperNavigationItem!)
     this.listenerSetter.removeAll()
     this.middlewareHelper.destroy()
+    // Tears down the round-video waveform/playback, releases the camera, drops
+    // any in-flight recording navigation item, and removes the body-mounted
+    // round-preview element.
+    this.recordingController?.destroy()
     this.saveDraftDebounced?.clearTimeout()
   }
 
@@ -869,18 +1302,32 @@ export default class ChatInput {
 
     this.peerChanging = true
 
-    const { goDownBtn, chatInput, attachMenu } = this
+    const { goDownBtn, chatInput, attachMenu, btnScheduled, sendMenu, replyKeyboard, botCommandsToggle } = this
+
+    const previousSendAs = this.sendAs
+    const sendAs = this.createSendAs()
 
     const isBroadcast = isBroadcastPeer(peerId)
     const isBot = isUser(peerId) && isBotPeer(cachedUser(peerId))
+    const canPin = canPinMessage(peerId)
+    // расхождение 1 `chat/botCommands.ts`: команды и кнопка-меню — ручками, а не `userFull.bot_info`
+    const botInfoPromise = isBot && botCommandsToggle ? Promise.all([
+      this.managers.bots.commands(toUserId(peerId)).catch((): BotCommand[] => []),
+      this.managers.bots.menuButton(toUserId(peerId)).catch(() => undefined),
+    ]) : undefined
     const [
       canSend,
       canSendPlain,
       neededFakeContainer,
+      scheduledMessagesPromise,
+      setSendAsCallback,
     ] = await Promise.all([
       this.chat.canSend('send_messages'),
       this.chat.canSend('send_messages'),
       this.getNeededFakeContainer(startParam),
+      // tweb `:2570`: у нас ответ не «acked» — показ ждёт его после смены пира
+      btnScheduled && !this.chat.threadId ? this.managers.messages.getScheduledMessages(peerId).catch(() => []) : undefined,
+      sendAs ? (sendAs.setPeerId(peerId), sendAs.updateManual(true)) : undefined,
     ])
 
     const placeholderParams = this.messageInput ? await this.getPlaceholderParams(canSendPlain) : undefined
@@ -896,6 +1343,35 @@ export default class ChatInput {
 
       this.setUnreadCount()
 
+      if(this.chat.type === ChatType.Pinned) {
+        chatInput.classList.toggle('can-pin', canPin)
+      }
+
+      if(btnScheduled) {
+        btnScheduled.classList.toggle('hide', !scheduledMessagesPromise?.length)
+      }
+
+      if(this.newMessageWrapper) {
+        this.updateOffset(null, false, true)
+      }
+
+      if(botCommandsToggle) {
+        this.hasBotCommands = undefined
+        this.botMenuButton = undefined
+        this.botCommands!.toggle(true, undefined, true)
+        this.updateBotCommandsToggle(true)
+        botCommandsToggle.remove()
+        void botInfoPromise?.then(([commands, menuButton]) => {
+          if(!options.middleware()) return
+          this.updateBotCommands({ commands, menuButton })
+        })
+      }
+
+      previousSendAs?.destroy()
+      setSendAsCallback?.()
+      replyKeyboard?.setPeer(peerId)
+      sendMenu?.setPeerParams({ peerId, isPaid: !!getStarsAmount(peerId) })
+
       let haveSomethingInControl = false
 
       {
@@ -908,6 +1384,13 @@ export default class ChatInput {
         if(good) {
           this.updateChannelMuteButton()
         }
+      }
+
+      if(this.pinnedControlBtn) {
+        const good = !haveSomethingInControl && this.chat.type === ChatType.Pinned
+        haveSomethingInControl ||= good
+        this.pinnedControlBtn.classList.toggle('hide', !good)
+        this.pinnedControlBtn.replaceChildren(i18n(canPin ? 'Chat.Input.UnpinAll' : 'Chat.Pinned.DontShow'))
       }
 
       this.botStartBtn.classList.toggle('hide', haveSomethingInControl || !isBot)
@@ -938,6 +1421,130 @@ export default class ChatInput {
     }
   }
 
+  /** tweb `:2485-2520` */
+  private createSendAs() {
+    this.sendAsPeerId = undefined
+
+    if(this.chat && (this.chat.type === ChatType.Chat || this.chat.type === ChatType.Discussion)) {
+      let firstChange = true
+      this.sendAs = new ChatSendAs({
+        managers: this.managers,
+        onReady: (container, skipAnimation) => {
+          let useRafs = 0
+          if(!container.parentElement) {
+            this.newMessageWrapper.prepend(container)
+            useRafs = 2
+          }
+
+          this.updateOffset('as', true, skipAnimation, useRafs)
+        },
+        onChange: (sendAsPeerId) => {
+          this.sendAsPeerId = sendAsPeerId
+
+          // do not change placeholder earlier than finishPeerChange does
+          if(firstChange) {
+            firstChange = false
+            return
+          }
+
+          void this.getPlaceholderParams().then((params) => {
+            this.updateMessageInputPlaceholder(params)
+          })
+        },
+      })
+    } else {
+      this.sendAs = undefined
+    }
+
+    return this.sendAs
+  }
+
+  /** tweb `:2817-2852` */
+  private updateOffset(
+    type: NonNullable<ChatInput['hasOffset']>['type'],
+    forwards: boolean,
+    skipAnimation?: boolean,
+    useRafs?: number,
+    applySameType?: boolean, // ! WARNING
+  ) {
+    const prevOffset = this.hasOffset
+    const newOffset: ChatInput['hasOffset'] = { type, forwards }
+    if(prevOffset?.type === newOffset.type && prevOffset.forwards === newOffset.forwards && !applySameType) {
+      return
+    }
+
+    this.hasOffset = newOffset
+
+    if(type) {
+      this.newMessageWrapper.dataset.offset = type
+    } else {
+      delete this.newMessageWrapper.dataset.offset
+    }
+
+    if(prevOffset?.forwards === newOffset.forwards && !applySameType) {
+      return
+    }
+
+    SetTransition({
+      element: this.newMessageWrapper,
+      className: 'has-offset',
+      forwards,
+      duration: skipAnimation ? 0 : 300,
+      useRafs,
+    })
+  }
+
+  /** tweb `:2891-2925` — расхождение 1 `chat/botCommands.ts` (ручки вместо `bot_info`). */
+  private updateBotCommands(botInfo: { commands: BotCommand[], menuButton?: { text: string, url: string } }, skipAnimation?: boolean) {
+    const toggle = this.botCommandsToggle!
+    this.hasBotCommands = !!botInfo.commands.length
+    this.botMenuButton = botInfo.menuButton?.url ? botInfo.menuButton : undefined
+    if(this.botMenuButton && this.botCommandsIcon.classList.contains('state-back')) this.botCommands!.toggle(true)
+    replaceContent(this.botCommandsView, this.botMenuButton ? wrapEmojiText(this.botMenuButton.text) : '')
+    toggle.setAttribute('aria-label', this.botMenuButton?.text || I18n.format('Chat.BotCommands', true))
+    if(this.botMenuButton) {
+      toggle.removeAttribute('aria-haspopup')
+      toggle.removeAttribute('aria-controls')
+      toggle.removeAttribute('aria-expanded')
+    } else {
+      toggle.setAttribute('aria-haspopup', 'listbox')
+      toggle.setAttribute('aria-controls', this.botCommands!.container.id)
+      toggle.setAttribute('aria-expanded', '' + this.botCommandsIcon.classList.contains('state-back'))
+    }
+
+    this.botCommandsIcon.classList.toggle('hide', !!this.botMenuButton)
+    this.botCommandsView.classList.toggle('hide', !this.botMenuButton)
+    toggle.classList.toggle('is-view', !!this.botMenuButton)
+    this.updateBotCommandsToggle(skipAnimation)
+  }
+
+  /** tweb `:2927-2957` */
+  private updateBotCommandsToggle(skipAnimation?: boolean) {
+    const { botCommandsToggle, hasBotCommands, botMenuButton } = this
+    if(!botCommandsToggle) return
+    const isNeeded = !!(hasBotCommands || botMenuButton)
+    const isInputEmpty = this.isInputEmpty()
+    const show = isNeeded && (isInputEmpty || !!botMenuButton)
+    botCommandsToggle.tabIndex = show ? 0 : -1
+    botCommandsToggle.setAttribute('aria-hidden', '' + !show)
+    if(!isNeeded) {
+      if(!botCommandsToggle.parentElement) return
+      botCommandsToggle.remove()
+    }
+
+    const useRafs = botCommandsToggle.parentElement ? 0 : 2
+    if(botMenuButton && isInputEmpty) {
+      // padding + icon size + icon margin
+      const width = getTextWidth(botMenuButton.text, FontFull) + 24 + 20 + 6
+      this.newMessageWrapper.style.setProperty('--commands-size', `${Math.ceil(width)}px`)
+    } else {
+      this.newMessageWrapper.style.removeProperty('--commands-size')
+    }
+
+    if(!botCommandsToggle.parentElement) this.newMessageWrapper.prepend(botCommandsToggle)
+    this.updateOffset('commands', show, skipAnimation, useRafs, true)
+  }
+
   /** tweb `:2959-3018` — без звёзд, монофорума, бот-форума и историй (нет предмета). */
   public async getPlaceholderParams(canSend?: boolean): Promise<{ key: LangPackKey, args?: FormatterArguments }> {
     canSend ??= await this.chat.canSend('send_messages')
@@ -949,6 +1556,8 @@ export default class ChatInput {
       key = 'Comment'
     } else if(isBroadcastPeer(peerId)) {
       key = 'ChannelBroadcast'
+    } else if(this.sendAsPeerId !== undefined && this.sendAsPeerId !== rootScope.myId) {
+      key = 'SendAnonymously'
     } else {
       key = 'Message'
     }
@@ -1122,7 +1731,105 @@ export default class ChatInput {
       }
     }, { listenerSetter: this.listenerSetter })
 
+    // tweb :3253-3264
+    if(IS_TOUCH_SUPPORTED) {
+      attachClickEvent(this.messageInput, (e) => {
+        if(this.emoticonsDropdown.isActive()) {
+          void this.emoticonsDropdown.toggle(false)
+          blurActiveElement()
+          cancelEvent(e)
+        }
+      }, { listenerSetter: this.listenerSetter })
+    }
+
     this.listenerSetter.add(this.messageInput)('input', this.onMessageInput)
+    // tweb `:3298-3307`
+    this.listenerSetter.add(this.messageInput)('keyup', (e: KeyboardEvent) => {
+      // * a content-changing key already fired an `input` event before this `keyup`, and the
+      // * input handler re-parsed + ran checkAutocomplete with the parsed value — re-doing it
+      // * here would just re-walk the DOM and bail at the previousQuery guard. Only re-check on
+      // * a caret-move key (arrows/Home/End/PageUp/PageDown), which never fires `input`.
+      if(classifyInputKeyup(e) !== 'caret-move') {
+        return
+      }
+
+      void this.checkAutocomplete()
+    })
+  }
+
+  /** tweb `:2125-2143` */
+  private onEmoticonsToggle = (open: boolean) => {
+    if(!this.btnToggleEmoticons) {
+      return
+    }
+
+    if(!IS_TOUCH_SUPPORTED) {
+      this.btnToggleEmoticons.classList.toggle('active', open)
+    } else {
+      replaceButtonIcon(this.btnToggleEmoticons, open ? 'keyboard' : 'smile')
+    }
+  }
+
+  private onEmoticonsOpen = () => {
+    this.onEmoticonsToggle(true)
+  }
+
+  private onEmoticonsClose = () => {
+    this.onEmoticonsToggle(false)
+  }
+
+  /** tweb `:3635-3678` */
+  public insertAtCaret(insertText: string, insertEntity?: MessageEntity, isHelper = true, replaceText?: string) {
+    if(!this.canSendPlain()) {
+      toastNew({
+        langPackKey: POSTING_NOT_ALLOWED_MAP.send_messages!,
+      })
+      return
+    }
+
+    RichInputHandler.getInstance().makeFocused(this.messageInput)
+
+    const { value: fullValue, caretPos } = getRichValueWithCaret(this.messageInput)
+    const pos = caretPos >= 0 ? caretPos : fullValue.length
+    const prefix = fullValue.substr(0, pos)
+
+    const matches = isHelper ? prefix.match(ChatInput.AUTO_COMPLETE_REG_EXP) : null
+
+    if(isHelper && caretPos !== -1) {
+      const match = replaceText ?? (matches ? matches[2] : fullValue)
+
+      const selection = document.getSelection()!
+      // * a typed emoji can be an <img> on platforms without native emoji support, so the
+      // * selected text has to be resolved back to its rich value instead of selection.toString()
+      const getSelectedValue = replaceText !== undefined ?
+        () => getRichValueWithCaret(selection.getRangeAt(0).cloneContents(), false, false).value :
+        () => selection.toString()
+      let counter = 0
+      while(getSelectedValue() !== match) {
+        if(++counter >= 10000) {
+          throw new Error('lolwhat')
+        }
+
+        selection.modify('extend', 'backward', 'character')
+      }
+    }
+
+    void insertRichTextAsHTML(this.messageInput, insertText, insertEntity ? [insertEntity] : undefined, this.chat.peerId)
+  }
+
+  /** tweb `:3759-3771` */
+  public onEmojiSelected = (emoji: NonNullable<ReturnType<typeof getEmojiFromElement>>, autocomplete: boolean, replaceText?: string) => {
+    const entity: MessageEntity = emoji.docId ? {
+      _: 'messageEntityCustomEmoji',
+      document_id: emoji.docId,
+      length: emoji.emoji.length,
+      offset: 0,
+    } : getEmojiEntityFromEmoji(emoji.emoji)
+    // * inserting a custom emoji can leave the rich text identical (same character, different
+    // * entity type) — clear previousQuery so checkAutocomplete re-evaluates the new entities
+    this.previousQuery = undefined
+    this.insertAtCaret(emoji.emoji, entity, autocomplete, replaceText)
+    return true
   }
 
   /** tweb `:3330-3332` */
@@ -1130,12 +1837,17 @@ export default class ChatInput {
     return this.messageInput.isContentEditable && !this.chatInput.classList.contains('is-hidden')
   }
 
-  /** tweb `:3458-3532` — без превью ссылки (Б-72), автокомплита (Б-34) и бейджа звёзд. */
+  /** tweb `:3458-3532` — без превью ссылки (Б-72) и бейджа звёзд. */
   public onMessageInput = (e?: Event) => {
-    const { value: richValue } = getRichValueWithCaret(this.messageInputField.input)
+    const { value: richValue, entities: markdownEntities1, caretPos } = getRichValueWithCaret(this.messageInputField.input)
+
+    const [value, markdownEntities] = parseMarkdown(richValue, markdownEntities1, true)
+    const entities = mergeEntities(markdownEntities, parseEntities(value))
 
     const isEmpty = !richValue.trim()
     if(isEmpty) {
+      MarkupTooltip.getInstance().hide()
+
       // * Chrome has a bug - it will preserve the formatting if the input with monospace text is cleared
       // * so have to reset formatting
       if(document.activeElement === this.messageInput && !IS_MOBILE) {
@@ -1155,11 +1867,19 @@ export default class ChatInput {
         this.lastTimeType = time
         void this.managers.realtime.sendTyping({ peerId: this.chat.peerId })
       }
+
+      this.botCommands?.toggle(true)
+    }
+
+    if(this.botCommands) {
+      this.updateBotCommandsToggle()
     }
 
     if(!this.editMsgId) {
       void this.saveDraftDebounced()
     }
+
+    void this.checkAutocomplete(richValue, caretPos, entities)
 
     processCurrentFormatting(this.messageInput, undefined, (e as InputEvent | undefined)?.inputType as Parameters<typeof processCurrentFormatting>[2])
 
@@ -1173,6 +1893,11 @@ export default class ChatInput {
 
   /** tweb `:3813-3884` */
   public onAttachClick = async(documents?: boolean, photos?: boolean, videos?: boolean) => {
+    // tweb `:3836`
+    if(!this.editMessage && await this.showSlowModeTooltipIfNeeded({ element: this.attachMenu, container: this.btnSendContainer.parentElement! })) {
+      return
+    }
+
     this.fileInput.value = ''
 
     if(documents) {
@@ -1192,10 +1917,52 @@ export default class ChatInput {
     this.fileInput.click()
   }
 
-  /** tweb `:4086-4117` — без записи (Б-30): пустое поле тоже «отправить». */
+  /** tweb `:4005-4069` — тело в `chat/showSlowModeTooltipIfNeeded.ts` */
+  public static showSlowModeTooltipIfNeeded = showSlowModeTooltipIfNeeded
+
+  /** tweb `:4071-4077` */
+  public getDefaultParamsForSlowModeTooltip(): ShowSlowModeTooltipOptions {
+    return {
+      element: this.btnSendContainer,
+      peerId: this.chat.peerId,
+      managers: this.managers,
+      // tweb `_emoticonsDropdown ??= emoticonsDropdown` (`:4026`)
+      emoticonsDropdown: this.emoticonsDropdown,
+    }
+  }
+
+  /** tweb `:4079-4084` */
+  public showSlowModeTooltipIfNeeded(options: Partial<ShowSlowModeTooltipOptions> = {}) {
+    return ChatInput.showSlowModeTooltipIfNeeded({
+      ...this.getDefaultParamsForSlowModeTooltip(),
+      ...options,
+    })
+  }
+
+  /** tweb `:4086-4117` — без историй и потока бота (нет предмета). */
   private onBtnSendClick = (e: Event) => {
     cancelEvent(e)
-    void this.sendMessage()
+
+    // This click is the release of a long-press that already opened the
+    // record-mode menu — swallow it so it doesn't also start a recording.
+    if(this.recordingController!.consumeLongPressSuppression()) {
+      return
+    }
+
+    const isInputEmpty = this.isInputEmpty()
+    const hasAnyRecorder = this.recordingController!.hasAnyRecorder()
+    if(!hasAnyRecorder || this.recording || !isInputEmpty || this.forwarding || this.editMsgId) {
+      if(this.recording) {
+        this.recordingController!.handleSendButtonClick()
+      } else {
+        void this.sendMessage()
+      }
+    } else {
+      // Empty input + not recording: LMB starts recording in the active media
+      // type. Switching voice ↔ video is done via the button's context menu
+      // (right-click / long-press), not by clicking.
+      this.recordingController!.startActive()
+    }
   }
 
   /** tweb `:4119-4221` — без превью ссылки (Б-72). */
@@ -1271,17 +2038,31 @@ export default class ChatInput {
     }
   }
 
+  /** tweb `:3988-3996` */
+  public setShrinking(value?: boolean, classNames?: string[]) {
+    value ||= this.recording
+    SetTransition({
+      element: this.chatInput,
+      className: 'is-shrinking' + (classNames ? ' ' + classNames.join(' ') : ''),
+      forwards: value,
+      duration: 200,
+    })
+  }
+
   /** tweb `:4343-4345` */
   public isInputEmpty() {
     return isInputEmpty(this.messageInput)
   }
 
-  /** tweb `:4390-4442` — без записи (Б-30), историй и потока бота (нет предмета). */
+  /** tweb `:4390-4442` — без историй и потока бота (нет предмета). */
   public updateSendBtn() {
     let icon: ChatSendBtnIcon
 
+    const isInputEmpty = this.isInputEmpty()
+
     if(this.editMsgId) icon = 'edit'
-    else icon = this.chat.type === ChatType.Scheduled ? 'schedule' : 'send'
+    else if(!this.recordingController?.hasVoiceRecorder() || this.recording || !isInputEmpty || this.forwarding) icon = this.chat.type === ChatType.Scheduled ? 'schedule' : 'send'
+    else icon = this.recordingController.getActiveRecordingMediaType() === 'video' ? 'record-video' : 'record'
 
     ;(['send', 'record', 'record-video', 'edit', 'schedule', 'forward', 'stop'] as ChatSendBtnIcon[]).forEach((i) => {
       this.btnSend.classList.toggle(i, icon === i)
@@ -1298,11 +2079,46 @@ export default class ChatInput {
       'stop': 'ChatAutomation.Stop',
     }
     this.btnSend.setAttribute('aria-label', I18n.format(sendBtnLabelKey[icon], true))
+
+    if(this.btnScheduled) {
+      this.btnScheduled.classList.toggle('show', this.isInputEmpty() && this.chat.type !== ChatType.Scheduled)
+    }
+
+    if(this.btnToggleReplyMarkup) {
+      this.btnToggleReplyMarkup.classList.toggle('show', this.isInputEmpty() && this.chat.type !== ChatType.Scheduled)
+    }
   }
 
-  /** tweb `:4499-4533` — без недавних эмодзи (их ведёт дропдаун, Б-35). */
-  public onMessageSent(clearInput = true, clearReply?: boolean) {
+  // Flags that apply to a single send only. Every send path must drop them,
+  // otherwise the next message silently inherits the schedule date / silence.
+  /** tweb `:4491-4496` */
+  public resetSendingFlags() {
+    this.scheduleDate = undefined
+    this.scheduleRepeatPeriod = undefined
     this.sendSilent = undefined
+  }
+
+  /** tweb `:4499-4533` */
+  public onMessageSent(clearInput = true, clearReply?: boolean) {
+    this.resetSendingFlags()
+
+    // tweb :4506-4519 — эмодзи отправленного текста встают в недавние дропдауна
+    const { entities: totalEntities } = getRichValueWithCaret(this.messageInput, true, false)
+    let nextOffset = 0
+    const emojiEntities = (totalEntities || []).filter((entity) => {
+      if(entity._ === 'messageEntityEmoji' || entity._ === 'messageEntityCustomEmoji') {
+        const endOffset = entity.offset + entity.length
+        return endOffset <= nextOffset ? false : (nextOffset = endOffset, true)
+      }
+
+      return false
+    })
+    emojiEntities.forEach((entity) => {
+      const emoji: AppEmoji = entity._ === 'messageEntityEmoji' ?
+        { emoji: emojiFromCodePoints(entity.unicode) } :
+        { docId: (entity as MessageEntity.messageEntityCustomEmoji).document_id, emoji: '' }
+      appEmojiManager.pushRecentEmoji(emoji)
+    })
 
     if(clearInput) {
       void this.clearInput()
@@ -1324,6 +2140,8 @@ export default class ChatInput {
       replyToQuote: replyTo?.replyToQuote ?? null,
       replyToPeerId: replyTo?.replyToPeerId != null && replyTo.replyToPeerId !== this.chat.peerId ? replyTo.replyToPeerId : null,
       silent: this.sendSilent,
+      // tweb `chat.ts:1394`: `sendAsPeerId` — только чужая личность
+      sendAsPeerId: this.sendAsPeerId !== undefined && this.sendAsPeerId !== rootScope.myId ? this.sendAsPeerId : null,
     }
   }
 
@@ -1341,6 +2159,7 @@ export default class ChatInput {
 
     const splitted = splitStringByLength(value, MESSAGE_LENGTH_MAX)
     const isChannel = isBroadcastPeer(peerId)
+    const { scheduleDate } = this
     let partOffset = 0
     for(const part of splitted) {
       const partEntities = splitted.length > 1 && entities.length ? sliceMessageEntities(entities, partOffset, part.length) : entities
@@ -1348,7 +2167,17 @@ export default class ChatInput {
       const [text, parsedEntities] = parseMarkdown(part, partEntities)
       const clientMsgId = crypto.randomUUID()
       const sendEntities = parsedEntities.length ? parsedEntities : undefined
-      if(isChannel) {
+      if(scheduleDate) {
+        // расхождение 9: отложенное — своя ручка, а не поле кадра `send_message`
+        const whenOnline = scheduleDate === SEND_WHEN_ONLINE_TIMESTAMP
+        void this.managers.messages.scheduleMessage(peerId, {
+          text,
+          entities: sendEntities,
+          sendAt: whenOnline ? 0 : scheduleDate,
+          replyToId: sendingParams.replyToMsgId ?? undefined,
+          whenOnline,
+        }).catch(() => {})
+      } else if(isChannel) {
         void this.managers.channels.post(peerId, text, clientMsgId, sendEntities, { senderId: rootScope.myId, threadRootId: this.chat.threadId })
       } else {
         void this.managers.messages.sendText({
@@ -1388,6 +2217,18 @@ export default class ChatInput {
 
     messageCount += trimmedValue ? splitStringByLength(value, MESSAGE_LENGTH_MAX).length : 0
 
+    // tweb `:4571-4604`: в ленте отложенных у оригинала `messageCount` не считается вовсе —
+    // ни медленного режима, ни платы (у нас счёт нужен ниже для очистки поля)
+    if(this.chat.type !== ChatType.Scheduled) {
+      if(await this.showSlowModeTooltipIfNeeded({ sendingFew: messageCount > 1, textOverflow: value.length > MESSAGE_LENGTH_MAX })) {
+        return false
+      }
+
+      if(messageCount && await this.paidMessageInterceptor.prepareStarsForPayment(messageCount) === PAYMENT_REJECTED) {
+        return false
+      }
+    }
+
     if(trimmedValue) {
       void this.sendText(value, entities, sendingParams)
     }
@@ -1404,6 +2245,7 @@ export default class ChatInput {
   public async sendMessage(force = false) {
     const { editMsgId, chat } = this
     if(chat.type === ChatType.Scheduled && !force && !editMsgId) {
+      void this.scheduleSending()
       return
     }
 
@@ -1420,12 +2262,19 @@ export default class ChatInput {
         forwarding: this.forwarding,
       })
 
-      if(!result.messageCount) {
+      if(!result || !result.messageCount) {
         return
       }
 
       this.saveDraftDebounced.clearTimeout()
-      this.clearedDraft = { peerId: chat.peerId, draft: this.getDialog(chat.peerId)?.draft }
+      const draft = this.getDialog(chat.peerId)?.draft
+      this.clearedDraft = { peerId: chat.peerId, draft }
+      // tweb `sendText({clearDraft: true})` → `appDraftsManager.clearDraft`: черновик после
+      // отправки сервер снимает сам (расхождение 3), а после ОТЛОЖЕННОЙ — нет, снимаем явно
+      if(this.scheduleDate && realDraft(draft) && !chat.threadId) {
+        void this.managers.drafts.save(chat.peerId, '', null).catch(() => {})
+      }
+
       this.onMessageSent(true)
       return
     }
@@ -1442,11 +2291,25 @@ export default class ChatInput {
   }
 
   /** tweb `:4749-4833` — расхождение 5 шапки; медленный режим и платные — Б-37. */
-  public async sendMessageWithDocument({ document }: { document: Sticker | GifItem, target?: HTMLElement }): Promise<boolean> {
+  public async sendMessageWithDocument({ document, force = false, clearDraft = false, target }: { document: Sticker | GifItem, force?: boolean, clearDraft?: boolean, target?: HTMLElement }): Promise<boolean> {
     const isSticker = '_' in document
     const flag: ChatRights = 'send_media'
     if(!isUser(this.chat.peerId) && !(await this.chat.canSend(flag))) {
       toastNew({ langPackKey: POSTING_NOT_ALLOWED_MAP[flag]! })
+      return false
+    }
+
+    if(this.chat.type === ChatType.Scheduled && !force) {
+      void this.scheduleSending(() => void this.sendMessageWithDocument({ document, force: true, clearDraft, target }))
+      return false
+    }
+
+    // tweb `:4800-4814`
+    if(await this.showSlowModeTooltipIfNeeded({ ...(target ? { element: target } : {}), container: this.btnSendContainer.parentElement! })) {
+      return false
+    }
+
+    if(await this.paidMessageInterceptor.prepareStarsForPayment(1) === PAYMENT_REJECTED) {
       return false
     }
 
@@ -1458,7 +2321,21 @@ export default class ChatInput {
       void this.managers.dialogs.refresh().catch(() => {})
     }
 
-    if(isSticker) {
+    const { scheduleDate } = this
+    const mediaId = isSticker ? document.id : document.mediaId
+    if(scheduleDate && mediaId != null) {
+      // расхождение 9: отложенное — своя ручка; Tenor-гифку без `mediaId` (её сначала
+      // надо закачать) отложить нечем — она уходит сразу (Б-126)
+      const whenOnline = scheduleDate === SEND_WHEN_ONLINE_TIMESTAMP
+      void this.managers.messages.scheduleMessage(peerId, {
+        text: '',
+        type: isSticker ? 'sticker' : 'video',
+        mediaId,
+        sendAt: whenOnline ? 0 : scheduleDate,
+        replyToId: sendingParams.replyToMsgId ?? undefined,
+        whenOnline,
+      }).catch(() => {})
+    } else if(isSticker) {
       void this.managers.messages.sendText({
         peerId,
         text: '',
@@ -1510,7 +2387,7 @@ export default class ChatInput {
       return false
     }
 
-    this.onMessageSent(false, true)
+    this.onMessageSent(clearDraft, true)
     return true
   }
 
@@ -1830,5 +2707,191 @@ export default class ChatInput {
     }, 0)
 
     return container
+  }
+
+  // ── Автокомплит (П-6, Б-34) — блок в конце класса, расхождение 9 шапки ──────
+
+  /** tweb `:2334-2362` — без гостевых ботов (расхождение 9). */
+  public mentionUser(peerId: PeerId, isHelper?: boolean) {
+    void this.managers.peers.getPeers([peerId]).then(([peer]) => {
+      if(!peer) return
+      let str = '', entity: MessageEntity | undefined
+      const username = 'username' in peer ? peer.username : undefined
+      if(username) {
+        str = '@' + username
+      } else {
+        if(peer._ === 'user') {
+          str = peer.first_name || peer.last_name || ''
+        } else {
+          str = 'title' in peer ? peer.title : ''
+        }
+
+        entity = {
+          _: 'messageEntityMentionName',
+          length: str.length,
+          offset: 0,
+          user_id: peer.id,
+        }
+      }
+
+      str += ' '
+      this.insertAtCaret(str, entity, isHelper)
+    })
+  }
+
+  /** tweb `:3796-3903` — расхождение 9. */
+  private async checkAutocomplete(value?: string, caretPos?: number, entities?: MessageEntity[]) {
+    const hadValue = value !== undefined
+    if(!hadValue) {
+      const r = getRichValueWithCaret(this.messageInputField.input, true, true)
+      value = r.value
+      caretPos = r.caretPos
+      entities = r.entities
+    }
+
+    if(caretPos === -1) {
+      caretPos = value!.length
+    }
+
+    if(entities === undefined || !hadValue) {
+      const [_value, newEntities] = parseMarkdown(value!, entities, true)
+      entities = mergeEntities(newEntities, parseEntities(_value))
+    }
+
+    value = value!.slice(0, caretPos)
+
+    if(this.previousQuery === value) {
+      return
+    }
+
+    this.previousQuery = value
+
+    const foundHelpers = new Set<AutocompleteHelper>()
+
+    const matches = value.match(ChatInput.AUTO_COMPLETE_REG_EXP)
+    if(matches) {
+      const entity = entities[0]
+
+      let query = matches[2]
+      const firstChar = query[0]
+
+      if(
+        this.stickersHelper &&
+        appSettings.stickers.suggest !== 'none' &&
+        await this.chat.canSend('send_media') &&
+        (entity?._ === 'messageEntityEmoji' || entity?._ === 'messageEntityCustomEmoji') &&
+        entity.length === value.length &&
+        !entity.offset
+      ) {
+        foundHelpers.add(this.stickersHelper)
+        this.stickersHelper.checkEmoticon(value)
+      } else if(!foundHelpers.size && firstChar === '@') { // mentions
+        const result = this.mentionsHelper.checkQuery(
+          query,
+          isUser(this.chat.peerId) ? undefined : this.chat.peerId,
+        )
+        if(result) {
+          foundHelpers.add(this.mentionsHelper)
+        }
+      } else if(!foundHelpers.size && !matches[1] && firstChar === '/') { // commands
+        if(this.commandsHelper && await this.commandsHelper.checkQuery(query, this.chat.peerId)) {
+          foundHelpers.add(this.commandsHelper)
+        }
+      } else if(!foundHelpers.size && appSettings.emoji.suggest) { // emoji
+        query = query.replace(/^\s*/, '')
+        // * skip when the input ends with an emoji entity — regular emoji is handled by the
+        // * emoticon-suggestion path above, custom emoji needs no suggestions at all
+        const hasEmojiEntityAtEnd = entities.some((e) =>
+          (e._ === 'messageEntityEmoji' || e._ === 'messageEntityCustomEmoji') &&
+          (e.offset + e.length) === value!.length,
+        )
+        // * gate the SharedWorker emoji search: an explicit `:foo` query always searches, but a
+        // * bare-word query (typing prose) is only searched once it can match the keyword index
+        // * (minChars=2) — a 1-char bare token can never yield a result, so skip the round-trip.
+        if(!hasEmojiEntityAtEnd && !value.match(/^\s*:(.+):\s*$/) && !value.match(/:[;!@#$%^&*()\-=|]/) && isPlausibleEmojiQuery(query, firstChar)) {
+          foundHelpers.add(this.emojiHelper)
+          this.emojiHelper.checkQuery(query, firstChar)
+        }
+      }
+    }
+
+    let canSendInline = false
+    if(!foundHelpers.size) {
+      canSendInline = await this.chat.canSend('send_messages')
+    }
+
+    const inlineResult = this.checkInlineAutocomplete(value, canSendInline, foundHelpers.values().next().value)
+    if(inlineResult === this.inlineHelper) {
+      foundHelpers.add(this.inlineHelper)
+    }
+
+    this.autocompleteHelperController.hideOtherHelpers(foundHelpers)
+  }
+
+  /** tweb `:3911-3986` — без гостевых ботов (расхождение 9). */
+  private checkInlineAutocomplete(value: string, canSendInline: boolean, foundHelper?: AutocompleteHelper): AutocompleteHelper | undefined {
+    let needPlaceholder = false
+
+    const setPreloaderShow = (show: boolean) => {
+      if(!this.btnPreloader) {
+        return
+      }
+
+      if(show && !canSendInline) {
+        show = false
+      }
+
+      SetTransition({
+        element: this.btnPreloader,
+        className: 'show',
+        forwards: show,
+        duration: 400,
+      })
+    }
+
+    if(!foundHelper) {
+      const inlineMatch = value.match(/^@([a-zA-Z\\d_]{3,32})\s/)
+      if(inlineMatch) {
+        const username = inlineMatch[1]
+        const query = value.slice(inlineMatch[0].length)
+        needPlaceholder = inlineMatch[0].length === value.length
+
+        foundHelper = this.inlineHelper
+
+        if(!this.btnPreloader) {
+          this.btnPreloader = this.createButtonIcon('none btn-preloader float show disable-hover', { noRipple: true }) as HTMLButtonElement
+          this.btnPreloader.tabIndex = -1
+          this.btnPreloader.setAttribute('aria-hidden', 'true')
+          putPreloader(this.btnPreloader, true)
+          this.inputMessageContainer.parentElement!.insertBefore(this.btnPreloader, this.inputMessageContainer.nextSibling)
+        } else {
+          setPreloaderShow(true)
+        }
+
+        this.inlineHelper.checkQuery(this.chat.peerId, username, query, canSendInline).then(({ user, renderPromise }) => {
+          if(needPlaceholder && user._ === 'user' && user.bot_inline_placeholder) {
+            this.messageInput.dataset.inlinePlaceholder = user.bot_inline_placeholder
+          }
+
+          void renderPromise.then(() => {
+            setPreloaderShow(false)
+          }).catch(() => {
+            setPreloaderShow(false)
+          })
+        }).catch(() => {
+          setPreloaderShow(false)
+        })
+      }
+    }
+
+    if(!needPlaceholder) {
+      delete this.messageInput.dataset.inlinePlaceholder
+    }
+
+    if(foundHelper !== this.inlineHelper) {
+      setPreloaderShow(false)
+    }
+
+    return foundHelper
   }
 }

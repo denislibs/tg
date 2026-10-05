@@ -21,6 +21,12 @@ export interface AppState {
    * храним строки: разница модели, не поведения.
    */
   recentSearch: string[]
+  /**
+   * чаты, которые пользователь закрыл или откуда ушёл (tweb `recentlyClosedChats`,
+   * `config/state.ts:248`) — фильтр «Closed» карточки чатов пустой колонки
+   * (`components/chatTips/chatsCard.solid.tsx`). Ключ пира — строка, как у `recentSearch`.
+   */
+  recentlyClosedChats: string[]
   /** порядок закреплённых по папкам: folderId → peerId[] (tweb `pinnedOrders`) */
   pinnedOrders: Record<number, number[]>
   /**
@@ -35,6 +41,16 @@ export interface AppState {
    * не различить.
    */
   starsBalance: number | null
+  /** пиры, у которых отключено подтверждение платного сообщения («Больше не
+   *  спрашивать», tweb `dontShowPaidMessageWarningFor`, config/state.ts:264). Пишет
+   *  `chat/paidMessagesInterceptor.ts`. */
+  dontShowPaidMessageWarningFor: PeerId[]
+  /** недавние эмодзи вкладки эмодзи-дропдауна (tweb `recentEmoji`, `lib/appManagers/appEmojiManager.ts`) */
+  recentEmoji: string[]
+  /** недавние свои эмодзи — id документов (tweb `recentCustomEmoji`) */
+  recentCustomEmoji: DocId[]
+  /** выбранный тон кожи по базовому эмодзи (tweb `emojiVariants`) */
+  emojiVariants: { [emoji: string]: 0 | 1 | 2 | 3 | 4 | 5 }
 }
 
 // 2 — черновик переехал в САМ ДИАЛОГ (`dialog.draft`), ключа `drafts` в State
@@ -49,9 +65,14 @@ export const STATE_INIT: AppState = {
   folders: [],
   hiddenPinnedMessages: {},
   recentSearch: [],
+  recentlyClosedChats: [],
   pinnedOrders: {},
   allDialogsLoaded: {},
   starsBalance: null,
+  dontShowPaidMessageWarningFor: [],
+  recentEmoji: [],
+  recentCustomEmoji: [],
+  emojiVariants: {},
 }
 
 /** tweb `ALL_KEYS = Object.keys(STATE_INIT)` (loadState.ts:43) */

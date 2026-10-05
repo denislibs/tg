@@ -29,6 +29,7 @@ import type { DialogOp } from '@core/dialogs/dialogOps'
 import type { PeerProfile } from '@core/managers/authManager'
 import type { MediaTokenInfo, MediaUrlEvt } from '@core/managers/mediaManager'
 import type { StickerSet } from '@core/managers/stickersManager'
+import type { MyDocument } from '@core/media/messageMedia'
 import type { PeerBlockEvt } from '@core/managers/privacyManager'
 
 export type { EventMeta } from '@rpc/superMessagePort'
@@ -216,6 +217,15 @@ export type BroadcastEvents = {
   // core/stickers/toggleStickerSet.ts.
   'stickers_installed': [StickerSet]
   'stickers_deleted': [StickerSet]
+  // tweb rootScope.ts — недавние/избранные стикеры панели (`emoticonsDropdown/tabs/stickers.ts`):
+  // один стикер добавлен/снят (`sticker_updated`) или список пришёл целиком (`stickers_updated`).
+  'sticker_updated': [{ type: 'recent' | 'faved'; document: MyDocument; faved: boolean }]
+  'stickers_updated': [{ type: 'recent' | 'faved'; stickers: MyDocument[] }]
+  // tweb rootScope.ts — недавние эмодзи и тон кожи (`lib/appManagers/appEmojiManager.ts`)
+  'emoji_recent': [{ emoji: AppEmoji; deleted?: boolean }]
+  'emoji_variant': [{ baseEmoji: string; emoji: string; tone: 0 | 1 | 2 | 3 | 4 | 5 }]
+  // tweb rootScope.ts — сохранённые GIF (`emoticonsDropdown/tabs/gifs.ts`)
+  'gifs_updated': [MyDocument[]]
 
   // tweb rootScope.ts:152 — контакт вошёл в книгу или вышел из неё; шлёт воркер
   // (`contactsManager::onContactUpdated`), слушает список контактов

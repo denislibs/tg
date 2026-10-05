@@ -751,7 +751,6 @@ const fr = {
   'KeyboardShortcuts.Action.Strikethrough': 'Barré',
   'KeyboardShortcuts.Action.Monospace': 'Monospace',
   'KeyboardShortcuts.Action.Spoiler': 'Spoiler',
-  'Composer.CancelRecording': 'Annuler l’enregistrement',
   'KeyboardShortcuts.Section.Formatting': 'Mise en forme du texte',
   'KeyboardShortcuts.Section.Chat': 'Discussion',
   'KeyboardShortcuts.Section.Navigation': 'Navigation',
@@ -975,6 +974,13 @@ const fr = {
     one_value: '%d Étoile',
     other_value: '%d Étoiles',
   },
+  // ── Карточки пустой колонки (tweb components/chatTips, Б-13): строки со ссылкой `[…]()` ──
+  'ChatTips.Appearance.Description': 'Vous pouvez modifier ces paramètres et bien d\'autres dans Paramètres > [Paramètres généraux]().',
+  'ChatTips.Chats.Description': 'Utilisez **Ctrl+F** pour passer en mode [recherche]().',
+  'ChatTips.Chats.DescriptionMac': 'Utilisez **Cmd+F** pour passer en mode [recherche]().',
+  'ChatTips.Stickers.Description': 'D\'autres stickers tendance sont disponibles dans [Stickers tendance]().',
+  // ── Эмодзи-дропдаун (П-6): ключ со ссылкой — строковый режим без аргумента не читается ──
+  'CustomEmoji.PremiumAlert': 'Abonnez-vous à Telegram Premium pour débloquer cet emoji. [En savoir plus]()',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(fr)

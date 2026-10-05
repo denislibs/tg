@@ -68,6 +68,10 @@ const ALLOWED: Record<string, number> = {
   // client_msg_id} (`channel_handler.go`) — пакету некуда уехать; тред поста
   // уходит полем `threadRootId` бабла.
   'components/chat/input.ts': 1,
+  // Кнопка reply-клавиатуры бота (`keyboardButton`, Б-36): tweb `wrappers/keyboardButton.ts`
+  // шлёт ровно `sendText({peerId, text: button.text})` (+ эфемерный снимок, которого у нас
+  // нет) — без ответа, треда и send-as; клавиатура принадлежит чату, а не строке ввода.
+  'components/wrappers/keyboardButton.ts': 1,
 }
 
 /** Аргументы вызова: от `(` до парной `)`. */

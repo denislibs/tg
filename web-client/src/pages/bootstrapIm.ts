@@ -9,9 +9,12 @@
  * Расхождения с оригиналом:
  *  1. `pushToState('authState', authStateSignedIn)` (`:25`) нет — авторизация у
  *     нас REST, промежуточного `AuthState` нет (шапка `mountAuthFlow.solid.tsx`).
- *  2. Опус-рекордер и полифилл `requestVideoFrameCallback` (`:34-49`) не
- *     грузятся: запись голоса — своя (`useVoiceRecorder`, Б-30), полифилл не
- *     портирован.
+ *  2. Опус-рекордер (`:31-37`, `:48-50`) — вендорный UMD из `public/opus/`
+ *     (нетронутые байты npm, `public/opus/README.md`), поэтому грузится тегом
+ *     `loadScript`, который сам кладёт `window.Recorder`, а не `import()` ESM-копии
+ *     `@vendor/recorder.min.js`. Полифилл `requestVideoFrameCallback` не портирован:
+ *     его единственный читатель у нас — превью кружка, а оно без rVFC берёт
+ *     `loadeddata` (`chat/recording/videoRecordingPanel.solid.tsx`).
  *  3. ВРЕМЕННО до порта своих пачек: React-остров глобальных оверлеев
  *     (`#react-overlays`, `components/shell/mountGlobalOverlays.ts`) — у tweb
  *     React нет.
@@ -19,10 +22,15 @@
 import blurActiveElement from '@helpers/dom/blurActiveElement'
 import { doubleRaf } from '@helpers/schedulers'
 import { loadFonts } from '@core/dom/loadFonts'
+import isNativeVoiceRecorderSupported from '@helpers/voiceRecorder/isNativeSupported'
+import loadScript from '@helpers/dom/loadScript'
 import { getProxiedManagers } from '@/client/bootstrap'
 import { disposeActiveAuthFlow } from '@components/auth/mountAuthFlow.solid'
 import { mountGlobalOverlays } from '@components/shell/mountGlobalOverlays'
 import appDialogsManager from '@lib/appDialogsManager'
+
+/** Вендор opus-recorder (расхождение 2): UMD кладёт конструктор в `window.Recorder`. */
+const OPUS_RECORDER_URL = '/opus/recorder.min.js'
 
 let bootstrapped = false
 
@@ -35,7 +43,17 @@ export async function bootstrapIm(): Promise<void> {
 
   blurActiveElement()
 
-  await loadFonts()
+  // Skip the opus-recorder fallback chunk entirely on browsers that have the
+  // WebCodecs-based native path. Saves ~80 KB of WASM-shipping JS on every
+  // sign-in for ~94% of users (May 2026 baseline).
+  const recorderImport: Promise<unknown> = isNativeVoiceRecorderSupported() ?
+    Promise.resolve(null) :
+    loadScript(OPUS_RECORDER_URL) // расхождение 2
+
+  await Promise.all([
+    recorderImport,
+    loadFonts(),
+  ])
 
   mountGlobalOverlays(getProxiedManagers()) // расхождение 3
 
