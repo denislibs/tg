@@ -348,14 +348,21 @@ func (i *Interactor) ReactionUsers(ctx context.Context, chatID, messageID, userI
 	return i.reactions.ReactionUsers(ctx, userID, messageID)
 }
 
-// CanAccessMedia reports whether userID may download a media object: either they
-// own it, or they are a member of a chat that has a message referencing it.
+// CanAccessMedia reports whether userID may download a media object: КТО
+// ВИДИТ ИСТОЧНИК, ТОТ И КАЧАЕТ — свой файл, сообщение или история, которые
+// зритель видит, фото читаемого им чата (MediaAccessRepo.CanAccess), фото
+// профиля, которое ему открывает правило profile_photo владельца (с блоком).
 // Медиа стикеров читается всеми: наборы публичны, и стикер из неустановленного
 // набора должен отрисоваться у любого получателя.
 func (i *Interactor) CanAccessMedia(ctx context.Context, userID, mediaID int64) (bool, error) {
 	ok, err := i.mediaAccess.CanAccess(ctx, userID, mediaID)
 	if err != nil {
 		return false, err
+	}
+	if !ok {
+		if ok, err = i.canSeeProfilePhoto(ctx, userID, mediaID); err != nil {
+			return false, err
+		}
 	}
 	if ok {
 		// Платное медиа: даже член чата не качает байты, пока не оплатил (автор —
@@ -382,6 +389,31 @@ func (i *Interactor) CanAccessMedia(ctx context.Context, userID, mediaID int64) 
 	}
 	if i.reactionCat != nil {
 		return i.reactionCat.IsReactionMedia(ctx, mediaID)
+	}
+	return false, nil
+}
+
+// canSeeProfilePhoto — файл это фото профиля (аватарка или снимок галереи)
+// пользователя, чьё правило profile_photo открывает его зрителю (privacy.Check
+// учитывает и блок). Тем же правилом гасится фото в карточках (gatePhotos):
+// скрытое там не должно скачиваться напрямую по id медиа. Без проверки
+// приватности (не подключена) фото профиля видно всем, как и в карточках.
+func (i *Interactor) canSeeProfilePhoto(ctx context.Context, viewerID, mediaID int64) (bool, error) {
+	owners, err := i.mediaAccess.AvatarOwners(ctx, mediaID)
+	if err != nil || len(owners) == 0 {
+		return false, err
+	}
+	if i.privacy == nil {
+		return true, nil
+	}
+	for _, owner := range owners {
+		ok, err := i.privacy.Check(ctx, owner, viewerID, domain.PrivacyProfilePhoto)
+		if err != nil {
+			return false, err
+		}
+		if ok {
+			return true, nil
+		}
 	}
 	return false, nil
 }

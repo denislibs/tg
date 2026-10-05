@@ -156,6 +156,11 @@ func (i *Interactor) SearchPeers(ctx context.Context, viewerID int64, q string, 
 		if ownChats[c.ID] {
 			res.MyChats = append(res.MyChats, c)
 		} else {
+			// Чужой публичный чат — глазами зрителя, который в нём НЕ состоит:
+			// карточка уходит с pFlags.left, и клиент рисует превью с кнопкой
+			// «Вступить»/«Подписаться» (tweb input.ts:2650-2672), а не вступает
+			// сам. Без зрителя (ViewerID 0) left тождественно ложен.
+			c.ViewerID = viewerID
 			res.Chats = append(res.Chats, c)
 		}
 	}

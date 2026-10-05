@@ -301,10 +301,16 @@ func TestStories_Flow_HTTP(t *testing.T) {
 		t.Fatalf("no media id: %s", rec.Body.String())
 	}
 
-	// A↔B private chat so B is a contact (partner) of A.
+	// A↔B private chat so B is a chat partner of A (лента берёт авторов из
+	// партнёров) и B в книге A: «контакты» — это книга автора (A5-18).
 	rec = authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create chat: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodPost, "/contacts", tokenA,
+		map[string]any{"contact_id": idB, "first_name": "Б"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("add contact: %d %s", rec.Code, rec.Body.String())
 	}
 
 	// A posts a story.

@@ -179,3 +179,68 @@ func TestHub_ClosesDeviceOnRevoke(t *testing.T) {
 	}
 	t.Fatal("sink was not closed on device-revoke signal")
 }
+
+// A5-01: выбывший из канала (вышел, исключён, забанен) больше не получает
+// живые посты — кадр chat_removed, уходящий ему, снимает его сокеты с топика
+// канала. Без этого сокет оставался подписан до переподключения.
+func TestHub_ChatRemovedUnsubscribesChannel(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+	subRDB := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	pubRDB := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	defer subRDB.Close()
+	defer pubRDB.Close()
+	ctx := context.Background()
+
+	hub := NewHub(ctx, subRDB)
+	defer hub.Close()
+
+	gone, stays := newFakeSink(), newFakeSink()
+	hub.Register(ctx, 7, 100, gone)
+	hub.Register(ctx, 8, 200, stays)
+	peer := domain.ToPeerID(5, true)
+	hub.SubscribeChannel(ctx, peer, gone)
+	hub.SubscribeChannel(ctx, peer, stays)
+	time.Sleep(100 * time.Millisecond)
+
+	pub := rtredis.NewRedisPublisher(pubRDB)
+	removed := []byte(`{"d":{"_":"updateChatRemoved","peer":{"_":"peerChannel","channel_id":5}},"pts":3,"t":"chat_removed"}`)
+	if err := pub.PublishToUser(ctx, 7, removed); err != nil {
+		t.Fatalf("publish chat_removed: %v", err)
+	}
+	select {
+	case got := <-gone.ch:
+		if string(got) != string(removed) {
+			t.Fatalf("сам кадр chat_removed должен дойти, got %q", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("chat_removed not delivered")
+	}
+
+	if err := pub.PublishToChannel(ctx, 5, []byte(`post`)); err != nil {
+		t.Fatalf("publish post: %v", err)
+	}
+	select {
+	case got := <-stays.ch:
+		if string(got) != "post" {
+			t.Fatalf("оставшийся подписчик: got %q", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("оставшийся подписчик не получил пост")
+	}
+	select {
+	case got := <-gone.ch:
+		t.Fatalf("выбывший получил пост канала: %q", got)
+	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+func TestChatRemovedPeer(t *testing.T) {
+	if p, ok := chatRemovedPeer([]byte(`{"t":"chat_removed","d":{"peer":{"_":"peerChannel","channel_id":9}}}`)); !ok || p != domain.ToPeerID(9, true) {
+		t.Fatalf("chat_removed: %v %v", p, ok)
+	}
+	// Упоминание строки в ТЕКСТЕ другого кадра — не сигнал.
+	if _, ok := chatRemovedPeer([]byte(`{"t":"new_message","d":{"message":"chat_removed"}}`)); ok {
+		t.Fatal("new_message с текстом chat_removed принят за выбытие")
+	}
+}

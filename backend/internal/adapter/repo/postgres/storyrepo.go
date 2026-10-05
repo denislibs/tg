@@ -169,10 +169,7 @@ func (r *StoryRepo) ActiveFeed(ctx context.Context, viewerID int64, authorIDs []
 		    AND (s.author_id = ANY($2)
 		         OR (s.privacy = 'close' AND EXISTS (SELECT 1 FROM close_friends cf WHERE cf.owner_id = s.author_id AND cf.user_id = $1))
 		         OR EXISTS (SELECT 1 FROM story_allow sa WHERE sa.story_id = s.id AND sa.user_id = $1))
-		    AND (s.author_id = $1
-		         OR s.privacy IN ('everyone','contacts')
-		         OR (s.privacy = 'close' AND EXISTS (SELECT 1 FROM close_friends cf WHERE cf.owner_id = s.author_id AND cf.user_id = $1))
-		         OR EXISTS (SELECT 1 FROM story_allow sa WHERE sa.story_id = s.id AND sa.user_id = $1))
+		    AND `+storyVisibleTo("s", "$1")+`
 		  ORDER BY (s.author_id = $1) DESC, u.display_name, s.created_at`,
 		viewerID, authorIDs)
 	if err != nil {
@@ -424,17 +421,16 @@ func (r *StoryRepo) Delete(ctx context.Context, storyID, authorID int64) error {
 	return err
 }
 
-func (r *StoryRepo) Visible(ctx context.Context, storyID, viewerID int64, partnerIDs []int64) (bool, error) {
+// Visible — история видна зрителю (storyVisibleTo) и ещё жива либо
+// закреплена в профиле: закреплённую открывают с профиля и после суток.
+func (r *StoryRepo) Visible(ctx context.Context, storyID, viewerID int64) (bool, error) {
 	var ok bool
 	err := querier(ctx, r.pool).QueryRow(ctx,
 		`SELECT EXISTS (
 		   SELECT 1 FROM stories s
 		    WHERE s.id = $1
-		      AND s.expires_at > now()
-		      AND (s.author_id = $2
-		           OR s.privacy IN ('everyone','contacts')
-		           OR (s.privacy = 'close' AND EXISTS (SELECT 1 FROM close_friends cf WHERE cf.owner_id = s.author_id AND cf.user_id = $2))
-		           OR EXISTS (SELECT 1 FROM story_allow sa WHERE sa.story_id = s.id AND sa.user_id = $2)))`,
+		      AND (s.expires_at > now() OR s.pinned)
+		      AND `+storyVisibleTo("s", "$2")+`)`,
 		storyID, viewerID).Scan(&ok)
 	return ok, err
 }
@@ -609,10 +605,7 @@ func (r *StoryRepo) Pinned(ctx context.Context, peerID, viewerID int64) ([]domai
 		   LEFT JOIN story_views sv ON sv.story_id = s.id AND sv.viewer_id = $1
 		  WHERE s.author_id = $2
 		    AND s.pinned
-		    AND (s.author_id = $1
-		         OR s.privacy IN ('everyone','contacts')
-		         OR (s.privacy = 'close' AND EXISTS (SELECT 1 FROM close_friends cf WHERE cf.owner_id = s.author_id AND cf.user_id = $1))
-		         OR EXISTS (SELECT 1 FROM story_allow sa WHERE sa.story_id = s.id AND sa.user_id = $1))
+		    AND `+storyVisibleTo("s", "$1")+`
 		  ORDER BY s.id DESC`,
 		viewerID, peerID)
 	if err != nil {

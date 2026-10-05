@@ -220,9 +220,15 @@ func (i *Interactor) lazyMirrorPost(ctx context.Context, channelID, postID int64
 //
 // Зеркала нет (пост опубликован до привязки обсуждения) — дозаводится тем же
 // lazyMirrorPost, что у первого комментария через PostComment. domain.ErrNotFound,
-// если обсуждения нет или пост не резолвится в пост этого канала.
+// если обсуждения нет, пост не резолвится в пост этого канала или канал
+// зрителю не читается (RequireChannelCommentsRead: у приватного канала
+// посторонний получает CHANNEL_PRIVATE и на обсуждение). Гейт стоит ДО
+// ленивого зеркала: заводить копию поста ради постороннего нельзя.
 func (i *Interactor) GetDiscussionMessage(ctx context.Context, channelID, postID, userID int64) (domain.Message, error) {
-	disc, _ := i.groups.GetDiscussion(ctx, channelID)
+	disc, err := i.RequireChannelCommentsRead(ctx, channelID, userID)
+	if err != nil {
+		return domain.Message{}, err
+	}
 	if disc == 0 {
 		return domain.Message{}, domain.ErrNotFound
 	}
@@ -252,10 +258,14 @@ func (i *Interactor) GetDiscussionMessage(ctx context.Context, channelID, postID
 // ListComments returns the comment thread (ascending) for a channel post plus the
 // total comment count. Читает по id зеркала поста (см. PostComment), внешне
 // вызывающий по-прежнему адресует пост парой (канал, postID). domain.ErrNotFound
-// если обсуждения выключены; без зеркала — пустой тред без ошибки (тред у поста
-// ещё не появился, это не сбой).
+// если обсуждения выключены или канал зрителю не читается
+// (RequireChannelCommentsRead); без зеркала — пустой тред без ошибки (тред у
+// поста ещё не появился, это не сбой).
 func (i *Interactor) ListComments(ctx context.Context, channelID, postID, userID int64, offset, limit int) ([]domain.Message, int, error) {
-	disc, _ := i.groups.GetDiscussion(ctx, channelID)
+	disc, err := i.RequireChannelCommentsRead(ctx, channelID, userID)
+	if err != nil {
+		return nil, 0, err
+	}
 	if disc == 0 {
 		return nil, 0, domain.ErrNotFound
 	}
@@ -269,7 +279,7 @@ func (i *Interactor) ListComments(ctx context.Context, channelID, postID, userID
 	if root == 0 {
 		return nil, 0, nil
 	}
-	msgs, err := i.msgs.ListThread(ctx, disc, root, offset, limit)
+	msgs, err := i.msgs.ListThread(ctx, disc, userID, root, offset, limit)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -343,10 +353,14 @@ const RecentRepliersLimit = 3
 // по id зеркал — но ключи результата остаются НОМЕРАМИ ПОСТОВ: внешний контракт
 // про пару (канал, пост) не меняется, зеркало — деталь реализации треда. Посты
 // без зеркала комментариев не набирают. Обсуждение не включено — пустой
-// результат без ошибки.
+// результат без ошибки; канал зрителю не читается — domain.ErrNotFound
+// (RequireChannelCommentsRead).
 func (i *Interactor) CommentCounts(ctx context.Context, viewerID, channelID int64, postIDs []int64) (map[int64]domain.MessageReplies, []domain.UserReal, error) {
 	out := map[int64]domain.MessageReplies{}
-	disc, _ := i.groups.GetDiscussion(ctx, channelID)
+	disc, err := i.RequireChannelCommentsRead(ctx, channelID, viewerID)
+	if err != nil {
+		return out, nil, err
+	}
 	if disc == 0 {
 		return out, nil, nil
 	}
@@ -409,7 +423,11 @@ func (i *Interactor) CommentCounts(ctx context.Context, viewerID, channelID int6
 // ViewCounts returns the current view count for each of the given channel post
 // ids (Telegram's "9.2K 👁"). Non-channel messages report 0. Mirrors the
 // commentCounts read path — the client fetches these per open to stay fresh.
-func (i *Interactor) ViewCounts(ctx context.Context, postIDs []int64) (map[int64]int64, error) {
+// Счётчики канала видит тот, кто канал читает (RequireChatRead).
+func (i *Interactor) ViewCounts(ctx context.Context, channelID, viewerID int64, postIDs []int64) (map[int64]int64, error) {
+	if err := i.RequireChatRead(ctx, channelID, viewerID); err != nil {
+		return nil, err
+	}
 	return i.msgs.ViewCounts(ctx, postIDs)
 }
 
@@ -433,7 +451,13 @@ func (i *Interactor) ViewCounts(ctx context.Context, postIDs []int64) (map[int64
 //
 // Кадр уезжает ТОЛЬКО про выросшие: повторный просмотр того же поста тем же
 // зрителем ничего не меняет, и рассылать про него нечего.
+//
+// Регистрирует тот, кто канал читает (RequireChatRead): иначе посторонний
+// накручивал бы просмотры приватного канала и слал кадры в его топик.
 func (i *Interactor) RegisterViews(ctx context.Context, channelID, viewerID int64, postIDs []int64) (map[int64]int64, error) {
+	if err := i.RequireChatRead(ctx, channelID, viewerID); err != nil {
+		return nil, err
+	}
 	grown, err := i.msgs.RegisterPostViews(ctx, channelID, viewerID, postIDs)
 	if err != nil {
 		return nil, err

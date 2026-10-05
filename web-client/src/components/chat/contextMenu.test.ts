@@ -577,6 +577,8 @@ describe('ChatContextMenu — «кто просмотрел» (views без ре
     return message(1, {
       peerId: GROUP,
       peer_id: { _: 'peerChannel', channel_id: 9 },
+      // окно `chat_read_mark_expire_period` (tweb :12336) — сообщение свежее
+      date: Math.floor(Date.now() / 1000) - 60,
       ...extra,
     })
   }
@@ -666,6 +668,23 @@ describe('ChatContextMenu — «кто просмотрел» (views без ре
     menu.attachTo(container)
     rightClick(content)
     await flush()
+    await flush()
+
+    expect(viewsItem()).toBeUndefined()
+    expect(managers.messages.viewers).not.toHaveBeenCalled()
+  })
+
+  // Пороги `chat_read_mark_*` (tweb :12334-12339): сервер за ними отказывает
+  // (`usecase/chat/message_pin.go`), и пункт без них висел бы в «Loading».
+  it.each([
+    ['старше недели', { date: Math.floor(Date.now() / 1000) - 8 * 86400 }, 5],
+    ['группа больше порога', {}, 101],
+  ])('%s — пункта нет, `messages.viewers` не спрашивается', async(_name, extra, count) => {
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'channel', id: 9, title: 'gr', pFlags: { megagroup: true }, photo: undefined, date: 0, participants_count: count } as never] }])
+    putMirrorPage(KEY, [groupMessage({ pFlags: { out: true }, ...extra })])
+
+    const managers = makeManagers()
+    await openInGroup(managers)
     await flush()
 
     expect(viewsItem()).toBeUndefined()

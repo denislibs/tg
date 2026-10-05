@@ -38,6 +38,12 @@ type MessageContext struct {
 	// Post — сообщение в вещательном канале (message.pFlags.post). Строка
 	// messages этого не знает: признак у ЧАТА, а не у сообщения.
 	Post bool
+	// PostAuthorShown — у поста канала виден автор-человек (канал включил
+	// channel.signature_profiles). Без этого у поста from_id нет вовсе: автор
+	// поста — сам канал (tweb appMessagesManager.ts:4752-4757 generateFromId,
+	// fromId = peerId), и кто из админов что опубликовал, подписчику знать
+	// неоткуда. Вне поста не значит ничего.
+	PostAuthorShown bool
 	// Out — сообщение отправил ЗРИТЕЛЬ (message.pFlags.out).
 	//
 	// Разбор изначально решал (Р7), что `out` считает клиент по
@@ -138,7 +144,7 @@ func ActionCarriesPhoto(a MessageAction) bool {
 func (m Message) toService(ctx MessageContext, action MessageAction) MessageService {
 	s := NewMessageService(m.Seq, ctx.Peer, m.CreatedAt, action, ctx.Post)
 	setPFlag(&s.PFlags, "out", ctx.Out)
-	s.FromID = m.fromID()
+	s.FromID = m.wireFromID(ctx)
 	s.ReplyTo = m.replyHeader()
 	if m.TTLSeconds != nil {
 		s.TTLPeriod = *m.TTLSeconds
@@ -167,7 +173,7 @@ func (m Message) toReal(ctx MessageContext) MessageReal {
 		Post:        ctx.Post,
 		Out:         ctx.Out,
 	})
-	r.FromID = m.fromID()
+	r.FromID = m.wireFromID(ctx)
 	r.FwdFrom = m.FwdFrom
 	r.ReplyTo = m.replyHeader()
 	r.Media = m.mediaWire()
@@ -208,6 +214,15 @@ func (m Message) toReal(ctx MessageContext) MessageReal {
 	}
 	m.attachOurPayload(&r)
 	return r
+}
+
+// wireFromID — from_id на проводе: автор (fromID), кроме поста вещательного
+// канала без подписей профилями — у него автора нет, пост от лица канала.
+func (m Message) wireFromID(ctx MessageContext) Peer {
+	if ctx.Post && !ctx.PostAuthorShown {
+		return nil
+	}
+	return m.fromID()
 }
 
 // fromID — АВТОР сообщения ссылкой на пир. Отправка от имени канала/группы

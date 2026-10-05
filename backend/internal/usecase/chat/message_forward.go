@@ -24,22 +24,31 @@ type ForwardInput struct {
 }
 
 // ForwardMessages copies the given messages into ToChatID as new messages with
-// forward attribution ("Переслано от X"). The caller must be a member of both
-// chats. Forwarding a forward preserves the ORIGINAL origin (like Telegram).
-// Each copy fans out a normal new_message update/frame, so receivers and the
-// /sync catch-up treat it like any incoming message.
+// forward attribution ("Переслано от X"). Forwarding a forward preserves the
+// ORIGINAL origin (like Telegram). Each copy fans out a normal new_message
+// update/frame, so receivers and the /sync catch-up treat it like any incoming
+// message.
+//
+// Источник читается по общим предикатам: чат — RequireChatRead (публичный
+// канал пересылается и без вступления), каждое сообщение —
+// RequireMessagesVisible (скрытая предыстория, очищенное и скрытое у себя по
+// номеру не пересылаются: для зрителя их нет). Приёмник — член чата.
 func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]domain.Message, error) {
 	if len(in.MsgIDs) == 0 {
 		return nil, nil
 	}
-	for _, chatID := range []int64{in.FromChatID, in.ToChatID} {
-		ok, err := i.chats.IsMember(ctx, chatID, in.SenderID)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			return nil, domain.ErrNotFound
-		}
+	if err := i.RequireChatRead(ctx, in.FromChatID, in.SenderID); err != nil {
+		return nil, err
+	}
+	if err := i.RequireMessagesVisible(ctx, in.SenderID, in.MsgIDs); err != nil {
+		return nil, err
+	}
+	ok, err := i.chats.IsMember(ctx, in.ToChatID, in.SenderID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, domain.ErrNotFound
 	}
 
 	// Пересылка В КАНАЛ — это тот же пост канала, поэтому у неё та же развилка

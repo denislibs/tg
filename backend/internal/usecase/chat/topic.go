@@ -82,17 +82,14 @@ func sanitizeTopicEmoji(s string) string {
 	return s
 }
 
-// ListTopics — темы чата (участникам), свежие сверху.
+// ListTopics — темы чата тому, кто его читает (RequireChatRead: публичный
+// форум читается и без вступления), свежие сверху.
 func (i *Interactor) ListTopics(ctx context.Context, chatID, userID int64) ([]domain.TopicRow, error) {
 	if i.topics == nil {
 		return nil, nil
 	}
-	ok, err := i.chats.IsMember(ctx, chatID, userID)
-	if err != nil {
+	if err := i.RequireChatRead(ctx, chatID, userID); err != nil {
 		return nil, err
-	}
-	if !ok {
-		return nil, domain.ErrNotFound
 	}
 	return i.topics.ListByChat(ctx, chatID, userID)
 }
@@ -222,17 +219,13 @@ func (i *Interactor) SetTopicPinned(ctx context.Context, topicID, userID int64, 
 
 // ListThreadMessages — сообщения треда (форум-топика) по возрастанию.
 func (i *Interactor) ListThreadMessages(ctx context.Context, chatID, rootID, userID int64, offset, limit int) ([]domain.Message, int, error) {
-	ok, err := i.chats.IsMember(ctx, chatID, userID)
-	if err != nil {
+	if err := i.RequireChatRead(ctx, chatID, userID); err != nil {
 		return nil, 0, err
-	}
-	if !ok {
-		return nil, 0, domain.ErrNotFound
 	}
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	msgs, err := i.msgs.ListThread(ctx, chatID, rootID, offset, limit)
+	msgs, err := i.msgs.ListThread(ctx, chatID, userID, rootID, offset, limit)
 	if err != nil {
 		return nil, 0, err
 	}

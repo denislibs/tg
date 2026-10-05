@@ -164,7 +164,7 @@ func TestHydrateReplies_CrossChatNotLeaked(t *testing.T) {
 		// (c) обычный локальный reply — обязан гидрироваться.
 		{ID: 102, ChatID: dst, SenderID: 1, Type: "text", Text: "ответ3", ReplyToID: &local.Seq},
 	}
-	if err := in.hydrateReplies(ctx, msgs); err != nil {
+	if err := in.hydrateReplies(ctx, 0, msgs); err != nil {
 		t.Fatalf("hydrateReplies: %v", err)
 	}
 	if msgs[0].ReplyTo != nil {

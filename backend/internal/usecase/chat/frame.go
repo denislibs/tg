@@ -255,6 +255,9 @@ func (i *Interactor) messageContext(ctx context.Context, m domain.Message, peer 
 	if i.chats != nil {
 		if typ, err := i.chats.ChatType(ctx, m.ChatID); err == nil {
 			out.Post = typ == domain.ChatTypeChannel
+			if out.Post {
+				out.PostAuthorShown = i.postAuthorsShown(ctx, map[int64]string{m.ChatID: typ})[m.ChatID]
+			}
 			out.Replies = i.messageThread(ctx, m, typ)
 			out.CanSeeReactionsList = domain.CanSeeReactionsList(typ)
 			out.CanViewReactionsList = domain.CanViewReactionsList(typ)

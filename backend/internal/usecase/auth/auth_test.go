@@ -775,7 +775,7 @@ func TestDeleteProfilePhoto(t *testing.T) {
 	if err := i.DeleteProfilePhoto(ctx, res.User.ID, 502); err != nil {
 		t.Fatalf("DeleteProfilePhoto(502): %v", err)
 	}
-	list, err := i.ListProfilePhotos(ctx, res.User.ID)
+	list, err := i.ListProfilePhotos(ctx, res.User.ID, res.User.ID)
 	if err != nil || len(list) != 1 || list[0].MediaID != p1.MediaID {
 		t.Fatalf("gallery after delete = %v, %v; want ровно p1", list, err)
 	}

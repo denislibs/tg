@@ -143,11 +143,34 @@ func (r *MessagesRepo) GetBySeqs(ctx context.Context, chatID int64, seqs []int64
 	return out, rows.Err()
 }
 
+// VisibleIDs — какие из ключей строк ids зритель видит (messageVisibleTo).
+// Невидимые и несуществующие в карту не попадают. Ответ для выдач по
+// адресу — сообщения по номерам, пересылка: на месте невидимого граница
+// ставит messageEmpty, как на месте удалённого.
+func (r *MessagesRepo) VisibleIDs(ctx context.Context, viewerID int64, ids []int64) (map[int64]bool, error) {
+	out := make(map[int64]bool, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT m.id FROM messages m WHERE m.id = ANY($1) AND `+messageVisibleTo("m", "$2"), ids, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		if e := rows.Scan(&id); e != nil {
+			return nil, e
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
 // GetAround returns a window of messages centered on centerSeq (older + the
-// message + newer), ascending, excluding deleted/self-hidden, plus whether the
-// real top/bottom of history was reached. Used for jump-to-message.
-// clearedSeq — персональный горизонт «очистки истории»: сообщения с seq<=clearedSeq
-// скрыты для этого читателя (0 — ничего не очищено).
+// message + newer), ascending, keeping only what the viewer sees
+// (messageVisibleTo). Used for jump-to-message.
 // GetAround возвращает окно вокруг centerSeq.
 //
 // Концов окна («дошли до верха/низа») здесь больше НЕТ, и это не потеря
@@ -156,13 +179,13 @@ func (r *MessagesRepo) GetBySeqs(ctx context.Context, chatID int64, seqs []int64
 // ветка, которой оригинал идёт без offset_id_offset). Сервер, считавший это за
 // клиента, был вторым ответом на тот же вопрос: для обычных страниц истории
 // клиент уже выводил концы сам.
-func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRootID *int64, clearedSeq int64) ([]domain.Message, error) {
+func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq int64, limit int, threadRootID *int64) ([]domain.Message, error) {
 	if limit <= 0 {
 		limit = 40
 	}
 	half := limit / 2
 	q := querier(ctx, r.pool)
-	const excl = ` AND deleted_at IS NULL AND messages.seq>$6 AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id=messages.id AND h.user_id=$4) AND ((SELECT history_for_new FROM chats WHERE id=$1) OR messages.created_at >= COALESCE((SELECT cm.joined_at FROM chat_members cm WHERE cm.chat_id=$1 AND cm.user_id=$4 AND cm.role='member'), 'epoch'::timestamptz)) AND ($5::bigint IS NULL OR thread_root_id=$5 OR id=$5)`
+	excl := ` AND ` + messageVisibleTo("messages", "$4") + ` AND ($5::bigint IS NULL OR thread_root_id=$5 OR id=$5)`
 	scan := func(rows pgx.Rows, err error) ([]domain.Message, error) {
 		if err != nil {
 			return nil, err
@@ -186,13 +209,13 @@ func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq 
 	// keeps the focused message centered but still returns a full page).
 	older, err := scan(q.Query(ctx,
 		`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq<=$2`+excl+` ORDER BY seq DESC LIMIT $3`,
-		chatID, centerSeq, limit, userID, threadRootID, clearedSeq))
+		chatID, centerSeq, limit, userID, threadRootID))
 	if err != nil {
 		return nil, err
 	}
 	newer, err := scan(q.Query(ctx,
 		`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq>$2`+excl+` ORDER BY seq ASC LIMIT $3`,
-		chatID, centerSeq, limit, userID, threadRootID, clearedSeq))
+		chatID, centerSeq, limit, userID, threadRootID))
 	if err != nil {
 		return nil, err
 	}
@@ -232,8 +255,8 @@ func (r *MessagesRepo) SearchMessages(ctx context.Context, chatID, userID int64,
 	// type <> 'service': системные сообщения (создал группу, сменил фото, set_ttl…)
 	// не индексируются поиском — как в tweb (service-сообщения не ищутся).
 	where := ` FROM messages m LEFT JOIN media md ON md.id = m.media_id
-		WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND m.type <> 'service'
-		  AND ` + notHiddenFor("$2")
+		WHERE m.chat_id=$1 AND m.type <> 'service'
+		  AND ` + messageVisibleTo("m", "$2")
 	args := []any{chatID, userID}
 	// add регистрирует значение и возвращает его плейсхолдер ($N).
 	add := func(v any) string {
@@ -328,8 +351,8 @@ func (r *MessagesRepo) MessageSeqByDate(ctx context.Context, chatID int64, from 
 // Only photos and videos: that's the filter tweb passes
 // (inputMessagesFilterPhotoVideo), and only those have a thumbnail to draw.
 // Latest message of the day wins; days without such media are simply absent.
-// Удалённое зрителем userID «у себя» не входит ни в счётчик дня, ни в превью —
-// как у вкладки медиа (notHiddenFor).
+// Невидимое зрителю userID (удалённое у себя, очищенное, скрытая предыстория)
+// не входит ни в счётчик дня, ни в превью — как у вкладки медиа (messageVisibleTo).
 func (r *MessagesRepo) CalendarMonth(ctx context.Context, chatID, userID int64, from, to time.Time) ([]domain.CalendarDay, error) {
 	q := querier(ctx, r.pool)
 	// Агрегат по дню, а не одна строка: отрезку оригинала нужны ОБЕ границы
@@ -340,8 +363,8 @@ func (r *MessagesRepo) CalendarMonth(ctx context.Context, chatID, userID int64, 
 		        min(m.seq) AS min_seq, max(m.seq) AS max_seq, count(*) AS cnt,
 		        (array_agg(m.seq ORDER BY m.created_at DESC))[1] AS top_seq
 		 FROM messages m JOIN media md ON md.id = m.media_id
-		 WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND m.media_id IS NOT NULL
-		       AND `+notHiddenFor("$4")+`
+		 WHERE m.chat_id=$1 AND m.media_id IS NOT NULL
+		       AND `+messageVisibleTo("m", "$4")+`
 		       AND m.type IN ('photo','video')
 		       AND m.created_at >= $2 AND m.created_at < $3
 		 GROUP BY date_trunc('day', m.created_at)
@@ -366,8 +389,8 @@ func (r *MessagesRepo) CalendarMonth(ctx context.Context, chatID, userID int64, 
 // of (tweb global search: «Сообщения» section + Media/Links/Files/Music/Voice
 // tabs). q matches text or attached file name (case-insensitive substring);
 // filter narrows by shared-media kind (mediaFilterCond, "" = any type).
-// Visibility mirrors GetHistory: deleted, per-user hides and hidden pre-join
-// history are excluded. Newest first + total count.
+// Visibility — тот же предикат, что у истории (messageVisibleTo): удалённое,
+// скрытое у себя, очищенное и скрытая предыстория не находятся. Newest first + total count.
 //
 // Окно — курсор `m.id < OffsetRate` (почему не OFFSET — у
 // usecasechat.GlobalSearchQuery). Берётся Limit+1 строка: лишняя говорит,
@@ -385,9 +408,8 @@ func (r *MessagesRepo) GlobalSearchMessages(ctx context.Context, userID int64, g
 		JOIN chat_members cm ON cm.chat_id = m.chat_id AND cm.user_id = $1
 		JOIN chats c ON c.id = m.chat_id
 		LEFT JOIN media md ON md.id = m.media_id
-		WHERE m.deleted_at IS NULL AND m.type <> 'service'
-		  AND ` + notHiddenFor("$1") + `
-		  AND (c.history_for_new OR cm.role <> 'member' OR m.created_at >= cm.joined_at)`
+		WHERE m.type <> 'service'
+		  AND ` + messageVisibleTo("m", "$1")
 	if gq.Filter != "" {
 		cond := mediaFilterCond(gq.Filter)
 		if cond == "" {
@@ -466,8 +488,7 @@ func (r *MessagesRepo) CallLog(ctx context.Context, userID int64, offset, limit 
 		   JOIN chats c ON c.id = m.chat_id AND c.type = 'private'
 		   JOIN chat_members other ON other.chat_id = m.chat_id AND other.user_id <> $1
 		   JOIN users u ON u.id = other.user_id
-		  WHERE m.type = 'call' AND m.deleted_at IS NULL
-		    AND `+notHiddenFor("$1")+`
+		  WHERE m.type = 'call' AND `+messageVisibleTo("m", "$1")+`
 		    AND EXISTS (SELECT 1 FROM chat_members me WHERE me.chat_id = m.chat_id AND me.user_id = $1)
 		  ORDER BY m.id DESC LIMIT $2 OFFSET $3`, userID, limit, offset)
 	if err != nil {
@@ -517,16 +538,6 @@ func dateRangeCond(minDate, maxDate int64, add func(any) string) string {
 	return cond
 }
 
-// notHiddenFor — предикат «сообщение m не удалено зрителем у себя»
-// (message_hides); p — плейсхолдер id зрителя. Одно условие на все выдачи
-// сообщений чата зрителю, кроме истории (там свой алиас таблицы): вкладки
-// шаред-медиа, их счётчики, календарь медиа, поиск в чате и глобальный,
-// журнал звонков. Без него «удалить у
-// себя» убирало сообщение из ленты, но не из медиа и не из поиска.
-func notHiddenFor(p string) string {
-	return `NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id = m.id AND h.user_id = ` + p + `)`
-}
-
 // mediaFilterCond — SQL-предикат одного вида шаред-медиа (вкладки профиля,
 // tweb inputMessagesFilter*). Пустая строка — вид неизвестен. Один источник
 // правды для постраничной выборки и для батч-счётчиков: разъехавшись, они дадут
@@ -563,7 +574,7 @@ func (r *MessagesRepo) MediaHistory(ctx context.Context, chatID, userID int64, f
 		return nil, 0, nil
 	}
 	qq := querier(ctx, r.pool)
-	where := ` FROM messages m WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND ` + notHiddenFor("$2") + ` AND ` + cond
+	where := ` FROM messages m WHERE m.chat_id=$1 AND ` + messageVisibleTo("m", "$2") + ` AND ` + cond
 	args := []any{chatID, userID}
 	// Тред — сообщения с этим корнем (без самого корня: вкладки треда — его
 	// ответы, как `top_msg_id` у messages.search).
@@ -635,7 +646,7 @@ func (r *MessagesRepo) SearchCounters(ctx context.Context, chatID, userID int64,
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT CASE `+strings.Join(arms, " ")+` END AS f, count(*)
 		   FROM messages m
-		  WHERE m.chat_id=$1 AND m.deleted_at IS NULL AND `+notHiddenFor("$2")+thread+`
+		  WHERE m.chat_id=$1 AND `+messageVisibleTo("m", "$2")+thread+`
 		    AND (`+strings.Join(conds, " OR ")+`)
 		  GROUP BY 1`, args...)
 	if err != nil {
@@ -985,13 +996,11 @@ func (r *MessagesRepo) HideForUser(ctx context.Context, userID, msgID int64) err
 // "from the newest".
 // threadRootID != nil ограничивает окно тредом (форум-топик / комментарии):
 // сообщения с этим thread_root_id плюс само корневое сообщение.
-// clearedSeq — персональный горизонт «очистки истории»: сообщения с seq<=clearedSeq
-// скрыты для этого читателя (0 — ничего не очищено).
-func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64, clearedSeq int64, tag string) ([]domain.Message, error) {
+// Видимость — messageVisibleTo: удалённое, скрытое у себя, очищенное и
+// скрытая предыстория в окно не попадают.
+func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64, tag string) ([]domain.Message, error) {
 	q := querier(ctx, r.pool)
-	// Skip deleted (never shown) and rows this user hid for themselves. Placeholder
-	// differs per query shape.
-	const exclN = historyVisibleN
+	// Плейсхолдеры зависят от формы запроса.
 	const thrN = ` AND ($%d::bigint IS NULL OR thread_root_id=$%[1]d OR id=$%[1]d)`
 	// tagN (Избранное): оставляем только сообщения, помеченные зрителем реакцией
 	// $%[2]d (эмодзи/id кастом-эмодзи). Пустой тег ($%[2]d='') снимает фильтр.
@@ -1002,16 +1011,16 @@ func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq
 	switch {
 	case offsetSeq == 0:
 		rows, err = q.Query(ctx,
-			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1`+fmt.Sprintf(exclN, 3, 5)+fmt.Sprintf(thrN, 4)+fmt.Sprintf(tagN, 3, 6)+` ORDER BY seq DESC LIMIT $2`,
-			chatID, limit, userID, threadRootID, clearedSeq, tag)
+			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND `+messageVisibleTo("messages", "$3")+fmt.Sprintf(thrN, 4)+fmt.Sprintf(tagN, 3, 5)+` ORDER BY seq DESC LIMIT $2`,
+			chatID, limit, userID, threadRootID, tag)
 	case addOffset <= 0: // newer than offset
 		rows, err = q.Query(ctx,
-			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq>$2`+fmt.Sprintf(exclN, 4, 6)+fmt.Sprintf(thrN, 5)+fmt.Sprintf(tagN, 4, 7)+` ORDER BY seq ASC LIMIT $3`,
-			chatID, offsetSeq, limit, userID, threadRootID, clearedSeq, tag)
+			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq>$2 AND `+messageVisibleTo("messages", "$4")+fmt.Sprintf(thrN, 5)+fmt.Sprintf(tagN, 4, 6)+` ORDER BY seq ASC LIMIT $3`,
+			chatID, offsetSeq, limit, userID, threadRootID, tag)
 	default: // older, inclusive of offset
 		rows, err = q.Query(ctx,
-			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq<=$2`+fmt.Sprintf(exclN, 4, 6)+fmt.Sprintf(thrN, 5)+fmt.Sprintf(tagN, 4, 7)+` ORDER BY seq DESC LIMIT $3`,
-			chatID, offsetSeq, limit, userID, threadRootID, clearedSeq, tag)
+			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq<=$2 AND `+messageVisibleTo("messages", "$4")+fmt.Sprintf(thrN, 5)+fmt.Sprintf(tagN, 4, 6)+` ORDER BY seq DESC LIMIT $3`,
+			chatID, offsetSeq, limit, userID, threadRootID, tag)
 	}
 	if err != nil {
 		return nil, err
@@ -1101,13 +1110,13 @@ func (r *MessagesRepo) SavedDialogs(ctx context.Context, chatID, userID int64) (
 }
 
 // ListThread returns messages belonging to a thread (thread_root_id) in a chat,
-// ascending by seq, excluding deleted messages.
-func (r *MessagesRepo) ListThread(ctx context.Context, chatID, threadRootID int64, offset, limit int) ([]domain.Message, error) {
+// ascending by seq, keeping only what viewerID sees (messageVisibleTo).
+func (r *MessagesRepo) ListThread(ctx context.Context, chatID, viewerID, threadRootID int64, offset, limit int) ([]domain.Message, error) {
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
 		`SELECT `+messageCols+`
-		 FROM messages WHERE chat_id=$1 AND thread_root_id=$2 AND deleted_at IS NULL ORDER BY seq ASC LIMIT $3 OFFSET $4`,
-		chatID, threadRootID, limit, offset)
+		 FROM messages WHERE chat_id=$1 AND thread_root_id=$2 AND `+messageVisibleTo("messages", "$5")+` ORDER BY seq ASC LIMIT $3 OFFSET $4`,
+		chatID, threadRootID, limit, offset, viewerID)
 	if err != nil {
 		return nil, err
 	}
@@ -1334,23 +1343,15 @@ func (r *MessagesRepo) RecentThreadRepliers(ctx context.Context, chatID int64, r
 	return out, rows.Err()
 }
 
-// historyVisibleN — что из истории чата $1 видит зритель: не удалено, не
-// скрыто им для себя (message_hides), выше его горизонта «очистки истории»
-// и — при скрытой истории (chats.history_for_new=false) — отправлено после
-// его вступления (админы/создатель видят всё). %[1]d — плейсхолдер id
-// зрителя, %[2]d — горизонта очистки. Одно условие на окно истории и на её
-// счётчик: иначе они расходятся.
-const historyVisibleN = ` AND deleted_at IS NULL AND seq>$%[2]d AND NOT EXISTS (SELECT 1 FROM message_hides h WHERE h.msg_id=messages.id AND h.user_id=$%[1]d) AND ((SELECT history_for_new FROM chats WHERE id=$1) OR messages.created_at >= COALESCE((SELECT cm.joined_at FROM chat_members cm WHERE cm.chat_id=$1 AND cm.user_id=$%[1]d AND cm.role='member'), 'epoch'::timestamptz))`
-
 // CountMessages — сколько сообщений истории видит зритель (`count`
 // messages.messagesSlice). Условие — то же, что у окна GetHistory: клиент
 // показывает это число как есть (tweb topbar.ts `messagesCounter` —
 // «N messages» в шапке «Избранного» из historyStorage.count), и счёт, в
 // который входят очищенные и скрытые зрителем сообщения, врал бы.
-func (r *MessagesRepo) CountMessages(ctx context.Context, chatID, userID, clearedSeq int64) (int, error) {
+func (r *MessagesRepo) CountMessages(ctx context.Context, chatID, userID int64) (int, error) {
 	q := querier(ctx, r.pool)
 	var n int
-	err := q.QueryRow(ctx, `SELECT count(*) FROM messages WHERE chat_id=$1`+fmt.Sprintf(historyVisibleN, 2, 3), chatID, userID, clearedSeq).Scan(&n)
+	err := q.QueryRow(ctx, `SELECT count(*) FROM messages WHERE chat_id=$1 AND `+messageVisibleTo("messages", "$2"), chatID, userID).Scan(&n)
 	return n, err
 }
 

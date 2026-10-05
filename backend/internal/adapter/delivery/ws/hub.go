@@ -4,7 +4,9 @@
 package ws
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"log"
 	"strconv"
 	"strings"
@@ -85,7 +87,11 @@ func (h *Hub) run() {
 func (h *Hub) route(msg *redis.Message) {
 	defer saferun.Recover("ws.hub.route")
 	if userID, ok := idFromChannel(msg.Channel, "user:"); ok {
-		h.deliver(userID, []byte(msg.Payload))
+		frame := []byte(msg.Payload)
+		if peer, removed := chatRemovedPeer(frame); removed {
+			h.unsubscribeUserChannel(context.Background(), userID, peer)
+		}
+		h.deliver(userID, frame)
 	} else if deviceID, ok := idFromChannel(msg.Channel, "device:"); ok {
 		h.closeDevice(deviceID)
 	} else if chID, ok := idFromChannel(msg.Channel, "channel:"); ok {
@@ -189,6 +195,50 @@ func (h *Hub) UnsubscribeChannel(ctx context.Context, peer domain.PeerID, s Sink
 	h.mu.Unlock()
 	if last {
 		h.unsub(ctx, channelTopic(peer))
+	}
+}
+
+// chatRemovedFrame — признак кадра chat_removed в теле: дешёвый отсев до
+// разбора JSON, чтобы не разбирать каждый кадр пользователя.
+var chatRemovedFrame = []byte(`"chat_removed"`)
+
+// chatRemovedPeer — пир чата, который пользователь потерял (кадр
+// chat_removed: выход, исключение, бан — их шлёт RemoveMember). ok=false —
+// это другой кадр.
+func chatRemovedPeer(frame []byte) (domain.PeerID, bool) {
+	if !bytes.Contains(frame, chatRemovedFrame) {
+		return domain.NullPeerID, false
+	}
+	var f struct {
+		T string `json:"t"`
+		D struct {
+			Peer json.RawMessage `json:"peer"`
+		} `json:"d"`
+	}
+	if json.Unmarshal(frame, &f) != nil || f.T != "chat_removed" {
+		return domain.NullPeerID, false
+	}
+	p, err := domain.UnmarshalPeer(f.D.Peer)
+	if err != nil || p == nil {
+		return domain.NullPeerID, false
+	}
+	return domain.GetPeerID(p), true
+}
+
+// unsubscribeUserChannel снимает с топика пира все локальные сокеты
+// пользователя: выбывший из канала (вышел, исключён, забанен) больше не
+// читает его, и живые посты ему идти не должны. Сигнал — кадр chat_removed,
+// который ему и так уходит; он приходит в каждую реплику, где у пользователя
+// есть сокеты, поэтому отписка работает и между репликами.
+func (h *Hub) unsubscribeUserChannel(ctx context.Context, userID int64, peer domain.PeerID) {
+	h.mu.RLock()
+	sinks := make([]Sink, 0, len(h.conns[userID]))
+	for s := range h.conns[userID] {
+		sinks = append(sinks, s)
+	}
+	h.mu.RUnlock()
+	for _, s := range sinks {
+		h.UnsubscribeChannel(ctx, peer, s)
 	}
 }
 

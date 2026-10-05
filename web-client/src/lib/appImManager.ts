@@ -63,9 +63,7 @@
 //     автоплей/зацикливание стикеров и тема по выбору (бывший `client/liteModeSettings.ts`
 //     и `useThemeToggle`). `chatsSelectTabDebounced` (закреп, очередь загрузок) — нет
 //     предмета до К-3.
-//  8. Хэш: `story`/`community`/`call` в `#/im` — нет предметов. `op()` без `migrated_to` и ботфорума. В канал, где мы не состоим, `op()` ВСТУПАЕТ: наш
-//     `GET /chats/{id}/history` не-участнику отдаёт 403 (перенесено из прежнего
-//     `useUrlSync.applyHash`, долг — `docs/readiness/port-divergences.md`).
+//  8. Хэш: `story`/`community`/`call` в `#/im` — нет предметов. `op()` без `migrated_to` и ботфорума.
 //  9. `setPeer` без `getPeerMigratedTo` и `min`-пиров (`:3293-3317`) — в нашей
 //     модели их нет; `spliceChats` не закрывает `AppPrivateSearchTab` (вкладки нет).
 // 10. Звонки (блок H) — расхождения З1–З5 у секции `── H. Звонки ──`.
@@ -591,7 +589,7 @@ export class AppImManager extends EventListenerBase<{
     return this.op({ ...options, peer })
   }
 
-  /** tweb `:2062-2157` — расхождение 8 шапки */
+  /** tweb `:2062-2157` — расхождение 8 шапки (без `migrated_to` и ботфорума) */
   public async op(options: { peer: User | MTChat | undefined } & Omit<ChatSetPeerOptions, 'peerId'>) {
     const { peer, ...rest } = options
     if(!peer) {
@@ -605,14 +603,6 @@ export class AppImManager extends EventListenerBase<{
       if(rest[key]) rest[key] = generateMessageId(rest[key])
     }
     const { commentId, threadId, lastMsgId } = rest
-
-    // расхождение 8 шапки: вступить в публичный канал, где мы не состоим
-    if(peer._ !== 'user' && 'username' in peer && peer.username && !(await this.managers.dialogs.hasDialog(peerId))) {
-      try {
-        await this.managers.channels.join(peer.username)
-      } catch{ /* приватный / уже вступил */ }
-      void this.managers.dialogs.refresh().catch(() => { /* список догонит следующий refresh */ })
-    }
 
     const peerIsForum = isForum(peer._ === 'user' || peer._ === 'userEmpty' ? undefined : peer)
 

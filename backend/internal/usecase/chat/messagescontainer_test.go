@@ -244,8 +244,10 @@ func TestMessagesContainer_MergesRecentRepliersIntoUsers(t *testing.T) {
 		}
 		seen[u.ID] = true
 	}
-	if !seen[7] {
-		t.Fatalf("автор поста потерялся при слиянии: %v", users)
+	// Автор поста вещательного канала без подписей в вектор не едет
+	// (A4-02): пост — от лица канала.
+	if seen[7] {
+		t.Fatalf("автор поста канала без подписей утёк в users: %v", users)
 	}
 	body, ok := wire[0].(domain.MessageReal)
 	if !ok || body.Replies == nil {

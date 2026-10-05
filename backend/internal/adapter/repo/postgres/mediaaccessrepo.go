@@ -69,18 +69,20 @@ func (r *MediaAccessRepo) OwnerID(ctx context.Context, mediaID int64) (int64, er
 	return ownerID, err
 }
 
-// CanAccess reports whether userID may download a media object. Access is granted if any holds:
-//   - they own it;
-//   - the media is the photo of a chat they are a member of;
-//   - they are a member of a chat that has a message referencing it — either as
-//     the message's own media, or as the picture of its link preview
-//     (messages.web_page_media_id, миграция 0092);
-//   - the media backs an active story they may view — i.e. they authored it, or
-//     they are a chat partner of the author and the story is 'everyone'/'contacts',
-//     or the story is 'selected' and they are on its allowlist.
+// CanAccess reports whether userID may download a media object: КТО ВИДИТ
+// ИСТОЧНИК, ТОТ И КАЧАЕТ. Предикаты источников — те же, что у их выдач
+// (visibility.go), а не свои копии:
+//   - свой файл;
+//   - фото чата, который зритель читает (участник либо публичный, не бан);
+//   - вложение или картинка превью ссылки (messages.web_page_media_id,
+//     миграция 0092) сообщения, которое зритель видит в читаемом чате
+//     (messageVisibleTo: удалённое, скрытое у себя, очищенное и скрытая
+//     предыстория не качаются);
+//   - медиа истории, которую зритель видит (storyVisibleTo — то же правило, что
+//     у ленты, просмотра и закреплённых профиля): живой либо закреплённой.
 //
-// The story branch mirrors the visibility predicate used by the stories feed
-// (see StoryRepo.ActiveFeed) so a viewer who can see a story can fetch its media.
+// Аватарки здесь нет: их видимость решает правило приватности владельца
+// (profile_photo + блок), а оно живёт в usecase — см. AvatarOwners.
 func (r *MediaAccessRepo) CanAccess(ctx context.Context, userID, mediaID int64) (bool, error) {
 	q := querier(ctx, r.pool)
 	var allowed bool
@@ -88,41 +90,41 @@ func (r *MediaAccessRepo) CanAccess(ctx context.Context, userID, mediaID int64) 
 		`SELECT EXISTS(
 		   SELECT 1 FROM media WHERE id=$1 AND owner_id=$2
 		   UNION ALL
-		   -- avatars are visible to any authenticated user (the media id is some
-		   -- user's current avatar)
-		   SELECT 1 FROM users WHERE avatar_media_id = $1
-		   UNION ALL
-		   -- chat photos are visible to that chat's members
 		   SELECT 1 FROM chats c
-		     JOIN chat_members cm ON cm.chat_id = c.id
-		     WHERE c.photo_media_id=$1 AND cm.user_id=$2
+		     WHERE c.photo_media_id=$1 AND `+chatReadableBy("c.id", "$2")+`
 		   UNION ALL
 		   SELECT 1 FROM messages m
-		     JOIN chat_members cm ON cm.chat_id = m.chat_id
-		     WHERE m.media_id=$1 AND cm.user_id=$2
+		     WHERE m.media_id=$1 AND `+chatReadableBy("m.chat_id", "$2")+` AND `+messageVisibleTo("m", "$2")+`
 		   UNION ALL
-		   -- картинка превью ссылки: скачана нами, владелец — отправитель, но
-		   -- видеть её должны все участники чата
 		   SELECT 1 FROM messages m
-		     JOIN chat_members cm ON cm.chat_id = m.chat_id
-		     WHERE m.web_page_media_id=$1 AND cm.user_id=$2
+		     WHERE m.web_page_media_id=$1 AND `+chatReadableBy("m.chat_id", "$2")+` AND `+messageVisibleTo("m", "$2")+`
 		   UNION ALL
 		   SELECT 1 FROM stories s
-		     WHERE s.media_id=$1 AND s.expires_at > now()
-		       AND (
-		         s.author_id = $2
-		         OR (
-		           EXISTS(
-		             SELECT 1 FROM chat_members cm1
-		               JOIN chat_members cm2 ON cm2.chat_id = cm1.chat_id AND cm2.user_id = s.author_id
-		             WHERE cm1.user_id = $2
-		           )
-		           AND (
-		             s.privacy IN ('everyone','contacts')
-		             OR EXISTS(SELECT 1 FROM story_allow sa WHERE sa.story_id = s.id AND sa.user_id = $2)
-		           )
-		         )
-		       )
+		     WHERE s.media_id=$1 AND (s.expires_at > now() OR s.pinned)
+		       AND `+storyVisibleTo("s", "$2")+`
 		 )`, mediaID, userID).Scan(&allowed)
 	return allowed, err
+}
+
+// AvatarOwners — пользователи, у которых этот файл — фото профиля: текущая
+// аватарка или снимок галереи (с видео-вариантом). Скачать его можно тому,
+// кому правило profile_photo владельца разрешает фото видеть (решает usecase).
+func (r *MediaAccessRepo) AvatarOwners(ctx context.Context, mediaID int64) ([]int64, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT id FROM users WHERE avatar_media_id = $1
+		 UNION
+		 SELECT user_id FROM profile_photos WHERE media_id = $1 OR video_media_id = $1`, mediaID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if e := rows.Scan(&id); e != nil {
+			return nil, e
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }

@@ -326,7 +326,7 @@ func findServiceAccountMessage(t *testing.T, in *Interactor, userID int64) (doma
 	if err != nil {
 		return domain.Message{}, false
 	}
-	msgs, err := in.msgs.GetHistory(context.Background(), chatID, userID, 0, 0, 50, nil, 0, "")
+	msgs, err := in.msgs.GetHistory(context.Background(), chatID, userID, 0, 0, 50, nil, "")
 	if err != nil || len(msgs) == 0 {
 		return domain.Message{}, false
 	}

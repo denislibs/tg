@@ -294,7 +294,7 @@ func TestPinService_TargetRidesInReplyTo(t *testing.T) {
 // lastMessage — последнее сообщение чата в фейковом хранилище.
 func lastMessage(t *testing.T, in *Interactor, chatID int64) domain.Message {
 	t.Helper()
-	msgs, err := in.msgs.GetHistory(context.Background(), chatID, 0, 0, 0, 100, nil, 0, "")
+	msgs, err := in.msgs.GetHistory(context.Background(), chatID, 0, 0, 0, 100, nil, "")
 	if err != nil {
 		t.Fatalf("GetHistory: %v", err)
 	}
@@ -337,7 +337,7 @@ func TestReply_AddressedByPeerAndSeq(t *testing.T) {
 		t.Errorf("ответ в своём чате получил чужой пир %d", *same.ReplyToPeerID)
 	}
 	msgs := []domain.Message{same}
-	if err := in.hydrateReplies(ctx, msgs); err != nil {
+	if err := in.hydrateReplies(ctx, 0, msgs); err != nil {
 		t.Fatalf("hydrateReplies: %v", err)
 	}
 	if msgs[0].ReplyTo == nil || msgs[0].ReplyTo.Text != "оригинал в B" {

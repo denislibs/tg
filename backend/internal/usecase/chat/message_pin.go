@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -109,14 +110,29 @@ func (i *Interactor) ListPins(ctx context.Context, chatID, userID int64) ([]doma
 	return i.chats.ListPins(ctx, chatID)
 }
 
+// Порог «кто прочитал» (tweb appConfig chat_read_mark_size_threshold и
+// chat_read_mark_expire_period; своего appConfig у нас нет — значения
+// Telegram по умолчанию).
+const (
+	chatReadMarkSizeThreshold = 100
+	chatReadMarkExpirePeriod  = 7 * 24 * time.Hour
+)
+
 // MessageViewers returns the ids of members who have seen the message (read up to
-// its seq), excluding its sender. The caller must be a member.
+// its seq), excluding its sender.
+//
+// Кому — правило tweb canViewMessageReadParticipants
+// (appMessagesManager.ts:12314-12340), которое сервер Telegram и держит:
+// только АВТОРУ сообщения, не в вещательном канале, в чате не больше
+// chatReadMarkSizeThreshold участников и не позже chatReadMarkExpirePeriod
+// после отправки. Иначе domain.ErrForbidden: чужое «кто прочитал» и читатели
+// постов канала (тот же состав подписчиков) не отдаются.
 func (i *Interactor) MessageViewers(ctx context.Context, chatID, msgID, userID int64) ([]int64, error) {
-	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	a, err := i.chats.Access(ctx, chatID, userID)
 	if err != nil {
 		return nil, err
 	}
-	if !ok {
+	if !a.Member {
 		return nil, domain.ErrNotFound
 	}
 	msg, err := i.msgs.GetByID(ctx, msgID)
@@ -125,6 +141,16 @@ func (i *Interactor) MessageViewers(ctx context.Context, chatID, msgID, userID i
 	}
 	if msg.ChatID != chatID {
 		return nil, domain.ErrNotFound
+	}
+	if msg.SenderID != userID || a.Type == domain.ChatTypeChannel || time.Since(msg.CreatedAt) >= chatReadMarkExpirePeriod {
+		return nil, domain.ErrForbidden
+	}
+	members, err := i.chats.MemberIDs(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+	if len(members) > chatReadMarkSizeThreshold {
+		return nil, domain.ErrForbidden
 	}
 	return i.chats.Viewers(ctx, chatID, msg.Seq, msg.SenderID)
 }
