@@ -12,6 +12,8 @@ import type { Managers } from '@/client/bootstrap'
 import { AppImManager } from './appImManager'
 
 const columnRight = vi.hoisted(() => ({ sidebarEl: undefined as HTMLElement | undefined, toggleSidebar: () => Promise.resolve(), hide: () => {}, replaceSharedMediaTab: () => {} }))
+// колода карточек пустой колонки (Б-13) — свой предмет (`components/chatTips/chatTips.solid.test.tsx`)
+vi.mock('@components/chatTips/index.solid', () => ({ renderChatTips: vi.fn() }))
 vi.mock('@components/sidebarRight', () => ({ default: columnRight, RIGHT_COLUMN_ACTIVE_CLASSNAME: 'is-right-column-shown' }))
 vi.mock('@components/chat/bubbles/chatBackground.solid', () => ({
   default: { setBackground: () => Promise.resolve(), getReadyPromise: () => Promise.resolve() },
