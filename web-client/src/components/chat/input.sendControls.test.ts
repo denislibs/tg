@@ -217,6 +217,8 @@ describe('ChatInput: расписание', () => {
       expect(managers.messages.scheduleMessage.mock.calls[0]).toEqual([BOB, expect.objectContaining({ text: 'потом', sendAt: at, whenOnline: false })])
       expect(appImManager.openScheduled).toHaveBeenCalledWith(BOB)
       expect(input.scheduleDate).toBeUndefined()
+      // черновика не было — снимать нечего
+      expect(managers.drafts.save).not.toHaveBeenCalled()
     } finally {
       vi.useRealTimers()
     }
@@ -386,5 +388,18 @@ describe('ChatInput: команды бота (Б-36)', () => {
     mounted.input.messageInputField.setValueSilently('текст')
     mounted.input.onMessageInput()
     expect(toggle.getAttribute('aria-hidden')).toBe('true')
+  })
+})
+
+describe('ChatInput: черновик после отложенной отправки', () => {
+  it('сохранённый черновик снимается явно (сервер его после отложенного не снимает)', async() => {
+    mounted = await mountInput()
+    useChatsStore.setState({ dialogs: [{ ...makeDialog({ peerId: BOB }), draft: { _: 'draftMessage', message: 'потом', date: 1 } }] })
+    const { input, managers } = mounted
+    await vi.waitFor(() => expect(input.messageInput.textContent).toBe('потом'))
+    input.setScheduleTimestamp(Math.floor(Date.now() / 1000) + 3600, () => void input.sendMessage(true))
+    await vi.waitFor(() => expect(managers.messages.scheduleMessage).toHaveBeenCalledTimes(1))
+    await flush()
+    expect(managers.drafts.save).toHaveBeenCalledWith(BOB, '', null)
   })
 })

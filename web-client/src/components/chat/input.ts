@@ -2267,7 +2267,14 @@ export default class ChatInput {
       }
 
       this.saveDraftDebounced.clearTimeout()
-      this.clearedDraft = { peerId: chat.peerId, draft: this.getDialog(chat.peerId)?.draft }
+      const draft = this.getDialog(chat.peerId)?.draft
+      this.clearedDraft = { peerId: chat.peerId, draft }
+      // tweb `sendText({clearDraft: true})` → `appDraftsManager.clearDraft`: черновик после
+      // отправки сервер снимает сам (расхождение 3), а после ОТЛОЖЕННОЙ — нет, снимаем явно
+      if(this.scheduleDate && realDraft(draft) && !chat.threadId) {
+        void this.managers.drafts.save(chat.peerId, '', null).catch(() => {})
+      }
+
       this.onMessageSent(true)
       return
     }
