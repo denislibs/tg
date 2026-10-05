@@ -30,7 +30,7 @@ function makeManagers() {
     chats: { getSendAs: vi.fn(async() => ({ _: 'channels.sendAsPeers', peers: [], chats: [], users: [] })) },
     dialogs: { refresh: vi.fn(async() => {}) },
     channels: { join: vi.fn(async(_username: string) => {}) },
-    groups: { setMute: vi.fn(async() => {}) },
+    groups: { setMute: vi.fn(async() => {}), card: vi.fn(async(_peerId: number) => null) },
     peers: { fillMirror: vi.fn(async() => {}) },
     bots: { commands: vi.fn(async() => []), menuButton: vi.fn(async() => ({ text: '', url: '' })) },
   }
@@ -103,7 +103,8 @@ describe('ChatInput: «Вступить» (tweb joinBtn)', () => {
     mounted = await mountInput(CHANNEL)
     expect(controlButtons(mounted.input)).toEqual(['SUBSCRIBE'])
 
-    mounted.managers.channels.join.mockImplementation(async() => { upsert(300, { broadcast: true }) })
+    // карточку без `left` приносит перечитанная `groups.card` (сохраняет пиры ответа)
+    mounted.managers.groups.card.mockImplementation(async() => { upsert(300, { broadcast: true }); return null })
     const btn = [...(mounted.input as unknown as { controlContainer: HTMLElement }).controlContainer.querySelectorAll<HTMLElement>('.chat-input-control-button')]
       .find((b) => b.textContent === 'SUBSCRIBE')!
     btn.click()
@@ -111,6 +112,7 @@ describe('ChatInput: «Вступить» (tweb joinBtn)', () => {
     await flush()
 
     expect(mounted.managers.channels.join).toHaveBeenCalledWith('pub300')
+    expect(mounted.managers.groups.card).toHaveBeenCalledWith(CHANNEL)
     expect(mounted.managers.dialogs.refresh).toHaveBeenCalled()
     expect(controlButtons(mounted.input)).toEqual(['Mute'])
   })

@@ -7,9 +7,10 @@
 //    а приватный чат вступается только по ссылке-приглашению (`joinChatInvite`);
 //  • `handleChannelsTooMuch` и `handleCommunityChatJoinError` не портированы —
 //    лимита каналов и сообществ у сервера нет;
-//  • `updates` ответа сервер не шлёт — список диалогов перечитывается сам
-//    (`dialogs.refresh`), иначе вступивший чат появится только при следующей
-//    reset-загрузке.
+//  • `updates` ответа (с карточкой канала, где уже нет `left`) сервер не шлёт —
+//    карточка перечитывается сама (`groups.card` сохраняет пиры ответа, как
+//    `saveApiChats` оригинала), а список диалогов — `dialogs.refresh`, иначе
+//    вступивший чат появится только при следующей reset-загрузке.
 import type { Managers } from '@/client/bootstrap'
 import { cachedChat } from '@core/peerCache'
 
@@ -22,5 +23,6 @@ export default async function joinChat(options: { peerId: PeerId, managers: Mana
   }
 
   await managers.channels.join(username)
-  await managers.dialogs.refresh()
+  await managers.groups.card(peerId)
+  void managers.dialogs.refresh().catch(() => { /* список догонит следующий refresh */ })
 }

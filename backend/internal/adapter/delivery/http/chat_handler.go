@@ -960,6 +960,11 @@ func (h *ChatHandler) Viewers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "message not found")
 		return
 	}
+	// Не автор, канал, большой чат или старое сообщение (canViewMessageReadParticipants).
+	if errors.Is(err, domain.ErrForbidden) {
+		writeError(w, http.StatusForbidden, "read participants unavailable")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load viewers")
 		return

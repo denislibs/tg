@@ -23,7 +23,7 @@ function fakeRest(users: UserReal[]) {
   return {
     async get<R>(_path: string, query?: Record<string, string | number>): Promise<R> {
       const requested = new Set(String(query?.ids ?? '').split(',').filter(Boolean).map(Number))
-      return { users: users.filter((u) => requested.has(u.id)) } as unknown as R
+      return users.filter((u) => requested.has(u.id)) as unknown as R  // как ручка: голый Vector<User>
     },
   } as unknown as RestClient
 }
@@ -106,7 +106,7 @@ describe('PeersManager — офлайн-фолбэк ловит только о�
       async get<R>(_path: string, query?: Record<string, string | number>): Promise<R> {
         if (net.offline) throw new TypeError('Failed to fetch')
         const requested = new Set(String(query?.ids ?? '').split(',').filter(Boolean).map(Number))
-        return { users: [bobby].filter((u) => requested.has(u.id)) } as unknown as R
+        return [bobby].filter((u) => requested.has(u.id)) as unknown as R  // как ручка: голый Vector<User>
       },
     } as unknown as RestClient
     const mgr = newPeersManager({ rest })
