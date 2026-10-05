@@ -13,9 +13,14 @@ const (
 	RightPinMessages    Rights = 1 << 5
 	RightChangeInfo     Rights = 1 << 6
 	RightManageAdmins   Rights = 1 << 7
+	// RightAnonymous — писать от имени группы (tweb hasRights 'anonymous').
+	RightAnonymous Rights = 1 << 8
+	// RightManageTopics — управлять ЧУЖИМИ темами форума (tweb canManageTopic).
+	RightManageTopics Rights = 1 << 9
 
 	AllRights Rights = RightPostMessages | RightEditMessages | RightDeleteMessages |
-		RightBanUsers | RightInviteUsers | RightPinMessages | RightChangeInfo | RightManageAdmins
+		RightBanUsers | RightInviteUsers | RightPinMessages | RightChangeInfo | RightManageAdmins |
+		RightAnonymous | RightManageTopics
 )
 
 // Roles stored in chat_members.role.
@@ -25,6 +30,19 @@ const (
 	RoleMember     = "member"     // group member (may post)
 	RoleSubscriber = "subscriber" // channel subscriber (read-only)
 )
+
+// JoinRole — роль вступающего по ТИПУ чата: в канал вступает подписчик, в
+// группу — обычный участник (у оригинала это channelParticipant в обоих
+// случаях, а права выводятся из broadcast/megagroup чата). Единственное место
+// выбора: прежде каждый путь вступления ставил роль сам, и в канал по ссылке
+// входили «участником группы» с её дефолтными правами, а в группу по @имени —
+// «подписчиком» без прав.
+func JoinRole(chatType string) string {
+	if chatType == ChatTypeChannel {
+		return RoleSubscriber
+	}
+	return RoleMember
+}
 
 // MemberPerms is the chat-wide default-permissions bitmask for ordinary members
 // (chats.default_permissions) — the inverse of Telegram's banned rights: what a

@@ -348,7 +348,7 @@ func registerServer(p serverParams) {
 	// Статистика каналов (tweb stats.getBroadcastStats): серии считаются на лету
 	// из реальных данных (messages / chat_members / message_views).
 	statsUC := usecasestats.New(pgadapter.NewStatsRepo(p.Pool))
-	foldersUC := usecasefolders.New(pgadapter.NewFoldersRepo(p.Pool), pgadapter.NewFolderChatAccess(p.Pool), pgadapter.NewTxManager(p.Pool))
+	foldersUC := usecasefolders.New(pgadapter.NewFoldersRepo(p.Pool), pgadapter.NewFolderChatAccess(p.Pool, p.ChatUC.JoinFolderChat), pgadapter.NewTxManager(p.Pool))
 	// folder_update: логируем мутации папок в пер-юзерный апдейт-лог (плотный
 	// pts-курсор для /sync), а при живом Redis — ещё и шлём кадр на устройства
 	// владельца.

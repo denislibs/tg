@@ -12,6 +12,7 @@ import type { Channel } from '@core/peers/peer'
 import type { Managers } from '@/client/bootstrap'
 import lang from '@/lang'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
+import { adminRightsMask } from '@core/peers/rights'
 import { ChatAdministratorRights, ChatPermissions } from './sharedPermissions'
 
 const GROUP: Channel = {
@@ -111,9 +112,40 @@ describe('ChatAdministratorRights', () => {
       lang.EditAdminBanUsers,
       lang.EditAdminAddUsersViaLink,
       lang.EditAdminPinMessages,
+      lang.EditAdminSendAnonymously,
       lang.EditAdminAddAdmins,
     ])
-    expect(rights.fields.every((field) => field.restrictionText === 'EditCantEditPermissions')).toBe(true)
+    // `CREATOR_EXCEPTIONS` (:278-280): анонимность владелец себе меняет сам
+    const locked = rights.fields.filter((field) => field.restrictionText === 'EditCantEditPermissions').map((field) => field.flags[0])
+    expect(locked).toEqual(['change_info', 'delete_messages', 'ban_users', 'invite_users', 'pin_messages', 'add_admins'])
+  })
+
+  it('форум: строка «Управление темами»; анонимность и темы уходят в права (биты 256 и 512 бэкенда)', () => {
+    const forum = { ...GROUP, id: 31, pFlags: { megagroup: true, creator: true, forum: true } } as Channel
+    applyPeerOps([{ op: 'upsert', peers: [forum] }])
+    const rights = new ChatAdministratorRights({
+      chatId: 31,
+      listenerSetter,
+      appendTo,
+      chat: forum,
+      canEdit: true,
+      rights: { _: 'chatAdminRights', pFlags: { anonymous: true } },
+    })
+
+    expect(titles()).toEqual([
+      lang.EditAdminChangeGroupInfo,
+      lang.EditAdminGroupDeleteMessages,
+      lang.EditAdminBanUsers,
+      lang.EditAdminAddUsersViaLink,
+      lang.EditAdminPinMessages,
+      lang.ManageTopicsPermission,
+      lang.EditAdminSendAnonymously,
+      lang.EditAdminAddAdmins,
+    ])
+    rights.fields.find((field) => field.flags[0] === 'manage_topics')!.checkboxField!.checked = true
+    const out = rights.takeOut()
+    expect(out.pFlags).toEqual({ anonymous: true, manage_topics: true })
+    expect(adminRightsMask(out.pFlags)).toBe(256 | 512)
   })
 
   it('канал: «Управление сообщениями» — группа с тремя вложенными; права админа — отметки и takeOut', () => {

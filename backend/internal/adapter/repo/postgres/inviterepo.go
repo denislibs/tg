@@ -69,9 +69,21 @@ func (r *InviteRepo) List(ctx context.Context, chatID int64, revoked bool) ([]do
 	return out, rows.Err()
 }
 
+// IncUses засчитывает вход по ссылке, если лимит использований не исчерпан;
+// исчерпан — domain.ErrForbidden (Telegram USERS_TOO_MUCH / INVITE_HASH_EXPIRED).
+// Условие в самом UPDATE, а не проверкой до него: два входа в гонке за
+// последнее место иначе оба проходят.
 func (r *InviteRepo) IncUses(ctx context.Context, id int64) error {
-	_, err := querier(ctx, r.pool).Exec(ctx, `UPDATE invite_links SET uses = uses + 1 WHERE id=$1`, id)
-	return err
+	ct, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE invite_links SET uses = uses + 1
+		  WHERE id=$1 AND (usage_limit IS NULL OR uses < usage_limit)`, id)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return domain.ErrForbidden
+	}
+	return nil
 }
 
 // Delete hard-deletes a single link, scoped by chat so a token from another chat

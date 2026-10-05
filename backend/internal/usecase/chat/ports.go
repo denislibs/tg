@@ -117,7 +117,9 @@ type GroupRepo interface {
 	AddMember(ctx context.Context, chatID, userID int64, role string, rights domain.Rights) error
 	RemoveMember(ctx context.Context, chatID, userID int64) error
 	GetMember(ctx context.Context, chatID, userID int64) (domain.Member, error) // domain.ErrNotFound if not a member
-	SetRole(ctx context.Context, chatID, userID int64, role string, rights domain.Rights) error
+	// SetRole — смена роли; promotedBy — назначивший админа (0 — нет).
+	// domain.ErrNotFound, если userID не участник.
+	SetRole(ctx context.Context, chatID, userID int64, role string, rights domain.Rights, promotedBy int64) error
 	// SetMuted записывает СРОК мьюта: nil снимает его, domain.MuteUntilForever —
 	// «навсегда». Булева аргумента здесь нет: два способа сказать одно и то же и
 	// были дефектом, из-за которого «заглушить на час» работало как «навсегда».
@@ -203,6 +205,7 @@ type InviteRepo interface {
 	// List returns a chat's invite links: active ones (revoked=false) or the
 	// revoked ones (revoked=true), newest first.
 	List(ctx context.Context, chatID int64, revoked bool) ([]domain.InviteLink, error)
+	// IncUses засчитывает вход; лимит использований исчерпан — domain.ErrForbidden.
 	IncUses(ctx context.Context, id int64) error
 	// Delete hard-deletes a single link (matched by chat+token); no-op if absent.
 	Delete(ctx context.Context, chatID int64, token string) error
@@ -226,8 +229,8 @@ type JoinRequestRepo interface {
 	List(ctx context.Context, chatID int64) ([]domain.JoinRequest, error)
 	Delete(ctx context.Context, chatID, userID int64) error
 	// TokenFor returns the invite token a pending request came through ("" if the
-	// request has no associated token or no such request exists).
-	TokenFor(ctx context.Context, chatID, userID int64) (string, error)
+	// request has no associated token); ok=false — заявки нет.
+	TokenFor(ctx context.Context, chatID, userID int64) (token string, ok bool, err error)
 }
 
 type MessageRepo interface {
@@ -734,6 +737,9 @@ type TopicRepo interface {
 	SetTopicRead(ctx context.Context, chatID, rootMsgID, userID, upToSeq int64) error
 	// SetTopicMuted включает/выключает mute темы (UPSERT).
 	SetTopicMuted(ctx context.Context, chatID, rootMsgID, userID int64, muted bool) error
+	// ByRoot — тема по корню треда (ключ строки корневого сообщения);
+	// domain.ErrNotFound — тред не тема.
+	ByRoot(ctx context.Context, chatID, rootMsgID int64) (domain.ForumTopicRecord, error)
 }
 
 // ScheduledRepo хранит очередь запланированных сообщений.

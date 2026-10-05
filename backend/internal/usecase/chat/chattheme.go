@@ -12,7 +12,9 @@ import (
 // (как dialog_pin/archive — живой fan-out; при перезагрузке тема приезжает в
 // ПОЛНОЙ КАРТОЧКЕ пира — chatFull/channelFull/userFull.theme_emoticon, — а не
 // в списке диалогов: в схеме у диалога такого поля нет вовсе, см. решение Р7
-// в docs/readiness/tl-dialogs-analysis.md). Менять может любой участник.
+// в docs/readiness/tl-dialogs-analysis.md). В личке менять может любой из двух
+// участников; в группе и канале тема — оформление чата для всех, и это право
+// change_info (у ограниченного участника и подписчика его нет).
 func (i *Interactor) SetChatTheme(ctx context.Context, chatID, actorID int64, themeID string) error {
 	ok, err := i.chats.IsMember(ctx, chatID, actorID)
 	if err != nil {
@@ -20,6 +22,15 @@ func (i *Interactor) SetChatTheme(ctx context.Context, chatID, actorID int64, th
 	}
 	if !ok {
 		return domain.ErrNotFound
+	}
+	typ, err := i.chats.ChatType(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	if typ == domain.ChatTypeGroup || typ == domain.ChatTypeChannel {
+		if err := i.requirePermOrRight(ctx, chatID, actorID, domain.PermChangeInfo, domain.RightChangeInfo); err != nil {
+			return err
+		}
 	}
 	if err := i.chats.SetChatTheme(ctx, chatID, themeID, actorID); err != nil {
 		return err

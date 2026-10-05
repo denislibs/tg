@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -40,12 +41,16 @@ func TestGroupRepo_CreateAndMembership(t *testing.T) {
 		t.Fatalf("card: %+v", card)
 	}
 
-	if err := r.SetRole(ctx, chatID, u2, domain.RoleAdmin, domain.RightPostMessages); err != nil {
+	if err := r.SetRole(ctx, chatID, u2, domain.RoleAdmin, domain.RightPostMessages, u1); err != nil {
 		t.Fatal(err)
 	}
 	m2, _ := r.GetMember(ctx, chatID, u2)
-	if m2.Role != domain.RoleAdmin || m2.Rights != domain.RightPostMessages {
+	if m2.Role != domain.RoleAdmin || m2.Rights != domain.RightPostMessages || m2.PromotedBy != u1 {
 		t.Fatalf("promote: %+v", m2)
+	}
+	// Не участник — ErrNotFound, а не тихий успех (A5-36: «невидимый админ»).
+	if err := r.SetRole(ctx, chatID, 987654321, domain.RoleAdmin, domain.RightPostMessages, u1); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("SetRole не-участника = %v, ждали ErrNotFound", err)
 	}
 
 	// Мьют — СРОК, а не булево: «навсегда» это domain.MuteUntilForever, и

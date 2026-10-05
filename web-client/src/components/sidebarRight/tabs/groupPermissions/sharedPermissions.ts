@@ -21,25 +21,24 @@
  *     вложенных под «Отправку медиа» девяти гранулярных запретов
  *     (`send_photos`/`send_videos`/`send_stickers`+`send_gifs`/`send_audios`/
  *     `send_docs`/`send_voices`/`send_roundvideos`/`embed_links`/`send_polls`,
- *     :66-76), строки форума `manage_topics` (:83) и связок `toggleWith` между
+ *     :66-76), запрета форума `manage_topics` (:83) и связок `toggleWith` между
  *     ними (:98-100). «Отправка сообщений» — наш флаг `send_messages`
  *     (у оригинала `send_plain`, :79): у бэкенда он и означает текст. Раз
  *     `send_media` у нас настоящий флаг, а не сводный по вложенным, `takeOut` не
  *     пропускает его (`IGNORE_FLAGS`, :138-140), а `manage_linked_peers`
  *     (:156-158) не переносится — флага нет. У `ChatAdministratorRights` нет
  *     `manage_welcome_messages` (:222-225, отсюда и опция `isBot`), «управления
- *     историями» (:205-209, :227), `manage_topics`, `manage_call`,
- *     `manage_direct_messages`, `anonymous` (:232-236, с ним и пустой
- *     `CREATOR_EXCEPTIONS`, :265-267), `manage_linked_peers` (:328-336) и флага
- *     `other` (:342-344): у бэкенда восемь прав админа (`adminRightNames`,
+ *     историями» (:205-209, :227), `manage_call`, `manage_direct_messages`
+ *     (:232-236), `manage_linked_peers` (:328-336) и флага `other` (:342-344):
+ *     у бэкенда десять прав админа (`adminRightNames`,
  *     `keepPFlags` отбрасывает чужие имена), а снятие админа — своя ручка
  *     (`DELETE /chats/{id}/admins/{userId}`), не пустые права.
  *  2. Ветки legacy-чата `chat` нет (`CHAT_LEGACY_ADMIN_RIGHTS`, :338-341): базовых
  *     групп бэкенд не производит (решение №2, `core/peers/peer.ts::ChatReal`).
  *  3. `apiManagerProxy.getChat` → зеркало `cachedChat` (`core/peerCache.ts`);
  *     `getPeerActiveUsernames(chat)[0]` (:105) → `chat.username` (одно имя,
- *     `core/peers/predicates.ts::isPublic`); `isForum` (:59) не читается — его
- *     единственный потребитель, строка `manage_topics`, в п. 1.
+ *     `core/peers/predicates.ts::isPublic`); `isForum` (:59) у `ChatPermissions`
+ *     не читается — его единственный потребитель там, строка `manage_topics`, в п. 1.
  *  4. `banned_rights`/`admin_rights` участника приезжают проводной формой
  *     `ChannelParticipantWire` (`core/managers/groupsManager.ts`), и их тип там
  *     шире схемы; сужение — приведением у чтения (`asBannedRights`/`asAdminRights`).
@@ -218,6 +217,7 @@ export class ChatAdministratorRights extends CheckboxFields<AdministratorRightsC
     const options = this.options
     const chat = options.chat
     const isBroadcast = !!chat?.pFlags?.broadcast
+    const isForum = !!chat?.pFlags?.forum
     const rights = this.rights = options.rights ?? (options.participant ? asAdminRights(options.participant) : undefined)
 
     const manageMessagesNested: AdministratorRightsCheckboxFieldsField[] | false = isBroadcast && [
@@ -239,7 +239,9 @@ export class ChatAdministratorRights extends CheckboxFields<AdministratorRightsC
       !isBroadcast && { flags: ['ban_users'], text: 'EditAdminBanUsers' },
       !isBroadcast && { flags: ['invite_users'], text: 'EditAdminAddUsersViaLink' },
       !isBroadcast && { flags: ['pin_messages'], text: 'EditAdminPinMessages' },
+      isForum && { flags: ['manage_topics'], text: 'ManageTopicsPermission' },
       isBroadcast && { flags: ['invite_users'], text: 'Channel.EditAdmin.PermissionInviteSubscribers' },
+      !isBroadcast && { flags: ['anonymous'], text: 'EditAdminSendAnonymously', checked: rights ? undefined : false },
       { flags: ['add_admins'], text: 'EditAdminAddAdmins', checked: rights ? undefined : isCreator },
     ]
 
@@ -261,14 +263,17 @@ export class ChatAdministratorRights extends CheckboxFields<AdministratorRightsC
 
     this.fields = fields
 
+    const CREATOR_EXCEPTIONS: Set<ChatRights> = new Set([
+      'anonymous',
+    ])
+
     for(const info of this.fields) {
       const mainFlag = info.flags[0]
       if(!options.canEdit) {
         info.restrictionText = 'EditAdminCantEdit'
       } else if(options.canGrant ?
         !options.canGrant(mainFlag) :
-        // `CREATOR_EXCEPTIONS` (:265-267) — пуст без `anonymous`, расхождение 1
-        isCreator || !hasRights(chat, mainFlag)
+        (isCreator && !CREATOR_EXCEPTIONS.has(mainFlag)) || !hasRights(chat, mainFlag)
       ) {
         info.restrictionText = 'EditCantEditPermissions'
       }

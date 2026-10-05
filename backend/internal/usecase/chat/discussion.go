@@ -129,7 +129,13 @@ func (i *Interactor) PostComment(ctx context.Context, channelID, postID, userID 
 			return domain.Message{}, domain.ErrNotFound
 		}
 	}
-	_ = i.groups.AddMember(ctx, disc, userID, domain.RoleMember, 0) // auto-join (idempotent)
+	// Автовступление комментатора — общей точкой: забаненный в группе
+	// обсуждения комментарием не возвращается.
+	// ВРЕМЕННО до влития Ф-1а (fix/backend-1a-access): перед admit —
+	// RequireChannelCommentsRead(channelID).
+	if _, err := i.admit(ctx, disc, userID, userID, admitSelf); err != nil {
+		return domain.Message{}, err
+	}
 	return i.Send(ctx, SendInput{
 		ChatID: disc, SenderID: userID, Type: "text", Text: text,
 		ClientMsgID: clientMsgID, ThreadRootID: &root,

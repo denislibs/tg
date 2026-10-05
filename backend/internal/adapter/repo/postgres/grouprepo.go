@@ -71,9 +71,9 @@ func (r *GroupRepo) GetMember(ctx context.Context, chatID, userID int64) (domain
 	var m domain.Member
 	var rights int
 	err := q.QueryRow(ctx,
-		`SELECT chat_id, user_id, role, rights
+		`SELECT chat_id, user_id, role, rights, COALESCE(promoted_by, 0)
 		   FROM chat_members WHERE chat_id=$1 AND user_id=$2`,
-		chatID, userID).Scan(&m.ChatID, &m.UserID, &m.Role, &rights)
+		chatID, userID).Scan(&m.ChatID, &m.UserID, &m.Role, &rights, &m.PromotedBy)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.Member{}, domain.ErrNotFound
 	}
@@ -84,11 +84,24 @@ func (r *GroupRepo) GetMember(ctx context.Context, chatID, userID int64) (domain
 	return m, nil
 }
 
-func (r *GroupRepo) SetRole(ctx context.Context, chatID, userID int64, role string, rights domain.Rights) error {
-	_, err := querier(ctx, r.pool).Exec(ctx,
-		`UPDATE chat_members SET role=$3, rights=$4 WHERE chat_id=$1 AND user_id=$2`,
-		chatID, userID, role, int(rights))
-	return err
+// SetRole меняет роль участника; promotedBy — кто назначил админа (0 — снять
+// отметку, у не-админа её нет). Не участник — domain.ErrNotFound: голый UPDATE
+// без проверки строк отвечал успехом и плодил «невидимого админа».
+func (r *GroupRepo) SetRole(ctx context.Context, chatID, userID int64, role string, rights domain.Rights, promotedBy int64) error {
+	var by any
+	if promotedBy != 0 {
+		by = promotedBy
+	}
+	ct, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE chat_members SET role=$3, rights=$4, promoted_by=$5 WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID, role, int(rights), by)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 // SetMuted записывает СРОК мьюта: nil снимает его, domain.MuteUntilForever —

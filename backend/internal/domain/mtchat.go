@@ -466,6 +466,8 @@ var adminRightFlags = []struct {
 	{RightInviteUsers, "invite_users"},
 	{RightPinMessages, "pin_messages"},
 	{RightManageAdmins, "add_admins"},
+	{RightAnonymous, "anonymous"},
+	{RightManageTopics, "manage_topics"},
 }
 
 var adminRightNames = flagNames(len(adminRightFlags), func(i int) string { return adminRightFlags[i].name })
@@ -483,9 +485,9 @@ var adminRightNames = flagNames(len(adminRightFlags), func(i int) string { retur
 // состоит из pFlags. Наличие admin_rights у чата и ЕСТЬ признак «зритель админ»
 // (решение №3): роли отдельным полем больше нет.
 //
-// Восемь флагов имеют предмет — это ровно наш битмаск Rights. Остальные
-// (anonymous, manage_call, other, manage_topics, post/edit/delete_stories,
-// manage_direct_messages, manage_ranks) предмета не имеют: ни бита, ни механики.
+// Десять флагов имеют предмет — это ровно наш битмаск Rights. Остальные
+// (manage_call, other, post/edit/delete_stories, manage_direct_messages,
+// manage_ranks) предмета не имеют: ни бита, ни механики.
 type ChatAdminRights struct {
 	Underscore string          `json:"_"`
 	PFlags     map[string]bool `json:"pFlags,omitempty"`

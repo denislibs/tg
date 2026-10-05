@@ -10,9 +10,14 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
-// memberCan resolves an action gated by a default member permission (plain
-// members) or an admin right (admins; creator always may). Channel subscribers
-// may do none of these. Private-chat members pass through the default 31 mask.
+// memberCan — порт tweb hasRights для действий, которые обычному участнику
+// группы разрешает дефолт чата, а админу — его право (creator может всё):
+//   - админ/владелец — бит права;
+//   - канал (broadcast) — ничего, кроме админских прав: у подписчика нет
+//     дефолтных прав (hasRights для broadcast берёт только admin_rights);
+//   - участник группы — дефолт чата ∧ ¬личный запрет (banned_rights ‖
+//     default_banned_rights): неистёкшее ограничение MemberRestriction снимает
+//     и закреп, и правку инфо, и приглашение, а не только отправку.
 func (i *Interactor) memberCan(ctx context.Context, chatID, userID int64, perm domain.MemberPerms, right domain.Rights) (bool, error) {
 	if i.groups == nil {
 		return false, nil
@@ -27,11 +32,48 @@ func (i *Interactor) memberCan(ctx context.Context, chatID, userID int64, perm d
 	case domain.RoleSubscriber:
 		return false, nil
 	}
+	typ, err := i.chats.ChatType(ctx, chatID)
+	if err != nil {
+		return false, err
+	}
+	if typ == domain.ChatTypeChannel {
+		return false, nil
+	}
 	s, err := i.groups.Settings(ctx, chatID)
 	if err != nil {
 		return false, err
 	}
-	return s.DefaultPerms&perm == perm, nil
+	if s.DefaultPerms&perm != perm {
+		return false, nil
+	}
+	return !i.restricted(ctx, chatID, userID, perm), nil
+}
+
+// restricted — запрещает ли perm личное ограничение участника (Telegram
+// banned_rights). Истёкшее ограничение не действует и убирается best-effort.
+func (i *Interactor) restricted(ctx context.Context, chatID, userID int64, perm domain.MemberPerms) bool {
+	res, ok, err := i.groups.GetRestriction(ctx, chatID, userID)
+	if err != nil || !ok {
+		return false
+	}
+	if !res.Active(time.Now()) {
+		_ = i.groups.DeleteRestriction(ctx, chatID, userID)
+		return false
+	}
+	return res.DeniedRights.Denies(perm)
+}
+
+// requireCreator — действие только владельца (tweb hasRights: toggle_forum,
+// change_type, delete_chat → false у не-создателя).
+func (i *Interactor) requireCreator(ctx context.Context, chatID, userID int64) error {
+	if i.groups == nil {
+		return domain.ErrForbidden
+	}
+	m, err := i.groups.GetMember(ctx, chatID, userID)
+	if err != nil || m.Role != domain.RoleCreator {
+		return domain.ErrForbidden
+	}
+	return nil
 }
 
 // requirePermOrRight is requireRight's member-aware counterpart.
@@ -62,26 +104,21 @@ func (i *Interactor) checkSendAllowed(ctx context.Context, in SendInput) error {
 	if err != nil {
 		return nil
 	}
+	media := in.carriesMedia()
 	if s.DefaultPerms&domain.PermSendMessages == 0 {
 		return domain.ErrForbidden
 	}
-	if in.MediaID != nil && s.DefaultPerms&domain.PermSendMedia == 0 {
+	if media && s.DefaultPerms&domain.PermSendMedia == 0 {
 		return domain.ErrForbidden
 	}
 	// Пер-юзерное ограничение (Telegram ChatBannedRights) поверх дефолта чата:
 	// запрет SendMessages блокирует любую отправку, запрет SendMedia — только
-	// медиа. Истёкшее ограничение игнорируется (best-effort удаляем).
-	if res, ok, e := i.groups.GetRestriction(ctx, in.ChatID, in.SenderID); e == nil && ok {
-		if res.Active(time.Now()) {
-			if res.DeniedRights.Denies(domain.PermSendMessages) {
-				return domain.ErrForbidden
-			}
-			if in.MediaID != nil && res.DeniedRights.Denies(domain.PermSendMedia) {
-				return domain.ErrForbidden
-			}
-		} else {
-			_ = i.groups.DeleteRestriction(ctx, in.ChatID, in.SenderID)
-		}
+	// медиа.
+	if i.restricted(ctx, in.ChatID, in.SenderID, domain.PermSendMessages) {
+		return domain.ErrForbidden
+	}
+	if media && i.restricted(ctx, in.ChatID, in.SenderID, domain.PermSendMedia) {
+		return domain.ErrForbidden
 	}
 	if s.SlowmodeSeconds > 0 {
 		if in.ClientMsgID != "" {
@@ -97,6 +134,16 @@ func (i *Interactor) checkSendAllowed(ctx context.Context, in SendInput) error {
 	return nil
 }
 
+// carriesMedia — несёт ли отправка медиа в смысле запрета send_media. У
+// оригинала у опроса своё право send_polls, у гео/контакта/чек-листа — свои
+// подтипы send_*; гранулярных битов у нас нет (MemberPerms — пять прав),
+// поэтому всё, что не текст, гейтится одним send_media. Прежде запрет медиа
+// смотрел только MediaID, и опрос, гео и контакт проходили мимо него.
+func (in SendInput) carriesMedia() bool {
+	return in.MediaID != nil || in.PollID != nil || in.ChecklistID != nil ||
+		in.GeoLat != nil || in.ContactUserID != nil
+}
+
 // ChatSettingsFor returns the chat's group settings (any member may read them).
 func (i *Interactor) ChatSettingsFor(ctx context.Context, chatID, viewerID int64) (domain.ChatSettings, error) {
 	ok, err := i.chats.IsMember(ctx, chatID, viewerID)
@@ -109,9 +156,10 @@ func (i *Interactor) ChatSettingsFor(ctx context.Context, chatID, viewerID int64
 	return i.groups.Settings(ctx, chatID)
 }
 
-// SetChatType switches the group between private and public (tweb chatType tab).
+// SetChatType switches the group between private and public (tweb chatType
+// tab). Только владелец (tweb hasRights 'change_type').
 func (i *Interactor) SetChatType(ctx context.Context, chatID, actorID int64, isPublic bool, username string) error {
-	if err := i.requireRight(ctx, chatID, actorID, domain.RightChangeInfo); err != nil {
+	if err := i.requireCreator(ctx, chatID, actorID); err != nil {
 		return err
 	}
 	if err := i.groups.SetType(ctx, chatID, isPublic, username); err != nil {
@@ -123,10 +171,10 @@ func (i *Interactor) SetChatType(ctx context.Context, chatID, actorID int64, isP
 
 // CheckChatUsername — channels.checkUsername: свободно ли публичное имя для
 // чата (tweb usernameInputField на вкладке chatType). Проверять вправе тот, кто
-// вправе и сохранить (SetChatType — CHANGE_INFO); своё имя чата свободно.
+// вправе и сохранить (SetChatType — владелец); своё имя чата свободно.
 // Форму имени проверяет вызывающий — тем же правилом, что и сохранение.
 func (i *Interactor) CheckChatUsername(ctx context.Context, chatID, actorID int64, username string) (bool, error) {
-	if err := i.requireRight(ctx, chatID, actorID, domain.RightChangeInfo); err != nil {
+	if err := i.requireCreator(ctx, chatID, actorID); err != nil {
 		return false, err
 	}
 	return i.groups.UsernameAvailable(ctx, username, chatID)
@@ -212,17 +260,13 @@ func (i *Interactor) SetChatChargeStars(ctx context.Context, chatID, actorID int
 
 // BanMember kicks userID (if a member) and puts them on the removed-users list
 // so invite links / re-adding by plain members won't let them back.
+// Цель — подвластная актору (manageTarget); бан бывает и не-участнику.
 func (i *Interactor) BanMember(ctx context.Context, chatID, actorID, userID int64) error {
-	if err := i.requireRight(ctx, chatID, actorID, domain.RightBanUsers); err != nil {
+	_, target, err := i.manageTarget(ctx, chatID, actorID, userID, domain.RightBanUsers, false)
+	if err != nil {
 		return err
 	}
-	if userID == actorID {
-		return domain.ErrForbidden
-	}
-	if m, err := i.groups.GetMember(ctx, chatID, userID); err == nil {
-		if m.Role == domain.RoleCreator {
-			return domain.ErrForbidden
-		}
+	if target.Role != "" {
 		if e := i.RemoveMember(ctx, chatID, actorID, userID); e != nil {
 			return e
 		}
@@ -252,16 +296,12 @@ func (i *Interactor) ListBanned(ctx context.Context, chatID, actorID int64) ([]d
 // member stays in the chat (unlike a ban). Gated by the ban/restrict admin
 // right; the creator can't be restricted. Announced as a `restrict` service msg.
 func (i *Interactor) RestrictMember(ctx context.Context, chatID, actorID, targetID int64, deniedRights domain.MemberPerms, untilSeconds int) error {
-	if err := i.requireRight(ctx, chatID, actorID, domain.RightBanUsers); err != nil {
+	_, target, err := i.manageTarget(ctx, chatID, actorID, targetID, domain.RightBanUsers, true)
+	if err != nil {
 		return err
 	}
-	if targetID == actorID {
-		return domain.ErrForbidden
-	}
-	if m, err := i.groups.GetMember(ctx, chatID, targetID); err == nil {
-		if m.Role == domain.RoleCreator || m.Role == domain.RoleAdmin {
-			return domain.ErrForbidden // админов/создателя ограничить нельзя
-		}
+	if target.Role == domain.RoleAdmin {
+		return domain.ErrForbidden // ограничения действуют на участника; админа сперва снимают
 	}
 	deniedRights &= domain.AllMemberPerms
 	var until *time.Time
