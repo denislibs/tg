@@ -57,19 +57,19 @@ func (r *JoinRequestRepo) Delete(ctx context.Context, chatID, userID int64) erro
 }
 
 // TokenFor returns the invite token the pending request came through ("" if the
-// request has no token or does not exist).
-func (r *JoinRequestRepo) TokenFor(ctx context.Context, chatID, userID int64) (string, error) {
+// request has no token); ok=false — заявки нет вовсе.
+func (r *JoinRequestRepo) TokenFor(ctx context.Context, chatID, userID int64) (string, bool, error) {
 	var token *string
 	err := querier(ctx, r.pool).QueryRow(ctx,
 		`SELECT invite_token FROM join_requests WHERE chat_id=$1 AND user_id=$2`, chatID, userID).Scan(&token)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", nil
+		return "", false, nil
 	}
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	if token == nil {
-		return "", nil
+		return "", true, nil
 	}
-	return *token, nil
+	return *token, true, nil
 }

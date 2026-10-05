@@ -160,27 +160,8 @@ func (i *Interactor) AddMember(ctx context.Context, chatID, actorID, userID int6
 	if err := i.requirePermOrRight(ctx, chatID, actorID, domain.PermAddMembers, domain.RightInviteUsers); err != nil {
 		return err
 	}
-	// Настройка приглашаемого «кто может приглашать меня в группы» + чёрный
-	// список (tweb USER_PRIVACY_RESTRICTED).
-	if i.privacy != nil {
-		ok, err := i.privacy.Check(ctx, userID, actorID, domain.PrivacyChatInvite)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			return domain.ErrPrivacy
-		}
-	}
-	if banned, err := i.groups.IsBanned(ctx, chatID, userID); err == nil && banned {
-		// Забаненного возвращает только админ с BAN_USERS (авторазбан, как в Telegram).
-		if err := i.requireRight(ctx, chatID, actorID, domain.RightBanUsers); err != nil {
-			return domain.ErrForbidden
-		}
-		if err := i.groups.Unban(ctx, chatID, userID); err != nil {
-			return err
-		}
-	}
-	if err := i.groups.AddMember(ctx, chatID, userID, domain.RoleMember, 0); err != nil {
+	joined, err := i.admit(ctx, chatID, userID, actorID, admitAdded)
+	if err != nil || !joined {
 		return err
 	}
 	targetID := userID
@@ -196,7 +177,9 @@ func (i *Interactor) AddMember(ctx context.Context, chatID, actorID, userID int6
 // clients to drop the dialog.
 func (i *Interactor) RemoveMember(ctx context.Context, chatID, actorID, userID int64) error {
 	if actorID != userID {
-		if err := i.requireRight(ctx, chatID, actorID, domain.RightBanUsers); err != nil {
+		// Кик — над подвластной целью: не владелец, чужой админ — только
+		// владельцем или назначившим (manageTarget).
+		if _, _, err := i.manageTarget(ctx, chatID, actorID, userID, domain.RightBanUsers, true); err != nil {
 			return err
 		}
 	}
@@ -247,22 +230,41 @@ func (i *Interactor) RemoveMember(ctx context.Context, chatID, actorID, userID i
 	return nil
 }
 
+// PromoteAdmin назначает (или правит) админа (channels.editAdmin). Цель —
+// подвластный участник (manageTarget); выдавать можно только то, что есть у
+// самого актора (кроме владельца) — у Telegram RIGHT_FORBIDDEN. Назначивший
+// запоминается: править этого админа дальше сможет он и владелец.
 func (i *Interactor) PromoteAdmin(ctx context.Context, chatID, actorID, userID int64, rights domain.Rights) error {
-	if err := i.requireRight(ctx, chatID, actorID, domain.RightManageAdmins); err != nil {
+	actor, target, err := i.manageTarget(ctx, chatID, actorID, userID, domain.RightManageAdmins, true)
+	if err != nil {
 		return err
 	}
-	if err := i.groups.SetRole(ctx, chatID, userID, domain.RoleAdmin, rights); err != nil {
+	rights &= domain.AllRights
+	if actor.Role != domain.RoleCreator && rights&^actor.Rights != 0 {
+		return domain.ErrForbidden
+	}
+	promotedBy := actorID
+	if target.Role == domain.RoleAdmin && target.PromotedBy != 0 {
+		promotedBy = target.PromotedBy // правка прав не переназначает админа
+	}
+	if err := i.groups.SetRole(ctx, chatID, userID, domain.RoleAdmin, rights, promotedBy); err != nil {
 		return err
 	}
 	i.publishChatUpdate(ctx, chatID) // состав админов изменился
 	return nil
 }
 
+// DemoteAdmin снимает админа: он возвращается в роль вступившего по типу чата
+// (в канале — подписчик, а не «участник группы» с её дефолтными правами).
 func (i *Interactor) DemoteAdmin(ctx context.Context, chatID, actorID, userID int64) error {
-	if err := i.requireRight(ctx, chatID, actorID, domain.RightManageAdmins); err != nil {
+	if _, _, err := i.manageTarget(ctx, chatID, actorID, userID, domain.RightManageAdmins, true); err != nil {
 		return err
 	}
-	if err := i.groups.SetRole(ctx, chatID, userID, domain.RoleMember, 0); err != nil {
+	typ, err := i.chats.ChatType(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	if err := i.groups.SetRole(ctx, chatID, userID, domain.JoinRole(typ), 0, 0); err != nil {
 		return err
 	}
 	i.publishChatUpdate(ctx, chatID) // состав админов изменился
@@ -465,7 +467,15 @@ func (i *Interactor) joinByLink(ctx context.Context, link domain.InviteLink, tok
 	if link.ExpiresAt != nil && link.ExpiresAt.Before(time.Now()) {
 		return false, domain.ErrForbidden
 	}
-	if banned, e := i.groups.IsBanned(ctx, link.ChatID, userID); e == nil && banned {
+	// Лимит использований исчерпан — ссылка мертва (Telegram USERS_TOO_MUCH).
+	// Окончательно его держит условный IncUses ниже (гонка за последнее место).
+	if link.UsageLimit != nil && link.Uses >= *link.UsageLimit {
+		return false, domain.ErrForbidden
+	}
+	if banned, e := i.groups.IsBanned(ctx, link.ChatID, userID); e != nil || banned {
+		if e != nil {
+			return false, e
+		}
 		return false, domain.ErrForbidden // из чёрного списка по ссылке не возвращаются
 	}
 	if link.RequiresApproval {
@@ -475,7 +485,7 @@ func (i *Interactor) joinByLink(ctx context.Context, link domain.InviteLink, tok
 		return true, nil
 	}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		if e := i.groups.AddMember(ctx, link.ChatID, userID, domain.RoleMember, 0); e != nil {
+		if _, e := i.admit(ctx, link.ChatID, userID, userID, admitSelf); e != nil {
 			return e
 		}
 		if e := i.invites.IncUses(ctx, link.ID); e != nil {
@@ -508,16 +518,24 @@ func (i *Interactor) ListJoinRequests(ctx context.Context, chatID, actorID int64
 }
 
 // ApproveJoinRequest adds the requesting user as a member and clears the pending
-// request. The actor must hold INVITE_USERS.
+// request. The actor must hold INVITE_USERS. Одобрить можно только СУЩЕСТВУЮЩУЮ
+// заявку (у Telegram HIDE_REQUESTER_MISSING): прежде «одобрение» добавляло
+// любого пользователя мимо бана и его приватности «кто может звать в группы».
 func (i *Interactor) ApproveJoinRequest(ctx context.Context, chatID, actorID, userID int64) error {
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
 		return err
 	}
 	// Заявка могла прийти по конкретной ссылке — вступивший должен попасть в её
 	// список importers в момент фактического добавления в участники.
-	token, _ := i.joinReqs.TokenFor(ctx, chatID, userID)
+	token, ok, err := i.joinReqs.TokenFor(ctx, chatID, userID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return domain.ErrNotFound
+	}
 	return i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		if e := i.groups.AddMember(ctx, chatID, userID, domain.RoleMember, 0); e != nil {
+		if _, e := i.admit(ctx, chatID, userID, actorID, admitApproved); e != nil {
 			return e
 		}
 		if token != "" {

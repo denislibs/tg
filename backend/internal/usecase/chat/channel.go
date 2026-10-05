@@ -90,13 +90,15 @@ func (i *Interactor) GetChannelDifference(ctx context.Context, channelID, userID
 	return i.channels.UpdatesSince(ctx, channelID, sincePts, limit)
 }
 
-// JoinPublic subscribes userID to a public chat resolved by username.
+// JoinPublic вступает в публичный чат по @имени (channels.joinChannel): в
+// канал — подписчиком, в группу — участником; забаненного не пускает.
 func (i *Interactor) JoinPublic(ctx context.Context, username string, userID int64) error {
 	id, err := i.search.PublicChatByUsername(ctx, username)
 	if err != nil {
 		return err
 	}
-	return i.groups.AddMember(ctx, id, userID, domain.RoleSubscriber, 0)
+	_, err = i.admit(ctx, id, userID, userID, admitSelf)
+	return err
 }
 
 // PeerSearchResult — выдача поиска пиров (contacts.search): «свои»

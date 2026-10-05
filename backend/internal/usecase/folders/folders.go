@@ -45,8 +45,8 @@ type Chats interface {
 	// Preview — карточка расшаренного чата для экрана вступления.
 	Preview(ctx context.Context, chatID int64) (domain.FolderInviteChat, error)
 	IsMember(ctx context.Context, chatID, userID int64) (bool, error)
-	// Join добавляет userID участником чата (роль зависит от типа: группа —
-	// member, канал — subscriber). Идемпотентно.
+	// Join — вступление в чат общей точкой usecase чатов (роль по типу чата,
+	// бан). Идемпотентно.
 	Join(ctx context.Context, chatID, userID int64) error
 }
 
