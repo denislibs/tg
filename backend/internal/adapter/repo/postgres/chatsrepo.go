@@ -358,8 +358,6 @@ func (r *ChatsRepo) ForgetUnread(ctx context.Context, chatID, senderID, seq int6
 	return err
 }
 
-// IncUnreadReactions bumps a member's unread-reactions counter by one (someone
-// reacted to their message — Telegram unread_reactions_count) and returns the new value.
 // IncUnreadBulk bumps unread_count by one for many members of a chat in a single
 // query (vs IncUnread × N). Returns the new count per user.
 func (r *ChatsRepo) IncUnreadBulk(ctx context.Context, chatID int64, userIDs []int64) (map[int64]int64, error) {
@@ -386,23 +384,56 @@ func (r *ChatsRepo) IncUnreadBulk(ctx context.Context, chatID int64, userIDs []i
 	return out, rows.Err()
 }
 
-func (r *ChatsRepo) IncUnreadReactions(ctx context.Context, chatID, userID int64) (int, error) {
-	q := querier(ctx, r.pool)
+// RecountUnreadReactions — см. ChatRepo.RecountUnreadReactions: число
+// СООБЩЕНИЙ участника с непрочитанной реакцией (Telegram
+// unread_reactions_count), а не число событий. Удалённое и невидимое ему
+// (очищенное, скрытое у себя) не в счёт — по тому же предикату, что лента.
+func (r *ChatsRepo) RecountUnreadReactions(ctx context.Context, chatID, userID int64) (int, error) {
 	var n int
-	err := q.QueryRow(ctx,
-		`UPDATE chat_members SET unread_reactions = unread_reactions + 1 WHERE chat_id=$1 AND user_id=$2 RETURNING unread_reactions`,
-		chatID, userID).Scan(&n)
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`UPDATE chat_members SET unread_reactions = (
+		     SELECT count(DISTINCT m.id) FROM messages m
+		       JOIN reactions re ON re.message_id = m.id AND re.unread
+		      WHERE m.chat_id = $1 AND m.sender_id = $2 AND `+messageVisibleTo("m", "$2")+`)
+		  WHERE chat_id = $1 AND user_id = $2
+		  RETURNING unread_reactions`, chatID, userID).Scan(&n)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil // не участник — счётчика нет
+	}
 	return n, err
 }
 
-// ClearUnreadReactions resets a member's unread-reactions counter to zero (they
-// read the chat / its reactions — Telegram readReactions).
-func (r *ChatsRepo) ClearUnreadReactions(ctx context.Context, chatID, userID int64) error {
-	q := querier(ctx, r.pool)
-	_, err := q.Exec(ctx,
-		`UPDATE chat_members SET unread_reactions = 0 WHERE chat_id=$1 AND user_id=$2`,
-		chatID, userID)
-	return err
+// ReadReactions — см. ChatRepo.ReadReactions.
+func (r *ChatsRepo) ReadReactions(ctx context.Context, chatID, userID, uptoSeq int64) ([]domain.Message, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`WITH hit AS (
+		   UPDATE reactions re SET unread = false
+		     FROM messages m
+		    WHERE re.message_id = m.id AND re.unread
+		      AND m.chat_id = $1 AND m.sender_id = $2 AND m.seq <= $3
+		   RETURNING m.id)
+		 SELECT `+messageColsPrefixed("m")+`
+		   FROM messages m WHERE m.id IN (SELECT id FROM hit) AND `+messageVisibleTo("m", "$2")+`
+		  ORDER BY m.seq`, chatID, userID, uptoSeq)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Message
+	for rows.Next() {
+		m, e := scanMessage(rows)
+		if e != nil {
+			return nil, e
+		}
+		out = append(out, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if _, err := r.RecountUnreadReactions(ctx, chatID, userID); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // CurrentReadSeq returns a member's current last_read_seq.

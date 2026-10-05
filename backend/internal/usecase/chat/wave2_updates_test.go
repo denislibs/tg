@@ -202,7 +202,9 @@ func TestPollUpdate_LoggedAndDiff(t *testing.T) {
 	// его отсутствием chosen. Голосовавший в кадре не отмечен — без флага его
 	// выбор пропал бы при первом же кадре.
 	// Кадр — конструктор схемы: опрос адресуется СВОИМ id, итоги лежат
-	// отдельным параметром (не внутри вложения, как было у нас).
+	// отдельным параметром (не внутри вложения, как было у нас). Смотрим кадр
+	// НЕ голосовавшего: самому голосовавшему итоги едут его глазами
+	// (TestVotePoll_ActorGetsPersonalResults).
 	var env struct {
 		D struct {
 			Underscore string             `json:"_"`
@@ -210,7 +212,7 @@ func TestPollUpdate_LoggedAndDiff(t *testing.T) {
 			Results    domain.PollResults `json:"results"`
 		} `json:"d"`
 	}
-	if err := json.Unmarshal(mustFrame(t, pub, voter, "poll_update"), &env); err != nil {
+	if err := json.Unmarshal(mustFrame(t, pub, owner, "poll_update"), &env); err != nil {
 		t.Fatalf("кадр poll_update не разбирается: %v", err)
 	}
 	if env.D.Underscore != domain.UpdateMessagePollTag || env.D.PollID == 0 {

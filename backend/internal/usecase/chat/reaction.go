@@ -44,7 +44,9 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 	if err != nil {
 		return err // domain.ErrNotFound if the message is gone
 	}
-	if msg.ChatID != chatID {
+	// Удалённое у всех — то же, что несуществующее (Telegram
+	// MESSAGE_ID_INVALID): реакция на нём не ставится и не бампит бейдж.
+	if msg.ChatID != chatID || msg.Deleted {
 		return domain.ErrNotFound
 	}
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
@@ -53,6 +55,11 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 	}
 	if !ok {
 		return domain.ErrNotFound
+	}
+	// Невидимое зрителю (скрытая предыстория, очищенное, скрытое у себя) —
+	// тоже несуществующее.
+	if err := i.RequireMessagesVisible(ctx, userID, []int64{messageID}); err != nil {
+		return err
 	}
 	// Политика реакций чата: none — запрещены, some — только из списка (снятие
 	// своей реакции разрешено всегда, чтобы можно было убрать устаревшую).
@@ -68,14 +75,11 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 			}
 		}
 	}
+	// Реакция на ЧУЖОЕ сообщение — непрочитанная для его автора
+	// (messagePeerReaction.pFlags.unread): из неё растёт его бейдж ❤.
+	unread := userID != msg.SenderID && countsUnreadReactions(i.chatKind(ctx, chatID))
 
-	// Тело кадра собирается один раз, чтобы журнал и живой кадр не разъехались:
-	// абсолютный агрегат, посчитанный в транзакции после Add/Remove. Реплей из
-	// /sync идемпотентен по построению — состояние абсолютное, а не дельта.
-	var members []int64
-	var aggregate *domain.MessageReactions
-	var reactionAddr chatAddress
-	ptsByUser := map[int64]int64{} // per-recipient pts на каждый live-кадр реакции
+	var deliver func(context.Context)
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if add {
 			// Лимит своих реакций: лишние СНИМАЮТСЯ, начиная со старейшей, и
@@ -91,69 +95,147 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 					return e
 				}
 			}
-			if e := i.reactions.Add(ctx, messageID, userID, emoji); e != nil {
+			if e := i.reactions.Add(ctx, messageID, userID, emoji, unread); e != nil {
 				return e
-			}
-			// Реакция на ЧУЖОЕ сообщение бампит счётчик непрочитанных реакций его
-			// автора (Telegram unread_reactions_count) — свои реакции не
-			// считаются. Значение остаётся в базе и приезжает клиенту со
-			// строкой диалога: в кадр оно не идёт, потому что пер-зрительское,
-			// а тело кадра одно на всех получателей.
-			if userID != msg.SenderID {
-				if _, e := i.chats.IncUnreadReactions(ctx, chatID, msg.SenderID); e != nil {
-					return e
-				}
 			}
 		} else {
 			if e := i.reactions.Remove(ctx, messageID, userID, emoji); e != nil {
 				return e
 			}
 		}
-		// Абсолютный агрегат сообщения ПОСЛЕ Add/Remove — целиком, обеими
-		// половинами сразу. Счётчик непрочитанных реакций в кадр не идёт вовсе:
-		// он пер-зрительский, а тело кадра одно на всех; клиент выводит бейдж
-		// сам из того, что реакция появилась на ЕГО сообщении (порт tweb).
-		agg, e := i.messageReactionsAggregate(ctx, chatID, messageID)
-		if e != nil {
-			return e
-		}
-		aggregate = &agg
-		m, e := i.chats.MemberIDs(ctx, chatID)
-		if e != nil {
-			return e
-		}
-		members = m
-		addr, e := i.peerAddress(ctx, chatID)
-		if e != nil {
-			return e
-		}
-		reactionAddr = addr
-		date := nowMillis()
-		for _, uid := range members {
-			payload, e := json.Marshal(reactionsPayload(addr.forViewer(uid), msg.Seq, *aggregate))
-			if e != nil {
+		// Счётчик автора — число его СООБЩЕНИЙ с непрочитанной реакцией
+		// (Telegram unread_reactions_count), а не число событий: повтор, смена
+		// и снятие чужой реакции, вытеснение по лимиту пересчитывают его по
+		// строкам, а не прибавляют единицу.
+		if userID != msg.SenderID {
+			if _, e := i.chats.RecountUnreadReactions(ctx, chatID, msg.SenderID); e != nil {
 				return e
 			}
-			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "reaction", payload)
-			if e != nil {
-				return e
-			}
-			ptsByUser[uid] = pts
 		}
-		return nil
+		d, e := i.journalReactions(ctx, chatID, msg, userID, msg.SenderID)
+		deliver = d
+		return e
 	})
 	if err != nil {
 		return err
 	}
-	if i.publisher != nil {
-		// Кадр с per-recipient pts (клиент двигает по нему курсор); payload несёт
-		// абсолютные counts, так что catch-up-реплей идемпотентен by construction.
-		for _, uid := range members {
-			body := reactionsPayload(reactionAddr.forViewer(uid), msg.Seq, *aggregate)
-			_ = i.publisher.PublishToUser(ctx, uid, framePts("reaction", body, ptsByUser[uid]))
-		}
+	if userID != msg.SenderID {
+		i.invalidateDialogs(ctx, msg.SenderID)
 	}
+	deliver(ctx)
 	return nil
+}
+
+// countsUnreadReactions — растит ли реакция в чате этого вида бейдж ❤ автора.
+// Нет в вещательном канале (реакции там анонимны, recent_reactions не едут
+// вовсе) и в «Избранном» (там реакции — теги самого владельца).
+func countsUnreadReactions(kind string) bool {
+	return kind != domain.ChatTypeChannel && kind != domain.ChatTypeSaved
+}
+
+// journalReactions пишет в журнал каждого участника кадр реакций сообщения
+// msg (внутри транзакции вызывающего) и возвращает доставку живых кадров —
+// звать ПОСЛЕ коммита.
+//
+// Тело — АБСОЛЮТНЫЙ агрегат, и он разный у получателей. Всем — урезанный
+// (`min`, без пер-зрительского). А тем, чей личный кусок в агрегате изменился
+// (personal: поставивший и автор сообщения), — агрегат ИХ глазами без `min`:
+// своя реакция с chosen_order у второго устройства поставившего (сервер
+// Telegram отвечает автору действия полным телом) и pFlags.unread в
+// recent_reactions у автора — по их смене клиент ведёт бейдж ❤ (tweb
+// onUpdateMessageReactions → modifyUnreadReactions).
+func (i *Interactor) journalReactions(ctx context.Context, chatID int64, msg domain.Message, personal ...int64) (func(context.Context), error) {
+	common, err := i.reactionsSeenBy(ctx, chatID, msg.ID, 0)
+	if err != nil {
+		return nil, err
+	}
+	own := map[int64]domain.MessageReactions{}
+	for _, uid := range personal {
+		if _, done := own[uid]; done || uid == 0 {
+			continue
+		}
+		r, e := i.reactionsSeenBy(ctx, chatID, msg.ID, uid)
+		if e != nil {
+			return nil, e
+		}
+		own[uid] = r
+	}
+	members, err := i.chats.MemberIDs(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+	addr, err := i.peerAddress(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+	bodies := make(map[int64]map[string]any, len(members))
+	ptsByUser := make(map[int64]int64, len(members))
+	date := nowMillis()
+	for _, uid := range members {
+		r := common
+		if o, ok := own[uid]; ok {
+			r = o
+		}
+		body := reactionsPayload(addr.forViewer(uid), msg.Seq, r)
+		payload, e := json.Marshal(body)
+		if e != nil {
+			return nil, e
+		}
+		pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "reaction", payload)
+		if e != nil {
+			return nil, e
+		}
+		bodies[uid], ptsByUser[uid] = body, pts
+	}
+	return func(ctx context.Context) {
+		if i.publisher == nil {
+			return
+		}
+		for _, uid := range members {
+			_ = i.publisher.PublishToUser(ctx, uid, framePts("reaction", bodies[uid], ptsByUser[uid]))
+		}
+	}, nil
+}
+
+// journalOwnReactions — кадры реакций msgs ОДНОМУ пользователю (всем его
+// устройствам), агрегатом его глазами: прочтение реакций гасит pFlags.unread,
+// и по этой смене остальные устройства снимают бейдж ❤ сами. Внутри
+// транзакции вызывающего; доставка — после коммита.
+func (i *Interactor) journalOwnReactions(ctx context.Context, chatID, userID int64, msgs []domain.Message) (func(context.Context), error) {
+	if len(msgs) == 0 {
+		return func(context.Context) {}, nil
+	}
+	addr, err := i.peerAddress(ctx, chatID)
+	if err != nil {
+		return nil, err
+	}
+	peer := addr.forViewer(userID)
+	frames := make([][]byte, 0, len(msgs))
+	date := nowMillis()
+	for _, m := range msgs {
+		r, e := i.reactionsSeenBy(ctx, chatID, m.ID, userID)
+		if e != nil {
+			return nil, e
+		}
+		body := reactionsPayload(peer, m.Seq, r)
+		payload, e := json.Marshal(body)
+		if e != nil {
+			return nil, e
+		}
+		pts, e := i.updates.AppendUpdate(ctx, userID, 1, date, "reaction", payload)
+		if e != nil {
+			return nil, e
+		}
+		frames = append(frames, framePts("reaction", body, pts))
+	}
+	return func(ctx context.Context) {
+		if i.publisher == nil {
+			return
+		}
+		for _, f := range frames {
+			_ = i.publisher.PublishToUser(ctx, userID, f)
+		}
+	}, nil
 }
 
 // isSavedTag — реакции ЭТОГО чата являются ТЕГАМИ «Избранного», а не реакциями.
@@ -247,7 +329,15 @@ func (i *Interactor) evictExcessReactions(ctx context.Context, messageID, userID
 // получателей кадра, и без него клиент в группе никогда не покажет аватарки
 // реагировавших (tweb src/components/chat/reactions.ts:304-307).
 func (i *Interactor) messageReactionsAggregate(ctx context.Context, chatID, messageID int64) (domain.MessageReactions, error) {
-	byMsg, err := i.reactions.ReactionsFor(ctx, []int64{messageID}, 0)
+	return i.reactionsSeenBy(ctx, chatID, messageID, 0)
+}
+
+// reactionsSeenBy — тот же агрегат глазами зрителя viewerID: его реакции с
+// chosen_order, его вклад звёздами, а если он автор — непрочитанность
+// recent_reactions. viewerID 0 — без зрителя, и тогда агрегат помечен `min`:
+// пер-зрительской части в нём нет.
+func (i *Interactor) reactionsSeenBy(ctx context.Context, chatID, messageID, viewerID int64) (domain.MessageReactions, error) {
+	byMsg, err := i.reactions.ReactionsFor(ctx, []int64{messageID}, viewerID)
 	if err != nil {
 		return domain.MessageReactions{}, err
 	}
@@ -255,21 +345,26 @@ func (i *Interactor) messageReactionsAggregate(ctx context.Context, chatID, mess
 	canSeeList := domain.CanSeeReactionsList(kind)
 	m := domain.Message{Reactions: byMsg[messageID]}
 	if i.starReaction != nil {
-		stars, e := i.starReaction.AggregatesFor(ctx, []int64{messageID}, 0)
+		stars, e := i.starReaction.AggregatesFor(ctx, []int64{messageID}, viewerID)
 		if e != nil {
 			return domain.MessageReactions{}, e
 		}
 		m.StarReactionTotal = stars[messageID].Total
+		m.StarReactionMine = stars[messageID].Mine
 	}
+	out := domain.NewMessageReactions(nil, nil)
 	if r := m.WireReactions(canSeeList, domain.CanViewReactionsList(kind)); r != nil {
-		return *r, nil
+		out = *r
+	} else {
+		// Реакций не осталось. Внутри СООБЩЕНИЯ это выражается отсутствием
+		// параметра, но кадр несёт агрегат ОБЯЗАТЕЛЬНЫМ параметром: «реакций
+		// нет» — такое же состояние, как «есть три», и едет пустым вектором.
+		out.SetCanSeeList(canSeeList)
 	}
-	// Реакций не осталось. Внутри СООБЩЕНИЯ это выражается отсутствием
-	// параметра, но кадр несёт агрегат ОБЯЗАТЕЛЬНЫМ параметром: «реакций нет» —
-	// такое же состояние, как «есть три», и едет пустым вектором.
-	empty := domain.NewMessageReactions(nil, nil)
-	empty.SetCanSeeList(canSeeList)
-	return empty, nil
+	if viewerID == 0 {
+		out.MarkMin()
+	}
+	return out, nil
 }
 
 // chatKind — вид чата ОДНИМ вопросом для правил реакций. Неизвестен — пустая

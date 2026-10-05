@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -718,6 +719,7 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 	var advanced bool
 	var unread int
 	var readAddr chatAddress
+	deliverReactions := func(context.Context) {}
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		cur, e := i.chats.CurrentReadSeq(ctx, chatID, userID)
@@ -749,9 +751,15 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 		if _, e := i.chats.ClearMentions(ctx, chatID, userID, effective); e != nil {
 			return e
 		}
-		// Открытие чата гасит и бейдж непрочитанных реакций (Telegram
-		// readReactions): счётчик простой, сбрасываем в ноль при прочтении.
-		if e := i.chats.ClearUnreadReactions(ctx, chatID, userID); e != nil {
+		// ...и непрочитанные реакции на сообщениях с seq<=effective — тоже
+		// только до горизонта, а не целиком: реакция на сообщении выше него
+		// остаётся непрочитанной. Устройствам читателя уходят кадры реакций
+		// этих сообщений его глазами — по снятому pFlags.unread они гасят ❤.
+		readMsgs, e := i.chats.ReadReactions(ctx, chatID, userID, effective)
+		if e != nil {
+			return e
+		}
+		if deliverReactions, e = i.journalOwnReactions(ctx, chatID, userID, readMsgs); e != nil {
 			return e
 		}
 		// Self-destruct: запускаем таймер для секретных сообщений, которые
@@ -790,9 +798,11 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 	if err != nil {
 		return err
 	}
-	// Прочтение обнулило unread читателя — сбрасываем его кэш снапшота диалогов.
-	if i.dialogsCache != nil && advanced {
-		i.dialogsCache.Invalidate(ctx, userID)
+	// Прочтение меняет строку диалога у ВСЕХ: читателю — unread, «@» и ❤,
+	// остальным — горизонт ✓✓ (read_outbox_max_id) — сбрасываем кэш снимка
+	// диалогов каждому.
+	if advanced {
+		i.invalidateDialogs(ctx, members...)
 	}
 	// Only fan out when the read marker actually advanced — a no-op re-read
 	// must not spam every member with a redundant read frame.
@@ -802,6 +812,7 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 			_ = i.publisher.PublishToUser(ctx, uid, framePts("read", body, ptsByUser[uid]))
 		}
 	}
+	deliverReactions(ctx)
 	// Channel posts track a per-viewer view count: register this reader's view of
 	// every post up to the read marker (deduped, self-gated to channels). Only on a
 	// real advance — a no-op re-read shouldn't re-run it. Best-effort: views are
@@ -938,10 +949,12 @@ func (i *Interactor) ClearHistory(ctx context.Context, chatID, userID int64) err
 	})
 }
 
-// ReadReactions explicitly clears the caller's unread-reactions badge for a chat
-// (Telegram readReactions — POST /chats/{chatID}/reactions/read), without
-// touching the read horizon. MarkRead clears it too; this is the "read only the
-// reactions" path. Not a member → domain.ErrNotFound.
+// ReadReactions гасит ВСЕ непрочитанные реакции на сообщениях участника в
+// чате (Telegram messages.readReactions — POST /chats/{chatID}/reactions/read),
+// не трогая горизонт прочтения. Его устройствам — кадры реакций затронутых
+// сообщений его глазами (в журнал): по снятому pFlags.unread второе
+// устройство гасит бейдж ❤ само (tweb onUpdateMessageReactions). Не член →
+// domain.ErrNotFound.
 func (i *Interactor) ReadReactions(ctx context.Context, chatID, userID int64) error {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {
@@ -950,7 +963,23 @@ func (i *Interactor) ReadReactions(ctx context.Context, chatID, userID int64) er
 	if !ok {
 		return domain.ErrNotFound
 	}
-	return i.chats.ClearUnreadReactions(ctx, chatID, userID)
+	var deliver func(context.Context)
+	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		msgs, e := i.chats.ReadReactions(ctx, chatID, userID, math.MaxInt64)
+		if e != nil {
+			return e
+		}
+		deliver, e = i.journalOwnReactions(ctx, chatID, userID, msgs)
+		return e
+	})
+	if err != nil {
+		return err
+	}
+	if i.dialogsCache != nil {
+		i.dialogsCache.Invalidate(ctx, userID)
+	}
+	deliver(ctx)
+	return nil
 }
 
 // ReadMedia clears a voice/round message's media_unread flag when its recipient

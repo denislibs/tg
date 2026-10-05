@@ -112,12 +112,32 @@ func (i *Interactor) logAndPublishPerPeer(ctx context.Context, chatID int64, rec
 	if err != nil {
 		return err
 	}
+	if dialogRowFrames[typ] {
+		i.invalidateDialogs(ctx, recipients...)
+	}
 	if i.publisher != nil {
 		for _, uid := range recipients {
 			_ = i.publisher.PublishToUser(ctx, uid, framePts(typ, bodyFor(uid), ptsByUser[uid]))
 		}
 	}
 	return nil
+}
+
+// dialogRowFrames — кадры, чья мутация меняет СТРОКУ списка чатов получателя
+// (название и фото, число участников, закреп и папка диалога, мьют,
+// черновик): после них снимок диалогов в кэше устарел, и перезагрузка в
+// окне его TTL показала бы старое («закрепил, обновил — не закреплено»).
+var dialogRowFrames = map[string]bool{
+	"chat_update": true, "dialog_pin": true, "dialog_archive": true,
+	"dialog_mute": true, "draft_update": true,
+}
+
+// invalidateDialogs сбрасывает кэш снимка диалогов пользователям, у которых
+// изменилась строка списка чатов. Без кэша — no-op.
+func (i *Interactor) invalidateDialogs(ctx context.Context, userIDs ...int64) {
+	if i.dialogsCache != nil && len(userIDs) > 0 {
+		i.dialogsCache.Invalidate(ctx, userIDs...)
+	}
 }
 
 // peerPayloads — общий payload кадра, развёрнутый по КЛЮЧАМ ПИРА получателей.

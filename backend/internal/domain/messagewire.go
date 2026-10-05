@@ -326,10 +326,14 @@ func (m Message) reactions(canSeeList, canViewList bool) *MessageReactions {
 			// тогда, когда есть право).
 			continue
 		}
-		for _, p := range rc.Recent {
+		for k, p := range rc.Recent {
 			// Времени постановки реакции витрина не несёт (колонки нет), а
 			// параметр date обязателен — едет нулём.
-			recent = append(recent, NewMessagePeerReaction(p, zeroTime, emoji))
+			pr := NewMessagePeerReaction(p, zeroTime, emoji)
+			if k < len(rc.RecentUnread) && rc.RecentUnread[k] {
+				pr.MarkUnread()
+			}
+			recent = append(recent, pr)
 		}
 	}
 	out := NewMessageReactions(results, recent)

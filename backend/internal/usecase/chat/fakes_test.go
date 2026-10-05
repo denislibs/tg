@@ -63,12 +63,14 @@ type store struct {
 	// и множество на его месте отвечало бы «любую» (реальная таблица упорядочена
 	// по reactions.created_at).
 	reactions map[int64]map[int64][]string
-	hidden    map[int64]map[int64]bool       // userID -> msgID -> hidden ("delete for me")
-	pins      map[int64][]int64              // chatID -> pinned msgIDs (newest first)
-	viewed    map[int64]map[int64]bool       // msgID -> userID -> viewed (channel view dedup)
-	mentions  []mentionRow                   // message_mentions rows
-	usernames map[int64]string               // userID -> users.username (seedUsername)
-	readMarks map[int64]map[int64][]readMark // chatID -> userID -> история горизонта чтения
+	// reactUnread — reactions.unread строки (сообщение, автор реакции, эмодзи).
+	reactUnread map[reactKey]bool
+	hidden      map[int64]map[int64]bool       // userID -> msgID -> hidden ("delete for me")
+	pins        map[int64][]int64              // chatID -> pinned msgIDs (newest first)
+	viewed      map[int64]map[int64]bool       // msgID -> userID -> viewed (channel view dedup)
+	mentions    []mentionRow                   // message_mentions rows
+	usernames   map[int64]string               // userID -> users.username (seedUsername)
+	readMarks   map[int64]map[int64][]readMark // chatID -> userID -> история горизонта чтения
 
 	// public/bans/roles — доступ к чату (ChatRepo.Access): chats.is_public,
 	// chat_bans, роль строки chat_members (нет записи — member).
@@ -99,6 +101,12 @@ type store struct {
 
 type destructCall struct{ ChatID, ReaderID, ReadSeq int64 }
 
+// reactKey — ключ строки reactions.
+type reactKey struct {
+	msgID, userID int64
+	emoji         string
+}
+
 func newStore() *store {
 	return &store{
 		chatType:       map[int64]string{},
@@ -108,6 +116,7 @@ func newStore() *store {
 		owners:         map[int64]int64{},
 		mediaDims:      map[int64]domain.MediaSource{},
 		reactions:      map[int64]map[int64][]string{},
+		reactUnread:    map[reactKey]bool{},
 		viewed:         map[int64]map[int64]bool{},
 		pts:            map[int64]int64{},
 		date:           map[int64]int64{},
@@ -336,23 +345,54 @@ func (r fakeChats) ForgetUnread(_ context.Context, chatID, senderID, seq int64) 
 	return nil
 }
 
-func (r fakeChats) IncUnreadReactions(_ context.Context, chatID, userID int64) (int, error) {
+// RecountUnreadReactions — число сообщений участника с непрочитанной
+// реакцией, видимых ему (как ChatsRepo.RecountUnreadReactions).
+func (r fakeChats) RecountUnreadReactions(_ context.Context, chatID, userID int64) (int, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
-	if m := r.s.members[chatID][userID]; m != nil {
-		m.reactions++
-		return m.reactions, nil
-	}
-	return 0, nil
+	return r.s.recountReactionsLocked(chatID, userID), nil
 }
 
-func (r fakeChats) ClearUnreadReactions(_ context.Context, chatID, userID int64) error {
+func (s *store) recountReactionsLocked(chatID, userID int64) int {
+	n := 0
+	for _, m := range s.messages[chatID] {
+		if m.SenderID != userID || !s.seesLocked(userID, m) {
+			continue
+		}
+		for k, unread := range s.reactUnread {
+			if unread && k.msgID == m.ID {
+				n++
+				break
+			}
+		}
+	}
+	if mem := s.members[chatID][userID]; mem != nil {
+		mem.reactions = n
+	}
+	return n
+}
+
+func (r fakeChats) ReadReactions(_ context.Context, chatID, userID, uptoSeq int64) ([]domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
-	if m := r.s.members[chatID][userID]; m != nil {
-		m.reactions = 0
+	var out []domain.Message
+	for _, m := range r.s.messages[chatID] {
+		if m.SenderID != userID || m.Seq > uptoSeq {
+			continue
+		}
+		hit := false
+		for k, unread := range r.s.reactUnread {
+			if unread && k.msgID == m.ID {
+				r.s.reactUnread[k] = false
+				hit = true
+			}
+		}
+		if hit && r.s.seesLocked(userID, m) {
+			out = append(out, m)
+		}
 	}
-	return nil
+	r.s.recountReactionsLocked(chatID, userID)
+	return out, nil
 }
 
 func (r fakeChats) CurrentReadSeq(_ context.Context, chatID, userID int64) (int64, error) {
@@ -1905,7 +1945,7 @@ func (r fakeUpdates) UpdatesSince(_ context.Context, userID, sincePts int64, lim
 
 type fakeReactions struct{ s *store }
 
-func (r fakeReactions) Add(_ context.Context, messageID, userID int64, emoji string) error {
+func (r fakeReactions) Add(_ context.Context, messageID, userID int64, emoji string, unread bool) error {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	if r.s.reactions[messageID] == nil {
@@ -1915,6 +1955,10 @@ func (r fakeReactions) Add(_ context.Context, messageID, userID int64, emoji str
 		return nil // идемпотентно, как ON CONFLICT DO NOTHING
 	}
 	r.s.reactions[messageID][userID] = append(r.s.reactions[messageID][userID], emoji)
+	if r.s.reactUnread == nil {
+		r.s.reactUnread = map[reactKey]bool{}
+	}
+	r.s.reactUnread[reactKey{messageID, userID, emoji}] = unread
 	return nil
 }
 
@@ -1924,6 +1968,7 @@ func (r fakeReactions) Remove(_ context.Context, messageID, userID int64, emoji 
 	if u, ok := r.s.reactions[messageID][userID]; ok {
 		r.s.reactions[messageID][userID] = slices.DeleteFunc(u, func(e string) bool { return e == emoji })
 	}
+	delete(r.s.reactUnread, reactKey{messageID, userID, emoji})
 	return nil
 }
 
@@ -1956,9 +2001,41 @@ func (r fakeReactions) ReactionsFor(_ context.Context, messageIDs []int64, viewe
 				}
 			}
 		}
+		// Последние реагировавшие и их непрочитанность автором — порядка
+		// постановки фейк не знает, поэтому по убыванию id.
+		var author int64
+		for _, msgs := range r.s.messages {
+			for _, m := range msgs {
+				if m.ID == messageID {
+					author = m.SenderID
+				}
+			}
+		}
 		var out []domain.ReactionCount
 		for e, c := range counts {
-			out = append(out, domain.ReactionCount{Emoji: e, Count: c, Mine: mine[e]})
+			rc := domain.ReactionCount{Emoji: e, Count: c, Mine: mine[e]}
+			var users []int64
+			for userID, emojis := range r.s.reactions[messageID] {
+				if slices.Contains(emojis, e) {
+					users = append(users, userID)
+				}
+			}
+			slices.Sort(users)
+			slices.Reverse(users)
+			anyUnread := false
+			for k, uid := range users {
+				if k == 3 {
+					break
+				}
+				rc.Recent = append(rc.Recent, domain.NewPeerUser(uid))
+				u := viewerID != 0 && viewerID == author && r.s.reactUnread[reactKey{messageID, uid, e}]
+				rc.RecentUnread = append(rc.RecentUnread, u)
+				anyUnread = anyUnread || u
+			}
+			if !anyUnread {
+				rc.RecentUnread = nil
+			}
+			out = append(out, rc)
 		}
 		sort.Slice(out, func(i, j int) bool {
 			if out[i].Count != out[j].Count {

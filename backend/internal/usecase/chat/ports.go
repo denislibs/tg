@@ -91,11 +91,16 @@ type ChatRepo interface {
 	ViewerMentions(ctx context.Context, userID int64, msgIDs []int64) (map[int64]bool, error)
 	ClearMentions(ctx context.Context, chatID, userID, uptoSeq int64) (remaining int, err error)
 	NextMention(ctx context.Context, chatID, userID, afterSeq int64) (seq int64, err error)
-	// Непрочитанные реакции (Telegram unread_reactions_count). IncUnreadReactions
-	// бампит счётчик автора сообщения, когда на него реагирует кто-то другой;
-	// ClearUnreadReactions обнуляет счётчик (автор прочитал чат / реакции).
-	IncUnreadReactions(ctx context.Context, chatID, userID int64) (int, error)
-	ClearUnreadReactions(ctx context.Context, chatID, userID int64) error
+	// Непрочитанные реакции (Telegram unread_reactions_count) — число СООБЩЕНИЙ
+	// участника с непрочитанной реакцией; «непрочитано» живёт на строке
+	// реакции (ReactionRepo.Add). RecountUnreadReactions пересчитывает и
+	// записывает счётчик (зовётся после любой смены строк: реакция, снятие,
+	// вытеснение, удаление сообщения) и возвращает его. ReadReactions гасит
+	// непрочитанность реакций на сообщениях участника с seq<=uptoSeq,
+	// пересчитывает счётчик и возвращает затронутые видимые ему сообщения
+	// (по ним уходят кадры реакций его устройствам).
+	RecountUnreadReactions(ctx context.Context, chatID, userID int64) (int, error)
+	ReadReactions(ctx context.Context, chatID, userID, uptoSeq int64) ([]domain.Message, error)
 	// «Очистить историю» у себя: MaxSeq — текущий максимум seq чата (горизонт);
 	// SetClearedSeq — персональный горизонт участника (cleared_max_seq). Читает
 	// его единый предикат видимости сообщения в хранилище.
@@ -484,7 +489,9 @@ type SearchRepo interface {
 }
 
 type ReactionRepo interface {
-	Add(ctx context.Context, messageID, userID int64, emoji string) error
+	// Add — идемпотентно (повтор строку не трогает). unread — реакция чужая
+	// для автора сообщения и им ещё не прочитана (messagePeerReaction.unread).
+	Add(ctx context.Context, messageID, userID int64, emoji string, unread bool) error
 	Remove(ctx context.Context, messageID, userID int64, emoji string) error
 	// UserReactions — реакции ОДНОГО пользователя на одном сообщении, СТАРЕЙШИЕ
 	// первыми (порядок постановки). Порядок здесь значащий: лимит «сколько

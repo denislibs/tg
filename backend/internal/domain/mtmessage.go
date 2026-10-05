@@ -1118,15 +1118,25 @@ func NewReactionPaid() ReactionPaid {
 // avatar}, которую сегодня вклеивает в jsonb прямо SQL-запрос. Это была третья
 // форма пользователя на проводе, и разъезжалась она с остальными сама по себе.
 //
-// Не производятся: big («крупная» анимация отправителя), unread (непрочитанной
-// считается реакция в целом по чату, счётчик живёт на диалоге), my — его
-// клиент выводит сам из peer_id, ровно как pFlags.out (решение Р7).
+// unread производится — ТОЛЬКО глазами автора сообщения: реакция другого на
+// его сообщение, которую он ещё не прочитал (строка reactions.unread). По
+// смене этого флага клиент ведёт бейдж ❤ диалога (tweb
+// appMessagesManager.onUpdateMessageReactions → modifyUnreadReactions), а
+// сервер — unread_reactions_count как число СООБЩЕНИЙ с непрочитанной реакцией.
+//
+// Не производятся: big («крупная» анимация отправителя) и my — его клиент
+// выводит сам из peer_id, ровно как pFlags.out (решение Р7).
 type MessagePeerReaction struct {
-	Underscore string   `json:"_"`
-	PeerID     Peer     `json:"peer_id"`
-	Date       int      `json:"date"`
-	Reaction   Reaction `json:"reaction"`
+	Underscore string          `json:"_"`
+	PFlags     map[string]bool `json:"pFlags,omitempty"`
+	PeerID     Peer            `json:"peer_id"`
+	Date       int             `json:"date"`
+	Reaction   Reaction        `json:"reaction"`
 }
+
+// MarkUnread — messagePeerReaction.pFlags.unread: автор сообщения эту реакцию
+// ещё не прочитал.
+func (r *MessagePeerReaction) MarkUnread() { setPFlag(&r.PFlags, "unread", true) }
 
 func NewMessagePeerReaction(peer Peer, date time.Time, reaction Reaction) MessagePeerReaction {
 	return MessagePeerReaction{

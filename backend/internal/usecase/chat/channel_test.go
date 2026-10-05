@@ -261,10 +261,12 @@ func (c groupMembershipChats) IncUnreadBulk(context.Context, int64, []int64) (ma
 	return nil, nil
 }
 func (c groupMembershipChats) ForgetUnread(context.Context, int64, int64, int64) error { return nil }
-func (c groupMembershipChats) IncUnreadReactions(context.Context, int64, int64) (int, error) {
+func (c groupMembershipChats) RecountUnreadReactions(context.Context, int64, int64) (int, error) {
 	return 0, nil
 }
-func (c groupMembershipChats) ClearUnreadReactions(context.Context, int64, int64) error { return nil }
+func (c groupMembershipChats) ReadReactions(context.Context, int64, int64, int64) ([]domain.Message, error) {
+	return nil, nil
+}
 func (c groupMembershipChats) CurrentReadSeq(context.Context, int64, int64) (int64, error) {
 	return 0, nil
 }

@@ -363,8 +363,38 @@ func factCheckUpdatePayload(peer domain.PeerID, m domain.Message) map[string]any
 // у нас доставляется пер-юзерным веером со своим курсором. Приклеить канальный
 // конструктор к пер-юзерному курсору значило бы соврать о том, какой курсор
 // двигать. Перевод правки на журнал канала — долг ДОСТАВКИ, назван в разборе.
+//
+// Тело одно на всех получателей и собрано без зрителя, поэтому его агрегаты —
+// реакции и итоги опроса — УРЕЗАНЫ (нет chosen_order, chosen) и помечены
+// `min`, как у Telegram в updateEditMessage: клиент сливает их со своими, а не
+// гасит ими «мою» реакцию и мой голос.
 func (i *Interactor) editMessagePayload(ctx context.Context, m domain.Message) map[string]any {
-	return i.newMessagePayload(ctx, m, domain.UpdateEditMessageTag)
+	p := i.newMessagePayload(ctx, m, domain.UpdateEditMessageTag)
+	if msg, ok := p[frameMessageKey].(map[string]any); ok {
+		markMinAggregates(msg)
+	}
+	return p
+}
+
+// markMinAggregates ставит pFlags.min агрегатам сообщения в проводной форме
+// (map из ToWireMap): messageReactions и pollResults внутри messageMediaPoll.
+func markMinAggregates(msg map[string]any) {
+	setMin := func(obj any) {
+		o, ok := obj.(map[string]any)
+		if !ok {
+			return
+		}
+		pf, _ := o["pFlags"].(map[string]any)
+		if pf == nil {
+			pf = map[string]any{}
+		}
+		pf["min"] = true
+		o["pFlags"] = pf
+	}
+	setMin(msg["reactions"])
+	if media, ok := msg["media"].(map[string]any); ok && media["_"] == domain.MessageMediaPollTag {
+		setMin(media["results"])
+	}
 }
 
 // deletePayload — тело кадра удаления.
@@ -500,13 +530,12 @@ func notifySettingsPayload(peer domain.PeerID, settings domain.PeerNotifySetting
 // гонке двух реакций клиент верил разным полям по-разному. У оригинала дифф
 // выводит КЛИЕНТ — из разницы с тем состоянием, которое у него уже есть.
 //
-// Агрегат помечен `min`: тело кадра одно на всех получателей, значит
-// пер-зрительской части (мой chosen_order) в нём нет и быть не может. Без флага
-// клиент не отличил бы «я не ставил» от «сервер этого не сообщил» и стёр бы
-// собственный выбор при первом же чужом клике — ровно тот дефект, который порт
-// опроса уже закрыл флагом pollResults.min.
+// Агрегат собран ГЛАЗАМИ получателя (reactionsSeenBy): всем — `min` (без
+// пер-зрительской части; без флага клиент не отличил бы «я не ставил» от
+// «сервер этого не сообщил» и стёр бы собственный выбор при первом же чужом
+// клике), а поставившему и автору сообщения — полный, их глазами
+// (journalReactions).
 func reactionsPayload(peer domain.PeerID, seq int64, reactions domain.MessageReactions) map[string]any {
-	reactions.MarkMin()
 	return map[string]any{
 		"_":         domain.UpdateMessageReactionsTag,
 		"peer":      domain.NewPeer(peer),
