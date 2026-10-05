@@ -84,6 +84,7 @@ type fakeChat struct {
 type fakeChats struct {
 	chats  map[int64]fakeChat
 	member map[[2]int64]bool // (chatID,userID) → member
+	banned map[[2]int64]bool // (chatID,userID) → бан: Join отвечает ErrForbidden
 	joined [][2]int64
 }
 
@@ -105,6 +106,9 @@ func (c *fakeChats) IsMember(_ context.Context, chatID, userID int64) (bool, err
 	return c.member[[2]int64{chatID, userID}], nil
 }
 func (c *fakeChats) Join(_ context.Context, chatID, userID int64) error {
+	if c.banned[[2]int64{chatID, userID}] {
+		return domain.ErrForbidden
+	}
 	c.member[[2]int64{chatID, userID}] = true
 	c.joined = append(c.joined, [2]int64{chatID, userID})
 	return nil
@@ -188,6 +192,27 @@ func TestJoinInvite_JoinsAndCreatesFolder(t *testing.T) {
 	last := repo.created[len(repo.created)-1]
 	if last.Title != "Team" || len(last.IncludeChats) != 2 {
 		t.Fatalf("created folder = %+v", last)
+	}
+}
+
+// Чат папки, где пользователь забанен, пропускается: вступление в остальные и
+// папка — без него, а не отказ на всю папку.
+func TestJoinInvite_SkipsBannedChat(t *testing.T) {
+	uc, repo, chats := setup()
+	ctx := context.Background()
+	f, _ := repo.Create(ctx, 1, domain.DialogFilter{Title: "Team", IncludeChats: []int64{10, 11}})
+	inv, _ := uc.CreateInvite(ctx, 1, f.ID, "")
+	chats.banned = map[[2]int64]bool{{10, 2}: true}
+
+	if err := uc.JoinInvite(ctx, 2, inv.Slug, nil); err != nil {
+		t.Fatalf("JoinInvite с забаненным чатом: %v", err)
+	}
+	if len(chats.joined) != 1 || chats.joined[0] != [2]int64{11, 2} {
+		t.Fatalf("joined = %v, ждали только (11,2)", chats.joined)
+	}
+	last := repo.created[len(repo.created)-1]
+	if len(last.IncludeChats) != 1 || last.IncludeChats[0] != 11 {
+		t.Fatalf("папка = %+v, ждали только чат 11", last)
 	}
 }
 

@@ -68,8 +68,21 @@ func (i *Interactor) LinkDiscussion(ctx context.Context, channelID, groupID, act
 	} else if linked {
 		return 0, domain.ErrForbidden
 	}
-	if err := i.groups.SetDiscussion(ctx, channelID, groupID); err != nil {
+	// История группы обсуждения видна всегда: при привязке она открывается
+	// (tweb setDiscussionGroup → togglePreHistoryHidden(false),
+	// appChatsManager.ts:1245-1250), скрыть её потом нельзя
+	// (SetChatHistoryForNew).
+	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if e := i.groups.SetHistoryForNew(ctx, groupID, true); e != nil {
+			return e
+		}
+		return i.groups.SetDiscussion(ctx, channelID, groupID)
+	})
+	if err != nil {
 		return 0, err
+	}
+	if !card.Settings.HistoryForNew {
+		i.publishChatUpdate(ctx, groupID)
 	}
 	// Новый linked_chat_id канала — кадром chat_update, как у оригинала
 	// (updateChannel → chat_full_update; его слушают вкладка обсуждения и
