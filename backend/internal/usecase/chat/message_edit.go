@@ -201,7 +201,8 @@ func (i *Interactor) canSendInGroup(ctx context.Context, chatID, userID int64) b
 	if s.DefaultPerms&domain.PermSendMessages == 0 {
 		return false
 	}
-	return !i.restricted(ctx, chatID, userID, domain.PermSendMessages)
+	denied, err := i.restricted(ctx, chatID, userID, domain.PermSendMessages)
+	return err == nil && !denied
 }
 
 // syncEditMentions пересобирает упоминания правленого сообщения: новые
