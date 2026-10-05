@@ -178,7 +178,7 @@ describe('ChatInput: отправка', () => {
     await input.sendMessage()
 
     expect(managers.messages.forwardMessages).toHaveBeenCalledTimes(1)
-    expect(managers.messages.forwardMessages).toHaveBeenCalledWith(PEER, 10, [3, 4], {})
+    expect(managers.messages.forwardMessages).toHaveBeenCalledWith(PEER, 10, [3, 4], { silent: undefined, threadId: null })
     expect(managers.messages.sendText).not.toHaveBeenCalled()
     expect(input.forwarding).toBeUndefined()
   })
