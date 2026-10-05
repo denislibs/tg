@@ -306,8 +306,10 @@ type MessageRepo interface {
 	// видимости, что у истории). Невидимые и несуществующие в карту не попадают.
 	VisibleIDs(ctx context.Context, viewerID int64, ids []int64) (map[int64]bool, error)
 	// LastMessageAt is the newest non-deleted message time by senderID in the chat
-	// (slowmode); domain.ErrNotFound when they haven't posted yet.
-	LastMessageAt(ctx context.Context, chatID, senderID int64) (time.Time, error)
+	// plus its album: grouped_id (0 — not in one) and how many of the sender's
+	// live messages already carry that grouped_id (slowmode counts an album once);
+	// domain.ErrNotFound when they haven't posted yet.
+	LastMessageAt(ctx context.Context, chatID, senderID int64) (at time.Time, groupedID int64, groupSize int, err error)
 	// SavedDialogs groups the saved-messages chat by forward origin
 	// («Избранное» → таб «Чаты»), newest group first.
 	SavedDialogs(ctx context.Context, chatID, userID int64) ([]domain.SavedDialogRecord, error)
@@ -689,6 +691,21 @@ type SendInput struct {
 	// media принадлежит автору истории, а видимость уже проверена story-usecase).
 	// Не экспортируется — ставится только внутри пакета (SendStoryShare).
 	skipMediaOwner bool
+	// userAction — служебное действие ПО ЗАПРОСУ ПОЛЬЗОВАТЕЛЯ (предложить дату
+	// рождения или фото, создать тему): у оригинала это отдельные методы
+	// (users.suggestBirthday, photos.uploadContactProfilePhoto, channels.
+	// createForumTopic), и они подчиняются тем же правам, блоку и приватности,
+	// что отправка. Служебки, которые рождает сам сервер (лог звонка, состав
+	// группы), флага не несут и гейтов не проходят.
+	userAction bool
+	// batchUnits — сколько единиц отправки (сообщение либо альбом) несёт один
+	// вызов: у пересылки пачки > 1. В медленном режиме такую пачку не отправить
+	// (SLOWMODE_MULTI_MSGS_DISABLED); 0 и 1 — одна единица.
+	batchUnits int
+	// prepare — запись, которая обязана лечь в ТУ ЖЕ транзакцию, что и
+	// сообщение, и только после всех гейтов (подарок: списание звёзд, выдача,
+	// запись в журнал). Может дописать in (GiftID). Ставится внутри пакета.
+	prepare func(ctx context.Context, in *SendInput) error
 }
 
 // GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis).

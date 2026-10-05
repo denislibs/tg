@@ -100,12 +100,8 @@ func (h *ContactPhotoHandler) SuggestPhoto(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	msg, err := h.chat.SuggestProfilePhoto(r.Context(), u.ID, userID, body.MediaID)
-	if errors.Is(err, domain.ErrInvalid) {
-		writeError(w, http.StatusBadRequest, "invalid")
-		return
-	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "suggest photo failed")
+		writeSendError(w, err, "not found")
 		return
 	}
 	// Ответ — САМО созданное сервисное сообщение, тем же конструктором, что и

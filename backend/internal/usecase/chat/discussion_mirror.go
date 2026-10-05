@@ -106,20 +106,25 @@ func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message)
 	channelID := post.ChatID
 	postID := post.ID
 	date := post.CreatedAt
-	mirror, err := i.msgs.Insert(ctx, domain.Message{
-		ChatID: disc, Seq: seq, SenderID: post.SenderID,
-		Type: post.Type, Text: post.Text, Entities: post.Entities,
-		MediaID: post.MediaID, GroupedID: post.GroupedID, PollID: post.PollID,
-		// Зеркало — та же публикация: спойлер поста обязан доехать до группы
-		// обсуждения, иначе зеркало раскрывает скрытое медиа.
-		MediaSpoiler: post.MediaSpoiler,
-		// автор бабла в UI — канал, как в Telegram
-		SendAsChatID: &channelID,
-		// отсюда кнопка «перейти к оригиналу»
-		FwdFromChatID: &channelID, FwdFromMsgID: &postID, FwdDate: &date,
-		IsDiscussionMirror: true,
-	})
+	// Зеркало — та же публикация (у оригинала автопересылка поста с тем же
+	// media): содержимое — общим копировщиком, иначе гео, контакт, чек-лист,
+	// розыгрыш, превью, клавиатура и спойлер терялись. grouped_id остаётся
+	// ключом альбома поста: «один тред на альбом» ищет зеркало по нему.
+	m := copyContent(post)
+	m.ChatID, m.Seq, m.SenderID = disc, seq, post.SenderID
+	m.Effect = post.Effect
+	// автор бабла в UI — канал, как в Telegram
+	m.SendAsChatID = &channelID
+	// отсюда кнопка «перейти к оригиналу»
+	m.FwdFromChatID, m.FwdFromMsgID, m.FwdDate = &channelID, &postID, &date
+	m.IsDiscussionMirror = true
+	mirror, err := i.insertCopy(ctx, m)
 	if err != nil {
+		return nil, err
+	}
+	// Кадр и журнал несут зеркало той же формой, что история (медиа-мета,
+	// опрос, чек-лист, розыгрыш), — иначе бабл приезжал пустым до перезагрузки.
+	if mirror, err = i.hydrateBroadcastMessage(ctx, mirror); err != nil {
 		return nil, err
 	}
 

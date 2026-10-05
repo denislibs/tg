@@ -23,6 +23,22 @@ func (i *Interactor) CreateSecretChat(ctx context.Context, userID, peerID int64,
 			return domain.SecretChat{}, domain.ErrForbidden
 		}
 	}
+	// Секретный чат — та же переписка с человеком: удалённому не завести,
+	// блок и «кто может мне писать» действуют так же, как в личке (Telegram
+	// USER_IS_BLOCKED / USER_PRIVACY_RESTRICTED на requestEncryption). Иначе
+	// заблокированный добирался бы до собеседника кадром и пушем приглашения.
+	if i.userCard(ctx, peerID).Deleted() {
+		return domain.SecretChat{}, domain.ErrForbidden
+	}
+	if i.privacy != nil {
+		ok, err := i.privacy.Check(ctx, peerID, userID, domain.PrivacyMessages)
+		if err != nil {
+			return domain.SecretChat{}, err
+		}
+		if !ok {
+			return domain.SecretChat{}, domain.ErrPrivacy
+		}
+	}
 	chatID, err := i.chats.CreateSecret(ctx, userID, peerID)
 	if err != nil {
 		return domain.SecretChat{}, err
