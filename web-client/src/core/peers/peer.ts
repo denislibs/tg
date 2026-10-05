@@ -284,7 +284,8 @@ export interface UsersUserFull {
  * chatAdminRights#5fb224d5 flags:# change_info:flags.0?true
  * post_messages:flags.1?true edit_messages:flags.2?true
  * delete_messages:flags.3?true ban_users:flags.4?true invite_users:flags.5?true
- * pin_messages:flags.7?true add_admins:flags.9?true … = ChatAdminRights;
+ * pin_messages:flags.7?true add_admins:flags.9?true anonymous:flags.10?true
+ * … manage_topics:flags.13?true … = ChatAdminRights;
  *
  * Единственный параметр конструктора — сама маска, поэтому объект целиком
  * состоит из `pFlags`. НАЛИЧИЕ `admin_rights` у чата и есть признак «зритель
@@ -301,6 +302,8 @@ export interface ChatAdminRights {
     invite_users: true
     pin_messages: true
     add_admins: true
+    anonymous: true
+    manage_topics: true
   }>
 }
 

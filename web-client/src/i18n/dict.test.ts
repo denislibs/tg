@@ -642,8 +642,11 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `Chart.Tooltip.All` и `Views` (`plural` 62 → 63); −8 наших ключей снесённой
 // `ChannelStats.tsx` (`Statistics.{Forwards,MediaPost,MemberGrowth,Posts,PostsByDay,
 // SubscriberGrowth,TopPosts,TotalViews}`).
+// Ф-1б (аудит бэкенда A5-30/A5-37, биты админа `manage_topics`/`anonymous`): у ru +2
+// ключа tweb lang.ts — строки редактора прав админа `ManageTopicsPermission` и
+// `EditAdminSendAnonymously` (`sharedPermissions.ts`).
 const COMPOSITION = {
-  ru: { keys: 1772, plural: 64 },
+  ru: { keys: 1774, plural: 64 },
   uk: { keys: 842, plural: 35 },
   es: { keys: 813, plural: 34 },
   de: { keys: 814, plural: 35 },
@@ -848,8 +851,9 @@ const COMPOSITION = {
 // Пачкой П-6 волны 7 — у ru +2 ключа автокомплита (разбор — там же).
 // Пачкой П-1 (0б-4, 0б-5) — у ru +23 ключа вкладок реакций и обсуждения (разбор — там же).
 // Пачкой П-1 (статистика, 0б-9) — у ru +38 ключей tweb и −8 наших (разбор — там же).
+// Ф-1б — у ru +2 ключа редактора прав админа (разбор — там же).
 const FINGERPRINT = {
-  ru: '651f2f01',
+  ru: 'ce3f5ef6',
   uk: 'e72f8ee2',
   es: 'ff56151a',
   de: '39848741',
