@@ -99,9 +99,10 @@ export type PopupPeerOptions = {
   descriptionLangKey?: LangPackKey
   /** peer.ts:26 — то же, что `titleLangArgs`, для описания. */
   descriptionLangArgs?: FormatterArguments
-  /** peer.tsx:42, :66 — готовое описание (ответ callback-кнопки бота,
-   *  `wrappers/keyboardButton.ts`); ключ, если задан, важнее. */
-  description?: string | DocumentFragment
+  /** peer.tsx:42, :66 — готовое описание вместо ключа: строка (ответ callback-кнопки бота,
+   *  `wrappers/keyboardButton.ts`) или узел (подтверждение привязки обсуждения,
+   *  `chatDiscussion.solid.tsx`); ключ, если задан, важнее. */
+  description?: string | Node
   buttons: PopupPeerButton[] // peer.ts:41 — `addCancelButton(options.buttons)`
   body?: boolean
   zIndex?: number
@@ -245,7 +246,8 @@ export default class PopupPeer extends PopupElement {
       const p = this.description = document.createElement('p') // peer.ts:68
       p.classList.add('popup-description') // peer.ts:69
       if(options.descriptionLangKey) p.append(i18n(options.descriptionLangKey, options.descriptionLangArgs)) // peer.ts:70
-      else setInnerHTML(p, options.description) // peer.tsx:66
+      else if(typeof options.description === 'string') setInnerHTML(p, options.description) // peer.tsx:66
+      else if(options.description) p.append(options.description)
       fragment.append(p)
     }
     if(inputField) { // peer.tsx:143
@@ -293,8 +295,8 @@ export type PopupConfirmationOptions = {
   titleLangArgs?: FormatterArguments
   descriptionLangKey?: LangPackKey
   descriptionLangArgs?: FormatterArguments
-  /** peer.tsx:42 — готовое описание */
-  description?: string | DocumentFragment
+  /** peer.tsx:42 — см. `PopupPeerOptions.description` */
+  description?: string | Node
   button: PopupButton
   buttons?: PopupButton[]
   rejectWithReason?: boolean

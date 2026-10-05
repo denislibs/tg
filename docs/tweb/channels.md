@@ -119,7 +119,7 @@ div.bubbles-group                                    ← нет bubbles-group-av
 | Live Stream / Voice Chat | ✅ | пункты — после влития П-4 (Б-88 плана волны 7); плашки видеочата/эфира — ✅ (`topbarPlates.ts`) |
 | Select Messages | ✅ | ✅ |
 | Send Gift | ✅ | ❌ Б-85 (`showSendGiftPopup` — заглушка до 2C-20) |
-| Statistics | ✅ (`topbar.ts:682-689`) | ❌ Б-85 (вкладки статистики нет, Б-43) |
+| Statistics | ✅ (`topbar.ts:682-689`) | ✅ `AppStatisticsTab` (`sidebarRight/tabs/statistics.solid.tsx`), verify — `canViewStatistics` (`core/chatFullCache.ts`) |
 | Boost Channel | ✅ | ❌ Б-85 (`openBoosts` не портирован) |
 | Translate | ✅ | ❌ Б-85 (перевода нет) |
 | Auto-delete | ✅ (подменю) | ✅ (подменю `createAutoDeleteSubmenu`, иконка срока `autoDeleteIcon.ts`) |
@@ -151,9 +151,9 @@ tweb: `sharedMediaTab` + `peerProfile`. Табы (`sharedMedia.tsx:449-462, 604-
 | Channel Type (публичный/приватный, username, ссылка) | ✅ | ✅ |
 | Invite Links | ✅ | ✅ |
 | Subscribe Requests | ✅ (`SubscribeRequests`) | ❌ скрыта до П-1 (Б-41) |
-| Reactions | ✅ | ❌ скрыта до П-1 (Б-39) |
+| Reactions | ✅ | ✅ (`AppChatReactionsTab`, `chatReactions.solid.tsx`; запись — отложенно 3 с и на закрытии, как tweb) |
 | Direct Messages (монофорум) | ✅ (`ChannelDirectMessages.*`) | ❌ нет предмета (Б-105) |
-| Discussion | ✅ | ❌ скрыта до П-1 (Б-40) |
+| Discussion | ✅ | ✅ (`AppChatDiscussionTab`, `chatDiscussion.solid.tsx`; сторона группы — Б-119: `linked_chat_id` у группы обсуждения сервер не отдаёт) |
 | Recent Actions (админ-лог) | ✅ — таб `adminRecentActions` **или** отдельный тип чата `ChatType.Logs` | ❌ нет предмета (Б-105) |
 | Administrators | ✅ | ❌ скрыта до П-1 (Б-41) |
 | Subscribers | ✅ | ❌ скрыта до П-1 (Б-41) |
@@ -229,9 +229,9 @@ tweb различает набор прав broadcast vs megagroup и умеет
 | Что | tweb | у нас |
 |---|---|---|
 | Boosts | полноценный таб: уровень, прогресс до следующего, список бустеров, предоплаченные розыгрыши, «boost via gifts» | 🟡 `BoostPopup` |
-| Statistics канала | ✅ | ✅ `ChannelStats` |
-| Statistics поста | ✅ (`ViewStatistics` в контекстном меню) | ✅ `PostStats` |
-| Statistics истории | ✅ | ✅ `StoryStats` |
+| Statistics канала и группы | ✅ (`sidebarRight/tabs/statistics.tsx`, графики `lib/tchart`) | ✅ `AppStatisticsTab` + порт `lib/tchart`; бэкенд — `stats.broadcastStats`/`megagroupStats` (`domain/mtstats.go`); без данных — Б-123, Б-124 |
+| Statistics поста | ✅ (`ViewStatistics` в контекстном меню) | ✅ `AppStatisticsTab` режима поста (`stats.messageStats`); публичных пересылок нет — Б-121 |
+| Statistics истории | ✅ (режим `storyId` той же вкладки) | 🟡 React `StoryStats` вьювера историй (волна 4), во вкладке — Б-122 |
 | Giveaway | ✅ (`boostsViaGifts`, prepaid) | 🟡 `CreateGiveawayPopup` |
 
 ## 9. Сводка расхождений по важности
@@ -258,8 +258,8 @@ tweb различает набор прав broadcast vs megagroup и умеет
 7. Channel Direct Messages (монофорум) — включая левый слот плашки и пункты шапки.
 8. Channel Autotranslation с гейтом по уровню буста.
 9. `noforwards` (запрет сохранения контента).
-10. Мёртвые пункты меню шапки: `View discussion`, `Send a Gift`; нет `Statistics`,
-    `Pinned Messages`, `Translate`.
+10. Мёртвые пункты меню шапки: `View discussion`, `Send a Gift`; нет
+    `Pinned Messages`, `Translate` (`Statistics` портирован, П-1).
 11. Права админа: нет разделения broadcast/megagroup и кастомного титула.
 12. Инкремент просмотров по видимости бабла (у нас — по прочитанному seq).
 13. Similar channels табом профиля (у нас — полосой в ленте).

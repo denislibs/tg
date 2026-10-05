@@ -472,6 +472,12 @@ func (c ChatRecord) ToChannelFull() ChannelFull {
 	out.SendPaidMessagesStars = int64(c.Settings.ChargeStars)
 	out.ThemeEmoticon = c.ThemeEmoticon
 	out.NotifySettings = c.NotifySettings
+	// can_view_stats — зритель-зависимый, как и notify_settings: статистику
+	// видят создатель и админы канала/группы (тот же допуск, что у ручки
+	// GET /channels/{id}/stats). Снимок без зрителя флага не несёт.
+	setPFlag(&out.PFlags, "can_view_stats", c.ViewerID != 0 &&
+		(c.Type == ChatTypeChannel || c.Type == ChatTypeGroup) &&
+		(c.MyRole == RoleCreator || c.MyRole == RoleAdmin))
 	return out
 }
 

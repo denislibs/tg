@@ -44,10 +44,11 @@
  *  • `TranslateMessage` (:1095-1127) — verify это ОПРЕДЕЛЁННЫЙ язык сообщения
  *    (`detectLanguageForTranslation` → tinyld); детектора нет, а «показывать
  *    всегда» — расхождение React-версии, а не порт;
- *  • `ViewStatistics` (:1293-1298, `onStatisticsClick` :2333-2336) — пункт
- *    открывает вкладку `AppStatisticsTab` правой колонки, а её у нас нет
- *    (статистика канала — Б-43, П-1); `PollStats.View` (:1299-1304) — тот же
- *    таб в режиме опроса. Бэклог Б-93;
+ *  • `PollStats.View` (:1299-1304, `onPollStatisticsClick` :2389-2392) —
+ *    режим опроса вкладки `AppStatisticsTab`: статистики опросов у бэкенда нет
+ *    (`pollResults.can_view_stats` не производится) — Б-122. `ViewStatistics`
+ *    портирован (Б-93): `canViewMessageStatistics` без проверок эфемерных
+ *    сообщений — их в нашей модели нет;
  *  • `Resend` (:1260-1265) — `repayRequest` (платные сообщения) отсутствует;
  *  • sponsored-блок (:107-183, :1292-1302) — рекламных сообщений нет;
  *  • «Message contains emoji pack(s)» (:1303-1314) — пункт показывает НАЗВАНИЕ
@@ -232,6 +233,8 @@ import InputField from '@components/inputField'
 import { toastNew } from '@components/toast'
 import replaceContent from '@helpers/dom/replaceContent'
 import showSendNowPopup from '@components/popups/sendNow'
+import AppStatisticsTab from '@components/sidebarRight/tabs/statistics.solid'
+import { canViewStatistics } from '@core/chatFullCache'
 import { ChatType } from './chatType'
 
 /** Срез менеджеров — только те вызовы, которые делают пункты меню. */
@@ -821,7 +824,12 @@ export default class ChatContextMenu {
           !!this.message && !this.isOutgoing(this.message)
       },
     }, {
-      // `ViewStatistics`/`PollStats.View` (:1293-1304) — нет `AppStatisticsTab`, шапка файла
+      icon: 'statistics_chart',
+      text: 'ViewStatistics',
+      onClick: this.onStatisticsClick,
+      verify: this.canViewMessageStatistics,
+    }, {
+      // `PollStats.View` (:1299-1304) — нет статистики опросов, шапка файла
       icon: 'forward',
       text: 'Forward',
       // let forward the message if it's outgoing but not ours (like a changelog)
@@ -1594,6 +1602,20 @@ export default class ChatContextMenu {
     const media = this.getPollMedia()
     if(!media) return
     void this.managers.messages.closePoll(media.poll.id)
+  }
+
+  /** Порт `onStatisticsClick` (:2333-2336). */
+  private onStatisticsClick = () => {
+    void this.chat.topbar.appSidebarRight.createTab(AppStatisticsTab).open(this.messagePeerId, this.mid)
+    void this.chat.topbar.appSidebarRight.toggleSidebar(true)
+  }
+
+  /** Порт `canViewMessageStatistics` (:2338-2345) — эфемерных сообщений у нас
+   *  нет, остальное как у оригинала. */
+  private canViewMessageStatistics = () => {
+    return isBroadcastPeer(this.messagePeerId) &&
+      canViewStatistics(this.messagePeerId) &&
+      !!this.message && !this.isOutgoing(this.message)
   }
 
   /** Порт `onForwardClick` (812502980 :2249-2260). */

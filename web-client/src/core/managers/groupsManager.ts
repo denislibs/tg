@@ -2,10 +2,11 @@
 import type { RestClient } from '../net/restClient'
 import type { DialogsManager } from './dialogsManager'
 import type { PeersManager } from './peersManager'
-import type { Channel, ChannelFull, ChatBannedRights, MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
+import type { Channel, ChannelFull, ChatAdminRights, ChatBannedRights, MessagesChatFull, UserReal } from '../peers/peer'
 import { getPeerId } from '../peers/peerId'
 import type { Peer } from '../peers/peerId'
-import { allowedFromBannedRights, deniedMask } from '../peers/rights'
+import { adminRightsMask, allowedFromBannedRights, deniedMask } from '../peers/rights'
+import { BANNED_RIGHTS_UNTIL_FOREVER } from './constants'
 import { MUTE_UNTIL_FOREVER } from '../dialogs/notifySettings'
 import type { MissingInvitee } from '@layer'
 import { WIRE_FOLDER_ARCHIVE, type MyMessage, type RawMyMessage } from '../models'
@@ -17,9 +18,6 @@ import { isPeerMuted } from '../dialogs/notifySettings'
 import { publicLinkFromTelegramPath } from '../publicLink'
 import { toPeerId } from '../peers/peerId'
 import tsNow from '@helpers/tsNow'
-
-/** Участник чата: наша роль + статус присутствия (объединение `UserStatus`). */
-export interface ChatMember { userId: number; role: string; status?: UserStatus }
 
 /**
  * Ответ `POST /groups` — `messages.invitedUsers` (ответ `messages.createChat`
@@ -110,15 +108,6 @@ export interface ChannelsChannelParticipants {
   users: UserReal[]
 }
 
-/** Роль по конструктору — обратный перевод для экранов, которые ей оперируют. */
-export function participantRole(p: ChannelParticipantWire): string {
-  switch (p._) {
-    case 'channelParticipantCreator': return 'creator'
-    case 'channelParticipantAdmin': return 'admin'
-    default: return 'member'
-  }
-}
-
 /** id участника: у забаненного и ушедшего он лежит в ссылке на пир. */
 export function participantUserId(p: ChannelParticipantWire): number {
   if (p._ === 'channelParticipantBanned' || p._ === 'channelParticipantLeft') {
@@ -126,6 +115,25 @@ export function participantUserId(p: ChannelParticipantWire): number {
   }
   return p.user_id
 }
+
+/**
+ * Фильтр `channels.getParticipants` (`ChannelParticipantsFilter` схемы) в объёме
+ * вкладок правой колонки: поиск/недавние — «Участники», админы — «Администраторы»,
+ * выгнанные — «Удалённые», ограниченные — исключения прав группы.
+ */
+export type ChannelParticipantsFilter =
+  | { _: 'channelParticipantsRecent' }
+  | { _: 'channelParticipantsSearch'; q: string }
+  | { _: 'channelParticipantsAdmins'; q?: string }
+  | { _: 'channelParticipantsKicked'; q: string }
+  | { _: 'channelParticipantsBanned'; q: string }
+
+/** Страница листания `/members` под фильтр админов (`getParticipants`). */
+const ADMINS_PAGE = 200
+
+/** Ключ пользователя участника — для ручек, которые адресуют его по id. */
+const participantPeerId = (participant: PeerId | ChannelParticipantWire) =>
+  typeof participant === 'object' ? participantUserId(participant) : participant
 
 export function mapChatCard(r: MessagesChatFull): ChatCard | null {
   const chat = r?.chats?.[0]
@@ -348,6 +356,34 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
   // строка просто остаётся без превью, а не падает.
   messages?: Pick<MessagesManager, 'saveApiMessages' | 'getMessageByPeer'>
 }) {
+  /**
+   * tweb `appChatsManager.editBanned(id, participant, rights)`: `view_messages`
+   * — выгнать (у нас список «удалённых», `POST /bans`), пустые запреты — снять
+   * бан или ограничение, иначе — ограничить. Срок у оригинала абсолютный
+   * (`until_date`, `BANNED_RIGHTS_UNTIL_FOREVER`/0 — навсегда), у ручки —
+   * относительный (`until_seconds`, 0 — навсегда).
+   */
+  const editBanned = async(chatId: ChatId, participant: PeerId | ChannelParticipantWire, rights: ChatBannedRights): Promise<void> => {
+    const peerId = chatPeerId(chatId)
+    const userId = participantPeerId(participant)
+    const pFlags = rights.pFlags ?? {}
+    if (pFlags.view_messages) {
+      await rest.post(`/chats/${peerId}/bans`, { user_id: userId })
+      return
+    }
+
+    const denied = deniedMask(pFlags)
+    if (!denied) {
+      const wasKicked = typeof participant === 'object' && participant._ === 'channelParticipantBanned' && !!participant.pFlags?.left
+      await rest.del(`/chats/${peerId}/${wasKicked ? 'bans' : 'restrictions'}/${userId}`)
+      return
+    }
+
+    const untilDate = rights.until_date
+    const untilSeconds = !untilDate || untilDate >= BANNED_RIGHTS_UNTIL_FOREVER ? 0 : Math.max(1, untilDate - tsNow(true))
+    await rest.post(`/chats/${peerId}/restrictions`, { user_id: userId, denied_rights: denied, until_seconds: untilSeconds })
+  }
+
   return {
     /**
      * Создать группу. Ответ — СОЗДАННЫЙ объект (`messages.chatFull`), а не его
@@ -497,41 +533,10 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
     async setChargeStars(peerId: number, chargeStars: number): Promise<void> {
       await rest.put(`/chats/${peerId}/charge_stars`, { charge_stars: chargeStars })
     },
-    async listBans(peerId: number): Promise<{ userId: number; bannedBy: number }[]> {
-      const r = await rest.get<ChannelsChannelParticipants>(`/chats/${peerId}/bans`)
-      return (r.participants ?? []).map((p) => ({
-        userId: participantUserId(p),
-        bannedBy: p._ === 'channelParticipantBanned' ? p.kicked_by : 0,
-      }))
-    },
-    async ban(peerId: number, userId: number): Promise<void> {
-      await rest.post(`/chats/${peerId}/bans`, { user_id: userId })
-    },
-    async unban(peerId: number, userId: number): Promise<void> {
-      await rest.del(`/chats/${peerId}/bans/${userId}`)
-    },
-    // Гранулярные ограничения участника (Telegram editBanned / ChatBannedRights):
-    // deniedRights — битовая маска запрещённых прав (PERMS), untilSeconds — срок
-    // (0/undefined — бессрочно).
-    async listRestrictions(peerId: number): Promise<{ userId: number; deniedRights: number; untilDate?: string; restrictedBy: number }[]> {
-      const r = await rest.get<ChannelsChannelParticipants>(`/chats/${peerId}/restrictions`)
-      // Ограниченный — ТОТ ЖЕ конструктор, что и выгнанный, только без флага
-      // `left`. Чем именно ограничен — маска запретов внутри `banned_rights`;
-      // `until_date` в СЕКУНДАХ эпохи, 0 значит «бессрочно».
-      return (r.participants ?? []).flatMap((p) => {
-        if (p._ !== 'channelParticipantBanned') return []
-        return [{
-          userId: participantUserId(p),
-          deniedRights: deniedMask(p.banned_rights.pFlags),
-          untilDate: p.banned_rights.until_date ? new Date(p.banned_rights.until_date * 1000).toISOString() : undefined,
-          restrictedBy: p.kicked_by,
-        }]
-      })
-    },
     /**
      * Ограниченные участники — порт `appProfileManager.getChannelParticipants`
      * с фильтром `channelParticipantsBanned` (`:744-790`): ограниченный остаётся в
-     * чате (у выгнанного — `left`, его список `listBans`). Ручка отдаёт список
+     * чате (у выгнанного — `left`, его список — `getParticipants` с `channelParticipantsKicked`). Ручка отдаёт список
      * целиком, без `offset`/`limit`; карточек `users` в ответе нет — строки
      * объявляют пробел зеркала сами (`peers.fillMirror` у `PeerTitle`/`avatar`).
      */
@@ -539,12 +544,6 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
       const r = await rest.get<ChannelsChannelParticipants>(`/chats/${peerId}/restrictions`)
       peers.saveApiPeers({ users: r.users ?? [] })
       return r
-    },
-    async restrictMember(peerId: number, userId: number, deniedRights: number, untilSeconds?: number): Promise<void> {
-      await rest.post(`/chats/${peerId}/restrictions`, { user_id: userId, denied_rights: deniedRights, until_seconds: untilSeconds ?? 0 })
-    },
-    async unrestrictMember(peerId: number, userId: number): Promise<void> {
-      await rest.del(`/chats/${peerId}/restrictions/${userId}`)
     },
     async removeMember(peerId: number, userId: number): Promise<void> {
       await rest.del(`/chats/${peerId}/members/${userId}`)
@@ -558,18 +557,6 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
       await rest.del(`/chats/${peerId}`)
       dialogs.applyRemoved(peerId)
     },
-    // Участники чата: id + роль + СТАТУС (объединение `UserStatus`, а не
-    // булев `online` без срока годности — см. PresenceEvt).
-    async members(peerId: PeerId): Promise<ChatMember[]> {
-      const r = await rest.get<ChannelsChannelParticipants>(`/chats/${peerId}/members`)
-      // Присутствие берётся с КАРТОЧКИ пользователя (`user.status`), а не со
-      // строки участника: у оригинала оно живёт там, и второго дома у него нет.
-      const byId = new Map((r.users ?? []).map((u) => [u.id, u]))
-      return (r.participants ?? []).map((p) => {
-        const id = participantUserId(p)
-        return { userId: id, role: participantRole(p), status: byId.get(id)?.status }
-      })
-    },
     /**
      * Страница участников КОНТЕЙНЕРОМ — порт `appProfileManager.getChannelParticipants`
      * в объёме вкладки «Участники» shared media (`components/appSearchSuper.ts::
@@ -579,9 +566,6 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
      * Карточки из вектора `users` сразу уезжают в зеркало (`saveApiPeers`),
      * как у оригинала (`appProfileManager.ts:653-656` — `saveApiUsers`): строка
      * списка читает карточку синхронно, и к моменту ответа она уже там.
-     *
-     * `members` выше остаётся плоской формой без пагинации для экранов
-     * редактирования группы; эта ручка — для списка, который листает.
      *
      * `q` — фильтр `channelParticipantsSearch` (`appProfileManager.getParticipants`
      * с `filter: {_: 'channelParticipantsSearch', q}`): выбор отправителя в поиске
@@ -596,11 +580,87 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
       peers.saveApiPeers({ users: r.users })
       return r
     },
-    async promoteAdmin(peerId: number, userId: number, rights: number): Promise<void> {
-      await rest.post(`/chats/${peerId}/admins`, { user_id: userId, rights })
+    // ── Участники в форме оригинала — порт `appProfileManager.getParticipants`
+    // и мутаций `appChatsManager` (`editAdmin`, `editBanned`, `kickFromChat`,
+    // `clearChannelParticipantBannedRights`, `hideChatJoinRequest`) в объёме
+    // вкладок правой колонки (0б-7 волны 7: админы, участники, удалённые,
+    // заявки, права участника). Ключ — положительный `chatId`, участник —
+    // конструктор провода или ключ пира, как у оригинала.
+    //
+    // Расхождения (бэкенд, Б-115…Б-117 плана каркаса):
+    //  • фильтра админов у ручки нет — `channelParticipantsAdmins` листает
+    //    `/members` целиком и оставляет создателя и админов; выгнанные и
+    //    ограниченные — свои ручки без страниц и без поиска `q`;
+    //  • `rank` админа на проводе нет — `editAdmin` его не передаёт;
+    //  • ответа `Updates` у мутаций нет: кадр `chat_participant` не приходит,
+    //    списки перечитываются по `chat_update` (`AppSelectPeers`).
+
+    /** tweb `appProfileManager.getParticipants({id, filter, limit, offset})`. */
+    async getParticipants({ id, filter = { _: 'channelParticipantsRecent' }, limit = 200, offset = 0 }: {
+      id: ChatId; filter?: ChannelParticipantsFilter; limit?: number; offset?: number
+    }): Promise<ChannelsChannelParticipants> {
+      const peerId = chatPeerId(id)
+      switch (filter._) {
+        case 'channelParticipantsAdmins': {
+          // одна страница на весь список: смещение по отфильтрованному не совпадает с серверным
+          if (offset) return { _: 'channels.channelParticipants', count: 0, participants: [], chats: [], users: [] }
+          const participants: ChannelParticipantWire[] = []
+          const users: UserReal[] = []
+          for (let pageOffset = 0; ; pageOffset += ADMINS_PAGE) {
+            const r = await rest.get<ChannelsChannelParticipants>(`/chats/${peerId}/members`, {
+              offset: pageOffset,
+              limit: ADMINS_PAGE,
+              ...(filter.q ? { q: filter.q } : {}),
+            })
+            const page = r.participants ?? []
+            const admins = page.filter((p) => p._ === 'channelParticipantCreator' || p._ === 'channelParticipantAdmin')
+            const adminIds = new Set(admins.map(participantUserId))
+            participants.push(...admins)
+            users.push(...(r.users ?? []).filter((u) => adminIds.has(u.id)))
+            if (page.length < ADMINS_PAGE) break
+          }
+          peers.saveApiPeers({ users })
+          return { _: 'channels.channelParticipants', count: participants.length, participants, chats: [], users }
+        }
+        case 'channelParticipantsKicked':
+        case 'channelParticipantsBanned': {
+          if (offset) return { _: 'channels.channelParticipants', count: 0, participants: [], chats: [], users: [] }
+          const r = await rest.get<ChannelsChannelParticipants>(`/chats/${peerId}/${filter._ === 'channelParticipantsKicked' ? 'bans' : 'restrictions'}`)
+          peers.saveApiPeers({ users: r.users ?? [] })
+          return r
+        }
+        default: {
+          const query: Record<string, string | number> = { offset, limit }
+          if (filter._ === 'channelParticipantsSearch' && filter.q) query.q = filter.q
+          const r = await rest.get<ChannelsChannelParticipants>(`/chats/${peerId}/members`, query)
+          peers.saveApiPeers({ users: r.users })
+          return r
+        }
+      }
     },
-    async demoteAdmin(peerId: number, userId: number): Promise<void> {
-      await rest.del(`/chats/${peerId}/admins/${userId}`)
+    /** tweb `appChatsManager.editAdmin(id, participant, rights, rank)`: пустые права — снять админа. */
+    async editAdmin(chatId: ChatId, participant: PeerId | ChannelParticipantWire, rights: ChatAdminRights, _rank?: string): Promise<void> {
+      const peerId = chatPeerId(chatId)
+      const userId = participantPeerId(participant)
+      if (!Object.keys(rights.pFlags ?? {}).length) {
+        await rest.del(`/chats/${peerId}/admins/${userId}`)
+        return
+      }
+
+      await rest.post(`/chats/${peerId}/admins`, { user_id: userId, rights: adminRightsMask(rights.pFlags) })
+    },
+    editBanned,
+    /** tweb `appChatsManager.clearChannelParticipantBannedRights`. */
+    async clearChannelParticipantBannedRights(chatId: ChatId, participant: PeerId | ChannelParticipantWire): Promise<void> {
+      await editBanned(chatId, participant, { _: 'chatBannedRights', until_date: 0, pFlags: {} })
+    },
+    /** tweb `appChatsManager.kickFromChat` → `kickFromChannel` (базовых групп нет). */
+    async kickFromChat(chatId: ChatId, participant: PeerId | ChannelParticipantWire): Promise<void> {
+      await editBanned(chatId, participant, { _: 'chatBannedRights', until_date: 0, pFlags: { view_messages: true } })
+    },
+    /** tweb `appChatsManager.hideChatJoinRequest(chatId, userId, approved)`. */
+    async hideChatJoinRequest(chatId: ChatId, userId: UserId, approved: boolean): Promise<void> {
+      await rest.post(`/chats/${chatPeerId(chatId)}/join_requests/${userId}/${approved ? 'approve' : 'decline'}`, {})
     },
     async createInvite(peerId: number, opts?: { title?: string; usageLimit?: number; requiresApproval?: boolean; expireSeconds?: number }): Promise<InviteLink> {
       const r = await rest.post<MessagesExportedChatInvite>(`/chats/${peerId}/invite_links`, { title: opts?.title, usage_limit: opts?.usageLimit ?? null, requires_approval: opts?.requiresApproval ?? false, expire_seconds: opts?.expireSeconds ?? 0 })
@@ -672,11 +732,16 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
     /**
      * tweb `getChatInviteImporters({chatId, link, limit, offsetDate, offsetUserId, q, requested})`
      * в объёме сервера: вошедшие по ссылке, первые 50 (`usecase InviteImporters`),
-     * без страниц, поиска и заявок (О-122, О-124). Карточки из вектора `users` —
+     * без страниц и поиска (О-124); заявки (`requested`) — ручка `/join_requests` (0б-7). Карточки из вектора `users` —
      * в зеркало, как у оригинала (`saveApiUsers`): строка списка читает их синхронно.
      */
-    async getChatInviteImporters({ chatId, link }: { chatId: ChatId; link: string }): Promise<MessagesChatInviteImporters> {
-      const r = await rest.get<MessagesChatInviteImporters & { users?: UserReal[] }>(`/chats/${chatPeerId(chatId)}/invite_links/${inviteHash(link)}/importers`)
+    async getChatInviteImporters({ chatId, link, requested }: { chatId: ChatId; link?: string; requested?: boolean }): Promise<MessagesChatInviteImporters> {
+      // заявки (`requested` без ссылки, вкладка «Заявки» 0б-7) — своя ручка
+      // `/join_requests`, тот же конструктор `chatInviteImporter` с `requested`
+      const path = requested && !link ?
+        `/chats/${chatPeerId(chatId)}/join_requests` :
+        `/chats/${chatPeerId(chatId)}/invite_links/${inviteHash(link!)}/importers`
+      const r = await rest.get<MessagesChatInviteImporters & { users?: UserReal[] }>(path)
       peers.saveApiPeers({ users: r.users })
       return r
     },
@@ -692,12 +757,6 @@ export function newGroupsManager({ rest, dialogs, peers, messages }: {
       peers.saveApiPeers(r)
       return toPeerId(r.chats[0].id, true)
     },
-    async listJoinRequests(peerId: number): Promise<number[]> {
-      const r = await rest.get<MessagesChatInviteImporters>(`/chats/${peerId}/join_requests`)
-      return (r.importers ?? []).map((x) => x.user_id)
-    },
-    async approveRequest(peerId: number, userId: number): Promise<void> { await rest.post(`/chats/${peerId}/join_requests/${userId}/approve`, {}) },
-    async declineRequest(peerId: number, userId: number): Promise<void> { await rest.post(`/chats/${peerId}/join_requests/${userId}/decline`, {}) },
   }
 }
 export type GroupsManager = ReturnType<typeof newGroupsManager>

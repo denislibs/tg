@@ -38,13 +38,14 @@
  *
  * ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
  *
- *  1. Участники канала (`peerType: 'channelParticipants'`, :909-963) и всё, что
- *     на них держится, — `channelParticipantsFilter`/`…UpdateFilter`/
- *     `…UpdatePeerId`, карта `participants`, слушатели `chat_participant` и
- *     `chat_full_update` (:515-574), `deletePeerId` (:634-650) — не портированы:
- *     потребитель у оригинала — правая колонка (`participantsSelector.ts`,
- *     `chatInviteLink.tsx`), в волне 2D его нет, а наши экраны участников группы
- *     строят список `SortedUserList` (`components/sortedUserList.ts`).
+ *  1. Участники канала (`peerType: 'channelParticipants'`, :909-963, с 0б-7
+ *     волны 7 — вкладки админов, участников и удалённых правой колонки,
+ *     `sidebarRight/tabs/participantsSelector.ts`). Кадра `chat_participant`
+ *     (:533-540) на проводе нет: живое обновление — ветка `chat_full_update`
+ *     оригинала (:542-574, у него — для базовой группы): по `rt:chat_update`
+ *     этого чата список перечитывается и сводится по карте `participants`
+ *     (`refreshParticipants`). Страница — `groups.getParticipants` (порт
+ *     `appProfileManager.getParticipants`), фильтры — в объёме ручек.
  *  2. Права отправки: `chatRightsActions` + `filterByRights` (:782-787,
  *     :827-834, :878-883) портированы — сам фильтр живёт в
  *     `core/peers/filterByRights.ts` (его же зовёт React-`ForwardPicker`),
@@ -146,6 +147,12 @@ import { peerKey, type Chat, type User } from '@core/peers/peer'
 import { getUserStatusString } from '@core/presence'
 import { useChatsStore } from '@stores/chatsStore'
 import { useI18nStore } from '@/i18n'
+import { RT } from '@core/realtime/events'
+import { getParticipantPeerId, type ChannelParticipant } from '@core/peers/participant'
+import type { ChannelParticipantsFilter } from '@core/managers/groupsManager'
+
+/** :915 — страница участников (`pageCount`) */
+const CHANNEL_PARTICIPANTS_PAGE = 50
 
 /** A row whose trailing checkbox is painted over it — the lane it takes is reserved in `_selector.scss`. */
 const ROW_WITH_CHECKBOX_CLASS = 'selector-row-with-checkbox'
@@ -153,7 +160,7 @@ const ROW_WITH_CHECKBOX_CLASS = 'selector-row-with-checkbox'
 /** tweb `REAL_FOLDERS` (`appManagers/constants.ts`) — «Все чаты» и архив (расхождение 8). */
 const REAL_FOLDERS = new Set([ALL_FOLDER_ID, ARCHIVE_FOLDER_ID])
 
-export type SelectSearchPeerType = 'contacts' | 'dialogs' | 'custom'
+export type SelectSearchPeerType = 'contacts' | 'dialogs' | 'channelParticipants' | 'custom'
 /** tweb `IsPeerType` в заведённом объёме (расхождение 9). */
 export type IsPeerType = 'isAnyGroup' | 'isUser'
 
@@ -162,6 +169,8 @@ export type AppSelectPeersManagers = DialogRowManagers & SelectorEntityManagers 
   contacts: Pick<Managers['contacts'], 'getContactsPeerIds' | 'testSelfSearch'>
   channels: Pick<Managers['channels'], 'search'>
   peers: Pick<Managers['peers'], 'getPeers' | 'fillMirror'>
+  /** только у `peerType: 'channelParticipants'` (расхождение 1) */
+  groups?: Pick<Managers['groups'], 'getParticipants'>
 }
 
 type Changes = { key: PeerId | string, add: boolean }[]
@@ -194,7 +203,7 @@ export default class AppSelectPeers {
   private query = ''
   private cachedContacts?: PeerId[]
 
-  private loadedWhat: Partial<{ [k in 'dialogs' | 'archived' | 'contacts' | 'custom']: boolean }> = {}
+  private loadedWhat: Partial<{ [k in 'dialogs' | 'archived' | 'contacts' | 'channelParticipants' | 'custom']: boolean }> = {}
 
   private renderedPeerIds: Set<PeerId> = new Set()
   private pendingLists = new Set<HTMLElement>()
@@ -211,12 +220,16 @@ export default class AppSelectPeers {
   private exceptSelf: boolean
   private filterPeerTypeBy?: IsPeerType[]
   private chatRightsActions?: readonly ChatRights[]
+  private channelParticipantsFilter?: ChannelParticipantsFilter | ((q: string) => ChannelParticipantsFilter)
+  private channelParticipantsUpdateFilter?: (participant: ChannelParticipant) => boolean
+  private channelParticipantsUpdatePeerId?: PeerId
   private meAsSaved: boolean
   private onSelect?: (peerId: PeerId | string, adding: boolean, e: MouseEvent) => MaybePromise<void | boolean>
   /** tweb :146 — свой источник строк (`peerType: ['custom']`): страница ключей и признак конца */
   public getMoreCustom?: (q: string, middleware: () => boolean) => Promise<{ result: PeerId[], isEnd: boolean }>
 
   private tempIds: { [k in keyof AppSelectPeers['loadedWhat']]?: number } = {}
+  private peerId?: PeerId
 
   private selfPresence: LangPackKey = 'Presence.YourChat'
 
@@ -256,6 +269,9 @@ export default class AppSelectPeers {
   private loadedFirst?: boolean
   private onFirstRender?: () => void
 
+  // :142
+  public participants: Map<PeerId, ChannelParticipant> = new Map()
+
   constructor(options: {
     appendTo: HTMLElement,
     managers: AppSelectPeersManagers,
@@ -273,6 +289,10 @@ export default class AppSelectPeers {
     selfPresence?: LangPackKey,
     exceptSelf?: boolean,
     filterPeerTypeBy?: IsPeerType[],
+    channelParticipantsFilter?: AppSelectPeers['channelParticipantsFilter'],
+    channelParticipantsUpdateFilter?: AppSelectPeers['channelParticipantsUpdateFilter'],
+    channelParticipantsUpdatePeerId?: AppSelectPeers['channelParticipantsUpdatePeerId'],
+    peerId?: PeerId,
     /** расхождение 2 */
     chatRightsActions?: readonly ChatRights[],
     sectionNameLangPackKey?: SectionOptions['name'],
@@ -300,6 +320,10 @@ export default class AppSelectPeers {
     if(options.avatarSize) this.avatarSize = options.avatarSize
     if(options.selfPresence) this.selfPresence = options.selfPresence
     this.filterPeerTypeBy = options.filterPeerTypeBy
+    this.channelParticipantsFilter = options.channelParticipantsFilter
+    this.channelParticipantsUpdateFilter = options.channelParticipantsUpdateFilter
+    this.channelParticipantsUpdatePeerId = options.channelParticipantsUpdatePeerId
+    this.peerId = options.peerId
     this.chatRightsActions = options.chatRightsActions
     this.sectionNameLangPackKey = options.sectionNameLangPackKey
     this.sectionCaption = options.sectionCaption
@@ -321,7 +345,8 @@ export default class AppSelectPeers {
     this.listenerSetter = new ListenerSetter()
     this.checkboxSide = options.checkboxSide ?? 'right'
     this.exceptSelf = options.exceptSelf ?? false
-    this.meAsSaved = options.meAsSaved ?? true
+    // :224
+    this.meAsSaved = options.meAsSaved ?? !(this.peerType.length === 1 && this.peerType[0] === 'channelParticipants')
     this.excludePeerIds = options.excludePeerIds ?? new Set()
     if(this.exceptSelf) this.excludePeerIds.add(rootScope.myId)
     this.children = []
@@ -485,6 +510,17 @@ export default class AppSelectPeers {
     // :513
     this.appendTo.append(this.container)
 
+    // :542-574 — ветка `chat_full_update` вместо кадра `chat_participant` (расхождение 1)
+    if(this.channelParticipantsUpdateFilter) {
+      this.listenerSetter.add(rootScope)(RT.chatUpdate, (evt) => {
+        if(getPeerId(evt.peer) !== (this.channelParticipantsUpdatePeerId ?? this.peerId)) {
+          return
+        }
+
+        void this.refreshParticipants()
+      })
+    }
+
     // :576-578
     options.middleware.onDestroy(() => {
       this.destroy()
@@ -519,6 +555,51 @@ export default class AppSelectPeers {
     }, 0)
   }
 
+  // :515-531
+  private onChatParticipant(
+    participant: ChannelParticipant | undefined,
+    peerId: PeerId,
+    needAdd = !!participant && this.channelParticipantsUpdateFilter!(participant),
+  ) {
+    if(needAdd) {
+      this.participants.set(peerId, participant!)
+    } else {
+      this.participants.delete(peerId)
+    }
+
+    if(needAdd) {
+      void this.renderResultsFunc([peerId], false)
+    } else {
+      this.deletePeerId(peerId)
+    }
+  }
+
+  /**
+   * :548-573 — свод перечитанного списка с картой `participants` (расхождение 1):
+   * пришедший — добавить/обновить, пропавший — снять. Перечитывается столько,
+   * сколько уже показано, под текущим запросом.
+   */
+  public async refreshParticipants() {
+    const middleware = this.middlewareHelperLoader.get()
+    const loaded = await this.loadChannelParticipants(Math.max(this.list.childElementCount, CHANNEL_PARTICIPANTS_PAGE), 0)
+    if(!middleware()) {
+      return
+    }
+
+    const processedPeerIds = new Set<PeerId>()
+    for(const participant of loaded.participants) {
+      const peerId = getParticipantPeerId(participant)
+      processedPeerIds.add(peerId)
+      this.onChatParticipant(participant, peerId)
+    }
+
+    this.participants.forEach((participant, peerId) => {
+      if(!processedPeerIds.has(peerId)) {
+        this.onChatParticipant(participant, peerId, false)
+      }
+    })
+  }
+
   // :625-632 (без `dialogsPlaceholder` — расхождение 4)
   public destroy() {
     this.middlewareHelper.destroy()
@@ -526,6 +607,25 @@ export default class AppSelectPeers {
     this.listenerSetter.removeAll()
     this.selectorSearch?.destroy()
     this.inputSearch?.remove()
+  }
+
+  // :634-650
+  public deletePeerId(peerId: PeerId) {
+    for(const list of [this.list, ...this.pendingLists]) {
+      const el = list.querySelector(`[data-peer-id="${peerId}"]`)
+      const dialogElement = (el as (Element & { dialogElement?: DialogElement }) | null)?.dialogElement
+      if(dialogElement) {
+        dialogElement.remove()
+      } else {
+        el?.remove()
+      }
+    }
+
+    this.renderedPeerIds.delete(peerId)
+
+    if(!this.promise) {
+      this.processPlaceholderOnResults()
+    }
   }
 
   /** :277-301 — отбор по типу пира (расхождение 9) */
@@ -589,6 +689,10 @@ export default class AppSelectPeers {
 
     if(this.peerType.includes('contacts')) {
       this.loadedWhat.contacts = false
+    }
+
+    if(this.peerType.includes('channelParticipants')) {
+      this.loadedWhat.channelParticipants = false
     }
 
     if(this.peerType.includes('custom')) {
@@ -794,6 +898,67 @@ export default class AppSelectPeers {
     this.scrollable.checkForTriggers()
   }
 
+  private loadChannelParticipants(limit: number, offset: number) {
+    let filter: ChannelParticipantsFilter
+    if(this.channelParticipantsFilter) {
+      filter = typeof(this.channelParticipantsFilter) === 'function' ?
+        this.channelParticipantsFilter(this.query) :
+        this.channelParticipantsFilter
+    } else {
+      filter = {
+        _: 'channelParticipantsSearch',
+        q: this.query,
+      }
+    }
+
+    return this.managers.groups!.getParticipants({
+      id: -this.peerId!,
+      filter,
+      limit,
+      offset,
+    })
+  }
+
+  // :909-963
+  private async getMoreChannelParticipants() {
+    if(this.loadedWhat.channelParticipants) {
+      return
+    }
+
+    const pageCount = CHANNEL_PARTICIPANTS_PAGE // same as in group permissions to use cache
+
+    const { middleware } = this.getTempId('channelParticipants')
+    const promise = this.loadChannelParticipants(pageCount, this.list.childElementCount)
+
+    promise.catch(() => {
+      if(!middleware()) {
+        return
+      }
+
+      this.loadedWhat.channelParticipants = true
+    })
+
+    const chatParticipants = await promise
+    if(!middleware()) {
+      return
+    }
+
+    const { participants } = chatParticipants
+
+    const peerIds = participants.map((participant) => {
+      const peerId = getParticipantPeerId(participant)
+      this.participants.set(peerId, participant)
+      return peerId
+    })
+    await this.renderResultsFunc(peerIds)
+
+    const count = chatParticipants.count ?? participants.length
+
+    if(this.list.childElementCount >= count || participants.length < pageCount) {
+      this.loadedWhat.channelParticipants = true
+    }
+  }
+
   // :965-993 — страница своего источника (`getMoreCustom`); конец — по `isEnd`
   private async _getMoreCustom() {
     if(this.loadedWhat.custom) {
@@ -824,7 +989,7 @@ export default class AppSelectPeers {
       this.loadedWhat.custom = true
     }
   }
-  // :999-1021 (без участников канала и `custom` — расхождения 1, 14)
+  // :999-1021
   private _getMoreResults(): Promise<unknown> | undefined {
     if(this.peerType.includes('dialogs') && !this.loadedWhat.archived) { // to load non-contacts
       return this.getMoreSomething('dialogs')
@@ -832,6 +997,10 @@ export default class AppSelectPeers {
 
     if((this.peerType.includes('contacts') || this.peerType.includes('dialogs')) && !this.loadedWhat.contacts && this.canLoadContacts()) {
       return this.getMoreSomething('contacts')
+    }
+
+    if(this.peerType.includes('channelParticipants') && !this.loadedWhat.channelParticipants) {
+      return this.getMoreSomething('channelParticipants')
     }
 
     if(this.peerType.includes('custom') && !this.loadedWhat.custom) {
@@ -941,6 +1110,7 @@ export default class AppSelectPeers {
     const map: { [type in SelectSearchPeerType]: () => Promise<unknown> } = {
       dialogs: () => this.getMoreDialogs(),
       contacts: () => this.getMoreContacts(),
+      channelParticipants: () => this.getMoreChannelParticipants(),
       custom: () => this._getMoreCustom(),
     }
 

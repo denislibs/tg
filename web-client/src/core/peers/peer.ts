@@ -318,6 +318,9 @@ export interface ChatAdminRights {
 export interface ChatBannedRights {
   _: 'chatBannedRights'
   pFlags?: Partial<{
+    /** «выгнан» — сервер его не производит (выгнанный — `channelParticipantBanned`
+     *  с `left`), ставит клиент на записи: `groupsManager.kickFromChannel`. */
+    view_messages: true
     send_messages: true
     send_media: true
     invite_users: true
@@ -437,7 +440,8 @@ export interface ChatFullReal {
 }
 
 /**
- * channelFull#a04e8d3a flags:# hidden_prehistory:flags.10?true … id:long
+ * channelFull#a04e8d3a flags:# can_view_stats:flags.12?true
+ * hidden_prehistory:flags.10?true … id:long
  * about:string participants_count:flags.0?int … read_inbox_max_id:int
  * read_outbox_max_id:int unread_count:int chat_photo:Photo …
  * pinned_msg_id:flags.5?int linked_chat_id:flags.14?long
@@ -452,7 +456,9 @@ export interface ChatFullReal {
  */
 export interface ChannelFull {
   _: 'channelFull'
-  pFlags?: Partial<{ hidden_prehistory: true }>
+  /** `can_view_stats` — зритель-админ видит статистику (`flags.12?true`);
+   *  `stats_dc` не производится (дата-центр один, `domain/mtchat.go`). */
+  pFlags?: Partial<{ hidden_prehistory: true, can_view_stats: true }>
   id: number
   about: string
   read_inbox_max_id: number
@@ -460,6 +466,12 @@ export interface ChannelFull {
   unread_count: number
   chat_photo: MyPhoto | null
   participants_count?: number
+  /** `admins_count:flags.1?int`, `kicked_count:flags.2?int`,
+   *  `requests_pending:flags2.17?int` — сервер их пока не производит (Б-115):
+   *  счётчики строк редактора чата и строка «Заявки» (`editChat.solid.tsx`). */
+  admins_count?: number
+  kicked_count?: number
+  requests_pending?: number
   pinned_msg_id?: number
   /** чат обсуждения канала; отсутствует — обсуждения нет */
   linked_chat_id?: number

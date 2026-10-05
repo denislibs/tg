@@ -71,6 +71,10 @@ func (i *Interactor) LinkDiscussion(ctx context.Context, channelID, groupID, act
 	if err := i.groups.SetDiscussion(ctx, channelID, groupID); err != nil {
 		return 0, err
 	}
+	// Новый linked_chat_id канала — кадром chat_update, как у оригинала
+	// (updateChannel → chat_full_update; его слушают вкладка обсуждения и
+	// редактор чата, tweb chatDiscussion.tsx:272-280, editChat.tsx:352-370).
+	i.publishChatUpdate(ctx, channelID)
 	return groupID, nil
 }
 
@@ -80,7 +84,11 @@ func (i *Interactor) UnlinkDiscussion(ctx context.Context, channelID, actorID in
 	if err := i.requireRight(ctx, channelID, actorID, domain.RightChangeInfo); err != nil {
 		return err
 	}
-	return i.groups.SetDiscussion(ctx, channelID, 0)
+	if err := i.groups.SetDiscussion(ctx, channelID, 0); err != nil {
+		return err
+	}
+	i.publishChatUpdate(ctx, channelID) // см. LinkDiscussion
+	return nil
 }
 
 // DiscussionCandidates lists the groups the actor may link as a discussion group

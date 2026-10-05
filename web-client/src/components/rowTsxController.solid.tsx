@@ -28,9 +28,11 @@
  *     кликабельна `true`, клик ловит делегат списка (`setListClickListener`);
  *  4. `ensureSubtitle`/`ensureMidtitle` и сигналы `hasSubtitle`/`hasMidtitle`
  *     (`:167-192`, `:297-302`), `createTitle`, `createMedia`, `isDisabled`,
- *     `toggleDisability`, `disableWithPromise`, `makeSortable`/`toggleSorting`,
+ *     `disableWithPromise`, `makeSortable`/`toggleSorting`,
  *     `openContextMenu`, `checkboxField`/`buttonRight` в контроллере, сеттер `media`;
  *
+ * `toggleDisability` (`:262-265`) портирован: его зовёт вкладка заявок
+ * (`sidebarRight/tabs/chatRequests.solid.tsx`, tweb `chatRequests.tsx:72`).
  * `createRowSortableIcon` (`:61-63`) портирован: его зовёт `DialogElement.createSortableIcon`
  * (`appDialogsManager.ts:542-546`) у закреплённых строк.
  */
@@ -75,6 +77,7 @@ export type RowTsxController = {
   readonly subtitle: HTMLElement
   dispose: () => void
   applyMediaElement: (media: HTMLElement, size?: RowMediaSizeType) => HTMLElement
+  toggleDisability: (disable?: boolean) => () => void
 }
 
 type Part = 'title' | 'titleRow' | 'titleRight' | 'subtitle' | 'subtitleRow' | 'subtitleRight'
@@ -140,6 +143,10 @@ const mountRowController = (options: RowTsxOptions = {}): RowTsxController => {
       currentMedia = element
       setMedia({ element, size })
       return element
+    },
+    toggleDisability: (disable = !container.classList.contains('is-disabled')) => {
+      container.classList.toggle('is-disabled', disable)
+      return () => controller.toggleDisability(!disable)
     },
   }
 

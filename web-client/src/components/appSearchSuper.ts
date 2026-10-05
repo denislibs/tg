@@ -810,7 +810,7 @@ type SearchSuperItem = { element: HTMLElement, message: MyMessage }
 export type SearchSuperManagers = {
   messages: Pick<Managers['messages'], 'searchHistory' | 'searchCounters'>
   peers: Pick<Managers['peers'], 'fillMirror'>
-  groups: Pick<Managers['groups'], 'channelParticipants' | 'addMember' | 'removeMember' | 'unban'>
+  groups: Pick<Managers['groups'], 'channelParticipants' | 'addMember' | 'editBanned' | 'kickFromChat'>
   stories: Pick<Managers['stories'], 'pinnedStories'>
   // те же ручки, что просят `SavedDialogListManagers`/`StarGiftsProfileTabProps` у своих `managers`
   chats: Pick<Managers['chats'], 'savedDialogs'>

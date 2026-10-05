@@ -10,8 +10,8 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
-// topPostsLimit — сколько постов показывать в топе по просмотрам.
-const topPostsLimit = 10
+// recentPostsLimit — сколько недавних постов отдавать в recent_posts_interactions.
+const recentPostsLimit = 20
 
 // Interactor — сбор статистики канала.
 type Interactor struct{ repo Repo }
@@ -44,9 +44,6 @@ func (i *Interactor) ChannelStats(ctx context.Context, chatID, userID int64) (do
 	if err != nil {
 		return domain.ChannelStats{}, err
 	}
-	if summary.PostsCount > 0 {
-		summary.AvgReach = summary.TotalViews / summary.PostsCount
-	}
 
 	membersDaily, err := i.repo.MembersByDay(ctx, chatID)
 	if err != nil {
@@ -60,23 +57,25 @@ func (i *Interactor) ChannelStats(ctx context.Context, chatID, userID int64) (do
 	if err != nil {
 		return domain.ChannelStats{}, err
 	}
-	top, err := i.repo.TopPosts(ctx, chatID, topPostsLimit)
+	recent, err := i.repo.RecentPosts(ctx, chatID, recentPostsLimit)
 	if err != nil {
 		return domain.ChannelStats{}, err
 	}
 
 	return domain.ChannelStats{
+		Broadcast:     typ == "channel",
 		Summary:       summary,
 		MembersGrowth: cumulative(membersDaily),
+		JoinedByDay:   membersDaily,
 		ViewsByDay:    views,
 		PostsByDay:    posts,
-		TopPosts:      top,
+		RecentPosts:   recent,
 	}, nil
 }
 
-// PostStats собирает статистику одного поста канала (аналог tweb
-// stats.getMessageStats). Доступ — как у ChannelStats: создатель/админ канала
-// или (супер)группы. Числа и ряды считаются на лету из реальных данных.
+// PostStats собирает статистику одного поста канала (stats.getMessageStats).
+// Доступ — как у ChannelStats: создатель/админ канала или (супер)группы. Ряд
+// просмотров считается на лету из реальных данных.
 func (i *Interactor) PostStats(ctx context.Context, chatID, msgID, userID int64) (domain.PostStats, error) {
 	typ, err := i.repo.ChatType(ctx, chatID)
 	if err != nil {
@@ -102,31 +101,11 @@ func (i *Interactor) PostStats(ctx context.Context, chatID, msgID, userID int64)
 		return domain.PostStats{}, domain.ErrNotFound
 	}
 
-	views, forwards, err := i.repo.PostOverview(ctx, chatID, msgID)
-	if err != nil {
-		return domain.PostStats{}, err
-	}
-	reactions, err := i.repo.PostReactions(ctx, msgID)
-	if err != nil {
-		return domain.PostStats{}, err
-	}
 	viewsByDay, err := i.repo.PostViewsByDay(ctx, msgID)
 	if err != nil {
 		return domain.PostStats{}, err
 	}
-
-	var total int64
-	for _, rc := range reactions {
-		total += int64(rc.Count)
-	}
-
-	return domain.PostStats{
-		Views:          views,
-		Forwards:       forwards,
-		ReactionsTotal: total,
-		Reactions:      reactions,
-		ViewsByDay:     viewsByDay,
-	}, nil
+	return domain.PostStats{ViewsByDay: viewsByDay}, nil
 }
 
 // cumulative превращает суточные приросты в кумулятивный ряд (рост участников):

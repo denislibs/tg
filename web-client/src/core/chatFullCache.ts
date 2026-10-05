@@ -23,6 +23,7 @@
 // воркерный `peersManager`) и похода в сеть. Карточка сюда попадает только
 // тогда, когда её и так загрузили ради экрана.
 import type { ChannelFull, UserFull } from './peers/peer'
+import { isUser } from './peers/peerId'
 
 export type PeerFull = ChannelFull | UserFull
 
@@ -60,6 +61,22 @@ export function cachedPeerFull(peerId: PeerId): PeerFull | undefined {
  */
 export function cachedPeerTheme(peerId: PeerId): string | undefined {
   return fullMirror.get(peerId)?.theme_emoticon || undefined
+}
+
+/**
+ * Порт tweb `appProfileManager.canViewStatistics` (appProfileManager.ts:1235-1247):
+ * статистику чата можно смотреть, если в ЗАГРУЖЕННОЙ полной карточке стоит
+ * `pFlags.can_view_stats`. Проверки `stats_dc` нет — реквизит MTProto не
+ * производится (дата-центр один). Потребители — пункт «Статистика» меню ⋮
+ * шапки (`chat/topbar.ts`) и меню поста (`chat/contextMenu.ts`).
+ */
+export function canViewStatistics(peerId: PeerId): boolean {
+  if (isUser(peerId)) return false
+
+  const chatFull = fullMirror.get(peerId)
+  if (chatFull?._ !== 'channelFull') return false
+
+  return !!chatFull.pFlags?.can_view_stats
 }
 
 /**

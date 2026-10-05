@@ -19,6 +19,10 @@
     "jsonHash": "3f5984c6f830f7569b7a68aec8d47b1939336d6fbae491117fc92169afb495eb",
     "pngHash": "2804a1905598655f6193014e6a927ae4a1914613f48809663cc4c935534ea25a"
   },
+  "StatsEmoji": {
+    "jsonHash": "d182f15308984f2ed425cd37f72bb5cb1b1bd7ac80169301abd7ee87786b4bf2",
+    "pngHash": "612259359a35e6d726ae218091afd67abf475d7a4cca17b5ae27d51f95acb509"
+  },
   "TwoFactorSetupMonkeyIdle": {
     "jsonHash": "cafea184f44ab7c806bfea6881c5ed628c99141e83e84dd43331d06d6186950c",
     "pngHash": "8456a8d8d59bd64b01c221ba0edea5a8b0f8c03d490d18dedd4d38686da890aa"
@@ -34,6 +38,10 @@
   "UtyanDisappear": {
     "jsonHash": "c735da6b9dfcedb64a8e086be24ed272374c2b1df5b4f25eb18365e0fdd06d61",
     "pngHash": "4d5127e28b06e6203cfbc9fc761484ff0ab2000e56e37f3599ebbf3d5a3138a1"
+  },
+  "UtyanDiscussion": {
+    "jsonHash": "d011a13cdd4f49e7a47893db39dc96f2ee4b43ae8a1532122a50cbf3f01abf23",
+    "pngHash": "9cc324cc870e18cc3342cbbd2095dab9ae1f48494bb27f1959a3623e1afc7d79"
   },
   "UtyanLinks": {
     "jsonHash": "2248760134dc77e5b6ae25777aef8bd7a280038275a2ae9705fa4719458d37ef",

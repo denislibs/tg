@@ -629,8 +629,21 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // ключа tweb lang.ts — `Mention` (`aria-label` списка упоминаний) и
 // `GlobalAttachInlineRestricted` (запрет инлайна); `Chat.BotCommands` уже принесла Б-36.
 // Вместе с К-5 из main (+10 −18 +4 ключей, `plural` 56 → 63): ru 1676.
+// Пачка П-1 (0б-4 «Реакции», 0б-5 «Обсуждение», порт tweb `chatReactions.tsx`,
+// `chatDiscussion.tsx`): у ru +23 ключа tweb lang.ts — подписи режимов реакций
+// (`Enable{,All,Some}ReactionsInfo`, `DisableReactionsInfo`, `EnableReactions{,ChannelInfo}`,
+// `ReactionsAll`), строка обсуждения (`LinkedChannel`, `PeerInfo.Discussion.Add`) и вкладка
+// обсуждения (`DiscussionController.*`, `Discussion{ChannelHelp2,GroupHelp2,…}`,
+// `Discussion.Set.*`, `DiscussionLinkGroupAlertHistory`, `DiscussionUnlink*Alert`).
+// Пачка П-1, вкладка статистики `AppStatisticsTab` (0б-9, порт tweb `statistics.tsx`):
+// у ru +38 ключей tweb lang.ts — заголовки графиков (`*ChartTitle`), строки обзора
+// (`ViewsPerPost`… `PostingMembers`, `PublicShares`/`PrivateShares`), `GroupStats.Title`,
+// `RecentPosts`, `LoadingStats{,Description}`, `ViewStatistics`, `ZoomOut`,
+// `Chart.Tooltip.All` и `Views` (`plural` 62 → 63); −8 наших ключей снесённой
+// `ChannelStats.tsx` (`Statistics.{Forwards,MediaPost,MemberGrowth,Posts,PostsByDay,
+// SubscriberGrowth,TopPosts,TotalViews}`).
 const COMPOSITION = {
-  ru: { keys: 1695, plural: 63 },
+  ru: { keys: 1772, plural: 64 },
   uk: { keys: 842, plural: 35 },
   es: { keys: 813, plural: 34 },
   de: { keys: 814, plural: 35 },
@@ -833,8 +846,10 @@ const COMPOSITION = {
 // Б-13 волны 7 — у ru +17 ключей карточек пустой колонки, у остальных +4 (разбор — там же).
 // Пачкой П-6 волны 7 — у ru +9 ключей медленного режима и платных сообщений (разбор — там же).
 // Пачкой П-6 волны 7 — у ru +2 ключа автокомплита (разбор — там же).
+// Пачкой П-1 (0б-4, 0б-5) — у ru +23 ключа вкладок реакций и обсуждения (разбор — там же).
+// Пачкой П-1 (статистика, 0б-9) — у ru +38 ключей tweb и −8 наших (разбор — там же).
 const FINGERPRINT = {
-  ru: '01dfb38b',
+  ru: '651f2f01',
   uk: 'e72f8ee2',
   es: 'ff56151a',
   de: '39848741',

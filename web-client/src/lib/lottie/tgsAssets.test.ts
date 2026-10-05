@@ -207,7 +207,13 @@ describe('assets/tgs — состав статики не разъехался �
   // Тринадцатый — `Folders_Shared` (tweb `public/assets/tgs/Folders_Shared.json`
   // дословно): заставка вкладки ссылки папки (`sidebarLeft/tabs/sharedFolder.solid.tsx`,
   // план 2D, задача 25); PNG — тем же генератором.
-  it('в public/assets/tgs/ лежат все 13 json (Этап 0 + LoveLetter + Folders_Shared) и все 13 png (часть 2 фолбэка)', () => {
+  // Четырнадцатый — `StatsEmoji` (tweb `public/assets/tgs/StatsEmoji.json` дословно):
+  // заставка загрузки вкладки статистики (`sidebarRight/tabs/statistics.solid.tsx`,
+  // пачка П-1, 0б-9); PNG — тем же генератором.
+  // Пятнадцатый — `UtyanDiscussion` (tweb `public/assets/tgs/UtyanDiscussion.json`
+  // дословно): заставка вкладки обсуждения (`sidebarRight/tabs/chatDiscussion.solid.tsx`,
+  // П-1 0б-5); PNG — тем же генератором.
+  it('в public/assets/tgs/ лежат все 15 json (Этап 0 + LoveLetter + Folders_Shared + StatsEmoji + UtyanDiscussion) и все 15 png (часть 2 фолбэка)', () => {
     const files = readdirSync(TGS_DIR).sort()
     const names = [
       'Folders_1',
@@ -215,10 +221,12 @@ describe('assets/tgs — состав статики не разъехался �
       'Folders_Shared',
       'LoveLetter',
       'Mailbox',
+      'StatsEmoji',
       'TwoFactorSetupMonkeyIdle',
       'TwoFactorSetupMonkeyPeek',
       'TwoFactorSetupMonkeyTracking',
       'UtyanDisappear',
+      'UtyanDiscussion',
       'UtyanLinks',
       'UtyanPasscode',
       'UtyanSearch',

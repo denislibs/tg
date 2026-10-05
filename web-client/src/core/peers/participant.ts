@@ -59,16 +59,20 @@ export const isParticipantAdmin = (participant: ChannelParticipant | undefined) 
   !!participant && participantAdminPredicates.has(participant._)
 
 /**
- * Порт `canEditAdmin` (:4-11): создатель чата правит любого админа; иначе —
- * не-создателя, которого назначил я (`promoted_by === myId`).
+ * Порт `canEditAdmin(chat, participant, myId)` (:4-11): создатель чата правит
+ * любого; иначе — не-создателя, у которого нет назначившего (обычный участник,
+ * его ещё только назначают) или которого назначил я.
  *
- * `promoted_by`/`inviter_id` на проводе нет (шапка), а в схеме оригинала
- * `promoted_by` у админа ОБЯЗАТЕЛЕН — то есть ветка `!promotedBy` там не
- * срабатывает никогда, и «назначил ли его я» решает сравнение с моим id.
- * Нам сравнивать нечего: неизвестное читается как «нет», остаётся первая
- * половина условия. Аргументов `participant`/`myId` поэтому нет — они читались
- * только во второй половине.
+ * `promoted_by`/`inviter_id` на проводе нет (шапка): у админа назначивший
+ * неизвестен и читается как «не я» — правит его только создатель чата. У
+ * обычного участника назначившего нет и в оригинале, ветка `!promotedBy`
+ * срабатывает как есть. `myId` поэтому не читается — сравнивать не с чем.
  */
-export function canEditAdmin(chat: Chat | undefined) {
-  return !!chat && chat._ !== 'chatEmpty' && chat._ !== 'chatForbidden' && chat._ !== 'channelForbidden' && !!chat.pFlags?.creator
+export function canEditAdmin(chat: Chat | undefined, participant: ChannelParticipant | undefined) {
+  if(!chat || chat._ === 'chatEmpty' || chat._ === 'chatForbidden' || chat._ === 'channelForbidden') {
+    return false
+  }
+
+  return !!chat.pFlags?.creator ||
+    (!isParticipantCreator(participant) && !isParticipantAdmin(participant))
 }
