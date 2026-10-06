@@ -216,9 +216,13 @@ export interface MessagesDeps {
    *  `missing` — номера, которых в SSOT не было (tweb зовёт для них
    *  `fixDialogUnreadMentionsIfNoMessage`, :14055-14058). */
   onMessagesDeleted?: (peerId: number, deleted: MyMessage[], missing: number) => void
+  /** Бейдж ❤ диалога (`dialogsManager.getUnreadReactionsCount`) — гейт
+   *  `hadUnreadReactions` у `readMessages` (tweb appMessagesManager.ts:9566),
+   *  см. `MessagesCtx`. */
+  getUnreadReactionsCount?: (peerId: number) => number
 }
 
-export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium, meReady, isBroadcastChat, getPeer, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers, onMessagesDeleted }: MessagesDeps) {
+export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium, meReady, isBroadcastChat, getPeer, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers, onMessagesDeleted, getUnreadReactionsCount }: MessagesDeps) {
   // ── Граница маппинга ────────────────────────────────────────────────────────
   // `pFlags.out` производит СЕРВЕР (решение Р7 разбора отменено): после порта у
   // сообщения от лица канала автором на проводе становится сам канал, и прежней
@@ -428,7 +432,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     patchMsg(peerId, (m) => m.id === msgId, (m) => (m._ !== 'message' ? m : { ...m, factcheck }))
     emitFactCheckOps(peerId, msgId, factcheck)
   }
-  const ctx = { rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers }
+  const ctx = { rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers, getUnreadReactionsCount }
   // Локальной ссылкой (а не только спредом ниже) — её зовёт cacheLive, чтобы эхо
   // своей отправки убирало временный бабл из SSOT (порт tweb checkPendingMessage).
   const pending = newPendingMethods({

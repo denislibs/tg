@@ -19,7 +19,7 @@
 //   (6) удаление бабла и `destroy()` снимают наблюдение.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
-import { resetMessagesMirror } from '@core/history/messagesMirror'
+import { applyOpsToMirror, resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
 import { makeMessage } from '@core/messages/testMessage'
 import type { MyMessage } from '@core/models'
@@ -342,5 +342,94 @@ describe('ChatBubbles — наблюдатель непрочитанных', ()
     bubbles = undefined
     expect(observer.disconnects).toBe(before + 1)
     expect(observer.targets).toHaveLength(0)
+  })
+})
+
+// Наблюдатель СОДЕРЖИМОГО — порт tweb `'content'` (bubbles.ts:2720-2726,
+// :3405-3418, :7930/:8619-8631) в объёме непрочитанных реакций: моё сообщение
+// с непрочитанной реакцией, показавшись, уходит в `messages.readMessages`.
+describe('ChatBubbles — наблюдатель содержимого (непрочитанные реакции)', () => {
+  const reactions = (unread: boolean) => ({
+    _: 'messageReactions' as const,
+    results: [{ _: 'reactionCount' as const, reaction: { _: 'reactionEmoji' as const, emoticon: '👍' }, count: 1 }],
+    recent_reactions: [{
+      _: 'messagePeerReaction' as const,
+      ...(unread ? { pFlags: { unread: true as const } } : {}),
+      peer_id: { _: 'peerUser' as const, user_id: 9 }, date: 0,
+      reaction: { _: 'reactionEmoji' as const, emoticon: '👍' },
+    }],
+  })
+  const own = (id: number, unread: boolean | null): MyMessage => ({
+    ...makeMessage({ peerId: CHAT, fromId: 1, out: true, id, text: `моё ${id}`, createdAt: '2026-08-15T12:00:00Z' }),
+    ...(unread === null ? {} : { reactions: reactions(unread) }),
+  } as MyMessage)
+
+  function withReadMessages(messages: MyMessage[]) {
+    const managers = managersWith(messages)
+    // Чат прочитан: наблюдатель ИСТОРИИ на своих не стоит вовсе, и всё, что
+    // наблюдается, — это наблюдатель содержимого.
+    managers.getDialogReadState.mockResolvedValue({ readInboxMaxSeq: 99, unreadCount: 0 })
+    const readMessages = vi.fn(async () => {})
+    managers.messages.readMessages = readMessages
+    return Object.assign(managers, { readMessages })
+  }
+
+  it('показалось моё сообщение с непрочитанной реакцией — readMessages пачкой', async () => {
+    const managers = withReadMessages([own(11, true)])
+    bubbles = mountTestBubbles(chatContext(), managers)
+    await openFeed(bubbles)
+    await settle()
+
+    const bubble = bubbleOf(bubbles, 11)
+    expect(observerOf(bubble)).toBeDefined()
+    intersect(bubble)
+    await settle()
+
+    expect(managers.readMessages).toHaveBeenCalledWith(CHAT, [11])
+    // Наблюдение одноразовое (tweb :3346-3348).
+    expect(observerOf(bubble)).toBeUndefined()
+    expect(managers.markRead).not.toHaveBeenCalled()
+  })
+
+  it('без непрочитанной реакции содержимое не наблюдается', async () => {
+    const managers = withReadMessages([own(11, false), own(12, null)])
+    bubbles = mountTestBubbles(chatContext(), managers)
+    await openFeed(bubbles)
+    await settle()
+
+    expect(observerOf(bubbleOf(bubbles, 11))).toBeUndefined()
+    expect(observerOf(bubbleOf(bubbles, 12))).toBeUndefined()
+  })
+
+  // У нас кадр реакций доезжает до ленты правкой (`message_edit`) — тот же
+  // путь, что tweb `messages_reactions` (:1543, :1578-1580).
+  it('кадр с непрочитанной реакцией ставит уже отрисованный бабл под наблюдение', async () => {
+    const managers = withReadMessages([own(11, null)])
+    bubbles = mountTestBubbles(chatContext(), managers)
+    await openFeed(bubbles)
+    await settle()
+
+    const bubble = bubbleOf(bubbles, 11)
+    expect(observerOf(bubble)).toBeUndefined()
+
+    // Через ЗЕРКАЛО, как в жизни: оно же объявит `message_edit`, а отбор
+    // увиденного (`readUnreaded('content')`) читает сообщение оттуда.
+    applyOpsToMirror([{ op: 'patch', key: String(CHAT), msgId: 11, fields: { reactions: reactions(true) } }])
+    expect(observerOf(bubble)).toBeDefined()
+
+    intersect(bubble)
+    await settle()
+    expect(managers.readMessages).toHaveBeenCalledWith(CHAT, [11])
+  })
+
+  it('удаление бабла снимает наблюдение содержимого', async () => {
+    const managers = withReadMessages([own(11, true)])
+    bubbles = mountTestBubbles(chatContext(), managers)
+    await openFeed(bubbles)
+    await settle()
+
+    const bubble = bubbleOf(bubbles, 11)
+    bubbles.deleteMessagesByIds([makeFullMid(CHAT, 11)])
+    expect(observerOf(bubble)).toBeUndefined()
   })
 })

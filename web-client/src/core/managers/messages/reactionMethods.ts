@@ -164,7 +164,7 @@ function mapStarReaction(r: StarReactionWire): StarReactionInfo {
 // предыдущего состояния SSOT — то есть ровно владелец, до порождения операции.
 //
 // Эталон семантики слияния — core/reactions/messageReactions.test.ts.
-export function newReactionMethods({ rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers }: MessagesCtx) {
+export function newReactionMethods({ rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers, getUnreadReactionsCount }: MessagesCtx) {
   /** Операции `patch {reactions}` по всем окнам, где сообщение видно. Агрегат
    *  читается ИЗ SSOT после применения — операция несёт то же значение, что
    *  лежит у владельца, а не отдельно пересчитанное. */
@@ -311,6 +311,34 @@ export function newReactionMethods({ rest, patchMsg, getMeId, getMePremium, opWi
       const wasUnread = !!getUnreadReactions(message)
       if (message.pFlags.out && isUnread !== wasUnread) return isUnread
       return undefined
+    },
+
+    /**
+     * Порт tweb `appMessagesManager.readMessages` (:9519-9616) в объёме
+     * НЕПРОЧИТАННЫХ РЕАКЦИЙ: среди увиденных лентой сообщений есть моё с
+     * непрочитанной реакцией (`getUnreadReactions`), а у диалога горит ❤
+     * (`hadUnreadReactions`, :9566) — follow-up `readMentions(peerId, threadId,
+     * true)`, то есть `messages.readReactions` (:9607-9609). У нас это
+     * `POST /chats/{peer}/reactions/read`.
+     *
+     * Бейдж здесь НЕ трогается: у оригинала его обнуляет ответ ручки
+     * (`modifyCachedMentionsAndSave({addReaction: -count})`, :9640-9648), а наш
+     * сервер вместо `affectedHistory` шлёт моим устройствам кадры
+     * `updateMessageReactions` уже без `unread` — по ним бейдж снимает
+     * `unreadReactionsChange`. Локальный сброс сверху дал бы двойной −1.
+     *
+     * Не портировано: `messages.readMessageContents` (снятие `media_unread` у
+     * увиденных — у нас его владелец плеер, `core/mediaRead.ts`) и follow-up
+     * `messages.readMentions` (бейдж «@»), а с ними — `threadId` форума:
+     * сервер гасит непрочитанные реакции всего чата.
+     */
+    async readMessages(peerId: number, msgIds: number[]): Promise<void> {
+      const hasUnreadReaction = msgIds.some((id) => {
+        const message = readMsg(peerId, id)
+        return !!message && !!getUnreadReactions(message)
+      })
+      if (!hasUnreadReaction || !getUnreadReactionsCount?.(peerId)) return
+      await rest.post(`/chats/${peerId}/reactions/read`, {})
     },
 
     // Реакции: поставить/снять свою. Оптимистика в SSOT воркера (tweb sendReaction)

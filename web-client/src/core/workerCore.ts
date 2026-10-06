@@ -242,6 +242,9 @@ export function createWorkerCore() {
     // вычитание одно и повториться не может. `dialogs` объявлен ниже —
     // стрелка ленивая.
     onMessagesDeleted: (peerId, deleted, missing) => dialogs.applyDeletedMessages(peerId, deleted, missing),
+    // Бейдж ❤ строки — гейт сброса непрочитанных реакций (`messages.readMessages`,
+    // tweb `hadUnreadReactions`). Стрелка ленивая: `dialogs` объявлен ниже.
+    getUnreadReactionsCount: (peerId) => dialogs.getUnreadReactionsCount(peerId),
   })
   // Временный («неотправленный») бабл заводит владелец окна — messages (порт tweb
   // beforeMessageSending), наружу это обычные операции над окном (публикует их

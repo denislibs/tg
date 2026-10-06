@@ -293,3 +293,47 @@ describe('messages.unreadReactionsChange', () => {
     expect(mgr.unreadReactionsChange(evt(DM, 2, frame))).toBeUndefined()
   })
 })
+
+// Порт tweb `appMessagesManager.readMessages` (:9519-9616) в объёме реакций:
+// среди увиденных — моё сообщение с непрочитанной реакцией, у диалога горит ❤
+// (`hadUnreadReactions`, :9566) — сброс на сервере (`messages.readReactions`,
+// :9607-9609). Бейдж снимают кадры сервера, локального −1 здесь нет.
+describe('messages.readMessages', () => {
+  const unreadLike: MessageReactions = {
+    ...like,
+    recent_reactions: [{
+      _: 'messagePeerReaction', pFlags: { unread: true },
+      peer_id: { _: 'peerUser', user_id: 9 }, date: 0,
+      reaction: { _: 'reactionEmoji', emoticon: '👍' },
+    }],
+  }
+  async function setup(reactions: MessageReactions | undefined, badge: number) {
+    const wire = { ...makeRawMessage({ id: 2, peerId: DM, fromId: ME, out: true, text: 'моё' }), ...(reactions ? { reactions } : {}) }
+    const calls: string[] = []
+    const rest = {
+      get: async () => ({ messages: [wire as RawMessage], count: 1 }),
+      post: async (url: string) => { calls.push(`POST ${url}`); return {} },
+    } as unknown as RestClient
+    const mgr = newMessagesManager({ rest, getMeId: () => ME, getUnreadReactionsCount: () => badge })
+    await mgr.getHistory({ peerId: DM, offsetId: 0, addOffset: 0, limit: 40 })
+    return { mgr, calls }
+  }
+
+  it('увидено моё сообщение с непрочитанной реакцией — сброс ❤ на сервере', async () => {
+    const { mgr, calls } = await setup(unreadLike, 1)
+    await mgr.readMessages(DM, [cid(2)])
+    expect(calls).toEqual([`POST /chats/${DM}/reactions/read`])
+  })
+
+  it('у диалога ❤ не горит — сбрасывать нечего', async () => {
+    const { mgr, calls } = await setup(unreadLike, 0)
+    await mgr.readMessages(DM, [cid(2)])
+    expect(calls).toEqual([])
+  })
+
+  it('непрочитанных реакций среди увиденного нет — запроса нет', async () => {
+    const { mgr, calls } = await setup(like, 3)
+    await mgr.readMessages(DM, [cid(2)])
+    expect(calls).toEqual([])
+  })
+})

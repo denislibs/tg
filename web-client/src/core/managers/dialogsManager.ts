@@ -1630,6 +1630,13 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
      * владелец окна по `recent_reactions[].pFlags.unread` (tweb
      * `onUpdateMessageReactions` :10580-10604), сюда приходит только знак.
      */
+    /** Бейдж ❤ диалога — `dialog.unread_reactions_count`, который tweb
+     *  `readMessages` читает гейтом `hadUnreadReactions` (appMessagesManager.ts
+     *  :9566). Диалога нет — 0. */
+    getUnreadReactionsCount(peerId: number): number {
+      return findDialog(peerId)?.unread_reactions_count ?? 0
+    },
+
     modifyUnreadReactions(peerId: number, add: boolean): void {
       const cur = findDialog(peerId)
       if (!cur) return

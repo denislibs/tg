@@ -77,6 +77,7 @@ import middlewarePromise from '@helpers/middlewarePromise'
 import BatchProcessor, { type MiddlewareAwaiter } from '@helpers/batchProcessor'
 import indexOfAndSplice from '@helpers/array/indexOfAndSplice'
 import noop from '@helpers/noop'
+import getUnreadReactions from '@core/messages/getUnreadReactions'
 import cancelEvent from '@helpers/dom/cancelEvent'
 import { attachClickEvent } from '@helpers/dom/clickEvent'
 import contextMenuController from '@helpers/contextMenuController'
@@ -227,6 +228,18 @@ export interface BubblesManagers extends PeerTitleManagers {
      *  поднимается тест, которому реакции нужны только как разметка. */
     react?(peerId: number, msgId: number, emoji: string): Promise<void>
     unreact?(peerId: number, msgId: number, emoji: string): Promise<void>
+    /**
+     * Порт `appMessagesManager.readMessages(peerId, mids)` — отметка
+     * УВИДЕННОГО СОДЕРЖИМОГО (tweb bubbles.ts:3417 из `readUnreaded('content')`).
+     * У нас — в объёме непрочитанных реакций: владелец воркера сбрасывает их
+     * ручкой `POST /chats/{peer}/reactions/read`, если у диалога горит ❤
+     * (`core/managers/messages/reactionMethods.ts::readMessages`).
+     *
+     * Опциональна по той же причине, что `react`/`unreact`: без неё лента
+     * рисует реакции, но ❤ не гасит, — так поднимается тест, которому
+     * прочтение не нужно.
+     */
+    readMessages?(peerId: number, msgIds: number[]): Promise<void>
     /**
      * ГОЛОС В ОПРОСЕ — порт `appPollsManager.sendVote(message, indexes)`
      * (tweb usePollMutations.ts:52). Пустой список означает отзыв голоса, но
@@ -539,9 +552,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
   // `new SuperIntersectionObserver({root: this.scrollable.container})`
   // раздаёт свои записи восьми колбэкам ленты (непрочитанные, непрочитанное
   // содержимое, просмотры, метрики чтения, эффекты стикера и сообщения,
-  // подсказка guest-chat). У нас колбэка ДВА — непрочитанные
-  // (`unreadedObserverCallback`) и просмотры поста (`viewsObserverCallback`);
-  // остальные шесть приедут вместе со своими подсистемами. Прежде здесь стоял
+  // подсказка guest-chat). У нас колбэка ТРИ — непрочитанные
+  // (`unreadedObserverCallback`), непрочитанное содержимое
+  // (`unreadedContentObserverCallback`, в объёме реакций) и просмотры поста
+  // (`viewsObserverCallback`); остальные пять приедут вместе со своими
+  // подсистемами. Прежде здесь стоял
   // голый `IntersectionObserver` с единственным колбэком — «мультиплексор без
   // второго клиента»; клиент появился (просмотры), и второй наблюдатель рядом
   // был бы не портом, а нашей развилкой: у оригинала вопрос «что сейчас видно»
@@ -552,11 +567,17 @@ export default class ChatBubbles implements BubbleGroupsHost {
   // набор УВИДЕННЫХ номеров, ждущих отправки.
   private unreaded = new Map<HTMLElement, number>()
   private unreadedSeen = new Set<number>()
+  // tweb :751/:753 — та же пара для наблюдателя СОДЕРЖИМОГО (`'content'`):
+  // мои сообщения с непрочитанной реакцией.
+  private unreadedContent = new Map<HTMLElement, number>()
+  private unreadedContentSeen = new Set<number>()
   // tweb :561 — «отметка уже летит»; пока летит, вторую не начинаем. У
   // оригинала поле объявлено `Promise<void>`, у нас — `unknown`: ответ нашей
   // ручки не пустой (`{ok: true}`), а гасить его лишним `.then(noop)` значило
   // бы завести строку ради типа.
   private readPromise?: Promise<unknown>
+  // tweb :761 — «отметка содержимого уже летит», пара к `readPromise`.
+  private readContentPromise?: Promise<unknown>
   /** tweb :759 — чей это набор непрочитанных (см. `isUnreadedChatChanged`). */
   private unreadedChat?: { peerId: PeerId, threadId?: number, monoforumThreadId?: PeerId }
   // ─── просмотры поста канала (tweb bubbles.ts:601-602) ─────────────────────
@@ -1914,8 +1935,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // (рубеж дедуплится, `connectionManager.ts:178`).
     const maxBubbleMid = this.maxBubbleMid(message)
     const setUnreadObserver = !message.pFlags?.out && isUnreadByReadCursor(this.renderReadMaxSeq, maxBubbleMid)
-      ? (element: HTMLElement) => this.setUnreadObserver(element, maxBubbleMid)
+      ? (element: HTMLElement) => this.setUnreadObserver('history', element, maxBubbleMid)
       : undefined
+    // tweb :7930, :8619-8621/:8629-8631 — наблюдатель СОДЕРЖИМОГО: моё
+    // сообщение с непрочитанной реакцией. Узел — сам бабл, номер — у
+    // сообщения, несущего реакции (`reactionsMessage`: главное альбома).
+    // Половина про упоминания (`unreadMention`) — см. секцию отметки прочтения.
+    const unreadReactions = getUnreadReactions(message)
+    const reactionsMid = (this.mainGroupedMessage(message) ?? message).id
 
     // Порт tweb :6708-6712 (`!isMessage && !SERVICE_AS_REGULAR.has(action._)`)
     // и :7293-7301 (`returnService` — ветка возвращает бабл СРАЗУ, до медиа,
@@ -1932,6 +1959,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     if(message._ === 'messageService' && getMessageKind(message) === 'service') {
       const serviceBubble = this.renderServiceMessage(message)
       setUnreadObserver?.(serviceBubble)
+      if(unreadReactions) this.setUnreadObserver('content', serviceBubble, reactionsMid)
       return serviceBubble
     }
 
@@ -1964,6 +1992,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
     if(!this.chat.isBroadcast) {
       setUnreadObserver?.(bubble)
     }
+
+    if(unreadReactions) this.setUnreadObserver('content', bubble, reactionsMid)
 
     // ПОСТ КАНАЛА — порт всего блока tweb :7671-7691 одним куском, как в
     // оригинале: класс, кнопка «переслать» сбоку и наблюдение просмотров живут
@@ -4862,19 +4892,23 @@ export default class ChatBubbles implements BubbleGroupsHost {
   // прочитанным, едва тот коснулся низа, а сообщение, до которого пользователь
   // домотал в середине истории, не считает вовсе.
   //
-  // Порт: bubbles.ts:2289-2295 (колбэк), :2914-2926 (`onUnreadedInViewport`),
-  // :2941-3012 (`readUnreaded`), :6433-6443 (`setUnreadObserver`).
+  // Порт: bubbles.ts:2712-2726 (колбэки), :3339-3350 (`onUnreadedInViewport`),
+  // :3365-3440 (`readUnreaded`), :7456-7466 (`setUnreadObserver`).
   //
-  // НЕ ПОРТИРОВАН наблюдатель ВТОРОГО типа — `'content'`
-  // (`unreadedContent`/`unreadedContentSeen`/`readContentPromise`,
-  // :2297-2303, :2979-2992). Он отмечает прочитанными УПОМИНАНИЯ и
-  // НЕПРОЧИТАННЫЕ РЕАКЦИИ (`isMentionUnread(message) ||
-  // getUnreadReactions(message)`), а у нас нет ни того факта, ни другого:
-  // непрочитанная реакция на конкретном сообщении в модели отсутствует, а
-  // `pFlags.media_unread` («прослушано») уже принадлежит другому владельцу —
-  // плееру (`core/mediaRead.ts::markMediaPlayed` ← `components/audio.ts`), ровно
-  // как в tweb, где ту же точку гасит `AudioElement`. Заводить здесь второй путь
-  // к тому же факту нельзя.
+  // Наблюдатель ВТОРОГО типа — `'content'` (`unreadedContent`/
+  // `unreadedContentSeen`/`readContentPromise`) — портирован в объёме
+  // НЕПРОЧИТАННЫХ РЕАКЦИЙ (`getUnreadReactions(message)`): моё сообщение с
+  // непрочитанной реакцией, показавшись во вьюпорте, уходит пачкой в
+  // `messages.readMessages` (порт `appMessagesManager.readMessages`), и тот
+  // сбрасывает ❤ на сервере. Бейдж снимают кадры сервера, а не лента.
+  //
+  // Половина про УПОМИНАНИЯ (`isMentionUnread(message)`) не портирована: у
+  // оригинала она уходит в `messages.readMessageContents` (снятие
+  // `media_unread`) и follow-up `messages.readMentions` (сброс «@»). Первого
+  // факта у нас уже есть владелец — плеер (`core/mediaRead.ts::markMediaPlayed`
+  // ← `components/audio.ts`, WS `read_media`), и второй путь к нему здесь
+  // заводить нельзя; ручки второго (сброс «@» без движения горизонта) у
+  // сервера нет.
   //
 
   /** Порт tweb :2289-2295. */
@@ -4885,7 +4919,16 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // У оригинала проверки нет (`strictNullChecks` он не включает): там узел
     // без записи в карте отсекается самим мультиплексором.
     if(mid === undefined) return
-    this.onUnreadedInViewport(target, mid)
+    this.onUnreadedInViewport('history', target, mid)
+  }
+
+  /** Порт tweb :2720-2726. */
+  private unreadedContentObserverCallback = (entry: IntersectionObserverEntry) => {
+    if(!entry.isIntersecting) return
+    const target = entry.target as HTMLElement
+    const mid = this.unreadedContent.get(target)
+    if(mid === undefined) return
+    this.onUnreadedInViewport('content', target, mid)
   }
 
   /**
@@ -4909,16 +4952,23 @@ export default class ChatBubbles implements BubbleGroupsHost {
     void this.sendViewCountersDebounced?.()
   }
 
-  /** Порт tweb `onUnreadedInViewport` (:2914-2926) в объёме типа `'history'`. */
-  private onUnreadedInViewport(target: HTMLElement, mid: number) {
-    this.unreadedSeen.add(mid)
-    this.observer?.unobserve(target, this.unreadedObserverCallback)
-    this.unreaded.delete(target)
-    this.readUnreaded()
+  /** Порт tweb `onUnreadedInViewport` (:3339-3350). */
+  private onUnreadedInViewport(type: 'history' | 'content', target: HTMLElement, mid: number) {
+    let { unreadedSeen, unreadedObserverCallback, unreaded } = this
+    if(type === 'content') {
+      unreadedSeen = this.unreadedContentSeen
+      unreadedObserverCallback = this.unreadedContentObserverCallback
+      unreaded = this.unreadedContent
+    }
+
+    unreadedSeen.add(mid)
+    this.observer?.unobserve(target, unreadedObserverCallback)
+    unreaded.delete(target)
+    this.readUnreaded(type)
   }
 
   /**
-   * Порт tweb `readUnreaded` (:2941-3012) в объёме типа `'history'`.
+   * Порт tweb `readUnreaded` (:3365-3440).
    *
    * Ветка «увиденное дотянулось до низа окна» (:2958-2966) — не оптимизация:
    * пока лента внизу, прочитанным считается ВЕСЬ чат, включая то, что ещё не
@@ -4927,8 +4977,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * Ветка `this.unreaded.forEach` (:2968-2972) снимает наблюдение со всего, что
    * рубеж уже накрыл: узел ниже увиденного читать отдельным кругом незачем.
    *
-   * Расхождения: гейт `chat.isPreview` (:2942) и лог (:2974-2975, :3001)
-   * предмета не имеют; ветка `'content'` — см. комментарий секции выше.
+   * Ветка `'content'` (:3405-3418) отбирает из увиденного то, что ещё
+   * непрочитано на момент отправки, и отдаёт пачкой `messages.readMessages`;
+   * в объёме — см. комментарий секции выше.
+   *
+   * Расхождения: гейт `chat.isPreview` (:3366) и лог предмета не имеют.
    */
   /** tweb :3352-3362 — whether `this.chat` has moved on from the chat the unreaded mids were
    *  collected in. True in the window between the synchronous peer flip in `Chat.setPeer` and
@@ -4943,72 +4996,91 @@ export default class ChatBubbles implements BubbleGroupsHost {
     )
   }
 
-  private readUnreaded() {
-    if(this.readPromise) return
+  private readUnreaded(type: 'history' | 'content') {
+    const readPromiseKey = type === 'history' ? 'readPromise' : 'readContentPromise'
+    if(this[readPromiseKey]) return
+
+    const unreadedSeen = type === 'history' ? this.unreadedSeen : this.unreadedContentSeen
 
     const middleware = this.getMiddleware()
-    this.readPromise = idleController.getFocusPromise().then(async() => {
-      // like a failed middleware, a stale unreadedChat leaves `this.readPromise` latched —
+    this[readPromiseKey] = idleController.getFocusPromise().then(async() => {
+      // like a failed middleware, a stale unreadedChat leaves `this[readPromiseKey]` latched —
       // `cleanup()` is what resets both the promise and the sets
       if(!middleware() || this.isUnreadedChatChanged()) return
 
       const peerId = this.peerId
 
-      let maxId = Math.max(...Array.from(this.unreadedSeen))
+      let callback: () => Promise<unknown>
+      if(type === 'history') {
+        let maxId = Math.max(...Array.from(unreadedSeen))
 
-      if(this.scrollable.loadedAll.bottom) {
-        const rendered = this.getRenderedHistory('desc', true)
-        const bubblesMaxId = rendered.length ? splitFullMid(rendered[0]).mid : -1
-        if(maxId >= bubblesMaxId) {
-          maxId = Math.max(await this.managers.dialogs.getHistoryMaxSeq(peerId), maxId)
-          if(!middleware()) return
+        if(this.scrollable.loadedAll.bottom) {
+          const rendered = this.getRenderedHistory('desc', true)
+          const bubblesMaxId = rendered.length ? splitFullMid(rendered[0]).mid : -1
+          if(maxId >= bubblesMaxId) {
+            maxId = Math.max(await this.managers.dialogs.getHistoryMaxSeq(peerId), maxId)
+            if(!middleware()) return
+          }
         }
+
+        this.unreaded.forEach((mid, target) => {
+          if(mid <= maxId) {
+            this.onUnreadedInViewport('history', target, mid)
+          }
+        })
+
+        callback = () => this.managers.realtime.markRead({ peerId, upToId: maxId })
+      } else {
+        // tweb :3405-3417. Второе слагаемое оригинала (`isMentionUnread`) —
+        // см. комментарий секции.
+        const readContents: number[] = []
+        for(const mid of this.unreadedContentSeen) {
+          const message = this.getMessage(mid)
+          if(message && getUnreadReactions(message)) {
+            readContents.push(mid)
+          }
+        }
+
+        callback = () => this.managers.messages.readMessages?.(peerId, readContents) ?? Promise.resolve()
       }
 
-      this.unreaded.forEach((mid, target) => {
-        if(mid <= maxId) {
-          this.onUnreadedInViewport(target, mid)
-        }
-      })
+      unreadedSeen.clear()
 
-      this.unreadedSeen.clear()
-
-      const callback = () => this.managers.realtime.markRead({ peerId, upToId: maxId })
-
-      // tweb :2997-3009: отказ — один повтор, и в любом исходе замок снимается,
+      // tweb :3423-3437: отказ — один повтор, и в любом исходе замок снимается,
       // а накопившееся за время полёта уходит следующим кругом. `.catch(noop)`
-      // на повторе — НАША строка: `markRead` у нас RPC-промис, и его
-      // необработанный отказ шумел бы в консоли.
+      // на повторе — НАША строка: ручки у нас RPC-промисы, и их необработанный
+      // отказ шумел бы в консоли.
       return callback().catch(() => {
         void callback().catch(noop)
       }).finally(() => {
         if(!middleware()) return
 
-        this.readPromise = undefined
+        this[readPromiseKey] = undefined
 
-        if(this.unreadedSeen.size) {
-          this.readUnreaded()
+        if(unreadedSeen.size) {
+          this.readUnreaded(type)
         }
       })
     })
   }
 
   /**
-   * Порт tweb `setUnreadObserver` (:6433-6443) в объёме типа `'history'`.
+   * Порт tweb `setUnreadObserver` (:7456-7466).
    *
    * Аргумента `bubble` рядом с `element` здесь нет: в оригинале он нужен только
    * ради `mid ??= bubble.maxBubbleMid` (:6435), а единственный оставшийся у нас
    * вызыватель номер знает и передаёт сам.
    */
-  private setUnreadObserver(element: HTMLElement, mid: number) {
+  private setUnreadObserver(type: 'history' | 'content', element: HTMLElement, mid: number) {
     if(!this.observer) return
 
     // tweb :7458-7462 — registration always happens while rendering the current chat, so this
     // snapshot is the authoritative owner of every mid in the unreaded maps/sets
     const { peerId, threadId, monoforumThreadId } = this.chat
     this.unreadedChat = { peerId, threadId, monoforumThreadId }
-    this.observer.observe(element, this.unreadedObserverCallback)
-    this.unreaded.set(element, mid)
+    this.observer.observe(element, type === 'history' ? this.unreadedObserverCallback : this.unreadedContentObserverCallback)
+    const unreaded = type === 'history' ? this.unreaded : this.unreadedContent
+    unreaded.set(element, mid)
   }
 
   /** Порт tweb `loadMoreHistory` (bubbles.ts:4004).
@@ -6078,6 +6150,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
     const bubble = this.getBubble(makeFullMid(this.peerId, message.id))
     if (!bubble) return
 
+    // tweb :1543, :1578-1580 — кадр реакций (у нас он приезжает правкой, см.
+    // докблок) с непрочитанной реакцией ставит бабл под наблюдатель
+    // содержимого; уже стоящий не перевешивается (тот же гейт, :13456).
+    if (getUnreadReactions(message) && !this.unreadedContent.has(bubble)) {
+      this.setUnreadObserver('content', bubble, message.id)
+    }
+
     // ПИЛЮЛЯ: у неё нет ни тела `.message`, ни классов от `bubbleClasses`, и
     // `classesFor` ниже стёр бы `service`, превратив её в пустой обычный бабл.
     // tweb этой ловушки не знает: там правка ПЕРЕСОЗДАЁТ бабл целиком
@@ -6127,7 +6206,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
       bubble,
       bubbleContainer,
       messageDiv,
-      observedMid === undefined ? undefined : (element) => this.setUnreadObserver(element, observedMid),
+      observedMid === undefined ? undefined : (element) => this.setUnreadObserver('history', element, observedMid),
     )
     this.addMessageSpoilerOverlay(messageDiv)
   }
@@ -6186,6 +6265,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
             this.unreaded.delete(element)
           }
         }
+        // tweb :4957-4959 — наблюдатель содержимого: узел — сам бабл.
+        this.observer.unobserve(bubble, this.unreadedContentObserverCallback)
+        this.unreadedContent.delete(bubble)
         // tweb :4321-4322 — просмотры своей парой: наблюдаемый узел здесь сам
         // бабл (:7685), а накопленный номер уходит из набора, чтобы дебаунс не
         // зарегистрировал просмотр удалённого поста.
@@ -6467,6 +6549,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.observer?.disconnect()
     this.unreaded.clear()
     this.unreadedSeen.clear()
+    this.unreadedContent.clear()
+    this.unreadedContentSeen.clear()
     this.unreadedChat = undefined
     // tweb bubbles.ts:4982 — накопленные видимые посты принадлежат ПРОШЛОМУ окну.
     this.viewsMids.clear()
@@ -6477,6 +6561,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // `appDownloadManager`; у нас он ленточный — см. поле `uploads`.
     this.uploads.clear()
     this.readPromise = undefined
+    this.readContentPromise = undefined
     this.renderReadMaxSeq = undefined
     this.getHistoryTopPromise = this.getHistoryBottomPromise = undefined
     // tweb bubbles.ts:4960 — невостребованный сдвиг градиента принадлежит

@@ -376,6 +376,40 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
     expect(String((fetch.mock.calls[0] as unknown[])[0])).toContain('/peer_dialogs')
   })
 
+  // min-кадр (общее тело всем участникам группы) флага `unread` не несёт и
+  // бейджа не двигает — перечитывать строку ради него значило бы запрос
+  // `/peer_dialogs` на каждого участника, у кого сообщения нет в памяти.
+  it('min-кадр реакции на сообщение вне памяти → строку НЕ перечитывать', async () => {
+    await bootWithSeededDialog()
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ _: 'messages.peerDialogs', dialogs: [], messages: [], chats: [], users: [] }), { status: 200 }))
+    vi.stubGlobal('fetch', fetch)
+
+    const frame = reactionFrame(false)
+    capturedConnDeps!.onFrame('reaction', { ...frame, reactions: { ...frame.reactions, pFlags: { min: true } } })
+
+    // Перечитывание идёт пачкой через `pause(0)` и асинхронный REST — ждём с
+    // запасом, иначе отсутствие запроса доказывалось бы раньше, чем он ушёл бы.
+    await new Promise((r) => setTimeout(r, 50))
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  // Порт tweb `readMessages` (appMessagesManager.ts:9566, :9607-9609): лента
+  // увидела моё сообщение с непрочитанной реакцией — сброс ❤ на сервере, но
+  // только пока бейдж горит (`hadUnreadReactions`). Гейт читает владелец строки
+  // — проводка `getUnreadReactionsCount` в workerCore.
+  it('увиденная непрочитанная реакция → POST reactions/read, пока горит ❤', async () => {
+    const { core } = await bootWithSeededDialog()
+    await seedHistory(core, [makeRawMessage({ id: 5, peerId: 1, fromId: 1, out: true, text: 'моё', createdAt: '2026-08-01T00:00:01Z' })])
+    capturedConnDeps!.onFrame('reaction', reactionFrame(true))
+    const fetch = vi.fn(async () => new Response(JSON.stringify({}), { status: 200 }))
+    vi.stubGlobal('fetch', fetch)
+
+    await core.registry.messages.readMessages(1, [generateMessageId(5)])
+
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(String((fetch.mock.calls[0] as unknown[])[0])).toContain('/chats/1/reactions/read')
+  })
+
   // Удаление сообщения, которого нет в памяти, при ненулевом ❤ — строку
   // перечитать (tweb handleDeletedMessages → fixDialogUnreadMentionsIfNoMessage):
   // счёт `missing` доезжает от владельца окна до владельца строки.
