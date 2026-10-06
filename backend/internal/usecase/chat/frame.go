@@ -406,11 +406,14 @@ func markMinAggregates(msg map[string]any) {
 // Признака `for_me` («удалить у себя») здесь больше нет: в схеме его нет, и
 // предмета у него не было — «удалено у меня» это тот же кадр, просто
 // разосланный ОДНОМУ получателю. Потребителей у поля не нашлось ни одного.
-func deletePayload(peer domain.PeerID, seq int64) map[string]any {
+//
+// Номеров может быть несколько: очистка истории и удаление диалога уходят
+// пачками номеров (как updateDeleteMessages оригинала на messages.deleteHistory).
+func deletePayload(peer domain.PeerID, seqs ...int64) map[string]any {
 	return map[string]any{
 		"_":         domain.UpdateDeletePeerMessagesTag,
 		"peer":      domain.NewPeer(peer),
-		"messages":  []int64{seq},
+		"messages":  seqs,
 		"pts_count": domain.PtsCountOne,
 	}
 }

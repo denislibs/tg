@@ -265,6 +265,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/chats/{peerID}/search_counters", ch.SearchCounters)
 		pr.Post("/chats/{peerID}/read", ch.Read)
 		pr.Post("/chats/{peerID}/clear", ch.ClearHistory)
+		pr.Delete("/chats/{peerID}/history", ch.DeleteDialog) // messages.deleteHistory just_clear=false
 		pr.Get("/sync", ch.Sync)
 		pr.Post("/chats/{peerID}/messages/{msgSeq}/reactions", ch.AddReaction)
 		pr.Delete("/chats/{peerID}/messages/{msgSeq}/reactions/{emoji}", ch.RemoveReaction)

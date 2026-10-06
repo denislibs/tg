@@ -913,37 +913,6 @@ func (i *Interactor) NextMention(ctx context.Context, chatID, userID, afterSeq i
 	return i.chats.NextMention(ctx, chatID, userID, afterSeq)
 }
 
-// ClearHistory очищает историю чата у себя (Telegram deleteHistory just_clear):
-// поднимает персональный горизонт участника до текущего максимума seq чата —
-// сообщения с seq<=горизонта больше не отдаются в истории этому пользователю и
-// не удаляются у других. Заодно обнуляет непрочитанное. Не член → ErrNotFound.
-func (i *Interactor) ClearHistory(ctx context.Context, chatID, userID int64) error {
-	ok, err := i.chats.IsMember(ctx, chatID, userID)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return domain.ErrNotFound
-	}
-	return i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		maxSeq, e := i.chats.MaxSeq(ctx, chatID)
-		if e != nil {
-			return e
-		}
-		if e := i.chats.SetClearedSeq(ctx, chatID, userID, maxSeq); e != nil {
-			return e
-		}
-		// Всё «до горизонта» считается прочитанным: read-маркер и непрочитанное
-		// сдвигаются к максимуму (иначе бейдж застынет на скрытых сообщениях).
-		if e := i.chats.SetRead(ctx, chatID, userID, maxSeq, 0); e != nil {
-			return e
-		}
-		// ...включая непрочитанные упоминания — иначе «@»-бейдж застынет.
-		_, e = i.chats.ClearMentions(ctx, chatID, userID, maxSeq)
-		return e
-	})
-}
-
 // ReadReactions гасит ВСЕ непрочитанные реакции на сообщениях участника в
 // чате (Telegram messages.readReactions — POST /chats/{chatID}/reactions/read),
 // не трогая горизонт прочтения. Его устройствам — кадры реакций затронутых
