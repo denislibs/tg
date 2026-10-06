@@ -14,6 +14,7 @@ import { RT } from '@core/realtime/events'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import { resetMessagesMirror, setMirrorHistoryCount, winKey } from '@core/history/messagesMirror'
 import { useChatsStore } from '@stores/chatsStore'
+import { useAppStateStore } from '@stores/appState'
 import mediaSizes, { ScreenSize } from '@core/dom/mediaSizes'
 import contextMenuController from '@helpers/contextMenuController'
 import appImManager, { LEFT_COLUMN_ACTIVE_CLASSNAME } from '@lib/appImManager'
@@ -133,7 +134,7 @@ function makeChat(options: FakeChatOptions): FakeChat {
     openAutoDeleteMessagesCustomTimePopup: vi.fn(),
     fullPeer: () => fullPeer,
     selection: { isSelecting: false, toggleSelection: vi.fn(), cancelSelection: vi.fn(), toggleByElement: vi.fn() },
-    bubbles: { getRenderedLength: () => renderedLength ?? 1 },
+    bubbles: { getRenderedLength: () => renderedLength ?? 1, getMiddleware: () => () => true },
     // статус и звонки — настоящий синглтон (блоки L и H), переходы — дублёры
     appImManager: Object.assign(Object.create(appImManager) as typeof appImManager, {
       setInnerPeer: vi.fn(),
@@ -720,6 +721,83 @@ describe('ChatTopbar: плашки и setFloating (tweb :1645-1683)', () => {
     useLivestreamStore.getState().setActive(ALICE, true)
     const dm = await open(makeChat({ peerId: ALICE }))
     expect(q(dm, '.pinned-live').classList.contains('hide')).toBe(true)
+  })
+})
+
+describe('ChatTopbar: плашка заявок (`chat/requests.solid.tsx`, tweb :1098-1115, :1429, :1505-1528)', () => {
+  const groupFull = (recent?: number[], pending = 0): PeerFull => ({
+    _: 'channelFull', id: 100, about: '', read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0, chat_photo: null,
+    ...(recent ? { recent_requesters: recent, requests_pending: pending } : {}),
+  })
+  const plate = (topbar: ChatTopbar) => q(topbar, '.pinned-requests')
+
+  beforeEach(() => {
+    useAppStateStore.setState({ hideChatJoinRequests: {} })
+  })
+
+  it('видна, когда в карточке есть `recent_requesters`: стек лиц и «N заявок»; клик — вкладка заявок', async() => {
+    saveChatFull(GROUP, groupFull([ALICE, BOB], 5))
+    const topbar = await open(makeChat({ peerId: GROUP }))
+    await vi.waitFor(() => expect(plate(topbar).classList.contains('hide')).toBe(false))
+    expect(plate(topbar).querySelectorAll('.stacked-avatars-avatar-container')).toHaveLength(2)
+    expect(plate(topbar).textContent).toContain('5 Join Requests')
+
+    const tab = { open: vi.fn(async() => {}) }
+    sidebar.createTab.mockReturnValue(tab)
+    plate(topbar).querySelector<HTMLElement>('.pinned-requests-primary-button')!.click()
+    await vi.waitFor(() => expect(tab.open).toHaveBeenCalledWith(-GROUP))
+    expect(sidebar.toggleSidebar).toHaveBeenCalledWith(true)
+  })
+
+  it('без заявок плашки нет', async() => {
+    saveChatFull(GROUP, groupFull())
+    const topbar = await open(makeChat({ peerId: GROUP }))
+    expect(plate(topbar).classList.contains('hide')).toBe(true)
+  })
+
+  it('крестик скрывает на сутки (State `hideChatJoinRequests`), кадр заявок показывает снова', async() => {
+    saveChatFull(GROUP, groupFull([ALICE], 1))
+    const topbar = await open(makeChat({ peerId: GROUP }))
+    await vi.waitFor(() => expect(plate(topbar).classList.contains('hide')).toBe(false))
+
+    plate(topbar).querySelector<HTMLElement>('.pinned-requests-close')!.click()
+    expect(plate(topbar).classList.contains('hide')).toBe(true)
+    const hiddenAt = useAppStateStore.getState().hideChatJoinRequests[GROUP]
+    expect(hiddenAt).toBeGreaterThan(Date.now() - 1000)
+
+    // повторное открытие в пределах суток — скрыта
+    const again = await open(makeChat({ peerId: GROUP }))
+    expect(plate(again).classList.contains('hide')).toBe(true)
+
+    // через сутки — снова видна
+    useAppStateStore.setState({ hideChatJoinRequests: { [GROUP]: hiddenAt - 86_400_000 } })
+    const later = await open(makeChat({ peerId: GROUP }))
+    await vi.waitFor(() => expect(plate(later).classList.contains('hide')).toBe(false))
+
+    // кадр заявок (воркер снял скрытие) — плашка встаёт с новым числом
+    rootScope.dispatchEventSingle(RT.chatRequests, { chatId: -GROUP, recentRequesters: [BOB], requestsPending: 2 })
+    await vi.waitFor(() => expect(plate(again).classList.contains('hide')).toBe(false))
+    expect(plate(again).textContent).toContain('2 Join Requests')
+  })
+
+  it('кадр заявок чужого чата плашку не трогает; пустые заявители — снимают', async() => {
+    saveChatFull(GROUP, groupFull([ALICE], 1))
+    const topbar = await open(makeChat({ peerId: GROUP }))
+    await vi.waitFor(() => expect(plate(topbar).classList.contains('hide')).toBe(false))
+
+    rootScope.dispatchEventSingle(RT.chatRequests, { chatId: 999, recentRequesters: [], requestsPending: 0 })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(plate(topbar).classList.contains('hide')).toBe(false)
+
+    rootScope.dispatchEventSingle(RT.chatRequests, { chatId: -GROUP, recentRequesters: [], requestsPending: 0 })
+    await vi.waitFor(() => expect(plate(topbar).classList.contains('hide')).toBe(true))
+  })
+
+  it('карточки ещё нет — плашка встаёт, когда карточка приедет в зеркало', async() => {
+    const topbar = await open(makeChat({ peerId: GROUP }))
+    expect(plate(topbar).classList.contains('hide')).toBe(true)
+    saveChatFull(GROUP, groupFull([ALICE], 1))
+    await vi.waitFor(() => expect(plate(topbar).classList.contains('hide')).toBe(false))
   })
 })
 
