@@ -282,7 +282,7 @@ describe('вкладка «Изменить» — строки по виду ч�
   })
 
   // `editChat.tsx:700-708`: строка «Заявки» — у админа с правом приглашать и
-  // только при `requests_pending`; сервер счётчика пока не шлёт (Б-115)
+  // только при `requests_pending` (карточка зрителя с `invite_users`)
   it('«Заявки» — только при `requests_pending`; счётчики секции участников — как у оригинала', async() => {
     const tab = await open(
       group({ admin_rights: ADMIN_ALL, participants_count: 1234 }),

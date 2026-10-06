@@ -68,7 +68,7 @@ const CHANNEL: PeerId = -200
 /** группа, где я создатель (`manage_call`), и канал, где я создатель */
 const MY_GROUP: PeerId = -300
 const MY_CHANNEL: PeerId = -400
-/** группа больше 100 участников — «N онлайн» не считается (Б-84) */
+/** группа больше 100 участников — «N онлайн» берётся ручкой `getOnlines` */
 const BIG_GROUP: PeerId = -500
 const BOB: PeerId = 9
 const CAROL: PeerId = 10

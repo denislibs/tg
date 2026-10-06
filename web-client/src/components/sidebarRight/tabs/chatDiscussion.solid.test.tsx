@@ -252,6 +252,21 @@ describe('вкладка «Группа обсуждения» — сеть в �
     expect(channels.unlinkDiscussion).toHaveBeenCalledWith(-CHANNEL_ID)
   })
 
+  it('сторона группы (Б-119): привязанный канал строкой, «Отвязать канал» — ручкой канала', async() => {
+    const tab = slider.createTab(AppChatDiscussionTab)
+    await tab.open({ chatId: PRIVATE_GROUP, linkedChatId: CHANNEL_ID })
+    await settle()
+
+    expect(text(tab.title)).toBe(lang['DiscussionController.Group.Title'])
+    expect(rows(tab).map((row) => row.dataset.peerId)).toEqual([String(-CHANNEL_ID)])
+
+    click(button(tab, 'DiscussionUnlinkChannel')!)
+    await settle()
+    click(popupButton('DiscussionUnlink'))
+    await settle()
+    expect(channels.unlinkDiscussion).toHaveBeenCalledWith(-CHANNEL_ID)
+  })
+
   it('«Создать новую группу» открывает «Новую группу» с нагрузкой оригинала; `onCreate` привязывает её', async() => {
     const tab = await open()
     const opened: { ctor: unknown, payload: Record<string, unknown> }[] = []

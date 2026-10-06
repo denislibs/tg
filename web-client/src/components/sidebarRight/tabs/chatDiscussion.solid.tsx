@@ -41,9 +41,12 @@
  *     не производит (как у `editChat.solid.tsx`, расхождение 2).
  *  7. `chat_full_update` (`:272-280`) — кадр `rt:chat_update` с полной формой
  *     (`messages.chatFull`); после привязки и отвязки его шлёт сервер
- *     (`usecase/chat/discussion.go`). `linked_chat_id` у группы обсуждения сервер
- *     не заполняет (Б-119) — сторона группы («Привязанный канал») до него
- *     недостижима: строку редактора показывает `linkedChatId` группы.
+ *     (`usecase/chat/discussion.go`). У группы обсуждения `linked_chat_id` — id
+ *     канала, а карточка канала едет вторым элементом `chats` той же ручки
+ *     (`groups.card` кладёт её в зеркало) — сторона группы («Привязанный канал»)
+ *     открывается строкой редактора по `linkedChatId` группы; отвязка с неё —
+ *     той же ручкой канала (`DELETE /channels/{id}/discussion`, разрешена и
+ *     админу группы с `change_info`).
  *  8. Анимация — фолбэк PNG без WASM (`renderStaticAssetFallback`), как у
  *     вкладки ссылок (`chatInviteLinks.solid.tsx`, расхождение 9).
  *  9. Отказ в подтверждении (`await confirmationPopup`, `:71`, `:181`) у
