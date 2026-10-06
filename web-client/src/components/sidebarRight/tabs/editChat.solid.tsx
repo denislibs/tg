@@ -32,11 +32,8 @@
  *     сигналу `chatId` — один запрос.
  *  3. Заявки (:700-708), реакции (:710-718), обсуждение (:743-761) и
  *     админы/участники/удалённые (:849-873) вернула пачка П-1 (Б-39…Б-41).
- *     Счётчиков `admins_count`, `kicked_count`, `requests_pending` сервер не
- *     производит (Б-115): строка «Заявки» поэтому не показывается, у админов —
- *     «1», у удалённых — «нет». `PeerTitleTsx` подписи обсуждения — узел
- *     `PeerTitle` (`chat/peerTitle.ts`) на своей миддлвари, как
- *     `AvatarPlaceholder` (п. 9).
+ *     `PeerTitleTsx` подписи обсуждения — узел `PeerTitle` (`chat/peerTitle.ts`)
+ *     на своей миддлвари, как `AvatarPlaceholder` (п. 9).
  *  4. Строк без предмета у нас нет совсем (Б-105): личные сообщения канала
  *     (монофорум, :720-731), приветственные сообщения (layer 229, :377-406,
  *     :763-771), «Недавние действия» (админ-лог, :773-790).
@@ -54,10 +51,15 @@
  *     `groups.setForum`; `toggleSignatures` — `channels.setSignatures`;
  *     `togglePreHistoryHidden(!value)` — `groups.setHistory(value)`.
  *  8. `chat_update`/`chat_full_update` (:352-370): краткая форма — из зеркала
- *     пиров (`subscribePeerMirror`, писатель — воркер), полная — из кадра
- *     `rt:chat_update` (`messages.chatFull`). Включение тем кадра не шлёт
+ *     пиров (`subscribePeerMirror`, писатель — воркер). Полная перечитывается
+ *     (`groups.card`) на кадры `rt:chat_update` и `rt:chat_participant` этого
+ *     чата — это поводы `refreshFullPeer` оригинала (`channel_update`,
+ *     `invalidateChannelParticipants`), после которых он и шлёт
+ *     `chat_full_update`. Из самого снимка `chat_update` полную форму не берём:
+ *     он общий на всех участников и счётчиков зрителя (`admins_count`,
+ *     `kicked_count`, `requests_pending`) не несёт. Включение тем кадра не шлёт
  *     (`usecase/chat/topic.go::SetForum`) — после него карточка перечитывается
- *     (`groups.card`, как `refreshFullPeer` оригинала после своей мутации).
+ *     так же.
  *  9. `AvatarNewTsx` — `AvatarPlaceholder` ниже: императивный `avatarNew` со
  *     своей миддлварью на время показа.
  * 10. `showDeleteDialogPopup` — наш попап (`popups/deleteDialog.ts`) с
@@ -314,13 +316,6 @@ function EditChatForm(props: { data: EditChatData }) {
       setChat(updatedChat)
     }
   }))
-  // расхождение 8 — `chat_full_update`
-  subscribeOn(rootScope)(RT.chatUpdate, (evt) => {
-    if(alive && getPeerId(evt.peer) === peerId()) {
-      setChatFull(evt.chat_full.full_chat)
-    }
-  })
-
   const refreshCard = async() => {
     const card = await managers.groups.card(peerId())
     if(alive && card) {
@@ -328,6 +323,18 @@ function EditChatForm(props: { data: EditChatData }) {
       setChatFull(card.fullChat)
     }
   }
+
+  // расхождение 8 — `chat_full_update`
+  subscribeOn(rootScope)(RT.chatUpdate, (evt) => {
+    if(alive && getPeerId(evt.peer) === peerId()) {
+      void refreshCard()
+    }
+  })
+  subscribeOn(rootScope)(RT.chatParticipant, (update) => {
+    if(alive && toPeerId(update.channel_id, true) === peerId()) {
+      void refreshCard()
+    }
+  })
 
   const save = async() => {
     if(!canSave()) {

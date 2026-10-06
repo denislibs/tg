@@ -13,7 +13,7 @@ import { RT } from '@core/realtime/events'
 import type {
   NewMessageEvt, EditMessageEvt, DeleteMessageEvt, PinMessageEvt, ReadEvt, MediaReadEvt,
   TypingEvt, PresenceEvt, ReactionEvt, AckEvt, MessageErrorEvt, CallFrameEvt,
-  ChatRemovedEvt, ChannelEvt, DraftUpdateEvt, ChatThemeUpdateEvt, ChatUpdateEvt, SuggestedPostEvt, BotCallbackAnswerEvt,
+  ChatRemovedEvt, ChannelEvt, DraftUpdateEvt, ChatThemeUpdateEvt, ChatUpdateEvt, ChannelParticipantEvt, ChatRequestsEvt, SuggestedPostEvt, BotCallbackAnswerEvt,
   GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, StoryUpdateEvt,
   SentStoryReactionEvt, ReadStoriesEvt, ConnState, UserUpdateEvt, DialogPinEvt, DialogArchiveEvt, DialogMuteEvt,
   PollUpdateEvt, ChecklistUpdateEvt, GiveawayUpdateEvt, BoostUpdateEvt, BalanceUpdateEvt,
@@ -60,6 +60,11 @@ export type BroadcastEvents = {
   [RT.draftUpdate]: [DraftUpdateEvt, EventMeta?]
   [RT.chatThemeUpdate]: [ChatThemeUpdateEvt, EventMeta?]
   [RT.chatUpdate]: [ChatUpdateEvt, EventMeta?]
+  // tweb `chat_participant`/`chat_requests` (`rootScope.ts:35-37`): кадр
+  // участника едет как есть, заявки — переложенными владельцем (без EventMeta:
+  // перекладку и местные апдейты мутаций порождает менеджер, а не funnel).
+  [RT.chatParticipant]: [ChannelParticipantEvt, EventMeta?]
+  [RT.chatRequests]: [ChatRequestsEvt]
   [RT.folderUpdate]: [FolderUpdateEvt, EventMeta?]
   [RT.userUpdate]: [UserUpdateEvt, EventMeta?]
   // Операции над карточками пиров (Stage 1C.2, Task 2) — публикует peersManager

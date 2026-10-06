@@ -76,7 +76,13 @@ func TestMigration0139_JoinRoleByChatType(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if m.Role != want.role || m.Rights != want.rights || m.PromotedBy != 0 {
+		// Назначивший у прежних админов — владелец: его вписывает 0150 (п. 5
+		// ревью #401), у остальных — нет.
+		wantBy := int64(0)
+		if want.role == domain.RoleAdmin {
+			wantBy = owner
+		}
+		if m.Role != want.role || m.Rights != want.rights || m.PromotedBy != wantBy {
 			t.Errorf("чат %d, пользователь %d: %+v, ждали роль %q и права %d", want.chat, want.user, m, want.role, want.rights)
 		}
 	}
@@ -114,8 +120,8 @@ func TestMigration0139_AfterPhantom0137(t *testing.T) {
 		applied = append(applied, v)
 	}
 	rows.Close()
-	if len(applied) != 3 || applied[1] != 138 || applied[2] != 139 {
-		t.Fatalf("применены версии %v, ждали [137 138 139]", applied)
+	if len(applied) < 3 || applied[0] != 137 || applied[1] != 138 || applied[2] != 139 {
+		t.Fatalf("применены версии %v, ждали [137 138 139 …]", applied)
 	}
 }
 

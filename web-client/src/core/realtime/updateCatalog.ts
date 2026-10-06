@@ -61,6 +61,11 @@ export const UPDATE_RT = {
   updateChatTheme: RT.chatThemeUpdate,
   updateChatFullSnapshot: RT.chatUpdate,
   updateChannelFullSnapshot: RT.chatUpdate,
+  // Участники и заявки — пер-юзерный журнал (курсор в конверте). Заявки
+  // уезжают на вкладки ПЕРЕЛОЖЕННЫМИ (`ChatRequestsEvt`, как tweb `chat_requests`):
+  // перекладку делает владелец в `workerCore.ts::dispatch`.
+  updateChannelParticipant: RT.chatParticipant,
+  updatePendingJoinRequests: RT.chatRequests,
   updateChannelBoostStatus: RT.boostUpdate,
   updateStarsBalance: RT.balanceUpdate,
   updateUserSnapshot: RT.userUpdate,

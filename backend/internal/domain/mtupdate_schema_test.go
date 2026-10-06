@@ -116,6 +116,21 @@ func updateCases() []struct {
 		{"баланс звёзд", NewUpdateStarsBalance(42)},
 		{"ответ бота", NewUpdateBotCallbackAnswer("готово", false)},
 		{"ответ бота модалкой", NewUpdateBotCallbackAnswer("ошибка", true)},
+		{"участник вступил по ссылке", NewUpdateChannelParticipant(5, 9, 9, time.Unix(1787334148, 0), nil,
+			NewChannelParticipant(Member{UserID: 9, Role: RoleMember, JoinedAt: time.Unix(1787334148, 0)}, ParticipantViewer{}),
+			func() *ChatInviteExported {
+				c := NewChatInviteExported(InviteLink{Token: "abc", CreatedBy: 7})
+				return &c
+			}())},
+		{"участник повышен", NewUpdateChannelParticipant(5, 7, 9, time.Unix(1787334148, 0),
+			NewChannelParticipant(Member{UserID: 9, Role: RoleMember}, ParticipantViewer{}),
+			NewChannelParticipant(Member{UserID: 9, Role: RoleAdmin, PromotedBy: 7}, ParticipantViewer{}), nil)},
+		{"участник вышел", NewUpdateChannelParticipant(5, 9, 9, time.Unix(1787334148, 0),
+			NewChannelParticipant(Member{UserID: 9, Role: RoleMember}, ParticipantViewer{}), NewChannelParticipantLeft(9), nil)},
+		{"участник разбанен", NewUpdateChannelParticipant(5, 7, 9, time.Unix(1787334148, 0),
+			NewChannelParticipantBanned(9, 7, 0, AllMemberPerms, time.Time{}, true), nil, nil)},
+		{"заявки", NewUpdatePendingJoinRequests(NewPeerChannel(5), 2, []int64{9, 10})},
+		{"заявок нет", NewUpdatePendingJoinRequests(NewPeerChannel(5), 0, nil)},
 	}
 }
 
@@ -212,6 +227,8 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		UpdateStoryTag,
 		UpdateSentStoryReactionTag,
 		UpdateReadStoriesTag,
+		UpdateChannelParticipantTag,
+		UpdatePendingJoinRequestsTag,
 		SendMessageTypingActionTag,
 		SendMessageRecordAudioActionTag,
 		SendMessageRecordVideoActionTag,

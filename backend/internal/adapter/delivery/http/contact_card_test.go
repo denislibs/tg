@@ -273,7 +273,7 @@ func TestContactName_SeenByViewerEverywhere_HTTP(t *testing.T) {
 	for _, path := range []string{
 		"/chats",                               // список диалогов
 		"/chats/" + itoa(private) + "/history", // история
-		"/chats/" + itoa(group) + "/members",   // участники группы
+		"/chats/" + itoa(group) + "/participants", // участники группы
 		"/users?ids=" + itoa(idB),              // батч карточек
 		"/users/" + itoa(idB),                  // профиль
 		"/search?q=" + url.QueryEscape("Боб"),  // поиск пиров
@@ -308,5 +308,5 @@ func TestContactName_SeenByViewerEverywhere_HTTP(t *testing.T) {
 	if u := getProfile(t, h, tokenB, idA).Users[0]; pflag(u, "contact") {
 		t.Errorf("Боб видит Алису контактом: %v", u)
 	}
-	want("участники у самого Боба", usersOf(tokenB, "/chats/"+itoa(group)+"/members"), "Боб", "Петров", false)
+	want("участники у самого Боба", usersOf(tokenB, "/chats/"+itoa(group)+"/participants"), "Боб", "Петров", false)
 }

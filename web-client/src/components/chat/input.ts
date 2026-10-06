@@ -2852,6 +2852,7 @@ export default class ChatInput {
         const result = this.mentionsHelper.checkQuery(
           query,
           isUser(this.chat.peerId) ? undefined : this.chat.peerId,
+          this.chat.threadId,
         )
         if(result) {
           foundHelpers.add(this.mentionsHelper)

@@ -645,8 +645,13 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // Ф-1б (аудит бэкенда A5-30/A5-37, биты админа `manage_topics`/`anonymous`): у ru +2
 // ключа tweb lang.ts — строки редактора прав админа `ManageTopicsPermission` и
 // `EditAdminSendAnonymously` (`sharedPermissions.ts`).
+// Ф-3б (участники и права зрителя): у ru +9 ключей tweb lang.ts — ранг админа
+// (`Rank.Label`, `EditAdminRank{,Info}`), подпись назначившего (`EditAdminPromotedBy`),
+// плашка заявок (плюральный `Chat.Header.RequestToJoin`, `plural` 64 → 65) и служебка
+// «вступил по заявке» (`ChatService.UserJoined{Group,Channel}ByRequest`,
+// `RequestToJoin{Group,Channel}Approved`).
 const COMPOSITION = {
-  ru: { keys: 1775, plural: 64 },
+  ru: { keys: 1784, plural: 65 },
   uk: { keys: 842, plural: 35 },
   es: { keys: 813, plural: 34 },
   de: { keys: 814, plural: 35 },
@@ -854,7 +859,7 @@ const COMPOSITION = {
 // Пачкой Ф-1а — у ru +1 ключ tweb `Chat.Subscribe` (кнопка «Подписаться» ввода).
 // Ф-1б — у ru +2 ключа редактора прав админа (разбор — там же).
 const FINGERPRINT = {
-  ru: 'c0d278d2',
+  ru: '3a36893b',
   uk: 'e72f8ee2',
   es: 'ff56151a',
   de: '39848741',

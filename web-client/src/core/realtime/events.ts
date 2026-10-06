@@ -5,6 +5,7 @@ import type { MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
 import type { PeerNotifySettings } from '../dialogs/notifySettings'
 import type { StoryItem } from '../stories/story'
 import type { Peer } from '../peers/peerId'
+import type { ChannelParticipantWire, ChatInviteExported } from '../managers/groupsManager'
 // Worker -> UI event names (over SuperMessagePort.emit). Live frames AND /sync
 // catch-up both surface through these, so the UI handles them uniformly.
 export const RT = {
@@ -57,6 +58,16 @@ export const RT = {
   // Метаданные чата (title/photo/настройки/права/подписи) — абсолютный снапшот,
   // сервер шлёт участникам (logged, pts). Клиент рефетчит список диалогов + карточку.
   chatUpdate: 'rt:chat_update',
+  // Состав или права участника изменились — tweb `rootScope` `chat_participant`
+  // (`appChatsManager.onUpdateChannelParticipant`, :1419-1422). Полезная нагрузка —
+  // сам `updateChannelParticipant`; до рассылки воркер сбрасывает кэш страниц
+  // участников (`groups.invalidateChannelParticipants`), а вкладка — полную
+  // карточку (`client/realtime/refetchSubscriber.ts`).
+  chatParticipant: 'rt:chat_participant',
+  // Заявки на вступление изменились — tweb `chat_requests`
+  // (`appChatInvitesManager.onUpdatePendingJoinRequests`, :24-40): плашка заявок
+  // в шапке (`chat/requests.solid.tsx`). Полезная нагрузка — `ChatRequestsEvt`.
+  chatRequests: 'rt:chat_requests',
   // Мутация папок с другого устройства/вкладки (create/edit/delete/reorder) —
   // logged, pts. Клиент перечитывает список папок.
   folderUpdate: 'rt:folder_update',
@@ -463,6 +474,45 @@ export interface ChatUpdateEvt {
   pts?: number
 }
 /**
+ * updateChannelParticipant#985d3abb flags:# channel_id:long date:int
+ * actor_id:long user_id:long prev_participant:flags.0?ChannelParticipant
+ * new_participant:flags.1?ChannelParticipant invite:flags.2?ExportedChatInvite
+ * qts:int = Update;
+ *
+ * Смена состава или прав участника. Отсутствие `prev_participant` — «не был
+ * участником», отсутствие `new_participant` — «больше ни в каких списках».
+ * `channel_id` — СЫРОЙ положительный id чата (как у оригинала, `chatId`).
+ * `qts` не производится: курсор один, он едет в конверте. Тот же объект
+ * порождает и сам воркер после своей мутации (`groupsManager.editAdmin`/
+ * `editBanned`/`addMember` — порт `generateUpdateChannelParticipant`), тогда
+ * `actor_id` нет.
+ */
+export interface ChannelParticipantEvt {
+  _: 'updateChannelParticipant'
+  channel_id: number
+  date: number
+  actor_id?: number
+  user_id: number
+  prev_participant?: ChannelParticipantWire
+  new_participant?: ChannelParticipantWire
+  invite?: ChatInviteExported
+}
+/**
+ * updatePendingJoinRequests#7063c3db peer:Peer requests_pending:int
+ * recent_requesters:Vector<long> = Update;
+ *
+ * Своего `pts` у конструктора нет — курсор едет в КОНВЕРТЕ.
+ */
+export interface PendingJoinRequestsEvt {
+  _: 'updatePendingJoinRequests'
+  peer: Peer
+  requests_pending: number
+  recent_requesters: number[]
+}
+/** Полезная нагрузка `rt:chat_requests` — tweb `BroadcastEvents['chat_requests']`
+ *  (`rootScope.ts:37`): чат — положительным `chatId`, заявители — `UserId`. */
+export interface ChatRequestsEvt { chatId: ChatId; recentRequesters: UserId[]; requestsPending: number }
+/**
  * Черновик изменён на другом устройстве/вкладке — `updateDraftMessage`.
  *
  * «Снят» выражает КОНСТРУКТОР `draftMessageEmpty` внутри того же параметра, а
@@ -683,6 +733,8 @@ export type Update =
   | ChatRemovedEvt
   | ChatThemeUpdateEvt
   | ChatUpdateEvt
+  | ChannelParticipantEvt
+  | PendingJoinRequestsEvt
   | BoostUpdateEvt
   | BalanceUpdateEvt
   | BotCallbackAnswerEvt

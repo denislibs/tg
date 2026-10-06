@@ -2,7 +2,7 @@
 // `initSearch` монтирует поиск в шапку (tweb `chat.ts:746-834`), запрос уходит
 // `messages.searchHistory`, строки найденного — строки чатлиста, клик ведёт ленту к
 // сообщению (`setMessageId({lastMsgId})`), Esc и смена пира закрывают поиск, фильтр
-// отправителя берёт участников `groups.channelParticipants(…, q)`.
+// отправителя берёт участников `groups.getParticipants` (фильтр `channelParticipantsSearch`).
 // Шапка, остров композера и правая колонка — дублёры, как в `chat.test.ts`.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import EventListenerBase from '@helpers/eventListenerBase'
@@ -90,7 +90,7 @@ function managersWith(found: MyMessage[]) {
       searchHistory: vi.fn(async() => ({ messages: found, count: found.length })),
     },
     groups: {
-      channelParticipants: vi.fn(async() => ({
+      getParticipants: vi.fn(async() => ({
         _: 'channels.channelParticipants',
         count: 1,
         participants: [{ _: 'channelParticipant', user_id: BOB, date: 0 }],
@@ -265,7 +265,12 @@ describe('поиск по чату (tweb topbarSearch.tsx)', () => {
     await vi.advanceTimersByTimeAsync(0)
 
     await type(input, 'бо')
-    expect(managers.groups.channelParticipants).toHaveBeenLastCalledWith(GROUP, 0, 30, 'бо')
+    expect(managers.groups.getParticipants).toHaveBeenLastCalledWith({
+      id: -GROUP,
+      filter: { _: 'channelParticipantsSearch', q: 'бо' },
+      limit: 30,
+      offset: 0,
+    })
 
     const sender = await vi.waitFor(() => {
       const row = c.topbar.container.querySelector<HTMLElement>('.topbar-search-left-sender')

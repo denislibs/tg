@@ -27,9 +27,9 @@
 //     фильтр отправителя — `sender_id`) вместо `getHistory` с подпиской на ключ истории
 //     (`toggleHistoryKeySubscription`, `:126-130`) — живых вставок в выдачу у нас нет.
 //     `threadId` (`top_msg_id`) ручка не принимает — в треде ищется весь чат.
-//  7. Участники для фильтра — `groups.channelParticipants(peerId, offset, 30, q)`
-//     (`GET /chats/{id}/members?q=`), порт `getParticipants({filter:
-//     channelParticipantsSearch})`.
+//  7. Участники для фильтра — `groups.getParticipants({filter:
+//     channelParticipantsSearch})` без `forMessagesSearch`: «отправить от имени»
+//     в выдачу не подмешивается (`getSendAs` нет).
 //  8. `ButtonIconTsx` без подписи по глифу (шапка `components/buttonIconTsx.solid.tsx`).
 import {
   batch, createEffect, createMemo, createSignal, on, onCleanup, onMount, untrack,
@@ -48,6 +48,7 @@ import showDatePickerPopup from '@components/popups/datePicker.bridge'
 import appNavigationController, { type NavigationItem } from '@core/navigation/appNavigationController'
 import { cachedPeer } from '@core/peerCache'
 import { getParticipantPeerId } from '@core/peers/participant'
+import { toChatId } from '@core/peers/peerId'
 import type { MyMessage } from '@core/models'
 import { addDialogNew, setLastMessageN } from '@lib/appDialogsManager'
 import I18n, { i18n } from '@lib/langPack'
@@ -196,7 +197,12 @@ const createParticipantsLoader = (options: LoadOptions) => {
     }
     loading = true
 
-    const result = await managers.groups.channelParticipants(peerId, offset, 30, query)
+    const result = await managers.groups.getParticipants({
+      id: toChatId(peerId),
+      filter: { _: 'channelParticipantsSearch', q: query },
+      limit: 30,
+      offset,
+    })
     if(!middleware()) {
       return
     }

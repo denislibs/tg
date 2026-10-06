@@ -51,6 +51,10 @@ export interface AppState {
   recentCustomEmoji: DocId[]
   /** выбранный тон кожи по базовому эмодзи (tweb `emojiVariants`) */
   emojiVariants: { [emoji: string]: 0 | 1 | 2 | 3 | 4 | 5 }
+  /** плашка заявок на вступление скрыта крестиком: ключ пира → когда (мс);
+   *  через сутки она показывается снова, кадр заявок снимает скрытие сразу
+   *  (tweb `hideChatJoinRequests`, `config/state.ts:254`) */
+  hideChatJoinRequests: { [peerId: PeerId]: number }
 }
 
 // 2 — черновик переехал в САМ ДИАЛОГ (`dialog.draft`), ключа `drafts` в State
@@ -73,6 +77,7 @@ export const STATE_INIT: AppState = {
   recentEmoji: [],
   recentCustomEmoji: [],
   emojiVariants: {},
+  hideChatJoinRequests: {},
 }
 
 /** tweb `ALL_KEYS = Object.keys(STATE_INIT)` (loadState.ts:43) */

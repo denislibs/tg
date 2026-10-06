@@ -18,9 +18,6 @@
  *     откроет с нуля.
  *  3. Меню участника — `openUserPermissions`/`openPeer` колбэками (шапка
  *     `helpers/dom/createParticipantContextMenu.ts`), `managers` — параметром.
- *  4. Фильтр `channelParticipantsAdmins` и признак «участник ещё админ»
- *     (`channelParticipantsUpdateFilter`) — те же; живое обновление — по
- *     `chat_update` (расхождение 1 `appSelectPeers.solid.tsx`).
  */
 import type AppSelectPeers from '@components/appSelectPeers.solid'
 import createParticipantContextMenu from '@helpers/dom/createParticipantContextMenu'

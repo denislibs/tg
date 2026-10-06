@@ -336,7 +336,7 @@ describe('«Ссылка» — вкладка одной ссылки', () => {
     expect(creatorRow.dataset.peerId).toBe(String(ME))
 
     expect(groups.getChatInviteImporters).toHaveBeenCalledTimes(1)
-    expect(groups.getChatInviteImporters).toHaveBeenCalledWith({ chatId: CHANNEL_ID, link: `${TME}/+extra` })
+    expect(groups.getChatInviteImporters).toHaveBeenCalledWith(expect.objectContaining({ chatId: CHANNEL_ID, link: `${TME}/+extra` }))
     const joined = detail.querySelector<HTMLElement>('.selector-height-container')!
     expect(text(joined.querySelector('.sidebar-left-section-name'))).toMatch(/^3 people joined/)
     expect(text(joined.querySelector('.sidebar-left-section-name-right'))).toBe('7 remaining')
