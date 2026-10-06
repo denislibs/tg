@@ -100,6 +100,7 @@ import idleController from '@helpers/idleController'
 import { getHeavyAnimationPromise, interruptHeavyAnimation, onHeavyAnimation as useHeavyAnimationCheck } from '@core/dom/heavyAnimation'
 import { cancelAnimationByKey } from '@helpers/animation'
 import rootScope from '@lib/rootScope'
+import { RT } from '@core/realtime/events'
 import { ANCHOR_ACTION_ATTRIBUTE, wrapEmojiText, wrapMessageText } from '@lib/richtext'
 import showForwardPopup from '@components/popups/forward.bridge'
 import { mirrorWindow, putMirrorPage, replaceMirrorWindow } from '@core/history/messagesMirror'
@@ -5984,6 +5985,36 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.listenerSetter.add(rootScope)('history_delete', ({ peerId, msgs }) => {
       if (peerId !== this.peerId || this.chat.type === ChatType.Scheduled) return
       this.deleteMessagesByIds([...msgs].map((mid) => makeFullMid(peerId, mid)))
+    })
+
+    // tweb bubbles.ts:2351-2358 (`refreshInput`) + :2410-2432 (`chat_update`):
+    // права зрителя сменились живьём — ограничили, сняли ограничение, повысили
+    // (сервер шлёт затронутому пер-зрительский `channel`, Ф-3б A2-05) — и поле
+    // ввода пересобирается тем же `finishPeerChange`, что при смене пира.
+    // Сброс превью ссылки (`embed_links`, :2434-2438) — без предмета (Б-72).
+    const refreshInput = async() => {
+      const middleware = this.getMiddleware()
+      const callbacks = await Promise.all([
+        this.finishPeerChange(),
+        this.chat.input.finishPeerChange({ peerId: this.peerId, middleware }),
+      ])
+      if(!middleware()) return
+      callbacks.forEach((callback) => callback())
+    }
+
+    this.listenerSetter.add(rootScope)(RT.chatUpdate, async(evt) => {
+      if(getPeerId(evt.peer) !== this.peerId) return
+
+      // `send_plain` у нас не отдельное право (MemberPerms — пять прав, текст
+      // это send_messages), поэтому сверяется одно send_messages.
+      const middleware = this.getMiddleware()
+      const hadRights = this.chatInner.classList.contains('has-rights')
+      const hasRights = await this.chat.canSend('send_messages')
+      if(!middleware()) return
+
+      if(hadRights !== hasRights) {
+        await refreshInput()
+      }
     })
 
     // * pinned part start — tweb bubbles.ts:2544-2555
