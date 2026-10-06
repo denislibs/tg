@@ -32,20 +32,16 @@
  *     исключение» (:221-261) открывают права участника `openUserPermissionsTab`.
  *     ВРЕМЕННО до 2C-16: выбор участника (`showPickUserPopup`) — вкладка
  *     `AppAddMembersTab` на участниках канала (`channelParticipantsPeerId`),
- *     как у «Заблокированных». `appProfileManager.getParticipant` (:236-243) нет
- *     на бэкенде — участник не из списка исключений открывается обычным
- *     (`channelParticipant`). Кадра `chat_participant` (:307-341) на проводе нет:
- *     список перечитывается и сводится по карте `participants` на `chat_update`
- *     этого чата; ограничение/снятие его не шлют (Б-115) — тогда список
- *     обновится при следующем открытии.
+ *     как у «Заблокированных». Слушатель `chat_participant` (:307-341) сверяет
+ *     чат кадра (`channel_id`) — у оригинала сверки нет, и кадр чужого чата, где
+ *     зритель тоже админ, правил бы этот список.
  *  6. `isChannel(chatId)` (:385) у нас всегда истина: любая группа — `channel`
  *     (решение №2), поэтому ветки legacy-чата (`setLength` без загрузки и
  *     `dialog_migrate`, :387-396) нет, `chatId` — `const`.
  *  7. `apiManagerProxy.getChat`/`appChatsManager.getChat` → зеркало `cachedChat`;
  *     `appProfileManager.getChatFull` → `groups.card(peerId).fullChat`;
- *     `getChannelParticipants({filter: channelParticipantsBanned})` →
- *     `groups.channelParticipantsBanned` (без `offset`/`limit`: ручка отдаёт
- *     список целиком); `wrapPeerTitle` → `PeerTitle` (`components/chat/peerTitle.ts`).
+ *     `getChannelParticipants`/`getParticipant` → `groups.getParticipants`/
+ *     `groups.getParticipant`; `wrapPeerTitle` → `PeerTitle` (`components/chat/peerTitle.ts`).
  *  8. `useHotReloadGuard` (:31) не портирован — обвязка их дев-сборки.
  */
 import { type Component, createSignal, onMount } from 'solid-js'
@@ -242,10 +238,17 @@ const GroupPermissions: Component = () => {
         </Row>
       ), tab.middlewareHelper.get())
 
-      // :236-246; `getParticipant` — расхождение 5
-      const openPermissions = (peerId: PeerId) => {
-        const participant: ChannelParticipant = participants.get(peerId) ??
-          { _: 'channelParticipant', user_id: peerId, date: 0 }
+      // :242-253
+      const openPermissions = async(peerId: PeerId) => {
+        let participant = participants.get(peerId)
+        if(!participant) {
+          try {
+            participant = await managers.groups.getParticipant(chatId, peerId)
+          } catch{
+            return
+          }
+        }
+
         openUserPermissionsTab(tab.slider as SidebarSlider, chatId, participant)
       }
 
@@ -259,7 +262,7 @@ const GroupPermissions: Component = () => {
         if(!target) return
 
         const peerId = +target.dataset.peerId!
-        openPermissions(peerId)
+        void openPermissions(peerId)
       }, { listenerSetter: tab.listenerSetter })
 
       const setSubtitle = (dom: DialogDom, participant: ChannelParticipantBanned) => {
@@ -308,9 +311,15 @@ const GroupPermissions: Component = () => {
         setSubtitle(dialogElement.dom, participant)
       }
 
-      // :307-341 — свод по `chat_update` вместо `chat_participant` (расхождение 5)
-      const onChatParticipant = (peerId: PeerId, newParticipant: ChannelParticipantBanned | undefined) => {
-        const prevParticipant = participants.get(peerId)
+      // :307-341 (+ сверка чата — расхождение 5)
+      tab.listenerSetter.add(rootScope)(RT.chatParticipant, (update) => {
+        if(update.channel_id !== chatId) {
+          return
+        }
+
+        const newParticipant = update.new_participant
+        const prevParticipant = update.prev_participant
+        const peerId = toPeerId(update.user_id, false)
         const needAdd = newParticipant?._ === 'channelParticipantBanned' &&
           !newParticipant.banned_rights.pFlags?.view_messages
 
@@ -342,27 +351,6 @@ const GroupPermissions: Component = () => {
         }
 
         setLength()
-      }
-
-      tab.listenerSetter.add(rootScope)(RT.chatUpdate, (evt) => {
-        if(getPeerId(evt.peer) !== peerId) {
-          return
-        }
-
-        void managers.groups.channelParticipantsBanned(peerId).then((res) => {
-          const processed = new Set<PeerId>()
-          for(const participant of res.participants as ChannelParticipantBanned[]) {
-            const participantPeerId = getPeerId(participant.peer)
-            processed.add(participantPeerId)
-            onChatParticipant(participantPeerId, participant)
-          }
-
-          for(const participantPeerId of participants.keys()) {
-            if(!processed.has(participantPeerId)) {
-              onChatParticipant(participantPeerId, undefined)
-            }
-          }
-        })
       })
 
       const setLength = () => {
@@ -376,7 +364,12 @@ const GroupPermissions: Component = () => {
         const loader = new ScrollableLoader({
           scrollable: tab.scrollable,
           getPromise: () => {
-            return managers.groups.channelParticipantsBanned(peerId).then((res) => {
+            return managers.groups.getParticipants({
+              id: chatId,
+              filter: { _: 'channelParticipantsBanned', q: '' },
+              limit: LOAD_COUNT,
+              offset: list.childElementCount,
+            }).then((res) => {
               for(const participant of res.participants) {
                 add(participant as ChannelParticipantBanned, true)
               }

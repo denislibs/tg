@@ -10,6 +10,7 @@
 // считает настоящий синглтон `appImManager` (без `construct` — менеджеры приходят опцией).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
+import { RT } from '@core/realtime/events'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import { resetMessagesMirror, setMirrorHistoryCount, winKey } from '@core/history/messagesMirror'
 import { useChatsStore } from '@stores/chatsStore'
@@ -72,7 +73,8 @@ const BOB: PeerId = 9
 const CAROL: PeerId = 10
 
 const isContact = vi.fn(async() => false)
-const channelParticipants = vi.fn(async(_peerId: PeerId, _offset: number, _limit: number) => ({
+const getOnlines = vi.fn(async(_chatId: number) => 42)
+const getParticipants = vi.fn(async(_options: { id: number, filter: { _: string }, limit: number }) => ({
   _: 'channels.channelParticipants',
   count: 3,
   participants: [ALICE, BOB, CAROL].map((user_id) => ({ _: 'channelParticipant', user_id, date: 0 })),
@@ -82,7 +84,8 @@ const channelParticipants = vi.fn(async(_peerId: PeerId, _offset: number, _limit
 const managers = {
   peers: { fillMirror: async() => {} },
   groups: {
-    channelParticipants,
+    getParticipants,
+    getOnlines,
     listTopics: vi.fn(async() => [{ id: 7, title: 'Новости', iconColor: 0x6FB9F0, iconEmoji: '', isGeneral: false }]),
   },
   contacts: { isContact },
@@ -180,8 +183,9 @@ beforeEach(() => {
     { _: 'user', id: CAROL, first_name: 'Кэрол', pFlags: {}, status: { _: 'userStatusOffline', was_online: 1 } },
   ] }])
   resetChatFullMirror()
-  ;(appImManager as unknown as { onlinesParticipants: Map<PeerId, unknown> }).onlinesParticipants.clear()
-  channelParticipants.mockClear()
+  ;(appImManager as unknown as { onlinesCache: Map<PeerId, unknown> }).onlinesCache.clear()
+  getParticipants.mockClear()
+  getOnlines.mockClear()
   useGroupCallStore.setState({ peerId: null, activeByChat: {} })
   useLivestreamStore.setState({ watchingPeerId: null, activeByChat: {} })
   rootScope.myId = ME
@@ -243,31 +247,44 @@ describe('ChatTopbar: заголовок и подпись по виду пир�
     const topbar = await open(makeChat({ peerId: GROUP }))
     expect(q(topbar, '.user-title .peer-title').textContent).toBe('Группа')
     await vi.waitFor(() => expect(q(topbar, '.info').textContent).toBe('5 members, 2 online'))
-    expect(channelParticipants).toHaveBeenCalledWith(GROUP, 0, 100)
+    expect(getParticipants).toHaveBeenCalledWith({ id: -GROUP, filter: { _: 'channelParticipantsRecent' }, limit: 100 })
+    expect(getOnlines).not.toHaveBeenCalled()
   })
 
   it('группа: один онлайн не пишется (это я), страница участников кэшируется на 60 с', async() => {
     const topbar = await open(makeChat({ peerId: GROUP }))
-    await vi.waitFor(() => expect(channelParticipants).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(getParticipants).toHaveBeenCalledTimes(1))
     expect(q(topbar, '.info').textContent).toBe('5 members')
 
     // второй показ — из кэша, без похода в сеть; онлайн пересчитан по свежему присутствию
     useChatsStore.setState({ presence: { [ALICE]: { _: 'userStatusOnline', expires: 2e9 }, [CAROL]: { _: 'userStatusOnline', expires: 2e9 } } })
     const again = await open(makeChat({ peerId: GROUP }))
     expect(q(again, '.info').textContent).toBe('5 members, 3 online')
-    expect(channelParticipants).toHaveBeenCalledTimes(1)
+    expect(getParticipants).toHaveBeenCalledTimes(1)
   })
 
-  it('группа больше 100 участников: «N online» не считается, участников не спрашиваем (Б-84)', async() => {
+  it('группа больше 100 участников: «N online» — ручкой `getOnlines`, участников не спрашиваем', async() => {
     const topbar = await open(makeChat({ peerId: BIG_GROUP }))
-    expect(q(topbar, '.info').textContent).toBe('101 members')
-    expect(channelParticipants).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(q(topbar, '.info').textContent).toBe('101 members, 42 online'))
+    expect(getOnlines).toHaveBeenCalledWith(-BIG_GROUP)
+    expect(getParticipants).not.toHaveBeenCalled()
+  })
+
+  it('кадр `chat_participant` сбрасывает кэш «N online»: следующий показ идёт в сеть', async() => {
+    await open(makeChat({ peerId: GROUP }))
+    await vi.waitFor(() => expect(getParticipants).toHaveBeenCalledTimes(1))
+    rootScope.dispatchEventSingle(RT.chatParticipant, {
+      _: 'updateChannelParticipant', channel_id: -GROUP, date: 1, user_id: CAROL,
+      new_participant: { _: 'channelParticipant', user_id: CAROL, date: 1 },
+    })
+    await open(makeChat({ peerId: GROUP }))
+    await vi.waitFor(() => expect(getParticipants).toHaveBeenCalledTimes(2))
   })
 
   it('группа: «печатает» вытесняет подпись и называет печатающего, по концу набора подпись возвращается', async() => {
     const topbar = await open(makeChat({ peerId: GROUP }))
     const subtitle = q(topbar, '.info')
-    await vi.waitFor(() => expect(channelParticipants).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(getParticipants).toHaveBeenCalledTimes(1))
 
     useChatsStore.setState({ typing: { [GROUP]: { [ALICE]: { action: { _: 'sendMessageTypingAction' }, at: Date.now() } } } })
     await vi.waitFor(() => expect(subtitle.querySelector('.peer-typing-container .peer-typing-text')).toBeTruthy())
@@ -282,13 +299,13 @@ describe('ChatTopbar: заголовок и подпись по виду пир�
     useChatsStore.setState({ typing: { [GROUP]: { [ALICE]: { action: { _: 'sendMessageTypingAction' }, at: Date.now() } } } })
     const topbar = await open(makeChat({ peerId: GROUP }))
     expect(q(topbar, '.info .peer-typing-description')?.textContent).toBe('Алиса is typing')
-    expect(channelParticipants).not.toHaveBeenCalled()
+    expect(getParticipants).not.toHaveBeenCalled()
   })
 
   it('канал: «N subscribers» с разбивкой по тысячам, онлайн не считается', async() => {
     const topbar = await open(makeChat({ peerId: CHANNEL }))
     expect(q(topbar, '.info').textContent).toBe('1 200 subscribers')
-    expect(channelParticipants).not.toHaveBeenCalled()
+    expect(getParticipants).not.toHaveBeenCalled()
   })
 
   it('«Избранное»: заголовок Saved Messages, подпись — счёт истории окна, пока его нет — Loading', async() => {

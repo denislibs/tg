@@ -47,7 +47,7 @@ const channel = (over: Partial<Channel> = {}): Channel => ({
 } as Channel)
 
 const creator: ChannelParticipantWire = { _: 'channelParticipantCreator', user_id: ME, admin_rights: { _: 'chatAdminRights' } }
-const admin: ChannelParticipantWire = { _: 'channelParticipantAdmin', user_id: 5, date: 1, admin_rights: { _: 'chatAdminRights', pFlags: { pin_messages: true } } }
+const admin: ChannelParticipantWire = { _: 'channelParticipantAdmin', user_id: 5, promoted_by: 1, date: 1, admin_rights: { _: 'chatAdminRights', pFlags: { pin_messages: true } } }
 const member = (id: number): ChannelParticipantWire => ({ _: 'channelParticipant', user_id: id, date: 1 })
 const kicked: ChannelParticipantWire = {
   _: 'channelParticipantBanned', pFlags: { left: true }, peer: { _: 'peerUser', user_id: 9 }, kicked_by: ME, date: 1,
@@ -246,7 +246,9 @@ describe('«Заявки» (`chatRequests.tsx`)', () => {
     tab.eventListener.addEventListener('finish', finish)
 
     expect(text(tab.title)).toBe(lang.MemberRequests)
-    expect(groups.getChatInviteImporters).toHaveBeenCalledWith({ chatId: GROUP_ID, link: undefined, requested: true })
+    expect(groups.getChatInviteImporters).toHaveBeenCalledWith({
+      chatId: GROUP_ID, limit: 50, link: undefined, requested: true, offsetDate: undefined, offsetUserId: undefined, q: '',
+    })
     expect(rows(tab).map((row) => +row.dataset.peerId!)).toEqual([11, 12])
     const buttons = rowOf(tab, 11).querySelector('.chatlist-chat-buttons')!
     expect([...buttons.children].map(text)).toEqual([lang.AddToGroup, lang.Dismiss])

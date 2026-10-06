@@ -27,11 +27,11 @@
  *     передаётся.
  *  3. (О-122) Заявок ПО ССЫЛКЕ нет на проводе (`requested` у ссылки). Заявки
  *     чата целиком (`requested` без ссылки, вкладка «Заявки»
- *     `chatRequests.solid.tsx`, 0б-7) — ручка `/join_requests`
- *     (`groups.getChatInviteImporters`), `deleteImporter` (`:132-135`) портирован.
- *  4. (О-124) Вступившие — одна страница сервера (первые 50, без смещения и
- *     поиска `q`): `load` отдаёт `isEnd: true` сразу, иначе селектор переспросил
- *     бы ту же страницу.
+ *     `chatRequests.solid.tsx`) — ручка `/join_requests` со страницами и
+ *     поиском `q`, как у оригинала.
+ *  4. (О-124) Вступившие ПО ССЫЛКЕ — одна страница сервера (первые 50, без
+ *     смещения и поиска `q`): у них `load` отдаёт `isEnd: true` сразу, иначе
+ *     селектор переспросил бы ту же страницу.
  *  5. Имя чата в `setChatInvite(username)` — публичный адрес нашего хоста
  *     (`publicUsernameLink`), а не литерал `'t.me/' + username` (`:57`).
  *  6. `managers` — параметр (`AppManagers` у оригинала берётся из `rootScope`
@@ -147,7 +147,17 @@ export function getImportersLoader({
       lastQuery = q
     }
 
-    const result = await managers.groups.getChatInviteImporters({ chatId, link, requested })
+    const limit = 50
+    const lastImporter = importers[importers.length - 1]
+    const result = await managers.groups.getChatInviteImporters({
+      chatId,
+      limit,
+      link,
+      requested,
+      offsetDate: lastImporter?.date,
+      offsetUserId: lastImporter?.user_id,
+      q,
+    })
 
     importers.push(...result.importers)
 
@@ -157,7 +167,8 @@ export function getImportersLoader({
         importersMap.set(peerId, importer)
         return peerId
       }),
-      isEnd: true, // расхождение 4
+      // расхождение 4 — вступившие по ссылке без страниц
+      isEnd: link !== undefined || result.importers.length < limit,
     }
   }
 

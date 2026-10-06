@@ -67,12 +67,12 @@ const user = (id: number): UserReal => ({ _: 'user', id, first_name: 'U' + id, p
 function fakeManagers() {
   const searchCounters = vi.fn(async(_peerId: number, filters: string[], _threadId?: number) => filters.map((filter) => ({ filter, count: 2 })))
   const searchHistory = vi.fn(async(_options: { peerId: number, threadId?: number }) => ({ messages: [], count: 0 }))
-  const channelParticipants = vi.fn(async() => ({ _: 'channels.channelParticipants', count: 0, participants: [], chats: [], users: [] }))
+  const getParticipants = vi.fn(async(_options: { id: number, limit?: number, offset?: number }) => ({ _: 'channels.channelParticipants', count: 0, participants: [], chats: [], users: [] }))
   const profileGifts = vi.fn(async() => [{}])
   const managers = {
     messages: { searchCounters, searchHistory },
     peers: { fillMirror: async() => {} },
-    groups: { channelParticipants, addMember: vi.fn(), editBanned: vi.fn(), kickFromChat: vi.fn() },
+    groups: { getParticipants, addMember: vi.fn(), editBanned: vi.fn(), kickFromChat: vi.fn() },
     stories: { pinnedStories: async() => [] },
     chats: { savedDialogs: async() => ({}) },
     stars: { profileGifts },
@@ -81,7 +81,7 @@ function fakeManagers() {
     channels: { search: async() => ({}) },
     dialogs: { getDialogs: async() => ({ dialogs: [] }) },
   } as unknown as Managers
-  return { managers, searchCounters, searchHistory, channelParticipants, profileGifts }
+  return { managers, searchCounters, searchHistory, getParticipants, profileGifts }
 }
 
 const settle = async() => {
@@ -186,7 +186,7 @@ describe('тред комментариев (решение 2026-10-03, tweb cha
     expect(fake.searchCounters).toHaveBeenCalledWith(GROUP, expect.any(Array), THREAD)
     // участники: вкладка видна и грузит список группы (без фильтра треда)
     expect(menuTab(tab, 'members').classList.contains('hide')).toBe(false)
-    expect(fake.channelParticipants).toHaveBeenCalledWith(GROUP, expect.any(Number), expect.any(Number))
+    expect(fake.getParticipants).toHaveBeenCalledWith({ id: -GROUP, limit: expect.any(Number), offset: expect.any(Number) })
     // подарки в треде скрыты (`:3070`) и не запрашиваются
     expect(menuTab(tab, 'gifts').classList.contains('hide')).toBe(true)
     expect(fake.profileGifts).not.toHaveBeenCalled()
@@ -204,7 +204,7 @@ describe('тред комментариев (решение 2026-10-03, tweb cha
   it('тема форума: вкладки участников нет (`!threadId || !isForum`)', async() => {
     const tab = await openTab(FORUM, THREAD)
     expect(menuTab(tab, 'members').classList.contains('hide')).toBe(true)
-    expect(fake.channelParticipants).not.toHaveBeenCalled()
+    expect(fake.getParticipants).not.toHaveBeenCalled()
   })
 })
 
