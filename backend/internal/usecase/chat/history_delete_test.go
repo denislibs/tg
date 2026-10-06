@@ -149,3 +149,34 @@ func TestRemoveMember_DropsMentions(t *testing.T) {
 		}
 	}
 }
+
+// A2-12 / A3-10: удаление у всех сообщения с упоминанием снимает «@» у
+// адресата и «к следующему @» не ведёт на удалённое; A3-29: «удалить у себя»
+// снимает непрочитанное и упоминание у скрывшего.
+func TestDelete_DropsMentionsAndUnread(t *testing.T) {
+	in, s := newInteractor()
+	ctx := context.Background()
+	const chatID, a, b int64 = 62, 1, 2
+	s.seedChat(chatID, domain.ChatTypeGroup, a, b)
+	s.seedUsername(b, "bob_petrov")
+	m1, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "@bob_petrov раз"})
+	m2, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "@bob_petrov два"})
+	if s.members[chatID][b].mentions != 2 || s.members[chatID][b].unread != 2 {
+		t.Fatalf("до удаления: mentions=%d unread=%d", s.members[chatID][b].mentions, s.members[chatID][b].unread)
+	}
+	if err := in.DeleteMessage(ctx, chatID, m1.ID, a, true); err != nil {
+		t.Fatalf("DeleteMessage revoke: %v", err)
+	}
+	if s.members[chatID][b].mentions != 1 {
+		t.Fatalf("после удаления у всех mentions=%d, want 1", s.members[chatID][b].mentions)
+	}
+	if next, err := in.NextMention(ctx, chatID, b, 0); err != nil || next != m2.Seq {
+		t.Fatalf("к следующему @ = %d, %v; want %d", next, err, m2.Seq)
+	}
+	if err := in.DeleteMessage(ctx, chatID, m2.ID, b, false); err != nil {
+		t.Fatalf("DeleteMessage у себя: %v", err)
+	}
+	if m := s.members[chatID][b]; m.mentions != 0 || m.unread != 0 {
+		t.Fatalf("после удаления у себя mentions=%d unread=%d, want 0/0", m.mentions, m.unread)
+	}
+}

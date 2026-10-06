@@ -393,18 +393,22 @@ func (r *ChatsRepo) IncUnreadBulk(ctx context.Context, chatID int64, userIDs []i
 // (очищенное, скрытое у себя) не в счёт — по тому же предикату, что лента.
 func (r *ChatsRepo) RecountUnreadReactions(ctx context.Context, chatID, userID int64) (int, error) {
 	var n int
-	err := querier(ctx, r.pool).QueryRow(ctx,
-		`UPDATE chat_members SET unread_reactions = (
-		     SELECT count(DISTINCT m.id) FROM messages m
-		       JOIN reactions re ON re.message_id = m.id AND re.unread
-		      WHERE m.chat_id = $1 AND m.sender_id = $2 AND `+messageVisibleTo("m", "$2")+`)
-		  WHERE chat_id = $1 AND user_id = $2
-		  RETURNING unread_reactions`, chatID, userID).Scan(&n)
+	err := querier(ctx, r.pool).QueryRow(ctx, recountUnreadReactionsSQL+` RETURNING unread_reactions`,
+		chatID, userID).Scan(&n)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, nil // не участник — счётчика нет
 	}
 	return n, err
 }
+
+// recountUnreadReactionsSQL — пересчёт ❤ участника $2 в чате $1: число его
+// видимых ему сообщений с непрочитанной реакцией. Одна формула на все пути
+// (реакция, прочтение, удаление у всех и у себя).
+var recountUnreadReactionsSQL = `UPDATE chat_members SET unread_reactions = (
+     SELECT count(DISTINCT m.id) FROM messages m
+       JOIN reactions re ON re.message_id = m.id AND re.unread
+      WHERE m.chat_id = $1 AND m.sender_id = $2 AND ` + messageVisibleTo("m", "$2") + `)
+  WHERE chat_id = $1 AND user_id = $2`
 
 // ReadReactions — см. ChatRepo.ReadReactions.
 func (r *ChatsRepo) ReadReactions(ctx context.Context, chatID, userID, uptoSeq int64) ([]domain.Message, error) {

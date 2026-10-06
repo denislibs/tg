@@ -1594,9 +1594,27 @@ func (r fakeMsgs) SoftDelete(_ context.Context, msgID int64) error {
 	for chatID, msgs := range r.s.messages {
 		for idx, m := range msgs {
 			if m.ID == msgID {
+				if m.Deleted {
+					return nil
+				}
 				m.Deleted = true
 				m.Text = ""
 				r.s.messages[chatID][idx] = m
+				// Как MessagesRepo.SoftDelete: упоминания и ❤ удалённого гаснут.
+				var users []int64
+				kept := r.s.mentions[:0]
+				for _, mr := range r.s.mentions {
+					if mr.msgID == msgID {
+						users = append(users, mr.userID)
+						continue
+					}
+					kept = append(kept, mr)
+				}
+				r.s.mentions = kept
+				for _, uid := range users {
+					r.s.syncMentionsLocked(chatID, uid)
+				}
+				r.s.recountReactionsLocked(chatID, m.SenderID)
 				return nil
 			}
 		}
@@ -1625,7 +1643,32 @@ func (r fakeMsgs) HideForUser(_ context.Context, userID, msgID int64) error {
 	if r.s.hidden[userID] == nil {
 		r.s.hidden[userID] = map[int64]bool{}
 	}
+	if r.s.hidden[userID][msgID] {
+		return nil
+	}
 	r.s.hidden[userID][msgID] = true
+	// Как MessagesRepo.HideForUser: скрытое уходит из счётчиков скрывшего.
+	for chatID, msgs := range r.s.messages {
+		for _, m := range msgs {
+			if m.ID != msgID {
+				continue
+			}
+			if mem := r.s.members[chatID][userID]; mem != nil && m.SenderID != userID && !m.Deleted &&
+				mem.lastReadSeq < m.Seq && mem.clearedSeq < m.Seq && mem.unread > 0 {
+				mem.unread--
+			}
+			kept := r.s.mentions[:0]
+			for _, mr := range r.s.mentions {
+				if mr.msgID == msgID && mr.userID == userID {
+					continue
+				}
+				kept = append(kept, mr)
+			}
+			r.s.mentions = kept
+			r.s.syncMentionsLocked(chatID, userID)
+			r.s.recountReactionsLocked(chatID, userID)
+		}
+	}
 	return nil
 }
 
