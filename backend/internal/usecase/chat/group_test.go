@@ -857,11 +857,11 @@ func (c groupChats) UnarchiveUnmuted(context.Context, int64, []int64) ([]int64, 
 func (c groupChats) VisibleSeqsUpTo(context.Context, int64, int64, int64) ([]int64, error) {
 	return nil, nil
 }
-func (c groupChats) SetDialogHidden(context.Context, int64, int64, bool) error   { return nil }
-func (c groupChats) ShowDialogs(context.Context, int64) error                    { return nil }
-func (c groupChats) RecountCounters(context.Context, int64, []int64) error       { return nil }
-func (c groupChats) DropMessageMentions(context.Context, int64, int64) error     { return nil }
-func (c groupChats) DropUserMentions(context.Context, int64, int64) error        { return nil }
+func (c groupChats) SetDialogHidden(context.Context, int64, int64, bool) error { return nil }
+func (c groupChats) ShowDialogs(context.Context, int64) error                  { return nil }
+func (c groupChats) RecountCounters(context.Context, int64, []int64) error     { return nil }
+func (c groupChats) DropMessageMentions(context.Context, int64, int64) error   { return nil }
+func (c groupChats) DropUserMentions(context.Context, int64, int64) error      { return nil }
 func (c groupChats) PinnedIDs(context.Context, []int64) (map[int64]bool, error) {
 	return nil, nil
 }
