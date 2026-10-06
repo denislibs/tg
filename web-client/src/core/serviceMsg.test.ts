@@ -31,6 +31,19 @@ describe('serviceMsgText', () => {
     )
   })
 
+  it('вступил по заявке (tweb `messageActionTextNewUnsafe.ts:416-425`): чужое — имя, своё — «заявка одобрена», канал — свои ключи', () => {
+    applyPeerOps([{ op: 'upsert', peers: [
+      { _: 'channel', id: 1, title: 'Группа', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true } },
+      { _: 'channel', id: 2, title: 'Канал', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { broadcast: true } },
+    ] }])
+    const action: MessageAction = { _: 'messageActionChatJoinedByRequest' }
+    expect(serviceMsgText(pill(action))).toBe('Алиса was accepted to the group')
+    expect(serviceMsgSegs(pill(action))[0]).toEqual({ kind: 'peer', peerId: ALICE, fallback: 'Пользователь' })
+    expect(serviceMsgText(pill(action, { out: true }))).toBe('Your request to join the group was approved')
+    const inChannel = makeServiceMessage({ id: 10, peerId: -2, fromId: ALICE, action })
+    expect(serviceMsgText(inChannel)).toBe('Алиса joined the channel by request')
+  })
+
   it('renders edit_photo pill (фото едет ВНУТРИ действия, а не media_id рядом)', () => {
     expect(serviceMsgText(pill({ _: 'messageActionChatEditPhoto' }))).toBe('Алиса обновил(а) фото группы')
   })

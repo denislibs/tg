@@ -84,6 +84,13 @@ export interface MessageActionChatJoinedByLink {
   inviter_id: number
 }
 
+/** messageActionChatJoinedByRequest#ebbca3cb = MessageAction;
+ *
+ *  Вошёл одобренной заявкой. Параметров нет: вошедший — `from_id` сообщения. */
+export interface MessageActionChatJoinedByRequest {
+  _: 'messageActionChatJoinedByRequest'
+}
+
 /** messageActionPinMessage#94bd38ed = MessageAction;
  *
  *  НИ ОДНОГО ПАРАМЕТРА. Цель закрепления — `reply_to` самого служебного
@@ -282,6 +289,7 @@ export type MessageAction =
   | MessageActionChatAddUser
   | MessageActionChatDeleteUser
   | MessageActionChatJoinedByLink
+  | MessageActionChatJoinedByRequest
   | MessageActionPinMessage
   | MessageActionSetMessagesTTL
   | MessageActionTopicCreate
