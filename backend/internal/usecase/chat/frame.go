@@ -277,12 +277,6 @@ func (i *Interactor) messageContext(ctx context.Context, m domain.Message, peer 
 			out.CanSeeReactionsList = domain.CanSeeReactionsList(typ)
 			out.CanViewReactionsList = domain.CanViewReactionsList(typ)
 		}
-		// Закреп — свойство сообщения в чате, одинаковое для всех: кадр
-		// правки заменяет сообщение у клиента целиком, и без флага
-		// закреплённое после правки снова предлагало бы «Закрепить».
-		if pinned, err := i.pinnedOf(ctx, []domain.Message{m}); err == nil {
-			out.Pinned = pinned[m.ID]
-		}
 	}
 	return out
 }
@@ -374,10 +368,23 @@ func factCheckUpdatePayload(peer domain.PeerID, m domain.Message) map[string]any
 // реакции и итоги опроса — УРЕЗАНЫ (нет chosen_order, chosen) и помечены
 // `min`, как у Telegram в updateEditMessage: клиент сливает их со своими, а не
 // гасит ими «мою» реакцию и мой голос.
+//
+// Закреп — тоже здесь, а не в общей сборке кадра: кадр правки заменяет
+// сообщение у клиента целиком, и без флага закреплённое после правки снова
+// предлагало бы «Закрепить»; новое же сообщение закреплённым не бывает, и
+// спрашивать о нём на каждой отправке незачем.
 func (i *Interactor) editMessagePayload(ctx context.Context, m domain.Message) map[string]any {
 	p := i.newMessagePayload(ctx, m, domain.UpdateEditMessageTag)
 	if msg, ok := p[frameMessageKey].(map[string]any); ok {
 		markMinAggregates(msg)
+		if pinned, err := i.pinnedOf(ctx, []domain.Message{m}); err == nil && pinned[m.ID] {
+			pf, _ := msg["pFlags"].(map[string]any)
+			if pf == nil {
+				pf = map[string]any{}
+			}
+			pf["pinned"] = true
+			msg["pFlags"] = pf
+		}
 	}
 	return p
 }

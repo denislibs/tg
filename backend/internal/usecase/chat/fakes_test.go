@@ -67,6 +67,8 @@ type store struct {
 	reactions map[int64]map[int64][]string
 	// reactUnread — reactions.unread строки (сообщение, автор реакции, эмодзи).
 	reactUnread map[reactKey]bool
+	// showDialogsCalls — сколько раз звали ShowDialogs (по чату).
+	showDialogsCalls map[int64]int
 	hidden      map[int64]map[int64]bool       // userID -> msgID -> hidden ("delete for me")
 	pins        map[int64][]int64              // chatID -> pinned msgIDs (newest first)
 	viewed      map[int64]map[int64]bool       // msgID -> userID -> viewed (channel view dedup)
@@ -437,6 +439,10 @@ func (r fakeChats) SetDialogHidden(_ context.Context, chatID, userID int64, hidd
 func (r fakeChats) ShowDialogs(_ context.Context, chatID int64) error {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
+	if r.s.showDialogsCalls == nil {
+		r.s.showDialogsCalls = map[int64]int{}
+	}
+	r.s.showDialogsCalls[chatID]++
 	for _, m := range r.s.members[chatID] {
 		m.hidden = false
 	}
@@ -1579,19 +1585,17 @@ func (r fakeMsgs) UpdateGeoLive(_ context.Context, msgID int64, lat, lng float64
 	return domain.Message{}, domain.ErrNotFound
 }
 
-func (r fakeMsgs) SoftDeleteUpTo(_ context.Context, chatID, maxSeq int64) ([]domain.Message, error) {
+func (r fakeMsgs) SoftDeleteUpTo(_ context.Context, chatID, maxSeq int64) error {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
-	var out []domain.Message
 	for idx, m := range r.s.messages[chatID] {
 		if m.Seq <= maxSeq && !m.Deleted {
-			out = append(out, m)
 			m.Deleted = true
 			m.Text = ""
 			r.s.messages[chatID][idx] = m
 		}
 	}
-	return out, nil
+	return nil
 }
 
 func (r fakeMsgs) SoftDelete(_ context.Context, msgID int64) error {

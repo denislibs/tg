@@ -362,8 +362,8 @@ type MessageRepo interface {
 	UpdateGeoLive(ctx context.Context, msgID int64, lat, lng float64, heading *int, stopped bool) (domain.Message, error)
 	SoftDelete(ctx context.Context, msgID int64) error
 	// SoftDeleteUpTo — удалить у всех сообщения чата с seq<=maxSeq
-	// (deleteHistory revoke); возвращает удалённые строки.
-	SoftDeleteUpTo(ctx context.Context, chatID, maxSeq int64) ([]domain.Message, error)
+	// (deleteHistory revoke).
+	SoftDeleteUpTo(ctx context.Context, chatID, maxSeq int64) error
 	// SetDestructOnRead ставит destruct_at=now()+ttl для секретных сообщений,
 	// полученных читателем (sender_id<>readerID) до readSeq; no-op для чатов
 	// без ttl. Идемпотентно.

@@ -205,9 +205,11 @@ func TestCounters_DialogHiddenAndRecount(t *testing.T) {
 	}
 
 	// revoke: удаление пачкой.
-	gone, err := msgs.SoftDeleteUpTo(ctx, chatID, m3.Seq)
-	if err != nil || len(gone) != 2 {
-		t.Fatalf("SoftDeleteUpTo = %d, %v; want 2 (m2, m3 — m1 уже удалено)", len(gone), err)
+	if err := msgs.SoftDeleteUpTo(ctx, chatID, m3.Seq); err != nil {
+		t.Fatalf("SoftDeleteUpTo: %v", err)
+	}
+	if seqs, _ := chats.VisibleSeqsUpTo(ctx, chatID, b, m3.Seq); len(seqs) != 0 {
+		t.Fatalf("после удаления пачкой видно %v", seqs)
 	}
 }
 

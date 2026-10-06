@@ -98,8 +98,12 @@ func (i *Interactor) fanOutNewMessage(
 	}
 	// Диалог, удалённый кем-то из участников «у себя» (DeleteDialog),
 	// возвращается в список с новым сообщением — тот же чат, а не второй.
-	if e := i.chats.ShowDialogs(ctx, chatID); e != nil {
-		return nil, nil, nil, e
+	// Прятать строку умеет только личка и «Избранное» (у их адреса есть
+	// состав, chatAddress.members), остальным чатам вопрос не задаётся.
+	if pp.addr.members != nil {
+		if e := i.chats.ShowDialogs(ctx, chatID); e != nil {
+			return nil, nil, nil, e
+		}
 	}
 	// Непрочитанные — одним запросом всем получателям (кроме автора).
 	//

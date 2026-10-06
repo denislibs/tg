@@ -112,8 +112,20 @@ func TestDeleteDialog_RevokeDeletesForPeer(t *testing.T) {
 	if s.members[chatID][b].unread != 0 {
 		t.Fatalf("unread собеседника = %d, want 0", s.members[chatID][b].unread)
 	}
-	if d, _ := in.ListDialogs(ctx, b); len(d) != 1 {
-		t.Fatal("строка собеседника пропала при revoke")
+	// Пустую строку собеседника прячем, как оригинал (диалог без
+	// top_message выбрасывается); новое сообщение возвращает её обоим.
+	if d, _ := in.ListDialogs(ctx, b); len(d) != 0 {
+		t.Fatalf("у собеседника после revoke осталась пустая строка: %#v", d)
+	}
+	_ = lastFrameOfType(t, pub, b, "chat_removed")
+	if _, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Text: "снова"}); err != nil {
+		t.Fatal(err)
+	}
+	if da, _ := in.ListDialogs(ctx, a); len(da) != 1 {
+		t.Fatal("строка удалившего не вернулась")
+	}
+	if db, _ := in.ListDialogs(ctx, b); len(db) != 1 {
+		t.Fatal("строка собеседника не вернулась")
 	}
 }
 
@@ -178,5 +190,24 @@ func TestDelete_DropsMentionsAndUnread(t *testing.T) {
 	}
 	if m := s.members[chatID][b]; m.mentions != 0 || m.unread != 0 {
 		t.Fatalf("после удаления у себя mentions=%d unread=%d, want 0/0", m.mentions, m.unread)
+	}
+}
+
+// Ревью #408 п.8: возврат спрятанной строки (ShowDialogs) спрашивается только
+// у лички — отправка в группу участников не обходит.
+func TestSend_ShowDialogsOnlyForPrivate(t *testing.T) {
+	in, s := newInteractor()
+	ctx := context.Background()
+	s.seedChat(63, domain.ChatTypeGroup, 1, 2)
+	if _, err := in.Send(ctx, SendInput{ChatID: 63, SenderID: 1, Text: "группа"}); err != nil {
+		t.Fatal(err)
+	}
+	if n := s.showDialogsCalls[63]; n != 0 {
+		t.Fatalf("ShowDialogs в группе вызван %d раз", n)
+	}
+	chatID, _ := in.CreatePrivateChat(ctx, 1, 2)
+	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: 1, Text: "личка"})
+	if n := s.showDialogsCalls[chatID]; n != 1 {
+		t.Fatalf("ShowDialogs в личке вызван %d раз, want 1", n)
 	}
 }

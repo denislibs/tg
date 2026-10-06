@@ -33,7 +33,11 @@ func (i *Interactor) ClearHistory(ctx context.Context, chatID, userID int64) err
 	}
 	var deliver func(context.Context)
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		maxSeq, gone, e := i.clearForUser(ctx, chatID, userID)
+		maxSeq, e := i.chats.MaxSeq(ctx, chatID)
+		if e != nil {
+			return e
+		}
+		gone, e := i.clearForUser(ctx, chatID, userID, maxSeq)
 		if e != nil {
 			return e
 		}
@@ -106,7 +110,7 @@ func (i *Interactor) DeleteDialog(ctx context.Context, chatID, userID int64, rev
 				others[uid] = seqs
 			}
 		}
-		_, gone, e := i.clearForUser(ctx, chatID, userID)
+		gone, e := i.clearForUser(ctx, chatID, userID, maxSeq)
 		if e != nil {
 			return e
 		}
@@ -127,11 +131,21 @@ func (i *Interactor) DeleteDialog(ctx context.Context, chatID, userID int64, rev
 		if !revoke {
 			return nil
 		}
-		if _, e := i.msgs.SoftDeleteUpTo(ctx, chatID, maxSeq); e != nil {
+		if e := i.msgs.SoftDeleteUpTo(ctx, chatID, maxSeq); e != nil {
 			return e
 		}
+		// У собеседника история пуста — пустую строку оригинал из списка
+		// выбрасывает (tweb storages/dialogs.ts dropDialogWithEvent: диалог без
+		// top_message), поэтому прячется и его строка; следующее сообщение
+		// вернёт её обоим (ShowDialogs).
 		for uid, seqs := range others {
-			d, e := i.journalOwn(ctx, uid, deleteChunks(addr.forViewer(uid), seqs))
+			if e := i.chats.SetDialogHidden(ctx, chatID, uid, true); e != nil {
+				return e
+			}
+			upeer := addr.forViewer(uid)
+			frames := append(deleteChunks(upeer, seqs), ownFrame{"chat_removed",
+				map[string]any{"_": domain.UpdateChatRemovedTag, "peer": domain.NewPeer(upeer)}})
+			d, e := i.journalOwn(ctx, uid, frames)
 			if e != nil {
 				return e
 			}
@@ -150,35 +164,32 @@ func (i *Interactor) DeleteDialog(ctx context.Context, chatID, userID int64, rev
 	return nil
 }
 
-// clearForUser — очистка истории у одного участника внутри транзакции
-// вызывающего: горизонт очистки и прочтения — до максимума seq чата,
-// упоминания и реакции до него гаснут. Возвращает горизонт и номера, которые
-// у участника пропали (видимые ему до очистки).
-func (i *Interactor) clearForUser(ctx context.Context, chatID, userID int64) (int64, []int64, error) {
-	maxSeq, err := i.chats.MaxSeq(ctx, chatID)
-	if err != nil {
-		return 0, nil, err
-	}
+// clearForUser — очистка истории у одного участника до горизонта maxSeq
+// (один на всю операцию: сообщение, пришедшее посреди неё, не должно у
+// удалившего исчезнуть, а у собеседника остаться) внутри транзакции
+// вызывающего: горизонт очистки и прочтения — maxSeq, упоминания и реакции до
+// него гаснут. Возвращает номера, которые у участника пропали.
+func (i *Interactor) clearForUser(ctx context.Context, chatID, userID, maxSeq int64) ([]int64, error) {
 	gone, err := i.chats.VisibleSeqsUpTo(ctx, chatID, userID, maxSeq)
 	if err != nil {
-		return 0, nil, err
+		return nil, err
 	}
 	if err := i.chats.SetClearedSeq(ctx, chatID, userID, maxSeq); err != nil {
-		return 0, nil, err
+		return nil, err
 	}
 	// Всё «до горизонта» считается прочитанным: read-маркер и непрочитанное
 	// сдвигаются к максимуму (иначе бейдж застынет на скрытых сообщениях).
 	if err := i.chats.SetRead(ctx, chatID, userID, maxSeq, 0); err != nil {
-		return 0, nil, err
+		return nil, err
 	}
 	if _, err := i.chats.ClearMentions(ctx, chatID, userID, maxSeq); err != nil {
-		return 0, nil, err
+		return nil, err
 	}
 	// Очищенное ему больше не видно — реакции на нём из ❤ уходят.
 	if _, err := i.chats.RecountUnreadReactions(ctx, chatID, userID); err != nil {
-		return 0, nil, err
+		return nil, err
 	}
-	return maxSeq, gone, nil
+	return gone, nil
 }
 
 // ownFrame — кадр журнала одного пользователя: тип конверта и тело.

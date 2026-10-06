@@ -47,7 +47,7 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 	)
 	// Кадром платной реакции служит ТОТ ЖЕ конструктор, что у обычной:
 	// updateMessageReactions с абсолютным агрегатом сообщения (journalReactions:
-	// поставившему — его глазами, с его вкладом звёздами; остальным — min).
+	// поставившему и автору — их глазами; остальным — min).
 	var deliver func(context.Context)
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		b, e := i.stars.AddBalance(ctx, userID, -count)
@@ -83,7 +83,9 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 		// кадра у платной реакции нет ни в схеме, ни здесь — она второй
 		// конструктор объединения Reaction в том же векторе results, и кадр,
 		// принёсший только её, стёр бы у получателя обычные чипы.
-		deliver, e = i.journalReactions(ctx, chatID, msg, userID)
+		// Автору сообщения — тоже его глазами: min-агрегат стёр бы у него
+		// pFlags.unread чужих реакций, и бейдж ❤ разошёлся бы с сервером.
+		deliver, e = i.journalReactions(ctx, chatID, msg, userID, msg.SenderID)
 		return e
 	})
 	if err != nil {

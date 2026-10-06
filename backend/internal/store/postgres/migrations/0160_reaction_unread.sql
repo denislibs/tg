@@ -10,8 +10,9 @@
 -- событий нет, из чего восстановить «непрочитано» у старых реакций, —
 -- старые строки прочитаны, счётчики пересчитываются по новой формуле
 -- (ChatsRepo.RecountUnreadReactions).
+-- ADD COLUMN с константным DEFAULT на PG11+ таблицу не переписывает; частичный
+-- индекс по непрочитанным строится отдельно, без блокировки записи (0162).
 ALTER TABLE reactions ADD COLUMN IF NOT EXISTS unread BOOLEAN NOT NULL DEFAULT false;
-CREATE INDEX IF NOT EXISTS reactions_unread_idx ON reactions (message_id) WHERE unread;
 
 UPDATE chat_members cm SET unread_reactions = (
     SELECT count(DISTINCT m.id) FROM messages m
@@ -33,5 +34,4 @@ UPDATE chat_members cm SET unread_mentions_count = (
  WHERE cm.unread_mentions_count <> 0;
 
 -- +goose Down
-DROP INDEX IF EXISTS reactions_unread_idx;
 ALTER TABLE reactions DROP COLUMN IF EXISTS unread;
