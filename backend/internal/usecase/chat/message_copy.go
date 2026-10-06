@@ -39,6 +39,9 @@ func copyContent(src domain.Message) domain.Message {
 	}
 }
 
+// maxSafeGroupedID — верхняя граница нового ключа альбома (Number.MAX_SAFE_INTEGER).
+const maxSafeGroupedID = 1<<53 - 1
+
 // regroup выдаёт копиям пачки НОВЫЕ ключи альбомов: элементы одного исходного
 // альбома получают общий новый grouped_id (Telegram: пересланный альбом — снова
 // альбом, со своим grouped_id), одиночные сообщения остаются одиночными.
@@ -54,7 +57,9 @@ func regroup(copies []domain.Message) int {
 		}
 		n, ok := fresh[*g]
 		if !ok {
-			n = rand.Int64N(1<<62) + 1
+			// Ключ в пределах точного целого JS (2^53): клиент держит
+			// grouped_id числом, и больший ключ терял бы младшие разряды.
+			n = rand.Int64N(maxSafeGroupedID) + 1
 			fresh[*g] = n
 			units++
 		}

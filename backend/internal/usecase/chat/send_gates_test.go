@@ -199,7 +199,7 @@ func TestForward_CopiesContentAndRegroupsAlbum(t *testing.T) {
 		t.Fatalf("контакт потерян: %+v", k)
 	}
 	x, y := out[2].GroupedID, out[3].GroupedID
-	if x == nil || y == nil || *x != *y || *x == 555 {
+	if x == nil || y == nil || *x != *y || *x == 555 || *x > maxSafeGroupedID {
 		t.Fatalf("альбом: grouped_id копий %v/%v, want общий новый (не 555)", x, y)
 	}
 	// Своё пересланное — out у пересылающего (кадр журнала), не у получателя.
