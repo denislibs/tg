@@ -44,6 +44,7 @@ func participantCases() []struct {
 			NewChannelParticipant(Member{UserID: 9, Role: RoleMember, JoinedAt: joined}, stranger),
 			[]UserReal{{Underscore: UserTag, ID: 9, FirstName: "Аня", Status: NewUserStatusRecently(false)}})},
 		{"пустой список", NewChannelsChannelParticipants(0, nil, nil)},
+		{"онлайн", NewChatOnlines(3)},
 	}
 }
 

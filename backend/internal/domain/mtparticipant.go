@@ -284,3 +284,18 @@ func NewChannelsChannelParticipant(p ChannelParticipant, users []UserReal) Chann
 		Users:       orEmpty(users),
 	}
 }
+
+// ── chatOnlines: «N онлайн» ────────────────────────────────────────────────
+
+const ChatOnlinesTag = "chatOnlines"
+
+// chatOnlines#f041e250 onlines:int = ChatOnlines;
+//
+// Ответ messages.getOnlines (Б-84): сколько участников сейчас онлайн — число,
+// а не список (кто именно, ответ не раскрывает).
+type ChatOnlines struct {
+	Underscore string `json:"_"`
+	Onlines    int    `json:"onlines"`
+}
+
+func NewChatOnlines(n int) ChatOnlines { return ChatOnlines{Underscore: ChatOnlinesTag, Onlines: n} }

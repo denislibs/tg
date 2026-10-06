@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -64,7 +65,8 @@ func (i *Interactor) postGroupService(ctx context.Context, chatID, actorID int64
 // isMembershipAction — служебное действие о СОСТАВЕ чата (кто вошёл или вышел).
 func isMembershipAction(a domain.MessageAction) bool {
 	switch a.(type) {
-	case domain.MessageActionChatAddUser, domain.MessageActionChatDeleteUser, domain.MessageActionChatJoinedByLink:
+	case domain.MessageActionChatAddUser, domain.MessageActionChatDeleteUser, domain.MessageActionChatJoinedByLink,
+		domain.MessageActionChatJoinedByRequest:
 		return true
 	}
 	return false
@@ -185,10 +187,12 @@ func (i *Interactor) AddMember(ctx context.Context, chatID, actorID, userID int6
 	if err != nil || !joined {
 		return err
 	}
+	_ = i.groups.SetJoinInfo(ctx, chatID, userID, actorID, false)
 	targetID := userID
 	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionChatAddUser([]int64{targetID}))
 	// Число участников изменилось — рассылаем свежий снимок метаданных чата.
 	i.publishChatUpdate(ctx, chatID)
+	i.emitParticipant(ctx, chatID, actorID, userID, nil, participantWire(i.participantNow(ctx, chatID, userID)), nil)
 	return nil
 }
 
@@ -197,16 +201,30 @@ func (i *Interactor) AddMember(ctx context.Context, chatID, actorID, userID int6
 // user still receives the fan-out; afterwards a chat_removed frame tells their
 // clients to drop the dialog.
 func (i *Interactor) RemoveMember(ctx context.Context, chatID, actorID, userID int64) error {
+	prev, err := i.removeMember(ctx, chatID, actorID, userID)
+	if err != nil {
+		return err
+	}
+	// Кадр участника админам и актору (выбывшему — chat_removed): ушёл сам или
+	// исключён без бана — channelParticipantLeft.
+	i.emitParticipant(ctx, chatID, actorID, userID, participantWire(prev), domain.NewChannelParticipantLeft(userID), nil)
+	return nil
+}
+
+// removeMember — тело RemoveMember без кадра участника: бан (BanMember) шлёт
+// свой, с channelParticipantBanned. prev — участник до выхода.
+func (i *Interactor) removeMember(ctx context.Context, chatID, actorID, userID int64) (*domain.Participant, error) {
 	if actorID != userID {
 		// Кик — над подвластной целью: не владелец, чужой админ — только
 		// владельцем или назначившим (manageTarget).
 		if _, _, err := i.manageTarget(ctx, chatID, actorID, userID, domain.RightBanUsers, true); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	if _, err := i.groups.GetMember(ctx, chatID, userID); err != nil {
-		return err // not a member — nothing to remove, no service message
+		return nil, err // not a member — nothing to remove, no service message
 	}
+	prev := i.participantNow(ctx, chatID, userID)
 	// «Вышел сам» и «выгнали» — ОДИН конструктор: различие выводит клиент по
 	// совпадению from_id с user_id, ровно как appMessagesManager уточняет его до
 	// синтетического messageActionChatLeave. Сервер сообщает ФАКТ, формулировку
@@ -236,7 +254,7 @@ func (i *Interactor) RemoveMember(ctx context.Context, chatID, actorID, userID i
 		return nil
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// Число участников изменилось — снимок метаданных оставшимся участникам
 	// (выбывший их не получает; ему адресован chat_removed ниже, он же последний).
@@ -248,14 +266,14 @@ func (i *Interactor) RemoveMember(ctx context.Context, chatID, actorID, userID i
 			_ = i.publisher.PublishToUser(ctx, userID, frame("chat_removed", payload))
 		}
 	}
-	return nil
+	return prev, nil
 }
 
 // PromoteAdmin назначает (или правит) админа (channels.editAdmin). Цель —
 // подвластный участник (manageTarget); выдавать можно только то, что есть у
 // самого актора (кроме владельца) — у Telegram RIGHT_FORBIDDEN. Назначивший
 // запоминается: править этого админа дальше сможет он и владелец.
-func (i *Interactor) PromoteAdmin(ctx context.Context, chatID, actorID, userID int64, rights domain.Rights) error {
+func (i *Interactor) PromoteAdmin(ctx context.Context, chatID, actorID, userID int64, rights domain.Rights, rank string) error {
 	actor, target, err := i.manageTarget(ctx, chatID, actorID, userID, domain.RightManageAdmins, true)
 	if err != nil {
 		return err
@@ -268,11 +286,34 @@ func (i *Interactor) PromoteAdmin(ctx context.Context, chatID, actorID, userID i
 	if target.Role == domain.RoleAdmin && target.PromotedBy != 0 {
 		promotedBy = target.PromotedBy // правка прав не переназначает админа
 	}
+	prev := i.participantNow(ctx, chatID, userID)
 	if err := i.groups.SetRole(ctx, chatID, userID, domain.RoleAdmin, rights, promotedBy); err != nil {
 		return err
 	}
+	// Подпись админа (channels.editAdmin rank, Б-117): у Telegram до 16 знаков.
+	if err := i.groups.SetRank(ctx, chatID, userID, clipRank(rank)); err != nil {
+		return err
+	}
 	i.publishChatUpdate(ctx, chatID) // состав админов изменился
+	i.afterRightsChange(ctx, chatID, actorID, userID, prev)
 	return nil
+}
+
+// clipRank — подпись админа не длиннее 16 символов (Telegram ADMIN_RANK_INVALID).
+func clipRank(rank string) string {
+	r := []rune(strings.TrimSpace(rank))
+	if len(r) > 16 {
+		r = r[:16]
+	}
+	return string(r)
+}
+
+// afterRightsChange — права участника сменились (повышение, снятие,
+// ограничение): кадр участника актору и админам и пер-зрительский снимок
+// чата самому затронутому — его новые admin_rights/banned_rights (A2-05).
+func (i *Interactor) afterRightsChange(ctx context.Context, chatID, actorID, userID int64, prev *domain.Participant) {
+	i.emitParticipant(ctx, chatID, actorID, userID, participantWire(prev), participantWire(i.participantNow(ctx, chatID, userID)), nil)
+	i.publishViewerChat(ctx, chatID, userID)
 }
 
 // DemoteAdmin снимает админа: он возвращается в роль вступившего по типу чата
@@ -285,10 +326,15 @@ func (i *Interactor) DemoteAdmin(ctx context.Context, chatID, actorID, userID in
 	if err != nil {
 		return err
 	}
+	prev := i.participantNow(ctx, chatID, userID)
 	if err := i.groups.SetRole(ctx, chatID, userID, domain.JoinRole(typ), 0, 0); err != nil {
 		return err
 	}
+	if err := i.groups.SetRank(ctx, chatID, userID, ""); err != nil {
+		return err
+	}
 	i.publishChatUpdate(ctx, chatID) // состав админов изменился
+	i.afterRightsChange(ctx, chatID, actorID, userID, prev)
 	return nil
 }
 
@@ -391,7 +437,8 @@ func (i *Interactor) ChatCard(ctx context.Context, chatID, viewerID int64) (doma
 	if err := i.RequireChatRead(ctx, chatID, viewerID); err != nil {
 		return domain.ChatRecord{}, err
 	}
-	return i.groups.Card(ctx, chatID, viewerID)
+	// Счётчики участников (Б-115) — по правам зрителя: viewerCounters.
+	return i.viewerCard(ctx, chatID, viewerID)
 }
 
 // UsersByIDs — карточки глазами viewerID (имя из его книги, pFlags.contact).
@@ -416,29 +463,6 @@ func (i *Interactor) KnownUsersByIDs(ctx context.Context, viewerID int64, ids []
 		}
 	}
 	return i.groups.UsersByIDs(ctx, viewerID, keep)
-}
-
-// ListMembers returns the chat's members (role + rights + mute).
-//
-// Кому:
-//   - вещательный канал — только владельцу и админам (tweb hasRights
-//     view_participants: `!broadcast || creator || isAdmin`, сервер иначе
-//     CHAT_ADMIN_REQUIRED): состав подписчиков канала скрыт;
-//   - прочие — тому, кто чат читает, а группу обсуждения ещё и подписчику
-//     канала, не забаненному в ней (RequireDiscussionRead: комментарии и
-//     @-упоминания до вступления — как чтение треда).
-func (i *Interactor) ListMembers(ctx context.Context, chatID, viewerID int64, query string, offset, limit int) ([]domain.Member, error) {
-	a, err := i.chats.Access(ctx, chatID, viewerID)
-	if err != nil {
-		return nil, err
-	}
-	if a.Type == domain.ChatTypeChannel && !a.IsAdmin() {
-		return nil, domain.ErrForbidden
-	}
-	if !a.CanRead() && i.RequireDiscussionRead(ctx, chatID, viewerID) != nil {
-		return nil, domain.ErrForbidden
-	}
-	return i.groups.ListMembers(ctx, chatID, query, offset, limit)
 }
 
 func (i *Interactor) CreateInvite(ctx context.Context, chatID, actorID int64, title string, usageLimit *int, requiresApproval bool, expiresAt *time.Time) (domain.InviteLink, error) {
@@ -536,6 +560,8 @@ func (i *Interactor) joinByLink(ctx context.Context, link domain.InviteLink, tok
 		if e := i.joinReqs.Create(ctx, link.ChatID, userID, token); e != nil {
 			return false, e
 		}
+		// Админы с invite_users видят заявку живьём: плашка в шапке (A2-06).
+		i.emitPendingRequests(ctx, link.ChatID)
 		return true, nil
 	}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
@@ -545,7 +571,11 @@ func (i *Interactor) joinByLink(ctx context.Context, link domain.InviteLink, tok
 		if e := i.invites.IncUses(ctx, link.ID); e != nil {
 			return e
 		}
-		return i.invites.RecordJoin(ctx, link.ChatID, token, userID)
+		if e := i.invites.RecordJoin(ctx, link.ChatID, token, userID); e != nil {
+			return e
+		}
+		// Пригласивший — создатель ссылки (channelParticipantSelf.inviter_id).
+		return i.groups.SetJoinInfo(ctx, link.ChatID, userID, link.CreatedBy, false)
 	})
 	if err != nil {
 		return false, err
@@ -559,16 +589,21 @@ func (i *Interactor) joinByLink(ctx context.Context, link domain.InviteLink, tok
 	// from_id самого служебного сообщения, и параметр inviter_id дублировал его
 	// вместо того, чтобы назвать пригласившего.
 	i.postGroupService(ctx, link.ChatID, userID, domain.NewMessageActionChatJoinedByLink(link.CreatedBy))
+	// Число участников и списки — живьём (A2-07): chat_update всем, кадр
+	// участника со ссылкой админам.
+	i.publishChatUpdate(ctx, link.ChatID)
+	invite := domain.NewChatInviteExported(link)
+	i.emitParticipant(ctx, link.ChatID, userID, userID, nil, participantWire(i.participantNow(ctx, link.ChatID, userID)), &invite)
 	return false, nil
 }
 
 // ListJoinRequests returns the pending join requests for a chat. The actor must
 // hold INVITE_USERS.
-func (i *Interactor) ListJoinRequests(ctx context.Context, chatID, actorID int64) ([]domain.JoinRequest, error) {
+func (i *Interactor) ListJoinRequests(ctx context.Context, chatID, actorID int64, q string, offsetDate time.Time, offsetUser int64, limit int) ([]domain.JoinRequest, int, error) {
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return i.joinReqs.List(ctx, chatID)
+	return i.joinReqs.List(ctx, chatID, q, offsetDate, offsetUser, limit)
 }
 
 // ApproveJoinRequest adds the requesting user as a member and clears the pending
@@ -588,17 +623,40 @@ func (i *Interactor) ApproveJoinRequest(ctx context.Context, chatID, actorID, us
 	if !ok {
 		return domain.ErrNotFound
 	}
-	return i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		if _, e := i.admit(ctx, chatID, userID, actorID, admitApproved); e != nil {
+	var joined bool
+	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		j, e := i.admit(ctx, chatID, userID, actorID, admitApproved)
+		if e != nil {
 			return e
 		}
+		joined = j
 		if token != "" {
 			if e := i.invites.RecordJoin(ctx, chatID, token, userID); e != nil {
 				return e
 			}
 		}
+		if j {
+			// Привёл одобривший; вошёл заявкой (channelParticipantSelf.via_request).
+			if e := i.groups.SetJoinInfo(ctx, chatID, userID, actorID, true); e != nil {
+				return e
+			}
+		}
 		return i.joinReqs.Delete(ctx, chatID, userID)
 	})
+	if err != nil {
+		return err
+	}
+	// A6-04/A2-06: служебка «вступил по заявке» (автор — вступивший, как у
+	// оригинала; в broadcast-канале состав служебками не пишется), снимок
+	// чата всем — одобренный по нему видит чат, — кадр участника и заявок.
+	if joined {
+		i.postGroupService(ctx, chatID, userID, domain.NewMessageActionChatJoinedByRequest())
+		i.publishChatUpdate(ctx, chatID)
+		i.publishViewerChat(ctx, chatID, userID)
+		i.emitParticipant(ctx, chatID, actorID, userID, nil, participantWire(i.participantNow(ctx, chatID, userID)), nil)
+	}
+	i.emitPendingRequests(ctx, chatID)
+	return nil
 }
 
 // DeclineJoinRequest drops a pending join request. The actor must hold
@@ -607,5 +665,9 @@ func (i *Interactor) DeclineJoinRequest(ctx context.Context, chatID, actorID, us
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightInviteUsers); err != nil {
 		return err
 	}
-	return i.joinReqs.Delete(ctx, chatID, userID)
+	if err := i.joinReqs.Delete(ctx, chatID, userID); err != nil {
+		return err
+	}
+	i.emitPendingRequests(ctx, chatID) // A2-06: отклонение — кадр админам
+	return nil
 }

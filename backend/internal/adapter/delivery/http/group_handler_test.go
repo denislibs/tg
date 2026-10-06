@@ -84,7 +84,7 @@ func TestGroupFlow_HTTP(t *testing.T) {
 	}
 	// GET /chats/{id}/members: 2 entries (A=creator, B=member), online=false
 	// since no presence is wired into the test router.
-	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/members", tokenA, nil)
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/participants", tokenA, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("members: %d %s", rec.Code, rec.Body.String())
 	}
@@ -241,7 +241,7 @@ func TestJoinRequestFlow_HTTP(t *testing.T) {
 	}
 
 	// B is now a member.
-	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/members", tokenA, nil)
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/participants", tokenA, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("members: %d %s", rec.Code, rec.Body.String())
 	}

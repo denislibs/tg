@@ -92,3 +92,29 @@ func TestPresenceStore_AnnouncedExpires(t *testing.T) {
 		t.Fatalf("после офлайна: got=%v err=%v; want нулевое время", got, err)
 	}
 }
+
+// Б-84: «N онлайн» — EXISTS по многим ключам, пачками.
+func TestPresenceStore_CountOnline(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+	rdb := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+	ctx := context.Background()
+	store := NewPresenceStore(rdb)
+	ids := make([]int64, 0, 2500)
+	for id := int64(1); id <= 2500; id++ {
+		ids = append(ids, id)
+		if id%2 == 0 {
+			if _, err := store.SetOnlineNX(ctx, id, time.Minute); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	n, err := store.CountOnline(ctx, ids)
+	if err != nil || n != 1250 {
+		t.Fatalf("CountOnline = %d, %v; want 1250", n, err)
+	}
+	if n, _ := store.CountOnline(ctx, nil); n != 0 {
+		t.Fatalf("пустой состав: %d", n)
+	}
+}

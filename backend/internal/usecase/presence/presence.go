@@ -40,6 +40,8 @@ type PresenceStore interface {
 	// AnnouncedExpires — последний объявленный дедлайн; нулевое время — не
 	// объявлялся или уже истёк.
 	AnnouncedExpires(ctx context.Context, userID int64) (time.Time, error)
+	// CountOnline — сколько из userIDs сейчас онлайн (одним конвейером).
+	CountOnline(ctx context.Context, userIDs []int64) (int, error)
 }
 
 // Горизонт онлайна и порог его продления.
@@ -130,6 +132,14 @@ func (m *Manager) Offline(ctx context.Context, userID int64) error {
 // layer's PresenceQuery seam (used by GET /chats/{id}/members).
 func (m *Manager) IsOnline(ctx context.Context, userID int64) (bool, error) {
 	return m.store.IsOnline(ctx, userID)
+}
+
+// CountOnline — «N онлайн» чата (messages.getOnlines, Б-84): сколько из ids
+// держат ключ присутствия. Скрывших время визита считаем тоже — число не
+// раскрывает, кто именно (решение по умолчанию). Порог: группы до десятков
+// тысяч; дальше — сет онлайна и пересечение (SINTERCARD), не сейчас.
+func (m *Manager) CountOnline(ctx context.Context, userIDs []int64) (int, error) {
+	return m.store.CountOnline(ctx, userIDs)
 }
 
 // Status — снимок присутствия в том виде, из которого собирается UserStatus

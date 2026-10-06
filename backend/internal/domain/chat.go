@@ -450,7 +450,9 @@ func (c ChatRecord) ToChannel() Channel {
 		SignatureProfiles: c.SignatureProfiles,
 		SlowmodeEnabled:   c.Settings.SlowmodeSeconds > 0,
 		Forum:             c.IsForum,
-		HasLink:           c.DiscussionChatID != 0,
+		// has_link — у канала есть группа обсуждения ЛИБО группа сама служит
+		// обсуждением канала (Б-119).
+		HasLink: c.DiscussionChatID != 0 || c.LinkedChannelID != 0,
 	})
 	out.Username = c.Username
 	out.ParticipantsCount = c.MemberCount

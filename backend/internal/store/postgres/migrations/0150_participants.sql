@@ -10,6 +10,14 @@ ALTER TABLE chat_members ADD COLUMN IF NOT EXISTS rank TEXT NOT NULL DEFAULT '';
 ALTER TABLE chat_members ADD COLUMN IF NOT EXISTS inviter_id BIGINT;
 ALTER TABLE chat_members ADD COLUMN IF NOT EXISTS via_request BOOLEAN NOT NULL DEFAULT false;
 
+-- Админы до 0139 остались без назначившего, а channelParticipantAdmin.promoted_by
+-- обязателен: клиент (tweb canEditAdmin) по пустому считал админа правимым
+-- любым, кто вправе назначать, и сервер отвечал 403 (п. 5 ревью #401).
+-- Сервер и так даёт их править только владельцу — вписываем его явно.
+UPDATE chat_members cm SET promoted_by = c.creator_id
+  FROM chats c
+ WHERE c.id = cm.chat_id AND cm.role = 'admin' AND cm.promoted_by IS NULL AND c.creator_id IS NOT NULL;
+
 -- Фильтры channels.getParticipants: «недавние» — по дате вступления, админы —
 -- частичный индекс (их единицы на чат), выгнанные/ограниченные/заявки — по дате.
 CREATE INDEX IF NOT EXISTS idx_chat_members_chat_joined ON chat_members (chat_id, joined_at DESC, user_id);

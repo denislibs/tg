@@ -81,3 +81,23 @@ func (s *PresenceStore) IsOnline(ctx context.Context, userID int64) (bool, error
 func (s *PresenceStore) LastSeen(ctx context.Context, userID int64) (int64, error) {
 	return s.rdb.Get(ctx, lastSeenKey(userID)).Int64()
 }
+
+// CountOnline — сколько из userIDs держат ключ присутствия: EXISTS по многим
+// ключам отвечает числом существующих, пачками по 1000 ключей.
+func (s *PresenceStore) CountOnline(ctx context.Context, userIDs []int64) (int, error) {
+	const batch = 1000
+	total := 0
+	for start := 0; start < len(userIDs); start += batch {
+		end := min(start+batch, len(userIDs))
+		keys := make([]string, 0, end-start)
+		for _, id := range userIDs[start:end] {
+			keys = append(keys, presKey(id))
+		}
+		n, err := s.rdb.Exists(ctx, keys...).Result()
+		if err != nil {
+			return 0, err
+		}
+		total += int(n)
+	}
+	return total, nil
+}
