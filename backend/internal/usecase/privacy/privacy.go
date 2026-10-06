@@ -42,6 +42,9 @@ type Repo interface {
 	// ContactCard — что зритель знает о пире по адресным книгам: пир в его
 	// книге, он в книге пира, его заметка и личное фото для пира.
 	ContactCard(ctx context.Context, viewerID, targetID int64) (domain.ContactCard, error)
+	// PeerFullState — общие чаты, закреп и уведомления лички зрителя с пиром,
+	// видимые зрителю подарки пира (userFull, A4-19).
+	PeerFullState(ctx context.Context, viewerID, targetID int64) (domain.PeerFullState, error)
 }
 
 type Interactor struct {
@@ -237,6 +240,12 @@ func (i *Interactor) Profile(ctx context.Context, viewerID, targetID int64) (dom
 		}
 	}
 	full.Note = card.Note
+	if st, err := i.repo.PeerFullState(ctx, viewerID, targetID); err == nil {
+		full.CommonChatsCount = st.CommonChats
+		full.PinnedMsgID = st.PinnedMsgID
+		full.StargiftsCount = st.StarGifts
+		full.NotifySettings = st.NotifySettings
+	}
 
 	// Краткая форма того же пользователя — глазами зрителя (SeenBy: имя из
 	// его книги, contact/mutual_contact), как в любом другом ответе с этим

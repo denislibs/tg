@@ -90,3 +90,32 @@ func TestUsersByIDs_SelfAndHiddenPhone(t *testing.T) {
 		}
 	}
 }
+
+// A4-19: userFull — общие группы/каналы и уведомления лички зрителя с пиром.
+func TestPrivacyRepo_PeerFullState(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+7420")
+	b := seedUser(t, pool, "+7421")
+	g := NewGroupRepo(pool)
+	shared, _ := g.CreateMultiMember(ctx, "group", "Общая", "", "", false, a)
+	_ = g.AddMember(ctx, shared, a, "creator", 0)
+	_ = g.AddMember(ctx, shared, b, "member", 0)
+	alone, _ := g.CreateMultiMember(ctx, "channel", "Своя", "", "", false, a)
+	_ = g.AddMember(ctx, alone, a, "creator", 0)
+	if _, err := NewChatsRepo(pool).CreatePrivate(ctx, a, b); err != nil {
+		t.Fatal(err)
+	}
+	r := NewPrivacyRepo(pool)
+	st, err := r.PeerFullState(ctx, a, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.CommonChats != 1 || st.NotifySettings == nil || st.PinnedMsgID != 0 {
+		t.Fatalf("PeerFullState = %+v, want 1 общий чат и notify_settings", st)
+	}
+	self, err := r.PeerFullState(ctx, a, a)
+	if err != nil || self.CommonChats != 0 || self.NotifySettings != nil {
+		t.Fatalf("себе: %+v %v, want без общих чатов и notify_settings", self, err)
+	}
+}

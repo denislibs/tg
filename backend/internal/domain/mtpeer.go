@@ -880,9 +880,8 @@ const UserFullTag = "userFull"
 // рождения: у нас они лежали в «своей» витрине (/me), а verified/premium — в
 // «полной чужой» (/users/{id}), то есть граница шла не по этой линии.
 //
-// Обязательные по схеме settings:PeerSettings, notify_settings:
-// PeerNotifySettings, common_chats_count:int здесь не производятся — см.
-// mtpeer_schema_test.go, список «нет предмета», там же причины.
+// Обязательный по схеме settings:PeerSettings здесь не производится — см.
+// mtpeer_schema_test.go, список «нет предмета», там же причина.
 type UserFull struct {
 	Underscore string          `json:"_"`
 	PFlags     map[string]bool `json:"pFlags,omitempty"`
@@ -914,6 +913,29 @@ type UserFull struct {
 	// (contacts.updateContactNote / contacts.addContact.note). Заметки нет —
 	// ключа нет.
 	Note *TextWithEntities `json:"note,omitempty"`
+	// NotifySettings — notify_settings:PeerNotifySettings: пер-чатное
+	// переопределение уведомлений ЗРИТЕЛЯ для переписки с этим пиром (строка
+	// chat_members лички; переписки нет — пустое «переопределения нет»).
+	// У своей карточки (/me) переписки с собой нет вовсе — указатель nil.
+	NotifySettings *PeerNotifySettings `json:"notify_settings,omitempty"`
+	// PinnedMsgID — flags.6?int: закреплённое сообщение лички зрителя с пиром
+	// (номер в переписке); 0 — нет.
+	PinnedMsgID int64 `json:"pinned_msg_id,omitempty"`
+	// CommonChatsCount — common_chats_count:int: группы и каналы, где состоят
+	// оба (вкладка «Общие группы», tweb appSearchSuper.ts:3031).
+	CommonChatsCount int `json:"common_chats_count"`
+	// StargiftsCount — flags2.8?int: подарки профиля, видимые зрителю
+	// (tweb peerProfile.tsx:435) — тот же отбор, что у ручки подарков.
+	StargiftsCount int `json:"stargifts_count,omitempty"`
+}
+
+// PeerFullState — то, что userFull говорит о паре «зритель — пир» сверх
+// правил приватности (A4-19): см. одноимённые поля UserFull.
+type PeerFullState struct {
+	CommonChats    int
+	PinnedMsgID    int64
+	StarGifts      int
+	NotifySettings *PeerNotifySettings
 }
 
 // UserFullFlags — булевы флаги userFull в форме, удобной для вызова.
