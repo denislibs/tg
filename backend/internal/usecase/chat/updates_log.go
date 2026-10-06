@@ -36,7 +36,7 @@ func (i *Interactor) logAndPublish(ctx context.Context, chatID int64, recipients
 	}
 	ptsByUser := make(map[int64]int64, len(recipients))
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		date := nowMillis()
+		date := nowUnix()
 		for _, uid := range recipients {
 			payload, e := pp.payload(uid)
 			if e != nil {
@@ -95,7 +95,7 @@ func (i *Interactor) logAndPublishPerPeer(ctx context.Context, chatID int64, rec
 
 	ptsByUser := make(map[int64]int64, len(recipients))
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		date := nowMillis()
+		date := nowUnix()
 		for _, uid := range recipients {
 			payload, e := json.Marshal(bodyFor(uid))
 			if e != nil {

@@ -97,7 +97,7 @@ func (i *Interactor) AcceptProfilePhotoSuggestion(ctx context.Context, userID, m
 		if e != nil {
 			return e
 		}
-		date := nowMillis()
+		date := nowUnix()
 		for _, uid := range members {
 			p, e := pp.payload(uid)
 			if e != nil {

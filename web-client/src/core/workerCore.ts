@@ -663,7 +663,13 @@ export function createWorkerCore() {
   // difference — типизированный конверт, курсор персистится в IDB (chpts:{id}).
   const channelFunnel = newChannelFunnel({
     dispatch,
-    getDifference: (peerId, sincePts) => rest.get<ChannelDiff>(`/channels/${peerId}/difference`, { pts: sincePts }),
+    // Карточки разницы — в кэш пиров ДО её апдейтов (tweb
+    // updates.channelDifference → saveApiUsers/saveApiChats, A4-05).
+    getDifference: (peerId, sincePts) => rest.get<ChannelDiff>(`/channels/${peerId}/difference`, { pts: sincePts })
+      .then((d) => {
+        if (d.users?.length || d.chats?.length) peers.saveApiPeers({ users: d.users, chats: d.chats } as Parameters<typeof peers.saveApiPeers>[0])
+        return d
+      }),
     loadPts: (peerId) => idbGet<number>(`chpts:${peerId}`).then((v) => (typeof v === 'number' ? v : null)),
     // Отказ IDB глотаем: сохранённый курсор — кэш. Без него open() просто не сидирует,
     // и базу возьмёт первый живой кадр канала (channelFunnel.applyLive).
@@ -676,6 +682,8 @@ export function createWorkerCore() {
     // из тела. Тип строки (`item.t`) остаётся ответом только для
     // непортированного предмета — см. frameKey.
     onUpdate: (item) => funnel.applyUpdate(frameKey(item.t, item.d), item.pts, item.d, false),
+    // Карточки страницы разницы — в кэш пиров ДО её апдейтов (A4-05).
+    onPeers: (p) => peers.saveApiPeers(p as Parameters<typeof peers.saveApiPeers>[0]),
     // Полный resync ставит курсор на серверный pts — придержанные out-of-order кадры
     // теперь либо дубли, либо оторванная «будущая» дыра; сбрасываем, чтобы не всплыли.
     // Канальные in-memory курсоры тоже забываем — переоткрытие пересидирует из IDB.
@@ -731,7 +739,12 @@ export function createWorkerCore() {
     // при реконнекте (connectionManager.ts) — здесь он просто прокидывается дальше в
     // payload. Проверено workerCore.connectionStatus.test.ts.
     onState: (s, retryAt) => broadcast(RT.state, { state: s, retryAt }),
-    onFrame: (type, payload, envPts) => {
+    onFrame: (type, payload, envPts, framePeers) => {
+      // Порт `apiUpdatesManager.processUpdateMessage` (tweb :259-262): карточки,
+      // приехавшие ВМЕСТЕ с кадром (векторы контейнера `updates`), сохраняются
+      // ПЕРВЫМИ — до применения апдейта, чтобы первое сообщение нового
+      // собеседника, автор-канал или пересылка рисовались с именем (A4-05).
+      if (framePeers) peers.saveApiPeers(framePeers as Parameters<typeof peers.saveApiPeers>[0])
       // hello — первый кадр WS: {pts,date}. pts===cursor → быстрый reconnect без REST;
       // иначе catch-up доберёт разницу. cursor.ready() гейтит сравнение до гидратации.
       if (type === 'hello') {

@@ -416,7 +416,7 @@ func (i *Interactor) DeleteGroup(ctx context.Context, chatID, actorID int64) err
 			if e != nil {
 				return e
 			}
-			date := nowMillis()
+			date := nowUnix()
 			for _, uid := range members {
 				pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "chat_removed", b)
 				if e != nil {

@@ -994,6 +994,13 @@ type Difference struct {
 	State        domain.UserState `json:"state"`
 	Slice        bool             `json:"slice"`
 	TooLong      bool             `json:"too_long"`
+	// Users/Chats — карточки всех, на кого ссылаются строки разницы, глазами
+	// зрителя: у оригинала updates.difference несёт их обязательными
+	// векторами, и клиент сохраняет пиров ДО применения апдейтов
+	// (apiUpdatesManager.ts:341-342). Без них сущность, впервые пришедшая
+	// офлайн, оставалась без имени (A4-05).
+	Users []domain.UserReal `json:"users"`
+	Chats []domain.Chat     `json:"chats"`
 }
 
 const (

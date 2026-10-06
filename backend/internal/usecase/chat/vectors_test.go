@@ -143,3 +143,31 @@ func TestPeerVectorsOf_Participants(t *testing.T) {
 		t.Fatalf("users = %v, want выгнанного 8 и выгнавшего 7", got)
 	}
 }
+
+// A4-05 + A4-18: разница /sync везёт карточки тех, на кого ссылаются строки
+// журнала (автор), а state.date — секунды, как updates.state.date схемы.
+func TestGetDifference_VectorsAndSecondsDate(t *testing.T) {
+	s := newStore()
+	fg := newFakeGroupRepo()
+	in := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, fg, nil, nil, nil, nil)
+	ctx := context.Background()
+	fg.users[7] = domain.UserReal{ID: 7, FirstName: "Алиса"}
+	chatID, _ := in.CreatePrivateChat(ctx, 7, 8)
+	if _, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: 7, Text: "привет"}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	d, err := in.GetDifference(ctx, 8, 0)
+	if err != nil || len(d.NewMessages) == 0 {
+		t.Fatalf("GetDifference = %+v %v", d, err)
+	}
+	if d.State.Date == 0 || d.State.Date > 100_000_000_000 {
+		t.Fatalf("state.date = %d, want секунды", d.State.Date)
+	}
+	var author bool
+	for _, u := range d.Users {
+		author = author || u.ID == 7
+	}
+	if !author {
+		t.Fatalf("векторы разницы: users=%v, want автора 7", d.Users)
+	}
+}

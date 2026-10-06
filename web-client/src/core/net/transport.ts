@@ -1,3 +1,5 @@
+import type { FramePeers } from '../../protocol/frames'
+
 // Узкая граница между connectionManager и конкретным транспортом (plain WS / DNP).
 // Форма выведена из фактического использования WsClient в connectionManager.
 export interface Transport {
@@ -15,8 +17,10 @@ export interface Transport {
    * транспорта: кадр, чьего типа не оказалось в списке подписок, молча
    * исчезал (так тринадцать кадров однажды и пропали). Маршрутизацию делает
    * тот, кто знает КОНСТРУКТОР, — воркер; транспорт только доставляет.
+   *
+   * `peers` — векторы карточек кадра (Frame.users/chats), если они есть.
    */
-  onFrame(cb: (type: string, d: unknown, pts?: number) => void): void
+  onFrame(cb: (type: string, d: unknown, pts?: number, peers?: FramePeers) => void): void
   onBinary(cb: (data: Uint8Array) => void): void
   send(type: string, d?: unknown): void
   sendBinary(data: Uint8Array): void

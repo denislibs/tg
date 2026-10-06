@@ -747,7 +747,7 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 			return e
 		}
 		readAddr = addr
-		date := nowMillis()
+		date := nowUnix()
 		for _, uid := range members {
 			payload, e := json.Marshal(readPayload(addr.forViewer(uid), effective, unread, uid == userID))
 			if e != nil {
@@ -976,7 +976,7 @@ func (i *Interactor) ReadMedia(ctx context.Context, chatID, userID, msgID int64)
 			return e
 		}
 		mediaReadAddr = addr
-		date := nowMillis()
+		date := nowUnix()
 		for _, uid := range members {
 			payload, e := json.Marshal(mediaReadPayload(addr.forViewer(uid), msg.Seq))
 			if e != nil {
@@ -1024,7 +1024,7 @@ func (i *Interactor) readMentionContents(ctx context.Context, chatID, userID int
 		if e != nil {
 			return e
 		}
-		pts, e = i.updates.AppendUpdate(ctx, userID, 1, nowMillis(), "media_read", payload)
+		pts, e = i.updates.AppendUpdate(ctx, userID, 1, nowUnix(), "media_read", payload)
 		return e
 	})
 	if err != nil || !read {

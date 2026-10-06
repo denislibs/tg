@@ -74,7 +74,7 @@ func (i *Interactor) fanOutNewMessage(
 	if ppLocked != nil {
 		ppLocked.mentions = mentions
 	}
-	date := nowMillis()
+	date := nowUnix()
 	// pts-лог: автору — обычный payload, получателям — обычный или locked
 	// (платное медиа). Один batch-вызов на группу получателей, а не по одному
 	// (len-гарды сохраняют семантику «пустой список — ни одного вызова

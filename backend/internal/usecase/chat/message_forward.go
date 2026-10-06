@@ -111,7 +111,7 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 		}
 		slices.Sort(mem)
 		members = mem
-		date := nowMillis()
+		date := nowUnix()
 		for _, srcID := range in.MsgIDs {
 			src, e := i.msgs.GetByID(ctx, srcID)
 			if e != nil {

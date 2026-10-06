@@ -90,3 +90,9 @@ func (i *Interactor) withChats(ctx context.Context, viewerID int64, chats []doma
 func (i *Interactor) PeerVectorsOf(ctx context.Context, viewerID int64, v any) ([]domain.UserReal, []domain.Chat) {
 	return i.peerVectors(ctx, viewerID, domain.CollectPeerRefs(v), nil)
 }
+
+// PeerVectorsForRefs — векторы `users`/`chats` по готовым ссылкам глазами
+// зрителя: соединение WS доклеивает их к кадру на выходе (A4-05).
+func (i *Interactor) PeerVectorsForRefs(ctx context.Context, viewerID int64, refs domain.PeerRefs) ([]domain.UserReal, []domain.Chat) {
+	return i.peerVectors(ctx, viewerID, refs, nil)
+}

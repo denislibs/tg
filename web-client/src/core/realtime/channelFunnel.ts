@@ -24,7 +24,8 @@ import type { SyncState } from './syncWait'
 // Типизированный конверт канального апдейта — строка difference. `t` — тип
 // строки журнала; маршрутизируется кадр по КОНСТРУКТОРУ из тела (frameKey).
 export interface ChannelUpdate { t: string; pts: number; d: unknown }
-export interface ChannelDiff { updates: ChannelUpdate[]; pts: number; slice: boolean }
+// users/chats — карточки, на которые ссылаются апдейты разницы (A4-05).
+export interface ChannelDiff { updates: ChannelUpdate[]; pts: number; slice: boolean; users?: unknown[]; chats?: unknown[] }
 
 interface ChannelState {
   pts: number                              // плотный per-channel курсор

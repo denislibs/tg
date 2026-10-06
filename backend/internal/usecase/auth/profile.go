@@ -59,7 +59,7 @@ func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.UserRecord) {
 			views = v
 		}
 	}
-	date := time.Now().UnixMilli()
+	date := time.Now().Unix() // updates.state.date — секунды (A4-18)
 	for _, uid := range recipients {
 		seen := func(showPhoto bool) domain.UpdateUserSnapshot {
 			return domain.NewUpdateUserSnapshot(u.ToUser(domain.UserFlags{Self: uid == u.ID}, nil, showPhoto).SeenBy(views[uid]))

@@ -128,7 +128,7 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 			return e
 		}
 		reactionAddr = addr
-		date := nowMillis()
+		date := nowUnix()
 		for _, uid := range members {
 			payload, e := json.Marshal(reactionsPayload(addr.forViewer(uid), msg.Seq, *aggregate))
 			if e != nil {

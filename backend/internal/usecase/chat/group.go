@@ -227,7 +227,7 @@ func (i *Interactor) RemoveMember(ctx context.Context, chatID, actorID, userID i
 			if e != nil {
 				return e
 			}
-			p, e := i.updates.AppendUpdate(ctx, userID, 1, nowMillis(), "chat_removed", b)
+			p, e := i.updates.AppendUpdate(ctx, userID, 1, nowUnix(), "chat_removed", b)
 			if e != nil {
 				return e
 			}

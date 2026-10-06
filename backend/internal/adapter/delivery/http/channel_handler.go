@@ -489,7 +489,18 @@ func (h *ChannelHandler) Difference(w http.ResponseWriter, r *http.Request) {
 			maxPts = u.Pts
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"updates": out, "pts": maxPts, "slice": len(ups) == 100})
+	// Карточки всех, на кого ссылаются апдейты разницы (автор, пересылка,
+	// группа обсуждения), — векторами рядом, как у updates.channelDifference
+	// оригинала: клиент сохраняет пиров ДО применения (A4-05).
+	users, chats := h.uc.PeerVectorsOf(r.Context(), user.ID, out)
+	if users == nil {
+		users = []domain.UserReal{}
+	}
+	if chats == nil {
+		chats = []domain.Chat{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"updates": out, "pts": maxPts, "slice": len(ups) == 100,
+		"users": users, "chats": chats})
 }
 
 func (h *ChannelHandler) Join(w http.ResponseWriter, r *http.Request) {

@@ -141,6 +141,9 @@ func rpcRespFrame(reqID string, status int, body []byte) []byte {
 type outFrame struct {
 	kind byte
 	data []byte
+	// update — кадр апдейта из веера (Send): горилла записи доклеивает к нему
+	// векторы карточек и, на проводе TL, кодирует контейнером Updates.
+	update bool
 }
 
 // Conn is one client WebSocket connection. It implements Sink.
@@ -163,6 +166,9 @@ type Conn struct {
 	// активный групповой звонок этого соединения (0 — нет): при обрыве
 	// сокета участника автоматически выводим из звонка.
 	groupCallChat int64
+	// known — пиры, чьи карточки соединение уже отдало векторами кадров
+	// (withVectors). Трогает только горилла записи — без блокировок.
+	known knownPeers
 	// wireTL — соединение выбрало провод TL (подпротокол `tl.1` на
 	// рукопожатии). Свойство соединения, а не сервера: соседняя вкладка того же
 	// пользователя может остаться на JSON.
@@ -177,6 +183,7 @@ func newConn(ws *websocket.Conn, hub *Hub, svc *usecasechat.Interactor, presence
 		rpc: rpc, rpcSem: make(chan struct{}, rpcMaxConcurrent),
 		file: file, fileSem: make(chan struct{}, fileMaxConcurrent),
 		uploadSem: make(chan struct{}, uploadMaxConcurrent),
+		known:     knownPeers{},
 	}
 }
 
@@ -194,23 +201,40 @@ func (c *Conn) Close() { _ = c.ws.Close() }
 // Send queues a frame for the writer. Drops the frame if the buffer is full (a
 // stuck client must not block fan-out).
 //
-// Формат провода — свойство СОЕДИНЕНИЯ (выбран подпротоколом на рукопожатии), а
-// не кадра: один и тот же апдейт уезжает JSON-текстом одной вкладке и байтами
-// TL другой. Кадр без конструктора кодировать нечем — он уезжает JSON-текстом
-// на любом проводе (см. tlEncodeUpdateFrame).
+// Кадр из веера — апдейт: горилла записи доклеивает к нему векторы карточек
+// (withVectors) и выбирает провод (prepareUpdate). Здесь только очередь: Send
+// зовёт веер хаба, и поход за карточками на нём задержал бы всех получателей.
 func (c *Conn) Send(frame []byte) {
+	c.enqueue(outFrame{kind: frameKindJSON, data: frame, update: true})
+}
+
+// reply — транспортный кадр самого соединения (hello, ack, rpc_resp, file_*):
+// апдейтом он не является, векторов и TL у него нет.
+func (c *Conn) reply(frame []byte) { c.enqueue(outFrame{kind: frameKindJSON, data: frame}) }
+
+// prepareUpdate — кадр апдейта на выходе: векторы карточек глазами этого
+// получателя (A4-05), затем провод. Формат провода — свойство СОЕДИНЕНИЯ
+// (выбран подпротоколом на рукопожатии), а не кадра: один и тот же апдейт
+// уезжает JSON-текстом одной вкладке и байтами TL другой. Кадр без
+// конструктора кодировать нечем — он уезжает JSON-текстом на любом проводе
+// (см. tlEncodeUpdateFrame).
+func (c *Conn) prepareUpdate(ctx context.Context, f outFrame) outFrame {
+	var src peerVectorSource
+	if c.svc != nil {
+		src = c.svc
+	}
+	data := withVectors(ctx, src, c.userID, c.known, f.data)
 	if c.wireTL {
-		if body, ok := tlEncodeUpdateFrame(frame); ok {
-			c.enqueue(outFrame{frameKindTL, body})
-			return
+		if body, ok := tlEncodeUpdateFrame(data); ok {
+			return outFrame{kind: frameKindTL, data: body}
 		}
 	}
-	c.enqueue(outFrame{frameKindJSON, frame})
+	return outFrame{kind: frameKindJSON, data: data}
 }
 
 // SendBinary queues a raw binary payload (kind 0x01, media-чанк). Drop-if-full
 // как Send. Плейн-conn его не зовёт (file_req обслуживается лишь при c.file != nil).
-func (c *Conn) SendBinary(payload []byte) { c.enqueue(outFrame{frameKindFile, payload}) }
+func (c *Conn) SendBinary(payload []byte) { c.enqueue(outFrame{kind: frameKindFile, data: payload}) }
 
 func (c *Conn) enqueue(f outFrame) {
 	select {
@@ -232,7 +256,7 @@ func (c *Conn) run(ctx context.Context) {
 	// просто без hello (клиент сделает полный catch-up).
 	c.hub.Register(ctx, c.userID, c.deviceID, c)
 	if st, err := c.svc.UserState(ctx, c.userID); err == nil {
-		c.Send(helloFrame(st))
+		c.reply(helloFrame(st))
 	}
 	if c.presence != nil {
 		_ = c.presence.Online(ctx, c.userID)
@@ -305,13 +329,13 @@ func (c *Conn) dispatchFileUp(ctx context.Context, payload []byte) {
 		return // битый кадр — молча дропаем (req_id мог не распарситься)
 	}
 	if len(data) > maxFileUpChunk {
-		c.Send(fileUpErrFrame(reqID, "error"))
+		c.reply(fileUpErrFrame(reqID, "error"))
 		return
 	}
 	select {
 	case c.uploadSem <- struct{}{}:
 	default:
-		c.Send(fileUpErrFrame(reqID, "busy"))
+		c.reply(fileUpErrFrame(reqID, "busy"))
 		return
 	}
 	upload, userID := c.upload, c.userID
@@ -325,11 +349,11 @@ func (c *Conn) dispatchFileUp(ctx context.Context, payload []byte) {
 		_, err := upload.WriteChunk(context.Background(), userID, mediaID, offset, total, data)
 		switch {
 		case err == nil:
-			c.Send(fileUpOkFrame(reqID))
+			c.reply(fileUpOkFrame(reqID))
 		case errors.Is(err, domain.ErrForbidden):
-			c.Send(fileUpErrFrame(reqID, "forbidden"))
+			c.reply(fileUpErrFrame(reqID, "forbidden"))
 		default:
-			c.Send(fileUpErrFrame(reqID, "error")) // bad_part и прочее — короткий код
+			c.reply(fileUpErrFrame(reqID, "error")) // bad_part и прочее — короткий код
 		}
 	}()
 }
@@ -340,7 +364,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 	defer saferun.Recover("ws.conn.dispatch")
 	switch f.T {
 	case "ping":
-		c.Send([]byte(`{"t":"pong"}`))
+		c.reply([]byte(`{"t":"pong"}`))
 	case "send_message":
 		var d sendMessageData
 		if json.Unmarshal(f.D, &d) != nil {
@@ -363,7 +387,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 				"t": "message_error",
 				"d": map[string]any{"client_msg_id": d.ClientMsgID, "reason": reason},
 			})
-			c.Send(f)
+			c.reply(f)
 		}
 		replyPeer, rerr := replyPeerChatID(ctx, c.svc, c.userID, d.ReplyToPeerID)
 		if rerr != nil {
@@ -427,7 +451,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			"t": "message_ack",
 			"d": map[string]any{"client_msg_id": d.ClientMsgID, "id": msg.Seq, "created_at": msg.CreatedAt},
 		})
-		c.Send(ack)
+		c.reply(ack)
 	case "read":
 		var d readData
 		if json.Unmarshal(f.D, &d) != nil {
@@ -536,7 +560,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		case c.rpcSem <- struct{}{}:
 		default:
 			busy, _ := json.Marshal(domain.NewError(http.StatusServiceUnavailable, "rpc busy"))
-			c.Send(rpcRespFrame(d.ReqID, 503, busy))
+			c.reply(rpcRespFrame(d.ReqID, 503, busy))
 			return
 		}
 		rpc, user, deviceID := c.rpc, c.user, c.deviceID
@@ -545,7 +569,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			defer func() { <-c.rpcSem }()
 			defer saferun.Recover("ws.conn.rpc")
 			status, respBody := rpc.Dispatch(context.Background(), user, deviceID, method, path, body)
-			c.Send(rpcRespFrame(reqID, status, respBody))
+			c.reply(rpcRespFrame(reqID, status, respBody))
 		}()
 	case "file_req":
 		if c.file == nil {
@@ -559,7 +583,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		select {
 		case c.fileSem <- struct{}{}:
 		default:
-			c.Send(fileErrFrame(d.ReqID, "busy"))
+			c.reply(fileErrFrame(d.ReqID, "busy"))
 			return
 		}
 		file, userID := c.file, c.userID
@@ -573,7 +597,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 				if errors.Is(err, domain.ErrForbidden) {
 					msg = "forbidden"
 				}
-				c.Send(fileErrFrame(reqID, msg))
+				c.reply(fileErrFrame(reqID, msg))
 				return
 			}
 			c.SendBinary(fileChunkFrame(reqID, offset, total, data))
@@ -595,6 +619,9 @@ func (c *Conn) writePump(ctx context.Context) {
 			if !ok {
 				_ = c.ws.WriteMessage(websocket.CloseMessage, []byte{})
 				return
+			}
+			if f.update {
+				f = c.prepareUpdate(ctx, f)
 			}
 			mt, out := c.codec.encode(f.kind, f.data)
 			if out == nil {
