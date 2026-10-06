@@ -245,7 +245,7 @@ func (i *Interactor) removeMember(ctx context.Context, chatID, actorID, userID i
 			if e != nil {
 				return e
 			}
-			p, e := i.updates.AppendUpdate(ctx, userID, 1, nowMillis(), "chat_removed", b)
+			p, e := i.updates.AppendUpdate(ctx, userID, 1, nowUnix(), "chat_removed", b)
 			if e != nil {
 				return e
 			}
@@ -465,12 +465,46 @@ func (i *Interactor) SetChatNotify(ctx context.Context, chatID, userID int64, pr
 // Карточку чужого приватного чата — название, описание, фото, число
 // участников, обсуждение — не получить, перебирая id подряд. Создание и
 // вступление зовут её уже после вступления, им гейт не мешает.
+//
+// Карточка бывает только у группы и канала: у лички и «Избранного» пир — это
+// человек (users.getFullUser), и `channel` с внутренним id строки лички
+// выдавал наружу наш ключ (A4-15) — domain.ErrInvalid.
 func (i *Interactor) ChatCard(ctx context.Context, chatID, viewerID int64) (domain.ChatRecord, error) {
 	if err := i.RequireChatRead(ctx, chatID, viewerID); err != nil {
 		return domain.ChatRecord{}, err
 	}
 	// Счётчики участников (Б-115) — по правам зрителя: viewerCounters.
-	return i.viewerCard(ctx, chatID, viewerID)
+	c, err := i.viewerCard(ctx, chatID, viewerID)
+	if err != nil {
+		return domain.ChatRecord{}, err
+	}
+	if c.Type != domain.ChatTypeGroup && c.Type != domain.ChatTypeChannel {
+		return domain.ChatRecord{}, domain.ErrInvalid
+	}
+	return c, nil
+}
+
+// ChatFullContainer — ответ channels.getFullChannel: messages.chatFull, где
+// `chats` везёт сам чат И связанный (группу обсуждения у канала, канал у
+// группы): строка «Обсуждение» и вход в него рисуются по linked_chat_id
+// (tweb topbar.ts:516-519, editChat.tsx:753-755), а группы обсуждения в
+// списке диалогов нет (A4-12).
+func (i *Interactor) ChatFullContainer(ctx context.Context, chatID, viewerID int64) (domain.MessagesChatFull, error) {
+	c, err := i.ChatCard(ctx, chatID, viewerID)
+	if err != nil {
+		return domain.MessagesChatFull{}, err
+	}
+	full := c.ToChannelFull()
+	out := domain.NewMessagesChatFull(full, c.ToChannel())
+	out.Chats = i.withChats(ctx, viewerID, out.Chats, full.LinkedChatID)
+	// Карточки заявителей плашки заявок (recent_requesters, Б-86).
+	if c.Counters != nil && len(c.Counters.RecentRequesters) > 0 && i.groups != nil {
+		if cards, err := i.groups.UsersByIDs(ctx, viewerID, c.Counters.RecentRequesters); err == nil {
+			i.viewUsers(ctx, viewerID, cards)
+			out.Users = cards
+		}
+	}
+	return out, nil
 }
 
 // UsersByIDs — карточки глазами viewerID (имя из его книги, pFlags.contact).

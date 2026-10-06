@@ -13,6 +13,7 @@ import { refreshFullPeer } from '../../stores/fullPeers.solid'
 import { useChatsStore } from '../../stores/chatsStore'
 import { onPinnedMessagesUpdate } from '../../core/pinnedMessages'
 import { applyFolderUpdate, type FolderUpdateEvt } from '../../stores/foldersStore'
+import { refreshFullPeerIfNeeded } from '../../stores/fullPeers.solid'
 import type { Managers } from '../bootstrap'
 
 // Дебаунс полного /chats-рефетча: несколько триггеров подряд → один запрос.
@@ -71,9 +72,15 @@ export function registerRefetchSubscriber(managers: Managers): void {
   // КАЖДЫЙ chat_update, а publishChatUpdate зовётся из 13 мест бэкенда — и
   // рефетч прилетал каждому участнику чата.
   rootScope.addEventListener(RT.chatUpdate, (evt) => {
-    if (!useChatsStore.getState().dialogs.some((d) => d.peerId === getPeerId(evt.peer))) {
+    const peerId = getPeerId(evt.peer)
+    if (!useChatsStore.getState().dialogs.some((d) => d.peerId === peerId)) {
       scheduleChatsReload(managers)
     }
+    // Полная карточка чата: tweb на `channel_update` зовёт refreshFullPeer
+    // (appProfileManager.ts:120-122). Кадр несёт снимок БЕЗ зрителя, поэтому
+    // загруженная карточка перечитывается, а не заменяется им (A2-29) — иначе
+    // набор реакций, медленный режим и автоудаление жили до TTL (3 мин).
+    refreshFullPeerIfNeeded(peerId)
   })
   // Состав или права участника изменились — вторая половина tweb
   // `invalidateChannelParticipants` (`appProfileManager.ts:918-926`): кэш страниц

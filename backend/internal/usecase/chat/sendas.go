@@ -60,14 +60,17 @@ func (i *Interactor) GetSendAs(ctx context.Context, userID, chatID int64) ([]dom
 	if len(extra) == 0 {
 		return out, nil
 	}
-	briefs, e := i.groups.ChatBriefs(ctx, extra)
+	// Личности-чаты — ПОЛНЫЕ карточки зрителя (тот же сборщик, что у
+	// диалогов): клиент оригинала кладёт `chats` ответа в хранилище и заменяет
+	// ими лежащие (tweb appChatsManager.ts:1068-1069), и урезанный не-min
+	// `channel` снимал бы с создателя его права (A1-24).
+	cards, e := i.groups.Cards(ctx, userID, extra)
 	if e != nil {
 		return nil, e
 	}
-	for _, id := range extra {
-		b := briefs[id]
-		ch := b.ToChannel()
-		out = append(out, domain.SendAsPeerRecord{Peer: domain.NewPeerChannel(id), Chat: &ch})
+	for _, c := range cards {
+		ch := c.ToChannel()
+		out = append(out, domain.SendAsPeerRecord{Peer: domain.NewPeerChannel(c.ID), Chat: &ch})
 	}
 	return out, nil
 }

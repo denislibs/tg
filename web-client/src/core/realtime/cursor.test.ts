@@ -31,6 +31,16 @@ describe('newCursor', () => {
     expect(c.get()).toEqual({ pts: 42, date: 7 })
   })
 
+  // A4-18: state.date — секунды; сохранённая прежде миллисекундная дата
+  // переводится при гидратации, а не держится Math.max навсегда.
+  it('hydrates a legacy millisecond date as seconds', async () => {
+    const store = memStore()
+    store._m.set('pts', 1); store._m.set('date', 1_791_216_278_319)
+    const c = newCursor(store, 0)
+    await c.ready()
+    expect(c.get().date).toBe(1_791_216_278)
+  })
+
   it('advance is monotonic (ignores dup/backwards), set is unconditional', async () => {
     const c = newCursor(memStore(), 0)
     await c.ready()

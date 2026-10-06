@@ -38,6 +38,9 @@ export interface Cursor {
   reset(): void
 }
 
+// Дата больше 10^11 — миллисекунды (в секундах это 5138 год).
+const MS_DATE_FLOOR = 100_000_000_000
+
 export function newCursor(store: KV, persistDelay = 1000): Cursor {
   let pts = 0
   let date = 0
@@ -46,7 +49,10 @@ export function newCursor(store: KV, persistDelay = 1000): Cursor {
       // Мерж, не перезапись: /sync мог обогнать async-гидратацию и уже поднять
       // курсор — не откатываем назад (иначе catch-up переотдал бы применённое).
       if (typeof p === 'number') pts = Math.max(pts, p)
-      if (typeof d === 'number') date = Math.max(date, d)
+      // `date` — секунды (updates.state.date схемы, A4-18). Прежде сервер
+      // отдавал миллисекунды, и сохранённое тогда число переводится: иначе
+      // Math.max держал бы миллисекундную дату вечно.
+      if (typeof d === 'number') date = Math.max(date, d > MS_DATE_FLOOR ? Math.floor(d / 1000) : d)
     })
     .catch(() => {})
 

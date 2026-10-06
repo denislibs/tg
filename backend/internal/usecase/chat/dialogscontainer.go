@@ -153,7 +153,7 @@ func (i *Interactor) dialogsContainer(ctx context.Context, viewerID int64, recor
 		}
 		if d.Peer != nil && !seen[d.Peer.ID] {
 			seen[d.Peer.ID] = true
-			users = append(users, *d.Peer)
+			users = append(users, d.Peer.WithHiddenPhone(d.PeerPhone))
 		}
 	}
 
@@ -161,7 +161,7 @@ func (i *Interactor) dialogsContainer(ctx context.Context, viewerID int64, recor
 	// Их не было в ответе вовсе, из-за чего сервер склеивал имя автора сам
 	// (last_sender_name) — последний живой экземпляр той болезни, которую у
 	// пиров снял уход display_name. С автором-пиром имя собирает клиент.
-	// Автор поста канала без подписей профилями не едет (postAuthorHidden):
+	// Автор поста канала без подписей профилями не едет (WireAuthorUserID):
 	// вид чата и подписи — из тех же строк витрины.
 	kinds := make(map[int64]string, len(records))
 	shown := make(map[int64]bool, len(records))
@@ -171,9 +171,12 @@ func (i *Interactor) dialogsContainer(ctx context.Context, viewerID int64, recor
 	}
 	missing := make([]int64, 0, len(messages))
 	for _, m := range messages {
-		if m.SenderID != 0 && !seen[m.SenderID] && !postAuthorHidden(m, kinds, shown) {
-			seen[m.SenderID] = true
-			missing = append(missing, m.SenderID)
+		// Автор — тот, кто стоит в from_id на проводе: у send-as автором
+		// выступает чат, у поста канала без подписей — никто.
+		id := m.WireAuthorUserID(kinds[m.ChatID] == domain.ChatTypeChannel, shown[m.ChatID])
+		if id != 0 && !seen[id] {
+			seen[id] = true
+			missing = append(missing, id)
 		}
 	}
 	if len(missing) > 0 && i.groups != nil {
@@ -181,9 +184,12 @@ func (i *Interactor) dialogsContainer(ctx context.Context, viewerID int64, recor
 		if err != nil {
 			return DialogsPage{}, err
 		}
-		i.gateAuthorPhotos(ctx, viewerID, authors)
 		users = append(users, authors...)
 	}
+	// Собеседники и авторы — одним сборщиком глазами зрителя: фото, номер и
+	// статус по правилам приватности. Собеседники приходят из кэша списка,
+	// поэтому статус (живой факт) ставится здесь, после кэша, а не в нём.
+	i.viewUsers(ctx, viewerID, users)
 
 	return DialogsPage{
 		Dialogs:  dialogs,
@@ -193,27 +199,17 @@ func (i *Interactor) dialogsContainer(ctx context.Context, viewerID int64, recor
 	}, nil
 }
 
-// gateAuthorPhotos гасит аватарки тех авторов, кому правило profile_photo не
-// разрешает показ этому зрителю, — тем же правилом, что и собеседников
-// приватных диалогов (см. ListDialogs). Сбой правила не должен ронять выдачу
-// списка, но и показывать аватарку «на всякий случай» нельзя: при ошибке гасим.
-func (i *Interactor) gateAuthorPhotos(ctx context.Context, viewerID int64, users []domain.UserReal) {
-	if i.privacy == nil || len(users) == 0 {
+// viewUsers — карточки глазами зрителя: ОДИН сборщик на все витрины
+// (privacy.ViewUsers → domain.UserViewRules): фото, номер и статус по
+// правилам приватности. Без проверяющего — фото гасятся: показывать аватарку
+// «на всякий случай» нельзя.
+func (i *Interactor) viewUsers(ctx context.Context, viewerID int64, users []domain.UserReal) {
+	if len(users) == 0 {
 		return
 	}
-	ids := make([]int64, 0, len(users))
-	for _, u := range users {
-		ids = append(ids, u.ID)
+	if i.privacy == nil {
+		domain.UncheckedUserViewRules(viewerID, users).Apply(users)
+		return
 	}
-	vis, err := i.privacy.VisibleMap(ctx, viewerID, ids, domain.PrivacyProfilePhoto)
-	for idx := range users {
-		if users[idx].ID == viewerID {
-			continue
-		}
-		if err != nil || !vis[users[idx].ID] {
-			// «Фото нет» — это СОСТОЯНИЕ (userProfilePhotoEmpty), а не пустая
-			// строка url рядом с непогашенным превью.
-			users[idx].Photo = domain.NewUserProfilePhotoEmpty()
-		}
-	}
+	i.privacy.ViewUsers(ctx, viewerID, users)
 }

@@ -15,9 +15,10 @@
 // диалогов, реакции) параметра `pts` нет вовсе, а курсор кадру нужен.
 
 import { TLDeserialization } from '@lib/mtproto/tl_utils'
+import type { FramePeers } from '../../protocol/frames'
 
 /** Апдейт, приехавший в оболочке: тело плюс курсор из контейнера (если он там). */
-export interface TLUpdate { update: { _: string } & Record<string, unknown>; seq?: number }
+export interface TLUpdate { update: { _: string } & Record<string, unknown>; seq?: number; peers?: FramePeers }
 
 /**
  * Байты `bytes` схемы после разбора — Uint8Array, а модель клиента фазы 0
@@ -81,6 +82,8 @@ export function decodeTLFrame(raw: Uint8Array): TLUpdate[] {
     _: string
     update?: unknown
     updates?: unknown[]
+    users?: unknown[]
+    chats?: unknown[]
     seq?: number
   }
 
@@ -89,9 +92,16 @@ export function decodeTLFrame(raw: Uint8Array): TLUpdate[] {
   }
   if (envelope._ === 'updates') {
     const list = envelope.updates ?? []
+    // Векторы карточек — ПЕРВОМУ апдейту пачки: сохранить пиров нужно до
+    // применения любого из них (tweb apiUpdatesManager :259-262). seq = 0 —
+    // «порядка нет»: курсор у такого апдейта в его теле.
+    const peers = envelope.users?.length || envelope.chats?.length
+      ? { users: bytesToBase64(envelope.users ?? []) as unknown[], chats: bytesToBase64(envelope.chats ?? []) as unknown[] }
+      : undefined
     return list.map((u, i) => ({
       update: bytesToBase64(u) as TLUpdate['update'],
-      seq: i === list.length - 1 ? envelope.seq : undefined,
+      seq: i === list.length - 1 && envelope.seq ? envelope.seq : undefined,
+      peers: i === 0 ? peers : undefined,
     }))
   }
   // Прочие конструкторы Updates (updatesTooLong, updateShortMessage) сервер не

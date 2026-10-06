@@ -1646,20 +1646,24 @@ func (r fakeMsgs) AlbumMessages(_ context.Context, chatID int64, groupedID int64
 	return out, nil
 }
 
-func (r fakeMsgs) RecentThreadRepliers(_ context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]int64, error) {
+func (r fakeMsgs) RecentThreadRepliers(_ context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]domain.PeerID, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
-	out := map[int64][]int64{}
+	out := map[int64][]domain.PeerID{}
 	for _, root := range rootIDs {
-		seen := map[int64]bool{}
+		seen := map[domain.PeerID]bool{}
 		msgs := r.s.messages[chatID]
 		for i := len(msgs) - 1; i >= 0; i-- {
 			m := msgs[i]
-			if m.ThreadRootID == nil || *m.ThreadRootID != root || m.Deleted || seen[m.SenderID] {
+			author := domain.PeerID(m.SenderID)
+			if m.SendAsChatID != nil {
+				author = domain.ToPeerID(*m.SendAsChatID, true)
+			}
+			if m.ThreadRootID == nil || *m.ThreadRootID != root || m.Deleted || seen[author] {
 				continue
 			}
-			seen[m.SenderID] = true
-			out[root] = append(out[root], m.SenderID)
+			seen[author] = true
+			out[root] = append(out[root], author)
 			if len(out[root]) >= limit {
 				break
 			}
@@ -1678,6 +1682,25 @@ func (r fakeMsgs) CountThread(_ context.Context, chatID, threadRootID int64) (in
 		}
 	}
 	return n, nil
+}
+
+func (r fakeMsgs) ThreadState(_ context.Context, chatID, threadRootID, viewerID, readSeq int64) (int64, int, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var maxSeq int64
+	unread := 0
+	for _, m := range r.s.messages[chatID] {
+		if m.ThreadRootID == nil || *m.ThreadRootID != threadRootID || m.Deleted {
+			continue
+		}
+		if m.Seq > maxSeq {
+			maxSeq = m.Seq
+		}
+		if m.Seq > readSeq && m.SenderID != viewerID {
+			unread++
+		}
+	}
+	return maxSeq, unread, nil
 }
 
 // ThreadReplyCounts — батч CountThread: корни без ответов в карту НЕ попадают
@@ -2193,3 +2216,19 @@ func (r fakeChats) SetUserAutoDelete(_ context.Context, userID int64, seconds in
 }
 
 func (r fakeMsgs) ExpiredMessages(context.Context, int) ([]domain.Message, error) { return nil, nil }
+
+// viewUsersVia — ViewUsers фейка проверяющего поверх его VisibleMap: тот же
+// сборщик domain.UserViewRules, что у privacy.Interactor, без присутствия.
+func viewUsersVia(ctx context.Context, p interface {
+	VisibleMap(ctx context.Context, viewerID int64, ownerIDs []int64, key domain.PrivacyKey) (map[int64]bool, error)
+}, viewerID int64, users []domain.UserReal) {
+	ids := make([]int64, 0, len(users))
+	for _, u := range users {
+		ids = append(ids, u.ID)
+	}
+	rules := domain.UserViewRules{ViewerID: viewerID}
+	rules.Photo, _ = p.VisibleMap(ctx, viewerID, ids, domain.PrivacyProfilePhoto)
+	rules.Phone, _ = p.VisibleMap(ctx, viewerID, ids, domain.PrivacyPhoneNumber)
+	rules.LastSeen, _ = p.VisibleMap(ctx, viewerID, ids, domain.PrivacyLastSeen)
+	rules.Apply(users)
+}

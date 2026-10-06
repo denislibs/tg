@@ -46,6 +46,8 @@ func (h *GroupHandler) mapErr(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusForbidden, "USER_PRIVACY_RESTRICTED")
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not found")
+	case errors.Is(err, domain.ErrInvalid):
+		writeError(w, http.StatusBadRequest, "PEER_ID_INVALID")
 	default:
 		writeError(w, http.StatusInternalServerError, "server error")
 	}
@@ -572,7 +574,7 @@ func (h *GroupHandler) Card(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	c, err := h.uc.ChatCard(r.Context(), chatID, user.ID)
+	out, err := h.uc.ChatFullContainer(r.Context(), chatID, user.ID)
 	if err != nil {
 		h.mapErr(w, err)
 		return
@@ -593,20 +595,8 @@ func (h *GroupHandler) Card(w http.ResponseWriter, r *http.Request) {
 	// из неё), а `creator_id` — мёртвым: его никто не читал, только хранил.
 	// «Создатель ли я» выражает `pFlags.creator` краткой карточки, а «кто
 	// создатель» — конструктор `channelParticipantCreator` в списке участников.
-	out := domain.NewMessagesChatFull(c.ToChannelFull(), c.ToChannel())
-	// Канал группы обсуждения (Б-119) — краткой формой в chats: вкладка
-	// «Обсуждение» группы рисует строку «Привязанный канал» из него.
-	if c.LinkedChannelID != 0 {
-		if lc, err := h.uc.LinkedChannel(r.Context(), chatID, user.ID); err == nil {
-			out.Chats = append(out.Chats, lc.ToChannel())
-		}
-	}
-	// Карточки заявителей плашки заявок (recent_requesters, Б-86).
-	if c.Counters != nil && len(c.Counters.RecentRequesters) > 0 {
-		if cards, err := h.participantCards(r, user.ID, c.Counters.RecentRequesters); err == nil {
-			out.Users = cards
-		}
-	}
+	// Связанный чат (Б-119, A4-12) и карточки заявителей плашки заявок
+	// (recent_requesters, Б-86) собирает ChatFullContainer.
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -722,7 +712,7 @@ func (h *GroupHandler) Participant(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewChannelsChannelParticipant(p, cards))
 }
 
-// participantCards — карточки участников глазами зрителя со статусом:
+// participantCards — карточки участников глазами зрителя (privacy.ViewUsers):
 // онлайн видит тот, кому участник разрешил last seen (иначе — другой
 // конструктор, userStatusRecently, как у оригинала).
 func (h *GroupHandler) participantCards(r *http.Request, viewerID int64, ids []int64) ([]domain.UserReal, error) {
@@ -730,23 +720,8 @@ func (h *GroupHandler) participantCards(r *http.Request, viewerID int64, ids []i
 	if err != nil {
 		return nil, err
 	}
-	seen := map[int64]bool{}
-	if h.privacy != nil {
-		if v, err := h.privacy.VisibleMap(r.Context(), viewerID, ids, domain.PrivacyLastSeen); err == nil {
-			seen = v
-		}
-	}
-	gatePhotos(r, h.privacy, cards)
-	for i := range cards {
-		switch {
-		case h.presence == nil:
-			cards[i].Status = domain.NewUserStatusEmpty()
-		case h.privacy != nil && !seen[cards[i].ID] && cards[i].ID != viewerID:
-			cards[i].Status = domain.NewUserStatusRecently(false)
-		default:
-			cards[i].Status = domain.PresenceStatus(h.presence.Status(r.Context(), cards[i].ID))
-		}
-	}
+	// Фото, номер и статус по last_seen — общий сборщик карточек (A4-08).
+	viewUsers(r, h.privacy, cards)
 	return cards, nil
 }
 
@@ -802,7 +777,7 @@ func (h *GroupHandler) Users(w http.ResponseWriter, r *http.Request) {
 	// Краткая карточка — конструктор `user` целиком. Прежде витрина собирала
 	// свою пятёрку полей и теряла на этом `verified` (дефект 5 разбора): поле
 	// в базе было, в выдачу не попадало.
-	gatePhotos(r, h.privacy, cards)
+	viewUsers(r, h.privacy, cards)
 	// Ответ — сам ВЕКТОР карточек: обёртка `{"users": …}` конструктора не имеет.
 	writeJSON(w, http.StatusOK, orEmptyUsers(cards))
 }
@@ -869,7 +844,7 @@ func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	gatePhotos(r, h.privacy, cards)
+	viewUsers(r, h.privacy, cards)
 	writeJSON(w, http.StatusOK, domain.NewMessagesExportedChatInvites(links, cards))
 }
 
@@ -969,7 +944,7 @@ func (h *GroupHandler) InviteImporters(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	gatePhotos(r, h.privacy, cards)
+	viewUsers(r, h.privacy, cards)
 	writeJSON(w, http.StatusOK, domain.NewMessagesChatInviteImporters(count, out, cards))
 }
 

@@ -17,6 +17,21 @@ export interface Frame<T = unknown> {
    * не будет — дубля одного числа в двух местах не заводим.
    */
   pts?: number
+  /**
+   * Карточки пиров, на которых ссылается тело и которых это соединение ещё не
+   * получало (векторы контейнера `updates` оригинала): клиент сохраняет их ДО
+   * применения апдейта (tweb apiUpdatesManager.processUpdateMessage :259-262).
+   */
+  users?: unknown[]
+  chats?: unknown[]
+}
+
+/** Векторы карточек, приехавшие вместе с кадром (Frame.users/chats). */
+export interface FramePeers { users?: unknown[]; chats?: unknown[] }
+
+/** Векторы кадра или undefined, если карточек нет. */
+export function framePeers(f: { users?: unknown[]; chats?: unknown[] }): FramePeers | undefined {
+  return f.users?.length || f.chats?.length ? { users: f.users, chats: f.chats } : undefined
 }
 
 // Client -> server

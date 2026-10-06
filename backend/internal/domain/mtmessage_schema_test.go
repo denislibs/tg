@@ -271,6 +271,12 @@ func allMessageConstructors() []any {
 		NewMessagesMessages([]MTMessage{MessageEmpty{Underscore: MessageEmptyTag, ID: 7}}, nil, nil),
 		NewMessagesMessagesSlice(120, []MTMessage{MessageEmpty{Underscore: MessageEmptyTag, ID: 7}},
 			[]Chat{}, []UserReal{{Underscore: UserTag, ID: 42, FirstName: "Аня"}}),
+		// Корень треда комментариев с состоянием треда (A4-10).
+		func() MessagesDiscussionMessage {
+			d := NewMessagesDiscussionMessage([]MTMessage{MessageEmpty{Underscore: MessageEmptyTag, ID: 7}}, 2, nil, nil)
+			d.MaxID, d.ReadInboxMaxID, d.ReadOutboxMaxID = ptr(int64(9)), ptr(int64(7)), ptr(int64(8))
+			return d
+		}(),
 	}
 }
 

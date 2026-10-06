@@ -15,11 +15,11 @@ import "time"
 // объявляет, курсор несёт В СЕБЕ, и контейнеру добавить нечего: такому едет
 // `updateShort`.
 //
-// Векторы `users`/`chats` контейнера пока пустые. Они решают ту же задачу, что
-// порт диалогов решил у `messages.dialogs` (объекты один раз рядом, внутри
-// ссылки), и наполнить их — отдельная работа: сейчас каждый кадр тащит пира
-// внутри себя, из-за чего у нас и появились свои конструкторы-снимки
-// (`updateUserSnapshot`, `updateChatFullSnapshot`).
+// Векторы `users`/`chats` контейнера несут карточки всех, на кого ссылается
+// апдейт и кого получатель ещё не видел (A4-05): у оригинала клиент сохраняет
+// их ДО применения апдейта (apiUpdatesManager.processUpdateMessage :259-262).
+// Доклеивает их соединение на выходе (adapter/delivery/ws), потому что
+// карточки — глазами КОНКРЕТНОГО получателя, а публикация одна на всех.
 
 // Значения дискриминатора `_` объединения Updates. Они живут ЗДЕСЬ, а не рядом
 // с тегами объединения Update, и это не раскладка по вкусу: контейнер апдейтом
@@ -47,17 +47,24 @@ func NewUpdateShortPayload(update map[string]any, date int64) map[string]any {
 // date:int seq:int = Updates;
 //
 // Пачка апдейтов. У нас пока всегда из одного — но именно она несёт КУРСОР
-// кадра, у которого своего `pts` нет: у оригинала порядок пачке задаёт `seq`.
-func NewUpdatesPayload(updates []map[string]any, date, seq int64) map[string]any {
+// кадра, у которого своего `pts` нет (у оригинала порядок пачке задаёт `seq`), и
+// ВЕКТОРЫ карточек. seq = 0 — «порядка нет» (курсор у кадра в теле).
+func NewUpdatesPayload(updates []map[string]any, users, chats []any, date, seq int64) map[string]any {
 	list := make([]any, 0, len(updates))
 	for _, u := range updates {
 		list = append(list, u)
 	}
+	if users == nil {
+		users = []any{}
+	}
+	if chats == nil {
+		chats = []any{}
+	}
 	return map[string]any{
 		"_":       UpdatesTag,
 		"updates": list,
-		"users":   []any{},
-		"chats":   []any{},
+		"users":   users,
+		"chats":   chats,
 		"date":    date,
 		"seq":     seq,
 	}
@@ -68,11 +75,17 @@ func NewUpdatesPayload(updates []map[string]any, date, seq int64) map[string]any
 //
 // envSeq — курсор из конверта: он есть ровно тогда, когда конструктор кадра
 // `pts` не объявляет (см. UpdateDeclaresPts и framePts на выходе витрин).
-func NewUpdatesEnvelope(body map[string]any, envSeq *int64, date int64) map[string]any {
-	if envSeq == nil {
+// users/chats — карточки рядом с апдейтом: у updateShort векторов нет, поэтому
+// кадр с карточками едет контейнером `updates` (seq 0, если курсора нет).
+func NewUpdatesEnvelope(body map[string]any, envSeq *int64, date int64, users, chats []any) map[string]any {
+	if envSeq == nil && len(users) == 0 && len(chats) == 0 {
 		return NewUpdateShortPayload(body, date)
 	}
-	return NewUpdatesPayload([]map[string]any{body}, date, *envSeq)
+	var seq int64
+	if envSeq != nil {
+		seq = *envSeq
+	}
+	return NewUpdatesPayload([]map[string]any{body}, users, chats, date, seq)
 }
 
 // ── Та же пачка витриной REST ──────────────────────────────────────────────

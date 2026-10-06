@@ -3,7 +3,6 @@ package chat
 import (
 	"context"
 	"encoding/json"
-	"slices"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -65,8 +64,12 @@ func (i *Interactor) ListParticipants(ctx context.Context, chatID, viewerID int6
 	page := ParticipantsPage{Count: total, Participants: make([]domain.ChannelParticipant, 0, len(rows))}
 	for _, p := range rows {
 		page.Participants = append(page.Participants, p.ToChannelParticipant(v))
-		page.UserIDs = appendParticipantUsers(page.UserIDs, p, v)
 	}
+	// Карточки — по ССЫЛКАМ самого провода (domain.CollectPeerRefs, сборщик
+	// векторов Ф-3а): user_id/peer строки, promoted_by, inviter_id, kicked_by.
+	// Что маскировано для зрителя (кем ограничен или исключён), в теле не
+	// названо — и в вектор не попадает (ревью #409 п. 5).
+	page.UserIDs = domain.CollectPeerRefs(page.Participants).Users
 	return page, nil
 }
 
@@ -95,7 +98,8 @@ func (i *Interactor) GetParticipant(ctx context.Context, chatID, viewerID, userI
 		return nil, nil, domain.ErrNotFound
 	}
 	v := i.participantViewer(ctx, chatID, viewerID, a)
-	return p.ToChannelParticipant(v), appendParticipantUsers(nil, p, v), nil
+	wire := p.ToChannelParticipant(v)
+	return wire, domain.CollectPeerRefs(wire).Users, nil
 }
 
 // participantViewer — зритель выдачи: создатель ли он и есть ли у него
@@ -106,30 +110,6 @@ func (i *Interactor) participantViewer(ctx context.Context, chatID, viewerID int
 		IsCreator: a.Member && a.Role == domain.RoleCreator,
 		CanBan:    a.Member && i.requireRight(ctx, chatID, viewerID, domain.RightBanUsers) == nil,
 	}
-}
-
-// appendParticipantUsers — карточки, которые называет строка: сам участник,
-// назначивший, пригласивший, наложивший ограничение или бан.
-//
-// Наложившего ограничение или бан называет только строка, видная зрителю с
-// ban_users (или самому ограниченному): иначе карточка админа в векторе
-// выдавала бы, что кто-то на странице им ограничен (ревью #409 п. 5).
-func appendParticipantUsers(ids []int64, p domain.Participant, v domain.ParticipantViewer) []int64 {
-	add := func(id int64) {
-		if id != 0 && !slices.Contains(ids, id) {
-			ids = append(ids, id)
-		}
-	}
-	add(p.UserID)
-	add(p.PromotedBy)
-	add(p.InviterID)
-	if v.CanBan || v.ID == p.UserID {
-		add(p.KickedBy)
-		if p.Restriction != nil {
-			add(p.Restriction.RestrictedBy)
-		}
-	}
-	return ids
 }
 
 // OnlineCandidates — messages.getOnlines: гейт и загрузчик состава, по
@@ -342,22 +322,4 @@ func structPayload(v any) map[string]any {
 		return nil
 	}
 	return m
-}
-
-// LinkedChannel — канал, чьей группой обсуждения служит groupID, глазами
-// зрителя (Б-119): строка «Привязанный канал» вкладки обсуждения группы. Кто
-// читает группу, тому канал назван — как у оригинала (channelFull.linked_chat_id
-// группы и канал в chats). domain.ErrNotFound — группа ничья.
-func (i *Interactor) LinkedChannel(ctx context.Context, groupID, viewerID int64) (domain.ChatRecord, error) {
-	if err := i.RequireChatRead(ctx, groupID, viewerID); err != nil {
-		return domain.ChatRecord{}, err
-	}
-	id, err := i.groups.DiscussionChannel(ctx, groupID)
-	if err != nil {
-		return domain.ChatRecord{}, err
-	}
-	if id == 0 {
-		return domain.ChatRecord{}, domain.ErrNotFound
-	}
-	return i.groups.Card(ctx, id, viewerID)
 }

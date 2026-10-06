@@ -6,6 +6,8 @@ import (
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
+
+	"github.com/messenger-denis/backend/internal/usecase/presence"
 )
 
 // PresenceStore implements the presence usecase's PresenceStore port over Redis.
@@ -129,4 +131,40 @@ func (s *PresenceStore) CachedOnlines(ctx context.Context, chatID int64) (int, b
 // CacheOnlines — «N онлайн» чата на ttl.
 func (s *PresenceStore) CacheOnlines(ctx context.Context, chatID int64, n int, ttl time.Duration) error {
 	return s.rdb.Set(ctx, onlinesKey(chatID), n, ttl).Err()
+}
+
+// Snapshots — присутствие пачки пользователей одним конвейером: PTTL ключа
+// присутствия, объявленный дедлайн и last seen на каждого.
+func (s *PresenceStore) Snapshots(ctx context.Context, userIDs []int64) (map[int64]presence.Snapshot, error) {
+	out := make(map[int64]presence.Snapshot, len(userIDs))
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+	pipe := s.rdb.Pipeline()
+	ttls := make([]*goredis.DurationCmd, len(userIDs))
+	announced := make([]*goredis.StringCmd, len(userIDs))
+	seen := make([]*goredis.StringCmd, len(userIDs))
+	for k, id := range userIDs {
+		ttls[k] = pipe.PTTL(ctx, presKey(id))
+		announced[k] = pipe.Get(ctx, announcedKey(id))
+		seen[k] = pipe.Get(ctx, lastSeenKey(id))
+	}
+	if _, err := pipe.Exec(ctx); err != nil && err != goredis.Nil {
+		return nil, err
+	}
+	now := time.Now()
+	for k, id := range userIDs {
+		var sn presence.Snapshot
+		if ttl, err := ttls[k].Result(); err == nil && ttl > 0 {
+			sn.Online, sn.Expires = true, now.Add(ttl)
+		}
+		if ms, err := announced[k].Int64(); err == nil && ms > 0 {
+			sn.Announced = time.UnixMilli(ms)
+		}
+		if ms, err := seen[k].Int64(); err == nil {
+			sn.LastSeen = ms
+		}
+		out[id] = sn
+	}
+	return out, nil
 }

@@ -45,6 +45,9 @@ type PresenceStore interface {
 	// CachedOnlines/CacheOnlines — счёт «N онлайн» чата на ttl (ok=false — нет).
 	CachedOnlines(ctx context.Context, chatID int64) (n int, ok bool, err error)
 	CacheOnlines(ctx context.Context, chatID int64, n int, ttl time.Duration) error
+	// Snapshots — присутствие пачки пользователей ОДНИМ обращением к хранилищу
+	// (конвейер Redis): онлайн, объявленный и фактический сроки, last seen.
+	Snapshots(ctx context.Context, userIDs []int64) (map[int64]Snapshot, error)
 }
 
 // Горизонт онлайна и порог его продления.
@@ -189,6 +192,42 @@ func (m *Manager) Status(ctx context.Context, userID int64) (online bool, expire
 		lastSeen = time.UnixMilli(ms)
 	}
 	return online, expires, lastSeen
+}
+
+// Snapshot — присутствие одного пользователя в хранилище.
+type Snapshot struct {
+	Online    bool
+	Announced time.Time // объявленный партнёрам дедлайн (нулевой — не объявлялся)
+	Expires   time.Time // срок ключа присутствия
+	LastSeen  int64     // unix ms, 0 — нет
+}
+
+// Statuses — UserStatus пачки пользователей одним обращением к хранилищу:
+// та же логика, что Status, без N+1 к Redis (витрины истории, диалогов,
+// векторов кадров доводят карточки пачкой).
+func (m *Manager) Statuses(ctx context.Context, userIDs []int64) map[int64]domain.UserStatus {
+	out := make(map[int64]domain.UserStatus, len(userIDs))
+	if len(userIDs) == 0 {
+		return out
+	}
+	snaps, err := m.store.Snapshots(ctx, userIDs)
+	if err != nil {
+		return out
+	}
+	for _, id := range userIDs {
+		sn := snaps[id]
+		var expires, lastSeen time.Time
+		if sn.Online {
+			if expires = sn.Announced; expires.IsZero() {
+				expires = sn.Expires
+			}
+		}
+		if sn.LastSeen > 0 {
+			lastSeen = time.UnixMilli(sn.LastSeen)
+		}
+		out[id] = domain.PresenceStatus(sn.Online, expires, lastSeen)
+	}
+	return out
 }
 
 // UserStatus — готовый конструктор UserStatus для пира. visible=false —

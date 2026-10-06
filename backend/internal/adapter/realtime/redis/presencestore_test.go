@@ -141,3 +141,30 @@ func TestPresenceStore_OnlinesCache(t *testing.T) {
 		t.Fatal("кэш пережил ttl")
 	}
 }
+
+// Снимки присутствия пачки одним конвейером (ревью #405, №5).
+func TestPresenceStore_Snapshots(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+	rdb := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+	ctx := context.Background()
+	store := NewPresenceStore(rdb)
+	if _, err := store.SetOnlineNX(ctx, 1, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	_ = store.SetOffline(ctx, 2, 1_700_000_000_000)
+	snaps, err := store.Snapshots(ctx, []int64{1, 2, 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !snaps[1].Online || snaps[1].Expires.IsZero() {
+		t.Fatalf("онлайн: %+v", snaps[1])
+	}
+	if snaps[2].Online || snaps[2].LastSeen != 1_700_000_000_000 {
+		t.Fatalf("офлайн: %+v", snaps[2])
+	}
+	if snaps[3].Online || snaps[3].LastSeen != 0 {
+		t.Fatalf("неизвестный: %+v", snaps[3])
+	}
+}

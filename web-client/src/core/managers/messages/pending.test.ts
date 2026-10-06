@@ -178,7 +178,7 @@ describe('pending: появление бабла', () => {
     p.beforeMessageSending(evt({ client_msg_id: 'c1', text: 'first' }))
     const second = (p.beforeMessageSending(evt({ client_msg_id: 'c2', text: 'second' }))[0] as { msg: MessageReal }).msg
 
-    p.ackPendingMessage({ client_msg_id: 'c1', id: 50, created_at: 'x' })
+    p.ackPendingMessage({ client_msg_id: 'c1', id: 50, date: 1 })
 
     expect(p.hasPending('c2')).toBe(true)
     const still = msgsFor(1).get(second.id)!
@@ -220,13 +220,13 @@ describe('pending: подтверждение сервера', () => {
 
     // Номер сервера намеренно НЕ совпадает с подгаданным — иначе уборку
     // временного бабла не отличить от его перезаписи.
-    const ops = p.ackPendingMessage({ client_msg_id: 'c-1', id: 20, created_at: '2026-08-16T10:00:00Z' })
+    const ops = p.ackPendingMessage({ client_msg_id: 'c-1', id: 20, date: 1786874400 })
 
     expect(ops).toHaveLength(1)
     const msg = (ops[0] as { msg: MessageReal }).msg
     // Номер в подтверждении СЕРВЕРНЫЙ — владелец переводит его на границе.
     expect(msg.id).toBe(cid(20))
-    expect(msg.date).toBe(Math.floor(Date.parse('2026-08-16T10:00:00Z') / 1000))
+    expect(msg.date).toBe(1786874400)
     expect(msg.message).toBe('привет')
     expect(msg.random_id).toBe('c-1')
     // временный номер ушёл из SSOT и из среза — иначе в окне осталось бы два бабла
@@ -234,6 +234,22 @@ describe('pending: подтверждение сервера', () => {
     expect(msgsFor(1).has(temp.id)).toBe(false)
     expect(slices.get('1')!.findSlice(temp.id)).toBeFalsy()
     expect(msgsFor(1).get(cid(20))).toEqual(msg)
+  })
+
+  // A4-17: ack несёт то, что сервер сделал с текстом сам — санитизированные
+  // entities и превью ссылки; tweb кладёт их в бабл из updateShortSentMessage.
+  it('ack кладёт серверные entities и вложение текста', () => {
+    const { ctx, slices } = makeCtx()
+    openWindow(slices, '1', [cid(10)])
+    const p = newPendingMethods(ctx)
+    p.beforeMessageSending(evt())
+    const entities = [{ _: 'messageEntityBold' as const, offset: 0, length: 3 }]
+    const media = { _: 'messageMediaWebPage' as const, webpage: { _: 'webPageEmpty' as const, id: '1' } }
+    const ops = p.ackPendingMessage({ client_msg_id: 'c-1', id: 20, date: 5, entities, media } as never)
+    const msg = (ops[0] as { msg: MessageReal }).msg
+    expect(msg.date).toBe(5)
+    expect(msg.entities).toEqual(entities)
+    expect(msg.media).toMatchObject({ _: 'messageMediaWebPage' })
   })
 
   // Счёт истории (`historyStorage.count`) растёт на ФИНАЛЬНОМ сообщении, а не
@@ -249,7 +265,7 @@ describe('pending: подтверждение сервера', () => {
     p.beforeMessageSending(evt())
     expect(appended).toEqual([])
 
-    p.ackPendingMessage({ client_msg_id: 'c-1', id: 20, created_at: '2026-08-16T10:00:00Z' })
+    p.ackPendingMessage({ client_msg_id: 'c-1', id: 20, date: 1786874400 })
 
     expect(appended).toEqual([['1', cid(20)]])
   })
@@ -261,7 +277,7 @@ describe('pending: подтверждение сервера', () => {
     p.beforeMessageSending(evt())
 
     p.checkPendingMessage('c-1') // пришло new_message со своим client_msg_id
-    const ops = p.ackPendingMessage({ client_msg_id: 'c-1', id: 11, created_at: 'x' })
+    const ops = p.ackPendingMessage({ client_msg_id: 'c-1', id: 11, date: 1 })
 
     expect(ops).toEqual([])
     expect(p.hasPending('c-1')).toBe(false)
@@ -272,7 +288,7 @@ describe('pending: подтверждение сервера', () => {
     openWindow(slices, '1', [cid(10)])
     const p = newPendingMethods(ctx)
     p.beforeMessageSending(evt())
-    p.ackPendingMessage({ client_msg_id: 'c-1', id: 11, created_at: '2026-08-16T10:00:00Z' })
+    p.ackPendingMessage({ client_msg_id: 'c-1', id: 11, date: 1786874400 })
 
     p.checkPendingMessage('c-1')
 
@@ -286,7 +302,7 @@ describe('pending: подтверждение сервера', () => {
     const p = newPendingMethods(ctx)
     p.beforeMessageSending(evt())
 
-    expect(p.ackPendingMessage({ client_msg_id: 'c-other', id: 1, created_at: 'x' })).toEqual([])
+    expect(p.ackPendingMessage({ client_msg_id: 'c-other', id: 1, date: 1 })).toEqual([])
     expect(p.hasPending('c-1')).toBe(true)
   })
 })
@@ -305,7 +321,7 @@ describe('pending: ошибка, ретрай, отмена', () => {
     expect(p.hasPending('c-1')).toBe(true)
     // и ретрай действительно доводится до конца
     expect(p.retryPendingMessage('c-1')[0]).toMatchObject({ fields: { failed: undefined } })
-    expect(p.ackPendingMessage({ client_msg_id: 'c-1', id: 11, created_at: 'x' })).toHaveLength(1)
+    expect(p.ackPendingMessage({ client_msg_id: 'c-1', id: 11, date: 1 })).toHaveLength(1)
   })
 
   // Порт tweb `hasOutgoingMessage` (appMessagesManager.ts:10047-10055) — его читает
@@ -324,7 +340,7 @@ describe('pending: ошибка, ретрай, отмена', () => {
     p.failPendingMessage('c-1')
     expect(p.hasOutgoingMessage(1)).toBe(true)
 
-    p.ackPendingMessage({ client_msg_id: 'c-1', id: 11, created_at: 'x' })
+    p.ackPendingMessage({ client_msg_id: 'c-1', id: 11, date: 1 })
     expect(p.hasOutgoingMessage(1)).toBe(false)
 
     p.beforeMessageSending(evt({ client_msg_id: 'c-2' }))
@@ -462,7 +478,7 @@ describe('pending: статус бабла в UI (tweb sendingStatus)', () => {
     p.failPendingMessage('c-1')
     p.retryPendingMessage('c-1')
 
-    const acked = bubble(p.ackPendingMessage({ client_msg_id: 'c-1', id: 12, created_at: '2026-07-14T00:00:00Z' }))
+    const acked = bubble(p.ackPendingMessage({ client_msg_id: 'c-1', id: 12, date: 1783987200 }))
 
     expect(acked.id).toBe(cid(12))
     expect(messageToConvMsg(acked, 42).status).toBe('sent')
@@ -900,7 +916,7 @@ describe('sendText с готовым media_id: вложение под НАСТ�
     expect(temp.media).toEqual({ _: 'messageMediaDocument', document: sticker })
     expect(getDocumentFromMessage(temp)?.type).toBe('sticker')
 
-    const acked = (p.ackPendingMessage({ client_msg_id: 'c1', id: 11, created_at: '2026-09-26T18:36:00Z' })[0] as { msg: MessageReal }).msg
+    const acked = (p.ackPendingMessage({ client_msg_id: 'c1', id: 11, date: 1790447760 })[0] as { msg: MessageReal }).msg
     expect(acked.media).toEqual({ _: 'messageMediaDocument', document: sticker })
   })
 })

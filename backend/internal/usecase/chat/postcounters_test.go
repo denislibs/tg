@@ -298,7 +298,7 @@ func postFromHistory(t *testing.T, i *Interactor, viewerID, msgID int64) map[str
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("GetByIDs = %d, %v", len(rows), err)
 	}
-	wire, _, err := i.MessagesContainer(context.Background(), viewerID, rows)
+	wire, _, _, err := i.MessagesContainer(context.Background(), viewerID, rows)
 	if err != nil {
 		t.Fatalf("MessagesContainer: %v", err)
 	}

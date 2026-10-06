@@ -34,11 +34,14 @@ describe('WsClient', () => {
     expect(opened).toHaveBeenCalled()
     expect(c.isOpen()).toBe(true)
     ws.message(JSON.stringify({ t: 'new_message', d: { msg_id: 5 } }))
-    expect(got).toHaveBeenCalledWith('new_message', { msg_id: 5 }, undefined)
+    expect(got).toHaveBeenCalledWith('new_message', { msg_id: 5 }, undefined, undefined)
     // Курсор ИЗ КОНВЕРТА доезжает до подписчика: у кадров, чей конструктор
     // схемы своего `pts` не объявляет, он едет только здесь.
     ws.message(JSON.stringify({ t: 'new_message', d: { msg_id: 6 }, pts: 42 }))
-    expect(got).toHaveBeenCalledWith('new_message', { msg_id: 6 }, 42)
+    expect(got).toHaveBeenCalledWith('new_message', { msg_id: 6 }, 42, undefined)
+    // A4-05: векторы карточек кадра доезжают четвёртым аргументом.
+    ws.message(JSON.stringify({ t: 'new_message', d: { msg_id: 7 }, users: [{ _: 'user', id: 3 }] }))
+    expect(got).toHaveBeenCalledWith('new_message', { msg_id: 7 }, undefined, { users: [{ _: 'user', id: 3 }], chats: undefined })
   })
 
   // Кадр НЕЗНАКОМОГО типа тоже доезжает — раньше он исчезал молча, потому что
@@ -49,7 +52,7 @@ describe('WsClient', () => {
     c.connect('tok')
     const ws = FakeWS.instances[0]; ws.open()
     ws.message(JSON.stringify({ t: 'какой_то_новый_кадр', d: { x: 1 } }))
-    expect(got).toHaveBeenCalledWith('какой_то_новый_кадр', { x: 1 }, undefined)
+    expect(got).toHaveBeenCalledWith('какой_то_новый_кадр', { x: 1 }, undefined, undefined)
   })
 
   // Провод TL: формат просит КЛИЕНТ подпротоколом, и просит его ПЕРВЫМ — сервер

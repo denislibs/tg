@@ -263,6 +263,54 @@ func (r *PrivacyRepo) VisibleMap(ctx context.Context, viewerID int64, ownerIDs [
 	return out, rows.Err()
 }
 
+// VisibleMaps — VisibleMap по нескольким ключам ОДНИМ запросом (то же
+// правило: сам зритель, блок, deny/allow-списки, значение правила с
+// умолчанием ключа, контакт). Витрина карточек спрашивает фото, номер и
+// last seen разом.
+func (r *PrivacyRepo) VisibleMaps(ctx context.Context, viewerID int64, ownerIDs []int64, keys ...domain.PrivacyKey) (map[domain.PrivacyKey]map[int64]bool, error) {
+	out := make(map[domain.PrivacyKey]map[int64]bool, len(keys))
+	names := make([]string, len(keys))
+	defaults := make([]string, len(keys))
+	for k, key := range keys {
+		out[key] = make(map[int64]bool, len(ownerIDs))
+		names[k], defaults[k] = string(key), domain.DefaultPrivacyValue(key)
+	}
+	if len(ownerIDs) == 0 || len(keys) == 0 {
+		return out, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT k.name, o.id,
+		        o.id = $1 OR (
+		          NOT EXISTS(SELECT 1 FROM user_blocks b WHERE b.blocker_id = o.id AND b.blocked_id = $1)
+		          AND (
+		            NOT COALESCE(pr.deny_user_ids, '[]') @> to_jsonb(ARRAY[$1::bigint]) AND (
+		              COALESCE(pr.allow_user_ids, '[]') @> to_jsonb(ARRAY[$1::bigint]) OR
+		              COALESCE(pr.value, k.def) = 'everybody' OR
+		              (COALESCE(pr.value, k.def) = 'contacts' AND EXISTS(
+		                SELECT 1 FROM contacts cc WHERE cc.owner_id = o.id AND cc.user_id = $1))
+		            )
+		          )
+		        )
+		   FROM unnest($2::bigint[]) AS o(id)
+		  CROSS JOIN unnest($3::text[], $4::text[]) AS k(name, def)
+		   LEFT JOIN privacy_rules pr ON pr.user_id = o.id AND pr.key = k.name`,
+		viewerID, ownerIDs, names, defaults)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		var id int64
+		var ok bool
+		if err := rows.Scan(&name, &id, &ok); err != nil {
+			return nil, err
+		}
+		out[domain.PrivacyKey(name)][id] = ok
+	}
+	return out, rows.Err()
+}
+
 func (r *PrivacyRepo) GetUser(ctx context.Context, id int64) (domain.UserRecord, error) {
 	var u domain.UserRecord
 	err := querier(ctx, r.pool).QueryRow(ctx,
@@ -311,4 +359,47 @@ func (r *PrivacyRepo) ChatTheme(ctx context.Context, viewerID, targetID int64) (
 		            WHERE c.type = 'private' LIMIT 1),
 		          '')`, viewerID, targetID).Scan(&theme)
 	return theme, err
+}
+
+// PeerFullState — то, что userFull говорит о паре «зритель — пир» (A4-19):
+// общие ГРУППЫ (вкладка «Общие группы» tweb, appSearchSuper.ts:3031; подписчики
+// канала друг другу не видны, и счёт по каналам раскрыл бы подписку); закреп и уведомления лички зрителя с пиром (личка —
+// чат type='private', где состоят оба); подарки профиля пира, видимые зрителю
+// (тот же отбор, что StarsRepo.ProfileGifts). Своей карточке общих чатов и
+// лички нет: notify_settings nil.
+func (r *PrivacyRepo) PeerFullState(ctx context.Context, viewerID, targetID int64) (domain.PeerFullState, error) {
+	var st domain.PeerFullState
+	var muteUntil *time.Time
+	var preview *bool
+	var sound *string
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT
+		   CASE WHEN $1 = $2 THEN 0 ELSE
+		     (SELECT count(*) FROM chat_members a
+		        JOIN chat_members b ON b.chat_id = a.chat_id AND b.user_id = $2
+		        JOIN chats c ON c.id = a.chat_id AND c.type = 'group'
+		       WHERE a.user_id = $1) END,
+		   COALESCE((SELECT pm.seq FROM pinned_messages p JOIN messages pm ON pm.id = p.msg_id
+		              WHERE p.chat_id = pc.chat_id AND pm.deleted_at IS NULL
+		              ORDER BY p.pinned_at DESC LIMIT 1), 0),
+		   (SELECT count(*) FROM saved_star_gifts sg
+		     WHERE sg.owner_id = $2 AND NOT sg.converted AND ($1 = $2 OR NOT sg.hidden)),
+		   pc.muted_until, pc.notify_preview, pc.notify_sound
+		 FROM (SELECT 1) one
+		 LEFT JOIN LATERAL (
+		   SELECT a.chat_id, a.muted_until, a.notify_preview, a.notify_sound
+		     FROM chats c
+		     JOIN chat_members a ON a.chat_id = c.id AND a.user_id = $1
+		     JOIN chat_members b ON b.chat_id = c.id AND b.user_id = $2
+		    WHERE c.type = 'private' AND $1 <> $2
+		    LIMIT 1) pc ON true`,
+		viewerID, targetID).Scan(&st.CommonChats, &st.PinnedMsgID, &st.StarGifts, &muteUntil, &preview, &sound)
+	if err != nil {
+		return domain.PeerFullState{}, err
+	}
+	if viewerID != targetID {
+		ns := peerNotifySettings(muteUntil, preview, sound, time.Now())
+		st.NotifySettings = &ns
+	}
+	return st, nil
 }

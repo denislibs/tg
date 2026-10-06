@@ -242,6 +242,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		        -- (domain.UserReal.SeenBy). Без них строка списка затирала на
 		        -- клиенте имя контакта профильным.
 		        `+contactViewCols("peer.id", "$1")+`,
+		        `+userViewerCols("peer.", "$1")+`,
 		        c.auto_delete_period,
 		        -- Дата ВСТУПЛЕНИЯ зрителя — обязательный channel.date краткой
 		        -- формы (DialogRecord.ToChannel). Выборка идёт ОТ его строки
@@ -275,7 +276,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		 LEFT JOIN LATERAL (
 		   SELECT u.id, u.first_name, u.last_name, u.username, u.avatar_media_id, u.avatar_preview,
 		          u.is_bot, u.is_verified, u.is_premium, u.emoji_status, u.deleted_at IS NOT NULL AS deleted,
-		          u.is_service
+		          u.is_service, u.phone
 		   FROM chat_members om JOIN users u ON u.id = om.user_id
 		   WHERE om.chat_id = c.id AND om.user_id <> $1
 		   LIMIT 1
@@ -312,7 +313,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 			&topMessageID, &d.TopMessageSeq,
 			&peerID, &peer.firstName, &peer.lastName, &peer.username, &peer.photoID, &peer.photoPreview,
 			&peer.isBot, &peer.isVerified, &peer.isPremium, &peer.emojiStatus, &peer.deleted, &peer.isService,
-			&peer.contactName, &peer.mutual,
+			&peer.contactName, &peer.mutual, &peer.phone, &peer.self,
 			&d.TTLPeriod, &d.JoinedAt,
 			&d.MemberCount, &d.MyRole, &rights, &d.Signatures, &d.SignatureProfiles,
 			&d.DiscussionChatID, &perms, &d.Settings.SlowmodeSeconds, &d.Settings.ChargeStars,
@@ -335,6 +336,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		if peerID != nil {
 			peer.id = *peerID
 			u := peer.user(true)
+			d.PeerPhone = peer.phone
 			d.Peer = &u
 		}
 		out = append(out, d)

@@ -1,4 +1,4 @@
-import { decodeFrame, encodeFrame, type Frame } from '../../protocol/frames'
+import { decodeFrame, encodeFrame, framePeers, type Frame, type FramePeers } from '../../protocol/frames'
 import type { Transport } from './transport'
 import type { decodeTLFrame } from './tlFrames'
 
@@ -23,7 +23,7 @@ import type { decodeTLFrame } from './tlFrames'
 // бы с порядком курсора.
 export class WsClient implements Transport {
   private ws: WebSocket | null = null
-  private frameCbs: Array<(type: string, d: unknown, pts?: number) => void> = []
+  private frameCbs: Array<(type: string, d: unknown, pts?: number, peers?: FramePeers) => void> = []
   private openCbs: Array<() => void> = []
   private closeCbs: Array<() => void> = []
   private errorCbs: Array<() => void> = []
@@ -55,14 +55,15 @@ export class WsClient implements Transport {
     if (this.tlWire && !this.decodeTL) { this.queued.push(data); return }
     if (typeof data !== 'string') { this.receiveTL(data); return }
     const f: Frame = decodeFrame(data)
-    for (const cb of this.frameCbs) cb(f.t, f.d, f.pts)
+    const peers = framePeers(f)
+    for (const cb of this.frameCbs) cb(f.t, f.d, f.pts, peers)
   }
 
   // Тип кадра на проводе TL — это его КОНСТРУКТОР, поэтому наружу он и уезжает
   // дискриминатором: маршрутизация у воркера с шага C идёт по нему же.
   private receiveTL(buffer: ArrayBuffer): void {
-    for (const { update, seq } of this.decodeTL!(new Uint8Array(buffer))) {
-      for (const cb of this.frameCbs) cb(update._, update, seq)
+    for (const { update, seq, peers } of this.decodeTL!(new Uint8Array(buffer))) {
+      for (const cb of this.frameCbs) cb(update._, update, seq, peers)
     }
   }
 
@@ -71,7 +72,7 @@ export class WsClient implements Transport {
   // время его загрузки таймаутом.
   codecReady(): Promise<void> { return this.codecLoad ?? Promise.resolve() }
 
-  onFrame(cb: (type: string, d: unknown, pts?: number) => void): void { this.frameCbs.push(cb) }
+  onFrame(cb: (type: string, d: unknown, pts?: number, peers?: FramePeers) => void): void { this.frameCbs.push(cb) }
   onOpen(cb: () => void): void { this.openCbs.push(cb) }
   onClose(cb: () => void): void { this.closeCbs.push(cb) }
   onError(cb: () => void): void { this.errorCbs.push(cb) }

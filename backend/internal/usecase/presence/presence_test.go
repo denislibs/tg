@@ -412,3 +412,17 @@ func TestManager_ChatOnlinesCached(t *testing.T) {
 		t.Fatalf("состав читался %d раз; want 1", loads)
 	}
 }
+
+func (s *fakeStore) Snapshots(_ context.Context, userIDs []int64) (map[int64]Snapshot, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[int64]Snapshot, len(userIDs))
+	for _, id := range userIDs {
+		sn := Snapshot{Online: s.onlineLocked(id), Announced: s.announced[id], LastSeen: s.lastSeen[id]}
+		if sn.Online {
+			sn.Expires = s.expiry[id]
+		}
+		out[id] = sn
+	}
+	return out, nil
+}

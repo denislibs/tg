@@ -52,12 +52,21 @@ func TestWS_TLWireDeliversUpdatesAsTL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("кодек не разобрал кадр: %v", err)
 	}
-	if envelope["_"] != "updateShort" {
-		t.Fatalf("оболочка = %v, ожидался updateShort (у updateNewMessage свой pts)", envelope["_"])
+	// Первый кадр от A — с карточкой A (A4-05): у updateShort векторов нет,
+	// поэтому оболочка — updates; seq 0, курсор у updateNewMessage свой.
+	if envelope["_"] != "updates" {
+		t.Fatalf("оболочка = %v, ожидался updates с карточкой автора", envelope["_"])
 	}
-	update, ok := envelope["update"].(map[string]any)
+	if users, _ := envelope["users"].([]any); len(users) == 0 {
+		t.Fatalf("кадр без карточки автора: %v", envelope["users"])
+	}
+	list, _ := envelope["updates"].([]any)
+	if len(list) != 1 {
+		t.Fatalf("апдейтов в оболочке = %d", len(list))
+	}
+	update, ok := list[0].(map[string]any)
 	if !ok {
-		t.Fatalf("апдейт внутри оболочки = %T", envelope["update"])
+		t.Fatalf("апдейт внутри оболочки = %T", list[0])
 	}
 	if update["_"] != "updateNewMessage" {
 		t.Fatalf("апдейт = %v", update["_"])

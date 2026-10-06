@@ -121,7 +121,13 @@ func (i *Interactor) UnlinkDiscussion(ctx context.Context, channelID, actorID in
 // DiscussionCandidates lists the groups the actor may link as a discussion group
 // (non-forum 'group' chats they own/administer that aren't already linked).
 func (i *Interactor) DiscussionCandidates(ctx context.Context, actorID int64) ([]domain.ChatRecord, error) {
-	return i.groups.DiscussionCandidates(ctx, actorID)
+	ids, err := i.groups.DiscussionCandidates(ctx, actorID)
+	if err != nil {
+		return nil, err
+	}
+	// Отбирает репозиторий, карточки собирает общий сборщик: урезанная строка
+	// без фото затирала аватарки групп админа (A1-01).
+	return i.chatCards(ctx, actorID, ids)
 }
 
 // PostComment posts a comment on a channel post. Тред живёт не на самом посте, а
@@ -292,6 +298,59 @@ func (i *Interactor) GetDiscussionMessage(ctx context.Context, channelID, postID
 	return msgs[0], nil
 }
 
+// DiscussionContainer — ответ messages.getDiscussionMessage: корень треда
+// комментариев поста (GetDiscussionMessage) конструктором
+// messages.discussionMessage — с состоянием треда и векторами.
+//
+// Векторы везут ГРУППУ ОБСУЖДЕНИЯ и КАНАЛ (A4-04): тред открывается в группе,
+// которой у подписчика нет в списке диалогов, и без её карточки клиент
+// оригинала считает «писать нельзя» (hasRights без default_banned_rights).
+//
+// Состояние треда (A4-10): max_id — последний видимый номер треда;
+// read_inbox_max_id/unread_count — по горизонту прочтения группы, если зритель
+// в ней состоит (номера группы монотонны, горизонт верен и для треда);
+// read_outbox_max_id — горизонт собеседников. Не участнику горизонта нет:
+// read_*_max_id не едут, и клиент оригинала считает тред прочитанным до корня
+// (`read_inbox_max_id ?? message.mid`, tweb appMessagesManager.ts:8850).
+func (i *Interactor) DiscussionContainer(ctx context.Context, channelID, postID, userID int64) (domain.MessagesDiscussionMessage, error) {
+	root, err := i.GetDiscussionMessage(ctx, channelID, postID, userID)
+	if err != nil {
+		return domain.MessagesDiscussionMessage{}, err
+	}
+	wire, users, chats, err := i.MessagesContainer(ctx, userID, []domain.Message{root})
+	if err != nil {
+		return domain.MessagesDiscussionMessage{}, err
+	}
+	chats = i.withChats(ctx, userID, chats, root.ChatID, channelID)
+	var readSeq int64
+	var group domain.ChatRecord
+	if i.groups != nil {
+		if g, err := i.groups.Card(ctx, root.ChatID, userID); err == nil {
+			group = g
+		}
+	}
+	member := group.MyRole != ""
+	if member {
+		readSeq = group.ReadInboxMaxID
+	}
+	maxSeq, unread, err := i.msgs.ThreadState(ctx, root.ChatID, root.ID, userID, readSeq)
+	if err != nil {
+		return domain.MessagesDiscussionMessage{}, err
+	}
+	if !member {
+		unread = 0
+	}
+	out := domain.NewMessagesDiscussionMessage(wire, unread, chats, users)
+	if maxSeq > 0 {
+		out.MaxID = &maxSeq
+	}
+	if member {
+		inbox, outbox := group.ReadInboxMaxID, group.ReadOutboxMaxID
+		out.ReadInboxMaxID, out.ReadOutboxMaxID = &inbox, &outbox
+	}
+	return out, nil
+}
+
 // ListComments returns the comment thread (ascending) for a channel post plus the
 // total comment count. Читает по id зеркала поста (см. PostComment), внешне
 // вызывающий по-прежнему адресует пост парой (канал, postID). domain.ErrNotFound
@@ -327,6 +386,23 @@ func (i *Interactor) ListComments(ctx context.Context, channelID, postID, userID
 	}
 	cnt, err := i.msgs.CountThread(ctx, disc, root)
 	return msgs, cnt, err
+}
+
+// CommentsContainer — страница комментариев поста (ListComments) контейнером
+// messages.messagesSlice. Векторы везут группу обсуждения и канал (A4-04):
+// тред живёт в группе, которой у подписчика нет в списке диалогов.
+func (i *Interactor) CommentsContainer(ctx context.Context, channelID, postID, userID int64, offset, limit int) (domain.MessagesMessagesSlice, error) {
+	msgs, count, err := i.ListComments(ctx, channelID, postID, userID, offset, limit)
+	if err != nil {
+		return domain.MessagesMessagesSlice{}, err
+	}
+	wire, users, chats, err := i.MessagesContainer(ctx, userID, msgs)
+	if err != nil {
+		return domain.MessagesMessagesSlice{}, err
+	}
+	disc, _ := i.groups.GetDiscussion(ctx, channelID)
+	chats = i.withChats(ctx, userID, chats, disc, channelID)
+	return domain.NewMessagesMessagesSlice(count, wire, chats, users), nil
 }
 
 // publishPostReplies — счётчик комментариев поста канала изменился: кадр
@@ -416,11 +492,13 @@ func (i *Interactor) CommentCounts(ctx context.Context, viewerID, channelID int6
 	}
 	seen := map[int64]bool{}
 	ids := make([]int64, 0, len(recent)*RecentRepliersLimit)
-	for _, users := range recent {
-		for _, u := range users {
-			if !seen[u] {
-				seen[u] = true
-				ids = append(ids, u)
+	for _, authors := range recent {
+		for _, a := range authors {
+			// Комментатор-канал (send-as) едет ссылкой на чат; карточки
+			// пользователей — только людям.
+			if a.IsUser() && !seen[a.ToUserID()] {
+				seen[a.ToUserID()] = true
+				ids = append(ids, a.ToUserID())
 			}
 		}
 	}
@@ -449,8 +527,8 @@ func (i *Interactor) CommentCounts(ctx context.Context, viewerID, channelID int6
 	for postID, root := range mirrors {
 		c := counts[root]
 		peers := make([]domain.Peer, 0, RecentRepliersLimit)
-		for _, u := range recent[root] {
-			peers = append(peers, domain.NewPeerUser(u))
+		for _, a := range recent[root] {
+			peers = append(peers, domain.NewPeer(a))
 		}
 		out[postID] = domain.NewMessageReplies(c, disc, peers)
 	}
