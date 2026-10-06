@@ -20,14 +20,18 @@ type FolderChatAccess struct {
 	pool   *pgxpool.Pool
 	groups *GroupRepo
 	join   func(ctx context.Context, chatID, userID int64) error
+	joined func(ctx context.Context, chatID, userID int64)
 }
 
 var _ usecasefolders.Chats = (*FolderChatAccess)(nil)
 
 // NewFolderChatAccess — join: точка вступления usecase чатов
 // (chat.Interactor.JoinFolderChat).
-func NewFolderChatAccess(pool *pgxpool.Pool, join func(ctx context.Context, chatID, userID int64) error) *FolderChatAccess {
-	return &FolderChatAccess{pool: pool, groups: NewGroupRepo(pool), join: join}
+// joined — живые последствия вступления после коммита
+// (chat.Interactor.AnnounceChannelJoin).
+func NewFolderChatAccess(pool *pgxpool.Pool, join func(ctx context.Context, chatID, userID int64) error,
+	joined func(ctx context.Context, chatID, userID int64)) *FolderChatAccess {
+	return &FolderChatAccess{pool: pool, groups: NewGroupRepo(pool), join: join, joined: joined}
 }
 
 func (a *FolderChatAccess) Info(ctx context.Context, chatID int64) (string, bool, error) {
@@ -65,4 +69,10 @@ func (a *FolderChatAccess) IsMember(ctx context.Context, chatID, userID int64) (
 // Join вступает в чат общей точкой вступления usecase чатов.
 func (a *FolderChatAccess) Join(ctx context.Context, chatID, userID int64) error {
 	return a.join(ctx, chatID, userID)
+}
+
+func (a *FolderChatAccess) Joined(ctx context.Context, chatID, userID int64) {
+	if a.joined != nil {
+		a.joined(ctx, chatID, userID)
+	}
 }

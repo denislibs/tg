@@ -148,3 +148,20 @@ func TestWorker_TitleOverridesSenderName(t *testing.T) {
 		t.Fatalf("заголовок пуша = %v, want название канала", got["sender"])
 	}
 }
+
+// Бейдж получателя считается один раз на пачку (он — сумма по всем его чатам).
+func TestWorker_BadgeOncePerRecipientInBatch(t *testing.T) {
+	q := &fakeQueue{}
+	for seq := int64(1); seq <= 3; seq++ {
+		_ = q.Enqueue(context.Background(), Job{RecipientID: 7, ChatID: 3, PeerID: -3, Seq: seq, Title: "К", Text: "п", Preview: true})
+	}
+	subs := &fakeSubs{byUser: map[int64][]domain.PushSubscription{7: {{Endpoint: "e", P256dh: "p", Auth: "a"}}}}
+	enrich := &fakeEnricher{badges: map[int64]int{7: 4}}
+	w := NewWorker(q, subs, &fakeSender{status: http.StatusCreated}, enrich)
+	if err := w.ProcessBatch(context.Background()); err != nil {
+		t.Fatalf("ProcessBatch: %v", err)
+	}
+	if enrich.badgeCalls != 1 {
+		t.Fatalf("бейдж посчитан %d раз на три задания одному получателю", enrich.badgeCalls)
+	}
+}

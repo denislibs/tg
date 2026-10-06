@@ -113,6 +113,8 @@ type DialogRecord struct {
 	// его поиском по загруженным сообщениям нельзя — промах давал бы тихий 0,
 	// а 0 в этом пространстве значит «самое новое».
 	TopMessageSeq int64
+	// ChannelPts — pts журнала broadcast-канала (chats.channel_pts) → dialog.pts.
+	ChannelPts int64
 	// PhotoID/PhotoPreview — фото группы/канала (chats.photo_media_id и
 	// media.blur_preview по нему); nil — фото нет. У приватного чата аватарка
 	// едет на самом пире (Peer.Photo), как в оригинале.
@@ -162,6 +164,9 @@ func (d DialogRecord) ToDialog(peer Peer, topMessage int64) DialogReal {
 	out.FolderID = int(d.Folder)
 	out.TTLPeriod = d.TTLPeriod
 	out.Secret = d.Type == ChatTypeSecret
+	if d.Type == ChatTypeChannel {
+		out.Pts = d.ChannelPts
+	}
 	return out
 }
 
@@ -661,6 +666,14 @@ type SavedDialogRecord struct {
 
 // ChannelUpdate is one entry in a channel's per-channel updates log
 // (the catch-up feed read by GET /channels/{id}/difference).
+// ChannelCursor — канал зрителя и текущий pts его журнала: им соединение
+// подписывается на топик, а клиент узнаёт, какие каналы сдвинулись, пока
+// сокета не было (наш аналог updateChannelTooLong в ответе getDifference).
+type ChannelCursor struct {
+	ChatID int64
+	Pts    int64
+}
+
 type ChannelUpdate struct {
 	Pts      int64
 	PtsCount int

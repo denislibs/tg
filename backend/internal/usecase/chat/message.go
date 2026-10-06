@@ -613,7 +613,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	// подписчикам (channel_fanout.go).
 	if channelPts != 0 {
 		i.deliverChannelPost(ctx, msg, channelPayload, channelPts, channelPostOpts{
-			silent: in.Silent, clearDraft: in.Action == nil, preview: in.Type == "text",
+			silent: in.Silent, clearDraft: in.Action == nil && !in.fromSchedule, preview: in.Type == "text",
 		})
 	}
 	if recipients != nil {
@@ -630,7 +630,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		}
 		// Отправка сообщения снимает черновик чата (Telegram-семантика);
 		// служебное — например, лог звонка — черновика не трогает.
-		if in.Action == nil {
+		if in.Action == nil && !in.fromSchedule {
 			i.clearDraftAfterSend(ctx, in.SenderID, in.ChatID)
 		}
 	}

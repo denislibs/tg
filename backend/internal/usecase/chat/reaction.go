@@ -155,10 +155,7 @@ func (i *Interactor) React(ctx context.Context, chatID, messageID, userID int64,
 	// updateMessageReactions курсора не несёт вовсе (в схеме у него нет pts), а
 	// пропустивший кадр получает абсолютный агрегат с историей поста.
 	if broadcast {
-		if i.chPub != nil {
-			_ = i.chPub.PublishToChannel(ctx, chatID,
-				frame("reaction", reactionsPayload(domain.ToPeerID(chatID, true), msg.Seq, *aggregate)))
-		}
+		i.publishChannelReactions(ctx, chatID, msg.Seq, *aggregate)
 		return nil
 	}
 	if i.publisher != nil {

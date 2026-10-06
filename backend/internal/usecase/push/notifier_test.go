@@ -18,6 +18,17 @@ type fakeQueue struct {
 	enqErr  error
 	consErr error
 	ackErr  error
+	batches int // вызовов EnqueueMany
+}
+
+func (q *fakeQueue) EnqueueMany(ctx context.Context, jobs []Job) error {
+	q.batches++
+	for _, j := range jobs {
+		if err := q.Enqueue(ctx, j); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (q *fakeQueue) Enqueue(_ context.Context, j Job) error {
@@ -137,8 +148,9 @@ func (s *fakeSender) Send(_ context.Context, sub domain.PushSubscription, payloa
 }
 
 type fakeEnricher struct {
-	names  map[int64]string
-	badges map[int64]int
+	names      map[int64]string
+	badges     map[int64]int
+	badgeCalls int
 }
 
 func (e *fakeEnricher) SenderName(_ context.Context, userID int64) (string, error) {
@@ -146,6 +158,7 @@ func (e *fakeEnricher) SenderName(_ context.Context, userID int64) (string, erro
 }
 
 func (e *fakeEnricher) UnreadBadge(_ context.Context, userID int64) (int, error) {
+	e.badgeCalls++
 	return e.badges[userID], nil
 }
 
@@ -228,8 +241,8 @@ func TestNotifier_ChannelPostBatch(t *testing.T) {
 	if notify.batches != 1 {
 		t.Fatalf("решений по мьюту = %d запросов, want 1 на пачку", notify.batches)
 	}
-	if len(q.jobs) != 2 {
-		t.Fatalf("заданий = %d, want 2 (10 и 11: 8 онлайн, 9 замьючен)", len(q.jobs))
+	if len(q.jobs) != 2 || q.batches != 1 {
+		t.Fatalf("заданий = %d пачек %d, want 2 одной пачкой (10 и 11: 8 онлайн, 9 замьючен)", len(q.jobs), q.batches)
 	}
 	want := map[int64]Job{
 		10: {RecipientID: 10, ChatID: 3, PeerID: -3, Seq: 5, Title: "Новости", Text: "пост", Preview: false},

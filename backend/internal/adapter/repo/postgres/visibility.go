@@ -1,5 +1,7 @@
 package postgres
 
+import "strconv"
+
 // Предикаты ВИДИМОСТИ — по одному на предмет, общие для всех выборок.
 //
 // Пока условие видимости копировалось по запросам, каждая копия теряла своё:
@@ -66,19 +68,33 @@ func storyVisibleTo(alias, viewer string) string {
 		` OR EXISTS (SELECT 1 FROM story_allow ssa WHERE ssa.story_id = ` + alias + `.id AND ssa.user_id = ` + viewer + `))))`
 }
 
+// UnreadCountCap — верхняя граница подсчёта непрочитанного: дальше счёт не
+// идёт (клиент рисует число как есть, как у оригинала при больших значениях
+// бейдж всё равно сокращён). Без границы непрочитанный канал с десятками тысяч
+// постов стоил бы десятков тысяч строк на каждый /chats.
+const UnreadCountCap = 9999
+
+// unreadPostsCount — ОДНА формула непрочитанного на всех: посты чата chat
+// выше горизонта readSeq, не от viewer и не удалённые, не больше
+// UnreadCountCap. Её подставляют строка списка (dialogUnreadCount) и пересчёт
+// при прочтении (MessagesRepo.CountUnread → still_unread_count), поэтому
+// бейдж в списке и после прочтения совпадает. Индекс —
+// idx_messages_unread_count (0142), index-only scan.
+func unreadPostsCount(chat, readSeq, viewer string) string {
+	return `(SELECT count(*) FROM (SELECT 1 FROM messages um WHERE um.chat_id = ` + chat +
+		` AND um.seq > ` + readSeq + ` AND um.sender_id <> ` + viewer +
+		` AND um.deleted_at IS NULL LIMIT ` + strconv.Itoa(UnreadCountCap) + `) uc)::int`
+}
+
 // dialogUnreadCount — счётчик непрочитанного строки членства m (алиас
 // chat_members) в чате c (алиас chats).
 //
 // У broadcast-канала счётчик считается НА ЧТЕНИИ: пост канала пишется одной
 // строкой журнала канала, без веера по подписчикам (O(1) на пост), поэтому
-// хранимому chat_members.unread_count расти не от чего. Формула та же, что у
-// пересчёта при прочтении (MessagesRepo.CountUnread → still_unread_count):
-// посты выше горизонта чтения, не свои и не удалённые. Так бейдж совпадает в
-// списке, в папках, в карточке канала и в бейдже пуша, и сам выправляется
-// после удаления поста. У остальных чатов — хранимый счётчик веера.
+// хранимому chat_members.unread_count расти не от чего. Формула —
+// unreadPostsCount. У остальных чатов — хранимый счётчик веера.
 func dialogUnreadCount(m, c string) string {
-	return `CASE WHEN ` + c + `.type = 'channel' THEN (SELECT count(*) FROM messages um` +
-		` WHERE um.chat_id = ` + c + `.id AND um.seq > ` + m + `.last_read_seq` +
-		` AND um.sender_id <> ` + m + `.user_id AND um.deleted_at IS NULL)::int` +
+	return `CASE WHEN ` + c + `.type = 'channel' THEN ` +
+		unreadPostsCount(c+".id", m+".last_read_seq", m+".user_id") +
 		` ELSE ` + m + `.unread_count END`
 }

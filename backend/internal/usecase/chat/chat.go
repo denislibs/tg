@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -61,6 +62,9 @@ type Interactor struct {
 	botHub       *botPendingHub
 	// peerAddrs — кэш слоя разрешения peerId ↔ chatID (см. peeraddr.go).
 	peerAddrs *peerAddrCache
+	// bg — фоновые хвосты запросов (веер поста канала: сброс снимков списка и
+	// пуш подписчикам), которые не должны держать ответ. Тесты ждут его.
+	bg sync.WaitGroup
 }
 
 // New constructs the chat interactor from its ports.
@@ -409,4 +413,9 @@ func (i *Interactor) ListDialogsPage(ctx context.Context, userID int64, p domain
 // ChatPartners returns the user ids that share a chat with userID.
 func (i *Interactor) ChatPartners(ctx context.Context, userID int64) ([]int64, error) {
 	return i.chats.ChatPartners(ctx, userID)
+}
+
+// StoryPartners — круг историй пользователя (лента, рассылка кадров историй).
+func (i *Interactor) StoryPartners(ctx context.Context, userID int64) ([]int64, error) {
+	return i.chats.StoryPartners(ctx, userID)
 }

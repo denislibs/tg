@@ -230,22 +230,33 @@ func (c *Conn) run(ctx context.Context) {
 	// апдейт доставляется живым; если он опередит hello — это безвредный дубль/
 	// лишний catch-up на клиенте, но не потеря. Сбой чтения state не фатален —
 	// просто без hello (клиент сделает полный catch-up).
+	// Топики своих каналов — сразу, а не по открытию: пост, правка, карточка
+	// и счётчики канала доходят до списка чатов живьём, как у оригинала
+	// (сервер шлёт updateNewChannelMessage всем онлайн-сессиям участников).
+	// Один запрос и один SUBSCRIBE на всё подключение.
+	//
+	// Гонка. hello несёт pts журналов каналов, и читаются они ПОСЛЕ
+	// SUBSCRIBE: кадр, вышедший до подписки, учтён в pts из hello и
+	// добирается догоном канала (клиент сравнивает pts со своим курсором), а
+	// вышедший после — доезжает живым. Потерь нет, дубль отсекает канальная
+	// воронка по pts. Канал, в который вступили между двумя чтениями, придёт
+	// своим updateChannel. Итого два запроса на подключение, а не 2N.
+	//
+	// Всё это — ДО Register: окно «Register → hello», в которое личный кадр
+	// может обогнать hello, остаётся прежним (один UserState), а канальный
+	// кадр раньше hello безвреден — его гейтит канальная воронка.
+	var peers []domain.PeerID
+	for _, ch := range c.svc.ChannelSubscriptions(ctx, c.userID) {
+		peers = append(peers, domain.ToPeerID(ch.ChatID, true))
+	}
+	c.hub.SubscribeChannels(ctx, peers, c, SubMember)
+	channels := c.svc.ChannelSubscriptions(ctx, c.userID)
 	c.hub.Register(ctx, c.userID, c.deviceID, c)
 	if st, err := c.svc.UserState(ctx, c.userID); err == nil {
-		c.Send(helloFrame(st))
+		c.Send(helloFrame(st, channels))
 	}
 	if c.presence != nil {
 		_ = c.presence.Online(ctx, c.userID)
-	}
-	// Топики всех своих каналов — сразу, а не по открытию. Подписка идёт
-	// ПОСЛЕ hello и объявления присутствия: запрос каналов не мгновенный, и
-	// задерживать им первый кадр соединения и «в сети» незачем. Пост, правка,
-	// карточка и счётчики канала доходят до списка чатов живьём, как у
-	// оригинала (сервер шлёт updateNewChannelMessage всем онлайн-сессиям
-	// участников). Пропущенное между Register и подпиской клиент добирает
-	// догоном канала по разрыву pts.
-	for _, peer := range c.svc.ChannelSubscriptions(ctx, c.userID) {
-		c.hub.SubscribeChannel(ctx, peer, c)
 	}
 	go c.writePump(ctx)
 	c.readPump(ctx) // blocks until the connection closes
@@ -473,12 +484,12 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		// молчаливый, как у любого кадра с неверными данными.
 		var d peerData
 		if json.Unmarshal(f.D, &d) == nil && d.PeerID.IsAnyChat() && c.svc.CanSubscribeChannel(ctx, c.userID, d.PeerID) {
-			c.hub.SubscribeChannel(ctx, d.PeerID, c)
+			c.hub.SubscribeChannel(ctx, d.PeerID, c, SubView)
 		}
 	case "unsubscribe_channel":
 		var d peerData
 		if json.Unmarshal(f.D, &d) == nil && d.PeerID.IsAnyChat() {
-			c.hub.UnsubscribeChannel(ctx, d.PeerID, c)
+			c.hub.UnsubscribeChannel(ctx, d.PeerID, c, SubView)
 		}
 	// 1:1 call signaling (WebRTC): the server is a dumb relay — the frame is
 	// re-addressed to every device of to_user_id with from_user_id stamped in.

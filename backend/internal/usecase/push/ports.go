@@ -43,6 +43,8 @@ type SubRepo interface {
 
 type Queue interface {
 	Enqueue(ctx context.Context, j Job) error
+	// EnqueueMany — пачка заданий одним конвейером (пуш поста канала).
+	EnqueueMany(ctx context.Context, jobs []Job) error
 	Consume(ctx context.Context, max int, blockMS int) ([]QueuedJob, error) // empty slice if none
 	Ack(ctx context.Context, id string) error
 }

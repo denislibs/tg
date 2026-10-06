@@ -219,22 +219,27 @@ func (c groupMembershipChats) FindSaved(context.Context, int64) (int64, error) {
 }
 func (c groupMembershipChats) CreateSaved(context.Context, int64) (int64, error) { return 0, nil }
 func (c groupMembershipChats) MemberIDs(context.Context, int64) ([]int64, error) { return nil, nil }
-func (c groupMembershipChats) BroadcastChannelIDs(ctx context.Context, userID int64, limit int) ([]int64, error) {
+func (c groupMembershipChats) ChatTitle(_ context.Context, chatID int64) (string, error) {
+	c.fg.mu.Lock()
+	defer c.fg.mu.Unlock()
+	return c.fg.cards[chatID].Title, nil
+}
+func (c groupMembershipChats) ChannelCursors(ctx context.Context, userID int64, limit int) ([]domain.ChannelCursor, error) {
 	c.fg.mu.Lock()
 	var ids []int64
 	for cid, ms := range c.fg.members {
-		if _, ok := ms[userID]; ok {
+		if _, ok := ms[userID]; ok && !c.fg.bans[cid][userID] {
 			ids = append(ids, cid)
 		}
 	}
 	c.fg.mu.Unlock()
-	out := ids[:0]
+	var out []domain.ChannelCursor
 	for _, cid := range ids {
 		if typ, _ := c.ChatType(ctx, cid); typ == domain.ChatTypeChannel {
-			out = append(out, cid)
+			out = append(out, domain.ChannelCursor{ChatID: cid})
 		}
 	}
-	slices.Sort(out)
+	slices.SortFunc(out, func(a, b domain.ChannelCursor) int { return int(b.ChatID - a.ChatID) })
 	if len(out) > limit {
 		out = out[:limit]
 	}
@@ -273,6 +278,7 @@ func (c groupMembershipChats) IsMember(_ context.Context, chatID, userID int64) 
 func (c groupMembershipChats) ListDialogs(context.Context, int64) ([]domain.DialogRecord, error) {
 	return nil, nil
 }
+func (c groupMembershipChats) StoryPartners(context.Context, int64) ([]int64, error)    { return nil, nil }
 func (c groupMembershipChats) ChatPartners(context.Context, int64) ([]int64, error)     { return nil, nil }
 func (c groupMembershipChats) SetAutoDelete(context.Context, int64, int) error          { return nil }
 func (c groupMembershipChats) SetChatTheme(context.Context, int64, string, int64) error { return nil }

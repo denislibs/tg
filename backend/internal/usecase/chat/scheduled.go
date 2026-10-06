@@ -219,6 +219,7 @@ func (i *Interactor) dispatchScheduled(ctx context.Context, m domain.ScheduledMe
 	msg, err := i.Send(ctx, SendInput{
 		ChatID: m.ChatID, SenderID: m.SenderID, Type: m.Type, Text: m.Text,
 		Entities: m.Entities, ReplyToID: m.ReplyToID, MediaID: m.MediaID,
+		fromSchedule: true,
 	})
 	if err != nil {
 		// не смогли отправить (выгнали из чата и т.п.) — убираем из очереди,

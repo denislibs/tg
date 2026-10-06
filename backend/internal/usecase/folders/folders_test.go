@@ -86,6 +86,8 @@ type fakeChats struct {
 	member map[[2]int64]bool // (chatID,userID) → member
 	banned map[[2]int64]bool // (chatID,userID) → бан: Join отвечает ErrForbidden
 	joined [][2]int64
+	// announced — Joined (после коммита) по вступившим именно сейчас.
+	announced [][2]int64
 }
 
 func (c *fakeChats) Info(_ context.Context, chatID int64) (string, bool, error) {
@@ -112,6 +114,9 @@ func (c *fakeChats) Join(_ context.Context, chatID, userID int64) error {
 	c.member[[2]int64{chatID, userID}] = true
 	c.joined = append(c.joined, [2]int64{chatID, userID})
 	return nil
+}
+func (c *fakeChats) Joined(_ context.Context, chatID, userID int64) {
+	c.announced = append(c.announced, [2]int64{chatID, userID})
 }
 
 // noopTx запускает fn без реальной транзакции.
@@ -184,6 +189,11 @@ func TestJoinInvite_JoinsAndCreatesFolder(t *testing.T) {
 	// вступил только в 11 (в 10 уже был)
 	if len(chats.joined) != 1 || chats.joined[0] != [2]int64{11, 2} {
 		t.Fatalf("joined = %v, want only (11,2)", chats.joined)
+	}
+	// Ф-2: живые последствия вступления (updateChannel и подписка топика) —
+	// после коммита и только по вступившим сейчас.
+	if len(chats.announced) != 1 || chats.announced[0] != [2]int64{11, 2} {
+		t.Fatalf("announced = %v, want only (11,2)", chats.announced)
 	}
 	// создана папка с обоими чатами (title из инвайта)
 	if len(repo.created) == 0 {

@@ -44,6 +44,9 @@ func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, 
 		return domain.Message{}, domain.ErrForbidden // бот правит только свои сообщения
 	}
 	msg := cur
+	// Бот в broadcast-канале (основной сценарий ботов в каналах): правка —
+	// одной записью журнала канала (publishChannelEdit), без веера.
+	broadcast := i.isBroadcast(ctx, chatID)
 	var members []int64
 	var pp *peerPayloads
 	ptsByUser := map[int64]int64{}
@@ -61,6 +64,9 @@ func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, 
 				return e
 			}
 			msg = m
+		}
+		if broadcast {
+			return nil
 		}
 		mem, e := i.chats.MemberIDs(ctx, chatID)
 		if e != nil {
@@ -88,6 +94,12 @@ func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, 
 	})
 	if err != nil {
 		return domain.Message{}, err
+	}
+	if broadcast {
+		if hm, e := i.hydrateBroadcastMessage(ctx, msg); e == nil {
+			_ = i.publishChannelEdit(ctx, hm)
+		}
+		return msg, nil
 	}
 	if i.publisher != nil {
 		for _, uid := range members {

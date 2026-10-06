@@ -40,6 +40,7 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 		return domain.StarReactionAgg{}, nil, 0, domain.ErrNotFound
 	}
 
+	broadcast := i.isBroadcast(ctx, chatID)
 	var (
 		agg          domain.StarReactionAgg
 		members      []int64
@@ -91,6 +92,11 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 		if e != nil {
 			return e
 		}
+		// broadcast-канал (звёзды — почти всегда канальные): агрегат уходит
+		// одним кадром в топик после коммита, без веера по подписчикам.
+		if broadcast {
+			return nil
+		}
 		m, e := i.chats.MemberIDs(ctx, chatID)
 		if e != nil {
 			return e
@@ -119,7 +125,9 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 		return domain.StarReactionAgg{}, nil, 0, err
 	}
 
-	if i.publisher != nil {
+	if broadcast {
+		i.publishChannelReactions(ctx, chatID, msg.Seq, aggregate)
+	} else if i.publisher != nil {
 		// Свой вклад звёздами (mine) в кадре не едет: он пер-зрительский, а тело
 		// одно на всех получателей. Отправитель узнаёт его из ОТВЕТА этой же
 		// ручки, остальные сохраняют собственный — агрегат помечен `min`.

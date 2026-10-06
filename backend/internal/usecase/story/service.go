@@ -310,7 +310,7 @@ func (s *Service) Share(ctx context.Context, authorID, seq, senderID int64, chat
 // Feed returns the active story groups visible to viewerID: their own stories
 // plus those of their chat partners (privacy filtering happens in the repo).
 func (s *Service) Feed(ctx context.Context, viewerID int64) ([]domain.StoryGroup, error) {
-	partners, err := s.partners.ChatPartners(ctx, viewerID)
+	partners, err := s.partners.StoryPartners(ctx, viewerID)
 	if err != nil {
 		return nil, err
 	}
@@ -500,7 +500,7 @@ func (s *Service) Delete(ctx context.Context, seq, authorID int64) error {
 	if err := s.repo.Delete(ctx, storyID, authorID); err != nil {
 		return err
 	}
-	partners, err := s.partners.ChatPartners(ctx, authorID)
+	partners, err := s.partners.StoryPartners(ctx, authorID)
 	if err != nil {
 		return nil // deletion succeeded; skip fan-out if partners can't be resolved
 	}
@@ -678,7 +678,7 @@ func (s *Service) recipients(ctx context.Context, authorID int64, privacy string
 		}
 		return append(friends, authorID)
 	}
-	partners, err := s.partners.ChatPartners(ctx, authorID)
+	partners, err := s.partners.StoryPartners(ctx, authorID)
 	if err != nil {
 		return []int64{authorID}
 	}
@@ -726,6 +726,14 @@ func (s *Service) publishStory(ctx context.Context, recipients []int64, authorID
 	if s.publisher == nil {
 		return
 	}
+	// Кадр — только тем, кто историю видит по её приватности (то же правило,
+	// что лента и чтение по номеру): «контакты» — контакты автора, «близкие» —
+	// близкие друзья. Без фильтра кадр с подписью и медиа уходил всему кругу.
+	visible, err := s.repo.VisibleAmong(ctx, storyID, recipients)
+	if err != nil {
+		return
+	}
+	recipients = visible
 	rec, err := s.repo.ByID(ctx, storyID, authorID)
 	if err != nil {
 		return

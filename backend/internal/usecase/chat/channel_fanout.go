@@ -3,8 +3,10 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"log"
 
 	"github.com/messenger-denis/backend/internal/domain"
+	"github.com/messenger-denis/backend/internal/pkg/saferun"
 )
 
 // Доставка broadcast-канала.
@@ -67,21 +69,30 @@ func (i *Interactor) publishChannelUpdate(ctx context.Context, channelID int64, 
 // deliverChannelPost — пост-коммитная половина публикации поста канала: общая
 // для отправки (Send), пересылки и одобренной предложки — до неё каждый путь
 // публиковал в топик сам и ничего больше не делал.
+//
+// Синхронно — только живой кадр и черновик автора: они дёшевы и обязаны
+// уйти до ответа. Всё, что растёт с числом подписчиков (список участников,
+// сброс их снимков списка, пуш), — фоном (goBG): ответ админу и message_ack не
+// ждут веера по каналу на сто тысяч человек.
 func (i *Interactor) deliverChannelPost(ctx context.Context, msg domain.Message, body map[string]any, pts int64, opt channelPostOpts) {
 	i.publishChannelUpdate(ctx, msg.ChatID, "new_message", body, pts, msg.SenderID)
-	if members, err := i.chats.MemberIDs(ctx, msg.ChatID); err == nil {
-		// Пост поднял канал и добавил непрочитанное (оно считается на чтении) —
-		// снимок списка чатов подписчиков устарел.
+	if opt.clearDraft {
+		i.clearDraftAfterSend(ctx, msg.SenderID, msg.ChatID)
+	}
+	i.goBG("chat.channelPostFanout", func(ctx context.Context) {
+		members, err := i.chats.MemberIDs(ctx, msg.ChatID)
+		if err != nil {
+			return
+		}
+		// Пост поднял канал и добавил непрочитанное (оно считается на
+		// чтении) — снимок списка чатов подписчиков устарел.
 		if i.dialogsCache != nil {
 			i.dialogsCache.Invalidate(ctx, members...)
 		}
 		if !opt.silent {
 			i.notifyChannelPost(ctx, msg, members)
 		}
-	}
-	if opt.clearDraft {
-		i.clearDraftAfterSend(ctx, msg.SenderID, msg.ChatID)
-	}
+	})
 	if opt.preview && i.preview != nil && msg.Type == "text" {
 		if u := firstURL(msg.Text, msg.Entities); u != "" {
 			go i.attachWebPreview(msg, u, nil)
@@ -89,10 +100,22 @@ func (i *Interactor) deliverChannelPost(ctx context.Context, msg domain.Message,
 	}
 }
 
+// goBG — фоновый хвост запроса: свой контекст (запрос к этому моменту может
+// быть отменён), паника не роняет процесс, тесты дожидаются через i.bg.
+func (i *Interactor) goBG(name string, fn func(ctx context.Context)) {
+	i.bg.Add(1)
+	go func() {
+		defer i.bg.Done()
+		defer saferun.Recover(name)
+		fn(context.Background())
+	}()
+}
+
 // notifyChannelPost — пуш подписчикам (кроме автора) одним батчем: кто онлайн и
 // у кого канал или каналы вообще замьючены, решает нотификатор пачкой, а не
-// запросом на подписчика. Заголовок — название канала: автор поста без подписей
-// скрыт (Message.wireFromID), и его имя в пуше раскрыло бы его.
+// запросом на подписчика. Заголовок — название канала (лёгким запросом, без
+// карточки): автор поста без подписей скрыт (Message.wireFromID), и его имя в
+// пуше раскрыло бы его.
 func (i *Interactor) notifyChannelPost(ctx context.Context, msg domain.Message, members []int64) {
 	if i.notifier == nil {
 		return
@@ -106,12 +129,7 @@ func (i *Interactor) notifyChannelPost(ctx context.Context, msg domain.Message, 
 	if len(recipients) == 0 {
 		return
 	}
-	title := ""
-	if i.groups != nil {
-		if card, err := i.groups.Card(ctx, msg.ChatID, 0); err == nil {
-			title = card.Title
-		}
-	}
+	title, _ := i.chats.ChatTitle(ctx, msg.ChatID)
 	i.notifier.NotifyChannelPost(ctx, msg.ChatID, recipients, msg.Seq, title, msg.Text,
 		domain.ToPeerID(msg.ChatID, true))
 }
@@ -169,6 +187,17 @@ func (i *Interactor) publishChannelEdit(ctx context.Context, m domain.Message) e
 	return nil
 }
 
+// publishChannelReactions — агрегат реакций поста канала (эмодзи и ⭐) одним
+// кадром в топик, без журнала: у updateMessageReactions в схеме pts нет, а
+// пропустивший кадр получает абсолютный агрегат с историей поста.
+func (i *Interactor) publishChannelReactions(ctx context.Context, chatID, seq int64, agg domain.MessageReactions) {
+	if i.chPub == nil {
+		return
+	}
+	_ = i.chPub.PublishToChannel(ctx, chatID,
+		frame("reaction", reactionsPayload(domain.ToPeerID(chatID, true), seq, agg)))
+}
+
 // isBroadcast — чат это broadcast-канал (доставка — журналом канала).
 func (i *Interactor) isBroadcast(ctx context.Context, chatID int64) bool {
 	return i.chatKind(ctx, chatID) == domain.ChatTypeChannel
@@ -189,25 +218,27 @@ func (i *Interactor) announceChannelJoin(ctx context.Context, chatID, userID int
 		})
 }
 
+// AnnounceChannelJoin — то же для вступления, совершённого чужой транзакцией
+// (вход по ссылке на папку: usecase папок зовёт его после коммита).
+func (i *Interactor) AnnounceChannelJoin(ctx context.Context, chatID, userID int64) {
+	i.announceChannelJoin(ctx, chatID, userID)
+}
+
 // channelSubscriptionsLimit — потолок топиков на соединение: столько каналов
 // держит аккаунт у оригинала с запасом (500 обычному, 1000 премиуму).
 const channelSubscriptionsLimit = 1000
 
-// ChannelSubscriptions — топики каналов, на которые подписать новое соединение
-// пользователя: его broadcast-каналы, каждый — через тот же гейт, что кадр
-// subscribe_channel (CanSubscribeChannel), чтобы правило «кто читает топик»
-// было одно.
-func (i *Interactor) ChannelSubscriptions(ctx context.Context, userID int64) []domain.PeerID {
-	ids, err := i.chats.BroadcastChannelIDs(ctx, userID, channelSubscriptionsLimit)
+// ChannelSubscriptions — каналы, на топики которых подписать новое соединение
+// пользователя, с pts их журналов. Правило доступа то же, что у кадра
+// subscribe_channel (CanSubscribeChannel = chatReadableBy), но одним запросом
+// на всё подключение, а не по запросу на канал.
+func (i *Interactor) ChannelSubscriptions(ctx context.Context, userID int64) []domain.ChannelCursor {
+	cs, err := i.chats.ChannelCursors(ctx, userID, channelSubscriptionsLimit)
 	if err != nil {
 		return nil
 	}
-	out := make([]domain.PeerID, 0, len(ids))
-	for _, id := range ids {
-		peer := domain.ToPeerID(id, true)
-		if i.CanSubscribeChannel(ctx, userID, peer) {
-			out = append(out, peer)
-		}
+	if len(cs) == channelSubscriptionsLimit {
+		log.Printf("chat: user %d: каналов больше %d — живые кадры старших не подписаны", userID, channelSubscriptionsLimit)
 	}
-	return out
+	return cs
 }

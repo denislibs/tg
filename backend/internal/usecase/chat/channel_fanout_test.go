@@ -44,12 +44,16 @@ type channelEnv struct {
 	ch     int64 // канал: владелец 7, подписчики 8 и 9
 }
 
-func newChannelEnv(t *testing.T) channelEnv {
+func newChannelEnv(t *testing.T, msgs ...func(*store) MessageRepo) channelEnv {
 	t.Helper()
 	s := newStore()
 	fg := newFakeGroupRepo()
 	fch := newFakeChannelRepo()
-	i := New(fakeTx{}, groupMembershipChatsFanout{groupMembershipChats{fg, s}}, fakeMsgs{s},
+	var mr MessageRepo = fakeMsgs{s}
+	if len(msgs) > 0 {
+		mr = msgs[0](s)
+	}
+	i := New(fakeTx{}, groupMembershipChatsFanout{groupMembershipChats{fg, s}}, mr,
 		fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, fg, nil, fch, newFakeSearchRepo(), nil)
 	fg.onCreate = func(id int64, typ string) {
 		s.mu.Lock()
@@ -146,6 +150,7 @@ func TestChannelPost_FanOutWithoutPerSubscriberJournal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
+	e.i.bg.Wait()
 
 	got := append([]int64(nil), e.notif.recipients...)
 	slices.Sort(got)
@@ -191,6 +196,7 @@ func TestChannelPost_FanOutWithoutPerSubscriberJournal(t *testing.T) {
 	if _, err := e.i.Send(ctx, SendInput{ChatID: e.ch, SenderID: 7, Text: "тихо", Silent: true}); err != nil {
 		t.Fatalf("Send silent: %v", err)
 	}
+	e.i.bg.Wait()
 	if len(e.notif.recipients) != before {
 		t.Fatal("silent-пост дал пуш")
 	}
@@ -206,6 +212,7 @@ func TestForwardToChannel_DeliversLikePost(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PostToChannel: %v", err)
 	}
+	e.i.bg.Wait()
 	e.notif.recipients = nil
 	_, _ = e.drafts.Upsert(ctx, 7, domain.Draft{ChatID: e.ch, Text: "черновик"})
 	if _, err := e.i.ForwardMessages(ctx, ForwardInput{
@@ -213,6 +220,7 @@ func TestForwardToChannel_DeliversLikePost(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("ForwardMessages: %v", err)
 	}
+	e.i.bg.Wait()
 	got := append([]int64(nil), e.notif.recipients...)
 	slices.Sort(got)
 	if !slices.Equal(got, []int64{8, 9}) {
@@ -411,7 +419,155 @@ func TestChannelSubscriptions_GatedBroadcastOnly(t *testing.T) {
 	e.fg.mu.Unlock()
 
 	got := e.i.ChannelSubscriptions(ctx, 8)
-	if !slices.Equal(got, []domain.PeerID{domain.ToPeerID(e.ch, true)}) {
+	if len(got) != 1 || got[0].ChatID != e.ch {
 		t.Fatalf("топики = %v, want только канал %d", got, e.ch)
+	}
+}
+
+// Ревью #407: создатель канала — первый участник, его сокеты подписываются на
+// топик тем же updateChannel; иначе посты других админов не доходили до него.
+func TestCreateChannel_AnnouncesToCreator(t *testing.T) {
+	e := newChannelEnv(t)
+	got := e.userFrames(7, "channel")
+	if len(got) != 1 || got[0]["channel_id"] != float64(e.ch) {
+		t.Fatalf("создателю updateChannel = %v", got)
+	}
+}
+
+// blockingNotifier — пуш, который не отпускает до сигнала: им проверяется, что
+// ответ на публикацию поста веера по подписчикам не ждёт.
+type blockingNotifier struct {
+	fakeNotifier
+	release chan struct{}
+}
+
+func (n *blockingNotifier) NotifyChannelPost(ctx context.Context, chatID int64, recipients []int64, seq int64, title, text string, peer domain.PeerID) {
+	<-n.release
+	n.fakeNotifier.NotifyChannelPost(ctx, chatID, recipients, seq, title, text, peer)
+}
+
+// Ревью #407: пуш поста (список подписчиков, онлайн, мьют, очередь) шёл
+// синхронно внутри Send — ответ админу и message_ack ждали веера по каналу.
+func TestChannelPost_PushDoesNotBlockSend(t *testing.T) {
+	e := newChannelEnv(t)
+	n := &blockingNotifier{release: make(chan struct{})}
+	e.i.SetNotifier(n)
+	done := make(chan error, 1)
+	go func() {
+		_, err := e.i.Send(context.Background(), SendInput{ChatID: e.ch, SenderID: 7, Text: "пост"})
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Send: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		close(n.release)
+		t.Fatal("Send ждал пуша подписчикам")
+	}
+	close(n.release)
+	e.i.bg.Wait()
+	if len(n.recipients) != 2 || n.titles[0] != "News" {
+		t.Fatalf("пуш после ответа: %v %v", n.recipients, n.titles)
+	}
+}
+
+// A1-12 / ревью #407: догон канала отдаёт автору его посты с pFlags.out
+// (живьём у него своя копия с out; запись журнала одна на всех и out не несёт).
+func TestChannelDifference_OwnPostsOut(t *testing.T) {
+	e := newChannelEnv(t)
+	ctx := context.Background()
+	if _, err := e.i.Send(ctx, SendInput{ChatID: e.ch, SenderID: 7, Text: "мой пост"}); err != nil {
+		t.Fatal(err)
+	}
+	outOf := func(viewer int64) bool {
+		ups, err := e.i.GetChannelDifference(ctx, e.ch, viewer, 0, 100)
+		if err != nil || len(ups) == 0 {
+			t.Fatalf("difference: %v %d", err, len(ups))
+		}
+		d := bodyTag(t, ups[0].Payload)
+		m, _ := d["message"].(map[string]any)
+		flags, _ := m["pFlags"].(map[string]any)
+		return flags["out"] == true
+	}
+	if !outOf(7) {
+		t.Fatal("автору догон отдал свой пост без out")
+	}
+	if outOf(8) {
+		t.Fatal("подписчику догон отдал чужой пост с out")
+	}
+}
+
+// expiringMsgs — fakeMsgs, у которого истёк автоудалением заданный пост.
+type expiringMsgs struct {
+	fakeMsgs
+	expired *[]domain.Message
+}
+
+func (r expiringMsgs) ExpiredMessages(context.Context, int) ([]domain.Message, error) {
+	out := *r.expired
+	*r.expired = nil
+	return out, nil
+}
+
+// Ревью #407 (A3-31): правка ботом, автоудаление и ⭐-реакции в канале —
+// журналом канала и топиком, без строк в журналах подписчиков.
+func TestChannelBotEditAutodeleteStars_NoPerSubscriberFanout(t *testing.T) {
+	var expired []domain.Message
+	e := newChannelEnv(t, func(s *store) MessageRepo { return expiringMsgs{fakeMsgs{s}, &expired} })
+	ctx := context.Background()
+	e.i.SetStars(newFakeStars())
+	e.i.SetStarReactions(newFakeStarReactions())
+	_ = e.fg.AddMember(ctx, e.ch, 50, domain.RoleAdmin, domain.AllRights)
+	post, err := e.i.Send(ctx, SendInput{ChatID: e.ch, SenderID: 50, Text: "пост бота"})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if _, err := e.i.BotEditMessageText(ctx, domain.BotAccount{BotID: 50}, e.ch, post.ID, "правка бота", nil, nil, false); err != nil {
+		t.Fatalf("BotEditMessageText: %v", err)
+	}
+	if _, err := e.i.TopUpStars(ctx, 8, 50); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := e.i.SendStarReaction(ctx, e.ch, post.ID, 8, 5, false); err != nil {
+		t.Fatalf("SendStarReaction: %v", err)
+	}
+	expired = []domain.Message{post}
+	if n, err := e.i.PurgeExpiredMessages(ctx); err != nil || n != 1 {
+		t.Fatalf("PurgeExpiredMessages = %d %v", n, err)
+	}
+	types := map[string]bool{}
+	for _, u := range e.channelLog() {
+		types[u.Type] = true
+	}
+	if !types["edit_message"] || !types["delete_message"] {
+		t.Fatalf("журнал канала = %v, want правку и удаление", types)
+	}
+	for _, uid := range []int64{8, 9} {
+		for _, typ := range []string{"edit_message", "delete_message", "reaction"} {
+			if slices.Contains(e.userLog(uid), typ) {
+				t.Fatalf("%s лёг в личный журнал подписчика %d", typ, uid)
+			}
+		}
+	}
+	if !slices.Contains(e.topicTypes(), "reaction") {
+		t.Fatalf("⭐-реакция не ушла в топик: %v", e.topicTypes())
+	}
+}
+
+// Ревью #407 (№12): отправка отложенного поста по расписанию не снимает
+// черновик, который автор набирает сейчас (у оригинала черновик снимает само
+// планирование — clear_draft в scheduleMessage).
+func TestScheduledChannelPost_KeepsDraft(t *testing.T) {
+	e := newChannelEnv(t)
+	ctx := context.Background()
+	e.i.SetScheduled(newFakeScheduled())
+	_, _ = e.drafts.Upsert(ctx, 7, domain.Draft{ChatID: e.ch, Text: "набираю новый"})
+	if _, err := e.i.dispatchScheduled(ctx, domain.ScheduledMessage{ChatID: e.ch, SenderID: 7, Type: "text", Text: "по расписанию"}); err != nil {
+		t.Fatalf("dispatchScheduled: %v", err)
+	}
+	if _, ok := e.drafts.m[[2]int64{e.ch, 7}]; !ok {
+		t.Fatal("отложенный пост снял текущий черновик автора")
 	}
 }

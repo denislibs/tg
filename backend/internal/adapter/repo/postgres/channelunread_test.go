@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 	storepostgres "github.com/messenger-denis/backend/internal/store/postgres"
@@ -154,28 +155,62 @@ func TestMigration0141_ChannelJoinReadHorizon(t *testing.T) {
 	}
 }
 
-// Топики соединения — только broadcast-каналы пользователя.
-func TestChatsRepo_BroadcastChannelIDs(t *testing.T) {
+// Топики соединения — broadcast-каналы, которые пользователь читает как
+// участник (бан — нет), с pts журналов; одним запросом.
+func TestChatsRepo_ChannelCursors(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)
-	chats, groups := NewChatsRepo(pool), NewGroupRepo(pool)
+	chats, groups, channels := NewChatsRepo(pool), NewGroupRepo(pool), NewChannelRepo(pool)
 	ctx := context.Background()
 	u := seedUser(t, pool, "+79131")
 	ch1, _ := groups.CreateMultiMember(ctx, "channel", "A", "", "", true, u)
 	_ = groups.AddMember(ctx, ch1, u, domain.RoleCreator, domain.AllRights)
 	ch2, _ := groups.CreateMultiMember(ctx, "channel", "B", "", "", false, u)
 	_ = groups.AddMember(ctx, ch2, u, domain.RoleSubscriber, 0)
+	ch3, _ := groups.CreateMultiMember(ctx, "channel", "C", "", "", false, u)
+	_ = groups.AddMember(ctx, ch3, u, domain.RoleSubscriber, 0)
+	mustExec(t, pool, `INSERT INTO chat_bans (chat_id, user_id) VALUES ($1,$2)`, ch3, u)
 	grp, _ := groups.CreateMultiMember(ctx, "group", "G", "", "", false, u)
 	_ = groups.AddMember(ctx, grp, u, domain.RoleMember, 0)
+	for range 2 {
+		if _, err := channels.AppendUpdate(ctx, ch1, "new_message", []byte(`{}`)); err != nil {
+			t.Fatal(err)
+		}
+	}
 
-	ids, err := chats.BroadcastChannelIDs(ctx, u, 1000)
+	got, err := chats.ChannelCursors(ctx, u, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(ids, []int64{ch1, ch2}) {
-		t.Fatalf("каналы = %v, want [%d %d]", ids, ch1, ch2)
+	want := []domain.ChannelCursor{{ChatID: ch2, Pts: 0}, {ChatID: ch1, Pts: 2}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("каналы = %+v, want %+v (забаненный и группа — нет)", got, want)
 	}
-	if ids, _ := chats.BroadcastChannelIDs(ctx, u, 1); len(ids) != 1 {
-		t.Fatalf("лимит не соблюдён: %v", ids)
+	if got, _ := chats.ChannelCursors(ctx, u, 1); len(got) != 1 {
+		t.Fatalf("лимит не соблюдён: %v", got)
+	}
+	if title, _ := chats.ChatTitle(ctx, ch1); title != "A" {
+		t.Fatalf("ChatTitle = %q", title)
+	}
+}
+
+// Ревью #407: подсчёт ограничен сверху — и в строке списка, и в пересчёте при
+// прочтении (одна формула).
+func TestChannelUnread_Capped(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	chats, groups, msgs := NewChatsRepo(pool), NewGroupRepo(pool), NewMessagesRepo(pool)
+	ctx := context.Background()
+	author := seedUser(t, pool, "+79161")
+	sub := seedUser(t, pool, "+79162")
+	ch, _ := groups.CreateMultiMember(ctx, "channel", "News", "", "", true, author)
+	_ = groups.AddMember(ctx, ch, author, domain.RoleCreator, domain.AllRights)
+	_ = groups.AddMember(ctx, ch, sub, domain.RoleSubscriber, 0)
+	mustExec(t, pool, `INSERT INTO messages (chat_id, seq, sender_id, type, text)
+	   SELECT $1, g, $2, 'text', 'p' FROM generate_series(1, $3::int) g`, ch, author, UnreadCountCap+5)
+	if n, _ := dialogUnread(t, chats, sub, ch); n != UnreadCountCap {
+		t.Fatalf("непрочитанное = %d, want потолок %d", n, UnreadCountCap)
+	}
+	if n, err := msgs.CountUnread(ctx, ch, sub, 0); err != nil || n != UnreadCountCap {
+		t.Fatalf("CountUnread = %d %v, want %d", n, err, UnreadCountCap)
 	}
 }
 
@@ -240,5 +275,38 @@ func TestPushRepo_NotifyTargets(t *testing.T) {
 	}
 	if ok, _, _ := push.ShouldNotify(ctx, ch, muted); ok {
 		t.Fatal("ShouldNotify пушит замьюченному")
+	}
+}
+
+// Ревью #407 (приватность): круг историй — только свои контакты и чаты, без
+// тех, кто записал пользователя к себе; рассылка «контактной» истории
+// фильтруется правилом storyVisibleTo.
+func TestStoryAudience_NoReverseContacts(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	chats, stories := NewChatsRepo(pool), NewStoryRepo(pool)
+	ctx := context.Background()
+	me := seedUser(t, pool, "+79171")
+	mine := seedUser(t, pool, "+79172")
+	stranger := seedUser(t, pool, "+79173")
+	mustExec(t, pool, `INSERT INTO contacts (owner_id, user_id, first_name) VALUES ($1,$2,'K')`, me, mine)
+	mustExec(t, pool, `INSERT INTO contacts (owner_id, user_id, first_name) VALUES ($1,$2,'K')`, stranger, me)
+
+	partners, err := chats.StoryPartners(ctx, me)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(partners, []int64{mine}) {
+		t.Fatalf("круг историй = %v, want только свой контакт %d", partners, mine)
+	}
+	id := createStory(t, pool, me, "contacts", time.Now().Add(time.Hour), nil)
+	vis, err := stories.VisibleAmong(ctx, id, []int64{me, mine, stranger})
+	if err != nil {
+		t.Fatal(err)
+	}
+	slices.Sort(vis)
+	want := []int64{me, mine}
+	slices.Sort(want)
+	if !slices.Equal(vis, want) {
+		t.Fatalf("видят историю «контакты» = %v, want %v", vis, want)
 	}
 }

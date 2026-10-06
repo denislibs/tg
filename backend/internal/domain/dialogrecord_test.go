@@ -238,3 +238,17 @@ func TestDialogRecord_ToChannelCarriesViewerRights(t *testing.T) {
 		t.Errorf("запрет писать потерян: %+v", muted.DefaultBanned)
 	}
 }
+
+// A1-20 / ревью #407: диалог broadcast-канала несёт pts журнала канала —
+// клиент заводит курсор канала из списка (tweb addChannelState). У группы
+// параметра нет: её курсор общий пер-юзерный.
+func TestDialogRecord_ToDialog_ChannelPts(t *testing.T) {
+	ch := DialogRecord{Type: ChatTypeChannel, ChannelPts: 17}.ToDialog(NewPeerChannel(8), 3)
+	if ch.Pts != 17 {
+		t.Fatalf("pts канала = %d, want 17", ch.Pts)
+	}
+	grp := DialogRecord{Type: ChatTypeGroup, ChannelPts: 17}.ToDialog(NewPeerChannel(9), 3)
+	if grp.Pts != 0 {
+		t.Fatalf("у группы pts = %d, want нет", grp.Pts)
+	}
+}

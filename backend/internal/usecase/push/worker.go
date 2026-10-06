@@ -37,10 +37,13 @@ func (w *Worker) ProcessBatch(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// Бейдж получателя — один раз на пачку: он считается по всем его чатам,
+	// а у поста канала заданий одному получателю в пачке бывает несколько.
+	badges := map[int64]int{}
 	for _, qj := range jobs {
 		// Ack only when the job is handled or is a poison pill; a transient
 		// failure leaves it pending for redelivery (at-least-once).
-		if w.handle(ctx, qj.Job) {
+		if w.handle(ctx, qj.Job, badges) {
 			_ = w.queue.Ack(ctx, qj.ID)
 		}
 	}
@@ -50,7 +53,7 @@ func (w *Worker) ProcessBatch(ctx context.Context) error {
 // handle processes one job. Returns true if the message should be ACKed
 // (delivered or no subscriptions) and false on a transient error that warrants
 // redelivery.
-func (w *Worker) handle(ctx context.Context, job Job) bool {
+func (w *Worker) handle(ctx context.Context, job Job, badges map[int64]int) bool {
 	subs, err := w.subs.ForUser(ctx, job.RecipientID)
 	if err != nil {
 		return false // transient DB error — retry later
@@ -58,7 +61,7 @@ func (w *Worker) handle(ctx context.Context, job Job) bool {
 	if len(subs) == 0 {
 		return true // nobody to push to
 	}
-	payload, _ := json.Marshal(w.buildPayload(ctx, job))
+	payload, _ := json.Marshal(w.buildPayload(ctx, job, badges))
 	retry := false
 	for _, sub := range subs {
 		status, err := w.sender.Send(ctx, sub, payload)
@@ -86,12 +89,16 @@ func (w *Worker) handle(ctx context.Context, job Job) bool {
 // место, где это законно, и ровно то же исключение, что у публичной страницы
 // /u/{username}. Ровно так устроен и оригинал: push-payload у него свой
 // (title/body/custom), а не Message.
-func (w *Worker) buildPayload(ctx context.Context, job Job) map[string]any {
+func (w *Worker) buildPayload(ctx context.Context, job Job, badges map[int64]int) map[string]any {
 	senderName := job.Title
 	if senderName == "" {
 		senderName, _ = w.enrich.SenderName(ctx, job.SenderID)
 	}
-	badge, _ := w.enrich.UnreadBadge(ctx, job.RecipientID)
+	badge, ok := badges[job.RecipientID]
+	if !ok {
+		badge, _ = w.enrich.UnreadBadge(ctx, job.RecipientID)
+		badges[job.RecipientID] = badge
+	}
 	text := job.Text
 	if !job.Preview {
 		text = ""

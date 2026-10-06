@@ -236,20 +236,22 @@ func (r fakeChats) MemberIDs(_ context.Context, chatID int64) ([]int64, error) {
 	return ids, nil
 }
 
-func (r fakeChats) BroadcastChannelIDs(_ context.Context, userID int64, limit int) ([]int64, error) {
+func (r fakeChats) ChatTitle(context.Context, int64) (string, error) { return "", nil }
+
+func (r fakeChats) ChannelCursors(_ context.Context, userID int64, limit int) ([]domain.ChannelCursor, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
-	var ids []int64
+	var out []domain.ChannelCursor
 	for cid, typ := range r.s.chatType {
-		if typ == domain.ChatTypeChannel && r.s.members[cid][userID] != nil {
-			ids = append(ids, cid)
+		if typ == domain.ChatTypeChannel && r.s.members[cid][userID] != nil && !r.s.bans[cid][userID] {
+			out = append(out, domain.ChannelCursor{ChatID: cid})
 		}
 	}
-	slices.Sort(ids)
-	if len(ids) > limit {
-		ids = ids[:limit]
+	slices.SortFunc(out, func(a, b domain.ChannelCursor) int { return int(b.ChatID - a.ChatID) })
+	if len(out) > limit {
+		out = out[:limit]
 	}
-	return ids, nil
+	return out, nil
 }
 
 func (r fakeChats) IsMember(_ context.Context, chatID, userID int64) (bool, error) {
@@ -298,6 +300,7 @@ func (r fakeChats) ListDialogs(_ context.Context, userID int64) ([]domain.Dialog
 	return out, nil
 }
 
+func (r fakeChats) StoryPartners(context.Context, int64) ([]int64, error) { return nil, nil }
 func (r fakeChats) ChatPartners(_ context.Context, userID int64) ([]int64, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

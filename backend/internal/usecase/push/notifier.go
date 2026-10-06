@@ -57,14 +57,18 @@ func (n *Notifier) NotifyChannelPost(ctx context.Context, chatID int64, recipien
 	if err != nil {
 		return
 	}
+	jobs := make([]Job, 0, len(targets))
 	for _, uid := range offline {
 		preview, ok := targets[uid]
 		if !ok {
 			continue
 		}
-		_ = n.queue.Enqueue(ctx, Job{
+		jobs = append(jobs, Job{
 			RecipientID: uid, ChatID: chatID, PeerID: peer,
 			Seq: seq, Title: title, Text: text, Preview: preview,
 		})
+	}
+	if len(jobs) > 0 {
+		_ = n.queue.EnqueueMany(ctx, jobs)
 	}
 }
