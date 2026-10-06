@@ -54,8 +54,9 @@ function makeManagers() {
     channels: { post: vi.fn(async() => ({})) },
     groups: {
       setMute: vi.fn(async() => {}),
-      // ручка `GET /chats/{id}/members?q=` — фильтр по имени и username (ILIKE)
-      channelParticipants: vi.fn(async(_peerId: number, _offset: number, _limit: number, q?: string) => {
+      // ручка `GET /chats/{peer}/participants?filter=mentions&q=` — фильтр по имени и username (ILIKE)
+      getParticipants: vi.fn(async({ filter }: { filter: { q?: string } }) => {
+        const q = filter.q
         const members = [ME, ALICE, BOB].map((id) => users.find((u) => u.id === id)!)
           .filter((u) => !q || [u._ === 'user' ? u.first_name : '', u._ === 'user' ? u.username : ''].some((s) => s?.toLowerCase().includes(q.toLowerCase())))
         return {
@@ -229,7 +230,12 @@ describe('автокомплит: `@` — упоминания', () => {
     type(input, '😀 @Ал')
     await flush()
 
-    expect(managers.groups.channelParticipants).toHaveBeenCalledWith(GROUP, 0, 50, 'Ал')
+    expect(managers.groups.getParticipants).toHaveBeenCalledWith({
+      id: -GROUP,
+      filter: { _: 'channelParticipantsMentions', q: 'Ал', top_msg_id: undefined },
+      limit: 50,
+      offset: 0,
+    })
     const mentions = helper(input, 'mentions-helper')
     expect(mentions.classList.contains('is-visible')).toBe(true)
     const rows = [...mentions.querySelectorAll<HTMLElement>('.mentions-helper-list-element')]

@@ -26,8 +26,6 @@
 //     (`groupsManager`, порт `appChatsManager`). `handleMissingInvitees` после
 //     добавления (:53-55) не портирован — наша ручка «кого не удалось
 //     пригласить» не отдаёт;
-//   • `canEditAdmin(chat, participant, myId)` → `canEditAdmin(chat, participant)` (шапка
-//     `core/peers/participant.ts`: `promoted_by` на проводе нет).
 // Правки под строгий tsconfig: состояние меню (`target`, `participant`, …)
 // объявлено с `!`/`| undefined`, `pFlags` участника читается через `?.`.
 import createContextMenu from '@helpers/dom/createContextMenu'
@@ -108,7 +106,7 @@ export default function createParticipantContextMenu(options: {
       icon: 'admin',
       text: 'EditAdminRights',
       onClick: () => openPermissions(true),
-      verify: () => !!openUserPermissions && isParticipantAdmin(participant) && canEditAdmin(chat, participant),
+      verify: () => !!openUserPermissions && isParticipantAdmin(participant) && canEditAdmin(chat, participant, rootScope.myId),
     }, {
       icon: 'restrict',
       text: 'KickFromSupergroup',
@@ -149,7 +147,7 @@ export default function createParticipantContextMenu(options: {
       verify: () => canChangePermissions &&
         participantPeerId !== rootScope.myId &&
         !isParticipantCreator(participant) &&
-        (!isParticipantAdmin(participant) || canEditAdmin(chat, participant)) &&
+        (!isParticipantAdmin(participant) || canEditAdmin(chat, participant, rootScope.myId)) &&
         (participant._ === 'channelParticipant' || !isBanned),
     }]
   }

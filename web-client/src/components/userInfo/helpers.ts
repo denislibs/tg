@@ -1,21 +1,7 @@
 // userInfo/helpers.ts
 // Чистые хелперы и константы профиля (`sidebarRight/tabs/sharedMedia.solid.tsx`,
-// `peerProfile.solid.tsx`, корень настроек): склонение счётчика участников,
-// геометрия шапки и порог «доехали до шаред-медиа».
+// корень настроек): геометрия шапки и порог «доехали до шаред-медиа».
 import type AppSearchSuper from '../appSearchSuper'
-
-// склонение «N единиц» (счётчики подзаголовков)
-export function plural(n: number, one: string, few: string, many: string): string {
-  const m10 = n % 10, m100 = n % 100
-  const word = m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many
-  return `${n} ${word}`
-}
-
-// «N участник(а/ов)» — подзаголовок профиля группы
-export function membersLabel(n: number, isChannel: boolean): string {
-  if (isChannel) return `${n} подписчиков`
-  return plural(n, 'участник', 'участника', 'участников')
-}
 
 // высота шапки панели — порог header-filled (tweb 3.5rem)
 export const HEADER_H = 56

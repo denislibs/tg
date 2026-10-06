@@ -129,6 +129,18 @@ func (s *fakeStore) IsOnline(_ context.Context, userID int64) (bool, error) {
 	return s.onlineLocked(userID), nil
 }
 
+func (s *fakeStore) CountOnline(_ context.Context, userIDs []int64) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, id := range userIDs {
+		if s.onlineLocked(id) {
+			n++
+		}
+	}
+	return n, nil
+}
+
 func (s *fakeStore) LastSeen(_ context.Context, userID int64) (int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -345,5 +357,20 @@ func TestManager_HeartbeatReannouncesBeforeExpiry(t *testing.T) {
 	// Снимок (GET /presence, /users/{id}) обещает тот же дедлайн, что и кадр.
 	if _, exp, _ := m.Status(ctx, 1); exp.Unix() != lastExpires(t, pub, 2) {
 		t.Fatalf("снимок expires=%d, кадр expires=%d", exp.Unix(), lastExpires(t, pub, 2))
+	}
+}
+
+// Б-84: «N онлайн» — сколько из состава держат ключ присутствия; ушедший
+// офлайн не считается.
+func TestManager_CountOnline(t *testing.T) {
+	m, _, _ := newManager(t)
+	ctx := context.Background()
+	_ = m.Online(ctx, 1)
+	_ = m.Online(ctx, 2)
+	_ = m.Online(ctx, 3)
+	_ = m.Offline(ctx, 3)
+	n, err := m.CountOnline(ctx, []int64{1, 2, 3, 4})
+	if err != nil || n != 2 {
+		t.Fatalf("CountOnline = %d, %v; want 2", n, err)
 	}
 }

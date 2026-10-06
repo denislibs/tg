@@ -36,6 +36,10 @@ func (i *Interactor) EnableDiscussion(ctx context.Context, channelID, actorID in
 	if err != nil {
 		return 0, err
 	}
+	// A2-07: у канала появился linked_chat_id — под постами кнопка
+	// комментариев без перезагрузки; группа — новый диалог создателю.
+	i.publishChatUpdate(ctx, channelID)
+	i.publishViewerChat(ctx, gid, actorID)
 	return gid, nil
 }
 
@@ -81,9 +85,8 @@ func (i *Interactor) LinkDiscussion(ctx context.Context, channelID, groupID, act
 	if err != nil {
 		return 0, err
 	}
-	if !card.Settings.HistoryForNew {
-		i.publishChatUpdate(ctx, groupID)
-	}
+	// Группа — linked_chat_id канала у неё (Б-119) и открытая история.
+	i.publishChatUpdate(ctx, groupID)
 	// Новый linked_chat_id канала — кадром chat_update, как у оригинала
 	// (updateChannel → chat_full_update; его слушают вкладка обсуждения и
 	// редактор чата, tweb chatDiscussion.tsx:272-280, editChat.tsx:352-370).
@@ -91,16 +94,27 @@ func (i *Interactor) LinkDiscussion(ctx context.Context, channelID, groupID, act
 	return groupID, nil
 }
 
-// UnlinkDiscussion detaches the channel's discussion group. Requires
-// RightChangeInfo on the channel.
+// UnlinkDiscussion detaches the channel's discussion group. Отвязать может
+// админ с change_info канала ЛИБО самой группы обсуждения: tweb chatDiscussion
+// со стороны группы зовёт setDiscussionGroup(канал, пусто) (Б-119,
+// «Отвязать канал»).
 func (i *Interactor) UnlinkDiscussion(ctx context.Context, channelID, actorID int64) error {
-	if err := i.requireRight(ctx, channelID, actorID, domain.RightChangeInfo); err != nil {
+	groupID, err := i.groups.GetDiscussion(ctx, channelID)
+	if err != nil {
 		return err
+	}
+	if err := i.requireRight(ctx, channelID, actorID, domain.RightChangeInfo); err != nil {
+		if groupID == 0 || i.requireRight(ctx, groupID, actorID, domain.RightChangeInfo) != nil {
+			return err
+		}
 	}
 	if err := i.groups.SetDiscussion(ctx, channelID, 0); err != nil {
 		return err
 	}
 	i.publishChatUpdate(ctx, channelID) // см. LinkDiscussion
+	if groupID != 0 {
+		i.publishChatUpdate(ctx, groupID)
+	}
 	return nil
 }
 

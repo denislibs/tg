@@ -7,9 +7,8 @@
 //  1. Кандидатов собирает `getMentions` ниже — порт `appProfileManager.getMentions`
 //     (tweb `appProfileManager.ts:835-915`) на главном потоке: у нашего
 //     `profileManager` воркера нет ни участников, ни зеркала карточек. Участники —
-//     ручка `GET /chats/{id}/members?q=` (`groups.channelParticipants`, у tweb —
-//     `channelParticipantsMentions` у канала и `chatFull.participants` у обычной
-//     группы; у нас форма участников одна на оба вида).
+//     `groups.getParticipants` с фильтром `channelParticipantsMentions` (`q`,
+//     `top_msg_id` темы) — ветка канала; базовых групп нет.
 //  2. Лучших инлайн-ботов (`getTopPeers('bots_inline')`), гостевых ботов
 //     (`bots_guestchat`) и глобального поиска (`global`, `getContactsPeerIds`) нет:
 //     у бэкенда нет топ-пиров и гостевых ботов — Б-136. Поэтому в личном чате
@@ -22,7 +21,8 @@ import type { Managers } from '@/client/bootstrap'
 import rootScope from '@lib/rootScope'
 import SearchIndex from '@lib/searchIndex'
 import { cachedUser } from '@core/peerCache'
-import { isUser, toPeerId } from '@core/peers/peerId'
+import { isUser, toChatId, toPeerId } from '@core/peers/peerId'
+import { getServerMessageId } from '@core/history/messageId'
 import type { User } from '@core/peers/peer'
 import { getParticipantPeerId } from '@core/peers/participant'
 import { getUserSearchText } from '@core/peers/peerSearchText'
@@ -37,6 +37,7 @@ export async function getMentions(
   managers: Pick<Managers, 'groups'>,
   peerId: PeerId | undefined,
   query: string,
+  threadId?: number,
 ): Promise<PeerId[]> {
   // * карточки ответа — на случай, если зеркало их ещё не получило (`saveApiPeers`
   // * воркера едет событием рядом с ответом)
@@ -68,7 +69,16 @@ export async function getMentions(
   let promise: Promise<PeerId[]> | undefined
   if(peerId && !isUser(peerId)) {
     const q = query.replace(/^@/, '') // * расхождение 3
-    promise = managers.groups.channelParticipants(peerId, 0, 50, q).then((cP) => {
+    promise = managers.groups.getParticipants({
+      id: toChatId(peerId),
+      filter: {
+        _: 'channelParticipantsMentions',
+        q,
+        top_msg_id: threadId ? getServerMessageId(threadId) : undefined,
+      },
+      limit: 50,
+      offset: 0,
+    }).then((cP) => {
       cP.users?.forEach((user) => users.set(toPeerId(user.id, false), user))
       return (cP.participants ?? []).map((p) => getParticipantPeerId(p))
     })
@@ -99,13 +109,13 @@ export default class MentionsHelper extends AutocompletePeerHelper {
     )
   }
 
-  /** tweb `:30-70` — без `topMsgId`, `global`, `includeGuestBots` (расхождение 2). */
-  public checkQuery(query: string, peerId: PeerId | undefined) {
+  /** tweb `:27-70` — без `global`, `includeGuestBots` (расхождение 2). */
+  public checkQuery(query: string, peerId: PeerId | undefined, topMsgId?: number) {
     const trimmed = query.trim() // check that there is no whitespace
     if(query.length !== trimmed.length) return false
 
     const middleware = this.controller!.getMiddleware()
-    void getMentions(this.managers, peerId, trimmed).then(async(peerIds) => {
+    void getMentions(this.managers, peerId, trimmed, topMsgId).then(async(peerIds) => {
       if(!middleware()) return
 
       peerIds = peerIds.filter((peerId) => peerId !== rootScope.myId)

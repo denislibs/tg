@@ -299,12 +299,18 @@ func (i *Interactor) BanMember(ctx context.Context, chatID, actorID, userID int6
 	if err != nil {
 		return err
 	}
+	prev := i.participantNow(ctx, chatID, userID)
 	if target.Role != "" {
-		if e := i.RemoveMember(ctx, chatID, actorID, userID); e != nil {
-			return e
+		if prev, err = i.removeMember(ctx, chatID, actorID, userID); err != nil {
+			return err
 		}
 	}
-	return i.groups.Ban(ctx, chatID, userID, actorID)
+	if err := i.groups.Ban(ctx, chatID, userID, actorID); err != nil {
+		return err
+	}
+	// Кадр участника админам (A2-05): список удалённых у них живой.
+	i.emitParticipant(ctx, chatID, actorID, userID, participantWire(prev), participantWire(i.participantNow(ctx, chatID, userID)), nil)
+	return nil
 }
 
 // UnbanMember removes userID from the removed-users list (they may rejoin).
@@ -312,15 +318,13 @@ func (i *Interactor) UnbanMember(ctx context.Context, chatID, actorID, userID in
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightBanUsers); err != nil {
 		return err
 	}
-	return i.groups.Unban(ctx, chatID, userID)
-}
-
-// ListBanned returns the chat's removed users (admins with BAN_USERS only).
-func (i *Interactor) ListBanned(ctx context.Context, chatID, actorID int64) ([]domain.BannedUser, error) {
-	if err := i.requireRight(ctx, chatID, actorID, domain.RightBanUsers); err != nil {
-		return nil, err
+	prev := i.participantNow(ctx, chatID, userID)
+	if err := i.groups.Unban(ctx, chatID, userID); err != nil {
+		return err
 	}
-	return i.groups.ListBans(ctx, chatID)
+	// Разбан — new_participant нет: из списка удалённых ушёл (A2-05).
+	i.emitParticipant(ctx, chatID, actorID, userID, participantWire(prev), participantWire(i.participantNow(ctx, chatID, userID)), nil)
+	return nil
 }
 
 // RestrictMember applies a granular per-user restriction (Telegram editBanned /
@@ -342,6 +346,7 @@ func (i *Interactor) RestrictMember(ctx context.Context, chatID, actorID, target
 		t := time.Now().Add(time.Duration(untilSeconds) * time.Second)
 		until = &t
 	}
+	prev := i.participantNow(ctx, chatID, targetID)
 	if err := i.groups.SetRestriction(ctx, domain.MemberRestriction{
 		ChatID: chatID, UserID: targetID, DeniedRights: deniedRights,
 		UntilDate: until, RestrictedBy: actorID,
@@ -358,6 +363,9 @@ func (i *Interactor) RestrictMember(ctx context.Context, chatID, actorID, target
 	}
 	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionRestrict(
 		targetID, domain.NewChatBannedRights(domain.AllMemberPerms&^deniedRights, untilTime)))
+	// Ограниченный видит запрет живьём (скрепка гаснет), админы — список
+	// ограниченных (A2-05, A1-06).
+	i.afterRightsChange(ctx, chatID, actorID, targetID, prev)
 	return nil
 }
 
@@ -366,27 +374,12 @@ func (i *Interactor) UnrestrictMember(ctx context.Context, chatID, actorID, targ
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightBanUsers); err != nil {
 		return err
 	}
-	return i.groups.DeleteRestriction(ctx, chatID, targetID)
-}
-
-// ListRestricted returns the chat's granularly-restricted members (admins with
-// BAN_USERS only). Expired restrictions are filtered out.
-func (i *Interactor) ListRestricted(ctx context.Context, chatID, actorID int64) ([]domain.MemberRestriction, error) {
-	if err := i.requireRight(ctx, chatID, actorID, domain.RightBanUsers); err != nil {
-		return nil, err
+	prev := i.participantNow(ctx, chatID, targetID)
+	if err := i.groups.DeleteRestriction(ctx, chatID, targetID); err != nil {
+		return err
 	}
-	all, err := i.groups.ListRestrictions(ctx, chatID)
-	if err != nil {
-		return nil, err
-	}
-	now := time.Now()
-	out := make([]domain.MemberRestriction, 0, len(all))
-	for _, r := range all {
-		if r.Active(now) {
-			out = append(out, r)
-		}
-	}
-	return out, nil
+	i.afterRightsChange(ctx, chatID, actorID, targetID, prev)
+	return nil
 }
 
 // DeleteGroup deletes the whole group for everyone (creator only, tweb

@@ -145,9 +145,19 @@ type GroupRepo interface {
 	// KnownUserIDs — кто из ids известен зрителю (сам, @имя, контакт, общий
 	// чат, участник публичного чата, автор/источник пересылки в его чатах).
 	KnownUserIDs(ctx context.Context, viewerID int64, ids []int64) (map[int64]bool, error)
-	// ListMembers — страница участников; query — фильтр `channelParticipantsSearch`
-	// (префикс имени профиля или @username), пустой — все.
-	ListMembers(ctx context.Context, chatID int64, query string, offset, limit int) ([]domain.Member, error)
+	// ListParticipants — страница участников по фильтру channels.getParticipants
+	// (recent/admins/kicked/banned/bots/search/contacts/mentions) и ВСЕГО по
+	// фильтру. viewerID — для фильтра контактов.
+	ListParticipants(ctx context.Context, chatID, viewerID int64, f domain.ParticipantsFilter, offset, limit int) ([]domain.Participant, int, error)
+	// GetParticipant — участник (с его ограничением) или удалённый;
+	// domain.ErrNotFound — ни то ни другое.
+	GetParticipant(ctx context.Context, chatID, userID int64) (domain.Participant, error)
+	// ParticipantCounters — admins/kicked/banned для channelFull.
+	ParticipantCounters(ctx context.Context, chatID int64) (admins, kicked, banned int, err error)
+	// SetJoinInfo — кто привёл (0 — сам) и вошёл ли заявкой; после вступления.
+	SetJoinInfo(ctx context.Context, chatID, userID, inviterID int64, viaRequest bool) error
+	// SetRank — подпись админа (channels.editAdmin rank).
+	SetRank(ctx context.Context, chatID, userID int64, rank string) error
 	// AdminIDs — id владельца и админов чата (role in creator/admin), для адресной
 	// рассылки (напр. новые предложенные посты уходят только тем, кто их решает).
 	AdminIDs(ctx context.Context, chatID int64) ([]int64, error)
@@ -188,13 +198,11 @@ type GroupRepo interface {
 	Ban(ctx context.Context, chatID, userID, bannedBy int64) error
 	Unban(ctx context.Context, chatID, userID int64) error
 	IsBanned(ctx context.Context, chatID, userID int64) (bool, error)
-	ListBans(ctx context.Context, chatID int64) ([]domain.BannedUser, error)
 	// Per-user granular restrictions (Telegram editBanned / ChatBannedRights).
 	// GetRestriction returns the raw row (bool=exists); expiry is decided by the
 	// caller via domain.MemberRestriction.Active.
 	SetRestriction(ctx context.Context, res domain.MemberRestriction) error
 	GetRestriction(ctx context.Context, chatID, userID int64) (domain.MemberRestriction, bool, error)
-	ListRestrictions(ctx context.Context, chatID int64) ([]domain.MemberRestriction, error)
 	DeleteRestriction(ctx context.Context, chatID, userID int64) error
 	DeleteChat(ctx context.Context, chatID int64) error // каскадом members/messages
 }
@@ -226,7 +234,11 @@ type InviteRepo interface {
 
 type JoinRequestRepo interface {
 	Create(ctx context.Context, chatID, userID int64, inviteToken string) error // idempotent (ON CONFLICT DO NOTHING)
-	List(ctx context.Context, chatID int64) ([]domain.JoinRequest, error)
+	// List — страница заявок: свежие сверху, курсор (offsetDate, offsetUser),
+	// q — префикс имени; total — всего по q.
+	List(ctx context.Context, chatID int64, q string, offsetDate time.Time, offsetUser int64, limit int) ([]domain.JoinRequest, int, error)
+	// Pending — число заявок и до трёх свежих заявителей.
+	Pending(ctx context.Context, chatID int64) (int, []int64, error)
 	Delete(ctx context.Context, chatID, userID int64) error
 	// TokenFor returns the invite token a pending request came through ("" if the
 	// request has no associated token); ok=false — заявки нет.

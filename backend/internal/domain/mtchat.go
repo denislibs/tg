@@ -875,6 +875,17 @@ type ChannelFull struct {
 	ChatPhoto       *Photo `json:"chat_photo"`
 	// ParticipantsCount — flags.0?int: chats.member_count.
 	ParticipantsCount int `json:"participants_count,omitempty"`
+	// AdminsCount — flags.1?int: создатель и админы (Б-115).
+	AdminsCount int `json:"admins_count,omitempty"`
+	// KickedCount/BannedCount — flags.2?int, ОДИН бит на оба: удалённые и
+	// ограниченные; едут парой и только админу с ban_users (указатель — ноль
+	// тоже ответ).
+	KickedCount *int `json:"kicked_count,omitempty"`
+	BannedCount *int `json:"banned_count,omitempty"`
+	// RequestsPending/RecentRequesters — flags.28, один бит: заявки на
+	// вступление админу с invite_users (плашка заявок в шапке, Б-86).
+	RequestsPending  *int    `json:"requests_pending,omitempty"`
+	RecentRequesters []int64 `json:"recent_requesters,omitempty"`
 	// PinnedMsgID — flags.5?int; 0 — закреплённого нет.
 	PinnedMsgID int `json:"pinned_msg_id,omitempty"`
 	// LinkedChatID — flags.14?long: наш chats.discussion_chat_id (чат
@@ -928,7 +939,7 @@ func (f *ChannelFull) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	*f = ChannelFull(v.plain)
-	f.PFlags = keepPFlags(v.plain.PFlags, "hidden_prehistory", "can_view_stats")
+	f.PFlags = keepPFlags(v.plain.PFlags, "hidden_prehistory", "can_view_stats", "can_view_participants")
 	reactions, err := UnmarshalChatReactions(v.AvailableReactions)
 	if err != nil {
 		return err

@@ -108,9 +108,9 @@ import { generateMessageId } from '@core/history/messageId'
 import type { Middleware } from '@helpers/middleware'
 import I18n, { i18n, type FormatterArguments } from '@lib/langPack'
 import type { LangPackKey } from '@/lang'
-import type { SendMessageAction } from '@core/realtime/events'
+import { RT, type SendMessageAction } from '@core/realtime/events'
 import { cachedChat, cachedPeer, cachedUser } from '@core/peerCache'
-import { isAnyChat, isUser } from '@core/peers/peerId'
+import { isAnyChat, isUser, toChatId, toPeerId } from '@core/peers/peerId'
 import { useChatsStore } from '@stores/chatsStore'
 import { MOUNT_CLASS_TO } from '@config/debug'
 import EventListenerBase from '@helpers/eventListenerBase'
@@ -206,11 +206,12 @@ import IS_TOUCH_SUPPORTED from '@environment/touchSupport'
 //  Н5. Подпись чата — краткая карточка (`participants_count` зеркала,
 //      `getChatMembersString`), а не `getChatFull`: полной карточки чата в этом
 //      слое нет. «N онлайн» (`getOnlines`, у tweb — `appProfileManager.ts:1170-1210`)
-//      считается здесь по присутствию «недавних» участников, страница которых
-//      кэшируется на 60 с, как `invokeApiCacheable` оригинала. Ручки
-//      `messages.getOnlines` у бэкенда нет — у группы больше 100 участников
-//      онлайн не считается (бэклог Б-84). Фильтра «недавние» у ручки участников
-//      нет — берётся её первая страница из 100.
+//      считается здесь: до 100 участников — по присутствию «недавних»
+//      (`groups.getParticipants`, фильтр `channelParticipantsRecent`), больше —
+//      ручкой `groups.getOnlines`. Подтверждённых вызовов (`managers.acknowledged`)
+//      у нас нет, поэтому признак `cached` даёт зеркало результата на 60 с (срок
+//      `invokeApiCacheable` оригинала); его сбрасывает кадр `chat_participant`,
+//      как у оригинала сброс кэша `channels.getParticipants`.
 //  Н6. `setPeerStatus` без `useWhitespace` (`NBSP` вместо пустой подписи): все наши
 //      вызывающие (шапка, форум-таб) передают `false`, как и у tweb.
 
@@ -339,8 +340,11 @@ export class AppImManager extends EventListenerBase<{
   public chats: Chat[] = []
   /** tweb `:278` */
   private callTransitions = callTransitionCoordinator
-  /** участники для «N онлайн» на время кэша (Н5) */
-  private onlinesParticipants = new Map<PeerId, { userIds: number[], expires: number }>()
+  /** «N онлайн» на время кэша (Н5): участники до 100 — чтобы онлайн считался
+   *  по живому присутствию, иначе — число ручки */
+  private onlinesCache = new Map<PeerId, { userIds?: number[], onlines?: number, expires: number }>()
+  /** подписка сброса `onlinesCache` по `chat_participant` — ставится первым `getOnlines` */
+  private onlinesCacheListened = false
   /** tweb `:290` */
   public chatAudio?: ChatAudioController
   /** tweb `:292`, `:846` */
@@ -1891,18 +1895,15 @@ export class AppImManager extends EventListenerBase<{
     }
   }
 
-  /**
-   * `appProfileManager.getOnlines` (`appProfileManager.ts:1159-1210`) — Н5. Участников
-   * спрашивает фильтром «недавние» (`channelParticipantsRecent`, первая страница из 100),
-   * онлайн каждого читает в момент подсчёта (`verifyParticipantForOnlineCount`).
-   */
+  /** `appProfileManager.getOnlines` (`appProfileManager.ts:1159-1210`) — Н5. */
   private getOnlines(peerId: PeerId, managers: Pick<Managers, 'groups'>): AckedResult<number> {
     const minOnline = 1
     const chat = cachedChat(peerId)
-    if(isBroadcast(chat) || getParticipantsCount(chat) < 2 || getParticipantsCount(chat) > 100) {
+    if(isBroadcast(chat) || getParticipantsCount(chat) < 2) {
       return { cached: true, result: Promise.resolve(minOnline) }
     }
 
+    // tweb `verifyParticipantForOnlineCount`/`reduceParticipantsForOnlineCount` (:1159-1168)
     const reduce = (userIds: number[]) => {
       const presence = useChatsStore.getState().presence
       return userIds.reduce((acc, userId) => {
@@ -1912,17 +1913,41 @@ export class AppImManager extends EventListenerBase<{
       }, 0)
     }
 
-    const cached = this.onlinesParticipants.get(peerId)
+    // Н5 — зеркало «N онлайн» сбрасывается вместе с кэшем участников чата
+    if(!this.onlinesCacheListened) {
+      this.onlinesCacheListened = true
+      rootScope.addEventListener(RT.chatParticipant, (update) => {
+        this.onlinesCache.delete(toPeerId(update.channel_id, true))
+      })
+    }
+
+    const cached = this.onlinesCache.get(peerId)
     if(cached && cached.expires > Date.now()) {
-      return { cached: true, result: Promise.resolve(reduce(cached.userIds)) }
+      return { cached: true, result: Promise.resolve(cached.userIds ? reduce(cached.userIds) : cached.onlines ?? minOnline) }
+    }
+
+    const expires = Date.now() + ONLINES_CACHE_SECONDS * 1000
+    const chatId = toChatId(peerId)
+    if(getParticipantsCount(chat) <= 100) {
+      return {
+        cached: false,
+        result: managers.groups.getParticipants({
+          id: chatId,
+          filter: { _: 'channelParticipantsRecent' },
+          limit: 100,
+        }).then((r) => {
+          const userIds = r.participants.map((p) => 'user_id' in p ? p.user_id : 0).filter(Boolean)
+          this.onlinesCache.set(peerId, { userIds, expires })
+          return reduce(userIds)
+        }, () => minOnline),
+      }
     }
 
     return {
       cached: false,
-      result: managers.groups.channelParticipants(peerId, 0, 100).then((r) => {
-        const userIds = (r.participants ?? []).map((p) => 'user_id' in p ? p.user_id : 0).filter(Boolean)
-        this.onlinesParticipants.set(peerId, { userIds, expires: Date.now() + ONLINES_CACHE_SECONDS * 1000 })
-        return reduce(userIds)
+      result: managers.groups.getOnlines(chatId).then((onlines) => {
+        this.onlinesCache.set(peerId, { onlines, expires })
+        return onlines
       }, () => minOnline),
     }
   }

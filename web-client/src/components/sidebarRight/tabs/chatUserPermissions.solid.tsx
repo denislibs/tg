@@ -29,17 +29,13 @@
  *     бота-привратника (`bot_guard`, `guard_bot_id`, :226-366) нет на бэкенде
  *     (Б-116): полезная нагрузка без `addingBot`, секций «Сделать админом» и
  *     «Обрабатывать заявки» нет, `isBot` правам не передаётся.
- *  3. Подписи админа (`rank`, секция `EditAdminRank`, :368-405) нет на проводе
- *     (Б-117): поле не рисуется, `editAdmin` уходит без ранга.
- *  4. `canEditAdmin(chat, participant)` — без `myId` (`promoted_by` на проводе
- *     нет, шапка `core/peers/participant.ts`).
- *  5. Базовых групп нет: `isChannel` всегда истина (у оригинала выбирает, откуда
+ *  3. Базовых групп нет: `isChannel` всегда истина (у оригинала выбирает, откуда
  *     брать исходные права админа, :101-103).
- *  6. `handleChannelsTooMuch` (:72) — нет: сервер не знает лимита каналов
+ *  4. `handleChannelsTooMuch` (:72) — нет: сервер не знает лимита каналов
  *     (как у `editChat.solid.tsx`, его расхождение 5).
- *  7. Имена — `PeerTitle` (`components/chat/peerTitle.ts`) вместо
+ *  5. Имена — `PeerTitle` (`components/chat/peerTitle.ts`) вместо
  *     `wrapPeerTitle`; карточки — зеркало (`cachedChat`) и `peers.getPeers`.
- *  8. Срок «свой» (`showDatePickerPopup`) — мост `popups/datePicker.bridge.ts`
+ *  6. Срок «свой» (`showDatePickerPopup`) — мост `popups/datePicker.bridge.ts`
  *     (ВРЕМЕННО до 2C-23, его шапка).
  */
 import type { Component } from 'solid-js'
@@ -51,7 +47,8 @@ import formatDuration from '@helpers/formatDuration'
 import tsNow from '@helpers/tsNow'
 import { formatDate, formatFullSentTime } from '@helpers/date'
 import { wrapSolidComponent } from '@helpers/solid/wrapSolidComponent'
-import { i18n } from '@lib/langPack'
+import { i18n, type LangPackKey } from '@lib/langPack'
+import InputField from '@components/inputField'
 import rootScope from '@lib/rootScope'
 import appImManager from '@lib/appImManager'
 import Button from '@components/button'
@@ -76,6 +73,7 @@ import {
   type ChannelParticipant,
 } from '@core/peers/participant'
 import { cachedChat } from '@core/peerCache'
+import { isAnyGroup } from '@core/peers/predicates'
 import { toPeerId } from '@core/peers/peerId'
 import type { Channel, ChatAdminRights, ChatBannedRights, User } from '@core/peers/peer'
 import { BANNED_RIGHTS_UNTIL_FOREVER } from '@core/managers/constants'
@@ -108,7 +106,7 @@ const ChatUserPermissions: Component = () => {
     rank: string
   }>({
     tab,
-    // расхождение 6
+    // расхождение 4
     save: () => saveCallback(),
     unsavedConfirmationProps: {},
   })
@@ -119,14 +117,15 @@ const ChatUserPermissions: Component = () => {
   promiseCollector.collect((async() => {
     tab.container.classList.add('edit-peer-container', 'user-permissions-container')
 
-    // расхождение 7
+    // расхождение 5
     const chatPeerId = toPeerId(chatId as number, true)
     const chat = cachedChat(chatPeerId) as Channel
     const [user] = await managers.peers.getPeers([toPeerId(userId as number, false)]) as (User | undefined)[]
-    const isChannel = true // расхождение 5
+    const isChannel = true // расхождение 3
+    const isGroup = isAnyGroup(chatPeerId, chat)
     const isCreator = isParticipantCreator(participant)
     const isAdmin = isParticipantAdmin(participant)
-    const _canEditAdmin = canEditAdmin(chat, participant) // расхождение 4
+    const _canEditAdmin = canEditAdmin(chat, participant, rootScope.myId)
 
     let goodTypes: Set<ChannelParticipant['_']>
     if(editingAdmin) {
@@ -200,12 +199,13 @@ const ChatUserPermissions: Component = () => {
             return
           }
 
-          // `addingBot`, гард-бот — расхождение 2; `rank` — расхождение 3
+          // `addingBot`, гард-бот — расхождение 2
           const rights = p.takeOut()
           await managers.groups.editAdmin(
             chatId,
             participant,
             rights,
+            rankInputField?.value,
           )
         }
       } else {
@@ -233,7 +233,44 @@ const ChatUserPermissions: Component = () => {
       tab.scrollable.append(section)
     }
 
-    // секция ранга — расхождение 3
+    // :368-405
+    let rankInputField: InputField | undefined
+    if(editingAdmin && isGroup) {
+      const rankKey: LangPackKey = isParticipantCreator(participant) ? 'Chat.OwnerBadge' : 'ChatAdmin'
+      const inputWrapper = document.createElement('div')
+      inputWrapper.classList.add('input-wrapper')
+
+      const inputField = rankInputField = new InputField({
+        name: 'rank',
+        placeholder: rankKey,
+        maxLength: 16,
+        canBeEdited: _canEditAdmin,
+        label: 'Rank.Label',
+      })
+
+      const customRank = 'rank' in participant ? participant.rank : undefined
+      if(customRank) {
+        inputField.setOriginalValue(customRank, true)
+        solidState.setInitial({ rank: customRank })
+      }
+
+      tab.listenerSetter.add(inputField.input)('input', () => {
+        solidState.set({ rank: inputField.value || undefined })
+        solidState.setValid(inputField.isValid())
+      })
+
+      inputWrapper.append(inputField.container)
+
+      tab.scrollable.append(wrapSolidComponent(() => (
+        <Section
+          name="EditAdminRank"
+          caption="EditAdminRankInfo"
+          captionArgs={[i18n(rankKey)]}
+        >
+          {inputWrapper}
+        </Section>
+      ), tab.middlewareHelper.get()))
+    }
 
     const saveSomethingDifferent = async(btn: HTMLElement, _callback: () => Promise<unknown>) => {
       if(solidState.saving()) {
@@ -301,7 +338,7 @@ const ChatUserPermissions: Component = () => {
       })), {
         text: 'UserPermissions.Duration.Custom',
         onClick: () => {
-          // расхождение 8
+          // расхождение 6
           showDatePickerPopup({
             initDate: new Date(),
             withTime: true,

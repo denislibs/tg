@@ -40,12 +40,10 @@
  *
  *  1. Участники канала (`peerType: 'channelParticipants'`, :909-963, с 0б-7
  *     волны 7 — вкладки админов, участников и удалённых правой колонки,
- *     `sidebarRight/tabs/participantsSelector.ts`). Кадра `chat_participant`
- *     (:533-540) на проводе нет: живое обновление — ветка `chat_full_update`
- *     оригинала (:542-574, у него — для базовой группы): по `rt:chat_update`
- *     этого чата список перечитывается и сводится по карте `participants`
- *     (`refreshParticipants`). Страница — `groups.getParticipants` (порт
- *     `appProfileManager.getParticipants`), фильтры — в объёме ручек.
+ *     `sidebarRight/tabs/participantsSelector.ts`): страница —
+ *     `groups.getParticipants`, живое обновление — кадр `chat_participant`
+ *     (:533-540). Ветки `chat_full_update` базовой группы (:542-574) нет —
+ *     базовых групп сервер не производит.
  *  2. Права отправки: `chatRightsActions` + `filterByRights` (:782-787,
  *     :827-834, :878-883) портированы — сам фильтр живёт в
  *     `core/peers/filterByRights.ts` (его же зовёт React-`ForwardPicker`),
@@ -139,7 +137,7 @@ import { wrapSolidComponent } from '@helpers/solid/wrapSolidComponent'
 import classNames from '@helpers/string/classNames'
 import type { IconName } from '@core/tgico-icons'
 import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '@core/folderIds'
-import { getPeerId, isAnyChat, isPeerId, isUser } from '@core/peers/peerId'
+import { getPeerId, isAnyChat, isPeerId, isUser, toPeerId } from '@core/peers/peerId'
 import { isAnyGroup } from '@core/peers/predicates'
 import { filterByRights } from '@core/peers/filterByRights'
 import type { ChatRights } from '@core/peers/rights'
@@ -150,9 +148,6 @@ import { useI18nStore } from '@/i18n'
 import { RT } from '@core/realtime/events'
 import { getParticipantPeerId, type ChannelParticipant } from '@core/peers/participant'
 import type { ChannelParticipantsFilter } from '@core/managers/groupsManager'
-
-/** :915 — страница участников (`pageCount`) */
-const CHANNEL_PARTICIPANTS_PAGE = 50
 
 /** A row whose trailing checkbox is painted over it — the lane it takes is reserved in `_selector.scss`. */
 const ROW_WITH_CHECKBOX_CLASS = 'selector-row-with-checkbox'
@@ -510,14 +505,14 @@ export default class AppSelectPeers {
     // :513
     this.appendTo.append(this.container)
 
-    // :542-574 — ветка `chat_full_update` вместо кадра `chat_participant` (расхождение 1)
+    // :533-540
     if(this.channelParticipantsUpdateFilter) {
-      this.listenerSetter.add(rootScope)(RT.chatUpdate, (evt) => {
-        if(getPeerId(evt.peer) !== (this.channelParticipantsUpdatePeerId ?? this.peerId)) {
+      this.listenerSetter.add(rootScope)(RT.chatParticipant, (update) => {
+        if(toPeerId(update.channel_id, true) !== (this.channelParticipantsUpdatePeerId ?? this.peerId)) {
           return
         }
 
-        void this.refreshParticipants()
+        this.onChatParticipant(update.new_participant, toPeerId(update.user_id, false))
       })
     }
 
@@ -572,32 +567,6 @@ export default class AppSelectPeers {
     } else {
       this.deletePeerId(peerId)
     }
-  }
-
-  /**
-   * :548-573 — свод перечитанного списка с картой `participants` (расхождение 1):
-   * пришедший — добавить/обновить, пропавший — снять. Перечитывается столько,
-   * сколько уже показано, под текущим запросом.
-   */
-  public async refreshParticipants() {
-    const middleware = this.middlewareHelperLoader.get()
-    const loaded = await this.loadChannelParticipants(Math.max(this.list.childElementCount, CHANNEL_PARTICIPANTS_PAGE), 0)
-    if(!middleware()) {
-      return
-    }
-
-    const processedPeerIds = new Set<PeerId>()
-    for(const participant of loaded.participants) {
-      const peerId = getParticipantPeerId(participant)
-      processedPeerIds.add(peerId)
-      this.onChatParticipant(participant, peerId)
-    }
-
-    this.participants.forEach((participant, peerId) => {
-      if(!processedPeerIds.has(peerId)) {
-        this.onChatParticipant(participant, peerId, false)
-      }
-    })
   }
 
   // :625-632 (без `dialogsPlaceholder` — расхождение 4)
@@ -898,7 +867,14 @@ export default class AppSelectPeers {
     this.scrollable.checkForTriggers()
   }
 
-  private loadChannelParticipants(limit: number, offset: number) {
+  // :909-963
+  private async getMoreChannelParticipants() {
+    if(this.loadedWhat.channelParticipants) {
+      return
+    }
+
+    const pageCount = 50 // same as in group permissions to use cache
+
     let filter: ChannelParticipantsFilter
     if(this.channelParticipantsFilter) {
       filter = typeof(this.channelParticipantsFilter) === 'function' ?
@@ -911,24 +887,13 @@ export default class AppSelectPeers {
       }
     }
 
-    return this.managers.groups!.getParticipants({
+    const { middleware } = this.getTempId('channelParticipants')
+    const promise = this.managers.groups!.getParticipants({
       id: -this.peerId!,
       filter,
-      limit,
-      offset,
+      limit: pageCount,
+      offset: this.list.childElementCount,
     })
-  }
-
-  // :909-963
-  private async getMoreChannelParticipants() {
-    if(this.loadedWhat.channelParticipants) {
-      return
-    }
-
-    const pageCount = CHANNEL_PARTICIPANTS_PAGE // same as in group permissions to use cache
-
-    const { middleware } = this.getTempId('channelParticipants')
-    const promise = this.loadChannelParticipants(pageCount, this.list.childElementCount)
 
     promise.catch(() => {
       if(!middleware()) {

@@ -254,6 +254,16 @@ func allPeerConstructors() []any {
 		// Пустая карточка: обязательные about/горизонты/unread едут нулями,
 		// фото нет (см. шов про photoEmpty в докблоке ChannelFull).
 		NewChannelFull(9, "", nil, false),
+		// Карточка админа с счётчиками участников и заявками (Б-115/Б-86).
+		func() ChannelFull {
+			kicked, banned, pending := 2, 0, 1
+			return ChatRecord{ID: 8, Type: ChatTypeGroup, ViewerID: 1, MyRole: RoleCreator,
+				Counters: &ParticipantCounters{Admins: 2, Kicked: &kicked, Banned: &banned,
+					RequestsPending: &pending, RecentRequesters: []int64{42}, CanViewParticipants: true}}.ToChannelFull()
+		}(),
+		// Зритель ограничен лично: banned_rights краткой формы.
+		ChatRecord{ID: 8, Type: ChatTypeGroup, ViewerID: 1, MyRole: RoleMember,
+			Settings: ChatSettings{DefaultPerms: AllMemberPerms}, MyRestriction: &MemberRestriction{DeniedRights: PermSendMedia}}.ToChannel(),
 		NewMessagesChatFull(NewChannelFull(8, "о группе", nil, false),
 			NewChannel(8, "группа", NewChatPhotoEmpty(), date, ChannelFlags{Megagroup: true})),
 	}

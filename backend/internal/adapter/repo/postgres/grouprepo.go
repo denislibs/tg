@@ -310,24 +310,6 @@ func (r *GroupRepo) IsBanned(ctx context.Context, chatID, userID int64) (bool, e
 	return banned, err
 }
 
-func (r *GroupRepo) ListBans(ctx context.Context, chatID int64) ([]domain.BannedUser, error) {
-	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT user_id, COALESCE(banned_by,0) FROM chat_bans WHERE chat_id=$1 ORDER BY created_at DESC`, chatID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []domain.BannedUser{}
-	for rows.Next() {
-		var b domain.BannedUser
-		if err := rows.Scan(&b.UserID, &b.BannedBy); err != nil {
-			return nil, err
-		}
-		out = append(out, b)
-	}
-	return out, rows.Err()
-}
-
 // SetRestriction upserts a per-user granular restriction (Telegram editBanned).
 func (r *GroupRepo) SetRestriction(ctx context.Context, res domain.MemberRestriction) error {
 	_, err := querier(ctx, r.pool).Exec(ctx,
@@ -361,27 +343,6 @@ func (r *GroupRepo) GetRestriction(ctx context.Context, chatID, userID int64) (d
 	return res, true, nil
 }
 
-func (r *GroupRepo) ListRestrictions(ctx context.Context, chatID int64) ([]domain.MemberRestriction, error) {
-	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT chat_id, user_id, denied_rights, until_date, restricted_by
-		   FROM chat_restrictions WHERE chat_id=$1 ORDER BY created_at DESC`, chatID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []domain.MemberRestriction{}
-	for rows.Next() {
-		var res domain.MemberRestriction
-		var denied int
-		if err := rows.Scan(&res.ChatID, &res.UserID, &denied, &res.UntilDate, &res.RestrictedBy); err != nil {
-			return nil, err
-		}
-		res.DeniedRights = domain.MemberPerms(denied)
-		out = append(out, res)
-	}
-	return out, rows.Err()
-}
-
 func (r *GroupRepo) DeleteRestriction(ctx context.Context, chatID, userID int64) error {
 	_, err := querier(ctx, r.pool).Exec(ctx,
 		`DELETE FROM chat_restrictions WHERE chat_id=$1 AND user_id=$2`, chatID, userID)
@@ -409,6 +370,9 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 	var notifySound *string
 	var perms int
 	var allowed []byte
+	var restrDenied *int
+	var restrUntil *time.Time
+	var restrBy *int64
 	err := q.QueryRow(ctx,
 		`SELECT c.id, c.type, c.title, COALESCE(c.username,''), c.about, c.photo_media_id,
 		        pm.blur_preview, COALESCE(pm.width,0), COALESCE(pm.height,0), COALESCE(pm.size,0),
@@ -429,11 +393,18 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 		        -- и rights; NULL, когда зритель не состоит (LEFT JOIN не нашёл
 		        -- строки) или когда зрителя нет вовсе. Наружу уходит
 		        -- обязательным channel.date, см. ChatRecord.ChannelDate.
-		        m.joined_at
+		        m.joined_at,
+		        -- Действующее личное ограничение зрителя → channel.banned_rights
+		        -- (A1-06): прежде поле не писал никто.
+		        r.denied_rights, r.until_date, r.restricted_by,
+		        -- Канал, чьей группой обсуждения чат служит (Б-119).
+		        COALESCE((SELECT MIN(lc.id) FROM chats lc WHERE lc.discussion_chat_id = c.id), 0)
 		   FROM chats c
 		   LEFT JOIN media pm ON pm.id = c.photo_media_id
 		   LEFT JOIN chat_theme ct ON ct.chat_id = c.id
 		   LEFT JOIN chat_members m ON m.chat_id=c.id AND m.user_id=$2
+		   LEFT JOIN chat_restrictions r ON r.chat_id = c.id AND r.user_id = $2
+		        AND (r.until_date IS NULL OR r.until_date > now())
 		  WHERE c.id=$1`,
 		chatID, viewerID).Scan(&c.ID, &c.Type, &c.Title, &c.Username, &c.About, &c.PhotoID,
 		&c.PhotoPreview, &c.PhotoW, &c.PhotoH, &c.PhotoSize,
@@ -442,7 +413,8 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 		&perms, &c.Settings.SlowmodeSeconds, &c.Settings.ReactionsMode, &allowed,
 		&c.Settings.HistoryForNew, &c.Settings.ChargeStars, &c.Settings.AutoDeletePeriod,
 		&c.PinnedMsgID, &c.ReadInboxMaxID, &c.UnreadCount, &c.ReadOutboxMaxID,
-		&role, &rights, &muteUntil, &notifyPreview, &notifySound, &c.ThemeEmoticon, &joinedAt)
+		&role, &rights, &muteUntil, &notifyPreview, &notifySound, &c.ThemeEmoticon, &joinedAt,
+		&restrDenied, &restrUntil, &restrBy, &c.LinkedChannelID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.ChatRecord{}, domain.ErrNotFound
 	}
@@ -458,6 +430,13 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 	if joinedAt != nil {
 		c.MyJoinedAt = *joinedAt
 	}
+	if restrDenied != nil && viewerID != 0 {
+		c.MyRestriction = &domain.MemberRestriction{ChatID: chatID, UserID: viewerID,
+			DeniedRights: domain.MemberPerms(*restrDenied), UntilDate: restrUntil}
+		if restrBy != nil {
+			c.MyRestriction.RestrictedBy = *restrBy
+		}
+	}
 	// notify_settings зритель-зависимы: без зрителя (снимок chat_update — один
 	// на всех участников) их нет вовсе, и пустой конструктор здесь был бы не
 	// «неизвестно», а «переопределения нет» — то есть чужой ответ, разосланный
@@ -471,44 +450,6 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 		_ = json.Unmarshal(allowed, &c.Settings.ReactionsAllowed)
 	}
 	return c, nil
-}
-
-func (r *GroupRepo) ListMembers(ctx context.Context, chatID int64, query string, offset, limit int) ([]domain.Member, error) {
-	if limit <= 0 || limit > 200 {
-		limit = 200
-	}
-	if offset < 0 {
-		offset = 0
-	}
-	// query — `channelParticipantsSearch`: префикс имени профиля или @username,
-	// тем же правилом, что поиск людей (`SearchRepo.SearchUsers`).
-	like := ""
-	if query != "" {
-		like = escapeLike(query) + "%"
-	}
-	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT m.chat_id, m.user_id, m.role, m.rights
-		   FROM chat_members m
-		   JOIN users u ON u.id = m.user_id
-		  WHERE m.chat_id=$1
-		    AND ($4 = '' OR u.display_name ILIKE $4 OR u.username ILIKE $4)
-		  ORDER BY m.role DESC, m.user_id LIMIT $2 OFFSET $3`,
-		chatID, limit, offset, like)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := make([]domain.Member, 0)
-	for rows.Next() {
-		var m domain.Member
-		var rights int
-		if err := rows.Scan(&m.ChatID, &m.UserID, &m.Role, &rights); err != nil {
-			return nil, err
-		}
-		m.Rights = domain.Rights(rights)
-		out = append(out, m)
-	}
-	return out, rows.Err()
 }
 
 // AdminIDs — id владельца и админов чата (role in creator/admin).

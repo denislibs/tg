@@ -69,7 +69,7 @@ func TestJoin_ChannelGivesSubscriberWithoutGroupRights(t *testing.T) {
 	if r := roleOf(t, fg, ch, 9); r != domain.RoleSubscriber {
 		t.Fatalf("добавленный в канал: роль %q", r)
 	}
-	if err := i.PromoteAdmin(ctx, ch, 7, 9, domain.RightPostMessages); err != nil {
+	if err := i.PromoteAdmin(ctx, ch, 7, 9, domain.RightPostMessages, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := i.DemoteAdmin(ctx, ch, 7, 9); err != nil {
@@ -126,16 +126,16 @@ func TestPromoteDemote_TargetGate(t *testing.T) {
 	i, fg, _ := newGroupTestInteractor(t)
 	ctx := context.Background()
 	g := newGroupWith(t, i, fg, 8, 9, 10)
-	if err := i.PromoteAdmin(ctx, g, 7, 8, domain.RightManageAdmins); err != nil {
+	if err := i.PromoteAdmin(ctx, g, 7, 8, domain.RightManageAdmins, ""); err != nil {
 		t.Fatal(err)
 	}
 	if m, _ := fg.GetMember(ctx, g, 8); m.PromotedBy != 7 {
 		t.Fatalf("promoted_by = %d, ждали 7", m.PromotedBy)
 	}
-	if err := i.PromoteAdmin(ctx, g, 8, 8, domain.AllRights); !errors.Is(err, domain.ErrForbidden) {
+	if err := i.PromoteAdmin(ctx, g, 8, 8, domain.AllRights, ""); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("админ выдал права себе: %v", err)
 	}
-	if err := i.PromoteAdmin(ctx, g, 8, 9, domain.AllRights); !errors.Is(err, domain.ErrForbidden) {
+	if err := i.PromoteAdmin(ctx, g, 8, 9, domain.AllRights, ""); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("админ выдал права, которых у него нет: %v", err)
 	}
 	if err := i.DemoteAdmin(ctx, g, 8, 7); !errors.Is(err, domain.ErrForbidden) {
@@ -144,16 +144,16 @@ func TestPromoteDemote_TargetGate(t *testing.T) {
 	if r := roleOf(t, fg, g, 7); r != domain.RoleCreator {
 		t.Fatalf("владелец стал %q", r)
 	}
-	if err := i.PromoteAdmin(ctx, g, 8, 9, domain.RightManageAdmins); err != nil {
+	if err := i.PromoteAdmin(ctx, g, 8, 9, domain.RightManageAdmins, ""); err != nil {
 		t.Fatalf("подмножество своих прав: %v", err)
 	}
-	if err := i.PromoteAdmin(ctx, g, 7, 10, domain.RightBanUsers); err != nil {
+	if err := i.PromoteAdmin(ctx, g, 7, 10, domain.RightBanUsers, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := i.DemoteAdmin(ctx, g, 8, 10); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("админ снял чужого админа: %v", err)
 	}
-	if err := i.PromoteAdmin(ctx, g, 8, 10, domain.RightManageAdmins); !errors.Is(err, domain.ErrForbidden) {
+	if err := i.PromoteAdmin(ctx, g, 8, 10, domain.RightManageAdmins, ""); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("админ переписал права чужого админа: %v", err)
 	}
 	if err := i.DemoteAdmin(ctx, g, 8, 9); err != nil {
@@ -163,7 +163,7 @@ func TestPromoteDemote_TargetGate(t *testing.T) {
 		t.Fatalf("владелец не снял админа: %v", err)
 	}
 	// Не участник — ErrNotFound, а не «невидимый админ».
-	if err := i.PromoteAdmin(ctx, g, 7, 99, domain.RightBanUsers); !errors.Is(err, domain.ErrNotFound) {
+	if err := i.PromoteAdmin(ctx, g, 7, 99, domain.RightBanUsers, ""); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("повышение не-участника = %v, ждали ErrNotFound", err)
 	}
 	if _, err := fg.GetMember(ctx, g, 99); err == nil {
