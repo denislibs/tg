@@ -12,6 +12,10 @@ import type { Dialog, DraftMessage, MyMessage } from '@core/models'
 import ChatInput from './input'
 import { ChatType } from './chatType'
 
+// Отказы сервера (правка, пересылка) показываются тостом, а не тонут.
+const toastNew = vi.hoisted(() => vi.fn())
+vi.mock('@components/toast', async(orig) => ({ ...(await orig<typeof import('@components/toast')>()), toastNew }))
+
 const PEER = 2
 const ME = 1
 
@@ -178,9 +182,38 @@ describe('ChatInput: отправка', () => {
     await input.sendMessage()
 
     expect(managers.messages.forwardMessages).toHaveBeenCalledTimes(1)
-    expect(managers.messages.forwardMessages).toHaveBeenCalledWith(PEER, 10, [3, 4], {})
+    expect(managers.messages.forwardMessages).toHaveBeenCalledWith(PEER, 10, [3, 4], { silent: undefined, threadId: null })
     expect(managers.messages.sendText).not.toHaveBeenCalled()
     expect(input.forwarding).toBeUndefined()
+  })
+
+  it('отказ пересылки (403/429/402) — тост, а не молчание', async() => {
+    mounted = await mountInput()
+    const { input, managers, messages } = mounted
+    messages.set(3, message(3, 'раз'))
+    managers.messages.forwardMessages.mockRejectedValueOnce(new Error('403'))
+    toastNew.mockClear()
+
+    input.initMessagesForward({ [10]: [3] })
+    await vi.waitFor(() => expect(input.forwarding).toEqual({ [10]: [3] }))
+    await input.sendMessage()
+
+    await vi.waitFor(() => expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'Error.AnError' }))
+  })
+
+  it('отказ правки — тост, а не молчание', async() => {
+    mounted = await mountInput()
+    const { input, managers, messages } = mounted
+    messages.set(7, message(7, 'старый', ME))
+    managers.messages.editMessage.mockRejectedValueOnce(new Error('403'))
+    toastNew.mockClear()
+
+    await input.initMessageEditing(7)
+    await vi.waitFor(() => expect(input.btnSend.classList.contains('edit')).toBe(true))
+    input.messageInputField.setValueSilently('новый')
+    await input.sendMessage()
+
+    await vi.waitFor(() => expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'Error.AnError' }))
   })
 })
 

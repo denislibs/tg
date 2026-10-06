@@ -8,9 +8,7 @@
  *  2. ВРЕМЕННО до 2C-16: выбор, кого удалить (`showPickUserPopup`, :49-64), —
  *     вкладка выбора участников `AppAddMembersTab` (`channelParticipantsPeerId`),
  *     как у источника админов; удаляет `groups.kickFromChat` по ключу пира.
- *  3. Выгнанные — ручка `/bans` целиком, без страниц и без поиска `q`
- *     (`groups.getParticipants`, Б-115).
- *  4. Меню участника — колбэками (шапка `createParticipantContextMenu.ts`).
+ *  3. Меню участника — колбэками (шапка `createParticipantContextMenu.ts`).
  */
 import type AppSelectPeers from '@components/appSelectPeers.solid'
 import createParticipantContextMenu from '@helpers/dom/createParticipantContextMenu'
@@ -75,7 +73,7 @@ export default function createChatRemovedUsersSource(options: {
       })
     },
     attachSelectorBehavior: (currentSelector: AppSelectPeers) => {
-      // расхождение 4
+      // расхождение 3
       createParticipantContextMenu({
         chatId: chatId as number,
         listenTo: currentSelector.scrollable.container,

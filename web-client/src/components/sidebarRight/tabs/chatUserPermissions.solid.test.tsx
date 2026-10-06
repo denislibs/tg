@@ -39,8 +39,9 @@ const group = (over: Partial<Channel> = {}): Channel => ({
 } as Channel)
 
 const member: ChannelParticipantWire = { _: 'channelParticipant', user_id: USER_ID, date: 1 }
+const OTHER_ADMIN = 5
 const admin: ChannelParticipantWire = {
-  _: 'channelParticipantAdmin', user_id: USER_ID, date: 1,
+  _: 'channelParticipantAdmin', user_id: USER_ID, promoted_by: OTHER_ADMIN, date: 1,
   admin_rights: { _: 'chatAdminRights', pFlags: { change_info: true, pin_messages: true } },
 }
 const restricted: ChannelParticipantWire = {
@@ -161,7 +162,7 @@ describe('права админа', () => {
     expect(groups.editAdmin).toHaveBeenCalledWith(GROUP_ID, admin, {
       _: 'chatAdminRights',
       pFlags: { change_info: true, pin_messages: true, add_admins: true },
-    })
+    }, '')
   })
 
   it('«Разжаловать» — `editAdmin` с пустыми правами вместо сохранения', async() => {
@@ -179,7 +180,7 @@ describe('права админа', () => {
     expect(button(tab, 'Channel.Admin.Dismiss')).toBeUndefined()
     click(saveIcon(tab))
     await waitFor(() => !tab.container.isConnected)
-    expect(groups.editAdmin).toHaveBeenCalledWith(GROUP_ID, member, expect.objectContaining({ _: 'chatAdminRights' }))
+    expect(groups.editAdmin).toHaveBeenCalledWith(GROUP_ID, member, expect.objectContaining({ _: 'chatAdminRights' }), '')
   })
 
   it('админ правит назначенного не им админа — тумблеры заблокированы, «Разжаловать» нет', async() => {
@@ -188,6 +189,36 @@ describe('права админа', () => {
 
     expect(text(sections(tab)[0].querySelector('.sidebar-left-section-caption'))).toBe(lang.EditAdminCantEdit)
     expect(button(tab, 'Channel.Admin.Dismiss')).toBeUndefined()
+  })
+
+  it('админ правит назначенного им самим админа (`promoted_by` = я) — «Разжаловать» есть (ревью #401, п. 5)', async() => {
+    applyPeerOps([{ op: 'upsert', peers: [group({ pFlags: { megagroup: true }, admin_rights: { _: 'chatAdminRights', pFlags: { add_admins: true, ban_users: true } } })] }])
+    const tab = await open({ ...admin, promoted_by: ME } as ChannelParticipantWire, true)
+
+    expect(text(sections(tab)[0].querySelector('.sidebar-left-section-caption'))).not.toBe(lang.EditAdminCantEdit)
+    expect(button(tab, 'Channel.Admin.Dismiss')).toBeTruthy()
+  })
+
+  it('ранг (:368-405): поле «Подпись» с рангом админа, правка уходит в `editAdmin`', async() => {
+    const tab = await open({ ...admin, rank: 'модер' } as ChannelParticipantWire, true)
+    const rankSection = sections(tab).find((el) => text(el.querySelector('.sidebar-left-section-name')) === lang.EditAdminRank)!
+    expect(rankSection).toBeTruthy()
+    expect(text(rankSection.querySelector('.sidebar-left-section-caption'))).toBe(lang.EditAdminRankInfo.replace('%1$s', lang.ChatAdmin))
+    const field = rankSection.querySelector<HTMLElement>('.input-field-input')!
+    expect(text(field)).toBe('модер')
+
+    field.textContent = 'зам'
+    field.dispatchEvent(new Event('input', { bubbles: true }))
+    await waitFor(() => saveIcon(tab).classList.contains('appear-zoom--active'))
+    saveIcon(tab).click()
+    await waitFor(() => groups.editAdmin.mock.calls.length > 0)
+    expect(groups.editAdmin.mock.calls[0][3]).toBe('зам')
+  })
+
+  it('у канала поля ранга нет', async() => {
+    applyPeerOps([{ op: 'upsert', peers: [group({ pFlags: { broadcast: true, creator: true } })] }])
+    const tab = await open(admin, true)
+    expect(sections(tab).some((el) => text(el.querySelector('.sidebar-left-section-name')) === lang.EditAdminRank)).toBe(false)
   })
 })
 

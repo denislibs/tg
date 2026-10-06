@@ -173,17 +173,6 @@ func (r *fakeGroupRepo) IsBanned(_ context.Context, chatID, userID int64) (bool,
 	return r.bans[chatID][userID], nil
 }
 
-func (r *fakeGroupRepo) ListBans(_ context.Context, chatID int64) ([]domain.BannedUser, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	out := []domain.BannedUser{}
-	for uid := range r.bans[chatID] {
-		out = append(out, domain.BannedUser{UserID: uid})
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].UserID < out[j].UserID })
-	return out, nil
-}
-
 func (r *fakeGroupRepo) SetRestriction(_ context.Context, res domain.MemberRestriction) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -199,17 +188,6 @@ func (r *fakeGroupRepo) GetRestriction(_ context.Context, chatID, userID int64) 
 	defer r.mu.Unlock()
 	res, ok := r.restrictions[chatID][userID]
 	return res, ok, nil
-}
-
-func (r *fakeGroupRepo) ListRestrictions(_ context.Context, chatID int64) ([]domain.MemberRestriction, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	out := []domain.MemberRestriction{}
-	for _, res := range r.restrictions[chatID] {
-		out = append(out, res)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].UserID < out[j].UserID })
-	return out, nil
 }
 
 func (r *fakeGroupRepo) DeleteRestriction(_ context.Context, chatID, userID int64) error {
@@ -494,6 +472,9 @@ func (r *fakeGroupRepo) Card(_ context.Context, chatID, viewerID int64) (domain.
 	if m, ok := r.members[chatID][viewerID]; ok {
 		c.MyRole = m.Role
 		c.MyRights = m.Rights
+		if res, ok := r.restrictions[chatID][viewerID]; ok && viewerID != 0 && res.Active(time.Now()) {
+			c.MyRestriction = &res
+		}
 		// Настройки уведомлений зритель-зависимы: без зрителя (снимок
 		// chat_update) их нет вовсе, ровно как в SQL-витрине.
 		if viewerID != 0 {
@@ -534,31 +515,115 @@ func (r *fakeGroupRepo) SetPhoto(_ context.Context, chatID, mediaID int64) error
 	return nil
 }
 
-func (r *fakeGroupRepo) ListMembers(_ context.Context, chatID int64, _ string, offset, limit int) ([]domain.Member, error) {
+// ListParticipants — фильтры recent (joined_at DESC через порядок вставки:
+// user_id DESC), admins (создатель первым), kicked, banned; count — всего.
+func (r *fakeGroupRepo) ListParticipants(_ context.Context, chatID, _ int64, f domain.ParticipantsFilter, offset, limit int) ([]domain.Participant, int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if limit <= 0 || limit > 200 {
 		limit = 200
 	}
-	var out []domain.Member
-	for _, m := range r.members[chatID] {
-		out = append(out, m)
-	}
-	// role DESC, user_id ASC — matches the SQL ordering.
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Role != out[j].Role {
-			return out[i].Role > out[j].Role
+	var out []domain.Participant
+	now := time.Now()
+	if f.Kind == domain.ParticipantsKicked {
+		for uid := range r.bans[chatID] {
+			p := domain.Participant{Kicked: true}
+			p.ChatID, p.UserID = chatID, uid
+			out = append(out, p)
 		}
-		return out[i].UserID < out[j].UserID
+	} else {
+		for _, m := range r.members[chatID] {
+			p := domain.Participant{Member: m}
+			if res, ok := r.restrictions[chatID][m.UserID]; ok && res.Active(now) {
+				res := res
+				p.Restriction = &res
+			}
+			switch f.Kind {
+			case domain.ParticipantsAdmins:
+				if m.Role != domain.RoleCreator && m.Role != domain.RoleAdmin {
+					continue
+				}
+			case domain.ParticipantsBanned:
+				if p.Restriction == nil {
+					continue
+				}
+			}
+			out = append(out, p)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if f.Kind == domain.ParticipantsAdmins && (out[i].Role == domain.RoleCreator) != (out[j].Role == domain.RoleCreator) {
+			return out[i].Role == domain.RoleCreator
+		}
+		return out[i].UserID > out[j].UserID
 	})
+	total := len(out)
 	if offset >= len(out) {
-		return []domain.Member{}, nil
+		return []domain.Participant{}, total, nil
 	}
 	out = out[offset:]
 	if len(out) > limit {
 		out = out[:limit]
 	}
-	return out, nil
+	return out, total, nil
+}
+
+func (r *fakeGroupRepo) GetParticipant(_ context.Context, chatID, userID int64) (domain.Participant, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if m, ok := r.members[chatID][userID]; ok {
+		p := domain.Participant{Member: m}
+		if res, ok := r.restrictions[chatID][userID]; ok && res.Active(time.Now()) {
+			p.Restriction = &res
+		}
+		return p, nil
+	}
+	if r.bans[chatID][userID] {
+		p := domain.Participant{Kicked: true}
+		p.ChatID, p.UserID = chatID, userID
+		return p, nil
+	}
+	return domain.Participant{}, domain.ErrNotFound
+}
+
+func (r *fakeGroupRepo) ParticipantCounters(_ context.Context, chatID int64) (admins, kicked, banned int, err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, m := range r.members[chatID] {
+		if m.Role == domain.RoleCreator || m.Role == domain.RoleAdmin {
+			admins++
+		} else if res, ok := r.restrictions[chatID][m.UserID]; ok && res.Active(time.Now()) {
+			banned++
+		}
+	}
+	return admins, len(r.bans[chatID]), banned, nil
+}
+
+func (r *fakeGroupRepo) SetJoinInfo(_ context.Context, chatID, userID, inviterID int64, viaRequest bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	m, ok := r.members[chatID][userID]
+	if !ok {
+		return nil
+	}
+	if inviterID == userID {
+		inviterID = 0
+	}
+	m.InviterID, m.ViaRequest = inviterID, viaRequest
+	r.members[chatID][userID] = m
+	return nil
+}
+
+func (r *fakeGroupRepo) SetRank(_ context.Context, chatID, userID int64, rank string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	m, ok := r.members[chatID][userID]
+	if !ok {
+		return nil
+	}
+	m.Rank = rank
+	r.members[chatID][userID] = m
+	return nil
 }
 
 func (r *fakeGroupRepo) AdminIDs(_ context.Context, chatID int64) ([]int64, error) {
@@ -793,7 +858,7 @@ func (r *fakeJoinRequestRepo) TokenFor(_ context.Context, chatID, userID int64) 
 	return r.tokens[chatID][userID], true, nil
 }
 
-func (r *fakeJoinRequestRepo) List(_ context.Context, chatID int64) ([]domain.JoinRequest, error) {
+func (r *fakeJoinRequestRepo) List(_ context.Context, chatID int64, _ string, _ time.Time, _ int64, limit int) ([]domain.JoinRequest, int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var out []domain.JoinRequest
@@ -801,7 +866,26 @@ func (r *fakeJoinRequestRepo) List(_ context.Context, chatID int64) ([]domain.Jo
 		out = append(out, jr)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].UserID < out[j].UserID })
-	return out, nil
+	total := len(out)
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, total, nil
+}
+
+func (r *fakeJoinRequestRepo) Pending(_ context.Context, chatID int64) (int, []int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var ids []int64
+	for uid := range r.reqs[chatID] {
+		ids = append(ids, uid)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] > ids[j] })
+	n := len(ids)
+	if len(ids) > 3 {
+		ids = ids[:3]
+	}
+	return n, ids, nil
 }
 
 func (r *fakeJoinRequestRepo) Delete(_ context.Context, chatID, userID int64) error {
@@ -942,12 +1026,12 @@ func TestListMembers_RequiresMembership(t *testing.T) {
 	_ = fg.AddMember(context.Background(), id, 8, domain.RoleMember, 0)
 
 	// Non-member 99 → forbidden.
-	if _, err := i.ListMembers(context.Background(), id, 99, "", 0, 200); !errors.Is(err, domain.ErrForbidden) {
+	if _, err := listRecent(i, context.Background(), id, 99, 200); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("non-member want ErrForbidden, got %v", err)
 	}
 
 	// Member 8 sees the full list (creator 7 + member 8).
-	ms, err := i.ListMembers(context.Background(), id, 8, "", 0, 200)
+	ms, err := listRecent(i, context.Background(), id, 8, 200)
 	if err != nil {
 		t.Fatalf("member list: %v", err)
 	}
@@ -1004,7 +1088,7 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ms, _ := in.ListMembers(ctx, id, 7, "", 0, 100); len(ms) != 3 {
+	if ms, _ := listRecent(in, ctx, id, 7, 100); len(ms) != 3 {
 		t.Fatalf("members = %d; want 3", len(ms))
 	}
 	for _, uid := range []int64{7, 8, 9} {
@@ -1034,9 +1118,10 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Новый участник получает add_user (service new_message) + chat_update (снимок
-	// метаданных: число участников изменилось) = 2 кадра.
-	if pub.countFor(10) != 2 {
-		t.Fatalf("add_user+chat_update frames for new member = %d; want 2", pub.countFor(10))
+	// метаданных: число участников изменилось) + chat_participant (кадр
+	// участника затронутому, Б-115) = 3 кадра.
+	if pub.countFor(10) != 3 {
+		t.Fatalf("add_user+chat_update+chat_participant frames for new member = %d; want 3", pub.countFor(10))
 	}
 	if msgs := s.messages[id]; func() bool {
 		add, ok := msgs[len(msgs)-1].Action.(domain.MessageActionChatAddUser)
@@ -1093,9 +1178,20 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 	if pub.countFor(9) != before9+2 {
 		t.Fatalf("frames for leaver = %d; want +2 (leave + chat_removed)", pub.countFor(9)-before9)
 	}
-	last := pub.frames[len(pub.frames)-1]
-	if last.userID != 9 || !strings.Contains(string(last.frame), `"t":"chat_removed"`) {
-		t.Fatalf("last frame = to %d: %s", last.userID, last.frame)
+	// Последний кадр вышедшему — chat_removed; кадр участника (Left) уходит
+	// уже админам, не ему.
+	var last *capturedFrame
+	for k := len(pub.frames) - 1; k >= 0; k-- {
+		if pub.frames[k].userID == 9 {
+			last = &pub.frames[k]
+			break
+		}
+	}
+	if last == nil || !strings.Contains(string(last.frame), `"t":"chat_removed"`) {
+		t.Fatalf("last frame to leaver: %+v", last)
+	}
+	if f := pub.frames[len(pub.frames)-1]; f.userID == 9 || !strings.Contains(string(f.frame), `"channelParticipantLeft"`) {
+		t.Fatalf("кадр выхода админам: to %d: %s", f.userID, f.frame)
 	}
 
 	// Кик: kick_user + chat_removed кикнутому; не-участника кикнуть нельзя.
@@ -1118,7 +1214,7 @@ func TestGroupLifecycle_ServiceMessagesAndChatRemoved(t *testing.T) {
 	if len(s.messages[id]) != svcCount {
 		t.Fatal("kick of non-member posted a service message")
 	}
-	if ms, _ := in.ListMembers(ctx, id, 7, "", 0, 100); len(ms) != 2 {
+	if ms, _ := listRecent(in, ctx, id, 7, 100); len(ms) != 2 {
 		t.Fatalf("members after leave+kick = %d; want 2", len(ms))
 	}
 }
@@ -1147,10 +1243,10 @@ func TestPromoteAdmin_RequiresManageAdmins(t *testing.T) {
 	i, fg, _ := newGroupTestInteractor(t)
 	id, _, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
 	_ = fg.AddMember(context.Background(), id, 8, domain.RoleMember, 0)
-	if err := i.PromoteAdmin(context.Background(), id, 8, 8, domain.RightPostMessages); !errors.Is(err, domain.ErrForbidden) {
+	if err := i.PromoteAdmin(context.Background(), id, 8, 8, domain.RightPostMessages, ""); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatal("non-manager must not promote")
 	}
-	if err := i.PromoteAdmin(context.Background(), id, 7, 8, domain.RightPostMessages); err != nil {
+	if err := i.PromoteAdmin(context.Background(), id, 7, 8, domain.RightPostMessages, ""); err != nil {
 		t.Fatalf("creator promote: %v", err)
 	}
 	m, _ := fg.GetMember(context.Background(), id, 8)
@@ -1174,7 +1270,7 @@ func TestJoinByToken_NoApproval(t *testing.T) {
 	if _, err := fg.GetMember(context.Background(), id, 9); err != nil {
 		t.Fatal("joiner not a member")
 	}
-	if reqs, _ := fjr.List(context.Background(), id); len(reqs) != 0 {
+	if reqs, _, _ := fjr.List(context.Background(), id, "", time.Time{}, 0, 0); len(reqs) != 0 {
 		t.Fatalf("want no pending requests, got %+v", reqs)
 	}
 }
@@ -1246,7 +1342,7 @@ func TestJoinByToken_RequiresApproval(t *testing.T) {
 		t.Fatalf("user must not be a member yet, got %v", err)
 	}
 	// A pending request exists.
-	reqs, _ := fjr.List(context.Background(), id)
+	reqs, _, _ := fjr.List(context.Background(), id, "", time.Time{}, 0, 0)
 	if len(reqs) != 1 || reqs[0].UserID != 9 {
 		t.Fatalf("want one pending request for user 9, got %+v", reqs)
 	}
@@ -1414,10 +1510,10 @@ func TestListJoinRequests_NonAdminForbidden(t *testing.T) {
 	id, _, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
 	_ = fg.AddMember(context.Background(), id, 8, domain.RoleMember, 0) // plain member
 
-	if _, err := i.ListJoinRequests(context.Background(), id, 8); !errors.Is(err, domain.ErrForbidden) {
+	if _, _, err := i.ListJoinRequests(context.Background(), id, 8, "", time.Time{}, 0, 50); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("non-admin want ErrForbidden, got %v", err)
 	}
-	if _, err := i.ListJoinRequests(context.Background(), id, 99); !errors.Is(err, domain.ErrForbidden) {
+	if _, _, err := i.ListJoinRequests(context.Background(), id, 99, "", time.Time{}, 0, 50); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("non-member want ErrForbidden, got %v", err)
 	}
 }
@@ -1438,7 +1534,7 @@ func TestApproveJoinRequest(t *testing.T) {
 		t.Fatalf("approved user not a member: %v", err)
 	}
 	// Request cleared.
-	if reqs, _ := fjr.List(context.Background(), id); len(reqs) != 0 {
+	if reqs, _, _ := fjr.List(context.Background(), id, "", time.Time{}, 0, 0); len(reqs) != 0 {
 		t.Fatalf("want request gone after approval, got %+v", reqs)
 	}
 }
@@ -1525,7 +1621,7 @@ func TestGroupSettings_Enforcement(t *testing.T) {
 	if _, err := fg.GetMember(ctx, id, 8); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatal("banned user still a member")
 	}
-	if bans, _ := in.ListBanned(ctx, id, 7); len(bans) != 1 || bans[0].UserID != 8 {
+	if bans, _ := in.ListParticipants(ctx, id, 7, domain.ParticipantsFilter{Kind: domain.ParticipantsKicked}, 0, 50); bans.Count != 1 || bans.UserIDs[0] != 8 {
 		t.Fatalf("bans = %+v; want [8]", bans)
 	}
 	if _, _, err := in.JoinByToken(ctx, link.Token, 8); !errors.Is(err, domain.ErrForbidden) {
@@ -1617,8 +1713,8 @@ func TestMemberRestrictions(t *testing.T) {
 	}
 
 	// Listed for admins.
-	if list, err := in.ListRestricted(ctx, id, 7); err != nil || len(list) != 1 || list[0].UserID != 8 {
-		t.Fatalf("ListRestricted = %+v (err %v); want [8]", list, err)
+	if list, err := in.ListParticipants(ctx, id, 7, domain.ParticipantsFilter{Kind: domain.ParticipantsBanned}, 0, 50); err != nil || list.Count != 1 || list.UserIDs[0] != 8 {
+		t.Fatalf("banned = %+v (err %v); want [8]", list, err)
 	}
 
 	// Unrestrict lifts it.
@@ -1628,7 +1724,7 @@ func TestMemberRestrictions(t *testing.T) {
 	if _, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 8, Text: "снова можно", ClientMsgID: "r4"}); err != nil {
 		t.Fatalf("send after unrestrict: %v", err)
 	}
-	if list, _ := in.ListRestricted(ctx, id, 7); len(list) != 0 {
+	if list, _ := in.ListParticipants(ctx, id, 7, domain.ParticipantsFilter{Kind: domain.ParticipantsBanned}, 0, 50); list.Count != 0 {
 		t.Fatalf("ListRestricted after unrestrict = %+v; want empty", list)
 	}
 
@@ -1638,7 +1734,7 @@ func TestMemberRestrictions(t *testing.T) {
 	if _, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 8, Text: "истекло", ClientMsgID: "r5"}); err != nil {
 		t.Fatalf("send under expired restriction: %v", err)
 	}
-	if list, _ := in.ListRestricted(ctx, id, 7); len(list) != 0 {
+	if list, _ := in.ListParticipants(ctx, id, 7, domain.ParticipantsFilter{Kind: domain.ParticipantsBanned}, 0, 50); list.Count != 0 {
 		t.Fatalf("expired restriction listed: %+v", list)
 	}
 }

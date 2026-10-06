@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"slices"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -68,11 +69,31 @@ func (i *Interactor) GroupCallParticipants(ctx context.Context, chatID, userID i
 	return i.groupCalls.Participants(ctx, chatID)
 }
 
-// RelayGroupCallSignal переадресует SDP/ICE/media-state конкретному участнику
-// (сервер — глупое реле, как в 1:1 RelayCall).
+// RelayGroupCallSignal переадресует SDP/ICE/media-state конкретному участнику.
+// Реле — только между УЧАСТНИКАМИ звонка: отправитель состоит в чате, и оба —
+// и он, и адресат — в списке участников видеочата (у оригинала участие —
+// phone.joinGroupCall с правами, чужой сигнал невозможен). Иначе посторонний,
+// зная id чата и участника, слал бы offer и получал его микрофон и камеру.
 func (i *Interactor) RelayGroupCallSignal(ctx context.Context, fromUserID, chatID, toUserID int64, data map[string]any) error {
 	if i.publisher == nil || toUserID == 0 || toUserID == fromUserID {
 		return nil
+	}
+	if i.groupCalls == nil {
+		return domain.ErrNotFound
+	}
+	member, err := i.chats.IsMember(ctx, chatID, fromUserID)
+	if err != nil {
+		return err
+	}
+	if !member {
+		return domain.ErrForbidden
+	}
+	participants, err := i.groupCalls.Participants(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	if !slices.Contains(participants, fromUserID) || !slices.Contains(participants, toUserID) {
+		return domain.ErrForbidden
 	}
 	if data == nil {
 		data = map[string]any{}

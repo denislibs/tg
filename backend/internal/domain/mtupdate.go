@@ -1,5 +1,7 @@
 package domain
 
+import "time"
+
 // Кадры реального времени в форме оригинала — конструкторы объединения
 // `Update`, а не конверт `{t, d}` с типом СТРОКОЙ.
 //
@@ -92,6 +94,9 @@ const (
 	UpdateStoryTag                    = "updateStory"
 	UpdateSentStoryReactionTag        = "updateSentStoryReaction"
 	UpdateReadStoriesTag              = "updateReadStories"
+	// Участники (Ф-3б, Б-115/Б-86) — блок в конце по правилу горячих файлов.
+	UpdateChannelParticipantTag  = "updateChannelParticipant"
+	UpdatePendingJoinRequestsTag = "updatePendingJoinRequests"
 )
 
 // Значения дискриминатора `_` объединения SendMessageAction.
@@ -1075,6 +1080,62 @@ func NewUpdateBotCallbackAnswer(message string, alert bool) UpdateBotCallbackAns
 	u := UpdateBotCallbackAnswer{Underscore: UpdateBotCallbackAnswerTag, Message: message}
 	setPFlag(&u.PFlags, "alert", alert)
 	return u
+}
+
+// updateChannelParticipant#985d3abb flags:# via_chatlist:flags.3?true
+// channel_id:long date:int actor_id:long user_id:long
+// prev_participant:flags.0?ChannelParticipant
+// new_participant:flags.1?ChannelParticipant invite:flags.2?ExportedChatInvite
+// qts:int = Update;
+//
+// Смена состава или прав участника: вступил, вышел, выгнан, забанен и
+// разбанен, ограничен и снят, назначен и снят админом (Б-115, A2-05). Получают
+// затронутый, актор и админы чата — тот набор, что у оригинала. Клиент по нему
+// перечитывает списки и полную карточку (tweb onUpdateChannelParticipant →
+// invalidateChannelParticipants). Отсутствие prev — «не был участником»,
+// отсутствие new — «больше не участник и не в списках» (разбан).
+//
+// qts не производится: курсор у нас один (pts в конверте) — пропуск назван в
+// OmittedWithoutSubject.
+type UpdateChannelParticipant struct {
+	Underscore      string              `json:"_"`
+	ChannelID       int64               `json:"channel_id"`
+	Date            int64               `json:"date"`
+	ActorID         int64               `json:"actor_id"`
+	UserID          int64               `json:"user_id"`
+	PrevParticipant ChannelParticipant  `json:"prev_participant,omitempty"`
+	NewParticipant  ChannelParticipant  `json:"new_participant,omitempty"`
+	Invite          *ChatInviteExported `json:"invite,omitempty"`
+}
+
+func (UpdateChannelParticipant) isUpdate()     {}
+func (u UpdateChannelParticipant) Tag() string { return u.Underscore }
+
+func NewUpdateChannelParticipant(chatID, actorID, userID int64, date time.Time, prev, next ChannelParticipant, invite *ChatInviteExported) UpdateChannelParticipant {
+	return UpdateChannelParticipant{Underscore: UpdateChannelParticipantTag, ChannelID: chatID,
+		Date: unixSecondsInt64(date), ActorID: actorID, UserID: userID,
+		PrevParticipant: prev, NewParticipant: next, Invite: invite}
+}
+
+// updatePendingJoinRequests#7063c3db peer:Peer requests_pending:int
+// recent_requesters:Vector<long> = Update;
+//
+// Заявки на вступление изменились (подача, одобрение, отклонение) — админам с
+// invite_users: плашка заявок в шапке и строка «Заявки» редактора (Б-86).
+// Своего pts у конструктора нет — курсор едет в конверте.
+type UpdatePendingJoinRequests struct {
+	Underscore       string  `json:"_"`
+	Peer             Peer    `json:"peer"`
+	RequestsPending  int     `json:"requests_pending"`
+	RecentRequesters []int64 `json:"recent_requesters"`
+}
+
+func (UpdatePendingJoinRequests) isUpdate()     {}
+func (u UpdatePendingJoinRequests) Tag() string { return u.Underscore }
+
+func NewUpdatePendingJoinRequests(peer Peer, pending int, recent []int64) UpdatePendingJoinRequests {
+	return UpdatePendingJoinRequests{Underscore: UpdatePendingJoinRequestsTag, Peer: peer,
+		RequestsPending: pending, RecentRequesters: nonNilIDs(recent)}
 }
 
 // nonNilIDs — пустой вектор остаётся вектором.

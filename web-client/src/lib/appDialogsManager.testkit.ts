@@ -244,7 +244,8 @@ function fakeManagers(getDialogs?: (...args: never[]) => unknown) {
       // темы форум-таба (задача 1-6 волны 7)
       listTopics: vi.fn(async (_peerId: number): Promise<TopicRow[]> => []),
       // «N онлайн» подписи форум-таба (`appImManager.getOnlines`, пачка П-4)
-      channelParticipants: vi.fn(async (_peerId: number, _offset: number, _limit: number) => ({ _: 'channels.channelParticipants' as const, count: 0, participants: [], chats: [], users: [] })),
+      getParticipants: vi.fn(async (_options: { id: number }) => ({ _: 'channels.channelParticipants' as const, count: 0, participants: [], chats: [], users: [] })),
+      getOnlines: vi.fn(async (_chatId: number) => 1),
     },
     chats: {
       clearHistory: vi.fn(async (_peerId: number) => {}),

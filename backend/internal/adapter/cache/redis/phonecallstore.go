@@ -53,8 +53,10 @@ func (s *PhoneCallStore) Get(ctx context.Context, id string) (domain.PhoneCall, 
 	return decodePhoneCall(id, rec, acc)
 }
 
-func (s *PhoneCallStore) Accept(ctx context.Context, id string, at time.Time) error {
-	return s.client.SetNX(ctx, phoneCallAcceptedKey(id), at.UnixMilli(), phoneCallTTL).Err()
+// Accept отмечает ответ; true — ответ записан ЭТИМ вызовом (SetNX). Из двух
+// устройств, ответивших одновременно, победитель один.
+func (s *PhoneCallStore) Accept(ctx context.Context, id string, at time.Time) (bool, error) {
+	return s.client.SetNX(ctx, phoneCallAcceptedKey(id), at.UnixMilli(), phoneCallTTL).Result()
 }
 
 // Finish читает и удаляет оба ключа в одной транзакции MULTI/EXEC: из двух

@@ -21,7 +21,8 @@
 // `i[data-saved-from]` (клик → переход). Поэтому разбор возвращает сегменты, а
 // `serviceMsgText` — их же, склеенные в строку (для превью в списке чатов, где
 // узлы не нужны).
-import { peerTitle } from './peerCache'
+import { cachedChat, peerTitle } from './peerCache'
+import { isBroadcast } from './peers/predicates'
 import I18n, { type LangPackKey } from '@lib/langPack'
 import { wrapCallDuration } from '@components/wrappers/wrapDuration'
 import type { MessageAction, MessageActionPhoneCall } from './messages/messageAction'
@@ -70,6 +71,13 @@ export function serviceMsgSegs(m: MessageService, pinnedPreview?: string): Servi
     // `inviter_id` — СОЗДАТЕЛЬ ссылки; вошедший это `from_id` самого сообщения.
     case 'messageActionChatJoinedByLink':
       return [actor, t(' присоединился(ась) к группе по ссылке-приглашению от '), user(a.inviter_id)]
+    // Вошёл одобренной заявкой — ключами tweb (`messageActionTextNewUnsafe.ts:416-425`):
+    // своё — «заявка одобрена», чужое — имя вошедшего (`from_id`).
+    case 'messageActionChatJoinedByRequest': {
+      const broadcast = isBroadcast(cachedChat(m.peerId))
+      if (out) return plain(I18n.format(broadcast ? 'RequestToJoinChannelApproved' : 'RequestToJoinGroupApproved', true))
+      return langSegs(broadcast ? 'ChatService.UserJoinedChannelByRequest' : 'ChatService.UserJoinedGroupByRequest', actor)
+    }
     case 'messageActionChatEditPhoto': return [actor, t(' обновил(а) фото группы')]
     // Новое название теперь ЕДЕТ (прежде в действии был один actor_id, и пилюля
     // читалась «Имя изменил(а) название группы» без названия).
@@ -161,7 +169,7 @@ const PEER_SLOT = '\u0000peer'
 
 /** Фраза по ключу словаря с одним пиром на месте `%s` — сегментами, чтобы
  *  пир доехал ссылкой (узлом `PeerTitle`), а не именем, склеенным в строку. */
-function langSegs(key: 'BirthdaySuggestIncoming' | 'BirthdaySuggestOutgoing', peer: ServiceSeg): ServiceSeg[] {
+function langSegs(key: LangPackKey, peer: ServiceSeg): ServiceSeg[] {
   return I18n.format(key, false, [PEER_SLOT]).map((piece) =>
     piece === PEER_SLOT ? peer : t(piece instanceof Node ? piece.textContent ?? '' : String(piece)))
 }

@@ -14,10 +14,8 @@
  *
  *  1. Сообществ нет (О-5): источник один — чат (`chatAdministratorsSource.ts`),
  *     `useCommunityTabGuard` и ветка `communityId` (:30-38, :59-63) не нужны.
- *  2. Подпись «Назначил(а) …» (`EditAdminPromotedBy`, :143-158): `promoted_by`
- *     на проводе нет (`core/peers/participant.ts`, Б-117) — у админа подписи
- *     своей нет, строка показывает статус, как у обычного участника. Создатель —
- *     `ChannelCreator`, как у оригинала.
+ *  2. Имя в подписи «Назначил(а) …» (`EditAdminPromotedBy`, :137-147) — узел
+ *     `PeerTitle` (`components/chat/peerTitle.ts`) вместо `wrapPeerTitle`.
  *  3. «Антиспам» (секция и `toggleAntiSpam`, :41, :175-221) — нет на бэкенде
  *     (Б-116, расхождение 1 источника): ни секции, ни переключателя.
  *  4. Источник создаётся синхронно (карточка — из зеркала, расхождение 1
@@ -30,6 +28,8 @@ import Button from '@components/buttonTsx.solid'
 import createMiddleware from '@helpers/solid/createMiddleware'
 import { getParticipantPeerId, isParticipantAdmin } from '@core/peers/participant'
 import { i18n } from '@lib/langPack'
+import PeerTitle from '@components/chat/peerTitle'
+import { toPeerId } from '@core/peers/peerId'
 import { usePromiseCollector } from '@components/solidJsTabs/promiseCollector.solid'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
 import type { AppChatAdministratorsTab } from '@components/solidJsTabs/tabs'
@@ -138,7 +138,16 @@ const ChatAdministrators: Component = () => {
           return i18n('ChannelCreator')
         }
 
-        // `EditAdminPromotedBy` — расхождение 2
+        if(participant._ !== 'channelParticipantAdmin') {
+          return
+        }
+
+        // расхождение 2
+        return i18n('EditAdminPromotedBy', [new PeerTitle({
+          peerId: toPeerId(participant.promoted_by, false),
+          middleware,
+          managers: tab.managers!,
+        }).element])
       },
       onSelect: (participantId: PeerId | string) => {
         openPermissions(

@@ -40,7 +40,7 @@
 //     `userFull`), `WelcomeMessages.DeleteAll` и обёртка `ChatType.Welcome` (секции нет).
 //     Пункты звонков (`Call`/`VideoCall`/`LiveStream`/`VoiceChat`, `:528-547`) — П-5
 //     (контракт `p5-contract.md`); их `verify*` и кнопки звонка — здесь (П-4, расхождение 10).
-//  2. Плашки — только с предметом (`topbarPlates.ts`, его шапка): видеочат и эфир.
+//  2. Плашки — только с предметом (`topbarPlates.ts`, его шапка): заявки, видеочат и эфир.
 //     Закреп — `pinnedMessage.solid.tsx`, цикл `setupPinnedMessageForPeer`/
 //     `revealPreparedPinnedMessage` (`:1256-1381`) 1:1; скрытие плашки — `isPinnedMessagesHidden`
 //     (`core/pinnedMessages.ts`) вместо `appState.hiddenPinnedMessages`.
@@ -126,7 +126,8 @@ import { showPeerReport } from '@components/popups/reportAd.bridge'
 import { useSettingsStore } from '@/settings'
 import { countUnmutedUnreadPeers } from '@/client/appBadge'
 import { cachedChat, cachedPeer, subscribePeerMirror } from '@core/peerCache'
-import { isUser } from '@core/peers/peerId'
+import { isUser, toPeerId } from '@core/peers/peerId'
+import { RT } from '@core/realtime/events'
 import { getLinkedChatPeerId } from '@core/peers/peer'
 import { isPeerMuted } from '@core/dialogs/notifySettings'
 import canClearHistory from '@core/peers/canClearHistory'
@@ -795,6 +796,26 @@ export default class ChatTopbar {
       this.verifyButtons()
     }))
 
+    // * `:1098-1115`
+    this.listenerSetter.add(rootScope)(RT.chatRequests, ({ chatId, recentRequesters, requestsPending }) => {
+      if(this.peerId !== toPeerId(chatId as number, true)) {
+        return
+      }
+
+      const middleware = this.chat.bubbles.getMiddleware()
+      void this.plates!.requests.set(
+        this.peerId,
+        recentRequesters.map((userId) => toPeerId(userId as number, false)),
+        requestsPending,
+      ).then((callback) => {
+        if(!middleware()) {
+          return
+        }
+
+        callback()
+      })
+    })
+
     // * `call_active` чата — расхождение 10
     const onCallsChange = <T extends { activeByChat: Record<number, unknown> }>(state: T, prev: T) => {
       if(state.activeByChat[this.peerId] !== prev.activeByChat[this.peerId]) {
@@ -1039,11 +1060,15 @@ export default class ChatTopbar {
     this.status?.destroy()
     const status = this.status = this.createStatus()
 
-    const [, setTitleCallback, setStatusCallback] = await Promise.all([
+    // `:1429` — подтверждённый ответ плашки заявок: из зеркала (`cached`) колбэк
+    // ждём здесь же, иначе плашка снимается и встаёт, когда карточка приедет
+    const setRequestsCallback = this.plates!.requests.setPeerId(peerId)
+    const [, setTitleCallback, setStatusCallback, , setRequestsCached] = await Promise.all([
       Promise.resolve(newAvatar?.readyThumbPromise),
       this.setTitleManual(),
       Promise.resolve(status?.prepare(true)),
       Promise.resolve(this.setupPinnedMessageForPeer()),
+      Promise.resolve(setRequestsCallback.cached ? setRequestsCallback.result : undefined),
     ] as const)
 
     if(!middleware() && newAvatarMiddlewareHelper) {
@@ -1088,6 +1113,20 @@ export default class ChatTopbar {
       this.verifyButtons()
 
       this.container.classList.remove('hide')
+
+      // `:1505-1507`, `:1522-1528`
+      if(!setRequestsCallback.cached) {
+        this.plates!.requests.unset(peerId)
+        void setRequestsCallback.result.then((callback) => {
+          if(!middleware()) {
+            return
+          }
+
+          callback()
+        })
+      } else {
+        setRequestsCached?.()
+      }
 
       this.plates?.live?.setPeerId(peerId)
       this.plates?.groupCall?.setPeerId(peerId)

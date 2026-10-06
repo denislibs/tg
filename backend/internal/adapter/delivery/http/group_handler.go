@@ -276,29 +276,6 @@ func (h *GroupHandler) SetHistory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
-// ListBans returns the removed-users list (GET /chats/{chatID}/bans).
-func (h *GroupHandler) ListBans(w http.ResponseWriter, r *http.Request) {
-	user, _ := UserFromContext(r.Context())
-	chatID, ok := peerChatID(w, r, h.uc)
-	if !ok {
-		return
-	}
-	bans, err := h.uc.ListBanned(r.Context(), chatID, user.ID)
-	if err != nil {
-		h.mapErr(w, err)
-		return
-	}
-	// Выгнанный и ограниченный — ОДИН конструктор объединения
-	// (`channelParticipantBanned`): разницу выражает флаг `left`, а чем именно
-	// ограничен — маска `banned_rights`. Прежде это были два разных списка с
-	// разной формой строки.
-	out := make([]domain.ChannelParticipant, 0, len(bans))
-	for _, b := range bans {
-		out = append(out, domain.NewChannelParticipantBanned(b.UserID, b.BannedBy, 0, domain.AllMemberPerms, time.Time{}, true))
-	}
-	writeJSON(w, http.StatusOK, domain.NewChannelsChannelParticipants(len(out), out, nil))
-}
-
 // Ban kicks a user and adds them to the removed-users list (POST /chats/{chatID}/bans).
 func (h *GroupHandler) Ban(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
@@ -336,38 +313,6 @@ func (h *GroupHandler) Unban(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
-}
-
-// ListRestrictions returns the chat's granularly-restricted members
-// (GET /chats/{chatID}/restrictions).
-func (h *GroupHandler) ListRestrictions(w http.ResponseWriter, r *http.Request) {
-	user, _ := UserFromContext(r.Context())
-	chatID, ok := peerChatID(w, r, h.uc)
-	if !ok {
-		return
-	}
-	list, err := h.uc.ListRestricted(r.Context(), chatID, user.ID)
-	if err != nil {
-		h.mapErr(w, err)
-		return
-	}
-	// Ограниченный — ТОТ ЖЕ конструктор объединения, что и выгнанный
-	// (`channelParticipantBanned`), только без флага `left`: он остаётся в чате.
-	// Прежде это был отдельный список со своей формой строки — вторая форма
-	// одного предмета.
-	//
-	// Срок (until_date) — обязательный параметр самого `chatBannedRights`, 0
-	// значит «бессрочно»; про полярность знает MemberRestriction.ToChatBannedRights.
-	out := make([]domain.ChannelParticipant, 0, len(list))
-	for _, res := range list {
-		out = append(out, domain.ChannelParticipantBanned{
-			Underscore:   domain.ChannelParticipantBannedTag,
-			Peer:         domain.NewPeerUser(res.UserID),
-			KickedBy:     res.RestrictedBy,
-			BannedRights: res.ToChatBannedRights(),
-		})
-	}
-	writeJSON(w, http.StatusOK, domain.NewChannelsChannelParticipants(len(out), out, nil))
 }
 
 // Restrict applies a granular per-user restriction (POST /chats/{chatID}/restrictions).
@@ -471,12 +416,14 @@ func (h *GroupHandler) PromoteAdmin(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		UserID int64 `json:"user_id"`
 		Rights int   `json:"rights"`
+		// Rank — подпись админа (channels.editAdmin rank, Б-117).
+		Rank string `json:"rank"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || b.UserID == 0 {
 		writeError(w, http.StatusBadRequest, "user_id required")
 		return
 	}
-	if err := h.uc.PromoteAdmin(r.Context(), chatID, user.ID, b.UserID, domain.Rights(b.Rights)); err != nil {
+	if err := h.uc.PromoteAdmin(r.Context(), chatID, user.ID, b.UserID, domain.Rights(b.Rights), b.Rank); err != nil {
 		h.mapErr(w, err)
 		return
 	}
@@ -649,7 +596,21 @@ func (h *GroupHandler) Card(w http.ResponseWriter, r *http.Request) {
 	// из неё), а `creator_id` — мёртвым: его никто не читал, только хранил.
 	// «Создатель ли я» выражает `pFlags.creator` краткой карточки, а «кто
 	// создатель» — конструктор `channelParticipantCreator` в списке участников.
-	writeJSON(w, http.StatusOK, domain.NewMessagesChatFull(c.ToChannelFull(), c.ToChannel()))
+	out := domain.NewMessagesChatFull(c.ToChannelFull(), c.ToChannel())
+	// Канал группы обсуждения (Б-119) — краткой формой в chats: вкладка
+	// «Обсуждение» группы рисует строку «Привязанный канал» из него.
+	if c.LinkedChannelID != 0 {
+		if lc, err := h.uc.LinkedChannel(r.Context(), chatID, user.ID); err == nil {
+			out.Chats = append(out.Chats, lc.ToChannel())
+		}
+	}
+	// Карточки заявителей плашки заявок (recent_requesters, Б-86).
+	if c.Counters != nil && len(c.Counters.RecentRequesters) > 0 {
+		if cards, err := h.participantCards(r, user.ID, c.Counters.RecentRequesters); err == nil {
+			out.Users = cards
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // SetChargeStars sets the paid-message price in stars (PUT /chats/{chatID}/charge_stars).
@@ -673,66 +634,133 @@ func (h *GroupHandler) SetChargeStars(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
-func (h *GroupHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
+// Participants — channels.getParticipants (GET /chats/{peerID}/participants):
+// filter = recent|admins|kicked|banned|bots|search|contacts|mentions, q,
+// top_msg_id, offset, limit. count — ВСЕГО по фильтру (A4-07), не длина
+// страницы. Одна ручка вместо трёх (`/members`, `/bans`, `/restrictions`).
+func (h *GroupHandler) Participants(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	chatID, ok := peerChatID(w, r, h.uc)
 	if !ok {
 		return
 	}
-	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	qs := r.URL.Query()
+	offset, _ := strconv.Atoi(qs.Get("offset"))
 	limit := 200
-	if v := r.URL.Query().Get("limit"); v != "" {
+	if v := qs.Get("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			limit = n
 		}
 	}
-	// q — фильтр `channelParticipantsSearch` (выбор отправителя в поиске по чату).
-	members, err := h.uc.ListMembers(r.Context(), chatID, user.ID, r.URL.Query().Get("q"), offset, limit)
+	f := domain.ParticipantsFilter{Kind: domain.ParticipantsFilterKind(qs.Get("filter")), Q: qs.Get("q")}
+	if f.Kind == "" {
+		f.Kind = domain.ParticipantsRecent
+	}
+	if !f.Kind.Valid() {
+		writeError(w, http.StatusBadRequest, "invalid filter")
+		return
+	}
+	f.TopMsgID, _ = strconv.ParseInt(qs.Get("top_msg_id"), 10, 64)
+	page, err := h.uc.ListParticipants(r.Context(), chatID, user.ID, f, offset, limit)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
-	// Онлайн показывается только тем, кому участник разрешил видеть last seen
-	// (иначе — «был(а) недавно» на клиенте).
-	viewer, _ := UserFromContext(r.Context())
-	ids := make([]int64, 0, len(members))
-	for _, m := range members {
-		ids = append(ids, m.UserID)
+	// РОЛЬ — выбор конструктора, ПРИСУТСТВИЕ — на карточке пользователя
+	// (`user.status`) в векторе `users` того же контейнера.
+	cards, err := h.participantCards(r, user.ID, page.UserIDs)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, domain.NewChannelsChannelParticipants(page.Count, page.Participants, cards))
+}
+
+// Participant — channels.getParticipant (GET /chats/{peerID}/participants/{userID}).
+// Не участник и не удалённый — USER_NOT_PARTICIPANT, как у оригинала.
+func (h *GroupHandler) Participant(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := peerChatID(w, r, h.uc)
+	if !ok {
+		return
+	}
+	uid, ok := pathInt(w, r, "userID")
+	if !ok {
+		return
+	}
+	p, ids, err := h.uc.GetParticipant(r.Context(), chatID, user.ID, uid)
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusBadRequest, "USER_NOT_PARTICIPANT")
+		return
+	}
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	cards, err := h.participantCards(r, user.ID, ids)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, domain.NewChannelsChannelParticipant(p, cards))
+}
+
+// participantCards — карточки участников глазами зрителя со статусом:
+// онлайн видит тот, кому участник разрешил last seen (иначе — другой
+// конструктор, userStatusRecently, как у оригинала).
+func (h *GroupHandler) participantCards(r *http.Request, viewerID int64, ids []int64) ([]domain.UserReal, error) {
+	cards, err := h.uc.UsersByIDs(r.Context(), viewerID, ids)
+	if err != nil {
+		return nil, err
 	}
 	seen := map[int64]bool{}
 	if h.privacy != nil {
-		if v, err := h.privacy.VisibleMap(r.Context(), viewer.ID, ids, domain.PrivacyLastSeen); err == nil {
+		if v, err := h.privacy.VisibleMap(r.Context(), viewerID, ids, domain.PrivacyLastSeen); err == nil {
 			seen = v
 		}
 	}
-	// РОЛЬ — это выбор конструктора, а не строка в строке участника; ПРИСУТСТВИЕ
-	// живёт на карточке пользователя (`user.status`), а карточки едут вектором
-	// `users` того же контейнера. Прежде статус висел на участнике — второй дом
-	// у одного факта.
-	participants := make([]domain.ChannelParticipant, 0, len(members))
-	for _, m := range members {
-		participants = append(participants, domain.NewChannelParticipant(m, 0))
-	}
-	cards, err := h.uc.UsersByIDs(r.Context(), viewer.ID, ids)
-	if err != nil {
-		h.mapErr(w, err)
-		return
-	}
 	gatePhotos(r, h.privacy, cards)
 	for i := range cards {
-		// Скрытое правилом last_seen присутствие — это ДРУГОЙ конструктор
-		// (userStatusRecently), а не online:false: приватность выражена самим
-		// статусом, как в оригинале.
 		switch {
 		case h.presence == nil:
 			cards[i].Status = domain.NewUserStatusEmpty()
-		case h.privacy != nil && !seen[cards[i].ID] && cards[i].ID != viewer.ID:
+		case h.privacy != nil && !seen[cards[i].ID] && cards[i].ID != viewerID:
 			cards[i].Status = domain.NewUserStatusRecently(false)
 		default:
 			cards[i].Status = domain.PresenceStatus(h.presence.Status(r.Context(), cards[i].ID))
 		}
 	}
-	writeJSON(w, http.StatusOK, domain.NewChannelsChannelParticipants(len(members), participants, cards))
+	return cards, nil
+}
+
+// OnlineCounter — сколько из ids сейчас онлайн (presence.Manager, одним
+// конвейером Redis). Опциональный шов: без него онлайн не считается.
+type OnlineCounter interface {
+	CountOnline(ctx context.Context, userIDs []int64) (int, error)
+}
+
+// Onlines — messages.getOnlines (GET /chats/{peerID}/onlines) → chatOnlines
+// (Б-84). Канал — 1, как у tweb getOnlines; минимум 1 — сам зритель.
+// Считаются ВСЕ онлайн, включая скрывших время визита: число не раскрывает,
+// кто именно (решение по умолчанию, как у Telegram по наблюдению).
+func (h *GroupHandler) Onlines(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := peerChatID(w, r, h.uc)
+	if !ok {
+		return
+	}
+	ids, broadcast, err := h.uc.OnlineCandidates(r.Context(), chatID, user.ID)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	n := 1
+	if oc, ok := h.presence.(OnlineCounter); ok && !broadcast {
+		if c, err := oc.CountOnline(r.Context(), ids); err == nil && c > n {
+			n = c
+		}
+	}
+	writeJSON(w, http.StatusOK, domain.NewChatOnlines(n))
 }
 
 func (h *GroupHandler) Users(w http.ResponseWriter, r *http.Request) {
@@ -961,7 +989,16 @@ func (h *GroupHandler) JoinRequests(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	reqs, err := h.uc.ListJoinRequests(r.Context(), chatID, user.ID)
+	// Страница messages.getChatInviteImporters{requested}: q, курсор
+	// (offset_date, offset_user) — последняя полученная строка, limit.
+	qs := r.URL.Query()
+	var offsetDate time.Time
+	if v, _ := strconv.ParseInt(qs.Get("offset_date"), 10, 64); v > 0 {
+		offsetDate = time.Unix(v, 0)
+	}
+	offsetUser, _ := strconv.ParseInt(qs.Get("offset_user"), 10, 64)
+	limit, _ := strconv.Atoi(qs.Get("limit"))
+	reqs, total, err := h.uc.ListJoinRequests(r.Context(), chatID, user.ID, qs.Get("q"), offsetDate, offsetUser, limit)
 	if err != nil {
 		h.mapErr(w, err)
 		return
@@ -970,10 +1007,18 @@ func (h *GroupHandler) JoinRequests(w http.ResponseWriter, r *http.Request) {
 	// флагом `requested`: у оригинала это один список, отфильтрованный по
 	// флагу, а не два разных.
 	out := make([]domain.ChatInviteImporter, 0, len(reqs))
+	ids := make([]int64, 0, len(reqs))
 	for _, rq := range reqs {
 		out = append(out, domain.NewChatInviteImporter(rq.UserID, rq.CreatedAt, true, 0))
+		ids = append(ids, rq.UserID)
 	}
-	writeJSON(w, http.StatusOK, domain.NewMessagesChatInviteImporters(len(out), out, nil))
+	// Карточки заявителей — вектором users: строка вкладки читает их синхронно.
+	cards, err := h.participantCards(r, user.ID, ids)
+	if err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, domain.NewMessagesChatInviteImporters(total, out, cards))
 }
 
 func (h *GroupHandler) ApproveJoinRequest(w http.ResponseWriter, r *http.Request) {

@@ -8,9 +8,9 @@
  *    или короткой странице (RS-06: прокрутка участников);
  *  - фильтр (`channelParticipantsFilter`) получает текущий запрос;
  *  - карта `participants` заполняется со страниц;
- *  - живое обновление: на `chat_update` этого чата список перечитывается и
- *    сводится по карте (пришедший — строкой, пропавший — снят), чужой чат не
- *    трогает;
+ *  - живое обновление: кадр `chat_participant` этого чата (`:533-540`) —
+ *    подходящий под фильтр участник строкой, неподходящий/ушедший — снят;
+ *    чужой чат не трогает;
  *  - `deletePeerId` снимает строку.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -27,7 +27,7 @@ const PEER = -CHAT_ID
 
 const user = (id: number): User => ({ _: 'user', id, first_name: 'U' + id, pFlags: {} } as User)
 const member = (id: number): ChannelParticipantWire => ({ _: 'channelParticipant', user_id: id, date: 1 })
-const admin = (id: number): ChannelParticipantWire => ({ _: 'channelParticipantAdmin', user_id: id, date: 1, admin_rights: { _: 'chatAdminRights' } })
+const admin = (id: number): ChannelParticipantWire => ({ _: 'channelParticipantAdmin', user_id: id, promoted_by: 1, date: 1, admin_rights: { _: 'chatAdminRights' } })
 
 let helper: MiddlewareHelper
 let appendTo: HTMLElement
@@ -119,7 +119,13 @@ describe('AppSelectPeers — участники канала', () => {
     expect(rowIds(selector)).toEqual([5, 7])
   })
 
-  it('`chat_update` этого чата перечитывает список и сводит его по карте: новый — строкой, пропавший — снят', async() => {
+  const participantUpdate = (userId: number, next: ChannelParticipantWire | undefined, channelId = CHAT_ID) => {
+    rootScope.dispatchEventSingle(RT.chatParticipant, {
+      _: 'updateChannelParticipant', channel_id: channelId, date: 1, user_id: userId, new_participant: next,
+    })
+  }
+
+  it('`chat_participant` этого чата: назначенный — строкой, разжалованный — снят, сети нет', async() => {
     all = [admin(5), admin(7)]
     const selector = build({
       channelParticipantsFilter: (q) => ({ _: 'channelParticipantsAdmins', q }),
@@ -127,38 +133,45 @@ describe('AppSelectPeers — участники канала', () => {
     })
     await settle()
     expect(rowIds(selector)).toEqual([5, 7])
+    getParticipants.mockClear()
 
-    // 7 разжалован, 8 назначен
-    all = [admin(5), member(7), admin(8)]
-    rootScope.dispatchEventSingle(RT.chatUpdate, { peer: { _: 'peerChannel', channel_id: CHAT_ID } } as never)
+    participantUpdate(7, member(7))
+    participantUpdate(8, admin(8))
     await settle()
 
     expect(rowIds(selector).sort((a, b) => a - b)).toEqual([5, 8])
     expect(selector.participants.has(7)).toBe(false)
     expect(selector.participants.get(8)).toEqual(admin(8))
+    expect(getParticipants).not.toHaveBeenCalled()
   })
 
-  it('`chat_update` чужого чата список не трогает', async() => {
+  it('ушедший (без `new_participant`) снимается', async() => {
+    all = [member(5), member(6)]
     const selector = build({ channelParticipantsUpdateFilter: (p) => !!p })
     await settle()
-    getParticipants.mockClear()
+    participantUpdate(6, undefined)
+    await settle()
+    expect(rowIds(selector)).toEqual([5])
+  })
 
-    rootScope.dispatchEventSingle(RT.chatUpdate, { peer: { _: 'peerChannel', channel_id: 999 } } as never)
+  it('`chat_participant` чужого чата список не трогает', async() => {
+    const selector = build({ channelParticipantsUpdateFilter: (p) => !!p })
     await settle()
 
-    expect(getParticipants).not.toHaveBeenCalled()
+    participantUpdate(100, undefined, 999)
+    await settle()
+
     expect(rowIds(selector)).toHaveLength(50)
   })
 
-  it('без `channelParticipantsUpdateFilter` на `chat_update` не подписан', async() => {
-    build()
-    await settle()
-    getParticipants.mockClear()
-
-    rootScope.dispatchEventSingle(RT.chatUpdate, { peer: { _: 'peerChannel', channel_id: CHAT_ID } } as never)
+  it('без `channelParticipantsUpdateFilter` на `chat_participant` не подписан', async() => {
+    const selector = build()
     await settle()
 
-    expect(getParticipants).not.toHaveBeenCalled()
+    participantUpdate(100, undefined)
+    await settle()
+
+    expect(rowIds(selector)).toHaveLength(50)
   })
 
   it('`deletePeerId` снимает строку', async() => {

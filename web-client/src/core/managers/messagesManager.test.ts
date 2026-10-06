@@ -123,7 +123,19 @@ describe('MessagesManager.forwardMessages', () => {
     const mgr = newMessagesManager({ rest })
     await mgr.forwardMessages(1, 2, [cid(3), cid(4)], { dropAuthor: true })
     expect(path).toBe('/chats/1/forward')
-    expect(body).toEqual({ from_peer_id: 2, ids: [3, 4], drop_author: true, drop_caption: false })
+    expect(body).toEqual({ from_peer_id: 2, ids: [3, 4], drop_author: true, drop_caption: false, silent: false, top_msg_id: null })
+  })
+
+  // tweb forwardMessagesInner: `silent` и `top_msg_id` (корень темы/треда у
+  // приёмника, серверный номер) — без них пересылка в тему уходила в General.
+  it('несёт silent и top_msg_id темы приёмника', async () => {
+    let body: Record<string, unknown> = {}
+    const rest = {
+      post: async (_p: string, b: Record<string, unknown>) => { body = b; return { messages: [], users: [], chats: [] } },
+    } as unknown as RestClient
+    const mgr = newMessagesManager({ rest })
+    await mgr.forwardMessages(1, 2, [cid(3)], { silent: true, threadId: cid(9) })
+    expect(body).toMatchObject({ silent: true, top_msg_id: 9 })
   })
 })
 

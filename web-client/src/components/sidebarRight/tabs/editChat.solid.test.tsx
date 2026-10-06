@@ -49,6 +49,7 @@ vi.mock('@components/toast', async(importOriginal) => ({
 
 const ME = 1
 const GROUP_ID = 30
+const PEER = -GROUP_ID
 const CHANNEL_ID = 20
 
 const ADMIN_ALL = {
@@ -281,7 +282,7 @@ describe('вкладка «Изменить» — строки по виду ч�
   })
 
   // `editChat.tsx:700-708`: строка «Заявки» — у админа с правом приглашать и
-  // только при `requests_pending`; сервер счётчика пока не шлёт (Б-115)
+  // только при `requests_pending` (карточка зрителя с `invite_users`)
   it('«Заявки» — только при `requests_pending`; счётчики секции участников — как у оригинала', async() => {
     const tab = await open(
       group({ admin_rights: ADMIN_ALL, participants_count: 1234 }),
@@ -310,13 +311,42 @@ describe('вкладка «Изменить» — строки по виду ч�
     tab = await open(group({ pFlags: { megagroup: true, creator: true } }), fullOf(GROUP_ID, { available_reactions: some(3) }))
     expect(subtitleOf(tab)).toBe(lang.ReactionsAll)
 
-    // политика меняется кадром `chat_update` (после записи во вкладке реакций)
+    // политика меняется кадром `chat_update` (после записи во вкладке реакций):
+    // полная карточка перечитывается (`chat_full_update` → `getChatFull`)
+    const updated = cards.get(PEER)!
+    cards.set(PEER, { ...updated, fullChat: fullOf(GROUP_ID, { available_reactions: { _: 'chatReactionsNone' } }) })
     rootScope.dispatchEventSingle(RT.chatUpdate, {
       peer: { _: 'peerChannel', channel_id: GROUP_ID },
-      chat_full: { _: 'messages.chatFull', full_chat: fullOf(GROUP_ID, { available_reactions: { _: 'chatReactionsNone' } }), chats: [], users: [] },
+      chat_full: { _: 'messages.chatFull', full_chat: fullOf(GROUP_ID), chats: [], users: [] },
     } as never)
     await settle()
     expect(subtitleOf(tab)).toBe(lang['Checkbox.Disabled'])
+  })
+
+  it('счётчики админов/удалённых и «Заявки» — из карточки зрителя; живут по `chat_participant` (перечитывание карточки)', async() => {
+    const tab = await open(group({ pFlags: { megagroup: true, creator: true } }), fullOf(GROUP_ID, {
+      participants_count: 10, admins_count: 3, kicked_count: 2, requests_pending: 4,
+    }))
+    expect(text(row(tab, 'PeerInfo.Administrators')!.querySelector('.row-subtitle'))).toBe('3')
+    expect(text(row(tab, 'ChannelBlockedUsers')!.querySelector('.row-subtitle'))).toBe('2')
+    expect(text(row(tab, 'MemberRequests')!.querySelector('.row-subtitle'))).toBe('4')
+
+    const updated = cards.get(PEER)!
+    cards.set(PEER, { ...updated, fullChat: fullOf(GROUP_ID, { participants_count: 10, admins_count: 4, kicked_count: 2 }) })
+    rootScope.dispatchEventSingle(RT.chatParticipant, {
+      _: 'updateChannelParticipant', channel_id: GROUP_ID, date: 1, user_id: 9,
+      new_participant: { _: 'channelParticipantAdmin', user_id: 9, promoted_by: ME, date: 1, admin_rights: { _: 'chatAdminRights' } },
+    })
+    await settle()
+    expect(text(row(tab, 'PeerInfo.Administrators')!.querySelector('.row-subtitle'))).toBe('4')
+    // заявок не стало — строки нет
+    expect(row(tab, 'MemberRequests')).toBeFalsy()
+
+    // кадр чужого чата карточку не перечитывает
+    const calls = groups.card.mock.calls.length
+    rootScope.dispatchEventSingle(RT.chatParticipant, { _: 'updateChannelParticipant', channel_id: GROUP_ID + 1, date: 1, user_id: 9 })
+    await settle()
+    expect(groups.card.mock.calls.length).toBe(calls)
   })
 
   it('обсуждение: у канала без группы — «Добавить», с группой — её имя; у группы с каналом — «Привязанный канал»', async() => {

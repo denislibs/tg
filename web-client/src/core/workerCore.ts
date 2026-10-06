@@ -53,10 +53,10 @@ import { newChannelFunnel, type ChannelDiff } from './realtime/channelFunnel'
 import { newSyncWait } from './realtime/syncWait'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type RepliesUpdateEvt, type MediaReadEvt, type Update } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type RepliesUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { generateMessageId } from './history/messageId'
-import { getPeerId, toPeerId } from './peers/peerId'
+import { getPeerId, toChatId, toPeerId } from './peers/peerId'
 import { LOGGED_WITHOUT_CONSTRUCTOR, PASS_THROUGH } from './realtime/transportFrames'
 import { CHANNEL_CURSOR, UPDATE_RT, channelPeerId, frameKey, updatePredicate } from './realtime/updateCatalog'
 import { idbGet, idbSet } from './store/idbKv'
@@ -374,6 +374,10 @@ export function createWorkerCore() {
       saveApiMessages: (list) => messages.saveApiMessages(list),
       getMessageByPeer: (peerId, seq) => messages.getMessageByPeer(peerId, seq),
     },
+    getMeId: () => me?.user.id ?? null,
+    // Местный апдейт участника после своей мутации (tweb `processLocalUpdate`)
+    // уезжает вкладкам тем же событием, что и кадр сервера (`dispatch` ниже).
+    onChannelParticipant: (update) => broadcast(RT.chatParticipant, update),
   })
   // cacheViews — владелец счётчика просмотров: ответ на регистрацию просмотра
   // несёт уже новые значения, и применяет их та же точка, что и кадр
@@ -595,6 +599,16 @@ export function createWorkerCore() {
       peers.saveApiPeers((d as ChatUpdateEvt).chat_full)
     }
     else if (pred === 'updateChatRemoved') dialogs.applyRemoved(getPeerId((d as ChatRemovedEvt).peer))
+    // tweb `appChatsManager.onUpdateChannelParticipant` (:1419-1422): кэш страниц
+    // участников чата — сбросить ДО рассылки `chat_participant`.
+    else if (pred === 'updateChannelParticipant') groups.invalidateChannelParticipants((d as ChannelParticipantEvt).channel_id)
+    // tweb `appChatInvitesManager.onUpdatePendingJoinRequests` (:24-40): скрытие
+    // плашки заявок снимается, вкладкам уезжает ПЕРЕЛОЖЕННЫЙ `chat_requests`, а
+    // не сырой кадр — поэтому общий веер ниже эта ветка обходит.
+    else if (pred === 'updatePendingJoinRequests') {
+      void onUpdatePendingJoinRequests(d as PendingJoinRequestsEvt, meta)
+      return
+    }
     // Черновик — ПОЛЕ диалога, поэтому его применяет владелец списка: от даты
     // черновика зависит место строки, и считать её на витрине значило бы
     // держать порядок в двух местах.
@@ -638,6 +652,22 @@ export function createWorkerCore() {
       else if (unreadReactions !== undefined) dialogs.modifyUnreadReactions(peerId, unreadReactions)
     }
     broadcast(UPDATE_RT[pred], d, meta)
+  }
+
+  async function onUpdatePendingJoinRequests(update: PendingJoinRequestsEvt, meta?: EventMeta): Promise<void> {
+    const peerId = getPeerId(update.peer)
+    const state = await getState()
+    const hideChatJoinRequests = { ...state.hideChatJoinRequests }
+    delete hideChatJoinRequests[peerId]
+    // tweb `appStateManager.pushToState` — запись и зеркало ключа вкладкам
+    mirrorStateKey('hideChatJoinRequests', hideChatJoinRequests)
+    await saveStateKey('hideChatJoinRequests', hideChatJoinRequests).catch(() => {})
+    const evt: ChatRequestsEvt = {
+      chatId: toChatId(peerId),
+      recentRequesters: update.recent_requesters ?? [],
+      requestsPending: update.requests_pending,
+    }
+    broadcast(RT.chatRequests, evt, meta)
   }
 
   // Новое сообщение → SSOT + broadcast. Дедуп и порядок — на курсоре в applyUpdate

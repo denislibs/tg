@@ -19,7 +19,7 @@ function restWith(page: RawMessage[]) {
 }
 
 async function managerWith(rows: { id: number, fromId: number, out?: boolean, sticker?: boolean }[]) {
-  const page = rows.map(({ id, fromId, out }) => makeRawMessage({ id, peerId: BOB, fromId, out, text: `m${id}` }) as RawMessage)
+  const page = rows.map(({ id, fromId, out }) => makeRawMessage({ id, peerId: BOB, fromId, out, text: `m${id}`, date: Math.floor(Date.now() / 1000) - 60 + id }) as RawMessage)
   const mgr = newMessagesManager({ rest: restWith(page), getMeId: () => ME, getPeer: () => undefined })
   await mgr.getHistory({ peerId: BOB, offsetId: 0, addOffset: 0, limit: 40 })
   return mgr

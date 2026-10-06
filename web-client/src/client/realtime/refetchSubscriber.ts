@@ -7,7 +7,9 @@
 // проектором не важен.
 import rootScope from '@lib/rootScope'
 import { RT, type PinMessageEvt } from '../../core/realtime/events'
-import { getPeerId } from '../../core/peers/peerId'
+import { getPeerId, toPeerId } from '../../core/peers/peerId'
+import { cachedPeerFull } from '../../core/chatFullCache'
+import { refreshFullPeer } from '../../stores/fullPeers.solid'
 import { useChatsStore } from '../../stores/chatsStore'
 import { onPinnedMessagesUpdate } from '../../core/pinnedMessages'
 import { applyFolderUpdate, type FolderUpdateEvt } from '../../stores/foldersStore'
@@ -72,6 +74,15 @@ export function registerRefetchSubscriber(managers: Managers): void {
     if (!useChatsStore.getState().dialogs.some((d) => d.peerId === getPeerId(evt.peer))) {
       scheduleChatsReload(managers)
     }
+  })
+  // Состав или права участника изменились — вторая половина tweb
+  // `invalidateChannelParticipants` (`appProfileManager.ts:918-926`): кэш страниц
+  // воркер уже сбросил, полную карточку перечитываем, только если она лежит
+  // в зеркале (`getCachedFullChat`) — счётчики админов/удалённых/заявок.
+  rootScope.addEventListener(RT.chatParticipant, (update) => {
+    const peerId = toPeerId(update.channel_id, true)
+    if (cachedPeerFull(peerId) === undefined) return
+    refreshFullPeer(peerId)
   })
   // Папки изменились на другом устройстве/вкладке. Бэкенд шлёт АБСОЛЮТНЫЙ снимок
   // папки (backend folders.go:94-102), поэтому в сеть не идём — применяем прямо

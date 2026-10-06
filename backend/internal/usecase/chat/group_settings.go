@@ -146,8 +146,13 @@ func (i *Interactor) checkSendAllowed(ctx context.Context, in SendInput) error {
 		last, grouped, size, e := i.msgs.LastMessageAt(ctx, in.ChatID, in.SenderID)
 		// Альбом — одна единица: у оригинала это один вызов sendMultiMedia, наш
 		// клиент шлёт элементы отдельными кадрами с общим grouped_id. Следующий
-		// элемент начатого альбома проходит, пока альбом не больше предела.
-		if e == nil && in.GroupedID != 0 && grouped == in.GroupedID && size < maxAlbumSize {
+		// элемент начатого альбома проходит, пока альбом не больше предела
+		// (размер считается со снятыми элементами) и пока он догружается (окно
+		// albumWindow от предыдущего элемента) — иначе общий ключ превращался
+		// бы в постоянный обход медленного режима. Ключ альбома бывает только
+		// у медиа (Send сбрасывает его у прочего).
+		if e == nil && in.GroupedID != 0 && in.MediaID != nil && grouped == in.GroupedID &&
+			size < maxAlbumSize && time.Since(last) < albumWindow {
 			return nil
 		}
 		if e == nil && time.Since(last) < time.Duration(s.SlowmodeSeconds)*time.Second {
@@ -160,6 +165,10 @@ func (i *Interactor) checkSendAllowed(ctx context.Context, in SendInput) error {
 // maxAlbumSize — элементов в одном альбоме (Telegram: до 10 в sendMultiMedia).
 const maxAlbumSize = 10
 
+// albumWindow — сколько после предыдущего элемента ещё ждём следующий элемент
+// того же альбома (кадры одной отправки идут подряд, медиа уже загружено).
+const albumWindow = 30 * time.Second
+
 // carriesMedia — несёт ли отправка медиа в смысле запрета send_media. У
 // оригинала у опроса своё право send_polls, у гео/контакта/чек-листа — свои
 // подтипы send_*; гранулярных битов у нас нет (MemberPerms — пять прав),
@@ -167,7 +176,7 @@ const maxAlbumSize = 10
 // смотрел только MediaID, и опрос, гео и контакт проходили мимо него.
 func (in SendInput) carriesMedia() bool {
 	return in.MediaID != nil || in.PollID != nil || in.ChecklistID != nil ||
-		in.GeoLat != nil || in.ContactUserID != nil
+		in.GeoLat != nil || in.ContactUserID != nil || in.GiveawayID != nil
 }
 
 // ChatSettingsFor returns the chat's group settings (any member may read them).
@@ -314,12 +323,18 @@ func (i *Interactor) BanMember(ctx context.Context, chatID, actorID, userID int6
 	if err != nil {
 		return err
 	}
+	prev := i.participantNow(ctx, chatID, userID)
 	if target.Role != "" {
-		if e := i.RemoveMember(ctx, chatID, actorID, userID); e != nil {
-			return e
+		if prev, err = i.removeMember(ctx, chatID, actorID, userID); err != nil {
+			return err
 		}
 	}
-	return i.groups.Ban(ctx, chatID, userID, actorID)
+	if err := i.groups.Ban(ctx, chatID, userID, actorID); err != nil {
+		return err
+	}
+	// Кадр участника админам (A2-05): список удалённых у них живой.
+	i.emitParticipant(ctx, chatID, actorID, userID, participantWire(prev), participantWire(i.participantNow(ctx, chatID, userID)), nil)
+	return nil
 }
 
 // UnbanMember removes userID from the removed-users list (they may rejoin).
@@ -327,15 +342,13 @@ func (i *Interactor) UnbanMember(ctx context.Context, chatID, actorID, userID in
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightBanUsers); err != nil {
 		return err
 	}
-	return i.groups.Unban(ctx, chatID, userID)
-}
-
-// ListBanned returns the chat's removed users (admins with BAN_USERS only).
-func (i *Interactor) ListBanned(ctx context.Context, chatID, actorID int64) ([]domain.BannedUser, error) {
-	if err := i.requireRight(ctx, chatID, actorID, domain.RightBanUsers); err != nil {
-		return nil, err
+	prev := i.participantNow(ctx, chatID, userID)
+	if err := i.groups.Unban(ctx, chatID, userID); err != nil {
+		return err
 	}
-	return i.groups.ListBans(ctx, chatID)
+	// Разбан — new_participant нет: из списка удалённых ушёл (A2-05).
+	i.emitParticipant(ctx, chatID, actorID, userID, participantWire(prev), participantWire(i.participantNow(ctx, chatID, userID)), nil)
+	return nil
 }
 
 // RestrictMember applies a granular per-user restriction (Telegram editBanned /
@@ -357,6 +370,7 @@ func (i *Interactor) RestrictMember(ctx context.Context, chatID, actorID, target
 		t := time.Now().Add(time.Duration(untilSeconds) * time.Second)
 		until = &t
 	}
+	prev := i.participantNow(ctx, chatID, targetID)
 	if err := i.groups.SetRestriction(ctx, domain.MemberRestriction{
 		ChatID: chatID, UserID: targetID, DeniedRights: deniedRights,
 		UntilDate: until, RestrictedBy: actorID,
@@ -373,6 +387,9 @@ func (i *Interactor) RestrictMember(ctx context.Context, chatID, actorID, target
 	}
 	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionRestrict(
 		targetID, domain.NewChatBannedRights(domain.AllMemberPerms&^deniedRights, untilTime)))
+	// Ограниченный видит запрет живьём (скрепка гаснет), админы — список
+	// ограниченных (A2-05, A1-06).
+	i.afterRightsChange(ctx, chatID, actorID, targetID, prev)
 	return nil
 }
 
@@ -381,27 +398,12 @@ func (i *Interactor) UnrestrictMember(ctx context.Context, chatID, actorID, targ
 	if err := i.requireRight(ctx, chatID, actorID, domain.RightBanUsers); err != nil {
 		return err
 	}
-	return i.groups.DeleteRestriction(ctx, chatID, targetID)
-}
-
-// ListRestricted returns the chat's granularly-restricted members (admins with
-// BAN_USERS only). Expired restrictions are filtered out.
-func (i *Interactor) ListRestricted(ctx context.Context, chatID, actorID int64) ([]domain.MemberRestriction, error) {
-	if err := i.requireRight(ctx, chatID, actorID, domain.RightBanUsers); err != nil {
-		return nil, err
+	prev := i.participantNow(ctx, chatID, targetID)
+	if err := i.groups.DeleteRestriction(ctx, chatID, targetID); err != nil {
+		return err
 	}
-	all, err := i.groups.ListRestrictions(ctx, chatID)
-	if err != nil {
-		return nil, err
-	}
-	now := time.Now()
-	out := make([]domain.MemberRestriction, 0, len(all))
-	for _, r := range all {
-		if r.Active(now) {
-			out = append(out, r)
-		}
-	}
-	return out, nil
+	i.afterRightsChange(ctx, chatID, actorID, targetID, prev)
+	return nil
 }
 
 // DeleteGroup deletes the whole group for everyone (creator only, tweb

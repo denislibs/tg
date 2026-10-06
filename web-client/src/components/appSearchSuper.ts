@@ -202,25 +202,14 @@
 //     видимости пинуется напрямую —
 //     `appSearchSuper.firstTime.test.ts` зовёт метод сам.
 // 31. `loadMembers` (`tweb:1525-1758`) портирован ОДНОЙ веткой — канала
-//     (`:1718-1739`, `getChannelParticipants` → наш `groups.channelParticipants`).
+//     (`:1718-1739`, `getChannelParticipants` → наш `groups.getParticipants`).
 //     Ветка «общих групп» (`userId`/`getCommonChats`, `:1696-1717`) — ручки
 //     нет (`docs/tweb/shared-media.md` § 3), поэтому `groups` в `loadType` на
 //     `loadMembers` не заводится; ветка legacy-чата (`getChatFull`,
 //     `:1740-1756`) — базовый `chat` бэкенд не производит вовсе (решение №2
 //     разбора, `core/peers/peerId.ts::getOutputPeer`).
-// 32. ЖИВЫЕ ОБНОВЛЕНИЯ состава. Кадра `updateChannelParticipant`
-//     (`chat_participant`, `:1627-1645`) на проводе нет: бэкенд на любое
-//     изменение состава публикует `updateChannelFullSnapshot`
-//     (`usecase/chat/group.go:153`, `:203`) — у нас `rt:chat_update`. Класс
-//     обрабатывает его так, как оригинал обрабатывает `chat_full_update`
-//     legacy-чата (`:1598-1625`): перечитывает список и сводит — новых рисует,
-//     ушедших снимает. Отличия от той ветки навязаны проводом: `channelFull`
-//     вектора `participants` не несёт, поэтому перечитывается ОТРИСОВАННОЕ
-//     ОКНО списка ручкой участников (`offset: 0, limit: nextRates`), а счётчик
-//     берётся из `count` ответа (как в самой ветке канала, `:1736`), а не
-//     ±1 на строку (`:1589`, `:1594`). Кадр общий на 13 поводов бэкенда
-//     (`publishChatUpdate`) — каждый из них перечитывает окно, пока список
-//     жив. Настоящее лекарство — кадр по участнику на бэкенде, см. § 3 дока.
+// 32. Живые обновления состава — кадр `chat_participant` (`rt:chat_participant`,
+//     `:1950-1968`) 1:1; ветки `chat_full_update` legacy-чата нет (расхождение 31).
 // 33. `slider`/`appSidebarRight` (расхождение 5) для участников заменены
 //     двумя колбэками хоста в опциях: `openPeer` — вместо
 //     `appImManager.setInnerPeer({peerId})` (`:1569`; `toggleSidebar(false)` на
@@ -231,7 +220,7 @@
 // 34. Проверка карточки участника (`:1667-1678`, `appPeersManager.getPeer`) —
 //     по ЗЕРКАЛУ (`cachedPeer`); пробел объявляется владельцу через
 //     `peers.fillMirror` (шов расхождения 20). Шов менеджеров расширен ручкой
-//     `groups` (`channelParticipants` + действия меню участника).
+//     `groups` (`getParticipants` + действия меню участника).
 // 35. `nextRates` (`tweb:378`) держит и смещение страницы участников
 //     (`:1723`, `:1730`), и курсор глобальной выдачи (`:2288`, `:2321`) — одно
 //     пер-типовое поле на оба, как у оригинала; сброс в `cleanup` (`:2718`).
@@ -441,7 +430,7 @@ import findAndSpliceAll from '@helpers/array/findAndSpliceAll'
 import type { MiddlewareHelper } from '@helpers/middleware'
 import { getParticipantPeerId, getParticipantRank } from '@core/peers/participant'
 import { getPeerId, isAnyChat, isUser, toChatId } from '@core/peers/peerId'
-import { RT, type ChatUpdateEvt } from '@core/realtime/events'
+import { RT, type ChannelParticipantEvt } from '@core/realtime/events'
 import { children, createEffect, createSignal, For, on, onCleanup } from 'solid-js'
 import { unwrap } from 'solid-js/store'
 import { mountSolid } from '@shared/solid/mountSolid.solid'
@@ -810,7 +799,7 @@ type SearchSuperItem = { element: HTMLElement, message: MyMessage }
 export type SearchSuperManagers = {
   messages: Pick<Managers['messages'], 'searchHistory' | 'searchCounters'>
   peers: Pick<Managers['peers'], 'fillMirror'>
-  groups: Pick<Managers['groups'], 'channelParticipants' | 'addMember' | 'editBanned' | 'kickFromChat'>
+  groups: Pick<Managers['groups'], 'getParticipants' | 'addMember' | 'editBanned' | 'kickFromChat'>
   stories: Pick<Managers['stories'], 'pinnedStories'>
   // те же ручки, что просят `SavedDialogListManagers`/`StarGiftsProfileTabProps` у своих `managers`
   chats: Pick<Managers['chats'], 'savedDialogs'>
@@ -2263,55 +2252,39 @@ export default class AppSearchSuper {
             openUserPermissions: (participant, isAdmin) => this.openUserPermissions?.(participant, isAdmin),
           })
 
-          // `:1585-1590` без `setCounter(… − 1)`: счётчик приходит из `count`
-          // перечитанного окна (расхождение 32).
+          // tweb `:1910-1915`
           const deleteByPeerId = (peerId: PeerId) => {
             membersList!.ranks.delete(peerId)
             membersList!.delete(peerId)
             membersParticipantMap!.delete(peerId)
+            this.setCounter(mediaTab.type, (this.counters[mediaTab.type] ?? 0) - 1)
           }
 
-          // `:1597-1625` в форме, навязанной проводом (расхождение 32):
-          // перечитать отрисованное окно, нарисовать новых, снять ушедших.
-          const onChatUpdate = async(update: ChatUpdateEvt) => {
-            if(getPeerId(update.peer) !== peerId) {
-              return
-            }
-
-            // Окно — всё отрисованное; если список был дочитан до конца, то
-            // и всё, что появилось за ним (число — из самого снимка).
-            const rendered = this.nextRates[mediaTab.type] || 0
-            if(!rendered) {
-              return
-            }
-
-            const total = update.chat_full?.full_chat?.participants_count ?? rendered
-            const limit = this.loaded[mediaTab.type] ? Math.max(rendered, total) : rendered
-            const participants = await this.managers.groups.channelParticipants(peerId, 0, limit)
-            if(!middleware()) {
-              return
-            }
-
-            this.nextRates[mediaTab.type] = participants.participants.length
-            this.loaded[mediaTab.type] = participants.participants.length >= participants.count
-            this.setCounter(mediaTab.type, participants.count)
-
-            const processedPeerIds = new Set<PeerId>()
-            for(const participant of participants.participants) {
-              processedPeerIds.add(getParticipantPeerId(participant))
-            }
-
-            membersParticipantMap!.forEach((_participant, peerId) => {
-              if(!processedPeerIds.has(peerId)) {
-                deleteByPeerId(peerId)
-              }
-            })
-
-            return renderParticipants(participants.participants)
+          // tweb `:1917-1920`
+          const renderParticipant = (participant: Participant) => {
+            void renderParticipants([participant])
+            this.setCounter(mediaTab.type, (this.counters[mediaTab.type] ?? 0) + 1)
           }
-          rootScope.addEventListener(RT.chatUpdate, onChatUpdate)
+
+          // tweb `:1950-1968` — ветка канала (базовых групп нет, расхождение 31)
+          const onParticipantUpdate = (update: ChannelParticipantEvt) => {
+            if(chatId !== update.channel_id) {
+              return
+            }
+
+            const peerId = getParticipantPeerId((update.prev_participant || update.new_participant)!)
+            const wasRendered = membersList!.has(peerId)
+            if(wasRendered || (update.new_participant?._ === 'channelParticipantBanned' && update.new_participant.pFlags?.left)) {
+              deleteByPeerId(peerId)
+            }
+
+            if((!update.prev_participant || wasRendered) && update.new_participant) {
+              renderParticipant(update.new_participant)
+            }
+          }
+          rootScope.addEventListener(RT.chatParticipant, onParticipantUpdate)
           middleware.onClean(() => {
-            rootScope.removeEventListener(RT.chatUpdate, onChatUpdate)
+            rootScope.removeEventListener(RT.chatParticipant, onParticipantUpdate)
           })
         }
       }
@@ -2366,10 +2339,13 @@ export default class AppSearchSuper {
       }
     }
 
-    // `:1718-1739` — страница участников канала; `groups.channelParticipants`
-    // — наш `getChannelParticipants` (расхождение 31).
+    // tweb `:2026-2045` — страница участников канала (расхождение 31).
     const LOAD_COUNT = !this.membersList ? 50 : 200
-    return this.managers.groups.channelParticipants(peerId, this.nextRates[mediaTab.type] || 0, LOAD_COUNT).then((participants) => {
+    return this.managers.groups.getParticipants({
+      id: chatId,
+      limit: LOAD_COUNT,
+      offset: this.nextRates[mediaTab.type] || 0,
+    }).then((participants) => {
       if(!middleware()) {
         return
       }

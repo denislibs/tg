@@ -30,14 +30,80 @@ func copyContent(src domain.Message) domain.Message {
 		GroupedID:   src.GroupedID,
 		PollID:      src.PollID, ChecklistID: src.ChecklistID,
 		GiveawayID: src.GiveawayID, GiftID: src.GiftID,
+		// Живая геопозиция переезжает СНИМКОМ: двигать её может только автор
+		// оригинала, а копия обновлений оригинала не получает (как TDLib copy).
 		GeoLat: src.GeoLat, GeoLng: src.GeoLng,
 		GeoTitle: src.GeoTitle, GeoAddress: src.GeoAddress,
-		GeoLivePeriod: src.GeoLivePeriod, GeoHeading: src.GeoHeading, GeoLiveStopped: src.GeoLiveStopped,
 		ContactUserID: src.ContactUserID, ContactName: src.ContactName, ContactPhone: src.ContactPhone,
-		ReplyMarkup: src.ReplyMarkup,
+		ReplyMarkup: copyableMarkup(src.ReplyMarkup),
 		WebPage:     src.WebPage,
 	}
 }
+
+// copyableMarkup — какая клавиатура переживает копию: только inline-кнопки
+// (у Telegram их несёт пересланное сообщение бота). Reply-клавиатура,
+// ForceReply и Hide — команды полю ввода ЧАТА от бота (tweb берёт их из
+// последнего сообщения клавиатурой чата): в чужом чате от имени пересылающего
+// они подменяли бы ввод всем участникам.
+func copyableMarkup(m domain.ReplyMarkup) domain.ReplyMarkup {
+	if _, ok := m.(domain.ReplyInlineMarkup); ok {
+		return m
+	}
+	if p, ok := m.(*domain.ReplyInlineMarkup); ok && p != nil {
+		return m
+	}
+	return nil
+}
+
+// isCopy — сообщение-копия чужого (пересылка, зеркало поста): оно не своё у
+// автора строки, и права автора на содержимое (правка, геопозиция, опрос,
+// чек-лист) у него нет.
+func isCopy(m domain.Message) bool {
+	return m.FwdFromUserID != nil || m.FwdFromChatID != nil || m.FwdFromName != nil || m.IsDiscussionMirror
+}
+
+// originMessage — сообщение, которым содержимое (опрос, чек-лист) было
+// ОПУБЛИКОВАНО: в его чате, не копия, самое раннее. Копии ссылаются на тот же
+// опрос, но автором не делают; порядок строк выборки ни на что не влияет.
+func originMessage(msgs []domain.Message, chatID int64) (domain.Message, bool) {
+	var best domain.Message
+	found := false
+	for _, m := range msgs {
+		if m.ChatID != chatID || isCopy(m) {
+			continue
+		}
+		if !found || m.ID < best.ID {
+			best, found = m, true
+		}
+	}
+	return best, found
+}
+
+// snapshotChecklist — чек-лист копии: НОВЫЙ, с пунктами исходника на момент
+// копирования и без отметок, в чате копии. Общий с исходником чек-лист делал
+// бы пересылающего его «автором» и показывал бы читателям копии пункты,
+// добавленные потом в исходном чате. Копия только для чтения (tweb:
+// ChecklistReadonlyForwarded).
+func (i *Interactor) snapshotChecklist(ctx context.Context, checklistID *int64, chatID int64) (*int64, error) {
+	if checklistID == nil || i.checklists == nil {
+		return checklistID, nil
+	}
+	src, err := i.checklists.ByID(ctx, *checklistID)
+	if err != nil {
+		return nil, err
+	}
+	c, err := i.checklists.Create(ctx, domain.Checklist{
+		ChatID: chatID, Title: src.Title, Items: src.Items,
+		OthersCanAdd: src.OthersCanAdd, OthersCanMark: src.OthersCanMark,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &c.ID, nil
+}
+
+// maxSafeGroupedID — верхняя граница нового ключа альбома (Number.MAX_SAFE_INTEGER).
+const maxSafeGroupedID = 1<<53 - 1
 
 // regroup выдаёт копиям пачки НОВЫЕ ключи альбомов: элементы одного исходного
 // альбома получают общий новый grouped_id (Telegram: пересланный альбом — снова
@@ -54,7 +120,9 @@ func regroup(copies []domain.Message) int {
 		}
 		n, ok := fresh[*g]
 		if !ok {
-			n = rand.Int64N(1<<62) + 1
+			// Ключ в пределах точного целого JS (2^53): клиент держит
+			// grouped_id числом, и больший ключ терял бы младшие разряды.
+			n = rand.Int64N(maxSafeGroupedID) + 1
 			fresh[*g] = n
 			units++
 		}
@@ -84,7 +152,7 @@ func forwardable(m domain.Message) bool {
 func sendProbe(chatID, senderID int64, m domain.Message) SendInput {
 	return SendInput{
 		ChatID: chatID, SenderID: senderID, Type: m.Type,
-		MediaID: m.MediaID, PollID: m.PollID, ChecklistID: m.ChecklistID,
+		MediaID: m.MediaID, PollID: m.PollID, ChecklistID: m.ChecklistID, GiveawayID: m.GiveawayID,
 		GeoLat: m.GeoLat, ContactUserID: m.ContactUserID, GroupedID: deref(m.GroupedID),
 		ThreadRootID: m.ThreadRootID,
 	}

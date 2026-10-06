@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -115,11 +116,13 @@ func (i *Interactor) VotePoll(ctx context.Context, pollID, userID int64, optionI
 	if err != nil {
 		return domain.PollInfo{}, err
 	}
-	ok, err := i.chats.IsMember(ctx, p.ChatID, userID)
+	// Голосует тот, кто ВИДИТ опрос — в любом чате, куда его переслали: у
+	// Telegram пересланный опрос — тот же poll по id, голоса общие.
+	carriers, err := i.pollCarriers(ctx, pollID, userID)
 	if err != nil {
 		return domain.PollInfo{}, err
 	}
-	if !ok {
+	if len(carriers) == 0 {
 		return domain.PollInfo{}, domain.ErrNotFound
 	}
 	if p.Closed {
@@ -156,7 +159,7 @@ func (i *Interactor) VotePoll(ctx context.Context, pollID, userID int64, optionI
 	if err != nil {
 		return domain.PollInfo{}, err
 	}
-	i.publishPollUpdate(ctx, p.ChatID, pollID, userID)
+	i.publishPollUpdates(ctx, p.ChatID, pollID, userID)
 	return info, nil
 }
 
@@ -178,7 +181,7 @@ func (i *Interactor) ClosePoll(ctx context.Context, pollID, userID int64) error 
 	if !isAdmin {
 		// не админ — допускаем только автора опроса: ищем его сообщение
 		// (опрос создаётся вместе с сообщением, sender там зафиксирован)
-		author, e := i.pollAuthor(ctx, pollID)
+		author, e := i.pollAuthor(ctx, p)
 		if e != nil || author != userID {
 			return domain.ErrForbidden
 		}
@@ -186,20 +189,63 @@ func (i *Interactor) ClosePoll(ctx context.Context, pollID, userID int64) error 
 	if err := i.polls.Close(ctx, pollID); err != nil {
 		return err
 	}
-	i.publishPollUpdate(ctx, p.ChatID, pollID, userID)
+	i.publishPollUpdates(ctx, p.ChatID, pollID, userID)
 	return nil
 }
 
-// pollAuthor — отправитель сообщения с этим опросом.
-func (i *Interactor) pollAuthor(ctx context.Context, pollID int64) (int64, error) {
-	msgs, err := i.msgs.ByPollID(ctx, pollID)
+// pollAuthor — автор опроса: отправитель сообщения, которым опрос был
+// опубликован (originMessage), а не любой копии. Пересылка автором не делает:
+// закрывает опрос только автор оригинала (или админ его чата).
+func (i *Interactor) pollAuthor(ctx context.Context, p domain.Poll) (int64, error) {
+	msgs, err := i.msgs.ByPollID(ctx, p.ID)
 	if err != nil {
 		return 0, err
 	}
-	if len(msgs) == 0 {
+	m, ok := originMessage(msgs, p.ChatID)
+	if !ok {
 		return 0, domain.ErrNotFound
 	}
-	return msgs[0].SenderID, nil
+	return m.SenderID, nil
+}
+
+// pollCarriers — сообщения с опросом, которые зритель видит (читает их чат и
+// видит само сообщение — предикаты Ф-1а). viewerID 0 — все сообщения.
+func (i *Interactor) pollCarriers(ctx context.Context, pollID, viewerID int64) ([]domain.Message, error) {
+	msgs, err := i.msgs.ByPollID(ctx, pollID)
+	if err != nil || viewerID == 0 {
+		return msgs, err
+	}
+	ids := make([]int64, len(msgs))
+	for idx, m := range msgs {
+		ids[idx] = m.ID
+	}
+	visible, err := i.msgs.VisibleIDs(ctx, viewerID, ids)
+	if err != nil {
+		return nil, err
+	}
+	var out []domain.Message
+	for _, m := range msgs {
+		if visible[m.ID] && i.RequireChatRead(ctx, m.ChatID, viewerID) == nil {
+			out = append(out, m)
+		}
+	}
+	return out, nil
+}
+
+// publishPollUpdates — итоги опроса во ВСЕ чаты, где он лежит (оригинал и
+// пересланные копии делят голоса).
+func (i *Interactor) publishPollUpdates(ctx context.Context, homeChatID, pollID, actorID int64) {
+	chats := []int64{homeChatID}
+	if msgs, err := i.pollCarriers(ctx, pollID, 0); err == nil {
+		for _, m := range msgs {
+			if !slices.Contains(chats, m.ChatID) {
+				chats = append(chats, m.ChatID)
+			}
+		}
+	}
+	for _, c := range chats {
+		i.publishPollUpdate(ctx, c, pollID, actorID)
+	}
 }
 
 // pollInfoFor — представление опроса для зрителя; правильный ответ викторины

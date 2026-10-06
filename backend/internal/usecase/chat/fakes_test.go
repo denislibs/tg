@@ -975,7 +975,7 @@ func (r fakeMsgs) LastMessageAt(_ context.Context, chatID, senderID int64) (time
 			}
 			g, size := *msgs[i].GroupedID, 0
 			for _, m := range msgs {
-				if m.SenderID == senderID && !m.Deleted && m.GroupedID != nil && *m.GroupedID == g {
+				if m.SenderID == senderID && m.GroupedID != nil && *m.GroupedID == g {
 					size++
 				}
 			}
@@ -1164,6 +1164,9 @@ func (r fakeMsgs) ByPollID(_ context.Context, pollID int64) ([]domain.Message, e
 			}
 		}
 	}
+	// Порядок строк выборки не гарантирован (seq scan по физическому
+	// порядку): фейк отдаёт худший — новые раньше старых.
+	slices.SortFunc(out, func(x, y domain.Message) int { return int(y.ID - x.ID) })
 	return out, nil
 }
 
@@ -1178,6 +1181,9 @@ func (r fakeMsgs) ByChecklistID(_ context.Context, checklistID int64) ([]domain.
 			}
 		}
 	}
+	// Порядок строк выборки не гарантирован (seq scan по физическому
+	// порядку): фейк отдаёт худший — новые раньше старых.
+	slices.SortFunc(out, func(x, y domain.Message) int { return int(y.ID - x.ID) })
 	return out, nil
 }
 

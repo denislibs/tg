@@ -1093,18 +1093,22 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
 
     // Forward messages from one chat into another; returns the created copies.
     // dropAuthor — скрыть отправителя (копия как своё сообщение), dropCaption —
-    // убрать подпись у пересылаемого медиа (tweb dropAuthor/dropCaptions).
+    // убрать подпись у пересылаемого медиа (tweb dropAuthor/dropCaptions);
+    // silent и threadId — как у tweb forwardMessagesInner (`silent`,
+    // `top_msg_id` = корень темы/треда у приёмника).
     async forwardMessages(
       toPeerId: number,
       fromPeerId: number,
       msgIds: number[],
-      opts?: { dropAuthor?: boolean; dropCaption?: boolean },
+      opts?: { dropAuthor?: boolean; dropCaption?: boolean; silent?: boolean; threadId?: number | null },
     ): Promise<MyMessage[]> {
       const r = await rest.post<MessagesContainer>(`/chats/${toPeerId}/forward`, {
         from_peer_id: fromPeerId,
         ids: msgIds.map(getServerMessageId),
         drop_author: opts?.dropAuthor ?? false,
         drop_caption: opts?.dropCaption ?? false,
+        silent: opts?.silent ?? false,
+        top_msg_id: opts?.threadId ? getServerMessageId(opts.threadId) : null,
       })
       const msgs = await mapContainer(r)
       put(hkey(toPeerId), msgs)

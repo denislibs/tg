@@ -40,7 +40,7 @@ function seedChat(viewer: 'creator' | 'member') {
 
 const participants = new Map<PeerId, ChannelParticipantWire>([
   [MEMBER, { _: 'channelParticipant', user_id: MEMBER, date: 1 }],
-  [ADMIN, { _: 'channelParticipantAdmin', user_id: ADMIN, date: 1, admin_rights: { _: 'chatAdminRights' } }],
+  [ADMIN, { _: 'channelParticipantAdmin', user_id: ADMIN, promoted_by: 1, date: 1, admin_rights: { _: 'chatAdminRights' } }],
   [CREATOR, { _: 'channelParticipantCreator', user_id: CREATOR, admin_rights: { _: 'chatAdminRights' } }],
   [BANNED, {
     _: 'channelParticipantBanned', pFlags: { left: true }, peer: { _: 'peerUser', user_id: BANNED },

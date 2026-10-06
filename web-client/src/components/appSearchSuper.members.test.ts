@@ -1,5 +1,5 @@
 // Пины вкладки «Участники» `AppSearchSuper` (`loadMembers`, порт tweb
-// `src/components/appSearchSuper.ts:1525-1758`).
+// `src/components/appSearchSuper.ts:1850-2079`).
 //
 // Предмет — ФАКТ: сколько запросов ушло за участниками и с какими границами
 // (LOAD_COUNT 50 → 200, `:1719`), сколько строк стоит в `ul.chatlist`, снимается
@@ -7,8 +7,8 @@
 // контекстном меню. «Менеджер позван с такими аргументами» здесь не пин —
 // только вместе с узлами в DOM.
 //
-// Фейковый бэкенд — ручка `GET /chats/{id}/members?offset&limit`
-// (`group_handler.go::ListMembers`): страница строго по `offset`/`limit`,
+// Фейковый бэкенд — `groups.getParticipants({id, offset, limit})` (ручка
+// `GET /chats/{peer}/participants`): страница строго по `offset`/`limit`,
 // карточки участников едут вектором `users` того же контейнера. Воркерный
 // владелец карточек (`peersManager.saveApiPeers`) публикует их в зеркало ДО
 // того, как ответ ручки доедет до вызывающего — здесь это делает сам фейк.
@@ -18,7 +18,7 @@ import AppSearchSuper, { type SearchSuperManagers, type SearchSuperMediaTab, typ
 import { getHistoryStorage, resetSharedMediaHistories } from '@components/sharedMediaHistories'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import type { ChannelParticipantWire, ChannelsChannelParticipants } from '@core/managers/groupsManager'
-import type { MessagesChatFull, UserReal } from '@core/peers/peer'
+import type { UserReal } from '@core/peers/peer'
 import contextMenuController from '@helpers/contextMenuController'
 import rootScope from '@lib/rootScope'
 import { RT } from '@core/realtime/events'
@@ -34,7 +34,7 @@ const userCard = (id: number): UserReal => ({
 })
 
 function fakeBackend(n: number) {
-  const calls: { peerId: number; offset: number; limit: number; got: number }[] = []
+  const calls: { chatId: number; offset: number; limit: number; got: number }[] = []
   let ids = Array.from({ length: n }, (_, i) => i + 1)
   const participant = (id: number): ChannelParticipantWire =>
     id === 1 ?
@@ -55,9 +55,9 @@ function fakeBackend(n: number) {
       },
     },
     groups: {
-      channelParticipants: async (peerId: number, offset: number, limit: number): Promise<ChannelsChannelParticipants> => {
+      getParticipants: async ({ id, offset = 0, limit = 200 }: { id: number; offset?: number; limit?: number }): Promise<ChannelsChannelParticipants> => {
         const page = ids.slice(offset, offset + limit)
-        calls.push({ peerId, offset, limit, got: page.length })
+        calls.push({ chatId: id, offset, limit, got: page.length })
         const users = page.map(userCard)
         applyPeerOps([{ op: 'upsert', peers: users }])
         return { _: 'channels.channelParticipants', count: ids.length, participants: page.map(participant), chats: [], users }
@@ -123,19 +123,19 @@ const rows = (searchSuper: AppSearchSuper) =>
 
 const rowIds = (searchSuper: AppSearchSuper) => rows(searchSuper).map((el) => +el.dataset.peerId!)
 
-/** Снимок `updateChannelFullSnapshot` — как шлёт бэкенд (`publishChatUpdate`):
- *  списка участников в нём нет, есть только их число. */
-const chatUpdate = (participantsCount: number) => {
-  rootScope.dispatchEvent(RT.chatUpdate, {
-    _: 'updateChannelFullSnapshot',
-    peer: { _: 'peerChannel', channel_id: CHAT_ID },
-    chat_full: {
-      _: 'messages.chatFull',
-      full_chat: { _: 'channelFull', id: CHAT_ID, participants_count: participantsCount },
-      chats: [], users: [],
-    } as unknown as MessagesChatFull,
+/** Кадр `updateChannelParticipant` — как шлёт бэкенд затронутому, актору и админам. */
+const chatParticipant = (userId: number, prev?: ChannelParticipantWire, next?: ChannelParticipantWire, channelId = CHAT_ID) => {
+  rootScope.dispatchEvent(RT.chatParticipant, {
+    _: 'updateChannelParticipant',
+    channel_id: channelId,
+    date: 1,
+    actor_id: 1,
+    user_id: userId,
+    prev_participant: prev,
+    new_participant: next,
   })
 }
+const member = (id: number): ChannelParticipantWire => ({ _: 'channelParticipant', user_id: id, date: id })
 
 beforeEach(() => {
   resetSharedMediaHistories()
@@ -157,7 +157,7 @@ describe('AppSearchSuper: участники — пагинация', () => {
 
     await searchSuper.load(true)
     await settle()
-    expect(backend.calls.map((c) => [c.peerId, c.offset, c.limit])).toEqual([[PEER, 0, 50]])
+    expect(backend.calls.map((c) => [c.chatId, c.offset, c.limit])).toEqual([[CHAT_ID, 0, 50]])
     expect(rows(searchSuper).length).toBe(50)
     // счётчик вкладки — общее число участников с ручки (`:1736`)
     expect(counters[counters.length - 1]).toEqual(['members', 260])
@@ -220,80 +220,84 @@ describe('AppSearchSuper: участники — пагинация', () => {
   })
 })
 
-describe('AppSearchSuper: участники — живые обновления', () => {
-  it('ушедший участник снимается по chat_update, счётчик уменьшается', async () => {
+describe('AppSearchSuper: участники — живые обновления (`chat_participant`, tweb :1950-1968)', () => {
+  it('ушедший участник снимается, счётчик уменьшается; сети нет', async () => {
     const backend = fakeBackend(5)
     const { searchSuper, counters } = build(backend.managers)
     await searchSuper.load(true)
     await settle()
     expect(rowIds(searchSuper)).toEqual([1, 2, 3, 4, 5])
+    const before = backend.calls.length
 
-    backend.remove(3)
-    chatUpdate(4)
+    chatParticipant(3, member(3), undefined)
     await settle()
     expect(rowIds(searchSuper)).toEqual([1, 2, 4, 5])
     expect(counters[counters.length - 1]).toEqual(['members', 4])
+    expect(backend.calls.length).toBe(before)
   })
 
-  it('новый участник появляется по chat_update, счётчик растёт', async () => {
+  it('новый участник появляется, счётчик растёт', async () => {
     const backend = fakeBackend(3)
     const { searchSuper, counters } = build(backend.managers)
     await searchSuper.load(true)
     await settle()
 
-    backend.add(9)
-    chatUpdate(4)
+    chatParticipant(9, undefined, member(9))
     await settle()
     expect(rowIds(searchSuper)).toEqual([1, 2, 3, 9])
     expect(counters[counters.length - 1]).toEqual(['members', 4])
   })
 
-  it('окно не дочитано: перечитывается только оно, хвост приедет следующей страницей', async () => {
-    const backend = fakeBackend(60)
+  it('отрисованный — перерисовывается новым видом (ранг админа), счётчик тот же', async () => {
+    const backend = fakeBackend(3)
     const { searchSuper, counters } = build(backend.managers)
     await searchSuper.load(true)
     await settle()
-    expect(rows(searchSuper).length).toBe(50)
 
-    backend.add(61)
-    chatUpdate(61)
+    chatParticipant(2, member(2), {
+      _: 'channelParticipantAdmin', user_id: 2, promoted_by: 1, date: 2, admin_rights: { _: 'chatAdminRights' }, rank: 'модер',
+    })
     await settle()
-    expect(backend.calls[backend.calls.length - 1]).toMatchObject({ offset: 0, limit: 50 })
-    expect(rows(searchSuper).length).toBe(50)
-    expect(counters[counters.length - 1]).toEqual(['members', 61])
-
-    await searchSuper.load(true)
-    await settle()
-    expect(backend.calls[backend.calls.length - 1]).toMatchObject({ offset: 50, limit: 200 })
-    expect(rows(searchSuper).length).toBe(61)
+    expect(rowIds(searchSuper)).toEqual([1, 2, 3])
+    expect(rows(searchSuper)[1].querySelector('.row-title-right')!.textContent).toBe('модер')
+    expect(counters[counters.length - 1]).toEqual(['members', 3])
   })
 
-  it('chat_update чужого чата список не трогает', async () => {
+  it('выгнанный (`left`) снимается и не возвращается без прежнего участника', async () => {
     const backend = fakeBackend(3)
     const { searchSuper } = build(backend.managers)
     await searchSuper.load(true)
     await settle()
-    const before = backend.calls.length
-    rootScope.dispatchEvent(RT.chatUpdate, {
-      _: 'updateChannelFullSnapshot',
-      peer: { _: 'peerChannel', channel_id: CHAT_ID + 1 },
-      chat_full: {} as MessagesChatFull,
+
+    // кадр о том, кого в списке нет, — снять (нечего) и не рисовать: prev есть
+    chatParticipant(7, member(7), {
+      _: 'channelParticipantBanned', pFlags: { left: true }, peer: { _: 'peerUser', user_id: 7 }, kicked_by: 1, date: 1,
+      banned_rights: { until_date: 0, pFlags: { view_messages: true } },
     })
     await settle()
-    expect(backend.calls.length).toBe(before)
     expect(rowIds(searchSuper)).toEqual([1, 2, 3])
   })
 
-  it('после cleanup подписка снята: событие не ходит в сеть', async () => {
+  it('кадр чужого чата список не трогает', async () => {
     const backend = fakeBackend(3)
     const { searchSuper } = build(backend.managers)
     await searchSuper.load(true)
     await settle()
-    searchSuper.cleanup()
-    const before = backend.calls.length
-    chatUpdate(3)
+    chatParticipant(2, member(2), undefined, CHAT_ID + 1)
     await settle()
-    expect(backend.calls.length).toBe(before)
+    expect(rowIds(searchSuper)).toEqual([1, 2, 3])
+  })
+
+  it('после cleanup подписка снята', async () => {
+    const backend = fakeBackend(3)
+    const { searchSuper, counters } = build(backend.managers)
+    await searchSuper.load(true)
+    await settle()
+    searchSuper.cleanup()
+    const before = counters.length
+    chatParticipant(9, undefined, member(9))
+    await settle()
+    expect(counters.length).toBe(before)
   })
 })
 
