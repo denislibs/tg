@@ -167,9 +167,16 @@ func TestParticipants_SelfRow(t *testing.T) {
 func TestParticipant_ToChannelParticipant(t *testing.T) {
 	r := &MemberRestriction{UserID: 9, DeniedRights: PermSendMedia, RestrictedBy: 1, CreatedAt: time.Unix(1787334148, 0)}
 	restricted := Participant{Member: Member{UserID: 9, Role: RoleMember}, Restriction: r}
-	b, ok := restricted.ToChannelParticipant(ParticipantViewer{ID: 1}).(ChannelParticipantBanned)
+	b, ok := restricted.ToChannelParticipant(ParticipantViewer{ID: 1, CanBan: true}).(ChannelParticipantBanned)
 	if !ok || b.PFlags["left"] || !b.BannedRights.Denies("send_media") || b.Date != 1787334148 {
-		t.Fatalf("ограниченный: %#v", restricted.ToChannelParticipant(ParticipantViewer{ID: 1}))
+		t.Fatalf("ограниченный глазами ban_users: %#v", restricted.ToChannelParticipant(ParticipantViewer{ID: 1, CanBan: true}))
+	}
+	// Без ban_users чужое ограничение не раскрывается (ревью #404 п. 2), своё — видно.
+	if p := restricted.ToChannelParticipant(ParticipantViewer{ID: 2}); p.Tag() != ChannelParticipantTag {
+		t.Fatalf("ограниченный глазами участника: %#v", p)
+	}
+	if p := restricted.ToChannelParticipant(ParticipantViewer{ID: 9}); p.Tag() != ChannelParticipantBannedTag {
+		t.Fatalf("своё ограничение: %#v", p)
 	}
 	kicked := Participant{Member: Member{UserID: 9}, Kicked: true, KickedBy: 1}
 	if k, ok := kicked.ToChannelParticipant(ParticipantViewer{ID: 1}).(ChannelParticipantBanned); !ok || !k.PFlags["left"] {

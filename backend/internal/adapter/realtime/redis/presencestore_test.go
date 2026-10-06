@@ -118,3 +118,26 @@ func TestPresenceStore_CountOnline(t *testing.T) {
 		t.Fatalf("пустой состав: %d", n)
 	}
 }
+
+// Ревью #404 п. 8: кэш «N онлайн» чата живёт ttl.
+func TestPresenceStore_OnlinesCache(t *testing.T) {
+	mr, _ := miniredis.Run()
+	defer mr.Close()
+	rdb := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+	ctx := context.Background()
+	store := NewPresenceStore(rdb)
+	if _, ok, err := store.CachedOnlines(ctx, 5); err != nil || ok {
+		t.Fatalf("пустой кэш: ok=%v err=%v", ok, err)
+	}
+	if err := store.CacheOnlines(ctx, 5, 7, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if n, ok, _ := store.CachedOnlines(ctx, 5); !ok || n != 7 {
+		t.Fatalf("кэш: %d %v", n, ok)
+	}
+	mr.FastForward(2 * time.Minute)
+	if _, ok, _ := store.CachedOnlines(ctx, 5); ok {
+		t.Fatal("кэш пережил ttl")
+	}
+}

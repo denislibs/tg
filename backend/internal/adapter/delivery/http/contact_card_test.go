@@ -271,13 +271,13 @@ func TestContactName_SeenByViewerEverywhere_HTTP(t *testing.T) {
 	}
 
 	for _, path := range []string{
-		"/chats",                               // список диалогов
-		"/chats/" + itoa(private) + "/history", // история
+		"/chats",                                  // список диалогов
+		"/chats/" + itoa(private) + "/history",    // история
 		"/chats/" + itoa(group) + "/participants", // участники группы
-		"/users?ids=" + itoa(idB),              // батч карточек
-		"/users/" + itoa(idB),                  // профиль
-		"/search?q=" + url.QueryEscape("Боб"),  // поиск пиров
-		"/contacts",                            // сама книга
+		"/users?ids=" + itoa(idB),                 // батч карточек
+		"/users/" + itoa(idB),                     // профиль
+		"/search?q=" + url.QueryEscape("Боб"),     // поиск пиров
+		"/contacts",                               // сама книга
 	} {
 		want(path, usersOf(tokenA, path), "Бобби", "", true)
 	}

@@ -233,7 +233,8 @@ type InviteRepo interface {
 }
 
 type JoinRequestRepo interface {
-	Create(ctx context.Context, chatID, userID int64, inviteToken string) error // idempotent (ON CONFLICT DO NOTHING)
+	// Create — idempotent (ON CONFLICT DO NOTHING); inserted=false — заявка уже была.
+	Create(ctx context.Context, chatID, userID int64, inviteToken string) (inserted bool, err error)
 	// List — страница заявок: свежие сверху, курсор (offsetDate, offsetUser),
 	// q — префикс имени; total — всего по q.
 	List(ctx context.Context, chatID int64, q string, offsetDate time.Time, offsetUser int64, limit int) ([]domain.JoinRequest, int, error)

@@ -229,7 +229,30 @@ func (i *Interactor) SetChatPermissions(ctx context.Context, chatID, actorID int
 		return err
 	}
 	i.publishChatUpdate(ctx, chatID)
+	i.republishRestricted(ctx, chatID)
 	return nil
+}
+
+// republishRestricted — пер-зрительский снимок каждому лично ограниченному
+// (ревью #404 п. 3). Его channel.banned_rights — ДЕЙСТВУЮЩИЙ набор (личные ∪
+// дефолт чата), а общий min-снимок chat_update клиент кладёт поверх, сохраняя
+// прежний banned_rights: без этого после смены дефолта у ограниченного
+// оставалось старое объединение (скрепка активна — сервер отвечает forbidden,
+// или наоборот запрет держится после ослабления). Best-effort.
+func (i *Interactor) republishRestricted(ctx context.Context, chatID int64) {
+	const page = 200
+	for offset := 0; ; offset += page {
+		rows, total, err := i.groups.ListParticipants(ctx, chatID, 0, domain.ParticipantsFilter{Kind: domain.ParticipantsBanned}, offset, page)
+		if err != nil {
+			return
+		}
+		for _, p := range rows {
+			i.publishViewerChat(ctx, chatID, p.UserID)
+		}
+		if len(rows) < page || offset+page >= total {
+			return
+		}
+	}
 }
 
 // SetChatReactions stores the reaction policy: 'all' | 'some' (allowed list) | 'none'.
@@ -333,7 +356,7 @@ func (i *Interactor) BanMember(ctx context.Context, chatID, actorID, userID int6
 		return err
 	}
 	// Кадр участника админам (A2-05): список удалённых у них живой.
-	i.emitParticipant(ctx, chatID, actorID, userID, participantWire(prev), participantWire(i.participantNow(ctx, chatID, userID)), nil)
+	i.emitParticipant(ctx, chatID, actorID, userID, participantChange{prev: prev, next: i.participantNow(ctx, chatID, userID), actorLocal: true})
 	return nil
 }
 
@@ -347,7 +370,7 @@ func (i *Interactor) UnbanMember(ctx context.Context, chatID, actorID, userID in
 		return err
 	}
 	// Разбан — new_participant нет: из списка удалённых ушёл (A2-05).
-	i.emitParticipant(ctx, chatID, actorID, userID, participantWire(prev), participantWire(i.participantNow(ctx, chatID, userID)), nil)
+	i.emitParticipant(ctx, chatID, actorID, userID, participantChange{prev: prev, next: i.participantNow(ctx, chatID, userID), actorLocal: true})
 	return nil
 }
 

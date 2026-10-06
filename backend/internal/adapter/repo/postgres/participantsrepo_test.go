@@ -206,7 +206,7 @@ func TestJoinRequestRepo_PagesAndPending(t *testing.T) {
 	for k := 0; k < 5; k++ {
 		u := seedUser(t, pool, "+7999001504"+string(rune('0'+k)))
 		users = append(users, u)
-		if err := jr.Create(ctx, chatID, u, ""); err != nil {
+		if _, err := jr.Create(ctx, chatID, u, ""); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := pool.Exec(ctx, `UPDATE join_requests SET created_at = $3 WHERE chat_id = $1 AND user_id = $2`,
@@ -261,5 +261,52 @@ func TestMigration0150_PromotedByBackfill(t *testing.T) {
 	m, err := NewGroupRepo(pool).GetMember(ctx, chatID, adm)
 	if err != nil || m.PromotedBy != owner {
 		t.Fatalf("promoted_by = %d %v; want %d", m.PromotedBy, err, owner)
+	}
+}
+
+// Ревью #404 п. 6: курсор заявок — секунды провода; заявки внутри одной
+// секунды при листании не теряются (дата хранится с точностью до секунды,
+// 0151), в том числе старые строки с долями секунды.
+func TestJoinRequestRepo_CursorWithinOneSecond(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	g := NewGroupRepo(pool)
+	jr := NewJoinRequestRepo(pool)
+	owner := seedUser(t, pool, "+79990015061")
+	chatID, _ := g.CreateMultiMember(ctx, domain.ChatTypeGroup, "Г", "", "", false, owner)
+	var users []int64
+	for k := 0; k < 3; k++ {
+		u := seedUser(t, pool, "+7999001507"+string(rune('0'+k)))
+		users = append(users, u)
+		if _, err := jr.Create(ctx, chatID, u, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var frac int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM join_requests WHERE chat_id=$1 AND created_at <> date_trunc('second', created_at)`, chatID).Scan(&frac); err != nil || frac != 0 {
+		t.Fatalf("доли секунды в дате заявки: %d %v", frac, err)
+	}
+	// Все три — в одну секунду: листаем по одной, клиент шлёт дату в секундах.
+	if _, err := pool.Exec(ctx, `UPDATE join_requests SET created_at = date_trunc('second', now()) WHERE chat_id = $1`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[int64]bool{}
+	var cursor time.Time
+	var cursorUser int64
+	for k := 0; k < 4; k++ {
+		page, _, err := jr.List(ctx, chatID, "", cursor, cursorUser, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page) == 0 {
+			break
+		}
+		seen[page[0].UserID] = true
+		cursor, cursorUser = time.Unix(page[0].CreatedAt.Unix(), 0), page[0].UserID
+	}
+	for _, u := range users {
+		if !seen[u] {
+			t.Fatalf("заявка %d потерялась при листании: %v", u, seen)
+		}
 	}
 }

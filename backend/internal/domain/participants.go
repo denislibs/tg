@@ -53,13 +53,16 @@ type Participant struct {
 }
 
 // ToChannelParticipant — конструктор строки глазами зрителя. Выгнанный и
-// ограниченный — channelParticipantBanned (разница во флаге left), как у
-// оригинала в любом фильтре; остальные — по роли (NewChannelParticipant).
+// ограниченный — channelParticipantBanned (разница во флаге left); чужое
+// ограничение видит только зритель с ban_users (v.CanBan), остальным
+// ограниченный — обычный участник: кем, что и до какого срока запрещено,
+// раскрывать всем читателям нельзя (ревью #404, п. 2).
 func (p Participant) ToChannelParticipant(v ParticipantViewer) ChannelParticipant {
 	if p.Kicked {
 		return NewChannelParticipantBanned(p.UserID, p.KickedBy, unixSecondsInt64(p.KickedAt), AllMemberPerms, time.Time{}, true)
 	}
-	if r := p.Restriction; r != nil && (p.Role == RoleMember || p.Role == RoleSubscriber) {
+	if r := p.Restriction; r != nil && (p.Role == RoleMember || p.Role == RoleSubscriber) &&
+		(v.CanBan || v.ID == p.UserID) {
 		var until time.Time
 		if r.UntilDate != nil {
 			until = *r.UntilDate

@@ -24,12 +24,15 @@ func NewJoinRequestRepo(pool *pgxpool.Pool) *JoinRequestRepo { return &JoinReque
 
 // Create records a pending join request. It is idempotent: a repeat request for
 // the same (chat, user) is dropped via the UNIQUE (chat_id, user_id) constraint.
-func (r *JoinRequestRepo) Create(ctx context.Context, chatID, userID int64, inviteToken string) error {
-	_, err := querier(ctx, r.pool).Exec(ctx,
+func (r *JoinRequestRepo) Create(ctx context.Context, chatID, userID int64, inviteToken string) (bool, error) {
+	ct, err := querier(ctx, r.pool).Exec(ctx,
 		`INSERT INTO join_requests (chat_id, user_id, invite_token)
 		 VALUES ($1,$2,$3) ON CONFLICT (chat_id, user_id) DO NOTHING`,
 		chatID, userID, inviteToken)
-	return err
+	if err != nil {
+		return false, err
+	}
+	return ct.RowsAffected() == 1, nil
 }
 
 // List — страница заявок (messages.getChatInviteImporters{requested}): свежие

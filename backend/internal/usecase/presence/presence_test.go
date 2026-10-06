@@ -46,6 +46,8 @@ type fakeStore struct {
 	lastSeen map[int64]int64
 	// announced — объявленный партнёрам дедлайн онлайна (userStatusOnline.expires).
 	announced map[int64]time.Time
+	// onlines — кэш «N онлайн» по чатам.
+	onlines map[int64]int
 }
 
 func newFakeStore() *fakeStore {
@@ -127,6 +129,23 @@ func (s *fakeStore) IsOnline(_ context.Context, userID int64) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.onlineLocked(userID), nil
+}
+
+func (s *fakeStore) CachedOnlines(_ context.Context, chatID int64) (int, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n, ok := s.onlines[chatID]
+	return n, ok, nil
+}
+
+func (s *fakeStore) CacheOnlines(_ context.Context, chatID int64, n int, _ time.Duration) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.onlines == nil {
+		s.onlines = map[int64]int{}
+	}
+	s.onlines[chatID] = n
+	return nil
 }
 
 func (s *fakeStore) CountOnline(_ context.Context, userIDs []int64) (int, error) {
@@ -372,5 +391,24 @@ func TestManager_CountOnline(t *testing.T) {
 	n, err := m.CountOnline(ctx, []int64{1, 2, 3, 4})
 	if err != nil || n != 2 {
 		t.Fatalf("CountOnline = %d, %v; want 2", n, err)
+	}
+}
+
+// Ревью #404 п. 8: «N онлайн» чата кэшируется — повторный вызов в пределах
+// 60 с состав из базы не читает.
+func TestManager_ChatOnlinesCached(t *testing.T) {
+	m, _, _ := newManager(t)
+	ctx := context.Background()
+	_ = m.Online(ctx, 1)
+	loads := 0
+	load := func(context.Context) ([]int64, error) { loads++; return []int64{1, 2}, nil }
+	for k := 0; k < 3; k++ {
+		n, err := m.ChatOnlines(ctx, 5, load)
+		if err != nil || n != 1 {
+			t.Fatalf("ChatOnlines = %d %v", n, err)
+		}
+	}
+	if loads != 1 {
+		t.Fatalf("состав читался %d раз; want 1", loads)
 	}
 }

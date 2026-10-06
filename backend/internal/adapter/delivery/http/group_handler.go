@@ -412,8 +412,9 @@ func (h *GroupHandler) PromoteAdmin(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		UserID int64 `json:"user_id"`
 		Rights int   `json:"rights"`
-		// Rank — подпись админа (channels.editAdmin rank, Б-117).
-		Rank string `json:"rank"`
+		// Rank — подпись админа (channels.editAdmin rank, Б-117); нет поля —
+		// подпись не меняется (клиент до Ф-3б её не шлёт).
+		Rank *string `json:"rank"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || b.UserID == 0 {
 		writeError(w, http.StatusBadRequest, "user_id required")
@@ -672,6 +673,26 @@ func (h *GroupHandler) Participants(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewChannelsChannelParticipants(page.Count, page.Participants, cards))
 }
 
+// LegacyParticipants — ВРЕМЕННО, переходный период после #404 (ревью п. 10):
+// GET /members, /bans, /restrictions для клиентских сборок до #404, которые
+// ещё отдаёт кэш сервис-воркера, пока пользователь не нажал пилюлю
+// обновления (Б-49). Форма ответа у старых ручек была та же
+// (channels.channelParticipants), поэтому алиас — тот же Participants с
+// фильтром: recent (с q — search), kicked, banned. Удалить вместе с
+// маршрутами, когда сборки до #404 выйдут из обращения.
+func (h *GroupHandler) LegacyParticipants(kind domain.ParticipantsFilterKind) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		k := kind
+		if k == domain.ParticipantsRecent && q.Get("q") != "" {
+			k = domain.ParticipantsSearch
+		}
+		q.Set("filter", string(k))
+		r.URL.RawQuery = q.Encode()
+		h.Participants(w, r)
+	}
+}
+
 // Participant — channels.getParticipant (GET /chats/{peerID}/participants/{userID}).
 // Не участник и не удалённый — USER_NOT_PARTICIPANT, как у оригинала.
 func (h *GroupHandler) Participant(w http.ResponseWriter, r *http.Request) {
@@ -732,7 +753,7 @@ func (h *GroupHandler) participantCards(r *http.Request, viewerID int64, ids []i
 // OnlineCounter — сколько из ids сейчас онлайн (presence.Manager, одним
 // конвейером Redis). Опциональный шов: без него онлайн не считается.
 type OnlineCounter interface {
-	CountOnline(ctx context.Context, userIDs []int64) (int, error)
+	ChatOnlines(ctx context.Context, chatID int64, load func(context.Context) ([]int64, error)) (int, error)
 }
 
 // Onlines — messages.getOnlines (GET /chats/{peerID}/onlines) → chatOnlines
@@ -745,14 +766,14 @@ func (h *GroupHandler) Onlines(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ids, broadcast, err := h.uc.OnlineCandidates(r.Context(), chatID, user.ID)
+	load, broadcast, err := h.uc.OnlineCandidates(r.Context(), chatID, user.ID)
 	if err != nil {
 		h.mapErr(w, err)
 		return
 	}
 	n := 1
 	if oc, ok := h.presence.(OnlineCounter); ok && !broadcast {
-		if c, err := oc.CountOnline(r.Context(), ids); err == nil && c > n {
+		if c, err := oc.ChatOnlines(r.Context(), chatID, load); err == nil && c > n {
 			n = c
 		}
 	}
