@@ -69,12 +69,12 @@ type store struct {
 	reactUnread map[reactKey]bool
 	// showDialogsCalls — сколько раз звали ShowDialogs (по чату).
 	showDialogsCalls map[int64]int
-	hidden      map[int64]map[int64]bool       // userID -> msgID -> hidden ("delete for me")
-	pins        map[int64][]int64              // chatID -> pinned msgIDs (newest first)
-	viewed      map[int64]map[int64]bool       // msgID -> userID -> viewed (channel view dedup)
-	mentions    []mentionRow                   // message_mentions rows
-	usernames   map[int64]string               // userID -> users.username (seedUsername)
-	readMarks   map[int64]map[int64][]readMark // chatID -> userID -> история горизонта чтения
+	hidden           map[int64]map[int64]bool       // userID -> msgID -> hidden ("delete for me")
+	pins             map[int64][]int64              // chatID -> pinned msgIDs (newest first)
+	viewed           map[int64]map[int64]bool       // msgID -> userID -> viewed (channel view dedup)
+	mentions         []mentionRow                   // message_mentions rows
+	usernames        map[int64]string               // userID -> users.username (seedUsername)
+	readMarks        map[int64]map[int64][]readMark // chatID -> userID -> история горизонта чтения
 
 	// public/bans/roles — доступ к чату (ChatRepo.Access): chats.is_public,
 	// chat_bans, роль строки chat_members (нет записи — member).
