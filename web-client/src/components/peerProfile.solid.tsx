@@ -584,7 +584,7 @@ function ChatStatusLine() {
   const interval = window.setInterval(refetch, 60e3)
   onCleanup(() => window.clearInterval(interval))
 
-  return <span ref={span} />
+  return <span ref={(el) => span = el} />
 }
 
 /**
