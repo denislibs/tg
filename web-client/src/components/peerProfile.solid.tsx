@@ -184,12 +184,12 @@
  * пересоздании. Ровно так же ведёт себя `tab.searchSuper.container`
  * оригинала (переживает `fillProfileElements`, встраивается заново).
  */
-import { createContext, useContext, createMemo, createSignal, onCleanup, Show } from 'solid-js'
+import { createContext, useContext, createEffect, createMemo, createSignal, on, onCleanup, onMount, Show } from 'solid-js'
 import classNames from '../helpers/string/classNames'
 import { usePeer } from '../stores/peers.solid'
 import { useFullPeer } from '../stores/fullPeers.solid'
 import type { PeerFull } from '../core/chatFullCache'
-import type { User, Chat, Channel, ChannelFull } from '../core/peers/peer'
+import type { User, Chat, Channel } from '../core/peers/peer'
 import { useChatsStore } from '../stores/chatsStore'
 import { useReportStore } from '../stores/reportStore'
 import canReportBot from '../core/peers/canReportBot'
@@ -201,7 +201,8 @@ import { isAnyChat, isUser, HIDDEN_PEER_ID } from '../core/peers/peerId'
 import generateVerifiedIcon from './generateVerifiedIcon'
 import { isBroadcast, isPublic } from '../core/peers/predicates'
 import { getUserStatusString, userHasPresence } from '../core/presence'
-import { membersLabel } from './userInfo/helpers'
+import appImManager from '@lib/appImManager'
+import createMiddleware from '@helpers/solid/createMiddleware'
 import { IconTsx } from './iconTsx.solid'
 import { VERIFIED_BADGE_SEAL_PATH, VERIFIED_BADGE_CHECK_PATH } from '../shared/icons/verifiedBadgePath'
 import { i18n } from '@lib/langPack'
@@ -510,17 +511,9 @@ const TYPING_TTL = 6000
  *  • пользователь — presence + typing (`UserStatusLine` ниже), ЭТО и есть
  *    предмет брифа задачи («Статус/присутствие»: `shared/ui/peerStatus.tsx`,
  *    presence в `chatsStore`);
- *  • чат/канал — оригинал считает `getChatMembersString` + `getOnlines`
- *    (онлайн-участники, отдельный сетевой поход, `appProfileManager.
- *    getOnlines`) — предмета для онлайн-счётчика у нас нет вовсе. Число
- *    участников (`participants_count`) у нас ЕСТЬ — синхронно на самом пире
- *    (`ChatReal`/`Channel`, `core/peers/peer.ts`) и в `fullPeer`
- *    (`ChannelFull.participants_count`, Task 1) — оставлять секцию пустой для
- *    любой группы/канала значило бы регресс относительно того, что панель
- *    рисовала ДО этой задачи (`membersLabel`, было в `UserInfoPanel.tsx`).
- *    Портирован СЧЁТЧИК (`ChatMembersLabel` ниже) БЕЗ онлайн-числа — тем же
- *    хелпером `membersLabel`, что и раньше (чистая функция, второго способа
- *    считать не заводит).
+ *  • чат/канал — тем же путём, что оригинал: `appImManager.setPeerStatus`
+ *    (`ChatStatusLine` ниже) — «N участников, M онлайн» (`getChatMembersString`
+ *    + `getOnlines`, блок L `lib/appImManager.ts`, расхождение Н5) либо «печатает».
  *
  * ── ПОТЕРЯ (объявлена, не регресс): подзаголовок «N чатов» у «Избранного» ────
  * Снесённый React-подзаголовок (`subtitleText`, `UserInfoPanel.tsx`, до Task 3)
@@ -548,7 +541,7 @@ function SubtitleStatus() {
   return (
     <div class="profile-subtitle-text">
       <Show when={needStatus()}>
-        <Show when={isUser(context.peerId)} fallback={<ChatMembersLabel />}>
+        <Show when={isUser(context.peerId)} fallback={<ChatStatusLine />}>
           <UserStatusLine />
         </Show>
       </Show>
@@ -556,26 +549,42 @@ function SubtitleStatus() {
   )
 }
 
-/** См. докблок `SubtitleStatus` — ветка группы/канала (счётчик участников,
- *  без онлайн-числа). */
-function ChatMembersLabel() {
+/**
+ * См. докблок `SubtitleStatus` — ветка группы/канала: tweb `:376-410` для чата —
+ * `appImManager.setPeerStatus` в `span` (первый вызов с очисткой), перезапрос на
+ * наборе в чате (`peer_typings` — у нас зеркало `chatsStore.typing`) и раз в 60 с.
+ * `useWhitespace` — Н6 блока L (`lib/appImManager.ts`).
+ */
+function ChatStatusLine() {
   const context = usePeerProfileContext()
-  const count = createMemo(() => {
-    // `!isUser(context.peerId)` уже проверено вызывающим (`SubtitleStatus`) —
-    // приведение типа отражает ЭТУ проверку, второй раз её не повторяем.
-    const peer = context.peer as Chat | undefined
-    if (peer?._ === 'channel') {
-      return (context.fullPeer as ChannelFull | undefined)?.participants_count ?? peer.participants_count
-    }
-    if (peer?._ === 'chat') return peer.participants_count
-    return undefined
-  })
+  const middleware = createMiddleware().get()
+  let span!: HTMLSpanElement
+  let first = true
+  const refetch = () => {
+    const needClear = first
+    first = false
+    void appImManager.setPeerStatus({
+      peerId: context.peerId,
+      element: span,
+      needClear,
+      middleware,
+      ignoreSelf: !context.isDialog,
+      managers: startClient().managers,
+    }).then((callback) => callback?.())
+  }
 
-  return (
-    <Show when={count() != null}>
-      <span>{membersLabel(count()!, isBroadcast(context.peer as Chat | undefined))}</span>
-    </Show>
+  // `peer_typings` (:386-390)
+  const typing = subscribeExternal(
+    (onChange) => useChatsStore.subscribe(onChange),
+    () => useChatsStore.getState().typing[context.peerId],
   )
+  createEffect(on(typing, () => refetch(), { defer: true }))
+
+  onMount(refetch)
+  const interval = window.setInterval(refetch, 60e3)
+  onCleanup(() => window.clearInterval(interval))
+
+  return <span ref={span} />
 }
 
 /**
