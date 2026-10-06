@@ -217,8 +217,10 @@ func (i *Interactor) SetProfilePhotos(p ProfilePhotoAdder) { i.profilePics = p }
 // запланированных «отправить когда онлайн». Без него такие сообщения ждут.
 func (i *Interactor) SetPresence(p PresenceQuery) { i.presence = p }
 
-// nowMillis is the server clock used for update dates.
-func nowMillis() int64 { return time.Now().UnixMilli() }
+// nowUnix — дата строки журнала апдейтов: СЕКУНДЫ, как updates.state.date
+// схемы (A4-18). Прежде журнал писал миллисекунды, и /sync отдавал их в
+// state.date.
+func nowUnix() int64 { return time.Now().Unix() }
 
 // CreatePrivateChat returns the existing private chat between the two users, or
 // creates one. A transaction-scoped advisory lock keyed on the (sorted) user pair

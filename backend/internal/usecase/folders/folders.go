@@ -161,7 +161,7 @@ func (i *Interactor) emitFolderUpdate(ctx context.Context, ownerID int64, base m
 	if err != nil {
 		return
 	}
-	pts, err := i.updates.AppendUpdate(ctx, ownerID, 1, time.Now().UnixMilli(), "folder_update", payload)
+	pts, err := i.updates.AppendUpdate(ctx, ownerID, 1, time.Now().Unix(), "folder_update", payload)
 	if err != nil {
 		return
 	}

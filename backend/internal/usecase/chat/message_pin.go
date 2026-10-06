@@ -64,7 +64,7 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 			return e
 		}
 		pinAddr = addr
-		date := nowMillis()
+		date := nowUnix()
 		for _, uid := range members {
 			payload, e := json.Marshal(pinPayload(addr.forViewer(uid), cur.Seq, pin))
 			if e != nil {

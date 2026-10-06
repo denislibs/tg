@@ -147,6 +147,10 @@ type GroupRepo interface {
 	// SetForum включает темы у группы (chats.is_forum).
 	SetForum(ctx context.Context, chatID int64, enabled bool) error
 	Card(ctx context.Context, chatID, viewerID int64) (domain.ChatRecord, error) // domain.ErrNotFound if no chat
+	// Cards — строки чатов ids глазами viewerID одним запросом, в порядке ids
+	// (отсутствующие пропускаются). Тот же сборщик, что Card: из него едут
+	// все карточки чатов — векторы `chats`, поиск, похожие, send-as.
+	Cards(ctx context.Context, viewerID int64, ids []int64) ([]domain.ChatRecord, error)
 	EditInfo(ctx context.Context, chatID int64, title, about, username string) error
 	SetPhoto(ctx context.Context, chatID, mediaID int64) error
 	// UsersByIDs — карточки глазами viewerID (domain.UserReal.SeenBy): имя из
@@ -179,7 +183,7 @@ type GroupRepo interface {
 	// DiscussionCandidates lists groups (type 'group', non-forum, not already a
 	// discussion group of any channel) where actorID is creator/admin — the
 	// pick-list for linking an existing discussion group.
-	DiscussionCandidates(ctx context.Context, actorID int64) ([]domain.ChatRecord, error)
+	DiscussionCandidates(ctx context.Context, actorID int64) ([]int64, error)
 	// SetSignatures toggles channel post signatures (Telegram
 	// channels.toggleSignatures). profiles is forced off when signatures is off.
 	SetSignatures(ctx context.Context, chatID int64, signatures, profiles bool) error
@@ -189,8 +193,8 @@ type GroupRepo interface {
 	// DiscussionChannel — обратный поиск: канал, чья группа-обсуждение это groupID
 	// (0 — ничья). Нужен send-as: админ привязанного канала пишет от его имени.
 	DiscussionChannel(ctx context.Context, groupID int64) (int64, error)
-	// ChatBriefs — снимки чатов по id (id/type/title/photo) для send-as: список
-	// «личностей отправителя» и отображаемый автор бабла.
+	// ChatBriefs — название и вид чатов по id: подпись там, где карточки пира
+	// у получателя нет (кросс-чатный ответ, апдейт бота).
 	ChatBriefs(ctx context.Context, ids []int64) (map[int64]domain.ChatBrief, error)
 	// Group edit-screen settings + removed-users list.
 	Settings(ctx context.Context, chatID int64) (domain.ChatSettings, error)
@@ -350,6 +354,9 @@ type MessageRepo interface {
 	// ListThread — сообщения треда по возрастанию, только видимые зрителю viewerID.
 	ListThread(ctx context.Context, chatID, viewerID, threadRootID int64, offset, limit int) ([]domain.Message, error)
 	CountThread(ctx context.Context, chatID, threadRootID int64) (int, error)
+	// ThreadState — номер последнего видимого зрителю сообщения треда и
+	// сколько из них новее readSeq и написаны не им.
+	ThreadState(ctx context.Context, chatID, threadRootID, viewerID, readSeq int64) (int64, int, error)
 	// ThreadReplyCounts — БАТЧ того же счёта, что и CountThread: rootID ->
 	// число живых сообщений треда. Корни без единого ответа в карту не
 	// попадают («треда нет» и «тред пуст» на проводе неразличимы только для
@@ -399,8 +406,9 @@ type MessageRepo interface {
 	// элементов альбома снова сломается.
 	AlbumMessages(ctx context.Context, chatID int64, groupedID int64) ([]domain.Message, error)
 	// RecentThreadRepliers — авторы последних комментариев по каждому треду
-	// (новейшие первыми, не более limit различных на тред).
-	RecentThreadRepliers(ctx context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]int64, error)
+	// (новейшие первыми, не более limit различных на тред) ключом пира
+	// (domain.PeerID): комментарий send-as — это канал (< 0), а не его админ.
+	RecentThreadRepliers(ctx context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]domain.PeerID, error)
 	// CountMessages — сколько сообщений истории видит зритель userID (тот же
 	// предикат видимости, что у окна истории).
 	CountMessages(ctx context.Context, chatID, userID int64) (int, error)
@@ -484,7 +492,7 @@ type ChannelRepo interface {
 }
 
 type SearchRepo interface {
-	SearchChats(ctx context.Context, q string, limit int) ([]domain.ChatRecord, error) // public only
+	SearchChats(ctx context.Context, q string, limit int) ([]int64, error) // public only, ranked
 	// SearchUsers — карточки глазами viewerID (domain.UserReal.SeenBy).
 	SearchUsers(ctx context.Context, viewerID int64, q string, limit int) ([]domain.UserReal, error)
 	// OwnPeers — какие из найденных пиров «свои» для viewerID: чаты, где он
@@ -502,7 +510,7 @@ type SearchRepo interface {
 	// что он в этих каналах не состоит, — не умолчание, а следствие самой
 	// выборки. В краткой форме это видно двумя полями сразу (pFlags.left и
 	// channel.date), см. domain.ChatRecord.ChannelDate.
-	SimilarChannels(ctx context.Context, chatID, viewerID int64, limit int) ([]domain.ChatRecord, int, error)
+	SimilarChannels(ctx context.Context, chatID, viewerID int64, limit int) ([]int64, int, error)
 }
 
 type ReactionRepo interface {
@@ -632,6 +640,9 @@ type DraftRepo interface {
 type PrivacyChecker interface {
 	Check(ctx context.Context, ownerID, viewerID int64, key domain.PrivacyKey) (bool, error)
 	VisibleMap(ctx context.Context, viewerID int64, ownerIDs []int64, key domain.PrivacyKey) (map[int64]bool, error)
+	// ViewUsers — карточки `user` глазами зрителя: фото, номер и статус по
+	// правилам приватности (domain.UserViewRules). Правит срез на месте.
+	ViewUsers(ctx context.Context, viewerID int64, users []domain.UserReal)
 }
 
 type ChannelPublisher interface {
@@ -1048,6 +1059,13 @@ type Difference struct {
 	State        domain.UserState `json:"state"`
 	Slice        bool             `json:"slice"`
 	TooLong      bool             `json:"too_long"`
+	// Users/Chats — карточки всех, на кого ссылаются строки разницы, глазами
+	// зрителя: у оригинала updates.difference несёт их обязательными
+	// векторами, и клиент сохраняет пиров ДО применения апдейтов
+	// (apiUpdatesManager.ts:341-342). Без них сущность, впервые пришедшая
+	// офлайн, оставалась без имени (A4-05).
+	Users []domain.UserReal `json:"users"`
+	Chats []domain.Chat     `json:"chats"`
 }
 
 const (

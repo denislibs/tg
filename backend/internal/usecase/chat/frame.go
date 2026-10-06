@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 
@@ -10,7 +11,26 @@ import (
 // frame encodes a WS envelope {t, d}. Errors are impossible for the maps we pass,
 // so it returns just the bytes (empty on the unreachable error path).
 func frame(t string, d any) []byte {
-	b, err := json.Marshal(map[string]any{"t": t, "d": d})
+	return frameEnvelope(map[string]any{"t": t}, d)
+}
+
+// frameEnvelope — конверт env с телом d и ссылками тела на пиров
+// (domain.FrameRefsKey): по ним соединение доклеивает карточки пиров, которых
+// получателю ещё не отдавало (A4-05). Ссылки считаются ЗДЕСЬ, один раз на
+// кадр, а не каждым соединением заново; тело без конструктора (транспортные
+// кадры) ссылок не несёт.
+func frameEnvelope(env map[string]any, d any) []byte {
+	body, err := json.Marshal(d)
+	if err != nil {
+		return nil
+	}
+	env["d"] = json.RawMessage(body)
+	if bytes.Contains(body, []byte(`"_":`)) {
+		if refs := domain.CollectPeerRefsJSON(body); !refs.Empty() {
+			env[domain.FrameRefsKey] = refs
+		}
+	}
+	b, err := json.Marshal(env)
 	if err != nil {
 		return nil
 	}
@@ -50,11 +70,7 @@ func framePts(t string, base map[string]any, pts int64) []byte {
 
 // frameEnvelopePts — {t, d, pts}: курсор рядом с телом, а не в нём.
 func frameEnvelopePts(t string, d map[string]any, pts int64) []byte {
-	b, err := json.Marshal(map[string]any{"t": t, "d": d, "pts": pts})
-	if err != nil {
-		return nil
-	}
-	return b
+	return frameEnvelope(map[string]any{"t": t, "pts": pts}, d)
 }
 
 // withPeer — копия базового payload с ключом пира ПОЛУЧАТЕЛЯ. base общий для

@@ -130,6 +130,11 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus }: {
    *    `creator`/`left`, `admin_rights`, личные `banned_rights`, дата
    *    вступления `date`) — из лежащего. Без этого создатель после смены
    *    фото группы оставался без своих прав.
+   *  • Чего в `min` нет вовсе, то остаётся от лежащей карточки. Второй
+   *    источник `min` — ссылка на чат, который зрителю не читается (заголовок
+   *    пересылки, автор send-as; backend `ChatRecord.Hidden`): у такого нет
+   *    ни числа участников, ни `default_banned_rights`, и затирать ими
+   *    известное значило бы снова блокировать ввод (A1-01).
    *
    * Слитая карточка уже полная — `min` с неё снимается.
    */
@@ -149,6 +154,7 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus }: {
     delete merged.banned_rights
     if (prev.admin_rights) merged.admin_rights = prev.admin_rights
     if (prev.banned_rights) merged.banned_rights = prev.banned_rights
+    if (!merged.default_banned_rights && prev.default_banned_rights) merged.default_banned_rights = prev.default_banned_rights
     return merged
   }
 

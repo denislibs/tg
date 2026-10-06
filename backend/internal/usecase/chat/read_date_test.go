@@ -135,3 +135,7 @@ func TestOutboxReadDate_PerMessage(t *testing.T) {
 		t.Fatalf("first message read date changed after a later read: was %v, now %v", at1, again)
 	}
 }
+
+func (p stubPrivacy) ViewUsers(ctx context.Context, viewerID int64, users []domain.UserReal) {
+	viewUsersVia(ctx, p, viewerID, users)
+}

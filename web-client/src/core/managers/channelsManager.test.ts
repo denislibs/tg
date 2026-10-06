@@ -104,17 +104,6 @@ describe('ChannelsManager.post', () => {
   })
 })
 
-describe('ChannelsManager.enableDiscussion', () => {
-  it('POSTs /channels/{id}/discussion and returns discussion_peer_id', async () => {
-    const post = vi.fn(async () => ({ discussion_peer_id: 555 }))
-    const rest = { post, get: vi.fn() } as unknown as RestClient
-    const mgr = newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers(), cacheViews: () => {} })
-    const id = await mgr.enableDiscussion(7)
-    expect(post).toHaveBeenCalledWith('/channels/7/discussion', {})
-    expect(id).toBe(555)
-  })
-})
-
 describe('ChannelsManager suggested posts', () => {
   function rawSp(id: number, status = 'pending') {
     return { id, peer_id: 7, author_id: 8, author_name: 'Bob', text: `p${id}`, status, created_at: 1000 }

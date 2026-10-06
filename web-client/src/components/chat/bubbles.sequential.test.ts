@@ -95,7 +95,7 @@ function owner() {
    *  зовёт владельца и публикует ЕГО операции (сам менеджер их только
    *  возвращает). Здесь тот же порядок. */
   const ack = (clientMsgId: string, id: number, createdAt: string) =>
-    emit(pending.ackPendingMessage({ client_msg_id: clientMsgId, id, created_at: createdAt }))
+    emit(pending.ackPendingMessage({ client_msg_id: clientMsgId, id, date: Math.floor(Date.parse(createdAt) / 1000) }))
 
   return { pending, ops, ack }
 }
@@ -352,7 +352,7 @@ describe('sequential: эхо своей отправки раньше ack (по�
       message: makeRawMessage({ id, peerId: CHAT, fromId: ME, out: true, text: randomId, createdAt, randomId }) as RawMessage,
     }))
     const ack = (clientMsgId: string, id: number) =>
-      applyOpsToMirror(mgr.ackPendingMessage({ client_msg_id: clientMsgId, id, created_at: createdAt }))
+      applyOpsToMirror(mgr.ackPendingMessage({ client_msg_id: clientMsgId, id, date: Math.floor(Date.parse(createdAt) / 1000) }))
 
     echo(900, 'c1') // эхо первой — раньше её ack
     await settle()

@@ -94,7 +94,7 @@ func (i *Interactor) PurgeExpiredMessages(ctx context.Context) (int, error) {
 			}
 			slices.Sort(m)
 			members = m
-			date := nowMillis()
+			date := nowUnix()
 			for _, uid := range members {
 				payload, e := json.Marshal(deletePayload(addr.forViewer(uid), msg.Seq))
 				if e != nil {

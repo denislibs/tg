@@ -3,7 +3,7 @@ import { NKInitiator } from './noise/handshakeState'
 import type { KeyPair } from './noise/primitives'
 import type { CipherState } from './noise/symmetricState'
 import { frameLen, unframeLen, sealFrame, openFrame } from './codec'
-import { encodeFrame, decodeFrame, type Frame } from '../../../protocol/frames'
+import { encodeFrame, decodeFrame, framePeers, type Frame, type FramePeers } from '../../../protocol/frames'
 
 // Noise-prologue — байты, привязывающие хендшейк к версии протокола. Здесь '/'
 // допустим (это не WS-токен, а входные байты BLAKE2s). Менять синхронно с сервером
@@ -43,7 +43,7 @@ export class DnpTransport implements Transport {
   private cipherSend: CipherState | null = null
   private cipherRecv: CipherState | null = null
   private token = ''
-  private frameCbs: Array<(type: string, d: unknown, pts?: number) => void> = []
+  private frameCbs: Array<(type: string, d: unknown, pts?: number, peers?: FramePeers) => void> = []
   private binaryCbs: Array<(data: Uint8Array) => void> = []
   private openCbs: Array<() => void> = []
   private closeCbs: Array<() => void> = []
@@ -104,7 +104,8 @@ export class DnpTransport implements Transport {
         }
         if (plain[0] !== KIND_JSON) { this.fail(); return }
         const f: Frame = decodeFrame(new TextDecoder().decode(plain.subarray(1)))
-        for (const cb of this.frameCbs) cb(f.t, f.d, f.pts)
+        const peers = framePeers(f)
+        for (const cb of this.frameCbs) cb(f.t, f.d, f.pts, peers)
       } catch {
         this.fail() // сбой decrypt = необратимый рассинхрон nonce → close → rehandshake
       }
@@ -114,7 +115,7 @@ export class DnpTransport implements Transport {
   // fail: закрыть WS, НЕ глуша onclose — сработает onClose → connectionManager решедулит reconnect.
   private fail(): void { this.ws?.close() }
 
-  onFrame(cb: (type: string, d: unknown, pts?: number) => void): void { this.frameCbs.push(cb) }
+  onFrame(cb: (type: string, d: unknown, pts?: number, peers?: FramePeers) => void): void { this.frameCbs.push(cb) }
   onBinary(cb: (data: Uint8Array) => void): void { this.binaryCbs.push(cb) }
   onOpen(cb: () => void): void { this.openCbs.push(cb) }
   onClose(cb: () => void): void { this.closeCbs.push(cb) }

@@ -79,7 +79,7 @@ func TestMessagesContainer_ChannelPostCarriesViewsAndThread(t *testing.T) {
 		t.Fatalf("GetByIDs = %d, %v", len(rows), err)
 	}
 
-	wire, users, err := in.MessagesContainer(ctx, 7, rows)
+	wire, users, _, err := in.MessagesContainer(ctx, 7, rows)
 	if err != nil {
 		t.Fatalf("MessagesContainer: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestMessagesContainer_PrivateChatAsksNoCounters(t *testing.T) {
 		t.Fatalf("CreatePrivateChat: %v", err)
 	}
 	msgs := []domain.Message{{ID: 1, ChatID: chatID, Seq: 1, SenderID: a, Text: "привет"}}
-	if _, _, err := in.MessagesContainer(ctx, a, msgs); err != nil {
+	if _, _, _, err := in.MessagesContainer(ctx, a, msgs); err != nil {
 		t.Fatalf("MessagesContainer: %v", err)
 	}
 	if counter.threadCounts != 0 || counter.mirrors != 0 || counter.viewCounts != 0 {
@@ -135,7 +135,7 @@ func TestMessagesContainer_PrivateChatAsksNoCounters(t *testing.T) {
 	const groupID int64 = 77
 	s.seedChat(groupID, domain.ChatTypeGroup, a, b)
 	group := []domain.Message{{ID: 2, ChatID: groupID, Seq: 1, SenderID: a, Text: "тема"}}
-	if _, _, err := in.MessagesContainer(ctx, a, group); err != nil {
+	if _, _, _, err := in.MessagesContainer(ctx, a, group); err != nil {
 		t.Fatalf("MessagesContainer группы: %v", err)
 	}
 	if counter.threadCounts != 1 {
@@ -181,7 +181,7 @@ func TestMessagesContainer_GroupThreadCarriesReplyCount(t *testing.T) {
 		t.Fatalf("зеркало лежит в чате %d, а не в группе обсуждения %d", rows[0].ChatID, disc)
 	}
 
-	wire, _, err := in.MessagesContainer(ctx, 7, rows)
+	wire, _, _, err := in.MessagesContainer(ctx, 7, rows)
 	if err != nil {
 		t.Fatalf("MessagesContainer: %v", err)
 	}
@@ -233,7 +233,7 @@ func TestMessagesContainer_MergesRecentRepliersIntoUsers(t *testing.T) {
 		t.Fatalf("GetByIDs = %d, %v", len(rows), err)
 	}
 
-	wire, users, err := in.MessagesContainer(ctx, 7, rows)
+	wire, users, _, err := in.MessagesContainer(ctx, 7, rows)
 	if err != nil {
 		t.Fatalf("MessagesContainer: %v", err)
 	}

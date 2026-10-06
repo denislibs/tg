@@ -13,32 +13,16 @@ const (
 	ChatTypeSecret  = "secret"
 )
 
-// ChatBrief — строка chats в объёме, которого хватает на конструктор `channel`:
-// снимок «личности отправителя» send-as и её автора в бабле.
+// ChatBrief — название и вид чата: подпись там, где карточки пира у получателя
+// нет и не будет (имя автора кросс-чатного ответа, чат в апдейте бота).
+// Конструктор `channel` из него НЕ собирается: урезанный не-min `channel`
+// клиент оригинала кладёт поверх лежащей карточки целиком (tweb
+// appChatsManager.saveApiChat → safeReplaceObject) и снимает со зрителя
+// права. Карточки чатов собирает один сборщик — ChatRecord.ToChannel.
 type ChatBrief struct {
-	ID           int64
-	Type         string // group | channel | ...
-	Title        string
-	PhotoID      *int64 // chats.photo_media_id (nil — фото нет)
-	PhotoPreview []byte // stripped-превью фото (media.blur_preview)
-}
-
-// ToChannel — конструктор `channel` из снимка. Вид чата выражен флагами
-// broadcast/megagroup, а не строкой: решение №2 разбора.
-func (b ChatBrief) ToChannel() Channel {
-	return NewChannel(b.ID, b.Title, b.ChatPhoto(), time.Time{}, ChannelFlags{
-		Broadcast: b.Type == ChatTypeChannel,
-		Megagroup: b.Type == ChatTypeGroup,
-	})
-}
-
-// ChatPhoto — объединение ChatPhoto для этого снимка: «фото нет» это
-// состояние (chatPhotoEmpty), а не пустая строка URL.
-func (b ChatBrief) ChatPhoto() ChatPhoto {
-	if b.PhotoID == nil {
-		return NewChatPhotoEmpty()
-	}
-	return NewChatPhoto(*b.PhotoID, b.PhotoPreview, false)
+	ID    int64
+	Type  string // group | channel | ...
+	Title string
 }
 
 // SendAsPeerRecord — доступная «личность отправителя» (Telegram channels.getSendAs):
@@ -124,6 +108,11 @@ type DialogRecord struct {
 	// групп и каналов). Наружу уезжает вектором users контейнера — вместе с
 	// авторами последних сообщений.
 	Peer *UserReal
+	// PeerPhone — номер собеседника, прочитанный, но не показанный: строка
+	// списка живёт в кэше (JSON), где скрытое поле карточки теряется, поэтому
+	// номер едет рядом и возвращается в карточку на витрине
+	// (UserReal.WithHiddenPhone) — показывает его правило приватности.
+	PeerPhone string `json:",omitempty"`
 	// TTLPeriod — период автоудаления сообщений чата в секундах (0 — выкл);
 	// на проводе ttl_period (решение Р6).
 	TTLPeriod int
@@ -346,6 +335,14 @@ type ChatRecord struct {
 	NotifySettings   *PeerNotifySettings
 	DiscussionChatID int64
 	IsForum          bool
+	// Hidden — чат зрителю НЕ читается (не участник, не публичный, не группа
+	// обсуждения читаемого канала либо забанен): наружу уходит честный `min`
+	// без членства и прав. Ссылка на такой чат приезжает из чужого контента
+	// (заголовок пересылки, автор send-as), и имя с аватаркой ему положены, а
+	// ограничения обычного участника — нет: tweb hasRights берёт
+	// default_banned_rights как права зрителя, и чужие настройки чата,
+	// слитые поверх лежащей карточки, блокировали ввод (A1-01).
+	Hidden bool
 	// ThemeEmoticon — тема оформления чата (chat_theme.theme_id); "" — тема не
 	// задана. Прежде ехала полем каждой строки списка диалогов; в схеме её место
 	// — полная карточка (chatFull/channelFull.theme_emoticon), решение Р7.
@@ -441,6 +438,9 @@ func (c ChatRecord) ChannelDate() time.Time {
 // зрителя (admin_rights) и ограничения обычного участника
 // (default_banned_rights) — часть краткой формы по схеме.
 func (c ChatRecord) ToChannel() Channel {
+	if c.Hidden && c.ViewerID != 0 {
+		return c.toMinChannel()
+	}
 	out := NewChannel(c.ID, c.Title, c.ChatPhoto(), c.ChannelDate(), ChannelFlags{
 		// Снимок без зрителя (chat_update, один на всех участников) — это и
 		// есть min-конструктор схемы: членства в нём нет, потому что его не
@@ -484,6 +484,27 @@ func (c ChatRecord) ToChannel() Channel {
 			out.BannedRights = EffectiveBannedRights(c.MyRestriction, c.Settings.DefaultPerms, time.Now())
 		}
 	}
+	return out
+}
+
+// toMinChannel — `min`-конструктор для чата, который зрителю не читается:
+// имя, @имя, аватарка и общие свойства чата (вид, форум, подписи, связь).
+// Ни членства, ни default_banned_rights, ни даты, ни числа участников: это не
+// «зритель не состоит», а «не спрашивали» — клиент берёт из `min` общее, а
+// пер-зрительское и отсутствующее оставляет от лежащей карточки (tweb
+// appChatsManager.saveApiChat, :229-231, :239-244).
+func (c ChatRecord) toMinChannel() Channel {
+	out := NewChannel(c.ID, c.Title, c.ChatPhoto(), time.Time{}, ChannelFlags{
+		Min:               true,
+		Broadcast:         c.Type == ChatTypeChannel,
+		Megagroup:         c.Type == ChatTypeGroup,
+		Signatures:        c.Signatures,
+		SignatureProfiles: c.SignatureProfiles,
+		SlowmodeEnabled:   c.Settings.SlowmodeSeconds > 0,
+		Forum:             c.IsForum,
+		HasLink:           c.DiscussionChatID != 0 || c.LinkedChannelID != 0,
+	})
+	out.Username = c.Username
 	return out
 }
 

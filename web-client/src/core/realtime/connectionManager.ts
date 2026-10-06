@@ -2,6 +2,7 @@
 import type { Transport } from '../net/transport'
 import type { ConnState, SendMessageAction } from './events'
 import type { MessageEntity } from '../models'
+import type { FramePeers } from '../../protocol/frames'
 
 export interface SendArgs { peerId: number; text: string; entities?: MessageEntity[] | null; clientMsgId: string; replyToId?: number | null; replyToPeerId?: number | null; replyQuoteText?: string | null; replyQuoteOffset?: number | null; mediaId?: number | null; type?: string; groupedId?: number; geo?: { lat: number; lng: number; title?: string; address?: string; livePeriod?: number; heading?: number }; contactUserId?: number; threadRootId?: number | null; encBody?: string; ttlSeconds?: number | null; silent?: boolean; effect?: string | null; paidMediaPrice?: number | null; sendAsPeerId?: number | null; /** медиа скрыто спойлером — tweb sendFile({spoiler}) → inputMedia.pFlags.spoiler */ mediaSpoiler?: boolean }
 
@@ -21,7 +22,10 @@ export interface CMDeps {
   // new_message/read/typing/presence/reaction/message_ack. envPts — курсор из
   // КОНВЕРТА: он приезжает у кадров, чей конструктор схемы своего `pts` не
   // объявляет (см. Frame.pts).
-  onFrame: (type: string, payload: unknown, envPts?: number) => void
+  //
+  // peers — векторы карточек кадра (Frame.users/chats): воркер сохраняет их ДО
+  // применения апдейта.
+  onFrame: (type: string, payload: unknown, envPts?: number, peers?: FramePeers) => void
   /** Durable outbox storage (IndexedDB in the worker): unacked sends survive a
    * page reload and are resent on the next connect. */
   outboxStore?: { load: () => Promise<SendArgs[] | undefined>; save: (list: SendArgs[]) => void }
@@ -110,13 +114,13 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
     // только транспортные заботы самого соединения — heartbeat и очередь
     // неподтверждённой отправки; маршрутизацию делает тот, кто знает
     // КОНСТРУКТОР.
-    ws.onFrame((t, d, envPts) => {
+    ws.onFrame((t, d, envPts, peers) => {
       if (t === 'pong') { missedPongs = 0; return }
       if (t === 'message_ack') { const id = (d as { client_msg_id?: string })?.client_msg_id; if (id) { outbox.delete(id); persistOutbox() } }
       // A rejected send (e.g. too long): drop it from the outbox so it isn't
       // resent forever on every reconnect; the UI marks the bubble failed.
       if (t === 'message_error') { const id = (d as { client_msg_id?: string })?.client_msg_id; if (id) { outbox.delete(id); persistOutbox() } }
-      onFrame(t, d, envPts)
+      onFrame(t, d, envPts, peers)
     })
   }
 

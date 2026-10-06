@@ -388,6 +388,23 @@ describe('PeersManager: слияние карточки чата (saveApiChat)',
     })
   })
 
+  // A1-01: `min` чата, который зрителю не читается (ссылка из чужого
+  // контента), не несёт ни числа участников, ни `default_banned_rights` — и не
+  // затирает их у лежащей карточки: иначе hasRights без прав блокировал ввод.
+  it('min без default_banned_rights — права остаются от лежащей карточки', () => {
+    const mgr = newPeersManager({ rest: fakeRest([]).rest })
+    mgr.saveApiPeers({ chats: [full] })
+    mgr.saveApiPeers({ chats: [{
+      _: 'channel', id: 6, title: 'Команда', photo: { _: 'chatPhotoEmpty' }, date: 0,
+      pFlags: { min: true, megagroup: true },
+    }] })
+    expect(cached(mgr)).toMatchObject({
+      default_banned_rights: full.default_banned_rights,
+      participants_count: 6,
+      pFlags: { megagroup: true, creator: true },
+    })
+  })
+
   it('полный channel заменяет карточку целиком — включая снятые права', () => {
     const mgr = newPeersManager({ rest: fakeRest([]).rest })
     mgr.saveApiPeers({ chats: [full] })

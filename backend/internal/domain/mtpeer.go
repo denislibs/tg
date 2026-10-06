@@ -353,6 +353,71 @@ type UserReal struct {
 	// inline-режиме этого бота. Живёт она ИМЕННО ЗДЕСЬ, у самого бота: прежде
 	// её везла витрина inline-выдачи вторым ключом рядом с результатами.
 	BotInlinePlaceholder string `json:"bot_inline_placeholder,omitempty"`
+	// hiddenPhone — номер из строки users, прочитанный сборщиком, но ещё НЕ
+	// показанный: наружу (Phone) его переносит только RevealPhone, когда
+	// правило PrivacyPhoneNumber пускает зрителя (UserViewRules.Apply).
+	// Неэкспортируемое поле на провод не попадает ни в JSON, ни в TL — номер,
+	// забытый витриной, остаётся скрытым, а не утекает.
+	hiddenPhone string
+}
+
+// WithHiddenPhone — карточка с прочитанным, но не показанным номером.
+func (u UserReal) WithHiddenPhone(phone string) UserReal {
+	u.hiddenPhone = phone
+	return u
+}
+
+// UserViewRules — ответы правил приватности владельцев карточек ЗРИТЕЛЮ
+// (VisibleMap по ключу) и присутствие. Одно место, где карточка `user`
+// доводится до вида «глазами зрителя» на ЛЮБОЙ витрине: прежде status ехал
+// только в /members и /users/{id}, phone — только в /users/{id} и /me, а
+// клиент заменял карточку целиком и терял поля (A4-08).
+type UserViewRules struct {
+	ViewerID int64
+	Photo    map[int64]bool // profile_photo; nil — правило не спрошено (сбой): фото гасится
+	Phone    map[int64]bool // phone_number
+	LastSeen map[int64]bool // last_seen
+	// Status — присутствие пользователя (точный статус); nil — источника нет.
+	Status func(userID int64) UserStatus
+}
+
+// UncheckedUserViewRules — правила, когда проверяющего приватности нет (тесты,
+// урезанная сборка): фото видно всем, номер — никому, статус «ничего не
+// известно» (userStatusEmpty) — та же мягкая деградация, что у прочих
+// опциональных зависимостей.
+func UncheckedUserViewRules(viewerID int64, users []UserReal) UserViewRules {
+	all := make(map[int64]bool, len(users))
+	for _, u := range users {
+		all[u.ID] = true
+	}
+	return UserViewRules{ViewerID: viewerID, Photo: all, Phone: map[int64]bool{}, LastSeen: all,
+		Status: func(int64) UserStatus { return NewUserStatusEmpty() }}
+}
+
+// Apply доводит карточки на месте: self видит себя целиком; фото по правилу
+// (личное фото зритель поставил сам — оно не гасится); номер по правилу;
+// статус по last_seen (скрытый — userStatusRecently, как у оригинала), у
+// удалённого — userStatusEmpty, у бота статуса нет.
+func (r UserViewRules) Apply(users []UserReal) {
+	for idx := range users {
+		u := &users[idx]
+		self := u.ID == r.ViewerID
+		if p, ok := u.Photo.(UserProfilePhotoReal); ok && !self && !p.Personal() && !r.Photo[u.ID] {
+			u.Photo = NewUserProfilePhotoEmpty()
+		}
+		if u.hiddenPhone != "" && (self || r.Phone[u.ID]) {
+			u.Phone = u.hiddenPhone
+		}
+		switch {
+		case u.PFlags["deleted"]:
+			u.Status = NewUserStatusEmpty()
+		case u.PFlags["bot"] || u.PFlags["support"]:
+		case !self && !r.LastSeen[u.ID]:
+			u.Status = NewUserStatusRecently(false)
+		case r.Status != nil:
+			u.Status = r.Status(u.ID)
+		}
+	}
 }
 
 func (UserReal) isUser()          {}
@@ -828,9 +893,8 @@ const UserFullTag = "userFull"
 // рождения: у нас они лежали в «своей» витрине (/me), а verified/premium — в
 // «полной чужой» (/users/{id}), то есть граница шла не по этой линии.
 //
-// Обязательные по схеме settings:PeerSettings, notify_settings:
-// PeerNotifySettings, common_chats_count:int здесь не производятся — см.
-// mtpeer_schema_test.go, список «нет предмета», там же причины.
+// Обязательный по схеме settings:PeerSettings здесь не производится — см.
+// mtpeer_schema_test.go, список «нет предмета», там же причина.
 type UserFull struct {
 	Underscore string          `json:"_"`
 	PFlags     map[string]bool `json:"pFlags,omitempty"`
@@ -862,6 +926,30 @@ type UserFull struct {
 	// (contacts.updateContactNote / contacts.addContact.note). Заметки нет —
 	// ключа нет.
 	Note *TextWithEntities `json:"note,omitempty"`
+	// NotifySettings — notify_settings:PeerNotifySettings: пер-чатное
+	// переопределение уведомлений ЗРИТЕЛЯ для переписки с этим пиром (строка
+	// chat_members лички; переписки нет — пустое «переопределения нет»).
+	// У своей карточки (/me) переписки с собой нет вовсе — указатель nil.
+	NotifySettings *PeerNotifySettings `json:"notify_settings,omitempty"`
+	// PinnedMsgID — flags.6?int: закреплённое сообщение лички зрителя с пиром
+	// (номер в переписке); 0 — нет.
+	PinnedMsgID int64 `json:"pinned_msg_id,omitempty"`
+	// CommonChatsCount — common_chats_count:int: группы, где состоят оба
+	// (вкладка «Общие группы», tweb appSearchSuper.ts:3031). Каналы не в счёт:
+	// подписчики канала друг другу не видны.
+	CommonChatsCount int `json:"common_chats_count"`
+	// StargiftsCount — flags2.8?int: подарки профиля, видимые зрителю
+	// (tweb peerProfile.tsx:435) — тот же отбор, что у ручки подарков.
+	StargiftsCount int `json:"stargifts_count,omitempty"`
+}
+
+// PeerFullState — то, что userFull говорит о паре «зритель — пир» сверх
+// правил приватности (A4-19): см. одноимённые поля UserFull.
+type PeerFullState struct {
+	CommonChats    int
+	PinnedMsgID    int64
+	StarGifts      int
+	NotifySettings *PeerNotifySettings
 }
 
 // UserFullFlags — булевы флаги userFull в форме, удобной для вызова.

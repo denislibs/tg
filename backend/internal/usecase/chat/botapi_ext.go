@@ -78,7 +78,7 @@ func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, 
 		if e != nil {
 			return e
 		}
-		date := nowMillis()
+		date := nowUnix()
 		for _, uid := range members {
 			payload, e := pp.payload(uid)
 			if e != nil {

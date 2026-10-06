@@ -18,6 +18,7 @@ import (
 type CalendarPage struct {
 	Periods  []domain.SearchResultsCalendarPeriod
 	Messages []domain.MTMessage
+	Chats    []domain.Chat
 	Users    []domain.UserReal
 }
 
@@ -58,9 +59,9 @@ func (i *Interactor) CalendarMonth(ctx context.Context, chatID, userID int64, fr
 	if err := i.hydrateMedia(ctx, msgs); err != nil {
 		return CalendarPage{}, err
 	}
-	wire, users, err := i.MessagesContainer(ctx, userID, msgs)
+	wire, users, chats, err := i.MessagesContainer(ctx, userID, msgs)
 	if err != nil {
 		return CalendarPage{}, err
 	}
-	return CalendarPage{Periods: periods, Messages: wire, Users: users}, nil
+	return CalendarPage{Periods: periods, Messages: wire, Chats: chats, Users: users}, nil
 }
