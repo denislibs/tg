@@ -14,6 +14,7 @@ type cardResponse struct {
 	Underscore string `json:"_"`
 	FullChat   struct {
 		Underscore   string          `json:"_"`
+		ID           int64           `json:"id"`
 		About        string          `json:"about"`
 		LinkedChatID int64           `json:"linked_chat_id"`
 		PinnedMsgID  int64           `json:"pinned_msg_id"`
@@ -36,7 +37,8 @@ func decodeCard(t *testing.T, rec *httptest.ResponseRecorder) cardResponse {
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatalf("разбор карточки: %v (%s)", err, rec.Body.String())
 	}
-	if out.Underscore != "messages.chatFull" || len(out.Chats) != 1 {
+	// chats[0] — сам чат; следом может ехать связанный (A4-12).
+	if out.Underscore != "messages.chatFull" || len(out.Chats) == 0 || out.Chats[0].ID != out.FullChat.ID {
 		t.Fatalf("карточка не messages.chatFull: %s", rec.Body.String())
 	}
 	return out

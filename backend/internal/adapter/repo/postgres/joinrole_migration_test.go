@@ -104,7 +104,8 @@ func TestMigration0139_AfterPhantom0137(t *testing.T) {
 		t.Fatalf("накат поверх фантомной 137: %v", err)
 	}
 	var applied []int64
-	rows, err := pool.Query(ctx, `SELECT version_id FROM goose_db_version WHERE version_id >= 137 AND is_applied ORDER BY version_id`)
+	// Только 137–139: миграции соседних пачек (0140+) к проверке не относятся.
+	rows, err := pool.Query(ctx, `SELECT version_id FROM goose_db_version WHERE version_id BETWEEN 137 AND 139 AND is_applied ORDER BY version_id`)
 	if err != nil {
 		t.Fatal(err)
 	}
