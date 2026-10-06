@@ -156,11 +156,28 @@ func TestWS_LiveDelivery(t *testing.T) {
 	time.Sleep(150 * time.Millisecond) // let both register + subscribe
 
 	// A sends a message.
-	sendFrame(t, connA, "send_message", map[string]any{"peer_id": env.peerB, "text": "hi", "client_msg_id": "c1"})
+	sendFrame(t, connA, "send_message", map[string]any{"peer_id": env.peerB, "text": "hi **bold**", "client_msg_id": "c1",
+		"entities": []map[string]any{{"_": "messageEntityBold", "offset": 3, "length": 8}}})
 
 	// A receives an ack; B receives a new_message.
-	if got := readUntil(t, connA, "message_ack"); got == nil {
+	got := readUntil(t, connA, "message_ack")
+	if got == nil {
 		t.Fatal("A did not receive message_ack")
+	}
+	// A4-17: ack по образцу updateShortSentMessage — дата секундами и то, что
+	// сервер сделал с отправленным сам (санитизированные entities).
+	var ack struct {
+		D struct {
+			ID       int64            `json:"id"`
+			Date     int64            `json:"date"`
+			Entities []map[string]any `json:"entities"`
+		} `json:"d"`
+	}
+	if err := json.Unmarshal(got, &ack); err != nil || ack.D.ID == 0 || ack.D.Date == 0 || ack.D.Date > 100_000_000_000 {
+		t.Fatalf("ack = %s (%v), want id и date секундами", got, err)
+	}
+	if len(ack.D.Entities) != 1 || ack.D.Entities[0]["_"] != "messageEntityBold" {
+		t.Fatalf("ack без серверных entities: %s", got)
 	}
 	if got := readUntil(t, connB, "new_message"); got == nil {
 		t.Fatal("B did not receive new_message")

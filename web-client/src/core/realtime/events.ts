@@ -664,7 +664,13 @@ export type UpdatePredicate = Update['_']
 
 /** Сервер подтвердил отправку: у бабла появляется НАСТОЯЩИЙ номер в чате
  *  (серверное пространство — владелец переводит его в клиентское) и дата. */
-export interface AckEvt { client_msg_id: string; id: number; created_at: string }
+// Подтверждение отправки по образцу updateShortSentMessage (A4-17): номер,
+// дата (секунды) и то, что сервер сделал с отправленным сам — санитизированные
+// entities, вложение (превью ссылки у текста), ttl_period.
+export interface AckEvt {
+  client_msg_id: string; id: number; date: number
+  entities?: MessageEntity[]; media?: MessageMedia; ttl_period?: number
+}
 // Server rejected a send (e.g. text too long). The client drops it from the outbox
 // (no infinite retry) and removes the optimistic bubble.
 export interface MessageErrorEvt { client_msg_id: string; reason: string }
