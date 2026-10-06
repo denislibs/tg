@@ -862,6 +862,9 @@ func (c groupChats) ShowDialogs(context.Context, int64) error                   
 func (c groupChats) RecountCounters(context.Context, int64, []int64) error       { return nil }
 func (c groupChats) DropMessageMentions(context.Context, int64, int64) error     { return nil }
 func (c groupChats) DropUserMentions(context.Context, int64, int64) error        { return nil }
+func (c groupChats) PinnedIDs(context.Context, []int64) (map[int64]bool, error) {
+	return nil, nil
+}
 func (c groupChats) CurrentReadSeq(context.Context, int64, int64) (int64, error) { return 0, nil }
 func (c groupChats) SetRead(context.Context, int64, int64, int64, int) error     { return nil }
 func (c groupChats) AppendReadMark(context.Context, int64, int64, int64) error   { return nil }

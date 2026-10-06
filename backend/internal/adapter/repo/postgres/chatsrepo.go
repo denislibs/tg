@@ -861,6 +861,28 @@ func (r *ChatsRepo) UnpinMessage(ctx context.Context, chatID, msgID int64) error
 	return err
 }
 
+// PinnedIDs — см. ChatRepo.PinnedIDs.
+func (r *ChatsRepo) PinnedIDs(ctx context.Context, msgIDs []int64) (map[int64]bool, error) {
+	out := make(map[int64]bool)
+	if len(msgIDs) == 0 {
+		return out, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT msg_id FROM pinned_messages WHERE msg_id = ANY($1::bigint[])`, msgIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
+}
+
 // ListPins returns the chat's pinned messages, newest pin first.
 func (r *ChatsRepo) ListPins(ctx context.Context, chatID int64) ([]domain.Message, error) {
 	q := querier(ctx, r.pool)

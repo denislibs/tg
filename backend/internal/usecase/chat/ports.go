@@ -136,6 +136,8 @@ type ChatRepo interface {
 	PinMessage(ctx context.Context, chatID, msgID, byUser int64) error
 	UnpinMessage(ctx context.Context, chatID, msgID int64) error
 	ListPins(ctx context.Context, chatID int64) ([]domain.Message, error)
+	// PinnedIDs — какие из msgIDs закреплены в своих чатах (message.pFlags.pinned).
+	PinnedIDs(ctx context.Context, msgIDs []int64) (map[int64]bool, error)
 	Viewers(ctx context.Context, chatID, seq, excludeUser int64) ([]int64, error)
 }
 

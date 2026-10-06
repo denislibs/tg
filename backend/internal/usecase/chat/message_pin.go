@@ -70,6 +70,7 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 	if err != nil {
 		return err
 	}
+	i.invalidateDialogs(ctx, members...)
 	if i.publisher != nil {
 		for _, uid := range members {
 			body := pinPayload(pinAddr.forViewer(uid), cur.Seq, pin)

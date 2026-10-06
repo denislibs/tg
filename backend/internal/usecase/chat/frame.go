@@ -277,6 +277,12 @@ func (i *Interactor) messageContext(ctx context.Context, m domain.Message, peer 
 			out.CanSeeReactionsList = domain.CanSeeReactionsList(typ)
 			out.CanViewReactionsList = domain.CanViewReactionsList(typ)
 		}
+		// Закреп — свойство сообщения в чате, одинаковое для всех: кадр
+		// правки заменяет сообщение у клиента целиком, и без флага
+		// закреплённое после правки снова предлагало бы «Закрепить».
+		if pinned, err := i.pinnedOf(ctx, []domain.Message{m}); err == nil {
+			out.Pinned = pinned[m.ID]
+		}
 	}
 	return out
 }

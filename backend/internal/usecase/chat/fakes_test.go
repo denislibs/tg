@@ -513,6 +513,20 @@ func (r fakeChats) DropUserMentions(_ context.Context, chatID, userID int64) err
 	return nil
 }
 
+func (r fakeChats) PinnedIDs(_ context.Context, msgIDs []int64) (map[int64]bool, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	out := map[int64]bool{}
+	for _, ids := range r.s.pins {
+		for _, id := range ids {
+			if slices.Contains(msgIDs, id) {
+				out[id] = true
+			}
+		}
+	}
+	return out, nil
+}
+
 func (r fakeChats) CurrentReadSeq(_ context.Context, chatID, userID int64) (int64, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

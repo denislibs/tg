@@ -278,6 +278,9 @@ func (c groupMembershipChats) ShowDialogs(context.Context, int64) error         
 func (c groupMembershipChats) RecountCounters(context.Context, int64, []int64) error     { return nil }
 func (c groupMembershipChats) DropMessageMentions(context.Context, int64, int64) error   { return nil }
 func (c groupMembershipChats) DropUserMentions(context.Context, int64, int64) error      { return nil }
+func (c groupMembershipChats) PinnedIDs(context.Context, []int64) (map[int64]bool, error) {
+	return nil, nil
+}
 func (c groupMembershipChats) CurrentReadSeq(context.Context, int64, int64) (int64, error) {
 	return 0, nil
 }
