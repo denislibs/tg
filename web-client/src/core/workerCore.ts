@@ -241,7 +241,7 @@ export function createWorkerCore() {
     // пути удаления (кадр и своя ручка) проходят через эвикцию, поэтому
     // вычитание одно и повториться не может. `dialogs` объявлен ниже —
     // стрелка ленивая.
-    onMessagesDeleted: (peerId, deleted) => dialogs.applyDeletedMessages(peerId, deleted),
+    onMessagesDeleted: (peerId, deleted, missing) => dialogs.applyDeletedMessages(peerId, deleted, missing),
   })
   // Временный («неотправленный») бабл заводит владелец окна — messages (порт tweb
   // beforeMessageSending), наружу это обычные операции над окном (публикует их
@@ -340,6 +340,10 @@ export function createWorkerCore() {
       saveApiMessages: (list) => messages.saveApiMessages(list),
       getMessageByPeer: (peerId, seq) => messages.getMessageByPeer(peerId, seq),
       getHistoryFirstSlice: (peerId) => messages.getHistoryFirstSlice(peerId),
+      // Прочтение истории снимает «@» по окну сообщений (tweb
+      // onUpdateReadHistory): владелец строки спрашивает окно до сдвига
+      // горизонта — горизонт живёт у него же.
+      countReadMentions: (peerId, maxId, readMaxId) => messages.countReadMentions(peerId, maxId, readMaxId),
     },
   })
   // Stage 1C.2 (Task 2): карточки пиров — воркер единственный владелец. Веер тот
@@ -555,11 +559,12 @@ export function createWorkerCore() {
     if (pred === 'updateNewMessage' || pred === 'updateNewChannelMessage') {
       routeNewMessage(d as NewMessageEvt, meta); return
     }
-    // Вопрос «выросло ли число реакций на МОЁМ сообщении» задаётся ДО того, как
-    // кадр ляжет в SSOT: после применения агрегата сравнивать было бы не с чем —
-    // окно уже содержало бы новое состояние. Порядок здесь и есть ответ.
-    const reactionsGrew = pred === 'updateMessageReactions'
-      && messages.reactionsGrewOnMyMessage(getPeerId((d as ReactionEvt).peer), (d as ReactionEvt).msg_id, (d as ReactionEvt).reactions)
+    // Вопрос «сменилась ли непрочитанность реакций на МОЁМ сообщении» задаётся
+    // ДО того, как кадр ляжет в SSOT: после применения агрегата сравнивать было
+    // бы не с чем — окно уже содержало бы новое состояние (tweb
+    // onUpdateMessageReactions берёт `previousReactions` до `modifyMessage`).
+    const unreadReactions = pred === 'updateMessageReactions'
+      ? messages.unreadReactionsChange(d as ReactionEvt) : undefined
     // Тот же порядок для бейджа «@»: было ли упоминание непрочитанным, решает
     // окно ДО снятия media_unread (tweb onUpdateReadMessagesContents).
     const mentionsRead = pred === 'updateReadPeerMessagesContents'
@@ -624,15 +629,12 @@ export function createWorkerCore() {
       }
     }
     else if (pred === 'updateMessageReactions') {
-      // Кто-то поставил реакцию на МОЁ сообщение → бампим бейдж непрочитанных
-      // реакций диалога.
-      //
-      // Кадр больше не несёт ни диффа, ни авторитетного счётчика: и «кто
-      // поставил», и «сколько теперь непрочитанных» — пер-зрительские, а тело
-      // кадра одно на всех получателей. Ответ дал владелец SSOT ВЫШЕ, до
-      // применения агрегата; авторитетное значение счётчика приезжает со
-      // строкой диалога, как и раньше.
-      if (reactionsGrew) dialogs.bumpUnreadReactions(getPeerId((d as ReactionEvt).peer))
+      // Бейдж непрочитанных реакций — порт tweb onUpdateMessageReactions:
+      // ответ владельца окна (ВЫШЕ, до применения агрегата) — либо знак ±1,
+      // либо «сообщения в памяти нет, перечитай строку».
+      const peerId = getPeerId((d as ReactionEvt).peer)
+      if (unreadReactions === 'reload') dialogs.reloadConversation(peerId)
+      else if (unreadReactions !== undefined) dialogs.modifyUnreadReactions(peerId, unreadReactions)
     }
     broadcast(UPDATE_RT[pred], d, meta)
   }

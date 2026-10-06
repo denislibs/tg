@@ -145,7 +145,7 @@ describe('mergeReactions — абсолютный агрегат кадра', ()
   // и быть не может.
   it('мой chosen_order сохраняется, счётчики берутся из кадра', () => {
     const prev = agg({ results: [count('👍', 1, 0)] })
-    const frame = agg({ results: [count('👍', 5), count('🔥', 2)] })
+    const frame = agg({ results: [count('👍', 5), count('🔥', 2)], pFlags: { min: true } })
     const next = mergeReactions(prev, frame)!
     expect(next.results[0].count).toBe(5)
     expect(isChosen(next.results[0])).toBe(true)
@@ -157,8 +157,38 @@ describe('mergeReactions — абсолютный агрегат кадра', ()
     const frame = agg({
       results: [{ _: 'reactionCount', reaction: { _: 'reactionPaid' }, count: 50 }],
       top_reactors: [{ _: 'messageReactor', count: 20 }],
+      pFlags: { min: true },
     })
     expect(myPaidStars(mergeReactions(prev, frame))).toBe(30)
+  })
+
+  // Агрегат БЕЗ `min` собран моими глазами (кадр поставившему и автору) и
+  // ложится целиком, как `message.reactions = reactions` у оригинала
+  // (tweb appMessagesManager.ts:10625-10627): реакция, снятая мной с другого
+  // устройства, прежним выбором не воскресает.
+  it('не-min агрегат — присвоение целиком: прежний выбор не переживает кадр', () => {
+    const prev = agg({
+      results: [count('👍', 2, 0)],
+      top_reactors: [{ _: 'messageReactor', pFlags: { my: true }, count: 30 }],
+    })
+    const frame = agg({ results: [count('👍', 1)] })
+    const next = mergeReactions(prev, frame)!
+    expect(next).toBe(frame)
+    expect(isChosen(next.results[0])).toBe(false)
+    expect(myPaidStars(next)).toBe(0)
+  })
+
+  it('не-min агрегат несёт recent_reactions[].pFlags.unread как есть', () => {
+    const recent = [{
+      _: 'messagePeerReaction' as const, pFlags: { unread: true as const },
+      peer_id: { _: 'peerUser' as const, user_id: 9 }, date: 0, reaction: emoji('👍'),
+    }]
+    const next = mergeReactions(agg({ results: [count('👍', 1)] }), agg({ results: [count('👍', 1)], recent_reactions: recent }))
+    expect(next?.recent_reactions?.[0].pFlags?.unread).toBe(true)
+  })
+
+  it('пустой не-min агрегат — «реакций нет»', () => {
+    expect(mergeReactions(agg({ results: [count('👍', 1, 0)] }), agg({ results: [] }))).toBeUndefined()
   })
 
   it('пустой агрегат кадра снимает реакции целиком', () => {
@@ -259,6 +289,15 @@ describe('эхо кадра не выглядит изменением', () => {
     const local = reactionDelta(agg({ results: [count('👍', 1)] }), '👍', 'add', true, { me: 7, peerId: DM })!
     const frame = agg({ results: [count('👍', 3)], pFlags: { min: true } })
     expect(sameReactions(local, mergeReactions(local, frame))).toBe(false)
+  })
+
+  // Прочтение реакций автором — тот же состав без `unread`: в чипе не видно,
+  // но это изменение, по которому ведётся бейдж ❤ (иначе снятие потерялось бы).
+  it('снятие pFlags.unread у реакции — изменение', () => {
+    const peer = { _: 'peerUser' as const, user_id: 9 }
+    const unread = agg({ results: [count('👍', 1)], recent_reactions: [{ _: 'messagePeerReaction', pFlags: { unread: true }, peer_id: peer, date: 0, reaction: emoji('👍') }] })
+    const read = agg({ results: [count('👍', 1)], recent_reactions: [{ _: 'messagePeerReaction', peer_id: peer, date: 0, reaction: emoji('👍') }] })
+    expect(sameReactions(unread, read)).toBe(false)
   })
 
   // Аватарки в чипе рисуются из recent_reactions — их подмена это изменение,

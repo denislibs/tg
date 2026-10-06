@@ -6,10 +6,11 @@
 // методы спредятся в объект messagesManager; типы реэкспортятся оттуда же.
 import {
   excessChosenReactions, mergeReactions, reactionDelta, reactionsUserLimit,
-  sameReactions, setPaidReaction, totalReactions,
+  sameReactions, setPaidReaction,
 } from '../../reactions/messageReactions'
 import { generateMessageId, getServerMessageId } from '../../history/messageId'
 import { getPeerId } from '../../peers/peerId'
+import getUnreadReactions from '../../messages/getUnreadReactions'
 import type { MyMessage } from '../../models'
 import type { MessageOp } from '../../realtime/messageOps'
 import type { ReactionEvt } from '../../realtime/events'
@@ -272,15 +273,31 @@ export function newReactionMethods({ rest, patchMsg, getMeId, getMePremium, opWi
       return applyAbsoluteReactionToCache(evt)
     },
 
-    // Выросло ли число реакций на МОЁМ сообщении — вопрос, на который отвечает
-    // только владелец окна: кадр несёт абсолютный агрегат без «кто поставил» и
-    // без пер-зрительских счётчиков, потому что тело одно на всех получателей.
-    // Бейдж непрочитанных реакций бампится по этому ответу (порт tweb: дифф
-    // выводит клиент), а авторитетное значение приезжает со строкой диалога.
-    reactionsGrewOnMyMessage(peerId: number, serverMsgId: number, wire: ReactionEvt['reactions']): boolean {
-      const m = readMsg(peerId, generateMessageId(serverMsgId))
-      if (!m || m._ !== 'message' || !m.pFlags.out) return false
-      return totalReactions(wire) > totalReactions(m.reactions)
+    /**
+     * Бейдж непрочитанных реакций по кадру — порт tweb `onUpdateMessageReactions`
+     * (appMessagesManager.ts:10552-10604). Спрашивается ДО применения кадра:
+     * «была ли непрочитанной» отвечает только прежнее состояние сообщения.
+     *
+     * - сообщения в памяти нет — `'reload'`: строку перечитать у сервера (tweb
+     *   `fixDialogUnreadMentionsIfNoMessage({force: true})`);
+     * - у МОЕГО сообщения сменилось «есть непрочитанная реакция»
+     *   (`recent_reactions[].pFlags.unread` кадра против прежнего) — знак ±1
+     *   (tweb `modifyUnreadReactions(isUnread)`);
+     * - иначе `undefined` — бейдж не трогать. Сюда же попадает кадр без
+     *   `recent_reactions` у сообщения, где непрочитанная была: у оригинала
+     *   `isUnread` тогда `undefined`, и `modifyCachedMentionsAndSave` такой
+     *   знак пропускает (:9345-9347).
+     *
+     * Флаг `unread` сервер ставит только глазами АВТОРА (кадр ему — без `min`),
+     * поэтому у всех остальных ответ всегда «не сменилось».
+     */
+    unreadReactionsChange(evt: ReactionEvt): 'reload' | boolean | undefined {
+      const message = readMsg(getPeerId(evt.peer), generateMessageId(evt.msg_id))
+      if (!message) return 'reload'
+      const isUnread = evt.reactions?.recent_reactions?.some((reaction) => reaction.pFlags?.unread)
+      const wasUnread = !!getUnreadReactions(message)
+      if (message.pFlags.out && isUnread !== wasUnread) return isUnread
+      return undefined
     },
 
     // Реакции: поставить/снять свою. Оптимистика в SSOT воркера (tweb sendReaction)

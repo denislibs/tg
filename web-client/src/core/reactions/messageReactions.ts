@@ -309,16 +309,25 @@ function withRecent(
 /**
  * АБСОЛЮТНЫЙ агрегат из кадра поверх своего выбора.
  *
- * Тело кадра одно на всех получателей и потому помечено `pFlags.min`: моего
+ * Общее тело кадра (всем участникам) помечено `pFlags.min`: моего
  * `chosen_order` в нём нет и быть не может — как нет и моего вклада звёздами
  * (`top_reactors` с `pFlags.my`). Оба сохраняются из предыдущего состояния, всё
  * остальное берётся из кадра как есть.
+ *
+ * Агрегат БЕЗ `min` собран моими глазами (кадр поставившему и автору
+ * сообщения): в нём уже и мой выбор, и мой вклад звёздами, и
+ * `recent_reactions[].pFlags.unread` для автора. Он ложится ЦЕЛИКОМ — голое
+ * присваивание, как у оригинала (tweb appMessagesManager.ts:10625-10627,
+ * `message.reactions = reactions`): прежний выбор, снятый с другого
+ * устройства, иначе пережил бы кадр. Пустой агрегат — «реакций нет», как и в
+ * ветке `min`.
  */
 export function mergeReactions(
   prev: MessageReactions | undefined,
   next: MessageReactions | undefined,
 ): MessageReactions | undefined {
   if (!next) return undefined
+  if (!next.pFlags?.min) return next.results.length ? next : undefined
   const chosen = new Map<string, number>()
   for (const c of prev?.results ?? []) {
     if (isChosen(c)) chosen.set(reactionKey(c.reaction), c.chosen_order!)
@@ -415,6 +424,11 @@ export function sameReactions(a: MessageReactions | undefined, b: MessageReactio
   for (let i = 0; i < pa.length; i++) {
     if (getPeerId(pa[i].peer_id) !== getPeerId(pb[i].peer_id)) return false
     if (reactionKey(pa[i].reaction) !== reactionKey(pb[i].reaction)) return false
+    // Непрочитанность реакции глазами автора в чипе не видна, но её снятие —
+    // изменение: по нему владелец окна ведёт бейдж ❤ диалога
+    // (`unreadReactionsChange`), и потерянное снятие оставило бы реакцию
+    // «непрочитанной» навсегда.
+    if (!!pa[i].pFlags?.unread !== !!pb[i].pFlags?.unread) return false
   }
   if (!!a?.pFlags?.can_see_list !== !!b?.pFlags?.can_see_list) return false
   return myPaidStars(a) === myPaidStars(b)

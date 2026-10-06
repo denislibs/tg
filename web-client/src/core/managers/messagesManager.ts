@@ -212,8 +212,10 @@ export interface MessagesDeps {
    *  `handleDeletedMessages` → `onUpdateDeleteMessages` (appMessagesManager.ts
    *  :14082-14085, :11546-11548): владелец диалогов вычитает из счётчика
    *  удалённые непрочитанные входящие. Спросить «было ли оно непрочитанным»
-   *  можно только ДО эвикции, поэтому уведомляет владелец окна, а не кадр. */
-  onMessagesDeleted?: (peerId: number, deleted: MyMessage[]) => void
+   *  можно только ДО эвикции, поэтому уведомляет владелец окна, а не кадр.
+   *  `missing` — номера, которых в SSOT не было (tweb зовёт для них
+   *  `fixDialogUnreadMentionsIfNoMessage`, :14055-14058). */
+  onMessagesDeleted?: (peerId: number, deleted: MyMessage[], missing: number) => void
 }
 
 export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium, meReady, isBroadcastChat, getPeer, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers, onMessagesDeleted }: MessagesDeps) {
@@ -390,7 +392,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     const keys = opWindowsFor(peerId, msgId)
     const known = msgsByChat.get(peerId)?.get(msgId)
     evictMsg(peerId, msgId)
-    if (known) onMessagesDeleted?.(peerId, [known])
+    onMessagesDeleted?.(peerId, known ? [known] : [], known ? 0 : 1)
     return keys.map((key): MessageOp => ({ op: 'remove', key, msgId }))
   }
 
@@ -1562,6 +1564,34 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
         const m = readMsg(peerId, generateMessageId(id))
         return !!m && !m.pFlags.out && isMentionUnread(m)
       }).length
+    },
+
+    /**
+     * Сколько непрочитанных упоминаний снимает прочтение истории до `maxId` —
+     * цикл tweb `onUpdateReadHistory` (appMessagesManager.ts:10851-10892) в
+     * части бейджа «@»: сообщения чата в памяти свежими вперёд, выше горизонта
+     * кадра — мимо, исходящие — мимо, первое уже прочитанное обрывает проход
+     * (`if(!isUnread) break`), непрочитанное упоминание (`isMentionUnread`) —
+     * минус один.
+     *
+     * Флага `pFlags.unread` у сообщения у нас нет, поэтому «непрочитано» —
+     * сравнение с горизонтом прочтения ДО кадра (`readMaxId`, tweb
+     * `getReadMaxIdIfUnread`), как у ленты (`isUnreadByReadCursor`). Повтор
+     * того же прочтения горизонт уже не пересекает — ответ ноль.
+     */
+    countReadMentions(peerId: number, maxId: number, readMaxId: number): number {
+      const storage = msgsByChat.get(peerId)
+      if (!storage) return 0
+      const history = [...storage.keys()].sort((a, b) => b - a)
+      let count = 0
+      for (const mid of history) {
+        if (mid > maxId) continue
+        const message = storage.get(mid)!
+        if (message.pFlags.out) continue
+        if (!(readMaxId < mid)) break
+        if (isMentionUnread(message)) ++count
+      }
+      return count
     },
 
     // Голосовое/кружок прослушано → точка media_unread гаснет. Без кэша переоткрытие

@@ -224,3 +224,55 @@ describe('messages.cacheReaction — эхо своего клика', () => {
     expect(myEmoticons((after[0] as { fields: { reactions: MessageReactions } }).fields.reactions)).toEqual(['👍'])
   })
 })
+
+// Порт tweb onUpdateMessageReactions (:10552-10604), часть про бейдж ❤:
+// спрашивается ДО применения кадра, решает по `recent_reactions[].pFlags.unread`
+// кадра против прежнего состояния сообщения.
+describe('messages.unreadReactionsChange', () => {
+  const peerReaction = (unread: boolean) => ({
+    _: 'messagePeerReaction' as const,
+    ...(unread ? { pFlags: { unread: true as const } } : {}),
+    peer_id: { _: 'peerUser' as const, user_id: 9 }, date: 0,
+    reaction: { _: 'reactionEmoji' as const, emoticon: '👍' },
+  })
+  const evt = (peerId: PeerId, msgId: number, reactions: MessageReactions) =>
+    ({ _: 'updateMessageReactions' as const, peer: { _: 'peerUser' as const, user_id: peerId }, msg_id: msgId, reactions })
+  const withRecent = (unread: boolean | null): MessageReactions =>
+    ({ ...like, ...(unread === null ? {} : { recent_reactions: [peerReaction(unread)] }) })
+  /** Сообщение 2 — МОЁ (`out`), с уже лежащим агрегатом `prev`. */
+  function mine(prev?: MessageReactions) {
+    const wire = { ...makeRawMessage({ id: 2, peerId: DM, fromId: ME, out: true, text: 'моё' }), ...(prev ? { reactions: prev } : {}) }
+    const rest = { get: async () => ({ messages: [wire as RawMessage], count: 1 }) } as unknown as RestClient
+    return newMessagesManager({ rest, getMeId: () => ME })
+  }
+
+  it('сообщения в памяти нет — перечитать строку', async () => {
+    const mgr = mine()
+    expect(mgr.unreadReactionsChange(evt(DM, 2, withRecent(true)))).toBe('reload')
+  })
+
+  it('на моём сообщении появилась непрочитанная — true, прочитана — false', async () => {
+    const fresh = mine()
+    await fresh.getHistory({ peerId: DM, offsetId: 0, addOffset: 0, limit: 40 })
+    expect(fresh.unreadReactionsChange(evt(DM, 2, withRecent(true)))).toBe(true)
+
+    const unread = mine(withRecent(true))
+    await unread.getHistory({ peerId: DM, offsetId: 0, addOffset: 0, limit: 40 })
+    expect(unread.unreadReactionsChange(evt(DM, 2, withRecent(false)))).toBe(false)
+    expect(unread.unreadReactionsChange(evt(DM, 2, withRecent(true)))).toBeUndefined()
+  })
+
+  // У оригинала `isUnread` здесь `undefined`, и modifyCachedMentionsAndSave
+  // такой знак пропускает (:9345-9347) — бейдж правит строка с сервера.
+  it('кадр без recent_reactions у непрочитанного — бейдж не трогается', async () => {
+    const mgr = mine(withRecent(true))
+    await mgr.getHistory({ peerId: DM, offsetId: 0, addOffset: 0, limit: 40 })
+    expect(mgr.unreadReactionsChange(evt(DM, 2, withRecent(null)))).toBeUndefined()
+  })
+
+  it('чужое сообщение — бейдж не трогается', async () => {
+    const { mgr } = managerWith(DM)
+    await mgr.getHistory({ peerId: DM, offsetId: 0, addOffset: 0, limit: 40 })
+    expect(mgr.unreadReactionsChange(evt(DM, 2, withRecent(true)))).toBeUndefined()
+  })
+})

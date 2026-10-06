@@ -772,6 +772,42 @@ describe('MessagesManager.cacheMediaRead', () => {
   })
 })
 
+// Порт цикла tweb onUpdateReadHistory (appMessagesManager.ts:10851-10892) в
+// части «@»: свежими вперёд, выше горизонта кадра — мимо, исходящие — мимо,
+// первое уже прочитанное (по горизонту ДО кадра) обрывает проход.
+describe('MessagesManager.countReadMentions', () => {
+  const msg = (id: number, flags: Record<string, true> = {}) =>
+    ({ ...makeRawMessage({ id, peerId: 1, fromId: 9, text: `m${id}`, createdAt: '2026-06-24T10:00:00Z' }), pFlags: flags }) as RawMessage
+  const mention = { mentioned: true, media_unread: true } as const
+  const setup = async (messages: RawMessage[]) => {
+    const { rest } = countingRest({ '0:0:40': { messages, count: messages.length } })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    return mgr
+  }
+
+  it('считает непрочитанные упоминания между горизонтами', async () => {
+    const mgr = await setup([msg(6, mention), msg(5, mention), msg(4), msg(3, mention), msg(2, mention)])
+    // Горизонт кадра — 5: упоминание 6 выше него и остаётся; прочитано было до 2.
+    expect(mgr.countReadMentions(1, cid(5), cid(2))).toBe(2)
+  })
+
+  it('исходящие и прочитанные упоминания (без media_unread) не в счёт', async () => {
+    const mgr = await setup([msg(4, { ...mention, out: true }), msg(3, { mentioned: true }), msg(2, mention)])
+    expect(mgr.countReadMentions(1, cid(4), cid(1))).toBe(1)
+  })
+
+  it('повтор того же прочтения — ноль: горизонт уже сдвинут', async () => {
+    const mgr = await setup([msg(3, mention), msg(2, mention)])
+    expect(mgr.countReadMentions(1, cid(3), cid(3))).toBe(0)
+  })
+
+  it('чата в памяти нет — ноль', async () => {
+    const mgr = await setup([])
+    expect(mgr.countReadMentions(42, cid(3), 0)).toBe(0)
+  })
+})
+
 const lockedPaid: MessageMedia = {
   _: 'messageMediaPaidMedia',
   stars_amount: 10,
@@ -887,14 +923,16 @@ describe('MessagesManager.cacheDelete', () => {
 
   // Владелец диалогов вычитает удалённые непрочитанные входящие (tweb
   // onUpdateDeleteMessages) — а «было ли оно входящим» знает только снимок ДО
-  // эвикции. Неизвестное SSOT сообщение не сообщается вовсе: спросить не о чем.
-  it('отдаёт удалённое сообщение снимком до эвикции (onMessagesDeleted)', async () => {
+  // эвикции. Неизвестное SSOT сообщение сообщается СЧЁТОМ (`missing`): посчитать
+  // его нечем, и владелец диалогов перечитывает строку с ненулевыми «@»/❤
+  // (tweb handleDeletedMessages → fixDialogUnreadMentionsIfNoMessage, :14055-14058).
+  it('отдаёт удалённое сообщение снимком до эвикции, неизвестное — счётом (onMessagesDeleted)', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
-    const deleted: { peerId: number; ids: number[] }[] = []
-    const mgr = newMessagesManager({ rest, onMessagesDeleted: (peerId, list) => deleted.push({ peerId, ids: list.map((m) => m.id) }) })
+    const deleted: { peerId: number; ids: number[]; missing: number }[] = []
+    const mgr = newMessagesManager({ rest, onMessagesDeleted: (peerId, list, missing) => deleted.push({ peerId, ids: list.map((m) => m.id), missing }) })
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
     mgr.cacheDelete({ _: 'updateDeletePeerMessages', peer: { _: 'peerUser', user_id: 1 }, messages: [2, 999] })
-    expect(deleted).toEqual([{ peerId: 1, ids: [cid(2)] }])
+    expect(deleted).toEqual([{ peerId: 1, ids: [cid(2)], missing: 0 }, { peerId: 1, ids: [], missing: 1 }])
   })
 
   // Владелец диалогов решает по этому срезу, кто станет последним после

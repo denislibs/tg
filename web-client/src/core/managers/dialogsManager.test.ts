@@ -98,6 +98,10 @@ function fakeMessages() {
     /** Окна истории (tweb `historyStorage.history`) — задаёт сам тест. */
     history: new Map<number, SlicedArray<number>>(),
     getHistoryFirstSlice(peerId: number) { return this.history.get(peerId)?.first },
+    /** Сколько упоминаний снимет прочтение — ответ окна задаёт сам тест
+     *  (правило окна — `messagesManager.countReadMentions`, его тест там же). */
+    readMentions: 0,
+    countReadMentions(_peerId: number, _maxId: number, _readMaxId: number) { return this.readMentions },
   }
 }
 
@@ -184,7 +188,9 @@ describe('dialogsManager: владелец порядка', () => {
 // одним `peers.saveApiPeers` — второго зеркала того же факта больше нет
 // (проводка — workerCore.dialogFrames.test.ts).
 describe('dialogsManager: realtime-кадры применяет владелец', () => {
-  it('bumpUnreadReactions: verbatim из кадра, fallback +1 без поля', async () => {
+  // Порт tweb `modifyCachedMentionsAndSave({addReaction})` (:9330-9363): знак
+  // решает владелец окна по `recent_reactions[].pFlags.unread`, сюда — ±1.
+  it('modifyUnreadReactions: ±1, ниже нуля не уходит', async () => {
     const ops: DialogOp[] = []
     const mgr = newDialogsManager({
       rest: restStub([]) as never,
@@ -195,15 +201,16 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     await mgr.fillMirror()
     ops.length = 0
 
-    mgr.bumpUnreadReactions(1) // без count — fallback +1 (было 0)
-    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_reactions_count).toBe(1)
+    mgr.modifyUnreadReactions(1, true)
+    mgr.modifyUnreadReactions(1, true)
+    expect((ops[1] as Extract<DialogOp, { op: 'patch' }>).fields.unread_reactions_count).toBe(2)
 
-    mgr.bumpUnreadReactions(1, 5) // авторитетный счётчик из кадра — verbatim
-    expect((ops[1] as Extract<DialogOp, { op: 'patch' }>).fields.unread_reactions_count).toBe(5)
+    mgr.modifyUnreadReactions(1, false)
+    expect((ops[2] as Extract<DialogOp, { op: 'patch' }>).fields.unread_reactions_count).toBe(1)
 
-    // Fix (ревью Task 3, Important): тот же счётчик повторно — patch не публикуется.
+    mgr.modifyUnreadReactions(1, false)
     ops.length = 0
-    mgr.bumpUnreadReactions(1, 5)
+    mgr.modifyUnreadReactions(1, false) // уже ноль — операции нет
     expect(ops).toHaveLength(0)
   })
 
@@ -239,7 +246,7 @@ describe('dialogsManager: realtime-кадры применяет владеле�
 
     mgr.applyNewMessage({ _: 'updateNewMessage', message: makeRawMessage({ id: 1, peerId: 99, fromId: 9, text: 'x', createdAt: '2026-08-01T00:00:01Z' }) })
     mgr.applyRead({ _: 'updateReadHistoryInbox', peer: { _: 'peerUser', user_id: 99 }, max_id: 1, still_unread_count: 0 })
-    mgr.bumpUnreadReactions(99)
+    mgr.modifyUnreadReactions(99, true)
 
     expect(ops).toHaveLength(0)
   })
@@ -343,21 +350,83 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     expect(ops).toHaveLength(0)
   })
 
-  it('applyRead от меня гасит и бейдж непрочитанных реакций', async () => {
+  // Прочтение истории НЕ означает «реакции прочитаны»: у оригинала бейдж ❤
+  // ведёт только onUpdateMessageReactions (снятие pFlags.unread у реакций).
+  it('applyRead от меня бейдж непрочитанных реакций НЕ трогает', async () => {
     const ops: DialogOp[] = []
     const mgr = newDialogsManager({
       rest: restStub([]) as never,
       onDialogOps: (o) => ops.push(...o),
-      loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
+      loadCache: async () => [makeDialog({ peerId: 1, unread: 1, unreadReactions: 2 })],
       loadState: async () => ({ pinnedOrders: {} }),
     })
     await mgr.fillMirror()
-    mgr.bumpUnreadReactions(1, 2)
     ops.length = 0
 
     mgr.applyRead({ _: 'updateReadHistoryInbox', peer: { _: 'peerUser', user_id: 1 }, max_id: 1, still_unread_count: 0 })
 
-    expect((ops[0] as Extract<DialogOp, { op: 'patch' }>).fields.unread_reactions_count).toBe(0)
+    const op = ops[0] as Extract<DialogOp, { op: 'patch' }>
+    expect(op.fields.unread_count).toBe(0)
+    expect(op.fields.unread_reactions_count).toBeUndefined()
+    expect(mgr.getSnapshot()[0].dialog.unread_reactions_count).toBe(2)
+  })
+})
+
+// Бейдж «@» при прочтении истории — порт tweb `onUpdateReadHistory`
+// (appMessagesManager.ts:10883-10886, :10940-10942): минус упоминания, которые
+// накрыл горизонт (ответ окна — `countReadMentions`), ушло в минус или
+// непрочитанного не осталось — ноль.
+describe('dialogsManager.applyRead: упоминания', () => {
+  const setup = async (fixture: { unread: number, unreadMentions: number, readInboxMaxId?: number }, readMentions: number) => {
+    const ops: DialogOp[] = []
+    const messages = fakeMessages()
+    messages.readMentions = readMentions
+    const ask = vi.spyOn(messages, 'countReadMentions')
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: (o) => ops.push(...o),
+      loadCache: async () => [makeDialog({ peerId: 1, ...fixture })],
+      loadState: async () => ({ pinnedOrders: {} }),
+      messages,
+    })
+    await mgr.fillMirror()
+    ops.length = 0
+    const row = () => mgr.getSnapshot()[0].dialog
+    return { mgr, ops, row, ask, messages }
+  }
+  const read = (maxId: number, stillUnread: number) =>
+    ({ _: 'updateReadHistoryInbox' as const, peer: { _: 'peerUser' as const, user_id: 1 }, max_id: maxId, still_unread_count: stillUnread })
+
+  it('упоминание выше горизонта остаётся: снимаются только накрытые', async () => {
+    const { mgr, row, ask } = await setup({ unread: 3, unreadMentions: 2, readInboxMaxId: generateMessageId(1) }, 1)
+    mgr.applyRead(read(5, 1))
+    // Окно спрошено горизонтом кадра и горизонтом ДО сдвига (клиентские номера).
+    expect(ask).toHaveBeenCalledWith(1, generateMessageId(5), generateMessageId(1))
+    expect(row().unread_mentions_count).toBe(1)
+    expect(row().unread_count).toBe(1)
+  })
+
+  it('непрочитанного не осталось — «@» в ноль, даже если окно упоминаний не видело', async () => {
+    const { mgr, row } = await setup({ unread: 3, unreadMentions: 2 }, 0)
+    mgr.applyRead(read(5, 0))
+    expect(row().unread_mentions_count).toBe(0)
+  })
+
+  it('окно насчитало больше, чем в бейдже, — ноль, а не минус', async () => {
+    const { mgr, row } = await setup({ unread: 3, unreadMentions: 1 }, 2)
+    mgr.applyRead(read(5, 1))
+    expect(row().unread_mentions_count).toBe(0)
+  })
+
+  it('повтор того же прочтения — без операции (идемпотентность)', async () => {
+    const { mgr, ops, messages } = await setup({ unread: 3, unreadMentions: 2 }, 1)
+    mgr.applyRead(read(5, 1))
+    expect(ops).toHaveLength(1)
+    // Горизонт уже сдвинут: окно новых упоминаний под ним не найдёт.
+    messages.readMentions = 0
+    ops.length = 0
+    mgr.applyRead(read(5, 1))
+    expect(ops).toEqual([])
   })
 })
 
@@ -1273,6 +1342,90 @@ describe('dialogsManager.applyDeletedMessages', () => {
     const { mgr, ops } = await setup()
     mgr.applyDeletedMessages(-6, [msg(11), msg(12), msg(13), msg(14)])
     expect(unreadOf(ops)).toBe(0)
+  })
+})
+
+// Тот же порт, вторая и третья строки счёта (tweb :11550-11557,
+// handleDeletedMessages :14082-14140): удалённое непрочитанное упоминание —
+// минус «@» (непрочитанного не осталось — ноль), удалённое СВОЁ сообщение с
+// непрочитанной реакцией — минус ❤. Сообщение, которого в памяти нет,
+// посчитать нечем: строка с ненулевыми «@»/❤ перечитывается у сервера
+// (fixDialogUnreadMentionsIfNoMessage, :14055-14058).
+describe('dialogsManager.applyDeletedMessages: упоминания, реакции, неизвестные', () => {
+  const setup = async (fixture: { unread: number, unreadMentions?: number, unreadReactions?: number }) => {
+    const ops: DialogOp[] = []
+    const get = vi.fn(async (path: string) => path === '/peer_dialogs'
+      ? { _: 'messages.peerDialogs', dialogs: [], messages: [], chats: [], users: [] }
+      : container([]))
+    const mgr = newDialogsManager({
+      rest: { get } as never,
+      onDialogOps: (o) => ops.push(...o),
+      loadCache: async () => [makeDialog({ peerId: -6, readInboxMaxId: 10, ...fixture })],
+      loadState: async () => ({ pinnedOrders: {} }),
+      getMeId: () => 7,
+    })
+    await mgr.fillMirror()
+    ops.length = 0
+    const row = () => mgr.getSnapshot()[0].dialog
+    return { mgr, ops, row, get }
+  }
+  const mention = (id: number): MyMessage => {
+    const m = makeMessage({ id, peerId: -6, fromId: 9 })
+    return { ...m, pFlags: { ...m.pFlags, mentioned: true, media_unread: true } }
+  }
+  const reacted = (id: number, unread: boolean): MyMessage => ({
+    ...makeMessage({ id, peerId: -6, fromId: 7, out: true }),
+    reactions: {
+      _: 'messageReactions',
+      results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 1 }],
+      recent_reactions: [{
+        _: 'messagePeerReaction',
+        ...(unread ? { pFlags: { unread: true as const } } : {}),
+        peer_id: { _: 'peerUser', user_id: 9 }, date: 0, reaction: { _: 'reactionEmoji', emoticon: '👍' },
+      }],
+    },
+  })
+  const flush = () => new Promise((r) => setTimeout(r, 0))
+
+  it('непрочитанное упоминание — минус «@» вместе с непрочитанным', async () => {
+    const { mgr, row } = await setup({ unread: 3, unreadMentions: 2 })
+    mgr.applyDeletedMessages(-6, [mention(12)])
+    expect(row().unread_count).toBe(2)
+    expect(row().unread_mentions_count).toBe(1)
+  })
+
+  it('непрочитанного не осталось — «@» в ноль', async () => {
+    const { mgr, row } = await setup({ unread: 1, unreadMentions: 2 })
+    mgr.applyDeletedMessages(-6, [mention(12)])
+    expect(row().unread_mentions_count).toBe(0)
+  })
+
+  it('прочитанное упоминание «@» не трогает (у оригинала счёт — внутри ветки unread)', async () => {
+    const { mgr, ops } = await setup({ unread: 3, unreadMentions: 2 })
+    mgr.applyDeletedMessages(-6, [mention(9)])
+    expect(ops).toEqual([])
+  })
+
+  it('своё сообщение с непрочитанной реакцией — минус ❤; с прочитанной — нет', async () => {
+    const { mgr, ops, row } = await setup({ unread: 0, unreadReactions: 2 })
+    mgr.applyDeletedMessages(-6, [reacted(12, false)])
+    expect(ops).toEqual([])
+    mgr.applyDeletedMessages(-6, [reacted(13, true)])
+    expect(row().unread_reactions_count).toBe(1)
+  })
+
+  it('неизвестное сообщение при ненулевых «@»/❤ — строка перечитывается у сервера', async () => {
+    const { mgr, get } = await setup({ unread: 0, unreadReactions: 1 })
+    mgr.applyDeletedMessages(-6, [], 1)
+    await flush()
+    expect(get).toHaveBeenCalledWith('/peer_dialogs', { peers: '-6' })
+  })
+
+  it('неизвестное сообщение при нулевых «@»/❤ — без сети', async () => {
+    const { mgr, get } = await setup({ unread: 2 })
+    mgr.applyDeletedMessages(-6, [], 1)
+    await flush()
+    expect(get).not.toHaveBeenCalled()
   })
 })
 

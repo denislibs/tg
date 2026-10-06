@@ -1,6 +1,6 @@
 // Task 3 (realtime-кадры применяет владелец): проверяет, что createWorkerCore()
 // РЕАЛЬНО зовёт dialogs.applyNewMessage/applyRead/applyRemoved/
-// bumpUnreadReactions из dispatch()/routeNewMessage() — не только что сам
+// modifyUnreadReactions из dispatch()/routeNewMessage() — не только что сам
 // dialogsManager умеет считать patch/remove из этих же кадров (это отдельно
 // покрыто dialogsManager.test.ts), а что workerCore.ts реально подключает
 // вызов владельца к живому WS-кадру.
@@ -262,28 +262,37 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
     expect(op.fields.draft).toBeUndefined()
   })
 
-  // Кадр реакций несёт ТОЛЬКО абсолютный агрегат: ни «кто поставил», ни
-  // пер-зрительского счётчика в нём нет — тело одно на всех получателей.
-  // Поэтому бейдж бампится по ответу владельца SSOT: моё ли это сообщение и
-  // выросло ли общее число реакций. Сообщение сюда кладём живым кадром — тем
-  // же путём, каким его получил бы воркер в жизни.
-  it('реакция выросла на МОЁМ сообщении → dialogs.bumpUnreadReactions', async () => {
+  // Бейдж ❤ — порт tweb onUpdateMessageReactions (:10552-10604): автору
+  // сервер шлёт агрегат ЕГО глазами (без `min`), где непрочитанная реакция
+  // помечена `recent_reactions[].pFlags.unread`. Смена «есть непрочитанная» у
+  // МОЕГО сообщения — ±1; ответ даёт окно ДО применения кадра.
+  const reactionFrame = (unread: boolean) => ({
+    _: 'updateMessageReactions',
+    peer: { _: 'peerUser', user_id: 1 },
+    msg_id: 5,
+    reactions: {
+      _: 'messageReactions',
+      results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 1 }],
+      recent_reactions: [{
+        _: 'messagePeerReaction',
+        ...(unread ? { pFlags: { unread: true } } : {}),
+        peer_id: { _: 'peerUser', user_id: 9 }, date: 0, reaction: { _: 'reactionEmoji', emoticon: '👍' },
+      }],
+    },
+  })
+
+  it('непрочитанная реакция на МОЁМ сообщении → +1, её прочтение → −1', async () => {
     const { dialogOps, core } = await bootWithSeededDialog()
     await seedHistory(core, [makeRawMessage({ id: 5, peerId: 1, fromId: 1, out: true, text: 'моё', createdAt: '2026-08-01T00:00:01Z' })])
     dialogOps.length = 0
 
-    capturedConnDeps!.onFrame('reaction', {
-      _: 'updateMessageReactions',
-      peer: { _: 'peerUser', user_id: 1 },
-      msg_id: 5,
-      reactions: {
-        _: 'messageReactions',
-        pFlags: { min: true },
-        results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 1 }],
-      },
-    })
-
+    capturedConnDeps!.onFrame('reaction', reactionFrame(true))
     expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { unread_reactions_count: 1 } }])
+
+    // Прочтение реакций: сервер шлёт тот же агрегат уже без `unread`.
+    dialogOps.length = 0
+    capturedConnDeps!.onFrame('reaction', reactionFrame(false))
+    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { unread_reactions_count: 0 } }])
   })
 
   // Бейдж «@»: прочтение содержимого упоминания (updateReadPeerMessagesContents)
@@ -341,29 +350,69 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
     expect(dialogOps).toEqual([])
   })
 
-  // Повторный кадр с ТЕМ ЖЕ агрегатом (реплей из догона) не бампит: агрегат
-  // абсолютный, а бейдж считается по РОСТУ. Этой же арифметикой гасится и
-  // собственный клик — он уже применён оптимистично, и кадр его не «добавляет».
-  it('повтор того же агрегата — bumpUnreadReactions НЕ зовётся', async () => {
+  // Повторный кадр с ТЕМ ЖЕ агрегатом (реплей из догона) бейдж не трогает:
+  // непрочитанность не сменилась.
+  it('повтор того же агрегата — бейдж не трогается', async () => {
     const { dialogOps, core } = await bootWithSeededDialog()
     await seedHistory(core, [makeRawMessage({ id: 5, peerId: 1, fromId: 1, out: true, text: 'моё', createdAt: '2026-08-01T00:00:01Z' })])
-    const frame = {
-      _: 'updateMessageReactions',
-      peer: { _: 'peerUser', user_id: 1 },
-      msg_id: 5,
-      reactions: {
-        _: 'messageReactions',
-        pFlags: { min: true },
-        results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 1 }],
-      },
-    }
-    capturedConnDeps!.onFrame('reaction', frame)
+    capturedConnDeps!.onFrame('reaction', reactionFrame(true))
     dialogOps.length = 0
 
-    capturedConnDeps!.onFrame('reaction', frame)
+    capturedConnDeps!.onFrame('reaction', reactionFrame(true))
 
     expect(dialogOps).toEqual([])
   })
+
+  // Сообщения в памяти нет — счёт локально не вывести, строка перечитывается
+  // (tweb fixDialogUnreadMentionsIfNoMessage({force: true})).
+  it('реакция на сообщение вне памяти → строка перечитывается у сервера', async () => {
+    await bootWithSeededDialog()
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ _: 'messages.peerDialogs', dialogs: [], messages: [], chats: [], users: [] }), { status: 200 }))
+    vi.stubGlobal('fetch', fetch)
+
+    capturedConnDeps!.onFrame('reaction', reactionFrame(true))
+
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled())
+    expect(String((fetch.mock.calls[0] as unknown[])[0])).toContain('/peer_dialogs')
+  })
+
+  // Удаление сообщения, которого нет в памяти, при ненулевом ❤ — строку
+  // перечитать (tweb handleDeletedMessages → fixDialogUnreadMentionsIfNoMessage):
+  // счёт `missing` доезжает от владельца окна до владельца строки.
+  it('удаление неизвестного сообщения при ненулевом ❤ → строка перечитывается', async () => {
+    const { core } = await bootWithSeededDialog()
+    await seedHistory(core, [makeRawMessage({ id: 5, peerId: 1, fromId: 1, out: true, text: 'моё', createdAt: '2026-08-01T00:00:01Z' })])
+    capturedConnDeps!.onFrame('reaction', reactionFrame(true))
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ _: 'messages.peerDialogs', dialogs: [], messages: [], chats: [], users: [] }), { status: 200 }))
+    vi.stubGlobal('fetch', fetch)
+
+    capturedConnDeps!.onFrame('delete_message', { _: 'updateDeletePeerMessages', peer: { _: 'peerUser', user_id: 1 }, messages: [999] })
+
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled())
+    expect(String((fetch.mock.calls[0] as unknown[])[0])).toContain('/peer_dialogs')
+  })
+
+  // Прочтение истории снимает «@» по окну (tweb onUpdateReadHistory): владелец
+  // строки спрашивает владельца окна — проводка `countReadMentions` в
+  // workerCore. Без неё бейдж остался бы как был.
+  it('прочтение истории снимает только упоминания под горизонтом', async () => {
+    const { dialogOps, core } = await bootWithSeededDialog()
+    const mention = (id: number) => ({
+      ...makeRawMessage({ id, peerId: 1, fromId: 9, text: '@me', createdAt: `2026-08-01T00:00:0${id}Z` }),
+      pFlags: { mentioned: true, media_unread: true },
+    })
+    await seedHistory(core, [mention(5)])
+    capturedConnDeps!.onFrame('new_message', { _: 'updateNewMessage', message: mention(6) })
+    await new Promise((r) => setTimeout(r, 0))
+    dialogOps.length = 0
+
+    capturedConnDeps!.onFrame('read', {
+      _: 'updateReadHistoryInbox', peer: { _: 'peerUser', user_id: 1 }, max_id: 5, still_unread_count: 1,
+    })
+
+    expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { unread_count: 1, unread_mentions_count: 0, read_inbox_max_id: generateMessageId(5) } }])
+  })
+
 })
 
 // Task 4 (действия без оптимистики): то же действие с ДРУГОГО устройства/вкладки
