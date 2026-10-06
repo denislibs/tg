@@ -109,6 +109,24 @@ type ChatRepo interface {
 	// и НЕ заглушён (новое сообщение, Telegram keep_archived_unmuted=false);
 	// возвращает, кого вернули.
 	UnarchiveUnmuted(ctx context.Context, chatID int64, userIDs []int64) ([]int64, error)
+	// VisibleSeqsUpTo — номера видимых участнику сообщений с seq<=maxSeq (что
+	// у него пропадёт при очистке и удалении диалога), по возрастанию.
+	VisibleSeqsUpTo(ctx context.Context, chatID, userID, maxSeq int64) ([]int64, error)
+	// SetDialogHidden прячет/показывает строку диалога участника («удалить
+	// чат» в личке); ShowDialogs возвращает её всем участникам — новое
+	// сообщение.
+	SetDialogHidden(ctx context.Context, chatID, userID int64, hidden bool) error
+	ShowDialogs(ctx context.Context, chatID int64) error
+	// RecountCounters пересчитывает непрочитанное, «@» и ❤ участников по
+	// видимым им сообщениям (после массового удаления), выбросив упоминания
+	// удалённых сообщений чата.
+	RecountCounters(ctx context.Context, chatID int64, userIDs []int64) error
+	// DropMessageMentions — сообщение удалено у всех: его упоминания снимаются
+	// у всех адресатов, счётчики «@» пересчитываются. DropUserMentions —
+	// участник выбыл: его упоминания в чате снимаются (при повторном
+	// вступлении старые «@» не возвращаются).
+	DropMessageMentions(ctx context.Context, chatID, msgID int64) error
+	DropUserMentions(ctx context.Context, chatID, userID int64) error
 	SetClearedSeq(ctx context.Context, chatID, userID, seq int64) error
 	// Автоудаление: период чата, глобальный период пользователя (для новых чатов).
 	SetAutoDelete(ctx context.Context, chatID int64, seconds int) error
@@ -329,6 +347,9 @@ type MessageRepo interface {
 	// UpdateGeoLive обновляет координаты live-локации (+heading/stopped), бампит edited_at.
 	UpdateGeoLive(ctx context.Context, msgID int64, lat, lng float64, heading *int, stopped bool) (domain.Message, error)
 	SoftDelete(ctx context.Context, msgID int64) error
+	// SoftDeleteUpTo — удалить у всех сообщения чата с seq<=maxSeq
+	// (deleteHistory revoke); возвращает удалённые строки.
+	SoftDeleteUpTo(ctx context.Context, chatID, maxSeq int64) ([]domain.Message, error)
 	// SetDestructOnRead ставит destruct_at=now()+ttl для секретных сообщений,
 	// полученных читателем (sender_id<>readerID) до readSeq; no-op для чатов
 	// без ttl. Идемпотентно.

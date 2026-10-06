@@ -968,6 +968,39 @@ func (r *MessagesRepo) SoftDelete(ctx context.Context, msgID int64) error {
 	return err
 }
 
+// SoftDeleteUpTo — удалить у всех сообщения чата с seq<=maxSeq (Telegram
+// messages.deleteHistory revoke): то же, что SoftDelete, пачкой. Возвращает
+// удалённые строки (до удаления: автор, номер, тред).
+func (r *MessagesRepo) SoftDeleteUpTo(ctx context.Context, chatID, maxSeq int64) ([]domain.Message, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`WITH hit AS (
+		   SELECT id FROM messages WHERE chat_id = $1 AND seq <= $2 AND deleted_at IS NULL FOR UPDATE)
+		 SELECT `+messageColsPrefixed("m")+` FROM messages m WHERE m.id IN (SELECT id FROM hit) ORDER BY m.seq`,
+		chatID, maxSeq)
+	if err != nil {
+		return nil, err
+	}
+	var out []domain.Message
+	for rows.Next() {
+		m, e := scanMessage(rows)
+		if e != nil {
+			rows.Close()
+			return nil, e
+		}
+		out = append(out, m)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if _, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE messages SET deleted_at=now(), text='', enc_body=NULL
+		  WHERE chat_id = $1 AND seq <= $2 AND deleted_at IS NULL`, chatID, maxSeq); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SetDestructOnRead ставит destruct_at = now()+ttl для секретных сообщений,
 // которые читатель ПОЛУЧИЛ (sender_id <> readerID) до readSeq включительно и у
 // которых задан ttl и таймер ещё не запущен. Идемпотентно; для не-секретных
@@ -1369,7 +1402,7 @@ func (r *MessagesRepo) CountUnread(ctx context.Context, chatID, userID, afterSeq
 	q := querier(ctx, r.pool)
 	var n int
 	err := q.QueryRow(ctx,
-		`SELECT count(*) FROM messages WHERE chat_id=$1 AND seq>$2 AND sender_id<>$3 AND deleted_at IS NULL`,
+		`SELECT count(*) FROM messages m WHERE m.chat_id=$1 AND m.seq>$2 AND m.sender_id<>$3 AND `+messageVisibleTo("m", "$3"),
 		chatID, afterSeq, userID).Scan(&n)
 	return n, err
 }

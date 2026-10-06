@@ -270,6 +270,14 @@ func (c groupMembershipChats) ReadReactions(context.Context, int64, int64, int64
 func (c groupMembershipChats) UnarchiveUnmuted(context.Context, int64, []int64) ([]int64, error) {
 	return nil, nil
 }
+func (c groupMembershipChats) VisibleSeqsUpTo(context.Context, int64, int64, int64) ([]int64, error) {
+	return nil, nil
+}
+func (c groupMembershipChats) SetDialogHidden(context.Context, int64, int64, bool) error { return nil }
+func (c groupMembershipChats) ShowDialogs(context.Context, int64) error                  { return nil }
+func (c groupMembershipChats) RecountCounters(context.Context, int64, []int64) error     { return nil }
+func (c groupMembershipChats) DropMessageMentions(context.Context, int64, int64) error   { return nil }
+func (c groupMembershipChats) DropUserMentions(context.Context, int64, int64) error      { return nil }
 func (c groupMembershipChats) CurrentReadSeq(context.Context, int64, int64) (int64, error) {
 	return 0, nil
 }

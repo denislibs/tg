@@ -278,6 +278,9 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		   LIMIT 1
 		 ) peer ON c.type = 'private'
 		 WHERE m.user_id = $1
+		   -- «Удалить чат» в личке прячет строку до следующего сообщения
+		   -- (ChatRepo.SetDialogHidden / ShowDialogs).
+		   AND NOT m.dialog_hidden
 		   -- Скрываем служебные группы обсуждения канала: доступ к ним только через
 		   -- «Комментарии» (тред), в списке диалогов они не нужны.
 		   AND c.id NOT IN (SELECT discussion_chat_id FROM chats WHERE discussion_chat_id IS NOT NULL)
@@ -723,6 +726,113 @@ func (r *ChatsRepo) UnarchiveUnmuted(ctx context.Context, chatID int64, userIDs 
 		out = append(out, id)
 	}
 	return out, rows.Err()
+}
+
+// VisibleSeqsUpTo — номера сообщений чата с seq<=maxSeq, видимых участнику
+// (messageVisibleTo), по возрастанию: что именно пропадёт у него при очистке
+// истории и удалении диалога — по ним уходят кадры удаления его устройствам.
+func (r *ChatsRepo) VisibleSeqsUpTo(ctx context.Context, chatID, userID, maxSeq int64) ([]int64, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT m.seq FROM messages m
+		  WHERE m.chat_id = $1 AND m.seq <= $3 AND `+messageVisibleTo("m", "$2")+`
+		  ORDER BY m.seq`, chatID, userID, maxSeq)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var seq int64
+		if err := rows.Scan(&seq); err != nil {
+			return nil, err
+		}
+		out = append(out, seq)
+	}
+	return out, rows.Err()
+}
+
+// SetDialogHidden — см. ChatRepo.SetDialogHidden.
+func (r *ChatsRepo) SetDialogHidden(ctx context.Context, chatID, userID int64, hidden bool) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE chat_members SET dialog_hidden = $3 WHERE chat_id = $1 AND user_id = $2`, chatID, userID, hidden)
+	return err
+}
+
+// ShowDialogs — см. ChatRepo.ShowDialogs.
+func (r *ChatsRepo) ShowDialogs(ctx context.Context, chatID int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE chat_members SET dialog_hidden = false WHERE chat_id = $1 AND dialog_hidden`, chatID)
+	return err
+}
+
+// RecountCounters — см. ChatRepo.RecountCounters. Формулы те же, что у
+// пересчёта при прочтении (CountUnread), у syncUnreadMentions и у
+// RecountUnreadReactions; упоминания удалённых сообщений чата выбрасываются
+// первыми. Непрочитанное broadcast-канала считается на чтении
+// (dialogUnreadCount), его хранимый счётчик не трогается.
+func (r *ChatsRepo) RecountCounters(ctx context.Context, chatID int64, userIDs []int64) error {
+	if len(userIDs) == 0 {
+		return nil
+	}
+	q := querier(ctx, r.pool)
+	if _, err := q.Exec(ctx,
+		`DELETE FROM message_mentions mm USING messages m
+		  WHERE mm.chat_id = $1 AND m.id = mm.message_id AND m.deleted_at IS NOT NULL`, chatID); err != nil {
+		return err
+	}
+	_, err := q.Exec(ctx,
+		`UPDATE chat_members cm SET
+		    unread_count = CASE WHEN c.type = 'channel' THEN cm.unread_count ELSE (
+		        SELECT count(*) FROM messages m
+		         WHERE m.chat_id = cm.chat_id AND m.seq > cm.last_read_seq AND m.sender_id <> cm.user_id
+		           AND `+messageVisibleTo("m", "cm.user_id")+`) END,
+		    unread_mentions_count = (
+		        SELECT count(*) FROM message_mentions mm JOIN messages m ON m.id = mm.message_id
+		         WHERE mm.chat_id = cm.chat_id AND mm.user_id = cm.user_id AND mm.unread
+		           AND `+messageVisibleTo("m", "cm.user_id")+`),
+		    unread_reactions = (
+		        SELECT count(DISTINCT m.id) FROM messages m
+		          JOIN reactions re ON re.message_id = m.id AND re.unread
+		         WHERE m.chat_id = cm.chat_id AND m.sender_id = cm.user_id
+		           AND `+messageVisibleTo("m", "cm.user_id")+`)
+		   FROM chats c
+		  WHERE c.id = cm.chat_id AND cm.chat_id = $1 AND cm.user_id = ANY($2::bigint[])`, chatID, userIDs)
+	return err
+}
+
+// DropMessageMentions — см. ChatRepo.DropMessageMentions.
+func (r *ChatsRepo) DropMessageMentions(ctx context.Context, chatID, msgID int64) error {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`DELETE FROM message_mentions WHERE message_id = $1 RETURNING user_id`, msgID)
+	if err != nil {
+		return err
+	}
+	var users []int64
+	for rows.Next() {
+		var uid int64
+		if err := rows.Scan(&uid); err != nil {
+			rows.Close()
+			return err
+		}
+		users = append(users, uid)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, uid := range users {
+		if _, err := r.syncUnreadMentions(ctx, chatID, uid); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DropUserMentions — см. ChatRepo.DropUserMentions.
+func (r *ChatsRepo) DropUserMentions(ctx context.Context, chatID, userID int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`DELETE FROM message_mentions WHERE chat_id = $1 AND user_id = $2`, chatID, userID)
+	return err
 }
 
 // SetClearedSeq raises a member's cleared horizon: messages with seq<=seq are

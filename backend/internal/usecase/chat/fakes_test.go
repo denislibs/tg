@@ -34,6 +34,7 @@ type member struct {
 	// mutedUntil — срок мьюта, а не булево: «навсегда» это domain.MuteUntilForever.
 	mutedUntil *time.Time
 	archived   bool
+	hidden     bool // dialog_hidden: «удалить чат» в личке
 }
 
 // mentionRow mirrors a message_mentions row in the fake store.
@@ -258,7 +259,7 @@ func (r fakeChats) ListDialogs(_ context.Context, userID int64) ([]domain.Dialog
 	var out []domain.DialogRecord
 	for cid, m := range r.s.members {
 		mem := m[userID]
-		if mem == nil {
+		if mem == nil || mem.hidden {
 			continue
 		}
 		var until time.Time
@@ -409,6 +410,107 @@ func (r fakeChats) UnarchiveUnmuted(_ context.Context, chatID int64, userIDs []i
 		out = append(out, uid)
 	}
 	return out, nil
+}
+
+func (r fakeChats) VisibleSeqsUpTo(_ context.Context, chatID, userID, maxSeq int64) ([]int64, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var out []int64
+	for _, m := range r.s.messages[chatID] {
+		if m.Seq <= maxSeq && r.s.seesLocked(userID, m) {
+			out = append(out, m.Seq)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out, nil
+}
+
+func (r fakeChats) SetDialogHidden(_ context.Context, chatID, userID int64, hidden bool) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	if m := r.s.members[chatID][userID]; m != nil {
+		m.hidden = hidden
+	}
+	return nil
+}
+
+func (r fakeChats) ShowDialogs(_ context.Context, chatID int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for _, m := range r.s.members[chatID] {
+		m.hidden = false
+	}
+	return nil
+}
+
+// RecountCounters — те же формулы, что у ChatsRepo.RecountCounters, в объёме
+// фейка.
+func (r fakeChats) RecountCounters(_ context.Context, chatID int64, userIDs []int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	deleted := map[int64]bool{}
+	for _, m := range r.s.messages[chatID] {
+		if m.Deleted {
+			deleted[m.ID] = true
+		}
+	}
+	kept := r.s.mentions[:0]
+	for _, mr := range r.s.mentions {
+		if mr.chatID == chatID && deleted[mr.msgID] {
+			continue
+		}
+		kept = append(kept, mr)
+	}
+	r.s.mentions = kept
+	for _, uid := range userIDs {
+		mem := r.s.members[chatID][uid]
+		if mem == nil {
+			continue
+		}
+		n := 0
+		for _, m := range r.s.messages[chatID] {
+			if m.Seq > mem.lastReadSeq && m.SenderID != uid && r.s.seesLocked(uid, m) {
+				n++
+			}
+		}
+		mem.unread = n
+		r.s.syncMentionsLocked(chatID, uid)
+		r.s.recountReactionsLocked(chatID, uid)
+	}
+	return nil
+}
+
+func (r fakeChats) DropMessageMentions(_ context.Context, chatID, msgID int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var users []int64
+	kept := r.s.mentions[:0]
+	for _, mr := range r.s.mentions {
+		if mr.msgID == msgID {
+			users = append(users, mr.userID)
+			continue
+		}
+		kept = append(kept, mr)
+	}
+	r.s.mentions = kept
+	for _, uid := range users {
+		r.s.syncMentionsLocked(chatID, uid)
+	}
+	return nil
+}
+
+func (r fakeChats) DropUserMentions(_ context.Context, chatID, userID int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	kept := r.s.mentions[:0]
+	for _, mr := range r.s.mentions {
+		if mr.chatID == chatID && mr.userID == userID {
+			continue
+		}
+		kept = append(kept, mr)
+	}
+	r.s.mentions = kept
+	return nil
 }
 
 func (r fakeChats) CurrentReadSeq(_ context.Context, chatID, userID int64) (int64, error) {
@@ -1457,6 +1559,21 @@ func (r fakeMsgs) UpdateGeoLive(_ context.Context, msgID int64, lat, lng float64
 	return domain.Message{}, domain.ErrNotFound
 }
 
+func (r fakeMsgs) SoftDeleteUpTo(_ context.Context, chatID, maxSeq int64) ([]domain.Message, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	var out []domain.Message
+	for idx, m := range r.s.messages[chatID] {
+		if m.Seq <= maxSeq && !m.Deleted {
+			out = append(out, m)
+			m.Deleted = true
+			m.Text = ""
+			r.s.messages[chatID][idx] = m
+		}
+	}
+	return out, nil
+}
+
 func (r fakeMsgs) SoftDelete(_ context.Context, msgID int64) error {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
@@ -1768,7 +1885,7 @@ func (r fakeMsgs) CountUnread(_ context.Context, chatID, userID, afterSeq int64)
 	defer r.s.mu.Unlock()
 	n := 0
 	for _, m := range r.s.messages[chatID] {
-		if m.Seq > afterSeq && m.SenderID != userID && !m.Deleted {
+		if m.Seq > afterSeq && m.SenderID != userID && r.s.seesLocked(userID, m) {
 			n++
 		}
 	}
