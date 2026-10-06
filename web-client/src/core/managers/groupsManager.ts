@@ -177,6 +177,8 @@ const MANUALLY_FILTER: Set<ChannelParticipantsFilter['_']> = new Set([
 /** `invokeApiCacheable(..., {cacheSeconds: 60})` у `channels.getParticipants` и
  *  `messages.getOnlines` (tweb `appProfileManager.ts:665-671`, `:1193-1195`). */
 const PARTICIPANTS_CACHE_SECONDS = 60
+/** Сколько ждать серверный дубль своей мутации участника (см. `expectLocalEcho`). */
+const LOCAL_ECHO_TTL_MS = 30_000
 
 /** Порт `SEARCH_OPTIONS` (tweb `appUsersManager.ts:35-40`) — индекс ручной фильтрации. */
 const SEARCH_OPTIONS = {
@@ -450,6 +452,54 @@ export function newGroupsManager({ rest, dialogs, peers, messages, getMeId, onCh
     }
   }
 
+  /**
+   * Серверный дубль местного апдейта. У Telegram `updateChannelParticipant`
+   * пользовательским сессиям не приходит, поэтому tweb применяет мутацию только
+   * местным апдейтом. Наш сервер шлёт кадр и актору: его ПРОЧИМ устройствам он
+   * нужен (ревью #409 п. 2). Устройство, применившее смену местно, свой дубль
+   * отбрасывает: ожидание ставится ДО запроса (кадр по WS может обогнать ответ
+   * HTTP) и снимается первым кадром этого актора по тому же участнику. Воркер
+   * общий для вкладок браузера — покрыты и они.
+   */
+  const localEchoes = new Map<string, number[]>()
+  const echoKey = (chatId: ChatId, userId: PeerId) => `${chatId}:${userId}`
+  const expectLocalEcho = (chatId: ChatId, userId: PeerId) => {
+    const key = echoKey(chatId, userId)
+    const expires = Date.now() + LOCAL_ECHO_TTL_MS
+    localEchoes.set(key, [...(localEchoes.get(key) ?? []), expires])
+    return () => {
+      const list = localEchoes.get(key)?.filter((e) => e !== expires) ?? []
+      if (list.length) localEchoes.set(key, list)
+      else localEchoes.delete(key)
+    }
+  }
+  /** Кадр — дубль своей мутации, уже применённой местно: отбросить (и снять ожидание). */
+  const isLocalParticipantEcho = (update: ChannelParticipantEvt): boolean => {
+    const me = getMeId?.()
+    if (!me || update.actor_id !== me) return false
+    const key = echoKey(update.channel_id, update.user_id)
+    const list = (localEchoes.get(key) ?? []).filter((e) => e > Date.now())
+    if (!list.length) {
+      localEchoes.delete(key)
+      return false
+    }
+    list.shift()
+    if (list.length) localEchoes.set(key, list)
+    else localEchoes.delete(key)
+    return true
+  }
+  /** Мутация участника с местным апдейтом: ожидание дубля — до запроса, при
+   *  отказе снимается. */
+  const withLocalEcho = async(chatId: ChatId, userId: PeerId, request: () => Promise<unknown>) => {
+    const cancel = expectLocalEcho(chatId, userId)
+    try {
+      await request()
+    } catch (err) {
+      cancel()
+      throw err
+    }
+  }
+
   /** tweb `appChatsManager.onUpdateChannelParticipant` (:1419-1422) для местного
    *  апдейта: сброс кэша и рассылка `chat_participant`. Кадр сервера проходит
    *  тот же путь в `workerCore.ts::dispatch`. */
@@ -491,16 +541,18 @@ export function newGroupsManager({ rest, dialogs, peers, messages, getMeId, onCh
     const peerId = chatPeerId(chatId)
     const userId = participantPeerId(participant)
     const pFlags = rights.pFlags ?? {}
-    if (pFlags.view_messages) {
-      await rest.post(`/chats/${peerId}/bans`, { user_id: userId })
-    } else if (!deniedMask(pFlags)) {
-      const wasKicked = typeof participant === 'object' && participant._ === 'channelParticipantBanned' && !!participant.pFlags?.left
-      await rest.del(`/chats/${peerId}/${wasKicked ? 'bans' : 'restrictions'}/${userId}`)
-    } else {
-      const untilDate = rights.until_date
-      const untilSeconds = !untilDate || untilDate >= BANNED_RIGHTS_UNTIL_FOREVER ? 0 : Math.max(1, untilDate - tsNow(true))
-      await rest.post(`/chats/${peerId}/restrictions`, { user_id: userId, denied_rights: deniedMask(pFlags), until_seconds: untilSeconds })
-    }
+    await withLocalEcho(chatId, userId, async() => {
+      if (pFlags.view_messages) {
+        await rest.post(`/chats/${peerId}/bans`, { user_id: userId })
+      } else if (!deniedMask(pFlags)) {
+        const wasKicked = typeof participant === 'object' && participant._ === 'channelParticipantBanned' && !!participant.pFlags?.left
+        await rest.del(`/chats/${peerId}/${wasKicked ? 'bans' : 'restrictions'}/${userId}`)
+      } else {
+        const untilDate = rights.until_date
+        const untilSeconds = !untilDate || untilDate >= BANNED_RIGHTS_UNTIL_FOREVER ? 0 : Math.max(1, untilDate - tsNow(true))
+        await rest.post(`/chats/${peerId}/restrictions`, { user_id: userId, denied_rights: deniedMask(pFlags), until_seconds: untilSeconds })
+      }
+    })
 
     processLocalParticipantUpdate(generateUpdateChannelParticipant({
       chatId,
@@ -554,7 +606,7 @@ export function newGroupsManager({ rest, dialogs, peers, messages, getMeId, onCh
      * после ответа — местный апдейт `chat_participant` с новым участником.
      */
     async addMember(peerId: number, userId: number): Promise<void> {
-      await rest.post(`/chats/${peerId}/members`, { user_id: userId })
+      await withLocalEcho(toChatId(peerId), userId, () => rest.post(`/chats/${peerId}/members`, { user_id: userId }))
       processLocalParticipantUpdate(generateUpdateChannelParticipant({
         chatId: toChatId(peerId),
         newParticipant: { _: 'channelParticipant', date: tsNow(true), user_id: userId },
@@ -717,6 +769,8 @@ export function newGroupsManager({ rest, dialogs, peers, messages, getMeId, onCh
 
     /** tweb `invalidateChannelParticipants` (:918-926), часть воркера — см. выше. */
     invalidateChannelParticipants,
+    /** Серверный кадр участника — дубль своей местной мутации (ревью #409 п. 2). */
+    isLocalParticipantEcho,
 
     /** tweb `appProfileManager.getChannelParticipants({id, filter, limit, offset})` (:644-753). */
     getParticipants({ id, filter = { _: 'channelParticipantsRecent' }, limit = 200, offset = 0 }: {
@@ -767,11 +821,9 @@ export function newGroupsManager({ rest, dialogs, peers, messages, getMeId, onCh
       const peerId = chatPeerId(chatId)
       const userId = participantPeerId(participant)
       const makingAdmin = Object.keys(rights.pFlags ?? {}).length > 0
-      if (!makingAdmin) {
-        await rest.del(`/chats/${peerId}/admins/${userId}`)
-      } else {
-        await rest.post(`/chats/${peerId}/admins`, { user_id: userId, rights: adminRightsMask(rights.pFlags), rank })
-      }
+      await withLocalEcho(chatId, userId, () => makingAdmin ?
+        rest.post(`/chats/${peerId}/admins`, { user_id: userId, rights: adminRightsMask(rights.pFlags), rank }) :
+        rest.del(`/chats/${peerId}/admins/${userId}`))
 
       const timestamp = tsNow(true)
       processLocalParticipantUpdate(generateUpdateChannelParticipant({

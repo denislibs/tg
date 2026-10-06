@@ -59,6 +59,11 @@ type Participant struct {
 // раскрывать всем читателям нельзя (ревью #404, п. 2).
 func (p Participant) ToChannelParticipant(v ParticipantViewer) ChannelParticipant {
 	if p.Kicked {
+		// Кто и когда исключил — тоже сведения админа с ban_users: остальным
+		// (админ без ban_users в кадре участника) — просто «вышел» (ревью #409 п. 4).
+		if !v.CanBan && v.ID != p.UserID {
+			return NewChannelParticipantLeft(p.UserID)
+		}
 		return NewChannelParticipantBanned(p.UserID, p.KickedBy, unixSecondsInt64(p.KickedAt), AllMemberPerms, time.Time{}, true)
 	}
 	if r := p.Restriction; r != nil && (p.Role == RoleMember || p.Role == RoleSubscriber) &&
@@ -89,19 +94,16 @@ type ParticipantCounters struct {
 	CanViewParticipants bool
 }
 
-// EffectiveBannedRights — channel.banned_rights зрителя: ДЕЙСТВУЮЩИЕ запреты,
-// личные ∪ дефолт чата, срок — личный. tweb hasRights берёт
-// `admin_rights || banned_rights || default_banned_rights`: стоит отдать одни
-// личные запреты — и всё, что запрещено дефолтом чата, клиент разрешит
-// (сервер это и так держит: memberCan смотрит оба). nil — личного нет.
-func EffectiveBannedRights(r *MemberRestriction, defaultPerms MemberPerms, now time.Time) *ChatBannedRights {
+// ViewerBannedRights — channel.banned_rights зрителя: ТОЛЬКО его личные
+// запреты и их срок, как у сервера Telegram. Действующий набор — личные ∪
+// запреты чата по умолчанию (default_banned_rights) — считает клиент
+// (core/peers/rights.ts), поэтому смена прав по умолчанию доезжает общим
+// chat_update и пер-зрительской рассылки не требует (ревью #409 п. 3).
+// nil — личного ограничения нет или оно истекло.
+func ViewerBannedRights(r *MemberRestriction, now time.Time) *ChatBannedRights {
 	if r == nil || !r.Active(now) {
 		return nil
 	}
-	var until time.Time
-	if r.UntilDate != nil {
-		until = *r.UntilDate
-	}
-	br := NewChatBannedRights(defaultPerms&^r.DeniedRights, until)
+	br := r.ToChatBannedRights()
 	return &br
 }

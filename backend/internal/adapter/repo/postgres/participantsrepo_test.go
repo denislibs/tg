@@ -310,3 +310,32 @@ func TestJoinRequestRepo_CursorWithinOneSecond(t *testing.T) {
 		}
 	}
 }
+
+// Миграция 0152: служебки ограничения, уже лежащие в истории, удалены мягко —
+// deleted_at и снятое действие (конструктора больше нет).
+func TestMigration0152_DropRestrictService(t *testing.T) {
+	pool, url := storepostgres.NewTestDBWithURL(t)
+	ctx := context.Background()
+	if err := storepostgres.MigrateDownTo(url, 151); err != nil {
+		t.Fatalf("откат до 151: %v", err)
+	}
+	owner := seedUser(t, pool, "+79990015081")
+	var chatID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO chats (type, title, creator_id) VALUES ('group','Г',$1) RETURNING id`, owner).Scan(&chatID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO messages (chat_id, sender_id, seq, type, text, action)
+		VALUES ($1,$2,1,'service','', '{"_":"messageActionRestrict","user_id":5,"banned_rights":{"_":"chatBannedRights","pFlags":{},"until_date":0}}'),
+		       ($1,$2,2,'service','', '{"_":"messageActionChatAddUser","users":[5]}')`, chatID, owner); err != nil {
+		t.Fatal(err)
+	}
+	if err := storepostgres.Migrate(url); err != nil {
+		t.Fatalf("накат: %v", err)
+	}
+	var left, kept int
+	_ = pool.QueryRow(ctx, `SELECT COUNT(*) FROM messages WHERE chat_id=$1 AND deleted_at IS NULL AND action->>'_' = 'messageActionRestrict'`, chatID).Scan(&left)
+	_ = pool.QueryRow(ctx, `SELECT COUNT(*) FROM messages WHERE chat_id=$1 AND deleted_at IS NULL AND action->>'_' = 'messageActionChatAddUser'`, chatID).Scan(&kept)
+	if left != 0 || kept != 1 {
+		t.Fatalf("после 0152: restrict=%d, add_user=%d; want 0 и 1", left, kept)
+	}
+}

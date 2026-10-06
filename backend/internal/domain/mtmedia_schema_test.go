@@ -105,7 +105,7 @@ func loadAdditionalParams(t *testing.T) map[string]map[string]bool {
 // наличие `id`: клиентские синтетические конструкторы оригинала
 // (messageActionChatLeave и десяток других — на провод не идут, id им не
 // нужен) и НАШИ собственные, у которых предмета в схеме нет вовсе
-// (messageActionRestrict). Сверщик обязан признавать и те и другие: иначе
+// (updateChatFullSnapshot и др.). Сверщик обязан признавать и те и другие: иначе
 // собственный конструктор выглядел бы как «предиката нет в схеме», то есть
 // как ошибка.
 func loadOwnConstructors(t *testing.T) map[string]schemaConstructor {

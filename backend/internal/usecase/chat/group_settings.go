@@ -228,31 +228,9 @@ func (i *Interactor) SetChatPermissions(ctx context.Context, chatID, actorID int
 	if err := i.groups.SetPermissions(ctx, chatID, perms, slowmodeSeconds); err != nil {
 		return err
 	}
+	// Личные banned_rights от дефолта не зависят: общего снимка хватает.
 	i.publishChatUpdate(ctx, chatID)
-	i.republishRestricted(ctx, chatID)
 	return nil
-}
-
-// republishRestricted — пер-зрительский снимок каждому лично ограниченному
-// (ревью #404 п. 3). Его channel.banned_rights — ДЕЙСТВУЮЩИЙ набор (личные ∪
-// дефолт чата), а общий min-снимок chat_update клиент кладёт поверх, сохраняя
-// прежний banned_rights: без этого после смены дефолта у ограниченного
-// оставалось старое объединение (скрепка активна — сервер отвечает forbidden,
-// или наоборот запрет держится после ослабления). Best-effort.
-func (i *Interactor) republishRestricted(ctx context.Context, chatID int64) {
-	const page = 200
-	for offset := 0; ; offset += page {
-		rows, total, err := i.groups.ListParticipants(ctx, chatID, 0, domain.ParticipantsFilter{Kind: domain.ParticipantsBanned}, offset, page)
-		if err != nil {
-			return
-		}
-		for _, p := range rows {
-			i.publishViewerChat(ctx, chatID, p.UserID)
-		}
-		if len(rows) < page || offset+page >= total {
-			return
-		}
-	}
 }
 
 // SetChatReactions stores the reaction policy: 'all' | 'some' (allowed list) | 'none'.
@@ -356,7 +334,7 @@ func (i *Interactor) BanMember(ctx context.Context, chatID, actorID, userID int6
 		return err
 	}
 	// Кадр участника админам (A2-05): список удалённых у них живой.
-	i.emitParticipant(ctx, chatID, actorID, userID, participantChange{prev: prev, next: i.participantNow(ctx, chatID, userID), actorLocal: true})
+	i.emitParticipant(ctx, chatID, actorID, userID, participantChange{prev: prev, next: i.participantNow(ctx, chatID, userID)})
 	return nil
 }
 
@@ -370,7 +348,7 @@ func (i *Interactor) UnbanMember(ctx context.Context, chatID, actorID, userID in
 		return err
 	}
 	// Разбан — new_participant нет: из списка удалённых ушёл (A2-05).
-	i.emitParticipant(ctx, chatID, actorID, userID, participantChange{prev: prev, next: i.participantNow(ctx, chatID, userID), actorLocal: true})
+	i.emitParticipant(ctx, chatID, actorID, userID, participantChange{prev: prev, next: i.participantNow(ctx, chatID, userID)})
 	return nil
 }
 
@@ -400,16 +378,10 @@ func (i *Interactor) RestrictMember(ctx context.Context, chatID, actorID, target
 	}); err != nil {
 		return err
 	}
-	// Содержимое действия — сам набор запретов конструктором chatBannedRights,
-	// а не битмаск `denied_rights` числом, которого не читал ни один клиент.
-	// Срок ограничения там же (until_date): прежде он хранился, но наружу не
-	// ехал вовсе. Нулевое время — «навсегда», ровно как у прав чата.
-	var untilTime time.Time
-	if until != nil {
-		untilTime = *until
-	}
-	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionRestrict(
-		targetID, domain.NewChatBannedRights(domain.AllMemberPerms&^deniedRights, untilTime)))
+	// Служебки в ленте нет: у оригинала ограничение уходит только в журнал
+	// администратора (channelAdminLogEventActionParticipantToggleBan), а
+	// пилюля в общей ленте раскрывала бы всем читателям цель, автора, запреты
+	// и срок (ревью #409 п. 1).
 	// Ограниченный видит запрет живьём (скрепка гаснет), админы — список
 	// ограниченных (A2-05, A1-06).
 	i.afterRightsChange(ctx, chatID, actorID, targetID, prev)

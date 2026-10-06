@@ -8350,10 +8350,6 @@ var schemaConstructors = []Constructor{
 		{Name: "reply_markup", Type: "ReplyMarkup", Flags: "flags", Bit: 2},
 		{Name: "rich_message", Type: "RichMessage"},
 	}},
-	{ID: -783286271, Predicate: "messageActionRestrict", Type: "MessageAction", Params: []Param{
-		{Name: "user_id", Type: "long"},
-		{Name: "banned_rights", Type: "ChatBannedRights"},
-	}},
 	{ID: 1610266670, Predicate: "updateDeletePeerMessages", Type: "Update", Params: []Param{
 		{Name: "peer", Type: "Peer"},
 		{Name: "messages", Type: "Vector<int>"},

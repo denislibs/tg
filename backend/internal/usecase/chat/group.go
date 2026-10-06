@@ -192,8 +192,7 @@ func (i *Interactor) AddMember(ctx context.Context, chatID, actorID, userID int6
 	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionChatAddUser([]int64{targetID}))
 	// Число участников изменилось — рассылаем свежий снимок метаданных чата.
 	i.publishChatUpdate(ctx, chatID)
-	// Добавивший применил смену местно (tweb addChatUser → generateUpdateChannelParticipant).
-	i.emitParticipant(ctx, chatID, actorID, userID, participantChange{next: i.participantNow(ctx, chatID, userID), actorLocal: true})
+	i.emitParticipant(ctx, chatID, actorID, userID, participantChange{next: i.participantNow(ctx, chatID, userID)})
 	return nil
 }
 
@@ -345,8 +344,7 @@ func clipRank(rank string) string {
 // ограничение): кадр участника актору и админам и пер-зрительский снимок
 // чата самому затронутому — его новые admin_rights/banned_rights (A2-05).
 func (i *Interactor) afterRightsChange(ctx context.Context, chatID, actorID, userID int64, prev *domain.Participant) {
-	// Актор применил смену местно (tweb editAdmin/editBanned).
-	i.emitParticipant(ctx, chatID, actorID, userID, participantChange{prev: prev, next: i.participantNow(ctx, chatID, userID), actorLocal: true})
+	i.emitParticipant(ctx, chatID, actorID, userID, participantChange{prev: prev, next: i.participantNow(ctx, chatID, userID)})
 	i.publishViewerChat(ctx, chatID, userID)
 }
 

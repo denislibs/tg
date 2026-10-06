@@ -24,6 +24,7 @@
 // требуют; это вторая половина той же ловушки, выписанной в разборе.
 
 import type { Chat, ChatAdminRights, ChatBannedRights } from './peer'
+import combineParticipantBannedRights from './combineParticipantBannedRights'
 
 /**
  * Действие, право на которое проверяют. Порт `ChatRights`
@@ -98,8 +99,14 @@ export function hasRights(
   if (chat.pFlags?.left && !(chat._ === 'channel' && chat.pFlags?.megagroup)) return false
 
   if (!rights) {
+    // Расхождение с tweb (`hasRights.ts:41` берёт `banned_rights` как есть):
+    // наш сервер кладёт в `channel.banned_rights` только ЛИЧНЫЕ запреты зрителя
+    // (Ф-3б, ревью #409 п. 3), поэтому действующий набор — личные ∪ запреты чата
+    // по умолчанию — собирает клиент тем же портированным
+    // `combineParticipantBannedRights`. Смена прав по умолчанию тогда доезжает
+    // одним общим `chat_update`, без пер-зрительской рассылки ограниченным.
     rights = chat.admin_rights ||
-      (chat._ === 'channel' ? chat.banned_rights : undefined) ||
+      (chat._ === 'channel' && chat.banned_rights ? combineParticipantBannedRights(chat, chat.banned_rights) : undefined) ||
       chat.default_banned_rights
     if (!rights) return false
   }

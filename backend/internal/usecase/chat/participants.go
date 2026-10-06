@@ -65,7 +65,7 @@ func (i *Interactor) ListParticipants(ctx context.Context, chatID, viewerID int6
 	page := ParticipantsPage{Count: total, Participants: make([]domain.ChannelParticipant, 0, len(rows))}
 	for _, p := range rows {
 		page.Participants = append(page.Participants, p.ToChannelParticipant(v))
-		page.UserIDs = appendParticipantUsers(page.UserIDs, p)
+		page.UserIDs = appendParticipantUsers(page.UserIDs, p, v)
 	}
 	return page, nil
 }
@@ -95,7 +95,7 @@ func (i *Interactor) GetParticipant(ctx context.Context, chatID, viewerID, userI
 		return nil, nil, domain.ErrNotFound
 	}
 	v := i.participantViewer(ctx, chatID, viewerID, a)
-	return p.ToChannelParticipant(v), appendParticipantUsers(nil, p), nil
+	return p.ToChannelParticipant(v), appendParticipantUsers(nil, p, v), nil
 }
 
 // participantViewer — зритель выдачи: создатель ли он и есть ли у него
@@ -110,7 +110,11 @@ func (i *Interactor) participantViewer(ctx context.Context, chatID, viewerID int
 
 // appendParticipantUsers — карточки, которые называет строка: сам участник,
 // назначивший, пригласивший, наложивший ограничение или бан.
-func appendParticipantUsers(ids []int64, p domain.Participant) []int64 {
+//
+// Наложившего ограничение или бан называет только строка, видная зрителю с
+// ban_users (или самому ограниченному): иначе карточка админа в векторе
+// выдавала бы, что кто-то на странице им ограничен (ревью #409 п. 5).
+func appendParticipantUsers(ids []int64, p domain.Participant, v domain.ParticipantViewer) []int64 {
 	add := func(id int64) {
 		if id != 0 && !slices.Contains(ids, id) {
 			ids = append(ids, id)
@@ -119,9 +123,11 @@ func appendParticipantUsers(ids []int64, p domain.Participant) []int64 {
 	add(p.UserID)
 	add(p.PromotedBy)
 	add(p.InviterID)
-	add(p.KickedBy)
-	if p.Restriction != nil {
-		add(p.Restriction.RestrictedBy)
+	if v.CanBan || v.ID == p.UserID {
+		add(p.KickedBy)
+		if p.Restriction != nil {
+			add(p.Restriction.RestrictedBy)
+		}
 	}
 	return ids
 }
@@ -226,12 +232,6 @@ type participantChange struct {
 	prev, next *domain.Participant
 	nextLeft   bool
 	invite     *domain.ChatInviteExported
-	// actorLocal — актор применил мутацию МЕСТНЫМ апдейтом (tweb
-	// generateUpdateChannelParticipant после editBanned/editAdmin/addChatUser):
-	// серверный кадр ему не шлётся, иначе вкладки применили бы смену дважды
-	// (счётчик «Участники» −2, ревью #404 п. 4). У Telegram пользовательским
-	// сессиям этот апдейт не приходит вовсе.
-	actorLocal bool
 }
 
 func (c participantChange) wire(p *domain.Participant, v domain.ParticipantViewer) domain.ChannelParticipant {
@@ -241,8 +241,10 @@ func (c participantChange) wire(p *domain.Participant, v domain.ParticipantViewe
 	return p.ToChannelParticipant(v)
 }
 
-// emitParticipant — кадр updateChannelParticipant затронутому и админам чата
-// (и актору, если он не применил смену местно). Чужое личное ограничение в
+// emitParticipant — кадр updateChannelParticipant затронутому, актору и
+// админам чата. Устройство актора, применившее смену местным апдейтом (tweb
+// generateUpdateChannelParticipant), отбрасывает серверный дубль в воркере
+// (groupsManager.isLocalParticipantEcho); прочие его устройства кадр получают. Чужое личное ограничение в
 // кадре видят только админы с ban_users и сам затронутый; остальным строка —
 // обычный участник (как в выдаче участников, ревью #404 п. 2). Выбывший кадр
 // не получает: ему адресован chat_removed. Best-effort — мутация уже
@@ -258,7 +260,7 @@ func (i *Interactor) emitParticipant(ctx context.Context, chatID, actorID, userI
 	var full, masked []int64
 	seen := map[int64]bool{}
 	add := func(id int64, canBan bool) {
-		if id == 0 || seen[id] || (ch.actorLocal && id == actorID) {
+		if id == 0 || seen[id] {
 			return
 		}
 		seen[id] = true

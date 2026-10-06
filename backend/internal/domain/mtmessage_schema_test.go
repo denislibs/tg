@@ -210,7 +210,6 @@ func allMessageConstructors() []any {
 		NewMessageActionPhoneCall(false, NewPhoneCallDiscardReasonHangup(), nil),
 		// НАШ конструктор: сверщик обязан признавать его по записи с полем
 		// `type` в schema_additional_params.json, а не считать «предиката нет».
-		NewMessageActionRestrict(43, NewChatBannedRights(PermSendMessages, now.Add(time.Hour))),
 		// Подарок — ДЕЙСТВИЕ, а не вложение: конструктора messageMediaStarGift в
 		// схеме нет вовсе (mtgift.go). Ограниченный подарок с пожеланием и
 		// названным дарителем.
@@ -327,7 +326,6 @@ func messageConstructorTags() []string {
 		MessageActionTopicCreateTag, MessageActionSuggestProfilePhotoTag,
 		MessageActionSuggestBirthdayTag,
 		MessageActionSuggestedPostApprovalTag, MessageActionPhoneCallTag,
-		MessageActionRestrictTag,
 		PhoneCallDiscardReasonMissedTag, PhoneCallDiscardReasonBusyTag,
 		PhoneCallDiscardReasonHangupTag, PhoneCallDiscardReasonDisconnectTag,
 		MessageReactionsTag, ReactionCountTag, ReactionPaidTag, MessagePeerReactionTag,
@@ -430,7 +428,7 @@ func TestMessages_PFlagsNeverFalse(t *testing.T) {
 // разбирает. Проверяется механически, потому что глазами не проверяется.
 //
 // Здесь у сверки два источника: schema.json для конструкторов оригинала и
-// schema_additional_params.json для нашего собственного (messageActionRestrict).
+// schema_additional_params.json для наших собственных (updateChatFullSnapshot и др.).
 // Второй источник нужен именно потому, что своим конструкторам id назначается
 // ЯВНО — правило «id = CRC32 канонической строки» воспроизводится не полностью
 // (tl-program.md), и вывести его из определения нельзя.
