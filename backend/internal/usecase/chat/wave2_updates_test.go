@@ -185,6 +185,10 @@ func TestPollUpdate_LoggedAndDiff(t *testing.T) {
 	fp := newFakePolls()
 	in.SetPolls(fp)
 	poll, _ := fp.Create(ctx, domain.Poll{ChatID: chatID, Question: "q", Options: []string{"a", "b"}})
+	// опрос живёт сообщением: голосует тот, кто его видит
+	if _, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: owner, Type: "poll", PollID: &poll.ID}); err != nil {
+		t.Fatal(err)
+	}
 
 	pub.reset()
 	if _, err := in.VotePoll(ctx, poll.ID, voter, []int{0}); err != nil {

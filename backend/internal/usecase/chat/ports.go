@@ -307,7 +307,7 @@ type MessageRepo interface {
 	VisibleIDs(ctx context.Context, viewerID int64, ids []int64) (map[int64]bool, error)
 	// LastMessageAt is the newest non-deleted message time by senderID in the chat
 	// plus its album: grouped_id (0 — not in one) and how many of the sender's
-	// live messages already carry that grouped_id (slowmode counts an album once);
+	// messages (removed included) carry that grouped_id (slowmode counts an album once);
 	// domain.ErrNotFound when they haven't posted yet.
 	LastMessageAt(ctx context.Context, chatID, senderID int64) (at time.Time, groupedID int64, groupSize int, err error)
 	// SavedDialogs groups the saved-messages chat by forward origin
@@ -722,8 +722,9 @@ type PhoneCallStore interface {
 	Create(ctx context.Context, c domain.PhoneCall) (bool, error)
 	// Get — звонок по id; domain.ErrNotFound, если его нет (кончился/не было).
 	Get(ctx context.Context, id string) (domain.PhoneCall, error)
-	// Accept отмечает ответ; повторный ответ время не сдвигает.
-	Accept(ctx context.Context, id string, at time.Time) error
+	// Accept отмечает ответ; повторный ответ время не сдвигает. true — ответ
+	// записан этим вызовом (из одновременных ответов выигрывает один).
+	Accept(ctx context.Context, id string, at time.Time) (bool, error)
 	// Finish атомарно забирает звонок: из конкурирующих вызовов его получает
 	// ровно один, остальным — domain.ErrNotFound. На этом держится «один
 	// звонок — одна запись», когда call_end шлют обе стороны.
@@ -890,15 +891,29 @@ type PremiumRepo interface {
 // PaidMediaRepo — цена платного медиа сообщения и разблокировки за Stars.
 type PaidMediaRepo interface {
 	// SetPrice помечает медиа сообщения платным с ценой price (звёзды).
-	SetPrice(ctx context.Context, messageID, price int64) error
-	// PricesByIDs — цены платного медиа для сообщений (без цены — отсутствуют).
-	PricesByIDs(ctx context.Context, ids []int64) (map[int64]int64, error)
-	// UnlockedByIDs — какие из сообщений пользователь уже разблокировал.
-	UnlockedByIDs(ctx context.Context, userID int64, ids []int64) (map[int64]bool, error)
-	// Unlock записывает разблокировку (message,user); true — если запись новая.
-	Unlock(ctx context.Context, messageID, userID int64) (bool, error)
-	// LockedMedia — закрыто ли медиа платным баром для пользователя (гейт байтов).
+	// sourceID — сообщение-предложение, которым копия продаётся (пересылка,
+	// зеркало поста); 0 — сообщение продаёт само себя.
+	SetPrice(ctx context.Context, messageID, price, sourceID int64) error
+	// Offers — платные сообщения из ids (без цены — отсутствуют): цена,
+	// предложение и продавец (автор предложения; 0 — его строки нет).
+	Offers(ctx context.Context, ids []int64) (map[int64]PaidOffer, error)
+	// UnlockedByIDs — какие из ПРЕДЛОЖЕНИЙ пользователь уже разблокировал.
+	UnlockedByIDs(ctx context.Context, userID int64, offerIDs []int64) (map[int64]bool, error)
+	// Unlock записывает разблокировку (предложение, user); true — если запись новая.
+	Unlock(ctx context.Context, offerID, userID int64) (bool, error)
+	// LockedMedia — закрыто ли медиа платным баром для пользователя (гейт байтов):
+	// есть платное сообщение с этим медиа, чей продавец не userID и чьё
+	// предложение userID не разблокировал.
 	LockedMedia(ctx context.Context, userID, mediaID int64) (bool, error)
+}
+
+// PaidOffer — платное медиа сообщения: цена и ПРЕДЛОЖЕНИЕ, по которому оно
+// продаётся. У копии (пересылка, зеркало поста) предложение — исходник: те же
+// цена и продавец, открыта тем, кто купил оригинал (Telegram paid media).
+type PaidOffer struct {
+	Price    int64
+	OfferID  int64 // сообщение, по которому живут разблокировки и выплата
+	SellerID int64 // автор предложения
 }
 
 // BotRepo — данные ботов: флаг is_bot и список команд.

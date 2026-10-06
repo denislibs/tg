@@ -13,27 +13,50 @@ type fakePaidMedia struct {
 	mu      sync.Mutex
 	s       *store
 	prices  map[int64]int64
-	unlocks map[int64]map[int64]bool // msgID -> userID -> true
+	sources map[int64]int64          // msgID -> предложение (копия → исходник)
+	unlocks map[int64]map[int64]bool // offerID -> userID -> true
 }
 
 func newFakePaidMedia(s *store) *fakePaidMedia {
-	return &fakePaidMedia{s: s, prices: map[int64]int64{}, unlocks: map[int64]map[int64]bool{}}
+	return &fakePaidMedia{s: s, prices: map[int64]int64{}, sources: map[int64]int64{}, unlocks: map[int64]map[int64]bool{}}
 }
 
-func (f *fakePaidMedia) SetPrice(_ context.Context, messageID, price int64) error {
+func (f *fakePaidMedia) SetPrice(_ context.Context, messageID, price, sourceID int64) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.prices[messageID] = price
+	if sourceID != 0 {
+		f.sources[messageID] = sourceID
+	}
 	return nil
 }
 
-func (f *fakePaidMedia) PricesByIDs(_ context.Context, ids []int64) (map[int64]int64, error) {
+// offerOf — предложение и продавец сообщения (под f.mu).
+func (f *fakePaidMedia) offerOf(msgID int64) (int64, int64) {
+	offer := msgID
+	if src, ok := f.sources[msgID]; ok {
+		offer = src
+	}
+	f.s.mu.Lock()
+	defer f.s.mu.Unlock()
+	for _, msgs := range f.s.messages {
+		for _, m := range msgs {
+			if m.ID == offer {
+				return offer, m.SenderID
+			}
+		}
+	}
+	return offer, 0
+}
+
+func (f *fakePaidMedia) Offers(_ context.Context, ids []int64) (map[int64]PaidOffer, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	out := map[int64]int64{}
+	out := map[int64]PaidOffer{}
 	for _, id := range ids {
 		if p, ok := f.prices[id]; ok {
-			out[id] = p
+			offer, seller := f.offerOf(id)
+			out[id] = PaidOffer{Price: p, OfferID: offer, SellerID: seller}
 		}
 	}
 	return out, nil
@@ -51,33 +74,39 @@ func (f *fakePaidMedia) UnlockedByIDs(_ context.Context, userID int64, ids []int
 	return out, nil
 }
 
-func (f *fakePaidMedia) Unlock(_ context.Context, messageID, userID int64) (bool, error) {
+func (f *fakePaidMedia) Unlock(_ context.Context, offerID, userID int64) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.unlocks[messageID] == nil {
-		f.unlocks[messageID] = map[int64]bool{}
+	if f.unlocks[offerID] == nil {
+		f.unlocks[offerID] = map[int64]bool{}
 	}
-	if f.unlocks[messageID][userID] {
+	if f.unlocks[offerID][userID] {
 		return false, nil
 	}
-	f.unlocks[messageID][userID] = true
+	f.unlocks[offerID][userID] = true
 	return true, nil
 }
 
 func (f *fakePaidMedia) LockedMedia(_ context.Context, userID, mediaID int64) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.s.mu.Lock()
+	var ids []int64
 	for _, msgs := range f.s.messages {
 		for _, m := range msgs {
-			if m.MediaID == nil || *m.MediaID != mediaID {
-				continue
+			if m.MediaID != nil && *m.MediaID == mediaID {
+				ids = append(ids, m.ID)
 			}
-			if _, paid := f.prices[m.ID]; !paid {
-				continue
-			}
-			if m.SenderID != userID && !f.unlocks[m.ID][userID] {
-				return true, nil
-			}
+		}
+	}
+	f.s.mu.Unlock()
+	for _, id := range ids {
+		if _, paid := f.prices[id]; !paid {
+			continue
+		}
+		offer, seller := f.offerOf(id)
+		if seller != userID && !f.unlocks[offer][userID] {
+			return true, nil
 		}
 	}
 	return false, nil

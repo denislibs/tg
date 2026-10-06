@@ -111,15 +111,17 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 	if err := i.checkForwardAllowed(ctx, in, copies, units, broadcast); err != nil {
 		return nil, err
 	}
-	// Цены платного медиа исходников: копия остаётся платной (иначе пересылка
-	// открывала бы закрытое медиа даром).
-	var prices map[int64]int64
+	// Платное медиа исходников: копия продаётся тем же ПРЕДЛОЖЕНИЕМ (цена,
+	// продавец, разблокировки — исходника), как у Telegram. Открыта она тому, кто
+	// купил оригинал; пересылающий своей копией доступа себе не покупает и
+	// выручки за неё не получает.
+	var offers map[int64]PaidOffer
 	if i.paidMedia != nil {
 		ids := make([]int64, len(srcs))
 		for idx, src := range srcs {
 			ids[idx] = src.ID
 		}
-		if prices, err = i.paidMedia.PricesByIDs(ctx, ids); err != nil {
+		if offers, err = i.paidMedia.Offers(ctx, ids); err != nil {
 			return nil, err
 		}
 	}
@@ -142,34 +144,47 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 		linkAllowed[authorID] = ok
 		return ok
 	}
-	for idx, src := range srcs {
+	// Вид чата-источника: пост канала атрибутируется КАНАЛОМ.
+	fromType, err := i.chats.ChatType(ctx, in.FromChatID)
+	if err != nil {
+		return nil, err
+	}
+	for idx := range srcs {
 		// Атрибуцию пересылки заполняем, только если её не просят скрыть
 		// (tweb dropAuthor): при DropAuthor копия — как собственное сообщение.
 		if in.DropAuthor {
 			continue
 		}
+		src := &srcs[idx]
 		c := &copies[idx]
-		// Preserve the true origin across forward-of-forward.
-		c.FwdFromUserID = src.FwdFromUserID
-		if c.FwdFromUserID == nil {
-			c.FwdFromUserID = &srcs[idx].SenderID
+		c.FwdDate = &src.CreatedAt
+		switch {
+		case isCopy(*src):
+			// Пересылка пересылки и зеркало поста: исходная атрибуция едет как
+			// есть (у зеркала это канал и номер поста, не админ-автор).
+			c.FwdFromUserID, c.FwdFromChatID, c.FwdFromMsgID = src.FwdFromUserID, src.FwdFromChatID, src.FwdFromMsgID
+			c.FwdFromName = src.FwdFromName
+			if src.FwdDate != nil {
+				c.FwdDate = src.FwdDate
+			}
+		case fromType == domain.ChatTypeChannel:
+			// Пост канала: from_id — сам канал, админ-автор не раскрывается
+			// (как сам пост после A4-02; post_author у оригинала — только при
+			// подписях).
+			c.FwdFromChatID, c.FwdFromMsgID = &src.ChatID, &src.ID
+		case src.SendAsChatID != nil:
+			// От имени канала или группы (send_as): автор — этот пир. Номер
+			// оригинала осмыслен только в его собственном чате.
+			c.FwdFromChatID = src.SendAsChatID
+			if *src.SendAsChatID == src.ChatID {
+				c.FwdFromMsgID = &src.ID
+			}
+		default:
+			c.FwdFromUserID, c.FwdFromChatID, c.FwdFromMsgID = &src.SenderID, &src.ChatID, &src.ID
 		}
-		c.FwdFromChatID = src.FwdFromChatID
-		if c.FwdFromChatID == nil {
-			c.FwdFromChatID = &srcs[idx].ChatID
-		}
-		c.FwdFromMsgID = src.FwdFromMsgID
-		if c.FwdFromMsgID == nil {
-			c.FwdFromMsgID = &srcs[idx].ID
-		}
-		c.FwdDate = src.FwdDate
-		if c.FwdDate == nil {
-			c.FwdDate = &srcs[idx].CreatedAt
-		}
-		// Уже скрытая атрибуция едет дальше как имя; иначе правило forwards
-		// автора решает — ссылка или только имя.
-		c.FwdFromName = src.FwdFromName
-		if c.FwdFromName == nil && !canLink(*c.FwdFromUserID) {
+		// Ссылка на аккаунт человека — по его правилу forwards: при запрете
+		// остаётся только имя.
+		if c.FwdFromUserID != nil && c.FwdFromName == nil && !canLink(*c.FwdFromUserID) {
 			name := i.userCard(ctx, *c.FwdFromUserID).ShortName()
 			c.FwdFromName = &name
 		}
@@ -195,12 +210,15 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 				return e
 			}
 			c.Seq = seq
+			if c.ChecklistID, e = i.snapshotChecklist(ctx, c.ChecklistID, in.ToChatID); e != nil {
+				return e
+			}
 			msg, e := i.insertCopy(ctx, c)
 			if e != nil {
 				return e
 			}
-			if price, ok := prices[srcs[idx].ID]; ok && msg.MediaID != nil {
-				if e := i.paidMedia.SetPrice(ctx, msg.ID, price); e != nil {
+			if o, ok := offers[srcs[idx].ID]; ok && msg.MediaID != nil {
+				if e := i.paidMedia.SetPrice(ctx, msg.ID, o.Price, o.OfferID); e != nil {
 					return e
 				}
 			}
@@ -213,7 +231,8 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 				return e
 			}
 			// Копия уходит той же формой, что история: медиа-мета, опрос,
-			// чек-лист, розыгрыш, цена платного медиа (у пересылающего открыто).
+			// чек-лист, розыгрыш, платное медиа глазами пересылающего (открыто,
+			// только если он купил исходник).
 			if msg, e = i.hydrateBroadcastMessage(ctx, msg); e != nil {
 				return e
 			}
@@ -296,8 +315,8 @@ func (i *Interactor) checkForwardAllowed(ctx context.Context, in ForwardInput, c
 	for _, c := range copies {
 		p := sendProbe(in.ToChatID, in.SenderID, c)
 		if p.carriesMedia() && !probe.carriesMedia() {
-			probe.MediaID, probe.PollID, probe.ChecklistID, probe.GeoLat, probe.ContactUserID =
-				p.MediaID, p.PollID, p.ChecklistID, p.GeoLat, p.ContactUserID
+			probe.MediaID, probe.PollID, probe.ChecklistID, probe.GeoLat, probe.ContactUserID, probe.GiveawayID =
+				p.MediaID, p.PollID, p.ChecklistID, p.GeoLat, p.ContactUserID, p.GiveawayID
 		}
 		if c.Type == "voice" || c.Type == "roundVideo" {
 			probe.Type = c.Type

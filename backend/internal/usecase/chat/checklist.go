@@ -102,11 +102,12 @@ func (i *Interactor) ToggleChecklistItem(ctx context.Context, checklistID int64,
 	if !itemExists(c.Items, itemID) {
 		return domain.ChecklistInfo{}, domain.ErrNotFound
 	}
-	if !c.OthersCanMark {
-		author, e := i.checklistAuthor(ctx, checklistID)
-		if e != nil || author != userID {
-			return domain.ChecklistInfo{}, domain.ErrForbidden
-		}
+	author, err := i.checklistAuthor(ctx, c)
+	if err != nil {
+		return domain.ChecklistInfo{}, err
+	}
+	if !c.OthersCanMark && author != userID {
+		return domain.ChecklistInfo{}, domain.ErrForbidden
 	}
 	if _, err := i.checklists.ToggleMark(ctx, checklistID, itemID, userID); err != nil {
 		return domain.ChecklistInfo{}, err
@@ -137,11 +138,12 @@ func (i *Interactor) AddChecklistItems(ctx context.Context, checklistID, userID 
 	if !ok {
 		return domain.ChecklistInfo{}, domain.ErrNotFound
 	}
-	if !c.OthersCanAdd {
-		author, e := i.checklistAuthor(ctx, checklistID)
-		if e != nil || author != userID {
-			return domain.ChecklistInfo{}, domain.ErrForbidden
-		}
+	author, err := i.checklistAuthor(ctx, c)
+	if err != nil {
+		return domain.ChecklistInfo{}, err
+	}
+	if !c.OthersCanAdd && author != userID {
+		return domain.ChecklistInfo{}, domain.ErrForbidden
 	}
 	maxID := 0
 	for _, it := range c.Items {
@@ -188,16 +190,20 @@ func itemExists(items []domain.ChecklistItem, id int) bool {
 	return false
 }
 
-// checklistAuthor — отправитель сообщения с этим чек-листом.
-func (i *Interactor) checklistAuthor(ctx context.Context, checklistID int64) (int64, error) {
-	msgs, err := i.msgs.ByChecklistID(ctx, checklistID)
+// checklistAuthor — автор чек-листа: отправитель сообщения, которым он
+// опубликован (originMessage). Чек-лист копии (пересылка, зеркало поста) —
+// снимок только для чтения (tweb ChecklistReadonlyForwarded): у него нет
+// своего опубликовавшего сообщения, и любая отметка — ErrForbidden.
+func (i *Interactor) checklistAuthor(ctx context.Context, c domain.Checklist) (int64, error) {
+	msgs, err := i.msgs.ByChecklistID(ctx, c.ID)
 	if err != nil {
 		return 0, err
 	}
-	if len(msgs) == 0 {
-		return 0, domain.ErrNotFound
+	m, ok := originMessage(msgs, c.ChatID)
+	if !ok && len(msgs) > 0 {
+		return 0, domain.ErrForbidden // снимок копии — только чтение
 	}
-	return msgs[0].SenderID, nil
+	return m.SenderID, nil // 0 — опубликовавшего сообщения нет: автора нет
 }
 
 // hydrateChecklists наполняет Message.Checklist для сообщений типа 'checklist'.

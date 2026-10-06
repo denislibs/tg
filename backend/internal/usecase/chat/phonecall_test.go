@@ -41,14 +41,15 @@ func (f *fakePhoneCalls) Get(_ context.Context, id string) (domain.PhoneCall, er
 	return c, nil
 }
 
-func (f *fakePhoneCalls) Accept(_ context.Context, id string, at time.Time) error {
+func (f *fakePhoneCalls) Accept(_ context.Context, id string, at time.Time) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if c, ok := f.calls[id]; ok && c.AcceptedAt.IsZero() {
 		c.AcceptedAt = at
 		f.calls[id] = c
+		return true, nil
 	}
-	return nil
+	return false, nil
 }
 
 func (f *fakePhoneCalls) Finish(_ context.Context, id string) (domain.PhoneCall, error) {
