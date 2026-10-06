@@ -180,3 +180,34 @@ func TestUserUpdate_SeenByEachRecipient(t *testing.T) {
 		}
 	}
 }
+
+// A2-04: строка журнала user_update — та же карточка, что живой кадр, с фото
+// по правилу на момент записи. Прежде журнал писал «фото нет», клиент
+// заменял карточку целиком, и после /sync аватарка стиралась — в том числе
+// своя на втором устройстве.
+func TestUserUpdate_JournalKeepsPhoto(t *testing.T) {
+	i, users, _, _ := newInteractor()
+	ctx := context.Background()
+	u, _ := users.CreateWithName(ctx, "+70000000004", "Аня", "")
+	log := newFakeUpdateLog()
+	i.SetUpdateLog(log)
+	i.SetPublisher(newFakeAuthPub())
+	if _, err := i.SetAvatar(ctx, u.ID, 555); err != nil {
+		t.Fatalf("SetAvatar: %v", err)
+	}
+	rows := log.payloads[u.ID]
+	if len(rows) == 0 {
+		t.Fatal("журнал владельца пуст")
+	}
+	var body struct {
+		User struct {
+			Photo map[string]any `json:"photo"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(rows[len(rows)-1], &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.User.Photo["_"] != domain.UserProfilePhotoTag {
+		t.Fatalf("фото в строке журнала = %v, want userProfilePhoto", body.User.Photo)
+	}
+}

@@ -67,9 +67,12 @@ func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.UserRecord) {
 		live := seen(i.photoVisible(ctx, u.ID, uid))
 		env := map[string]any{"t": "user_update", "d": live}
 		if i.updates != nil {
-			// В строке журнала фото нет: журнал переигрывается при /sync, а к
-			// тому моменту правило приватности может стать другим.
-			payload, err := json.Marshal(seen(false))
+			// Строка журнала — ТА ЖЕ карточка, что живой кадр: фото по правилу
+			// на момент записи. Кадр — абсолютный снимок, и клиент заменяет им
+			// карточку целиком; строка с «фото нет» стирала аватарку после
+			// /sync, в том числе свою на втором устройстве (A2-04). Правило,
+			// ужесточённое позже, у оригинала тоже не отзывает уже доставленное.
+			payload, err := json.Marshal(live)
 			if err != nil {
 				continue
 			}
