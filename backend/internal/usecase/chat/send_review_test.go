@@ -334,3 +334,20 @@ func TestPhoneCall_ConcurrentAcceptOneWinner(t *testing.T) {
 		t.Fatalf("звонящему ушло %d call_accept, want 1", n)
 	}
 }
+
+// [S2] Живую точку двигает только её автор у СВОЕГО сообщения: копия с живым
+// периодом (записанная до снимка) пересылающим не двигается.
+func TestLiveLocation_CopyNotMovable(t *testing.T) {
+	in, s := newInteractor()
+	ctx := context.Background()
+	chat, _ := in.CreatePrivateChat(ctx, 2, 3)
+	period, alice := 900, int64(1)
+	cp, err := (fakeMsgs{s}).Insert(ctx, domain.Message{ChatID: chat, Seq: 1, SenderID: 2, Type: "geo",
+		GeoLat: f64(1), GeoLng: f64(2), GeoLivePeriod: &period, FwdFromUserID: &alice})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := in.UpdateLiveLocation(ctx, chat, cp.ID, 2, 50, 50, nil, false); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("пересылающий двигает копию: %v, want ErrForbidden", err)
+	}
+}
