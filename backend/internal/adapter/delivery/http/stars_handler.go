@@ -81,7 +81,18 @@ func (h *ChatHandler) StarsTransactions(w http.ResponseWriter, r *http.Request) 
 		out = append(out, domain.NewStarsTransaction(tx.ID, tx.Amount, unixOf(tx.Date), tx.PeerID, tx.Title,
 			strings.HasPrefix(tx.Kind, "gift")))
 	}
-	writeJSON(w, http.StatusOK, domain.NewStarsStatusWithHistory(bal, out))
+	st := domain.NewStarsStatusWithHistory(bal, out)
+	// Вторая сторона операции — ССЫЛКА (starsTransactionPeer), карточка едет
+	// вектором (A4-14).
+	if users, chats := h.svc.PeerVectorsOf(r.Context(), h.meID(r), out); len(users)+len(chats) > 0 {
+		if len(users) > 0 {
+			st.Users = users
+		}
+		if len(chats) > 0 {
+			st.Chats = chats
+		}
+	}
+	writeJSON(w, http.StatusOK, st)
 }
 
 // UnlockPaidMedia — POST /chats/{peerID}/messages/{msgSeq}/unlock: разблокировать
@@ -197,7 +208,16 @@ func (h *ChatHandler) ProfileGifts(w http.ResponseWriter, r *http.Request) {
 	for _, g := range gifts {
 		out = append(out, g.ToSaved())
 	}
-	writeJSON(w, http.StatusOK, domain.NewPaymentsSavedStarGifts(out))
+	saved := domain.NewPaymentsSavedStarGifts(out)
+	// Даритель — ССЫЛКА (from_id), карточка едет вектором (A4-14).
+	users, chats := h.svc.PeerVectorsOf(r.Context(), h.meID(r), out)
+	if len(users) > 0 {
+		saved.Users = users
+	}
+	if len(chats) > 0 {
+		saved.Chats = chats
+	}
+	writeJSON(w, http.StatusOK, saved)
 }
 
 // ConvertGift — POST /gifts/{giftID}/convert: обменять подарок на звёзды.

@@ -256,6 +256,31 @@ func (i *Interactor) Profile(ctx context.Context, viewerID, targetID int64) (dom
 	return domain.NewUsersUserFull(full, brief, check(domain.PrivacyMessages)), nil
 }
 
+// ViewUsers доводит карточки `user` до вида глазами зрителя — ОДИН сборщик на
+// все витрины (A4-08): фото, номер и статус по правилам приватности их
+// владельцев (domain.UserViewRules). Правила спрашиваются пакетом, по запросу
+// на ключ. Сбой правила гасит то, что оно охраняет: фото и номер не
+// показываются, статус — «недавно».
+func (i *Interactor) ViewUsers(ctx context.Context, viewerID int64, users []domain.UserReal) {
+	if len(users) == 0 {
+		return
+	}
+	ids := make([]int64, 0, len(users))
+	for _, u := range users {
+		ids = append(ids, u.ID)
+	}
+	rules := domain.UserViewRules{ViewerID: viewerID}
+	rules.Photo, _ = i.repo.VisibleMap(ctx, viewerID, ids, domain.PrivacyProfilePhoto)
+	rules.Phone, _ = i.repo.VisibleMap(ctx, viewerID, ids, domain.PrivacyPhoneNumber)
+	rules.LastSeen, _ = i.repo.VisibleMap(ctx, viewerID, ids, domain.PrivacyLastSeen)
+	if i.presence != nil {
+		rules.Status = func(id int64) domain.UserStatus {
+			return domain.PresenceStatus(i.presence.Status(ctx, id))
+		}
+	}
+	rules.Apply(users)
+}
+
 // PresenceSnapshot — присутствие пользователя: онлайн ли он и до какого
 // момента (дедлайн TTL ключа присутствия), плюс время последнего захода.
 // Реализуется presence-менеджером; optional — без него статус не производится.

@@ -139,6 +139,8 @@ func (denyChatInvite) VisibleMap(_ context.Context, _ int64, ids []int64, _ doma
 	return out, nil
 }
 
+func (denyChatInvite) ViewUsers(context.Context, int64, []domain.UserReal) {}
+
 // Отказ приватности при добавлении в группу/канал — ошибка Telegram
 // USER_PRIVACY_RESTRICTED (tweb addChatUsers.ts показывает по ней тост
 // InviteToGroupError), а не наша строка `privacy`.

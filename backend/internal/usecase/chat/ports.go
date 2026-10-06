@@ -615,6 +615,9 @@ type DraftRepo interface {
 type PrivacyChecker interface {
 	Check(ctx context.Context, ownerID, viewerID int64, key domain.PrivacyKey) (bool, error)
 	VisibleMap(ctx context.Context, viewerID int64, ownerIDs []int64, key domain.PrivacyKey) (map[int64]bool, error)
+	// ViewUsers — карточки `user` глазами зрителя: фото, номер и статус по
+	// правилам приватности (domain.UserViewRules). Правит срез на месте.
+	ViewUsers(ctx context.Context, viewerID int64, users []domain.UserReal)
 }
 
 type ChannelPublisher interface {

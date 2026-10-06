@@ -544,7 +544,7 @@ func (h *ChannelHandler) Search(w http.ResponseWriter, r *http.Request) {
 	// Аватар в выдаче поиска — по правилу profile_photo владельца; одним
 	// запросом на обе части выдачи.
 	users := append(append([]domain.UserReal{}, res.MyUsers...), res.Users...)
-	gatePhotos(r, h.privacy, users)
+	viewUsers(r, h.privacy, users)
 	my := len(res.MyUsers)
 	writeJSON(w, http.StatusOK, domain.NewContactsFound(
 		channelsOf(res.MyChats), users[:my], channelsOf(res.Chats), users[my:]))

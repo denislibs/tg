@@ -81,3 +81,12 @@ func (i *Interactor) withChats(ctx context.Context, viewerID int64, chats []doma
 	}
 	return append(chats, i.chatChannels(ctx, viewerID, missing)...)
 }
+
+// PeerVectorsOf — векторы `users`/`chats` для готового тела ответа v: карточки
+// всех, на кого оно ссылается (domain.CollectPeerRefs), глазами зрителя.
+// Витрине списка (удалённые, ограниченные, заявки, транзакции, подарки) не
+// нужно перечислять свои ссылки: у оригинала эти контейнеры несут карточки
+// обязательными векторами, и без них каждая строка — отдельный /users (A4-14).
+func (i *Interactor) PeerVectorsOf(ctx context.Context, viewerID int64, v any) ([]domain.UserReal, []domain.Chat) {
+	return i.peerVectors(ctx, viewerID, domain.CollectPeerRefs(v), nil)
+}

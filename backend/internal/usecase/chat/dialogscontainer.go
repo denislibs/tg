@@ -153,7 +153,7 @@ func (i *Interactor) dialogsContainer(ctx context.Context, viewerID int64, recor
 		}
 		if d.Peer != nil && !seen[d.Peer.ID] {
 			seen[d.Peer.ID] = true
-			users = append(users, *d.Peer)
+			users = append(users, d.Peer.WithHiddenPhone(d.PeerPhone))
 		}
 	}
 
@@ -181,9 +181,12 @@ func (i *Interactor) dialogsContainer(ctx context.Context, viewerID int64, recor
 		if err != nil {
 			return DialogsPage{}, err
 		}
-		i.viewUsers(ctx, viewerID, authors)
 		users = append(users, authors...)
 	}
+	// Собеседники и авторы — одним сборщиком глазами зрителя: фото, номер и
+	// статус по правилам приватности. Собеседники приходят из кэша списка,
+	// поэтому статус (живой факт) ставится здесь, после кэша, а не в нём.
+	i.viewUsers(ctx, viewerID, users)
 
 	return DialogsPage{
 		Dialogs:  dialogs,
@@ -193,27 +196,27 @@ func (i *Interactor) dialogsContainer(ctx context.Context, viewerID int64, recor
 	}, nil
 }
 
-// viewUsers гасит аватарки тех авторов, кому правило profile_photo не
-// разрешает показ этому зрителю, — тем же правилом, что и собеседников
-// приватных диалогов (см. ListDialogs). Сбой правила не должен ронять выдачу
-// списка, но и показывать аватарку «на всякий случай» нельзя: при ошибке гасим.
+// viewUsers — карточки глазами зрителя: ОДИН сборщик на все витрины
+// (privacy.ViewUsers → domain.UserViewRules): фото, номер и статус по
+// правилам приватности. Без проверяющего — фото гасятся: показывать аватарку
+// «на всякий случай» нельзя.
 func (i *Interactor) viewUsers(ctx context.Context, viewerID int64, users []domain.UserReal) {
-	if i.privacy == nil || len(users) == 0 {
+	if len(users) == 0 {
 		return
 	}
-	ids := make([]int64, 0, len(users))
+	if i.privacy == nil {
+		domain.UserViewRules{ViewerID: viewerID, Photo: allVisible(users), Phone: map[int64]bool{}, LastSeen: allVisible(users)}.Apply(users)
+		return
+	}
+	i.privacy.ViewUsers(ctx, viewerID, users)
+}
+
+// allVisible — «правило пускает всех»: без проверяющего фото видно всем (та
+// же мягкая деградация, что у прочих опциональных зависимостей).
+func allVisible(users []domain.UserReal) map[int64]bool {
+	out := make(map[int64]bool, len(users))
 	for _, u := range users {
-		ids = append(ids, u.ID)
+		out[u.ID] = true
 	}
-	vis, err := i.privacy.VisibleMap(ctx, viewerID, ids, domain.PrivacyProfilePhoto)
-	for idx := range users {
-		if users[idx].ID == viewerID {
-			continue
-		}
-		if err != nil || !vis[users[idx].ID] {
-			// «Фото нет» — это СОСТОЯНИЕ (userProfilePhotoEmpty), а не пустая
-			// строка url рядом с непогашенным превью.
-			users[idx].Photo = domain.NewUserProfilePhotoEmpty()
-		}
-	}
+	return out
 }

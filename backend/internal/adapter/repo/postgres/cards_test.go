@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/messenger-denis/backend/internal/domain"
 	storepostgres "github.com/messenger-denis/backend/internal/store/postgres"
 )
 
@@ -59,5 +60,33 @@ func TestGroupRepo_Cards(t *testing.T) {
 	one, err := g.Card(ctx, disc, viewer)
 	if err != nil || one.LinkedChatID != ch || one.Hidden {
 		t.Fatalf("Card(обсуждение) = %+v %v", one, err)
+	}
+}
+
+// A4-08: сборщик карточки `user` глазами зрителя ставит pFlags.self своей
+// карточке на любой витрине (не только /me) и читает номер скрытым — наружу
+// его выпускает только правило приватности (domain.UserViewRules).
+func TestUsersByIDs_SelfAndHiddenPhone(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	me := seedUser(t, pool, "+7410")
+	other := seedUser(t, pool, "+7411")
+	cards, err := NewGroupRepo(pool).UsersByIDs(ctx, me, []int64{me, other})
+	if err != nil || len(cards) != 2 {
+		t.Fatalf("UsersByIDs = %+v %v", cards, err)
+	}
+	for _, u := range cards {
+		if u.Self() != (u.ID == me) {
+			t.Errorf("user %d: self=%v", u.ID, u.Self())
+		}
+		if u.Phone != "" {
+			t.Errorf("user %d: номер показан мимо правила: %q", u.ID, u.Phone)
+		}
+	}
+	domain.UserViewRules{ViewerID: me, Photo: map[int64]bool{}, Phone: map[int64]bool{}, LastSeen: map[int64]bool{}}.Apply(cards)
+	for _, u := range cards {
+		if (u.Phone != "") != (u.ID == me) {
+			t.Errorf("user %d после правила: phone=%q", u.ID, u.Phone)
+		}
 	}
 }

@@ -294,7 +294,7 @@ func (h *GroupHandler) ListBans(w http.ResponseWriter, r *http.Request) {
 	for _, b := range bans {
 		out = append(out, domain.NewChannelParticipantBanned(b.UserID, b.BannedBy, 0, domain.AllMemberPerms, time.Time{}, true))
 	}
-	writeJSON(w, http.StatusOK, domain.NewChannelsChannelParticipants(len(out), out, nil))
+	writeJSON(w, http.StatusOK, h.participantsWithVectors(r, out))
 }
 
 // Ban kicks a user and adds them to the removed-users list (POST /chats/{chatID}/bans).
@@ -365,7 +365,7 @@ func (h *GroupHandler) ListRestrictions(w http.ResponseWriter, r *http.Request) 
 			BannedRights: res.ToChatBannedRights(),
 		})
 	}
-	writeJSON(w, http.StatusOK, domain.NewChannelsChannelParticipants(len(out), out, nil))
+	writeJSON(w, http.StatusOK, h.participantsWithVectors(r, out))
 }
 
 // Restrict applies a granular per-user restriction (POST /chats/{chatID}/restrictions).
@@ -717,7 +717,7 @@ func (h *GroupHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	gatePhotos(r, h.privacy, cards)
+	viewUsers(r, h.privacy, cards)
 	for i := range cards {
 		// Скрытое правилом last_seen присутствие — это ДРУГОЙ конструктор
 		// (userStatusRecently), а не online:false: приватность выражена самим
@@ -756,7 +756,7 @@ func (h *GroupHandler) Users(w http.ResponseWriter, r *http.Request) {
 	// Краткая карточка — конструктор `user` целиком. Прежде витрина собирала
 	// свою пятёрку полей и теряла на этом `verified` (дефект 5 разбора): поле
 	// в базе было, в выдачу не попадало.
-	gatePhotos(r, h.privacy, cards)
+	viewUsers(r, h.privacy, cards)
 	// Ответ — сам ВЕКТОР карточек: обёртка `{"users": …}` конструктора не имеет.
 	writeJSON(w, http.StatusOK, orEmptyUsers(cards))
 }
@@ -823,7 +823,7 @@ func (h *GroupHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	gatePhotos(r, h.privacy, cards)
+	viewUsers(r, h.privacy, cards)
 	writeJSON(w, http.StatusOK, domain.NewMessagesExportedChatInvites(links, cards))
 }
 
@@ -923,7 +923,7 @@ func (h *GroupHandler) InviteImporters(w http.ResponseWriter, r *http.Request) {
 		h.mapErr(w, err)
 		return
 	}
-	gatePhotos(r, h.privacy, cards)
+	viewUsers(r, h.privacy, cards)
 	writeJSON(w, http.StatusOK, domain.NewMessagesChatInviteImporters(count, out, cards))
 }
 
@@ -972,7 +972,9 @@ func (h *GroupHandler) JoinRequests(w http.ResponseWriter, r *http.Request) {
 	for _, rq := range reqs {
 		out = append(out, domain.NewChatInviteImporter(rq.UserID, rq.CreatedAt, true, 0))
 	}
-	writeJSON(w, http.StatusOK, domain.NewMessagesChatInviteImporters(len(out), out, nil))
+	// Карточки заявителей — вектором `users` контейнера (A4-14).
+	users, _ := h.uc.PeerVectorsOf(r.Context(), user.ID, out)
+	writeJSON(w, http.StatusOK, domain.NewMessagesChatInviteImporters(len(out), out, users))
 }
 
 func (h *GroupHandler) ApproveJoinRequest(w http.ResponseWriter, r *http.Request) {
@@ -1016,4 +1018,18 @@ func orEmptyUsers(cards []domain.UserReal) []domain.UserReal {
 		return []domain.UserReal{}
 	}
 	return cards
+}
+
+// participantsWithVectors — channels.channelParticipants с карточками всех, на
+// кого ссылаются строки (участник, kicked_by), глазами зрителя: прежде вектор
+// `users` ехал пустым, и каждая строка списка добиралась отдельным /users
+// (A4-14).
+func (h *GroupHandler) participantsWithVectors(r *http.Request, out []domain.ChannelParticipant) domain.ChannelsChannelParticipants {
+	viewer, _ := UserFromContext(r.Context())
+	users, chats := h.uc.PeerVectorsOf(r.Context(), viewer.ID, out)
+	res := domain.NewChannelsChannelParticipants(len(out), out, users)
+	if len(chats) > 0 {
+		res.Chats = chats
+	}
+	return res
 }

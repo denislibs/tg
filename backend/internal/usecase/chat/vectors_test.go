@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -123,5 +124,22 @@ func TestChatCard_PrivateIsInvalid(t *testing.T) {
 	_ = fg.AddMember(ctx, id, 7, domain.RoleMember, 0)
 	if _, err := in.ChatCard(ctx, id, 7); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("ChatCard(личка) = %v, want ErrInvalid", err)
+	}
+}
+
+// A4-14: список, ссылающийся на пользователей (удалённые: участник и
+// kicked_by), получает их карточки вектором — одним вызовом по самому телу.
+func TestPeerVectorsOf_Participants(t *testing.T) {
+	in, fg, _, _ := newChannelTestInteractor(t)
+	fg.users[8] = domain.UserReal{ID: 8, FirstName: "Боб"}
+	fg.users[7] = domain.UserReal{ID: 7, FirstName: "Алиса"}
+	out := []domain.ChannelParticipant{domain.NewChannelParticipantBanned(8, 7, 0, domain.AllMemberPerms, time.Time{}, true)}
+	users, _ := in.PeerVectorsOf(context.Background(), 7, out)
+	got := map[int64]bool{}
+	for _, u := range users {
+		got[u.ID] = true
+	}
+	if !got[8] || !got[7] {
+		t.Fatalf("users = %v, want выгнанного 8 и выгнавшего 7", got)
 	}
 }

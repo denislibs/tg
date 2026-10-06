@@ -28,11 +28,13 @@ type PeerRefs struct {
 
 // userIDKeys — параметры схемы, несущие id ПОЛЬЗОВАТЕЛЯ голым числом.
 var userIDKeys = map[string]bool{
-	"user_id":    true, // updateUserTyping, messageMediaContact, messageEntityMentionName, messageActionChatDeleteUser…
-	"inviter_id": true, // messageActionChatJoinedByLink
-	"via_bot_id": true, // message.via_bot_id
-	"bot_id":     true,
-	"admin_id":   true, // chatInviteExported.admin_id
+	"user_id":     true, // updateUserTyping, messageMediaContact, messageEntityMentionName, messageActionChatDeleteUser…
+	"inviter_id":  true, // messageActionChatJoinedByLink
+	"via_bot_id":  true, // message.via_bot_id
+	"bot_id":      true,
+	"admin_id":    true, // chatInviteExported.admin_id
+	"kicked_by":   true, // channelParticipantBanned.kicked_by
+	"promoted_by": true, // channelParticipantAdmin.promoted_by
 }
 
 // CollectPeerRefs — ссылки на пиров в значении v (конструктор или пачка

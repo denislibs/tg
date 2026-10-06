@@ -353,6 +353,58 @@ type UserReal struct {
 	// inline-режиме этого бота. Живёт она ИМЕННО ЗДЕСЬ, у самого бота: прежде
 	// её везла витрина inline-выдачи вторым ключом рядом с результатами.
 	BotInlinePlaceholder string `json:"bot_inline_placeholder,omitempty"`
+	// hiddenPhone — номер из строки users, прочитанный сборщиком, но ещё НЕ
+	// показанный: наружу (Phone) его переносит только RevealPhone, когда
+	// правило PrivacyPhoneNumber пускает зрителя (UserViewRules.Apply).
+	// Неэкспортируемое поле на провод не попадает ни в JSON, ни в TL — номер,
+	// забытый витриной, остаётся скрытым, а не утекает.
+	hiddenPhone string
+}
+
+// WithHiddenPhone — карточка с прочитанным, но не показанным номером.
+func (u UserReal) WithHiddenPhone(phone string) UserReal {
+	u.hiddenPhone = phone
+	return u
+}
+
+// UserViewRules — ответы правил приватности владельцев карточек ЗРИТЕЛЮ
+// (VisibleMap по ключу) и присутствие. Одно место, где карточка `user`
+// доводится до вида «глазами зрителя» на ЛЮБОЙ витрине: прежде status ехал
+// только в /members и /users/{id}, phone — только в /users/{id} и /me, а
+// клиент заменял карточку целиком и терял поля (A4-08).
+type UserViewRules struct {
+	ViewerID int64
+	Photo    map[int64]bool // profile_photo; nil — правило не спрошено (сбой): фото гасится
+	Phone    map[int64]bool // phone_number
+	LastSeen map[int64]bool // last_seen
+	// Status — присутствие пользователя (точный статус); nil — источника нет.
+	Status func(userID int64) UserStatus
+}
+
+// Apply доводит карточки на месте: self видит себя целиком; фото по правилу
+// (личное фото зритель поставил сам — оно не гасится); номер по правилу;
+// статус по last_seen (скрытый — userStatusRecently, как у оригинала), у
+// удалённого — userStatusEmpty, у бота статуса нет.
+func (r UserViewRules) Apply(users []UserReal) {
+	for idx := range users {
+		u := &users[idx]
+		self := u.ID == r.ViewerID
+		if p, ok := u.Photo.(UserProfilePhotoReal); ok && !self && !p.Personal() && !r.Photo[u.ID] {
+			u.Photo = NewUserProfilePhotoEmpty()
+		}
+		if u.hiddenPhone != "" && (self || r.Phone[u.ID]) {
+			u.Phone = u.hiddenPhone
+		}
+		switch {
+		case u.PFlags["deleted"]:
+			u.Status = NewUserStatusEmpty()
+		case u.PFlags["bot"] || u.PFlags["support"]:
+		case !self && !r.LastSeen[u.ID]:
+			u.Status = NewUserStatusRecently(false)
+		case r.Status != nil:
+			u.Status = r.Status(u.ID)
+		}
+	}
 }
 
 func (UserReal) isUser()          {}

@@ -444,3 +444,7 @@ func TestSearchPeers_ForeignChatIsLeft(t *testing.T) {
 		t.Fatal("свой канал в поиске помечен left")
 	}
 }
+
+func (p avatarPrivacy) ViewUsers(ctx context.Context, viewerID int64, users []domain.UserReal) {
+	viewUsersVia(ctx, p, viewerID, users)
+}

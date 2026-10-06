@@ -2197,3 +2197,19 @@ func (r fakeChats) SetUserAutoDelete(_ context.Context, userID int64, seconds in
 }
 
 func (r fakeMsgs) ExpiredMessages(context.Context, int) ([]domain.Message, error) { return nil, nil }
+
+// viewUsersVia — ViewUsers фейка проверяющего поверх его VisibleMap: тот же
+// сборщик domain.UserViewRules, что у privacy.Interactor, без присутствия.
+func viewUsersVia(ctx context.Context, p interface {
+	VisibleMap(ctx context.Context, viewerID int64, ownerIDs []int64, key domain.PrivacyKey) (map[int64]bool, error)
+}, viewerID int64, users []domain.UserReal) {
+	ids := make([]int64, 0, len(users))
+	for _, u := range users {
+		ids = append(ids, u.ID)
+	}
+	rules := domain.UserViewRules{ViewerID: viewerID}
+	rules.Photo, _ = p.VisibleMap(ctx, viewerID, ids, domain.PrivacyProfilePhoto)
+	rules.Phone, _ = p.VisibleMap(ctx, viewerID, ids, domain.PrivacyPhoneNumber)
+	rules.LastSeen, _ = p.VisibleMap(ctx, viewerID, ids, domain.PrivacyLastSeen)
+	rules.Apply(users)
+}

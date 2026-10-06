@@ -334,3 +334,7 @@ func (p callPrivacy) VisibleMap(_ context.Context, _ int64, ids []int64, _ domai
 	}
 	return out, nil
 }
+
+func (p callPrivacy) ViewUsers(ctx context.Context, viewerID int64, users []domain.UserReal) {
+	viewUsersVia(ctx, p, viewerID, users)
+}
