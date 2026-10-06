@@ -142,6 +142,8 @@ function fakeMessagesOwner() {
     getMessageByPeer: (peerId: number, id: number) => (id ? byPeer.get(peerId)?.get(id) : undefined),
     // Окон истории холодному старту не нужно — удаление его не касается.
     getHistoryFirstSlice: () => undefined,
+    // Упоминаний в окне этим тестам не нужно — прочтение их не касается.
+    countReadMentions: () => 0,
   }
 }
 

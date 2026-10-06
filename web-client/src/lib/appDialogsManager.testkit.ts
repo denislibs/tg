@@ -247,7 +247,10 @@ function fakeManagers(getDialogs?: (...args: never[]) => unknown) {
       getParticipants: vi.fn(async (_options: { id: number }) => ({ _: 'channels.channelParticipants' as const, count: 0, participants: [], chats: [], users: [] })),
       getOnlines: vi.fn(async (_chatId: number) => 1),
     },
-    chats: { clearHistory: vi.fn(async (_peerId: number) => {}) },
+    chats: {
+      clearHistory: vi.fn(async (_peerId: number) => {}),
+      deleteHistory: vi.fn(async (_peerId: number, _revoke: boolean) => {}),
+    },
     realtime: {
       markRead: vi.fn(async (_args: { peerId: number, upToId: number }) => ({ ok: true })),
       // автомат соединения (`start()`, `:990`) — его стартовый pull

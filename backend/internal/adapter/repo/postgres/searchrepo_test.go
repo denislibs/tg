@@ -34,7 +34,7 @@ func TestMessagesRepo_SearchFiltersAndByDate(t *testing.T) {
 	mA := insert(a, "text", "привет от a")
 	_ = insert(b, "text", "привет от b")
 	_ = insert(a, "photo", "")
-	_ = reacts.Add(ctx, mA.ID, b, "👍")
+	_ = reacts.Add(ctx, mA.ID, b, "👍", false)
 
 	// фильтр по автору
 	got, count, err := msgs.SearchMessages(ctx, chatID, a, "привет", usecasechat.SearchFilter{SenderID: a}, usecasechat.MediaPage{Limit: 20})

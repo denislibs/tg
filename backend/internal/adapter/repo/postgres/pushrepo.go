@@ -62,26 +62,32 @@ func (r *PushRepo) DeleteByEndpoint(ctx context.Context, endpoint string) error 
 	return err
 }
 
-// ShouldNotify — гейт пуша одним запросом: per-chat mute приоритетнее,
-// глобальные настройки по типу чата (notify_settings) — fallback; у не
-// сохранявших настройки действуют дефолты. Не участник → не пушим.
+// ShouldNotify — гейт пуша одним запросом: мьют чата (сроком), мьют темы
+// (topic_user_state) и глобальные настройки по типу чата (notify_settings, у
+// не сохранявших — дефолты). Упоминание или ответ получателю (mentioned)
+// пробивает любой из мьютов — как у Telegram (tweb appMessagesManager
+// handleNotifications: `muted && !mentioned` → не уведомлять). Не участник →
+// не пушим.
 //
 // Мьют чата читается СРОКОМ, а решает вопрос «замьючен ли сейчас» единственный
 // предикат домена (PeerNotifySettings.Muted) — той же копии условия в SQL здесь
 // больше нет.
-func (r *PushRepo) ShouldNotify(ctx context.Context, chatID, userID int64) (bool, bool, error) {
+func (r *PushRepo) ShouldNotify(ctx context.Context, chatID, userID, topicRootID int64, mentioned bool) (bool, bool, error) {
 	var muteUntil *time.Time
 	var chatType string
+	var topicMuted bool
 	var pm, pp, gm, gp, cm, cp *bool
 	err := querier(ctx, r.pool).QueryRow(ctx,
 		`SELECT m.muted_until, c.type,
+		        COALESCE((SELECT ts.muted FROM topic_user_state ts
+		                   WHERE ts.chat_id = m.chat_id AND ts.root_msg_id = $3 AND ts.user_id = m.user_id), false),
 		        ns.private_muted, ns.private_preview, ns.groups_muted, ns.groups_preview,
 		        ns.channels_muted, ns.channels_preview
 		 FROM chat_members m
 		 JOIN chats c ON c.id = m.chat_id
 		 LEFT JOIN notify_settings ns ON ns.user_id = m.user_id
 		 WHERE m.chat_id=$1 AND m.user_id=$2`,
-		chatID, userID).Scan(&muteUntil, &chatType, &pm, &pp, &gm, &gp, &cm, &cp)
+		chatID, userID, topicRootID).Scan(&muteUntil, &chatType, &topicMuted, &pm, &pp, &gm, &gp, &cm, &cp)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, false, nil // not a member → no push
 	}
@@ -89,9 +95,6 @@ func (r *PushRepo) ShouldNotify(ctx context.Context, chatID, userID int64) (bool
 		return false, false, err
 	}
 	now := time.Now()
-	if peerNotifySettings(muteUntil, nil, nil, now).Muted(now) {
-		return false, false, nil
-	}
 	ns := domain.DefaultNotifySettings()
 	if pm != nil { // строка notify_settings существует
 		ns.Private = domain.NotifyTypeSettings{Muted: *pm, Preview: *pp}
@@ -99,7 +102,8 @@ func (r *PushRepo) ShouldNotify(ctx context.Context, chatID, userID int64) (bool
 		ns.Channels = domain.NotifyTypeSettings{Muted: *cm, Preview: *cp}
 	}
 	t := ns.ForChatType(chatType)
-	if t.Muted {
+	muted := peerNotifySettings(muteUntil, nil, nil, now).Muted(now) || t.Muted || topicMuted
+	if muted && !mentioned {
 		return false, false, nil
 	}
 	return true, t.Preview, nil
@@ -112,12 +116,19 @@ func (r *PushRepo) SenderName(ctx context.Context, userID int64) (string, error)
 	return name, nil
 }
 
-// UnreadBadge returns the total unread count across the user's chats.
+// UnreadBadge — бейдж иконки в пуше: непрочитанное тех чатов, что видны в
+// основном списке и не заглушены. Заглушённые и архивные (у tweb бейдж
+// приложения их не считает) и скрытые группы обсуждения каналов (в списке
+// чатов их нет вовсе — ChatsRepo.ListDialogs) в сумму не входят: иначе бейдж
+// иконки больше суммы бейджей списка.
 func (r *PushRepo) UnreadBadge(ctx context.Context, userID int64) (int, error) {
 	var badge int
 	// Aggregate with COALESCE always returns one row; best-effort on error.
 	_ = querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT COALESCE(SUM(unread_count),0) FROM chat_members WHERE user_id=$1`,
+		`SELECT COALESCE(SUM(m.unread_count),0) FROM chat_members m
+		  WHERE m.user_id=$1 AND NOT m.archived
+		    AND (m.muted_until IS NULL OR m.muted_until <= now())
+		    AND m.chat_id NOT IN (SELECT discussion_chat_id FROM chats WHERE discussion_chat_id IS NOT NULL)`,
 		userID).Scan(&badge)
 	return badge, nil
 }

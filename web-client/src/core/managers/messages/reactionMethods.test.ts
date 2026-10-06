@@ -224,3 +224,116 @@ describe('messages.cacheReaction — эхо своего клика', () => {
     expect(myEmoticons((after[0] as { fields: { reactions: MessageReactions } }).fields.reactions)).toEqual(['👍'])
   })
 })
+
+// Порт tweb onUpdateMessageReactions (:10552-10604), часть про бейдж ❤:
+// спрашивается ДО применения кадра, решает по `recent_reactions[].pFlags.unread`
+// кадра против прежнего состояния сообщения.
+describe('messages.unreadReactionsChange', () => {
+  const peerReaction = (unread: boolean) => ({
+    _: 'messagePeerReaction' as const,
+    ...(unread ? { pFlags: { unread: true as const } } : {}),
+    peer_id: { _: 'peerUser' as const, user_id: 9 }, date: 0,
+    reaction: { _: 'reactionEmoji' as const, emoticon: '👍' },
+  })
+  const evt = (peerId: PeerId, msgId: number, reactions: MessageReactions) =>
+    ({ _: 'updateMessageReactions' as const, peer: { _: 'peerUser' as const, user_id: peerId }, msg_id: msgId, reactions })
+  const withRecent = (unread: boolean | null): MessageReactions =>
+    ({ ...like, ...(unread === null ? {} : { recent_reactions: [peerReaction(unread)] }) })
+  /** Сообщение 2 — МОЁ (`out`), с уже лежащим агрегатом `prev`. */
+  function mine(prev?: MessageReactions) {
+    const wire = { ...makeRawMessage({ id: 2, peerId: DM, fromId: ME, out: true, text: 'моё' }), ...(prev ? { reactions: prev } : {}) }
+    const rest = { get: async () => ({ messages: [wire as RawMessage], count: 1 }) } as unknown as RestClient
+    return newMessagesManager({ rest, getMeId: () => ME })
+  }
+
+  it('сообщения в памяти нет — перечитать строку', async () => {
+    const mgr = mine()
+    expect(mgr.unreadReactionsChange(evt(DM, 2, withRecent(true)))).toBe('reload')
+  })
+
+  it('на моём сообщении появилась непрочитанная — true, прочитана — false', async () => {
+    const fresh = mine()
+    await fresh.getHistory({ peerId: DM, offsetId: 0, addOffset: 0, limit: 40 })
+    expect(fresh.unreadReactionsChange(evt(DM, 2, withRecent(true)))).toBe(true)
+
+    const unread = mine(withRecent(true))
+    await unread.getHistory({ peerId: DM, offsetId: 0, addOffset: 0, limit: 40 })
+    expect(unread.unreadReactionsChange(evt(DM, 2, withRecent(false)))).toBe(false)
+    expect(unread.unreadReactionsChange(evt(DM, 2, withRecent(true)))).toBeUndefined()
+  })
+
+  // У оригинала `isUnread` здесь `undefined`, и modifyCachedMentionsAndSave
+  // такой знак пропускает (:9345-9347) — бейдж правит строка с сервера.
+  it('кадр без recent_reactions у непрочитанного — бейдж не трогается', async () => {
+    const mgr = mine(withRecent(true))
+    await mgr.getHistory({ peerId: DM, offsetId: 0, addOffset: 0, limit: 40 })
+    expect(mgr.unreadReactionsChange(evt(DM, 2, withRecent(null)))).toBeUndefined()
+  })
+
+  it('чужое сообщение — бейдж не трогается', async () => {
+    const { mgr } = managerWith(DM)
+    await mgr.getHistory({ peerId: DM, offsetId: 0, addOffset: 0, limit: 40 })
+    expect(mgr.unreadReactionsChange(evt(DM, 2, withRecent(true)))).toBeUndefined()
+  })
+  // min-кадр (общее тело всем участникам, кадр правки) флага `unread` не несёт.
+  // Без переноса флага из прежнего состояния он читался бы как «прочитано» —
+  // −1 у автора на чужой кадр.
+  it('min-кадр без unread у непрочитанного — бейдж не трогается', async () => {
+    const mgr = mine(withRecent(true))
+    await mgr.getHistory({ peerId: DM, offsetId: 0, addOffset: 0, limit: 40 })
+    const frame = { ...withRecent(false), pFlags: { min: true as const } }
+    expect(mgr.unreadReactionsChange(evt(DM, 2, frame))).toBeUndefined()
+  })
+
+  // Кадр реакции в группе уходит КАЖДОМУ участнику, и min-кадр бейджа не
+  // двигает: перечитывать строку ради него — запрос на участника.
+  it('min-кадр по сообщению не в памяти — строку не перечитывать', () => {
+    const mgr = mine()
+    const frame = { ...withRecent(false), pFlags: { min: true as const } }
+    expect(mgr.unreadReactionsChange(evt(DM, 2, frame))).toBeUndefined()
+  })
+})
+
+// Порт tweb `appMessagesManager.readMessages` (:9519-9616) в объёме реакций:
+// среди увиденных — моё сообщение с непрочитанной реакцией, у диалога горит ❤
+// (`hadUnreadReactions`, :9566) — сброс на сервере (`messages.readReactions`,
+// :9607-9609). Бейдж снимают кадры сервера, локального −1 здесь нет.
+describe('messages.readMessages', () => {
+  const unreadLike: MessageReactions = {
+    ...like,
+    recent_reactions: [{
+      _: 'messagePeerReaction', pFlags: { unread: true },
+      peer_id: { _: 'peerUser', user_id: 9 }, date: 0,
+      reaction: { _: 'reactionEmoji', emoticon: '👍' },
+    }],
+  }
+  async function setup(reactions: MessageReactions | undefined, badge: number) {
+    const wire = { ...makeRawMessage({ id: 2, peerId: DM, fromId: ME, out: true, text: 'моё' }), ...(reactions ? { reactions } : {}) }
+    const calls: string[] = []
+    const rest = {
+      get: async () => ({ messages: [wire as RawMessage], count: 1 }),
+      post: async (url: string) => { calls.push(`POST ${url}`); return {} },
+    } as unknown as RestClient
+    const mgr = newMessagesManager({ rest, getMeId: () => ME, getUnreadReactionsCount: () => badge })
+    await mgr.getHistory({ peerId: DM, offsetId: 0, addOffset: 0, limit: 40 })
+    return { mgr, calls }
+  }
+
+  it('увидено моё сообщение с непрочитанной реакцией — сброс ❤ на сервере', async () => {
+    const { mgr, calls } = await setup(unreadLike, 1)
+    await mgr.readMessages(DM, [cid(2)])
+    expect(calls).toEqual([`POST /chats/${DM}/reactions/read`])
+  })
+
+  it('у диалога ❤ не горит — сбрасывать нечего', async () => {
+    const { mgr, calls } = await setup(unreadLike, 0)
+    await mgr.readMessages(DM, [cid(2)])
+    expect(calls).toEqual([])
+  })
+
+  it('непрочитанных реакций среди увиденного нет — запроса нет', async () => {
+    const { mgr, calls } = await setup(like, 3)
+    await mgr.readMessages(DM, [cid(2)])
+    expect(calls).toEqual([])
+  })
+})

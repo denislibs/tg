@@ -129,3 +129,23 @@ func TestSend_UsernameMentionBumpsUnreadMentions(t *testing.T) {
 		t.Fatalf("after read = %d, want 0", d[0].UnreadMentionsCount)
 	}
 }
+
+// A3-21: пуш знает упоминание и ответ — флаг уходит нотификатору (гейт мьюта
+// пробивается им в ShouldNotify).
+func TestSend_NotifierKnowsMentionAndReply(t *testing.T) {
+	in, s := newInteractor()
+	n := &fakeNotifier{}
+	in.SetNotifier(n)
+	ctx := context.Background()
+	const chatID, a, b, c int64 = 77, 1, 2, 3
+	s.seedChat(chatID, domain.ChatTypeGroup, a, b, c)
+	orig, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Text: "вопрос"})
+	n.recipients, n.mentioned = nil, nil
+	seq := orig.Seq
+	if _, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "ответ", ReplyToID: &seq}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if !n.mentioned[b] || n.mentioned[c] {
+		t.Fatalf("mentioned = %v, want только автору оригинала (%d)", n.mentioned, b)
+	}
+}

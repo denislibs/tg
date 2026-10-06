@@ -138,11 +138,26 @@ type viewerFlags struct {
 // pFlagsFor — копия pFlags сообщения с пер-зрительскими флагами. Копия, а не
 // правка на месте: общее тело кадра делится между получателями, и правка
 // испортила бы его следующему.
+//
+// Базовые флаги приходят из Message.ToWireMap, а тот собирает тело через JSON:
+// pFlags там — map[string]any, а не map[string]bool. Принимаются обе формы,
+// иначе пер-зрительский out/mentioned ЗАМЕНЯЛ бы базовые флаги (media_unread
+// своего голосового, post) вместо того, чтобы дописаться к ним.
 func pFlagsFor(base any, vf viewerFlags) map[string]bool {
-	src, _ := base.(map[string]bool)
-	flags := make(map[string]bool, len(src)+3)
-	for k, v := range src {
-		flags[k] = v
+	flags := make(map[string]bool, 8)
+	switch src := base.(type) {
+	case map[string]bool:
+		for k, v := range src {
+			if v {
+				flags[k] = true
+			}
+		}
+	case map[string]any:
+		for k, v := range src {
+			if on, ok := v.(bool); ok && on {
+				flags[k] = true
+			}
+		}
 	}
 	if vf.out {
 		flags["out"] = true
@@ -364,8 +379,51 @@ func factCheckUpdatePayload(peer domain.PeerID, m domain.Message) map[string]any
 // у нас доставляется пер-юзерным веером со своим курсором. Приклеить канальный
 // конструктор к пер-юзерному курсору значило бы соврать о том, какой курсор
 // двигать. Перевод правки на журнал канала — долг ДОСТАВКИ, назван в разборе.
+//
+// Тело одно на всех получателей и собрано без зрителя, поэтому его агрегаты —
+// реакции и итоги опроса — УРЕЗАНЫ (нет chosen_order, chosen) и помечены
+// `min`, как у Telegram в updateEditMessage: клиент сливает их со своими, а не
+// гасит ими «мою» реакцию и мой голос.
+//
+// Закреп — тоже здесь, а не в общей сборке кадра: кадр правки заменяет
+// сообщение у клиента целиком, и без флага закреплённое после правки снова
+// предлагало бы «Закрепить»; новое же сообщение закреплённым не бывает, и
+// спрашивать о нём на каждой отправке незачем.
 func (i *Interactor) editMessagePayload(ctx context.Context, m domain.Message) map[string]any {
-	return i.newMessagePayload(ctx, m, domain.UpdateEditMessageTag)
+	p := i.newMessagePayload(ctx, m, domain.UpdateEditMessageTag)
+	if msg, ok := p[frameMessageKey].(map[string]any); ok {
+		markMinAggregates(msg)
+		if pinned, err := i.pinnedOf(ctx, []domain.Message{m}); err == nil && pinned[m.ID] {
+			pf, _ := msg["pFlags"].(map[string]any)
+			if pf == nil {
+				pf = map[string]any{}
+			}
+			pf["pinned"] = true
+			msg["pFlags"] = pf
+		}
+	}
+	return p
+}
+
+// markMinAggregates ставит pFlags.min агрегатам сообщения в проводной форме
+// (map из ToWireMap): messageReactions и pollResults внутри messageMediaPoll.
+func markMinAggregates(msg map[string]any) {
+	setMin := func(obj any) {
+		o, ok := obj.(map[string]any)
+		if !ok {
+			return
+		}
+		pf, _ := o["pFlags"].(map[string]any)
+		if pf == nil {
+			pf = map[string]any{}
+		}
+		pf["min"] = true
+		o["pFlags"] = pf
+	}
+	setMin(msg["reactions"])
+	if media, ok := msg["media"].(map[string]any); ok && media["_"] == domain.MessageMediaPollTag {
+		setMin(media["results"])
+	}
 }
 
 // deletePayload — тело кадра удаления.
@@ -377,11 +435,14 @@ func (i *Interactor) editMessagePayload(ctx context.Context, m domain.Message) m
 // Признака `for_me` («удалить у себя») здесь больше нет: в схеме его нет, и
 // предмета у него не было — «удалено у меня» это тот же кадр, просто
 // разосланный ОДНОМУ получателю. Потребителей у поля не нашлось ни одного.
-func deletePayload(peer domain.PeerID, seq int64) map[string]any {
+//
+// Номеров может быть несколько: очистка истории и удаление диалога уходят
+// пачками номеров (как updateDeleteMessages оригинала на messages.deleteHistory).
+func deletePayload(peer domain.PeerID, seqs ...int64) map[string]any {
 	return map[string]any{
 		"_":         domain.UpdateDeletePeerMessagesTag,
 		"peer":      domain.NewPeer(peer),
-		"messages":  []int64{seq},
+		"messages":  seqs,
 		"pts_count": domain.PtsCountOne,
 	}
 }
@@ -501,13 +562,12 @@ func notifySettingsPayload(peer domain.PeerID, settings domain.PeerNotifySetting
 // гонке двух реакций клиент верил разным полям по-разному. У оригинала дифф
 // выводит КЛИЕНТ — из разницы с тем состоянием, которое у него уже есть.
 //
-// Агрегат помечен `min`: тело кадра одно на всех получателей, значит
-// пер-зрительской части (мой chosen_order) в нём нет и быть не может. Без флага
-// клиент не отличил бы «я не ставил» от «сервер этого не сообщил» и стёр бы
-// собственный выбор при первом же чужом клике — ровно тот дефект, который порт
-// опроса уже закрыл флагом pollResults.min.
+// Агрегат собран ГЛАЗАМИ получателя (reactionsSeenBy): всем — `min` (без
+// пер-зрительской части; без флага клиент не отличил бы «я не ставил» от
+// «сервер этого не сообщил» и стёр бы собственный выбор при первом же чужом
+// клике), а поставившему и автору сообщения — полный, их глазами
+// (journalReactions).
 func reactionsPayload(peer domain.PeerID, seq int64, reactions domain.MessageReactions) map[string]any {
-	reactions.MarkMin()
 	return map[string]any{
 		"_":         domain.UpdateMessageReactionsTag,
 		"peer":      domain.NewPeer(peer),

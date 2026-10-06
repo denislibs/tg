@@ -301,17 +301,49 @@ describe('DialogsContextMenu: действия', () => {
     expect(mounted!.hooks.managers.realtime.markRead).toHaveBeenCalledWith({ peerId: USER, upToId: 77 })
   })
 
-  it('«Delete Chat» лички — попап popup-delete-chat, подтверждение выходит из чата', async() => {
+  // tweb deleteDialog.ts case 'chat' → `flushHistory({justClear: false, revoke})`:
+  // у нас `chats.deleteHistory`, строку снимает `dialogs.applyRemoved`. Выход из
+  // лички (`removeMember`) сервер теперь отвергает.
+  it('«Delete Chat» лички — попап popup-delete-chat, подтверждение удаляет историю у себя', async() => {
     await seed([dialog(USER)])
     click((await open(USER))!, 'Delete Chat')
 
     const popup = document.querySelector<HTMLElement>('.popup-delete-chat')!
     expect(popup.querySelector('.popup-title')!.textContent).toBe('Delete chat')
+    expect(popup.querySelector('.checkbox-field')!.textContent).toContain('Also delete for')
+    popup.querySelector<HTMLElement>('.popup-button.danger')!.dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
+    await settle()
+
+    expect(mounted!.hooks.managers.chats.deleteHistory).toHaveBeenCalledWith(USER, false)
+    expect(mounted!.hooks.managers.dialogs.applyRemoved).toHaveBeenCalledWith(USER)
+    expect(mounted!.hooks.managers.groups.removeMember).not.toHaveBeenCalled()
+  })
+
+  it('«Delete Chat» лички с отмеченным «Also delete for …» — revoke', async() => {
+    await seed([dialog(USER)])
+    click((await open(USER))!, 'Delete Chat')
+
+    const popup = document.querySelector<HTMLElement>('.popup-delete-chat')!
+    popup.querySelector<HTMLInputElement>('.checkbox-field-input')!.click()
+    popup.querySelector<HTMLElement>('.popup-button.danger')!.dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
+    await settle()
+
+    expect(mounted!.hooks.managers.chats.deleteHistory).toHaveBeenCalledWith(USER, true)
+    expect(mounted!.hooks.managers.dialogs.applyRemoved).toHaveBeenCalledWith(USER)
+  })
+
+  // В7-1: секретный чат — выход, как раньше, и без чекбокса `revoke`.
+  it('«Delete Chat» секретного чата — выход без чекбокса', async() => {
+    await seed([dialog(USER, { secret: true })])
+    click((await open(USER))!, 'Delete Chat')
+
+    const popup = document.querySelector<HTMLElement>('.popup-delete-chat')!
+    expect(popup.querySelector('.checkbox-field')).toBeNull()
     popup.querySelector<HTMLElement>('.popup-button.danger')!.dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
     await settle()
 
     expect(mounted!.hooks.managers.groups.removeMember).toHaveBeenCalledWith(USER, ME)
-    expect(mounted!.hooks.managers.dialogs.applyRemoved).toHaveBeenCalledWith(USER)
+    expect(mounted!.hooks.managers.chats.deleteHistory).not.toHaveBeenCalled()
   })
 
   it('«Delete Group» создателем с отмеченным «для всех» — deleteGroup', async() => {

@@ -21,6 +21,7 @@ import type { DialogItem, DialogOp } from '../dialogs/dialogOps'
 import type { NewMessageEvt, ReadEvt } from '../realtime/events'
 import { equal } from '../store/reconcile'
 import isMentionUnread from '../messages/isMentionUnread'
+import getUnreadReactions from '../messages/getUnreadReactions'
 import { dialogMatchesFolder } from '../folderFilter'
 // Наше закрепление пер-юзерное и на весь список сразу — запись одна (см.
 // chatsStore), поэтому `pinnedOrders` ключуется тем же ALL_FOLDER_ID.
@@ -141,7 +142,7 @@ export interface DialogsDeps {
    * воркере). Прежний `decryptSecret` владельца диалогов был второй копией того
    * же правила и снят.
    */
-  messages?: Pick<MessagesManager, 'saveApiMessages' | 'getMessageByPeer' | 'getHistoryFirstSlice'>
+  messages?: Pick<MessagesManager, 'saveApiMessages' | 'getMessageByPeer' | 'getHistoryFirstSlice' | 'countReadMentions'>
 }
 
 /** Тот же интервал, что был у main-thread-дебаунса `dialogsPersist.ts` (800мс)
@@ -1589,14 +1590,28 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
         // Авторитетный счётчик из кадра verbatim (обычно 0).
         const unread = e.still_unread_count
         const readInbox = Math.max(cur.read_inbox_max_id, upTo)
+        // Бейдж «@» — порт tweb `onUpdateReadHistory` (appMessagesManager.ts
+        // :10883-10886, :10940-10942): минус каждое непрочитанное упоминание,
+        // которое накрыл горизонт кадра (спрашивается окно сообщений ДО сдвига
+        // горизонта — по нему и решается «было ли непрочитанным»); ушли в
+        // минус или непрочитанного не осталось вовсе — ноль. Прочтение
+        // истории НЕ означает «упоминания прочитаны»: упоминание выше
+        // горизонта остаётся (его же сервер не снимает).
+        //
+        // Бейдж реакций кадр прочтения не трогает вовсе — у оригинала его
+        // ведёт только `onUpdateMessageReactions` (снятие `pFlags.unread` у
+        // реакций своего сообщения).
+        const mentionsRead = messages?.countReadMentions(peerId, upTo, cur.read_inbox_max_id) ?? 0
+        let mentions = cur.unread_mentions_count - mentionsRead
+        if (mentions < 0 || !unread) mentions = 0
         // Идемпотентность: повторное эхо того же прочтения (up_to_seq ≤ горизонта,
-        // unread уже 0) НЕ публикует операцию — иначе на зеркале перезапустится
-        // mark-read-эффект (деп win.msgs) и получится бесконечный цикл ре-рендера.
-        if (unread === cur.unread_count && cur.unread_mentions_count === 0 && cur.unread_reactions_count === 0 && readInbox === cur.read_inbox_max_id) return
+        // unread и «@» не изменились) НЕ публикует операцию — иначе на зеркале
+        // перезапустится mark-read-эффект (деп win.msgs) и получится бесконечный
+        // цикл ре-рендера.
+        if (unread === cur.unread_count && mentions === cur.unread_mentions_count && readInbox === cur.read_inbox_max_id) return
         patchDialog(peerId, {
           unread_count: unread,
-          unread_mentions_count: 0,
-          unread_reactions_count: 0,
+          unread_mentions_count: mentions,
           read_inbox_max_id: readInbox,
         })
       } else {
@@ -1607,41 +1622,86 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       }
     },
 
-    // Кто-то поставил реакцию на МОЁ сообщение → бампим бейдж непрочитанных
-    // реакций диалога (Telegram unread_reactions_count). Сброс — на applyRead.
-    bumpUnreadReactions(peerId: number, count?: number): void {
+    /**
+     * Бейдж непрочитанных реакций ±1 — порт tweb `modifyCachedMentionsAndSave`
+     * с `addReaction` (appMessagesManager.ts:9330-9363): `true` — у моего
+     * сообщения появилась непрочитанная реакция, `false` — непрочитанных на
+     * нём не осталось (ниже нуля не уходит). Решение «сменилось ли» принимает
+     * владелец окна по `recent_reactions[].pFlags.unread` (tweb
+     * `onUpdateMessageReactions` :10580-10604), сюда приходит только знак.
+     */
+    /** Бейдж ❤ диалога — `dialog.unread_reactions_count`, который tweb
+     *  `readMessages` читает гейтом `hadUnreadReactions` (appMessagesManager.ts
+     *  :9566). Диалога нет — 0. */
+    getUnreadReactionsCount(peerId: number): number {
+      return findDialog(peerId)?.unread_reactions_count ?? 0
+    },
+
+    modifyUnreadReactions(peerId: number, add: boolean): void {
       const cur = findDialog(peerId)
       if (!cur) return
-      // Авторитетный счётчик из кадра (reaction.unread_reactions) — verbatim, как
-      // unread у new_message/read; локальный +1 — fallback, если поля нет.
-      const value = typeof count === 'number' ? count : cur.unread_reactions_count + 1
+      const value = add ? cur.unread_reactions_count + 1 : Math.max(0, cur.unread_reactions_count - 1)
       patchDialog(peerId, { unread_reactions_count: value })
     },
 
     /**
-     * Удалённые сообщения снимаются со счётчика непрочитанного — порт tweb
-     * `onUpdateDeleteMessages` (appMessagesManager.ts:11546-11548) с подсчётом
-     * из `handleDeletedMessages` (:14082-14085): непрочитанное — ВХОДЯЩЕЕ
-     * (`!pFlags.out`), которое ещё не покрыл горизонт прочтения. Флага
-     * `unread` на сообщении у нас нет (`core/models.ts`), поэтому
-     * «непрочитано» — сравнение с `read_inbox_max_id`, как у ленты
-     * (`bubbles.ts::isUnreadByReadCursor`).
+     * Перечитать строку у сервера — порт tweb `fixDialogUnreadMentionsIfNoMessage`
+     * с `force: true` (appMessagesManager.ts:9305-9310): кадр касается
+     * сообщения, которого в памяти нет, и счётчики строки локально уже не
+     * вывести. Перечитывание пачкой (`reloadConversation`).
+     */
+    reloadConversation(peerId: number): void {
+      reloadConversation(peerId)
+    },
+
+    /**
+     * Удалённые сообщения снимаются со счётчиков строки — порт tweb
+     * `onUpdateDeleteMessages` (appMessagesManager.ts:11540-11557) с подсчётом
+     * из `handleDeletedMessages` (:14055-14140):
+     *  - `unread` — ВХОДЯЩЕЕ (`!pFlags.out`), которое ещё не покрыл горизонт
+     *    прочтения. Флага `unread` на сообщении у нас нет (`core/models.ts`),
+     *    поэтому «непрочитано» — сравнение с `read_inbox_max_id`, как у ленты
+     *    (`bubbles.ts::isUnreadByReadCursor`);
+     *  - `unreadMentions` — из них же непрочитанные упоминания
+     *    (`isMentionUnread`); непрочитанного не осталось — «@» в ноль;
+     *  - `unreadReactions` — МОИ сообщения с непрочитанной реакцией
+     *    (`getUnreadReactions`).
+     *
+     * `missing` — сколько удалённых номеров владелец окна в памяти не нашёл:
+     * посчитать их нечем, и строка с ненулевым «@» или ❤ перечитывается у
+     * сервера (tweb `fixDialogUnreadMentionsIfNoMessage` без `force`,
+     * :14055-14058, :9305-9310).
      *
      * Авторитет по-прежнему приезжает строкой диалога — сервер снимает
-     * удалённое со счётчика сам (`ChatsRepo.ForgetUnread`).
+     * удалённое со счётчиков сам.
      *
      * Удалено последнее сообщение — строка получает новое (там же,
      * :11577-11593): из низа истории, если он загружен, иначе строкой с
      * сервера (`reloadConversation`). Без этого превью в списке оставалось на
      * удалённом сообщении.
      */
-    applyDeletedMessages(peerId: number, deleted: readonly MyMessage[]): void {
+    applyDeletedMessages(peerId: number, deleted: readonly MyMessage[], missing = 0): void {
       const cur = findDialog(peerId)
       if (!cur) return
-      const unread = cur.unread_count
-        ? deleted.filter((m) => !m.pFlags?.out && m.id > cur.read_inbox_max_id).length
-        : 0
-      if (unread) patchDialog(peerId, { unread_count: Math.max(0, cur.unread_count - unread) })
+      if (missing && (cur.unread_mentions_count || cur.unread_reactions_count)) reloadConversation(peerId)
+      let unread = 0
+      let unreadMentions = 0
+      let unreadReactions = 0
+      for (const m of deleted) {
+        if (!m.pFlags?.out && m.id > cur.read_inbox_max_id) {
+          ++unread
+          if (isMentionUnread(m)) ++unreadMentions
+        }
+        if (m.pFlags?.out && getUnreadReactions(m)) ++unreadReactions
+      }
+      const counters: Partial<Dialog> = {}
+      if (unread) counters.unread_count = Math.max(0, cur.unread_count - unread)
+      if (unreadMentions) {
+        const unreadLeft = counters.unread_count ?? cur.unread_count
+        counters.unread_mentions_count = !unreadLeft ? 0 : Math.max(0, cur.unread_mentions_count - unreadMentions)
+      }
+      if (unreadReactions) counters.unread_reactions_count = Math.max(0, cur.unread_reactions_count - unreadReactions)
+      if (unread || unreadMentions || unreadReactions) patchDialog(peerId, counters)
 
       // Удалено ПОСЛЕДНЕЕ — строке нужно новое (tweb :11577-11593). Окно уже
       // без удалённого (эвикция идёт до этого вызова, как `history.delete` у

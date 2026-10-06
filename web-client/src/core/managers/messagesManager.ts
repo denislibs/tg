@@ -29,7 +29,7 @@ import { getPeerId, type Peer } from '../peers/peerId'
 import type { UserReal, User, Chat } from '../peers/peer'
 import canEditMessage from '../messages/canEditMessage'
 import { generateMessageId, getServerMessageId, isLocalMessageId } from '../history/messageId'
-import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, PaidMediaUnlockEvt, SendMessageAction } from '../realtime/events'
+import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, PinMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, PaidMediaUnlockEvt, SendMessageAction } from '../realtime/events'
 import type { SendArgs as WireSendArgs } from '../realtime/connectionManager'
 import type { UploadArgs } from './mediaManager'
 import { RT } from '../realtime/events'
@@ -212,11 +212,17 @@ export interface MessagesDeps {
    *  `handleDeletedMessages` → `onUpdateDeleteMessages` (appMessagesManager.ts
    *  :14082-14085, :11546-11548): владелец диалогов вычитает из счётчика
    *  удалённые непрочитанные входящие. Спросить «было ли оно непрочитанным»
-   *  можно только ДО эвикции, поэтому уведомляет владелец окна, а не кадр. */
-  onMessagesDeleted?: (peerId: number, deleted: MyMessage[]) => void
+   *  можно только ДО эвикции, поэтому уведомляет владелец окна, а не кадр.
+   *  `missing` — номера, которых в SSOT не было (tweb зовёт для них
+   *  `fixDialogUnreadMentionsIfNoMessage`, :14055-14058). */
+  onMessagesDeleted?: (peerId: number, deleted: MyMessage[], missing: number) => void
+  /** Бейдж ❤ диалога (`dialogsManager.getUnreadReactionsCount`) — гейт
+   *  `hadUnreadReactions` у `readMessages` (tweb appMessagesManager.ts:9566),
+   *  см. `MessagesCtx`. */
+  getUnreadReactionsCount?: (peerId: number) => number
 }
 
-export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium, meReady, isBroadcastChat, getPeer, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers, onMessagesDeleted }: MessagesDeps) {
+export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium, meReady, isBroadcastChat, getPeer, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers, onMessagesDeleted, getUnreadReactionsCount }: MessagesDeps) {
   // ── Граница маппинга ────────────────────────────────────────────────────────
   // `pFlags.out` производит СЕРВЕР (решение Р7 разбора отменено): после порта у
   // сообщения от лица канала автором на проводе становится сам канал, и прежней
@@ -390,7 +396,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     const keys = opWindowsFor(peerId, msgId)
     const known = msgsByChat.get(peerId)?.get(msgId)
     evictMsg(peerId, msgId)
-    if (known) onMessagesDeleted?.(peerId, [known])
+    onMessagesDeleted?.(peerId, known ? [known] : [], known ? 0 : 1)
     return keys.map((key): MessageOp => ({ op: 'remove', key, msgId }))
   }
 
@@ -426,7 +432,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     patchMsg(peerId, (m) => m.id === msgId, (m) => (m._ !== 'message' ? m : { ...m, factcheck }))
     emitFactCheckOps(peerId, msgId, factcheck)
   }
-  const ctx = { rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers }
+  const ctx = { rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers, getUnreadReactionsCount }
   // Локальной ссылкой (а не только спредом ниже) — её зовёт cacheLive, чтобы эхо
   // своей отправки убирало временный бабл из SSOT (порт tweb checkPendingMessage).
   const pending = newPendingMethods({
@@ -1558,6 +1564,40 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       return evt.messages.flatMap((id) => evictAndBuildRemoveOps(peerId, generateMessageId(id)))
     },
 
+    /**
+     * Закрепление/открепление — порт tweb `onUpdatePinnedMessages`
+     * (appMessagesManager.ts:11719-11751): у сообщений кадра в памяти ставится
+     * или снимается `pFlags.pinned` («открепили» — тот же конструктор без
+     * бита), и окно узнаёт об этом операцией `patch {pFlags}` — по нему меню
+     * сообщения выбирает «Закрепить»/«Открепить» (`chat/contextMenu.ts`).
+     *
+     * Отступление: недостающие сообщения оригинал сначала догружает
+     * (`reloadMessages`) и помечает уже их. У нас SSOT держит только
+     * загруженное окном, а сообщение, загруженное позже, приезжает с битом
+     * `pinned` от сервера само, — догружать ради флага нечего. Кэш списка
+     * закрепов (`resetPinnedMessagesCache`) сбрасывает вкладка по сырому кадру
+     * (`client/realtime/refetchSubscriber.ts`).
+     */
+    cachePinned(evt: PinMessageEvt): MessageOp[] {
+      const peerId = getPeerId(evt.peer)
+      const pinned = !!evt.pFlags?.pinned
+      return evt.messages.flatMap((serverId) => {
+        const id = generateMessageId(serverId)
+        let pFlags: MyMessage['pFlags'] | null = null
+        patchMsg(peerId, (m) => m.id === id, (m) => {
+          if (!!m.pFlags.pinned === pinned) return null
+          const next = { ...m.pFlags }
+          if (pinned) next.pinned = true
+          else delete next.pinned
+          pFlags = next
+          return { ...m, pFlags: next }
+        })
+        if (!pFlags) return []
+        const fields = { pFlags: pFlags as MyMessage['pFlags'] }
+        return opWindowsFor(peerId, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields }))
+      })
+    },
+
     // Сколько из номеров кадра прочтения содержимого — ВХОДЯЩИЕ непрочитанные
     // упоминания в окне. Спрашивается ДО cacheMediaRead: после снятия
     // media_unread ответить было бы не из чего (tweb
@@ -1568,6 +1608,34 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
         const m = readMsg(peerId, generateMessageId(id))
         return !!m && !m.pFlags.out && isMentionUnread(m)
       }).length
+    },
+
+    /**
+     * Сколько непрочитанных упоминаний снимает прочтение истории до `maxId` —
+     * цикл tweb `onUpdateReadHistory` (appMessagesManager.ts:10851-10892) в
+     * части бейджа «@»: сообщения чата в памяти свежими вперёд, выше горизонта
+     * кадра — мимо, исходящие — мимо, первое уже прочитанное обрывает проход
+     * (`if(!isUnread) break`), непрочитанное упоминание (`isMentionUnread`) —
+     * минус один.
+     *
+     * Флага `pFlags.unread` у сообщения у нас нет, поэтому «непрочитано» —
+     * сравнение с горизонтом прочтения ДО кадра (`readMaxId`, tweb
+     * `getReadMaxIdIfUnread`), как у ленты (`isUnreadByReadCursor`). Повтор
+     * того же прочтения горизонт уже не пересекает — ответ ноль.
+     */
+    countReadMentions(peerId: number, maxId: number, readMaxId: number): number {
+      const storage = msgsByChat.get(peerId)
+      if (!storage) return 0
+      const history = [...storage.keys()].sort((a, b) => b - a)
+      let count = 0
+      for (const mid of history) {
+        if (mid > maxId) continue
+        const message = storage.get(mid)!
+        if (message.pFlags.out) continue
+        if (!(readMaxId < mid)) break
+        if (isMentionUnread(message)) ++count
+      }
+      return count
     },
 
     // Голосовое/кружок прослушано → точка media_unread гаснет. Без кэша переоткрытие

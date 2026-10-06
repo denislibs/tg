@@ -214,10 +214,20 @@ func TestStarReaction_FrameIsMessageReactionsWithPaidChip(t *testing.T) {
 	if !ok {
 		t.Fatalf("в кадре нет агрегата: %#v", d)
 	}
-	// Агрегат помечен min: пер-зрительской части (мой вклад звёздами) в общем
-	// теле нет и быть не может — тело одно на всех получателей.
-	if pf, _ := reactions["pFlags"].(map[string]any); pf["min"] != true {
-		t.Fatalf("агрегат не помечен min: %#v", reactions["pFlags"])
+	// 1 — автор сообщения: агрегат ему едет ЕГО глазами, без min, и несёт
+	// непрочитанность обычной реакции (min-кадр стёр бы её, и бейдж ❤ у
+	// автора разошёлся бы с сервером — ревью #408, п.2).
+	if pf, _ := reactions["pFlags"].(map[string]any); pf["min"] == true {
+		t.Fatalf("автору ушёл min-агрегат: %#v", reactions["pFlags"])
+	}
+	unread := false
+	for _, r := range reactions["recent_reactions"].([]any) {
+		if pf, _ := r.(map[string]any)["pFlags"].(map[string]any); pf["unread"] == true {
+			unread = true
+		}
+	}
+	if !unread {
+		t.Fatalf("платный кадр стёр автору непрочитанность реакции: %#v", reactions["recent_reactions"])
 	}
 	if _, ok := reactions["top_reactors"]; ok {
 		t.Fatal("в общем теле кадра поехала доска вкладов: она пер-зрительская")

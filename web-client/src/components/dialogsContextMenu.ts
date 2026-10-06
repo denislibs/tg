@@ -55,8 +55,10 @@
 //     «Очистить историю» не предлагается (шапка секретного чата его тоже не
 //     даёт: очистка и удаление там одно действие), удаление — как у лички
 //     (`popups/deleteDialog.ts`, расхождение 4).
-//  9. О-89 волна 7: `Delete` у «Избранного» (`checkIfCanDelete` → `true`) не
-//     показывается — удаления истории вместе с диалогом на бэкенде нет.
+//  9. `Delete` у «Избранного» (`checkIfCanDelete` → `true`) не показывается: ручка
+//     удаления уже есть (`chats.deleteHistory`), но ключа текста попапа
+//     `AreYouSureDeleteThisChatSavedMessages` в словаре нет (`popups/deleteDialog.ts`,
+//     расхождение 2).
 import type { LangPackKey } from '@/lang'
 import type { Dialog } from '@core/models'
 import type { Managers } from '@/client/bootstrap'
@@ -252,7 +254,7 @@ export default class DialogsContextMenu {
       return false
     }
 
-    if(this.peerId === rootScope.myId) { // О-89 волна 7 — расхождение 9
+    if(this.peerId === rootScope.myId) { // расхождение 9
       return false
     }
 

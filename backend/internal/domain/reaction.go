@@ -51,6 +51,10 @@ type ReactionCount struct {
 	// пользователя на проводе, вклеенная в jsonb прямо в SQL и потому
 	// разъезжавшаяся с остальными сама по себе.
 	Recent []Peer `json:"recent,omitempty"`
+	// RecentUnread — параллельно Recent: реакция ещё не прочитана АВТОРОМ
+	// сообщения, и зритель — он (messagePeerReaction.pFlags.unread). Другим
+	// зрителям всегда пусто: непрочитанность реакции — факт одного автора.
+	RecentUnread []bool `json:"-"`
 }
 
 // ReactionUser — одна поставленная реакция (кто и каким эмодзи), для попапа

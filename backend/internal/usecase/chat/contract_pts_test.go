@@ -192,9 +192,10 @@ func TestReactionPayload_AbsoluteAndIdempotent(t *testing.T) {
 		if !ok {
 			t.Fatalf("в кадре нет агрегата: %#v", d)
 		}
-		// Агрегат помечен min: пер-зрительской части в общем теле нет.
-		if pf, _ := reactions["pFlags"].(map[string]any); pf["min"] != true {
-			t.Fatalf("агрегат кадра не помечен min: %#v", reactions["pFlags"])
+		// a — автор сообщения: агрегат ему едет ЕГО глазами, без min
+		// (journalReactions), — по нему его устройства ведут бейдж ❤.
+		if pf, _ := reactions["pFlags"].(map[string]any); pf["min"] == true {
+			t.Fatalf("агрегат автору помечен min: %#v", reactions["pFlags"])
 		}
 		raw, ok := reactions["results"].([]any)
 		if !ok {
