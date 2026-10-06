@@ -91,7 +91,6 @@ const DEBT: Record<string, number> = {
   'src/components/peerProfile.solid.tsx': 1,
   'src/components/settings/BirthdayModal.tsx': 6,
   'src/components/stickers/StickerSetModal.tsx': 7,
-  'src/components/userInfo/helpers.ts': 4,
   'src/core/dialogToChat.ts': 1,
   'src/core/hooks/useStoryViewer.ts': 3,
   'src/core/messageToConvMsg.ts': 13,

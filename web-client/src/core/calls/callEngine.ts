@@ -155,6 +155,15 @@ function finish(reason: CallEndReason) {
   }, 1500)
 }
 
+// Звонок погашен не здесь (ответили или отклонили на другом устройстве):
+// экран закрывается молча — без финального статуса и звука конца.
+function dismiss() {
+  clearRingTimer()
+  cleanupRtc()
+  stopSound()
+  store().set(null)
+}
+
 // ── медиа ──
 
 async function acquireLocal(withVideo: boolean): Promise<MediaStream | null> {
@@ -527,8 +536,18 @@ export function handleFrame(evt: CallFrameEvt) {
     return
   }
 
-  // остальные кадры относятся только к текущему звонку
-  if (!call || (callId && call.callId !== callId)) return
+  // остальные кадры относятся только к текущему звонку: тот же call_id (кадр
+  // без него — не кадр звонка)
+  if (!call || !callId || call.callId !== callId) return
+
+  // Ответили или отклонили на другом моём устройстве (сервер: call_end
+  // answered_elsewhere): ещё звонящий экран гаснет, ответившему — не касается.
+  if (t === 'call_end' && d.reason === 'answered_elsewhere') {
+    if (call.phase === 'incoming') dismiss()
+    return
+  }
+  // кадр звонка — только от собеседника этого звонка
+  if (from !== call.peer.id) return
 
   switch (t) {
     case 'call_accept':
@@ -540,6 +559,9 @@ export function handleFrame(evt: CallFrameEvt) {
       }
       break
     case 'call_decline':
+      // отказ осмыслен только у ещё не отвеченного исходящего: идущий разговор
+      // запоздалым отказом (второе устройство собеседника) не рвётся
+      if (!call.outgoing || call.phase !== 'outgoing') break
       clearRingTimer()
       finish(d.reason === 'busy' ? 'busy' : d.reason === 'privacy' ? 'privacy' : 'declined')
       break

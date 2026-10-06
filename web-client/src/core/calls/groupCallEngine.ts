@@ -167,8 +167,12 @@ export function handleGroupCallFrame(evt: GroupCallFrame) {
   }
   if (t !== 'group_call_signal' || d.from_user_id == null) return
   if (store().peerId !== d.peer_id) return
+  const from = d.from_user_id
+  // Сигнал — только от участника видеочата (список из group_call_update) или
+  // того, с кем соединение уже есть: на offer постороннего движок отдал бы
+  // ему свой микрофон и камеру (newPc → addTrack). Сервер реле так же сверяет.
+  if (!pcs.has(from) && !(store().activeByChat[d.peer_id] ?? []).includes(from)) return
   void (async () => {
-    const from = d.from_user_id!
     let pc = pcs.get(from)
     if (d.sdp) {
       if (d.sdp.type === 'offer') {

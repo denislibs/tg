@@ -395,7 +395,7 @@ func (i *Interactor) CanAccessMedia(ctx context.Context, userID, mediaID int64) 
 
 // canSeeProfilePhoto — файл это фото профиля (аватарка или снимок галереи)
 // пользователя, чьё правило profile_photo открывает его зрителю (privacy.Check
-// учитывает и блок). Тем же правилом гасится фото в карточках (gatePhotos):
+// учитывает и блок). Тем же правилом гасится фото в карточках (viewUsers):
 // скрытое там не должно скачиваться напрямую по id медиа. Без проверки
 // приватности (не подключена) фото профиля видно всем, как и в карточках.
 func (i *Interactor) canSeeProfilePhoto(ctx context.Context, viewerID, mediaID int64) (bool, error) {

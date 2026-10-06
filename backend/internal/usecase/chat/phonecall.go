@@ -37,6 +37,12 @@ const (
 // maxCallIDLen — call_id у клиента uuid (36); длиннее — не наш кадр.
 const maxCallIDLen = 64
 
+// callAnsweredElsewhere — причина call_end, которым сервер гасит звонок на
+// остальных устройствах вызываемого, когда он ответил или отклонил на одном
+// (у оригинала — updatePhoneCall с phoneCallDiscarded другим сессиям; tweb
+// callsController.handleCallUpdate закрывает такой звонок).
+const callAnsweredElsewhere = "answered_elsewhere"
+
 // RelayCall переадресует кадр сигналинга 1:1 звонка всем девайсам адресата,
 // проставляя from_user_id на сервере (подделать отправителя нельзя), и ведёт
 // состояние звонка ради его лога.
@@ -45,35 +51,77 @@ const maxCallIDLen = 64
 // чёрным списком: запрещённый вызов сразу отвечает инициатору call_decline
 // reason=privacy (адресат ничего не видит, как в Telegram), и звонок не
 // заводится вовсе — лога у него нет, как у отказа USER_PRIVACY_RESTRICTED.
+//
+// Остальные кадры живут только в рамках звонка (phone.acceptCall,
+// phone.sendSignalingData у оригинала адресуются звонком): call_id должен
+// существовать, и отправитель с адресатом — его стороны; ответить или
+// отклонить может только вызываемый и только до ответа. Иначе посторонний
+// оборвал бы чужой разговор кадром call_end, а второе устройство вызываемого
+// через 45 с звонка — уже идущий разговор своим call_decline{missed}.
 func (i *Interactor) RelayCall(ctx context.Context, frameType string, fromUserID, toUserID int64, data map[string]any) error {
 	if i.publisher == nil || toUserID == 0 || toUserID == fromUserID {
 		return nil
-	}
-	if frameType == "call_request" && i.privacy != nil {
-		ok, err := i.privacy.Check(ctx, toUserID, fromUserID, domain.PrivacyCalls)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			decline := frame("call_decline", map[string]any{"from_user_id": toUserID, "reason": "privacy"})
-			return i.publisher.PublishToUser(ctx, fromUserID, decline)
-		}
 	}
 	if data == nil {
 		data = map[string]any{}
 	}
 	callID, _ := data["call_id"].(string)
 	hint, _ := data["reason"].(string)
+	if i.phoneCalls != nil && !validCallID(callID) {
+		return nil // кадр вне звонка
+	}
 	var stateErr error
-	switch frameType {
-	case "call_request":
+	if frameType == "call_request" {
+		if i.privacy != nil {
+			ok, err := i.privacy.Check(ctx, toUserID, fromUserID, domain.PrivacyCalls)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				decline := frame("call_decline", map[string]any{"from_user_id": toUserID, "call_id": callID, "reason": "privacy"})
+				return i.publisher.PublishToUser(ctx, fromUserID, decline)
+			}
+		}
 		video, _ := data["video"].(bool)
-		stateErr = i.openPhoneCall(ctx, domain.PhoneCall{ID: callID, CallerID: fromUserID, CalleeID: toUserID, Video: video})
-	case "call_accept":
-		stateErr = i.acceptPhoneCall(ctx, callID, fromUserID)
+		ok, err := i.openPhoneCall(ctx, domain.PhoneCall{ID: callID, CallerID: fromUserID, CalleeID: toUserID, Video: video})
+		if err != nil || !ok {
+			return err
+		}
+	} else if i.phoneCalls != nil {
+		c, err := i.phoneCalls.Get(ctx, callID)
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if !c.IsParty(fromUserID) || !c.IsParty(toUserID) {
+			return nil
+		}
+		if (frameType == "call_accept" || frameType == "call_decline") && (fromUserID != c.CalleeID || c.Answered()) {
+			return nil
+		}
+	}
+	if frameType == "call_accept" {
+		// Ответ релеится только победителю гонки двух устройств: второй
+		// call_accept звонящему не уходит (иначе — два offer/answer, glare).
+		won, err := i.acceptPhoneCall(ctx, callID, fromUserID)
+		if err != nil || !won {
+			return err
+		}
 	}
 	data["from_user_id"] = fromUserID
 	err := i.publisher.PublishToUser(ctx, toUserID, frame(frameType, data))
+	// Ответил или отклонил на одном устройстве — остальные устройства
+	// вызываемого перестают звонить. Кадр уходит всем его соединениям: то,
+	// которое ответило, его узнаёт (своё from_user_id, фаза уже не «входящий»)
+	// и пропускает — одно соединение воркера обслуживает все вкладки браузера,
+	// поэтому «кроме исходного соединения» вкладки бы не погасило.
+	if frameType == "call_accept" || frameType == "call_decline" {
+		err = errors.Join(err, i.publisher.PublishToUser(ctx, fromUserID, frame("call_end", map[string]any{
+			"from_user_id": fromUserID, "call_id": callID, "reason": callAnsweredElsewhere,
+		})))
+	}
 	// Лог — после кадра: экран звонка у собеседника гаснет без ожидания записи.
 	if frameType == "call_decline" || frameType == "call_end" {
 		stateErr = i.discardPhoneCall(ctx, callID, fromUserID, hint)
@@ -84,29 +132,45 @@ func (i *Interactor) RelayCall(ctx context.Context, frameType string, fromUserID
 func validCallID(id string) bool { return id != "" && len(id) <= maxCallIDLen }
 
 // openPhoneCall заводит звонок. Повтор call_request с тем же call_id состояние
-// не трогает (Create — «если нет»).
-func (i *Interactor) openPhoneCall(ctx context.Context, c domain.PhoneCall) error {
-	if i.phoneCalls == nil || !validCallID(c.ID) {
-		return nil
+// не трогает (Create — «если нет») и пропускается, только если это тот же
+// звонок тех же сторон: чужой call_id не перехватить. Без хранилища звонков —
+// как прежде, без сверки.
+func (i *Interactor) openPhoneCall(ctx context.Context, c domain.PhoneCall) (bool, error) {
+	if i.phoneCalls == nil {
+		return true, nil
 	}
-	_, err := i.phoneCalls.Create(ctx, c)
-	return err
+	created, err := i.phoneCalls.Create(ctx, c)
+	if err != nil || created {
+		return created, err
+	}
+	cur, err := i.phoneCalls.Get(ctx, c.ID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return cur.CallerID == c.CallerID && cur.CalleeID == c.CalleeID, nil
 }
 
-// acceptPhoneCall отмечает ответ — только от адресата этого звонка.
-func (i *Interactor) acceptPhoneCall(ctx context.Context, callID string, byUserID int64) error {
-	if i.phoneCalls == nil || !validCallID(callID) {
-		return nil
+// acceptPhoneCall отмечает ответ — только от адресата этого звонка. true —
+// ответ этого устройства принят (оно первое); без хранилища — всегда.
+func (i *Interactor) acceptPhoneCall(ctx context.Context, callID string, byUserID int64) (bool, error) {
+	if i.phoneCalls == nil {
+		return true, nil
+	}
+	if !validCallID(callID) {
+		return false, nil
 	}
 	c, err := i.phoneCalls.Get(ctx, callID)
 	if errors.Is(err, domain.ErrNotFound) {
-		return nil
+		return false, nil
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
 	if c.CalleeID != byUserID {
-		return nil
+		return false, nil
 	}
 	return i.phoneCalls.Accept(ctx, callID, time.Now())
 }

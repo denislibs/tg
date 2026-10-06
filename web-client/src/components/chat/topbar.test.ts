@@ -10,9 +10,11 @@
 // считает настоящий синглтон `appImManager` (без `construct` — менеджеры приходят опцией).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
+import { RT } from '@core/realtime/events'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import { resetMessagesMirror, setMirrorHistoryCount, winKey } from '@core/history/messagesMirror'
 import { useChatsStore } from '@stores/chatsStore'
+import { useAppStateStore } from '@stores/appState'
 import mediaSizes, { ScreenSize } from '@core/dom/mediaSizes'
 import contextMenuController from '@helpers/contextMenuController'
 import appImManager, { LEFT_COLUMN_ACTIVE_CLASSNAME } from '@lib/appImManager'
@@ -66,13 +68,14 @@ const CHANNEL: PeerId = -200
 /** группа, где я создатель (`manage_call`), и канал, где я создатель */
 const MY_GROUP: PeerId = -300
 const MY_CHANNEL: PeerId = -400
-/** группа больше 100 участников — «N онлайн» не считается (Б-84) */
+/** группа больше 100 участников — «N онлайн» берётся ручкой `getOnlines` */
 const BIG_GROUP: PeerId = -500
 const BOB: PeerId = 9
 const CAROL: PeerId = 10
 
 const isContact = vi.fn(async() => false)
-const channelParticipants = vi.fn(async(_peerId: PeerId, _offset: number, _limit: number) => ({
+const getOnlines = vi.fn(async(_chatId: number) => 42)
+const getParticipants = vi.fn(async(_options: { id: number, filter: { _: string }, limit: number }) => ({
   _: 'channels.channelParticipants',
   count: 3,
   participants: [ALICE, BOB, CAROL].map((user_id) => ({ _: 'channelParticipant', user_id, date: 0 })),
@@ -82,7 +85,8 @@ const channelParticipants = vi.fn(async(_peerId: PeerId, _offset: number, _limit
 const managers = {
   peers: { fillMirror: async() => {} },
   groups: {
-    channelParticipants,
+    getParticipants,
+    getOnlines,
     listTopics: vi.fn(async() => [{ id: 7, title: 'Новости', iconColor: 0x6FB9F0, iconEmoji: '', isGeneral: false }]),
   },
   contacts: { isContact },
@@ -130,7 +134,7 @@ function makeChat(options: FakeChatOptions): FakeChat {
     openAutoDeleteMessagesCustomTimePopup: vi.fn(),
     fullPeer: () => fullPeer,
     selection: { isSelecting: false, toggleSelection: vi.fn(), cancelSelection: vi.fn(), toggleByElement: vi.fn() },
-    bubbles: { getRenderedLength: () => renderedLength ?? 1 },
+    bubbles: { getRenderedLength: () => renderedLength ?? 1, getMiddleware: () => () => true },
     // статус и звонки — настоящий синглтон (блоки L и H), переходы — дублёры
     appImManager: Object.assign(Object.create(appImManager) as typeof appImManager, {
       setInnerPeer: vi.fn(),
@@ -180,8 +184,9 @@ beforeEach(() => {
     { _: 'user', id: CAROL, first_name: 'Кэрол', pFlags: {}, status: { _: 'userStatusOffline', was_online: 1 } },
   ] }])
   resetChatFullMirror()
-  ;(appImManager as unknown as { onlinesParticipants: Map<PeerId, unknown> }).onlinesParticipants.clear()
-  channelParticipants.mockClear()
+  ;(appImManager as unknown as { onlinesCache: Map<PeerId, unknown> }).onlinesCache.clear()
+  getParticipants.mockClear()
+  getOnlines.mockClear()
   useGroupCallStore.setState({ peerId: null, activeByChat: {} })
   useLivestreamStore.setState({ watchingPeerId: null, activeByChat: {} })
   rootScope.myId = ME
@@ -243,31 +248,44 @@ describe('ChatTopbar: заголовок и подпись по виду пир�
     const topbar = await open(makeChat({ peerId: GROUP }))
     expect(q(topbar, '.user-title .peer-title').textContent).toBe('Группа')
     await vi.waitFor(() => expect(q(topbar, '.info').textContent).toBe('5 members, 2 online'))
-    expect(channelParticipants).toHaveBeenCalledWith(GROUP, 0, 100)
+    expect(getParticipants).toHaveBeenCalledWith({ id: -GROUP, filter: { _: 'channelParticipantsRecent' }, limit: 100 })
+    expect(getOnlines).not.toHaveBeenCalled()
   })
 
   it('группа: один онлайн не пишется (это я), страница участников кэшируется на 60 с', async() => {
     const topbar = await open(makeChat({ peerId: GROUP }))
-    await vi.waitFor(() => expect(channelParticipants).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(getParticipants).toHaveBeenCalledTimes(1))
     expect(q(topbar, '.info').textContent).toBe('5 members')
 
     // второй показ — из кэша, без похода в сеть; онлайн пересчитан по свежему присутствию
     useChatsStore.setState({ presence: { [ALICE]: { _: 'userStatusOnline', expires: 2e9 }, [CAROL]: { _: 'userStatusOnline', expires: 2e9 } } })
     const again = await open(makeChat({ peerId: GROUP }))
     expect(q(again, '.info').textContent).toBe('5 members, 3 online')
-    expect(channelParticipants).toHaveBeenCalledTimes(1)
+    expect(getParticipants).toHaveBeenCalledTimes(1)
   })
 
-  it('группа больше 100 участников: «N online» не считается, участников не спрашиваем (Б-84)', async() => {
+  it('группа больше 100 участников: «N online» — ручкой `getOnlines`, участников не спрашиваем', async() => {
     const topbar = await open(makeChat({ peerId: BIG_GROUP }))
-    expect(q(topbar, '.info').textContent).toBe('101 members')
-    expect(channelParticipants).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(q(topbar, '.info').textContent).toBe('101 members, 42 online'))
+    expect(getOnlines).toHaveBeenCalledWith(-BIG_GROUP)
+    expect(getParticipants).not.toHaveBeenCalled()
+  })
+
+  it('кадр `chat_participant` сбрасывает кэш «N online»: следующий показ идёт в сеть', async() => {
+    await open(makeChat({ peerId: GROUP }))
+    await vi.waitFor(() => expect(getParticipants).toHaveBeenCalledTimes(1))
+    rootScope.dispatchEventSingle(RT.chatParticipant, {
+      _: 'updateChannelParticipant', channel_id: -GROUP, date: 1, user_id: CAROL,
+      new_participant: { _: 'channelParticipant', user_id: CAROL, date: 1 },
+    })
+    await open(makeChat({ peerId: GROUP }))
+    await vi.waitFor(() => expect(getParticipants).toHaveBeenCalledTimes(2))
   })
 
   it('группа: «печатает» вытесняет подпись и называет печатающего, по концу набора подпись возвращается', async() => {
     const topbar = await open(makeChat({ peerId: GROUP }))
     const subtitle = q(topbar, '.info')
-    await vi.waitFor(() => expect(channelParticipants).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(getParticipants).toHaveBeenCalledTimes(1))
 
     useChatsStore.setState({ typing: { [GROUP]: { [ALICE]: { action: { _: 'sendMessageTypingAction' }, at: Date.now() } } } })
     await vi.waitFor(() => expect(subtitle.querySelector('.peer-typing-container .peer-typing-text')).toBeTruthy())
@@ -282,13 +300,13 @@ describe('ChatTopbar: заголовок и подпись по виду пир�
     useChatsStore.setState({ typing: { [GROUP]: { [ALICE]: { action: { _: 'sendMessageTypingAction' }, at: Date.now() } } } })
     const topbar = await open(makeChat({ peerId: GROUP }))
     expect(q(topbar, '.info .peer-typing-description')?.textContent).toBe('Алиса is typing')
-    expect(channelParticipants).not.toHaveBeenCalled()
+    expect(getParticipants).not.toHaveBeenCalled()
   })
 
   it('канал: «N subscribers» с разбивкой по тысячам, онлайн не считается', async() => {
     const topbar = await open(makeChat({ peerId: CHANNEL }))
     expect(q(topbar, '.info').textContent).toBe('1 200 subscribers')
-    expect(channelParticipants).not.toHaveBeenCalled()
+    expect(getParticipants).not.toHaveBeenCalled()
   })
 
   it('«Избранное»: заголовок Saved Messages, подпись — счёт истории окна, пока его нет — Loading', async() => {
@@ -703,6 +721,83 @@ describe('ChatTopbar: плашки и setFloating (tweb :1645-1683)', () => {
     useLivestreamStore.getState().setActive(ALICE, true)
     const dm = await open(makeChat({ peerId: ALICE }))
     expect(q(dm, '.pinned-live').classList.contains('hide')).toBe(true)
+  })
+})
+
+describe('ChatTopbar: плашка заявок (`chat/requests.solid.tsx`, tweb :1098-1115, :1429, :1505-1528)', () => {
+  const groupFull = (recent?: number[], pending = 0): PeerFull => ({
+    _: 'channelFull', id: 100, about: '', read_inbox_max_id: 0, read_outbox_max_id: 0, unread_count: 0, chat_photo: null,
+    ...(recent ? { recent_requesters: recent, requests_pending: pending } : {}),
+  })
+  const plate = (topbar: ChatTopbar) => q(topbar, '.pinned-requests')
+
+  beforeEach(() => {
+    useAppStateStore.setState({ hideChatJoinRequests: {} })
+  })
+
+  it('видна, когда в карточке есть `recent_requesters`: стек лиц и «N заявок»; клик — вкладка заявок', async() => {
+    saveChatFull(GROUP, groupFull([ALICE, BOB], 5))
+    const topbar = await open(makeChat({ peerId: GROUP }))
+    await vi.waitFor(() => expect(plate(topbar).classList.contains('hide')).toBe(false))
+    expect(plate(topbar).querySelectorAll('.stacked-avatars-avatar-container')).toHaveLength(2)
+    expect(plate(topbar).textContent).toContain('5 Join Requests')
+
+    const tab = { open: vi.fn(async() => {}) }
+    sidebar.createTab.mockReturnValue(tab)
+    plate(topbar).querySelector<HTMLElement>('.pinned-requests-primary-button')!.click()
+    await vi.waitFor(() => expect(tab.open).toHaveBeenCalledWith(-GROUP))
+    expect(sidebar.toggleSidebar).toHaveBeenCalledWith(true)
+  })
+
+  it('без заявок плашки нет', async() => {
+    saveChatFull(GROUP, groupFull())
+    const topbar = await open(makeChat({ peerId: GROUP }))
+    expect(plate(topbar).classList.contains('hide')).toBe(true)
+  })
+
+  it('крестик скрывает на сутки (State `hideChatJoinRequests`), кадр заявок показывает снова', async() => {
+    saveChatFull(GROUP, groupFull([ALICE], 1))
+    const topbar = await open(makeChat({ peerId: GROUP }))
+    await vi.waitFor(() => expect(plate(topbar).classList.contains('hide')).toBe(false))
+
+    plate(topbar).querySelector<HTMLElement>('.pinned-requests-close')!.click()
+    expect(plate(topbar).classList.contains('hide')).toBe(true)
+    const hiddenAt = useAppStateStore.getState().hideChatJoinRequests[GROUP]
+    expect(hiddenAt).toBeGreaterThan(Date.now() - 1000)
+
+    // повторное открытие в пределах суток — скрыта
+    const again = await open(makeChat({ peerId: GROUP }))
+    expect(plate(again).classList.contains('hide')).toBe(true)
+
+    // через сутки — снова видна
+    useAppStateStore.setState({ hideChatJoinRequests: { [GROUP]: hiddenAt - 86_400_000 } })
+    const later = await open(makeChat({ peerId: GROUP }))
+    await vi.waitFor(() => expect(plate(later).classList.contains('hide')).toBe(false))
+
+    // кадр заявок (воркер снял скрытие) — плашка встаёт с новым числом
+    rootScope.dispatchEventSingle(RT.chatRequests, { chatId: -GROUP, recentRequesters: [BOB], requestsPending: 2 })
+    await vi.waitFor(() => expect(plate(again).classList.contains('hide')).toBe(false))
+    expect(plate(again).textContent).toContain('2 Join Requests')
+  })
+
+  it('кадр заявок чужого чата плашку не трогает; пустые заявители — снимают', async() => {
+    saveChatFull(GROUP, groupFull([ALICE], 1))
+    const topbar = await open(makeChat({ peerId: GROUP }))
+    await vi.waitFor(() => expect(plate(topbar).classList.contains('hide')).toBe(false))
+
+    rootScope.dispatchEventSingle(RT.chatRequests, { chatId: 999, recentRequesters: [], requestsPending: 0 })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(plate(topbar).classList.contains('hide')).toBe(false)
+
+    rootScope.dispatchEventSingle(RT.chatRequests, { chatId: -GROUP, recentRequesters: [], requestsPending: 0 })
+    await vi.waitFor(() => expect(plate(topbar).classList.contains('hide')).toBe(true))
+  })
+
+  it('карточки ещё нет — плашка встаёт, когда карточка приедет в зеркало', async() => {
+    const topbar = await open(makeChat({ peerId: GROUP }))
+    expect(plate(topbar).classList.contains('hide')).toBe(true)
+    saveChatFull(GROUP, groupFull([ALICE], 1))
+    await vi.waitFor(() => expect(plate(topbar).classList.contains('hide')).toBe(false))
   })
 })
 

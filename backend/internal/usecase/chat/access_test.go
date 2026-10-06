@@ -126,7 +126,7 @@ func TestDiscussion_PrivateChannelClosedToStranger(t *testing.T) {
 	if _, err := in.GetHistory(ctx, disc, 8, 0, 0, 20, &rootSeq, ""); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("тред группы обсуждения постороннему: %v", err)
 	}
-	if _, err := in.ListMembers(ctx, disc, 8, "", 0, 50); !errors.Is(err, domain.ErrForbidden) {
+	if _, err := listRecent(in, ctx, disc, 8, 50); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("участники группы обсуждения постороннему: %v", err)
 	}
 
@@ -175,11 +175,11 @@ func TestListMembers_BroadcastAdminsOnly(t *testing.T) {
 	_ = fg.AddMember(ctx, ch, 8, domain.RoleSubscriber, 0)
 	_ = fg.AddMember(ctx, ch, 9, domain.RoleAdmin, domain.RightPostMessages)
 
-	if _, err := in.ListMembers(ctx, ch, 8, "", 0, 50); !errors.Is(err, domain.ErrForbidden) {
+	if _, err := listRecent(in, ctx, ch, 8, 50); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("подписчик получил состав канала: %v", err)
 	}
 	for _, admin := range []int64{7, 9} {
-		if ms, err := in.ListMembers(ctx, ch, admin, "", 0, 50); err != nil || len(ms) != 3 {
+		if ms, err := listRecent(in, ctx, ch, admin, 50); err != nil || len(ms) != 3 {
 			t.Fatalf("состав канала админу %d: %d %v", admin, len(ms), err)
 		}
 	}

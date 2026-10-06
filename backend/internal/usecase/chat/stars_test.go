@@ -158,9 +158,9 @@ func TestTopUpStars(t *testing.T) {
 func TestSendGift(t *testing.T) {
 	in, fs, _ := newStarsInteractor()
 	ctx := context.Background()
-	// нет звёзд — нельзя подарить
-	if _, _, err := in.SendGift(ctx, 1, 2, 1, "hi", false); err != domain.ErrForbidden {
-		t.Fatalf("send without stars should be ErrForbidden, got %v", err)
+	// нет звёзд — нельзя подарить (нехватка — ErrPaidRequired, а не запрет)
+	if _, _, err := in.SendGift(ctx, 1, 2, 1, "hi", false); err != domain.ErrPaidRequired {
+		t.Fatalf("send without stars should be ErrPaidRequired, got %v", err)
 	}
 	// пополняем и дарим
 	if _, err := in.TopUpStars(ctx, 1, 50); err != nil {

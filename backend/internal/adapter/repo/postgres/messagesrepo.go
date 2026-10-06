@@ -667,7 +667,7 @@ func (r *MessagesRepo) SearchCounters(ctx context.Context, chatID, userID int64,
 // ByPollID возвращает сообщения, ссылающиеся на опрос (обычно одно).
 func (r *MessagesRepo) ByPollID(ctx context.Context, pollID int64) ([]domain.Message, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT `+messageCols+` FROM messages WHERE poll_id=$1 AND deleted_at IS NULL`, pollID)
+		`SELECT `+messageCols+` FROM messages WHERE poll_id=$1 AND deleted_at IS NULL ORDER BY id`, pollID)
 	if err != nil {
 		return nil, err
 	}
@@ -686,7 +686,7 @@ func (r *MessagesRepo) ByPollID(ctx context.Context, pollID int64) ([]domain.Mes
 // ByChecklistID возвращает сообщения, ссылающиеся на чек-лист (обычно одно).
 func (r *MessagesRepo) ByChecklistID(ctx context.Context, checklistID int64) ([]domain.Message, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT `+messageCols+` FROM messages WHERE checklist_id=$1 AND deleted_at IS NULL`, checklistID)
+		`SELECT `+messageCols+` FROM messages WHERE checklist_id=$1 AND deleted_at IS NULL ORDER BY id`, checklistID)
 	if err != nil {
 		return nil, err
 	}
@@ -1038,16 +1038,26 @@ func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq
 }
 
 // LastMessageAt is the newest non-deleted message time by senderID in chatID
-// (slowmode check); domain.ErrNotFound when they haven't posted yet.
-func (r *MessagesRepo) LastMessageAt(ctx context.Context, chatID, senderID int64) (time.Time, error) {
+// (slowmode check) plus its album: grouped_id (0 — not in one) and how many of
+// the sender's messages in the chat carry it, removed ones included (deleting
+// elements must not reopen the album). domain.ErrNotFound when they
+// haven't posted yet.
+func (r *MessagesRepo) LastMessageAt(ctx context.Context, chatID, senderID int64) (time.Time, int64, int, error) {
 	var at time.Time
+	var grouped int64
+	var size int
 	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT created_at FROM messages WHERE chat_id=$1 AND sender_id=$2 AND deleted_at IS NULL
-		 ORDER BY seq DESC LIMIT 1`, chatID, senderID).Scan(&at)
+		`SELECT m.created_at, COALESCE(m.grouped_id, 0),
+		        CASE WHEN m.grouped_id IS NULL THEN 0 ELSE (
+		          SELECT count(*) FROM messages g
+		           WHERE g.chat_id = m.chat_id AND g.sender_id = m.sender_id
+		             AND g.grouped_id = m.grouped_id) END
+		   FROM messages m WHERE m.chat_id=$1 AND m.sender_id=$2 AND m.deleted_at IS NULL
+		  ORDER BY m.seq DESC LIMIT 1`, chatID, senderID).Scan(&at, &grouped, &size)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return time.Time{}, domain.ErrNotFound
+		return time.Time{}, 0, 0, domain.ErrNotFound
 	}
-	return at, err
+	return at, grouped, size, err
 }
 
 // SavedDialogs groups the saved-messages chat by forward origin («Избранное» →

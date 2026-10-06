@@ -10,8 +10,7 @@
  *
  * ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
  *
- *  1. Заявки — одна страница ручки `/join_requests` (без смещения и поиска `q`,
- *     расхождения 3, 4 `chatInviteLinkShared.ts`); `isBroadcast` — по зеркалу.
+ *  1. `isBroadcast` — по зеркалу (`isBroadcastPeer`).
  *  2. `placeholderElementsGap` (:52) не передаётся — плейсхолдера строк у
  *     нашего селектора нет (его расхождение 4).
  *  3. `appImManager` — синглтон (`useHotReloadGuard` — обвязка их дев-сборки).

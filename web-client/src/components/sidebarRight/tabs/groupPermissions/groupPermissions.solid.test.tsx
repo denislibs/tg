@@ -25,6 +25,8 @@ import { toPeerId } from '@core/peers/peerId'
 import appNavigationController from '@core/navigation/appNavigationController'
 import SidebarSlider from '@components/slider'
 import { AppGroupPermissionsTab } from '@components/solidJsTabs/tabs'
+import rootScope from '@lib/rootScope'
+import { RT } from '@core/realtime/events'
 
 const toastNew = vi.hoisted(() => vi.fn())
 vi.mock('@components/toast', async(importOriginal) => ({
@@ -84,14 +86,15 @@ let groups: {
   card: ReturnType<typeof vi.fn>
   editChatDefaultBannedRights: ReturnType<typeof vi.fn>
   setChargeStars: ReturnType<typeof vi.fn>
-  channelParticipantsBanned: ReturnType<typeof vi.fn>
+  getParticipants: ReturnType<typeof vi.fn>
+  getParticipant: ReturnType<typeof vi.fn>
 }
 
 const install = (chat: Channel, banned = restricted()) => {
   resetPeerMirror()
   applyPeerOps([{ op: 'upsert', peers: [chat] }])
   groups.card.mockImplementation(async() => ({ peerId: PEER_ID, chat, fullChat: FULL }))
-  groups.channelParticipantsBanned.mockImplementation(async() => banned)
+  groups.getParticipants.mockImplementation(async() => banned)
 }
 
 beforeEach(() => {
@@ -102,7 +105,8 @@ beforeEach(() => {
     card: vi.fn(),
     editChatDefaultBannedRights: vi.fn(async() => {}),
     setChargeStars: vi.fn(async() => {}),
-    channelParticipantsBanned: vi.fn(),
+    getParticipants: vi.fn(),
+    getParticipant: vi.fn(),
   }
   install(group())
   const managers = { groups, peers: { fillMirror: vi.fn(async() => {}) } } as unknown as Managers
@@ -228,6 +232,57 @@ describe('вкладка «Разрешения» — разметка ориг�
 
     expect(text(exceptions.querySelector('.row .row-subtitle'))).toBe(lang['Permissions.NoExceptions'])
     expect(exceptions.querySelector('ul.chatlist')!.children).toHaveLength(0)
+  })
+
+  it('исключения: запрос страницы — `getParticipants` с фильтром ограниченных и смещением по строкам', async() => {
+    await open()
+    expect(groups.getParticipants).toHaveBeenCalledWith({
+      id: GROUP_ID, filter: { _: 'channelParticipantsBanned', q: '' }, limit: 50, offset: 0,
+    })
+  })
+
+  it('исключения живут по `chat_participant` (:307-341): ограничен — строкой, снят — убран, чужой чат не трогает', async() => {
+    const tab = await open()
+    const exceptions = sections(tab)[3]
+    const list = exceptions.querySelector('ul.chatlist')!
+    const subtitle = () => text(exceptions.querySelector('.row .row-subtitle'))
+
+    const banned = (userId: number) => ({
+      _: 'channelParticipantBanned' as const, peer: { _: 'peerUser' as const, user_id: userId }, kicked_by: ADMIN_ID, date: 0,
+      banned_rights: { until_date: 0, pFlags: { send_media: true as const } },
+    })
+    const frame = (userId: number, prev: unknown, next: unknown, channelId = GROUP_ID) => rootScope.dispatchEventSingle(RT.chatParticipant, {
+      _: 'updateChannelParticipant', channel_id: channelId, date: 1, user_id: userId,
+      prev_participant: prev as never, new_participant: next as never,
+    })
+
+    frame(8, { _: 'channelParticipant', user_id: 8, date: 0 }, banned(8))
+    await settle()
+    expect([...list.children].map((el) => (el as HTMLElement).dataset.peerId)).toEqual(['8', String(RESTRICTED_ID)])
+    expect(subtitle()).toBe('2 exceptions')
+
+    frame(RESTRICTED_ID, restricted().participants[0], undefined)
+    await settle()
+    expect([...list.children].map((el) => (el as HTMLElement).dataset.peerId)).toEqual(['8'])
+    expect(subtitle()).toBe('1 exception')
+
+    frame(9, undefined, banned(9), GROUP_ID + 1)
+    await settle()
+    expect(list.children).toHaveLength(1)
+  })
+
+  it('щелчок по участнику не из списка исключений — `getParticipant` (:242-253)', async() => {
+    const participant = { _: 'channelParticipant', user_id: 8, date: 0 }
+    groups.getParticipant.mockImplementation(async() => participant)
+    const tab = await open()
+    const list = sections(tab)[3].querySelector('ul.chatlist')!
+    // строка с чужим ключом: карты участника у вкладки нет
+    const row = list.firstElementChild!.cloneNode(true) as HTMLElement
+    row.dataset.peerId = '8'
+    list.append(row)
+    row.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await settle()
+    expect(groups.getParticipant).toHaveBeenCalledWith(GROUP_ID, 8)
   })
 
   it('публичная группа: закрепление и смена профиля закрыты замком, щелчок — тост', async() => {

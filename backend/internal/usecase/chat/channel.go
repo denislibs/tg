@@ -18,7 +18,13 @@ func (i *Interactor) CreateChannel(ctx context.Context, creatorID int64, title, 
 		chatID = id
 		return i.groups.AddMember(ctx, id, creatorID, domain.RoleCreator, domain.AllRights)
 	})
-	return chatID, err
+	if err != nil {
+		return chatID, err
+	}
+	// A2-07: новый канал — снимок создателю в журнал (его прочие устройства
+	// узнают о диалоге; клиент перечитывает список, не найдя чата).
+	i.publishViewerChat(ctx, chatID, creatorID)
+	return chatID, nil
 }
 
 // PostToChannel публикует ТЕКСТОВЫЙ пост в канал.
@@ -97,8 +103,18 @@ func (i *Interactor) JoinPublic(ctx context.Context, username string, userID int
 	if err != nil {
 		return err
 	}
-	_, err = i.admit(ctx, id, userID, userID, admitSelf)
-	return err
+	joined, err := i.admit(ctx, id, userID, userID, admitSelf)
+	if err != nil || !joined {
+		return err
+	}
+	// A2-07/A6-05: вступление по @имени живьём. Группа — служебка «вступил(а)»
+	// (у оригинала messageActionChatAddUser с самим собой); канал — без неё:
+	// состав broadcast-канала служебками не пишется (postGroupService).
+	i.postGroupService(ctx, id, userID, domain.NewMessageActionChatAddUser([]int64{userID}))
+	i.publishChatUpdate(ctx, id)
+	i.publishViewerChat(ctx, id, userID)
+	i.emitParticipant(ctx, id, userID, userID, nil, participantWire(i.participantNow(ctx, id, userID)), nil)
+	return nil
 }
 
 // PeerSearchResult — выдача поиска пиров (contacts.search): «свои»

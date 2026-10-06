@@ -11,14 +11,6 @@
 // (`backend/internal/domain/mtparticipant.go`): `channelParticipant*`. Ветки
 // `chatParticipant*` (legacy-чат) отброшены — базовый `chat` бэкенд не
 // производит вовсе (решение №2 разбора, `core/peers/peerId.ts::getOutputPeer`).
-//
-// Расхождения с оригиналом, навязанные проводом:
-//   • `rank` (пользовательская подпись админа, `channelParticipantAdmin.rank`)
-//     на проводе нет — бэкенд собирает конструктор без него (`mtparticipant.go:
-//     104-126`), поэтому `getParticipantRank` отдаёт только 1 (создатель) /
-//     2 (админ) / `undefined`;
-//   • `promoted_by`/`inviter_id` — тоже нет; `canEditAdmin` поэтому отвечает
-//     «да» только создателю чата (разбор у самой функции).
 import type { ChannelParticipantWire } from '@core/managers/groupsManager'
 import { getPeerId, toPeerId } from './peerId'
 import type { Chat } from './peer'
@@ -37,10 +29,12 @@ export function getParticipantPeerId(participant: PeerId | ChannelParticipant): 
     toPeerId(participant.user_id, false)
 }
 
-/** Порт `getParticipantRank` (:3-7) без ветки `rank` (см. шапку). */
-export function getParticipantRank(participant: ChannelParticipant): 1 | 2 | undefined {
-  return participant._ === 'channelParticipantAdmin' ? 2 :
-    (participant._ === 'channelParticipantCreator' ? 1 : undefined)
+/** Порт `getParticipantRank` (:3-7): своя подпись админа/создателя, иначе
+ *  1 (создатель) / 2 (админ) / `undefined`. */
+export function getParticipantRank(participant: ChannelParticipant): string | 1 | 2 | undefined {
+  return ('rank' in participant ? participant.rank : undefined) ||
+    (participant._ === 'channelParticipantAdmin' ? 2 :
+      (participant._ === 'channelParticipantCreator' ? 1 : undefined))
 }
 
 export const participantCreatorPredicates: Set<ChannelParticipant['_']> = new Set([
@@ -61,18 +55,18 @@ export const isParticipantAdmin = (participant: ChannelParticipant | undefined) 
 /**
  * Порт `canEditAdmin(chat, participant, myId)` (:4-11): создатель чата правит
  * любого; иначе — не-создателя, у которого нет назначившего (обычный участник,
- * его ещё только назначают) или которого назначил я.
- *
- * `promoted_by`/`inviter_id` на проводе нет (шапка): у админа назначивший
- * неизвестен и читается как «не я» — правит его только создатель чата. У
- * обычного участника назначившего нет и в оригинале, ветка `!promotedBy`
- * срабатывает как есть. `myId` поэтому не читается — сравнивать не с чем.
+ * его ещё только назначают) или которого назначил я. Назначивший —
+ * `promoted_by` админа, у прочих — `inviter_id` (так оригинал читает и
+ * `chatParticipant`; у нас поле есть у `channelParticipantSelf`).
  */
-export function canEditAdmin(chat: Chat | undefined, participant: ChannelParticipant | undefined) {
+export function canEditAdmin(chat: Chat | undefined, participant: ChannelParticipant | undefined, myId: PeerId) {
   if(!chat || chat._ === 'chatEmpty' || chat._ === 'chatForbidden' || chat._ === 'channelForbidden') {
     return false
   }
 
+  const isCreator = isParticipantCreator(participant)
+  const promotedBy = (participant && 'promoted_by' in participant ? participant.promoted_by : undefined) ||
+    (participant && 'inviter_id' in participant ? participant.inviter_id : undefined)
   return !!chat.pFlags?.creator ||
-    (!isParticipantCreator(participant) && !isParticipantAdmin(participant))
+    (!isCreator && (!promotedBy || promotedBy === myId))
 }

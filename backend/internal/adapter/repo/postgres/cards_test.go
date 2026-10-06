@@ -41,9 +41,9 @@ func TestGroupRepo_Cards(t *testing.T) {
 	}
 	for k, w := range want {
 		c := cards[k]
-		if c.ID != w.id || c.Hidden != w.hidden || c.LinkedChatID != w.linked {
+		if c.ID != w.id || c.Hidden != w.hidden || c.ToChannelFull().LinkedChatID != w.linked {
 			t.Errorf("#%d: id=%d hidden=%v linked=%d, want id=%d hidden=%v linked=%d",
-				k, c.ID, c.Hidden, c.LinkedChatID, w.id, w.hidden, w.linked)
+				k, c.ID, c.Hidden, c.ToChannelFull().LinkedChatID, w.id, w.hidden, w.linked)
 		}
 	}
 	// Публичная группа, где зритель не состоит: полная форма с left и
@@ -58,7 +58,7 @@ func TestGroupRepo_Cards(t *testing.T) {
 	}
 	// Одиночная Card — тот же сборщик.
 	one, err := g.Card(ctx, disc, viewer)
-	if err != nil || one.LinkedChatID != ch || one.Hidden {
+	if err != nil || one.ToChannelFull().LinkedChatID != ch || one.Hidden {
 		t.Fatalf("Card(обсуждение) = %+v %v", one, err)
 	}
 }

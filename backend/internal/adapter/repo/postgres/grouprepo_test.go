@@ -129,8 +129,8 @@ func TestGroupRepo_CreateAndMembership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cc.LinkedChatID != 0 {
-		t.Fatalf("default channel LinkedChatID = %d, want 0", cc.LinkedChatID)
+	if cc.DiscussionChatID != 0 {
+		t.Fatalf("default channel DiscussionChatID = %d, want 0", cc.DiscussionChatID)
 	}
 
 	grpID, err := r.CreateMultiMember(ctx, "group", "Discussion Group", "", "", false, u1)
@@ -144,8 +144,8 @@ func TestGroupRepo_CreateAndMembership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cc2.LinkedChatID != grpID {
-		t.Fatalf("linked channel LinkedChatID = %d, want %d", cc2.LinkedChatID, grpID)
+	if cc2.DiscussionChatID != grpID {
+		t.Fatalf("linked channel LinkedChatID = %d, want %d", cc2.DiscussionChatID, grpID)
 	}
 }
 
@@ -197,8 +197,11 @@ func TestGroupRepo_Restrictions(t *testing.T) {
 		t.Fatalf("upsert: %+v", got2)
 	}
 
-	list, err := r.ListRestrictions(ctx, chatID)
-	if err != nil || len(list) != 1 || list[0].UserID != target {
+	if err := r.AddMember(ctx, chatID, target, domain.RoleMember, 0); err != nil {
+		t.Fatal(err)
+	}
+	list, total, err := r.ListParticipants(ctx, chatID, admin, domain.ParticipantsFilter{Kind: domain.ParticipantsBanned}, 0, 50)
+	if err != nil || total != 1 || len(list) != 1 || list[0].UserID != target || list[0].Restriction == nil {
 		t.Fatalf("list: %v %+v", err, list)
 	}
 
@@ -210,10 +213,10 @@ func TestGroupRepo_Restrictions(t *testing.T) {
 	}
 }
 
-// ListMembers с query — `channelParticipantsSearch` поиска по чату (выбор
+// ListParticipants с q — `channelParticipantsSearch` поиска по чату (выбор
 // отправителя, tweb `topbarSearch.tsx:184-190`): префикс имени профиля или
 // @username, без учёта регистра; пустой query — все участники.
-func TestGroupRepo_ListMembersQuery(t *testing.T) {
+func TestGroupRepo_ListParticipantsSearch(t *testing.T) {
 	pool := storepostgres.NewTestDB(t)
 	ctx := context.Background()
 	alice := seedUser(t, pool, "+7101")
@@ -238,7 +241,7 @@ func TestGroupRepo_ListMembersQuery(t *testing.T) {
 
 	ids := func(query string) []int64 {
 		t.Helper()
-		ms, err := r.ListMembers(ctx, chatID, query, 0, 50)
+		ms, _, err := r.ListParticipants(ctx, chatID, 0, domain.ParticipantsFilter{Kind: domain.ParticipantsSearch, Q: query}, 0, 50)
 		if err != nil {
 			t.Fatal(err)
 		}

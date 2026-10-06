@@ -150,3 +150,53 @@ describe('callEngine: лог звонка — забота сервера', () =
     expect(sendText).not.toHaveBeenCalled()
   })
 })
+
+// Кадр звонка — только по его call_id и только от собеседника (аудит A5-32):
+// иначе посторонний кадром call_end без call_id обрывал чужой разговор.
+// Второе устройство вызываемого гасится сервером (call_end answered_elsewhere)
+// и не рвёт идущий разговор запоздалым отказом (A2-09).
+describe('callEngine: кадры чужого звонка не действуют', () => {
+  async function activeOutgoing() {
+    engine.startOutgoing(PEER, false)
+    await vi.advanceTimersByTimeAsync(0)
+    const callId = callStore.useCallStore.getState().call!.callId
+    engine.handleFrame({ t: 'call_accept', d: { call_id: callId, from_user_id: PEER.id } })
+    await vi.advanceTimersByTimeAsync(0)
+    FakePC.last!.setState('connected')
+    return callId
+  }
+
+  it('call_end без call_id не обрывает разговор', async () => {
+    await activeOutgoing()
+    engine.handleFrame({ t: 'call_end', d: { from_user_id: PEER.id } })
+    expect(callStore.useCallStore.getState().call!.phase).toBe('active')
+  })
+
+  it('call_end от не-собеседника не обрывает разговор', async () => {
+    const callId = await activeOutgoing()
+    engine.handleFrame({ t: 'call_end', d: { call_id: callId, from_user_id: 99 } })
+    expect(callStore.useCallStore.getState().call!.phase).toBe('active')
+  })
+
+  it('запоздалый call_decline (второе устройство) не рвёт разговор', async () => {
+    const callId = await activeOutgoing()
+    engine.handleFrame({ t: 'call_decline', d: { call_id: callId, from_user_id: PEER.id, reason: 'missed' } })
+    expect(callStore.useCallStore.getState().call!.phase).toBe('active')
+  })
+
+  it('answered_elsewhere гасит звонящий экран молча, без кадров', async () => {
+    engine.handleFrame({ t: 'call_request', d: { call_id: 'c1', from_user_id: 1, video: false } })
+    engine.handleFrame({ t: 'call_end', d: { call_id: 'c1', from_user_id: 5, reason: 'answered_elsewhere' } })
+    expect(callStore.useCallStore.getState().call).toBeNull()
+    await vi.advanceTimersByTimeAsync(45_000)
+    expect(sendCallFrame).not.toHaveBeenCalled()
+  })
+
+  it('answered_elsewhere не трогает устройство, которое ответило', async () => {
+    engine.handleFrame({ t: 'call_request', d: { call_id: 'c1', from_user_id: 1, video: false } })
+    engine.accept()
+    await vi.advanceTimersByTimeAsync(0)
+    engine.handleFrame({ t: 'call_end', d: { call_id: 'c1', from_user_id: 5, reason: 'answered_elsewhere' } })
+    expect(callStore.useCallStore.getState().call?.phase).toBe('connecting')
+  })
+})

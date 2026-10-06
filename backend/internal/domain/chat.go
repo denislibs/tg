@@ -130,11 +130,12 @@ type DialogRecord struct {
 	MyRights          Rights
 	Signatures        bool
 	SignatureProfiles bool
-	// LinkedChatID — связанный чат (см. ChatRecord.LinkedChatID).
-	LinkedChatID int64
+	DiscussionChatID  int64
 	// Settings — только то, что едет в краткую форму: DefaultPerms,
 	// SlowmodeSeconds, ChargeStars.
 	Settings ChatSettings
+	// MyRestriction — действующее личное ограничение зрителя (см. ChatRecord).
+	MyRestriction *MemberRestriction
 }
 
 // ToDialog — конструктор `dialog` из строки витрины. Пир и seq последнего
@@ -176,7 +177,7 @@ func (d DialogRecord) ToChannel() Channel {
 		SignatureProfiles: d.SignatureProfiles,
 		SlowmodeEnabled:   d.Settings.SlowmodeSeconds > 0,
 		Forum:             d.IsForum,
-		HasLink:           d.LinkedChatID != 0,
+		HasLink:           d.DiscussionChatID != 0,
 	})
 	out.Username = d.Username
 	out.ParticipantsCount = d.MemberCount
@@ -187,6 +188,7 @@ func (d DialogRecord) ToChannel() Channel {
 	if d.Type != ChatTypeChannel {
 		db := NewChatBannedRights(d.Settings.DefaultPerms, time.Time{})
 		out.DefaultBanned = &db
+		out.BannedRights = EffectiveBannedRights(d.MyRestriction, d.Settings.DefaultPerms, time.Now())
 	}
 	return out
 }
@@ -265,10 +267,17 @@ type Member struct {
 	Role           string
 	Rights         Rights
 	// PromotedBy — кто назначил админа (channelParticipantAdmin.promoted_by);
-	// 0 — не админ или назначивший неизвестен (админы до миграции 0137).
-	// Править чужого админа может только владелец или назначивший
-	// (tweb canEditAdmin).
+	// 0 — не админ. Админам до миграции 0139 миграция 0150 вписала владельца:
+	// править их, как и прежде, может только он (tweb canEditAdmin).
 	PromotedBy int64
+	// Rank — подпись админа/владельца (channelParticipantAdmin.rank, Б-117).
+	Rank string
+	// InviterID — кто привёл: добавивший или создатель ссылки; 0 — вошёл сам.
+	InviterID int64
+	// ViaRequest — вошёл одобренной заявкой (channelParticipantSelf.via_request).
+	ViaRequest bool
+	// JoinedAt — дата вступления (обязательный date участника).
+	JoinedAt time.Time
 }
 
 // ChatRecord — СТРОКА таблицы chats глазами зрителя, а не объект провода.
@@ -318,14 +327,9 @@ type ChatRecord struct {
 	// были бы прямой ложью. Параметр channelFull.notify_settings по схеме
 	// ОБЯЗАТЕЛЬНЫЙ — поэтому это указатель, а не пустой конструктор: пустой
 	// означал бы «переопределения нет», то есть конкретный ответ.
-	NotifySettings *PeerNotifySettings
-	// LinkedChatID — СВЯЗАННЫЙ чат в обе стороны, как channelFull.linked_chat_id
-	// схемы: у канала — его группа обсуждения (chats.discussion_chat_id), у
-	// группы обсуждения — канал, которому она привязана (обратный поиск).
-	// Прежде поле знало только сторону канала, и у группы не было ни
-	// «Привязанного канала», ни pFlags.has_link (tweb editChat.tsx:211-213).
-	LinkedChatID int64
-	IsForum      bool
+	NotifySettings   *PeerNotifySettings
+	DiscussionChatID int64
+	IsForum          bool
 	// Hidden — чат зрителю НЕ читается (не участник, не публичный, не группа
 	// обсуждения читаемого канала либо забанен): наружу уходит честный `min`
 	// без членства и прав. Ссылка на такой чат приезжает из чужого контента
@@ -355,6 +359,18 @@ type ChatRecord struct {
 	// Group-wide settings (edit screens): default member permissions, slowmode,
 	// reaction policy, history visibility for new members.
 	Settings ChatSettings
+	// MyRestriction — действующее личное ограничение ЗРИТЕЛЯ (chat_restrictions);
+	// nil — его нет или зрителя не спрашивали. Наружу — channel.banned_rights
+	// (EffectiveBannedRights).
+	MyRestriction *MemberRestriction
+	// Counters — счётчики участников, которые зрителю положено видеть
+	// (channelFull admins_count/kicked_count/…); nil — не спрашивали (снимок
+	// chat_update без зрителя или зритель не участник).
+	Counters *ParticipantCounters
+	// LinkedChannelID — у группы обсуждения: канал, к которому она привязана
+	// (обратный discussion_chat_id). Наружу — channelFull.linked_chat_id группы
+	// (Б-119, tweb chatDiscussion: «Привязанный канал»).
+	LinkedChannelID int64
 }
 
 // ChatPhoto — объединение ChatPhoto для строки: «фото нет» это состояние.
@@ -434,7 +450,9 @@ func (c ChatRecord) ToChannel() Channel {
 		SignatureProfiles: c.SignatureProfiles,
 		SlowmodeEnabled:   c.Settings.SlowmodeSeconds > 0,
 		Forum:             c.IsForum,
-		HasLink:           c.LinkedChatID != 0,
+		// has_link — у канала есть группа обсуждения ЛИБО группа сама служит
+		// обсуждением канала (Б-119).
+		HasLink: c.DiscussionChatID != 0 || c.LinkedChannelID != 0,
 	})
 	out.Username = c.Username
 	out.ParticipantsCount = c.MemberCount
@@ -454,6 +472,12 @@ func (c ChatRecord) ToChannel() Channel {
 	if c.Type != ChatTypeChannel {
 		db := NewChatBannedRights(c.Settings.DefaultPerms, time.Time{})
 		out.DefaultBanned = &db
+		// Личное ограничение зрителя (A1-06/A4-06): прежде поле не писал никто,
+		// и ограниченный видел активные скрепку и поле ввода, а сервер молча
+		// отвечал forbidden. Снимок без зрителя его не несёт — ограничение чужое.
+		if c.ViewerID != 0 && c.MyRole != "" {
+			out.BannedRights = EffectiveBannedRights(c.MyRestriction, c.Settings.DefaultPerms, time.Now())
+		}
 	}
 	return out
 }
@@ -473,7 +497,7 @@ func (c ChatRecord) toMinChannel() Channel {
 		SignatureProfiles: c.SignatureProfiles,
 		SlowmodeEnabled:   c.Settings.SlowmodeSeconds > 0,
 		Forum:             c.IsForum,
-		HasLink:           c.LinkedChatID != 0,
+		HasLink:           c.DiscussionChatID != 0 || c.LinkedChannelID != 0,
 	})
 	out.Username = c.Username
 	return out
@@ -509,7 +533,7 @@ func (c ChatRecord) ToChannelFull() ChannelFull {
 	out.UnreadCount = c.UnreadCount
 	out.ParticipantsCount = c.MemberCount
 	out.PinnedMsgID = int(c.PinnedMsgID)
-	out.LinkedChatID = c.LinkedChatID
+	out.LinkedChatID = c.DiscussionChatID
 	out.SlowmodeSeconds = c.Settings.SlowmodeSeconds
 	out.TTLPeriod = c.Settings.AutoDeletePeriod
 	out.AvailableReactions = c.Settings.ToChatReactions()
@@ -522,6 +546,21 @@ func (c ChatRecord) ToChannelFull() ChannelFull {
 	setPFlag(&out.PFlags, "can_view_stats", c.ViewerID != 0 &&
 		(c.Type == ChatTypeChannel || c.Type == ChatTypeGroup) &&
 		(c.MyRole == RoleCreator || c.MyRole == RoleAdmin))
+	if c.DiscussionChatID == 0 && c.LinkedChannelID != 0 {
+		out.LinkedChatID = c.LinkedChannelID
+	}
+	// Счётчики участников — зритель-зависимые (Б-115): что положено, решил
+	// usecase; снимок без зрителя их не несёт, как notify_settings.
+	if k := c.Counters; c.ViewerID != 0 && k != nil {
+		setPFlag(&out.PFlags, "can_view_participants", k.CanViewParticipants)
+		out.AdminsCount = k.Admins
+		out.KickedCount = k.Kicked
+		out.BannedCount = k.Banned
+		if k.RequestsPending != nil && *k.RequestsPending > 0 {
+			out.RequestsPending = k.RequestsPending
+			out.RecentRequesters = nonNilIDs(k.RecentRequesters)
+		}
+	}
 	return out
 }
 
@@ -593,6 +632,8 @@ type MemberRestriction struct {
 	DeniedRights MemberPerms
 	UntilDate    *time.Time
 	RestrictedBy int64
+	// CreatedAt — когда наложено (date строки channelParticipantBanned).
+	CreatedAt time.Time
 }
 
 // Active reports whether the restriction is currently in effect at time now

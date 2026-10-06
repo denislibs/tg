@@ -8,7 +8,7 @@ import "testing"
 // всё» поверх лежащей карточки блокировал ввод.
 func TestChatRecordToChannel_HiddenIsHonestMin(t *testing.T) {
 	c := ChatRecord{ID: 5, Type: ChatTypeGroup, Title: "Чужая", Username: "x", ViewerID: 8, Hidden: true,
-		MemberCount: 10, LinkedChatID: 4, Settings: ChatSettings{DefaultPerms: 0}}
+		MemberCount: 10, DiscussionChatID: 4, Settings: ChatSettings{DefaultPerms: 0}}
 	ch := c.ToChannel()
 	if !ch.PFlags["min"] || !ch.PFlags["megagroup"] {
 		t.Fatalf("pFlags = %v, want min+megagroup", ch.PFlags)

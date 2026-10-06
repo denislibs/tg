@@ -41,9 +41,12 @@
  *     не производит (как у `editChat.solid.tsx`, расхождение 2).
  *  7. `chat_full_update` (`:272-280`) — кадр `rt:chat_update` с полной формой
  *     (`messages.chatFull`); после привязки и отвязки его шлёт сервер
- *     (`usecase/chat/discussion.go`). `linked_chat_id` у группы обсуждения сервер
- *     не заполняет (Б-119) — сторона группы («Привязанный канал») до него
- *     недостижима: строку редактора показывает `linkedChatId` группы.
+ *     (`usecase/chat/discussion.go`). У группы обсуждения `linked_chat_id` — id
+ *     канала, а карточка канала едет вторым элементом `chats` той же ручки
+ *     (`groups.card` кладёт её в зеркало) — сторона группы («Привязанный канал»)
+ *     открывается строкой редактора по `linkedChatId` группы; отвязка с неё —
+ *     той же ручкой канала (`DELETE /channels/{id}/discussion`, разрешена и
+ *     админу группы с `change_info`).
  *  8. Анимация — фолбэк PNG без WASM (`renderStaticAssetFallback`), как у
  *     вкладки ссылок (`chatInviteLinks.solid.tsx`, расхождение 9).
  *  9. Отказ в подтверждении (`await confirmationPopup`, `:71`, `:181`) у
@@ -92,7 +95,7 @@ const ChatDiscussion: Component = () => {
   let canChangeInfo = false
 
   let stickerContainer!: HTMLDivElement
-  let btnUnlink!: HTMLButtonElement
+  let btnUnlink!: HTMLElement
 
   const [captionEl, setCaptionEl] = createSignal<HTMLElement>()
   const [chatlistElement, setChatlistElement] = createSignal<HTMLElement>()
@@ -357,7 +360,7 @@ const ChatDiscussion: Component = () => {
 
   return (
     <>
-      <div ref={stickerContainer} class="sticker-container" />
+      <div ref={(el) => stickerContainer = el} class="sticker-container" />
       <div class="caption">{captionEl()}</div>
       <Section caption={sectionCaption()}>
         <Show keyed when={chatlistElement()}>{(element) => element}</Show>
@@ -372,7 +375,7 @@ const ChatDiscussion: Component = () => {
       </Section>
       <Section classList={{ hide: unlinkHidden() }}>
         <Button
-          ref={btnUnlink}
+          ref={(el) => btnUnlink = el}
           class="btn-primary btn-transparent danger"
           icon="delete"
           text={unlinkText()}

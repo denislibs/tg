@@ -460,8 +460,10 @@ export interface ChatFullReal {
 export interface ChannelFull {
   _: 'channelFull'
   /** `can_view_stats` — зритель-админ видит статистику (`flags.12?true`);
-   *  `stats_dc` не производится (дата-центр один, `domain/mtchat.go`). */
-  pFlags?: Partial<{ hidden_prehistory: true, can_view_stats: true }>
+   *  `stats_dc` не производится (дата-центр один, `domain/mtchat.go`).
+   *  `can_view_participants` (`flags.3?true`) — зрителю отдаётся список
+   *  участников. */
+  pFlags?: Partial<{ hidden_prehistory: true, can_view_stats: true, can_view_participants: true }>
   id: number
   about: string
   read_inbox_max_id: number
@@ -469,12 +471,18 @@ export interface ChannelFull {
   unread_count: number
   chat_photo: MyPhoto | null
   participants_count?: number
-  /** `admins_count:flags.1?int`, `kicked_count:flags.2?int`,
-   *  `requests_pending:flags2.17?int` — сервер их пока не производит (Б-115):
-   *  счётчики строк редактора чата и строка «Заявки» (`editChat.solid.tsx`). */
+  /** Пер-зрительские поля — только в ответе карточки (`GET /chats/{peer}/card`),
+   *  в общем снимке `chat_update` их нет:
+   *  `admins_count:flags.1?int`; `kicked_count:flags.2?int`/`banned_count:flags.2?int`
+   *  — зрителю с `ban_users`; `requests_pending:flags.28?int` и
+   *  `recent_requesters:flags.28?Vector<long>` — зрителю с `invite_users`, когда
+   *  заявки есть (строки редактора чата, плашка заявок в шапке).
+   *  `exported_invite:flags.23?ExportedChatInvite` сервер не производит (Б-102). */
   admins_count?: number
   kicked_count?: number
+  banned_count?: number
   requests_pending?: number
+  recent_requesters?: number[]
   pinned_msg_id?: number
   /** чат обсуждения канала; отсутствует — обсуждения нет */
   linked_chat_id?: number

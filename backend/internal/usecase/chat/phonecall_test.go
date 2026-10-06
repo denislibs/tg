@@ -41,14 +41,15 @@ func (f *fakePhoneCalls) Get(_ context.Context, id string) (domain.PhoneCall, er
 	return c, nil
 }
 
-func (f *fakePhoneCalls) Accept(_ context.Context, id string, at time.Time) error {
+func (f *fakePhoneCalls) Accept(_ context.Context, id string, at time.Time) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if c, ok := f.calls[id]; ok && c.AcceptedAt.IsZero() {
 		c.AcceptedAt = at
 		f.calls[id] = c
+		return true, nil
 	}
-	return nil
+	return false, nil
 }
 
 func (f *fakePhoneCalls) Finish(_ context.Context, id string) (domain.PhoneCall, error) {
@@ -177,9 +178,11 @@ func TestPhoneCall_AnsweredHangup_OneLogForBoth(t *testing.T) {
 			t.Fatalf("журнал звонков %d: %+v err=%v", uid, log, err)
 		}
 	}
-	// Кадры сигналинга по-прежнему доходят собеседнику.
-	if framesOfType(pub, calleeID, "call_end") != 1 || framesOfType(pub, callerID, "call_end") != 1 {
-		t.Fatal("call_end не переадресован")
+	// call_end доходит собеседнику; второй call_end — уже вне звонка (его
+	// кончила первая сторона), реле его не несёт (Telegram CALL_ALREADY_DECLINED).
+	if framesOfType(pub, calleeID, "call_end") != 1 || framesOfType(pub, callerID, "call_end") != 0 {
+		t.Fatalf("call_end: адресату %d (want 1), звонящему %d (want 0)",
+			framesOfType(pub, calleeID, "call_end"), framesOfType(pub, callerID, "call_end"))
 	}
 }
 
@@ -205,7 +208,6 @@ func TestPhoneCall_Outcomes(t *testing.T) {
 		{"адресат занят", []step{req, {"call_decline", calleeID, callerID, `{"call_id":"x","reason":"busy"}`}}, 0, domain.PhoneCallDiscardReasonBusyTag, nil},
 		{"у адресата истёк звонок", []step{req, {"call_decline", calleeID, callerID, `{"call_id":"x","reason":"missed"}`}}, 0, domain.PhoneCallDiscardReasonMissedTag, nil},
 		{"обрыв связи после ответа", []step{req, acc, {"call_end", calleeID, callerID, `{"call_id":"x","reason":"disconnect"}`}}, 7 * time.Second, domain.PhoneCallDiscardReasonDisconnectTag, ptr(7)},
-		{"отказ после ответа (второй девайс)", []step{req, acc, {"call_decline", calleeID, callerID, `{"call_id":"x","reason":"missed"}`}}, 3 * time.Second, domain.PhoneCallDiscardReasonHangupTag, ptr(3)},
 		{"ответили и сразу положили", []step{req, acc, {"call_end", callerID, calleeID, `{"call_id":"x"}`}}, 0, domain.PhoneCallDiscardReasonHangupTag, ptr(0)},
 	}
 	for _, tc := range cases {

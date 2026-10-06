@@ -2292,7 +2292,11 @@ export default class ChatInput {
 
     for(const fromPeerId in forwarding) {
       const mids = forwarding[+fromPeerId as PeerId]
-      void this.managers.messages.forwardMessages(this.chat.peerId, +fromPeerId, mids, forwardParams).catch(() => {})
+      // Отказ сервера (права, приватность, медленный режим, плата) — тостом:
+      // пересылка, которой нет, не должна выглядеть ушедшей.
+      void this.managers.messages.forwardMessages(this.chat.peerId, +fromPeerId, mids, {
+        ...forwardParams, silent: sendingParams.silent, threadId: sendingParams.threadId,
+      }).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
     }
 
     return { value, messageCount }
@@ -2341,7 +2345,9 @@ export default class ChatInput {
     const message = this.editMessage!
     if(trimmedValue || (message._ === 'message' && message.media)) {
       const [text, parsedEntities] = parseMarkdown(value, entities)
+      // Отказ правки (срок, права) — тостом, а не молчанием.
       void this.managers.messages.editMessage(chat.peerId, editMsgId, text, parsedEntities.length ? parsedEntities : undefined)
+        .catch(() => toastNew({ langPackKey: 'Error.AnError' }))
 
       this.onMessageSent()
     }
@@ -2846,6 +2852,7 @@ export default class ChatInput {
         const result = this.mentionsHelper.checkQuery(
           query,
           isUser(this.chat.peerId) ? undefined : this.chat.peerId,
+          this.chat.threadId,
         )
         if(result) {
           foundHelpers.add(this.mentionsHelper)

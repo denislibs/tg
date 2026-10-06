@@ -106,21 +106,49 @@ func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message)
 	channelID := post.ChatID
 	postID := post.ID
 	date := post.CreatedAt
-	mirror, err := i.msgs.Insert(ctx, domain.Message{
-		ChatID: disc, Seq: seq, SenderID: post.SenderID,
-		Type: post.Type, Text: post.Text, Entities: post.Entities,
-		MediaID: post.MediaID, GroupedID: post.GroupedID, PollID: post.PollID,
-		// Зеркало — та же публикация: спойлер поста обязан доехать до группы
-		// обсуждения, иначе зеркало раскрывает скрытое медиа.
-		MediaSpoiler: post.MediaSpoiler,
-		// автор бабла в UI — канал, как в Telegram
-		SendAsChatID: &channelID,
-		// отсюда кнопка «перейти к оригиналу»
-		FwdFromChatID: &channelID, FwdFromMsgID: &postID, FwdDate: &date,
-		IsDiscussionMirror: true,
-	})
+	// Зеркало — та же публикация (у оригинала автопересылка поста с тем же
+	// media): содержимое — общим копировщиком, иначе гео, контакт, чек-лист,
+	// розыгрыш, превью, клавиатура и спойлер терялись. grouped_id остаётся
+	// ключом альбома поста: «один тред на альбом» ищет зеркало по нему.
+	m := copyContent(post)
+	m.ChatID, m.Seq, m.SenderID = disc, seq, post.SenderID
+	m.Effect = post.Effect
+	// автор бабла в UI — канал, как в Telegram
+	m.SendAsChatID = &channelID
+	// отсюда кнопка «перейти к оригиналу»
+	m.FwdFromChatID, m.FwdFromMsgID, m.FwdDate = &channelID, &postID, &date
+	m.IsDiscussionMirror = true
+	if m.ChecklistID, err = i.snapshotChecklist(ctx, m.ChecklistID, disc); err != nil {
+		return nil, err
+	}
+	// Клавиатура поста зеркалу не нужна: кнопки — у поста в канале.
+	m.ReplyMarkup = nil
+	mirror, err := i.insertCopy(ctx, m)
 	if err != nil {
 		return nil, err
+	}
+	// Платное медиа поста: зеркало продаётся тем же предложением (цена и
+	// продавец — поста). Без этого группа обсуждения получала медиа даром.
+	if i.paidMedia != nil && mirror.MediaID != nil {
+		offers, err := i.paidMedia.Offers(ctx, []int64{post.ID})
+		if err != nil {
+			return nil, err
+		}
+		if o, ok := offers[post.ID]; ok {
+			if err := i.paidMedia.SetPrice(ctx, mirror.ID, o.Price, o.OfferID); err != nil {
+				return nil, err
+			}
+		}
+	}
+	// Кадр и журнал несут зеркало той же формой, что история (медиа-мета,
+	// опрос, чек-лист, розыгрыш, платное медиа), — иначе бабл приезжал пустым
+	// до перезагрузки.
+	if mirror, err = i.hydrateBroadcastMessage(ctx, mirror); err != nil {
+		return nil, err
+	}
+	var outLocked map[string]any
+	if mirror.PaidMediaPrice != nil {
+		outLocked = i.messageUpdatePayload(ctx, lockedPaidCopy(mirror))
 	}
 
 	// Доставка зеркала переиспользует обычный путь группового сообщения — тот
@@ -137,7 +165,7 @@ func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message)
 		return nil, err
 	}
 	recipients, ptsByUser, mentions, err := i.fanOutNewMessage(
-		ctx, disc, post.SenderID, mirror.ID, mirror.Seq, i.messageUpdatePayload(ctx, mirror), nil, mentioned)
+		ctx, disc, post.SenderID, mirror.ID, mirror.Seq, i.messageUpdatePayload(ctx, mirror), outLocked, mentioned)
 	if err != nil {
 		return nil, err
 	}

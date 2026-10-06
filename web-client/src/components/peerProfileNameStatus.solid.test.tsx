@@ -54,6 +54,15 @@ vi.mock('../core/presence', async (importOriginal) => ({
   getUserStatusString: (u: unknown, s: unknown) => getUserStatusStringSpy(u, s),
 }))
 
+// Подпись группы/канала — `appImManager.setPeerStatus` (tweb :376-410): статус
+// чата считает блок L (`lib/appImManager.ts`), здесь — только проводка вызова.
+const setPeerStatus = vi.fn(async(options: { peerId: number, element: HTMLElement, needClear: boolean }) => {
+  return () => { options.element.textContent = 'STATUS:' + options.peerId + (options.needClear ? ':clear' : '') }
+})
+vi.mock('@lib/appImManager', () => ({ default: { setPeerStatus: (o: never) => setPeerStatus(o) } }))
+const managers = { groups: {} }
+vi.mock('../client/bootstrap', () => ({ startClient: () => ({ managers }) }))
+
 const { default: PeerProfile } = await import('./peerProfile.solid')
 
 let dispose: (() => void) | undefined
@@ -237,19 +246,36 @@ describe('Name: бейджи (verified/premium/emoji-status)', () => {
   })
 })
 
-describe('Subtitle: группа/канал — счётчик участников вместо presence', () => {
-  it('канал (broadcast): "N подписчиков" из participants_count', () => {
-    peerSignal[1]({ _: 'channel', id: 7, pFlags: { broadcast: true }, participants_count: 42 })
+describe('Subtitle: группа/канал — `appImManager.setPeerStatus` («N участников, M онлайн»)', () => {
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+  it('первый вызов — с очисткой, статус ложится в span подписи', async() => {
+    setPeerStatus.mockClear()
+    peerSignal[1]({ _: 'channel', id: 7, pFlags: { megagroup: true }, participants_count: 42 })
     const info = document.createElement('div')
-    mount({ peerId: -7, scrollable: el(), setCollapsedOn: el(), avatarsInfo: info })
-    expect(info.querySelector('.profile-subtitle-text')!.textContent).toContain('42 подписчиков')
+    mount({ peerId: -7, isDialog: true, scrollable: el(), setCollapsedOn: el(), avatarsInfo: info })
+    await flush()
+    expect(setPeerStatus).toHaveBeenCalledTimes(1)
+    expect(setPeerStatus.mock.calls[0][0]).toMatchObject({ peerId: -7, needClear: true, ignoreSelf: false, managers })
+    expect(info.querySelector('.profile-subtitle-text')!.textContent).toBe('STATUS:-7:clear')
   })
 
-  it('обычная группа (chat): "N участник(а/ов)" из participants_count', () => {
-    peerSignal[1]({ _: 'chat', id: 7, participants_count: 3 })
+  it('набор в чате (`peer_typings`) и таймер 60 с перезапрашивают статус без очистки', async() => {
+    vi.useFakeTimers()
+    setPeerStatus.mockClear()
+    peerSignal[1]({ _: 'channel', id: 7, pFlags: { megagroup: true }, participants_count: 42 })
     const info = document.createElement('div')
     mount({ peerId: -7, scrollable: el(), setCollapsedOn: el(), avatarsInfo: info })
-    expect(info.querySelector('.profile-subtitle-text')!.textContent).toContain('3 участника')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(setPeerStatus).toHaveBeenCalledTimes(1)
+
+    setStoreState({ typing: { [-7]: { 5: { action: { _: 'sendMessageTypingAction' }, at: Date.now() } } } })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(setPeerStatus).toHaveBeenCalledTimes(2)
+    expect(setPeerStatus.mock.calls[1][0].needClear).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(setPeerStatus).toHaveBeenCalledTimes(3)
   })
 })
 

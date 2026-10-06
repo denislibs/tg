@@ -45,6 +45,22 @@ func (i *Interactor) ScheduleMessage(ctx context.Context, in SendInput, sendAt t
 		if typ != domain.ChatTypePrivate {
 			return domain.ScheduledMessage{}, domain.ErrForbidden
 		}
+		// Момент доставки раскрывает момент входа собеседника, поэтому режим
+		// доступен, только если его «был(а) в сети» отправителю видно (tweb
+		// canSendWhenOnline → isUserOnlineVisible).
+		if i.privacy != nil {
+			peer := i.privatePeer(ctx, in.ChatID, in.SenderID)
+			if peer == 0 {
+				return domain.ScheduledMessage{}, domain.ErrForbidden
+			}
+			visible, e := i.privacy.Check(ctx, peer, in.SenderID, domain.PrivacyLastSeen)
+			if e != nil {
+				return domain.ScheduledMessage{}, e
+			}
+			if !visible {
+				return domain.ScheduledMessage{}, domain.ErrForbidden
+			}
+		}
 		sendAt = time.Now() // заглушка: при when_online поле не используется
 	} else if !sendAt.After(time.Now()) {
 		return domain.ScheduledMessage{}, domain.ErrTooLong

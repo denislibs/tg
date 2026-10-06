@@ -149,9 +149,19 @@ type GroupRepo interface {
 	// KnownUserIDs — кто из ids известен зрителю (сам, @имя, контакт, общий
 	// чат, участник публичного чата, автор/источник пересылки в его чатах).
 	KnownUserIDs(ctx context.Context, viewerID int64, ids []int64) (map[int64]bool, error)
-	// ListMembers — страница участников; query — фильтр `channelParticipantsSearch`
-	// (префикс имени профиля или @username), пустой — все.
-	ListMembers(ctx context.Context, chatID int64, query string, offset, limit int) ([]domain.Member, error)
+	// ListParticipants — страница участников по фильтру channels.getParticipants
+	// (recent/admins/kicked/banned/bots/search/contacts/mentions) и ВСЕГО по
+	// фильтру. viewerID — для фильтра контактов.
+	ListParticipants(ctx context.Context, chatID, viewerID int64, f domain.ParticipantsFilter, offset, limit int) ([]domain.Participant, int, error)
+	// GetParticipant — участник (с его ограничением) или удалённый;
+	// domain.ErrNotFound — ни то ни другое.
+	GetParticipant(ctx context.Context, chatID, userID int64) (domain.Participant, error)
+	// ParticipantCounters — admins/kicked/banned для channelFull.
+	ParticipantCounters(ctx context.Context, chatID int64) (admins, kicked, banned int, err error)
+	// SetJoinInfo — кто привёл (0 — сам) и вошёл ли заявкой; после вступления.
+	SetJoinInfo(ctx context.Context, chatID, userID, inviterID int64, viaRequest bool) error
+	// SetRank — подпись админа (channels.editAdmin rank).
+	SetRank(ctx context.Context, chatID, userID int64, rank string) error
 	// AdminIDs — id владельца и админов чата (role in creator/admin), для адресной
 	// рассылки (напр. новые предложенные посты уходят только тем, кто их решает).
 	AdminIDs(ctx context.Context, chatID int64) ([]int64, error)
@@ -192,13 +202,11 @@ type GroupRepo interface {
 	Ban(ctx context.Context, chatID, userID, bannedBy int64) error
 	Unban(ctx context.Context, chatID, userID int64) error
 	IsBanned(ctx context.Context, chatID, userID int64) (bool, error)
-	ListBans(ctx context.Context, chatID int64) ([]domain.BannedUser, error)
 	// Per-user granular restrictions (Telegram editBanned / ChatBannedRights).
 	// GetRestriction returns the raw row (bool=exists); expiry is decided by the
 	// caller via domain.MemberRestriction.Active.
 	SetRestriction(ctx context.Context, res domain.MemberRestriction) error
 	GetRestriction(ctx context.Context, chatID, userID int64) (domain.MemberRestriction, bool, error)
-	ListRestrictions(ctx context.Context, chatID int64) ([]domain.MemberRestriction, error)
 	DeleteRestriction(ctx context.Context, chatID, userID int64) error
 	DeleteChat(ctx context.Context, chatID int64) error // каскадом members/messages
 }
@@ -230,7 +238,11 @@ type InviteRepo interface {
 
 type JoinRequestRepo interface {
 	Create(ctx context.Context, chatID, userID int64, inviteToken string) error // idempotent (ON CONFLICT DO NOTHING)
-	List(ctx context.Context, chatID int64) ([]domain.JoinRequest, error)
+	// List — страница заявок: свежие сверху, курсор (offsetDate, offsetUser),
+	// q — префикс имени; total — всего по q.
+	List(ctx context.Context, chatID int64, q string, offsetDate time.Time, offsetUser int64, limit int) ([]domain.JoinRequest, int, error)
+	// Pending — число заявок и до трёх свежих заявителей.
+	Pending(ctx context.Context, chatID int64) (int, []int64, error)
 	Delete(ctx context.Context, chatID, userID int64) error
 	// TokenFor returns the invite token a pending request came through ("" if the
 	// request has no associated token); ok=false — заявки нет.
@@ -310,8 +322,10 @@ type MessageRepo interface {
 	// видимости, что у истории). Невидимые и несуществующие в карту не попадают.
 	VisibleIDs(ctx context.Context, viewerID int64, ids []int64) (map[int64]bool, error)
 	// LastMessageAt is the newest non-deleted message time by senderID in the chat
-	// (slowmode); domain.ErrNotFound when they haven't posted yet.
-	LastMessageAt(ctx context.Context, chatID, senderID int64) (time.Time, error)
+	// plus its album: grouped_id (0 — not in one) and how many of the sender's
+	// messages (removed included) carry that grouped_id (slowmode counts an album once);
+	// domain.ErrNotFound when they haven't posted yet.
+	LastMessageAt(ctx context.Context, chatID, senderID int64) (at time.Time, groupedID int64, groupSize int, err error)
 	// SavedDialogs groups the saved-messages chat by forward origin
 	// («Избранное» → таб «Чаты»), newest group first.
 	SavedDialogs(ctx context.Context, chatID, userID int64) ([]domain.SavedDialogRecord, error)
@@ -699,6 +713,21 @@ type SendInput struct {
 	// media принадлежит автору истории, а видимость уже проверена story-usecase).
 	// Не экспортируется — ставится только внутри пакета (SendStoryShare).
 	skipMediaOwner bool
+	// userAction — служебное действие ПО ЗАПРОСУ ПОЛЬЗОВАТЕЛЯ (предложить дату
+	// рождения или фото, создать тему): у оригинала это отдельные методы
+	// (users.suggestBirthday, photos.uploadContactProfilePhoto, channels.
+	// createForumTopic), и они подчиняются тем же правам, блоку и приватности,
+	// что отправка. Служебки, которые рождает сам сервер (лог звонка, состав
+	// группы), флага не несут и гейтов не проходят.
+	userAction bool
+	// batchUnits — сколько единиц отправки (сообщение либо альбом) несёт один
+	// вызов: у пересылки пачки > 1. В медленном режиме такую пачку не отправить
+	// (SLOWMODE_MULTI_MSGS_DISABLED); 0 и 1 — одна единица.
+	batchUnits int
+	// prepare — запись, которая обязана лечь в ТУ ЖЕ транзакцию, что и
+	// сообщение, и только после всех гейтов (подарок: списание звёзд, выдача,
+	// запись в журнал). Может дописать in (GiftID). Ставится внутри пакета.
+	prepare func(ctx context.Context, in *SendInput) error
 }
 
 // GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis).
@@ -715,8 +744,9 @@ type PhoneCallStore interface {
 	Create(ctx context.Context, c domain.PhoneCall) (bool, error)
 	// Get — звонок по id; domain.ErrNotFound, если его нет (кончился/не было).
 	Get(ctx context.Context, id string) (domain.PhoneCall, error)
-	// Accept отмечает ответ; повторный ответ время не сдвигает.
-	Accept(ctx context.Context, id string, at time.Time) error
+	// Accept отмечает ответ; повторный ответ время не сдвигает. true — ответ
+	// записан этим вызовом (из одновременных ответов выигрывает один).
+	Accept(ctx context.Context, id string, at time.Time) (bool, error)
 	// Finish атомарно забирает звонок: из конкурирующих вызовов его получает
 	// ровно один, остальным — domain.ErrNotFound. На этом держится «один
 	// звонок — одна запись», когда call_end шлют обе стороны.
@@ -883,15 +913,29 @@ type PremiumRepo interface {
 // PaidMediaRepo — цена платного медиа сообщения и разблокировки за Stars.
 type PaidMediaRepo interface {
 	// SetPrice помечает медиа сообщения платным с ценой price (звёзды).
-	SetPrice(ctx context.Context, messageID, price int64) error
-	// PricesByIDs — цены платного медиа для сообщений (без цены — отсутствуют).
-	PricesByIDs(ctx context.Context, ids []int64) (map[int64]int64, error)
-	// UnlockedByIDs — какие из сообщений пользователь уже разблокировал.
-	UnlockedByIDs(ctx context.Context, userID int64, ids []int64) (map[int64]bool, error)
-	// Unlock записывает разблокировку (message,user); true — если запись новая.
-	Unlock(ctx context.Context, messageID, userID int64) (bool, error)
-	// LockedMedia — закрыто ли медиа платным баром для пользователя (гейт байтов).
+	// sourceID — сообщение-предложение, которым копия продаётся (пересылка,
+	// зеркало поста); 0 — сообщение продаёт само себя.
+	SetPrice(ctx context.Context, messageID, price, sourceID int64) error
+	// Offers — платные сообщения из ids (без цены — отсутствуют): цена,
+	// предложение и продавец (автор предложения; 0 — его строки нет).
+	Offers(ctx context.Context, ids []int64) (map[int64]PaidOffer, error)
+	// UnlockedByIDs — какие из ПРЕДЛОЖЕНИЙ пользователь уже разблокировал.
+	UnlockedByIDs(ctx context.Context, userID int64, offerIDs []int64) (map[int64]bool, error)
+	// Unlock записывает разблокировку (предложение, user); true — если запись новая.
+	Unlock(ctx context.Context, offerID, userID int64) (bool, error)
+	// LockedMedia — закрыто ли медиа платным баром для пользователя (гейт байтов):
+	// есть платное сообщение с этим медиа, чей продавец не userID и чьё
+	// предложение userID не разблокировал.
 	LockedMedia(ctx context.Context, userID, mediaID int64) (bool, error)
+}
+
+// PaidOffer — платное медиа сообщения: цена и ПРЕДЛОЖЕНИЕ, по которому оно
+// продаётся. У копии (пересылка, зеркало поста) предложение — исходник: те же
+// цена и продавец, открыта тем, кто купил оригинал (Telegram paid media).
+type PaidOffer struct {
+	Price    int64
+	OfferID  int64 // сообщение, по которому живут разблокировки и выплата
+	SellerID int64 // автор предложения
 }
 
 // BotRepo — данные ботов: флаг is_bot и список команд.

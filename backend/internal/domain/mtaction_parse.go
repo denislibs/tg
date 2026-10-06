@@ -57,6 +57,9 @@ func ParseMessageAction(raw []byte) (MessageAction, error) {
 	case MessageActionChatJoinedByLinkTag:
 		var a MessageActionChatJoinedByLink
 		return a, json.Unmarshal(raw, &a)
+	case MessageActionChatJoinedByRequestTag:
+		var a MessageActionChatJoinedByRequest
+		return a, json.Unmarshal(raw, &a)
 	case MessageActionPinMessageTag:
 		var a MessageActionPinMessage
 		return a, json.Unmarshal(raw, &a)

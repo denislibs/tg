@@ -346,8 +346,8 @@ func (s *seeder) discussion(ctx context.Context, channelID, creator int64, c cha
 	if card, err := s.uc.ChatCard(ctx, channelID, creator); err != nil {
 		log.Printf("seed: карточка канала %q не прочитана: %v", c.title, err)
 		return 0
-	} else if card.LinkedChatID != 0 {
-		return card.LinkedChatID
+	} else if card.DiscussionChatID != 0 {
+		return card.DiscussionChatID
 	}
 	// Искать группу по названию тут нечем: привязанная группа обсуждения из
 	// списка диалогов ИСКЛЮЧЕНА (см. ListDialogs), так что поиск по названию

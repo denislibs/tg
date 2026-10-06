@@ -252,9 +252,13 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		        -- строка списка затирала на клиенте карточку чата.
 		        c.member_count, m.role, m.rights, c.signatures, c.signature_profiles,
 		        COALESCE(c.discussion_chat_id,0), c.default_permissions,
-		        c.slowmode_seconds, c.charge_stars
+		        c.slowmode_seconds, c.charge_stars,
+		        -- Действующее личное ограничение зрителя → channel.banned_rights.
+		        rs.denied_rights, rs.until_date
 		 FROM chat_members m
 		 JOIN chats c ON c.id = m.chat_id
+		 LEFT JOIN chat_restrictions rs ON rs.chat_id = m.chat_id AND rs.user_id = m.user_id
+		      AND (rs.until_date IS NULL OR rs.until_date > now())
 		 -- stripped-превью фото группы/канала — из media по photo_media_id
 		 LEFT JOIN media pm ON pm.id = c.photo_media_id
 		 -- Последнее ВИДИМОЕ зрителю сообщение: «удалить у себя»
@@ -301,6 +305,8 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		var peerID *int64
 		var peer userSeenScan
 		var rights, perms int
+		var restrDenied *int
+		var restrUntil *time.Time
 		if err := rows.Scan(&d.ChatID, &d.Type, &d.Title, &d.Username, &d.PhotoID, &d.PhotoPreview,
 			&d.LastReadSeq, &d.UnreadCount, &d.UnreadMentionsCount, &d.UnreadReactionsCount,
 			&muteUntil, &d.Pinned, &archived, &d.IsForum, &notifyPreview, &notifySound, &d.PeerReadSeq,
@@ -310,8 +316,13 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 			&peer.contactName, &peer.mutual, &peer.phone, &peer.self,
 			&d.TTLPeriod, &d.JoinedAt,
 			&d.MemberCount, &d.MyRole, &rights, &d.Signatures, &d.SignatureProfiles,
-			&d.LinkedChatID, &perms, &d.Settings.SlowmodeSeconds, &d.Settings.ChargeStars); err != nil {
+			&d.DiscussionChatID, &perms, &d.Settings.SlowmodeSeconds, &d.Settings.ChargeStars,
+			&restrDenied, &restrUntil); err != nil {
 			return nil, err
+		}
+		if restrDenied != nil {
+			d.MyRestriction = &domain.MemberRestriction{ChatID: d.ChatID, UserID: userID,
+				DeniedRights: domain.MemberPerms(*restrDenied), UntilDate: restrUntil}
 		}
 		d.MyRights = domain.Rights(rights)
 		d.Settings.DefaultPerms = domain.MemberPerms(perms)

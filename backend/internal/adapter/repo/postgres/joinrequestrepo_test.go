@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"testing"
+	"time"
 
 	storepostgres "github.com/messenger-denis/backend/internal/store/postgres"
 )
@@ -22,7 +23,7 @@ func TestJoinRequestRepo(t *testing.T) {
 	if err := r.Create(ctx, chatID, u2, "tok"); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	list, err := r.List(ctx, chatID)
+	list, _, err := r.List(ctx, chatID, "", time.Time{}, 0, 50)
 	if err != nil || len(list) != 1 || list[0].UserID != u2 || list[0].ChatID != chatID {
 		t.Fatalf("list after create: %+v %v", list, err)
 	}
@@ -31,7 +32,7 @@ func TestJoinRequestRepo(t *testing.T) {
 	if err := r.Create(ctx, chatID, u2, "tok"); err != nil {
 		t.Fatalf("create dup: %v", err)
 	}
-	list, err = r.List(ctx, chatID)
+	list, _, err = r.List(ctx, chatID, "", time.Time{}, 0, 50)
 	if err != nil || len(list) != 1 {
 		t.Fatalf("list after dup: %+v %v", list, err)
 	}
@@ -39,7 +40,7 @@ func TestJoinRequestRepo(t *testing.T) {
 	if err := r.Delete(ctx, chatID, u2); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
-	list, err = r.List(ctx, chatID)
+	list, _, err = r.List(ctx, chatID, "", time.Time{}, 0, 50)
 	if err != nil || len(list) != 0 {
 		t.Fatalf("list after delete: %+v %v", list, err)
 	}

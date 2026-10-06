@@ -2335,6 +2335,22 @@ const ru = {
   'Discussion.Set.PrivateChannel': 'Любой участник этой группы сможет видеть сообщения канала.',
   'Discussion.Set.PrivateGroup': 'Любой подписчик канала сможет видеть сообщения этой группы.',
   DiscussionLinkGroupAlertHistory: '«История чата для новых участников» станет видимой.',
+  // ── Участники и заявки (Ф-3б): ранг админа, назначивший, плашка заявок,
+  //    служебка «вступил по заявке» ──
+  'Rank.Label': 'Подпись',
+  EditAdminRank: 'Подпись участника',
+  EditAdminRankInfo: 'Подпись, которую участники увидят вместо «%1$s».',
+  EditAdminPromotedBy: 'Назначил(а) %1$s',
+  'Chat.Header.RequestToJoin': {
+    one_value: '%d заявка на вступление',
+    few_value: '%d заявки на вступление',
+    many_value: '%d заявок на вступление',
+    other_value: '%d заявки на вступление',
+  },
+  'ChatService.UserJoinedGroupByRequest': '%@ принят(а) в группу',
+  'ChatService.UserJoinedChannelByRequest': '%@ вступил(а) в канал по заявке',
+  RequestToJoinGroupApproved: 'Ваша заявка на вступление в группу одобрена',
+  RequestToJoinChannelApproved: 'Ваша заявка на вступление в канал одобрена',
 } satisfies LangPackDict
 
 export default I18n.formatLocalStrings(ru)
