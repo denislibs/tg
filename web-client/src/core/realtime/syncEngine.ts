@@ -3,7 +3,7 @@ import type { RestClient } from '../net/restClient'
 import type { Cursor } from './cursor'
 import type { SyncState } from './syncWait'
 
-interface SyncResp { new_messages: SyncItem[]; other_updates: SyncItem[]; state: { pts: number; date: number }; slice: boolean; too_long?: boolean }
+interface SyncResp { new_messages: SyncItem[]; other_updates: SyncItem[]; state: { pts: number; date: number }; slice: boolean; too_long?: boolean; users?: unknown[]; chats?: unknown[] }
 // Каждый элемент /sync — конверт {t, pts, d} (SyncUpdate бэка). new_messages и
 // other_updates несут один и тот же shape, поэтому обрабатываются единым потоком.
 export interface SyncItem { t: string; pts: number; d: unknown }
@@ -13,6 +13,9 @@ export interface SyncDeps {
   cursor: Cursor
   /** Единый funnel применения: и live-кадр, и элемент /sync проходят через него. */
   onUpdate: (item: SyncItem) => void
+  /** Векторы карточек страницы разницы — сохраняются ДО её апдейтов (tweb
+   *  apiUpdatesManager.getDifference → saveApiUsers/saveApiChats, :341-342). */
+  onPeers?: (peers: { users?: unknown[]; chats?: unknown[] }) => void
   onResync: () => void
   /** tweb apiUpdatesManager.ts:460-469 (state_synchronizing/state_synchronized) —
    * начало/конец catch-up для индикатора «Обновление…» в поиске. Парность
@@ -31,7 +34,7 @@ export interface SyncDeps {
   onSyncEnd?: () => void
 }
 
-export function newSyncEngine({ rest, cursor, onUpdate, onResync, onSyncStart, onSyncEnd }: SyncDeps) {
+export function newSyncEngine({ rest, cursor, onUpdate, onPeers, onResync, onSyncStart, onSyncEnd }: SyncDeps) {
   let running: Promise<void> | null = null
   // tweb 1dc32d889 `syncProgressTime` — признак жизни догона: старт и каждая
   // страница. По нему `syncWait` решает, не замолчал ли difference.
@@ -56,6 +59,7 @@ export function newSyncEngine({ rest, cursor, onUpdate, onResync, onSyncStart, o
       // Плотный монотонный pts восстанавливает истинный порядок событий.
       const items = [...(r.new_messages ?? []), ...(r.other_updates ?? [])]
         .sort((a, b) => (a?.pts ?? 0) - (b?.pts ?? 0))
+      if (r.users?.length || r.chats?.length) onPeers?.({ users: r.users, chats: r.chats })
       for (const it of items) onUpdate(it)
       cursor.set(r.state?.pts ?? pts, r.state?.date ?? date)
       if (!r.slice) break

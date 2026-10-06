@@ -14,6 +14,9 @@ import (
 // Реализуется usecase/privacy.Interactor.
 type PrivacyQuery interface {
 	VisibleMap(ctx context.Context, viewerID int64, ownerIDs []int64, key domain.PrivacyKey) (map[int64]bool, error)
+	// ViewUsers — карточки `user` глазами зрителя (privacy.ViewUsers): фото,
+	// номер и статус по правилам приватности.
+	ViewUsers(ctx context.Context, viewerID int64, users []domain.UserReal)
 }
 
 // PresenceHandler serves a batch snapshot of users' online / last-seen state, so

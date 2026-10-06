@@ -126,15 +126,6 @@ func resolvePeer(w http.ResponseWriter, r *http.Request, res PeerResolver, peer 
 	return 0, false
 }
 
-// discussionPeer — ключ группы обсуждения канала; 0 («не привязана») остаётся
-// NullPeerID, а не -0.
-func discussionPeer(chatID int64) domain.PeerID {
-	if chatID == 0 {
-		return domain.NullPeerID
-	}
-	return domain.ToPeerID(chatID, true)
-}
-
 // peerOf — ключ пира чата глазами автора запроса, для витрин. Ошибка разрешения
 // даёт NullPeerID: витрина не должна падать из-за ключа, но и внутренний id
 // вместо него не подставляется НИКОГДА.

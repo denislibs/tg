@@ -20,9 +20,10 @@ func TestCalendar_MatchesSchema(t *testing.T) {
 		{"контейнер", NewMessagesSearchResultsCalendar(
 			[]SearchResultsCalendarPeriod{NewSearchResultsCalendarPeriod(1750000000, 10, 12, 3)},
 			[]MTMessage{msg},
+			nil,
 			[]UserReal{{Underscore: UserTag, ID: 7}},
 		)},
-		{"пустой месяц", NewMessagesSearchResultsCalendar(nil, nil, nil)},
+		{"пустой месяц", NewMessagesSearchResultsCalendar(nil, nil, nil, nil)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -55,7 +56,7 @@ func TestCalendar_BoundsComeFromPeriods(t *testing.T) {
 	out := NewMessagesSearchResultsCalendar([]SearchResultsCalendarPeriod{
 		NewSearchResultsCalendarPeriod(1750200000, 30, 33, 4),
 		NewSearchResultsCalendarPeriod(1750000000, 10, 12, 3),
-	}, nil, nil)
+	}, nil, nil, nil)
 
 	if out.Count != 7 {
 		t.Errorf("count = %d; ожидалась сумма отрезков 7", out.Count)
@@ -72,7 +73,7 @@ func TestCalendar_BoundsComeFromPeriods(t *testing.T) {
 // параметров: у обязательного вектора «ничего нет» выражается как `[]`, а
 // выдуманная граница соврала бы о наличии данных.
 func TestCalendar_EmptyMonthKeepsVectors(t *testing.T) {
-	decoded, ok := roundTripJSON(t, NewMessagesSearchResultsCalendar(nil, nil, nil)).(map[string]any)
+	decoded, ok := roundTripJSON(t, NewMessagesSearchResultsCalendar(nil, nil, nil, nil)).(map[string]any)
 	if !ok {
 		t.Fatal("контейнер не разобрался в объект")
 	}

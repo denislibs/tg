@@ -354,12 +354,83 @@ func (r *GroupRepo) DeleteChat(ctx context.Context, chatID int64) error {
 	return err
 }
 
-// Card — строка чата ГЛАЗАМИ зрителя: всё, из чего собираются оба
-// конструктора схемы (краткий `channel` и полный `channelFull`). Геометрия
-// фото приезжает из media: channelFull.chat_photo это ПОЛНОЕ Photo с лестницей
-// размеров — экран информации открывает аватарку в медиавьювере.
-func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.ChatRecord, error) {
-	q := querier(ctx, r.pool)
+// chatCardSelect — строки чатов ГЛАЗАМИ зрителя: всё, из чего собираются оба
+// конструктора схемы (краткий `channel` и полный `channelFull`). ОДИН список
+// колонок на все витрины, отдающие карточку чата: экран информации, вектор
+// `chats` контейнеров сообщений и кадров, поиск пиров, похожие каналы,
+// кандидаты обсуждения, send-as. Пока поиск сканировал свои восемь колонок, его
+// урезанная карточка уходила `min`-конструктором с «запрещено всё» и
+// блокировала ввод (A1-01) — с одним сборщиком такое расхождение выражается
+// только правкой ЭТОГО запроса.
+//
+// Геометрия фото приезжает из media: channelFull.chat_photo это ПОЛНОЕ Photo с
+// лестницей размеров — экран информации открывает аватарку в медиавьювере.
+//
+// $1 — id чатов (ANY), $2 — зритель (0 — снимок без зрителя).
+//
+// Две формы одного списка колонок (chatCardQuery): ПОЛНАЯ — экран информации
+// (Card, channelFull), и КРАТКАЯ — всё, что едет векторами `chats` (Cards):
+// краткому `channel` не нужны агрегаты только channelFull — горизонт
+// прочтения собеседников (скан всех участников), закреп, тема, непрочитанное.
+// Векторы гоняют этот запрос на каждой странице истории и на первом кадре
+// каждого соединения, поэтому там эти колонки — константы.
+//
+// Точка расширения: поле зрителя добавляется колонкой ЗДЕСЬ и приёмником в
+// scanChatCard — больше нигде. Агрегат только для channelFull — через fullOnly.
+func chatCardQuery(full bool) string {
+	fullOnly := func(expr, brief string) string {
+		if full {
+			return expr
+		}
+		return brief
+	}
+	return `SELECT c.id, c.type, c.title, COALESCE(c.username,''), c.about, c.photo_media_id,
+        pm.blur_preview, COALESCE(pm.width,0), COALESCE(pm.height,0), COALESCE(pm.size,0),
+        COALESCE(c.creator_id,0), c.member_count, c.created_at, c.is_forum,
+        COALESCE(c.discussion_chat_id,0), c.signatures, c.signature_profiles,
+        c.default_permissions, c.slowmode_seconds, c.reactions_mode, c.reactions_allowed,
+        c.history_for_new, c.charge_stars, COALESCE(c.auto_delete_period,0),
+        -- pinned_msg_id: наружу едет НОМЕР сообщения в чате (в схеме
+        -- chatFull.pinned_msg_id адресует сообщение в его пире), а
+        -- pinned_messages.msg_id — внутренний ключ строки.
+        ` + fullOnly(`COALESCE((SELECT pinm.seq FROM pinned_messages p JOIN messages pinm ON pinm.id=p.msg_id
+                   WHERE p.chat_id=c.id ORDER BY p.pinned_at DESC LIMIT 1),0)`, `0`) + `,
+        COALESCE(m.last_read_seq,0), ` + fullOnly(`COALESCE(m.unread_count,0)`, `0`) + `,
+        ` + fullOnly(`COALESCE((SELECT MIN(om.last_read_seq) FROM chat_members om WHERE om.chat_id=c.id AND om.user_id<>$2),0)`, `0`) + `,
+        m.role, m.rights, m.muted_until, m.notify_preview, m.notify_sound,
+        ` + fullOnly(`COALESCE((SELECT ct.theme_id FROM chat_theme ct WHERE ct.chat_id = c.id),'')`, `''`) + `,
+        -- Дата вступления ЗРИТЕЛЯ — из той же строки членства, что role
+        -- и rights; NULL, когда зритель не состоит (LEFT JOIN не нашёл
+        -- строки) или когда зрителя нет вовсе. Наружу уходит
+        -- обязательным channel.date, см. ChatRecord.ChannelDate.
+        m.joined_at,
+        -- Действующее личное ограничение зрителя → channel.banned_rights
+        -- (A1-06): прежде поле не писал никто.
+        r.denied_rights, r.until_date, r.restricted_by,
+        -- Канал, чьей группой обсуждения чат служит (Б-119, A1-25).
+        COALESCE((SELECT MIN(lc.id) FROM chats lc WHERE lc.discussion_chat_id = c.id), 0),
+        -- Читается ли чат зрителем (ChatRecord.Hidden): участник либо
+        -- публичный чат, либо группа обсуждения читаемого канала, и не
+        -- забанен — тот же допуск, что RequireChatRead/RequireDiscussionRead.
+        ($2 = 0 OR ` + chatReadableBy("c.id", "$2") + `
+           OR (NOT EXISTS (SELECT 1 FROM chat_bans db WHERE db.chat_id = c.id AND db.user_id = $2)
+               AND EXISTS (SELECT 1 FROM chats dch WHERE dch.discussion_chat_id = c.id
+                            AND ` + chatReadableBy("dch.id", "$2") + `)))
+   FROM chats c
+   LEFT JOIN media pm ON pm.id = c.photo_media_id
+   LEFT JOIN chat_members m ON m.chat_id=c.id AND m.user_id=$2
+   LEFT JOIN chat_restrictions r ON r.chat_id = c.id AND r.user_id = $2
+        AND (r.until_date IS NULL OR r.until_date > now())
+  WHERE c.id = ANY($1)`
+}
+
+var (
+	chatCardSelect  = chatCardQuery(true)
+	chatBriefSelect = chatCardQuery(false)
+)
+
+// scanChatCard читает одну строку chatCardSelect глазами viewerID.
+func scanChatCard(row pgx.Row, viewerID int64) (domain.ChatRecord, error) {
 	var c domain.ChatRecord
 	c.ViewerID = viewerID
 	var rights *int
@@ -373,40 +444,8 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 	var restrDenied *int
 	var restrUntil *time.Time
 	var restrBy *int64
-	err := q.QueryRow(ctx,
-		`SELECT c.id, c.type, c.title, COALESCE(c.username,''), c.about, c.photo_media_id,
-		        pm.blur_preview, COALESCE(pm.width,0), COALESCE(pm.height,0), COALESCE(pm.size,0),
-		        COALESCE(c.creator_id,0), c.member_count, c.created_at, c.is_forum,
-		        COALESCE(c.discussion_chat_id,0), c.signatures, c.signature_profiles,
-		        c.default_permissions, c.slowmode_seconds, c.reactions_mode, c.reactions_allowed,
-		        c.history_for_new, c.charge_stars, COALESCE(c.auto_delete_period,0),
-		        -- pinned_msg_id: наружу едет НОМЕР сообщения в чате (в схеме
-		        -- chatFull.pinned_msg_id адресует сообщение в его пире), а
-		        -- pinned_messages.msg_id — внутренний ключ строки.
-		        COALESCE((SELECT pinm.seq FROM pinned_messages p JOIN messages pinm ON pinm.id=p.msg_id
-		                   WHERE p.chat_id=c.id ORDER BY p.pinned_at DESC LIMIT 1),0),
-		        COALESCE(m.last_read_seq,0), COALESCE(m.unread_count,0),
-		        COALESCE((SELECT MIN(om.last_read_seq) FROM chat_members om WHERE om.chat_id=c.id AND om.user_id<>$2),0),
-		        m.role, m.rights, m.muted_until, m.notify_preview, m.notify_sound,
-		        COALESCE(ct.theme_id,''),
-		        -- Дата вступления ЗРИТЕЛЯ — из той же строки членства, что role
-		        -- и rights; NULL, когда зритель не состоит (LEFT JOIN не нашёл
-		        -- строки) или когда зрителя нет вовсе. Наружу уходит
-		        -- обязательным channel.date, см. ChatRecord.ChannelDate.
-		        m.joined_at,
-		        -- Действующее личное ограничение зрителя → channel.banned_rights
-		        -- (A1-06): прежде поле не писал никто.
-		        r.denied_rights, r.until_date, r.restricted_by,
-		        -- Канал, чьей группой обсуждения чат служит (Б-119).
-		        COALESCE((SELECT MIN(lc.id) FROM chats lc WHERE lc.discussion_chat_id = c.id), 0)
-		   FROM chats c
-		   LEFT JOIN media pm ON pm.id = c.photo_media_id
-		   LEFT JOIN chat_theme ct ON ct.chat_id = c.id
-		   LEFT JOIN chat_members m ON m.chat_id=c.id AND m.user_id=$2
-		   LEFT JOIN chat_restrictions r ON r.chat_id = c.id AND r.user_id = $2
-		        AND (r.until_date IS NULL OR r.until_date > now())
-		  WHERE c.id=$1`,
-		chatID, viewerID).Scan(&c.ID, &c.Type, &c.Title, &c.Username, &c.About, &c.PhotoID,
+	var readable bool
+	if err := row.Scan(&c.ID, &c.Type, &c.Title, &c.Username, &c.About, &c.PhotoID,
 		&c.PhotoPreview, &c.PhotoW, &c.PhotoH, &c.PhotoSize,
 		&c.CreatorID, &c.MemberCount, &c.CreatedAt, &c.IsForum,
 		&c.DiscussionChatID, &c.Signatures, &c.SignatureProfiles,
@@ -414,13 +453,10 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 		&c.Settings.HistoryForNew, &c.Settings.ChargeStars, &c.Settings.AutoDeletePeriod,
 		&c.PinnedMsgID, &c.ReadInboxMaxID, &c.UnreadCount, &c.ReadOutboxMaxID,
 		&role, &rights, &muteUntil, &notifyPreview, &notifySound, &c.ThemeEmoticon, &joinedAt,
-		&restrDenied, &restrUntil, &restrBy, &c.LinkedChannelID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.ChatRecord{}, domain.ErrNotFound
-	}
-	if err != nil {
+		&restrDenied, &restrUntil, &restrBy, &c.LinkedChannelID, &readable); err != nil {
 		return domain.ChatRecord{}, err
 	}
+	c.Hidden = !readable
 	if role != nil {
 		c.MyRole = *role
 	}
@@ -431,7 +467,7 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 		c.MyJoinedAt = *joinedAt
 	}
 	if restrDenied != nil && viewerID != 0 {
-		c.MyRestriction = &domain.MemberRestriction{ChatID: chatID, UserID: viewerID,
+		c.MyRestriction = &domain.MemberRestriction{ChatID: c.ID, UserID: viewerID,
 			DeniedRights: domain.MemberPerms(*restrDenied), UntilDate: restrUntil}
 		if restrBy != nil {
 			c.MyRestriction.RestrictedBy = *restrBy
@@ -450,6 +486,48 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 		_ = json.Unmarshal(allowed, &c.Settings.ReactionsAllowed)
 	}
 	return c, nil
+}
+
+// Card — строка ОДНОГО чата глазами зрителя (chatCardSelect).
+func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.ChatRecord, error) {
+	c, err := scanChatCard(querier(ctx, r.pool).QueryRow(ctx, chatCardSelect, []int64{chatID}, viewerID), viewerID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ChatRecord{}, domain.ErrNotFound
+	}
+	return c, err
+}
+
+// Cards — КРАТКИЕ строки чатов ids глазами зрителя (chatBriefSelect: всё для
+// `channel`, без агрегатов channelFull) одним запросом, В ПОРЯДКЕ ids (выдача
+// поиска ранжирована). Отсутствующие id пропускаются.
+func (r *GroupRepo) Cards(ctx context.Context, viewerID int64, ids []int64) ([]domain.ChatRecord, error) {
+	if len(ids) == 0 {
+		return []domain.ChatRecord{}, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx, chatBriefSelect, ids, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	byID := make(map[int64]domain.ChatRecord, len(ids))
+	for rows.Next() {
+		c, err := scanChatCard(rows, viewerID)
+		if err != nil {
+			return nil, err
+		}
+		byID[c.ID] = c
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]domain.ChatRecord, 0, len(byID))
+	for _, id := range ids {
+		if c, ok := byID[id]; ok {
+			out = append(out, c)
+			delete(byID, id) // повтор id в запросе — одна карточка
+		}
+	}
+	return out, nil
 }
 
 // AdminIDs — id владельца и админов чата (role in creator/admin).
@@ -506,11 +584,12 @@ func (r *GroupRepo) IsForum(ctx context.Context, chatID int64) (bool, error) {
 	return ok, err
 }
 
-// DiscussionCandidates lists non-forum 'group' chats where actorID is
-// creator/admin and which aren't already some channel's discussion group.
-func (r *GroupRepo) DiscussionCandidates(ctx context.Context, actorID int64) ([]domain.ChatRecord, error) {
+// DiscussionCandidates — id групп (type 'group', не форум), где actorID
+// владелец/админ и которые ещё не привязаны ни к одному каналу. Только id:
+// карточки собирает общий сборщик (Cards).
+func (r *GroupRepo) DiscussionCandidates(ctx context.Context, actorID int64) ([]int64, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT c.id, c.title, COALESCE(c.username,''), c.member_count
+		`SELECT c.id
 		   FROM chats c
 		   JOIN chat_members m ON m.chat_id=c.id AND m.user_id=$1 AND m.role IN ('creator','admin')
 		  WHERE c.type='group' AND c.is_forum=false
@@ -519,17 +598,7 @@ func (r *GroupRepo) DiscussionCandidates(ctx context.Context, actorID int64) ([]
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := make([]domain.ChatRecord, 0)
-	for rows.Next() {
-		var c domain.ChatRecord
-		c.Type = "group"
-		if err := rows.Scan(&c.ID, &c.Title, &c.Username, &c.MemberCount); err != nil {
-			return nil, err
-		}
-		out = append(out, c)
-	}
-	return out, rows.Err()
+	return pgx.CollectRows(rows, pgx.RowTo[int64])
 }
 
 // SetSignatures toggles channel post signatures; profiles is forced off when
@@ -553,25 +622,22 @@ func (r *GroupRepo) DiscussionChannel(ctx context.Context, groupID int64) (int64
 	return id, err
 }
 
-// ChatBriefs — лёгкие снимки чатов по id (id/type/title/photo) для отображения
-// «личности отправителя» send-as и её автора в бабле. Отсутствующие id просто
-// не попадают в мапу.
+// ChatBriefs — название и вид чатов по id (подпись там, где карточки пира у
+// получателя нет). Отсутствующие id просто не попадают в мапу.
 func (r *GroupRepo) ChatBriefs(ctx context.Context, ids []int64) (map[int64]domain.ChatBrief, error) {
 	out := map[int64]domain.ChatBrief{}
 	if len(ids) == 0 {
 		return out, nil
 	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`SELECT c.id, c.type, COALESCE(c.title,''), c.photo_media_id, m.blur_preview
-		   FROM chats c LEFT JOIN media m ON m.id = c.photo_media_id
-		  WHERE c.id = ANY($1)`, ids)
+		`SELECT c.id, c.type, COALESCE(c.title,'') FROM chats c WHERE c.id = ANY($1)`, ids)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var b domain.ChatBrief
-		if err := rows.Scan(&b.ID, &b.Type, &b.Title, &b.PhotoID, &b.PhotoPreview); err != nil {
+		if err := rows.Scan(&b.ID, &b.Type, &b.Title); err != nil {
 			return nil, err
 		}
 		out[b.ID] = b

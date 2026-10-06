@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 63,
+      "version": 64,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -1233,6 +1233,13 @@
           "value": "Learn more..."
         },
         {
+          "key": "Chat.Header.RequestToJoin",
+          "forms": {
+            "one_value": "%d Join Request",
+            "other_value": "%d Join Requests"
+          }
+        },
+        {
           "key": "Chat.Input.Attach",
           "value": "Attach"
         },
@@ -1646,6 +1653,14 @@
         {
           "key": "ChatLocation",
           "value": "Location"
+        },
+        {
+          "key": "ChatService.UserJoinedChannelByRequest",
+          "value": "%@ joined the channel by request"
+        },
+        {
+          "key": "ChatService.UserJoinedGroupByRequest",
+          "value": "%@ was accepted to the group"
         },
         {
           "key": "ChatTheme.None",
@@ -2363,6 +2378,18 @@
         {
           "key": "EditAdminPostMessages",
           "value": "Post Messages"
+        },
+        {
+          "key": "EditAdminPromotedBy",
+          "value": "Promoted by %1$s"
+        },
+        {
+          "key": "EditAdminRank",
+          "value": "Member tag"
+        },
+        {
+          "key": "EditAdminRankInfo",
+          "value": "A title that members will see instead of '%1$s'."
         },
         {
           "key": "EditAdminRights",
@@ -5423,6 +5450,10 @@
           "value": "Log in on a new device?"
         },
         {
+          "key": "Rank.Label",
+          "value": "Title"
+        },
+        {
           "key": "Reactions",
           "value": "Reactions"
         },
@@ -5537,6 +5568,14 @@
         {
           "key": "RequestJoin.List.SearchEmpty",
           "value": "There were no results for \"%@\".\nTry a new search."
+        },
+        {
+          "key": "RequestToJoinChannelApproved",
+          "value": "Your request to join the channel was approved"
+        },
+        {
+          "key": "RequestToJoinGroupApproved",
+          "value": "Your request to join the group was approved"
         },
         {
           "key": "RequestToJoinSent",
@@ -7355,7 +7394,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 63,
+      "version": 64,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -14773,6 +14812,47 @@
         {
           "key": "DiscussionLinkGroupAlertHistory",
           "value": "«История чата для новых участников» станет видимой."
+        },
+        {
+          "key": "Rank.Label",
+          "value": "Подпись"
+        },
+        {
+          "key": "EditAdminRank",
+          "value": "Подпись участника"
+        },
+        {
+          "key": "EditAdminRankInfo",
+          "value": "Подпись, которую участники увидят вместо «%1$s»."
+        },
+        {
+          "key": "EditAdminPromotedBy",
+          "value": "Назначил(а) %1$s"
+        },
+        {
+          "key": "Chat.Header.RequestToJoin",
+          "forms": {
+            "one_value": "%d заявка на вступление",
+            "few_value": "%d заявки на вступление",
+            "many_value": "%d заявок на вступление",
+            "other_value": "%d заявки на вступление"
+          }
+        },
+        {
+          "key": "ChatService.UserJoinedGroupByRequest",
+          "value": "%@ принят(а) в группу"
+        },
+        {
+          "key": "ChatService.UserJoinedChannelByRequest",
+          "value": "%@ вступил(а) в канал по заявке"
+        },
+        {
+          "key": "RequestToJoinGroupApproved",
+          "value": "Ваша заявка на вступление в группу одобрена"
+        },
+        {
+          "key": "RequestToJoinChannelApproved",
+          "value": "Ваша заявка на вступление в канал одобрена"
         }
       ]
     },

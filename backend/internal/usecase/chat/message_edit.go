@@ -90,7 +90,7 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 			ppLocked.sender = msg.SenderID
 			ppLocked.mentions = mentions
 		}
-		date := nowMillis()
+		date := nowUnix()
 		for _, uid := range members {
 			payload, e := ppFor(uid).payload(uid)
 			if e != nil {
@@ -285,7 +285,7 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 		return json.Marshal(deletePayload(addr.forViewer(uid), cur.Seq))
 	}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		date := nowMillis()
+		date := nowUnix()
 		if revoke {
 			if e := i.msgs.SoftDelete(ctx, msgID); e != nil {
 				return e

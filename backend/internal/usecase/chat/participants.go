@@ -285,21 +285,3 @@ func structPayload(v any) map[string]any {
 	}
 	return m
 }
-
-// LinkedChannel — канал, чьей группой обсуждения служит groupID, глазами
-// зрителя (Б-119): строка «Привязанный канал» вкладки обсуждения группы. Кто
-// читает группу, тому канал назван — как у оригинала (channelFull.linked_chat_id
-// группы и канал в chats). domain.ErrNotFound — группа ничья.
-func (i *Interactor) LinkedChannel(ctx context.Context, groupID, viewerID int64) (domain.ChatRecord, error) {
-	if err := i.RequireChatRead(ctx, groupID, viewerID); err != nil {
-		return domain.ChatRecord{}, err
-	}
-	id, err := i.groups.DiscussionChannel(ctx, groupID)
-	if err != nil {
-		return domain.ChatRecord{}, err
-	}
-	if id == 0 {
-		return domain.ChatRecord{}, domain.ErrNotFound
-	}
-	return i.groups.Card(ctx, id, viewerID)
-}

@@ -156,7 +156,7 @@ func TestChannelDiscussion_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
 	}
-	disc := createdPeerFrom(t, rec)
+	disc := linkedPeerOf(t, h, tokenA, cid)
 	if disc == 0 {
 		t.Fatalf("expected discussion_peer_id, got %s", rec.Body.String())
 	}
@@ -341,7 +341,7 @@ func TestComments_ThreadRootID_ConsistentAcrossHTTPPaths(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
 	}
-	disc := createdPeerFrom(t, rec)
+	disc := linkedPeerOf(t, h, tokenA, cid)
 	discCid := itoa(disc)
 
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/posts/"+pid+"/comments", tokenB, map[string]any{
@@ -443,7 +443,7 @@ func TestComments_ThreadRootHistory_RootAppearsOnce(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
 	}
-	disc := createdPeerFrom(t, rec)
+	disc := linkedPeerOf(t, h, tokenA, cid)
 	discCid := itoa(disc)
 
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/posts/"+pid+"/comments", tokenB, map[string]any{
@@ -513,7 +513,7 @@ func TestGenericSend_ThreadRootID_MirrorSeq_LandsInSameThreadAsComments(t *testi
 	if rec.Code != http.StatusOK {
 		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
 	}
-	disc := createdPeerFrom(t, rec)
+	disc := linkedPeerOf(t, h, tokenA, cid)
 	discCid := itoa(disc)
 
 	// Сперва штатный /comments — заводит зеркало поста и оставляет "эталонный"
@@ -627,7 +627,7 @@ func TestGenericSend_ThreadRootID_PreMigrationPost_NoSentinelZeroCollapse(t *tes
 	if rec.Code != http.StatusOK {
 		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
 	}
-	disc := createdPeerFrom(t, rec)
+	disc := linkedPeerOf(t, h, tokenA, cid)
 	discCid := itoa(disc)
 
 	// Зеркала ОБОИХ домиграционных постов дозаводятся лениво — открытием треда.
@@ -761,7 +761,7 @@ func TestCommentThreadHistory_HiddenMirrorRoot_NotForceShown(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("enable discussion: %d %s", rec.Code, rec.Body.String())
 	}
-	disc := createdPeerFrom(t, rec)
+	disc := linkedPeerOf(t, h, tokenA, cid)
 	discCid := itoa(disc)
 
 	// B комментирует — заводит зеркало и авто-вступает в группу обсуждения.
@@ -879,7 +879,7 @@ func TestChannelAdmin_DiscussionAndSignatures_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("link discussion: %d %s", rec.Code, rec.Body.String())
 	}
-	linked := createdPeerFrom(t, rec)
+	linked := linkedPeerOf(t, h, tokenA, cid)
 	if linked != gid {
 		t.Fatalf("linked discussion = %d; want %d", linked, gid)
 	}
@@ -1060,4 +1060,25 @@ func TestChannelSimilarAndJoinDate_HTTP(t *testing.T) {
 	if got.Date == 0 {
 		t.Error("date похожего канала едет нулём: обязательное поле не заполнено")
 	}
+}
+
+// linkedPeerOf — ключ связанного чата канала из его карточки
+// (channelFull.linked_chat_id): привязка обсуждения отвечает Bool, как
+// channels.setDiscussionGroup оригинала (A4-20), и адрес группы читают из
+// карточки.
+func linkedPeerOf(t *testing.T, h http.Handler, token, cid string) int64 {
+	t.Helper()
+	rec := authedReq(t, h, http.MethodGet, "/chats/"+cid+"/card", token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("карточка канала: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		FullChat struct {
+			LinkedChatID int64 `json:"linked_chat_id"`
+		} `json:"full_chat"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || out.FullChat.LinkedChatID == 0 {
+		t.Fatalf("linked_chat_id не разобран: %v (%s)", err, rec.Body.String())
+	}
+	return -out.FullChat.LinkedChatID
 }

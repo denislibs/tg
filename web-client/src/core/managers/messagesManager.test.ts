@@ -402,7 +402,7 @@ describe('MessagesManager.cacheLive', () => {
       const thread = echoOps.find((o) => o.key === threadKey)
       expect(thread).toEqual({ op: 'insert', key: threadKey, msg: expect.objectContaining({ id: cid(7), random_id: 'c-thread-1' }), sequential: true })
       // ack после эха — no-op: финализировать больше нечего, и это не потеря
-      expect(mgr.ackPendingMessage({ client_msg_id: 'c-thread-1', id: 7, created_at: '2026-06-24T10:00:00Z' })).toEqual([])
+      expect(mgr.ackPendingMessage({ client_msg_id: 'c-thread-1', id: 7, date: 1782295200 })).toEqual([])
     })
   })
 })

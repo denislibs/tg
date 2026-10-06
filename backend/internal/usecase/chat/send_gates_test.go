@@ -621,3 +621,7 @@ func TestPhoneCall_AnsweredElsewhere(t *testing.T) {
 		t.Fatalf("лог звонка до конца разговора: %d", n)
 	}
 }
+
+func (p blockedBy) ViewUsers(ctx context.Context, viewerID int64, users []domain.UserReal) {
+	viewUsersVia(ctx, p, viewerID, users)
+}

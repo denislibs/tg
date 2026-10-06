@@ -89,8 +89,13 @@
  * пара «таймаут до истечения + интервал на весь TTL» (`fullPeers.ts:36-43`)
  * портированы как есть — это чистая клиентская политика, бэкенда не касается.
  *
- * Событийная инвалидация оригинала (`peer_full_update`, appProfileManager.ts:104-127)
- * — ДРУГОЕ дело. У tweb её взводит ЛЕСТНИЦА серверных пушей уровня MTProto:
+ * Событийная инвалидация оригинала на `channel_update` (appProfileManager.ts:120-122)
+ * портирована: кадр `chat_update` (смена реакций, медленного режима, автоудаления
+ * и т.п. у ЧУЖОГО действия) сбрасывает и перечитывает уже загруженную карточку —
+ * `refreshFullPeerIfNeeded` (A2-29). Полный снимок из кадра в зеркало НЕ кладётся:
+ * он собран без зрителя (нет notify_settings, горизонтов прочтения,
+ * can_view_stats) и затёр бы их. Остальная лестница пушей ниже —
+ * ДРУГОЕ дело. У tweb её взводит ЛЕСТНИЦА серверных пушей уровня MTProto:
  * `updateChatParticipants`/`updateChatParticipantAdd/Delete/Admin`,
  * `updatePeerBlocked`, точечное сравнение фото в `chat_update`,
  * `channel_update`, и — главное — конструкторы `updateChatFull`/`updateUserFull`
@@ -217,13 +222,19 @@ export function ensureFullPeer(managers: Managers, peerId: PeerId): void {
   if (!isFullPeerFresh(peerId)) void requestFullPeer(managers, peerId, false)
 }
 
-/** Порт `appProfileManager.refreshFullPeer` — ручной сброс для мутаций
- *  собственного действия (Task 2+: редактирование чата, блокировка). Не
- *  вызывается автоматически ниоткуда в этом файле — см. докблок файла про
- *  отсутствие пуш-инвалидации. */
+/** Порт `appProfileManager.refreshFullPeer` — сброс и перечитывание карточки:
+ *  мутации собственного действия и кадр `chat_update` (refreshFullPeerIfNeeded). */
 export function refreshFullPeer(peerId: PeerId): void {
   expirations.delete(peerId)
   void requestFullPeer(startClient().managers, peerId, true)
+}
+
+/** Порт `appProfileManager.refreshFullPeerIfNeeded` (tweb :944-949): сбросить
+ *  и перечитать карточку, только если она уже загружена. Зовёт его кадр
+ *  `chat_update` (порт слушателя `channel_update`, appProfileManager.ts:120-122,
+ *  A2-29): незагруженная карточка придёт свежей при первом чтении. */
+export function refreshFullPeerIfNeeded(peerId: PeerId): void {
+  if (cachedPeerFull(peerId) !== undefined) refreshFullPeer(peerId)
 }
 
 function _useFullPeer(peerId: PeerId): Accessor<PeerFull | undefined> {

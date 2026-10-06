@@ -62,3 +62,7 @@ func TestCreateGroup_PrivacyRestrictedAreMissingInvitees(t *testing.T) {
 		t.Fatalf("group_create users = %#v, ждали [8]", s.messages[id][0].Action)
 	}
 }
+
+func (p denyInvites) ViewUsers(ctx context.Context, viewerID int64, users []domain.UserReal) {
+	viewUsersVia(ctx, p, viewerID, users)
+}
