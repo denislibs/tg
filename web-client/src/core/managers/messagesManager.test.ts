@@ -808,6 +808,40 @@ describe('MessagesManager.countReadMentions', () => {
   })
 })
 
+// Порт tweb onUpdatePinnedMessages (appMessagesManager.ts:11719-11751): бит
+// `pinned` у сообщений окна ставится/снимается тем же конструктором кадра,
+// окно узнаёт операцией — по ней меню сообщения выбирает «Открепить».
+describe('MessagesManager.cachePinned', () => {
+  const peer = { _: 'peerUser' as const, user_id: 1 }
+
+  it('закрепление ставит pFlags.pinned, открепление снимает (отсутствие бита)', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+
+    const pin = mgr.cachePinned({ _: 'updatePinnedMessages', peer, messages: [2, 3], pFlags: { pinned: true } })
+    expect(pin).toEqual([
+      { op: 'patch', key: '1', msgId: cid(2), fields: { pFlags: { pinned: true } } },
+      { op: 'patch', key: '1', msgId: cid(3), fields: { pFlags: { pinned: true } } },
+    ])
+    expect(mgr.getMessageByPeer(1, cid(2))?.pFlags.pinned).toBe(true)
+
+    const unpin = mgr.cachePinned({ _: 'updatePinnedMessages', peer, messages: [2] })
+    expect(unpin).toEqual([{ op: 'patch', key: '1', msgId: cid(2), fields: { pFlags: {} } }])
+    expect(mgr.getMessageByPeer(1, cid(2))?.pFlags.pinned).toBeUndefined()
+  })
+
+  it('повтор и неизвестное сообщение — без операций', async () => {
+    const { rest } = countingRest({ '0:0:40': rawPage([3, 2, 1]) })
+    const mgr = newMessagesManager({ rest })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
+    mgr.cachePinned({ _: 'updatePinnedMessages', peer, messages: [2], pFlags: { pinned: true } })
+
+    expect(mgr.cachePinned({ _: 'updatePinnedMessages', peer, messages: [2], pFlags: { pinned: true } })).toEqual([])
+    expect(mgr.cachePinned({ _: 'updatePinnedMessages', peer, messages: [999], pFlags: { pinned: true } })).toEqual([])
+  })
+})
+
 const lockedPaid: MessageMedia = {
   _: 'messageMediaPaidMedia',
   stars_amount: 10,

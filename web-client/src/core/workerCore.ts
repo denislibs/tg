@@ -517,6 +517,7 @@ export function createWorkerCore() {
     updateReadPeerMessagesContents: (p) => messages.cacheMediaRead(p),
     updateEditMessage:              (p) => messages.cacheEdit(p),
     updateDeletePeerMessages:       (p) => messages.cacheDelete(p),
+    updatePinnedMessages:           (p) => messages.cachePinned(p),
     updateMessageReactions:         (p) => messages.cacheReaction(p),
     // Счётчики поста канала. Оба числа живут ВНУТРИ сообщения, поэтому владелец
     // у них тот же, что у всего окна, — messages; кадр лишь называет пост и

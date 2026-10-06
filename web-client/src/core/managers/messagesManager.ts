@@ -29,7 +29,7 @@ import { getPeerId, type Peer } from '../peers/peerId'
 import type { UserReal, User, Chat } from '../peers/peer'
 import canEditMessage from '../messages/canEditMessage'
 import { generateMessageId, getServerMessageId, isLocalMessageId } from '../history/messageId'
-import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, PaidMediaUnlockEvt, SendMessageAction } from '../realtime/events'
+import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, PinMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, PaidMediaUnlockEvt, SendMessageAction } from '../realtime/events'
 import type { SendArgs as WireSendArgs } from '../realtime/connectionManager'
 import type { UploadArgs } from './mediaManager'
 import { RT } from '../realtime/events'
@@ -1552,6 +1552,40 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     cacheDelete(evt: DeleteMessageEvt): MessageOp[] {
       const peerId = getPeerId(evt.peer)
       return evt.messages.flatMap((id) => evictAndBuildRemoveOps(peerId, generateMessageId(id)))
+    },
+
+    /**
+     * Закрепление/открепление — порт tweb `onUpdatePinnedMessages`
+     * (appMessagesManager.ts:11719-11751): у сообщений кадра в памяти ставится
+     * или снимается `pFlags.pinned` («открепили» — тот же конструктор без
+     * бита), и окно узнаёт об этом операцией `patch {pFlags}` — по нему меню
+     * сообщения выбирает «Закрепить»/«Открепить» (`chat/contextMenu.ts`).
+     *
+     * Отступление: недостающие сообщения оригинал сначала догружает
+     * (`reloadMessages`) и помечает уже их. У нас SSOT держит только
+     * загруженное окном, а сообщение, загруженное позже, приезжает с битом
+     * `pinned` от сервера само, — догружать ради флага нечего. Кэш списка
+     * закрепов (`resetPinnedMessagesCache`) сбрасывает вкладка по сырому кадру
+     * (`client/realtime/refetchSubscriber.ts`).
+     */
+    cachePinned(evt: PinMessageEvt): MessageOp[] {
+      const peerId = getPeerId(evt.peer)
+      const pinned = !!evt.pFlags?.pinned
+      return evt.messages.flatMap((serverId) => {
+        const id = generateMessageId(serverId)
+        let pFlags: MyMessage['pFlags'] | null = null
+        patchMsg(peerId, (m) => m.id === id, (m) => {
+          if (!!m.pFlags.pinned === pinned) return null
+          const next = { ...m.pFlags }
+          if (pinned) next.pinned = true
+          else delete next.pinned
+          pFlags = next
+          return { ...m, pFlags: next }
+        })
+        if (!pFlags) return []
+        const fields = { pFlags: pFlags as MyMessage['pFlags'] }
+        return opWindowsFor(peerId, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields }))
+      })
     },
 
     // Сколько из номеров кадра прочтения содержимого — ВХОДЯЩИЕ непрочитанные

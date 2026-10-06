@@ -413,6 +413,22 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
     expect(dialogOps).toEqual([{ op: 'patch', peerId: 1, fields: { unread_count: 1, unread_mentions_count: 0, read_inbox_max_id: generateMessageId(5) } }])
   })
 
+  // Закреп с другого устройства/участника — бит `pinned` у сообщения окна
+  // (tweb onUpdatePinnedMessages); проводка — строка реестра CACHE.
+  it('pin_message → операция окна patch {pFlags.pinned}', async () => {
+    const { core } = await bootWithSeededDialog()
+    await seedHistory(core, [makeRawMessage({ id: 5, peerId: 1, fromId: 9, text: 'важное', createdAt: '2026-08-01T00:00:01Z' })])
+    const ops: unknown[] = []
+    const [epWorker, epTab] = pair()
+    core.bind(epWorker)
+    new SuperMessagePort(epTab).on('rt:message_op', (p) => ops.push(...(p as { ops: unknown[] }).ops))
+
+    capturedConnDeps!.onFrame('pin_message', {
+      _: 'updatePinnedMessages', peer: { _: 'peerUser', user_id: 1 }, messages: [5], pFlags: { pinned: true },
+    })
+
+    expect(ops).toEqual([{ op: 'patch', key: '1', msgId: generateMessageId(5), fields: { pFlags: { pinned: true } } }])
+  })
 })
 
 // Task 4 (действия без оптимистики): то же действие с ДРУГОГО устройства/вкладки
