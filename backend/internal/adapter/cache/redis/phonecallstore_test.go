@@ -47,12 +47,12 @@ func TestPhoneCallStore_Lifecycle(t *testing.T) {
 	}
 
 	at := time.UnixMilli(1_700_000_000_123)
-	if err := s.Accept(ctx, "c1", at); err != nil {
-		t.Fatalf("Accept: %v", err)
+	if won, err := s.Accept(ctx, "c1", at); err != nil || !won {
+		t.Fatalf("Accept: won=%v err=%v", won, err)
 	}
-	// Повторный ответ (второй девайс) время не сдвигает.
-	if err := s.Accept(ctx, "c1", at.Add(time.Minute)); err != nil {
-		t.Fatalf("Accept 2: %v", err)
+	// Повторный ответ (второй девайс) время не сдвигает и не выигрывает.
+	if won, err := s.Accept(ctx, "c1", at.Add(time.Minute)); err != nil || won {
+		t.Fatalf("Accept 2: won=%v err=%v, want проигрыш", won, err)
 	}
 	got, err = s.Get(ctx, "c1")
 	if err != nil || !got.AcceptedAt.Equal(at) {

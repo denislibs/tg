@@ -22,7 +22,10 @@ func (i *Interactor) UpdateLiveLocation(ctx context.Context, chatID, msgID, user
 	if cur.ChatID != chatID || cur.Deleted || cur.Type != "geo" || cur.GeoLivePeriod == nil {
 		return domain.Message{}, domain.ErrNotFound // не live-локация
 	}
-	if cur.SenderID != userID {
+	// Двигает точку только её автор, и только у СВОЕГО сообщения: копия
+	// (пересылка, зеркало поста) несёт «Переслано от …», и чужие координаты
+	// под этой подписью — подделка (как правка пересланного, A5-13).
+	if cur.SenderID != userID || isCopy(cur) {
 		return domain.Message{}, domain.ErrForbidden
 	}
 	if heading != nil && (*heading < 0 || *heading > 359) {

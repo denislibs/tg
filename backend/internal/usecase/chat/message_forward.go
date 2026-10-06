@@ -3,8 +3,6 @@ package chat
 import (
 	"context"
 	"encoding/json"
-	"slices"
-	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -21,18 +19,45 @@ type ForwardInput struct {
 	// DropCaption — «убрать подпись» (tweb dropCaptions): у медиа-сообщений
 	// текст/entities не копируются (для текстовых сообщений флаг игнорируется).
 	DropCaption bool
+	// Silent — без звука (messages.forwardMessages silent): пуш не шлётся.
+	Silent bool
+	// ThreadRootID — тема форума или тред, куда пересылают (top_msg_id): КЛЮЧ
+	// СТРОКИ корня в ToChatID, номер переводит граница (ResolveThreadRootForSend).
+	ThreadRootID *int64
+}
+
+// forwardCopy — копия одного исходного сообщения и всё, что нужно её доставке
+// после коммита.
+type forwardCopy struct {
+	msg domain.Message
+	// Канал-приёмник: тело и курсор журнала канала (живой кадр — то же тело).
+	channelPayload map[string]any
+	channelPts     int64
+	// Остальные чаты: веер по участникам (fanOutNewMessage).
+	recipients []int64
+	ptsByUser  map[int64]int64
+	mentions   map[int64]bool
+	// Зеркало поста в группе обсуждения (пересылка в канал с обсуждением).
+	mirror *mirrorDelivery
 }
 
 // ForwardMessages copies the given messages into ToChatID as new messages with
 // forward attribution ("Переслано от X"). Forwarding a forward preserves the
-// ORIGINAL origin (like Telegram). Each copy fans out a normal new_message
-// update/frame, so receivers and the /sync catch-up treat it like any incoming
-// message.
+// ORIGINAL origin (like Telegram).
 //
 // Источник читается по общим предикатам: чат — RequireChatRead (публичный
 // канал пересылается и без вступления), каждое сообщение —
 // RequireMessagesVisible (скрытая предыстория, очищенное и скрытое у себя по
-// номеру не пересылаются: для зрителя их нет). Приёмник — член чата.
+// номеру не пересылаются: для зрителя их нет).
+//
+// Приёмник — та же отправка, что Send (у оригинала messages.forwardMessages
+// подчиняется тем же CHAT_SEND_*_FORBIDDEN, USER_PRIVACY_RESTRICTED,
+// SLOWMODE_WAIT, PAYMENT_REQUIRED): закрытая тема, право постинга в канал,
+// права чата и личное ограничение (медиа-бит — по содержимому копий),
+// медленный режим (пачку из нескольких единиц в нём не переслать),
+// приватность получателя лички, плата за сообщение — всё ДО вставки. Копия
+// содержимого — общий copyContent; веер, out пересылающего, упоминания,
+// непрочитанное, пуш (кроме silent) и кэш диалогов — общие с Send.
 func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]domain.Message, error) {
 	if len(in.MsgIDs) == 0 {
 		return nil, nil
@@ -51,19 +76,52 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 		return nil, domain.ErrNotFound
 	}
 
-	// Пересылка В КАНАЛ — это тот же пост канала, поэтому у неё та же развилка
-	// по виду пира, что у Send: право постинга вместо простого членства и одна
-	// запись в журнал канала вместо веера по подписчикам. Пока развилки не
-	// было, пересылка оставалась третьей веткой доставки — и повторяла оба
-	// дефекта отправки: подписчик мог опубликовать в канал что угодно, а
-	// доехавшее не попадало в догон разрыва.
+	// Исходники и их копии — до транзакции: по содержимому копий решаются
+	// гейты (медиа-бит, голосовое, единицы медленного режима).
+	srcs := make([]domain.Message, 0, len(in.MsgIDs))
+	copies := make([]domain.Message, 0, len(in.MsgIDs))
+	for _, srcID := range in.MsgIDs {
+		src, e := i.msgs.GetByID(ctx, srcID)
+		if e != nil {
+			return nil, e
+		}
+		if src.ChatID != in.FromChatID || src.Deleted {
+			return nil, domain.ErrNotFound
+		}
+		if !forwardable(src) {
+			return nil, domain.ErrForbidden
+		}
+		c := copyContent(src)
+		// «Убрать подпись» (tweb dropCaptions) — только для медиа-сообщений:
+		// текст/entities не копируем, чтобы уехало голое медиа.
+		if in.DropCaption && src.MediaID != nil {
+			c.Text, c.Entities = "", nil
+		}
+		c.ChatID, c.SenderID, c.ThreadRootID = in.ToChatID, in.SenderID, in.ThreadRootID
+		srcs = append(srcs, src)
+		copies = append(copies, c)
+	}
+	units := regroup(copies)
+
 	toType, err := i.chats.ChatType(ctx, in.ToChatID)
 	if err != nil {
 		return nil, err
 	}
 	broadcast := toType == domain.ChatTypeChannel
-	if broadcast {
-		if err := i.requireRight(ctx, in.ToChatID, in.SenderID, domain.RightPostMessages); err != nil {
+	if err := i.checkForwardAllowed(ctx, in, copies, units, broadcast); err != nil {
+		return nil, err
+	}
+	// Платное медиа исходников: копия продаётся тем же ПРЕДЛОЖЕНИЕМ (цена,
+	// продавец, разблокировки — исходника), как у Telegram. Открыта она тому, кто
+	// купил оригинал; пересылающий своей копией доступа себе не покупает и
+	// выручки за неё не получает.
+	var offers map[int64]PaidOffer
+	if i.paidMedia != nil {
+		ids := make([]int64, len(srcs))
+		for idx, src := range srcs {
+			ids[idx] = src.ID
+		}
+		if offers, err = i.paidMedia.Offers(ctx, ids); err != nil {
 			return nil, err
 		}
 	}
@@ -86,221 +144,193 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 		linkAllowed[authorID] = ok
 		return ok
 	}
-	var created []domain.Message
-	var members []int64
-	// Per-message, per-recipient pts + authoritative unread (parallel to created):
-	// a forward fans out one new_message per copy, each with its own cursor.
-	var ptsMaps []map[int64]int64
-	// Упомянутые в тексте копии получатели (parallel to created): упоминание в
-	// пересланном тексте считается так же, как при обычной отправке.
-	var mentionMaps []map[int64]bool
-	// Канал-приёмник: тела и курсоры журнала (parallel to created) вместо
-	// пер-получательских карт выше. Живой кадр строится из ТОГО ЖЕ тела, что
-	// легло в журнал, — иначе догон разрыва и live разъедутся.
-	var channelPayloads []map[string]any
-	var channelPtsList []int64
-	// Зеркала постов канала (parallel to created; nil entry — не было
-	// зеркала для этой копии) — доставляются участникам групп обсуждения
-	// ПОСЛЕ коммита, тем же publishMessageDelivery (см. mirrorChannelPost/
-	// fanout.go).
-	var mirrorDelivs []*mirrorDelivery
-	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		mem, e := i.chats.MemberIDs(ctx, in.ToChatID)
-		if e != nil {
-			return e
+	// Вид чата-источника: пост канала атрибутируется КАНАЛОМ.
+	fromType, err := i.chats.ChatType(ctx, in.FromChatID)
+	if err != nil {
+		return nil, err
+	}
+	for idx := range srcs {
+		// Атрибуцию пересылки заполняем, только если её не просят скрыть
+		// (tweb dropAuthor): при DropAuthor копия — как собственное сообщение.
+		if in.DropAuthor {
+			continue
 		}
-		slices.Sort(mem)
-		members = mem
-		date := nowMillis()
-		for _, srcID := range in.MsgIDs {
-			src, e := i.msgs.GetByID(ctx, srcID)
+		src := &srcs[idx]
+		c := &copies[idx]
+		c.FwdDate = &src.CreatedAt
+		switch {
+		case isCopy(*src):
+			// Пересылка пересылки и зеркало поста: исходная атрибуция едет как
+			// есть (у зеркала это канал и номер поста, не админ-автор).
+			c.FwdFromUserID, c.FwdFromChatID, c.FwdFromMsgID = src.FwdFromUserID, src.FwdFromChatID, src.FwdFromMsgID
+			c.FwdFromName = src.FwdFromName
+			if src.FwdDate != nil {
+				c.FwdDate = src.FwdDate
+			}
+		case fromType == domain.ChatTypeChannel:
+			// Пост канала: from_id — сам канал, админ-автор не раскрывается
+			// (как сам пост после A4-02; post_author у оригинала — только при
+			// подписях).
+			c.FwdFromChatID, c.FwdFromMsgID = &src.ChatID, &src.ID
+		case src.SendAsChatID != nil:
+			// От имени канала или группы (send_as): автор — этот пир. Номер
+			// оригинала осмыслен только в его собственном чате.
+			c.FwdFromChatID = src.SendAsChatID
+			if *src.SendAsChatID == src.ChatID {
+				c.FwdFromMsgID = &src.ID
+			}
+		default:
+			c.FwdFromUserID, c.FwdFromChatID, c.FwdFromMsgID = &src.SenderID, &src.ChatID, &src.ID
+		}
+		// Ссылка на аккаунт человека — по его правилу forwards: при запрете
+		// остаётся только имя.
+		if c.FwdFromUserID != nil && c.FwdFromName == nil && !canLink(*c.FwdFromUserID) {
+			name := i.userCard(ctx, *c.FwdFromUserID).ShortName()
+			c.FwdFromName = &name
+		}
+		if c.FwdFromName != nil {
+			c.FwdFromUserID, c.FwdFromChatID, c.FwdFromMsgID = nil, nil, nil
+		}
+	}
+
+	out := make([]forwardCopy, 0, len(copies))
+	var charge paidCharge // платная группа: последнее списание (балансы абсолютны)
+	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		for idx, c := range copies {
+			// Плата — за каждое сообщение (allow_paid_stars = цена × число).
+			ch, e := i.chargePaidMessage(ctx, sendProbe(in.ToChatID, in.SenderID, c))
 			if e != nil {
 				return e
 			}
-			if src.ChatID != in.FromChatID || src.Deleted {
-				return domain.ErrNotFound
+			if ch.applied {
+				charge = ch
 			}
-			// Пересылка увеличивает счётчик пересылок исходного поста (Telegram
-			// message.forwards) — best-effort, как views: сбой счётчика не рвёт форвард.
-			_ = i.msgs.IncrementForwards(ctx, srcID)
-			// Атрибуцию пересылки заполняем, только если её не просят скрыть
-			// (tweb dropAuthor): при DropAuthor копия — как собственное сообщение.
-			var fwdUser, fwdChat, fwdMsg *int64
-			var fwdDate *time.Time
-			var fwdName *string
-			if !in.DropAuthor {
-				// Preserve the true origin across forward-of-forward.
-				fwdUser = src.FwdFromUserID
-				if fwdUser == nil {
-					fwdUser = &src.SenderID
-				}
-				fwdChat = src.FwdFromChatID
-				if fwdChat == nil {
-					fwdChat = &src.ChatID
-				}
-				fwdMsg = src.FwdFromMsgID
-				if fwdMsg == nil {
-					fwdMsg = &src.ID
-				}
-				fwdDate = src.FwdDate
-				if fwdDate == nil {
-					fwdDate = &src.CreatedAt
-				}
-				// Уже скрытая атрибуция едет дальше как имя; иначе правило forwards
-				// автора решает — ссылка или только имя.
-				fwdName = src.FwdFromName
-				if fwdName == nil && !canLink(*fwdUser) {
-					name := i.userCard(ctx, *fwdUser).ShortName()
-					fwdName = &name
-				}
-				if fwdName != nil {
-					fwdUser, fwdChat, fwdMsg = nil, nil, nil
-				}
-			}
-
-			// «Убрать подпись» (tweb dropCaptions) — только для медиа-сообщений:
-			// текст/entities не копируем, чтобы уехало голое медиа.
-			text, entities := src.Text, src.Entities
-			if in.DropCaption && src.MediaID != nil {
-				text, entities = "", nil
-			}
-
 			seq, e := i.msgs.NextSeq(ctx, in.ToChatID)
 			if e != nil {
 				return e
 			}
-			msg, e := i.msgs.Insert(ctx, domain.Message{
-				ChatID: in.ToChatID, Seq: seq, SenderID: in.SenderID,
-				Type: src.Type, Text: text, Entities: entities, MediaID: src.MediaID,
-				FwdFromUserID: fwdUser, FwdFromChatID: fwdChat, FwdFromMsgID: fwdMsg, FwdDate: fwdDate,
-				FwdFromName: fwdName,
-				// Спойлер переживает пересылку (Telegram: у копии тот же
-				// messageMedia.pFlags.spoiler) — иначе форвард раскрывал бы то,
-				// что автор оригинала просил скрыть.
-				MediaSpoiler: src.MediaSpoiler,
-			})
+			c.Seq = seq
+			if c.ChecklistID, e = i.snapshotChecklist(ctx, c.ChecklistID, in.ToChatID); e != nil {
+				return e
+			}
+			msg, e := i.insertCopy(ctx, c)
 			if e != nil {
 				return e
 			}
+			if o, ok := offers[srcs[idx].ID]; ok && msg.MediaID != nil {
+				if e := i.paidMedia.SetPrice(ctx, msg.ID, o.Price, o.OfferID); e != nil {
+					return e
+				}
+			}
+			// Пересылка увеличивает счётчик пересылок исходного поста (Telegram
+			// message.forwards) — best-effort, как views.
+			_ = i.msgs.IncrementForwards(ctx, srcs[idx].ID)
 			// Пост в канал зеркалится в группу обсуждения (см. discussion_mirror.go).
-			// Что считать постом — решает сам хелпер (по типу чата-получателя), не
-			// клиентское ThreadRootID (ForwardMessages его и не проставляет).
 			md, e := i.mirrorChannelPost(ctx, msg)
 			if e != nil {
 				return e
 			}
-			mirrorDelivs = append(mirrorDelivs, md)
-
-			// Медиа-мета в live-кадр — как в Send (иначе файл у получателя
-			// заглушкой «media-N» до перезагрузки истории).
-			if msg.MediaID != nil {
-				one := []domain.Message{msg}
-				if e := i.hydrateMedia(ctx, one); e == nil {
-					msg = one[0]
-				}
+			// Копия уходит той же формой, что история: медиа-мета, опрос,
+			// чек-лист, розыгрыш, платное медиа глазами пересылающего (открыто,
+			// только если он купил исходник).
+			if msg, e = i.hydrateBroadcastMessage(ctx, msg); e != nil {
+				return e
 			}
-			// Канал: одна запись журнала на копию, без веера и без счётчиков
-			// непрочитанного — ровно как у поста в Send.
+			fc := forwardCopy{msg: msg, mirror: md}
 			if broadcast {
-				body := i.channelPostPayload(ctx, msg)
-				raw, e := json.Marshal(body)
+				// Канал: одна запись журнала на копию, без веера — как пост в Send.
+				fc.channelPayload = i.channelPostPayload(ctx, msg)
+				raw, e := json.Marshal(fc.channelPayload)
 				if e != nil {
 					return e
 				}
-				pts, e := i.channels.AppendUpdate(ctx, in.ToChatID, "new_message", raw)
-				if e != nil {
+				if fc.channelPts, e = i.channels.AppendUpdate(ctx, in.ToChatID, "new_message", raw); e != nil {
 					return e
 				}
-				created = append(created, msg)
-				channelPayloads = append(channelPayloads, body)
-				channelPtsList = append(channelPtsList, pts)
+				out = append(out, fc)
 				continue
 			}
 			mentioned, e := i.mentionedUsers(ctx, in.ToChatID, msg.Text, msg.Entities)
 			if e != nil {
 				return e
 			}
-			var mentions map[int64]bool
-			for _, uid := range members {
-				if uid != in.SenderID && mentioned[uid] {
-					if e := i.chats.AddMention(ctx, in.ToChatID, msg.ID, msg.Seq, uid); e != nil {
-						return e
-					}
-					if mentions == nil {
-						mentions = map[int64]bool{}
-					}
-					mentions[uid] = true
-				}
+			var outLocked map[string]any
+			if msg.PaidMediaPrice != nil {
+				outLocked = i.messageUpdatePayload(ctx, lockedPaidCopy(msg))
 			}
-			fwdOut := i.messageUpdatePayload(ctx, msg)
-			pp, e := i.newPeerPayloads(ctx, in.ToChatID, fwdOut)
+			fc.recipients, fc.ptsByUser, fc.mentions, e = i.fanOutNewMessage(
+				ctx, in.ToChatID, in.SenderID, msg.ID, msg.Seq, i.messageUpdatePayload(ctx, msg), outLocked, mentioned)
 			if e != nil {
 				return e
 			}
-			pp.mentions = mentions
-			ptsByUser := make(map[int64]int64, len(members))
-			for _, uid := range members {
-				payload, e := pp.payload(uid)
-				if e != nil {
-					return e
-				}
-				pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "new_message", payload)
-				if e != nil {
-					return e
-				}
-				ptsByUser[uid] = pts
-				// Счётчик растёт в базе, но в кадр не едет: клиент считает +1
-				// сам (см. fanOutNewMessage).
-				if uid != in.SenderID {
-					if _, e := i.chats.IncUnread(ctx, in.ToChatID, uid); e != nil {
-						return e
-					}
-				}
-			}
-			created = append(created, msg)
-			ptsMaps = append(ptsMaps, ptsByUser)
-			mentionMaps = append(mentionMaps, mentions)
+			out = append(out, fc)
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	if broadcast {
-		// Канал: по одной публикации в топик на копию, тем же телом, что легло
-		// в журнал. Пуш-уведомлений у постов канала нет — их нет и у Send.
-		if i.chPub != nil {
-			for idx := range created {
-				_ = i.chPub.PublishToChannel(ctx, in.ToChatID,
-					frameChannelMessage("new_message", channelPayloads[idx], channelPtsList[idx]))
-			}
+	if charge.applied {
+		i.publishBalance(ctx, in.SenderID, charge.senderBal)
+		if charge.creatorID != 0 {
+			i.publishBalance(ctx, charge.creatorID, charge.creatorBal)
 		}
-	} else if i.publisher != nil {
-		for idx, msg := range created {
-			base := i.messageUpdatePayload(ctx, msg)
-			pp, e := i.newPeerPayloads(ctx, in.ToChatID, base)
-			if e != nil {
-				break
+	}
+	created := make([]domain.Message, 0, len(out))
+	for _, fc := range out {
+		created = append(created, fc.msg)
+		if broadcast {
+			// Пуш-уведомлений у постов канала нет — их нет и у Send.
+			if i.chPub != nil {
+				_ = i.chPub.PublishToChannel(ctx, in.ToChatID, frameChannelMessage("new_message", fc.channelPayload, fc.channelPts))
 			}
-			pp.mentions = mentionMaps[idx]
-			for _, uid := range members {
-				extra := map[string]any{"pts": ptsMaps[idx][uid]}
-				_ = i.publisher.PublishToUser(ctx, uid, pp.frame("new_message", uid, extra))
-				if i.notifier != nil && uid != in.SenderID {
-					notifyPeer, _ := i.ChatIDToPeer(ctx, uid, msg.ChatID)
-					i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.Seq, msg.SenderID, msg.Text, notifyPeer)
+		} else {
+			i.publishMessageDelivery(ctx, fc.msg, in.SenderID, fc.recipients, fc.ptsByUser, fc.mentions)
+			if i.notifier != nil && !in.Silent {
+				for _, uid := range fc.recipients {
+					if uid != in.SenderID {
+						peer, _ := i.ChatIDToPeer(ctx, uid, fc.msg.ChatID)
+						i.notifier.NotifyNewMessage(ctx, uid, fc.msg.ChatID, fc.msg.Seq, fc.msg.SenderID, fc.msg.Text, peer)
+					}
 				}
 			}
 		}
-	}
-	// Зеркала пересланных постов (для форвардов в канал с обсуждением) —
-	// участникам соответствующих групп обсуждения, тем же путём, что и
-	// обычная отправка (см. mirrorChannelPost/fanout.go).
-	for _, md := range mirrorDelivs {
-		if md == nil {
-			continue
+		// Зеркало пересланного поста — участникам группы обсуждения, тем же
+		// путём, что и обычная отправка.
+		if md := fc.mirror; md != nil {
+			i.publishMessageDelivery(ctx, md.msg, md.msg.SenderID, md.recipients, md.ptsByUser, md.mentions)
 		}
-		i.publishMessageDelivery(ctx, md.msg, md.msg.SenderID, md.recipients, md.ptsByUser, md.mentions)
+		i.publishPostReplies(ctx, fc.msg)
 	}
 	return created, nil
+}
+
+// checkForwardAllowed — гейты отправки Send для пачки копий, до вставки:
+// закрытая тема; в канал — право постинга; иначе права чата, личное
+// ограничение и медленный режим (один раз на пачку: медиа-бит — если медиа
+// несёт хоть одна копия, единицы — альбом считается одной) и приватность
+// получателя лички (голосовое — своё правило).
+func (i *Interactor) checkForwardAllowed(ctx context.Context, in ForwardInput, copies []domain.Message, units int, broadcast bool) error {
+	probe := sendProbe(in.ToChatID, in.SenderID, copies[0])
+	for _, c := range copies {
+		p := sendProbe(in.ToChatID, in.SenderID, c)
+		if p.carriesMedia() && !probe.carriesMedia() {
+			probe.MediaID, probe.PollID, probe.ChecklistID, probe.GeoLat, probe.ContactUserID, probe.GiveawayID =
+				p.MediaID, p.PollID, p.ChecklistID, p.GeoLat, p.ContactUserID, p.GiveawayID
+		}
+		if c.Type == "voice" || c.Type == "roundVideo" {
+			probe.Type = c.Type
+		}
+	}
+	probe.batchUnits = units
+	if err := i.checkTopicOpen(ctx, probe); err != nil {
+		return err
+	}
+	if broadcast {
+		return i.requireRight(ctx, in.ToChatID, in.SenderID, domain.RightPostMessages)
+	}
+	if err := i.checkSendAllowed(ctx, probe); err != nil {
+		return err
+	}
+	return i.checkPrivateSendPrivacy(ctx, probe)
 }

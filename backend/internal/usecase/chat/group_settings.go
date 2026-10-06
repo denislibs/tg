@@ -132,18 +132,42 @@ func (i *Interactor) checkSendAllowed(ctx context.Context, in SendInput) error {
 		}
 	}
 	if s.SlowmodeSeconds > 0 {
+		// Пачку (пересылка нескольких сообщений) в медленном режиме не отправить
+		// вовсе — у оригинала SLOWMODE_MULTI_MSGS_DISABLED, tweb предупреждает
+		// заранее (showSlowModeTooltipIfNeeded({sendingFew})).
+		if in.batchUnits > 1 {
+			return domain.ErrSlowmode
+		}
 		if in.ClientMsgID != "" {
 			if _, e := i.msgs.FindByClientMsgID(ctx, in.ChatID, in.SenderID, in.ClientMsgID); e == nil {
 				return nil // ретрай уже принятого сообщения
 			}
 		}
-		last, e := i.msgs.LastMessageAt(ctx, in.ChatID, in.SenderID)
+		last, grouped, size, e := i.msgs.LastMessageAt(ctx, in.ChatID, in.SenderID)
+		// Альбом — одна единица: у оригинала это один вызов sendMultiMedia, наш
+		// клиент шлёт элементы отдельными кадрами с общим grouped_id. Следующий
+		// элемент начатого альбома проходит, пока альбом не больше предела
+		// (размер считается со снятыми элементами) и пока он догружается (окно
+		// albumWindow от предыдущего элемента) — иначе общий ключ превращался
+		// бы в постоянный обход медленного режима. Ключ альбома бывает только
+		// у медиа (Send сбрасывает его у прочего).
+		if e == nil && in.GroupedID != 0 && in.MediaID != nil && grouped == in.GroupedID &&
+			size < maxAlbumSize && time.Since(last) < albumWindow {
+			return nil
+		}
 		if e == nil && time.Since(last) < time.Duration(s.SlowmodeSeconds)*time.Second {
 			return domain.ErrSlowmode
 		}
 	}
 	return nil
 }
+
+// maxAlbumSize — элементов в одном альбоме (Telegram: до 10 в sendMultiMedia).
+const maxAlbumSize = 10
+
+// albumWindow — сколько после предыдущего элемента ещё ждём следующий элемент
+// того же альбома (кадры одной отправки идут подряд, медиа уже загружено).
+const albumWindow = 30 * time.Second
 
 // carriesMedia — несёт ли отправка медиа в смысле запрета send_media. У
 // оригинала у опроса своё право send_polls, у гео/контакта/чек-листа — свои
@@ -152,7 +176,7 @@ func (i *Interactor) checkSendAllowed(ctx context.Context, in SendInput) error {
 // смотрел только MediaID, и опрос, гео и контакт проходили мимо него.
 func (in SendInput) carriesMedia() bool {
 	return in.MediaID != nil || in.PollID != nil || in.ChecklistID != nil ||
-		in.GeoLat != nil || in.ContactUserID != nil
+		in.GeoLat != nil || in.ContactUserID != nil || in.GiveawayID != nil
 }
 
 // ChatSettingsFor returns the chat's group settings (any member may read them).

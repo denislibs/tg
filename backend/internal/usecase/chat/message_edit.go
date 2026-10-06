@@ -4,14 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"time"
 	"unicode/utf8"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
-// EditMessage replaces the text of the caller's own message, stamps edited_at,
-// and fans out an "edit_message" update to every member (so all see the new text
-// and the "edited" marker). Text-only; author-only.
+// editTimeLimit — сколько своё сообщение правится в личке (Telegram appConfig
+// edit_time_limit, 48 часов). В группе и канале (peerChannel) срока нет.
+const editTimeLimit = 48 * time.Hour
+
+// EditMessage replaces the text of a message, stamps edited_at, and fans out an
+// "edit_message" update to every member (so all see the new text and the
+// "edited" marker). Who may edit is tweb canEditMessage (see canEditMessage).
 func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int64, text string, entities domain.MessageEntities) (domain.Message, error) {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {
@@ -27,8 +32,8 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 	if cur.ChatID != chatID || cur.Deleted {
 		return domain.Message{}, domain.ErrNotFound
 	}
-	if cur.SenderID != userID {
-		return domain.Message{}, domain.ErrForbidden // only the author may edit
+	if err := i.canEditMessage(ctx, cur, userID); err != nil {
+		return domain.Message{}, err
 	}
 	if utf8.RuneCountInString(text) > maxMessageRunes {
 		return domain.Message{}, domain.ErrTooLong
@@ -108,6 +113,96 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 		}
 	}
 	return msg, nil
+}
+
+// canEditMessage — серверный порт tweb appMessagesManager.canEditMessage
+// (:8312-8390, сервер Telegram отвечает MESSAGE_EDIT_FORBIDDEN /
+// MESSAGE_AUTHOR_REQUIRED):
+//   - правится только обычное сообщение (canMessageBeEdited): не служебка и не
+//     лог звонка, не пересланное (иначе «Переслано от Алисы» с чужим текстом),
+//     не стикер и не кружок, не секретное, не гео/контакт/опрос/розыгрыш/подарок
+//     (у их медиа нет подписи — goodMedias: фото, документ, превью, чек-лист);
+//     сообщение бота правит только бот (via_bot у нас не хранится);
+//   - «Избранное» — всегда;
+//   - канал — админ с edit_messages, автор не нужен;
+//   - группа — только своё и только при праве писать (send_plain ‖ send_media);
+//   - личка — только своё и не позже editTimeLimit.
+func (i *Interactor) canEditMessage(ctx context.Context, m domain.Message, userID int64) error {
+	if !editableContent(m) {
+		return domain.ErrForbidden
+	}
+	if i.bots != nil {
+		if bot, err := i.bots.IsBot(ctx, m.SenderID); err == nil && bot {
+			return domain.ErrForbidden
+		}
+	}
+	typ, err := i.chats.ChatType(ctx, m.ChatID)
+	if err != nil {
+		return err
+	}
+	switch typ {
+	case domain.ChatTypeSaved:
+		return nil
+	case domain.ChatTypeChannel:
+		return i.requireRight(ctx, m.ChatID, userID, domain.RightEditMessages)
+	}
+	if m.SenderID != userID {
+		return domain.ErrForbidden
+	}
+	switch typ {
+	case domain.ChatTypeGroup:
+		if !i.canSendInGroup(ctx, m.ChatID, userID) {
+			return domain.ErrForbidden
+		}
+	default:
+		if time.Since(m.CreatedAt) > editTimeLimit {
+			return domain.ErrForbidden
+		}
+	}
+	return nil
+}
+
+// editableContent — tweb canMessageBeEdited: что у сообщения вообще можно
+// править (подпись или текст).
+func editableContent(m domain.Message) bool {
+	if m.Action != nil || len(m.EncBody) > 0 ||
+		m.FwdFromUserID != nil || m.FwdFromChatID != nil || m.FwdFromName != nil || m.IsDiscussionMirror {
+		return false
+	}
+	if m.GeoLat != nil || m.ContactUserID != nil || m.PollID != nil || m.GiveawayID != nil || m.GiftID != nil {
+		return false
+	}
+	switch m.Type {
+	case "service", "call", "sticker", "roundVideo", "encrypted", "gift", "geo", "contact", "poll", "giveaway":
+		return false
+	}
+	return true
+}
+
+// canSendInGroup — может ли участник писать в группу (tweb hasRights
+// send_plain ‖ send_media): админ — всегда, участник — по правам чата и без
+// личного запрета писать. Без медленного режима: это проверка права, а не
+// новой отправки.
+func (i *Interactor) canSendInGroup(ctx context.Context, chatID, userID int64) bool {
+	if i.groups == nil {
+		return true
+	}
+	m, err := i.groups.GetMember(ctx, chatID, userID)
+	if err != nil {
+		return false
+	}
+	if m.Role == domain.RoleCreator || m.Role == domain.RoleAdmin {
+		return true
+	}
+	s, err := i.groups.Settings(ctx, chatID)
+	if err != nil {
+		return false
+	}
+	if s.DefaultPerms&domain.PermSendMessages == 0 {
+		return false
+	}
+	denied, err := i.restricted(ctx, chatID, userID, domain.PermSendMessages)
+	return err == nil && !denied
 }
 
 // syncEditMentions пересобирает упоминания правленого сообщения: новые

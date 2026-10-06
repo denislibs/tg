@@ -138,6 +138,8 @@ func (h *ChatHandler) writeSecretErr(w http.ResponseWriter, err error) bool {
 		writeError(w, http.StatusBadRequest, "invalid request")
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(w, http.StatusForbidden, "not allowed")
+	case errors.Is(err, domain.ErrPrivacy):
+		writeError(w, http.StatusForbidden, "privacy")
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "secret chat not found")
 	default:
@@ -448,28 +450,8 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		MediaSpoiler:   body.MediaSpoiler,
 		SendAsChatID:   sendAsChatID(body.SendAsPeerID),
 	})
-	if errors.Is(err, domain.ErrNotFound) {
-		writeError(w, http.StatusForbidden, "not a member of this chat")
-		return
-	}
-	if errors.Is(err, domain.ErrTooLong) {
-		writeError(w, http.StatusBadRequest, "message too long")
-		return
-	}
-	if errors.Is(err, domain.ErrForbidden) {
-		writeError(w, http.StatusForbidden, "not allowed")
-		return
-	}
-	if errors.Is(err, domain.ErrSlowmode) {
-		writeError(w, http.StatusTooManyRequests, "slowmode")
-		return
-	}
-	if errors.Is(err, domain.ErrPrivacy) {
-		writeError(w, http.StatusForbidden, "privacy")
-		return
-	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "send failed")
+		writeSendError(w, err, "not a member of this chat")
 		return
 	}
 	writeMessage(w, r, h.svc, msg)
@@ -701,7 +683,8 @@ func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	msg, err := h.svc.EditMessage(r.Context(), chatID, msgID, h.meID(r), body.Text, body.Entities)
 	if errors.Is(err, domain.ErrForbidden) {
-		writeError(w, http.StatusForbidden, "only the author can edit")
+		// tweb canEditMessage → сервер MESSAGE_EDIT_FORBIDDEN
+		writeError(w, http.StatusForbidden, "message edit forbidden")
 		return
 	}
 	if errors.Is(err, domain.ErrNotFound) {
@@ -858,6 +841,10 @@ type forwardBody struct {
 	Seqs        []int64 `json:"ids"`
 	DropAuthor  bool    `json:"drop_author"`
 	DropCaption bool    `json:"drop_caption"`
+	// silent — без звука; top_msg_id — НОМЕР корня темы/треда у пира-приёмника
+	// (schema messages.forwardMessages silent, top_msg_id).
+	Silent   bool   `json:"silent"`
+	TopMsgID *int64 `json:"top_msg_id"`
 }
 
 func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
@@ -885,16 +872,22 @@ func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "message not found")
 		return
 	}
+	threadRoot, terr := h.svc.ResolveThreadRootForSend(r.Context(), toChatID, body.TopMsgID)
+	if errors.Is(terr, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "thread not found")
+		return
+	}
+	if terr != nil {
+		writeError(w, http.StatusInternalServerError, "forward failed")
+		return
+	}
 	msgs, err := h.svc.ForwardMessages(r.Context(), usecasechat.ForwardInput{
 		FromChatID: fromChatID, ToChatID: toChatID, MsgIDs: msgIDs, SenderID: h.meID(r),
 		DropAuthor: body.DropAuthor, DropCaption: body.DropCaption,
+		Silent: body.Silent, ThreadRootID: threadRoot,
 	})
-	if errors.Is(err, domain.ErrNotFound) {
-		writeError(w, http.StatusForbidden, "not a member or message not found")
-		return
-	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "forward failed")
+		writeSendError(w, err, "not a member or message not found")
 		return
 	}
 	writeMessagesAll(w, r, h.svc, msgs)
@@ -1495,7 +1488,8 @@ func (h *ChatHandler) ScheduleMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, domain.ErrForbidden) {
-		writeError(w, http.StatusForbidden, "when_online requires a private chat")
+		// when_online — только в личке и только при видимом last seen
+		writeError(w, http.StatusForbidden, "not allowed")
 		return
 	}
 	if errors.Is(err, domain.ErrNotFound) {
@@ -1670,8 +1664,12 @@ func (h *ChatHandler) CreateTopic(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid title")
 		return
 	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
 	if err != nil {
-		h.mapScheduledErr(w, err)
+		writeSendError(w, err, "not found")
 		return
 	}
 	// Созданная тема — та же СТРОКА, что едет в списке: своей формы у этого

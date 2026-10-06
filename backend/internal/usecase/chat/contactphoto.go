@@ -29,6 +29,8 @@ func (i *Interactor) SuggestProfilePhoto(ctx context.Context, fromUserID, toUser
 		SenderID: fromUserID,
 		Action:   domain.NewMessageActionSuggestProfilePhoto(nil, false),
 		MediaID:  &mid,
+		// запрос пользователя: заблокировавшему картинку не доставить
+		userAction: true,
 	})
 }
 
