@@ -34,7 +34,6 @@
 
 import type { MyPhoto, TextWithEntities } from '../media/messageMedia'
 import type { PeerNotifySettings } from '../dialogs/notifySettings'
-import type { ChatInviteExported } from '../managers/groupsManager'
 import { NULL_PEER_ID, toPeerId } from './peerId'
 
 // ── UserProfilePhoto / ChatPhoto ────────────────────────────────────────────
@@ -477,15 +476,13 @@ export interface ChannelFull {
    *  `admins_count:flags.1?int`; `kicked_count:flags.2?int`/`banned_count:flags.2?int`
    *  — зрителю с `ban_users`; `requests_pending:flags.28?int` и
    *  `recent_requesters:flags.28?Vector<long>` — зрителю с `invite_users`, когда
-   *  заявки есть (строки редактора чата, плашка заявок в шапке);
-   *  `exported_invite:flags.23?ExportedChatInvite` — основная ссылка админу с
-   *  `invite_users` (строка «Ссылка» профиля). */
+   *  заявки есть (строки редактора чата, плашка заявок в шапке).
+   *  `exported_invite:flags.23?ExportedChatInvite` сервер не производит (Б-102). */
   admins_count?: number
   kicked_count?: number
   banned_count?: number
   requests_pending?: number
   recent_requesters?: number[]
-  exported_invite?: ChatInviteExported
   pinned_msg_id?: number
   /** чат обсуждения канала; отсутствует — обсуждения нет */
   linked_chat_id?: number
