@@ -53,6 +53,17 @@ export function newChatsManager({ rest, peers, messages }: ChatsDeps) {
       void clearPersistedChat(peerId) // офлайн-история чата тоже очищается
     },
 
+    // «Удалить чат» лички и «Избранного» — tweb `flushHistory({justClear: false,
+    // revoke})` → `messages.deleteHistory` без `just_clear`: история уходит
+    // вместе с диалогом. `revoke` — удалить и у собеседника. Строку снимает
+    // вызывающий (`dialogs.applyRemoved`), своим устройствам сервер шлёт кадры
+    // удаления и `updateChatRemoved`. Для групп и каналов ручка отвечает 400 —
+    // там «удалить» это выход или удаление чата целиком.
+    async deleteHistory(peerId: number, revoke: boolean): Promise<void> {
+      await rest.del(`/chats/${peerId}/history${revoke ? '?revoke=1' : ''}`)
+      void clearPersistedChat(peerId)
+    },
+
     // Когда получатель прочитал исходящее сообщение в приватном чате
     // (tweb getOutboxReadDate). Ленивая подгрузка при открытии меню.
     async getReadDate(peerId: number, msgId: number): Promise<ReadDateResult> {

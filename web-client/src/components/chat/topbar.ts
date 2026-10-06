@@ -72,8 +72,11 @@
 //  8. Мьют темы форума (`isPeerLocalMuted({threadId})`, `togglePeerMute({threadId})`) — ручки
 //     мьюта темы нет (`groups.setMute` глушит весь чат), поэтому в теме (`threadId`) пунктов
 //     «Без звука»/«Со звуком» нет (Б-85).
-//     «Удалить» у «Избранного» (`ChatType.Saved` и свой пир) не показывается — удаления
-//     истории вместе с диалогом на бэкенде нет (О-89; так же `dialogsContextMenu.ts`).
+//     «Удалить» у «Избранного» (`ChatType.Saved` и свой пир) не показывается — ручка
+//     удаления уже есть (`chats.deleteHistory`), но ключа текста попапа
+//     `AreYouSureDeleteThisChatSavedMessages` в словаре нет (так же `dialogsContextMenu.ts`).
+//     Секретный чат попап получает признаком строки (`dialog.secret`): у него «удалить»
+//     — выход, а не `deleteHistory` (В7-1, `popups/deleteDialog.ts`, расхождение 4).
 //     Удаление темы/сохранённого диалога (`threadId` в `showDeleteDialogPopup`) — О-3.
 //  9. Подсказка «Chat.Menu.Hint» после «Выбрать сообщения» помнится настройкой
 //     `chatContextMenuHintWasShown` нашего `useSettingsStore` (tweb `appSettings`).
@@ -527,7 +530,7 @@ export default class ChatTopbar {
       danger: true,
       text: 'Delete',
       onClick: () => {
-        showDeleteDialogPopup(this.peerId, this.managers)
+        showDeleteDialogPopup(this.peerId, this.managers, undefined, !!this.getDialog()?.secret)
       },
       verify: this.verifyIfCanDeleteChat,
     }]
