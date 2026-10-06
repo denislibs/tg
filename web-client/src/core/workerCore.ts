@@ -654,7 +654,7 @@ export function createWorkerCore() {
   async function onUpdatePendingJoinRequests(update: PendingJoinRequestsEvt, meta?: EventMeta): Promise<void> {
     const peerId = getPeerId(update.peer)
     const state = await getState()
-    const hideChatJoinRequests = { ...(state.hideChatJoinRequests ?? {}) }
+    const hideChatJoinRequests = { ...state.hideChatJoinRequests }
     delete hideChatJoinRequests[peerId]
     // tweb `appStateManager.pushToState` — запись и зеркало ключа вкладкам
     mirrorStateKey('hideChatJoinRequests', hideChatJoinRequests)

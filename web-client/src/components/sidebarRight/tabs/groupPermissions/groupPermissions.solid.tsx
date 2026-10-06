@@ -226,7 +226,7 @@ const GroupPermissions: Component = () => {
               const chosen = peerIds[0]
               if(chosen !== undefined) {
                 setTimeout(() => {
-                  openPermissions(chosen)
+                  void openPermissions(chosen)
                 }, 0)
               }
             },

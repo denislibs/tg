@@ -95,7 +95,7 @@ const ChatDiscussion: Component = () => {
   let canChangeInfo = false
 
   let stickerContainer!: HTMLDivElement
-  let btnUnlink!: HTMLButtonElement
+  let btnUnlink!: HTMLElement
 
   const [captionEl, setCaptionEl] = createSignal<HTMLElement>()
   const [chatlistElement, setChatlistElement] = createSignal<HTMLElement>()
@@ -360,7 +360,7 @@ const ChatDiscussion: Component = () => {
 
   return (
     <>
-      <div ref={stickerContainer} class="sticker-container" />
+      <div ref={(el) => stickerContainer = el} class="sticker-container" />
       <div class="caption">{captionEl()}</div>
       <Section caption={sectionCaption()}>
         <Show keyed when={chatlistElement()}>{(element) => element}</Show>
@@ -375,7 +375,7 @@ const ChatDiscussion: Component = () => {
       </Section>
       <Section classList={{ hide: unlinkHidden() }}>
         <Button
-          ref={btnUnlink}
+          ref={(el) => btnUnlink = el}
           class="btn-primary btn-transparent danger"
           icon="delete"
           text={unlinkText()}
