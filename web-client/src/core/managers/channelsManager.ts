@@ -116,14 +116,10 @@ export function newChannelsManager({ rest, beforeSending, peers, cacheViews }: {
     // воркере (channelFunnel), а не менеджер — курсор и гейтинг живут там же, где
     // funnel обычных апдейтов. Здесь только команды/запросы к бэку.
     async join(username: string): Promise<void> { await rest.post('/channels/join', { username }) },
-    async enableDiscussion(channelPeerId: PeerId): Promise<PeerId> {
-      const r = await rest.post<{ discussion_peer_id: PeerId }>(`/channels/${channelPeerId}/discussion`, {})
-      return r.discussion_peer_id
-    },
-    // Привязать существующую группу как обсуждение (Telegram setDiscussionGroup).
-    async linkDiscussion(channelPeerId: PeerId, groupPeerId: PeerId): Promise<PeerId> {
-      const r = await rest.put<{ discussion_peer_id: PeerId }>(`/channels/${channelPeerId}/discussion`, { group_peer_id: groupPeerId })
-      return r.discussion_peer_id
+    // Привязать существующую группу как обсуждение (Telegram setDiscussionGroup
+    // → Bool): адрес группы читают из `channelFull.linked_chat_id` карточки.
+    async linkDiscussion(channelPeerId: PeerId, groupPeerId: PeerId): Promise<void> {
+      await rest.put(`/channels/${channelPeerId}/discussion`, { group_peer_id: groupPeerId })
     },
     // Отвязать обсуждение (Telegram setDiscussionGroup с пустой группой).
     async unlinkDiscussion(channelPeerId: PeerId): Promise<void> {

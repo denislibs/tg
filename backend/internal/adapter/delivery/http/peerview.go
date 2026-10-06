@@ -9,37 +9,25 @@ import (
 // Витрина пиров: общие куски для всех ручек, отдающих пользователей и чаты
 // конструкторами схемы (`user`, `channel`).
 //
-// Здесь же живёт единственный способ погасить аватарку по правилу приватности.
-// Раньше каждая ручка гасила по-своему — где-то обнуляла avatar_url, где-то
-// забывала обнулить рядом лежащее avatar_preview (и превью выдавало скрытое
-// фото). Теперь «фото не показываем» выражается ОДНИМ способом: конструктор
-// userProfilePhotoEmpty, то есть «фото нет» как состояние.
+// Здесь же живёт вход в единственный сборщик карточки `user` глазами зрителя
+// (viewUsers): «фото не показываем» выражается ОДНИМ способом — конструктор
+// userProfilePhotoEmpty, — номер и статус тоже решает правило приватности.
 
-// gatePhotos гасит аватарки тех пользователей списка, которым правило
-// profile_photo не пускает зрителя. Правит срез на месте.
+// viewUsers доводит карточки `user` до вида глазами зрителя — тем же
+// сборщиком, что у usecase (privacy.ViewUsers → domain.UserViewRules): фото,
+// номер и статус по правилам приватности. Правит срез на месте.
 //
-// Проверяющий необязателен: без него фото видно всем — та же мягкая
-// деградация, что у остальных опциональных зависимостей, и то же прежнее
-// поведение. Сам зритель видит своё фото всегда.
-func gatePhotos(r *http.Request, privacy PrivacyQuery, users []domain.UserReal) {
-	if privacy == nil || len(users) == 0 {
+// Проверяющий необязателен: без него — domain.UncheckedUserViewRules.
+func viewUsers(r *http.Request, privacy PrivacyQuery, users []domain.UserReal) {
+	if len(users) == 0 {
 		return
 	}
 	viewer, _ := UserFromContext(r.Context())
-	ids := make([]int64, 0, len(users))
-	for _, u := range users {
-		ids = append(ids, u.ID)
-	}
-	allowed, err := privacy.VisibleMap(r.Context(), viewer.ID, ids, domain.PrivacyProfilePhoto)
-	if err != nil {
+	if privacy == nil {
+		domain.UncheckedUserViewRules(viewer.ID, users).Apply(users)
 		return
 	}
-	for i := range users {
-		if users[i].ID == viewer.ID || allowed[users[i].ID] {
-			continue
-		}
-		users[i].Photo = domain.NewUserProfilePhotoEmpty()
-	}
+	privacy.ViewUsers(r.Context(), viewer.ID, users)
 }
 
 // channelsOf — краткие конструкторы `channel` для списка строк chats.

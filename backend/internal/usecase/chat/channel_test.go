@@ -62,7 +62,7 @@ type fakeSearchRepo struct {
 	mu        sync.Mutex
 	usernames map[string]int64
 	// Выдача поиска пиров и «свои» из неё (OwnPeers).
-	chats              []domain.ChatRecord
+	chats              []int64 // ранжированные id публичных чатов
 	users              []domain.UserReal
 	ownChats, ownUsers map[int64]bool
 	lastLimit          int
@@ -75,7 +75,7 @@ func newFakeSearchRepo() *fakeSearchRepo {
 	return &fakeSearchRepo{usernames: map[string]int64{}}
 }
 
-func (r *fakeSearchRepo) SearchChats(_ context.Context, _ string, limit int) ([]domain.ChatRecord, error) {
+func (r *fakeSearchRepo) SearchChats(_ context.Context, _ string, limit int) ([]int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.lastLimit, r.searchCalls = limit, r.searchCalls+1
@@ -108,7 +108,7 @@ func (r *fakeSearchRepo) OwnPeers(_ context.Context, viewerID int64, chatIDs, us
 	return chats, users, nil
 }
 
-func (r *fakeSearchRepo) SimilarChannels(_ context.Context, _, _ int64, _ int) ([]domain.ChatRecord, int, error) {
+func (r *fakeSearchRepo) SimilarChannels(_ context.Context, _, _ int64, _ int) ([]int64, int, error) {
 	return nil, 0, nil
 }
 

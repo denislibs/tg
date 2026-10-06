@@ -91,7 +91,7 @@ describe('createWorkerCore(): message_ack / message_error применяет в�
   // переносом), а переоткрытие чата показало бы его рядом с настоящим.
   it('message_ack → ackPendingMessage + rt:message_op, сырой rt:ack летит дальше', () => {
     const { ops, raw } = boot()
-    const ack = { client_msg_id: 'c-1', msg_id: 500, seq: 20, created_at: '2026-08-16T10:00:00Z' }
+    const ack = { client_msg_id: 'c-1', msg_id: 500, seq: 20, date: 1786874400 }
 
     capturedConnDeps!.onFrame('message_ack', ack)
 
@@ -120,7 +120,7 @@ describe('createWorkerCore(): message_ack / message_error применяет в�
     const { ops, raw } = boot()
     ackPendingMessage.mockReturnValueOnce([])
 
-    capturedConnDeps!.onFrame('message_ack', { client_msg_id: 'c-gone', msg_id: 1, seq: 1, created_at: 'now' })
+    capturedConnDeps!.onFrame('message_ack', { client_msg_id: 'c-gone', msg_id: 1, seq: 1, date: 1 })
 
     expect(ops).toEqual([])
     expect(raw).toHaveLength(1) // сырой кадр всё равно ушёл

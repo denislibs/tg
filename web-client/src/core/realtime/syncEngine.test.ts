@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { newSyncEngine, type SyncItem } from './syncEngine'
 import type { Cursor } from './cursor'
 
-interface Page { new_messages: SyncItem[]; other_updates: SyncItem[]; state: { pts: number; date: number }; slice: boolean; too_long?: boolean }
+interface Page { new_messages: SyncItem[]; other_updates: SyncItem[]; state: { pts: number; date: number }; slice: boolean; too_long?: boolean; users?: unknown[]; chats?: unknown[] }
 function fakeRest(pages: Page[]) {
   let i = 0
   return { get: vi.fn(async () => pages[i++]) } as never
@@ -34,6 +34,22 @@ describe('SyncEngine.catchUp', () => {
     expect(onUpdate).toHaveBeenCalledTimes(3)
     expect(cursor.get().pts).toBe(9)
     expect(onResync).not.toHaveBeenCalled()
+  })
+
+  // A4-05: карточки страницы разницы сохраняются ДО её апдейтов (tweb
+  // apiUpdatesManager :341-342) — иначе первый апдейт рисовался без имени.
+  it('отдаёт векторы карточек страницы раньше её апдейтов', async () => {
+    const rest = fakeRest([
+      { new_messages: [nm(5, 1)], other_updates: [], state: { pts: 5, date: 10 }, slice: false, users: [{ _: 'user', id: 7 }], chats: [] },
+    ])
+    const order: string[] = []
+    const se = newSyncEngine({
+      rest, cursor: fakeCursor(), onResync: vi.fn(),
+      onPeers: (p) => order.push(`peers:${p.users?.length}`),
+      onUpdate: (it) => order.push(`update:${it.pts}`),
+    })
+    await se.catchUp()
+    expect(order).toEqual(['peers:1', 'update:5'])
   })
 
   it('merges new_messages + other_updates into ONE pts-ordered stream (edit-before-base fix)', async () => {

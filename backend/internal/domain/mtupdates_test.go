@@ -30,13 +30,13 @@ func TestUpdatesEnvelope_ShapeFollowsSchema(t *testing.T) {
 	msg := MessageReal{Underscore: MessageTag, ID: 12, PeerID: NewPeerUser(7),
 		Date: int(envelopeDate), Message: "привет"}
 
-	withPts := NewUpdatesEnvelope(bodyOf(t, NewUpdateNewMessage(msg, 41)), nil, envelopeDate)
+	withPts := NewUpdatesEnvelope(bodyOf(t, NewUpdateNewMessage(msg, 41)), nil, envelopeDate, nil, nil)
 	if withPts["_"] != UpdateShortTag {
 		t.Fatalf("кадр со своим pts обязан ехать updateShort, а не %v", withPts["_"])
 	}
 
 	seq := int64(42)
-	withoutPts := NewUpdatesEnvelope(bodyOf(t, NewUpdateDialogPinned(NewPeerUser(7), true)), &seq, envelopeDate)
+	withoutPts := NewUpdatesEnvelope(bodyOf(t, NewUpdateDialogPinned(NewPeerUser(7), true)), &seq, envelopeDate, nil, nil)
 	if withoutPts["_"] != UpdatesTag {
 		t.Fatalf("кадр без своего pts обязан ехать updates, а не %v", withoutPts["_"])
 	}
@@ -57,8 +57,12 @@ func TestUpdatesEnvelope_Golden(t *testing.T) {
 		golden string
 		value  map[string]any
 	}{
-		{"updateShortNewMessage", NewUpdatesEnvelope(bodyOf(t, NewUpdateNewMessage(msg, 41)), nil, envelopeDate)},
-		{"updatesDialogPinned", NewUpdatesEnvelope(bodyOf(t, NewUpdateDialogPinned(NewPeerUser(7), true)), &seq, envelopeDate)},
+		{"updateShortNewMessage", NewUpdatesEnvelope(bodyOf(t, NewUpdateNewMessage(msg, 41)), nil, envelopeDate, nil, nil)},
+		{"updatesDialogPinned", NewUpdatesEnvelope(bodyOf(t, NewUpdateDialogPinned(NewPeerUser(7), true)), &seq, envelopeDate, nil, nil)},
+		// A4-05: апдейт со своим pts и карточкой автора рядом — контейнер
+		// updates с seq 0, у updateShort векторов нет.
+		{"updatesNewMessageWithUser", NewUpdatesEnvelope(bodyOf(t, NewUpdateNewMessage(msg, 41)), nil, envelopeDate,
+			[]any{map[string]any{"_": UserTag, "id": 7, "first_name": "Аня"}}, nil)},
 	}
 
 	for _, c := range cases {

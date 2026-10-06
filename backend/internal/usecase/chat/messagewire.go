@@ -80,13 +80,6 @@ func (i *Interactor) postAuthorsShown(ctx context.Context, kinds map[int64]strin
 	return out
 }
 
-// postAuthorHidden — автор сообщения m не виден подписчикам: это пост
-// вещательного канала без подписей профилями. Его карточка не едет и
-// вектором users — иначе подписчик узнал бы автора и без from_id.
-func postAuthorHidden(m domain.Message, kinds map[int64]string, shown map[int64]bool) bool {
-	return kinds[m.ChatID] == domain.ChatTypeChannel && !shown[m.ChatID]
-}
-
 // messagesWire — тот же перевод, но с уже готовыми видами чатов и тредами.
 //
 // threads — тред по КЛЮЧУ СТРОКИ сообщения (см. threadReplies); nil значит «у

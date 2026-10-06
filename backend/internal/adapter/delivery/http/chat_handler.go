@@ -545,7 +545,7 @@ func (h *ChatHandler) MessagesByIDs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "history failed")
 		return
 	}
-	wire, users, err := h.svc.MessagesContainer(r.Context(), h.meID(r), found)
+	wire, users, chats, err := h.svc.MessagesContainer(r.Context(), h.meID(r), found)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not render messages")
 		return
@@ -563,7 +563,7 @@ func (h *ChatHandler) MessagesByIDs(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, usecasechat.EmptyMessages(peer, []int64{id})[0])
 	}
-	writeJSON(w, http.StatusOK, domain.NewMessagesMessages(out, nil, users))
+	writeJSON(w, http.StatusOK, domain.NewMessagesMessages(out, chats, users))
 }
 
 type readBody struct {
@@ -1191,7 +1191,7 @@ func (h *ChatHandler) Calendar(w http.ResponseWriter, r *http.Request) {
 	// Контейнер схемы вместо вектора безымянных словарей: отрезки дней и САМИ
 	// сообщения-превью, из медиа которых клиент рисует кружок ячейки — так же,
 	// как это делает оригинал.
-	writeJSON(w, http.StatusOK, domain.NewMessagesSearchResultsCalendar(page.Periods, page.Messages, page.Users))
+	writeJSON(w, http.StatusOK, domain.NewMessagesSearchResultsCalendar(page.Periods, page.Messages, page.Chats, page.Users))
 }
 
 // GlobalSearchMessages — GET /search/messages?q=&filter=&offset_rate=&limit=
@@ -2354,24 +2354,24 @@ func writeMessagesSlice(w http.ResponseWriter, r *http.Request, svc *usecasechat
 // поиск); nextRate <= 0 — ключа в ответе нет.
 func writeMessagesSliceRate(w http.ResponseWriter, r *http.Request, svc *usecasechat.Interactor, count int, msgs []domain.Message, nextRate int64) {
 	me, _ := UserFromContext(r.Context())
-	out, users, err := svc.MessagesContainer(r.Context(), me.ID, msgs)
+	out, users, chats, err := svc.MessagesContainer(r.Context(), me.ID, msgs)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not render messages")
 		return
 	}
-	writeJSON(w, http.StatusOK, domain.NewMessagesMessagesSlice(count, out, nil, users).WithNextRate(nextRate))
+	writeJSON(w, http.StatusOK, domain.NewMessagesMessagesSlice(count, out, chats, users).WithNextRate(nextRate))
 }
 
 // writeMessagesAll — витрина ПОЛНОГО набора: конструктор messages.messages.
 // Параметра count у него нет — «это всё» сказано выбором конструктора.
 func writeMessagesAll(w http.ResponseWriter, r *http.Request, svc *usecasechat.Interactor, msgs []domain.Message) {
 	me, _ := UserFromContext(r.Context())
-	out, users, err := svc.MessagesContainer(r.Context(), me.ID, msgs)
+	out, users, chats, err := svc.MessagesContainer(r.Context(), me.ID, msgs)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not render messages")
 		return
 	}
-	writeJSON(w, http.StatusOK, domain.NewMessagesMessages(out, nil, users))
+	writeJSON(w, http.StatusOK, domain.NewMessagesMessages(out, chats, users))
 }
 
 // writeMessage — ответ одним сообщением (Send/EditMessage/SetFactCheck/

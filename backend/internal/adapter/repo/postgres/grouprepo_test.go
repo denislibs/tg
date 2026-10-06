@@ -145,7 +145,7 @@ func TestGroupRepo_CreateAndMembership(t *testing.T) {
 		t.Fatal(err)
 	}
 	if cc2.DiscussionChatID != grpID {
-		t.Fatalf("linked channel DiscussionChatID = %d, want %d", cc2.DiscussionChatID, grpID)
+		t.Fatalf("linked channel LinkedChatID = %d, want %d", cc2.DiscussionChatID, grpID)
 	}
 }
 

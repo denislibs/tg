@@ -612,7 +612,36 @@ func (i *Interactor) GetDifference(ctx context.Context, userID, sincePts int64) 
 		d.Slice = true
 		d.State = domain.UserState{Pts: ups[len(ups)-1].Pts, Date: state.Date}
 	}
+	d.Users, d.Chats = i.peerVectors(ctx, userID, journalRefs(ups), nil)
+	if d.Users == nil {
+		d.Users = []domain.UserReal{}
+	}
+	if d.Chats == nil {
+		d.Chats = []domain.Chat{}
+	}
 	return d, nil
+}
+
+// journalRefs — ссылки на пиров во всех строках журнала (тела апдейтов).
+func journalRefs(ups []domain.UpdateRecord) domain.PeerRefs {
+	var out domain.PeerRefs
+	users, chats := map[int64]bool{}, map[int64]bool{}
+	for _, u := range ups {
+		r := domain.CollectPeerRefsJSON(u.Payload)
+		for _, id := range r.Users {
+			if !users[id] {
+				users[id] = true
+				out.Users = append(out.Users, id)
+			}
+		}
+		for _, id := range r.Chats {
+			if !chats[id] {
+				chats[id] = true
+				out.Chats = append(out.Chats, id)
+			}
+		}
+	}
+	return out
 }
 
 // PruneUpdateLog trims the per-user update log so it can't grow without bound (one

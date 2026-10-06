@@ -170,7 +170,7 @@ func (i *Interactor) journalReactions(ctx context.Context, chatID int64, msg dom
 	}
 	bodies := make(map[int64]map[string]any, len(members))
 	ptsByUser := make(map[int64]int64, len(members))
-	date := nowMillis()
+	date := nowUnix()
 	for _, uid := range members {
 		r := common
 		if o, ok := own[uid]; ok {
@@ -211,7 +211,7 @@ func (i *Interactor) journalOwnReactions(ctx context.Context, chatID, userID int
 	}
 	peer := addr.forViewer(userID)
 	frames := make([][]byte, 0, len(msgs))
-	date := nowMillis()
+	date := nowUnix()
 	for _, m := range msgs {
 		r, e := i.reactionsSeenBy(ctx, chatID, m.ID, userID)
 		if e != nil {
@@ -490,7 +490,7 @@ func (i *Interactor) CanAccessMedia(ctx context.Context, userID, mediaID int64) 
 
 // canSeeProfilePhoto — файл это фото профиля (аватарка или снимок галереи)
 // пользователя, чьё правило profile_photo открывает его зрителю (privacy.Check
-// учитывает и блок). Тем же правилом гасится фото в карточках (gatePhotos):
+// учитывает и блок). Тем же правилом гасится фото в карточках (viewUsers):
 // скрытое там не должно скачиваться напрямую по id медиа. Без проверки
 // приватности (не подключена) фото профиля видно всем, как и в карточках.
 func (i *Interactor) canSeeProfilePhoto(ctx context.Context, viewerID, mediaID int64) (bool, error) {

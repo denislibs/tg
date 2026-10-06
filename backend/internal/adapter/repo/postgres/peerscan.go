@@ -83,7 +83,15 @@ func scanUserReal(row pgx.Row) (domain.UserReal, error) {
 // JOIN: колонки встают в любой запрос без правки его FROM, а поиск по
 // первичному ключу contacts (owner_id, user_id) дешёв.
 func userSeenCols(prefix, viewer string) string {
-	return userRealCols(prefix) + ", " + contactViewCols(prefix+"id", viewer)
+	return userRealCols(prefix) + ", " + contactViewCols(prefix+"id", viewer) + ", " + userViewerCols(prefix, viewer)
+}
+
+// userViewerCols — то, что сборщик карточки знает о паре «пользователь —
+// зритель» сверх книги: номер (прочитан, но наружу его выпускает только
+// правило приватности, domain.UserViewRules) и «это сам зритель» (pFlags.self
+// на любой витрине, а не только в /me — A4-08).
+func userViewerCols(prefix, viewer string) string {
+	return "COALESCE(" + prefix + "phone,''), COALESCE(" + prefix + "id = " + viewer + ", false)"
 }
 
 // contactViewCols — сами колонки книги зрителя для пользователя с id userID
@@ -100,10 +108,12 @@ type userSeenScan struct {
 	userRealScan
 	contactName []string // nil — пира нет в книге зрителя
 	mutual      bool
+	phone       string // userViewerCols: номер, ещё не показанный
+	self        bool   // userViewerCols: это сам зритель
 }
 
 func (s *userSeenScan) dest() []any {
-	return append(s.userRealScan.dest(), &s.contactName, &s.mutual)
+	return append(s.userRealScan.dest(), &s.contactName, &s.mutual, &s.phone, &s.self)
 }
 
 func (s *userSeenScan) view() domain.ContactView {
@@ -116,7 +126,21 @@ func (s *userSeenScan) view() domain.ContactView {
 
 // user — карточка глазами зрителя. showPhoto — как у userRealScan.user.
 func (s *userSeenScan) user(showPhoto bool) domain.UserReal {
-	return s.userRealScan.user(showPhoto).SeenBy(s.view())
+	u := s.userRealScan.user(showPhoto).SeenBy(s.view()).WithHiddenPhone(s.phone)
+	if s.self {
+		u.PFlags = withPFlag(u.PFlags, "self")
+	}
+	return u
+}
+
+// withPFlag — копия pFlags с выставленным флагом (карта может делиться).
+func withPFlag(flags map[string]bool, name string) map[string]bool {
+	out := make(map[string]bool, len(flags)+1)
+	for k, v := range flags {
+		out[k] = v
+	}
+	out[name] = true
+	return out
 }
 
 // scanUserSeen читает одну строку, выбранную userSeenCols.

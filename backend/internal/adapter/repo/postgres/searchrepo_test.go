@@ -86,7 +86,7 @@ func TestSearchRepo(t *testing.T) {
 	ctx := context.Background()
 	u := seedUser(t, pool, "+7200")
 	g := NewGroupRepo(pool)
-	_, _ = g.CreateMultiMember(ctx, "channel", "Go News Daily", "", "gonews", true, u)
+	pubID, _ := g.CreateMultiMember(ctx, "channel", "Go News Daily", "", "gonews", true, u)
 	_, _ = g.CreateMultiMember(ctx, "channel", "Private Thing", "", "", false, u) // not public
 	r := NewSearchRepo(pool)
 
@@ -94,7 +94,7 @@ func TestSearchRepo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(chats) != 1 || chats[0].Username != "gonews" {
+	if len(chats) != 1 || chats[0] != pubID {
 		t.Fatalf("by username: %+v", chats)
 	}
 
@@ -153,11 +153,11 @@ func TestSimilarChannels(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("want 2 similar (B,C); private & joined excluded; got %d: %+v", len(got), got)
 	}
-	if got[0].ID != bID {
-		t.Fatalf("want B first (bigger overlap), got id=%d", got[0].ID)
+	if got[0] != bID {
+		t.Fatalf("want B first (bigger overlap), got id=%d", got[0])
 	}
-	if got[1].ID != cID {
-		t.Fatalf("want C second, got id=%d", got[1].ID)
+	if got[1] != cID {
+		t.Fatalf("want C second, got id=%d", got[1])
 	}
 	if count != 2 {
 		t.Fatalf("want total count 2, got %d", count)
@@ -167,7 +167,7 @@ func TestSimilarChannels(t *testing.T) {
 	_ = g.AddMember(ctx, bID, viewer, "member", 0)
 	got2, _, _ := r.SimilarChannels(ctx, aID, viewer, 10)
 	for _, c := range got2 {
-		if c.ID == bID {
+		if c == bID {
 			t.Fatal("B must be excluded once viewer joined it")
 		}
 	}
@@ -208,12 +208,17 @@ func TestSimilarChannels_AreChannelConstructors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, count, err := NewSearchRepo(pool).SimilarChannels(ctx, srcID, viewer, 10)
+	ids, count, err := NewSearchRepo(pool).SimilarChannels(ctx, srcID, viewer, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || count != 1 || got[0].ID != simID {
-		t.Fatalf("похожие = %+v (count=%d); want ровно канал %d", got, count, simID)
+	if len(ids) != 1 || count != 1 || ids[0] != simID {
+		t.Fatalf("похожие = %+v (count=%d); want ровно канал %d", ids, count, simID)
+	}
+	// Карточку собирает общий сборщик глазами зрителя (usecase SimilarChannels).
+	got, err := g.Cards(ctx, viewer, ids)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("Cards = %+v %v", got, err)
 	}
 
 	ch := got[0].ToChannel()

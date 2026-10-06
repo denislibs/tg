@@ -3,6 +3,7 @@ package privacy
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -48,5 +49,27 @@ func TestProfile_CallsUnavailableForSelf(t *testing.T) {
 	}
 	if !other.FullUser.PhoneCallsAvailable() || !other.FullUser.VideoCallsAvailable() {
 		t.Fatalf("чужая карточка без звонка: %+v", other.FullUser.PFlags)
+	}
+}
+
+func (profileRepo) PeerFullState(_ context.Context, viewerID, targetID int64) (domain.PeerFullState, error) {
+	st := domain.PeerFullState{CommonChats: 2, PinnedMsgID: 5, StarGifts: 3}
+	if viewerID != targetID {
+		ns := domain.NewPeerNotifySettings(time.Time{}, nil, nil)
+		st.NotifySettings = &ns
+	}
+	return st, nil
+}
+
+// A4-19: userFull несёт общие чаты, закреп лички, подарки и уведомления.
+func TestProfile_PeerFullState(t *testing.T) {
+	in := New(profileRepo{})
+	full, err := in.Profile(context.Background(), 7, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := full.FullUser
+	if f.CommonChatsCount != 2 || f.PinnedMsgID != 5 || f.StargiftsCount != 3 || f.NotifySettings == nil {
+		t.Fatalf("userFull = %+v, want common_chats_count/pinned_msg_id/stargifts_count/notify_settings", f)
 	}
 }

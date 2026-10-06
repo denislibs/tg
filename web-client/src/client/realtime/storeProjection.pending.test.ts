@@ -164,7 +164,7 @@ describe('storeProjection — жизненный цикл неотправлен
     emit(w.beforeMessageSending(evt({ client_msg_id: 'c8' })))
     expect(isLocalMessageId(bubbles(winKey(CHAT))[0].id)).toBe(true)
 
-    emit(w.ackPendingMessage({ client_msg_id: 'c8', id: 50, created_at: '2026-08-16T10:00:00Z' }))
+    emit(w.ackPendingMessage({ client_msg_id: 'c8', id: 50, date: 1786874400 }))
 
     const msgs = bubbles(winKey(CHAT))
     expect(msgs).toHaveLength(1)
@@ -203,7 +203,7 @@ describe('storeProjection — локальное превью приезжает
     const w = worker([winKey(CHAT)])
     emit(w.beforeMessageSending(evt({ client_msg_id: 'c7c', type: 'photo', local_url: 'blob:worker-minted' })))
 
-    emit(w.ackPendingMessage({ client_msg_id: 'c7c', id: 51, created_at: '2026-08-16T10:00:00Z' }))
+    emit(w.ackPendingMessage({ client_msg_id: 'c7c', id: 51, date: 1786874400 }))
 
     const msgs = bubbles(winKey(CHAT))
     expect(msgs).toHaveLength(1)

@@ -38,6 +38,17 @@ describe('decodeTLFrame', () => {
     expect((got[0].update as { pFlags?: { pinned?: true } }).pFlags?.pinned).toBe(true)
   })
 
+  // A4-05: карточки рядом с апдейтом (векторы контейнера) доезжают первому
+  // апдейту пачки; seq 0 — «порядка нет», курсор у апдейта в теле.
+  it('updates с карточкой: векторы — первому апдейту, seq 0 не курсор', () => {
+    const got = decodeTLFrame(toBytes(vectorOf('updatesNewMessageWithUser').hex))
+
+    expect(got).toHaveLength(1)
+    expect(got[0].update._).toBe('updateNewMessage')
+    expect(got[0].seq).toBeUndefined()
+    expect(got[0].peers?.users).toEqual([expect.objectContaining({ _: 'user', id: 7, first_name: 'Аня' })])
+  })
+
   // Байты `bytes` схемы разбор отдаёт Uint8Array, а модель клиента фазы 0
   // держит их base64-строкой. Пока модель не переведена, кадр обязан приезжать
   // вкладке В ОДНОЙ форме независимо от флага провода — иначе флаг перестаёт

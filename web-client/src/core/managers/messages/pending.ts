@@ -67,6 +67,7 @@ import {
   type DocumentAttribute, type MessageMedia, type MyDocument,
 } from '../../media/messageMedia'
 import type { MessageOp } from '../../realtime/messageOps'
+import { saveMessageMedia } from '../../media/messageMedia'
 import type { AckEvt, PendingMedia, PendingNewEvt, SendMessageAction } from '../../realtime/events'
 import type { SendArgs as WireSendArgs } from '../../realtime/connectionManager'
 import type { UploadArgs } from '../mediaManager'
@@ -770,22 +771,33 @@ export function newPendingMethods(ctx: PendingCtx) {
       return { ok: true }
     },
 
-    /** Сервер подтвердил отправку (`message_ack`): у временного бабла появляются
-     *  настоящие id/seq/дата, остальное содержимое остаётся своим. Настоящее
-     *  сообщение придёт следом обычным `new_message` и сольётся по clientId. */
+    /** Сервер подтвердил отправку (`message_ack`) — порт ветки
+     *  `updateShortSentMessage` (tweb appMessagesManager.ts:2768-2781): у
+     *  временного бабла появляются настоящие номер и дата, серверные entities
+     *  (санитизированная разметка) и ttl_period, а у ТЕКСТА — вложение,
+     *  собранное сервером (превью ссылки). Вложение отправленного файла
+     *  остаётся своим: у оригинала короткий ответ бывает только у текста
+     *  (sendMedia отвечает полными Updates). Настоящее сообщение придёт следом
+     *  обычным `new_message` и сольётся по clientId. */
     ackPendingMessage(ack: AckEvt): MessageOp[] {
       const d = pendingByClientId.get(ack.client_msg_id)
       if (!d) return []
       const cur = msgsFor(d.peerId).get(d.tempId)
       if (!cur) return []
-      return finalizePendingMessage(ack.client_msg_id, {
+      const next = {
         ...cur,
         // Номер приезжает СЕРВЕРНЫЙ — переводим на границе, как и всё, что
         // приходит с провода.
         id: generateMessageId(ack.id),
-        date: Math.floor(new Date(ack.created_at).getTime() / 1000),
+        date: ack.date,
         failed: undefined,
-      })
+      }
+      if (next._ === 'message') {
+        if (ack.entities) next.entities = ack.entities
+        if (ack.ttl_period) next.ttl_period = ack.ttl_period
+        if (ack.media && !next.media) next.media = saveMessageMedia(ack.media)
+      }
+      return finalizePendingMessage(ack.client_msg_id, next)
     },
 
     /** Порт tweb `checkPendingMessage`: пришло настоящее сообщение — если это эхо

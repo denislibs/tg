@@ -214,7 +214,7 @@ func deleteChunks(peer domain.PeerID, seqs []int64) []ownFrame {
 // звать после коммита.
 func (i *Interactor) journalOwn(ctx context.Context, userID int64, frames []ownFrame) (func(context.Context), error) {
 	live := make([][]byte, 0, len(frames))
-	date := nowMillis()
+	date := nowUnix()
 	for _, f := range frames {
 		payload, err := json.Marshal(f.body)
 		if err != nil {

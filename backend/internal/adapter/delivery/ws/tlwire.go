@@ -28,8 +28,10 @@ import (
 // «контейнер Updates». Второго признака заводить не понадобилось.
 func tlEncodeUpdateFrame(frame []byte) ([]byte, bool) {
 	var env struct {
-		D   json.RawMessage `json:"d"`
-		Pts *int64          `json:"pts"`
+		D     json.RawMessage `json:"d"`
+		Pts   *int64          `json:"pts"`
+		Users []any           `json:"users"`
+		Chats []any           `json:"chats"`
 	}
 	if err := json.Unmarshal(frame, &env); err != nil || len(env.D) == 0 {
 		return nil, false
@@ -41,7 +43,7 @@ func tlEncodeUpdateFrame(frame []byte) ([]byte, bool) {
 	if _, ok := body["_"].(string); !ok {
 		return nil, false // предмета в схеме нет — конструктора у кадра тоже
 	}
-	out, err := domain.WireCodec.Marshal(domain.NewUpdatesEnvelope(body, env.Pts, time.Now().Unix()))
+	out, err := domain.WireCodec.Marshal(domain.NewUpdatesEnvelope(body, env.Pts, time.Now().Unix(), env.Users, env.Chats))
 	if err != nil {
 		return nil, false
 	}
