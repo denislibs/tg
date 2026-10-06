@@ -101,13 +101,18 @@ func TestVotePoll_Rules(t *testing.T) {
 		11: {ChatID: 1, UserID: 11, Role: "member"},
 	}
 	fp := newFakePolls()
-	in := New(fakeTx{}, groupChats{fg}, nil, nil, nil, nil, fg, newFakeInviteRepo(), nil, nil, newFakeJoinRequestRepo())
+	s := newStore()
+	in := New(fakeTx{}, groupChats{fg}, fakeMsgs{s}, nil, nil, nil, fg, newFakeInviteRepo(), nil, nil, newFakeJoinRequestRepo())
 	in.SetPolls(fp)
 	ctx := context.Background()
 
 	single, _ := fp.Create(ctx, domain.Poll{ChatID: 1, Question: "q", Options: []string{"a", "b"}, Anonymous: true})
 	c := 1
 	quiz, _ := fp.Create(ctx, domain.Poll{ChatID: 1, Question: "q2", Options: []string{"a", "b"}, Quiz: true, CorrectOption: &c})
+	// опрос живёт сообщением: голосует тот, кто это сообщение видит
+	s.messages[1] = append(s.messages[1],
+		domain.Message{ID: 1, ChatID: 1, Seq: 1, SenderID: 10, Type: "poll", PollID: &single.ID},
+		domain.Message{ID: 2, ChatID: 1, Seq: 2, SenderID: 10, Type: "poll", PollID: &quiz.ID})
 
 	// одиночный опрос: два индекса нельзя
 	if _, err := in.VotePoll(ctx, single.ID, 11, []int{0, 1}); !errors.Is(err, domain.ErrForbidden) {

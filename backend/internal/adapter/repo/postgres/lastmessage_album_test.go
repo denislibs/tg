@@ -33,7 +33,8 @@ func TestLastMessageAt_ReportsAlbum(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// Чужой элемент с тем же ключом и удалённый свой — не в счёт.
+	// Чужой элемент с тем же ключом не в счёт; удалённый свой — в счёт
+	// (снятие элементов не открывает альбом заново).
 	other := seedMessage(t, pool, chatID, peer, 5)
 	if _, err := pool.Exec(ctx, `UPDATE messages SET grouped_id=77 WHERE id=$1`, other); err != nil {
 		t.Fatal(err)
@@ -42,7 +43,7 @@ func TestLastMessageAt_ReportsAlbum(t *testing.T) {
 		t.Fatal(err)
 	}
 	at, g, n, err := repo.LastMessageAt(ctx, chatID, me)
-	if err != nil || g != 77 || n != 2 || at.IsZero() {
-		t.Fatalf("альбом: at=%v grouped=%d size=%d err=%v, want 77/2", at, g, n, err)
+	if err != nil || g != 77 || n != 3 || at.IsZero() {
+		t.Fatalf("альбом: at=%v grouped=%d size=%d err=%v, want 77/3", at, g, n, err)
 	}
 }

@@ -14,8 +14,10 @@ const maxPaidMediaPrice = 1_000_000
 func isPaidMediaType(t string) bool { return t == "photo" || t == "video" }
 
 // hydratePaidMedia наполняет платное медиа сообщений для зрителя viewerID: цену
-// (paid_media) и per-viewer состояние блокировки. У заблокированных сообщений
-// (зритель не автор и не оплатил) стирает ссылки на контент (media_id/mime/имя/
+// (paid_media) и per-viewer состояние блокировки. Право смотреть считается по
+// ПРЕДЛОЖЕНИЮ: у пересланной копии и зеркала поста это исходник, так что
+// открыто продавцу (автору исходника) и тем, кто его купил, — а не автору
+// копии. У заблокированных сообщений стирает ссылки на контент (media_id/mime/имя/
 // длительность/thumb), оставляя только размеры + blur + цену — байты медиа
 // клиенту не отдаются до разблокировки.
 func (i *Interactor) hydratePaidMedia(ctx context.Context, viewerID int64, msgs []domain.Message) {
@@ -31,26 +33,26 @@ func (i *Interactor) hydratePaidMedia(ctx context.Context, viewerID int64, msgs 
 	if len(ids) == 0 {
 		return
 	}
-	prices, err := i.paidMedia.PricesByIDs(ctx, ids)
-	if err != nil || len(prices) == 0 {
+	offers, err := i.paidMedia.Offers(ctx, ids)
+	if err != nil || len(offers) == 0 {
 		return
 	}
-	priced := make([]int64, 0, len(prices))
-	for id := range prices {
-		priced = append(priced, id)
+	offerIDs := make([]int64, 0, len(offers))
+	for _, o := range offers {
+		offerIDs = append(offerIDs, o.OfferID)
 	}
-	unlocked, err := i.paidMedia.UnlockedByIDs(ctx, viewerID, priced)
+	unlocked, err := i.paidMedia.UnlockedByIDs(ctx, viewerID, offerIDs)
 	if err != nil {
 		return
 	}
 	for idx := range msgs {
-		price, ok := prices[msgs[idx].ID]
+		o, ok := offers[msgs[idx].ID]
 		if !ok {
 			continue
 		}
-		p := price
+		p := o.Price
 		msgs[idx].PaidMediaPrice = &p
-		locked := msgs[idx].SenderID != viewerID && !unlocked[msgs[idx].ID]
+		locked := o.SellerID != viewerID && !unlocked[o.OfferID]
 		msgs[idx].PaidMediaLocked = locked
 		if locked {
 			stripLockedMedia(&msgs[idx])
@@ -87,8 +89,9 @@ func lockedPaidCopy(m domain.Message) domain.Message {
 }
 
 // UnlockPaidMedia разблокирует платное медиа сообщения для пользователя: списывает
-// цену в звёздах у покупателя, начисляет автору, записывает разблокировку —
-// транзакционно. Возвращает разблокированное сообщение и новый баланс покупателя.
+// цену в звёздах у покупателя, начисляет ПРОДАВЦУ (автору предложения — у
+// пересланной копии это автор исходника, а не пересылающий), записывает
+// разблокировку предложения — транзакционно. Возвращает разблокированное сообщение и новый баланс покупателя.
 // Автор и уже оплатившие получают доступ без повторного списания.
 func (i *Interactor) UnlockPaidMedia(ctx context.Context, msgID, userID int64) (domain.Message, int64, error) {
 	if i.paidMedia == nil || i.stars == nil {
@@ -98,14 +101,15 @@ func (i *Interactor) UnlockPaidMedia(ctx context.Context, msgID, userID int64) (
 	if err != nil {
 		return domain.Message{}, 0, err
 	}
-	prices, err := i.paidMedia.PricesByIDs(ctx, []int64{msgID})
+	offers, err := i.paidMedia.Offers(ctx, []int64{msgID})
 	if err != nil {
 		return domain.Message{}, 0, err
 	}
-	price, ok := prices[msgID]
+	offer, ok := offers[msgID]
 	if !ok {
 		return domain.Message{}, 0, domain.ErrNotFound // не платное медиа
 	}
+	price, seller := offer.Price, offer.SellerID
 	member, err := i.chats.IsMember(ctx, msg.ChatID, userID)
 	if err != nil {
 		return domain.Message{}, 0, err
@@ -118,13 +122,13 @@ func (i *Interactor) UnlockPaidMedia(ctx context.Context, msgID, userID int64) (
 	if err != nil {
 		return domain.Message{}, 0, err
 	}
-	// Списываем только если это не автор и он ещё не оплатил.
-	if userID != msg.SenderID {
-		unlocked, err := i.paidMedia.UnlockedByIDs(ctx, userID, []int64{msgID})
+	// Списываем только если это не продавец и он ещё не оплатил.
+	if userID != seller {
+		unlocked, err := i.paidMedia.UnlockedByIDs(ctx, userID, []int64{offer.OfferID})
 		if err != nil {
 			return domain.Message{}, 0, err
 		}
-		if !unlocked[msgID] {
+		if !unlocked[offer.OfferID] {
 			var authorBal int64
 			var authorCredited bool
 			err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
@@ -136,14 +140,14 @@ func (i *Interactor) UnlockPaidMedia(ctx context.Context, msgID, userID int64) (
 					return e
 				}
 				bal = b
-				if msg.SenderID != 0 && msg.SenderID != userID {
-					ab, e := i.stars.AddBalance(ctx, msg.SenderID, price)
+				if seller != 0 && seller != userID {
+					ab, e := i.stars.AddBalance(ctx, seller, price)
 					if e != nil {
 						return e
 					}
 					authorBal, authorCredited = ab, true
 				}
-				if _, e := i.paidMedia.Unlock(ctx, msgID, userID); e != nil {
+				if _, e := i.paidMedia.Unlock(ctx, offer.OfferID, userID); e != nil {
 					return e
 				}
 				return nil
@@ -153,7 +157,7 @@ func (i *Interactor) UnlockPaidMedia(ctx context.Context, msgID, userID int64) (
 			}
 			i.publishBalance(ctx, userID, bal)
 			if authorCredited {
-				i.publishBalance(ctx, msg.SenderID, authorBal)
+				i.publishBalance(ctx, seller, authorBal)
 			}
 		}
 	}

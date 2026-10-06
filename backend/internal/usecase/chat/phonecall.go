@@ -103,7 +103,12 @@ func (i *Interactor) RelayCall(ctx context.Context, frameType string, fromUserID
 		}
 	}
 	if frameType == "call_accept" {
-		stateErr = i.acceptPhoneCall(ctx, callID, fromUserID)
+		// Ответ релеится только победителю гонки двух устройств: второй
+		// call_accept звонящему не уходит (иначе — два offer/answer, glare).
+		won, err := i.acceptPhoneCall(ctx, callID, fromUserID)
+		if err != nil || !won {
+			return err
+		}
 	}
 	data["from_user_id"] = fromUserID
 	err := i.publisher.PublishToUser(ctx, toUserID, frame(frameType, data))
@@ -148,20 +153,24 @@ func (i *Interactor) openPhoneCall(ctx context.Context, c domain.PhoneCall) (boo
 	return cur.CallerID == c.CallerID && cur.CalleeID == c.CalleeID, nil
 }
 
-// acceptPhoneCall отмечает ответ — только от адресата этого звонка.
-func (i *Interactor) acceptPhoneCall(ctx context.Context, callID string, byUserID int64) error {
-	if i.phoneCalls == nil || !validCallID(callID) {
-		return nil
+// acceptPhoneCall отмечает ответ — только от адресата этого звонка. true —
+// ответ этого устройства принят (оно первое); без хранилища — всегда.
+func (i *Interactor) acceptPhoneCall(ctx context.Context, callID string, byUserID int64) (bool, error) {
+	if i.phoneCalls == nil {
+		return true, nil
+	}
+	if !validCallID(callID) {
+		return false, nil
 	}
 	c, err := i.phoneCalls.Get(ctx, callID)
 	if errors.Is(err, domain.ErrNotFound) {
-		return nil
+		return false, nil
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
 	if c.CalleeID != byUserID {
-		return nil
+		return false, nil
 	}
 	return i.phoneCalls.Accept(ctx, callID, time.Now())
 }

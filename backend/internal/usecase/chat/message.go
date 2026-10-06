@@ -212,6 +212,17 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			srcChat = *in.ReplyToPeerID
 		}
 		orig, err := i.messageBySeq(ctx, srcChat, *in.ReplyToID)
+		// Оригинал, которого отправитель не видит (скрытая предыстория,
+		// очищенное и скрытое у себя — предикат видимости Ф-1а), — как
+		// ненайденный: иначе сверка цитаты с его текстом отвечала бы 400/200 и
+		// по номеру выдавала бы текст чужого скрытого сообщения.
+		if err == nil && !orig.Deleted {
+			if e := i.RequireMessagesVisible(ctx, in.SenderID, []int64{orig.ID}); errors.Is(e, domain.ErrNotFound) {
+				err = domain.ErrNotFound
+			} else if e != nil {
+				return domain.Message{}, e
+			}
+		}
 		switch {
 		case errors.Is(err, domain.ErrNotFound):
 			// ненайденный оригинал — обычный reply без снимка (не ошибка)
@@ -471,8 +482,10 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		// grouped_id — схемный long: непрозрачный ключ медиагруппы, который
 		// генерирует отправитель. 0 значит «не в группе» (в схеме это
 		// отсутствие flags.17), поэтому отдельного «пустого» значения нет.
+		// Альбом бывает только у медиа: у прочего ключ сбрасывается (иначе
+		// он служил бы обходом медленного режима, см. checkSendAllowed).
 		var groupedID *int64
-		if in.GroupedID != 0 {
+		if in.GroupedID != 0 && in.MediaID != nil {
 			groupedID = &in.GroupedID
 		}
 		msg, e = i.msgs.Insert(ctx, domain.Message{
@@ -498,6 +511,21 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		})
 		if e != nil {
 			return e
+		}
+		// Платное медиа (Telegram paid media): цена в отдельной таблице, флаг едет
+		// на сообщении для рассылки. Цена ставится ДО зеркала поста: зеркало
+		// продаётся тем же предложением и обязано выйти уже закрытым.
+		// Только фото/видео с прикреплённым медиа.
+		if in.PaidMediaPrice != nil && *in.PaidMediaPrice > 0 && msg.MediaID != nil &&
+			isPaidMediaType(in.Type) && i.paidMedia != nil {
+			price := *in.PaidMediaPrice
+			if price > maxPaidMediaPrice {
+				price = maxPaidMediaPrice
+			}
+			if e := i.paidMedia.SetPrice(ctx, msg.ID, price, 0); e != nil {
+				return e
+			}
+			msg.PaidMediaPrice = &price
 		}
 		// Пост в канал зеркалится в группу обсуждения (см. discussion_mirror.go).
 		// Что считать постом — решает сам хелпер (по типу чата-получателя), не
@@ -529,19 +557,6 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			if e := i.hydrateMedia(ctx, one); e == nil {
 				msg = one[0]
 			}
-		}
-		// Платное медиа (Telegram paid media): цена в отдельной таблице, флаг едет
-		// на сообщении для рассылки. Только фото/видео с прикреплённым медиа.
-		if in.PaidMediaPrice != nil && *in.PaidMediaPrice > 0 && msg.MediaID != nil &&
-			isPaidMediaType(in.Type) && i.paidMedia != nil {
-			price := *in.PaidMediaPrice
-			if price > maxPaidMediaPrice {
-				price = maxPaidMediaPrice
-			}
-			if e := i.paidMedia.SetPrice(ctx, msg.ID, price); e != nil {
-				return e
-			}
-			msg.PaidMediaPrice = &price
 		}
 		// Канал: ОДНА запись в журнал канала вместо веера по подписчикам —
 		// O(1) на пост независимо от числа читателей, и ровно эта запись
