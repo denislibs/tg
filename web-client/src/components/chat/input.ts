@@ -2292,7 +2292,9 @@ export default class ChatInput {
 
     for(const fromPeerId in forwarding) {
       const mids = forwarding[+fromPeerId as PeerId]
-      void this.managers.messages.forwardMessages(this.chat.peerId, +fromPeerId, mids, forwardParams).catch(() => {})
+      void this.managers.messages.forwardMessages(this.chat.peerId, +fromPeerId, mids, {
+        ...forwardParams, silent: sendingParams.silent, threadId: sendingParams.threadId,
+      }).catch(() => {})
     }
 
     return { value, messageCount }
