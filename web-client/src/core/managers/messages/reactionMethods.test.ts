@@ -275,4 +275,21 @@ describe('messages.unreadReactionsChange', () => {
     await mgr.getHistory({ peerId: DM, offsetId: 0, addOffset: 0, limit: 40 })
     expect(mgr.unreadReactionsChange(evt(DM, 2, withRecent(true)))).toBeUndefined()
   })
+  // min-кадр (общее тело всем участникам, кадр правки) флага `unread` не несёт.
+  // Без переноса флага из прежнего состояния он читался бы как «прочитано» —
+  // −1 у автора на чужой кадр.
+  it('min-кадр без unread у непрочитанного — бейдж не трогается', async () => {
+    const mgr = mine(withRecent(true))
+    await mgr.getHistory({ peerId: DM, offsetId: 0, addOffset: 0, limit: 40 })
+    const frame = { ...withRecent(false), pFlags: { min: true as const } }
+    expect(mgr.unreadReactionsChange(evt(DM, 2, frame))).toBeUndefined()
+  })
+
+  // Кадр реакции в группе уходит КАЖДОМУ участнику, и min-кадр бейджа не
+  // двигает: перечитывать строку ради него — запрос на участника.
+  it('min-кадр по сообщению не в памяти — строку не перечитывать', () => {
+    const mgr = mine()
+    const frame = { ...withRecent(false), pFlags: { min: true as const } }
+    expect(mgr.unreadReactionsChange(evt(DM, 2, frame))).toBeUndefined()
+  })
 })

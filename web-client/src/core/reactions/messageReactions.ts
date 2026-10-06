@@ -349,6 +349,24 @@ export function mergeReactions(
 
   if (!results.length) return undefined
   const merged: MessageReactions = { ...next, results }
+  // `recent_reactions[].pFlags.unread` — тоже пер-зрительская часть: флаг сервер
+  // ставит только глазами АВТОРА, а в общем теле (чужой кадр, кадр правки) его
+  // нет. Переносится из прежнего состояния по паре (пир, реакция) — по тому же
+  // правилу, что мой `chosen_order`. Иначе min-кадр стёр бы флаги у автора, и
+  // бейдж ❤ разошёлся бы с сообщениями (snapshot-сравнение в
+  // `unreadReactionsChange` насчитало бы −1).
+  const unread = new Set(
+    (prev?.recent_reactions ?? [])
+      .filter((x) => x.pFlags?.unread)
+      .map((x) => `${getPeerId(x.peer_id)}:${reactionKey(x.reaction)}`),
+  )
+  if (unread.size && next.recent_reactions) {
+    merged.recent_reactions = next.recent_reactions.map((x) =>
+      !x.pFlags?.unread && unread.has(`${getPeerId(x.peer_id)}:${reactionKey(x.reaction)}`)
+        ? { ...x, pFlags: { ...x.pFlags, unread: true as const } }
+        : x,
+    )
+  }
   if (top?.length) merged.top_reactors = top
   else delete merged.top_reactors
   // `min` — свойство ТЕЛА КАДРА («пер-зрительской части здесь нет»), а не

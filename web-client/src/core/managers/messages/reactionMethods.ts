@@ -279,7 +279,8 @@ export function newReactionMethods({ rest, patchMsg, getMeId, getMePremium, opWi
      * «была ли непрочитанной» отвечает только прежнее состояние сообщения.
      *
      * - сообщения в памяти нет — `'reload'`: строку перечитать у сервера (tweb
-     *   `fixDialogUnreadMentionsIfNoMessage({force: true})`);
+     *   `fixDialogUnreadMentionsIfNoMessage({force: true})`); кроме min-кадра —
+     *   флага `unread` в нём нет, бейдж он не двигает, ответ `undefined`;
      * - у МОЕГО сообщения сменилось «есть непрочитанная реакция»
      *   (`recent_reactions[].pFlags.unread` кадра против прежнего) — знак ±1
      *   (tweb `modifyUnreadReactions(isUnread)`);
@@ -293,8 +294,20 @@ export function newReactionMethods({ rest, patchMsg, getMeId, getMePremium, opWi
      */
     unreadReactionsChange(evt: ReactionEvt): 'reload' | boolean | undefined {
       const message = readMsg(getPeerId(evt.peer), generateMessageId(evt.msg_id))
-      if (!message) return 'reload'
-      const isUnread = evt.reactions?.recent_reactions?.some((reaction) => reaction.pFlags?.unread)
+      // min-кадр (общее тело всем участникам) флага `unread` не несёт по
+      // построению, поэтому бейджа ❤ не меняет — и перечитывать строку ради него
+      // незачем: кадр реакции в группе уходит каждому участнику, и без этого
+      // гейта одна реакция обходилась бы запросом строки у каждого, у кого
+      // сообщения нет в памяти. Тот же гейт у оригинала стоит у опросов
+      // (tweb appPollsManager.ts:104-107, `!results.pFlags.min`).
+      if (!message) return evt.reactions?.pFlags?.min ? undefined : 'reload'
+      // «Стало» у min-кадра — ПОСЛЕ слияния: флагов `unread` в нём нет,
+      // `mergeReactions` переносит их из прежнего состояния, поэтому чужой
+      // min-кадр знака не даёт. Агрегат моими глазами — как есть, у оригинала
+      // (`reactions?.recent_reactions`): слияние схлопнуло бы пустой агрегат в
+      // `undefined`, и снятие последней реакции не дало бы −1.
+      const next = evt.reactions?.pFlags?.min ? mergeReactions(message.reactions, evt.reactions) : evt.reactions
+      const isUnread = next?.recent_reactions?.some((reaction) => reaction.pFlags?.unread)
       const wasUnread = !!getUnreadReactions(message)
       if (message.pFlags.out && isUnread !== wasUnread) return isUnread
       return undefined

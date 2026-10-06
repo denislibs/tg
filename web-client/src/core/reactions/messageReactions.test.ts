@@ -187,6 +187,24 @@ describe('mergeReactions — абсолютный агрегат кадра', ()
     expect(next?.recent_reactions?.[0].pFlags?.unread).toBe(true)
   })
 
+  // Флаг `unread` — глазами АВТОРА; в общем теле (чужой кадр, кадр правки) его
+  // нет. Переносится по паре (пир, реакция), как мой chosen_order.
+  it('min-кадр не стирает recent_reactions[].pFlags.unread', () => {
+    const pr = (userId: number, e: string, unread: boolean) => ({
+      _: 'messagePeerReaction' as const,
+      ...(unread ? { pFlags: { unread: true as const } } : {}),
+      peer_id: { _: 'peerUser' as const, user_id: userId }, date: 0, reaction: emoji(e),
+    })
+    const prev = agg({ results: [count('👍', 1), count('🔥', 1)], recent_reactions: [pr(9, '👍', true), pr(7, '🔥', false)] })
+    const frame = agg({
+      results: [count('👍', 2), count('🔥', 1)],
+      recent_reactions: [pr(5, '👍', false), pr(9, '👍', false), pr(7, '🔥', false)],
+      pFlags: { min: true },
+    })
+    const unread = mergeReactions(prev, frame)?.recent_reactions?.map((x) => !!x.pFlags?.unread)
+    expect(unread).toEqual([false, true, false])
+  })
+
   it('пустой не-min агрегат — «реакций нет»', () => {
     expect(mergeReactions(agg({ results: [count('👍', 1, 0)] }), agg({ results: [] }))).toBeUndefined()
   })
