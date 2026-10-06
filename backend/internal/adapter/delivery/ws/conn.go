@@ -646,7 +646,10 @@ func (c *Conn) writePump(ctx context.Context) {
 // дожидаясь эха new_message. Кадр транспортный (решение Р6), поэтому ключ
 // номера отправки — наш client_msg_id, а не random_id.
 func (c *Conn) ackBody(ctx context.Context, clientMsgID string, msg domain.Message) map[string]any {
-	body := map[string]any{"client_msg_id": clientMsgID, "id": msg.Seq, "date": msg.CreatedAt.Unix()}
+	// created_at — для клиента из кэша Service Worker, который ещё читает
+	// дату ack из него (иначе временный бабл получает NaN); снять в
+	// следующей пачке.
+	body := map[string]any{"client_msg_id": clientMsgID, "id": msg.Seq, "date": msg.CreatedAt.Unix(), "created_at": msg.CreatedAt}
 	wire, err := c.svc.MessagesWire(ctx, c.userID, []domain.Message{msg})
 	if err != nil || len(wire) != 1 {
 		return body

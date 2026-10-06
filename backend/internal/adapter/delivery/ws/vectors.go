@@ -1,8 +1,10 @@
 package ws
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -50,29 +52,37 @@ func (k knownPeers) unknown(refs domain.PeerRefs) domain.PeerRefs {
 	return out
 }
 
-// withVectors — кадр {t, d, pts?} с векторами users/chats карточек пиров, на
-// которых ссылается тело и которых соединение ещё не отдавало. Кадр без
-// конструктора (транспортный) и кадр без новых ссылок уходят как были.
+// peerVectorsTimeout — сколько горилла записи ждёт карточки: при тайм-ауте
+// кадр уходит без векторов (клиент доберёт карточку сам), а запись и пинги
+// соединения не встают за медленной базой.
+const peerVectorsTimeout = 1500 * time.Millisecond
+
+// withVectors — кадр {t, d, pts?, _refs?} с векторами users/chats карточек
+// пиров, на которых ссылается тело и которых соединение ещё не отдавало.
+// Ссылки посчитал отправитель (domain.FrameRefsKey): тело здесь не
+// разбирается. Кадр без ссылок и кадр без новых ссылок уходят как были.
 func withVectors(ctx context.Context, src peerVectorSource, viewerID int64, known knownPeers, frame []byte) []byte {
-	if src == nil {
+	if src == nil || !bytes.Contains(frame, []byte(`"`+domain.FrameRefsKey+`"`)) {
+		return frame
+	}
+	var head struct {
+		Refs domain.PeerRefs `json:"_refs"`
+	}
+	if err := json.Unmarshal(frame, &head); err != nil {
+		return frame
+	}
+	refs := known.unknown(head.Refs)
+	if refs.Empty() {
+		return frame
+	}
+	vctx, cancel := context.WithTimeout(ctx, peerVectorsTimeout)
+	users, chats := src.PeerVectorsForRefs(vctx, viewerID, refs)
+	cancel()
+	if len(users) == 0 && len(chats) == 0 {
 		return frame
 	}
 	var env map[string]json.RawMessage
 	if err := json.Unmarshal(frame, &env); err != nil {
-		return frame
-	}
-	var head struct {
-		Tag string `json:"_"`
-	}
-	if json.Unmarshal(env["d"], &head) != nil || head.Tag == "" {
-		return frame
-	}
-	refs := known.unknown(domain.CollectPeerRefsJSON(env["d"]))
-	if len(refs.Users) == 0 && len(refs.Chats) == 0 {
-		return frame
-	}
-	users, chats := src.PeerVectorsForRefs(ctx, viewerID, refs)
-	if len(users) == 0 && len(chats) == 0 {
 		return frame
 	}
 	if len(known)+len(users)+len(chats) > knownPeersLimit {
@@ -84,6 +94,7 @@ func withVectors(ctx context.Context, src peerVectorSource, viewerID int64, know
 	for _, c := range chats {
 		known[c.PeerID()] = true
 	}
+	delete(env, domain.FrameRefsKey)
 	if len(users) > 0 {
 		if b, err := json.Marshal(users); err == nil {
 			env["users"] = b

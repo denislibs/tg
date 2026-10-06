@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -169,5 +170,106 @@ func TestGetDifference_VectorsAndSecondsDate(t *testing.T) {
 	}
 	if !author {
 		t.Fatalf("векторы разницы: users=%v, want автора 7", d.Users)
+	}
+}
+
+// Ревью #405, №1: зеркало поста в группе обсуждения несёт SenderID админа, а на
+// проводе его автор — канал. Вектор users строится только по ссылкам провода,
+// поэтому карточки админа в ответе нет — ни у корня треда, ни у истории.
+func TestVectors_MirrorDoesNotLeakAdmin(t *testing.T) {
+	in, fg, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	fg.users[7] = domain.UserReal{ID: 7, FirstName: "Админ"}
+	ch, _ := in.CreateChannel(ctx, 7, "News", "", "", true)
+	_, _ = in.EnableDiscussion(ctx, ch, 7)
+	post, _ := in.PostToChannel(ctx, ch, 7, "пост", nil, "")
+	out, err := in.DiscussionContainer(ctx, ch, post.ID, 9)
+	if err != nil {
+		t.Fatalf("DiscussionContainer: %v", err)
+	}
+	for _, u := range out.Users {
+		if u.ID == 7 {
+			t.Fatalf("карточка админа-автора поста в users корня треда: %+v", out.Users)
+		}
+	}
+	page, err := in.CommentsContainer(ctx, ch, post.ID, 9, 0, 50)
+	if err != nil {
+		t.Fatalf("CommentsContainer: %v", err)
+	}
+	for _, u := range page.Users {
+		if u.ID == 7 {
+			t.Fatalf("карточка админа в users комментариев: %+v", page.Users)
+		}
+	}
+}
+
+// Ревью #405, №2: строка, пересланная из вещательного канала до #403, хранит
+// в fwd_from_user_id админа-автора поста. На проводе fwd_from.from_id — сам
+// канал, и карточки админа рядом нет.
+func TestFwdHeader_BroadcastSourceIsChannel(t *testing.T) {
+	in, fg, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	fg.users[7] = domain.UserReal{ID: 7, FirstName: "Админ"}
+	ch, _ := in.CreateChannel(ctx, 7, "News", "", "", true)
+	admin := int64(7)
+	m := domain.Message{ID: 900, ChatID: ch, Seq: 1, SenderID: 8, Type: "text", Text: "fwd",
+		FwdFromUserID: &admin, FwdFromChatID: &ch}
+	wire, users, _, err := in.MessagesContainer(ctx, 8, []domain.Message{m})
+	if err != nil {
+		t.Fatalf("MessagesContainer: %v", err)
+	}
+	fwd, _ := wireOf(t, wire[0])["fwd_from"].(map[string]any)
+	from, _ := fwd["from_id"].(map[string]any)
+	if from["_"] != domain.PeerChannelTag {
+		t.Fatalf("fwd_from.from_id = %v, want peerChannel канала", fwd["from_id"])
+	}
+	for _, u := range users {
+		if u.ID == 7 {
+			t.Fatalf("карточка админа в users при пересылке поста: %+v", users)
+		}
+	}
+}
+
+// Ревью #405, №1 (тот же класс): комментарий, отправленный от имени канала
+// (send-as), в recent_repliers поста — ссылка на канал, а не на админа.
+func TestCommentCounts_SendAsReplierIsChannel(t *testing.T) {
+	in, fg, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	fg.users[7] = domain.UserReal{ID: 7, FirstName: "Админ"}
+	ch, _ := in.CreateChannel(ctx, 7, "News", "", "", true)
+	disc, _ := in.EnableDiscussion(ctx, ch, 7)
+	post, _ := in.PostToChannel(ctx, ch, 7, "пост", nil, "")
+	mirror, _ := in.msgs.MirrorByPost(ctx, ch, post.ID)
+	if _, err := in.Send(ctx, SendInput{ChatID: disc, SenderID: 7, Text: "от канала", ThreadRootID: &mirror, SendAsChatID: &ch}); err != nil {
+		t.Fatalf("Send send-as: %v", err)
+	}
+	byPost, cards, err := in.CommentCounts(ctx, 9, ch, []int64{post.ID})
+	if err != nil {
+		t.Fatalf("CommentCounts: %v", err)
+	}
+	rep := byPost[post.ID]
+	if len(rep.RecentRepliers) != 1 || rep.RecentRepliers[0].Tag() != domain.PeerChannelTag {
+		t.Fatalf("recent_repliers = %+v, want канал", rep.RecentRepliers)
+	}
+	for _, u := range cards {
+		if u.ID == 7 {
+			t.Fatalf("карточка админа среди комментаторов: %+v", cards)
+		}
+	}
+}
+
+// Ревью #405, №4: ссылки тела считает отправитель кадра, один раз, — соединению
+// не нужно разбирать тело. Транспортный кадр (без конструктора) их не несёт.
+func TestFrame_CarriesPeerRefs(t *testing.T) {
+	var env map[string]json.RawMessage
+	_ = json.Unmarshal(frame("typing", map[string]any{"_": "updateUserTyping", "user_id": 5}), &env)
+	var refs domain.PeerRefs
+	if err := json.Unmarshal(env[domain.FrameRefsKey], &refs); err != nil || len(refs.Users) != 1 || refs.Users[0] != 5 {
+		t.Fatalf("_refs = %s (%v), want пользователя 5", env[domain.FrameRefsKey], err)
+	}
+	env = nil
+	_ = json.Unmarshal(frame("message_error", map[string]any{"client_msg_id": "x", "user_id": 5}), &env)
+	if _, ok := env[domain.FrameRefsKey]; ok {
+		t.Fatal("транспортный кадр несёт _refs")
 	}
 }

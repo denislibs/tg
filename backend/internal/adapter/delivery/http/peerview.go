@@ -17,13 +17,16 @@ import (
 // сборщиком, что у usecase (privacy.ViewUsers → domain.UserViewRules): фото,
 // номер и статус по правилам приватности. Правит срез на месте.
 //
-// Проверяющий необязателен: без него фото видно всем — та же мягкая
-// деградация, что у остальных опциональных зависимостей.
+// Проверяющий необязателен: без него — domain.UncheckedUserViewRules.
 func viewUsers(r *http.Request, privacy PrivacyQuery, users []domain.UserReal) {
-	if privacy == nil || len(users) == 0 {
+	if len(users) == 0 {
 		return
 	}
 	viewer, _ := UserFromContext(r.Context())
+	if privacy == nil {
+		domain.UncheckedUserViewRules(viewer.ID, users).Apply(users)
+		return
+	}
 	privacy.ViewUsers(r.Context(), viewer.ID, users)
 }
 

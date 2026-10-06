@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -101,8 +102,11 @@ func TestPrivacyRepo_PeerFullState(t *testing.T) {
 	shared, _ := g.CreateMultiMember(ctx, "group", "Общая", "", "", false, a)
 	_ = g.AddMember(ctx, shared, a, "creator", 0)
 	_ = g.AddMember(ctx, shared, b, "member", 0)
-	alone, _ := g.CreateMultiMember(ctx, "channel", "Своя", "", "", false, a)
+	// Общий КАНАЛ в счёт не идёт: подписчики канала друг другу не видны
+	// (ревью #405, №7).
+	alone, _ := g.CreateMultiMember(ctx, "channel", "Общий канал", "", "", false, a)
 	_ = g.AddMember(ctx, alone, a, "creator", 0)
+	_ = g.AddMember(ctx, alone, b, "subscriber", 0)
 	if _, err := NewChatsRepo(pool).CreatePrivate(ctx, a, b); err != nil {
 		t.Fatal(err)
 	}
@@ -117,5 +121,45 @@ func TestPrivacyRepo_PeerFullState(t *testing.T) {
 	self, err := r.PeerFullState(ctx, a, a)
 	if err != nil || self.CommonChats != 0 || self.NotifySettings != nil {
 		t.Fatalf("себе: %+v %v, want без общих чатов и notify_settings", self, err)
+	}
+}
+
+// Ревью #405, №3: векторы `chats` (Cards) — краткая форма без агрегатов только
+// channelFull: горизонт собеседников сканирует всех участников чата, а Cards
+// идёт на каждой странице истории и на первом кадре каждого соединения.
+func TestChatBriefSelect_NoFullOnlyAggregates(t *testing.T) {
+	for _, agg := range []string{"om.last_read_seq", "FROM pinned_messages", "FROM chat_theme", "m.unread_count"} {
+		if !strings.Contains(chatCardSelect, agg) {
+			t.Errorf("полная карточка без %q", agg)
+		}
+		if strings.Contains(chatBriefSelect, agg) {
+			t.Errorf("краткая форма векторов читает %q", agg)
+		}
+	}
+}
+
+// VisibleMaps — то же правило, что VisibleMap, по нескольким ключам разом.
+func TestPrivacyRepo_VisibleMapsMatchesVisibleMap(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+7430")
+	b := seedUser(t, pool, "+7431")
+	c := seedUser(t, pool, "+7432")
+	r := NewPrivacyRepo(pool)
+	keys := []domain.PrivacyKey{domain.PrivacyProfilePhoto, domain.PrivacyPhoneNumber, domain.PrivacyLastSeen}
+	maps, err := r.VisibleMaps(ctx, a, []int64{a, b, c}, keys...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range keys {
+		one, err := r.VisibleMap(ctx, a, []int64{a, b, c}, k)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, id := range []int64{a, b, c} {
+			if maps[k][id] != one[id] {
+				t.Errorf("%s/%d: maps=%v single=%v", k, id, maps[k][id], one[id])
+			}
+		}
 	}
 }

@@ -27,6 +27,8 @@ type Repo interface {
 	// VisibleMap — батч-проверка одним запросом: для каждого owner из ownerIDs
 	// решает, видит ли viewer его аспект key (правило + контактность + блок).
 	VisibleMap(ctx context.Context, viewerID int64, ownerIDs []int64, key domain.PrivacyKey) (map[int64]bool, error)
+	// VisibleMaps — VisibleMap по нескольким ключам одним запросом.
+	VisibleMaps(ctx context.Context, viewerID int64, ownerIDs []int64, keys ...domain.PrivacyKey) (map[domain.PrivacyKey]map[int64]bool, error)
 
 	GetUser(ctx context.Context, id int64) (domain.UserRecord, error)
 	// TTLPeriod — период автоудаления переписки ЗРИТЕЛЯ с этим пиром в
@@ -279,12 +281,24 @@ func (i *Interactor) ViewUsers(ctx context.Context, viewerID int64, users []doma
 		ids = append(ids, u.ID)
 	}
 	rules := domain.UserViewRules{ViewerID: viewerID}
-	rules.Photo, _ = i.repo.VisibleMap(ctx, viewerID, ids, domain.PrivacyProfilePhoto)
-	rules.Phone, _ = i.repo.VisibleMap(ctx, viewerID, ids, domain.PrivacyPhoneNumber)
-	rules.LastSeen, _ = i.repo.VisibleMap(ctx, viewerID, ids, domain.PrivacyLastSeen)
+	// Три правила — одним запросом, присутствие — одним конвейером: витрина
+	// доводит пачку, а не каждого по отдельности.
+	if maps, err := i.repo.VisibleMaps(ctx, viewerID, ids,
+		domain.PrivacyProfilePhoto, domain.PrivacyPhoneNumber, domain.PrivacyLastSeen); err == nil {
+		rules.Photo = maps[domain.PrivacyProfilePhoto]
+		rules.Phone = maps[domain.PrivacyPhoneNumber]
+		rules.LastSeen = maps[domain.PrivacyLastSeen]
+	}
+	// Присутствие не подключено — о статусе ничего не известно: это
+	// userStatusEmpty, а не «офлайн с нулевым временем».
+	rules.Status = func(int64) domain.UserStatus { return domain.NewUserStatusEmpty() }
 	if i.presence != nil {
+		statuses := i.presence.Statuses(ctx, ids)
 		rules.Status = func(id int64) domain.UserStatus {
-			return domain.PresenceStatus(i.presence.Status(ctx, id))
+			if st, ok := statuses[id]; ok {
+				return st
+			}
+			return domain.NewUserStatusEmpty()
 		}
 	}
 	rules.Apply(users)
@@ -295,6 +309,8 @@ func (i *Interactor) ViewUsers(ctx context.Context, viewerID int64, users []doma
 // Реализуется presence-менеджером; optional — без него статус не производится.
 type PresenceSnapshot interface {
 	Status(ctx context.Context, userID int64) (online bool, expires, lastSeen time.Time)
+	// Statuses — UserStatus пачки пользователей одним обращением к хранилищу.
+	Statuses(ctx context.Context, userIDs []int64) map[int64]domain.UserStatus
 }
 
 // SetPresence подключает источник присутствия (usecase/presence).

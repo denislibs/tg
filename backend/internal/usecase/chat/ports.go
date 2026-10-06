@@ -396,8 +396,9 @@ type MessageRepo interface {
 	// элементов альбома снова сломается.
 	AlbumMessages(ctx context.Context, chatID int64, groupedID int64) ([]domain.Message, error)
 	// RecentThreadRepliers — авторы последних комментариев по каждому треду
-	// (новейшие первыми, не более limit различных на тред).
-	RecentThreadRepliers(ctx context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]int64, error)
+	// (новейшие первыми, не более limit различных на тред) ключом пира
+	// (domain.PeerID): комментарий send-as — это канал (< 0), а не его админ.
+	RecentThreadRepliers(ctx context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]domain.PeerID, error)
 	// CountMessages — сколько сообщений истории видит зритель userID (тот же
 	// предикат видимости, что у окна истории).
 	CountMessages(ctx context.Context, chatID, userID int64) (int, error)

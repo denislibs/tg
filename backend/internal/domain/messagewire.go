@@ -225,6 +225,18 @@ func (m Message) wireFromID(ctx MessageContext) Peer {
 	return m.fromID()
 }
 
+// WireAuthorUserID — пользователь, который стоит в from_id на проводе (0 —
+// автор не пользователь или скрыт): та же развилка, что wireFromID. Векторы
+// `users` строятся по ней, а не по SenderID — у send-as и зеркала поста в
+// группе обсуждения SenderID это живой админ, а на проводе автор — чат, и
+// карточка админа рядом раскрыла бы его.
+func (m Message) WireAuthorUserID(post, postAuthorShown bool) int64 {
+	if p, ok := m.wireFromID(MessageContext{Post: post, PostAuthorShown: postAuthorShown}).(PeerUser); ok {
+		return p.UserID
+	}
+	return 0
+}
+
 // fromID — АВТОР сообщения ссылкой на пир. Отправка от имени канала/группы
 // (send-as) выражается тем, что автором становится САМ КАНАЛ: в схеме это
 // message.from_id, а не отдельный снимок send_as{peer_id,title,photo_id} рядом

@@ -1646,20 +1646,24 @@ func (r fakeMsgs) AlbumMessages(_ context.Context, chatID int64, groupedID int64
 	return out, nil
 }
 
-func (r fakeMsgs) RecentThreadRepliers(_ context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]int64, error) {
+func (r fakeMsgs) RecentThreadRepliers(_ context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]domain.PeerID, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
-	out := map[int64][]int64{}
+	out := map[int64][]domain.PeerID{}
 	for _, root := range rootIDs {
-		seen := map[int64]bool{}
+		seen := map[domain.PeerID]bool{}
 		msgs := r.s.messages[chatID]
 		for i := len(msgs) - 1; i >= 0; i-- {
 			m := msgs[i]
-			if m.ThreadRootID == nil || *m.ThreadRootID != root || m.Deleted || seen[m.SenderID] {
+			author := domain.PeerID(m.SenderID)
+			if m.SendAsChatID != nil {
+				author = domain.ToPeerID(*m.SendAsChatID, true)
+			}
+			if m.ThreadRootID == nil || *m.ThreadRootID != root || m.Deleted || seen[author] {
 				continue
 			}
-			seen[m.SenderID] = true
-			out[root] = append(out[root], m.SenderID)
+			seen[author] = true
+			out[root] = append(out[root], author)
 			if len(out[root]) >= limit {
 				break
 			}

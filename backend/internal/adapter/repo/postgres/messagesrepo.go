@@ -1339,30 +1339,34 @@ func (r *MessagesRepo) AlbumMessages(ctx context.Context, chatID int64, groupedI
 // комментариев (новейшие первыми, не более limit различных). Нужен футеру
 // «N комментариев» под постом канала — Telegram показывает там стек аватаров
 // последних комментаторов.
-func (r *MessagesRepo) RecentThreadRepliers(ctx context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]int64, error) {
-	out := map[int64][]int64{}
+func (r *MessagesRepo) RecentThreadRepliers(ctx context.Context, chatID int64, rootIDs []int64, limit int) (map[int64][]domain.PeerID, error) {
+	out := map[int64][]domain.PeerID{}
 	if len(rootIDs) == 0 || limit <= 0 {
 		return out, nil
 	}
 	q := querier(ctx, r.pool)
+	// Автор — тот, кто стоит в from_id комментария: у send-as это канал
+	// (ключ пира < 0), а не админ, который его отправил.
 	rows, err := q.Query(ctx, `
-		SELECT thread_root_id, sender_id FROM (
-			SELECT thread_root_id, sender_id,
+		SELECT thread_root_id, author FROM (
+			SELECT thread_root_id, author,
 			       row_number() OVER (PARTITION BY thread_root_id ORDER BY max(seq) DESC) AS rn
-			FROM messages
-			WHERE chat_id=$1 AND thread_root_id = ANY($2) AND deleted_at IS NULL
-			GROUP BY thread_root_id, sender_id
+			FROM (SELECT thread_root_id, seq,
+			             CASE WHEN send_as_chat_id IS NOT NULL THEN -send_as_chat_id ELSE sender_id END AS author
+			        FROM messages
+			       WHERE chat_id=$1 AND thread_root_id = ANY($2) AND deleted_at IS NULL) m
+			GROUP BY thread_root_id, author
 		) t WHERE rn <= $3`, chatID, rootIDs, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var root, sender int64
-		if err := rows.Scan(&root, &sender); err != nil {
+		var root, author int64
+		if err := rows.Scan(&root, &author); err != nil {
 			return nil, err
 		}
-		out[root] = append(out[root], sender)
+		out[root] = append(out[root], domain.PeerID(author))
 	}
 	return out, rows.Err()
 }

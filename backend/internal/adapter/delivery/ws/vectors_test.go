@@ -31,7 +31,8 @@ func TestWithVectors(t *testing.T) {
 	msg := domain.MessageReal{Underscore: domain.MessageTag, ID: 12,
 		PeerID: domain.NewPeerChannel(5), FromID: domain.NewPeerUser(7), Date: 1787334148, Message: "привет"}
 	body, _ := json.Marshal(domain.NewUpdateNewMessage(msg, 41))
-	frame, _ := json.Marshal(map[string]any{"t": "new_message", "d": json.RawMessage(body)})
+	frame, _ := json.Marshal(map[string]any{"t": "new_message", "d": json.RawMessage(body),
+		domain.FrameRefsKey: domain.CollectPeerRefsJSON(body)})
 
 	src := &fakeVectors{}
 	known := knownPeers{}
@@ -58,5 +59,31 @@ func TestWithVectors(t *testing.T) {
 	hello, _ := json.Marshal(map[string]any{"t": "hello", "d": map[string]any{"pts": 5}})
 	if got := withVectors(context.Background(), src, 1, knownPeers{}, hello); string(got) != string(hello) {
 		t.Fatal("транспортный кадр изменён")
+	}
+}
+
+type blockingVectors struct{ calls int }
+
+func (b *blockingVectors) PeerVectorsForRefs(ctx context.Context, _ int64, _ domain.PeerRefs) ([]domain.UserReal, []domain.Chat) {
+	b.calls++
+	<-ctx.Done()
+	return nil, nil
+}
+
+// Ревью #405, №4: сбор карточек ограничен тайм-аутом — медленная база не
+// останавливает запись соединения, кадр уходит без векторов; кадр без
+// ссылок отправителя (_refs) не разбирается и в сборщик не идёт.
+func TestWithVectors_TimeoutAndNoRefs(t *testing.T) {
+	src := &blockingVectors{}
+	plain, _ := json.Marshal(map[string]any{"t": "new_message", "d": map[string]any{"_": "updateUserTyping", "user_id": 5}})
+	if got := withVectors(context.Background(), src, 1, knownPeers{}, plain); string(got) != string(plain) || src.calls != 0 {
+		t.Fatalf("кадр без _refs: calls=%d", src.calls)
+	}
+	withRefs, _ := json.Marshal(map[string]any{"t": "typing", "d": map[string]any{"_": "updateUserTyping", "user_id": 5},
+		domain.FrameRefsKey: domain.PeerRefs{Users: []int64{5}}})
+	start := time.Now()
+	got := withVectors(context.Background(), src, 1, knownPeers{}, withRefs)
+	if time.Since(start) > 3*time.Second || string(got) != string(withRefs) || src.calls != 1 {
+		t.Fatalf("тайм-аут: %v, calls=%d", time.Since(start), src.calls)
 	}
 }

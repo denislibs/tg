@@ -40,42 +40,16 @@ import (
 func (i *Interactor) MessagesContainer(ctx context.Context, viewerID int64, msgs []domain.Message) ([]domain.MTMessage, []domain.UserReal, []domain.Chat, error) {
 	kinds := i.chatKinds(ctx, msgs)
 	shown := i.postAuthorsShown(ctx, kinds)
-	threads, repliers := i.threadReplies(ctx, viewerID, msgs, kinds)
+	threads, _ := i.threadReplies(ctx, viewerID, msgs, kinds)
 	wire, err := i.messagesWire(ctx, viewerID, msgs, kinds, shown, threads)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	users := mergeUserCards(i.messageAuthors(ctx, viewerID, msgs, kinds, shown), repliers)
-	i.viewUsers(ctx, viewerID, users)
-	users, chats := i.peerVectors(ctx, viewerID, domain.CollectPeerRefs(wire), users)
+	// Векторы — ТОЛЬКО по ссылкам провода (автор в from_id, пересылка, ответ,
+	// упомянутые, recent_repliers, действие), а не по SenderID: у зеркала поста
+	// и у send-as SenderID — живой админ, а на проводе автор — чат.
+	users, chats := i.peerVectors(ctx, viewerID, domain.CollectPeerRefs(wire), nil)
 	return wire, users, chats, nil
-}
-
-// messageAuthors — карточки авторов пачки, по одной на автора. Автор поста
-// канала без подписей профилями в вектор не едет (postAuthorHidden).
-//
-// Сбой запроса не роняет выдачу: список сообщений полезен и без подписей, а
-// упавшая история полезна никому. Порядок тот же, что у диалогов.
-func (i *Interactor) messageAuthors(ctx context.Context, viewerID int64, msgs []domain.Message, kinds map[int64]string, shown map[int64]bool) []domain.UserReal {
-	if i.groups == nil {
-		return nil
-	}
-	seen := make(map[int64]bool, len(msgs))
-	ids := make([]int64, 0, len(msgs))
-	for _, m := range msgs {
-		if m.SenderID != 0 && !seen[m.SenderID] && !postAuthorHidden(m, kinds, shown) {
-			seen[m.SenderID] = true
-			ids = append(ids, m.SenderID)
-		}
-	}
-	if len(ids) == 0 {
-		return nil
-	}
-	authors, err := i.groups.UsersByIDs(ctx, viewerID, ids)
-	if err != nil {
-		return nil
-	}
-	return authors
 }
 
 // threadReplies — ЕДИНСТВЕННЫЙ ответ на вопрос «какой у сообщения тред»:
@@ -104,7 +78,7 @@ func (i *Interactor) messageAuthors(ctx context.Context, viewerID int64, msgs []
 //   - личный чат и «Избранное»: треда не бывает, и в базу за ним не ходим
 //     вовсе — лишний запрос на каждую открытую переписку.
 //
-// Сбой подсчёта не роняет выдачу — то же правило, что у messageAuthors: чат
+// Сбой подсчёта не роняет выдачу — то же правило, что у векторов: чат
 // без счётчика читается, упавший чат не читается никак.
 func (i *Interactor) threadReplies(
 	ctx context.Context, viewerID int64, msgs []domain.Message, kinds map[int64]string,

@@ -161,7 +161,7 @@ func (i *Interactor) dialogsContainer(ctx context.Context, viewerID int64, recor
 	// Их не было в ответе вовсе, из-за чего сервер склеивал имя автора сам
 	// (last_sender_name) — последний живой экземпляр той болезни, которую у
 	// пиров снял уход display_name. С автором-пиром имя собирает клиент.
-	// Автор поста канала без подписей профилями не едет (postAuthorHidden):
+	// Автор поста канала без подписей профилями не едет (WireAuthorUserID):
 	// вид чата и подписи — из тех же строк витрины.
 	kinds := make(map[int64]string, len(records))
 	shown := make(map[int64]bool, len(records))
@@ -171,9 +171,12 @@ func (i *Interactor) dialogsContainer(ctx context.Context, viewerID int64, recor
 	}
 	missing := make([]int64, 0, len(messages))
 	for _, m := range messages {
-		if m.SenderID != 0 && !seen[m.SenderID] && !postAuthorHidden(m, kinds, shown) {
-			seen[m.SenderID] = true
-			missing = append(missing, m.SenderID)
+		// Автор — тот, кто стоит в from_id на проводе: у send-as автором
+		// выступает чат, у поста канала без подписей — никто.
+		id := m.WireAuthorUserID(kinds[m.ChatID] == domain.ChatTypeChannel, shown[m.ChatID])
+		if id != 0 && !seen[id] {
+			seen[id] = true
+			missing = append(missing, id)
 		}
 	}
 	if len(missing) > 0 && i.groups != nil {
@@ -205,18 +208,8 @@ func (i *Interactor) viewUsers(ctx context.Context, viewerID int64, users []doma
 		return
 	}
 	if i.privacy == nil {
-		domain.UserViewRules{ViewerID: viewerID, Photo: allVisible(users), Phone: map[int64]bool{}, LastSeen: allVisible(users)}.Apply(users)
+		domain.UncheckedUserViewRules(viewerID, users).Apply(users)
 		return
 	}
 	i.privacy.ViewUsers(ctx, viewerID, users)
-}
-
-// allVisible — «правило пускает всех»: без проверяющего фото видно всем (та
-// же мягкая деградация, что у прочих опциональных зависимостей).
-func allVisible(users []domain.UserReal) map[int64]bool {
-	out := make(map[int64]bool, len(users))
-	for _, u := range users {
-		out[u.ID] = true
-	}
-	return out
 }

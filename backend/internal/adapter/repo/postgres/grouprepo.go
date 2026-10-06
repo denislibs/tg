@@ -368,9 +368,23 @@ func (r *GroupRepo) DeleteChat(ctx context.Context, chatID int64) error {
 //
 // $1 — id чатов (ANY), $2 — зритель (0 — снимок без зрителя).
 //
+// Две формы одного списка колонок (chatCardQuery): ПОЛНАЯ — экран информации
+// (Card, channelFull), и КРАТКАЯ — всё, что едет векторами `chats` (Cards):
+// краткому `channel` не нужны агрегаты только channelFull — горизонт
+// прочтения собеседников (скан всех участников), закреп, тема, непрочитанное.
+// Векторы гоняют этот запрос на каждой странице истории и на первом кадре
+// каждого соединения, поэтому там эти колонки — константы.
+//
 // Точка расширения: поле зрителя добавляется колонкой ЗДЕСЬ и приёмником в
-// scanChatCard — больше нигде.
-var chatCardSelect = `SELECT c.id, c.type, c.title, COALESCE(c.username,''), c.about, c.photo_media_id,
+// scanChatCard — больше нигде. Агрегат только для channelFull — через fullOnly.
+func chatCardQuery(full bool) string {
+	fullOnly := func(expr, brief string) string {
+		if full {
+			return expr
+		}
+		return brief
+	}
+	return `SELECT c.id, c.type, c.title, COALESCE(c.username,''), c.about, c.photo_media_id,
         pm.blur_preview, COALESCE(pm.width,0), COALESCE(pm.height,0), COALESCE(pm.size,0),
         COALESCE(c.creator_id,0), c.member_count, c.created_at, c.is_forum,
         COALESCE(c.discussion_chat_id,0), c.signatures, c.signature_profiles,
@@ -379,12 +393,12 @@ var chatCardSelect = `SELECT c.id, c.type, c.title, COALESCE(c.username,''), c.a
         -- pinned_msg_id: наружу едет НОМЕР сообщения в чате (в схеме
         -- chatFull.pinned_msg_id адресует сообщение в его пире), а
         -- pinned_messages.msg_id — внутренний ключ строки.
-        COALESCE((SELECT pinm.seq FROM pinned_messages p JOIN messages pinm ON pinm.id=p.msg_id
-                   WHERE p.chat_id=c.id ORDER BY p.pinned_at DESC LIMIT 1),0),
-        COALESCE(m.last_read_seq,0), COALESCE(m.unread_count,0),
-        COALESCE((SELECT MIN(om.last_read_seq) FROM chat_members om WHERE om.chat_id=c.id AND om.user_id<>$2),0),
+        ` + fullOnly(`COALESCE((SELECT pinm.seq FROM pinned_messages p JOIN messages pinm ON pinm.id=p.msg_id
+                   WHERE p.chat_id=c.id ORDER BY p.pinned_at DESC LIMIT 1),0)`, `0`) + `,
+        COALESCE(m.last_read_seq,0), ` + fullOnly(`COALESCE(m.unread_count,0)`, `0`) + `,
+        ` + fullOnly(`COALESCE((SELECT MIN(om.last_read_seq) FROM chat_members om WHERE om.chat_id=c.id AND om.user_id<>$2),0)`, `0`) + `,
         m.role, m.rights, m.muted_until, m.notify_preview, m.notify_sound,
-        COALESCE(ct.theme_id,''),
+        ` + fullOnly(`COALESCE((SELECT ct.theme_id FROM chat_theme ct WHERE ct.chat_id = c.id),'')`, `''`) + `,
         -- Дата вступления ЗРИТЕЛЯ — из той же строки членства, что role
         -- и rights; NULL, когда зритель не состоит (LEFT JOIN не нашёл
         -- строки) или когда зрителя нет вовсе. Наружу уходит
@@ -404,11 +418,16 @@ var chatCardSelect = `SELECT c.id, c.type, c.title, COALESCE(c.username,''), c.a
                             AND ` + chatReadableBy("dch.id", "$2") + `)))
    FROM chats c
    LEFT JOIN media pm ON pm.id = c.photo_media_id
-   LEFT JOIN chat_theme ct ON ct.chat_id = c.id
    LEFT JOIN chat_members m ON m.chat_id=c.id AND m.user_id=$2
    LEFT JOIN chat_restrictions r ON r.chat_id = c.id AND r.user_id = $2
         AND (r.until_date IS NULL OR r.until_date > now())
   WHERE c.id = ANY($1)`
+}
+
+var (
+	chatCardSelect  = chatCardQuery(true)
+	chatBriefSelect = chatCardQuery(false)
+)
 
 // scanChatCard читает одну строку chatCardSelect глазами viewerID.
 func scanChatCard(row pgx.Row, viewerID int64) (domain.ChatRecord, error) {
@@ -478,13 +497,14 @@ func (r *GroupRepo) Card(ctx context.Context, chatID, viewerID int64) (domain.Ch
 	return c, err
 }
 
-// Cards — строки чатов ids глазами зрителя одним запросом, В ПОРЯДКЕ ids
-// (выдача поиска ранжирована). Отсутствующие id пропускаются.
+// Cards — КРАТКИЕ строки чатов ids глазами зрителя (chatBriefSelect: всё для
+// `channel`, без агрегатов channelFull) одним запросом, В ПОРЯДКЕ ids (выдача
+// поиска ранжирована). Отсутствующие id пропускаются.
 func (r *GroupRepo) Cards(ctx context.Context, viewerID int64, ids []int64) ([]domain.ChatRecord, error) {
 	if len(ids) == 0 {
 		return []domain.ChatRecord{}, nil
 	}
-	rows, err := querier(ctx, r.pool).Query(ctx, chatCardSelect, ids, viewerID)
+	rows, err := querier(ctx, r.pool).Query(ctx, chatBriefSelect, ids, viewerID)
 	if err != nil {
 		return nil, err
 	}

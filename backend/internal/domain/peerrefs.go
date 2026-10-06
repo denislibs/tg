@@ -22,9 +22,17 @@ import (
 // однажды: история возила авторов, а каналы пересылок, ответов и обсуждений —
 // никто (A4-03). Здесь правило одно и смотрит на сам провод.
 type PeerRefs struct {
-	Users []int64
-	Chats []int64
+	Users []int64 `json:"u,omitempty"`
+	Chats []int64 `json:"c,omitempty"`
 }
+
+// FrameRefsKey — служебный ключ конверта кадра WS, где отправитель кладёт
+// ссылки тела (PeerRefs), посчитанные ОДИН раз при сборке кадра: соединению
+// остаётся отфильтровать их по уже отданным, не разбирая тело (A4-05).
+const FrameRefsKey = "_refs"
+
+// Empty — ссылок нет.
+func (r PeerRefs) Empty() bool { return len(r.Users) == 0 && len(r.Chats) == 0 }
 
 // userIDKeys — параметры схемы, несущие id ПОЛЬЗОВАТЕЛЯ голым числом.
 var userIDKeys = map[string]bool{

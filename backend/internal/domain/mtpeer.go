@@ -381,6 +381,19 @@ type UserViewRules struct {
 	Status func(userID int64) UserStatus
 }
 
+// UncheckedUserViewRules — правила, когда проверяющего приватности нет (тесты,
+// урезанная сборка): фото видно всем, номер — никому, статус «ничего не
+// известно» (userStatusEmpty) — та же мягкая деградация, что у прочих
+// опциональных зависимостей.
+func UncheckedUserViewRules(viewerID int64, users []UserReal) UserViewRules {
+	all := make(map[int64]bool, len(users))
+	for _, u := range users {
+		all[u.ID] = true
+	}
+	return UserViewRules{ViewerID: viewerID, Photo: all, Phone: map[int64]bool{}, LastSeen: all,
+		Status: func(int64) UserStatus { return NewUserStatusEmpty() }}
+}
+
 // Apply доводит карточки на месте: self видит себя целиком; фото по правилу
 // (личное фото зритель поставил сам — оно не гасится); номер по правилу;
 // статус по last_seen (скрытый — userStatusRecently, как у оригинала), у
@@ -921,8 +934,9 @@ type UserFull struct {
 	// PinnedMsgID — flags.6?int: закреплённое сообщение лички зрителя с пиром
 	// (номер в переписке); 0 — нет.
 	PinnedMsgID int64 `json:"pinned_msg_id,omitempty"`
-	// CommonChatsCount — common_chats_count:int: группы и каналы, где состоят
-	// оба (вкладка «Общие группы», tweb appSearchSuper.ts:3031).
+	// CommonChatsCount — common_chats_count:int: группы, где состоят оба
+	// (вкладка «Общие группы», tweb appSearchSuper.ts:3031). Каналы не в счёт:
+	// подписчики канала друг другу не видны.
 	CommonChatsCount int `json:"common_chats_count"`
 	// StargiftsCount — flags2.8?int: подарки профиля, видимые зрителю
 	// (tweb peerProfile.tsx:435) — тот же отбор, что у ручки подарков.

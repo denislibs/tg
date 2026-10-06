@@ -691,7 +691,7 @@ func (h *GroupHandler) Participant(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewChannelsChannelParticipant(p, cards))
 }
 
-// participantCards — карточки участников глазами зрителя со статусом:
+// participantCards — карточки участников глазами зрителя (privacy.ViewUsers):
 // онлайн видит тот, кому участник разрешил last seen (иначе — другой
 // конструктор, userStatusRecently, как у оригинала).
 func (h *GroupHandler) participantCards(r *http.Request, viewerID int64, ids []int64) ([]domain.UserReal, error) {
@@ -699,23 +699,8 @@ func (h *GroupHandler) participantCards(r *http.Request, viewerID int64, ids []i
 	if err != nil {
 		return nil, err
 	}
-	seen := map[int64]bool{}
-	if h.privacy != nil {
-		if v, err := h.privacy.VisibleMap(r.Context(), viewerID, ids, domain.PrivacyLastSeen); err == nil {
-			seen = v
-		}
-	}
+	// Фото, номер и статус по last_seen — общий сборщик карточек (A4-08).
 	viewUsers(r, h.privacy, cards)
-	for i := range cards {
-		switch {
-		case h.presence == nil:
-			cards[i].Status = domain.NewUserStatusEmpty()
-		case h.privacy != nil && !seen[cards[i].ID] && cards[i].ID != viewerID:
-			cards[i].Status = domain.NewUserStatusRecently(false)
-		default:
-			cards[i].Status = domain.PresenceStatus(h.presence.Status(r.Context(), cards[i].ID))
-		}
-	}
 	return cards, nil
 }
 
@@ -1048,18 +1033,4 @@ func orEmptyUsers(cards []domain.UserReal) []domain.UserReal {
 		return []domain.UserReal{}
 	}
 	return cards
-}
-
-// participantsWithVectors — channels.channelParticipants с карточками всех, на
-// кого ссылаются строки (участник, kicked_by), глазами зрителя: прежде вектор
-// `users` ехал пустым, и каждая строка списка добиралась отдельным /users
-// (A4-14).
-func (h *GroupHandler) participantsWithVectors(r *http.Request, out []domain.ChannelParticipant) domain.ChannelsChannelParticipants {
-	viewer, _ := UserFromContext(r.Context())
-	users, chats := h.uc.PeerVectorsOf(r.Context(), viewer.ID, out)
-	res := domain.NewChannelsChannelParticipants(len(out), out, users)
-	if len(chats) > 0 {
-		res.Chats = chats
-	}
-	return res
 }

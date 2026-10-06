@@ -105,10 +105,15 @@ func (i *Interactor) fwdHeader(ctx context.Context, m domain.Message, fwdSeq map
 		}
 	}
 	switch {
+	case srcPeer != nil && srcType == domain.ChatTypeChannel:
+		// Пост вещательного канала: автором выступает САМ канал, как у
+		// оригинала (fwd_from.from_id = peerChannel, имя — post_author). Строки,
+		// пересланные до #403, хранят в fwd_from_user_id админа-автора поста —
+		// он наружу не выходит ни ссылкой, ни карточкой в векторе users.
+		h.FromID = srcPeer
 	case m.FwdFromUserID != nil:
 		h.FromID = domain.NewPeerUser(*m.FwdFromUserID)
 	case srcPeer != nil:
-		// Пост канала: автором выступает сам канал.
 		h.FromID = srcPeer
 	}
 	// «Откуда именно» заполняется только для группы/канала: у приватного

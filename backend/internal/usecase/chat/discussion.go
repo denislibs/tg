@@ -492,11 +492,13 @@ func (i *Interactor) CommentCounts(ctx context.Context, viewerID, channelID int6
 	}
 	seen := map[int64]bool{}
 	ids := make([]int64, 0, len(recent)*RecentRepliersLimit)
-	for _, users := range recent {
-		for _, u := range users {
-			if !seen[u] {
-				seen[u] = true
-				ids = append(ids, u)
+	for _, authors := range recent {
+		for _, a := range authors {
+			// Комментатор-канал (send-as) едет ссылкой на чат; карточки
+			// пользователей — только людям.
+			if a.IsUser() && !seen[a.ToUserID()] {
+				seen[a.ToUserID()] = true
+				ids = append(ids, a.ToUserID())
 			}
 		}
 	}
@@ -525,8 +527,8 @@ func (i *Interactor) CommentCounts(ctx context.Context, viewerID, channelID int6
 	for postID, root := range mirrors {
 		c := counts[root]
 		peers := make([]domain.Peer, 0, RecentRepliersLimit)
-		for _, u := range recent[root] {
-			peers = append(peers, domain.NewPeerUser(u))
+		for _, a := range recent[root] {
+			peers = append(peers, domain.NewPeer(a))
 		}
 		out[postID] = domain.NewMessageReplies(c, disc, peers)
 	}
