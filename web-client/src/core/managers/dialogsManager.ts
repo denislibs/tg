@@ -70,6 +70,10 @@ type MessagesPeerDialogs = Omit<MessagesDialogs, '_' | 'count'> & { _?: 'message
 
 export interface DialogsDeps {
   rest: Pick<RestClient, 'get'>
+  /** Курсор канала из строки списка — порт tweb `addChannelState(channelId,
+   *  dialog.pts)` в `saveDialog` (storages/dialogs.ts:1755-1757): владелец
+   *  курсоров — канальная воронка воркера. */
+  addChannelState?: (peerId: number, pts: number) => void
   onDialogOps?: (ops: DialogOp[]) => void
   /** офлайн-кэш прошлой сессии (persist.loadDialogs) */
   loadCache: () => Promise<Dialog[]>
@@ -150,7 +154,7 @@ export interface DialogsDeps {
  * каждое изменение. */
 const PERSIST_DEBOUNCE_MS = 1000
 
-export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, getMeId, savePinnedOrders, mirrorStateKey, saveCache, saveDialogsLoaded, peers, messages }: DialogsDeps) {
+export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCache, loadState, getMeId, savePinnedOrders, mirrorStateKey, saveCache, saveDialogsLoaded, peers, messages }: DialogsDeps) {
   let items: DialogItem[] = []
   // Полный State-ключ (все папки) — нужен целиком, чтобы applyPinned не затёр
   // чужие записи при записи на диск (порт tweb: `{...orders, [ALL_FOLDER_ID]: …}`,
@@ -631,6 +635,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    */
   function toDialog(raw: RawDialog): Dialog {
     const peerId = getPeerId(raw.peer)
+    if (raw.pts) addChannelState?.(peerId, raw.pts)
     const top_message = generateMessageId(raw.top_message)
     const dialog: Dialog = {
       ...raw,

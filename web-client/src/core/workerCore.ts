@@ -293,6 +293,9 @@ export function createWorkerCore() {
   // groups/chatThemes (Task 4) — им нужна ссылка на него в конструкторе.
   const dialogs = newDialogsManager({
     rest,
+    // Курсор канала из списка (tweb addChannelState): воронка объявлена ниже,
+    // строки списка приходят позже сборки — к первому вызову она уже есть.
+    addChannelState: (peerId, pts) => channelFunnel.seed(peerId, pts),
     onDialogOps: (ops) => broadcast(RT.dialogOp, { ops }),
     loadCache: () => loadDialogs(),
     loadState: async () => {
@@ -771,7 +774,10 @@ export function createWorkerCore() {
       // hello — первый кадр WS: {pts,date}. pts===cursor → быстрый reconnect без REST;
       // иначе catch-up доберёт разницу. cursor.ready() гейтит сравнение до гидратации.
       if (type === 'hello') {
-        const p = payload as { pts?: number; date?: number }
+        const p = payload as { pts?: number; date?: number; channels?: [number, number][] }
+        // Каналы, чей журнал ушёл вперёд, пока сокета не было: их кадры
+        // топиков пропали, а пер-юзерный /sync их не несёт (журналы разные).
+        if (p?.channels) channelFunnel.onHello(p.channels)
         if (typeof p?.pts === 'number') {
           const want = p.pts
           // Реконнект с расхождением pts: catch-up добёрет разницу — придержанные
@@ -798,9 +804,6 @@ export function createWorkerCore() {
               return
             }
             const catchingUp = want !== saved.pts ? (funnel.clear(), sync.catchUp()) : undefined
-            // Каналы с известным курсором — их кадры топиков за время без
-            // сокета пропали; пер-юзерный /sync их не несёт (журналы разные).
-            channelFunnel.catchUpAll()
             // tweb 1dc32d889 — точка attach: первый hello после старта воркера
             // решает, какой difference «начальный» (или что догонять нечего).
             syncWait.attach(catchingUp)

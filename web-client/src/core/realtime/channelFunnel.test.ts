@@ -172,24 +172,29 @@ describe('channelFunnel.syncState', () => {
   })
 })
 
-// Переподключение (Ф-2): кадры топиков, пропавшие без сокета, добираются по
-// каждому каналу с известным курсором — аналог updateChannelTooLong в ответе
-// getDifference у tweb. Канал без курсора не трогается.
-describe('channelFunnel.catchUpAll', () => {
-  it('догоняет каждый сидированный канал от его курсора, несидированный — нет', async () => {
-    const h = harness([
-      { updates: [{ t: 'new_message', pts: 6, d: { a: 1 } }], pts: 6, slice: false },
-      { updates: [], pts: 100, slice: false },
-    ])
-    h.funnel.applyLive(1, 'new_message', 5, {})
-    h.funnel.applyLive(2, 'new_message', 100, {})
-    await h.funnel.open(3) // курсора нет ни в памяти, ни в IDB
-    h.getDifference.mockClear()
+// Ревью #407: курсор канала заводится из строки списка (tweb
+// addChannelState, `??=`), а на hello догоняются только каналы с заведённым
+// курсором, чей pts ушёл вперёд (аналог updateChannelTooLong).
+describe('channelFunnel.seed / onHello', () => {
+  it('seed заводит курсор один раз и не откатывает живой', () => {
+    const h = harness()
+    h.funnel.seed(1, 10)
+    h.funnel.seed(1, 3)
+    h.funnel.applyLive(1, 'new_message', 11, {})   // next от 10 — применён
+    expect(h.dispatched).toHaveLength(1)
+    h.funnel.applyLive(1, 'new_message', 13, {})   // дыра от 11 — придержан
+    expect(h.dispatched).toHaveLength(1)
+    expect(h.saved.get(1)).toBe(11)
+  })
 
-    h.funnel.catchUpAll()
-    await vi.waitFor(() => expect(h.getDifference).toHaveBeenCalledTimes(2))
-    expect(h.getDifference.mock.calls.map((c) => c[0]).sort((a, b) => a - b)).toEqual([1, 2])
-    expect(h.getDifference).toHaveBeenCalledWith(1, 5)
+  it('onHello: догон только сдвинувшихся каналов с курсором; без курсора — курсор из hello', async () => {
+    const h = harness([{ updates: [{ t: 'new_message', pts: 6, d: { a: 1 } }], pts: 6, slice: false }])
+    h.funnel.seed(1, 5)
+    h.funnel.seed(2, 100)
+    h.funnel.onHello([[1, 6], [2, 100], [3, 40]])
     await vi.waitFor(() => expect(h.saved.get(1)).toBe(6))
+    expect(h.getDifference).toHaveBeenCalledTimes(1)
+    expect(h.getDifference).toHaveBeenCalledWith(1, 5)
+    expect(h.saved.get(3)).toBe(40)
   })
 })

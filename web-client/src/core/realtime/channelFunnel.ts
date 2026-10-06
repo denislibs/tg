@@ -132,6 +132,14 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
     }
   }
 
+  function seed(peerId: number, pts: number): void {
+    const st = state(peerId)
+    if (st.seeded || pts <= 0) return
+    st.pts = pts
+    st.seeded = true
+    deps.savePts(peerId, pts)
+  }
+
   return {
     // Живой канальный кадр (курсор канала выбран вызывающим по дискриминатору).
     // Та же арифметика dup/next/gap, что
@@ -174,18 +182,24 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
     },
 
     /**
-     * Переподключение: добрать каждый канал с известным курсором. Пока сокета
-     * не было, кадры топиков терялись, а следующий живой кадр может не прийти
-     * долго — без догона строка канала в списке стояла бы до перезагрузки.
-     * Аналог tweb, где `getDifference` после реконнекта приносит
-     * `updateChannelTooLong` по каналам с известным состоянием и те идут в
-     * `getChannelDifference` (apiUpdatesManager.ts:354, :632-662). Каналы без
-     * курсора не трогаются: их базу примет первый живой кадр, а текущее
-     * состояние строки — список диалогов.
+     * Курсор канала из строки списка — порт tweb `addChannelState` (`??=`):
+     * заводится, только если курсора ещё нет; живой курсор не откатывается.
      */
-    catchUpAll(): void {
-      for (const [peerId, st] of states) {
-        if (st.seeded) void catchUp(peerId)
+    seed,
+
+    /**
+     * hello (под)ключения: сервер называет pts журналов каналов, на топики
+     * которых соединение уже подписано. Догоняются только каналы с заведённым
+     * курсором, чей pts ушёл вперёд, — аналог `updateChannelTooLong` в ответе
+     * getDifference у tweb (apiUpdatesManager.ts:354, :632-662): кадры топиков,
+     * пока сокета не было, пропали. Канал без курсора получает курсор отсюда
+     * (как `addChannelState`) — его строку уже дал список.
+     */
+    onHello(channels: ReadonlyArray<readonly [number, number]>): void {
+      for (const [peerId, pts] of channels) {
+        const st = state(peerId)
+        if (!st.seeded) { seed(peerId, pts); continue }
+        if (pts > st.pts) void catchUp(peerId)
       }
     },
 

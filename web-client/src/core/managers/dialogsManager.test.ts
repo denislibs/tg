@@ -1610,3 +1610,22 @@ describe('dialogsManager: канал', () => {
     expect(get).not.toHaveBeenCalled()
   })
 })
+
+// A1-20 / ревью #407: курсор канала заводится из строки списка — tweb
+// `addChannelState(channelId, dialog.pts)` (storages/dialogs.ts:1755-1757).
+describe('dialogsManager: dialog.pts канала', () => {
+  it('строка с pts → addChannelState(peerId, pts); без pts — нет', async () => {
+    const seeded: [number, number][] = []
+    const get = vi.fn(async () => container([{ ...rawDialog(-42, 3), pts: 17 }, rawDialog(5, 2)]))
+    const mgr = newDialogsManager({
+      rest: { get } as never,
+      addChannelState: (peerId, pts) => seeded.push([peerId, pts]),
+      onDialogOps: () => {},
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {} }),
+      peers: fakePeers(), messages: fakeMessages(),
+    })
+    await mgr.refresh()
+    expect(seeded).toEqual([[-42, 17]])
+  })
+})
