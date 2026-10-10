@@ -116,16 +116,23 @@ func TestPushRepo_ShouldNotify(t *testing.T) {
 	check("mute expired", true, true)
 
 	// A3-21: мьют темы гасит пуш в этой теме (и только в ней); упоминание
-	// пробивает и его.
+	// пробивает и его. Мьют темы — СРОК (Ф-5): до срока молчит, после —
+	// пробивается.
 	const topicRoot int64 = 4242
 	if _, err := pool.Exec(ctx,
-		`INSERT INTO topic_user_state (chat_id, root_msg_id, user_id, muted) VALUES ($1,$2,$3,true)`,
+		`INSERT INTO topic_user_state (chat_id, root_msg_id, user_id, muted_until) VALUES ($1,$2,$3,now()+interval '1 hour')`,
 		chatID, topicRoot, userID); err != nil {
 		t.Fatalf("seed topic mute: %v", err)
 	}
 	checkAt("topic muted", topicRoot, false, false, false)
 	checkAt("other topic", topicRoot+1, false, true, true)
 	checkAt("topic muted, mentioned", topicRoot, true, true, true)
+	if _, err := pool.Exec(ctx,
+		`UPDATE topic_user_state SET muted_until=now()-interval '1 minute' WHERE chat_id=$1 AND root_msg_id=$2 AND user_id=$3`,
+		chatID, topicRoot, userID); err != nil {
+		t.Fatalf("expire topic mute: %v", err)
+	}
+	checkAt("topic mute expired", topicRoot, false, true, true)
 
 	// Глобальные настройки: группы замьючены.
 	if _, err := pool.Exec(ctx,

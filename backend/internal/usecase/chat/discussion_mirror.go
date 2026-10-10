@@ -190,6 +190,10 @@ func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message)
 // resolveThreadRootForQuery). Перевод «пост канала → зеркало» — одна ручка
 // GetDiscussionMessage, как messages.getDiscussionMessage у оригинала.
 //
+// Здесь же выводится Message.ForumTopic — корень треда это тема форума: на
+// проводе это pFlags.forum_topic заголовка ответа (A1-16), без которого tweb
+// относит сообщение форума к General (getMessageThreadId.ts:17-24).
+//
 // Батчевый: один резолв на весь набор, а не запрос на сообщение. Возвращает
 // НОВЫЙ слайс (той же длины и порядка) — входной msgs не мутируется.
 func (i *Interactor) ExternalizeThreadRoots(ctx context.Context, msgs []domain.Message) ([]domain.Message, error) {
@@ -208,13 +212,20 @@ func (i *Interactor) ExternalizeThreadRoots(ctx context.Context, msgs []domain.M
 	if err != nil {
 		return nil, err
 	}
+	topicRoots := map[int64]bool{}
+	if i.topics != nil {
+		if topicRoots, err = i.topics.TopicRoots(ctx, roots); err != nil {
+			return nil, err
+		}
+	}
 	out := make([]domain.Message, len(msgs))
 	copy(out, msgs)
 	for idx := range out {
 		if out[idx].ThreadRootID == nil {
 			continue
 		}
-		seq, ok := seqByID[*out[idx].ThreadRootID]
+		root := *out[idx].ThreadRootID
+		seq, ok := seqByID[root]
 		if !ok {
 			// Корня в базе больше нет: номера у него не существует, а внутренний
 			// ключ наружу не выходит ни при каких обстоятельствах.
@@ -223,25 +234,40 @@ func (i *Interactor) ExternalizeThreadRoots(ctx context.Context, msgs []domain.M
 		}
 		v := seq
 		out[idx].ThreadRootID = &v
+		out[idx].ForumTopic = topicRoots[root]
 	}
 	return out, nil
 }
 
-// externalThreadRoot — удобная обёртка ExternalizeThreadRoots для одного
+// externalizeThreadRoot — удобная обёртка ExternalizeThreadRoots для одного
 // сообщения: WS/лог-пейлоад всегда строится по одному сообщению за раз
 // (Send/ForwardMessages/publishApprovedPost/paidmedia — не список), батчить
 // тут нечего. Сбой резолва — деградация до «корня нет»: внутренний ключ наружу
-// не уходит
-// даже best-effort (он адресует не то сообщение в пространстве номеров).
-func (i *Interactor) externalThreadRoot(ctx context.Context, m domain.Message) *int64 {
+// не уходит даже best-effort (он адресует не то сообщение в пространстве
+// номеров).
+func (i *Interactor) externalizeThreadRoot(ctx context.Context, m domain.Message) domain.Message {
 	if m.ThreadRootID == nil {
-		return nil
+		return m
 	}
 	ext, err := i.ExternalizeThreadRoots(ctx, []domain.Message{m})
 	if err != nil || len(ext) != 1 {
-		return nil
+		m.ThreadRootID, m.ForumTopic = nil, false
+		return m
 	}
-	return ext[0].ThreadRootID
+	return ext[0]
+}
+
+// isGeneralNumber — номер треда n в чате chatID — псевдоним General: форум и
+// n == domain.GeneralTopicID (tweb constants.ts:26; getReplies(1) у форума
+// отдаёт General, appMessagesManager.ts:13414-13420). В не-форуме 1 — обычный
+// тред сообщения №1. Сбой чтения вида чата — «не General»: перевод остаётся
+// прежним, а не падает.
+func (i *Interactor) isGeneralNumber(ctx context.Context, chatID, n int64) bool {
+	if n != domain.GeneralTopicID || i.groups == nil {
+		return false
+	}
+	forum, err := i.groups.IsForum(ctx, chatID)
+	return err == nil && forum
 }
 
 // resolveThreadRootForQuery переводит ВХОДЯЩИЙ клиентский thread_root (НОМЕР
@@ -256,12 +282,21 @@ func (i *Interactor) externalThreadRoot(ctx context.Context, m domain.Message) *
 // appImManager.ts:2212-2224, bubbles.ts:3773-3780), а перевод «пост канала →
 // зеркало» делает ровно одна ручка — GetDiscussionMessage.
 //
+// В форуме номер 1 — General (страж domain.GeneralThreadRoot), а не тред
+// служебки создания чата.
+//
 // threadRoot == nil -> nil. Номера в чате нет — указатель на 0: реальные id
 // сообщений всегда положительны, так что фильтр гарантированно не совпадёт ни
 // с одним сообщением («треда нет» — не ошибка, пустая страница).
 func (i *Interactor) resolveThreadRootForQuery(ctx context.Context, chatID int64, threadRoot *int64) *int64 {
 	if threadRoot == nil {
 		return nil
+	}
+	// General форума (номер 1): корня у неё нет — выборку ведёт страж
+	// (адаптер хранилища знает его, см. threadFilter в repo/postgres).
+	if i.isGeneralNumber(ctx, chatID, *threadRoot) {
+		general := domain.GeneralThreadRoot
+		return &general
 	}
 	rootID, err := i.msgs.IDBySeq(ctx, chatID, *threadRoot)
 	if err != nil {
@@ -280,6 +315,8 @@ func (i *Interactor) resolveThreadRootForQuery(ctx context.Context, chatID int64
 // молча записался бы как валидный корень, схлопнув в один «тред» все
 // сообщения с несуществующим корнем. Поэтому здесь — domain.ErrNotFound.
 //
+// В форуме номер 1 — General: треда нет (nil).
+//
 // Резолвить нужно СНАРУЖИ Send, на границе HTTP/WS-хендлера: PostComment зовёт
 // Send уже с ключом строки зеркала, и второй перевод внутри Send принял бы его
 // за номер. Экспортирован ровно для пограничных хендлеров
@@ -288,9 +325,39 @@ func (i *Interactor) ResolveThreadRootForSend(ctx context.Context, chatID int64,
 	if threadRoot == nil {
 		return nil, nil
 	}
+	// General форума (номер 1): её сообщения — без треда (tweb
+	// appMessagesManager.ts:4341-4342 шлёт top_msg_id = 1, а
+	// getMessageThreadId.ts:22-23 относит сообщение без forum_topic к General).
+	if i.isGeneralNumber(ctx, chatID, *threadRoot) {
+		return nil, nil
+	}
 	rootID, err := i.msgs.IDBySeq(ctx, chatID, *threadRoot)
 	if err != nil {
 		return nil, err // ErrNotFound — тредить некуда, отклоняем
 	}
 	return &rootID, nil
+}
+
+// ThreadReplyTo — ответ отправки в TL-форме треда: tweb шлёт
+// inputReplyToMessage{reply_to_msg_id: тред, top_msg_id: тред}, когда ответа
+// нет (appMessagesManager.ts:4341-4342, 4255-4262), то есть reply_to_msg_id,
+// совпавший с корнем треда, — не ответ, а адрес треда. Здесь он снимается.
+//
+// Так же в форуме reply_to_msg_id = 1 без треда — адрес General, а не ответ на
+// служебку создания чата: tweb цитату «ответ на создание группы» не рисует,
+// значит сервер TG этот ответ снимает (вывод из клиента).
+//
+// Оба числа — НОМЕРА в чате (до ResolveThreadRootForSend). Зовётся на той же
+// границе HTTP/WS, что и ResolveThreadRootForSend.
+func (i *Interactor) ThreadReplyTo(ctx context.Context, chatID int64, threadRoot, replyTo *int64) *int64 {
+	if replyTo == nil {
+		return nil
+	}
+	if threadRoot != nil && *threadRoot == *replyTo {
+		return nil
+	}
+	if threadRoot == nil && i.isGeneralNumber(ctx, chatID, *replyTo) {
+		return nil
+	}
+	return replyTo
 }

@@ -380,32 +380,54 @@ func TestTypeAndForum_CreatorOnly(t *testing.T) {
 	}
 }
 
-// A5-30, VA5b-02, A5-25: одно canManageTopic.
+// A5-30, VA5b-02, A5-25: одно canManageTopic. Тема адресуется НОМЕРОМ
+// служебки создания (Ф-5, п. 5).
 func TestTopics_CanManageTopic(t *testing.T) {
-	i, fg, _ := newGroupTestInteractor(t)
+	// Правка темы — служебка через Send, поэтому интерактор с хранилищем
+	// сообщений (gateGroup), а не голый групповой.
+	i, fg, _, g := gateGroup(t)
 	ft := newFakeTopicRepo()
 	i.SetTopics(ft)
 	ctx := context.Background()
-	g := newGroupWith(t, i, fg, 9, 11)
+	setMember(fg, g, 9, domain.RoleMember, 0, 0)
+	setMember(fg, g, 11, domain.RoleMember, 0, 0)
 	setMember(fg, g, 8, domain.RoleAdmin, domain.RightChangeInfo|domain.RightPinMessages, 7)
 	setMember(fg, g, 10, domain.RoleAdmin, domain.RightManageTopics, 7)
-	topic, _ := ft.Create(ctx, domain.ForumTopicRecord{ChatID: g, RootMsgID: 500, Title: "Тема", CreatedBy: 9})
+	topic, _ := ft.Create(ctx, domain.ForumTopicRecord{ChatID: g, RootMsgID: 500, RootMsgSeq: 50, Title: "Тема", CreatedBy: 9})
+	n := topic.Number()
+	closeTopic := func(uid int64, closed bool) error {
+		_, err := i.EditTopic(ctx, g, n, uid, TopicEdit{Closed: &closed})
+		return err
+	}
+	title, hidden := "x", true
+	editTitle := func(uid int64) error {
+		_, err := i.EditTopic(ctx, g, n, uid, TopicEdit{Title: &title})
+		return err
+	}
+	hide := func(uid int64) error {
+		_, err := i.EditTopic(ctx, g, n, uid, TopicEdit{Hidden: &hidden})
+		return err
+	}
+	pin := func(uid int64) error {
+		_, err := i.SetTopicPinned(ctx, g, n, uid, true)
+		return err
+	}
 
 	for name, err := range map[string]error{
-		"закрыть":    i.CloseTopic(ctx, topic.ID, 8, true),
-		"править":    i.EditTopic(ctx, topic.ID, 8, "x", "", 0),
-		"скрыть":     i.SetTopicHidden(ctx, topic.ID, 8, true),
-		"закрепить":  i.SetTopicPinned(ctx, topic.ID, 8, true),
-		"чужой член": i.CloseTopic(ctx, topic.ID, 11, true),
+		"закрыть":    closeTopic(8, true),
+		"править":    editTitle(8),
+		"скрыть":     hide(8),
+		"закрепить":  pin(8),
+		"чужой член": closeTopic(11, true),
 	} {
 		if !errors.Is(err, domain.ErrForbidden) {
 			t.Errorf("%s темы без manage_topics = %v, ждали ErrForbidden", name, err)
 		}
 	}
-	if err := i.SetTopicPinned(ctx, topic.ID, 10, true); err != nil {
+	if err := pin(10); err != nil {
 		t.Fatalf("админ с manage_topics не закрепил тему: %v", err)
 	}
-	if err := i.CloseTopic(ctx, topic.ID, 9, true); err != nil {
+	if err := closeTopic(9, true); err != nil {
 		t.Fatalf("автор не закрыл свою тему: %v", err)
 	}
 
@@ -422,7 +444,7 @@ func TestTopics_CanManageTopic(t *testing.T) {
 	if err := i.RemoveMember(ctx, g, 9, 9); err != nil {
 		t.Fatal(err)
 	}
-	if err := i.CloseTopic(ctx, topic.ID, 9, false); !errors.Is(err, domain.ErrForbidden) {
+	if err := closeTopic(9, false); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("вышедший автор правит тему: %v", err)
 	}
 }
@@ -531,9 +553,10 @@ func TestRestricted_ReadErrorDenies(t *testing.T) {
 // ── fake TopicRepo ─────────────────────────────────────────────────────────
 
 type fakeTopicRepo struct {
-	mu     sync.Mutex
-	nextID int64
-	topics map[int64]domain.ForumTopicRecord
+	mu        sync.Mutex
+	nextID    int64
+	topics    map[int64]domain.ForumTopicRecord
+	muteUntil map[[3]int64]*time.Time
 }
 
 func newFakeTopicRepo() *fakeTopicRepo {
@@ -549,53 +572,50 @@ func (r *fakeTopicRepo) Create(_ context.Context, t domain.ForumTopicRecord) (do
 	return t, nil
 }
 
-func (r *fakeTopicRepo) ByID(_ context.Context, id int64) (domain.ForumTopicRecord, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	t, ok := r.topics[id]
-	if !ok {
-		return domain.ForumTopicRecord{}, domain.ErrNotFound
-	}
-	return t, nil
-}
-
-func (r *fakeTopicRepo) ByRoot(_ context.Context, chatID, rootMsgID int64) (domain.ForumTopicRecord, error) {
+func (r *fakeTopicRepo) ByNumber(_ context.Context, chatID, number int64) (domain.ForumTopicRecord, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, t := range r.topics {
-		if t.ChatID == chatID && t.RootMsgID == rootMsgID {
+		if t.ChatID == chatID && t.Number() == number {
 			return t, nil
 		}
 	}
 	return domain.ForumTopicRecord{}, domain.ErrNotFound
 }
 
-func (r *fakeTopicRepo) update(id int64, fn func(*domain.ForumTopicRecord)) error {
+func (r *fakeTopicRepo) ByRoot(_ context.Context, chatID, rootMsgID int64) (domain.ForumTopicRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, t := range r.topics {
+		if t.ChatID == chatID && t.RootMsgID == rootMsgID && !t.IsGeneral {
+			return t, nil
+		}
+	}
+	return domain.ForumTopicRecord{}, domain.ErrNotFound
+}
+
+func (r *fakeTopicRepo) Update(_ context.Context, t domain.ForumTopicRecord) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cur, ok := r.topics[t.ID]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	cur.Title, cur.IconEmoji, cur.Closed, cur.Hidden = t.Title, t.IconEmoji, t.Closed, t.Hidden
+	r.topics[t.ID] = cur
+	return nil
+}
+
+func (r *fakeTopicRepo) SetPinned(_ context.Context, id int64, pinned bool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	t, ok := r.topics[id]
 	if !ok {
 		return domain.ErrNotFound
 	}
-	fn(&t)
+	t.Pinned = pinned
 	r.topics[id] = t
 	return nil
-}
-
-func (r *fakeTopicRepo) SetClosed(_ context.Context, id int64, closed bool) error {
-	return r.update(id, func(t *domain.ForumTopicRecord) { t.Closed = closed })
-}
-
-func (r *fakeTopicRepo) EditTopic(_ context.Context, id int64, title, iconEmoji string, iconColor int) error {
-	return r.update(id, func(t *domain.ForumTopicRecord) { t.Title, t.IconEmoji, t.IconColor = title, iconEmoji, iconColor })
-}
-
-func (r *fakeTopicRepo) SetHidden(_ context.Context, id int64, hidden bool) error {
-	return r.update(id, func(t *domain.ForumTopicRecord) { t.Hidden = hidden })
-}
-
-func (r *fakeTopicRepo) SetPinned(_ context.Context, id int64, pinned bool) error {
-	return r.update(id, func(t *domain.ForumTopicRecord) { t.Pinned = pinned })
 }
 
 func (r *fakeTopicRepo) EnsureGeneralTopic(ctx context.Context, chatID, createdBy int64) (domain.ForumTopicRecord, error) {
@@ -608,4 +628,26 @@ func (r *fakeTopicRepo) ListByChat(context.Context, int64, int64) ([]domain.Topi
 
 func (r *fakeTopicRepo) SetTopicRead(context.Context, int64, int64, int64, int64) error { return nil }
 
-func (r *fakeTopicRepo) SetTopicMuted(context.Context, int64, int64, int64, bool) error { return nil }
+func (r *fakeTopicRepo) SetTopicMuteUntil(_ context.Context, chatID, rootMsgID, userID int64, until *time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.muteUntil == nil {
+		r.muteUntil = map[[3]int64]*time.Time{}
+	}
+	r.muteUntil[[3]int64{chatID, rootMsgID, userID}] = until
+	return nil
+}
+
+func (r *fakeTopicRepo) TopicRoots(_ context.Context, rootIDs []int64) (map[int64]bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := map[int64]bool{}
+	for _, t := range r.topics {
+		for _, id := range rootIDs {
+			if !t.IsGeneral && t.RootMsgID == id {
+				out[id] = true
+			}
+		}
+	}
+	return out, nil
+}

@@ -64,6 +64,10 @@ func updateCases() []struct {
 		{"диалог из архива", NewUpdateFolderPeers([]FolderPeer{NewFolderPeer(peer, FolderAll)}, 50)},
 		{"настройки уведомлений", NewUpdateNotifySettings(peer,
 			NewPeerNotifySettings(time.Unix(1787334148, 0), nil, NewNotificationSoundNone()))},
+		{"настройки уведомлений темы", NewUpdateTopicNotifySettings(peer, 12,
+			NewPeerNotifySettings(time.Unix(1787334148, 0), nil, nil))},
+		{"закрепили тему", NewUpdatePinnedForumTopic(peer, 12, true)},
+		{"открепили тему", NewUpdatePinnedForumTopic(peer, GeneralTopicID+11, false)},
 		{"черновик", NewUpdateDraftMessage(peer, func() DraftMessageReal {
 			id := int64(12)
 			return NewDraftMessage("набросок", nil, &id, time.Unix(1787334148, 0))
@@ -231,6 +235,8 @@ func TestUpdates_EveryConstructorIsCovered(t *testing.T) {
 		UpdateReadStoriesTag,
 		UpdateChannelParticipantTag,
 		UpdatePendingJoinRequestsTag,
+		UpdatePinnedForumTopicTag,
+		NotifyForumTopicTag,
 		SendMessageTypingActionTag,
 		SendMessageRecordAudioActionTag,
 		SendMessageRecordVideoActionTag,

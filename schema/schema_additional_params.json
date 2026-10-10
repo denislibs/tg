@@ -1321,16 +1321,26 @@
         "type": "Peer"
       },
       {
-        "name": "root_msg_id",
-        "type": "number"
-      },
+        "name": "icon_emoji_emoticon",
+        "type": "string"
+      }
+    ]
+  },
+  {
+    "predicate": "messageActionTopicCreate",
+    "params": [
       {
         "name": "icon_emoji_emoticon",
         "type": "string"
-      },
+      }
+    ]
+  },
+  {
+    "predicate": "messageActionTopicEdit",
+    "params": [
       {
-        "name": "is_general",
-        "type": "true"
+        "name": "icon_emoji_emoticon",
+        "type": "string"
       }
     ]
   },
