@@ -17,7 +17,12 @@ const editTimeLimit = 48 * time.Hour
 // EditMessage replaces the text of a message, stamps edited_at, and fans out an
 // "edit_message" update to every member (so all see the new text and the
 // "edited" marker). Who may edit is tweb canEditMessage (see canEditMessage).
-func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int64, text string, entities domain.MessageEntities) (domain.Message, error) {
+//
+// wp — решение композера о превью ссылки (no_webpage, invert_media,
+// inputMediaWebPage; tweb messages.editMessage, appMessagesManager.ts
+// :2207-2220). Необязательный: без него превью следует первой ссылке текста,
+// флаг invert_media не трогается (webpreview.go).
+func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int64, text string, entities domain.MessageEntities, wp ...domain.WebPageInput) (domain.Message, error) {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {
 		return domain.Message{}, err
@@ -58,7 +63,7 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 	}
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		m, e := i.msgs.UpdateText(ctx, msgID, text, entities)
+		m, e := i.updateTextWithWebPage(ctx, cur, text, entities, wp)
 		if e != nil {
 			return e
 		}
@@ -117,6 +122,8 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 	if err != nil {
 		return domain.Message{}, err
 	}
+	// Новая карточка ссылки — фоном, после публикации правки (обе ветки).
+	defer func() { i.rebuildWebPreviewOnEdit(msg, wp, members) }()
 	if broadcast {
 		i.publishChannelUpdate(ctx, chatID, "edit_message", channelBody, channelPts, msg.SenderID)
 		return msg, nil

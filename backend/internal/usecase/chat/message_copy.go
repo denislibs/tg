@@ -37,6 +37,8 @@ func copyContent(src domain.Message) domain.Message {
 		ContactUserID: src.ContactUserID, ContactName: src.ContactName, ContactPhone: src.ContactPhone,
 		ReplyMarkup: copyableMarkup(src.ReplyMarkup),
 		WebPage:     src.WebPage,
+		// «Медиа над текстом» — вид бабла, часть содержимого (как спойлер).
+		InvertMedia: src.InvertMedia,
 	}
 }
 

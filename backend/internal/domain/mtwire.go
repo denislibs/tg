@@ -58,7 +58,8 @@ var OmittedWithoutSubject = map[string][]string{
 	"starGift": {"sticker"},
 	// Превью ссылки у нас — СНИМОК на сообщении, а не самостоятельный объект
 	// хранилища: адресовать его нечем, и хэша кэша у запросов нет.
-	"webPage": {"id", "hash"},
+	"webPage":      {"id", "hash"},
+	"webPageEmpty": {"id"},
 	// Адрес расшифровки: у оригинала по нему шлют жалобу на качество, у нас
 	// расшифровка живёт при сообщении и адресуется вместе с ним.
 	"messages.transcribedAudio": {"transcription_id"},

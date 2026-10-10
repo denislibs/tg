@@ -75,12 +75,31 @@ func (i *Interactor) logAndPublish(ctx context.Context, chatID int64, recipients
 // группе и канале — один на всех.
 func (i *Interactor) logAndPublishPerPeer(ctx context.Context, chatID int64, recipients []int64,
 	typ string, build func(peer domain.PeerID) map[string]any) error {
+	var publish func(context.Context)
+	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		var e error
+		publish, e = i.appendPerPeer(ctx, chatID, recipients, typ, build)
+		return e
+	})
+	if err != nil {
+		return err
+	}
+	publish(ctx)
+	return nil
+}
+
+// appendPerPeer — журнальная половина logAndPublishPerPeer в транзакции
+// ВЫЗЫВАЮЩЕГО (ctx несёт её): запись, которая обязана лечь в журнал вместе со
+// своей причиной (например, условная запись превью — иначе между ними
+// вклинится правка). publish — живые кадры, звать СТРОГО после коммита.
+func (i *Interactor) appendPerPeer(ctx context.Context, chatID int64, recipients []int64,
+	typ string, build func(peer domain.PeerID) map[string]any) (func(context.Context), error) {
 	if i.updates == nil || len(recipients) == 0 {
-		return nil
+		return func(context.Context) {}, nil
 	}
 	addr, err := i.peerAddress(ctx, chatID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	bodies := map[domain.PeerID]map[string]any{}
 	bodyFor := func(uid int64) map[string]any {
@@ -94,33 +113,28 @@ func (i *Interactor) logAndPublishPerPeer(ctx context.Context, chatID int64, rec
 	}
 
 	ptsByUser := make(map[int64]int64, len(recipients))
-	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		date := nowUnix()
-		for _, uid := range recipients {
-			payload, e := json.Marshal(bodyFor(uid))
-			if e != nil {
-				return e
-			}
-			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, typ, payload)
-			if e != nil {
-				return e
-			}
-			ptsByUser[uid] = pts
+	date := nowUnix()
+	for _, uid := range recipients {
+		payload, e := json.Marshal(bodyFor(uid))
+		if e != nil {
+			return nil, e
 		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	if dialogRowFrames[typ] {
-		i.invalidateDialogs(ctx, recipients...)
-	}
-	if i.publisher != nil {
-		for _, uid := range recipients {
-			_ = i.publisher.PublishToUser(ctx, uid, framePts(typ, bodyFor(uid), ptsByUser[uid]))
+		pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, typ, payload)
+		if e != nil {
+			return nil, e
 		}
+		ptsByUser[uid] = pts
 	}
-	return nil
+	return func(ctx context.Context) {
+		if dialogRowFrames[typ] {
+			i.invalidateDialogs(ctx, recipients...)
+		}
+		if i.publisher != nil {
+			for _, uid := range recipients {
+				_ = i.publisher.PublishToUser(ctx, uid, framePts(typ, bodyFor(uid), ptsByUser[uid]))
+			}
+		}
+	}, nil
 }
 
 // dialogRowFrames — кадры, чья мутация меняет СТРОКУ списка чатов получателя

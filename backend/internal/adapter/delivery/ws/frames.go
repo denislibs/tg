@@ -56,6 +56,9 @@ type sendMessageData struct {
 	MediaSpoiler bool `json:"media_spoiler"`
 	// SendAsPeerID — отправка от имени канала/группы (Telegram send_as); nil — от себя.
 	SendAsPeerID *domain.PeerID `json:"send_as_peer_id"`
+	// no_webpage / invert_media / media:inputMediaWebPage — превью ссылки
+	// (TL messages.sendMessage/sendMedia).
+	domain.WebPageInput
 }
 
 type readData struct {

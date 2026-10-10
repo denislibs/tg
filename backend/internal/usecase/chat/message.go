@@ -507,6 +507,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			// Спойлер — свойство вложения, без медиа он бессмысленен (так же
 			// гейтится PaidMediaPrice ниже: только при msg.MediaID != nil).
 			MediaSpoiler: in.MediaSpoiler && in.MediaID != nil,
+			InvertMedia:  in.WebPage.InvertMedia,
 			// Voice/round content starts "unlistened" (Telegram media_unread).
 			MediaUnread: in.Type == "voice" || in.Type == "roundVideo",
 		})
@@ -614,7 +615,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	// подписчикам (channel_fanout.go).
 	if channelPts != 0 {
 		i.deliverChannelPost(ctx, msg, channelPayload, channelPts, channelPostOpts{
-			silent: in.Silent, clearDraft: in.Action == nil && !in.fromSchedule, preview: in.Type == "text",
+			silent: in.Silent, clearDraft: in.Action == nil && !in.fromSchedule,
 		})
 	}
 	if recipients != nil {
@@ -641,15 +642,8 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		i.publishMessageDelivery(ctx, mirrorDeliv.msg, mirrorDeliv.msg.SenderID,
 			mirrorDeliv.recipients, mirrorDeliv.ptsByUser, mirrorDeliv.mentions)
 	}
-	// Серверное превью ссылки (Telegram-семантика: превью строит сервер и
-	// рассылает всем): для нового текстового сообщения с http/https-ссылкой —
-	// асинхронно после коммита, кадром web_page_update (сервисные/секретные
-	// сообщения исключены: service не text, secret отсекается по типу чата).
-	if recipients != nil && i.preview != nil && in.Type == "text" {
-		if u := firstURL(msg.Text, msg.Entities); u != "" {
-			go i.attachWebPreview(msg, u, recipients)
-		}
-	}
+	// Серверное превью ссылки — после коммита, фоном (webpreview.go).
+	i.startSendWebPreview(msg, in, recipients, channelPts != 0)
 	// Авто-ответ бота: обычное текстовое сообщение в приватный чат с ботом.
 	if in.Type == "text" && in.Text != "" {
 		i.maybeBotReply(ctx, in.ChatID, in.SenderID, msg.ID, in.Text)

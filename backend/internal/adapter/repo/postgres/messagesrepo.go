@@ -24,7 +24,7 @@ func NewMessagesRepo(pool *pgxpool.Pool) *MessagesRepo { return &MessagesRepo{po
 
 // The full ordered column list every message SELECT/RETURNING uses, so the scan
 // order in scanMessage stays in sync across all queries.
-const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, views, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, forwards, reply_quote_text, reply_quote_offset, web_page, effect, giveaway_id, checklist_id, factcheck, send_as_chat_id, transcription, reply_to_peer_id, reply_snapshot_name, is_discussion_mirror, media_spoiler, action`
+const messageCols = `id, chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, created_at, deleted_at, thread_root_id, edited_at, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, views, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, forwards, reply_quote_text, reply_quote_offset, web_page, effect, giveaway_id, checklist_id, factcheck, send_as_chat_id, transcription, reply_to_peer_id, reply_snapshot_name, is_discussion_mirror, media_spoiler, action, invert_media`
 
 // messageColsPrefixed returns messageCols with each column qualified by a table
 // alias (for JOINs where bare column names like chat_id would be ambiguous).
@@ -846,8 +846,8 @@ func (r *MessagesRepo) IncrementForwards(ctx context.Context, msgID int64) error
 func (r *MessagesRepo) Insert(ctx context.Context, m domain.Message) (domain.Message, error) {
 	q := querier(ctx, r.pool)
 	return scanOneMessage(q.QueryRow(ctx,
-		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, thread_root_id, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, reply_quote_text, reply_quote_offset, effect, giveaway_id, checklist_id, send_as_chat_id, reply_to_peer_id, reply_snapshot_name, is_discussion_mirror, media_spoiler, action, auto_delete_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,
+		`INSERT INTO messages (chat_id, seq, sender_id, type, text, reply_to_id, client_msg_id, media_id, thread_root_id, fwd_from_user_id, fwd_from_chat_id, fwd_from_msg_id, fwd_date, fwd_from_name, entities, media_unread, grouped_id, poll_id, geo_lat, geo_lng, contact_user_id, contact_name, contact_phone, gift_id, reply_markup, geo_meta, enc_body, ttl_seconds, destruct_at, reply_quote_text, reply_quote_offset, effect, giveaway_id, checklist_id, send_as_chat_id, reply_to_peer_id, reply_snapshot_name, is_discussion_mirror, media_spoiler, action, invert_media, auto_delete_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,
 		         (SELECT CASE WHEN auto_delete_period > 0
 		                 THEN now() + make_interval(secs => auto_delete_period) END
 		            FROM chats WHERE id=$1))
@@ -855,7 +855,7 @@ func (r *MessagesRepo) Insert(ctx context.Context, m domain.Message) (domain.Mes
 		m.ChatID, m.Seq, m.SenderID, m.Type, m.Text, m.ReplyToID, m.ClientMsgID, m.MediaID, m.ThreadRootID,
 		m.FwdFromUserID, m.FwdFromChatID, m.FwdFromMsgID, m.FwdDate, m.FwdFromName, entitiesParam(m.Entities), m.MediaUnread, m.GroupedID, m.PollID,
 		m.GeoLat, m.GeoLng, m.ContactUserID, m.ContactName, m.ContactPhone, m.GiftID, replyMarkupParam(m.ReplyMarkup), geoMetaParam(m), m.EncBody, m.TTLSeconds, m.DestructAt, m.ReplyQuoteText, m.ReplyQuoteOffset, effectParam(m.Effect), m.GiveawayID, m.ChecklistID, m.SendAsChatID,
-		m.ReplyToPeerID, m.ReplySnapshotName, m.IsDiscussionMirror, m.MediaSpoiler, actionParam(m.Action)))
+		m.ReplyToPeerID, m.ReplySnapshotName, m.IsDiscussionMirror, m.MediaSpoiler, actionParam(m.Action), m.InvertMedia))
 }
 
 // SetWebPage пишет серверное превью ссылки (jsonb web_page) отдельным UPDATE
@@ -863,22 +863,58 @@ func (r *MessagesRepo) Insert(ctx context.Context, m domain.Message) (domain.Mes
 // дублируется в колонку web_page_media_id — по ней проверяется доступ к медиа
 // (MediaAccessRepo.CanAccess), см. миграцию 0092.
 func (r *MessagesRepo) SetWebPage(ctx context.Context, msgID int64, wp *domain.WebPagePreview) error {
-	var param any // jsonb — строкой (см. entitiesParam); nil → NULL
-	var photoID any
-	if wp != nil {
-		b, err := json.Marshal(wp)
-		if err != nil {
-			return err
-		}
-		param = string(b)
-		if wp.PhotoID > 0 {
-			photoID = wp.PhotoID
-		}
+	param, photoID, err := webPageParams(wp)
+	if err != nil {
+		return err
 	}
-	_, err := querier(ctx, r.pool).Exec(ctx,
+	_, err = querier(ctx, r.pool).Exec(ctx,
 		`UPDATE messages SET web_page=$2, web_page_media_id=$3 WHERE id=$1 AND deleted_at IS NULL`,
 		msgID, param, photoID)
 	return err
+}
+
+// SetWebPageIfEdited — та же запись превью, но УСЛОВНАЯ: только если строка
+// не правилась с момента, когда сборку запустили (edited_at тот же, nil —
+// «не правилась вовсе»). Сборка превью идёт секундами в фоне, и поздняя
+// сборка от старой правки иначе перезаписала бы превью новой (или вернула бы
+// снятое). false — строка ушла вперёд (или удалена), писать и слать кадр нечего.
+func (r *MessagesRepo) SetWebPageIfEdited(ctx context.Context, msgID int64, wp *domain.WebPagePreview, editedAt *time.Time) (bool, error) {
+	param, photoID, err := webPageParams(wp)
+	if err != nil {
+		return false, err
+	}
+	tag, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE messages SET web_page=$2, web_page_media_id=$3
+		  WHERE id=$1 AND deleted_at IS NULL AND edited_at IS NOT DISTINCT FROM $4`,
+		msgID, param, photoID, editedAt)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// SetInvertMedia ставит флаг «медиа над текстом» (messages.invert_media).
+// Удалённое сообщение не трогаем.
+func (r *MessagesRepo) SetInvertMedia(ctx context.Context, msgID int64, on bool) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE messages SET invert_media=$2 WHERE id=$1 AND deleted_at IS NULL`, msgID, on)
+	return err
+}
+
+// webPageParams — превью в параметры UPDATE: jsonb строкой (см. entitiesParam)
+// и id картинки для web_page_media_id; nil → оба NULL.
+func webPageParams(wp *domain.WebPagePreview) (param, photoID any, err error) {
+	if wp == nil {
+		return nil, nil, nil
+	}
+	b, err := json.Marshal(wp)
+	if err != nil {
+		return nil, nil, err
+	}
+	if wp.PhotoID > 0 {
+		photoID = wp.PhotoID
+	}
+	return string(b), photoID, nil
 }
 
 // SetFactCheck пишет/снимает «проверку фактов» (jsonb factcheck) и возвращает
@@ -1552,7 +1588,7 @@ func scanMessage(s scanner) (domain.Message, error) {
 		&m.EditedAt, &m.FwdFromUserID, &m.FwdFromChatID, &m.FwdFromMsgID, &m.FwdDate, &m.FwdFromName, &entitiesRaw, &m.Views, &m.MediaUnread, &m.GroupedID, &m.PollID,
 		&m.GeoLat, &m.GeoLng, &m.ContactUserID, &m.ContactName, &m.ContactPhone, &m.GiftID, &markupRaw, &geoMetaRaw,
 		&m.EncBody, &m.TTLSeconds, &m.DestructAt, &m.Forwards, &m.ReplyQuoteText, &m.ReplyQuoteOffset, &webPageRaw, &effect, &m.GiveawayID, &m.ChecklistID, &factCheckRaw, &m.SendAsChatID, &m.Transcription,
-		&m.ReplyToPeerID, &m.ReplySnapshotName, &m.IsDiscussionMirror, &m.MediaSpoiler, &actionRaw)
+		&m.ReplyToPeerID, &m.ReplySnapshotName, &m.IsDiscussionMirror, &m.MediaSpoiler, &actionRaw, &m.InvertMedia)
 	m.Deleted = deletedAt != nil
 	if effect != nil {
 		m.Effect = *effect

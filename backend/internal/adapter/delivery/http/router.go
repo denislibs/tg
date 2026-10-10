@@ -199,6 +199,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/chats/{peerID}/message_by_date", ch.MessageByDate)
 		pr.Get("/chats/{peerID}/calendar", ch.Calendar)
 		pr.Post("/translate", ch.Translate)
+		pr.Get("/webpage", ch.GetWebPage) // messages.getWebPage (плашка превью ссылки)
 		pr.Post("/chats/{peerID}/polls", ch.SendPoll)
 		pr.Get("/chats/{peerID}/group_call", ch.GroupCallParticipants)
 		// RTMP-трансляции (Telegram livestream): старт/стоп — только админ,

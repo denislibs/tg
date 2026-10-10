@@ -28,12 +28,16 @@ const (
 // force_small_media:flags.1?true manual:flags.3?true safe:flags.4?true
 // webpage:WebPage = MessageMedia;
 //
-// Не производятся: force_large_media/force_small_media (отправитель у нас не
-// выбирает размер карточки), manual (превью «прикреплено вручную» — у нас оно
-// всегда автоматическое), safe.
+// force_large_media/force_small_media — выбор отправителя «крупнее/мельче»
+// (WebPagePreview.ForceLargeMedia/ForceSmallMedia, приходит из
+// inputMediaWebPage отправки и правки).
+//
+// Не производятся: manual (превью «прикреплено вручную» — у нас ссылка
+// превью всегда из текста сообщения), safe.
 type MessageMediaWebPage struct {
-	Underscore string   `json:"_"`
-	WebPage    *WebPage `json:"webpage"`
+	Underscore string          `json:"_"`
+	PFlags     map[string]bool `json:"pFlags,omitempty"`
+	WebPage    *WebPage        `json:"webpage"`
 }
 
 func (MessageMediaWebPage) isMessageMedia() {}
@@ -118,8 +122,66 @@ func (w *WebPagePreview) ToMedia() *MessageMediaWebPage {
 		}
 		page.Photo = NewPhoto(w.PhotoID, src.sizes())
 	}
-	return &MessageMediaWebPage{Underscore: MessageMediaWebPageTag, WebPage: page}
+	media := &MessageMediaWebPage{Underscore: MessageMediaWebPageTag, WebPage: page}
+	setPFlag(&media.PFlags, "force_large_media", w.ForceLargeMedia)
+	setPFlag(&media.PFlags, "force_small_media", w.ForceSmallMedia)
+	return media
 }
+
+// ToWebPage — сама карточка без обёртки вложения: ответ messages.getWebPage.
+func (w *WebPagePreview) ToWebPage() *WebPage {
+	return w.ToMedia().WebPage
+}
+
+// webPageEmpty#211a1788 flags:# id:long url:flags.0?string = WebPage;
+//
+// «Превью у этой ссылки нет» — ответ messages.getWebPage, когда страница не
+// дала карточки (не HTML, нет заголовка, сайт не ответил, адрес не http/https).
+// id не производится по той же причине, что у webPage (см. его докблок).
+// tweb такую карточку плашкой не показывает (input.ts:3600 ждёт `webPage`).
+type WebPageEmpty struct {
+	Underscore string `json:"_"`
+	URL        string `json:"url,omitempty"`
+}
+
+const WebPageEmptyTag = "webPageEmpty"
+
+// MessagesWebPage — messages.webPage#fd5e12bd webpage:WebPage
+// chats:Vector<Chat> users:Vector<User> = messages.WebPage; ответ
+// messages.getWebPage (плашка превью над полем ввода, tweb
+// appWebPagesManager.ts:273-284). Карточка пиров не упоминает, векторы пусты.
+type MessagesWebPage struct {
+	Underscore string `json:"_"`
+	WebPage    any    `json:"webpage"`
+	Chats      []any  `json:"chats"`
+	Users      []any  `json:"users"`
+}
+
+const MessagesWebPageTag = "messages.webPage"
+
+// NewMessagesWebPage — ответ getWebPage: карточка либо webPageEmpty с адресом.
+func NewMessagesWebPage(url string, wp *WebPagePreview) MessagesWebPage {
+	var page any = WebPageEmpty{Underscore: WebPageEmptyTag, URL: url}
+	if wp != nil {
+		page = wp.ToWebPage()
+	}
+	return MessagesWebPage{Underscore: MessagesWebPageTag, WebPage: page, Chats: []any{}, Users: []any{}}
+}
+
+// inputMediaWebPage#c21b8849 flags:# force_large_media:flags.0?true
+// force_small_media:flags.1?true optional:flags.2?true url:string = InputMedia;
+//
+// ВХОДНОЙ конструктор отправки и правки: «превью вот этой ссылки, такого
+// размера» (tweb getInputMediaWebPage, appMessagesManager.ts:4866-4880). optional
+// у нас ничего не меняет — превью и так не обязательно: не собралось —
+// сообщение уходит без карточки, ошибки нет.
+type InputMediaWebPage struct {
+	Underscore string          `json:"_"`
+	PFlags     map[string]bool `json:"pFlags,omitempty"`
+	URL        string          `json:"url"`
+}
+
+const InputMediaWebPageTag = "inputMediaWebPage"
 
 // displayURL — адрес без схемы: ровно то, что оригинал кладёт в display_url.
 // Отдельной колонки под него нет и не нужно — это представление того же URL.
@@ -130,4 +192,49 @@ func displayURL(raw string) string {
 		}
 	}
 	return strings.TrimSuffix(raw, "/")
+}
+
+// WebPageInput — что отправитель решил о превью ссылки: параметры TL
+// messages.sendMessage/sendMedia и messages.editMessage (no_webpage,
+// invert_media, media:inputMediaWebPage; tweb appMessagesManager.ts:2733-2753,
+// :2207-2220). Решает композер: плашка превью над полем ввода
+// (components/chat/input.ts:3533-3631), крестик на ней (:4139 → no_webpage),
+// меню «выше/ниже, крупнее/мельче» (:830-838).
+//
+// Нулевое значение — «клиент ничего не решил»: превью по первой ссылке текста.
+// Так шлёт и tweb, пока плашка ещё не получила карточку (getWebPagePromise,
+// input.ts:4694), и так шлют все наши пути, у которых плашки нет. Ключи — имена
+// параметров метода: тела отправки и правки несут их плоско, рядом с текстом.
+type WebPageInput struct {
+	// NoWebpage — превью не строить (и снять при правке).
+	NoWebpage bool `json:"no_webpage,omitempty"`
+	// InvertMedia — флаг сообщения «медиа над текстом».
+	InvertMedia bool `json:"invert_media,omitempty"`
+	// Media — inputMediaWebPage: превью ЭТОЙ ссылки и выбор размера.
+	Media *InputMediaWebPage `json:"media,omitempty"`
+}
+
+// MediaURL — ссылка из inputMediaWebPage, если она http/https; иначе "".
+// Чужая схема или чужой конструктор не ошибка: превью у tweb необязательное
+// (optional), сообщение уходит без карточки.
+func (w WebPageInput) MediaURL() string {
+	if w.Media == nil || w.Media.Underscore != InputMediaWebPageTag {
+		return ""
+	}
+	u := strings.TrimSpace(w.Media.URL)
+	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+		return ""
+	}
+	return u
+}
+
+// ApplySize переносит выбор «крупнее/мельче» из inputMediaWebPage в снимок
+// карточки (messageMediaWebPage.pFlags у оригинала, getInputMediaWebPage
+// appMessagesManager.ts:4875-4876). Без media выбора нет — флаги сняты.
+func (w WebPageInput) ApplySize(wp *WebPagePreview) {
+	var pf map[string]bool
+	if w.MediaURL() != "" {
+		pf = w.Media.PFlags
+	}
+	wp.ForceLargeMedia, wp.ForceSmallMedia = pf["force_large_media"], pf["force_small_media"]
 }

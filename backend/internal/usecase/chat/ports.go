@@ -476,6 +476,12 @@ type MessageRepo interface {
 	// SetWebPage пишет серверное превью ссылки (messages.web_page) отдельным
 	// UPDATE после коммита отправки (Insert превью не несёт — оно догоняющее).
 	SetWebPage(ctx context.Context, msgID int64, wp *domain.WebPagePreview) error
+	// SetWebPageIfEdited — запись превью, только если строка не правилась с
+	// запуска сборки (edited_at совпадает; nil — не правилась). false — строка
+	// ушла вперёд или удалена: поздняя сборка не перезаписывает новую правку.
+	SetWebPageIfEdited(ctx context.Context, msgID int64, wp *domain.WebPagePreview, editedAt *time.Time) (bool, error)
+	// SetInvertMedia ставит флаг «медиа над текстом» (messages.invert_media).
+	SetInvertMedia(ctx context.Context, msgID int64, on bool) error
 	// SetFactCheck пишет/снимает «проверку фактов» (messages.factcheck) отдельным
 	// UPDATE; fc==nil снимает проверку. Возвращает обновлённую строку.
 	SetFactCheck(ctx context.Context, msgID int64, fc *domain.FactCheck) (domain.Message, error)
@@ -790,6 +796,10 @@ type SendInput struct {
 	// сообщение, и только после всех гейтов (подарок: списание звёзд, выдача,
 	// запись в журнал). Может дописать in (GiftID). Ставится внутри пакета.
 	prepare func(ctx context.Context, in *SendInput) error
+	// WebPage — превью ссылки по выбору отправителя: no_webpage, invert_media,
+	// inputMediaWebPage (tweb messages.sendMessage/sendMedia,
+	// appMessagesManager.ts:2733-2753). Нулевое — превью первой ссылки текста.
+	WebPage domain.WebPageInput
 	// fromSchedule — отправка отложенного сообщения по расписанию: черновик
 	// чата она не снимает (у оригинала его снимает само планирование —
 	// clear_draft в scheduleMessage, а к моменту отправки в поле уже другой

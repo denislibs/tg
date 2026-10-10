@@ -73,9 +73,11 @@ func (h *ChannelHandler) Post(w http.ResponseWriter, r *http.Request) {
 		Text        string                 `json:"text"`
 		Entities    domain.MessageEntities `json:"entities"`
 		ClientMsgID string                 `json:"client_msg_id"`
+		// no_webpage / invert_media / media:inputMediaWebPage — превью ссылки.
+		domain.WebPageInput
 	}
 	_ = json.NewDecoder(r.Body).Decode(&b)
-	msg, err := h.uc.PostToChannel(r.Context(), chatID, user.ID, b.Text, b.Entities, b.ClientMsgID)
+	msg, err := h.uc.PostToChannel(r.Context(), chatID, user.ID, b.Text, b.Entities, b.ClientMsgID, b.WebPageInput)
 	if err != nil {
 		h.mapErr(w, err)
 		return

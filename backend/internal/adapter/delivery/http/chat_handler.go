@@ -408,6 +408,9 @@ type sendBody struct {
 	MediaSpoiler bool `json:"media_spoiler"`
 	// Отправка от имени канала/группы (Telegram send_as); nil — от себя.
 	SendAsPeerID *domain.PeerID `json:"send_as_peer_id"`
+	// no_webpage / invert_media / media:inputMediaWebPage — превью ссылки
+	// (TL messages.sendMessage/sendMedia).
+	domain.WebPageInput
 }
 
 func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
@@ -456,6 +459,7 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		PaidMediaPrice: body.PaidMediaPrice,
 		MediaSpoiler:   body.MediaSpoiler,
 		SendAsChatID:   sendAsChatID(body.SendAsPeerID),
+		WebPage:        body.WebPageInput,
 	})
 	if err != nil {
 		writeSendError(w, err, "not a member of this chat")
@@ -714,6 +718,9 @@ func (h *ChatHandler) DeleteDialog(w http.ResponseWriter, r *http.Request) {
 type editBody struct {
 	Text     string                 `json:"text"`
 	Entities domain.MessageEntities `json:"entities"`
+	// no_webpage / invert_media / media:inputMediaWebPage — превью ссылки
+	// (TL messages.editMessage).
+	domain.WebPageInput
 }
 
 func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
@@ -730,7 +737,7 @@ func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	msg, err := h.svc.EditMessage(r.Context(), chatID, msgID, h.meID(r), body.Text, body.Entities)
+	msg, err := h.svc.EditMessage(r.Context(), chatID, msgID, h.meID(r), body.Text, body.Entities, body.WebPageInput)
 	if errors.Is(err, domain.ErrForbidden) {
 		// tweb canEditMessage → сервер MESSAGE_EDIT_FORBIDDEN
 		writeError(w, http.StatusForbidden, "message edit forbidden")

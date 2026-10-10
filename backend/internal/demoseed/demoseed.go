@@ -71,7 +71,7 @@ type chatAPI interface {
 	JoinPublic(ctx context.Context, username string, userID int64) error
 	AddMember(ctx context.Context, chatID, actorID, userID int64) error
 	LinkDiscussion(ctx context.Context, channelID, groupID, actorID int64) (int64, error)
-	PostToChannel(ctx context.Context, channelID, actorID int64, text string, entities domain.MessageEntities, clientMsgID string) (domain.Message, error)
+	PostToChannel(ctx context.Context, channelID, actorID int64, text string, entities domain.MessageEntities, clientMsgID string, wp ...domain.WebPageInput) (domain.Message, error)
 	PostComment(ctx context.Context, channelID, postID, userID int64, text, clientMsgID string) (domain.Message, error)
 	Send(ctx context.Context, in usecasechat.SendInput) (domain.Message, error)
 	SendPoll(ctx context.Context, in usecasechat.SendPollInput) (domain.Message, error)

@@ -275,11 +275,11 @@ type ctxSpyMsgs struct {
 	seen     bool
 }
 
-func (m *ctxSpyMsgs) SetWebPage(ctx context.Context, msgID int64, wp *domain.WebPagePreview) error {
+func (m *ctxSpyMsgs) SetWebPageIfEdited(ctx context.Context, msgID int64, wp *domain.WebPagePreview, editedAt *time.Time) (bool, error) {
 	m.mu.Lock()
 	m.writeErr, m.seen = ctx.Err(), true
 	m.mu.Unlock()
-	return m.MessageRepo.SetWebPage(ctx, msgID, wp)
+	return m.MessageRepo.SetWebPageIfEdited(ctx, msgID, wp, editedAt)
 }
 
 func (m *ctxSpyMsgs) write() (error, bool) {

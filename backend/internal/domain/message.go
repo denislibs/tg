@@ -45,6 +45,12 @@ type WebPagePreview struct {
 	// карточки только при `webPage.cached_page` (bubbles.ts:7990), поэтому без
 	// этого флага кнопка «Мгновенный просмотр» висела бы на каждой ссылке.
 	HasIV bool `json:"has_iv,omitempty"`
+	// ForceLargeMedia/ForceSmallMedia — выбор ОТПРАВИТЕЛЯ «картинка крупнее /
+	// мельче» для карточки В ЭТОМ сообщении (messageMediaWebPage.pFlags,
+	// tweb input.ts:837-838 → inputMediaWebPage.pFlags). Свойство вложения, а
+	// не страницы, поэтому живёт в снимке на сообщении рядом с карточкой.
+	ForceLargeMedia bool `json:"force_large_media,omitempty"`
+	ForceSmallMedia bool `json:"force_small_media,omitempty"`
 }
 
 type Message struct {
@@ -158,6 +164,10 @@ type Message struct {
 	// под снимаемой кликом заслонкой и не автоплеит видео (tweb bubbles.ts:8570,
 	// :8579 — wrapMediaSpoiler). Имеет смысл только при MediaID != nil.
 	MediaSpoiler bool
+	// InvertMedia — «медиа над текстом» (message.pFlags.invert_media, колонка
+	// messages.invert_media, миграция 0171): ставит отправитель в отправке и
+	// правке (tweb appMessagesManager.ts:2746, :2220).
+	InvertMedia bool
 	// Views is the deduplicated viewer count for a channel post (0 for
 	// group/private messages, which don't track views).
 	Views int64

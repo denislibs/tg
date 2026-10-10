@@ -968,6 +968,40 @@ func (r fakeMsgs) SetWebPage(_ context.Context, msgID int64, wp *domain.WebPageP
 	return nil
 }
 
+func (r fakeMsgs) SetWebPageIfEdited(_ context.Context, msgID int64, wp *domain.WebPagePreview, editedAt *time.Time) (bool, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for cid, msgs := range r.s.messages {
+		for idx, m := range msgs {
+			if m.ID != msgID || m.Deleted {
+				continue
+			}
+			same := (m.EditedAt == nil && editedAt == nil) ||
+				(m.EditedAt != nil && editedAt != nil && m.EditedAt.Equal(*editedAt))
+			if !same {
+				return false, nil
+			}
+			r.s.messages[cid][idx].WebPage = wp
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (r fakeMsgs) SetInvertMedia(_ context.Context, msgID int64, on bool) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for cid, msgs := range r.s.messages {
+		for idx, m := range msgs {
+			if m.ID == msgID && !m.Deleted {
+				r.s.messages[cid][idx].InvertMedia = on
+				return nil
+			}
+		}
+	}
+	return nil
+}
+
 func (r fakeMsgs) SetFactCheck(_ context.Context, msgID int64, fc *domain.FactCheck) (domain.Message, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

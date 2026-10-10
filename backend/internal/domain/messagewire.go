@@ -182,6 +182,7 @@ func (m Message) toReal(ctx MessageContext) MessageReal {
 	r.FwdFrom = m.FwdFrom
 	r.ReplyTo = m.replyHeader()
 	r.Media = m.mediaWire()
+	setPFlag(&r.PFlags, "invert_media", m.InvertMedia)
 	r.ReplyMarkup = m.ReplyMarkup
 	r.Entities = m.Entities
 	// Счётчики поста — только у ПОСТА, и тогда всегда. Второго ответа на
