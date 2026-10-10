@@ -42,6 +42,9 @@ type PresenceStore interface {
 	AnnouncedExpires(ctx context.Context, userID int64) (time.Time, error)
 	// CountOnline — сколько из userIDs сейчас онлайн (одним конвейером).
 	CountOnline(ctx context.Context, userIDs []int64) (int, error)
+	// CachedOnlines/CacheOnlines — счёт «N онлайн» чата на ttl (ok=false — нет).
+	CachedOnlines(ctx context.Context, chatID int64) (n int, ok bool, err error)
+	CacheOnlines(ctx context.Context, chatID int64, n int, ttl time.Duration) error
 	// Snapshots — присутствие пачки пользователей ОДНИМ обращением к хранилищу
 	// (конвейер Redis): онлайн, объявленный и фактический сроки, last seen.
 	Snapshots(ctx context.Context, userIDs []int64) (map[int64]Snapshot, error)
@@ -143,6 +146,30 @@ func (m *Manager) IsOnline(ctx context.Context, userID int64) (bool, error) {
 // тысяч; дальше — сет онлайна и пересечение (SINTERCARD), не сейчас.
 func (m *Manager) CountOnline(ctx context.Context, userIDs []int64) (int, error) {
 	return m.store.CountOnline(ctx, userIDs)
+}
+
+// onlinesTTL — кэш «N онлайн» чата: каденция tweb (invokeApiCacheable
+// messages.getOnlines, cacheSeconds: 60). Без серверного кэша каждый вызов —
+// весь состав из базы и проход по Redis, а клиентский кэш постороннего
+// читателя публичной группы не ограничивает (ревью #404 п. 8).
+const onlinesTTL = 60 * time.Second
+
+// ChatOnlines — «N онлайн» чата с кэшем на 60 с; load — состав (читается
+// только при промахе кэша).
+func (m *Manager) ChatOnlines(ctx context.Context, chatID int64, load func(context.Context) ([]int64, error)) (int, error) {
+	if n, ok, err := m.store.CachedOnlines(ctx, chatID); err == nil && ok {
+		return n, nil
+	}
+	ids, err := load(ctx)
+	if err != nil {
+		return 0, err
+	}
+	n, err := m.store.CountOnline(ctx, ids)
+	if err != nil {
+		return 0, err
+	}
+	_ = m.store.CacheOnlines(ctx, chatID, n, onlinesTTL)
+	return n, nil
 }
 
 // Status — снимок присутствия в том виде, из которого собирается UserStatus

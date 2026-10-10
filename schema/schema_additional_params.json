@@ -773,21 +773,6 @@
     ]
   },
   {
-    "id": "-783286271",
-    "predicate": "messageActionRestrict",
-    "params": [
-      {
-        "name": "user_id",
-        "type": "long"
-      },
-      {
-        "name": "banned_rights",
-        "type": "ChatBannedRights"
-      }
-    ],
-    "type": "MessageAction"
-  },
-  {
     "id": "1610266670",
     "predicate": "updateDeletePeerMessages",
     "params": [

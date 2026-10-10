@@ -20,7 +20,7 @@ func TestJoinRequestRepo(t *testing.T) {
 	}
 	r := NewJoinRequestRepo(pool)
 
-	if err := r.Create(ctx, chatID, u2, "tok"); err != nil {
+	if _, err := r.Create(ctx, chatID, u2, "tok"); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	list, _, err := r.List(ctx, chatID, "", time.Time{}, 0, 50)
@@ -29,7 +29,7 @@ func TestJoinRequestRepo(t *testing.T) {
 	}
 
 	// Idempotent: re-creating the same (chat,user) is a no-op via ON CONFLICT.
-	if err := r.Create(ctx, chatID, u2, "tok"); err != nil {
+	if _, err := r.Create(ctx, chatID, u2, "tok"); err != nil {
 		t.Fatalf("create dup: %v", err)
 	}
 	list, _, err = r.List(ctx, chatID, "", time.Time{}, 0, 50)

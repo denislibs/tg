@@ -870,7 +870,7 @@ func newFakeJoinRequestRepo() *fakeJoinRequestRepo {
 	return &fakeJoinRequestRepo{reqs: map[int64]map[int64]domain.JoinRequest{}, tokens: map[int64]map[int64]string{}}
 }
 
-func (r *fakeJoinRequestRepo) Create(_ context.Context, chatID, userID int64, inviteToken string) error {
+func (r *fakeJoinRequestRepo) Create(_ context.Context, chatID, userID int64, inviteToken string) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.reqs[chatID] == nil {
@@ -878,11 +878,11 @@ func (r *fakeJoinRequestRepo) Create(_ context.Context, chatID, userID int64, in
 		r.tokens[chatID] = map[int64]string{}
 	}
 	if _, ok := r.reqs[chatID][userID]; ok {
-		return nil // dedup
+		return false, nil // dedup
 	}
 	r.reqs[chatID][userID] = domain.JoinRequest{ChatID: chatID, UserID: userID}
 	r.tokens[chatID][userID] = inviteToken
-	return nil
+	return true, nil
 }
 
 func (r *fakeJoinRequestRepo) TokenFor(_ context.Context, chatID, userID int64) (string, bool, error) {
@@ -1284,10 +1284,10 @@ func TestPromoteAdmin_RequiresManageAdmins(t *testing.T) {
 	i, fg, _ := newGroupTestInteractor(t)
 	id, _, _ := i.CreateGroup(context.Background(), 7, "Team", "", "", false, nil)
 	_ = fg.AddMember(context.Background(), id, 8, domain.RoleMember, 0)
-	if err := i.PromoteAdmin(context.Background(), id, 8, 8, domain.RightPostMessages, ""); !errors.Is(err, domain.ErrForbidden) {
+	if err := i.PromoteAdmin(context.Background(), id, 8, 8, domain.RightPostMessages, nil); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatal("non-manager must not promote")
 	}
-	if err := i.PromoteAdmin(context.Background(), id, 7, 8, domain.RightPostMessages, ""); err != nil {
+	if err := i.PromoteAdmin(context.Background(), id, 7, 8, domain.RightPostMessages, nil); err != nil {
 		t.Fatalf("creator promote: %v", err)
 	}
 	m, _ := fg.GetMember(context.Background(), id, 8)

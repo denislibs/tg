@@ -26,13 +26,15 @@ const order: string[] = []
 type GroupsDeps = Parameters<typeof import('./managers/groupsManager').newGroupsManager>[0]
 let capturedGroupsDeps: GroupsDeps | null = null
 const invalidateChannelParticipants = vi.fn((chatId: number) => { order.push('invalidate:' + chatId) })
+let echo = false
+const isLocalParticipantEcho = vi.fn(() => echo)
 vi.mock('./managers/groupsManager', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./managers/groupsManager')>()
   return {
     ...actual,
     newGroupsManager: (deps: GroupsDeps) => {
       capturedGroupsDeps = deps
-      return { ...actual.newGroupsManager(deps), invalidateChannelParticipants }
+      return { ...actual.newGroupsManager(deps), invalidateChannelParticipants, isLocalParticipantEcho }
     },
   }
 })
@@ -76,6 +78,7 @@ beforeEach(() => {
   capturedConnDeps = null
   capturedGroupsDeps = null
   invalidateChannelParticipants.mockClear()
+  echo = false
   order.length = 0
 })
 
@@ -128,5 +131,17 @@ describe('createWorkerCore(): кадры участника и заявок', ()
     capturedGroupsDeps!.onChannelParticipant!(update)
     await settle()
     expect(got).toEqual([update])
+  })
+
+  it('дубль своей местной мутации (ревью #409 п. 2) — не применяется и вкладкам не уходит', async () => {
+    const { tab } = boot()
+    const got: unknown[] = []
+    tab.on('rt:chat_participant', (p) => got.push(p))
+    echo = true
+    capturedConnDeps!.onFrame('chat_participant', { _: 'updateChannelParticipant', channel_id: CHAT_ID, date: 1, actor_id: 1, user_id: 7 })
+    await settle()
+    expect(isLocalParticipantEcho).toHaveBeenCalled()
+    expect(invalidateChannelParticipants).not.toHaveBeenCalled()
+    expect(got).toEqual([])
   })
 })

@@ -194,7 +194,7 @@ func TestJoinRequestRepo_TokenForExists(t *testing.T) {
 	if _, ok, err := jr.TokenFor(ctx, chatID, u); err != nil || ok {
 		t.Fatalf("заявки нет: ok=%v err=%v", ok, err)
 	}
-	if err := jr.Create(ctx, chatID, u, "tok"); err != nil {
+	if _, err := jr.Create(ctx, chatID, u, "tok"); err != nil {
 		t.Fatal(err)
 	}
 	if tok, ok, err := jr.TokenFor(ctx, chatID, u); err != nil || !ok || tok != "tok" {

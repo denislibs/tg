@@ -579,7 +579,6 @@ const (
 	MessageActionSuggestBirthdayTag       = "messageActionSuggestBirthday"
 	MessageActionSuggestedPostApprovalTag = "messageActionSuggestedPostApproval"
 	MessageActionPhoneCallTag             = "messageActionPhoneCall"
-	MessageActionRestrictTag              = "messageActionRestrict"
 )
 
 // messageActionChatCreate#bd47cbad title:string users:Vector<long> = MessageAction;
@@ -880,43 +879,6 @@ func NewMessageActionPhoneCall(video bool, reason PhoneCallDiscardReason, durati
 	a := MessageActionPhoneCall{Underscore: MessageActionPhoneCallTag, Reason: reason, Duration: duration}
 	setPFlag(&a.PFlags, "video", video)
 	return a
-}
-
-// messageActionRestrict#d1500001 user_id:long banned_rights:ChatBannedRights = MessageAction;
-//
-// НАШ СОБСТВЕННЫЙ конструктор: предмета в схеме у него НЕТ. Ограничение прав
-// участника у оригинала вообще не порождает сообщения в ленте — оно уходит в
-// журнал администратора (channelAdminLogEventActionParticipantToggleBan), а
-// журнала у нас нет; пилюля «X ограничил(а) права Y» при этом живая и
-// показывается (serviceMsg.ts:107).
-//
-// Объявлен в собственном пространстве — записью с полем `type` в
-// schema/schema_additional_params.json (тот же штатный механизм оригинала, что
-// у dialog.secret), а не подмешан в чужой конструктор: сверщик обязан видеть,
-// что это НАШ предикат, а кодек фазы 2 — что число id назначено нами.
-//
-// Про число: правило «id = CRC32 канонической строки» воспроизводится не
-// полностью (tl-program.md), поэтому своим конструкторам id назначается ЯВНО.
-// Взят блок d150xxxx, во всей схеме (и API, и MTProto, конструкторы и методы)
-// не занятый ни одним числом; незанятость проверяется тестом, а не на слово.
-//
-// Содержимое действия — сам набор запретов, и он берётся уже портированным
-// chatBannedRights (mtchat.go), а не вторым битмаском рядом: сегодня в JSON
-// едет `denied_rights` числом, которого не читает ни один клиент, и срок
-// ограничения не едет вовсе — хотя хранится (MemberRestriction.UntilDate).
-// В chatBannedRights оба помещаются штатно: запреты — в pFlags, срок — в
-// until_date.
-type MessageActionRestrict struct {
-	Underscore   string           `json:"_"`
-	UserID       int64            `json:"user_id"`
-	BannedRights ChatBannedRights `json:"banned_rights"`
-}
-
-func (MessageActionRestrict) isMessageAction() {}
-func (a MessageActionRestrict) Tag() string    { return a.Underscore }
-
-func NewMessageActionRestrict(userID int64, rights ChatBannedRights) MessageActionRestrict {
-	return MessageActionRestrict{Underscore: MessageActionRestrictTag, UserID: userID, BannedRights: rights}
 }
 
 // ── PhoneCallDiscardReason ──────────────────────────────────────────────────

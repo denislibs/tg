@@ -100,7 +100,7 @@ func TestSchemaTable_ClientOnlyPredicates(t *testing.T) {
 	if !IsClientOnlyPredicate("messageEntityCaret") {
 		t.Fatal("messageEntityCaret не признан клиентским конструктором")
 	}
-	if IsClientOnlyPredicate("messageActionRestrict") {
-		t.Fatal("messageActionRestrict признан клиентским, хотя id ему назначен и он едет на провод")
+	if IsClientOnlyPredicate("updateChatFullSnapshot") {
+		t.Fatal("updateChatFullSnapshot признан клиентским, хотя id ему назначен и он едет на провод")
 	}
 }

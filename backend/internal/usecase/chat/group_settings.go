@@ -228,6 +228,7 @@ func (i *Interactor) SetChatPermissions(ctx context.Context, chatID, actorID int
 	if err := i.groups.SetPermissions(ctx, chatID, perms, slowmodeSeconds); err != nil {
 		return err
 	}
+	// Личные banned_rights от дефолта не зависят: общего снимка хватает.
 	i.publishChatUpdate(ctx, chatID)
 	return nil
 }
@@ -333,7 +334,7 @@ func (i *Interactor) BanMember(ctx context.Context, chatID, actorID, userID int6
 		return err
 	}
 	// Кадр участника админам (A2-05): список удалённых у них живой.
-	i.emitParticipant(ctx, chatID, actorID, userID, participantWire(prev), participantWire(i.participantNow(ctx, chatID, userID)), nil)
+	i.emitParticipant(ctx, chatID, actorID, userID, participantChange{prev: prev, next: i.participantNow(ctx, chatID, userID)})
 	return nil
 }
 
@@ -347,7 +348,7 @@ func (i *Interactor) UnbanMember(ctx context.Context, chatID, actorID, userID in
 		return err
 	}
 	// Разбан — new_participant нет: из списка удалённых ушёл (A2-05).
-	i.emitParticipant(ctx, chatID, actorID, userID, participantWire(prev), participantWire(i.participantNow(ctx, chatID, userID)), nil)
+	i.emitParticipant(ctx, chatID, actorID, userID, participantChange{prev: prev, next: i.participantNow(ctx, chatID, userID)})
 	return nil
 }
 
@@ -377,16 +378,10 @@ func (i *Interactor) RestrictMember(ctx context.Context, chatID, actorID, target
 	}); err != nil {
 		return err
 	}
-	// Содержимое действия — сам набор запретов конструктором chatBannedRights,
-	// а не битмаск `denied_rights` числом, которого не читал ни один клиент.
-	// Срок ограничения там же (until_date): прежде он хранился, но наружу не
-	// ехал вовсе. Нулевое время — «навсегда», ровно как у прав чата.
-	var untilTime time.Time
-	if until != nil {
-		untilTime = *until
-	}
-	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionRestrict(
-		targetID, domain.NewChatBannedRights(domain.AllMemberPerms&^deniedRights, untilTime)))
+	// Служебки в ленте нет: у оригинала ограничение уходит только в журнал
+	// администратора (channelAdminLogEventActionParticipantToggleBan), а
+	// пилюля в общей ленте раскрывала бы всем читателям цель, автора, запреты
+	// и срок (ревью #409 п. 1).
 	// Ограниченный видит запрет живьём (скрепка гаснет), админы — список
 	// ограниченных (A2-05, A1-06).
 	i.afterRightsChange(ctx, chatID, actorID, targetID, prev)

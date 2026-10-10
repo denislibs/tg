@@ -78,7 +78,12 @@ const getOnlines = vi.fn(async(_chatId: number) => 42)
 const getParticipants = vi.fn(async(_options: { id: number, filter: { _: string }, limit: number }) => ({
   _: 'channels.channelParticipants',
   count: 3,
-  participants: [ALICE, BOB, CAROL].map((user_id) => ({ _: 'channelParticipant', user_id, date: 0 })),
+  // Кэрол ограничена: её строка — channelParticipantBanned с ключом в `peer`
+  // (ревью #404 п. 2 — tweb считает онлайн по getParticipantPeerId).
+  participants: [
+    ...[ALICE, BOB].map((user_id) => ({ _: 'channelParticipant', user_id, date: 0 })),
+    { _: 'channelParticipantBanned', peer: { _: 'peerUser', user_id: CAROL }, kicked_by: ALICE, date: 0, banned_rights: { _: 'chatBannedRights', pFlags: { send_media: true }, until_date: 0 } },
+  ],
   chats: [],
   users: [],
 }))
