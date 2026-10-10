@@ -6,7 +6,7 @@ import type { PeerNotifySettings } from '../dialogs/notifySettings'
 import type { StoryItem } from '../stories/story'
 import type { Peer } from '../peers/peerId'
 import type { ChannelParticipantWire, ChatInviteExported } from '../managers/groupsManager'
-// Worker -> UI event names (over SuperMessagePort.emit). Live frames AND /sync
+// Worker -> UI event names (over SuperMessagePort.emit). Live frames AND difference
 // catch-up both surface through these, so the UI handles them uniformly.
 export const RT = {
   newMessage: 'rt:new_message',
@@ -48,6 +48,11 @@ export const RT = {
   // заводит владелец списка (dialogsManager.applyChannel) — витрине кадр
   // только транслируется.
   channel: 'rt:channel',
+  // `updateChannelTooLong` — канал сдвинулся, пока сокета не было (приходит в
+  // other_updates разницы). Вкладкам не рассылается: его применяет состояние
+  // канала в воркере (tweb processUpdate :658-662 → getChannelDifference),
+  // имя нужно лишь полноте реестра.
+  channelTooLong: 'rt:channel_too_long',
   draftUpdate: 'rt:draft_update',
   chatThemeUpdate: 'rt:chat_theme_update',
   dialogPin: 'rt:dialog_pin',
@@ -118,8 +123,8 @@ export const RT = {
   // событий как факт.
   state: 'rt:state',
   // tweb apiUpdatesManager.ts:460-469 (state_synchronizing/state_synchronized) —
-  // начало/конец catch-up (/sync), пара для индикатора «Обновление…» в поиске
-  // (порт ConnectionStatusComponent, Задача 1). syncEngine.catchUp() гарантирует
+  // начало/конец догона (updates.getDifference), пара для индикатора «Обновление…» в поиске
+  // (порт ConnectionStatusComponent, Задача 1). syncEngine.getDifference() гарантирует
   // парность: «конец» уходит и по успеху, и по ошибке catch-up'а (сознательное
   // расхождение с tweb — см. докблок onSyncEnd в syncEngine.ts).
   stateSynchronizing: 'rt:state_synchronizing',
@@ -393,6 +398,12 @@ export interface ChatRemovedEvt { _: 'updateChatRemoved'; peer: Peer }
  * `onUpdateChannel` → `reloadConversation`).
  */
 export interface ChannelEvt { _: 'updateChannel'; channel_id: number }
+/**
+ * «Канал сдвинулся, пока тебя не было» — `updateChannelTooLong{channel_id,
+ * pts?}` в other_updates `updates.getDifference`: канал с известным состоянием
+ * догоняется `updates.getChannelDifference`.
+ */
+export interface ChannelTooLongEvt { _: 'updateChannelTooLong'; channel_id: number; pts?: number }
 /**
  * Канальные близнецы правки, удаления и закрепления — те же предметы, что
  * `updateEditMessage` / `updateDeletePeerMessages` / `updatePinnedMessages`, но
@@ -712,6 +723,7 @@ export type Update =
   | PinMessageEvt
   | PinChannelMessagesEvt
   | ChannelEvt
+  | ChannelTooLongEvt
   | ReadEvt
   | MediaReadEvt
   | ReactionEvt

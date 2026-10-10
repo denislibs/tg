@@ -576,78 +576,10 @@ func (i *Interactor) CallLog(ctx context.Context, userID int64, offset, limit in
 	return i.msgs.CallLog(ctx, userID, offset, limit)
 }
 
-// UserState returns the caller's per-user update cursor (pts) and date — sent as
-// the WS "hello" frame so a client whose cursor already matches can skip catch-up.
-func (i *Interactor) UserState(ctx context.Context, userID int64) (domain.UserState, error) {
-	return i.updates.GetUserState(ctx, userID)
-}
-
-// GetDifference returns updates with pts>sincePts, split by kind. If the client is
-// too far behind, TooLong is set so it can do a full resync (snapshot via ListDialogs).
-func (i *Interactor) GetDifference(ctx context.Context, userID, sincePts int64) (Difference, error) {
-	if sincePts < 0 {
-		sincePts = 0
-	}
-	state, err := i.updates.GetUserState(ctx, userID)
-	if err != nil {
-		return Difference{}, err
-	}
-	if state.Pts-sincePts > tooLongThreshold {
-		return Difference{TooLong: true, State: state}, nil
-	}
-	ups, err := i.updates.UpdatesSince(ctx, userID, sincePts, syncLimit)
-	if err != nil {
-		return Difference{}, err
-	}
-	d := Difference{State: state, NewMessages: []SyncUpdate{}, OtherUpdates: []SyncUpdate{}}
-	for _, u := range ups {
-		su := SyncUpdate{Type: u.Type, Pts: u.Pts, Payload: u.Payload}
-		if u.Type == "new_message" {
-			d.NewMessages = append(d.NewMessages, su)
-		} else {
-			d.OtherUpdates = append(d.OtherUpdates, su)
-		}
-	}
-	if len(ups) == syncLimit {
-		d.Slice = true
-		d.State = domain.UserState{Pts: ups[len(ups)-1].Pts, Date: state.Date}
-	}
-	d.Users, d.Chats = i.peerVectors(ctx, userID, journalRefs(ups), nil)
-	if d.Users == nil {
-		d.Users = []domain.UserReal{}
-	}
-	if d.Chats == nil {
-		d.Chats = []domain.Chat{}
-	}
-	return d, nil
-}
-
-// journalRefs — ссылки на пиров во всех строках журнала (тела апдейтов).
-func journalRefs(ups []domain.UpdateRecord) domain.PeerRefs {
-	var out domain.PeerRefs
-	users, chats := map[int64]bool{}, map[int64]bool{}
-	for _, u := range ups {
-		r := domain.CollectPeerRefsJSON(u.Payload)
-		for _, id := range r.Users {
-			if !users[id] {
-				users[id] = true
-				out.Users = append(out.Users, id)
-			}
-		}
-		for _, id := range r.Chats {
-			if !chats[id] {
-				chats[id] = true
-				out.Chats = append(out.Chats, id)
-			}
-		}
-	}
-	return out
-}
-
 // PruneUpdateLog trims the per-user update log so it can't grow without bound (one
 // row is written per recipient per event). Keeps tooLongThreshold pts of history
-// per user — exactly the window within which /sync serves a diff; anyone further
-// behind already gets a full resync (too_long), so older rows are dead weight.
+// per user — exactly the window within which getDifference serves a diff; anyone
+// further behind already gets differenceTooLong, so older rows are dead weight.
 // Bounded per call (maxRows) so a large initial backlog drains across ticks
 // instead of one giant locking DELETE. Returns rows deleted.
 func (i *Interactor) PruneUpdateLog(ctx context.Context) (int64, error) {

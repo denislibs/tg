@@ -120,7 +120,7 @@ function managersWith(messages: MyMessage[] = []) {
       getHistoryMaxSeq: vi.fn(async() => 0),
       getDialogReadState: vi.fn(async() => undefined),
     },
-    realtime: { markRead: vi.fn(async() => ({ ok: true })), subscribeChannel: vi.fn(async() => ({})), unsubscribeChannel: vi.fn(async() => ({})) },
+    realtime: { markRead: vi.fn(async() => ({ ok: true })), subscribeToChannelUpdates: vi.fn(async() => ({})), unsubscribeFromChannelUpdates: vi.fn(async() => ({})) },
   }
 }
 
@@ -260,14 +260,14 @@ describe('Chat.onChangePeer — вид чата, флаги и права (tweb 
     expect(await c.canSend()).toBe(false)
     // tweb `isFetchIntervalNeeded`: участника сервер держит на топике канала
     // сам — подписка/отписка ленты сняла бы его подписку (ревью #407).
-    expect(managers.realtime.subscribeChannel).not.toHaveBeenCalled()
+    expect(managers.realtime.subscribeToChannelUpdates).not.toHaveBeenCalled()
   })
 
   it('чужой канал (не участник) — подписан на время окна', async() => {
     const managers = managersWith()
     const c = newChat(managers)
     await open(c, { peerId: -300 })
-    expect(managers.realtime.subscribeChannel).toHaveBeenCalledWith({ peerId: -300 })
+    expect(managers.realtime.subscribeToChannelUpdates).toHaveBeenCalledWith({ peerId: -300 })
   })
 
   it('тред комментариев (не форум) — `ChatType.Discussion`, ключ окна с тредом', async() => {

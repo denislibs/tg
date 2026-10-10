@@ -576,7 +576,7 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
   // последнее сообщение, не объявляется сразу — она копится в карте, и через
   // `pause(0)` ВСЕ накопленные за такт уходят ОДНИМ событием
   // (`dialogs_multiupdate`, у нас — одна операция `upsert` в одном кадре
-  // `rt:dialog_op`). Догон (`/sync`) применяет десятки сообщений подряд в одном
+  // `rt:dialog_op`). Догон (`updates.getDifference`) применяет десятки сообщений подряд в одном
   // такте — без пачки каждое из них было отдельным кадром, отдельной
   // сортировкой и отдельной анимацией строки на главном потоке.
   //
@@ -735,6 +735,10 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
       const [cached] = await Promise.all([loadCache(), peers?.hydrateFromDisk()])
       if (gen !== sessionGen) return
       setAll(cached)
+      // tweb dialogs.ts:280-302 → saveDialog :1755-1757: строки, поднятые из
+      // хранилища, заводят состояния каналов ДО attach — разница
+      // (updateChannelTooLong) догоняет каналы от их pts.
+      for (const d of cached) if (d.pts) addChannelState?.(d.peerId, d.pts)
       // tweb dialogs.ts:262 — признак «загружено целиком» поднимается с диска
       // ВМЕСТЕ с кэшем: `getDialogs` отвечает из кэша без сети и тогда, когда
       // строк меньше страницы (dialogs.ts:1903-1905, `loadedAll`).
@@ -1182,6 +1186,10 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
      * только что прочитаны с диска — планировать обратную запись на тот же диск
      * бессмысленно.
      */
+    /** Поднять строки из хранилища (и с ними состояния каналов) — до первой
+     *  разницы, как у tweb: attach после загрузки состояния диалогов. */
+    hydrate(): Promise<void> { return hydrate() },
+
     async fillMirror(): Promise<DialogOp> {
       const gen = sessionGen
       await hydrate()
@@ -1551,7 +1559,7 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
       const inboxUnread = m.fromId !== meId && !m.pFlags?.out
       // Защита от отката — порт tweb appMessagesManager.ts:10500-10520. Кадр
       // может нести сообщение, которое строка уже видела или видела более
-      // новое: повтор журнала (`/sync`), дубль мимо дедупа по pts. Такое
+      // новое: повтор журнала (разница), дубль мимо дедупа по pts. Такое
       // сообщение не двигает ни превью, ни место строки (`mid >= top_message`),
       // а счётчик растёт только на действительно НОВОМ входящем, которое ещё
       // не покрыл курсор прочтения (`isPastReadCursor`). Условие `!isSaved`

@@ -29,7 +29,7 @@ func TestSendMediaToChannel_ReachesChannelJournal(t *testing.T) {
 		t.Fatalf("Send: %v", err)
 	}
 
-	ups, err := i.GetChannelDifference(ctx, ch, 8, 0, 100)
+	ups, err := channelJournal(ctx, i, ch, 8, 0)
 	if err != nil {
 		t.Fatalf("GetChannelDifference: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestForwardToChannel_ReachesChannelJournal(t *testing.T) {
 		t.Fatalf("ForwardMessages: %v", err)
 	}
 
-	ups, err := i.GetChannelDifference(ctx, dst, 8, 0, 100)
+	ups, err := channelJournal(ctx, i, dst, 8, 0)
 	if err != nil {
 		t.Fatalf("GetChannelDifference: %v", err)
 	}

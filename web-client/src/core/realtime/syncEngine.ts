@@ -1,86 +1,130 @@
 // src/core/realtime/syncEngine.ts
+//
+// Догонка пер-юзерного ящика — общая половина tweb `apiUpdatesManager`:
+// `attach` (:886-935: без сохранённого состояния — `updates.getState`, иначе
+// `getDifference(true)`), `forceGetDifference` (:185-189, на новой сессии —
+// у нас на каждом (пере)подключении сокета) и сам `getDifference` (:316-392).
 import type { RestClient } from '../net/restClient'
 import type { Cursor } from './cursor'
 import type { SyncState } from './syncWait'
+import type { Update } from './events'
 
-interface SyncResp { new_messages: SyncItem[]; other_updates: SyncItem[]; state: { pts: number; date: number }; slice: boolean; too_long?: boolean; users?: unknown[]; chats?: unknown[] }
-// Каждый элемент /sync — конверт {t, pts, d} (SyncUpdate бэка). new_messages и
-// other_updates несут один и тот же shape, поэтому обрабатываются единым потоком.
-export interface SyncItem { t: string; pts: number; d: unknown }
+type Peers = { users?: unknown[]; chats?: unknown[] }
+
+/** `updates.state`. */
+export interface UpdatesState { _: 'updates.state'; pts: number; qts: number; date: number; seq: number; unread_count: number }
+
+/** `updates.Difference` — ответ `updates.getDifference`. */
+export type UpdatesDifference =
+  | { _: 'updates.differenceEmpty'; date: number; seq: number }
+  | ({
+    _: 'updates.difference' | 'updates.differenceSlice'
+    new_messages: unknown[]; new_encrypted_messages?: unknown[]; other_updates: Update[]
+    state?: UpdatesState; intermediate_state?: UpdatesState
+  } & Peers)
+  | { _: 'updates.differenceTooLong'; pts: number }
+
+/** Апдейты разницы, которые идут через состояние канала (tweb :352-357). */
+const CHANNEL_DIFFERENCE_UPDATES: ReadonlySet<string> = new Set([
+  'updateChannelTooLong', 'updateNewChannelMessage', 'updateEditChannelMessage',
+])
 
 export interface SyncDeps {
   rest: Pick<RestClient, 'get'>
   cursor: Cursor
-  /** Единый funnel применения: и live-кадр, и элемент /sync проходят через него. */
-  onUpdate: (item: SyncItem) => void
-  /** Векторы карточек страницы разницы — сохраняются ДО её апдейтов (tweb
-   *  apiUpdatesManager.getDifference → saveApiUsers/saveApiChats, :341-342). */
-  onPeers?: (peers: { users?: unknown[]; chats?: unknown[] }) => void
-  onResync: () => void
-  /** tweb apiUpdatesManager.ts:460-469 (state_synchronizing/state_synchronized) —
-   * начало/конец catch-up для индикатора «Обновление…» в поиске. Парность
-   * гарантирует catchUp() через try/finally-эквивалент (.finally на run()): даже
-   * если run() отклонится (сетевая ошибка /sync), onSyncEnd всё равно придёт —
-   * иначе автомат (Задача 3) навсегда застрянет в «синхронизирую».
-   *
-   * СОЗНАТЕЛЬНОЕ РАСХОЖДЕНИЕ С TWEB (не «неверно портировали»): в оригинале эта
-   * гарантия отсутствует — error-ветка apiUpdatesManager.ts:460-469 лишь чистит
-   * state.syncLoading и state_synchronized не шлёт вовсе, там баг/недоделка
-   * оригинала. Наш .finally() — сознательное улучшение поверх 1:1: без него пара
-   * технически может залипнуть на упавшем synced (буквально как в tweb), и
-   * автомат (Задача 3) навсегда застрянет в «синхронизирую» — обоснование в самом
-   * последствии для UI, а не в отдельно процитированном требовании плана/брифа. */
+  /** tweb `saveUpdate` — отражение апдейта в SSOT + рассылка, без арифметики pts. */
+  saveUpdate: (key: string, d: unknown, meta: { pts?: number; catchUp: true }) => void
+  /** tweb `processUpdate` для апдейтов канала из разницы (updateChannelTooLong и
+   *  посты канала) — их применяет состояние канала. */
+  processChannelUpdate: (u: Update) => void
+  /** Векторы страницы разницы — ДО её апдейтов (tweb :341-342). */
+  onPeers?: (peers: Peers) => void
+  /** `updates.differenceTooLong` — tweb `onDifferenceTooLong`: менеджеры
+   *  сбрасываются, состояния каналов забываются. */
+  onDifferenceTooLong: () => void
+  /** tweb state_synchronizing/state_synchronized (:460-469) — индикатор
+   *  «Обновление…». Парность держит `.finally` на догоне: на упавшем запросе
+   *  оригинал state_synchronized не шлёт, и автомат статуса залипал бы в
+   *  «синхронизирую» (сознательное улучшение, см. connectionStatus). */
   onSyncStart?: () => void
   onSyncEnd?: () => void
 }
 
-export function newSyncEngine({ rest, cursor, onUpdate, onPeers, onResync, onSyncStart, onSyncEnd }: SyncDeps) {
-  let running: Promise<void> | null = null
-  // tweb 1dc32d889 `syncProgressTime` — признак жизни догона: старт и каждая
-  // страница. По нему `syncWait` решает, не замолчал ли difference.
+export function newSyncEngine({ rest, cursor, saveUpdate, processChannelUpdate, onPeers, onDifferenceTooLong, onSyncStart, onSyncEnd }: SyncDeps) {
+  // tweb `updatesState.syncLoading` и `syncProgressTime` (1dc32d889).
+  let loading: Promise<void> | null = null
   let progressTime = 0
 
-  async function run(): Promise<void> {
-    await cursor.ready() // гейт гидратации: не синкаем со stale-курсором (0)
+  async function runDifference(): Promise<void> {
+    // Гейт гидратации: со stale-курсором (0) разница переиграла бы весь журнал.
+    await cursor.ready()
+    // Состояния нет вовсе (дата — после смены сессии) — разницу просить не от
+    // чего, базой становится состояние сервера. Только по дате: pts у нас
+    // бывает 0 и у живого состояния (пустой журнал нового пользователя), и
+    // getState на реконнекте потерял бы его первое событие.
+    if (!cursor.get().date) { await fetchState(); return }
     for (;;) {
       const { pts, date } = cursor.get()
-      const r = await rest.get<SyncResp>('/sync', { pts, date })
+      const diff = await rest.get<UpdatesDifference>('/updates/difference', { pts, date, qts: -1 })
       progressTime = Date.now()
-      if (r.too_long) {
-        // Слишком далеко позади: полный ресинк снапшотов. Курсор ставим на текущий
-        // серверный pts, иначе каждый последующий live-кадр видел бы дыру → бесконечный
-        // catch-up. Данные подтянет onResync (loadChats и т.п.).
-        if (r.state) cursor.set(r.state.pts, r.state.date)
-        onResync()
-        break
+
+      if (diff._ === 'updates.differenceEmpty') {
+        cursor.set(pts, diff.date)
+        return
       }
-      // ЕДИНЫЙ поток, упорядоченный по pts: раньше messages сливались ДО others,
-      // из-за чего edit/reaction обгоняли своё базовое сообщение (edit-before-base).
-      // Плотный монотонный pts восстанавливает истинный порядок событий.
-      const items = [...(r.new_messages ?? []), ...(r.other_updates ?? [])]
-        .sort((a, b) => (a?.pts ?? 0) - (b?.pts ?? 0))
-      if (r.users?.length || r.chats?.length) onPeers?.({ users: r.users, chats: r.chats })
-      for (const it of items) onUpdate(it)
-      cursor.set(r.state?.pts ?? pts, r.state?.date ?? date)
-      if (!r.slice) break
+
+      if (diff._ === 'updates.differenceTooLong') {
+        cursor.set(diff.pts, Math.floor(Date.now() / 1000))
+        onDifferenceTooLong()
+        return
+      }
+
+      if (diff.users?.length || diff.chats?.length) onPeers?.({ users: diff.users, chats: diff.chats })
+      // Should be first because of updateMessageID (tweb :344)
+      for (const u of diff.other_updates) {
+        if (CHANNEL_DIFFERENCE_UPDATES.has(u._)) { processChannelUpdate(u); continue }
+        saveUpdate(u._, u, { pts: (u as { pts?: number }).pts, catchUp: true })
+      }
+      for (const message of diff.new_messages) {
+        saveUpdate('updateNewMessage', { _: 'updateNewMessage', message, pts, pts_count: 0 }, { pts, catchUp: true })
+      }
+      const next = diff._ === 'updates.difference' ? diff.state : diff.intermediate_state
+      if (next) cursor.set(next.pts, next.date)
+
+      if (diff._ !== 'updates.differenceSlice') return
     }
   }
 
+  async function fetchState(): Promise<void> {
+    const st = await rest.get<UpdatesState>('/updates/state')
+    cursor.set(st.pts, st.date)
+  }
+
+  function track(run: Promise<void>): Promise<void> {
+    progressTime = Date.now()
+    onSyncStart?.()
+    loading = run.finally(() => { loading = null; onSyncEnd?.() })
+    return loading
+  }
+
   return {
-    // serialize concurrent calls; a reconnect mid-sync just awaits the in-flight run
-    catchUp(): Promise<void> {
-      if (running) return running
-      progressTime = Date.now()
-      onSyncStart?.()
-      // .finally запускает onSyncEnd И при резолве, И при реджекте run() — пара
-      // start/end не залипает даже на упавшем catch-up (см. докблок onSyncEnd).
-      running = run().finally(() => { running = null; onSyncEnd?.() })
-      return running
+    /** `updates.getState` — первый вход без сохранённого состояния (tweb attach :893-905). */
+    // Пара synchronizing/synchronized — и здесь: автомат статуса снимает
+    // «Обновление…» только событием, а стартовый pull (`realtime.getStatus`)
+    // видит идущее получение состояния как догон (`isSyncing`).
+    getState(): Promise<void> {
+      if (loading) return loading
+      return track(fetchState())
     },
-    /** Идёт ли catch-up прямо сейчас — live-кадры с pts гейтятся, пока true. */
-    isSyncing(): boolean { return running != null },
+    /** `updates.getDifference` от сохранённого состояния; идущий догон не дублируется. */
+    getDifference(): Promise<void> {
+      if (loading) return loading
+      return track(runDifference())
+    },
+    /** Идёт ли догон — живые кадры с pts гейтятся, пока true. */
+    isSyncing(): boolean { return loading != null },
     /** Состояние догона для `syncWait` (tweb `updatesState.syncLoading`/`syncProgressTime`). */
-    syncState(): SyncState { return { loading: running, progressTime } },
+    syncState(): SyncState { return { loading, progressTime } },
   }
 }
 

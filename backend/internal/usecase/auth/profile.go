@@ -16,7 +16,7 @@ const maxBioLen = 70
 // emitUserUpdate logs and broadcasts a user_update after a profile change so
 // clients re-render the peer everywhere it's shown (name/username, and avatar on
 // refetch). Fan-out = the user's own sessions + users sharing a chat (partners).
-// Each recipient's row is appended to their per-user update log, so /sync catch-up
+// Each recipient's row is appended to their per-user update log, so getDifference catch-up
 // replays the change and the pts cursor stays dense (Wave 2); the live frame
 // carries that same per-recipient pts. Optional deps degrade: without an update
 // log nothing is logged (still published, pts-less for back-compat); without a
@@ -35,7 +35,7 @@ const maxBioLen = 70
 //
 // Карточка — ГЛАЗАМИ ПОЛУЧАТЕЛЯ (domain.UserReal.SeenBy): тот, у кого автор в
 // книге, получает имя из книги и pFlags.contact — и в живом кадре, и в строке
-// журнала, которую переиграет /sync.
+// журнала, которую переиграет getDifference.
 func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.UserRecord) {
 	if i.pub == nil && i.updates == nil {
 		return
@@ -70,7 +70,7 @@ func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.UserRecord) {
 			// Строка журнала — ТА ЖЕ карточка, что живой кадр: фото по правилу
 			// на момент записи. Кадр — абсолютный снимок, и клиент заменяет им
 			// карточку целиком; строка с «фото нет» стирала аватарку после
-			// /sync, в том числе свою на втором устройстве (A2-04). Правило,
+			// getDifference, в том числе свою на втором устройстве (A2-04). Правило,
 			// ужесточённое позже, у оригинала тоже не отзывает уже доставленное.
 			payload, err := json.Marshal(live)
 			if err != nil {

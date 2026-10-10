@@ -479,7 +479,7 @@ func TestPostComment_AlbumLazyMirror_NoOrphanedMirrors(t *testing.T) {
 // обычный путь группового сообщения — тот же веер по MemberIDs, что у Send»).
 // Раньше mirrorChannelPost делал только NextSeq+Insert — зеркало оседало в
 // БД, но не попадало ни в pts-лог получателя (значит, не появилось бы и в
-// /sync), ни в realtime WS-кадр.
+// getDifference), ни в realtime WS-кадр.
 //
 // Проверяем ТЕМ ЖЕ механизмом, каким в пакете уже проверяется доставка
 // обычных сообщений (см. TestPostComment_WSFrame_ThreadRootMatchesPost) —
@@ -527,7 +527,7 @@ func TestPostToChannel_MirrorDeliveredToDiscussionGroupMembers(t *testing.T) {
 		t.Fatal("зеркало не создано")
 	}
 
-	// pts-лог участника группы обязан вырасти — иначе зеркала не будет в /sync
+	// pts-лог участника группы обязан вырасти — иначе зеркала не будет в getDifference
 	// (см. UpdateRepo.AppendUpdateBulk/GetUserState/UpdatesSince).
 	s.mu.Lock()
 	updates := append([]domain.UpdateRecord(nil), s.updates[8]...)

@@ -116,16 +116,22 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid token", http.StatusUnauthorized)
 		return
 	}
-	wsConn, err := h.upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		return // Upgrade already wrote the error
-	}
-	conn := newConn(wsConn, h.hub, h.chatSvc, h.presence, user, deviceID, plainCodec{}, nil, nil)
+	conn := newConn(nil, h.hub, h.chatSvc, h.presence, user, deviceID, plainCodec{}, nil, nil)
 	// Формат провода выбирает КЛИЕНТ подпротоколом — это флаг раскатки, а не
 	// настройка сервера: обе формы собираются из одной модели, и сервер отдаёт
 	// ту, которую соединение попросило.
 	conn.SetWireTL(hasSubprotocol(r, wireTLSubprotocol))
-	conn.run(r.Context())
+	// Регистрация и топики каналов — ДО ответа на апгрейд: клиент просит
+	// разницу по открытию сокета, и к этому моменту соединение уже получает
+	// живые кадры (см. registerSubs).
+	conn.registerSubs(r.Context())
+	wsConn, err := h.upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		conn.release()
+		return // Upgrade already wrote the error
+	}
+	conn.attachWS(wsConn)
+	conn.serve(r.Context())
 }
 
 // wireTLSubprotocol — подпротокол «говори со мной на TL».

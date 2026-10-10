@@ -28,6 +28,7 @@ func (l *keyRateLimiter) allow(key string, rps, burst float64) bool {
 	now := time.Now()
 	b := l.buckets[key]
 	if b == nil {
+		l.sweep(now)
 		b = &tokenBucket{tokens: burst, last: now}
 		l.buckets[key] = b
 	}
@@ -41,4 +42,23 @@ func (l *keyRateLimiter) allow(key string, rps, burst float64) bool {
 		return true
 	}
 	return false
+}
+
+// limiterMaxBuckets — сколько ключей держится без уборки; дальше бакеты,
+// не тронутые limiterIdle, выбрасываются (они всё равно полны: за это время
+// любая скорость дольёт ведро до burst).
+const (
+	limiterMaxBuckets = 50000
+	limiterIdle       = 10 * time.Minute
+)
+
+func (l *keyRateLimiter) sweep(now time.Time) {
+	if len(l.buckets) < limiterMaxBuckets {
+		return
+	}
+	for k, b := range l.buckets {
+		if now.Sub(b.last) > limiterIdle {
+			delete(l.buckets, k)
+		}
+	}
 }

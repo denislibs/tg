@@ -31,7 +31,7 @@ func newAccessTestInteractor(t *testing.T) (*Interactor, *fakeGroupRepo, *store)
 	return in, fg, s
 }
 
-// A5-01: WS subscribe_channel — только тому, кто канал читает.
+// A5-01: топик канала — только тому, кто канал читает.
 func TestCanSubscribeChannel_PrivateNeedsMembership(t *testing.T) {
 	in, fg, _ := newAccessTestInteractor(t)
 	ctx := context.Background()

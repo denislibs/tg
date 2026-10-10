@@ -199,8 +199,6 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
     // Call signaling is ephemeral (no outbox): a frame lost while offline is
     // meaningless seconds later — WebRTC re-negotiates on its own timers.
     sendCallFrame(type: string, data: Record<string, unknown>) { if (ws.isOpen()) ws.send(type, data) },
-    subscribeChannel(peerId: number) { if (ws.isOpen()) ws.send('subscribe_channel', { peer_id: peerId }) },
-    unsubscribeChannel(peerId: number) { if (ws.isOpen()) ws.send('unsubscribe_channel', { peer_id: peerId }) },
   }
 }
 

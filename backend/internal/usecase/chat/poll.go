@@ -314,7 +314,7 @@ func (i *Interactor) publishPollUpdate(ctx context.Context, chatID, pollID, acto
 		}
 		others = append(others, uid)
 	}
-	// Абсолютные агрегаты опроса + плотный pts-курсор делают catch-up через /sync
+	// Абсолютные агрегаты опроса + плотный pts-курсор делают catch-up через getDifference
 	// идемпотентным.
 	_ = i.logAndPublishPerPeer(ctx, chatID, others, "poll_update", body(media))
 	if actorIsMember {

@@ -40,9 +40,9 @@ type Sink interface {
 
 type Hub struct {
 	mu          sync.RWMutex
-	conns       map[int64]map[Sink]struct{}          // by user id
-	deviceConns map[int64]map[Sink]struct{}          // by device id
-	channelSubs map[domain.PeerID]map[Sink]SubReason // by channel peer id: why the sink reads the topic
+	conns       map[int64]map[Sink]struct{}         // by user id
+	deviceConns map[int64]map[Sink]struct{}         // by device id
+	channelSubs map[domain.PeerID]map[Sink]struct{} // by channel peer id
 	rdb         *redis.Client
 	pubsub      *redis.PubSub
 	// channelGate — читает ли пользователь топик пира (usecase
@@ -50,8 +50,7 @@ type Hub struct {
 	channelGate ChannelGate
 }
 
-// ChannelGate — правило «кто читает топик пира»: то же, что у кадра
-// subscribe_channel (Interactor.CanSubscribeChannel).
+// ChannelGate — правило «кто читает топик пира» (Interactor.CanSubscribeChannel).
 type ChannelGate func(ctx context.Context, userID int64, peer domain.PeerID) bool
 
 // SetChannelGate связывает хаб с правилом доступа к топикам: по нему хаб
@@ -63,7 +62,7 @@ func NewHub(ctx context.Context, rdb *redis.Client) *Hub {
 	h := &Hub{
 		conns:       make(map[int64]map[Sink]struct{}),
 		deviceConns: make(map[int64]map[Sink]struct{}),
-		channelSubs: make(map[domain.PeerID]map[Sink]SubReason),
+		channelSubs: make(map[domain.PeerID]map[Sink]struct{}),
 		rdb:         rdb,
 		pubsub:      rdb.Subscribe(ctx),
 	}
@@ -177,43 +176,31 @@ func (h *Hub) Unregister(ctx context.Context, userID, deviceID int64, s Sink) (l
 	return lastUser
 }
 
-// SubReason — почему сокет читает топик канала. Причин две, и снимаются они
-// независимо: отписка ленты не имеет права снять подписку участника.
-//
-//   - SubMember — участник канала: топик держится от подключения (или
-//     вступления, кадр updateChannel) до выбытия (chat_removed). У оригинала
-//     сервер шлёт updateNewChannelMessage всем онлайн-сессиям участников;
-//   - SubView — открытая лента у НЕ участника (публичный канал читается без
-//     вступления): кадр subscribe_channel, аналог tweb setFetchHistoryInterval /
-//     subscribeToChannelUpdates, который нужен только не участнику
-//     (isFetchIntervalNeeded). Снимается unsubscribe_channel.
-type SubReason uint8
+// Топик канала читают сокеты его участников: от подключения (или вступления,
+// кадр updateChannel) до выбытия (chat_removed). У оригинала сервер шлёт
+// updateNewChannelMessage всем онлайн-сессиям участников; не участник,
+// открывший публичный канал, живых кадров не получает — его лента опрашивает
+// updates.getChannelDifference (tweb subscribeToChannelUpdates).
 
-const (
-	SubMember SubReason = 1 << iota
-	SubView
-	subAll = SubMember | SubView
-)
-
-// SubscribeChannel добавляет сокету причину читать топик канала; Redis-топик
+// SubscribeChannel подписывает сокет на топик канала; Redis-топик
 // подписывается на первом локальном подписчике.
-func (h *Hub) SubscribeChannel(ctx context.Context, peer domain.PeerID, s Sink, why SubReason) {
-	h.SubscribeChannels(ctx, []domain.PeerID{peer}, s, why)
+func (h *Hub) SubscribeChannel(ctx context.Context, peer domain.PeerID, s Sink) {
+	h.SubscribeChannels(ctx, []domain.PeerID{peer}, s)
 }
 
 // SubscribeChannels — то же пачкой: все новые для реплики топики уходят одним
 // SUBSCRIBE (подключение участника с сотнями каналов — один вызов Redis).
-func (h *Hub) SubscribeChannels(ctx context.Context, peers []domain.PeerID, s Sink, why SubReason) {
+func (h *Hub) SubscribeChannels(ctx context.Context, peers []domain.PeerID, s Sink) {
 	var fresh []string
 	h.mu.Lock()
 	for _, peer := range peers {
 		subs := h.channelSubs[peer]
 		if len(subs) == 0 {
-			subs = make(map[Sink]SubReason)
+			subs = make(map[Sink]struct{})
 			h.channelSubs[peer] = subs
 			fresh = append(fresh, channelTopic(peer))
 		}
-		subs[s] |= why
+		subs[s] = struct{}{}
 	}
 	h.mu.Unlock()
 	if len(fresh) > 0 {
@@ -223,18 +210,14 @@ func (h *Hub) SubscribeChannels(ctx context.Context, peers []domain.PeerID, s Si
 	}
 }
 
-// UnsubscribeChannel снимает с сокета причину why; сокет уходит из топика,
-// только когда причин не осталось, а Redis-топик — с последним сокетом.
-func (h *Hub) UnsubscribeChannel(ctx context.Context, peer domain.PeerID, s Sink, why SubReason) {
+// UnsubscribeChannel снимает сокет с топика канала; Redis-топик — с последним
+// сокетом.
+func (h *Hub) UnsubscribeChannel(ctx context.Context, peer domain.PeerID, s Sink) {
 	h.mu.Lock()
 	subs := h.channelSubs[peer]
 	last := false
-	if reason, ok := subs[s]; ok {
-		if rest := reason &^ why; rest != 0 {
-			subs[s] = rest
-		} else {
-			delete(subs, s)
-		}
+	if _, ok := subs[s]; ok {
+		delete(subs, s)
 		if len(subs) == 0 {
 			delete(h.channelSubs, peer)
 			last = true
@@ -286,7 +269,7 @@ func (h *Hub) unsubscribeUserChannel(ctx context.Context, userID int64, peer dom
 	}
 	h.mu.RUnlock()
 	for _, s := range sinks {
-		h.UnsubscribeChannel(ctx, peer, s, subAll)
+		h.UnsubscribeChannel(ctx, peer, s)
 	}
 }
 
@@ -312,8 +295,8 @@ func channelJoinedPeer(frame []byte) (domain.PeerID, bool) {
 }
 
 // subscribeUserChannel подписывает все локальные сокеты пользователя на
-// топик канала, в который он вступил (причина — участник), через то же правило
-// доступа, что и кадр subscribe_channel. Пара к unsubscribeUserChannel: кадр
+// топик канала, в который он вступил, через правило доступа к топику
+// (CanSubscribeChannel). Пара к unsubscribeUserChannel: кадр
 // приходит в каждую реплику, где у пользователя есть сокеты.
 //
 // Гейт ходит в базу, поэтому вне цикла pub/sub: route — единственный
@@ -337,7 +320,7 @@ func (h *Hub) subscribeUserChannel(userID int64, peer domain.PeerID) {
 		}
 		h.mu.RUnlock()
 		for _, s := range sinks {
-			h.SubscribeChannel(ctx, peer, s, SubMember)
+			h.SubscribeChannel(ctx, peer, s)
 		}
 	}()
 }

@@ -92,7 +92,7 @@ func (i *Interactor) RequireChannelCommentsRead(ctx context.Context, channelID, 
 }
 
 // CanSubscribeChannel — можно ли сокету зрителя подписаться на живой топик
-// пира (WS subscribe_channel): ровно тогда, когда он этот чат читает. Иначе
+// пира (хаб, вступление в канал): ровно тогда, когда он этот чат читает. Иначе
 // посторонний получал бы посты, правки, просмотры и счётчики комментариев
 // приватного канала, перебирая id подряд.
 func (i *Interactor) CanSubscribeChannel(ctx context.Context, userID int64, peer domain.PeerID) bool {

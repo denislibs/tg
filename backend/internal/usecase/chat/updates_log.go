@@ -12,7 +12,7 @@ import (
 // a live frame carrying that pts (framePts) to each. It is the Wave-2 counterpart
 // of the inline log+publish blocks in message.go / reaction.go, for the stateful
 // updates whose mutation has already committed by the time they fan out: the
-// append is its own short transaction, so a /sync catch-up replays exactly what
+// append is its own short transaction, so a getDifference catch-up replays exactly what
 // the live path delivered and the client's cursor stays dense.
 //
 // base is the shared payload; it is never mutated — the recipient's peer_id and

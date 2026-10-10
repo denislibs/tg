@@ -117,7 +117,7 @@ func (f fakeContactViewer) ContactViews(_ context.Context, _ int64, viewerIDs []
 	return out, nil
 }
 
-// Кадр user_update и его строка журнала (её переигрывает /sync) — карточка
+// Кадр user_update и его строка журнала (её переигрывает getDifference) — карточка
 // ГЛАЗАМИ ПОЛУЧАТЕЛЯ: тот, у кого автор в книге, получает имя из книги и
 // pFlags.contact, остальные — профильное имя. Иначе смена профиля затирала
 // бы у клиента имя контакта (у оригинала сервер отдаёт user с именем из
@@ -183,7 +183,7 @@ func TestUserUpdate_SeenByEachRecipient(t *testing.T) {
 
 // A2-04: строка журнала user_update — та же карточка, что живой кадр, с фото
 // по правилу на момент записи. Прежде журнал писал «фото нет», клиент
-// заменял карточку целиком, и после /sync аватарка стиралась — в том числе
+// заменял карточку целиком, и после getDifference аватарка стиралась — в том числе
 // своя на втором устройстве.
 func TestUserUpdate_JournalKeepsPhoto(t *testing.T) {
 	i, users, _, _ := newInteractor()

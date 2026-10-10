@@ -956,6 +956,10 @@ func (c groupChats) ChatTitle(context.Context, int64) (string, error) { return "
 func (c groupChats) ChannelCursors(context.Context, int64, int) ([]domain.ChannelCursor, error) {
 	return nil, nil
 }
+func (c groupChats) ChannelsChangedSince(context.Context, int64, int64) ([]domain.ChannelCursor, error) {
+	return nil, nil
+}
+func (c groupChats) UnreadTotal(context.Context, int64) (int, error) { return 0, nil }
 func (c groupChats) ListDialogs(context.Context, int64) ([]domain.DialogRecord, error) {
 	return nil, nil
 }

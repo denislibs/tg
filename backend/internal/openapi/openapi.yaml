@@ -17,7 +17,7 @@ tags:
   - name: search
   - name: messages
   - name: reactions
-  - name: sync
+  - name: updates
   - name: media
   - name: push
   - name: stories
@@ -97,23 +97,37 @@ components:
             text: { type: string }
             sender_id: { type: integer, format: int64 }
             at: { type: string, format: date-time }
-    Difference:
+    UpdatesState:
       type: object
-      description: getDifference-style result; client tracks state.pts as its cursor.
+      description: updates.state — the caller's update box state (updates.getState).
       properties:
-        new_messages:
-          type: array
-          items: { type: object, description: new_message update payload }
-        other_updates:
-          type: array
-          items: { type: object, description: "read / reaction / edit / delete update payloads" }
-        state:
-          type: object
-          properties:
-            pts: { type: integer, format: int64 }
-            date: { type: integer, format: int64, description: server time (ms) }
-        slice: { type: boolean, description: more updates remain; call /sync again }
-        too_long: { type: boolean, description: too far behind; do a full resync }
+        _: { type: string, example: updates.state }
+        pts: { type: integer, format: int64 }
+        qts: { type: integer, format: int64 }
+        date: { type: integer, format: int64, description: server time (unix seconds) }
+        seq: { type: integer, format: int64 }
+        unread_count: { type: integer }
+    UpdatesDifference:
+      type: object
+      description: |
+        updates.getDifference result, discriminated by `_`:
+        updates.differenceEmpty{date, seq} | updates.difference{new_messages,
+        new_encrypted_messages, other_updates, chats, users, state} |
+        updates.differenceSlice (intermediate_state instead of state; call again) |
+        updates.differenceTooLong{pts} (too far behind; reload everything).
+        other_updates carries updateChannelTooLong{channel_id, pts} for the
+        caller's channels whose journal advanced after `date`.
+      properties:
+        _: { type: string, example: updates.difference }
+        new_messages: { type: array, items: { type: object, description: Message } }
+        other_updates: { type: array, items: { type: object, description: Update } }
+        chats: { type: array, items: { type: object } }
+        users: { type: array, items: { type: object } }
+        state: { $ref: "#/components/schemas/UpdatesState" }
+        intermediate_state: { $ref: "#/components/schemas/UpdatesState" }
+        date: { type: integer, format: int64 }
+        seq: { type: integer, format: int64 }
+        pts: { type: integer, format: int64 }
     ReactionCount:
       type: object
       properties:
@@ -159,29 +173,24 @@ components:
         uses: { type: integer }
         url: { type: string, example: /join/abc123, description: relative join URL }
         requires_approval: { type: boolean, description: if true, joins create a pending request instead of adding the member }
-    ChannelUpdate:
-      type: object
-      description: A single channel post (new_message payload) from the channel_updates log.
-      properties:
-        chat_id: { type: integer, format: int64 }
-        msg_id: { type: integer, format: int64 }
-        seq: { type: integer, format: int64, description: monotonic per-chat sequence }
-        sender_id: { type: integer, format: int64 }
-        type: { type: string, example: text }
-        text: { type: string }
-        media_id: { type: integer, format: int64, nullable: true }
-        created_at: { type: string, format: date-time }
-    ChannelDifference:
+    UpdatesChannelDifference:
       type: object
       description: |
-        Per-channel getDifference catch-up. Uses the channel's own pts cursor,
-        independent of the per-user /sync pts.
+        updates.getChannelDifference result, discriminated by `_`:
+        updates.channelDifferenceEmpty{pts} | updates.channelDifference{pts,
+        new_messages, other_updates, chats, users} (pFlags.final unset — call
+        again from pts) | updates.channelDifferenceTooLong{dialog, messages,
+        chats, users} (reload the channel).
       properties:
-        updates:
-          type: array
-          items: { $ref: "#/components/schemas/ChannelUpdate" }
-        pts: { type: integer, format: int64, description: highest channel pts in this batch (new cursor) }
-        slice: { type: boolean, description: batch hit the page cap (100); call again with the new pts }
+        _: { type: string, example: updates.channelDifference }
+        pFlags: { type: object, properties: { final: { type: boolean } } }
+        pts: { type: integer, format: int64 }
+        new_messages: { type: array, items: { type: object, description: Message } }
+        other_updates: { type: array, items: { type: object, description: Update } }
+        dialog: { type: object }
+        messages: { type: array, items: { type: object } }
+        chats: { type: array, items: { type: object } }
+        users: { type: array, items: { type: object } }
     SearchResult:
       type: object
       description: Global directory search results (public chats + users); private chats never returned.
@@ -1010,17 +1019,6 @@ paths:
                   created_at: { type: string, format: date-time }
         "403": { description: caller lacks POST_MESSAGES, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
-  /channels/{chatID}/difference:
-    get:
-      tags: [channels]
-      summary: Per-channel getDifference catch-up (channel's own pts cursor)
-      parameters:
-        - { name: chatID, in: path, required: true, schema: { type: integer, format: int64 } }
-        - { name: pts, in: query, schema: { type: integer, format: int64, default: 0 }, description: last seen channel pts }
-      responses:
-        "200": { description: channel updates since pts, content: { application/json: { schema: { $ref: "#/components/schemas/ChannelDifference" } } } }
-        "403": { description: not a member/subscriber, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
-
   /channels/join:
     post:
       tags: [channels]
@@ -1268,15 +1266,36 @@ paths:
         "400": { description: invalid emoji, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "404": { description: message not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
-  /sync:
+  /updates/state:
     get:
-      tags: [sync]
-      summary: Catch up on missed updates since a pts cursor (getDifference)
+      tags: [updates]
+      summary: updates.getState — the caller's current update box state
+      responses:
+        "200": { description: state, content: { application/json: { schema: { $ref: "#/components/schemas/UpdatesState" } } } }
+
+  /updates/difference:
+    get:
+      tags: [updates]
+      summary: updates.getDifference — catch up on missed updates since a state
       parameters:
         - { name: pts, in: query, schema: { type: integer, format: int64, default: 0 } }
-        - { name: date, in: query, schema: { type: integer, format: int64, default: 0 } }
+        - { name: date, in: query, schema: { type: integer, format: int64, default: 0 }, description: state.date (unix seconds) }
+        - { name: qts, in: query, schema: { type: integer, format: int64 }, description: unused }
       responses:
-        "200": { description: difference, content: { application/json: { schema: { $ref: "#/components/schemas/Difference" } } } }
+        "200": { description: difference, content: { application/json: { schema: { $ref: "#/components/schemas/UpdatesDifference" } } } }
+
+  /updates/channel_difference:
+    get:
+      tags: [updates]
+      summary: updates.getChannelDifference — catch up a channel by its own pts
+      parameters:
+        - { name: channel, in: query, required: true, schema: { type: integer, format: int64 }, description: channel peer id (< 0) }
+        - { name: pts, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: limit, in: query, schema: { type: integer, default: 1000 } }
+      responses:
+        "200": { description: channel difference, content: { application/json: { schema: { $ref: "#/components/schemas/UpdatesChannelDifference" } } } }
+        "400": { description: not a channel, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "403": { description: cannot read the channel, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /media/upload:
     post:
@@ -1517,8 +1536,9 @@ paths:
         Upgrades to a WebSocket (HTTP 101). Authenticate with the session token as
         the `token` query parameter (browsers cannot set headers on WS).
         Frames are JSON envelopes `{ "t": <type>, "d": <payload> }`.
-        Channel live delivery: `subscribe_channel`/`unsubscribe_channel` `{ chat_id }`
-        opt a connection in/out of a channel's `channel:{id}` topic (O(1) post fan-out).
+        Channel live delivery: the connection is subscribed to the `channel:{id}`
+        topics of the caller's channels before the upgrade completes (O(1) post
+        fan-out); a non-member polls updates.getChannelDifference instead.
         See `docs/contracts.md` for the full frame protocol.
       security: []
       parameters:

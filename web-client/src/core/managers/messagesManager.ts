@@ -61,7 +61,9 @@ export type { ReactionUser, SavedTag, StarSender, StarReactionInfo, StarReaction
  * подпись, ни о ком не спрашивая отдельно.
  */
 export interface MessagesContainer {
-  _: 'messages.messages' | 'messages.messagesSlice'
+  _: 'messages.messages' | 'messages.messagesSlice' | 'messages.channelMessages'
+  /** pts журнала канала — только у `messages.channelMessages` (история канала). */
+  pts?: number
   messages: RawMyMessage[]
   users: UserReal[]
   chats: Chat[]
@@ -220,9 +222,14 @@ export interface MessagesDeps {
    *  `hadUnreadReactions` у `readMessages` (tweb appMessagesManager.ts:9566),
    *  см. `MessagesCtx`. */
   getUnreadReactionsCount?: (peerId: number) => number
+  /** Порт `apiUpdatesManager.addChannelState`: история канала
+   *  (`messages.channelMessages`) несёт pts его журнала — из него заводится
+   *  состояние канала, когда диалога нет (tweb appMessagesManager.ts
+   *  :13503-13505). */
+  addChannelState?: (peerId: number, pts: number) => void
 }
 
-export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium, meReady, isBroadcastChat, getPeer, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers, onMessagesDeleted, getUnreadReactionsCount }: MessagesDeps) {
+export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium, meReady, isBroadcastChat, getPeer, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers, onMessagesDeleted, getUnreadReactionsCount, addChannelState }: MessagesDeps) {
   // ── Граница маппинга ────────────────────────────────────────────────────────
   // `pFlags.out` производит СЕРВЕР (решение Р7 разбора отменено): после порта у
   // сообщения от лица канала автором на проводе становится сам канал, и прежней
@@ -924,6 +931,8 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
         throw e
       }
       const fetched = await decryptPage(await mapContainer(r))
+      // tweb appMessagesManager.ts:13503-13505: `if('pts' in historyResult)`.
+      if (r.pts) addChannelState?.(peerId, r.pts)
       put(key, fetched)
 
       // normalize to descending seqs for the SlicedArray
@@ -1155,6 +1164,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
         `/chats/${peerId}/history`, { around: getServerMessageId(centerId), limit, ...(threadRoot ? { thread_root: getServerMessageId(threadRoot) } : {}) },
       )
       const asc = await decryptPage(await mapContainer(r))
+      if (r.pts) addChannelState?.(peerId, r.pts)
       // Концы окна выводит КЛИЕНТ — их в ответе нет вовсе. Правило оригинала для
       // случая без `offset_id_offset` (appMessagesManager.ts:9512-9518): сторона
       // короче запрошенной значит, что за ней ничего нет.

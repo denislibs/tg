@@ -438,7 +438,7 @@ func (i *Interactor) SetChatPhoto(ctx context.Context, chatID, actorID, mediaID 
 // временный mute («For 1 Hour…»); muted=false снимает и то и другое. Смена
 // логируется + шлётся dialog_mute на устройства владельца: раньше это был
 // клиентский fake-echo (groupsManager), теперь сервер эмитит его сам, так что
-// mute доезжает и на другие вкладки/устройства и через /sync (плотный pts).
+// mute доезжает и на другие вкладки/устройства и через getDifference (плотный pts).
 //
 // «Навсегда» ниже становится СРОКОМ (domain.MuteUntilForever), а не отдельным
 // флагом: в схеме мьют выражает peerNotifySettings.mute_until, и второй способ

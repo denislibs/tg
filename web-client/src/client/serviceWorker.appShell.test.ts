@@ -20,6 +20,8 @@ import { describe, expect, it, vi } from 'vitest'
  * try/catch с `return fetch(...)`: кэш не имеет права уронить запрос). */
 
 const SW_SOURCE = readFileSync(resolve(__dirname, '../../public/sw.js'), 'utf8')
+/** Имя кэша оболочки текущей сборки — его штампует scripts/write-version.mjs. */
+const APP_SHELL = /const APP_SHELL = '([^']*)'/.exec(SW_SOURCE)![1]
 
 /* Ограничение настоящего Cache Storage, а не выдумка теста: снято живьём в
  * браузере на стенде ветки —
@@ -111,7 +113,7 @@ function loadServiceWorker(
   const storage = cacheOrStorage instanceof FakeCacheStorage
     ? cacheOrStorage
     // Одиночный кэш, как его подают старые тесты: он и есть `app-shell-*`.
-    : new FakeCacheStorage({ 'app-shell-1': cacheOrStorage })
+    : new FakeCacheStorage({ [APP_SHELL]: cacheOrStorage })
 
   const handlers: Handlers = {}
   let claimed = 0
@@ -342,7 +344,7 @@ describe('sw.js — выкат новой сборки', () => {
     dispatchFetch(handlers, makeRequest(SHELL, {}, 'navigate'))
     await dispatchFetch(handlers, makeRequest(RUNTIME_NEW))
 
-    const shell = await storage.open('app-shell-1')
+    const shell = await storage.open(APP_SHELL)
     expect(shell.puts).toEqual([RUNTIME_NEW])
   })
 
@@ -370,7 +372,7 @@ describe('sw.js — выкат новой сборки', () => {
     // фильтр `!== APP_SHELL` не удалял ничего: чанки всех сборок копились.
     const current = new FakeCache()
     await current.put({ url: RUNTIME_OLD }, new Response('old', { status: 200 }))
-    const storage = new FakeCacheStorage({ 'app-shell-1': current, 'app-shell-0': new FakeCache() })
+    const storage = new FakeCacheStorage({ [APP_SHELL]: current, 'app-shell-0': new FakeCache() })
 
     const { handlers, claimed } = loadServiceWorker(storage, server(RUNTIME_NEW))
     await dispatchLifecycle(handlers.activate)
@@ -380,7 +382,7 @@ describe('sw.js — выкат новой сборки', () => {
   })
 
   it('media-кэш активацией не трогается — он не про оболочку', async () => {
-    const storage = new FakeCacheStorage({ 'app-shell-1': new FakeCache(), cachedFiles: new FakeCache() })
+    const storage = new FakeCacheStorage({ [APP_SHELL]: new FakeCache(), cachedFiles: new FakeCache() })
     const { handlers } = loadServiceWorker(storage, server(RUNTIME_NEW))
 
     await dispatchLifecycle(handlers.activate)
@@ -411,7 +413,7 @@ describe('sw.js — потолок кэша оболочки', () => {
       await dispatchFetch(handlers, makeRequest(`https://localhost/assets/chunk-${i}.js`))
     }
 
-    const shell = await storage.open('app-shell-1')
+    const shell = await storage.open(APP_SHELL)
     await vi.waitFor(() => expect(shell.entries.size).toBe(ONE_BUILD))
   })
 
@@ -424,7 +426,7 @@ describe('sw.js — потолок кэша оболочки', () => {
       await dispatchFetch(handlers, makeRequest(`https://localhost/assets/chunk-${i}.js`))
     }
 
-    const shell = await storage.open('app-shell-1')
+    const shell = await storage.open(APP_SHELL)
     await vi.waitFor(() => expect(shell.entries.size).toBe(400))
     expect(shell.entries.has('https://localhost/assets/chunk-0.js')).toBe(false)
     expect(shell.entries.has('https://localhost/assets/chunk-400.js')).toBe(true)

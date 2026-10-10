@@ -61,7 +61,7 @@ export function fillDialogsMirror(managers: Pick<Managers, 'dialogs'>): Promise<
  * `dialogsManager.getDialogs`), а не boot. Прежний безусловный сетевой догон
  * (`refresh()`) приходил вторым `reset` поверх кэша и перетасовывал уже
  * нарисованный список; всё, что случилось с прошлой сессии, догоняет журнал
- * апдейтов (`/sync` от сохранённого курсора, tweb `getDifference`).
+ * апдейтов (`updates.getDifference` от сохранённого курсора).
  */
 export function applyDialogsMirror(op: DialogOp | null): void {
   if (op) useChatsStore.getState().applyDialogOps([op])

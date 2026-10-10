@@ -201,7 +201,7 @@ func TestFrameBody_IsUpdateConstructor(t *testing.T) {
 			t.Fatalf("Send: %v", err)
 		}
 
-		ups, err := i.GetChannelDifference(ctx, ch, 8, 0, 100)
+		ups, err := channelJournal(ctx, i, ch, 8, 0)
 		if err != nil || len(ups) != 1 {
 			t.Fatalf("догон разрыва: %d записей, err = %v", len(ups), err)
 		}

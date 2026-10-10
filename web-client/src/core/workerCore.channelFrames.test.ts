@@ -1,7 +1,7 @@
 // Живой кадр КАНАЛА обязан уходить в пер-канальную воронку (channelFunnel):
-// у канала свой плотный курсор channel_pts, по нему считается разрыв и идёт
-// догон через /difference. Общая пер-юзерная воронка про channel_pts не знает
-// вовсе — кадр, попавший туда, курсор канала не двигает.
+// у канала свой плотный pts, по нему считается разрыв и идёт догон
+// updates.getChannelDifference. Общая пер-юзерная воронка про pts канала не
+// знает вовсе — кадр, попавший туда, состояние канала не двигает.
 //
 // Развилка в workerCore читала пир из ВЕРХНЕГО уровня кадра (`d.peer_id`
 // числом). После порта сообщения адрес пира переехал ВНУТРЬ конструктора
@@ -17,18 +17,19 @@
 //
 // СЕТЬ. Кадр с `pts`, не ушедший в пер-канальную воронку, попадает в
 // пер-юзерную, а та при негидрированном курсоре сразу просит догон
-// (globalFunnel.ts: `if (!isCursorReady()) { catchUp() }`) → GET /sync. Это
-// единственная сеть, до которой доходит файл, и промис догона прод-код пускает
-// через `void sync.catchUp()` (workerCore.ts) — то есть незастабленный fetch
+// (globalFunnel.ts: `if (!isCursorReady()) { catchUp() }`) → без сохранённого
+// состояния GET /updates/state. Это единственная сеть, до которой доходит
+// файл, и промис догона прод-код пускает через `void sync.getDifference()`
+// (workerCore.ts) — то есть незастабленный fetch
 // тест не ронял, а давал два Unhandled Rejection на прогон (ECONNREFUSED
 // localhost:3000), а такой отказ vitest приписывает случайному файлу и
 // предупреждает про ложноположительные прогоны.
 //
 // Стаб — тот же приём, что у соседей (workerCore.dialogFrames.test.ts,
 // workerCore.meHydration.test.ts): белый список URL, всё прочее — громкий
-// throw, чтобы новая сеть не пряталась за заглушкой. /sync отвечает ПУСТОЙ
-// страницей журнала: догон завершается штатно и ничего не применяет — предмет
-// файла (развилка воронок) от этого не зависит.
+// throw, чтобы новая сеть не пряталась за заглушкой. /updates/state отвечает
+// состоянием: догон завершается штатно и ничего не применяет — предмет файла
+// (развилка воронок) от этого не зависит.
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -43,14 +44,14 @@ vi.mock('./realtime/connectionManager', async (importOriginal) => {
   }
 })
 
-const applyLive = vi.fn()
+const processUpdate = vi.fn()
 vi.mock('./realtime/channelFunnel', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./realtime/channelFunnel')>()
   return {
     ...actual,
     newChannelFunnel: (deps: Parameters<typeof actual.newChannelFunnel>[0]) => ({
       ...actual.newChannelFunnel(deps),
-      applyLive,
+      processUpdate,
     }),
   }
 })
@@ -72,14 +73,21 @@ function pair(): [Endpoint, Endpoint] {
   return [epA, epB]
 }
 
-function boot() {
+let stateCalls = 0
+
+async function boot() {
   const core = createWorkerCore()
   const [epWorker] = pair()
   core.bind(epWorker)
   expect(capturedConnDeps).not.toBeNull()
+  // Сокет открыт: attach (updates.getState) — после него пер-юзерная воронка
+  // просит догон по дыре или негидрированному курсору.
+  capturedConnDeps!.onReady()
+  await vi.waitFor(() => expect(stateCalls).toBe(1))
+  for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0))
 }
 
-/** URL'ы догона курсора, до которых дошёл этот прогон: поход в /sync —
+/** URL'ы догона курсора, до которых дошёл этот прогон: поход за состоянием —
  *  наблюдаемый след пер-юзерной воронки, им кейсы «мимо канальной воронки» и
  *  доказывают, что кадр ушёл в СОСЕДНЮЮ воронку, а не потерялся молча. */
 const syncCalls: string[] = []
@@ -87,20 +95,23 @@ const syncCalls: string[] = []
 beforeEach(() => {
   vi.stubGlobal('indexedDB', new IDBFactory())
   syncCalls.length = 0
+  stateCalls = 0
   vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
     const u = String(url)
-    if (u.includes('/sync?')) {
-      syncCalls.push(u)
-      // Пустая страница журнала: `slice: false` завершает цикл догона первым же
-      // ответом, применять нечего.
+    if (u.includes('/updates/state')) {
+      stateCalls++
       return new Response(JSON.stringify({
-        new_messages: [], other_updates: [], state: { pts: 0, date: 0 }, slice: false,
+        _: 'updates.state', pts: 1, qts: 0, date: 1, seq: 0, unread_count: 0,
       }), { status: 200 })
+    }
+    if (u.includes('/updates/difference')) {
+      syncCalls.push(u)
+      return new Response(JSON.stringify({ _: 'updates.differenceEmpty', date: 1, seq: 0 }), { status: 200 })
     }
     throw new Error('unexpected fetch ' + u)
   }))
   capturedConnDeps = null
-  applyLive.mockClear()
+  processUpdate.mockClear()
 })
 
 afterEach(() => { vi.unstubAllGlobals() })
@@ -110,8 +121,8 @@ describe('createWorkerCore(): канальные кадры уходят в пе
   // updateNewChannelMessage, курсор внутри него параметром `pts`, адрес пира
   // внутри конструктора сообщения. Именно дискриминатор и отвечает «курсор
   // канальный»: своего имени у канального курсора в схеме нет.
-  it('пост канала → channelFunnel.applyLive с пиром из message.peer_id', () => {
-    boot()
+  it('пост канала → channelFunnel.processUpdate с пиром из message.peer_id', async () => {
+    await boot()
 
     capturedConnDeps!.onFrame('new_message', {
       _: 'updateNewChannelMessage',
@@ -128,13 +139,13 @@ describe('createWorkerCore(): канальные кадры уходят в пе
       },
     })
 
-    expect(applyLive).toHaveBeenCalledTimes(1)
+    expect(processUpdate).toHaveBeenCalledTimes(1)
     // peerId канала — ОТРИЦАТЕЛЬНЫЙ (знаковый PeerId: чат < 0), как его считает
     // getPeerId по конструктору peerChannel.
-    expect(applyLive.mock.calls[0][0]).toBe(-42)
+    expect(processUpdate.mock.calls[0][0]).toBe(-42)
     // Ключом маршрутизации едет КОНСТРУКТОР, а не тип конверта.
-    expect(applyLive.mock.calls[0][1]).toBe('updateNewChannelMessage')
-    expect(applyLive.mock.calls[0][2]).toBe(7)
+    expect(processUpdate.mock.calls[0][1]).toBe('updateNewChannelMessage')
+    expect(processUpdate.mock.calls[0][2]).toBe(7)
   })
 
   // Кадр метаданных канала сообщения не несёт — пир у него СВОЙ параметр
@@ -142,8 +153,8 @@ describe('createWorkerCore(): канальные кадры уходят в пе
   // конструктор: updateChannelFullSnapshot. Прежде на его месте ехал
   // updateChatFullSnapshot (тот же, что у группы) плюс ключ `channel_pts` —
   // второе имя курсора, по которому клиент и решал вид кадра.
-  it('снимок карточки канала → applyLive с пиром из параметра peer', () => {
-    boot()
+  it('снимок карточки канала → processUpdate с пиром из параметра peer', async () => {
+    await boot()
 
     capturedConnDeps!.onFrame('chat_update', {
       _: 'updateChannelFullSnapshot',
@@ -153,17 +164,17 @@ describe('createWorkerCore(): канальные кадры уходят в пе
       pts_count: 1,
     })
 
-    expect(applyLive).toHaveBeenCalledTimes(1)
-    expect(applyLive.mock.calls[0][0]).toBe(-42)
-    expect(applyLive.mock.calls[0][1]).toBe('updateChannelFullSnapshot')
-    expect(applyLive.mock.calls[0][2]).toBe(3)
+    expect(processUpdate).toHaveBeenCalledTimes(1)
+    expect(processUpdate.mock.calls[0][0]).toBe(-42)
+    expect(processUpdate.mock.calls[0][1]).toBe('updateChannelFullSnapshot')
+    expect(processUpdate.mock.calls[0][2]).toBe(3)
   })
 
   // Тот же снимок, но ГРУППЫ, — другой конструктор и другой курсор: в
   // пер-канальную воронку он попадать не должен. Это вторая половина пары:
   // одним конструктором на оба журнала различить их было нечем.
   it('снимок карточки ГРУППЫ мимо пер-канальной воронки', async () => {
-    boot()
+    await boot()
 
     capturedConnDeps!.onFrame('chat_update', {
       _: 'updateChatFullSnapshot',
@@ -173,7 +184,7 @@ describe('createWorkerCore(): канальные кадры уходят в пе
       pts_count: 1,
     })
 
-    expect(applyLive).not.toHaveBeenCalled()
+    expect(processUpdate).not.toHaveBeenCalled()
     // …и не «нигде»: курсор пер-юзерной воронки не гидрирован, поэтому она на
     // этом кадре просит догон. Без этой половины кейс был бы зелёным и от кадра,
     // потерянного вовсе.
@@ -185,7 +196,7 @@ describe('createWorkerCore(): канальные кадры уходят в пе
   // кадров, и различает их только дискриминатор. Прочитай развилка курсор без
   // оглядки на него — каждое личное сообщение поехало бы в чужую воронку.
   it('сообщение личного чата мимо пер-канальной воронки', async () => {
-    boot()
+    await boot()
 
     capturedConnDeps!.onFrame('new_message', {
       _: 'updateNewMessage',
@@ -197,7 +208,7 @@ describe('createWorkerCore(): канальные кадры уходят в пе
       },
     })
 
-    expect(applyLive).not.toHaveBeenCalled()
+    expect(processUpdate).not.toHaveBeenCalled()
     await vi.waitFor(() => expect(syncCalls).toHaveLength(1))
   })
 })

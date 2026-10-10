@@ -44,7 +44,7 @@ type mirrorDelivery struct {
 // вызывающий обязан после коммита позвать publishMessageDelivery с этим
 // результатом (см. её комментарий и вызовы в message.go/channel.go/
 // message_forward.go/suggested.go), иначе зеркало осядет в БД, но не
-// доедет до подписчиков в реальном времени/через /sync.
+// доедет до подписчиков в реальном времени/через getDifference.
 func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message) (*mirrorDelivery, error) {
 	if i.groups == nil {
 		return nil, nil
@@ -154,7 +154,7 @@ func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message)
 	// Доставка зеркала переиспользует обычный путь группового сообщения — тот
 	// же веер по MemberIDs, что у Send (design-doc, раздел «Создание»): без
 	// него зеркало ложится в БД, но не попадает в pts-лог получателей (клиент
-	// не увидит его в /sync), в unread, в realtime-кадр, а кэш диалогов
+	// не увидит его в getDifference), в unread, в realtime-кадр, а кэш диалогов
 	// участников группы не инвалидируется — подписчики канала узнают о
 	// комментируемом посте только перезагрузив историю руками.
 	// thread_root_id у зеркала не нуждается в переводе (в отличие от Send):

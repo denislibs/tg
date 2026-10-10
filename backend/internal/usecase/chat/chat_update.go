@@ -9,7 +9,7 @@ import (
 // chatUpdatePayload — АБСОЛЮТНЫЙ снимок чата (не дифф) в форме оригинала:
 // messages.chatFull, то есть полная карточка ВМЕСТЕ с краткой формой самого
 // чата. Как и у reaction/poll, абсолютное представление делает catch-up через
-// /sync идемпотентным — клиент просто заменяет карточку чата на этот снимок,
+// getDifference идемпотентным — клиент просто заменяет карточку чата на этот снимок,
 // в каком бы порядке апдейты ни доехали.
 //
 // Это ТОТ ЖЕ объект, что отдаёт ручка карточки (GroupHandler.Card). Раньше
@@ -46,7 +46,7 @@ func chatFullSnapshotPayload(tag string, peer domain.PeerID, c domain.ChatRecord
 
 // publishChatUpdate логирует и рассылает участникам chat_update — абсолютный
 // снимок метаданных чата после мутации (title/photo/member/admin/settings), так
-// что изменение доезжает и через /sync (плотный pts-курсор), а не только живым
+// что изменение доезжает и через getDifference (плотный pts-курсор), а не только живым
 // кадром. Снимок viewer-agnostic (viewerID=0): один payload всем и в лог.
 // Best-effort — метаданные косметические, ошибка рассылки не должна валить мутацию.
 func (i *Interactor) publishChatUpdate(ctx context.Context, chatID int64) {

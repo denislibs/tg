@@ -32,9 +32,13 @@ func (r *GroupRepo) CreateMultiMember(ctx context.Context, typ, title, about, us
 	if username != "" {
 		u = username
 	}
+	// pts журнала канала есть с создания (1, как у оригинала): клиент заводит
+	// состояние канала только из известного pts (tweb addChannelState без pts
+	// бросает), и без него первый пост нового канала отбросился бы как
+	// «уже учтённый».
 	err := q.QueryRow(ctx,
-		`INSERT INTO chats (type, title, about, username, is_public, creator_id)
-		 VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+		`INSERT INTO chats (type, title, about, username, is_public, creator_id, channel_pts)
+		 VALUES ($1,$2,$3,$4,$5,$6, CASE WHEN $1 = 'channel' THEN 1 ELSE 0 END) RETURNING id`,
 		typ, title, about, u, isPublic, creatorID).Scan(&id)
 	return id, err
 }

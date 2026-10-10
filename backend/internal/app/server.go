@@ -236,8 +236,8 @@ func registerServer(p serverParams) {
 		// Диспетчеру запланированных «отправить когда онлайн» нужен запрос presence.
 		p.ChatUC.SetPresence(presenceMgr)
 		hub := ws.NewHub(p.Ctx, p.Redis.Client)
-		// Вступившего в канал хаб подписывает на топик тем же правилом, что
-		// кадр subscribe_channel.
+		// Вступившего в канал хаб подписывает на топик по правилу доступа к
+		// каналу (CanSubscribeChannel).
 		hub.SetChannelGate(p.ChatUC.CanSubscribeChannel)
 		p.LC.Append(fx.Hook{OnStop: func(context.Context) error { return hub.Close() }})
 		wsHandler = ws.NewHandler(hub, p.AuthUC, p.ChatUC, presenceMgr, p.Cfg.WebAuthnOrigins, p.Cfg.DNPServerPrivKey)
@@ -353,7 +353,7 @@ func registerServer(p serverParams) {
 	statsUC := usecasestats.New(pgadapter.NewStatsRepo(p.Pool))
 	foldersUC := usecasefolders.New(pgadapter.NewFoldersRepo(p.Pool), pgadapter.NewFolderChatAccess(p.Pool, p.ChatUC.JoinFolderChat, p.ChatUC.AnnounceChannelJoin), pgadapter.NewTxManager(p.Pool))
 	// folder_update: логируем мутации папок в пер-юзерный апдейт-лог (плотный
-	// pts-курсор для /sync), а при живом Redis — ещё и шлём кадр на устройства
+	// pts-курсор для getDifference), а при живом Redis — ещё и шлём кадр на устройства
 	// владельца.
 	foldersUC.SetUpdateLog(pgadapter.NewUpdatesRepo(p.Pool))
 	// Слой разрешения peerId ↔ chatID: правила папок едут ключами пиров.

@@ -13,7 +13,7 @@
 // внутри самого appMessagesManager. Транспорт (`conn.sendMessage`) приходит туда
 // инъекцией при сборке (workerCore.ts), поэтому кольца импортов не возникает.
 // Здесь остались только то, что и правда про соединение: старт, статус,
-// read-маркеры, typing, подписка на каналы.
+// read-маркеры, typing, опрос открытого канала.
 
 import type { newConnectionManager } from './connectionManager'
 import type { ChannelFunnel } from './channelFunnel'
@@ -124,12 +124,11 @@ export function newRealtime({ conn, sync, syncWait, tokens, messages, broadcast,
     },
     async sendTyping(args: { peerId: number; action?: SendMessageAction }) { conn.sendTyping(args.peerId, args.action ?? { _: 'sendMessageTypingAction' }); return { ok: true } },
     async sendCallFrame(args: { type: string; data: Record<string, unknown> }) { conn.sendCallFrame(args.type, args.data); return { ok: true } },
-    // Подписка на канал = вход в per-channel funnel: подписаться на топик (живые
-    // кадры) + open (сид курсора из IDB и добор пропущенного через difference).
-    // open() отклоняется на недоступном IDB (loadPts) — глотаем: канал остаётся
-    // несидированным, базу возьмёт первый живой кадр. Сам catchUp() внутри funnel'а
-    // отказ уже глотает (channelFunnel.ts), так что кроем ровно чтение курсора.
-    async subscribeChannel(args: { peerId: number }) { conn.subscribeChannel(args.peerId); void channelFunnel.open(args.peerId).catch(() => {}); return { ok: true } },
-    async unsubscribeChannel(args: { peerId: number }) { conn.unsubscribeChannel(args.peerId); channelFunnel.close(args.peerId); return { ok: true } },
+    // tweb `apiUpdatesManager.subscribeToChannelUpdates` /
+    // `unsubscribeFromChannelUpdates` (:850-875) — опрос разницы открытой ленты
+    // канала, где пользователь не участник: живых кадров канала ему сервер не
+    // шлёт. Канал — ключом пира.
+    async subscribeToChannelUpdates(args: { peerId: number }) { channelFunnel.subscribe(args.peerId); return { ok: true } },
+    async unsubscribeFromChannelUpdates(args: { peerId: number; force?: boolean }) { channelFunnel.unsubscribe(args.peerId, args.force); return { ok: true } },
   }
 }

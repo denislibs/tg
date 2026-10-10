@@ -32,31 +32,20 @@ describe('globalFunnel.applyUpdate — live-next', () => {
   it('live-кадр pts===cursor+1 применяется с catchUp:false и двигает курсор', async () => {
     const h = harness()
     await h.cursor.ready()
-    h.funnel.applyUpdate('read', h.cursor.get().pts + 1, { x: 1 }, true)
+    h.funnel.applyUpdate('read', h.cursor.get().pts + 1, { x: 1 })
     expect(h.dispatched).toEqual([{ t: 'read', d: { x: 1 }, pts: 1, catchUp: false }])
     expect(h.cursor.get().pts).toBe(1)
   })
 })
 
-describe('globalFunnel.applyUpdate — /sync', () => {
-  it('sync-кадр pts===cursor+1 применяется с catchUp:true', async () => {
-    const h = harness()
-    await h.cursor.ready()
-    h.funnel.applyUpdate('read', h.cursor.get().pts + 1, { x: 1 }, false)
-    expect(h.dispatched).toEqual([{ t: 'read', d: { x: 1 }, pts: 1, catchUp: true }])
-    expect(h.cursor.get().pts).toBe(1)
-  })
-})
-
 describe('globalFunnel.applyUpdate — дубль', () => {
-  it('pts <= cursor отбрасывается в обеих ветках (live и sync)', async () => {
+  it('pts <= cursor отбрасывается', async () => {
     const h = harness()
     await h.cursor.ready()
-    h.funnel.applyUpdate('read', 1, {}, true)   // next → cursor=1
+    h.funnel.applyUpdate('read', 1, {})   // next → cursor=1
     h.dispatched.length = 0
-    h.funnel.applyUpdate('read', 1, {}, true)   // dup (live)
-    h.funnel.applyUpdate('read', 1, {}, false)  // dup (sync)
-    h.funnel.applyUpdate('read', 0, {}, false)  // dup (позади)
+    h.funnel.applyUpdate('read', 1, {})   // dup
+    h.funnel.applyUpdate('read', 0, {})   // dup (позади)
     expect(h.dispatched).toHaveLength(0)
     expect(h.cursor.get().pts).toBe(1)
   })
@@ -66,11 +55,11 @@ describe('globalFunnel.applyUpdate — дыра live', () => {
   it('придерживает out-of-order кадр, а недостающий закрывает дыру и дренажит по порядку', async () => {
     const h = harness()
     await h.cursor.ready()
-    h.funnel.applyUpdate('read', 2, { future: true }, true)  // gap → буфер, dispatch не вызван
+    h.funnel.applyUpdate('read', 2, { future: true })  // gap → буфер, dispatch не вызван
     expect(h.dispatched).toHaveLength(0)
     expect(h.cursor.get().pts).toBe(0)
 
-    h.funnel.applyUpdate('read', 1, { a: 1 }, true)  // next закрывает дыру → 1, затем дренаж 2
+    h.funnel.applyUpdate('read', 1, { a: 1 })  // next закрывает дыру → 1, затем дренаж 2
     expect(h.dispatched).toEqual([
       { t: 'read', d: { a: 1 }, pts: 1, catchUp: false },
       { t: 'read', d: { future: true }, pts: 2, catchUp: false },
@@ -83,7 +72,7 @@ describe('globalFunnel.applyUpdate — без pts', () => {
   it('кадр без pts транслируется без meta, курсор не трогается, гейты не применяются', async () => {
     const h = harness()
     await h.cursor.ready()
-    h.funnel.applyUpdate('typing', undefined, { chat: 1 }, true)
+    h.funnel.applyUpdate('typing', undefined, { chat: 1 })
     expect(h.dispatched).toEqual([{ t: 'typing', d: { chat: 1 }, pts: undefined, catchUp: undefined }])
     expect(h.cursor.get().pts).toBe(0)
   })
@@ -94,7 +83,7 @@ describe('globalFunnel.applyUpdate — гейт syncLoading', () => {
     const h = harness()
     await h.cursor.ready()
     h.syncing.value = true
-    h.funnel.applyUpdate('read', 1, {}, true)
+    h.funnel.applyUpdate('read', 1, {})
     expect(h.dispatched).toHaveLength(0)
     expect(h.cursor.get().pts).toBe(0)
   })
@@ -112,7 +101,7 @@ describe('globalFunnel.applyUpdate — гейт гидратации', () => {
       isSyncing: () => false,
       catchUp,
     })
-    funnel.applyUpdate('read', 1, {}, true)
+    funnel.applyUpdate('read', 1, {})
     expect(dispatched).toHaveLength(0)
     expect(catchUp).toHaveBeenCalledTimes(1)
   })
@@ -124,13 +113,13 @@ describe('globalFunnel.applyUpdate — таймаут дыры', () => {
     try {
       const h = harness({ syncDelay: 0 })
       await h.cursor.ready()
-      h.funnel.applyUpdate('read', 3, {}, true)  // gap → буфер, планируем таймер
+      h.funnel.applyUpdate('read', 3, {})  // gap → буфер, планируем таймер
       expect(h.catchUp).not.toHaveBeenCalled()
       await vi.advanceTimersByTimeAsync(10)
       expect(h.catchUp).toHaveBeenCalledTimes(1)
 
       // Буфер очищен: последующий next больше не тянет за собой призрачный дренаж pts=3.
-      h.funnel.applyUpdate('read', 1, { a: 1 }, true)
+      h.funnel.applyUpdate('read', 1, { a: 1 })
       expect(h.dispatched).toEqual([{ t: 'read', d: { a: 1 }, pts: 1, catchUp: false }])
     } finally {
       vi.useRealTimers()
@@ -142,10 +131,25 @@ describe('globalFunnel.clear()', () => {
   it('придержанный кадр после clear() не всплывает при следующем по порядку', async () => {
     const h = harness()
     await h.cursor.ready()
-    h.funnel.applyUpdate('read', 3, { future: true }, true)  // gap → буфер
+    h.funnel.applyUpdate('read', 3, { future: true })  // gap → буфер
     h.funnel.clear()
-    h.funnel.applyUpdate('read', 1, { a: 1 }, true)  // next → применяется, но дренажа быть не должно
+    h.funnel.applyUpdate('read', 1, { a: 1 })  // next → применяется, но дренажа быть не должно
     expect(h.dispatched).toEqual([{ t: 'read', d: { a: 1 }, pts: 1, catchUp: false }])
     expect(h.cursor.get().pts).toBe(1)
+  })
+})
+
+// Ревью #410, №3: применённый живой кадр двигает дату состояния (tweb
+// :736-738, :774-776) — от неё сервер решает, какие каналы клиент пропустил.
+describe('globalFunnel.applyUpdate — дата состояния', () => {
+  it('кадр с сообщением двигает cursor.date его датой (edit_date, если позже)', async () => {
+    const h = harness()
+    await h.cursor.ready()
+    h.funnel.applyUpdate('updateNewMessage', 1, { message: { date: 1000 } })
+    expect(h.cursor.get().date).toBe(1000)
+    h.funnel.applyUpdate('updateEditMessage', 2, { message: { date: 900, edit_date: 1200 } })
+    expect(h.cursor.get().date).toBe(1200)
+    h.funnel.applyUpdate('read', 3, {})            // даты нет — не двигает
+    expect(h.cursor.get().date).toBe(1200)
   })
 })

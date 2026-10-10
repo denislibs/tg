@@ -218,6 +218,10 @@ func (c groupMembershipChats) FindSaved(context.Context, int64) (int64, error) {
 	return 0, domain.ErrNotFound
 }
 func (c groupMembershipChats) CreateSaved(context.Context, int64) (int64, error) { return 0, nil }
+func (c groupMembershipChats) ChannelsChangedSince(ctx context.Context, userID, _ int64) ([]domain.ChannelCursor, error) {
+	return c.ChannelCursors(ctx, userID, 1<<30)
+}
+func (c groupMembershipChats) UnreadTotal(context.Context, int64) (int, error)   { return 0, nil }
 func (c groupMembershipChats) MemberIDs(context.Context, int64) ([]int64, error) { return nil, nil }
 func (c groupMembershipChats) ChatTitle(_ context.Context, chatID int64) (string, error) {
 	c.fg.mu.Lock()
@@ -495,7 +499,7 @@ func TestChannelDifference_CarriesClientMsgID(t *testing.T) {
 		t.Fatalf("PostToChannel: %v", err)
 	}
 
-	ups, err := i.GetChannelDifference(ctx, id, 7, 0, 100)
+	ups, err := channelJournal(ctx, i, id, 7, 0)
 	if err != nil || len(ups) == 0 {
 		t.Fatalf("GetChannelDifference: %v, %d строк", err, len(ups))
 	}
@@ -557,7 +561,7 @@ func TestPostToChannel_KeepsEntities(t *testing.T) {
 	}
 
 	// 3. и в difference — реплей должен совпадать с живым кадром
-	ups, err := i.GetChannelDifference(ctx, id, 7, 0, 100)
+	ups, err := channelJournal(ctx, i, id, 7, 0)
 	if err != nil || len(ups) == 0 {
 		t.Fatalf("GetChannelDifference: %v, %d строк", err, len(ups))
 	}
@@ -595,20 +599,6 @@ func TestPostToChannel_SanitizesEntities(t *testing.T) {
 	}
 }
 
-func TestGetChannelDifference(t *testing.T) {
-	i, _, _, _ := newChannelTestInteractor(t)
-	id, _ := i.CreateChannel(context.Background(), 7, "News", "", "", true)
-	_, _ = i.PostToChannel(context.Background(), id, 7, "a", nil, "")
-	_, _ = i.PostToChannel(context.Background(), id, 7, "b", nil, "")
-	ups, err := i.GetChannelDifference(context.Background(), id, 7, 1, 100)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(ups) != 1 {
-		t.Fatalf("diff since 1 = %d", len(ups))
-	}
-}
-
 // SetSignatures on a channel must broadcast chat_update once over the channel
 // envelope (O(1)) — NOT fan out one per-user log row per subscriber — and land as
 // a typed row in the channel difference so subscribers catch it up on open.
@@ -628,7 +618,7 @@ func TestSetSignatures_ChannelBroadcastNoFanout(t *testing.T) {
 		t.Fatalf("channel publishes=%d, want 1 (no per-subscriber fan-out)", fpub.count)
 	}
 	// and one typed chat_update row in the channel difference feed
-	ups, err := i.GetChannelDifference(ctx, id, 7, 0, 100)
+	ups, err := channelJournal(ctx, i, id, 7, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -647,4 +637,16 @@ func TestJoinPublicChannel(t *testing.T) {
 	if _, err := fg.GetMember(context.Background(), id, 9); err != nil {
 		t.Fatal("joiner not subscriber")
 	}
+}
+
+// channelJournal — строки журнала канала после since глазами viewer (с его
+// pFlags.out на своих постах): то, из чего собирается
+// updates.getChannelDifference. Тесты содержимого журнала читают его
+// напрямую, минуя свёртку разницы.
+func channelJournal(ctx context.Context, i *Interactor, channelID, viewerID, since int64) ([]domain.ChannelUpdate, error) {
+	ups, err := i.channels.UpdatesSince(ctx, channelID, since, 100)
+	if err != nil {
+		return nil, err
+	}
+	return i.markOwnPosts(ctx, channelID, viewerID, ups), nil
 }

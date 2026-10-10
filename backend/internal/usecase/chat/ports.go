@@ -1,4 +1,4 @@
-// Package chat is the chat/message/sync/reactions application logic.
+// Package chat is the chat/message/updates/reactions application logic.
 package chat
 
 import (
@@ -43,6 +43,11 @@ type ChatRepo interface {
 	// участник (не забанен: chatReadableBy), с pts их журналов; не больше
 	// limit. Одним запросом: на их топики подписывается новое соединение.
 	ChannelCursors(ctx context.Context, userID int64, limit int) ([]domain.ChannelCursor, error)
+	// ChannelsChangedSince — каналы пользователя, чей журнал сдвинулся после
+	// since (unix-секунды), с текущим pts: updateChannelTooLong в getDifference.
+	ChannelsChangedSince(ctx context.Context, userID, since int64) ([]domain.ChannelCursor, error)
+	// UnreadTotal — unread_count состояния ящика (updates.state).
+	UnreadTotal(ctx context.Context, userID int64) (int, error)
 	IsMember(ctx context.Context, chatID, userID int64) (bool, error)
 	// Access — снимок доступа зрителя к чату одним запросом (вид, публичность,
 	// членство с ролью, бан); domain.ErrNotFound — чата нет. Решение «пускать
@@ -1082,34 +1087,10 @@ type HistoryResult struct {
 	Count    int
 }
 
-// SyncUpdate — один апдейт catch-up с явным типом и pts (в отличие от голого
-// payload раньше). Тип убирает эвристику «по наличию поля» на клиенте (P0-3);
-// pts даёт клиенту тот же плотный монотонный курсор, что и живой путь (P0-2/P0-4).
-type SyncUpdate struct {
-	Type    string          `json:"t"`
-	Pts     int64           `json:"pts"`
-	Payload json.RawMessage `json:"d"`
-}
-
-type Difference struct {
-	NewMessages  []SyncUpdate     `json:"new_messages"`
-	OtherUpdates []SyncUpdate     `json:"other_updates"`
-	State        domain.UserState `json:"state"`
-	Slice        bool             `json:"slice"`
-	TooLong      bool             `json:"too_long"`
-	// Users/Chats — карточки всех, на кого ссылаются строки разницы, глазами
-	// зрителя: у оригинала updates.difference несёт их обязательными
-	// векторами, и клиент сохраняет пиров ДО применения апдейтов
-	// (apiUpdatesManager.ts:341-342). Без них сущность, впервые пришедшая
-	// офлайн, оставалась без имени (A4-05).
-	Users []domain.UserReal `json:"users"`
-	Chats []domain.Chat     `json:"chats"`
-}
-
 const (
 	syncLimit = 500
-	// tooLongThreshold — на сколько pts клиент может отстать, прежде чем /sync
-	// отдаст too_long (полный ре-синк снапшотом вместо диффа). Wave 2 логирует в
+	// tooLongThreshold — на сколько pts клиент может отстать, прежде чем
+	// getDifference отдаст differenceTooLong (полный ре-синк снапшотом вместо диффа). Wave 2 логирует в
 	// пер-юзерный апдейт-лог заметно больше типов (draft/dialog_*/poll/checklist/
 	// giveaway/boost/theme/web_page/paid_media/balance/user/folder/chat_update),
 	// поэтому pts на пользователя растёт быстрее и старый порог 2000 срабатывал бы

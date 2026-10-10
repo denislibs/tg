@@ -123,7 +123,7 @@ func TestMigration0100_ConvertsStoredEntities(t *testing.T) {
 		t.Fatalf("seed suggested: %v", err)
 	}
 
-	// Замороженный кадр в журнале апдейтов: его клиент переигрывает при /sync.
+	// Замороженный кадр в журнале апдейтов: его клиент переигрывает при getDifference.
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO updates (user_id, pts, type, payload)
 		 VALUES ($1, 1, 'new_message', jsonb_build_object(

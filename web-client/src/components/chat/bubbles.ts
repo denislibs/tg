@@ -376,8 +376,8 @@ export interface BubblesManagers extends PeerTitleManagers {
     markRead(args: { peerId: number, upToId: number }): Promise<unknown>
     /** Живая подписка канала на время окна (см. хвост `setPeer`). Опциональна: без
      *  неё лента рисует канал, но живых постов не ждёт. */
-    subscribeChannel?(args: { peerId: number }): Promise<unknown>
-    unsubscribeChannel?(args: { peerId: number }): Promise<unknown>
+    subscribeToChannelUpdates?(args: { peerId: number }): Promise<unknown>
+    unsubscribeFromChannelUpdates?(args: { peerId: number }): Promise<unknown>
   }
   /** Порт `appMessagesManager.incrementMessageViews(peerId, mids)` — РЕГИСТРАЦИЯ
    *  просмотра показавшихся постов (tweb bubbles.ts:2145 из
@@ -4704,23 +4704,22 @@ export default class ChatBubbles implements BubbleGroupsHost {
       throw err
     }).catch(noop).finally(finishSetPeer)
 
-    // tweb :6489-6525 (`setFetchHistoryInterval`) — живая подписка канала на
-    // время окна: посты и метаданные едут per-channel funnel воркера, пропущенное
-    // добирается `/difference` при открытии (`realtime.subscribeChannel`).
-    // Отписка — на смене окна или сносе ленты (`middleware.onClean`).
+    // tweb :6489-6525 (`setFetchHistoryInterval`) — опрос разницы канала на
+    // время окна (`apiUpdatesManager.subscribeToChannelUpdates`); отписка — на
+    // смене окна или сносе ленты (`middleware.onClean`).
     //
     // Только НЕ участнику (tweb `isFetchIntervalNeeded`, appMessagesManager.ts
-    // :12631-12636): участника сервер держит на топике канала с подключения до
-    // выбытия, и подписка ленты ему не нужна.
-    if(this.chat.isBroadcast && !isInChat(cachedChat(peerId)) && this.managers.realtime.subscribeChannel) {
+    // :12631-12636): участнику посты канала сервер шлёт живыми кадрами с
+    // подключения до выбытия.
+    if(this.chat.isBroadcast && !isInChat(cachedChat(peerId)) && this.managers.realtime.subscribeToChannelUpdates) {
       const channelMiddleware = this.getMiddleware()
       const { realtime } = this.managers
       void setPeerPromise.then(() => {
         if(!channelMiddleware()) return
         channelMiddleware.onClean(() => {
-          void realtime.unsubscribeChannel?.({ peerId })
+          void realtime.unsubscribeFromChannelUpdates?.({ peerId })
         })
-        void realtime.subscribeChannel?.({ peerId })
+        void realtime.subscribeToChannelUpdates?.({ peerId })
       }, noop)
     }
 

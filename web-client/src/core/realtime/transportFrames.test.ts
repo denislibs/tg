@@ -11,7 +11,14 @@ describe('transportFrames', () => {
 
   it('logged/bespoke типы НЕ попадают в PASS_THROUGH (идут через воронку/onFrame)', () => {
     expect(PASS_THROUGH[LOGGED_WITHOUT_CONSTRUCTOR]).toBeUndefined()
-    expect(PASS_THROUGH['hello']).toBeUndefined()
+    expect(PASS_THROUGH['pong']).toBeUndefined()
+  })
+
+  // Догонка — методы updates.* (getState/getDifference/getChannelDifference),
+  // как у оригинала: своих транспортных кадров догонки у нас больше нет.
+  it('кадров догонки hello/channel_state нет', () => {
+    expect(TRANSPORT_FRAMES).not.toHaveProperty('hello')
+    expect(TRANSPORT_FRAMES).not.toHaveProperty('channel_state')
   })
 
   // Кадр с курсором, но без конструктора, у нас ровно один — и это ЗАДАЧА (#51),

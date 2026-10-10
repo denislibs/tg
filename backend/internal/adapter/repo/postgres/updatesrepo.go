@@ -108,7 +108,7 @@ func (r *UpdatesRepo) GetUserState(ctx context.Context, userID int64) (domain.Us
 func (r *UpdatesRepo) UpdatesSince(ctx context.Context, userID, sincePts int64, limit int) ([]domain.UpdateRecord, error) {
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
-		`SELECT pts, pts_count, type, payload FROM updates
+		`SELECT pts, pts_count, type, payload, floor(extract(epoch FROM created_at))::bigint FROM updates
 		 WHERE user_id=$1 AND pts>$2 ORDER BY pts ASC LIMIT $3`, userID, sincePts, limit)
 	if err != nil {
 		return nil, err
@@ -117,7 +117,7 @@ func (r *UpdatesRepo) UpdatesSince(ctx context.Context, userID, sincePts int64, 
 	var out []domain.UpdateRecord
 	for rows.Next() {
 		var u domain.UpdateRecord
-		if err := rows.Scan(&u.Pts, &u.PtsCount, &u.Type, &u.Payload); err != nil {
+		if err := rows.Scan(&u.Pts, &u.PtsCount, &u.Type, &u.Payload, &u.Date); err != nil {
 			return nil, err
 		}
 		out = append(out, u)

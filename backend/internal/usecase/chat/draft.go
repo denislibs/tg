@@ -110,7 +110,7 @@ func (i *Interactor) deleteDraft(ctx context.Context, userID, chatID int64) erro
 
 // publishDraft логирует и шлёт draft_update на все устройства владельца (d nil —
 // черновик снят): запись в апдейт-лог даёт плотный курсор, так что смена
-// черновика доезжает и через /sync.
+// черновика доезжает и через getDifference.
 func (i *Interactor) publishDraft(ctx context.Context, userID, chatID int64, d *domain.Draft) {
 	_ = i.logAndPublishPerPeer(ctx, chatID, []int64{userID}, "draft_update",
 		func(peer domain.PeerID) map[string]any { return draftPayload(peer, d) })

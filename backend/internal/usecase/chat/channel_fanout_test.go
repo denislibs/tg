@@ -407,7 +407,7 @@ func TestAddMember_AnnouncesChannelJoin(t *testing.T) {
 }
 
 // Топики нового соединения: только broadcast-каналы пользователя и только
-// прошедшие тот же гейт, что subscribe_channel (забаненный — нет).
+// прошедшие тот же гейт, что CanSubscribeChannel (забаненный — нет).
 func TestChannelSubscriptions_GatedBroadcastOnly(t *testing.T) {
 	e := newChannelEnv(t)
 	ctx := context.Background()
@@ -486,7 +486,7 @@ func TestChannelDifference_OwnPostsOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	outOf := func(viewer int64) bool {
-		ups, err := e.i.GetChannelDifference(ctx, e.ch, viewer, 0, 100)
+		ups, err := channelJournal(ctx, e.i, e.ch, viewer, 0)
 		if err != nil || len(ups) == 0 {
 			t.Fatalf("difference: %v %d", err, len(ups))
 		}

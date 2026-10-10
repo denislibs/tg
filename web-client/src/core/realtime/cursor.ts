@@ -4,9 +4,9 @@
 // точка правды по «до какого pts клиент уже применил апдейты». Живёт в
 // SharedWorker, персистится в IDB (ключи 'pts'/'date' — те же, что раньше писал
 // syncEngine), поэтому переживает reload вкладки И рестарт воркера. Всё логируемое
-// обновление (live-кадр {t,d} с d.pts И элемент /sync {t,pts,d}) сверяется с этим
+// обновление (живой кадр {t,d} с d.pts) сверяется с этим
 // курсором в funnel'е воркера: pts<=cursor — дубль, pts===cursor+1 — применить и
-// сдвинуть, pts>cursor+1 — дыра → catch-up.
+// сдвинуть, pts>cursor+1 — дыра → getDifference. Разница курсор ставит своим state.
 
 interface KV { get(k: string): Promise<unknown>; set(k: string, v: unknown): Promise<void> }
 
@@ -31,7 +31,7 @@ export interface Cursor {
   set(pts: number, date: number): void
   /**
    * Забыть состояние апдейтов — переход сессии (вход/выход). Курсор прошлой
-   * сессии к новой отношения не имеет; следующий hello станет базой заново
+   * сессии к новой отношения не имеет; базой заново станет updates.getState
    * (tweb `apiUpdatesManager.attach` без сохранённого state, :886-906 — у
    * оригинала state живёт в хранилище аккаунта и уходит вместе с ним).
    */
@@ -46,7 +46,7 @@ export function newCursor(store: KV, persistDelay = 1000): Cursor {
   let date = 0
   const ready = Promise.all([store.get('pts'), store.get('date')])
     .then(([p, d]) => {
-      // Мерж, не перезапись: /sync мог обогнать async-гидратацию и уже поднять
+      // Мерж, не перезапись: разница могла обогнать async-гидратацию и уже поднять
       // курсор — не откатываем назад (иначе catch-up переотдал бы применённое).
       if (typeof p === 'number') pts = Math.max(pts, p)
       // `date` — секунды (updates.state.date схемы, A4-18). Прежде сервер
@@ -60,7 +60,7 @@ export function newCursor(store: KV, persistDelay = 1000): Cursor {
   const persist = (): void => {
     if (timer) return
     // Отказ записи глотаем (KV = idbSet, он отклоняется на недоступном IDB): персист
-    // курсора — кэш, при потере он гидрируется нулём и первый же /sync его восстановит.
+    // курсора — кэш, при потере он гидрируется нулём и первый же updates.getState его восстановит.
     timer = setTimeout(() => {
       timer = null
       void store.set('pts', pts).catch(() => {})

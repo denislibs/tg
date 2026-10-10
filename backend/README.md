@@ -103,8 +103,10 @@ Postgres (назначает монотонный `seq`) → `message_ack` от�
 ### Консистентность и догон
 
 - **Порядок**: у сообщения есть монотонный `seq` в пределах чата (курсор истории/пагинации).
-- **Догон после оффлайна**: `GET /sync` отдаёт апдейты с момента последнего курсора; для каналов —
-  `GET /channels/{id}/difference` по `pts`. Клиент применяет их тем же путём, что и live-события.
+- **Догон после оффлайна** — методы схемы, как у Telegram: `GET /updates/state` (updates.getState),
+  `GET /updates/difference?pts=&date=` (updates.getDifference; в `other_updates` —
+  `updateChannelTooLong` по сдвинувшимся каналам) и `GET /updates/channel_difference?channel=&pts=`
+  (updates.getChannelDifference). Клиент применяет их тем же путём, что и live-события.
 - **Presence** (online/last-seen) и typing — эфемерны, живут в Redis (TTL), не пишутся в Postgres.
 
 ## HTTP API
@@ -135,10 +137,10 @@ Postgres (назначает монотонный `seq`) → `message_ack` от�
 
 - **Профиль/сессии:** `GET/PATCH /me`, `PUT /me/username`, `GET /username/available`, `PUT /me/avatar`, `GET /sessions`, `DELETE /sessions/{deviceID}`, `POST /auth/logout`, `POST /auth/qr/confirm`, `POST /auth/web_token`
 - **Чаты/сообщения:** `POST /chats`, `POST /saved`, `GET /chats`, `GET /peer_dialogs?peers=` (messages.getPeerDialogs), `POST /chats/{id}/messages`, `PATCH|DELETE /chats/{id}/messages/{msgID}`, `POST /chats/{id}/forward`, `POST|DELETE /chats/{id}/messages/{msgID}/pin`, `GET /chats/{id}/pins`, `GET /chats/{id}/messages/{msgID}/viewers`, `GET /chats/{id}/history`, `GET /chats/{id}/search`, `POST /chats/{id}/read`
-- **Sync:** `GET /sync` — апдейты с момента последнего запроса
+- **Updates:** `GET /updates/state`, `GET /updates/difference`, `GET /updates/channel_difference` — догонка (updates.getState/getDifference/getChannelDifference)
 - **Реакции:** `POST|DELETE|GET /chats/{id}/messages/{msgID}/reactions[/{emoji}]`
 - **Группы:** `POST /groups`, `GET /chats/{id}/card`, `GET /chats/{id}/members`, `PATCH /chats/{id}`, `GET /chats/{id}/username/available` (channels.checkUsername; имена пользователей и чатов — одно пространство), `POST|DELETE /chats/{id}/members[/{userID}]`, `POST|DELETE /chats/{id}/admins[/{userID}]`, `POST /chats/{id}/mute`, `POST|GET /chats/{id}/invite_links`, `POST /join/{token}`, `GET /chats/{id}/join_requests`, `POST /chats/{id}/join_requests/{userID}/approve|decline`
-- **Каналы/обсуждения:** `POST /channels`, `POST /channels/{id}/messages`, `GET /channels/{id}/difference`, `POST /channels/join`, `POST /channels/{id}/discussion`, `POST|GET /channels/{id}/posts/{postId}/comments`, `GET /channels/{id}/comment_counts`
+- **Каналы/обсуждения:** `POST /channels`, `POST /channels/{id}/messages`, `POST /channels/join`, `POST /channels/{id}/discussion`, `POST|GET /channels/{id}/posts/{postId}/comments`, `GET /channels/{id}/comment_counts`
 - **Поиск/люди:** `GET /users`, `GET /search`, `GET /presence`
 - **Медиа:** `GET /media/token`, `POST /media/upload`, `GET /media/{id}`, `PUT /media/{id}/content`
 - **Push:** `GET /push/vapid_public_key`, `POST /push/subscribe`
@@ -159,7 +161,6 @@ Postgres (назначает монотонный `seq`) → `message_ack` от�
 | `message_error` | server → client | отказ доставки (`client_msg_id, reason`: `too_long` / `failed`) |
 | `read` | client → server | прочитано до `up_to_seq` |
 | `typing` | client → server | индикатор набора (`action`: typing/voice/video) |
-| `subscribe_channel` / `unsubscribe_channel` | client → server | подписка на апдейты канала |
 
 Реалтайм-события (новые сообщения, правки, удаления, реакции, read-receipts, typing, presence,
 отзыв сессии) рассылаются через Redis pub/sub.

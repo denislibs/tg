@@ -181,7 +181,7 @@ func TestChatsRepo_ChannelCursors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []domain.ChannelCursor{{ChatID: ch2, Pts: 0}, {ChatID: ch1, Pts: 2}}
+	want := []domain.ChannelCursor{{ChatID: ch2, Pts: 1}, {ChatID: ch1, Pts: 3}}
 	if !slices.Equal(got, want) {
 		t.Fatalf("каналы = %+v, want %+v (забаненный и группа — нет)", got, want)
 	}
@@ -190,6 +190,41 @@ func TestChatsRepo_ChannelCursors(t *testing.T) {
 	}
 	if title, _ := chats.ChatTitle(ctx, ch1); title != "A" {
 		t.Fatalf("ChatTitle = %q", title)
+	}
+}
+
+// updateChannelTooLong в getDifference — каналы пользователя (участник, не
+// бан), чей журнал сдвинулся после date клиента, с текущим pts.
+func TestChatsRepo_ChannelsChangedSince(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	chats, groups, channels := NewChatsRepo(pool), NewGroupRepo(pool), NewChannelRepo(pool)
+	ctx := context.Background()
+	u := seedUser(t, pool, "+79132")
+	fresh, _ := groups.CreateMultiMember(ctx, "channel", "Свежий", "", "", true, u)
+	_ = groups.AddMember(ctx, fresh, u, domain.RoleSubscriber, 0)
+	stale, _ := groups.CreateMultiMember(ctx, "channel", "Старый", "", "", true, u)
+	_ = groups.AddMember(ctx, stale, u, domain.RoleSubscriber, 0)
+	banned, _ := groups.CreateMultiMember(ctx, "channel", "Бан", "", "", true, u)
+	_ = groups.AddMember(ctx, banned, u, domain.RoleSubscriber, 0)
+	mustExec(t, pool, `INSERT INTO chat_bans (chat_id, user_id) VALUES ($1,$2)`, banned, u)
+	for _, ch := range []int64{fresh, fresh, stale, banned} {
+		if _, err := channels.AppendUpdate(ctx, ch, "new_message", []byte(`{}`)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustExec(t, pool, `UPDATE channel_updates SET created_at = now() - interval '1 hour' WHERE channel_id = $1`, stale)
+	since := time.Now().Add(-time.Minute).Unix()
+
+	got, err := chats.ChannelsChangedSince(ctx, u, since)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []domain.ChannelCursor{{ChatID: fresh, Pts: 3}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("сдвинувшиеся каналы = %+v, want %+v (старый и забаненный — нет)", got, want)
+	}
+	if got, _ := chats.ChannelsChangedSince(ctx, u, time.Now().Add(time.Minute).Unix()); len(got) != 0 {
+		t.Fatalf("после date клиента ничего не было, а каналы = %+v", got)
 	}
 }
 

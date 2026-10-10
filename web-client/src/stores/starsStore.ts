@@ -20,7 +20,7 @@ export function setStarsBalance(n: number): void {
  *
  * Cache-first (порт намерения tweb `getDialogFilters`, filters.ts:475-484):
  * баланс уже известен — в сеть не идём. Изменения приходят событием
- * balance_update, которое логируется с плотным pts и попадает в /difference
+ * balance_update, которое логируется с плотным pts и попадает в updates.getDifference
  * (backend wave2_updates_test.go:243-245), то есть пропуски после оффлайна
  * догоняются догоном апдейт-лога.
  *

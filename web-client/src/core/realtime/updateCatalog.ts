@@ -36,6 +36,8 @@ export const UPDATE_RT = {
   updateDeleteChannelMessages: RT.deleteMessage,
   updatePinnedChannelMessages: RT.pinMessage,
   updateChannel: RT.channel,
+  // Только в разнице и только состоянию канала: наружу не уходит (см. RT).
+  updateChannelTooLong: RT.channelTooLong,
   // Прочтение: «прочитал я» и «прочитали меня» — РАЗНЫЕ конструкторы, и
   // получатель больше не выводит «чьё это» сравнением user_id с собой.
   updateReadHistoryInbox: RT.read,
@@ -178,4 +180,17 @@ export function channelPeerId(u: Update): number | undefined {
     return getPeerId(u.peer)
   }
   return undefined
+}
+
+/**
+ * Дата апдейта для `updatesState.date` — у оригинала её несёт контейнер
+ * (`updates.date`, tweb apiUpdatesManager.ts:736-738 и :774-776). Наш живой
+ * кадр контейнера с датой не несёт, поэтому датой служит время самого
+ * события: у кадра с сообщением — его `edit_date` либо `date`. У прочих кадров
+ * даты нет, и дата состояния ими не двигается.
+ */
+export function updateDate(d: unknown): number | undefined {
+  const m = (d as { message?: { date?: number; edit_date?: number } } | null | undefined)?.message
+  if (!m || typeof m.date !== 'number') return undefined
+  return Math.max(m.date, m.edit_date ?? 0)
 }

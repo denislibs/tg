@@ -74,7 +74,7 @@ const MEDIA_RE = /^\/api\/media\/\d+\/content$/
  * index.html — network-first (онлайн всегда свежий, оффлайн — из кэша).
  * Имя app-shell-<build> штампует scripts/write-version.mjs на сборке: новый деплой →
  * новое имя → activate удаляет старые app-shell-* (см. ниже) → свежая оболочка. */
-const APP_SHELL = 'app-shell-1'
+const APP_SHELL = 'app-shell-2'
 const IMMUTABLE_RE = /^\/(assets|fonts)\//
 /* Потолок записей. Число обязано быть БОЛЬШЕ, чем ассетов в одной сборке,
  * иначе кэш вытесняет живые чанки текущей сборки, ещё пока она грузится, — и

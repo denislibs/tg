@@ -9,7 +9,7 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
-// Interactor is the chat/message/sync/reactions application logic. It depends
+// Interactor is the chat/message/updates/reactions application logic. It depends
 // only on ports; transactions are run through the TxManager port.
 type Interactor struct {
 	tx           TxManager
@@ -218,7 +218,7 @@ func (i *Interactor) SetProfilePhotos(p ProfilePhotoAdder) { i.profilePics = p }
 func (i *Interactor) SetPresence(p PresenceQuery) { i.presence = p }
 
 // nowUnix — дата строки журнала апдейтов: СЕКУНДЫ, как updates.state.date
-// схемы (A4-18). Прежде журнал писал миллисекунды, и /sync отдавал их в
+// схемы (A4-18). Прежде журнал писал миллисекунды, и getDifference отдавал их в
 // state.date.
 func nowUnix() int64 { return time.Now().Unix() }
 

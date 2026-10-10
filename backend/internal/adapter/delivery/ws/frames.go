@@ -13,28 +13,6 @@ type Frame struct {
 	D json.RawMessage `json:"d,omitempty"`
 }
 
-// helloFrame is the FIRST frame sent on connect: the user's current update cursor
-// (pts) and date, so a client whose cursor already matches can skip catch-up.
-//
-// channels — каналы, на топики которых соединение уже подписано, с текущим pts
-// их журналов: клиент догоняет только те, у кого pts ушёл вперёд от его
-// курсора, — аналог updateChannelTooLong в ответе getDifference у оригинала
-// (кадры топиков, пока сокета не было, пропали). Пара [peer_id, pts].
-func helloFrame(st domain.UserState, channels []domain.ChannelCursor) []byte {
-	chs := make([][2]int64, 0, len(channels))
-	for _, c := range channels {
-		chs = append(chs, [2]int64{int64(domain.ToPeerID(c.ChatID, true)), c.Pts})
-	}
-	b, err := json.Marshal(map[string]any{
-		"t": "hello",
-		"d": map[string]any{"pts": st.Pts, "date": st.Date, "channels": chs},
-	})
-	if err != nil {
-		return nil
-	}
-	return b
-}
-
 // Входящие кадры адресуют ПИРА знаковым ключом (пользователь ≥ 0, чат < 0);
 // внутренний chatID достаёт слой разрешения (usecase/chat/peeraddr.go).
 type sendMessageData struct {

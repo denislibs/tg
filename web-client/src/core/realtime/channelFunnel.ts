@@ -1,227 +1,280 @@
 // src/core/realtime/channelFunnel.ts
 //
-// Per-channel pts-конверт (Волна 5). Каналы не делят общий пер-юзерный курсор
-// (cursor.ts): у каждого канала свой плотный монотонный курсор, который сервер
-// шлёт и в живом кадре — параметром `pts` канального КОНСТРУКТОРА
-// (updateNewChannelMessage у поста, updateChannelFullSnapshot и
-// updateChannelBoostStatus у метаданных), — и в типизированном
-// GET /channels/{id}/difference. Этот модуль — тот же funnel, что глобальный
-// applyUpdate (dup/next/gap + буфер придержанных кадров), но по ключу peerId:
-// живые кадры канала гейтятся против его курсора, а дыра добирается через
-// difference. Массовая история поста грузится окном (REST) — funnel держит только
-// живой хвост, поэтому первый кадр «сидирует» курсор без реплея всего лога.
+// Состояния каналов — канальная половина tweb `apiUpdatesManager`
+// (`channelStates`, `addChannelState`/`getChannelState` :544-563,
+// `processUpdate` для канала :632-760, `getChannelDifference` :418-488,
+// `subscribeToChannelUpdates`/`unsubscribeFromChannelUpdates` :850-875).
 //
-// Заменяет наивное приближение pts≈maxSeq, которое раньше вёл React-хук
-// канальной обвязки (`core/hooks/useChannelLive.ts`, прежнее имя
-// `useChannelExtras`) мимо воркера.
+// У каждого канала свой плотный pts — журнал канала, общий для всех его
+// читателей. Состояние заводится ТОЛЬКО из известного pts: строки диалога
+// (`dialog.pts`, dialogs.ts:1756) или истории канала
+// (`messages.channelMessages.pts`, appMessagesManager.ts:13503-13505). Живой
+// кадр канала без состояния заводит его своим pts и сам отбрасывается как
+// уже учтённый (tweb `getChannelState(channelId, pts)` → «duplicate update»).
+// В хранилище состояния каналов не пишутся: у оригинала их тоже нет — после
+// перезапуска их снова дают диалоги.
+//
+// Пропущенное добирается `updates.getChannelDifference`:
+//   • по дыре в pts живого кадра — после SYNC_DELAY, если её не закрыли;
+//   • по `updateChannelTooLong` из `updates.getDifference` — канал сдвинулся,
+//     пока сокета не было;
+//   • опросом открытой ленты канала, где пользователь не участник: живых кадров
+//     ему сервер не шлёт (tweb `subscribeToChannelUpdates`).
 
 import { classifyPts } from './cursor'
-import { frameKey } from './updateCatalog'
-import { newPendingPts, type NewPendingPts } from './pendingPts'
+import { frameKey, updateDate } from './updateCatalog'
+import { newPendingPts, type PendingPts } from './pendingPts'
 import type { EventMeta } from '../../rpc/superMessagePort'
 import type { SyncState } from './syncWait'
+import type { Update } from './events'
 
-// Типизированный конверт канального апдейта — строка difference. `t` — тип
-// строки журнала; маршрутизируется кадр по КОНСТРУКТОРУ из тела (frameKey).
-export interface ChannelUpdate { t: string; pts: number; d: unknown }
-// users/chats — карточки, на которые ссылаются апдейты разницы (A4-05).
-export interface ChannelDiff { updates: ChannelUpdate[]; pts: number; slice: boolean; users?: unknown[]; chats?: unknown[] }
+type Peers = { users?: unknown[]; chats?: unknown[] }
+
+/** `updates.ChannelDifference` — ответ `updates.getChannelDifference`. */
+export type ChannelDifference =
+  | { _: 'updates.channelDifferenceEmpty'; pFlags?: { final?: true }; pts: number }
+  | ({ _: 'updates.channelDifferenceTooLong'; pFlags?: { final?: true }; dialog: unknown; messages: unknown[] } & Peers)
+  | ({
+    _: 'updates.channelDifference'; pFlags?: { final?: true }; pts: number
+    new_messages: unknown[]; other_updates: Update[]
+  } & Peers)
 
 interface ChannelState {
-  pts: number                              // плотный per-channel курсор
-  seeded: boolean                          // курсор инициализирован (stored/первый live)
-  pending: NewPendingPts                   // буфер out-of-order живых кадров
-  syncing: boolean                         // идёт catch-up — живые кадры придерживаем
-  loading: Promise<void> | null            // идущий catch-up (tweb channelState.syncLoading)
-  progressTime: number                     // tweb 1dc32d889 syncProgressTime: старт и каждая страница
-  timer: ReturnType<typeof setTimeout> | null
+  pts: number
+  pending: PendingPts                      // tweb pendingPtsUpdates
+  syncPending: ReturnType<typeof setTimeout> | null
+  loading: Promise<void> | null            // tweb syncLoading
+  progressTime: number                     // tweb syncProgressTime
+  lastPtsUpdateTime: number                // tweb lastPtsUpdateTime
+  lastDifferenceTime: number               // tweb lastDifferenceTime
 }
 
 export interface ChannelFunnelDeps {
-  // Отражение апдейта в SSOT + broadcast (тот же dispatch, что и глобальный funnel).
-  // meta — происхождение кадра (pts/catchUp); funnel — единственное место, которое
-  // его знает, поэтому проставляет здесь, а не выше по стеку.
+  /** Отражение апдейта в SSOT + рассылка (tweb `saveUpdate`). */
   dispatch: (key: string, d: unknown, meta?: EventMeta) => void
-  // GET /channels/{id}/difference?pts=sincePts — типизированный конверт.
-  getDifference: (peerId: number, sincePts: number) => Promise<ChannelDiff>
-  loadPts: (peerId: number) => Promise<number | null>
-  savePts: (peerId: number, pts: number) => void
+  /** `updates.getChannelDifference{channel, pts, limit: 1000}`. */
+  getChannelDifference: (peerId: number, pts: number) => Promise<ChannelDifference>
+  /** Карточки разницы — ДО её апдейтов (tweb saveApiUsers/saveApiChats). */
+  savePeers: (peers: Peers) => void
+  /** `updateChannelReload` (tweb onUpdateChannelReload): канал перечитывается целиком. */
+  onChannelReload: (peerId: number) => void
+  /** Дата применённого живого кадра канала — в `updatesState.date`
+   *  (tweb :736-738): от неё сервер отдаёт маркеры updateChannelTooLong. */
+  advanceDate?: (date: number) => void
+  /** Сколько разниц каналов идёт одновременно (остальные ждут очереди). */
+  maxConcurrent?: number
+  /** Окно ожидания, что дыру закроют следующие живые кадры (глобальный PTS_SYNC_DELAY). */
+  syncDelay?: number
+  /** Период опроса открытой ленты не участника и минимальный зазор между разницами. */
+  pollInterval?: number
+  pollGap?: number
 }
 
-// tweb: SYNC_DELAY — окно ожидания, что дыру закроют следующие живые кадры, прежде
-// чем уходить в difference. Совпадает с глобальным PTS_SYNC_DELAY.
+/** tweb SYNC_DELAY — у нас то же окно, что у глобальной воронки (globalFunnel.ts). */
 const SYNC_DELAY = 250
 
 export function newChannelFunnel(deps: ChannelFunnelDeps) {
+  const syncDelay = deps.syncDelay ?? SYNC_DELAY
+  const pollInterval = deps.pollInterval ?? 3000
+  const pollGap = deps.pollGap ?? 2500
+  // Разницы каналов — не больше maxConcurrent одновременно: реконнект после
+  // долгого сна приносит маркер по каждому сдвинувшемуся каналу, и запросы на
+  // все сразу ушли бы залпом. У оригинала их сериализует очередь сети
+  // MTProto (и FLOOD_WAIT сервера); у нас — эта очередь.
+  const maxConcurrent = deps.maxConcurrent ?? 4
+  let inFlight = 0
+  const queue: Array<() => void> = []
+  function limited<T>(run: () => Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const start = () => {
+        ++inFlight
+        run().then(resolve, reject).finally(() => {
+          --inFlight
+          queue.shift()?.()
+        })
+      }
+      if (inFlight < maxConcurrent) start()
+      else queue.push(start)
+    })
+  }
   const states = new Map<number, ChannelState>()
+  const subscriptions = new Map<number, { count: number; interval?: ReturnType<typeof setInterval> }>()
 
-  function state(peerId: number): ChannelState {
+  /** tweb `addChannelState` (:544-556): без pts состояния не бывает. */
+  function addChannelState(peerId: number, pts: number): ChannelState {
+    if (!pts) throw new Error('Add channel state without pts ' + peerId)
     let st = states.get(peerId)
     if (!st) {
-      st = { pts: 0, seeded: false, pending: newPendingPts(), syncing: false, loading: null, progressTime: 0, timer: null }
+      st = {
+        pts, pending: newPendingPts(), syncPending: null, loading: null,
+        progressTime: 0, lastPtsUpdateTime: 0, lastDifferenceTime: 0,
+      }
       states.set(peerId, st)
     }
     return st
   }
 
-  function advance(peerId: number, st: ChannelState, pts: number): void {
-    if (pts > st.pts) { st.pts = pts; deps.savePts(peerId, pts) }
+  function clearStatePendingSync(st: ChannelState): void {
+    if (st.syncPending) { clearTimeout(st.syncPending); st.syncPending = null }
   }
 
-  function clearTimer(st: ChannelState): void {
-    if (st.timer) { clearTimeout(st.timer); st.timer = null }
-  }
-
-  // Слить подряд идущие буферные кадры после того, как next закрыл дыру. Кадры
-  // в буфере — живые (пришли по WS, просто придержаны из-за переупорядочивания),
-  // поэтому catchUp:false, даже если слив происходит после catchUp() (ветка ниже).
-  function drainPending(peerId: number, st: ChannelState): void {
+  /** tweb `popPendingPtsUpdate` — слить придержанные кадры, ставшие подряд. */
+  function popPending(st: ChannelState): void {
     if (!st.pending.has()) return
     st.pending.drain(() => st.pts, (item) => {
+      st.pts = item.pts
       deps.dispatch(item.key, item.d, { pts: item.pts, catchUp: false })
-      advance(peerId, st, item.pts)
+      const date = updateDate(item.d)
+      if (date) deps.advanceDate?.(date)
     })
-    if (!st.pending.has()) clearTimer(st)
+    if (!st.pending.has()) clearStatePendingSync(st)
   }
 
-  function scheduleSync(peerId: number, st: ChannelState): void {
-    if (st.timer) return
-    st.timer = setTimeout(() => {
-      st.timer = null
-      if (!st.pending.has()) return
-      st.pending.clear()            // как tweb: difference сбрасывает придержанные
-      void catchUp(peerId)
-    }, SYNC_DELAY)
-  }
+  /** tweb `getChannelDifference` (:418-488). */
+  function getChannelDifference(peerId: number): Promise<void> {
+    const st = states.get(peerId)
+    if (!st) return Promise.resolve()
+    const wasSyncing = st.loading
+    if (!wasSyncing) st.pending.clear()
+    clearStatePendingSync(st)
 
-  // Добор пропущенных апдейтов через типизированный difference (по порядку pts).
-  // Сериализован per-channel флагом syncing; страхуемся от отсутствия прогресса.
-  //
-  // Сознательно НЕ шлёт rt:state_synchronizing/synchronized (Задача 1, ревью): в
-  // tweb оба dispatch'а индикатора «Обновление…» гейтятся `!channelId &&`
-  // (apiUpdatesManager.ts:462, :466) — канальный догон намеренно не зажигает этот
-  // индикатор, только пер-юзерный /sync (см. syncEngine.onSyncStart/onSyncEnd).
-  // Не добавлять сюда onSyncStart/onSyncEnd — это было бы отсебятиной сверх tweb.
-  function catchUp(peerId: number): Promise<void> {
-    const st = state(peerId)
-    if (st.syncing) return Promise.resolve()
-    st.syncing = true
-    st.progressTime = Date.now()
-    const loading = runCatchUp(peerId, st)
-    st.loading = loading
-    return loading
-  }
+    const promise = limited(() => deps.getChannelDifference(peerId, st.pts)).then((diff): Promise<void> | void => {
+      if ('pts' in diff) st.pts = diff.pts
+      st.lastDifferenceTime = st.progressTime = Date.now()
 
-  async function runCatchUp(peerId: number, st: ChannelState): Promise<void> {
-    try {
-      for (;;) {
-        const since = st.pts
-        const r = await deps.getDifference(peerId, since)
-        st.progressTime = Date.now()
-        for (const u of r.updates) {
-          if (u.pts <= st.pts) continue     // дубль (live уже применил)
-          deps.dispatch(frameKey(u.t, u.d), u.d, { pts: u.pts, catchUp: true })
-          advance(peerId, st, u.pts)
-        }
-        st.seeded = true
-        if (!r.slice || st.pts <= since) break   // хвост исчерпан / нет прогресса
+      if (diff._ === 'updates.channelDifferenceEmpty') return
+
+      if (diff._ === 'updates.channelDifferenceTooLong') {
+        states.delete(peerId)
+        deps.onChannelReload(peerId)
+        return
       }
-    } catch { /* сеть моргнула — следующий gap/open доберёт */ } finally {
-      st.syncing = false
-      st.loading = null
-      drainPending(peerId, state(peerId))
-    }
-  }
 
-  function seed(peerId: number, pts: number): void {
-    const st = state(peerId)
-    if (st.seeded || pts <= 0) return
-    st.pts = pts
-    st.seeded = true
-    deps.savePts(peerId, pts)
+      deps.savePeers({ users: diff.users, chats: diff.chats })
+      // Should be first because of updateMessageID (tweb :467)
+      for (const u of diff.other_updates) {
+        deps.dispatch(frameKey(u._, u), u, { pts: (u as { pts?: number }).pts, catchUp: true })
+      }
+      for (const message of diff.new_messages) {
+        deps.dispatch('updateNewChannelMessage', {
+          _: 'updateNewChannelMessage', message, pts: st.pts, pts_count: 0,
+        }, { pts: st.pts, catchUp: true })
+      }
+
+      if (diff._ === 'updates.channelDifference' && !diff.pFlags?.final) {
+        return getChannelDifference(peerId)
+      }
+    })
+
+    if (!wasSyncing) {
+      st.loading = promise
+      st.progressTime = Date.now()
+      promise.then(() => { st.loading = null }, () => { st.loading = null })
+    }
+    return promise
   }
 
   return {
-    // Живой канальный кадр (курсор канала выбран вызывающим по дискриминатору).
-    // Та же арифметика dup/next/gap, что
-    // и глобальный funnel, но против per-channel курсора.
-    applyLive(peerId: number, key: string, pts: number, d: unknown): void {
-      const st = state(peerId)
-      // Первый живой кадр до сидирования курсора: принимаем его как базу (массовая
-      // история — из REST-окна; funnel гейтит только живой хвост). Без реплея лога.
-      if (!st.seeded) {
-        st.seeded = true
-        deps.dispatch(key, d, { pts, catchUp: false })
-        advance(peerId, st, pts)
-        return
-      }
-      if (st.syncing) return               // идёт catch-up — он переотдаст по порядку
+    addChannelState,
+
+    /** Есть ли у канала состояние. */
+    has(peerId: number): boolean { return states.has(peerId) },
+
+    /**
+     * Живой кадр канала с pts — tweb `processUpdate` для канала: идёт догон —
+     * кадр отбрасывается (разница переотдаст его по порядку); дубль —
+     * отбрасывается; дыра — придерживается, и если её не закроют за
+     * SYNC_DELAY, состояние догоняется разницей.
+     */
+    processUpdate(peerId: number, key: string, pts: number, d: unknown): void {
+      const st = states.get(peerId) ?? addChannelState(peerId, pts)
+      if (st.loading) return
       const cls = classifyPts(st.pts, pts)
       if (cls === 'dup') return
       if (cls === 'gap') {
-        if (!st.pending.push({ key, pts, d })) { st.pending.clear(); clearTimer(st); void catchUp(peerId); return }
-        scheduleSync(peerId, st)
+        if (!st.pending.push({ key, pts, d })) {
+          st.pending.clear()
+          void getChannelDifference(peerId).catch(() => {})
+          return
+        }
+        if (!st.syncPending && !st.loading) {
+          st.syncPending = setTimeout(() => {
+            st.syncPending = null
+            if (st.loading) return
+            void getChannelDifference(peerId).catch(() => {})
+          }, syncDelay)
+        }
         return
       }
+      st.pts = pts
+      st.lastPtsUpdateTime = Date.now()
       deps.dispatch(key, d, { pts, catchUp: false })
-      advance(peerId, st, pts)
-      drainPending(peerId, st)
-    },
-
-    // Открытие канала: сид курсора из IDB + добор пропущенного с прошлого визита
-    // (посты И метаданные). Без сохранённого pts — остаёмся несидированными: первый
-    // живой кадр примет базу, а текущий контент/карточку даёт REST-загрузка.
-    async open(peerId: number): Promise<void> {
-      const st = state(peerId)
-      if (st.seeded) { void catchUp(peerId); return }
-      const stored = await deps.loadPts(peerId)
-      if (typeof stored === 'number' && stored > 0) {
-        st.pts = stored
-        st.seeded = true
-        void catchUp(peerId)
-      }
+      // tweb :736-738 — канальный апдейт двигает дату общего состояния.
+      const date = updateDate(d)
+      if (date) deps.advanceDate?.(date)
+      popPending(st)
     },
 
     /**
-     * Курсор канала из строки списка — порт tweb `addChannelState` (`??=`):
-     * заводится, только если курсора ещё нет; живой курсор не откатывается.
+     * `updateChannelTooLong` (tweb :658-662): у канала без состояния — ничего
+     * (его нет в памяти, догонять не от чего); иначе разница, если живой кадр
+     * не двигал состояние только что.
      */
-    seed,
-
-    /**
-     * hello (под)ключения: сервер называет pts журналов каналов, на топики
-     * которых соединение уже подписано. Догоняются только каналы с заведённым
-     * курсором, чей pts ушёл вперёд, — аналог `updateChannelTooLong` в ответе
-     * getDifference у tweb (apiUpdatesManager.ts:354, :632-662): кадры топиков,
-     * пока сокета не было, пропали. Канал без курсора получает курсор отсюда
-     * (как `addChannelState`) — его строку уже дал список.
-     */
-    onHello(channels: ReadonlyArray<readonly [number, number]>): void {
-      for (const [peerId, pts] of channels) {
-        const st = state(peerId)
-        if (!st.seeded) { seed(peerId, pts); continue }
-        if (pts > st.pts) void catchUp(peerId)
+    onTooLong(peerId: number): void {
+      const st = states.get(peerId)
+      if (!st || st.loading) return
+      if (!st.lastPtsUpdateTime || st.lastPtsUpdateTime < Date.now() - syncDelay) {
+        void getChannelDifference(peerId).catch(() => {})
       }
     },
 
-    /** Состояние догона канала для `syncWait`; у пира без канального курсора — `undefined`. */
+    getChannelDifference,
+
+    /**
+     * tweb `subscribeToChannelUpdates` (:850-863) — опрос открытой ленты
+     * канала, в котором пользователь не участник: раз в pollInterval, если
+     * разницы не было дольше pollGap.
+     */
+    subscribe(peerId: number): void {
+      let sub = subscriptions.get(peerId)
+      if (!sub) { sub = { count: 0 }; subscriptions.set(peerId, sub) }
+      ++sub.count
+      const cb = () => {
+        const st = states.get(peerId)
+        if (st && !st.loading && (!st.lastDifferenceTime || Date.now() - st.lastDifferenceTime > pollGap)) {
+          void getChannelDifference(peerId).catch(() => {})
+        }
+      }
+      sub.interval ??= setInterval(cb, pollInterval)
+      cb()
+    },
+
+    /** tweb `unsubscribeFromChannelUpdates` (:865-875). */
+    unsubscribe(peerId: number, force?: boolean): void {
+      const sub = subscriptions.get(peerId)
+      if (!sub?.interval || (--sub.count && !force)) return
+      clearInterval(sub.interval)
+      sub.interval = undefined
+      subscriptions.delete(peerId)
+    },
+
+    /** Состояние догона канала для `syncWait`; у пира без состояния — `undefined`. */
     syncState(peerId: number): SyncState | undefined {
       const st = states.get(peerId)
       return st && { loading: st.loading, progressTime: st.progressTime }
     },
 
-    // Закрытие канала: сбросить транзиентные буфер/таймер, сохранённый курсор оставить.
-    close(peerId: number): void {
-      const st = states.get(peerId)
-      if (!st) return
-      clearTimer(st)
-      st.pending.clear()
+    /** Забыть состояния (tweb `channelStates = {}` на differenceTooLong). */
+    reset(): void {
+      for (const st of states.values()) clearStatePendingSync(st)
+      states.clear()
     },
 
-    // Полный resync/сброс: забыть in-memory курсоры (IDB персистит) — следующее
-    // открытие пересидирует. In-flight таймеры гасим.
-    reset(): void {
-      for (const st of states.values()) clearTimer(st)
+    /** Смена сессии: состояния и опросы прошлого аккаунта — прочь. */
+    resetForLogout(): void {
+      for (const sub of subscriptions.values()) if (sub.interval) clearInterval(sub.interval)
+      subscriptions.clear()
+      for (const st of states.values()) clearStatePendingSync(st)
       states.clear()
     },
   }

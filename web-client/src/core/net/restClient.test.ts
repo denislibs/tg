@@ -32,6 +32,37 @@ describe('RestClient', () => {
     expect(err).toMatchObject({ status: 403, type: 'FRESH_RESET_AUTHORISATION_FORBIDDEN' })
   })
 
+  // tweb apiManager.ts:759-791: 420 FLOOD_WAIT_N — подождать N секунд и
+  // повторить; ожидание дольше 60 с и SLOWMODE_WAIT — отказ вызывающему.
+  it('FLOOD_WAIT_N пережидается и запрос повторяется', async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({ _: 'error', code: 420, text: 'FLOOD_WAIT_2' }), { status: 420 }))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ ok: 1 }), { status: 200 }))
+      vi.stubGlobal('fetch', fetchMock)
+      const rest = new RestClient('/api', () => null)
+      const p = rest.get('/updates/channel_difference')
+      await vi.advanceTimersByTimeAsync(1999)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(1)
+      await expect(p).resolves.toEqual({ ok: 1 })
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('FLOOD_WAIT дольше 60 с и SLOWMODE_WAIT — отказ без повтора', async () => {
+    for (const text of ['FLOOD_WAIT_120', 'SLOWMODE_WAIT_5']) {
+      const fetchMock = vi.fn(async () => new Response(JSON.stringify({ _: 'error', code: 420, text }), { status: 420 }))
+      vi.stubGlobal('fetch', fetchMock)
+      const rest = new RestClient('/api', () => null)
+      await expect(rest.get('/x')).rejects.toMatchObject({ status: 420, type: text })
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    }
+  })
+
   // У чужого тела имени нашей ошибки нет — и подставлять туда «HTTP 502»
   // нельзя: вызывающий принял бы это за названную причину.
   it('у чужого тела отказа имени отказа не появляется', async () => {

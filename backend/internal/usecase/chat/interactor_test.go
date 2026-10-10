@@ -270,7 +270,7 @@ func TestClearHistory(t *testing.T) {
 	}
 }
 
-func TestGetDifference(t *testing.T) {
+func TestUpdatesDifference(t *testing.T) {
 	in, _ := newInteractor()
 	ctx := context.Background()
 	const a, b int64 = 1, 2
@@ -278,37 +278,48 @@ func TestGetDifference(t *testing.T) {
 	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "1"})
 	_ = in.MarkRead(ctx, chatID, b, 1)
 
-	d, err := in.GetDifference(ctx, b, 0)
-	if err != nil {
-		t.Fatalf("GetDifference: %v", err)
+	d := diffReal(t, in, b, 0)
+	if d.Underscore != domain.UpdatesDifferenceTag || len(d.NewMessages) != 1 || len(d.OtherUpdates) != 1 {
+		t.Fatalf("diff = %s, %d new, %d other", d.Underscore, len(d.NewMessages), len(d.OtherUpdates))
 	}
-	if len(d.NewMessages) != 1 || len(d.OtherUpdates) != 1 {
-		t.Fatalf("diff = %d new, %d other", len(d.NewMessages), len(d.OtherUpdates))
-	}
-	if d.State.Pts != 2 || d.TooLong || d.Slice {
-		t.Fatalf("state = %+v slice=%v tooLong=%v", d.State, d.Slice, d.TooLong)
+	if d.State == nil || d.State.Pts != 2 || d.IntermediateState != nil {
+		t.Fatalf("state = %+v intermediate = %+v", d.State, d.IntermediateState)
 	}
 
-	d2, _ := in.GetDifference(ctx, b, 1)
+	d2 := diffReal(t, in, b, 1)
 	if len(d2.NewMessages) != 0 || len(d2.OtherUpdates) != 1 {
 		t.Fatalf("tail diff = %d new, %d other", len(d2.NewMessages), len(d2.OtherUpdates))
 	}
+	empty, err := in.UpdatesDifference(ctx, b, 2, 0)
+	if err != nil || empty.Tag() != domain.UpdatesDifferenceEmptyTag {
+		t.Fatalf("догнанный клиент: %+v %v, want differenceEmpty", empty, err)
+	}
 }
 
-func TestGetDifference_ClampsNegativePts(t *testing.T) {
+func TestUpdatesDifference_ClampsNegativePts(t *testing.T) {
 	in, _ := newInteractor()
 	ctx := context.Background()
 	const a, b int64 = 1, 2
 	chatID, _ := in.CreatePrivateChat(ctx, a, b)
 	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "1"})
 
-	d, err := in.GetDifference(ctx, b, -5)
-	if err != nil {
-		t.Fatalf("GetDifference: %v", err)
-	}
-	if len(d.NewMessages) != 1 {
+	if d := diffReal(t, in, b, -5); len(d.NewMessages) != 1 {
 		t.Fatalf("expected 1 new message from clamped pts, got %d", len(d.NewMessages))
 	}
+}
+
+// diffReal — updates.getDifference от pts, ожидается updates.difference(Slice).
+func diffReal(t *testing.T, in *Interactor, userID, pts int64) domain.UpdatesDifferenceReal {
+	t.Helper()
+	d, err := in.UpdatesDifference(context.Background(), userID, pts, 0)
+	if err != nil {
+		t.Fatalf("UpdatesDifference: %v", err)
+	}
+	real, ok := d.(domain.UpdatesDifferenceReal)
+	if !ok {
+		t.Fatalf("UpdatesDifference = %T %+v, want updates.difference", d, d)
+	}
+	return real
 }
 
 func ptr[T any](v T) *T { return &v }
