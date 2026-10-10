@@ -22,7 +22,7 @@
 //     ему сервер не шлёт (tweb `subscribeToChannelUpdates`).
 
 import { classifyPts } from './cursor'
-import { frameKey } from './updateCatalog'
+import { frameKey, updateDate } from './updateCatalog'
 import { newPendingPts, type PendingPts } from './pendingPts'
 import type { EventMeta } from '../../rpc/superMessagePort'
 import type { SyncState } from './syncWait'
@@ -58,6 +58,11 @@ export interface ChannelFunnelDeps {
   savePeers: (peers: Peers) => void
   /** `updateChannelReload` (tweb onUpdateChannelReload): канал перечитывается целиком. */
   onChannelReload: (peerId: number) => void
+  /** Дата применённого живого кадра канала — в `updatesState.date`
+   *  (tweb :736-738): от неё сервер отдаёт маркеры updateChannelTooLong. */
+  advanceDate?: (date: number) => void
+  /** Сколько разниц каналов идёт одновременно (остальные ждут очереди). */
+  maxConcurrent?: number
   /** Окно ожидания, что дыру закроют следующие живые кадры (глобальный PTS_SYNC_DELAY). */
   syncDelay?: number
   /** Период опроса открытой ленты не участника и минимальный зазор между разницами. */
@@ -72,6 +77,26 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
   const syncDelay = deps.syncDelay ?? SYNC_DELAY
   const pollInterval = deps.pollInterval ?? 3000
   const pollGap = deps.pollGap ?? 2500
+  // Разницы каналов — не больше maxConcurrent одновременно: реконнект после
+  // долгого сна приносит маркер по каждому сдвинувшемуся каналу, и запросы на
+  // все сразу ушли бы залпом. У оригинала их сериализует очередь сети
+  // MTProto (и FLOOD_WAIT сервера); у нас — эта очередь.
+  const maxConcurrent = deps.maxConcurrent ?? 4
+  let inFlight = 0
+  const queue: Array<() => void> = []
+  function limited<T>(run: () => Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const start = () => {
+        ++inFlight
+        run().then(resolve, reject).finally(() => {
+          --inFlight
+          queue.shift()?.()
+        })
+      }
+      if (inFlight < maxConcurrent) start()
+      else queue.push(start)
+    })
+  }
   const states = new Map<number, ChannelState>()
   const subscriptions = new Map<number, { count: number; interval?: ReturnType<typeof setInterval> }>()
 
@@ -99,6 +124,8 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
     st.pending.drain(() => st.pts, (item) => {
       st.pts = item.pts
       deps.dispatch(item.key, item.d, { pts: item.pts, catchUp: false })
+      const date = updateDate(item.d)
+      if (date) deps.advanceDate?.(date)
     })
     if (!st.pending.has()) clearStatePendingSync(st)
   }
@@ -111,7 +138,7 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
     if (!wasSyncing) st.pending.clear()
     clearStatePendingSync(st)
 
-    const promise = deps.getChannelDifference(peerId, st.pts).then((diff): Promise<void> | void => {
+    const promise = limited(() => deps.getChannelDifference(peerId, st.pts)).then((diff): Promise<void> | void => {
       if ('pts' in diff) st.pts = diff.pts
       st.lastDifferenceTime = st.progressTime = Date.now()
 
@@ -182,6 +209,9 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
       st.pts = pts
       st.lastPtsUpdateTime = Date.now()
       deps.dispatch(key, d, { pts, catchUp: false })
+      // tweb :736-738 — канальный апдейт двигает дату общего состояния.
+      const date = updateDate(d)
+      if (date) deps.advanceDate?.(date)
       popPending(st)
     },
 
@@ -234,8 +264,16 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
       return st && { loading: st.loading, progressTime: st.progressTime }
     },
 
-    /** Забыть состояния (tweb `channelStates = {}` на differenceTooLong; смена сессии). */
+    /** Забыть состояния (tweb `channelStates = {}` на differenceTooLong). */
     reset(): void {
+      for (const st of states.values()) clearStatePendingSync(st)
+      states.clear()
+    },
+
+    /** Смена сессии: состояния и опросы прошлого аккаунта — прочь. */
+    resetForLogout(): void {
+      for (const sub of subscriptions.values()) if (sub.interval) clearInterval(sub.interval)
+      subscriptions.clear()
       for (const st of states.values()) clearStatePendingSync(st)
       states.clear()
     },

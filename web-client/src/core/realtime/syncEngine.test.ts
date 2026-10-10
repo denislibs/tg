@@ -183,6 +183,18 @@ describe('SyncEngine.getDifference без состояния', () => {
   })
 })
 
+// Ревью #410, №4: pts = 0 у живого состояния бывает (пустой журнал нового
+// пользователя) — разница от него, а не getState, иначе первое событие
+// терялось бы на реконнекте.
+describe('SyncEngine.getDifference при pts = 0', () => {
+  it('с датой — разница от pts 0', async () => {
+    const get = vi.fn(async () => ({ _: 'updates.differenceEmpty', date: 5, seq: 0 }))
+    const { se } = engine({ get: get as never }, { cursor: fakeCursor(0, 3) })
+    await se.getDifference()
+    expect(get.mock.calls).toEqual([['/updates/difference', { pts: 0, date: 3, qts: -1 }]])
+  })
+})
+
 // tweb 1dc32d889: `syncProgressTime` — признак жизни догона (старт и каждая
 // страница); по нему `syncWait` решает, не замолчал ли difference.
 describe('SyncEngine.syncState', () => {

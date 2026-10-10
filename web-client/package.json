@@ -2,7 +2,7 @@
   "name": "web-client",
   "private": true,
   "version": "0.1.0",
-  "build": 1,
+  "build": 2,
   "type": "module",
   "scripts": {
     "dev": "vite build --watch --outDir ../client-build --emptyOutDir",

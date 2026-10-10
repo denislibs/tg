@@ -73,11 +73,18 @@ function pair(): [Endpoint, Endpoint] {
   return [epA, epB]
 }
 
-function boot() {
+let stateCalls = 0
+
+async function boot() {
   const core = createWorkerCore()
   const [epWorker] = pair()
   core.bind(epWorker)
   expect(capturedConnDeps).not.toBeNull()
+  // Сокет открыт: attach (updates.getState) — после него пер-юзерная воронка
+  // просит догон по дыре или негидрированному курсору.
+  capturedConnDeps!.onReady()
+  await vi.waitFor(() => expect(stateCalls).toBe(1))
+  for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0))
 }
 
 /** URL'ы догона курсора, до которых дошёл этот прогон: поход за состоянием —
@@ -88,13 +95,18 @@ const syncCalls: string[] = []
 beforeEach(() => {
   vi.stubGlobal('indexedDB', new IDBFactory())
   syncCalls.length = 0
+  stateCalls = 0
   vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
     const u = String(url)
     if (u.includes('/updates/state')) {
-      syncCalls.push(u)
+      stateCalls++
       return new Response(JSON.stringify({
         _: 'updates.state', pts: 1, qts: 0, date: 1, seq: 0, unread_count: 0,
       }), { status: 200 })
+    }
+    if (u.includes('/updates/difference')) {
+      syncCalls.push(u)
+      return new Response(JSON.stringify({ _: 'updates.differenceEmpty', date: 1, seq: 0 }), { status: 200 })
     }
     throw new Error('unexpected fetch ' + u)
   }))
@@ -109,8 +121,8 @@ describe('createWorkerCore(): канальные кадры уходят в пе
   // updateNewChannelMessage, курсор внутри него параметром `pts`, адрес пира
   // внутри конструктора сообщения. Именно дискриминатор и отвечает «курсор
   // канальный»: своего имени у канального курсора в схеме нет.
-  it('пост канала → channelFunnel.processUpdate с пиром из message.peer_id', () => {
-    boot()
+  it('пост канала → channelFunnel.processUpdate с пиром из message.peer_id', async () => {
+    await boot()
 
     capturedConnDeps!.onFrame('new_message', {
       _: 'updateNewChannelMessage',
@@ -141,8 +153,8 @@ describe('createWorkerCore(): канальные кадры уходят в пе
   // конструктор: updateChannelFullSnapshot. Прежде на его месте ехал
   // updateChatFullSnapshot (тот же, что у группы) плюс ключ `channel_pts` —
   // второе имя курсора, по которому клиент и решал вид кадра.
-  it('снимок карточки канала → processUpdate с пиром из параметра peer', () => {
-    boot()
+  it('снимок карточки канала → processUpdate с пиром из параметра peer', async () => {
+    await boot()
 
     capturedConnDeps!.onFrame('chat_update', {
       _: 'updateChannelFullSnapshot',
@@ -162,7 +174,7 @@ describe('createWorkerCore(): канальные кадры уходят в пе
   // пер-канальную воронку он попадать не должен. Это вторая половина пары:
   // одним конструктором на оба журнала различить их было нечем.
   it('снимок карточки ГРУППЫ мимо пер-канальной воронки', async () => {
-    boot()
+    await boot()
 
     capturedConnDeps!.onFrame('chat_update', {
       _: 'updateChatFullSnapshot',
@@ -184,7 +196,7 @@ describe('createWorkerCore(): канальные кадры уходят в пе
   // кадров, и различает их только дискриминатор. Прочитай развилка курсор без
   // оглядки на него — каждое личное сообщение поехало бы в чужую воронку.
   it('сообщение личного чата мимо пер-канальной воронки', async () => {
-    boot()
+    await boot()
 
     capturedConnDeps!.onFrame('new_message', {
       _: 'updateNewMessage',

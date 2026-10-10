@@ -244,3 +244,38 @@ describe('channelFunnel.syncState', () => {
     expect(funnel.syncState(PEER)?.loading).toBeNull()
   })
 })
+
+// Ревью #410, №3: живой пост канала двигает дату общего состояния (tweb
+// :736-738), а реконнект с маркерами по многим каналам не шлёт разницы залпом.
+describe('channelFunnel — дата и очередь разниц', () => {
+  it('применённый живой кадр канала отдаёт свою дату в advanceDate', () => {
+    const dates: number[] = []
+    const funnel = newChannelFunnel({
+      dispatch: () => {}, getChannelDifference: vi.fn(), savePeers: () => {}, onChannelReload: () => {},
+      advanceDate: (d) => dates.push(d),
+    })
+    funnel.addChannelState(PEER, 5)
+    funnel.processUpdate(PEER, 'updateNewChannelMessage', 6, { message: { date: 1700 } })
+    funnel.processUpdate(PEER, 'updateNewChannelMessage', 6, { message: { date: 1800 } })   // дубль
+    expect(dates).toEqual([1700])
+  })
+
+  it('разниц каналов одновременно не больше maxConcurrent', async () => {
+    let inFlight = 0
+    let peak = 0
+    const resolvers: Array<() => void> = []
+    const funnel = newChannelFunnel({
+      dispatch: () => {}, savePeers: () => {}, onChannelReload: () => {}, maxConcurrent: 4,
+      getChannelDifference: (_peer, pts) => new Promise<ChannelDifference>((r) => {
+        peak = Math.max(peak, ++inFlight)
+        resolvers.push(() => { inFlight--; r({ _: 'updates.channelDifferenceEmpty', pFlags: { final: true }, pts }) })
+      }),
+    })
+    for (let k = 1; k <= 10; k++) { funnel.addChannelState(-k, 5); funnel.onTooLong(-k) }
+    await new Promise((r) => setTimeout(r, 0))
+    expect(peak).toBe(4)
+    while (resolvers.length) { resolvers.shift()!(); await new Promise((r) => setTimeout(r, 0)) }
+    expect(peak).toBe(4)
+    expect(inFlight).toBe(0)
+  })
+})

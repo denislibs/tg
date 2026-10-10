@@ -138,3 +138,18 @@ describe('globalFunnel.clear()', () => {
     expect(h.cursor.get().pts).toBe(1)
   })
 })
+
+// Ревью #410, №3: применённый живой кадр двигает дату состояния (tweb
+// :736-738, :774-776) — от неё сервер решает, какие каналы клиент пропустил.
+describe('globalFunnel.applyUpdate — дата состояния', () => {
+  it('кадр с сообщением двигает cursor.date его датой (edit_date, если позже)', async () => {
+    const h = harness()
+    await h.cursor.ready()
+    h.funnel.applyUpdate('updateNewMessage', 1, { message: { date: 1000 } })
+    expect(h.cursor.get().date).toBe(1000)
+    h.funnel.applyUpdate('updateEditMessage', 2, { message: { date: 900, edit_date: 1200 } })
+    expect(h.cursor.get().date).toBe(1200)
+    h.funnel.applyUpdate('read', 3, {})            // даты нет — не двигает
+    expect(h.cursor.get().date).toBe(1200)
+  })
+})

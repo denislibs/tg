@@ -107,7 +107,13 @@ describe('createWorkerCore(): упавший getDifference не даёт Unhandl
   // `pts` на негидрированном курсоре — кратчайший путь до этой ветки (тот же,
   // которым в неё попадают кейсы workerCore.channelFrames.test.ts).
   it('догон, запрошенный воронкой на негидрированном курсоре', async () => {
+    await idbSet('pts', 1)
+    await idbSet('date', 1)
     boot()
+    // attach — первая разница (падает); дальше воронка на негидрированном
+    // курсоре (start() не звался) просит догон снова.
+    capturedConnDeps!.onReady()
+    await vi.waitFor(() => expect(syncCalls).toHaveLength(1))
 
     capturedConnDeps!.onFrame('new_message', {
       _: 'updateNewMessage',
@@ -119,7 +125,7 @@ describe('createWorkerCore(): упавший getDifference не даёт Unhandl
       },
     })
 
-    await vi.waitFor(() => expect(syncCalls).toHaveLength(1))
+    await vi.waitFor(() => expect(syncCalls).toHaveLength(2))
     await settleRejections()
 
     expect(unhandled).toEqual([])

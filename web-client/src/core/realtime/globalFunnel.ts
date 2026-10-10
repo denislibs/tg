@@ -8,6 +8,7 @@
 
 import { classifyPts, type Cursor } from './cursor'
 import { newPendingPts } from './pendingPts'
+import { updateDate } from './updateCatalog'
 import type { EventMeta } from '../../rpc/superMessagePort'
 
 export interface GlobalFunnelDeps {
@@ -60,7 +61,7 @@ export function newGlobalFunnel(deps: GlobalFunnelDeps): {
       // Кадр в буфере — живой (пришёл по WS, лишь придержан переупорядочиванием),
       // поэтому catchUp:false — происхождение не меняется от факта буферизации.
       deps.dispatch(item.key, item.d, { pts: item.pts, catchUp: false })
-      deps.cursor.advance(item.pts)
+      deps.cursor.advance(item.pts, updateDate(item.d))
     })
     if (!pendingPts.has() && ptsSyncTimer) { clearTimeout(ptsSyncTimer); ptsSyncTimer = null }
   }
@@ -93,7 +94,11 @@ export function newGlobalFunnel(deps: GlobalFunnelDeps): {
       return
     }
     deps.dispatch(key, d, { pts, catchUp: false })
-    deps.cursor.advance(pts)
+    // Дата состояния двигается применённым кадром (tweb :736-738, :774-776):
+    // от неё сервер решает, какие каналы клиент пропустил
+    // (updateChannelTooLong), и без неё каждый реконнект отдавал маркеры по
+    // всем каналам, получившим посты живьём.
+    deps.cursor.advance(pts, updateDate(d))
     drainPending()
   }
 

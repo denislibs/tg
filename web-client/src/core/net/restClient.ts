@@ -26,6 +26,16 @@ function errorOf(status: number, body: unknown): HttpError {
   return new HttpError(status, type || `HTTP ${status}`, type)
 }
 
+/** tweb `options.floodMaxTimeout ?? 60` — сколько секунд FLOOD_WAIT пережидается. */
+const FLOOD_MAX_TIMEOUT = 60
+
+/** Секунды ожидания отказа `420 FLOOD_WAIT_N` (tweb apiManager.ts:759-761); иначе undefined. */
+export function floodWaitSeconds(e: unknown): number | undefined {
+  if (!(e instanceof HttpError) || e.status !== 420 || e.type.includes('SLOWMODE_WAIT')) return undefined
+  const match = e.type.match(/^FLOOD_WAIT_(\d+)/) || e.type.match(/_(\d+)_?/)
+  return (match ? +match[1] : 0) || 1
+}
+
 // Structural-контракт канального RPC (реализуется ChannelRpc). Импортируем как тип-форму,
 // а не класс, чтобы не создавать цикл restClient↔channelRpc.
 export interface ChannelRpcLike {
@@ -161,7 +171,24 @@ export class RestClient {
     return this.base + path + `?token=${encodeURIComponent(token)}`
   }
 
+  /**
+   * Порт tweb `apiManager.invokeApi` (:759-791): отказ 420 `FLOOD_WAIT_N`
+   * (кроме `SLOWMODE_WAIT`) — подождать N секунд и повторить, если ждать не
+   * дольше `FLOOD_MAX_TIMEOUT`; дольше — отказ вызывающему.
+   */
   private async request<R>(method: string, path: string, body?: unknown): Promise<R> {
+    for (;;) {
+      try {
+        return await this.requestOnce<R>(method, path, body)
+      } catch (e) {
+        const wait = floodWaitSeconds(e)
+        if (wait === undefined || wait > FLOOD_MAX_TIMEOUT) throw e
+        await new Promise((r) => setTimeout(r, wait * 1000))
+      }
+    }
+  }
+
+  private async requestOnce<R>(method: string, path: string, body?: unknown): Promise<R> {
     // При DNP-ON и готовом канале REST идёт через Noise-канал; иначе (логин/пре-канал) — fetch.
     if (this.channelRpc?.isReady()) {
       const { status, body: respBody } = await this.channelRpc.call(method, path, body)

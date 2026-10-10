@@ -58,10 +58,11 @@ export function newSyncEngine({ rest, cursor, saveUpdate, processChannelUpdate, 
   async function runDifference(): Promise<void> {
     // Гейт гидратации: со stale-курсором (0) разница переиграла бы весь журнал.
     await cursor.ready()
-    // Состояния нет (свежий вход) — разницу просить не от чего: базой
-    // становится состояние сервера (tweb attach без state → updates.getState;
-    // getDifference у оригинала без состояния не зовётся вовсе).
-    if (!cursor.get().pts || !cursor.get().date) { await fetchState(); return }
+    // Состояния нет вовсе (дата — после смены сессии) — разницу просить не от
+    // чего, базой становится состояние сервера. Только по дате: pts у нас
+    // бывает 0 и у живого состояния (пустой журнал нового пользователя), и
+    // getState на реконнекте потерял бы его первое событие.
+    if (!cursor.get().date) { await fetchState(); return }
     for (;;) {
       const { pts, date } = cursor.get()
       const diff = await rest.get<UpdatesDifference>('/updates/difference', { pts, date, qts: -1 })

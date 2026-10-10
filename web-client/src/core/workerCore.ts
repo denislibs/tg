@@ -176,11 +176,11 @@ export function createWorkerCore() {
     // `msgr/kv` вне скоупа персиста, и без сброса вход после выхода догонял бы
     // разницу от курсора ПРОШЛОЙ сессии (а то и чужого аккаунта) вместо того,
     // чтобы взять базой текущее состояние сервера (updates.getState, onReady).
-    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); contacts.resetForLogout(); cursor.reset(); broadcast(RT.loggingOut, e) },
+    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); contacts.resetForLogout(); cursor.reset(); channelFunnel.resetForLogout(); broadcast(RT.loggingOut, e) },
     // Симметричный кадр входа (порт tweb `account_logged_in`) — тем же веером и
     // с тем же сбросом: активный токен сменился, а значит медиа-токен, добытый
     // до входа, принадлежит прошлой сессии; то же — про кэш диалогов.
-    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); contacts.resetForLogout(); cursor.reset(); broadcast(RT.loggedIn, e) },
+    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); contacts.resetForLogout(); cursor.reset(); channelFunnel.resetForLogout(); broadcast(RT.loggedIn, e) },
   })
   const profile = newProfileManager({ rest, onMeChanged: setMe, getMe: () => me })
   const premium = newPremiumManager({ rest, onMeChanged: setMe })
@@ -720,6 +720,8 @@ export function createWorkerCore() {
   // своя разница — `updates.getChannelDifference`.
   const channelFunnel = newChannelFunnel({
     dispatch,
+    // tweb :736-738: канальный апдейт двигает дату общего состояния.
+    advanceDate: (date) => cursor.advance(0, date),
     getChannelDifference: (peerId, pts) =>
       rest.get<ChannelDifference>('/updates/channel_difference', { channel: peerId, pts, limit: 1000 }),
     // Карточки разницы — в кэш пиров ДО её апдейтов (A4-05).
@@ -776,7 +778,9 @@ export function createWorkerCore() {
     isSyncing: () => sync.isSyncing(),
     // Задача #91: отказ разницы глотает forceGetDifference — иначе unhandled
     // rejection на КАЖДОМ живом кадре с pts, пока курсор не гидрирован.
-    catchUp: () => { void channelStatesReady().then(() => { if (!sync.isSyncing()) return sync.getDifference() }).catch(() => {}) },
+    // До attach догон не просим: первую разницу (или getState) делает он сам,
+    // после строк диалогов (tweb processUpdate до attach кадры не применяет).
+    catchUp: () => { if (attached) void channelStatesReady().then(() => { if (!sync.isSyncing()) return sync.getDifference() }).catch(() => {}) },
   })
   // tweb 1dc32d889 — ожидание догона для уведомлений (общая разница +
   // разница канала). Вкладка ждёт его по RPC `realtime.waitForSync`.
@@ -805,8 +809,11 @@ export function createWorkerCore() {
       if (attached) { forceGetDifference(); return }
       attached = true
       void Promise.all([cursor.ready(), channelStatesReady()]).then(() => {
+        // tweb attach :891 смотрит и pts, и date: у Telegram pts ящика нулём не
+        // бывает. У нас бывает (пустой журнал нового пользователя), поэтому
+        // «состояния нет» — это отсутствие даты.
         const saved = cursor.get()
-        const initial = !saved.pts || !saved.date
+        const initial = !saved.date
           ? sync.getState()
           : (funnel.clear(), sync.getDifference())
         syncWait.attach(initial)

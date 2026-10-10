@@ -181,3 +181,16 @@ export function channelPeerId(u: Update): number | undefined {
   }
   return undefined
 }
+
+/**
+ * Дата апдейта для `updatesState.date` — у оригинала её несёт контейнер
+ * (`updates.date`, tweb apiUpdatesManager.ts:736-738 и :774-776). Наш живой
+ * кадр контейнера с датой не несёт, поэтому датой служит время самого
+ * события: у кадра с сообщением — его `edit_date` либо `date`. У прочих кадров
+ * даты нет, и дата состояния ими не двигается.
+ */
+export function updateDate(d: unknown): number | undefined {
+  const m = (d as { message?: { date?: number; edit_date?: number } } | null | undefined)?.message
+  if (!m || typeof m.date !== 'number') return undefined
+  return Math.max(m.date, m.edit_date ?? 0)
+}
