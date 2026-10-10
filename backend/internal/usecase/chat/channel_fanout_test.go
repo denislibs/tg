@@ -351,10 +351,14 @@ func TestChannelReaction_TopicOnly(t *testing.T) {
 	if err := e.i.React(ctx, e.ch, post.ID, 8, "👍", true); err != nil {
 		t.Fatalf("React: %v", err)
 	}
-	for _, uid := range []int64{7, 8, 9} {
+	// Личный кадр — только поставившему (8): его выбор на других устройствах.
+	for _, uid := range []int64{7, 9} {
 		if slices.Contains(e.userLog(uid), "reaction") || len(e.userFrames(uid, "reaction")) != 0 {
 			t.Fatalf("реакция в канале ушла личным веером пользователю %d", uid)
 		}
+	}
+	if len(e.userFrames(8, "reaction")) != 1 {
+		t.Fatal("поставивший не получил своего кадра реакции")
 	}
 	if !slices.Contains(e.topicTypes(), "reaction") {
 		t.Fatalf("реакция не ушла в топик канала: %v", e.topicTypes())
@@ -544,7 +548,7 @@ func TestChannelBotEditAutodeleteStars_NoPerSubscriberFanout(t *testing.T) {
 	if !types["edit_message"] || !types["delete_message"] {
 		t.Fatalf("журнал канала = %v, want правку и удаление", types)
 	}
-	for _, uid := range []int64{8, 9} {
+	for _, uid := range []int64{9} {
 		for _, typ := range []string{"edit_message", "delete_message", "reaction"} {
 			if slices.Contains(e.userLog(uid), typ) {
 				t.Fatalf("%s лёг в личный журнал подписчика %d", typ, uid)
@@ -577,6 +581,9 @@ func TestScheduledChannelPost_KeepsDraft(t *testing.T) {
 func TestChannelPost_UnarchivesSubscriber(t *testing.T) {
 	e := newChannelEnv(t)
 	e.fg.mu.Lock()
+	if e.fg.archived == nil {
+		e.fg.archived = map[int64]map[int64]bool{}
+	}
 	if e.fg.archived[8] == nil {
 		e.fg.archived[8] = map[int64]bool{}
 	}
