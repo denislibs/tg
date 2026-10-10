@@ -28,10 +28,11 @@
  *    `floatingButtonMenu` портированы задачей 2-2 волны 7 — бургер);
  *  • `Message.Context.Selection.SendNow` (:964-972) — сверяется с кнопкой
  *    «отправить сейчас» панели выделения (`selectionSendNowBtn`), панели нет
- *    (Б-23). `MessageScheduleEditTime` (:973-987) портирован (П-6, Б-32) — время
- *    меняет `messages.editScheduled`. `MessageScheduleSend` (:959-963) —
- *    портирован (лента отложенных `ChatType.Scheduled`, `popups/sendNow.ts`);
- *    «Изменить» у отложенного скрыт: ручки правки текста отложенного нет (Б-92);
+ *    (Б-23). `MessageScheduleEditTime` (:973-987) портирован — время, повтор и
+ *    «когда в сети» меняет `messages.editMessage` с `scheduleDate`, как у оригинала.
+ *    `MessageScheduleSend` (:959-963) — портирован (лента отложенных
+ *    `ChatType.Scheduled`, `popups/sendNow.ts`); «Изменить» у отложенного — тот же
+ *    `editMessage` с `schedule_date = message.date` (tweb :2209);
  *  • `Quote` (:938-954) — `getRichSelection` стоит на `getRichValueWithCaret`
  *    (разбор contenteditable в текст+сущности), которого в проекте нет;
  *  • `ViewReplies`/`ViewAllReplies` (:965-997) — поля `replies`
@@ -206,7 +207,7 @@ import { isLocalMessageId, getServerMessageId } from '@core/history/messageId'
 import { mirrorWindow } from '@core/history/messagesMirror'
 import { getMediaFromMessage, type MyDocument } from '@core/media/messageMedia'
 import { buildMessageLink } from '@core/messageLink'
-import { getMessageText, type MyMessage, type MessageReal, type Reaction } from '@core/models'
+import { getMessageText, type MyMessage, type MessageReal, type MessageEntity, type Reaction } from '@core/models'
 import {
   cachedChat,
   cachedPeer,
@@ -252,8 +253,13 @@ export interface ContextMenuManagers {
      *  сейчас» в ленте отложенных (`popups/sendNow.ts`). Необязателен: без него
      *  пункта нет (тест, которому отложенные не нужны). */
     sendScheduledMessages?(peerId: number, mids: number[]): Promise<void>
-    /** «Изменить время» отложенного (tweb `MessageScheduleEditTime`, :973-987) */
-    editScheduled?(peerId: number, id: number, sendAt: number): Promise<unknown>
+    /** Порт `appMessagesManager.editMessage` (:2183-2223) — у отложенного с
+     *  `scheduleDate` («Изменить время», tweb `MessageScheduleEditTime` :973-987).
+     *  Необязателен: без него пункта нет. */
+    editMessage?(
+      peerId: number, msgId: number, text: string, entities?: MessageEntity[],
+      options?: { scheduleDate?: number | null, scheduleRepeatPeriod?: number | null },
+    ): Promise<unknown>
     /**
      * Порт `chat.sendReaction` (chat.ts:1457 → `appReactionsManager
      * .sendReaction`) — выбор в панели быстрых реакций. Пара, а не один вызов:
@@ -674,22 +680,25 @@ export default class ChatContextMenu {
       verify: () => this.chat.type === ChatType.Scheduled && !!this.managers.messages.sendScheduledMessages &&
         !!this.message && !this.isOutgoing(this.message),
     }, {
-      // tweb :973-987 — время отложенного меняет `messages.editScheduled` (текст не
-      // трогается: ручки правки текста отложенного нет, Б-92)
+      // tweb :973-987 — `editMessage(message, message.message, {scheduleDate,
+      // scheduleRepeatPeriod, entities})`; дата, которую `setScheduleTimestamp`
+      // сбросил (ближе 10 с), — прежняя (`schedule_date = message.date`, :2209).
+      // «Когда в сети» едет той же датой `SEND_WHEN_ONLINE_TIMESTAMP`.
       icon: 'schedule',
       text: 'MessageScheduleEditTime',
       onClick: () => {
-        const message = this.message!
+        const message = this.message as MessageReal
         void this.chat.input.scheduleSending(() => {
-          const { scheduleDate } = this.chat.input
-          if(scheduleDate) {
-            void this.managers.messages.editScheduled?.(message.peerId, message.id, scheduleDate).catch(() => {})
-          }
+          const { input } = this.chat
+          void this.managers.messages.editMessage?.(message.peerId, message.id, message.message, message.entities, {
+            scheduleDate: input.scheduleDate || message.date,
+            scheduleRepeatPeriod: input.scheduleRepeatPeriod,
+          }).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
 
-          this.chat.input.onMessageSent(false, false)
-        }, new Date(message.date * 1000))
+          input.onMessageSent(false, false)
+        }, new Date(message.date * 1000), message.schedule_repeat_period)
       },
-      verify: () => this.chat.type === ChatType.Scheduled && !!this.managers.messages.editScheduled,
+      verify: () => this.chat.type === ChatType.Scheduled && !!this.managers.messages.editMessage,
     }, {
       icon: 'reply',
       text: 'Reply',
@@ -703,8 +712,7 @@ export default class ChatContextMenu {
       icon: 'edit',
       text: 'Edit',
       onClick: this.onEditClick,
-      // `chat.type !== Scheduled` — наше: см. шапку (Б-92)
-      verify: () => this.chat.type !== ChatType.Scheduled && this.canEditMessage(this.message, 'text') && !!this.chat.input.messageInput,
+      verify: () => this.canEditMessage(this.message, 'text') && !!this.chat.input.messageInput,
     }, {
       icon: 'factcheck',
       // tweb :1026 — текст зависит от наличия проверки у ГЛАВНОГО сообщения

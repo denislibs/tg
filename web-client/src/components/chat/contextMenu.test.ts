@@ -22,7 +22,7 @@ import { CLICK_EVENT_NAME } from '@helpers/dom/clickEvent'
 import rootScope from '@lib/rootScope'
 import { putMirrorPage, resetMessagesMirror } from '@core/history/messagesMirror'
 import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
-import type { MyMessage } from '@core/models'
+import type { MessageReal, MyMessage } from '@core/models'
 import wrapSticker from '@components/wrappers/sticker'
 
 // Панель быстрых реакций рисует стикеры ролей; сами файлы к меню отношения не
@@ -1129,28 +1129,69 @@ describe('ChatContextMenu — действия П-5: попап и RPC', () => {
 describe('ChatContextMenu — лента отложенных', () => {
   const SCHEDULED_KEY = `${PEER}_scheduled`
 
-  async function openScheduled(mid: number) {
-    putMirrorPage(SCHEDULED_KEY, [message(mid, { pFlags: { out: true, is_scheduled: true } })])
+  async function openScheduled(mid: number, extra: Partial<MessageReal> = {}) {
+    const date = Math.floor(Date.now() / 1000) + 86400
+    putMirrorPage(SCHEDULED_KEY, [message(mid, { pFlags: { out: true, is_scheduled: true }, date, ...extra })])
     const { bubble, content } = makeBubble(mid, { out: true })
     container.append(bubble)
     const chat = makeChat({ type: ChatType.Scheduled, messagesStorageKey: SCHEDULED_KEY })
-    const managers = { ...makeManagers(), messages: { ...makeManagers().messages, sendScheduledMessages: vi.fn().mockResolvedValue(undefined) } }
+    // Срез композера, который зовёт «Изменить время» (tweb :976-986).
+    const input = Object.assign(chat.input as object, {
+      scheduleDate: undefined as number | undefined,
+      scheduleRepeatPeriod: undefined as number | undefined,
+      scheduleSending: vi.fn(),
+      onMessageSent: vi.fn(),
+    })
+    const managers = {
+      ...makeManagers(),
+      messages: { ...makeManagers().messages, sendScheduledMessages: vi.fn().mockResolvedValue(undefined), editMessage: vi.fn().mockResolvedValue(undefined) },
+    }
     const menu = new ChatContextMenu(chat, managers)
     menu.attachTo(container)
     rightClick(content)
     await flush()
-    return { managers }
+    return { managers, input, date }
   }
 
-  it('пункты: «Отправить сейчас» первым; ответа, правки, закрепа и пересылки нет', async() => {
+  const clickItem = (text: string) => {
+    const item = Array.from(menuElement()!.querySelectorAll<HTMLElement>('.btn-menu-item'))
+      .find((el) => el.querySelector('.btn-menu-item-text')?.textContent === text)!
+    item.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+  }
+
+  // tweb :959-988 + «Изменить» без запрета ленты отложенных (verify — только
+  // `canEditMessage`, :1063-1070; Б-92 закрыт Ф-5).
+  it('пункты: «Отправить сейчас» первым, «Изменить время» и «Изменить»; ответа, закрепа и пересылки нет', async() => {
     await openScheduled(1)
     const items = itemTexts()
     expect(items[0]).toBe('Send Now')
+    expect(items).toContain('Reschedule')
+    expect(items).toContain('Edit')
     expect(items).not.toContain('Reply')
-    expect(items).not.toContain('Edit')
     expect(items).not.toContain('Pin')
     expect(items).not.toContain('Forward')
     expect(items).toContain('Delete')
+  })
+
+  // tweb contextMenu.ts:973-988 → `editMessage(message, message.message, {scheduleDate,
+  // scheduleRepeatPeriod, entities})`; календарь открывается на дате и повторе сообщения.
+  it('«Изменить время» — editMessage с новой датой и повтором, календарь на текущих', async() => {
+    const { managers, input, date } = await openScheduled(1, { schedule_repeat_period: 604800 })
+    clickItem('Reschedule')
+    expect(input.scheduleSending).toHaveBeenCalledWith(expect.any(Function), new Date(date * 1000), 604800)
+
+    input.scheduleDate = 0x7FFFFFFE
+    input.scheduleRepeatPeriod = undefined
+    input.scheduleSending.mock.calls[0][0]()
+    expect(managers.messages.editMessage).toHaveBeenCalledWith(PEER, 1, 'text 1', undefined, { scheduleDate: 0x7FFFFFFE, scheduleRepeatPeriod: undefined })
+    expect(input.onMessageSent).toHaveBeenCalledWith(false, false)
+  })
+
+  it('«Изменить время» на слишком близкое (сброшенное) время — прежняя дата (tweb :2209)', async() => {
+    const { managers, input, date } = await openScheduled(1)
+    clickItem('Reschedule')
+    input.scheduleSending.mock.calls[0][0]()
+    expect(managers.messages.editMessage).toHaveBeenCalledWith(PEER, 1, 'text 1', undefined, expect.objectContaining({ scheduleDate: date }))
   })
 
   it('«Отправить сейчас» спрашивает подтверждение и шлёт `sendScheduledMessages`', async() => {

@@ -17,10 +17,10 @@
  *     (`getParticipants({filter: admins})`) у главного потока не живёт. Такое
  *     удаление идёт обычным попапом ниже — сообщения удаляются для всех, как
  *     у оригинала в канале. Бэклог Б-94;
- *  2. `ChatType.Scheduled`/`ChatType.Welcome` (:30-34, :63-66): отложенных в
- *     ленте нет (Б-25 — сосед «поиск+отложенные» допишет ветку `Scheduled`
- *     вместе с `deleteScheduledMessages`), приветственных сообщений нет вовсе;
- *     эфемерных сообщений (`isEphemeralMessage`, :38-39) в нашей модели нет;
+ *  2. `ChatType.Welcome` (:32-34, :68-69): приветственных сообщений нет вовсе;
+ *     эфемерных сообщений (`isEphemeralMessage`, :38-39) в нашей модели нет.
+ *     Ветка `ChatType.Scheduled` (:66-67, :108) портирована: отложенные — своё
+ *     хранилище, удаляются `deleteScheduledMessages`, без «удалить у собеседника»;
  *  3. игральных костей (`messageMediaDice`, :127-130) в модели нет, поэтому в
  *     личке отозвать можно ВСЁ выбранное: ветки «только у меня» и «частично»
  *     (`canRevoke` короче `mids` — `AreYouSure…OnlyMe`/`…Mixed`,
@@ -50,7 +50,7 @@ import type { MyMessage } from '@core/models'
 export default function showDeleteMessagesPopup(
   peerId: PeerId,
   mids: number[],
-  _type: ChatType,
+  type: ChatType,
   onConfirm?: () => void,
   /** окно, откуда берутся сообщения (расхождение 4) — `chat.getMessage` */
   getMessage?: (mid: number) => MyMessage | undefined,
@@ -71,6 +71,12 @@ export default function showDeleteMessagesPopup(
   // :57-73; ветки Scheduled/Welcome — расхождение 2
   const callback = (checked?: Set<LangPackKey>, revoke?: boolean) => {
     onConfirm?.()
+    // :66-67 — номера отложенных — ключи очереди, а не номера истории
+    if(type === ChatType.Scheduled) {
+      void managers.messages.deleteScheduledMessages(peerId, mids)
+      return
+    }
+
     const needRevoke = !!checked?.size || !!revoke
     // :62-65 — расхождение 3
     void managers.messages.deleteMessages(peerId, mids, needRevoke)
@@ -101,7 +107,7 @@ export default function showDeleteMessagesPopup(
     description = isSingleMessage ? 'AreYouSureDeleteSingleMessage' : 'AreYouSureDeleteFewMessages'
   }
 
-  if(peerId === rootScope.myId || isBot) {
+  if(peerId === rootScope.myId || type === ChatType.Scheduled || isBot) {
     // :105-107
   } else if(isUser(peerId)) {
     // :108-136 — расхождение 3

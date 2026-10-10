@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 64,
+      "version": 65,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -5751,6 +5751,34 @@
           "value": "Repeat"
         },
         {
+          "key": "Schedule.Repeat.Biweekly",
+          "value": "Biweekly"
+        },
+        {
+          "key": "Schedule.Repeat.Daily",
+          "value": "Daily"
+        },
+        {
+          "key": "Schedule.Repeat.Every3Months",
+          "value": "Every 3 Months"
+        },
+        {
+          "key": "Schedule.Repeat.Every6Months",
+          "value": "Every 6 Months"
+        },
+        {
+          "key": "Schedule.Repeat.Monthly",
+          "value": "Monthly"
+        },
+        {
+          "key": "Schedule.Repeat.Weekly",
+          "value": "Weekly"
+        },
+        {
+          "key": "Schedule.Repeat.Yearly",
+          "value": "Yearly"
+        },
+        {
           "key": "Schedule.SendOn",
           "value": "Send on"
         },
@@ -7394,7 +7422,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 64,
+      "version": 65,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -14212,6 +14240,34 @@
         {
           "key": "Schedule.Repeat",
           "value": "Повторять"
+        },
+        {
+          "key": "Schedule.Repeat.Daily",
+          "value": "Ежедневно"
+        },
+        {
+          "key": "Schedule.Repeat.Weekly",
+          "value": "Еженедельно"
+        },
+        {
+          "key": "Schedule.Repeat.Biweekly",
+          "value": "Раз в 2 недели"
+        },
+        {
+          "key": "Schedule.Repeat.Monthly",
+          "value": "Ежемесячно"
+        },
+        {
+          "key": "Schedule.Repeat.Every3Months",
+          "value": "Раз в 3 месяца"
+        },
+        {
+          "key": "Schedule.Repeat.Every6Months",
+          "value": "Раз в 6 месяцев"
+        },
+        {
+          "key": "Schedule.Repeat.Yearly",
+          "value": "Ежегодно"
         },
         {
           "key": "AreYouSureDeleteFewMessagesBot",

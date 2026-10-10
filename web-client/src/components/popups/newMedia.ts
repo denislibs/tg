@@ -41,6 +41,7 @@ import { scaleImageForSend } from '@core/media/scaleImageForSend'
 import type { Managers } from '@/client/bootstrap'
 import type { MessageSendingParams } from '@core/managers/messages/sendingParams'
 import type { SendMessageAction } from '@core/realtime/events'
+import { ChatType } from '@components/chat/chatType'
 
 /** tweb `newMedia.tsx` `WillAttachType` в объёме выбора файлов, вставки и сброса. */
 export type WillAttachType = 'media' | 'document'
@@ -61,7 +62,11 @@ export function getCurrentNewMediaPopup() {
 export interface NewMediaChat {
   peerId: PeerId
   managers: Managers
+  /** tweb `newMedia.tsx:1013` — в ленте отложенных отправка спрашивает время */
+  type: ChatType
   input: {
+    /** tweb `input.ts:2190-2217` — календарь; выбранное время ляжет в пакет */
+    scheduleSending(callback: () => void): void | Promise<void>
     /** tweb `chat.ts:1352` `chat.getMessageSendingParams()`; у нас до К-4
      *  включительно лежит на `ChatInput` (расхождение 5) */
     getMessageSendingParams(): MessageSendingParams
@@ -159,7 +164,15 @@ function send(
   asFile: boolean,
   paidPrice?: number | null,
   spoilers?: boolean[],
+  force = false,
 ) {
+  // tweb :1013-1018 — в ленте отложенных сперва время; оно ляжет в пакет
+  // (`scheduleDate`), и вся выборка уйдёт в очередь отложенных
+  if(chat.type === ChatType.Scheduled && !force) {
+    void chat.input.scheduleSending(() => send(chat, files, caption, asFile, paidPrice, spoilers, true))
+    return
+  }
+
   // tweb :1022 — пакет один на всю выборку
   const sendingParams = chat.input.getMessageSendingParams()
   // Несколько фото/видео «как медиа» → один альбом (grouped_id).

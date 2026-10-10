@@ -1,7 +1,7 @@
 // src/core/managers/messagesManager.test.ts
 import { describe, it, expect, vi } from 'vitest'
 import { newMessagesManager } from './messagesManager'
-import type { RestClient } from '../net/restClient'
+import { HttpError, type RestClient } from '../net/restClient'
 import { mapMyMessage, type MessageReal, type MyMessage, type RawMessage, type RawMessageReal } from '../models'
 import type { NewMessageEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, DeleteMessageEvt } from '../realtime/events'
 import { RT } from '../realtime/events'
@@ -123,7 +123,7 @@ describe('MessagesManager.forwardMessages', () => {
     const mgr = newMessagesManager({ rest })
     await mgr.forwardMessages(1, 2, [cid(3), cid(4)], { dropAuthor: true })
     expect(path).toBe('/chats/1/forward')
-    expect(body).toEqual({ from_peer_id: 2, ids: [3, 4], drop_author: true, drop_caption: false, silent: false, top_msg_id: null })
+    expect(body).toEqual({ from_peer_id: 2, ids: [3, 4], drop_author: true, drop_caption: false, silent: false, top_msg_id: null, schedule_date: 0, schedule_repeat_period: 0 })
   })
 
   // tweb forwardMessagesInner: `silent` и `top_msg_id` (корень темы/треда у
@@ -139,115 +139,161 @@ describe('MessagesManager.forwardMessages', () => {
   })
 })
 
-describe('MessagesManager scheduled', () => {
-  // Отдельной формы «запланированного» на проводе больше НЕТ: это обычное
-  // сообщение (`message`) с нашим параметром `send_at` — отложенность выражена
-  // полем, а не вторым конструктором и вторым маппером к нему.
-  const rawScheduled = (over: Record<string, unknown> = {}) => ({
-    ...makeRawMessage({ id: 1, peerId: 1, fromId: 1, text: 'later', createdAt: '2026-07-19T10:00:00Z' }),
-    send_at: 1_784_937_600, ...over,
-  })
-
-  it('sends when_online=true and maps the whenOnline flag', async () => {
-    let body: Record<string, unknown> = {}
-    const rest = { post: async (_p: string, b: Record<string, unknown>) => { body = b; return rawScheduled({ when_online: true }) } } as unknown as RestClient
-    const mgr = newMessagesManager({ rest })
-    const s = await mgr.scheduleMessage(1, { text: 'later', sendAt: 0, whenOnline: true })
-    expect(body.when_online).toBe(true)
-    expect(real(s)?.when_online).toBe(true)
-  })
-
-  it('defaults when_online to false for a dated schedule', async () => {
-    let body: Record<string, unknown> = {}
-    const rest = { post: async (_p: string, b: Record<string, unknown>) => { body = b; return rawScheduled() } } as unknown as RestClient
-    const mgr = newMessagesManager({ rest })
-    const s = await mgr.scheduleMessage(1, { text: 'later', sendAt: 1_800_000_000 })
-    expect(body.when_online).toBe(false)
-    // В ОТВЕТЕ ключа нет вовсе — «выключено» у флага это его отсутствие, а не
-    // `false` (то же правило, что у всех pFlags схемы).
-    expect(real(s)?.when_online).toBeUndefined()
-  })
-
-  it('editScheduled PATCHes the new send_at and returns the updated record', async () => {
-    let path = ''
-    let body: Record<string, unknown> = {}
-    const rest = { patch: async (p: string, b: Record<string, unknown>) => { path = p; body = b; return rawScheduled({ send_at: 1_800_000_500 }) } } as unknown as RestClient
-    const mgr = newMessagesManager({ rest })
-    // Адрес строки — СЕРВЕРНЫЙ номер: клиентское пространство общее (границу
-    // разбора проходит всё), значит и обратно приводится тем же способом.
-    const s = await mgr.editScheduled(1, cid(7), 1_800_000_500)
-    expect(path).toBe('/chats/1/scheduled/7')
-    expect(body.send_at).toBe(1_800_000_500)
-    expect(real(s)?.send_at).toBe(1_800_000_500)
-  })
-})
-
-// Лента отложенных (`ChatType.Scheduled`): набор по возрастанию даты отправки и
-// события `scheduled_new`/`scheduled_delete` после ответа ручки (tweb
-// rootScope.ts:131-132) — их ловит лента (`chat/bubbles.ts`).
+// Лента отложенных — порт tweb `scheduledMessagesStorage` и обработчиков
+// `onUpdateNewScheduledMessage`/`onUpdateDeleteScheduledMessages`
+// (appMessagesManager.ts:11773-11815, :12386-12427, :12606-12613). Постановка —
+// обычная отправка с `scheduleDate` (поле пакета), источник перемен ленты —
+// кадры, а не ответ ручки.
 describe('MessagesManager — лента отложенных', () => {
-  const rawScheduled = (id: number, date: number) => ({
+  const rawScheduled = (id: number, date: number, over: Record<string, unknown> = {}) => ({
     ...makeRawMessage({ id, peerId: 1, fromId: 1, text: 'later', createdAt: '2026-07-19T10:00:00Z' }),
-    date, send_at: date,
+    date, ...over,
+  }) as RawMessage
+  const page = (...messages: RawMessage[]) => ({ _: 'messages.messages', messages, users: [], chats: [] })
+  const newScheduled = (m: RawMessage) => ({ _: 'updateNewScheduledMessage' as const, message: m })
+  const deleteScheduled = (ids: number[]) => ({
+    _: 'updateDeleteScheduledMessages' as const, peer: { _: 'peerUser' as const, user_id: 1 }, messages: ids,
   })
 
-  it('getScheduledMessages отдаёт набор по возрастанию даты отправки', async () => {
-    const rest = { get: async () => ({ _: 'messages.messages', messages: [rawScheduled(2, 300), rawScheduled(1, 100), rawScheduled(3, 200)], users: [], chats: [] }) } as unknown as RestClient
-    const mgr = newMessagesManager({ rest })
+  function setup(restOver: Record<string, unknown> = {}) {
+    const events: [string, unknown][] = []
+    const sends: Record<string, unknown>[] = []
+    let gets = 0
+    const rest = {
+      get: async () => { gets++; return page(rawScheduled(2, 300), rawScheduled(1, 100), rawScheduled(3, 200)) },
+      ...restOver,
+    } as unknown as RestClient
+    const mgr = newMessagesManager({
+      rest,
+      broadcast: (e, p) => { events.push([e, p]) },
+      send: (a) => { sends.push(a as unknown as Record<string, unknown>) },
+    })
+    const ops = () => events.filter(([e]) => e === RT.messageOp).flatMap(([, p]) => (p as { ops: MessageOp[] }).ops)
+    return { mgr, events, sends, ops, gets: () => gets }
+  }
+
+  it('getScheduledMessages: по возрастанию даты, флаг is_scheduled; повтор — из хранилища, без сети (tweb :12398-12401)', async () => {
+    const { mgr, gets } = setup()
     const list = await mgr.getScheduledMessages(1)
     expect(list.map((m) => m.date)).toEqual([100, 200, 300])
+    expect(list.every((m) => m.pFlags.is_scheduled)).toBe(true)
+    await mgr.getScheduledMessages(1)
+    expect(gets()).toBe(1)
   })
 
-  it('sendScheduledMessages шлёт send_now по каждому и объявляет scheduled_delete', async () => {
-    const paths: string[] = []
-    const events: [string, unknown][] = []
-    const rest = { post: async (p: string) => { paths.push(p); return {} } } as unknown as RestClient
-    const mgr = newMessagesManager({ rest, broadcast: (e, p) => { events.push([e, p]) } })
-    await mgr.sendScheduledMessages(1, [cid(7), cid(8)])
-    expect(paths).toEqual(['/chats/1/scheduled/7/send_now', '/chats/1/scheduled/8/send_now'])
-    expect(events).toEqual([['scheduled_delete', { peerId: 1, mids: [cid(7), cid(8)] }]])
-  })
-
-  it('deleteScheduledMessages удаляет по каждому и объявляет scheduled_delete', async () => {
-    const paths: string[] = []
-    const events: [string, unknown][] = []
-    const rest = { del: async (p: string) => { paths.push(p); return {} } } as unknown as RestClient
-    const mgr = newMessagesManager({ rest, broadcast: (e, p) => { events.push([e, p]) } })
-    await mgr.deleteScheduledMessages(1, [cid(9)])
-    expect(paths).toEqual(['/chats/1/scheduled/9'])
-    expect(events).toEqual([['scheduled_delete', { peerId: 1, mids: [cid(9)] }]])
-  })
-
-  it('отказ ручки не объявляет scheduled_delete', async () => {
-    const events: string[] = []
-    const rest = { del: async () => { throw new Error('500') } } as unknown as RestClient
-    const mgr = newMessagesManager({ rest, broadcast: (e) => { events.push(e) } })
-    await expect(mgr.deleteScheduledMessages(1, [cid(9)])).rejects.toThrow()
+  it('updateNewScheduledMessage без хранилища пропускается (tweb :11777-11780)', () => {
+    const { mgr, events } = setup()
+    mgr.applyNewScheduledMessage(newScheduled(rawScheduled(5, 500)))
     expect(events).toEqual([])
   })
 
-  it('scheduleMessage объявляет scheduled_new созданным сообщением', async () => {
-    const events: [string, unknown][] = []
-    const rest = { post: async () => rawScheduled(4, 500) } as unknown as RestClient
-    const mgr = newMessagesManager({ rest, broadcast: (e, p) => { events.push([e, p]) } })
-    const s = await mgr.scheduleMessage(1, { text: 'later', sendAt: 500 })
-    expect(events).toEqual([['scheduled_new', s]])
+  it('updateNewScheduledMessage: новый номер → scheduled_new, тот же номер → правка окна отложенных (message_edit)', async () => {
+    const { mgr, events, ops } = setup()
+    await mgr.getScheduledMessages(1)
+    mgr.applyNewScheduledMessage(newScheduled(rawScheduled(5, 500)))
+    expect(events.map(([e]) => e)).toEqual(['scheduled_new'])
+    expect((events[0][1] as MyMessage).id).toBe(cid(5))
+
+    mgr.applyNewScheduledMessage(newScheduled(rawScheduled(5, 900, { message: 'правка' })))
+    expect(ops()).toEqual([{ op: 'replace', key: '1_scheduled', msg: expect.objectContaining({ id: cid(5), date: 900, message: 'правка' }) }])
+    expect((await mgr.getScheduledMessages(1)).map((m) => m.date)).toEqual([100, 200, 300, 900])
   })
 
-  it('scheduleMessage стикера шлёт type и media_id (П-6, отложенный стикер)', async () => {
+  it('updateDeleteScheduledMessages → scheduled_delete с клиентскими номерами, хранилище худеет', async () => {
+    const { mgr, events } = setup()
+    await mgr.getScheduledMessages(1)
+    mgr.applyDeleteScheduledMessages(deleteScheduled([1, 2]))
+    expect(events).toEqual([['scheduled_delete', { peerId: 1, mids: [cid(1), cid(2)] }]])
+    expect((await mgr.getScheduledMessages(1)).map((m) => m.id)).toEqual([cid(3)])
+  })
+
+  it('постановка — обычная отправка с scheduleDate: бабл в хранилище отложенных и scheduled_new, кадр несёт schedule_date', async () => {
+    const { mgr, events, sends, ops } = setup()
+    await mgr.getScheduledMessages(1)
+    await mgr.sendText({ peerId: 1, text: 'потом', clientMsgId: 'c-9', scheduleDate: 1_900_000_000, scheduleRepeatPeriod: 86400, optimistic: { senderId: 1 } })
+    expect(sends).toEqual([expect.objectContaining({ clientMsgId: 'c-9', scheduleDate: 1_900_000_000, scheduleRepeatPeriod: 86400 })])
+    // в историю бабл не встаёт — операций окна нет
+    expect(ops()).toEqual([])
+    const [[event, temp]] = events as [[string, MessageReal]]
+    expect(event).toBe('scheduled_new')
+    expect(temp).toMatchObject({ random_id: 'c-9', date: 1_900_000_000, schedule_repeat_period: 86400, pFlags: { out: true, is_scheduled: true } })
+    expect((await mgr.getScheduledMessages(1)).map((m) => m.id)).toContain(temp.id)
+  })
+
+  it('свой временный бабл снимает кадр с тем же random_id (tweb checkPendingMessage → history_update)', async () => {
+    const { mgr, events, ops } = setup()
+    await mgr.getScheduledMessages(1)
+    await mgr.sendText({ peerId: 1, text: 'потом', clientMsgId: 'c-9', scheduleDate: 1_900_000_000, optimistic: { senderId: 1 } })
+    events.length = 0
+    mgr.applyNewScheduledMessage(newScheduled(rawScheduled(11, 1_900_000_000, { random_id: 'c-9' })))
+    // не scheduled_new (иначе дубль), а вставка финального в окно отложенных —
+    // зеркало сольёт её с временным по random_id
+    expect(events.map(([e]) => e)).toEqual([RT.messageOp])
+    expect(ops()).toEqual([{ op: 'insert', key: '1_scheduled', msg: expect.objectContaining({ id: cid(11), random_id: 'c-9' }), sequential: true }])
+    const ids = (await mgr.getScheduledMessages(1)).map((m) => m.id)
+    expect(ids).toContain(cid(11))
+    expect(ids.filter((id) => !Number.isInteger(id))).toEqual([])
+  })
+
+  it('ack постановки (scheduled) финализирует бабл в хранилище отложенных, а не в истории', async () => {
+    const { mgr, ops } = setup()
+    await mgr.getScheduledMessages(1)
+    await mgr.sendText({ peerId: 1, text: 'потом', clientMsgId: 'c-9', scheduleDate: 1_900_000_000, optimistic: { senderId: 1 } })
+    expect(mgr.ackPendingMessage({ client_msg_id: 'c-9', id: 12, date: 1_900_000_000, scheduled: true }))
+      .toEqual([{ op: 'insert', key: '1_scheduled', msg: expect.objectContaining({ id: cid(12) }), sequential: true }])
+    expect(ops()).toEqual([])
+    // кадр следом — правка уже финального, без второго бабла
+    mgr.applyNewScheduledMessage(newScheduled(rawScheduled(12, 1_900_000_000, { random_id: 'c-9' })))
+    expect(ops()).toEqual([expect.objectContaining({ op: 'replace', key: '1_scheduled' })])
+  })
+
+  it('sendScheduledMessages — один пакетный вызов, кадры ответа применяются (tweb :12420-12427)', async () => {
+    const calls: [string, unknown][] = []
+    const { mgr, events } = setup({
+      post: async (p: string, b: unknown) => { calls.push([p, b]); return { updates: [deleteScheduled([7, 8])] } },
+    })
+    await mgr.getScheduledMessages(1)
+    await mgr.sendScheduledMessages(1, [cid(7), cid(8)])
+    expect(calls).toEqual([['/chats/1/scheduled/send_now', { id: [7, 8] }]])
+    expect(events).toEqual([['scheduled_delete', { peerId: 1, mids: [cid(7), cid(8)] }]])
+  })
+
+  it('deleteScheduledMessages — один пакетный вызов; отказ ручки ничего не объявляет', async () => {
+    const calls: [string, unknown][] = []
+    const ok = setup({ post: async (p: string, b: unknown) => { calls.push([p, b]); return { updates: [deleteScheduled([9])] } } })
+    await ok.mgr.getScheduledMessages(1)
+    await ok.mgr.deleteScheduledMessages(1, [cid(9)])
+    expect(calls).toEqual([['/chats/1/scheduled/delete', { id: [9] }]])
+    expect(ok.events).toEqual([['scheduled_delete', { peerId: 1, mids: [cid(9)] }]])
+
+    const bad = setup({ post: async () => { throw new Error('500') } })
+    await expect(bad.mgr.deleteScheduledMessages(1, [cid(9)])).rejects.toThrow()
+    expect(bad.events).toEqual([])
+  })
+
+  it('editMessage с scheduleDate — PATCH сообщения с schedule_date (tweb :2209-2222), ответ — правка ленты', async () => {
+    const calls: [string, Record<string, unknown>][] = []
+    const { mgr, ops } = setup({
+      patch: async (p: string, b: Record<string, unknown>) => { calls.push([p, b]); return { updates: [newScheduled(rawScheduled(1, 0x7FFFFFFE))] } },
+    })
+    await mgr.getScheduledMessages(1)
+    await mgr.editMessage(1, cid(1), 'later', undefined, { scheduleDate: 0x7FFFFFFE })
+    // «Когда в сети» едет ДАТОЙ-меткой, а не флагом (НО-3: не 2038 год)
+    expect(calls).toEqual([['/chats/1/messages/1', { text: 'later', entities: null, schedule_date: 0x7FFFFFFE, schedule_repeat_period: 0 }]])
+    expect(ops()).toEqual([expect.objectContaining({ op: 'replace', key: '1_scheduled', msg: expect.objectContaining({ date: 0x7FFFFFFE }) })])
+  })
+
+  it('правка отложенного без изменений (MESSAGE_NOT_MODIFIED) — не отказ (tweb :2230-2233)', async () => {
+    const { mgr } = setup({ patch: async () => { throw new HttpError(400, 'MESSAGE_NOT_MODIFIED', 'MESSAGE_NOT_MODIFIED') } })
+    await expect(mgr.editMessage(1, cid(1), 'same', undefined, { scheduleDate: 1_900_000_000 })).resolves.toBeUndefined()
+  })
+
+  it('пересылка с scheduleDate шлёт schedule_date и не кладёт копии в историю', async () => {
     let body: Record<string, unknown> = {}
-    const rest = { post: async (_p: string, b: Record<string, unknown>) => { body = b; return rawScheduled(5, 600) } } as unknown as RestClient
-    const mgr = newMessagesManager({ rest })
-    await mgr.scheduleMessage(1, { text: '', sendAt: 600, type: 'sticker', mediaId: 42 })
-    expect(body).toMatchObject({ type: 'sticker', media_id: 42, send_at: 600 })
-  })
-
-  it('editScheduled переставляет бабл ленты: scheduled_delete прежнего и scheduled_new нового', async () => {
-    const events: [string, unknown][] = []
-    const rest = { patch: async () => rawScheduled(7, 900) } as unknown as RestClient
-    const mgr = newMessagesManager({ rest, broadcast: (e, p) => { events.push([e, p]) } })
-    const s = await mgr.editScheduled(1, cid(7), 900)
-    expect(events).toEqual([['scheduled_delete', { peerId: 1, mids: [cid(7)] }], ['scheduled_new', s]])
+    const { mgr } = setup({ post: async (_p: string, b: Record<string, unknown>) => { body = b; return page(rawScheduled(4, 1_900_000_000)) } })
+    await mgr.forwardMessages(1, 2, [cid(3)], { scheduleDate: 1_900_000_000 })
+    expect(body).toMatchObject({ schedule_date: 1_900_000_000, ids: [3] })
+    expect(mgr.getMessageByPeer(1, cid(4))).toBeUndefined()
   })
 })
 

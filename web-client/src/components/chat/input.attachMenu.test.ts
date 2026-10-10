@@ -44,7 +44,6 @@ async function mountInput(peerId: PeerId, options: { canSend?: boolean, isBot?: 
   const managers = {
     messages: {
       getScheduledMessages: vi.fn(async() => [] as MyMessage[]),
-      scheduleMessage: vi.fn(async() => ({})),
       sendText: vi.fn(async() => ({ ok: true })),
       editMessage: vi.fn(async() => ({})),
       sendPoll: vi.fn(async() => ({})),

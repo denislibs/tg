@@ -12,9 +12,14 @@
 // композер (`appImManager.chat.input.initMessagesForward`), несколько — переслать
 // сразу каждому и показать тост `FwdMessage(s)To…`. Чего мост не умеет
 // (закроет 2C-24):
-//  1. поле комментария и меню отправки (без звука, по расписанию) подвала
-//     попапа (:400-440) — у `ForwardPicker` их нет; поэтому «Избранное» одним
-//     получателем идёт сразу пересылкой (`isSavedMessagesNoText`, :355-358);
+//  1. поле комментария подвала попапа (:400-440) — у `ForwardPicker` его нет;
+//     поэтому «Избранное» одним получателем идёт сразу пересылкой
+//     (`isSavedMessagesNoText`, :355-358). Меню отправки (без звука, по
+//     расписанию, «когда будет в сети», :244-302) висит на кнопке «Переслать»
+//     подвала `ForwardPicker` (`onSendButtonRef`), а не на кнопке поля
+//     комментария; обычный щелчок по ней — прежний выбор (одним получателем —
+//     открыть чат), финализация «через кнопку» (`finalizingThroughButton`) —
+//     только у пунктов меню;
 //  2. «Копировать ссылку» поста канала (`canCopyLink`, :109-117) и темы
 //     форумов получателя (`threadId`, `noTopics`);
 //  3. права получателя выводятся из пересылаемых сообщений нашим
@@ -31,6 +36,14 @@ import { i18n, join } from '@lib/langPack'
 import { peerTitle } from '@core/peerCache'
 import { resolveChatRightsActions } from '@core/peers/filterByRights'
 import type { MyMessage } from '@core/models'
+import { cachedUser } from '@core/peerCache'
+import { isUser } from '@core/peers/peerId'
+import { getUserStatusForSort } from '@core/presence'
+import { getMiddleware } from '@helpers/middleware'
+import SendMenu from '@components/chat/sendContextMenu'
+import showScheduleSendingPopup from '@components/popups/scheduleSendingPopup'
+import { SEND_WHEN_ONLINE_TIMESTAMP } from '@core/format/dayLabel'
+import type { MessageSendingParams } from '@core/managers/messages/sendingParams'
 
 export type ForwardPeerIdMids = { [fromPeerId: PeerId]: number[] }
 
@@ -50,13 +63,19 @@ function getForwardedMessages(appImManager: AppImManager, peerIdMids: ForwardPee
   return messages
 }
 
+/** Параметры отправки меню подвала (tweb `:124-126` — `silent`, `scheduleDate`,
+ *  `scheduleRepeatPeriod`). */
+type ForwardSendingParams = Pick<MessageSendingParams, 'silent' | 'scheduleDate' | 'scheduleRepeatPeriod'>
+
 /** tweb `ChatInput.sendMessageWithForward` (input.ts) в объёме моста: без
- *  текста и параметров отправки (расхождение 1) — одна пересылка на источник. */
-async function sendMessageWithForward(peerId: PeerId, forwarding: ForwardPeerIdMids): Promise<boolean> {
+ *  текста (расхождение 1) — одна пересылка на источник, с параметрами меню
+ *  отправки (tweb `processSingle` :206-215). */
+async function sendMessageWithForward(peerId: PeerId, forwarding: ForwardPeerIdMids, sendingParams: ForwardSendingParams): Promise<boolean> {
   const { managers } = startClient()
+  const { silent, scheduleDate, scheduleRepeatPeriod } = sendingParams
   try {
     for(const fromPeerId in forwarding) {
-      await managers.messages.forwardMessages(peerId, +fromPeerId, forwarding[fromPeerId])
+      await managers.messages.forwardMessages(peerId, +fromPeerId, forwarding[fromPeerId], { silent, scheduleDate, scheduleRepeatPeriod })
     }
 
     return true
@@ -84,6 +103,89 @@ export default async function showForwardPopup(
     messageCount += peerIdMids[fromPeerId].length
   }
 
+  // :120-126 — меню отправки подвала
+  const sendMenuMiddleware = getMiddleware()
+  let sendMenu: SendMenu | undefined
+  let sendMenuElement: HTMLElement | undefined
+  let sendButton: HTMLButtonElement | undefined
+  let selectedPeerIds: PeerId[] = []
+  let silent = false
+  let scheduleDate: number | undefined
+  let scheduleRepeatPeriod: number | undefined
+  let finalizingThroughButton = false
+
+  // tweb `handle.finalize()` — у моста выбор держит `ForwardPicker`, поэтому
+  // финализация — щелчок по его же кнопке «Переслать» (`confirm`).
+  const finalize = () => {
+    finalizingThroughButton = true
+    sendButton?.click()
+  }
+
+  // :229-241
+  const updateSendMenuPeerParams = () => {
+    if(!sendMenu) return
+    const allSelf = selectedPeerIds.length > 0 && selectedPeerIds.every((p) => p === rootScope.myId)
+    const peerId = allSelf ? rootScope.myId : (selectedPeerIds.find((p) => p !== rootScope.myId) ?? rootScope.myId)
+    sendMenu.setPeerParams({ peerId, isPaid: false })
+  }
+
+  // :243-302
+  const setupSendMenu = (btn: HTMLButtonElement | null) => {
+    if(!btn || btn === sendButton) return
+    sendButton = btn
+    sendMenuElement?.remove()
+    sendMenuElement = undefined
+    sendMenuMiddleware.clean()
+
+    sendMenu = new SendMenu({
+      onSilentClick: () => {
+        silent = true
+        finalize()
+      },
+      onScheduleClick: () => {
+        showScheduleSendingPopup({
+          onPick: (timestamp, repeatPeriod) => {
+            scheduleDate = timestamp
+            scheduleRepeatPeriod = repeatPeriod
+            finalize()
+          },
+          canSendWhenOnline: false,
+        })
+      },
+      onSendWhenOnlineClick: () => {
+        scheduleDate = SEND_WHEN_ONLINE_TIMESTAMP
+        finalize()
+      },
+      // :272-282 — ровно один получатель, пользователь (не бот, не я), статус
+      // виден точно (`isUserOnlineVisible`) и сейчас не в сети
+      canSendWhenOnline: () => {
+        if(selectedPeerIds.length !== 1) return false
+        const peerId = selectedPeerIds[0]
+        if(peerId === rootScope.myId || !isUser(peerId)) return false
+        const user = cachedUser(peerId)
+        if(user?._ !== 'user' || user.pFlags?.bot) return false
+        const status = useChatsStore.getState().presence[peerId] ?? user.status
+        if(!(getUserStatusForSort(status) > 3)) return false
+        return status?._ !== 'userStatusOnline'
+      },
+      middleware: sendMenuMiddleware.get(),
+      openSide: 'top-left',
+      onContextElement: btn,
+      onOpen: () => selectedPeerIds.length > 0,
+      onRef: (element) => {
+        sendMenuElement = element
+        ;(btn.closest('.popup-container') ?? document.body).append(element)
+      },
+    })
+
+    updateSendMenuPeerParams()
+  }
+
+  const destroySendMenu = () => {
+    sendMenuElement?.remove()
+    sendMenuMiddleware.destroy()
+  }
+
   // :185-227
   const processSingle = async(peerId: PeerId, openChat: boolean) => {
     if(_onSelect) {
@@ -96,14 +198,18 @@ export default async function showForwardPopup(
       return false
     }
 
-    return sendMessageWithForward(peerId, peerIdMids)
+    return sendMessageWithForward(peerId, peerIdMids, {
+      silent: silent || undefined,
+      scheduleDate: scheduleDate || undefined,
+      scheduleRepeatPeriod: scheduleRepeatPeriod || undefined,
+    })
   }
 
   // :350-399
   const onSelect = async(chosen: PeerId[]) => {
     const sentToPeerIds = new Set<PeerId>()
     const isSavedMessagesNoText = chosen.length === 1 && chosen[0] === rootScope.myId
-    const openChat = chosen.length === 1 && !isSavedMessagesNoText
+    const openChat = chosen.length === 1 && !finalizingThroughButton && !isSavedMessagesNoText
     for(const peerId of chosen) {
       const success = await processSingle(peerId, openChat)
       if(success) {
@@ -129,11 +235,22 @@ export default async function showForwardPopup(
     }
   }
 
+  const onSelectionChange = (peerIds: PeerId[]) => {
+    selectedPeerIds = peerIds
+    updateSendMenuPeerParams()
+  }
+
   openPopup((p) => createElement(ForwardPickerHost, {
     ForwardPicker,
     chatRightsActions,
-    onClose: p.destroy,
+    onSendButtonRef: setupSendMenu,
+    onSelectionChange,
+    onClose: () => {
+      destroySendMenu()
+      p.destroy()
+    },
     onPick: (peerIds: PeerId[]) => {
+      destroySendMenu()
       p.destroy()
       if(peerIds.length) void onSelect(peerIds)
     },
@@ -143,6 +260,8 @@ export default async function showForwardPopup(
 function ForwardPickerHost(props: {
   ForwardPicker: typeof import('@components/messages/ChatDialogs').ForwardPicker,
   chatRightsActions: ReturnType<typeof resolveChatRightsActions>,
+  onSendButtonRef: (el: HTMLButtonElement | null) => void,
+  onSelectionChange: (peerIds: PeerId[]) => void,
   onPick: (peerIds: PeerId[]) => void,
   onClose: () => void,
 }) {
@@ -150,6 +269,8 @@ function ForwardPickerHost(props: {
   return createElement(props.ForwardPicker, {
     dialogs,
     chatRightsActions: props.chatRightsActions,
+    onSendButtonRef: props.onSendButtonRef,
+    onSelectionChange: props.onSelectionChange,
     onPick: props.onPick,
     onClose: props.onClose,
   })

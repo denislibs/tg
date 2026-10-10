@@ -48,12 +48,24 @@ function makeCtx() {
   /** Ключи чатов, которые стенд считает ВЕЩАТЕЛЬНЫМИ каналами (порт
    *  `appPeersManager.isBroadcast`). По умолчанию пуст — обычный чат. */
   const broadcasts = new Set<number>()
+  /** Хранилища отложенных (порт `scheduledMessagesStorage`) и объявленные
+   *  `scheduled_new` — сторона ленты отложенных. */
+  const scheduled = new Map<number, Map<number, MyMessage>>()
+  const scheduledFor = (peerId: number) => {
+    let c = scheduled.get(peerId)
+    if (!c) { c = new Map(); scheduled.set(peerId, c) }
+    return c
+  }
+  const scheduledNews: MyMessage[] = []
   const h = {
-    slices, msgsFor, emitted, sends, uploads, typings, progress, cancelled, order, broadcasts,
+    slices, msgsFor, emitted, sends, uploads, typings, progress, cancelled, order, broadcasts, scheduledFor, scheduledNews,
     /** подменяется в тестах аплоада (успех с другим id, отказ, «зависший» промис) */
     upload: vi.fn(async (a: UploadArgs) => { uploads.push(a); return 909 }),
     ctx: {
       hkey, slices, msgsFor,
+      scheduledFor,
+      scheduledKey: (peerId: number) => `${peerId}_scheduled`,
+      scheduledNew: (m: MyMessage) => { scheduledNews.push(m) },
       appendNewest: (_key: string, sa: SlicedArray<number>, id: number) => { if (!sa.findSlice(id)) sa.unshift(id) },
       // Тот же id, что `sender_id` в evt() ниже. `pFlags.out` на бабле ставит
       // владелец литералом (сообщение зрителя, ещё не ушедшее), а `me` нужен
@@ -522,7 +534,7 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
     expect(h.sends).toEqual([{
       peerId: 1, text: 'hi', clientMsgId: 'c1', type: 'contact', contactUserId: 42,
       threadRootId: 7, replyToId: null, replyToPeerId: null, replyQuoteText: null,
-      replyQuoteOffset: null, silent: false, effect: null, sendAsPeerId: null,
+      replyQuoteOffset: null, silent: false, effect: null, sendAsPeerId: null, scheduleDate: null, scheduleRepeatPeriod: null,
     }])
   })
 
@@ -638,7 +650,7 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
       peerId: 1, text: 'подпись', entities: null, clientMsgId: 'c1', type: 'photo',
       groupedId: undefined, paidMediaPrice: null, mediaId: 909, mediaSpoiler: undefined,
       threadRootId: null, replyToId: null, replyToPeerId: null, replyQuoteText: null,
-      replyQuoteOffset: null, silent: false, effect: null, sendAsPeerId: null,
+      replyQuoteOffset: null, silent: false, effect: null, sendAsPeerId: null, scheduleDate: null, scheduleRepeatPeriod: null,
     }])
   })
 
@@ -1052,5 +1064,45 @@ describe('pending: оптимистичный бабл несёт ССЫЛКУ �
     await p.sendText({ peerId: 1, text: 'x', clientMsgId: 'c1', replyToQuote: { text: 'ригин', offset: 1 } })
 
     expect(h.sends[0]).toMatchObject({ replyToId: null, replyQuoteText: null, replyQuoteOffset: null })
+  })
+})
+
+// Ф-5, п. 1.2.2: отложенная отправка — бабл ложится в хранилище отложенных, а не в
+// историю (tweb `beforeMessageSending({isScheduled})`, appMessagesManager.ts:4370-4388:
+// `saveMessages({isScheduled})` + `scheduled_new`, без `history_append`).
+describe('pending: отложенная отправка', () => {
+  it('sendText с scheduleDate: бабл в хранилище отложенных, scheduled_new, без операций окна истории', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [cid(10)])
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendText({ peerId: 1, text: 'потом', clientMsgId: 'c-s', scheduleDate: 1_900_000_000, optimistic: { senderId: 42 } })
+
+    expect(h.emitted).toEqual([])
+    expect([...h.slices.get('1')!.first]).toEqual([cid(10)])
+    expect(h.msgsFor(1).size).toBe(0)
+    expect(h.scheduledNews).toHaveLength(1)
+    const msg = h.scheduledNews[0] as MessageReal
+    expect(msg).toMatchObject({ date: 1_900_000_000, random_id: 'c-s', pFlags: { out: true, is_scheduled: true } })
+    expect(h.scheduledFor(1).get(msg.id)).toBe(msg)
+    expect(h.sends).toEqual([expect.objectContaining({ clientMsgId: 'c-s', scheduleDate: 1_900_000_000 })])
+  })
+
+  it('отложенный файл: настоящий media_id и отмена правят окно ленты отложенных', async () => {
+    const h = makeCtx()
+    const p = newPendingMethods(h.ctx)
+    let release!: () => void
+    h.upload.mockImplementation(() => new Promise<number>((r) => { release = () => r(77) }))
+
+    const sent = p.sendFile({ peerId: 1, clientMsgId: 'c-f', senderId: 42, file: new Blob(['x']), type: 'photo', isMedia: true, scheduleDate: 1_900_000_000 })
+    const temp = h.scheduledNews[0] as MessageReal
+    release()
+    await sent
+
+    expect(h.emitted).toEqual([[{ op: 'patch', key: '1_scheduled', msgId: temp.id, fields: { media: expect.anything() } }]])
+    expect(h.sends).toEqual([expect.objectContaining({ mediaId: 77, scheduleDate: 1_900_000_000 })])
+
+    expect(p.cancelPendingMessage('c-f')).toEqual([{ op: 'remove', key: '1_scheduled', msgId: temp.id }])
+    expect(h.scheduledFor(1).size).toBe(0)
   })
 })

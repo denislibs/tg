@@ -70,6 +70,8 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor, emitOps 
         reply_to_id: wire.replyToId, reply_quote_text: wire.replyQuoteText,
         reply_quote_offset: wire.replyQuoteOffset, thread_root_id: wire.threadRootId,
         silent: wire.silent, send_as_peer_id: wire.sendAsPeerId,
+        // tweb `sendOther` → `messages.sendMedia{schedule_date}` (:4141-4166)
+        schedule_date: wire.scheduleDate ?? 0, schedule_repeat_period: wire.scheduleRepeatPeriod ?? 0,
       })
       return mapOne(r)
     },

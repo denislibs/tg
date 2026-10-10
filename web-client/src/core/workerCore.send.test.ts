@@ -96,7 +96,7 @@ describe('createWorkerCore(): отправка соединена с транс�
       peerId: 1, text: 'hi', clientMsgId: 'c1',
       // Пакет параметров отправки всегда проставляет свои поля — см. sendingParams.ts.
       threadRootId: null, replyToId: null, replyToPeerId: null, replyQuoteText: null,
-      replyQuoteOffset: null, silent: false, effect: null, sendAsPeerId: null,
+      replyQuoteOffset: null, silent: false, effect: null, sendAsPeerId: null, scheduleDate: null, scheduleRepeatPeriod: null,
     }])
   })
 

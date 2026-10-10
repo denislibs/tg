@@ -26,21 +26,25 @@ vi.mock('@core/media/scaleImageForSend', () => ({
   scaleImageForSend: async(file: File) => ({ file, width: 10, height: 20 }),
 }))
 
+import { ChatType } from '@components/chat/chatType'
+
 const { default: showNewMediaPopup, getCurrentNewMediaPopup } = await import('./newMedia')
 
 const photo = (name: string) => new File(['x'], name, { type: 'image/png' })
 const doc = (name: string) => new File(['x'], name, { type: 'application/pdf' })
 
-function makeChat(params: MessageSendingParams) {
+function makeChat(params: MessageSendingParams, type = ChatType.Chat) {
   const sendFile = vi.fn(async() => {})
   const onHelperCancel = vi.fn()
   const getMessageSendingParams = vi.fn(() => params)
+  const scheduleSending = vi.fn((_callback: () => void) => {})
   const chat = {
     peerId: 5 as PeerId,
     managers: { messages: { sendFile } } as never,
-    input: { getMessageSendingParams, onHelperCancel },
+    type,
+    input: { getMessageSendingParams, onHelperCancel, scheduleSending },
   }
-  return { chat, sendFile, onHelperCancel, getMessageSendingParams }
+  return { chat, sendFile, onHelperCancel, getMessageSendingParams, scheduleSending }
 }
 
 function mountTopPopup() {
@@ -89,6 +93,26 @@ describe('popups/newMedia — мост попапа медиа', () => {
     expect([a.spoiler, b.spoiler]).toEqual([false, true])
     expect(onHelperCancel).toHaveBeenCalledTimes(1)
     expect(usePopupStore.getState().popups).toHaveLength(0)
+  })
+
+  // tweb newMedia.tsx:1013-1018: в ленте отложенных сперва календарь, затем
+  // выборка уходит с пакетом, где уже лежит выбранное время.
+  it('лента отложенных: отправка спрашивает время, выборка уходит после выбора', async() => {
+    const { chat, sendFile, scheduleSending } = makeChat({ scheduleDate: 1_900_000_000 }, ChatType.Scheduled)
+    showNewMediaPopup(chat, [photo('1.png'), photo('2.png')], 'media')
+    mountTopPopup()
+
+    act(() => lastProps!.onSend('', false))
+    await flush()
+    expect(sendFile).not.toHaveBeenCalled()
+    expect(scheduleSending).toHaveBeenCalledTimes(1)
+
+    scheduleSending.mock.calls[0][0]()
+    await flush()
+    const calls = sendFile.mock.calls.map((c) => (c as unknown as [Record<string, unknown>])[0])
+    expect(calls).toHaveLength(2)
+    expect(calls.every((c) => c.scheduleDate === 1_900_000_000)).toBe(true)
+    expect(calls[0].groupedId).toBe(calls[1].groupedId)
   })
 
   it('«как файл» — без альбома и без цены, без ответа плашку не трогает', async() => {

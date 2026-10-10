@@ -19,6 +19,7 @@ const managers = vi.hoisted(() => ({
   peers: { fillMirror: vi.fn(async() => {}) },
   messages: {
     deleteMessages: vi.fn(async() => {}),
+    deleteScheduledMessages: vi.fn(async() => {}),
     pin: vi.fn(async() => {}),
     unpin: vi.fn(async() => {}),
     forwardMessages: vi.fn(async() => []),
@@ -28,14 +29,29 @@ vi.mock('@/client/bootstrap', () => ({ startClient: () => ({ managers }), getPro
 
 // Мост пересылки открывает React-`ForwardPicker` через `popupStore`; здесь
 // важен не пикер, а что мост делает с выбором — его `onPick` берётся из рендера.
-const picker = vi.hoisted(() => ({ onPick: undefined as undefined | ((peerIds: number[]) => void), chatRightsActions: undefined as unknown }))
+const picker = vi.hoisted(() => ({
+  onPick: undefined as undefined | ((peerIds: number[]) => void),
+  chatRightsActions: undefined as unknown,
+  onSendButtonRef: undefined as undefined | ((el: HTMLButtonElement | null) => void),
+  onSelectionChange: undefined as undefined | ((peerIds: number[]) => void),
+}))
 vi.mock('@stores/popupStore', () => ({
-  openPopup: (render: (api: { destroy: () => void }) => { props: { onPick: (ids: number[]) => void, chatRightsActions: unknown } }) => {
+  openPopup: (render: (api: { destroy: () => void }) => { props: typeof picker }) => {
     const element = render({ destroy: () => {} })
-    picker.onPick = element.props.onPick
-    picker.chatRightsActions = element.props.chatRightsActions
+    Object.assign(picker, element.props)
     return 1
   },
+}))
+
+// Меню отправки подвала пересылки (tweb forward.tsx:244-302) и календарь — ловим
+// их опции: проверяется, что мост делает с выбранным пунктом.
+const sendMenu = vi.hoisted(() => ({ options: undefined as undefined | Record<string, () => unknown> }))
+vi.mock('@components/chat/sendContextMenu', () => ({
+  default: class { constructor(options: Record<string, () => unknown>) { sendMenu.options = options } setPeerParams() {} },
+}))
+const schedulePopup = vi.hoisted(() => ({ onPick: undefined as undefined | ((timestamp: number, repeatPeriod?: number) => void) }))
+vi.mock('@components/popups/scheduleSendingPopup', () => ({
+  default: (opts: { onPick: (timestamp: number, repeatPeriod?: number) => void }) => { schedulePopup.onPick = opts.onPick },
 }))
 
 const im = vi.hoisted(() => ({
@@ -134,6 +150,18 @@ describe('showDeleteMessagesPopup (tweb popups/deleteMessages.ts)', () => {
     expect(managers.messages.deleteMessages).toHaveBeenCalledWith(MEGAGROUP, [4], true)
   })
 
+  // tweb :66-67, :108: номера ленты отложенных — ключи очереди; удаление идёт
+  // `deleteScheduledMessages`, а не по номерам истории, и без «удалить у Bob».
+  it('лента отложенных: без чекбокса, удаление — deleteScheduledMessages', () => {
+    showDeleteMessagesPopup(USER, [5], ChatType.Scheduled, undefined, (mid) => message(mid))
+    expect(document.querySelector('.checkbox-field-input')).toBeNull()
+
+    click('.popup-buttons > button.danger')
+
+    expect(managers.messages.deleteScheduledMessages).toHaveBeenCalledWith(USER, [5])
+    expect(managers.messages.deleteMessages).not.toHaveBeenCalled()
+  })
+
   it('«Отмена» ничего не удаляет и onConfirm не зовёт', () => {
     const onConfirm = vi.fn()
     showDeleteMessagesPopup(USER, [1], ChatType.Chat, onConfirm)
@@ -196,7 +224,7 @@ describe('showForwardPopup — мост (tweb popups/forward.tsx, ВРЕМЕНН
     picker.onPick!([42, 43])
     await vi.waitFor(() => expect(toasts.toastNew).toHaveBeenCalledTimes(1))
 
-    expect(managers.messages.forwardMessages.mock.calls).toEqual([[42, USER, [3]], [43, USER, [3]]])
+    expect(managers.messages.forwardMessages.mock.calls).toEqual([[42, USER, [3], { silent: undefined, scheduleDate: undefined, scheduleRepeatPeriod: undefined }], [43, USER, [3], { silent: undefined, scheduleDate: undefined, scheduleRepeatPeriod: undefined }]])
     expect(onSelect.mock.calls).toEqual([[42], [43]])
     expect(im.setInnerPeer).not.toHaveBeenCalled()
     expect(toasts.toastNew.mock.calls[0][0].langPackKey).toBe('FwdMessageTo')
@@ -207,8 +235,25 @@ describe('showForwardPopup — мост (tweb popups/forward.tsx, ВРЕМЕНН
     picker.onPick!([rootScope.myId])
     await vi.waitFor(() => expect(toasts.toastNew).toHaveBeenCalledTimes(1))
 
-    expect(managers.messages.forwardMessages).toHaveBeenCalledWith(rootScope.myId, USER, [3, 4])
+    expect(managers.messages.forwardMessages).toHaveBeenCalledWith(rootScope.myId, USER, [3, 4], { silent: undefined, scheduleDate: undefined, scheduleRepeatPeriod: undefined })
     expect(toasts.toastNew).toHaveBeenCalledWith({ langPackKey: 'FwdMessagesToSavedMessages' })
+  })
+
+  // Ф-5: «Запланировать» из меню кнопки подвала (tweb :255-264) — финализация
+  // «через кнопку»: даже одному получателю пересылка уходит сразу, с расписанием.
+  it('«Запланировать» меню отправки: пересылка с scheduleDate/повтором, чат не открывается', async() => {
+    await showForwardPopup({ [USER]: [3] })
+    const button = document.createElement('button')
+    button.addEventListener('click', () => picker.onPick!([42]))
+    picker.onSendButtonRef!(button)
+    picker.onSelectionChange!([42])
+
+    sendMenu.options!.onScheduleClick()
+    schedulePopup.onPick!(1_900_000_000, 86400)
+    await vi.waitFor(() => expect(managers.messages.forwardMessages).toHaveBeenCalledTimes(1))
+
+    expect(managers.messages.forwardMessages).toHaveBeenCalledWith(42, USER, [3], { silent: undefined, scheduleDate: 1_900_000_000, scheduleRepeatPeriod: 86400 })
+    expect(im.setInnerPeer).not.toHaveBeenCalled()
   })
 
   it('права получателя выводятся из пересылаемых сообщений (:99-102)', async() => {

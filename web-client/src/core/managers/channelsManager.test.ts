@@ -49,7 +49,7 @@ describe('ChannelsManager.post', () => {
     const rest = { post, get: vi.fn() } as unknown as RestClient
     const mgr = newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers(), cacheViews: () => {} })
     const m = await mgr.post(7, 'hey', 'c1')
-    expect(post).toHaveBeenCalledWith('/channels/7/messages', { text: 'hey', entities: undefined, client_msg_id: 'c1' })
+    expect(post).toHaveBeenCalledWith('/channels/7/messages', { text: 'hey', entities: undefined, client_msg_id: 'c1', schedule_date: 0, schedule_repeat_period: 0 })
     expect(m.peerId).toBe(7)
     expect(m.id).toBe(cid(6))
     expect(real(m)?.message).toBe('m6')
@@ -65,7 +65,7 @@ describe('ChannelsManager.post', () => {
 
     await mgr.post(7, 'Голова: Мария', 'c1', entities)
 
-    expect(post).toHaveBeenCalledWith('/channels/7/messages', { text: 'Голова: Мария', entities, client_msg_id: 'c1' })
+    expect(post).toHaveBeenCalledWith('/channels/7/messages', { text: 'Голова: Мария', entities, client_msg_id: 'c1', schedule_date: 0, schedule_repeat_period: 0 })
   })
 
   // Что ломается, если гарантия нарушена: пост канала уходит по REST, мимо
@@ -90,6 +90,20 @@ describe('ChannelsManager.post', () => {
       // переживёт финализацию — лента на этом признаке срезает перекладку.
       sequential: true,
     }])
+  })
+
+  // Ф-5, п. 1.2: отложенный пост — та же ручка с `schedule_date` (tweb: пост уходит
+  // `sendText` с пакетом, appMessagesManager.ts:2741); бабл — в ленту отложенных.
+  it('отложенный пост: schedule_date в теле, заявка бабла с датой отправки', async () => {
+    const post = vi.fn(async () => raw(6))
+    const rest = { post, get: vi.fn() } as unknown as RestClient
+    const pendings: unknown[] = []
+    const mgr = newChannelsManager({ rest, beforeSending: (p) => { pendings.push(p) }, peers: fakePeers(), cacheViews: () => {} })
+
+    await mgr.post(7, 'пост', 'c11', undefined, { senderId: 3 }, { scheduleDate: 1_900_000_000, scheduleRepeatPeriod: 86400 })
+
+    expect(post).toHaveBeenCalledWith('/channels/7/messages', expect.objectContaining({ schedule_date: 1_900_000_000, schedule_repeat_period: 86400 }))
+    expect(pendings).toEqual([expect.objectContaining({ schedule_date: 1_900_000_000, schedule_repeat_period: 86400 })])
   })
 
   it('без optimistic бабл не заводится (публикация из мест без ленты на экране)', async () => {

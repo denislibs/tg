@@ -53,7 +53,7 @@ import { newChannelFunnel, type ChannelDifference } from './realtime/channelFunn
 import { newSyncWait } from './realtime/syncWait'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type RepliesUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type RepliesUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { generateMessageId } from './history/messageId'
 import { getPeerId, toChatId, toPeerId } from './peers/peerId'
@@ -582,6 +582,12 @@ export function createWorkerCore() {
     if (pred === 'updateNewMessage' || pred === 'updateNewChannelMessage') {
       routeNewMessage(d as NewMessageEvt, meta); return
     }
+    // Лента отложенных (tweb `onUpdateNewScheduledMessage`/
+    // `onUpdateDeleteScheduledMessages`, appMessagesManager.ts:11773-11815):
+    // кадр применяет владелец хранилища отложенных и сам объявляет вкладкам
+    // события оригинала — сырой кадр дальше не идёт.
+    if (pred === 'updateNewScheduledMessage') { messages.applyNewScheduledMessage(d as NewScheduledMessageEvt); return }
+    if (pred === 'updateDeleteScheduledMessages') { messages.applyDeleteScheduledMessages(d as DeleteScheduledMessagesEvt); return }
     // Вопрос «сменилась ли непрочитанность реакций на МОЁМ сообщении» задаётся
     // ДО того, как кадр ляжет в SSOT: после применения агрегата сравнивать было
     // бы не с чем — окно уже содержало бы новое состояние (tweb

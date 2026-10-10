@@ -27,7 +27,7 @@
 //  - автокомплит и тултип разметки (П-6, Б-33/Б-34): хелперы `:1384-1393`,
 //    `chat_changing` `:1736-1742`, `keyup` `:3298-3307`, `mentionUser` `:2334`,
 //    `insertAtCaret` `:3635`, `onEmojiSelected` `:3759`, `checkAutocomplete` `:3796-3903`,
-//    `checkInlineAutocomplete` `:3911-3986` — блоком в конце класса (расхождение 11).
+//    `checkInlineAutocomplete` `:3911-3986` — блоком в конце класса (расхождение 10).
 //  - пачка П-6 «отправка»: кнопка отложенных `constructScheduledButton` `:922-946`, меню
 //    отправки `SendMenu` `:1426-1472` (`chat/sendContextMenu.ts`), расписание
 //    `getReadyToSend`/`canSendWhenOnline`/`setScheduleTimestamp`/`scheduleSending`
@@ -49,8 +49,7 @@
 // (наш `windowSize` не реактивен, у tweb — `createEffect`).
 //
 // В бэклоге (строки раздела 5 плана): меню плашек и превью ссылки (Б-72), плашки без
-// предмета (Б-73), эффекты сообщений (Б-125), повтор отложенных (Б-126), сохранение
-// личности send-as (Б-127).
+// предмета (Б-73), эффекты сообщений (Б-125), сохранение личности send-as (Б-127).
 //
 // ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
 //  1. Пакет параметров отправки собирает `ChatInput.getMessageSendingParams()`, а не
@@ -83,16 +82,11 @@
 //     (`fwd_from.from_name`) не различается — отправитель берётся `fromId ?? peerId`.
 //  8. Пустая правка (`sendMessage`, ветка `showDeleteMessagesPopup`) не делает ничего —
 //     попап удаления у П-5 (`popups/deleteMessages`).
-//  9. Отложенная отправка — своя ручка `messages.scheduleMessage` (`POST /chats/{id}/
-//     scheduled`), а не поле `scheduleDate` пакета `sendText`/`sendFile` (у кадра
-//     `send_message` его нет, `core/managers/messages/sendingParams.ts`): текст, стикер
-//     и сохранённая гифка; пересылку, файлы и Tenor-гифку отложить нечем — уходят сразу
-//     (Б-126). «Когда будет в сети» — `when_online`, а не метка `SEND_WHEN_ONLINE_TIMESTAMP`.
-// 10. `SendMenu` без ряда эффектов и `SelectedEffect` (Б-125); `isPaid` у
+//  9. `SendMenu` без ряда эффектов и `SelectedEffect` (Б-125); `isPaid` у
 //     `setPeerParams` — плата из зеркала пиров (`getStarsAmount`), а не `Chat.starsAmount`
 //     (у `Chat` его нет, расхождение 7 `chat.ts`). Плейсхолдер `PaidMessages.MessageForStars`
 //     и бейдж звёзд кнопки (`addStarsBadge`/`setStarsAmount`) — без `inputState` (Б-129).
-// 11. Автокомплит (П-6): методы — блоком в конце класса, а не на местах tweb (слияние
+// 10. Автокомплит (П-6): методы — блоком в конце класса, а не на местах tweb (слияние
 //     с соседними ветками П-6 без конфликтов). Без своих эмодзи (`getCustomEmojiSuggestionEmoticon`,
 //     `checkEmoticon` — Б-74/Б-138), гостевых ботов (`knownGuestBots`, `canSendGuestChat`),
 //     эфемерного и приветственного режимов, `globalMentions`, `topMsgId` упоминаний (Б-136)
@@ -841,6 +835,14 @@ export default class ChatInput {
         this.autocompleteHelperController.toggleListNavigation(false)
       } else if(this.chat === to) {
         this.autocompleteHelperController.toggleListNavigation(true)
+      }
+    })
+
+    // tweb `:1744-1748` — правка отложенного, которое удалили или опубликовали
+    // (в том числе с другого устройства), закрывается.
+    this.listenerSetter.add(rootScope)('scheduled_delete', ({ peerId, mids }: { peerId: PeerId, mids: number[] }) => {
+      if(this.chat.type === ChatType.Scheduled && this.chat.peerId === peerId && this.editMsgId !== undefined && mids.includes(this.editMsgId)) {
+        this.onMessageSent()
       }
     })
 
@@ -2198,6 +2200,9 @@ export default class ChatInput {
       silent: this.sendSilent,
       // tweb `chat.ts:1394`: `sendAsPeerId` — только чужая личность
       sendAsPeerId: this.sendAsPeerId !== undefined && this.sendAsPeerId !== rootScope.myId ? this.sendAsPeerId : null,
+      // tweb `chat.ts:1388-1389`
+      scheduleDate: this.scheduleDate,
+      scheduleRepeatPeriod: this.scheduleRepeatPeriod,
     }
   }
 
@@ -2215,7 +2220,6 @@ export default class ChatInput {
 
     const splitted = splitStringByLength(value, MESSAGE_LENGTH_MAX)
     const isChannel = isBroadcastPeer(peerId)
-    const { scheduleDate } = this
     let partOffset = 0
     for(const part of splitted) {
       const partEntities = splitted.length > 1 && entities.length ? sliceMessageEntities(entities, partOffset, part.length) : entities
@@ -2223,18 +2227,8 @@ export default class ChatInput {
       const [text, parsedEntities] = parseMarkdown(part, partEntities)
       const clientMsgId = crypto.randomUUID()
       const sendEntities = parsedEntities.length ? parsedEntities : undefined
-      if(scheduleDate) {
-        // расхождение 9: отложенное — своя ручка, а не поле кадра `send_message`
-        const whenOnline = scheduleDate === SEND_WHEN_ONLINE_TIMESTAMP
-        void this.managers.messages.scheduleMessage(peerId, {
-          text,
-          entities: sendEntities,
-          sendAt: whenOnline ? 0 : scheduleDate,
-          replyToId: sendingParams.replyToMsgId ?? undefined,
-          whenOnline,
-        }).catch(() => {})
-      } else if(isChannel) {
-        void this.managers.channels.post(peerId, text, clientMsgId, sendEntities, { senderId: rootScope.myId, threadRootId: this.chat.threadId })
+      if(isChannel) {
+        void this.managers.channels.post(peerId, text, clientMsgId, sendEntities, { senderId: rootScope.myId, threadRootId: this.chat.threadId }, sendingParams)
       } else {
         void this.managers.messages.sendText({
           peerId,
@@ -2293,8 +2287,11 @@ export default class ChatInput {
       const mids = forwarding[+fromPeerId as PeerId]
       // Отказ сервера (права, приватность, медленный режим, плата) — тостом:
       // пересылка, которой нет, не должна выглядеть ушедшей.
+      // tweb `forwardMessages({...sendingParams, ...forwardParams})` — с
+      // расписанием пакета (`schedule_date`, appMessagesManager.ts:5652)
       void this.managers.messages.forwardMessages(this.chat.peerId, +fromPeerId, mids, {
         ...forwardParams, silent: sendingParams.silent, threadId: sendingParams.threadId,
+        scheduleDate: sendingParams.scheduleDate, scheduleRepeatPeriod: sendingParams.scheduleRepeatPeriod,
       }).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
     }
 
@@ -2327,13 +2324,9 @@ export default class ChatInput {
       }
 
       this.saveDraftDebounced.clearTimeout()
-      const draft = this.getDialog(chat.peerId)?.draft
-      this.clearedDraft = { peerId: chat.peerId, draft }
       // tweb `sendText({clearDraft: true})` → `appDraftsManager.clearDraft`: черновик после
-      // отправки сервер снимает сам (расхождение 3), а после ОТЛОЖЕННОЙ — нет, снимаем явно
-      if(this.scheduleDate && realDraft(draft) && !chat.threadId) {
-        void this.managers.drafts.save(chat.peerId, '', null).catch(() => {})
-      }
+      // отправки — и отложенной тоже — сервер снимает сам (расхождение 3)
+      this.clearedDraft = { peerId: chat.peerId, draft: this.getDialog(chat.peerId)?.draft }
 
       this.onMessageSent(true)
       return
@@ -2345,8 +2338,10 @@ export default class ChatInput {
     if(trimmedValue || (message._ === 'message' && message.media)) {
       const [text, parsedEntities] = parseMarkdown(value, entities)
       // Отказ правки (срок, права) — тостом, а не молчанием.
-      void this.managers.messages.editMessage(chat.peerId, editMsgId, text, parsedEntities.length ? parsedEntities : undefined)
-        .catch(() => toastNew({ langPackKey: 'Error.AnError' }))
+      // tweb `editMessage` :2209 — у отложенного `schedule_date = message.date`
+      void this.managers.messages.editMessage(chat.peerId, editMsgId, text, parsedEntities.length ? parsedEntities : undefined, {
+        scheduleDate: message.pFlags.is_scheduled ? message.date : undefined,
+      }).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
 
       this.onMessageSent()
     }
@@ -2383,21 +2378,7 @@ export default class ChatInput {
       void this.managers.dialogs.refresh().catch(() => {})
     }
 
-    const { scheduleDate } = this
-    const mediaId = isSticker ? document.id : document.mediaId
-    if(scheduleDate && mediaId != null) {
-      // расхождение 9: отложенное — своя ручка; Tenor-гифку без `mediaId` (её сначала
-      // надо закачать) отложить нечем — она уходит сразу (Б-126)
-      const whenOnline = scheduleDate === SEND_WHEN_ONLINE_TIMESTAMP
-      void this.managers.messages.scheduleMessage(peerId, {
-        text: '',
-        type: isSticker ? 'sticker' : 'video',
-        mediaId,
-        sendAt: whenOnline ? 0 : scheduleDate,
-        replyToId: sendingParams.replyToMsgId ?? undefined,
-        whenOnline,
-      }).catch(() => {})
-    } else if(isSticker) {
+    if(isSticker) {
       void this.managers.messages.sendText({
         peerId,
         text: '',
@@ -2771,9 +2752,9 @@ export default class ChatInput {
     return container
   }
 
-  // ── Автокомплит (П-6, Б-34) — блок в конце класса, расхождение 9 шапки ──────
+  // ── Автокомплит (П-6, Б-34) — блок в конце класса, расхождение 10 шапки ─────
 
-  /** tweb `:2334-2362` — без гостевых ботов (расхождение 9). */
+  /** tweb `:2334-2362` — без гостевых ботов (расхождение 10). */
   public mentionUser(peerId: PeerId, isHelper?: boolean) {
     void this.managers.peers.getPeers([peerId]).then(([peer]) => {
       if(!peer) return
@@ -2801,7 +2782,7 @@ export default class ChatInput {
     })
   }
 
-  /** tweb `:3796-3903` — расхождение 9. */
+  /** tweb `:3796-3903` — расхождение 10. */
   private async checkAutocomplete(value?: string, caretPos?: number, entities?: MessageEntity[]) {
     const hadValue = value !== undefined
     if(!hadValue) {
@@ -2891,7 +2872,7 @@ export default class ChatInput {
     this.autocompleteHelperController.hideOtherHelpers(foundHelpers)
   }
 
-  /** tweb `:3911-3986` — без гостевых ботов (расхождение 9). */
+  /** tweb `:3911-3986` — без гостевых ботов (расхождение 10). */
   private checkInlineAutocomplete(value: string, canSendInline: boolean, foundHelper?: AutocompleteHelper): AutocompleteHelper | undefined {
     let needPlaceholder = false
 

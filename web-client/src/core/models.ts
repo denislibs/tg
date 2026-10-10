@@ -340,10 +340,10 @@ export interface MessageReal extends MessageCommon {
   /** «проверка фактов» на посте канала */
   factcheck?: FactCheck
 
+  /** повтор отложенного, сек (`schedule_repeat_period:flags2.10?int` схемы) */
+  schedule_repeat_period?: number
+
   // ── НАШИ параметры вне схемы ──────────────────────────────────────────────
-  /** отложенная отправка: срок и его sentinel «когда появится онлайн» */
-  send_at?: number
-  when_online?: boolean
   /** E2E-шифртекст секретного чата (base64 `iv||ciphertext`) */
   enc_body?: string
   /** абсолютный дедлайн самоуничтожения (ISO), проставляется после прочтения */
@@ -925,8 +925,7 @@ export function mapMessage(r: RawMessage, meId: PeerId | null = null): Message {
     grouped_id: r.grouped_id,
     effect_name: mapEffect(r.effect_name),
     factcheck: r.factcheck,
-    send_at: r.send_at,
-    when_online: r.when_online,
+    schedule_repeat_period: r.schedule_repeat_period,
     enc_body: r.enc_body,
     destruct_at: r.destruct_at,
   }

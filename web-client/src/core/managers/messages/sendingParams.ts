@@ -24,10 +24,6 @@
 //     нет.
 //   • `replyToMonoforumPeerId` — монофорумы (Telegram Direct Messages канала).
 //     Подсистемы монофорумов у нас нет ЦЕЛИКОМ (ни типа чата, ни `saved_peer_id`).
-//   • `scheduleDate` / `scheduleRepeatPeriod` — отложенная отправка. У нас она
-//     НЕ поле пакета, а отдельный эндпоинт (`messages.scheduleMessage` → REST
-//     `/chats/{id}/scheduled`), поэтому в пакет её тянуть нечего: он описывает
-//     то, что уезжает В КАДРЕ `send_message`.
 //   • `updateStickersetOrder` (порядок паков), `savedReaction` (теги Saved
 //     Messages), `invertMedia` (медиа под текстом), `confirmedPaymentResult`
 //     (звёздная оплата отправки), `suggestedPost` — соответствующих полей нет ни
@@ -59,6 +55,13 @@ export interface MessageSendingParams {
   sendAsPeerId?: number | null
   /** tweb `effect` — полноэкранный эффект сообщения */
   effect?: string | null
+  /** tweb `scheduleDate` — отложенная отправка (unix-сек; `SEND_WHEN_ONLINE_TIMESTAMP`
+   *  = «когда будет в сети»). Поле КАЖДОЙ отправки, как `schedule_date` у
+   *  `messages.sendMessage`/`sendMedia`/`sendMultiMedia`/`forwardMessages`
+   *  (tweb appMessagesManager.ts:2741, :3230, :3779, :5652). */
+  scheduleDate?: number | null
+  /** tweb `scheduleRepeatPeriod` — повтор отложенного (сек), :2742 */
+  scheduleRepeatPeriod?: number | null
 }
 
 /** Пустой пакет — для путей, у которых собирать нечего (тесты, фолбэки). */
@@ -67,13 +70,14 @@ export const EMPTY_SENDING_PARAMS: MessageSendingParams = {}
 /** Ключи пакета — нужны и `splitSendingParams`, и скану-пину (`core/sendingParams.test.ts`). */
 export const SENDING_PARAM_KEYS = [
   'threadId', 'replyToMsgId', 'replyToQuote', 'replyToPeerId', 'silent', 'sendAsPeerId', 'effect',
+  'scheduleDate', 'scheduleRepeatPeriod',
 ] as const satisfies readonly (keyof MessageSendingParams)[]
 
 /** Проводные поля, которые пакет ПОЛНОСТЬЮ покрывает: их нельзя передать мимо
  *  него. `Required` — потому что пакет их ВСЕГДА проставляет (пусто = явный
  *  null/false, а не «поля нет»); в самом `WireSendArgs` они опциональны. */
 export type SendingParamsWireFields =
-  Required<Pick<WireSendArgs, 'replyToId' | 'replyToPeerId' | 'replyQuoteText' | 'replyQuoteOffset' | 'threadRootId' | 'silent' | 'effect' | 'sendAsPeerId'>>
+  Required<Pick<WireSendArgs, 'replyToId' | 'replyToPeerId' | 'replyQuoteText' | 'replyQuoteOffset' | 'threadRootId' | 'silent' | 'effect' | 'sendAsPeerId' | 'scheduleDate' | 'scheduleRepeatPeriod'>>
 
 /**
  * Пакет → проводные поля кадра `send_message`. Порт tweb `getInputReplyTo`
@@ -98,6 +102,8 @@ export function sendingParamsToWire(p: MessageSendingParams): SendingParamsWireF
     silent: p.silent ?? false,
     effect: p.effect ?? null,
     sendAsPeerId: p.sendAsPeerId ?? null,
+    scheduleDate: p.scheduleDate || null,
+    scheduleRepeatPeriod: p.scheduleRepeatPeriod || null,
   }
 }
 
@@ -110,6 +116,6 @@ export function sendingParamsToWire(p: MessageSendingParams): SendingParamsWireF
 export function splitSendingParams<T extends MessageSendingParams>(
   o: T,
 ): { params: MessageSendingParams; rest: Omit<T, keyof MessageSendingParams> } {
-  const { threadId, replyToMsgId, replyToQuote, replyToPeerId, silent, sendAsPeerId, effect, ...rest } = o
-  return { params: { threadId, replyToMsgId, replyToQuote, replyToPeerId, silent, sendAsPeerId, effect }, rest }
+  const { threadId, replyToMsgId, replyToQuote, replyToPeerId, silent, sendAsPeerId, effect, scheduleDate, scheduleRepeatPeriod, ...rest } = o
+  return { params: { threadId, replyToMsgId, replyToQuote, replyToPeerId, silent, sendAsPeerId, effect, scheduleDate, scheduleRepeatPeriod }, rest }
 }

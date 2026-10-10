@@ -240,9 +240,11 @@ export type BroadcastEvents = {
   'contacts_update': [UserId]
 
   // tweb rootScope.ts:131-132 — лента отложенных (`ChatType.Scheduled`): появилось
-  // отложенное / отложенные ушли (отправлены сейчас или удалены). Шлёт воркер
-  // (`messagesManager` — `scheduleMessage`/`sendScheduledMessages`/
-  // `deleteScheduledMessages`), слушает лента (`chat/bubbles.ts`, tweb :2558-2575).
+  // отложенное / отложенные ушли (отправлены или удалены). Шлёт воркер — владелец
+  // хранилища отложенных (`messagesManager`: своя постановка — `beforeMessageSending`,
+  // кадры `updateNewScheduledMessage`/`updateDeleteScheduledMessages`, tweb
+  // :4383-4388, :11773-11815), слушают лента (`chat/bubbles.ts`, tweb :2558-2575) и
+  // ввод (кнопка-календарик и закрытие правки, tweb input.ts:922-946, :1744-1748).
   'scheduled_new': [MyMessage]
   'scheduled_delete': [{ peerId: PeerId; mids: number[] }]
 
