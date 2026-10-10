@@ -181,7 +181,7 @@ func TestChatsRepo_ChannelCursors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []domain.ChannelCursor{{ChatID: ch2, Pts: 0}, {ChatID: ch1, Pts: 2}}
+	want := []domain.ChannelCursor{{ChatID: ch2, Pts: 1}, {ChatID: ch1, Pts: 3}}
 	if !slices.Equal(got, want) {
 		t.Fatalf("каналы = %+v, want %+v (забаненный и группа — нет)", got, want)
 	}
@@ -219,7 +219,7 @@ func TestChatsRepo_ChannelsChangedSince(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []domain.ChannelCursor{{ChatID: fresh, Pts: 2}}
+	want := []domain.ChannelCursor{{ChatID: fresh, Pts: 3}}
 	if !slices.Equal(got, want) {
 		t.Fatalf("сдвинувшиеся каналы = %+v, want %+v (старый и забаненный — нет)", got, want)
 	}
