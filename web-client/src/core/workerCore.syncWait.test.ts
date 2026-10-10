@@ -1,7 +1,7 @@
 // Проводка ожидания догона для уведомлений — tweb 1dc32d889.
 //
 // Три строки `workerCore.ts`, удаление каждой из которых ломает уведомления
-// молча: `syncWait.attach(...)` в обработчике hello (без неё «начальная
+// молча: `syncWait.attach(...)` в onReady (tweb `attach`; без неё «начальная
 // синхронизация» не кончается никогда, и при активной вкладке уведомления
 // глохнут навсегда), признак `initialSync` на рассылке `rt:new_message` (без
 // него бэклог первого difference при активной вкладке снова сыплет
@@ -44,18 +44,26 @@ function pair(): [Endpoint, Endpoint] {
   return [epA, epB]
 }
 
-/** Ответ /sync — придерживается тестом, пока он не решит отпустить догон. */
+/** Ответы updates.getDifference / updates.getState — придерживаются тестом,
+ *  пока он не решит отпустить догон. */
 let releaseSync: (() => void) | null = null
+let releaseState: (() => void) | null = null
 
 beforeEach(() => {
   vi.stubGlobal('indexedDB', new IDBFactory())
   releaseSync = null
+  releaseState = null
   vi.stubGlobal('fetch', vi.fn((url: unknown) => {
     const u = String(url)
-    if (u.includes('/sync?')) {
+    if (u.includes('/updates/difference?')) {
       return new Promise<Response>((resolve) => {
-        releaseSync = () => resolve(new Response(JSON.stringify({
-          new_messages: [], other_updates: [], state: { pts: 5, date: 0 }, slice: false,
+        releaseSync = () => resolve(new Response(JSON.stringify({ _: 'updates.differenceEmpty', date: 2, seq: 0 }), { status: 200 }))
+      })
+    }
+    if (u.includes('/updates/state')) {
+      return new Promise<Response>((resolve) => {
+        releaseState = () => resolve(new Response(JSON.stringify({
+          _: 'updates.state', pts: 750, qts: 0, date: 1790998660, seq: 0, unread_count: 0,
         }), { status: 200 }))
       })
     }
@@ -92,7 +100,7 @@ async function settle() {
 }
 
 describe('createWorkerCore(): ожидание догона для уведомлений (tweb 1dc32d889)', () => {
-  it('до первого hello кадр помечен initialSync', () => {
+  it('до первого подключения кадр помечен initialSync', () => {
     const { metas } = boot()
 
     newMessage()
@@ -100,25 +108,15 @@ describe('createWorkerCore(): ожидание догона для уведом�
     expect(metas).toEqual([{ initialSync: true }])
   })
 
-  it('hello без расхождения курсора заканчивает начальную синхронизацию', async () => {
-    const { metas } = boot()
-
-    capturedConnDeps!.onFrame('hello', { pts: 0, date: 0 })
-    await settle()
-    newMessage()
-
-    expect(metas).toEqual([undefined])
-  })
-
-  /** Состояние апдейтов прошлой сессии — без него hello станет базой, а не
-   *  поводом для догона (tweb `apiUpdatesManager.attach`, :886-906). */
+  /** Состояние апдейтов прошлой сессии — без него подключение берёт
+   *  updates.getState, а не разницу (tweb `apiUpdatesManager.attach`, :886-906). */
   const savedCursor = async () => { await idbSet('pts', 1); await idbSet('date', 1) }
 
-  it('hello с расхождением — начальная синхронизация длится до конца догона', async () => {
+  it('подключение с сохранённым состоянием — начальная синхронизация длится до конца разницы', async () => {
     await savedCursor()
     const { metas } = boot()
 
-    capturedConnDeps!.onFrame('hello', { pts: 5, date: 0 })
+    capturedConnDeps!.onReady()
     await settle()
     newMessage()
     expect(metas[metas.length - 1]).toEqual({ initialSync: true })
@@ -130,31 +128,34 @@ describe('createWorkerCore(): ожидание догона для уведом�
   })
 
   // Свежий вход: сохранённого состояния нет — база = текущее состояние сервера
-  // из hello, `/sync` не зовётся вовсе, начальная синхронизация кончилась сразу
-  // (tweb `apiUpdatesManager.attach` → `updates.getState`, :886-906).
-  it('hello без сохранённого состояния становится базой: догона нет', async () => {
+  // (updates.getState), разница не запрашивается (tweb attach :893-905).
+  it('подключение без сохранённого состояния: updates.getState, разницы нет', async () => {
     const { metas } = boot()
 
-    capturedConnDeps!.onFrame('hello', { pts: 750, date: 1790998660 })
+    capturedConnDeps!.onReady()
+    await settle()
+    expect(releaseSync).toBeNull()
+    newMessage()
+    expect(metas[metas.length - 1]).toEqual({ initialSync: true })
+    releaseState!()
     await settle()
     newMessage()
+    expect(metas[metas.length - 1]).toBeUndefined()
 
-    expect(releaseSync).toBeNull() // /sync не запрашивался
-    expect(metas).toEqual([undefined])
-
-    // Реконнект с расхождением — догон уже ОТ ВЗЯТОЙ базы, а не от нуля.
-    capturedConnDeps!.onFrame('hello', { pts: 760, date: 1790998670 })
+    // Реконнект — новая сессия: forceGetDifference ОТ ВЗЯТОЙ базы, а не от нуля.
+    capturedConnDeps!.onReady()
     await settle()
     expect(releaseSync).not.toBeNull()
-    const syncUrl = vi.mocked(fetch).mock.calls.map((c) => c[0] as string).find((u) => u.includes('/sync?'))
+    const syncUrl = vi.mocked(fetch).mock.calls.map((c) => c[0] as string).find((u) => u.includes('/updates/difference?'))
     expect(syncUrl).toContain('pts=750')
+    expect(syncUrl).toContain('date=1790998660')
   })
 
   it('realtime.waitForSync отпускает только после РЕАЛЬНОГО догона', async () => {
     await savedCursor()
     const { waitForSync } = boot()
 
-    capturedConnDeps!.onFrame('hello', { pts: 5, date: 0 })
+    capturedConnDeps!.onReady()
     await settle()
     let released = false
     void waitForSync(1).then(() => { released = true })

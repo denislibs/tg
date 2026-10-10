@@ -36,6 +36,8 @@ export const UPDATE_RT = {
   updateDeleteChannelMessages: RT.deleteMessage,
   updatePinnedChannelMessages: RT.pinMessage,
   updateChannel: RT.channel,
+  // Только в разнице и только состоянию канала: наружу не уходит (см. RT).
+  updateChannelTooLong: RT.channelTooLong,
   // Прочтение: «прочитал я» и «прочитали меня» — РАЗНЫЕ конструкторы, и
   // получатель больше не выводит «чьё это» сравнением user_id с собой.
   updateReadHistoryInbox: RT.read,

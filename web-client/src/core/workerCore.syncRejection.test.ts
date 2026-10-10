@@ -1,14 +1,15 @@
-// Задача #91. Упавший `GET /sync` не имеет права давать Unhandled Rejection.
+// Задача #91. Упавший `updates.getDifference` не имеет права давать Unhandled Rejection.
 //
-// Пер-юзерный догон `sync.catchUp()` прод-код зовёт ДВАЖДЫ и оба раза
+// Пер-юзерный догон `sync.getDifference()` прод-код зовёт ДВАЖДЫ и оба раза
 // fire-and-forget — вернувшийся промис никто не дожидается:
 //
 //   1. адаптер воронки `catchUp: () => { ... }` — воронка объявляет зависимость
 //      как `() => void` (globalFunnel.ts), и на негидрированном курсоре зовёт её
 //      на КАЖДОМ живом кадре с `pts` (`if (!isCursorReady()) { catchUp() }`);
-//   2. ветка hello-кадра реконнекта, где серверный `pts` разошёлся с курсором.
+//   2. открытие сокета (onReady): первое — tweb `attach` от сохранённого
+//      состояния, реконнект — `forceGetDifference`.
 //
-// `syncEngine.catchUp()` отказ пробрасывает СОЗНАТЕЛЬНО (его наблюдает тот, кто
+// `syncEngine.getDifference()` отказ пробрасывает СОЗНАТЕЛЬНО (его наблюдает тот, кто
 // дожидается, — пин `realtime/syncEngine.test.ts`), а `.finally` внутри него
 // держит парность synchronizing/synchronized и сбрасывает `running` в любом
 // исходе. То есть функционально упавший догон безвреден — цена ровно одна:
@@ -24,7 +25,7 @@
 // снимается в afterEach, чтобы не течь на соседние файлы.
 //
 // Стаб сети — тот же приём, что у соседних workerCore.*.test.ts: белый список
-// URL, всё непредусмотренное — громкий throw. Отличие в том, что `/sync` здесь
+// URL, всё непредусмотренное — громкий throw. Отличие в том, что разница здесь
 // не отвечает пустой страницей, а ОТКАЗЫВАЕТ: предмет файла — именно сбой сети.
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
@@ -69,7 +70,7 @@ function boot() {
 
 /** Походы догона в сеть — наблюдаемый след того, что кейс ДОШЁЛ до отказа, а не
  *  промолчал по пути (без этой половины тест был бы зелёным и от кадра, который
- *  до /sync вовсе не добрался). */
+ *  до разницы вовсе не добрался). */
 const syncCalls: string[] = []
 const unhandled: unknown[] = []
 const onUnhandled = (reason: unknown) => { unhandled.push(reason) }
@@ -87,7 +88,7 @@ beforeEach(() => {
   process.on('unhandledRejection', onUnhandled)
   vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
     const u = String(url)
-    if (u.includes('/sync?')) {
+    if (u.includes('/updates/')) { // разница, а без состояния — updates.getState
       syncCalls.push(u)
       throw new TypeError('Failed to fetch')  // сеть моргнула — ровно боевой случай
     }
@@ -101,7 +102,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('createWorkerCore(): упавший /sync не даёт Unhandled Rejection', () => {
+describe('createWorkerCore(): упавший getDifference не даёт Unhandled Rejection', () => {
   // Вызыватель №1: адаптер `catchUp` пер-юзерной воронки. Кадр личного чата с
   // `pts` на негидрированном курсоре — кратчайший путь до этой ветки (тот же,
   // которым в неё попадают кейсы workerCore.channelFrames.test.ts).
@@ -124,16 +125,15 @@ describe('createWorkerCore(): упавший /sync не даёт Unhandled Rejec
     expect(unhandled).toEqual([])
   })
 
-  // Вызыватель №2: hello-кадр реконнекта с расхождением pts. Курсор здесь
-  // гидрируется из IDB (сохранённое состояние прошлой сессии — без него hello
-  // стал бы базой, а не поводом для догона, tweb `attach`), серверный pts=5
-  // с ним не совпал — ветка просит догон, и он падает.
-  it('догон, запрошенный hello-кадром реконнекта с расхождением pts', async () => {
+  // Вызыватель №2: открытие сокета с сохранённым состоянием (tweb `attach` →
+  // `getDifference(true)`; без состояния был бы `updates.getState`), и разница
+  // падает.
+  it('догон, запрошенный открытием сокета', async () => {
     await idbSet('pts', 1)
     await idbSet('date', 1)
     boot()
 
-    capturedConnDeps!.onFrame('hello', { pts: 5, date: 1787334148 })
+    capturedConnDeps!.onReady()
 
     await vi.waitFor(() => expect(syncCalls).toHaveLength(1))
     await settleRejections()

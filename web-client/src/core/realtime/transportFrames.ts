@@ -7,7 +7,7 @@
 //
 // Кадр попадает сюда по одной из двух причин, и они разные:
 //
-//   • ТРАНСПОРТ (решение Р6 разбора). `hello`, `pong`, `message_ack`,
+//   • ТРАНСПОРТ (решение Р6 разбора). `pong`, `message_ack`,
 //     `message_error`, хендшейк секретных чатов, обёртки звонков и трансляций
 //     — не апдейты вовсе. У оригинала их роль играют слои MTProto
 //     (`rpc_result`, `pong`, контейнеры), которых мы не портируем: у нас свой
@@ -38,9 +38,6 @@ export const TRANSPORT_FRAMES = {
   message_ack:         { kind: 'ephemeral', rt: RT.ack },
   message_error:       { kind: 'ephemeral', rt: RT.messageError },
   secret_chat_reject:  { kind: 'ephemeral', rt: RT.secretReject },
-  hello:               { kind: 'bespoke' }, // {pts,date} — fast-reconnect gate
-  // {channels:[peer,pts][]} после подписки на топики каналов — догон сдвинувшихся
-  channel_state:       { kind: 'bespoke' },
   pong:                { kind: 'bespoke' }, // heartbeat — гасится в connectionManager
   secret_chat_request: { kind: 'bespoke' },
   secret_chat_accept:  { kind: 'bespoke' },

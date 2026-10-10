@@ -112,7 +112,7 @@ export function newChannelsManager({ rest, beforeSending, peers, cacheViews }: {
       const r = await rest.post<RawMyMessage>(`/channels/${peerId}/messages`, { text, entities, client_msg_id: clientMsgId })
       return mapMyMessage(r)
     },
-    // catch-up канала (GET /channels/{id}/difference) ведёт per-channel funnel в
+    // догон канала (updates.getChannelDifference) ведёт состояние канала в
     // воркере (channelFunnel), а не менеджер — курсор и гейтинг живут там же, где
     // funnel обычных апдейтов. Здесь только команды/запросы к бэку.
     async join(username: string): Promise<void> { await rest.post('/channels/join', { username }) },

@@ -1,200 +1,246 @@
 // src/core/realtime/channelFunnel.test.ts
-import { describe, it, expect, vi } from 'vitest'
-import { newChannelFunnel, type ChannelDiff } from './channelFunnel'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { newChannelFunnel, type ChannelDifference } from './channelFunnel'
+import type { Update } from './events'
 
-// Тестовый жгут: записываем dispatch(t,pts?), храним курсоры в памяти, difference —
-// программируемая очередь ответов.
-function harness(diffs: ChannelDiff[] = []) {
+// Жгут: dispatch записывается, разница — программируемая очередь ответов.
+function harness(diffs: ChannelDifference[] = [], opts: { syncDelay?: number } = {}) {
   const dispatched: { t: string; d: unknown; pts?: number; catchUp?: boolean }[] = []
-  const saved = new Map<number, number>()
-  const stored = new Map<number, number>()
-  let diffIdx = 0
-  const getDifference = vi.fn(async (_chatId: number, _since: number): Promise<ChannelDiff> => {
-    return diffs[diffIdx++] ?? { updates: [], pts: _since, slice: false }
-  })
+  let i = 0
+  const getChannelDifference = vi.fn(async (_peerId: number, pts: number): Promise<ChannelDifference> =>
+    diffs[i++] ?? { _: 'updates.channelDifferenceEmpty', pFlags: { final: true }, pts })
+  const savePeers = vi.fn()
+  const onChannelReload = vi.fn()
   const funnel = newChannelFunnel({
     dispatch: (t, d, meta) => dispatched.push({ t, d, pts: meta?.pts, catchUp: meta?.catchUp }),
-    getDifference,
-    loadPts: async (id) => stored.get(id) ?? null,
-    savePts: (id, pts) => saved.set(id, pts),
+    getChannelDifference, savePeers, onChannelReload, syncDelay: opts.syncDelay ?? 0,
   })
-  return { funnel, dispatched, saved, stored, getDifference }
+  return { funnel, dispatched, getChannelDifference, savePeers, onChannelReload }
 }
 
-const post = (peerId: number, pts: number) => ({ t: 'new_message', pts, d: { peer_id: peerId, channel_pts: pts, msg_id: pts } })
+const PEER = -5
+const post = (id: number) => ({ _: 'message', id, peer_id: { _: 'peerChannel', channel_id: 5 } })
+const difference = (pts: number, msgs: number[], final = true, other: Update[] = []): ChannelDifference => ({
+  _: 'updates.channelDifference', pFlags: final ? { final: true } : {}, pts,
+  new_messages: msgs.map(post), other_updates: other, users: [], chats: [],
+})
 
-describe('channelFunnel.applyLive', () => {
-  it('первый живой кадр сидирует курсор и применяется без реплея', () => {
+afterEach(() => { vi.useRealTimers() })
+
+describe('channelFunnel — состояние канала (tweb addChannelState/getChannelState)', () => {
+  it('без pts состояния не бывает', () => {
     const h = harness()
-    h.funnel.applyLive(1, 'new_message', 5, post(1, 5).d)
+    expect(() => h.funnel.addChannelState(PEER, 0)).toThrow()
+  })
+
+  it('состояние заводится один раз и живым не откатывается (`??=`)', () => {
+    const h = harness()
+    h.funnel.addChannelState(PEER, 10)
+    h.funnel.addChannelState(PEER, 3)
+    h.funnel.processUpdate(PEER, 'updateNewChannelMessage', 11, {})   // next от 10
     expect(h.dispatched).toHaveLength(1)
-    expect(h.saved.get(1)).toBe(5)
-    // ни одного difference-запроса — историю грузит окно, не funnel
-    expect(h.getDifference).not.toHaveBeenCalled()
   })
 
-  it('next применяется и двигает курсор; dup отбрасывается', () => {
+  // tweb getChannelState(channelId, pts) → «duplicate update»: живой кадр
+  // канала без состояния заводит его своим pts и сам не применяется.
+  it('живой кадр без состояния заводит его и отбрасывается как учтённый', () => {
     const h = harness()
-    h.funnel.applyLive(1, 'new_message', 5, {})   // seed
-    h.funnel.applyLive(1, 'new_message', 6, {})   // next
-    h.funnel.applyLive(1, 'new_message', 6, {})   // dup
-    h.funnel.applyLive(1, 'new_message', 4, {})   // dup (позади)
-    expect(h.dispatched).toHaveLength(2)
-    expect(h.saved.get(1)).toBe(6)
-  })
-
-  it('gap придерживается и дренажится, когда дыру закрывает следующий кадр', () => {
-    const h = harness()
-    h.funnel.applyLive(1, 'new_message', 5, {})   // seed → cursor 5
-    h.funnel.applyLive(1, 'new_message', 7, { hole: true }) // gap → буфер
-    expect(h.dispatched).toHaveLength(1)          // 7 придержан
-    h.funnel.applyLive(1, 'new_message', 6, {})   // next закрывает дыру → 6, затем дренаж 7
-    expect(h.dispatched).toHaveLength(3)
-    expect(h.saved.get(1)).toBe(7)
-  })
-
-  it('курсоры per-channel независимы', () => {
-    const h = harness()
-    h.funnel.applyLive(1, 'new_message', 5, {})
-    h.funnel.applyLive(2, 'new_message', 100, {})
-    expect(h.saved.get(1)).toBe(5)
-    expect(h.saved.get(2)).toBe(100)
+    h.funnel.processUpdate(PEER, 'updateNewChannelMessage', 7, {})
+    expect(h.dispatched).toHaveLength(0)
+    expect(h.funnel.has(PEER)).toBe(true)
+    h.funnel.processUpdate(PEER, 'updateNewChannelMessage', 8, {})
+    expect(h.dispatched).toHaveLength(1)
   })
 })
 
-describe('channelFunnel.open', () => {
-  it('со stored pts добирает пропущенное через типизированный difference', async () => {
-    const h = harness([{ updates: [
-      { t: 'new_message', pts: 4, d: {} },
-      { t: 'chat_update', pts: 5, d: {} },
-    ], pts: 5, slice: false }])
-    h.stored.set(1, 3)
-    await h.funnel.open(1)
-    await Promise.resolve()
-    expect(h.getDifference).toHaveBeenCalledWith(1, 3)
-    expect(h.dispatched.map((x) => x.t)).toEqual(['new_message', 'chat_update'])
-    expect(h.saved.get(1)).toBe(5)
+describe('channelFunnel.processUpdate — живой кадр', () => {
+  it('next применяется, dup отбрасывается', () => {
+    const h = harness()
+    h.funnel.addChannelState(PEER, 5)
+    h.funnel.processUpdate(PEER, 'updateNewChannelMessage', 6, {})
+    h.funnel.processUpdate(PEER, 'updateNewChannelMessage', 6, {})
+    h.funnel.processUpdate(PEER, 'updateNewChannelMessage', 4, {})
+    expect(h.dispatched).toEqual([{ t: 'updateNewChannelMessage', d: {}, pts: 6, catchUp: false }])
   })
 
-  it('без stored pts не ходит в difference (первый live сидирует)', async () => {
+  it('дыру, закрытую следующим кадром, сливает по порядку без разницы', () => {
     const h = harness()
-    await h.funnel.open(1)
-    expect(h.getDifference).not.toHaveBeenCalled()
+    h.funnel.addChannelState(PEER, 5)
+    h.funnel.processUpdate(PEER, 'updateNewChannelMessage', 7, { n: 7 })
+    expect(h.dispatched).toHaveLength(0)
+    h.funnel.processUpdate(PEER, 'updateNewChannelMessage', 6, { n: 6 })
+    expect(h.dispatched.map((d) => d.pts)).toEqual([6, 7])
+    expect(h.getChannelDifference).not.toHaveBeenCalled()
+  })
+
+  // Дыра в pts живого кадра канала, не закрытая за SYNC_DELAY, —
+  // updates.getChannelDifference от состояния (tweb :682-704).
+  it('незакрытая дыра — getChannelDifference от pts состояния', async () => {
+    vi.useFakeTimers()
+    const h = harness([difference(7, [6, 7])])
+    h.funnel.addChannelState(PEER, 5)
+    h.funnel.processUpdate(PEER, 'updateNewChannelMessage', 7, { n: 7 })
+    await vi.advanceTimersByTimeAsync(10)
+    expect(h.getChannelDifference).toHaveBeenCalledWith(PEER, 5)
+    expect(h.dispatched.map((d) => [d.t, (d.d as { message: { id: number } }).message.id, d.catchUp]))
+      .toEqual([['updateNewChannelMessage', 6, true], ['updateNewChannelMessage', 7, true]])
+    // придержанный 7 не всплыл повторно, а следующий живой — next от 7
+    h.funnel.processUpdate(PEER, 'updateNewChannelMessage', 8, {})
+    expect(h.dispatched.map((d) => d.pts)).toEqual([7, 7, 8])
+  })
+
+  it('пока идёт разница, живые кадры отбрасываются', async () => {
+    let resolve: ((d: ChannelDifference) => void) | null = null
+    const h = harness()
+    h.getChannelDifference.mockImplementationOnce(() => new Promise((r) => { resolve = r }))
+    h.funnel.addChannelState(PEER, 5)
+    const p = h.funnel.getChannelDifference(PEER)
+    h.funnel.processUpdate(PEER, 'updateNewChannelMessage', 6, {})
+    expect(h.dispatched).toHaveLength(0)
+    resolve!(difference(6, [6]))
+    await p
+    expect(h.dispatched).toHaveLength(1)
   })
 })
 
-describe('channelFunnel meta', () => {
-  it('живой кадр помечается catchUp:false, кадр из difference — catchUp:true', async () => {
-    const seen: Array<{ t: string; catchUp?: boolean }> = []
+describe('channelFunnel.getChannelDifference — updates.getChannelDifference', () => {
+  it('карточки — до апдейтов; other_updates — до new_messages; не final — следующая страница', async () => {
+    const edit = { _: 'updateEditChannelMessage', message: post(1), pts: 6, pts_count: 1 } as unknown as Update
+    const h = harness([difference(6, [], false, [edit]), difference(8, [7, 8])])
+    const order: string[] = []
+    h.savePeers.mockImplementation(() => order.push('peers'))
+    h.funnel.addChannelState(PEER, 5)
+    await h.funnel.getChannelDifference(PEER)
+    expect(h.getChannelDifference.mock.calls).toEqual([[PEER, 5], [PEER, 6]])
+    expect(h.dispatched.map((d) => d.t)).toEqual(['updateEditChannelMessage', 'updateNewChannelMessage', 'updateNewChannelMessage'])
+    expect(order[0]).toBe('peers')
+    h.funnel.processUpdate(PEER, 'updateNewChannelMessage', 9, {})
+    expect(h.dispatched[h.dispatched.length - 1]?.pts).toBe(9)
+  })
+
+  it('channelDifferenceEmpty — только pts', async () => {
+    const h = harness([{ _: 'updates.channelDifferenceEmpty', pFlags: { final: true }, pts: 12 }])
+    h.funnel.addChannelState(PEER, 5)
+    await h.funnel.getChannelDifference(PEER)
+    expect(h.dispatched).toEqual([])
+    h.funnel.processUpdate(PEER, 'updateNewChannelMessage', 13, {})
+    expect(h.dispatched).toHaveLength(1)
+  })
+
+  // tweb :451-458: состояние удаляется, канал перечитывается (updateChannelReload).
+  it('channelDifferenceTooLong — состояние забыто, канал перечитывается', async () => {
+    const h = harness([{ _: 'updates.channelDifferenceTooLong', pFlags: { final: true }, dialog: {}, messages: [], users: [], chats: [] }])
+    h.funnel.addChannelState(PEER, 5)
+    await h.funnel.getChannelDifference(PEER)
+    expect(h.onChannelReload).toHaveBeenCalledWith(PEER)
+    expect(h.funnel.has(PEER)).toBe(false)
+  })
+})
+
+// Офлайн → в канале посты → реконнект: getDifference отдаёт
+// updateChannelTooLong, и канал с состоянием догоняется (tweb :658-662).
+describe('channelFunnel.onTooLong — updateChannelTooLong', () => {
+  it('канал с состоянием догоняется разницей', async () => {
+    const h = harness([difference(8, [6, 7, 8])])
+    h.funnel.addChannelState(PEER, 5)
+    h.funnel.onTooLong(PEER)
+    await vi.waitFor(() => expect(h.dispatched).toHaveLength(3))
+    expect(h.getChannelDifference).toHaveBeenCalledWith(PEER, 5)
+  })
+
+  it('канал без состояния — ничего', () => {
+    const h = harness()
+    h.funnel.onTooLong(PEER)
+    expect(h.getChannelDifference).not.toHaveBeenCalled()
+  })
+
+  it('не чаще: живой кадр только что двигал состояние — разницы нет', () => {
+    vi.useFakeTimers()
+    const h = harness([], { syncDelay: 250 })
+    h.funnel.addChannelState(PEER, 5)
+    h.funnel.processUpdate(PEER, 'updateNewChannelMessage', 6, {})
+    h.funnel.onTooLong(PEER)
+    expect(h.getChannelDifference).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(300)
+    h.funnel.onTooLong(PEER)
+    expect(h.getChannelDifference).toHaveBeenCalledTimes(1)
+  })
+})
+
+// Открыт чужой публичный канал: живых кадров нет, лента опрашивает разницу
+// (tweb subscribeToChannelUpdates :850-875).
+describe('channelFunnel.subscribe — опрос открытого канала', () => {
+  it('сразу и раз в интервал, если разницы не было дольше зазора; отписка гасит', async () => {
+    vi.useFakeTimers()
+    const h = harness()
     const funnel = newChannelFunnel({
-      dispatch: (t, _d, meta) => { seen.push({ t, catchUp: meta?.catchUp }) },
-      getDifference: async () => ({ updates: [{ t: 'new_message', pts: 2, d: {} }], pts: 2, slice: false }),
-      loadPts: async () => 1,
-      savePts: () => {},
+      dispatch: () => {}, getChannelDifference: h.getChannelDifference,
+      savePeers: () => {}, onChannelReload: () => {},
     })
-    funnel.applyLive(1, 'new_message', 5, {})
-    expect(seen).toEqual([{ t: 'new_message', catchUp: false }])
-    seen.length = 0
-    await funnel.open(2)
-    expect(seen.some((x) => x.catchUp === true)).toBe(true)
+    funnel.addChannelState(PEER, 5)
+    funnel.subscribe(PEER)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.getChannelDifference).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(h.getChannelDifference).toHaveBeenCalledTimes(2)
+    funnel.unsubscribe(PEER)
+    await vi.advanceTimersByTimeAsync(9000)
+    expect(h.getChannelDifference).toHaveBeenCalledTimes(2)
   })
-})
 
-describe('channelFunnel gap → difference', () => {
-  it('по таймауту недобранной дыры уходит в difference', async () => {
+  it('новые посты опроса применяются, без состояния опрос молчит', async () => {
     vi.useFakeTimers()
-    try {
-      const h = harness([{ updates: [{ t: 'new_message', pts: 6, d: {} }], pts: 6, slice: false }])
-      h.funnel.applyLive(1, 'new_message', 5, {})   // seed
-      h.funnel.applyLive(1, 'new_message', 7, {})   // gap, дыру никто не закрыл
-      expect(h.getDifference).not.toHaveBeenCalled()
-      await vi.advanceTimersByTimeAsync(300)         // SYNC_DELAY прошёл
-      expect(h.getDifference).toHaveBeenCalledWith(1, 5)
-    } finally {
-      vi.useRealTimers()
-    }
+    const h = harness([difference(6, [6])])
+    h.funnel.subscribe(-9)                      // состояния нет — ничего
+    h.funnel.addChannelState(PEER, 5)
+    h.funnel.subscribe(PEER)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.getChannelDifference).toHaveBeenCalledTimes(1)
+    expect(h.dispatched.map((d) => d.t)).toEqual(['updateNewChannelMessage'])
+    h.funnel.unsubscribe(PEER); h.funnel.unsubscribe(-9)
+  })
+
+  it('две подписки — опрос живёт до последней отписки', async () => {
+    vi.useFakeTimers()
+    const h = harness()
+    h.funnel.addChannelState(PEER, 5)
+    h.funnel.subscribe(PEER)
+    h.funnel.subscribe(PEER)
+    h.funnel.unsubscribe(PEER)
+    await vi.advanceTimersByTimeAsync(3000)
+    const calls = h.getChannelDifference.mock.calls.length
+    h.funnel.unsubscribe(PEER)
+    await vi.advanceTimersByTimeAsync(9000)
+    expect(h.getChannelDifference.mock.calls.length).toBe(calls)
+    expect(calls).toBeGreaterThan(0)
   })
 })
 
-// Добор пропусков (ревью Этапа 1A): meta-тест выше проверял только seed-ветку и
-// difference; основная ветка applyLive (курсор уже сидирован) и drainPending
-// оставались непокрытыми — мутация catchUp в них проскакивала бы мимо тестов.
-describe('channelFunnel meta — основная ветка и drainPending', () => {
-  it('основная ветка applyLive (курсор сидирован, pts===cursor+1) помечает catchUp:false', () => {
-    const h = harness()
-    h.funnel.applyLive(1, 'new_message', 5, {})   // seed — отдельная ветка, не эта
-    h.funnel.applyLive(1, 'new_message', 6, {})   // основная ветка: pts===cursor+1
-    expect(h.dispatched[1]).toMatchObject({ t: 'new_message', pts: 6, catchUp: false })
-  })
-
-  it('drainPending: придержанный из-за дыры кадр после её закрытия применяется с catchUp:false', () => {
-    const h = harness()
-    h.funnel.applyLive(1, 'new_message', 5, {})            // seed → cursor 5
-    h.funnel.applyLive(1, 'new_message', 7, { hole: true }) // gap → буфер, не применён
-    h.funnel.applyLive(1, 'new_message', 6, {})             // next закрывает дыру → дренаж 7
-    expect(h.dispatched[2]).toMatchObject({ t: 'new_message', pts: 7, catchUp: false })
-  })
-})
-
-// tweb 1dc32d889: у канала свой догон — `syncWait` ждёт его для уведомлений
-// этого канала (и только его).
+// tweb 1dc32d889: ожидание уведомления пира-канала учитывает догон этого
+// канала (и только его).
 describe('channelFunnel.syncState', () => {
-  it('отдаёт идущий difference канала и обновляет признак жизни на каждой странице', async () => {
+  it('отдаёт идущую разницу канала и обновляет признак жизни на каждой странице', async () => {
     vi.useFakeTimers()
-    try {
-      vi.setSystemTime(1000)
-      const resolvers: Array<(d: ChannelDiff) => void> = []
-      const funnel = newChannelFunnel({
-        dispatch: () => {},
-        getDifference: () => new Promise<ChannelDiff>((r) => { resolvers.push(r) }),
-        loadPts: async () => 5,
-        savePts: () => {},
-      })
-      expect(funnel.syncState(-1)).toBeUndefined()
+    vi.setSystemTime(1000)
+    const resolvers: Array<(d: ChannelDifference) => void> = []
+    const funnel = newChannelFunnel({
+      dispatch: () => {},
+      getChannelDifference: () => new Promise<ChannelDifference>((r) => { resolvers.push(r) }),
+      savePeers: () => {}, onChannelReload: () => {},
+    })
+    expect(funnel.syncState(PEER)).toBeUndefined()
+    funnel.addChannelState(PEER, 5)
+    const p = funnel.getChannelDifference(PEER)
+    expect(funnel.syncState(PEER)).toEqual({ loading: p, progressTime: 1000 })
 
-      await funnel.open(-1)
-      const running = funnel.syncState(-1)
-      expect(running?.loading).toBeInstanceOf(Promise)
-      expect(running?.progressTime).toBe(1000)
+    vi.setSystemTime(2000)
+    resolvers[0](difference(6, [6], false))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(resolvers).toHaveLength(2)
+    expect(funnel.syncState(PEER)?.progressTime).toBe(2000)
 
-      vi.setSystemTime(2000)
-      resolvers[0]({ updates: [{ t: 'new_message', pts: 6, d: {} }], pts: 6, slice: true })
-      await vi.advanceTimersByTimeAsync(0)
-      expect(resolvers).toHaveLength(2)
-      expect(funnel.syncState(-1)?.progressTime).toBe(2000)
-
-      resolvers[1]({ updates: [], pts: 6, slice: false })
-      await running?.loading
-      expect(funnel.syncState(-1)?.loading).toBeNull()
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-})
-
-// Ревью #407: курсор канала заводится из строки списка (tweb
-// addChannelState, `??=`), а на hello догоняются только каналы с заведённым
-// курсором, чей pts ушёл вперёд (аналог updateChannelTooLong).
-describe('channelFunnel.seed / onHello', () => {
-  it('seed заводит курсор один раз и не откатывает живой', () => {
-    const h = harness()
-    h.funnel.seed(1, 10)
-    h.funnel.seed(1, 3)
-    h.funnel.applyLive(1, 'new_message', 11, {})   // next от 10 — применён
-    expect(h.dispatched).toHaveLength(1)
-    h.funnel.applyLive(1, 'new_message', 13, {})   // дыра от 11 — придержан
-    expect(h.dispatched).toHaveLength(1)
-    expect(h.saved.get(1)).toBe(11)
-  })
-
-  it('onHello: догон только сдвинувшихся каналов с курсором; без курсора — курсор из hello', async () => {
-    const h = harness([{ updates: [{ t: 'new_message', pts: 6, d: { a: 1 } }], pts: 6, slice: false }])
-    h.funnel.seed(1, 5)
-    h.funnel.seed(2, 100)
-    h.funnel.onHello([[1, 6], [2, 100], [3, 40]])
-    await vi.waitFor(() => expect(h.saved.get(1)).toBe(6))
-    expect(h.getDifference).toHaveBeenCalledTimes(1)
-    expect(h.getDifference).toHaveBeenCalledWith(1, 5)
-    expect(h.saved.get(3)).toBe(40)
+    resolvers[1](difference(6, []))
+    await p
+    expect(funnel.syncState(PEER)?.loading).toBeNull()
   })
 })

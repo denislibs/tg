@@ -13,7 +13,7 @@ import { RT } from '@core/realtime/events'
 import type {
   NewMessageEvt, EditMessageEvt, DeleteMessageEvt, PinMessageEvt, ReadEvt, MediaReadEvt,
   TypingEvt, PresenceEvt, ReactionEvt, AckEvt, MessageErrorEvt, CallFrameEvt,
-  ChatRemovedEvt, ChannelEvt, DraftUpdateEvt, ChatThemeUpdateEvt, ChatUpdateEvt, ChannelParticipantEvt, ChatRequestsEvt, SuggestedPostEvt, BotCallbackAnswerEvt,
+  ChatRemovedEvt, ChannelEvt, ChannelTooLongEvt, DraftUpdateEvt, ChatThemeUpdateEvt, ChatUpdateEvt, ChannelParticipantEvt, ChatRequestsEvt, SuggestedPostEvt, BotCallbackAnswerEvt,
   GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, StoryUpdateEvt,
   SentStoryReactionEvt, ReadStoriesEvt, ConnState, UserUpdateEvt, DialogPinEvt, DialogArchiveEvt, DialogMuteEvt,
   PollUpdateEvt, ChecklistUpdateEvt, GiveawayUpdateEvt, BoostUpdateEvt, BalanceUpdateEvt,
@@ -57,6 +57,7 @@ export type BroadcastEvents = {
   [RT.reaction]: [ReactionEvt, EventMeta?]
   [RT.chatRemoved]: [ChatRemovedEvt, EventMeta?]
   [RT.channel]: [ChannelEvt, EventMeta?]
+  [RT.channelTooLong]: [ChannelTooLongEvt, EventMeta?]
   [RT.draftUpdate]: [DraftUpdateEvt, EventMeta?]
   [RT.chatThemeUpdate]: [ChatThemeUpdateEvt, EventMeta?]
   [RT.chatUpdate]: [ChatUpdateEvt, EventMeta?]
@@ -138,7 +139,7 @@ export type BroadcastEvents = {
   // синхронизации ещё не видели (вкладка, поднявшаяся в середине догона).
   [RT.state]: [{ state: ConnState; retryAt?: number }]
   // tweb apiUpdatesManager.ts:460-469 (state_synchronizing/state_synchronized) —
-  // начало/конец catch-up (/sync); автомат витрины (Задача 3) слушает пару.
+  // начало/конец догона (updates.getDifference); автомат витрины (Задача 3) слушает пару.
   // Payload — null (1:1 с tweb rootScope.ts:131-132: 'state_synchronized' объявлен
   // как `void`, без payload — обработчики только переключают флаг).
   [RT.stateSynchronizing]: [null]

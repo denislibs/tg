@@ -49,7 +49,7 @@ import { newConnectionManager } from './realtime/connectionManager'
 import { newRealtime } from './realtime/realtime'
 import { newSyncEngine } from './realtime/syncEngine'
 import { newCursor } from './realtime/cursor'
-import { newChannelFunnel, type ChannelDiff } from './realtime/channelFunnel'
+import { newChannelFunnel, type ChannelDifference } from './realtime/channelFunnel'
 import { newSyncWait } from './realtime/syncWait'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
@@ -58,7 +58,7 @@ import type { MessageOp } from './realtime/messageOps'
 import { generateMessageId } from './history/messageId'
 import { getPeerId, toChatId, toPeerId } from './peers/peerId'
 import { LOGGED_WITHOUT_CONSTRUCTOR, PASS_THROUGH } from './realtime/transportFrames'
-import { CHANNEL_CURSOR, UPDATE_RT, channelPeerId, channelTwin, frameKey, updatePredicate } from './realtime/updateCatalog'
+import { CHANNEL_CURSOR, UPDATE_RT, channelPeerId, channelTwin, updatePredicate } from './realtime/updateCatalog'
 import { idbGet, idbSet } from './store/idbKv'
 import { sessionKv } from './store/sessionKv'
 import { newPasscodeWorker } from './passcode/passcodeWorker'
@@ -174,8 +174,8 @@ export function createWorkerCore() {
     //
     // `cursor.reset()` — курсор апдейтов тоже про сессию: он лежит в общем
     // `msgr/kv` вне скоупа персиста, и без сброса вход после выхода догонял бы
-    // `/sync` от курсора ПРОШЛОЙ сессии (а то и чужого аккаунта) вместо того,
-    // чтобы взять базой текущее состояние сервера (hello, см. onFrame).
+    // разницу от курсора ПРОШЛОЙ сессии (а то и чужого аккаунта) вместо того,
+    // чтобы взять базой текущее состояние сервера (updates.getState, onReady).
     onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); contacts.resetForLogout(); cursor.reset(); broadcast(RT.loggingOut, e) },
     // Симметричный кадр входа (порт tweb `account_logged_in`) — тем же веером и
     // с тем же сбросом: активный токен сменился, а значит медиа-токен, добытый
@@ -211,6 +211,10 @@ export function createWorkerCore() {
     // зависит лимит своих реакций на сообщении. Геттер, а не значение, — `me`
     // разрешается лениво и меняется покупкой премиума (premiumManager → setMe).
     getMePremium: () => !!me?.user.pFlags?.premium,
+    // tweb appMessagesManager.ts:13503-13505: история канала
+    // (`messages.channelMessages`) заводит состояние канала его pts. Стрелка
+    // ленивая: воронка каналов объявлена ниже.
+    addChannelState: (peerId, pts) => { channelFunnel.addChannelState(peerId, pts) },
     // Порт `appPeersManager.isBroadcast(peerId)` для `generateFlags`: бабл поста
     // вещательного канала рождается с `pFlags.post` — иначе он стоял бы справа
     // до эха и прыгал влево (см. `PendingCtx.isBroadcastChat`). Стрелка ленивая
@@ -296,9 +300,10 @@ export function createWorkerCore() {
   // groups/chatThemes (Task 4) — им нужна ссылка на него в конструкторе.
   const dialogs = newDialogsManager({
     rest,
-    // Курсор канала из списка (tweb addChannelState): воронка объявлена ниже,
-    // строки списка приходят позже сборки — к первому вызову она уже есть.
-    addChannelState: (peerId, pts) => channelFunnel.seed(peerId, pts),
+    // Состояние канала из строки списка (tweb addChannelState, dialogs.ts:1756):
+    // воронка объявлена ниже, строки списка приходят позже сборки — к первому
+    // вызову она уже есть.
+    addChannelState: (peerId, pts) => { channelFunnel.addChannelState(peerId, pts) },
     onDialogOps: (ops) => broadcast(RT.dialogOp, { ops }),
     loadCache: () => loadDialogs(),
     loadState: async () => {
@@ -503,6 +508,8 @@ export function createWorkerCore() {
   // Эфемерные кадры (typing/presence/calls/…) сюда НЕ заходят — их onFrame транслирует как есть.
   const cursor = newCursor({ get: idbGet, set: idbSet })
   let cursorReady = false
+  // Первое подключение после старта воркера уже было (tweb `attached`).
+  let attached = false
 
   // Отражение кадра в SSOT воркера — ДО broadcast: иначе переоткрытие чата из
   // кэша теряет апдейт. Ключ — КОНСТРУКТОР; имя события, которым кадр уезжает
@@ -709,44 +716,52 @@ export function createWorkerCore() {
     broadcast(RT.newMessage, e, syncWait.isInitialSync() ? { ...meta, initialSync: true } : meta)
   }
 
-  // Per-channel pts-конверт (Волна 5): каналы гейтятся против собственного
-  // channel_pts, а не общего пер-юзерного курсора. dispatch — тот же (SSOT+broadcast),
-  // difference — типизированный конверт, курсор персистится в IDB (chpts:{id}).
+  // Состояния каналов (tweb `channelStates`): у канала свой плотный pts и
+  // своя разница — `updates.getChannelDifference`.
   const channelFunnel = newChannelFunnel({
     dispatch,
-    // Карточки разницы — в кэш пиров ДО её апдейтов (tweb
-    // updates.channelDifference → saveApiUsers/saveApiChats, A4-05).
-    getDifference: (peerId, sincePts) => rest.get<ChannelDiff>(`/channels/${peerId}/difference`, { pts: sincePts })
-      .then((d) => {
-        if (d.users?.length || d.chats?.length) peers.saveApiPeers({ users: d.users, chats: d.chats } as Parameters<typeof peers.saveApiPeers>[0])
-        return d
-      }),
-    loadPts: (peerId) => idbGet<number>(`chpts:${peerId}`).then((v) => (typeof v === 'number' ? v : null)),
-    // Отказ IDB глотаем: сохранённый курсор — кэш. Без него open() просто не сидирует,
-    // и базу возьмёт первый живой кадр канала (channelFunnel.applyLive).
-    savePts: (peerId, pts) => { void idbSet(`chpts:${peerId}`, pts).catch(() => {}) },
+    getChannelDifference: (peerId, pts) =>
+      rest.get<ChannelDifference>('/updates/channel_difference', { channel: peerId, pts, limit: 1000 }),
+    // Карточки разницы — в кэш пиров ДО её апдейтов (A4-05).
+    savePeers: (p) => peers.saveApiPeers(p as Parameters<typeof peers.saveApiPeers>[0]),
+    // tweb onUpdateChannelReload (appMessagesManager.ts:11644-11660): строка
+    // канала перечитывается целиком.
+    onChannelReload: (peerId) => dialogs.reloadConversation(peerId),
   })
+
+  // Апдейт канала из разницы или живой кадр — tweb `processUpdate` с channelId.
+  function processChannelUpdate(u: Update): void {
+    if (u._ === 'updateChannelTooLong') { channelFunnel.onTooLong(toPeerId(u.channel_id, true)); return }
+    const peerId = channelPeerId(u)
+    const pts = (u as { pts?: number }).pts
+    if (typeof peerId === 'number' && typeof pts === 'number') channelFunnel.processUpdate(peerId, u._, pts, u)
+  }
 
   const sync = newSyncEngine({
     rest, cursor,
-    // Строка журнала опознаётся тем же ключом, что живой кадр: КОНСТРУКТОРОМ
-    // из тела. Тип строки (`item.t`) остаётся ответом только для
-    // непортированного предмета — см. frameKey.
-    onUpdate: (item) => funnel.applyUpdate(frameKey(item.t, item.d), item.pts, item.d, false),
+    saveUpdate: (key, d, meta) => dispatch(key, d, meta),
+    processChannelUpdate,
     // Карточки страницы разницы — в кэш пиров ДО её апдейтов (A4-05).
     onPeers: (p) => peers.saveApiPeers(p as Parameters<typeof peers.saveApiPeers>[0]),
-    // Полный resync ставит курсор на серверный pts — придержанные out-of-order кадры
-    // теперь либо дубли, либо оторванная «будущая» дыра; сбрасываем, чтобы не всплыли.
-    // Канальные in-memory курсоры тоже забываем — переоткрытие пересидирует из IDB.
-    onResync: () => { funnel.clear(); channelFunnel.reset(); broadcast('rt:resync', null) },
+    // tweb onDifferenceTooLong: придержанные кадры оторваны от новой базы,
+    // состояния каналов забываются (tweb `channelStates = {}`), витрина
+    // перечитывает данные (state_cleared).
+    onDifferenceTooLong: () => { funnel.clear(); channelFunnel.reset(); broadcast('rt:resync', null) },
     // Задача 1 (порт ConnectionStatusComponent из tweb): пара rt:state_synchronizing/
     // synchronized — автомат витрины (Задача 3) переключает текст «Обновление…» на
-    // время catch-up'а. Проводка проверена workerCore.connectionStatus.test.ts
-    // (перехватывает эти колбэки в реальном syncEngine и ловит их выполнение на
-    // подключённой вкладке через broadcast).
+    // время догона. Проводка проверена workerCore.connectionStatus.test.ts.
     onSyncStart: () => broadcast(RT.stateSynchronizing, null),
     onSyncEnd: () => broadcast(RT.stateSynchronized, null),
   })
+  // tweb `forceGetDifference` (:185-189): идущий догон не дублируется; новый —
+  // сбрасывает придержанные кадры (tweb getDifference чистит pendingPtsUpdates).
+  // Отказ глотаем: курсор не сдвинулся, следующий кадр с дырой или реконнект
+  // позовут разницу снова, а пару synchronizing/synchronized держит .finally.
+  function forceGetDifference(): void {
+    if (sync.isSyncing()) return
+    funnel.clear()
+    void sync.getDifference().catch(() => {})
+  }
   // Единый (пер-юзерный) funnel — арифметика dup/next/gap + буфер придержанных кадров
   // (Wave 3), вынесенная в модуль с явными зависимостями (Task 1). dispatch остаётся
   // здесь (знает про APPLY/routeNewMessage/broadcast), funnel про менеджеры не знает.
@@ -755,17 +770,12 @@ export function createWorkerCore() {
     cursor,
     isCursorReady: () => cursorReady,
     isSyncing: () => sync.isSyncing(),
-    // Задача #91. Воронка ждёт `() => void` — здесь адаптер, и отказ глотать обязан
-    // именно он: упавший /sync иначе даёт unhandled rejection на КАЖДОМ живом кадре с
-    // pts, пока курсор не гидрирован (globalFunnel.ts: `if (!isCursorReady())`). Глотать
-    // безопасно — курсор не сдвинулся, следующий кадр с дырой (или hello реконнекта)
-    // позовёт catch-up снова, а пару synchronizing/synchronized держит .finally внутри
-    // самого catchUp(). Сам catchUp() отказ пробрасывает СОЗНАТЕЛЬНО: его наблюдает тот,
-    // кто его дожидается (syncEngine.test.ts) — глушим здесь, у fire-and-forget вызова.
-    catchUp: () => { void sync.catchUp().catch(() => {}) },
+    // Задача #91: отказ разницы глотает forceGetDifference — иначе unhandled
+    // rejection на КАЖДОМ живом кадре с pts, пока курсор не гидрирован.
+    catchUp: () => { if (!sync.isSyncing()) void sync.getDifference().catch(() => {}) },
   })
-  // tweb 1dc32d889 — ожидание догона для уведомлений (общий /sync + difference
-  // канала). Вкладка ждёт его по RPC `realtime.waitForSync`.
+  // tweb 1dc32d889 — ожидание догона для уведомлений (общая разница +
+  // разница канала). Вкладка ждёт его по RPC `realtime.waitForSync`.
   const syncWait = newSyncWait({
     global: () => sync.syncState(),
     channel: (peerId) => channelFunnel.syncState(peerId),
@@ -782,10 +792,23 @@ export function createWorkerCore() {
       // гарантию, — in-memory копия (та же Map) резендом на реконнекте не зависит от диска.
       save: (list) => { void sessionKv.set('outbox', list).catch(() => {}) },
     },
-    // onReady: гарантируем гидратацию курсора из IDB (гейт первого apply). Сам
-    // catch-up на (ре)коннекте инициирует hello-кадр (fast-reconnect без REST,
-    // если pts совпал).
-    onReady: () => { void cursor.ready() },
+    // Сокет открыт (первое подключение или реконнект). Первое после старта —
+    // tweb `attach` (:886-935): без сохранённого состояния — `updates.getState`
+    // (догонять не от чего), иначе `getDifference(true)`; оно же точка
+    // «начальной синхронизации» (syncWait.attach). Реконнект — новая сессия,
+    // tweb `new_session_created` → `forceGetDifference` (:206-209).
+    onReady: () => {
+      void cursor.ready().then(() => {
+        if (attached) { forceGetDifference(); return }
+        attached = true
+        const saved = cursor.get()
+        const initial = !saved.pts || !saved.date
+          ? sync.getState()
+          : (funnel.clear(), sync.getDifference())
+        syncWait.attach(initial)
+        return initial
+      }).catch(() => {})
+    },
     // retryAt (Задача 1): scheduleReconnect зовёт onState с ВТОРЫМ аргументом только
     // при реконнекте (connectionManager.ts) — здесь он просто прокидывается дальше в
     // payload. Проверено workerCore.connectionStatus.test.ts.
@@ -796,59 +819,11 @@ export function createWorkerCore() {
       // ПЕРВЫМИ — до применения апдейта, чтобы первое сообщение нового
       // собеседника, автор-канал или пересылка рисовались с именем (A4-05).
       if (framePeers) peers.saveApiPeers(framePeers as Parameters<typeof peers.saveApiPeers>[0])
-      // hello — первый кадр WS: {pts,date}. pts===cursor → быстрый reconnect без REST;
-      // иначе catch-up доберёт разницу. cursor.ready() гейтит сравнение до гидратации.
-      // Каналы, чей журнал ушёл вперёд, пока сокета не было: их кадры
-      // топиков пропали, а пер-юзерный /sync их не несёт (журналы разные).
-      // Сервер шлёт кадр после подписки соединения на топики каналов.
-      if (type === 'channel_state') {
-        const p = payload as { channels?: [number, number][] }
-        if (p?.channels) channelFunnel.onHello(p.channels)
-        return
-      }
-      if (type === 'hello') {
-        const p = payload as { pts?: number; date?: number }
-        if (typeof p?.pts === 'number') {
-          const want = p.pts
-          // Реконнект с расхождением pts: catch-up добёрет разницу — придержанные
-          // out-of-order кадры теперь оторваны от новой базы, сбрасываем (инвариант
-          // tweb: getDifference чистит pendingPtsUpdates), чтобы не всплыли позже.
-          // Задача #91: catch-up вчленён в цепочку (return), поэтому один .catch в её
-          // хвосте кроет и его отказ, и любой бросок из самого колбэка. cursor.ready()
-          // не отклоняется по построению (cursor.ts терминирует его .catch'ем).
-          void cursor.ready().then(() => {
-            // Сохранённого состояния апдейтов нет (свежий вход, чистый профиль) —
-            // базой становится ТЕКУЩЕЕ состояние сервера, и догонять нечего:
-            // порт tweb `apiUpdatesManager.attach` (apiUpdatesManager.ts:886-906),
-            // где без `state.pts`/`state.date` зовётся `updates.getState`, а не
-            // `getDifference`. Наш `updates.getState` — сам hello: тот же
-            // `{pts, date}` пользователя (`ws/frames.go::helloFrame`). Без этого
-            // `/sync` от нуля переигрывал после входа ВЕСЬ журнал — сотни
-            // старых сообщений, удалений и переездов чатов поверх только что
-            // загруженного списка. С сохранённым состоянием (F5) — догон от него
-            // (tweb `getDifference(true)`, :907-929).
-            const saved = cursor.get()
-            if (!saved.pts || !saved.date) {
-              cursor.set(want, typeof p.date === 'number' ? p.date : 0)
-              syncWait.attach(undefined)
-              return
-            }
-            const catchingUp = want !== saved.pts ? (funnel.clear(), sync.catchUp()) : undefined
-            // tweb 1dc32d889 — точка attach: первый hello после старта воркера
-            // решает, какой difference «начальный» (или что догонять нечего).
-            syncWait.attach(catchingUp)
-            return catchingUp
-          }).catch(() => {})
-        } else {
-          syncWait.attach(undefined)
-        }
-        return
-      }
       // Развилка воронок — по КОНСТРУКТОРУ. Канальными курсор делает не имя
       // ключа (`channel_pts` больше не существует нигде), а сам кадр:
       // updateNewChannelMessage, updateChannelFullSnapshot,
       // updateChannelBoostStatus едут журналом канала, у которого свой плотный
-      // pts и свой догон через /difference.
+      // pts и своя разница (updates.getChannelDifference).
       //
       // Ключ канала лежит в РАЗНЫХ местах, и это не небрежность: кадр с
       // сообщением несёт его ВНУТРИ конструктора сообщения (там peer_id —
@@ -860,7 +835,7 @@ export function createWorkerCore() {
         const peerId = channelPeerId(u)
         const channelPts = (payload as { pts?: number }).pts
         if (typeof peerId === 'number' && typeof channelPts === 'number') {
-          channelFunnel.applyLive(peerId, pred, channelPts, payload)
+          channelFunnel.processUpdate(peerId, pred, channelPts, payload)
           return
         }
       }
@@ -922,10 +897,10 @@ export function createWorkerCore() {
               m.secret = true
               if (dec.media) m.secretMedia = dec.media
             }
-            funnel.applyUpdate(pred, p.pts, payload, true)
+            funnel.applyUpdate(pred, p.pts, payload)
           }).catch(() => {})
         } else {
-          funnel.applyUpdate(pred, p.pts, payload, true)
+          funnel.applyUpdate(pred, p.pts, payload)
         }
         return
       }
@@ -940,13 +915,13 @@ export function createWorkerCore() {
       // updates и порядок ему задаёт seq контейнера). Воронке безразлично,
       // откуда он: она гейтит по числу, а место выбирает схема.
       if (pred) {
-        funnel.applyUpdate(pred, envPts ?? (payload as { pts?: number })?.pts, payload, true)
+        funnel.applyUpdate(pred, envPts ?? (payload as { pts?: number })?.pts, payload)
         return
       }
       // Непортированный предмет с курсором (#51): конструктора нет, кадр
       // опознаётся типом конверта, но воронку проходить обязан.
       if (type === LOGGED_WITHOUT_CONSTRUCTOR) {
-        funnel.applyUpdate(type, envPts ?? (payload as { pts?: number })?.pts, payload, true)
+        funnel.applyUpdate(type, envPts ?? (payload as { pts?: number })?.pts, payload)
         return
       }
       // Секретный handshake: криптообработка в воркере до/вместо трансляции.

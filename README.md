@@ -131,7 +131,7 @@ messenger-denis/
   `presence`/`reaction`/`poll_update`/`boost_update`/`giveaway_update`/`chat_theme_update`/
   `star_reaction`/`checklist_update`/`livestream_update`/`suggested_post_update` и др.
 - **Оптимистичная отправка** (бабл сразу, затем ack/error), durable outbox (переживает перезагрузку),
-  **catch-up синхронизация** (`GET /sync`, `GET /channels/{id}/difference` по pts).
+  **догонка методами схемы** (`updates.getState` / `getDifference` / `getChannelDifference`).
 - **Глобальный поиск** и **поиск по чату/сообщениям**, **Instant View** (`/iv`), **превью ссылок**
   (web page), **web-push уведомления** (VAPID).
 - **Горячие клавиши** (кроссплатформенные Cmd/Ctrl/Alt), favicon-бейдж непрочитанного.
@@ -210,8 +210,9 @@ Postgres commit → usecase публикует update в Redis pub/sub
 чистое состояние (в сеть не ходят). Новый потребитель события (аналитика/лог) = одна строка
 `eventBus.subscribe`. Подробнее — в [`web-client/README.md`](web-client/README.md).
 
-**Догон после оффлайна:** при реконнекте клиент запрашивает `GET /sync` (и `GET /channels/{id}/difference`
-по `pts` для каналов) — сервер отдаёт пропущенные апдейты, клиент применяет их тем же путём через стор.
+**Догон после оффлайна:** после (пере)подключения клиент запрашивает `updates.getDifference`
+(`GET /updates/difference`) от сохранённого состояния; каналы, сдвинувшиеся за это время, приходят
+маркером `updateChannelTooLong` и догоняются `updates.getChannelDifference` — как в tweb.
 
 Подробности слоёв — в [`backend/README.md`](backend/README.md) и [`web-client/README.md`](web-client/README.md).
 

@@ -157,7 +157,7 @@ describe('createWorkerCore() — проводка retryAt и событий си
     // синхронно внутри catchUp() (см. syncEngine.ts), поэтому isSyncing() уже
     // true к моменту следующего await, ДО того как замоканный fetch вообще
     // среагирует. `.catch` навешен синхронно, чтобы не словить unhandled rejection.
-    const p = capturedSyncInstance!.catchUp()
+    const p = capturedSyncInstance!.getDifference()
     p.catch(() => {})
 
     await expect(getStatus()).resolves.toMatchObject({ syncing: true })

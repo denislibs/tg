@@ -50,16 +50,6 @@ describe('ConnectionManager', () => {
     expect(cm.outboxSize()).toBe(0)
   })
 
-  it('sends a subscribe_channel frame after open', () => {
-    const ws = fakeWs()
-    const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState: () => {}, onFrame: () => {} })
-    cm.start(); ws.fireOpen()
-    cm.subscribeChannel(5)
-    const f = ws.frames.find(f => f.t === 'subscribe_channel')
-    expect(f).toBeTruthy()
-    expect(f?.d).toEqual({ peer_id: 5 })
-  })
-
   it('resends the outbox after a reconnect', () => {
     const ws = fakeWs()
     const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState: () => {}, onFrame: () => {} })

@@ -104,7 +104,7 @@ function managersWith(found: MyMessage[]) {
       getHistoryMaxSeq: vi.fn(async() => 0),
       getDialogReadState: vi.fn(async() => undefined),
     },
-    realtime: { markRead: vi.fn(async() => ({ ok: true })), subscribeChannel: vi.fn(async() => ({})), unsubscribeChannel: vi.fn(async() => ({})) },
+    realtime: { markRead: vi.fn(async() => ({ ok: true })), subscribeToChannelUpdates: vi.fn(async() => ({})), unsubscribeFromChannelUpdates: vi.fn(async() => ({})) },
   }
 }
 

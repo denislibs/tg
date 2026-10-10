@@ -152,7 +152,7 @@ src/
 - **WebSocket** (`core/net/wsClient.ts` + `core/realtime/connectionManager.ts`) — кадры `{t, d}`,
   авто-реконнект с экспоненциальным backoff, heartbeat (ping/pong), durable **outbox**
   неподтверждённых отправок (переживает перезагрузку): по `message_ack` — доставлено, по
-  `message_error` — ошибка; после реконнекта — переотправка + `GET /sync` для догона.
+  `message_error` — ошибка; после реконнекта — переотправка + `updates.getDifference` для догона.
 
 ### Отправка и кэш истории
 

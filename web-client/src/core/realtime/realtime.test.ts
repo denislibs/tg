@@ -28,7 +28,7 @@ describe('realtime.markMediaRead', () => {
       tokens: { load: async () => undefined },
       messages,
       broadcast,
-      channelFunnel: { open: async () => undefined, close: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
+      channelFunnel: { subscribe: () => undefined, unsubscribe: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
     })
 
     await rt.markMediaRead({ peerId: 1, msgId: 7 })
@@ -47,7 +47,7 @@ describe('realtime.markMediaRead', () => {
       tokens: { load: async () => undefined },
       messages,
       broadcast,
-      channelFunnel: { open: async () => undefined, close: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
+      channelFunnel: { subscribe: () => undefined, unsubscribe: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
     })
 
     await rt.markMediaRead({ peerId: 1, msgId: 7 })
@@ -78,7 +78,7 @@ describe('realtime.getStatus', () => {
       tokens: { load: async () => undefined },
       messages: { cacheMediaRead: vi.fn(() => []) },
       broadcast: vi.fn(),
-      channelFunnel: { open: async () => undefined, close: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
+      channelFunnel: { subscribe: () => undefined, unsubscribe: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
     })
 
     await expect(rt.getStatus()).resolves.toEqual({
@@ -128,8 +128,8 @@ describe('realtime.getStatus — иммунность к потере push-ув�
 
     let resolveGet: ((v: unknown) => void) | null = null
     const rest = { get: vi.fn(() => new Promise((r) => { resolveGet = r })) }
-    const sync = newSyncEngine({ rest: rest as never, cursor: fakeCursor(), onUpdate: () => {}, onResync: () => {} })
-    const catchUpDone = sync.catchUp() // running присваивается синхронно — isSyncing() уже true
+    const sync = newSyncEngine({ rest: rest as never, cursor: fakeCursor(), saveUpdate: () => {}, processChannelUpdate: () => {}, onDifferenceTooLong: () => {} })
+    const catchUpDone = sync.getDifference() // loading присваивается синхронно — isSyncing() уже true
 
     const rt = newRealtime({
       conn, sync,
@@ -137,7 +137,7 @@ describe('realtime.getStatus — иммунность к потере push-ув�
       tokens: { load: async () => undefined },
       messages: { cacheMediaRead: () => [] },
       broadcast: () => {},
-      channelFunnel: { open: async () => undefined, close: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
+      channelFunnel: { subscribe: () => undefined, unsubscribe: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
     })
 
     const status = await rt.getStatus()
@@ -145,7 +145,7 @@ describe('realtime.getStatus — иммунность к потере push-ув�
     expect(status.retryAt).toEqual(expect.any(Number))
     expect(status.syncing).toBe(true)
 
-    resolveGet!({ new_messages: [], other_updates: [], state: { pts: 0, date: 0 }, slice: false })
+    resolveGet!({ _: 'updates.differenceEmpty', date: 0, seq: 0 })
     await catchUpDone
 
     // Второй pull ловит мутацию «getStatus() запомнил значение с первого вызова»

@@ -20,24 +20,24 @@ export interface GlobalFunnelDeps {
   isCursorReady: () => boolean
   /** Идёт ли catch-up (syncEngine.isSyncing). */
   isSyncing: () => boolean
-  /** Запустить catch-up (syncEngine.catchUp). */
+  /** Запустить догон (syncEngine.getDifference). */
   catchUp: () => void
   /** Задержка перед уходом в catch-up при незакрытой дыре. */
   syncDelay?: number                   // по умолчанию 250 — текущее PTS_SYNC_DELAY
 }
 
 export function newGlobalFunnel(deps: GlobalFunnelDeps): {
-  applyUpdate(key: string, pts: number | undefined, d: unknown, live: boolean): void
+  applyUpdate(key: string, pts: number | undefined, d: unknown): void
   clear(): void
 } {
   // Буфер out-of-order живых кадров (порт pendingPtsUpdates tweb). Дыру в pts не
-  // гоним сразу в /sync — придерживаем кадр и ждём, пока её закроют следующие живые
+  // гоним сразу в getDifference — придерживаем кадр и ждём, пока её закроют следующие живые
   // кадры (наш источник переупорядочивания — async-decrypt секретов, см. onFrame).
   const pendingPts = newPendingPts()
   // tweb: SYNC_DELAY=6мс — там апдейты синхронны, «дырка» закрывается в том же тике.
   // У нас переупорядочивание даёт асинхронная расшифровка (WebCrypto, десятки мс),
   // поэтому ждём дольше, прежде чем уйти в catch-up. Реальную потерю кадра (publish
-  // упал) буфер пересидеть не сможет — по таймауту чистимся и добираем через /sync.
+  // упал) буфер пересидеть не сможет — по таймауту чистимся и добираем getDifference.
   const syncDelay = deps.syncDelay ?? 250
   let ptsSyncTimer: ReturnType<typeof setTimeout> | null = null
   function schedulePtsSync(): void {
@@ -65,42 +65,36 @@ export function newGlobalFunnel(deps: GlobalFunnelDeps): {
     if (!pendingPts.has() && ptsSyncTimer) { clearTimeout(ptsSyncTimer); ptsSyncTimer = null }
   }
 
-  // Единый funnel. live=true — WS-кадр (pts внутри payload либо в конверте),
-  // live=false — элемент /sync (pts сверху). Арифметика курсора: dup→drop,
-  // next→apply+advance, gap(live)→буфер.
+  // Живой кадр (WS) — tweb `processUpdate` для пер-юзерного состояния.
+  // Арифметика курсора: dup→drop, next→apply+advance, gap→буфер. Разница
+  // (`updates.getDifference`) сюда не заходит: её апдейты применяются как есть
+  // (tweb `saveUpdate`), а курсор ставит её state (syncEngine).
   //
   // Без pts кадр не гейтится вовсе — и это не «устаревший бэк», а СТРУКТУРА:
   // у части конструкторов (updateUserTyping, updateUserStatus) параметра pts
   // нет, потому что курсор им не нужен.
-  function applyUpdate(key: string, pts: number | undefined, d: unknown, live: boolean): void {
+  function applyUpdate(key: string, pts: number | undefined, d: unknown): void {
     // Курсора нет — гейтить нечем и незачем: транслируем как есть.
     if (typeof pts !== 'number') { deps.dispatch(key, d); return }
-    if (live) {
-      // Гейт гидратации: до загрузки курсора из IDB не применяем вслепую — catch-up
-      // (он ждёт cursor.ready()) добёрет по порядку.
-      if (!deps.isCursorReady()) { deps.catchUp(); return }
-      // Гейт syncLoading: пока идёт catch-up, живые кадры с pts отбрасываем — diff
-      // переотдаст их по порядку; после catch-up pts===cursor+1 продолжит live.
-      if (deps.isSyncing()) return
-      const cls = classifyPts(deps.cursor.get().pts, pts)
-      if (cls === 'dup') return
-      if (cls === 'gap') {
-        // Out-of-order живой кадр: буферизуем и ждём, что дыру закроют следующие
-        // кадры (тогда drainPending применит по порядку без round-trip). Переполнение
-        // буфера — дыра слишком велика, чтобы пересидеть → сразу catch-up.
-        if (!pendingPts.push({ key, pts, d })) { clearPtsSync(); deps.catchUp(); return }
-        schedulePtsSync()
-        return
-      }
-      deps.dispatch(key, d, { pts, catchUp: false })
-      deps.cursor.advance(pts)
-      drainPending()
+    // Гейт гидратации: до загрузки курсора из IDB не применяем вслепую — догон
+    // (он ждёт cursor.ready()) добёрет по порядку.
+    if (!deps.isCursorReady()) { deps.catchUp(); return }
+    // Гейт syncLoading: пока идёт догон, живые кадры с pts отбрасываем — разница
+    // переотдаст их по порядку; после неё pts===cursor+1 продолжит live.
+    if (deps.isSyncing()) return
+    const cls = classifyPts(deps.cursor.get().pts, pts)
+    if (cls === 'dup') return
+    if (cls === 'gap') {
+      // Out-of-order живой кадр: буферизуем и ждём, что дыру закроют следующие
+      // кадры (тогда drainPending применит по порядку без round-trip). Переполнение
+      // буфера — дыра слишком велика, чтобы пересидеть → сразу догон.
+      if (!pendingPts.push({ key, pts, d })) { clearPtsSync(); deps.catchUp(); return }
+      schedulePtsSync()
       return
     }
-    // /sync-путь: применяем строго вперёд, дубли (уже применённые live) отсекаем.
-    if (classifyPts(deps.cursor.get().pts, pts) === 'dup') return
-    deps.dispatch(key, d, { pts, catchUp: true })
+    deps.dispatch(key, d, { pts, catchUp: false })
     deps.cursor.advance(pts)
+    drainPending()
   }
 
   return {
