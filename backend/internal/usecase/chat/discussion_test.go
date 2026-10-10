@@ -66,7 +66,7 @@ func TestLinkDiscussion_LinksExistingGroup(t *testing.T) {
 // assertChannelChatUpdates — число строк chat_update в difference канала.
 func assertChannelChatUpdates(t *testing.T, i *Interactor, ch int64, want int) {
 	t.Helper()
-	ups, err := i.GetChannelDifference(context.Background(), ch, 7, 0, 100)
+	ups, err := channelJournal(context.Background(), i, ch, 7, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -46,7 +46,7 @@ import "time"
 // Шаг A порта закрывает кадры вокруг СООБЩЕНИЯ — те, что идут через журнал и
 // воронки курсора. Кадры диалогов и пиров (draft/dialog_pin/dialog_mute/
 // presence/typing/user_update), кадры без предмета в схеме (factcheck,
-// checklist, giveaway, boost, тема чата) и транспортные кадры (hello/pong/ack)
+// checklist, giveaway, boost, тема чата) и транспортные кадры (pong/ack)
 // — следующие шаги, перечисленные в разборе. Пропуск назван, а не забыт.
 
 // Значения дискриминатора `_` объединения Update.
@@ -66,6 +66,7 @@ const (
 	UpdateDeleteChannelMessagesTag    = "updateDeleteChannelMessages"
 	UpdatePinnedChannelMessagesTag    = "updatePinnedChannelMessages"
 	UpdateChannelTag                  = "updateChannel"
+	UpdateChannelTooLongTag           = "updateChannelTooLong"
 	UpdateReadHistoryInboxTag         = "updateReadHistoryInbox"
 	UpdateReadHistoryOutboxTag        = "updateReadHistoryOutbox"
 	UpdateReadPeerMessagesContentsTag = "updateReadPeerMessagesContents"

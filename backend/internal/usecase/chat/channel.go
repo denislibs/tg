@@ -86,25 +86,6 @@ func (i *Interactor) SetSignatures(ctx context.Context, channelID, actorID int64
 	return nil
 }
 
-// GetChannelDifference returns channel updates newer than sincePts. Membership-gated.
-func (i *Interactor) GetChannelDifference(ctx context.Context, channelID, userID, sincePts int64, limit int) ([]domain.ChannelUpdate, error) {
-	ok, err := i.chats.IsMember(ctx, channelID, userID)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return nil, domain.ErrForbidden
-	}
-	if limit <= 0 || limit > 100 {
-		limit = 100
-	}
-	ups, err := i.channels.UpdatesSince(ctx, channelID, sincePts, limit)
-	if err != nil {
-		return nil, err
-	}
-	return i.markOwnPosts(ctx, channelID, userID, ups), nil
-}
-
 // markOwnPosts — запись журнала канала одна на всех подписчиков и `out` не
 // несёт; запрашивающему догон его собственные посты (и их правки) отдаются с
 // pFlags.out — у оригинала `out` рисует сервер каждому получателю, в том числе

@@ -48,24 +48,30 @@ func assertLoggedRow(t *testing.T, s *store, userID int64, typ string) int64 {
 	return last.Pts
 }
 
-// assertInDifference verifies GetDifference(userID, 0) replays a row of type typ at
-// exactly wantPts — i.e. a catch-up client sees the same logged update.
+// assertInDifference verifies the journal row of type typ sits at exactly
+// wantPts and that updates.getDifference from 0 serves it — i.e. a catch-up
+// client sees the same logged update.
 func assertInDifference(t *testing.T, in *Interactor, userID int64, typ string, wantPts int64) {
 	t.Helper()
-	diff, err := in.GetDifference(context.Background(), userID, 0)
+	ups, err := in.updates.UpdatesSince(context.Background(), userID, 0, syncLimit)
 	if err != nil {
-		t.Fatalf("GetDifference: %v", err)
+		t.Fatalf("UpdatesSince: %v", err)
 	}
-	for _, u := range append(append([]SyncUpdate{}, diff.OtherUpdates...), diff.NewMessages...) {
-		if u.Type == typ && u.Pts == wantPts {
-			return
-		}
+	found := false
+	for _, u := range ups {
+		found = found || (u.Type == typ && u.Pts == wantPts)
 	}
-	t.Fatalf("GetDifference for %d has no %q row at pts %d (other=%v)", userID, typ, wantPts, diff.OtherUpdates)
+	if !found {
+		t.Fatalf("journal of %d has no %q row at pts %d", userID, typ, wantPts)
+	}
+	d := diffReal(t, in, userID, wantPts-1)
+	if len(d.NewMessages)+len(d.OtherUpdates) == 0 {
+		t.Fatalf("getDifference from %d for %d is empty, want the %q row", wantPts-1, userID, typ)
+	}
 }
 
 // assertLiveFramePts checks the last live frame published to userID is of type typ
-// and carries pts == wantPts (so the live cursor matches the /sync row).
+// and carries pts == wantPts (so the live cursor matches the getDifference row).
 func assertLiveFramePts(t *testing.T, pub *fakePublisher, userID int64, typ string, wantPts int64) {
 	t.Helper()
 	pub.mu.Lock()
@@ -104,7 +110,7 @@ func assertLiveFramePts(t *testing.T, pub *fakePublisher, userID int64, typ stri
 }
 
 // Own-device stateful flags (pin/archive/mute) and chat theme are logged with a
-// dense pts, fan out live carrying that pts, and replay via /sync.
+// dense pts, fan out live carrying that pts, and replay via getDifference.
 func TestDialogFlagsAndTheme_LoggedAndDiff(t *testing.T) {
 	in, s, _, pub := newLoggedGroupInteractor()
 	ctx := context.Background()
@@ -136,7 +142,7 @@ func TestDialogFlagsAndTheme_LoggedAndDiff(t *testing.T) {
 }
 
 // A group metadata mutation logs + fans out chat_update (absolute snapshot) to
-// every member, each with their own dense pts, and replays via /sync.
+// every member, each with their own dense pts, and replays via getDifference.
 func TestChatUpdate_LoggedAndLiveToMembers(t *testing.T) {
 	in, s, _, pub := newLoggedGroupInteractor()
 	ctx := context.Background()
@@ -175,7 +181,7 @@ func TestChatUpdate_LoggedAndLiveToMembers(t *testing.T) {
 	}
 }
 
-// Voting on a poll logs + fans out poll_update to members, dense pts, /sync replay.
+// Voting on a poll logs + fans out poll_update to members, dense pts, getDifference replay.
 func TestPollUpdate_LoggedAndDiff(t *testing.T) {
 	in, s, fg, pub := newLoggedGroupInteractor()
 	ctx := context.Background()

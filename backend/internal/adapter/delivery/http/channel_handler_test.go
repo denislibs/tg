@@ -57,26 +57,30 @@ func TestChannelFlow_HTTP(t *testing.T) {
 	// A second post so difference has more than one entry.
 	_ = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{"text": "second"})
 
-	// difference?pts=0 returns the posts.
-	rec = authedReq(t, h, http.MethodGet, "/channels/"+cid+"/difference?pts=0", tokenA, nil)
+	// updates.getChannelDifference от pts первого поста — второй пост,
+	// свёрнутый в new_messages, final, pts журнала.
+	rec = authedReq(t, h, http.MethodGet, "/updates/channel_difference?channel="+cid+"&pts=1&limit=100", tokenA, nil)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("difference: %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("channel difference: %d %s", rec.Code, rec.Body.String())
 	}
 	var diff struct {
-		Updates []struct {
-			T   string          `json:"t"`
-			Pts int64           `json:"pts"`
-			D   json.RawMessage `json:"d"`
-		} `json:"updates"`
-		Pts int64 `json:"pts"`
+		Underscore  string          `json:"_"`
+		PFlags      map[string]bool `json:"pFlags"`
+		Pts         int64           `json:"pts"`
+		NewMessages []struct {
+			ID      int64  `json:"id"`
+			Message string `json:"message"`
+		} `json:"new_messages"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &diff)
-	if len(diff.Updates) != 2 || diff.Pts != 2 {
-		t.Fatalf("difference = %+v (%s)", diff, rec.Body.String())
+	if diff.Underscore != "updates.channelDifference" || !diff.PFlags["final"] || diff.Pts != 2 ||
+		len(diff.NewMessages) != 1 || diff.NewMessages[0].Message != "second" {
+		t.Fatalf("channel difference = %s", rec.Body.String())
 	}
-	// typed envelope {t,pts,d}: posts carry type new_message with the dense pts
-	if diff.Updates[0].T != "new_message" || diff.Updates[0].Pts != 1 {
-		t.Fatalf("update[0] = {t:%q pts:%d}; want new_message/1", diff.Updates[0].T, diff.Updates[0].Pts)
+	// История канала — messages.channelMessages с pts журнала.
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/history", tokenB, nil)
+	if !strings.Contains(rec.Body.String(), `"_":"messages.channelMessages"`) || !strings.Contains(rec.Body.String(), `"pts":2`) {
+		t.Fatalf("история канала: %s", rec.Body.String())
 	}
 
 	// search?q= finds the public channel by username.
@@ -117,6 +121,51 @@ func TestChannelFlow_HTTP(t *testing.T) {
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenB, map[string]any{"text": "nope"})
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("subscriber post: want 403, got %d %s", rec.Code, rec.Body.String())
+	}
+
+	// B офлайн: запомнил состояние, A публикует пост. Догонка B — маркер
+	// updateChannelTooLong{channel_id, pts} в other_updates (tweb
+	// apiUpdatesManager.ts:354), посты канала пер-юзерный журнал не несёт.
+	rec = authedReq(t, h, http.MethodGet, "/updates/state", tokenB, nil)
+	var st struct {
+		Pts  int64 `json:"pts"`
+		Date int64 `json:"date"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &st)
+	time.Sleep(1100 * time.Millisecond) // date — секунды: пост строго позже
+	_ = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{"text": "пока B не было"})
+	// date ответа — тоже секунды: пост в ту же секунду, что ответ, повторил
+	// бы маркер ещё раз (лишний, но безвредный getChannelDifference) — разносим.
+	time.Sleep(1100 * time.Millisecond)
+	rec = authedReq(t, h, http.MethodGet, "/updates/difference?pts="+itoa(st.Pts)+"&date="+itoa(st.Date), tokenB, nil)
+	var gd struct {
+		Underscore   string `json:"_"`
+		OtherUpdates []struct {
+			Underscore string `json:"_"`
+			ChannelID  int64  `json:"channel_id"`
+			Pts        int64  `json:"pts"`
+		} `json:"other_updates"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &gd)
+	marker := false
+	for _, u := range gd.OtherUpdates {
+		marker = marker || (u.Underscore == "updateChannelTooLong" &&
+			domain.ToPeerID(u.ChannelID, true) == domain.PeerID(createdPeerID) && u.Pts == 3)
+	}
+	if !marker {
+		t.Fatalf("getDifference после поста в канале: %s, want updateChannelTooLong{pts:3}", rec.Body.String())
+	}
+	// Следующая догонка от нового date маркера уже не несёт.
+	var next struct {
+		State struct {
+			Pts  int64 `json:"pts"`
+			Date int64 `json:"date"`
+		} `json:"state"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &next)
+	rec = authedReq(t, h, http.MethodGet, "/updates/difference?pts="+itoa(next.State.Pts)+"&date="+itoa(next.State.Date), tokenB, nil)
+	if strings.Contains(rec.Body.String(), "updateChannelTooLong") {
+		t.Fatalf("маркер канала повторился без новых постов: %s", rec.Body.String())
 	}
 }
 

@@ -56,8 +56,8 @@ func TestWithVectors(t *testing.T) {
 	if !ok || hex.EncodeToString(tl[:4]) != "4042ae74" {
 		t.Fatalf("TL-оболочка кадра с карточками = %x, want updates", tl[:4])
 	}
-	hello, _ := json.Marshal(map[string]any{"t": "hello", "d": map[string]any{"pts": 5}})
-	if got := withVectors(context.Background(), src, 1, knownPeers{}, hello); string(got) != string(hello) {
+	pong, _ := json.Marshal(map[string]any{"t": "pong"})
+	if got := withVectors(context.Background(), src, 1, knownPeers{}, pong); string(got) != string(pong) {
 		t.Fatal("транспортный кадр изменён")
 	}
 }

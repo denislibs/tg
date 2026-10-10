@@ -467,42 +467,6 @@ func (h *ChannelHandler) RegisterViews(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewMessagesMessageViews(out, nil))
 }
 
-func (h *ChannelHandler) Difference(w http.ResponseWriter, r *http.Request) {
-	user, _ := UserFromContext(r.Context())
-	chatID, ok := peerChatID(w, r, h.uc)
-	if !ok {
-		return
-	}
-	pts, _ := strconv.ParseInt(r.URL.Query().Get("pts"), 10, 64)
-	ups, err := h.uc.GetChannelDifference(r.Context(), chatID, user.ID, pts, 100)
-	if err != nil {
-		h.mapErr(w, err)
-		return
-	}
-	// Типизированный конверт {t,pts,d} — тот же, что несёт живой channel-кадр, так
-	// что клиент прогоняет catch-up через тот же per-channel funnel, что и live.
-	out := make([]map[string]any, 0, len(ups))
-	maxPts := pts
-	for _, u := range ups {
-		out = append(out, map[string]any{"t": u.Type, "pts": u.Pts, "d": json.RawMessage(u.Payload)})
-		if u.Pts > maxPts {
-			maxPts = u.Pts
-		}
-	}
-	// Карточки всех, на кого ссылаются апдейты разницы (автор, пересылка,
-	// группа обсуждения), — векторами рядом, как у updates.channelDifference
-	// оригинала: клиент сохраняет пиров ДО применения (A4-05).
-	users, chats := h.uc.PeerVectorsOf(r.Context(), user.ID, out)
-	if users == nil {
-		users = []domain.UserReal{}
-	}
-	if chats == nil {
-		chats = []domain.Chat{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"updates": out, "pts": maxPts, "slice": len(ups) == 100,
-		"users": users, "chats": chats})
-}
-
 func (h *ChannelHandler) Join(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	var b struct {

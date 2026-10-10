@@ -113,35 +113,29 @@ func newWSEnv(t *testing.T) *wsEnv {
 	}
 }
 
-func TestWS_HelloIsFirstFrame(t *testing.T) {
+// Догонку клиент ведёт методами updates.* (getState/getDifference), как у
+// оригинала: при подключении сервер не шлёт ни курсора (бывший hello), ни
+// состояний каналов (бывший channel_state) — транспортных кадров догонки нет.
+func TestWS_ConnectSendsNoCatchUpFrames(t *testing.T) {
 	env := newWSEnv(t)
 	defer env.close()
 
 	conn := dial(t, env.url, env.tokenA)
 	defer conn.Close()
 
-	// The very FIRST frame on connect must be the hello cursor frame, carrying the
-	// user's current pts/date so the client can decide whether to catch up.
-	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-	_, data, err := conn.ReadMessage()
-	if err != nil {
-		t.Fatalf("read hello: %v", err)
-	}
-	var f struct {
-		T string `json:"t"`
-		D struct {
-			Pts  *int64 `json:"pts"`
-			Date *int64 `json:"date"`
-		} `json:"d"`
-	}
-	if err := json.Unmarshal(data, &f); err != nil {
-		t.Fatalf("unmarshal hello: %v", err)
-	}
-	if f.T != "hello" {
-		t.Fatalf("first frame = %q; want hello", f.T)
-	}
-	if f.D.Pts == nil || f.D.Date == nil {
-		t.Fatalf("hello payload missing pts/date: %s", data)
+	_ = conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+	for {
+		_, data, err := conn.ReadMessage()
+		if err != nil {
+			return // тишина до дедлайна — так и должно быть
+		}
+		var f struct {
+			T string `json:"t"`
+		}
+		_ = json.Unmarshal(data, &f)
+		if f.T == "hello" || f.T == "channel_state" {
+			t.Fatalf("при подключении пришёл кадр догонки %q: %s", f.T, data)
+		}
 	}
 }
 
@@ -220,9 +214,9 @@ func TestWS_RevokeClosesSocket(t *testing.T) {
 
 	// Два требования сразу, и второе легко потерять.
 	//
-	// Первое: читать ДО ошибки, а не ровно один раз. В сокете уже лежит кадр
-	// `hello`, отправленный при подключении, и одиночный ReadMessage упирался
-	// именно в него — тест падал, хотя отзыв работал.
+	// Первое: читать ДО ошибки, а не ровно один раз. В сокете может лежать
+	// кадр, отправленный при подключении (присутствие), и одиночный
+	// ReadMessage упёрся бы в него — тест падал бы, хотя отзыв работал.
 	//
 	// Второе: РАЗЛИЧАТЬ закрытие и таймаут. Оба дают err != nil, поэтому выход
 	// из цикла по любой ошибке делает тест пустым: при сломанном отзыве он

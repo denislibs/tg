@@ -213,6 +213,47 @@ func (r *ChatsRepo) ChannelCursors(ctx context.Context, userID int64, limit int)
 	return out, rows.Err()
 }
 
+// ChannelsChangedSince — broadcast-каналы пользователя (участник, не забанен),
+// журнал которых сдвинулся после since (unix-секунды), с текущим pts: из них
+// getDifference собирает updateChannelTooLong. Последняя запись журнала канала
+// берётся по индексу (channel_id, pts) — одна строка на канал.
+func (r *ChatsRepo) ChannelsChangedSince(ctx context.Context, userID, since int64) ([]domain.ChannelCursor, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT c.id, c.channel_pts FROM chat_members m JOIN chats c ON c.id = m.chat_id
+		   CROSS JOIN LATERAL (SELECT u.created_at FROM channel_updates u
+		                        WHERE u.channel_id = c.id ORDER BY u.pts DESC LIMIT 1) last
+		  WHERE m.user_id = $1 AND c.type = 'channel' AND `+chatReadableBy("c.id", "$1")+`
+		    AND last.created_at > to_timestamp($2)
+		  ORDER BY m.chat_id DESC`, userID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.ChannelCursor
+	for rows.Next() {
+		var c domain.ChannelCursor
+		if err := rows.Scan(&c.ChatID, &c.Pts); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// UnreadTotal — unread_count состояния ящика (updates.state): сумма
+// непрочитанного по чатам основного списка — тем же счётом, что бейдж строки
+// диалога; скрытые группы обсуждения каналов не входят (их нет в списке).
+func (r *ChatsRepo) UnreadTotal(ctx context.Context, userID int64) (int, error) {
+	var n int
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT COALESCE(SUM(`+dialogUnreadCount("m", "c")+`),0)
+		   FROM chat_members m JOIN chats c ON c.id = m.chat_id
+		  WHERE m.user_id=$1
+		    AND m.chat_id NOT IN (SELECT discussion_chat_id FROM chats WHERE discussion_chat_id IS NOT NULL)`,
+		userID).Scan(&n)
+	return n, err
+}
+
 // ChatPartners — с кем пользователь «знаком» для живых кадров о нём
 // (присутствие, смена профиля, истории): собеседники по личным диалогам и
 // не-broadcast чатам плюс контакты в обе стороны.

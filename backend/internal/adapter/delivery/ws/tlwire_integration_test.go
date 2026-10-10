@@ -25,23 +25,6 @@ func TestWS_TLWireDeliversUpdatesAsTL(t *testing.T) {
 	defer connB.Close()
 	time.Sleep(150 * time.Millisecond) // дать обоим зарегистрироваться
 
-	// hello — кадр ТРАНСПОРТНЫЙ (решение Р6): конструктора у него нет, поэтому
-	// даже на проводе TL он уезжает текстом.
-	_ = connB.SetReadDeadline(time.Now().Add(2 * time.Second))
-	mt, data, err := connB.ReadMessage()
-	if err != nil {
-		t.Fatalf("read hello: %v", err)
-	}
-	if mt != websocket.TextMessage {
-		t.Fatalf("hello приехал типом %d — транспортный кадр обязан остаться текстом", mt)
-	}
-	var hello struct {
-		T string `json:"t"`
-	}
-	if err := json.Unmarshal(data, &hello); err != nil || hello.T != "hello" {
-		t.Fatalf("первый кадр = %s (%v)", data, err)
-	}
-
 	sendFrame(t, connA, "send_message", map[string]any{
 		"peer_id": env.peerB, "text": "привет", "client_msg_id": "tl-1",
 	})
@@ -91,6 +74,27 @@ func TestWS_TLWireDeliversUpdatesAsTL(t *testing.T) {
 	}
 	if msg["message"] != "привет" {
 		t.Fatalf("текст сообщения = %v", msg["message"])
+	}
+
+	// message_ack — кадр ТРАНСПОРТНЫЙ (решение Р6): конструктора у него нет,
+	// поэтому даже на проводе TL он уезжает текстом. Бинарные кадры A
+	// (присутствие B) к предмету не относятся и пропускаются.
+	_ = connA.SetReadDeadline(time.Now().Add(2 * time.Second))
+	for {
+		mt, data, err := connA.ReadMessage()
+		if err != nil {
+			t.Fatalf("A не получил message_ack текстом: %v", err)
+		}
+		if mt == websocket.BinaryMessage {
+			continue
+		}
+		var f struct {
+			T string `json:"t"`
+		}
+		if err := json.Unmarshal(data, &f); err != nil || f.T != "message_ack" {
+			t.Fatalf("текстовый кадр A = %s (%v), want message_ack", data, err)
+		}
+		break
 	}
 }
 

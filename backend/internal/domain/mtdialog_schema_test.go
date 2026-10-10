@@ -41,8 +41,8 @@ var dialogOmittedWithoutSubject = map[string][]string{
 	// станет заглушкой-нулём в потоке (tl-program.md, «нет предмета перестаёт
 	// быть бесплатным»), а не полем модели.
 	"dialog": {"unread_poll_votes_count"},
-	// Курсор апдейтов у нас едет НЕ ответами методов, а соединением: кадр hello
-	// и /sync (usecase/chat/sync.go). Единственный потребитель `state` у
+	// Курсор апдейтов клиент берёт из updates.getState/getDifference
+	// (usecase/chat/updates_diff.go). Единственный потребитель `state` у
 	// оригинала — повтор reloadConversation при разошедшемся pts
 	// (appMessagesManager.ts:6316-6321); владелец диалогов клиента pts не видит,
 	// сравнивать ему не с чем.

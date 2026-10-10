@@ -341,7 +341,10 @@ func TestListDialogsFolderID(t *testing.T) {
 	})
 }
 
-func TestSync_HTTP(t *testing.T) {
+// updates.getState / updates.getDifference: состояние ящика и разница в
+// форме схемы (tweb apiUpdatesManager attach → getState, :895; getDifference,
+// :316-392).
+func TestUpdatesDifference_HTTP(t *testing.T) {
 	h, pool := newMessagingRouter(t)
 	tokenA, _ := signUp(t, h, pool, "+79990000003")
 	tokenB, idB := signUp(t, h, pool, "+79990000004")
@@ -350,17 +353,35 @@ func TestSync_HTTP(t *testing.T) {
 	created := createdPeerFrom(t, rec)
 	_ = authedReq(t, h, http.MethodPost, "/chats/"+itoa(created)+"/messages", tokenA, map[string]any{"text": "hi"})
 
-	// B syncs from pts=0 and sees one new_message.
-	rec = authedReq(t, h, http.MethodGet, "/sync?pts=0", tokenB, nil)
+	rec = authedReq(t, h, http.MethodGet, "/updates/state", tokenB, nil)
+	var st struct {
+		Underscore string `json:"_"`
+		Pts        int64  `json:"pts"`
+		Date       int64  `json:"date"`
+		Unread     int    `json:"unread_count"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &st)
+	if st.Underscore != "updates.state" || st.Pts != 1 || st.Date == 0 || st.Unread != 1 {
+		t.Fatalf("updates.state = %s", rec.Body.String())
+	}
+
+	rec = authedReq(t, h, http.MethodGet, "/updates/difference?pts=0&date=0&qts=-1", tokenB, nil)
 	var diff struct {
+		Underscore  string            `json:"_"`
 		NewMessages []json.RawMessage `json:"new_messages"`
+		Users       []json.RawMessage `json:"users"`
 		State       struct {
 			Pts int64 `json:"pts"`
 		} `json:"state"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &diff)
-	if len(diff.NewMessages) != 1 || diff.State.Pts != 1 {
-		t.Fatalf("sync diff = %+v", diff)
+	if diff.Underscore != "updates.difference" || len(diff.NewMessages) != 1 || diff.State.Pts != 1 || len(diff.Users) == 0 {
+		t.Fatalf("updates.difference = %s", rec.Body.String())
+	}
+
+	rec = authedReq(t, h, http.MethodGet, "/updates/difference?pts=1&date="+strconvFormat(st.Date), tokenB, nil)
+	if !strings.Contains(rec.Body.String(), `"_":"updates.differenceEmpty"`) {
+		t.Fatalf("догнанный клиент: %s, want updates.differenceEmpty", rec.Body.String())
 	}
 }
 

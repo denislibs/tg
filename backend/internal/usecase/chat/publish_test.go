@@ -200,10 +200,7 @@ func TestReact_FanoutAndAggregate(t *testing.T) {
 	}
 
 	// The reaction reaches the pts log: a syncs from after the message (pts=1).
-	diff, err := in.GetDifference(ctx, a, 1)
-	if err != nil {
-		t.Fatalf("GetDifference: %v", err)
-	}
+	diff := diffReal(t, in, a, 1)
 	if len(diff.OtherUpdates) != 1 || len(diff.NewMessages) != 0 {
 		t.Fatalf("expected 1 reaction in other_updates, got new=%d other=%d", len(diff.NewMessages), len(diff.OtherUpdates))
 	}

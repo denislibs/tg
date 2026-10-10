@@ -98,7 +98,7 @@ func TestHub_DeliversChannelFrame(t *testing.T) {
 
 	sink := newFakeSink()
 	// Топик канала адресуется знаковым ключом пира (-5), как и всё остальное.
-	hub.SubscribeChannel(ctx, domain.ToPeerID(5, true), sink, SubView)
+	hub.SubscribeChannel(ctx, domain.ToPeerID(5, true), sink)
 	// Give the subscription a moment to register on miniredis.
 	time.Sleep(100 * time.Millisecond)
 
@@ -117,7 +117,7 @@ func TestHub_DeliversChannelFrame(t *testing.T) {
 	}
 
 	// After unsubscribe, no further delivery.
-	hub.UnsubscribeChannel(ctx, domain.ToPeerID(5, true), sink, SubView)
+	hub.UnsubscribeChannel(ctx, domain.ToPeerID(5, true), sink)
 	time.Sleep(100 * time.Millisecond)
 	_ = pub.PublishToChannel(ctx, 5, []byte(`again`))
 	select {
@@ -143,7 +143,7 @@ func (s *closedChanSink) Close()            {}
 // route не должен пропускать панику из Send наружу (иначе горутина hub.run и весь
 // процесс падают). Проверяем оба фан-аут-пути — канальный и пользовательский.
 func TestHub_RouteRecoversFromPanickingSink(t *testing.T) {
-	chHub := &Hub{channelSubs: map[domain.PeerID]map[Sink]SubReason{-5: {newClosedChanSink(): SubView}}}
+	chHub := &Hub{channelSubs: map[domain.PeerID]map[Sink]struct{}{-5: {newClosedChanSink(): {}}}}
 	chHub.route(&redis.Message{Channel: "channel:-5", Payload: "x"})
 
 	userHub := &Hub{conns: map[int64]map[Sink]struct{}{7: {newClosedChanSink(): {}}}}
@@ -199,8 +199,8 @@ func TestHub_ChatRemovedUnsubscribesChannel(t *testing.T) {
 	hub.Register(ctx, 7, 100, gone)
 	hub.Register(ctx, 8, 200, stays)
 	peer := domain.ToPeerID(5, true)
-	hub.SubscribeChannel(ctx, peer, gone, SubMember)
-	hub.SubscribeChannel(ctx, peer, stays, SubMember)
+	hub.SubscribeChannel(ctx, peer, gone)
+	hub.SubscribeChannel(ctx, peer, stays)
 	time.Sleep(100 * time.Millisecond)
 
 	pub := rtredis.NewRedisPublisher(pubRDB)
@@ -314,11 +314,9 @@ func TestChannelJoinedPeer(t *testing.T) {
 	}
 }
 
-// Блокер ревью #407: закрытие ленты (unsubscribe_channel) снимало подписку
-// участника, выданную при подключении, — посты канала переставали приходить
-// до реконнекта (а при SharedWorker — во всех вкладках). Причины подписки
-// снимаются независимо: участнику топик держится до выбытия.
-func TestHub_ViewUnsubscribeKeepsMemberSubscription(t *testing.T) {
+// Подключение участника подписывает сокет на топики всех его каналов одним
+// SUBSCRIBE (SubscribeChannels): живыми доходят посты каждого.
+func TestHub_SubscribeChannelsBatch(t *testing.T) {
 	mr, _ := miniredis.Run()
 	defer mr.Close()
 	subRDB := redis.NewClient(&redis.Options{Addr: mr.Addr()})
@@ -329,51 +327,26 @@ func TestHub_ViewUnsubscribeKeepsMemberSubscription(t *testing.T) {
 	hub := NewHub(ctx, subRDB)
 	defer hub.Close()
 
-	member, viewer := newFakeSink(), newFakeSink()
+	member := newFakeSink()
 	hub.Register(ctx, 7, 100, member)
-	hub.Register(ctx, 8, 200, viewer)
-	peer := domain.ToPeerID(5, true)
-	hub.SubscribeChannels(ctx, []domain.PeerID{peer, domain.ToPeerID(6, true)}, member, SubMember)
-	hub.SubscribeChannel(ctx, peer, member, SubView) // открыл ленту
-	hub.SubscribeChannel(ctx, peer, viewer, SubView) // не участник, открыл ленту
-	hub.UnsubscribeChannel(ctx, peer, member, SubView)
-	hub.UnsubscribeChannel(ctx, peer, viewer, SubView)
+	hub.SubscribeChannels(ctx, []domain.PeerID{domain.ToPeerID(5, true), domain.ToPeerID(6, true)}, member)
 	time.Sleep(100 * time.Millisecond)
 
 	pub := rtredis.NewRedisPublisher(pubRDB)
-	if err := pub.PublishToChannel(ctx, 5, []byte(`post`)); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case got := <-member.ch:
-		if string(got) != "post" {
-			t.Fatalf("got %q", got)
+	for _, c := range []struct {
+		id   int64
+		post string
+	}{{5, "post5"}, {6, "post6"}} {
+		if err := pub.PublishToChannel(ctx, c.id, []byte(c.post)); err != nil {
+			t.Fatal(err)
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("участник закрыл ленту канала и перестал получать его посты")
-	}
-	select {
-	case got := <-viewer.ch:
-		t.Fatalf("не участник после закрытия ленты получил пост: %q", got)
-	case <-time.After(300 * time.Millisecond):
-	}
-	// Пачка: второй канал из той же подписки тоже живой.
-	if err := pub.PublishToChannel(ctx, 6, []byte(`post6`)); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case got := <-member.ch:
-		if string(got) != "post6" {
-			t.Fatalf("got %q", got)
+		select {
+		case got := <-member.ch:
+			if string(got) != c.post {
+				t.Fatalf("got %q, want %q", got, c.post)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("пачечная подписка не подписала канал %d", c.id)
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("пачечная подписка не подписала второй канал")
-	}
-}
-
-func TestChannelStateFrame(t *testing.T) {
-	got := string(channelStateFrame([]domain.ChannelCursor{{ChatID: 5, Pts: 9}}))
-	if got != `{"d":{"channels":[[-5,9]]},"t":"channel_state"}` {
-		t.Fatalf("channel_state = %s", got)
 	}
 }

@@ -482,7 +482,7 @@ func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "history failed")
 			return
 		}
-		writeMessagesSlice(w, r, h.svc, a.Count, a.Messages)
+		writeHistory(w, r, h.svc, chatID, a.Count, a.Messages)
 		return
 	}
 	offsetSeq := queryInt(r, "offset_id", 0)
@@ -499,7 +499,25 @@ func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "history failed")
 		return
 	}
-	writeMessagesSlice(w, r, h.svc, res.Count, res.Messages)
+	writeHistory(w, r, h.svc, chatID, res.Count, res.Messages)
+}
+
+// writeHistory — кусок истории. У канала это messages.channelMessages с pts
+// его журнала: из него клиент заводит состояние канала, когда диалога нет
+// (tweb appMessagesManager.ts:13503-13505), у прочих — messages.messagesSlice.
+func writeHistory(w http.ResponseWriter, r *http.Request, svc *usecasechat.Interactor, chatID int64, count int, msgs []domain.Message) {
+	pts, isChannel, err := svc.ChannelPtsOf(r.Context(), chatID)
+	if err != nil || !isChannel {
+		writeMessagesSlice(w, r, svc, count, msgs)
+		return
+	}
+	me, _ := UserFromContext(r.Context())
+	out, users, chats, err := svc.MessagesContainer(r.Context(), me.ID, msgs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not render messages")
+		return
+	}
+	writeJSON(w, http.StatusOK, domain.NewMessagesChannelMessages(pts, count, out, chats, users))
 }
 
 // MessagesByIDs — GET /chats/{peerID}/messages?ids=1,2,3: сообщения по их
@@ -1993,16 +2011,6 @@ func (h *ChatHandler) RevokeStreamKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, livestreamJSON(st))
-}
-
-func (h *ChatHandler) Sync(w http.ResponseWriter, r *http.Request) {
-	sincePts := queryInt(r, "pts", 0)
-	d, err := h.svc.GetDifference(r.Context(), h.meID(r), sincePts)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "sync failed")
-		return
-	}
-	writeJSON(w, http.StatusOK, d)
 }
 
 type reactionBody struct {

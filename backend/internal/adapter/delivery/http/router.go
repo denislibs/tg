@@ -266,8 +266,10 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/chats/{peerID}/search_counters", ch.SearchCounters)
 		pr.Post("/chats/{peerID}/read", ch.Read)
 		pr.Post("/chats/{peerID}/clear", ch.ClearHistory)
-		pr.Delete("/chats/{peerID}/history", ch.DeleteDialog) // messages.deleteHistory just_clear=false
-		pr.Get("/sync", ch.Sync)
+		pr.Delete("/chats/{peerID}/history", ch.DeleteDialog)              // messages.deleteHistory just_clear=false
+		pr.Get("/updates/state", ch.UpdatesState)                          // updates.getState
+		pr.Get("/updates/difference", ch.UpdatesDifference)                // updates.getDifference
+		pr.Get("/updates/channel_difference", ch.UpdatesChannelDifference) // updates.getChannelDifference
 		pr.Post("/chats/{peerID}/messages/{msgSeq}/reactions", ch.AddReaction)
 		pr.Delete("/chats/{peerID}/messages/{msgSeq}/reactions/{emoji}", ch.RemoveReaction)
 		pr.Get("/chats/{peerID}/messages/{msgSeq}/reactions", ch.ListReactions)
@@ -366,7 +368,6 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		chh := NewChannelHandler(chatUC, privacyQ)
 		pr.Post("/channels", chh.Create)
 		pr.Post("/channels/{peerID}/messages", chh.Post)
-		pr.Get("/channels/{peerID}/difference", chh.Difference)
 		pr.Post("/channels/join", chh.Join)
 		pr.Post("/channels/{peerID}/discussion", chh.EnableDiscussion)
 		pr.Put("/channels/{peerID}/discussion", chh.LinkDiscussion)

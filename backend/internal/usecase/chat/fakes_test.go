@@ -251,6 +251,13 @@ func (r fakeChats) MemberIDs(_ context.Context, chatID int64) ([]int64, error) {
 
 func (r fakeChats) ChatTitle(context.Context, int64) (string, error) { return "", nil }
 
+// ChannelsChangedSince — фейк без времени журнала: все читаемые каналы.
+func (r fakeChats) ChannelsChangedSince(ctx context.Context, userID, _ int64) ([]domain.ChannelCursor, error) {
+	return r.ChannelCursors(ctx, userID, 1<<30)
+}
+
+func (r fakeChats) UnreadTotal(context.Context, int64) (int, error) { return 0, nil }
+
 func (r fakeChats) ChannelCursors(_ context.Context, userID int64, limit int) ([]domain.ChannelCursor, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()

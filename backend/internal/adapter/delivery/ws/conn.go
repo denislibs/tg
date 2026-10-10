@@ -208,7 +208,7 @@ func (c *Conn) Send(frame []byte) {
 	c.enqueue(outFrame{kind: frameKindJSON, data: frame, update: true})
 }
 
-// reply — транспортный кадр самого соединения (hello, ack, rpc_resp, file_*):
+// reply — транспортный кадр самого соединения (ack, rpc_resp, file_*):
 // апдейтом он не является, векторов и TL у него нет.
 func (c *Conn) reply(frame []byte) { c.enqueue(outFrame{kind: frameKindJSON, data: frame}) }
 
@@ -247,38 +247,27 @@ func (c *Conn) run(ctx context.Context) {
 	// Последний рубеж: паника в этой горутине (несмотря на per-dispatch recover)
 	// не должна ронять процесс. Утечка регистрации лучше краша всего сервера.
 	defer saferun.Recover("ws.conn.run")
-	// Register ДО hello. Иначе апдейт, закоммиченный между чтением UserState и
-	// Register, ушёл бы фан-аутом только уже-зарегистрированным сокетам (этот ещё
-	// не виден) и потерялся БЫ навсегда, а hello с устаревшим-но-консистентным pts
-	// заставил бы клиент пропустить catch-up (want===cursor). С Register-first такой
-	// апдейт доставляется живым; если он опередит hello — это безвредный дубль/
-	// лишний catch-up на клиенте, но не потеря. Сбой чтения state не фатален —
-	// просто без hello (клиент сделает полный catch-up).
+	// Догонку клиент ведёт сам методами updates.* (getDifference после
+	// открытия сокета, getChannelDifference по updateChannelTooLong), как у
+	// оригинала; соединение лишь регистрируется получателем живых кадров.
+	// Апдейт, вышедший до регистрации, клиенту отдаст getDifference, а
+	// вышедший после — доедет живым; дубль отсекает воронка по pts.
 	c.hub.Register(ctx, c.userID, c.deviceID, c)
-	if st, err := c.svc.UserState(ctx, c.userID); err == nil {
-		c.reply(helloFrame(st))
-	}
 	if c.presence != nil {
 		_ = c.presence.Online(ctx, c.userID)
 	}
 	// Топики своих каналов — сразу, а не по открытию: пост, правка, карточка
 	// и счётчики канала доходят до списка чатов живьём, как у оригинала
 	// (сервер шлёт updateNewChannelMessage всем онлайн-сессиям участников).
-	// Один запрос и один SUBSCRIBE на всё подключение — ПОСЛЕ hello и «в
-	// сети»: первый кадр соединения и присутствие запрос каналов не ждут.
-	//
-	// Гонка. Кадр channel_state несёт pts журналов каналов, прочитанные ПОСЛЕ
-	// SUBSCRIBE: кадр топика, вышедший до подписки, учтён в этих pts и
-	// добирается догоном канала (клиент сравнивает их со своим курсором), а
-	// вышедший после — доезжает живым. Потерь нет, дубль отсекает канальная
-	// воронка по pts. Канал, в который вступили между двумя чтениями, придёт
-	// своим updateChannel. Итого два запроса на подключение, а не 2N.
+	// Один запрос и один SUBSCRIBE на всё подключение. Кадр канала, вышедший
+	// до подписки, клиент добирает getChannelDifference по маркеру
+	// updateChannelTooLong из getDifference; канал, в который вступили позже,
+	// придёт своим updateChannel.
 	var peers []domain.PeerID
 	for _, ch := range c.svc.ChannelSubscriptions(ctx, c.userID) {
 		peers = append(peers, domain.ToPeerID(ch.ChatID, true))
 	}
-	c.hub.SubscribeChannels(ctx, peers, c, SubMember)
-	c.reply(channelStateFrame(c.svc.ChannelSubscriptions(ctx, c.userID)))
+	c.hub.SubscribeChannels(ctx, peers, c)
 	go c.writePump(ctx)
 	c.readPump(ctx) // blocks until the connection closes
 	// Cleanup must not ride the request context: on an abrupt client disconnect
@@ -494,20 +483,6 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		}
 		if chatID, err := c.svc.PeerToChatID(ctx, c.userID, d.PeerID); err == nil {
 			_ = c.svc.Typing(ctx, chatID, c.userID, domain.SendMessageActionByTag(d.Action.Underscore))
-		}
-	case "subscribe_channel":
-		// Топик пира — живые посты, правки, просмотры и счётчики комментариев:
-		// подписывается только тот, кто чат читает (участник либо публичный, не
-		// бан). Иначе посторонний получал бы приватный канал по id. Отказ
-		// молчаливый, как у любого кадра с неверными данными.
-		var d peerData
-		if json.Unmarshal(f.D, &d) == nil && d.PeerID.IsAnyChat() && c.svc.CanSubscribeChannel(ctx, c.userID, d.PeerID) {
-			c.hub.SubscribeChannel(ctx, d.PeerID, c, SubView)
-		}
-	case "unsubscribe_channel":
-		var d peerData
-		if json.Unmarshal(f.D, &d) == nil && d.PeerID.IsAnyChat() {
-			c.hub.UnsubscribeChannel(ctx, d.PeerID, c, SubView)
 		}
 	// 1:1 call signaling (WebRTC): the server is a dumb relay — the frame is
 	// re-addressed to every device of to_user_id with from_user_id stamped in.

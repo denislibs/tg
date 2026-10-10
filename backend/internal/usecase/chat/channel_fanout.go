@@ -205,7 +205,7 @@ func (i *Interactor) isBroadcast(ctx context.Context, chatID int64) bool {
 }
 
 // announceChannelJoin — пользователь вступил в broadcast-канал: ему (всем его
-// устройствам, с журналом — офлайн-устройство догонит /sync) уходит
+// устройствам, с журналом — офлайн-устройство догонит getDifference) уходит
 // updateChannel. По нему хаб подписывает его сокеты на топик канала, а клиент
 // заводит диалог (tweb onUpdateChannel → reloadConversation). Звать после
 // коммита вступления; у не-канала — ничего.
@@ -230,8 +230,8 @@ func (i *Interactor) AnnounceChannelJoin(ctx context.Context, chatID, userID int
 const channelSubscriptionsLimit = 1000
 
 // ChannelSubscriptions — каналы, на топики которых подписать новое соединение
-// пользователя, с pts их журналов. Правило доступа то же, что у кадра
-// subscribe_channel (CanSubscribeChannel = chatReadableBy), но одним запросом
+// пользователя, с pts их журналов. Правило доступа то же, что у
+// CanSubscribeChannel (chatReadableBy), но одним запросом
 // на всё подключение, а не по запросу на канал.
 func (i *Interactor) ChannelSubscriptions(ctx context.Context, userID int64) []domain.ChannelCursor {
 	cs, err := i.chats.ChannelCursors(ctx, userID, channelSubscriptionsLimit)

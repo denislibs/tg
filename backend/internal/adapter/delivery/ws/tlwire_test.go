@@ -38,8 +38,8 @@ func TestTLEncodeUpdateFrame_OnlyConstructors(t *testing.T) {
 	}
 
 	// Транспортный кадр (решение Р6) конструктора не имеет — кодировать нечего.
-	hello, _ := json.Marshal(map[string]any{"t": "hello", "d": map[string]any{"pts": 5, "date": 1}})
-	if _, ok := tlEncodeUpdateFrame(hello); ok {
+	pong, _ := json.Marshal(map[string]any{"t": "pong"})
+	if _, ok := tlEncodeUpdateFrame(pong); ok {
 		t.Fatal("транспортный кадр не должен кодироваться в TL")
 	}
 

@@ -145,7 +145,7 @@ func TestPeerVectorsOf_Participants(t *testing.T) {
 	}
 }
 
-// A4-05 + A4-18: разница /sync везёт карточки тех, на кого ссылаются строки
+// A4-05 + A4-18: разница (updates.getDifference) везёт карточки тех, на кого ссылаются строки
 // журнала (автор), а state.date — секунды, как updates.state.date схемы.
 func TestGetDifference_VectorsAndSecondsDate(t *testing.T) {
 	s := newStore()
@@ -157,9 +157,9 @@ func TestGetDifference_VectorsAndSecondsDate(t *testing.T) {
 	if _, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: 7, Text: "привет"}); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
-	d, err := in.GetDifference(ctx, 8, 0)
-	if err != nil || len(d.NewMessages) == 0 {
-		t.Fatalf("GetDifference = %+v %v", d, err)
+	d := diffReal(t, in, 8, 0)
+	if len(d.NewMessages) == 0 {
+		t.Fatalf("UpdatesDifference = %+v", d)
 	}
 	if d.State.Date == 0 || d.State.Date > 100_000_000_000 {
 		t.Fatalf("state.date = %d, want секунды", d.State.Date)
