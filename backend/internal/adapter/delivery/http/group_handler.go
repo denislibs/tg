@@ -47,6 +47,8 @@ func (h *GroupHandler) mapErr(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not found")
 	case errors.Is(err, domain.ErrInvalid):
+		// Выход из лички/«Избранного» — у Telegram PEER_ID_INVALID: там
+		// «удалить чат» это deleteHistory (DELETE /chats/{peer}/history).
 		writeError(w, http.StatusBadRequest, "PEER_ID_INVALID")
 	default:
 		writeError(w, http.StatusInternalServerError, "server error")

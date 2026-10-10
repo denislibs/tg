@@ -300,7 +300,8 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		        m.notify_preview, m.notify_sound,
 		        COALESCE(CASE
 		          WHEN c.type = 'private' THEN (SELECT om.last_read_seq FROM chat_members om WHERE om.chat_id = c.id AND om.user_id <> $1 LIMIT 1)
-		          WHEN c.type = 'group'   THEN (SELECT MIN(om.last_read_seq) FROM chat_members om WHERE om.chat_id = c.id AND om.user_id <> $1)
+		          -- Группа: ✓✓, когда прочитал ХОТЯ БЫ ОДИН (как живой кадр).
+		          WHEN c.type = 'group'   THEN (SELECT MAX(om.last_read_seq) FROM chat_members om WHERE om.chat_id = c.id AND om.user_id <> $1)
 		          ELSE 0
 		        END, 0) AS peer_read_seq,
 		        lm.id, COALESCE(lm.seq, 0),
@@ -357,6 +358,9 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		   LIMIT 1
 		 ) peer ON c.type = 'private'
 		 WHERE m.user_id = $1
+		   -- «Удалить чат» в личке прячет строку до следующего сообщения
+		   -- (ChatRepo.SetDialogHidden / ShowDialogs).
+		   AND NOT m.dialog_hidden
 		   -- Скрываем служебные группы обсуждения канала: доступ к ним только через
 		   -- «Комментарии» (тред), в списке диалогов они не нужны.
 		   AND c.id NOT IN (SELECT discussion_chat_id FROM chats WHERE discussion_chat_id IS NOT NULL)
@@ -445,8 +449,6 @@ func (r *ChatsRepo) ForgetUnread(ctx context.Context, chatID, senderID, seq int6
 	return err
 }
 
-// IncUnreadReactions bumps a member's unread-reactions counter by one (someone
-// reacted to their message — Telegram unread_reactions_count) and returns the new value.
 // IncUnreadBulk bumps unread_count by one for many members of a chat in a single
 // query (vs IncUnread × N). Returns the new count per user.
 func (r *ChatsRepo) IncUnreadBulk(ctx context.Context, chatID int64, userIDs []int64) (map[int64]int64, error) {
@@ -473,23 +475,60 @@ func (r *ChatsRepo) IncUnreadBulk(ctx context.Context, chatID int64, userIDs []i
 	return out, rows.Err()
 }
 
-func (r *ChatsRepo) IncUnreadReactions(ctx context.Context, chatID, userID int64) (int, error) {
-	q := querier(ctx, r.pool)
+// RecountUnreadReactions — см. ChatRepo.RecountUnreadReactions: число
+// СООБЩЕНИЙ участника с непрочитанной реакцией (Telegram
+// unread_reactions_count), а не число событий. Удалённое и невидимое ему
+// (очищенное, скрытое у себя) не в счёт — по тому же предикату, что лента.
+func (r *ChatsRepo) RecountUnreadReactions(ctx context.Context, chatID, userID int64) (int, error) {
 	var n int
-	err := q.QueryRow(ctx,
-		`UPDATE chat_members SET unread_reactions = unread_reactions + 1 WHERE chat_id=$1 AND user_id=$2 RETURNING unread_reactions`,
+	err := querier(ctx, r.pool).QueryRow(ctx, recountUnreadReactionsSQL+` RETURNING unread_reactions`,
 		chatID, userID).Scan(&n)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil // не участник — счётчика нет
+	}
 	return n, err
 }
 
-// ClearUnreadReactions resets a member's unread-reactions counter to zero (they
-// read the chat / its reactions — Telegram readReactions).
-func (r *ChatsRepo) ClearUnreadReactions(ctx context.Context, chatID, userID int64) error {
-	q := querier(ctx, r.pool)
-	_, err := q.Exec(ctx,
-		`UPDATE chat_members SET unread_reactions = 0 WHERE chat_id=$1 AND user_id=$2`,
-		chatID, userID)
-	return err
+// recountUnreadReactionsSQL — пересчёт ❤ участника $2 в чате $1: число его
+// видимых ему сообщений с непрочитанной реакцией. Одна формула на все пути
+// (реакция, прочтение, удаление у всех и у себя).
+var recountUnreadReactionsSQL = `UPDATE chat_members SET unread_reactions = (
+     SELECT count(DISTINCT m.id) FROM messages m
+       JOIN reactions re ON re.message_id = m.id AND re.unread
+      WHERE m.chat_id = $1 AND m.sender_id = $2 AND ` + messageVisibleTo("m", "$2") + `)
+  WHERE chat_id = $1 AND user_id = $2`
+
+// ReadReactions — см. ChatRepo.ReadReactions.
+func (r *ChatsRepo) ReadReactions(ctx context.Context, chatID, userID, uptoSeq int64) ([]domain.Message, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`WITH hit AS (
+		   UPDATE reactions re SET unread = false
+		     FROM messages m
+		    WHERE re.message_id = m.id AND re.unread
+		      AND m.chat_id = $1 AND m.sender_id = $2 AND m.seq <= $3
+		   RETURNING m.id)
+		 SELECT `+messageColsPrefixed("m")+`
+		   FROM messages m WHERE m.id IN (SELECT id FROM hit) AND `+messageVisibleTo("m", "$2")+`
+		  ORDER BY m.seq`, chatID, userID, uptoSeq)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Message
+	for rows.Next() {
+		m, e := scanMessage(rows)
+		if e != nil {
+			return nil, e
+		}
+		out = append(out, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if _, err := r.RecountUnreadReactions(ctx, chatID, userID); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // CurrentReadSeq returns a member's current last_read_seq.
@@ -755,6 +794,139 @@ func (r *ChatsRepo) MaxSeq(ctx context.Context, chatID int64) (int64, error) {
 	return seq, err
 }
 
+// UnarchiveUnmuted — см. ChatRepo.UnarchiveUnmuted. «Заглушён» — мьют чата
+// сроком в будущем (тот же срок, что читает PeerNotifySettings.Muted).
+func (r *ChatsRepo) UnarchiveUnmuted(ctx context.Context, chatID int64, userIDs []int64) ([]int64, error) {
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`UPDATE chat_members SET archived = false
+		  WHERE chat_id = $1 AND user_id = ANY($2::bigint[]) AND archived
+		    AND (muted_until IS NULL OR muted_until <= now())
+		  RETURNING user_id`, chatID, userIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+// VisibleSeqsUpTo — номера сообщений чата с seq<=maxSeq, видимых участнику
+// (messageVisibleTo), по возрастанию: что именно пропадёт у него при очистке
+// истории и удалении диалога — по ним уходят кадры удаления его устройствам.
+func (r *ChatsRepo) VisibleSeqsUpTo(ctx context.Context, chatID, userID, maxSeq int64) ([]int64, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT m.seq FROM messages m
+		  WHERE m.chat_id = $1 AND m.seq <= $3 AND `+messageVisibleTo("m", "$2")+`
+		  ORDER BY m.seq`, chatID, userID, maxSeq)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var seq int64
+		if err := rows.Scan(&seq); err != nil {
+			return nil, err
+		}
+		out = append(out, seq)
+	}
+	return out, rows.Err()
+}
+
+// SetDialogHidden — см. ChatRepo.SetDialogHidden.
+func (r *ChatsRepo) SetDialogHidden(ctx context.Context, chatID, userID int64, hidden bool) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE chat_members SET dialog_hidden = $3 WHERE chat_id = $1 AND user_id = $2`, chatID, userID, hidden)
+	return err
+}
+
+// ShowDialogs — см. ChatRepo.ShowDialogs.
+func (r *ChatsRepo) ShowDialogs(ctx context.Context, chatID int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE chat_members SET dialog_hidden = false WHERE chat_id = $1 AND dialog_hidden`, chatID)
+	return err
+}
+
+// RecountCounters — см. ChatRepo.RecountCounters. Формулы те же, что у
+// пересчёта при прочтении (CountUnread), у syncUnreadMentions и у
+// RecountUnreadReactions; упоминания удалённых сообщений чата выбрасываются
+// первыми. Непрочитанное broadcast-канала считается на чтении
+// (dialogUnreadCount), его хранимый счётчик не трогается.
+func (r *ChatsRepo) RecountCounters(ctx context.Context, chatID int64, userIDs []int64) error {
+	if len(userIDs) == 0 {
+		return nil
+	}
+	q := querier(ctx, r.pool)
+	if _, err := q.Exec(ctx,
+		`DELETE FROM message_mentions mm USING messages m
+		  WHERE mm.chat_id = $1 AND m.id = mm.message_id AND m.deleted_at IS NOT NULL`, chatID); err != nil {
+		return err
+	}
+	_, err := q.Exec(ctx,
+		`UPDATE chat_members cm SET
+		    unread_count = CASE WHEN c.type = 'channel' THEN cm.unread_count ELSE (
+		        SELECT count(*) FROM messages m
+		         WHERE m.chat_id = cm.chat_id AND m.seq > cm.last_read_seq AND m.sender_id <> cm.user_id
+		           AND `+messageVisibleTo("m", "cm.user_id")+`) END,
+		    unread_mentions_count = (
+		        SELECT count(*) FROM message_mentions mm JOIN messages m ON m.id = mm.message_id
+		         WHERE mm.chat_id = cm.chat_id AND mm.user_id = cm.user_id AND mm.unread
+		           AND `+messageVisibleTo("m", "cm.user_id")+`),
+		    unread_reactions = (
+		        SELECT count(DISTINCT m.id) FROM messages m
+		          JOIN reactions re ON re.message_id = m.id AND re.unread
+		         WHERE m.chat_id = cm.chat_id AND m.sender_id = cm.user_id
+		           AND `+messageVisibleTo("m", "cm.user_id")+`)
+		   FROM chats c
+		  WHERE c.id = cm.chat_id AND cm.chat_id = $1 AND cm.user_id = ANY($2::bigint[])`, chatID, userIDs)
+	return err
+}
+
+// DropMessageMentions — см. ChatRepo.DropMessageMentions.
+func (r *ChatsRepo) DropMessageMentions(ctx context.Context, chatID, msgID int64) error {
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`DELETE FROM message_mentions WHERE message_id = $1 RETURNING user_id`, msgID)
+	if err != nil {
+		return err
+	}
+	var users []int64
+	for rows.Next() {
+		var uid int64
+		if err := rows.Scan(&uid); err != nil {
+			rows.Close()
+			return err
+		}
+		users = append(users, uid)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, uid := range users {
+		if _, err := r.syncUnreadMentions(ctx, chatID, uid); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DropUserMentions — см. ChatRepo.DropUserMentions.
+func (r *ChatsRepo) DropUserMentions(ctx context.Context, chatID, userID int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`DELETE FROM message_mentions WHERE chat_id = $1 AND user_id = $2`, chatID, userID)
+	return err
+}
+
 // SetClearedSeq raises a member's cleared horizon: messages with seq<=seq are
 // hidden from that member's history reads (non-destructive «clear for me»).
 func (r *ChatsRepo) SetClearedSeq(ctx context.Context, chatID, userID, seq int64) error {
@@ -779,6 +951,28 @@ func (r *ChatsRepo) UnpinMessage(ctx context.Context, chatID, msgID int64) error
 	q := querier(ctx, r.pool)
 	_, err := q.Exec(ctx, `DELETE FROM pinned_messages WHERE chat_id=$1 AND msg_id=$2`, chatID, msgID)
 	return err
+}
+
+// PinnedIDs — см. ChatRepo.PinnedIDs.
+func (r *ChatsRepo) PinnedIDs(ctx context.Context, msgIDs []int64) (map[int64]bool, error) {
+	out := make(map[int64]bool)
+	if len(msgIDs) == 0 {
+		return out, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT msg_id FROM pinned_messages WHERE msg_id = ANY($1::bigint[])`, msgIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
 }
 
 // ListPins returns the chat's pinned messages, newest pin first.

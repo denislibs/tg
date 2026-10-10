@@ -962,9 +962,45 @@ func (r *MessagesRepo) UpdateGeoLive(ctx context.Context, msgID int64, lat, lng 
 
 // SoftDelete marks a message deleted for everyone (deleted_at=now()) и стирает
 // шифртекст секретных сообщений (enc_body).
+//
+// Удалённое у всех перестаёт существовать и для производных счётчиков: его
+// упоминания снимаются у всех адресатов (unread_mentions_count и «к
+// следующему @» не ведут на удалённое), а непрочитанные реакции на нём
+// уходят из ❤ автора. Держит это хранилище — как триггер, — потому что
+// SoftDelete зовут все пути удаления у всех (удаление, автоудаление по TTL,
+// самоуничтожение), и пересчёт не должен зависеть от того, вспомнил ли о нём
+// вызывающий. Повторное удаление — no-op.
 func (r *MessagesRepo) SoftDelete(ctx context.Context, msgID int64) error {
 	q := querier(ctx, r.pool)
-	_, err := q.Exec(ctx, `UPDATE messages SET deleted_at=now(), text='', enc_body=NULL WHERE id=$1`, msgID)
+	var chatID, senderID int64
+	err := q.QueryRow(ctx,
+		`UPDATE messages SET deleted_at=now(), text='', enc_body=NULL
+		  WHERE id=$1 AND deleted_at IS NULL RETURNING chat_id, sender_id`, msgID).Scan(&chatID, &senderID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if _, err := q.Exec(ctx,
+		`WITH gone AS (DELETE FROM message_mentions WHERE message_id = $1 RETURNING user_id)
+		 UPDATE chat_members cm SET unread_mentions_count = (
+		     SELECT count(*) FROM message_mentions mm
+		      WHERE mm.chat_id = cm.chat_id AND mm.user_id = cm.user_id AND mm.unread AND mm.message_id <> $1)
+		  WHERE cm.chat_id = $2 AND cm.user_id IN (SELECT user_id FROM gone)`, msgID, chatID); err != nil {
+		return err
+	}
+	_, err = q.Exec(ctx, recountUnreadReactionsSQL, chatID, senderID)
+	return err
+}
+
+// SoftDeleteUpTo — удалить у всех сообщения чата с seq<=maxSeq (Telegram
+// messages.deleteHistory revoke): то же, что SoftDelete, пачкой. Счётчики
+// участников вызывающий пересчитывает целиком (ChatsRepo.RecountCounters).
+func (r *MessagesRepo) SoftDeleteUpTo(ctx context.Context, chatID, maxSeq int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE messages SET deleted_at=now(), text='', enc_body=NULL
+		  WHERE chat_id = $1 AND seq <= $2 AND deleted_at IS NULL`, chatID, maxSeq)
 	return err
 }
 
@@ -982,11 +1018,45 @@ func (r *MessagesRepo) SetDestructOnRead(ctx context.Context, chatID, readerID, 
 }
 
 // HideForUser hides a message for a single user ("delete for me"); idempotent.
+//
+// Скрытое у себя перестаёт существовать для СЧЁТЧИКОВ этого пользователя
+// (Telegram пересчитывает unread при deleteMessages без revoke): ещё не
+// прочитанное входящее уходит из unread_count, его упоминание — из «@»,
+// непрочитанные реакции на своём — из ❤. Остальные участники не затронуты.
+// Повтор — no-op.
 func (r *MessagesRepo) HideForUser(ctx context.Context, userID, msgID int64) error {
 	q := querier(ctx, r.pool)
-	_, err := q.Exec(ctx,
-		`INSERT INTO message_hides (user_id, msg_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-		userID, msgID)
+	var chatID int64
+	err := q.QueryRow(ctx,
+		`WITH ins AS (
+		   INSERT INTO message_hides (user_id, msg_id) VALUES ($1,$2) ON CONFLICT DO NOTHING RETURNING msg_id)
+		 SELECT m.chat_id FROM messages m WHERE m.id IN (SELECT msg_id FROM ins)`,
+		userID, msgID).Scan(&chatID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil // уже скрыто (или сообщения нет)
+	}
+	if err != nil {
+		return err
+	}
+	// Непрочитанное: то же условие, что у ForgetUnread, для одного участника.
+	if _, err := q.Exec(ctx,
+		`UPDATE chat_members cm SET unread_count = cm.unread_count - 1
+		   FROM messages m
+		  WHERE m.id = $2 AND cm.chat_id = m.chat_id AND cm.user_id = $1
+		    AND m.sender_id <> $1 AND m.deleted_at IS NULL
+		    AND cm.last_read_seq < m.seq AND cm.cleared_max_seq < m.seq AND cm.unread_count > 0`,
+		userID, msgID); err != nil {
+		return err
+	}
+	if _, err := q.Exec(ctx,
+		`WITH gone AS (DELETE FROM message_mentions WHERE message_id = $2 AND user_id = $1 RETURNING user_id)
+		 UPDATE chat_members cm SET unread_mentions_count = (
+		     SELECT count(*) FROM message_mentions mm
+		      WHERE mm.chat_id = cm.chat_id AND mm.user_id = cm.user_id AND mm.unread AND mm.message_id <> $2)
+		  WHERE cm.chat_id = $3 AND cm.user_id IN (SELECT user_id FROM gone)`, userID, msgID, chatID); err != nil {
+		return err
+	}
+	_, err = q.Exec(ctx, recountUnreadReactionsSQL, chatID, userID)
 	return err
 }
 

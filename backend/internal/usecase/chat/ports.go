@@ -101,15 +101,42 @@ type ChatRepo interface {
 	ViewerMentions(ctx context.Context, userID int64, msgIDs []int64) (map[int64]bool, error)
 	ClearMentions(ctx context.Context, chatID, userID, uptoSeq int64) (remaining int, err error)
 	NextMention(ctx context.Context, chatID, userID, afterSeq int64) (seq int64, err error)
-	// Непрочитанные реакции (Telegram unread_reactions_count). IncUnreadReactions
-	// бампит счётчик автора сообщения, когда на него реагирует кто-то другой;
-	// ClearUnreadReactions обнуляет счётчик (автор прочитал чат / реакции).
-	IncUnreadReactions(ctx context.Context, chatID, userID int64) (int, error)
-	ClearUnreadReactions(ctx context.Context, chatID, userID int64) error
+	// Непрочитанные реакции (Telegram unread_reactions_count) — число СООБЩЕНИЙ
+	// участника с непрочитанной реакцией; «непрочитано» живёт на строке
+	// реакции (ReactionRepo.Add). RecountUnreadReactions пересчитывает и
+	// записывает счётчик (зовётся после любой смены строк: реакция, снятие,
+	// вытеснение, удаление сообщения) и возвращает его. ReadReactions гасит
+	// непрочитанность реакций на сообщениях участника с seq<=uptoSeq,
+	// пересчитывает счётчик и возвращает затронутые видимые ему сообщения
+	// (по ним уходят кадры реакций его устройствам).
+	RecountUnreadReactions(ctx context.Context, chatID, userID int64) (int, error)
+	ReadReactions(ctx context.Context, chatID, userID, uptoSeq int64) ([]domain.Message, error)
 	// «Очистить историю» у себя: MaxSeq — текущий максимум seq чата (горизонт);
 	// SetClearedSeq — персональный горизонт участника (cleared_max_seq). Читает
 	// его единый предикат видимости сообщения в хранилище.
 	MaxSeq(ctx context.Context, chatID int64) (int64, error)
+	// UnarchiveUnmuted — из userIDs вернуть из архива тех, у кого чат в архиве
+	// и НЕ заглушён (новое сообщение, Telegram keep_archived_unmuted=false);
+	// возвращает, кого вернули.
+	UnarchiveUnmuted(ctx context.Context, chatID int64, userIDs []int64) ([]int64, error)
+	// VisibleSeqsUpTo — номера видимых участнику сообщений с seq<=maxSeq (что
+	// у него пропадёт при очистке и удалении диалога), по возрастанию.
+	VisibleSeqsUpTo(ctx context.Context, chatID, userID, maxSeq int64) ([]int64, error)
+	// SetDialogHidden прячет/показывает строку диалога участника («удалить
+	// чат» в личке); ShowDialogs возвращает её всем участникам — новое
+	// сообщение.
+	SetDialogHidden(ctx context.Context, chatID, userID int64, hidden bool) error
+	ShowDialogs(ctx context.Context, chatID int64) error
+	// RecountCounters пересчитывает непрочитанное, «@» и ❤ участников по
+	// видимым им сообщениям (после массового удаления), выбросив упоминания
+	// удалённых сообщений чата.
+	RecountCounters(ctx context.Context, chatID int64, userIDs []int64) error
+	// DropMessageMentions — сообщение удалено у всех: его упоминания снимаются
+	// у всех адресатов, счётчики «@» пересчитываются. DropUserMentions —
+	// участник выбыл: его упоминания в чате снимаются (при повторном
+	// вступлении старые «@» не возвращаются).
+	DropMessageMentions(ctx context.Context, chatID, msgID int64) error
+	DropUserMentions(ctx context.Context, chatID, userID int64) error
 	SetClearedSeq(ctx context.Context, chatID, userID, seq int64) error
 	// Автоудаление: период чата, глобальный период пользователя (для новых чатов).
 	SetAutoDelete(ctx context.Context, chatID int64, seconds int) error
@@ -119,6 +146,8 @@ type ChatRepo interface {
 	PinMessage(ctx context.Context, chatID, msgID, byUser int64) error
 	UnpinMessage(ctx context.Context, chatID, msgID int64) error
 	ListPins(ctx context.Context, chatID int64) ([]domain.Message, error)
+	// PinnedIDs — какие из msgIDs закреплены в своих чатах (message.pFlags.pinned).
+	PinnedIDs(ctx context.Context, msgIDs []int64) (map[int64]bool, error)
 	Viewers(ctx context.Context, chatID, seq, excludeUser int64) ([]int64, error)
 }
 
@@ -346,6 +375,9 @@ type MessageRepo interface {
 	// UpdateGeoLive обновляет координаты live-локации (+heading/stopped), бампит edited_at.
 	UpdateGeoLive(ctx context.Context, msgID int64, lat, lng float64, heading *int, stopped bool) (domain.Message, error)
 	SoftDelete(ctx context.Context, msgID int64) error
+	// SoftDeleteUpTo — удалить у всех сообщения чата с seq<=maxSeq
+	// (deleteHistory revoke).
+	SoftDeleteUpTo(ctx context.Context, chatID, maxSeq int64) error
 	// SetDestructOnRead ставит destruct_at=now()+ttl для секретных сообщений,
 	// полученных читателем (sender_id<>readerID) до readSeq; no-op для чатов
 	// без ttl. Идемпотентно.
@@ -514,7 +546,9 @@ type SearchRepo interface {
 }
 
 type ReactionRepo interface {
-	Add(ctx context.Context, messageID, userID int64, emoji string) error
+	// Add — идемпотентно (повтор строку не трогает). unread — реакция чужая
+	// для автора сообщения и им ещё не прочитана (messagePeerReaction.unread).
+	Add(ctx context.Context, messageID, userID int64, emoji string, unread bool) error
 	Remove(ctx context.Context, messageID, userID int64, emoji string) error
 	// UserReactions — реакции ОДНОГО пользователя на одном сообщении, СТАРЕЙШИЕ
 	// первыми (порядок постановки). Порядок здесь значащий: лимит «сколько
@@ -652,7 +686,10 @@ type ChannelPublisher interface {
 type PushNotifier interface {
 	// peer — ключ пира ГЛАЗАМИ получателя (у приватного диалога он у сторон
 	// разный); chatID остаётся внутренним и наружу из пуша не выходит.
-	NotifyNewMessage(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID)
+	// mentioned — получатель упомянут или ему ответили (pFlags.mentioned):
+	// это пробивает мьют чата, типа и темы, как в Telegram. topicRootID —
+	// корень темы (ключ topic_user_state, 0 — вне темы): мьют темы гасит пуш.
+	NotifyNewMessage(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, mentioned bool, topicRootID int64)
 	// NotifyChannelPost — пуш о посте broadcast-канала его подписчикам
 	// (recipients, без автора) одним батчем: кто онлайн и кому канал не
 	// замьючен, нотификатор решает пачкой. title — название канала (автор поста

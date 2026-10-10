@@ -447,6 +447,8 @@ func (i *Interactor) DeleteGroup(ctx context.Context, chatID, actorID int64) err
 	if err != nil {
 		return err
 	}
+	// Чат пропал из списка у всех участников — их снимки диалогов устарели.
+	i.invalidateDialogs(ctx, members...)
 	if i.publisher != nil {
 		for _, uid := range members {
 			if pts, ok := ptsByUser[uid]; ok {

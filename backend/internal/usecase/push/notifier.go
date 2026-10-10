@@ -19,13 +19,14 @@ func NewNotifier(online OnlineChecker, notify NotifyChecker, queue Queue) *Notif
 }
 
 // NotifyNewMessage gates on presence + notify settings, then enqueues a push job.
-func (n *Notifier) NotifyNewMessage(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID) {
+func (n *Notifier) NotifyNewMessage(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, mentioned bool, topicRootID int64) {
 	// Online (has an active socket)? The WS layer already delivered it live.
 	if online, _ := n.online.IsOnline(ctx, recipientID); online {
 		return
 	}
-	// Muted per-chat or by the chat-type notify settings (or lookup error)? Don't push.
-	notify, preview, err := n.notify.ShouldNotify(ctx, chatID, recipientID)
+	// Muted per-chat, by the chat-type settings or per-topic (or lookup error)?
+	// Don't push — unless the recipient is mentioned / replied to.
+	notify, preview, err := n.notify.ShouldNotify(ctx, chatID, recipientID, topicRootID, mentioned)
 	if err != nil || !notify {
 		return
 	}

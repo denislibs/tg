@@ -80,10 +80,15 @@ const UnreadCountCap = 9999
 // при прочтении (MessagesRepo.CountUnread → still_unread_count), поэтому
 // бейдж в списке и после прочтения совпадает. Индекс —
 // idx_messages_unread_count (0142), index-only scan.
+//
+// Видимость — общий предикат messageVisibleTo (удалённое, скрытое у себя,
+// очищенное, скрытая предыстория): что зритель в ленте не видит, то ему и не
+// непрочитанное (Ф-4 перевёл пересчёт при прочтении на него — список обязан
+// считать так же).
 func unreadPostsCount(chat, readSeq, viewer string) string {
 	return `(SELECT count(*) FROM (SELECT 1 FROM messages um WHERE um.chat_id = ` + chat +
 		` AND um.seq > ` + readSeq + ` AND um.sender_id <> ` + viewer +
-		` AND um.deleted_at IS NULL LIMIT ` + strconv.Itoa(UnreadCountCap) + `) uc)::int`
+		` AND ` + messageVisibleTo("um", viewer) + ` LIMIT ` + strconv.Itoa(UnreadCountCap) + `) uc)::int`
 }
 
 // dialogUnreadCount — счётчик непрочитанного строки членства m (алиас

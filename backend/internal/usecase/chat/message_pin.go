@@ -84,6 +84,8 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 	if broadcast {
 		i.publishChannelUpdate(ctx, chatID, "pin_message", channelBody, channelPts, 0)
 	}
+	// В канале members пуст: закреп строку списка подписчиков не меняет.
+	i.invalidateDialogs(ctx, members...)
 	if i.publisher != nil && !broadcast {
 		for _, uid := range members {
 			body := pinPayload(pinAddr.forViewer(uid), cur.Seq, pin)

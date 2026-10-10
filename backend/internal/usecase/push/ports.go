@@ -65,9 +65,14 @@ type NotifyChecker interface {
 	// имеет приоритет; иначе глобальные настройки по типу чата
 	// (notify_settings). preview — включать ли текст сообщения.
 	// Не участник чата → notify=false.
-	ShouldNotify(ctx context.Context, chatID, userID int64) (notify, preview bool, err error)
-	// NotifyTargets — то же решение пачкой: кому из userIDs пушить (ключ
-	// карты) и с текстом ли (значение). Не участник и замьюченный — не в карте.
+	//
+	// Мьют — чата, типа чата или темы (topicRootID — корень темы, 0 — вне
+	// темы); mentioned (упомянут или ответ ему) мьют пробивает, как в
+	// Telegram (tweb appMessagesManager: `muted && !mentioned` → не уведомлять).
+	ShouldNotify(ctx context.Context, chatID, userID, topicRootID int64, mentioned bool) (notify, preview bool, err error)
+	// NotifyTargets — решение пачкой по участникам одного чата (пуш поста
+	// broadcast-канала: тем и упоминаний там нет): кому из userIDs пушить
+	// (ключ карты) и с текстом ли (значение). Не участник и замьюченный — не в карте.
 	NotifyTargets(ctx context.Context, chatID int64, userIDs []int64) (map[int64]bool, error)
 }
 

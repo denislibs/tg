@@ -734,12 +734,12 @@ func TestReactionsRepo_AddRemoveAggregate(t *testing.T) {
 	seq, _ := msgs.NextSeq(ctx, chatID)
 	m, _ := msgs.Insert(ctx, domain.Message{ChatID: chatID, Seq: seq, SenderID: a, Type: "text", Text: "x"})
 
-	if err := reacts.Add(ctx, m.ID, a, "🔥"); err != nil {
+	if err := reacts.Add(ctx, m.ID, a, "🔥", false); err != nil {
 		t.Fatalf("add a fire: %v", err)
 	}
-	_ = reacts.Add(ctx, m.ID, b, "🔥")
-	_ = reacts.Add(ctx, m.ID, b, "❤️")
-	_ = reacts.Add(ctx, m.ID, a, "🔥") // duplicate no-op
+	_ = reacts.Add(ctx, m.ID, b, "🔥", false)
+	_ = reacts.Add(ctx, m.ID, b, "❤️", false)
+	_ = reacts.Add(ctx, m.ID, a, "🔥", false) // duplicate no-op
 
 	byMsg, err := reacts.ReactionsFor(ctx, []int64{m.ID}, a)
 	if err != nil {

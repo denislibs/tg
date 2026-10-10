@@ -122,3 +122,42 @@ func TestSetPin_NoServerBuiltPreview(t *testing.T) {
 		t.Fatalf("цель закрепления = %v; want номер %d", pill.ReplyToID, msg.Seq)
 	}
 }
+
+// A1-04 / A6-01: закреплённое сообщение несёт pFlags.pinned — в истории (пачкой)
+// и в кадре правки; открепили — флага нет.
+func TestPinned_FlagInHistoryAndEditFrame(t *testing.T) {
+	in, _ := newInteractor()
+	pub := &fakePublisher{}
+	in.SetPublisher(pub)
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	msg, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "важное"})
+	if err := in.SetPin(ctx, chatID, msg.ID, a, true); err != nil {
+		t.Fatalf("SetPin: %v", err)
+	}
+	pinnedInHistory := func() bool {
+		out, err := in.MessagesWire(ctx, b, []domain.Message{msg})
+		if err != nil {
+			t.Fatalf("MessagesWire: %v", err)
+		}
+		return out[0].(domain.MessageReal).PFlags["pinned"]
+	}
+	if !pinnedInHistory() {
+		t.Fatal("в истории у закреплённого нет pFlags.pinned")
+	}
+	pub.reset()
+	if _, err := in.EditMessage(ctx, chatID, msg.ID, a, "важное!", nil); err != nil {
+		t.Fatalf("EditMessage: %v", err)
+	}
+	inner, _ := lastFrameOfType(t, pub, b, "edit_message")["message"].(map[string]any)
+	if pf, _ := inner["pFlags"].(map[string]any); pf["pinned"] != true {
+		t.Fatalf("кадр правки закреплённого без pinned: %#v", inner["pFlags"])
+	}
+	if err := in.SetPin(ctx, chatID, msg.ID, a, false); err != nil {
+		t.Fatalf("unpin: %v", err)
+	}
+	if pinnedInHistory() {
+		t.Fatal("после открепления pFlags.pinned остался")
+	}
+}

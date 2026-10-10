@@ -215,6 +215,15 @@ func (i *Interactor) RemoveMember(ctx context.Context, chatID, actorID, userID i
 // removeMember — тело RemoveMember без кадра участника: бан (BanMember) шлёт
 // свой, с channelParticipantBanned. prev — участник до выхода.
 func (i *Interactor) removeMember(ctx context.Context, chatID, actorID, userID int64) (*domain.Participant, error) {
+	// Из лички и «Избранного» не выходят: «удалить чат» там — DeleteDialog
+	// (tweb deleteDialog.ts → flushHistory). Прежде выход из лички слал
+	// собеседнику «удалил из группы», а следующее сообщение заводило второй
+	// приватный чат.
+	if typ, err := i.chats.ChatType(ctx, chatID); err != nil {
+		return nil, err
+	} else if typ == domain.ChatTypePrivate || typ == domain.ChatTypeSaved {
+		return nil, domain.ErrInvalid
+	}
 	if actorID != userID {
 		// Кик — над подвластной целью: не владелец, чужой админ — только
 		// владельцем или назначившим (manageTarget).
@@ -241,6 +250,11 @@ func (i *Interactor) removeMember(ctx context.Context, chatID, actorID, userID i
 		if e := i.groups.RemoveMember(ctx, chatID, userID); e != nil {
 			return e
 		}
+		// Упоминания выбывшего снимаются: при повторном вступлении старые «@»
+		// не возвращаются в счётчик и в «к следующему @».
+		if e := i.chats.DropUserMentions(ctx, chatID, userID); e != nil {
+			return e
+		}
 		if i.updates != nil {
 			b, e := json.Marshal(payload)
 			if e != nil {
@@ -257,6 +271,9 @@ func (i *Interactor) removeMember(ctx context.Context, chatID, actorID, userID i
 	if err != nil {
 		return nil, err
 	}
+	// Строка списка выбывшего пропала — сбрасываем его снимок диалогов
+	// (оставшимся сбросит кадр chat_update ниже).
+	i.invalidateDialogs(ctx, userID)
 	// Число участников изменилось — снимок метаданных оставшимся участникам
 	// (выбывший их не получает; ему адресован chat_removed ниже, он же последний).
 	i.publishChatUpdate(ctx, chatID)

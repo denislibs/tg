@@ -86,9 +86,10 @@ func (i *Interactor) deliverChannelPost(ctx context.Context, msg domain.Message,
 		}
 		// Пост поднял канал и добавил непрочитанное (оно считается на
 		// чтении) — снимок списка чатов подписчиков устарел.
-		if i.dialogsCache != nil {
-			i.dialogsCache.Invalidate(ctx, members...)
-		}
+		i.invalidateDialogs(ctx, members...)
+		// Незаглушённый канал из архива возвращается в общий список, как у
+		// любого чата (Ф-4 unarchiveOnMessage, keep_archived_unmuted).
+		i.unarchiveOnMessage(ctx, msg.ChatID, msg.SenderID, members)
 		if !opt.silent {
 			i.notifyChannelPost(ctx, msg, members)
 		}

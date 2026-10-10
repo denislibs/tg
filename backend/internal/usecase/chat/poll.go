@@ -159,7 +159,7 @@ func (i *Interactor) VotePoll(ctx context.Context, pollID, userID int64, optionI
 	if err != nil {
 		return domain.PollInfo{}, err
 	}
-	i.publishPollUpdates(ctx, p.ChatID, pollID)
+	i.publishPollUpdates(ctx, p.ChatID, pollID, userID)
 	return info, nil
 }
 
@@ -189,7 +189,7 @@ func (i *Interactor) ClosePoll(ctx context.Context, pollID, userID int64) error 
 	if err := i.polls.Close(ctx, pollID); err != nil {
 		return err
 	}
-	i.publishPollUpdates(ctx, p.ChatID, pollID)
+	i.publishPollUpdates(ctx, p.ChatID, pollID, userID)
 	return nil
 }
 
@@ -234,7 +234,7 @@ func (i *Interactor) pollCarriers(ctx context.Context, pollID, viewerID int64) (
 
 // publishPollUpdates — итоги опроса во ВСЕ чаты, где он лежит (оригинал и
 // пересланные копии делят голоса).
-func (i *Interactor) publishPollUpdates(ctx context.Context, homeChatID, pollID int64) {
+func (i *Interactor) publishPollUpdates(ctx context.Context, homeChatID, pollID, actorID int64) {
 	chats := []int64{homeChatID}
 	if msgs, err := i.pollCarriers(ctx, pollID, 0); err == nil {
 		for _, m := range msgs {
@@ -244,7 +244,7 @@ func (i *Interactor) publishPollUpdates(ctx context.Context, homeChatID, pollID 
 		}
 	}
 	for _, c := range chats {
-		i.publishPollUpdate(ctx, c, pollID)
+		i.publishPollUpdate(ctx, c, pollID, actorID)
 	}
 }
 
@@ -279,10 +279,14 @@ func (i *Interactor) hydratePolls(ctx context.Context, viewerID int64, msgs []do
 	return nil
 }
 
-// publishPollUpdate рассылает участникам чата агрегаты опроса (без MyVotes —
-// свой выбор каждый клиент знает сам; correct_option скрыт как для
-// непроголосовавшего зрителя).
-func (i *Interactor) publishPollUpdate(ctx context.Context, chatID, pollID int64) {
+// publishPollUpdate рассылает участникам чата агрегаты опроса.
+//
+// Всем — итоги «зрителя 0», то есть заведомо УРЕЗАННЫЕ (pollResults.min): тело
+// кадра одно на всех, а chosen/correct — пер-зрительские, и клиент по флагу
+// сохраняет свой выбор. Автору действия (actorID, все его устройства) — итоги
+// ЕГО глазами без min: его второе устройство иначе не узнало бы, что голос
+// отдан (сервер Telegram отвечает автору действия полным updateMessagePoll).
+func (i *Interactor) publishPollUpdate(ctx context.Context, chatID, pollID, actorID int64) {
 	info, err := i.pollInfoFor(ctx, pollID, 0) // viewer 0 — «никто»: MyVotes пуст
 	if err != nil {
 		return
@@ -292,19 +296,32 @@ func (i *Interactor) publishPollUpdate(ctx context.Context, chatID, pollID int64
 		return
 	}
 	media := info.ToMedia()
-	// Итоги собраны для «зрителя 0», то есть заведомо УРЕЗАНЫ: тело кадра одно
-	// на всех получателей, а chosen/correct — пер-зрительские. В схеме ровно это
-	// и называется pollResults.pFlags.min, и клиент по нему сохраняет свой
-	// выбор. Без флага «урезанность» пришлось бы подразумевать безусловно — а
-	// значит персонализированные итоги были бы молча выброшены.
 	media.Results.MarkMin()
-	// Абсолютные агрегаты опроса + плотный pts-курсор делают catch-up через /sync
-	// идемпотентным (свой выбор клиент знает сам, correct_option скрыт).
-	_ = i.logAndPublishPerPeer(ctx, chatID, members, "poll_update",
-		func(peer domain.PeerID) map[string]any {
+	body := func(m *domain.MessageMediaPoll) func(peer domain.PeerID) map[string]any {
+		return func(peer domain.PeerID) map[string]any {
 			return map[string]any{
 				"_": domain.UpdateMessagePollTag, "peer": domain.NewPeer(peer),
-				"poll_id": media.Poll.ID, "poll": media.Poll, "results": media.Results,
+				"poll_id": m.Poll.ID, "poll": m.Poll, "results": m.Results,
 			}
-		})
+		}
+	}
+	others := make([]int64, 0, len(members))
+	actorIsMember := false
+	for _, uid := range members {
+		if uid == actorID {
+			actorIsMember = true
+			continue
+		}
+		others = append(others, uid)
+	}
+	// Абсолютные агрегаты опроса + плотный pts-курсор делают catch-up через /sync
+	// идемпотентным.
+	_ = i.logAndPublishPerPeer(ctx, chatID, others, "poll_update", body(media))
+	if actorIsMember {
+		mine, err := i.pollInfoFor(ctx, pollID, actorID)
+		if err != nil {
+			return
+		}
+		_ = i.logAndPublishPerPeer(ctx, chatID, []int64{actorID}, "poll_update", body(mine.ToMedia()))
+	}
 }

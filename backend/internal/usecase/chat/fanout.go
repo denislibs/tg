@@ -96,6 +96,15 @@ func (i *Interactor) fanOutNewMessage(
 			return nil, nil, nil, e
 		}
 	}
+	// Диалог, удалённый кем-то из участников «у себя» (DeleteDialog),
+	// возвращается в список с новым сообщением — тот же чат, а не второй.
+	// Прятать строку умеет только личка и «Избранное» (у их адреса есть
+	// состав, chatAddress.members), остальным чатам вопрос не задаётся.
+	if pp.addr.members != nil {
+		if e := i.chats.ShowDialogs(ctx, chatID); e != nil {
+			return nil, nil, nil, e
+		}
+	}
 	// Непрочитанные — одним запросом всем получателям (кроме автора).
 	//
 	// Счётчик РАСТЁТ в базе, но в кадр не едет: у конструктора updateNewMessage
@@ -135,11 +144,10 @@ func (i *Interactor) publishMessageDelivery(
 	if len(recipients) == 0 {
 		return
 	}
+	i.unarchiveOnMessage(ctx, msg.ChatID, senderID, recipients)
 	// Список диалогов получателей изменился (unread/порядок/превью) —
 	// сбрасываем их кэш снапшота (следующий /chats пересчитает).
-	if i.dialogsCache != nil {
-		i.dialogsCache.Invalidate(ctx, recipients...)
-	}
+	i.invalidateDialogs(ctx, recipients...)
 	if i.publisher == nil {
 		return
 	}
@@ -174,4 +182,48 @@ func (i *Interactor) publishMessageDelivery(
 		frames = append(frames, b.frame("new_message", uid, map[string]any{"pts": ptsByUser[uid]}))
 	}
 	_ = i.publisher.PublishToUsers(ctx, uids, frames)
+}
+
+// notifyNewMessage — пуш-уведомления о новом сообщении получателям (кроме
+// автора). Упомянутым и тем, кому ответили (mentions — те же, что пометил
+// fanOutNewMessage), мьют не мешает; тема сообщения — корень его треда.
+// Звать после коммита, не для тихой отправки.
+func (i *Interactor) notifyNewMessage(ctx context.Context, msg domain.Message, senderID int64, recipients []int64, mentions map[int64]bool) {
+	if i.notifier == nil {
+		return
+	}
+	var topic int64
+	if msg.ThreadRootID != nil {
+		topic = *msg.ThreadRootID
+	}
+	for _, uid := range recipients {
+		if uid == senderID {
+			continue
+		}
+		peer, _ := i.ChatIDToPeer(ctx, uid, msg.ChatID)
+		i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.Seq, msg.SenderID, msg.Text, peer, mentions[uid], topic)
+	}
+}
+
+// unarchiveOnMessage — новое сообщение возвращает архивный НЕзаглушённый чат
+// получателя в основной список, как сервер Telegram (keep_archived_unmuted по
+// умолчанию выключен): строка выходит из архива, а устройствам получателя
+// уходит updateFolderPeers с folder 0 (tweb dialogs.ts applyFolder). Автор
+// сообщения свой архив не теряет; заглушённый чат остаётся в архиве.
+func (i *Interactor) unarchiveOnMessage(ctx context.Context, chatID, senderID int64, recipients []int64) {
+	others := make([]int64, 0, len(recipients))
+	for _, uid := range recipients {
+		if uid != senderID {
+			others = append(others, uid)
+		}
+	}
+	if len(others) == 0 {
+		return
+	}
+	back, err := i.chats.UnarchiveUnmuted(ctx, chatID, others)
+	if err != nil || len(back) == 0 {
+		return
+	}
+	_ = i.logAndPublishPerPeer(ctx, chatID, back, "dialog_archive",
+		func(peer domain.PeerID) map[string]any { return dialogFolderPayload(peer, domain.FolderAll) })
 }

@@ -103,6 +103,10 @@ func (i *Interactor) messagesWire(
 	if err != nil {
 		return nil, err
 	}
+	pinned, err := i.pinnedOf(ctx, ext)
+	if err != nil {
+		return nil, err
+	}
 	peers := make(map[int64]domain.PeerID, 1)
 	out := make([]domain.MTMessage, 0, len(ext))
 	for _, m := range ext {
@@ -135,6 +139,8 @@ func (i *Interactor) messagesWire(
 			// «сообщение + зритель», одним запросом на пачку (viewerMentions).
 			Mentioned:     mentioned,
 			MentionUnread: unread,
+			// Закреп — одним запросом на пачку (pinnedOf).
+			Pinned: pinned[m.ID],
 		}))
 	}
 	return out, nil
@@ -157,6 +163,24 @@ func (i *Interactor) viewerMentions(ctx context.Context, viewerID int64, msgs []
 		return nil, nil
 	}
 	return i.chats.ViewerMentions(ctx, viewerID, ids)
+}
+
+// pinnedOf — какие сообщения пачки закреплены (pinned_messages), одним
+// запросом: ключ строки -> закреплено.
+func (i *Interactor) pinnedOf(ctx context.Context, msgs []domain.Message) (map[int64]bool, error) {
+	if i.chats == nil || len(msgs) == 0 {
+		return nil, nil
+	}
+	ids := make([]int64, 0, len(msgs))
+	for _, m := range msgs {
+		if m.Action == nil {
+			ids = append(ids, m.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	return i.chats.PinnedIDs(ctx, ids)
 }
 
 // repliesOf — тред сообщения из карты пачки. «Треда нет» — nil, а не пустой

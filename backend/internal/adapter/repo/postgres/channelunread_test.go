@@ -269,11 +269,11 @@ func TestPushRepo_NotifyTargets(t *testing.T) {
 	if len(got) != 1 || !got[a] {
 		t.Fatalf("кому пушить = %v, want только %d с превью", got, a)
 	}
-	ok, preview, _ := push.ShouldNotify(ctx, ch, a)
+	ok, preview, _ := push.ShouldNotify(ctx, ch, a, 0, false)
 	if !ok || !preview {
 		t.Fatalf("ShouldNotify(a) = %v %v", ok, preview)
 	}
-	if ok, _, _ := push.ShouldNotify(ctx, ch, muted); ok {
+	if ok, _, _ := push.ShouldNotify(ctx, ch, muted, 0, false); ok {
 		t.Fatal("ShouldNotify пушит замьюченному")
 	}
 }

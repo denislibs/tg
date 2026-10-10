@@ -43,4 +43,9 @@ export interface MessagesCtx {
    *  зеркало — иначе доска рисует их фолбэком. Опционален по той же причине,
    *  что `getMeId`: часть тестов собирает под-модули одним `rest`. */
   peers?: { saveApiPeers(o: { users?: UserReal[] }): void }
+  /** Бейдж ❤ диалога — его владелец `dialogsManager`. Нужен `readMessages`
+   *  гейтом `hadUnreadReactions` (tweb appMessagesManager.ts:9566): сбрасывать
+   *  на сервере нечего, если бейджа нет. Опционален по той же причине, что
+   *  `getMeId`: без него сброс не уходит никогда. */
+  getUnreadReactionsCount?: (peerId: number) => number
 }

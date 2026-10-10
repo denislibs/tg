@@ -577,6 +577,23 @@ func TestMessageWire_RecentReactionsNeedViewRight(t *testing.T) {
 	}
 }
 
+// Непрочитанность реакции глазами автора — pFlags.unread у записи
+// recent_reactions (messagePeerReaction): по её смене клиент ведёт бейдж ❤.
+func TestMessageWire_RecentReactionUnread(t *testing.T) {
+	m := Message{Reactions: []ReactionCount{{
+		Emoji: "👍", Count: 2,
+		Recent:       []Peer{NewPeerUser(5), NewPeerUser(6)},
+		RecentUnread: []bool{true, false},
+	}}}
+	r := m.WireReactions(true, true)
+	if r == nil || len(r.RecentReactions) != 2 {
+		t.Fatalf("recent_reactions = %#v", r)
+	}
+	if !r.RecentReactions[0].PFlags["unread"] || r.RecentReactions[1].PFlags["unread"] {
+		t.Fatalf("unread = %v/%v, want true/false", r.RecentReactions[0].PFlags, r.RecentReactions[1].PFlags)
+	}
+}
+
 // Время обновления живой трансляции — это message.edit_date, и второго смысла
 // у него не бывает. Внутри вложения его нет.
 func TestMessageWire_GeoHasNoOwnEditedAt(t *testing.T) {

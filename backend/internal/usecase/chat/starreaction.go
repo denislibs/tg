@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -40,20 +39,16 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 		return domain.StarReactionAgg{}, nil, 0, domain.ErrNotFound
 	}
 
-	broadcast := i.isBroadcast(ctx, chatID)
 	var (
 		agg          domain.StarReactionAgg
-		members      []int64
 		senderBal    int64
 		authorBal    int64
 		authorCredit bool
 	)
-	ptsByUser := map[int64]int64{}
 	// Кадром платной реакции служит ТОТ ЖЕ конструктор, что у обычной:
-	// updateMessageReactions с абсолютным агрегатом сообщения. Тело собирается
-	// один раз в транзакции, чтобы журнал и живой кадр не разъехались.
-	var aggregate domain.MessageReactions
-	var reactionAddr chatAddress
+	// updateMessageReactions с абсолютным агрегатом сообщения (journalReactions:
+	// поставившему и автору — их глазами; остальным — min).
+	var deliver func(context.Context)
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		b, e := i.stars.AddBalance(ctx, userID, -count)
 		if e == domain.ErrForbidden {
@@ -88,54 +83,15 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 		// кадра у платной реакции нет ни в схеме, ни здесь — она второй
 		// конструктор объединения Reaction в том же векторе results, и кадр,
 		// принёсший только её, стёр бы у получателя обычные чипы.
-		aggregate, e = i.messageReactionsAggregate(ctx, chatID, messageID)
-		if e != nil {
-			return e
-		}
-		// broadcast-канал (звёзды — почти всегда канальные): агрегат уходит
-		// одним кадром в топик после коммита, без веера по подписчикам.
-		if broadcast {
-			return nil
-		}
-		m, e := i.chats.MemberIDs(ctx, chatID)
-		if e != nil {
-			return e
-		}
-		members = m
-		addr, e := i.peerAddress(ctx, chatID)
-		if e != nil {
-			return e
-		}
-		reactionAddr = addr
-		date := nowUnix()
-		for _, uid := range members {
-			payload, e := json.Marshal(reactionsPayload(addr.forViewer(uid), msg.Seq, aggregate))
-			if e != nil {
-				return e
-			}
-			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "reaction", payload)
-			if e != nil {
-				return e
-			}
-			ptsByUser[uid] = pts
-		}
-		return nil
+		// Автору сообщения — тоже его глазами: min-агрегат стёр бы у него
+		// pFlags.unread чужих реакций, и бейдж ❤ разошёлся бы с сервером.
+		deliver, e = i.journalReactions(ctx, chatID, msg, userID, msg.SenderID)
+		return e
 	})
 	if err != nil {
 		return domain.StarReactionAgg{}, nil, 0, err
 	}
-
-	if broadcast {
-		i.publishChannelReactions(ctx, chatID, msg.Seq, aggregate)
-	} else if i.publisher != nil {
-		// Свой вклад звёздами (mine) в кадре не едет: он пер-зрительский, а тело
-		// одно на всех получателей. Отправитель узнаёт его из ОТВЕТА этой же
-		// ручки, остальные сохраняют собственный — агрегат помечен `min`.
-		for _, uid := range members {
-			body := reactionsPayload(reactionAddr.forViewer(uid), msg.Seq, aggregate)
-			_ = i.publisher.PublishToUser(ctx, uid, framePts("reaction", body, ptsByUser[uid]))
-		}
-	}
+	deliver(ctx)
 	i.publishBalance(ctx, userID, senderBal)
 	if authorCredit {
 		i.publishBalance(ctx, msg.SenderID, authorBal)

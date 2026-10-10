@@ -969,12 +969,30 @@ func (c groupChats) IncUnread(context.Context, int64, int64) (int, error)     { 
 func (c groupChats) IncUnreadBulk(context.Context, int64, []int64) (map[int64]int64, error) {
 	return nil, nil
 }
-func (c groupChats) ForgetUnread(context.Context, int64, int64, int64) error       { return nil }
-func (c groupChats) IncUnreadReactions(context.Context, int64, int64) (int, error) { return 0, nil }
-func (c groupChats) ClearUnreadReactions(context.Context, int64, int64) error      { return nil }
-func (c groupChats) CurrentReadSeq(context.Context, int64, int64) (int64, error)   { return 0, nil }
-func (c groupChats) SetRead(context.Context, int64, int64, int64, int) error       { return nil }
-func (c groupChats) AppendReadMark(context.Context, int64, int64, int64) error     { return nil }
+func (c groupChats) ForgetUnread(context.Context, int64, int64, int64) error { return nil }
+func (c groupChats) RecountUnreadReactions(context.Context, int64, int64) (int, error) {
+	return 0, nil
+}
+func (c groupChats) ReadReactions(context.Context, int64, int64, int64) ([]domain.Message, error) {
+	return nil, nil
+}
+func (c groupChats) UnarchiveUnmuted(context.Context, int64, []int64) ([]int64, error) {
+	return nil, nil
+}
+func (c groupChats) VisibleSeqsUpTo(context.Context, int64, int64, int64) ([]int64, error) {
+	return nil, nil
+}
+func (c groupChats) SetDialogHidden(context.Context, int64, int64, bool) error { return nil }
+func (c groupChats) ShowDialogs(context.Context, int64) error                  { return nil }
+func (c groupChats) RecountCounters(context.Context, int64, []int64) error     { return nil }
+func (c groupChats) DropMessageMentions(context.Context, int64, int64) error   { return nil }
+func (c groupChats) DropUserMentions(context.Context, int64, int64) error      { return nil }
+func (c groupChats) PinnedIDs(context.Context, []int64) (map[int64]bool, error) {
+	return nil, nil
+}
+func (c groupChats) CurrentReadSeq(context.Context, int64, int64) (int64, error) { return 0, nil }
+func (c groupChats) SetRead(context.Context, int64, int64, int64, int) error     { return nil }
+func (c groupChats) AppendReadMark(context.Context, int64, int64, int64) error   { return nil }
 func (c groupChats) ReadAtForSeq(context.Context, int64, int64, int64) (time.Time, bool, error) {
 	return time.Time{}, false, nil
 }

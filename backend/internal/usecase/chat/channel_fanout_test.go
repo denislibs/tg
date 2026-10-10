@@ -571,3 +571,22 @@ func TestScheduledChannelPost_KeepsDraft(t *testing.T) {
 		t.Fatal("отложенный пост снял текущий черновик автора")
 	}
 }
+
+// Слияние с Ф-4: пост канала, как и любое сообщение, возвращает незаглушённый
+// канал подписчика из архива (keep_archived_unmuted).
+func TestChannelPost_UnarchivesSubscriber(t *testing.T) {
+	e := newChannelEnv(t)
+	e.fg.mu.Lock()
+	if e.fg.archived[8] == nil {
+		e.fg.archived[8] = map[int64]bool{}
+	}
+	e.fg.archived[8][e.ch] = true
+	e.fg.mu.Unlock()
+	if _, err := e.i.Send(context.Background(), SendInput{ChatID: e.ch, SenderID: 7, Text: "пост"}); err != nil {
+		t.Fatal(err)
+	}
+	e.i.bg.Wait()
+	if len(e.userFrames(8, "dialog_archive")) != 1 {
+		t.Fatal("пост канала не вернул его из архива подписчика")
+	}
+}

@@ -149,8 +149,10 @@ describe('окно сообщений: своё действие доезжае�
       // здесь дал бы отрицательный ключ (`toPeerId(id, true)`) и промах по SSOT.
       peer: { _: 'peerUser', user_id: CHAT },
       msg_id: getServerMessageId(cid(2)),
+      // Общее тело кадра (всем участникам) — `min`: моего выбора в нём нет.
       reactions: {
         _: 'messageReactions',
+        pFlags: { min: true },
         results: [
           { _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 4 },
           { _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '❤️' }, count: 1 },
@@ -229,8 +231,8 @@ describe('окно сообщений: своё действие доезжае�
       _: 'updateEditMessage',
       message: {
         ...makeRawMessage({ id: getServerMessageId(cid(2)), peerId: CHAT, fromId: 2, text: 'изменено' }),
-        // снимок без зрителя: чип есть, «моя» нет
-        reactions: { _: 'messageReactions', results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 1 }] },
+        // снимок без зрителя (сервер помечает его `min`): чип есть, «моя» нет
+        reactions: { _: 'messageReactions', pFlags: { min: true }, results: [{ _: 'reactionCount', reaction: { _: 'reactionEmoji', emoticon: '👍' }, count: 1 }] },
       },
     }
     rootScope.dispatchEventSingle('rt:message_op', { ops: mgr.cacheEdit(evt) })

@@ -6,10 +6,11 @@
 // методы спредятся в объект messagesManager; типы реэкспортятся оттуда же.
 import {
   excessChosenReactions, mergeReactions, reactionDelta, reactionsUserLimit,
-  sameReactions, setPaidReaction, totalReactions,
+  sameReactions, setPaidReaction,
 } from '../../reactions/messageReactions'
 import { generateMessageId, getServerMessageId } from '../../history/messageId'
 import { getPeerId } from '../../peers/peerId'
+import getUnreadReactions from '../../messages/getUnreadReactions'
 import type { MyMessage } from '../../models'
 import type { MessageOp } from '../../realtime/messageOps'
 import type { ReactionEvt } from '../../realtime/events'
@@ -163,7 +164,7 @@ function mapStarReaction(r: StarReactionWire): StarReactionInfo {
 // предыдущего состояния SSOT — то есть ровно владелец, до порождения операции.
 //
 // Эталон семантики слияния — core/reactions/messageReactions.test.ts.
-export function newReactionMethods({ rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers }: MessagesCtx) {
+export function newReactionMethods({ rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers, getUnreadReactionsCount }: MessagesCtx) {
   /** Операции `patch {reactions}` по всем окнам, где сообщение видно. Агрегат
    *  читается ИЗ SSOT после применения — операция несёт то же значение, что
    *  лежит у владельца, а не отдельно пересчитанное. */
@@ -272,15 +273,72 @@ export function newReactionMethods({ rest, patchMsg, getMeId, getMePremium, opWi
       return applyAbsoluteReactionToCache(evt)
     },
 
-    // Выросло ли число реакций на МОЁМ сообщении — вопрос, на который отвечает
-    // только владелец окна: кадр несёт абсолютный агрегат без «кто поставил» и
-    // без пер-зрительских счётчиков, потому что тело одно на всех получателей.
-    // Бейдж непрочитанных реакций бампится по этому ответу (порт tweb: дифф
-    // выводит клиент), а авторитетное значение приезжает со строкой диалога.
-    reactionsGrewOnMyMessage(peerId: number, serverMsgId: number, wire: ReactionEvt['reactions']): boolean {
-      const m = readMsg(peerId, generateMessageId(serverMsgId))
-      if (!m || m._ !== 'message' || !m.pFlags.out) return false
-      return totalReactions(wire) > totalReactions(m.reactions)
+    /**
+     * Бейдж непрочитанных реакций по кадру — порт tweb `onUpdateMessageReactions`
+     * (appMessagesManager.ts:10552-10604). Спрашивается ДО применения кадра:
+     * «была ли непрочитанной» отвечает только прежнее состояние сообщения.
+     *
+     * - сообщения в памяти нет — `'reload'`: строку перечитать у сервера (tweb
+     *   `fixDialogUnreadMentionsIfNoMessage({force: true})`); кроме min-кадра —
+     *   флага `unread` в нём нет, бейдж он не двигает, ответ `undefined`;
+     * - у МОЕГО сообщения сменилось «есть непрочитанная реакция»
+     *   (`recent_reactions[].pFlags.unread` кадра против прежнего) — знак ±1
+     *   (tweb `modifyUnreadReactions(isUnread)`);
+     * - иначе `undefined` — бейдж не трогать. Сюда же попадает кадр без
+     *   `recent_reactions` у сообщения, где непрочитанная была: у оригинала
+     *   `isUnread` тогда `undefined`, и `modifyCachedMentionsAndSave` такой
+     *   знак пропускает (:9345-9347).
+     *
+     * Флаг `unread` сервер ставит только глазами АВТОРА (кадр ему — без `min`),
+     * поэтому у всех остальных ответ всегда «не сменилось».
+     */
+    unreadReactionsChange(evt: ReactionEvt): 'reload' | boolean | undefined {
+      const message = readMsg(getPeerId(evt.peer), generateMessageId(evt.msg_id))
+      // min-кадр (общее тело всем участникам) флага `unread` не несёт по
+      // построению, поэтому бейджа ❤ не меняет — и перечитывать строку ради него
+      // незачем: кадр реакции в группе уходит каждому участнику, и без этого
+      // гейта одна реакция обходилась бы запросом строки у каждого, у кого
+      // сообщения нет в памяти. Тот же гейт у оригинала стоит у опросов
+      // (tweb appPollsManager.ts:104-107, `!results.pFlags.min`).
+      if (!message) return evt.reactions?.pFlags?.min ? undefined : 'reload'
+      // «Стало» у min-кадра — ПОСЛЕ слияния: флагов `unread` в нём нет,
+      // `mergeReactions` переносит их из прежнего состояния, поэтому чужой
+      // min-кадр знака не даёт. Агрегат моими глазами — как есть, у оригинала
+      // (`reactions?.recent_reactions`): слияние схлопнуло бы пустой агрегат в
+      // `undefined`, и снятие последней реакции не дало бы −1.
+      const next = evt.reactions?.pFlags?.min ? mergeReactions(message.reactions, evt.reactions) : evt.reactions
+      const isUnread = next?.recent_reactions?.some((reaction) => reaction.pFlags?.unread)
+      const wasUnread = !!getUnreadReactions(message)
+      if (message.pFlags.out && isUnread !== wasUnread) return isUnread
+      return undefined
+    },
+
+    /**
+     * Порт tweb `appMessagesManager.readMessages` (:9519-9616) в объёме
+     * НЕПРОЧИТАННЫХ РЕАКЦИЙ: среди увиденных лентой сообщений есть моё с
+     * непрочитанной реакцией (`getUnreadReactions`), а у диалога горит ❤
+     * (`hadUnreadReactions`, :9566) — follow-up `readMentions(peerId, threadId,
+     * true)`, то есть `messages.readReactions` (:9607-9609). У нас это
+     * `POST /chats/{peer}/reactions/read`.
+     *
+     * Бейдж здесь НЕ трогается: у оригинала его обнуляет ответ ручки
+     * (`modifyCachedMentionsAndSave({addReaction: -count})`, :9640-9648), а наш
+     * сервер вместо `affectedHistory` шлёт моим устройствам кадры
+     * `updateMessageReactions` уже без `unread` — по ним бейдж снимает
+     * `unreadReactionsChange`. Локальный сброс сверху дал бы двойной −1.
+     *
+     * Не портировано: `messages.readMessageContents` (снятие `media_unread` у
+     * увиденных — у нас его владелец плеер, `core/mediaRead.ts`) и follow-up
+     * `messages.readMentions` (бейдж «@»), а с ними — `threadId` форума:
+     * сервер гасит непрочитанные реакции всего чата.
+     */
+    async readMessages(peerId: number, msgIds: number[]): Promise<void> {
+      const hasUnreadReaction = msgIds.some((id) => {
+        const message = readMsg(peerId, id)
+        return !!message && !!getUnreadReactions(message)
+      })
+      if (!hasUnreadReaction || !getUnreadReactionsCount?.(peerId)) return
+      await rest.post(`/chats/${peerId}/reactions/read`, {})
     },
 
     // Реакции: поставить/снять свою. Оптимистика в SSOT воркера (tweb sendReaction)
