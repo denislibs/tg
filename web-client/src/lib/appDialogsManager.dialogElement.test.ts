@@ -603,6 +603,43 @@ describe('setLastMessage + setUnreadMessages — строка списка', () 
     expect(d.dom.lastMessageSpan.textContent).toContain('тема')
   })
 
+  // О-71: tweb appDialogsManager.ts:2711-2735 — у форума бейдж — число
+  // НЕПРОЧИТАННЫХ ТЕМ (`getForumUnreadCount`), а не сообщений; все непрочитанные
+  // темы заглушены — `no-unmuted-topic` (:2752)
+  it('форум: бейдж — число непрочитанных тем; все они заглушены — `no-unmuted-topic`', async () => {
+    applyPeerOps([{ op: 'upsert', peers: [
+      { _: 'channel', id: 201, title: 'Форум', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true, forum: true } },
+    ] }])
+    const d = listRow(-201)
+    const muted = { _: 'peerNotifySettings' as const, mute_until: 0x7FFFFFFF }
+    const list: DialogListContext = {
+      filterId: 0, isArchive: false, isChatListNarrow: () => false,
+      getForumUnreadCount: async () => ({ count: 2, unreadNotifySettings: [muted, muted] }),
+    }
+    await fill(d, makeDialog({ peerId: -201, unread: 17, lastMessage: message({ peerId: -201 }) }), list)
+    await vi.waitFor(() => expect(d.dom.subtitleEl.querySelector('.dialog-subtitle-badge-unread')!.textContent).toBe('2'))
+    expect(d.dom.listEl.classList.contains('no-unmuted-topic')).toBe(true)
+
+    list.getForumUnreadCount = async () => ({ count: 1, unreadNotifySettings: [{ _: 'peerNotifySettings' }] })
+    await fill(d, makeDialog({ peerId: -201, unread: 17, lastMessage: message({ peerId: -201 }) }), list)
+    await vi.waitFor(() => expect(d.dom.subtitleEl.querySelector('.dialog-subtitle-badge-unread')!.textContent).toBe('1'))
+    expect(d.dom.listEl.classList.contains('no-unmuted-topic')).toBe(false)
+  })
+
+  it('форум, темы ещё не загружены — ноль тем, бейджа нет (у tweb до ответа `acknowledged`)', async () => {
+    applyPeerOps([{ op: 'upsert', peers: [
+      { _: 'channel', id: 202, title: 'Форум', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true, forum: true } },
+    ] }])
+    const d = listRow(-202)
+    const list: DialogListContext = {
+      filterId: 0, isArchive: false, isChatListNarrow: () => false,
+      getForumUnreadCount: async () => undefined,
+    }
+    await fill(d, makeDialog({ peerId: -202, unread: 17, lastMessage: message({ peerId: -202 }) }), list)
+    await settle()
+    expect(d.dom.subtitleEl.querySelector('.dialog-subtitle-badge-unread.is-visible')).toBeNull()
+  })
+
   it('нет ни сообщения, ни черновика — пустой подзаголовок и время', async () => {
     const d = listRow(ALICE)
     await fill(d, makeDialog({ peerId: ALICE, lastMessage: message() }))

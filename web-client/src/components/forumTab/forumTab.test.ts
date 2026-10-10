@@ -2,7 +2,8 @@
 // в настоящем владельце списка (`lib/appDialogsManager.ts`: `toggleForumTab`,
 // `toggleForumTabByPeerId`, `.topics-slider`, запись навигации `'forum'`) и настоящей
 // колонке (`appSidebarLeft`). Подменены только геометрия скроллеров (её читает ядро
-// виртуального списка), кадры анимации и ответ ручки тем (`groups.listTopics`).
+// виртуального списка), кадры анимации и ответ хранилища тем воркера
+// (`forumTopics.getForumTopics`); живые изменения — операции `rt:forum_topic_op`.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import '@/test/lang'
 import {
@@ -12,7 +13,10 @@ import { applyPeerOps, resetPeerMirror } from '@core/peerCache'
 import { makeDialog } from '@core/dialogs/testDialog'
 import { makeMessage } from '@core/messages/testMessage'
 import { ALL_FOLDER_ID } from '@core/folderIds'
-import type { TopicRow } from '@core/managers/groupsManager'
+import type { ForumTopic } from '@core/dialogs/forumTopic'
+import { GENERAL_TOPIC_ID, generateMessageId } from '@core/history/messageId'
+import { RT } from '@core/realtime/events'
+import rootScope from '@lib/rootScope'
 import type { Dialog } from '@core/models'
 import { useChatsStore } from '@stores/chatsStore'
 import appImManager from '@lib/appImManager'
@@ -28,25 +32,30 @@ const user = (id: number, name = 'U' + id) => ({ _: 'user' as const, id, first_n
 
 let mounted: Mounted | undefined
 
-const topic = (id: number, over: Partial<TopicRow> = {}): TopicRow => ({
-  id: 1000 + id,
+/** Тема хранилища: номер — клиентский (`generateMessageId`), как в `toForumTopic`. */
+const topic = (id: number, over: Partial<ForumTopic> = {}): ForumTopic => ({
+  _: 'forumTopic',
+  id: generateMessageId(id),
   peerId: FORUM_ID,
-  rootMsgId: id,
+  pFlags: {},
+  date: 1_700_000_000,
   title: 'Тема ' + id,
-  iconColor: 1,
-  iconEmoji: '',
-  closed: false,
-  hidden: false,
-  pinned: false,
-  isGeneral: false,
-  createdBy: 1,
-  unread: 0,
-  unreadMentions: 0,
-  muted: false,
-  lastMsgSeq: id,
-  lastMessage: makeMessage({ id, peerId: FORUM_ID, fromId: 1, text: 'текст ' + id, date: 1_700_000_000 }),
+  icon_color: 1,
+  fromId: 1,
+  top_message: generateMessageId(id),
+  read_inbox_max_id: 0,
+  read_outbox_max_id: 0,
+  unread_count: 0,
+  unread_mentions_count: 0,
+  unread_reactions_count: 0,
+  notify_settings: { _: 'peerNotifySettings' },
+  index: 0,
+  lastMessage: makeMessage({ id: generateMessageId(id), peerId: FORUM_ID, fromId: 1, text: 'текст ' + id, date: 1_700_000_000 }),
   ...over,
 })
+
+const topicOps = (ops: Parameters<typeof rootScope.dispatchEventSingle<typeof RT.forumTopicOp>>[1]['ops']) =>
+  rootScope.dispatchEventSingle(RT.forumTopicOp, { ops })
 
 function seed(dialogs: Dialog[]) {
   useChatsStore.setState({ dialogs: [], dialogIndexById: {}, loaded: true })
@@ -56,11 +65,14 @@ function seed(dialogs: Dialog[]) {
 const dialogOf = (peerId: PeerId) =>
   makeDialog({ peerId, lastMessage: makeMessage({ id: 1, peerId, fromId: 1, text: 'm' + peerId, date: 1_700_000_000 }) })
 
-async function start(topics: TopicRow[] = [topic(1), topic(2)]) {
+async function start(topics: ForumTopic[] = [topic(1), topic(2)]) {
   applyPeerOps([{ op: 'upsert', peers: [FORUM_CHANNEL, user(1), user(2)] }])
   seed([dialogOf(FORUM_ID), dialogOf(2)])
   mounted = mountOwner({ getDialogs: async () => ({ dialogs: useChatsStore.getState().dialogs, count: 2, isEnd: true }) })
-  mounted.hooks.managers.groups.listTopics.mockImplementation(async () => topics)
+  // порядок — индекс хранилища: первая в массиве — выше
+  const indexed = topics.map((t, i) => ({ ...t, index: t.index || (1000 - i) * 0x10000 }))
+  mounted.hooks.managers.forumTopics.getForumTopics.mockImplementation(async (_peerId: number, offsetIndex?: number) =>
+    offsetIndex !== undefined ? { dialogs: [], count: indexed.length, isEnd: true } : { dialogs: indexed, count: indexed.length, isEnd: true })
   await settle()
   await vi.waitFor(() => expect(row(FORUM_ID)).toBeDefined())
   return mounted
@@ -141,19 +153,22 @@ describe('клик по форуму открывает таб тем повер
     expect(row(FORUM_ID)!.classList.contains('is-forum-open')).toBe(true)
     // чат форума не открыт — открыт таб
     expect(setPeer).not.toHaveBeenCalled()
-    expect(mounted!.hooks.managers.groups.listTopics).toHaveBeenCalledWith(FORUM_ID)
+    expect(mounted!.hooks.managers.forumTopics.getForumTopics).toHaveBeenCalledWith(FORUM_ID, undefined)
     // шапка: название группы и подпись
     expect(tab.title.textContent).toBe('Форум')
     expect(tab.subtitle.textContent).toContain('7')
   })
 
   it('строка темы — `DialogElement` без аватара: значок и название темы, номер темы в `data-thread-id`', async () => {
-    await start([topic(1, { unread: 3, pinned: true }), topic(2, { closed: true, muted: true })])
+    await start([
+      topic(1, { unread_count: 3, pFlags: { pinned: true } }),
+      topic(2, { pFlags: { closed: true }, notify_settings: { _: 'peerNotifySettings', mute_until: 0x7FFFFFFF } }),
+    ])
     await openForum()
 
     const [first, second] = topicRows()
     expect(first.dataset.peerId).toBe('' + FORUM_ID)
-    expect(first.dataset.threadId).toBe('1')
+    expect(first.dataset.threadId).toBe('' + generateMessageId(1))
     expect(first.querySelector('.dialog-avatar')).toBeNull()
     expect(first.querySelector('.peer-title .topic-icon')).not.toBeNull()
     expect(first.querySelector('.peer-title-inner')!.textContent).toBe('Тема 1')
@@ -259,37 +274,37 @@ describe('Esc/Back закрывает форум-таб (запись навиг
 describe('открытие темы', () => {
   it('клик по теме — `appImManager.setPeer({peerId, threadId})`; таб остаётся открытым', async () => {
     const setPeer = vi.spyOn(appImManager, 'setPeer').mockResolvedValue(undefined)
-    await start([topic(1), topic(2, { closed: true })])
+    await start([topic(1), topic(2, { pFlags: { closed: true } })])
     await openForum()
 
     press(topicRows()[1])
     expect(setPeer).toHaveBeenCalledTimes(1)
     expect(setPeer.mock.calls[0][0]).toEqual({
       peerId: FORUM_ID,
-      threadId: 2,
+      threadId: generateMessageId(2),
       type: 'chat',
     })
     expect(mounted!.manager.forumTab).toBeDefined()
     expect(forumItems()).toBe(1)
   })
 
-  // У нас General — тема с номером корня 0 (`forum_topics.root_msg_id = 0`, её сообщения
-  // без темы); у tweb это `GENERAL_TOPIC_ID` 1. Строка всё равно строка темы, а клик
-  // открывает сам чат форума — его поток и есть General (найдено на стенде, чат 62).
-  it('General (номер 0) — строка темы, клик открывает чат форума без треда', async () => {
+  // tweb: General — тема с номером `GENERAL_TOPIC_ID` (серверный 1, constants.ts:26);
+  // клик открывает её тред, как любую тему (groupForumTab.ts:116-127 спеки Ф-5 п. 1)
+  it('General — строка темы с номером GENERAL_TOPIC_ID, клик открывает её тред', async () => {
     const setPeer = vi.spyOn(appImManager, 'setPeer').mockResolvedValue(undefined)
-    await start([topic(0, { isGeneral: true, title: 'General' }), topic(2)])
+    await start([topic(1, { id: GENERAL_TOPIC_ID, title: 'General' }), topic(2)])
     await openForum()
 
-    const general = topicRows().find((el) => el.dataset.threadId === '0')!
+    const general = topicRows().find((el) => el.dataset.threadId === '' + GENERAL_TOPIC_ID)!
     expect(general).toBeDefined()
     expect(general.querySelector('.dialog-avatar')).toBeNull()
     expect(general.querySelector('.peer-title-inner')!.textContent).toBe('General')
+    // значок General — по номеру (tweb messageActionTextNewUnsafe.ts:108)
+    expect(general.querySelector('.topic-icon-general')).not.toBeNull()
 
     press(general)
     expect(setPeer).toHaveBeenCalledTimes(1)
-    expect(setPeer.mock.calls[0][0]).toMatchObject({ peerId: FORUM_ID })
-    expect((setPeer.mock.calls[0][0] as { threadId?: number }).threadId).toBeUndefined()
+    expect(setPeer.mock.calls[0][0]).toEqual({ peerId: FORUM_ID, threadId: GENERAL_TOPIC_ID, type: 'chat' })
   })
 
   it('`peer_changed` с темой подсвечивает её строку в табе, а не строку форума', async () => {
@@ -297,7 +312,7 @@ describe('открытие темы', () => {
     await openForum()
     const [, second] = topicRows()
 
-    appImManager.dispatchEvent('peer_changed', { peerId: FORUM_ID, threadId: 2 } as never)
+    appImManager.dispatchEvent('peer_changed', { peerId: FORUM_ID, threadId: generateMessageId(2) } as never)
     expect(second.classList.contains('active')).toBe(true)
     expect(row(FORUM_ID)!.classList.contains('active')).toBe(false)
 
@@ -308,10 +323,10 @@ describe('открытие темы', () => {
 
 describe('скрытые темы (tweb `CAN_HIDE_TOPIC = false`, `forumTopics.ts:20`, `:122-125`)', () => {
   it('скрытая тема — обычная строка списка, отдельной секции нет', async () => {
-    await start([topic(1), topic(2, { hidden: true }), topic(3)])
+    await start([topic(1), topic(2, { pFlags: { hidden: true } }), topic(3)])
     await openForum()
 
-    expect(topicRows().map((el) => +el.dataset.threadId!)).toEqual([1, 2, 3])
+    expect(topicRows().map((el) => +el.dataset.threadId!)).toEqual([1, 2, 3].map((id) => generateMessageId(id)))
     expect(forumTab()!.container.querySelectorAll('.chatlist')).toHaveLength(1)
   })
 
@@ -320,8 +335,76 @@ describe('скрытые темы (tweb `CAN_HIDE_TOPIC = false`, `forumTopics.t
     await openForum()
     const list = forumTab()!.xd
 
-    const hidden = { ...list.getDialog(2)!, pFlags: { hidden: true as const } }
+    const hidden = { ...list.getDialog(generateMessageId(2))!, pFlags: { hidden: true as const } }
     list.updateDialog(hidden)
-    await vi.waitFor(() => expect(topicRows().map((el) => +el.dataset.threadId!)).toEqual([1]))
+    await vi.waitFor(() => expect(topicRows().map((el) => +el.dataset.threadId!)).toEqual([generateMessageId(1)]))
+  })
+})
+
+// Живые события тем — операции хранилища тем воркера (tweb forumTopics.ts:40-104):
+// список не перечитывается, строка меняется значением от владельца.
+describe('живые события тем (Б-54)', () => {
+  it('`update` переименовывает строку и поднимает её по индексу, список не перечитывается', async () => {
+    await start([topic(1), topic(2)])
+    await openForum()
+    const getForumTopics = mounted!.hooks.managers.forumTopics.getForumTopics
+    const calls = getForumTopics.mock.calls.length
+
+    const renamed = { ...forumTab()!.xd.getDialog(generateMessageId(2))!, title: 'Новое имя', index: 5000 * 0x10000 }
+    topicOps([{ op: 'update', peerId: FORUM_ID, topics: [renamed] }])
+    await vi.waitFor(() => {
+      flushFrames()
+      const [first] = topicRows()
+      expect(first.dataset.threadId).toBe('' + generateMessageId(2))
+      expect(first.querySelector('.peer-title-inner')!.textContent).toBe('Новое имя')
+    })
+    expect(getForumTopics.mock.calls.length).toBe(calls)
+  })
+
+  it('`update` чужого форума строки не трогает', async () => {
+    await start([topic(1)])
+    await openForum()
+    topicOps([{ op: 'update', peerId: -999, topics: [topic(1, { peerId: -999, title: 'чужая' })] }])
+    await settle()
+    expect(topicRows()[0].querySelector('.peer-title-inner')!.textContent).toBe('Тема 1')
+  })
+
+  it('`notify` — тема заглушена сроком: строка `is-muted`, срок истёк — нет', async () => {
+    await start([topic(1), topic(2)])
+    await openForum()
+    const t2 = forumTab()!.xd.getDialog(generateMessageId(2))!
+    const now = Math.floor(Date.now() / 1000)
+
+    topicOps([{ op: 'notify', topic: { ...t2, notify_settings: { _: 'peerNotifySettings', mute_until: now + 3600 } } }])
+    await vi.waitFor(() => expect(topicRows()[1].classList.contains('is-muted')).toBe(true))
+
+    topicOps([{ op: 'notify', topic: { ...t2, notify_settings: { _: 'peerNotifySettings', mute_until: now - 1 } } }])
+    await vi.waitFor(() => expect(topicRows()[1].classList.contains('is-muted')).toBe(false))
+  })
+
+  it('`unread` перерисовывает бейдж темы', async () => {
+    await start([topic(1)])
+    await openForum()
+    const t1 = forumTab()!.xd.getDialog(generateMessageId(1))!
+    topicOps([{ op: 'unread', topic: { ...t1, unread_count: 4 } }])
+    await vi.waitFor(() => expect(topicRows()[0].querySelector('.dialog-subtitle-badge-unread')!.textContent).toBe('4'))
+  })
+
+  // О-71 + tweb dialogs.ts:968-985 (`processChangedUnreadOrUnmuted` → `dialog_unread`
+  // форума): строка ФОРУМА в списке чатов пересчитывает бейдж по темам
+  it('`forumUnread` — строка форума в списке чатов: бейдж = число непрочитанных тем', async () => {
+    await start([topic(1)])
+    const getForumUnreadCount = mounted!.hooks.managers.forumTopics.getForumUnreadCount
+    expect(getForumUnreadCount).toHaveBeenCalledWith(FORUM_ID)
+    getForumUnreadCount.mockImplementation(async () => ({ count: 3, unreadNotifySettings: [] }))
+    topicOps([{ op: 'forumUnread', peerId: FORUM_ID }])
+    await vi.waitFor(() => expect(row(FORUM_ID)!.querySelector('.dialog-subtitle-badge-unread')!.textContent).toBe('3'))
+  })
+
+  it('`drop` снимает строку', async () => {
+    await start([topic(1), topic(2)])
+    await openForum()
+    topicOps([{ op: 'drop', peerId: FORUM_ID, id: generateMessageId(1) }])
+    await vi.waitFor(() => expect(topicRows().map((el) => +el.dataset.threadId!)).toEqual([generateMessageId(2)]))
   })
 })

@@ -45,9 +45,11 @@
 //    `withPremiumIcon` — без потребителя), и `limitSymbols` — обрезка имени
 //    (`getPeerTitle.ts:87-89`, ветка пира; у `fromName` — без потребителя; потребитель — подпись
 //    строки «Архив», `components/archiveDialog.solid.tsx`). `threadId` темы форума — опцией
-//    `topic` (строка темы в списке форум-таба, задача 1-6 волны 7): хранилища
-//    тем (`dialogsStorage.getForumTopic`, peerTitle.ts:152-187) у нас нет, тему
-//    приносит строка; заголовок — значок и название (peerTitle.ts:186-220).
+//    `topic` (строка темы в списке форум-таба, задача 1-6 волны 7): хранилище
+//    тем (`dialogsStorage.getForumTopic`, peerTitle.ts:152-187) живёт в воркере,
+//    тему приносит строка; заголовок — значок и название (peerTitle.ts:186-220).
+//    Правку темы (`peer_title_edit` с `threadId`, tweb dialogs.ts:1781-1797)
+//    узел ловит операцией `update` хранилища тем — она несёт новое значение.
 //  • Имя идёт через `wrapEmojiText` (`lib/richtext/wrapEmojiText.ts`) — как в
 //    оригинале, где его прогоняет `getPeerTitle` (`wrappers/getPeerTitle.ts:91`,
 //    `plainText` там не передаётся) и ветка `fromName` самого `PeerTitle`
@@ -60,6 +62,7 @@ import { HIDDEN_PEER_ID } from '@core/peers/peerId'
 import { wrapEmojiText } from '@lib/richtext'
 import { i18n } from '@lib/langPack'
 import rootScope from '@lib/rootScope'
+import { RT } from '@core/realtime/events'
 import replaceContent from '@helpers/dom/replaceContent'
 import generateTitleIcons from '@components/generateTitleIcons'
 import { wrapTopicIcon, type TopicIconSource } from '@components/topicAvatar'
@@ -99,6 +102,13 @@ subscribePeerMirror(() => {
     title.update()
   }
 })
+// `peer_title_edit` с `threadId` — см. шапку
+rootScope.addEventListener(RT.forumTopicOp, ({ ops }) => {
+  for (const op of ops) {
+    if (op.op !== 'update') continue
+    for (const title of live) title.updateTopic(op.peerId, op.topics)
+  }
+})
 
 export default class PeerTitle {
   public readonly element: HTMLElement
@@ -127,6 +137,16 @@ export default class PeerTitle {
       live.add(this)
       options.middleware.onClean(() => { live.delete(this) })
     }
+  }
+
+  /** Тема узла переименована или сменила значок — новое значение от хранилища тем. */
+  public updateTopic(peerId: PeerId, topics: TopicIconSource[]) {
+    const topic = this.options.topic
+    if (!topic || peerId !== this.options.peerId) return
+    const next = topics.find((t) => t.id === topic.id)
+    if (!next || (next.title === topic.title && next.icon_emoji === topic.icon_emoji && next.icon_color === topic.icon_color)) return
+    this.options.topic = next
+    this.update()
   }
 
   /** Порт tweb `update` в применимом объёме (peerTitle.ts:104-200). */

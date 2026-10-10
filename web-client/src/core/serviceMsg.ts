@@ -25,7 +25,7 @@ import { cachedChat, peerTitle } from './peerCache'
 import { isBroadcast } from './peers/predicates'
 import I18n, { type LangPackKey } from '@lib/langPack'
 import { wrapCallDuration } from '@components/wrappers/wrapDuration'
-import type { MessageAction, MessageActionPhoneCall } from './messages/messageAction'
+import type { MessageAction, MessageActionPhoneCall, MessageActionTopicEdit } from './messages/messageAction'
 import type { MessageService, MyMessage } from './models'
 
 /** Кусок фразы сервисной пилюли: обычный текст, имя-пир или ссылка на сообщение.
@@ -83,6 +83,7 @@ export function serviceMsgSegs(m: MessageService, pinnedPreview?: string): Servi
     // читалась «Имя изменил(а) название группы» без названия).
     case 'messageActionChatEditTitle': return [actor, t(' изменил(а) название группы на «'), t(a.title), t('»')]
     case 'messageActionTopicCreate': return [actor, t(' создал(а) тему «'), t(a.title), t('»')]
+    case 'messageActionTopicEdit': return topicEditSegs(a, out, actor)
     // Закрепление (tweb Chat.Service.Group.UpdatedPinnedMessage `%@ pinned "%@"`,
     // без превью — ActionPinnedNoText «un1 pinned a message»).
     case 'messageActionPinMessage': {
@@ -171,6 +172,56 @@ const PEER_SLOT = '\u0000peer'
 function langSegs(key: LangPackKey, peer: ServiceSeg): ServiceSeg[] {
   return I18n.format(key, false, [PEER_SLOT]).map((piece) =>
     piece === PEER_SLOT ? peer : t(piece instanceof Node ? piece.textContent ?? '' : String(piece)))
+}
+
+/** То же для нескольких аргументов: сегмент каждого встаёт на своё место. */
+function langSegsArgs(key: LangPackKey, args: ServiceSeg[]): ServiceSeg[] {
+  const slots = args.map((_, i) => `${PEER_SLOT}${i}`)
+  return I18n.format(key, false, slots).map((piece) => {
+    const idx = typeof piece === 'string' ? slots.indexOf(piece) : -1
+    return idx !== -1 ? args[idx] : t(piece instanceof Node ? piece.textContent ?? '' : String(piece))
+  })
+}
+
+/**
+ * Правка темы — tweb `messageActionTextNewUnsafe.ts:597-645`, ветка за веткой.
+ * Значок у нас — эмодзи строкой (`icon_emoji_emoticon`, расхождение 2
+ * `components/topicAvatar.ts`), поэтому «значок и название» —
+ * `wrapMessageActionTopicIconAndName` (`:151-157`) — склеиваются текстом.
+ */
+function topicEditSegs(a: MessageActionTopicEdit, isMe: boolean, author: ServiceSeg): ServiceSeg[] {
+  const isIconChanged = a.icon_emoji_emoticon !== undefined
+  const isIconRemoved = isIconChanged && !a.icon_emoji_emoticon
+  const isTitleChanged = a.title !== undefined
+  const isHiddenChanged = a.hidden !== undefined
+  const args: ServiceSeg[] = isMe ? [] : [author]
+  let key: LangPackKey | undefined
+
+  if (a.closed) {
+    key = isMe ? 'Chat.Service.Group.TopicEdited.You.Paused' : 'Chat.Service.Group.TopicEdited.Paused'
+  } else if (a.closed === false) {
+    key = isMe ? 'Chat.Service.Group.TopicEdited.You.Resumed' : 'Chat.Service.Group.TopicEdited.Resumed'
+  } else if (isIconRemoved && isTitleChanged) {
+    key = isMe ? 'Chat.Service.TopicEdited.You.Mixed.IconRemoved' : 'Chat.Service.TopicEdited.Mixed.IconRemoved'
+    args.push(t(a.title!))
+  } else if (isIconChanged && isTitleChanged) {
+    key = isMe ? 'Chat.Service.TopicEdited.You.Mixed' : 'Chat.Service.TopicEdited.Mixed'
+    args.push(t(`${a.icon_emoji_emoticon} ${a.title}`))
+  } else if (isIconRemoved) {
+    key = isMe ? 'Chat.Service.Group.TopicEdited.You.Icon.Removed' : 'Chat.Service.Group.TopicEdited.Icon.Removed'
+  } else if (isTitleChanged) {
+    key = isMe ? 'Chat.Service.Group.TopicEdited.You.Title' : 'Chat.Service.Group.TopicEdited.Title'
+    args.push(t(a.title!))
+  } else if (isIconChanged) {
+    key = isMe ? 'Chat.Service.Group.TopicEdited.You.Icon' : 'Chat.Service.Group.TopicEdited.Icon'
+    args.push(t(a.icon_emoji_emoticon!))
+  } else if (isHiddenChanged) {
+    key = isMe ?
+      (a.hidden ? 'Chat.Service.Group.TopicEdited.You.Hided' : 'Chat.Service.Group.TopicEdited.You.Unhided') :
+      (a.hidden ? 'Chat.Service.Group.TopicEdited.Hided' : 'Chat.Service.Group.TopicEdited.Unhided')
+  }
+
+  return key ? langSegsArgs(key, args) : [t(UNSUPPORTED_ACTION)]
 }
 
 /** Список добавленных — ссылками, а не именами. */

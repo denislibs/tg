@@ -6,7 +6,8 @@ import { mapMyMessage, type MessageReal, type MyMessage, type RawMessage, type R
 import type { NewMessageEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, DeleteMessageEvt } from '../realtime/events'
 import { RT } from '../realtime/events'
 import type { MessageOp } from '../realtime/messageOps'
-import { generateMessageId } from '../history/messageId'
+import { GENERAL_TOPIC_ID, generateMessageId } from '../history/messageId'
+import type { Chat } from '../peers/peer'
 import { SliceEnd } from '../history/slicedArray'
 import { makeRawMessage } from '../messages/testMessage'
 import { getDocumentFromMessage, getMediaFromMessage, pollOptionKey, type MessageMedia, type MessageMediaPoll, type MessageMediaToDo } from '../media/messageMedia'
@@ -346,6 +347,25 @@ describe('MessagesManager.cacheLive', () => {
       expect(op.op).toBe('insert')
       if (op.op === 'insert') expect(op.msg.id).toBe(cid(5))
     }
+  })
+
+  // A1-16 + порт getMessageThreadId (tweb getThreadKey, appMessagesManager.ts:11903-11921):
+  // в форуме простое сообщение темы — `reply_to_msg_id` = номер темы с
+  // `forum_topic`, БЕЗ `reply_to_top_id`; без флага — General.
+  it('форум: сообщение темы уходит в окно темы, без `forum_topic` — в окно General', async () => {
+    const FORUM = -5
+    const forumChat = { _: 'channel', id: 5, title: 'Ф', pFlags: { megagroup: true, forum: true } } as unknown as Chat
+    const rest = {
+      get: async () => ({ messages: [], count: 0 }),
+      post: async () => ({}),
+    } as unknown as RestClient
+    const mgr = newMessagesManager({ rest, getPeer: (id) => (id === FORUM ? forumChat : undefined) })
+    await mgr.getHistory({ peerId: FORUM, offsetId: 0, addOffset: 0, limit: 40, threadRoot: cid(10) })
+    await mgr.getHistory({ peerId: FORUM, offsetId: 0, addOffset: 0, limit: 40, threadRoot: GENERAL_TOPIC_ID })
+    const inTopic = mgr.cacheLive(liveEvt(makeRawMessage({ id: 11, peerId: FORUM, fromId: 1, replyToMsgId: 10, forumTopic: true })))
+    expect(inTopic.map((o) => o.key)).toEqual([`${FORUM}:${cid(10)}`])
+    const inGeneral = mgr.cacheLive(liveEvt(makeRawMessage({ id: 12, peerId: FORUM, fromId: 1 })))
+    expect(inGeneral.map((o) => o.key)).toEqual([`${FORUM}:${GENERAL_TOPIC_ID}`])
   })
 
   // КРИТИЧНО: окно, не державшее низ истории (сохранена только «средняя»/старая

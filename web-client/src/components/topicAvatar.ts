@@ -12,10 +12,11 @@
 //     клиентский параметр схемы), а не документ кастом-эмодзи (`icon_emoji_id`
 //     → `wrapCustomEmojiAwaited`): рендерера кастом-эмодзи нет. Эмодзи —
 //     `wrapEmojiText` в `.topic-icon`.
-//  3. General (`is_general`) у tweb — кастом-эмодзи `5390854796011906616`; у нас
-//     его нет, поэтому — решётка `.topic-icon-general` из закомментированной
-//     ветки оригинала (`:116-127`).
+//  3. General (`id === GENERAL_TOPIC_ID`, `:108`) у tweb — кастом-эмодзи
+//     `5390854796011906616`; у нас его нет, поэтому — решётка
+//     `.topic-icon-general` из закомментированной ветки оригинала (`:116-127`).
 import { TOPIC_COLORS } from '@core/forumTopicConstants'
+import { GENERAL_TOPIC_ID } from '@core/history/messageId'
 import { hexaToHsla } from '@shared/lib/color'
 import { wrapAbbreviation } from '@lib/richtext/abbreviation'
 import { wrapEmojiText } from '@lib/richtext'
@@ -90,12 +91,12 @@ export default function topicAvatar(color: number, content: string) {
 
 /** Тема в объёме значка: то, что читает `wrapTopicIcon`. */
 export type TopicIconSource = {
+  /** номер темы — General узнаётся по нему (расхождение 3) */
+  id: number,
   title: string,
   icon_color: number,
   /** расхождение 2 */
   icon_emoji?: string,
-  /** расхождение 3 */
-  isGeneral?: boolean,
 }
 
 /** Решётка General — закомментированная ветка tweb `:116-127` (расхождение 3). */
@@ -112,7 +113,7 @@ function wrapGeneralTopicIcon() {
 
 /** tweb `messageActionTextNewUnsafe.ts:105-141` (расхождения 2, 3). */
 export function wrapTopicIcon(topic: TopicIconSource): HTMLElement {
-  if(topic.isGeneral) {
+  if(topic.id === GENERAL_TOPIC_ID) {
     return wrapGeneralTopicIcon()
   }
 

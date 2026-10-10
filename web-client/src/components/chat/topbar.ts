@@ -48,9 +48,12 @@
 //     аватарки, `welcome_*`, ветка заголовка `Welcome` — предметов нет. Заголовок
 //     экрана закрепов (`:1557-1585`) — счёт `core/pinnedMessages.ts::getPinnedMessage`. Тема форума
 //     (заголовок `wrapPeerTitle({threadId})`, аватар `avatarNew({threadId})`, статус
-//     `TopicProfileStatus` `:1736-1742`) — тема приходит не из кэша, а ручкой списка тем
-//     (`loadForumTopic`). Замка закрытой темы в шапке у tweb нет (`pFlags.closed` темы
-//     шапка не читает) — его рисовал прежний React `ChatHeader`, в порт он не идёт.
+//     `TopicProfileStatus` `:1736-1742`) — тема приходит из хранилища тем воркера
+//     (`forumTopics.getForumTopicOrReload`, tweb `getForumTopicById`); смену значка
+//     (`avatar_update` с `threadId`, у tweb его слушает `avatarNew`) шапка ловит
+//     операцией `edit` хранилища и перерисовывает аватар сама, название — `PeerTitle`. Замка закрытой темы в шапке у tweb нет
+//     (`pFlags.closed` темы шапка не читает) — его рисовал прежний React `ChatHeader`,
+//     в порт он не идёт.
 //  4. Статус — `appImManager.setPeerStatus` (блок L, его расхождения Н1–Н6). Поводы
 //     перерисовки — зеркала, а не события: набор и присутствие — `chatsStore.typing`/
 //     `presence` (вместо `peer_typings`/`user_update`), карточка — `peerCache`.
@@ -757,6 +760,13 @@ export default class ChatTopbar {
       }
     })
 
+    // `peer_title_edit`/`avatar_update` темы — расхождение 3
+    this.listenerSetter.add(rootScope)(RT.forumTopicOp, ({ ops }) => {
+      for(const op of ops) {
+        if(op.op === 'edit') void this.onForumTopicEdit(op.peerId, op.id, op.icon)
+      }
+    })
+
     // tweb :1149-1157
     this.listenerSetter.add(rootScope)('peer_pinned_messages', ({ peerId, mids }) => {
       if(this.chat.type !== ChatType.Pinned || peerId !== this.peerId) {
@@ -1001,24 +1011,46 @@ export default class ChatTopbar {
   }
 
   /**
-   * Б-57: тема форума — у tweb её отдаёт кэш `dialogsStorage.getForumTopic` (заголовок —
-   * `wrapPeerTitle({threadId})`, аватар — `avatarNew({threadId})`). Хранилища тем на главном
-   * потоке у нас нет: список тем перечитывается ручкой, как у форум-таба
-   * (`autonomousDialogList/forumTopics.ts`). Темы нет — заголовок и аватар пира (как у tweb,
-   * когда `getForumTopicById` ничего не нашёл, `peerTitle.ts:160-170`).
+   * Б-57: тема форума — у tweb её отдаёт `dialogsStorage.getForumTopicById` (заголовок —
+   * `wrapPeerTitle({threadId})`, аватар — `avatarNew({threadId})`): хранилище тем воркера
+   * (`core/managers/forumTopicsStorage.ts`). Темы нет — заголовок и аватар пира (как у
+   * tweb, когда `getForumTopicById` ничего не нашёл, `peerTitle.ts:160-170`).
    */
   private async loadForumTopic(): Promise<TopicIconSource | undefined> {
     const { peerId, threadId } = this.chat
-    if(!this.chat.isForumTopic) return
+    if(!this.chat.isForumTopic || !threadId) return
 
-    const topics = await this.managers.groups.listTopics(peerId).catch(() => [])
-    const topic = topics.find((topic) => topic.id === threadId)
-    return topic && {
-      title: topic.title,
-      icon_color: topic.iconColor,
-      icon_emoji: topic.iconEmoji,
-      isGeneral: topic.isGeneral,
-    }
+    return this.managers.forumTopics.getForumTopicOrReload(peerId, threadId).catch(() => undefined)
+  }
+
+  /**
+   * `avatar_update` с `threadId` (tweb `dialogs.ts:1781-1797` → `avatarNew`): у темы
+   * открытого треда сменили значок — аватар шапки рисуется заново (расхождение 3);
+   * заголовок `PeerTitle` перерисовывает сам.
+   */
+  private async onForumTopicEdit(peerId: PeerId, threadId: number, icon: boolean) {
+    if(peerId !== this.chat.peerId || threadId !== this.chat.threadId || !this.chat.isForumTopic) return
+    const topic = await this.managers.forumTopics.getForumTopic(peerId, threadId)
+    if(!topic || peerId !== this.chat.peerId || threadId !== this.chat.threadId) return
+    // заголовок перерисовывает сам `PeerTitle` (его `updateTopic`)
+    this.forumTopic = topic
+    if(!icon || !this.avatar) return
+
+    const middlewareHelper = getMiddleware()
+    const avatar = avatarNew({
+      middleware: middlewareHelper.get(),
+      isDialog: true,
+      size: 40,
+      peerId,
+      threadId,
+      topic,
+      managers: this.managers,
+    })
+    avatar.node.classList.add('person-avatar')
+    this.avatar.node.replaceWith(avatar.node)
+    this.avatarMiddlewareHelper?.destroy()
+    this.avatar = avatar
+    this.avatarMiddlewareHelper = middlewareHelper
   }
 
   public async finishPeerChange(options: { middleware: () => boolean }) {

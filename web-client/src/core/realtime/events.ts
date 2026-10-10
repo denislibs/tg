@@ -94,6 +94,21 @@ export const RT = {
   // dialogsManager, витрина только зеркалит. Событие несёт ЗНАЧЕНИЕ с индексом
   // (порт tweb dialogs_multiupdate), а не «перечитай».
   dialogOp: 'rt:dialog_op',
+  // Темы форумов — владелец воркерный хранилище тем (`core/managers/
+  // forumTopicsStorage.ts`, порт `dialogsStorage.forumTopics`). Событие несёт
+  // ОПЕРАЦИИ со значением (`ForumTopicOp`: события хранилища tweb
+  // `dialogs_multiupdate`/`dialog_unread`/`dialog_drop`/
+  // `dialog_notify_settings` для темы), а не «перечитай список».
+  forumTopicOp: 'rt:forum_topic_op',
+  // Закреп темы форума: `updatePinnedForumTopic` (одна тема) и
+  // `updatePinnedForumTopics` (порядок закрепа). Применяет хранилище тем, вкладкам
+  // уезжает операциями `forumTopicOp`; имена нужны полноте реестра.
+  pinnedForumTopic: 'rt:pinned_forum_topic',
+  pinnedForumTopics: 'rt:pinned_forum_topics',
+  // Прочтение треда (тема форума, тред комментариев) — `updateReadChannelDiscussionInbox/
+  // Outbox` (tweb appMessagesManager.ts:777-778). Применяет хранилище тем
+  // (`applyReadDiscussion`); сырой кадр летит дальше — окну треда (волна 2 Ф-5).
+  readDiscussion: 'rt:read_discussion',
   pollUpdate: 'rt:poll_update',
   checklistUpdate: 'rt:checklist_update',
   boostUpdate: 'rt:boost_update',
@@ -460,6 +475,35 @@ export interface DialogArchiveEvt {
  * «навсегда». Бэкенд читает настройки обратно из базы, поэтому в кадре едут и
  * превью со звуком, которых мьют не менял (usecase/chat/group.go::SetMute).
  */
+/** updatePinnedForumTopic#683b2c52 flags:# pinned:flags.0?true peer:Peer
+ *  topic_id:int = Update; — тему закрепили/открепили (tweb `dialogs.ts:2480-2490`).
+ *  «Открепили» — отсутствие бита. `topic_id` — серверный номер темы. */
+export interface PinnedForumTopicEvt {
+  _: 'updatePinnedForumTopic'
+  pFlags?: { pinned?: true }
+  peer: Peer
+  topic_id: number
+}
+/** updatePinnedForumTopics#def143d0 flags:# peer:Peer order:flags.0?Vector<int> = Update;
+ *  — порядок закреплённых тем; без `order` — перечитать закреплённые
+ *  (tweb `dialogs.ts:2601-2638`). */
+export interface PinnedForumTopicsEvt {
+  _: 'updatePinnedForumTopics'
+  peer: Peer
+  order?: number[]
+}
+/** updateReadChannelDiscussionInbox#d6b19546 flags:# channel_id:long top_msg_id:int
+ *  read_max_id:int broadcast_id:flags.0?long broadcast_post:flags.0?int = Update;
+ *  updateReadChannelDiscussionOutbox#695c9e7c channel_id:long top_msg_id:int read_max_id:int = Update;
+ *  — горизонт прочтения ТРЕДА (тема, тред комментариев). Номера серверные. */
+export interface ReadDiscussionEvt {
+  _: 'updateReadChannelDiscussionInbox' | 'updateReadChannelDiscussionOutbox'
+  channel_id: number
+  top_msg_id: number
+  read_max_id: number
+  broadcast_id?: number
+  broadcast_post?: number
+}
 export interface DialogMuteEvt {
   _: 'updateNotifySettings'
   peer: import('../models').NotifyPeer
@@ -733,6 +777,9 @@ export type Update =
   | DialogPinEvt
   | DialogArchiveEvt
   | DialogMuteEvt
+  | PinnedForumTopicEvt
+  | PinnedForumTopicsEvt
+  | ReadDiscussionEvt
   | TypingEvt
   | PresenceEvt
   | UserUpdateEvt

@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 64,
+      "version": 66,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -1447,6 +1447,78 @@
         {
           "key": "Chat.Service.Call.Missed",
           "value": "Missed"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.Hided",
+          "value": "%1$@ hid the general topic"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.Icon",
+          "value": "%1$@ changed topic icon to %2$@"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.Icon.Removed",
+          "value": "%1$@ removed the icon"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.Paused",
+          "value": "%1$@ closed the topic"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.Resumed",
+          "value": "%1$@ reopened the topic"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.Title",
+          "value": "%1$@ changed topic name to \"%2$@\""
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.Unhided",
+          "value": "%1$@ unhid the general topic"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.You.Hided",
+          "value": "You hid the general topic"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.You.Icon",
+          "value": "You changed topic icon to %1$@"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.You.Icon.Removed",
+          "value": "You removed the icon"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.You.Paused",
+          "value": "You closed the topic"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.You.Resumed",
+          "value": "You reopened the topic"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.You.Title",
+          "value": "You changed topic name to \"%1$@\""
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.You.Unhided",
+          "value": "You unhid the general topic"
+        },
+        {
+          "key": "Chat.Service.TopicEdited.Mixed",
+          "value": "%1$@ changed the topic name and icon to %2$@"
+        },
+        {
+          "key": "Chat.Service.TopicEdited.Mixed.IconRemoved",
+          "value": "%1$@ changed the topic name to \"%1$@\" and removed icon"
+        },
+        {
+          "key": "Chat.Service.TopicEdited.You.Mixed",
+          "value": "You changed the topic name and icon to %2$@"
+        },
+        {
+          "key": "Chat.Service.TopicEdited.You.Mixed.IconRemoved",
+          "value": "You changed the topic name to \"%1$@\" and removed icon"
         },
         {
           "key": "Chat.Subscribe",
@@ -7394,7 +7466,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 64,
+      "version": 65,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -14845,6 +14917,78 @@
         {
           "key": "ChatService.UserJoinedChannelByRequest",
           "value": "%@ вступил(а) в канал по заявке"
+        },
+        {
+          "key": "Chat.Service.TopicEdited.Mixed",
+          "value": "%1$@ изменил(а) название и значок темы на %2$@"
+        },
+        {
+          "key": "Chat.Service.TopicEdited.You.Mixed",
+          "value": "Вы изменили название и значок темы на %1$@"
+        },
+        {
+          "key": "Chat.Service.TopicEdited.Mixed.IconRemoved",
+          "value": "%1$@ изменил(а) название темы на «%2$@» и убрал(а) значок"
+        },
+        {
+          "key": "Chat.Service.TopicEdited.You.Mixed.IconRemoved",
+          "value": "Вы изменили название темы на «%1$@» и убрали значок"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.Icon",
+          "value": "%1$@ изменил(а) значок темы на %2$@"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.Icon.Removed",
+          "value": "%1$@ убрал(а) значок темы"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.Title",
+          "value": "%1$@ изменил(а) название темы на «%2$@»"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.Paused",
+          "value": "%1$@ закрыл(а) тему"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.Resumed",
+          "value": "%1$@ снова открыл(а) тему"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.You.Icon",
+          "value": "Вы изменили значок темы на %1$@"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.You.Icon.Removed",
+          "value": "Вы убрали значок темы"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.You.Title",
+          "value": "Вы изменили название темы на «%1$@»"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.You.Paused",
+          "value": "Вы закрыли тему"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.You.Resumed",
+          "value": "Вы снова открыли тему"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.You.Hided",
+          "value": "Вы скрыли тему «Общее»"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.You.Unhided",
+          "value": "Вы снова показали тему «Общее»"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.Hided",
+          "value": "%1$@ скрыл(а) тему «Общее»"
+        },
+        {
+          "key": "Chat.Service.Group.TopicEdited.Unhided",
+          "value": "%1$@ снова показал(а) тему «Общее»"
         },
         {
           "key": "RequestToJoinGroupApproved",

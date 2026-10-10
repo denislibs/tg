@@ -3,121 +3,55 @@
 // темы в `threadId`) поверх `SortedDialogList` с `virtualFilterId` форума. Его
 // строит форум-таб (`components/forumTab/groupForumTab.ts`). Задача 1-6 волны 7.
 //
+// Источник данных — хранилище тем воркера (`core/managers/forumTopicsStorage.ts`,
+// порт `dialogsStorage.forumTopics`, Б-54): страница — `forumTopics.getForumTopics`
+// (`dialogsStorage.getDialogs({filterId: peerId})`), живые изменения — операции
+// `rt:forum_topic_op` владельца, те же события, что слушает оригинал (`:24-104`):
+// `update` — `dialogs_multiupdate` с `topics`, `unread` — `dialog_unread`,
+// `notify` — `dialog_notify_settings` темы, `drop` — `dialog_drop`.
+//
 // Расхождения с оригиналом:
-//  1. Страница — ответ `messages.forumTopics` (`GET /chats/{id}/topics`,
-//     `managers.groups.listTopics`), а не `dialogsStorage.getDialogs({filterId:
-//     peerId})` базы: хранилища тем у нас нет, набор приезжает ЦЕЛИКОМ одним
-//     ответом без курсора. Поэтому страница одна (`isEnd: true`), а догрузка с
-//     курсором отдаёт пустую (тот же приём, что у `savedDialogs.ts`, его
-//     расхождение 1).
-//  2. Тема строки — `ForumTopic` ниже: строка модели `TopicRow`
-//     (`core/managers/groupsManager.ts`) в форме tweb `forumTopic`. `id` — номер
-//     корня темы (`root_msg_id`; у оригинала id темы И ЕСТЬ номер корня), им
-//     адресуются тред (`threadId`) и строка (`data-thread-id`); серверный id
-//     строки темы — `topicId` (ручки `groups.*Topic`). Заглушённость —
-//     вычисленная `TopicRow.muted` (сырых `notify_settings` в строке модели нет),
-//     поэтому «тема не настроена → как у форума» (`isPeerLocalMuted` с `threadId`,
-//     `appNotificationsManager.ts:399-405`) — это «тема не заглушена → как у
-//     форума» (`getForumTopicMuted`). `read_inbox_max_id` в строке модели нет —
-//     метка `not-visited` у бейджа не ставится (`appDialogsManager.ts:2799-2802`).
-//  3. Индекс — место в ответе (порядок сервера: закреплённые, затем свежие), а
-//     не `index_0` хранилища (`getDialogIndex`) — расхождение 2 `savedDialogs.ts`.
-//  4. Живых апдейтов тем (`dialogs_multiupdate` с `topics`, `dialog_unread`,
-//     `dialog_drop`, `dialog_draft` темы, `peer_typings` с `threadId`, `:24-104`)
-//     нет: событий тем на главном потоке нет, хранилища тем в воркере — тоже.
-//     Список собирается заново на каждый показ форум-таба (бэклог Б-54). Остался
-//     `dialog_notify_settings` форума (`:66-79`): мьют форума (диалог в зеркале
-//     `chatsStore` или настройки по типам `notifyStore`) пересчитывает бейджи всех
-//     строк.
+//  1. Страница одна (расхождение 1 хранилища тем): сервер отдаёт темы целиком,
+//     догрузка с курсором отдаёт пустую.
+//  2. Тему по ключу список держит у себя (`topics`): строку `SortedDialogList`
+//     строит синхронно из `getDialog(key)` (расхождение 6 его шапки), а
+//     `getForumTopic` у нас — RPC. Значения приезжают от владельца и только им
+//     заменяются.
+//  3. `dialog_notify_settings` САМОГО форума (`:66-79`) — подписка на зеркала:
+//     мьют форума (диалог в `chatsStore`) или настройки по типам (`notifyStore`)
+//     пересчитывают бейджи всех строк.
+//  4. `peer_typings` с `threadId` (`:24-38`) — «печатает» в теме у нас не едет
+//     номером темы; `dialog_draft` темы (`:93-104`) — черновиков тредов нет
+//     (волна 2 Ф-5, КЛ-2).
 //  5. `getDialogFromElement` — его потребитель, меню строки темы, не портирован
 //     (бэклог Б-53); `placeholderOptions` (`:22-26`) — наш `DialogsPlaceholder`
 //     параметров не берёт (расхождение 4 базы).
-//  6. Менеджеры: база берёт менеджеры колонки у владельца, ручку тем приносит
-//     вызывающий (форум-таб) — как у `savedDialogs.ts` (его расхождение 6).
+//  6. Менеджеры: база берёт менеджеры колонки у владельца, хранилище тем
+//     приносит вызывающий (форум-таб) — как у `savedDialogs.ts` (его расхождение 6).
 import type { Managers } from '@/client/bootstrap'
-import type { MyMessage } from '@core/models'
 import { CAN_HIDE_TOPIC } from '@core/forumTopicConstants'
-import type { TopicRow } from '@core/managers/groupsManager'
+import { isForumTopic, isForumTopicMuted, type ForumTopic, type ForumTopicOp } from '@core/dialogs/forumTopic'
 import { cachedChat } from '@core/peerCache'
+import { RT } from '@core/realtime/events'
+import rootScope from '@lib/rootScope'
 import { getDialog, setUnreadMessagesN } from '@lib/appDialogsManager'
 import { useChatsStore } from '@stores/chatsStore'
 import { isDialogMuted, useNotifyStore } from '@stores/notifyStore'
 import { AutonomousDialogListBase, type BaseConstructorArgs } from '@components/autonomousDialogList/base'
 
-/**
- * tweb `ForumTopic.forumTopic` в объёме нашей модели (расхождение 2): то, из чего
- * рисуется строка темы.
- */
-export type ForumTopic = {
-  _: 'forumTopic',
-  peerId: PeerId,
-  /** номер корня темы — `threadId` треда и ключ строки */
-  id: number,
-  /** серверный id строки темы */
-  topicId: number,
-  title: string,
-  icon_color: number,
-  icon_emoji?: string,
-  isGeneral: boolean,
-  pFlags: { pinned?: true, closed?: true, hidden?: true },
-  top_message: number,
-  unread_count: number,
-  unread_mentions_count: number,
-  unread_reactions_count: number,
-  /** `TopicRow.muted` — расхождение 2 */
-  muted: boolean,
-  /** место в ответе — расхождение 3 */
-  index: number,
-  lastMessage?: MyMessage,
-}
-
-/** tweb `utils/dialogs/isDialog.ts:13-15` */
-export function isForumTopic(dialog: { _?: string }): dialog is ForumTopic {
-  return dialog._ === 'forumTopic'
-}
-
-/** Строка модели → тема строки (расхождения 2, 3). */
-export function toForumTopic(row: TopicRow, index: number): ForumTopic {
-  const pFlags: ForumTopic['pFlags'] = {}
-  if(row.pinned) pFlags.pinned = true
-  if(row.closed) pFlags.closed = true
-  if(row.hidden) pFlags.hidden = true
-
-  return {
-    _: 'forumTopic',
-    peerId: row.peerId,
-    id: row.rootMsgId,
-    topicId: row.id,
-    title: row.title,
-    icon_color: row.iconColor,
-    icon_emoji: row.iconEmoji || undefined,
-    isGeneral: row.isGeneral,
-    pFlags,
-    top_message: row.lastMsgSeq,
-    unread_count: row.unread,
-    unread_mentions_count: row.unreadMentions,
-    unread_reactions_count: 0,
-    muted: row.muted,
-    index,
-    lastMessage: row.lastMessage,
-  }
-}
+export { isForumTopic, type ForumTopic }
 
 /**
- * `appNotificationsManager.isPeerLocalMuted({peerId, threadId})` (`:399-405`) в
- * объёме расхождения 2: тема заглушена сама — да, иначе — как форум.
+ * `appNotificationsManager.isPeerLocalMuted({peerId, threadId})` (`:396-410`):
+ * своя настройка темы, иначе — как форум (мьют диалога и типа чатов).
  */
 export function getForumTopicMuted(topic: ForumTopic) {
-  if(topic.muted) {
-    return true
-  }
-
-  return isDialogMuted(getDialog(topic.peerId), cachedChat(topic.peerId), useNotifyStore.getState().settings)
+  return isForumTopicMuted(topic, () => isDialogMuted(getDialog(topic.peerId), cachedChat(topic.peerId), useNotifyStore.getState().settings))
 }
 
-/** Ручка тем — расхождение 6. */
+/** Хранилище тем — расхождение 6. */
 export type ForumTopicListManagers = {
-  groups: Pick<Managers['groups'], 'listTopics'>,
+  forumTopics: Pick<Managers['forumTopics'], 'getForumTopics'>,
 }
 
 type ConstructorArgs = BaseConstructorArgs & {
@@ -132,7 +66,7 @@ export class AutonomousForumTopicList extends AutonomousDialogListBase<ForumTopi
   protected skipMigrated: boolean
 
   private topicManagers: ForumTopicListManagers
-  /** страница владельца по ключу-теме — расхождения 1, 3 */
+  /** расхождение 2 */
   private topics = new Map<number, ForumTopic>()
 
   constructor({ peerId, managers, ...args }: ConstructorArgs) {
@@ -143,7 +77,11 @@ export class AutonomousForumTopicList extends AutonomousDialogListBase<ForumTopi
 
     this.skipMigrated = !!CAN_HIDE_TOPIC
 
-    // `dialog_notify_settings` форума (`:66-79`) — расхождение 4
+    this.listenerSetter.add(rootScope)(RT.forumTopicOp, ({ ops }) => {
+      for(const op of ops) this.onTopicOp(op)
+    })
+
+    // `dialog_notify_settings` форума (`:66-79`) — расхождение 3
     const notifyUnsubscribe = useNotifyStore.subscribe((state, prev) => {
       if(state.settings !== prev.settings) this.updateAllUnread()
     })
@@ -157,6 +95,36 @@ export class AutonomousForumTopicList extends AutonomousDialogListBase<ForumTopi
       notifyUnsubscribe()
       chatsUnsubscribe()
     })
+  }
+
+  /** События хранилища тем (`:40-104`). */
+  private onTopicOp(op: ForumTopicOp) {
+    switch(op.op) {
+      case 'update': {
+        if(op.peerId !== this.peerId) return
+        for(const topic of op.topics) {
+          this.topics.set(topic.id, topic)
+          this.updateDialog(topic)
+        }
+        return
+      }
+      case 'unread':
+      case 'notify': {
+        const topic = op.topic
+        if(topic.peerId !== this.peerId) return
+        this.topics.set(topic.id, topic)
+        const dialogElement = this.getDialogElement(this.getDialogKey(topic))
+        if(dialogElement) void setUnreadMessagesN({ dialog: topic, dialogElement })
+        return
+      }
+      case 'drop': {
+        if(op.peerId !== this.peerId) return
+        this.topics.delete(op.id)
+        this.deleteDialogByKey(op.id)
+        return
+      }
+      default:
+    }
   }
 
   /** tweb `:68-76` — все строки форума заново (возможно, менялся только `is-muted`) */
@@ -182,12 +150,11 @@ export class AutonomousForumTopicList extends AutonomousDialogListBase<ForumTopi
     return this.peerId
   }
 
-  /** расхождение 3 */
   protected getDialogIndex(dialog: ForumTopic) {
     return dialog.index
   }
 
-  /** Тема строки по ключу — для `SortedDialogList` (расхождение 6 его шапки). */
+  /** Тема строки по ключу — расхождение 2. */
   public getDialog(key: number) {
     return this.topics.get(key)
   }
@@ -200,16 +167,10 @@ export class AutonomousForumTopicList extends AutonomousDialogListBase<ForumTopi
 
   /** расхождение 1; `skipMigrated` — `dialogsStorage.getFolderDialogs` (`dialogs.ts:517-519`) */
   protected async dialogsFetcher(offsetIndex: number | undefined) {
-    if(offsetIndex !== undefined) {
-      return { dialogs: [], count: this.topics.size, isEnd: true }
-    }
-
-    const rows = await this.topicManagers.groups.listTopics(this.peerId)
-    const visible = this.skipMigrated ? rows.filter((row) => !row.hidden) : rows
-    const dialogs = visible.map((row, idx) => toForumTopic(row, visible.length - idx))
-
-    this.topics = new Map(dialogs.map((dialog) => [dialog.id, dialog]))
-
+    const page = await this.topicManagers.forumTopics.getForumTopics(this.peerId, offsetIndex)
+    if(offsetIndex !== undefined) return page
+    const dialogs = this.skipMigrated ? page.dialogs.filter((topic) => !topic.pFlags.hidden) : page.dialogs
+    for(const topic of dialogs) this.topics.set(topic.id, topic)
     return { dialogs, count: dialogs.length, isEnd: true }
   }
 }

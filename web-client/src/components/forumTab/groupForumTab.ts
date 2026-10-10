@@ -8,8 +8,9 @@
 //     (`onFound: null`, `:50`): наш `openChat` номер темы в `setPeer` не передаёт
 //     (`lib/appDialogsManager.ts`, расхождение `setPeerFunc` без `threadId`). Тема
 //     открывается, как у tweb, `appImManager.setPeer({peerId, threadId})`
-//     (`appDialogsManager.ts:2094`, `openInner` у списка темы ложен); шапку темы
-//     рисует `ChatTopbar` (Б-57).
+//     (`appDialogsManager.ts:2094`, `openInner` у списка темы ложен) — и General
+//     тоже: её тред `GENERAL_TOPIC_ID` (номер темы, `core/dialogs/forumTopic.ts`);
+//     шапку темы рисует `ChatTopbar` (Б-57).
 //  2. Меню строки темы (`withContext`, ветки `threadId` в `dialogsContextMenu.ts`)
 //     и выделение тем (`ForumTopicsSelection`, `attachPinnedReorder`) не
 //     портированы — бэклог Б-53 и О-30.
@@ -23,7 +24,8 @@
 //     (`domain/mtdialog.go:47`).
 //  4. `chat_update` (`:156-168`) — подписка на зеркало карточек; `history_reload`
 //     (`:150-154`) и `subscribeToChannelUpdates` (`:178-181`) — предмета нет:
-//     темы перечитываются на каждый показ, отдельной подписки на канал нет.
+//     живые изменения тем приносит хранилище тем воркера операциями
+//     (`rt:forum_topic_op`), отдельной подписки на канал нет.
 //  5. Заголовок — `PeerTitle` (`wrapPeerTitle({dialog: true})`), синхронный: ждать его
 //     не нужно, ждётся только подпись `appImManager.setPeerStatus` (`:189-210`).
 import appDialogsManager from '@lib/appDialogsManager'

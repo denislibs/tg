@@ -1491,8 +1491,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
     const replyTo = message.reply_to
     const replyToMid = replyTo?.reply_to_msg_id
     if (!replyTo || !replyToMid) return
-    // Ответ на корень треда шапки не даёт (:9377-9378).
-    if (replyToMid === replyTo.reply_to_top_id) return
+    // Ответ на корень треда шапки не даёт (tweb bubbles.ts:10766-10768): ни на
+    // открытый тред (у сообщения темы `reply_to_msg_id` — номер самой темы),
+    // ни на `reply_to_top_id`.
+    if (replyToMid === this.chat.threadId || replyToMid === replyTo.reply_to_top_id) return
+    // Форум «как сообщения» (`isAllMessagesForum`, tweb chat.ts:963): ссылка
+    // сообщения на свою тему — не ответ, шапку даёт только ответ внутри темы
+    // (`reply_to_top_id`, tweb bubbles.ts:10771).
+    if (this.chat.isForum && !this.chat.threadId && !replyTo.reply_to_top_id) return
 
     // tweb messageRender.ts:472-479 — оригинал ищется В ЧАТЕ ОРИГИНАЛА
     // (`reply_to_peer_id`, иначе свой). Окно у ленты одно и своего чата, поэтому
@@ -3819,7 +3825,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * ради типа, а фраза плашки автора не упоминает (`serviceMsg.ts:110`).
    */
   private threadServiceStartMessage(root: MyMessage): MessageService | undefined {
-    if(!this.chat.threadId) {
+    // `historyType === HistoryType.Thread` (:13176): у треда ФОРУМА тип —
+    // `Topic` (`getHistoryType`, :12667-12683), плашки там нет — корень темы
+    // это служебка её создания, а у General корня нет вовсе.
+    if(!this.chat.threadId || this.chat.isForum) {
       return undefined
     }
 

@@ -22,12 +22,13 @@ export interface MessagesSearchResultsCalendar {
   messages: RawMyMessage[]
   users: UserReal[]
 }
-import { getThreadRootId, mapMyMessage, type MyMessage, type MessageReal, type MessageEntity, type MessageFields, type MessageReplies, type MessageReplyHeader, type RawMessage, type RawMyMessage, type SecretMedia } from '../models'
+import { getMessageThreadId, mapMyMessage, type MyMessage, type MessageReal, type MessageEntity, type MessageFields, type MessageReplies, type MessageReplyHeader, type RawMessage, type RawMyMessage, type SecretMedia } from '../models'
 import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
 import pause from '@helpers/schedulers/pause'
 import { getPeerId, type Peer } from '../peers/peerId'
 import type { UserReal, User, Chat } from '../peers/peer'
 import canEditMessage from '../messages/canEditMessage'
+import { isForum } from '../peers/predicates'
 import { generateMessageId, getServerMessageId, isLocalMessageId } from '../history/messageId'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, PinMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, PaidMediaUnlockEvt, SendMessageAction } from '../realtime/events'
 import type { SendArgs as WireSendArgs } from '../realtime/connectionManager'
@@ -237,6 +238,11 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
   // перевод номеров в клиентское пространство и уточнение служебного действия —
   // и то и другое делает `mapMyMessage`.
   const mapOne = (r: RawMyMessage): MyMessage => mapMyMessage(r, getMeId?.() ?? null)
+  // Тред сообщения — tweb `getThreadKey` (appMessagesManager.ts:11903-11921):
+  // `getMessageThreadId` с видом чата. В форуме сообщение без
+  // `reply_to.pFlags.forum_topic` живёт в General, а не в «чате целиком».
+  const threadIdOf = (m: MyMessage): number | undefined =>
+    getMessageThreadId(m, { isForum: isForum(getPeer?.(m.peerId) as Chat | undefined) })
   // Гейт личности (см. `meReady` в MessagesDeps) — ждут его СЕТЕВЫЕ пути.
   // `cacheLive`/`insertPending` синхронны и ждать не могут: живой кадр приходит
   // по уже поднятому WS, а неотправленный бабл заводит сам пользователь — оба
@@ -983,7 +989,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
         thread_root_id: args.threadRootId != null ? getServerMessageId(args.threadRootId) : null,
       })
       const m = await mapNet(created)
-      const root = getThreadRootId(m)
+      const root = threadIdOf(m)
       // Кладём и в основное окно чата, и в окно треда (если это тред-сообщение).
       for (const key of root ? [hkey(args.peerId), hkey(args.peerId, root)] : [hkey(args.peerId)]) {
         put(key, [m])
@@ -1364,7 +1370,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       // эха (у комментария — номер зеркала поста, tweb `getDiscussionMessage`),
       // поэтому окна временного бабла (tweb `pendingData.storage.key`,
       // appMessagesManager.ts:11946) и окна эха совпадают по построению.
-      const root = getThreadRootId(m)
+      const root = threadIdOf(m)
       const keys = root ? [hkey(m.peerId), hkey(m.peerId, root)] : [hkey(m.peerId)]
       const ops: MessageOp[] = []
       for (const key of keys) {

@@ -58,12 +58,14 @@ vi.mock('./pinnedMessage.solid', () => ({
 }))
 import type Chat from './chat'
 import { ChatType } from './chatType'
+import { generateMessageId } from '@core/history/messageId'
 
 const ME: PeerId = 1
 const ALICE: PeerId = 7
 const BOT: PeerId = 8
 /** супергруппа и канал: ключ пира — отрицательный id */
 const GROUP: PeerId = -100
+const TOPIC = generateMessageId(7)
 const CHANNEL: PeerId = -200
 /** группа, где я создатель (`manage_call`), и канал, где я создатель */
 const MY_GROUP: PeerId = -300
@@ -92,7 +94,11 @@ const managers = {
   groups: {
     getParticipants,
     getOnlines,
-    listTopics: vi.fn(async() => [{ id: 7, title: 'Новости', iconColor: 0x6FB9F0, iconEmoji: '', isGeneral: false }]),
+  },
+  // хранилище тем воркера (Б-54): тема открытого треда по номеру
+  forumTopics: {
+    getForumTopicOrReload: vi.fn(async(_peerId: number, id: number) => (id === TOPIC ? { _: 'forumTopic', id: TOPIC, title: 'Новости', icon_color: 0x6FB9F0 } : undefined)),
+    getForumTopic: vi.fn(async(_peerId: number, id: number) => (id === TOPIC ? { _: 'forumTopic', id: TOPIC, title: 'Новости', icon_color: 0x6FB9F0, icon_emoji: '🔥' } : undefined)),
   },
   contacts: { isContact },
   messages: { groupCallParticipants: vi.fn(async() => [] as number[]) },
@@ -337,13 +343,31 @@ describe('ChatTopbar: заголовок и подпись по виду пир�
   })
 
   it('тема форума (Б-57): заголовок — тема, аватар — значок темы, подпись «In <группа>»', async() => {
-    const topbar = await open(makeChat({ peerId: GROUP, threadId: 7, isForum: true, isForumTopic: true }))
+    const topbar = await open(makeChat({ peerId: GROUP, threadId: TOPIC, isForum: true, isForumTopic: true }))
     expect(q(topbar, '.user-title .peer-title').textContent).toBe('Новости')
     const avatar = q(topbar, '.avatar')
     expect(avatar.classList.contains('is-topic')).toBe(true)
-    expect(avatar.dataset.threadId).toBe('7')
+    expect(avatar.dataset.threadId).toBe('' + TOPIC)
     expect(avatar.querySelector('.topic-icon')).toBeTruthy()
     expect(q(topbar, '.info').textContent).toBe('In Группа')
+  })
+
+  // tweb `peer_title_edit`/`avatar_update` с `threadId` (dialogs.ts:1781-1797):
+  // правка темы с другого устройства перерисовывает шапку открытого треда
+  it('правка темы живьём: название — `PeerTitle`, значок — новый аватар', async() => {
+    const topbar = await open(makeChat({ peerId: GROUP, threadId: TOPIC, isForum: true, isForumTopic: true }))
+    const firstAvatar = q(topbar, '.avatar')
+    const renamed = { _: 'forumTopic', peerId: GROUP, id: TOPIC, title: 'Переименована', icon_color: 0x6FB9F0, icon_emoji: '🔥' }
+    rootScope.dispatchEventSingle(RT.forumTopicOp, { ops: [
+      { op: 'update', peerId: GROUP, topics: [renamed as never] },
+      { op: 'edit', peerId: GROUP, id: TOPIC, title: true, icon: true },
+    ] })
+    expect(q(topbar, '.user-title .peer-title').textContent).toBe('Переименована')
+    await vi.waitFor(() => expect(firstAvatar.isConnected).toBe(false))
+    // значок-эмодзи вместо «облачка» с инициалом (topicAvatar.ts, расхождение 2)
+    expect(q(topbar, '.avatar .topic-icon')).toBeTruthy()
+    expect(q(topbar, '.avatar').querySelector('.topic-icon-svg')).toBeNull()
+    expect(firstAvatar.querySelector('.topic-icon-svg')).toBeTruthy()
   })
 
   it('смена пира на том же топбаре меняет аватар и заголовок', async() => {

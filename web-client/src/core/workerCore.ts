@@ -25,6 +25,8 @@ import { newPeersManager } from './managers/peersManager'
 import { isBroadcast } from './peers/predicates'
 import type { Chat } from './peers/peer'
 import { newDialogsManager } from './managers/dialogsManager'
+import { mapMessage } from './models'
+import { newForumTopicsStorage } from './managers/forumTopicsStorage'
 import { newPresenceManager } from './managers/presenceManager'
 import { newStoriesManager } from './managers/storiesManager'
 import { newContactsManager } from './managers/contactsManager'
@@ -53,7 +55,7 @@ import { newChannelFunnel, type ChannelDifference } from './realtime/channelFunn
 import { newSyncWait } from './realtime/syncWait'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type RepliesUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type RepliesUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type PinnedForumTopicsEvt, type ReadDiscussionEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { generateMessageId } from './history/messageId'
 import { getPeerId, toChatId, toPeerId } from './peers/peerId'
@@ -176,11 +178,11 @@ export function createWorkerCore() {
     // `msgr/kv` вне скоупа персиста, и без сброса вход после выхода догонял бы
     // разницу от курсора ПРОШЛОЙ сессии (а то и чужого аккаунта) вместо того,
     // чтобы взять базой текущее состояние сервера (updates.getState, onReady).
-    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); contacts.resetForLogout(); cursor.reset(); channelFunnel.resetForLogout(); broadcast(RT.loggingOut, e) },
+    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); forumTopics.reset(); contacts.resetForLogout(); cursor.reset(); channelFunnel.resetForLogout(); broadcast(RT.loggingOut, e) },
     // Симметричный кадр входа (порт tweb `account_logged_in`) — тем же веером и
     // с тем же сбросом: активный токен сменился, а значит медиа-токен, добытый
     // до входа, принадлежит прошлой сессии; то же — про кэш диалогов.
-    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); contacts.resetForLogout(); cursor.reset(); channelFunnel.resetForLogout(); broadcast(RT.loggedIn, e) },
+    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); forumTopics.reset(); contacts.resetForLogout(); cursor.reset(); channelFunnel.resetForLogout(); broadcast(RT.loggedIn, e) },
   })
   const profile = newProfileManager({ rest, onMeChanged: setMe, getMe: () => me })
   const premium = newPremiumManager({ rest, onMeChanged: setMe })
@@ -371,6 +373,10 @@ export function createWorkerCore() {
     rest,
     onPeerOps: (ops) => broadcast(RT.peerOp, { ops }),
     onUserStatus: (evt) => broadcast(RT.presence, evt),
+    // tweb `chat_toggle_forum` (appChatsManager.ts:304-306): карточка чата
+    // сменила `pFlags.forum` — хранилище тем сбрасывает кэш (dialogs.ts:186-192).
+    // `forumTopics` объявлен ниже — стрелка дёргает его лениво.
+    onChatToggleForum: (peerId, enabled) => forumTopics.onChatToggleForum(peerId, enabled),
   })
   // Task 4 (действия без оптимистики): mute/pin/archive идут сеть-сначала (порт
   // tweb toggleDialogPin/updateNotifySettings) — локальный апдейт зовёт владелец
@@ -379,16 +385,28 @@ export function createWorkerCore() {
     rest,
     dialogs,
     peers,
-    // Контейнер списка тем несёт вектор `messages`: последнее сообщение темы
-    // разрешается по ссылке `top_message` тем же порядком, что у диалогов.
-    messages: {
-      saveApiMessages: (list) => messages.saveApiMessages(list),
-      getMessageByPeer: (peerId, seq) => messages.getMessageByPeer(peerId, seq),
-    },
+    // Мьют темы после ответа сети — хранилище тем (объявлено ниже, стрелка ленивая).
+    forumTopics: { applyNotifySettings: (peerId, topicId, settings) => forumTopics.applyNotifySettings(peerId, topicId, settings) },
     getMeId: () => me?.user.id ?? null,
     // Местный апдейт участника после своей мутации (tweb `processLocalUpdate`)
     // уезжает вкладкам тем же событием, что и кадр сервера (`dispatch` ниже).
     onChannelParticipant: (update) => broadcast(RT.chatParticipant, update),
+  })
+  // Темы форумов — порт `dialogsStorage.forumTopics` (Б-54): владелец тем в
+  // воркере, вкладкам объявляет операции (rt:forum_topic_op). Последнее
+  // сообщение темы разрешается по `top_message` из хранилища сообщений, как у
+  // диалогов; упоминания, прочитанные в треде темы, гасит владелец строки
+  // форума (`dialogs.applyMentionsRead`, tweb appMessagesManager.ts:10969-10980).
+  const forumTopics = newForumTopicsStorage({
+    rest,
+    peers,
+    messages: {
+      saveApiMessages: (list) => messages.saveApiMessages(list),
+      getMessageByPeer: (peerId, id) => messages.getMessageByPeer(peerId, id),
+    },
+    getMeId: () => me?.user.id ?? null,
+    onOps: (ops) => broadcast(RT.forumTopicOp, { ops }),
+    onParentMentionsRead: (peerId, count) => dialogs.applyMentionsRead(peerId, count),
   })
   // cacheViews — владелец счётчика просмотров: ответ на регистрацию просмотра
   // несёт уже новые значения, и применяет их та же точка, что и кадр
@@ -658,7 +676,31 @@ export function createWorkerCore() {
     // второй кадр.
     else if (pred === 'updateNotifySettings') {
       const e = d as DialogMuteEvt
-      dialogs.applyNotifySettings(getPeerId(e.peer.peer), e.notify_settings)
+      // Тема форума — свой ключ настроек (`notifyForumTopic`, tweb
+      // appMessagesManager.ts:11751-11770): владелец — хранилище тем.
+      if (e.peer._ === 'notifyForumTopic') {
+        forumTopics.applyNotifySettings(getPeerId(e.peer.peer), generateMessageId(e.peer.top_msg_id), e.notify_settings)
+      } else {
+        dialogs.applyNotifySettings(getPeerId(e.peer.peer), e.notify_settings)
+      }
+    } else if (pred === 'updatePinnedForumTopic') {
+      // tweb dialogs.ts:2480-2490 — «открепили» это отсутствие бита.
+      const e = d as PinnedForumTopicEvt
+      forumTopics.applyPinnedTopic(getPeerId(e.peer), generateMessageId(e.topic_id), !!e.pFlags?.pinned)
+    } else if (pred === 'updatePinnedForumTopics') {
+      // tweb dialogs.ts:2601-2638 — без `order` закреплённые перечитываются.
+      const e = d as PinnedForumTopicsEvt
+      void forumTopics.applyPinnedTopics(getPeerId(e.peer), e.order?.map((id) => generateMessageId(id)))
+    } else if (pred === 'updateReadChannelDiscussionInbox' || pred === 'updateReadChannelDiscussionOutbox') {
+      // tweb appMessagesManager.ts:777-778 → onUpdateReadHistory (:10795-10990):
+      // ветка темы — хранилище тем; окно треда — волна 2 Ф-5 (КЛ-2).
+      const e = d as ReadDiscussionEvt
+      forumTopics.applyReadDiscussion({
+        peerId: toPeerId(e.channel_id, true),
+        topicId: generateMessageId(e.top_msg_id),
+        maxId: generateMessageId(e.read_max_id),
+        out: pred === 'updateReadChannelDiscussionOutbox',
+      })
     } else if (pred === 'updateDialogPinned') {
       const e = d as DialogPinEvt
       // «Открепили» — ОТСУТСТВИЕ бита, а не `pinned: false`.
@@ -710,6 +752,10 @@ export function createWorkerCore() {
     // публикует свой patch независимо от rt:new_message ниже (тот остаётся для
     // read-marker/звука/нотификаций на main — см. storeProjection.ts).
     dialogs.applyNewMessage(e)
+    // Тема форума: счётчики, последнее сообщение, служебки создания/правки
+    // (tweb onUpdateNewMessage, ветка треда :10300-10365, :10495-10520).
+    const m = mapMessage(e.message, me?.user.id ?? null)
+    if (m._ !== 'messageEmpty') forumTopics.applyNewMessage(m)
     // tweb 1dc32d889 — признак «кадр пришёл первым difference после старта»
     // снимается В МОМЕНТ РАССЫЛКИ (у tweb — в `handleNewMessage`): к ответу
     // вкладке по RPC догон уже закончится. Решает по нему подписчик уведомлений.
@@ -983,7 +1029,7 @@ export function createWorkerCore() {
   // «забыл в одном списке» невозможен by construction (как Managers в tweb).
   const registry = {
     health, auth, profile, premium, chats, messages, realtime, media, push, notify,
-    folders, groups, channels, peers, dialogs, presence, stories, contacts, privacy, drafts,
+    folders, groups, channels, peers, dialogs, forumTopics, presence, stories, contacts, privacy, drafts,
     chatThemes, sessions, calls, livestream, stars, boosts, report, stats, bots,
     stickers, reactions, iv, secret, persist, langPack, docs,
   }
