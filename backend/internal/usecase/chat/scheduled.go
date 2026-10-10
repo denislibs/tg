@@ -95,6 +95,10 @@ func sendInputOf(m domain.ScheduledMessage) SendInput {
 // scheduleSendingPopup.tsx:80); иначе дата строго в будущем (tweb сам
 // отправляет обычной отправкой дату ≤ now+10 с, input.ts:2163-2168, поэтому
 // отказ — для самодельного запроса). Период — только из набора tweb.
+//
+// ОТСТУПЛЕНИЕ (решение пользователя 2026-10-10): у tweb ряд «Повтор» доступен
+// только с Premium (scheduleSendingPopup.tsx:110-123, rootScope.premium); у
+// нас повтор без Premium — гейта нет ни здесь, ни у клиента.
 func (i *Interactor) scheduleTiming(ctx context.Context, chatID, senderID, date int64, repeat int) (time.Time, bool, int, error) {
 	if !domain.ValidScheduleRepeatPeriod(repeat) {
 		return time.Time{}, false, 0, domain.ErrInvalid
