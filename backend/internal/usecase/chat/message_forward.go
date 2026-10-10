@@ -24,6 +24,15 @@ type ForwardInput struct {
 	// ThreadRootID — тема форума или тред, куда пересылают (top_msg_id): КЛЮЧ
 	// СТРОКИ корня в ToChatID, номер переводит граница (ResolveThreadRootForSend).
 	ThreadRootID *int64
+	// ScheduleDate / ScheduleRepeatPeriod — отложенная пересылка (tweb
+	// messages.forwardMessages{schedule_date, schedule_repeat_period},
+	// appMessagesManager.ts:5652): гейты и плата — сейчас, копии встают в
+	// очередь отложенных (scheduled.go).
+	ScheduleDate         int64
+	ScheduleRepeatPeriod int
+	// fromSchedule — публикация отложенной копии: без медленного режима и без
+	// повторного списания платы (В-2), как SendInput.fromSchedule.
+	fromSchedule bool
 }
 
 // forwardCopy — копия одного исходного сообщения и всё, что нужно её доставке
@@ -193,12 +202,31 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 		}
 	}
 
+	srcIDs := make([]int64, len(srcs))
+	for idx, src := range srcs {
+		srcIDs[idx] = src.ID
+	}
+	if in.ScheduleDate != 0 {
+		return i.scheduleForward(ctx, in, srcIDs, copies, offers)
+	}
+	return i.deliverForwardCopies(ctx, in, srcIDs, copies, offers, broadcast)
+}
+
+// deliverForwardCopies — вставка готовых копий и их доставка: одна транзакция
+// на пачку (плата, номер, строка, платное предложение, счётчик пересылок
+// исходника, зеркало поста, журнал канала либо веер), после коммита — кадры,
+// пуши и балансы. Общая для пересылки и публикации отложенной пересылки.
+// srcIDs — ключи строк исходников по позиции копий (offers и forwards).
+func (i *Interactor) deliverForwardCopies(ctx context.Context, in ForwardInput, srcIDs []int64,
+	copies []domain.Message, offers map[int64]PaidOffer, broadcast bool) ([]domain.Message, error) {
 	out := make([]forwardCopy, 0, len(copies))
 	var charge paidCharge // платная группа: последнее списание (балансы абсолютны)
-	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		for idx, c := range copies {
 			// Плата — за каждое сообщение (allow_paid_stars = цена × число).
-			ch, e := i.chargePaidMessage(ctx, sendProbe(in.ToChatID, in.SenderID, c))
+			probe := sendProbe(in.ToChatID, in.SenderID, c)
+			probe.fromSchedule = in.fromSchedule
+			ch, e := i.chargePaidMessage(ctx, probe)
 			if e != nil {
 				return e
 			}
@@ -217,14 +245,14 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 			if e != nil {
 				return e
 			}
-			if o, ok := offers[srcs[idx].ID]; ok && msg.MediaID != nil {
+			if o, ok := offers[srcIDs[idx]]; ok && msg.MediaID != nil {
 				if e := i.paidMedia.SetPrice(ctx, msg.ID, o.Price, o.OfferID); e != nil {
 					return e
 				}
 			}
 			// Пересылка увеличивает счётчик пересылок исходного поста (Telegram
 			// message.forwards) — best-effort, как views.
-			_ = i.msgs.IncrementForwards(ctx, srcs[idx].ID)
+			_ = i.msgs.IncrementForwards(ctx, srcIDs[idx])
 			// Пост в канал зеркалится в группу обсуждения (см. discussion_mirror.go).
 			md, e := i.mirrorChannelPost(ctx, msg)
 			if e != nil {
@@ -317,6 +345,7 @@ func (i *Interactor) checkForwardAllowed(ctx context.Context, in ForwardInput, c
 		}
 	}
 	probe.batchUnits = units
+	probe.fromSchedule = in.fromSchedule
 	if err := i.checkTopicOpen(ctx, probe); err != nil {
 		return err
 	}

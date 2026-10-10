@@ -397,6 +397,12 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		}
 	}
 
+	// Отложенная отправка (schedule_date): все гейты пройдены — вместо
+	// публикации снимок встаёт в очередь отложенных (scheduled.go).
+	if in.ScheduleDate != 0 {
+		return i.enqueueScheduled(ctx, in)
+	}
+
 	// PERF (send hot path): гидратация read-моделей (poll/checklist/giveaway/
 	// gift) читает ПРЕД-существующие строки по input-ID и не зависит от
 	// msg.ID/Seq — делаем ДО транзакции, чтобы не держать row-lock строки чата
@@ -489,7 +495,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		if in.GroupedID != 0 && in.MediaID != nil {
 			groupedID = &in.GroupedID
 		}
-		msg, e = i.msgs.Insert(ctx, domain.Message{
+		msg, e = i.insertCopy(ctx, domain.Message{
 			ChatID: in.ChatID, Seq: seq, SenderID: in.SenderID,
 			Type: in.Type, Text: in.Text, Entities: in.Entities, ReplyToID: in.ReplyToID, ClientMsgID: cmid,
 			ReplyQuoteText: in.ReplyQuoteText, ReplyQuoteOffset: in.ReplyQuoteOffset,
@@ -509,6 +515,8 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			MediaSpoiler: in.MediaSpoiler && in.MediaID != nil,
 			// Voice/round content starts "unlistened" (Telegram media_unread).
 			MediaUnread: in.Type == "voice" || in.Type == "roundVideo",
+			// Публикация отложенного: признак и готовое превью (без пересборки).
+			FromScheduled: in.fromSchedule, WebPage: in.webPage,
 		})
 		if e != nil {
 			return e
@@ -614,7 +622,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	// подписчикам (channel_fanout.go).
 	if channelPts != 0 {
 		i.deliverChannelPost(ctx, msg, channelPayload, channelPts, channelPostOpts{
-			silent: in.Silent, clearDraft: in.Action == nil && !in.fromSchedule, preview: in.Type == "text",
+			silent: in.Silent, clearDraft: in.Action == nil && !in.fromSchedule, preview: in.Type == "text" && in.webPage == nil,
 		})
 	}
 	if recipients != nil {
@@ -645,7 +653,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	// рассылает всем): для нового текстового сообщения с http/https-ссылкой —
 	// асинхронно после коммита, кадром web_page_update (сервисные/секретные
 	// сообщения исключены: service не text, secret отсекается по типу чата).
-	if recipients != nil && i.preview != nil && in.Type == "text" {
+	if recipients != nil && i.preview != nil && in.Type == "text" && in.webPage == nil {
 		if u := firstURL(msg.Text, msg.Entities); u != "" {
 			go i.attachWebPreview(msg, u, recipients)
 		}

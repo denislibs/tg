@@ -567,9 +567,13 @@ func TestScheduledChannelPost_KeepsDraft(t *testing.T) {
 	e := newChannelEnv(t)
 	ctx := context.Background()
 	e.i.SetScheduled(newFakeScheduled())
+	sm, err := e.i.Send(ctx, SendInput{ChatID: e.ch, SenderID: 7, Text: "по расписанию", ScheduleDate: time.Now().Add(time.Hour).Unix()})
+	if err != nil {
+		t.Fatalf("постановка поста: %v", err)
+	}
 	_, _ = e.drafts.Upsert(ctx, 7, domain.Draft{ChatID: e.ch, Text: "набираю новый"})
-	if _, err := e.i.dispatchScheduled(ctx, domain.ScheduledMessage{ChatID: e.ch, SenderID: 7, Type: "text", Text: "по расписанию"}); err != nil {
-		t.Fatalf("dispatchScheduled: %v", err)
+	if _, err := e.i.SendScheduledNow(ctx, e.ch, 7, []int64{sm.Seq}); err != nil {
+		t.Fatalf("публикация: %v", err)
 	}
 	if _, ok := e.drafts.m[[2]int64{e.ch, 7}]; !ok {
 		t.Fatal("отложенный пост снял текущий черновик автора")

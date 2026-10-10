@@ -411,7 +411,7 @@ func TestScheduleWhenOnline_LastSeenPrivacy(t *testing.T) {
 	ctx := context.Background()
 	cid, _ := fakeChats{s}.CreatePrivate(ctx, 1, 2)
 	in.SetPrivacy(blockedBy{owner: 2, lastSeenHidden: true})
-	if _, err := in.ScheduleMessage(ctx, SendInput{ChatID: cid, SenderID: 1, Text: "x"}, time.Now(), true); !errors.Is(err, domain.ErrForbidden) {
+	if _, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 1, Text: "x", ScheduleDate: domain.SendWhenOnlineTimestamp}); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("when_online при скрытом last seen: %v, want ErrForbidden", err)
 	}
 }

@@ -235,7 +235,7 @@ func TestMessageWire_MatchesSchema(t *testing.T) {
 	scheduled := ScheduledMessage{
 		ID: 3, ChatID: 9, SenderID: 42, Text: "потом",
 		Entities: MessageEntities{NewMessageEntityBold(0, 5)},
-		SendAt:   now.Add(time.Hour), CreatedAt: now, WhenOnline: true,
+		SendAt:   now.Add(time.Hour), CreatedAt: now, RepeatPeriod: 86400,
 	}
 
 	objects := []any{
@@ -244,7 +244,7 @@ func TestMessageWire_MatchesSchema(t *testing.T) {
 		// Пустая строка витрины: обязательные параметры обязаны остаться даже
 		// нулевыми, а всё необязательное — исчезнуть.
 		Message{Seq: 2, CreatedAt: now}.ToWire(MessageContext{Peer: NewPeerUser(42)}),
-		scheduled.ToWire(NewPeerUser(42)),
+		scheduled.ToWire(scheduled.Message().ToWire(MessageContext{Peer: NewPeerUser(42)}).(MessageReal)),
 		// Дыра: производитель у неё появился вместе с этим шагом.
 		MessageEmpty{Underscore: MessageEmptyTag, ID: 119, PeerID: NewPeerChannel(9)},
 	}

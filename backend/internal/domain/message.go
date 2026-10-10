@@ -112,6 +112,9 @@ type Message struct {
 	// комментарии отвечают на зеркало). Отличает зеркало от обычной пересылки:
 	// по fwd_from_* они неразличимы.
 	IsDiscussionMirror bool
+	// FromScheduled — сообщение опубликовано из очереди отложенных (schema
+	// message.pFlags.from_scheduled, колонка messages.from_scheduled).
+	FromScheduled bool
 	// ReplyTo is a lightweight preview of the replied-to message, populated by
 	// the history read model (not stored). Nil when this isn't a reply.
 	ReplyTo *ReplyPreview

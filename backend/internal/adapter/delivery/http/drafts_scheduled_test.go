@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -109,12 +110,31 @@ func TestScheduled_ListIsAMessagesContainer(t *testing.T) {
 		t.Fatalf("первое сообщение: %d %s", rec.Code, rec.Body.String())
 	}
 
-	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(created)+"/scheduled", tokenA, map[string]any{
-		"type": "text", "text": "завтра", "send_at": time.Now().Add(time.Hour).Unix(),
+	// Отложенное — обычная отправка с schedule_date (tweb
+	// appMessagesManager.ts:2741); ответ — контейнер updates с
+	// updateNewScheduledMessage.
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(created)+"/messages", tokenA, map[string]any{
+		"text": "завтра", "client_msg_id": "s2", "schedule_date": time.Now().Add(time.Hour).Unix(),
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("планирование: %d %s", rec.Code, rec.Body.String())
 	}
+	var sent struct {
+		Underscore string `json:"_"`
+		Updates    []struct {
+			Underscore string `json:"_"`
+			Message    struct {
+				ID     int64           `json:"id"`
+				PFlags map[string]bool `json:"pFlags"`
+			} `json:"message"`
+		} `json:"updates"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &sent); err != nil || sent.Underscore != "updates" ||
+		len(sent.Updates) != 1 || sent.Updates[0].Underscore != "updateNewScheduledMessage" ||
+		!sent.Updates[0].Message.PFlags["is_scheduled"] {
+		t.Fatalf("ответ постановки = %s", rec.Body.String())
+	}
+	schedID := sent.Updates[0].Message.ID
 
 	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(created)+"/scheduled", tokenA, nil)
 	if rec.Code != http.StatusOK {
@@ -147,5 +167,31 @@ func TestScheduled_ListIsAMessagesContainer(t *testing.T) {
 	}
 	if out.Chats == nil {
 		t.Fatalf("вектор chats пропал: %s", rec.Body.String())
+	}
+
+	// Правка текста отложенного — editMessage с schedule_date; без изменений —
+	// MESSAGE_NOT_MODIFIED (tweb appMessagesManager.ts:2226-2240).
+	date := time.Now().Add(2 * time.Hour).Unix()
+	rec = authedReq(t, h, http.MethodPatch, "/chats/"+itoa(created)+"/messages/"+itoa(schedID), tokenA,
+		map[string]any{"text": "послезавтра", "schedule_date": date})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("правка отложенного: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodPatch, "/chats/"+itoa(created)+"/messages/"+itoa(schedID), tokenA,
+		map[string]any{"text": "послезавтра", "schedule_date": date})
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "MESSAGE_NOT_MODIFIED") {
+		t.Fatalf("правка без изменений: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Публикация пачкой: ответ — updateDeleteScheduledMessages с номером опубликованного.
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(created)+"/scheduled/send_now", tokenA,
+		map[string]any{"id": []int64{schedID}})
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"updateDeleteScheduledMessages"`) ||
+		!strings.Contains(rec.Body.String(), `"sent_messages"`) {
+		t.Fatalf("send_now: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(created)+"/scheduled", tokenA, nil)
+	if strings.Contains(rec.Body.String(), "послезавтра") {
+		t.Fatalf("опубликованное осталось в ленте отложенных: %s", rec.Body.String())
 	}
 }

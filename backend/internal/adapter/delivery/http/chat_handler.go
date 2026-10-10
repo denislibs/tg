@@ -408,6 +408,10 @@ type sendBody struct {
 	MediaSpoiler bool `json:"media_spoiler"`
 	// Отправка от имени канала/группы (Telegram send_as); nil — от себя.
 	SendAsPeerID *domain.PeerID `json:"send_as_peer_id"`
+	// Отложенная отправка (schema schedule_date; 0x7FFFFFFE — «когда в сети»)
+	// и её повтор — поля отправки, как у оригинала (appMessagesManager.ts:2741-2742).
+	ScheduleDate         int64 `json:"schedule_date"`
+	ScheduleRepeatPeriod int   `json:"schedule_repeat_period"`
 }
 
 func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
@@ -456,9 +460,14 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		PaidMediaPrice: body.PaidMediaPrice,
 		MediaSpoiler:   body.MediaSpoiler,
 		SendAsChatID:   sendAsChatID(body.SendAsPeerID),
+		ScheduleDate:   body.ScheduleDate, ScheduleRepeatPeriod: body.ScheduleRepeatPeriod,
 	})
 	if err != nil {
 		writeSendError(w, err, "not a member of this chat")
+		return
+	}
+	if body.ScheduleDate != 0 {
+		writeScheduledSent(w, r, h.svc, chatID, []domain.Message{msg})
 		return
 	}
 	writeMessage(w, r, h.svc, msg)
@@ -714,6 +723,10 @@ func (h *ChatHandler) DeleteDialog(w http.ResponseWriter, r *http.Request) {
 type editBody struct {
 	Text     string                 `json:"text"`
 	Entities domain.MessageEntities `json:"entities"`
+	// schedule_date — правка ОТЛОЖЕННОГО (id — его ключ): текст, время,
+	// «когда в сети» (0x7FFFFFFE), повтор (tweb appMessagesManager.ts:2209-2218).
+	ScheduleDate         int64 `json:"schedule_date"`
+	ScheduleRepeatPeriod int   `json:"schedule_repeat_period"`
 }
 
 func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
@@ -721,13 +734,17 @@ func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	msgID, ok := msgSeqID(w, r, h.svc, chatID)
-	if !ok {
-		return
-	}
 	var body editBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if body.ScheduleDate != 0 {
+		h.editScheduled(w, r, chatID, body)
+		return
+	}
+	msgID, ok := msgSeqID(w, r, h.svc, chatID)
+	if !ok {
 		return
 	}
 	msg, err := h.svc.EditMessage(r.Context(), chatID, msgID, h.meID(r), body.Text, body.Entities)
@@ -894,6 +911,10 @@ type forwardBody struct {
 	// (schema messages.forwardMessages silent, top_msg_id).
 	Silent   bool   `json:"silent"`
 	TopMsgID *int64 `json:"top_msg_id"`
+	// schedule_date / schedule_repeat_period — отложенная пересылка
+	// (messages.forwardMessages, tweb appMessagesManager.ts:5652).
+	ScheduleDate         int64 `json:"schedule_date"`
+	ScheduleRepeatPeriod int   `json:"schedule_repeat_period"`
 }
 
 func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
@@ -934,9 +955,14 @@ func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
 		FromChatID: fromChatID, ToChatID: toChatID, MsgIDs: msgIDs, SenderID: h.meID(r),
 		DropAuthor: body.DropAuthor, DropCaption: body.DropCaption,
 		Silent: body.Silent, ThreadRootID: threadRoot,
+		ScheduleDate: body.ScheduleDate, ScheduleRepeatPeriod: body.ScheduleRepeatPeriod,
 	})
 	if err != nil {
 		writeSendError(w, err, "not a member or message not found")
+		return
+	}
+	if body.ScheduleDate != 0 {
+		writeScheduledSent(w, r, h.svc, toChatID, msgs)
 		return
 	}
 	writeMessagesAll(w, r, h.svc, msgs)
@@ -1501,84 +1527,38 @@ func (h *ChatHandler) AddChecklistItems(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, info.ToMedia())
 }
 
-// scheduledJSON — отложенное сообщение ТЕМ ЖЕ конструктором `message`
-// (domain.ScheduledMessage.ToWire): собственной проводной формы у него больше
-// нет. Идентичность при этом своя — номера в чате у неотправленного не
-// существует, см. докблок ToWire.
-func scheduledJSON(m domain.ScheduledMessage, peer domain.PeerID) domain.MessageReal {
-	return m.ToWire(domain.NewPeer(peer))
+// ── Отложенные (messages.getScheduledHistory / sendScheduledMessages /
+// deleteScheduledMessages, layer.d.ts:20878-20896) ──
+//
+// Постановки отдельной ручкой нет: у оригинала это поле schedule_date любой
+// отправки (WS send_message, пост канала, пересылка), правка — editMessage с
+// schedule_date (EditMessage).
+
+// writeScheduledUpdates — ответ ручек отложенных контейнером updates, как
+// у оригинала (tweb processUpdateMessage, appMessagesManager.ts:12420-12427,
+// :12606-12613). Автор отложенных — тот, кто спросил: его карточка — вектором users.
+func writeScheduledUpdates(w http.ResponseWriter, r *http.Request, updates []domain.Update) {
+	me, _ := UserFromContext(r.Context())
+	writeJSON(w, http.StatusOK, domain.NewUpdates(updates, []domain.UserReal{selfUser(me)}, time.Now()))
 }
 
-// ScheduleMessage — POST /chats/{chatID}/scheduled: запланировать отправку.
-func (h *ChatHandler) ScheduleMessage(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := peerChatIDOrCreate(w, r, h.svc)
-	if !ok {
-		return
+// writeScheduledSent — ответ отправки с schedule_date: апдейты
+// updateNewScheduledMessage по поставленным (Seq — ключ отложенного).
+func writeScheduledSent(w http.ResponseWriter, r *http.Request, svc *usecasechat.Interactor, chatID int64, msgs []domain.Message) {
+	me, _ := UserFromContext(r.Context())
+	ids := make([]int64, len(msgs))
+	for k, m := range msgs {
+		ids[k] = m.Seq
 	}
-	var b struct {
-		Type       string                 `json:"type"`
-		Text       string                 `json:"text"`
-		Entities   domain.MessageEntities `json:"entities"`
-		ReplyTo    *int64                 `json:"reply_to_id"`
-		MediaID    *int64                 `json:"media_id"`
-		SendAt     int64                  `json:"send_at"`     // unix-секунды (игнор при when_online)
-		WhenOnline bool                   `json:"when_online"` // отправить когда собеседник онлайн
-	}
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
-		writeError(w, http.StatusBadRequest, "bad body")
-		return
-	}
-	m, err := h.svc.ScheduleMessage(r.Context(), usecasechat.SendInput{
-		ChatID: chatID, SenderID: h.meID(r), Type: b.Type, Text: b.Text,
-		Entities: b.Entities, ReplyToID: b.ReplyTo, MediaID: b.MediaID,
-	}, time.Unix(b.SendAt, 0), b.WhenOnline)
-	if errors.Is(err, domain.ErrTooLong) {
-		writeError(w, http.StatusBadRequest, "invalid scheduled message")
-		return
-	}
-	if errors.Is(err, domain.ErrForbidden) {
-		// when_online — только в личке и только при видимом last seen
-		writeError(w, http.StatusForbidden, "not allowed")
-		return
-	}
-	if errors.Is(err, domain.ErrNotFound) {
-		writeError(w, http.StatusForbidden, "not a member of this chat")
-		return
-	}
+	updates, err := svc.ScheduledUpdates(r.Context(), chatID, me.ID, ids)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not schedule")
+		writeError(w, http.StatusInternalServerError, "scheduled failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, scheduledJSON(m, peerOf(r, h.svc, m.ChatID)))
+	writeScheduledUpdates(w, r, updates)
 }
 
-// UpdateScheduled — PATCH /chats/{chatID}/scheduled/{schedID} {send_at}:
-// перенести своё запланированное сообщение на новое время (reschedule).
-func (h *ChatHandler) UpdateScheduled(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathInt(w, r, "schedID")
-	if !ok {
-		return
-	}
-	var b struct {
-		SendAt int64 `json:"send_at"` // unix-секунды
-	}
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
-		writeError(w, http.StatusBadRequest, "bad body")
-		return
-	}
-	m, err := h.svc.UpdateScheduled(r.Context(), id, h.meID(r), time.Unix(b.SendAt, 0))
-	if errors.Is(err, domain.ErrTooLong) {
-		writeError(w, http.StatusBadRequest, "send_at must be in the future")
-		return
-	}
-	if err != nil {
-		h.mapScheduledErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, scheduledJSON(m, peerOf(r, h.svc, m.ChatID)))
-}
-
-// ListScheduled — GET /chats/{chatID}/scheduled: свои запланированные.
+// ListScheduled — GET /chats/{peerID}/scheduled: свои отложенные.
 func (h *ChatHandler) ListScheduled(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
@@ -1595,7 +1575,7 @@ func (h *ChatHandler) ListScheduled(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]domain.MTMessage, 0, len(list))
 	for _, m := range list {
-		out = append(out, scheduledJSON(m, peerOf(r, h.svc, m.ChatID)))
+		out = append(out, m)
 	}
 	// Тот же контейнер, что у истории: набор отдан ЦЕЛИКОМ, поэтому
 	// `messages.messages`. Автор у отложенных всегда один — тот, кто спросил;
@@ -1604,31 +1584,79 @@ func (h *ChatHandler) ListScheduled(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewMessagesMessages(out, nil, []domain.UserReal{selfUser(me)}))
 }
 
-// DeleteScheduled — DELETE /chats/{chatID}/scheduled/{schedID}.
-func (h *ChatHandler) DeleteScheduled(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathInt(w, r, "schedID")
-	if !ok {
-		return
-	}
-	if err := h.svc.DeleteScheduled(r.Context(), id, h.meID(r)); err != nil {
-		h.mapScheduledErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, domain.NewBool(true))
+// scheduledIDsBody — {id: [...]}: ключи отложенных (schema id:Vector<int>).
+type scheduledIDsBody struct {
+	IDs []int64 `json:"id"`
 }
 
-// SendScheduledNow — POST /chats/{chatID}/scheduled/{schedID}/send_now.
+// SendScheduledNow — POST /chats/{peerID}/scheduled/send_now {id: [...]}
+// (messages.sendScheduledMessages): ключ элемента альбома публикует альбом.
 func (h *ChatHandler) SendScheduledNow(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathInt(w, r, "schedID")
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
-	m, err := h.svc.SendScheduledNow(r.Context(), id, h.meID(r))
+	var b scheduledIDsBody
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || len(b.IDs) == 0 {
+		writeError(w, http.StatusBadRequest, "id required")
+		return
+	}
+	updates, err := h.svc.SendScheduledNow(r.Context(), chatID, h.meID(r), b.IDs)
 	if err != nil {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	writeMessage(w, r, h.svc, m)
+	writeScheduledUpdates(w, r, updates)
+}
+
+// DeleteScheduled — POST /chats/{peerID}/scheduled/delete {id: [...]}
+// (messages.deleteScheduledMessages).
+func (h *ChatHandler) DeleteScheduled(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := peerChatID(w, r, h.svc)
+	if !ok {
+		return
+	}
+	var b scheduledIDsBody
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || len(b.IDs) == 0 {
+		writeError(w, http.StatusBadRequest, "id required")
+		return
+	}
+	updates, err := h.svc.DeleteScheduled(r.Context(), chatID, h.meID(r), b.IDs)
+	if err != nil {
+		h.mapScheduledErr(w, err)
+		return
+	}
+	writeScheduledUpdates(w, r, updates)
+}
+
+// editScheduled — PATCH /chats/{peerID}/messages/{id} с schedule_date: id —
+// ключ отложенного (messages.editMessage{schedule_date}, tweb
+// appMessagesManager.ts:2207-2222). Ошибки — только обрабатываемые tweb
+// (:2226-2240).
+func (h *ChatHandler) editScheduled(w http.ResponseWriter, r *http.Request, chatID int64, body editBody) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "msgSeq"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	updates, err := h.svc.EditScheduled(r.Context(), usecasechat.EditScheduledInput{
+		ChatID: chatID, ID: id, UserID: h.meID(r), Text: body.Text, Entities: body.Entities,
+		ScheduleDate: body.ScheduleDate, ScheduleRepeatPeriod: body.ScheduleRepeatPeriod,
+	})
+	switch {
+	case errors.Is(err, domain.ErrMessageNotModified):
+		writeError(w, http.StatusBadRequest, "MESSAGE_NOT_MODIFIED")
+	case errors.Is(err, domain.ErrMessageEmpty):
+		writeError(w, http.StatusBadRequest, "MESSAGE_EMPTY")
+	case errors.Is(err, domain.ErrTooLong):
+		writeError(w, http.StatusBadRequest, "message too long")
+	case errors.Is(err, domain.ErrInvalid):
+		writeError(w, http.StatusBadRequest, "invalid")
+	case err != nil:
+		h.mapScheduledErr(w, err)
+	default:
+		writeScheduledUpdates(w, r, updates)
+	}
 }
 
 func (h *ChatHandler) mapScheduledErr(w http.ResponseWriter, err error) {

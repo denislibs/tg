@@ -476,6 +476,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			PaidMediaPrice: d.PaidMediaPrice,
 			MediaSpoiler:   d.MediaSpoiler,
 			SendAsChatID:   sendAsChatID(d.SendAsPeerID),
+			ScheduleDate:   d.ScheduleDate, ScheduleRepeatPeriod: d.ScheduleRepeatPeriod,
 		})
 		if err != nil {
 			// NACK the sender so the client stops retrying and can clear the bubble.
@@ -490,11 +491,23 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 				reason = "privacy"
 			} else if errors.Is(err, domain.ErrPaidRequired) {
 				reason = "paid_required"
+			} else if errors.Is(err, domain.ErrInvalid) {
+				reason = "invalid"
+			} else if errors.Is(err, domain.ErrScheduleTooMuch) {
+				reason = "schedule_too_much"
 			}
 			nack(reason)
 			return
 		}
-		ack, _ := json.Marshal(map[string]any{"t": "message_ack", "d": c.ackBody(ctx, d.ClientMsgID, msg)})
+		var body map[string]any
+		if d.ScheduleDate != 0 {
+			// Отложенное: номера в чате у него нет — id это ключ отложенного,
+			// дата — срок. Сам бабл приезжает кадром updateNewScheduledMessage.
+			body = map[string]any{"client_msg_id": d.ClientMsgID, "id": msg.Seq, "date": msg.CreatedAt.Unix(), "scheduled": true}
+		} else {
+			body = c.ackBody(ctx, d.ClientMsgID, msg)
+		}
+		ack, _ := json.Marshal(map[string]any{"t": "message_ack", "d": body})
 		c.reply(ack)
 	case "read":
 		var d readData

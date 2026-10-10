@@ -1240,3 +1240,51 @@ func nonNilIDs(ids []int64) []int64 {
 	}
 	return ids
 }
+
+// ── Отложенные (Ф-5, S1) — блок в конце по правилу горячих файлов ───────────
+
+const (
+	UpdateNewScheduledMessageTag     = "updateNewScheduledMessage"
+	UpdateDeleteScheduledMessagesTag = "updateDeleteScheduledMessages"
+)
+
+// updateNewScheduledMessage#39a51dfb message:Message = Update;
+//
+// Отложенное поставлено или изменено (текст, время, «когда в сети», повтор,
+// готовое превью). Существующий id у клиента — правка (tweb
+// appMessagesManager.ts:11787-11794). Идёт только автору, его пер-юзерным
+// журналом; своего pts у конструктора нет — курсор едет в конверте.
+type UpdateNewScheduledMessage struct {
+	Underscore string    `json:"_"`
+	Message    MTMessage `json:"message"`
+}
+
+func (UpdateNewScheduledMessage) isUpdate()     {}
+func (u UpdateNewScheduledMessage) Tag() string { return u.Underscore }
+
+func NewUpdateNewScheduledMessage(m MTMessage) UpdateNewScheduledMessage {
+	return UpdateNewScheduledMessage{Underscore: UpdateNewScheduledMessageTag, Message: m}
+}
+
+// updateDeleteScheduledMessages#f2a71983 flags:# peer:Peer messages:Vector<int>
+// sent_messages:flags.0?Vector<int> = Update;
+//
+// Отложенные сняты: удалены автором, опубликованы (sent_messages — номера
+// опубликованных в чате) либо отвергнуты при публикации (без sent_messages).
+type UpdateDeleteScheduledMessages struct {
+	Underscore   string  `json:"_"`
+	Peer         Peer    `json:"peer"`
+	Messages     []int64 `json:"messages"`
+	SentMessages []int64 `json:"sent_messages,omitempty"`
+}
+
+func (UpdateDeleteScheduledMessages) isUpdate()     {}
+func (u UpdateDeleteScheduledMessages) Tag() string { return u.Underscore }
+
+func NewUpdateDeleteScheduledMessages(peer Peer, ids, sent []int64) UpdateDeleteScheduledMessages {
+	u := UpdateDeleteScheduledMessages{Underscore: UpdateDeleteScheduledMessagesTag, Peer: peer, Messages: nonNilIDs(ids)}
+	if len(sent) > 0 {
+		u.SentMessages = sent
+	}
+	return u
+}

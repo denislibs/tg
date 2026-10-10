@@ -21,4 +21,11 @@ var (
 	// ErrPaidRequired: сообщение в платную группу отвергнуто из-за нехватки звёзд
 	// (Telegram paid messages) — клиент показывает «Недостаточно звёзд».
 	ErrPaidRequired = errors.New("paid required")
+	// ErrScheduleTooMuch: в очереди отложенных чата уже 100 сообщений автора
+	// (Telegram SCHEDULE_TOO_MUCH; tweb отдельно не обрабатывает).
+	ErrScheduleTooMuch = errors.New("schedule too much")
+	// ErrMessageNotModified / ErrMessageEmpty — ошибки правки, которые tweb
+	// обрабатывает (appMessagesManager.ts:2226-2240).
+	ErrMessageNotModified = errors.New("message not modified")
+	ErrMessageEmpty       = errors.New("message empty")
 )
