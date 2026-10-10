@@ -798,11 +798,16 @@ export function createWorkerCore() {
       if (framePeers) peers.saveApiPeers(framePeers as Parameters<typeof peers.saveApiPeers>[0])
       // hello — первый кадр WS: {pts,date}. pts===cursor → быстрый reconnect без REST;
       // иначе catch-up доберёт разницу. cursor.ready() гейтит сравнение до гидратации.
-      if (type === 'hello') {
-        const p = payload as { pts?: number; date?: number; channels?: [number, number][] }
-        // Каналы, чей журнал ушёл вперёд, пока сокета не было: их кадры
-        // топиков пропали, а пер-юзерный /sync их не несёт (журналы разные).
+      // Каналы, чей журнал ушёл вперёд, пока сокета не было: их кадры
+      // топиков пропали, а пер-юзерный /sync их не несёт (журналы разные).
+      // Сервер шлёт кадр после подписки соединения на топики каналов.
+      if (type === 'channel_state') {
+        const p = payload as { channels?: [number, number][] }
         if (p?.channels) channelFunnel.onHello(p.channels)
+        return
+      }
+      if (type === 'hello') {
+        const p = payload as { pts?: number; date?: number }
         if (typeof p?.pts === 'number') {
           const want = p.pts
           // Реконнект с расхождением pts: catch-up добёрет разницу — придержанные

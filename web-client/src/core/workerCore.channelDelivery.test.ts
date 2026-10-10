@@ -114,3 +114,21 @@ describe('createWorkerCore(): журнал broadcast-канала', () => {
     await vi.waitFor(() => expect(fetchCalls.some((u) => u.includes('/peer_dialogs') && u.includes('peers=-42'))).toBe(true))
   })
 })
+
+// Ревью #407: кадр channel_state (после подписки на топики) заводит курсоры
+// каналов — следующий кадр с дырой придерживается до догона, а не принимается
+// базой «с середины».
+describe('createWorkerCore(): channel_state', () => {
+  it('курсор канала из channel_state: кадр через дыру не применяется сразу', () => {
+    const got = boot()
+    capturedConnDeps!.onFrame('channel_state', { channels: [[-42, 5]] })
+    capturedConnDeps!.onFrame('delete_message', {
+      _: 'updateDeleteChannelMessages', channel_id: 42, messages: [3], pts: 7, pts_count: 1,
+    })
+    expect(got['rt:delete_message']).toEqual([])
+    capturedConnDeps!.onFrame('delete_message', {
+      _: 'updateDeleteChannelMessages', channel_id: 42, messages: [2], pts: 6, pts_count: 1,
+    })
+    expect(got['rt:delete_message']).toHaveLength(2)
+  })
+})

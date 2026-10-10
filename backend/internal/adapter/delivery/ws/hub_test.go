@@ -370,3 +370,10 @@ func TestHub_ViewUnsubscribeKeepsMemberSubscription(t *testing.T) {
 		t.Fatal("пачечная подписка не подписала второй канал")
 	}
 }
+
+func TestChannelStateFrame(t *testing.T) {
+	got := string(channelStateFrame([]domain.ChannelCursor{{ChatID: 5, Pts: 9}}))
+	if got != `{"d":{"channels":[[-5,9]]},"t":"channel_state"}` {
+		t.Fatalf("channel_state = %s", got)
+	}
+}

@@ -39,6 +39,8 @@ export const TRANSPORT_FRAMES = {
   message_error:       { kind: 'ephemeral', rt: RT.messageError },
   secret_chat_reject:  { kind: 'ephemeral', rt: RT.secretReject },
   hello:               { kind: 'bespoke' }, // {pts,date} — fast-reconnect gate
+  // {channels:[peer,pts][]} после подписки на топики каналов — догон сдвинувшихся
+  channel_state:       { kind: 'bespoke' },
   pong:                { kind: 'bespoke' }, // heartbeat — гасится в connectionManager
   secret_chat_request: { kind: 'bespoke' },
   secret_chat_accept:  { kind: 'bespoke' },

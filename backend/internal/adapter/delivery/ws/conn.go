@@ -254,34 +254,31 @@ func (c *Conn) run(ctx context.Context) {
 	// апдейт доставляется живым; если он опередит hello — это безвредный дубль/
 	// лишний catch-up на клиенте, но не потеря. Сбой чтения state не фатален —
 	// просто без hello (клиент сделает полный catch-up).
+	c.hub.Register(ctx, c.userID, c.deviceID, c)
+	if st, err := c.svc.UserState(ctx, c.userID); err == nil {
+		c.reply(helloFrame(st))
+	}
+	if c.presence != nil {
+		_ = c.presence.Online(ctx, c.userID)
+	}
 	// Топики своих каналов — сразу, а не по открытию: пост, правка, карточка
 	// и счётчики канала доходят до списка чатов живьём, как у оригинала
 	// (сервер шлёт updateNewChannelMessage всем онлайн-сессиям участников).
-	// Один запрос и один SUBSCRIBE на всё подключение.
+	// Один запрос и один SUBSCRIBE на всё подключение — ПОСЛЕ hello и «в
+	// сети»: первый кадр соединения и присутствие запрос каналов не ждут.
 	//
-	// Гонка. hello несёт pts журналов каналов, и читаются они ПОСЛЕ
-	// SUBSCRIBE: кадр, вышедший до подписки, учтён в pts из hello и
-	// добирается догоном канала (клиент сравнивает pts со своим курсором), а
+	// Гонка. Кадр channel_state несёт pts журналов каналов, прочитанные ПОСЛЕ
+	// SUBSCRIBE: кадр топика, вышедший до подписки, учтён в этих pts и
+	// добирается догоном канала (клиент сравнивает их со своим курсором), а
 	// вышедший после — доезжает живым. Потерь нет, дубль отсекает канальная
 	// воронка по pts. Канал, в который вступили между двумя чтениями, придёт
 	// своим updateChannel. Итого два запроса на подключение, а не 2N.
-	//
-	// Всё это — ДО Register: окно «Register → hello», в которое личный кадр
-	// может обогнать hello, остаётся прежним (один UserState), а канальный
-	// кадр раньше hello безвреден — его гейтит канальная воронка.
 	var peers []domain.PeerID
 	for _, ch := range c.svc.ChannelSubscriptions(ctx, c.userID) {
 		peers = append(peers, domain.ToPeerID(ch.ChatID, true))
 	}
 	c.hub.SubscribeChannels(ctx, peers, c, SubMember)
-	channels := c.svc.ChannelSubscriptions(ctx, c.userID)
-	c.hub.Register(ctx, c.userID, c.deviceID, c)
-	if st, err := c.svc.UserState(ctx, c.userID); err == nil {
-		c.reply(helloFrame(st, channels))
-	}
-	if c.presence != nil {
-		_ = c.presence.Online(ctx, c.userID)
-	}
+	c.reply(channelStateFrame(c.svc.ChannelSubscriptions(ctx, c.userID)))
 	go c.writePump(ctx)
 	c.readPump(ctx) // blocks until the connection closes
 	// Cleanup must not ride the request context: on an abrupt client disconnect
