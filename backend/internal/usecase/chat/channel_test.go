@@ -261,10 +261,26 @@ func (c groupMembershipChats) IncUnreadBulk(context.Context, int64, []int64) (ma
 	return nil, nil
 }
 func (c groupMembershipChats) ForgetUnread(context.Context, int64, int64, int64) error { return nil }
-func (c groupMembershipChats) IncUnreadReactions(context.Context, int64, int64) (int, error) {
+func (c groupMembershipChats) RecountUnreadReactions(context.Context, int64, int64) (int, error) {
 	return 0, nil
 }
-func (c groupMembershipChats) ClearUnreadReactions(context.Context, int64, int64) error { return nil }
+func (c groupMembershipChats) ReadReactions(context.Context, int64, int64, int64) ([]domain.Message, error) {
+	return nil, nil
+}
+func (c groupMembershipChats) UnarchiveUnmuted(context.Context, int64, []int64) ([]int64, error) {
+	return nil, nil
+}
+func (c groupMembershipChats) VisibleSeqsUpTo(context.Context, int64, int64, int64) ([]int64, error) {
+	return nil, nil
+}
+func (c groupMembershipChats) SetDialogHidden(context.Context, int64, int64, bool) error { return nil }
+func (c groupMembershipChats) ShowDialogs(context.Context, int64) error                  { return nil }
+func (c groupMembershipChats) RecountCounters(context.Context, int64, []int64) error     { return nil }
+func (c groupMembershipChats) DropMessageMentions(context.Context, int64, int64) error   { return nil }
+func (c groupMembershipChats) DropUserMentions(context.Context, int64, int64) error      { return nil }
+func (c groupMembershipChats) PinnedIDs(context.Context, []int64) (map[int64]bool, error) {
+	return nil, nil
+}
 func (c groupMembershipChats) CurrentReadSeq(context.Context, int64, int64) (int64, error) {
 	return 0, nil
 }

@@ -37,7 +37,7 @@ func TestReactionFrame_CanSeeListFollowsChatKind(t *testing.T) {
 		t.Run(c.kind, func(t *testing.T) {
 			in, s := newInteractor()
 			s.seedChat(canSeeChat, c.kind, canSeeOwner, canSeeMate)
-			if err := in.reactions.Add(ctx, canSeeMsg, canSeeMate, "🔥"); err != nil {
+			if err := in.reactions.Add(ctx, canSeeMsg, canSeeMate, "🔥", false); err != nil {
 				t.Fatalf("Add: %v", err)
 			}
 
@@ -169,7 +169,7 @@ func TestReactionUsers_RequiresListRight(t *testing.T) {
 			in, s := newInteractor()
 			s.seedChat(canSeeChat, c.kind, canSeeOwner, canSeeMate)
 			seedReactedMessage(s)
-			if err := in.reactions.Add(ctx, canSeeMsg, canSeeMate, "🔥"); err != nil {
+			if err := in.reactions.Add(ctx, canSeeMsg, canSeeMate, "🔥", false); err != nil {
 				t.Fatalf("Add: %v", err)
 			}
 

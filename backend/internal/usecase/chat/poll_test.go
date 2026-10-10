@@ -2,7 +2,9 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 
@@ -153,5 +155,36 @@ func TestVotePoll_Rules(t *testing.T) {
 	}
 	if _, err = in.VotePoll(ctx, single.ID, 11, []int{0}); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("vote on closed: want ErrForbidden, got %v", err)
+	}
+}
+
+// A2-13: проголосовавшему (всем его устройствам) poll_update едет его глазами —
+// без min и с chosen, остальным — урезанные итоги с min.
+func TestVotePoll_ActorGetsPersonalResults(t *testing.T) {
+	in, s := newInteractor()
+	pub := &fakePublisher{}
+	in.SetPublisher(pub)
+	fp := newFakePolls()
+	in.SetPolls(fp)
+	ctx := context.Background()
+	const chatID, owner, voter, other int64 = 90, 10, 11, 12
+	s.seedChat(chatID, domain.ChatTypeGroup, owner, voter, other)
+	poll, _ := fp.Create(ctx, domain.Poll{ChatID: chatID, Question: "q", Options: []string{"a", "b"}})
+	if _, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: owner, Type: "poll", PollID: &poll.ID}); err != nil {
+		t.Fatalf("Send poll: %v", err)
+	}
+	if _, err := in.VotePoll(ctx, poll.ID, voter, []int{1}); err != nil {
+		t.Fatalf("VotePoll: %v", err)
+	}
+	resultsOf := func(uid int64) string {
+		d := lastFrameOfType(t, pub, uid, "poll_update")
+		raw, _ := json.Marshal(d["results"])
+		return string(raw)
+	}
+	if r := resultsOf(voter); strings.Contains(r, `"min"`) || !strings.Contains(r, `"chosen"`) {
+		t.Fatalf("голосовавшему: %s, want без min и с chosen", r)
+	}
+	if r := resultsOf(other); !strings.Contains(r, `"min"`) || strings.Contains(r, `"chosen"`) {
+		t.Fatalf("остальным: %s, want min без chosen", r)
 	}
 }

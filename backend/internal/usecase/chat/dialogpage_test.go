@@ -278,7 +278,7 @@ func TestDialogsPage_TopMessagesHydratedLikeHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("send photo: %v", err)
 	}
-	if err := (fakeReactions{s}).Add(ctx, photo.ID, 2, "👍"); err != nil {
+	if err := (fakeReactions{s}).Add(ctx, photo.ID, 2, "👍", false); err != nil {
 		t.Fatalf("react: %v", err)
 	}
 

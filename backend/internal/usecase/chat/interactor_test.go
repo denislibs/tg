@@ -577,7 +577,7 @@ func TestSearchMessagesFilters(t *testing.T) {
 	m1, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "привет от a"})
 	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Text: "привет от b"})
 	// реакция 👍 на первое сообщение
-	_ = fakeReactions{deps}.Add(ctx, m1.ID, b, "👍")
+	_ = fakeReactions{deps}.Add(ctx, m1.ID, b, "👍", false)
 
 	// фильтр по автору сужает выдачу
 	res, err := in.SearchMessages(ctx, chatID, a, "привет", SearchFilter{SenderID: a}, MediaPage{Limit: 20})

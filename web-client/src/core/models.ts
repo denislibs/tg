@@ -748,9 +748,14 @@ export interface ReactionCount {
   count: number
 }
 
-/** messagePeerReaction#8c79b63c … peer_id:Peer date:int reaction:Reaction; */
+/** messagePeerReaction#8c79b63c flags:# big:flags.0?true unread:flags.1?true
+ *  my:flags.2?true peer_id:Peer date:int reaction:Reaction;
+ *
+ *  `unread` — реакцию ещё не видел АВТОР сообщения (флаг сервер ставит только
+ *  его глазами); по его смене клиент ведёт бейдж ❤ диалога. */
 export interface MessagePeerReaction {
   _: 'messagePeerReaction'
+  pFlags?: Partial<{ big: true; unread: true; my: true }>
   peer_id: Peer
   date: number
   reaction: Reaction

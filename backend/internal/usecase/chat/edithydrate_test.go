@@ -56,8 +56,14 @@ func TestEditMessage_CaptionOnPhotoHydratedLikeHistory(t *testing.T) {
 		if media["_"] != "messageMediaPhoto" {
 			t.Fatalf("кадр правки у %d: вложение = %#v, ждали messageMediaPhoto", uid, inner["media"])
 		}
-		if _, ok := inner["reactions"].(map[string]any); !ok {
+		reactions, ok := inner["reactions"].(map[string]any)
+		if !ok {
 			t.Fatalf("кадр правки у %d без reactions: %#v", uid, inner)
+		}
+		// A1-14: агрегат собран без зрителя — помечен min, чтобы клиент слил
+		// его со своим, а не погасил им свою реакцию.
+		if pf, _ := reactions["pFlags"].(map[string]any); pf["min"] != true {
+			t.Fatalf("реакции в кадре правки у %d без min: %#v", uid, reactions)
 		}
 		flags, _ := inner["pFlags"].(map[string]any)
 		if out := flags["out"] == true; out != (uid == a) {

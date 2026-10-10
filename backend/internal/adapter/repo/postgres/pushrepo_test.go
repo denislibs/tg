@@ -70,12 +70,16 @@ func TestPushRepo_ShouldNotify(t *testing.T) {
 		t.Fatalf("seed chat: %v", err)
 	}
 
-	check := func(label string, wantNotify, wantPreview bool) {
+	checkAt := func(label string, topic int64, mentioned, wantNotify, wantPreview bool) {
 		t.Helper()
-		notify, preview, err := repo.ShouldNotify(ctx, chatID, userID)
+		notify, preview, err := repo.ShouldNotify(ctx, chatID, userID, topic, mentioned)
 		if err != nil || notify != wantNotify || preview != wantPreview {
 			t.Fatalf("%s: ShouldNotify = %v,%v,%v; want %v,%v,nil", label, notify, preview, err, wantNotify, wantPreview)
 		}
+	}
+	check := func(label string, wantNotify, wantPreview bool) {
+		t.Helper()
+		checkAt(label, 0, false, wantNotify, wantPreview)
 	}
 
 	// Not a member → no push.
@@ -96,6 +100,8 @@ func TestPushRepo_ShouldNotify(t *testing.T) {
 		t.Fatalf("update muted_until: %v", err)
 	}
 	check("muted forever", false, false)
+	// A3-21: упоминание или ответ пробивает мьют чата.
+	checkAt("muted forever, mentioned", 0, true, true, true)
 
 	// Временный mute в будущем / истёкший.
 	if _, err := pool.Exec(ctx,
@@ -109,12 +115,25 @@ func TestPushRepo_ShouldNotify(t *testing.T) {
 	}
 	check("mute expired", true, true)
 
+	// A3-21: мьют темы гасит пуш в этой теме (и только в ней); упоминание
+	// пробивает и его.
+	const topicRoot int64 = 4242
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO topic_user_state (chat_id, root_msg_id, user_id, muted) VALUES ($1,$2,$3,true)`,
+		chatID, topicRoot, userID); err != nil {
+		t.Fatalf("seed topic mute: %v", err)
+	}
+	checkAt("topic muted", topicRoot, false, false, false)
+	checkAt("other topic", topicRoot+1, false, true, true)
+	checkAt("topic muted, mentioned", topicRoot, true, true, true)
+
 	// Глобальные настройки: группы замьючены.
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO notify_settings (user_id, groups_muted) VALUES ($1, true)`, userID); err != nil {
 		t.Fatalf("seed notify_settings: %v", err)
 	}
 	check("groups muted globally", false, false)
+	checkAt("groups muted globally, mentioned", 0, true, true, true)
 
 	// Группы включены, но без превью.
 	if _, err := pool.Exec(ctx,
@@ -155,6 +174,37 @@ func TestPushRepo_Enricher(t *testing.T) {
 	badge, err := repo.UnreadBadge(ctx, userID)
 	if err != nil || badge != 3 {
 		t.Fatalf("UnreadBadge = %d, %v; want 3", badge, err)
+	}
+
+	// A3-38: заглушённые, архивные и скрытые группы обсуждения в бейдж не
+	// входят.
+	seedChatUnread := func(typ string, unread int, extra string) int64 {
+		t.Helper()
+		var id int64
+		if err := pool.QueryRow(ctx, `INSERT INTO chats (type) VALUES ($1) RETURNING id`, typ).Scan(&id); err != nil {
+			t.Fatalf("seed chat: %v", err)
+		}
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO chat_members (chat_id, user_id, unread_count) VALUES ($1,$2,$3)`, id, userID, unread); err != nil {
+			t.Fatalf("seed member: %v", err)
+		}
+		if extra != "" {
+			if _, err := pool.Exec(ctx, `UPDATE chat_members SET `+extra+` WHERE chat_id=$1 AND user_id=$2`, id, userID); err != nil {
+				t.Fatalf("update member: %v", err)
+			}
+		}
+		return id
+	}
+	seedChatUnread("group", 5, "muted_until = now() + interval '1 hour'")
+	seedChatUnread("group", 7, "archived = true")
+	disc := seedChatUnread("group", 11, "")
+	var channelID int64
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO chats (type, discussion_chat_id) VALUES ('channel', $1) RETURNING id`, disc).Scan(&channelID); err != nil {
+		t.Fatalf("seed channel: %v", err)
+	}
+	if badge, err := repo.UnreadBadge(ctx, userID); err != nil || badge != 3 {
+		t.Fatalf("UnreadBadge с заглушённым/архивным/обсуждением = %d, %v; want 3", badge, err)
 	}
 
 	// User with no memberships → 0.

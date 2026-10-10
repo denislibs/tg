@@ -286,13 +286,8 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 			}
 		} else {
 			i.publishMessageDelivery(ctx, fc.msg, in.SenderID, fc.recipients, fc.ptsByUser, fc.mentions)
-			if i.notifier != nil && !in.Silent {
-				for _, uid := range fc.recipients {
-					if uid != in.SenderID {
-						peer, _ := i.ChatIDToPeer(ctx, uid, fc.msg.ChatID)
-						i.notifier.NotifyNewMessage(ctx, uid, fc.msg.ChatID, fc.msg.Seq, fc.msg.SenderID, fc.msg.Text, peer)
-					}
-				}
+			if !in.Silent {
+				i.notifyNewMessage(ctx, fc.msg, in.SenderID, fc.recipients, fc.mentions)
 			}
 		}
 		// Зеркало пересланного поста — участникам группы обсуждения, тем же

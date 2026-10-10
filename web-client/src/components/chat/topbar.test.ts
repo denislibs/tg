@@ -643,6 +643,27 @@ describe('ChatTopbar: меню ⋮ — пункты по verify (tweb :462-902)'
     ])
   })
 
+  // «Удалить» лички — попап с чекбоксом `revoke` (tweb deleteDialog.ts case 'chat');
+  // у секретного чата (В7-1) удаление — выход, чекбокса нет: признак строки
+  // (`dialog.secret`) шапка обязана передать попапу.
+  it('«Удалить»: у лички попап с «Also delete for…», у секретного чата — без него', async() => {
+    const deleteItem = async() => Array.from((await openMenu(await open(makeChat({ peerId: ALICE, fullPeer: USER_FULL() })))).querySelectorAll<HTMLElement>('.btn-menu-item'))
+      .find((el) => itemText(el) === t('ChatList.Context.DeleteChat'))!
+    const popupCheckbox = () => document.querySelector('.popup-delete-chat .checkbox-field')
+    try {
+      ;(await deleteItem()).click()
+      expect(popupCheckbox()?.textContent).toContain('Also delete for')
+      document.querySelectorAll('.popup').forEach((el) => el.remove())
+
+      useChatsStore.setState({ dialogs: [makeDialog({ peerId: ALICE, secret: true })] })
+      ;(await deleteItem()).click()
+      expect(document.querySelector('.popup-delete-chat')).not.toBeNull()
+      expect(popupCheckbox()).toBeNull()
+    } finally {
+      document.querySelectorAll('.popup').forEach((el) => el.remove())
+    }
+  })
+
   it('мобильный: «Поиск» в меню; выделение идёт — «Снять выделение» вместо «Выбрать»', async() => {
     mediaSizes.isMobile = true
     try {

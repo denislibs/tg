@@ -58,7 +58,11 @@ type NotifyChecker interface {
 	// имеет приоритет; иначе глобальные настройки по типу чата
 	// (notify_settings). preview — включать ли текст сообщения.
 	// Не участник чата → notify=false.
-	ShouldNotify(ctx context.Context, chatID, userID int64) (notify, preview bool, err error)
+	//
+	// Мьют — чата, типа чата или темы (topicRootID — корень темы, 0 — вне
+	// темы); mentioned (упомянут или ответ ему) мьют пробивает, как в
+	// Telegram (tweb appMessagesManager: `muted && !mentioned` → не уведомлять).
+	ShouldNotify(ctx context.Context, chatID, userID, topicRootID int64, mentioned bool) (notify, preview bool, err error)
 }
 
 type Enricher interface {

@@ -100,6 +100,10 @@ type MessageContext struct {
 	// упоминание» у клиента (tweb isMentionUnread).
 	Mentioned     bool
 	MentionUnread bool
+	// Pinned — сообщение закреплено в чате (message.pFlags.pinned): строка
+	// pinned_messages. По нему меню сообщения выбирает «Открепить» вместо
+	// «Закрепить» (tweb contextMenu.ts:1233, :1243).
+	Pinned bool
 }
 
 // ToWire собирает конструктор схемы: messageService, когда у сообщения есть
@@ -172,6 +176,7 @@ func (m Message) toReal(ctx MessageContext) MessageReal {
 		MediaUnread: m.MediaUnread || (ctx.Mentioned && ctx.MentionUnread),
 		Post:        ctx.Post,
 		Out:         ctx.Out,
+		Pinned:      ctx.Pinned,
 	})
 	r.FromID = m.wireFromID(ctx)
 	r.FwdFrom = m.FwdFrom
@@ -338,10 +343,14 @@ func (m Message) reactions(canSeeList, canViewList bool) *MessageReactions {
 			// тогда, когда есть право).
 			continue
 		}
-		for _, p := range rc.Recent {
+		for k, p := range rc.Recent {
 			// Времени постановки реакции витрина не несёт (колонки нет), а
 			// параметр date обязателен — едет нулём.
-			recent = append(recent, NewMessagePeerReaction(p, zeroTime, emoji))
+			pr := NewMessagePeerReaction(p, zeroTime, emoji)
+			if k < len(rc.RecentUnread) && rc.RecentUnread[k] {
+				pr.MarkUnread()
+			}
+			recent = append(recent, pr)
 		}
 	}
 	out := NewMessageReactions(results, recent)

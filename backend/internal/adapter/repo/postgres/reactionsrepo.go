@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -17,13 +18,16 @@ var _ usecasechat.ReactionRepo = (*ReactionsRepo)(nil)
 
 func NewReactionsRepo(pool *pgxpool.Pool) *ReactionsRepo { return &ReactionsRepo{pool: pool} }
 
-// Add records a user's reaction. Idempotent (no error if it already exists).
-func (r *ReactionsRepo) Add(ctx context.Context, messageID, userID int64, emoji string) error {
+// Add records a user's reaction. Idempotent (no error if it already exists):
+// повтор той же реакции строку не трогает — ни даты, ни непрочитанности.
+// unread — реакция чужая для автора сообщения и ещё им не прочитана
+// (messagePeerReaction.pFlags.unread).
+func (r *ReactionsRepo) Add(ctx context.Context, messageID, userID int64, emoji string, unread bool) error {
 	q := querier(ctx, r.pool)
 	_, err := q.Exec(ctx,
-		`INSERT INTO reactions (message_id, user_id, emoji) VALUES ($1,$2,$3)
+		`INSERT INTO reactions (message_id, user_id, emoji, unread) VALUES ($1,$2,$3,$4)
 		 ON CONFLICT (message_id, user_id, emoji) DO NOTHING`,
-		messageID, userID, emoji)
+		messageID, userID, emoji, unread)
 	return err
 }
 
@@ -89,10 +93,14 @@ func (r *ReactionsRepo) ReactionsFor(ctx context.Context, messageIDs []int64, vi
 	// пиров для аватаров в чипе (tweb count<4). Имя и фото клиент берёт из
 	// своего кэша: снимок карточки прямо в jsonb был бы третьей формой того же
 	// пользователя. Режем [1:3] после ORDER BY created_at DESC.
+	//
+	// Непрочитанность последних реагировавших едет параллельным массивом и
+	// только АВТОРУ сообщения (rm.sender_id = зритель): это его бейдж ❤.
 	rows, err := q.Query(ctx,
 		`SELECT re.message_id, re.emoji, count(*), bool_or(re.user_id=$2),
-		        (array_agg(re.user_id ORDER BY re.created_at DESC))[1:3]
-		 FROM reactions re
+		        (array_agg(re.user_id ORDER BY re.created_at DESC))[1:3],
+		        (array_agg(re.unread AND rm.sender_id = $2 ORDER BY re.created_at DESC))[1:3]
+		 FROM reactions re JOIN messages rm ON rm.id = re.message_id
 		 WHERE re.message_id = ANY($1)
 		 GROUP BY re.message_id, re.emoji ORDER BY count(*) DESC, re.emoji ASC`,
 		messageIDs, viewerID)
@@ -105,11 +113,15 @@ func (r *ReactionsRepo) ReactionsFor(ctx context.Context, messageIDs []int64, vi
 		var msgID int64
 		var rc domain.ReactionCount
 		var recent []int64
-		if err := rows.Scan(&msgID, &rc.Emoji, &rc.Count, &rc.Mine, &recent); err != nil {
+		var unread []bool
+		if err := rows.Scan(&msgID, &rc.Emoji, &rc.Count, &rc.Mine, &recent, &unread); err != nil {
 			return nil, err
 		}
 		for _, id := range recent {
 			rc.Recent = append(rc.Recent, domain.NewPeerUser(id))
+		}
+		if slices.Contains(unread, true) {
+			rc.RecentUnread = unread
 		}
 		out[msgID] = append(out[msgID], rc)
 	}

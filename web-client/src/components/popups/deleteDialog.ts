@@ -8,19 +8,21 @@
 //
 // Расхождения:
 //  1. Действия — наши ручки, а не `appMessagesManager.flushHistory`/`appChatsManager`:
-//     удалить группу/канал для всех — `groups.deleteGroup` (`DELETE /chats/{id}`),
-//     выйти — `groups.removeMember(peerId, myId)` + `dialogs.applyRemoved` (тот же
-//     путь, что у шапки чата, `Chat.tsx::doDeleteChat`). Удалить личку у себя на
-//     бэкенде и есть выход из неё: `flushHistory({justClear: false})` у нас нет.
-//  2. О-89 волна 7: «удалить и у собеседника» (`revoke`, чекбокс
-//     `DeleteMessagesOptionAlso`) и удаление «Избранного» (`saved`,
-//     `AreYouSureDeleteThisChatSavedMessages`) — на бэкенде нет удаления истории
-//     вместе с диалогом (`POST /chats/{id}/clear` чистит только у себя). Пункт
-//     `Delete` у «Избранного» меню не показывает (`dialogsContextMenu.ts`).
+//     удалить личку — `chats.deleteHistory(peerId, revoke)` (`DELETE
+//     /chats/{id}/history`, порт `flushHistory({justClear: false, revoke})`) +
+//     `dialogs.applyRemoved`; удалить группу/канал для всех — `groups.deleteGroup`
+//     (`DELETE /chats/{id}`), выйти — `groups.removeMember(peerId, myId)` +
+//     `dialogs.applyRemoved`. `flush` у `leaveChat` оригинала нет: выход у нас
+//     снимает строку сам.
+//  2. Удаление «Избранного» (`saved`, `AreYouSureDeleteThisChatSavedMessages`):
+//     ручка его уже умеет (`chats.deleteHistory`), но ключа строки нет в нашем
+//     словаре — пункт `Delete` у «Избранного» меню пока не показывает
+//     (`dialogsContextMenu.ts`, расхождение 9).
 //  3. Ветки `monoforum`, `monoforum_thread`, `savedDialog`, `botforum_thread` и
 //     тем форума (`threadId`) — О-4, О-3, задачи 1-6/1-7 (`core/peers/dialogType.ts`).
 //  4. Отступление В7-1: секретный чат (наш продукт, у tweb его нет) — это личка:
-//     тексты `chat`, действие — выход, как у шапки секретного чата.
+//     тексты `chat`, действие — выход, как у шапки секретного чата; чекбокса
+//     `revoke` у него нет (`deleteHistory` секретному чату не адресуется).
 //  5. `onSelect` оригинала передаёт только редактор чата (`editChat.solid.tsx`,
 //     tweb `editChat.tsx:579`: закрыть вкладку по исходу); меню диалога его не
 //     передаёт. Закрыть открытый удалённый чат у tweb — дело класса `Chat`
@@ -41,6 +43,7 @@ import appImManager from '@lib/appImManager'
 import type { Managers } from '@/client/bootstrap'
 
 export type DeleteDialogManagers = PeerTitleManagers & {
+  chats: Pick<Managers['chats'], 'deleteHistory'>
   groups: Pick<Managers['groups'], 'deleteGroup' | 'removeMember'>
   dialogs: Pick<Managers['dialogs'], 'applyRemoved'>
 }
@@ -48,6 +51,11 @@ export type DeleteDialogManagers = PeerTitleManagers & {
 /** `:11-15` — расхождение 1: выход у нас снимает диалог сам, `flush` не нужен. */
 export function leaveChat(peerId: PeerId, managers: DeleteDialogManagers) {
   return managers.groups.removeMember(peerId, rootScope.myId).then(() => managers.dialogs.applyRemoved(peerId))
+}
+
+/** `flushHistory({peerId, justClear: false, revoke})` (`:62`) — расхождение 1. */
+function deleteHistory(peerId: PeerId, revoke: boolean, managers: DeleteDialogManagers) {
+  return managers.chats.deleteHistory(peerId, revoke).then(() => managers.dialogs.applyRemoved(peerId))
 }
 
 export default function showDeleteDialogPopup(
@@ -83,7 +91,9 @@ export default function showDeleteDialogPopup(
     let promise: Promise<unknown>
 
     if(peerType === 'chat') {
-      promise = leaveChat(peerId, managers) // расхождение 1
+      promise = isSecret ?
+        leaveChat(peerId, managers) : // расхождение 4
+        deleteHistory(peerId, !!checked?.size, managers)
     } else {
       if(checked?.size) {
         promise = managers.groups.deleteGroup(peerId)
@@ -139,13 +149,18 @@ export default function showDeleteDialogPopup(
         callback: callbackDelete,
       }]
 
-      // О-89 волна 7: чекбокс `DeleteMessagesOptionAlso` (revoke) — расхождение 2
+      if(!isSecret) { // расхождение 4
+        checkboxes = [{
+          text: 'DeleteMessagesOptionAlso',
+          textArgs: [wrapPeerTitle()],
+        }]
+      }
 
       break
     }
 
     case 'saved':
-      // О-89 волна 7 — расхождение 2: меню пункт не показывает
+      // расхождение 2: ключа текста нет — меню пункт не показывает
       middlewareHelper.destroy()
       return
 
