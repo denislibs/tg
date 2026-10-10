@@ -724,9 +724,10 @@ type editBody struct {
 	Text     string                 `json:"text"`
 	Entities domain.MessageEntities `json:"entities"`
 	// schedule_date — правка ОТЛОЖЕННОГО (id — его ключ): текст, время,
-	// «когда в сети» (0x7FFFFFFE), повтор (tweb appMessagesManager.ts:2209-2218).
+	// «когда в сети» (0x7FFFFFFE), повтор (tweb appMessagesManager.ts:2209-2218);
+	// без schedule_repeat_period повтор не меняется.
 	ScheduleDate         int64 `json:"schedule_date"`
-	ScheduleRepeatPeriod int   `json:"schedule_repeat_period"`
+	ScheduleRepeatPeriod *int  `json:"schedule_repeat_period"`
 }
 
 func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
