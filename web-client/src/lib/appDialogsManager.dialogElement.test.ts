@@ -22,6 +22,7 @@ import { useChatsStore } from '@stores/chatsStore'
 import { makeDialog } from '@core/dialogs/testDialog'
 import { ALL_FOLDER_ID, ARCHIVE_FOLDER_ID } from '@core/folderIds'
 import type { Dialog } from '@core/models'
+import { generateMessageId } from '@core/history/messageId'
 import { useNotifyStore } from '@stores/notifyStore'
 import appDialogsManager, {
   addDialogNew,
@@ -271,7 +272,7 @@ describe('setListClickListener', () => {
     const list = createChatList()
     document.body.append(list)
     const row = makeRow(list, GROUP)
-    row.container.dataset.mid = '' + (0xFFFFFFFF + 42)
+    row.container.dataset.mid = '' + generateMessageId(42)
     const open = vi.spyOn(window, 'open').mockImplementation(() => null)
     appDialogsManager.setListClickListener({ list, autonomous: true })
 
