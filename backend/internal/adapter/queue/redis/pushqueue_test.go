@@ -74,3 +74,30 @@ func TestQueue_ConsumeEmpty(t *testing.T) {
 		t.Fatalf("expected empty slice, got %d", len(jobs))
 	}
 }
+
+// Пачка заданий пуша поста канала уходит конвейером и читается как обычные.
+func TestQueue_EnqueueManyPipelined(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	defer mr.Close()
+	rdb := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
+	defer rdb.Close()
+	ctx := context.Background()
+	q := NewQueue(rdb)
+	jobs := make([]usecasepush.Job, 0, enqueueChunk+5)
+	for k := range enqueueChunk + 5 {
+		jobs = append(jobs, usecasepush.Job{RecipientID: int64(k + 1), ChatID: 3, Seq: 5, Title: "Канал"})
+	}
+	if err := q.EnqueueMany(ctx, jobs); err != nil {
+		t.Fatalf("EnqueueMany: %v", err)
+	}
+	if n := rdb.XLen(ctx, usecasepush.QueueStream).Val(); n != int64(len(jobs)) {
+		t.Fatalf("в потоке %d заданий, want %d", n, len(jobs))
+	}
+	got, err := q.Consume(ctx, 2, 0)
+	if err != nil || len(got) != 2 || got[0].Job != jobs[0] {
+		t.Fatalf("Consume = %+v %v", got, err)
+	}
+}

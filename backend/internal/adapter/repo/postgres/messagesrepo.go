@@ -1458,7 +1458,7 @@ func (r *MessagesRepo) CountUnread(ctx context.Context, chatID, userID, afterSeq
 	q := querier(ctx, r.pool)
 	var n int
 	err := q.QueryRow(ctx,
-		`SELECT count(*) FROM messages m WHERE m.chat_id=$1 AND m.seq>$2 AND m.sender_id<>$3 AND `+messageVisibleTo("m", "$3"),
+		`SELECT `+unreadPostsCount("$1", "$2", "$3"),
 		chatID, afterSeq, userID).Scan(&n)
 	return n, err
 }

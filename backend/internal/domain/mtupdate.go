@@ -51,18 +51,21 @@ import "time"
 
 // Значения дискриминатора `_` объединения Update.
 //
-// Объявлено ровно то, что ПРОИЗВОДИТСЯ. Канальных близнецов правки, прочтения
-// и закрепления (updateEditChannelMessage, updateReadChannelInbox/Outbox,
-// updatePinnedChannelMessages) здесь нет намеренно: эти кадры у нас
-// доставляются пер-юзерным веером со своим курсором, и канальный конструктор
-// на пер-юзерном курсоре соврал бы о том, какой курсор двигать (то же
-// основание записано у editMessagePayload). Они вернутся вместе с переводом
-// этих кадров на журнал канала — долг ДОСТАВКИ, названный в разборе.
+// Объявлено ровно то, что ПРОИЗВОДИТСЯ. Канальные близнецы правки, удаления и
+// закрепления (updateEditChannelMessage, updateDeleteChannelMessages,
+// updatePinnedChannelMessages) едут журналом broadcast-канала со своим
+// пер-канальным pts — как у оригинала. Прочтение канала канального близнеца
+// (updateReadChannelInbox) не получило: оно уходит одному читателю его
+// пер-юзерным журналом, и pts там — его собственный.
 const (
 	UpdateNewMessageTag               = "updateNewMessage"
 	UpdateNewChannelMessageTag        = "updateNewChannelMessage"
 	UpdateEditMessageTag              = "updateEditMessage"
+	UpdateEditChannelMessageTag       = "updateEditChannelMessage"
 	UpdateDeletePeerMessagesTag       = "updateDeletePeerMessages"
+	UpdateDeleteChannelMessagesTag    = "updateDeleteChannelMessages"
+	UpdatePinnedChannelMessagesTag    = "updatePinnedChannelMessages"
+	UpdateChannelTag                  = "updateChannel"
 	UpdateReadHistoryInboxTag         = "updateReadHistoryInbox"
 	UpdateReadHistoryOutboxTag        = "updateReadHistoryOutbox"
 	UpdateReadPeerMessagesContentsTag = "updateReadPeerMessagesContents"
@@ -186,6 +189,27 @@ func NewUpdateEditMessage(m MTMessage, pts int64) UpdateEditMessage {
 	return UpdateEditMessage{Underscore: UpdateEditMessageTag, Message: m, Pts: pts, PtsCount: PtsCountOne}
 }
 
+// updateEditChannelMessage#1b3f4df7 message:Message pts:int pts_count:int
+// = Update;
+//
+// Правка поста broadcast-канала: та же форма, что updateEditMessage, но курсор
+// пер-канальный — запись журнала канала, одна на всех подписчиков. Ею же
+// доезжает догоняющее превью ссылки поста (сервер дописал media).
+type UpdateEditChannelMessage struct {
+	Underscore string    `json:"_"`
+	Message    MTMessage `json:"message"`
+	Pts        int64     `json:"pts"`
+	PtsCount   int       `json:"pts_count"`
+}
+
+func (UpdateEditChannelMessage) isUpdate()     {}
+func (u UpdateEditChannelMessage) Tag() string { return u.Underscore }
+
+func NewUpdateEditChannelMessage(m MTMessage, channelPts int64) UpdateEditChannelMessage {
+	return UpdateEditChannelMessage{Underscore: UpdateEditChannelMessageTag, Message: m,
+		Pts: channelPts, PtsCount: PtsCountOne}
+}
+
 // ── Удаление ────────────────────────────────────────────────────────────────
 
 // updateDeletePeerMessages#5ffab82e peer:Peer messages:Vector<int> pts:int
@@ -225,6 +249,28 @@ func (u UpdateDeletePeerMessages) Tag() string { return u.Underscore }
 func NewUpdateDeletePeerMessages(peer Peer, ids []int64, pts int64) UpdateDeletePeerMessages {
 	return UpdateDeletePeerMessages{Underscore: UpdateDeletePeerMessagesTag, Peer: peer,
 		Messages: nonNilIDs(ids), Pts: pts, PtsCount: PtsCountOne}
+}
+
+// updateDeleteChannelMessages#c32d5b12 channel_id:long messages:Vector<int>
+// pts:int pts_count:int = Update;
+//
+// Удаление постов broadcast-канала журналом канала. Здесь схемный конструктор
+// годится как есть: канал назван channel_id, а номера пер-канальные — ровно та
+// адресация, которой не хватало общему updateDeleteMessages.
+type UpdateDeleteChannelMessages struct {
+	Underscore string  `json:"_"`
+	ChannelID  int64   `json:"channel_id"`
+	Messages   []int64 `json:"messages"`
+	Pts        int64   `json:"pts"`
+	PtsCount   int     `json:"pts_count"`
+}
+
+func (UpdateDeleteChannelMessages) isUpdate()     {}
+func (u UpdateDeleteChannelMessages) Tag() string { return u.Underscore }
+
+func NewUpdateDeleteChannelMessages(channelID int64, ids []int64, channelPts int64) UpdateDeleteChannelMessages {
+	return UpdateDeleteChannelMessages{Underscore: UpdateDeleteChannelMessagesTag, ChannelID: channelID,
+		Messages: nonNilIDs(ids), Pts: channelPts, PtsCount: PtsCountOne}
 }
 
 // ── Прочтение истории ───────────────────────────────────────────────────────
@@ -324,6 +370,51 @@ func NewUpdatePinnedMessages(peer Peer, ids []int64, pinned bool, pts int64) Upd
 		u.PFlags = map[string]bool{"pinned": true}
 	}
 	return u
+}
+
+// updatePinnedChannelMessages#5bb98608 flags:# pinned:flags.0?true
+// channel_id:long messages:Vector<int> pts:int pts_count:int = Update;
+//
+// Закрепление в broadcast-канале — журналом канала, «открепили» — тот же
+// конструктор без бита.
+type UpdatePinnedChannelMessages struct {
+	Underscore string          `json:"_"`
+	PFlags     map[string]bool `json:"pFlags,omitempty"`
+	ChannelID  int64           `json:"channel_id"`
+	Messages   []int64         `json:"messages"`
+	Pts        int64           `json:"pts"`
+	PtsCount   int             `json:"pts_count"`
+}
+
+func (UpdatePinnedChannelMessages) isUpdate()     {}
+func (u UpdatePinnedChannelMessages) Tag() string { return u.Underscore }
+
+func NewUpdatePinnedChannelMessages(channelID int64, ids []int64, pinned bool, channelPts int64) UpdatePinnedChannelMessages {
+	u := UpdatePinnedChannelMessages{Underscore: UpdatePinnedChannelMessagesTag, ChannelID: channelID,
+		Messages: nonNilIDs(ids), Pts: channelPts, PtsCount: PtsCountOne}
+	if pinned {
+		u.PFlags = map[string]bool{"pinned": true}
+	}
+	return u
+}
+
+// updateChannel#635b4c09 channel_id:long = Update;
+//
+// «Перечитай канал»: у оригинала сервер шлёт его, когда меняется само членство
+// пользователя в канале. Мы шлём его вступившему в broadcast-канал: клиент
+// заводит диалог (tweb onUpdateChannel → reloadConversation), а хаб по нему же
+// подписывает сокеты пользователя на топик канала — без этого новый подписчик
+// не видел ни диалога, ни постов до перезагрузки.
+type UpdateChannel struct {
+	Underscore string `json:"_"`
+	ChannelID  int64  `json:"channel_id"`
+}
+
+func (UpdateChannel) isUpdate()     {}
+func (u UpdateChannel) Tag() string { return u.Underscore }
+
+func NewUpdateChannel(channelID int64) UpdateChannel {
+	return UpdateChannel{Underscore: UpdateChannelTag, ChannelID: channelID}
 }
 
 // ── Счётчики поста канала ───────────────────────────────────────────────────

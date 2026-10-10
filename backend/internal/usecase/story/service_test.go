@@ -29,6 +29,7 @@ type fakeRepo struct {
 	feedGroups    []domain.StoryGroup
 	feedErr       error
 	visible       bool
+	visibleAmong  map[int64]bool // nil — видят все кандидаты
 	visibleErr    error
 	marked        bool
 	markErr       error
@@ -134,6 +135,18 @@ func (f *fakeRepo) Delete(ctx context.Context, storyID, authorID int64) error {
 func (f *fakeRepo) Visible(ctx context.Context, storyID, viewerID int64) (bool, error) {
 	return f.visible, f.visibleErr
 }
+func (f *fakeRepo) VisibleAmong(ctx context.Context, storyID int64, viewerIDs []int64) ([]int64, error) {
+	if f.visibleAmong == nil {
+		return viewerIDs, nil
+	}
+	var out []int64
+	for _, id := range viewerIDs {
+		if f.visibleAmong[id] {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
 func (f *fakeRepo) SetReaction(ctx context.Context, storyID, userID int64, reaction string) error {
 	f.setCalled = true
 	f.setReaction = reaction
@@ -232,7 +245,7 @@ type fakePartners struct {
 	err error
 }
 
-func (f *fakePartners) ChatPartners(ctx context.Context, userID int64) ([]int64, error) {
+func (f *fakePartners) StoryPartners(ctx context.Context, userID int64) ([]int64, error) {
 	return f.ids, f.err
 }
 
@@ -1139,5 +1152,26 @@ func TestArchiveAndPinned_AttachMediaLadder(t *testing.T) {
 	}
 	if arch[0].Media.Tag() != domain.MessageMediaPhotoTag {
 		t.Fatalf("картинка должна ехать фотографией, а не %s", arch[0].Media.Tag())
+	}
+}
+
+// Ревью #407 (приватность): кадр «контактной» истории — только тем из круга,
+// кто видит её по правилу приватности (storyVisibleTo: контакты автора), а не
+// всем партнёрам: посторонний, записавший автора к себе, не получает ни
+// подписи, ни медиа.
+func TestPost_ContactsStoryFramesOnlyToViewers(t *testing.T) {
+	repo := &fakeRepo{createID: 42, visibleAmong: map[int64]bool{1: true, 2: true}}
+	seedStory(repo, 42)
+	pub := newFakePublisher()
+	svc := New(repo, &fakePartners{ids: []int64{2, 3}}, &fakeMedia{owner: 1}, &fakeTx{})
+	svc.SetPublisher(pub)
+	if _, err := svc.Post(context.Background(), 1, 7, "hi", "contacts", nil, nil, 0); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(pub.frames[2]) != 1 || len(pub.frames[1]) != 1 {
+		t.Fatalf("видящим кадр не ушёл: %d/%d", len(pub.frames[1]), len(pub.frames[2]))
+	}
+	if len(pub.frames[3]) != 0 {
+		t.Fatal("кадр истории «для контактов» ушёл тому, кто её не видит")
 	}
 }

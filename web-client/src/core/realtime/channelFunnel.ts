@@ -133,6 +133,14 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
     }
   }
 
+  function seed(peerId: number, pts: number): void {
+    const st = state(peerId)
+    if (st.seeded || pts <= 0) return
+    st.pts = pts
+    st.seeded = true
+    deps.savePts(peerId, pts)
+  }
+
   return {
     // Живой канальный кадр (курсор канала выбран вызывающим по дискриминатору).
     // Та же арифметика dup/next/gap, что
@@ -171,6 +179,28 @@ export function newChannelFunnel(deps: ChannelFunnelDeps) {
         st.pts = stored
         st.seeded = true
         void catchUp(peerId)
+      }
+    },
+
+    /**
+     * Курсор канала из строки списка — порт tweb `addChannelState` (`??=`):
+     * заводится, только если курсора ещё нет; живой курсор не откатывается.
+     */
+    seed,
+
+    /**
+     * hello (под)ключения: сервер называет pts журналов каналов, на топики
+     * которых соединение уже подписано. Догоняются только каналы с заведённым
+     * курсором, чей pts ушёл вперёд, — аналог `updateChannelTooLong` в ответе
+     * getDifference у tweb (apiUpdatesManager.ts:354, :632-662): кадры топиков,
+     * пока сокета не было, пропали. Канал без курсора получает курсор отсюда
+     * (как `addChannelState`) — его строку уже дал список.
+     */
+    onHello(channels: ReadonlyArray<readonly [number, number]>): void {
+      for (const [peerId, pts] of channels) {
+        const st = state(peerId)
+        if (!st.seeded) { seed(peerId, pts); continue }
+        if (pts > st.pts) void catchUp(peerId)
       }
     },
 

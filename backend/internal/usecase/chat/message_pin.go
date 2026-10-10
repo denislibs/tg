@@ -31,6 +31,11 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 		return domain.ErrNotFound
 	}
 
+	// broadcast-канал: закреп — одна запись журнала канала
+	// (updatePinnedChannelMessages) вместо строки у каждого подписчика.
+	broadcast := i.isBroadcast(ctx, chatID)
+	var channelBody map[string]any
+	var channelPts int64
 	var members []int64
 	var pinAddr chatAddress
 	ptsByUser := map[int64]int64{}
@@ -40,6 +45,12 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 				return e
 			}
 		} else if e := i.chats.UnpinMessage(ctx, chatID, msgID); e != nil {
+			return e
+		}
+		if broadcast {
+			channelBody = channelPinPayload(chatID, cur.Seq, pin)
+			p, e := i.appendChannelUpdate(ctx, chatID, "pin_message", channelBody)
+			channelPts = p
 			return e
 		}
 		mem, e := i.chats.MemberIDs(ctx, chatID)
@@ -70,8 +81,12 @@ func (i *Interactor) SetPin(ctx context.Context, chatID, msgID, userID int64, pi
 	if err != nil {
 		return err
 	}
+	if broadcast {
+		i.publishChannelUpdate(ctx, chatID, "pin_message", channelBody, channelPts, 0)
+	}
+	// В канале members пуст: закреп строку списка подписчиков не меняет.
 	i.invalidateDialogs(ctx, members...)
-	if i.publisher != nil {
+	if i.publisher != nil && !broadcast {
 		for _, uid := range members {
 			body := pinPayload(pinAddr.forViewer(uid), cur.Seq, pin)
 			_ = i.publisher.PublishToUser(ctx, uid, framePts("pin_message", body, ptsByUser[uid]))

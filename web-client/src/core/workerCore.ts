@@ -53,12 +53,12 @@ import { newChannelFunnel, type ChannelDiff } from './realtime/channelFunnel'
 import { newSyncWait } from './realtime/syncWait'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type RepliesUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type RepliesUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { generateMessageId } from './history/messageId'
 import { getPeerId, toChatId, toPeerId } from './peers/peerId'
 import { LOGGED_WITHOUT_CONSTRUCTOR, PASS_THROUGH } from './realtime/transportFrames'
-import { CHANNEL_CURSOR, UPDATE_RT, channelPeerId, frameKey, updatePredicate } from './realtime/updateCatalog'
+import { CHANNEL_CURSOR, UPDATE_RT, channelPeerId, channelTwin, frameKey, updatePredicate } from './realtime/updateCatalog'
 import { idbGet, idbSet } from './store/idbKv'
 import { sessionKv } from './store/sessionKv'
 import { newPasscodeWorker } from './passcode/passcodeWorker'
@@ -296,6 +296,9 @@ export function createWorkerCore() {
   // groups/chatThemes (Task 4) — им нужна ссылка на него в конструкторе.
   const dialogs = newDialogsManager({
     rest,
+    // Курсор канала из списка (tweb addChannelState): воронка объявлена ниже,
+    // строки списка приходят позже сборки — к первому вызову она уже есть.
+    addChannelState: (peerId, pts) => channelFunnel.seed(peerId, pts),
     onDialogOps: (ops) => broadcast(RT.dialogOp, { ops }),
     loadCache: () => loadDialogs(),
     loadState: async () => {
@@ -564,6 +567,11 @@ export function createWorkerCore() {
     if (key === LOGGED_WITHOUT_CONSTRUCTOR) { broadcast(RT.folderUpdate, d, meta); return }
     const pred = updatePredicate(d)
     if (!pred || pred !== key) return
+    // Канальный близнец правки/удаления/закрепа (журнал broadcast-канала):
+    // курсор его уже применила канальная воронка, дальше — путь пары
+    // (tweb разбирает обе одним обработчиком).
+    const twin = channelTwin(d as Update)
+    if (twin) { dispatch(twin._, twin, meta); return }
     if (pred === 'updateNewMessage' || pred === 'updateNewChannelMessage') {
       routeNewMessage(d as NewMessageEvt, meta); return
     }
@@ -602,6 +610,7 @@ export function createWorkerCore() {
       peers.saveApiPeers((d as ChatUpdateEvt).chat_full)
     }
     else if (pred === 'updateChatRemoved') dialogs.applyRemoved(getPeerId((d as ChatRemovedEvt).peer))
+    else if (pred === 'updateChannel') dialogs.applyChannel(toPeerId((d as ChannelEvt).channel_id, true))
     // tweb `appChatsManager.onUpdateChannelParticipant` (:1419-1422): кэш страниц
     // участников чата — сбросить ДО рассылки `chat_participant`.
     else if (pred === 'updateChannelParticipant') {
@@ -790,7 +799,10 @@ export function createWorkerCore() {
       // hello — первый кадр WS: {pts,date}. pts===cursor → быстрый reconnect без REST;
       // иначе catch-up доберёт разницу. cursor.ready() гейтит сравнение до гидратации.
       if (type === 'hello') {
-        const p = payload as { pts?: number; date?: number }
+        const p = payload as { pts?: number; date?: number; channels?: [number, number][] }
+        // Каналы, чей журнал ушёл вперёд, пока сокета не было: их кадры
+        // топиков пропали, а пер-юзерный /sync их не несёт (журналы разные).
+        if (p?.channels) channelFunnel.onHello(p.channels)
         if (typeof p?.pts === 'number') {
           const want = p.pts
           // Реконнект с расхождением pts: catch-up добёрет разницу — придержанные

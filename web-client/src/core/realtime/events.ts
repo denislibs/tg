@@ -44,6 +44,10 @@ export const RT = {
   // — remove. Окно правит ТОЛЬКО applyOps, исключений больше нет.
   call: 'rt:call',
   chatRemoved: 'rt:chat_removed',
+  // Пользователь вступил в broadcast-канал (`updateChannel`): строку диалога
+  // заводит владелец списка (dialogsManager.applyChannel) — витрине кадр
+  // только транслируется.
+  channel: 'rt:channel',
   draftUpdate: 'rt:draft_update',
   chatThemeUpdate: 'rt:chat_theme_update',
   dialogPin: 'rt:dialog_pin',
@@ -383,6 +387,29 @@ export interface MediaReadEvt {
  *  Поле `removed: true` ушло — оно было константой: «кадр удаления сообщает об
  *  удалении». Вид кадра несёт дискриминатор. */
 export interface ChatRemovedEvt { _: 'updateChatRemoved'; peer: Peer }
+/**
+ * «Перечитай канал» — `updateChannel{channel_id}`. Сервер шлёт его вступившему
+ * в broadcast-канал: диалога ещё нет, и строку заводит перечитывание (tweb
+ * `onUpdateChannel` → `reloadConversation`).
+ */
+export interface ChannelEvt { _: 'updateChannel'; channel_id: number }
+/**
+ * Канальные близнецы правки, удаления и закрепления — те же предметы, что
+ * `updateEditMessage` / `updateDeletePeerMessages` / `updatePinnedMessages`, но
+ * журналом broadcast-канала: `pts` у них ПЕР-КАНАЛЬНЫЙ. Канал назван
+ * `channel_id` (номера пер-канальные), у правки — `message.peer_id`.
+ * Обработчик у них общий с пер-юзерными (tweb вешает на обе пары один:
+ * `onUpdateEditMessage`, `onUpdateDeleteMessages`), различает их только курсор.
+ */
+export interface EditChannelMessageEvt { _: 'updateEditChannelMessage'; message: RawMyMessage; pts?: number }
+export interface DeleteChannelMessagesEvt { _: 'updateDeleteChannelMessages'; channel_id: number; messages: number[]; pts?: number }
+export interface PinChannelMessagesEvt {
+  _: 'updatePinnedChannelMessages'
+  pFlags?: { pinned?: true }
+  channel_id: number
+  messages: number[]
+  pts?: number
+}
 // Тема оформления чата сменилась (chat_theme_update) — общая для чата, приходит
 // обоим участникам. theme_id пустой — тема сброшена к дефолту.
 export interface ChatThemeUpdateEvt { _: 'updateChatTheme'; peer: Peer; theme_id: string }
@@ -679,8 +706,12 @@ export interface ReadStoriesEvt { _: 'updateReadStories'; peer: Peer; max_id: nu
 export type Update =
   | NewMessageEvt
   | EditMessageEvt
+  | EditChannelMessageEvt
   | DeleteMessageEvt
+  | DeleteChannelMessagesEvt
   | PinMessageEvt
+  | PinChannelMessagesEvt
+  | ChannelEvt
   | ReadEvt
   | MediaReadEvt
   | ReactionEvt

@@ -1,5 +1,7 @@
 package postgres
 
+import "strconv"
+
 // Предикаты ВИДИМОСТИ — по одному на предмет, общие для всех выборок.
 //
 // Пока условие видимости копировалось по запросам, каждая копия теряла своё:
@@ -64,4 +66,40 @@ func storyVisibleTo(alias, viewer string) string {
 		` OR (` + alias + `.privacy = 'contacts' AND EXISTS (SELECT 1 FROM contacts sct WHERE sct.owner_id = ` + alias + `.author_id AND sct.user_id = ` + viewer + `))` +
 		` OR (` + alias + `.privacy = 'close' AND EXISTS (SELECT 1 FROM close_friends scf WHERE scf.owner_id = ` + alias + `.author_id AND scf.user_id = ` + viewer + `))` +
 		` OR EXISTS (SELECT 1 FROM story_allow ssa WHERE ssa.story_id = ` + alias + `.id AND ssa.user_id = ` + viewer + `))))`
+}
+
+// UnreadCountCap — верхняя граница подсчёта непрочитанного: дальше счёт не
+// идёт (клиент рисует число как есть, как у оригинала при больших значениях
+// бейдж всё равно сокращён). Без границы непрочитанный канал с десятками тысяч
+// постов стоил бы десятков тысяч строк на каждый /chats.
+const UnreadCountCap = 9999
+
+// unreadPostsCount — ОДНА формула непрочитанного на всех: посты чата chat
+// выше горизонта readSeq, не от viewer и не удалённые, не больше
+// UnreadCountCap. Её подставляют строка списка (dialogUnreadCount) и пересчёт
+// при прочтении (MessagesRepo.CountUnread → still_unread_count), поэтому
+// бейдж в списке и после прочтения совпадает. Индекс —
+// idx_messages_unread_count (0142), index-only scan.
+//
+// Видимость — общий предикат messageVisibleTo (удалённое, скрытое у себя,
+// очищенное, скрытая предыстория): что зритель в ленте не видит, то ему и не
+// непрочитанное (Ф-4 перевёл пересчёт при прочтении на него — список обязан
+// считать так же).
+func unreadPostsCount(chat, readSeq, viewer string) string {
+	return `(SELECT count(*) FROM (SELECT 1 FROM messages um WHERE um.chat_id = ` + chat +
+		` AND um.seq > ` + readSeq + ` AND um.sender_id <> ` + viewer +
+		` AND ` + messageVisibleTo("um", viewer) + ` LIMIT ` + strconv.Itoa(UnreadCountCap) + `) uc)::int`
+}
+
+// dialogUnreadCount — счётчик непрочитанного строки членства m (алиас
+// chat_members) в чате c (алиас chats).
+//
+// У broadcast-канала счётчик считается НА ЧТЕНИИ: пост канала пишется одной
+// строкой журнала канала, без веера по подписчикам (O(1) на пост), поэтому
+// хранимому chat_members.unread_count расти не от чего. Формула —
+// unreadPostsCount. У остальных чатов — хранимый счётчик веера.
+func dialogUnreadCount(m, c string) string {
+	return `CASE WHEN ` + c + `.type = 'channel' THEN ` +
+		unreadPostsCount(c+".id", m+".last_read_seq", m+".user_id") +
+		` ELSE ` + m + `.unread_count END`
 }

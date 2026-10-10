@@ -64,6 +64,9 @@ export interface RawDialog {
   unread_mentions_count: number
   unread_reactions_count: number
   notify_settings: PeerNotifySettings
+  /** flags.0?int — у broadcast-канала pts его журнала: из него заводится
+   *  курсор канала (tweb `addChannelState(channelId, dialog.pts)`). */
+  pts?: number
   /** Черновик ЭТОГО диалога (flags.1?DraftMessage). Место черновика — сам
    *  диалог: от его даты зависит порядок списка, и собирать активность чата из
    *  двух источников значило бы держать две правды об одном факте.

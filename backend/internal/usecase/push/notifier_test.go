@@ -18,6 +18,17 @@ type fakeQueue struct {
 	enqErr  error
 	consErr error
 	ackErr  error
+	batches int // вызовов EnqueueMany
+}
+
+func (q *fakeQueue) EnqueueMany(ctx context.Context, jobs []Job) error {
+	q.batches++
+	for _, j := range jobs {
+		if err := q.Enqueue(ctx, j); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (q *fakeQueue) Enqueue(_ context.Context, j Job) error {
@@ -61,14 +72,36 @@ func (o *fakeOnline) IsOnline(_ context.Context, userID int64) (bool, error) {
 	return o.online[userID], o.err
 }
 
+func (o *fakeOnline) OnlineMany(_ context.Context, userIDs []int64) (map[int64]bool, error) {
+	out := map[int64]bool{}
+	for _, id := range userIDs {
+		if o.online[id] {
+			out[id] = true
+		}
+	}
+	return out, o.err
+}
+
 type fakeNotify struct {
 	muted     map[int64]bool
 	noPreview map[int64]bool
 	err       error
+	batches   int // вызовов NotifyTargets
 }
 
 func (m *fakeNotify) ShouldNotify(_ context.Context, _, userID, _ int64, _ bool) (bool, bool, error) {
 	return !m.muted[userID], !m.noPreview[userID], m.err
+}
+
+func (m *fakeNotify) NotifyTargets(_ context.Context, _ int64, userIDs []int64) (map[int64]bool, error) {
+	m.batches++
+	out := map[int64]bool{}
+	for _, id := range userIDs {
+		if !m.muted[id] {
+			out[id] = !m.noPreview[id]
+		}
+	}
+	return out, m.err
 }
 
 type fakeSubs struct {
@@ -115,8 +148,9 @@ func (s *fakeSender) Send(_ context.Context, sub domain.PushSubscription, payloa
 }
 
 type fakeEnricher struct {
-	names  map[int64]string
-	badges map[int64]int
+	names      map[int64]string
+	badges     map[int64]int
+	badgeCalls int
 }
 
 func (e *fakeEnricher) SenderName(_ context.Context, userID int64) (string, error) {
@@ -124,6 +158,7 @@ func (e *fakeEnricher) SenderName(_ context.Context, userID int64) (string, erro
 }
 
 func (e *fakeEnricher) UnreadBadge(_ context.Context, userID int64) (int, error) {
+	e.badgeCalls++
 	return e.badges[userID], nil
 }
 
@@ -190,5 +225,32 @@ func TestNotifier_SkipsOnMuteCheckError(t *testing.T) {
 
 	if len(q.jobs) != 0 {
 		t.Fatalf("expected no enqueue on mute-check error, got %d", len(q.jobs))
+	}
+}
+
+// A3-06: пуш поста канала — одним батчем на всех подписчиков: онлайн и
+// замьюченные отсекаются, решение по мьюту — один запрос, заголовок — название
+// канала (автор поста у канала скрыт).
+func TestNotifier_ChannelPostBatch(t *testing.T) {
+	q := &fakeQueue{}
+	notify := &fakeNotify{muted: map[int64]bool{9: true}, noPreview: map[int64]bool{10: true}}
+	n := NewNotifier(&fakeOnline{online: map[int64]bool{8: true}}, notify, q)
+
+	n.NotifyChannelPost(context.Background(), 3, []int64{8, 9, 10, 11}, 5, "Новости", "пост", -3)
+
+	if notify.batches != 1 {
+		t.Fatalf("решений по мьюту = %d запросов, want 1 на пачку", notify.batches)
+	}
+	if len(q.jobs) != 2 || q.batches != 1 {
+		t.Fatalf("заданий = %d пачек %d, want 2 одной пачкой (10 и 11: 8 онлайн, 9 замьючен)", len(q.jobs), q.batches)
+	}
+	want := map[int64]Job{
+		10: {RecipientID: 10, ChatID: 3, PeerID: -3, Seq: 5, Title: "Новости", Text: "пост", Preview: false},
+		11: {RecipientID: 11, ChatID: 3, PeerID: -3, Seq: 5, Title: "Новости", Text: "пост", Preview: true},
+	}
+	for _, qj := range q.jobs {
+		if qj.Job != want[qj.Job.RecipientID] {
+			t.Fatalf("задание = %+v, want %+v", qj.Job, want[qj.Job.RecipientID])
+		}
 	}
 }

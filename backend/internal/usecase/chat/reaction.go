@@ -144,10 +144,33 @@ func countsUnreadReactions(kind string) bool {
 // Telegram отвечает автору действия полным телом) и pFlags.unread в
 // recent_reactions у автора — по их смене клиент ведёт бейдж ❤ (tweb
 // onUpdateMessageReactions → modifyUnreadReactions).
+//
+// broadcast-канал (эмодзи и ⭐): веера по личным журналам подписчиков нет —
+// урезанный агрегат уходит одним кадром в топик канала (у
+// updateMessageReactions в схеме pts нет, пропустивший получает агрегат с
+// историей поста), а личный — только поставившему (personal[0]), на его
+// другие устройства: chosen_order. Бейджа ❤ у канала нет
+// (countsUnreadReactions), поэтому автору личный кадр не нужен.
 func (i *Interactor) journalReactions(ctx context.Context, chatID int64, msg domain.Message, personal ...int64) (func(context.Context), error) {
 	common, err := i.reactionsSeenBy(ctx, chatID, msg.ID, 0)
 	if err != nil {
 		return nil, err
+	}
+	if i.isBroadcast(ctx, chatID) {
+		var ownDeliver func(context.Context)
+		if len(personal) > 0 && personal[0] != 0 {
+			d, e := i.journalOwnReactions(ctx, chatID, personal[0], []domain.Message{msg})
+			if e != nil {
+				return nil, e
+			}
+			ownDeliver = d
+		}
+		return func(ctx context.Context) {
+			i.publishChannelReactions(ctx, chatID, msg.Seq, common)
+			if ownDeliver != nil {
+				ownDeliver(ctx)
+			}
+		}, nil
 	}
 	own := map[int64]domain.MessageReactions{}
 	for _, uid := range personal {

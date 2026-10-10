@@ -280,10 +280,9 @@ func (i *Interactor) ForwardMessages(ctx context.Context, in ForwardInput) ([]do
 	for _, fc := range out {
 		created = append(created, fc.msg)
 		if broadcast {
-			// Пуш-уведомлений у постов канала нет — их нет и у Send.
-			if i.chPub != nil {
-				_ = i.chPub.PublishToChannel(ctx, in.ToChatID, frameChannelMessage("new_message", fc.channelPayload, fc.channelPts))
-			}
+			// Пост канала — та же доставка, что у Send (channel_fanout.go);
+			// черновик пересылка не снимает, превью у копии уже есть.
+			i.deliverChannelPost(ctx, fc.msg, fc.channelPayload, fc.channelPts, channelPostOpts{silent: in.Silent})
 		} else {
 			i.publishMessageDelivery(ctx, fc.msg, in.SenderID, fc.recipients, fc.ptsByUser, fc.mentions)
 			if !in.Silent {

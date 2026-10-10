@@ -29,6 +29,13 @@ export const UPDATE_RT = {
   updateEditMessage: RT.editMessage,
   updateDeletePeerMessages: RT.deleteMessage,
   updatePinnedMessages: RT.pinMessage,
+  // Их канальные близнецы (журнал broadcast-канала). Наружу они не уходят:
+  // воркер приводит их к пер-юзерному конструктору (channelTwin) ДО рассылки,
+  // так что события здесь — те же, что у пары, и строки нужны лишь полноте.
+  updateEditChannelMessage: RT.editMessage,
+  updateDeleteChannelMessages: RT.deleteMessage,
+  updatePinnedChannelMessages: RT.pinMessage,
+  updateChannel: RT.channel,
   // Прочтение: «прочитал я» и «прочитали меня» — РАЗНЫЕ конструкторы, и
   // получатель больше не выводит «чьё это» сравнением user_id с собой.
   updateReadHistoryInbox: RT.read,
@@ -97,9 +104,41 @@ export const UPDATE_RT = {
  */
 export const CHANNEL_CURSOR: ReadonlySet<string> = new Set<UpdatePredicate>([
   'updateNewChannelMessage',
+  'updateEditChannelMessage',
+  'updateDeleteChannelMessages',
+  'updatePinnedChannelMessages',
   'updateChannelFullSnapshot',
   'updateChannelBoostStatus',
 ])
+
+/**
+ * Канальный близнец → пер-юзерный конструктор того же предмета.
+ *
+ * У оригинала обе пары разбирает ОДИН обработчик (`onUpdateEditMessage` на
+ * `updateEditMessage`/`updateEditChannelMessage`, `onUpdateDeleteMessages` на
+ * `updateDeleteMessages`/`updateDeleteChannelMessages`): различает их только
+ * курсор, а его к этому месту уже применила канальная воронка. Поэтому кадр
+ * переводится в форму пары и дальше идёт её путём. У канального удаления и
+ * закрепления канал назван `channel_id` — у пары это `peer`.
+ */
+export function channelTwin(u: Update): Update | undefined {
+  switch (u._) {
+    case 'updateEditChannelMessage':
+      return { ...u, _: 'updateEditMessage' }
+    case 'updateDeleteChannelMessages':
+      return {
+        _: 'updateDeletePeerMessages', peer: { _: 'peerChannel', channel_id: u.channel_id },
+        messages: u.messages, pts: u.pts,
+      }
+    case 'updatePinnedChannelMessages':
+      return {
+        _: 'updatePinnedMessages', ...(u.pFlags ? { pFlags: u.pFlags } : {}),
+        peer: { _: 'peerChannel', channel_id: u.channel_id }, messages: u.messages, pts: u.pts,
+      }
+    default:
+      return undefined
+  }
+}
 
 /** Дискриминатор кадра, если он есть (кадры без конструктора его не несут). */
 export function updatePredicate(d: unknown): UpdatePredicate | undefined {
@@ -129,8 +168,11 @@ export function frameKey(type: string, d: unknown): string {
  * параметром `peer`.
  */
 export function channelPeerId(u: Update): number | undefined {
-  if (u._ === 'updateNewChannelMessage') {
+  if (u._ === 'updateNewChannelMessage' || u._ === 'updateEditChannelMessage') {
     return u.message.peer_id !== undefined ? getPeerId(u.message.peer_id) : undefined
+  }
+  if (u._ === 'updateDeleteChannelMessages' || u._ === 'updatePinnedChannelMessages') {
+    return getPeerId({ _: 'peerChannel', channel_id: u.channel_id })
   }
   if (u._ === 'updateChannelFullSnapshot' || u._ === 'updateChannelBoostStatus') {
     return getPeerId(u.peer)

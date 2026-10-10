@@ -20,10 +20,13 @@ type Job struct {
 	// адресуется наружу (пара «пир + номер»). Глобального msg_id рядом больше
 	// нет — задание, застрявшее в очереди с прошлой версии, несло оба поля, так
 	// что старые задания читаются этим кодом без потерь.
-	Seq      int64  `json:"seq"`
-	SenderID int64  `json:"sender_id"`
-	Text     string `json:"text"`
-	Preview  bool   `json:"preview"` // Message Preview: включать ли текст в пуш
+	Seq      int64 `json:"seq"`
+	SenderID int64 `json:"sender_id"`
+	// Title — заголовок пуша, если он не имя автора: у поста канала это
+	// название канала (автор поста у канала скрыт). Пусто — имя автора.
+	Title   string `json:"title,omitempty"`
+	Text    string `json:"text"`
+	Preview bool   `json:"preview"` // Message Preview: включать ли текст в пуш
 }
 
 // QueuedJob is a Job plus its queue id (for ack).
@@ -40,6 +43,8 @@ type SubRepo interface {
 
 type Queue interface {
 	Enqueue(ctx context.Context, j Job) error
+	// EnqueueMany — пачка заданий одним конвейером (пуш поста канала).
+	EnqueueMany(ctx context.Context, jobs []Job) error
 	Consume(ctx context.Context, max int, blockMS int) ([]QueuedJob, error) // empty slice if none
 	Ack(ctx context.Context, id string) error
 }
@@ -51,6 +56,8 @@ type Sender interface {
 
 type OnlineChecker interface {
 	IsOnline(ctx context.Context, userID int64) (bool, error)
+	// OnlineMany — кто из userIDs онлайн, одним проходом (батч пуша канала).
+	OnlineMany(ctx context.Context, userIDs []int64) (map[int64]bool, error)
 }
 
 type NotifyChecker interface {
@@ -63,6 +70,10 @@ type NotifyChecker interface {
 	// темы); mentioned (упомянут или ответ ему) мьют пробивает, как в
 	// Telegram (tweb appMessagesManager: `muted && !mentioned` → не уведомлять).
 	ShouldNotify(ctx context.Context, chatID, userID, topicRootID int64, mentioned bool) (notify, preview bool, err error)
+	// NotifyTargets — решение пачкой по участникам одного чата (пуш поста
+	// broadcast-канала: тем и упоминаний там нет): кому из userIDs пушить
+	// (ключ карты) и с текстом ли (значение). Не участник и замьюченный — не в карте.
+	NotifyTargets(ctx context.Context, chatID int64, userIDs []int64) (map[int64]bool, error)
 }
 
 type Enricher interface {

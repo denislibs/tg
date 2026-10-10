@@ -152,6 +152,7 @@ beforeEach(() => {
     { _: 'channel', id: 100, title: 'Группа', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true },
       default_banned_rights: { _: 'chatBannedRights', until_date: 0, pFlags: {} } } as unknown as MTChat,
     { _: 'channel', id: 200, title: 'Канал', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { broadcast: true } } as unknown as MTChat,
+    { _: 'channel', id: 300, title: 'Чужой канал', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { broadcast: true, left: true } } as unknown as MTChat,
   ] }])
 })
 
@@ -251,13 +252,22 @@ describe('Chat.onChangePeer — вид чата, флаги и права (tweb 
     expect(await c.canSend()).toBe(true)
   })
 
-  it('канал — `isBroadcast`, подписчику писать нельзя, канал подписан на время окна', async() => {
+  it('канал — `isBroadcast`, подписчику писать нельзя; участнику подписка ленты не нужна', async() => {
     const managers = managersWith()
     const c = newChat(managers)
     await open(c, { peerId: CHANNEL })
     expect([c.isLikeGroup, c.isBroadcast, c.isChannel]).toEqual([false, true, true])
     expect(await c.canSend()).toBe(false)
-    expect(managers.realtime.subscribeChannel).toHaveBeenCalledWith({ peerId: CHANNEL })
+    // tweb `isFetchIntervalNeeded`: участника сервер держит на топике канала
+    // сам — подписка/отписка ленты сняла бы его подписку (ревью #407).
+    expect(managers.realtime.subscribeChannel).not.toHaveBeenCalled()
+  })
+
+  it('чужой канал (не участник) — подписан на время окна', async() => {
+    const managers = managersWith()
+    const c = newChat(managers)
+    await open(c, { peerId: -300 })
+    expect(managers.realtime.subscribeChannel).toHaveBeenCalledWith({ peerId: -300 })
   })
 
   it('тред комментариев (не форум) — `ChatType.Discussion`, ключ окна с тредом', async() => {

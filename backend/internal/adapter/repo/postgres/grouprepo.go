@@ -41,9 +41,17 @@ func (r *GroupRepo) CreateMultiMember(ctx context.Context, typ, title, about, us
 
 func (r *GroupRepo) AddMember(ctx context.Context, chatID, userID int64, role string, rights domain.Rights) error {
 	q := querier(ctx, r.pool)
+	// Вступивший в broadcast-канал начинает с прочитанной историей: горизонт
+	// чтения — последний пост на момент вступления. Непрочитанное канала
+	// считается на чтении от last_read_seq (dialogUnreadCount), и без этого
+	// новый подписчик получил бы бейджем всю историю канала — у оригинала
+	// вступление непрочитанных не добавляет. У групп счётчик хранимый и
+	// растёт веером, горизонт там не трогаем.
 	ct, err := q.Exec(ctx,
-		`INSERT INTO chat_members (chat_id, user_id, role, rights)
-		 VALUES ($1,$2,$3,$4) ON CONFLICT (chat_id,user_id) DO NOTHING`,
+		`INSERT INTO chat_members (chat_id, user_id, role, rights, last_read_seq)
+		 SELECT c.id, $2, $3, $4, CASE WHEN c.type = 'channel' THEN c.last_seq ELSE 0 END
+		   FROM chats c WHERE c.id = $1
+		 ON CONFLICT (chat_id,user_id) DO NOTHING`,
 		chatID, userID, role, int(rights))
 	if err != nil {
 		return err
@@ -399,7 +407,7 @@ func chatCardQuery(full bool) string {
         ` + fullOnly(`COALESCE((SELECT pinm.seq FROM pinned_messages p JOIN messages pinm ON pinm.id=p.msg_id
                    WHERE p.chat_id=c.id AND `+messageVisibleTo("pinm", "$2")+`
                    ORDER BY p.pinned_at DESC LIMIT 1),0)`, `0`) + `,
-        COALESCE(m.last_read_seq,0), ` + fullOnly(`COALESCE(m.unread_count,0)`, `0`) + `,
+        COALESCE(m.last_read_seq,0), ` + fullOnly("COALESCE("+dialogUnreadCount("m", "c")+",0)", `0`) + `,
         -- ✓✓ в группе — когда прочитал ХОТЯ БЫ ОДИН (Telegram
         -- read_outbox_max_id группы; живой кадр двигает горизонт по любому
         -- читателю), значит снимок — MAX, а не MIN (A1-07, A3-11).

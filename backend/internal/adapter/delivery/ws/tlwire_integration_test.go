@@ -46,11 +46,25 @@ func TestWS_TLWireDeliversUpdatesAsTL(t *testing.T) {
 		"peer_id": env.peerB, "text": "привет", "client_msg_id": "tl-1",
 	})
 
-	// Первый БИНАРНЫЙ кадр у B — это и есть апдейт о новом сообщении.
-	raw := readBinary(t, connB)
-	envelope, err := domain.WireCodec.UnmarshalTree(raw)
-	if err != nil {
-		t.Fatalf("кодек не разобрал кадр: %v", err)
+	// Бинарный кадр у B с новым сообщением. Кадр присутствия A (его «в
+	// сети» после подключения) может приехать раньше — он к предмету теста
+	// не относится и пропускается.
+	var envelope map[string]any
+	for envelope == nil {
+		raw := readBinary(t, connB)
+		env, err := domain.WireCodec.UnmarshalTree(raw)
+		if err != nil {
+			t.Fatalf("кодек не разобрал кадр: %v", err)
+		}
+		if u, _ := env["update"].(map[string]any); u != nil && u["_"] == "updateUserStatus" {
+			continue
+		}
+		if list, _ := env["updates"].([]any); len(list) == 1 {
+			if u, _ := list[0].(map[string]any); u != nil && u["_"] == "updateUserStatus" {
+				continue
+			}
+		}
+		envelope = env
 	}
 	// Первый кадр от A — с карточкой A (A4-05): у updateShort векторов нет,
 	// поэтому оболочка — updates; seq 0, курсор у updateNewMessage свой.

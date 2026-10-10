@@ -109,6 +109,55 @@ func (r *PushRepo) ShouldNotify(ctx context.Context, chatID, userID, topicRootID
 	return true, t.Preview, nil
 }
 
+// NotifyTargets — решение «пушить ли» пачкой по участникам одного чата для
+// поста broadcast-канала (тем и упоминаний там нет): ключ карты — кому
+// пушить, значение — с текстом ли (Message Preview). Не участник и
+// замьюченный (чат или тип чата) в карту не попадают. Один запрос на пачку.
+func (r *PushRepo) NotifyTargets(ctx context.Context, chatID int64, userIDs []int64) (map[int64]bool, error) {
+	out := make(map[int64]bool, len(userIDs))
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT m.user_id, m.muted_until, c.type,
+		        ns.private_muted, ns.private_preview, ns.groups_muted, ns.groups_preview,
+		        ns.channels_muted, ns.channels_preview
+		 FROM chat_members m
+		 JOIN chats c ON c.id = m.chat_id
+		 LEFT JOIN notify_settings ns ON ns.user_id = m.user_id
+		 WHERE m.chat_id=$1 AND m.user_id = ANY($2)`,
+		chatID, userIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	now := time.Now()
+	for rows.Next() {
+		var uid int64
+		var muteUntil *time.Time
+		var chatType string
+		var pm, pp, gm, gp, cm, cp *bool
+		if err := rows.Scan(&uid, &muteUntil, &chatType, &pm, &pp, &gm, &gp, &cm, &cp); err != nil {
+			return nil, err
+		}
+		if peerNotifySettings(muteUntil, nil, nil, now).Muted(now) {
+			continue
+		}
+		ns := domain.DefaultNotifySettings()
+		if pm != nil { // строка notify_settings существует
+			ns.Private = domain.NotifyTypeSettings{Muted: *pm, Preview: *pp}
+			ns.Groups = domain.NotifyTypeSettings{Muted: *gm, Preview: *gp}
+			ns.Channels = domain.NotifyTypeSettings{Muted: *cm, Preview: *cp}
+		}
+		t := ns.ForChatType(chatType)
+		if t.Muted {
+			continue
+		}
+		out[uid] = t.Preview
+	}
+	return out, rows.Err()
+}
+
 // SenderName returns the user's display name (empty if unknown).
 func (r *PushRepo) SenderName(ctx context.Context, userID int64) (string, error) {
 	var name string
@@ -125,7 +174,8 @@ func (r *PushRepo) UnreadBadge(ctx context.Context, userID int64) (int, error) {
 	var badge int
 	// Aggregate with COALESCE always returns one row; best-effort on error.
 	_ = querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT COALESCE(SUM(m.unread_count),0) FROM chat_members m
+		`SELECT COALESCE(SUM(`+dialogUnreadCount("m", "c")+`),0)
+		   FROM chat_members m JOIN chats c ON c.id = m.chat_id
 		  WHERE m.user_id=$1 AND NOT m.archived
 		    AND (m.muted_until IS NULL OR m.muted_until <= now())
 		    AND m.chat_id NOT IN (SELECT discussion_chat_id FROM chats WHERE discussion_chat_id IS NOT NULL)`,

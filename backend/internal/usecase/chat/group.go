@@ -187,6 +187,7 @@ func (i *Interactor) AddMember(ctx context.Context, chatID, actorID, userID int6
 	if err != nil || !joined {
 		return err
 	}
+	i.announceChannelJoin(ctx, chatID, userID)
 	_ = i.groups.SetJoinInfo(ctx, chatID, userID, actorID, false)
 	targetID := userID
 	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionChatAddUser([]int64{targetID}))
@@ -667,6 +668,7 @@ func (i *Interactor) joinByLink(ctx context.Context, link domain.InviteLink, tok
 	if err != nil {
 		return false, err
 	}
+	i.announceChannelJoin(ctx, link.ChatID, userID)
 	// Вступление по инвайт-ссылке — отдельный конструктор
 	// (messageActionChatJoinedByLink), а не add_user: добавил не админ,
 	// пользователь вошёл сам.
@@ -741,6 +743,7 @@ func (i *Interactor) ApproveJoinRequest(ctx context.Context, chatID, actorID, us
 	// оригинала; в broadcast-канале состав служебками не пишется), снимок
 	// чата всем — одобренный по нему видит чат, — кадр участника и заявок.
 	if joined {
+		i.announceChannelJoin(ctx, chatID, userID)
 		i.postGroupService(ctx, chatID, userID, domain.NewMessageActionChatJoinedByRequest())
 		i.publishChatUpdate(ctx, chatID)
 		i.publishViewerChat(ctx, chatID, userID)

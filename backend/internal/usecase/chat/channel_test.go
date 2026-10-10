@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -218,6 +219,32 @@ func (c groupMembershipChats) FindSaved(context.Context, int64) (int64, error) {
 }
 func (c groupMembershipChats) CreateSaved(context.Context, int64) (int64, error) { return 0, nil }
 func (c groupMembershipChats) MemberIDs(context.Context, int64) ([]int64, error) { return nil, nil }
+func (c groupMembershipChats) ChatTitle(_ context.Context, chatID int64) (string, error) {
+	c.fg.mu.Lock()
+	defer c.fg.mu.Unlock()
+	return c.fg.cards[chatID].Title, nil
+}
+func (c groupMembershipChats) ChannelCursors(ctx context.Context, userID int64, limit int) ([]domain.ChannelCursor, error) {
+	c.fg.mu.Lock()
+	var ids []int64
+	for cid, ms := range c.fg.members {
+		if _, ok := ms[userID]; ok && !c.fg.bans[cid][userID] {
+			ids = append(ids, cid)
+		}
+	}
+	c.fg.mu.Unlock()
+	var out []domain.ChannelCursor
+	for _, cid := range ids {
+		if typ, _ := c.ChatType(ctx, cid); typ == domain.ChatTypeChannel {
+			out = append(out, domain.ChannelCursor{ChatID: cid})
+		}
+	}
+	slices.SortFunc(out, func(a, b domain.ChannelCursor) int { return int(b.ChatID - a.ChatID) })
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
 
 // groupMembershipChatsFanout — groupMembershipChats с настоящим MemberIDs.
 // Обычный стаб выше всегда отдаёт nil: часть тестов канала не заводит
@@ -251,6 +278,7 @@ func (c groupMembershipChats) IsMember(_ context.Context, chatID, userID int64) 
 func (c groupMembershipChats) ListDialogs(context.Context, int64) ([]domain.DialogRecord, error) {
 	return nil, nil
 }
+func (c groupMembershipChats) StoryPartners(context.Context, int64) ([]int64, error)    { return nil, nil }
 func (c groupMembershipChats) ChatPartners(context.Context, int64) ([]int64, error)     { return nil, nil }
 func (c groupMembershipChats) SetAutoDelete(context.Context, int64, int) error          { return nil }
 func (c groupMembershipChats) SetChatTheme(context.Context, int64, string, int64) error { return nil }
@@ -267,8 +295,17 @@ func (c groupMembershipChats) RecountUnreadReactions(context.Context, int64, int
 func (c groupMembershipChats) ReadReactions(context.Context, int64, int64, int64) ([]domain.Message, error) {
 	return nil, nil
 }
-func (c groupMembershipChats) UnarchiveUnmuted(context.Context, int64, []int64) ([]int64, error) {
-	return nil, nil
+func (c groupMembershipChats) UnarchiveUnmuted(_ context.Context, chatID int64, userIDs []int64) ([]int64, error) {
+	c.fg.mu.Lock()
+	defer c.fg.mu.Unlock()
+	var out []int64
+	for _, uid := range userIDs {
+		if c.fg.archived[uid][chatID] {
+			delete(c.fg.archived[uid], chatID)
+			out = append(out, uid)
+		}
+	}
+	return out, nil
 }
 func (c groupMembershipChats) VisibleSeqsUpTo(context.Context, int64, int64, int64) ([]int64, error) {
 	return nil, nil

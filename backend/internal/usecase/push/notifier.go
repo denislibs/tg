@@ -35,3 +35,41 @@ func (n *Notifier) NotifyNewMessage(ctx context.Context, recipientID, chatID, se
 		Seq: seq, SenderID: senderID, Text: text, Preview: preview,
 	})
 }
+
+// NotifyChannelPost — пуш о посте broadcast-канала подписчикам одним батчем:
+// онлайн отсекается одним проходом по присутствию, мьют канала и настройки
+// «каналы» — одним запросом на всех оставшихся, а не парой запросов на
+// подписчика (у канала их тысячи). Заголовок пуша — название канала.
+func (n *Notifier) NotifyChannelPost(ctx context.Context, chatID int64, recipients []int64, seq int64, title, text string, peer domain.PeerID) {
+	online, err := n.online.OnlineMany(ctx, recipients)
+	if err != nil {
+		return
+	}
+	offline := make([]int64, 0, len(recipients))
+	for _, uid := range recipients {
+		if !online[uid] {
+			offline = append(offline, uid)
+		}
+	}
+	if len(offline) == 0 {
+		return
+	}
+	targets, err := n.notify.NotifyTargets(ctx, chatID, offline)
+	if err != nil {
+		return
+	}
+	jobs := make([]Job, 0, len(targets))
+	for _, uid := range offline {
+		preview, ok := targets[uid]
+		if !ok {
+			continue
+		}
+		jobs = append(jobs, Job{
+			RecipientID: uid, ChatID: chatID, PeerID: peer,
+			Seq: seq, Title: title, Text: text, Preview: preview,
+		})
+	}
+	if len(jobs) > 0 {
+		_ = n.queue.EnqueueMany(ctx, jobs)
+	}
+}

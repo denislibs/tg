@@ -148,7 +148,8 @@ import { openMediaViewer } from '@components/mediaViewer/openMediaViewer'
 import { collectLightboxItems, messageToViewerItem } from '@components/mediaViewer/collectLightboxItems'
 import { createMediaNeighboursLoader, type MediaNeighboursLoader } from '@components/mediaViewer/mediaNeighbours'
 import type { ViewerItem } from '@components/mediaViewer/appMediaViewer'
-import { cachedPeer } from '@core/peerCache'
+import { cachedChat, cachedPeer } from '@core/peerCache'
+import { isInChat } from '@core/peers/predicates'
 import { getBubbleMedia, getStrippedThumb, isMediaSpoiler, type MyDocument } from '@core/media/messageMedia'
 import { getMediaId, getMessageKind } from '@core/messages/messageKind'
 import { isCallLogMessage, type CallLogMessage } from '@lib/calls/helpers/callLog'
@@ -4707,7 +4708,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // время окна: посты и метаданные едут per-channel funnel воркера, пропущенное
     // добирается `/difference` при открытии (`realtime.subscribeChannel`).
     // Отписка — на смене окна или сносе ленты (`middleware.onClean`).
-    if(this.chat.isBroadcast && this.managers.realtime.subscribeChannel) {
+    //
+    // Только НЕ участнику (tweb `isFetchIntervalNeeded`, appMessagesManager.ts
+    // :12631-12636): участника сервер держит на топике канала с подключения до
+    // выбытия, и подписка ленты ему не нужна.
+    if(this.chat.isBroadcast && !isInChat(cachedChat(peerId)) && this.managers.realtime.subscribeChannel) {
       const channelMiddleware = this.getMiddleware()
       const { realtime } = this.managers
       void setPeerPromise.then(() => {

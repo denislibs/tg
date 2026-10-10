@@ -73,8 +73,19 @@ func (i *Interactor) PurgeExpiredMessages(ctx context.Context) (int, error) {
 		if err != nil {
 			return purged, err
 		}
+		// broadcast-канал: удаление — запись журнала канала
+		// (updateDeleteChannelMessages), без веера по подписчикам.
+		broadcast := i.isBroadcast(ctx, msg.ChatID)
+		var channelBody map[string]any
+		var channelPts int64
 		err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 			if e := i.msgs.SoftDelete(ctx, msg.ID); e != nil {
+				return e
+			}
+			if broadcast {
+				channelBody = channelDeletePayload(msg.ChatID, []int64{msg.Seq})
+				p, e := i.appendChannelUpdate(ctx, msg.ChatID, "delete_message", channelBody)
+				channelPts = p
 				return e
 			}
 			m, e := i.chats.MemberIDs(ctx, msg.ChatID)
@@ -101,6 +112,10 @@ func (i *Interactor) PurgeExpiredMessages(ctx context.Context) (int, error) {
 			return purged, err
 		}
 		purged++
+		if broadcast {
+			i.publishChannelUpdate(ctx, msg.ChatID, "delete_message", channelBody, channelPts, 0)
+			continue
+		}
 		if i.publisher != nil {
 			for _, uid := range members {
 				body := deletePayload(addr.forViewer(uid), msg.Seq)

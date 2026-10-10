@@ -952,9 +952,14 @@ func (c groupChats) MemberIDs(_ context.Context, chatID int64) ([]int64, error) 
 	}
 	return ids, nil
 }
+func (c groupChats) ChatTitle(context.Context, int64) (string, error) { return "", nil }
+func (c groupChats) ChannelCursors(context.Context, int64, int) ([]domain.ChannelCursor, error) {
+	return nil, nil
+}
 func (c groupChats) ListDialogs(context.Context, int64) ([]domain.DialogRecord, error) {
 	return nil, nil
 }
+func (c groupChats) StoryPartners(context.Context, int64) ([]int64, error)    { return nil, nil }
 func (c groupChats) ChatPartners(context.Context, int64) ([]int64, error)     { return nil, nil }
 func (c groupChats) SetAutoDelete(context.Context, int64, int) error          { return nil }
 func (c groupChats) SetChatTheme(context.Context, int64, string, int64) error { return nil }

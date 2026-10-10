@@ -79,6 +79,29 @@ func (s *PresenceStore) IsOnline(ctx context.Context, userID int64) (bool, error
 	return n > 0, err
 }
 
+// OnlineMany — кто из userIDs онлайн: EXISTS по ключам присутствия одним
+// конвейером, а не запросом на пользователя.
+func (s *PresenceStore) OnlineMany(ctx context.Context, userIDs []int64) (map[int64]bool, error) {
+	out := make(map[int64]bool, len(userIDs))
+	if len(userIDs) == 0 {
+		return out, nil
+	}
+	pipe := s.rdb.Pipeline()
+	cmds := make([]*goredis.IntCmd, len(userIDs))
+	for k, id := range userIDs {
+		cmds[k] = pipe.Exists(ctx, presKey(id))
+	}
+	if _, err := pipe.Exec(ctx); err != nil && err != goredis.Nil {
+		return nil, err
+	}
+	for k, id := range userIDs {
+		if n, _ := cmds[k].Result(); n > 0 {
+			out[id] = true
+		}
+	}
+	return out, nil
+}
+
 // LastSeen returns the recorded last-seen (ms), or 0 if none.
 func (s *PresenceStore) LastSeen(ctx context.Context, userID int64) (int64, error) {
 	return s.rdb.Get(ctx, lastSeenKey(userID)).Int64()

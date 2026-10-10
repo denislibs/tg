@@ -71,6 +71,10 @@ type MessagesPeerDialogs = Omit<MessagesDialogs, '_' | 'count'> & { _?: 'message
 
 export interface DialogsDeps {
   rest: Pick<RestClient, 'get'>
+  /** Курсор канала из строки списка — порт tweb `addChannelState(channelId,
+   *  dialog.pts)` в `saveDialog` (storages/dialogs.ts:1755-1757): владелец
+   *  курсоров — канальная воронка воркера. */
+  addChannelState?: (peerId: number, pts: number) => void
   onDialogOps?: (ops: DialogOp[]) => void
   /** офлайн-кэш прошлой сессии (persist.loadDialogs) */
   loadCache: () => Promise<Dialog[]>
@@ -151,7 +155,7 @@ export interface DialogsDeps {
  * каждое изменение. */
 const PERSIST_DEBOUNCE_MS = 1000
 
-export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, getMeId, savePinnedOrders, mirrorStateKey, saveCache, saveDialogsLoaded, peers, messages }: DialogsDeps) {
+export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCache, loadState, getMeId, savePinnedOrders, mirrorStateKey, saveCache, saveDialogsLoaded, peers, messages }: DialogsDeps) {
   let items: DialogItem[] = []
   // Полный State-ключ (все папки) — нужен целиком, чтобы applyPinned не затёр
   // чужие записи при записи на диск (порт tweb: `{...orders, [ALL_FOLDER_ID]: …}`,
@@ -632,6 +636,7 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
    */
   function toDialog(raw: RawDialog): Dialog {
     const peerId = getPeerId(raw.peer)
+    if (raw.pts) addChannelState?.(peerId, raw.pts)
     const top_message = generateMessageId(raw.top_message)
     const dialog: Dialog = {
       ...raw,
@@ -1539,7 +1544,11 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       // открытый чат — `appImManager.chat` вкладки (спека docs/superpowers/specs/
       // 2026-08-12-dialogs-ownership-and-virtual-list-design.md, «Что остаётся на main»).
       // Блип бейджа для открытого чата гасит немедленный markRead активной вкладки.
-      const inboxUnread = m.fromId !== meId
+      // Своё сообщение — ещё и `pFlags.out` (tweb `inboxUnread =
+      // !message.pFlags.out && …`, appMessagesManager.ts:10498): у поста
+      // канала автора в `from_id` нет (подписи выключены), и сравнение с собой
+      // своё не узнаёт — свою копию поста сервер шлёт автору с `out`.
+      const inboxUnread = m.fromId !== meId && !m.pFlags?.out
       // Защита от отката — порт tweb appMessagesManager.ts:10500-10520. Кадр
       // может нести сообщение, которое строка уже видела или видела более
       // новое: повтор журнала (`/sync`), дубль мимо дедупа по pts. Такое
@@ -1716,6 +1725,18 @@ export function newDialogsManager({ rest, onDialogOps, loadCache, loadState, get
       const top = slice?.isEnd(SliceEnd.Bottom) && hasMessages ? messages?.getMessageByPeer(peerId, slice[0]) : undefined
       if (top) setDialogTopMessage(top)
       else reloadConversation(peerId)
+    },
+
+    /**
+     * Вступил в broadcast-канал (`updateChannel`) — порт tweb `onUpdateChannel`
+     * (appMessagesManager.ts:11605-11642): участник, у которого строки нет,
+     * получает её перечитыванием (`reloadConversation`). Выбытие у нас — свой
+     * кадр (`chat_removed` → applyRemoved), поэтому вторая половина оригинала
+     * («не участник — убрать строку») здесь не нужна.
+     */
+    applyChannel(peerId: number): void {
+      if (findDialog(peerId)) return
+      reloadConversation(peerId)
     },
 
     // Меня удалили из группы / вышел сам (chat_removed) — диалог исчезает из списка.

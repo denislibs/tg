@@ -48,6 +48,10 @@ type Chats interface {
 	// Join — вступление в чат общей точкой usecase чатов (роль по типу чата,
 	// бан). Идемпотентно.
 	Join(ctx context.Context, chatID, userID int64) error
+	// Joined — после коммита вступления: живые последствия (вступившему в
+	// канал — диалог и подписка сокетов на его топик). До коммита их слать
+	// нельзя — вступление ещё не видно.
+	Joined(ctx context.Context, chatID, userID int64)
 }
 
 // TxManager запускает fn в транзакции (JoinInvite вступает в чаты и создаёт
@@ -298,6 +302,7 @@ func (i *Interactor) JoinInvite(ctx context.Context, userID int64, slug string, 
 		want = inv.ChatIDs
 	}
 	joined := make([]int64, 0, len(want))
+	var fresh []int64 // вступил именно сейчас (а не был участником)
 	var created domain.DialogFilter
 	var haveFolder bool
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
@@ -322,6 +327,7 @@ func (i *Interactor) JoinInvite(ctx context.Context, userID int64, slug string, 
 				if e != nil {
 					return e
 				}
+				fresh = append(fresh, id)
 			}
 			joined = append(joined, id)
 		}
@@ -341,6 +347,9 @@ func (i *Interactor) JoinInvite(ctx context.Context, userID int64, slug string, 
 	})
 	if err != nil {
 		return err
+	}
+	for _, id := range fresh {
+		i.chats.Joined(ctx, id, userID)
 	}
 	// Новая папка появилась на устройствах вступившего — шлём folder_update.
 	if haveFolder {

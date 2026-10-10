@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -21,6 +22,10 @@ func (i *Interactor) CreateChannel(ctx context.Context, creatorID int64, title, 
 	if err != nil {
 		return chatID, err
 	}
+	// Создатель — первый участник: его сокеты подписываются на топик канала
+	// (updateChannel), иначе посты других админов, просмотры и карточка
+	// канала не доходили бы до него до реконнекта.
+	i.announceChannelJoin(ctx, chatID, creatorID)
 	// A2-07: новый канал — снимок создателю в журнал (его прочие устройства
 	// узнают о диалоге; клиент перечитывает список, не найдя чата).
 	i.publishViewerChat(ctx, chatID, creatorID)
@@ -93,7 +98,70 @@ func (i *Interactor) GetChannelDifference(ctx context.Context, channelID, userID
 	if limit <= 0 || limit > 100 {
 		limit = 100
 	}
-	return i.channels.UpdatesSince(ctx, channelID, sincePts, limit)
+	ups, err := i.channels.UpdatesSince(ctx, channelID, sincePts, limit)
+	if err != nil {
+		return nil, err
+	}
+	return i.markOwnPosts(ctx, channelID, userID, ups), nil
+}
+
+// markOwnPosts — запись журнала канала одна на всех подписчиков и `out` не
+// несёт; запрашивающему догон его собственные посты (и их правки) отдаются с
+// pFlags.out — у оригинала `out` рисует сервер каждому получателю, в том числе
+// в getChannelDifference. Без этого автор, догоняющий канал с другого
+// устройства, видел свой пост входящим и получал +1 непрочитанного.
+func (i *Interactor) markOwnPosts(ctx context.Context, channelID, viewerID int64, ups []domain.ChannelUpdate) []domain.ChannelUpdate {
+	type msgRow struct {
+		idx  int
+		body map[string]any
+		msg  map[string]any
+	}
+	var rows []msgRow
+	var seqs []int64
+	for k, u := range ups {
+		var body map[string]any
+		if json.Unmarshal(u.Payload, &body) != nil {
+			continue
+		}
+		if tag, _ := body["_"].(string); tag != domain.UpdateNewChannelMessageTag && tag != domain.UpdateEditChannelMessageTag {
+			continue
+		}
+		msg, _ := body[frameMessageKey].(map[string]any)
+		seq, ok := msg["id"].(float64)
+		if !ok {
+			continue
+		}
+		rows = append(rows, msgRow{idx: k, body: body, msg: msg})
+		seqs = append(seqs, int64(seq))
+	}
+	if len(rows) == 0 {
+		return ups
+	}
+	msgs, err := i.msgs.GetBySeqs(ctx, channelID, seqs)
+	if err != nil {
+		return ups
+	}
+	own := map[int64]bool{}
+	for _, m := range msgs {
+		if m.SenderID == viewerID {
+			own[m.Seq] = true
+		}
+	}
+	for _, r := range rows {
+		if !own[int64(r.msg["id"].(float64))] {
+			continue
+		}
+		flags, _ := r.msg["pFlags"].(map[string]any)
+		if flags == nil {
+			flags = map[string]any{}
+		}
+		flags["out"] = true
+		r.msg["pFlags"] = flags
+		if raw, err := json.Marshal(r.body); err == nil {
+			ups[r.idx].Payload = raw
+		}
+	}
+	return ups
 }
 
 // JoinPublic вступает в публичный чат по @имени (channels.joinChannel): в
@@ -107,6 +175,9 @@ func (i *Interactor) JoinPublic(ctx context.Context, username string, userID int
 	if err != nil || !joined {
 		return err
 	}
+	// Вступившему в канал — updateChannel: диалог и подписка сокетов на
+	// топик (Ф-2); остальные кадры вступления — ниже.
+	i.announceChannelJoin(ctx, id, userID)
 	// A2-07/A6-05: вступление по @имени живьём. Группа — служебка «вступил(а)»
 	// (у оригинала messageActionChatAddUser с самим собой); канал — без неё:
 	// состав broadcast-канала служебками не пишется (postGroupService).

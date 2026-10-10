@@ -37,6 +37,9 @@ type StoryRepo interface {
 	// скачиванием медиа: everyone, контакты автора, близкие друзья, список; блок
 	// автором закрывает всё).
 	Visible(ctx context.Context, storyID, viewerID int64) (bool, error)
+	// VisibleAmong — кто из viewerIDs видит историю, тем же правилом
+	// (storyVisibleTo), одним запросом: им фильтруется рассылка кадра истории.
+	VisibleAmong(ctx context.Context, storyID int64, viewerIDs []int64) ([]int64, error)
 	// SetReaction ставит/меняет реакцию пользователя на историю (upsert по
 	// PRIMARY KEY(story_id,user_id)); RemoveReaction снимает её.
 	SetReaction(ctx context.Context, storyID, userID int64, reaction string) error
@@ -87,10 +90,13 @@ type StealthStore interface {
 	Set(ctx context.Context, userID int64, mode domain.StealthMode) error
 }
 
-// Partners resolves the set of users that share a chat with a viewer; satisfied
-// by the chat usecase's ChatPartners.
+// Partners — круг историй пользователя: собеседники по личным и
+// не-broadcast чатам и ЕГО контакты (не те, кто добавил его к себе: иначе
+// посторонний, записавший номер, получал бы истории и попадал в ленту).
+// Видимость конкретной истории решает StoryRepo.VisibleAmong. Реализует
+// chat.Interactor.StoryPartners.
 type Partners interface {
-	ChatPartners(ctx context.Context, userID int64) ([]int64, error)
+	StoryPartners(ctx context.Context, userID int64) ([]int64, error)
 }
 
 // MediaOwner resolves the owner of a media object; satisfied by the postgres

@@ -36,6 +36,13 @@ type ChatRepo interface {
 	FindSaved(ctx context.Context, userID int64) (int64, error) // domain.ErrNotFound if none
 	CreateSaved(ctx context.Context, userID int64) (int64, error)
 	MemberIDs(ctx context.Context, chatID int64) ([]int64, error)
+	// ChatTitle — название чата одним лёгким запросом (заголовок пуша поста
+	// канала), без сборки карточки.
+	ChatTitle(ctx context.Context, chatID int64) (string, error)
+	// ChannelCursors — broadcast-каналы, которые пользователь читает как
+	// участник (не забанен: chatReadableBy), с pts их журналов; не больше
+	// limit. Одним запросом: на их топики подписывается новое соединение.
+	ChannelCursors(ctx context.Context, userID int64, limit int) ([]domain.ChannelCursor, error)
 	IsMember(ctx context.Context, chatID, userID int64) (bool, error)
 	// Access — снимок доступа зрителя к чату одним запросом (вид, публичность,
 	// членство с ролью, бан); domain.ErrNotFound — чата нет. Решение «пускать
@@ -44,6 +51,9 @@ type ChatRepo interface {
 	ChatType(ctx context.Context, chatID int64) (string, error) // 'private'|'group'|'channel'|'saved'
 	ListDialogs(ctx context.Context, userID int64) ([]domain.DialogRecord, error)
 	ChatPartners(ctx context.Context, userID int64) ([]int64, error)
+	// StoryPartners — круг историй: собеседники по личным и не-broadcast
+	// чатам плюс СВОИ контакты (без обратных — см. story.Partners).
+	StoryPartners(ctx context.Context, userID int64) ([]int64, error)
 	// IncUnread bumps a member's unread counter by one and returns the new value
 	// (so the new_message frame can carry the recipient's authoritative unread).
 	IncUnread(ctx context.Context, chatID, userID int64) (int, error)
@@ -681,6 +691,11 @@ type PushNotifier interface {
 	// это пробивает мьют чата, типа и темы, как в Telegram. topicRootID —
 	// корень темы (ключ topic_user_state, 0 — вне темы): мьют темы гасит пуш.
 	NotifyNewMessage(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, mentioned bool, topicRootID int64)
+	// NotifyChannelPost — пуш о посте broadcast-канала его подписчикам
+	// (recipients, без автора) одним батчем: кто онлайн и кому канал не
+	// замьючен, нотификатор решает пачкой. title — название канала (автор поста
+	// у канала скрыт).
+	NotifyChannelPost(ctx context.Context, chatID int64, recipients []int64, seq int64, title, text string, peer domain.PeerID)
 }
 
 // --- DTOs ---
@@ -767,6 +782,11 @@ type SendInput struct {
 	// сообщение, и только после всех гейтов (подарок: списание звёзд, выдача,
 	// запись в журнал). Может дописать in (GiftID). Ставится внутри пакета.
 	prepare func(ctx context.Context, in *SendInput) error
+	// fromSchedule — отправка отложенного сообщения по расписанию: черновик
+	// чата она не снимает (у оригинала его снимает само планирование —
+	// clear_draft в scheduleMessage, а к моменту отправки в поле уже другой
+	// текст).
+	fromSchedule bool
 }
 
 // GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis).

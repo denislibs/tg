@@ -1709,3 +1709,76 @@ describe('dialogsManager.applyNewMessage: защита от отката и па
     expect(calls).toEqual([[{ op: 'remove', peerId: 2 }]])
   })
 })
+
+// Ф-2 «Каналы». Пост канала без подписей автора в `from_id` не несёт, и
+// сравнение автора с собой своё не узнаёт — свою копию поста сервер шлёт
+// автору с `pFlags.out` (tweb `inboxUnread = !message.pFlags.out && …`).
+// Вступившему в канал диалог заводит `updateChannel` (tweb onUpdateChannel →
+// reloadConversation).
+describe('dialogsManager: канал', () => {
+  const CH = -42
+  it('applyNewMessage: свой пост канала (out, без from_id) бейдж не бампит, чужой — бампит', async () => {
+    const ops: DialogOp[] = []
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: (o) => ops.push(...o),
+      loadCache: async () => [dialog(CH, '2026-08-01T00:00:00Z')],
+      loadState: async () => ({ pinnedOrders: {} }),
+      getMeId: () => 7,
+    })
+    await mgr.fillMirror()
+    ops.length = 0
+
+    mgr.applyNewMessage({ _: 'updateNewChannelMessage', message: makeRawMessage({ id: 2, peerId: CH, out: true, text: 'мой пост', createdAt: '2026-08-01T00:00:01Z' }) })
+    await flushNewDialogs()
+    expect(upserted(ops[0], CH).unread_count).toBe(0)
+
+    ops.length = 0
+    mgr.applyNewMessage({ _: 'updateNewChannelMessage', message: makeRawMessage({ id: 3, peerId: CH, text: 'чужой пост', createdAt: '2026-08-01T00:00:02Z' }) })
+    await flushNewDialogs()
+    expect(upserted(ops[0], CH).unread_count).toBe(1)
+  })
+
+  it('applyChannel: строки нет — перечитать у сервера; есть — ничего', async () => {
+    const get = vi.fn(async (path: string) => path === '/peer_dialogs'
+      ? { _: 'messages.peerDialogs', chats: [], users: [], dialogs: [rawDialog(CH, 3)], messages: [rawMessage(CH, 3, 'пост')] }
+      : container([]))
+    const mgr = newDialogsManager({
+      rest: { get } as never,
+      onDialogOps: () => {},
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {} }),
+      peers: fakePeers(), messages: fakeMessages(),
+    })
+    await mgr.refresh()
+    get.mockClear()
+
+    mgr.applyChannel(CH)
+    await vi.waitFor(() => expect(mgr.getSnapshot().some((i) => i.dialog.peerId === CH)).toBe(true))
+    expect(get).toHaveBeenCalledWith('/peer_dialogs', { peers: String(CH) })
+
+    get.mockClear()
+    mgr.applyChannel(CH)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(get).not.toHaveBeenCalled()
+  })
+})
+
+// A1-20 / ревью #407: курсор канала заводится из строки списка — tweb
+// `addChannelState(channelId, dialog.pts)` (storages/dialogs.ts:1755-1757).
+describe('dialogsManager: dialog.pts канала', () => {
+  it('строка с pts → addChannelState(peerId, pts); без pts — нет', async () => {
+    const seeded: [number, number][] = []
+    const get = vi.fn(async () => container([{ ...rawDialog(-42, 3), pts: 17 }, rawDialog(5, 2)]))
+    const mgr = newDialogsManager({
+      rest: { get } as never,
+      addChannelState: (peerId, pts) => seeded.push([peerId, pts]),
+      onDialogOps: () => {},
+      loadCache: async () => [],
+      loadState: async () => ({ pinnedOrders: {} }),
+      peers: fakePeers(), messages: fakeMessages(),
+    })
+    await mgr.refresh()
+    expect(seeded).toEqual([[-42, 17]])
+  })
+})

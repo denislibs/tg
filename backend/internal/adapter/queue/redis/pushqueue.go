@@ -36,6 +36,30 @@ func (q *Queue) Enqueue(ctx context.Context, j usecasepush.Job) error {
 	}).Err()
 }
 
+// enqueueChunk — сколько XADD уходит одним конвейером.
+const enqueueChunk = 1000
+
+// EnqueueMany — пачка заданий конвейером по enqueueChunk: пуш поста канала
+// разворачивается в задание на каждого офлайн-подписчика, и по XADD на круг
+// до Redis это были бы десятки секунд.
+func (q *Queue) EnqueueMany(ctx context.Context, jobs []usecasepush.Job) error {
+	for start := 0; start < len(jobs); start += enqueueChunk {
+		end := min(start+enqueueChunk, len(jobs))
+		pipe := q.rdb.Pipeline()
+		for _, j := range jobs[start:end] {
+			payload, err := json.Marshal(j)
+			if err != nil {
+				return err
+			}
+			pipe.XAdd(ctx, &goredis.XAddArgs{Stream: usecasepush.QueueStream, Values: map[string]any{"job": payload}})
+		}
+		if _, err := pipe.Exec(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Consume reads up to max new messages, blocking up to blockMS milliseconds.
 // Returns an empty slice when nothing is pending.
 func (q *Queue) Consume(ctx context.Context, max int, blockMS int) ([]usecasepush.QueuedJob, error) {

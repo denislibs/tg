@@ -435,6 +435,33 @@ func (r *StoryRepo) Visible(ctx context.Context, storyID, viewerID int64) (bool,
 	return ok, err
 }
 
+// VisibleAmong — кто из viewerIDs видит историю (тот же storyVisibleTo), одним
+// запросом: фильтр рассылки кадра истории.
+func (r *StoryRepo) VisibleAmong(ctx context.Context, storyID int64, viewerIDs []int64) ([]int64, error) {
+	if len(viewerIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT v.id FROM unnest($2::bigint[]) AS v(id)
+		  WHERE EXISTS (SELECT 1 FROM stories s WHERE s.id = $1
+		                  AND (s.expires_at > now() OR s.pinned)
+		                  AND `+storyVisibleTo("s", "v.id")+`)`,
+		storyID, viewerIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 // storyItemCols is the column list + reaction subqueries shared by Archive and
 // Pinned (flat single-peer lists, no author grouping). $1 is the viewer.
 const storyItemCols = `s.id, s.seq, s.media_id, s.caption, s.privacy, s.pinned, s.edited,
