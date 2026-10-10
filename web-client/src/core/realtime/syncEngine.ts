@@ -108,11 +108,12 @@ export function newSyncEngine({ rest, cursor, saveUpdate, processChannelUpdate, 
 
   return {
     /** `updates.getState` — первый вход без сохранённого состояния (tweb attach :893-905). */
+    // Пара synchronizing/synchronized — и здесь: автомат статуса снимает
+    // «Обновление…» только событием, а стартовый pull (`realtime.getStatus`)
+    // видит идущее получение состояния как догон (`isSyncing`).
     getState(): Promise<void> {
       if (loading) return loading
-      progressTime = Date.now()
-      loading = fetchState().finally(() => { loading = null })
-      return loading
+      return track(fetchState())
     },
     /** `updates.getDifference` от сохранённого состояния; идущий догон не дублируется. */
     getDifference(): Promise<void> {

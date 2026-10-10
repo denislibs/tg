@@ -762,6 +762,10 @@ export function createWorkerCore() {
     funnel.clear()
     void sync.getDifference().catch(() => {})
   }
+  // Строки диалогов из хранилища заводят состояния каналов — до первой
+  // разницы, иначе её updateChannelTooLong некому применить (tweb грузит
+  // state до attach). Упавшее чтение кэша догон не держит.
+  const channelStatesReady = (): Promise<void> => dialogs.hydrate().catch(() => {})
   // Единый (пер-юзерный) funnel — арифметика dup/next/gap + буфер придержанных кадров
   // (Wave 3), вынесенная в модуль с явными зависимостями (Task 1). dispatch остаётся
   // здесь (знает про APPLY/routeNewMessage/broadcast), funnel про менеджеры не знает.
@@ -772,7 +776,7 @@ export function createWorkerCore() {
     isSyncing: () => sync.isSyncing(),
     // Задача #91: отказ разницы глотает forceGetDifference — иначе unhandled
     // rejection на КАЖДОМ живом кадре с pts, пока курсор не гидрирован.
-    catchUp: () => { if (!sync.isSyncing()) void sync.getDifference().catch(() => {}) },
+    catchUp: () => { void channelStatesReady().then(() => { if (!sync.isSyncing()) return sync.getDifference() }).catch(() => {}) },
   })
   // tweb 1dc32d889 — ожидание догона для уведомлений (общая разница +
   // разница канала). Вкладка ждёт его по RPC `realtime.waitForSync`.
@@ -798,9 +802,9 @@ export function createWorkerCore() {
     // «начальной синхронизации» (syncWait.attach). Реконнект — новая сессия,
     // tweb `new_session_created` → `forceGetDifference` (:206-209).
     onReady: () => {
-      void cursor.ready().then(() => {
-        if (attached) { forceGetDifference(); return }
-        attached = true
+      if (attached) { forceGetDifference(); return }
+      attached = true
+      void Promise.all([cursor.ready(), channelStatesReady()]).then(() => {
         const saved = cursor.get()
         const initial = !saved.pts || !saved.date
           ? sync.getState()

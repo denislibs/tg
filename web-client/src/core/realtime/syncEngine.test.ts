@@ -156,6 +156,18 @@ describe('SyncEngine.getState — updates.getState', () => {
     expect(cursor.get()).toEqual({ pts: 17, date: 1234 })
     expect(saved).toEqual([])
   })
+
+  // Стартовый pull статуса видит получение состояния как догон (isSyncing):
+  // без пары synchronizing/synchronized «Обновление…» в поиске залипало.
+  it('получение состояния тоже парой onSyncStart/onSyncEnd', async () => {
+    const onSyncStart = vi.fn(); const onSyncEnd = vi.fn()
+    const { se } = engine({ get: vi.fn(async () => state(1, 1)) as never }, { cursor: fakeCursor(0, 0), onSyncStart, onSyncEnd })
+    const p = se.getState()
+    expect(se.isSyncing()).toBe(true)
+    await p
+    expect([onSyncStart.mock.calls.length, onSyncEnd.mock.calls.length]).toEqual([1, 1])
+    expect(se.isSyncing()).toBe(false)
+  })
 })
 
 // Разницу без состояния просить не от чего: вместо переигрывания журнала от

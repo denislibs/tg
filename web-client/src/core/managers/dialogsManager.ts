@@ -735,6 +735,10 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
       const [cached] = await Promise.all([loadCache(), peers?.hydrateFromDisk()])
       if (gen !== sessionGen) return
       setAll(cached)
+      // tweb dialogs.ts:280-302 → saveDialog :1755-1757: строки, поднятые из
+      // хранилища, заводят состояния каналов ДО attach — разница
+      // (updateChannelTooLong) догоняет каналы от их pts.
+      for (const d of cached) if (d.pts) addChannelState?.(d.peerId, d.pts)
       // tweb dialogs.ts:262 — признак «загружено целиком» поднимается с диска
       // ВМЕСТЕ с кэшем: `getDialogs` отвечает из кэша без сети и тогда, когда
       // строк меньше страницы (dialogs.ts:1903-1905, `loadedAll`).
@@ -1182,6 +1186,10 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
      * только что прочитаны с диска — планировать обратную запись на тот же диск
      * бессмысленно.
      */
+    /** Поднять строки из хранилища (и с ними состояния каналов) — до первой
+     *  разницы, как у tweb: attach после загрузки состояния диалогов. */
+    hydrate(): Promise<void> { return hydrate() },
+
     async fillMirror(): Promise<DialogOp> {
       const gen = sessionGen
       await hydrate()

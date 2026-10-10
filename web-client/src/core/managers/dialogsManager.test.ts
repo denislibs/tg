@@ -1781,4 +1781,20 @@ describe('dialogsManager: dialog.pts канала', () => {
     await mgr.refresh()
     expect(seeded).toEqual([[-42, 17]])
   })
+
+  // tweb dialogs.ts:280-302: строки из хранилища проходят saveDialog и
+  // заводят состояния каналов до attach — разница догоняет каналы от них.
+  it('строки из хранилища заводят состояния каналов при гидратации', async () => {
+    const seeded: [number, number][] = []
+    const mgr = newDialogsManager({
+      rest: { get: vi.fn() } as never,
+      addChannelState: (peerId, pts) => seeded.push([peerId, pts]),
+      onDialogOps: () => {},
+      loadCache: async () => [{ ...dialog(-42, '2026-08-01T00:00:00Z'), pts: 9 }, dialog(5, '2026-08-02T00:00:00Z')],
+      loadState: async () => ({ pinnedOrders: {} }),
+      peers: fakePeers(), messages: fakeMessages(),
+    })
+    await mgr.hydrate()
+    expect(seeded).toEqual([[-42, 9]])
+  })
 })
