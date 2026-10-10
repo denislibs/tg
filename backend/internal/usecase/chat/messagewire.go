@@ -127,8 +127,10 @@ func (i *Interactor) messagesWire(
 			PostAuthorShown: shown[m.ChatID],
 			// Автор строки — ЗРИТЕЛЬ. Именно строки, а не проводного from_id: у
 			// сообщения от лица канала автором на проводе становится канал, но
-			// отправил его всё равно человек.
-			Out:     m.SenderID == viewerID,
+			// отправил его всё равно человек. Зеркало поста ничьё: его кладёт
+			// сервер (автопересылка), а не опубликовавший пост админ (A1-13;
+			// tweb решает сторону бабла по pFlags.out, chat.ts:1411-1412).
+			Out:     m.SenderID == viewerID && !m.IsDiscussionMirror,
 			Replies: repliesOf(threads, m.ID),
 			// «Виден ли список реагировавших» — тот же вид чата, что решает
 			// Post и наличие треда, и тот же единственный ответ
@@ -155,7 +157,7 @@ func (i *Interactor) viewerMentions(ctx context.Context, viewerID int64, msgs []
 	}
 	ids := make([]int64, 0, len(msgs))
 	for _, m := range msgs {
-		if m.SenderID != viewerID && m.Action == nil {
+		if (m.SenderID != viewerID || m.IsDiscussionMirror) && m.Action == nil {
 			ids = append(ids, m.ID)
 		}
 	}

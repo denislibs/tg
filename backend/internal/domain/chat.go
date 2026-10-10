@@ -134,7 +134,7 @@ type DialogRecord struct {
 	SignatureProfiles bool
 	DiscussionChatID  int64
 	// Settings — только то, что едет в краткую форму: DefaultPerms,
-	// SlowmodeSeconds, ChargeStars.
+	// SlowmodeSeconds, ChargeStars, JoinToSend.
 	Settings ChatSettings
 	// MyRestriction — действующее личное ограничение зрителя (см. ChatRecord).
 	MyRestriction *MemberRestriction
@@ -183,6 +183,7 @@ func (d DialogRecord) ToChannel() Channel {
 		SlowmodeEnabled:   d.Settings.SlowmodeSeconds > 0,
 		Forum:             d.IsForum,
 		HasLink:           d.DiscussionChatID != 0,
+		JoinToSend:        d.Settings.JoinToSend,
 	})
 	out.Username = d.Username
 	out.ParticipantsCount = d.MemberCount
@@ -457,7 +458,8 @@ func (c ChatRecord) ToChannel() Channel {
 		Forum:             c.IsForum,
 		// has_link — у канала есть группа обсуждения ЛИБО группа сама служит
 		// обсуждением канала (Б-119).
-		HasLink: c.DiscussionChatID != 0 || c.LinkedChannelID != 0,
+		HasLink:    c.DiscussionChatID != 0 || c.LinkedChannelID != 0,
+		JoinToSend: c.Settings.JoinToSend,
 	})
 	out.Username = c.Username
 	out.ParticipantsCount = c.MemberCount
@@ -503,6 +505,7 @@ func (c ChatRecord) toMinChannel() Channel {
 		SlowmodeEnabled:   c.Settings.SlowmodeSeconds > 0,
 		Forum:             c.IsForum,
 		HasLink:           c.DiscussionChatID != 0 || c.LinkedChannelID != 0,
+		JoinToSend:        c.Settings.JoinToSend,
 	})
 	out.Username = c.Username
 	return out

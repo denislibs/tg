@@ -11,9 +11,8 @@ import (
 type admitVia int
 
 const (
-	// admitSelf — вступает сам: ссылка, @имя, папка, комментарий/ответ в
-	// тред обсуждения. Забаненного не пускает ничто (у оригинала
-	// USER_BANNED_IN_CHANNEL / CHANNEL_PRIVATE).
+	// admitSelf — вступает сам: ссылка, @имя, папка. Забаненного не пускает
+	// ничто (у оригинала USER_BANNED_IN_CHANNEL / CHANNEL_PRIVATE).
 	admitSelf admitVia = iota
 	// admitAdded — добавляет другой участник (channels.inviteToChannel):
 	// соблюдается настройка «кто может приглашать меня в группы» приглашаемого,

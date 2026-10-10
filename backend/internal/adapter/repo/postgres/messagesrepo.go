@@ -1043,7 +1043,7 @@ func (r *MessagesRepo) HideForUser(ctx context.Context, userID, msgID int64) err
 		`UPDATE chat_members cm SET unread_count = cm.unread_count - 1
 		   FROM messages m
 		  WHERE m.id = $2 AND cm.chat_id = m.chat_id AND cm.user_id = $1
-		    AND m.sender_id <> $1 AND m.deleted_at IS NULL
+		    AND (m.sender_id <> $1 OR m.is_discussion_mirror) AND m.deleted_at IS NULL
 		    AND cm.last_read_seq < m.seq AND cm.cleared_max_seq < m.seq AND cm.unread_count > 0`,
 		userID, msgID); err != nil {
 		return err

@@ -258,6 +258,29 @@ func (h *ChannelHandler) SetSignatures(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
+// ToggleJoinToSend — channels.toggleJoinToSend{channel, enabled} (tweb
+// appChatsManager.ts:1157): писать в группу только участникам. Ответ — Bool,
+// карточка группы приходит кадром chat_update.
+func (h *ChannelHandler) ToggleJoinToSend(w http.ResponseWriter, r *http.Request) {
+	user, _ := UserFromContext(r.Context())
+	chatID, ok := peerChatID(w, r, h.uc)
+	if !ok {
+		return
+	}
+	var b struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := h.uc.ToggleJoinToSend(r.Context(), chatID, user.ID, b.Enabled); err != nil {
+		h.mapErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
+}
+
 func (h *ChannelHandler) PostComment(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
 	chatID, ok := peerChatID(w, r, h.uc)

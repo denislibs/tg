@@ -248,14 +248,13 @@ func (r *ChatsRepo) ChannelsChangedSince(ctx context.Context, userID, since int6
 
 // UnreadTotal — unread_count состояния ящика (updates.state): сумма
 // непрочитанного по чатам основного списка — тем же счётом, что бейдж строки
-// диалога; скрытые группы обсуждения каналов не входят (их нет в списке).
+// диалога.
 func (r *ChatsRepo) UnreadTotal(ctx context.Context, userID int64) (int, error) {
 	var n int
 	err := querier(ctx, r.pool).QueryRow(ctx,
 		`SELECT COALESCE(SUM(`+dialogUnreadCount("m", "c")+`),0)
 		   FROM chat_members m JOIN chats c ON c.id = m.chat_id
-		  WHERE m.user_id=$1
-		    AND m.chat_id NOT IN (SELECT discussion_chat_id FROM chats WHERE discussion_chat_id IS NOT NULL)`,
+		  WHERE m.user_id=$1`,
 		userID).Scan(&n)
 	return n, err
 }
@@ -373,7 +372,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		        -- строка списка затирала на клиенте карточку чата.
 		        c.member_count, m.role, m.rights, c.signatures, c.signature_profiles,
 		        COALESCE(c.discussion_chat_id,0), c.default_permissions,
-		        c.slowmode_seconds, c.charge_stars,
+		        c.slowmode_seconds, c.charge_stars, c.join_to_send,
 		        -- Действующее личное ограничение зрителя → channel.banned_rights.
 		        rs.denied_rights, rs.until_date,
 		        -- pts журнала канала → dialog.pts (курсор канала из списка).
@@ -408,9 +407,11 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 		   -- «Удалить чат» в личке прячет строку до следующего сообщения
 		   -- (ChatRepo.SetDialogHidden / ShowDialogs).
 		   AND NOT m.dialog_hidden
-		   -- Скрываем служебные группы обсуждения канала: доступ к ним только через
-		   -- «Комментарии» (тред), в списке диалогов они не нужны.
-		   AND c.id NOT IN (SELECT discussion_chat_id FROM chats WHERE discussion_chat_id IS NOT NULL)
+		   -- Группа обсуждения канала — обычный чат списка у того, кто в ней
+		   -- состоит (tweb dialogs.ts:1502-1520 показывает любой чат, из
+		   -- которого зритель не вышел). Комментатор без вступления участником
+		   -- не становится (Send, гость обсуждения), поэтому группа у него и
+		   -- не появляется.
 		 -- закреплённые сверху (свежий пин — первым), затем по дате последнего
 		 -- сообщения; c.id — тайбрейк, без него порядок при равных ключах не
 		 -- определён и курсор пагинации невоспроизводим (см. спеку этапа 2)
@@ -443,7 +444,7 @@ func (r *ChatsRepo) ListDialogs(ctx context.Context, userID int64) ([]domain.Dia
 			&d.TTLPeriod, &d.JoinedAt,
 			&d.MemberCount, &d.MyRole, &rights, &d.Signatures, &d.SignatureProfiles,
 			&d.DiscussionChatID, &perms, &d.Settings.SlowmodeSeconds, &d.Settings.ChargeStars,
-			&restrDenied, &restrUntil, &d.ChannelPts); err != nil {
+			&d.Settings.JoinToSend, &restrDenied, &restrUntil, &d.ChannelPts); err != nil {
 			return nil, err
 		}
 		if restrDenied != nil {
@@ -690,15 +691,21 @@ func (r *ChatsRepo) AddMention(ctx context.Context, chatID, msgID, seq, userID i
 	return err
 }
 
-// MemberIDsByUsernames resolves @username mentions to the chat's members
-// (case-insensitive: users.username is CITEXT). Chat usernames share the
-// namespace (0134) but name a chat, not a user, so they never match here.
-func (r *ChatsRepo) MemberIDsByUsernames(ctx context.Context, chatID int64, usernames []string) ([]int64, error) {
+// ParticipantIDsByUsernames resolves @username mentions to the chat's
+// participants — members and authors of its live messages (a discussion guest
+// comments without joining and is still mentionable); case-insensitive:
+// users.username is CITEXT. Chat usernames share the namespace (0134) but name
+// a chat, not a user, so they never match here. Авторы ищутся по префиксу
+// (chat_id, sender_id) idx_messages_client.
+func (r *ChatsRepo) ParticipantIDsByUsernames(ctx context.Context, chatID int64, usernames []string) ([]int64, error) {
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
 		`SELECT u.id FROM users u
-		 JOIN chat_members m ON m.user_id = u.id AND m.chat_id = $1
-		 WHERE u.username = ANY($2::citext[])`, chatID, usernames)
+		 WHERE u.username = ANY($2::citext[])
+		   AND (EXISTS (SELECT 1 FROM chat_members m WHERE m.chat_id = $1 AND m.user_id = u.id)
+		        OR EXISTS (SELECT 1 FROM messages pm
+		                    WHERE pm.chat_id = $1 AND pm.sender_id = u.id AND pm.deleted_at IS NULL))`,
+		chatID, usernames)
 	if err != nil {
 		return nil, err
 	}
@@ -923,7 +930,8 @@ func (r *ChatsRepo) RecountCounters(ctx context.Context, chatID int64, userIDs [
 		`UPDATE chat_members cm SET
 		    unread_count = CASE WHEN c.type = 'channel' THEN cm.unread_count ELSE (
 		        SELECT count(*) FROM messages m
-		         WHERE m.chat_id = cm.chat_id AND m.seq > cm.last_read_seq AND m.sender_id <> cm.user_id
+		         WHERE m.chat_id = cm.chat_id AND m.seq > cm.last_read_seq
+		           AND (m.sender_id <> cm.user_id OR m.is_discussion_mirror)
 		           AND `+messageVisibleTo("m", "cm.user_id")+`) END,
 		    unread_mentions_count = (
 		        SELECT count(*) FROM message_mentions mm JOIN messages m ON m.id = mm.message_id

@@ -369,6 +369,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Delete("/channels/{peerID}/discussion", chh.UnlinkDiscussion)
 		pr.Get("/channels/{peerID}/discussion_candidates", chh.DiscussionCandidates)
 		pr.Put("/channels/{peerID}/sign_messages", chh.SetSignatures)
+		pr.Put("/channels/{peerID}/join_to_send", chh.ToggleJoinToSend) // channels.toggleJoinToSend
 		pr.Post("/channels/{peerID}/posts/{postSeq}/comments", chh.PostComment)
 		pr.Get("/channels/{peerID}/posts/{postSeq}/comments", chh.ListComments)
 		pr.Get("/channels/{peerID}/posts/{postSeq}/discussion", chh.GetDiscussionMessage)

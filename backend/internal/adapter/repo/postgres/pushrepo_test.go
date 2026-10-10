@@ -176,8 +176,8 @@ func TestPushRepo_Enricher(t *testing.T) {
 		t.Fatalf("UnreadBadge = %d, %v; want 3", badge, err)
 	}
 
-	// A3-38: заглушённые, архивные и скрытые группы обсуждения в бейдж не
-	// входят.
+	// A3-38: заглушённые и архивные в бейдж не входят. Группа обсуждения, в
+	// которой пользователь состоит, — обычный чат списка (Ф-5) и входит.
 	seedChatUnread := func(typ string, unread int, extra string) int64 {
 		t.Helper()
 		var id int64
@@ -203,8 +203,8 @@ func TestPushRepo_Enricher(t *testing.T) {
 		`INSERT INTO chats (type, discussion_chat_id) VALUES ('channel', $1) RETURNING id`, disc).Scan(&channelID); err != nil {
 		t.Fatalf("seed channel: %v", err)
 	}
-	if badge, err := repo.UnreadBadge(ctx, userID); err != nil || badge != 3 {
-		t.Fatalf("UnreadBadge с заглушённым/архивным/обсуждением = %d, %v; want 3", badge, err)
+	if badge, err := repo.UnreadBadge(ctx, userID); err != nil || badge != 3+11 {
+		t.Fatalf("UnreadBadge с заглушённым/архивным/обсуждением = %d, %v; want 14", badge, err)
 	}
 
 	// User with no memberships → 0.

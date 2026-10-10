@@ -77,6 +77,11 @@ type ChatSettings struct {
 	// AutoDeletePeriod — период автоудаления сообщений чата в секундах
 	// (chats.auto_delete_period, схемное channelFull.ttl_period); 0 — выключено.
 	AutoDeletePeriod int
+	// JoinToSend — писать в группу (и в треды комментариев группы обсуждения)
+	// можно только участнику (chats.join_to_send, channel.pFlags.join_to_send;
+	// tweb input.ts:2044, channels.toggleJoinToSend). Без флага читатель
+	// канала комментирует пост, не вступая в группу обсуждения.
+	JoinToSend bool
 }
 
 // ToChatReactions — политика реакций как объединение схемы: наш строковый

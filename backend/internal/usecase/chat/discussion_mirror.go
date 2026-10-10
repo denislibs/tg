@@ -165,7 +165,7 @@ func (i *Interactor) mirrorChannelPost(ctx context.Context, post domain.Message)
 		return nil, err
 	}
 	recipients, ptsByUser, mentions, err := i.fanOutNewMessage(
-		ctx, disc, post.SenderID, mirror.ID, mirror.Seq, i.messageUpdatePayload(ctx, mirror), outLocked, mentioned)
+		ctx, disc, 0, mirror.ID, mirror.Seq, i.messageUpdatePayload(ctx, mirror), outLocked, mentioned)
 	if err != nil {
 		return nil, err
 	}

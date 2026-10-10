@@ -215,9 +215,10 @@ func (r *GroupRepo) Settings(ctx context.Context, chatID int64) (domain.ChatSett
 	var perms int
 	var allowed []byte
 	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT default_permissions, slowmode_seconds, reactions_mode, reactions_allowed, history_for_new, charge_stars
+		`SELECT default_permissions, slowmode_seconds, reactions_mode, reactions_allowed, history_for_new, charge_stars,
+		        join_to_send
 		 FROM chats WHERE id=$1`, chatID).
-		Scan(&perms, &s.SlowmodeSeconds, &s.ReactionsMode, &allowed, &s.HistoryForNew, &s.ChargeStars)
+		Scan(&perms, &s.SlowmodeSeconds, &s.ReactionsMode, &allowed, &s.HistoryForNew, &s.ChargeStars, &s.JoinToSend)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.ChatSettings{}, domain.ErrNotFound
 	}
@@ -401,7 +402,7 @@ func chatCardQuery(full bool) string {
         COALESCE(c.creator_id,0), c.member_count, c.created_at, c.is_forum,
         COALESCE(c.discussion_chat_id,0), c.signatures, c.signature_profiles,
         c.default_permissions, c.slowmode_seconds, c.reactions_mode, c.reactions_allowed,
-        c.history_for_new, c.charge_stars, COALESCE(c.auto_delete_period,0),
+        c.history_for_new, c.charge_stars, COALESCE(c.auto_delete_period,0), c.join_to_send,
         -- pinned_msg_id: наружу едет НОМЕР сообщения в чате (в схеме
         -- chatFull.pinned_msg_id адресует сообщение в его пире), а
         -- pinned_messages.msg_id — внутренний ключ строки. Удалённый
@@ -469,7 +470,7 @@ func scanChatCard(row pgx.Row, viewerID int64) (domain.ChatRecord, error) {
 		&c.CreatorID, &c.MemberCount, &c.CreatedAt, &c.IsForum,
 		&c.DiscussionChatID, &c.Signatures, &c.SignatureProfiles,
 		&perms, &c.Settings.SlowmodeSeconds, &c.Settings.ReactionsMode, &allowed,
-		&c.Settings.HistoryForNew, &c.Settings.ChargeStars, &c.Settings.AutoDeletePeriod,
+		&c.Settings.HistoryForNew, &c.Settings.ChargeStars, &c.Settings.AutoDeletePeriod, &c.Settings.JoinToSend,
 		&c.PinnedMsgID, &c.ReadInboxMaxID, &c.UnreadCount, &c.ReadOutboxMaxID,
 		&role, &rights, &muteUntil, &notifyPreview, &notifySound, &c.ThemeEmoticon, &joinedAt,
 		&restrDenied, &restrUntil, &restrBy, &c.LinkedChannelID, &readable); err != nil {
@@ -618,6 +619,18 @@ func (r *GroupRepo) DiscussionCandidates(ctx context.Context, actorID int64) ([]
 		return nil, err
 	}
 	return pgx.CollectRows(rows, pgx.RowTo[int64])
+}
+
+// SetJoinToSend — chats.join_to_send (channels.toggleJoinToSend).
+func (r *GroupRepo) SetJoinToSend(ctx context.Context, chatID int64, on bool) error {
+	tag, err := querier(ctx, r.pool).Exec(ctx, `UPDATE chats SET join_to_send=$2 WHERE id=$1`, chatID, on)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 // SetSignatures toggles channel post signatures; profiles is forced off when

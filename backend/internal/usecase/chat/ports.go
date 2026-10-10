@@ -89,10 +89,12 @@ type ChatRepo interface {
 	// возвращает оставшееся число. NextMention — НОМЕР ближайшего
 	// непрочитанного упоминания с seq>afterSeq (domain.ErrNotFound, если нет).
 	AddMention(ctx context.Context, chatID, msgID, seq, userID int64) error
-	// MemberIDsByUsernames — участники чата с этими именами (@username, без
-	// учёта регистра). Имя чата/канала из общего пространства имён (миграция
-	// 0134) пользователем не резолвится, не-участник в ответ не попадает.
-	MemberIDsByUsernames(ctx context.Context, chatID int64, usernames []string) ([]int64, error)
+	// ParticipantIDsByUsernames — пользователи с этими именами (@username, без
+	// учёта регистра), которые в чате участвуют: состоят в нём или писали в
+	// него (гость обсуждения комментирует без вступления — его тоже
+	// упоминают). Имя чата/канала из общего пространства имён (миграция 0134)
+	// пользователем не резолвится, посторонний в ответ не попадает.
+	ParticipantIDsByUsernames(ctx context.Context, chatID int64, usernames []string) ([]int64, error)
 	// Строка упоминания живёт и после прочтения (message.mentioned), прочтение
 	// лишь гасит её «непрочитано» (media_unread у адресата). ReadMention —
 	// прочтение одного упоминания (readMessageContents), true — было
@@ -224,6 +226,8 @@ type GroupRepo interface {
 	// SetSignatures toggles channel post signatures (Telegram
 	// channels.toggleSignatures). profiles is forced off when signatures is off.
 	SetSignatures(ctx context.Context, chatID int64, signatures, profiles bool) error
+	// SetJoinToSend — chats.join_to_send (channels.toggleJoinToSend).
+	SetJoinToSend(ctx context.Context, chatID int64, on bool) error
 	// IsDiscussionGroup — chatID является discussion-группой какого-то канала
 	// (тред комментариев там читается и без членства, как ListComments).
 	IsDiscussionGroup(ctx context.Context, chatID int64) (bool, error)
