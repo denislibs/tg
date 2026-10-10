@@ -108,7 +108,7 @@ export function newChannelsManager({ rest, beforeSending, peers, cacheViews }: {
       peerId: number, text: string, clientMsgId: string, entities?: MessageEntity[],
       optimistic?: { senderId: number; threadRootId?: number | null },
       sendingParams?: Pick<MessageSendingParams, 'scheduleDate' | 'scheduleRepeatPeriod'>,
-    ): Promise<MyMessage> {
+    ): Promise<MyMessage | undefined> {
       const scheduleDate = sendingParams?.scheduleDate || 0
       const scheduleRepeatPeriod = sendingParams?.scheduleRepeatPeriod || 0
       if (optimistic) {
@@ -127,7 +127,9 @@ export function newChannelsManager({ rest, beforeSending, peers, cacheViews }: {
         text, entities, client_msg_id: clientMsgId,
         schedule_date: scheduleDate, schedule_repeat_period: scheduleRepeatPeriod,
       })
-      return mapMyMessage(r)
+      // Отложенный пост отвечает `Updates`, а не сообщением: в ленту отложенных его
+      // приносит кадр `updateNewScheduledMessage` (по нему же снимается бабл).
+      return scheduleDate ? undefined : mapMyMessage(r)
     },
     // догон канала (updates.getChannelDifference) ведёт состояние канала в
     // воркере (channelFunnel), а не менеджер — курсор и гейтинг живут там же, где

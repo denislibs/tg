@@ -60,6 +60,14 @@ export type { ReactionUser, SavedTag, StarSender, StarReactionInfo, StarReaction
  * `users` — карточки авторов пачки: получатель списка обязан уметь нарисовать
  * подпись, ни о ком не спрашивая отдельно.
  */
+/** Ответ ручек отложенных — контейнер `updates` (tweb `Updates`): кадры ленты
+ *  отложенных и пиры пачки. */
+export interface ScheduledUpdates {
+  updates?: Update[]
+  users?: UserReal[]
+  chats?: Chat[]
+}
+
 export interface MessagesContainer {
   _: 'messages.messages' | 'messages.messagesSlice' | 'messages.channelMessages'
   /** pts журнала канала — только у `messages.channelMessages` (история канала). */
@@ -528,7 +536,9 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
   // приезжает штатным веером `new_message`. Тот же кадр из сокета следом
   // безвреден: номер уже в хранилище → правка тем же содержимым; повторный
   // `scheduled_delete` по снятым номерам лента и кнопка-календарик переживают.
-  const applyScheduledUpdates = (updates: Update[] | undefined): void => {
+  const applyScheduledUpdates = (updates: Update[] | undefined, peersOf?: { users?: UserReal[], chats?: Chat[] }): void => {
+    // tweb `processUpdateMessage` :239-240 — пиры пачки сохраняются ДО апдейтов
+    if (peersOf?.users?.length || peersOf?.chats?.length) peers?.saveApiPeers({ users: peersOf.users, chats: peersOf.chats })
     for (const u of updates ?? []) {
       if (u._ === 'updateNewScheduledMessage') applyNewScheduledMessage(u)
       else if (u._ === 'updateDeleteScheduledMessages') applyDeleteScheduledMessages(u)
@@ -1087,12 +1097,12 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     ): Promise<MyMessage | undefined> {
       if (options?.scheduleDate) {
         try {
-          const r = await rest.patch<{ updates?: Update[] }>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}`, {
+          const r = await rest.patch<ScheduledUpdates>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}`, {
             text, entities: entities ?? null,
             schedule_date: options.scheduleDate,
             schedule_repeat_period: options.scheduleRepeatPeriod || 0,
           })
-          applyScheduledUpdates(r?.updates)
+          applyScheduledUpdates(r?.updates, r)
         } catch (e) {
           if (e instanceof HttpError && e.type === 'MESSAGE_NOT_MODIFIED') return undefined
           throw e
@@ -1217,7 +1227,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       msgIds: number[],
       opts?: { dropAuthor?: boolean; dropCaption?: boolean; silent?: boolean; threadId?: number | null; scheduleDate?: number | null; scheduleRepeatPeriod?: number | null },
     ): Promise<MyMessage[]> {
-      const r = await rest.post<MessagesContainer>(`/chats/${toPeerId}/forward`, {
+      const r = await rest.post<MessagesContainer | ScheduledUpdates>(`/chats/${toPeerId}/forward`, {
         from_peer_id: fromPeerId,
         ids: msgIds.map(getServerMessageId),
         drop_author: opts?.dropAuthor ?? false,
@@ -1229,10 +1239,15 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
         schedule_date: opts?.scheduleDate || 0,
         schedule_repeat_period: opts?.scheduleRepeatPeriod || 0,
       })
-      const msgs = await mapContainer(r)
-      // Отложенные копии — не история: в ленту отложенных их приносит кадр
-      // `updateNewScheduledMessage`.
-      if (!opts?.scheduleDate) put(hkey(toPeerId), msgs)
+      // Отложенные копии — не история: ответ — `Updates` с
+      // `updateNewScheduledMessage` (tweb `processUpdateMessage`), они и ложатся
+      // в ленту отложенных.
+      if (opts?.scheduleDate) {
+        applyScheduledUpdates((r as ScheduledUpdates).updates, r)
+        return []
+      }
+      const msgs = await mapContainer(r as MessagesContainer)
+      put(hkey(toPeerId), msgs)
       return msgs
     },
 
@@ -1390,15 +1405,15 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     // tweb `deleteScheduledMessages` (`:12606-12613`): один вызов на пачку
     // (`messages.deleteScheduledMessages{peer, id[]}`), ответ — Updates.
     async deleteScheduledMessages(peerId: number, mids: number[]): Promise<void> {
-      const r = await rest.post<{ updates?: Update[] }>(`/chats/${peerId}/scheduled/delete`, { id: mids.map(getServerMessageId) })
-      applyScheduledUpdates(r?.updates)
+      const r = await rest.post<ScheduledUpdates>(`/chats/${peerId}/scheduled/delete`, { id: mids.map(getServerMessageId) })
+      applyScheduledUpdates(r?.updates, r)
     },
     // tweb `sendScheduledMessages` (`:12420-12427`, `messages.sendScheduledMessages`):
     // отправить немедленно. Опубликованное сообщение приезжает штатным веером
     // `new_message`, уход из ленты — `updateDeleteScheduledMessages` в ответе.
     async sendScheduledMessages(peerId: number, mids: number[]): Promise<void> {
-      const r = await rest.post<{ updates?: Update[] }>(`/chats/${peerId}/scheduled/send_now`, { id: mids.map(getServerMessageId) })
-      applyScheduledUpdates(r?.updates)
+      const r = await rest.post<ScheduledUpdates>(`/chats/${peerId}/scheduled/send_now`, { id: mids.map(getServerMessageId) })
+      applyScheduledUpdates(r?.updates, r)
     },
 
     applyNewScheduledMessage,

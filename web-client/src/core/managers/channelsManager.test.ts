@@ -50,9 +50,9 @@ describe('ChannelsManager.post', () => {
     const mgr = newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers(), cacheViews: () => {} })
     const m = await mgr.post(7, 'hey', 'c1')
     expect(post).toHaveBeenCalledWith('/channels/7/messages', { text: 'hey', entities: undefined, client_msg_id: 'c1', schedule_date: 0, schedule_repeat_period: 0 })
-    expect(m.peerId).toBe(7)
-    expect(m.id).toBe(cid(6))
-    expect(real(m)?.message).toBe('m6')
+    expect(m?.peerId).toBe(7)
+    expect(m?.id).toBe(cid(6))
+    expect(real(m!)?.message).toBe('m6')
   })
 
   // Разметка поста (bold/text_link/mention/hashtag) обязана уехать на бэк: без
@@ -100,7 +100,8 @@ describe('ChannelsManager.post', () => {
     const pendings: unknown[] = []
     const mgr = newChannelsManager({ rest, beforeSending: (p) => { pendings.push(p) }, peers: fakePeers(), cacheViews: () => {} })
 
-    await mgr.post(7, 'пост', 'c11', undefined, { senderId: 3 }, { scheduleDate: 1_900_000_000, scheduleRepeatPeriod: 86400 })
+    // ответ отложенного поста — `Updates`, а не сообщение: в историю его не мапим
+    expect(await mgr.post(7, 'пост', 'c11', undefined, { senderId: 3 }, { scheduleDate: 1_900_000_000, scheduleRepeatPeriod: 86400 })).toBeUndefined()
 
     expect(post).toHaveBeenCalledWith('/channels/7/messages', expect.objectContaining({ schedule_date: 1_900_000_000, schedule_repeat_period: 86400 }))
     expect(pendings).toEqual([expect.objectContaining({ schedule_date: 1_900_000_000, schedule_repeat_period: 86400 })])

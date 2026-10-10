@@ -61,7 +61,7 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor, emitOps 
     // бэкенд снимает эффект с типа 'poll' по whitelist (sanitizeEffect,
     // backend/internal/usecase/chat/sanitize.go:29-32) — как и Telegram, который
     // эффекты на опросах не показывает.
-    async sendPoll(peerId: number, p: { question: string; options: string[]; anonymous: boolean; multiple: boolean; quiz: boolean; correctOption?: number; clientMsgId?: string } & MessageSendingParams): Promise<MyMessage> {
+    async sendPoll(peerId: number, p: { question: string; options: string[]; anonymous: boolean; multiple: boolean; quiz: boolean; correctOption?: number; clientMsgId?: string } & MessageSendingParams): Promise<MyMessage | undefined> {
       const wire = sendingParamsToWire(p)
       const r = await rest.post<RawMyMessage>(`/chats/${peerId}/polls`, {
         question: p.question, options: p.options, anonymous: p.anonymous,
@@ -73,7 +73,8 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor, emitOps 
         // tweb `sendOther` → `messages.sendMedia{schedule_date}` (:4141-4166)
         schedule_date: wire.scheduleDate ?? 0, schedule_repeat_period: wire.scheduleRepeatPeriod ?? 0,
       })
-      return mapOne(r)
+      // отложенный опрос отвечает `Updates` (лента отложенных — кадром)
+      return wire.scheduleDate ? undefined : mapOne(r)
     },
     // Голос (пустой список — отзыв). Ответ АВТОРИТЕТЕН и несёт мой выбор —
     // `results.results[].pFlags.chosen` — которого нет в общем WS-кадре

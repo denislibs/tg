@@ -288,12 +288,17 @@ describe('MessagesManager — лента отложенных', () => {
     await expect(mgr.editMessage(1, cid(1), 'same', undefined, { scheduleDate: 1_900_000_000 })).resolves.toBeUndefined()
   })
 
-  it('пересылка с scheduleDate шлёт schedule_date и не кладёт копии в историю', async () => {
+  it('пересылка с scheduleDate шлёт schedule_date; ответ Updates — в ленту отложенных, не в историю', async () => {
     let body: Record<string, unknown> = {}
-    const { mgr } = setup({ post: async (_p: string, b: Record<string, unknown>) => { body = b; return page(rawScheduled(4, 1_900_000_000)) } })
-    await mgr.forwardMessages(1, 2, [cid(3)], { scheduleDate: 1_900_000_000 })
+    const { mgr, events } = setup({ post: async (_p: string, b: Record<string, unknown>) => {
+      body = b
+      return { updates: [newScheduled(rawScheduled(4, 1_900_000_000))], users: [], chats: [] }
+    } })
+    await mgr.getScheduledMessages(1)
+    expect(await mgr.forwardMessages(1, 2, [cid(3)], { scheduleDate: 1_900_000_000 })).toEqual([])
     expect(body).toMatchObject({ schedule_date: 1_900_000_000, ids: [3] })
     expect(mgr.getMessageByPeer(1, cid(4))).toBeUndefined()
+    expect(events.map(([e]) => e)).toEqual(['scheduled_new'])
   })
 })
 
