@@ -446,7 +446,8 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 	}
 	msg, err := h.svc.Send(r.Context(), usecasechat.SendInput{
 		ChatID: chatID, SenderID: h.meID(r), Type: body.Type, Text: body.Text, Entities: body.Entities,
-		ReplyToID: body.ReplyToID, ReplyToPeerID: replyPeer,
+		ReplyToID:      h.svc.ThreadReplyTo(r.Context(), chatID, body.ThreadRootID, body.ReplyToID),
+		ReplyToPeerID:  replyPeer,
 		ReplyQuoteText: body.ReplyQuoteText, ReplyQuoteOffset: body.ReplyQuoteOffset,
 		ClientMsgID: body.ClientMsgID, MediaID: body.MediaID, GroupedID: body.GroupedID,
 		ThreadRootID: threadRoot,
@@ -1327,8 +1328,9 @@ func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 		ChatID: chatID, SenderID: h.meID(r),
 		Question: b.Question, Options: b.Options,
 		Anonymous: b.Anonymous, Multiple: b.Multiple, Quiz: b.Quiz, CorrectOption: b.CorrectOption,
-		ClientMsgID: b.ClientMsgID,
-		ReplyToID:   b.ReplyToID, ReplyToPeerID: replyPeer,
+		ClientMsgID:    b.ClientMsgID,
+		ReplyToID:      h.svc.ThreadReplyTo(r.Context(), chatID, b.ThreadRootID, b.ReplyToID),
+		ReplyToPeerID:  replyPeer,
 		ReplyQuoteText: b.ReplyQuoteText, ReplyQuoteOffset: b.ReplyQuoteOffset,
 		ThreadRootID: threadRoot, Silent: b.Silent, SendAsChatID: sendAsChatID(b.SendAsPeerID),
 	})
@@ -1674,26 +1676,66 @@ func (h *ChatHandler) SetForum(w http.ResponseWriter, r *http.Request) {
 func topicJSON(row domain.TopicRow, viewerID int64) domain.ForumTopicReal {
 	// Темы бывают только у супергрупп — ключ пира тут один на всех: -chatID.
 	peer := domain.NewPeer(domain.ToPeerID(row.Topic.ChatID, true))
-	// Заглушённость это СРОК, а не булево поле рядом: тот же предикат, что у
-	// диалога. Своего срока у темы мы не храним — «замьючено навсегда» либо
-	// «не замьючено вовсе».
-	notify := domain.PeerNotifySettings{Underscore: domain.PeerNotifySettingsTag}
-	if row.Muted {
-		forever := domain.MuteUntilForever
-		notify.MuteUntil = &forever
-	}
 	return domain.NewForumTopic(row.Topic, peer, domain.NewPeer(domain.PeerID(row.Topic.CreatedBy)),
-		row.LastMsgSeq, row.LastReadSeq, row.UnreadCount, row.UnreadMentions, notify,
+		domain.ForumTopicState{
+			TopMessage:      row.LastMsgSeq,
+			ReadInboxMaxID:  row.LastReadSeq,
+			ReadOutboxMaxID: row.ReadOutboxSeq,
+			Unread:          row.UnreadCount,
+			UnreadMentions:  row.UnreadMentions,
+			UnreadReactions: row.UnreadReactions,
+		},
+		domain.TopicNotifySettings(row.MuteUntil, time.Now()),
 		domain.ForumTopicFlags{
-			My:        row.Topic.CreatedBy == viewerID,
-			Closed:    row.Topic.Closed,
-			Pinned:    row.Topic.Pinned,
-			Hidden:    row.Topic.Hidden,
-			IsGeneral: row.Topic.IsGeneral,
+			My:     row.Topic.CreatedBy == viewerID,
+			Closed: row.Topic.Closed,
+			Pinned: row.Topic.Pinned,
+			Hidden: row.Topic.Hidden,
 		})
 }
 
-// CreateTopic — POST /chats/{chatID}/topics {title, icon_color}.
+// topicNumber — {topicID} пути: НОМЕР темы (номер служебки создания в чате, у
+// General — 1), а не ключ строки forum_topics.
+func topicNumber(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	return pathMsgSeq(w, r, "topicID")
+}
+
+// writeTopicUpdates — ответ messages.createForumTopic/editForumTopic: Updates
+// со служебкой темы (tweb appMessagesManager.ts:10073, 10098-10101). Курсора в
+// ответе нет (pts и pts_count — нули): его двигает живой кадр той же служебки,
+// из ответа клиенту нужно только сообщение. Ничего не изменилось — пустой
+// вектор updates.
+func writeTopicUpdates(w http.ResponseWriter, r *http.Request, svc *usecasechat.Interactor, m *domain.Message) {
+	if m == nil {
+		writeJSON(w, http.StatusOK, domain.NewUpdates(nil, nil, time.Now()))
+		return
+	}
+	me, _ := UserFromContext(r.Context())
+	out, users, _, err := svc.MessagesContainer(r.Context(), me.ID, []domain.Message{*m})
+	if err != nil || len(out) != 1 {
+		writeError(w, http.StatusInternalServerError, "could not render topic update")
+		return
+	}
+	update := domain.UpdateNewMessage{Underscore: domain.UpdateNewMessageTag, Message: out[0]}
+	writeJSON(w, http.StatusOK, domain.NewUpdates([]domain.Update{update}, users, time.Now()))
+}
+
+// writeTopicErr — отказ ручек тем: служебка темы идёт штатной отправкой, и её
+// отказы (права, медленный режим) — те же, что у Send.
+func writeTopicErr(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, domain.ErrTooLong):
+		writeError(w, http.StatusBadRequest, "invalid title")
+	case errors.Is(err, domain.ErrNotFound):
+		writeError(w, http.StatusNotFound, "not found")
+	default:
+		writeSendError(w, err, "not found")
+	}
+}
+
+// CreateTopic — POST /chats/{peerID}/topics {title, icon_color, icon_emoji} —
+// messages.createForumTopic. Ответ — Updates со служебкой создания; номер темы
+// — её id.
 func (h *ChatHandler) CreateTopic(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
@@ -1708,22 +1750,12 @@ func (h *ChatHandler) CreateTopic(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	t, err := h.svc.CreateTopic(r.Context(), chatID, h.meID(r), b.Title, b.IconEmoji, b.IconColor)
-	if errors.Is(err, domain.ErrTooLong) {
-		writeError(w, http.StatusBadRequest, "invalid title")
-		return
-	}
-	if errors.Is(err, domain.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "not found")
-		return
-	}
+	_, root, err := h.svc.CreateTopic(r.Context(), chatID, h.meID(r), b.Title, b.IconEmoji, b.IconColor)
 	if err != nil {
-		writeSendError(w, err, "not found")
+		writeTopicErr(w, err)
 		return
 	}
-	// Созданная тема — та же СТРОКА, что едет в списке: своей формы у этого
-	// ответа нет.
-	writeJSON(w, http.StatusOK, topicJSON(domain.TopicRow{Topic: t}, h.meID(r)))
+	writeTopicUpdates(w, r, h.svc, &root)
 }
 
 // ListTopics — GET /chats/{chatID}/topics.
@@ -1750,75 +1782,47 @@ func (h *ChatHandler) ListTopics(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewMessagesForumTopics(topics, msgs, nil, page.Users))
 }
 
-// CloseTopic — POST /chats/{chatID}/topics/{topicID}/close {closed}.
-func (h *ChatHandler) CloseTopic(w http.ResponseWriter, r *http.Request) {
-	topicID, ok := pathInt(w, r, "topicID")
-	if !ok {
-		return
-	}
-	var b struct {
-		Closed bool `json:"closed"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
-		writeError(w, http.StatusBadRequest, "bad body")
-		return
-	}
-	if err := h.svc.CloseTopic(r.Context(), topicID, h.meID(r), b.Closed); err != nil {
-		h.mapScheduledErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, domain.NewBool(true))
-}
-
-// EditTopic — PATCH /chats/{chatID}/topics/{topicID} {title, icon_emoji, icon_color}.
+// EditTopic — PATCH /chats/{peerID}/topics/{topicID} {title?, icon_emoji?,
+// closed?, hidden?} — messages.editForumTopic (tweb appMessagesManager.ts:
+// 10057-10075): один метод на переименование, значок, закрытие и скрытие.
+// Отсутствующее поле — не менять. Ответ — Updates со служебкой TopicEdit.
 func (h *ChatHandler) EditTopic(w http.ResponseWriter, r *http.Request) {
-	topicID, ok := pathInt(w, r, "topicID")
+	chatID, ok := peerChatID(w, r, h.svc)
+	if !ok {
+		return
+	}
+	number, ok := topicNumber(w, r)
 	if !ok {
 		return
 	}
 	var b struct {
-		Title     string `json:"title"`
-		IconEmoji string `json:"icon_emoji"`
-		IconColor int    `json:"icon_color"`
+		Title     *string `json:"title"`
+		IconEmoji *string `json:"icon_emoji"`
+		Closed    *bool   `json:"closed"`
+		Hidden    *bool   `json:"hidden"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	if err := h.svc.EditTopic(r.Context(), topicID, h.meID(r), b.Title, b.IconEmoji, b.IconColor); err != nil {
-		if errors.Is(err, domain.ErrTooLong) {
-			writeError(w, http.StatusBadRequest, "invalid title")
-			return
-		}
-		h.mapScheduledErr(w, err)
+	m, err := h.svc.EditTopic(r.Context(), chatID, number, h.meID(r), usecasechat.TopicEdit{
+		Title: b.Title, IconEmoji: b.IconEmoji, Closed: b.Closed, Hidden: b.Hidden,
+	})
+	if err != nil {
+		writeTopicErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, domain.NewBool(true))
+	writeTopicUpdates(w, r, h.svc, m)
 }
 
-// HideTopic — POST /chats/{chatID}/topics/{topicID}/hide {hidden}.
-func (h *ChatHandler) HideTopic(w http.ResponseWriter, r *http.Request) {
-	topicID, ok := pathInt(w, r, "topicID")
-	if !ok {
-		return
-	}
-	var b struct {
-		Hidden bool `json:"hidden"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
-		writeError(w, http.StatusBadRequest, "bad body")
-		return
-	}
-	if err := h.svc.SetTopicHidden(r.Context(), topicID, h.meID(r), b.Hidden); err != nil {
-		h.mapScheduledErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, domain.NewBool(true))
-}
-
-// PinTopic — POST /chats/{chatID}/topics/{topicID}/pin {pinned}.
+// PinTopic — POST /chats/{peerID}/topics/{topicID}/pin {pinned} —
+// messages.updatePinnedForumTopic. Ответ — Updates с updatePinnedForumTopic.
 func (h *ChatHandler) PinTopic(w http.ResponseWriter, r *http.Request) {
-	topicID, ok := pathInt(w, r, "topicID")
+	chatID, ok := peerChatID(w, r, h.svc)
+	if !ok {
+		return
+	}
+	number, ok := topicNumber(w, r)
 	if !ok {
 		return
 	}
@@ -1829,23 +1833,23 @@ func (h *ChatHandler) PinTopic(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	if err := h.svc.SetTopicPinned(r.Context(), topicID, h.meID(r), b.Pinned); err != nil {
+	update, err := h.svc.SetTopicPinned(r.Context(), chatID, number, h.meID(r), b.Pinned)
+	if err != nil {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, domain.NewBool(true))
+	writeJSON(w, http.StatusOK, domain.NewUpdates([]domain.Update{update}, nil, time.Now()))
 }
 
-// ReadTopic — POST /chats/{chatID}/topics/{topicID}/read {up_to_seq}.
+// ReadTopic — POST /chats/{peerID}/topics/{topicID}/read {up_to_seq}.
 // Помечает тему прочитанной до up_to_seq (Telegram readDiscussion c threadId).
-// В слоте {topicID} передаётся НОМЕР корневого сообщения темы (ключ состояния —
-// пара chat+root; наружу тот же номер едет как root_msg_id витрины тем).
+// Тема — номером (General — 1).
 func (h *ChatHandler) ReadTopic(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
-	rootMsgID, ok := msgSeqIDParam(w, r, h.svc, chatID, "topicID")
+	number, ok := topicNumber(w, r)
 	if !ok {
 		return
 	}
@@ -1856,34 +1860,34 @@ func (h *ChatHandler) ReadTopic(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	if err := h.svc.MarkTopicRead(r.Context(), chatID, rootMsgID, h.meID(r), b.UpToSeq); err != nil {
+	if err := h.svc.MarkTopicRead(r.Context(), chatID, number, h.meID(r), b.UpToSeq); err != nil {
 		h.mapScheduledErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
-// MuteTopic — POST /chats/{chatID}/topics/{topicID}/mute {muted}.
-// Включает/выключает уведомления темы для пользователя.
-// В слоте {topicID} передаётся НОМЕР корневого сообщения темы (ключ состояния —
-// пара chat+root; наружу тот же номер едет как root_msg_id витрины тем).
+// MuteTopic — POST /chats/{peerID}/topics/{topicID}/mute {mute_until} —
+// account.updateNotifySettings с inputNotifyForumTopic (tweb
+// appMessagesManager.ts:11962-11981). mute_until — СРОК, unix-секунды:
+// 0 — снять, 2147483647 — навсегда.
 func (h *ChatHandler) MuteTopic(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
-	rootMsgID, ok := msgSeqIDParam(w, r, h.svc, chatID, "topicID")
+	number, ok := topicNumber(w, r)
 	if !ok {
 		return
 	}
 	var b struct {
-		Muted bool `json:"muted"`
+		MuteUntil int64 `json:"mute_until"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	if err := h.svc.SetTopicMuted(r.Context(), chatID, rootMsgID, h.meID(r), b.Muted); err != nil {
+	if err := h.svc.SetTopicMuteUntil(r.Context(), chatID, number, h.meID(r), b.MuteUntil); err != nil {
 		h.mapScheduledErr(w, err)
 		return
 	}

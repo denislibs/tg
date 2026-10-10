@@ -217,7 +217,8 @@ func TestTopicsRepo_ByRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := tr.SetClosed(ctx, created.ID, true); err != nil {
+	created.Closed = true
+	if err := tr.Update(ctx, created); err != nil {
 		t.Fatal(err)
 	}
 	got, err := tr.ByRoot(ctx, chatID, 777)

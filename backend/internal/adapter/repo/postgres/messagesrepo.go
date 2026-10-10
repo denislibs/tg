@@ -185,7 +185,7 @@ func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq 
 	}
 	half := limit / 2
 	q := querier(ctx, r.pool)
-	excl := ` AND ` + messageVisibleTo("messages", "$4") + ` AND ($5::bigint IS NULL OR thread_root_id=$5 OR id=$5)`
+	excl := ` AND ` + messageVisibleTo("messages", "$4") + ` AND ($5::bigint IS NULL OR ` + threadFilter("messages", "$5", true) + `)`
 	scan := func(rows pgx.Rows, err error) ([]domain.Message, error) {
 		if err != nil {
 			return nil, err
@@ -580,7 +580,7 @@ func (r *MessagesRepo) MediaHistory(ctx context.Context, chatID, userID int64, f
 	// ответы, как `top_msg_id` у messages.search).
 	if page.ThreadRoot != nil {
 		args = append(args, *page.ThreadRoot)
-		where += fmt.Sprintf(` AND m.thread_root_id=$%d`, len(args))
+		where += ` AND ` + threadFilter("m", fmt.Sprintf("$%d", len(args)), false)
 	}
 	var count int
 	if err := qq.QueryRow(ctx, `SELECT count(*)`+where, args...).Scan(&count); err != nil {
@@ -641,7 +641,7 @@ func (r *MessagesRepo) SearchCounters(ctx context.Context, chatID, userID int64,
 	thread := ""
 	if threadRootID != nil {
 		args = append(args, *threadRootID)
-		thread = ` AND m.thread_root_id=$3`
+		thread = ` AND ` + threadFilter("m", "$3", false)
 	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT CASE `+strings.Join(arms, " ")+` END AS f, count(*)
@@ -1065,13 +1065,17 @@ func (r *MessagesRepo) HideForUser(ctx context.Context, userID, msgID int64) err
 // offsetSeq); addOffset<=0 fetches newer (seq > offsetSeq); offsetSeq==0 means
 // "from the newest".
 // threadRootID != nil ограничивает окно тредом (форум-топик / комментарии):
-// сообщения с этим thread_root_id плюс само корневое сообщение.
+// сообщения с этим thread_root_id плюс само корневое сообщение; General
+// форума — страж domain.GeneralThreadRoot (см. threadFilter).
 // Видимость — messageVisibleTo: удалённое, скрытое у себя, очищенное и
 // скрытая предыстория в окно не попадают.
 func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, threadRootID *int64, tag string) ([]domain.Message, error) {
 	q := querier(ctx, r.pool)
 	// Плейсхолдеры зависят от формы запроса.
-	const thrN = ` AND ($%d::bigint IS NULL OR thread_root_id=$%[1]d OR id=$%[1]d)`
+	thrN := func(n int) string {
+		p := fmt.Sprintf("$%d", n)
+		return ` AND (` + p + `::bigint IS NULL OR ` + threadFilter("messages", p, true) + `)`
+	}
 	// tagN (Избранное): оставляем только сообщения, помеченные зрителем реакцией
 	// $%[2]d (эмодзи/id кастом-эмодзи). Пустой тег ($%[2]d='') снимает фильтр.
 	// %[1]d — плейсхолдер userID, %[2]d — плейсхолдер tag.
@@ -1081,15 +1085,15 @@ func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq
 	switch {
 	case offsetSeq == 0:
 		rows, err = q.Query(ctx,
-			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND `+messageVisibleTo("messages", "$3")+fmt.Sprintf(thrN, 4)+fmt.Sprintf(tagN, 3, 5)+` ORDER BY seq DESC LIMIT $2`,
+			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND `+messageVisibleTo("messages", "$3")+thrN(4)+fmt.Sprintf(tagN, 3, 5)+` ORDER BY seq DESC LIMIT $2`,
 			chatID, limit, userID, threadRootID, tag)
 	case addOffset <= 0: // newer than offset
 		rows, err = q.Query(ctx,
-			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq>$2 AND `+messageVisibleTo("messages", "$4")+fmt.Sprintf(thrN, 5)+fmt.Sprintf(tagN, 4, 6)+` ORDER BY seq ASC LIMIT $3`,
+			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq>$2 AND `+messageVisibleTo("messages", "$4")+thrN(5)+fmt.Sprintf(tagN, 4, 6)+` ORDER BY seq ASC LIMIT $3`,
 			chatID, offsetSeq, limit, userID, threadRootID, tag)
 	default: // older, inclusive of offset
 		rows, err = q.Query(ctx,
-			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq<=$2 AND `+messageVisibleTo("messages", "$4")+fmt.Sprintf(thrN, 5)+fmt.Sprintf(tagN, 4, 6)+` ORDER BY seq DESC LIMIT $3`,
+			`SELECT `+messageCols+` FROM messages WHERE chat_id=$1 AND seq<=$2 AND `+messageVisibleTo("messages", "$4")+thrN(5)+fmt.Sprintf(tagN, 4, 6)+` ORDER BY seq DESC LIMIT $3`,
 			chatID, offsetSeq, limit, userID, threadRootID, tag)
 	}
 	if err != nil {
@@ -1217,7 +1221,7 @@ func (r *MessagesRepo) CountThread(ctx context.Context, chatID, threadRootID int
 	q := querier(ctx, r.pool)
 	var n int
 	err := q.QueryRow(ctx,
-		`SELECT count(*) FROM messages WHERE chat_id=$1 AND thread_root_id=$2 AND deleted_at IS NULL`,
+		`SELECT count(*) FROM messages WHERE chat_id=$1 AND `+threadFilter("messages", "$2", false)+` AND deleted_at IS NULL`,
 		chatID, threadRootID).Scan(&n)
 	return n, err
 }

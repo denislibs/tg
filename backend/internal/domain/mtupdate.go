@@ -101,6 +101,8 @@ const (
 	// Участники (Ф-3б, Б-115/Б-86) — блок в конце по правилу горячих файлов.
 	UpdateChannelParticipantTag  = "updateChannelParticipant"
 	UpdatePendingJoinRequestsTag = "updatePendingJoinRequests"
+	// Темы форума (Ф-5, БЭК-1) — блок в конце по правилу горячих файлов.
+	UpdatePinnedForumTopicTag = "updatePinnedForumTopic"
 )
 
 // Значения дискриминатора `_` объединения SendMessageAction.
@@ -585,9 +587,13 @@ func NewUpdateFolderPeers(peers []FolderPeer, pts int64) UpdateFolderPeers {
 // булево: «заглушить на час» работало как «навсегда».
 //
 // Своего pts у конструктора нет — курсор едет в конверте.
+//
+// Адрес — объединение NotifyPeer: настройки ДИАЛОГА едут с notifyPeer, а темы
+// форума — с notifyForumTopic{peer, top_msg_id} (tweb
+// appMessagesManager.ts:11751-11770 разводит их по `peer._`).
 type UpdateNotifySettings struct {
 	Underscore     string             `json:"_"`
-	Peer           NotifyPeer         `json:"peer"`
+	Peer           NotifyPeerRef      `json:"peer"`
 	NotifySettings PeerNotifySettings `json:"notify_settings"`
 }
 
@@ -597,6 +603,50 @@ func (u UpdateNotifySettings) Tag() string { return u.Underscore }
 func NewUpdateNotifySettings(peer Peer, settings PeerNotifySettings) UpdateNotifySettings {
 	return UpdateNotifySettings{Underscore: UpdateNotifySettingsTag,
 		Peer: NewNotifyPeer(peer), NotifySettings: settings}
+}
+
+// NewUpdateTopicNotifySettings — те же настройки, но ТЕМЫ форума: адрес
+// notifyForumTopic. Кадр уходит только своим устройствам — мьют личный.
+func NewUpdateTopicNotifySettings(peer Peer, topicID int64, settings PeerNotifySettings) UpdateNotifySettings {
+	return UpdateNotifySettings{Underscore: UpdateNotifySettingsTag,
+		Peer: NewNotifyForumTopic(peer, topicID), NotifySettings: settings}
+}
+
+// NotifyPeerRef — объединение NotifyPeer. Производим два его конструктора:
+// notifyPeer (диалог, mtdialog.go) и notifyForumTopic (тема, mtforumtopic.go).
+type NotifyPeerRef interface{ isNotifyPeer() }
+
+func (NotifyPeer) isNotifyPeer() {}
+
+// ── Темы форума ─────────────────────────────────────────────────────────────
+
+// updatePinnedForumTopic#683b2c52 flags:# pinned:flags.0?true peer:Peer
+// topic_id:int = Update;
+//
+// Тему закрепили или открепили. Закреп темы ОБЩИЙ (pFlags.pinned строки видят
+// все, кто читает список), поэтому кадр уходит всем участникам, а не только
+// актору: tweb перекладывает тему в списке по нему же (dialogs.ts:2480-2490).
+// «Открепили» — опущенный бит, как у закрепа диалога.
+//
+// topic_id — номер темы (ForumTopicRecord.Number). Своего pts у конструктора
+// нет — курсор едет в конверте.
+//
+// updatePinnedForumTopics (порядок закреплённых) не производится: ручки
+// перестановки (reorderPinnedForumTopics) у нас нет.
+type UpdatePinnedForumTopic struct {
+	Underscore string          `json:"_"`
+	PFlags     map[string]bool `json:"pFlags,omitempty"`
+	Peer       Peer            `json:"peer"`
+	TopicID    int64           `json:"topic_id"`
+}
+
+func (UpdatePinnedForumTopic) isUpdate()     {}
+func (u UpdatePinnedForumTopic) Tag() string { return u.Underscore }
+
+func NewUpdatePinnedForumTopic(peer Peer, topicID int64, pinned bool) UpdatePinnedForumTopic {
+	u := UpdatePinnedForumTopic{Underscore: UpdatePinnedForumTopicTag, Peer: peer, TopicID: topicID}
+	setPFlag(&u.PFlags, "pinned", pinned)
+	return u
 }
 
 // updateDraftMessage#edfc111e flags:# peer:Peer top_msg_id:flags.0?int

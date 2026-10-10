@@ -14,8 +14,44 @@ func topicSample() ForumTopicReal {
 		IconColor: 3, IconEmoji: "🐞", CreatedAt: time.Unix(1787334148, 0),
 	}
 	notify := PeerNotifySettings{Underscore: PeerNotifySettingsTag}
-	return NewForumTopic(rec, NewPeer(ToPeerID(9, true)), NewPeerUser(7), 42, 40, 2, 1, notify,
-		ForumTopicFlags{My: true, Closed: true, Pinned: true, Hidden: true})
+	return NewForumTopic(rec, NewPeer(ToPeerID(9, true)), NewPeerUser(7),
+		ForumTopicState{TopMessage: 42, ReadInboxMaxID: 40, ReadOutboxMaxID: 41, Unread: 2, UnreadMentions: 1, UnreadReactions: 1},
+		notify, ForumTopicFlags{My: true, Closed: true, Pinned: true, Hidden: true})
+}
+
+func generalSample() ForumTopicReal {
+	return NewForumTopic(
+		ForumTopicRecord{ID: 77, ChatID: 9, Title: "General", IsGeneral: true, CreatedAt: time.Unix(1, 0)},
+		NewPeer(ToPeerID(9, true)), NewPeerUser(7), ForumTopicState{},
+		PeerNotifySettings{Underscore: PeerNotifySettingsTag}, ForumTopicFlags{})
+}
+
+// П. 5 спецификации Ф-5: у темы одно число — номер служебки создания, у
+// General — 1 (tweb constants.ts:26, dialogs.ts:2219). Внутренний ключ строки
+// и наши `root_msg_id`/`pFlags.is_general` на провод не выходят.
+func TestForumTopic_IDIsTopicNumber(t *testing.T) {
+	topic, ok := roundTripJSON(t, topicSample()).(map[string]any)
+	if !ok {
+		t.Fatal("строка темы не разобралась в объект")
+	}
+	if topic["id"] != float64(12) {
+		t.Errorf("id темы = %v, ждали номер служебки создания 12 (не ключ строки 4)", topic["id"])
+	}
+	general, _ := roundTripJSON(t, generalSample()).(map[string]any)
+	if general["id"] != float64(GeneralTopicID) {
+		t.Errorf("id General = %v, ждали %d", general["id"], GeneralTopicID)
+	}
+	for _, row := range []map[string]any{topic, general} {
+		if _, has := row["root_msg_id"]; has {
+			t.Error("root_msg_id остался на проводе")
+		}
+		if flags, _ := row["pFlags"].(map[string]any); flags["is_general"] != nil {
+			t.Error("pFlags.is_general остался на проводе")
+		}
+	}
+	if topic["read_outbox_max_id"] != float64(41) || topic["unread_reactions_count"] != float64(1) {
+		t.Errorf("A1-19: read_outbox_max_id=%v unread_reactions_count=%v", topic["read_outbox_max_id"], topic["unread_reactions_count"])
+	}
 }
 
 func TestForumTopic_MatchesSchema(t *testing.T) {
@@ -24,10 +60,7 @@ func TestForumTopic_MatchesSchema(t *testing.T) {
 		value any
 	}{
 		{"строка темы", topicSample()},
-		{"General без корня", NewForumTopic(
-			ForumTopicRecord{ID: 1, ChatID: 9, Title: "General", CreatedAt: time.Unix(1, 0)},
-			NewPeer(ToPeerID(9, true)), NewPeerUser(7), 0, 0, 0, 0,
-			PeerNotifySettings{Underscore: PeerNotifySettingsTag}, ForumTopicFlags{IsGeneral: true})},
+		{"General без корня", generalSample()},
 		{"контейнер списка", NewMessagesForumTopics(
 			[]ForumTopic{topicSample()},
 			[]MTMessage{MessageReal{Underscore: MessageTag, ID: 42, PeerID: NewPeerUser(7), Date: 1787334148}},

@@ -831,22 +831,26 @@ type LivestreamRepo interface {
 // TopicRepo хранит темы форум-групп.
 type TopicRepo interface {
 	Create(ctx context.Context, t domain.ForumTopicRecord) (domain.ForumTopicRecord, error)
-	ByID(ctx context.Context, id int64) (domain.ForumTopicRecord, error)
-	SetClosed(ctx context.Context, id int64, closed bool) error
-	EditTopic(ctx context.Context, id int64, title, iconEmoji string, iconColor int) error
-	SetHidden(ctx context.Context, id int64, hidden bool) error
-	SetPinned(ctx context.Context, id int64, pinned bool) error
-	EnsureGeneralTopic(ctx context.Context, chatID, createdBy int64) (domain.ForumTopicRecord, error)
-	// ListByChat — темы чата с per-topic состоянием для зрителя userID
-	// (unread/mentions/mute/last_out считаются относительно него).
-	ListByChat(ctx context.Context, chatID, userID int64) ([]domain.TopicRow, error)
-	// SetTopicRead поднимает last_read_seq темы до max(old, upToSeq) (UPSERT).
-	SetTopicRead(ctx context.Context, chatID, rootMsgID, userID, upToSeq int64) error
-	// SetTopicMuted включает/выключает mute темы (UPSERT).
-	SetTopicMuted(ctx context.Context, chatID, rootMsgID, userID int64, muted bool) error
+	// ByNumber — тема по номеру СНАРУЖИ (ForumTopicRecord.Number: номер
+	// служебки создания в чате, у General — domain.GeneralTopicID);
+	// domain.ErrNotFound — такой темы нет.
+	ByNumber(ctx context.Context, chatID, number int64) (domain.ForumTopicRecord, error)
 	// ByRoot — тема по корню треда (ключ строки корневого сообщения);
 	// domain.ErrNotFound — тред не тема.
 	ByRoot(ctx context.Context, chatID, rootMsgID int64) (domain.ForumTopicRecord, error)
+	// Update пишет название, значок, closed и hidden темы.
+	Update(ctx context.Context, t domain.ForumTopicRecord) error
+	SetPinned(ctx context.Context, id int64, pinned bool) error
+	EnsureGeneralTopic(ctx context.Context, chatID, createdBy int64) (domain.ForumTopicRecord, error)
+	// ListByChat — темы чата с состоянием темы для зрителя userID (горизонты,
+	// непрочитанное, упоминания, реакции и мьют — относительно него).
+	ListByChat(ctx context.Context, chatID, userID int64) ([]domain.TopicRow, error)
+	// SetTopicRead поднимает last_read_seq темы до max(old, upToSeq) (UPSERT).
+	SetTopicRead(ctx context.Context, chatID, rootMsgID, userID, upToSeq int64) error
+	// SetTopicMuteUntil ставит срок мьюта темы (UPSERT); nil — мьют снят.
+	SetTopicMuteUntil(ctx context.Context, chatID, rootMsgID, userID int64, until *time.Time) error
+	// TopicRoots — какие из ключей строк — корни тем форума (не General).
+	TopicRoots(ctx context.Context, rootIDs []int64) (map[int64]bool, error)
 }
 
 // ScheduledRepo хранит очередь запланированных сообщений.

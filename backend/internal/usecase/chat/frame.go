@@ -199,7 +199,7 @@ func (i *Interactor) newMessagePayload(ctx context.Context, m domain.Message, ta
 	// ExternalizeThreadRoots). Прежде каждый вызывающий дописывал ключ
 	// thread_root_id в готовый payload сам, и забыть его было нечем не
 	// прикрыто.
-	m.ThreadRootID = i.externalThreadRoot(ctx, m)
+	m = i.externalizeThreadRoot(ctx, m)
 	return map[string]any{
 		"_":             tag,
 		frameMessageKey: m.ToWireMap(i.messageContext(ctx, m, domain.NullPeerID)),
