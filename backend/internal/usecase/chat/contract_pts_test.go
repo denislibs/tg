@@ -172,7 +172,7 @@ func TestFramePts_MatchesUpdateRow(t *testing.T) {
 }
 
 // (b) Reactions are absolute: the reaction payload carries the full current
-// aggregate (counts), so replaying it from /sync is idempotent by construction.
+// aggregate (counts), so replaying it from getDifference is idempotent by construction.
 // The counts in the live frame equal the counts stored in the log payload.
 func TestReactionPayload_AbsoluteAndIdempotent(t *testing.T) {
 	in, s := newInteractor()
@@ -239,7 +239,7 @@ func TestReactionPayload_AbsoluteAndIdempotent(t *testing.T) {
 	}
 
 	// The counts in the frame match the aggregate persisted to the log payload,
-	// so a /sync replay reconstructs exactly the same state (idempotent).
+	// so a getDifference replay reconstructs exactly the same state (idempotent).
 	s.mu.Lock()
 	ups := s.updates[a]
 	last := ups[len(ups)-1]

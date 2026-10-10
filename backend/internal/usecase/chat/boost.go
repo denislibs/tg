@@ -110,7 +110,7 @@ func (i *Interactor) requireChannel(ctx context.Context, chatID int64) error {
 
 // publishBoostUpdate логирует и рассылает участникам канала счётчик бустов/уровень
 // (без per-viewer полей — их каждый клиент знает сам). Абсолютный статус + плотный
-// pts-курсор делают catch-up через /sync идемпотентным.
+// pts-курсор делают catch-up через getDifference идемпотентным.
 func (i *Interactor) publishBoostUpdate(ctx context.Context, chatID int64) {
 	st, err := i.BoostStatus(ctx, chatID, 0)
 	if err != nil {

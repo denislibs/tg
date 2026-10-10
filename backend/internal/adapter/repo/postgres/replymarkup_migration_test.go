@@ -88,7 +88,7 @@ func TestMigration0101_ConvertsStoredReplyMarkup(t *testing.T) {
 	// по дискриминатору и не тронуть.
 	alreadyTLID := insert(4, `{"_":"replyKeyboardHide","pFlags":{"selective":true}}`)
 
-	// Замороженные кадры журналов апдейтов: их клиент переигрывает при /sync и
+	// Замороженные кадры журналов апдейтов: их клиент переигрывает при getDifference и
 	// difference. Не переписать — значит отдать догоняющему клиенту клавиатуру
 	// в форме, которую он уже не понимает.
 	if _, err := pool.Exec(ctx,

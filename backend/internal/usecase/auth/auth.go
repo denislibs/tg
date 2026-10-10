@@ -77,7 +77,7 @@ type ContactViewer interface {
 // UpdateLog appends one row to a user's per-user update log and returns the new
 // dense pts (same contract as the chat usecase's UpdateRepo.AppendUpdate). A
 // profile change logs user_update to every recipient (own devices + shared-chat
-// peers) so /sync catch-up replays it and the pts cursor stays dense. Optional —
+// peers) so getDifference catch-up replays it and the pts cursor stays dense. Optional —
 // no-op when unwired (tests / no-DB setups).
 type UpdateLog interface {
 	AppendUpdate(ctx context.Context, userID int64, ptsCount int, date int64, typ string, payload json.RawMessage) (int64, error)

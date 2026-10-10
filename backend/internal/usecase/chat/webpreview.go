@@ -48,7 +48,7 @@ func firstURL(text string, entities domain.MessageEntities) string {
 // attachWebPreview строит превью первой ссылки уже отправленного сообщения
 // (вызывается go-рутиной ПОСЛЕ коммита Send): Preview() → UPDATE web_page →
 // кадр web_page_update всем участникам. Догоняющее и best-effort: любая ошибка
-// просто оставляет сообщение без карточки (история при /sync отдаст web_page,
+// просто оставляет сообщение без карточки (история при getDifference отдаст web_page,
 // если UPDATE успел). Секретные чаты исключены — сервер их контент не трогает.
 //
 // Пост broadcast-канала получает карточку правкой поста журналом канала
@@ -98,7 +98,7 @@ func (i *Interactor) attachWebPreview(msg domain.Message, url string, recipients
 			return
 		}
 		// Логируем + шлём web_page_update всем получателям: догоняющее превью доезжает
-		// и через /sync (плотный pts-курсор), а не только живым кадром.
+		// и через getDifference (плотный pts-курсор), а не только живым кадром.
 		//
 		// Карточка едет ТЕМ ЖЕ конструктором, что и в самом сообщении
 		// (messageMediaWebPage под ключом media): собственный ключ web_page со

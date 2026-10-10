@@ -225,7 +225,7 @@ func (i *Interactor) hydrateChecklists(ctx context.Context, msgs []domain.Messag
 
 // publishChecklistUpdate логирует и рассылает участникам чата обновлённый
 // чек-лист. Абсолютный снимок (Info) + плотный pts-курсор делают catch-up через
-// /sync идемпотентным.
+// getDifference идемпотентным.
 func (i *Interactor) publishChecklistUpdate(ctx context.Context, chatID, checklistID int64) {
 	info, err := i.checklists.Info(ctx, checklistID)
 	if err != nil {

@@ -69,7 +69,7 @@ type EventPublisher interface {
 
 // UpdateLog appends one row to a user's per-user update log and returns the new
 // dense pts (same contract as the chat usecase's UpdateRepo.AppendUpdate). Folder
-// mutations are logged here so a client's /sync catch-up replays them and the pts
+// mutations are logged here so a client's getDifference catch-up replays them and the pts
 // cursor stays dense. Optional — no-op when unwired (tests / no-DB setups).
 type UpdateLog interface {
 	AppendUpdate(ctx context.Context, userID int64, ptsCount int, date int64, typ string, payload json.RawMessage) (int64, error)
