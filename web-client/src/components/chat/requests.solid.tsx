@@ -1,7 +1,7 @@
 /** @jsxImportSource solid-js */
 // Порт tweb `src/components/chat/requests.tsx` (812502980, 179 строк) — плашка заявок
 // на вступление под шапкой: стек лиц последних заявителей, «N заявок» (открывает
-// вкладку заявок `AppChatRequestsTab`) и крестик, скрывающий плашку на сутки.
+// вкладку заявок `AppChatRequestsTab`) и крестик, скрывающий плашку.
 // Показывается, когда в полной карточке чата есть `recent_requesters` (зрителю с
 // `invite_users`), обновляется событием `chat_requests` (`topbar.ts`), скрытие —
 // ключ `hideChatJoinRequests` State (его снимает кадр заявок в воркере).
@@ -12,12 +12,9 @@
 //     `cached: true`, нет — ожидание карточки в зеркале (`subscribeChatFullMirror`;
 //     в сеть за ней ходит `chat.fullPeer` — `useFullPeer` на смене пира).
 //     Ожидание прошлого пира снимается новым `setPeerId`.
-//  2. Срок скрытия — сутки в МИЛЛИСЕКУНДАХ (`ONE_DAY * 1000`): у оригинала разница
-//     `Date.now()` сравнивается с `ONE_DAY` в секундах (`helpers/date.ts:9`), и
-//     плашка возвращается через полторы минуты вместо суток.
-//  3. `chat.setAppState`/`chat.appState` — `setAppState`/`useAppStateStore`
+//  2. `chat.setAppState`/`chat.appState` — `setAppState`/`useAppStateStore`
 //     (`stores/appState.ts`); `appSidebarRight` — у шапки (`topbar.appSidebarRight`).
-//  4. `StackedAvatars` берёт `managers` (аватарка читает зеркало пиров, шапка
+//  3. `StackedAvatars` берёт `managers` (аватарка читает зеркало пиров, шапка
 //     `components/stackedAvatars.ts`); `lazyLoadQueue` нет.
 import { createEffect, createSignal, Show, type Accessor } from 'solid-js'
 import type Chat from '@components/chat/chat'
@@ -34,9 +31,6 @@ import { toChatId, toPeerId } from '@core/peers/peerId'
 
 /** Matches the plate's buttons — the stack mirrors the close button's slot. */
 const AVATAR_SIZE = 40
-
-/** Расхождение 2. */
-const HIDE_PERIOD = ONE_DAY * 1000
 
 type RequestData = {
   peerId: PeerId
@@ -178,7 +172,9 @@ export default function createChatRequestsPlate(
   const fromFull = (peerId: PeerId, peerFull: PeerFull | undefined) => {
     const recentRequesters = peerFull?._ === 'channelFull' ? peerFull.recent_requesters : undefined
     const hidden = useAppStateStore.getState().hideChatJoinRequests[peerId]
-    if(recentRequesters && (!hidden || (Date.now() - hidden) >= HIDE_PERIOD)) {
+    // tweb `components/chat/requests.tsx:139` буквально: `hidden` — `Date.now()`
+    // при закрытии (мс), `ONE_DAY` — 86400 (`helpers/date.ts:9`, секунды).
+    if(recentRequesters && (!hidden || (Date.now() - hidden) >= ONE_DAY)) {
       return set(
         peerId,
         recentRequesters.slice(0, 3).map((userId) => toPeerId(userId, false)),

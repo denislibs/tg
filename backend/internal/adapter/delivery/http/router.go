@@ -5,7 +5,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/messenger-denis/backend/internal/domain"
 	"github.com/messenger-denis/backend/internal/openapi"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
@@ -325,10 +324,6 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/chats/{peerID}/participants", gh.Participants)
 		pr.Get("/chats/{peerID}/participants/{userID}", gh.Participant)
 		pr.Get("/chats/{peerID}/onlines", gh.Onlines)
-		// ВРЕМЕННО: старые GET для сборок до #404 из кэша SW (LegacyParticipants).
-		pr.Get("/chats/{peerID}/members", gh.LegacyParticipants(domain.ParticipantsRecent))
-		pr.Get("/chats/{peerID}/bans", gh.LegacyParticipants(domain.ParticipantsKicked))
-		pr.Get("/chats/{peerID}/restrictions", gh.LegacyParticipants(domain.ParticipantsBanned))
 		pr.Patch("/chats/{peerID}", gh.EditInfo)
 		pr.Delete("/chats/{peerID}", gh.DeleteGroup)
 		pr.Put("/chats/{peerID}/photo", gh.SetPhoto)

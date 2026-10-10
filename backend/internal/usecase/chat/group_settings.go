@@ -3,7 +3,9 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"slices"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -225,12 +227,98 @@ func (i *Interactor) SetChatPermissions(ctx context.Context, chatID, actorID int
 	if !slices.Contains([]int{0, 5, 10, 30, 60, 300, 900, 3600}, slowmodeSeconds) {
 		slowmodeSeconds = 0
 	}
+	before, err := i.groups.Settings(ctx, chatID)
+	if err != nil {
+		return err
+	}
 	if err := i.groups.SetPermissions(ctx, chatID, perms, slowmodeSeconds); err != nil {
 		return err
 	}
-	// Личные banned_rights от дефолта не зависят: общего снимка хватает.
 	i.publishChatUpdate(ctx, chatID)
+	// banned_rights ограниченного — объединение с правами по умолчанию
+	// (ViewerBannedRights), а общий снимок min, и клиент на нём прежний
+	// banned_rights сохраняет. Ограниченным — свой снимок; фоном, не в запросе.
+	if before.DefaultPerms != perms {
+		i.scheduleRepublish(chatID)
+	}
 	return nil
+}
+
+// republishTimeout — потолок одного прохода фоновой рассылки ограниченным.
+const republishTimeout = 5 * time.Minute
+
+// republishRuns — фоновые рассылки снимков ограниченным, по одной на чат:
+// running — проход идёт; dirty — права по умолчанию сменились ещё раз, и по
+// окончании прохода он начнётся заново (новый замещает старый, а не идёт
+// рядом с ним — иначе снимок по прежним правам мог доехать последним).
+type republishRuns struct {
+	mu    sync.Mutex
+	chats map[int64]*republishRun
+}
+
+type republishRun struct{ dirty bool }
+
+// scheduleRepublish — запустить рассылку по чату или пометить идущую
+// «грязной» (ревью #411 п. 1).
+func (i *Interactor) scheduleRepublish(chatID int64) {
+	r := &i.republish
+	r.mu.Lock()
+	if r.chats == nil {
+		r.chats = map[int64]*republishRun{}
+	}
+	if run, ok := r.chats[chatID]; ok {
+		run.dirty = true
+		r.mu.Unlock()
+		return
+	}
+	r.chats[chatID] = &republishRun{}
+	r.mu.Unlock()
+	i.goBG("republishRestricted", func(ctx context.Context) {
+		for {
+			pctx, cancel := context.WithTimeout(ctx, republishTimeout)
+			i.republishRestricted(pctx, chatID)
+			cancel()
+			r.mu.Lock()
+			run := r.chats[chatID]
+			if !run.dirty {
+				delete(r.chats, chatID)
+				r.mu.Unlock()
+				return
+			}
+			run.dirty = false
+			r.mu.Unlock()
+		}
+	})
+}
+
+// republishRestricted — пер-зрительский снимок каждому лично ограниченному
+// после смены прав чата по умолчанию. Обход — ключевым курсором по user_id
+// (снятие ограничений во время обхода страниц не сдвигает), а снимок каждому
+// собирается по ТЕКУЩЕМУ состоянию в момент отправки (publishViewerChatErr):
+// снятое посреди прохода ограничение старых запретов не вернёт. Ошибки — в
+// лог: недоставленный снимок иначе пропал бы молча.
+func (i *Interactor) republishRestricted(ctx context.Context, chatID int64) {
+	const page = 200
+	var after int64
+	for ctx.Err() == nil {
+		ids, err := i.groups.RestrictedMemberIDs(ctx, chatID, after, page)
+		if err != nil {
+			log.Printf("chat: рассылка ограниченным чата %d: страница после %d: %v", chatID, after, err)
+			return
+		}
+		for _, uid := range ids {
+			if err := i.publishViewerChatErr(ctx, chatID, uid); err != nil {
+				log.Printf("chat: рассылка ограниченным чата %d: снимок %d не ушёл: %v", chatID, uid, err)
+			}
+			after = uid
+		}
+		if len(ids) < page {
+			return
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		log.Printf("chat: рассылка ограниченным чата %d прервана после %d: %v", chatID, after, err)
+	}
 }
 
 // SetChatReactions stores the reaction policy: 'all' | 'some' (allowed list) | 'none'.

@@ -30,12 +30,13 @@ func TestRights_BannedPolarity(t *testing.T) {
 		t.Error("разрешённая отправка сообщений оказалась запрещена — полярность перевёрнута")
 	}
 
-	// Персональное ограничение: запрещена отправка медиа (и только она).
-	until := time.Unix(1_700_000_000, 0)
+	// Персональное ограничение: запрещена отправка медиа (и только она); при
+	// всех правах по умолчанию действующие запреты — ровно личные.
+	until := time.Now().Add(time.Hour).Truncate(time.Second)
 	r := MemberRestriction{ChatID: 8, UserID: 42, DeniedRights: PermSendMedia, UntilDate: &until}
-	br := r.ToChatBannedRights()
-	if !br.Denies("send_media") {
-		t.Error("персональный запрет send_media потерян")
+	br := ViewerBannedRights(&r, AllMemberPerms, time.Now())
+	if br == nil || !br.Denies("send_media") {
+		t.Fatal("персональный запрет send_media потерян")
 	}
 	if br.Denies("send_messages") || br.Denies("change_info") {
 		t.Error("персональные ограничения перевёрнуты: запрещено то, что не запрещали")
@@ -44,7 +45,7 @@ func TestRights_BannedPolarity(t *testing.T) {
 		t.Errorf("until_date = %d; want %d", br.UntilDate, until.Unix())
 	}
 	// Бессрочное ограничение: until_date обязателен по схеме и едет нулём.
-	if b := (MemberRestriction{DeniedRights: PermSendMessages}).ToChatBannedRights(); b.UntilDate != 0 {
+	if b := ViewerBannedRights(&MemberRestriction{DeniedRights: PermSendMessages}, AllMemberPerms, time.Now()); b.UntilDate != 0 {
 		t.Errorf("бессрочное ограничение: until_date = %d; want 0", b.UntilDate)
 	}
 }

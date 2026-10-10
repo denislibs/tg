@@ -94,16 +94,28 @@ type ParticipantCounters struct {
 	CanViewParticipants bool
 }
 
-// ViewerBannedRights — channel.banned_rights зрителя: ТОЛЬКО его личные
-// запреты и их срок, как у сервера Telegram. Действующий набор — личные ∪
-// запреты чата по умолчанию (default_banned_rights) — считает клиент
-// (core/peers/rights.ts), поэтому смена прав по умолчанию доезжает общим
-// chat_update и пер-зрительской рассылки не требует (ревью #409 п. 3).
-// nil — личного ограничения нет или оно истекло.
-func ViewerBannedRights(r *MemberRestriction, now time.Time) *ChatBannedRights {
+// ViewerBannedRights — channel.banned_rights зрителя: ДЕЙСТВУЮЩИЕ запреты —
+// личные ∪ запреты чата по умолчанию, срок —
+// личного ограничения (запреты по умолчанию бессрочны). Основание — клиент
+// оригинала их НЕ объединяет: tweb hasRights.ts:41 берёт `admin_rights ||
+// banned_rights || default_banned_rights` как есть, поэтому объединяет сервер. При смене прав
+// по умолчанию ограниченным уходит свежий снимок (republishRestricted,
+// фоном). nil — личного ограничения нет или оно истекло.
+//
+// ⚠ ЛОВУШКА ПОЛЯРНОСТИ. Тип MemberPerms носят ДВА поля с противоположным
+// смыслом: ChatSettings.DefaultPerms — что участнику МОЖНО, а
+// MemberRestriction.DeniedRights — что НЕЛЬЗЯ. NewChatBannedRights принимает
+// РАЗРЕШЕНИЯ и инвертирует их сам, поэтому сюда идёт «можно по умолчанию»
+// минус «лично запрещено»; передать DeniedRights напрямую значило бы снять с
+// человека ровно те ограничения, которые на него наложили.
+func ViewerBannedRights(r *MemberRestriction, defaultPerms MemberPerms, now time.Time) *ChatBannedRights {
 	if r == nil || !r.Active(now) {
 		return nil
 	}
-	br := r.ToChatBannedRights()
+	var until time.Time
+	if r.UntilDate != nil {
+		until = *r.UntilDate
+	}
+	br := NewChatBannedRights(defaultPerms&^r.DeniedRights, until)
 	return &br
 }

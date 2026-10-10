@@ -242,3 +242,34 @@ func (r *GroupRepo) SetRank(ctx context.Context, chatID, userID int64, rank stri
 		`UPDATE chat_members SET rank = $3 WHERE chat_id = $1 AND user_id = $2`, chatID, userID, rank)
 	return err
 }
+
+// RestrictedMemberIDs — участники с действующим личным ограничением, по
+// возрастанию user_id после afterUserID (ключевой курсор: снятие ограничений
+// во время обхода не сдвигает страницы, как OFFSET). Админов и владельца в
+// выборке нет: у них ограничений не бывает (повышение их снимает).
+func (r *GroupRepo) RestrictedMemberIDs(ctx context.Context, chatID, afterUserID int64, limit int) ([]int64, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 200
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT r.user_id FROM chat_restrictions r
+		   JOIN chat_members m ON m.chat_id = r.chat_id AND m.user_id = r.user_id
+		  WHERE r.chat_id = $1 AND r.user_id > $2
+		    AND (r.until_date IS NULL OR r.until_date > now())
+		    AND m.role NOT IN ('creator','admin')
+		  ORDER BY r.user_id
+		  LIMIT $3`, chatID, afterUserID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]int64, 0)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}

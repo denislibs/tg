@@ -137,6 +137,7 @@ func provideSearchRepo(pool *pgxpool.Pool) *pgadapter.SearchRepo {
 }
 
 func provideChatUsecase(
+	lc fx.Lifecycle,
 	tx *pgadapter.TxManager,
 	chats *pgadapter.ChatsRepo,
 	msgs *pgadapter.MessagesRepo,
@@ -149,7 +150,11 @@ func provideChatUsecase(
 	search *pgadapter.SearchRepo,
 	joinReqs *pgadapter.JoinRequestRepo,
 ) *usecasechat.Interactor {
-	return usecasechat.New(tx, chats, msgs, updates, reactions, mediaAccess, groups, invites, channels, search, joinReqs)
+	uc := usecasechat.New(tx, chats, msgs, updates, reactions, mediaAccess, groups, invites, channels, search, joinReqs)
+	// Фоновые хвосты запросов (веер поста канала, рассылка снимков
+	// ограниченным) дожидаются при остановке, не дольше тайм-аута OnStop.
+	lc.Append(fx.Hook{OnStop: uc.Shutdown})
+	return uc
 }
 
 func provideStoryRepo(pool *pgxpool.Pool) *pgadapter.StoryRepo { return pgadapter.NewStoryRepo(pool) }

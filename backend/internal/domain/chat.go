@@ -193,7 +193,7 @@ func (d DialogRecord) ToChannel() Channel {
 	if d.Type != ChatTypeChannel {
 		db := NewChatBannedRights(d.Settings.DefaultPerms, time.Time{})
 		out.DefaultBanned = &db
-		out.BannedRights = ViewerBannedRights(d.MyRestriction, time.Now())
+		out.BannedRights = ViewerBannedRights(d.MyRestriction, d.Settings.DefaultPerms, time.Now())
 	}
 	return out
 }
@@ -481,7 +481,7 @@ func (c ChatRecord) ToChannel() Channel {
 		// и ограниченный видел активные скрепку и поле ввода, а сервер молча
 		// отвечал forbidden. Снимок без зрителя его не несёт — ограничение чужое.
 		if c.ViewerID != 0 && c.MyRole != "" {
-			out.BannedRights = ViewerBannedRights(c.MyRestriction, time.Now())
+			out.BannedRights = ViewerBannedRights(c.MyRestriction, c.Settings.DefaultPerms, time.Now())
 		}
 	}
 	return out
@@ -645,27 +645,6 @@ type MemberRestriction struct {
 // (an expired UntilDate means it no longer applies).
 func (r MemberRestriction) Active(now time.Time) bool {
 	return r.UntilDate == nil || r.UntilDate.After(now)
-}
-
-// ToChatBannedRights — персональное ограничение как конструктор схемы.
-//
-// ⚠ ЛОВУШКА ПОЛЯРНОСТИ, ради которой метод и существует. Тип MemberPerms в
-// нашем коде носят ДВА поля с противоположным смыслом:
-//
-//	ChatSettings.DefaultPerms  — что участнику МОЖНО (дефолт 31 = всё);
-//	MemberRestriction.DeniedRights — что участнику НЕЛЬЗЯ.
-//
-// NewChatBannedRights принимает РАЗРЕШЕНИЯ и инвертирует их сам. Значит
-// DefaultPerms передаётся как есть, а DeniedRights — перевёрнутым; передать
-// сюда DeniedRights напрямую значит выдать запрещённое за разрешённое и
-// наоборот, то есть снять с человека ровно те ограничения, которые на него
-// наложили. Единственное место, где этот переворот записан.
-func (r MemberRestriction) ToChatBannedRights() ChatBannedRights {
-	var until time.Time
-	if r.UntilDate != nil {
-		until = *r.UntilDate
-	}
-	return NewChatBannedRights(AllMemberPerms&^r.DeniedRights, until)
 }
 
 // SavedDialog is one grouped row of Saved Messages («Избранное» → таб «Чаты»):

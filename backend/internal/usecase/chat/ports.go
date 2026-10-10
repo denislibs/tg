@@ -204,6 +204,9 @@ type GroupRepo interface {
 	ParticipantCounters(ctx context.Context, chatID int64) (admins, kicked, banned int, err error)
 	// SetJoinInfo — кто привёл (0 — сам) и вошёл ли заявкой; после вступления.
 	SetJoinInfo(ctx context.Context, chatID, userID, inviterID int64, viaRequest bool) error
+	// RestrictedMemberIDs — участники с действующим личным ограничением,
+	// user_id по возрастанию после afterUserID (ключевой курсор).
+	RestrictedMemberIDs(ctx context.Context, chatID, afterUserID int64, limit int) ([]int64, error)
 	// SetRank — подпись админа (channels.editAdmin rank).
 	SetRank(ctx context.Context, chatID, userID int64, rank string) error
 	// AdminIDs — id владельца и админов чата (role in creator/admin), для адресной
