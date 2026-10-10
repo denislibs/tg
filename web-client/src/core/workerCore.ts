@@ -55,7 +55,7 @@ import { newChannelFunnel, type ChannelDifference } from './realtime/channelFunn
 import { newSyncWait } from './realtime/syncWait'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type RepliesUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type PinnedForumTopicsEvt, type ReadDiscussionEvt } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type RepliesUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { generateMessageId } from './history/messageId'
 import { getPeerId, toChatId, toPeerId } from './peers/peerId'
@@ -687,20 +687,6 @@ export function createWorkerCore() {
       // tweb dialogs.ts:2480-2490 — «открепили» это отсутствие бита.
       const e = d as PinnedForumTopicEvt
       forumTopics.applyPinnedTopic(getPeerId(e.peer), generateMessageId(e.topic_id), !!e.pFlags?.pinned)
-    } else if (pred === 'updatePinnedForumTopics') {
-      // tweb dialogs.ts:2601-2638 — без `order` закреплённые перечитываются.
-      const e = d as PinnedForumTopicsEvt
-      void forumTopics.applyPinnedTopics(getPeerId(e.peer), e.order?.map((id) => generateMessageId(id)))
-    } else if (pred === 'updateReadChannelDiscussionInbox' || pred === 'updateReadChannelDiscussionOutbox') {
-      // tweb appMessagesManager.ts:777-778 → onUpdateReadHistory (:10795-10990):
-      // ветка темы — хранилище тем; окно треда — волна 2 Ф-5 (КЛ-2).
-      const e = d as ReadDiscussionEvt
-      forumTopics.applyReadDiscussion({
-        peerId: toPeerId(e.channel_id, true),
-        topicId: generateMessageId(e.top_msg_id),
-        maxId: generateMessageId(e.read_max_id),
-        out: pred === 'updateReadChannelDiscussionOutbox',
-      })
     } else if (pred === 'updateDialogPinned') {
       const e = d as DialogPinEvt
       // «Открепили» — ОТСУТСТВИЕ бита, а не `pinned: false`.

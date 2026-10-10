@@ -103,14 +103,6 @@ describe('createWorkerCore(): кадры тем применяет хранил�
     expect(update.topics[0]).toMatchObject({ id: generateMessageId(10), pFlags: { pinned: true } })
   })
 
-  it('`updatePinnedForumTopics{order}` → порядок закрепа', async () => {
-    const { core, ops } = await boot()
-    capturedConnDeps!.onFrame('pinned_forum_topics', { _: 'updatePinnedForumTopics', peer: { _: 'peerChannel', channel_id: 50 }, order: [10, 1] })
-    await vi.waitFor(() => expect(ops.some((op) => op.op === 'update')).toBe(true))
-    const page = await core.registry.forumTopics.getForumTopics(FORUM)
-    expect(page.dialogs.map((t) => t.id)).toEqual([generateMessageId(10), generateMessageId(1)])
-  })
-
   it('`updateNotifySettings{notifyForumTopic}` → мьют темы, а не диалога', async () => {
     const { ops, dialogOps } = await boot()
     capturedConnDeps!.onFrame('dialog_mute', {
@@ -121,13 +113,6 @@ describe('createWorkerCore(): кадры тем применяет хранил�
     expect(ops.map((op) => op.op)).toEqual(['notify', 'forumUnread'])
     expect((ops[0] as Extract<ForumTopicOp, { op: 'notify' }>).topic.notify_settings.mute_until).toBe(1_900_000_000)
     expect(dialogOps).toEqual([])
-  })
-
-  it('`updateReadChannelDiscussionInbox` → горизонт темы и её счётчик', async () => {
-    const { core, ops } = await boot()
-    capturedConnDeps!.onFrame('read_discussion', { _: 'updateReadChannelDiscussionInbox', channel_id: 50, top_msg_id: 10, read_max_id: 12 })
-    expect(ops.map((op) => op.op)).toEqual(['unread', 'forumUnread'])
-    expect(core.registry.forumTopics.getForumTopic(FORUM, generateMessageId(10))!.read_inbox_max_id).toBe(generateMessageId(12))
   })
 
   // tweb chat_toggle_forum (appChatsManager.ts:304-306 → dialogs.ts:186-192)

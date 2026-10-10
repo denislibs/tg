@@ -18,7 +18,7 @@ import type {
   SentStoryReactionEvt, ReadStoriesEvt, ConnState, UserUpdateEvt, DialogPinEvt, DialogArchiveEvt, DialogMuteEvt,
   PollUpdateEvt, ChecklistUpdateEvt, GiveawayUpdateEvt, BoostUpdateEvt, BalanceUpdateEvt,
   ViewsUpdateEvt, RepliesUpdateEvt, HistoryCountEvt,
-  PinnedForumTopicEvt, PinnedForumTopicsEvt, ReadDiscussionEvt,
+  PinnedForumTopicEvt,
 } from '@core/realtime/events'
 import type { MyMessage } from '@core/models'
 import type { GroupCallFrame } from '@core/calls/groupCallEngine'
@@ -81,8 +81,6 @@ export type BroadcastEvents = {
   // Без EventMeta: операции порождает владелец, а не funnel курсора.
   [RT.forumTopicOp]: [{ ops: ForumTopicOp[] }]
   [RT.pinnedForumTopic]: [PinnedForumTopicEvt, EventMeta?]
-  [RT.pinnedForumTopics]: [PinnedForumTopicsEvt, EventMeta?]
-  [RT.readDiscussion]: [ReadDiscussionEvt, EventMeta?]
   // Кадры диалогов — конструкторы схемы, а не пары «ключ пира + признак»:
   // закрепление это БИТ, архив это НОМЕР ПАПКИ, мьют это СРОК внутри настроек.
   // Прежние типы здесь описывали форму, которой на проводе не существовало уже

@@ -350,6 +350,11 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
      * `updatePinnedForumTopics` — `onUpdatePinnedForumTopics`
      * (`dialogs.ts:2601-2638`): порядок есть — он и есть порядок закрепа; нет
      * — закреплённые перечитываются с сервера.
+     *
+     * Обработчик заведён заранее: сервер этот кадр пока не производит (порядок
+     * закрепа тем — `reorderPinnedForumTopics`, S4), а реестр кадров держит
+     * только произведённые (`updateCatalog.test.ts`). Подключение — строкой в
+     * `workerCore.ts::dispatch` вместе с конструктором.
      */
     async applyPinnedTopics(peerId: PeerId, order?: number[]): Promise<void> {
       const cache = caches.get(peerId)
@@ -379,6 +384,11 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
      * прежним и новым горизонтом; упоминания уходят и из бейджа форума
      * (`:10969-10980`). Ничего не нашли, а тема всё ещё непрочитана —
      * перечитать (`getForumTopicById`, `:10955-10958`, расхождение 1).
+     *
+     * Заведён заранее для волны 2 Ф-5: кадры `updateReadChannelDiscussionInbox/
+     * Outbox` производит БЭК-2, подключение — строкой в `workerCore.ts::dispatch`
+     * вместе с конструкторами в реестре (`updateCatalog.ts`), `maxId`/`topicId` —
+     * через `generateMessageId`, пир — `toPeerId(channel_id, true)`.
      */
     applyReadDiscussion({ peerId, topicId, maxId, out }: ReadDiscussion): void {
       const topic = caches.get(peerId)?.topics.get(topicId)
