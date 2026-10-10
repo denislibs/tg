@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -117,14 +118,18 @@ func TestRestrict_ViewerChannelAndParticipantFrames(t *testing.T) {
 	if fl, _ := br["pFlags"].(map[string]any); fl["send_media"] != true {
 		t.Fatalf("banned_rights = %v; want send_media", br)
 	}
-	for _, admin := range []int64{7, 9} {
-		ps := framesOf(t, pub, admin, "chat_participant")
-		if len(ps) != 1 || ps[0]["_"] != domain.UpdateChannelParticipantTag {
-			t.Fatalf("админу %d кадр участника = %v", admin, ps)
-		}
-		if np, _ := ps[0]["new_participant"].(map[string]any); np["_"] != domain.ChannelParticipantBannedTag {
-			t.Fatalf("new_participant = %v", np)
-		}
+	// Другой админ с ban_users видит ограничение; актор (7) кадр тоже
+	// получает — его прочим устройствам (ревью #409 п. 2); дубль на
+	// устройстве с местным апдейтом снимает воркер клиента.
+	ps := framesOf(t, pub, 9, "chat_participant")
+	if len(ps) != 1 || ps[0]["_"] != domain.UpdateChannelParticipantTag {
+		t.Fatalf("админу 9 кадр участника = %v", ps)
+	}
+	if np, _ := ps[0]["new_participant"].(map[string]any); np["_"] != domain.ChannelParticipantBannedTag {
+		t.Fatalf("new_participant = %v", np)
+	}
+	if got := framesOf(t, pub, 7, "chat_participant"); len(got) != 1 {
+		t.Fatalf("актору кадров участника %d; want 1", len(got))
 	}
 
 	pub.reset()
@@ -146,12 +151,13 @@ func TestRestrict_ViewerChannelAndParticipantFrames(t *testing.T) {
 // A2-05: повышенный получает свои admin_rights живьём (не min), снятый — их
 // исчезновение; админы — кадр участника с promoted_by и рангом.
 func TestPromoteDemote_ViewerChannel(t *testing.T) {
-	in, _, _, pub, _ := newMembersTestInteractor(t)
+	in, fg, _, pub, _ := newMembersTestInteractor(t)
 	ctx := context.Background()
-	id, _, _ := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8})
+	id, _, _ := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8, 9})
+	_ = fg.SetRole(ctx, id, 9, domain.RoleAdmin, domain.RightPinMessages, 7)
 	pub.reset()
 
-	if err := in.PromoteAdmin(ctx, id, 7, 8, domain.RightPinMessages|domain.RightBanUsers, "  модератор с длинной подписью  "); err != nil {
+	if err := in.PromoteAdmin(ctx, id, 7, 8, domain.RightPinMessages|domain.RightBanUsers, ptr("  модератор с длинной подписью  ")); err != nil {
 		t.Fatal(err)
 	}
 	ups := framesOf(t, pub, 8, "chat_update")
@@ -165,9 +171,12 @@ func TestPromoteDemote_ViewerChannel(t *testing.T) {
 	if mine == nil || mine["admin_rights"] == nil {
 		t.Fatalf("повышенный не получил свои admin_rights: %v", ups)
 	}
-	ps := framesOf(t, pub, 7, "chat_participant")
+	if got := framesOf(t, pub, 7, "chat_participant"); len(got) != 1 {
+		t.Fatalf("актору кадров участника %d; want 1", len(got))
+	}
+	ps := framesOf(t, pub, 9, "chat_participant")
 	if len(ps) != 1 {
-		t.Fatalf("актору кадров участника %d", len(ps))
+		t.Fatalf("другому админу кадров участника %d", len(ps))
 	}
 	np, _ := ps[0]["new_participant"].(map[string]any)
 	if np["_"] != domain.ChannelParticipantAdminTag || np["promoted_by"] != float64(7) || np["rank"] != "модератор с длин" {
@@ -246,7 +255,7 @@ func TestJoinRequests_Frames(t *testing.T) {
 		t.Fatalf("одобренный: %+v %v", m, err)
 	}
 
-	_ = fjr.Create(ctx, id, 9, link.Token)
+	_, _ = fjr.Create(ctx, id, 9, link.Token)
 	pub.reset()
 	if err := in.DeclineJoinRequest(ctx, id, 7, 9); err != nil {
 		t.Fatal(err)
@@ -349,5 +358,223 @@ func TestJoinPublic_Frames(t *testing.T) {
 	}
 	if ups := framesOf(t, pub, 7, "chat_update"); len(ups) == 0 {
 		t.Fatal("владельцу нет chat_update (число участников)")
+	}
+}
+
+// Ревью #404 п. 2: чужое ограничение видит только админ с ban_users и сам
+// ограниченный; обычному участнику — обычная строка, и в выдаче, и в
+// getParticipant, и в кадре участника админу без ban_users.
+func TestRestricted_HiddenFromNonBanViewers(t *testing.T) {
+	in, fg, _, pub, _ := newMembersTestInteractor(t)
+	ctx := context.Background()
+	id, _, _ := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8, 9, 10})
+	_ = fg.SetRole(ctx, id, 10, domain.RoleAdmin, domain.RightPinMessages, 7) // админ без ban_users
+	pub.reset()
+	if err := in.RestrictMember(ctx, id, 7, 8, domain.PermSendMedia, 0); err != nil {
+		t.Fatal(err)
+	}
+	tagOf := func(viewer int64, f domain.ParticipantsFilterKind) string {
+		t.Helper()
+		page, err := in.ListParticipants(ctx, id, viewer, domain.ParticipantsFilter{Kind: f}, 0, 50)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range page.Participants {
+			switch v := p.(type) {
+			case domain.ChannelParticipantBanned:
+				if v.Peer.(domain.PeerUser).UserID == 8 {
+					return v.Tag()
+				}
+			case domain.ChannelParticipantReal:
+				if v.UserID == 8 {
+					return v.Tag()
+				}
+			case domain.ChannelParticipantSelf:
+				if v.UserID == 8 {
+					return v.Tag()
+				}
+			}
+		}
+		return ""
+	}
+	for _, f := range []domain.ParticipantsFilterKind{domain.ParticipantsRecent, domain.ParticipantsSearch, domain.ParticipantsMentions} {
+		if got := tagOf(9, f); got != domain.ChannelParticipantTag {
+			t.Fatalf("%s глазами участника: %q", f, got)
+		}
+		if got := tagOf(7, f); got != domain.ChannelParticipantBannedTag {
+			t.Fatalf("%s глазами владельца: %q", f, got)
+		}
+	}
+	if got := tagOf(8, domain.ParticipantsRecent); got != domain.ChannelParticipantBannedTag {
+		t.Fatalf("своё ограничение: %q", got)
+	}
+	if p, _, err := in.GetParticipant(ctx, id, 9, 8); err != nil || p.Tag() != domain.ChannelParticipantTag {
+		t.Fatalf("getParticipant глазами участника: %#v %v", p, err)
+	}
+	ps := framesOf(t, pub, 10, "chat_participant")
+	if len(ps) != 1 {
+		t.Fatalf("админу без ban_users кадров %d", len(ps))
+	}
+	if np, _ := ps[0]["new_participant"].(map[string]any); np["_"] != domain.ChannelParticipantTag {
+		t.Fatalf("админу без ban_users ограничение раскрыто: %v", np)
+	}
+}
+
+// Ревью #409 п. 3: banned_rights зрителя — только личные запреты, и смена
+// прав по умолчанию не рассылает ограниченным личных снимков: им хватает
+// общего chat_update (объединение считает клиент).
+func TestSetChatPermissions_NoPerViewerFanout(t *testing.T) {
+	in, _, _, pub, _ := newMembersTestInteractor(t)
+	ctx := context.Background()
+	id, _, _ := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8, 9})
+	if err := in.RestrictMember(ctx, id, 7, 8, domain.PermPinMessages, 0); err != nil {
+		t.Fatal(err)
+	}
+	card, _ := in.ChatCard(ctx, id, 8)
+	br := card.ToChannel().BannedRights
+	if br == nil || !br.Denies("pin_messages") || br.Denies("send_media") {
+		t.Fatalf("banned_rights ограниченного = %#v; want только pin_messages", br)
+	}
+	pub.reset()
+	if err := in.SetChatPermissions(ctx, id, 7, domain.AllMemberPerms&^domain.PermSendMedia, 0); err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range framesOf(t, pub, 8, "chat_update") {
+		if chatOf(t, u)["banned_rights"] != nil {
+			t.Fatal("ограниченному ушёл личный снимок: рассылка не нужна")
+		}
+	}
+	if len(framesOf(t, pub, 8, "chat_update")) != 1 {
+		t.Fatal("ограниченный не получил общий chat_update")
+	}
+}
+
+// Ревью #404 п. 5: владелец задаёт себе подпись; чужой админ себе — нет.
+func TestPromoteAdmin_OwnerOwnRank(t *testing.T) {
+	in, fg, _, _, _ := newMembersTestInteractor(t)
+	ctx := context.Background()
+	id, _, _ := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8})
+	if err := in.PromoteAdmin(ctx, id, 7, 7, 0, ptr("основатель")); err != nil {
+		t.Fatalf("владелец себе: %v", err)
+	}
+	if m, _ := fg.GetMember(ctx, id, 7); m.Rank != "основатель" || m.Role != domain.RoleCreator || m.Rights != domain.AllRights {
+		t.Fatalf("владелец после подписи: %+v", m)
+	}
+	_ = fg.SetRole(ctx, id, 8, domain.RoleAdmin, domain.RightManageAdmins, 7)
+	if err := in.PromoteAdmin(ctx, id, 8, 8, domain.AllRights, ptr("я главный")); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("админ себе: %v", err)
+	}
+	// Без поля rank подпись не трогается (старый клиент).
+	_ = fg.SetRank(ctx, id, 8, "модер")
+	if err := in.PromoteAdmin(ctx, id, 7, 8, domain.RightPinMessages, nil); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := fg.GetMember(ctx, id, 8); m.Rank != "модер" {
+		t.Fatalf("подпись стёрта: %+v", m)
+	}
+}
+
+// Ревью #404 п. 11: повышение снимает личное ограничение — после
+// разжалования оно не «воскресает».
+func TestPromoteAdmin_ClearsRestriction(t *testing.T) {
+	in, fg, _, _, _ := newMembersTestInteractor(t)
+	ctx := context.Background()
+	id, _, _ := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8})
+	_ = in.RestrictMember(ctx, id, 7, 8, domain.PermSendMedia, 0)
+	if err := in.PromoteAdmin(ctx, id, 7, 8, domain.RightPinMessages, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := in.DemoteAdmin(ctx, id, 7, 8); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := fg.GetRestriction(ctx, id, 8); ok {
+		t.Fatal("ограничение пережило повышение")
+	}
+}
+
+// Ревью #404 п. 7: вступившему по ссылке — личный снимок (второе устройство
+// видит канал); п. 11: повторная заявка кадра заявок не шлёт.
+func TestJoinByLink_ViewerSnapshotAndRepeatRequest(t *testing.T) {
+	in, _, _, pub, _ := newMembersTestInteractor(t)
+	ctx := context.Background()
+	ch, _ := in.CreateChannel(ctx, 7, "Канал", "", "", false)
+	link, _ := in.CreateInvite(ctx, ch, 7, "", nil, false, nil)
+	pub.reset()
+	if _, _, err := in.JoinByToken(ctx, link.Token, 8); err != nil {
+		t.Fatal(err)
+	}
+	if ups := framesOf(t, pub, 8, "chat_update"); len(ups) == 0 {
+		t.Fatal("вступившему по ссылке нет личного снимка")
+	}
+
+	g, _, _ := in.CreateGroup(ctx, 7, "Team", "", "", false, nil)
+	req, _ := in.CreateInvite(ctx, g, 7, "", nil, true, nil)
+	_, _, _ = in.JoinByToken(ctx, req.Token, 9)
+	pub.reset()
+	_, _, _ = in.JoinByToken(ctx, req.Token, 9)
+	if got := framesOf(t, pub, 7, "pending_join_requests"); len(got) != 0 {
+		t.Fatalf("повторная заявка: кадров %d", len(got))
+	}
+}
+
+// Ревью #404 п. 12: одобрение заявки в broadcast-канале — без служебки
+// состава (isMembershipAction с JoinedByRequest).
+func TestApproveJoinRequest_BroadcastNoService(t *testing.T) {
+	in, _, _, _, s := newMembersTestInteractor(t)
+	ctx := context.Background()
+	ch, _ := in.CreateChannel(ctx, 7, "Канал", "", "", false)
+	req, _ := in.CreateInvite(ctx, ch, 7, "", nil, true, nil)
+	_, _, _ = in.JoinByToken(ctx, req.Token, 8)
+	before := len(s.messages[ch])
+	if err := in.ApproveJoinRequest(ctx, ch, 7, 8); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.messages[ch]) != before {
+		t.Fatalf("служебка вступления в канале: %#v", s.messages[ch][len(s.messages[ch])-1].Action)
+	}
+}
+
+// Ревью #409 п. 4–5: исключённого админ без ban_users видит в кадре как
+// «вышел» (без kicked_by), а наложивший ограничение не попадает в вектор users
+// выдачи обычного участника.
+func TestKickedAndRestrictorMaskedForNonBan(t *testing.T) {
+	in, fg, _, pub, _ := newMembersTestInteractor(t)
+	ctx := context.Background()
+	id, _, _ := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8, 9, 10})
+	_ = fg.SetRole(ctx, id, 10, domain.RoleAdmin, domain.RightPinMessages, 7)
+	if err := in.RestrictMember(ctx, id, 7, 8, domain.PermSendMedia, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, ids, err := in.GetParticipant(ctx, id, 9, 8); err != nil || slices.Contains(ids, 7) {
+		t.Fatalf("наложивший ограничение в users постороннего: %v %v", ids, err)
+	}
+	if _, ids, _ := in.GetParticipant(ctx, id, 7, 8); !slices.Contains(ids, 7) {
+		t.Fatalf("админу с ban_users наложивший не назван: %v", ids)
+	}
+	pub.reset()
+	if err := in.BanMember(ctx, id, 7, 9); err != nil {
+		t.Fatal(err)
+	}
+	ps := framesOf(t, pub, 10, "chat_participant")
+	if len(ps) != 1 {
+		t.Fatalf("админу без ban_users кадров %d", len(ps))
+	}
+	if np, _ := ps[0]["new_participant"].(map[string]any); np["_"] != domain.ChannelParticipantLeftTag {
+		t.Fatalf("исключённый глазами админа без ban_users: %v", np)
+	}
+}
+
+// Ревью #409 п. 1: ограничение служебкой в ленту не пишется — у оригинала
+// оно только в журнале администратора.
+func TestRestrictMember_NoServiceMessage(t *testing.T) {
+	in, _, _, _, s := newMembersTestInteractor(t)
+	ctx := context.Background()
+	id, _, _ := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8})
+	before := len(s.messages[id])
+	if err := in.RestrictMember(ctx, id, 7, 8, domain.PermSendMedia, 3600); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.messages[id]) != before {
+		t.Fatalf("ограничение написало в ленту: %#v", s.messages[id][len(s.messages[id])-1])
 	}
 }

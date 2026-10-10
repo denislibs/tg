@@ -188,7 +188,7 @@ func (d DialogRecord) ToChannel() Channel {
 	if d.Type != ChatTypeChannel {
 		db := NewChatBannedRights(d.Settings.DefaultPerms, time.Time{})
 		out.DefaultBanned = &db
-		out.BannedRights = EffectiveBannedRights(d.MyRestriction, d.Settings.DefaultPerms, time.Now())
+		out.BannedRights = ViewerBannedRights(d.MyRestriction, time.Now())
 	}
 	return out
 }
@@ -361,7 +361,7 @@ type ChatRecord struct {
 	Settings ChatSettings
 	// MyRestriction — действующее личное ограничение ЗРИТЕЛЯ (chat_restrictions);
 	// nil — его нет или зрителя не спрашивали. Наружу — channel.banned_rights
-	// (EffectiveBannedRights).
+	// (ViewerBannedRights).
 	MyRestriction *MemberRestriction
 	// Counters — счётчики участников, которые зрителю положено видеть
 	// (channelFull admins_count/kicked_count/…); nil — не спрашивали (снимок
@@ -476,7 +476,7 @@ func (c ChatRecord) ToChannel() Channel {
 		// и ограниченный видел активные скрепку и поле ввода, а сервер молча
 		// отвечал forbidden. Снимок без зрителя его не несёт — ограничение чужое.
 		if c.ViewerID != 0 && c.MyRole != "" {
-			out.BannedRights = EffectiveBannedRights(c.MyRestriction, c.Settings.DefaultPerms, time.Now())
+			out.BannedRights = ViewerBannedRights(c.MyRestriction, time.Now())
 		}
 	}
 	return out

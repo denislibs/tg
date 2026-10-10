@@ -71,9 +71,10 @@ describe('serviceMsgText', () => {
     expect(serviceMsgText(m)).not.toContain('{')
   })
 
-  it('restrict — ограничение прав участника', () => {
-    expect(serviceMsgText(pill({ _: 'messageActionRestrict', user_id: BOB })))
-      .toBe('Алиса ограничил(а) права Боб')
+  // Ревью #409 п. 1: служебки ограничения нет (у tweb — только журнал
+  // администратора); старая из кэша рисуется как неподдерживаемая.
+  it('restrict — конструктора больше нет', () => {
+    expect(serviceMsgText(pill({ _: 'messageActionRestrict', user_id: BOB } as never))).toBe(UNSUPPORTED_ACTION)
   })
 
   // tweb Chat.Service.Group.UpdatedPinnedMessage: `%@ pinned "%@"`, где второй

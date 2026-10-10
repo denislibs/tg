@@ -3,7 +3,6 @@ package chat
 import (
 	"context"
 	"encoding/json"
-	"slices"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -61,12 +60,16 @@ func (i *Interactor) ListParticipants(ctx context.Context, chatID, viewerID int6
 	if err != nil {
 		return ParticipantsPage{}, err
 	}
-	v := domain.ParticipantViewer{ID: viewerID, IsCreator: a.Member && a.Role == domain.RoleCreator}
+	v := i.participantViewer(ctx, chatID, viewerID, a)
 	page := ParticipantsPage{Count: total, Participants: make([]domain.ChannelParticipant, 0, len(rows))}
 	for _, p := range rows {
 		page.Participants = append(page.Participants, p.ToChannelParticipant(v))
-		page.UserIDs = appendParticipantUsers(page.UserIDs, p)
 	}
+	// Карточки — по ССЫЛКАМ самого провода (domain.CollectPeerRefs, сборщик
+	// векторов Ф-3а): user_id/peer строки, promoted_by, inviter_id, kicked_by.
+	// Что маскировано для зрителя (кем ограничен или исключён), в теле не
+	// названо — и в вектор не попадает (ревью #409 п. 5).
+	page.UserIDs = domain.CollectPeerRefs(page.Participants).Users
 	return page, nil
 }
 
@@ -94,32 +97,27 @@ func (i *Interactor) GetParticipant(ctx context.Context, chatID, viewerID, userI
 	if p.Kicked && userID != viewerID && i.requireRight(ctx, chatID, viewerID, domain.RightBanUsers) != nil {
 		return nil, nil, domain.ErrNotFound
 	}
-	v := domain.ParticipantViewer{ID: viewerID, IsCreator: a.Member && a.Role == domain.RoleCreator}
-	return p.ToChannelParticipant(v), appendParticipantUsers(nil, p), nil
+	v := i.participantViewer(ctx, chatID, viewerID, a)
+	wire := p.ToChannelParticipant(v)
+	return wire, domain.CollectPeerRefs(wire).Users, nil
 }
 
-// appendParticipantUsers — карточки, которые называет строка: сам участник,
-// назначивший, пригласивший, наложивший ограничение или бан.
-func appendParticipantUsers(ids []int64, p domain.Participant) []int64 {
-	add := func(id int64) {
-		if id != 0 && !slices.Contains(ids, id) {
-			ids = append(ids, id)
-		}
+// participantViewer — зритель выдачи: создатель ли он и есть ли у него
+// ban_users (только ему видны чужие ограничения).
+func (i *Interactor) participantViewer(ctx context.Context, chatID, viewerID int64, a domain.ChatAccess) domain.ParticipantViewer {
+	return domain.ParticipantViewer{
+		ID:        viewerID,
+		IsCreator: a.Member && a.Role == domain.RoleCreator,
+		CanBan:    a.Member && i.requireRight(ctx, chatID, viewerID, domain.RightBanUsers) == nil,
 	}
-	add(p.UserID)
-	add(p.PromotedBy)
-	add(p.InviterID)
-	add(p.KickedBy)
-	if p.Restriction != nil {
-		add(p.Restriction.RestrictedBy)
-	}
-	return ids
 }
 
-// OnlineCandidates — messages.getOnlines: состав, по которому считать онлайн.
+// OnlineCandidates — messages.getOnlines: гейт и загрузчик состава, по
+// которому считать онлайн. Загрузчик ленивый: при свежем серверном кэше
+// (presence, 60 с) состав из базы не читается вовсе (ревью #404 п. 8).
 // broadcast — у канала онлайн не считается (tweb getOnlines: канал → 1).
 // Гейт — как у списка участников.
-func (i *Interactor) OnlineCandidates(ctx context.Context, chatID, viewerID int64) (ids []int64, broadcast bool, err error) {
+func (i *Interactor) OnlineCandidates(ctx context.Context, chatID, viewerID int64) (load func(context.Context) ([]int64, error), broadcast bool, err error) {
 	a, err := i.chats.Access(ctx, chatID, viewerID)
 	if err != nil {
 		return nil, false, err
@@ -133,8 +131,7 @@ func (i *Interactor) OnlineCandidates(ctx context.Context, chatID, viewerID int6
 	if !a.CanRead() && i.RequireDiscussionRead(ctx, chatID, viewerID) != nil {
 		return nil, false, domain.ErrForbidden
 	}
-	ids, err = i.chats.MemberIDs(ctx, chatID)
-	return ids, false, err
+	return func(ctx context.Context) ([]int64, error) { return i.chats.MemberIDs(ctx, chatID) }, false, nil
 }
 
 // viewerCounters — счётчики участников, положенные зрителю (Б-115): число
@@ -208,42 +205,83 @@ func (i *Interactor) participantNow(ctx context.Context, chatID, userID int64) *
 	return &p
 }
 
-// participantWire — конструктор участника для кадра: тело одно на всех получателей,
-// поэтому без зрителя (без can_edit/self).
-func participantWire(p *domain.Participant) domain.ChannelParticipant {
+// participantChange — смена участника для кадра updateChannelParticipant.
+// prev/next — строки до и после (nil — «не было» / «больше нет»); nextLeft —
+// ушёл или исключён без бана (channelParticipantLeft).
+type participantChange struct {
+	prev, next *domain.Participant
+	nextLeft   bool
+	invite     *domain.ChatInviteExported
+}
+
+func (c participantChange) wire(p *domain.Participant, v domain.ParticipantViewer) domain.ChannelParticipant {
 	if p == nil {
 		return nil
 	}
-	return p.ToChannelParticipant(domain.ParticipantViewer{})
+	return p.ToChannelParticipant(v)
 }
 
-// emitParticipant — кадр updateChannelParticipant затронутому, актору и админам
-// чата (кому его шлёт и оригинал). prev/next — конструкторы до и после; nil —
-// «не было» / «больше нет». Выбывший (next — left) кадр не получает: ему
-// адресован chat_removed. Best-effort — мутация уже закоммичена.
-func (i *Interactor) emitParticipant(ctx context.Context, chatID, actorID, userID int64, prev, next domain.ChannelParticipant, invite *domain.ChatInviteExported) {
+// emitParticipant — кадр updateChannelParticipant затронутому, актору и
+// админам чата. Устройство актора, применившее смену местным апдейтом (tweb
+// generateUpdateChannelParticipant), отбрасывает серверный дубль в воркере
+// (groupsManager.isLocalParticipantEcho); прочие его устройства кадр получают. Чужое личное ограничение в
+// кадре видят только админы с ban_users и сам затронутый; остальным строка —
+// обычный участник (как в выдаче участников, ревью #404 п. 2). Выбывший кадр
+// не получает: ему адресован chat_removed. Best-effort — мутация уже
+// закоммичена.
+func (i *Interactor) emitParticipant(ctx context.Context, chatID, actorID, userID int64, ch participantChange) {
 	if i.groups == nil {
 		return
 	}
-	admins, err := i.groups.AdminIDs(ctx, chatID)
+	staff, _, err := i.groups.ListParticipants(ctx, chatID, 0, domain.ParticipantsFilter{Kind: domain.ParticipantsAdmins}, 0, 200)
 	if err != nil {
 		return
 	}
-	recipients := admins
-	add := func(id int64) {
-		if id != 0 && !slices.Contains(recipients, id) {
-			recipients = append(recipients, id)
+	var full, masked []int64
+	seen := map[int64]bool{}
+	add := func(id int64, canBan bool) {
+		if id == 0 || seen[id] {
+			return
+		}
+		seen[id] = true
+		if canBan {
+			full = append(full, id)
+		} else {
+			masked = append(masked, id)
 		}
 	}
-	add(actorID)
+	member := false
 	if _, e := i.groups.GetMember(ctx, chatID, userID); e == nil {
-		add(userID)
-	} else {
-		recipients = slices.DeleteFunc(recipients, func(id int64) bool { return id == userID })
+		member = true
+		add(userID, true) // своё ограничение затронутый видит
 	}
-	u := domain.NewUpdateChannelParticipant(chatID, actorID, userID, time.Now(), prev, next, invite)
-	_ = i.logAndPublishPerPeer(ctx, chatID, recipients, "chat_participant",
-		func(domain.PeerID) map[string]any { return structPayload(u) })
+	for _, p := range staff {
+		if p.UserID == userID && !member {
+			continue
+		}
+		add(p.UserID, domain.HasRight(p.Role, p.Rights, domain.RightBanUsers))
+	}
+	if actorID != userID || member {
+		add(actorID, false)
+	}
+	body := func(v domain.ParticipantViewer) map[string]any {
+		var next domain.ChannelParticipant = ch.wire(ch.next, v)
+		if ch.nextLeft {
+			next = domain.NewChannelParticipantLeft(userID)
+		}
+		return structPayload(domain.NewUpdateChannelParticipant(chatID, actorID, userID, time.Now(),
+			ch.wire(ch.prev, v), next, ch.invite))
+	}
+	if len(full) > 0 {
+		b := body(domain.ParticipantViewer{CanBan: true})
+		_ = i.logAndPublishPerPeer(ctx, chatID, full, "chat_participant",
+			func(domain.PeerID) map[string]any { return b })
+	}
+	if len(masked) > 0 {
+		b := body(domain.ParticipantViewer{})
+		_ = i.logAndPublishPerPeer(ctx, chatID, masked, "chat_participant",
+			func(domain.PeerID) map[string]any { return b })
+	}
 }
 
 // emitPendingRequests — кадр updatePendingJoinRequests админам с invite_users

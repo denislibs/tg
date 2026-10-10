@@ -604,7 +604,13 @@ export function createWorkerCore() {
     else if (pred === 'updateChatRemoved') dialogs.applyRemoved(getPeerId((d as ChatRemovedEvt).peer))
     // tweb `appChatsManager.onUpdateChannelParticipant` (:1419-1422): кэш страниц
     // участников чата — сбросить ДО рассылки `chat_participant`.
-    else if (pred === 'updateChannelParticipant') groups.invalidateChannelParticipants((d as ChannelParticipantEvt).channel_id)
+    else if (pred === 'updateChannelParticipant') {
+      // Дубль своей мутации, уже применённой местным апдейтом на этом
+      // устройстве (groupsManager.isLocalParticipantEcho): у Telegram он сюда
+      // не приходит вовсе, вкладки применили бы смену дважды (ревью #409 п. 2).
+      if (groups.isLocalParticipantEcho(d as ChannelParticipantEvt)) return
+      groups.invalidateChannelParticipants((d as ChannelParticipantEvt).channel_id)
+    }
     // tweb `appChatInvitesManager.onUpdatePendingJoinRequests` (:24-40): скрытие
     // плашки заявок снимается, вкладкам уезжает ПЕРЕЛОЖЕННЫЙ `chat_requests`, а
     // не сырой кадр — поэтому общий веер ниже эта ветка обходит.

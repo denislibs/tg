@@ -145,6 +145,10 @@ func (p ChannelParticipantBanned) Tag() string         { return p.Underscore }
 type ParticipantViewer struct {
 	ID        int64
 	IsCreator bool
+	// CanBan — у зрителя ban_users: только ему чужое личное ограничение видно
+	// как channelParticipantBanned (кем, что и до какого срока). Остальным
+	// ограниченный — обычный участник, как у Telegram.
+	CanBan bool
 }
 
 // NewChannelParticipant — участник по роли: выбор конструктора делает РОЛЬ.

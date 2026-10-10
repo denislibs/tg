@@ -29,6 +29,8 @@ import type ChatInput from './input'
 export type TestChatInput = {
   messageInput?: HTMLElement
   canSendPlain(): boolean
+  /** tweb `ChatInput.finishPeerChange` — пересборка поля ввода (`refreshInput`) */
+  finishPeerChange?(options: { peerId: PeerId, middleware: () => boolean }): Promise<() => void>
   getChatInputReplyToFromMessage(message: MyMessage): { replyToMsgId: number }
   initMessageReply(replyTo: { replyToMsgId: number }): void
   initMessageEditing(mid: number): void

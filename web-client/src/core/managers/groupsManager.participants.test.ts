@@ -318,3 +318,40 @@ describe('groupsManager — мутации `appChatsManager`', () => {
     expect(calls[0].query).toEqual({ limit: 20, q: 'ив', offset_date: 100, offset_user: 3 })
   })
 })
+
+// Ревью #409 п. 2: сервер шлёт кадр участника и актору (его прочим
+// устройствам), а устройство, применившее мутацию местно, свой дубль
+// отбрасывает — даже если кадр по WS обогнал ответ HTTP.
+describe('groupsManager — серверный дубль местного апдейта участника', () => {
+  const frame = (actor: number, user: number) => ({
+    _: 'updateChannelParticipant' as const, channel_id: CHAT_ID, date: 1, actor_id: actor, user_id: user,
+  })
+
+  it('кадр, обогнавший ответ, — дубль; второй такой же — уже нет', async() => {
+    const { groups } = build()
+    const pending = groups.editBanned(CHAT_ID, member(5), { _: 'chatBannedRights', until_date: 0, pFlags: { send_media: true } })
+    // кадр пришёл, пока запрос ещё не вернулся
+    expect(groups.isLocalParticipantEcho(frame(ME, 5))).toBe(true)
+    await pending
+    expect(groups.isLocalParticipantEcho(frame(ME, 5))).toBe(false)
+  })
+
+  it('чужой актор и другой участник — не дубль', async() => {
+    const { groups } = build()
+    await groups.editAdmin(CHAT_ID, member(6), { _: 'chatAdminRights', pFlags: { pin_messages: true } })
+    expect(groups.isLocalParticipantEcho(frame(2, 6))).toBe(false)
+    expect(groups.isLocalParticipantEcho(frame(ME, 7))).toBe(false)
+    expect(groups.isLocalParticipantEcho(frame(ME, 6))).toBe(true)
+  })
+
+  it('упавший запрос ожидание снимает', async() => {
+    const failing = newGroupsManager({
+      rest: { post: vi.fn(async() => { throw new Error('403') }) } as never,
+      dialogs: {} as never,
+      peers: { saveApiPeers: vi.fn() } as never,
+      getMeId: () => ME,
+    })
+    await expect(failing.addMember(PEER, 8)).rejects.toThrow('403')
+    expect(failing.isLocalParticipantEcho(frame(ME, 8))).toBe(false)
+  })
+})

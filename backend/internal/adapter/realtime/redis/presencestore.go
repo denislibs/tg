@@ -85,23 +85,52 @@ func (s *PresenceStore) LastSeen(ctx context.Context, userID int64) (int64, erro
 }
 
 // CountOnline — сколько из userIDs держат ключ присутствия: EXISTS по многим
-// ключам отвечает числом существующих, пачками по 1000 ключей.
+// ключам отвечает числом существующих; пачки по 1000 ключей уходят ОДНИМ
+// конвейером (один круг до Redis на весь состав).
 func (s *PresenceStore) CountOnline(ctx context.Context, userIDs []int64) (int, error) {
 	const batch = 1000
+	if len(userIDs) == 0 {
+		return 0, nil
+	}
+	var cmds []*goredis.IntCmd
+	_, err := s.rdb.Pipelined(ctx, func(p goredis.Pipeliner) error {
+		for start := 0; start < len(userIDs); start += batch {
+			end := min(start+batch, len(userIDs))
+			keys := make([]string, 0, end-start)
+			for _, id := range userIDs[start:end] {
+				keys = append(keys, presKey(id))
+			}
+			cmds = append(cmds, p.Exists(ctx, keys...))
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
 	total := 0
-	for start := 0; start < len(userIDs); start += batch {
-		end := min(start+batch, len(userIDs))
-		keys := make([]string, 0, end-start)
-		for _, id := range userIDs[start:end] {
-			keys = append(keys, presKey(id))
-		}
-		n, err := s.rdb.Exists(ctx, keys...).Result()
-		if err != nil {
-			return 0, err
-		}
-		total += int(n)
+	for _, c := range cmds {
+		total += int(c.Val())
 	}
 	return total, nil
+}
+
+func onlinesKey(chatID int64) string { return "onlines:" + strconv.FormatInt(chatID, 10) }
+
+// CachedOnlines — закэшированный «N онлайн» чата; ok=false — промах.
+func (s *PresenceStore) CachedOnlines(ctx context.Context, chatID int64) (int, bool, error) {
+	n, err := s.rdb.Get(ctx, onlinesKey(chatID)).Int()
+	if err == goredis.Nil {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	return n, true, nil
+}
+
+// CacheOnlines — «N онлайн» чата на ttl.
+func (s *PresenceStore) CacheOnlines(ctx context.Context, chatID int64, n int, ttl time.Duration) error {
+	return s.rdb.Set(ctx, onlinesKey(chatID), n, ttl).Err()
 }
 
 // Snapshots — присутствие пачки пользователей одним конвейером: PTTL ключа

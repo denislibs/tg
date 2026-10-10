@@ -224,22 +224,14 @@ func TestMigration0106_ConvertsServiceActions(t *testing.T) {
 		t.Errorf("выгнанный = %v, ждали %d", kick["user_id"], bob)
 	}
 
-	// Ограничение: запреты конструктором chatBannedRights + СРОК, которого на
-	// проводе не было вовсе.
-	restrict := actionOf(t, pool, restrictID)
-	rights, _ := restrict["banned_rights"].(map[string]any)
-	if rights["_"] != "chatBannedRights" {
-		t.Fatalf("ограничение = %v, ждали chatBannedRights", restrict)
+	// Ограничение: 0106 переводила его в messageActionRestrict, а 0152 этот
+	// конструктор сняла (ревью #409 п. 1) — служебка удалена мягко.
+	if a := actionOf(t, pool, restrictID); a != nil {
+		t.Errorf("служебка ограничения пережила 0152: %v", a)
 	}
-	flags, _ := rights["pFlags"].(map[string]any)
-	if flags["send_messages"] != true || flags["send_media"] != true {
-		t.Errorf("запреты = %v, ждали send_messages+send_media из битмаска 3", flags)
-	}
-	if rights["until_date"] != float64(1800000000) {
-		t.Errorf("срок ограничения = %v, ждали 1800000000", rights["until_date"])
-	}
-	if _, ok := restrict["denied_rights"]; ok {
-		t.Errorf("битмаск denied_rights остался на проводе: %v", restrict)
+	var restrictDeleted bool
+	if err := pool.QueryRow(ctx, `SELECT deleted_at IS NOT NULL FROM messages WHERE id=$1`, restrictID).Scan(&restrictDeleted); err != nil || !restrictDeleted {
+		t.Errorf("служебка ограничения не удалена: %v %v", restrictDeleted, err)
 	}
 
 	// Лог звонка — служебное сообщение, а не «сообщение вида call».

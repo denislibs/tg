@@ -95,7 +95,7 @@ const DEBT: Record<string, number> = {
   'src/core/hooks/useStoryViewer.ts': 3,
   'src/core/messageToConvMsg.ts': 13,
   'src/core/peers/getPeerTitle.ts': 5,
-  'src/core/serviceMsg.ts': 36,
+  'src/core/serviceMsg.ts': 35,
 }
 
 const CYRILLIC = /[Ѐ-ӿ]/

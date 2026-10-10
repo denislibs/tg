@@ -119,7 +119,6 @@ export function serviceMsgSegs(m: MessageService, pinnedPreview?: string): Servi
     // Ограничение прав участника — НАШ конструктор (в схеме предмета нет).
     // Конкретные снятые права в пилюле не перечисляем: их разбор живёт в экране
     // прав, а Telegram в ленте тоже показывает сам факт.
-    case 'messageActionRestrict': return [actor, t(' ограничил(а) права '), user(a.user_id)]
     // Клиентская плашка ветки комментариев — её ставит витрина треда.
     case 'messageActionDiscussionStarted': return plain('Обсуждение началось')
     // Лог звонка пилюлей не рисуется — у него свой бабл (`MessageKind` 'call'),

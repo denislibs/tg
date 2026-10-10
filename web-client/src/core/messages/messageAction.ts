@@ -31,7 +31,7 @@
 // `string | number` (у нас всюду число), а `messageActionChatEditPhoto.photo`
 // тянет схемный `Photo` вместо нашего `MyPhoto` (`core/media/messageMedia.ts`),
 // у которого `bytes` ступеней — base64-строка, а не `Uint8Array`.
-import type { Birthday, ChatBannedRights } from '../peers/peer'
+import type { Birthday } from '../peers/peer'
 import type { MyPhoto, TextWithEntities } from '../media/messageMedia'
 import type { Peer } from '../peers/peerId'
 
@@ -222,17 +222,6 @@ export interface MessageActionStarGift {
   saved_id?: number
 }
 
-/** messageActionRestrict#d1500001 user_id:long banned_rights:ChatBannedRights
- *
- *  НАШ СОБСТВЕННЫЙ конструктор в своём пространстве id: у оригинала
- *  ограничение прав не порождает сообщения в ленте вовсе (оно уходит в журнал
- *  администратора, которого у нас нет), а пилюля живая. */
-export interface MessageActionRestrict {
-  _: 'messageActionRestrict'
-  user_id: number
-  banned_rights?: ChatBannedRights
-}
-
 // ── Синтетические конструкторы: их производит ТОЛЬКО клиент ────────────────
 
 /** messageActionChatLeave — человек вышел САМ (уточнение
@@ -298,7 +287,6 @@ export type MessageAction =
   | MessageActionSuggestedPostApproval
   | MessageActionPhoneCall
   | MessageActionStarGift
-  | MessageActionRestrict
   | MessageActionChatLeave
   | MessageActionChatJoined
   | MessageActionChatJoinedYou

@@ -113,7 +113,7 @@ func (i *Interactor) JoinPublic(ctx context.Context, username string, userID int
 	i.postGroupService(ctx, id, userID, domain.NewMessageActionChatAddUser([]int64{userID}))
 	i.publishChatUpdate(ctx, id)
 	i.publishViewerChat(ctx, id, userID)
-	i.emitParticipant(ctx, id, userID, userID, nil, participantWire(i.participantNow(ctx, id, userID)), nil)
+	i.emitParticipant(ctx, id, userID, userID, participantChange{next: i.participantNow(ctx, id, userID)})
 	return nil
 }
 

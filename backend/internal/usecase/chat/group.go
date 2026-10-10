@@ -192,7 +192,7 @@ func (i *Interactor) AddMember(ctx context.Context, chatID, actorID, userID int6
 	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionChatAddUser([]int64{targetID}))
 	// Число участников изменилось — рассылаем свежий снимок метаданных чата.
 	i.publishChatUpdate(ctx, chatID)
-	i.emitParticipant(ctx, chatID, actorID, userID, nil, participantWire(i.participantNow(ctx, chatID, userID)), nil)
+	i.emitParticipant(ctx, chatID, actorID, userID, participantChange{next: i.participantNow(ctx, chatID, userID)})
 	return nil
 }
 
@@ -207,7 +207,7 @@ func (i *Interactor) RemoveMember(ctx context.Context, chatID, actorID, userID i
 	}
 	// Кадр участника админам и актору (выбывшему — chat_removed): ушёл сам или
 	// исключён без бана — channelParticipantLeft.
-	i.emitParticipant(ctx, chatID, actorID, userID, participantWire(prev), domain.NewChannelParticipantLeft(userID), nil)
+	i.emitParticipant(ctx, chatID, actorID, userID, participantChange{prev: prev, nextLeft: true})
 	return nil
 }
 
@@ -290,7 +290,15 @@ func (i *Interactor) removeMember(ctx context.Context, chatID, actorID, userID i
 // подвластный участник (manageTarget); выдавать можно только то, что есть у
 // самого актора (кроме владельца) — у Telegram RIGHT_FORBIDDEN. Назначивший
 // запоминается: править этого админа дальше сможет он и владелец.
-func (i *Interactor) PromoteAdmin(ctx context.Context, chatID, actorID, userID int64, rights domain.Rights, rank string) error {
+//
+// rank — подпись (Б-117); nil — не менять: клиент без поля (сборка до Ф-3б из
+// кэша сервис-воркера) иначе стирал бы подпись при любой правке прав.
+// Владелец правит только СВОЮ подпись: роль и права у него неизменны (tweb
+// canEditAdmin даёт создателю править себя, поле Chat.OwnerBadge).
+func (i *Interactor) PromoteAdmin(ctx context.Context, chatID, actorID, userID int64, rights domain.Rights, rank *string) error {
+	if actorID == userID {
+		return i.setOwnRank(ctx, chatID, actorID, rank)
+	}
 	actor, target, err := i.manageTarget(ctx, chatID, actorID, userID, domain.RightManageAdmins, true)
 	if err != nil {
 		return err
@@ -307,12 +315,36 @@ func (i *Interactor) PromoteAdmin(ctx context.Context, chatID, actorID, userID i
 	if err := i.groups.SetRole(ctx, chatID, userID, domain.RoleAdmin, rights, promotedBy); err != nil {
 		return err
 	}
-	// Подпись админа (channels.editAdmin rank, Б-117): у Telegram до 16 знаков.
-	if err := i.groups.SetRank(ctx, chatID, userID, clipRank(rank)); err != nil {
+	// Повышение снимает личные ограничения, как у Telegram: иначе после
+	// разжалования прежнее ограничение «воскресло» бы (ревью #404 п. 11).
+	if err := i.groups.DeleteRestriction(ctx, chatID, userID); err != nil {
 		return err
+	}
+	if rank != nil {
+		// Подпись админа (channels.editAdmin rank, Б-117): у Telegram до 16 знаков.
+		if err := i.groups.SetRank(ctx, chatID, userID, clipRank(*rank)); err != nil {
+			return err
+		}
 	}
 	i.publishChatUpdate(ctx, chatID) // состав админов изменился
 	i.afterRightsChange(ctx, chatID, actorID, userID, prev)
+	return nil
+}
+
+// setOwnRank — владелец задаёт себе подпись (ревью #404 п. 5). Кроме
+// владельца себя не правит никто (manageTarget).
+func (i *Interactor) setOwnRank(ctx context.Context, chatID, actorID int64, rank *string) error {
+	if err := i.requireCreator(ctx, chatID, actorID); err != nil {
+		return err
+	}
+	if rank == nil {
+		return nil
+	}
+	prev := i.participantNow(ctx, chatID, actorID)
+	if err := i.groups.SetRank(ctx, chatID, actorID, clipRank(*rank)); err != nil {
+		return err
+	}
+	i.afterRightsChange(ctx, chatID, actorID, actorID, prev)
 	return nil
 }
 
@@ -329,7 +361,7 @@ func clipRank(rank string) string {
 // ограничение): кадр участника актору и админам и пер-зрительский снимок
 // чата самому затронутому — его новые admin_rights/banned_rights (A2-05).
 func (i *Interactor) afterRightsChange(ctx context.Context, chatID, actorID, userID int64, prev *domain.Participant) {
-	i.emitParticipant(ctx, chatID, actorID, userID, participantWire(prev), participantWire(i.participantNow(ctx, chatID, userID)), nil)
+	i.emitParticipant(ctx, chatID, actorID, userID, participantChange{prev: prev, next: i.participantNow(ctx, chatID, userID)})
 	i.publishViewerChat(ctx, chatID, userID)
 }
 
@@ -608,11 +640,15 @@ func (i *Interactor) joinByLink(ctx context.Context, link domain.InviteLink, tok
 		return false, domain.ErrForbidden // из чёрного списка по ссылке не возвращаются
 	}
 	if link.RequiresApproval {
-		if e := i.joinReqs.Create(ctx, link.ChatID, userID, token); e != nil {
+		inserted, e := i.joinReqs.Create(ctx, link.ChatID, userID, token)
+		if e != nil {
 			return false, e
 		}
 		// Админы с invite_users видят заявку живьём: плашка в шапке (A2-06).
-		i.emitPendingRequests(ctx, link.ChatID)
+		// Повторная подача ничего не меняет — и кадра нет.
+		if inserted {
+			i.emitPendingRequests(ctx, link.ChatID)
+		}
 		return true, nil
 	}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
@@ -643,8 +679,12 @@ func (i *Interactor) joinByLink(ctx context.Context, link domain.InviteLink, tok
 	// Число участников и списки — живьём (A2-07): chat_update всем, кадр
 	// участника со ссылкой админам.
 	i.publishChatUpdate(ctx, link.ChatID)
+	// Вступившему — личный снимок в журнал (ревью #404 п. 7): канальный
+	// chat_update его прочим устройствам не дойдёт, они на топик ещё не
+	// подписаны, и канал на них не появился бы.
+	i.publishViewerChat(ctx, link.ChatID, userID)
 	invite := domain.NewChatInviteExported(link)
-	i.emitParticipant(ctx, link.ChatID, userID, userID, nil, participantWire(i.participantNow(ctx, link.ChatID, userID)), &invite)
+	i.emitParticipant(ctx, link.ChatID, userID, userID, participantChange{next: i.participantNow(ctx, link.ChatID, userID), invite: &invite})
 	return false, nil
 }
 
@@ -704,7 +744,7 @@ func (i *Interactor) ApproveJoinRequest(ctx context.Context, chatID, actorID, us
 		i.postGroupService(ctx, chatID, userID, domain.NewMessageActionChatJoinedByRequest())
 		i.publishChatUpdate(ctx, chatID)
 		i.publishViewerChat(ctx, chatID, userID)
-		i.emitParticipant(ctx, chatID, actorID, userID, nil, participantWire(i.participantNow(ctx, chatID, userID)), nil)
+		i.emitParticipant(ctx, chatID, actorID, userID, participantChange{next: i.participantNow(ctx, chatID, userID)})
 	}
 	i.emitPendingRequests(ctx, chatID)
 	return nil

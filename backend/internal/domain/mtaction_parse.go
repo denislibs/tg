@@ -82,9 +82,6 @@ func ParseMessageAction(raw []byte) (MessageAction, error) {
 	case MessageActionSuggestedPostApprovalTag:
 		var a MessageActionSuggestedPostApproval
 		return a, json.Unmarshal(raw, &a)
-	case MessageActionRestrictTag:
-		var a MessageActionRestrict
-		return a, json.Unmarshal(raw, &a)
 	case MessageActionPhoneCallTag:
 		return parsePhoneCallAction(raw)
 	default:

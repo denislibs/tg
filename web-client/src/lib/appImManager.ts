@@ -111,6 +111,7 @@ import type { LangPackKey } from '@/lang'
 import { RT, type SendMessageAction } from '@core/realtime/events'
 import { cachedChat, cachedPeer, cachedUser } from '@core/peerCache'
 import { isAnyChat, isUser, toChatId, toPeerId } from '@core/peers/peerId'
+import { getParticipantPeerId } from '@core/peers/participant'
 import { useChatsStore } from '@stores/chatsStore'
 import { MOUNT_CLASS_TO } from '@config/debug'
 import EventListenerBase from '@helpers/eventListenerBase'
@@ -1936,7 +1937,9 @@ export class AppImManager extends EventListenerBase<{
           filter: { _: 'channelParticipantsRecent' },
           limit: 100,
         }).then((r) => {
-          const userIds = r.participants.map((p) => 'user_id' in p ? p.user_id : 0).filter(Boolean)
+          // tweb reduceParticipantsForOnlineCount: ключ строки — getParticipantPeerId
+          // (у channelParticipantBanned ограниченного он в `peer`, не в `user_id`).
+          const userIds = r.participants.map((p) => getParticipantPeerId(p)).filter((id) => isUser(id))
           this.onlinesCache.set(peerId, { userIds, expires })
           return reduce(userIds)
         }, () => minOnline),

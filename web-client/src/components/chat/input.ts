@@ -1060,8 +1060,7 @@ export default class ChatInput {
    * tweb `topbar.ts:1189-1204` (`onJoinClick`; кнопки «Вступить» в шапке у нас
    * нет — обработчик живёт у кнопки ввода). После вступления плашка ввода
    * пересобирается тем же `finishPeerChange`, что у tweb `bubbles.ts:2351-2358`
-   * (`refreshInput` по `chat_update`): своего `chat_update` на главном потоке
-   * у ленты пока нет.
+   * (`refreshInput`) — сразу, не дожидаясь кадра `chat_update`.
    */
   private onJoinClick = async(button: HTMLElement) => {
     const peerId = this.chat.peerId

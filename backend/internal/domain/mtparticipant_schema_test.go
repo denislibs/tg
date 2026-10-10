@@ -167,29 +167,40 @@ func TestParticipants_SelfRow(t *testing.T) {
 func TestParticipant_ToChannelParticipant(t *testing.T) {
 	r := &MemberRestriction{UserID: 9, DeniedRights: PermSendMedia, RestrictedBy: 1, CreatedAt: time.Unix(1787334148, 0)}
 	restricted := Participant{Member: Member{UserID: 9, Role: RoleMember}, Restriction: r}
-	b, ok := restricted.ToChannelParticipant(ParticipantViewer{ID: 1}).(ChannelParticipantBanned)
+	b, ok := restricted.ToChannelParticipant(ParticipantViewer{ID: 1, CanBan: true}).(ChannelParticipantBanned)
 	if !ok || b.PFlags["left"] || !b.BannedRights.Denies("send_media") || b.Date != 1787334148 {
-		t.Fatalf("ограниченный: %#v", restricted.ToChannelParticipant(ParticipantViewer{ID: 1}))
+		t.Fatalf("ограниченный глазами ban_users: %#v", restricted.ToChannelParticipant(ParticipantViewer{ID: 1, CanBan: true}))
+	}
+	// Без ban_users чужое ограничение не раскрывается (ревью #404 п. 2), своё — видно.
+	if p := restricted.ToChannelParticipant(ParticipantViewer{ID: 2}); p.Tag() != ChannelParticipantTag {
+		t.Fatalf("ограниченный глазами участника: %#v", p)
+	}
+	if p := restricted.ToChannelParticipant(ParticipantViewer{ID: 9}); p.Tag() != ChannelParticipantBannedTag {
+		t.Fatalf("своё ограничение: %#v", p)
 	}
 	kicked := Participant{Member: Member{UserID: 9}, Kicked: true, KickedBy: 1}
-	if k, ok := kicked.ToChannelParticipant(ParticipantViewer{ID: 1}).(ChannelParticipantBanned); !ok || !k.PFlags["left"] {
-		t.Fatalf("выгнанный: %#v", k)
+	if k, ok := kicked.ToChannelParticipant(ParticipantViewer{ID: 1, CanBan: true}).(ChannelParticipantBanned); !ok || !k.PFlags["left"] {
+		t.Fatalf("выгнанный глазами ban_users: %#v", k)
+	}
+	// Без ban_users — просто «вышел», без kicked_by (ревью #409 п. 4).
+	if p := kicked.ToChannelParticipant(ParticipantViewer{ID: 2}); p.Tag() != ChannelParticipantLeftTag {
+		t.Fatalf("выгнанный глазами админа без ban_users: %#v", p)
 	}
 }
 
-// banned_rights зрителя — ДЕЙСТВУЮЩИЙ набор: личные запреты ∪ дефолт чата
-// (tweb hasRights берёт banned_rights вместо default_banned_rights).
-func TestEffectiveBannedRights(t *testing.T) {
+// banned_rights зрителя — только личные запреты и срок (как у сервера
+// Telegram); объединение с default_banned_rights считает клиент (ревью #409 п. 3).
+func TestViewerBannedRights(t *testing.T) {
 	now := time.Now()
-	if EffectiveBannedRights(nil, AllMemberPerms, now) != nil {
+	if ViewerBannedRights(nil, now) != nil {
 		t.Fatal("без ограничения banned_rights не едет")
 	}
 	past := now.Add(-time.Hour)
-	if EffectiveBannedRights(&MemberRestriction{DeniedRights: PermSendMedia, UntilDate: &past}, AllMemberPerms, now) != nil {
+	if ViewerBannedRights(&MemberRestriction{DeniedRights: PermSendMedia, UntilDate: &past}, now) != nil {
 		t.Fatal("истёкшее ограничение не едет")
 	}
-	br := EffectiveBannedRights(&MemberRestriction{DeniedRights: PermSendMedia}, AllMemberPerms&^PermPinMessages, now)
-	if br == nil || !br.Denies("send_media") || !br.Denies("pin_messages") || br.Denies("send_messages") {
-		t.Fatalf("banned_rights = %#v", br)
+	br := ViewerBannedRights(&MemberRestriction{DeniedRights: PermSendMedia}, now)
+	if br == nil || !br.Denies("send_media") || br.Denies("pin_messages") || br.Denies("send_messages") {
+		t.Fatalf("banned_rights = %#v; want только send_media", br)
 	}
 }

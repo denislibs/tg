@@ -12,7 +12,7 @@ import (
 // счётчики в карточке зрителя.
 func TestParticipants_HTTP(t *testing.T) {
 	h, pool := newMessagingRouter(t)
-	tokenA, _ := signUp(t, h, pool, "+79990015101")
+	tokenA, idA := signUp(t, h, pool, "+79990015101")
 	tokenB, idB := signUp(t, h, pool, "+79990015102")
 	tokenC, idC := signUp(t, h, pool, "+79990015103")
 	_, idD := signUp(t, h, pool, "+79990015104")
@@ -102,8 +102,22 @@ func TestParticipants_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"count":1`) || !strings.Contains(rec.Body.String(), `"users":[{`) {
 		t.Fatalf("join_requests: %s", rec.Body.String())
 	}
-	// Удалённые старой ручкой больше не отдаются.
-	if rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/bans", tokenA, nil); rec.Code == http.StatusOK {
-		t.Fatalf("GET /bans жив: %s", rec.Body.String())
+	// Переходный период (ревью #404 п. 10): старые GET отвечают той же формой.
+	if rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/members?q=nope", tokenA, nil); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"count":0`) {
+		t.Fatalf("GET /members?q: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/bans", tokenB, nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("GET /bans участнику без ban_users: %d", rec.Code)
+	}
+	// Владелец себе подпись (п. 5); без поля rank подпись B не стирается.
+	if rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/admins", tokenA, map[string]any{"user_id": idA, "rank": "основатель"}); rec.Code != http.StatusOK {
+		t.Fatalf("владелец себе подпись: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/admins", tokenA, map[string]any{"user_id": idB, "rights": 4}); rec.Code != http.StatusOK {
+		t.Fatalf("правка без rank: %d", rec.Code)
+	}
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/participants?filter=admins", tokenA, nil)
+	if !strings.Contains(rec.Body.String(), `"rank":"основатель"`) || !strings.Contains(rec.Body.String(), `"rank":"модер"`) {
+		t.Fatalf("подписи: %s", rec.Body.String())
 	}
 }
