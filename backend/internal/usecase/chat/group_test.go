@@ -44,6 +44,9 @@ type fakeGroupRepo struct {
 	// обычного резолва; имитирует транзиентный сбой (обрыв соединения и т.п.)
 	// отдельно от легального «обсуждения нет» (disc==0, err==nil).
 	getDiscussionErr error
+	// restrictedIDsHook — вызывается после чтения страницы ограниченных (тест
+	// гонки фоновой рассылки: состояние меняется между страницей и снимком).
+	restrictedIDsHook func()
 }
 
 func newFakeGroupRepo() *fakeGroupRepo {
@@ -648,6 +651,28 @@ func (r *fakeGroupRepo) SetJoinInfo(_ context.Context, chatID, userID, inviterID
 	m.InviterID, m.ViaRequest = inviterID, viaRequest
 	r.members[chatID][userID] = m
 	return nil
+}
+
+func (r *fakeGroupRepo) RestrictedMemberIDs(_ context.Context, chatID, afterUserID int64, limit int) ([]int64, error) {
+	r.mu.Lock()
+	hook := r.restrictedIDsHook
+	var out []int64
+	for uid, res := range r.restrictions[chatID] {
+		m, ok := r.members[chatID][uid]
+		if !ok || uid <= afterUserID || !res.Active(time.Now()) || m.Role == domain.RoleCreator || m.Role == domain.RoleAdmin {
+			continue
+		}
+		out = append(out, uid)
+	}
+	r.mu.Unlock()
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	if hook != nil {
+		hook()
+	}
+	return out, nil
 }
 
 func (r *fakeGroupRepo) SetRank(_ context.Context, chatID, userID int64, rank string) error {

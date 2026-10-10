@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -420,7 +422,7 @@ func TestRestricted_HiddenFromNonBanViewers(t *testing.T) {
 	}
 }
 
-// banned_rights зрителя — объединённые запреты (как отдаёт Telegram, tweb
+// banned_rights зрителя — объединённые запреты (основание — tweb
 // hasRights берёт их как есть). Смена прав по умолчанию доходит до
 // ограниченного его снимком — фоном (goBG), без рассылки в запросе; смена
 // одного slowmode снимков не шлёт; снятие ограничения возвращает дефолт.
@@ -610,5 +612,120 @@ func TestRestrictMember_NoServiceMessage(t *testing.T) {
 	}
 	if len(s.messages[id]) != before {
 		t.Fatalf("ограничение написало в ленту: %#v", s.messages[id][len(s.messages[id])-1])
+	}
+}
+
+// Ревью #411 п. 1: снимок ограниченному собирается по текущему состоянию —
+// снятое посреди рассылки ограничение старых запретов не возвращает.
+func TestRepublishRestricted_UsesCurrentState(t *testing.T) {
+	in, fg, _, pub, _ := newMembersTestInteractor(t)
+	ctx := context.Background()
+	id, _, _ := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8, 9})
+	_ = in.RestrictMember(ctx, id, 7, 8, domain.PermPinMessages, 0)
+	_ = in.RestrictMember(ctx, id, 7, 9, domain.PermPinMessages, 0)
+	fg.restrictedIDsHook = func() {
+		fg.restrictedIDsHook = nil
+		_ = fg.DeleteRestriction(ctx, id, 9) // сняли между страницей и снимком
+	}
+	pub.reset()
+	if err := in.SetChatPermissions(ctx, id, 7, domain.AllMemberPerms&^domain.PermSendMedia, 0); err != nil {
+		t.Fatal(err)
+	}
+	in.bg.Wait()
+	for _, u := range framesOf(t, pub, 9, "chat_update") {
+		if chatOf(t, u)["banned_rights"] != nil {
+			t.Fatal("снимок по устаревшему состоянию вернул снятое ограничение")
+		}
+	}
+}
+
+// Ревью #411 п. 1: рассылки по чату не идут параллельно — повторная смена
+// прав посреди прохода помечает его «грязным», и проход повторяется с
+// последними правами.
+func TestRepublishRestricted_SerializedPerChat(t *testing.T) {
+	in, fg, _, pub, _ := newMembersTestInteractor(t)
+	ctx := context.Background()
+	id, _, _ := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8})
+	_ = in.RestrictMember(ctx, id, 7, 8, domain.PermPinMessages, 0)
+	var inFlight, calls, overlap int32
+	fg.restrictedIDsHook = func() {
+		if atomic.AddInt32(&inFlight, 1) > 1 {
+			atomic.StoreInt32(&overlap, 1)
+		}
+		if atomic.AddInt32(&calls, 1) == 1 {
+			// вторая смена прав, пока первый проход идёт
+			_ = in.SetChatPermissions(ctx, id, 7, domain.AllMemberPerms&^domain.PermSendMessages, 0)
+		}
+		time.Sleep(20 * time.Millisecond)
+		atomic.AddInt32(&inFlight, -1)
+	}
+	pub.reset()
+	if err := in.SetChatPermissions(ctx, id, 7, domain.AllMemberPerms&^domain.PermSendMedia, 0); err != nil {
+		t.Fatal(err)
+	}
+	in.bg.Wait()
+	if overlap != 0 {
+		t.Fatal("два прохода рассылки по одному чату шли одновременно")
+	}
+	if calls < 2 {
+		t.Fatalf("повторная смена прав не перезапустила проход: проходов %d", calls)
+	}
+	ups := framesOf(t, pub, 8, "chat_update")
+	var last map[string]any
+	for _, u := range ups {
+		if ch := chatOf(t, u); ch["banned_rights"] != nil {
+			last = ch
+		}
+	}
+	fl, _ := last["banned_rights"].(map[string]any)["pFlags"].(map[string]any)
+	if fl["send_messages"] != true || fl["send_media"] == true {
+		t.Fatalf("последний снимок не по последним правам: %v", fl)
+	}
+}
+
+// Ревью #411 п. 1: обход ключевым курсором — больше страницы ограниченных
+// получают снимки все.
+func TestRepublishRestricted_AllPages(t *testing.T) {
+	in, _, _, pub, _ := newMembersTestInteractor(t)
+	ctx := context.Background()
+	var ids []int64
+	for uid := int64(100); uid < 100+250; uid++ {
+		ids = append(ids, uid)
+	}
+	id, _, _ := in.CreateGroup(ctx, 7, "Team", "", "", false, ids)
+	for _, uid := range ids {
+		_ = in.RestrictMember(ctx, id, 7, uid, domain.PermPinMessages, 0)
+	}
+	pub.reset()
+	_ = in.SetChatPermissions(ctx, id, 7, domain.AllMemberPerms&^domain.PermSendMedia, 0)
+	in.bg.Wait()
+	for _, uid := range ids {
+		got := false
+		for _, u := range framesOf(t, pub, uid, "chat_update") {
+			if chatOf(t, u)["banned_rights"] != nil {
+				got = true
+			}
+		}
+		if !got {
+			t.Fatalf("ограниченный %d без снимка", uid)
+		}
+	}
+}
+
+// Ревью #411 п. 2: остановка дожидается фоновых задач, но не дольше ctx.
+func TestInteractor_ShutdownWaitsBackground(t *testing.T) {
+	in, _, _, _, _ := newMembersTestInteractor(t)
+	release := make(chan struct{})
+	done := int32(0)
+	in.goBG("test", func(context.Context) { <-release; atomic.StoreInt32(&done, 1) })
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	_ = in.Shutdown(ctx) // не дождался — вернулся по тайм-ауту
+	if atomic.LoadInt32(&done) != 0 {
+		t.Fatal("задача завершилась раньше времени")
+	}
+	close(release)
+	if err := in.Shutdown(context.Background()); err != nil || atomic.LoadInt32(&done) != 1 {
+		t.Fatalf("остановка не дождалась фоновой задачи: %v", err)
 	}
 }

@@ -114,6 +114,14 @@ func TestGroupRepo_ListParticipantsFilters(t *testing.T) {
 		t.Fatalf("mentions: total=%d %v", total, ids(ps))
 	}
 
+	// Ограниченные ключевым курсором (фоновая рассылка, ревью #411 п. 1).
+	if ids, err := r.RestrictedMemberIDs(ctx, chatID, 0, 10); err != nil || len(ids) != 1 || ids[0] != m1 {
+		t.Fatalf("RestrictedMemberIDs = %v %v; want [%d]", ids, err, m1)
+	}
+	if ids, _ := r.RestrictedMemberIDs(ctx, chatID, m1, 10); len(ids) != 0 {
+		t.Fatalf("после курсора: %v", ids)
+	}
+
 	// Счётчики карточки.
 	admins, k, b, err := r.ParticipantCounters(ctx, chatID)
 	if err != nil || admins != 2 || k != 1 || b != 1 {

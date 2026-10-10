@@ -3,7 +3,9 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"slices"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -235,49 +237,87 @@ func (i *Interactor) SetChatPermissions(ctx context.Context, chatID, actorID int
 	i.publishChatUpdate(ctx, chatID)
 	// banned_rights ограниченного — объединение с правами по умолчанию
 	// (ViewerBannedRights), а общий снимок min, и клиент на нём прежний
-	// banned_rights сохраняет. Ограниченным — свой снимок, как Telegram шлёт
-	// затронутым updateChannel с их channel; фоном, не в запросе.
+	// banned_rights сохраняет. Ограниченным — свой снимок; фоном, не в запросе.
 	if before.DefaultPerms != perms {
-		i.goBG("republishRestricted", func(ctx context.Context) {
-			ctx, cancel := context.WithTimeout(ctx, republishTimeout)
-			defer cancel()
-			i.republishRestricted(ctx, chatID)
-		})
+		i.scheduleRepublish(chatID)
 	}
 	return nil
 }
 
-// republishTimeout — потолок фоновой рассылки снимков ограниченным.
+// republishTimeout — потолок одного прохода фоновой рассылки ограниченным.
 const republishTimeout = 5 * time.Minute
 
-// republishRestricted — пер-зрительский снимок каждому лично ограниченному
-// после смены прав чата по умолчанию. Карточка чата читается ОДИН раз, а
-// членство и ограничение зрителя берутся из строки выдачи «ограниченных»:
-// снимок нужен клиенту ради краткой формы `channel` (его banned_rights),
-// полную карточку из chat_update он не применяет. Страницами по 200,
-// фоном (goBG): в запросе на большой группе это упиралось в тайм-аут nginx
-// (ревью #409 п. 3).
-func (i *Interactor) republishRestricted(ctx context.Context, chatID int64) {
-	base, err := i.groups.Card(ctx, chatID, 0)
-	if err != nil {
+// republishRuns — фоновые рассылки снимков ограниченным, по одной на чат:
+// running — проход идёт; dirty — права по умолчанию сменились ещё раз, и по
+// окончании прохода он начнётся заново (новый замещает старый, а не идёт
+// рядом с ним — иначе снимок по прежним правам мог доехать последним).
+type republishRuns struct {
+	mu    sync.Mutex
+	chats map[int64]*republishRun
+}
+
+type republishRun struct{ dirty bool }
+
+// scheduleRepublish — запустить рассылку по чату или пометить идущую
+// «грязной» (ревью #411 п. 1).
+func (i *Interactor) scheduleRepublish(chatID int64) {
+	r := &i.republish
+	r.mu.Lock()
+	if r.chats == nil {
+		r.chats = map[int64]*republishRun{}
+	}
+	if run, ok := r.chats[chatID]; ok {
+		run.dirty = true
+		r.mu.Unlock()
 		return
 	}
+	r.chats[chatID] = &republishRun{}
+	r.mu.Unlock()
+	i.goBG("republishRestricted", func(ctx context.Context) {
+		for {
+			pctx, cancel := context.WithTimeout(ctx, republishTimeout)
+			i.republishRestricted(pctx, chatID)
+			cancel()
+			r.mu.Lock()
+			run := r.chats[chatID]
+			if !run.dirty {
+				delete(r.chats, chatID)
+				r.mu.Unlock()
+				return
+			}
+			run.dirty = false
+			r.mu.Unlock()
+		}
+	})
+}
+
+// republishRestricted — пер-зрительский снимок каждому лично ограниченному
+// после смены прав чата по умолчанию. Обход — ключевым курсором по user_id
+// (снятие ограничений во время обхода страниц не сдвигает), а снимок каждому
+// собирается по ТЕКУЩЕМУ состоянию в момент отправки (publishViewerChatErr):
+// снятое посреди прохода ограничение старых запретов не вернёт. Ошибки — в
+// лог: недоставленный снимок иначе пропал бы молча.
+func (i *Interactor) republishRestricted(ctx context.Context, chatID int64) {
 	const page = 200
-	for offset := 0; ctx.Err() == nil; offset += page {
-		rows, total, err := i.groups.ListParticipants(ctx, chatID, 0, domain.ParticipantsFilter{Kind: domain.ParticipantsBanned}, offset, page)
+	var after int64
+	for ctx.Err() == nil {
+		ids, err := i.groups.RestrictedMemberIDs(ctx, chatID, after, page)
 		if err != nil {
+			log.Printf("chat: рассылка ограниченным чата %d: страница после %d: %v", chatID, after, err)
 			return
 		}
-		for _, p := range rows {
-			c := base
-			c.ViewerID, c.MyRole, c.MyRights, c.MyJoinedAt, c.MyRestriction = p.UserID, p.Role, p.Rights, p.JoinedAt, p.Restriction
-			c.Hidden = false // участник: чат ему читается
-			_ = i.logAndPublishPerPeer(ctx, chatID, []int64{p.UserID}, "chat_update",
-				func(peer domain.PeerID) map[string]any { return chatUpdatePayload(peer, c) })
+		for _, uid := range ids {
+			if err := i.publishViewerChatErr(ctx, chatID, uid); err != nil {
+				log.Printf("chat: рассылка ограниченным чата %d: снимок %d не ушёл: %v", chatID, uid, err)
+			}
+			after = uid
 		}
-		if len(rows) < page || offset+page >= total {
+		if len(ids) < page {
 			return
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		log.Printf("chat: рассылка ограниченным чата %d прервана после %d: %v", chatID, after, err)
 	}
 }
 

@@ -182,14 +182,19 @@ func (i *Interactor) viewerCard(ctx context.Context, chatID, viewerID int64) (do
 // ограниченный — запрета, до перезагрузки. У оригинала это updateChannel с
 // полным channel зрителя. Best-effort.
 func (i *Interactor) publishViewerChat(ctx context.Context, chatID, userID int64) {
+	_ = i.publishViewerChatErr(ctx, chatID, userID)
+}
+
+// publishViewerChatErr — publishViewerChat с ошибкой (фоновая рассылка её логирует).
+func (i *Interactor) publishViewerChatErr(ctx context.Context, chatID, userID int64) error {
 	if i.groups == nil {
-		return
+		return nil
 	}
 	c, err := i.viewerCard(ctx, chatID, userID)
 	if err != nil {
-		return
+		return err
 	}
-	_ = i.logAndPublishPerPeer(ctx, chatID, []int64{userID}, "chat_update",
+	return i.logAndPublishPerPeer(ctx, chatID, []int64{userID}, "chat_update",
 		func(peer domain.PeerID) map[string]any { return chatUpdatePayload(peer, c) })
 }
 

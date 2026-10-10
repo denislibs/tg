@@ -189,7 +189,7 @@ func TestParticipant_ToChannelParticipant(t *testing.T) {
 }
 
 // banned_rights зрителя — действующие запреты: личные ∪ по умолчанию, срок
-// личного ограничения (как отдаёт сервер Telegram).
+// личного ограничения: tweb hasRights.ts:41 берёт banned_rights как есть.
 func TestViewerBannedRights(t *testing.T) {
 	now := time.Now()
 	if ViewerBannedRights(nil, AllMemberPerms, now) != nil {

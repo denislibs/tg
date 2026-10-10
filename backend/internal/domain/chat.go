@@ -647,27 +647,6 @@ func (r MemberRestriction) Active(now time.Time) bool {
 	return r.UntilDate == nil || r.UntilDate.After(now)
 }
 
-// ToChatBannedRights — персональное ограничение как конструктор схемы.
-//
-// ⚠ ЛОВУШКА ПОЛЯРНОСТИ, ради которой метод и существует. Тип MemberPerms в
-// нашем коде носят ДВА поля с противоположным смыслом:
-//
-//	ChatSettings.DefaultPerms  — что участнику МОЖНО (дефолт 31 = всё);
-//	MemberRestriction.DeniedRights — что участнику НЕЛЬЗЯ.
-//
-// NewChatBannedRights принимает РАЗРЕШЕНИЯ и инвертирует их сам. Значит
-// DefaultPerms передаётся как есть, а DeniedRights — перевёрнутым; передать
-// сюда DeniedRights напрямую значит выдать запрещённое за разрешённое и
-// наоборот, то есть снять с человека ровно те ограничения, которые на него
-// наложили. Единственное место, где этот переворот записан.
-func (r MemberRestriction) ToChatBannedRights() ChatBannedRights {
-	var until time.Time
-	if r.UntilDate != nil {
-		until = *r.UntilDate
-	}
-	return NewChatBannedRights(AllMemberPerms&^r.DeniedRights, until)
-}
-
 // SavedDialog is one grouped row of Saved Messages («Избранное» → таб «Чаты»):
 // all saved messages attributed to one source peer (tweb saved dialogs).
 // Kind 'self' («Мои заметки») groups the user's own non-forwarded notes.

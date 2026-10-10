@@ -796,13 +796,19 @@ describe('ChatTopbar: плашка заявок (`chat/requests.solid.tsx`, tweb
     expect(plate(again).classList.contains('hide')).toBe(true)
 
     // tweb сравнивает разницу Date.now() (мс) с ONE_DAY = 86400: через 86,4 с
-    // плашка снова видна, за миг до — ещё скрыта
-    useAppStateStore.setState({ hideChatJoinRequests: { [GROUP]: Date.now() - 86_000 } })
-    const notYet = await open(makeChat({ peerId: GROUP }))
-    expect(plate(notYet).classList.contains('hide')).toBe(true)
-    useAppStateStore.setState({ hideChatJoinRequests: { [GROUP]: Date.now() - 86_400 } })
-    const later = await open(makeChat({ peerId: GROUP }))
-    await vi.waitFor(() => expect(plate(later).classList.contains('hide')).toBe(false))
+    // плашка снова видна, за 1 мс до — ещё скрыта. Часы — фейковые (только
+    // Date), без запаса на скорость прогона.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(hiddenAt + 86_399)
+      const notYet = await open(makeChat({ peerId: GROUP }))
+      expect(plate(notYet).classList.contains('hide')).toBe(true)
+      vi.setSystemTime(hiddenAt + 86_400)
+      const later = await open(makeChat({ peerId: GROUP }))
+      await vi.waitFor(() => expect(plate(later).classList.contains('hide')).toBe(false))
+    } finally {
+      vi.useRealTimers()
+    }
 
     // кадр заявок (воркер снял скрытие) — плашка встаёт с новым числом
     rootScope.dispatchEventSingle(RT.chatRequests, { chatId: -GROUP, recentRequesters: [BOB], requestsPending: 2 })

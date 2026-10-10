@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"errors"
+	"log"
 	"sync"
 	"time"
 
@@ -65,6 +66,25 @@ type Interactor struct {
 	// bg — фоновые хвосты запросов (веер поста канала: сброс снимков списка и
 	// пуш подписчикам), которые не должны держать ответ. Тесты ждут его.
 	bg sync.WaitGroup
+	// republish — фоновые рассылки снимков ограниченным, по одной на чат.
+	republish republishRuns
+}
+
+// Shutdown — дождаться фоновых хвостов запросов (goBG) при остановке сервера
+// (fx OnStop), не дольше ctx: недоделанное пишется в лог.
+func (i *Interactor) Shutdown(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		i.bg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		log.Printf("chat: остановка — фоновые задачи не завершились: %v", ctx.Err())
+		return nil
+	}
 }
 
 // New constructs the chat interactor from its ports.
