@@ -434,3 +434,78 @@ func TestGuest_OwnCommentUnderDeletedPost(t *testing.T) {
 		t.Fatalf("гость удаляет своё под удалённым постом: %v", err)
 	}
 }
+
+// text_mention постороннего (читает публичный канал, но в обсуждении не
+// писал) пушем не становится — иначе любой комментатор рассылал бы пуши
+// кому угодно.
+func TestGuest_NoPushToStrangerByTextMention(t *testing.T) {
+	f := newDiscussionFixture(t)
+	ctx := context.Background()
+	root := f.mirror.ID
+	ents := domain.MessageEntities{domain.NewMessageEntityMentionName(0, 4, 10)}
+	if _, err := f.i.Send(ctx, SendInput{ChatID: f.disc, SenderID: 9, Text: "@you", Entities: ents, ThreadRootID: &root}); err != nil {
+		t.Fatal(err)
+	}
+	if contains(f.notif.recipients, 10) {
+		t.Fatal("пуш постороннему по text_mention")
+	}
+}
+
+// Зеркало удаляется у всех только правом delete_messages группы: у
+// опубликовавшего пост админа его зеркало не «своё» (A1-13).
+func TestMirror_DeleteNeedsRight(t *testing.T) {
+	f := newDiscussionFixture(t)
+	ctx := context.Background()
+	// 11 — автор поста без прав в группе обсуждения.
+	if err := f.fg.AddMember(ctx, f.ch, 11, domain.RoleAdmin, domain.RightPostMessages); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.fg.AddMember(ctx, f.disc, 11, domain.RoleMember, 0); err != nil {
+		t.Fatal(err)
+	}
+	post, err := f.i.PostToChannel(ctx, f.ch, 11, "by 11", nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mid, _ := f.i.msgs.MirrorByPost(ctx, f.ch, post.ID)
+	if err := f.i.DeleteMessage(ctx, f.disc, mid, 11, true); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("автор поста удалил зеркало у всех без права: %v", err)
+	}
+}
+
+// Альбом: корень треда — зеркало первого элемента — держится, пока жив
+// альбом; последний удалённый элемент уносит и его.
+func TestDeleteAlbumPost_RootMirrorLivesWithAlbum(t *testing.T) {
+	f := newDiscussionFixture(t)
+	ctx := context.Background()
+	f.s.seedMedia(101, 7)
+	f.s.seedMedia(102, 7)
+	m1, m2 := int64(101), int64(102)
+	a1, err := f.i.Send(ctx, SendInput{ChatID: f.ch, SenderID: 7, Type: "photo", MediaID: &m1, GroupedID: 111})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a2, err := f.i.Send(ctx, SendInput{ChatID: f.ch, SenderID: 7, Type: "photo", MediaID: &m2, GroupedID: 111})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, _ := f.i.msgs.MirrorOfExactPost(ctx, f.ch, a1.ID)
+	own2, _ := f.i.msgs.MirrorOfExactPost(ctx, f.ch, a2.ID)
+	if err := f.i.DeleteMessage(ctx, f.ch, a1.ID, 7, true); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := f.i.msgs.GetByID(ctx, root); m.Deleted {
+		t.Fatal("корень треда альбома удалён, пока жив второй элемент")
+	}
+	if _, err := f.i.PostComment(ctx, f.ch, a2.ID, 9, "still alive", ""); err != nil {
+		t.Fatalf("тред альбома умер после удаления первого элемента: %v", err)
+	}
+	if err := f.i.DeleteMessage(ctx, f.ch, a2.ID, 7, true); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int64{root, own2} {
+		if m, _ := f.i.msgs.GetByID(ctx, id); !m.Deleted {
+			t.Fatalf("зеркало %d осталось после удаления всего альбома", id)
+		}
+	}
+}

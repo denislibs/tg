@@ -29,10 +29,31 @@ import (
 // диалога разный у двух сторон, поэтому маршалить приходится не один раз на
 // сообщение, а один раз на каждый различный ключ (peerPayloads).
 //
-// senderID — автор строки для пер-зрительского `out`; 0 — сообщение ничьё
-// (зеркало поста канала, A1-13: непрочитано у всех, `out` ни у кого).
+// senderID — автор строки: у него `out`, ему открытая копия платного медиа,
+// ему не растёт непрочитанное.
 func (i *Interactor) fanOutNewMessage(
 	ctx context.Context, chatID, senderID, msgID, msgSeq int64,
+	out, outLocked map[string]any, mentioned map[int64]bool,
+) (recipients []int64, ptsByUser map[int64]int64, mentions map[int64]bool, err error) {
+	return i.fanOut(ctx, chatID, senderID, senderID, msgID, msgSeq, out, outLocked, mentioned)
+}
+
+// fanOutMirror — веер зеркала поста канала по группе обсуждения. Зеркало
+// ничьё (A1-13: автопересылку кладёт сервер, а не админ): `out` нет ни у
+// кого и непрочитано оно у всех, включая опубликовавшего пост. Открытая копия
+// платного медиа — продавцу (sellerID, автор поста), как в истории
+// (paidmedia: SellerID == зритель).
+func (i *Interactor) fanOutMirror(
+	ctx context.Context, chatID, sellerID, msgID, msgSeq int64,
+	out, outLocked map[string]any, mentioned map[int64]bool,
+) (recipients []int64, ptsByUser map[int64]int64, mentions map[int64]bool, err error) {
+	return i.fanOut(ctx, chatID, 0, sellerID, msgID, msgSeq, out, outLocked, mentioned)
+}
+
+// fanOut — общий веер: author — у кого `out` и кому не растут непрочитанное и
+// упоминание (0 — никому); opener — кому открытая копия платного медиа.
+func (i *Interactor) fanOut(
+	ctx context.Context, chatID, author, opener, msgID, msgSeq int64,
 	out, outLocked map[string]any, mentioned map[int64]bool,
 ) (recipients []int64, ptsByUser map[int64]int64, mentions map[int64]bool, err error) {
 	members, err := i.chats.MemberIDs(ctx, chatID)
@@ -47,21 +68,26 @@ func (i *Interactor) fanOutNewMessage(
 	// Автор строки — с ним peerPayloads сравнивает получателя, чтобы поставить
 	// пер-зрительский pFlags.out и, что важнее, разложить журнальные батчи по
 	// паре «пир + свой ли отправитель», а не по одному ключу пира.
-	pp.sender = senderID
+	pp.sender = author
 	var ppLocked *peerPayloads
 	if outLocked != nil {
 		ppLocked, err = i.newPeerPayloads(ctx, chatID, outLocked)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		ppLocked.sender = senderID
+		ppLocked.sender = author
 	}
 	ptsByUser = map[int64]int64{}
 	others := make([]int64, 0, len(members))
-	senderIn := false
+	locked := make([]int64, 0, len(members))
+	openerIn := false
 	for _, uid := range members {
-		if uid == senderID {
-			senderIn = true
+		if uid == opener {
+			openerIn = true
+		} else {
+			locked = append(locked, uid)
+		}
+		if uid == author {
 			continue
 		}
 		others = append(others, uid)
@@ -84,13 +110,13 @@ func (i *Interactor) fanOutNewMessage(
 	// репозитория»; часть тест-стабов не задаёт updates).
 	switch {
 	case ppLocked != nil:
-		if senderIn {
-			if e := i.appendByPeer(ctx, pp, []int64{senderID}, date, ptsByUser); e != nil {
+		if openerIn {
+			if e := i.appendByPeer(ctx, pp, []int64{opener}, date, ptsByUser); e != nil {
 				return nil, nil, nil, e
 			}
 		}
-		if len(others) > 0 {
-			if e := i.appendByPeer(ctx, ppLocked, others, date, ptsByUser); e != nil {
+		if len(locked) > 0 {
+			if e := i.appendByPeer(ctx, ppLocked, locked, date, ptsByUser); e != nil {
 				return nil, nil, nil, e
 			}
 		}
@@ -167,9 +193,10 @@ func (i *Interactor) publishMessageDelivery(
 	if len(recipients) == 0 {
 		return
 	}
-	author := msg.SenderID
+	// author — у кого `out`; opener — кому открытая копия платного медиа.
+	author, opener := msg.SenderID, senderID
 	if msg.IsDiscussionMirror {
-		senderID, author = 0, 0
+		author, opener, senderID = 0, msg.SenderID, 0
 	}
 	i.unarchiveOnMessage(ctx, msg.ChatID, senderID, recipients)
 	// Список диалогов получателей изменился (unread/порядок/превью) —
@@ -202,7 +229,7 @@ func (i *Interactor) publishMessageDelivery(
 	frames := make([][]byte, 0, len(recipients))
 	for _, uid := range recipients {
 		b := pp
-		if senderID == 0 || uid != senderID {
+		if uid != opener {
 			b = ppLocked
 		}
 		uids = append(uids, uid)
@@ -238,9 +265,10 @@ func (i *Interactor) notifyNewMessage(ctx context.Context, msg domain.Message, s
 // «Ответы» (tweb REPLIES_PEER_ID, bubbles.ts:3757-3766) у нас тоже, поэтому
 // временная замена — пуш (решение пользователя к В-2). mentioned — все, кого
 // упоминает сообщение (messageMentions, до отсева по членству); recipients —
-// участники веера. Гость должен читать обсуждение (RequireDiscussionRead):
-// text_mention постороннего пушем не становится. Звать после коммита, не для
-// тихой отправки.
+// участники веера. Гость — тот, кто в обсуждении участвует: читает его
+// (discussionGuestThread) И сам писал в группу (живое сообщение) — иначе
+// text_mention любого пользователя у публичного канала превращался бы в пуш
+// постороннему. Звать после коммита, не для тихой отправки.
 func (i *Interactor) notifyDiscussionGuests(ctx context.Context, msg domain.Message, recipients []int64, mentioned map[int64]bool) {
 	if i.notifier == nil || i.groups == nil || msg.ThreadRootID == nil || len(mentioned) == 0 {
 		return
@@ -261,6 +289,9 @@ func (i *Interactor) notifyDiscussionGuests(ctx context.Context, msg domain.Mess
 	for _, uid := range guests {
 		if i.discussionGuestThread(ctx, msg.ChatID, uid, msg.ThreadRootID, false) != nil {
 			continue
+		}
+		if _, _, _, err := i.msgs.LastMessageAt(ctx, msg.ChatID, uid); err != nil {
+			continue // в обсуждении не писал — не гость
 		}
 		peer, err := i.ChatIDToPeer(ctx, uid, msg.ChatID)
 		if err != nil {

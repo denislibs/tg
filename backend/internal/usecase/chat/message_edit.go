@@ -70,7 +70,7 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 		if guest {
 			extra = []int64{userID}
 		}
-		edit, e = i.fanOutEdit(ctx, msg, msg.SenderID, extra)
+		edit, e = i.fanOutEdit(ctx, msg, msg.SenderID, msg.SenderID, extra)
 		return e
 	})
 	if err != nil {
@@ -121,15 +121,16 @@ func (i *Interactor) messageForAction(ctx context.Context, chatID, msgID, userID
 // публиковать нечего.
 type editDelivery struct {
 	recipients   []int64
-	sender       int64
+	opener       int64
 	pp, ppLocked *peerPayloads
 	ptsByUser    map[int64]int64
 }
 
-// ppFor — тело кадра получателю: автору — открытое, остальным при платном
-// медиа — заблокированная копия (как у доставки new_message, fanout.go).
+// ppFor — тело кадра получателю: автору (у зеркала — продавцу) — открытое,
+// остальным при платном медиа — заблокированная копия (как у доставки
+// new_message, fanout.go).
 func (d *editDelivery) ppFor(uid int64) *peerPayloads {
-	if d.sender == 0 || uid != d.sender {
+	if uid != d.opener {
 		return d.ppLocked
 	}
 	return d.pp
@@ -137,9 +138,9 @@ func (d *editDelivery) ppFor(uid int64) *peerPayloads {
 
 // fanOutEdit пишет edit_message сообщения msg (уже гидрированного) в журнал
 // участников его чата и extra (гость обсуждения — свои устройства).
-// sender — автор строки для пер-зрительского `out`; 0 — сообщение ничьё
-// (зеркало поста, A1-13). Звать в транзакции правки.
-func (i *Interactor) fanOutEdit(ctx context.Context, msg domain.Message, sender int64, extra []int64) (*editDelivery, error) {
+// author — у кого `out` (0 — сообщение ничьё, зеркало поста, A1-13); opener —
+// кому открытая копия платного медиа. Звать в транзакции правки.
+func (i *Interactor) fanOutEdit(ctx context.Context, msg domain.Message, author, opener int64, extra []int64) (*editDelivery, error) {
 	members, err := i.chats.MemberIDs(ctx, msg.ChatID)
 	if err != nil {
 		return nil, err
@@ -154,20 +155,20 @@ func (i *Interactor) fanOutEdit(ctx context.Context, msg domain.Message, sender 
 	if err != nil {
 		return nil, err
 	}
-	d := &editDelivery{recipients: members, sender: sender, ptsByUser: map[int64]int64{}}
+	d := &editDelivery{recipients: members, opener: opener, ptsByUser: map[int64]int64{}}
 	if d.pp, err = i.newPeerPayloads(ctx, msg.ChatID, i.editMessagePayload(ctx, msg)); err != nil {
 		return nil, err
 	}
 	// Автор строки — с ним peerPayloads сравнивает получателя, чтобы
 	// поставить пер-зрительский pFlags.out (своё сообщение у автора).
-	d.pp.sender = sender
+	d.pp.sender = author
 	d.pp.mentions = mentions
 	d.ppLocked = d.pp
 	if msg.PaidMediaPrice != nil {
 		if d.ppLocked, err = i.newPeerPayloads(ctx, msg.ChatID, i.editMessagePayload(ctx, lockedPaidCopy(msg))); err != nil {
 			return nil, err
 		}
-		d.ppLocked.sender = sender
+		d.ppLocked.sender = author
 		d.ppLocked.mentions = mentions
 	}
 	if i.updates == nil {
@@ -231,7 +232,7 @@ func (i *Interactor) mirrorSync(ctx context.Context, post domain.Message, edited
 	if m, err = i.hydrateBroadcastMessage(ctx, m); err != nil {
 		return nil, err
 	}
-	return i.fanOutEdit(ctx, m, 0, nil)
+	return i.fanOutEdit(ctx, m, 0, m.SenderID, nil)
 }
 
 // syncMirrorContent — содержимое поста канала изменилось ВНЕ транзакции
@@ -392,7 +393,10 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 	if err != nil {
 		return err
 	}
-	if revoke && cur.SenderID != userID {
+	// Зеркало поста ничьё (A1-13): опубликовавший пост админ удаляет его у
+	// всех только правом delete_messages группы, как чужое (tweb
+	// canDeleteMessage смотрит на pFlags.out, которого у зеркала нет).
+	if revoke && (cur.SenderID != userID || cur.IsDiscussionMirror) {
 		// In a private 1:1 either participant may delete for everyone (Telegram).
 		// Elsewhere a non-author needs the group-admin delete-messages right.
 		typ, e := i.chats.ChatType(ctx, chatID)
@@ -411,7 +415,8 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 	channelDelete := revoke && i.isBroadcast(ctx, chatID)
 	var channelBody map[string]any
 	var channelPts int64
-	var del, mirror *deleteDelivery
+	var del *deleteDelivery
+	var mirrors []*deleteDelivery
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if channelDelete {
 			if e := i.msgs.SoftDelete(ctx, msgID); e != nil {
@@ -425,7 +430,7 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 				return e
 			}
 			channelPts = p
-			mirror, e = i.mirrorDelete(ctx, cur)
+			mirrors, e = i.mirrorDelete(ctx, cur)
 			return e
 		}
 		if revoke {
@@ -434,7 +439,11 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 				extra = []int64{userID}
 			}
 			var e error
-			del, e = i.fanOutDelete(ctx, cur, cur.SenderID, extra)
+			author := cur.SenderID
+			if cur.IsDiscussionMirror {
+				author = 0
+			}
+			del, e = i.fanOutDelete(ctx, cur, author, extra)
 			return e
 		}
 		// delete for me: hide for this user only; sync only their own devices.
@@ -454,7 +463,9 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 		if members, e := i.chats.MemberIDs(ctx, chatID); e == nil && i.dialogsCache != nil {
 			i.dialogsCache.Invalidate(ctx, members...)
 		}
-		i.publishDelete(ctx, mirror)
+		for _, d := range mirrors {
+			i.publishDelete(ctx, d)
+		}
 		return nil
 	}
 	i.publishDelete(ctx, del)
@@ -549,18 +560,55 @@ func (i *Interactor) publishDelete(ctx context.Context, d *deleteDelivery) {
 	}
 }
 
-// mirrorDelete — зеркало удалённого поста канала post удаляется у всех в
-// группе обсуждения; тред (комментарии) остаётся. Элемент альбома уносит СВОЁ
-// зеркало (MirrorOfExactPost). Зеркала нет — nil. Звать в транзакции удаления
-// поста.
-func (i *Interactor) mirrorDelete(ctx context.Context, post domain.Message) (*deleteDelivery, error) {
-	id, err := i.msgs.MirrorOfExactPost(ctx, post.ChatID, post.ID)
-	if err != nil || id == 0 {
-		return nil, err
+// mirrorDelete — зеркала, которые уносит удалённый у всех пост канала post, в
+// группе обсуждения; тред (комментарии) остаётся. Звать в транзакции удаления
+// поста, после его SoftDelete.
+//
+// Альбом: у каждого элемента своё зеркало, а корень треда — зеркало ПЕРВОГО
+// элемента, даже удалённого (MirrorByPost сознательно не смотрит на
+// deleted_at, чтобы тред не раздвоился). Поэтому зеркало первого элемента
+// уходит только вместе с последним живым элементом альбома, а до того держит
+// тред; остальные элементы уносят свои зеркала сразу.
+func (i *Interactor) mirrorDelete(ctx context.Context, post domain.Message) ([]*deleteDelivery, error) {
+	posts := []int64{post.ID}
+	if post.GroupedID != nil {
+		album, err := i.msgs.AlbumMessages(ctx, post.ChatID, *post.GroupedID)
+		if err != nil {
+			return nil, err
+		}
+		root := post.ID
+		alive := false
+		for _, m := range album {
+			root = min(root, m.ID)
+			if m.ID != post.ID && !m.Deleted {
+				alive = true
+			}
+		}
+		switch {
+		case alive && root == post.ID:
+			posts = nil // корень треда держится, пока жив альбом
+		case !alive && root != post.ID:
+			posts = append(posts, root) // последний элемент уносит и корень
+		}
 	}
-	m, err := i.msgs.GetByID(ctx, id)
-	if err != nil {
-		return nil, err
+	var out []*deleteDelivery
+	for _, pid := range posts {
+		id, err := i.msgs.MirrorOfExactPost(ctx, post.ChatID, pid)
+		if err != nil {
+			return nil, err
+		}
+		if id == 0 {
+			continue
+		}
+		m, err := i.msgs.GetByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		d, err := i.fanOutDelete(ctx, m, 0, nil)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
 	}
-	return i.fanOutDelete(ctx, m, 0, nil)
+	return out, nil
 }
