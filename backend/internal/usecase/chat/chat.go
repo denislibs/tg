@@ -9,7 +9,7 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
-// Interactor is the chat/messagegetDifference/reactions application logic. It depends
+// Interactor is the chat/message/updates/reactions application logic. It depends
 // only on ports; transactions are run through the TxManager port.
 type Interactor struct {
 	tx           TxManager

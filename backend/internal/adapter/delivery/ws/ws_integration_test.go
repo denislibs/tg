@@ -287,3 +287,28 @@ func readUntil(t *testing.T, c *websocket.Conn, typ string) []byte {
 	}
 	return nil
 }
+
+// Ревью #410, №5: клиент просит разницу сразу по открытию сокета, поэтому к
+// ответу на апгрейд соединение уже обязано получать кадры топиков своих
+// каналов. Иначе пост, вышедший между разницей и подпиской, не доходил ни
+// маркером, ни живьём.
+func TestWS_ChannelTopicSubscribedBeforeUpgrade(t *testing.T) {
+	env := newWSEnv(t)
+	defer env.close()
+	ch, err := env.chatSvc.CreateChannel(env.ctx, env.userA, "Канал", "", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := rtredis.NewRedisPublisher(env.rdb)
+	for i := 0; i < 5; i++ {
+		conn := dial(t, env.url, env.tokenA)
+		// Сразу по открытию — ровно когда клиент шлёт getDifference.
+		if err := pub.PublishToChannel(env.ctx, ch, []byte(`{"t":"probe"}`)); err != nil {
+			t.Fatal(err)
+		}
+		if got := readUntil(t, conn, "probe"); got == nil {
+			t.Fatalf("попытка %d: кадр топика канала, вышедший сразу после апгрейда, не дошёл", i)
+		}
+		conn.Close()
+	}
+}

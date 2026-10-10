@@ -2129,7 +2129,7 @@ func (r fakeUpdates) AppendUpdate(_ context.Context, userID int64, ptsCount int,
 	r.s.date[userID] = date
 	newPts := r.s.pts[userID]
 	r.s.updates[userID] = append(r.s.updates[userID], domain.UpdateRecord{
-		Pts: newPts, PtsCount: ptsCount, Type: typ, Payload: payload,
+		Pts: newPts, PtsCount: ptsCount, Type: typ, Payload: payload, Date: date,
 	})
 	return newPts, nil
 }
@@ -2143,7 +2143,7 @@ func (r fakeUpdates) AppendUpdateBulk(_ context.Context, userIDs []int64, ptsCou
 		r.s.date[userID] = date
 		newPts := r.s.pts[userID]
 		r.s.updates[userID] = append(r.s.updates[userID], domain.UpdateRecord{
-			Pts: newPts, PtsCount: ptsCount, Type: typ, Payload: payload,
+			Pts: newPts, PtsCount: ptsCount, Type: typ, Payload: payload, Date: date,
 		})
 		out[userID] = newPts
 	}

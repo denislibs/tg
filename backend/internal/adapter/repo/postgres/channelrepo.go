@@ -13,7 +13,7 @@ import (
 // ChannelRepo is a postgres-backed adapter implementing the chat usecase's
 // ChannelRepo port: the per-channel pts counter (chats.channel_pts) plus the
 // channel_updates log that backs O(1) channel post delivery and the
-// GET /channels/{id}/difference catch-up feed. Like the sibling repos it runs
+// updates.getChannelDifference catch-up feed. Like the sibling repos it runs
 // every query through querier(ctx, pool) so methods compose inside a TxManager
 // transaction.
 type ChannelRepo struct{ pool *pgxpool.Pool }
@@ -32,7 +32,12 @@ func (r *ChannelRepo) AppendUpdate(ctx context.Context, channelID int64, typ str
 		return 0, err
 	}
 	if _, err := q.Exec(ctx,
-		`INSERT INTO channel_updates (channel_id, pts, pts_count, type, payload) VALUES ($1,$2,1,$3,$4)`,
+		// created_at — время записи (clock_timestamp), а не начала транзакции
+		// (now()): по нему getDifference решает, сдвинулся ли канал после даты
+		// клиента (ChannelsChangedSince); долгая транзакция поста, начатая до
+		// этой даты, иначе выпала бы из маркера.
+		`INSERT INTO channel_updates (channel_id, pts, pts_count, type, payload, created_at)
+		 VALUES ($1,$2,1,$3,$4, clock_timestamp())`,
 		channelID, pts, typ, []byte(payload)); err != nil {
 		return 0, err
 	}

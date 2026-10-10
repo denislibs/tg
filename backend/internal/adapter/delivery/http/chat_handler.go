@@ -16,9 +16,16 @@ import (
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
 
-type ChatHandler struct{ svc *usecasechat.Interactor }
+type ChatHandler struct {
+	svc *usecasechat.Interactor
+	// limiter — частота updates.getChannelDifference на пару «пользователь +
+	// канал» (FLOOD_WAIT, см. UpdatesChannelDifference).
+	limiter *keyRateLimiter
+}
 
-func NewChatHandler(svc *usecasechat.Interactor) *ChatHandler { return &ChatHandler{svc: svc} }
+func NewChatHandler(svc *usecasechat.Interactor) *ChatHandler {
+	return &ChatHandler{svc: svc, limiter: newKeyRateLimiter()}
+}
 
 func (h *ChatHandler) meID(r *http.Request) int64 {
 	u, _ := UserFromContext(r.Context())

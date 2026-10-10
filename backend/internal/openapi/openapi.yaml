@@ -1536,8 +1536,9 @@ paths:
         Upgrades to a WebSocket (HTTP 101). Authenticate with the session token as
         the `token` query parameter (browsers cannot set headers on WS).
         Frames are JSON envelopes `{ "t": <type>, "d": <payload> }`.
-        Channel live delivery: `subscribe_channel`/`unsubscribe_channel` `{ chat_id }`
-        opt a connection in/out of a channel's `channel:{id}` topic (O(1) post fan-out).
+        Channel live delivery: the connection is subscribed to the `channel:{id}`
+        topics of the caller's channels before the upgrade completes (O(1) post
+        fan-out); a non-member polls updates.getChannelDifference instead.
         See `docs/contracts.md` for the full frame protocol.
       security: []
       parameters:

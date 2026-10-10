@@ -13,6 +13,8 @@ type UpdateRecord struct {
 	PtsCount int
 	Type     string
 	Payload  json.RawMessage
+	// Date — когда строка легла в журнал (unix-секунды): дата среза разницы.
+	Date int64
 }
 
 type UserState struct {

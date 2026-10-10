@@ -213,6 +213,12 @@ func (r *ChatsRepo) ChannelCursors(ctx context.Context, userID int64, limit int)
 	return out, rows.Err()
 }
 
+// channelChangedSlack — запас к дате клиента в ChannelsChangedSince: дата
+// разницы округлена вниз до секунды, а пост, закоммиченный в ту же секунду
+// после её чтения, обязан дать маркер. Лишний маркер стоит пустой разницы
+// канала, пропущенный — пост, не дошедший до клиента.
+const channelChangedSlack = "2 seconds"
+
 // ChannelsChangedSince — broadcast-каналы пользователя (участник, не забанен),
 // журнал которых сдвинулся после since (unix-секунды), с текущим pts: из них
 // getDifference собирает updateChannelTooLong. Последняя запись журнала канала
@@ -223,7 +229,7 @@ func (r *ChatsRepo) ChannelsChangedSince(ctx context.Context, userID, since int6
 		   CROSS JOIN LATERAL (SELECT u.created_at FROM channel_updates u
 		                        WHERE u.channel_id = c.id ORDER BY u.pts DESC LIMIT 1) last
 		  WHERE m.user_id = $1 AND c.type = 'channel' AND `+chatReadableBy("c.id", "$1")+`
-		    AND last.created_at > to_timestamp($2)
+		    AND last.created_at > to_timestamp($2) - interval '`+channelChangedSlack+`'
 		  ORDER BY m.chat_id DESC`, userID, since)
 	if err != nil {
 		return nil, err

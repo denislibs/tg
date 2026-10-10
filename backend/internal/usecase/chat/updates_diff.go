@@ -45,10 +45,19 @@ func (i *Interactor) UpdatesState(ctx context.Context, userID int64) (domain.Upd
 //     ТЕКУЩЕМ виде глазами зрителя (правка, реакции, превью ссылки уже внутри,
 //     удалённое и скрытое не отдаётся — так сервер Telegram сворачивает
 //     разницу), прочее — other_updates, каждый апдейт со своим pts;
-//   - в последнюю страницу — updateChannelTooLong по каналам пользователя,
-//     чей журнал сдвинулся после date клиента (их посты в пер-юзерный журнал
-//     не пишутся, и иначе клиент о них не узнал бы);
+//   - в КАЖДУЮ страницу — updateChannelTooLong по каналам пользователя, чей
+//     журнал сдвинулся после date этого запроса (их посты в пер-юзерный журнал
+//     не пишутся, и иначе клиент о них не узнал бы). Клиент применяет
+//     other_updates каждой страницы одинаково (tweb :344-357), поэтому маркер
+//     на срезе не теряется, а повтор на следующей странице безвреден: канал,
+//     уже догоняющийся, разницу не дублирует (tweb :650-655);
 //   - нечего отдавать — differenceEmpty{date, seq}.
+//
+// Состояние ответа согласовано с отданными строками: pts — не меньше pts
+// последней строки (строка, закоммиченная между чтением состояния и журнала,
+// иначе применилась бы дважды — второй раз разницей от старого pts), а дата
+// среза — дата его последней строки, а не «сейчас»: следующая страница
+// спрашивает маркеры каналов от неё.
 func (i *Interactor) UpdatesDifference(ctx context.Context, userID, pts, date int64) (domain.UpdatesDifference, error) {
 	if pts < 0 {
 		pts = 0
@@ -74,23 +83,26 @@ func (i *Interactor) UpdatesDifference(ctx context.Context, userID, pts, date in
 	if err != nil {
 		return nil, err
 	}
-	if !slice {
-		changed, err := i.chats.ChannelsChangedSince(ctx, userID, date)
-		if err != nil {
-			return nil, err
-		}
-		for _, c := range changed {
-			raw, _ := json.Marshal(domain.NewUpdateChannelTooLong(c.ChatID, c.Pts))
-			others = append(others, raw)
-		}
+	changed, err := i.chats.ChannelsChangedSince(ctx, userID, date)
+	if err != nil {
+		return nil, err
 	}
-	if len(msgs) == 0 && len(others) == 0 {
+	for _, c := range changed {
+		raw, _ := json.Marshal(domain.NewUpdateChannelTooLong(c.ChatID, c.Pts))
+		others = append(others, raw)
+	}
+	statePts := st.Pts
+	if n := len(ups); n > 0 && ups[n-1].Pts > statePts {
+		statePts = ups[n-1].Pts
+	}
+	if len(msgs) == 0 && len(others) == 0 && statePts == pts {
 		return domain.UpdatesDifferenceEmpty{Underscore: domain.UpdatesDifferenceEmptyTag, Date: now}, nil
 	}
 	unread, _ := i.chats.UnreadTotal(ctx, userID)
-	state := domain.NewUpdatesState(st.Pts, now, unread)
+	state := domain.NewUpdatesState(statePts, now, unread)
 	if slice {
 		state.Pts = ups[len(ups)-1].Pts
+		state.Date = max(date, ups[len(ups)-1].Date)
 	}
 	return domain.NewUpdatesDifference(msgs, others, chats, users, state, slice), nil
 }
@@ -99,6 +111,9 @@ func (i *Interactor) UpdatesDifference(ctx context.Context, userID, pts, date in
 // Читать может тот, кто читает канал (RequireChatRead): участник и — у
 // публичного канала — не участник с открытой лентой (tweb
 // subscribeToChannelUpdates опрашивает его разницу).
+//
+// pts ответа — не меньше pts последней отданной строки: строка, вставшая
+// между чтением pts канала и журнала, иначе пришла бы и следующей разницей.
 func (i *Interactor) UpdatesChannelDifference(ctx context.Context, userID, channelID, pts int64, limit int) (domain.UpdatesChannelDifference, error) {
 	if err := i.RequireChatRead(ctx, channelID, userID); err != nil {
 		return nil, err
@@ -132,10 +147,14 @@ func (i *Interactor) UpdatesChannelDifference(ctx context.Context, userID, chann
 	if err != nil {
 		return nil, err
 	}
-	last := cur
-	final := true
-	if len(ups) == limit && ups[len(ups)-1].Pts < cur {
-		last, final = ups[len(ups)-1].Pts, false
+	last, final := cur, true
+	if n := len(ups); n > 0 {
+		if ups[n-1].Pts > last {
+			last = ups[n-1].Pts
+		}
+		if n == limit && ups[n-1].Pts < cur {
+			last, final = ups[n-1].Pts, false
+		}
 	}
 	return domain.NewUpdatesChannelDifference(last, final, msgs, others, chats, users), nil
 }
@@ -205,11 +224,7 @@ type msgKey struct {
 // он есть в схеме).
 func (i *Interactor) foldJournal(ctx context.Context, viewerID int64, rows []journalRow) (
 	msgs, others []json.RawMessage, users []domain.UserReal, chats []domain.Chat, err error) {
-	type newRow struct {
-		key msgKey
-		raw json.RawMessage
-	}
-	var news []newRow
+	var news []msgKey
 	folded := map[msgKey]bool{}
 	bySeq := map[int64][]int64{} // chatID → номера
 	chatOf := map[domain.PeerID]int64{}
@@ -222,11 +237,11 @@ func (i *Interactor) foldJournal(ctx context.Context, viewerID int64, rows []jou
 		if tag != domain.UpdateNewMessageTag && tag != domain.UpdateNewChannelMessageTag {
 			continue
 		}
-		key, raw, ok := messageKey(body)
+		key, ok := messageKey(body)
 		if !ok {
 			continue
 		}
-		news = append(news, newRow{key: key, raw: raw})
+		news = append(news, key)
 		folded[key] = true
 		chatID, known := chatOf[key.peer]
 		if !known {
@@ -256,12 +271,6 @@ func (i *Interactor) foldJournal(ctx context.Context, viewerID int64, rows []jou
 			}
 		}
 	}
-	resolved := map[msgKey]bool{}
-	for _, n := range news {
-		if chatOf[n.key.peer] != 0 {
-			resolved[n.key] = true
-		}
-	}
 	if len(all) > 0 {
 		if e := i.hydrateMessages(ctx, viewerID, all); e != nil {
 			return nil, nil, nil, nil, e
@@ -280,21 +289,19 @@ func (i *Interactor) foldJournal(ctx context.Context, viewerID int64, rows []jou
 			if json.Unmarshal(raw, &body) != nil {
 				continue
 			}
-			if key, _, ok := messageKeyOf(body); ok {
+			if key, ok := messageKeyOf(body); ok {
 				current[key] = raw
 			}
 		}
 	}
-	for _, n := range news {
-		switch {
-		case !resolved[n.key]:
-			// Адрес не разрешился (чата у зрителя больше нет и т. п.) — как
-			// легло в журнал.
-			msgs = append(msgs, n.raw)
-		case current[n.key] != nil:
-			msgs = append(msgs, current[n.key])
+	// В разницу идёт только то, что зритель видит СЕЙЧАС: сообщение чата,
+	// которого у него больше нет (удалён, покинут), удалённое и скрытое у себя
+	// не отдаются вовсе — иначе после удаления чата из other_updates (они
+	// применяются раньше new_messages, tweb :344-370) сообщение воскресло бы.
+	for _, key := range news {
+		if raw := current[key]; raw != nil {
+			msgs = append(msgs, raw)
 		}
-		// Разрешился, но не видим (удалён, скрыт) — в разницу не идёт.
 	}
 	var refs domain.PeerRefs
 	for _, r := range rows {
@@ -337,29 +344,27 @@ func (i *Interactor) foldJournal(ctx context.Context, viewerID int64, rows []jou
 }
 
 // messageKey — адрес сообщения в теле кадра с сообщением (message.peer_id +
-// message.id) и само сообщение как легло в журнал.
-func messageKey(body map[string]any) (msgKey, json.RawMessage, bool) {
+// message.id).
+func messageKey(body map[string]any) (msgKey, bool) {
 	m, _ := body[frameMessageKey].(map[string]any)
 	if m == nil {
-		return msgKey{}, nil, false
+		return msgKey{}, false
 	}
-	key, raw, ok := messageKeyOf(m)
-	return key, raw, ok
+	return messageKeyOf(m)
 }
 
 // messageKeyOf — адрес самого сообщения (peer_id + id).
-func messageKeyOf(m map[string]any) (msgKey, json.RawMessage, bool) {
+func messageKeyOf(m map[string]any) (msgKey, bool) {
 	seq, ok := m["id"].(float64)
 	if !ok {
-		return msgKey{}, nil, false
+		return msgKey{}, false
 	}
 	peerRaw, _ := json.Marshal(m["peer_id"])
 	peer, err := domain.UnmarshalPeer(peerRaw)
 	if err != nil || peer == nil {
-		return msgKey{}, nil, false
+		return msgKey{}, false
 	}
-	raw, _ := json.Marshal(m)
-	return msgKey{peer: domain.GetPeerID(peer), seq: int64(seq)}, raw, true
+	return msgKey{peer: domain.GetPeerID(peer), seq: int64(seq)}, true
 }
 
 // stateUpdateKey — сообщение, состояние которого несёт апдейт (правка,
@@ -371,8 +376,7 @@ func stateUpdateKey(body map[string]any) (msgKey, bool) {
 		if m == nil {
 			return msgKey{}, false
 		}
-		k, _, ok := messageKeyOf(m)
-		return k, ok
+		return messageKeyOf(m)
 	case domain.UpdateMessageReactionsTag, domain.UpdateMessageWebPageTag,
 		domain.UpdateMessageFactCheckTag, domain.UpdateMessageExtendedMediaTag:
 		seq, ok := body["msg_id"].(float64)

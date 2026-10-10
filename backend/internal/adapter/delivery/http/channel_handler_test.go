@@ -78,6 +78,19 @@ func TestChannelFlow_HTTP(t *testing.T) {
 		len(diff.NewMessages) != 1 || diff.NewMessages[0].Message != "second" {
 		t.Fatalf("channel difference = %s", rec.Body.String())
 	}
+	// Частота разницы канала на пару «пользователь + канал»: сверх запаса —
+	// 420 FLOOD_WAIT_N, как у оригинала (клиент ждёт и повторяет).
+	flood := ""
+	for k := 0; k < 10 && flood == ""; k++ {
+		rec = authedReq(t, h, http.MethodGet, "/updates/channel_difference?channel="+cid+"&pts=2", tokenA, nil)
+		if rec.Code == 420 {
+			flood = rec.Body.String()
+		}
+	}
+	if !strings.Contains(flood, "FLOOD_WAIT_") {
+		t.Fatalf("10 разниц канала подряд без FLOOD_WAIT: последний ответ %d %s", rec.Code, rec.Body.String())
+	}
+
 	// История канала — messages.channelMessages с pts журнала.
 	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/history", tokenB, nil)
 	if !strings.Contains(rec.Body.String(), `"_":"messages.channelMessages"`) || !strings.Contains(rec.Body.String(), `"pts":3`) {
@@ -135,9 +148,10 @@ func TestChannelFlow_HTTP(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &st)
 	time.Sleep(1100 * time.Millisecond) // date — секунды: пост строго позже
 	_ = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/messages", tokenA, map[string]any{"text": "пока B не было"})
-	// date ответа — тоже секунды: пост в ту же секунду, что ответ, повторил
-	// бы маркер ещё раз (лишний, но безвредный getChannelDifference) — разносим.
-	time.Sleep(1100 * time.Millisecond)
+	// date ответа — секунды, и маркер берётся с запасом 2 с
+	// (channelChangedSlack): пост ближе к ответу повторил бы маркер ещё раз
+	// (лишний, но безвредный getChannelDifference) — разносим.
+	time.Sleep(3100 * time.Millisecond)
 	// Текущий pts журнала канала — из его истории (messages.channelMessages).
 	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/history", tokenB, nil)
 	var hist struct {

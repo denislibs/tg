@@ -170,3 +170,132 @@ func TestChannelPtsOf(t *testing.T) {
 		t.Fatal("у группы нет журнала канала")
 	}
 }
+
+// Ревью #410, №1: разница отдана срезом (журнал > syncLimit). Маркер
+// updateChannelTooLong приходит и на срезе (страницы применяются одинаково,
+// tweb :344-357), а дата среза — дата его последней строки, а не «сейчас»:
+// иначе следующая страница спрашивала маркеры каналов от момента первой
+// страницы и теряла все каналы, сдвинувшиеся за офлайн.
+func TestUpdatesDifference_SliceKeepsChannelMarkers(t *testing.T) {
+	in, s := newInteractor()
+	ctx := context.Background()
+	const user, channel int64 = 2, 77
+	s.seedChat(channel, domain.ChatTypeChannel, user)
+	body := json.RawMessage(`{"_":"updateReadHistoryOutbox","peer":{"_":"peerUser","user_id":1},"max_id":1}`)
+	for k := 0; k <= syncLimit; k++ {
+		if _, err := in.updates.AppendUpdate(ctx, user, 1, 1000+int64(k), "read", body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	d, err := in.UpdatesDifference(ctx, user, 0, 900)
+	if err != nil {
+		t.Fatal(err)
+	}
+	real, ok := d.(domain.UpdatesDifferenceReal)
+	if !ok || real.Underscore != domain.UpdatesDifferenceSliceTag || real.IntermediateState == nil {
+		t.Fatalf("ответ = %T %+v, want updates.differenceSlice", d, d)
+	}
+	if got := real.IntermediateState.Date; got != 1000+int64(syncLimit-1) {
+		t.Fatalf("intermediate_state.date = %d, want дату последней строки среза %d", got, 1000+syncLimit-1)
+	}
+	marker := false
+	for _, u := range real.OtherUpdates {
+		var b map[string]any
+		_ = json.Unmarshal(u, &b)
+		marker = marker || (b["_"] == domain.UpdateChannelTooLongTag && b["channel_id"] == float64(channel))
+	}
+	if !marker {
+		t.Fatal("на срезе нет updateChannelTooLong сдвинувшегося канала")
+	}
+}
+
+// racyUpdates дописывает строку журнала между чтением состояния и журнала —
+// ровно та гонка, при которой state.pts отставал от отданных строк.
+type racyUpdates struct {
+	fakeUpdates
+	once *bool
+}
+
+func (r racyUpdates) UpdatesSince(ctx context.Context, userID, sincePts int64, limit int) ([]domain.UpdateRecord, error) {
+	if !*r.once {
+		*r.once = true
+		_, _ = r.fakeUpdates.AppendUpdate(ctx, userID, 1, 5, "read",
+			json.RawMessage(`{"_":"updateReadHistoryOutbox","peer":{"_":"peerUser","user_id":1},"max_id":2}`))
+	}
+	return r.fakeUpdates.UpdatesSince(ctx, userID, sincePts, limit)
+}
+
+// Ревью #410, №2: строка, закоммиченная между чтением состояния и журнала,
+// отдана — значит state.pts не меньше её pts; иначе следующая разница от
+// старого pts отдала бы её второй раз.
+func TestUpdatesDifference_StateCoversReturnedRows(t *testing.T) {
+	s := newStore()
+	once := false
+	in := New(fakeTx{}, fakeChats{s}, fakeMsgs{s}, racyUpdates{fakeUpdates{s}, &once}, fakeReactions{s}, fakeMedia{s}, nil, nil, nil, nil, nil)
+	ctx := context.Background()
+	body := json.RawMessage(`{"_":"updateReadHistoryOutbox","peer":{"_":"peerUser","user_id":1},"max_id":1}`)
+	if _, err := in.updates.AppendUpdate(ctx, 2, 1, 1, "read", body); err != nil {
+		t.Fatal(err)
+	}
+	real := diffReal(t, in, 2, 0)
+	if len(real.OtherUpdates) != 2 || real.State.Pts != 2 {
+		t.Fatalf("other=%d state.pts=%d, want 2 строки и pts 2", len(real.OtherUpdates), real.State.Pts)
+	}
+}
+
+// racyChannel дописывает пост в журнал канала между чтением pts и журнала.
+type racyChannel struct {
+	ChannelRepo
+	channelID int64
+	once      *bool
+}
+
+func (r racyChannel) UpdatesSince(ctx context.Context, channelID, sincePts int64, limit int) ([]domain.ChannelUpdate, error) {
+	if !*r.once {
+		*r.once = true
+		_, _ = r.ChannelRepo.AppendUpdate(ctx, channelID, "chat_update",
+			json.RawMessage(`{"_":"updateChannelBoostStatus","peer":{"_":"peerChannel","channel_id":1}}`))
+	}
+	return r.ChannelRepo.UpdatesSince(ctx, channelID, sincePts, limit)
+}
+
+// Ревью #410, №2 для канала: pts ответа покрывает отданные строки.
+func TestUpdatesChannelDifference_PtsCoversReturnedRows(t *testing.T) {
+	in, _, _ := newAccessTestInteractor(t)
+	ctx := context.Background()
+	ch, _ := in.CreateChannel(ctx, 7, "Новости", "", "news", true)
+	_, _ = in.PostToChannel(ctx, ch, 7, "a", nil, "")
+	base, _ := in.channels.CurrentPts(ctx, ch)
+	_, _ = in.PostToChannel(ctx, ch, 7, "b", nil, "")
+	once := false
+	in.channels = racyChannel{in.channels, ch, &once}
+	d, err := in.UpdatesChannelDifference(ctx, 9, ch, base, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	real, ok := d.(domain.UpdatesChannelDifferenceReal)
+	cur, _ := in.channels.CurrentPts(ctx, ch)
+	if !ok || real.Pts != cur || len(real.OtherUpdates)+len(real.NewMessages) != 2 {
+		t.Fatalf("difference = %+v, want pts %d и обе строки", d, cur)
+	}
+}
+
+// Ревью #410, №6: сообщение чата, которого у зрителя больше нет, в разницу
+// не идёт — other_updates применяются раньше new_messages, и после удаления
+// чата оно воскресло бы.
+func TestUpdatesDifference_GoneChatNotResurrected(t *testing.T) {
+	in, s := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	if _, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	delete(s.members[chatID], b) // чата у зрителя больше нет
+	delete(s.chatType, chatID)
+	s.mu.Unlock()
+	if d := diffReal(t, in, b, 0); len(d.NewMessages) != 0 {
+		t.Fatalf("сообщение исчезнувшего чата воскресло: %s", d.NewMessages[0])
+	}
+}

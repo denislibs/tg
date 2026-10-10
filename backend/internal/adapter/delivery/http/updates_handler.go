@@ -2,6 +2,7 @@ package http
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -49,6 +50,15 @@ func (h *ChatHandler) UpdatesChannelDifference(w http.ResponseWriter, r *http.Re
 	if !ok {
 		return
 	}
+	// Частота на пару «пользователь + канал»: разница канала — гидрация до
+	// 1000 постов, а публичный канал читает кто угодно. Отказ — как у
+	// оригинала: 420 FLOOD_WAIT_N, клиент ждёт N секунд и повторяет (tweb
+	// apiManager.ts:759-791). Опрос открытой ленты (раз в 3 с) и догон по
+	// маркеру в лимит укладываются с запасом.
+	if !h.limiter.allow(fmt.Sprintf("chdiff:%d:%d", h.meID(r), chatID), channelDiffRPS, channelDiffBurst) {
+		writeError(w, statusFlood, fmt.Sprintf("FLOOD_WAIT_%d", channelDiffFloodWait))
+		return
+	}
 	d, err := h.svc.UpdatesChannelDifference(r.Context(), h.meID(r), chatID,
 		queryInt(r, "pts", 0), int(queryInt(r, "limit", 0)))
 	switch {
@@ -64,3 +74,13 @@ func (h *ChatHandler) UpdatesChannelDifference(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusInternalServerError, "get channel difference failed")
 	}
 }
+
+// Лимит updates.getChannelDifference: 1 в секунду с запасом 5 на пару
+// «пользователь + канал»; сверх — FLOOD_WAIT_1.
+const (
+	channelDiffRPS       = 1
+	channelDiffBurst     = 5
+	channelDiffFloodWait = 1
+	// statusFlood — код ошибки FLOOD_WAIT у оригинала (420).
+	statusFlood = 420
+)

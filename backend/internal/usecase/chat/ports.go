@@ -1,4 +1,4 @@
-// Package chat is the chat/messagegetDifference/reactions application logic.
+// Package chat is the chat/message/updates/reactions application logic.
 package chat
 
 import (
