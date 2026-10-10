@@ -188,19 +188,25 @@ func TestParticipant_ToChannelParticipant(t *testing.T) {
 	}
 }
 
-// banned_rights зрителя — только личные запреты и срок (как у сервера
-// Telegram); объединение с default_banned_rights считает клиент (ревью #409 п. 3).
+// banned_rights зрителя — действующие запреты: личные ∪ по умолчанию, срок
+// личного ограничения (как отдаёт сервер Telegram).
 func TestViewerBannedRights(t *testing.T) {
 	now := time.Now()
-	if ViewerBannedRights(nil, now) != nil {
+	if ViewerBannedRights(nil, AllMemberPerms, now) != nil {
 		t.Fatal("без ограничения banned_rights не едет")
 	}
 	past := now.Add(-time.Hour)
-	if ViewerBannedRights(&MemberRestriction{DeniedRights: PermSendMedia, UntilDate: &past}, now) != nil {
+	if ViewerBannedRights(&MemberRestriction{DeniedRights: PermSendMedia, UntilDate: &past}, AllMemberPerms, now) != nil {
 		t.Fatal("истёкшее ограничение не едет")
 	}
-	br := ViewerBannedRights(&MemberRestriction{DeniedRights: PermSendMedia}, now)
-	if br == nil || !br.Denies("send_media") || br.Denies("pin_messages") || br.Denies("send_messages") {
-		t.Fatalf("banned_rights = %#v; want только send_media", br)
+	// Объединяет сервер (tweb hasRights.ts:41 берёт banned_rights как есть):
+	// личный send_media ∪ запрет по умолчанию на закреп; срок — личный.
+	until := now.Add(time.Hour).Truncate(time.Second)
+	br := ViewerBannedRights(&MemberRestriction{DeniedRights: PermSendMedia, UntilDate: &until}, AllMemberPerms&^PermPinMessages, now)
+	if br == nil || !br.Denies("send_media") || !br.Denies("pin_messages") || br.Denies("send_messages") {
+		t.Fatalf("banned_rights = %#v; want send_media ∪ pin_messages", br)
+	}
+	if br.UntilDate != int(until.Unix()) {
+		t.Fatalf("until_date = %d; want личный срок %d", br.UntilDate, until.Unix())
 	}
 }

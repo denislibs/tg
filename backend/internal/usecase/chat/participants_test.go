@@ -420,10 +420,11 @@ func TestRestricted_HiddenFromNonBanViewers(t *testing.T) {
 	}
 }
 
-// Ревью #409 п. 3: banned_rights зрителя — только личные запреты, и смена
-// прав по умолчанию не рассылает ограниченным личных снимков: им хватает
-// общего chat_update (объединение считает клиент).
-func TestSetChatPermissions_NoPerViewerFanout(t *testing.T) {
+// banned_rights зрителя — объединённые запреты (как отдаёт Telegram, tweb
+// hasRights берёт их как есть). Смена прав по умолчанию доходит до
+// ограниченного его снимком — фоном (goBG), без рассылки в запросе; смена
+// одного slowmode снимков не шлёт; снятие ограничения возвращает дефолт.
+func TestSetChatPermissions_RestrictedGetMergedSnapshot(t *testing.T) {
 	in, _, _, pub, _ := newMembersTestInteractor(t)
 	ctx := context.Background()
 	id, _, _ := in.CreateGroup(ctx, 7, "Team", "", "", false, []int64{8, 9})
@@ -431,21 +432,54 @@ func TestSetChatPermissions_NoPerViewerFanout(t *testing.T) {
 		t.Fatal(err)
 	}
 	card, _ := in.ChatCard(ctx, id, 8)
-	br := card.ToChannel().BannedRights
-	if br == nil || !br.Denies("pin_messages") || br.Denies("send_media") {
-		t.Fatalf("banned_rights ограниченного = %#v; want только pin_messages", br)
+	if br := card.ToChannel().BannedRights; br == nil || !br.Denies("pin_messages") || br.Denies("send_media") {
+		t.Fatalf("banned_rights ограниченного = %#v", br)
 	}
 	pub.reset()
 	if err := in.SetChatPermissions(ctx, id, 7, domain.AllMemberPerms&^domain.PermSendMedia, 0); err != nil {
 		t.Fatal(err)
 	}
+	in.bg.Wait()
+	var mine map[string]any
 	for _, u := range framesOf(t, pub, 8, "chat_update") {
-		if chatOf(t, u)["banned_rights"] != nil {
-			t.Fatal("ограниченному ушёл личный снимок: рассылка не нужна")
+		if ch := chatOf(t, u); ch["banned_rights"] != nil {
+			mine = ch
 		}
 	}
-	if len(framesOf(t, pub, 8, "chat_update")) != 1 {
-		t.Fatal("ограниченный не получил общий chat_update")
+	if mine == nil {
+		t.Fatal("ограниченный не получил снимок с объединёнными запретами")
+	}
+	fl, _ := mine["banned_rights"].(map[string]any)["pFlags"].(map[string]any)
+	if fl["send_media"] != true || fl["pin_messages"] != true {
+		t.Fatalf("banned_rights = %v; want send_media ∪ pin_messages", fl)
+	}
+	for _, u := range framesOf(t, pub, 9, "chat_update") {
+		if chatOf(t, u)["banned_rights"] != nil {
+			t.Fatal("неограниченному ушёл личный снимок")
+		}
+	}
+	// Только slowmode — права по умолчанию те же, личных снимков нет.
+	pub.reset()
+	_ = in.SetChatPermissions(ctx, id, 7, domain.AllMemberPerms&^domain.PermSendMedia, 30)
+	in.bg.Wait()
+	for _, u := range framesOf(t, pub, 8, "chat_update") {
+		if chatOf(t, u)["banned_rights"] != nil {
+			t.Fatal("смена одного slowmode разослала личные снимки")
+		}
+	}
+	// Снятие ограничения — снова дефолт: banned_rights у зрителя нет.
+	pub.reset()
+	if err := in.UnrestrictMember(ctx, id, 7, 8); err != nil {
+		t.Fatal(err)
+	}
+	var after map[string]any
+	for _, u := range framesOf(t, pub, 8, "chat_update") {
+		if ch := chatOf(t, u); ch["pFlags"].(map[string]any)["min"] != true {
+			after = ch
+		}
+	}
+	if after == nil || after["banned_rights"] != nil || after["default_banned_rights"] == nil {
+		t.Fatalf("после снятия: %v", after)
 	}
 }
 

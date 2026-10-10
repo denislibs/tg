@@ -781,7 +781,7 @@ describe('ChatTopbar: плашка заявок (`chat/requests.solid.tsx`, tweb
     expect(plate(topbar).classList.contains('hide')).toBe(true)
   })
 
-  it('крестик скрывает на сутки (State `hideChatJoinRequests`), кадр заявок показывает снова', async() => {
+  it('крестик скрывает (State `hideChatJoinRequests`), срок — как у tweb `requests.tsx:139`, кадр заявок показывает снова', async() => {
     saveChatFull(GROUP, groupFull([ALICE], 1))
     const topbar = await open(makeChat({ peerId: GROUP }))
     await vi.waitFor(() => expect(plate(topbar).classList.contains('hide')).toBe(false))
@@ -791,12 +791,16 @@ describe('ChatTopbar: плашка заявок (`chat/requests.solid.tsx`, tweb
     const hiddenAt = useAppStateStore.getState().hideChatJoinRequests[GROUP]
     expect(hiddenAt).toBeGreaterThan(Date.now() - 1000)
 
-    // повторное открытие в пределах суток — скрыта
+    // повторное открытие сразу — скрыта
     const again = await open(makeChat({ peerId: GROUP }))
     expect(plate(again).classList.contains('hide')).toBe(true)
 
-    // через сутки — снова видна
-    useAppStateStore.setState({ hideChatJoinRequests: { [GROUP]: hiddenAt - 86_400_000 } })
+    // tweb сравнивает разницу Date.now() (мс) с ONE_DAY = 86400: через 86,4 с
+    // плашка снова видна, за миг до — ещё скрыта
+    useAppStateStore.setState({ hideChatJoinRequests: { [GROUP]: Date.now() - 86_000 } })
+    const notYet = await open(makeChat({ peerId: GROUP }))
+    expect(plate(notYet).classList.contains('hide')).toBe(true)
+    useAppStateStore.setState({ hideChatJoinRequests: { [GROUP]: Date.now() - 86_400 } })
     const later = await open(makeChat({ peerId: GROUP }))
     await vi.waitFor(() => expect(plate(later).classList.contains('hide')).toBe(false))
 

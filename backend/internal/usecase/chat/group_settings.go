@@ -225,12 +225,60 @@ func (i *Interactor) SetChatPermissions(ctx context.Context, chatID, actorID int
 	if !slices.Contains([]int{0, 5, 10, 30, 60, 300, 900, 3600}, slowmodeSeconds) {
 		slowmodeSeconds = 0
 	}
+	before, err := i.groups.Settings(ctx, chatID)
+	if err != nil {
+		return err
+	}
 	if err := i.groups.SetPermissions(ctx, chatID, perms, slowmodeSeconds); err != nil {
 		return err
 	}
-	// Личные banned_rights от дефолта не зависят: общего снимка хватает.
 	i.publishChatUpdate(ctx, chatID)
+	// banned_rights ограниченного — объединение с правами по умолчанию
+	// (ViewerBannedRights), а общий снимок min, и клиент на нём прежний
+	// banned_rights сохраняет. Ограниченным — свой снимок, как Telegram шлёт
+	// затронутым updateChannel с их channel; фоном, не в запросе.
+	if before.DefaultPerms != perms {
+		i.goBG("republishRestricted", func(ctx context.Context) {
+			ctx, cancel := context.WithTimeout(ctx, republishTimeout)
+			defer cancel()
+			i.republishRestricted(ctx, chatID)
+		})
+	}
 	return nil
+}
+
+// republishTimeout — потолок фоновой рассылки снимков ограниченным.
+const republishTimeout = 5 * time.Minute
+
+// republishRestricted — пер-зрительский снимок каждому лично ограниченному
+// после смены прав чата по умолчанию. Карточка чата читается ОДИН раз, а
+// членство и ограничение зрителя берутся из строки выдачи «ограниченных»:
+// снимок нужен клиенту ради краткой формы `channel` (его banned_rights),
+// полную карточку из chat_update он не применяет. Страницами по 200,
+// фоном (goBG): в запросе на большой группе это упиралось в тайм-аут nginx
+// (ревью #409 п. 3).
+func (i *Interactor) republishRestricted(ctx context.Context, chatID int64) {
+	base, err := i.groups.Card(ctx, chatID, 0)
+	if err != nil {
+		return
+	}
+	const page = 200
+	for offset := 0; ctx.Err() == nil; offset += page {
+		rows, total, err := i.groups.ListParticipants(ctx, chatID, 0, domain.ParticipantsFilter{Kind: domain.ParticipantsBanned}, offset, page)
+		if err != nil {
+			return
+		}
+		for _, p := range rows {
+			c := base
+			c.ViewerID, c.MyRole, c.MyRights, c.MyJoinedAt, c.MyRestriction = p.UserID, p.Role, p.Rights, p.JoinedAt, p.Restriction
+			c.Hidden = false // участник: чат ему читается
+			_ = i.logAndPublishPerPeer(ctx, chatID, []int64{p.UserID}, "chat_update",
+				func(peer domain.PeerID) map[string]any { return chatUpdatePayload(peer, c) })
+		}
+		if len(rows) < page || offset+page >= total {
+			return
+		}
+	}
 }
 
 // SetChatReactions stores the reaction policy: 'all' | 'some' (allowed list) | 'none'.

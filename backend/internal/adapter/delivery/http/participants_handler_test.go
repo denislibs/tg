@@ -102,12 +102,12 @@ func TestParticipants_HTTP(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"count":1`) || !strings.Contains(rec.Body.String(), `"users":[{`) {
 		t.Fatalf("join_requests: %s", rec.Body.String())
 	}
-	// Переходный период (ревью #404 п. 10): старые GET отвечают той же формой.
-	if rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/members?q=nope", tokenA, nil); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"count":0`) {
-		t.Fatalf("GET /members?q: %d %s", rec.Code, rec.Body.String())
-	}
-	if rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/bans", tokenB, nil); rec.Code != http.StatusForbidden {
-		t.Fatalf("GET /bans участнику без ban_users: %d", rec.Code)
+	// Старых GET /members, /bans, /restrictions нет — как в tweb: только
+	// /participants (на путях остались POST — chi отвечает 405).
+	for _, path := range []string{"/members", "/bans", "/restrictions"} {
+		if rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+path, tokenA, nil); rec.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("GET %s жив: %d %s", path, rec.Code, rec.Body.String())
+		}
 	}
 	// Владелец себе подпись (п. 5); без поля rank подпись B не стирается.
 	if rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/admins", tokenA, map[string]any{"user_id": idA, "rank": "основатель"}); rec.Code != http.StatusOK {
