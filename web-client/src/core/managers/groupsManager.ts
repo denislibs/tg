@@ -10,7 +10,7 @@ import { BANNED_RIGHTS_UNTIL_FOREVER } from './constants'
 import { MUTE_UNTIL_FOREVER } from '../dialogs/notifySettings'
 import type { MissingInvitee } from '@layer'
 import { WIRE_FOLDER_ARCHIVE } from '../models'
-import { generateMessageId, getServerMessageId } from '../history/messageId'
+import { getServerMessageId } from '../history/messageId'
 import type { ForumTopicsStorage } from './forumTopicsStorage'
 import { publicLinkFromTelegramPath } from '../publicLink'
 import { toChatId, toPeerId } from '../peers/peerId'
@@ -285,16 +285,6 @@ const mapInvite = (l: ChatInviteExported): InviteLink => ({
   revoked: !!l.pFlags?.revoked,
 })
 
-/**
- * Ответ мутаций тем — контейнер `Updates` (`createForumTopic`,
- * `editForumTopic`, `updatePinnedForumTopic`). Из него читается только номер
- * созданной темы; сами апдейты доезжают кадрами сокета.
- */
-type TopicUpdates = {
-  _: 'updates'
-  updates?: ({ _: 'updateNewChannelMessage' | 'updateNewMessage'; message: { id: number } } | { _: string; message?: undefined })[]
-}
-
 export function newGroupsManager({ rest, dialogs, peers, forumTopics, getMeId, onChannelParticipant }: {
   rest: Pick<RestClient, 'post' | 'get' | 'put' | 'patch' | 'del'>
   // Task 4 (действия без оптимистики): владелец списка диалогов — сеть-сначала,
@@ -535,50 +525,17 @@ export function newGroupsManager({ rest, dialogs, peers, forumTopics, getMeId, o
       await rest.post(`/chats/${peerId}/forum`, { enabled })
     },
     /**
-     * Создать тему — `createForumTopic` (tweb appMessagesManager.ts:10077-10103).
-     * Ответ — `Updates`: номер темы — номер служебки создания из
-     * `updateNewChannelMessage` (у нас её пер-юзерный близнец `updateNewMessage`
-     * тоже возможен). Сами апдейты применяет кадр сокета, который сервер шлёт и
-     * своим устройствам, — `processUpdateMessage` ответа не повторяет его.
-     */
-    async createTopic(peerId: number, title: string, iconColor: number, iconEmoji = ''): Promise<number | undefined> {
-      const r = await rest.post<TopicUpdates>(`/chats/${peerId}/topics`, { title, icon_color: iconColor, icon_emoji: iconEmoji })
-      const message = r.updates?.find((u) => u._ === 'updateNewChannelMessage' || u._ === 'updateNewMessage')?.message
-      return message ? generateMessageId(message.id) : undefined
-    },
-    /**
-     * Править тему — `editForumTopic` (tweb appMessagesManager.ts:10057-10075):
-     * название, значок, закрытие и скрытие General одной ручкой. Тема
-     * адресуется своим номером (`getServerMessageId`). У всех участников правку
-     * несёт служебка `messageActionTopicEdit` (хранилище тем применяет её из
-     * нового сообщения).
-     */
-    async editForumTopic(peerId: number, topicId: number, edit: { title?: string; iconEmoji?: string; closed?: boolean; hidden?: boolean }): Promise<void> {
-      await rest.patch(`/chats/${peerId}/topics/${getServerMessageId(topicId)}`, {
-        ...(edit.title !== undefined ? { title: edit.title } : {}),
-        ...(edit.iconEmoji !== undefined ? { icon_emoji: edit.iconEmoji } : {}),
-        ...(edit.closed !== undefined ? { closed: edit.closed } : {}),
-        ...(edit.hidden !== undefined ? { hidden: edit.hidden } : {}),
-      })
-    },
-    /** Закрепить тему — `updatePinnedForumTopic` (tweb appMessagesManager.ts:10215-10223);
-     *  ответ — `Updates`, закреп у всех участников несёт кадр `updatePinnedForumTopic`. */
-    async updatePinnedForumTopic(peerId: number, topicId: number, pinned: boolean): Promise<void> {
-      await rest.post(`/chats/${peerId}/topics/${getServerMessageId(topicId)}/pin`, { pinned })
-    },
-    /**
-     * Мьют темы со сроком — `updateNotifySettings({peerId, threadId})`
-     * (tweb appMessagesManager.ts:11962-11981): `inputNotifyForumTopic`, срок —
-     * `mute_until` (0 — снять). Применяется ПОСЛЕ ответа сети, как мьют чата
-     * (`setMute` ниже); другие устройства получат кадр
-     * `updateNotifySettings{notifyForumTopic}`.
+     * Мьют темы со сроком — `mutePeer({peerId, muteUntil, threadId})`
+     * (tweb appMessagesManager.ts:11962-11983): `inputNotifyForumTopic`, срок —
+     * `mute_until`. Применяется ПОСЛЕ ответа сети местным
+     * `updateNotifySettings` с ТЕМ ЖЕ `mute_until` (`appNotificationsManager
+     * .updateNotifySettings`): `0` — явно со звуком, даже если форум заглушён
+     * (наследование — только при отсутствии срока, `isForumTopicMuted`).
+     * Другие устройства получат кадр `updateNotifySettings{notifyForumTopic}`.
      */
     async updateTopicNotifySettings(peerId: number, topicId: number, muteUntil: number): Promise<void> {
       await rest.post(`/chats/${peerId}/topics/${getServerMessageId(topicId)}/mute`, { mute_until: muteUntil })
-      forumTopics?.applyNotifySettings(peerId, topicId, {
-        _: 'peerNotifySettings',
-        ...(muteUntil ? { mute_until: muteUntil } : {}),
-      })
+      forumTopics?.applyNotifySettings(peerId, topicId, { _: 'peerNotifySettings', mute_until: muteUntil })
     },
 
     // Закрепить/открепить диалог вверху списка (лимит 5 — бэк вернёт 400: при

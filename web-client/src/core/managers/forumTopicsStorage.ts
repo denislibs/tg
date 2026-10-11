@@ -195,28 +195,6 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
     reindex(cache, topic)
   }
 
-  /** `handleDialogsPinned` (`dialogs.ts:2368-2411`) для форума. */
-  function setPinnedOrder(cache: TopicsCache, peerId: PeerId, order: number[]): void {
-    cache.pinnedOrder = order.slice()
-    const changed = new Map<number, ForumTopic>()
-    const pinned = new Set(order)
-    for (const id of order) {
-      const topic = cache.topics.get(id)
-      if (!topic) continue
-      topic.pFlags.pinned = true
-      reindex(cache, topic)
-      changed.set(id, topic)
-    }
-    for (const topic of cache.topics.values()) {
-      if (topic.pFlags.pinned && !pinned.has(topic.id)) {
-        delete topic.pFlags.pinned
-        reindex(cache, topic)
-        changed.set(topic.id, topic)
-      }
-    }
-    if (changed.size) onOps([{ op: 'update', peerId, topics: [...changed.values()] }])
-  }
-
   /**
    * Прочтение треда темы — ветка темы `onUpdateReadHistory`
    * (`appMessagesManager.ts:10795-10990`), волна 2 Ф-5 (`readDiscussion`).
@@ -332,7 +310,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
       // с сервера уже с этим сообщением.
       if (!cache?.loaded) return
 
-      let topic = cache.topics.get(threadId)
+      const topic = cache.topics.get(threadId)
       if (!topic) {
         if (m._ === 'messageService' && topicCreate) {
           const created = createForumTopicFromAction(m)
@@ -398,24 +376,6 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
       if (!cache || !topic) return
       togglePinned(cache, topic, pinned)
       emitUpdate(topic)
-    },
-
-    /**
-     * `updatePinnedForumTopics` — `onUpdatePinnedForumTopics`
-     * (`dialogs.ts:2601-2638`): порядок есть — он и есть порядок закрепа; нет
-     * — закреплённые перечитываются с сервера.
-     *
-     * Обработчик заведён заранее: сервер этот кадр пока не производит (порядок
-     * закрепа тем — `reorderPinnedForumTopics`, S4), а реестр кадров держит
-     * только произведённые (`updateCatalog.test.ts`). Подключение — строкой в
-     * `workerCore.ts::dispatch` вместе с конструктором.
-     */
-    async applyPinnedTopics(peerId: PeerId, order?: number[]): Promise<void> {
-      const cache = caches.get(peerId)
-      if (!cache) return
-      if (order) { setPinnedOrder(cache, peerId, order); return }
-      cache.loaded = false
-      await load(peerId).catch(() => {})
     },
 
     /**

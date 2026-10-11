@@ -220,23 +220,6 @@ describe('forumTopicsStorage: закреп, мьют, форум', () => {
     expect((await storage.getForumTopics(FORUM)).dialogs.map((t) => t.id)).toEqual(before)
   })
 
-  // onUpdatePinnedForumTopics (dialogs.ts:2601-2638): порядок — handleDialogsPinned; без порядка — перечитать
-  it('`updatePinnedForumTopics`: порядок задаёт закреп, отсутствующие в нём открепляются', async () => {
-    const { storage } = setup([wire(10, { pFlags: { pinned: true } }), wire(20), wire(30)])
-    await storage.getForumTopics(FORUM)
-    await storage.applyPinnedTopics(FORUM, [mid(30), mid(20)])
-    const page = await storage.getForumTopics(FORUM)
-    expect(page.dialogs.slice(0, 2).map((t) => t.id)).toEqual([mid(30), mid(20)])
-    expect(storage.getForumTopic(FORUM, mid(10))!.pFlags.pinned).toBeUndefined()
-  })
-
-  it('`updatePinnedForumTopics` без порядка — перечитывает список', async () => {
-    const { storage, get } = setup([wire(10)])
-    await storage.getForumTopics(FORUM)
-    await storage.applyPinnedTopics(FORUM)
-    expect(get).toHaveBeenCalledTimes(2)
-  })
-
   // onUpdateNotifySettings (appMessagesManager.ts:11751-11770) для `notifyForumTopic`
   it('мьют темы со сроком: `notify` + `forumUnread`', async () => {
     const { storage, ops } = setup([wire(10)])

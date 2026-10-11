@@ -376,9 +376,13 @@ export function createWorkerCore() {
     onPeerOps: (ops) => broadcast(RT.peerOp, { ops }),
     onUserStatus: (evt) => broadcast(RT.presence, evt),
     // tweb `chat_toggle_forum` (appChatsManager.ts:304-306): карточка чата
-    // сменила `pFlags.forum` — хранилище тем сбрасывает кэш (dialogs.ts:186-192).
-    // `forumTopics` объявлен ниже — стрелка дёргает его лениво.
-    onChatToggleForum: (peerId, enabled) => forumTopics.onChatToggleForum(peerId, enabled),
+    // сменила `pFlags.forum` — хранилище тем сбрасывает кэш (dialogs.ts:186-192),
+    // выключенный форум — и окна тредов (appMessagesManager.ts:921-932).
+    // `forumTopics`/`messages` объявлены ниже — стрелка дёргает их лениво.
+    onChatToggleForum: (peerId, enabled) => {
+      forumTopics.onChatToggleForum(peerId, enabled)
+      if (!enabled) messages.flushThreadWindows(peerId)
+    },
   })
   // Task 4 (действия без оптимистики): mute/pin/archive идут сеть-сначала (порт
   // tweb toggleDialogPin/updateNotifySettings) — локальный апдейт зовёт владелец

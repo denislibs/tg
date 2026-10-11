@@ -59,6 +59,10 @@ beforeEach(() => {
   vi.stubGlobal('indexedDB', new IDBFactory())
   capturedConnDeps = null
   vi.stubGlobal('fetch', vi.fn(async (url: unknown) => {
+    if (String(url).endsWith('/auth/logout')) return new Response('{}', { status: 200 })
+    if (String(url).endsWith('/auth/sign_in')) {
+      return new Response(JSON.stringify({ _: 'auth.authorization', token: 'session-b', user: { _: 'user', pFlags: { self: true }, id: 5, phone: '+79990000005' } }), { status: 200 })
+    }
     if (String(url).includes('/chats/-50/topics')) {
       return new Response(JSON.stringify({ _: 'messages.forumTopics', count: 2, topics: [topic(1), topic(10)], messages: [], chats: [], users: [] }), { status: 200 })
     }
@@ -115,11 +119,54 @@ describe('createWorkerCore(): кадры тем применяет хранил�
     expect(dialogOps).toEqual([])
   })
 
-  // tweb chat_toggle_forum (appChatsManager.ts:304-306 → dialogs.ts:186-192)
-  it('карточка чата без `forum` → `flush` тем', async () => {
+  // tweb chat_toggle_forum (appChatsManager.ts:304-306 → dialogs.ts:186-192,
+  // appMessagesManager.ts:921-932)
+  it('карточка чата без `forum` → кэш тем и окна тредов сброшены, бейдж форума пересчитан', async () => {
     const { core, ops } = await boot()
+    const flush = vi.spyOn(core.registry.messages, 'flushThreadWindows')
     core.registry.peers.saveApiPeers({ chats: [forumChat(false)] })
     expect(ops).toEqual([{ op: 'forumUnread', peerId: FORUM }])
     expect(core.registry.forumTopics.getForumTopic(FORUM, generateMessageId(10))).toBeUndefined()
+    expect(flush).toHaveBeenCalledWith(FORUM)
+  })
+
+  // Ревью КЛ-1 Б2: `realtime.markRead` с `threadId` (лента темы) → хранилище тем:
+  // местное прочтение сразу и ручка темы на сервер (tweb readHistory :9186-9210)
+  it('прочтение в теме → `unread` с нулём + `forumUnread`, POST ручки темы серверными номерами', async () => {
+    const { core, ops } = await boot()
+    const raw = makeRawMessage({ id: 15, peerId: FORUM, fromId: 2, text: 'в теме', replyToMsgId: 10, forumTopic: true })
+    capturedConnDeps!.onFrame('new_message', { _: 'updateNewChannelMessage', message: raw })
+    await vi.waitFor(() => expect(ops.map((op) => op.op)).toContain('unread'))
+    ops.length = 0
+    const fetchMock = vi.mocked(fetch)
+    fetchMock.mockImplementationOnce(async () => new Response('true', { status: 200 }))
+    await core.registry.realtime.markRead({ peerId: FORUM, upToId: generateMessageId(15), threadId: generateMessageId(10) })
+    expect(ops.map((op) => op.op)).toEqual(['unread', 'forumUnread'])
+    expect((ops[0] as Extract<ForumTopicOp, { op: 'unread' }>).topic.unread_count).toBe(0)
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/chats/-50/topics/10/read'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ up_to_seq: 15 }) }))
+  })
+
+  // Ревью КЛ-1 В4: смена сессии (onLoggingOut/onLoggedIn, workerCore.ts) — темы
+  // прошлого аккаунта не переживают переход (у tweb — новый воркер)
+  it('выход и вход сбрасывают хранилище тем', async () => {
+    const { core } = await boot()
+    expect(core.registry.forumTopics.getForumTopic(FORUM, generateMessageId(10))).toBeDefined()
+    await core.registry.auth.logout()
+    expect(core.registry.forumTopics.getForumTopic(FORUM, generateMessageId(10))).toBeUndefined()
+
+    await core.registry.forumTopics.getForumTopics(FORUM)
+    expect(core.registry.forumTopics.getForumTopic(FORUM, generateMessageId(10))).toBeDefined()
+    await core.registry.auth.signIn('+79990000005', '12345', 'dev', 'web')
+    expect(core.registry.forumTopics.getForumTopic(FORUM, generateMessageId(10))).toBeUndefined()
+  })
+
+  // Ревью КЛ-1 В4: мьют темы из своего действия (groups.updateTopicNotifySettings)
+  // применяет хранилище тем после ответа сети (workerCore.ts → groups.forumTopics)
+  it('свой мьют темы → `notify` хранилища тем с тем же сроком', async () => {
+    const { core, ops } = await boot()
+    vi.mocked(fetch).mockImplementationOnce(async () => new Response('true', { status: 200 }))
+    await core.registry.groups.updateTopicNotifySettings(FORUM, generateMessageId(10), 0)
+    expect(ops.map((op) => op.op)).toEqual(['notify', 'forumUnread'])
+    expect((ops[0] as Extract<ForumTopicOp, { op: 'notify' }>).topic.notify_settings).toEqual({ _: 'peerNotifySettings', mute_until: 0 })
   })
 })

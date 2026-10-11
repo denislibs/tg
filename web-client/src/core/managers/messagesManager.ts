@@ -706,6 +706,22 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     ...pending,
 
     /**
+     * Форум выключили — окна тредов чата сбрасываются (`chat_toggle_forum` →
+     * `delete this.threadsStorage[peerId]`, tweb appMessagesManager.ts:921-932):
+     * темы перестали быть тредами, и их срезы с номерами тем больше не верны.
+     * Сами сообщения (SSOT) и основное окно остаются. Вторая половина
+     * обработчика (`pinnedMessages` с ключом `peerId_*`) у tweb не срабатывает
+     * никогда (`+key === peerId && key.startsWith(peerId + '_')`) — не переносится.
+     */
+    flushThreadWindows(peerId: number): void {
+      for (const key of winKeysOf(peerId)) {
+        if (key === String(peerId)) continue
+        slices.delete(key)
+        historyCounts.delete(key)
+      }
+    },
+
+    /**
      * Положить в SSOT сообщения, приехавшие ПОПУТНО с чужим ответом, — вектор
      * `messages` контейнера `messages.dialogs` (`GET /chats`). Порт
      * `appMessagesManager.saveMessages`: в оригинале КАЖДЫЙ ответ прогоняется

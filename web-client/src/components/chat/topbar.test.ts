@@ -712,11 +712,34 @@ describe('ChatTopbar: меню ⋮ — пункты по verify (tweb :462-902)'
     ])
   })
 
-  it('тема форума: без мьюта (ручки мьюта темы нет) и без удаления (О-3)', async() => {
-    const texts = menuTexts(await openMenu(await open(makeChat({ peerId: GROUP, threadId: 7, isForum: true }))))
-    expect(texts).not.toContain(t('ChatList.Context.Mute'))
+  // tweb :504-510 — мьют в теме по `isPeerLocalMuted({threadId})`; без удаления (О-3)
+  it('тема форума: «Без звука» по настройке темы, без удаления (О-3)', async() => {
+    const texts = menuTexts(await openMenu(await open(makeChat({ peerId: GROUP, threadId: TOPIC, isForum: true, isForumTopic: true }))))
+    expect(texts).toContain(t('ChatList.Context.Mute'))
+    expect(texts).not.toContain(t('ChatList.Context.Unmute'))
     expect(texts).not.toContain(t('ChatList.Context.LeaveGroup'))
     expect(texts).toContain(t('Chat.Menu.SelectMessages'))
+  })
+
+  // tweb :1224-1226 `togglePeerMute({peerId, threadId})` → `mutePeer({muteUntil: 0, threadId})`;
+  // заглушённость темы — её срок, без срока — форума (appNotificationsManager.ts:396-410)
+  it('тема форума заглушена сроком: «Со звуком» снимает мьют темы, а не чата', async() => {
+    const getForumTopic = managers.forumTopics.getForumTopic as unknown as ReturnType<typeof vi.fn>
+    const updateTopicNotifySettings = vi.fn(async() => {})
+    const setMute = vi.fn(async() => {})
+    Object.assign(managers.groups, { updateTopicNotifySettings, setMute })
+    const original = getForumTopic.getMockImplementation()
+    getForumTopic.mockImplementation(async() => ({ _: 'forumTopic', id: TOPIC, title: 'Новости', icon_color: 0, notify_settings: { _: 'peerNotifySettings', mute_until: 2_000_000_000 } }))
+    try {
+      const menu = await openMenu(await open(makeChat({ peerId: GROUP, threadId: TOPIC, isForum: true, isForumTopic: true })))
+      expect(menuTexts(menu)).not.toContain(t('ChatList.Context.Mute'))
+      const unmute = Array.from(menu.querySelectorAll<HTMLElement>('.btn-menu-item')).find((el) => itemText(el) === t('ChatList.Context.Unmute'))!
+      unmute.click()
+      expect(updateTopicNotifySettings).toHaveBeenCalledWith(GROUP, TOPIC, 0)
+      expect(setMute).not.toHaveBeenCalled()
+    } finally {
+      getForumTopic.mockImplementation(original!)
+    }
   })
 
   it('пустая лента: «Выбрать сообщения» нет', async() => {

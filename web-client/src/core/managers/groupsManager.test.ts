@@ -326,29 +326,9 @@ describe('GroupsManager', () => {
     expect(peers.saveApiPeers).toHaveBeenCalledWith(expect.objectContaining({ chats: [chat] }))
   })
 
-  // Тема адресуется НОМЕРОМ (номер служебки создания, у General — 1):
-  // клиентский номер на границе ручки приводится к серверному
-  // (tweb `topic_id: getServerMessageId(topicId)`, appMessagesManager.ts:10067, :10218).
-  it('editForumTopic: PATCH /chats/{id}/topics/{n} только изменёнными полями', async () => {
-    const { rest, patches } = fakeRest({})
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-    await mgr.editForumTopic(5, generateMessageId(10), { closed: true })
-    await mgr.editForumTopic(5, generateMessageId(1), { title: 'T', iconEmoji: '🐞' })
-    expect(patches).toEqual([
-      { path: '/chats/5/topics/10', body: { closed: true } },
-      { path: '/chats/5/topics/1', body: { title: 'T', icon_emoji: '🐞' } },
-    ])
-  })
-
-  it('updatePinnedForumTopic: POST /chats/{id}/topics/{n}/pin', async () => {
-    const { rest, posts } = fakeRest({})
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-    await mgr.updatePinnedForumTopic(5, generateMessageId(10), true)
-    expect(posts).toEqual([{ path: '/chats/5/topics/10/pin', body: { pinned: true } }])
-  })
-
   // Мьют темы — СРОК (tweb `mutePeer({threadId, muteUntil})`), применяется
-  // хранилищем тем ПОСЛЕ ответа сети; 0 — снять.
+  // хранилищем тем ПОСЛЕ ответа сети тем же сроком; 0 — явно со звуком (ревью В1).
+  // Тема адресуется номером (у General — 1): клиентский → серверный на границе.
   it('updateTopicNotifySettings: срок на сервер, после ответа — хранилищу тем', async () => {
     const { rest, posts } = fakeRest({})
     const applyNotifySettings = vi.fn()
@@ -361,7 +341,7 @@ describe('GroupsManager', () => {
     ])
     expect(applyNotifySettings.mock.calls).toEqual([
       [5, generateMessageId(10), { _: 'peerNotifySettings', mute_until: 1800000000 }],
-      [5, generateMessageId(10), { _: 'peerNotifySettings' }],
+      [5, generateMessageId(10), { _: 'peerNotifySettings', mute_until: 0 }],
     ])
   })
 
@@ -373,15 +353,6 @@ describe('GroupsManager', () => {
     expect(applyNotifySettings).not.toHaveBeenCalled()
   })
 
-  // tweb createForumTopic (:10093-10102): номер темы — из `updateNewChannelMessage` ответа
-  it('createTopic: номер темы из Updates ответа, клиентский', async () => {
-    const { rest, posts } = fakeRest({
-      postReturn: { _: 'updates', updates: [{ _: 'updateNewChannelMessage', message: { id: 77 } }] },
-    })
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-    expect(await mgr.createTopic(5, 'T', 1, '🐞')).toBe(generateMessageId(77))
-    expect(posts[0]).toEqual({ path: '/chats/5/topics', body: { title: 'T', icon_color: 1, icon_emoji: '🐞' } })
-  })
 })
 
 // Task 4 (действия без оптимистики): setMute/setPin/setArchive/deleteGroup зовут
