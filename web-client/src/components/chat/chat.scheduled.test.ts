@@ -195,4 +195,35 @@ describe('лента отложенных (ChatType.Scheduled)', () => {
 
     expect(bubbleMids(c)).toEqual([5])
   })
+
+  // tweb bubbleGroups.ts:411-412: лента отложенных идёт по дате отправки, номер —
+  // лишь порядок постановки.
+  it('порядок баблов — по дате отправки, а не по номеру', async() => {
+    const { c } = await openScheduled([scheduled(5, today()), scheduled(6, today() - 3600)])
+    await vi.waitFor(() => expect(bubbleMids(c)).toEqual([6, 5]))
+  })
+
+  // tweb `message_sent` (bubbles.ts:1185-1187, :1234-1240): свой бабл в ленте
+  // отложенных финализируется без перестановки, а если до отправки ≤ 10 с —
+  // снимается (`history_update` у Scheduled оригинал игнорирует, :1003).
+  it('финализация своего бабла: новый номер на том же узле; до отправки ≤ 10 с — бабл снят', async() => {
+    const { c } = await openScheduled([scheduled(5, today())])
+    await vi.waitFor(() => expect(bubbleMids(c)).toEqual([5]))
+    const storageKey = `${FRIEND}_scheduled`
+    const withRandom = (m: MyMessage, randomId: string) => ({ ...m, random_id: randomId }) as MyMessage
+
+    const far = Math.floor(Date.now() / 1000) + 3 * 86400
+    rootScope.dispatchEventSingle('scheduled_new', withRandom(scheduled(5.5, far), 'c1'))
+    await vi.waitFor(() => expect(bubbleMids(c)).toEqual([5, 5.5]))
+    const temp = c.bubbles.chatInner.querySelector('.bubble[data-mid="5.5"]')
+    rootScope.dispatchEventSingle('history_update', { storageKey, message: withRandom(scheduled(9, far), 'c1'), tempId: 5.5 })
+    await vi.waitFor(() => expect(bubbleMids(c)).toEqual([5, 9]))
+    expect(c.bubbles.chatInner.querySelector('.bubble[data-mid="9"]')).toBe(temp)
+
+    const soon = Math.floor(Date.now() / 1000) + 5
+    rootScope.dispatchEventSingle('scheduled_new', withRandom(scheduled(9.5, soon), 'c2'))
+    await vi.waitFor(() => expect(bubbleMids(c)).toContain(9.5))
+    rootScope.dispatchEventSingle('history_update', { storageKey, message: withRandom(scheduled(10, soon), 'c2'), tempId: 9.5 })
+    await vi.waitFor(() => expect(bubbleMids(c)).toEqual([5, 9]))
+  })
 })

@@ -774,6 +774,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
     return !!this.chat.isMegagroup
   }
 
+  /** Вид ленты для порядка серий (tweb bubbleGroups.ts:411-412). */
+  public get isScheduled(): boolean {
+    return this.chat.type === ChatType.Scheduled
+  }
+
   /** Срез чата для обоих предикатов стороны (`core/models.ts::isOurMessage`). */
   private get ourChat(): OurMessageChat {
     return { myId: rootScope.myId, isMegagroup: this.chat.isMegagroup }
@@ -5923,6 +5928,20 @@ export default class ChatBubbles implements BubbleGroupsHost {
       await this.awaitMessagesQueue()
 
       if (this.getBubble(fullMid) !== bubble) return
+
+      // Лента отложенных — ветка `message_sent` tweb (после той же очереди
+      // рендера: элемент серии к этому моменту заведён), а не тело `history_update`
+      // (там у Scheduled ранний выход, :1003): бабл не переставляется, у элемента
+      // серии подменяется сообщение (:1185-1187), а отложенное, до отправки
+      // которого осталось не больше 10 с, снимается сразу (:1234-1240) —
+      // кадр публикации догонит его уже в истории.
+      if (this.chat.type === ChatType.Scheduled) {
+        this.bubbleGroups.changeBubbleMessage(bubble, message)
+        if ((Date.now() / 1000 | 0) >= message.date - 10) {
+          this.deleteMessagesByIds([fullMid])
+        }
+        return
+      }
 
       // tweb bubbles.ts:794-800: репозиционируется только то, что лежит в
       // группах; `item.mid === mid` — событие уже применено.
