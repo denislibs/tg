@@ -831,3 +831,39 @@ func TestScheduled_Forward(t *testing.T) {
 		t.Fatalf("копия: %+v", c)
 	}
 }
+
+// Просьба C1: опрос ставится в очередь тем же schedule_date (tweb sendMedia с
+// inputMediaPoll и schedule_date/schedule_repeat_period,
+// appMessagesManager.ts:4152-4166): в ленту не уходит, публикация несёт опрос.
+func TestScheduled_Poll(t *testing.T) {
+	in, s, fs := newScheduledTestInteractor()
+	in.SetPolls(newFakePolls())
+	ctx := context.Background()
+	cid, _ := fakeChats{s}.CreatePrivate(ctx, 1, 2)
+	m, err := in.SendPoll(ctx, SendPollInput{
+		ChatID: cid, SenderID: 1, Question: "Куда?", Options: []string{"сюда", "туда"},
+		ClientMsgID: "p-1", ScheduleDate: future(), ScheduleRepeatPeriod: 86400,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messagesOf(s, cid)) != 0 || fs.count() != 1 {
+		t.Fatalf("опрос ушёл сразу: msgs=%d rows=%d", len(messagesOf(s, cid)), fs.count())
+	}
+	row, err := fs.ByID(ctx, m.Seq)
+	if err != nil || row.Params.PollID == nil || row.RepeatPeriod != 86400 {
+		t.Fatalf("снимок: err=%v poll=%v repeat=%d", err, row.Params.PollID, row.RepeatPeriod)
+	}
+	if _, err := in.SendScheduledNow(ctx, cid, 1, []int64{m.Seq}); err != nil {
+		t.Fatal(err)
+	}
+	got := messagesOf(s, cid)
+	if len(got) != 1 || got[0].Type != "poll" || got[0].PollID == nil || *got[0].PollID != *row.Params.PollID {
+		t.Fatalf("публикация: %+v", got)
+	}
+	if _, err := in.SendPoll(ctx, SendPollInput{
+		ChatID: cid, SenderID: 1, Question: "Q", Options: []string{"a", "b"}, ScheduleDate: 1,
+	}); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("прошедшая дата: %v, want ErrInvalid", err)
+	}
+}

@@ -1331,6 +1331,10 @@ func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 		ThreadRootID     *int64         `json:"thread_root_id"`
 		Silent           bool           `json:"silent"`
 		SendAsPeerID     *domain.PeerID `json:"send_as_peer_id"`
+		// Отложенный опрос — как у остальных путей отправки (tweb sendMedia с
+		// inputMediaPoll, appMessagesManager.ts:4152-4166).
+		ScheduleDate         int64 `json:"schedule_date"`
+		ScheduleRepeatPeriod int   `json:"schedule_repeat_period"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
@@ -1358,17 +1362,20 @@ func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 		ReplyToID:   b.ReplyToID, ReplyToPeerID: replyPeer,
 		ReplyQuoteText: b.ReplyQuoteText, ReplyQuoteOffset: b.ReplyQuoteOffset,
 		ThreadRootID: threadRoot, Silent: b.Silent, SendAsChatID: sendAsChatID(b.SendAsPeerID),
+		ScheduleDate: b.ScheduleDate, ScheduleRepeatPeriod: b.ScheduleRepeatPeriod,
 	})
 	if errors.Is(err, domain.ErrTooLong) {
 		writeError(w, http.StatusBadRequest, "invalid poll")
 		return
 	}
-	if errors.Is(err, domain.ErrNotFound) {
-		writeError(w, http.StatusForbidden, "not a member of this chat")
+	if err != nil {
+		// Общая таблица гейтов отправки: у отложенного опроса ещё ErrInvalid
+		// (дата/период) и SCHEDULE_TOO_MUCH.
+		writeSendError(w, err, "not a member of this chat")
 		return
 	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not send poll")
+	if b.ScheduleDate != 0 {
+		writeScheduledSent(w, r, h.svc, chatID, []domain.Message{m})
 		return
 	}
 	writeMessage(w, r, h.svc, m)
