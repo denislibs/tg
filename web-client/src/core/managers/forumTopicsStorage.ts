@@ -30,7 +30,7 @@ import type { Chat, UserReal } from '../peers/peer'
 import type { MyMessage, RawMyMessage } from '../models'
 import { getMessageThreadId } from '../models'
 import { isForum } from '../peers/predicates'
-import { MESSAGE_ID_OFFSET } from '../history/messageId'
+import { MESSAGE_ID_OFFSET, getServerMessageId } from '../history/messageId'
 import type { PeerNotifySettings } from '../dialogs/notifySettings'
 import isMentionUnread from '../messages/isMentionUnread'
 import {
@@ -70,10 +70,12 @@ type TopicsCache = {
   pinnedOrder: number[]
   loaded: boolean
   loadPromise?: Promise<ForumTopic[]>
+  /** `historyStorage.triedToReadMaxId` треда темы (`appMessagesManager.ts:9165-9170`) */
+  triedToReadMaxId: Map<number, number>
 }
 
 export interface ForumTopicsDeps {
-  rest: Pick<RestClient, 'get'>
+  rest: Pick<RestClient, 'get' | 'post'>
   peers: { saveApiPeers(o: { chats?: Chat[]; users?: UserReal[] }): void; cachedPeer(peerId: PeerId): unknown }
   messages: {
     saveApiMessages(list: RawMyMessage[] | undefined): Promise<unknown>
@@ -98,7 +100,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
   /** tweb `getForumTopicsCache` (`dialogs.ts:2032-2047`) */
   function getCache(peerId: PeerId): TopicsCache {
     let cache = caches.get(peerId)
-    if (!cache) caches.set(peerId, cache = { topics: new Map(), pinnedOrder: [], loaded: false })
+    if (!cache) caches.set(peerId, cache = { topics: new Map(), pinnedOrder: [], loaded: false, triedToReadMaxId: new Map() })
     return cache
   }
 
@@ -213,6 +215,58 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
       }
     }
     if (changed.size) onOps([{ op: 'update', peerId, topics: [...changed.values()] }])
+  }
+
+  /**
+   * Прочтение треда темы — ветка темы `onUpdateReadHistory`
+   * (`appMessagesManager.ts:10795-10990`), волна 2 Ф-5 (`readDiscussion`).
+   * Перебираются сообщения треда, которые знает хранилище сообщений, между
+   * прежним и новым горизонтом; упоминания уходят и из бейджа форума
+   * (`:10969-10980`). Ничего не нашли, а тема всё ещё непрочитана —
+   * перечитать (`getForumTopicById`, `:10955-10958`, расхождение 1).
+   *
+   * Сегодня его зовёт своё прочтение (`readHistory` ниже — местный
+   * `processLocalUpdate`, `:9203-9209`). Кадры `updateReadChannelDiscussionInbox/
+   * Outbox` с других устройств производит БЭК-2 (волна 2 Ф-5): подключение —
+   * строкой в `workerCore.ts::dispatch` вместе с конструкторами в реестре
+   * (`updateCatalog.ts`), `maxId`/`topicId` — через `generateMessageId`, пир —
+   * `toPeerId(channel_id, true)`.
+   */
+  function applyReadDiscussion({ peerId, topicId, maxId, out }: ReadDiscussion): void {
+    const topic = caches.get(peerId)?.topics.get(topicId)
+    if (!topic) return
+    const forum = isForumPeer(peerId)
+    const readMaxId = out ? topic.read_outbox_max_id : topic.read_inbox_max_id
+    if (out) {
+      if (maxId > topic.read_outbox_max_id) topic.read_outbox_max_id = maxId
+      emitUpdate(topic)
+      return
+    }
+    let newUnreadCount = 0
+    let newUnreadMentionsCount = 0
+    let foundAffected = false
+    let parentMentionDecrement = 0
+    // Номера плотные, перебор ограничен прежним горизонтом либо началом
+    // клиентского пространства (горизонта не было).
+    const from = Math.max(readMaxId, MESSAGE_ID_OFFSET)
+    for (let mid = maxId; mid > from; --mid) {
+      const message = messages.getMessageByPeer(peerId, mid)
+      if (!message || !!message.pFlags.out) continue
+      if (getMessageThreadId(message, { isForum: forum }) !== topicId) continue
+      foundAffected = true
+      newUnreadCount = --topic.unread_count
+      if (isMentionUnread(message)) {
+        newUnreadMentionsCount = --topic.unread_mentions_count
+        ++parentMentionDecrement
+      }
+    }
+    topic.read_inbox_max_id = Math.max(topic.read_inbox_max_id, maxId)
+    if (newUnreadCount < 0 || maxId >= topic.top_message || !readMaxId) topic.unread_count = 0
+    else if (newUnreadCount && topic.top_message > maxId) topic.unread_count = newUnreadCount
+    if (newUnreadMentionsCount < 0 || !topic.unread_count) topic.unread_mentions_count = 0
+    onOps(unreadOps(topic))
+    if (!foundAffected && topic.unread_count) void load(peerId).catch(() => {})
+    if (parentMentionDecrement > 0) deps.onParentMentionsRead?.(peerId, parentMentionDecrement)
   }
 
   return {
@@ -377,54 +431,42 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
       onOps([{ op: 'notify', topic }, { op: 'forumUnread', peerId }])
     },
 
+    applyReadDiscussion,
+
     /**
-     * Прочтение треда темы — ветка темы `onUpdateReadHistory`
-     * (`appMessagesManager.ts:10795-10990`), волна 2 Ф-5 (`readDiscussion`).
-     * Перебираются сообщения треда, которые знает хранилище сообщений, между
-     * прежним и новым горизонтом; упоминания уходят и из бейджа форума
-     * (`:10969-10980`). Ничего не нашли, а тема всё ещё непрочитана —
-     * перечитать (`getForumTopicById`, `:10955-10958`, расхождение 1).
+     * Прочтение треда ТЕМЫ — ветка `threadId` у `readHistory`
+     * (`appMessagesManager.ts:9107-9270`, `:9186-9201`): местный
+     * `updateReadChannelDiscussionInbox` применяется сразу (`applyReadDiscussion`),
+     * сервер узнаёт горизонт одним вызовом на рубеж (`triedToReadMaxId`,
+     * `:9165-9170`, `:9248-9252`).
      *
-     * Заведён заранее для волны 2 Ф-5: кадры `updateReadChannelDiscussionInbox/
-     * Outbox` производит БЭК-2, подключение — строкой в `workerCore.ts::dispatch`
-     * вместе с конструкторами в реестре (`updateCatalog.ts`), `maxId`/`topicId` —
-     * через `generateMessageId`, пир — `toPeerId(channel_id, true)`.
+     * Гейт «не прочитано ли уже» — `:9133-9157`: известная тема без
+     * непрочитанного и с горизонтом не ниже `maxId` — ничего не делать. Тему,
+     * которой нет в кэше (список ещё не грузили), читаем: у оригинала её
+     * подгружает открытие треда (`getForumTopicOrReload`), у нас без сервера
+     * бейдж остался бы гореть.
+     *
+     * ТРАНСПОРТ ВРЕМЕННЫЙ: `POST /chats/{p}/topics/{n}/read {up_to_seq}` вместо
+     * `messages.readDiscussion{peer, msg_id, read_max_id}` — в волне 2 Ф-5
+     * (БЭК-2/КЛ-2) заменяется на `readDiscussion`, ручку тем сервер удаляет.
+     *
+     * @returns `false` — пир не форум (тред комментариев читается чатом до
+     *   волны 2), `true` — тема прочитана.
      */
-    applyReadDiscussion({ peerId, topicId, maxId, out }: ReadDiscussion): void {
-      const topic = caches.get(peerId)?.topics.get(topicId)
-      if (!topic) return
-      const forum = isForumPeer(peerId)
-      const readMaxId = out ? topic.read_outbox_max_id : topic.read_inbox_max_id
-      if (out) {
-        if (maxId > topic.read_outbox_max_id) topic.read_outbox_max_id = maxId
-        emitUpdate(topic)
-        return
-      }
-      let newUnreadCount = 0
-      let newUnreadMentionsCount = 0
-      let foundAffected = false
-      let parentMentionDecrement = 0
-      // Номера плотные, перебор ограничен прежним горизонтом либо началом
-      // клиентского пространства (горизонта не было).
-      const from = Math.max(readMaxId, MESSAGE_ID_OFFSET)
-      for (let mid = maxId; mid > from; --mid) {
-        const message = messages.getMessageByPeer(peerId, mid)
-        if (!message || !!message.pFlags.out) continue
-        if (getMessageThreadId(message, { isForum: forum }) !== topicId) continue
-        foundAffected = true
-        newUnreadCount = --topic.unread_count
-        if (isMentionUnread(message)) {
-          newUnreadMentionsCount = --topic.unread_mentions_count
-          ++parentMentionDecrement
-        }
-      }
-      topic.read_inbox_max_id = Math.max(topic.read_inbox_max_id, maxId)
-      if (newUnreadCount < 0 || maxId >= topic.top_message || !readMaxId) topic.unread_count = 0
-      else if (newUnreadCount && topic.top_message > maxId) topic.unread_count = newUnreadCount
-      if (newUnreadMentionsCount < 0 || !topic.unread_count) topic.unread_mentions_count = 0
-      onOps(unreadOps(topic))
-      if (!foundAffected && topic.unread_count) void load(peerId).catch(() => {})
-      if (parentMentionDecrement > 0) deps.onParentMentionsRead?.(peerId, parentMentionDecrement)
+    readHistory(peerId: PeerId, threadId: number, maxId: number): boolean {
+      if (!isForumPeer(peerId) || !maxId) return false
+      const cache = getCache(peerId)
+      const topic = cache.topics.get(threadId)
+      if (topic && !topic.unread_count && maxId <= topic.read_inbox_max_id) return true
+      const tried = cache.triedToReadMaxId.get(threadId) ?? 0
+      if (topic) applyReadDiscussion({ peerId, topicId: threadId, maxId, out: false })
+      if (tried >= maxId) return true
+      cache.triedToReadMaxId.set(threadId, maxId)
+      void rest.post(`/chats/${peerId}/topics/${getServerMessageId(threadId)}/read`, { up_to_seq: getServerMessageId(maxId) }).catch(() => {
+        // отказ — рубеж снова «не отправлен», следующий круг ленты повторит
+        if (cache.triedToReadMaxId.get(threadId) === maxId) cache.triedToReadMaxId.set(threadId, tried)
+      })
+      return true
     },
 
     /**

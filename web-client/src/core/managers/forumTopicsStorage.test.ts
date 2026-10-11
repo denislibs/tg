@@ -36,9 +36,10 @@ function setup(topics: ForumTopicWire[], opts: { forum?: boolean } = {}) {
   const store = new Map<number, MyMessage>()
   const response = (): MessagesForumTopics => ({ _: 'messages.forumTopics', count: topics.length, topics, messages: [], chats: [], users: [] })
   const get = vi.fn(async (_path: string) => response())
+  const post = vi.fn(async (_path: string, _body: unknown): Promise<unknown> => true)
   const onParentMentionsRead = vi.fn()
   const storage = newForumTopicsStorage({
-    rest: { get } as never,
+    rest: { get, post } as never,
     peers: { saveApiPeers: vi.fn(), cachedPeer: () => (opts.forum === false ? undefined : forumChat) },
     messages: {
       saveApiMessages: vi.fn(async () => []),
@@ -48,7 +49,7 @@ function setup(topics: ForumTopicWire[], opts: { forum?: boolean } = {}) {
     onOps: (o) => { ops.push(...o) },
     onParentMentionsRead,
   })
-  return { storage, ops, get, store, onParentMentionsRead }
+  return { storage, ops, get, post, store, onParentMentionsRead }
 }
 
 const msgInTopic = (id: number, topic: number, over: Partial<Parameters<typeof makeMessage>[0]> = {}) =>
@@ -288,5 +289,61 @@ describe('forumTopicsStorage: прочтение треда (onUpdateReadHistory
     await storage.getForumTopics(FORUM)
     storage.applyReadDiscussion({ peerId: FORUM, topicId: mid(10), maxId: mid(9), out: true })
     expect(storage.getForumTopic(FORUM, mid(10))!.read_outbox_max_id).toBe(mid(9))
+  })
+})
+
+// Ревью КЛ-1 Б2: своё прочтение темы — ветка `threadId` tweb `readHistory`
+// (appMessagesManager.ts:9107-9270). Транспорт до волны 2 Ф-5 — ручка темы.
+describe('forumTopicsStorage: readHistory (appMessagesManager.ts:9186-9210)', () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0))
+
+  it('тема: местное прочтение сразу (бейдж гаснет) и сервер серверными номерами', async () => {
+    const { storage, post, ops } = setup([wire(10, { read_inbox_max_id: 10, top_message: 13, unread_count: 3 })])
+    await storage.getForumTopics(FORUM)
+    ops.length = 0
+    expect(storage.readHistory(FORUM, mid(10), mid(13))).toBe(true)
+    expect(storage.getForumTopic(FORUM, mid(10))!.unread_count).toBe(0)
+    expect(ops).toContainEqual({ op: 'forumUnread', peerId: FORUM })
+    expect(post).toHaveBeenCalledWith('/chats/-50/topics/10/read', { up_to_seq: 13 })
+  })
+
+  it('General — номер 1 на проводе', async () => {
+    const { storage, post } = setup([wire(1, { read_inbox_max_id: 1, top_message: 5, unread_count: 2 })])
+    await storage.getForumTopics(FORUM)
+    storage.readHistory(FORUM, GENERAL_TOPIC_ID, mid(5))
+    expect(post).toHaveBeenCalledWith('/chats/-50/topics/1/read', { up_to_seq: 5 })
+  })
+
+  it('рубеж уже отправлен — сервер второй раз не зовётся (`triedToReadMaxId`, :9165-9170)', async () => {
+    const { storage, post } = setup([wire(10, { read_inbox_max_id: 10, top_message: 20, unread_count: 10 })])
+    await storage.getForumTopics(FORUM)
+    storage.readHistory(FORUM, mid(10), mid(15))
+    storage.readHistory(FORUM, mid(10), mid(14))
+    expect(post).toHaveBeenCalledTimes(1)
+    storage.readHistory(FORUM, mid(10), mid(18))
+    expect(post).toHaveBeenCalledTimes(2)
+  })
+
+  it('прочитанная тема — ничего не делает (:9133-9157)', async () => {
+    const { storage, post } = setup([wire(10, { read_inbox_max_id: 13, top_message: 13, unread_count: 0 })])
+    await storage.getForumTopics(FORUM)
+    expect(storage.readHistory(FORUM, mid(10), mid(13))).toBe(true)
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  it('отказ сервера — рубеж снова не отправлен, следующий круг повторяет', async () => {
+    const { storage, post } = setup([wire(10, { read_inbox_max_id: 10, top_message: 20, unread_count: 10 })])
+    await storage.getForumTopics(FORUM)
+    post.mockRejectedValueOnce(new Error('net'))
+    storage.readHistory(FORUM, mid(10), mid(15))
+    await flush()
+    storage.readHistory(FORUM, mid(10), mid(15))
+    expect(post).toHaveBeenCalledTimes(2)
+  })
+
+  it('не форум — `false`, сервер не зовётся (тред комментариев — волна 2)', () => {
+    const { storage, post } = setup([], { forum: false })
+    expect(storage.readHistory(FORUM, mid(10), mid(13))).toBe(false)
+    expect(post).not.toHaveBeenCalled()
   })
 })

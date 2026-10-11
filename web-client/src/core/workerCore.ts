@@ -302,6 +302,8 @@ export function createWorkerCore() {
   // groups/chatThemes (Task 4) — им нужна ссылка на него в конструкторе.
   const dialogs = newDialogsManager({
     rest,
+    // Горизонт треда темы — у хранилища тем (объявлено ниже, стрелка ленивая).
+    getForumTopic: (peerId, threadId) => forumTopics.getForumTopic(peerId, threadId),
     // Состояние канала из строки списка (tweb addChannelState, dialogs.ts:1756):
     // воронка объявлена ниже, строки списка приходят позже сборки — к первому
     // вызову она уже есть.
@@ -1008,7 +1010,7 @@ export function createWorkerCore() {
   // sync передан ради getStatus() (Задача 1, ревью «сигнал только push — новая
   // вкладка слепа»): isSyncing() уже существовал для гейта funnel'а, здесь он же
   // питает pull-снимок для позднего подписчика.
-  const realtime = newRealtime({ conn, sync, syncWait, tokens, messages, broadcast, channelFunnel })
+  const realtime = newRealtime({ conn, sync, syncWait, tokens, messages, broadcast, channelFunnel, forumTopics })
 
   // Единый реестр менеджеров — единственный источник правды. UI-тип Managers
   // (bootstrap.ts) выводится из этого объекта (WorkerRegistry), поэтому рассинхрон

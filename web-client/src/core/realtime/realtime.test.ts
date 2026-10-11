@@ -29,6 +29,7 @@ describe('realtime.markMediaRead', () => {
       messages,
       broadcast,
       channelFunnel: { subscribe: () => undefined, unsubscribe: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
+      forumTopics: { readHistory: () => false },
     })
 
     await rt.markMediaRead({ peerId: 1, msgId: 7 })
@@ -48,6 +49,7 @@ describe('realtime.markMediaRead', () => {
       messages,
       broadcast,
       channelFunnel: { subscribe: () => undefined, unsubscribe: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
+      forumTopics: { readHistory: () => false },
     })
 
     await rt.markMediaRead({ peerId: 1, msgId: 7 })
@@ -79,6 +81,7 @@ describe('realtime.getStatus', () => {
       messages: { cacheMediaRead: vi.fn(() => []) },
       broadcast: vi.fn(),
       channelFunnel: { subscribe: () => undefined, unsubscribe: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
+      forumTopics: { readHistory: () => false },
     })
 
     await expect(rt.getStatus()).resolves.toEqual({
@@ -138,6 +141,7 @@ describe('realtime.getStatus — иммунность к потере push-ув�
       messages: { cacheMediaRead: () => [] },
       broadcast: () => {},
       channelFunnel: { subscribe: () => undefined, unsubscribe: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
+      forumTopics: { readHistory: () => false },
     })
 
     const status = await rt.getStatus()
@@ -165,3 +169,39 @@ describe('realtime.getStatus — иммунность к потере push-ув�
 // аплоадом и с транспортом, который туда приходит инъекцией. Её тесты — там же
 // (managers/messages/pending.test.ts): бабл → аплоад → attach → ровно один
 // кадр, ошибка и отмена аплоада.
+
+// Ревью КЛ-1 Б2: прочтение в теме форума — ветка `threadId` tweb `readHistory`
+// (appMessagesManager.ts:9186-9210) — уходит хранилищу тем; горизонт чата —
+// временно тоже (до волны 2 Ф-5, см. докблок `markRead`).
+describe('realtime.markRead', () => {
+  function make() {
+    const conn = { markRead: vi.fn() } as unknown as Parameters<typeof newRealtime>[0]['conn']
+    const forumTopics = { readHistory: vi.fn(() => true) }
+    const rt = newRealtime({
+      conn,
+      sync: { isSyncing: () => false },
+      syncWait: { waitForSync: async () => undefined },
+      tokens: { load: async () => undefined },
+      messages: { cacheMediaRead: () => [] },
+      broadcast: () => {},
+      channelFunnel: {} as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
+      forumTopics,
+    })
+    return { rt, conn, forumTopics }
+  }
+  const OFFSET = 0x100000000
+
+  it('с threadId — тема читается хранилищем тем клиентскими номерами, горизонт чата — серверным', async () => {
+    const { rt, conn, forumTopics } = make()
+    await rt.markRead({ peerId: -5, upToId: OFFSET + 40, threadId: OFFSET + 7 })
+    expect(forumTopics.readHistory).toHaveBeenCalledWith(-5, OFFSET + 7, OFFSET + 40)
+    expect(conn.markRead).toHaveBeenCalledWith(-5, 40)
+  })
+
+  it('без threadId хранилище тем не зовётся', async () => {
+    const { rt, conn, forumTopics } = make()
+    await rt.markRead({ peerId: -5, upToId: OFFSET + 40 })
+    expect(forumTopics.readHistory).not.toHaveBeenCalled()
+    expect(conn.markRead).toHaveBeenCalledWith(-5, 40)
+  })
+})
