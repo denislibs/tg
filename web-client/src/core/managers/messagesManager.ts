@@ -25,7 +25,7 @@ export interface MessagesSearchResultsCalendar {
 import { getMessageThreadId, mapMyMessage, type MyMessage, type MessageReal, type MessageEntity, type MessageFields, type MessageReplies, type MessageReplyHeader, type RawMessage, type RawMyMessage, type SecretMedia } from '../models'
 import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
 import pause from '@helpers/schedulers/pause'
-import { getPeerId, type Peer } from '../peers/peerId'
+import { getPeerId, isAnyChat, type Peer } from '../peers/peerId'
 import type { UserReal, User, Chat } from '../peers/peer'
 import canEditMessage from '../messages/canEditMessage'
 import { isForum } from '../peers/predicates'
@@ -239,10 +239,12 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
   // и то и другое делает `mapMyMessage`.
   const mapOne = (r: RawMyMessage): MyMessage => mapMyMessage(r, getMeId?.() ?? null)
   // Тред сообщения — tweb `getThreadKey` (appMessagesManager.ts:11903-11921):
-  // `getMessageThreadId` с видом чата. В форуме сообщение без
+  // только у группы/канала (`peerId.isAnyChat()`, :11910 — ответ в личке тредом
+  // не становится), `getMessageThreadId` с видом чата. В форуме сообщение без
   // `reply_to.pFlags.forum_topic` живёт в General, а не в «чате целиком».
+  // Ветки ботфорума и `saved_peer_id` нет — предметов нет (О-3).
   const threadIdOf = (m: MyMessage): number | undefined =>
-    getMessageThreadId(m, { isForum: isForum(getPeer?.(m.peerId) as Chat | undefined) })
+    isAnyChat(m.peerId) ? getMessageThreadId(m, { isForum: isForum(getPeer?.(m.peerId) as Chat | undefined) }) : undefined
   // Гейт личности (см. `meReady` в MessagesDeps) — ждут его СЕТЕВЫЕ пути.
   // `cacheLive`/`insertPending` синхронны и ждать не могут: живой кадр приходит
   // по уже поднятому WS, а неотправленный бабл заводит сам пользователь — оба
@@ -452,6 +454,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     hkey, slices, msgsFor, appendNewest,
     getMeId: () => getMeId?.() ?? null,
     isBroadcastChat: (peerId) => isBroadcastChat?.(peerId) ?? false,
+    isForum: (peerId) => isForum(getPeer?.(peerId) as Chat | undefined),
     emit: emitOps,
     // Заглушки-по-умолчанию — для юнит-тестов кэш-методов, которые собирают
     // менеджер одним лишь `rest`; в воркере все четыре подставляет workerCore
