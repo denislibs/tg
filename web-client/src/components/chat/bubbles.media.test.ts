@@ -312,18 +312,43 @@ describe('ChatBubbles — медиа в бабле', () => {
       const before = bubbles.chatInner.querySelector<HTMLElement>('.bubble:not(.service)')!
       expect(before.classList.contains('is-album')).toBe(false)
 
+      // наблюдатель непрочитанного — со СТАРШИМ номером группы (tweb :7859-7860, :7945),
+      // иначе второе сообщение осталось бы непрочитанным навсегда
+      const observe = vi.spyOn(bubbles as unknown as { setUnreadObserver: (...a: unknown[]) => void }, 'setUnreadObserver')
       applyOpsToMirror([{ op: 'insert', key: String(CHAT), msg: group[1] }])
       await settle()
+      expect(observe).toHaveBeenCalledWith('history', expect.anything(), 2)
 
       const rendered = bubbles.chatInner.querySelectorAll<HTMLElement>('.bubble:not(.service)')
       expect(rendered).toHaveLength(1)
-      expect(rendered[0]).toBe(before)
+      // узел ЗАМЕНЁН (tweb `safeRenderMessage({bubble})` → `changeBubbleByBubble`), старый снят
+      expect(before.isConnected).toBe(false)
       expect(rendered[0].classList.contains('is-album')).toBe(true)
+      expect(rendered[0].classList.contains('is-group-first')).toBe(true)
       expect(rendered[0].querySelectorAll('.attachment')).toHaveLength(1)
       expect(rendered[0].dataset.mid).toBe('1')
       expect(rendered[0].dataset.maxBubbleMid).toBe('2')
       expect(bubbles.getBubble(makeFullMid(CHAT, 2))).toBe(rendered[0])
       expect(bubbles.getBubble(makeFullMid(CHAT, 1))).toBe(rendered[0])
+    })
+
+    // Ветка `wasMainMid` (tweb bubbles.ts:1477-1488): пришло МЛАДШЕ нарисованного —
+    // главным становится оно, бабл один, адресуется по обоим номерам.
+    it('сообщение альбома младше нарисованного становится главным, бабл один', async () => {
+      const group = album([1, 2])
+      bubbles = mountTestBubbles(chatContext(), managersWith([group[1]]))
+      await openFeed(bubbles)
+      await settle()
+
+      applyOpsToMirror([{ op: 'insert', key: String(CHAT), msg: group[0] }])
+      await settle()
+
+      const rendered = bubbles.chatInner.querySelectorAll<HTMLElement>('.bubble:not(.service)')
+      expect(rendered).toHaveLength(1)
+      expect(rendered[0].classList.contains('is-album')).toBe(true)
+      expect(rendered[0].dataset.mid).toBe('1')
+      expect(bubbles.getBubble(makeFullMid(CHAT, 1))).toBe(rendered[0])
+      expect(bubbles.getBubble(makeFullMid(CHAT, 2))).toBe(rendered[0])
     })
 
     it('группа из ОДНОГО сообщения альбомом не считается', async () => {
