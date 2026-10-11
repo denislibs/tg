@@ -95,8 +95,9 @@ func TestScheduledRepo_SnapshotIdempotencyAlbumWaits(t *testing.T) {
 		t.Fatalf("WhenOnlineIn: %+v", in)
 	}
 
+	oldAt := online.SendAt
 	online.WhenOnline, online.SendAt, online.Text = false, time.Now().Add(-time.Minute), "по времени"
-	if err := r.Update(ctx, online); err != nil {
+	if err := r.Update(ctx, online, oldAt, true); err != nil {
 		t.Fatal(err)
 	}
 	due, _ := r.Due(ctx, time.Now(), 10)
@@ -128,21 +129,21 @@ func TestScheduledRepo_ClaimRescheduleUnclaimed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok, err := r.Claim(ctx, m.ID, at.Add(time.Second), false, time.Minute); err != nil || ok {
+	if _, ok, err := r.Claim(ctx, m.ID, at.Add(time.Second), false, time.Minute, true); err != nil || ok {
 		t.Fatalf("claim по чужому сроку: ok=%v err=%v", ok, err)
 	}
-	got, ok, err := r.Claim(ctx, m.ID, at, false, time.Minute)
+	got, ok, err := r.Claim(ctx, m.ID, at, false, time.Minute, true)
 	if err != nil || !ok || got.Attempts != 1 {
 		t.Fatalf("claim: ok=%v err=%v attempts=%d", ok, err, got.Attempts)
 	}
-	if _, ok, _ := r.Claim(ctx, m.ID, at, false, time.Minute); ok {
+	if _, ok, _ := r.Claim(ctx, m.ID, at, false, time.Minute, true); ok {
 		t.Fatal("вторая аренда той же строки")
 	}
 	if due, _ := r.Due(ctx, time.Now(), 10); len(due) != 0 {
 		t.Fatalf("Due отдал строку в аренде: %d", len(due))
 	}
 	m.Text = "правка"
-	if err := r.Update(ctx, m); err != domain.ErrNotFound {
+	if err := r.Update(ctx, m, at, false); err != domain.ErrNotFound {
 		t.Fatalf("правка строки в аренде: %v, want ErrNotFound", err)
 	}
 	if del, _ := r.DeleteUnclaimed(ctx, []int64{m.ID}); len(del) != 0 {
@@ -155,19 +156,25 @@ func TestScheduledRepo_ClaimRescheduleUnclaimed(t *testing.T) {
 	if err != nil || !ok || next.Occurrence != 1 || next.Attempts != 0 || next.Text != "x" {
 		t.Fatalf("перепостановка: %+v ok=%v err=%v", next, ok, err)
 	}
-	if err := r.Update(ctx, next); err != nil {
+	if err := r.Update(ctx, next, at, false); err != domain.ErrNotFound {
+		t.Fatalf("правка по прочитанному до перепостановки сроку: %v, want ErrNotFound", err)
+	}
+	if err := r.Update(ctx, next, next.SendAt, false); err != nil {
 		t.Fatalf("правка после снятия аренды: %v", err)
 	}
-	if _, ok, _ := r.Claim(ctx, m.ID, next.SendAt, false, time.Minute); !ok {
+	if _, ok, _ := r.Claim(ctx, m.ID, next.SendAt, false, time.Minute, true); !ok {
 		t.Fatal("claim после перепостановки")
 	}
-	if err := r.Release(ctx, m.ID); err != nil {
+	if err := r.Release(ctx, m.ID, time.Hour); err != nil {
 		t.Fatal(err)
+	}
+	if due, _ := r.Due(ctx, next.SendAt.Add(time.Second), 10); len(due) != 0 {
+		t.Fatal("Due отдал строку в отступе после сбоя")
 	}
 	if del, _ := r.DeleteUnclaimed(ctx, []int64{m.ID}); len(del) != 1 {
 		t.Fatal("снятие после Release")
 	}
-	if err := r.Update(ctx, next); err != domain.ErrNotFound {
+	if err := r.Update(ctx, next, next.SendAt, false); err != domain.ErrNotFound {
 		t.Fatalf("правка снятой строки: %v, want ErrNotFound", err)
 	}
 	if err := NewTxManager(pool).WithinTx(ctx, func(ctx context.Context) error {

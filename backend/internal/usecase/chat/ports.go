@@ -899,10 +899,12 @@ type ScheduledRepo interface {
 	Due(ctx context.Context, now time.Time, limit int) ([]domain.ScheduledMessage, error)
 	// Claim берёт строку в аренду публикации на lease и отдаёт свежей —
 	// только если она на том же сроке (sendAt/whenOnline) и не в аренде;
-	// attempts растёт. ok=false — строку сняли, перенесли или публикуют.
-	Claim(ctx context.Context, id int64, sendAt time.Time, whenOnline bool, lease time.Duration) (domain.ScheduledMessage, bool, error)
-	// Release снимает аренду.
-	Release(ctx context.Context, id int64) error
+	// countAttempt — attempts+1 (воркер). ok=false — строку сняли, перенесли
+	// или публикуют.
+	Claim(ctx context.Context, id int64, sendAt time.Time, whenOnline bool, lease time.Duration, countAttempt bool) (domain.ScheduledMessage, bool, error)
+	// Release снимает аренду; retryAfter > 0 — отступ воркера (Due и
+	// WhenOnlineIn строку до него не отдают).
+	Release(ctx context.Context, id int64, retryAfter time.Duration) error
 	// Reschedule переставляет опубликованный срок повтора from → to (тот же
 	// id), снимает аренду, occurrence+1; ok=false — строку сняли или перенесли.
 	Reschedule(ctx context.Context, id int64, from, to time.Time) (domain.ScheduledMessage, bool, error)
@@ -915,10 +917,11 @@ type ScheduledRepo interface {
 	// WhenOnlineIn — отложенные «когда в сети» автора в чате вне аренды, по
 	// порядку постановки.
 	WhenOnlineIn(ctx context.Context, chatID, senderID int64) ([]domain.ScheduledMessage, error)
-	// Update переписывает изменяемое у стоящей строки вне аренды: text,
-	// entities, send_at, when_online, repeat_period. Снятой или публикуемой —
+	// Update переписывает изменяемое у стоящей строки вне аренды и на
+	// прочитанном сроке (oldAt/oldWhenOnline): text, entities, send_at,
+	// when_online, repeat_period. Снятой, публикуемой или переставленной —
 	// domain.ErrNotFound.
-	Update(ctx context.Context, m domain.ScheduledMessage) error
+	Update(ctx context.Context, m domain.ScheduledMessage, oldAt time.Time, oldWhenOnline bool) error
 	// SetWebPage пишет превью ссылки отложенного (P1); nil — снять.
 	SetWebPage(ctx context.Context, id int64, wp *domain.WebPagePreview) error
 }

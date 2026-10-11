@@ -26,6 +26,9 @@ const scheduledCols = `id, chat_id, sender_id, type, text, entities, reply_to_id
 // unclaimed — строка не в аренде публикации (миграция 0169).
 const unclaimed = `(claimed_until IS NULL OR claimed_until < now())`
 
+// workerReady — вне аренды и вне отступа после сбоя (выборки воркера).
+const workerReady = unclaimed + ` AND (next_attempt_at IS NULL OR next_attempt_at <= now())`
+
 func scanScheduled(s scanner) (domain.ScheduledMessage, error) {
 	var m domain.ScheduledMessage
 	var entitiesRaw, paramsRaw, webPageRaw []byte
@@ -166,7 +169,7 @@ func (r *ScheduledRepo) deleteWhere(ctx context.Context, where string, ids []int
 func (r *ScheduledRepo) Due(ctx context.Context, now time.Time, limit int) ([]domain.ScheduledMessage, error) {
 	return r.query(ctx,
 		`SELECT `+scheduledCols+` FROM scheduled_messages
-		  WHERE when_online = false AND send_at <= $1 AND `+unclaimed+` ORDER BY send_at, id LIMIT $2`, now, limit)
+		  WHERE when_online = false AND send_at <= $1 AND `+workerReady+` ORDER BY send_at, id LIMIT $2`, now, limit)
 }
 
 // WhenOnlineWaits — пары «чат + автор + собеседник лички» с ожидающими «когда
@@ -197,17 +200,20 @@ func (r *ScheduledRepo) WhenOnlineWaits(ctx context.Context) ([]usecasechat.Sche
 func (r *ScheduledRepo) WhenOnlineIn(ctx context.Context, chatID, senderID int64) ([]domain.ScheduledMessage, error) {
 	return r.query(ctx,
 		`SELECT `+scheduledCols+` FROM scheduled_messages
-		  WHERE chat_id=$1 AND sender_id=$2 AND when_online AND `+unclaimed+` ORDER BY id`, chatID, senderID)
+		  WHERE chat_id=$1 AND sender_id=$2 AND when_online AND `+workerReady+` ORDER BY id`, chatID, senderID)
 }
 
-// Update правит строку вне аренды публикации; снятой или публикуемой —
-// domain.ErrNotFound (кадра правки тогда быть не должно).
-func (r *ScheduledRepo) Update(ctx context.Context, m domain.ScheduledMessage) error {
+// Update правит строку вне аренды публикации и только на прочитанном сроке
+// (oldAt/oldWhenOnline): снятой, публикуемой или тем временем
+// переставленной (повтор) — domain.ErrNotFound, кадра правки тогда быть не
+// должно. Перенос срока сбрасывает попытки и отступ.
+func (r *ScheduledRepo) Update(ctx context.Context, m domain.ScheduledMessage, oldAt time.Time, oldWhenOnline bool) error {
 	tag, err := querier(ctx, r.pool).Exec(ctx,
 		`UPDATE scheduled_messages SET text=$2, entities=$3, send_at=$4, when_online=$5, repeat_period=$6,
-		        attempts = CASE WHEN send_at = $4 AND when_online = $5 THEN attempts ELSE 0 END
-		  WHERE id=$1 AND `+unclaimed,
-		m.ID, m.Text, entitiesParam(m.Entities), m.SendAt, m.WhenOnline, m.RepeatPeriod)
+		        attempts = CASE WHEN send_at = $4 AND when_online = $5 THEN attempts ELSE 0 END,
+		        next_attempt_at = CASE WHEN send_at = $4 AND when_online = $5 THEN next_attempt_at END
+		  WHERE id=$1 AND send_at=$7 AND when_online=$8 AND `+unclaimed,
+		m.ID, m.Text, entitiesParam(m.Entities), m.SendAt, m.WhenOnline, m.RepeatPeriod, oldAt, oldWhenOnline)
 	if err != nil {
 		return err
 	}
@@ -220,22 +226,26 @@ func (r *ScheduledRepo) Update(ctx context.Context, m domain.ScheduledMessage) e
 // Claim берёт строку в аренду публикации на lease и отдаёт её свежей: только
 // если она стоит на том же сроке (sendAt/whenOnline — снимок, по которому её
 // выбрали; правка срока тем временем — не публиковать) и не в чужой аренде.
-// attempts растёт на каждую аренду.
-func (r *ScheduledRepo) Claim(ctx context.Context, id int64, sendAt time.Time, whenOnline bool, lease time.Duration) (domain.ScheduledMessage, bool, error) {
+// countAttempt — аренда воркера считается попыткой (send_now автора — нет).
+func (r *ScheduledRepo) Claim(ctx context.Context, id int64, sendAt time.Time, whenOnline bool, lease time.Duration, countAttempt bool) (domain.ScheduledMessage, bool, error) {
 	m, err := scanScheduled(querier(ctx, r.pool).QueryRow(ctx,
-		`UPDATE scheduled_messages SET claimed_until = now() + make_interval(secs => $4), attempts = attempts + 1
+		`UPDATE scheduled_messages SET claimed_until = now() + make_interval(secs => $4),
+		        attempts = attempts + CASE WHEN $5 THEN 1 ELSE 0 END
 		  WHERE id=$1 AND when_online=$3 AND (when_online OR send_at=$2) AND `+unclaimed+`
-		  RETURNING `+scheduledCols, id, sendAt, whenOnline, lease.Seconds()))
+		  RETURNING `+scheduledCols, id, sendAt, whenOnline, lease.Seconds(), countAttempt))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.ScheduledMessage{}, false, nil
 	}
 	return m, err == nil, err
 }
 
-// Release снимает аренду (send_now после отказа: строка остаётся автору).
-func (r *ScheduledRepo) Release(ctx context.Context, id int64) error {
+// Release снимает аренду (строка снова в руках автора); retryAfter > 0 —
+// отступ воркера до следующей попытки (после временного сбоя).
+func (r *ScheduledRepo) Release(ctx context.Context, id int64, retryAfter time.Duration) error {
 	_, err := querier(ctx, r.pool).Exec(ctx,
-		`UPDATE scheduled_messages SET claimed_until = NULL WHERE id=$1`, id)
+		`UPDATE scheduled_messages SET claimed_until = NULL,
+		        next_attempt_at = CASE WHEN $2 > 0 THEN now() + make_interval(secs => $2) ELSE next_attempt_at END
+		  WHERE id=$1`, id, retryAfter.Seconds())
 	return err
 }
 
@@ -244,7 +254,7 @@ func (r *ScheduledRepo) Release(ctx context.Context, id int64) error {
 // тем временем сняли или перенесли, кадра быть не должно.
 func (r *ScheduledRepo) Reschedule(ctx context.Context, id int64, from, to time.Time) (domain.ScheduledMessage, bool, error) {
 	m, err := scanScheduled(querier(ctx, r.pool).QueryRow(ctx,
-		`UPDATE scheduled_messages SET send_at=$3, claimed_until=NULL, attempts=0, occurrence=occurrence+1
+		`UPDATE scheduled_messages SET send_at=$3, claimed_until=NULL, next_attempt_at=NULL, attempts=0, occurrence=occurrence+1
 		  WHERE id=$1 AND send_at=$2 AND NOT when_online
 		  RETURNING `+scheduledCols, id, from, to))
 	if errors.Is(err, pgx.ErrNoRows) {

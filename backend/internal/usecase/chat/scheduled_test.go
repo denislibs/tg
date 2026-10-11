@@ -21,8 +21,9 @@ type fakeScheduled struct {
 	next int64
 	rows map[int64]domain.ScheduledMessage
 	s    *store
-	// claims — аренда публикации (claimed_until) по ключу строки.
-	claims map[int64]time.Time
+	// claims — аренда публикации (claimed_until) по ключу строки; retry —
+	// отступ воркера (next_attempt_at).
+	claims, retry map[int64]time.Time
 	// failReschedule / failDelete — сколько ближайших Reschedule / DeleteIDs
 	// вернуть сбоем (сбой завершающей транзакции публикации).
 	failReschedule, failDelete int
@@ -31,7 +32,7 @@ type fakeScheduled struct {
 }
 
 func newFakeScheduled() *fakeScheduled {
-	return &fakeScheduled{rows: map[int64]domain.ScheduledMessage{}, claims: map[int64]time.Time{}}
+	return &fakeScheduled{rows: map[int64]domain.ScheduledMessage{}, claims: map[int64]time.Time{}, retry: map[int64]time.Time{}}
 }
 
 func (f *fakeScheduled) claimed(id int64) bool {
@@ -39,7 +40,13 @@ func (f *fakeScheduled) claimed(id int64) bool {
 	return ok && until.After(time.Now())
 }
 
-func (f *fakeScheduled) Claim(_ context.Context, id int64, sendAt time.Time, whenOnline bool, lease time.Duration) (domain.ScheduledMessage, bool, error) {
+// workerReady — вне аренды и вне отступа (выборки воркера).
+func (f *fakeScheduled) workerReady(id int64) bool {
+	until, ok := f.retry[id]
+	return !f.claimed(id) && (!ok || !until.After(time.Now()))
+}
+
+func (f *fakeScheduled) Claim(_ context.Context, id int64, sendAt time.Time, whenOnline bool, lease time.Duration, countAttempt bool) (domain.ScheduledMessage, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	m, ok := f.rows[id]
@@ -47,15 +54,20 @@ func (f *fakeScheduled) Claim(_ context.Context, id int64, sendAt time.Time, whe
 		return domain.ScheduledMessage{}, false, nil
 	}
 	f.claims[id] = time.Now().Add(lease)
-	m.Attempts++
+	if countAttempt {
+		m.Attempts++
+	}
 	f.rows[id] = m
 	return m, true, nil
 }
 
-func (f *fakeScheduled) Release(_ context.Context, id int64) error {
+func (f *fakeScheduled) Release(_ context.Context, id int64, retryAfter time.Duration) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	delete(f.claims, id)
+	if retryAfter > 0 {
+		f.retry[id] = time.Now().Add(retryAfter)
+	}
 	return nil
 }
 
@@ -77,6 +89,7 @@ func (f *fakeScheduled) Reschedule(_ context.Context, id int64, from, to time.Ti
 	m.Occurrence++
 	f.rows[id] = m
 	delete(f.claims, id)
+	delete(f.retry, id)
 	return m, true, nil
 }
 
@@ -94,11 +107,12 @@ func (f *fakeScheduled) DeleteUnclaimed(_ context.Context, ids []int64) ([]int64
 
 func (f *fakeScheduled) LockQueue(context.Context, int64, int64) error { return nil }
 
-// expireClaims — аренды истекли (следующая попытка воркера).
+// expireClaims — аренды и отступы истекли (следующая попытка воркера).
 func (f *fakeScheduled) expireClaims() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.claims = map[int64]time.Time{}
+	f.retry = map[int64]time.Time{}
 }
 
 func (f *fakeScheduled) sorted(keep func(domain.ScheduledMessage) bool) []domain.ScheduledMessage {
@@ -203,7 +217,9 @@ func (f *fakeScheduled) DeleteIDs(_ context.Context, ids []int64) ([]int64, erro
 func (f *fakeScheduled) Due(_ context.Context, now time.Time, limit int) ([]domain.ScheduledMessage, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	out := f.sorted(func(m domain.ScheduledMessage) bool { return !m.WhenOnline && !m.SendAt.After(now) && !f.claimed(m.ID) })
+	out := f.sorted(func(m domain.ScheduledMessage) bool {
+		return !m.WhenOnline && !m.SendAt.After(now) && f.workerReady(m.ID)
+	})
 	if len(out) > limit {
 		out = out[:limit]
 	}
@@ -236,15 +252,15 @@ func (f *fakeScheduled) WhenOnlineIn(_ context.Context, chatID, senderID int64) 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.sorted(func(m domain.ScheduledMessage) bool {
-		return m.ChatID == chatID && m.SenderID == senderID && m.WhenOnline && !f.claimed(m.ID)
+		return m.ChatID == chatID && m.SenderID == senderID && m.WhenOnline && f.workerReady(m.ID)
 	}), nil
 }
 
-func (f *fakeScheduled) Update(_ context.Context, m domain.ScheduledMessage) error {
+func (f *fakeScheduled) Update(_ context.Context, m domain.ScheduledMessage, oldAt time.Time, oldWhenOnline bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	cur, ok := f.rows[m.ID]
-	if !ok || f.claimed(m.ID) {
+	if !ok || f.claimed(m.ID) || !cur.SendAt.Equal(oldAt) || cur.WhenOnline != oldWhenOnline {
 		return domain.ErrNotFound
 	}
 	cur.Text, cur.Entities, cur.SendAt, cur.WhenOnline, cur.RepeatPeriod = m.Text, m.Entities, m.SendAt, m.WhenOnline, m.RepeatPeriod
@@ -1021,7 +1037,7 @@ func TestScheduled_ClaimedRowNotEditedOrDeleted(t *testing.T) {
 		t.Fatal(err)
 	}
 	row, _ := fs.ByID(ctx, sm.Seq)
-	if _, ok, _ := fs.Claim(ctx, row.ID, row.SendAt, false, time.Minute); !ok {
+	if _, ok, _ := fs.Claim(ctx, row.ID, row.SendAt, false, time.Minute, true); !ok {
 		t.Fatal("claim")
 	}
 	frames := len(logOf(s, 1, scheduledNewFrame))
@@ -1235,5 +1251,93 @@ func TestScheduled_PaidRepeatChargesEachOccurrence(t *testing.T) {
 	tick() // третье — звёзд не хватает: строка снята как отвергнутая
 	if fs.count() != 0 {
 		t.Fatal("повтор без оплаты остался в очереди")
+	}
+}
+
+// flakyMsgs — сбой чтения ключа публикации (временный сбой БД при публикации).
+type flakyMsgs struct {
+	fakeMsgs
+	fail *int
+}
+
+func (f flakyMsgs) FindByClientMsgID(ctx context.Context, chatID, senderID int64, cmid string) (domain.Message, error) {
+	if *f.fail > 0 {
+		*f.fail--
+		return domain.Message{}, errors.New("db: injected failure")
+	}
+	return f.fakeMsgs.FindByClientMsgID(ctx, chatID, senderID, cmid)
+}
+
+// Повторное ревью: временный сбой публикации снимает аренду (автор может
+// снять строку), а воркер ждёт отступа.
+func TestScheduled_TransientFailureReleasesClaim(t *testing.T) {
+	s := newStore()
+	fs := newFakeScheduled()
+	fs.s = s
+	fail := 0
+	in := New(fakeTx{}, fakeChats{s}, flakyMsgs{fakeMsgs{s}, &fail}, fakeUpdates{s}, fakeReactions{s}, fakeMedia{s}, nil, nil, nil, nil, nil)
+	in.SetScheduled(fs)
+	in.SetPublisher(&fakePublisher{})
+	ctx := context.Background()
+	cid, _ := fakeChats{s}.CreatePrivate(ctx, 1, 2)
+	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 1, Text: "x", ScheduleDate: future()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fs.set(sm.Seq, func(m *domain.ScheduledMessage) { m.SendAt = time.Now().Add(-time.Minute) })
+	fail = 1
+	if n, _ := in.DispatchDueScheduled(ctx); n != 0 {
+		t.Fatal("опубликовано при сбое")
+	}
+	if n, _ := in.DispatchDueScheduled(ctx); n != 0 {
+		t.Fatal("воркер не выдержал отступ")
+	}
+	if upd, err := in.DeleteScheduled(ctx, cid, 1, []int64{sm.Seq}); err != nil || len(upd) != 1 || fs.count() != 0 {
+		t.Fatalf("снятие в отступе после сбоя: upd=%v err=%v rows=%d", upd, err, fs.count())
+	}
+	fs.expireClaims()
+	if n, _ := in.DispatchDueScheduled(ctx); n != 0 || len(messagesOf(s, cid)) != 0 {
+		t.Fatal("снятое автором опубликовано")
+	}
+}
+
+// Повторное ревью: неудачные «Отправить сейчас» не считаются попытками
+// воркера; предел попыток не снимает уже вставленное сообщение без sent_messages.
+func TestScheduled_AttemptsOnlyWorkerAndAfterDedup(t *testing.T) {
+	in, _, s, id := gateGroup(t)
+	fs := newFakeScheduled()
+	in.SetScheduled(fs)
+	ctx := context.Background()
+	sm, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 8, Text: "x", ScheduleDate: future()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := in.SetChatPermissions(ctx, id, 7, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	for k := 0; k <= maxPublishAttempts; k++ {
+		_, _ = in.SendScheduledNow(ctx, id, 8, []int64{sm.Seq})
+	}
+	if err := in.SetChatPermissions(ctx, id, 7, domain.AllMemberPerms, 0); err != nil {
+		t.Fatal(err)
+	}
+	fs.set(sm.Seq, func(m *domain.ScheduledMessage) { m.SendAt = time.Now().Add(-time.Minute) })
+	before := len(messagesOf(s, id))
+	fs.failDelete = 1
+	if n, _ := in.DispatchDueScheduled(ctx); n != 1 || len(messagesOf(s, id)) != before+1 {
+		t.Fatalf("после неудачных send_now воркер не опубликовал: n=%d", n)
+	}
+	// Завершение упало; попытки исчерпаны — но сообщение уже есть: снятие с sent_messages.
+	fs.set(sm.Seq, func(m *domain.ScheduledMessage) { m.Attempts = maxPublishAttempts + 5 })
+	fs.expireClaims()
+	_, _ = in.DispatchDueScheduled(ctx)
+	var withSent bool
+	for _, d := range logOf(s, 8, scheduledDeleteFrame) {
+		if _, ok := d["sent_messages"]; ok {
+			withSent = true
+		}
+	}
+	if fs.count() != 0 || !withSent {
+		t.Fatalf("rows=%d withSent=%v", fs.count(), withSent)
 	}
 }

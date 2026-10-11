@@ -735,13 +735,16 @@ func (i *Interactor) EditScheduled(ctx context.Context, in EditScheduledInput) (
 	err = i.writeScheduled(ctx, m.SenderID, func(ctx context.Context) ([]scheduledFrame, error) {
 		edited := make([]domain.ScheduledMessage, 0, len(group))
 		for _, row := range group {
+			// Условие — прочитанный срок: строку, которую тем временем
+			// опубликовали и переставили (повтор), правка не откатывает.
+			oldAt, oldWO := row.SendAt, row.WhenOnline
 			if row.ID == m.ID {
 				row.Text, row.Entities = in.Text, entities
 			}
 			if timeChanged {
 				row.SendAt, row.WhenOnline, row.RepeatPeriod = sendAt, whenOnline, repeat
 			}
-			if e := i.scheduled.Update(ctx, row); e != nil {
+			if e := i.scheduled.Update(ctx, row, oldAt, oldWO); e != nil {
 				return nil, e
 			}
 			edited = append(edited, row)
@@ -931,9 +934,13 @@ func (i *Interactor) privatePeer(ctx context.Context, chatID, senderID int64) in
 	return 0
 }
 
-// scheduledLease — аренда строки на публикацию. Истёкшая после сбоя аренда —
-// отступ до следующей попытки воркера.
+// scheduledLease — аренда строки на публикацию: держится на время Send и до
+// снятия строки (истекает сама, если процесс упал посередине).
 const scheduledLease = 2 * time.Minute
+
+// scheduledRetry — отступ воркера после временного сбоя публикации. Аренда
+// при этом снимается: автор может править и снимать строку.
+const scheduledRetry = 2 * time.Minute
 
 // maxPublishAttempts — попыток публикации одного срока; дальше строка
 // снимается как отвергнутая (иначе стабильно падающие строки вечно занимали
@@ -970,7 +977,9 @@ func (i *Interactor) publishScheduled(ctx context.Context, chatID, userID int64,
 	sent := 0
 	var failed error
 	for _, snap := range rows {
-		row, ok, err := i.scheduled.Claim(ctx, snap.ID, snap.SendAt, snap.WhenOnline, scheduledLease)
+		// Попыткой считается только аренда воркера: неудачные «Отправить
+		// сейчас» не приближают снятие строки по пределу попыток.
+		row, ok, err := i.scheduled.Claim(ctx, snap.ID, snap.SendAt, snap.WhenOnline, scheduledLease, !strict)
 		if err != nil {
 			log.Printf("scheduled %d: claim: %v", snap.ID, err)
 			if strict {
@@ -982,20 +991,10 @@ func (i *Interactor) publishScheduled(ctx context.Context, chatID, userID int64,
 		if !ok {
 			continue // сняли, перенесли или публикуют рядом
 		}
-		var msg domain.Message
-		switch {
-		case row.ParamsBroken:
-			log.Printf("scheduled %d: snapshot params unreadable", row.ID)
-			err = domain.ErrInvalid
-		case !strict && row.Attempts > maxPublishAttempts:
-			log.Printf("scheduled %d: gave up after %d attempts", row.ID, row.Attempts-1)
-			err = domain.ErrInvalid
-		default:
-			msg, err = i.publishScheduledRow(ctx, row)
-		}
+		msg, err := i.publishScheduledRow(ctx, row, !strict && row.Attempts > maxPublishAttempts)
 		if err != nil {
 			if strict {
-				if e := i.scheduled.Release(ctx, row.ID); e != nil {
+				if e := i.scheduled.Release(ctx, row.ID, 0); e != nil {
 					log.Printf("scheduled %d: release: %v", row.ID, e)
 				}
 				failed = err
@@ -1005,10 +1004,14 @@ func (i *Interactor) publishScheduled(ctx context.Context, chatID, userID int64,
 				rejected = append(rejected, row.ID)
 				continue
 			}
-			// Сбой (БД, таймаут) — строка ждёт истечения аренды: повтор
-			// идемпотентен по ключу публикации, а снять её значило бы
-			// потерять сообщение и списанные при постановке звёзды.
+			// Сбой (БД, таймаут) — строка ждёт отступа: повтор идемпотентен
+			// по ключу публикации, а снять её значило бы потерять сообщение и
+			// списанные при постановке звёзды. Аренда снимается — правка и
+			// снятие автором в это время работают.
 			log.Printf("scheduled %d: publish: %v", row.ID, err)
+			if e := i.scheduled.Release(ctx, row.ID, scheduledRetry); e != nil {
+				log.Printf("scheduled %d: release: %v", row.ID, e)
+			}
 			continue
 		}
 		sent++
@@ -1123,12 +1126,24 @@ func nextRepeat(at time.Time, period int, now time.Time) time.Time {
 //
 // Каждое вхождение повтора после первого платит при публикации
 // (repeatOccurrence): первое оплачено при постановке.
-func (i *Interactor) publishScheduledRow(ctx context.Context, row domain.ScheduledMessage) (domain.Message, error) {
+//
+// Не публикуются (ErrInvalid — снятие как отвергнутой) строка с нечитаемым
+// снимком и строка, исчерпавшая попытки воркера (giveUp) — но только если
+// сообщение этого срока ещё не вставлено.
+func (i *Interactor) publishScheduledRow(ctx context.Context, row domain.ScheduledMessage, giveUp bool) (domain.Message, error) {
 	key := publishKey(row)
 	if ex, err := i.msgs.FindByClientMsgID(ctx, row.ChatID, row.SenderID, key); err == nil {
 		return ex, nil
 	} else if !errors.Is(err, domain.ErrNotFound) {
 		return domain.Message{}, err
+	}
+	if row.ParamsBroken {
+		log.Printf("scheduled %d: snapshot params unreadable", row.ID)
+		return domain.Message{}, domain.ErrInvalid
+	}
+	if giveUp {
+		log.Printf("scheduled %d: gave up after %d attempts", row.ID, row.Attempts-1)
+		return domain.Message{}, domain.ErrInvalid
 	}
 	if row.Params.Fwd != nil {
 		return i.publishScheduledCopy(ctx, row, key)
