@@ -219,12 +219,12 @@ function performSend(
     // отправка) либо `sendFile` по одному.
     if(asAlbum) {
       const items = []
-      for(let i = 0; i < files.length; i++) items.push(await prepare(i))
+      for(let i = 0; i < files.length; i++) items.push({ ...await prepare(i), ...sendingParams })
       await chat.managers.messages.sendGrouped(items)
       return
     }
     for(let i = 0; i < files.length; i++) {
-      await chat.managers.messages.sendFile(await prepare(i))
+      await chat.managers.messages.sendFile({ ...await prepare(i), ...sendingParams })
     }
   })()
 
