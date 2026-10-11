@@ -165,9 +165,10 @@ func (c ChatForbidden) PeerID() PeerID { return ToPeerID(c.ID, true) }
 //	SlowmodeEnabled   — chats.slowmode_seconds > 0
 //	Forum             — chats.is_forum
 //	HasLink           — chats.discussion_chat_id не пуст
+//	JoinToSend        — chats.join_to_send (channels.toggleJoinToSend)
 //
 // Остальные булевы флаги схемы (verified, scam, fake, gigagroup, noforwards,
-// join_to_send, join_request, has_geo, call_active, call_not_empty, monoforum,
+// join_request, has_geo, call_active, call_not_empty, monoforum,
 // autotranslation, stories_*) предмета у нас не имеют — ни колонки, ни механики
 // за ними нет, поэтому они не объявляются, а не выставляются наугад.
 type ChannelFlags struct {
@@ -186,12 +187,14 @@ type ChannelFlags struct {
 	SlowmodeEnabled   bool
 	Forum             bool
 	HasLink           bool
+	JoinToSend        bool
 }
 
 // channelFlagNames — что keepPFlags пропускает в модель на разборе.
 var channelFlagNames = []string{
 	"creator", "left", "broadcast", "megagroup", "signatures",
 	"signature_profiles", "slowmode_enabled", "forum", "has_link", "min",
+	"join_to_send",
 }
 
 // channel#1c32b11c flags:# creator:flags.0?true left:flags.2?true
@@ -248,6 +251,7 @@ func (c Channel) SignatureProfiles() bool { return c.PFlags["signature_profiles"
 func (c Channel) SlowmodeEnabled() bool   { return c.PFlags["slowmode_enabled"] }
 func (c Channel) Forum() bool             { return c.PFlags["forum"] }
 func (c Channel) HasLink() bool           { return c.PFlags["has_link"] }
+func (c Channel) JoinToSend() bool        { return c.PFlags["join_to_send"] }
 
 // Admin — зритель админ: признак это НАЛИЧИЕ admin_rights, а не роль
 // (решение №3). Создатель отдельно: у него pFlags.creator.
@@ -270,6 +274,7 @@ func NewChannel(id int64, title string, photo ChatPhoto, date time.Time, f Chann
 	setPFlag(&c.PFlags, "slowmode_enabled", f.SlowmodeEnabled)
 	setPFlag(&c.PFlags, "forum", f.Forum)
 	setPFlag(&c.PFlags, "has_link", f.HasLink)
+	setPFlag(&c.PFlags, "join_to_send", f.JoinToSend)
 	return c
 }
 

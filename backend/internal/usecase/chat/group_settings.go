@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"slices"
 	"sync"
@@ -106,9 +107,14 @@ func (i *Interactor) checkSendAllowed(ctx context.Context, in SendInput) error {
 	if i.groups == nil {
 		return nil
 	}
+	// Не участник сюда доходит только гостем обсуждения (Send) — для него
+	// гейт тот же, что у обычного участника.
 	m, err := i.groups.GetMember(ctx, in.ChatID, in.SenderID)
-	if err != nil || m.Role == domain.RoleCreator || m.Role == domain.RoleAdmin {
-		return nil // membership уже проверена; админам можно всё
+	if err == nil && (m.Role == domain.RoleCreator || m.Role == domain.RoleAdmin) {
+		return nil // админам можно всё
+	}
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return err
 	}
 	s, err := i.groups.Settings(ctx, in.ChatID)
 	if err != nil {

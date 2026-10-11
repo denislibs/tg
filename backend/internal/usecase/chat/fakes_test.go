@@ -638,7 +638,7 @@ func (r fakeChats) AddMention(_ context.Context, chatID, msgID, seq, userID int6
 	return nil
 }
 
-func (r fakeChats) MemberIDsByUsernames(_ context.Context, chatID int64, usernames []string) ([]int64, error) {
+func (r fakeChats) ParticipantIDsByUsernames(_ context.Context, chatID int64, usernames []string) ([]int64, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	var ids []int64

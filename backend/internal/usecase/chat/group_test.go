@@ -281,6 +281,18 @@ func (r *fakeGroupRepo) DiscussionCandidates(_ context.Context, actorID int64) (
 	return out, nil
 }
 
+func (r *fakeGroupRepo) SetJoinToSend(_ context.Context, chatID int64, on bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, ok := r.cards[chatID]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	c.Settings.JoinToSend = on
+	r.cards[chatID] = c
+	return nil
+}
+
 func (r *fakeGroupRepo) SetSignatures(_ context.Context, chatID int64, signatures, profiles bool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -1039,7 +1051,7 @@ func (c groupChats) MessageMentions(context.Context, int64) (map[int64]bool, err
 func (c groupChats) ViewerMentions(context.Context, int64, []int64) (map[int64]bool, error) {
 	return nil, nil
 }
-func (c groupChats) MemberIDsByUsernames(context.Context, int64, []string) ([]int64, error) {
+func (c groupChats) ParticipantIDsByUsernames(context.Context, int64, []string) ([]int64, error) {
 	return nil, nil
 }
 func (c groupChats) ClearMentions(context.Context, int64, int64, int64) (int, error) {

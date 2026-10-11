@@ -455,3 +455,27 @@ func TestGetWebPage(t *testing.T) {
 		t.Fatalf("пустой ответ = %s", raw)
 	}
 }
+
+// Правка поста с invert_media: флаг доходит до зеркала (mirrorSync), как и
+// карточка — у зеркала та же раскладка «медиа над текстом».
+func TestChannelPost_EditInvertMediaReachesMirror(t *testing.T) {
+	e := newChannelEnv(t)
+	ctx := context.Background()
+	if _, err := e.i.EnableDiscussion(ctx, e.ch, 7); err != nil {
+		t.Fatalf("EnableDiscussion: %v", err)
+	}
+	post, err := e.i.Send(ctx, SendInput{ChatID: e.ch, SenderID: 7, Text: "пост"})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	mirrorID, err := e.i.msgs.MirrorOfExactPost(ctx, e.ch, post.ID)
+	if err != nil || mirrorID == 0 {
+		t.Fatalf("зеркала нет: %v", err)
+	}
+	if _, err := e.i.EditMessage(ctx, e.ch, post.ID, 7, "пост 2", nil, domain.WebPageInput{InvertMedia: true}); err != nil {
+		t.Fatalf("EditMessage: %v", err)
+	}
+	if m := storedMsg(t, e.s, mirrorID); !m.InvertMedia || m.Text != "пост 2" {
+		t.Fatalf("зеркало = %+v; ждали текст правки и invert_media", m)
+	}
+}
