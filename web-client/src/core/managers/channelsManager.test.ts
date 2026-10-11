@@ -107,6 +107,32 @@ describe('ChannelsManager.post', () => {
     expect(pendings).toEqual([expect.objectContaining({ schedule_date: 1_900_000_000, schedule_repeat_period: 86400 })])
   })
 
+  // tweb `processUpdateMessage(updates)` у отправки (appMessagesManager.ts:2810-2811):
+  // ответ отложенного поста — `Updates`, их применяет владелец ленты отложенных.
+  it('отложенный пост: ответ Updates уходит владельцу ленты отложенных', async () => {
+    const updates = { updates: [{ _: 'updateNewScheduledMessage', message: raw(6) }], users: [], chats: [] }
+    const rest = { post: vi.fn(async () => updates), get: vi.fn() } as unknown as RestClient
+    const applyScheduledUpdates = vi.fn()
+    const mgr = newChannelsManager({ rest, beforeSending: () => {}, applyScheduledUpdates, peers: fakePeers(), cacheViews: () => {} })
+
+    await mgr.post(7, 'пост', 'c12', undefined, { senderId: 3 }, { scheduleDate: 1_900_000_000 })
+    expect(applyScheduledUpdates).toHaveBeenCalledWith(updates)
+  })
+
+  // tweb :2819-2834 — отказ отправки: `toggleError` бабла и проброс отказа
+  // вызывателю (там тост), а не бабл, навсегда висящий «отправляется».
+  it('отказ ручки: бабл помечается упавшим, отказ уходит вызывателю', async () => {
+    const err = new Error('SCHEDULE_TOO_MUCH')
+    const rest = { post: vi.fn(async () => { throw err }), get: vi.fn() } as unknown as RestClient
+    const failSending = vi.fn()
+    const applyScheduledUpdates = vi.fn()
+    const mgr = newChannelsManager({ rest, beforeSending: () => {}, failSending, applyScheduledUpdates, peers: fakePeers(), cacheViews: () => {} })
+
+    await expect(mgr.post(7, 'пост', 'c13', undefined, { senderId: 3 }, { scheduleDate: 1_900_000_000 })).rejects.toBe(err)
+    expect(failSending).toHaveBeenCalledWith('c13')
+    expect(applyScheduledUpdates).not.toHaveBeenCalled()
+  })
+
   it('без optimistic бабл не заводится (публикация из мест без ленты на экране)', async () => {
     const post = vi.fn(async () => raw(6))
     const rest = { post, get: vi.fn() } as unknown as RestClient

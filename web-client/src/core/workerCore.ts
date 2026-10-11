@@ -394,7 +394,12 @@ export function createWorkerCore() {
   // несёт уже новые значения, и применяет их та же точка, что и кадр
   // `views_update` (реестр CACHE выше). Стрелкой, а не ссылкой: `messages`
   // собран выше, но зависимость объявляется здесь, у вызывателя.
-  const channels = newChannelsManager({ rest, beforeSending, peers, cacheViews: (peerId, views) => { messages.cacheViews(peerId, views) } })
+  const channels = newChannelsManager({
+    rest, beforeSending, peers, cacheViews: (peerId, views) => { messages.cacheViews(peerId, views) },
+    // Отказ ручки поста — бабл упавшим; ответ отложенного поста — в ленту отложенных.
+    failSending: (clientMsgId) => { void messages.failPending({ clientMsgId }) },
+    applyScheduledUpdates: (r) => { messages.applyScheduledUpdates(r) },
+  })
   const presence = newPresenceManager({ rest })
   const stories = newStoriesManager({ rest })
   // Книга контактов и «недавние» глобального поиска (половина tweb

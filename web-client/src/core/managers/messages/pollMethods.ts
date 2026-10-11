@@ -15,6 +15,7 @@ import type { MessageOp } from '../../realtime/messageOps'
 import { getPeerId } from '../../peers/peerId'
 import type { ChecklistUpdateEvt, GiveawayUpdateEvt, PollUpdateEvt } from '../../realtime/events'
 import type { MessagesCtx } from './ctx'
+import type { ScheduledUpdates } from '../messagesManager'
 import { sendingParamsToWire, type MessageSendingParams } from './sendingParams'
 
 /** Вложение сообщения — опрос с этим идентификатором. */
@@ -37,7 +38,7 @@ function giveawayIdOf(media: MessageMedia): number | undefined {
   return media._ === 'messageMediaGiveaway' || media._ === 'messageMediaGiveawayResults' ? media.id : undefined
 }
 
-export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor, emitOps }: MessagesCtx) {
+export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor, emitOps, applyScheduledUpdates }: MessagesCtx) {
   // Та же граница маппинга, что в messagesManager: `pFlags.out` производит
   // сервер, здесь остаются перевод номеров и уточнение служебного действия.
   const mapOne = (r: RawMyMessage): MyMessage => mapMyMessage(r, getMeId?.() ?? null)
@@ -63,7 +64,7 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor, emitOps 
     // эффекты на опросах не показывает.
     async sendPoll(peerId: number, p: { question: string; options: string[]; anonymous: boolean; multiple: boolean; quiz: boolean; correctOption?: number; clientMsgId?: string } & MessageSendingParams): Promise<MyMessage | undefined> {
       const wire = sendingParamsToWire(p)
-      const r = await rest.post<RawMyMessage>(`/chats/${peerId}/polls`, {
+      const r = await rest.post<RawMyMessage | ScheduledUpdates>(`/chats/${peerId}/polls`, {
         question: p.question, options: p.options, anonymous: p.anonymous,
         multiple: p.multiple, quiz: p.quiz, correct_option: p.correctOption ?? null,
         client_msg_id: p.clientMsgId ?? '',
@@ -73,8 +74,13 @@ export function newPollMethods({ rest, patchMsg, getMeId, opWindowsFor, emitOps 
         // tweb `sendOther` → `messages.sendMedia{schedule_date}` (:4141-4166)
         schedule_date: wire.scheduleDate ?? 0, schedule_repeat_period: wire.scheduleRepeatPeriod ?? 0,
       })
-      // отложенный опрос отвечает `Updates` (лента отложенных — кадром)
-      return wire.scheduleDate ? undefined : mapOne(r)
+      // Отложенный опрос отвечает `Updates` (tweb `sendOther` → `processUpdateMessage`,
+      // :4183) — кадры ленты отложенных применяет её владелец.
+      if (wire.scheduleDate) {
+        applyScheduledUpdates?.(r as ScheduledUpdates)
+        return undefined
+      }
+      return mapOne(r as RawMyMessage)
     },
     // Голос (пустой список — отзыв). Ответ АВТОРИТЕТЕН и несёт мой выбор —
     // `results.results[].pFlags.chosen` — которого нет в общем WS-кадре

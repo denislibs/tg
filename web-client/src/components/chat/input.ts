@@ -595,7 +595,7 @@ export default class ChatInput {
               ...payload,
               clientMsgId: crypto.randomUUID(),
               ...sendingParams,
-            })
+            }).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
           },
         })
       },
@@ -2228,7 +2228,9 @@ export default class ChatInput {
       const clientMsgId = crypto.randomUUID()
       const sendEntities = parsedEntities.length ? parsedEntities : undefined
       if(isChannel) {
+        // Отказ (права, лимит очереди отложенных) — бабл уже помечен упавшим, здесь тост
         void this.managers.channels.post(peerId, text, clientMsgId, sendEntities, { senderId: rootScope.myId, threadRootId: this.chat.threadId }, sendingParams)
+          .catch(() => toastNew({ langPackKey: 'Error.AnError' }))
       } else {
         void this.managers.messages.sendText({
           peerId,

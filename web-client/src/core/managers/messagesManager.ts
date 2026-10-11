@@ -473,7 +473,11 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
   const sortScheduled = (storage: Map<number, MyMessage>): MyMessage[] =>
     [...storage.values()].sort((a, b) => a.date - b.date || a.id - b.id)
 
-  const ctx = { rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers, getUnreadReactionsCount }
+  const ctx = {
+    rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers, getUnreadReactionsCount,
+    // Стрелкой: функция объявлена ниже, а зовётся только из ответа ручки.
+    applyScheduledUpdates: (r: ScheduledUpdates | undefined) => applyScheduledUpdates(r?.updates, r),
+  }
   // Локальной ссылкой (а не только спредом ниже) — её зовёт cacheLive, чтобы эхо
   // своей отправки убирало временный бабл из SSOT (порт tweb checkPendingMessage).
   const pending = newPendingMethods({
@@ -509,6 +513,11 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     const old = storage.get(incoming.id)
     const message = saveScheduled(storage, incoming)
     if (old) {
+      // Тот же кадр дважды — ответ ручки и затем сокет (сервер шлёт кадр всем
+      // устройствам автора, включая отправившее; MTProto апдейты ответа сессии-
+      // отправителю повторно не присылает, поэтому tweb дубля не видит) — второй
+      // ничего не меняет, правку окна не объявляем.
+      if (JSON.stringify(old) === JSON.stringify(message)) return
       emitOps([{ op: 'replace', key: scheduledKey(peerId), msg: message }])
       return
     }
@@ -526,16 +535,17 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     const peerId = getPeerId(u.peer)
     const storage = scheduledStorage.get(peerId)
     if (!storage) return
-    const mids = u.messages.map(generateMessageId)
-    for (const mid of mids) storage.delete(mid)
-    broadcast?.('scheduled_delete', { peerId, mids })
+    // Объявляем только снятые сейчас: повтор того же кадра (ответ ручки, затем
+    // сокет — см. дубль в `applyNewScheduledMessage`) ленте уже не событие.
+    const mids = u.messages.map(generateMessageId).filter((mid) => storage.delete(mid))
+    if (mids.length) broadcast?.('scheduled_delete', { peerId, mids })
   }
 
   // Ответ ручки отложенных — `Updates` (tweb `processUpdateMessage`). Здесь
   // применяются только кадры ленты отложенных: опубликованное сообщение
   // приезжает штатным веером `new_message`. Тот же кадр из сокета следом
-  // безвреден: номер уже в хранилище → правка тем же содержимым; повторный
-  // `scheduled_delete` по снятым номерам лента и кнопка-календарик переживают.
+  // отсекается: номер уже в хранилище с тем же содержимым, снятые номера уже
+  // сняты (`applyNewScheduledMessage`/`applyDeleteScheduledMessages`).
   const applyScheduledUpdates = (updates: Update[] | undefined, peersOf?: { users?: UserReal[], chats?: Chat[] }): void => {
     // tweb `processUpdateMessage` :239-240 — пиры пачки сохраняются ДО апдейтов
     if (peersOf?.users?.length || peersOf?.chats?.length) peers?.saveApiPeers({ users: peersOf.users, chats: peersOf.chats })
@@ -1422,6 +1432,8 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
 
     applyNewScheduledMessage,
     applyDeleteScheduledMessages,
+    /** Ответ `Updates` отложенной отправки чужим транспортом (пост канала). */
+    applyScheduledUpdates: ctx.applyScheduledUpdates,
 
     // Кто сейчас в видеочате группы (для баннера Join).
     //

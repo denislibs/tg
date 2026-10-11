@@ -250,21 +250,21 @@ describe('MessagesManager — лента отложенных', () => {
   it('sendScheduledMessages — один пакетный вызов, кадры ответа применяются (tweb :12420-12427)', async () => {
     const calls: [string, unknown][] = []
     const { mgr, events } = setup({
-      post: async (p: string, b: unknown) => { calls.push([p, b]); return { updates: [deleteScheduled([7, 8])] } },
+      post: async (p: string, b: unknown) => { calls.push([p, b]); return { updates: [deleteScheduled([1, 2])] } },
     })
     await mgr.getScheduledMessages(1)
-    await mgr.sendScheduledMessages(1, [cid(7), cid(8)])
-    expect(calls).toEqual([['/chats/1/scheduled/send_now', { id: [7, 8] }]])
-    expect(events).toEqual([['scheduled_delete', { peerId: 1, mids: [cid(7), cid(8)] }]])
+    await mgr.sendScheduledMessages(1, [cid(1), cid(2)])
+    expect(calls).toEqual([['/chats/1/scheduled/send_now', { id: [1, 2] }]])
+    expect(events).toEqual([['scheduled_delete', { peerId: 1, mids: [cid(1), cid(2)] }]])
   })
 
   it('deleteScheduledMessages — один пакетный вызов; отказ ручки ничего не объявляет', async () => {
     const calls: [string, unknown][] = []
-    const ok = setup({ post: async (p: string, b: unknown) => { calls.push([p, b]); return { updates: [deleteScheduled([9])] } } })
+    const ok = setup({ post: async (p: string, b: unknown) => { calls.push([p, b]); return { updates: [deleteScheduled([3])] } } })
     await ok.mgr.getScheduledMessages(1)
-    await ok.mgr.deleteScheduledMessages(1, [cid(9)])
-    expect(calls).toEqual([['/chats/1/scheduled/delete', { id: [9] }]])
-    expect(ok.events).toEqual([['scheduled_delete', { peerId: 1, mids: [cid(9)] }]])
+    await ok.mgr.deleteScheduledMessages(1, [cid(3)])
+    expect(calls).toEqual([['/chats/1/scheduled/delete', { id: [3] }]])
+    expect(ok.events).toEqual([['scheduled_delete', { peerId: 1, mids: [cid(3)] }]])
 
     const bad = setup({ post: async () => { throw new Error('500') } })
     await expect(bad.mgr.deleteScheduledMessages(1, [cid(9)])).rejects.toThrow()
@@ -293,6 +293,28 @@ describe('MessagesManager — лента отложенных', () => {
     await mgr.editMessage(1, cid(1), 'b', undefined, { scheduleDate: 1_900_000_000 })
     expect(bodies.map((b) => b.schedule_repeat_period)).toEqual([604800, 0, undefined])
     expect('schedule_repeat_period' in bodies[2]).toBe(false)
+  })
+
+  // Сервер шлёт кадр всем устройствам автора, включая отправившее, — тот же кадр
+  // приходит ответом ручки и затем сокетом. tweb дубля не видит (MTProto апдейты
+  // ответа сессии повторно не шлёт); у нас второй отсекается.
+  it('дубль кадра (ответ ручки + сокет): второе событие не объявляется', async () => {
+    const { mgr, events } = setup({
+      post: async () => ({ updates: [deleteScheduled([1])] }),
+    })
+    await mgr.getScheduledMessages(1)
+    mgr.applyNewScheduledMessage(newScheduled(rawScheduled(5, 500)))
+    mgr.applyNewScheduledMessage(newScheduled(rawScheduled(5, 500)))
+    await mgr.deleteScheduledMessages(1, [cid(1)])
+    mgr.applyDeleteScheduledMessages(deleteScheduled([1]))
+    expect(events.map(([e]) => e)).toEqual(['scheduled_new', 'scheduled_delete'])
+  })
+
+  it('ответ Updates чужого транспорта (пост канала, опрос) — applyScheduledUpdates кладёт в ленту', async () => {
+    const { mgr, events } = setup()
+    await mgr.getScheduledMessages(1)
+    mgr.applyScheduledUpdates({ updates: [newScheduled(rawScheduled(6, 600))], users: [], chats: [] })
+    expect(events.map(([e]) => e)).toEqual(['scheduled_new'])
   })
 
   it('правка отложенного без изменений (MESSAGE_NOT_MODIFIED) — не отказ (tweb :2230-2233)', async () => {
