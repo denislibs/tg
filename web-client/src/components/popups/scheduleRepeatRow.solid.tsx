@@ -12,8 +12,9 @@
  * (`:115-125`), а справа стоит замок `premium_lock` (`:149-151`); здесь гейта и
  * замка нет — ряд открывает выбор периода всем.
  */
-import { createSignal } from 'solid-js'
+import { createEffect, createSignal, onCleanup } from 'solid-js'
 import Row from '@components/rowTsx.solid'
+import { attachClickEvent } from '@helpers/dom/clickEvent'
 import InlineSelect from '@components/sidebarLeft/tabs/passcodeLock/inlineSelect.solid'
 import { i18n } from '@lib/langPack'
 
@@ -37,10 +38,21 @@ export default function ScheduleRepeatRow(props: { initValue: number, onChange: 
   const [selectOpen, setSelectOpen] = createSignal(false)
   const [rowEl, setRowEl] = createSignal<HTMLElement>()
 
+  // tweb `clickable={onClick}` (:127) — делегированный `onClick` Solid. У нас ряд
+  // живёт островом внутри React-попапа, а его контейнер гасит всплытие щелчка
+  // (`shared/ui/Popup/Popup.tsx`, `e.stopPropagation()`), так что до
+  // делегата на `document` щелчок не доходит. Поэтому слушатель — прямо на ряду.
+  // ВРЕМЕННО до 2C-23 (календарь на Solid, без React-попапа).
+  createEffect(() => {
+    const el = rowEl()
+    if(!el) return
+    onCleanup(attachClickEvent(el, () => setSelectOpen((v) => !v)))
+  })
+
   return (
     <Row
       ref={setRowEl}
-      clickable={() => setSelectOpen((v) => !v)}
+      clickable
       class="popup-schedule-repeat"
     >
       <Row.Title>{i18n('Schedule.Repeat')}</Row.Title>
