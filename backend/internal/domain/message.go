@@ -72,6 +72,12 @@ type Message struct {
 	MediaID      *int64
 	ClientMsgID  *string
 	ThreadRootID *int64
+	// ForumTopic — корень треда — тема форума (не General, не тред
+	// комментариев). Колонки нет: признак выводит граница вывода
+	// (Interactor.ExternalizeThreadRoots) вместе с номером корня, а на провод
+	// он уходит флагом messageReplyHeader.pFlags.forum_topic — без него tweb
+	// относит сообщение форума к General (getMessageThreadId.ts:17-24).
+	ForumTopic bool
 	// GroupedID — идентификатор медиагруппы (Telegram grouped_id): сообщения
 	// одного альбома несут общий id, клиент рендерит их одним грид-баблом.
 	// В схеме это flags.17?long — число, а не строка: непрозрачный ключ группы

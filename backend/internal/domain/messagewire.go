@@ -270,19 +270,29 @@ func (m Message) fromID() Peer {
 // и отдельно ЦИТАТА, которая едет всегда, когда она есть: выделенный фрагмент
 // нельзя вывести из оригинала, если оригинал потом изменили.
 //
-// Корень треда — reply_to_top_id ЗДЕСЬ ЖЕ и всегда в ТОМ ЖЕ пире: отдельного
-// поля thread_root_id в схеме нет вовсе.
+// Корень треда едет ЗДЕСЬ ЖЕ и всегда в ТОМ ЖЕ пире: отдельного поля
+// thread_root_id в схеме нет вовсе. Форма — как у tweb при сборке заголовка
+// (appMessagesManager.ts:4681-4694): `reply_to_msg_id = ответ || корень`,
+// `reply_to_top_id` — только если отличается от `reply_to_msg_id`. Простое
+// сообщение треда — `reply_to_msg_id = корень` без `reply_to_top_id`; тред
+// клиент выводит как `reply_to_top_id || reply_to_msg_id`
+// (getMessageThreadId.ts:17-18). У темы форума (не General) — ещё и
+// pFlags.forum_topic: без него tweb кладёт сообщение форума в General.
 func (m Message) replyHeader() *MessageReplyHeader {
 	if m.ReplyToID == nil && m.ThreadRootID == nil {
 		return nil
 	}
 	h := MessageReplyHeader{Underscore: MessageReplyHeaderTag}
-	if m.ReplyToID != nil {
+	switch {
+	case m.ReplyToID != nil:
 		h.ReplyToMsgID = *m.ReplyToID
+		if m.ThreadRootID != nil && *m.ThreadRootID != *m.ReplyToID {
+			h.ReplyToTopID = *m.ThreadRootID
+		}
+	default:
+		h.ReplyToMsgID = *m.ThreadRootID
 	}
-	if m.ThreadRootID != nil {
-		h.ReplyToTopID = *m.ThreadRootID
-	}
+	h.ForumTopic(m.ForumTopic && m.ThreadRootID != nil)
 	if m.ReplyToPeerID != nil {
 		if m.ReplyToPeer != nil {
 			h.ReplyToPeerID = m.ReplyToPeer

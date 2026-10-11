@@ -151,7 +151,7 @@ func TestForward_ServiceRejected(t *testing.T) {
 	ctx := context.Background()
 	src, _ := in.CreatePrivateChat(ctx, 1, 2)
 	dst, _ := in.CreatePrivateChat(ctx, 1, 3)
-	svc, _ := in.Send(ctx, SendInput{ChatID: src, SenderID: 1, Action: domain.NewMessageActionTopicCreate("t", 0)})
+	svc, _ := in.Send(ctx, SendInput{ChatID: src, SenderID: 1, Action: domain.NewMessageActionTopicCreate("t", 0, "")})
 	if _, err := in.ForwardMessages(ctx, ForwardInput{FromChatID: src, ToChatID: dst, MsgIDs: []int64{svc.ID}, SenderID: 1}); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("пересылка служебки: %v, want ErrForbidden", err)
 	}
@@ -302,7 +302,7 @@ func TestEdit_ForwardedAndServiceForbidden(t *testing.T) {
 	if _, err := in.EditMessage(ctx, dst, fwd[0].ID, bob, "Я, Алиса, признаю всё", nil); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("правка пересланного: %v, want ErrForbidden", err)
 	}
-	svc, _ := in.Send(ctx, SendInput{ChatID: dst, SenderID: bob, Action: domain.NewMessageActionTopicCreate("t", 0)})
+	svc, _ := in.Send(ctx, SendInput{ChatID: dst, SenderID: bob, Action: domain.NewMessageActionTopicCreate("t", 0, "")})
 	if _, err := in.EditMessage(ctx, dst, svc.ID, bob, "подмена", nil); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("правка служебки: %v, want ErrForbidden", err)
 	}
@@ -388,17 +388,17 @@ func TestCreateTopic_ForumAndRights(t *testing.T) {
 	in, fg, _, id := gateGroup(t)
 	in.SetTopics(newFakeTopicRepo())
 	ctx := context.Background()
-	if _, err := in.CreateTopic(ctx, id, 8, "тема", "", 0); !errors.Is(err, domain.ErrForbidden) {
+	if _, _, err := in.CreateTopic(ctx, id, 8, "тема", "", 0); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("тема в не-форуме: %v, want ErrForbidden", err)
 	}
 	_ = fg.SetForum(ctx, id, true)
 	if err := in.SetChatPermissions(ctx, id, 7, domain.AllMemberPerms&^domain.PermSendMessages, 0); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := in.CreateTopic(ctx, id, 8, "тема", "", 0); !errors.Is(err, domain.ErrForbidden) {
+	if _, _, err := in.CreateTopic(ctx, id, 8, "тема", "", 0); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("тема участника без права писать: %v, want ErrForbidden", err)
 	}
-	if _, err := in.CreateTopic(ctx, id, 7, "тема владельца", "", 0); err != nil {
+	if _, _, err := in.CreateTopic(ctx, id, 7, "тема владельца", "", 0); err != nil {
 		t.Fatalf("тема владельца: %v", err)
 	}
 }

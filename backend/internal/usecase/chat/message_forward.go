@@ -317,7 +317,7 @@ func (i *Interactor) checkForwardAllowed(ctx context.Context, in ForwardInput, c
 		}
 	}
 	probe.batchUnits = units
-	if err := i.checkTopicOpen(ctx, probe); err != nil {
+	if err := i.checkTopicOpen(ctx, probe, !broadcast); err != nil {
 		return err
 	}
 	if broadcast {

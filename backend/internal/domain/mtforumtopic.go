@@ -35,38 +35,39 @@ type ForumTopic interface {
 // ссылка на последнее сообщение. Ни текста превью, ни имени его автора, ни
 // времени здесь нет по схеме — всё это выводится из самого сообщения.
 //
-// Что НАШЕ и объявлено клиентским параметром (schema_additional_params.json):
+// `id` — НОМЕР темы: номер служебки messageActionTopicCreate в чате, у General
+// — 1 (ForumTopicRecord.Number, tweb dialogs.ts:2219 и constants.ts:26).
+// Отдельных `root_msg_id` и `pFlags.is_general` больше нет: у оригинала id
+// темы И ЕСТЬ номер её корня, а General узнаётся по id == 1.
 //
-//   - `root_msg_id` — номер корневого сообщения темы. У оригинала он не нужен:
-//     там id темы И ЕСТЬ номер её корня, а у нас это разные величины — ключ
-//     строки и номер в чате. Сведение их — отдельная работа (задача);
-//   - `icon_emoji_emoticon` — иконка темы. У схемы это `icon_emoji_id:long`,
-//     то есть номер документа кастомного эмодзи; у нас — сам символ. Тот же
-//     приём, что у `user.emoji_status_emoticon` оригинала;
-//   - `pFlags.is_general` — системная тема «General». У оригинала её узнают по
-//     id == 1, а наш id это ключ строки, поэтому признак едет явно.
+// Наш клиентский параметр (schema_additional_params.json) один —
+// `icon_emoji_emoticon`, иконка темы: у схемы это `icon_emoji_id:long`, номер
+// документа кастомного эмодзи, у нас — сам символ. Тот же приём, что у
+// `user.emoji_status_emoticon` оригинала.
+//
+// Не производятся: `unread_poll_votes_count` (голосов опроса как
+// непрочитанного у нас нет — пропуск назван в OmittedWithoutSubject) и `draft`
+// (черновики тредов — волна 2, БЭК-2).
 //
 // `pos` (порядок среди закреплённых) на провод не идёт: порядок задаёт сам
 // вектор, и держать его вторым способом значило бы завести два источника.
 type ForumTopicReal struct {
 	Underscore string          `json:"_"`
 	PFlags     map[string]bool `json:"pFlags,omitempty"`
-	ID         int64           `json:"id"`
-	Date       int             `json:"date"`
-	Peer       Peer            `json:"peer"`
-	Title      string          `json:"title"`
-	IconColor  int             `json:"icon_color"`
+	// ID — номер темы (см. докблок).
+	ID        int64  `json:"id"`
+	Date      int    `json:"date"`
+	Peer      Peer   `json:"peer"`
+	Title     string `json:"title"`
+	IconColor int    `json:"icon_color"`
 	// IconEmojiEmoticon — наш клиентский параметр (см. докблок).
 	IconEmojiEmoticon string `json:"icon_emoji_emoticon,omitempty"`
-	// RootMsgID — наш клиентский параметр (см. докблок). 0 у «General».
-	RootMsgID int64 `json:"root_msg_id,omitempty"`
 	// TopMessage — ПОСЛЕДНЕЕ сообщение темы, адресованное числом.
 	TopMessage int64 `json:"top_message"`
 	// ReadInboxMaxID — горизонт чтения зрителя в этой теме.
 	ReadInboxMaxID int64 `json:"read_inbox_max_id"`
-	// ReadOutboxMaxID — горизонт другой стороны. Пер-темного горизонта чужой
-	// стороны мы не ведём, поэтому здесь всегда 0; параметр обязателен по
-	// схеме и потому едет нулём, а не пропадает.
+	// ReadOutboxMaxID — горизонт остальных: ✓✓ своих сообщений в теме (tweb
+	// dialogs.ts:1635, 1745-1746).
 	ReadOutboxMaxID      int64 `json:"read_outbox_max_id"`
 	UnreadCount          int   `json:"unread_count"`
 	UnreadMentionsCount  int   `json:"unread_mentions_count"`
@@ -86,37 +87,47 @@ func (t ForumTopicReal) Tag() string { return t.Underscore }
 // ключа, поэтому передаются они структурой, а не набором аргументов.
 type ForumTopicFlags struct {
 	// My — тему создал зритель.
-	My        bool
-	Closed    bool
-	Pinned    bool
-	Hidden    bool
-	IsGeneral bool
+	My     bool
+	Closed bool
+	Pinned bool
+	Hidden bool
+}
+
+// ForumTopicState — состояние темы глазами зрителя: ссылка на последнее
+// сообщение, горизонты и счётчики непрочитанного.
+type ForumTopicState struct {
+	TopMessage      int64
+	ReadInboxMaxID  int64
+	ReadOutboxMaxID int64
+	Unread          int
+	UnreadMentions  int
+	UnreadReactions int
 }
 
 // NewForumTopic собирает строку списка тем.
-func NewForumTopic(t ForumTopicRecord, peer, from Peer, topMessage, readInboxMaxID int64,
-	unread, unreadMentions int, notify PeerNotifySettings, flags ForumTopicFlags) ForumTopicReal {
+func NewForumTopic(t ForumTopicRecord, peer, from Peer, st ForumTopicState,
+	notify PeerNotifySettings, flags ForumTopicFlags) ForumTopicReal {
 	out := ForumTopicReal{
-		Underscore:          ForumTopicTag,
-		ID:                  t.ID,
-		Date:                unixSeconds(t.CreatedAt),
-		Peer:                peer,
-		Title:               t.Title,
-		IconColor:           t.IconColor,
-		IconEmojiEmoticon:   t.IconEmoji,
-		RootMsgID:           t.RootMsgSeq,
-		TopMessage:          topMessage,
-		ReadInboxMaxID:      readInboxMaxID,
-		UnreadCount:         unread,
-		UnreadMentionsCount: unreadMentions,
-		FromID:              from,
-		NotifySettings:      notify,
+		Underscore:           ForumTopicTag,
+		ID:                   t.Number(),
+		Date:                 unixSeconds(t.CreatedAt),
+		Peer:                 peer,
+		Title:                t.Title,
+		IconColor:            t.IconColor,
+		IconEmojiEmoticon:    t.IconEmoji,
+		TopMessage:           st.TopMessage,
+		ReadInboxMaxID:       st.ReadInboxMaxID,
+		ReadOutboxMaxID:      st.ReadOutboxMaxID,
+		UnreadCount:          st.Unread,
+		UnreadMentionsCount:  st.UnreadMentions,
+		UnreadReactionsCount: st.UnreadReactions,
+		FromID:               from,
+		NotifySettings:       notify,
 	}
 	setPFlag(&out.PFlags, "my", flags.My)
 	setPFlag(&out.PFlags, "closed", flags.Closed)
 	setPFlag(&out.PFlags, "pinned", flags.Pinned)
 	setPFlag(&out.PFlags, "hidden", flags.Hidden)
-	setPFlag(&out.PFlags, "is_general", flags.IsGeneral)
 	return out
 }
 
@@ -151,4 +162,24 @@ func NewMessagesForumTopics(topics []ForumTopic, messages []MTMessage, chats []C
 		Chats:      orEmpty(chats),
 		Users:      orEmpty(users),
 	}
+}
+
+// NotifyForumTopicTag — дискриминатор `_` конструктора notifyForumTopic.
+const NotifyForumTopicTag = "notifyForumTopic"
+
+// notifyForumTopic#226e6308 peer:Peer top_msg_id:int = NotifyPeer;
+//
+// Адрес настроек уведомлений ТЕМЫ: пир плюс номер темы (у General — 1). Мьют
+// темы у оригинала — account.updateNotifySettings с inputNotifyForumTopic
+// (tweb appMessagesManager.ts:11962-11981), и обратно он приезжает этим адресом.
+type NotifyForumTopic struct {
+	Underscore string `json:"_"`
+	Peer       Peer   `json:"peer"`
+	TopMsgID   int64  `json:"top_msg_id"`
+}
+
+func (NotifyForumTopic) isNotifyPeer() {}
+
+func NewNotifyForumTopic(peer Peer, topicID int64) NotifyForumTopic {
+	return NotifyForumTopic{Underscore: NotifyForumTopicTag, Peer: peer, TopMsgID: topicID}
 }

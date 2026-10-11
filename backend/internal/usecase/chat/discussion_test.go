@@ -469,7 +469,9 @@ func TestPostComment_WSFrame_ThreadRootMatchesPost(t *testing.T) {
 			Message struct {
 				ID      int64 `json:"id"`
 				ReplyTo *struct {
-					ReplyToTopID *int64 `json:"reply_to_top_id"`
+					ReplyToMsgID *int64          `json:"reply_to_msg_id"`
+					ReplyToTopID *int64          `json:"reply_to_top_id"`
+					PFlags       map[string]bool `json:"pFlags"`
 				} `json:"reply_to"`
 			} `json:"message"`
 		} `json:"d"`
@@ -490,18 +492,20 @@ func TestPostComment_WSFrame_ThreadRootMatchesPost(t *testing.T) {
 	if !found {
 		t.Fatalf("не нашли new_message WS-кадр для комментария %d автору 8", comment.Seq)
 	}
-	// Корень треда — reply_to.reply_to_top_id, и он ВСЕГДА в том же пире: у
-	// комментария это номер ЗЕРКАЛА поста в группе обсуждения, где комментарий
-	// и живёт. Прежде наружу ехал номер поста В КАНАЛЕ — пара «пир + номер»
-	// была неполна, пир корня ехал неявно.
+	// Корень треда ВСЕГДА в том же пире: у комментария это номер ЗЕРКАЛА поста
+	// в группе обсуждения, где комментарий и живёт. Прежде наружу ехал номер
+	// поста В КАНАЛЕ — пара «пир + номер» была неполна, пир корня ехал неявно.
+	// Форма — как у tweb (appMessagesManager.ts:4681-4694, A1-16): простой
+	// комментарий — reply_to_msg_id = зеркало без reply_to_top_id, тред клиент
+	// выводит как reply_to_top_id || reply_to_msg_id; флага forum_topic у
+	// комментария нет.
 	mirror, err := i.msgs.GetByID(ctx, mirrorID)
 	if err != nil {
 		t.Fatalf("зеркало не читается: %v", err)
 	}
-	if env.D.Message.ReplyTo == nil || env.D.Message.ReplyTo.ReplyToTopID == nil ||
-		*env.D.Message.ReplyTo.ReplyToTopID != mirror.Seq {
-		t.Fatalf("reply_to_top_id = %+v, want номер зеркала %d в группе обсуждения",
-			env.D.Message.ReplyTo, mirror.Seq)
+	rt := env.D.Message.ReplyTo
+	if rt == nil || rt.ReplyToMsgID == nil || *rt.ReplyToMsgID != mirror.Seq || rt.ReplyToTopID != nil || rt.PFlags["forum_topic"] {
+		t.Fatalf("reply_to = %+v, want reply_to_msg_id = номер зеркала %d в группе обсуждения", rt, mirror.Seq)
 	}
 }
 
