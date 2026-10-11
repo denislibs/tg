@@ -591,9 +591,10 @@ export default class Chat extends EventListenerBase<{
       this.selection.isScheduled = type === ChatType.Scheduled
     }
 
-    // tweb `:995-999`: у отложенных своё хранилище пира (`${peerId}_scheduled`) — живые
-    // кадры окна истории (`history_append`/`history_update`/…, ключ `winKey`) в него не
-    // попадают, ленту отложенных ведут `scheduled_new`/`scheduled_delete`.
+    // tweb `:995-999`: у отложенных своё хранилище пира (`${peerId}_scheduled`) — операции
+    // окна истории (ключ `winKey`) в него не попадают; новые и снятые отложенные ведут
+    // `scheduled_new`/`scheduled_delete`, финализацию своего бабла и правку — операции
+    // окна с этим ключом (`history_update`/`message_edit` со `storageKey`).
     // У tweb экран закрепов читает отдельное хранилище истории (`getHistoryStorage` с
     // `inputFilter: pinned`); у нас окно — зеркало по ключу, поэтому свой ключ, чтобы
     // страница закрепов не легла в окно самого чата.

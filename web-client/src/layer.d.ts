@@ -1073,8 +1073,6 @@ export namespace Message {
     storageKey?: MessagesStorageKey,
     repayRequest?: {id: number, messageCount: number},
     effect_name?: string,
-    send_at?: number,
-    when_online?: boolean,
     enc_body?: string,
     destruct_at?: string
   };
