@@ -183,6 +183,27 @@ describe('ChatBubbles — наблюдатель непрочитанных', ()
     expect(managers.markRead).toHaveBeenCalledWith({ peerId: CHAT, upToId: 13 })
   })
 
+  // Ревью КЛ-1 Б2: в теме форума горизонт и рубеж — треда (tweb
+  // `readHistory({peerId, maxId, threadId})` :2978, `getReadMaxIdIfUnread(peerId,
+  // threadId)` :5896-5901, `getHistoryMaxId` треда).
+  it('тема форума: горизонт спрашивается у треда и рубеж уходит с threadId', async () => {
+    const THREAD = 7
+    const managers = managersWith([msg(11), msg(12), msg(13)])
+    setHorizon(managers, 11)
+    managers.messages.getHistory = vi.fn(async (): Promise<HistoryResult> => ({
+      messages: [msg(11), msg(12), msg(13)], count: 3, reachedTop: true, reachedBottom: false,
+    }))
+    bubbles = mountTestBubbles(chatContext({ threadId: THREAD, isForum: true }), managers)
+    await openFeed(bubbles)
+    await settle()
+
+    expect(managers.getDialogReadState).toHaveBeenCalledWith(CHAT, THREAD)
+    expect(managers.getReadMaxSeqIfUnread).toHaveBeenCalledWith(CHAT, THREAD)
+    intersect(bubbleOf(bubbles, 12))
+    await settle()
+    expect(managers.markRead).toHaveBeenCalledWith({ peerId: CHAT, upToId: 12, threadId: THREAD })
+  })
+
   it('увиденное дотянулось до низа загруженного окна — рубеж поднимается до последнего сообщения ЧАТА', async () => {
     const managers = managersWith([msg(11), msg(12)])
     setHorizon(managers, 10)

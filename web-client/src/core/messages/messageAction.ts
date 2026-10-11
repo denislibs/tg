@@ -105,11 +105,30 @@ export interface MessageActionSetMessagesTTL {
   period: number
 }
 
-/** messageActionTopicCreate#0d999256 flags:# … title:string icon_color:int … */
+/** messageActionTopicCreate#0d999256 flags:# … title:string icon_color:int … ;
+ *
+ *  `icon_emoji_emoticon` — НАШ параметр (`schema_additional_params.json`) на
+ *  месте `icon_emoji_id`: кастом-эмодзи у нас нет, значок — сам эмодзи. */
 export interface MessageActionTopicCreate {
   _: 'messageActionTopicCreate'
   title: string
   icon_color: number
+  icon_emoji_emoticon?: string
+}
+
+/** messageActionTopicEdit#c0944820 flags:# title:flags.0?string
+ *  icon_emoji_id:flags.1?long closed:flags.2?Bool hidden:flags.3?Bool = MessageAction;
+ *
+ *  Каждое поле — «что изменилось»: отсутствие значит «не трогали»,
+ *  `closed: false` — «открыли снова» (tweb `messageActionTextNewUnsafe.ts:621-624`).
+ *  Значок — тот же наш `icon_emoji_emoticon`, что у создания; пустая строка —
+ *  значок сняли (у оригинала `icon_emoji_id: 0`, `:603`). */
+export interface MessageActionTopicEdit {
+  _: 'messageActionTopicEdit'
+  title?: string
+  icon_emoji_emoticon?: string
+  closed?: boolean
+  hidden?: boolean
 }
 
 /** messageActionSuggestProfilePhoto#57de635e photo:Photo = MessageAction;
@@ -282,6 +301,7 @@ export type MessageAction =
   | MessageActionPinMessage
   | MessageActionSetMessagesTTL
   | MessageActionTopicCreate
+  | MessageActionTopicEdit
   | MessageActionSuggestProfilePhoto
   | MessageActionSuggestBirthday
   | MessageActionSuggestedPostApproval

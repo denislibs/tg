@@ -18,7 +18,8 @@ import { newPendingMethods } from './pending'
 import { getDocumentFromMessage, getMediaDimensions, getMediaFromMessage, isMediaSpoiler } from '../../media/messageMedia'
 import { messageToConvMsg } from '../../messageToConvMsg'
 import type { MessageReal, MyMessage } from '../../models'
-import { generateMessageId, generateTempMessageId, isLocalMessageId } from '../../history/messageId'
+import { GENERAL_TOPIC_ID, generateMessageId, generateTempMessageId, isLocalMessageId } from '../../history/messageId'
+import { makeMessage } from '../../messages/testMessage'
 import type { MessageOp } from '../../realtime/messageOps'
 import type { PendingNewEvt } from '../../realtime/events'
 import type { SendArgs as WireSendArgs } from '../../realtime/connectionManager'
@@ -975,7 +976,7 @@ describe('pending: оптимистичный бабл несёт ССЫЛКУ �
     const ops = p.beforeMessageSending(evt({ reply_to_id: cid(77) }))
 
     const msg = (ops[0] as { msg: MessageReal }).msg
-    expect(msg.reply_to).toEqual({ _: 'messageReplyHeader', reply_to_msg_id: cid(77) })
+    expect(msg.reply_to).toEqual({ _: 'messageReplyHeader', pFlags: {}, reply_to_msg_id: cid(77) })
   })
 
   it('цитата едет ВНУТРИ ссылки, флагом схемы', () => {
@@ -1003,8 +1004,48 @@ describe('pending: оптимистичный бабл несёт ССЫЛКУ �
 
     const msg = (ops[0] as { msg: MessageReal }).msg
     expect(msg.reply_to).toEqual({
-      _: 'messageReplyHeader', reply_to_msg_id: cid(77),
+      _: 'messageReplyHeader', pFlags: {}, reply_to_msg_id: cid(77),
       reply_to_peer_id: { _: 'peerChannel', channel_id: 99 },
+    })
+  })
+
+  // tweb generateReplyHeader (:4628-4718) + `replyToMsgId = threadId` (:4341-4342):
+  // форма A1-16 у бабла сразу, иначе он читался бы сообщением General до эха
+  // (ревью КЛ-1 М2)
+  describe('форум', () => {
+    const FORUM = -5
+    const forumCtx = () => {
+      const h = makeCtx()
+      return { ...h, ctx: { ...h.ctx, isForum: (peerId: number) => peerId === FORUM } }
+    }
+
+    it('сообщение в теме: ответ на тему с `forum_topic`, без `reply_to_top_id`', () => {
+      const h = forumCtx()
+      openWindow(h.slices, `${FORUM}:${cid(10)}`)
+      const msg = (newPendingMethods(h.ctx).beforeMessageSending(evt({ peer_id: FORUM, thread_root_id: cid(10) }))[0] as { msg: MessageReal }).msg
+      expect(msg.reply_to).toEqual({ _: 'messageReplyHeader', pFlags: { forum_topic: true }, reply_to_msg_id: cid(10) })
+    })
+
+    it('ответ внутри темы: `reply_to_top_id` = тема', () => {
+      const h = forumCtx()
+      openWindow(h.slices, `${FORUM}:${cid(10)}`)
+      const msg = (newPendingMethods(h.ctx).beforeMessageSending(evt({ peer_id: FORUM, thread_root_id: cid(10), reply_to_id: cid(12) }))[0] as { msg: MessageReal }).msg
+      expect(msg.reply_to).toEqual({ _: 'messageReplyHeader', pFlags: { forum_topic: true }, reply_to_msg_id: cid(12), reply_to_top_id: cid(10) })
+    })
+
+    it('General: без `forum_topic`', () => {
+      const h = forumCtx()
+      openWindow(h.slices, `${FORUM}:${GENERAL_TOPIC_ID}`)
+      const msg = (newPendingMethods(h.ctx).beforeMessageSending(evt({ peer_id: FORUM, thread_root_id: GENERAL_TOPIC_ID }))[0] as { msg: MessageReal }).msg
+      expect(msg.reply_to).toEqual({ _: 'messageReplyHeader', pFlags: {}, reply_to_msg_id: GENERAL_TOPIC_ID })
+    })
+
+    it('ответ без треда — тред оригинала (:4672-4674)', () => {
+      const h = forumCtx()
+      openWindow(h.slices, `${FORUM}`)
+      h.msgsFor(FORUM).set(cid(12), makeMessage({ id: cid(12), peerId: FORUM, replyToMsgId: cid(10), forumTopic: true }))
+      const msg = (newPendingMethods(h.ctx).beforeMessageSending(evt({ peer_id: FORUM, reply_to_id: cid(12) }))[0] as { msg: MessageReal }).msg
+      expect(msg.reply_to).toEqual({ _: 'messageReplyHeader', pFlags: { forum_topic: true }, reply_to_msg_id: cid(12), reply_to_top_id: cid(10) })
     })
   })
 

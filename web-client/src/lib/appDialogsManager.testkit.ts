@@ -26,7 +26,7 @@ import { initialState } from '@core/state/state'
 import { ALL_FOLDER_ID } from '@core/folderIds'
 import { fastRaf } from '@helpers/schedulers'
 import type { RawFolder } from '@core/managers/foldersManager'
-import type { TopicRow } from '@core/managers/groupsManager'
+import type { ForumTopicsPage, ForumUnreadCount } from '@core/managers/forumTopicsStorage'
 import appDialogsManager, { type AppDialogsManager } from './appDialogsManager'
 import type { AppSidebarLeft } from '@components/sidebarLeft'
 import { installSidebarLeft } from '@/test/sidebarLeft'
@@ -241,11 +241,14 @@ function fakeManagers(getDialogs?: (...args: never[]) => unknown) {
       setArchive: vi.fn(async (_peerId: number, _archived: boolean) => {}),
       deleteGroup: vi.fn(async (_peerId: number) => {}),
       removeMember: vi.fn(async (_peerId: number, _userId: number) => {}),
-      // темы форум-таба (задача 1-6 волны 7)
-      listTopics: vi.fn(async (_peerId: number): Promise<TopicRow[]> => []),
       // «N онлайн» подписи форум-таба (`appImManager.getOnlines`, пачка П-4)
       getParticipants: vi.fn(async (_options: { id: number }) => ({ _: 'channels.channelParticipants' as const, count: 0, participants: [], chats: [], users: [] })),
       getOnlines: vi.fn(async (_chatId: number) => 1),
+    },
+    // темы форум-таба (задача 1-6 волны 7) — хранилище тем воркера
+    forumTopics: {
+      getForumTopics: vi.fn(async (_peerId: number, _offsetIndex?: number): Promise<ForumTopicsPage> => ({ dialogs: [], count: 0, isEnd: true })),
+      getForumUnreadCount: vi.fn(async (_peerId: number): Promise<ForumUnreadCount | undefined> => undefined),
     },
     chats: {
       clearHistory: vi.fn(async (_peerId: number) => {}),

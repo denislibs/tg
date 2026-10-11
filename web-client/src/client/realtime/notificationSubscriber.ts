@@ -1,7 +1,11 @@
 // Подписчик браузерных уведомлений на realtime-события. Независим от Store-проектора.
 import rootScope from '@lib/rootScope'
 import { RT } from '../../core/realtime/events'
-import { mapMessage, type MyMessage } from '../../core/models'
+import { getMessageThreadId, mapMessage, type MyMessage } from '../../core/models'
+import { isForumTopicMuted } from '../../core/dialogs/forumTopic'
+import { cachedChat } from '../../core/peerCache'
+import { isForum } from '../../core/peers/predicates'
+import { isDialogMuted, useNotifyStore } from '../../stores/notifyStore'
 import { useChatsStore } from '../../stores/chatsStore'
 import { startClient } from '../bootstrap'
 import { notifyIncomingMessage } from '../uiNotifications'
@@ -49,7 +53,23 @@ export function registerNotificationSubscriber(): void {
     // (у нас — скрыта, как и везде в `uiNotifications`) — уведомляет, как раньше.
     if (isInitialSync && !document.hidden) return
 
-    notifyIncomingMessage(topMessage)
+    void topicMuted(topMessage).then((muted) => notifyIncomingMessage(topMessage, muted))
+  }
+
+  /**
+   * Мьют ТЕМЫ форума — `getNotifyPeerSettings(peerId, threadId)` оригинала
+   * (`handleNotifications`, appMessagesManager.ts:9958-9963 →
+   * `isPeerLocalMuted({threadId})`): своя настройка темы, иначе — форума.
+   * Тема — у хранилища тем воркера; её нет (список не грузили) — решает
+   * правило чата (`undefined`).
+   */
+  async function topicMuted(m: MyMessage): Promise<boolean | undefined> {
+    if (!isForum(cachedChat(m.peerId))) return undefined
+    const threadId = getMessageThreadId(m, { isForum: true })
+    const topic = threadId ? await startClient().managers.forumTopics.getForumTopic(m.peerId, threadId).catch(() => undefined) : undefined
+    if (!topic) return undefined
+    const dialog = useChatsStore.getState().dialogs.find((d) => d.peerId === m.peerId)
+    return isForumTopicMuted(topic, () => isDialogMuted(dialog, cachedChat(m.peerId), useNotifyStore.getState().settings))
   }
 
   rootScope.addEventListener(RT.newMessage, (evt, meta) => {

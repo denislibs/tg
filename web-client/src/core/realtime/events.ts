@@ -100,6 +100,16 @@ export const RT = {
   // dialogsManager, витрина только зеркалит. Событие несёт ЗНАЧЕНИЕ с индексом
   // (порт tweb dialogs_multiupdate), а не «перечитай».
   dialogOp: 'rt:dialog_op',
+  // Темы форумов — владелец воркерный хранилище тем (`core/managers/
+  // forumTopicsStorage.ts`, порт `dialogsStorage.forumTopics`). Событие несёт
+  // ОПЕРАЦИИ со значением (`ForumTopicOp`: события хранилища tweb
+  // `dialogs_multiupdate`/`dialog_unread`/`dialog_drop`/
+  // `dialog_notify_settings` для темы), а не «перечитай список».
+  forumTopicOp: 'rt:forum_topic_op',
+  // Закреп темы форума — `updatePinnedForumTopic` (tweb dialogs.ts:2480-2490).
+  // Применяет хранилище тем, вкладкам уезжает операциями `forumTopicOp`; имя
+  // нужно полноте реестра.
+  pinnedForumTopic: 'rt:pinned_forum_topic',
   pollUpdate: 'rt:poll_update',
   checklistUpdate: 'rt:checklist_update',
   boostUpdate: 'rt:boost_update',
@@ -479,6 +489,15 @@ export interface DialogArchiveEvt {
  * «навсегда». Бэкенд читает настройки обратно из базы, поэтому в кадре едут и
  * превью со звуком, которых мьют не менял (usecase/chat/group.go::SetMute).
  */
+/** updatePinnedForumTopic#683b2c52 flags:# pinned:flags.0?true peer:Peer
+ *  topic_id:int = Update; — тему закрепили/открепили (tweb `dialogs.ts:2480-2490`).
+ *  «Открепили» — отсутствие бита. `topic_id` — серверный номер темы. */
+export interface PinnedForumTopicEvt {
+  _: 'updatePinnedForumTopic'
+  pFlags?: { pinned?: true }
+  peer: Peer
+  topic_id: number
+}
 export interface DialogMuteEvt {
   _: 'updateNotifySettings'
   peer: import('../models').NotifyPeer
@@ -752,6 +771,7 @@ export type Update =
   | DialogPinEvt
   | DialogArchiveEvt
   | DialogMuteEvt
+  | PinnedForumTopicEvt
   | TypingEvt
   | PresenceEvt
   | UserUpdateEvt

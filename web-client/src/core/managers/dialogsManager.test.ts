@@ -1304,6 +1304,24 @@ describe('dialogsManager.getDialogReadState', () => {
 
     expect(mgr.getDialogReadState(5)).toBeUndefined()
   })
+  // Ревью КЛ-1 Б2: у темы форума горизонт и последнее сообщение — темы
+  // (tweb `getInboxReadMaxId(peerId, threadId)`, appMessagesManager.ts:5122-5140).
+  it('тред — тема форума: горизонт, счётчик и последнее сообщение темы; не тема — диалога', async () => {
+    const topic = { read_inbox_max_id: 20, unread_count: 3, top_message: 23 }
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [makeDialog({ peerId: -5, topMessage: 90, readInboxMaxId: 90, unread: 0 })],
+      loadState: async () => ({ pinnedOrders: {} }),
+      getForumTopic: (_peerId, threadId) => (threadId === 7 ? topic : undefined),
+    })
+    await mgr.fillMirror()
+
+    expect(mgr.getDialogReadState(-5, 7)).toEqual({ readInboxMaxSeq: 20, unreadCount: 3 })
+    expect(mgr.getReadMaxSeqIfUnread(-5, 7)).toBe(20)
+    expect(mgr.getHistoryMaxSeq(-5, 7)).toBe(23)
+    expect(mgr.getDialogReadState(-5, 8)).toEqual({ readInboxMaxSeq: 90, unreadCount: 0 })
+  })
 })
 
 // Порт tweb `onUpdateDeleteMessages` (:11546-11548) с подсчётом

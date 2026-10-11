@@ -650,8 +650,10 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // плашка заявок (плюральный `Chat.Header.RequestToJoin`, `plural` 64 → 65) и служебка
 // «вступил по заявке» (`ChatService.UserJoined{Group,Channel}ByRequest`,
 // `RequestToJoin{Group,Channel}Approved`).
+// Ф-5 КЛ-1 (темы форума): у ru +18 ключей tweb lang.ts — служебка правки темы
+// `messageActionTopicEdit` (`Chat.Service.Group.TopicEdited.*`, `Chat.Service.TopicEdited.*`).
 const COMPOSITION = {
-  ru: { keys: 1791, plural: 65 },
+  ru: { keys: 1809, plural: 65 },
   uk: { keys: 842, plural: 35 },
   es: { keys: 813, plural: 34 },
   de: { keys: 814, plural: 35 },
@@ -859,8 +861,9 @@ const COMPOSITION = {
 // Пачкой Ф-1а — у ru +1 ключ tweb `Chat.Subscribe` (кнопка «Подписаться» ввода).
 // Пачкой Ф-5 (C1) — у ru +7 ключей tweb `Schedule.Repeat.*` (периоды ряда «Повторять» календаря).
 // Ф-1б — у ru +2 ключа редактора прав админа (разбор — там же).
+// Ф-5 КЛ-1 — у ru +18 ключей правки темы (разбор — там же).
 const FINGERPRINT = {
-  ru: 'ee324557',
+  ru: '96818770',
   uk: 'e72f8ee2',
   es: 'ff56151a',
   de: '39848741',

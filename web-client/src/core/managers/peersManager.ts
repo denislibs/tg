@@ -71,10 +71,13 @@ export type PeerOp = { op: 'upsert'; peers: (User | Chat)[] }
  * потоке (`chatsStore.presence`), поэтому владелец карточек отдаёт статус туда
  * тем же кадром, каким его шлёт сервер, — `updateUserStatus` (`RT.presence`).
  */
-export function newPeersManager({ rest, onPeerOps, onUserStatus }: {
+export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleForum }: {
   rest: Pick<RestClient, 'get'>
   onPeerOps?: (ops: PeerOp[]) => void
   onUserStatus?: (evt: PresenceEvt) => void
+  /** tweb `chat_toggle_forum` (`appChatsManager.ts:268`, `:304-306`): у
+   *  известной карточки чата сменился `pFlags.forum`. Слушает хранилище тем. */
+  onChatToggleForum?: (peerId: PeerId, enabled: boolean) => void
 }) {
   const cache = new Map<PeerId, User | Chat>()
   /**
@@ -179,6 +182,7 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus }: {
     // офлайн-копии холодный старт БЕЗ СЕТИ показал бы группы без имён — то, что
     // раньше давал сам персист диалогов.
     const persistChatCards: Chat[] = []
+    const toggledForum: [PeerId, boolean][] = []
     for (const incoming of peers) {
       // Статус — СВЕЖИЙ снимок сервера, поэтому отдаётся и тогда, когда
       // карточка целиком совпала с лежащей: между двумя снимками присутствие
@@ -194,11 +198,15 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus }: {
       indexUsername(peer, prev)
       written.push(peer)
       if (prev) replaced.push(peer)
+      if (prev && peer._ === 'channel' && prev._ === 'channel' && !!prev.pFlags?.forum !== !!peer.pFlags?.forum) {
+        toggledForum.push([key, !!peer.pFlags?.forum])
+      }
       if (peer._ === 'user') persist.push(peer)
       else if (peer._ !== 'userEmpty') persistChatCards.push(peer)
     }
     if (persist.length) void persistUsers(persist) // write-through в офлайн-стор
     if (persistChatCards.length) void persistChats(persistChatCards)
+    for (const [peerId, enabled] of toggledForum) onChatToggleForum?.(peerId, enabled)
     return { written, replaced }
   }
 
