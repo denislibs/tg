@@ -2779,6 +2779,32 @@ export default class ChatBubbles implements BubbleGroupsHost {
     return !!oldBubble && this.replaceAlbumBubble(oldBubble, group)
   }
 
+  /**
+   * Удаление ЧАСТИ альбома — порт `grouped_edit` по удалению (tweb
+   * appMessagesManager.ts:14106-14153 → bubbles.ts:1472-1490): у бабла, в
+   * котором остались другие сообщения группы, снимается только адрес
+   * удалённого, а сам бабл перерисовывается оставшимися. Возвращает адреса,
+   * которые удаляются обычным путём. Так отменённая ячейка своего альбома
+   * (`cancelPending` → `history_delete`) не уносит весь бабл.
+   */
+  private takeAlbumRemainders(fullMids: string[]): string[] {
+    const regroup = new Map<HTMLElement, number>()
+    const rest = fullMids.filter((fullMid) => {
+      const bubble = this.bubbles[fullMid]
+      if (!bubble) return true
+      const siblings = Object.keys(this.bubbles).filter((key) => key !== fullMid && !fullMids.includes(key) && this.bubbles[key] === bubble)
+      const kept = siblings.map((key) => this.getMessage(splitFullMid(key).mid)).find((m) => m?._ === 'message' && m.grouped_id)
+      if (!kept || kept._ !== 'message' || !kept.grouped_id) return true
+      delete this.bubbles[fullMid]
+      regroup.set(bubble, kept.grouped_id)
+      return false
+    })
+    for (const [bubble, groupedId] of regroup) {
+      this.replaceAlbumBubble(bubble, this.groupedMessages(groupedId))
+    }
+    return rest
+  }
+
   /** Новый узел бабла альбома главным сообщением группы на месте старого —
    *  тело `grouped_edit` (tweb bubbles.ts:1472-1490) и финал ack группы
    *  (`message_sent`, :1244-1255). См. `regroupRenderedAlbum`. */
@@ -6011,6 +6037,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
       const groupedId = message._ === 'message' ? message.grouped_id : undefined
       const group = groupedId ? this.groupedMessages(groupedId) : []
       if (group.length > 1) {
+        // tweb :1234-1240 — проверка срока идёт по каждому сообщению ДО групповой
+        // ветки: отложенное, до отправки которого ≤ 10 с, снимается сразу.
+        if (this.chat.type === ChatType.Scheduled && (Date.now() / 1000 | 0) >= message.date - 10) {
+          this.deleteMessagesByIds(Object.keys(this.bubbles).filter((key) => this.bubbles[key] === bubble))
+          return
+        }
         if (group.some((m) => isLocalMessageId(m.id))) return
         const generation = this.getMiddleware()
         await this.awaitMessagesQueue()
@@ -6208,7 +6240,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // с номерами чата пересекаются)
     this.listenerSetter.add(rootScope)('history_delete', ({ peerId, msgs }) => {
       if (peerId !== this.peerId || this.chat.type === ChatType.Scheduled) return
-      this.deleteMessagesByIds([...msgs].map((mid) => makeFullMid(peerId, mid)))
+      const fullMids = [...msgs].map((mid) => makeFullMid(peerId, mid))
+      this.deleteMessagesByIds(this.takeAlbumRemainders(fullMids))
     })
 
     // tweb bubbles.ts:2351-2358 (`refreshInput`) + :2410-2432 (`chat_update`):

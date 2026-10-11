@@ -842,9 +842,21 @@ export function newPendingMethods(ctx: PendingCtx) {
       const plans = items.map(fileSendPlan)
       emit(plans.flatMap(({ event }) => insertPending(event)))
       const mediaIds = await Promise.all(items.map((o, i) => uploadFile(o, plans[i].mime)))
-      items.forEach((o, i) => {
-        const mediaId = mediaIds[i]
-        if (mediaId !== null) sendUploaded(o, plans[i].wire, mediaId)
+      // Отменённая ячейка (её бабла в реестре уже нет) из отправки выпадает
+      // (tweb `UPLOAD_CANCELED` → `undefined`, :3831-3834; `inputs.filter(Boolean)`).
+      // Сорвавшийся аплоад остальной ячейки валит ВСЮ отправку: у tweb
+      // `toggleError` этой ячейки и `throw` — `Promise.all` отклоняется и
+      // `sendMultiMedia` не уходит (:3836-3840); неполного альбома собеседник не
+      // получит. Помечена упавшей у нас она уже в `uploadFile`.
+      const alive = items.map((o, i) => ({ o, wire: plans[i].wire, mediaId: mediaIds[i] }))
+        .filter(({ o }) => pendingByClientId.has(o.clientMsgId))
+      if (alive.some(({ mediaId }) => mediaId === null)) return
+      // Подпись одна на альбом и уходит с первой ОТПРАВЛЯЕМОЙ ячейкой (tweb
+      // :3879-3884 — `caption` отдаётся первому `inputSingleMedia` и гасится).
+      const caption = plans.find(({ wire }) => wire.text)?.wire
+      alive.forEach(({ o, wire, mediaId }, i) => {
+        const withCaption = caption ? { ...wire, text: i === 0 ? caption.text : '', entities: i === 0 ? caption.entities : null } : wire
+        sendUploaded(o, withCaption, mediaId!)
       })
     },
 

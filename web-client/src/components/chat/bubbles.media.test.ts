@@ -409,6 +409,25 @@ describe('ChatBubbles — медиа в бабле', () => {
       expect(bubbles.getBubble(makeFullMid(CHAT, t1))).toBeUndefined()
     })
 
+    // `grouped_edit` по удалению (tweb appMessagesManager.ts:14106-14153 →
+    // bubbles.ts:1472-1490): удалённая ячейка (в том числе отменённая своя) не
+    // уносит бабл — он перерисовывается оставшимися.
+    it('удаление одного сообщения альбома перерисовывает бабл оставшимися', async () => {
+      bubbles = mountTestBubbles(chatContext(), managersWith(album([1, 2, 3])))
+      await openFeed(bubbles)
+      await settle()
+
+      applyOpsToMirror([{ op: 'remove', key: String(CHAT), msgId: 2 }])
+      await settle()
+
+      const rendered = bubbles.chatInner.querySelectorAll<HTMLElement>('.bubble:not(.service)')
+      expect(rendered).toHaveLength(1)
+      expect(rendered[0].classList.contains('is-album')).toBe(true)
+      expect(rendered[0].querySelectorAll('.album-item, .grouped-item')).toHaveLength(2)
+      expect(bubbles.getBubble(makeFullMid(CHAT, 2))).toBeUndefined()
+      expect(bubbles.getBubble(makeFullMid(CHAT, 3))).toBe(rendered[0])
+    })
+
     it('группа из ОДНОГО сообщения альбомом не считается', async () => {
       bubbles = mountTestBubbles(chatContext(), managersWith(album([1])))
       await openFeed(bubbles)

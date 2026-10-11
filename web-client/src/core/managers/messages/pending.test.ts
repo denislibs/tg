@@ -641,6 +641,44 @@ describe('sendGrouped: альбом — все баблы разом, затем
   })
 })
 
+describe('sendGrouped: отказ и отмена ячейки', () => {
+  const file = () => new Blob(['xxx'], { type: 'image/jpeg' })
+  const items = () => [1, 2, 3].map((i) => ({
+    peerId: 1, clientMsgId: `c${i}`, senderId: 5, file: file(), type: 'photo' as const,
+    isMedia: true, groupedId: 77, caption: i === 1 ? 'подпись' : '',
+  }))
+
+  // tweb :3836-3840 — `toggleError` ячейки и `throw`: `Promise.all` отклоняется,
+  // `sendMultiMedia` не уходит; неполного альбома собеседник не получит.
+  it('сорвался аплоад одной ячейки — не уходит ни один кадр, ячейка упавшая', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [cid(10)])
+    let n = 0
+    h.upload.mockImplementation(async () => { if (++n === 2) throw new Error('net'); return 900 + n })
+    const p = newPendingMethods(h.ctx)
+    await p.sendGrouped(items())
+    expect(h.sends).toEqual([])
+    expect(h.emitted.flat().some((op) => op.op === 'patch' && (op as { fields: { failed?: boolean } }).fields.failed)).toBe(true)
+  })
+
+  // tweb :3831-3834 — отменённая ячейка выпадает; подпись уходит с первой
+  // отправляемой (:3879-3884).
+  it('отменена первая ячейка — уходят остальные, подпись — со второй', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [cid(10)])
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    let n = 0
+    h.upload.mockImplementation(async () => { const id = 900 + ++n; await gate; return id })
+    const p = newPendingMethods(h.ctx)
+    const sending = p.sendGrouped(items())
+    await p.cancelPending({ clientMsgId: 'c1' })
+    release()
+    await sending
+    expect(h.sends.map((a) => [a.clientMsgId, a.text])).toEqual([['c2', 'подпись'], ['c3', '']])
+  })
+})
+
 describe('sendFile: бабл → аплоад → attach → отправка (порт tweb sendFile)', () => {
   const file = (bytes = 'xxx', type = 'image/jpeg') => new Blob([bytes], { type })
 

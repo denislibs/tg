@@ -19,9 +19,9 @@
 // после цикла (`input.onHelperCancel()`, :1104-1106).
 //
 // Расхождения с оригиналом (закроет порт попапа):
-//  1. `sendGrouped` у нас нет: каждый файл — свой `messages.sendFile` с общим
-//     `groupedId` (форма снесённого `useChatSend.sendPendingMedia`); подпись —
-//     на первом.
+//  1. Альбом уходит `messages.sendGrouped` (порт tweb `sendGrouped`): все
+//     временные разом, затем аплоады; пакетного `sendMultiMedia` на проводе нет —
+//     кадры по одному с общим `groupedId`, подпись — на первой ячейке.
 //  2. Аргументы `ignoreInputValue`, `gifDocument`, `ephemeralSnapshot` — без
 //     предмета: подпись из поля ввода попап не берёт (`wasDraft`, :418-431),
 //     GIF из стикер-меню и эфемерного композера нет; правки медиа
