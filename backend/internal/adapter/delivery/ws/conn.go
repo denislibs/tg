@@ -454,6 +454,10 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			return
 		}
 		threadRoot, terr := c.svc.ResolveThreadRootForSend(ctx, chatID, d.ThreadRootID)
+		if errors.Is(terr, domain.ErrTopicIDInvalid) {
+			nack("topic_id_invalid")
+			return
+		}
 		if errors.Is(terr, domain.ErrNotFound) {
 			nack("not_found")
 			return
@@ -464,7 +468,8 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		}
 		msg, err := c.svc.Send(ctx, usecasechat.SendInput{
 			ChatID: chatID, SenderID: c.userID, Type: d.Type, Text: d.Text, Entities: d.Entities,
-			ReplyToID: d.ReplyToID, ReplyToPeerID: replyPeer,
+			ReplyToID:      c.svc.ThreadReplyTo(ctx, chatID, d.ThreadRootID, d.ReplyToID, replyPeer, d.ReplyQuoteText),
+			ReplyToPeerID:  replyPeer,
 			ReplyQuoteText: d.ReplyQuoteText, ReplyQuoteOffset: d.ReplyQuoteOffset,
 			ClientMsgID: d.ClientMsgID, MediaID: d.MediaID, GroupedID: d.GroupedID,
 			GeoLat: d.GeoLat, GeoLng: d.GeoLng, ContactUserID: d.ContactUserID,
@@ -477,6 +482,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			MediaSpoiler:   d.MediaSpoiler,
 			SendAsChatID:   sendAsChatID(d.SendAsPeerID),
 			WebPage:        d.WebPageInput,
+			ScheduleDate:   d.ScheduleDate, ScheduleRepeatPeriod: d.ScheduleRepeatPeriod,
 		})
 		if err != nil {
 			// NACK the sender so the client stops retrying and can clear the bubble.
@@ -491,11 +497,23 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 				reason = "privacy"
 			} else if errors.Is(err, domain.ErrPaidRequired) {
 				reason = "paid_required"
+			} else if errors.Is(err, domain.ErrInvalid) {
+				reason = "invalid"
+			} else if errors.Is(err, domain.ErrScheduleTooMuch) {
+				reason = "schedule_too_much"
 			}
 			nack(reason)
 			return
 		}
-		ack, _ := json.Marshal(map[string]any{"t": "message_ack", "d": c.ackBody(ctx, d.ClientMsgID, msg)})
+		var body map[string]any
+		if d.ScheduleDate != 0 {
+			// Отложенное: номера в чате у него нет — id это ключ отложенного,
+			// дата — срок. Сам бабл приезжает кадром updateNewScheduledMessage.
+			body = map[string]any{"client_msg_id": d.ClientMsgID, "id": msg.Seq, "date": msg.CreatedAt.Unix(), "scheduled": true}
+		} else {
+			body = c.ackBody(ctx, d.ClientMsgID, msg)
+		}
+		ack, _ := json.Marshal(map[string]any{"t": "message_ack", "d": body})
 		c.reply(ack)
 	case "read":
 		var d readData

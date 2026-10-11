@@ -60,7 +60,7 @@ describe('notificationSubscriber — уведомление ждёт difference 
 
     expect(waitForSync).toHaveBeenCalledWith({ peerId: 5 })
     expect(notifyIncomingMessage).toHaveBeenCalledTimes(1)
-    expect(notifyIncomingMessage).toHaveBeenCalledWith(mapMessage(raw(1)))
+    expect(notifyIncomingMessage).toHaveBeenCalledWith(mapMessage(raw(1)), undefined)
   })
 
   it('кадр catch-up придерживается до конца difference, а потом уведомляет', async () => {
@@ -104,7 +104,7 @@ describe('notificationSubscriber — уведомление ждёт difference 
     sync.resolve()
     await flush()
     expect(notifyIncomingMessage).toHaveBeenCalledTimes(1)
-    expect(notifyIncomingMessage).toHaveBeenCalledWith(mapMessage(raw(3)))
+    expect(notifyIncomingMessage).toHaveBeenCalledWith(mapMessage(raw(3)), undefined)
   })
 
   it('бэклог первого difference после старта при АКТИВНОЙ вкладке молчит', async () => {

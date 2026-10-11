@@ -411,6 +411,10 @@ type sendBody struct {
 	// no_webpage / invert_media / media:inputMediaWebPage — превью ссылки
 	// (TL messages.sendMessage/sendMedia).
 	domain.WebPageInput
+	// Отложенная отправка (schema schedule_date; 0x7FFFFFFE — «когда в сети»)
+	// и её повтор — поля отправки, как у оригинала (appMessagesManager.ts:2741-2742).
+	ScheduleDate         int64 `json:"schedule_date"`
+	ScheduleRepeatPeriod int   `json:"schedule_repeat_period"`
 }
 
 func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
@@ -439,6 +443,10 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// Резолвим здесь, на входе, а не внутри Send — PostComment туда уже шлёт ключ.
 	// Корня нет — понятный 404, а не запись sentinel-нуля в thread_root_id.
 	threadRoot, terr := h.svc.ResolveThreadRootForSend(r.Context(), chatID, body.ThreadRootID)
+	if errors.Is(terr, domain.ErrTopicIDInvalid) {
+		writeError(w, http.StatusBadRequest, "TOPIC_ID_INVALID")
+		return
+	}
 	if errors.Is(terr, domain.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "comment thread not found")
 		return
@@ -449,7 +457,8 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 	}
 	msg, err := h.svc.Send(r.Context(), usecasechat.SendInput{
 		ChatID: chatID, SenderID: h.meID(r), Type: body.Type, Text: body.Text, Entities: body.Entities,
-		ReplyToID: body.ReplyToID, ReplyToPeerID: replyPeer,
+		ReplyToID:      h.svc.ThreadReplyTo(r.Context(), chatID, body.ThreadRootID, body.ReplyToID, replyPeer, body.ReplyQuoteText),
+		ReplyToPeerID:  replyPeer,
 		ReplyQuoteText: body.ReplyQuoteText, ReplyQuoteOffset: body.ReplyQuoteOffset,
 		ClientMsgID: body.ClientMsgID, MediaID: body.MediaID, GroupedID: body.GroupedID,
 		ThreadRootID: threadRoot,
@@ -460,9 +469,14 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		MediaSpoiler:   body.MediaSpoiler,
 		SendAsChatID:   sendAsChatID(body.SendAsPeerID),
 		WebPage:        body.WebPageInput,
+		ScheduleDate:   body.ScheduleDate, ScheduleRepeatPeriod: body.ScheduleRepeatPeriod,
 	})
 	if err != nil {
 		writeSendError(w, err, "not a member of this chat")
+		return
+	}
+	if body.ScheduleDate != 0 {
+		writeScheduledSent(w, r, h.svc, chatID, []domain.Message{msg})
 		return
 	}
 	writeMessage(w, r, h.svc, msg)
@@ -721,6 +735,11 @@ type editBody struct {
 	// no_webpage / invert_media / media:inputMediaWebPage — превью ссылки
 	// (TL messages.editMessage).
 	domain.WebPageInput
+	// schedule_date — правка ОТЛОЖЕННОГО (id — его ключ): текст, время,
+	// «когда в сети» (0x7FFFFFFE), повтор (tweb appMessagesManager.ts:2209-2218);
+	// без schedule_repeat_period повтор не меняется.
+	ScheduleDate         int64 `json:"schedule_date"`
+	ScheduleRepeatPeriod *int  `json:"schedule_repeat_period"`
 }
 
 func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
@@ -728,13 +747,17 @@ func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	msgID, ok := msgSeqID(w, r, h.svc, chatID)
-	if !ok {
-		return
-	}
 	var body editBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if body.ScheduleDate != 0 {
+		h.editScheduled(w, r, chatID, body)
+		return
+	}
+	msgID, ok := msgSeqID(w, r, h.svc, chatID)
+	if !ok {
 		return
 	}
 	msg, err := h.svc.EditMessage(r.Context(), chatID, msgID, h.meID(r), body.Text, body.Entities, body.WebPageInput)
@@ -901,6 +924,10 @@ type forwardBody struct {
 	// (schema messages.forwardMessages silent, top_msg_id).
 	Silent   bool   `json:"silent"`
 	TopMsgID *int64 `json:"top_msg_id"`
+	// schedule_date / schedule_repeat_period — отложенная пересылка
+	// (messages.forwardMessages, tweb appMessagesManager.ts:5652).
+	ScheduleDate         int64 `json:"schedule_date"`
+	ScheduleRepeatPeriod int   `json:"schedule_repeat_period"`
 }
 
 func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
@@ -929,6 +956,10 @@ func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	threadRoot, terr := h.svc.ResolveThreadRootForSend(r.Context(), toChatID, body.TopMsgID)
+	if errors.Is(terr, domain.ErrTopicIDInvalid) {
+		writeError(w, http.StatusBadRequest, "TOPIC_ID_INVALID")
+		return
+	}
 	if errors.Is(terr, domain.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "thread not found")
 		return
@@ -941,9 +972,14 @@ func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
 		FromChatID: fromChatID, ToChatID: toChatID, MsgIDs: msgIDs, SenderID: h.meID(r),
 		DropAuthor: body.DropAuthor, DropCaption: body.DropCaption,
 		Silent: body.Silent, ThreadRootID: threadRoot,
+		ScheduleDate: body.ScheduleDate, ScheduleRepeatPeriod: body.ScheduleRepeatPeriod,
 	})
 	if err != nil {
 		writeSendError(w, err, "not a member or message not found")
+		return
+	}
+	if body.ScheduleDate != 0 {
+		writeScheduledSent(w, r, h.svc, toChatID, msgs)
 		return
 	}
 	writeMessagesAll(w, r, h.svc, msgs)
@@ -1311,6 +1347,10 @@ func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 		ThreadRootID     *int64         `json:"thread_root_id"`
 		Silent           bool           `json:"silent"`
 		SendAsPeerID     *domain.PeerID `json:"send_as_peer_id"`
+		// Отложенный опрос — как у остальных путей отправки (tweb sendMedia с
+		// inputMediaPoll, appMessagesManager.ts:4152-4166).
+		ScheduleDate         int64 `json:"schedule_date"`
+		ScheduleRepeatPeriod int   `json:"schedule_repeat_period"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
@@ -1322,6 +1362,10 @@ func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 	}
 	// thread_root_id с клиента — НОМЕР корня в этом чате, см. Send.
 	threadRoot, terr := h.svc.ResolveThreadRootForSend(r.Context(), chatID, b.ThreadRootID)
+	if errors.Is(terr, domain.ErrTopicIDInvalid) {
+		writeError(w, http.StatusBadRequest, "TOPIC_ID_INVALID")
+		return
+	}
 	if errors.Is(terr, domain.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "comment thread not found")
 		return
@@ -1334,21 +1378,25 @@ func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 		ChatID: chatID, SenderID: h.meID(r),
 		Question: b.Question, Options: b.Options,
 		Anonymous: b.Anonymous, Multiple: b.Multiple, Quiz: b.Quiz, CorrectOption: b.CorrectOption,
-		ClientMsgID: b.ClientMsgID,
-		ReplyToID:   b.ReplyToID, ReplyToPeerID: replyPeer,
+		ClientMsgID:    b.ClientMsgID,
+		ReplyToID:      h.svc.ThreadReplyTo(r.Context(), chatID, b.ThreadRootID, b.ReplyToID, replyPeer, b.ReplyQuoteText),
+		ReplyToPeerID:  replyPeer,
 		ReplyQuoteText: b.ReplyQuoteText, ReplyQuoteOffset: b.ReplyQuoteOffset,
 		ThreadRootID: threadRoot, Silent: b.Silent, SendAsChatID: sendAsChatID(b.SendAsPeerID),
+		ScheduleDate: b.ScheduleDate, ScheduleRepeatPeriod: b.ScheduleRepeatPeriod,
 	})
 	if errors.Is(err, domain.ErrTooLong) {
 		writeError(w, http.StatusBadRequest, "invalid poll")
 		return
 	}
-	if errors.Is(err, domain.ErrNotFound) {
-		writeError(w, http.StatusForbidden, "not a member of this chat")
+	if err != nil {
+		// Общая таблица гейтов отправки: у отложенного опроса ещё ErrInvalid
+		// (дата/период) и SCHEDULE_TOO_MUCH.
+		writeSendError(w, err, "not a member of this chat")
 		return
 	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not send poll")
+	if b.ScheduleDate != 0 {
+		writeScheduledSent(w, r, h.svc, chatID, []domain.Message{m})
 		return
 	}
 	writeMessage(w, r, h.svc, m)
@@ -1508,84 +1556,38 @@ func (h *ChatHandler) AddChecklistItems(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, info.ToMedia())
 }
 
-// scheduledJSON — отложенное сообщение ТЕМ ЖЕ конструктором `message`
-// (domain.ScheduledMessage.ToWire): собственной проводной формы у него больше
-// нет. Идентичность при этом своя — номера в чате у неотправленного не
-// существует, см. докблок ToWire.
-func scheduledJSON(m domain.ScheduledMessage, peer domain.PeerID) domain.MessageReal {
-	return m.ToWire(domain.NewPeer(peer))
+// ── Отложенные (messages.getScheduledHistory / sendScheduledMessages /
+// deleteScheduledMessages, layer.d.ts:20878-20896) ──
+//
+// Постановки отдельной ручкой нет: у оригинала это поле schedule_date любой
+// отправки (WS send_message, пост канала, пересылка), правка — editMessage с
+// schedule_date (EditMessage).
+
+// writeScheduledUpdates — ответ ручек отложенных контейнером updates, как
+// у оригинала (tweb processUpdateMessage, appMessagesManager.ts:12420-12427,
+// :12606-12613). Автор отложенных — тот, кто спросил: его карточка — вектором users.
+func writeScheduledUpdates(w http.ResponseWriter, r *http.Request, updates []domain.Update) {
+	me, _ := UserFromContext(r.Context())
+	writeJSON(w, http.StatusOK, domain.NewUpdates(updates, []domain.UserReal{selfUser(me)}, time.Now()))
 }
 
-// ScheduleMessage — POST /chats/{chatID}/scheduled: запланировать отправку.
-func (h *ChatHandler) ScheduleMessage(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := peerChatIDOrCreate(w, r, h.svc)
-	if !ok {
-		return
+// writeScheduledSent — ответ отправки с schedule_date: апдейты
+// updateNewScheduledMessage по поставленным (Seq — ключ отложенного).
+func writeScheduledSent(w http.ResponseWriter, r *http.Request, svc *usecasechat.Interactor, chatID int64, msgs []domain.Message) {
+	me, _ := UserFromContext(r.Context())
+	ids := make([]int64, len(msgs))
+	for k, m := range msgs {
+		ids[k] = m.Seq
 	}
-	var b struct {
-		Type       string                 `json:"type"`
-		Text       string                 `json:"text"`
-		Entities   domain.MessageEntities `json:"entities"`
-		ReplyTo    *int64                 `json:"reply_to_id"`
-		MediaID    *int64                 `json:"media_id"`
-		SendAt     int64                  `json:"send_at"`     // unix-секунды (игнор при when_online)
-		WhenOnline bool                   `json:"when_online"` // отправить когда собеседник онлайн
-	}
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
-		writeError(w, http.StatusBadRequest, "bad body")
-		return
-	}
-	m, err := h.svc.ScheduleMessage(r.Context(), usecasechat.SendInput{
-		ChatID: chatID, SenderID: h.meID(r), Type: b.Type, Text: b.Text,
-		Entities: b.Entities, ReplyToID: b.ReplyTo, MediaID: b.MediaID,
-	}, time.Unix(b.SendAt, 0), b.WhenOnline)
-	if errors.Is(err, domain.ErrTooLong) {
-		writeError(w, http.StatusBadRequest, "invalid scheduled message")
-		return
-	}
-	if errors.Is(err, domain.ErrForbidden) {
-		// when_online — только в личке и только при видимом last seen
-		writeError(w, http.StatusForbidden, "not allowed")
-		return
-	}
-	if errors.Is(err, domain.ErrNotFound) {
-		writeError(w, http.StatusForbidden, "not a member of this chat")
-		return
-	}
+	updates, err := svc.ScheduledUpdates(r.Context(), chatID, me.ID, ids)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not schedule")
+		writeError(w, http.StatusInternalServerError, "scheduled failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, scheduledJSON(m, peerOf(r, h.svc, m.ChatID)))
+	writeScheduledUpdates(w, r, updates)
 }
 
-// UpdateScheduled — PATCH /chats/{chatID}/scheduled/{schedID} {send_at}:
-// перенести своё запланированное сообщение на новое время (reschedule).
-func (h *ChatHandler) UpdateScheduled(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathInt(w, r, "schedID")
-	if !ok {
-		return
-	}
-	var b struct {
-		SendAt int64 `json:"send_at"` // unix-секунды
-	}
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
-		writeError(w, http.StatusBadRequest, "bad body")
-		return
-	}
-	m, err := h.svc.UpdateScheduled(r.Context(), id, h.meID(r), time.Unix(b.SendAt, 0))
-	if errors.Is(err, domain.ErrTooLong) {
-		writeError(w, http.StatusBadRequest, "send_at must be in the future")
-		return
-	}
-	if err != nil {
-		h.mapScheduledErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, scheduledJSON(m, peerOf(r, h.svc, m.ChatID)))
-}
-
-// ListScheduled — GET /chats/{chatID}/scheduled: свои запланированные.
+// ListScheduled — GET /chats/{peerID}/scheduled: свои отложенные.
 func (h *ChatHandler) ListScheduled(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
@@ -1602,7 +1604,7 @@ func (h *ChatHandler) ListScheduled(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]domain.MTMessage, 0, len(list))
 	for _, m := range list {
-		out = append(out, scheduledJSON(m, peerOf(r, h.svc, m.ChatID)))
+		out = append(out, m)
 	}
 	// Тот же контейнер, что у истории: набор отдан ЦЕЛИКОМ, поэтому
 	// `messages.messages`. Автор у отложенных всегда один — тот, кто спросил;
@@ -1611,31 +1613,85 @@ func (h *ChatHandler) ListScheduled(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewMessagesMessages(out, nil, []domain.UserReal{selfUser(me)}))
 }
 
-// DeleteScheduled — DELETE /chats/{chatID}/scheduled/{schedID}.
-func (h *ChatHandler) DeleteScheduled(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathInt(w, r, "schedID")
+// scheduledIDsBody — {id: [...]}: ключи отложенных (schema id:Vector<int>).
+type scheduledIDsBody struct {
+	IDs []int64 `json:"id"`
+}
+
+// SendScheduledNow — POST /chats/{peerID}/scheduled/send_now {id: [...]}
+// (messages.sendScheduledMessages): ключ элемента альбома публикует альбом.
+func (h *ChatHandler) SendScheduledNow(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
-	if err := h.svc.DeleteScheduled(r.Context(), id, h.meID(r)); err != nil {
+	var b scheduledIDsBody
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || len(b.IDs) == 0 {
+		writeError(w, http.StatusBadRequest, "id required")
+		return
+	}
+	updates, err := h.svc.SendScheduledNow(r.Context(), chatID, h.meID(r), b.IDs)
+	if errors.Is(err, domain.ErrNotFound) {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, domain.NewBool(true))
+	if err != nil {
+		// Отказ гейта публикации — та же таблица, что у отправки; строка
+		// остаётся в очереди.
+		writeSendError(w, err, "not a member of this chat")
+		return
+	}
+	writeScheduledUpdates(w, r, updates)
 }
 
-// SendScheduledNow — POST /chats/{chatID}/scheduled/{schedID}/send_now.
-func (h *ChatHandler) SendScheduledNow(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathInt(w, r, "schedID")
+// DeleteScheduled — POST /chats/{peerID}/scheduled/delete {id: [...]}
+// (messages.deleteScheduledMessages).
+func (h *ChatHandler) DeleteScheduled(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
-	m, err := h.svc.SendScheduledNow(r.Context(), id, h.meID(r))
+	var b scheduledIDsBody
+	if err := json.NewDecoder(r.Body).Decode(&b); err != nil || len(b.IDs) == 0 {
+		writeError(w, http.StatusBadRequest, "id required")
+		return
+	}
+	updates, err := h.svc.DeleteScheduled(r.Context(), chatID, h.meID(r), b.IDs)
 	if err != nil {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	writeMessage(w, r, h.svc, m)
+	writeScheduledUpdates(w, r, updates)
+}
+
+// editScheduled — PATCH /chats/{peerID}/messages/{id} с schedule_date: id —
+// ключ отложенного (messages.editMessage{schedule_date}, tweb
+// appMessagesManager.ts:2207-2222). Ошибки — только обрабатываемые tweb
+// (:2226-2240).
+func (h *ChatHandler) editScheduled(w http.ResponseWriter, r *http.Request, chatID int64, body editBody) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "msgSeq"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	updates, err := h.svc.EditScheduled(r.Context(), usecasechat.EditScheduledInput{
+		ChatID: chatID, ID: id, UserID: h.meID(r), Text: body.Text, Entities: body.Entities,
+		ScheduleDate: body.ScheduleDate, ScheduleRepeatPeriod: body.ScheduleRepeatPeriod,
+	})
+	switch {
+	case errors.Is(err, domain.ErrMessageNotModified):
+		writeError(w, http.StatusBadRequest, "MESSAGE_NOT_MODIFIED")
+	case errors.Is(err, domain.ErrMessageEmpty):
+		writeError(w, http.StatusBadRequest, "MESSAGE_EMPTY")
+	case errors.Is(err, domain.ErrTooLong):
+		writeError(w, http.StatusBadRequest, "message too long")
+	case errors.Is(err, domain.ErrInvalid):
+		writeError(w, http.StatusBadRequest, "invalid")
+	case err != nil:
+		h.mapScheduledErr(w, err)
+	default:
+		writeScheduledUpdates(w, r, updates)
+	}
 }
 
 func (h *ChatHandler) mapScheduledErr(w http.ResponseWriter, err error) {
@@ -1681,26 +1737,72 @@ func (h *ChatHandler) SetForum(w http.ResponseWriter, r *http.Request) {
 func topicJSON(row domain.TopicRow, viewerID int64) domain.ForumTopicReal {
 	// Темы бывают только у супергрупп — ключ пира тут один на всех: -chatID.
 	peer := domain.NewPeer(domain.ToPeerID(row.Topic.ChatID, true))
-	// Заглушённость это СРОК, а не булево поле рядом: тот же предикат, что у
-	// диалога. Своего срока у темы мы не храним — «замьючено навсегда» либо
-	// «не замьючено вовсе».
-	notify := domain.PeerNotifySettings{Underscore: domain.PeerNotifySettingsTag}
-	if row.Muted {
-		forever := domain.MuteUntilForever
-		notify.MuteUntil = &forever
-	}
 	return domain.NewForumTopic(row.Topic, peer, domain.NewPeer(domain.PeerID(row.Topic.CreatedBy)),
-		row.LastMsgSeq, row.LastReadSeq, row.UnreadCount, row.UnreadMentions, notify,
+		domain.ForumTopicState{
+			TopMessage:      row.LastMsgSeq,
+			ReadInboxMaxID:  row.LastReadSeq,
+			ReadOutboxMaxID: row.ReadOutboxSeq,
+			Unread:          row.UnreadCount,
+			UnreadMentions:  row.UnreadMentions,
+			UnreadReactions: row.UnreadReactions,
+		},
+		domain.TopicNotifySettings(row.MuteUntil, time.Now()),
 		domain.ForumTopicFlags{
-			My:        row.Topic.CreatedBy == viewerID,
-			Closed:    row.Topic.Closed,
-			Pinned:    row.Topic.Pinned,
-			Hidden:    row.Topic.Hidden,
-			IsGeneral: row.Topic.IsGeneral,
+			My:     domain.TopicMine(row.Topic, viewerID),
+			Closed: row.Topic.Closed,
+			Pinned: row.Topic.Pinned,
+			Hidden: row.Topic.Hidden,
 		})
 }
 
-// CreateTopic — POST /chats/{chatID}/topics {title, icon_color}.
+// topicNumber — {topicID} пути: НОМЕР темы (номер служебки создания в чате, у
+// General — 1), а не ключ строки forum_topics.
+func topicNumber(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	return pathMsgSeq(w, r, "topicID")
+}
+
+// writeTopicUpdates — ответ messages.createForumTopic/editForumTopic: Updates
+// с updateNewChannelMessage служебки темы (tweb appMessagesManager.ts:
+// 10073, 10098-10101 — номер новой темы клиент берёт именно из
+// updateNewChannelMessage: темы бывают только у супергрупп) и векторами
+// users/chats по ссылкам сообщения. Курсора в ответе нет (pts и pts_count —
+// нули): его двигает живой кадр той же служебки, из ответа клиенту нужно
+// только сообщение. Ничего не изменилось — пустой вектор updates.
+func writeTopicUpdates(w http.ResponseWriter, r *http.Request, svc *usecasechat.Interactor, m *domain.Message) {
+	if m == nil {
+		writeJSON(w, http.StatusOK, domain.NewUpdates(nil, nil, time.Now()))
+		return
+	}
+	me, _ := UserFromContext(r.Context())
+	out, users, chats, err := svc.MessagesContainer(r.Context(), me.ID, []domain.Message{*m})
+	if err != nil || len(out) != 1 {
+		writeError(w, http.StatusInternalServerError, "could not render topic update")
+		return
+	}
+	update := domain.UpdateNewChannelMessage{Underscore: domain.UpdateNewChannelMessageTag, Message: out[0]}
+	resp := domain.NewUpdates([]domain.Update{update}, users, time.Now())
+	if len(chats) > 0 {
+		resp.Chats = chats
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// writeTopicErr — отказ ручек тем: служебка темы идёт штатной отправкой, и её
+// отказы (права, медленный режим) — те же, что у Send.
+func writeTopicErr(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, domain.ErrTooLong):
+		writeError(w, http.StatusBadRequest, "invalid title")
+	case errors.Is(err, domain.ErrNotFound):
+		writeError(w, http.StatusNotFound, "not found")
+	default:
+		writeSendError(w, err, "not found")
+	}
+}
+
+// CreateTopic — POST /chats/{peerID}/topics {title, icon_color, icon_emoji} —
+// messages.createForumTopic. Ответ — Updates со служебкой создания; номер темы
+// — её id.
 func (h *ChatHandler) CreateTopic(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
@@ -1715,22 +1817,12 @@ func (h *ChatHandler) CreateTopic(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	t, err := h.svc.CreateTopic(r.Context(), chatID, h.meID(r), b.Title, b.IconEmoji, b.IconColor)
-	if errors.Is(err, domain.ErrTooLong) {
-		writeError(w, http.StatusBadRequest, "invalid title")
-		return
-	}
-	if errors.Is(err, domain.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "not found")
-		return
-	}
+	_, root, err := h.svc.CreateTopic(r.Context(), chatID, h.meID(r), b.Title, b.IconEmoji, b.IconColor)
 	if err != nil {
-		writeSendError(w, err, "not found")
+		writeTopicErr(w, err)
 		return
 	}
-	// Созданная тема — та же СТРОКА, что едет в списке: своей формы у этого
-	// ответа нет.
-	writeJSON(w, http.StatusOK, topicJSON(domain.TopicRow{Topic: t}, h.meID(r)))
+	writeTopicUpdates(w, r, h.svc, &root)
 }
 
 // ListTopics — GET /chats/{chatID}/topics.
@@ -1757,75 +1849,47 @@ func (h *ChatHandler) ListTopics(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewMessagesForumTopics(topics, msgs, nil, page.Users))
 }
 
-// CloseTopic — POST /chats/{chatID}/topics/{topicID}/close {closed}.
-func (h *ChatHandler) CloseTopic(w http.ResponseWriter, r *http.Request) {
-	topicID, ok := pathInt(w, r, "topicID")
-	if !ok {
-		return
-	}
-	var b struct {
-		Closed bool `json:"closed"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
-		writeError(w, http.StatusBadRequest, "bad body")
-		return
-	}
-	if err := h.svc.CloseTopic(r.Context(), topicID, h.meID(r), b.Closed); err != nil {
-		h.mapScheduledErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, domain.NewBool(true))
-}
-
-// EditTopic — PATCH /chats/{chatID}/topics/{topicID} {title, icon_emoji, icon_color}.
+// EditTopic — PATCH /chats/{peerID}/topics/{topicID} {title?, icon_emoji?,
+// closed?, hidden?} — messages.editForumTopic (tweb appMessagesManager.ts:
+// 10057-10075): один метод на переименование, значок, закрытие и скрытие.
+// Отсутствующее поле — не менять. Ответ — Updates со служебкой TopicEdit.
 func (h *ChatHandler) EditTopic(w http.ResponseWriter, r *http.Request) {
-	topicID, ok := pathInt(w, r, "topicID")
+	chatID, ok := peerChatID(w, r, h.svc)
+	if !ok {
+		return
+	}
+	number, ok := topicNumber(w, r)
 	if !ok {
 		return
 	}
 	var b struct {
-		Title     string `json:"title"`
-		IconEmoji string `json:"icon_emoji"`
-		IconColor int    `json:"icon_color"`
+		Title     *string `json:"title"`
+		IconEmoji *string `json:"icon_emoji"`
+		Closed    *bool   `json:"closed"`
+		Hidden    *bool   `json:"hidden"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	if err := h.svc.EditTopic(r.Context(), topicID, h.meID(r), b.Title, b.IconEmoji, b.IconColor); err != nil {
-		if errors.Is(err, domain.ErrTooLong) {
-			writeError(w, http.StatusBadRequest, "invalid title")
-			return
-		}
-		h.mapScheduledErr(w, err)
+	m, err := h.svc.EditTopic(r.Context(), chatID, number, h.meID(r), usecasechat.TopicEdit{
+		Title: b.Title, IconEmoji: b.IconEmoji, Closed: b.Closed, Hidden: b.Hidden,
+	})
+	if err != nil {
+		writeTopicErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, domain.NewBool(true))
+	writeTopicUpdates(w, r, h.svc, m)
 }
 
-// HideTopic — POST /chats/{chatID}/topics/{topicID}/hide {hidden}.
-func (h *ChatHandler) HideTopic(w http.ResponseWriter, r *http.Request) {
-	topicID, ok := pathInt(w, r, "topicID")
-	if !ok {
-		return
-	}
-	var b struct {
-		Hidden bool `json:"hidden"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
-		writeError(w, http.StatusBadRequest, "bad body")
-		return
-	}
-	if err := h.svc.SetTopicHidden(r.Context(), topicID, h.meID(r), b.Hidden); err != nil {
-		h.mapScheduledErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, domain.NewBool(true))
-}
-
-// PinTopic — POST /chats/{chatID}/topics/{topicID}/pin {pinned}.
+// PinTopic — POST /chats/{peerID}/topics/{topicID}/pin {pinned} —
+// messages.updatePinnedForumTopic. Ответ — Updates с updatePinnedForumTopic.
 func (h *ChatHandler) PinTopic(w http.ResponseWriter, r *http.Request) {
-	topicID, ok := pathInt(w, r, "topicID")
+	chatID, ok := peerChatID(w, r, h.svc)
+	if !ok {
+		return
+	}
+	number, ok := topicNumber(w, r)
 	if !ok {
 		return
 	}
@@ -1836,61 +1900,67 @@ func (h *ChatHandler) PinTopic(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	if err := h.svc.SetTopicPinned(r.Context(), topicID, h.meID(r), b.Pinned); err != nil {
+	update, err := h.svc.SetTopicPinned(r.Context(), chatID, number, h.meID(r), b.Pinned)
+	if err != nil {
 		h.mapScheduledErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, domain.NewBool(true))
+	writeJSON(w, http.StatusOK, domain.NewUpdates([]domain.Update{update}, nil, time.Now()))
 }
 
-// ReadTopic — POST /chats/{chatID}/topics/{topicID}/read {up_to_seq}.
-// Помечает тему прочитанной до up_to_seq (Telegram readDiscussion c threadId).
-// В слоте {topicID} передаётся НОМЕР корневого сообщения темы (ключ состояния —
-// пара chat+root; наружу тот же номер едет как root_msg_id витрины тем).
-func (h *ChatHandler) ReadTopic(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := peerChatID(w, r, h.svc)
+// ReadDiscussion — POST /chats/{peerID}/threads/{rootSeq}/read {read_max_id}
+// → Bool: messages.readDiscussion (tweb appMessagesManager.ts:9186-9210).
+// {rootSeq} — номер треда: тема форума (General — 1), зеркало поста в группе
+// обсуждения или сообщение обычной группы. Не участник — только тред
+// комментариев (путь чтения: peerChatIDForRead).
+func (h *ChatHandler) ReadDiscussion(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := peerChatIDForRead(w, r, h.svc)
 	if !ok {
 		return
 	}
-	rootMsgID, ok := msgSeqIDParam(w, r, h.svc, chatID, "topicID")
+	number, ok := pathMsgSeq(w, r, "rootSeq")
 	if !ok {
 		return
 	}
 	var b struct {
-		UpToSeq int64 `json:"up_to_seq"`
+		ReadMaxID int64 `json:"read_max_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	if err := h.svc.MarkTopicRead(r.Context(), chatID, rootMsgID, h.meID(r), b.UpToSeq); err != nil {
+	err := h.svc.ReadDiscussion(r.Context(), chatID, number, h.meID(r), b.ReadMaxID)
+	switch {
+	case errors.Is(err, domain.ErrTopicIDInvalid):
+		writeError(w, http.StatusBadRequest, "TOPIC_ID_INVALID")
+	case err != nil:
 		h.mapScheduledErr(w, err)
-		return
+	default:
+		writeJSON(w, http.StatusOK, domain.NewBool(true))
 	}
-	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
-// MuteTopic — POST /chats/{chatID}/topics/{topicID}/mute {muted}.
-// Включает/выключает уведомления темы для пользователя.
-// В слоте {topicID} передаётся НОМЕР корневого сообщения темы (ключ состояния —
-// пара chat+root; наружу тот же номер едет как root_msg_id витрины тем).
+// MuteTopic — POST /chats/{peerID}/topics/{topicID}/mute {mute_until} —
+// account.updateNotifySettings с inputNotifyForumTopic (tweb
+// appMessagesManager.ts:11962-11981). mute_until — СРОК, unix-секунды:
+// 0 — снять, 2147483647 — навсегда.
 func (h *ChatHandler) MuteTopic(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
-	rootMsgID, ok := msgSeqIDParam(w, r, h.svc, chatID, "topicID")
+	number, ok := topicNumber(w, r)
 	if !ok {
 		return
 	}
 	var b struct {
-		Muted bool `json:"muted"`
+		MuteUntil int64 `json:"mute_until"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	if err := h.svc.SetTopicMuted(r.Context(), chatID, rootMsgID, h.meID(r), b.Muted); err != nil {
+	if err := h.svc.SetTopicMuteUntil(r.Context(), chatID, number, h.meID(r), b.MuteUntil); err != nil {
 		h.mapScheduledErr(w, err)
 		return
 	}
@@ -1898,19 +1968,20 @@ func (h *ChatHandler) MuteTopic(w http.ResponseWriter, r *http.Request) {
 }
 
 // ThreadMessages — GET /chats/{peerID}/threads/{rootSeq}: сообщения треда.
-// В сегменте едет НОМЕР корня в этом чате (для комментариев — номер зеркала).
+// В сегменте едет НОМЕР корня в этом чате (для комментариев — номер зеркала,
+// в форуме 1 — General); перевод в ключ строки — в usecase.
 func (h *ChatHandler) ThreadMessages(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
-	rootID, ok := msgSeqIDParam(w, r, h.svc, chatID, "rootSeq")
+	rootSeq, ok := pathMsgSeq(w, r, "rootSeq")
 	if !ok {
 		return
 	}
 	offset := int(queryInt(r, "offset", 0))
 	limit := int(queryInt(r, "limit", 50))
-	msgs, count, err := h.svc.ListThreadMessages(r.Context(), chatID, rootID, h.meID(r), offset, limit)
+	msgs, count, err := h.svc.ListThreadMessages(r.Context(), chatID, rootSeq, h.meID(r), offset, limit)
 	if err != nil {
 		h.mapScheduledErr(w, err)
 		return

@@ -12,6 +12,7 @@ import { ARCHIVE_FOLDER_ID } from '@core/folderIds'
 import type { Dialog } from '@core/models'
 import type { DialogsPage } from '@core/managers/dialogsManager'
 import { useChatsStore } from '@stores/chatsStore'
+import { applyForumUnread, resetForumUnreadMirror } from '@core/dialogs/forumUnreadMirror'
 import ArchiveDialog, { createArchiveDialogState, type ArchiveDialogManagers, type DisposableArchiveDialogState } from './archiveDialog.solid'
 
 const user = (id: number, first_name = 'U' + id) => ({ _: 'user' as const, id, first_name, pFlags: {} })
@@ -113,6 +114,19 @@ describe('ArchiveDialog: превью и счётчик', () => {
       { op: 'patch', peerId: 4, fields: { unread_count: 0 } },
     ])
     await vi.waitFor(() => expect(badge()).toBeNull())
+  })
+
+  // tweb getDialogUnreadCount (:14233-14250): форум архива — по непрочитанным темам
+  it('форум в архиве считается по непрочитанным темам, их смена пересчитывает бейдж', async () => {
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'channel', id: 60, title: 'Ф', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true, forum: true } } as never] }])
+    seed([makeDialog({ peerId: -60, archived: true, unread: 9 })])
+    applyForumUnread(-60, { count: 0, unreadNotifySettings: [] })
+    const el = mount()
+    const badge = () => el.querySelector<HTMLElement>('.row-subtitle-row > .badge')
+    expect(badge()).toBeNull()
+    applyForumUnread(-60, { count: 2, unreadNotifySettings: [] })
+    await vi.waitFor(() => expect(badge()?.textContent).toBe('1'))
+    resetForumUnreadMirror()
   })
 
   it('превью живёт зеркалом: архивировали — имя появилось, разархивировали — ушло', async () => {

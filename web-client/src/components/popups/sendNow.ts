@@ -11,6 +11,7 @@
 //     как у `popups/deleteDialog.ts` (ВРЕМЕННО до 2C-6).
 import PopupElement from '@components/popups/popupElement'
 import PopupPeer from '@components/popups/popupPeer'
+import { toastNew } from '@components/toast'
 
 export default function showSendNowPopup(
   /** `rootScope.managers.appMessagesManager.sendScheduledMessages` оригинала —
@@ -28,7 +29,8 @@ export default function showSendNowPopup(
       langKey: 'Send',
       callback: () => {
         onConfirm?.()
-        void sendScheduledMessages(peerId, mids)
+        // отказ ручки — тост, а не необработанный reject
+        void sendScheduledMessages(peerId, mids).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
       },
     }],
   })

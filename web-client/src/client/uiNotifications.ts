@@ -22,7 +22,12 @@ import appImManager from '../lib/appImManager'
  *  (форма `updateNewMessage`), и второй формы у него больше нет. */
 export type IncomingMsg = MyMessage
 
-export function notifyIncomingMessage(evt: IncomingMsg): void {
+/**
+ * @param muted заглушённость, которую уже решил вызывающий, — мьют ТЕМЫ форума
+ *   (`notificationSubscriber.ts::topicMuted`, tweb `isPeerLocalMuted({threadId})`);
+ *   не задана — правило чата.
+ */
+export function notifyIncomingMessage(evt: IncomingMsg, muted?: boolean): void {
   const s = useChatsStore.getState()
   if (evt.fromId === s.meId) return
   const dialog = s.dialogs.find((d) => d.peerId === evt.peerId)
@@ -31,7 +36,7 @@ export function notifyIncomingMessage(evt: IncomingMsg): void {
   // пин stores/noDuplicateMuteRule.test.ts). `preview` ниже — другая настройка,
   // её по-прежнему берём по типу чата напрямую.
   const chat = cachedChat(evt.peerId)
-  if (isDialogMuted(dialog, chat, notifySettings)) return
+  if (muted ?? isDialogMuted(dialog, chat, notifySettings)) return
   const typeSettings = notifySettings[notifyTypeForChat(evt.peerId, chat)]
 
   // Открытый чат в видимой вкладке — ни звука, ни уведомления (читается на экране):

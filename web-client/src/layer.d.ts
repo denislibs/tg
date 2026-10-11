@@ -1073,8 +1073,6 @@ export namespace Message {
     storageKey?: MessagesStorageKey,
     repayRequest?: {id: number, messageCount: number},
     effect_name?: string,
-    send_at?: number,
-    when_online?: boolean,
     enc_body?: string,
     destruct_at?: string
   };
@@ -1553,7 +1551,8 @@ export namespace MessageAction {
     }>,
     title: string,
     icon_color: number,
-    icon_emoji_id?: string | number
+    icon_emoji_id?: string | number,
+    icon_emoji_emoticon?: string
   };
 
   export type messageActionTopicEdit = {
@@ -1562,7 +1561,8 @@ export namespace MessageAction {
     title?: string,
     icon_emoji_id?: string | number,
     closed?: boolean,
-    hidden?: boolean
+    hidden?: boolean,
+    icon_emoji_emoticon?: string
   };
 
   export type messageActionSuggestProfilePhoto = {
@@ -12645,7 +12645,6 @@ export namespace ForumTopic {
       short?: true,
       hidden?: true,
       title_missing?: true,
-      is_general?: true,
     }>,
     id: number,
     date: number,
@@ -12665,7 +12664,6 @@ export namespace ForumTopic {
     peerId?: PeerId,
     index_0?: number,
     peer?: Peer,
-    root_msg_id?: number,
     icon_emoji_emoticon?: string
   };
 }

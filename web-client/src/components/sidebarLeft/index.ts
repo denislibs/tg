@@ -189,6 +189,7 @@ import appNavigationController, { type NavigationItem } from '@core/navigation/a
 import { useChatsStore } from '@stores/chatsStore'
 import { isDialogArchived } from '@core/models'
 import { archiveUnreadCount } from '@core/folders/folderUnreadCounts'
+import { getDialogUnreadCount, subscribeForumUnread } from '@core/dialogs/forumUnreadMirror'
 import useHasFoldersSidebar, { useFoldersSidebarShown, useHasOpenLeftTabs, useIsLeftSearchActive, useIsSidebarCollapsed } from '@stores/foldersSidebar.solid'
 import { useAppSettings } from '@stores/appSettings.solid'
 import { useSettingsStore } from '@/settings'
@@ -355,13 +356,15 @@ export class AppSidebarLeft extends SidebarSlider {
 
     // :233-258 — `folder_unread` архива; у нас — движение зеркала диалогов (расхождение 4 бургера)
     const updateArchivedCount = () => {
-      const unreadCount = archiveUnreadCount(useChatsStore.getState().dialogs)
+      // у форума — непрочитанные темы (tweb `getDialogUnreadCount`, :14233-14250)
+      const unreadCount = archiveUnreadCount(useChatsStore.getState().dialogs, getDialogUnreadCount)
       setBadgeContent(this.archivedCount, unreadCount ? '' + formatNumber(unreadCount, 1) : '')
     }
     updateArchivedCount()
     useChatsStore.subscribe((state, prev) => {
       if(state.dialogs !== prev.dialogs) updateArchivedCount()
     })
+    subscribeForumUnread(updateArchivedCount)
 
     // :258-361 — кнопки шапки справа от поля поиска: статус-эмодзи (Premium) и
     // замок (код-пароль). Расхождения 7, 8 шапки.

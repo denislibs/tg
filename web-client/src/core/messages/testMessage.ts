@@ -34,6 +34,8 @@ export interface MessageFixture {
   media?: MessageMedia
   replyToMsgId?: number
   threadRootId?: number
+  /** `reply_to.pFlags.forum_topic` — сообщение темы форума (не General) */
+  forumTopic?: boolean
   groupedId?: number
   randomId?: string
   failed?: boolean
@@ -57,6 +59,7 @@ export function makeMessage(f: MessageFixture): MessageReal {
     f.replyToMsgId != null || f.threadRootId != null
       ? {
           _: 'messageReplyHeader',
+          ...(f.forumTopic ? { pFlags: { forum_topic: true as const } } : {}),
           ...(f.replyToMsgId != null ? { reply_to_msg_id: f.replyToMsgId } : {}),
           ...(f.threadRootId != null ? { reply_to_top_id: f.threadRootId } : {}),
         }

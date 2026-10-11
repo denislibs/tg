@@ -18,7 +18,8 @@ import { newPendingMethods } from './pending'
 import { getDocumentFromMessage, getMediaDimensions, getMediaFromMessage, isMediaSpoiler } from '../../media/messageMedia'
 import { messageToConvMsg } from '../../messageToConvMsg'
 import type { MessageReal, MyMessage } from '../../models'
-import { generateMessageId, generateTempMessageId, isLocalMessageId } from '../../history/messageId'
+import { GENERAL_TOPIC_ID, generateMessageId, generateTempMessageId, isLocalMessageId } from '../../history/messageId'
+import { makeMessage } from '../../messages/testMessage'
 import type { MessageOp } from '../../realtime/messageOps'
 import type { PendingNewEvt } from '../../realtime/events'
 import type { SendArgs as WireSendArgs } from '../../realtime/connectionManager'
@@ -48,12 +49,24 @@ function makeCtx() {
   /** Ключи чатов, которые стенд считает ВЕЩАТЕЛЬНЫМИ каналами (порт
    *  `appPeersManager.isBroadcast`). По умолчанию пуст — обычный чат. */
   const broadcasts = new Set<number>()
+  /** Хранилища отложенных (порт `scheduledMessagesStorage`) и объявленные
+   *  `scheduled_new` — сторона ленты отложенных. */
+  const scheduled = new Map<number, Map<number, MyMessage>>()
+  const scheduledFor = (peerId: number) => {
+    let c = scheduled.get(peerId)
+    if (!c) { c = new Map(); scheduled.set(peerId, c) }
+    return c
+  }
+  const scheduledNews: MyMessage[] = []
   const h = {
-    slices, msgsFor, emitted, sends, uploads, typings, progress, cancelled, order, broadcasts,
+    slices, msgsFor, emitted, sends, uploads, typings, progress, cancelled, order, broadcasts, scheduledFor, scheduledNews,
     /** подменяется в тестах аплоада (успех с другим id, отказ, «зависший» промис) */
     upload: vi.fn(async (a: UploadArgs) => { uploads.push(a); return 909 }),
     ctx: {
       hkey, slices, msgsFor,
+      scheduledFor,
+      scheduledKey: (peerId: number) => `${peerId}_scheduled`,
+      scheduledNew: (m: MyMessage) => { scheduledNews.push(m) },
       appendNewest: (_key: string, sa: SlicedArray<number>, id: number) => { if (!sa.findSlice(id)) sa.unshift(id) },
       // Тот же id, что `sender_id` в evt() ниже. `pFlags.out` на бабле ставит
       // владелец литералом (сообщение зрителя, ещё не ушедшее), а `me` нужен
@@ -522,7 +535,7 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
     expect(h.sends).toEqual([{
       peerId: 1, text: 'hi', clientMsgId: 'c1', type: 'contact', contactUserId: 42,
       threadRootId: 7, replyToId: null, replyToPeerId: null, replyQuoteText: null,
-      replyQuoteOffset: null, silent: false, effect: null, sendAsPeerId: null,
+      replyQuoteOffset: null, silent: false, effect: null, sendAsPeerId: null, scheduleDate: null, scheduleRepeatPeriod: null,
     }])
   })
 
@@ -597,6 +610,75 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
   })
 })
 
+// Порт tweb `sendGrouped` (appMessagesManager.ts:3593-3830): все временные
+// сообщения альбома — ОДНИМ объявлением до сети (`processAfter`, :3672-3727),
+// отправка — после всех аплоадов, по порядку группы.
+describe('sendGrouped: альбом — все баблы разом, затем аплоады, затем отправка', () => {
+  const file = () => new Blob(['xxx'], { type: 'image/jpeg' })
+
+  it('баблы группы уходят одним emit, кадры — после всех аплоадов, по порядку', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [cid(10)])
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    let n = 0
+    h.upload.mockImplementation(async () => { const id = 900 + ++n; await gate; return id })
+    const p = newPendingMethods(h.ctx)
+
+    const sending = p.sendGrouped([1, 2, 3].map((i) => ({
+      peerId: 1, clientMsgId: `c${i}`, senderId: 5, file: file(), type: 'photo' as const,
+      isMedia: true, groupedId: 77, caption: i === 1 ? 'подпись' : '',
+    })))
+    // до аплоадов: ОДИН emit с тремя вставками, сеть не тронута
+    expect(h.emitted).toHaveLength(1)
+    expect(h.emitted[0].map((op) => (op as { msg: MessageReal }).msg.random_id)).toEqual(['c1', 'c2', 'c3'])
+    expect(h.emitted[0].every((op) => (op as { msg: MessageReal }).msg.grouped_id === 77)).toBe(true)
+    expect(h.sends).toEqual([])
+
+    release()
+    await sending
+    expect(h.sends.map((a) => [a.clientMsgId, a.mediaId, a.groupedId])).toEqual([['c1', 901, 77], ['c2', 902, 77], ['c3', 903, 77]])
+  })
+})
+
+describe('sendGrouped: отказ и отмена ячейки', () => {
+  const file = () => new Blob(['xxx'], { type: 'image/jpeg' })
+  const items = () => [1, 2, 3].map((i) => ({
+    peerId: 1, clientMsgId: `c${i}`, senderId: 5, file: file(), type: 'photo' as const,
+    isMedia: true, groupedId: 77, caption: i === 1 ? 'подпись' : '',
+  }))
+
+  // tweb :3836-3840 — `toggleError` ячейки и `throw`: `Promise.all` отклоняется,
+  // `sendMultiMedia` не уходит; неполного альбома собеседник не получит.
+  it('сорвался аплоад одной ячейки — не уходит ни один кадр, ячейка упавшая', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [cid(10)])
+    let n = 0
+    h.upload.mockImplementation(async () => { if (++n === 2) throw new Error('net'); return 900 + n })
+    const p = newPendingMethods(h.ctx)
+    await p.sendGrouped(items())
+    expect(h.sends).toEqual([])
+    expect(h.emitted.flat().some((op) => op.op === 'patch' && (op as { fields: { failed?: boolean } }).fields.failed)).toBe(true)
+  })
+
+  // tweb :3831-3834 — отменённая ячейка выпадает; подпись уходит с первой
+  // отправляемой (:3879-3884).
+  it('отменена первая ячейка — уходят остальные, подпись — со второй', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [cid(10)])
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    let n = 0
+    h.upload.mockImplementation(async () => { const id = 900 + ++n; await gate; return id })
+    const p = newPendingMethods(h.ctx)
+    const sending = p.sendGrouped(items())
+    await p.cancelPending({ clientMsgId: 'c1' })
+    release()
+    await sending
+    expect(h.sends.map((a) => [a.clientMsgId, a.text])).toEqual([['c2', 'подпись'], ['c3', '']])
+  })
+})
+
 describe('sendFile: бабл → аплоад → attach → отправка (порт tweb sendFile)', () => {
   const file = (bytes = 'xxx', type = 'image/jpeg') => new Blob([bytes], { type })
 
@@ -638,7 +720,7 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
       peerId: 1, text: 'подпись', entities: null, clientMsgId: 'c1', type: 'photo',
       groupedId: undefined, paidMediaPrice: null, mediaId: 909, mediaSpoiler: undefined,
       threadRootId: null, replyToId: null, replyToPeerId: null, replyQuoteText: null,
-      replyQuoteOffset: null, silent: false, effect: null, sendAsPeerId: null,
+      replyQuoteOffset: null, silent: false, effect: null, sendAsPeerId: null, scheduleDate: null, scheduleRepeatPeriod: null,
     }])
   })
 
@@ -963,7 +1045,7 @@ describe('pending: оптимистичный бабл несёт ССЫЛКУ �
     const ops = p.beforeMessageSending(evt({ reply_to_id: cid(77) }))
 
     const msg = (ops[0] as { msg: MessageReal }).msg
-    expect(msg.reply_to).toEqual({ _: 'messageReplyHeader', reply_to_msg_id: cid(77) })
+    expect(msg.reply_to).toEqual({ _: 'messageReplyHeader', pFlags: {}, reply_to_msg_id: cid(77) })
   })
 
   it('цитата едет ВНУТРИ ссылки, флагом схемы', () => {
@@ -991,8 +1073,48 @@ describe('pending: оптимистичный бабл несёт ССЫЛКУ �
 
     const msg = (ops[0] as { msg: MessageReal }).msg
     expect(msg.reply_to).toEqual({
-      _: 'messageReplyHeader', reply_to_msg_id: cid(77),
+      _: 'messageReplyHeader', pFlags: {}, reply_to_msg_id: cid(77),
       reply_to_peer_id: { _: 'peerChannel', channel_id: 99 },
+    })
+  })
+
+  // tweb generateReplyHeader (:4628-4718) + `replyToMsgId = threadId` (:4341-4342):
+  // форма A1-16 у бабла сразу, иначе он читался бы сообщением General до эха
+  // (ревью КЛ-1 М2)
+  describe('форум', () => {
+    const FORUM = -5
+    const forumCtx = () => {
+      const h = makeCtx()
+      return { ...h, ctx: { ...h.ctx, isForum: (peerId: number) => peerId === FORUM } }
+    }
+
+    it('сообщение в теме: ответ на тему с `forum_topic`, без `reply_to_top_id`', () => {
+      const h = forumCtx()
+      openWindow(h.slices, `${FORUM}:${cid(10)}`)
+      const msg = (newPendingMethods(h.ctx).beforeMessageSending(evt({ peer_id: FORUM, thread_root_id: cid(10) }))[0] as { msg: MessageReal }).msg
+      expect(msg.reply_to).toEqual({ _: 'messageReplyHeader', pFlags: { forum_topic: true }, reply_to_msg_id: cid(10) })
+    })
+
+    it('ответ внутри темы: `reply_to_top_id` = тема', () => {
+      const h = forumCtx()
+      openWindow(h.slices, `${FORUM}:${cid(10)}`)
+      const msg = (newPendingMethods(h.ctx).beforeMessageSending(evt({ peer_id: FORUM, thread_root_id: cid(10), reply_to_id: cid(12) }))[0] as { msg: MessageReal }).msg
+      expect(msg.reply_to).toEqual({ _: 'messageReplyHeader', pFlags: { forum_topic: true }, reply_to_msg_id: cid(12), reply_to_top_id: cid(10) })
+    })
+
+    it('General: без `forum_topic`', () => {
+      const h = forumCtx()
+      openWindow(h.slices, `${FORUM}:${GENERAL_TOPIC_ID}`)
+      const msg = (newPendingMethods(h.ctx).beforeMessageSending(evt({ peer_id: FORUM, thread_root_id: GENERAL_TOPIC_ID }))[0] as { msg: MessageReal }).msg
+      expect(msg.reply_to).toEqual({ _: 'messageReplyHeader', pFlags: {}, reply_to_msg_id: GENERAL_TOPIC_ID })
+    })
+
+    it('ответ без треда — тред оригинала (:4672-4674)', () => {
+      const h = forumCtx()
+      openWindow(h.slices, `${FORUM}`)
+      h.msgsFor(FORUM).set(cid(12), makeMessage({ id: cid(12), peerId: FORUM, replyToMsgId: cid(10), forumTopic: true }))
+      const msg = (newPendingMethods(h.ctx).beforeMessageSending(evt({ peer_id: FORUM, reply_to_id: cid(12) }))[0] as { msg: MessageReal }).msg
+      expect(msg.reply_to).toEqual({ _: 'messageReplyHeader', pFlags: { forum_topic: true }, reply_to_msg_id: cid(12), reply_to_top_id: cid(10) })
     })
   })
 
@@ -1052,5 +1174,45 @@ describe('pending: оптимистичный бабл несёт ССЫЛКУ �
     await p.sendText({ peerId: 1, text: 'x', clientMsgId: 'c1', replyToQuote: { text: 'ригин', offset: 1 } })
 
     expect(h.sends[0]).toMatchObject({ replyToId: null, replyQuoteText: null, replyQuoteOffset: null })
+  })
+})
+
+// Ф-5, п. 1.2.2: отложенная отправка — бабл ложится в хранилище отложенных, а не в
+// историю (tweb `beforeMessageSending({isScheduled})`, appMessagesManager.ts:4370-4388:
+// `saveMessages({isScheduled})` + `scheduled_new`, без `history_append`).
+describe('pending: отложенная отправка', () => {
+  it('sendText с scheduleDate: бабл в хранилище отложенных, scheduled_new, без операций окна истории', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [cid(10)])
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendText({ peerId: 1, text: 'потом', clientMsgId: 'c-s', scheduleDate: 1_900_000_000, optimistic: { senderId: 42 } })
+
+    expect(h.emitted).toEqual([])
+    expect([...h.slices.get('1')!.first]).toEqual([cid(10)])
+    expect(h.msgsFor(1).size).toBe(0)
+    expect(h.scheduledNews).toHaveLength(1)
+    const msg = h.scheduledNews[0] as MessageReal
+    expect(msg).toMatchObject({ date: 1_900_000_000, random_id: 'c-s', pFlags: { out: true, is_scheduled: true } })
+    expect(h.scheduledFor(1).get(msg.id)).toBe(msg)
+    expect(h.sends).toEqual([expect.objectContaining({ clientMsgId: 'c-s', scheduleDate: 1_900_000_000 })])
+  })
+
+  it('отложенный файл: настоящий media_id и отмена правят окно ленты отложенных', async () => {
+    const h = makeCtx()
+    const p = newPendingMethods(h.ctx)
+    let release!: () => void
+    h.upload.mockImplementation(() => new Promise<number>((r) => { release = () => r(77) }))
+
+    const sent = p.sendFile({ peerId: 1, clientMsgId: 'c-f', senderId: 42, file: new Blob(['x']), type: 'photo', isMedia: true, scheduleDate: 1_900_000_000 })
+    const temp = h.scheduledNews[0] as MessageReal
+    release()
+    await sent
+
+    expect(h.emitted).toEqual([[{ op: 'patch', key: '1_scheduled', msgId: temp.id, fields: { media: expect.anything() } }]])
+    expect(h.sends).toEqual([expect.objectContaining({ mediaId: 77, scheduleDate: 1_900_000_000 })])
+
+    expect(p.cancelPendingMessage('c-f')).toEqual([{ op: 'remove', key: '1_scheduled', msgId: temp.id }])
+    expect(h.scheduledFor(1).size).toBe(0)
   })
 })

@@ -1,11 +1,13 @@
 import type { RestClient } from '../net/restClient'
 import type { PendingNewEvt } from '../realtime/events'
+import type { MessageSendingParams } from './messages/sendingParams'
 import { mapMyMessage, mapSuggestedPost, type MyMessage, type RawMyMessage, type MessageEntity, type SuggestedPost, type RawSuggestedPost } from '../models'
 import type { Chat, MessagesChatFull, UserReal } from '../peers/peer'
 import type { Peer } from '../peers/peerId'
 import { getPeerId } from '../peers/peerId'
 import { getServerMessageId } from '../history/messageId'
 import type { PeersManager } from './peersManager'
+import type { ScheduledUpdates } from './messagesManager'
 
 // Аргументы «предложить пост в канал» (Telegram suggested posts). publishAt —
 // желаемое время публикации в unix-секундах (0/undefined — как можно скорее).
@@ -58,11 +60,19 @@ interface MessagesMessageViews {
   users: UserReal[]
 }
 
-export function newChannelsManager({ rest, beforeSending, peers, cacheViews }: {
+export function newChannelsManager({ rest, beforeSending, failSending, applyScheduledUpdates, peers, cacheViews }: {
   rest: Pick<RestClient, 'post' | 'get' | 'put' | 'del'>
   /** Временный бабл поста — та же механика, что у обычной отправки
    *  (messages.beforeMessageSending + веер операций), см. workerCore.ts. */
   beforeSending: (p: PendingNewEvt) => void
+  /** Отказ ручки помечает тот же бабл упавшим (`messages.failPending`; tweb
+   *  `toggleError` на отказ `sendText`, appMessagesManager.ts:2819-2834).
+   *  Опционален, как и следующий: юнит-тесты собирают менеджер без них. */
+  failSending?: (clientMsgId: string) => void
+  /** Ответ отложенного поста — `Updates` (tweb `processUpdateMessage`,
+   *  :2810-2811): кадры ленты отложенных применяет их владелец
+   *  (`messages.applyScheduledUpdates`). */
+  applyScheduledUpdates?: (r: ScheduledUpdates | undefined) => void
   /** Владелец карточек пиров: авторы последних комментариев приезжают попутно
    *  с ответом и обязаны попасть в зеркало — иначе стек аватаров рисует их
    *  фолбэком и ходит за теми же карточками вторым запросом. Порт правила
@@ -98,19 +108,49 @@ export function newChannelsManager({ rest, beforeSending, peers, cacheViews }: {
     // заводится здесь, живое эхо приезжает кадром new_message и сливается по
     // clientMsgId, как у всех остальных путей. Транспорт другой, владелец бабла
     // тот же — это и есть граница tweb.
-    async post(peerId: number, text: string, clientMsgId: string, entities?: MessageEntity[], optimistic?: { senderId: number; threadRootId?: number | null }): Promise<MyMessage> {
+    //
+    // `sendingParams` — пакет отправки (tweb: пост канала уходит тем же
+    // `sendText` с пакетом); ручка берёт из него отложенную отправку
+    // (`schedule_date`, tweb appMessagesManager.ts:2741) — бабл тогда ложится в
+    // ленту отложенных, а не в историю.
+    async post(
+      peerId: number, text: string, clientMsgId: string, entities?: MessageEntity[],
+      optimistic?: { senderId: number; threadRootId?: number | null },
+      sendingParams?: Pick<MessageSendingParams, 'scheduleDate' | 'scheduleRepeatPeriod'>,
+    ): Promise<MyMessage | undefined> {
+      const scheduleDate = sendingParams?.scheduleDate || 0
+      const scheduleRepeatPeriod = sendingParams?.scheduleRepeatPeriod || 0
       if (optimistic) {
         beforeSending({
           peer_id: peerId, thread_root_id: optimistic.threadRootId ?? null, client_msg_id: clientMsgId,
           sender_id: optimistic.senderId, text, type: 'text', entities,
+          ...(scheduleDate ? { schedule_date: scheduleDate } : {}),
+          ...(scheduleRepeatPeriod ? { schedule_repeat_period: scheduleRepeatPeriod } : {}),
           // Тот же класс, что `messages.sendText` в tweb: между баблом и уходом
           // запроса ничего не ждём, поэтому позиция бабла внизу окна переживёт
           // финализацию (см. докблок `PendingNewEvt.sequential`).
           sequential: true,
         })
       }
-      const r = await rest.post<RawMyMessage>(`/channels/${peerId}/messages`, { text, entities, client_msg_id: clientMsgId })
-      return mapMyMessage(r)
+      let r: RawMyMessage | ScheduledUpdates
+      try {
+        r = await rest.post<RawMyMessage | ScheduledUpdates>(`/channels/${peerId}/messages`, {
+          text, entities, client_msg_id: clientMsgId,
+          schedule_date: scheduleDate, schedule_repeat_period: scheduleRepeatPeriod,
+        })
+      } catch (e) {
+        // tweb :2819-2834 — `toggleError` бабла и проброс отказа вызывателю (тост)
+        if (optimistic) failSending?.(clientMsgId)
+        throw e
+      }
+      // Отложенный пост отвечает `Updates`, а не сообщением: кадр
+      // `updateNewScheduledMessage` в нём финализирует бабл в ленте отложенных
+      // (по `random_id`); тот же кадр из сокета следом — правка тем же содержимым.
+      if (scheduleDate) {
+        applyScheduledUpdates?.(r as ScheduledUpdates)
+        return undefined
+      }
+      return mapMyMessage(r as RawMyMessage)
     },
     // догон канала (updates.getChannelDifference) ведёт состояние канала в
     // воркере (channelFunnel), а не менеджер — курсор и гейтинг живут там же, где

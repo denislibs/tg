@@ -69,6 +69,9 @@ func ParseMessageAction(raw []byte) (MessageAction, error) {
 	case MessageActionTopicCreateTag:
 		var a MessageActionTopicCreate
 		return a, json.Unmarshal(raw, &a)
+	case MessageActionTopicEditTag:
+		var a MessageActionTopicEdit
+		return a, json.Unmarshal(raw, &a)
 	case MessageActionSuggestProfilePhotoTag:
 		var a MessageActionSuggestProfilePhoto
 		if err := json.Unmarshal(raw, &a); err != nil {

@@ -211,22 +211,16 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/chats/{peerID}/forum", ch.SetForum)
 		pr.Post("/chats/{peerID}/topics", ch.CreateTopic)
 		pr.Get("/chats/{peerID}/topics", ch.ListTopics)
-		pr.Post("/chats/{peerID}/topics/{topicID}/close", ch.CloseTopic)
+		// {topicID} — НОМЕР темы: номер служебки создания в чате, у General —
+		// 1 (forumTopic.id). Одно число на все ручки тем.
 		pr.Patch("/chats/{peerID}/topics/{topicID}", ch.EditTopic)
-		pr.Post("/chats/{peerID}/topics/{topicID}/hide", ch.HideTopic)
 		pr.Post("/chats/{peerID}/topics/{topicID}/pin", ch.PinTopic)
-		// read/mute адресуют тему по НОМЕРУ корневого сообщения (пара chat+root —
-		// ключ состояния); имя chi-параметра {topicID} общее с close/hide/pin, чтобы
-		// дерево роутов не конфликтовало — значение в этом слоте для read/mute
-		// передаётся root_msg_id, то есть тот же номер, что едет наружу витриной тем.
-		pr.Post("/chats/{peerID}/topics/{topicID}/read", ch.ReadTopic)
 		pr.Post("/chats/{peerID}/topics/{topicID}/mute", ch.MuteTopic)
 		pr.Get("/chats/{peerID}/threads/{rootSeq}", ch.ThreadMessages)
-		pr.Post("/chats/{peerID}/scheduled", ch.ScheduleMessage)
+		pr.Post("/chats/{peerID}/threads/{rootSeq}/read", ch.ReadDiscussion) // messages.readDiscussion
 		pr.Get("/chats/{peerID}/scheduled", ch.ListScheduled)
-		pr.Patch("/chats/{peerID}/scheduled/{schedID}", ch.UpdateScheduled)
-		pr.Delete("/chats/{peerID}/scheduled/{schedID}", ch.DeleteScheduled)
-		pr.Post("/chats/{peerID}/scheduled/{schedID}/send_now", ch.SendScheduledNow)
+		pr.Post("/chats/{peerID}/scheduled/send_now", ch.SendScheduledNow)
+		pr.Post("/chats/{peerID}/scheduled/delete", ch.DeleteScheduled)
 		pr.Post("/polls/{pollID}/vote", ch.VotePoll)
 		pr.Post("/polls/{pollID}/close", ch.ClosePoll)
 		// Чек-листы (Telegram todo list)

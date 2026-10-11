@@ -19,9 +19,9 @@
 // после цикла (`input.onHelperCancel()`, :1104-1106).
 //
 // Расхождения с оригиналом (закроет порт попапа):
-//  1. `sendGrouped` у нас нет: каждый файл — свой `messages.sendFile` с общим
-//     `groupedId` (форма снесённого `useChatSend.sendPendingMedia`); подпись —
-//     на первом.
+//  1. Альбом уходит `messages.sendGrouped` (порт tweb `sendGrouped`): все
+//     временные разом, затем аплоады; пакетного `sendMultiMedia` на проводе нет —
+//     кадры по одному с общим `groupedId`, подпись — на первой ячейке.
 //  2. Аргументы `ignoreInputValue`, `gifDocument`, `ephemeralSnapshot` — без
 //     предмета: подпись из поля ввода попап не берёт (`wasDraft`, :418-431),
 //     GIF из стикер-меню и эфемерного композера нет; правки медиа
@@ -41,6 +41,7 @@ import { scaleImageForSend } from '@core/media/scaleImageForSend'
 import type { Managers } from '@/client/bootstrap'
 import type { MessageSendingParams } from '@core/managers/messages/sendingParams'
 import type { SendMessageAction } from '@core/realtime/events'
+import { ChatType } from '@components/chat/chatType'
 
 /** tweb `newMedia.tsx` `WillAttachType` в объёме выбора файлов, вставки и сброса. */
 export type WillAttachType = 'media' | 'document'
@@ -61,12 +62,18 @@ export function getCurrentNewMediaPopup() {
 export interface NewMediaChat {
   peerId: PeerId
   managers: Managers
+  /** tweb `newMedia.tsx:1013` — в ленте отложенных отправка спрашивает время */
+  type: ChatType
   input: {
+    /** tweb `input.ts:2190-2217` — календарь; выбранное время ляжет в пакет */
+    scheduleSending(callback: () => void): void | Promise<void>
     /** tweb `chat.ts:1352` `chat.getMessageSendingParams()`; у нас до К-4
      *  включительно лежит на `ChatInput` (расхождение 5) */
     getMessageSendingParams(): MessageSendingParams
     /** tweb `input.ts` — гасит плашку ответа после отправки */
     onHelperCancel(): void
+    /** tweb `input.ts:4493-4497` — снимает разовые флаги пакета (время, повтор, без звука) */
+    resetSendingFlags(): void
   }
 }
 
@@ -88,8 +95,8 @@ function probeMediaDuration(file: File, kind: 'audio' | 'video'): Promise<number
   })
 }
 
-/** Один файл выборки — tweb `newMedia.tsx` `sendFileDetails` + `appMessagesManager.sendFile`. */
-async function sendOneFile(
+/** Один файл выборки — tweb `newMedia.tsx` `sendFileDetails`: заявка `sendFile`. */
+async function prepareFile(
   chat: NewMediaChat,
   input: File,
   options: {
@@ -129,7 +136,7 @@ async function sendOneFile(
     : { _: 'sendMessageUploadDocumentAction' }
   // tweb `isMedia`: фото/видео как медиа — бабл сразу с локальным превью.
   const isVisual = (type === 'photo' || type === 'video') && !asFile
-  await chat.managers.messages.sendFile({
+  return {
     peerId,
     clientMsgId: `c-${peerId}-${performance.now()}-${Math.random().toString(36).slice(2)}`,
     senderId: useChatsStore.getState().meId ?? -1,
@@ -148,10 +155,15 @@ async function sendOneFile(
     uploadAction,
     // спойлер — только у визуального медиа (tweb `canToggleSpoilers`)
     spoiler: spoiler && isVisual,
-  })
+  }
 }
 
-/** Отправка выборки — tweb `newMedia.tsx:1022-1106` (расхождение 1). */
+/**
+ * tweb `newMedia.tsx:897-907`: меню отправки (и календарь ленты отложенных)
+ * ставит разовые флаги на композер, а этот путь мимо `onMessageSent` — после
+ * попытки, удачной или нет, их снимаем, иначе их унаследует следующее сообщение
+ * (опрос, голосовое).
+ */
 function send(
   chat: NewMediaChat,
   files: File[],
@@ -159,7 +171,32 @@ function send(
   asFile: boolean,
   paidPrice?: number | null,
   spoilers?: boolean[],
+  force = false,
 ) {
+  try {
+    performSend(chat, files, caption, asFile, paidPrice, spoilers, force)
+  } finally {
+    chat.input.resetSendingFlags()
+  }
+}
+
+/** Отправка выборки — tweb `newMedia.tsx:1022-1106` (расхождение 1). */
+function performSend(
+  chat: NewMediaChat,
+  files: File[],
+  caption: string,
+  asFile: boolean,
+  paidPrice?: number | null,
+  spoilers?: boolean[],
+  force = false,
+) {
+  // tweb :1013-1018 — в ленте отложенных сперва время; оно ляжет в пакет
+  // (`scheduleDate`), и вся выборка уйдёт в очередь отложенных
+  if(chat.type === ChatType.Scheduled && !force) {
+    void chat.input.scheduleSending(() => send(chat, files, caption, asFile, paidPrice, spoilers, true))
+    return
+  }
+
   // tweb :1022 — пакет один на всю выборку
   const sendingParams = chat.input.getMessageSendingParams()
   // Несколько фото/видео «как медиа» → один альбом (grouped_id).
@@ -169,16 +206,25 @@ function send(
   const groupedId = asAlbum ? Date.now() * 1000 + Math.floor(Math.random() * 1000) : undefined
   // Платное медиа — только одиночное фото/видео «как медиа».
   const price = !asFile && !asAlbum && files.length === 1 ? paidPrice ?? null : null
+  const prepare = (i: number) => prepareFile(chat, files[i], {
+    asFile,
+    caption: i === 0 ? caption : '',
+    groupedId,
+    paidMediaPrice: price,
+    spoiler: !!spoilers?.[i],
+    sendingParams,
+  })
   void (async() => {
+    // tweb :1022-1106 → `sendGrouped` (альбом: все временные разом, одна
+    // отправка) либо `sendFile` по одному.
+    if(asAlbum) {
+      const items = []
+      for(let i = 0; i < files.length; i++) items.push({ ...await prepare(i), ...sendingParams })
+      await chat.managers.messages.sendGrouped(items)
+      return
+    }
     for(let i = 0; i < files.length; i++) {
-      await sendOneFile(chat, files[i], {
-        asFile,
-        caption: i === 0 ? caption : '',
-        groupedId,
-        paidMediaPrice: price,
-        spoiler: !!spoilers?.[i],
-        sendingParams,
-      })
+      await chat.managers.messages.sendFile({ ...await prepare(i), ...sendingParams })
     }
   })()
 

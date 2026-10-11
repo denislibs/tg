@@ -113,6 +113,18 @@ describe('messagesMirror — содержимое окна', () => {
     expect(mirrorWindow(String(CHAT))).toBeUndefined()
   })
 
+  // Ключ ленты отложенных — `${peerId}_scheduled` (tweb chat.ts:995-999): событие
+  // окна несёт настоящий peerId, а не NaN из `Number('50_scheduled')`.
+  it('события окна ленты отложенных несут peerId чата (и у отрицательного пира)', () => {
+    for (const peerId of [CHAT, -1000000000051]) {
+      const key = `${peerId}_scheduled`
+      seed(key, [msg({ id: 10, message: 'было' })])
+      captured.length = 0
+      applyOpsToMirror([{ op: 'replace', key, msg: msg({ id: 10, message: 'стало' }) }])
+      expect(captured).toEqual([expect.objectContaining({ name: 'message_edit', payload: expect.objectContaining({ storageKey: key, peerId }) })])
+    }
+  })
+
   it('операции адресуются окну треда отдельно от основного', () => {
     seed(String(CHAT), [msg({ id: 1 })])
     applyOpsToMirror([{ op: 'insert', key: `${CHAT}:${THREAD}`, msg: msg({ id: 800 }, THREAD) }])

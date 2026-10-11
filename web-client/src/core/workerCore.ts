@@ -22,9 +22,12 @@ import { newFoldersManager } from './managers/foldersManager'
 import { newGroupsManager } from './managers/groupsManager'
 import { newChannelsManager } from './managers/channelsManager'
 import { newPeersManager } from './managers/peersManager'
-import { isBroadcast } from './peers/predicates'
+import { isBroadcast, isForum } from './peers/predicates'
 import type { Chat } from './peers/peer'
 import { newDialogsManager } from './managers/dialogsManager'
+import { mapMessage } from './models'
+import { newForumTopicsStorage } from './managers/forumTopicsStorage'
+import { newThreadReads } from './managers/threadReads'
 import { newPresenceManager } from './managers/presenceManager'
 import { newStoriesManager } from './managers/storiesManager'
 import { newContactsManager } from './managers/contactsManager'
@@ -53,7 +56,7 @@ import { newChannelFunnel, type ChannelDifference } from './realtime/channelFunn
 import { newSyncWait } from './realtime/syncWait'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type RepliesUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type RepliesUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type ReadDiscussionEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { generateMessageId } from './history/messageId'
 import { getPeerId, toChatId, toPeerId } from './peers/peerId'
@@ -176,11 +179,11 @@ export function createWorkerCore() {
     // `msgr/kv` вне скоупа персиста, и без сброса вход после выхода догонял бы
     // разницу от курсора ПРОШЛОЙ сессии (а то и чужого аккаунта) вместо того,
     // чтобы взять базой текущее состояние сервера (updates.getState, onReady).
-    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); contacts.resetForLogout(); cursor.reset(); channelFunnel.resetForLogout(); broadcast(RT.loggingOut, e) },
+    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); forumTopics.reset(); threadReads.reset(); contacts.resetForLogout(); cursor.reset(); channelFunnel.resetForLogout(); broadcast(RT.loggingOut, e) },
     // Симметричный кадр входа (порт tweb `account_logged_in`) — тем же веером и
     // с тем же сбросом: активный токен сменился, а значит медиа-токен, добытый
     // до входа, принадлежит прошлой сессии; то же — про кэш диалогов.
-    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); contacts.resetForLogout(); cursor.reset(); channelFunnel.resetForLogout(); broadcast(RT.loggedIn, e) },
+    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); forumTopics.reset(); threadReads.reset(); contacts.resetForLogout(); cursor.reset(); channelFunnel.resetForLogout(); broadcast(RT.loggedIn, e) },
   })
   const profile = newProfileManager({ rest, onMeChanged: setMe, getMe: () => me })
   const premium = newPremiumManager({ rest, onMeChanged: setMe })
@@ -204,6 +207,8 @@ export function createWorkerCore() {
   // deleteMessage (RPC-путь удаления сообщения): рассылает остальным вкладкам
   // remove-операции, которых WS delete_message уже не даст (SSOT к его приходу пуст).
   const messages = newMessagesManager({
+    // Состояние треда комментариев — владельцу прочтения тредов (объявлен ниже, стрелка ленивая).
+    saveDiscussion: (peerId, threadId, state) => threadReads.saveDiscussion(peerId, threadId, state),
     rest,
     decryptSecret: (peerId, encBody) => secret.decryptMessage(peerId, encBody),
     getMeId: () => me?.user.id ?? null,
@@ -245,7 +250,12 @@ export function createWorkerCore() {
     // пути удаления (кадр и своя ручка) проходят через эвикцию, поэтому
     // вычитание одно и повториться не может. `dialogs` объявлен ниже —
     // стрелка ленивая.
-    onMessagesDeleted: (peerId, deleted, missing) => dialogs.applyDeletedMessages(peerId, deleted, missing),
+    onMessagesDeleted: (peerId, deleted, missing) => {
+      dialogs.applyDeletedMessages(peerId, deleted, missing)
+      // ветка темы того же обработчика (tweb :11493-11592); `forumTopics`
+      // объявлен ниже — стрелка дёргает его лениво
+      forumTopics.applyDeletedMessages(peerId, deleted)
+    },
     // Бейдж ❤ строки — гейт сброса непрочитанных реакций (`messages.readMessages`,
     // tweb `hadUnreadReactions`). Стрелка ленивая: `dialogs` объявлен ниже.
     getUnreadReactionsCount: (peerId) => dialogs.getUnreadReactionsCount(peerId),
@@ -300,6 +310,8 @@ export function createWorkerCore() {
   // groups/chatThemes (Task 4) — им нужна ссылка на него в конструкторе.
   const dialogs = newDialogsManager({
     rest,
+    // Горизонт треда — у `threadReads` (объявлен ниже, стрелка ленивая).
+    getThreadReadState: (peerId, threadId) => threadReads.getReadState(peerId, threadId),
     // Состояние канала из строки списка (tweb addChannelState, dialogs.ts:1756):
     // воронка объявлена ниже, строки списка приходят позже сборки — к первому
     // вызову она уже есть.
@@ -371,6 +383,14 @@ export function createWorkerCore() {
     rest,
     onPeerOps: (ops) => broadcast(RT.peerOp, { ops }),
     onUserStatus: (evt) => broadcast(RT.presence, evt),
+    // tweb `chat_toggle_forum` (appChatsManager.ts:304-306): карточка чата
+    // сменила `pFlags.forum` — хранилище тем сбрасывает кэш (dialogs.ts:186-192),
+    // выключенный форум — и окна тредов (appMessagesManager.ts:921-932).
+    // `forumTopics`/`messages` объявлены ниже — стрелка дёргает их лениво.
+    onChatToggleForum: (peerId, enabled) => {
+      forumTopics.onChatToggleForum(peerId, enabled)
+      if (!enabled) messages.flushThreadWindows(peerId)
+    },
   })
   // Task 4 (действия без оптимистики): mute/pin/archive идут сеть-сначала (порт
   // tweb toggleDialogPin/updateNotifySettings) — локальный апдейт зовёт владелец
@@ -379,22 +399,49 @@ export function createWorkerCore() {
     rest,
     dialogs,
     peers,
-    // Контейнер списка тем несёт вектор `messages`: последнее сообщение темы
-    // разрешается по ссылке `top_message` тем же порядком, что у диалогов.
-    messages: {
-      saveApiMessages: (list) => messages.saveApiMessages(list),
-      getMessageByPeer: (peerId, seq) => messages.getMessageByPeer(peerId, seq),
-    },
+    // Мьют темы после ответа сети — хранилище тем (объявлено ниже, стрелка ленивая).
+    forumTopics: { applyNotifySettings: (peerId, topicId, settings) => forumTopics.applyNotifySettings(peerId, topicId, settings) },
     getMeId: () => me?.user.id ?? null,
     // Местный апдейт участника после своей мутации (tweb `processLocalUpdate`)
     // уезжает вкладкам тем же событием, что и кадр сервера (`dispatch` ниже).
     onChannelParticipant: (update) => broadcast(RT.chatParticipant, update),
   })
+  // Темы форумов — порт `dialogsStorage.forumTopics` (Б-54): владелец тем в
+  // воркере, вкладкам объявляет операции (rt:forum_topic_op). Последнее
+  // сообщение темы разрешается по `top_message` из хранилища сообщений, как у
+  // диалогов; упоминания, прочитанные в треде темы, гасит владелец строки
+  // форума (`dialogs.applyMentionsRead`, tweb appMessagesManager.ts:10969-10980).
+  const forumTopics = newForumTopicsStorage({
+    rest,
+    peers,
+    messages: {
+      saveApiMessages: (list) => messages.saveApiMessages(list),
+      getMessageByPeer: (peerId, id) => messages.getMessageByPeer(peerId, id),
+    },
+    getMeId: () => me?.user.id ?? null,
+    onOps: (ops) => broadcast(RT.forumTopicOp, { ops }),
+    onParentMentionsRead: (peerId, count) => dialogs.applyMentionsRead(peerId, count),
+  })
+  // Прочтение тредов (тема форума, тред комментариев) — tweb `readHistory` с
+  // `threadId` (:9107-9270) → `messages.readDiscussion`, кадры
+  // `updateReadChannelDiscussionInbox/Outbox` (:777-778).
+  const threadReads = newThreadReads({
+    rest,
+    isForumPeer: (peerId) => isForum(peers.cachedPeer(peerId) as Chat | undefined),
+    forumTopics,
+    getMeId: () => me?.user.id ?? null,
+    onCommentThreadRead: (peerId, threadId, maxId, out) => dialogs.applyThreadRead(peerId, threadId, maxId, out),
+  })
   // cacheViews — владелец счётчика просмотров: ответ на регистрацию просмотра
   // несёт уже новые значения, и применяет их та же точка, что и кадр
   // `views_update` (реестр CACHE выше). Стрелкой, а не ссылкой: `messages`
   // собран выше, но зависимость объявляется здесь, у вызывателя.
-  const channels = newChannelsManager({ rest, beforeSending, peers, cacheViews: (peerId, views) => { messages.cacheViews(peerId, views) } })
+  const channels = newChannelsManager({
+    rest, beforeSending, peers, cacheViews: (peerId, views) => { messages.cacheViews(peerId, views) },
+    // Отказ ручки поста — бабл упавшим; ответ отложенного поста — в ленту отложенных.
+    failSending: (clientMsgId) => { void messages.failPending({ clientMsgId }) },
+    applyScheduledUpdates: (r) => { messages.applyScheduledUpdates(r) },
+  })
   const presence = newPresenceManager({ rest })
   const stories = newStoriesManager({ rest })
   // Книга контактов и «недавние» глобального поиска (половина tweb
@@ -582,6 +629,12 @@ export function createWorkerCore() {
     if (pred === 'updateNewMessage' || pred === 'updateNewChannelMessage') {
       routeNewMessage(d as NewMessageEvt, meta); return
     }
+    // Лента отложенных (tweb `onUpdateNewScheduledMessage`/
+    // `onUpdateDeleteScheduledMessages`, appMessagesManager.ts:11773-11815):
+    // кадр применяет владелец хранилища отложенных и сам объявляет вкладкам
+    // события оригинала — сырой кадр дальше не идёт.
+    if (pred === 'updateNewScheduledMessage') { messages.applyNewScheduledMessage(d as NewScheduledMessageEvt); return }
+    if (pred === 'updateDeleteScheduledMessages') { messages.applyDeleteScheduledMessages(d as DeleteScheduledMessagesEvt); return }
     // Вопрос «сменилась ли непрочитанность реакций на МОЁМ сообщении» задаётся
     // ДО того, как кадр ляжет в SSOT: после применения агрегата сравнивать было
     // бы не с чем — окно уже содержало бы новое состояние (tweb
@@ -658,7 +711,27 @@ export function createWorkerCore() {
     // второй кадр.
     else if (pred === 'updateNotifySettings') {
       const e = d as DialogMuteEvt
-      dialogs.applyNotifySettings(getPeerId(e.peer.peer), e.notify_settings)
+      // Тема форума — свой ключ настроек (`notifyForumTopic`, tweb
+      // appMessagesManager.ts:11751-11770): владелец — хранилище тем.
+      if (e.peer._ === 'notifyForumTopic') {
+        forumTopics.applyNotifySettings(getPeerId(e.peer.peer), generateMessageId(e.peer.top_msg_id), e.notify_settings)
+      } else {
+        dialogs.applyNotifySettings(getPeerId(e.peer.peer), e.notify_settings)
+      }
+    } else if (pred === 'updatePinnedForumTopic') {
+      // tweb dialogs.ts:2480-2490 — «открепили» это отсутствие бита.
+      const e = d as PinnedForumTopicEvt
+      forumTopics.applyPinnedTopic(getPeerId(e.peer), generateMessageId(e.topic_id), !!e.pFlags?.pinned)
+    } else if (pred === 'updateReadChannelDiscussionInbox' || pred === 'updateReadChannelDiscussionOutbox') {
+      // tweb appMessagesManager.ts:777-778 → onUpdateReadHistory (:10795-10990):
+      // номера — клиентские (:10800-10801), пир — группа (:10802).
+      const e = d as ReadDiscussionEvt
+      threadReads.applyReadDiscussion({
+        peerId: toPeerId(e.channel_id, true),
+        topicId: generateMessageId(e.top_msg_id),
+        maxId: generateMessageId(e.read_max_id),
+        out: pred === 'updateReadChannelDiscussionOutbox',
+      })
     } else if (pred === 'updateDialogPinned') {
       const e = d as DialogPinEvt
       // «Открепили» — ОТСУТСТВИЕ бита, а не `pinned: false`.
@@ -704,12 +777,23 @@ export function createWorkerCore() {
   // главном потоке) остаётся рабочим, новый (replay операций) переключается отдельной
   // задачей — откат одной строкой, если что-то пойдёт не так.
   function routeNewMessage(e: NewMessageEvt, meta?: EventMeta): void {
-    const ops = messages.cacheLive(e as never)
+    // Один разбор кадра на все части обработчика — как tweb `onUpdateNewMessage`
+    // (appMessagesManager.ts:10243-10253: `saveMessages` один раз, дальше история,
+    // диалог и тема читают тот же объект).
+    const m = mapMessage(e.message, me?.user.id ?? null)
+    const ops = m._ === 'messageEmpty' ? [] : messages.cacheLive(e as never, m)
     broadcast(RT.messageOp, { ops }, meta)
     // Task 3: превью/unread диалога в списке — тоже владелец (dialogsManager),
     // публикует свой patch независимо от rt:new_message ниже (тот остаётся для
     // read-marker/звука/нотификаций на main — см. storeProjection.ts).
-    dialogs.applyNewMessage(e)
+    dialogs.applyNewMessage(e, m)
+    // Тема форума: счётчики, последнее сообщение, служебки создания/правки
+    // (tweb onUpdateNewMessage, ветка треда :10300-10365, :10495-10520).
+    if (m._ !== 'messageEmpty') {
+      forumTopics.applyNewMessage(m)
+      // `historyStorage._maxId` треда комментариев (:10435-10437)
+      threadReads.applyNewMessage(m)
+    }
     // tweb 1dc32d889 — признак «кадр пришёл первым difference после старта»
     // снимается В МОМЕНТ РАССЫЛКИ (у tweb — в `handleNewMessage`): к ответу
     // вкладке по RPC догон уже закончится. Решает по нему подписчик уведомлений.
@@ -976,14 +1060,14 @@ export function createWorkerCore() {
   // sync передан ради getStatus() (Задача 1, ревью «сигнал только push — новая
   // вкладка слепа»): isSyncing() уже существовал для гейта funnel'а, здесь он же
   // питает pull-снимок для позднего подписчика.
-  const realtime = newRealtime({ conn, sync, syncWait, tokens, messages, broadcast, channelFunnel })
+  const realtime = newRealtime({ conn, sync, syncWait, tokens, messages, broadcast, channelFunnel, threadReads })
 
   // Единый реестр менеджеров — единственный источник правды. UI-тип Managers
   // (bootstrap.ts) выводится из этого объекта (WorkerRegistry), поэтому рассинхрон
   // «забыл в одном списке» невозможен by construction (как Managers в tweb).
   const registry = {
     health, auth, profile, premium, chats, messages, realtime, media, push, notify,
-    folders, groups, channels, peers, dialogs, presence, stories, contacts, privacy, drafts,
+    folders, groups, channels, peers, dialogs, forumTopics, presence, stories, contacts, privacy, drafts,
     chatThemes, sessions, calls, livestream, stars, boosts, report, stats, bots,
     stickers, reactions, iv, secret, persist, langPack, docs,
   }

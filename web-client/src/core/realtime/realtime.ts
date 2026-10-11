@@ -44,9 +44,11 @@ export interface RealtimeDeps {
   }
   broadcast: (event: string, payload: unknown) => void
   channelFunnel: ChannelFunnel
+  /** Прочтение треда (тема, тред комментариев) — `threadReads.readHistory`. */
+  threadReads: { readHistory(peerId: PeerId, threadId: number, maxId: number): Promise<unknown> }
 }
 
-export function newRealtime({ conn, sync, syncWait, tokens, messages, broadcast, channelFunnel }: RealtimeDeps) {
+export function newRealtime({ conn, sync, syncWait, tokens, messages, broadcast, channelFunnel, threadReads }: RealtimeDeps) {
   return {
     async start() { await tokens.load(); conn.start(); return { state: conn.state() } },
     // Источник правды о `{state, retryAt}` — pull, а не разовый снапшот. Для ЭТОЙ
@@ -99,7 +101,17 @@ export function newRealtime({ conn, sync, syncWait, tokens, messages, broadcast,
     async waitForSync(args: { peerId: number }) { await syncWait.waitForSync(args.peerId) },
     // Горизонт чтения уходит на сервер СЕРВЕРНЫМ номером — как и всё остальное,
     // что покидает клиентское пространство (core/history/messageId.ts).
-    async markRead(args: { peerId: number; upToId: number }) { conn.markRead(args.peerId, getServerMessageId(args.upToId)); return { ok: true } },
+    //
+    // `threadId` — ветка треда tweb `readHistory` (appMessagesManager.ts:9186-9210):
+    // и тема форума, и тред комментариев читаются `messages.readDiscussion`
+    // (`threadReads`); горизонт ЧАТА в этой ветке не уходит. Ответ ждёт запрос
+    // треда — как промис `readHistory` у tweb (:9276-9280): отказ доходит до
+    // ленты, и та повторяет его (`bubbles.ts::readUnreaded`).
+    async markRead(args: { peerId: number; upToId: number; threadId?: number }) {
+      if (args.threadId) await threadReads.readHistory(args.peerId, args.threadId, args.upToId)
+      else conn.markRead(args.peerId, getServerMessageId(args.upToId))
+      return { ok: true }
+    },
     async markMediaRead(args: { peerId: number; msgId: number }) {
       // Локально гасим точку media_unread в SSOT + рассылаем операции всем вкладкам
       // (окно теперь правит ТОЛЬКО applyOps(RT.messageOp) — сырой rt:media_read

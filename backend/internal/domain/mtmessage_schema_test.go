@@ -144,8 +144,6 @@ func allMessageConstructors() []any {
 	full.Reactions.TopReactors = []MessageReactor{NewMyMessageReactor(25)}
 	full.TTLPeriod = 86400
 	full.RandomID = "cm-1"
-	full.SendAt = now.Add(time.Hour).Unix()
-	full.WhenOnline = true
 	full.EncBody = "AQID"
 	full.DestructAt = ptr(now.Add(time.Minute).Format(time.RFC3339))
 	full.Effect = "fireworks"
@@ -194,7 +192,20 @@ func allMessageConstructors() []any {
 		NewMessageActionPinMessage(),
 		NewMessageActionSetMessagesTTL(86400),
 		NewMessageActionSetMessagesTTL(0),
-		NewMessageActionTopicCreate("тема", 3),
+		NewMessageActionTopicCreate("тема", 3, ""),
+		NewMessageActionTopicCreate("тема", 3, "\U0001F525"),
+		// Правка темы: только изменённые поля; closed/hidden — Bool, «открыли»
+		// это явное false, а не отсутствие ключа.
+		func() MessageActionTopicEdit {
+			a := NewMessageActionTopicEdit()
+			a.Title, a.IconEmojiEmoticon, a.Closed = ptr("новое"), ptr(""), ptr(false)
+			return a
+		}(),
+		func() MessageActionTopicEdit {
+			a := NewMessageActionTopicEdit()
+			a.Hidden = ptr(true)
+			return a
+		}(),
 		NewMessageActionSuggestProfilePhoto(photo, true),
 		NewMessageActionSuggestProfilePhoto(photo, false),
 		// Предложение даты рождения — с годом и без: год необязателен и
@@ -329,7 +340,7 @@ func messageConstructorTags() []string {
 		MessageActionChatDeleteUserTag, MessageActionChatJoinedByLinkTag,
 		MessageActionChatJoinedByRequestTag,
 		MessageActionPinMessageTag, MessageActionSetMessagesTTLTag,
-		MessageActionTopicCreateTag, MessageActionSuggestProfilePhotoTag,
+		MessageActionTopicCreateTag, MessageActionTopicEditTag, MessageActionSuggestProfilePhotoTag,
 		MessageActionSuggestBirthdayTag,
 		MessageActionSuggestedPostApprovalTag, MessageActionPhoneCallTag,
 		PhoneCallDiscardReasonMissedTag, PhoneCallDiscardReasonBusyTag,
