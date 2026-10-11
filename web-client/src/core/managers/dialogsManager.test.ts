@@ -1313,7 +1313,7 @@ describe('dialogsManager.getDialogReadState', () => {
       onDialogOps: () => {},
       loadCache: async () => [makeDialog({ peerId: -5, topMessage: 90, readInboxMaxId: 90, unread: 0 })],
       loadState: async () => ({ pinnedOrders: {} }),
-      getForumTopic: (_peerId, threadId) => (threadId === 7 ? topic : undefined),
+      getThreadReadState: (_peerId, threadId) => (threadId === 7 ? topic : undefined),
     })
     await mgr.fillMirror()
 

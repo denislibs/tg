@@ -36,7 +36,7 @@ import type { Chat, UserReal } from '../peers/peer'
 import type { MyMessage, RawMyMessage } from '../models'
 import { getMessageThreadId } from '../models'
 import { isForum } from '../peers/predicates'
-import { MESSAGE_ID_OFFSET, getServerMessageId } from '../history/messageId'
+import { MESSAGE_ID_OFFSET } from '../history/messageId'
 import type { PeerNotifySettings } from '../dialogs/notifySettings'
 import isMentionUnread from '../messages/isMentionUnread'
 import getUnreadReactions from '../messages/getUnreadReactions'
@@ -73,14 +73,12 @@ type TopicsCache = {
   pinnedOrder: number[]
   loaded: boolean
   loadPromise?: Promise<ForumTopic[]>
-  /** `historyStorage.triedToReadMaxId` треда темы (`appMessagesManager.ts:9165-9170`) */
-  triedToReadMaxId: Map<number, number>
   /** `deletedTopics` (`dialogs.ts:109`, `:2066-2068`, `:2084-2096`) — расхождение 5 */
   deletedTopics: Set<number>
 }
 
 export interface ForumTopicsDeps {
-  rest: Pick<RestClient, 'get' | 'post'>
+  rest: Pick<RestClient, 'get'>
   peers: { saveApiPeers(o: { chats?: Chat[]; users?: UserReal[] }): void; cachedPeer(peerId: PeerId): unknown }
   messages: {
     saveApiMessages(list: RawMyMessage[] | undefined): Promise<unknown>
@@ -105,7 +103,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
   /** tweb `getForumTopicsCache` (`dialogs.ts:2032-2047`) */
   function getCache(peerId: PeerId): TopicsCache {
     let cache = caches.get(peerId)
-    if (!cache) caches.set(peerId, cache = { topics: new Map(), pinnedOrder: [], loaded: false, triedToReadMaxId: new Map(), deletedTopics: new Set() })
+    if (!cache) caches.set(peerId, cache = { topics: new Map(), pinnedOrder: [], loaded: false, deletedTopics: new Set() })
     return cache
   }
 
@@ -231,7 +229,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
 
   /**
    * Прочтение треда темы — ветка темы `onUpdateReadHistory`
-   * (`appMessagesManager.ts:10795-10990`), волна 2 Ф-5 (`readDiscussion`).
+   * (`appMessagesManager.ts:10795-10990`).
    * Перебираются сообщения треда, которые знает хранилище сообщений, между
    * прежним и новым горизонтом; упоминания уходят и из бейджа форума
    * (`:10969-10980`). Ничего не нашли, а тема всё ещё непрочитана —
@@ -242,12 +240,9 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
    * горизонту) и `notification_cancel` (`:10900` — события снятия уведомления
    * вкладки у нас нет).
    *
-   * Сегодня его зовёт своё прочтение (`readHistory` ниже — местный
-   * `processLocalUpdate`, `:9203-9209`). Кадры `updateReadChannelDiscussionInbox/
-   * Outbox` с других устройств производит БЭК-2 (волна 2 Ф-5): подключение —
-   * строкой в `workerCore.ts::dispatch` вместе с конструкторами в реестре
-   * (`updateCatalog.ts`), `maxId`/`topicId` — через `generateMessageId`, пир —
-   * `toPeerId(channel_id, true)`.
+   * Зовут своё прочтение (`threadReads.readHistory` — местный
+   * `processLocalUpdate`, `:9203-9209`) и кадры `updateReadChannelDiscussionInbox/
+   * Outbox` (`workerCore.ts::dispatch` → `threadReads.applyReadDiscussion`).
    */
   function applyReadDiscussion({ peerId, topicId, maxId, out }: ReadDiscussion): void {
     const topic = caches.get(peerId)?.topics.get(topicId)
@@ -428,44 +423,6 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
     },
 
     applyReadDiscussion,
-
-    /**
-     * Прочтение треда ТЕМЫ — ветка `threadId` у `readHistory`
-     * (`appMessagesManager.ts:9107-9270`, `:9186-9201`): местный
-     * `updateReadChannelDiscussionInbox` применяется сразу (`applyReadDiscussion`),
-     * сервер узнаёт горизонт одним вызовом на рубеж (`triedToReadMaxId`,
-     * `:9165-9170`, `:9248-9252`).
-     *
-     * Гейт «не прочитано ли уже» — `:9133-9157`: известная тема без
-     * непрочитанного и с горизонтом не ниже `maxId` — ничего не делать. Тему,
-     * которой нет в кэше (список ещё не грузили), читаем: у оригинала её
-     * подгружает открытие треда (`getForumTopicOrReload`), у нас без сервера
-     * бейдж остался бы гореть.
-     *
-     * ТРАНСПОРТ ВРЕМЕННЫЙ: `POST /chats/{p}/topics/{n}/read {up_to_seq}` вместо
-     * `messages.readDiscussion{peer, msg_id, read_max_id}` — в волне 2 Ф-5
-     * (БЭК-2/КЛ-2) заменяется на `readDiscussion`, ручку тем сервер удаляет.
-     *
-     * @returns `false` — не тема: пир не форум или список загружен, а темы с
-     *   этим номером нет (тред комментариев в форуме-обсуждении) — такой тред
-     *   до волны 2 читается горизонтом чата; `true` — тема прочитана.
-     */
-    readHistory(peerId: PeerId, threadId: number, maxId: number): boolean {
-      if (!isForumPeer(peerId) || !maxId) return false
-      const cache = getCache(peerId)
-      const topic = cache.topics.get(threadId)
-      if (!topic && cache.loaded) return false
-      if (topic && !topic.unread_count && maxId <= topic.read_inbox_max_id) return true
-      const tried = cache.triedToReadMaxId.get(threadId) ?? 0
-      if (topic) applyReadDiscussion({ peerId, topicId: threadId, maxId, out: false })
-      if (tried >= maxId) return true
-      cache.triedToReadMaxId.set(threadId, maxId)
-      void rest.post(`/chats/${peerId}/topics/${getServerMessageId(threadId)}/read`, { up_to_seq: getServerMessageId(maxId) }).catch(() => {
-        // отказ — рубеж снова «не отправлен», следующий круг ленты повторит
-        if (cache.triedToReadMaxId.get(threadId) === maxId) cache.triedToReadMaxId.set(threadId, tried)
-      })
-      return true
-    },
 
     /**
      * Удаление сообщений — ветка темы `onUpdateDeleteMessages`

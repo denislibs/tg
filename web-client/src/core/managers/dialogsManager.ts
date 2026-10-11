@@ -122,13 +122,13 @@ export interface DialogsDeps {
    */
   saveDialogsLoaded?: (value: Record<number, boolean>) => Promise<void>
   /**
-   * Тема форума по номеру треда — хранилище тем (`forumTopicsStorage.getForumTopic`).
-   * У tweb горизонт и последнее сообщение треда держит `historyStorage(peerId,
-   * threadId)` (`appMessagesManager.ts:5122-5140`), и у темы он сводится к её
-   * `read_inbox_max_id`/`top_message`. Опционален по тому же приёму, что
+   * Горизонт треда — `threadReads.getReadState` (тема форума — из хранилища
+   * тем, тред комментариев — его состояние). У tweb горизонт и последнее
+   * сообщение треда держит `historyStorage(peerId, threadId)`
+   * (`appMessagesManager.ts:5122-5140`). Опционален по тому же приёму, что
    * `savePinnedOrders`.
    */
-  getForumTopic?: (peerId: number, threadId: number) => { read_inbox_max_id: number, unread_count: number, top_message: number } | undefined
+  getThreadReadState?: (peerId: number, threadId: number) => { read_inbox_max_id: number, unread_count: number, top_message: number } | undefined
   /**
    * Владелец карточек пиров. Контейнер `/chats` несёт векторы `chats`/`users` —
    * тела групп и собеседников, — и они втекают в УЖЕ существующий приёмник
@@ -163,7 +163,7 @@ export interface DialogsDeps {
  * каждое изменение. */
 const PERSIST_DEBOUNCE_MS = 1000
 
-export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCache, loadState, getMeId, savePinnedOrders, mirrorStateKey, saveCache, saveDialogsLoaded, peers, messages, getForumTopic }: DialogsDeps) {
+export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCache, loadState, getMeId, savePinnedOrders, mirrorStateKey, saveCache, saveDialogsLoaded, peers, messages, getThreadReadState }: DialogsDeps) {
   let items: DialogItem[] = []
   // Полный State-ключ (все папки) — нужен целиком, чтобы applyPinned не затёр
   // чужие записи при записи на диск (порт tweb: `{...orders, [ALL_FOLDER_ID]: …}`,
@@ -519,13 +519,12 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
 
   const findDialog = (peerId: number): Dialog | undefined => items.find((i) => i.dialog.peerId === peerId)?.dialog
   /**
-   * Чей горизонт прочтения спрашивает лента: темы форума, если тред — тема
-   * (tweb `getInboxReadMaxId(peerId, threadId)`, appMessagesManager.ts:5122-5131),
-   * иначе — диалога. Тред комментариев своего горизонта до волны 2 Ф-5
-   * (`readDiscussion`) не имеет и читается горизонтом группы.
+   * Чей горизонт прочтения спрашивает лента: треда, если он известен (тема
+   * форума или тред комментариев — tweb `getInboxReadMaxId(peerId, threadId)`,
+   * appMessagesManager.ts:5122-5131), иначе — диалога.
    */
   const readSource = (peerId: number, threadId?: number) =>
-    (threadId ? getForumTopic?.(peerId, threadId) : undefined) ?? findDialog(peerId)
+    (threadId ? getThreadReadState?.(peerId, threadId) : undefined) ?? findDialog(peerId)
 
   /**
    * Точечно смержить `fields` в один диалог кэша и опубликовать `patch`. Индекс
@@ -1392,7 +1391,7 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
      * `readMaxId !== historyMaxId`).
      */
     getHistoryMaxSeq(peerId: number, threadId?: number): number {
-      const topic = threadId ? getForumTopic?.(peerId, threadId) : undefined
+      const topic = threadId ? getThreadReadState?.(peerId, threadId) : undefined
       return topic ? topic.top_message : findDialog(peerId)?.lastMessage?.id ?? 0
     },
 

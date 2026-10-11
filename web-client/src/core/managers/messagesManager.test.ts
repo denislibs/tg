@@ -398,6 +398,20 @@ describe('MessagesManager.cacheLive', () => {
     expect(ops).toEqual([])
   })
 
+  // tweb getDiscussionMessage (:8843-8846): горизонты и последнее сообщение
+  // треда комментариев уходят владельцу прочтения тредов клиентскими номерами
+  it('getDiscussionMessage: состояние треда — `saveDiscussion` клиентскими номерами', async () => {
+    const mirror = makeRawMessage({ id: 200, peerId: -5, fromId: -5, text: 'пост' }) as RawMessage
+    const rest = {
+      get: async () => ({ _: 'messages.discussionMessage', messages: [mirror], max_id: 230, read_inbox_max_id: 225, read_outbox_max_id: 220, unread_count: 4, chats: [], users: [] }),
+    } as unknown as RestClient
+    const saveDiscussion = vi.fn()
+    const mgr = newMessagesManager({ rest, saveDiscussion })
+    const m = await mgr.getDiscussionMessage(-3, cid(9))
+    expect(m?.id).toBe(cid(200))
+    expect(saveDiscussion).toHaveBeenCalledWith(-5, cid(200), { maxId: cid(230), readMaxId: cid(225), readOutboxMaxId: cid(220), unreadCount: 4 })
+  })
+
   // Комментарий канала: окно треда адресовано номером ЗЕРКАЛА поста в группе
   // обсуждения (tweb `getDiscussionMessage` → `threadId` = mid в группе), тем
   // же номером, что `reply_to_top_id` комментария. Поэтому и эхо своей

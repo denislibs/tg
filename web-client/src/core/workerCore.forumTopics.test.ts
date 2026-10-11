@@ -73,6 +73,10 @@ beforeEach(() => {
     if (String(url).endsWith('/auth/sign_in')) {
       return new Response(JSON.stringify({ _: 'auth.authorization', token: 'session-b', user: { _: 'user', pFlags: { self: true }, id: 5, phone: '+79990000005' } }), { status: 200 })
     }
+    if (String(url).includes('/channels/-3/posts/9/discussion')) {
+      return new Response(JSON.stringify({ _: 'messages.discussionMessage', messages: [makeRawMessage({ id: 200, peerId: -70, fromId: -3, text: 'пост' })], max_id: 230, read_inbox_max_id: 225, unread_count: 2, chats: [], users: [] }), { status: 200 })
+    }
+    if (String(url).includes('/chats/-70/threads/')) return new Response('true', { status: 200 })
     if (String(url).includes('/chats/-50/topics')) {
       return new Response(JSON.stringify({ _: 'messages.forumTopics', count: 2, topics: [topic(1), topic(10)], messages: [], chats: [], users: [] }), { status: 200 })
     }
@@ -140,9 +144,9 @@ describe('createWorkerCore(): кадры тем применяет хранил�
     expect(flush).toHaveBeenCalledWith(FORUM)
   })
 
-  // Ревью КЛ-1 Б2: `realtime.markRead` с `threadId` (лента темы) → хранилище тем:
-  // местное прочтение сразу и ручка темы на сервер (tweb readHistory :9186-9210)
-  it('прочтение в теме → `unread` с нулём + `forumUnread`, POST ручки темы серверными номерами', async () => {
+  // `realtime.markRead` с `threadId` (лента темы) → `threadReads`: местное
+  // прочтение сразу и `messages.readDiscussion` на сервер (tweb readHistory :9186-9210)
+  it('прочтение в теме → `unread` с нулём + `forumUnread`, readDiscussion серверными номерами', async () => {
     const { core, ops } = await boot()
     const raw = makeRawMessage({ id: 15, peerId: FORUM, fromId: 2, text: 'в теме', replyToMsgId: 10, forumTopic: true })
     capturedConnDeps!.onFrame('new_message', { _: 'updateNewChannelMessage', message: raw })
@@ -153,7 +157,7 @@ describe('createWorkerCore(): кадры тем применяет хранил�
     await core.registry.realtime.markRead({ peerId: FORUM, upToId: generateMessageId(15), threadId: generateMessageId(10) })
     expect(ops.map((op) => op.op)).toEqual(['unread', 'forumUnread'])
     expect((ops[0] as Extract<ForumTopicOp, { op: 'unread' }>).topic.unread_count).toBe(0)
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/chats/-50/topics/10/read'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ up_to_seq: 15 }) }))
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/chats/-50/threads/10/read'), expect.objectContaining({ method: 'POST', body: JSON.stringify({ read_max_id: 15 }) }))
   })
 
   // Ревью КЛ-1 В4: смена сессии (onLoggingOut/onLoggedIn, workerCore.ts) — темы
@@ -203,6 +207,31 @@ describe('createWorkerCore(): кадры тем применяет хранил�
     capturedConnDeps!.onFrame('new_message', { _: 'updateNewChannelMessage', message: raw })
     await vi.waitFor(() => expect(ops.map((op) => op.op)).toContain('update'))
     expect(mapMessageSpy.calls).toBe(1)
+  })
+
+  // tweb :777-778 → onUpdateReadHistory: кадр с другого устройства гасит тему
+  it('`updateReadChannelDiscussionInbox` → тема прочитана (номера клиентские)', async () => {
+    const { ops } = await boot()
+    const raw = makeRawMessage({ id: 17, peerId: FORUM, fromId: 2, text: 'ещё', replyToMsgId: 10, forumTopic: true })
+    capturedConnDeps!.onFrame('new_message', { _: 'updateNewChannelMessage', message: raw })
+    await vi.waitFor(() => expect(ops.map((op) => op.op)).toContain('unread'))
+    ops.length = 0
+    capturedConnDeps!.onFrame('read_discussion', { _: 'updateReadChannelDiscussionInbox', channel_id: 50, top_msg_id: 10, read_max_id: 17 })
+    const unread = ops.find((op) => op.op === 'unread') as Extract<ForumTopicOp, { op: 'unread' }>
+    expect(unread.topic).toMatchObject({ id: generateMessageId(10), unread_count: 0, read_inbox_max_id: generateMessageId(17) })
+  })
+
+  // Тред комментариев: состояние из discussionMessage → `threadReads` (tweb :8843-8846),
+  // прочтение — `readDiscussion` номером зеркала, горизонт группы не уходит (:9186-9210)
+  it('тред комментариев: горизонт треда для ленты и readDiscussion номером зеркала', async () => {
+    const { core } = await boot()
+    await core.registry.messages.getDiscussionMessage(-3, generateMessageId(9))
+    expect(core.registry.dialogs.getDialogReadState(-70, generateMessageId(200))).toEqual({ readInboxMaxSeq: generateMessageId(225), unreadCount: 2 })
+    expect(core.registry.dialogs.getHistoryMaxSeq(-70, generateMessageId(200))).toBe(generateMessageId(230))
+    const fetchMock = vi.mocked(fetch)
+    await core.registry.realtime.markRead({ peerId: -70, upToId: generateMessageId(230), threadId: generateMessageId(200) })
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/chats/-70/threads/200/read'), expect.objectContaining({ body: JSON.stringify({ read_max_id: 230 }) }))
+    expect(core.registry.dialogs.getDialogReadState(-70, generateMessageId(200))).toEqual({ readInboxMaxSeq: generateMessageId(230), unreadCount: 0 })
   })
 })
 

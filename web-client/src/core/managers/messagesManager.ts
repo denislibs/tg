@@ -228,9 +228,13 @@ export interface MessagesDeps {
    *  состояние канала, когда диалога нет (tweb appMessagesManager.ts
    *  :13503-13505). */
   addChannelState?: (peerId: number, pts: number) => void
+  /** Состояние треда комментариев из `messages.discussionMessage` — владелец
+   *  прочтения тредов (`threadReads.saveDiscussion`, tweb
+   *  `getDiscussionMessage` :8843-8846). Номера клиентские. */
+  saveDiscussion?: (peerId: number, threadId: number, state: { maxId: number; readMaxId: number; readOutboxMaxId: number; unreadCount: number }) => void
 }
 
-export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium, meReady, isBroadcastChat, getPeer, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers, onMessagesDeleted, getUnreadReactionsCount, addChannelState }: MessagesDeps) {
+export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium, meReady, isBroadcastChat, getPeer, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers, onMessagesDeleted, getUnreadReactionsCount, addChannelState, saveDiscussion }: MessagesDeps) {
   // ── Граница маппинга ────────────────────────────────────────────────────────
   // `pFlags.out` производит СЕРВЕР (решение Р7 разбора отменено): после порта у
   // сообщения от лица канала автором на проводе становится сам канал, и прежней
@@ -1169,12 +1173,20 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
      * Ответ — `messages.discussionMessage`: его `chats` везут группу обсуждения
      * и канал (без карточки группы композер треда считал «писать нельзя»), и
      * `mapContainer` сохраняет их до отдачи сообщения. Состояние треда
-     * (`max_id`/`read_*_max_id`) окно треда пока считает само.
+     * (`max_id`, `read_inbox_max_id` — без него номер корня, `read_outbox_max_id`,
+     * `unread_count`) уходит владельцу прочтения тредов (tweb :8843-8846).
      */
     async getDiscussionMessage(peerId: number, mid: number): Promise<MyMessage | undefined> {
-      const r = await rest.get<MessagesContainer>(`/channels/${peerId}/posts/${getServerMessageId(mid)}/discussion`)
+      const r = await rest.get<MessagesContainer & { max_id?: number; read_inbox_max_id?: number; read_outbox_max_id?: number; unread_count?: number }>(`/channels/${peerId}/posts/${getServerMessageId(mid)}/discussion`)
       const [message] = await mapContainer(r)
-      return message?._ === 'message' ? message : undefined
+      if (message?._ !== 'message') return undefined
+      saveDiscussion?.(message.peerId, message.id, {
+        maxId: r.max_id ? generateMessageId(r.max_id) : 0,
+        readMaxId: r.read_inbox_max_id != null ? generateMessageId(r.read_inbox_max_id) : message.id,
+        readOutboxMaxId: r.read_outbox_max_id ? generateMessageId(r.read_outbox_max_id) : 0,
+        unreadCount: r.unread_count ?? 0,
+      })
+      return message
     },
 
     async listPins(peerId: number): Promise<MyMessage[]> {

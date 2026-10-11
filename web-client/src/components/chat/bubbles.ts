@@ -366,9 +366,9 @@ export interface BubblesManagers extends PeerTitleManagers {
    *   • `upToId` вместо `maxId` — имя нашей ручки; номер КЛИЕНТСКИЙ, в
    *     серверный его переводит сама ручка (`getServerMessageId`, граница
    *     `core/history/messageId.ts`);
-   *   • `threadId` — только у темы форума (горизонт темы, ревью КЛ-1 Б2);
-   *     у треда комментариев своего горизонта до волны 2 Ф-5 нет, и он
-   *     читается горизонтом группы; `monoforumThreadId` нет (монофорумов нет);
+   *   • `threadId` — у любого треда (тема, комментарии): воркер читает его
+   *     `messages.readDiscussion` (`core/managers/threadReads.ts`); `monoforumThreadId`
+   *     нет (монофорумов нет);
    *   • нет `force` (tweb им обходит собственную проверку «уже прочитано»,
    *     :5757): у нашей ручки такой проверки нет вовсе — дедуп стоит ниже, по
    *     уже отправленному рубежу (`connectionManager.ts:178`). */

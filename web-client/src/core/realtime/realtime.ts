@@ -44,11 +44,11 @@ export interface RealtimeDeps {
   }
   broadcast: (event: string, payload: unknown) => void
   channelFunnel: ChannelFunnel
-  /** Прочтение треда темы форума — `forumTopicsStorage.readHistory`. */
-  forumTopics: { readHistory(peerId: PeerId, threadId: number, maxId: number): boolean }
+  /** Прочтение треда (тема, тред комментариев) — `threadReads.readHistory`. */
+  threadReads: { readHistory(peerId: PeerId, threadId: number, maxId: number): void }
 }
 
-export function newRealtime({ conn, sync, syncWait, tokens, messages, broadcast, channelFunnel, forumTopics }: RealtimeDeps) {
+export function newRealtime({ conn, sync, syncWait, tokens, messages, broadcast, channelFunnel, threadReads }: RealtimeDeps) {
   return {
     async start() { await tokens.load(); conn.start(); return { state: conn.state() } },
     // Источник правды о `{state, retryAt}` — pull, а не разовый снапшот. Для ЭТОЙ
@@ -103,14 +103,11 @@ export function newRealtime({ conn, sync, syncWait, tokens, messages, broadcast,
     // что покидает клиентское пространство (core/history/messageId.ts).
     //
     // `threadId` — ветка треда tweb `readHistory` (appMessagesManager.ts:9186-9210):
-    // тему форума читает хранилище тем (`messages.readDiscussion`, транспорт —
-    // временная ручка темы до волны 2 Ф-5), горизонт ЧАТА в этой ветке не
-    // уходит, как у tweb: он гасил бы непрочитанное, упоминания и реакции всех
-    // остальных тем ниже рубежа. Тред комментариев (не тема) до волны 2
-    // читается горизонтом всей группы, как раньше.
+    // и тема форума, и тред комментариев читаются `messages.readDiscussion`
+    // (`threadReads`); горизонт ЧАТА в этой ветке не уходит.
     async markRead(args: { peerId: number; upToId: number; threadId?: number }) {
-      if (args.threadId && forumTopics.readHistory(args.peerId, args.threadId, args.upToId)) return { ok: true }
-      conn.markRead(args.peerId, getServerMessageId(args.upToId))
+      if (args.threadId) threadReads.readHistory(args.peerId, args.threadId, args.upToId)
+      else conn.markRead(args.peerId, getServerMessageId(args.upToId))
       return { ok: true }
     },
     async markMediaRead(args: { peerId: number; msgId: number }) {

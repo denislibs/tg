@@ -104,6 +104,10 @@ export const RT = {
   // Применяет хранилище тем, вкладкам уезжает операциями `forumTopicOp`; имя
   // нужно полноте реестра.
   pinnedForumTopic: 'rt:pinned_forum_topic',
+  // Прочтение треда (тема форума, тред комментариев) — `updateReadChannelDiscussion
+  // Inbox/Outbox` (tweb appMessagesManager.ts:777-778). Применяет `threadReads`
+  // воркера, вкладкам темы уезжают операциями `forumTopicOp`; имя нужно полноте реестра.
+  readDiscussion: 'rt:read_discussion',
   pollUpdate: 'rt:poll_update',
   checklistUpdate: 'rt:checklist_update',
   boostUpdate: 'rt:boost_update',
@@ -473,6 +477,17 @@ export interface DialogArchiveEvt {
 /** updatePinnedForumTopic#683b2c52 flags:# pinned:flags.0?true peer:Peer
  *  topic_id:int = Update; — тему закрепили/открепили (tweb `dialogs.ts:2480-2490`).
  *  «Открепили» — отсутствие бита. `topic_id` — серверный номер темы. */
+/** updateReadChannelDiscussionInbox#d6b19546 flags:# channel_id:long top_msg_id:int
+ *  read_max_id:int broadcast_id:flags.0?long broadcast_post:flags.0?int = Update;
+ *  updateReadChannelDiscussionOutbox#695c9e7c channel_id:long top_msg_id:int read_max_id:int = Update;
+ *  — горизонт прочтения ТРЕДА (тема, тред комментариев). Номера серверные;
+ *  `broadcast_*` tweb не читает, сервер их не производит. */
+export interface ReadDiscussionEvt {
+  _: 'updateReadChannelDiscussionInbox' | 'updateReadChannelDiscussionOutbox'
+  channel_id: number
+  top_msg_id: number
+  read_max_id: number
+}
 export interface PinnedForumTopicEvt {
   _: 'updatePinnedForumTopic'
   pFlags?: { pinned?: true }
@@ -753,6 +768,7 @@ export type Update =
   | DialogArchiveEvt
   | DialogMuteEvt
   | PinnedForumTopicEvt
+  | ReadDiscussionEvt
   | TypingEvt
   | PresenceEvt
   | UserUpdateEvt
