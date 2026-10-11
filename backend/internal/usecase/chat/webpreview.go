@@ -3,6 +3,8 @@ package chat
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
+	"fmt"
 	"image"
 	_ "image/gif"  // размеры og:image (largePreviewPhoto)
 	_ "image/jpeg" // размеры og:image (largePreviewPhoto)
@@ -100,13 +102,33 @@ func (i *Interactor) startSendWebPreview(msg domain.Message, in SendInput, recip
 // Только текст: у медиа с подписью превью нет, служебное не text, секретный
 // чат отсекает attachWebPreview. Ссылку выбирает domain.WebPageInput. Карточка уже
 // есть (копия, опубликованное отложенное) — собирать нечего.
+//
+// Сборка той же ссылки уже идёт (правка во время сборки, ссылка не менялась) —
+// второй не начинаем: идущая перенацеливается на эту правку (edited_at,
+// выбор размера, получатели) и запишет карточку под неё (previewFlights).
 func (i *Interactor) startWebPreview(msg domain.Message, in domain.WebPageInput, recipients []int64) {
 	if i.preview == nil || msg.Type != "text" || msg.WebPage != nil {
 		return
 	}
-	if u := previewURL(in, msg.Text, msg.Entities); u != "" {
-		go i.attachWebPreview(msg, u, recipients, in)
+	u := previewURL(in, msg.Text, msg.Entities)
+	if u == "" {
+		return
 	}
+	fl, started := i.previewFlights.join(fmt.Sprintf("m:%d", msg.ID), u, func(t *previewTarget) {
+		t.editedAt, t.in, t.recipients = msg.EditedAt, in, recipients
+	})
+	if started {
+		i.goBackground(func() { i.attachWebPreview(msg, fl) })
+	}
+}
+
+// goBackground — фоновый хвост запроса под i.bg (Shutdown и тесты его ждут).
+func (i *Interactor) goBackground(fn func()) {
+	i.bg.Add(1)
+	go func() {
+		defer i.bg.Done()
+		fn()
+	}()
 }
 
 // updateTextWithWebPage — запись правки текста ВМЕСТЕ с превью и флагом
@@ -177,10 +199,19 @@ func (i *Interactor) rebuildWebPreviewOnEdit(msg domain.Message, opt []domain.We
 	i.startWebPreview(msg, in, members)
 }
 
-// buildWebPreview собирает карточку ссылки: og-теги (Preview), картинка к нам
-// (fetchPreviewPhoto, владелец — ownerID), проба Instant View. nil — карточки
-// нет. Каждый сетевой этап — со своим бюджетом (см. таймауты выше).
-func (i *Interactor) buildWebPreview(url string, ownerID int64) *domain.WebPagePreview {
+// builtPreview — собранная карточка и её картинка, скачанная, но ещё не
+// сохранённая к нам: сохраняется только перед записью, которая ещё может
+// состояться (storePreviewPhoto), иначе отброшенная сборка оставляла бы в
+// хранилище файл без ссылки.
+type builtPreview struct {
+	wp  *domain.WebPagePreview
+	img *previewImage
+}
+
+// buildWebPreview собирает карточку ссылки: og-теги (Preview), картинка
+// (downloadPreviewPhoto), проба Instant View. nil — карточки нет. Каждый
+// сетевой этап — со своим бюджетом (см. таймауты выше).
+func (i *Interactor) buildWebPreview(url string) *builtPreview {
 	var wp *domain.WebPagePreview
 	withBudget(previewTimeout, func(ctx context.Context) {
 		if p, err := i.preview.Preview(ctx, url); err == nil {
@@ -190,11 +221,12 @@ func (i *Interactor) buildWebPreview(url string, ownerID int64) *domain.WebPageP
 	if wp == nil {
 		return nil
 	}
+	b := &builtPreview{wp: wp}
 	// Обогащения — каждое со СВОИМ бюджетом, не из бюджета сбора (см. таймауты
 	// выше): оба ходят в сеть ещё раз, и медленный сайт не должен стоить нам
 	// карточки целиком.
 	withBudget(enrichTimeout, func(ectx context.Context) {
-		i.fetchPreviewPhoto(ectx, wp, ownerID)
+		b.img = i.downloadPreviewPhoto(ectx, wp)
 	})
 	// Проба Instant View — тем же путём, что и открытие статьи: результат ложится
 	// в кэш iv-usecase, поэтому клик по кнопке отдаёт статью уже из него.
@@ -203,31 +235,33 @@ func (i *Interactor) buildWebPreview(url string, ownerID int64) *domain.WebPageP
 			wp.HasIV = i.ivProbe.HasArticle(ictx, wp.URL)
 		})
 	}
-	return wp
+	return b
 }
 
-// attachWebPreview строит превью ссылки уже записанного сообщения (go-рутиной
-// ПОСЛЕ коммита Send или правки): buildWebPreview → условный UPDATE web_page →
-// кадр всем участникам. Догоняющее и best-effort: любая ошибка просто оставляет
+// attachWebPreview строит превью ссылки уже записанного сообщения (фоном ПОСЛЕ
+// коммита Send или правки): buildWebPreview → условный UPDATE web_page → кадр
+// всем участникам. Догоняющее и best-effort: любая ошибка просто оставляет
 // сообщение без карточки (история при getDifference отдаст web_page, если
 // UPDATE успел). Секретные чаты исключены — сервер их контент не трогает.
 //
-// Запись условная (SetWebPageIfEdited по msg.EditedAt): сборка идёт секундами,
-// и если сообщение за это время правили, карточка от старого текста не должна
-// ни перезаписать карточку новой правки, ни вернуть снятую. Не записалось —
-// кадра нет.
+// Запись условная (SetWebPageIfEdited по edited_at цели): сборка идёт
+// секундами, и если сообщение за это время правили, карточка от старого
+// текста не должна ни перезаписать карточку новой правки, ни вернуть снятую.
+// Правка, сохранившая ссылку, перенацеливает сборку (previewFlights) — тогда
+// запись повторяется под её edited_at. Не записалось — кадра нет.
 //
 // Пост broadcast-канала получает карточку правкой поста журналом канала
 // (updateEditChannelMessage, writeChannelWebPreview): веера по подписчикам у
 // канала нет, а догон канала (/channels/{id}/difference) обязан привезти
 // карточку тому, кто пропустил живой кадр. recipients у канала не нужны.
-// Зеркало поста в группе обсуждения получает ту же карточку
-// (mirrorSync в транзакции записи): оно создаётся в транзакции Send раньше, чем карточка
+// Зеркало поста в группе обсуждения получает ту же карточку (mirrorSync в
+// транзакции записи): оно создаётся в транзакции Send раньше, чем карточка
 // готова, и иначе осталось бы без неё навсегда.
-func (i *Interactor) attachWebPreview(msg domain.Message, url string, recipients []int64, in domain.WebPageInput) {
+func (i *Interactor) attachWebPreview(msg domain.Message, fl *previewFlight) {
 	// Фоновая горутина над чужим HTML (парсинг og/readability) — паника не должна
 	// ронять процесс.
 	defer saferun.Recover("chat.attachWebPreview")
+	defer i.previewFlights.drop(fl)
 	var typ string
 	withBudget(writeTimeout, func(ctx context.Context) {
 		typ, _ = i.chats.ChatType(ctx, msg.ChatID)
@@ -235,64 +269,98 @@ func (i *Interactor) attachWebPreview(msg domain.Message, url string, recipients
 	if typ == "" || typ == domain.ChatTypeSecret {
 		return
 	}
-	wp := i.buildWebPreview(url, msg.SenderID)
-	if wp == nil {
+	b := i.buildWebPreview(fl.url)
+	if b == nil {
 		return
 	}
-	in.ApplySize(wp)
-
 	// Запись и фан-аут — тоже свой бюджет: к этому моменту бюджет сбора может
 	// быть уже исчерпан, а терять собранную карточку из-за этого нельзя.
 	withBudget(writeTimeout, func(wctx context.Context) {
-		if typ == domain.ChatTypeChannel {
-			i.writeChannelWebPreview(wctx, msg, wp)
-			return
-		}
-		// Логируем + шлём web_page_update всем получателям: догоняющее превью
-		// доезжает и через getDifference (плотный pts-курсор), а не только живым
-		// кадром. Карточка едет ТЕМ ЖЕ конструктором, что и в самом сообщении
-		// (messageMediaWebPage под ключом media).
-		//
-		// Условная запись и журнал — ОДНОЙ транзакцией: UPDATE держит строку до
-		// коммита, и правка, пришедшая между ними, дождётся его и ляжет в журнал
-		// ПОЗЖЕ карточки. Порознь правка могла бы снять только что записанную
-		// карточку раньше, чем её кадр лёг в журнал, и догон вернул бы её клиенту.
-		media := wp.ToMedia()
-		var publish func(context.Context)
-		_ = i.tx.WithinTx(wctx, func(ctx context.Context) error {
-			if ok, err := i.msgs.SetWebPageIfEdited(ctx, msg.ID, wp, msg.EditedAt); err != nil || !ok {
-				return err
+		for {
+			t := i.previewFlights.target(fl)
+			if b.img != nil && !i.messagePreviewWanted(wctx, msg.ID, t) {
+				if i.previewFlights.settle(fl, t.gen) {
+					return
+				}
+				continue
 			}
-			var err error
-			publish, err = i.appendPerPeer(ctx, msg.ChatID, recipients, "web_page_update",
-				func(peer domain.PeerID) map[string]any {
-					return map[string]any{
-						"_": domain.UpdateMessageWebPageTag, "peer": domain.NewPeer(peer),
-						"msg_id": msg.Seq, "media": media,
-					}
-				})
-			return err
-		})
-		if publish != nil {
-			publish(wctx)
+			i.storePreviewPhoto(wctx, b, msg.SenderID)
+			wp := b.wp.Clone()
+			t.in.ApplySize(wp)
+			var ok bool
+			if typ == domain.ChatTypeChannel {
+				ok = i.writeChannelWebPreview(wctx, msg.ID, t.editedAt, wp)
+			} else {
+				ok = i.writeChatWebPreview(wctx, msg, t, wp)
+			}
+			if ok || i.previewFlights.settle(fl, t.gen) {
+				return
+			}
 		}
 	})
 }
 
-// writeChannelWebPreview — карточка поста broadcast-канала: условная запись и
+// messagePreviewWanted — запись под цель t ещё может состояться: строка не
+// удалена, без карточки и с той же правкой (edited_at). Проверка ДО
+// сохранения картинки к нам; окончательно решает условный UPDATE.
+func (i *Interactor) messagePreviewWanted(ctx context.Context, msgID int64, t previewTarget) bool {
+	cur, err := i.msgs.GetByID(ctx, msgID)
+	return err == nil && !cur.Deleted && cur.WebPage == nil && sameTime(cur.EditedAt, t.editedAt)
+}
+
+func sameTime(a, b *time.Time) bool {
+	return (a == nil && b == nil) || (a != nil && b != nil && a.Equal(*b))
+}
+
+// writeChatWebPreview — карточка сообщения лички/группы: условная запись и
+// web_page_update получателям. Логируем + шлём: догоняющее превью доезжает и
+// через getDifference (плотный pts-курсор), а не только живым кадром.
+// Карточка едет ТЕМ ЖЕ конструктором, что и в самом сообщении
+// (messageMediaWebPage под ключом media).
+//
+// Условная запись и журнал — ОДНОЙ транзакцией: UPDATE держит строку до
+// коммита, и правка, пришедшая между ними, дождётся его и ляжет в журнал
+// ПОЗЖЕ карточки. Порознь правка могла бы снять только что записанную
+// карточку раньше, чем её кадр лёг в журнал, и догон вернул бы её клиенту.
+func (i *Interactor) writeChatWebPreview(ctx context.Context, msg domain.Message, t previewTarget, wp *domain.WebPagePreview) bool {
+	media := wp.ToMedia()
+	var publish func(context.Context)
+	written := false
+	_ = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		ok, err := i.msgs.SetWebPageIfEdited(ctx, msg.ID, wp, t.editedAt)
+		if err != nil || !ok {
+			return err
+		}
+		publish, err = i.appendPerPeer(ctx, msg.ChatID, t.recipients, "web_page_update",
+			func(peer domain.PeerID) map[string]any {
+				return map[string]any{
+					"_": domain.UpdateMessageWebPageTag, "peer": domain.NewPeer(peer),
+					"msg_id": msg.Seq, "media": media,
+				}
+			})
+		written = err == nil
+		return err
+	})
+	if publish != nil {
+		publish(ctx)
+	}
+	return written
+}
+
+// writeChannelWebPreview — карточка поста broadcast-канала: условная запись,
 // правка поста в журнал канала и зеркало в группе обсуждения одной
-// транзакцией (см. attachWebPreview), живые кадры — после коммита.
-func (i *Interactor) writeChannelWebPreview(ctx context.Context, msg domain.Message, wp *domain.WebPagePreview) {
+// транзакцией (см. writeChatWebPreview), живые кадры — после коммита.
+func (i *Interactor) writeChannelWebPreview(ctx context.Context, msgID int64, editedAt *time.Time, wp *domain.WebPagePreview) bool {
 	var post domain.Message
 	var body map[string]any
 	var pts int64
 	var mirror *editDelivery
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		ok, err := i.msgs.SetWebPageIfEdited(ctx, msg.ID, wp, msg.EditedAt)
+		ok, err := i.msgs.SetWebPageIfEdited(ctx, msgID, wp, editedAt)
 		if err != nil || !ok {
 			return err
 		}
-		m, err := i.msgs.GetByID(ctx, msg.ID)
+		m, err := i.msgs.GetByID(ctx, msgID)
 		if err != nil {
 			return err
 		}
@@ -310,13 +378,14 @@ func (i *Interactor) writeChannelWebPreview(ctx context.Context, msg domain.Mess
 		return err
 	})
 	if err != nil || body == nil {
-		return
+		return false
 	}
 	i.publishChannelUpdate(ctx, post.ChatID, "edit_message", body, pts, post.SenderID)
 	i.publishEdit(ctx, mirror)
+	return true
 }
 
-// attachScheduledWebPreview — превью ОТЛОЖЕННОГО (спецификация Ф-5 п. 4.2.4):
+// startScheduledWebPreview — превью ОТЛОЖЕННОГО (спецификация Ф-5 п. 4.2.4):
 // та же сборка, что у сообщения (buildWebPreview), запись в строку очереди и
 // кадр updateNewScheduledMessage автору — правка отложенного тем же id (tweb
 // onUpdateNewScheduledMessage → handleEditedMessage, appMessagesManager.ts
@@ -327,41 +396,72 @@ func (i *Interactor) writeChannelWebPreview(ctx context.Context, msg domain.Mess
 //
 // Запись условная (SetWebPageIfSame): правка текста или решения о превью,
 // публикация и снятие за время сборки делают карточку ненужной — тогда ни
-// записи, ни кадра. Секретный чат отложить нельзя (enqueueScheduled), копия
-// пересылки несёт карточку источника.
-func (i *Interactor) attachScheduledWebPreview(row domain.ScheduledMessage) {
-	defer saferun.Recover("chat.attachScheduledWebPreview")
+// записи, ни кадра. Правка, сохранившая ссылку, перенацеливает идущую сборку,
+// а не начинает вторую. Секретный чат отложить нельзя (enqueueScheduled),
+// копия пересылки несёт карточку источника.
+func (i *Interactor) startScheduledWebPreview(row domain.ScheduledMessage) {
 	if i.preview == nil || i.scheduled == nil || row.Type != "text" || row.WebPage != nil || row.Params.Fwd != nil {
 		return
 	}
-	var choice domain.WebPageInput
-	if row.Params.WebPage != nil {
-		choice = *row.Params.WebPage
-	}
-	u := previewURL(choice, row.Text, row.Entities)
+	u := previewURL(derefChoice(row.Params.WebPage), row.Text, row.Entities)
 	if u == "" {
 		return
 	}
-	wp := i.buildWebPreview(u, row.SenderID)
-	if wp == nil {
+	fl, started := i.previewFlights.join(fmt.Sprintf("s:%d", row.ID), u, func(t *previewTarget) {
+		t.text, t.entities, t.choice = row.Text, row.Entities, row.Params.WebPage
+	})
+	if started {
+		i.goBackground(func() { i.attachScheduledWebPreview(row, fl) })
+	}
+}
+
+func (i *Interactor) attachScheduledWebPreview(row domain.ScheduledMessage, fl *previewFlight) {
+	defer saferun.Recover("chat.attachScheduledWebPreview")
+	defer i.previewFlights.drop(fl)
+	b := i.buildWebPreview(fl.url)
+	if b == nil {
 		return
 	}
-	choice.ApplySize(wp)
 	withBudget(writeTimeout, func(ctx context.Context) {
-		_ = i.writeScheduled(ctx, row.SenderID, func(ctx context.Context) ([]scheduledFrame, error) {
-			ok, err := i.scheduled.SetWebPageIfSame(ctx, row.ID, wp, row.Text, row.Entities, row.Params.WebPage)
-			if err != nil || !ok {
-				return nil, err
+		for {
+			t := i.previewFlights.target(fl)
+			if b.img != nil && !i.scheduledPreviewWanted(ctx, row.ID, t) {
+				if i.previewFlights.settle(fl, t.gen) {
+					return
+				}
+				continue
 			}
-			// Свежая строка: срок за время сборки могли перенести.
-			cur, err := i.scheduled.ByID(ctx, row.ID)
-			if err != nil {
-				return nil, err
+			i.storePreviewPhoto(ctx, b, row.SenderID)
+			wp := b.wp.Clone()
+			derefChoice(t.choice).ApplySize(wp)
+			written := false
+			_ = i.writeScheduled(ctx, row.SenderID, func(ctx context.Context) ([]scheduledFrame, error) {
+				ok, err := i.scheduled.SetWebPageIfSame(ctx, row.ID, wp, t.text, t.entities, t.choice)
+				if err != nil || !ok {
+					return nil, err
+				}
+				// Свежая строка: срок за время сборки могли перенести.
+				cur, err := i.scheduled.ByID(ctx, row.ID)
+				if err != nil {
+					return nil, err
+				}
+				frames, _, err := i.scheduledNewFrames(ctx, []domain.ScheduledMessage{cur})
+				written = err == nil
+				return frames, err
+			})
+			if written || i.previewFlights.settle(fl, t.gen) {
+				return
 			}
-			frames, _, err := i.scheduledNewFrames(ctx, []domain.ScheduledMessage{cur})
-			return frames, err
-		})
+		}
 	})
+}
+
+// scheduledPreviewWanted — запись под цель t ещё может состояться (тот же
+// текст, сущности и решение, карточки нет); до сохранения картинки к нам.
+func (i *Interactor) scheduledPreviewWanted(ctx context.Context, id int64, t previewTarget) bool {
+	cur, err := i.scheduled.ByID(ctx, id)
+	return err == nil && cur.WebPage == nil && cur.Text == t.text && entitiesEqual(cur.Entities, t.entities) &&
+		reflect.DeepEqual(webPageInputPtr(derefChoice(cur.Params.WebPage)), webPageInputPtr(derefChoice(t.choice)))
 }
 
 // scheduledWebPageEdit — что правка отложенного делает с превью.
@@ -492,23 +592,29 @@ func withBudget(d time.Duration, fn func(context.Context)) {
 // «картинку» в десятки мегабайт, которой сайт мог бы нагрузить нам хранилище.
 const maxPreviewPhoto = 5 << 20
 
-// fetchPreviewPhoto забирает og:image К СЕБЕ и подменяет чужой адрес на наш
-// media_id. Так работает Telegram: браузер участника чата за картинкой превью
-// на чужой хост не ходит и свой IP владельцу ссылки не сдаёт (а наш CSP
+// previewImage — картинка карточки, скачанная, но ещё не сохранённая.
+type previewImage struct {
+	data       []byte
+	mime, name string
+}
+
+// downloadPreviewPhoto скачивает og:image (к нам её кладёт storePreviewPhoto).
+// Так работает Telegram: браузер участника чата за картинкой превью на чужой
+// хост не ходит и свой IP владельцу ссылки не сдаёт (а наш CSP
 // `img-src 'self' data: blob:` внешний адрес и так режет).
 //
 // Best-effort ровно как остальная сборка превью: сайт отдал не картинку, не
 // ответил, превысил лимит — карточка просто остаётся без фото. Транзитный
 // wp.ImageURL гасим в любом случае: наружу он не уходит (`json:"-"`), но и в
 // снимке ему делать нечего.
-func (i *Interactor) fetchPreviewPhoto(ctx context.Context, wp *domain.WebPagePreview, ownerID int64) {
+func (i *Interactor) downloadPreviewPhoto(ctx context.Context, wp *domain.WebPagePreview) *previewImage {
 	defer func() { wp.ImageURL = "" }()
 	if wp.ImageURL == "" || i.botHTTP == nil || i.botMedia == nil {
-		return
+		return nil
 	}
 	data, mime, err := i.botHTTP.FetchURL(ctx, wp.ImageURL, maxPreviewPhoto)
 	if err != nil || !strings.HasPrefix(mime, "image/") {
-		return
+		return nil
 	}
 	// Имя файла — из пути ссылки: оно попадает в media.file_name и видно только
 	// в отладке, но осмысленное лучше пустого.
@@ -516,9 +622,21 @@ func (i *Interactor) fetchPreviewPhoto(ctx context.Context, wp *domain.WebPagePr
 	if u, e := neturl.Parse(wp.ImageURL); e == nil {
 		name = path.Base(u.Path)
 	}
-	if id, e := i.botMedia.Store(ctx, ownerID, mime, name, data); e == nil {
-		wp.PhotoID = id
-		wp.HasLargeMedia = largePreviewPhoto(data)
+	return &previewImage{data: data, mime: mime, name: name}
+}
+
+// storePreviewPhoto кладёт скачанную картинку к нам (владелец — ownerID) и
+// подменяет её media_id в карточке; второй раз (повтор записи после
+// перенацеливания) не сохраняет. has_large_media — только у сохранённой.
+func (i *Interactor) storePreviewPhoto(ctx context.Context, b *builtPreview, ownerID int64) {
+	if b.img == nil || b.wp.PhotoID != 0 {
+		return
+	}
+	img := b.img
+	b.img = nil
+	if id, e := i.botMedia.Store(ctx, ownerID, img.mime, img.name, img.data); e == nil {
+		b.wp.PhotoID = id
+		b.wp.HasLargeMedia = largePreviewPhoto(img.data)
 	}
 }
 
@@ -537,11 +655,42 @@ const (
 // Telegram решает «у превью крупное медиа», из tweb не видно — клиент только
 // читает флаг (input.ts:3619, bubbles.ts:9479-9480). Наше правило: у карточки
 // есть фото (видео в превью мы не разбираем) не меньше largePreviewMinW ×
-// largePreviewMinH. Размер читается из заголовка файла (jpeg/png/gif); формат,
-// который стандартная библиотека не разбирает (webp и т. п.), — флага нет.
+// largePreviewMinH. Размер читается из заголовка файла: jpeg/png/gif —
+// стандартной библиотекой, webp — webpSize.
 func largePreviewPhoto(data []byte) bool {
-	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
-	return err == nil && cfg.Width >= largePreviewMinW && cfg.Height >= largePreviewMinH
+	w, h := 0, 0
+	if cfg, _, err := image.DecodeConfig(bytes.NewReader(data)); err == nil {
+		w, h = cfg.Width, cfg.Height
+	} else if ww, hh, ok := webpSize(data); ok {
+		w, h = ww, hh
+	}
+	return w >= largePreviewMinW && h >= largePreviewMinH
+}
+
+// webpSize — размер картинки WebP из заголовка контейнера RIFF (спецификация
+// WebP Container: чанки VP8 — с потерями, VP8L — без потерь, VP8X —
+// расширенный, с размером холста).
+func webpSize(b []byte) (w, h int, ok bool) {
+	if len(b) < 30 || string(b[0:4]) != "RIFF" || string(b[8:12]) != "WEBP" {
+		return 0, 0, false
+	}
+	switch string(b[12:16]) {
+	case "VP8 ": // кадр: 3 байта тега, старт-код 9d 01 2a, затем 14-битные ширина и высота
+		if b[23] != 0x9d || b[24] != 0x01 || b[25] != 0x2a {
+			return 0, 0, false
+		}
+		return int(binary.LittleEndian.Uint16(b[26:28]) & 0x3fff), int(binary.LittleEndian.Uint16(b[28:30]) & 0x3fff), true
+	case "VP8L": // сигнатура 0x2f, затем 14 бит (ширина−1) и 14 бит (высота−1)
+		if b[20] != 0x2f {
+			return 0, 0, false
+		}
+		bits := binary.LittleEndian.Uint32(b[21:25])
+		return int(bits&0x3fff) + 1, int((bits>>14)&0x3fff) + 1, true
+	case "VP8X": // 4 байта флагов, затем 24 бита (ширина−1) и 24 бита (высота−1)
+		u24 := func(p []byte) int { return int(p[0]) | int(p[1])<<8 | int(p[2])<<16 }
+		return u24(b[24:27]) + 1, u24(b[27:30]) + 1, true
+	}
+	return 0, 0, false
 }
 
 // imageHeadBytes — сколько байт картинки читается ради её размера: заголовку

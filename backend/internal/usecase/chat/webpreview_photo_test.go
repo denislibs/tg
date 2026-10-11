@@ -3,6 +3,7 @@ package chat
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"image"
@@ -91,6 +92,12 @@ func (f *fakeIVProber) HasArticle(ctx context.Context, _ string) bool {
 	return f.has
 }
 
+// fetchPhoto — скачать и сохранить картинку карточки (как сборка перед записью).
+func fetchPhoto(in *Interactor, wp *domain.WebPagePreview, owner int64) {
+	b := &builtPreview{wp: wp, img: in.downloadPreviewPhoto(context.Background(), wp)}
+	in.storePreviewPhoto(context.Background(), b, owner)
+}
+
 // preview с картинкой og:image — то, что отдаёт разбор страницы.
 func previewWithImage() *domain.WebPagePreview {
 	return &domain.WebPagePreview{
@@ -107,7 +114,7 @@ func TestFetchPreviewPhoto_ProxiesToOurMedia(t *testing.T) {
 	in.SetBotMedia(store)
 	wp := previewWithImage()
 
-	in.fetchPreviewPhoto(context.Background(), wp, 42)
+	fetchPhoto(in, wp, 42)
 
 	if wp.PhotoID != 101 {
 		t.Fatalf("PhotoID = %d; want 101", wp.PhotoID)
@@ -140,7 +147,7 @@ func TestFetchPreviewPhoto_FileNameIgnoresQuery(t *testing.T) {
 	wp := previewWithImage()
 	wp.ImageURL = "https://cdn.example/img/cover.png?w=1200&sig=zzz"
 
-	in.fetchPreviewPhoto(context.Background(), wp, 1)
+	fetchPhoto(in, wp, 1)
 
 	if store.names[0] != "cover.png" {
 		t.Errorf("file name = %q; want cover.png", store.names[0])
@@ -155,7 +162,7 @@ func TestFetchPreviewPhoto_NonImageRejected(t *testing.T) {
 	in.SetBotMedia(store)
 	wp := previewWithImage()
 
-	in.fetchPreviewPhoto(context.Background(), wp, 1)
+	fetchPhoto(in, wp, 1)
 
 	if wp.PhotoID != 0 || store.stored() != 0 {
 		t.Fatalf("PhotoID = %d, stored = %d; ничего сохранять не должны", wp.PhotoID, store.stored())
@@ -173,7 +180,7 @@ func TestFetchPreviewPhoto_FetchErrorIsSoft(t *testing.T) {
 	in.SetBotMedia(store)
 	wp := previewWithImage()
 
-	in.fetchPreviewPhoto(context.Background(), wp, 1)
+	fetchPhoto(in, wp, 1)
 
 	if wp.PhotoID != 0 || store.stored() != 0 {
 		t.Fatalf("PhotoID = %d, stored = %d", wp.PhotoID, store.stored())
@@ -187,7 +194,7 @@ func TestFetchPreviewPhoto_NoStoreNoFetch(t *testing.T) {
 	in.SetBotHTTP(http)
 	wp := previewWithImage()
 
-	in.fetchPreviewPhoto(context.Background(), wp, 1)
+	fetchPhoto(in, wp, 1)
 
 	if urls, _ := http.calls(); len(urls) != 0 {
 		t.Fatalf("FetchURL вызван без хранилища: %v", urls)
@@ -386,13 +393,13 @@ func TestFetchPreviewPhoto_SetsHasLargeMedia(t *testing.T) {
 	in.SetBotHTTP(&fakeOutHTTP{data: pngOf(t, 1280, 720), mime: "image/png"})
 	in.SetBotMedia(&fakeMediaStore{})
 	wp := previewWithImage()
-	in.fetchPreviewPhoto(context.Background(), wp, 1)
+	fetchPhoto(in, wp, 1)
 	if wp.PhotoID == 0 || !wp.HasLargeMedia {
 		t.Fatalf("карточка = %+v; ждали фото и has_large_media", wp)
 	}
 	small := previewWithImage()
 	in.SetBotHTTP(&fakeOutHTTP{data: pngOf(t, 64, 64), mime: "image/png"})
-	in.fetchPreviewPhoto(context.Background(), small, 1)
+	fetchPhoto(in, small, 1)
 	if small.PhotoID == 0 || small.HasLargeMedia {
 		t.Fatalf("маленькая картинка = %+v; has_large_media не ждали", small)
 	}
@@ -439,5 +446,31 @@ func TestGetWebPage_Cached(t *testing.T) {
 	in.GetWebPage(ctx, "https://b.example/y")
 	if n := len(prev.calls()); n != 2 {
 		t.Fatalf("другой адрес не собран: %d", n)
+	}
+}
+
+// Ревью 14: размер WebP читается из заголовка контейнера — у всех трёх видов
+// чанков (заголовки сняты с файлов, сохранённых Pillow: 1200×630 с потерями и
+// без, 640×360 с альфой — VP8X).
+func TestWebpSize(t *testing.T) {
+	for _, c := range []struct {
+		name, hex string
+		w, h      int
+	}{
+		{"VP8", "524946469605000057454250565038208a050000b0a4009d012ab00476023e6d369949a42322a120", 1200, 630},
+		{"VP8L", "5249464644000000574542505650384c370000002faf449d0007508a2ad4a3ff012141e2fff53622", 1200, 630},
+		{"VP8X", "524946460e02000057454250565038580a000000100000007f0200670100414c50481b0000000107", 640, 360},
+	} {
+		b, _ := hex.DecodeString(c.hex)
+		w, h, ok := webpSize(b)
+		if !ok || w != c.w || h != c.h {
+			t.Errorf("%s: %d×%d ok=%v; ждали %d×%d", c.name, w, h, ok, c.w, c.h)
+		}
+		if !largePreviewPhoto(b) {
+			t.Errorf("%s: has_large_media не выставлен", c.name)
+		}
+	}
+	if _, _, ok := webpSize([]byte("RIFF\x00\x00\x00\x00WEBPVP8 short")); ok {
+		t.Error("обрезанный заголовок разобран")
 	}
 }

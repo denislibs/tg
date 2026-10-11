@@ -211,7 +211,7 @@ func (i *Interactor) enqueueScheduled(ctx context.Context, in SendInput) (domain
 	}
 	if created {
 		i.clearDraftAfterSend(ctx, in.SenderID, in.ChatID)
-		go i.attachScheduledWebPreview(stored[0])
+		i.startScheduledWebPreview(stored[0])
 	}
 	return stored[0].Message(), nil
 }
@@ -799,7 +799,7 @@ func (i *Interactor) EditScheduled(ctx context.Context, in EditScheduledInput) (
 	// Карточки нет, а ссылка есть (её сменили или добавили) — догоняющая
 	// сборка, как у правки сообщения (rebuildWebPreviewOnEdit).
 	if wp.rebuild {
-		go i.attachScheduledWebPreview(m)
+		i.startScheduledWebPreview(m)
 	}
 	return out, nil
 }

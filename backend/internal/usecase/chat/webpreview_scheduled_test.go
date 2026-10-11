@@ -74,7 +74,7 @@ func TestScheduledPreview_BuiltBeforePublishAndCarried(t *testing.T) {
 	if last.WebPage == nil || last.WebPage.URL != "https://a.example/x" || !last.InvertMedia || !last.FromScheduled {
 		t.Fatalf("опубликованное = %+v", last)
 	}
-	time.Sleep(30 * time.Millisecond)
+	in.bg.Wait()
 	if n := len(prev.calls()); n != 1 {
 		t.Fatalf("Preview звали %d раз; ждали 1 (публикация переносит готовую карточку)", n)
 	}
@@ -92,7 +92,7 @@ func TestScheduledPreview_NoWebpage(t *testing.T) {
 	if _, err := in.SendScheduledNow(ctx, cid, 1, []int64{sm.Seq}); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(30 * time.Millisecond)
+	in.bg.Wait()
 	if n := len(prev.calls()); n != 0 {
 		t.Fatalf("no_webpage: Preview звали %d раз", n)
 	}
@@ -123,7 +123,7 @@ func TestScheduledPreview_StaleBuildDropped(t *testing.T) {
 	})
 	framesBefore := len(logOf(s, 1, scheduledNewFrame))
 	close(release)
-	time.Sleep(50 * time.Millisecond)
+	in.bg.Wait()
 	if wp := scheduledRow(t, fs, sm.Seq).WebPage; wp == nil || wp.URL != "https://new.example/" {
 		t.Fatalf("поздняя карточка старой ссылки перезаписала новую: %+v", wp)
 	}
@@ -169,7 +169,7 @@ func TestScheduledPreview_Edit(t *testing.T) {
 		Text: "https://b.example/y", ScheduleDate: later, WebPage: &domain.WebPageInput{NoWebpage: true}}); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(30 * time.Millisecond)
+	in.bg.Wait()
 	if n := len(prev.calls()); n != calls || scheduledRow(t, fs, sm.Seq).WebPage != nil {
 		t.Fatalf("no_webpage в правке отложенного: сборок %d → %d", calls, n)
 	}
@@ -177,7 +177,7 @@ func TestScheduledPreview_Edit(t *testing.T) {
 	if _, err := in.SendScheduledNow(ctx, cid, 1, []int64{sm.Seq}); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(30 * time.Millisecond)
+	in.bg.Wait()
 	if n := len(prev.calls()); n != calls {
 		t.Fatalf("публикация после no_webpage собрала карточку (%d → %d)", calls, n)
 	}
@@ -198,7 +198,7 @@ func TestScheduledPreview_ClaimedRowSkipped(t *testing.T) {
 	}
 	frames := len(logOf(s, 1, scheduledNewFrame))
 	close(release)
-	time.Sleep(50 * time.Millisecond)
+	in.bg.Wait()
 	if scheduledRow(t, fs, sm.Seq).WebPage != nil || len(logOf(s, 1, scheduledNewFrame)) != frames {
 		t.Fatal("карточка записана в публикуемую строку")
 	}
@@ -222,5 +222,29 @@ func TestScheduledPreview_ChoiceNormalized(t *testing.T) {
 	}
 	if row := scheduledRow(t, fs, sm.Seq); row.Params.WebPage == nil || row.Params.WebPage.Media == nil {
 		t.Fatalf("снимок = %+v", row.Params.WebPage)
+	}
+}
+
+// Ревью 7 у отложенного: правка текста без смены ссылки во время сборки
+// перенацеливает идущую сборку — карточка записана под новый текст, сайт
+// запрошен один раз.
+func TestScheduledPreview_SameLinkEditJoinsFlight(t *testing.T) {
+	in, _, fs, prev, cid := scheduledPreviewEnv(t)
+	ctx := context.Background()
+	release := prev.hold("https://a.example/x")
+	date := future()
+	sm, _ := in.Send(ctx, SendInput{ChatID: cid, SenderID: 1, Text: "https://a.example/x", ScheduleDate: date})
+	waitFor(t, func() bool { return len(prev.calls()) == 1 })
+	if _, err := in.EditScheduled(ctx, EditScheduledInput{ChatID: cid, ID: sm.Seq, UserID: 1,
+		Text: "та же https://a.example/x", ScheduleDate: date, WebPage: &domain.WebPageInput{}}); err != nil {
+		t.Fatal(err)
+	}
+	close(release)
+	in.bg.Wait()
+	if row := scheduledRow(t, fs, sm.Seq); row.WebPage == nil || row.Text != "та же https://a.example/x" {
+		t.Fatalf("строка = %q, карточка %+v", row.Text, row.WebPage)
+	}
+	if n := len(prev.calls()); n != 1 {
+		t.Fatalf("Preview звали %d раз; ждали 1", n)
 	}
 }

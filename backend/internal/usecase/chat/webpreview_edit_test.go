@@ -21,6 +21,8 @@ type urlPreviewer struct {
 	holds map[string]chan struct{}
 	// large — карточки с has_large_media (как после крупного og:image).
 	large bool
+	// imageURL — og:image карточек (картинку отдаёт фейковый BotHTTP).
+	imageURL string
 }
 
 func (p *urlPreviewer) Preview(ctx context.Context, url string) (*domain.WebPagePreview, error) {
@@ -35,7 +37,7 @@ func (p *urlPreviewer) Preview(ctx context.Context, url string) (*domain.WebPage
 			return nil, ctx.Err()
 		}
 	}
-	return &domain.WebPagePreview{URL: url, Title: url, HasLargeMedia: p.large}, nil
+	return &domain.WebPagePreview{URL: url, Title: url, HasLargeMedia: p.large, ImageURL: p.imageURL}, nil
 }
 
 func (p *urlPreviewer) calls() []string {
@@ -163,7 +165,7 @@ func TestEditMessage_RemovedLinkDropsPreview(t *testing.T) {
 	if _, has := m["media"]; has {
 		t.Fatalf("кадр правки несёт media: %v", m["media"])
 	}
-	time.Sleep(30 * time.Millisecond)
+	e.in.bg.Wait()
 	if n := len(e.prev.calls()); n != 1 {
 		t.Fatalf("Preview звали %d раз; ждали 1 (только отправка)", n)
 	}
@@ -180,7 +182,7 @@ func TestEditMessage_SameLinkKeepsPreview(t *testing.T) {
 	if _, err := e.in.EditMessage(ctx, e.chatID, msg.ID, 1, "ещё раз https://a.example/x !", nil); err != nil {
 		t.Fatalf("EditMessage: %v", err)
 	}
-	time.Sleep(30 * time.Millisecond)
+	e.in.bg.Wait()
 	if n := len(e.prev.calls()); n != 1 {
 		t.Fatalf("Preview звали %d раз; ждали 1", n)
 	}
@@ -235,7 +237,7 @@ func TestEditMessage_LateBuildDoesNotOverwrite(t *testing.T) {
 		return wp != nil && wp.URL == "https://two.example/"
 	})
 	close(release) // сборка A приходит последней
-	time.Sleep(50 * time.Millisecond)
+	e.in.bg.Wait()
 	if wp := storedMsg(t, e.s, msg.ID).WebPage; wp == nil || wp.URL != "https://two.example/" {
 		t.Fatalf("поздняя сборка перезаписала карточку: %+v", wp)
 	}
@@ -256,7 +258,7 @@ func TestSend_LateBuildAfterEditDropped(t *testing.T) {
 		t.Fatalf("EditMessage: %v", err)
 	}
 	close(release)
-	time.Sleep(50 * time.Millisecond)
+	e.in.bg.Wait()
 	if storedMsg(t, e.s, msg.ID).WebPage != nil {
 		t.Fatal("сборка отправки вернула карточку после правки без ссылки")
 	}
@@ -271,7 +273,7 @@ func TestWebPageInput_NoWebpage(t *testing.T) {
 	ctx := context.Background()
 	msg, _ := e.in.Send(ctx, SendInput{ChatID: e.chatID, SenderID: 1, Text: "https://a.example/x",
 		WebPage: domain.WebPageInput{NoWebpage: true}})
-	time.Sleep(30 * time.Millisecond)
+	e.in.bg.Wait()
 	if n := len(e.prev.calls()); n != 0 {
 		t.Fatalf("no_webpage: Preview звали %d раз", n)
 	}
@@ -316,7 +318,7 @@ func TestWebPageInput_MediaChoosesURLAndSize(t *testing.T) {
 	if wp == nil || !wp.ForceLargeMedia || wp.ForceSmallMedia {
 		t.Fatalf("размер после правки = %+v", wp)
 	}
-	time.Sleep(30 * time.Millisecond)
+	e.in.bg.Wait()
 	if n := len(e.prev.calls()); n != 1 {
 		t.Fatalf("Preview звали %d раз; ждали 1", n)
 	}
@@ -528,5 +530,60 @@ func TestBotEdit_KeepsAndDropsPreview(t *testing.T) {
 	}
 	if storedMsg(t, e.s, msg.ID).WebPage != nil {
 		t.Fatal("правка бота без ссылки не сняла карточку")
+	}
+}
+
+// Ревью 7: правка без смены ссылки, пока карточка собирается, второй сборки не
+// начинает — идущая перенацеливается и пишет карточку под правку (один поход
+// на сайт, одна картинка в хранилище).
+func TestEditMessage_SameLinkDuringBuildJoinsFlight(t *testing.T) {
+	e := newPreviewEnv(t)
+	store := &fakeMediaStore{}
+	e.in.SetBotHTTP(&fakeOutHTTP{data: pngOf(t, 800, 400), mime: "image/png"})
+	e.in.SetBotMedia(store)
+	e.prev.imageURL = "https://cdn.example/og.png"
+	ctx := context.Background()
+	release := e.prev.hold("https://a.example/x")
+	msg, _ := e.in.Send(ctx, SendInput{ChatID: e.chatID, SenderID: 1, Text: "https://a.example/x"})
+	waitFor(t, func() bool { return len(e.prev.calls()) == 1 })
+	if _, err := e.in.EditMessage(ctx, e.chatID, msg.ID, 1, "та же https://a.example/x", nil); err != nil {
+		t.Fatalf("EditMessage: %v", err)
+	}
+	close(release)
+	e.in.bg.Wait()
+	wp := storedMsg(t, e.s, msg.ID).WebPage
+	if wp == nil || wp.PhotoID == 0 {
+		t.Fatalf("карточка после правки во время сборки = %+v", wp)
+	}
+	if n := len(e.prev.calls()); n != 1 {
+		t.Fatalf("Preview звали %d раз; ждали 1", n)
+	}
+	if n := store.stored(); n != 1 {
+		t.Fatalf("картинок в хранилище %d; ждали 1", n)
+	}
+	if n := countFrames(e.pub, 2, "web_page_update"); n != 1 {
+		t.Fatalf("кадров карточки %d; ждали 1", n)
+	}
+}
+
+// Ревью 6: сборка, ставшая ненужной (ссылку убрали правкой), картинку к нам не
+// сохраняет — в хранилище не остаётся файла без ссылки.
+func TestEditMessage_DroppedBuildStoresNoImage(t *testing.T) {
+	e := newPreviewEnv(t)
+	store := &fakeMediaStore{}
+	e.in.SetBotHTTP(&fakeOutHTTP{data: pngOf(t, 800, 400), mime: "image/png"})
+	e.in.SetBotMedia(store)
+	e.prev.imageURL = "https://cdn.example/og.png"
+	ctx := context.Background()
+	release := e.prev.hold("https://a.example/x")
+	msg, _ := e.in.Send(ctx, SendInput{ChatID: e.chatID, SenderID: 1, Text: "https://a.example/x"})
+	waitFor(t, func() bool { return len(e.prev.calls()) == 1 })
+	if _, err := e.in.EditMessage(ctx, e.chatID, msg.ID, 1, "передумал", nil); err != nil {
+		t.Fatalf("EditMessage: %v", err)
+	}
+	close(release)
+	e.in.bg.Wait()
+	if storedMsg(t, e.s, msg.ID).WebPage != nil || store.stored() != 0 {
+		t.Fatalf("карточка %+v, картинок %d; ждали ни того ни другого", storedMsg(t, e.s, msg.ID).WebPage, store.stored())
 	}
 }
