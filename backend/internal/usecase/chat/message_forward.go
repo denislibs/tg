@@ -33,6 +33,9 @@ type ForwardInput struct {
 	// fromSchedule — публикация отложенной копии: без медленного режима и без
 	// повторного списания платы (В-2), как SendInput.fromSchedule.
 	fromSchedule bool
+	// repeatOccurrence — как SendInput.repeatOccurrence: срок повтора после
+	// первого платит заново.
+	repeatOccurrence bool
 }
 
 // forwardCopy — копия одного исходного сообщения и всё, что нужно её доставке
@@ -225,7 +228,7 @@ func (i *Interactor) deliverForwardCopies(ctx context.Context, in ForwardInput, 
 		for idx, c := range copies {
 			// Плата — за каждое сообщение (allow_paid_stars = цена × число).
 			probe := sendProbe(in.ToChatID, in.SenderID, c)
-			probe.fromSchedule = in.fromSchedule
+			probe.fromSchedule, probe.repeatOccurrence = in.fromSchedule, in.repeatOccurrence
 			ch, e := i.chargePaidMessage(ctx, probe)
 			if e != nil {
 				return e
@@ -345,7 +348,7 @@ func (i *Interactor) checkForwardAllowed(ctx context.Context, in ForwardInput, c
 		}
 	}
 	probe.batchUnits = units
-	probe.fromSchedule = in.fromSchedule
+	probe.fromSchedule, probe.repeatOccurrence = in.fromSchedule, in.repeatOccurrence
 	if err := i.checkTopicOpen(ctx, probe, !broadcast); err != nil {
 		return err
 	}

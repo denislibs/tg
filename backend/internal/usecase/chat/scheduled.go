@@ -179,7 +179,7 @@ func (i *Interactor) enqueueScheduled(ctx context.Context, in SendInput) (domain
 	if err != nil {
 		return domain.Message{}, err
 	}
-	if err := i.checkScheduledSlowmode(ctx, in, sendAt, whenOnline); err != nil {
+	if err := i.checkEnqueueSlowmode(ctx, in, sendAt, whenOnline); err != nil {
 		return domain.Message{}, err
 	}
 	row := scheduledRowOf(in)
@@ -201,29 +201,61 @@ func (i *Interactor) enqueueScheduled(ctx context.Context, in SendInput) (domain
 	return stored[0].Message(), nil
 }
 
+// checkEnqueueSlowmode — медленный режим ВНУТРИ очереди при постановке
+// сообщения. Элементы одного альбома на тот же срок — одна единица, пока
+// альбом не больше maxAlbumSize (как у обычной отправки, checkSendAllowed):
+// иначе общий grouped_id ставил бы сколько угодно медиа на одну минуту.
+func (i *Interactor) checkEnqueueSlowmode(ctx context.Context, in SendInput, sendAt time.Time, whenOnline bool) error {
+	var album func(domain.ScheduledMessage) bool
+	if in.GroupedID != 0 && in.MediaID != nil && !whenOnline {
+		rows, err := i.scheduled.ByGroupedID(ctx, in.ChatID, in.SenderID, in.GroupedID)
+		if err != nil {
+			return err
+		}
+		if len(rows) < maxAlbumSize {
+			album = func(r domain.ScheduledMessage) bool {
+				return r.Params.GroupedID == in.GroupedID && !r.WhenOnline && r.SendAt.Equal(sendAt)
+			}
+		}
+	}
+	return i.checkScheduledSlowmode(ctx, in.ChatID, in.SenderID, sendAt, whenOnline, album)
+}
+
 // checkScheduledSlowmode — медленный режим ВНУТРИ очереди: публикация
-// отложенного его не проходит (В-2), поэтому постановка обязана держать
-// интервал между своими отложенными в чате — иначе сто постановок на одну
-// минуту обходили бы режим. Элементы одного альбома — одна единица.
-func (i *Interactor) checkScheduledSlowmode(ctx context.Context, in SendInput, sendAt time.Time, whenOnline bool) error {
+// отложенного его не проходит (В-2), поэтому постановка, пересылка и перенос
+// срока обязаны держать интервал между отложенными автора в чате — иначе сто
+// постановок на одну минуту обходили бы режим. unit — строки той же единицы
+// (альбом, сама правимая строка): они интервалу не мешают. Сбой чтения —
+// отказ, а не пропуск (как ограничения в checkSendAllowed).
+func (i *Interactor) checkScheduledSlowmode(ctx context.Context, chatID, senderID int64, sendAt time.Time,
+	whenOnline bool, unit func(domain.ScheduledMessage) bool) error {
 	if i.groups == nil || whenOnline {
 		return nil
 	}
-	if m, err := i.groups.GetMember(ctx, in.ChatID, in.SenderID); err != nil ||
-		m.Role == domain.RoleCreator || m.Role == domain.RoleAdmin {
+	m, err := i.groups.GetMember(ctx, chatID, senderID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil // не группа (личка): медленного режима нет
+	}
+	if err != nil {
+		return err
+	}
+	if m.Role == domain.RoleCreator || m.Role == domain.RoleAdmin {
 		return nil
 	}
-	st, err := i.groups.Settings(ctx, in.ChatID)
-	if err != nil || st.SlowmodeSeconds <= 0 {
+	st, err := i.groups.Settings(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	if st.SlowmodeSeconds <= 0 {
 		return nil
 	}
-	rows, err := i.scheduled.ListByChat(ctx, in.ChatID, in.SenderID)
+	rows, err := i.scheduled.ListByChat(ctx, chatID, senderID)
 	if err != nil {
 		return err
 	}
 	window := time.Duration(st.SlowmodeSeconds) * time.Second
 	for _, r := range rows {
-		if r.WhenOnline || (in.GroupedID != 0 && in.MediaID != nil && r.Params.GroupedID == in.GroupedID) {
+		if r.WhenOnline || (unit != nil && unit(r)) {
 			continue
 		}
 		if d := r.SendAt.Sub(sendAt); d < window && d > -window {
@@ -245,6 +277,11 @@ func (i *Interactor) scheduleForward(ctx context.Context, in ForwardInput, srcID
 	}
 	sendAt, whenOnline, repeat, err := i.scheduleTiming(ctx, in.ToChatID, in.SenderID, in.ScheduleDate, in.ScheduleRepeatPeriod)
 	if err != nil {
+		return nil, err
+	}
+	// Пачка в медленном режиме уже отвергнута checkForwardAllowed
+	// (batchUnits); одна копия — одна единица очереди.
+	if err := i.checkScheduledSlowmode(ctx, in.ToChatID, in.SenderID, sendAt, whenOnline, nil); err != nil {
 		return nil, err
 	}
 	rows := make([]domain.ScheduledMessage, len(copies))
@@ -336,6 +373,11 @@ func (i *Interactor) putScheduledOnce(ctx context.Context, chatID, senderID int6
 		}
 		if len(fresh) == 0 {
 			return nil
+		}
+		// Блокировка очереди: параллельные постановки иначе проходили бы
+		// лимит вместе (счёт и вставка — без гонки).
+		if e := i.scheduled.LockQueue(ctx, chatID, senderID); e != nil {
+			return e
 		}
 		n, e := i.scheduled.CountByChat(ctx, chatID, senderID)
 		if e != nil {
@@ -677,6 +719,18 @@ func (i *Interactor) EditScheduled(ctx context.Context, in EditScheduledInput) (
 			return nil, err
 		}
 	}
+	if timeChanged {
+		// Перенос срока держит интервал медленного режима, как постановка;
+		// сама строка и её альбом — одна единица.
+		ids := make(map[int64]bool, len(group))
+		for _, r := range group {
+			ids[r.ID] = true
+		}
+		if err := i.checkScheduledSlowmode(ctx, m.ChatID, m.SenderID, sendAt, whenOnline,
+			func(r domain.ScheduledMessage) bool { return ids[r.ID] }); err != nil {
+			return nil, err
+		}
+	}
 	var out []domain.Update
 	err = i.writeScheduled(ctx, m.SenderID, func(ctx context.Context) ([]scheduledFrame, error) {
 		edited := make([]domain.ScheduledMessage, 0, len(group))
@@ -728,7 +782,9 @@ func (i *Interactor) DeleteScheduled(ctx context.Context, chatID, userID int64, 
 	}
 	var upd *domain.UpdateDeleteScheduledMessages
 	err = i.writeScheduled(ctx, userID, func(ctx context.Context) ([]scheduledFrame, error) {
-		deleted, e := i.scheduled.DeleteIDs(ctx, own)
+		// Строку в аренде публикации снятие пропускает: её снимет сама
+		// публикация кадром с sent_messages.
+		deleted, e := i.scheduled.DeleteUnclaimed(ctx, own)
 		if e != nil || len(deleted) == 0 {
 			return nil, e
 		}
@@ -754,7 +810,9 @@ func (i *Interactor) DeleteScheduled(ctx context.Context, chatID, userID int64, 
 // SendScheduledNow — messages.sendScheduledMessages{peer, id[]}: опубликовать
 // свои отложенные сейчас. Ключ элемента альбома публикует весь альбом (tweb
 // getMidsByMid → sendScheduledMessages, contextMenu.ts:2042-2048). Ответ —
-// updateDeleteScheduledMessages с номерами опубликованных.
+// updateDeleteScheduledMessages с номерами опубликованных. Отказ гейта
+// публикации возвращается ошибкой, а строка остаётся автору (tweb не глушит
+// ошибку sendScheduledMessages, appMessagesManager.ts:12420-12427).
 func (i *Interactor) SendScheduledNow(ctx context.Context, chatID, userID int64, ids []int64) ([]domain.Update, error) {
 	if i.scheduled == nil {
 		return nil, domain.ErrNotFound
@@ -770,7 +828,10 @@ func (i *Interactor) SendScheduledNow(ctx context.Context, chatID, userID int64,
 	if len(rows) == 0 {
 		return nil, domain.ErrNotFound
 	}
-	updates, _ := i.publishScheduled(ctx, chatID, userID, rows)
+	updates, _, err := i.publishScheduled(ctx, chatID, userID, rows, true)
+	if err != nil {
+		return nil, err
+	}
 	return updates, nil
 }
 
@@ -819,7 +880,7 @@ func (i *Interactor) DispatchDueScheduled(ctx context.Context) (int, error) {
 	}
 	sent := 0
 	for _, m := range due {
-		_, n := i.publishScheduled(ctx, m.ChatID, m.SenderID, []domain.ScheduledMessage{m})
+		_, n, _ := i.publishScheduled(ctx, m.ChatID, m.SenderID, []domain.ScheduledMessage{m}, false)
 		sent += n
 	}
 	// «Когда в сети»: без presence-подсистемы просто ждут.
@@ -845,7 +906,7 @@ func (i *Interactor) DispatchDueScheduled(ctx context.Context) (int, error) {
 		if err != nil {
 			return sent, err
 		}
-		_, n := i.publishScheduled(ctx, w.ChatID, w.SenderID, rows)
+		_, n, _ := i.publishScheduled(ctx, w.ChatID, w.SenderID, rows, false)
 		sent += n
 	}
 	return sent, nil
@@ -870,42 +931,88 @@ func (i *Interactor) privatePeer(ctx context.Context, chatID, senderID int64) in
 	return 0
 }
 
+// scheduledLease — аренда строки на публикацию. Истёкшая после сбоя аренда —
+// отступ до следующей попытки воркера.
+const scheduledLease = 2 * time.Minute
+
+// maxPublishAttempts — попыток публикации одного срока; дальше строка
+// снимается как отвергнутая (иначе стабильно падающие строки вечно занимали
+// бы окно Due).
+const maxPublishAttempts = 10
+
 // publishScheduled публикует строки одного автора в одном чате и снимает их
 // из очереди одной транзакцией с кадрами:
 //
 //   - опубликованные — updateDeleteScheduledMessages{messages, sent_messages};
-//   - отвергнутые при публикации (выгнали, закрыли тему, сняли право) —
+//   - отвергнутые при публикации воркером (выгнали, закрыли тему, сняли
+//     право, кончились попытки, снимок не читается) —
 //     updateDeleteScheduledMessages{messages} без sent_messages: строка всё
-//     равно уходит, иначе воркер ретраил бы её вечно, а устройства автора
-//     должны об этом узнать;
+//     равно уходит, а устройства автора должны об этом узнать;
 //   - с повтором (schedule_repeat_period) — перепостановка на следующий срок,
 //     тот же id: updateNewScheduledMessage (правка даты, как «Изменить время»).
 //
+// Каждая строка сперва берётся в аренду (Claim) и перечитывается свежей:
+// снятую, перенесённую или уже публикуемую строку публикация пропускает, а
+// правка и снятие не трогают строку в аренде — без этого они гонялись с
+// публикацией (призрачные кадры, потерянные правки).
+//
+// strict — «Отправить сейчас» автором: первый отказ или сбой возвращается
+// ошибкой, аренда снимается, строка остаётся (уже опубликованные до отказа
+// снимаются как обычно).
+//
 // Возвращает апдейты для ответа ручке (send_now) и число опубликованных.
-func (i *Interactor) publishScheduled(ctx context.Context, chatID, userID int64, rows []domain.ScheduledMessage) ([]domain.Update, int) {
+func (i *Interactor) publishScheduled(ctx context.Context, chatID, userID int64, rows []domain.ScheduledMessage,
+	strict bool) ([]domain.Update, int, error) {
 	var published, rejected []int64
 	seqOf := map[int64]int64{} // ключ отложенного → номер опубликованного
 	var repeats []domain.ScheduledMessage
 	now := time.Now()
 	sent := 0
-	for _, row := range rows {
-		msg, err := i.publishScheduledRow(ctx, row)
-		switch {
-		case err == nil:
-		case publishRefused(err):
-			rejected = append(rejected, row.ID)
+	var failed error
+	for _, snap := range rows {
+		row, ok, err := i.scheduled.Claim(ctx, snap.ID, snap.SendAt, snap.WhenOnline, scheduledLease)
+		if err != nil {
+			log.Printf("scheduled %d: claim: %v", snap.ID, err)
+			if strict {
+				failed = err
+				break
+			}
 			continue
+		}
+		if !ok {
+			continue // сняли, перенесли или публикуют рядом
+		}
+		var msg domain.Message
+		switch {
+		case row.ParamsBroken:
+			log.Printf("scheduled %d: snapshot params unreadable", row.ID)
+			err = domain.ErrInvalid
+		case !strict && row.Attempts > maxPublishAttempts:
+			log.Printf("scheduled %d: gave up after %d attempts", row.ID, row.Attempts-1)
+			err = domain.ErrInvalid
 		default:
-			// Сбой (БД, таймаут, проигранная гонка за ключ публикации) —
-			// строка остаётся до следующего тика: повтор идемпотентен по
-			// ключу публикации, а снять её значило бы потерять сообщение и
-			// списанные при постановке звёзды.
+			msg, err = i.publishScheduledRow(ctx, row)
+		}
+		if err != nil {
+			if strict {
+				if e := i.scheduled.Release(ctx, row.ID); e != nil {
+					log.Printf("scheduled %d: release: %v", row.ID, e)
+				}
+				failed = err
+				break
+			}
+			if publishRefused(err) {
+				rejected = append(rejected, row.ID)
+				continue
+			}
+			// Сбой (БД, таймаут) — строка ждёт истечения аренды: повтор
+			// идемпотентен по ключу публикации, а снять её значило бы
+			// потерять сообщение и списанные при постановке звёзды.
 			log.Printf("scheduled %d: publish: %v", row.ID, err)
 			continue
 		}
 		sent++
 		if row.RepeatPeriod > 0 && !row.WhenOnline {
-			row.SendAt = nextRepeat(row.SendAt, row.RepeatPeriod, now)
 			repeats = append(repeats, row)
 			continue
 		}
@@ -948,12 +1055,19 @@ func (i *Interactor) publishScheduled(ctx context.Context, chatID, userID int64,
 		if e := del(rejected, false); e != nil {
 			return nil, e
 		}
+		// Перепостановка повтора — условно, по опубликованному сроку: только
+		// срок и счётчик вхождений, текст и прочее остаются как в строке.
+		var moved []domain.ScheduledMessage
 		for _, r := range repeats {
-			if e := i.scheduled.Update(ctx, r); e != nil {
+			nr, ok, e := i.scheduled.Reschedule(ctx, r.ID, r.SendAt, nextRepeat(r.SendAt, r.RepeatPeriod, now))
+			if e != nil {
 				return nil, e
 			}
+			if ok {
+				moved = append(moved, nr)
+			}
 		}
-		nf, nu, e := i.scheduledNewFrames(ctx, repeats)
+		nf, nu, e := i.scheduledNewFrames(ctx, moved)
 		if e != nil {
 			return nil, e
 		}
@@ -961,16 +1075,19 @@ func (i *Interactor) publishScheduled(ctx context.Context, chatID, userID int64,
 		return append(frames, nf...), nil
 	})
 	if err != nil {
-		// Сообщения уже опубликованы; строки снимет следующий проход (ключ
-		// публикации не даст дубля).
+		// Сообщения уже опубликованы; строки снимет следующий проход после
+		// истечения аренды (ключ публикации не даст дубля).
 		log.Printf("scheduled: finish publish in chat %d: %v", chatID, err)
+		if failed == nil && strict {
+			failed = err
+		}
 	}
-	return out, sent
+	return out, sent, failed
 }
 
 // publishRefused — отказ публикации по существу (выгнали из чата, сняли
 // право, закрыли тему, блок, исходник пересылки удалён): строка снимается с
-// кадром без sent_messages. Прочие ошибки — сбои, строка ждёт следующего тика.
+// кадром без sent_messages. Прочие ошибки — сбои, строка ждёт следующей попытки.
 func publishRefused(err error) bool {
 	for _, e := range []error{domain.ErrNotFound, domain.ErrForbidden, domain.ErrPrivacy, domain.ErrInvalid,
 		domain.ErrTooLong, domain.ErrPaidRequired, domain.ErrSlowmode} {
@@ -999,14 +1116,28 @@ func nextRepeat(at time.Time, period int, now time.Time) time.Time {
 // срока, поэтому повторный проход воркера (сбой между Send и снятием строки)
 // дубля не создаёт, а каждый срок повтора — своё сообщение. Готовое превью
 // переносится в сообщение (webPage), без повторной сборки.
+//
+// Уже вставленное этим сроком сообщение (сбой между публикацией и снятием
+// строки) отдаётся ДО гейтов: иначе потеря права за это время сняла бы строку
+// как отвергнутую, хотя сообщение в чате есть.
+//
+// Каждое вхождение повтора после первого платит при публикации
+// (repeatOccurrence): первое оплачено при постановке.
 func (i *Interactor) publishScheduledRow(ctx context.Context, row domain.ScheduledMessage) (domain.Message, error) {
+	key := publishKey(row)
+	if ex, err := i.msgs.FindByClientMsgID(ctx, row.ChatID, row.SenderID, key); err == nil {
+		return ex, nil
+	} else if !errors.Is(err, domain.ErrNotFound) {
+		return domain.Message{}, err
+	}
 	if row.Params.Fwd != nil {
-		return i.publishScheduledCopy(ctx, row)
+		return i.publishScheduledCopy(ctx, row, key)
 	}
 	in := sendInputOf(row)
 	in.ScheduleRepeatPeriod = 0
-	in.ClientMsgID = publishKey(row)
+	in.ClientMsgID = key
 	in.fromSchedule = true
+	in.repeatOccurrence = row.Occurrence > 0
 	in.webPage = row.WebPage
 	return i.Send(ctx, in)
 }
@@ -1021,21 +1152,13 @@ func publishKey(row domain.ScheduledMessage) string {
 // же deliverForwardCopies, что и обычная пересылка (атрибуция, платное
 // предложение, счётчик пересылок исходника, зеркало поста). Гейты — членство
 // и право писать, без медленного режима и без повторной платы (В-2).
-func (i *Interactor) publishScheduledCopy(ctx context.Context, row domain.ScheduledMessage) (domain.Message, error) {
+func (i *Interactor) publishScheduledCopy(ctx context.Context, row domain.ScheduledMessage, key string) (domain.Message, error) {
 	ok, err := i.chats.IsMember(ctx, row.ChatID, row.SenderID)
 	if err != nil {
 		return domain.Message{}, err
 	}
 	if !ok {
 		return domain.Message{}, domain.ErrNotFound
-	}
-	// Ключ публикации — как у Send (publishScheduledRow): повторный проход
-	// (send_now рядом с тиком, сбой после вставки) отдаёт уже вставленную копию.
-	key := publishKey(row)
-	if ex, err := i.msgs.FindByClientMsgID(ctx, row.ChatID, row.SenderID, key); err == nil {
-		return ex, nil
-	} else if !errors.Is(err, domain.ErrNotFound) {
-		return domain.Message{}, err
 	}
 	f := row.Params.Fwd
 	c := row.Message()
@@ -1050,7 +1173,7 @@ func (i *Interactor) publishScheduledCopy(ctx context.Context, row domain.Schedu
 	broadcast := typ == domain.ChatTypeChannel
 	in := ForwardInput{
 		ToChatID: row.ChatID, SenderID: row.SenderID, Silent: row.Params.Silent,
-		ThreadRootID: row.Params.ThreadRootID, fromSchedule: true,
+		ThreadRootID: row.Params.ThreadRootID, fromSchedule: true, repeatOccurrence: row.Occurrence > 0,
 	}
 	if err := i.checkForwardAllowed(ctx, in, []domain.Message{c}, 1, broadcast); err != nil {
 		return domain.Message{}, err

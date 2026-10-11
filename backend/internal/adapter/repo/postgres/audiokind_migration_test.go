@@ -99,6 +99,10 @@ func TestMigration0132_AudioDocumentsBecomeAudio(t *testing.T) {
 		t.Errorf("scheduled: type = %q, want audio", schedType)
 	}
 
+	// Вкладки читает репозиторий — колонками ТЕКУЩЕЙ схемы: доводим базу до конца.
+	if err := storepostgres.Migrate(url); err != nil {
+		t.Fatalf("накат до конца: %v", err)
+	}
 	counters, err := msgs.SearchCounters(ctx, chatID, a, []string{"files", "music", "voice"}, nil)
 	if err != nil {
 		t.Fatalf("counters: %v", err)

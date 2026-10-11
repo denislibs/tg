@@ -27,8 +27,9 @@ func TestMigration0168_OldScheduledRowsRead(t *testing.T) {
 		 VALUES ($1,$2,'text','старое',now() + interval '1 hour', false) RETURNING id`, chatID, a).Scan(&oldID); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	if err := storepostgres.MigrateUpTo(url, 168); err != nil {
-		t.Fatalf("0168: %v", err)
+	// До конца: репозиторий читает колонки текущей схемы (0169 и далее).
+	if err := storepostgres.Migrate(url); err != nil {
+		t.Fatalf("0168+: %v", err)
 	}
 	r := NewScheduledRepo(pool)
 	m, err := r.ByID(ctx, oldID)
@@ -109,5 +110,78 @@ func TestScheduledRepo_SnapshotIdempotencyAlbumWaits(t *testing.T) {
 	}
 	if again, _ := r.DeleteIDs(ctx, []int64{first.ID}); len(again) != 0 {
 		t.Fatalf("повторное снятие вернуло %v", again)
+	}
+}
+
+// Аренда публикации (0169): правка и снятие автором не трогают строку в
+// аренде, второй публикатор её не берёт, перепостановка условна по сроку,
+// Due её не отдаёт; битый снимок помечается, а не глушится.
+func TestScheduledRepo_ClaimRescheduleUnclaimed(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+79990001690")
+	b := seedUser(t, pool, "+79990001691")
+	chatID := seedPrivateChat(t, pool, a, b)
+	r := NewScheduledRepo(pool)
+	at := time.Now().Add(-time.Minute).Truncate(time.Microsecond)
+	m, _, err := r.Create(ctx, domain.ScheduledMessage{ChatID: chatID, SenderID: a, Type: "text", Text: "x", SendAt: at, RepeatPeriod: 86400})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := r.Claim(ctx, m.ID, at.Add(time.Second), false, time.Minute); err != nil || ok {
+		t.Fatalf("claim по чужому сроку: ok=%v err=%v", ok, err)
+	}
+	got, ok, err := r.Claim(ctx, m.ID, at, false, time.Minute)
+	if err != nil || !ok || got.Attempts != 1 {
+		t.Fatalf("claim: ok=%v err=%v attempts=%d", ok, err, got.Attempts)
+	}
+	if _, ok, _ := r.Claim(ctx, m.ID, at, false, time.Minute); ok {
+		t.Fatal("вторая аренда той же строки")
+	}
+	if due, _ := r.Due(ctx, time.Now(), 10); len(due) != 0 {
+		t.Fatalf("Due отдал строку в аренде: %d", len(due))
+	}
+	m.Text = "правка"
+	if err := r.Update(ctx, m); err != domain.ErrNotFound {
+		t.Fatalf("правка строки в аренде: %v, want ErrNotFound", err)
+	}
+	if del, _ := r.DeleteUnclaimed(ctx, []int64{m.ID}); len(del) != 0 {
+		t.Fatal("снятие автором строки в аренде")
+	}
+	if _, ok, _ := r.Reschedule(ctx, m.ID, at.Add(time.Second), at.Add(24*time.Hour)); ok {
+		t.Fatal("перепостановка по чужому сроку")
+	}
+	next, ok, err := r.Reschedule(ctx, m.ID, at, at.Add(24*time.Hour))
+	if err != nil || !ok || next.Occurrence != 1 || next.Attempts != 0 || next.Text != "x" {
+		t.Fatalf("перепостановка: %+v ok=%v err=%v", next, ok, err)
+	}
+	if err := r.Update(ctx, next); err != nil {
+		t.Fatalf("правка после снятия аренды: %v", err)
+	}
+	if _, ok, _ := r.Claim(ctx, m.ID, next.SendAt, false, time.Minute); !ok {
+		t.Fatal("claim после перепостановки")
+	}
+	if err := r.Release(ctx, m.ID); err != nil {
+		t.Fatal(err)
+	}
+	if del, _ := r.DeleteUnclaimed(ctx, []int64{m.ID}); len(del) != 1 {
+		t.Fatal("снятие после Release")
+	}
+	if err := r.Update(ctx, next); err != domain.ErrNotFound {
+		t.Fatalf("правка снятой строки: %v, want ErrNotFound", err)
+	}
+	if err := NewTxManager(pool).WithinTx(ctx, func(ctx context.Context) error {
+		return r.LockQueue(ctx, chatID, a)
+	}); err != nil {
+		t.Fatalf("LockQueue: %v", err)
+	}
+	var broken int64
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO scheduled_messages (chat_id, sender_id, type, text, send_at, params)
+		 VALUES ($1,$2,'text','b',now(), '{"grouped_id":"не число"}') RETURNING id`, chatID, a).Scan(&broken); err != nil {
+		t.Fatal(err)
+	}
+	if bm, err := r.ByID(ctx, broken); err != nil || !bm.ParamsBroken {
+		t.Fatalf("битый снимок: %+v err=%v", bm, err)
 	}
 }
