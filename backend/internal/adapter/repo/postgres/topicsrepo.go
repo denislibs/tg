@@ -403,6 +403,48 @@ func (r *TopicsRepo) ClearThreadMentions(ctx context.Context, chatID, userID, ro
 	return int(tag.RowsAffected()), err
 }
 
+// ApplyThreadReadToGroup — прочтение треда ВНЕ форума (комментарии к посту,
+// тред группы) правит и диалог группы, как tweb на месте: у треда вне форума
+// курсор сведён с горизонтом группы, и onUpdateReadHistory правит диалог
+// группы (appMessagesManager.ts:10814-10816, 5107-5131):
+//   - горизонт группы — read_max_id (:10918-10920; вниз не идёт: tweb читает
+//     только выше сведённого курсора, :9133-9156);
+//   - unread_count минус чужие видимые сообщения треда в (merged, readMaxID]
+//     (:10846-10881); readMaxID >= последнего номера или merged = 0 → 0
+//     (:10924-10944), не ниже 0;
+//   - счётчик стал 0 — гаснут и упоминания группы (:10941-10943).
+//
+// merged — сведённый курсор до прочтения (max(горизонт группы, треда)),
+// lastSeq — последний номер чата. Не участнику (гостю) — ничего.
+func (r *TopicsRepo) ApplyThreadReadToGroup(ctx context.Context, chatID, userID, root, merged, readMaxID, lastSeq int64) error {
+	q := querier(ctx, r.pool)
+	var unread int
+	err := q.QueryRow(ctx, `
+		UPDATE chat_members cm SET
+		       last_read_seq = GREATEST(cm.last_read_seq, $5),
+		       unread_count = CASE WHEN $5::bigint >= $6::bigint OR $4::bigint = 0 THEN 0
+		         ELSE GREATEST(0, cm.unread_count - (
+		           SELECT count(*) FROM messages m
+		            WHERE m.chat_id = $1 AND `+threadFilter("m", "$3", &root, false)+`
+		              AND m.seq > $4 AND m.seq <= $5 AND m.sender_id <> $2
+		              AND `+messageVisibleTo("m", "$2")+`)) END
+		 WHERE cm.chat_id = $1 AND cm.user_id = $2
+		 RETURNING cm.unread_count`, chatID, userID, root, merged, readMaxID, lastSeq).Scan(&unread)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil // не участник
+	}
+	if err != nil || unread > 0 {
+		return err
+	}
+	if _, err := q.Exec(ctx,
+		`UPDATE message_mentions SET unread = false WHERE chat_id = $1 AND user_id = $2 AND unread`, chatID, userID); err != nil {
+		return err
+	}
+	_, err = q.Exec(ctx,
+		`UPDATE chat_members SET unread_mentions_count = 0 WHERE chat_id = $1 AND user_id = $2`, chatID, userID)
+	return err
+}
+
 // forumUnreadSQL — непрочитанное участника viewer в форуме chat: сумма по
 // темам (В-8 спецификации). У каждой темы свой горизонт — max(горизонт чата
 // readSeq, запись темы), и считается она по своему диапазону: обычная тема —

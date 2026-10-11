@@ -182,7 +182,9 @@ func (i *Interactor) topicByNumber(ctx context.Context, chatID, number int64) (d
 // ReadDiscussion — порт messages.readDiscussion (tweb readHistory с threadId,
 // appMessagesManager.ts:9186-9210): тред number прочитан до readMaxID. Тред —
 // тема форума (General — 1), тред комментариев (номер зеркала) или тред
-// сообщения в обычной группе. Двигается горизонт ТРЕДА, горизонт чата — нет.
+// сообщения в обычной группе. Двигается горизонт ТРЕДА; у треда вне форума —
+// и диалог группы, как tweb на месте (курсор сведён с группой,
+// ApplyThreadReadToGroup), у темы форума горизонт чата не трогается.
 //
 // Эффект как у tweb onUpdateReadHistory (:10795-10990): гаснет непрочитанное
 // этой темы (горизонт треда), снимаются упоминания треда до readMaxID — и в
@@ -204,9 +206,11 @@ func (i *Interactor) ReadDiscussion(ctx context.Context, chatID, number, userID,
 	if err != nil {
 		return err
 	}
-	if last, e := i.chats.MaxSeq(ctx, chatID); e != nil {
-		return e
-	} else if readMaxID > last {
+	last, err := i.chats.MaxSeq(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	if readMaxID > last {
 		readMaxID = last
 	}
 	addr, err := i.peerAddress(ctx, chatID)
@@ -241,6 +245,10 @@ func (i *Interactor) ReadDiscussion(ctx context.Context, chatID, number, userID,
 			if _, e := i.topics.RecountForumUnread(ctx, chatID, userID); e != nil {
 				return e
 			}
+		} else if e := i.topics.ApplyThreadReadToGroup(ctx, chatID, userID, th.filterRoot, old, readMaxID, last); e != nil {
+			// Тред вне форума: курсор сведён с группой, и tweb правит её диалог
+			// (горизонт, счётчик, упоминания) — appMessagesManager.ts:10814-10816.
+			return e
 		}
 		// Журнал — в той же транзакции, что горизонт (как MarkRead): иначе
 		// сбой после коммита оставил бы другие устройства без кадра, а повтор

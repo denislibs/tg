@@ -147,3 +147,43 @@ func TestOutboxRaised(t *testing.T) {
 		t.Fatalf("один читатель: %v", got)
 	}
 }
+
+// Тред вне форума правит и диалог группы (курсор сведён с группой, tweb
+// appMessagesManager.ts:10814-10816); тема форума — нет.
+func TestReadDiscussion_NonForumThreadTouchesGroup(t *testing.T) {
+	in, _, s, id := gateGroup(t)
+	ft := newFakeTopicRepo()
+	in.SetTopics(ft)
+	in.chats = maxSeqChats{in.chats, s}
+	ctx := context.Background()
+	root, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 8, Text: "корень"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reply, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 8, Text: "в треде", ThreadRootID: &root.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := in.ReadDiscussion(ctx, id, root.Seq, 7, reply.Seq); err != nil {
+		t.Fatal(err)
+	}
+	if len(ft.groupReads) != 1 || ft.groupReads[0] != [4]int64{root.ID, 0, reply.Seq, reply.Seq} {
+		t.Fatalf("правка группы = %v; ждали [root merged=0 read=%d last=%d]", ft.groupReads, reply.Seq, reply.Seq)
+	}
+	if ft.forumRecounts != 0 {
+		t.Fatal("вне форума пересчитан форум")
+	}
+
+	// Тема форума группу не трогает.
+	fin, fft, _, fid, froot := readDiscussionForum(t)
+	m, err := fin.Send(ctx, SendInput{ChatID: fid, SenderID: 8, Text: "в теме", ThreadRootID: &froot.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fin.ReadDiscussion(ctx, fid, froot.Seq, 7, m.Seq); err != nil {
+		t.Fatal(err)
+	}
+	if len(fft.groupReads) != 0 {
+		t.Fatalf("тема форума правит диалог группы: %v", fft.groupReads)
+	}
+}
