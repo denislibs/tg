@@ -183,6 +183,22 @@ export function isForumTopicMuted(topic: Pick<ForumTopic, 'notify_settings'>, fo
 }
 
 /**
+ * Непрочитанное форума — `getForumUnreadCount` (`dialogs.ts:2229-2258`):
+ * сколько тем из первых двадцати непрочитаны. Настройки уведомлений этих тем
+ * едут рядом — `hasUnmuted` считает вкладка (расхождение 4 хранилища тем).
+ */
+export type ForumUnreadCount = { count: number; unreadNotifySettings: PeerNotifySettings[] }
+
+/**
+ * `hasUnmuted` непрочитанного форума (`dialogs.ts:2252-2255`): есть ли среди
+ * непрочитанных тем незаглушённая — у темы своя настройка, без неё — форума.
+ * У счётчиков папок и бейджей это и есть «форум не заглушён» (`dialogs.ts:931-934`).
+ */
+export function forumHasUnmuted(unread: ForumUnreadCount, forumMuted: () => boolean): boolean {
+  return unread.unreadNotifySettings.some((notify_settings) => !isForumTopicMuted({ notify_settings }, forumMuted))
+}
+
+/**
  * Операции хранилища тем для вкладок — события tweb, которыми хранилище
  * говорит со списком тем (`components/autonomousDialogList/forumTopics.ts`):
  *  • `update` — `dialogs_multiupdate` с `topics` (`dialogs.ts:1360-1438`);
@@ -191,7 +207,8 @@ export function isForumTopicMuted(topic: Pick<ForumTopic, 'notify_settings'>, fo
  *  • `drop` — `dialog_drop` темы;
  *  • `forumUnread` — `dialog_unread` САМОГО ФОРУМА после изменения его тем
  *    (`processChangedUnreadOrUnmuted`, `dialogs.ts:968-985`): строка форума в
- *    списке чатов пересчитывает бейдж (О-71);
+ *    списке чатов пересчитывает бейдж (О-71), счётчики папок берут `unread`
+ *    (`getForumUnreadCount`; нет — темы не загружены);
  *  • `edit` — `peer_title_edit`/`avatar_update` с `threadId`
  *    (`processTopicUpdate`, `dialogs.ts:1781-1797`): тема едет самой
  *    операцией — её слушают модульные реестры `PeerTitle` и аватарок.
@@ -201,5 +218,5 @@ export type ForumTopicOp =
   | { op: 'unread'; topic: ForumTopic }
   | { op: 'notify'; topic: ForumTopic }
   | { op: 'drop'; peerId: PeerId; id: number }
-  | { op: 'forumUnread'; peerId: PeerId }
+  | { op: 'forumUnread'; peerId: PeerId; unread?: ForumUnreadCount }
   | { op: 'edit'; topic: ForumTopic; title: boolean; icon: boolean }

@@ -36,7 +36,7 @@ import type { Chat, UserReal } from '../peers/peer'
 import type { MyMessage, RawMyMessage } from '../models'
 import { getMessageThreadId } from '../models'
 import { isForum } from '../peers/predicates'
-import { MESSAGE_ID_OFFSET, getServerMessageId } from '../history/messageId'
+import { MESSAGE_ID_OFFSET } from '../history/messageId'
 import type { PeerNotifySettings } from '../dialogs/notifySettings'
 import isMentionUnread from '../messages/isMentionUnread'
 import getUnreadReactions from '../messages/getUnreadReactions'
@@ -47,6 +47,7 @@ import {
   type ForumTopic,
   type ForumTopicOp,
   type ForumTopicWire,
+  type ForumUnreadCount,
 } from '../dialogs/forumTopic'
 
 /** `messages.forumTopics` — контейнер списка тем. */
@@ -62,12 +63,7 @@ export interface MessagesForumTopics {
 /** Ответ `getForumTopics` — форма страницы списка (`DialogsPage`). */
 export type ForumTopicsPage = { dialogs: ForumTopic[]; count: number; isEnd: boolean }
 
-/**
- * Непрочитанное форума — `getForumUnreadCount` (`dialogs.ts:2229-2258`):
- * сколько тем из первых двадцати непрочитаны. Настройки уведомлений этих тем
- * едут рядом — `hasUnmuted` считает вкладка (расхождение 4).
- */
-export type ForumUnreadCount = { count: number; unreadNotifySettings: PeerNotifySettings[] }
+export type { ForumUnreadCount }
 
 /** Прочтение треда — `updateReadChannelDiscussionInbox/Outbox` в клиентском пространстве. */
 export type ReadDiscussion = { peerId: PeerId; topicId: number; maxId: number; out: boolean }
@@ -77,14 +73,12 @@ type TopicsCache = {
   pinnedOrder: number[]
   loaded: boolean
   loadPromise?: Promise<ForumTopic[]>
-  /** `historyStorage.triedToReadMaxId` треда темы (`appMessagesManager.ts:9165-9170`) */
-  triedToReadMaxId: Map<number, number>
   /** `deletedTopics` (`dialogs.ts:109`, `:2066-2068`, `:2084-2096`) — расхождение 5 */
   deletedTopics: Set<number>
 }
 
 export interface ForumTopicsDeps {
-  rest: Pick<RestClient, 'get' | 'post'>
+  rest: Pick<RestClient, 'get'>
   peers: { saveApiPeers(o: { chats?: Chat[]; users?: UserReal[] }): void; cachedPeer(peerId: PeerId): unknown }
   messages: {
     saveApiMessages(list: RawMyMessage[] | undefined): Promise<unknown>
@@ -109,7 +103,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
   /** tweb `getForumTopicsCache` (`dialogs.ts:2032-2047`) */
   function getCache(peerId: PeerId): TopicsCache {
     let cache = caches.get(peerId)
-    if (!cache) caches.set(peerId, cache = { topics: new Map(), pinnedOrder: [], loaded: false, triedToReadMaxId: new Map(), deletedTopics: new Set() })
+    if (!cache) caches.set(peerId, cache = { topics: new Map(), pinnedOrder: [], loaded: false, deletedTopics: new Set() })
     return cache
   }
 
@@ -171,7 +165,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
       }
       cache.loaded = true
       const ops: ForumTopicOp[] = dropped.map((id) => ({ op: 'drop', peerId, id }))
-      ops.push({ op: 'update', peerId, topics: sorted(cache) }, { op: 'forumUnread', peerId })
+      ops.push({ op: 'update', peerId, topics: sorted(cache) }, forumUnreadOp(peerId))
       onOps(ops)
       return sorted(cache)
     })()
@@ -194,6 +188,18 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
     return topic
   }
 
+  /** tweb `getForumUnreadCount` (`dialogs.ts:2229-2258`) по загруженному списку. */
+  function forumUnread(cache: TopicsCache): ForumUnreadCount {
+    const top = sorted(cache).slice(0, FORUM_UNREAD_LIMIT).filter((t) => t.unread_count)
+    return { count: top.length, unreadNotifySettings: top.map((t) => t.notify_settings) }
+  }
+
+  /** `forumUnread` со значением — счётчикам папок вкладки (`core/dialogs/forumUnreadMirror.ts`). */
+  function forumUnreadOp(peerId: PeerId): ForumTopicOp {
+    const cache = caches.get(peerId)
+    return cache?.loaded ? { op: 'forumUnread', peerId, unread: forumUnread(cache) } : { op: 'forumUnread', peerId }
+  }
+
   /** Объявить изменённую тему (`scheduleHandleNewDialogs` → `dialogs_multiupdate`). */
   function emitUpdate(topic: ForumTopic, extra: ForumTopicOp[] = []): void {
     onOps([{ op: 'update', peerId: topic.peerId, topics: [topic] }, ...extra])
@@ -201,7 +207,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
 
   /** `dialog_unread` темы + пересчёт бейджа форума (`dialogs.ts:968-985`). */
   const unreadOps = (topic: ForumTopic): ForumTopicOp[] =>
-    [{ op: 'unread', topic }, { op: 'forumUnread', peerId: topic.peerId }]
+    [{ op: 'unread', topic }, forumUnreadOp(topic.peerId)]
 
   /**
    * `handleDialogTogglePinned` (`dialogs.ts:2354-2366`) с
@@ -223,7 +229,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
 
   /**
    * Прочтение треда темы — ветка темы `onUpdateReadHistory`
-   * (`appMessagesManager.ts:10795-10990`), волна 2 Ф-5 (`readDiscussion`).
+   * (`appMessagesManager.ts:10795-10990`).
    * Перебираются сообщения треда, которые знает хранилище сообщений, между
    * прежним и новым горизонтом; упоминания уходят и из бейджа форума
    * (`:10969-10980`). Ничего не нашли, а тема всё ещё непрочитана —
@@ -234,12 +240,9 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
    * горизонту) и `notification_cancel` (`:10900` — события снятия уведомления
    * вкладки у нас нет).
    *
-   * Сегодня его зовёт своё прочтение (`readHistory` ниже — местный
-   * `processLocalUpdate`, `:9203-9209`). Кадры `updateReadChannelDiscussionInbox/
-   * Outbox` с других устройств производит БЭК-2 (волна 2 Ф-5): подключение —
-   * строкой в `workerCore.ts::dispatch` вместе с конструкторами в реестре
-   * (`updateCatalog.ts`), `maxId`/`topicId` — через `generateMessageId`, пир —
-   * `toPeerId(channel_id, true)`.
+   * Зовут своё прочтение (`threadReads.readHistory` — местный
+   * `processLocalUpdate`, `:9203-9209`) и кадры `updateReadChannelDiscussionInbox/
+   * Outbox` (`workerCore.ts::dispatch` → `threadReads.applyReadDiscussion`).
    */
   function applyReadDiscussion({ peerId, topicId, maxId, out }: ReadDiscussion): void {
     const topic = caches.get(peerId)?.topics.get(topicId)
@@ -314,8 +317,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
         void load(peerId).catch(() => {})
         return undefined
       }
-      const top = sorted(cache).slice(0, FORUM_UNREAD_LIMIT).filter((t) => t.unread_count)
-      return { count: top.length, unreadNotifySettings: top.map((t) => t.notify_settings) }
+      return forumUnread(cache)
     },
 
     /**
@@ -345,7 +347,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
           if (created) {
             cache.deletedTopics.delete(created.id)
             saveTopic(cache, created)
-            emitUpdate(created, [{ op: 'forumUnread', peerId }])
+            emitUpdate(created, [forumUnreadOp(peerId)])
           }
         } else {
           void reloadForTopic(peerId, threadId).catch(() => {})
@@ -417,48 +419,10 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
       const topic = caches.get(peerId)?.topics.get(topicId)
       if (!topic) return
       topic.notify_settings = settings
-      onOps([{ op: 'notify', topic }, { op: 'forumUnread', peerId }])
+      onOps([{ op: 'notify', topic }, forumUnreadOp(peerId)])
     },
 
     applyReadDiscussion,
-
-    /**
-     * Прочтение треда ТЕМЫ — ветка `threadId` у `readHistory`
-     * (`appMessagesManager.ts:9107-9270`, `:9186-9201`): местный
-     * `updateReadChannelDiscussionInbox` применяется сразу (`applyReadDiscussion`),
-     * сервер узнаёт горизонт одним вызовом на рубеж (`triedToReadMaxId`,
-     * `:9165-9170`, `:9248-9252`).
-     *
-     * Гейт «не прочитано ли уже» — `:9133-9157`: известная тема без
-     * непрочитанного и с горизонтом не ниже `maxId` — ничего не делать. Тему,
-     * которой нет в кэше (список ещё не грузили), читаем: у оригинала её
-     * подгружает открытие треда (`getForumTopicOrReload`), у нас без сервера
-     * бейдж остался бы гореть.
-     *
-     * ТРАНСПОРТ ВРЕМЕННЫЙ: `POST /chats/{p}/topics/{n}/read {up_to_seq}` вместо
-     * `messages.readDiscussion{peer, msg_id, read_max_id}` — в волне 2 Ф-5
-     * (БЭК-2/КЛ-2) заменяется на `readDiscussion`, ручку тем сервер удаляет.
-     *
-     * @returns `false` — не тема: пир не форум или список загружен, а темы с
-     *   этим номером нет (тред комментариев в форуме-обсуждении) — такой тред
-     *   до волны 2 читается горизонтом чата; `true` — тема прочитана.
-     */
-    readHistory(peerId: PeerId, threadId: number, maxId: number): boolean {
-      if (!isForumPeer(peerId) || !maxId) return false
-      const cache = getCache(peerId)
-      const topic = cache.topics.get(threadId)
-      if (!topic && cache.loaded) return false
-      if (topic && !topic.unread_count && maxId <= topic.read_inbox_max_id) return true
-      const tried = cache.triedToReadMaxId.get(threadId) ?? 0
-      if (topic) applyReadDiscussion({ peerId, topicId: threadId, maxId, out: false })
-      if (tried >= maxId) return true
-      cache.triedToReadMaxId.set(threadId, maxId)
-      void rest.post(`/chats/${peerId}/topics/${getServerMessageId(threadId)}/read`, { up_to_seq: getServerMessageId(maxId) }).catch(() => {
-        // отказ — рубеж снова «не отправлен», следующий круг ленты повторит
-        if (cache.triedToReadMaxId.get(threadId) === maxId) cache.triedToReadMaxId.set(threadId, tried)
-      })
-      return true
-    },
 
     /**
      * Удаление сообщений — ветка темы `onUpdateDeleteMessages`
@@ -503,7 +467,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
         if (list.some((m) => m.id === topic.top_message)) reload = true
       }
       if (ops.length) {
-        ops.push({ op: 'forumUnread', peerId })
+        ops.push(forumUnreadOp(peerId))
         onOps(ops)
       }
       if (reload) void load(peerId).catch(() => {})
@@ -517,7 +481,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
      */
     onChatToggleForum(peerId: PeerId, enabled: boolean): void {
       if (!enabled) caches.delete(peerId)
-      onOps([{ op: 'forumUnread', peerId }])
+      onOps([forumUnreadOp(peerId)])
     },
 
     /** Смена сессии — всё хранилище в памяти (у оригинала — новый воркер). */

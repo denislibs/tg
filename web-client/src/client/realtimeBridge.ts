@@ -2,6 +2,7 @@
 // Точка сборки realtime: поднимает «насос» smp → rootScope и регистрирует подписчиков
 // шины. Сам мост больше не содержит обработчиков событий — они живут в модулях-
 // подписчиках (storeProjection / soundSubscriber / notificationSubscriber).
+import { registerForumUnreadMirror } from '../core/dialogs/forumUnreadMirror'
 import { startClient } from './bootstrap'
 import { RT } from '../core/realtime/events'
 import rootScope from '@lib/rootScope'
@@ -72,6 +73,7 @@ export function startRealtime(): void {
   registerNotificationSubscriber()
   registerCallSubscriber()
   registerRefetchSubscriber(managers)
+  registerForumUnreadMirror((peerId) => managers.forumTopics.getForumUnreadCount(peerId))
 
   void managers.realtime.start()
 }
