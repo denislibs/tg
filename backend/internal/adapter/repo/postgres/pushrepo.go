@@ -63,7 +63,7 @@ func (r *PushRepo) DeleteByEndpoint(ctx context.Context, endpoint string) error 
 }
 
 // ShouldNotify — гейт пуша одним запросом: мьют чата (сроком), мьют темы
-// (сроком, topic_user_state.muted_until) и глобальные настройки по типу чата (notify_settings, у
+// (topic_user_state.muted_until: NULL — наследует чат, иначе решает сам) и глобальные настройки по типу чата (notify_settings, у
 // не сохранявших — дефолты). Упоминание или ответ получателю (mentioned)
 // пробивает любой из мьютов — как у Telegram (tweb appMessagesManager
 // handleNotifications: `muted && !mentioned` → не уведомлять). Не участник →
@@ -101,10 +101,11 @@ func (r *PushRepo) ShouldNotify(ctx context.Context, chatID, userID, topicRootID
 		ns.Channels = domain.NotifyTypeSettings{Muted: *cm, Preview: *cp}
 	}
 	t := ns.ForChatType(chatType)
-	// Мьют темы — тоже СРОК (account.updateNotifySettings с notifyForumTopic,
-	// tweb appMessagesManager.ts:11962-11981) и тот же предикат, что у чата.
-	muted := peerNotifySettings(muteUntil, nil, nil, now).Muted(now) || t.Muted ||
-		peerNotifySettings(topicMuteUntil, nil, nil, now).Muted(now)
+	// Мьют темы — три состояния (domain.TopicMuted): своя настройка темы решает
+	// сама, даже против заглушённого чата; нет её — мьют чата или типа чата
+	// (tweb isPeerLocalMuted, appNotificationsManager.ts:398-409).
+	chatMuted := peerNotifySettings(muteUntil, nil, nil, now).Muted(now) || t.Muted
+	muted := domain.TopicMuted(topicMuteUntil, chatMuted, now)
 	if muted && !mentioned {
 		return false, false, nil
 	}

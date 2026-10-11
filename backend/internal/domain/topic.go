@@ -77,19 +77,40 @@ type TopicRow struct {
 	// UnreadReactions — сообщения зрителя в теме с непрочитанной реакцией
 	// (unread_reactions_count; тот же предикат, что у чата, миграция 0160).
 	UnreadReactions int
-	// MuteUntil — срок мьюта темы этим пользователем (topic_user_state.muted_until);
-	// nil — переопределения нет.
+	// MuteUntil — настройка уведомлений темы этим пользователем
+	// (topic_user_state.muted_until), ТРИ состояния: nil — тему не трогал,
+	// действует мьют чата; time.Unix(0) — явно «уведомлять»; срок — заглушена
+	// до него (tweb appNotificationsManager.ts:398-405 наследует только при
+	// mute_until === undefined).
 	MuteUntil *time.Time
 }
 
 // TopicNotifySettings — настройки уведомлений темы для провода (строка списка
-// и кадр мьюта): мьют — СРОК, тот же предикат, что у диалога. Срок в прошлом
-// и отсутствие срока — явный MuteUntilNever: «замьючена ли» тема отвечает
-// сама строка, переопределение ей не нужно.
+// и кадр мьюта). Три состояния, как у tweb (appNotificationsManager.ts:
+// 398-405): nil — пустой peerNotifySettings без mute_until (тема наследует
+// мьют чата, так же tweb рисует свежую тему, appMessagesManager.ts:10208);
+// срок в прошлом или явное «уведомлять» — MuteUntilNever (истёкший срок,
+// как у диалога, отдаётся нулём — notifyscan.go); иначе — срок.
 func TopicNotifySettings(until *time.Time, now time.Time) PeerNotifySettings {
+	s := PeerNotifySettings{Underscore: PeerNotifySettingsTag}
+	if until == nil {
+		return s
+	}
 	v := MuteUntilNever
-	if until != nil && until.After(now) {
+	if until.After(now) {
 		v = unixSeconds(*until)
 	}
-	return PeerNotifySettings{Underscore: PeerNotifySettingsTag, MuteUntil: &v}
+	s.MuteUntil = &v
+	return s
+}
+
+// TopicMuted — заглушена ли тема В ЭТОТ МОМЕНТ с учётом наследования: своя
+// настройка темы решает сама (tweb isPeerLocalMuted с threadId,
+// respectType: false — тип чата не смотрится), иначе — chatMuted (мьют чата
+// или типа чата, appNotificationsManager.ts:398-409).
+func TopicMuted(topicUntil *time.Time, chatMuted bool, now time.Time) bool {
+	if topicUntil != nil {
+		return topicUntil.After(now)
+	}
+	return chatMuted
 }

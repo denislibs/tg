@@ -847,8 +847,10 @@ type TopicRepo interface {
 	ListByChat(ctx context.Context, chatID, userID int64) ([]domain.TopicRow, error)
 	// SetTopicRead поднимает last_read_seq темы до max(old, upToSeq) (UPSERT).
 	SetTopicRead(ctx context.Context, chatID, rootMsgID, userID, upToSeq int64) error
-	// SetTopicMuteUntil ставит срок мьюта темы (UPSERT); nil — мьют снят.
-	SetTopicMuteUntil(ctx context.Context, chatID, rootMsgID, userID int64, until *time.Time) error
+	// SetTopicMuteUntil пишет явную настройку уведомлений темы (UPSERT):
+	// срок мьюта, time.Unix(0) — «уведомлять». NULL («наследовать чат») —
+	// только у темы, которую пользователь не трогал.
+	SetTopicMuteUntil(ctx context.Context, chatID, rootMsgID, userID int64, until time.Time) error
 	// TopicRoots — какие из ключей строк — корни тем форума (не General).
 	TopicRoots(ctx context.Context, rootIDs []int64) (map[int64]bool, error)
 }

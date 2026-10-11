@@ -169,19 +169,23 @@ func TestTopicsRepo_ReadStateMuteUnread(t *testing.T) {
 		t.Fatalf("unread must stay 0 after lower read")
 	}
 
-	// Мьют — СРОК: ставится, читается, снимается.
+	// Мьют — СРОК: ставится, читается; «снять» — явный ноль, а не NULL
+	// (NULL — тему не трогали, наследует чат: три состояния).
 	until := time.Now().Add(time.Hour).Truncate(time.Second)
-	if err := r.SetTopicMuteUntil(ctx, chat, rootID, me, &until); err != nil {
+	if err := r.SetTopicMuteUntil(ctx, chat, rootID, me, until); err != nil {
 		t.Fatalf("SetTopicMuteUntil on: %v", err)
 	}
 	if got := find(mustList(t, r, chat, me)).MuteUntil; got == nil || !got.Equal(until) {
 		t.Fatalf("mute_until = %v, want %v", got, until)
 	}
-	if err := r.SetTopicMuteUntil(ctx, chat, rootID, me, nil); err != nil {
+	if err := r.SetTopicMuteUntil(ctx, chat, rootID, me, time.Unix(0, 0)); err != nil {
 		t.Fatalf("SetTopicMuteUntil off: %v", err)
 	}
-	if got := find(mustList(t, r, chat, me)).MuteUntil; got != nil {
-		t.Fatalf("mute_until after unmute = %v, want nil", got)
+	if got := find(mustList(t, r, chat, me)).MuteUntil; got == nil || got.Unix() != 0 {
+		t.Fatalf("mute_until after explicit unmute = %v, want 0", got)
+	}
+	if got := find(mustList(t, r, chat, other)).MuteUntil; got != nil {
+		t.Fatalf("нетронутая тема у other: mute_until = %v, want nil", got)
 	}
 
 	// A1-19: read_outbox_max_id — горизонт ОСТАЛЬНЫХ. me прочитал до 3, значит

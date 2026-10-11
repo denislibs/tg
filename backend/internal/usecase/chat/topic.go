@@ -156,11 +156,16 @@ func (i *Interactor) MarkTopicRead(ctx context.Context, chatID, number, userID, 
 	return i.topics.SetTopicRead(ctx, chatID, t.RootMsgID, userID, upToSeq)
 }
 
-// SetTopicMuteUntil заглушает тему для пользователя до срока muteUntil
-// (unix-секунды, как peerNotifySettings.mute_until: domain.MuteUntilNever или
-// прошедшее время — снять, domain.MuteUntilForever — навсегда). Порт
-// account.updateNotifySettings с inputNotifyForumTopic (tweb
-// appMessagesManager.ts:11962-11981).
+// SetTopicMuteUntil пишет настройку уведомлений темы пользователя — срок
+// muteUntil (unix-секунды, как peerNotifySettings.mute_until). Порт
+// account.updateNotifySettings с inputNotifyForumTopic (tweb mutePeer,
+// appMessagesManager.ts:11962-11983): togglePeerMute шлёт 0 или MUTE_UNTIL
+// (:11985-11991), меню «на срок» — срок.
+//
+// Запись ЯВНАЯ в обоих направлениях: 0 (и срок в прошлом) — «уведомлять»,
+// даже если заглушён чат; после записи тема мьют чата больше не наследует
+// (tweb appNotificationsManager.ts:398-405). Вернуть «наследовать» нечем —
+// у tweb такого вызова нет.
 //
 // Своим устройствам уходит updateNotifySettings с адресом notifyForumTopic
 // (tweb :11751-11770) — мьют личный, остальным участникам кадра нет.
@@ -170,14 +175,14 @@ func (i *Interactor) SetTopicMuteUntil(ctx context.Context, chatID, number, user
 		return err
 	}
 	now := time.Now()
-	var until *time.Time
-	if at := time.Unix(muteUntil, 0); muteUntil > domain.MuteUntilNever && at.After(now) {
-		until = &at
+	until := time.Unix(domain.MuteUntilNever, 0)
+	if at := time.Unix(muteUntil, 0); at.After(now) {
+		until = at
 	}
 	if err := i.topics.SetTopicMuteUntil(ctx, chatID, t.RootMsgID, userID, until); err != nil {
 		return err
 	}
-	settings := domain.TopicNotifySettings(until, now)
+	settings := domain.TopicNotifySettings(&until, now)
 	topicID := t.Number()
 	// best-effort: мутация закоммичена — сбой лога/публикации не возвращаем.
 	_ = i.logAndPublishPerPeer(ctx, chatID, []int64{userID}, "topic_mute",

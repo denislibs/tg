@@ -556,7 +556,7 @@ type fakeTopicRepo struct {
 	mu        sync.Mutex
 	nextID    int64
 	topics    map[int64]domain.ForumTopicRecord
-	muteUntil map[[3]int64]*time.Time
+	muteUntil map[[3]int64]time.Time
 }
 
 func newFakeTopicRepo() *fakeTopicRepo {
@@ -628,11 +628,11 @@ func (r *fakeTopicRepo) ListByChat(context.Context, int64, int64) ([]domain.Topi
 
 func (r *fakeTopicRepo) SetTopicRead(context.Context, int64, int64, int64, int64) error { return nil }
 
-func (r *fakeTopicRepo) SetTopicMuteUntil(_ context.Context, chatID, rootMsgID, userID int64, until *time.Time) error {
+func (r *fakeTopicRepo) SetTopicMuteUntil(_ context.Context, chatID, rootMsgID, userID int64, until time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.muteUntil == nil {
-		r.muteUntil = map[[3]int64]*time.Time{}
+		r.muteUntil = map[[3]int64]time.Time{}
 	}
 	r.muteUntil[[3]int64{chatID, rootMsgID, userID}] = until
 	return nil

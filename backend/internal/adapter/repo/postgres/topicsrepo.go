@@ -239,10 +239,11 @@ func (r *TopicsRepo) SetTopicRead(ctx context.Context, chatID, rootMsgID, userID
 	return err
 }
 
-// SetTopicMuteUntil ставит срок мьюта темы (peerNotifySettings.mute_until —
-// СРОК, а не булево: «на час» обязано кончиться через час) — UPSERT в
-// topic_user_state. nil — мьют снят.
-func (r *TopicsRepo) SetTopicMuteUntil(ctx context.Context, chatID, rootMsgID, userID int64, until *time.Time) error {
+// SetTopicMuteUntil пишет явную настройку уведомлений темы — UPSERT в
+// topic_user_state.muted_until: срок мьюта либо time.Unix(0) («уведомлять»).
+// NULL в колонке — тема не тронута, наследует мьют чата (три состояния, tweb
+// appNotificationsManager.ts:398-405).
+func (r *TopicsRepo) SetTopicMuteUntil(ctx context.Context, chatID, rootMsgID, userID int64, until time.Time) error {
 	_, err := querier(ctx, r.pool).Exec(ctx, `
 		INSERT INTO topic_user_state (chat_id, root_msg_id, user_id, muted_until)
 		VALUES ($1,$2,$3,$4)

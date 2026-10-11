@@ -171,7 +171,7 @@ func TestSetTopicMuteUntil_DeadlineToOwnDevices(t *testing.T) {
 	if err := in.SetTopicMuteUntil(ctx, id, root.Seq, 8, until); err != nil {
 		t.Fatal(err)
 	}
-	if got := ft.muteUntil[[3]int64{id, root.ID, 8}]; got == nil || got.Unix() != until {
+	if got, ok := ft.muteUntil[[3]int64{id, root.ID, 8}]; !ok || got.Unix() != until {
 		t.Fatalf("срок мьюта = %v, ждали %d", got, until)
 	}
 	d := lastFrameOfType(t, pub, 8, "topic_mute")
@@ -184,12 +184,20 @@ func TestSetTopicMuteUntil_DeadlineToOwnDevices(t *testing.T) {
 	if framesOfType(pub, 7, "topic_mute") != 0 {
 		t.Fatal("мьют темы — личный, а кадр ушёл другому участнику")
 	}
-	// Снять: 0 — срока нет, в кадре явный MuteUntilNever.
+	// Снять: 0 — ЯВНОЕ «уведомлять» (не «наследовать чат»: tweb
+	// appNotificationsManager.ts:398-405), хранится нулём, в кадре — 0.
 	if err := in.SetTopicMuteUntil(ctx, id, root.Seq, 8, domain.MuteUntilNever); err != nil {
 		t.Fatal(err)
 	}
-	if got := ft.muteUntil[[3]int64{id, root.ID, 8}]; got != nil {
-		t.Fatalf("мьют не снят: %v", got)
+	if got, ok := ft.muteUntil[[3]int64{id, root.ID, 8}]; !ok || got.Unix() != domain.MuteUntilNever {
+		t.Fatalf("явное «уведомлять» не записано: %v %v", got, ok)
+	}
+	// Срок в прошлом — то же явное «уведомлять».
+	if err := in.SetTopicMuteUntil(ctx, id, root.Seq, 8, time.Now().Add(-time.Hour).Unix()); err != nil {
+		t.Fatal(err)
+	}
+	if got := ft.muteUntil[[3]int64{id, root.ID, 8}]; got.Unix() != domain.MuteUntilNever {
+		t.Fatalf("срок в прошлом = %v, ждали 0", got)
 	}
 	if s, _ := lastFrameOfType(t, pub, 8, "topic_mute")["notify_settings"].(map[string]any); s["mute_until"] != float64(0) {
 		t.Fatalf("снятие мьюта: %v", s)
@@ -198,7 +206,7 @@ func TestSetTopicMuteUntil_DeadlineToOwnDevices(t *testing.T) {
 	if err := in.SetTopicMuteUntil(ctx, id, domain.GeneralTopicID, 8, domain.MuteUntilForever); err != nil {
 		t.Fatal(err)
 	}
-	if got := ft.muteUntil[[3]int64{id, 0, 8}]; got == nil || got.Unix() != domain.MuteUntilForever {
+	if got, ok := ft.muteUntil[[3]int64{id, 0, 8}]; !ok || got.Unix() != domain.MuteUntilForever {
 		t.Fatalf("мьют General = %v", got)
 	}
 }

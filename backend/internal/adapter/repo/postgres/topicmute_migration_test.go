@@ -42,4 +42,30 @@ func TestMigration0163_TopicMuteBecomesDeadline(t *testing.T) {
 		WHERE table_name='topic_user_state' AND column_name='muted')`).Scan(&hasMuted); err != nil || hasMuted {
 		t.Fatalf("колонка muted осталась: %v, %v", hasMuted, err)
 	}
+
+	// Down: срок в будущем — muted, явное «уведомлять» (0) — нет; сроки
+	// возвращаются в NULL (до 0163 колонку не писал никто).
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO topic_user_state (chat_id, root_msg_id, user_id, muted_until) VALUES (1, 10, 9, to_timestamp(0))`); err != nil {
+		t.Fatalf("seed explicit on: %v", err)
+	}
+	if err := storepostgres.MigrateDownTo(url, 162); err != nil {
+		t.Fatalf("откат 0163: %v", err)
+	}
+	rows, err := pool.Query(ctx, `SELECT user_id, muted, muted_until IS NULL FROM topic_user_state ORDER BY user_id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	want := map[int64]bool{7: true, 8: false, 9: false}
+	for rows.Next() {
+		var uid int64
+		var m, untilNull bool
+		if err := rows.Scan(&uid, &m, &untilNull); err != nil {
+			t.Fatal(err)
+		}
+		if m != want[uid] || !untilNull {
+			t.Errorf("после отката user %d: muted=%v until_null=%v, ждали muted=%v until_null=true", uid, m, untilNull, want[uid])
+		}
+	}
 }

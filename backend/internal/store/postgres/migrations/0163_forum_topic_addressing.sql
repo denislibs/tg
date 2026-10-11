@@ -8,11 +8,17 @@
 -- 0058 и не писалась; булево muted переносится в неё («навсегда» — максимум
 -- int32, domain.MuteUntilForever) и удаляется — второго способа сказать то же
 -- самое не остаётся.
+--
+-- Три состояния muted_until (tweb appNotificationsManager.ts:398-405): NULL —
+-- тему не трогали, наследует мьют чата; to_timestamp(0) — явно «уведомлять»;
+-- срок — заглушена. Старое false неотличимо от «не трогали» — переносится в
+-- NULL.
 -- +goose StatementBegin
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'topic_user_state' AND column_name = 'muted') THEN
+                WHERE table_schema = current_schema()
+                  AND table_name = 'topic_user_state' AND column_name = 'muted') THEN
         UPDATE topic_user_state
            SET muted_until = CASE WHEN muted THEN to_timestamp(2147483647) END;
         ALTER TABLE topic_user_state DROP COLUMN muted;
@@ -26,6 +32,8 @@ END $$;
 CREATE INDEX IF NOT EXISTS forum_topics_root_idx ON forum_topics (root_msg_id);
 
 -- +goose Down
+-- Обратно в булево: заглушена = срок в будущем; сроки возвращаются в NULL —
+-- до 0163 колонку muted_until не писал и не читал никто.
 DROP INDEX IF EXISTS forum_topics_root_idx;
 ALTER TABLE topic_user_state ADD COLUMN IF NOT EXISTS muted BOOLEAN NOT NULL DEFAULT false;
-UPDATE topic_user_state SET muted = (muted_until IS NOT NULL AND muted_until > now());
+UPDATE topic_user_state SET muted = (muted_until IS NOT NULL AND muted_until > now()), muted_until = NULL;
