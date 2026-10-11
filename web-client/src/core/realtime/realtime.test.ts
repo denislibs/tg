@@ -175,7 +175,8 @@ describe('realtime.getStatus — иммунность к потере push-ув�
 // временно тоже (до волны 2 Ф-5, см. докблок `markRead`).
 describe('realtime.markRead', () => {
   function make() {
-    const conn = { markRead: vi.fn() } as unknown as Parameters<typeof newRealtime>[0]['conn']
+    const markRead = vi.fn()
+    const conn = { markRead } as unknown as Parameters<typeof newRealtime>[0]['conn']
     const forumTopics = { readHistory: vi.fn(() => true) }
     const rt = newRealtime({
       conn,
@@ -187,21 +188,21 @@ describe('realtime.markRead', () => {
       channelFunnel: {} as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
       forumTopics,
     })
-    return { rt, conn, forumTopics }
+    return { rt, markRead, forumTopics }
   }
   const OFFSET = 0x100000000
 
   it('с threadId — тема читается хранилищем тем клиентскими номерами, горизонт чата — серверным', async () => {
-    const { rt, conn, forumTopics } = make()
+    const { rt, markRead, forumTopics } = make()
     await rt.markRead({ peerId: -5, upToId: OFFSET + 40, threadId: OFFSET + 7 })
     expect(forumTopics.readHistory).toHaveBeenCalledWith(-5, OFFSET + 7, OFFSET + 40)
-    expect(conn.markRead).toHaveBeenCalledWith(-5, 40)
+    expect(markRead).toHaveBeenCalledWith(-5, 40)
   })
 
   it('без threadId хранилище тем не зовётся', async () => {
-    const { rt, conn, forumTopics } = make()
+    const { rt, markRead, forumTopics } = make()
     await rt.markRead({ peerId: -5, upToId: OFFSET + 40 })
     expect(forumTopics.readHistory).not.toHaveBeenCalled()
-    expect(conn.markRead).toHaveBeenCalledWith(-5, 40)
+    expect(markRead).toHaveBeenCalledWith(-5, 40)
   })
 })

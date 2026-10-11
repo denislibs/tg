@@ -61,7 +61,7 @@ describe('forumTopicsStorage: страница и номера', () => {
     const { storage, get } = setup([wire(1, { title: 'General' }), wire(10)])
     const page = await storage.getForumTopics(FORUM)
     expect(get).toHaveBeenCalledWith('/chats/-50/topics')
-    const ids = page.dialogs.map((t) => t.id).sort()
+    const ids = page.dialogs.map((t) => t.id).sort((a, b) => a - b)
     expect(ids).toEqual([GENERAL_TOPIC_ID, mid(10)])
     const t10 = storage.getForumTopic(FORUM, mid(10))!
     expect(t10.top_message).toBe(mid(10))
