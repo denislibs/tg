@@ -155,6 +155,8 @@ func TestReadDiscussion_NonForumThreadTouchesGroup(t *testing.T) {
 	ft := newFakeTopicRepo()
 	in.SetTopics(ft)
 	in.chats = maxSeqChats{in.chats, s}
+	pub := &fakePublisher{}
+	in.SetPublisher(pub)
 	ctx := context.Background()
 	root, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 8, Text: "корень"})
 	if err != nil {
@@ -173,9 +175,18 @@ func TestReadDiscussion_NonForumThreadTouchesGroup(t *testing.T) {
 	if ft.forumRecounts != 0 {
 		t.Fatal("вне форума пересчитан форум")
 	}
+	// Горизонт группы вырос — остальным ✓✓ группы тем же кадром, что у
+	// прочтения группы (MarkRead → journalRead): updateReadHistoryOutbox.
+	out := lastFrameOfType(t, pub, 8, "read")
+	if out["_"] != domain.UpdateReadHistoryOutboxTag || out["max_id"] != float64(reply.Seq) {
+		t.Fatalf("✓✓ группы Бобу = %v", out)
+	}
+	if framesOfType(pub, 7, "read") != 0 {
+		t.Fatal("читателю ушёл кадр прочтения группы (его устройства правят группу по inbox треда)")
+	}
 
 	// Тема форума группу не трогает.
-	fin, fft, _, fid, froot := readDiscussionForum(t)
+	fin, fft, fpub, fid, froot := readDiscussionForum(t)
 	m, err := fin.Send(ctx, SendInput{ChatID: fid, SenderID: 8, Text: "в теме", ThreadRootID: &froot.ID})
 	if err != nil {
 		t.Fatal(err)
@@ -185,5 +196,8 @@ func TestReadDiscussion_NonForumThreadTouchesGroup(t *testing.T) {
 	}
 	if len(fft.groupReads) != 0 {
 		t.Fatalf("тема форума правит диалог группы: %v", fft.groupReads)
+	}
+	if framesOfType(fpub, 8, "read") != 0 {
+		t.Fatal("тема форума разослала ✓✓ группы")
 	}
 }

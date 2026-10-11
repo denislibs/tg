@@ -223,6 +223,13 @@ func (i *Interactor) ReadDiscussion(ctx context.Context, chatID, number, userID,
 		pts  int64
 	}
 	var frames []readFrame
+	// ✓✓ группы: тред вне форума поднял её горизонт — остальным участникам
+	// тот же updateReadHistoryOutbox, что у прочтения группы (journalRead).
+	var groupRead struct {
+		members []int64
+		seq     int64
+		pts     map[int64]int64
+	}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if e := i.topics.LockThread(ctx, chatID, th.stateRoot); e != nil {
 			return e
@@ -245,10 +252,26 @@ func (i *Interactor) ReadDiscussion(ctx context.Context, chatID, number, userID,
 			if _, e := i.topics.RecountForumUnread(ctx, chatID, userID); e != nil {
 				return e
 			}
-		} else if e := i.topics.ApplyThreadReadToGroup(ctx, chatID, userID, th.filterRoot, old, readMaxID, last); e != nil {
+		} else {
 			// Тред вне форума: курсор сведён с группой, и tweb правит её диалог
 			// (горизонт, счётчик, упоминания) — appMessagesManager.ts:10814-10816.
-			return e
+			raised, seq, e := i.topics.ApplyThreadReadToGroup(ctx, chatID, userID, th.filterRoot, old, readMaxID, last)
+			if e != nil {
+				return e
+			}
+			if raised && i.updates != nil {
+				members, e := i.chats.MemberIDs(ctx, chatID)
+				if e != nil {
+					return e
+				}
+				others := slices.DeleteFunc(slices.Clone(members), func(u int64) bool { return u == userID })
+				slices.Sort(others)
+				pts, e := i.journalRead(ctx, addr, others, userID, seq, 0)
+				if e != nil {
+					return e
+				}
+				groupRead.members, groupRead.seq, groupRead.pts = others, seq, pts
+			}
 		}
 		// Журнал — в той же транзакции, что горизонт (как MarkRead): иначе
 		// сбой после коммита оставил бы другие устройства без кадра, а повтор
@@ -278,6 +301,11 @@ func (i *Interactor) ReadDiscussion(ctx context.Context, chatID, number, userID,
 		return err
 	}
 	i.invalidateDialogs(ctx, userID)
+	if len(groupRead.members) > 0 {
+		// У остальных сменился read_outbox_max_id строки группы.
+		i.invalidateDialogs(ctx, groupRead.members...)
+		i.publishRead(ctx, addr, groupRead.members, userID, groupRead.seq, 0, groupRead.pts)
+	}
 	if i.publisher != nil {
 		for _, f := range frames {
 			_ = i.publisher.PublishToUser(ctx, f.uid, framePts("read_discussion", f.body, f.pts))

@@ -714,14 +714,14 @@ func TestTopicsRepo_ApplyThreadReadToGroup(t *testing.T) {
 		return
 	}
 	// Тред до 5: минус 4 и 5 (сообщения треда выше курсора 2); 3 и 6 — нет.
-	if err := r.ApplyThreadReadToGroup(ctx, chat, me, root, 2, 5, 6); err != nil {
-		t.Fatal(err)
+	if raised, seq, err := r.ApplyThreadReadToGroup(ctx, chat, me, root, 2, 5, 6); err != nil || !raised || seq != 5 {
+		t.Fatalf("ApplyThreadReadToGroup до 5 = %v, %d, %v; want raised, 5", raised, seq, err)
 	}
 	if read, unread, mentions := state(); read != 5 || unread != 2 || mentions != 1 {
 		t.Fatalf("после треда до 5: read=%d unread=%d «@»=%d; want 5/2/1", read, unread, mentions)
 	}
 	// Дочитал до последнего номера — 0, и упоминания группы гаснут.
-	if err := r.ApplyThreadReadToGroup(ctx, chat, me, root, 5, 6, 6); err != nil {
+	if _, _, err := r.ApplyThreadReadToGroup(ctx, chat, me, root, 5, 6, 6); err != nil {
 		t.Fatal(err)
 	}
 	if read, unread, mentions := state(); read != 6 || unread != 0 || mentions != 0 {
@@ -735,14 +735,15 @@ func TestTopicsRepo_ApplyThreadReadToGroup(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE chat_members SET unread_count = 3 WHERE chat_id=$1 AND user_id=$2`, chat, me); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.ApplyThreadReadToGroup(ctx, chat, me, root, 0, 4, 6); err != nil {
-		t.Fatal(err)
+	// Горизонт не вырос (4 < 6) — raised=false: ✓✓ группы не рассылается.
+	if raised, seq, err := r.ApplyThreadReadToGroup(ctx, chat, me, root, 0, 4, 6); err != nil || raised || seq != 6 {
+		t.Fatalf("ApplyThreadReadToGroup ниже горизонта = %v, %d, %v; want !raised, 6", raised, seq, err)
 	}
 	if read, unread, _ := state(); read != 6 || unread != 0 {
 		t.Fatalf("курсор 0: read=%d unread=%d; want 6/0", read, unread)
 	}
 	// Не участник — ничего и без ошибки.
-	if err := r.ApplyThreadReadToGroup(ctx, chat, seedUser(t, pool, "+7962"), root, 2, 5, 6); err != nil {
-		t.Fatal(err)
+	if raised, _, err := r.ApplyThreadReadToGroup(ctx, chat, seedUser(t, pool, "+7962"), root, 2, 5, 6); err != nil || raised {
+		t.Fatalf("не участник: %v, %v", raised, err)
 	}
 }

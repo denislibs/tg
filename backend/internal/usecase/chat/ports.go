@@ -861,8 +861,9 @@ type TopicRepo interface {
 	// сумма по темам, иначе — сообщения выше горизонта (один запрос).
 	CountChatUnread(ctx context.Context, chatID, userID, readSeq int64) (int, error)
 	// ApplyThreadReadToGroup — прочтение треда вне форума правит диалог группы
-	// (горизонт, unread_count, упоминания), как tweb на месте.
-	ApplyThreadReadToGroup(ctx context.Context, chatID, userID, root, merged, readMaxID, lastSeq int64) error
+	// (горизонт, unread_count, упоминания), как tweb на месте; raised —
+	// горизонт группы вырос, readSeq — он после.
+	ApplyThreadReadToGroup(ctx context.Context, chatID, userID, root, merged, readMaxID, lastSeq int64) (raised bool, readSeq int64, err error)
 	// RecountForumUnread пересчитывает unread_count участника форума по темам.
 	RecountForumUnread(ctx context.Context, chatID, userID int64) (int, error)
 	// SetTopicMuteUntil пишет явную настройку уведомлений темы (UPSERT):

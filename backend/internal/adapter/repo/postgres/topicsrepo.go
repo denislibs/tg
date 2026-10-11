@@ -415,11 +415,16 @@ func (r *TopicsRepo) ClearThreadMentions(ctx context.Context, chatID, userID, ro
 //   - счётчик стал 0 — гаснут и упоминания группы (:10941-10943).
 //
 // merged — сведённый курсор до прочтения (max(горизонт группы, треда)),
-// lastSeq — последний номер чата. Не участнику (гостю) — ничего.
-func (r *TopicsRepo) ApplyThreadReadToGroup(ctx context.Context, chatID, userID, root, merged, readMaxID, lastSeq int64) error {
+// lastSeq — последний номер чата. Не участнику (гостю) — ничего. raised —
+// горизонт группы вырос (тогда остальным участникам уходит ✓✓ группы тем же
+// путём, что у прочтения группы); readSeq — горизонт группы после.
+func (r *TopicsRepo) ApplyThreadReadToGroup(ctx context.Context, chatID, userID, root, merged, readMaxID, lastSeq int64) (raised bool, readSeq int64, err error) {
 	q := querier(ctx, r.pool)
 	var unread int
-	err := q.QueryRow(ctx, `
+	var oldSeq int64
+	err = q.QueryRow(ctx, `
+		WITH prev AS (
+		  SELECT last_read_seq FROM chat_members WHERE chat_id = $1 AND user_id = $2 FOR UPDATE)
 		UPDATE chat_members cm SET
 		       last_read_seq = GREATEST(cm.last_read_seq, $5),
 		       unread_count = CASE WHEN $5::bigint >= $6::bigint OR $4::bigint = 0 THEN 0
@@ -428,21 +433,27 @@ func (r *TopicsRepo) ApplyThreadReadToGroup(ctx context.Context, chatID, userID,
 		            WHERE m.chat_id = $1 AND `+threadFilter("m", "$3", &root, false)+`
 		              AND m.seq > $4 AND m.seq <= $5 AND m.sender_id <> $2
 		              AND `+messageVisibleTo("m", "$2")+`)) END
+		  FROM prev
 		 WHERE cm.chat_id = $1 AND cm.user_id = $2
-		 RETURNING cm.unread_count`, chatID, userID, root, merged, readMaxID, lastSeq).Scan(&unread)
+		 RETURNING prev.last_read_seq, cm.last_read_seq, cm.unread_count`,
+		chatID, userID, root, merged, readMaxID, lastSeq).Scan(&oldSeq, &readSeq, &unread)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil // не участник
+		return false, 0, nil // не участник
 	}
-	if err != nil || unread > 0 {
-		return err
+	if err != nil {
+		return false, 0, err
+	}
+	raised = readSeq > oldSeq
+	if unread > 0 {
+		return raised, readSeq, nil
 	}
 	if _, err := q.Exec(ctx,
 		`UPDATE message_mentions SET unread = false WHERE chat_id = $1 AND user_id = $2 AND unread`, chatID, userID); err != nil {
-		return err
+		return false, 0, err
 	}
 	_, err = q.Exec(ctx,
 		`UPDATE chat_members SET unread_mentions_count = 0 WHERE chat_id = $1 AND user_id = $2`, chatID, userID)
-	return err
+	return raised, readSeq, err
 }
 
 // forumUnreadSQL — непрочитанное участника viewer в форуме chat: сумма по
