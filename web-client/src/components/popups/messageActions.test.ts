@@ -162,6 +162,13 @@ describe('showDeleteMessagesPopup (tweb popups/deleteMessages.ts)', () => {
     expect(managers.messages.deleteMessages).not.toHaveBeenCalled()
   })
 
+  it('лента отложенных: отказ ручки удаления — тост, а не необработанный reject', async() => {
+    managers.messages.deleteScheduledMessages.mockRejectedValueOnce(new Error('500'))
+    showDeleteMessagesPopup(USER, [5], ChatType.Scheduled, undefined, (mid) => message(mid))
+    click('.popup-buttons > button.danger')
+    await vi.waitFor(() => expect(toasts.toastNew).toHaveBeenCalledWith({ langPackKey: 'Error.AnError' }))
+  })
+
   it('«Отмена» ничего не удаляет и onConfirm не зовёт', () => {
     const onConfirm = vi.fn()
     showDeleteMessagesPopup(USER, [1], ChatType.Chat, onConfirm)

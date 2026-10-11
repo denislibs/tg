@@ -276,7 +276,7 @@ export default class ChatInput {
   public replyToPeerId: MessageSendingParams['replyToPeerId']
   public editMsgId?: number
   public editMessage?: MyMessage
-  /** tweb `:302-303` — время отложенной отправки (секунды) и период повтора (Б-126) */
+  /** tweb `:302-303` — время отложенной отправки (секунды) и период повтора */
   public scheduleDate?: number
   public scheduleRepeatPeriod?: number
   public sendSilent?: true

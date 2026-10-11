@@ -786,8 +786,9 @@ export type UpdatePredicate = Update['_']
 export interface AckEvt {
   client_msg_id: string; id: number; date: number
   entities?: MessageEntity[]; media?: MessageMedia; ttl_period?: number
-  /** Отправка ушла в очередь отложенных: `id` — ключ отложенного, а не номер в
-   *  чате, и в историю бабл не встаёт — он живёт в хранилище отложенных. */
+  /** Только провод (S1): отправка ушла в очередь отложенных, `id` — ключ
+   *  отложенного. Клиент флаг не читает: куда финализировать бабл, знает сама
+   *  заявка (`schedule_date`, `managers/messages/pending.ts`). */
   scheduled?: boolean
 }
 // Server rejected a send (e.g. text too long). The client drops it from the outbox

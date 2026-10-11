@@ -43,6 +43,7 @@ import { startClient } from '@/client/bootstrap'
 import { i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 import { formatFullSentTime } from '@helpers/date'
 import { ChatType } from '@components/chat/chatType'
+import { toastNew } from '@components/toast'
 import { cachedUser, isMegagroupPeer, peerTitle } from '@core/peerCache'
 import { isUser } from '@core/peers/peerId'
 import type { MyMessage } from '@core/models'
@@ -73,7 +74,8 @@ export default function showDeleteMessagesPopup(
     onConfirm?.()
     // :66-67 — номера отложенных — ключи очереди, а не номера истории
     if(type === ChatType.Scheduled) {
-      void managers.messages.deleteScheduledMessages(peerId, mids)
+      // tweb отказ отдаёт общему обработчику ошибок; у нас — тост, не необработанный reject
+      void managers.messages.deleteScheduledMessages(peerId, mids).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
       return
     }
 
