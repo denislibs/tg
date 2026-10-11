@@ -182,6 +182,28 @@ describe('клик по форуму открывает таб тем повер
     expect(first.querySelector('.avatar-badge')).toBeNull()
   })
 
+  // tweb appDialogsManager.ts:2735-2737, :2807-2810 (независимое ревью КЛ-1 М1):
+  // тема, где зритель не был (горизонта нет), — точка `not-visited` без числа
+  it('тема без горизонта прочтения — бейдж-точка `not-visited`; с горизонтом — без бейджа', async () => {
+    await start([topic(1), topic(2, { read_inbox_max_id: generateMessageId(2) })])
+    await openForum()
+    const [first, second] = topicRows()
+    await vi.waitFor(() => expect(first.querySelector('.dialog-subtitle-badge-unread')?.classList.contains('not-visited')).toBe(true))
+    expect(second.querySelector('.dialog-subtitle-badge-unread.is-visible')).toBeNull()
+  })
+
+  it('правка только значка темы перерисовывает заголовок строки (`peer_title_edit`, dialogs.ts:1795-1797)', async () => {
+    await start([topic(5)])
+    await openForum()
+    const [row] = topicRows()
+    // без эмодзи — «облачко» с инициалом (topicAvatar.ts, расхождение 2)
+    expect(row.querySelector('.peer-title .topic-icon-svg')).not.toBeNull()
+    const t = { ...forumTab()!.xd.getDialog(generateMessageId(5))!, icon_emoji: '🔥' }
+    topicOps([{ op: 'update', peerId: FORUM_ID, topics: [t] }, { op: 'edit', topic: t, title: false, icon: true }])
+    await vi.waitFor(() => expect(row.querySelector('.peer-title .topic-icon-svg')).toBeNull())
+    expect(row.querySelector('.peer-title .topic-icon')).not.toBeNull()
+  })
+
   it('повторный клик по тому же форуму закрывает таб; запись `forum` одна', async () => {
     await start()
     await openForum()

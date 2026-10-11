@@ -247,7 +247,12 @@ export function createWorkerCore() {
     // пути удаления (кадр и своя ручка) проходят через эвикцию, поэтому
     // вычитание одно и повториться не может. `dialogs` объявлен ниже —
     // стрелка ленивая.
-    onMessagesDeleted: (peerId, deleted, missing) => dialogs.applyDeletedMessages(peerId, deleted, missing),
+    onMessagesDeleted: (peerId, deleted, missing) => {
+      dialogs.applyDeletedMessages(peerId, deleted, missing)
+      // ветка темы того же обработчика (tweb :11493-11592); `forumTopics`
+      // объявлен ниже — стрелка дёргает его лениво
+      forumTopics.applyDeletedMessages(peerId, deleted)
+    },
     // Бейдж ❤ строки — гейт сброса непрочитанных реакций (`messages.readMessages`,
     // tweb `hadUnreadReactions`). Стрелка ленивая: `dialogs` объявлен ниже.
     getUnreadReactionsCount: (peerId) => dialogs.getUnreadReactionsCount(peerId),

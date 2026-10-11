@@ -305,9 +305,6 @@ const REACTIONS_PRELOAD_DELAY = 7.5e3
 //      не ставятся, а «✓/✓✓» считаются по `read_outbox_max_id` диалога
 //      (`components/sendingStatus.ts`, расхождение 1).
 //  С3. Чего нет в модели, того нет и в строке (ветки удалены, а не заглушены):
-//      метка `not-visited` темы (`:2735-2737`, `:2808-2811`) — горизонт темы
-//      не двигается, пока нет прочтения треда (`readDiscussion`, волна 2 Ф-5):
-//      метка стояла бы на каждой теме навсегда,
 //      монофорум и «все чаты» (`monoforumParentPeerId`,
 //      `asAllChats`, О-4), сообщества (`subtitlePeerId`, `getEmptySubtitle`, О-5),
 //      ограничения/чувствительное/самоуничтожающееся медиа (`isMessageRestricted`,
@@ -561,9 +558,7 @@ export class DialogElement {
 
     // tweb `:345-348`
     const isSavedDialog = !!threadId && peerId === rootScope.myId
-    // тема — и по номеру, и по самой теме: у General номер корня 0 (у нас его
-    // сообщения без темы, `forum_topics.root_msg_id = 0`), у tweb — `GENERAL_TOPIC_ID` 1
-    const isForumTopic = !!topic || (!!threadId && !isSavedDialog)
+    const isForumTopic = !!threadId && !isSavedDialog
 
     const usePeerId = isSavedDialog ? threadId! : peerId
 
@@ -2573,6 +2568,11 @@ async function setUnreadMessages({
     isUnread = !!unreadCount
   }
 
+  // tweb `:2735-2737`: тему, где зритель ещё не был (горизонта нет), — точкой
+  if(isTopic && !isUnread) {
+    isUnread = !getServerMessageId(dialog.read_inbox_max_id)
+  }
+
   // * have to await all promises before modifying something
 
   if(setLastMessagePromise) {
@@ -2623,6 +2623,11 @@ async function setUnreadMessages({
     reactions: hasReactionsBadge,
     transitionDuration,
   })
+
+  // tweb `:2807-2810`
+  if(isTopic && dom.unreadBadge) {
+    dom.unreadBadge.classList.toggle('not-visited', isUnread && unreadBadgeText === ' ')
+  }
 
   deferred.resolve!()
 }

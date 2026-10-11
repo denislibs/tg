@@ -104,16 +104,12 @@ export function newRealtime({ conn, sync, syncWait, tokens, messages, broadcast,
     //
     // `threadId` — ветка треда tweb `readHistory` (appMessagesManager.ts:9186-9210):
     // тему форума читает хранилище тем (`messages.readDiscussion`, транспорт —
-    // временная ручка темы до волны 2 Ф-5). Тред комментариев (не форум) до
-    // волны 2 читается горизонтом всей группы, как раньше.
-    //
-    // ВРЕМЕННО до волны 2 Ф-5 (В-8: серверный `unread_count` форума = сумма по
-    // темам): в теме форума горизонт ЧАТА уходит тоже, хотя у tweb в ветке
-    // треда его нет. Счётчики папок (`core/folders/folderUnreadCounts.ts`,
-    // расхождение 2) считают форум по `dialog.unread_count`, и без этого
-    // кадра прочтение темы перестало бы гасить бейдж папки.
+    // временная ручка темы до волны 2 Ф-5), горизонт ЧАТА в этой ветке не
+    // уходит, как у tweb: он гасил бы непрочитанное, упоминания и реакции всех
+    // остальных тем ниже рубежа. Тред комментариев (не тема) до волны 2
+    // читается горизонтом всей группы, как раньше.
     async markRead(args: { peerId: number; upToId: number; threadId?: number }) {
-      if (args.threadId) forumTopics.readHistory(args.peerId, args.threadId, args.upToId)
+      if (args.threadId && forumTopics.readHistory(args.peerId, args.threadId, args.upToId)) return { ok: true }
       conn.markRead(args.peerId, getServerMessageId(args.upToId))
       return { ok: true }
     },

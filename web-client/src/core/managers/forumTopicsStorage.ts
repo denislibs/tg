@@ -39,6 +39,7 @@ import { isForum } from '../peers/predicates'
 import { MESSAGE_ID_OFFSET, getServerMessageId } from '../history/messageId'
 import type { PeerNotifySettings } from '../dialogs/notifySettings'
 import isMentionUnread from '../messages/isMentionUnread'
+import getUnreadReactions from '../messages/getUnreadReactions'
 import {
   createForumTopicFromAction,
   toForumTopic,
@@ -228,6 +229,11 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
    * (`:10969-10980`). Ничего не нашли, а тема всё ещё непрочитана —
    * перечитать (`getForumTopicById`, `:10955-10958`, расхождение 1).
    *
+   * Не переносятся (предметов нет): снятие `pFlags.unread` с сообщений
+   * (`:10872-10874` — у нашего сообщения флага нет, прочитанность считается по
+   * горизонту) и `notification_cancel` (`:10900` — события снятия уведомления
+   * вкладки у нас нет).
+   *
    * Сегодня его зовёт своё прочтение (`readHistory` ниже — местный
    * `processLocalUpdate`, `:9203-9209`). Кадры `updateReadChannelDiscussionInbox/
    * Outbox` с других устройств производит БЭК-2 (волна 2 Ф-5): подключение —
@@ -263,7 +269,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
         ++parentMentionDecrement
       }
     }
-    topic.read_inbox_max_id = Math.max(topic.read_inbox_max_id, maxId)
+    topic.read_inbox_max_id = maxId // `:10928-10929` — присваивание, как у оригинала
     if (newUnreadCount < 0 || maxId >= topic.top_message || !readMaxId) topic.unread_count = 0
     else if (newUnreadCount && topic.top_message > maxId) topic.unread_count = newUnreadCount
     if (newUnreadMentionsCount < 0 || !topic.unread_count) topic.unread_mentions_count = 0
@@ -433,13 +439,15 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
      * `messages.readDiscussion{peer, msg_id, read_max_id}` — в волне 2 Ф-5
      * (БЭК-2/КЛ-2) заменяется на `readDiscussion`, ручку тем сервер удаляет.
      *
-     * @returns `false` — пир не форум (тред комментариев читается чатом до
-     *   волны 2), `true` — тема прочитана.
+     * @returns `false` — не тема: пир не форум или список загружен, а темы с
+     *   этим номером нет (тред комментариев в форуме-обсуждении) — такой тред
+     *   до волны 2 читается горизонтом чата; `true` — тема прочитана.
      */
     readHistory(peerId: PeerId, threadId: number, maxId: number): boolean {
       if (!isForumPeer(peerId) || !maxId) return false
       const cache = getCache(peerId)
       const topic = cache.topics.get(threadId)
+      if (!topic && cache.loaded) return false
       if (topic && !topic.unread_count && maxId <= topic.read_inbox_max_id) return true
       const tried = cache.triedToReadMaxId.get(threadId) ?? 0
       if (topic) applyReadDiscussion({ peerId, topicId: threadId, maxId, out: false })
@@ -450,6 +458,55 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
         if (cache.triedToReadMaxId.get(threadId) === maxId) cache.triedToReadMaxId.set(threadId, tried)
       })
       return true
+    },
+
+    /**
+     * Удаление сообщений — ветка темы `onUpdateDeleteMessages`
+     * (`appMessagesManager.ts:11493-11592`): удалённое непрочитанное снимается
+     * со счётчиков своей темы (упоминания — только пока непрочитанное есть,
+     * реакции — у своих), бейдж темы и форума пересчитываются. Удалено
+     * последнее сообщение темы — список перечитывается (`getForumTopicById`,
+     * расхождение 1; низа окна треда владелец тем не держит). Номер — по
+     * сообщениям, которые знало хранилище: неизвестные удалённые не считаются,
+     * как и у оригинала.
+     */
+    applyDeletedMessages(peerId: PeerId, deleted: readonly MyMessage[]): void {
+      const cache = caches.get(peerId)
+      if (!cache?.loaded || !deleted.length) return
+      const byTopic = new Map<number, MyMessage[]>()
+      for (const m of deleted) {
+        const threadId = getMessageThreadId(m, { isForum: true })
+        if (threadId === undefined) continue
+        const list = byTopic.get(threadId)
+        if (list) list.push(m)
+        else byTopic.set(threadId, [m])
+      }
+      const ops: ForumTopicOp[] = []
+      let reload = false
+      for (const [threadId, list] of byTopic) {
+        const topic = cache.topics.get(threadId)
+        if (!topic) continue
+        let unread = 0
+        let unreadMentions = 0
+        let unreadReactions = 0
+        for (const m of list) {
+          if (!m.pFlags?.out && m.id > topic.read_inbox_max_id) {
+            ++unread
+            if (isMentionUnread(m)) ++unreadMentions
+          }
+          if (m.pFlags?.out && getUnreadReactions(m)) ++unreadReactions
+        }
+        if (unread) topic.unread_count = Math.max(0, topic.unread_count - unread)
+        if (unreadMentions) topic.unread_mentions_count = !topic.unread_count ? 0 : Math.max(0, topic.unread_mentions_count - unreadMentions)
+        if (unreadReactions) topic.unread_reactions_count = Math.max(0, topic.unread_reactions_count - unreadReactions)
+        if (unread || unreadMentions || unreadReactions) ops.push({ op: 'unread', topic })
+        if (list.some((m) => m.id === topic.top_message)) reload = true
+      }
+      if (ops.length) {
+        ops.push({ op: 'forumUnread', peerId })
+        onOps(ops)
+      }
+      if (reload) void load(peerId).catch(() => {})
     },
 
     /**

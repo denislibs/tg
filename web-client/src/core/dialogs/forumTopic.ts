@@ -12,7 +12,7 @@
 // `id === GENERAL_TOPIC_ID` (tweb `constants.ts:26`).
 import type { DraftMessage, MyMessage } from '../models'
 import type { MessageService } from '../models'
-import { GENERAL_TOPIC_ID, generateMessageId } from '../history/messageId'
+import { generateMessageId } from '../history/messageId'
 import { getPeerId, type Peer } from '../peers/peerId'
 import { PINNED_BASE } from './dialogIndex'
 import { isPeerMuted, type PeerNotifySettings } from './notifySettings'
@@ -83,11 +83,6 @@ export interface ForumTopic {
 /** tweb `utils/dialogs/isDialog.ts:13-15` */
 export function isForumTopic(dialog: { _?: string } | undefined): dialog is ForumTopic {
   return dialog?._ === 'forumTopic'
-}
-
-/** tweb `constants.ts:26` — General по номеру. */
-export function isGeneralTopic(topic: Pick<ForumTopic, 'id'>): boolean {
-  return topic.id === GENERAL_TOPIC_ID
 }
 
 /**

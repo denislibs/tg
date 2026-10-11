@@ -349,9 +349,44 @@ describe('forumTopicsStorage: readHistory (appMessagesManager.ts:9186-9210)', ()
     expect(post).toHaveBeenCalledTimes(2)
   })
 
+  it('список загружен, а темы нет (тред комментариев в форуме-обсуждении) — `false`, ручка тем не зовётся', async () => {
+    const { storage, post } = setup([wire(10)])
+    await storage.getForumTopics(FORUM)
+    expect(storage.readHistory(FORUM, mid(77), mid(80))).toBe(false)
+    expect(post).not.toHaveBeenCalled()
+  })
+
   it('не форум — `false`, сервер не зовётся (тред комментариев — волна 2)', () => {
     const { storage, post } = setup([], { forum: false })
     expect(storage.readHistory(FORUM, mid(10), mid(13))).toBe(false)
     expect(post).not.toHaveBeenCalled()
   })
 })
+
+// onUpdateDeleteMessages (appMessagesManager.ts:11493-11592), ветка темы (ревью КЛ-1 В1)
+describe('forumTopicsStorage: удаление сообщений', () => {
+  it('удалённое непрочитанное снимается со счётчиков своей темы, бейдж форума пересчитан', async () => {
+    const { storage, ops } = setup([wire(10, { read_inbox_max_id: 10, top_message: 13, unread_count: 3, unread_mentions_count: 1 }), wire(20, { unread_count: 1, top_message: 21, read_inbox_max_id: 20 })])
+    await storage.getForumTopics(FORUM)
+    ops.length = 0
+    const mention = msgInTopic(12, 10, { mediaUnread: true })
+    mention.pFlags.mentioned = true
+    storage.applyDeletedMessages(FORUM, [msgInTopic(11, 10), mention])
+    const t = storage.getForumTopic(FORUM, mid(10))!
+    expect(t.unread_count).toBe(1)
+    expect(t.unread_mentions_count).toBe(0)
+    expect(storage.getForumTopic(FORUM, mid(20))!.unread_count).toBe(1)
+    expect(ops.map((op) => op.op)).toEqual(['unread', 'forumUnread'])
+  })
+
+  it('прочитанное и своё счётчики не трогают; удалено последнее — список перечитывается', async () => {
+    const { storage, ops, get } = setup([wire(10, { read_inbox_max_id: 12, top_message: 13, unread_count: 1 })])
+    await storage.getForumTopics(FORUM)
+    ops.length = 0
+    storage.applyDeletedMessages(FORUM, [msgInTopic(11, 10), msgInTopic(13, 10, { fromId: ME, out: true })])
+    expect(storage.getForumTopic(FORUM, mid(10))!.unread_count).toBe(1)
+    expect(ops).toEqual([])
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(2))
+  })
+})
+

@@ -171,8 +171,8 @@ describe('realtime.getStatus — иммунность к потере push-ув�
 // кадр, ошибка и отмена аплоада.
 
 // Ревью КЛ-1 Б2: прочтение в теме форума — ветка `threadId` tweb `readHistory`
-// (appMessagesManager.ts:9186-9210) — уходит хранилищу тем; горизонт чата —
-// временно тоже (до волны 2 Ф-5, см. докблок `markRead`).
+// (appMessagesManager.ts:9186-9210) — уходит хранилищу тем, горизонт чата НЕ
+// уходит (иначе читались бы все темы ниже рубежа); тред не-темы — горизонт чата.
 describe('realtime.markRead', () => {
   function make() {
     const markRead = vi.fn()
@@ -192,10 +192,17 @@ describe('realtime.markRead', () => {
   }
   const OFFSET = 0x100000000
 
-  it('с threadId — тема читается хранилищем тем клиентскими номерами, горизонт чата — серверным', async () => {
+  it('с threadId темы — читает хранилище тем клиентскими номерами, горизонт чата не уходит', async () => {
     const { rt, markRead, forumTopics } = make()
     await rt.markRead({ peerId: -5, upToId: OFFSET + 40, threadId: OFFSET + 7 })
     expect(forumTopics.readHistory).toHaveBeenCalledWith(-5, OFFSET + 7, OFFSET + 40)
+    expect(markRead).not.toHaveBeenCalled()
+  })
+
+  it('с threadId не темы (тред комментариев) — горизонт чата серверным номером', async () => {
+    const { rt, markRead, forumTopics } = make()
+    forumTopics.readHistory.mockReturnValue(false)
+    await rt.markRead({ peerId: -5, upToId: OFFSET + 40, threadId: OFFSET + 7 })
     expect(markRead).toHaveBeenCalledWith(-5, 40)
   })
 

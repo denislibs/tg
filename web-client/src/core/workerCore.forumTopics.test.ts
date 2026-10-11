@@ -169,4 +169,19 @@ describe('createWorkerCore(): кадры тем применяет хранил�
     expect(ops.map((op) => op.op)).toEqual(['notify', 'forumUnread'])
     expect((ops[0] as Extract<ForumTopicOp, { op: 'notify' }>).topic.notify_settings).toEqual({ _: 'peerNotifySettings', mute_until: 0 })
   })
+
+  // Ревью КЛ-1 (независимое) В1 — проводка `onMessagesDeleted` к хранилищу тем
+  // (tweb onUpdateDeleteMessages :11493-11592, ветка темы)
+  it('удаление непрочитанного сообщения темы → `unread` с нулём + `forumUnread`', async () => {
+    const { core, ops } = await boot()
+    const raw = makeRawMessage({ id: 15, peerId: FORUM, fromId: 2, text: 'в теме', replyToMsgId: 10, forumTopic: true })
+    capturedConnDeps!.onFrame('new_message', { _: 'updateNewChannelMessage', message: raw })
+    await vi.waitFor(() => expect(ops.map((op) => op.op)).toContain('unread'))
+    await core.registry.messages.saveApiMessages([raw])
+    ops.length = 0
+    core.registry.messages.cacheDelete({ _: 'updateDeletePeerMessages', peer: { _: 'peerChannel', channel_id: 50 }, messages: [15] } as never)
+    expect(ops.map((op) => op.op)).toEqual(['unread', 'forumUnread'])
+    expect((ops[0] as Extract<ForumTopicOp, { op: 'unread' }>).topic.unread_count).toBe(0)
+  })
 })
+

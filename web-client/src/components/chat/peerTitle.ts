@@ -103,11 +103,11 @@ subscribePeerMirror(() => {
   }
 })
 // `peer_title_edit` с `threadId` (peerTitle.ts:34-46, источник —
-// `processTopicUpdate`, dialogs.ts:1781-1797) — операция `edit` хранилища тем
-// со сменой названия; см. шапку
+// `processTopicUpdate`, dialogs.ts:1781-1797: название ИЛИ значок — заголовок
+// темы рисует значок рядом с названием) — операция `edit` хранилища тем; см. шапку
 rootScope.addEventListener(RT.forumTopicOp, ({ ops }) => {
   for (const op of ops) {
-    if (op.op !== 'edit' || !op.title) continue
+    if (op.op !== 'edit') continue
     for (const title of live) title.updateTopic(op.topic)
   }
 })
@@ -141,7 +141,7 @@ export default class PeerTitle {
     }
   }
 
-  /** Тема узла переименована — новое значение от хранилища тем. */
+  /** Тема узла переименована или сменила значок — новое значение от хранилища тем. */
   public updateTopic(next: TopicIconSource & { peerId: PeerId }) {
     const topic = this.options.topic
     if (!topic || next.peerId !== this.options.peerId || next.id !== topic.id) return
