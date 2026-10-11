@@ -344,14 +344,16 @@ describe('скрытые темы (tweb `CAN_HIDE_TOPIC = false`, `forumTopics.t
 // Живые события тем — операции хранилища тем воркера (tweb forumTopics.ts:40-104):
 // список не перечитывается, строка меняется значением от владельца.
 describe('живые события тем (Б-54)', () => {
-  it('`update` переименовывает строку и поднимает её по индексу, список не перечитывается', async () => {
+  it('`update`+`edit` переименовывают строку и поднимают её по индексу, список не перечитывается', async () => {
     await start([topic(1), topic(2)])
     await openForum()
     const getForumTopics = mounted!.hooks.managers.forumTopics.getForumTopics
     const calls = getForumTopics.mock.calls.length
 
     const renamed = { ...forumTab()!.xd.getDialog(generateMessageId(2))!, title: 'Новое имя', index: 5000 * 0x10000 }
-    topicOps([{ op: 'update', peerId: FORUM_ID, topics: [renamed] }])
+    // название перерисовывает `peer_title_edit` с `threadId` (операция `edit`,
+    // tweb peerTitle.ts:34-46), порядок — `dialogs_multiupdate` (`update`)
+    topicOps([{ op: 'update', peerId: FORUM_ID, topics: [renamed] }, { op: 'edit', topic: renamed, title: true, icon: false }])
     await vi.waitFor(() => {
       flushFrames()
       const [first] = topicRows()

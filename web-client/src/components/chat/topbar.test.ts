@@ -356,18 +356,19 @@ describe('ChatTopbar: заголовок и подпись по виду пир�
   // правка темы с другого устройства перерисовывает шапку открытого треда
   it('правка темы живьём: название — `PeerTitle`, значок — новый аватар', async() => {
     const topbar = await open(makeChat({ peerId: GROUP, threadId: TOPIC, isForum: true, isForumTopic: true }))
-    const firstAvatar = q(topbar, '.avatar')
+    const avatar = q(topbar, '.avatar')
+    expect(avatar.querySelector('.topic-icon-svg')).toBeTruthy()
     const renamed = { _: 'forumTopic', peerId: GROUP, id: TOPIC, title: 'Переименована', icon_color: 0x6FB9F0, icon_emoji: '🔥' }
     rootScope.dispatchEventSingle(RT.forumTopicOp, { ops: [
       { op: 'update', peerId: GROUP, topics: [renamed as never] },
-      { op: 'edit', peerId: GROUP, id: TOPIC, title: true, icon: true },
+      { op: 'edit', topic: renamed as never, title: true, icon: true },
     ] })
     expect(q(topbar, '.user-title .peer-title').textContent).toBe('Переименована')
-    await vi.waitFor(() => expect(firstAvatar.isConnected).toBe(false))
+    // тот же узел аватарки перерисован модульным слушателем (avatarNew.tsx:117-130):
     // значок-эмодзи вместо «облачка» с инициалом (topicAvatar.ts, расхождение 2)
-    expect(q(topbar, '.avatar .topic-icon')).toBeTruthy()
-    expect(q(topbar, '.avatar').querySelector('.topic-icon-svg')).toBeNull()
-    expect(firstAvatar.querySelector('.topic-icon-svg')).toBeTruthy()
+    expect(q(topbar, '.avatar')).toBe(avatar)
+    expect(avatar.querySelector('.topic-icon')).toBeTruthy()
+    expect(avatar.querySelector('.topic-icon-svg')).toBeNull()
   })
 
   it('смена пира на том же топбаре меняет аватар и заголовок', async() => {

@@ -182,7 +182,7 @@ describe('forumTopicsStorage: новое сообщение (onUpdateNewMessage,
     storage.applyNewMessage(edit({ title: 'Переименована' }, 11))
     let t = storage.getForumTopic(FORUM, mid(10))!
     expect(t.title).toBe('Переименована')
-    expect(ops).toContainEqual({ op: 'edit', peerId: FORUM, id: mid(10), title: true, icon: false })
+    expect(ops).toContainEqual({ op: 'edit', topic: expect.objectContaining({ id: mid(10), title: 'Переименована' }), title: true, icon: false })
 
     storage.applyNewMessage(edit({ closed: true }, 12))
     t = storage.getForumTopic(FORUM, mid(10))!
@@ -192,7 +192,7 @@ describe('forumTopicsStorage: новое сообщение (onUpdateNewMessage,
 
     storage.applyNewMessage(edit({ icon_emoji_emoticon: '🔥' }, 14))
     expect(storage.getForumTopic(FORUM, mid(10))!.icon_emoji).toBe('🔥')
-    expect(ops).toContainEqual({ op: 'edit', peerId: FORUM, id: mid(10), title: false, icon: true })
+    expect(ops).toContainEqual({ op: 'edit', topic: expect.objectContaining({ id: mid(10), icon_emoji: '🔥' }), title: false, icon: true })
   })
 
   it('`TopicEdit` General (без `reply_to`) — скрытие General', async () => {
@@ -254,7 +254,7 @@ describe('forumTopicsStorage: закреп, мьют, форум', () => {
     ops.length = 0
     storage.onChatToggleForum(FORUM, false)
     expect(storage.getForumTopic(FORUM, mid(10))).toBeUndefined()
-    expect(ops).toEqual([{ op: 'flush', peerId: FORUM }, { op: 'forumUnread', peerId: FORUM }])
+    expect(ops).toEqual([{ op: 'forumUnread', peerId: FORUM }])
     await storage.getForumTopics(FORUM)
     expect(get).toHaveBeenCalledTimes(2)
   })

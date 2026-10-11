@@ -119,7 +119,7 @@ describe('createWorkerCore(): кадры тем применяет хранил�
   it('карточка чата без `forum` → `flush` тем', async () => {
     const { core, ops } = await boot()
     core.registry.peers.saveApiPeers({ chats: [forumChat(false)] })
-    expect(ops).toEqual([{ op: 'flush', peerId: FORUM }, { op: 'forumUnread', peerId: FORUM }])
+    expect(ops).toEqual([{ op: 'forumUnread', peerId: FORUM }])
     expect(core.registry.forumTopics.getForumTopic(FORUM, generateMessageId(10))).toBeUndefined()
   })
 })

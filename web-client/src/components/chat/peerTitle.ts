@@ -102,11 +102,13 @@ subscribePeerMirror(() => {
     title.update()
   }
 })
-// `peer_title_edit` с `threadId` — см. шапку
+// `peer_title_edit` с `threadId` (peerTitle.ts:34-46, источник —
+// `processTopicUpdate`, dialogs.ts:1781-1797) — операция `edit` хранилища тем
+// со сменой названия; см. шапку
 rootScope.addEventListener(RT.forumTopicOp, ({ ops }) => {
   for (const op of ops) {
-    if (op.op !== 'update') continue
-    for (const title of live) title.updateTopic(op.peerId, op.topics)
+    if (op.op !== 'edit' || !op.title) continue
+    for (const title of live) title.updateTopic(op.topic)
   }
 })
 
@@ -139,12 +141,10 @@ export default class PeerTitle {
     }
   }
 
-  /** Тема узла переименована или сменила значок — новое значение от хранилища тем. */
-  public updateTopic(peerId: PeerId, topics: TopicIconSource[]) {
+  /** Тема узла переименована — новое значение от хранилища тем. */
+  public updateTopic(next: TopicIconSource & { peerId: PeerId }) {
     const topic = this.options.topic
-    if (!topic || peerId !== this.options.peerId) return
-    const next = topics.find((t) => t.id === topic.id)
-    if (!next || (next.title === topic.title && next.icon_emoji === topic.icon_emoji && next.icon_color === topic.icon_color)) return
+    if (!topic || next.peerId !== this.options.peerId || next.id !== topic.id) return
     this.options.topic = next
     this.update()
   }

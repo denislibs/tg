@@ -198,8 +198,8 @@ export function isForumTopicMuted(topic: Pick<ForumTopic, 'notify_settings'>, fo
  *    (`processChangedUnreadOrUnmuted`, `dialogs.ts:968-985`): строка форума в
  *    списке чатов пересчитывает бейдж (О-71);
  *  • `edit` — `peer_title_edit`/`avatar_update` с `threadId`
- *    (`processTopicUpdate`, `dialogs.ts:1781-1797`);
- *  • `flush` — форум выключили (`chat_toggle_forum`, `dialogs.ts:186-192`).
+ *    (`processTopicUpdate`, `dialogs.ts:1781-1797`): тема едет самой
+ *    операцией — её слушают модульные реестры `PeerTitle` и аватарок.
  */
 export type ForumTopicOp =
   | { op: 'update'; peerId: PeerId; topics: ForumTopic[] }
@@ -207,5 +207,4 @@ export type ForumTopicOp =
   | { op: 'notify'; topic: ForumTopic }
   | { op: 'drop'; peerId: PeerId; id: number }
   | { op: 'forumUnread'; peerId: PeerId }
-  | { op: 'edit'; peerId: PeerId; id: number; title: boolean; icon: boolean }
-  | { op: 'flush'; peerId: PeerId }
+  | { op: 'edit'; topic: ForumTopic; title: boolean; icon: boolean }

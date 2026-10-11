@@ -49,9 +49,9 @@
 //     экрана закрепов (`:1557-1585`) — счёт `core/pinnedMessages.ts::getPinnedMessage`. Тема форума
 //     (заголовок `wrapPeerTitle({threadId})`, аватар `avatarNew({threadId})`, статус
 //     `TopicProfileStatus` `:1736-1742`) — тема приходит из хранилища тем воркера
-//     (`forumTopics.getForumTopicOrReload`, tweb `getForumTopicById`); смену значка
-//     (`avatar_update` с `threadId`, у tweb его слушает `avatarNew`) шапка ловит
-//     операцией `edit` хранилища и перерисовывает аватар сама, название — `PeerTitle`. Замка закрытой темы в шапке у tweb нет
+//     (`forumTopics.getForumTopicOrReload`, tweb `getForumTopicById`); правки темы
+//     (`peer_title_edit`/`avatar_update` с `threadId`) ловят модульные слушатели
+//     `PeerTitle` и аватарки, как у tweb (`avatarNew.tsx:117-130`). Замка закрытой темы в шапке у tweb нет
 //     (`pFlags.closed` темы шапка не читает) — его рисовал прежний React `ChatHeader`,
 //     в порт он не идёт.
 //  4. Статус — `appImManager.setPeerStatus` (блок L, его расхождения Н1–Н6). Поводы
@@ -760,13 +760,6 @@ export default class ChatTopbar {
       }
     })
 
-    // `peer_title_edit`/`avatar_update` темы — расхождение 3
-    this.listenerSetter.add(rootScope)(RT.forumTopicOp, ({ ops }) => {
-      for(const op of ops) {
-        if(op.op === 'edit') void this.onForumTopicEdit(op.peerId, op.id, op.icon)
-      }
-    })
-
     // tweb :1149-1157
     this.listenerSetter.add(rootScope)('peer_pinned_messages', ({ peerId, mids }) => {
       if(this.chat.type !== ChatType.Pinned || peerId !== this.peerId) {
@@ -1021,36 +1014,6 @@ export default class ChatTopbar {
     if(!this.chat.isForumTopic || !threadId) return
 
     return this.managers.forumTopics.getForumTopicOrReload(peerId, threadId).catch(() => undefined)
-  }
-
-  /**
-   * `avatar_update` с `threadId` (tweb `dialogs.ts:1781-1797` → `avatarNew`): у темы
-   * открытого треда сменили значок — аватар шапки рисуется заново (расхождение 3);
-   * заголовок `PeerTitle` перерисовывает сам.
-   */
-  private async onForumTopicEdit(peerId: PeerId, threadId: number, icon: boolean) {
-    if(peerId !== this.chat.peerId || threadId !== this.chat.threadId || !this.chat.isForumTopic) return
-    const topic = await this.managers.forumTopics.getForumTopic(peerId, threadId)
-    if(!topic || peerId !== this.chat.peerId || threadId !== this.chat.threadId) return
-    // заголовок перерисовывает сам `PeerTitle` (его `updateTopic`)
-    this.forumTopic = topic
-    if(!icon || !this.avatar) return
-
-    const middlewareHelper = getMiddleware()
-    const avatar = avatarNew({
-      middleware: middlewareHelper.get(),
-      isDialog: true,
-      size: 40,
-      peerId,
-      threadId,
-      topic,
-      managers: this.managers,
-    })
-    avatar.node.classList.add('person-avatar')
-    this.avatar.node.replaceWith(avatar.node)
-    this.avatarMiddlewareHelper?.destroy()
-    this.avatar = avatar
-    this.avatarMiddlewareHelper = middlewareHelper
   }
 
   public async finishPeerChange(options: { middleware: () => boolean }) {

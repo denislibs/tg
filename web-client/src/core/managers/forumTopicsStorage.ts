@@ -382,7 +382,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
         }
         const title = topic.title !== oldTitle
         const icon = topic.icon_emoji !== oldIcon
-        if (title || icon) edit = { op: 'edit', peerId, id: topic.id, title, icon }
+        if (title || icon) edit = { op: 'edit', topic, title, icon }
       }
 
       reindex(cache, topic)
@@ -471,14 +471,13 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
 
     /**
      * `chat_toggle_forum` (`dialogs.ts:186-192`): форум выключили — кэш тем
-     * сбрасывается (`flushForumTopicsCache`, `:1981-2005`); в обоих случаях
-     * строка форума пересчитывает бейдж (`processChangedUnreadOrUnmuted`).
+     * сбрасывается молча (`flushForumTopicsCache`, `:1981-2005`, событий не
+     * шлёт); в обоих случаях строка форума пересчитывает бейдж
+     * (`processChangedUnreadOrUnmuted`).
      */
     onChatToggleForum(peerId: PeerId, enabled: boolean): void {
-      const ops: ForumTopicOp[] = []
-      if (!enabled && caches.delete(peerId)) ops.push({ op: 'flush', peerId })
-      ops.push({ op: 'forumUnread', peerId })
-      onOps(ops)
+      if (!enabled) caches.delete(peerId)
+      onOps([{ op: 'forumUnread', peerId }])
     },
 
     /** Смена сессии — всё хранилище в памяти (у оригинала — новый воркер). */
