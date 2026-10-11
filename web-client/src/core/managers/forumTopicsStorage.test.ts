@@ -163,6 +163,31 @@ describe('forumTopicsStorage: новое сообщение (onUpdateNewMessage,
     await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(2))
   })
 
+  // deletedTopics (dialogs.ts:2066-2068, :2084-2096; расхождение 5): темы нет и в
+  // успешном ответе — следующие кадры её не перечитывают; служебка создания снимает метку
+  it('темы нет в ответе — помечена удалённой, повторной сети нет; служебка создания снимает метку', async () => {
+    const { storage, get } = setup([wire(10)])
+    await storage.getForumTopics(FORUM)
+    storage.applyNewMessage(msgInTopic(50, 40))
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(2))
+    await new Promise((r) => setTimeout(r, 0))
+    storage.applyNewMessage(msgInTopic(51, 40))
+    expect(await storage.getForumTopicOrReload(FORUM, mid(40))).toBeUndefined()
+    expect(get).toHaveBeenCalledTimes(2)
+
+    storage.applyNewMessage(makeServiceMessage({ id: mid(40), peerId: FORUM, fromId: OTHER, date: 1_900_000_000, action: { _: 'messageActionTopicCreate', title: 'Снова', icon_color: 2 } }))
+    expect(storage.getForumTopic(FORUM, mid(40))).toMatchObject({ title: 'Снова' })
+  })
+
+  it('отказ сети метку не ставит — следующий запрос снова идёт в сеть', async () => {
+    const { storage, get } = setup([wire(10)])
+    await storage.getForumTopics(FORUM)
+    get.mockRejectedValueOnce(new Error('net'))
+    await expect(storage.getForumTopicOrReload(FORUM, mid(40))).rejects.toThrow('net')
+    await storage.getForumTopicOrReload(FORUM, mid(40))
+    expect(get).toHaveBeenCalledTimes(3)
+  })
+
   it('список ни разу не грузили — ничего не делает и в сеть не ходит', () => {
     const { storage, get, ops } = setup([wire(10)])
     storage.applyNewMessage(msgInTopic(15, 10))

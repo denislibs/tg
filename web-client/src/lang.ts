@@ -396,6 +396,10 @@ const lang = {
   'Chat.Service.Group.TopicEdited.You.Resumed': 'You reopened the topic',
   'Chat.Service.Group.TopicEdited.You.Title': 'You changed topic name to "%1$@"',
   'Chat.Service.Group.TopicEdited.You.Unhided': 'You unhid the general topic',
+  // Четыре строки ниже — буквально из tweb (lang.ts:189-192), с его ошибками:
+  // в `Mixed.IconRemoved` дважды `%1$@` (название темы подменяется автором), в
+  // `You.Mixed` — `%2$@` при одном аргументе (messageActionTextNewUnsafe.ts:625-630).
+  // Русский словарь (`i18n/dict.ru.ts`) их не повторяет.
   'Chat.Service.TopicEdited.Mixed': '%1$@ changed the topic name and icon to %2$@',
   'Chat.Service.TopicEdited.Mixed.IconRemoved': '%1$@ changed the topic name to "%1$@" and removed icon',
   'Chat.Service.TopicEdited.You.Mixed': 'You changed the topic name and icon to %2$@',

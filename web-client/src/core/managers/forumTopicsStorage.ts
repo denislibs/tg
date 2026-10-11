@@ -25,6 +25,12 @@
 //     `dialogs.ts:2252-2255`) считает вкладка: правило мьюта типа чатов живёт в
 //     её зеркале (`stores/notifyStore.ts`), поэтому владелец отдаёт настройки
 //     непрочитанных тем, а не готовый ответ.
+//  5. Удалённая тема (`deletedTopics`): у оригинала метку ставит только явный
+//     `forumTopicDeleted` в ответе `getForumTopicsByID` — отсутствие там может
+//     быть отставанием реплики. Наш сервер `forumTopicDeleted` не производит, а
+//     ответ — ПОЛНЫЙ список тем без отставания, поэтому удалённой считается тема,
+//     которой нет в успешном ответе. Метка гасит перечитывание по каждому кадру
+//     такой темы; служебка создания и появление в ответе её снимают.
 import type { RestClient } from '../net/restClient'
 import type { Chat, UserReal } from '../peers/peer'
 import type { MyMessage, RawMyMessage } from '../models'
@@ -72,6 +78,8 @@ type TopicsCache = {
   loadPromise?: Promise<ForumTopic[]>
   /** `historyStorage.triedToReadMaxId` треда темы (`appMessagesManager.ts:9165-9170`) */
   triedToReadMaxId: Map<number, number>
+  /** `deletedTopics` (`dialogs.ts:109`, `:2066-2068`, `:2084-2096`) — расхождение 5 */
+  deletedTopics: Set<number>
 }
 
 export interface ForumTopicsDeps {
@@ -100,7 +108,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
   /** tweb `getForumTopicsCache` (`dialogs.ts:2032-2047`) */
   function getCache(peerId: PeerId): TopicsCache {
     let cache = caches.get(peerId)
-    if (!cache) caches.set(peerId, cache = { topics: new Map(), pinnedOrder: [], loaded: false, triedToReadMaxId: new Map() })
+    if (!cache) caches.set(peerId, cache = { topics: new Map(), pinnedOrder: [], loaded: false, triedToReadMaxId: new Map(), deletedTopics: new Set() })
     return cache
   }
 
@@ -156,7 +164,10 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
       const ids = new Set(topics.map((t) => t.id))
       const dropped = [...cache.topics.keys()].filter((id) => !ids.has(id))
       for (const id of dropped) cache.topics.delete(id)
-      for (const topic of topics) saveTopic(cache, topic)
+      for (const topic of topics) {
+        cache.deletedTopics.delete(topic.id)
+        saveTopic(cache, topic)
+      }
       cache.loaded = true
       const ops: ForumTopicOp[] = dropped.map((id) => ({ op: 'drop', peerId, id }))
       ops.push({ op: 'update', peerId, topics: sorted(cache) }, { op: 'forumUnread', peerId })
@@ -166,6 +177,20 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
     cache.loadPromise = promise
     void promise.finally(() => { if (cache.loadPromise === promise) cache.loadPromise = undefined }).catch(() => {})
     return promise
+  }
+
+  /**
+   * Тему, которой нет в кэше, — перечитать список (`getForumTopicById`,
+   * `dialogs.ts:2053-2180`, расхождение 1); нет и в успешном ответе — метка
+   * `deletedTopics` (расхождение 5), отказ сети метку не ставит (`:2084-2096`).
+   */
+  async function reloadForTopic(peerId: PeerId, topicId: number): Promise<ForumTopic | undefined> {
+    const cache = getCache(peerId)
+    if (cache.deletedTopics.has(topicId)) return undefined
+    await load(peerId)
+    const topic = caches.get(peerId)?.topics.get(topicId)
+    if (!topic && caches.get(peerId) === cache) cache.deletedTopics.add(topicId)
+    return topic
   }
 
   /** Объявить изменённую тему (`scheduleHandleNewDialogs` → `dialogs_multiupdate`). */
@@ -267,10 +292,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
 
     /** tweb `getForumTopicOrReload` (`dialogs.ts:2196-2204`) — расхождение 1. */
     async getForumTopicOrReload(peerId: PeerId, topicId: number): Promise<ForumTopic | undefined> {
-      const found = caches.get(peerId)?.topics.get(topicId)
-      if (found) return found
-      await load(peerId)
-      return caches.get(peerId)?.topics.get(topicId)
+      return caches.get(peerId)?.topics.get(topicId) ?? reloadForTopic(peerId, topicId)
     },
 
     /**
@@ -315,11 +337,12 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
         if (m._ === 'messageService' && topicCreate) {
           const created = createForumTopicFromAction(m)
           if (created) {
+            cache.deletedTopics.delete(created.id)
             saveTopic(cache, created)
             emitUpdate(created, [{ op: 'forumUnread', peerId }])
           }
         } else {
-          void load(peerId).catch(() => {})
+          void reloadForTopic(peerId, threadId).catch(() => {})
         }
         return
       }
