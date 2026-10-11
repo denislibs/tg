@@ -70,8 +70,10 @@ func scheduledParamsOf(in SendInput) domain.ScheduledParams {
 	}
 }
 
-// webPageInputPtr — решение о превью в снимок: нулевое не хранится.
+// webPageInputPtr — решение о превью в снимок, нормализованное: ложные
+// pFlags отброшены (как и при JSON-круге снимка), нулевое не хранится.
 func webPageInputPtr(w domain.WebPageInput) *domain.WebPageInput {
+	w = w.Normalized()
 	if w == (domain.WebPageInput{}) {
 		return nil
 	}

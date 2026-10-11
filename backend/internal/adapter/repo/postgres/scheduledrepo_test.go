@@ -277,6 +277,21 @@ func TestScheduledRepo_WebPageIfSameAndChoice(t *testing.T) {
 		t.Fatalf("снимок после снятия решения = %+v", got.Params)
 	}
 
+	// Самый частый путь: решения о превью нет (ключа web_page в снимке нет),
+	// у текста есть сущности — карточка пишется.
+	ents := domain.MessageEntities{domain.NewMessageEntityBold(0, 3)}
+	plain, _, err := r.Create(ctx, domain.ScheduledMessage{ChatID: chatID, SenderID: a, Type: "text",
+		Text: "жир https://b.example", Entities: ents, SendAt: time.Now().Add(time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := r.SetWebPageIfSame(ctx, plain.ID, wp, plain.Text, ents, nil); err != nil || !ok {
+		t.Fatalf("без решения, с сущностями: ok=%v err=%v", ok, err)
+	}
+	if ok, _ := r.SetWebPageIfSame(ctx, plain.ID, wp, plain.Text, nil, nil); ok {
+		t.Fatal("другие сущности — карточка записана")
+	}
+
 	// В аренде публикации — не пишется.
 	if _, ok, err := r.Claim(ctx, row.ID, got.SendAt, false, time.Minute, false); err != nil || !ok {
 		t.Fatalf("claim: ok=%v err=%v", ok, err)

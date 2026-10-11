@@ -222,7 +222,7 @@ func (i *Interactor) buildWebPreview(url string, ownerID int64) *domain.WebPageP
 // канала нет, а догон канала (/channels/{id}/difference) обязан привезти
 // карточку тому, кто пропустил живой кадр. recipients у канала не нужны.
 // Зеркало поста в группе обсуждения получает ту же карточку
-// (syncMirrorContent): оно создаётся в транзакции Send раньше, чем карточка
+// (mirrorSync в транзакции записи): оно создаётся в транзакции Send раньше, чем карточка
 // готова, и иначе осталось бы без неё навсегда.
 func (i *Interactor) attachWebPreview(msg domain.Message, url string, recipients []int64, in domain.WebPageInput) {
 	// Фоновая горутина над чужим HTML (парсинг og/readability) — паника не должна
@@ -280,12 +280,13 @@ func (i *Interactor) attachWebPreview(msg domain.Message, url string, recipients
 }
 
 // writeChannelWebPreview — карточка поста broadcast-канала: условная запись и
-// правка поста в журнал канала одной транзакцией (см. attachWebPreview),
-// живой кадр — после коммита, затем зеркало в группе обсуждения.
+// правка поста в журнал канала и зеркало в группе обсуждения одной
+// транзакцией (см. attachWebPreview), живые кадры — после коммита.
 func (i *Interactor) writeChannelWebPreview(ctx context.Context, msg domain.Message, wp *domain.WebPagePreview) {
 	var post domain.Message
 	var body map[string]any
 	var pts int64
+	var mirror *editDelivery
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		ok, err := i.msgs.SetWebPageIfEdited(ctx, msg.ID, wp, msg.EditedAt)
 		if err != nil || !ok {
@@ -299,14 +300,20 @@ func (i *Interactor) writeChannelWebPreview(ctx context.Context, msg domain.Mess
 			return err
 		}
 		body = i.channelEditPayload(ctx, post)
-		pts, err = i.appendChannelUpdate(ctx, post.ChatID, "edit_message", body)
+		if pts, err = i.appendChannelUpdate(ctx, post.ChatID, "edit_message", body); err != nil {
+			return err
+		}
+		// Зеркало — в той же транзакции (mirrorSync БЭК-3): правка поста,
+		// пришедшая после коммита, ляжет на зеркало позже карточки и не будет
+		// перезаписана ею.
+		mirror, err = i.mirrorSync(ctx, post, false)
 		return err
 	})
 	if err != nil || body == nil {
 		return
 	}
 	i.publishChannelUpdate(ctx, post.ChatID, "edit_message", body, pts, post.SenderID)
-	i.syncMirrorContent(ctx, post, false)
+	i.publishEdit(ctx, mirror)
 }
 
 // attachScheduledWebPreview — превью ОТЛОЖЕННОГО (спецификация Ф-5 п. 4.2.4):
@@ -362,6 +369,7 @@ type scheduledWebPageEdit struct {
 	choice        *domain.WebPageInput // решение после правки (снимок)
 	choiceChanged bool                 // решение отличается от снимка
 	next          *domain.WebPagePreview
+	write         bool // записать next (правка текста или решения)
 	rebuild       bool // после коммита собрать карточку заново
 }
 
@@ -371,25 +379,38 @@ type scheduledWebPageEdit struct {
 // карточка снята, ссылка другая — снята и собирается заново.
 func (i *Interactor) scheduledEditWebPage(m domain.ScheduledMessage, in EditScheduledInput, entities domain.MessageEntities, textChanged bool) scheduledWebPageEdit {
 	e := scheduledWebPageEdit{choice: m.Params.WebPage, next: m.WebPage}
-	// «Изменить время» у tweb — editMessage без полей превью и с прежним
-	// текстом (contextMenu.ts:979-983): решение снимка он не трогает.
-	if in.WebPage != nil && (textChanged || *in.WebPage != (domain.WebPageInput{})) {
-		e.choice = webPageInputPtr(*in.WebPage)
-		e.choiceChanged = !reflect.DeepEqual(e.choice, m.Params.WebPage)
-	}
-	if m.Type != "text" || m.Params.Fwd != nil || (!textChanged && !e.choiceChanged) {
+	// Отложенная пересылка несёт карточку источника, решения о превью у неё
+	// нет (текст пересланного и не правится).
+	if m.Type != "text" || m.Params.Fwd != nil {
 		return e
 	}
-	var choice domain.WebPageInput
-	if e.choice != nil {
-		choice = *e.choice
+	// «Изменить время» у tweb — editMessage без полей превью и с прежним
+	// текстом (contextMenu.ts:979-983): решение снимка он не трогает.
+	if in.WebPage != nil && (textChanged || webPageInputPtr(*in.WebPage) != nil) {
+		e.choice = webPageInputPtr(*in.WebPage)
+		e.choiceChanged = !reflect.DeepEqual(e.choice, webPageInputPtr(derefChoice(m.Params.WebPage)))
 	}
+	if !textChanged && !e.choiceChanged {
+		return e
+	}
+	choice := derefChoice(e.choice)
 	url := previewURL(choice, in.Text, entities)
+	// Решение по снимку, прочитанному до транзакции: карточку, которую тем
+	// временем дописала догоняющая сборка, оно не видит, поэтому запись —
+	// безусловная (иначе «ссылку убрали» оставило бы ту карточку навсегда).
+	e.next, e.write = nil, true
 	if m.WebPage != nil {
 		e.next = keptWebPage(m.WebPage, url, choice)
 	}
 	e.rebuild = e.next == nil && url != "" && i.preview != nil
 	return e
+}
+
+func derefChoice(c *domain.WebPageInput) domain.WebPageInput {
+	if c == nil {
+		return domain.WebPageInput{}
+	}
+	return *c
 }
 
 // applyScheduledEditWebPage — запись решения о превью и карточки правки в
@@ -401,7 +422,7 @@ func (i *Interactor) applyScheduledEditWebPage(ctx context.Context, row *domain.
 		}
 		row.Params.WebPage = e.choice
 	}
-	if e.next != row.WebPage {
+	if e.write {
 		if err := i.scheduled.SetWebPage(ctx, row.ID, e.next); err != nil {
 			return err
 		}

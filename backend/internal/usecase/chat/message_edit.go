@@ -251,22 +251,6 @@ func (i *Interactor) mirrorSync(ctx context.Context, post domain.Message, edited
 	return i.fanOutEdit(ctx, m, 0, m.SenderID, nil)
 }
 
-// syncMirrorContent — содержимое поста канала изменилось ВНЕ транзакции
-// правки (догоняющее превью ссылки поста — P1, Ф-5 НО-5): своя транзакция
-// mirrorSync и публикация. Нет зеркала — no-op; сбой — best-effort (зеркало
-// догонит следующая правка поста).
-func (i *Interactor) syncMirrorContent(ctx context.Context, post domain.Message, edited bool) {
-	var d *editDelivery
-	if err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		var e error
-		d, e = i.mirrorSync(ctx, post, edited)
-		return e
-	}); err != nil {
-		return
-	}
-	i.publishEdit(ctx, d)
-}
-
 // canEditMessage — серверный порт tweb appMessagesManager.canEditMessage
 // (:8312-8390, сервер Telegram отвечает MESSAGE_EDIT_FORBIDDEN /
 // MESSAGE_AUTHOR_REQUIRED):

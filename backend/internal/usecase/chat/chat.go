@@ -53,8 +53,6 @@ type Interactor struct {
 	reactionCat  ReactionCatalogAccess
 	preview      LinkPreviewer
 	ivProbe      IVProber
-	// webPages — кэш карточек плашки композера (GetWebPage, webpreview.go).
-	webPages webPageCache
 	boosts       BoostRepo
 	giveaways    GiveawayRepo
 	suggested    SuggestedPostRepo
@@ -65,6 +63,8 @@ type Interactor struct {
 	botHub       *botPendingHub
 	// peerAddrs — кэш слоя разрешения peerId ↔ chatID (см. peeraddr.go).
 	peerAddrs *peerAddrCache
+	// webPages — кэш карточек плашки композера (GetWebPage, webpreview.go).
+	webPages webPageCache
 	// bg — фоновые хвосты запросов (веер поста канала: сброс снимков списка и
 	// пуш подписчикам), которые не должны держать ответ. Тесты ждут его.
 	bg sync.WaitGroup

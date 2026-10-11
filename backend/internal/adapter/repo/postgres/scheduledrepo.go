@@ -295,18 +295,11 @@ func (r *ScheduledRepo) LockQueue(ctx context.Context, chatID, senderID int64) e
 // SetWebPage пишет превью ссылки отложенного; картинка дублируется в колонку
 // web_page_media_id, как у messages (миграция 0092).
 func (r *ScheduledRepo) SetWebPage(ctx context.Context, id int64, wp *domain.WebPagePreview) error {
-	var param, photoID any
-	if wp != nil {
-		b, err := json.Marshal(wp)
-		if err != nil {
-			return err
-		}
-		param = string(b)
-		if wp.PhotoID > 0 {
-			photoID = wp.PhotoID
-		}
+	param, photoID, err := webPageParams(wp)
+	if err != nil {
+		return err
 	}
-	_, err := querier(ctx, r.pool).Exec(ctx,
+	_, err = querier(ctx, r.pool).Exec(ctx,
 		`UPDATE scheduled_messages SET web_page=$2, web_page_media_id=$3 WHERE id=$1`, id, param, photoID)
 	return err
 }

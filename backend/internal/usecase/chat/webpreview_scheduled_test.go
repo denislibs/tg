@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -200,5 +201,26 @@ func TestScheduledPreview_ClaimedRowSkipped(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	if scheduledRow(t, fs, sm.Seq).WebPage != nil || len(logOf(s, 1, scheduledNewFrame)) != frames {
 		t.Fatal("карточка записана в публикуемую строку")
+	}
+}
+
+// Решение о превью сравнивается нормализованным: ложные pFlags (после
+// JSON-круга снимка их нет) — не изменение, правка даёт MESSAGE_NOT_MODIFIED.
+func TestScheduledPreview_ChoiceNormalized(t *testing.T) {
+	in, _, fs, _, cid := scheduledPreviewEnv(t)
+	ctx := context.Background()
+	date := future()
+	media := &domain.InputMediaWebPage{Underscore: domain.InputMediaWebPageTag, URL: "https://a.example/x"}
+	sm, _ := in.Send(ctx, SendInput{ChatID: cid, SenderID: 1, Text: "https://a.example/x", ScheduleDate: date,
+		WebPage: domain.WebPageInput{Media: media}})
+	same := &domain.InputMediaWebPage{Underscore: domain.InputMediaWebPageTag, URL: "https://a.example/x",
+		PFlags: map[string]bool{"optional": false}}
+	_, err := in.EditScheduled(ctx, EditScheduledInput{ChatID: cid, ID: sm.Seq, UserID: 1,
+		Text: "https://a.example/x", ScheduleDate: date, WebPage: &domain.WebPageInput{Media: same}})
+	if !errors.Is(err, domain.ErrMessageNotModified) {
+		t.Fatalf("err = %v; ждали MESSAGE_NOT_MODIFIED", err)
+	}
+	if row := scheduledRow(t, fs, sm.Seq); row.Params.WebPage == nil || row.Params.WebPage.Media == nil {
+		t.Fatalf("снимок = %+v", row.Params.WebPage)
 	}
 }

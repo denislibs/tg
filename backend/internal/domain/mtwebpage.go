@@ -223,6 +223,26 @@ type WebPageInput struct {
 	Media *InputMediaWebPage `json:"media,omitempty"`
 }
 
+// Normalized — то же решение без ложных pFlags у media (TL true-флаг:
+// отсутствие = false); пустые pFlags — nil. Копия: исходник не меняется.
+func (w WebPageInput) Normalized() WebPageInput {
+	if w.Media == nil {
+		return w
+	}
+	m := *w.Media
+	m.PFlags = nil
+	for k, v := range w.Media.PFlags {
+		if v {
+			if m.PFlags == nil {
+				m.PFlags = map[string]bool{}
+			}
+			m.PFlags[k] = true
+		}
+	}
+	w.Media = &m
+	return w
+}
+
 // MediaURL — ссылка из inputMediaWebPage, если она http/https; иначе "".
 // Чужая схема или чужой конструктор не ошибка: превью у tweb необязательное
 // (optional), сообщение уходит без карточки.
