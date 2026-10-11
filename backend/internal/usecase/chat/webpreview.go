@@ -75,8 +75,9 @@ func sameURL(a, b string) bool {
 	return ea == nil && eb == nil && ua.String() == ub.String()
 }
 
-// webPageInputOf — необязательный хвостовой аргумент EditMessage: внутренние
-// вызовы (тесты, боты) его не передают.
+// webPageInputOf — необязательный хвостовой аргумент EditMessage и правки
+// бота: без него превью следует первой ссылке текста, invert_media не
+// меняется (Bot API этих параметров у нас не принимает).
 func webPageInputOf(opt []domain.WebPageInput) (domain.WebPageInput, bool) {
 	if len(opt) == 0 {
 		return domain.WebPageInput{}, false

@@ -506,3 +506,27 @@ func TestWebPageInput_SizeOnlyWithLargeMedia(t *testing.T) {
 		t.Fatalf("после правки = %+v", wp)
 	}
 }
+
+// Правка бота: клавиатура, сменённая во время сборки, сдвигает edited_at, и
+// первая сборка карточку не пишет — правка запускает новую, карточка всё равно
+// доезжает. Ссылку бот убрал — карточка снята, как у правки пользователя.
+func TestBotEdit_KeepsAndDropsPreview(t *testing.T) {
+	e := newPreviewEnv(t)
+	ctx := context.Background()
+	bot := domain.BotAccount{BotID: 1}
+	release := e.prev.hold("https://a.example/x")
+	msg, _ := e.in.Send(ctx, SendInput{ChatID: e.chatID, SenderID: 1, Text: "https://a.example/x"})
+	waitFor(t, func() bool { return len(e.prev.calls()) == 1 })
+	if _, err := e.in.BotEditReplyMarkup(ctx, bot, e.chatID, msg.ID, nil); err != nil {
+		t.Fatalf("BotEditReplyMarkup: %v", err)
+	}
+	close(release)
+	waitFor(t, func() bool { return storedMsg(t, e.s, msg.ID).WebPage != nil })
+
+	if _, err := e.in.BotEditMessageText(ctx, bot, e.chatID, msg.ID, "без ссылки", nil, nil, false); err != nil {
+		t.Fatalf("BotEditMessageText: %v", err)
+	}
+	if storedMsg(t, e.s, msg.ID).WebPage != nil {
+		t.Fatal("правка бота без ссылки не сняла карточку")
+	}
+}

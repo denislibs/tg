@@ -52,7 +52,9 @@ func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, 
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if text != nil {
-			m, e := i.msgs.UpdateText(ctx, msgID, *text, entities)
+			// Превью — как у правки пользователя (webpreview.go): ссылку убрали —
+			// карточка снята, сменили — пересоберётся после коммита.
+			m, e := i.updateTextWithWebPage(ctx, cur, *text, entities, nil)
 			if e != nil {
 				return e
 			}
@@ -95,6 +97,10 @@ func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, 
 	if err != nil {
 		return domain.Message{}, err
 	}
+	// Любая правка сдвигает edited_at, и сборка, начатая до неё, свою карточку
+	// уже не запишет (SetWebPageIfEdited) — у текста со ссылкой без карточки
+	// собираем заново, в том числе после правки одной клавиатуры.
+	defer func() { i.rebuildWebPreviewOnEdit(msg, nil, members) }()
 	if broadcast {
 		if hm, e := i.hydrateBroadcastMessage(ctx, msg); e == nil {
 			_ = i.publishChannelEdit(ctx, hm)
