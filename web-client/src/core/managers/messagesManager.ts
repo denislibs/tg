@@ -1100,7 +1100,11 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
           const r = await rest.patch<ScheduledUpdates>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}`, {
             text, entities: entities ?? null,
             schedule_date: options.scheduleDate,
-            schedule_repeat_period: options.scheduleRepeatPeriod || 0,
+            // Ключ — только когда период передан (tweb :2218 кладёт его лишь у
+            // `options.scheduleRepeatPeriod`): правка текста без периода повтор
+            // не трогает (у сервера nil = «не менять»), «Изменить время» шлёт
+            // явное значение, 0 = снять повтор.
+            ...(options.scheduleRepeatPeriod !== undefined ? { schedule_repeat_period: options.scheduleRepeatPeriod ?? 0 } : {}),
           })
           applyScheduledUpdates(r?.updates, r)
         } catch (e) {

@@ -279,8 +279,20 @@ describe('MessagesManager — лента отложенных', () => {
     await mgr.getScheduledMessages(1)
     await mgr.editMessage(1, cid(1), 'later', undefined, { scheduleDate: 0x7FFFFFFE })
     // «Когда в сети» едет ДАТОЙ-меткой, а не флагом (НО-3: не 2038 год)
-    expect(calls).toEqual([['/chats/1/messages/1', { text: 'later', entities: null, schedule_date: 0x7FFFFFFE, schedule_repeat_period: 0 }]])
+    // Период не передан — ключа нет: сервер повтор не меняет (tweb :2218)
+    expect(calls).toEqual([['/chats/1/messages/1', { text: 'later', entities: null, schedule_date: 0x7FFFFFFE }]])
     expect(ops()).toEqual([expect.objectContaining({ op: 'replace', key: '1_scheduled', msg: expect.objectContaining({ date: 0x7FFFFFFE }) })])
+  })
+
+  it('правка с явным периодом шлёт его, 0 — снять повтор; правка текста без периода повтор не снимает', async () => {
+    const bodies: Record<string, unknown>[] = []
+    const { mgr } = setup({ patch: async (_p: string, b: Record<string, unknown>) => { bodies.push(b); return { updates: [] } } })
+    await mgr.getScheduledMessages(1)
+    await mgr.editMessage(1, cid(1), 'a', undefined, { scheduleDate: 1_900_000_000, scheduleRepeatPeriod: 604800 })
+    await mgr.editMessage(1, cid(1), 'a', undefined, { scheduleDate: 1_900_000_000, scheduleRepeatPeriod: 0 })
+    await mgr.editMessage(1, cid(1), 'b', undefined, { scheduleDate: 1_900_000_000 })
+    expect(bodies.map((b) => b.schedule_repeat_period)).toEqual([604800, 0, undefined])
+    expect('schedule_repeat_period' in bodies[2]).toBe(false)
   })
 
   it('правка отложенного без изменений (MESSAGE_NOT_MODIFIED) — не отказ (tweb :2230-2233)', async () => {

@@ -1183,8 +1183,19 @@ describe('ChatContextMenu — лента отложенных', () => {
     input.scheduleDate = 0x7FFFFFFE
     input.scheduleRepeatPeriod = undefined
     input.scheduleSending.mock.calls[0][0]()
-    expect(managers.messages.editMessage).toHaveBeenCalledWith(PEER, 1, 'text 1', undefined, { scheduleDate: 0x7FFFFFFE, scheduleRepeatPeriod: undefined })
+    // Снятый в попапе повтор уходит явным 0: без ключа сервер оставил бы прежний
+    // (`editMessage` шлёт период только заданным — правка текста его не трогает).
+    expect(managers.messages.editMessage).toHaveBeenCalledWith(PEER, 1, 'text 1', undefined, { scheduleDate: 0x7FFFFFFE, scheduleRepeatPeriod: 0 })
     expect(input.onMessageSent).toHaveBeenCalledWith(false, false)
+  })
+
+  // tweb правку ещё не принятого бабла откладывает (`invokeAfterMessageIsSent`,
+  // appMessagesManager.ts:2193-2198); у нас пункт скрыт, как «Отправить сейчас» (:962).
+  it('над ещё не принятым сервером отложенным «Изменить время» и «Отправить сейчас» нет', async() => {
+    await openScheduled(1.5)
+    const items = itemTexts()
+    expect(items).not.toContain('Reschedule')
+    expect(items).not.toContain('Send Now')
   })
 
   it('«Изменить время» на слишком близкое (сброшенное) время — прежняя дата (tweb :2209)', async() => {

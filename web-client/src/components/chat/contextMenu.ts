@@ -692,13 +692,20 @@ export default class ChatContextMenu {
           const { input } = this.chat
           void this.managers.messages.editMessage?.(message.peerId, message.id, message.message, message.entities, {
             scheduleDate: input.scheduleDate || message.date,
-            scheduleRepeatPeriod: input.scheduleRepeatPeriod,
+            // Явное значение (0 = без повтора): иначе ключ не уйдёт и снятый в
+            // попапе повтор останется (`editMessage` шлёт период только заданным).
+            scheduleRepeatPeriod: input.scheduleRepeatPeriod ?? 0,
           }).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
 
           input.onMessageSent(false, false)
         }, new Date(message.date * 1000), message.schedule_repeat_period)
       },
-      verify: () => this.chat.type === ChatType.Scheduled && !!this.managers.messages.editMessage,
+      // `!isOutgoing`: tweb правку бабла, ещё не принятого сервером, откладывает
+      // до отправки (`editMessage` → `invokeAfterMessageIsSent`, :2193-2198); у нас
+      // этой очереди нет, временный номер серверу не известен — пункт скрыт, как
+      // у «Отправить сейчас» (:962).
+      verify: () => this.chat.type === ChatType.Scheduled && !!this.managers.messages.editMessage &&
+        !!this.message && !this.isOutgoing(this.message),
     }, {
       icon: 'reply',
       text: 'Reply',
