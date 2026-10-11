@@ -688,11 +688,11 @@ func (r *fakeTopicRepo) CountChatUnread(context.Context, int64, int64, int64) (i
 	return 0, nil
 }
 
-func (r *fakeTopicRepo) ApplyThreadReadToGroup(_ context.Context, _, _, root, merged, readMaxID, lastSeq int64) error {
+func (r *fakeTopicRepo) ApplyThreadReadToGroup(_ context.Context, _, _, root, merged, readMaxID, lastSeq int64) (bool, int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.groupReads = append(r.groupReads, [4]int64{root, merged, readMaxID, lastSeq})
-	return nil
+	return readMaxID > merged, readMaxID, nil
 }
 
 func (r *fakeTopicRepo) RecountForumUnread(context.Context, int64, int64) (int, error) {
