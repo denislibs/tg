@@ -52,4 +52,17 @@ describe('sendPoll: пакет параметров разворачиваетс
       silent: false, send_as_peer_id: null,
     })
   })
+
+  // tweb `sendOther` → `processUpdateMessage(updates)` (appMessagesManager.ts:4183):
+  // ответ отложенного опроса — `Updates`, их применяет владелец ленты отложенных.
+  it('отложенный опрос: schedule_date в теле, ответ Updates уходит владельцу ленты отложенных', async () => {
+    const updates = { updates: [{ _: 'updateNewScheduledMessage', message: { _: 'message', id: 4 } }], users: [], chats: [] }
+    const post = vi.fn(async () => updates)
+    const applyScheduledUpdates = vi.fn()
+    const m = newPollMethods({ rest: { post } as never, patchMsg: () => {}, getMeId: () => 5, opWindowsFor: () => [], emitOps: () => {}, readMsg: () => undefined, applyScheduledUpdates })
+
+    expect(await m.sendPoll(1, { ...poll, clientMsgId: 'c1', scheduleDate: 1_900_000_000, scheduleRepeatPeriod: 86400 })).toBeUndefined()
+    expect(post.mock.calls[0]).toEqual(['/chats/1/polls', expect.objectContaining({ schedule_date: 1_900_000_000, schedule_repeat_period: 86400 })])
+    expect(applyScheduledUpdates).toHaveBeenCalledWith(updates)
+  })
 })

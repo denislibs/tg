@@ -30,7 +30,7 @@
 //       + div.popup-footer.popup-footer-abitlarger > button.popup-footer-button
 // Собственного `.popup-body` у попапа нет (datePicker.tsx:811 — роль тела играет
 // сам `PopupElement.Scrollable`), поэтому Popup получает `body={false}`.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import Popup from '../shared/ui/Popup'
 import IconButton from '../shared/ui/IconButton'
 import Input from '../shared/ui/Input'
@@ -151,12 +151,15 @@ export interface DatePickerPopupProps {
   withTime?: boolean
   /** вторичная кнопка под confirm (tweb footerAfter — «Send when online») */
   secondaryAction?: { label: string; onClick: () => void }
+  /** tweb `bodyAfter` (datePicker.tsx:906-908) — между полями времени и подвалом
+   *  (ряд «Повторять» планирования) */
+  bodyAfter?: ReactNode
   /** выбранный день (unix-секунды полуночи); при withTime — полные дата+время */
   onPick: (timestamp: number) => void
 }
 
 export default function DatePickerPopup({
-  open, onClose, onExitComplete, initDate, minDate, chatId, withTime, secondaryAction, onPick,
+  open, onClose, onExitComplete, initDate, minDate, chatId, withTime, secondaryAction, bodyAfter, onPick,
 }: DatePickerPopupProps) {
   const t = useT()
   const managers = useManagers()
@@ -396,6 +399,7 @@ export default function DatePickerPopup({
             <div className="date-picker-time-delimiter">:</div>
             <Input ref={minutesRef} value={minutes} onChange={onMinutesChange} inputMode="numeric" maxLength={2} />
           </div>
+          {bodyAfter}
           <div className="popup-footer popup-footer-abitlarger">
             {/* confirm с живым лейблом; прошлое время — disabled (владелец закрывает попап сам) */}
             <button

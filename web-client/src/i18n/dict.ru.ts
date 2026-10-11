@@ -2159,6 +2159,14 @@ const ru = {
   Play: 'Воспроизвести',
   Pause: 'Пауза',
   'Schedule.Repeat': 'Повторять',
+  // Ф-5: периоды повтора отложенных (tweb `scheduleSendingPopup.tsx:16-24`)
+  'Schedule.Repeat.Daily': 'Ежедневно',
+  'Schedule.Repeat.Weekly': 'Еженедельно',
+  'Schedule.Repeat.Biweekly': 'Раз в 2 недели',
+  'Schedule.Repeat.Monthly': 'Ежемесячно',
+  'Schedule.Repeat.Every3Months': 'Раз в 3 месяца',
+  'Schedule.Repeat.Every6Months': 'Раз в 6 месяцев',
+  'Schedule.Repeat.Yearly': 'Ежегодно',
   // ── П-5 «действия»: попапы закрепа, удаления, пересылки, проверки фактов (tweb lang.ts) ──
   AreYouSureDeleteFewMessagesBot: 'Удалить эти сообщения?\nОни будут удалены только у вас.',
   AreYouSureDeleteFewMessagesMega: 'Удалить эти сообщения для всех участников?',

@@ -774,6 +774,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
     return !!this.chat.isMegagroup
   }
 
+  /** Вид ленты для порядка серий (tweb bubbleGroups.ts:411-412). */
+  public get isScheduled(): boolean {
+    return this.chat.type === ChatType.Scheduled
+  }
+
   /** Срез чата для обоих предикатов стороны (`core/models.ts::isOurMessage`). */
   private get ourChat(): OurMessageChat {
     return { myId: rootScope.myId, isMegagroup: this.chat.isMegagroup }
@@ -5935,6 +5940,20 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
       if (this.getBubble(fullMid) !== bubble) return
 
+      // Лента отложенных — ветка `message_sent` tweb (после той же очереди
+      // рендера: элемент серии к этому моменту заведён), а не тело `history_update`
+      // (там у Scheduled ранний выход, :1003): бабл не переставляется, у элемента
+      // серии подменяется сообщение (:1185-1187), а отложенное, до отправки
+      // которого осталось не больше 10 с, снимается сразу (:1234-1240) —
+      // кадр публикации догонит его уже в истории.
+      if (this.chat.type === ChatType.Scheduled) {
+        this.bubbleGroups.changeBubbleMessage(bubble, message)
+        if ((Date.now() / 1000 | 0) >= message.date - 10) {
+          this.deleteMessagesByIds([fullMid])
+        }
+        return
+      }
+
       // tweb bubbles.ts:794-800: репозиционируется только то, что лежит в
       // группах; `item.mid === mid` — событие уже применено.
       const item = this.bubbleGroups.getItemByBubble(bubble)
@@ -6119,10 +6138,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // * pinned part end
 
     // * scheduled part start — tweb :2558-2575. Окно отложенных — страница самой
-    // ленты (`requestScheduledHistory` → `replaceMirrorWindow`), поэтому и
-    // перемены в нём записывает она: живых операций окна (`rt:message_op`) у
-    // очереди нет. Счётчик в заголовке (`topbar.setTitle(size)`, :2559-2561) —
-    // у шапки заголовок отложенных без числа (Б-25 в П-5, шапка).
+    // ленты (`requestScheduledHistory` → `replaceMirrorWindow`); новые и снятые
+    // отложенные она записывает сама по `scheduled_new`/`scheduled_delete`, а
+    // финализация своего бабла и правка (время, текст) приходят операциями окна
+    // `${peerId}_scheduled` (`rt:message_op` → `history_update`/`message_edit` со
+    // `storageKey`, как у tweb `checkPendingMessage` и `onUpdateNewScheduledMessage`).
+    // Счётчик в заголовке (`topbar.setTitle(size)`, :2559-2561) — у шапки
+    // заголовок отложенных без числа (Б-25 в П-5, шапка).
     this.listenerSetter.add(rootScope)('scheduled_new', (message) => {
       if(this.chat.type !== ChatType.Scheduled || message.peerId !== this.peerId) return
 

@@ -109,7 +109,6 @@ async function mountInput(type = ChatType.Chat) {
       sendText: vi.fn(async() => ({ ok: true })),
       sendFile: vi.fn(async() => ({ mediaId: 1 })),
       getScheduledMessages: vi.fn(async() => [] as MyMessage[]),
-      scheduleMessage: vi.fn(async() => ({})),
       editMessage: vi.fn(async() => ({})),
       getMessageByPeer: vi.fn(async(_peerId: number, mid: number) => messages.get(mid)),
       reloadMessage: vi.fn(async(_peerId: number, mid: number) => messages.get(mid)),
@@ -373,7 +372,9 @@ describe('ChatRecording: голосовое', () => {
 })
 
 describe('ChatRecording: меню отправки и плата', () => {
-  it('«запланировать» во время записи: файл закачан, затем ОДНА отложенная отправка с его media_id', async() => {
+  // Ф-5, п. 1.2: отложенная запись — тот же `sendFile` с `scheduleDate` пакета
+  // (tweb :216-248), без отдельной закачки и своей ручки постановки.
+  it('«запланировать» во время записи: ОДИН sendFile с scheduleDate пакета', async() => {
     mounted = await mountInput()
     const { input, managers } = mounted
 
@@ -382,12 +383,11 @@ describe('ChatRecording: меню отправки и плата', () => {
     input.scheduleDate = 1_800_000_000 // ставит `scheduleSending` перед `finishRecordingFromMenu`
     input.btnSend.click()
 
-    await vi.waitFor(() => expect(managers.messages.scheduleMessage).toHaveBeenCalledTimes(1))
-    expect(managers.media.upload).toHaveBeenCalledWith(expect.objectContaining({ mime: 'audio/ogg', duration: 2, waveform: WAVEFORM, fileName: 'audio.ogg' }))
-    expect(managers.messages.scheduleMessage).toHaveBeenCalledWith(PEER, expect.objectContaining({
-      type: 'voice', mediaId: 77, sendAt: 1_800_000_000, whenOnline: false,
-    }))
-    expect(managers.messages.sendFile).not.toHaveBeenCalled()
+    await vi.waitFor(() => expect(managers.messages.sendFile).toHaveBeenCalledTimes(1))
+    expect((managers.messages.sendFile.mock.calls[0] as unknown[])[0]).toMatchObject({
+      type: 'voice', mime: 'audio/ogg', duration: 2, scheduleDate: 1_800_000_000,
+    })
+    expect(managers.media.upload).not.toHaveBeenCalled()
     expect(input.scheduleDate).toBeUndefined()
   })
 

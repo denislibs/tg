@@ -42,8 +42,10 @@ interface PopupProps {
   headerRight?: ReactNode
   /** прибитый низ карточки (например, строка подписи + send) */
   footer?: ReactNode
-  /** широкая кнопка снизу (tweb PopupElement.Footer + FooterButton) */
-  action?: { label: string; onClick: () => void }
+  /** широкая кнопка снизу (tweb PopupElement.Footer + FooterButton); `ref` — узел
+   *  кнопки, на который владелец вешает меню отправки (tweb `forward.tsx` —
+   *  `btnProps.ref` → `setupSendMenu`) */
+  action?: { label: string; onClick: () => void; ref?: (el: HTMLButtonElement | null) => void }
   /**
    * tweb PopupOptions.body (popups/index.ts:207-211): тело-обёртка `.popup-body`.
    * `false` — дети ложатся прямо в `.popup-container`, как у попапа календаря,
@@ -64,10 +66,11 @@ interface PopupProps {
  * `popup-footer-button btn-primary btn-color-primary` + ripple (дамп
  * `17-popup-06-date-picker.json`, `17-popup-01-forward-share.json`).
  */
-export function PopupFooterButton({ label, onClick }: { label: string; onClick: () => void }) {
+export function PopupFooterButton({ label, onClick, buttonRef }: { label: string; onClick: () => void; buttonRef?: (el: HTMLButtonElement | null) => void }) {
   const { onPointerDown, ripple } = useRipple()
   return (
     <button
+      ref={buttonRef}
       type="button"
       className="popup-footer-button btn-primary btn-color-primary rp"
       onPointerDown={onPointerDown}
@@ -156,7 +159,7 @@ export default function Popup({
         {footer}
         {action && (
           <div className="popup-footer popup-footer-abitlarger">
-            <PopupFooterButton label={action.label} onClick={action.onClick} />
+            <PopupFooterButton label={action.label} onClick={action.onClick} buttonRef={action.ref} />
           </div>
         )}
       </div>

@@ -49,10 +49,10 @@ describe('ChannelsManager.post', () => {
     const rest = { post, get: vi.fn() } as unknown as RestClient
     const mgr = newChannelsManager({ rest, beforeSending: () => {}, peers: fakePeers(), cacheViews: () => {} })
     const m = await mgr.post(7, 'hey', 'c1')
-    expect(post).toHaveBeenCalledWith('/channels/7/messages', { text: 'hey', entities: undefined, client_msg_id: 'c1' })
-    expect(m.peerId).toBe(7)
-    expect(m.id).toBe(cid(6))
-    expect(real(m)?.message).toBe('m6')
+    expect(post).toHaveBeenCalledWith('/channels/7/messages', { text: 'hey', entities: undefined, client_msg_id: 'c1', schedule_date: 0, schedule_repeat_period: 0 })
+    expect(m?.peerId).toBe(7)
+    expect(m?.id).toBe(cid(6))
+    expect(real(m!)?.message).toBe('m6')
   })
 
   // Разметка поста (bold/text_link/mention/hashtag) обязана уехать на бэк: без
@@ -65,7 +65,7 @@ describe('ChannelsManager.post', () => {
 
     await mgr.post(7, 'Голова: Мария', 'c1', entities)
 
-    expect(post).toHaveBeenCalledWith('/channels/7/messages', { text: 'Голова: Мария', entities, client_msg_id: 'c1' })
+    expect(post).toHaveBeenCalledWith('/channels/7/messages', { text: 'Голова: Мария', entities, client_msg_id: 'c1', schedule_date: 0, schedule_repeat_period: 0 })
   })
 
   // Что ломается, если гарантия нарушена: пост канала уходит по REST, мимо
@@ -90,6 +90,47 @@ describe('ChannelsManager.post', () => {
       // переживёт финализацию — лента на этом признаке срезает перекладку.
       sequential: true,
     }])
+  })
+
+  // Ф-5, п. 1.2: отложенный пост — та же ручка с `schedule_date` (tweb: пост уходит
+  // `sendText` с пакетом, appMessagesManager.ts:2741); бабл — в ленту отложенных.
+  it('отложенный пост: schedule_date в теле, заявка бабла с датой отправки', async () => {
+    const post = vi.fn(async () => raw(6))
+    const rest = { post, get: vi.fn() } as unknown as RestClient
+    const pendings: unknown[] = []
+    const mgr = newChannelsManager({ rest, beforeSending: (p) => { pendings.push(p) }, peers: fakePeers(), cacheViews: () => {} })
+
+    // ответ отложенного поста — `Updates`, а не сообщение: в историю его не мапим
+    expect(await mgr.post(7, 'пост', 'c11', undefined, { senderId: 3 }, { scheduleDate: 1_900_000_000, scheduleRepeatPeriod: 86400 })).toBeUndefined()
+
+    expect(post).toHaveBeenCalledWith('/channels/7/messages', expect.objectContaining({ schedule_date: 1_900_000_000, schedule_repeat_period: 86400 }))
+    expect(pendings).toEqual([expect.objectContaining({ schedule_date: 1_900_000_000, schedule_repeat_period: 86400 })])
+  })
+
+  // tweb `processUpdateMessage(updates)` у отправки (appMessagesManager.ts:2810-2811):
+  // ответ отложенного поста — `Updates`, их применяет владелец ленты отложенных.
+  it('отложенный пост: ответ Updates уходит владельцу ленты отложенных', async () => {
+    const updates = { updates: [{ _: 'updateNewScheduledMessage', message: raw(6) }], users: [], chats: [] }
+    const rest = { post: vi.fn(async () => updates), get: vi.fn() } as unknown as RestClient
+    const applyScheduledUpdates = vi.fn()
+    const mgr = newChannelsManager({ rest, beforeSending: () => {}, applyScheduledUpdates, peers: fakePeers(), cacheViews: () => {} })
+
+    await mgr.post(7, 'пост', 'c12', undefined, { senderId: 3 }, { scheduleDate: 1_900_000_000 })
+    expect(applyScheduledUpdates).toHaveBeenCalledWith(updates)
+  })
+
+  // tweb :2819-2834 — отказ отправки: `toggleError` бабла и проброс отказа
+  // вызывателю (там тост), а не бабл, навсегда висящий «отправляется».
+  it('отказ ручки: бабл помечается упавшим, отказ уходит вызывателю', async () => {
+    const err = new Error('SCHEDULE_TOO_MUCH')
+    const rest = { post: vi.fn(async () => { throw err }), get: vi.fn() } as unknown as RestClient
+    const failSending = vi.fn()
+    const applyScheduledUpdates = vi.fn()
+    const mgr = newChannelsManager({ rest, beforeSending: () => {}, failSending, applyScheduledUpdates, peers: fakePeers(), cacheViews: () => {} })
+
+    await expect(mgr.post(7, 'пост', 'c13', undefined, { senderId: 3 }, { scheduleDate: 1_900_000_000 })).rejects.toBe(err)
+    expect(failSending).toHaveBeenCalledWith('c13')
+    expect(applyScheduledUpdates).not.toHaveBeenCalled()
   })
 
   it('без optimistic бабл не заводится (публикация из мест без ленты на экране)', async () => {
