@@ -107,7 +107,7 @@ func TestReadDiscussion_HTTP_Forum(t *testing.T) {
 // треда, в группу он не вступает); не тред комментариев — нет.
 func TestReadDiscussion_HTTP_CommentsGuest(t *testing.T) {
 	h, pool := newMessagingRouter(t)
-	tokenA, _ := signUp(t, h, pool, "+79990082001")
+	tokenA, idA := signUp(t, h, pool, "+79990082001")
 	tokenB, _ := signUp(t, h, pool, "+79990082002")
 	tokenC, idC := signUp(t, h, pool, "+79990082003")
 	rec := authedReq(t, h, http.MethodPost, "/channels", tokenA, map[string]any{
@@ -137,5 +137,31 @@ func TestReadDiscussion_HTTP_CommentsGuest(t *testing.T) {
 	var horizon int64
 	if err := pool.QueryRow(t.Context(), `SELECT last_read_seq FROM topic_user_state WHERE user_id = $1`, idC).Scan(&horizon); err != nil || horizon != mirror+1 {
 		t.Fatalf("горизонт треда гостя = %d, %v; ждали %d", horizon, err, mirror+1)
+	}
+
+	// Участник группы читает тред комментариев — диалог группы правится, как
+	// tweb на месте (appMessagesManager.ts:10814-10816, 10918-10944): горизонт
+	// группы = read_max_id, дочитал до последнего — непрочитанного 0.
+	// Группа обсуждения в списке чатов пока скрыта (снимает БЭК-3) —
+	// состояние диалога владельца читаем из его строки членства.
+	groupDialog := func() (read int64, unread int) {
+		t.Helper()
+		if err := pool.QueryRow(t.Context(),
+			`SELECT cm.last_read_seq, cm.unread_count FROM chat_members cm
+			  WHERE cm.user_id = $1 AND cm.chat_id IN (SELECT discussion_chat_id FROM chats WHERE discussion_chat_id IS NOT NULL)`,
+			idA).Scan(&read, &unread); err != nil {
+			t.Fatalf("строка членства владельца в группе: %v", err)
+		}
+		return
+	}
+	if _, unread := groupDialog(); unread == 0 {
+		t.Fatal("до прочтения у владельца нет непрочитанного в группе")
+	}
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+disc+"/threads/"+itoa(mirror)+"/read", tokenA, map[string]any{"read_max_id": mirror + 1})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("участник читает тред комментариев: %d %s", rec.Code, rec.Body.String())
+	}
+	if read, unread := groupDialog(); read != mirror+1 || unread != 0 {
+		t.Fatalf("диалог группы после треда: read=%d unread=%d; ждали %d/0", read, unread, mirror+1)
 	}
 }

@@ -663,3 +663,86 @@ func TestForumUnread_PointEditsRespectTopicHorizon(t *testing.T) {
 		t.Fatalf("HideForUser сообщения прочитанной темы: %d; want 1", n)
 	}
 }
+
+// Прочтение треда вне форума правит диалог группы, как tweb на месте
+// (appMessagesManager.ts:10846-10944): горизонт = read_max_id, счётчик минус
+// сообщения треда выше сведённого курсора; дочитал до конца — 0 и «@» гаснут.
+func TestTopicsRepo_ApplyThreadReadToGroup(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewTopicsRepo(pool)
+	ctx := context.Background()
+	me := seedUser(t, pool, "+7960")
+	other := seedUser(t, pool, "+7961")
+	var chat int64
+	if err := pool.QueryRow(ctx, `INSERT INTO chats (type) VALUES ('group') RETURNING id`).Scan(&chat); err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range []int64{me, other} {
+		if _, err := pool.Exec(ctx, `INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1,$2,'member')`, chat, u); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insert := func(seq, sender int64, root *int64) int64 {
+		var id int64
+		if err := pool.QueryRow(ctx,
+			`INSERT INTO messages (chat_id, seq, sender_id, type, text, thread_root_id) VALUES ($1,$2,$3,'text','x',$4) RETURNING id`,
+			chat, seq, sender, root).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	_ = insert(1, me, nil)
+	_ = insert(2, other, nil)
+	root := insert(3, other, nil)
+	_ = insert(4, other, &root)
+	_ = insert(5, other, &root)
+	six := insert(6, other, nil)
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO message_mentions (chat_id, message_id, seq, user_id) VALUES ($1,$2,6,$3)`, chat, six, me); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx,
+		`UPDATE chat_members SET last_read_seq = 2, unread_count = 4, unread_mentions_count = 1 WHERE chat_id=$1 AND user_id=$2`, chat, me); err != nil {
+		t.Fatal(err)
+	}
+	state := func() (read int64, unread, mentions int) {
+		t.Helper()
+		if err := pool.QueryRow(ctx, `SELECT last_read_seq, unread_count, unread_mentions_count FROM chat_members WHERE chat_id=$1 AND user_id=$2`,
+			chat, me).Scan(&read, &unread, &mentions); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	// Тред до 5: минус 4 и 5 (сообщения треда выше курсора 2); 3 и 6 — нет.
+	if err := r.ApplyThreadReadToGroup(ctx, chat, me, root, 2, 5, 6); err != nil {
+		t.Fatal(err)
+	}
+	if read, unread, mentions := state(); read != 5 || unread != 2 || mentions != 1 {
+		t.Fatalf("после треда до 5: read=%d unread=%d «@»=%d; want 5/2/1", read, unread, mentions)
+	}
+	// Дочитал до последнего номера — 0, и упоминания группы гаснут.
+	if err := r.ApplyThreadReadToGroup(ctx, chat, me, root, 5, 6, 6); err != nil {
+		t.Fatal(err)
+	}
+	if read, unread, mentions := state(); read != 6 || unread != 0 || mentions != 0 {
+		t.Fatalf("до конца: read=%d unread=%d «@»=%d; want 6/0/0", read, unread, mentions)
+	}
+	var left int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM message_mentions WHERE chat_id=$1 AND user_id=$2 AND unread`, chat, me).Scan(&left); err != nil || left != 0 {
+		t.Fatalf("непрочитанных упоминаний осталось %d", left)
+	}
+	// Горизонт группы вниз не идёт; сведённый курсор 0 — счётчик 0.
+	if _, err := pool.Exec(ctx, `UPDATE chat_members SET unread_count = 3 WHERE chat_id=$1 AND user_id=$2`, chat, me); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ApplyThreadReadToGroup(ctx, chat, me, root, 0, 4, 6); err != nil {
+		t.Fatal(err)
+	}
+	if read, unread, _ := state(); read != 6 || unread != 0 {
+		t.Fatalf("курсор 0: read=%d unread=%d; want 6/0", read, unread)
+	}
+	// Не участник — ничего и без ошибки.
+	if err := r.ApplyThreadReadToGroup(ctx, chat, seedUser(t, pool, "+7962"), root, 2, 5, 6); err != nil {
+		t.Fatal(err)
+	}
+}

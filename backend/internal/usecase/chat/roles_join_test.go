@@ -562,6 +562,8 @@ type fakeTopicRepo struct {
 	reads           map[[3]int64]int64
 	clearedMentions [][2]int64
 	forumRecounts   int
+	// groupReads — вызовы ApplyThreadReadToGroup (root, merged, readMaxID, lastSeq).
+	groupReads [][4]int64
 }
 
 func newFakeTopicRepo() *fakeTopicRepo {
@@ -684,6 +686,13 @@ func (r *fakeTopicRepo) ClearThreadMentions(_ context.Context, _, _, root, upTo 
 
 func (r *fakeTopicRepo) CountChatUnread(context.Context, int64, int64, int64) (int, error) {
 	return 0, nil
+}
+
+func (r *fakeTopicRepo) ApplyThreadReadToGroup(_ context.Context, _, _, root, merged, readMaxID, lastSeq int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.groupReads = append(r.groupReads, [4]int64{root, merged, readMaxID, lastSeq})
+	return nil
 }
 
 func (r *fakeTopicRepo) RecountForumUnread(context.Context, int64, int64) (int, error) {
