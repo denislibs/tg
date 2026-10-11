@@ -72,6 +72,8 @@ export interface NewMediaChat {
     getMessageSendingParams(): MessageSendingParams
     /** tweb `input.ts` — гасит плашку ответа после отправки */
     onHelperCancel(): void
+    /** tweb `input.ts:4493-4497` — снимает разовые флаги пакета (время, повтор, без звука) */
+    resetSendingFlags(): void
   }
 }
 
@@ -156,8 +158,30 @@ async function sendOneFile(
   })
 }
 
-/** Отправка выборки — tweb `newMedia.tsx:1022-1106` (расхождение 1). */
+/**
+ * tweb `newMedia.tsx:897-907`: меню отправки (и календарь ленты отложенных)
+ * ставит разовые флаги на композер, а этот путь мимо `onMessageSent` — после
+ * попытки, удачной или нет, их снимаем, иначе их унаследует следующее сообщение
+ * (опрос, голосовое).
+ */
 function send(
+  chat: NewMediaChat,
+  files: File[],
+  caption: string,
+  asFile: boolean,
+  paidPrice?: number | null,
+  spoilers?: boolean[],
+  force = false,
+) {
+  try {
+    performSend(chat, files, caption, asFile, paidPrice, spoilers, force)
+  } finally {
+    chat.input.resetSendingFlags()
+  }
+}
+
+/** Отправка выборки — tweb `newMedia.tsx:1022-1106` (расхождение 1). */
+function performSend(
   chat: NewMediaChat,
   files: File[],
   caption: string,

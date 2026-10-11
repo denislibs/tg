@@ -38,13 +38,14 @@ function makeChat(params: MessageSendingParams, type = ChatType.Chat) {
   const onHelperCancel = vi.fn()
   const getMessageSendingParams = vi.fn(() => params)
   const scheduleSending = vi.fn((_callback: () => void) => {})
+  const resetSendingFlags = vi.fn()
   const chat = {
     peerId: 5 as PeerId,
     managers: { messages: { sendFile } } as never,
     type,
-    input: { getMessageSendingParams, onHelperCancel, scheduleSending },
+    input: { getMessageSendingParams, onHelperCancel, scheduleSending, resetSendingFlags },
   }
-  return { chat, sendFile, onHelperCancel, getMessageSendingParams, scheduleSending }
+  return { chat, sendFile, onHelperCancel, getMessageSendingParams, scheduleSending, resetSendingFlags }
 }
 
 function mountTopPopup() {
@@ -113,6 +114,28 @@ describe('popups/newMedia — мост попапа медиа', () => {
     expect(calls).toHaveLength(2)
     expect(calls.every((c) => c.scheduleDate === 1_900_000_000)).toBe(true)
     expect(calls[0].groupedId).toBe(calls[1].groupedId)
+  })
+
+  // tweb newMedia.tsx:897-907 — `send` в `finally` снимает разовые флаги
+  // композера: этот путь мимо `onMessageSent`, и без сброса выбранное время и
+  // повтор унаследовали бы следующие опрос или голосовое.
+  it('после отправки разовые флаги пакета снимаются (время и повтор не утекают)', async() => {
+    const flags: MessageSendingParams = {}
+    const { chat, sendFile, scheduleSending, getMessageSendingParams, resetSendingFlags } = makeChat(flags, ChatType.Scheduled)
+    getMessageSendingParams.mockImplementation(() => ({ ...flags }))
+    resetSendingFlags.mockImplementation(() => { delete flags.scheduleDate; delete flags.scheduleRepeatPeriod })
+    showNewMediaPopup(chat, [photo('1.png')], 'media')
+    mountTopPopup()
+
+    act(() => lastProps!.onSend('', false))
+    await flush()
+    // календарь выставил флаги и вызвал отправку
+    Object.assign(flags, { scheduleDate: 1_900_000_000, scheduleRepeatPeriod: 86400 })
+    scheduleSending.mock.calls[0][0]()
+    await flush()
+
+    expect(sendFile).toHaveBeenCalledWith(expect.objectContaining({ scheduleDate: 1_900_000_000, scheduleRepeatPeriod: 86400 }))
+    expect(flags).toEqual({})
   })
 
   it('«как файл» — без альбома и без цены, без ответа плашку не трогает', async() => {
