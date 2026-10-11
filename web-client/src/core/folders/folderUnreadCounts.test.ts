@@ -2,7 +2,7 @@
 // (`getNotificationCountForFilter`) поверх зеркала диалогов главного потока.
 // Пины — на ответ функции: что показывает бейдж вкладки и серый ли он.
 import { describe, expect, it } from 'vitest'
-import { folderUnreadCounts } from './folderUnreadCounts'
+import { archiveUnreadCount, folderUnreadCounts } from './folderUnreadCounts'
 import { makeDialog } from '../dialogs/testDialog'
 import type { Folder } from '../managers/foldersManager'
 import type { NotifySettings } from '../managers/notifyManager'
@@ -171,3 +171,13 @@ describe('folderUnreadCounts — форум считается по темам',
     expect(loud[ALL_FOLDER_ID]).toEqual({ count: 1, muted: false })
   })
 })
+
+// tweb getFolderUnreadCount(FOLDER_ID_ARCHIVE).unreadCount — `getDialogUnreadCount` > 0, без мьюта
+describe('archiveUnreadCount', () => {
+  it('считает архивные чаты по `unreadOf` (у форума — темы)', () => {
+    const dialogs = [makeDialog({ peerId: -60, archived: true, unread: 9 }), makeDialog({ peerId: 2, archived: true, unread: 1 }), makeDialog({ peerId: 3, unread: 4 })]
+    expect(archiveUnreadCount(dialogs)).toBe(2)
+    expect(archiveUnreadCount(dialogs, (d) => (d.peerId === -60 ? 0 : d.unread_count))).toBe(1)
+  })
+})
+

@@ -47,6 +47,7 @@ import { IconTsx } from '@components/iconTsx.solid'
 import { ARCHIVE_FOLDER_ID } from '@core/folderIds'
 import { isDialogArchived, type Dialog } from '@core/models'
 import { archiveUnreadCount } from '@core/folders/folderUnreadCounts'
+import { forumUnreadVersion, getDialogUnreadCount, subscribeForumUnread } from '@core/dialogs/forumUnreadMirror'
 import type { DialogsPage } from '@core/managers/dialogsManager'
 import { useChatsStore } from '@stores/chatsStore'
 import styles from './archiveDialog.module.scss'
@@ -189,7 +190,12 @@ function useArchivedDialogsState(managers: ArchiveDialogManagers) {
     return fetchDialogs()
   }
 
-  const totalUnreadCount = createMemo(() => archiveUnreadCount(mirror().dialogs))
+  // у форума — непрочитанные темы (tweb `getDialogUnreadCount`, :14233-14250)
+  const forumUnread = subscribeExternal(subscribeForumUnread, forumUnreadVersion)
+  const totalUnreadCount = createMemo(() => {
+    forumUnread()
+    return archiveUnreadCount(mirror().dialogs, getDialogUnreadCount)
+  })
 
   return {
     // функцией: пропы строки — `createMutable`, а прокси менеджеров стор оборачивать не должен

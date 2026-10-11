@@ -126,15 +126,20 @@ const NO_FORUM_UNREAD: ForumUnreadCount = { count: 0, unreadNotifySettings: [] }
 
 /**
  * `getFolderUnreadCount(FOLDER_ID_ARCHIVE, true).unreadCount` оригинала — чатов
- * архива с непрочитанным. Читают строка «Архив» (`archiveDialog.tsx:300-326`) и
- * бейдж пункта «Архив» бургера (`sidebarLeft/index.ts:230-247`). Расхождение 1
- * выше — то же (только диалоги зеркала); «непрочитан» здесь — `unread_count > 0`,
- * правила форума по темам (расхождение 2) у счётчика архива пока нет.
+ * архива с непрочитанным (`unreadPeerIds` папки, без мьюта). Читают строка
+ * «Архив» (`archiveDialog.tsx:300-326`) и бейдж пункта «Архив» бургера
+ * (`sidebarLeft/index.ts:230-247`). Расхождение 1 выше — то же (только диалоги
+ * зеркала); «непрочитан» — `getDialogUnreadCount` (расхождение 2): у форума —
+ * непрочитанные темы, параметр `unreadOf`
+ * (`core/dialogs/forumUnreadMirror.ts::getDialogUnreadCount`).
  */
-export function archiveUnreadCount(dialogs: readonly Dialog[]): number {
+export function archiveUnreadCount(
+  dialogs: readonly Dialog[],
+  unreadOf: (dialog: Dialog) => number = (dialog) => dialog.unread_count,
+): number {
   let count = 0
   for (const dialog of dialogs) {
-    if (isDialogArchived(dialog) && dialog.unread_count > 0) ++count
+    if (isDialogArchived(dialog) && unreadOf(dialog) > 0) ++count
   }
   return count
 }

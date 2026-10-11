@@ -21,11 +21,14 @@ import { cachedChat } from '../peerCache'
 import { isForum } from '../peers/predicates'
 
 const counts = new Map<PeerId, ForumUnreadCount>()
+/** номер версии зеркала — снимок для `subscribeExternal` (Solid) */
+let version = 0
 const asked = new Set<PeerId>()
 const listeners = new Set<() => void>()
 let fetcher: ((peerId: PeerId) => Promise<ForumUnreadCount | undefined>) | undefined
 
 function emit(): void {
+  ++version
   for (const listener of listeners) listener()
 }
 
@@ -52,6 +55,18 @@ export function getForumUnread(peerId: PeerId): ForumUnreadCount | undefined {
     void fetcher(peerId).then((unread) => { if (unread) applyForumUnread(peerId, unread) }).catch(() => asked.delete(peerId))
   }
   return value
+}
+
+/**
+ * tweb `getDialogUnreadCount` (:14233-14250) по зеркалам вкладки: у форума —
+ * число непрочитанных тем (не загружены — ноль), у остальных — `unread_count`.
+ */
+export function getDialogUnreadCount(dialog: Pick<Dialog, 'peerId' | 'unread_count'>): number {
+  return isForum(cachedChat(dialog.peerId)) ? getForumUnread(dialog.peerId)?.count ?? 0 : dialog.unread_count
+}
+
+export function forumUnreadVersion(): number {
+  return version
 }
 
 /**
