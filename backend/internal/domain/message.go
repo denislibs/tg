@@ -51,6 +51,12 @@ type WebPagePreview struct {
 	// не страницы, поэтому живёт в снимке на сообщении рядом с карточкой.
 	ForceLargeMedia bool `json:"force_large_media,omitempty"`
 	ForceSmallMedia bool `json:"force_small_media,omitempty"`
+	// HasLargeMedia — картинку карточки можно показать крупно (webPage.pFlags
+	// .has_large_media): только при нём tweb предлагает «крупнее/мельче»
+	// (input.ts:3619) и учитывает выбор при отрисовке (bubbles.ts:9479-9480).
+	// Свойство страницы, решается при сборке по правилу сервера
+	// (usecase/chat largePreviewPhoto) и хранится в снимке.
+	HasLargeMedia bool `json:"has_large_media,omitempty"`
 }
 
 type Message struct {

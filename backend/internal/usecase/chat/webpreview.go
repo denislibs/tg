@@ -1,7 +1,12 @@
 package chat
 
 import (
+	"bytes"
 	"context"
+	"image"
+	_ "image/gif"  // размеры og:image (largePreviewPhoto)
+	_ "image/jpeg" // размеры og:image (largePreviewPhoto)
+	_ "image/png"  // размеры og:image (largePreviewPhoto)
 	neturl "net/url"
 	"path"
 	"regexp"
@@ -306,24 +311,29 @@ func (i *Interactor) writeChannelWebPreview(ctx context.Context, msg domain.Mess
 // appWebPagesManager.ts:273-284). nil — карточки нет (клиент получит
 // webPageEmpty и плашку не покажет, input.ts:3600).
 //
-// Собирается только сама страница (og-теги): плашка показывает заголовок и
-// описание (input.ts:3601-3605). Картинку к себе НЕ качаем: доступ к ней
+// Собирается сама страница (og-теги): плашка показывает заголовок и
+// описание (input.ts:3601-3605). Картинку к себе НЕ сохраняем: доступ к ней
 // привязан к сообщению (messages.web_page_media_id, MediaAccessRepo), и до
-// отправки её некому отдать, а скачанная на каждую набранную ссылку она
-// копила бы в хранилище мусор. Пробу Instant View тоже не делаем — кнопка
-// «Мгновенный просмотр» живёт на карточке в ленте, у плашки её нет. Карточку
-// сообщения сервер строит сам при отправке (inputMediaWebPage несёт ссылку).
+// отправки её некому отдать, а сохранённая на каждую набранную ссылку она
+// копила бы в хранилище мусор. Читаем только её размер — для has_large_media
+// (выбор «крупнее/мельче» на плашке, input.ts:3619). Пробу Instant View не
+// делаем — кнопка «Мгновенный просмотр» живёт на карточке в ленте, у плашки
+// её нет. Карточку сообщения сервер строит сам при отправке
+// (inputMediaWebPage несёт ссылку).
 func (i *Interactor) GetWebPage(ctx context.Context, url string) *domain.WebPagePreview {
 	url = strings.TrimSpace(url)
 	if i.preview == nil || (!strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://")) {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(ctx, previewTimeout)
-	defer cancel()
-	wp, err := i.preview.Preview(ctx, url)
+	pctx, cancel := context.WithTimeout(ctx, previewTimeout)
+	wp, err := i.preview.Preview(pctx, url)
+	cancel()
 	if err != nil || wp == nil {
 		return nil
 	}
+	ectx, cancel := context.WithTimeout(ctx, enrichTimeout)
+	wp.HasLargeMedia = i.previewHasLargeMedia(ectx, wp.ImageURL)
+	cancel()
 	wp.ImageURL = ""
 	return wp
 }
@@ -367,5 +377,40 @@ func (i *Interactor) fetchPreviewPhoto(ctx context.Context, wp *domain.WebPagePr
 	}
 	if id, e := i.botMedia.Store(ctx, ownerID, mime, name, data); e == nil {
 		wp.PhotoID = id
+		wp.HasLargeMedia = largePreviewPhoto(data)
 	}
+}
+
+// Порог «крупной» картинки превью — коробка карточки tweb на десктопе:
+// mediaSizes.active.webpage = 420×380 (helpers/mediaSizes.ts:85), на телефоне
+// 340×200 (:67). Картинка не уже коробки и не ниже телефонной коробки заполнит
+// её по ширине без растяжения.
+const (
+	largePreviewMinW = 420
+	largePreviewMinH = 200
+)
+
+// largePreviewPhoto — правило has_large_media.
+//
+// ОСОЗНАННОЕ ОТСТУПЛЕНИЕ (решение пользователя 2026-10-11): как сервер
+// Telegram решает «у превью крупное медиа», из tweb не видно — клиент только
+// читает флаг (input.ts:3619, bubbles.ts:9479-9480). Наше правило: у карточки
+// есть фото (видео в превью мы не разбираем) не меньше largePreviewMinW ×
+// largePreviewMinH. Размер читается из заголовка файла (jpeg/png/gif); формат,
+// который стандартная библиотека не разбирает (webp и т. п.), — флага нет.
+func largePreviewPhoto(data []byte) bool {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	return err == nil && cfg.Width >= largePreviewMinW && cfg.Height >= largePreviewMinH
+}
+
+// previewHasLargeMedia — has_large_media для плашки композера (GetWebPage):
+// картинку к нам не сохраняем, только читаем её размер тем же правилом, что и
+// у карточки сообщения, — иначе плашка не покажет «крупнее/мельче»
+// (input.ts:3619).
+func (i *Interactor) previewHasLargeMedia(ctx context.Context, imageURL string) bool {
+	if imageURL == "" || i.botHTTP == nil {
+		return false
+	}
+	data, mime, err := i.botHTTP.FetchURL(ctx, imageURL, maxPreviewPhoto)
+	return err == nil && strings.HasPrefix(mime, "image/") && largePreviewPhoto(data)
 }

@@ -19,6 +19,8 @@ type urlPreviewer struct {
 	mu    sync.Mutex
 	urls  []string
 	holds map[string]chan struct{}
+	// large — карточки с has_large_media (как после крупного og:image).
+	large bool
 }
 
 func (p *urlPreviewer) Preview(ctx context.Context, url string) (*domain.WebPagePreview, error) {
@@ -33,7 +35,7 @@ func (p *urlPreviewer) Preview(ctx context.Context, url string) (*domain.WebPage
 			return nil, ctx.Err()
 		}
 	}
-	return &domain.WebPagePreview{URL: url, Title: url}, nil
+	return &domain.WebPagePreview{URL: url, Title: url, HasLargeMedia: p.large}, nil
 }
 
 func (p *urlPreviewer) calls() []string {
@@ -289,6 +291,7 @@ func TestWebPageInput_NoWebpage(t *testing.T) {
 // messageMediaWebPage.pFlags.
 func TestWebPageInput_MediaChoosesURLAndSize(t *testing.T) {
 	e := newPreviewEnv(t)
+	e.prev.large = true
 	ctx := context.Background()
 	media := &domain.InputMediaWebPage{Underscore: domain.InputMediaWebPageTag, URL: "https://chosen.example/",
 		PFlags: map[string]bool{"force_small_media": true, "optional": true}}
@@ -477,5 +480,29 @@ func TestChannelPost_EditInvertMediaReachesMirror(t *testing.T) {
 	}
 	if m := storedMsg(t, e.s, mirrorID); !m.InvertMedia || m.Text != "пост 2" {
 		t.Fatalf("зеркало = %+v; ждали текст правки и invert_media", m)
+	}
+}
+
+// force_* — только у карточки с has_large_media (tweb шлёт их лишь при нём,
+// input.ts:2306-2307, и без него не рисует, bubbles.ts:9480): у карточки без
+// крупной картинки выбор размера не хранится ни при отправке, ни при правке.
+func TestWebPageInput_SizeOnlyWithLargeMedia(t *testing.T) {
+	e := newPreviewEnv(t)
+	ctx := context.Background()
+	media := &domain.InputMediaWebPage{Underscore: domain.InputMediaWebPageTag, URL: "https://a.example/",
+		PFlags: map[string]bool{"force_large_media": true}}
+	msg, _ := e.in.Send(ctx, SendInput{ChatID: e.chatID, SenderID: 1, Text: "https://a.example/",
+		WebPage: domain.WebPageInput{Media: media}})
+	waitFor(t, func() bool { return storedMsg(t, e.s, msg.ID).WebPage != nil })
+	wp := storedMsg(t, e.s, msg.ID).WebPage
+	if wp.HasLargeMedia || wp.ForceLargeMedia || wp.ForceSmallMedia {
+		t.Fatalf("карточка без крупной картинки = %+v; выбор размера не должен храниться", wp)
+	}
+	media.PFlags = map[string]bool{"force_small_media": true}
+	if _, err := e.in.EditMessage(ctx, e.chatID, msg.ID, 1, "https://a.example/", nil, domain.WebPageInput{Media: media}); err != nil {
+		t.Fatalf("EditMessage: %v", err)
+	}
+	if wp := storedMsg(t, e.s, msg.ID).WebPage; wp == nil || wp.ForceSmallMedia {
+		t.Fatalf("после правки = %+v", wp)
 	}
 }

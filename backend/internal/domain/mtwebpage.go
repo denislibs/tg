@@ -77,11 +77,19 @@ func (m MessageMediaWebPage) Tag() string   { return m.Underscore }
 // содержимое: клиент оригинала рисует футер именно по НАЛИЧИЮ cached_page
 // (tweb bubbles.ts:7990), а саму статью у нас отдаёт своя ручка.
 //
+// ── has_large_media — по НАШЕМУ правилу ─────────────────────────────────────
+// Флаг «картинку можно показать крупно»: без него tweb прячет выбор
+// «крупнее/мельче» (input.ts:3619) и не учитывает force_* при отрисовке
+// (bubbles.ts:9479-9480). Как решает сервер Telegram, из tweb не видно;
+// правило — у сборки превью (usecase/chat largePreviewPhoto).
+//
 // Не производятся: type (классификации ссылки — 'photo'/'telegram_channel'/… —
 // у нас нет), embed_* и duration (встраиваемого плеера не разбираем), author,
-// document, attributes, has_large_media, video_cover_photo.
+// document, attributes, video_cover_photo.
 type WebPage struct {
 	Underscore string `json:"_"`
+	// PFlags — has_large_media (flags.13?true).
+	PFlags map[string]bool `json:"pFlags,omitempty"`
 	// URL — обязательный: адрес, по которому пойдёт клик.
 	URL string `json:"url"`
 	// DisplayURL — обязательный: тот же адрес БЕЗ схемы, как его показывают в
@@ -113,6 +121,7 @@ func (w *WebPagePreview) ToMedia() *MessageMediaWebPage {
 		Description: w.Description,
 		HasIV:       w.HasIV,
 	}
+	setPFlag(&page.PFlags, "has_large_media", w.HasLargeMedia)
 	if w.PhotoID > 0 {
 		// Та же сборка лестницы, что у фотографии сообщения: ступени превью
 		// плюс оригинал. Второй арифметики размеров у нас быть не должно.
@@ -231,9 +240,12 @@ func (w WebPageInput) MediaURL() string {
 // ApplySize переносит выбор «крупнее/мельче» из inputMediaWebPage в снимок
 // карточки (messageMediaWebPage.pFlags у оригинала, getInputMediaWebPage
 // appMessagesManager.ts:4875-4876). Без media выбора нет — флаги сняты.
+// Выбор имеет смысл только у карточки с has_large_media: tweb шлёт force_*
+// лишь при нём (input.ts:2306-2307, :4165-4166) и без него их не рисует
+// (bubbles.ts:9480) — у остальных флаги сняты.
 func (w WebPageInput) ApplySize(wp *WebPagePreview) {
 	var pf map[string]bool
-	if w.MediaURL() != "" {
+	if w.MediaURL() != "" && wp.HasLargeMedia {
 		pf = w.Media.PFlags
 	}
 	wp.ForceLargeMedia, wp.ForceSmallMedia = pf["force_large_media"], pf["force_small_media"]

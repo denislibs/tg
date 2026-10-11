@@ -808,7 +808,7 @@ func TestMessagesWebPage(t *testing.T) {
 	}
 	// Провод TL (Accept: application/x-tl) обязан уметь оба ответа.
 	for _, v := range []any{
-		NewMessagesWebPage("https://example.org/a", &WebPagePreview{URL: "https://example.org/a", Title: "T", ForceSmallMedia: true}),
+		NewMessagesWebPage("https://example.org/a", &WebPagePreview{URL: "https://example.org/a", Title: "T", ForceSmallMedia: true, HasLargeMedia: true}),
 		NewMessagesWebPage("https://example.org/b", nil),
 		Message{Seq: 2, CreatedAt: time.Unix(1_700_000_000, 0), InvertMedia: true,
 			WebPage: &WebPagePreview{URL: "https://example.org", ForceLargeMedia: true}}.ToWire(MessageContext{Peer: NewPeerUser(42)}),
@@ -868,5 +868,27 @@ func TestMessageWire_PostCountersPairedAndPostOnly(t *testing.T) {
 		if v, ok := j[key]; ok {
 			t.Errorf("у сообщения вне канала приехал %q = %#v", key, v)
 		}
+	}
+}
+
+// has_large_media — флаг САМОЙ карточки (webPage.pFlags), не вложения: его
+// читают плашка (input.ts:3619) и бабл (bubbles.ts:9479) tweb.
+func TestWebPageWire_HasLargeMedia(t *testing.T) {
+	large := wireObject(t, NewMessagesWebPage("https://example.org/a",
+		&WebPagePreview{URL: "https://example.org/a", HasLargeMedia: true}))
+	page, _ := large["webpage"].(map[string]any)
+	if pf, _ := page["pFlags"].(map[string]any); pf["has_large_media"] != true {
+		t.Fatalf("webPage.pFlags = %#v, ждали has_large_media", page["pFlags"])
+	}
+	plain := wireObject(t, NewMessagesWebPage("https://example.org/a", &WebPagePreview{URL: "https://example.org/a"}))
+	page, _ = plain["webpage"].(map[string]any)
+	if _, ok := page["pFlags"]; ok {
+		t.Fatalf("флаги у карточки без крупной картинки: %#v", page["pFlags"])
+	}
+	// Флаг переживает jsonb снимка.
+	raw, _ := json.Marshal(WebPagePreview{URL: "https://example.org/a", HasLargeMedia: true})
+	var back WebPagePreview
+	if err := json.Unmarshal(raw, &back); err != nil || !back.HasLargeMedia {
+		t.Fatalf("снимок = %s", raw)
 	}
 }

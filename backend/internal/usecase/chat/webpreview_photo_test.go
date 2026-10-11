@@ -1,9 +1,12 @@
 package chat
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/png"
 	"strings"
 	"sync"
 	"testing"
@@ -337,5 +340,73 @@ func TestAttachWebPreview_NoProberNoIV(t *testing.T) {
 	stored, _ := fakeMsgs{s}.GetByID(ctx, msg.ID)
 	if stored.WebPage.HasIV {
 		t.Error("HasIV=true без пробы")
+	}
+}
+
+// pngOf — настоящий PNG заданного размера (размер читает largePreviewPhoto).
+func pngOf(t *testing.T, w, h int) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewGray(image.Rect(0, 0, w, h))); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// Правило has_large_media (осознанное отступление, webpreview.go
+// largePreviewPhoto): картинка не меньше коробки карточки tweb.
+func TestLargePreviewPhoto(t *testing.T) {
+	for _, c := range []struct {
+		w, h int
+		want bool
+	}{
+		{1200, 630, true}, {420, 200, true}, {512, 512, true},
+		{419, 630, false}, {1200, 199, false}, {48, 48, false},
+	} {
+		if got := largePreviewPhoto(pngOf(t, c.w, c.h)); got != c.want {
+			t.Errorf("%d×%d: has_large_media = %v; want %v", c.w, c.h, got, c.want)
+		}
+	}
+	if largePreviewPhoto([]byte("not an image")) {
+		t.Error("неразборчивый файл — крупная картинка")
+	}
+}
+
+// Карточка сообщения: флаг ставится по скачанной картинке.
+func TestFetchPreviewPhoto_SetsHasLargeMedia(t *testing.T) {
+	in, _ := newInteractor()
+	in.SetBotHTTP(&fakeOutHTTP{data: pngOf(t, 1280, 720), mime: "image/png"})
+	in.SetBotMedia(&fakeMediaStore{})
+	wp := previewWithImage()
+	in.fetchPreviewPhoto(context.Background(), wp, 1)
+	if wp.PhotoID == 0 || !wp.HasLargeMedia {
+		t.Fatalf("карточка = %+v; ждали фото и has_large_media", wp)
+	}
+	small := previewWithImage()
+	in.SetBotHTTP(&fakeOutHTTP{data: pngOf(t, 64, 64), mime: "image/png"})
+	in.fetchPreviewPhoto(context.Background(), small, 1)
+	if small.PhotoID == 0 || small.HasLargeMedia {
+		t.Fatalf("маленькая картинка = %+v; has_large_media не ждали", small)
+	}
+}
+
+// Плашка композера (getWebPage): размер картинки читается тем же правилом, но
+// сама картинка к нам НЕ сохраняется (доступ к ней — только через сообщение).
+func TestGetWebPage_HasLargeMediaWithoutStoring(t *testing.T) {
+	in, _ := newInteractor()
+	in.SetLinkPreviewer(&fakePreviewer{wp: previewWithImage()})
+	http := &fakeOutHTTP{data: pngOf(t, 1280, 720), mime: "image/png"}
+	store := &fakeMediaStore{}
+	in.SetBotHTTP(http)
+	in.SetBotMedia(store)
+	wp := in.GetWebPage(context.Background(), "https://example.com/post")
+	if wp == nil || !wp.HasLargeMedia || wp.PhotoID != 0 || wp.ImageURL != "" {
+		t.Fatalf("карточка = %+v", wp)
+	}
+	if store.stored() != 0 {
+		t.Fatalf("картинка плашки сохранена (%d)", store.stored())
+	}
+	if urls, _ := http.calls(); len(urls) != 1 {
+		t.Fatalf("FetchURL = %v", urls)
 	}
 }
