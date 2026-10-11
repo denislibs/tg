@@ -180,16 +180,11 @@ func (m ScheduledMessage) Message() Message {
 //   - date — момент отправки либо sentinel SendWhenOnlineTimestamp (tweb
 //     `chat/dateBubble.ts:20-21` режет по ней ленту отложенных);
 //   - schedule_repeat_period — повтор (tweb `chat/messageRender.ts:358`).
-//
-// SendAt и WhenOnline — НАШИ параметры вне схемы, дублирующие дату явным видом
-// (объявлены штатным механизмом клиентских параметров).
 func (m ScheduledMessage) ToWire(base MessageReal) MessageReal {
 	base.ID = m.ID
 	base.Date = unixSeconds(m.Date())
 	setPFlag(&base.PFlags, "out", true)
 	setPFlag(&base.PFlags, "is_scheduled", true)
 	base.ScheduleRepeatPeriod = m.RepeatPeriod
-	base.SendAt = m.SendAt.Unix()
-	base.WhenOnline = m.WhenOnline
 	return base
 }

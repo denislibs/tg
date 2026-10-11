@@ -276,15 +276,6 @@ type MessageReal struct {
 	// FactCheck — flags2.3?FactCheck.
 	FactCheck *MTFactCheck `json:"factcheck,omitempty"`
 
-	// SendAt/WhenOnline — ОТЛОЖЕННАЯ отправка, наши параметры вне схемы.
-	// «Это отложенное» у оригинала выражает клиентский флаг pFlags.is_scheduled
-	// (он объявлен в schema_additional_params.json самим tweb), а вот СРОК у
-	// оригинала живёт не на сообщении: schedule_date это параметр МЕТОДА
-	// отправки, а «когда появится онлайн» — его sentinel-значение. У нас срок
-	// хранится строкой scheduled_messages и обязан доехать до списка
-	// отложенных, поэтому едет здесь, названным параметром.
-	SendAt     int64 `json:"send_at,omitempty"`
-	WhenOnline bool  `json:"when_online,omitempty"`
 	// ScheduleRepeatPeriod — flags2.10?int: повтор отложенного, секунды (tweb
 	// `chat/messageRender.ts:358`, `chat/contextMenu.ts:986`). Ставит только
 	// ScheduledMessage.ToWire.
