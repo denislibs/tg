@@ -217,11 +217,9 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Post("/chats/{peerID}/topics/{topicID}/mute", ch.MuteTopic)
 		pr.Get("/chats/{peerID}/threads/{rootSeq}", ch.ThreadMessages)
 		pr.Post("/chats/{peerID}/threads/{rootSeq}/read", ch.ReadDiscussion) // messages.readDiscussion
-		pr.Post("/chats/{peerID}/scheduled", ch.ScheduleMessage)
 		pr.Get("/chats/{peerID}/scheduled", ch.ListScheduled)
-		pr.Patch("/chats/{peerID}/scheduled/{schedID}", ch.UpdateScheduled)
-		pr.Delete("/chats/{peerID}/scheduled/{schedID}", ch.DeleteScheduled)
-		pr.Post("/chats/{peerID}/scheduled/{schedID}/send_now", ch.SendScheduledNow)
+		pr.Post("/chats/{peerID}/scheduled/send_now", ch.SendScheduledNow)
+		pr.Post("/chats/{peerID}/scheduled/delete", ch.DeleteScheduled)
 		pr.Post("/polls/{pollID}/vote", ch.VotePoll)
 		pr.Post("/polls/{pollID}/close", ch.ClosePoll)
 		// Чек-листы (Telegram todo list)

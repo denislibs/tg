@@ -56,6 +56,10 @@ export const UPDATE_RT = {
   updateMessageGiveaway: RT.giveawayUpdate,
   updateMessageExtendedMedia: RT.paidMediaUnlock,
   updateDraftMessage: RT.draftUpdate,
+  // Лента отложенных: применяет владелец хранилища отложенных, наружу — события
+  // оригинала (`scheduled_new`/`scheduled_delete`/`message_edit`), не сырой кадр.
+  updateNewScheduledMessage: RT.scheduled,
+  updateDeleteScheduledMessages: RT.scheduled,
   updateDialogPinned: RT.dialogPin,
   updateFolderPeers: RT.dialogArchive,
   updateNotifySettings: RT.dialogMute,

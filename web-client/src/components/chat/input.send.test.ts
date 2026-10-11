@@ -32,7 +32,6 @@ function makeManagers(messages: Map<number, MyMessage>) {
   return {
     messages: {
       getScheduledMessages: vi.fn(async() => [] as MyMessage[]),
-      scheduleMessage: vi.fn(async() => ({})),
       sendText: vi.fn(async(_args: Record<string, unknown>) => ({ ok: true })),
       editMessage: vi.fn(async() => ({})),
       forwardMessages: vi.fn(async() => []),
@@ -164,8 +163,40 @@ describe('ChatInput: отправка', () => {
     await input.sendMessage()
 
     expect(managers.messages.editMessage).toHaveBeenCalledTimes(1)
-    expect(managers.messages.editMessage).toHaveBeenCalledWith(PEER, 7, 'новый', undefined)
+    expect(managers.messages.editMessage).toHaveBeenCalledWith(PEER, 7, 'новый', undefined, { scheduleDate: undefined })
     expect(managers.messages.sendText).not.toHaveBeenCalled()
+    expect(input.editMsgId).toBeUndefined()
+  })
+
+  // Ф-5, п. 3.2.4: правка текста отложенного — тот же `editMessage` с
+  // `schedule_date = message.date` (tweb appMessagesManager.ts:2209).
+  it('правка отложенного несёт его дату отправки как scheduleDate', async() => {
+    mounted = await mountInput()
+    const { input, managers, messages, chat } = mounted
+    chat.type = ChatType.Scheduled
+    messages.set(7, { ...message(7, 'старый', ME), date: 1_900_000_000, pFlags: { out: true, is_scheduled: true } } as MyMessage)
+
+    await input.initMessageEditing(7)
+    input.messageInputField.setValueSilently('новый')
+    await input.sendMessage()
+
+    expect(managers.messages.editMessage).toHaveBeenCalledWith(PEER, 7, 'новый', undefined, { scheduleDate: 1_900_000_000 })
+  })
+
+  // НО-7 (tweb input.ts:1744-1748): отложенное, которое правят, удалили или
+  // опубликовали (в том числе с другого устройства) — правка закрывается.
+  it('scheduled_delete правимого отложенного закрывает правку', async() => {
+    mounted = await mountInput()
+    const { input, messages, chat } = mounted
+    chat.type = ChatType.Scheduled
+    messages.set(7, { ...message(7, 'старый', ME), date: 1_900_000_000, pFlags: { out: true, is_scheduled: true } } as MyMessage)
+    await input.initMessageEditing(7)
+    expect(input.editMsgId).toBe(7)
+
+    const { default: rootScope } = await import('@lib/rootScope')
+    rootScope.dispatchEventSingle('scheduled_delete', { peerId: PEER, mids: [8] })
+    expect(input.editMsgId).toBe(7)
+    rootScope.dispatchEventSingle('scheduled_delete', { peerId: PEER, mids: [7] })
     expect(input.editMsgId).toBeUndefined()
   })
 

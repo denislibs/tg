@@ -30,12 +30,15 @@
 //    (решение Р1), а временный номер теперь ДРОБЬ поверх последнего занятого
 //    (`core/history/messageId.ts`) — он сортируется туда же, куда встанет
 //    настоящий.
-//  • Не портированы ветки `ChatType.Scheduled` / `ChatType.Search`: у нас нет
-//    ни отложенных сообщений, ни чата-выдачи поиска. Вместе с ними ушли
-//    `generateGroupMid` (для не-scheduled он возвращает тот же `mid`, то есть
-//    `sortGroupItemsKey === sortItemsKey`), поле `GroupItem.reverse` и ветка
-//    `insertSomething` без ключа сортировки — они обслуживают ровно эти два
-//    режима.
+//  • Ветка `ChatType.Scheduled` портирована (tweb :411-413, :717-721): в ленте
+//    отложенных окно и серии сортируются по дате отправки (`timestamp`/
+//    `lastTimestamp`), внутри серии — по `groupMid`. Вид ленты сообщает хост
+//    (`isScheduled`), как и `isMegagroup`. Особенность оригинала сохранена:
+//    номер в `groupMid` стоит дробной частью строкой, поэтому при равном
+//    времени номера 1/10/100 неразличимы и порядок внутри серии может
+//    разойтись с номером (у tweb то же самое, :720). Не портирована ветка
+//    `ChatType.Search` — чата-выдачи поиска у нас нет; вместе с ней ушли поле
+//    `GroupItem.reverse` и ветка `insertSomething` без ключа сортировки.
 //  • Не портированы правила `canItemsBeGrouped`, у которых нет предмета в
 //    нашей модели: `channelAdminLogEvent`, `isMessageForVerificationBot`,
 //    `suggested_post`, `getGuestChatViaFromId`, форум/ботфорум/монофорум-треды
@@ -91,6 +94,9 @@ export interface BubbleGroupsHost {
    *  у нас роль чата играет хост ленты, и знание приезжает от него, а не
    *  выводится внутри предиката (`core/models.ts::OurMessageChat`). */
   readonly isMegagroup: boolean
+  /** `chat.type === ChatType.Scheduled` (tweb bubbleGroups.ts:411-412, :720):
+   *  лента отложенных сортируется по дате отправки, а не по номеру. */
+  readonly isScheduled: boolean
   /** порт `chat.bubbles.getDateContainerByTimestamp` (bubbles.ts:4823);
    *  аргумент — СЕКУНДЫ, как в оригинале */
   getDateContainerByTimestamp(timestamp: number): DateContainer
@@ -114,6 +120,9 @@ export interface GroupItem {
   /** ключ автора серии; отрицательный — send-as личность (см. `getMessageFromId`) */
   fromId: number
   mid: number
+  /** порядок внутри серии — tweb `generateGroupMid` (:717-721): `mid`, а в
+   *  ленте отложенных — время внутри дня с номером в дробной части */
+  groupMid: number
   /** unix-секунды отправки — по ним считается разрыв серии */
   timestamp: number
   /** локальная полночь дня сообщения — по ней бьются серии и контейнеры дней */
@@ -325,6 +334,11 @@ export class BubbleGroup {
     return this.lastItem.mid
   }
 
+  /** Порт tweb bubbleGroups.ts:223 — ключ групп ленты отложенных. */
+  public get lastTimestamp(): number {
+    return this.lastItem.timestamp
+  }
+
   /** Порт tweb bubbleGroups.ts:201. Один проход по СВОЕЙ серии: края получают
    *  `is-group-first`/`is-group-last`, середина — ничего. */
   public updateClassNames() {
@@ -359,7 +373,8 @@ export class BubbleGroup {
   /** Порт tweb bubbleGroups.ts:242. */
   public insertItem(item: GroupItem) {
     const { items } = this
-    insertInDescendSortedArray(items, item, 'mid')
+    // tweb :242-250 — `sortGroupItemsKey` = 'groupMid' (:413)
+    insertInDescendSortedArray(items, item, 'groupMid')
 
     item.group = this
     if (items.length === 1) {
@@ -462,10 +477,10 @@ export class BubbleGroup {
 
 /** Порт tweb `BubbleGroups` (default export оригинала). */
 export default class BubbleGroups {
-  /** descend sorted по `mid` (itemsArr[0] — самое новое сообщение окна) */
+  /** descend sorted по `mid` (в ленте отложенных — по `timestamp`; itemsArr[0] — самое новое сообщение окна) */
   public itemsArr: GroupItem[] = []
   private itemsMap: Map<HTMLElement, GroupItem> = new Map()
-  /** descend sorted по `lastSeq` (groups[0] — самая нижняя серия) */
+  /** descend sorted по `lastSeq` (в ленте отложенных — по `lastTimestamp`; groups[0] — самая нижняя серия) */
   public groups: BubbleGroup[] = []
 
   constructor(private host: BubbleGroupsHost) {}
@@ -492,16 +507,24 @@ export default class BubbleGroups {
    *  (`type === 'call'`), поэтому весь `SERVICE_AS_REGULAR` сводится к
    *  «сервисное = single». */
   public createItem(bubble: HTMLElement, message: MyMessage): GroupItem {
+    const dateTimestamp = this.host.getDateForDateContainer(message.date)
     return {
       bubble,
       fromId: this.getMessageFromId(message),
       mid: message.id,
+      groupMid: this.generateGroupMid(message, dateTimestamp),
       timestamp: message.date,
-      dateTimestamp: this.host.getDateForDateContainer(message.date),
+      dateTimestamp,
       mounted: false,
       single: isServicePill(message),
       message,
     }
+  }
+
+  /** Порт tweb bubbleGroups.ts:717-721. */
+  public generateGroupMid(message: MyMessage, dateTimestamp: number): number {
+    const { date: timestamp, id: mid } = message
+    return this.host.isScheduled ? +`${(timestamp * 1000 - dateTimestamp) / 1000}.${+('' + mid).replace('.', '')}` : mid
   }
 
   /** Порт tweb bubbleGroups.ts:668. Ключ автора серии. Send-as (сообщение от
@@ -609,12 +632,16 @@ export default class BubbleGroups {
 
   /** Порт tweb bubbleGroups.ts:641. */
   public insertItemToArray(item: GroupItem, array: GroupItem[]): number {
-    return insertInDescendSortedArray(array, item, 'mid')
+    // tweb :664-670 — `sortItemsKey` (:411)
+    return insertInDescendSortedArray(array, item, this.host.isScheduled ? 'timestamp' : 'mid')
   }
 
   /** Порт tweb bubbleGroups.ts:645. */
   public insertGroup(group: BubbleGroup): number {
-    return insertInDescendSortedArray(this.groups, group, 'lastSeq')
+    // tweb :673-681 — `sortGroupsKey` (:412)
+    return this.host.isScheduled ?
+      insertInDescendSortedArray(this.groups, group, 'lastTimestamp') :
+      insertInDescendSortedArray(this.groups, group, 'lastSeq')
   }
 
   /** Порт tweb bubbleGroups.ts:651. */
@@ -671,6 +698,7 @@ export default class BubbleGroups {
 
     item.mid = message.id
     item.message = message
+    item.groupMid = this.generateGroupMid(message, item.dateTimestamp)
 
     indexOfAndSplice(this.itemsArr, item)
     this.insertItemToArray(item, this.itemsArr)

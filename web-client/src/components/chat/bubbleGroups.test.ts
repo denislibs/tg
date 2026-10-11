@@ -64,7 +64,7 @@ class TestHost implements BubbleGroupsHost {
   /** Порт `chat.isMegagroup`: вид чата группам сообщает ХОЗЯИН (в tweb — `Chat`
    *  через `chat.isOutMessage`). По умолчанию открыт групповой чат — именно в
    *  нём живут все сценарии этого файла, кроме постов вещательного канала. */
-  constructor(public readonly isMegagroup = true) {}
+  constructor(public readonly isMegagroup = true, public readonly isScheduled = false) {}
 
   public chatInner = document.createElement('div')
   public dateMessages: Map<number, DateContainer> = new Map()
@@ -187,6 +187,30 @@ const snapshotClassNames = () => new Map([...bubbleOf].map(([id, el]) => [id, el
 
 const changedSince = (before: Map<number, string>) =>
   [...bubbleOf].filter(([id, el]) => before.get(id) !== el.className).map(([id]) => id)
+
+// tweb bubbleGroups.ts:411-412, :717-721: в ленте отложенных порядок — по дате
+// отправки, а не по номеру (номер — порядок постановки).
+describe('лента отложенных — порядок по дате отправки', () => {
+  it('отложенное с более ранней датой встаёт выше, хотя номер у него больше', () => {
+    host = new TestHost(true, true)
+    groups = new BubbleGroups(host)
+    feed([
+      msg({ id: 1, createdAt: at('15:00:00') }),
+      msg({ id: 2, createdAt: at('12:00:00') }),
+      msg({ id: 3, createdAt: at('18:00:00') }),
+    ])
+    expect(layout()).toEqual([[2], [1], [3]])
+    expect(groups.itemsArr.map((i) => i.mid)).toEqual([3, 1, 2])
+  })
+
+  it('в обычном чате порядок — по номеру', () => {
+    feed([
+      msg({ id: 1, createdAt: at('15:00:00') }),
+      msg({ id: 2, createdAt: at('12:00:00') }),
+    ])
+    expect(groups.itemsArr.map((i) => i.mid)).toEqual([2, 1])
+  })
+})
 
 describe('правила разрыва серии', () => {
   it('подряд идущие сообщения одного автора образуют одну серию', () => {

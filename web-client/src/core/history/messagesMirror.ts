@@ -181,9 +181,10 @@ export function resetMessagesMirror(): void {
   bump()
 }
 
-// Чат окна: и у основного ключа ("50"), и у ключа треда ("50:60") это первый
-// сегмент — тот самый peerId, которым tweb адресует history_delete/message_edit.
-const peerIdOf = (key: string): number => Number(key.split(':')[0])
+// Чат окна: у основного ключа ("50"), у ключа треда ("50:60") и у ленты
+// отложенных ("50_scheduled", tweb `${peerId}_scheduled`) это ведущее число —
+// тот самый peerId, которым tweb адресует history_delete/message_edit.
+const peerIdOf = (key: string): number => Number.parseInt(key, 10)
 
 /** Имя ЕДИНСТВЕННОГО параметра патча, если он один (иначе `undefined`). */
 const onlyPatchedField = (fields: MessageFields): string | undefined => {

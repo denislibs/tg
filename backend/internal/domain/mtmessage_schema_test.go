@@ -144,8 +144,6 @@ func allMessageConstructors() []any {
 	full.Reactions.TopReactors = []MessageReactor{NewMyMessageReactor(25)}
 	full.TTLPeriod = 86400
 	full.RandomID = "cm-1"
-	full.SendAt = now.Add(time.Hour).Unix()
-	full.WhenOnline = true
 	full.EncBody = "AQID"
 	full.DestructAt = ptr(now.Add(time.Minute).Format(time.RFC3339))
 	full.Effect = "fireworks"

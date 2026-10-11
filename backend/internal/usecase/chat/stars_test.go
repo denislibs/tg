@@ -35,6 +35,13 @@ func (f *fakeStars) Balance(_ context.Context, userID int64) (int64, error) {
 	return f.bal[userID], nil
 }
 
+func (f *fakeStars) TakeUpTo(_ context.Context, userID, max int64) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.bal[userID] -= min(f.bal[userID], max)
+	return f.bal[userID], nil
+}
+
 func (f *fakeStars) AddBalance(_ context.Context, userID, delta int64) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

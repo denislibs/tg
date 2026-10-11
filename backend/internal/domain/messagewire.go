@@ -178,6 +178,7 @@ func (m Message) toReal(ctx MessageContext) MessageReal {
 		Out:         ctx.Out,
 		Pinned:      ctx.Pinned,
 	})
+	setPFlag(&r.PFlags, "from_scheduled", m.FromScheduled)
 	r.FromID = m.wireFromID(ctx)
 	r.FwdFrom = m.FwdFrom
 	r.ReplyTo = m.replyHeader()

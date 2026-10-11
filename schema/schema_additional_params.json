@@ -423,14 +423,6 @@
         "type": "string"
       },
       {
-        "name": "send_at",
-        "type": "number"
-      },
-      {
-        "name": "when_online",
-        "type": "boolean"
-      },
-      {
         "name": "enc_body",
         "type": "string"
       },
