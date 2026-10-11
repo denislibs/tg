@@ -123,10 +123,6 @@ func TestEditTopic_General(t *testing.T) {
 	if g, _ := ft.ByNumber(ctx, id, domain.GeneralTopicID); !g.Hidden {
 		t.Fatal("General не скрыта")
 	}
-	closed := true
-	if _, err := in.EditTopic(ctx, id, domain.GeneralTopicID, 7, TopicEdit{Closed: &closed}); !errors.Is(err, domain.ErrForbidden) {
-		t.Fatalf("закрыть General = %v, ждали ErrForbidden", err)
-	}
 	if _, err := in.SetTopicPinned(ctx, id, domain.GeneralTopicID, 7, true); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("закрепить General = %v, ждали ErrForbidden", err)
 	}
@@ -136,6 +132,87 @@ func TestEditTopic_General(t *testing.T) {
 	}
 	if svc := wire[0].(domain.MessageService); svc.ReplyTo != nil {
 		t.Fatalf("служебка General с reply_to: %+v", svc.ReplyTo)
+	}
+
+	// Значка у General нет: правка шлёт пустой (tweb editTopic.tsx:187-191) —
+	// принимается без служебки; непустой — нет.
+	empty, fire := "", "🔥"
+	if m, err := in.EditTopic(ctx, id, domain.GeneralTopicID, 7, TopicEdit{IconEmoji: &empty}); err != nil || m != nil {
+		t.Fatalf("пустой значок General: %v, %v; ждали no-op", m, err)
+	}
+	if _, err := in.EditTopic(ctx, id, domain.GeneralTopicID, 7, TopicEdit{IconEmoji: &fire}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("значок General = %v, ждали ErrForbidden", err)
+	}
+
+	// Закрыть General можно (tweb dialogsContextMenu.ts:403-415), и тогда в
+	// неё пишет только управляющий (canSendToPeer).
+	closed := true
+	if m, err := in.EditTopic(ctx, id, domain.GeneralTopicID, 7, TopicEdit{Closed: &closed}); err != nil || m == nil {
+		t.Fatalf("закрыть General: %v, %v", m, err)
+	}
+	if _, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 8, Text: "в закрытую General"}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("участник пишет в закрытую General: %v, ждали ErrForbidden", err)
+	}
+	if _, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 7, Text: "владелец"}); err != nil {
+		t.Fatalf("владелец не пишет в закрытую General: %v", err)
+	}
+}
+
+// Скрыть можно только General (tweb dialogsContextMenu.ts:396-401); «моей»
+// General не бывает ни у кого (domain.TopicMine).
+func TestEditTopic_HiddenOnlyGeneral(t *testing.T) {
+	in, _, _, id, root := forumGroup(t)
+	ctx := context.Background()
+	hidden := true
+	if _, err := in.EditTopic(ctx, id, root.Seq, 7, TopicEdit{Hidden: &hidden}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("скрыть обычную тему = %v, ждали ErrForbidden", err)
+	}
+	g, _ := in.topicByNumber(ctx, id, domain.GeneralTopicID)
+	if domain.TopicMine(g, g.CreatedBy) {
+		t.Fatal("General — «моя» у включившего темы")
+	}
+}
+
+// Закреп в то же состояние — без записи и без кадров.
+func TestSetTopicPinned_NoOp(t *testing.T) {
+	in, _, pub, id, root := forumGroup(t)
+	ctx := context.Background()
+	if _, err := in.SetTopicPinned(ctx, id, root.Seq, 7, true); err != nil {
+		t.Fatal(err)
+	}
+	pub.reset()
+	update, err := in.SetTopicPinned(ctx, id, root.Seq, 7, true)
+	if err != nil || !update.PFlags["pinned"] {
+		t.Fatalf("повторный закреп: %+v, %v", update, err)
+	}
+	if n := framesOfType(pub, 8, "topic_pin"); n != 0 {
+		t.Fatalf("повторный закреп разослал %d кадров", n)
+	}
+}
+
+// Номер 1 в форуме — General: служебка темы его не получает, даже если в чате
+// ещё нет ни одного сообщения (reserveGeneralNumber).
+func TestCreateTopic_NeverNumberOne(t *testing.T) {
+	_, _, _, _, root := forumGroup(t)
+	if root.Seq == domain.GeneralTopicID {
+		t.Fatalf("служебка темы получила номер 1")
+	}
+	s := newStore()
+	in := &Interactor{chats: fakeChats{s}, msgs: fakeMsgs{s}}
+	ctx := context.Background()
+	const empty, busy = 100, 200
+	s.chatType[empty], s.chatType[busy] = domain.ChatTypeGroup, domain.ChatTypeGroup
+	s.chatSeq[busy] = 5
+	for _, chat := range []int64{empty, busy} {
+		if err := in.reserveGeneralNumber(ctx, chat); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if s.chatSeq[empty] != domain.GeneralTopicID {
+		t.Fatalf("пустой чат: счётчик %d, ждали пропуск номера 1", s.chatSeq[empty])
+	}
+	if s.chatSeq[busy] != 5 {
+		t.Fatalf("чат с сообщениями: счётчик сдвинут до %d", s.chatSeq[busy])
 	}
 }
 
@@ -171,7 +248,7 @@ func TestSetTopicMuteUntil_DeadlineToOwnDevices(t *testing.T) {
 	if err := in.SetTopicMuteUntil(ctx, id, root.Seq, 8, until); err != nil {
 		t.Fatal(err)
 	}
-	if got := ft.muteUntil[[3]int64{id, root.ID, 8}]; got == nil || got.Unix() != until {
+	if got, ok := ft.muteUntil[[3]int64{id, root.ID, 8}]; !ok || got.Unix() != until {
 		t.Fatalf("срок мьюта = %v, ждали %d", got, until)
 	}
 	d := lastFrameOfType(t, pub, 8, "topic_mute")
@@ -184,12 +261,20 @@ func TestSetTopicMuteUntil_DeadlineToOwnDevices(t *testing.T) {
 	if framesOfType(pub, 7, "topic_mute") != 0 {
 		t.Fatal("мьют темы — личный, а кадр ушёл другому участнику")
 	}
-	// Снять: 0 — срока нет, в кадре явный MuteUntilNever.
+	// Снять: 0 — ЯВНОЕ «уведомлять» (не «наследовать чат»: tweb
+	// appNotificationsManager.ts:398-405), хранится нулём, в кадре — 0.
 	if err := in.SetTopicMuteUntil(ctx, id, root.Seq, 8, domain.MuteUntilNever); err != nil {
 		t.Fatal(err)
 	}
-	if got := ft.muteUntil[[3]int64{id, root.ID, 8}]; got != nil {
-		t.Fatalf("мьют не снят: %v", got)
+	if got, ok := ft.muteUntil[[3]int64{id, root.ID, 8}]; !ok || got.Unix() != domain.MuteUntilNever {
+		t.Fatalf("явное «уведомлять» не записано: %v %v", got, ok)
+	}
+	// Срок в прошлом — то же явное «уведомлять».
+	if err := in.SetTopicMuteUntil(ctx, id, root.Seq, 8, time.Now().Add(-time.Hour).Unix()); err != nil {
+		t.Fatal(err)
+	}
+	if got := ft.muteUntil[[3]int64{id, root.ID, 8}]; got.Unix() != domain.MuteUntilNever {
+		t.Fatalf("срок в прошлом = %v, ждали 0", got)
 	}
 	if s, _ := lastFrameOfType(t, pub, 8, "topic_mute")["notify_settings"].(map[string]any); s["mute_until"] != float64(0) {
 		t.Fatalf("снятие мьюта: %v", s)
@@ -198,7 +283,7 @@ func TestSetTopicMuteUntil_DeadlineToOwnDevices(t *testing.T) {
 	if err := in.SetTopicMuteUntil(ctx, id, domain.GeneralTopicID, 8, domain.MuteUntilForever); err != nil {
 		t.Fatal(err)
 	}
-	if got := ft.muteUntil[[3]int64{id, 0, 8}]; got == nil || got.Unix() != domain.MuteUntilForever {
+	if got, ok := ft.muteUntil[[3]int64{id, 0, 8}]; !ok || got.Unix() != domain.MuteUntilForever {
 		t.Fatalf("мьют General = %v", got)
 	}
 }
@@ -221,15 +306,28 @@ func TestForumThreadAddressing(t *testing.T) {
 	}
 	// TL-форма inputReplyToMessage{reply_to_msg_id: тред, top_msg_id: тред}.
 	x := int64(42)
-	for name, c := range map[string]struct{ thread, reply, want *int64 }{
-		"тред без ответа":       {&n, &n, nil},
-		"General без ответа":    {&general, &general, nil},
-		"General без top":       {nil, &general, nil},
-		"ответ внутри темы":     {&n, &x, &x},
-		"ответ вне треда":       {nil, &x, &x},
-		"без ответа и без тред": {nil, nil, nil},
+	other := int64(555) // ключ чужого чата (reply_to_peer_id)
+	quote, empty := "цитата", ""
+	for name, c := range map[string]struct {
+		thread, reply, peer *int64
+		quote               *string
+		want                *int64
+	}{
+		"тред без ответа":       {thread: &n, reply: &n},
+		"General без ответа":    {thread: &general, reply: &general},
+		"General без top":       {reply: &general},
+		"ответ внутри темы":     {thread: &n, reply: &x, want: &x},
+		"ответ вне треда":       {reply: &x, want: &x},
+		"без ответа и без тред": {},
+		// Ревью п. 2: явный ответ на корень треда не снимается — ни в чужой
+		// чат, ни с цитатой (tweb appMessagesManager.ts:4261, 4264-4268).
+		"ответ на корень с цитатой":      {thread: &n, reply: &n, quote: &quote, want: &n},
+		"ответ на корень в чужой чат":    {thread: &n, reply: &n, peer: &other, want: &n},
+		"ответ на сообщение 1 с цитатой": {reply: &general, quote: &quote, want: &general},
+		"пустая цитата — не цитата":      {thread: &n, reply: &n, quote: &empty},
+		"чужой чат, номер 1 без треда":   {reply: &general, peer: &other, want: &general},
 	} {
-		got := in.ThreadReplyTo(ctx, id, c.thread, c.reply)
+		got := in.ThreadReplyTo(ctx, id, c.thread, c.reply, c.peer, c.quote)
 		if (got == nil) != (c.want == nil) || (got != nil && *got != *c.want) {
 			t.Errorf("%s: ThreadReplyTo = %v, ждали %v", name, got, c.want)
 		}
@@ -267,7 +365,26 @@ func TestThreadNumberOne_NotForum(t *testing.T) {
 	if got := in.resolveThreadRootForQuery(ctx, id, &one); got != nil && *got == domain.GeneralThreadRoot {
 		t.Fatal("не-форум перевёл номер 1 в General")
 	}
-	if got := in.ThreadReplyTo(ctx, id, nil, &one); got == nil || *got != one {
+	if got := in.ThreadReplyTo(ctx, id, nil, &one, nil, nil); got == nil || *got != one {
 		t.Fatalf("ответ на сообщение 1 в не-форуме снят: %v", got)
+	}
+}
+
+// В форуме тред отправки — только тема (или комментарии к посту канала);
+// номер обычного сообщения — TOPIC_ID_INVALID, а не тред этого сообщения.
+func TestResolveThreadRootForSend_ForumOnlyTopics(t *testing.T) {
+	in, _, _, id, root := forumGroup(t)
+	ctx := context.Background()
+	plain, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 8, Text: "в General"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := plain.Seq
+	if _, err := in.ResolveThreadRootForSend(ctx, id, &n); !errors.Is(err, domain.ErrTopicIDInvalid) {
+		t.Fatalf("тред обычного сообщения в форуме = %v, ждали ErrTopicIDInvalid", err)
+	}
+	topic := root.Seq
+	if got, err := in.ResolveThreadRootForSend(ctx, id, &topic); err != nil || got == nil || *got != root.ID {
+		t.Fatalf("тред темы: %v, %v", got, err)
 	}
 }

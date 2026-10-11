@@ -58,12 +58,16 @@ func (r *TopicsRepo) ByNumber(ctx context.Context, chatID, number int64) (domain
 		 LIMIT 1`, chatID, number, domain.GeneralTopicID))
 }
 
-// Update пишет изменяемые поля темы (название, значок, закрыта, скрыта) — одним
-// UPDATE, в той же транзакции, что служебка messageActionTopicEdit.
-func (r *TopicsRepo) Update(ctx context.Context, t domain.ForumTopicRecord) error {
+// Update пишет поля правки темы (название, значок, закрыта, скрыта) — одним
+// UPDATE, в той же транзакции, что служебка messageActionTopicEdit. Только
+// заданные поля (nil — COALESCE оставляет колонку): снимок темы, прочитанный
+// до транзакции, не затирает параллельную правку другого поля.
+func (r *TopicsRepo) Update(ctx context.Context, id int64, edit domain.MessageActionTopicEdit) error {
 	_, err := querier(ctx, r.pool).Exec(ctx,
-		`UPDATE forum_topics SET title=$2, icon_emoji=$3, closed=$4, hidden=$5 WHERE id=$1`,
-		t.ID, t.Title, t.IconEmoji, t.Closed, t.Hidden)
+		`UPDATE forum_topics SET title = COALESCE($2, title), icon_emoji = COALESCE($3, icon_emoji),
+		        closed = COALESCE($4, closed), hidden = COALESCE($5, hidden)
+		  WHERE id = $1`,
+		id, edit.Title, edit.IconEmojiEmoticon, edit.Closed, edit.Hidden)
 	return err
 }
 
@@ -96,22 +100,35 @@ func (r *TopicsRepo) TopicRoots(ctx context.Context, rootIDs []int64) (map[int64
 	return out, rows.Err()
 }
 
-// threadFilter — условие «сообщение alias принадлежит треду param», общее для
-// всех выборок треда (история, окно вокруг, медиа, счётчики, число).
-// param — выражение ключа строки корня; само корневое сообщение входит в тред,
-// если withRoot (лента треда показывает корень первым баблом).
+// threadFilter — условие «сообщение alias принадлежит треду root», общее для
+// всех выборок треда (история, окно вокруг, медиа, счётчики, число, /threads).
+// param — плейсхолдер того же значения root в запросе; само корневое
+// сообщение входит в тред, если withRoot (лента треда показывает корень
+// первым баблом).
 //
-// General — страж domain.GeneralThreadRoot: корня у неё нет, её сообщения —
-// без треда, кроме служебок создания тем: те принадлежат своим темам (tweb
-// getMessageThreadId.ts:20-23).
-func threadFilter(alias, param string, withRoot bool) string {
-	root := ""
-	if withRoot {
-		root = fmt.Sprintf(` OR %s.id = %s`, alias, param)
+// Фрагмент выбирается ЗДЕСЬ, по значению root, а не OR-ом в SQL: план
+// подготовленного запроса (pgx кэширует statement, Postgres переходит на
+// generic plan) не умеет отбросить ветку General и терял бы индекс
+// idx_messages_thread_seq. param остаётся в каждом фрагменте — тип параметра
+// Postgres выводит из запроса, а аргумент передан всегда:
+//   - root == nil — треда нет, условие истинно;
+//   - General — страж domain.GeneralThreadRoot: корня у неё нет, её сообщения —
+//     без треда, кроме служебок создания тем (они в своих темах, tweb
+//     getMessageThreadId.ts:20-23);
+//   - иначе — тред корня.
+func threadFilter(alias, param string, root *int64, withRoot bool) string {
+	switch {
+	case root == nil:
+		return param + `::bigint IS NULL`
+	case *root == domain.GeneralThreadRoot:
+		return fmt.Sprintf(`(%[2]s::bigint = %[3]d AND %[1]s.thread_root_id IS NULL
+			AND NOT EXISTS (SELECT 1 FROM forum_topics gft WHERE gft.root_msg_id = %[1]s.id))`,
+			alias, param, domain.GeneralThreadRoot)
+	case withRoot:
+		return fmt.Sprintf(`(%[1]s.thread_root_id = %[2]s::bigint OR %[1]s.id = %[2]s::bigint)`, alias, param)
+	default:
+		return fmt.Sprintf(`%[1]s.thread_root_id = %[2]s::bigint`, alias, param)
 	}
-	return fmt.Sprintf(`(%[1]s.thread_root_id = %[2]s%[3]s OR (%[2]s = %[4]d AND %[1]s.thread_root_id IS NULL
-		AND NOT EXISTS (SELECT 1 FROM forum_topics gft WHERE gft.root_msg_id = %[1]s.id)))`,
-		alias, param, root, domain.GeneralThreadRoot)
 }
 
 // EnsureGeneralTopic идемпотентно создаёт системную тему «General» для чата,
@@ -130,34 +147,61 @@ func (r *TopicsRepo) EnsureGeneralTopic(ctx context.Context, chatID, createdBy i
 		 WHERE t.chat_id=$1 AND t.is_general`, chatID))
 }
 
-// inTopic — сообщение m принадлежит теме t: у обычной темы — тред её корня,
-// у General — сообщения без треда, кроме служебок создания тем (те в своих
-// темах, tweb getMessageThreadId.ts:20-23). Строки корня у General нет.
-const inTopic = `m.chat_id = t.chat_id AND (
-		(NOT t.is_general AND m.thread_root_id = t.root_msg_id)
-		OR (t.is_general AND m.thread_root_id IS NULL
-		    AND NOT EXISTS (SELECT 1 FROM forum_topics gft WHERE gft.root_msg_id = m.id)))`
-
-// ListByChat — темы чата с последним сообщением треда и состоянием темы для
-// зрителя userID (горизонты, непрочитанное, упоминания, реакции, мьют — как
-// строка диалога). Порядок (как в tweb): General первой, затем закреплённые
-// (по pos), затем остальные (свежие сверху).
+// topicRowsSQL — выборка строк списка тем для зрителя $2 в чате $1, ОТДЕЛЬНО
+// для General и для обычных тем: принадлежность сообщения теме у них разная,
+// и OR этих веток в одном запросе (по флагу строки внутри LATERAL) лишал бы
+// план индексов. Ветка выбирается здесь, в Go:
+//   - обычная тема — тред её корня (idx_messages_thread_seq, 0164), корень — первым
+//     сообщением ленты;
+//   - General — сообщения без треда, кроме служебок создания тем (те в своих
+//     темах, tweb getMessageThreadId.ts:20-23), диапазоном по
+//     (chat_id, seq).
 //
-// Последнее сообщение темы и её счётчики — только из видимого зрителю
-// (messageVisibleTo): после «очистить историю» тема не держит старое превью и
-// бейджи, скрытое у себя и скрытая предыстория в них тоже не входят.
-func (r *TopicsRepo) ListByChat(ctx context.Context, chatID, userID int64) ([]domain.TopicRow, error) {
-	rows, err := querier(ctx, r.pool).Query(ctx, `
-		SELECT `+topicCols+`,
+// Горизонт чтения темы — max(своя запись темы, горизонт чата
+// chat_members.last_read_seq): горизонт чата значит «прочитано всё до него»,
+// темы в том числе. До этой волны General не считалась, и записей
+// topic_user_state у неё нет ни у кого — без горизонта чата после деплоя вся
+// её история стала бы непрочитанной; у обычной темы, которую участник ни
+// разу не открывал, — тоже, и подсчёт шёл бы по всему треду. Так же —
+// read_outbox_max_id General.
+//
+// Упоминания и реакции темы — подмножество счётчиков чата
+// (chat_members.unread_mentions_count / unread_reactions): при нуле в чате
+// подзапросы не выполняются. Реакции считаются от частичного индекса
+// reactions_unread_idx (0162), а не перебором своих сообщений темы.
+func topicRowsSQL(general bool) string {
+	inTopic := `m.chat_id = t.chat_id AND m.thread_root_id = t.root_msg_id`
+	horizon := `GREATEST(COALESCE(st.last_read_seq, 0), COALESCE(cm.last_read_seq, 0))`
+	outbox := `COALESCE((SELECT MAX(o.last_read_seq) FROM topic_user_state o
+	                     WHERE o.chat_id = t.chat_id AND o.root_msg_id = t.root_msg_id
+	                       AND o.user_id <> $2), 0)`
+	last := `(SELECT m.id, m.created_at, m.seq FROM messages m
+	           WHERE ` + inTopic + ` AND ` + messageVisibleTo("m", "$2") + `
+	           ORDER BY m.seq DESC LIMIT 1)
+	         UNION ALL
+	         (SELECT m.id, m.created_at, m.seq FROM messages m
+	           WHERE m.id = t.root_msg_id AND ` + messageVisibleTo("m", "$2") + `)`
+	where := `t.chat_id = $1 AND NOT t.is_general`
+	if general {
+		inTopic = `m.chat_id = t.chat_id AND m.thread_root_id IS NULL
+		       AND NOT EXISTS (SELECT 1 FROM forum_topics gft WHERE gft.root_msg_id = m.id)`
+		outbox = `GREATEST(` + outbox + `,
+		           COALESCE((SELECT MAX(om.last_read_seq) FROM chat_members om
+		                      WHERE om.chat_id = t.chat_id AND om.user_id <> $2), 0))`
+		last = `SELECT m.id, m.created_at, m.seq FROM messages m
+		         WHERE ` + inTopic + ` AND ` + messageVisibleTo("m", "$2") + `
+		         ORDER BY m.seq DESC LIMIT 1`
+		where = `t.chat_id = $1 AND t.is_general`
+	}
+	return `
+		SELECT ` + topicCols + `,
 		       -- Последнее сообщение темы адресуется ССЫЛКОЙ: ключ строки (по нему
 		       -- контейнер достанет объект) и номер в чате (top_message).
 		       lm.id, lm.seq,
-		       COALESCE(st.last_read_seq, 0),
+		       ` + horizon + `,
 		       -- read_outbox_max_id: горизонт ОСТАЛЬНЫХ по теме — правило
 		       -- «✓✓ группы — MAX», что и у чата (A1-19).
-		       COALESCE((SELECT MAX(o.last_read_seq) FROM topic_user_state o
-		                  WHERE o.chat_id = t.chat_id AND o.root_msg_id = t.root_msg_id
-		                    AND o.user_id <> $2), 0),
+		       ` + outbox + `,
 		       st.muted_until,
 		       COALESCE(unr.n, 0),
 		       COALESCE(men.n, 0),
@@ -167,43 +211,67 @@ func (r *TopicsRepo) ListByChat(ctx context.Context, chatID, userID int64) ([]do
 		  LEFT JOIN messages rm ON rm.id = t.root_msg_id
 		  LEFT JOIN topic_user_state st
 		    ON st.chat_id = t.chat_id AND st.root_msg_id = t.root_msg_id AND st.user_id = $2
+		  LEFT JOIN chat_members cm ON cm.chat_id = t.chat_id AND cm.user_id = $2
 		  LEFT JOIN LATERAL (
-		    SELECT m.id, m.created_at, m.seq FROM messages m
-		     WHERE (`+inTopic+` OR (NOT t.is_general AND m.id = t.root_msg_id))
-		       AND `+messageVisibleTo("m", "$2")+`
-		     ORDER BY m.seq DESC LIMIT 1
+		    SELECT x.id, x.created_at, x.seq FROM (` + last + `) x
+		     ORDER BY x.seq DESC LIMIT 1
 		  ) lm ON true
 		  LEFT JOIN LATERAL (
-		    -- непрочитанные темы: чужие сообщения треда с seq > last_read_seq
+		    -- непрочитанные темы: чужие сообщения темы выше горизонта
 		    SELECT count(*) AS n FROM messages m
-		     WHERE `+inTopic+`
-		       AND `+messageVisibleTo("m", "$2")+` AND m.sender_id <> $2
-		       AND m.seq > COALESCE(st.last_read_seq, 0)
+		     WHERE ` + inTopic + ` AND m.seq > ` + horizon + `
+		       AND ` + messageVisibleTo("m", "$2") + ` AND m.sender_id <> $2
 		  ) unr ON true
 		  LEFT JOIN LATERAL (
 		    -- непрочитанные упоминания зрителя в этой теме (message_mentions +
-		    -- тред сообщения); text_mention детектится при вставке.
+		    -- тема сообщения); text_mention детектится при вставке.
 		    SELECT count(*) AS n FROM message_mentions mm
 		     JOIN messages m ON m.id = mm.message_id
-		     WHERE mm.chat_id = t.chat_id AND mm.user_id = $2 AND mm.unread
-		       AND `+inTopic+` AND `+messageVisibleTo("m", "$2")+`
-		       AND mm.seq > COALESCE(st.last_read_seq, 0)
+		     WHERE COALESCE(cm.unread_mentions_count, 0) > 0
+		       AND mm.chat_id = t.chat_id AND mm.user_id = $2 AND mm.unread
+		       AND mm.seq > ` + horizon + `
+		       AND ` + inTopic + ` AND ` + messageVisibleTo("m", "$2") + `
 		  ) men ON true
 		  LEFT JOIN LATERAL (
 		    -- unread_reactions_count: СООБЩЕНИЯ зрителя в теме с непрочитанной
-		    -- реакцией — предикат чата из 0160 (reactions.unread), сужённый темой.
-		    SELECT count(*) AS n FROM messages m
-		     WHERE `+inTopic+` AND m.sender_id = $2 AND `+messageVisibleTo("m", "$2")+`
-		       AND EXISTS (SELECT 1 FROM reactions rr WHERE rr.message_id = m.id AND rr.unread)
+		    -- реакцией — предикат чата (recountUnreadReactionsSQL), сужённый темой.
+		    SELECT count(DISTINCT m.id) AS n FROM reactions rr
+		     JOIN messages m ON m.id = rr.message_id
+		     WHERE COALESCE(cm.unread_reactions, 0) > 0 AND rr.unread
+		       AND ` + inTopic + ` AND m.sender_id = $2 AND ` + messageVisibleTo("m", "$2") + `
 		  ) rea ON true
-		 WHERE t.chat_id = $1
-		 ORDER BY t.is_general DESC,
-		          t.pinned DESC,
+		 WHERE ` + where + `
+		 ORDER BY t.pinned DESC,
 		          CASE WHEN t.pinned THEN t.pos ELSE 0 END ASC,
-		          COALESCE(lm.created_at, t.created_at) DESC`, chatID, userID)
-	if err != nil {
-		return nil, err
+		          COALESCE(lm.created_at, t.created_at) DESC`
+}
+
+// ListByChat — темы чата с последним сообщением темы и состоянием темы для
+// зрителя userID (горизонты, непрочитанное, упоминания, реакции, мьют — как
+// строка диалога). Порядок (как в tweb): General первой, затем закреплённые
+// (по pos), затем остальные (свежие сверху). General и обычные темы — двумя
+// запросами (topicRowsSQL).
+//
+// Последнее сообщение темы и её счётчики — только из видимого зрителю
+// (messageVisibleTo): после «очистить историю» тема не держит старое превью и
+// бейджи, скрытое у себя и скрытая предыстория в них тоже не входят.
+func (r *TopicsRepo) ListByChat(ctx context.Context, chatID, userID int64) ([]domain.TopicRow, error) {
+	var out []domain.TopicRow
+	for _, general := range []bool{true, false} {
+		rows, err := querier(ctx, r.pool).Query(ctx, topicRowsSQL(general), chatID, userID)
+		if err != nil {
+			return nil, err
+		}
+		page, err := scanTopicRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, page...)
 	}
+	return out, nil
+}
+
+func scanTopicRows(rows pgx.Rows) ([]domain.TopicRow, error) {
 	defer rows.Close()
 	var out []domain.TopicRow
 	for rows.Next() {
@@ -239,10 +307,11 @@ func (r *TopicsRepo) SetTopicRead(ctx context.Context, chatID, rootMsgID, userID
 	return err
 }
 
-// SetTopicMuteUntil ставит срок мьюта темы (peerNotifySettings.mute_until —
-// СРОК, а не булево: «на час» обязано кончиться через час) — UPSERT в
-// topic_user_state. nil — мьют снят.
-func (r *TopicsRepo) SetTopicMuteUntil(ctx context.Context, chatID, rootMsgID, userID int64, until *time.Time) error {
+// SetTopicMuteUntil пишет явную настройку уведомлений темы — UPSERT в
+// topic_user_state.muted_until: срок мьюта либо time.Unix(0) («уведомлять»).
+// NULL в колонке — тема не тронута, наследует мьют чата (три состояния, tweb
+// appNotificationsManager.ts:398-405).
+func (r *TopicsRepo) SetTopicMuteUntil(ctx context.Context, chatID, rootMsgID, userID int64, until time.Time) error {
 	_, err := querier(ctx, r.pool).Exec(ctx, `
 		INSERT INTO topic_user_state (chat_id, root_msg_id, user_id, muted_until)
 		VALUES ($1,$2,$3,$4)

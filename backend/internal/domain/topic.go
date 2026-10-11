@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 // ForumTopicRecord — тема форум-группы ВЫБОРКОЙ: наш набор колонок, а не объект
 // провода. Имя схемы `forumTopic` занял конструктор (mtforumtopic.go) — тот же
@@ -29,6 +32,12 @@ type ForumTopicRecord struct {
 	CreatedAt  time.Time
 }
 
+// ErrTopicIDInvalid — отправка в форуме с номером треда, который не тема (и не
+// комментарии к посту канала): ошибка TG TOPIC_ID_INVALID у
+// messages.sendMessage. tweb её не разбирает — у клиента это общая ошибка
+// отправки.
+var ErrTopicIDInvalid = errors.New("TOPIC_ID_INVALID")
+
 // GeneralTopicID — номер темы «General» снаружи. Порт tweb
 // lib/appManagers/constants.ts:26 (`GENERAL_TOPIC_ID = MESSAGE_ID_OFFSET + 1`,
 // серверный номер 1): у General нет служебки создания, и TG адресует её
@@ -51,6 +60,14 @@ func (t ForumTopicRecord) Number() int64 {
 		return GeneralTopicID
 	}
 	return t.RootMsgSeq
+}
+
+// TopicMine — тема «моя» (forumTopic.pFlags.my): её создал зритель. У General
+// автора нет — её заводит сервер при включении тем, — и «моей» она не бывает
+// ни у кого: управляет ею только право manage_topics (tweb canManageTopic,
+// dialogs.ts:2263-2283; скрыть General — dialogsContextMenu.ts:396-401).
+func TopicMine(t ForumTopicRecord, viewerID int64) bool {
+	return !t.IsGeneral && t.CreatedBy == viewerID
 }
 
 // TopicRow — строка списка тем: тема плюс состояние чтения зрителя, и ничего
@@ -77,19 +94,40 @@ type TopicRow struct {
 	// UnreadReactions — сообщения зрителя в теме с непрочитанной реакцией
 	// (unread_reactions_count; тот же предикат, что у чата, миграция 0160).
 	UnreadReactions int
-	// MuteUntil — срок мьюта темы этим пользователем (topic_user_state.muted_until);
-	// nil — переопределения нет.
+	// MuteUntil — настройка уведомлений темы этим пользователем
+	// (topic_user_state.muted_until), ТРИ состояния: nil — тему не трогал,
+	// действует мьют чата; time.Unix(0) — явно «уведомлять»; срок — заглушена
+	// до него (tweb appNotificationsManager.ts:398-405 наследует только при
+	// mute_until === undefined).
 	MuteUntil *time.Time
 }
 
 // TopicNotifySettings — настройки уведомлений темы для провода (строка списка
-// и кадр мьюта): мьют — СРОК, тот же предикат, что у диалога. Срок в прошлом
-// и отсутствие срока — явный MuteUntilNever: «замьючена ли» тема отвечает
-// сама строка, переопределение ей не нужно.
+// и кадр мьюта). Три состояния, как у tweb (appNotificationsManager.ts:
+// 398-405): nil — пустой peerNotifySettings без mute_until (тема наследует
+// мьют чата, так же tweb рисует свежую тему, appMessagesManager.ts:10208);
+// срок в прошлом или явное «уведомлять» — MuteUntilNever (истёкший срок,
+// как у диалога, отдаётся нулём — notifyscan.go); иначе — срок.
 func TopicNotifySettings(until *time.Time, now time.Time) PeerNotifySettings {
+	s := PeerNotifySettings{Underscore: PeerNotifySettingsTag}
+	if until == nil {
+		return s
+	}
 	v := MuteUntilNever
-	if until != nil && until.After(now) {
+	if until.After(now) {
 		v = unixSeconds(*until)
 	}
-	return PeerNotifySettings{Underscore: PeerNotifySettingsTag, MuteUntil: &v}
+	s.MuteUntil = &v
+	return s
+}
+
+// TopicMuted — заглушена ли тема В ЭТОТ МОМЕНТ с учётом наследования: своя
+// настройка темы решает сама (tweb isPeerLocalMuted с threadId,
+// respectType: false — тип чата не смотрится), иначе — chatMuted (мьют чата
+// или типа чата, appNotificationsManager.ts:398-409).
+func TopicMuted(topicUntil *time.Time, chatMuted bool, now time.Time) bool {
+	if topicUntil != nil {
+		return topicUntil.After(now)
+	}
+	return chatMuted
 }

@@ -134,12 +134,36 @@ func TestPushRepo_ShouldNotify(t *testing.T) {
 	}
 	checkAt("topic mute expired", topicRoot, false, true, true)
 
+	// Три состояния мьюта темы (tweb appNotificationsManager.ts:398-405):
+	// нетронутая тема наследует мьют чата, а явная запись темы (0 или
+	// истёкший срок) уведомляет даже в заглушённом чате.
+	if _, err := pool.Exec(ctx,
+		`UPDATE chat_members SET muted_until=to_timestamp($3) WHERE chat_id=$1 AND user_id=$2`,
+		chatID, userID, domain.MuteUntilForever); err != nil {
+		t.Fatalf("mute chat: %v", err)
+	}
+	checkAt("chat muted, untouched topic inherits", topicRoot+1, false, false, false)
+	checkAt("chat muted, topic expired = explicit on", topicRoot, false, true, true)
+	if _, err := pool.Exec(ctx,
+		`UPDATE topic_user_state SET muted_until=to_timestamp(0) WHERE chat_id=$1 AND root_msg_id=$2 AND user_id=$3`,
+		chatID, topicRoot, userID); err != nil {
+		t.Fatalf("topic explicit on: %v", err)
+	}
+	checkAt("chat muted, topic explicit on", topicRoot, false, true, true)
+	if _, err := pool.Exec(ctx,
+		`UPDATE chat_members SET muted_until=NULL WHERE chat_id=$1 AND user_id=$2`, chatID, userID); err != nil {
+		t.Fatalf("unmute chat: %v", err)
+	}
+
 	// Глобальные настройки: группы замьючены.
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO notify_settings (user_id, groups_muted) VALUES ($1, true)`, userID); err != nil {
 		t.Fatalf("seed notify_settings: %v", err)
 	}
 	check("groups muted globally", false, false)
+	// Явная запись темы решает и против мьюта типа чата (respectType: false,
+	// tweb appNotificationsManager.ts:400).
+	checkAt("groups muted globally, topic explicit on", topicRoot, false, true, true)
 	checkAt("groups muted globally, mentioned", 0, true, true, true)
 
 	// Группы включены, но без превью.

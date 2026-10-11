@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -263,11 +264,7 @@ func (i *Interactor) externalizeThreadRoot(ctx context.Context, m domain.Message
 // тред сообщения №1. Сбой чтения вида чата — «не General»: перевод остаётся
 // прежним, а не падает.
 func (i *Interactor) isGeneralNumber(ctx context.Context, chatID, n int64) bool {
-	if n != domain.GeneralTopicID || i.groups == nil {
-		return false
-	}
-	forum, err := i.groups.IsForum(ctx, chatID)
-	return err == nil && forum
+	return n == domain.GeneralTopicID && i.groups != nil && i.isForum(ctx, chatID)
 }
 
 // resolveThreadRootForQuery переводит ВХОДЯЩИЙ клиентский thread_root (НОМЕР
@@ -328,30 +325,72 @@ func (i *Interactor) ResolveThreadRootForSend(ctx context.Context, chatID int64,
 	// General форума (номер 1): её сообщения — без треда (tweb
 	// appMessagesManager.ts:4341-4342 шлёт top_msg_id = 1, а
 	// getMessageThreadId.ts:22-23 относит сообщение без forum_topic к General).
-	if i.isGeneralNumber(ctx, chatID, *threadRoot) {
+	forum := i.groups != nil && i.isForum(ctx, chatID)
+	if forum && *threadRoot == domain.GeneralTopicID {
 		return nil, nil
 	}
 	rootID, err := i.msgs.IDBySeq(ctx, chatID, *threadRoot)
 	if err != nil {
 		return nil, err // ErrNotFound — тредить некуда, отклоняем
 	}
+	// В форуме тред — тема (top_msg_id = номер темы) либо комментарии к посту
+	// канала (форум бывает группой обсуждения); прочее — TOPIC_ID_INVALID,
+	// как у messages.sendMessage TG, а не тред произвольного сообщения.
+	if forum {
+		if err := i.requireForumThread(ctx, chatID, rootID); err != nil {
+			return nil, err
+		}
+	}
 	return &rootID, nil
+}
+
+// isForum — у чата включены темы (сбой чтения — «нет»: решают гейты ниже).
+func (i *Interactor) isForum(ctx context.Context, chatID int64) bool {
+	forum, err := i.groups.IsForum(ctx, chatID)
+	return err == nil && forum
+}
+
+// requireForumThread — rootID в форуме годится корнем треда отправки: корень
+// темы или зеркало поста канала; иначе domain.ErrTopicIDInvalid.
+func (i *Interactor) requireForumThread(ctx context.Context, chatID, rootID int64) error {
+	if i.topics != nil {
+		_, err := i.topics.ByRoot(ctx, chatID, rootID)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, domain.ErrNotFound) {
+			return err
+		}
+	}
+	msgs, err := i.msgs.GetByIDs(ctx, []int64{rootID})
+	if err != nil {
+		return err
+	}
+	if len(msgs) == 1 && msgs[0].IsDiscussionMirror {
+		return nil
+	}
+	return domain.ErrTopicIDInvalid
 }
 
 // ThreadReplyTo — ответ отправки в TL-форме треда: tweb шлёт
 // inputReplyToMessage{reply_to_msg_id: тред, top_msg_id: тред}, когда ответа
-// нет (appMessagesManager.ts:4341-4342, 4255-4262), то есть reply_to_msg_id,
+// нет (appMessagesManager.ts:4341-4343, 4255-4262), то есть reply_to_msg_id,
 // совпавший с корнем треда, — не ответ, а адрес треда. Здесь он снимается.
 //
 // Так же в форуме reply_to_msg_id = 1 без треда — адрес General, а не ответ на
 // служебку создания чата: tweb цитату «ответ на создание группы» не рисует,
 // значит сервер TG этот ответ снимает (вывод из клиента).
 //
-// Оба числа — НОМЕРА в чате (до ResolveThreadRootForSend). Зовётся на той же
+// Настоящий ответ НЕ снимается: ответ в чужой чат (reply_to_peer_id) и ответ
+// с цитатой (quote_text) — их tweb собирает только из явного ответа
+// пользователя (appMessagesManager.ts:4261 reply_to_peer_id из replyToPeerId,
+// :4264-4268 quote_* из replyToQuote), адрес треда их не несёт.
+//
+// Числа — НОМЕРА в чате (до ResolveThreadRootForSend). Зовётся на той же
 // границе HTTP/WS, что и ResolveThreadRootForSend.
-func (i *Interactor) ThreadReplyTo(ctx context.Context, chatID int64, threadRoot, replyTo *int64) *int64 {
-	if replyTo == nil {
-		return nil
+func (i *Interactor) ThreadReplyTo(ctx context.Context, chatID int64, threadRoot, replyTo, replyToPeer *int64, quoteText *string) *int64 {
+	if replyTo == nil || replyToPeer != nil || (quoteText != nil && *quoteText != "") {
+		return replyTo
 	}
 	if threadRoot != nil && *threadRoot == *replyTo {
 		return nil

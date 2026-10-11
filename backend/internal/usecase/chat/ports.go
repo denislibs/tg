@@ -838,8 +838,9 @@ type TopicRepo interface {
 	// ByRoot — тема по корню треда (ключ строки корневого сообщения);
 	// domain.ErrNotFound — тред не тема.
 	ByRoot(ctx context.Context, chatID, rootMsgID int64) (domain.ForumTopicRecord, error)
-	// Update пишет название, значок, closed и hidden темы.
-	Update(ctx context.Context, t domain.ForumTopicRecord) error
+	// Update пишет в тему id ТОЛЬКО поля, заданные в правке (nil — колонка
+	// не трогается): параллельная правка другого поля не затирается.
+	Update(ctx context.Context, id int64, edit domain.MessageActionTopicEdit) error
 	SetPinned(ctx context.Context, id int64, pinned bool) error
 	EnsureGeneralTopic(ctx context.Context, chatID, createdBy int64) (domain.ForumTopicRecord, error)
 	// ListByChat — темы чата с состоянием темы для зрителя userID (горизонты,
@@ -847,8 +848,10 @@ type TopicRepo interface {
 	ListByChat(ctx context.Context, chatID, userID int64) ([]domain.TopicRow, error)
 	// SetTopicRead поднимает last_read_seq темы до max(old, upToSeq) (UPSERT).
 	SetTopicRead(ctx context.Context, chatID, rootMsgID, userID, upToSeq int64) error
-	// SetTopicMuteUntil ставит срок мьюта темы (UPSERT); nil — мьют снят.
-	SetTopicMuteUntil(ctx context.Context, chatID, rootMsgID, userID int64, until *time.Time) error
+	// SetTopicMuteUntil пишет явную настройку уведомлений темы (UPSERT):
+	// срок мьюта, time.Unix(0) — «уведомлять». NULL («наследовать чат») —
+	// только у темы, которую пользователь не трогал.
+	SetTopicMuteUntil(ctx context.Context, chatID, rootMsgID, userID int64, until time.Time) error
 	// TopicRoots — какие из ключей строк — корни тем форума (не General).
 	TopicRoots(ctx context.Context, rootIDs []int64) (map[int64]bool, error)
 }

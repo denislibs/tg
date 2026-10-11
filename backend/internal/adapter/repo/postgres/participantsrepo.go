@@ -89,11 +89,27 @@ func (r *GroupRepo) ListParticipants(ctx context.Context, chatID, viewerID int64
 	case domain.ParticipantsMentions:
 		// Сначала писавшие в этом треде (top_msg_id — номер корня в чате),
 		// затем остальные — как подсказка @ у оригинала в комментариях.
+		// В форуме номер 1 — General (domain.GeneralTopicID): писавшие в ней —
+		// авторы сообщений без треда (тот же фрагмент, что threadFilter для
+		// стража General; ветку выбирает Go, а не OR в SQL).
 		if f.TopMsgID > 0 {
-			args = append(args, f.TopMsgID)
+			inThread := `tm.thread_root_id = (SELECT root.id FROM messages root WHERE root.chat_id = m.chat_id AND root.seq = $3)`
+			thread := f.TopMsgID
+			if thread == domain.GeneralTopicID {
+				var forum bool
+				if err := querier(ctx, r.pool).QueryRow(ctx,
+					`SELECT is_forum FROM chats WHERE id = $1`, chatID).Scan(&forum); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+					return nil, 0, err
+				}
+				if forum {
+					thread = domain.GeneralThreadRoot
+					inThread = threadFilter("tm", "$3", &thread, false)
+				}
+			}
+			args = append(args, thread)
 			order = `EXISTS (SELECT 1 FROM messages tm
 			                  WHERE tm.chat_id = m.chat_id AND tm.sender_id = m.user_id AND tm.deleted_at IS NULL
-			                    AND tm.thread_root_id = (SELECT root.id FROM messages root WHERE root.chat_id = m.chat_id AND root.seq = $3)) DESC,
+			                    AND ` + inThread + `) DESC,
 			         m.joined_at DESC, m.user_id DESC`
 		}
 	}
