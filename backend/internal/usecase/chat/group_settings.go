@@ -515,6 +515,13 @@ func (i *Interactor) DeleteGroup(ctx context.Context, chatID, actorID int64) err
 	var refunds map[int64]int64
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		refunds = map[int64]int64{}
+		// Оплаченные отложенные чата уходят вместе с ним — звёзды авторам
+		// возвращаются (решение 2026-10-11), как при отказе публикации.
+		// Первым шагом: публикация держит строку очереди раньше журнала
+		// участников (user_state), тот же порядок исключает взаимную блокировку.
+		if e := i.refundScheduledOfChat(ctx, chatID, refunds); e != nil {
+			return e
+		}
 		if i.updates != nil {
 			b, e := json.Marshal(payload)
 			if e != nil {
@@ -528,11 +535,6 @@ func (i *Interactor) DeleteGroup(ctx context.Context, chatID, actorID int64) err
 				}
 				ptsByUser[uid] = pts
 			}
-		}
-		// Оплаченные отложенные чата уходят вместе с ним — звёзды авторам
-		// возвращаются (решение 2026-10-11), как при отказе публикации.
-		if e := i.refundScheduledOfChat(ctx, chatID, refunds); e != nil {
-			return e
 		}
 		return i.groups.DeleteChat(ctx, chatID)
 	})
