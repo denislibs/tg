@@ -521,6 +521,9 @@ type BotHTTP interface {
 	PostWebhook(ctx context.Context, url string, body []byte)
 	// FetchURL качает файл по URL с лимитом размера; возвращает байты + mime.
 	FetchURL(ctx context.Context, url string, maxBytes int64) (data []byte, mime string, err error)
+	// FetchPrefix — первые maxBytes файла (больше — обрезается без ошибки):
+	// заголовок картинки ради размера (has_large_media плашки превью).
+	FetchPrefix(ctx context.Context, url string, maxBytes int64) (data []byte, mime string, err error)
 }
 
 type UpdateRepo interface {

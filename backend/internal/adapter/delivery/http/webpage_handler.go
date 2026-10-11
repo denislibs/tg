@@ -2,6 +2,7 @@ package http
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/messenger-denis/backend/internal/domain"
 )
@@ -16,6 +17,13 @@ func (h *ChatHandler) GetWebPage(w http.ResponseWriter, r *http.Request) {
 	url := r.URL.Query().Get("url")
 	if url == "" {
 		writeError(w, http.StatusBadRequest, "url required")
+		return
+	}
+	// Каждый промах кэша — поход сервера на чужой сайт: частота на
+	// пользователя ограничена (плашка tweb переживает отказ — просто не
+	// показывается, input.ts:3594-3600).
+	if !h.limiter.allow("webpage:"+strconv.FormatInt(h.meID(r), 10), 1, 10) {
+		writeError(w, http.StatusTooManyRequests, "too many requests")
 		return
 	}
 	writeJSON(w, http.StatusOK, domain.NewMessagesWebPage(url, h.svc.GetWebPage(r.Context(), url)))

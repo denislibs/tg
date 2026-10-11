@@ -36,6 +36,14 @@ func (f *fakeOutHTTP) FetchURL(_ context.Context, url string, maxBytes int64) ([
 	return f.data, f.mime, f.err
 }
 
+func (f *fakeOutHTTP) FetchPrefix(ctx context.Context, url string, maxBytes int64) ([]byte, string, error) {
+	data, mime, err := f.FetchURL(ctx, url, maxBytes)
+	if int64(len(data)) > maxBytes {
+		data = data[:maxBytes]
+	}
+	return data, mime, err
+}
+
 func (f *fakeOutHTTP) calls() ([]string, []int64) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -406,7 +414,30 @@ func TestGetWebPage_HasLargeMediaWithoutStoring(t *testing.T) {
 	if store.stored() != 0 {
 		t.Fatalf("картинка плашки сохранена (%d)", store.stored())
 	}
-	if urls, _ := http.calls(); len(urls) != 1 {
-		t.Fatalf("FetchURL = %v", urls)
+	if urls, limits := http.calls(); len(urls) != 1 || limits[0] != imageHeadBytes {
+		t.Fatalf("картинка плашки: запросы %v, лимиты %v; ждали один запрос заголовка (%d байт)", urls, limits, imageHeadBytes)
+	}
+}
+
+// Плашка: повтор того же адреса (tweb зовёт getWebPage на каждую найденную
+// ссылку, input.ts:3581-3594) отдаётся из кэша — сайт и картинка второй раз
+// не запрашиваются; копия из кэша независима от выданной.
+func TestGetWebPage_Cached(t *testing.T) {
+	in, _ := newInteractor()
+	prev := &urlPreviewer{}
+	in.SetLinkPreviewer(prev)
+	ctx := context.Background()
+	a := in.GetWebPage(ctx, "https://a.example/x")
+	a.Title = "испорчено"
+	b := in.GetWebPage(ctx, "https://a.example/x")
+	if n := len(prev.calls()); n != 1 {
+		t.Fatalf("Preview звали %d раз; ждали 1", n)
+	}
+	if b == nil || b.Title != "https://a.example/x" {
+		t.Fatalf("из кэша = %+v", b)
+	}
+	in.GetWebPage(ctx, "https://b.example/y")
+	if n := len(prev.calls()); n != 2 {
+		t.Fatalf("другой адрес не собран: %d", n)
 	}
 }

@@ -59,6 +59,16 @@ type WebPagePreview struct {
 	HasLargeMedia bool `json:"has_large_media,omitempty"`
 }
 
+// Clone — независимая копия снимка (nil → nil).
+func (w *WebPagePreview) Clone() *WebPagePreview {
+	if w == nil {
+		return nil
+	}
+	c := *w
+	c.PhotoBlur = append([]byte(nil), w.PhotoBlur...)
+	return &c
+}
+
 type Message struct {
 	ID     int64
 	ChatID int64

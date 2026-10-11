@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -428,6 +429,22 @@ func (i *Interactor) GetWebPage(ctx context.Context, url string) *domain.WebPage
 	if i.preview == nil || (!strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://")) {
 		return nil
 	}
+	if wp, ok := i.webPages.get(url); ok {
+		return wp
+	}
+	if !i.webPages.acquire(ctx) {
+		return nil
+	}
+	defer i.webPages.release()
+	wp := i.fetchWebPage(ctx, url)
+	if ctx.Err() == nil { // запрос оборвали — «карточки нет» не запоминаем
+		i.webPages.put(url, wp)
+	}
+	return wp
+}
+
+// fetchWebPage — сборка карточки плашки: страница и размер картинки.
+func (i *Interactor) fetchWebPage(ctx context.Context, url string) *domain.WebPagePreview {
 	pctx, cancel := context.WithTimeout(ctx, previewTimeout)
 	wp, err := i.preview.Preview(pctx, url)
 	cancel()
@@ -506,14 +523,90 @@ func largePreviewPhoto(data []byte) bool {
 	return err == nil && cfg.Width >= largePreviewMinW && cfg.Height >= largePreviewMinH
 }
 
+// imageHeadBytes — сколько байт картинки читается ради её размера: заголовку
+// jpeg/png/gif этого хватает с запасом (EXIF/ICC в начале jpeg бывают
+// десятки килобайт).
+const imageHeadBytes = 256 << 10
+
 // previewHasLargeMedia — has_large_media для плашки композера (GetWebPage):
-// картинку к нам не сохраняем, только читаем её размер тем же правилом, что и
-// у карточки сообщения, — иначе плашка не покажет «крупнее/мельче»
-// (input.ts:3619).
+// картинку к нам не сохраняем и целиком не качаем — читаем только её
+// заголовок тем же правилом, что и у карточки сообщения, иначе плашка не
+// покажет «крупнее/мельче» (input.ts:3619).
 func (i *Interactor) previewHasLargeMedia(ctx context.Context, imageURL string) bool {
 	if imageURL == "" || i.botHTTP == nil {
 		return false
 	}
-	data, mime, err := i.botHTTP.FetchURL(ctx, imageURL, maxPreviewPhoto)
+	data, mime, err := i.botHTTP.FetchPrefix(ctx, imageURL, imageHeadBytes)
 	return err == nil && strings.HasPrefix(mime, "image/") && largePreviewPhoto(data)
 }
+
+// Кэш карточек плашки. tweb зовёт getWebPage на каждую новую найденную
+// ссылку, пока её набирают (input.ts:3581-3594), и один адрес приходит
+// много раз подряд — сайт и картинку второй раз не дёргаем. Карточка
+// сообщения строится отдельно (buildWebPreview): у неё своя картинка к нам.
+const (
+	webPageCacheTTL = 10 * time.Minute
+	webPageCacheMax = 2048
+	// webPageFetchSlots — сколько сборок плашки идёт одновременно на сервер.
+	webPageFetchSlots = 8
+)
+
+type webPageCacheEntry struct {
+	wp      *domain.WebPagePreview // nil — карточки нет (тоже кэшируется)
+	expires time.Time
+}
+
+// webPageCache — нулевое значение готово к работе.
+type webPageCache struct {
+	mu    sync.Mutex
+	m     map[string]webPageCacheEntry
+	slots chan struct{}
+}
+
+func (c *webPageCache) get(url string) (*domain.WebPagePreview, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e, ok := c.m[url]
+	if !ok || time.Now().After(e.expires) {
+		return nil, false
+	}
+	return e.wp.Clone(), true
+}
+
+func (c *webPageCache) put(url string, wp *domain.WebPagePreview) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := time.Now()
+	if c.m == nil {
+		c.m = map[string]webPageCacheEntry{}
+	}
+	if len(c.m) >= webPageCacheMax {
+		for k, e := range c.m {
+			if now.After(e.expires) {
+				delete(c.m, k)
+			}
+		}
+		if len(c.m) >= webPageCacheMax {
+			c.m = map[string]webPageCacheEntry{}
+		}
+	}
+	c.m[url] = webPageCacheEntry{wp: wp.Clone(), expires: now.Add(webPageCacheTTL)}
+}
+
+// acquire занимает слот сборки; false — контекст кончился раньше.
+func (c *webPageCache) acquire(ctx context.Context) bool {
+	c.mu.Lock()
+	if c.slots == nil {
+		c.slots = make(chan struct{}, webPageFetchSlots)
+	}
+	slots := c.slots
+	c.mu.Unlock()
+	select {
+	case slots <- struct{}{}:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
+func (c *webPageCache) release() { <-c.slots }

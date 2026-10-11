@@ -53,6 +53,8 @@ type Interactor struct {
 	reactionCat  ReactionCatalogAccess
 	preview      LinkPreviewer
 	ivProbe      IVProber
+	// webPages — кэш карточек плашки композера (GetWebPage, webpreview.go).
+	webPages webPageCache
 	boosts       BoostRepo
 	giveaways    GiveawayRepo
 	suggested    SuggestedPostRepo
