@@ -6,7 +6,7 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 65,
+      "version": 67,
       "strings": [
         {
           "key": "ALongTimeAgo",
@@ -7422,7 +7422,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 65,
+      "version": 66,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
