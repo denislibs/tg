@@ -350,7 +350,7 @@ export interface BubblesManagers extends PeerTitleManagers {
   dialogs: {
     getReadMaxSeqIfUnread(chatId: number, threadId?: number): Promise<number>
     getHistoryMaxSeq(chatId: number, threadId?: number): Promise<number>
-    getDialogReadState(chatId: number, threadId?: number): Promise<{ readInboxMaxSeq: number, unreadCount: number } | undefined>
+    getDialogReadState(chatId: number, threadId?: number): Promise<{ readInboxMaxSeq: number, unreadCount: number, readOutboxMaxSeq?: number } | undefined>
   }
   /** Порт `appMessagesManager.readHistory({peerId, maxId, threadId,
    *  monoforumThreadId})` — единственной ручки отметки прочтения, которую зовёт
@@ -604,6 +604,17 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * отметку, а не пропущенную.
    */
   private renderReadMaxSeq: number | undefined
+  /**
+   * Горизонт ИСХОДЯЩИХ открытого окна — `historyStorage.readOutboxMaxId` (у
+   * «Избранного» — `readMaxId`) оригинала, от которого бабл выбирает «✓» или
+   * «✓✓» (tweb bubbles.ts:4858-4860, :11102-11105). Снимается в `setPeer` тем же
+   * вызовом, что курсор входящих, и растёт кадром прочтения (`updateUnreadByDialog`).
+   * `undefined` — неизвестен: всё своё рисуется «✓».
+   */
+  private renderReadOutboxMaxSeq: number | undefined
+  /** tweb `unreadOut` (bubbles.ts:11101) — свои исходящие, ещё не «✓✓»: их и
+   *  перекрашивает рост горизонта. */
+  private unreadOut = new Set<number>()
   // tweb bubbles.ts:604 — «лента короче вьюпорта, поэтому ей подставлена
   // верхняя распорка».
   private isTopPaddingSet = false
@@ -994,7 +1005,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // rootScope.ts:253) нужен messageToConvMsg лишь для автора превью ответа
     // («Вы» vs имя собеседника) — 1:1 с оригиналом, где лента берёт свой id
     // оттуда же (bubbles.ts:740, 813, 928).
-    const conv = messageToConvMsg(message as MyMessage, rootScope.myId, { isMegagroup: this.chat.isMegagroup })
+    const conv = messageToConvMsg(message as MyMessage, rootScope.myId, { isMegagroup: this.chat.isMegagroup, readUpToId: this.renderReadOutboxMaxSeq })
     // tweb bubbles.ts:7613 → :9669 — сторона бабла это `isOutMessage`,
     // а не `isOurMessage`: пересылка в «Избранное» рисуется СЛЕВА.
     return bubbleClasses(conv, { ...STUB_CTX, out: this.isOutMessage(message), showName: this.showName(message) })
@@ -2186,6 +2197,29 @@ export default class ChatBubbles implements BubbleGroupsHost {
    *    одной строкой-обёрткой; сам контейнер реакций у медиа без подписи —
    *    ребёнок `.bubble-content-wrapper`, а не `.message` (:9849-9851).
    */
+  /**
+   * Порт `updateUnreadByDialog` (tweb bubbles.ts:4858-4879): свои исходящие из
+   * `unreadOut` не выше горизонта получают «прочитано»; ещё отправляемое и
+   * ошибочное не трогаются. Статус ставится так же, как `setBubbleSendingStatus`
+   * (:7405-7430): класс `is-read` вместо прочих и значок «✓✓» в узлах времени.
+   */
+  private updateUnreadByDialog(maxId: number): void {
+    if (!(maxId > (this.renderReadOutboxMaxSeq ?? 0))) return
+    this.renderReadOutboxMaxSeq = maxId
+    for (const mid of this.unreadOut) {
+      if (mid > maxId) continue
+      const bubble = this.getBubble(makeFullMid(this.peerId, mid))
+      if (!bubble) continue
+      this.unreadOut.delete(mid)
+      if (bubble.classList.contains('is-sending') || bubble.classList.contains('is-error')) continue
+      bubble.classList.remove('is-sending', 'is-error', 'is-sent', 'is-read')
+      bubble.classList.add('is-read')
+      bubble.querySelectorAll<HTMLElement>('.time').forEach((time) => {
+        if (time.querySelector(':scope > .time-sending-status')) setSendingStatus(time, 'read')
+      })
+    }
+  }
+
   private renderMessageMeta(
     message: MyMessage,
     bubble: HTMLElement,
@@ -2242,13 +2276,15 @@ export default class ChatBubbles implements BubbleGroupsHost {
       // (:9716-9719): ошибка → «отправляется» → прочитано/доставлено. Второго
       // вычислителя того же здесь нет намеренно.
       //
-      // «Прочитано» (две галочки) пока не наступает: правило требует горизонта
-      // ИСХОДЯЩИХ (`read_outbox_max_id`), а лента его не получает — в
-      // `BubblesManagers` есть только горизонт входящих, под границу
-      // непрочитанных. Названо задачей.
-      setSendingStatus(timeSpan, messageToConvMsg(message, rootScope.myId, {
+      // «Прочитано» — по горизонту ИСХОДЯЩИХ окна (`renderReadOutboxMaxSeq`,
+      // tweb :11102-11105); ещё не прочитанное своё попадает в `unreadOut`
+      // (:11101), его перекрасит рост горизонта (`updateUnreadByDialog`).
+      const status = messageToConvMsg(message, rootScope.myId, {
         isMegagroup: this.chat.isMegagroup,
-      }).status)
+        readUpToId: this.renderReadOutboxMaxSeq,
+      }).status
+      if (status === 'sent' || status === 'sending') this.unreadOut.add(message.id)
+      setSendingStatus(timeSpan, status)
 
       // МЕДИА БЕЗ ПОДПИСИ — tweb :9257-9276. `has-floating-time` уже стоит на
       // бабле (bubbleClasses.ts:129, тем же условием `isMessageEmpty`, каким
@@ -4462,6 +4498,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.cleanup()
     // ПОСЛЕ `cleanup()`: он сбрасывает снимок вместе с картой наблюдения.
     this.renderReadMaxSeq = readState?.readInboxMaxSeq
+    this.renderReadOutboxMaxSeq = readState?.readOutboxMaxSeq
     const chatInner = this.chatInner = document.createElement('div')
     if(samePeer) {
       chatInner.className = oldChatInner.className
@@ -6104,6 +6141,30 @@ export default class ChatBubbles implements BubbleGroupsHost {
       }
     })
 
+    // tweb bubbles.ts:2318-2326 — `dialog_unread` (его шлёт и прочтение
+    // исходящих, `onUpdateReadHistory` :10951) перекрашивает свои баблы до
+    // нового горизонта. У нас горизонт диалога приезжает операцией владельца
+    // диалогов (`read_outbox_max_id`), темы — операцией хранилища тем.
+    this.listenerSetter.add(rootScope)(RT.dialogOp, ({ ops }) => {
+      if (this.chat.threadId && this.chat.isForum) return
+      for (const op of ops) {
+        const dialog = op.op === 'patch' && op.peerId === this.peerId ? op.fields :
+          op.op === 'reset' || op.op === 'upsert' ? op.items.find((it) => it.dialog.peerId === this.peerId)?.dialog : undefined
+        if (!dialog) continue
+        const horizon = this.peerId === rootScope.myId ? dialog.read_inbox_max_id : dialog.read_outbox_max_id
+        if (horizon !== undefined) this.updateUnreadByDialog(horizon)
+      }
+    })
+    this.listenerSetter.add(rootScope)(RT.forumTopicOp, ({ ops }) => {
+      const { threadId } = this.chat
+      if (!threadId || !this.chat.isForum) return
+      for (const op of ops) {
+        const topic = op.op === 'update' && op.peerId === this.peerId ? op.topics.find((t) => t.id === threadId) :
+          (op.op === 'unread' || op.op === 'notify') && op.topic.peerId === this.peerId && op.topic.id === threadId ? op.topic : undefined
+        if (topic) this.updateUnreadByDialog(topic.read_outbox_max_id)
+      }
+    })
+
     // * pinned part start — tweb bubbles.ts:2544-2555
     this.listenerSetter.add(rootScope)('peer_pinned_messages', ({ peerId, mids, pinned }) => {
       if(this.chat.type !== ChatType.Pinned || peerId !== this.peerId) {
@@ -6609,6 +6670,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.readPromise = undefined
     this.readContentPromise = undefined
     this.renderReadMaxSeq = undefined
+    this.renderReadOutboxMaxSeq = undefined
+    this.unreadOut.clear()
     this.getHistoryTopPromise = this.getHistoryBottomPromise = undefined
     // tweb bubbles.ts:4960 — невостребованный сдвиг градиента принадлежит
     // ПРОШЛОМУ окну: прокрутка нового окна не должна его тратить.

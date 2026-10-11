@@ -128,7 +128,7 @@ export interface DialogsDeps {
    * `read_inbox_max_id`/`top_message`. Опционален по тому же приёму, что
    * `savePinnedOrders`.
    */
-  getForumTopic?: (peerId: number, threadId: number) => { read_inbox_max_id: number, unread_count: number, top_message: number } | undefined
+  getForumTopic?: (peerId: number, threadId: number) => { read_inbox_max_id: number, read_outbox_max_id?: number, unread_count: number, top_message: number } | undefined
   /**
    * Владелец карточек пиров. Контейнер `/chats` несёт векторы `chats`/`users` —
    * тела групп и собеседников, — и они втекают в УЖЕ существующий приёмник
@@ -1379,10 +1379,16 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
      * Счётчик нужен кнопке «вниз» (tweb ce37ebeb3, `unread_count !== 1`).
      * Диалога нет — `undefined`: курсор неизвестен, и лента отвечает на это
      * консервативно (`core/messages/isUnreadByReadCursor.ts`).
+     *
+     * `readOutboxMaxSeq` — горизонт ИСХОДЯЩИХ, от которого бабл выбирает «✓» или
+     * «✓✓» (tweb `updateUnreadByDialog`, bubbles.ts:4858-4860: у «Избранного» —
+     * горизонт входящих, иначе `historyStorage.readOutboxMaxId`, у темы — темы).
      */
-    getDialogReadState(peerId: number, threadId?: number): { readInboxMaxSeq: number, unreadCount: number } | undefined {
+    getDialogReadState(peerId: number, threadId?: number): { readInboxMaxSeq: number, unreadCount: number, readOutboxMaxSeq?: number } | undefined {
       const d = readSource(peerId, threadId)
-      return d ? { readInboxMaxSeq: d.read_inbox_max_id, unreadCount: d.unread_count } : undefined
+      if (!d) return undefined
+      const readOutboxMaxSeq = peerId === getMeId?.() ? d.read_inbox_max_id : d.read_outbox_max_id
+      return { readInboxMaxSeq: d.read_inbox_max_id, unreadCount: d.unread_count, ...(readOutboxMaxSeq !== undefined ? { readOutboxMaxSeq } : {}) }
     },
 
     /**
