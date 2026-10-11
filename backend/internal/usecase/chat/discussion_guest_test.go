@@ -257,8 +257,11 @@ func TestGuest_PushOnReplyAndMention(t *testing.T) {
 	if _, err := f.i.Send(ctx, SendInput{ChatID: f.disc, SenderID: 9, Text: "reply", ThreadRootID: &root, ReplyToID: &replyTo}); err != nil {
 		t.Fatal(err)
 	}
-	if !f.notif.mentioned[8] {
-		t.Fatalf("гостю нет пуша об ответе на его комментарий: %+v", f.notif.recipients)
+	if !f.notif.mentioned[8] || !f.notif.guests[8] {
+		t.Fatalf("гостю нет пуша об ответе на его комментарий (путь гостя, без гейта присутствия): %+v", f.notif.recipients)
+	}
+	if f.notif.guests[7] || f.notif.guests[9] {
+		t.Fatalf("участникам — путь гостя: %+v", f.notif.guests)
 	}
 	// Упоминание text_mention — тоже пуш.
 	f.notif.mentioned, f.notif.recipients = nil, nil

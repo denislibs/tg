@@ -2416,6 +2416,7 @@ type fakeNotifier struct {
 	recipients []int64
 	titles     []string // заголовки пушей поста канала (NotifyChannelPost)
 	mentioned  map[int64]bool
+	guests     map[int64]bool // кому ушёл NotifyGuest
 }
 
 func (n *fakeNotifier) NotifyNewMessage(_ context.Context, recipientID, _, _, _ int64, _ string, _ domain.PeerID, mentioned bool, _ int64) {
@@ -2428,6 +2429,18 @@ func (n *fakeNotifier) NotifyNewMessage(_ context.Context, recipientID, _, _, _ 
 		}
 		n.mentioned[recipientID] = true
 	}
+}
+
+// NotifyGuest — пуш гостю обсуждения; в фейке — как упоминание, плюс
+// отметка guests (путь без гейта присутствия).
+func (n *fakeNotifier) NotifyGuest(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, topicRootID int64) {
+	n.NotifyNewMessage(ctx, recipientID, chatID, seq, senderID, text, peer, true, topicRootID)
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.guests == nil {
+		n.guests = map[int64]bool{}
+	}
+	n.guests[recipientID] = true
 }
 
 func (n *fakeNotifier) NotifyChannelPost(_ context.Context, _ int64, recipients []int64, _ int64, title, _ string, _ domain.PeerID) {
