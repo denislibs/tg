@@ -62,6 +62,7 @@
 //   • пост канала уходит по REST (`channelsManager.post`) — транспорт другой,
 //     но владелец бабла тот же: он зовёт `beforeMessageSending` явно.
 import type { MyMessage, MessageReal, MessageEntity } from '../../models'
+import { getMessageThreadId } from '../../models'
 import {
   saveDocument, THUMB_TYPE_FULL,
   type DocumentAttribute, type MessageMedia, type MyDocument,
@@ -73,7 +74,7 @@ import type { SendArgs as WireSendArgs } from '../../realtime/connectionManager'
 import type { UploadArgs } from '../mediaManager'
 import { b64FromBytes } from '../../secret/crypto'
 import SlicedArray, { SliceEnd } from '../../history/slicedArray'
-import { generateMessageId, generateTempMessageId } from '../../history/messageId'
+import { GENERAL_TOPIC_ID, generateMessageId, generateTempMessageId } from '../../history/messageId'
 import { getOutputPeer } from '../../peers/peerId'
 import { sendingParamsToWire, splitSendingParams, type MessageSendingParams, type SendingParamsWireFields } from './sendingParams'
 
@@ -192,6 +193,10 @@ export interface PendingCtx {
    *  пост стоял бы справа до ответа сервера и прыгал влево на эхе. Читается
    *  синхронно из кэша карточек воркера, как и в оригинале. */
   isBroadcastChat: (peerId: number) => boolean
+  /** `appPeersManager.isForum(peerId)` — заголовок ответа временного бабла
+   *  (`generateReplyHeader`, appMessagesManager.ts:4665-4690). Опционален:
+   *  тестам, которых форум не касается, он не нужен. */
+  isForum?: (peerId: number) => boolean
   /** Публикация изменений окна всем вкладкам (rt:message_op). Правило: публикует
    *  ТОТ, КТО инициировал изменение. Пути отправки инициирует этот модуль —
    *  поэтому emit здесь; кадры message_ack/message_error инициирует роутер
@@ -460,15 +465,40 @@ export function newPendingMethods(ctx: PendingCtx) {
    *  Это именно ССЫЛКА, а не снимок: превью строит тот, кто рисует, разрешив
    *  номер в своём окне. Резолвить оригинал здесь больше незачем — снимка
    *  `{msgId, seq, senderId, text, type, mediaId}` в модели больше нет. */
+  //
+  //  Форма заголовка — tweb :4628-4718: сообщение в треде без ответа отвечает
+  //  на сам тред (`replyToMsgId = threadId`, :4341-4342); тред ответа в форуме
+  //  без явного треда — тред оригинала (`getMessageThreadId`, :4672-4674);
+  //  `forum_topic` — у темы, кроме General (:4687-4689); `reply_to_top_id` —
+  //  только если отличается от `reply_to_msg_id` (:4691-4693). Иначе бабл в
+  //  теме читался бы сообщением General, пока не придёт эхо (A1-16).
+  //  Расхождение: ветка `reply_to_peer_id` личного/закрытого чата (снять
+  //  номер, цитата из текста, :4702-4707) и `reply_media`/`reply_from` не
+  //  перенесены — пира ответа бабл несёт как есть.
   const replyHeaderFor = (e: PendingNewEvt): MyMessage['reply_to'] => {
-    if (e.reply_to_id == null && e.thread_root_id == null) return undefined
-    return {
-      _: 'messageReplyHeader',
-      ...(e.reply_to_id != null ? { reply_to_msg_id: e.reply_to_id } : {}),
-      ...(e.thread_root_id != null ? { reply_to_top_id: e.thread_root_id } : {}),
-      ...(e.reply_to_peer_id != null ? { reply_to_peer_id: getOutputPeer(e.reply_to_peer_id) } : {}),
-      ...(e.reply_quote_text ? { pFlags: { quote: true as const }, quote_text: e.reply_quote_text } : {}),
+    const threadId = e.thread_root_id ?? undefined
+    const replyToMsgId = e.reply_to_id ?? threadId
+    if (replyToMsgId == null) return undefined
+    const peerId = e.reply_to_peer_id ?? e.peer_id
+    const forum = ctx.isForum?.(peerId) ?? false
+    let topId = threadId
+    if (forum && !topId) {
+      const original = ctx.msgsFor(peerId).get(replyToMsgId)
+      if (original) topId = getMessageThreadId(original, { isForum: true })
     }
+    const header: Extract<MyMessage['reply_to'], { _: 'messageReplyHeader' }> = {
+      _: 'messageReplyHeader',
+      pFlags: {},
+      reply_to_msg_id: replyToMsgId || topId,
+    }
+    if (topId && forum && topId !== GENERAL_TOPIC_ID) header.pFlags!.forum_topic = true
+    if (topId && header.reply_to_msg_id !== topId) header.reply_to_top_id = topId
+    if (e.reply_quote_text) {
+      header.quote_text = e.reply_quote_text
+      header.pFlags!.quote = true
+    }
+    if (e.reply_to_peer_id != null) header.reply_to_peer_id = getOutputPeer(e.reply_to_peer_id)
+    return header
   }
 
   const insertPending = (e: PendingNewEvt): MessageOp[] => {

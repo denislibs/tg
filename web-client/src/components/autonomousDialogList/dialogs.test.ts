@@ -35,6 +35,7 @@ import { useFoldersStore } from '@stores/foldersStore'
 import { useSecretChatStore } from '@stores/secretChatStore'
 import useFolders from '@stores/folders.solid'
 import rootScope from '@lib/rootScope'
+import { RT } from '@core/realtime/events'
 import { AutonomousDialogList } from './dialogs'
 
 const HOST_HEIGHT = 720
@@ -222,6 +223,27 @@ describe('AutonomousDialogList: строки — производная зерк
 
     upsert(dialogOf(1, { unread: 4 }), 1000 * 0x10000)
     await vi.waitFor(() => expect(xd().getDialogElement(1)!.dom.unreadBadge?.textContent).toBe('4'))
+  })
+
+  // Ревью КЛ-1 В4 — проводка `getListContext` (appDialogsManager.ts) к хранилищу тем
+  // воркера: бейдж форума — число непрочитанных ТЕМ (tweb appDialogsManager.ts:2711-2733),
+  // операция `forumUnread` пересчитывает его (dialogs.ts:968-985)
+  it('форум: бейдж — число непрочитанных тем от хранилища тем, `forumUnread` его пересчитывает', async () => {
+    const FORUM = -50
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'channel', id: 50, title: 'Форум', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true, forum: true } } as never] }])
+    seed([dialogOf(FORUM, { unread: 9 })])
+    const m = mountOwner({ getDialogs: ownerPages })
+    mounted = m
+    const getForumUnreadCount = m.hooks.managers.forumTopics.getForumUnreadCount
+    getForumUnreadCount.mockResolvedValue({ count: 2, unreadNotifySettings: [{ _: 'peerNotifySettings' }, { _: 'peerNotifySettings' }] })
+    await settle()
+    await waitRows([FORUM])
+    await vi.waitFor(() => expect(xd().getDialogElement(FORUM)!.dom.unreadBadge?.textContent).toBe('2'))
+    expect(getForumUnreadCount).toHaveBeenCalledWith(FORUM)
+
+    getForumUnreadCount.mockResolvedValue({ count: 1, unreadNotifySettings: [{ _: 'peerNotifySettings' }] })
+    rootScope.dispatchEventSingle(RT.forumTopicOp, { ops: [{ op: 'forumUnread', peerId: FORUM }] })
+    await vi.waitFor(() => expect(xd().getDialogElement(FORUM)!.dom.unreadBadge?.textContent).toBe('1'))
   })
 })
 

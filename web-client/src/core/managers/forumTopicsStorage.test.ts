@@ -1,0 +1,392 @@
+// Хранилище тем в воркере — порт `dialogsStorage.forumTopics` (Б-54). Пины
+// поведений оригинала с адресами tweb у каждого теста.
+import { describe, expect, it, vi } from 'vitest'
+import { newForumTopicsStorage, type MessagesForumTopics } from './forumTopicsStorage'
+import type { ForumTopicOp, ForumTopicWire } from '../dialogs/forumTopic'
+import type { MyMessage } from '../models'
+import type { Chat } from '../peers/peer'
+import { GENERAL_TOPIC_ID, generateMessageId } from '../history/messageId'
+import { makeMessage, makeServiceMessage } from '../messages/testMessage'
+
+const FORUM: PeerId = -50
+const ME = 1
+const OTHER = 2
+const forumChat = { _: 'channel', id: 50, title: 'Форум', pFlags: { megagroup: true, forum: true } } as unknown as Chat
+const mid = (n: number) => generateMessageId(n)
+
+const wire = (id: number, over: Partial<ForumTopicWire> = {}): ForumTopicWire => ({
+  _: 'forumTopic',
+  id,
+  date: 1_700_000_000,
+  peer: { _: 'peerChannel', channel_id: 50 },
+  title: 'Тема ' + id,
+  icon_color: 1,
+  from_id: { _: 'peerUser', user_id: OTHER },
+  top_message: id,
+  read_inbox_max_id: id,
+  read_outbox_max_id: 0,
+  unread_count: 0,
+  unread_mentions_count: 0,
+  notify_settings: { _: 'peerNotifySettings' },
+  ...over,
+})
+
+function setup(topics: ForumTopicWire[], opts: { forum?: boolean } = {}) {
+  const ops: ForumTopicOp[] = []
+  const store = new Map<number, MyMessage>()
+  const response = (): MessagesForumTopics => ({ _: 'messages.forumTopics', count: topics.length, topics, messages: [], chats: [], users: [] })
+  const get = vi.fn(async (_path: string) => response())
+  const post = vi.fn(async (_path: string, _body: unknown): Promise<unknown> => true)
+  const onParentMentionsRead = vi.fn()
+  const storage = newForumTopicsStorage({
+    rest: { get, post } as never,
+    peers: { saveApiPeers: vi.fn(), cachedPeer: () => (opts.forum === false ? undefined : forumChat) },
+    messages: {
+      saveApiMessages: vi.fn(async () => []),
+      getMessageByPeer: (_peerId, id) => store.get(id),
+    },
+    getMeId: () => ME,
+    onOps: (o) => { ops.push(...o) },
+    onParentMentionsRead,
+  })
+  return { storage, ops, get, post, store, onParentMentionsRead }
+}
+
+const msgInTopic = (id: number, topic: number, over: Partial<Parameters<typeof makeMessage>[0]> = {}) =>
+  makeMessage({ id: mid(id), peerId: FORUM, fromId: OTHER, replyToMsgId: mid(topic), forumTopic: true, date: 1_800_000_000 + id, ...over })
+
+describe('forumTopicsStorage: страница и номера', () => {
+  // tweb processTopics (dialogs.ts:2219): id темы → клиентский номер; General — GENERAL_TOPIC_ID
+  it('номера тем и горизонтов — клиентские, General — GENERAL_TOPIC_ID', async () => {
+    const { storage, get } = setup([wire(1, { title: 'General' }), wire(10)])
+    const page = await storage.getForumTopics(FORUM)
+    expect(get).toHaveBeenCalledWith('/chats/-50/topics')
+    const ids = page.dialogs.map((t) => t.id).sort((a, b) => a - b)
+    expect(ids).toEqual([GENERAL_TOPIC_ID, mid(10)])
+    const t10 = storage.getForumTopic(FORUM, mid(10))!
+    expect(t10.top_message).toBe(mid(10))
+    expect(t10.read_inbox_max_id).toBe(mid(10))
+    expect(t10.peerId).toBe(FORUM)
+  })
+
+  it('загруженный список — из памяти, повторной сети нет (cache-first)', async () => {
+    const { storage, get } = setup([wire(10)])
+    await storage.getForumTopics(FORUM)
+    await storage.getForumTopics(FORUM)
+    expect(get).toHaveBeenCalledTimes(1)
+  })
+
+  // generateIndexForDialog (dialogs.ts:997-1020): закреплённые — выше, в порядке закрепа
+  it('порядок: закреплённые по порядку ответа, затем по дате последнего', async () => {
+    const { storage, store } = setup([wire(20, { pFlags: { pinned: true } }), wire(30, { pFlags: { pinned: true } }), wire(10), wire(40)])
+    store.set(mid(10), makeMessage({ id: mid(10), peerId: FORUM, date: 2_000_000_000 }))
+    store.set(mid(40), makeMessage({ id: mid(40), peerId: FORUM, date: 1_000_000_000 }))
+    const page = await storage.getForumTopics(FORUM)
+    expect(page.dialogs.map((t) => t.id)).toEqual([mid(20), mid(30), mid(10), mid(40)])
+  })
+
+  // getForumUnreadCount (dialogs.ts:2229-2258): число непрочитанных ТЕМ
+  it('getForumUnreadCount: не загружен — ответа нет и загрузка с `forumUnread`, загружен — число тем', async () => {
+    const { storage, ops } = setup([wire(10, { unread_count: 5 }), wire(20, { unread_count: 1, notify_settings: { _: 'peerNotifySettings', mute_until: 2_000_000_000 } }), wire(30)])
+    expect(storage.getForumUnreadCount(FORUM)).toBeUndefined()
+    await vi.waitFor(() => expect(ops.some((op) => op.op === 'forumUnread' && op.peerId === FORUM)).toBe(true))
+    const r = storage.getForumUnreadCount(FORUM)!
+    expect(r.count).toBe(2)
+    expect(r.unreadNotifySettings.map((s) => s.mute_until)).toContain(2_000_000_000)
+  })
+
+  it('getForumUnreadCount: не форум — ответа нет и в сеть не ходит', () => {
+    const { storage, get } = setup([wire(10)], { forum: false })
+    expect(storage.getForumUnreadCount(FORUM)).toBeUndefined()
+    expect(get).not.toHaveBeenCalled()
+  })
+})
+
+describe('forumTopicsStorage: новое сообщение (onUpdateNewMessage, appMessagesManager.ts:10242-10520)', () => {
+  it('чужое в теме: +1 непрочитанное, последнее, индекс; `update` + `unread` + `forumUnread`', async () => {
+    const { storage, ops } = setup([wire(10)])
+    await storage.getForumTopics(FORUM)
+    ops.length = 0
+    const m = msgInTopic(15, 10)
+    storage.applyNewMessage(m)
+    const t = storage.getForumTopic(FORUM, mid(10))!
+    expect(t.unread_count).toBe(1)
+    expect(t.top_message).toBe(mid(15))
+    expect(t.lastMessage).toBe(m)
+    expect(ops.map((op) => op.op)).toEqual(['update', 'unread', 'forumUnread'])
+  })
+
+  it('своё сообщение счётчик не двигает; повтор старого — тоже (`m.id > top_message`)', async () => {
+    const { storage } = setup([wire(10)])
+    await storage.getForumTopics(FORUM)
+    storage.applyNewMessage(msgInTopic(15, 10, { fromId: ME, out: true }))
+    storage.applyNewMessage(msgInTopic(12, 10))
+    expect(storage.getForumTopic(FORUM, mid(10))!.unread_count).toBe(0)
+    expect(storage.getForumTopic(FORUM, mid(10))!.top_message).toBe(mid(15))
+  })
+
+  // getMessageThreadId (getMessageThreadId.ts:17-24): без forum_topic — General
+  it('сообщение без `forum_topic` — в General', async () => {
+    const { storage } = setup([wire(1, { title: 'General' }), wire(10)])
+    await storage.getForumTopics(FORUM)
+    storage.applyNewMessage(makeMessage({ id: mid(20), peerId: FORUM, fromId: OTHER }))
+    expect(storage.getForumTopic(FORUM, GENERAL_TOPIC_ID)!.unread_count).toBe(1)
+    expect(storage.getForumTopic(FORUM, mid(10))!.unread_count).toBe(0)
+  })
+
+  it('упоминание: +1 к упоминаниям темы', async () => {
+    const { storage } = setup([wire(10)])
+    await storage.getForumTopics(FORUM)
+    const m = msgInTopic(15, 10, { mediaUnread: true })
+    m.pFlags.mentioned = true
+    storage.applyNewMessage(m)
+    expect(storage.getForumTopic(FORUM, mid(10))!.unread_mentions_count).toBe(1)
+  })
+
+  // :10307-10319 + createBotforumTopicFromAction — тема строится из служебки
+  it('служебка создания: тема строится сразу, без сети', async () => {
+    const { storage, get, ops } = setup([wire(10)])
+    await storage.getForumTopics(FORUM)
+    ops.length = 0
+    storage.applyNewMessage(makeServiceMessage({ id: mid(30), peerId: FORUM, fromId: OTHER, date: 1_900_000_000, action: { _: 'messageActionTopicCreate', title: 'Новая', icon_color: 2 } }))
+    const t = storage.getForumTopic(FORUM, mid(30))!
+    expect(t).toMatchObject({ title: 'Новая', icon_color: 2, top_message: mid(30), unread_count: 1 })
+    expect(get).toHaveBeenCalledTimes(1)
+    expect(ops[0]).toMatchObject({ op: 'update', peerId: FORUM })
+  })
+
+  // getForumTopicById (dialogs.ts:2053-2180) — у нас перечитывание списка (расхождение 1)
+  it('сообщение неизвестной темы — список перечитывается', async () => {
+    const { storage, get } = setup([wire(10)])
+    await storage.getForumTopics(FORUM)
+    storage.applyNewMessage(msgInTopic(50, 40))
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(2))
+  })
+
+  // deletedTopics (dialogs.ts:2066-2068, :2084-2096; расхождение 5): темы нет и в
+  // успешном ответе — следующие кадры её не перечитывают; служебка создания снимает метку
+  it('темы нет в ответе — помечена удалённой, повторной сети нет; служебка создания снимает метку', async () => {
+    const { storage, get } = setup([wire(10)])
+    await storage.getForumTopics(FORUM)
+    storage.applyNewMessage(msgInTopic(50, 40))
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(2))
+    await new Promise((r) => setTimeout(r, 0))
+    storage.applyNewMessage(msgInTopic(51, 40))
+    expect(await storage.getForumTopicOrReload(FORUM, mid(40))).toBeUndefined()
+    expect(get).toHaveBeenCalledTimes(2)
+
+    storage.applyNewMessage(makeServiceMessage({ id: mid(40), peerId: FORUM, fromId: OTHER, date: 1_900_000_000, action: { _: 'messageActionTopicCreate', title: 'Снова', icon_color: 2 } }))
+    expect(storage.getForumTopic(FORUM, mid(40))).toMatchObject({ title: 'Снова' })
+  })
+
+  it('отказ сети метку не ставит — следующий запрос снова идёт в сеть', async () => {
+    const { storage, get } = setup([wire(10)])
+    await storage.getForumTopics(FORUM)
+    get.mockRejectedValueOnce(new Error('net'))
+    await expect(storage.getForumTopicOrReload(FORUM, mid(40))).rejects.toThrow('net')
+    await storage.getForumTopicOrReload(FORUM, mid(40))
+    expect(get).toHaveBeenCalledTimes(3)
+  })
+
+  it('список ни разу не грузили — ничего не делает и в сеть не ходит', () => {
+    const { storage, get, ops } = setup([wire(10)])
+    storage.applyNewMessage(msgInTopic(15, 10))
+    expect(get).not.toHaveBeenCalled()
+    expect(ops).toEqual([])
+  })
+
+  // :10342-10365 — `TopicEdit` правит тему; processTopicUpdate (dialogs.ts:1781-1797) — `edit`
+  it('`TopicEdit`: название, закрытие, значок; операция `edit` с тем, что сменилось', async () => {
+    const { storage, ops } = setup([wire(10)])
+    await storage.getForumTopics(FORUM)
+    ops.length = 0
+    const edit = (action: Record<string, unknown>, id: number) => makeServiceMessage({
+      id: mid(id), peerId: FORUM, fromId: OTHER, replyToMsgId: mid(10), forumTopic: true,
+      action: { _: 'messageActionTopicEdit', ...action } as never,
+    })
+    storage.applyNewMessage(edit({ title: 'Переименована' }, 11))
+    let t = storage.getForumTopic(FORUM, mid(10))!
+    expect(t.title).toBe('Переименована')
+    expect(ops).toContainEqual({ op: 'edit', topic: expect.objectContaining({ id: mid(10), title: 'Переименована' }), title: true, icon: false })
+
+    storage.applyNewMessage(edit({ closed: true }, 12))
+    t = storage.getForumTopic(FORUM, mid(10))!
+    expect(t.pFlags.closed).toBe(true)
+    storage.applyNewMessage(edit({ closed: false }, 13))
+    expect(storage.getForumTopic(FORUM, mid(10))!.pFlags.closed).toBeUndefined()
+
+    storage.applyNewMessage(edit({ icon_emoji_emoticon: '🔥' }, 14))
+    expect(storage.getForumTopic(FORUM, mid(10))!.icon_emoji).toBe('🔥')
+    expect(ops).toContainEqual({ op: 'edit', topic: expect.objectContaining({ id: mid(10), icon_emoji: '🔥' }), title: false, icon: true })
+  })
+
+  it('`TopicEdit` General (без `reply_to`) — скрытие General', async () => {
+    const { storage } = setup([wire(1, { title: 'General' })])
+    await storage.getForumTopics(FORUM)
+    storage.applyNewMessage(makeServiceMessage({ id: mid(5), peerId: FORUM, fromId: OTHER, action: { _: 'messageActionTopicEdit', hidden: true } }))
+    expect(storage.getForumTopic(FORUM, GENERAL_TOPIC_ID)!.pFlags.hidden).toBe(true)
+  })
+})
+
+describe('forumTopicsStorage: закреп, мьют, форум', () => {
+  // onUpdatePinnedForumTopic (dialogs.ts:2480-2490) → handleDialogTogglePinned (:2354-2366)
+  it('`updatePinnedForumTopic`: закреп поднимает тему наверх, открепление — возвращает', async () => {
+    const { storage, ops } = setup([wire(10), wire(20)])
+    const page = await storage.getForumTopics(FORUM)
+    const before = page.dialogs.map((t) => t.id)
+    ops.length = 0
+    storage.applyPinnedTopic(FORUM, before[1], true)
+    expect(storage.getForumTopic(FORUM, before[1])!.pFlags.pinned).toBe(true)
+    expect((await storage.getForumTopics(FORUM)).dialogs[0].id).toBe(before[1])
+    expect(ops).toEqual([{ op: 'update', peerId: FORUM, topics: [storage.getForumTopic(FORUM, before[1])] }])
+
+    storage.applyPinnedTopic(FORUM, before[1], false)
+    expect(storage.getForumTopic(FORUM, before[1])!.pFlags.pinned).toBeUndefined()
+    expect((await storage.getForumTopics(FORUM)).dialogs.map((t) => t.id)).toEqual(before)
+  })
+
+  // onUpdateNotifySettings (appMessagesManager.ts:11751-11770) для `notifyForumTopic`
+  it('мьют темы со сроком: `notify` + `forumUnread`', async () => {
+    const { storage, ops } = setup([wire(10)])
+    await storage.getForumTopics(FORUM)
+    ops.length = 0
+    storage.applyNotifySettings(FORUM, mid(10), { _: 'peerNotifySettings', mute_until: 1_900_000_000 })
+    expect(storage.getForumTopic(FORUM, mid(10))!.notify_settings.mute_until).toBe(1_900_000_000)
+    expect(ops.map((op) => op.op)).toEqual(['notify', 'forumUnread'])
+  })
+
+  // chat_toggle_forum (dialogs.ts:186-192) → flushForumTopicsCache (:1981-2005)
+  it('форум выключили — кэш тем сброшен (`flush`), включили — только `forumUnread`', async () => {
+    const { storage, ops, get } = setup([wire(10)])
+    await storage.getForumTopics(FORUM)
+    ops.length = 0
+    storage.onChatToggleForum(FORUM, false)
+    expect(storage.getForumTopic(FORUM, mid(10))).toBeUndefined()
+    expect(ops).toEqual([{ op: 'forumUnread', peerId: FORUM }])
+    await storage.getForumTopics(FORUM)
+    expect(get).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('forumTopicsStorage: прочтение треда (onUpdateReadHistory, appMessagesManager.ts:10795-10990)', () => {
+  it('inbox: гасит прочитанные сообщения темы, упоминания уходят и из бейджа форума', async () => {
+    const { storage, store, onParentMentionsRead } = setup([wire(10, { read_inbox_max_id: 10, top_message: 13, unread_count: 3, unread_mentions_count: 1 })])
+    await storage.getForumTopics(FORUM)
+    store.set(mid(11), msgInTopic(11, 10))
+    const mention = msgInTopic(12, 10, { mediaUnread: true })
+    mention.pFlags.mentioned = true
+    store.set(mid(12), mention)
+    store.set(mid(13), msgInTopic(13, 10))
+    storage.applyReadDiscussion({ peerId: FORUM, topicId: mid(10), maxId: mid(12), out: false })
+    const t = storage.getForumTopic(FORUM, mid(10))!
+    expect(t.read_inbox_max_id).toBe(mid(12))
+    expect(t.unread_count).toBe(1)
+    expect(t.unread_mentions_count).toBe(0)
+    expect(onParentMentionsRead).toHaveBeenCalledWith(FORUM, 1)
+  })
+
+  it('inbox до последнего — непрочитанных ноль', async () => {
+    const { storage } = setup([wire(10, { read_inbox_max_id: 10, top_message: 13, unread_count: 3 })])
+    await storage.getForumTopics(FORUM)
+    storage.applyReadDiscussion({ peerId: FORUM, topicId: mid(10), maxId: mid(13), out: false })
+    expect(storage.getForumTopic(FORUM, mid(10))!.unread_count).toBe(0)
+  })
+
+  it('outbox: двигает горизонт исходящих', async () => {
+    const { storage } = setup([wire(10)])
+    await storage.getForumTopics(FORUM)
+    storage.applyReadDiscussion({ peerId: FORUM, topicId: mid(10), maxId: mid(9), out: true })
+    expect(storage.getForumTopic(FORUM, mid(10))!.read_outbox_max_id).toBe(mid(9))
+  })
+})
+
+// Ревью КЛ-1 Б2: своё прочтение темы — ветка `threadId` tweb `readHistory`
+// (appMessagesManager.ts:9107-9270). Транспорт до волны 2 Ф-5 — ручка темы.
+describe('forumTopicsStorage: readHistory (appMessagesManager.ts:9186-9210)', () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0))
+
+  it('тема: местное прочтение сразу (бейдж гаснет) и сервер серверными номерами', async () => {
+    const { storage, post, ops } = setup([wire(10, { read_inbox_max_id: 10, top_message: 13, unread_count: 3 })])
+    await storage.getForumTopics(FORUM)
+    ops.length = 0
+    expect(storage.readHistory(FORUM, mid(10), mid(13))).toBe(true)
+    expect(storage.getForumTopic(FORUM, mid(10))!.unread_count).toBe(0)
+    expect(ops).toContainEqual({ op: 'forumUnread', peerId: FORUM })
+    expect(post).toHaveBeenCalledWith('/chats/-50/topics/10/read', { up_to_seq: 13 })
+  })
+
+  it('General — номер 1 на проводе', async () => {
+    const { storage, post } = setup([wire(1, { read_inbox_max_id: 1, top_message: 5, unread_count: 2 })])
+    await storage.getForumTopics(FORUM)
+    storage.readHistory(FORUM, GENERAL_TOPIC_ID, mid(5))
+    expect(post).toHaveBeenCalledWith('/chats/-50/topics/1/read', { up_to_seq: 5 })
+  })
+
+  it('рубеж уже отправлен — сервер второй раз не зовётся (`triedToReadMaxId`, :9165-9170)', async () => {
+    const { storage, post } = setup([wire(10, { read_inbox_max_id: 10, top_message: 20, unread_count: 10 })])
+    await storage.getForumTopics(FORUM)
+    storage.readHistory(FORUM, mid(10), mid(15))
+    storage.readHistory(FORUM, mid(10), mid(14))
+    expect(post).toHaveBeenCalledTimes(1)
+    storage.readHistory(FORUM, mid(10), mid(18))
+    expect(post).toHaveBeenCalledTimes(2)
+  })
+
+  it('прочитанная тема — ничего не делает (:9133-9157)', async () => {
+    const { storage, post } = setup([wire(10, { read_inbox_max_id: 13, top_message: 13, unread_count: 0 })])
+    await storage.getForumTopics(FORUM)
+    expect(storage.readHistory(FORUM, mid(10), mid(13))).toBe(true)
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  it('отказ сервера — рубеж снова не отправлен, следующий круг повторяет', async () => {
+    const { storage, post } = setup([wire(10, { read_inbox_max_id: 10, top_message: 20, unread_count: 10 })])
+    await storage.getForumTopics(FORUM)
+    post.mockRejectedValueOnce(new Error('net'))
+    storage.readHistory(FORUM, mid(10), mid(15))
+    await flush()
+    storage.readHistory(FORUM, mid(10), mid(15))
+    expect(post).toHaveBeenCalledTimes(2)
+  })
+
+  it('список загружен, а темы нет (тред комментариев в форуме-обсуждении) — `false`, ручка тем не зовётся', async () => {
+    const { storage, post } = setup([wire(10)])
+    await storage.getForumTopics(FORUM)
+    expect(storage.readHistory(FORUM, mid(77), mid(80))).toBe(false)
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  it('не форум — `false`, сервер не зовётся (тред комментариев — волна 2)', () => {
+    const { storage, post } = setup([], { forum: false })
+    expect(storage.readHistory(FORUM, mid(10), mid(13))).toBe(false)
+    expect(post).not.toHaveBeenCalled()
+  })
+})
+
+// onUpdateDeleteMessages (appMessagesManager.ts:11493-11592), ветка темы (ревью КЛ-1 В1)
+describe('forumTopicsStorage: удаление сообщений', () => {
+  it('удалённое непрочитанное снимается со счётчиков своей темы, бейдж форума пересчитан', async () => {
+    const { storage, ops } = setup([wire(10, { read_inbox_max_id: 10, top_message: 13, unread_count: 3, unread_mentions_count: 1 }), wire(20, { unread_count: 1, top_message: 21, read_inbox_max_id: 20 })])
+    await storage.getForumTopics(FORUM)
+    ops.length = 0
+    const mention = msgInTopic(12, 10, { mediaUnread: true })
+    mention.pFlags.mentioned = true
+    storage.applyDeletedMessages(FORUM, [msgInTopic(11, 10), mention])
+    const t = storage.getForumTopic(FORUM, mid(10))!
+    expect(t.unread_count).toBe(1)
+    expect(t.unread_mentions_count).toBe(0)
+    expect(storage.getForumTopic(FORUM, mid(20))!.unread_count).toBe(1)
+    expect(ops.map((op) => op.op)).toEqual(['unread', 'forumUnread'])
+  })
+
+  it('прочитанное и своё счётчики не трогают; удалено последнее — список перечитывается', async () => {
+    const { storage, ops, get } = setup([wire(10, { read_inbox_max_id: 12, top_message: 13, unread_count: 1 })])
+    await storage.getForumTopics(FORUM)
+    ops.length = 0
+    storage.applyDeletedMessages(FORUM, [msgInTopic(11, 10), msgInTopic(13, 10, { fromId: ME, out: true })])
+    expect(storage.getForumTopic(FORUM, mid(10))!.unread_count).toBe(1)
+    expect(ops).toEqual([])
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(2))
+  })
+})
+

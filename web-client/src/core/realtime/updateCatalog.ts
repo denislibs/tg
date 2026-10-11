@@ -59,6 +59,7 @@ export const UPDATE_RT = {
   updateDialogPinned: RT.dialogPin,
   updateFolderPeers: RT.dialogArchive,
   updateNotifySettings: RT.dialogMute,
+  updatePinnedForumTopic: RT.pinnedForumTopic,
   updateChatRemoved: RT.chatRemoved,
   updateChatTheme: RT.chatThemeUpdate,
   updateChatFullSnapshot: RT.chatUpdate,

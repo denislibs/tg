@@ -5,7 +5,7 @@ import { saveMessageMedia, type MessageMedia, type TextWithEntities } from './me
 import type { MessageEntity } from '@layer'
 import { getPeerId, NULL_PEER_ID, type Peer } from './peers/peerId'
 import type { PeerNotifySettings } from './dialogs/notifySettings'
-import { generateMessageId } from './history/messageId'
+import { GENERAL_TOPIC_ID, generateMessageId } from './history/messageId'
 import { refineMessageAction, type MessageAction } from './messages/messageAction'
 
 // Форматирующая разметка текста сообщения — тип ИЗ СХЕМЫ (`@layer`, генерируется
@@ -125,7 +125,11 @@ export const WIRE_FOLDER_ARCHIVE = 1
  * `backend/internal/domain/mtdialog.go`, там же названо, чего нет.
  */
 export interface DialogPeer { _: 'dialogPeer'; peer: Peer }
-export interface NotifyPeer { _: 'notifyPeer'; peer: Peer }
+export type NotifyPeer = { _: 'notifyPeer'; peer: Peer } | NotifyForumTopic
+/** notifyForumTopic#226e6308 peer:Peer top_msg_id:int = NotifyPeer; — настройки
+ *  ТЕМЫ форума (tweb `appMessagesManager.ts:11751-11770`); `top_msg_id` —
+ *  серверный номер темы. */
+export interface NotifyForumTopic { _: 'notifyForumTopic'; peer: Peer; top_msg_id: number }
 /** folderPeer#e9baa668 peer:Peer folder_id:int = FolderPeer; */
 export interface FolderPeer { _: 'folderPeer'; peer: Peer; folder_id: number }
 
@@ -418,9 +422,32 @@ export function getReplyToMsgId(m: MyMessage): number | undefined {
   return m.reply_to?.reply_to_msg_id
 }
 
-/** Корень треда — `reply_to.reply_to_top_id`, отдельного поля в схеме нет. */
-export function getThreadRootId(m: MyMessage): number | undefined {
-  return m.reply_to?.reply_to_top_id
+/**
+ * Тред сообщения — порт tweb `getMessageThreadId`
+ * (`lib/appManagers/utils/messages/getMessageThreadId.ts:11-28`). Отдельного
+ * поля «корень треда» в схеме нет; тред выводится из `reply_to` и вида чата:
+ *
+ *  • не форум — `reply_to_top_id || reply_to_msg_id` (тред комментариев:
+ *    `top_id` у ответа внутри треда, `msg_id` — у сообщения прямо в треде);
+ *  • форум — то же, но только при `reply_to.pFlags.forum_topic`. Без флага
+ *    сообщение относится к General (`GENERAL_TOPIC_ID`), кроме служебки
+ *    `messageActionTopicCreate`: её тред — она сама.
+ *
+ * Номер — в клиентском пространстве, как и `reply_to` модели.
+ *
+ * Расхождение: ветки `saved_peer_id` (`:15-17`) и ботфорума (`isBotforum`)
+ * нет — ни параметра, ни предмета в модели нет (О-3).
+ */
+export function getMessageThreadId(m: MyMessage, { isForum = false }: { isForum?: boolean } = {}): number | undefined {
+  const replyTo = m.reply_to
+  if (replyTo?._ === 'messageReplyHeader' && (!isForum || replyTo.pFlags?.forum_topic)) {
+    return replyTo.reply_to_top_id || replyTo.reply_to_msg_id
+  }
+  if (isForum) {
+    if (m._ === 'messageService' && m.action._ === 'messageActionTopicCreate') return m.id
+    return GENERAL_TOPIC_ID
+  }
+  return undefined
 }
 
 /**

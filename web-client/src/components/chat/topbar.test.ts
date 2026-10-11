@@ -58,12 +58,14 @@ vi.mock('./pinnedMessage.solid', () => ({
 }))
 import type Chat from './chat'
 import { ChatType } from './chatType'
+import { generateMessageId } from '@core/history/messageId'
 
 const ME: PeerId = 1
 const ALICE: PeerId = 7
 const BOT: PeerId = 8
 /** супергруппа и канал: ключ пира — отрицательный id */
 const GROUP: PeerId = -100
+const TOPIC = generateMessageId(7)
 const CHANNEL: PeerId = -200
 /** группа, где я создатель (`manage_call`), и канал, где я создатель */
 const MY_GROUP: PeerId = -300
@@ -92,7 +94,11 @@ const managers = {
   groups: {
     getParticipants,
     getOnlines,
-    listTopics: vi.fn(async() => [{ id: 7, title: 'Новости', iconColor: 0x6FB9F0, iconEmoji: '', isGeneral: false }]),
+  },
+  // хранилище тем воркера (Б-54): тема открытого треда по номеру
+  forumTopics: {
+    getForumTopicOrReload: vi.fn(async(_peerId: number, id: number) => (id === TOPIC ? { _: 'forumTopic', id: TOPIC, title: 'Новости', icon_color: 0x6FB9F0 } : undefined)),
+    getForumTopic: vi.fn(async(_peerId: number, id: number) => (id === TOPIC ? { _: 'forumTopic', id: TOPIC, title: 'Новости', icon_color: 0x6FB9F0, icon_emoji: '🔥' } : undefined)),
   },
   contacts: { isContact },
   messages: { groupCallParticipants: vi.fn(async() => [] as number[]) },
@@ -337,13 +343,32 @@ describe('ChatTopbar: заголовок и подпись по виду пир�
   })
 
   it('тема форума (Б-57): заголовок — тема, аватар — значок темы, подпись «In <группа>»', async() => {
-    const topbar = await open(makeChat({ peerId: GROUP, threadId: 7, isForum: true, isForumTopic: true }))
+    const topbar = await open(makeChat({ peerId: GROUP, threadId: TOPIC, isForum: true, isForumTopic: true }))
     expect(q(topbar, '.user-title .peer-title').textContent).toBe('Новости')
     const avatar = q(topbar, '.avatar')
     expect(avatar.classList.contains('is-topic')).toBe(true)
-    expect(avatar.dataset.threadId).toBe('7')
+    expect(avatar.dataset.threadId).toBe('' + TOPIC)
     expect(avatar.querySelector('.topic-icon')).toBeTruthy()
     expect(q(topbar, '.info').textContent).toBe('In Группа')
+  })
+
+  // tweb `peer_title_edit`/`avatar_update` с `threadId` (dialogs.ts:1781-1797):
+  // правка темы с другого устройства перерисовывает шапку открытого треда
+  it('правка темы живьём: название — `PeerTitle`, значок — новый аватар', async() => {
+    const topbar = await open(makeChat({ peerId: GROUP, threadId: TOPIC, isForum: true, isForumTopic: true }))
+    const avatar = q(topbar, '.avatar')
+    expect(avatar.querySelector('.topic-icon-svg')).toBeTruthy()
+    const renamed = { _: 'forumTopic', peerId: GROUP, id: TOPIC, title: 'Переименована', icon_color: 0x6FB9F0, icon_emoji: '🔥' }
+    rootScope.dispatchEventSingle(RT.forumTopicOp, { ops: [
+      { op: 'update', peerId: GROUP, topics: [renamed as never] },
+      { op: 'edit', topic: renamed as never, title: true, icon: true },
+    ] })
+    expect(q(topbar, '.user-title .peer-title').textContent).toBe('Переименована')
+    // тот же узел аватарки перерисован модульным слушателем (avatarNew.tsx:117-130):
+    // значок-эмодзи вместо «облачка» с инициалом (topicAvatar.ts, расхождение 2)
+    expect(q(topbar, '.avatar')).toBe(avatar)
+    expect(avatar.querySelector('.topic-icon')).toBeTruthy()
+    expect(avatar.querySelector('.topic-icon-svg')).toBeNull()
   })
 
   it('смена пира на том же топбаре меняет аватар и заголовок', async() => {
@@ -687,11 +712,34 @@ describe('ChatTopbar: меню ⋮ — пункты по verify (tweb :462-902)'
     ])
   })
 
-  it('тема форума: без мьюта (ручки мьюта темы нет) и без удаления (О-3)', async() => {
-    const texts = menuTexts(await openMenu(await open(makeChat({ peerId: GROUP, threadId: 7, isForum: true }))))
-    expect(texts).not.toContain(t('ChatList.Context.Mute'))
+  // tweb :504-510 — мьют в теме по `isPeerLocalMuted({threadId})`; без удаления (О-3)
+  it('тема форума: «Без звука» по настройке темы, без удаления (О-3)', async() => {
+    const texts = menuTexts(await openMenu(await open(makeChat({ peerId: GROUP, threadId: TOPIC, isForum: true, isForumTopic: true }))))
+    expect(texts).toContain(t('ChatList.Context.Mute'))
+    expect(texts).not.toContain(t('ChatList.Context.Unmute'))
     expect(texts).not.toContain(t('ChatList.Context.LeaveGroup'))
     expect(texts).toContain(t('Chat.Menu.SelectMessages'))
+  })
+
+  // tweb :1224-1226 `togglePeerMute({peerId, threadId})` → `mutePeer({muteUntil: 0, threadId})`;
+  // заглушённость темы — её срок, без срока — форума (appNotificationsManager.ts:396-410)
+  it('тема форума заглушена сроком: «Со звуком» снимает мьют темы, а не чата', async() => {
+    const getForumTopic = managers.forumTopics.getForumTopic as unknown as ReturnType<typeof vi.fn>
+    const updateTopicNotifySettings = vi.fn(async() => {})
+    const setMute = vi.fn(async() => {})
+    Object.assign(managers.groups, { updateTopicNotifySettings, setMute })
+    const original = getForumTopic.getMockImplementation()
+    getForumTopic.mockImplementation(async() => ({ _: 'forumTopic', id: TOPIC, title: 'Новости', icon_color: 0, notify_settings: { _: 'peerNotifySettings', mute_until: 2_000_000_000 } }))
+    try {
+      const menu = await openMenu(await open(makeChat({ peerId: GROUP, threadId: TOPIC, isForum: true, isForumTopic: true })))
+      expect(menuTexts(menu)).not.toContain(t('ChatList.Context.Mute'))
+      const unmute = Array.from(menu.querySelectorAll<HTMLElement>('.btn-menu-item')).find((el) => itemText(el) === t('ChatList.Context.Unmute'))!
+      unmute.click()
+      expect(updateTopicNotifySettings).toHaveBeenCalledWith(GROUP, TOPIC, 0)
+      expect(setMute).not.toHaveBeenCalled()
+    } finally {
+      getForumTopic.mockImplementation(original!)
+    }
   })
 
   it('пустая лента: «Выбрать сообщения» нет', async() => {

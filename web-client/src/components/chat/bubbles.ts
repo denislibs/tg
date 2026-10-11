@@ -348,9 +348,9 @@ export interface BubblesManagers extends PeerTitleManagers {
    *  курсор прочтения входящих, без схлопывания в 0, и счётчик непрочитанных.
    *  `undefined` — диалога у владельца нет, курсор неизвестен. */
   dialogs: {
-    getReadMaxSeqIfUnread(chatId: number): Promise<number>
-    getHistoryMaxSeq(chatId: number): Promise<number>
-    getDialogReadState(chatId: number): Promise<{ readInboxMaxSeq: number, unreadCount: number } | undefined>
+    getReadMaxSeqIfUnread(chatId: number, threadId?: number): Promise<number>
+    getHistoryMaxSeq(chatId: number, threadId?: number): Promise<number>
+    getDialogReadState(chatId: number, threadId?: number): Promise<{ readInboxMaxSeq: number, unreadCount: number } | undefined>
   }
   /** Порт `appMessagesManager.readHistory({peerId, maxId, threadId,
    *  monoforumThreadId})` — единственной ручки отметки прочтения, которую зовёт
@@ -366,14 +366,14 @@ export interface BubblesManagers extends PeerTitleManagers {
    *   • `upToId` вместо `maxId` — имя нашей ручки; номер КЛИЕНТСКИЙ, в
    *     серверный его переводит сама ручка (`getServerMessageId`, граница
    *     `core/history/messageId.ts`);
-   *   • нет `threadId`/`monoforumThreadId`: горизонт чтения у нас один на чат
-   *     (`connectionManager.markRead(peerId, upToSeq)`), отдельного горизонта
-   *     треда владелец не держит;
+   *   • `threadId` — только у темы форума (горизонт темы, ревью КЛ-1 Б2);
+   *     у треда комментариев своего горизонта до волны 2 Ф-5 нет, и он
+   *     читается горизонтом группы; `monoforumThreadId` нет (монофорумов нет);
    *   • нет `force` (tweb им обходит собственную проверку «уже прочитано»,
    *     :5757): у нашей ручки такой проверки нет вовсе — дедуп стоит ниже, по
    *     уже отправленному рубежу (`connectionManager.ts:178`). */
   realtime: {
-    markRead(args: { peerId: number, upToId: number }): Promise<unknown>
+    markRead(args: { peerId: number, upToId: number, threadId?: number }): Promise<unknown>
     /** Живая подписка канала на время окна (см. хвост `setPeer`). Опциональна: без
      *  неё лента рисует канал, но живых постов не ждёт. */
     subscribeToChannelUpdates?(args: { peerId: number }): Promise<unknown>
@@ -1491,8 +1491,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
     const replyTo = message.reply_to
     const replyToMid = replyTo?.reply_to_msg_id
     if (!replyTo || !replyToMid) return
-    // Ответ на корень треда шапки не даёт (:9377-9378).
-    if (replyToMid === replyTo.reply_to_top_id) return
+    // Ответ на корень треда шапки не даёт (tweb bubbles.ts:10766-10768): ни на
+    // открытый тред (у сообщения темы `reply_to_msg_id` — номер самой темы),
+    // ни на `reply_to_top_id`.
+    if (replyToMid === this.chat.threadId || replyToMid === replyTo.reply_to_top_id) return
+    // Форум «как сообщения» (`isAllMessagesForum`, tweb chat.ts:963): ссылка
+    // сообщения на свою тему — не ответ, шапку даёт только ответ внутри темы
+    // (`reply_to_top_id`, tweb bubbles.ts:10771).
+    if (this.chat.isForum && !this.chat.threadId && !replyTo.reply_to_top_id) return
 
     // tweb messageRender.ts:472-479 — оригинал ищется В ЧАТЕ ОРИГИНАЛА
     // (`reply_to_peer_id`, иначе свой). Окно у ленты одно и своего чата, поэтому
@@ -3819,7 +3825,10 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * ради типа, а фраза плашки автора не упоминает (`serviceMsg.ts:110`).
    */
   private threadServiceStartMessage(root: MyMessage): MessageService | undefined {
-    if(!this.chat.threadId) {
+    // `historyType === HistoryType.Thread` (:13176): у треда ФОРУМА тип —
+    // `Topic` (`getHistoryType`, :12667-12683), плашки там нет — корень темы
+    // это служебка её создания, а у General корня нет вовсе.
+    if(!this.chat.threadId || this.chat.isForum) {
       return undefined
     }
 
@@ -4313,9 +4322,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
         Promise.resolve(undefined),
         Promise.resolve(0),
       ]) : Promise.all([
-        this.managers.dialogs.getHistoryMaxSeq(peerId),
-        this.managers.dialogs.getDialogReadState(peerId),
-        this.managers.dialogs.getReadMaxSeqIfUnread(peerId),
+        this.managers.dialogs.getHistoryMaxSeq(peerId, this.chat.threadId),
+        this.managers.dialogs.getDialogReadState(peerId, this.chat.threadId),
+        this.managers.dialogs.getReadMaxSeqIfUnread(peerId, this.chat.threadId),
       ]))
     const topMessageFullMid: FullMid = historyMaxId ? makeFullMid(peerId, historyMaxId) : EMPTY_FULL_MID
     const isTarget = lastMsgFullMid !== EMPTY_FULL_MID
@@ -5014,6 +5023,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
       if(!middleware() || this.isUnreadedChatChanged()) return
 
       const peerId = this.peerId
+      const threadId = this.chat.threadId
 
       let callback: () => Promise<unknown>
       if(type === 'history') {
@@ -5023,7 +5033,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
           const rendered = this.getRenderedHistory('desc', true)
           const bubblesMaxId = rendered.length ? splitFullMid(rendered[0]).mid : -1
           if(maxId >= bubblesMaxId) {
-            maxId = Math.max(await this.managers.dialogs.getHistoryMaxSeq(peerId), maxId)
+            maxId = Math.max(await this.managers.dialogs.getHistoryMaxSeq(peerId, threadId), maxId)
             if(!middleware()) return
           }
         }
@@ -5034,7 +5044,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
           }
         })
 
-        callback = () => this.managers.realtime.markRead({ peerId, upToId: maxId })
+        // tweb :2978 — `readHistory({peerId, maxId, threadId})`
+        callback = () => this.managers.realtime.markRead({ peerId, upToId: maxId, threadId })
       } else {
         // tweb :3405-3417. Второе слагаемое оригинала (`isMentionUnread`) —
         // см. комментарий секции.
@@ -5677,8 +5688,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     const peerId = this.peerId
     const [historyMaxSeq, readMaxSeq] = await Promise.all([
-      this.managers.dialogs.getHistoryMaxSeq(peerId),
-      this.managers.dialogs.getReadMaxSeqIfUnread(peerId),
+      this.managers.dialogs.getHistoryMaxSeq(peerId, this.chat.threadId),
+      this.managers.dialogs.getReadMaxSeqIfUnread(peerId, this.chat.threadId),
     ])
     if(!readMaxSeq || !middleware()) return
 

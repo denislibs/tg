@@ -326,80 +326,33 @@ describe('GroupsManager', () => {
     expect(peers.saveApiPeers).toHaveBeenCalledWith(expect.objectContaining({ chats: [chat] }))
   })
 
-  // Список тем — КОНТЕЙНЕР `messages.forumTopics`: строка несёт состояние
-  // чтения и ССЫЛКУ на последнее сообщение, а само сообщение и карточки едут
-  // векторами. Заглушённость при этом ВЫЧИСЛЯЕТСЯ по сроку, а не приезжает
-  // булевым полем.
-  it('listTopics: контейнер, состояние чтения и разрешённая ссылка на последнее', async () => {
-    const { rest, gets } = fakeRest({
-      getReturn: {
-        _: 'messages.forumTopics',
-        count: 1,
-        topics: [{
-          _: 'forumTopic',
-          pFlags: { closed: true, pinned: true },
-          id: 1, date: 1787334148, peer: { _: 'peerChannel', channel_id: 5 },
-          title: 'T', icon_color: 2, icon_emoji_emoticon: '🐞', root_msg_id: 10,
-          from_id: { _: 'peerUser', user_id: 7 },
-          top_message: 42, read_inbox_max_id: 40,
-          unread_count: 3, unread_mentions_count: 1,
-          notify_settings: { _: 'peerNotifySettings', mute_until: 0x7FFFFFFF },
-        }],
-        messages: [], chats: [], users: [],
-      },
-    })
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-    const topics = await mgr.listTopics(5)
-    expect(gets[0]).toBe('/chats/5/topics')
-    expect(topics[0]).toMatchObject({
-      id: 1, peerId: -5, rootMsgId: 10, iconEmoji: '🐞', createdBy: 7,
-      closed: true, pinned: true, hidden: false, isGeneral: false,
-      unread: 3, unreadMentions: 1, muted: true,
-    })
-    // Номер последнего переводится в КЛИЕНТСКОЕ пространство — им сравнивают
-    // с `message.id` при пометке «прочитано».
-    expect(topics[0].lastMsgSeq).toBe(generateMessageId(42))
-  })
-
-  it('listTopics: у строки без флагов и без счётчиков всё нулевое, а не undefined', async () => {
-    const { rest } = fakeRest({
-      getReturn: {
-        _: 'messages.forumTopics',
-        count: 1,
-        topics: [{
-          _: 'forumTopic', id: 1, date: 1, peer: { _: 'peerChannel', channel_id: 5 },
-          title: 'G', icon_color: 0, from_id: { _: 'peerUser', user_id: 7 },
-          top_message: 0, read_inbox_max_id: 0, unread_count: 0, unread_mentions_count: 0,
-          notify_settings: { _: 'peerNotifySettings' },
-        }],
-        messages: [], chats: [], users: [],
-      },
-    })
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-    const topics = await mgr.listTopics(5)
-    expect(topics[0]).toMatchObject({
-      unread: 0, unreadMentions: 0, muted: false, closed: false, pinned: false,
-      hidden: false, isGeneral: false, rootMsgId: 0, iconEmoji: '',
-    })
-  })
-
-  it('readTopic POSTs /chats/{id}/topics/{rootMsgId}/read with up_to_seq', async () => {
+  // Мьют темы — СРОК (tweb `mutePeer({threadId, muteUntil})`), применяется
+  // хранилищем тем ПОСЛЕ ответа сети тем же сроком; 0 — явно со звуком (ревью В1).
+  // Тема адресуется номером (у General — 1): клиентский → серверный на границе.
+  it('updateTopicNotifySettings: срок на сервер, после ответа — хранилищу тем', async () => {
     const { rest, posts } = fakeRest({})
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-    await mgr.readTopic(5, 10, 42)
-    expect(posts).toHaveLength(1)
-    expect(posts[0].path).toBe('/chats/5/topics/10/read')
-    expect(posts[0].body).toEqual({ up_to_seq: 42 })
+    const applyNotifySettings = vi.fn()
+    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers(), forumTopics: { applyNotifySettings } })
+    await mgr.updateTopicNotifySettings(5, generateMessageId(10), 1800000000)
+    await mgr.updateTopicNotifySettings(5, generateMessageId(10), 0)
+    expect(posts.map((p) => [p.path, p.body])).toEqual([
+      ['/chats/5/topics/10/mute', { mute_until: 1800000000 }],
+      ['/chats/5/topics/10/mute', { mute_until: 0 }],
+    ])
+    expect(applyNotifySettings.mock.calls).toEqual([
+      [5, generateMessageId(10), { _: 'peerNotifySettings', mute_until: 1800000000 }],
+      [5, generateMessageId(10), { _: 'peerNotifySettings', mute_until: 0 }],
+    ])
   })
 
-  it('setTopicMuted POSTs /chats/{id}/topics/{rootMsgId}/mute with muted flag', async () => {
-    const { rest, posts } = fakeRest({})
-    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers() })
-    await mgr.setTopicMuted(5, 10, true)
-    expect(posts).toHaveLength(1)
-    expect(posts[0].path).toBe('/chats/5/topics/10/mute')
-    expect(posts[0].body).toEqual({ muted: true })
+  it('updateTopicNotifySettings: ошибка сети — хранилище тем не трогается', async () => {
+    const rest = { post: vi.fn(async () => { throw new Error('net') }) } as unknown as RestClient
+    const applyNotifySettings = vi.fn()
+    const mgr = newGroupsManager({ rest, dialogs: fakeDialogs(), peers: fakePeers(), forumTopics: { applyNotifySettings } })
+    await expect(mgr.updateTopicNotifySettings(5, generateMessageId(10), 1)).rejects.toThrow('net')
+    expect(applyNotifySettings).not.toHaveBeenCalled()
   })
+
 })
 
 // Task 4 (действия без оптимистики): setMute/setPin/setArchive/deleteGroup зовут
