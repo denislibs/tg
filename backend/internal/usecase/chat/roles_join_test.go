@@ -655,6 +655,8 @@ func (r *fakeTopicRepo) SetTopicRead(_ context.Context, chatID, rootMsgID, userI
 	return nil
 }
 
+func (r *fakeTopicRepo) LockThread(context.Context, int64, int64) error { return nil }
+
 func (r *fakeTopicRepo) ThreadHorizon(_ context.Context, chatID, rootMsgID, userID int64) (int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -680,7 +682,7 @@ func (r *fakeTopicRepo) ClearThreadMentions(_ context.Context, _, _, root, upTo 
 	return 0, nil
 }
 
-func (r *fakeTopicRepo) CountForumUnread(context.Context, int64, int64, int64) (int, error) {
+func (r *fakeTopicRepo) CountChatUnread(context.Context, int64, int64, int64) (int, error) {
 	return 0, nil
 }
 
