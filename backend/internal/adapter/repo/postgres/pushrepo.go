@@ -78,8 +78,12 @@ func (r *PushRepo) ShouldNotify(ctx context.Context, chatID, userID, topicRootID
 	var pm, pp, gm, gp, cm, cp *bool
 	err := querier(ctx, r.pool).QueryRow(ctx,
 		`SELECT m.muted_until, c.type,
-		        (SELECT ts.muted_until FROM topic_user_state ts
-		          WHERE ts.chat_id = m.chat_id AND ts.root_msg_id = $3 AND ts.user_id = m.user_id),
+		        -- Настройка темы — только у форума: в не-форуме tweb сбрасывает
+		        -- threadId (appNotificationsManager.ts:389-392), и записи тем,
+		        -- оставшиеся от выключенного форума, не решают за чат.
+		        CASE WHEN c.is_forum THEN
+		          (SELECT ts.muted_until FROM topic_user_state ts
+		            WHERE ts.chat_id = m.chat_id AND ts.root_msg_id = $3 AND ts.user_id = m.user_id) END,
 		        ns.private_muted, ns.private_preview, ns.groups_muted, ns.groups_preview,
 		        ns.channels_muted, ns.channels_preview
 		 FROM chat_members m

@@ -103,6 +103,11 @@ func TestTopicsRepo_ReadStateMuteUnread(t *testing.T) {
 	if err := pool.QueryRow(ctx, `INSERT INTO chats (type, is_forum) VALUES ('group', true) RETURNING id`).Scan(&chat); err != nil {
 		t.Fatalf("seed chat: %v", err)
 	}
+	for _, u := range []int64{me, other} {
+		if _, err := pool.Exec(ctx, `INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1,$2,'member')`, chat, u); err != nil {
+			t.Fatalf("seed member: %v", err)
+		}
+	}
 
 	// Тема с root_msg_id = сервисное сообщение (seq 1).
 	var rootID int64
@@ -365,10 +370,29 @@ func TestTopicsRepo_GeneralAndNumbers(t *testing.T) {
 				row.UnreadCount, row.UnreadMentions, row.LastReadSeq)
 		}
 	}
-	// read_outbox General у other — горизонт чата me.
+	// read_outbox у other — горизонт чата me: и у General, и у обычной темы
+	// (✓✓ — максимум входящих горизонтов остальных).
 	for _, row := range mustList(t, r, chat, other) {
-		if row.Topic.IsGeneral && row.ReadOutboxSeq != 4 {
-			t.Fatalf("read_outbox General у other = %d; want 4", row.ReadOutboxSeq)
+		if row.ReadOutboxSeq != 4 {
+			t.Fatalf("read_outbox у other (тема %d) = %d; want 4", row.Topic.Number(), row.ReadOutboxSeq)
+		}
+	}
+	// Обычная тема: горизонт чата other гасит её непрочитанное без записи темы.
+	if got := byNumber(t, r, chat, other, 2); got.UnreadCount != 1 {
+		t.Fatalf("тема у other до горизонта чата: unread = %d; want 1", got.UnreadCount)
+	}
+	if _, err := pool.Exec(ctx,
+		`UPDATE chat_members SET last_read_seq = 3 WHERE chat_id=$1 AND user_id=$2`, chat, other); err != nil {
+		t.Fatal(err)
+	}
+	if got := byNumber(t, r, chat, other, 2); got.UnreadCount != 0 || got.LastReadSeq != 3 {
+		t.Fatalf("тема у other после горизонта чата 3: unread=%d read=%d; want 0/3", got.UnreadCount, got.LastReadSeq)
+	}
+	// Читатель публичного форума без вступления: непрочитанного нет.
+	stranger := seedUser(t, pool, "+7932")
+	for _, row := range mustList(t, r, chat, stranger) {
+		if row.UnreadCount != 0 {
+			t.Fatalf("не участник: unread темы %d = %d; want 0", row.Topic.Number(), row.UnreadCount)
 		}
 	}
 
@@ -396,4 +420,29 @@ func TestTopicsRepo_GeneralAndNumbers(t *testing.T) {
 	if err != nil || len(thread) != 3 {
 		t.Fatalf("ListThread(General) = %d msgs, %v; want 3 (seq 1, 4, 5)", len(thread), err)
 	}
+	// Тред, корень которого не тема (накоплен до включения тем, комментарии
+	// к посту), — в General: у сообщения нет forum_topic (tweb
+	// getMessageThreadId.ts:17-23).
+	_ = insert(7, other, "text", &generalMsg)
+	hist, err = msgs.GetHistory(ctx, chat, me, 0, 0, 50, &root, "")
+	if err != nil || len(hist) == 0 || hist[0].Seq != 7 {
+		t.Fatalf("история General без сообщения не-темного треда: %v, %v", hist, err)
+	}
+	if got := byNumber(t, r, chat, me, domain.GeneralTopicID); got.LastMsgSeq != 7 {
+		t.Fatalf("top_message General = %d; want 7", got.LastMsgSeq)
+	}
+	if got := byNumber(t, r, chat, me, 2); got.LastMsgSeq == 7 {
+		t.Fatal("сообщение не-темного треда попало в тему")
+	}
+}
+
+func byNumber(t *testing.T, r *TopicsRepo, chat, user, number int64) domain.TopicRow {
+	t.Helper()
+	for _, row := range mustList(t, r, chat, user) {
+		if row.Topic.Number() == number {
+			return row
+		}
+	}
+	t.Fatalf("темы %d нет в списке", number)
+	return domain.TopicRow{}
 }

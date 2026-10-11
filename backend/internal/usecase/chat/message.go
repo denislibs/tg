@@ -156,9 +156,6 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			return domain.Message{}, domain.ErrNotFound
 		}
 	}
-	if err := i.checkTopicOpen(ctx, in); err != nil {
-		return domain.Message{}, err
-	}
 	// Вид ДОСТАВКИ — свойство ПИРА, а не ручки. У оригинала метод отправки один
 	// (messages.sendMessage/sendMedia), а «пост канала» получается из того, что
 	// получатель — broadcast: сервер отвечает updateNewChannelMessage, а не
@@ -171,6 +168,9 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		return domain.Message{}, err
 	}
 	broadcast := chatType == domain.ChatTypeChannel
+	if err := i.checkTopicOpen(ctx, in, chatType == domain.ChatTypeGroup); err != nil {
+		return domain.Message{}, err
+	}
 	// Вид строки выводится ИЗ ДЕЙСТВИЯ, а не приходит полем: «служебное ли» —
 	// это выбор конструктора, и клиент его назначить не может (у него в теле
 	// запроса действия нет вовсе; лог звонка кладёт сервер по концу звонка,

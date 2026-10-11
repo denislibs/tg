@@ -436,7 +436,7 @@ func TestTopics_CanManageTopic(t *testing.T) {
 	if _, err := i.Send(ctx, SendInput{ChatID: g, SenderID: 11, Text: "в закрытую", ThreadRootID: &root}); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("участник написал в закрытую тему: %v", err)
 	}
-	if err := i.checkTopicOpen(ctx, SendInput{ChatID: g, SenderID: 10, ThreadRootID: &root}); err != nil {
+	if err := i.checkTopicOpen(ctx, SendInput{ChatID: g, SenderID: 10, ThreadRootID: &root}, true); err != nil {
 		t.Fatalf("управляющий темами не пишет в закрытую тему: %v", err)
 	}
 

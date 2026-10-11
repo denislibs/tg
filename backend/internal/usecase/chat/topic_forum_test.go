@@ -388,3 +388,18 @@ func TestResolveThreadRootForSend_ForumOnlyTopics(t *testing.T) {
 		t.Fatalf("тред темы: %v, %v", got, err)
 	}
 }
+
+// Пуш о создании темы подчиняется мьюту самой темы, а не General.
+func TestPushTopicRoot_TopicCreateBelongsToItsTopic(t *testing.T) {
+	_, _, _, _, root := forumGroup(t)
+	if got := pushTopicRoot(root); got != root.ID {
+		t.Fatalf("корень пуша служебки создания = %d, ждали %d", got, root.ID)
+	}
+	thread := int64(77)
+	if got := pushTopicRoot(domain.Message{ID: 5, ThreadRootID: &thread}); got != thread {
+		t.Fatalf("корень пуша сообщения темы = %d", got)
+	}
+	if got := pushTopicRoot(domain.Message{ID: 5}); got != 0 {
+		t.Fatalf("корень пуша без треда = %d", got)
+	}
+}
