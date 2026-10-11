@@ -436,6 +436,10 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// Резолвим здесь, на входе, а не внутри Send — PostComment туда уже шлёт ключ.
 	// Корня нет — понятный 404, а не запись sentinel-нуля в thread_root_id.
 	threadRoot, terr := h.svc.ResolveThreadRootForSend(r.Context(), chatID, body.ThreadRootID)
+	if errors.Is(terr, domain.ErrTopicIDInvalid) {
+		writeError(w, http.StatusBadRequest, "TOPIC_ID_INVALID")
+		return
+	}
 	if errors.Is(terr, domain.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "comment thread not found")
 		return
@@ -923,6 +927,10 @@ func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	threadRoot, terr := h.svc.ResolveThreadRootForSend(r.Context(), toChatID, body.TopMsgID)
+	if errors.Is(terr, domain.ErrTopicIDInvalid) {
+		writeError(w, http.StatusBadRequest, "TOPIC_ID_INVALID")
+		return
+	}
 	if errors.Is(terr, domain.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "thread not found")
 		return
@@ -1316,6 +1324,10 @@ func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 	}
 	// thread_root_id с клиента — НОМЕР корня в этом чате, см. Send.
 	threadRoot, terr := h.svc.ResolveThreadRootForSend(r.Context(), chatID, b.ThreadRootID)
+	if errors.Is(terr, domain.ErrTopicIDInvalid) {
+		writeError(w, http.StatusBadRequest, "TOPIC_ID_INVALID")
+		return
+	}
 	if errors.Is(terr, domain.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "comment thread not found")
 		return
@@ -1687,7 +1699,7 @@ func topicJSON(row domain.TopicRow, viewerID int64) domain.ForumTopicReal {
 		},
 		domain.TopicNotifySettings(row.MuteUntil, time.Now()),
 		domain.ForumTopicFlags{
-			My:     row.Topic.CreatedBy == viewerID,
+			My:     domain.TopicMine(row.Topic, viewerID),
 			Closed: row.Topic.Closed,
 			Pinned: row.Topic.Pinned,
 			Hidden: row.Topic.Hidden,
@@ -1701,23 +1713,29 @@ func topicNumber(w http.ResponseWriter, r *http.Request) (int64, bool) {
 }
 
 // writeTopicUpdates — ответ messages.createForumTopic/editForumTopic: Updates
-// со служебкой темы (tweb appMessagesManager.ts:10073, 10098-10101). Курсора в
-// ответе нет (pts и pts_count — нули): его двигает живой кадр той же служебки,
-// из ответа клиенту нужно только сообщение. Ничего не изменилось — пустой
-// вектор updates.
+// с updateNewChannelMessage служебки темы (tweb appMessagesManager.ts:
+// 10073, 10098-10101 — номер новой темы клиент берёт именно из
+// updateNewChannelMessage: темы бывают только у супергрупп) и векторами
+// users/chats по ссылкам сообщения. Курсора в ответе нет (pts и pts_count —
+// нули): его двигает живой кадр той же служебки, из ответа клиенту нужно
+// только сообщение. Ничего не изменилось — пустой вектор updates.
 func writeTopicUpdates(w http.ResponseWriter, r *http.Request, svc *usecasechat.Interactor, m *domain.Message) {
 	if m == nil {
 		writeJSON(w, http.StatusOK, domain.NewUpdates(nil, nil, time.Now()))
 		return
 	}
 	me, _ := UserFromContext(r.Context())
-	out, users, _, err := svc.MessagesContainer(r.Context(), me.ID, []domain.Message{*m})
+	out, users, chats, err := svc.MessagesContainer(r.Context(), me.ID, []domain.Message{*m})
 	if err != nil || len(out) != 1 {
 		writeError(w, http.StatusInternalServerError, "could not render topic update")
 		return
 	}
-	update := domain.UpdateNewMessage{Underscore: domain.UpdateNewMessageTag, Message: out[0]}
-	writeJSON(w, http.StatusOK, domain.NewUpdates([]domain.Update{update}, users, time.Now()))
+	update := domain.UpdateNewChannelMessage{Underscore: domain.UpdateNewChannelMessageTag, Message: out[0]}
+	resp := domain.NewUpdates([]domain.Update{update}, users, time.Now())
+	if len(chats) > 0 {
+		resp.Chats = chats
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // writeTopicErr — отказ ручек тем: служебка темы идёт штатной отправкой, и её

@@ -454,6 +454,10 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			return
 		}
 		threadRoot, terr := c.svc.ResolveThreadRootForSend(ctx, chatID, d.ThreadRootID)
+		if errors.Is(terr, domain.ErrTopicIDInvalid) {
+			nack("topic_id_invalid")
+			return
+		}
 		if errors.Is(terr, domain.ErrNotFound) {
 			nack("not_found")
 			return

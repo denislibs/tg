@@ -87,7 +87,7 @@ func TestForumTopics_ContainerCarriesMessageNotSnapshot(t *testing.T) {
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &created)
 	if created.Underscore != "updates" || len(created.Updates) != 1 ||
-		created.Updates[0].Underscore != "updateNewMessage" ||
+		created.Updates[0].Underscore != "updateNewChannelMessage" ||
 		created.Updates[0].Message.Action.Underscore != "messageActionTopicCreate" ||
 		created.Updates[0].Message.Action.Title != "Баги" || created.Updates[0].Message.Action.Emoji != "🐞" {
 		t.Fatalf("ответ создания темы = %s", rec.Body.String())
@@ -216,6 +216,13 @@ func TestForumTopics_ContainerCarriesMessageNotSnapshot(t *testing.T) {
 			topicAuthor, msgAuthor, rec.Body.String())
 	}
 
+	// Нетронутая тема — пустой peerNotifySettings без mute_until: наследует
+	// мьют чата (tweb appNotificationsManager.ts:398-405).
+	for _, tp := range list.Topics {
+		if tp.NotifySettings.Underscore != "peerNotifySettings" || tp.NotifySettings.MuteUntil != nil {
+			t.Fatalf("нетронутая тема с mute_until: %s", rec.Body.String())
+		}
+	}
 	// Заглушённость — СРОК внутри notify_settings, а не булево поле рядом.
 	if rec := authedReq(t, h, http.MethodPost, "/chats/"+cid+"/topics/"+topicID+"/mute", tokenA,
 		map[string]any{"mute_until": 2147483647}); rec.Code != http.StatusOK {
@@ -236,6 +243,46 @@ func TestForumTopics_ContainerCarriesMessageNotSnapshot(t *testing.T) {
 	if strings.Contains(rec.Body.String(), `"muted"`) {
 		t.Fatalf("булево поле muted осталось рядом: %s", rec.Body.String())
 	}
+	// Явное «уведомлять» — mute_until: 0 (а не пропуск: тема больше не
+	// наследует чат).
+	if rec := authedReq(t, h, http.MethodPost, "/chats/"+cid+"/topics/"+topicID+"/mute", tokenA,
+		map[string]any{"mute_until": 0}); rec.Code != http.StatusOK {
+		t.Fatalf("снять мьют темы: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/topics", tokenA, nil)
+	list = forumTopicsWire{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &list)
+	for _, tp := range list.Topics {
+		if tp.ID == number && (tp.NotifySettings.MuteUntil == nil || *tp.NotifySettings.MuteUntil != 0) {
+			t.Fatalf("явное «уведомлять» не нулём: %s", rec.Body.String())
+		}
+		if tp.ID == 1 && tp.PFlags["my"] {
+			t.Fatalf("General «моя» у владельца: %s", rec.Body.String())
+		}
+	}
+
+	// /threads/1 в форуме — лента General.
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/threads/1", tokenA, nil)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "общее") ||
+		strings.Contains(rec.Body.String(), "воспроизводится") {
+		t.Fatalf("/threads/1 в форуме: %d %s", rec.Code, rec.Body.String())
+	}
+	// Тред обычного сообщения в форуме — TOPIC_ID_INVALID (номер — последнее
+	// сообщение General из вектора списка тем).
+	var generalSeq int64
+	for _, m := range list.Messages {
+		if m.Message == "общее" {
+			generalSeq = m.ID
+		}
+	}
+	if generalSeq == 0 {
+		t.Fatalf("последнее сообщение General не доехало вектором: %s", rec.Body.String())
+	}
+	if rec := authedReq(t, h, http.MethodPost, "/chats/"+cid+"/messages", tokenB,
+		map[string]any{"text": "x", "client_msg_id": "bad", "thread_root_id": generalSeq}); rec.Code != http.StatusBadRequest ||
+		!strings.Contains(rec.Body.String(), "TOPIC_ID_INVALID") {
+		t.Fatalf("тред не темы в форуме: %d %s", rec.Code, rec.Body.String())
+	}
 
 	// messages.editForumTopic — PATCH по номеру; ответ — Updates со служебкой.
 	rec = authedReq(t, h, http.MethodPatch, "/chats/"+cid+"/topics/"+topicID, tokenA,
@@ -251,6 +298,26 @@ func TestForumTopics_ContainerCarriesMessageNotSnapshot(t *testing.T) {
 	}
 	if rec := authedReq(t, h, http.MethodPost, "/chats/"+cid+"/topics/1/pin", tokenA, map[string]any{"pinned": true}); rec.Code != http.StatusForbidden {
 		t.Fatalf("закреп General: %d %s", rec.Code, rec.Body.String())
+	}
+	// Повторный закреп — тот же ответ, без ошибки.
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/topics/"+topicID+"/pin", tokenA, map[string]any{"pinned": true})
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "updatePinnedForumTopic") {
+		t.Fatalf("повторный закреп темы: %d %s", rec.Code, rec.Body.String())
+	}
+	// Скрыть можно только General (tweb dialogsContextMenu.ts:396-401).
+	if rec := authedReq(t, h, http.MethodPatch, "/chats/"+cid+"/topics/"+topicID, tokenA,
+		map[string]any{"hidden": true}); rec.Code != http.StatusForbidden {
+		t.Fatalf("скрытие обычной темы: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodPatch, "/chats/"+cid+"/topics/1", tokenA,
+		map[string]any{"hidden": true, "title": "Общая", "icon_emoji": ""})
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"hidden":true`) {
+		t.Fatalf("правка General: %d %s", rec.Code, rec.Body.String())
+	}
+	// Мьют чужим (не участником) — 404; мьют не того номера — 404.
+	if rec := authedReq(t, h, http.MethodPost, "/chats/"+cid+"/topics/"+itoa(number+1000)+"/mute", tokenA,
+		map[string]any{"mute_until": 0}); rec.Code != http.StatusNotFound {
+		t.Fatalf("мьют несуществующей темы: %d %s", rec.Code, rec.Body.String())
 	}
 	// Номера, который не служебка создания темы, нет — 404.
 	if rec := authedReq(t, h, http.MethodPatch, "/chats/"+cid+"/topics/"+itoa(number+1), tokenA,

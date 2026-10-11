@@ -65,13 +65,27 @@ func TestTopicsRepo_GeneralPinEditOrder(t *testing.T) {
 
 	// Правка одной записью: название, значок, скрытие (цвет не правится — у
 	// messages.editForumTopic его нет).
-	b.Title, b.IconEmoji, b.Hidden = "Beta2", "🚀", true
-	if err := r.Update(ctx, b); err != nil {
+	title, emoji, hidden := "Beta2", "🚀", true
+	if err := r.Update(ctx, b.ID, domain.MessageActionTopicEdit{Title: &title, IconEmojiEmoticon: &emoji, Hidden: &hidden}); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 	list = mustList(t, r, chat, user)
 	if list[2].Topic.Title != "Beta2" || list[2].Topic.IconEmoji != "🚀" || !list[2].Topic.Hidden {
 		t.Fatalf("after edit/hide: %+v", list[2].Topic)
+	}
+	// Ревью п. 5: правка одного поля не трогает остальные — параллельная
+	// правка (закрыли тему) не затирается снимком другой правки.
+	closed := true
+	if err := r.Update(ctx, b.ID, domain.MessageActionTopicEdit{Closed: &closed}); err != nil {
+		t.Fatal(err)
+	}
+	title2 := "Beta3"
+	if err := r.Update(ctx, b.ID, domain.MessageActionTopicEdit{Title: &title2}); err != nil {
+		t.Fatal(err)
+	}
+	list = mustList(t, r, chat, user)
+	if got := list[2].Topic; got.Title != "Beta3" || !got.Closed || !got.Hidden || got.IconEmoji != "🚀" {
+		t.Fatalf("правка названия затёрла другие поля: %+v", got)
 	}
 }
 

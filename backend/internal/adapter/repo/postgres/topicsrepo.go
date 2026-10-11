@@ -58,12 +58,16 @@ func (r *TopicsRepo) ByNumber(ctx context.Context, chatID, number int64) (domain
 		 LIMIT 1`, chatID, number, domain.GeneralTopicID))
 }
 
-// Update пишет изменяемые поля темы (название, значок, закрыта, скрыта) — одним
-// UPDATE, в той же транзакции, что служебка messageActionTopicEdit.
-func (r *TopicsRepo) Update(ctx context.Context, t domain.ForumTopicRecord) error {
+// Update пишет поля правки темы (название, значок, закрыта, скрыта) — одним
+// UPDATE, в той же транзакции, что служебка messageActionTopicEdit. Только
+// заданные поля (nil — COALESCE оставляет колонку): снимок темы, прочитанный
+// до транзакции, не затирает параллельную правку другого поля.
+func (r *TopicsRepo) Update(ctx context.Context, id int64, edit domain.MessageActionTopicEdit) error {
 	_, err := querier(ctx, r.pool).Exec(ctx,
-		`UPDATE forum_topics SET title=$2, icon_emoji=$3, closed=$4, hidden=$5 WHERE id=$1`,
-		t.ID, t.Title, t.IconEmoji, t.Closed, t.Hidden)
+		`UPDATE forum_topics SET title = COALESCE($2, title), icon_emoji = COALESCE($3, icon_emoji),
+		        closed = COALESCE($4, closed), hidden = COALESCE($5, hidden)
+		  WHERE id = $1`,
+		id, edit.Title, edit.IconEmojiEmoticon, edit.Closed, edit.Hidden)
 	return err
 }
 

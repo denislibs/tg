@@ -838,8 +838,9 @@ type TopicRepo interface {
 	// ByRoot — тема по корню треда (ключ строки корневого сообщения);
 	// domain.ErrNotFound — тред не тема.
 	ByRoot(ctx context.Context, chatID, rootMsgID int64) (domain.ForumTopicRecord, error)
-	// Update пишет название, значок, closed и hidden темы.
-	Update(ctx context.Context, t domain.ForumTopicRecord) error
+	// Update пишет в тему id ТОЛЬКО поля, заданные в правке (nil — колонка
+	// не трогается): параллельная правка другого поля не затирается.
+	Update(ctx context.Context, id int64, edit domain.MessageActionTopicEdit) error
 	SetPinned(ctx context.Context, id int64, pinned bool) error
 	EnsureGeneralTopic(ctx context.Context, chatID, createdBy int64) (domain.ForumTopicRecord, error)
 	// ListByChat — темы чата с состоянием темы для зрителя userID (горизонты,

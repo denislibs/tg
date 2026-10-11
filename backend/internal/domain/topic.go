@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 // ForumTopicRecord — тема форум-группы ВЫБОРКОЙ: наш набор колонок, а не объект
 // провода. Имя схемы `forumTopic` занял конструктор (mtforumtopic.go) — тот же
@@ -29,6 +32,12 @@ type ForumTopicRecord struct {
 	CreatedAt  time.Time
 }
 
+// ErrTopicIDInvalid — отправка в форуме с номером треда, который не тема (и не
+// комментарии к посту канала): ошибка TG TOPIC_ID_INVALID у
+// messages.sendMessage. tweb её не разбирает — у клиента это общая ошибка
+// отправки.
+var ErrTopicIDInvalid = errors.New("TOPIC_ID_INVALID")
+
 // GeneralTopicID — номер темы «General» снаружи. Порт tweb
 // lib/appManagers/constants.ts:26 (`GENERAL_TOPIC_ID = MESSAGE_ID_OFFSET + 1`,
 // серверный номер 1): у General нет служебки создания, и TG адресует её
@@ -51,6 +60,14 @@ func (t ForumTopicRecord) Number() int64 {
 		return GeneralTopicID
 	}
 	return t.RootMsgSeq
+}
+
+// TopicMine — тема «моя» (forumTopic.pFlags.my): её создал зритель. У General
+// автора нет — её заводит сервер при включении тем, — и «моей» она не бывает
+// ни у кого: управляет ею только право manage_topics (tweb canManageTopic,
+// dialogs.ts:2263-2283; скрыть General — dialogsContextMenu.ts:396-401).
+func TopicMine(t ForumTopicRecord, viewerID int64) bool {
+	return !t.IsGeneral && t.CreatedBy == viewerID
 }
 
 // TopicRow — строка списка тем: тема плюс состояние чтения зрителя, и ничего

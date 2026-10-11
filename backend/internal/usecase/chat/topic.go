@@ -99,6 +99,9 @@ func (i *Interactor) CreateTopic(ctx context.Context, chatID, userID int64, titl
 		ChatID: chatID, SenderID: userID,
 		Action:     domain.NewMessageActionTopicCreate(title, iconColor, iconEmoji),
 		userAction: true,
+		prepare: func(ctx context.Context, _ *SendInput) error {
+			return i.reserveGeneralNumber(ctx, chatID)
+		},
 	})
 	if err != nil {
 		return domain.ForumTopicRecord{}, domain.Message{}, err
@@ -111,6 +114,22 @@ func (i *Interactor) CreateTopic(ctx context.Context, chatID, userID int64, titl
 		return domain.ForumTopicRecord{}, domain.Message{}, err
 	}
 	return t, root, nil
+}
+
+// reserveGeneralNumber — номер 1 в форуме занят General
+// (domain.GeneralTopicID): у TG сообщение №1 — служебка создания канала, и
+// служебка темы получить его не может. У нас служебка создания чата не
+// гарантирована (её запись best-effort, у старых чатов её может не быть), и в
+// чате без единого сообщения служебка темы стала бы №1 — неотличимой от
+// General. Тогда номер 1 пропускается: дыра в нумерации — то же, что удалённое
+// сообщение. Зовётся в транзакции Send до выдачи номера.
+func (i *Interactor) reserveGeneralNumber(ctx context.Context, chatID int64) error {
+	last, err := i.chats.MaxSeq(ctx, chatID)
+	if err != nil || last >= domain.GeneralTopicID {
+		return err
+	}
+	_, err = i.msgs.NextSeq(ctx, chatID)
+	return err
 }
 
 // sanitizeTopicEmoji ограничивает иконку темы коротким unicode-emoji (без custom-emoji
@@ -212,9 +231,10 @@ func (i *Interactor) memberTopic(ctx context.Context, chatID, number, userID int
 	return i.topicByNumber(ctx, chatID, number)
 }
 
-// canManageTopic — порт tweb dialogsStorage.canManageTopic: своя тема
-// (pFlags.my) или право manage_topics (у владельца — всегда). Управлять темами
-// чата можно только из чата: вышедший автор свою тему больше не правит.
+// canManageTopic — порт tweb dialogsStorage.canManageTopic (dialogs.ts:
+// 2263-2283): своя тема (pFlags.my, domain.TopicMine) или право manage_topics
+// (у владельца — всегда). Управлять темами чата можно только из чата:
+// вышедший автор свою тему больше не правит.
 func (i *Interactor) canManageTopic(ctx context.Context, t domain.ForumTopicRecord, userID int64) bool {
 	if i.groups == nil {
 		return false
@@ -223,17 +243,27 @@ func (i *Interactor) canManageTopic(ctx context.Context, t domain.ForumTopicReco
 	if err != nil {
 		return false
 	}
-	return t.CreatedBy == userID || domain.HasRight(m.Role, m.Rights, domain.RightManageTopics)
+	return domain.TopicMine(t, userID) || domain.HasRight(m.Role, m.Rights, domain.RightManageTopics)
 }
 
 // checkTopicOpen — в закрытую тему пишет только тот, кто ей управляет (tweb
 // canSendToPeer: closed ∧ ¬canManageTopic → нельзя). Служебные сообщения
-// сервера (in.Action) не гейтятся.
+// сервера (in.Action) не гейтятся. Без треда в форуме — General: её тоже
+// закрывают (tweb dialogsContextMenu.ts:403-415 не исключает General).
 func (i *Interactor) checkTopicOpen(ctx context.Context, in SendInput) error {
-	if in.ThreadRootID == nil || in.Action != nil || i.topics == nil {
+	if in.Action != nil || i.topics == nil {
 		return nil
 	}
-	t, err := i.topics.ByRoot(ctx, in.ChatID, *in.ThreadRootID)
+	var t domain.ForumTopicRecord
+	var err error
+	if in.ThreadRootID == nil {
+		if !i.isGeneralNumber(ctx, in.ChatID, domain.GeneralTopicID) {
+			return nil // не форум — General нет
+		}
+		t, err = i.topics.ByNumber(ctx, in.ChatID, domain.GeneralTopicID)
+	} else {
+		t, err = i.topics.ByRoot(ctx, in.ChatID, *in.ThreadRootID)
+	}
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil // тред — не тема форума
 	}
@@ -262,8 +292,14 @@ type TopicEdit struct {
 // и правят строку темы по ней (tweb :10342-10365).
 //
 // Ничего не изменилось — служебки нет, ответ nil. Права — canManageTopic
-// (tweb dialogs.ts:2270). У General нельзя закрыть и сменить значок (у неё
-// системная иконка); название и скрытие — можно.
+// (tweb dialogs.ts:2263-2283). General — как в tweb: закрыть можно
+// (dialogsContextMenu.ts:403-415), скрыть можно ТОЛЬКО её (:396-401), значка у
+// неё нет — правка General шлёт пустой (editTopic.tsx:187-191), и только он
+// принимается.
+//
+// Строка темы правится только по изменённым полям (Update с указателями
+// служебки): параллельная правка другого поля не затирается снимком,
+// прочитанным до транзакции.
 func (i *Interactor) EditTopic(ctx context.Context, chatID, number, userID int64, in TopicEdit) (*domain.Message, error) {
 	t, err := i.topicByNumber(ctx, chatID, number)
 	if err != nil {
@@ -272,32 +308,35 @@ func (i *Interactor) EditTopic(ctx context.Context, chatID, number, userID int64
 	if !i.canManageTopic(ctx, t, userID) {
 		return nil, domain.ErrForbidden
 	}
-	if t.IsGeneral && (in.Closed != nil || in.IconEmoji != nil) {
+	if in.Hidden != nil && !t.IsGeneral {
 		return nil, domain.ErrForbidden
 	}
 	action := domain.NewMessageActionTopicEdit()
-	next := t
 	if in.Title != nil {
 		title := strings.TrimSpace(*in.Title)
 		if title == "" || utf8.RuneCountInString(title) > maxTopicTitle {
 			return nil, domain.ErrTooLong
 		}
 		if title != t.Title {
-			next.Title, action.Title = title, &title
+			action.Title = &title
 		}
 	}
 	if in.IconEmoji != nil {
-		if emoji := sanitizeTopicEmoji(*in.IconEmoji); emoji != t.IconEmoji {
-			next.IconEmoji, action.IconEmojiEmoticon = emoji, &emoji
+		emoji := sanitizeTopicEmoji(*in.IconEmoji)
+		if t.IsGeneral && emoji != "" {
+			return nil, domain.ErrForbidden
+		}
+		if emoji != t.IconEmoji {
+			action.IconEmojiEmoticon = &emoji
 		}
 	}
 	if in.Closed != nil && *in.Closed != t.Closed {
 		closed := *in.Closed
-		next.Closed, action.Closed = closed, &closed
+		action.Closed = &closed
 	}
 	if in.Hidden != nil && *in.Hidden != t.Hidden {
 		hidden := *in.Hidden
-		next.Hidden, action.Hidden = hidden, &hidden
+		action.Hidden = &hidden
 	}
 	if action.Empty() {
 		return nil, nil
@@ -311,7 +350,7 @@ func (i *Interactor) EditTopic(ctx context.Context, chatID, number, userID int64
 		Action: action, ThreadRootID: root,
 		userAction: true,
 		prepare: func(ctx context.Context, _ *SendInput) error {
-			return i.topics.Update(ctx, next)
+			return i.topics.Update(ctx, t.ID, action)
 		},
 	})
 	if err != nil {
@@ -337,10 +376,18 @@ func (i *Interactor) SetTopicPinned(ctx context.Context, chatID, number, userID 
 	if t.IsGeneral || !i.canManageTopic(ctx, t, userID) {
 		return domain.UpdatePinnedForumTopic{}, domain.ErrForbidden
 	}
+	topicID := t.Number()
+	peer, err := i.ChatIDToPeer(ctx, userID, chatID)
+	if err != nil {
+		return domain.UpdatePinnedForumTopic{}, err
+	}
+	update := domain.NewUpdatePinnedForumTopic(domain.NewPeer(peer), topicID, pinned)
+	if t.Pinned == pinned {
+		return update, nil // уже так: ни записи, ни кадров
+	}
 	if err := i.topics.SetPinned(ctx, t.ID, pinned); err != nil {
 		return domain.UpdatePinnedForumTopic{}, err
 	}
-	topicID := t.Number()
 	if members, err := i.chats.MemberIDs(ctx, chatID); err == nil {
 		// best-effort: мутация закоммичена.
 		_ = i.logAndPublishPerPeer(ctx, chatID, members, "topic_pin",
@@ -356,11 +403,7 @@ func (i *Interactor) SetTopicPinned(ctx context.Context, chatID, number, userID 
 				return body
 			})
 	}
-	peer, err := i.ChatIDToPeer(ctx, userID, chatID)
-	if err != nil {
-		return domain.UpdatePinnedForumTopic{}, err
-	}
-	return domain.NewUpdatePinnedForumTopic(domain.NewPeer(peer), topicID, pinned), nil
+	return update, nil
 }
 
 // ListThreadMessages — сообщения треда (темы форума, комментариев) по

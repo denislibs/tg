@@ -594,15 +594,26 @@ func (r *fakeTopicRepo) ByRoot(_ context.Context, chatID, rootMsgID int64) (doma
 	return domain.ForumTopicRecord{}, domain.ErrNotFound
 }
 
-func (r *fakeTopicRepo) Update(_ context.Context, t domain.ForumTopicRecord) error {
+func (r *fakeTopicRepo) Update(_ context.Context, id int64, e domain.MessageActionTopicEdit) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	cur, ok := r.topics[t.ID]
+	cur, ok := r.topics[id]
 	if !ok {
 		return domain.ErrNotFound
 	}
-	cur.Title, cur.IconEmoji, cur.Closed, cur.Hidden = t.Title, t.IconEmoji, t.Closed, t.Hidden
-	r.topics[t.ID] = cur
+	if e.Title != nil {
+		cur.Title = *e.Title
+	}
+	if e.IconEmojiEmoticon != nil {
+		cur.IconEmoji = *e.IconEmojiEmoticon
+	}
+	if e.Closed != nil {
+		cur.Closed = *e.Closed
+	}
+	if e.Hidden != nil {
+		cur.Hidden = *e.Hidden
+	}
+	r.topics[id] = cur
 	return nil
 }
 
