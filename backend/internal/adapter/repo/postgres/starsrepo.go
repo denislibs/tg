@@ -46,6 +46,19 @@ func (r *StarsRepo) AddBalance(ctx context.Context, userID, delta int64) (int64,
 	return bal, err
 }
 
+// TakeUpTo снимает до max звёзд одним запросом (без гонки «прочитал баланс —
+// списал»): баланс не уходит в минус.
+func (r *StarsRepo) TakeUpTo(ctx context.Context, userID, max int64) (int64, error) {
+	var bal int64
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`UPDATE user_stars SET balance = balance - LEAST(balance, $2) WHERE user_id=$1 RETURNING balance`,
+		userID, max).Scan(&bal)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return bal, err
+}
+
 func (r *StarsRepo) Catalog(ctx context.Context) ([]domain.StarGift, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT id, emoji, title, price_stars, convert_stars, total, remains,

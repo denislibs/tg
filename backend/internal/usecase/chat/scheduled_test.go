@@ -87,6 +87,7 @@ func (f *fakeScheduled) Reschedule(_ context.Context, id int64, from, to time.Ti
 	}
 	m.SendAt, m.Attempts = to, 0
 	m.Occurrence++
+	m.PaidStars, m.PaidTo = 0, 0
 	f.rows[id] = m
 	delete(f.claims, id)
 	delete(f.retry, id)
@@ -103,6 +104,19 @@ func (f *fakeScheduled) DeleteUnclaimed(_ context.Context, ids []int64) ([]int64
 	}
 	f.mu.Unlock()
 	return f.DeleteIDs(context.Background(), keep)
+}
+
+func (f *fakeScheduled) TakePaidByChat(_ context.Context, chatID int64) ([]domain.ScheduledMessage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.ScheduledMessage
+	for id, m := range f.rows {
+		if m.ChatID == chatID && m.PaidStars > 0 {
+			out = append(out, m)
+			delete(f.rows, id)
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeScheduled) LockQueue(context.Context, int64, int64) error { return nil }
@@ -1339,5 +1353,187 @@ func TestScheduled_AttemptsOnlyWorkerAndAfterDedup(t *testing.T) {
 	}
 	if fs.count() != 0 || !withSent {
 		t.Fatalf("rows=%d withSent=%v", fs.count(), withSent)
+	}
+}
+
+// --- Решение 2026-10-11: возврат звёзд отвергнутому отложенному ---
+
+// paidScheduledGroup — платная группа (5 звёзд за сообщение): 1 — владелец,
+// 2 — участник с балансом topUp.
+func paidScheduledGroup(t *testing.T, topUp int64) (*Interactor, *fakeStars, *fakeScheduled, *store, int64) {
+	t.Helper()
+	fg := newFakeGroupRepo()
+	s := newStore()
+	fg.onCreate = func(id int64, typ string) {
+		s.mu.Lock()
+		s.chatType[id] = typ
+		s.mu.Unlock()
+	}
+	in := New(fakeTx{}, groupChats{fg}, fakeMsgs{s}, fakeUpdates{s}, nil, fakeMedia{s}, fg, newFakeInviteRepo(), nil, nil, newFakeJoinRequestRepo())
+	stars := newFakeStars()
+	in.SetStars(stars)
+	in.SetPublisher(&fakePublisher{})
+	fs := newFakeScheduled()
+	in.SetScheduled(fs)
+	ctx := context.Background()
+	cid, _, err := in.CreateGroup(ctx, 1, "Paid", "", "", false, []int64{2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := in.SetChatChargeStars(ctx, cid, 1, 5); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := in.TopUpStars(ctx, 2, topUp); err != nil {
+		t.Fatal(err)
+	}
+	return in, stars, fs, s, cid
+}
+
+func TestScheduled_RejectedPaidRefundedOnce(t *testing.T) {
+	in, stars, fs, s, cid := paidScheduledGroup(t, 20)
+	ctx := context.Background()
+	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := stars.Balance(ctx, 2); b != 15 {
+		t.Fatalf("после постановки %d, want 15", b)
+	}
+	// Гейт публикации не пройдёт: писать запрещено всем участникам.
+	if err := in.SetChatPermissions(ctx, cid, 1, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	before := len(messagesOf(s, cid))
+	fs.set(sm.Seq, func(m *domain.ScheduledMessage) { m.SendAt = time.Now().Add(-time.Minute) })
+	// Первая попытка: снятие с возвратом падает (сбой транзакции) — ни снятия, ни возврата.
+	fs.failDelete = 1
+	_, _ = in.DispatchDueScheduled(ctx)
+	if b, _ := stars.Balance(ctx, 2); b != 15 || fs.count() != 1 {
+		t.Fatalf("сбой снятия: баланс %d rows=%d", b, fs.count())
+	}
+	fs.expireClaims()
+	_, _ = in.DispatchDueScheduled(ctx)
+	fs.expireClaims()
+	_, _ = in.DispatchDueScheduled(ctx)
+	if b, _ := stars.Balance(ctx, 2); b != 20 {
+		t.Fatalf("после отказа баланс автора %d, want 20 (возврат ровно один раз)", b)
+	}
+	if b, _ := stars.Balance(ctx, 1); b != 0 {
+		t.Fatalf("владелец сохранил %d звёзд за неотправленное", b)
+	}
+	if fs.count() != 0 || len(messagesOf(s, cid)) != before {
+		t.Fatalf("rows=%d msgs=%d", fs.count(), len(messagesOf(s, cid))-before)
+	}
+	var refunded bool
+	for _, d := range logOf(s, 2, "balance_update") {
+		if bal, ok := d["balance"].(map[string]any); ok && bal["amount"] == float64(20) {
+			refunded = true
+		}
+	}
+	if !refunded {
+		t.Fatal("нет updateStarsBalance с возвращённым балансом")
+	}
+}
+
+// Повтор: первое вхождение оплачено постановкой и опубликовано; второе
+// платит при публикации и отвергнуто — его списание откатывается вместе с
+// Send, возврата за первое (уже доставленное) нет.
+func TestScheduled_RepeatRefundOnlyRejectedOccurrence(t *testing.T) {
+	in, stars, fs, _, cid := paidScheduledGroup(t, 20)
+	ctx := context.Background()
+	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future(), ScheduleRepeatPeriod: 86400})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fs.set(sm.Seq, func(m *domain.ScheduledMessage) { m.SendAt = time.Now().Add(-2 * time.Hour) })
+	if n, _ := in.DispatchDueScheduled(ctx); n != 1 {
+		t.Fatal("первое вхождение не опубликовано")
+	}
+	if b, _ := stars.Balance(ctx, 2); b != 15 {
+		t.Fatalf("после первого вхождения %d, want 15", b)
+	}
+	if err := in.SetChatPermissions(ctx, cid, 1, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	fs.set(sm.Seq, func(m *domain.ScheduledMessage) { m.SendAt = time.Now().Add(-time.Hour) })
+	_, _ = in.DispatchDueScheduled(ctx)
+	if b, _ := stars.Balance(ctx, 2); b != 15 || fs.count() != 0 {
+		t.Fatalf("отвергнутое второе вхождение: баланс %d rows=%d, want 15 и 0", b, fs.count())
+	}
+	if b, _ := stars.Balance(ctx, 1); b != 5 {
+		t.Fatalf("владелец %d, want 5 за доставленное первое вхождение", b)
+	}
+}
+
+// Владелец успел потратить полученное: автор получает возврат целиком,
+// с владельца снимается не больше его баланса.
+func TestScheduled_RefundCapsCreatorBalance(t *testing.T) {
+	in, stars, fs, _, cid := paidScheduledGroup(t, 20)
+	ctx := context.Background()
+	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stars.AddBalance(ctx, 1, -3); err != nil {
+		t.Fatal(err)
+	}
+	if err := in.SetChatPermissions(ctx, cid, 1, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	fs.set(sm.Seq, func(m *domain.ScheduledMessage) { m.SendAt = time.Now().Add(-time.Minute) })
+	_, _ = in.DispatchDueScheduled(ctx)
+	if b, _ := stars.Balance(ctx, 2); b != 20 {
+		t.Fatalf("автор %d, want 20", b)
+	}
+	if b, _ := stars.Balance(ctx, 1); b != 0 {
+		t.Fatalf("владелец %d, want 0", b)
+	}
+}
+
+// Ревью s1b: удаление группы владельцем возвращает звёзды за её очередь.
+func TestScheduled_DeleteGroupRefundsQueue(t *testing.T) {
+	in, stars, fs, _, cid := paidScheduledGroup(t, 20)
+	ctx := context.Background()
+	if _, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := in.DeleteGroup(ctx, cid, 1); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := stars.Balance(ctx, 2); b != 20 || fs.count() != 0 {
+		t.Fatalf("после удаления группы автор %d rows=%d, want 20 и 0", b, fs.count())
+	}
+	if b, _ := stars.Balance(ctx, 1); b != 0 {
+		t.Fatalf("владелец сохранил %d", b)
+	}
+}
+
+// Ревью s1b: строку, чьё сообщение уже вставлено по прежнему сроку, нельзя
+// перенести (новый ключ публикации дал бы дубль или возврат за доставленное).
+func TestScheduled_EditTimeRefusedAfterPublishedKey(t *testing.T) {
+	in, stars, fs, s, cid := paidScheduledGroup(t, 20)
+	ctx := context.Background()
+	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fs.set(sm.Seq, func(m *domain.ScheduledMessage) { m.SendAt = time.Now().Add(-time.Minute) })
+	before := len(messagesOf(s, cid))
+	fs.failDelete = 1
+	_, _ = in.DispatchDueScheduled(ctx) // опубликовано, снятие упало
+	fs.expireClaims()
+	if _, err := in.EditScheduled(ctx, EditScheduledInput{ChatID: cid, ID: sm.Seq, UserID: 2, Text: "x",
+		ScheduleDate: future()}); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("перенос опубликованной строки: %v, want ErrNotFound", err)
+	}
+	if err := in.SetChatPermissions(ctx, cid, 1, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = in.DispatchDueScheduled(ctx)
+	if len(messagesOf(s, cid)) != before+1 || fs.count() != 0 {
+		t.Fatalf("msgs=%d rows=%d", len(messagesOf(s, cid))-before, fs.count())
+	}
+	if b, _ := stars.Balance(ctx, 2); b != 15 {
+		t.Fatalf("возврат за доставленное: баланс %d, want 15", b)
 	}
 }

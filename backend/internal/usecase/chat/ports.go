@@ -908,6 +908,9 @@ type ScheduledRepo interface {
 	// Reschedule переставляет опубликованный срок повтора from → to (тот же
 	// id), снимает аренду, occurrence+1; ok=false — строку сняли или перенесли.
 	Reschedule(ctx context.Context, id int64, from, to time.Time) (domain.ScheduledMessage, bool, error)
+	// TakePaidByChat снимает оплаченные при постановке строки чата (удаление
+	// группы) и отдаёт их — для возврата звёзд.
+	TakePaidByChat(ctx context.Context, chatID int64) ([]domain.ScheduledMessage, error)
 	// LockQueue — транзакционная блокировка очереди автора в чате (лимит 100).
 	LockQueue(ctx context.Context, chatID, senderID int64) error
 	// WhenOnlineWaits — все пары «чат + автор + собеседник», у которых есть
@@ -968,6 +971,9 @@ type StarsRepo interface {
 	// AddBalance атомарно меняет баланс на delta (может быть отрицательной);
 	// возвращает новый баланс. При недостатке средств — domain.ErrForbidden.
 	AddBalance(ctx context.Context, userID, delta int64) (int64, error)
+	// TakeUpTo атомарно снимает с баланса до max звёзд (не уводя в минус);
+	// возвращает новый баланс.
+	TakeUpTo(ctx context.Context, userID, max int64) (int64, error)
 	// Catalog — доступные для покупки подарки (без распроданных сверху).
 	Catalog(ctx context.Context) ([]domain.StarGift, error)
 	// GiftByID — позиция каталога по id.

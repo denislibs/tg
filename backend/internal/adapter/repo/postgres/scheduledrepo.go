@@ -21,7 +21,7 @@ type ScheduledRepo struct {
 
 func NewScheduledRepo(pool *pgxpool.Pool) *ScheduledRepo { return &ScheduledRepo{pool: pool} }
 
-const scheduledCols = `id, chat_id, sender_id, type, text, entities, reply_to_id, media_id, send_at, created_at, when_online, repeat_period, client_msg_id, params, web_page, attempts, occurrence`
+const scheduledCols = `id, chat_id, sender_id, type, text, entities, reply_to_id, media_id, send_at, created_at, when_online, repeat_period, client_msg_id, params, web_page, attempts, occurrence, paid_stars, paid_to`
 
 // unclaimed — строка не в аренде публикации (миграция 0169).
 const unclaimed = `(claimed_until IS NULL OR claimed_until < now())`
@@ -32,11 +32,15 @@ const workerReady = unclaimed + ` AND (next_attempt_at IS NULL OR next_attempt_a
 func scanScheduled(s scanner) (domain.ScheduledMessage, error) {
 	var m domain.ScheduledMessage
 	var entitiesRaw, paramsRaw, webPageRaw []byte
+	var paidTo *int64
 	err := s.Scan(&m.ID, &m.ChatID, &m.SenderID, &m.Type, &m.Text, &entitiesRaw, &m.ReplyToID, &m.MediaID,
 		&m.SendAt, &m.CreatedAt, &m.WhenOnline, &m.RepeatPeriod, &m.ClientMsgID, &paramsRaw, &webPageRaw,
-		&m.Attempts, &m.Occurrence)
+		&m.Attempts, &m.Occurrence, &m.PaidStars, &paidTo)
 	if err != nil {
 		return m, err
+	}
+	if paidTo != nil {
+		m.PaidTo = *paidTo
 	}
 	if len(entitiesRaw) > 0 && string(entitiesRaw) != "null" {
 		_ = json.Unmarshal(entitiesRaw, &m.Entities)
@@ -70,12 +74,12 @@ func (r *ScheduledRepo) Create(ctx context.Context, m domain.ScheduledMessage) (
 		return domain.ScheduledMessage{}, false, err
 	}
 	out, err := scanScheduled(querier(ctx, r.pool).QueryRow(ctx,
-		`INSERT INTO scheduled_messages (chat_id, sender_id, type, text, entities, reply_to_id, media_id, send_at, when_online, repeat_period, client_msg_id, params)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		`INSERT INTO scheduled_messages (chat_id, sender_id, type, text, entities, reply_to_id, media_id, send_at, when_online, repeat_period, client_msg_id, params, paid_stars, paid_to)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NULLIF($14, 0))
 		 ON CONFLICT (chat_id, sender_id, client_msg_id) WHERE client_msg_id IS NOT NULL DO NOTHING
 		 RETURNING `+scheduledCols,
 		m.ChatID, m.SenderID, m.Type, m.Text, entitiesParam(m.Entities), m.ReplyToID, m.MediaID, m.SendAt, m.WhenOnline,
-		m.RepeatPeriod, m.ClientMsgID, params))
+		m.RepeatPeriod, m.ClientMsgID, params, m.PaidStars, m.PaidTo))
 	if err == nil {
 		return out, true, nil
 	}
@@ -254,7 +258,8 @@ func (r *ScheduledRepo) Release(ctx context.Context, id int64, retryAfter time.D
 // тем временем сняли или перенесли, кадра быть не должно.
 func (r *ScheduledRepo) Reschedule(ctx context.Context, id int64, from, to time.Time) (domain.ScheduledMessage, bool, error) {
 	m, err := scanScheduled(querier(ctx, r.pool).QueryRow(ctx,
-		`UPDATE scheduled_messages SET send_at=$3, claimed_until=NULL, next_attempt_at=NULL, attempts=0, occurrence=occurrence+1
+		`UPDATE scheduled_messages SET send_at=$3, claimed_until=NULL, next_attempt_at=NULL, attempts=0, occurrence=occurrence+1,
+		        paid_stars=0, paid_to=NULL
 		  WHERE id=$1 AND send_at=$2 AND NOT when_online
 		  RETURNING `+scheduledCols, id, from, to))
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -270,6 +275,13 @@ func (r *ScheduledRepo) DeleteUnclaimed(ctx context.Context, ids []int64) ([]int
 		return nil, nil
 	}
 	return r.deleteWhere(ctx, `id = ANY($1) AND `+unclaimed, ids)
+}
+
+// TakePaidByChat — удаление группы: оплаченные строки чата снимаются до
+// каскада chats → scheduled_messages, чтобы вернуть звёзды.
+func (r *ScheduledRepo) TakePaidByChat(ctx context.Context, chatID int64) ([]domain.ScheduledMessage, error) {
+	return r.query(ctx,
+		`DELETE FROM scheduled_messages WHERE chat_id=$1 AND paid_stars > 0 RETURNING `+scheduledCols, chatID)
 }
 
 // LockQueue — транзакционная блокировка очереди автора в чате: лимит 100

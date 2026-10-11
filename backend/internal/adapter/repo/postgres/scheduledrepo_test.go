@@ -125,9 +125,13 @@ func TestScheduledRepo_ClaimRescheduleUnclaimed(t *testing.T) {
 	chatID := seedPrivateChat(t, pool, a, b)
 	r := NewScheduledRepo(pool)
 	at := time.Now().Add(-time.Minute).Truncate(time.Microsecond)
-	m, _, err := r.Create(ctx, domain.ScheduledMessage{ChatID: chatID, SenderID: a, Type: "text", Text: "x", SendAt: at, RepeatPeriod: 86400})
+	m, _, err := r.Create(ctx, domain.ScheduledMessage{ChatID: chatID, SenderID: a, Type: "text", Text: "x", SendAt: at, RepeatPeriod: 86400,
+		PaidStars: 5, PaidTo: b})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if m.PaidStars != 5 || m.PaidTo != b {
+		t.Fatalf("оплата постановки (0170): %d → %d", m.PaidStars, m.PaidTo)
 	}
 	if _, ok, err := r.Claim(ctx, m.ID, at.Add(time.Second), false, time.Minute, true); err != nil || ok {
 		t.Fatalf("claim по чужому сроку: ok=%v err=%v", ok, err)
@@ -153,7 +157,7 @@ func TestScheduledRepo_ClaimRescheduleUnclaimed(t *testing.T) {
 		t.Fatal("перепостановка по чужому сроку")
 	}
 	next, ok, err := r.Reschedule(ctx, m.ID, at, at.Add(24*time.Hour))
-	if err != nil || !ok || next.Occurrence != 1 || next.Attempts != 0 || next.Text != "x" {
+	if err != nil || !ok || next.Occurrence != 1 || next.Attempts != 0 || next.Text != "x" || next.PaidStars != 0 || next.PaidTo != 0 {
 		t.Fatalf("перепостановка: %+v ok=%v err=%v", next, ok, err)
 	}
 	if err := r.Update(ctx, next, at, false); err != domain.ErrNotFound {
@@ -190,5 +194,39 @@ func TestScheduledRepo_ClaimRescheduleUnclaimed(t *testing.T) {
 	}
 	if bm, err := r.ByID(ctx, broken); err != nil || !bm.ParamsBroken {
 		t.Fatalf("битый снимок: %+v err=%v", bm, err)
+	}
+}
+
+// 0170: оплаченные строки чата снимаются для возврата; TakeUpTo не уводит в минус.
+func TestScheduledRepo_TakePaidAndStarsTakeUpTo(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+79990001700")
+	b := seedUser(t, pool, "+79990001701")
+	chatID := seedPrivateChat(t, pool, a, b)
+	r := NewScheduledRepo(pool)
+	at := time.Now().Add(time.Hour)
+	if _, _, err := r.Create(ctx, domain.ScheduledMessage{ChatID: chatID, SenderID: a, Type: "text", Text: "p", SendAt: at, PaidStars: 5, PaidTo: b}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := r.Create(ctx, domain.ScheduledMessage{ChatID: chatID, SenderID: a, Type: "text", Text: "free", SendAt: at}); err != nil {
+		t.Fatal(err)
+	}
+	taken, err := r.TakePaidByChat(ctx, chatID)
+	if err != nil || len(taken) != 1 || taken[0].PaidStars != 5 || taken[0].Text != "p" {
+		t.Fatalf("TakePaidByChat: %+v err=%v", taken, err)
+	}
+	if n, _ := r.CountByChat(ctx, chatID, a); n != 1 {
+		t.Fatalf("бесплатная строка снята: осталось %d", n)
+	}
+	st := NewStarsRepo(pool)
+	if _, err := st.AddBalance(ctx, b, 3); err != nil {
+		t.Fatal(err)
+	}
+	if bal, err := st.TakeUpTo(ctx, b, 5); err != nil || bal != 0 {
+		t.Fatalf("TakeUpTo: bal=%d err=%v, want 0", bal, err)
+	}
+	if bal, err := st.TakeUpTo(ctx, a, 5); err != nil || bal != 0 {
+		t.Fatalf("TakeUpTo без строки баланса: bal=%d err=%v", bal, err)
 	}
 }
