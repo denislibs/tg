@@ -109,7 +109,7 @@ func (r *TopicsRepo) TopicRoots(ctx context.Context, rootIDs []int64) (map[int64
 // Фрагмент выбирается ЗДЕСЬ, по значению root, а не OR-ом в SQL: план
 // подготовленного запроса (pgx кэширует statement, Postgres переходит на
 // generic plan) не умеет отбросить ветку General и терял бы индекс
-// idx_messages_thread. param остаётся в каждом фрагменте — тип параметра
+// idx_messages_thread_seq. param остаётся в каждом фрагменте — тип параметра
 // Postgres выводит из запроса, а аргумент передан всегда:
 //   - root == nil — треда нет, условие истинно;
 //   - General — страж domain.GeneralThreadRoot: корня у неё нет, её сообщения —
@@ -151,17 +151,19 @@ func (r *TopicsRepo) EnsureGeneralTopic(ctx context.Context, chatID, createdBy i
 // для General и для обычных тем: принадлежность сообщения теме у них разная,
 // и OR этих веток в одном запросе (по флагу строки внутри LATERAL) лишал бы
 // план индексов. Ветка выбирается здесь, в Go:
-//   - обычная тема — тред её корня (idx_messages_thread), корень — первым
+//   - обычная тема — тред её корня (idx_messages_thread_seq, 0164), корень — первым
 //     сообщением ленты;
 //   - General — сообщения без треда, кроме служебок создания тем (те в своих
 //     темах, tweb getMessageThreadId.ts:20-23), диапазоном по
 //     (chat_id, seq).
 //
-// Горизонт чтения General — max(своя запись темы, горизонт чата
-// chat_members.last_read_seq): до этой волны General не считалась, и записей
+// Горизонт чтения темы — max(своя запись темы, горизонт чата
+// chat_members.last_read_seq): горизонт чата значит «прочитано всё до него»,
+// темы в том числе. До этой волны General не считалась, и записей
 // topic_user_state у неё нет ни у кого — без горизонта чата после деплоя вся
-// её история стала бы непрочитанной. Горизонт чата значит «прочитано всё до
-// него», General в том числе. Так же — read_outbox_max_id General.
+// её история стала бы непрочитанной; у обычной темы, которую участник ни
+// разу не открывал, — тоже, и подсчёт шёл бы по всему треду. Так же —
+// read_outbox_max_id General.
 //
 // Упоминания и реакции темы — подмножество счётчиков чата
 // (chat_members.unread_mentions_count / unread_reactions): при нуле в чате
@@ -169,7 +171,7 @@ func (r *TopicsRepo) EnsureGeneralTopic(ctx context.Context, chatID, createdBy i
 // reactions_unread_idx (0162), а не перебором своих сообщений темы.
 func topicRowsSQL(general bool) string {
 	inTopic := `m.chat_id = t.chat_id AND m.thread_root_id = t.root_msg_id`
-	horizon := `COALESCE(st.last_read_seq, 0)`
+	horizon := `GREATEST(COALESCE(st.last_read_seq, 0), COALESCE(cm.last_read_seq, 0))`
 	outbox := `COALESCE((SELECT MAX(o.last_read_seq) FROM topic_user_state o
 	                     WHERE o.chat_id = t.chat_id AND o.root_msg_id = t.root_msg_id
 	                       AND o.user_id <> $2), 0)`
@@ -183,7 +185,6 @@ func topicRowsSQL(general bool) string {
 	if general {
 		inTopic = `m.chat_id = t.chat_id AND m.thread_root_id IS NULL
 		       AND NOT EXISTS (SELECT 1 FROM forum_topics gft WHERE gft.root_msg_id = m.id)`
-		horizon = `GREATEST(COALESCE(st.last_read_seq, 0), COALESCE(cm.last_read_seq, 0))`
 		outbox = `GREATEST(` + outbox + `,
 		           COALESCE((SELECT MAX(om.last_read_seq) FROM chat_members om
 		                      WHERE om.chat_id = t.chat_id AND om.user_id <> $2), 0))`

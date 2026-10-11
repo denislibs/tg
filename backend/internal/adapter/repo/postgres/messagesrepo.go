@@ -1243,8 +1243,8 @@ func (r *MessagesRepo) ThreadState(ctx context.Context, chatID, threadRootID, vi
 // Корни без ответов в карту не попадают (GROUP BY просто не даёт по ним
 // строки) — вызывающий отличает «ответов нет» по отсутствию ключа.
 //
-// Запрос ложится на idx_messages_thread (chat_id, thread_root_id) WHERE
-// thread_root_id IS NOT NULL из миграции 0008.
+// Запрос ложится на idx_messages_thread_seq (chat_id, thread_root_id, seq) WHERE
+// thread_root_id IS NOT NULL из миграции 0164 (заменил индекс 0008).
 func (r *MessagesRepo) ThreadReplyCounts(ctx context.Context, chatID int64, rootIDs []int64) (map[int64]int, error) {
 	out := map[int64]int{}
 	if len(rootIDs) == 0 {
