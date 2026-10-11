@@ -974,7 +974,7 @@ func (i *Interactor) publishScheduled(ctx context.Context, chatID, userID int64,
 	strict bool) ([]domain.Update, int, error) {
 	var published, rejected []int64
 	refundOf := map[int64]domain.ScheduledMessage{} // отвергнутые с оплатой постановки
-	seqOf := map[int64]int64{} // ключ отложенного → номер опубликованного
+	seqOf := map[int64]int64{}                      // ключ отложенного → номер опубликованного
 	var repeats []domain.ScheduledMessage
 	now := time.Now()
 	sent := 0
