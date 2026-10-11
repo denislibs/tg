@@ -1244,7 +1244,7 @@ func (r *MessagesRepo) ThreadState(ctx context.Context, chatID, threadRootID, vi
 // строки) — вызывающий отличает «ответов нет» по отсутствию ключа.
 //
 // Запрос ложится на idx_messages_thread_seq (chat_id, thread_root_id, seq) WHERE
-// thread_root_id IS NOT NULL из миграции 0164 (его префикс — индекс 0008).
+// thread_root_id IS NOT NULL из миграции 0164 (индекс 0008 снят в 0165).
 func (r *MessagesRepo) ThreadReplyCounts(ctx context.Context, chatID int64, rootIDs []int64) (map[int64]int, error) {
 	out := map[int64]int{}
 	if len(rootIDs) == 0 {

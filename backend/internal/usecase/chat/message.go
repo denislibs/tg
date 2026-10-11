@@ -744,7 +744,7 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 			effective = cur
 		}
 		advanced = effective > cur
-		u, e := i.msgs.CountUnread(ctx, chatID, userID, effective)
+		u, e := i.countUnread(ctx, chatID, userID, effective)
 		if e != nil {
 			return e
 		}

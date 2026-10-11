@@ -214,9 +214,9 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		// 1 (forumTopic.id). Одно число на все ручки тем.
 		pr.Patch("/chats/{peerID}/topics/{topicID}", ch.EditTopic)
 		pr.Post("/chats/{peerID}/topics/{topicID}/pin", ch.PinTopic)
-		pr.Post("/chats/{peerID}/topics/{topicID}/read", ch.ReadTopic)
 		pr.Post("/chats/{peerID}/topics/{topicID}/mute", ch.MuteTopic)
 		pr.Get("/chats/{peerID}/threads/{rootSeq}", ch.ThreadMessages)
+		pr.Post("/chats/{peerID}/threads/{rootSeq}/read", ch.ReadDiscussion) // messages.readDiscussion
 		pr.Post("/chats/{peerID}/scheduled", ch.ScheduleMessage)
 		pr.Get("/chats/{peerID}/scheduled", ch.ListScheduled)
 		pr.Patch("/chats/{peerID}/scheduled/{schedID}", ch.UpdateScheduled)

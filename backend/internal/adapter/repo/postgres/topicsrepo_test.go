@@ -446,3 +446,105 @@ func byNumber(t *testing.T, r *TopicsRepo, chat, user, number int64) domain.Topi
 	t.Fatalf("темы %d нет в списке", number)
 	return domain.TopicRow{}
 }
+
+// readDiscussion в хранилище: горизонт треда, горизонты для ✓✓ (с гостем),
+// упоминания только треда, непрочитанное форума — сумма по темам (В-8).
+func TestTopicsRepo_ReadDiscussionState(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewTopicsRepo(pool)
+	ctx := context.Background()
+	me := seedUser(t, pool, "+7940")
+	other := seedUser(t, pool, "+7941")
+	guest := seedUser(t, pool, "+7942")
+	var chat int64
+	if err := pool.QueryRow(ctx, `INSERT INTO chats (type, is_forum) VALUES ('group', true) RETURNING id`).Scan(&chat); err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range []int64{me, other} {
+		if _, err := pool.Exec(ctx, `INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1,$2,'member')`, chat, u); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := r.EnsureGeneralTopic(ctx, chat, me); err != nil {
+		t.Fatal(err)
+	}
+	insert := func(seq, sender int64, root *int64) int64 {
+		var id int64
+		if err := pool.QueryRow(ctx,
+			`INSERT INTO messages (chat_id, seq, sender_id, type, text, thread_root_id) VALUES ($1,$2,$3,'text','x',$4) RETURNING id`,
+			chat, seq, sender, root).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	_ = insert(1, me, nil)
+	rootA := insert(2, me, nil)
+	rootB := insert(3, me, nil)
+	for _, root := range []int64{rootA, rootB} {
+		if _, err := r.Create(ctx, domain.ForumTopicRecord{ChatID: chat, RootMsgID: root, Title: "T", CreatedBy: me}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a1 := insert(4, other, &rootA)
+	_ = insert(5, other, &rootA)
+	_ = insert(6, other, &rootB)
+	_ = insert(7, other, nil) // General
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO message_mentions (chat_id, message_id, seq, user_id) VALUES ($1,$2,4,$3), ($1,$4,7,$3)`,
+		chat, a1, me, insert(8, other, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE chat_members SET unread_mentions_count = 2 WHERE chat_id=$1 AND user_id=$2`, chat, me); err != nil {
+		t.Fatal(err)
+	}
+
+	// Непрочитанное форума до прочтений: всё чужое (4,5,6,7,8) — 5.
+	if n, err := r.CountForumUnread(ctx, chat, me, 0); err != nil || n != 5 {
+		t.Fatalf("CountForumUnread до = %d, %v; want 5", n, err)
+	}
+	// Прочитал тему A до 5: упоминание A снято, General — нет; форум = 3.
+	if err := r.SetTopicRead(ctx, chat, rootA, me, 5); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := r.ClearThreadMentions(ctx, chat, me, rootA, 5); err != nil || n != 1 {
+		t.Fatalf("ClearThreadMentions(A) = %d, %v; want 1", n, err)
+	}
+	var mentions int
+	if err := pool.QueryRow(ctx, `SELECT unread_mentions_count FROM chat_members WHERE chat_id=$1 AND user_id=$2`, chat, me).Scan(&mentions); err != nil || mentions != 1 {
+		t.Fatalf("«@» чата = %d, %v; want 1 (упоминание General осталось)", mentions, err)
+	}
+	if n, err := r.RecountForumUnread(ctx, chat, me); err != nil || n != 3 {
+		t.Fatalf("RecountForumUnread = %d, %v; want 3 (B:6, General:7,8)", n, err)
+	}
+	// General читается по стражу; ключ состояния 0.
+	if err := r.SetTopicRead(ctx, chat, 0, me, 8); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := r.ClearThreadMentions(ctx, chat, me, domain.GeneralThreadRoot, 8); n != 1 {
+		t.Fatalf("ClearThreadMentions(General) = %d; want 1", n)
+	}
+	if n, _ := r.RecountForumUnread(ctx, chat, me); n != 1 {
+		t.Fatalf("форум после General = %d; want 1 (B:6)", n)
+	}
+	// Горизонт треда — max(тред, чат).
+	if h, err := r.ThreadHorizon(ctx, chat, rootB, me); err != nil || h != 0 {
+		t.Fatalf("ThreadHorizon(B) = %d, %v; want 0", h, err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE chat_members SET last_read_seq = 6 WHERE chat_id=$1 AND user_id=$2`, chat, me); err != nil {
+		t.Fatal(err)
+	}
+	if h, _ := r.ThreadHorizon(ctx, chat, rootB, me); h != 6 {
+		t.Fatalf("ThreadHorizon(B) с горизонтом чата 6 = %d; want 6", h)
+	}
+	if n, _ := r.CountForumUnread(ctx, chat, me, 6); n != 0 {
+		t.Fatalf("форум при горизонте чата 6 = %d; want 0", n)
+	}
+	// Горизонты для ✓✓: участники (max(тред, чат)) и гость треда.
+	if err := r.SetTopicRead(ctx, chat, rootA, guest, 4); err != nil {
+		t.Fatal(err)
+	}
+	hs, err := r.ThreadHorizons(ctx, chat, rootA)
+	if err != nil || hs[me] != 6 || hs[other] != 0 || hs[guest] != 4 || len(hs) != 3 {
+		t.Fatalf("ThreadHorizons(A) = %v, %v; want me 6, other 0, guest 4", hs, err)
+	}
+}
