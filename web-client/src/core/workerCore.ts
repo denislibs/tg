@@ -430,6 +430,7 @@ export function createWorkerCore() {
     isForumPeer: (peerId) => isForum(peers.cachedPeer(peerId) as Chat | undefined),
     forumTopics,
     getMeId: () => me?.user.id ?? null,
+    onCommentThreadRead: (peerId, threadId, maxId, out) => dialogs.applyThreadRead(peerId, threadId, maxId, out),
   })
   // cacheViews — владелец счётчика просмотров: ответ на регистрацию просмотра
   // несёт уже новые значения, и применяет их та же точка, что и кадр

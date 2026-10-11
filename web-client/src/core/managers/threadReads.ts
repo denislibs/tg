@@ -11,15 +11,14 @@
 // `top_message`), у треда комментариев — здесь (`states`), наполняет их
 // `getDiscussionMessage` (:8843-8846) и новые сообщения треда (:10430-10437).
 //
-// Расхождения с оригиналом:
-//  1. Тред комментариев НЕ трогает диалог группы. У tweb для не-форума
-//     `foundDialog = getDialogOnly(peerId)` (:10814-10816), и прочтение треда
-//     снимает его сообщения со счётчика ГРУППЫ и присваивает ей горизонт треда
-//     (:10876-10880, :10928-10929). Наш сервер `readDiscussion` горизонт и
-//     счётчик группы не двигает (контракт БЭК-1b), и местная правка разошлась бы
-//     с ним до первого снимка списка.
-//  2. `notification_reset`/`notification_cancel` и `threadsToReplies` (счётчик
-//     непрочитанных комментариев у поста, `replies_updated`) — предметов нет.
+// Тред комментариев, как у tweb, правит и диалог ГРУППЫ: у не-форума
+// `foundDialog = getDialogOnly(peerId)` (:10814-10816) — сообщения треда
+// снимаются со счётчика группы, группа получает горизонт треда (:10876-10880,
+// :10928-10929); делает это владелец диалогов (`dialogs.applyThreadRead`).
+//
+// Расхождение с оригиналом: `notification_reset`/`notification_cancel` и
+// `threadsToReplies` (счётчик непрочитанных комментариев у поста,
+// `replies_updated`) — предметов нет.
 import type { RestClient } from '../net/restClient'
 import type { MyMessage } from '../models'
 import { getMessageThreadId } from '../models'
@@ -44,9 +43,12 @@ export interface ThreadReadsDeps {
     applyReadDiscussion(update: ReadDiscussion): void
   }
   getMeId: () => number | null
+  /** Прочтение треда комментариев на диалоге группы — `dialogs.applyThreadRead`
+   *  (до сдвига горизонта треда). Опционален: тестам без диалогов не нужен. */
+  onCommentThreadRead?: (peerId: PeerId, threadId: number, maxId: number, out: boolean) => void
 }
 
-export function newThreadReads({ rest, isForumPeer, forumTopics, getMeId }: ThreadReadsDeps) {
+export function newThreadReads({ rest, isForumPeer, forumTopics, getMeId, onCommentThreadRead }: ThreadReadsDeps) {
   const states = new Map<string, ThreadState>()
   /** `historyStorage.triedToReadMaxId` (:9165-9170, :9248-9252) */
   const tried = new Map<string, number>()
@@ -66,6 +68,8 @@ export function newThreadReads({ rest, isForumPeer, forumTopics, getMeId }: Thre
       forumTopics.applyReadDiscussion(update)
       return
     }
+    // диалог группы (:10814-10816) — до сдвига горизонта треда
+    onCommentThreadRead?.(peerId, topicId, maxId, out)
     const state = states.get(key(peerId, topicId))
     if (!state) return
     // :10925-10926 — горизонт треда присваивается

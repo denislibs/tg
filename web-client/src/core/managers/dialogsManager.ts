@@ -8,8 +8,8 @@
 // docs/superpowers/specs/2026-08-12-dialogs-ownership-and-virtual-list-design.md.
 import type { RestClient } from '../net/restClient'
 import { HttpError } from '../net/restClient'
-import { mapMessage, isDialogArchived, type Dialog, type DraftMessage, type Message, type MyMessage, type RawDialog, type RawMyMessage } from '../models'
-import { generateMessageId, isLocalMessageId } from '../history/messageId'
+import { getMessageThreadId, mapMessage, isDialogArchived, type Dialog, type DraftMessage, type Message, type MyMessage, type RawDialog, type RawMyMessage } from '../models'
+import { MESSAGE_ID_OFFSET, generateMessageId, isLocalMessageId } from '../history/messageId'
 import { SliceEnd } from '../history/slicedArray'
 import pause from '@helpers/schedulers/pause'
 import { getPeerId } from '../peers/peerId'
@@ -523,6 +523,11 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
    * форума или тред комментариев — tweb `getInboxReadMaxId(peerId, threadId)`,
    * appMessagesManager.ts:5122-5131), иначе — диалога.
    */
+  /** `getReadMaxIdIfUnread(peerId, threadId)` (:5133-5140) — см. `getReadMaxSeqIfUnread`. */
+  const readMaxIfUnread = (peerId: number, threadId?: number): number => {
+    const d = readSource(peerId, threadId)
+    return d && d.unread_count > 0 ? d.read_inbox_max_id : 0
+  }
   const readSource = (peerId: number, threadId?: number) => {
     const thread = threadId ? getThreadReadState?.(peerId, threadId) : undefined
     if (!thread) return findDialog(peerId)
@@ -1620,6 +1625,49 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
       const cur = findDialog(peerId)
       if (!cur || count <= 0 || !cur.unread_mentions_count) return
       patchDialog(peerId, { unread_mentions_count: Math.max(0, cur.unread_mentions_count - count) })
+    },
+
+    /**
+     * Прочтение ТРЕДА КОММЕНТАРИЕВ на диалоге группы — ветка не-форума
+     * `onUpdateReadHistory` (appMessagesManager.ts:10795-10990): у обычного
+     * треда `foundDialog` — диалог группы (:10814-10816). Входящие сообщения
+     * треда выше прежнего горизонта (`getReadMaxIdIfUnread(peerId, threadId)`,
+     * :10840) и не выше `maxId` снимаются со счётчика группы (:10848-10886),
+     * группа получает горизонт треда (:10925-10929), счётчик — по правилу
+     * :10931-10947; ничего не нашли, а непрочитанное осталось — перечитать
+     * строку (:10956-10962). Сервер (БЭК-1b) делает то же.
+     *
+     * Зовёт `threadReads` ДО того, как сдвинет горизонт самого треда: «было ли
+     * непрочитанным» решает прежний горизонт.
+     */
+    applyThreadRead(peerId: number, threadId: number, maxId: number, out: boolean): void {
+      const cur = findDialog(peerId)
+      if (!cur) return
+      if (out) {
+        if (cur.read_outbox_max_id !== maxId) patchDialog(peerId, { read_outbox_max_id: maxId })
+        return
+      }
+      const readMaxId = readMaxIfUnread(peerId, threadId)
+      let unreadCount = cur.unread_count
+      let mentionsCount = cur.unread_mentions_count
+      let newUnreadCount = 0
+      let newUnreadMentionsCount = 0
+      let foundAffected = false
+      // :10845-10886 — сверху вниз до первого прочитанного; номера плотные
+      for (let mid = maxId; mid > Math.max(readMaxId, MESSAGE_ID_OFFSET); --mid) {
+        const message = messages?.getMessageByPeer(peerId, mid)
+        if (!message || message.pFlags.out) continue
+        if (getMessageThreadId(message, { isForum: false }) !== threadId) continue
+        foundAffected = true
+        newUnreadCount = --unreadCount
+        if (isMentionUnread(message)) newUnreadMentionsCount = --mentionsCount
+      }
+      // :10931-10947 — счётчики уже уменьшены циклом (как `--foundDialog.unread_count`)
+      if (newUnreadCount < 0 || maxId >= cur.top_message || !readMaxId) unreadCount = 0
+      else if (newUnreadCount && cur.top_message > maxId) unreadCount = newUnreadCount
+      if (newUnreadMentionsCount < 0 || !unreadCount) mentionsCount = 0
+      patchDialog(peerId, { unread_count: unreadCount, unread_mentions_count: mentionsCount, read_inbox_max_id: maxId })
+      if (!foundAffected && unreadCount) reloadConversation(peerId)
     },
 
     /** `read` — моё прочтение гасит unread/горизонт, чужое двигает peerReadSeq (✓✓). */

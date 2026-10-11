@@ -1833,3 +1833,53 @@ describe('dialogsManager: dialog.pts канала', () => {
     expect(seeded).toEqual([[-42, 9]])
   })
 })
+
+// tweb onUpdateReadHistory, ветка обычного треда (:10814-10816, :10845-10886,
+// :10925-10947): прочтение треда комментариев снимает его сообщения со счётчика
+// ГРУППЫ и даёт группе горизонт треда
+describe('dialogsManager.applyThreadRead', () => {
+  const G = -80
+  const id = (n: number) => generateMessageId(n)
+  async function setup(over: { unread: number; topMessage: number; readInboxMaxId: number }) {
+    const messages = fakeMessages()
+    const ops: DialogOp[] = []
+    const thread = { read_inbox_max_id: id(10), unread_count: 2, top_message: id(13), merged: true as const }
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: (o) => ops.push(...o),
+      loadCache: async () => [makeDialog({ peerId: G, topMessage: id(over.topMessage), readInboxMaxId: id(over.readInboxMaxId), unread: over.unread })],
+      loadState: async () => ({ pinnedOrders: {} }),
+      messages: messages as never,
+      getThreadReadState: () => thread,
+    })
+    await mgr.fillMirror()
+    // тред 7: сообщения 11, 12 чужие, 13 своё; 14 — вне треда
+    await messages.saveApiMessages([
+      makeRawMessage({ id: 11, peerId: G, fromId: 2, replyToMsgId: 7 }),
+      makeRawMessage({ id: 12, peerId: G, fromId: 2, replyToMsgId: 7 }),
+      makeRawMessage({ id: 13, peerId: G, fromId: 1, out: true, replyToMsgId: 7 }),
+      makeRawMessage({ id: 14, peerId: G, fromId: 2 }),
+    ] as never)
+    return { mgr, ops }
+  }
+
+  it('непрочитанные сообщения треда уходят со счётчика группы, группа получает горизонт треда', async () => {
+    const { mgr } = await setup({ unread: 5, topMessage: 20, readInboxMaxId: 5 })
+    mgr.applyThreadRead(G, id(7), id(12), false)
+    expect(mgr.getDialogReadState(G)).toEqual({ readInboxMaxSeq: id(12), unreadCount: 3 })
+  })
+
+  it('прочитано до последнего сообщения группы — счётчик в ноль (:10939-10942)', async () => {
+    const { mgr } = await setup({ unread: 5, topMessage: 13, readInboxMaxId: 5 })
+    mgr.applyThreadRead(G, id(7), id(13), false)
+    expect(mgr.getDialogReadState(G)).toEqual({ readInboxMaxSeq: id(13), unreadCount: 0 })
+  })
+
+  it('outbox — горизонт исходящих группы', async () => {
+    const { mgr, ops } = await setup({ unread: 5, topMessage: 20, readInboxMaxId: 5 })
+    ops.length = 0
+    mgr.applyThreadRead(G, id(7), id(12), true)
+    expect(ops).toContainEqual(expect.objectContaining({ op: 'patch', peerId: G, fields: { read_outbox_max_id: id(12) } }))
+  })
+})
+

@@ -149,3 +149,24 @@ describe('threadReads: кадры прочтения', () => {
   })
 })
 
+// tweb :10814-10816 — у обычного треда прочтение правит и диалог группы (через владельца диалогов)
+describe('threadReads: диалог группы', () => {
+  it('прочтение треда комментариев зовёт `onCommentThreadRead` ДО сдвига горизонта треда; у темы — нет', () => {
+    const seen: unknown[] = []
+    const post = vi.fn(async () => true)
+    let reads!: ReturnType<typeof newThreadReads>
+    reads = newThreadReads({
+      rest: { post } as never,
+      isForumPeer: (p) => p === FORUM,
+      forumTopics: { getForumTopic: () => undefined, applyReadDiscussion: vi.fn() },
+      getMeId: () => 1,
+      onCommentThreadRead: (...args) => { seen.push([...args, reads.getReadState(GROUP, mid(7))?.read_inbox_max_id]) },
+    })
+    reads.saveDiscussion(GROUP, mid(7), { maxId: mid(30), readMaxId: mid(25), readOutboxMaxId: 0, unreadCount: 5 })
+    reads.readHistory(GROUP, mid(7), mid(30))
+    reads.applyReadDiscussion({ peerId: GROUP, topicId: mid(7), maxId: mid(29), out: true })
+    reads.readHistory(FORUM, mid(10), mid(13))
+    expect(seen).toEqual([[GROUP, mid(7), mid(30), false, mid(25)], [GROUP, mid(7), mid(29), true, mid(30)]])
+  })
+})
+
