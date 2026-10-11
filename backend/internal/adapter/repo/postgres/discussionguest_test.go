@@ -165,3 +165,68 @@ func TestShouldNotify_DiscussionGuest(t *testing.T) {
 		t.Fatal("пуш о несуществующем чате")
 	}
 }
+
+// §9: состояние треда комментариев — по горизонту ТРЕДА. ThreadReadOutbox —
+// MAX горизонтов остальных (участники: max(чат, тред); гость треда зеркала —
+// запись треда; забаненный — нет); ThreadReadStates — последний видимый
+// номер треда и горизонт зрителя пачкой.
+func TestThreadReadOutboxAndStates(t *testing.T) {
+	s, _, _, msgs, _ := newDiscussionSeed(t)
+	pool := msgs.pool
+	topics := NewTopicsRepo(pool)
+	ctx := context.Background()
+	ins := func(sender int64, root *int64, mirror bool) domain.Message {
+		seq, _ := msgs.NextSeq(ctx, s.disc)
+		m, err := msgs.Insert(ctx, domain.Message{ChatID: s.disc, Seq: seq, SenderID: sender, Type: "text", Text: "x", ThreadRootID: root, IsDiscussionMirror: mirror})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	mirror := ins(s.owner, nil, true)
+	c1 := ins(s.guest, &mirror.ID, false)
+	c2 := ins(s.member, &mirror.ID, false)
+	other := ins(s.owner, nil, true) // тред без ответов
+
+	// Никто не читал: ✓✓ нет, у гостя горизонта нет.
+	if h, err := topics.ThreadReadOutbox(ctx, s.disc, mirror.ID, s.guest); err != nil || h != 0 {
+		t.Fatalf("ThreadReadOutbox до прочтений = %d, %v; want 0", h, err)
+	}
+	st, err := topics.ThreadReadStates(ctx, s.disc, s.guest, []int64{mirror.ID, other.ID})
+	if err != nil || st[mirror.ID] != (domain.ThreadReadState{MaxID: c2.Seq}) {
+		t.Fatalf("ThreadReadStates(гость) = %v, %v; want max %d без горизонта", st, err, c2.Seq)
+	}
+	if _, ok := st[other.ID]; ok {
+		t.Fatalf("тред без ответов и горизонта в карте: %v", st)
+	}
+	// Гость прочёл до c1 — его горизонт и ✓✓ для участника.
+	if err := topics.SetTopicRead(ctx, s.disc, mirror.ID, s.guest, c1.Seq); err != nil {
+		t.Fatal(err)
+	}
+	if h, _ := topics.ThreadReadOutbox(ctx, s.disc, mirror.ID, s.member); h != c1.Seq {
+		t.Fatalf("✓✓ участнику = %d; want горизонт гостя %d", h, c1.Seq)
+	}
+	if st, _ = topics.ThreadReadStates(ctx, s.disc, s.guest, []int64{mirror.ID}); st[mirror.ID].ReadMaxID != c1.Seq {
+		t.Fatalf("горизонт гостя = %v; want %d", st, c1.Seq)
+	}
+	// Горизонт группы участника — его горизонт треда и ✓✓ для гостя.
+	if _, err := pool.Exec(ctx, `UPDATE chat_members SET last_read_seq=$3 WHERE chat_id=$1 AND user_id=$2`, s.disc, s.member, c2.Seq); err != nil {
+		t.Fatal(err)
+	}
+	if h, _ := topics.ThreadReadOutbox(ctx, s.disc, mirror.ID, s.guest); h != c2.Seq {
+		t.Fatalf("✓✓ гостю = %d; want горизонт группы участника %d", h, c2.Seq)
+	}
+	if st, _ = topics.ThreadReadStates(ctx, s.disc, s.member, []int64{mirror.ID}); st[mirror.ID] != (domain.ThreadReadState{MaxID: c2.Seq, ReadMaxID: c2.Seq}) {
+		t.Fatalf("состояние участника = %v; want max и горизонт %d", st, c2.Seq)
+	}
+	// Забаненный гость в ✓✓ не считается.
+	if _, err := pool.Exec(ctx, `UPDATE chat_members SET last_read_seq=0 WHERE chat_id=$1`, s.disc); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO chat_bans (chat_id, user_id) VALUES ($1, $2)`, s.disc, s.guest); err != nil {
+		t.Fatal(err)
+	}
+	if h, _ := topics.ThreadReadOutbox(ctx, s.disc, mirror.ID, s.member); h != 0 {
+		t.Fatalf("✓✓ от забаненного гостя = %d; want 0", h)
+	}
+}

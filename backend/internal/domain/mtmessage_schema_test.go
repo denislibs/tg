@@ -42,7 +42,7 @@ import (
 // сознательно не производим. Каждая строка — утверждение, а не забывчивость.
 //
 // Необязательные пропуски (message.saved_peer_id, via_bot_id, post_author,
-// pFlags.out/silent/noforwards/invert_media, messageReplies.max_id/read_max_id,
+// pFlags.out/silent/noforwards/invert_media,
 // messageActionTopicCreate.icon_emoji_id, factCheck.need_check и прочие) сюда
 // попасть не могут по устройству сверщика — он спрашивает только про
 // ОБЯЗАТЕЛЬНЫЕ параметры. Они названы в шапке mtmessage.go, и это не

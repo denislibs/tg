@@ -376,6 +376,66 @@ func (r *TopicsRepo) ThreadHorizons(ctx context.Context, chatID, rootMsgID int64
 	return out, rows.Err()
 }
 
+// ThreadReadOutbox — горизонт ✓✓ треда rootMsgID для зрителя viewerID: MAX
+// горизонтов треда всех остальных читающих (read_outbox_max_id
+// messages.discussionMessage, tweb appMessagesManager.ts:8852). Тот же круг,
+// что ThreadHorizons, но одним MAX в SQL — без строки на каждого участника
+// группы обсуждения: у участника горизонт треда = max(запись треда, горизонт
+// чата), поэтому MAX по ним — это MAX горизонтов чата и записей треда.
+func (r *TopicsRepo) ThreadReadOutbox(ctx context.Context, chatID, rootMsgID, viewerID int64) (int64, error) {
+	var h int64
+	err := querier(ctx, r.pool).QueryRow(ctx, `
+		SELECT GREATEST(
+		  COALESCE((SELECT MAX(cm.last_read_seq) FROM chat_members cm
+		             WHERE cm.chat_id = $1 AND cm.user_id <> $3), 0),
+		  COALESCE((SELECT MAX(st.last_read_seq) FROM topic_user_state st
+		             WHERE st.chat_id = $1 AND st.root_msg_id = $2 AND st.user_id <> $3
+		               AND (EXISTS (SELECT 1 FROM chat_members cm2
+		                             WHERE cm2.chat_id = $1 AND cm2.user_id = st.user_id)
+		                    -- гость треда комментариев (см. ThreadHorizons)
+		                    OR (EXISTS (SELECT 1 FROM messages rm WHERE rm.id = $2 AND rm.is_discussion_mirror)
+		                        AND NOT EXISTS (SELECT 1 FROM chat_bans b
+		                                         WHERE b.chat_id = $1 AND b.user_id = st.user_id)))), 0))`,
+		chatID, rootMsgID, viewerID).Scan(&h)
+	return h, err
+}
+
+// ThreadReadStates — состояние тредов roots чата chatID глазами viewerID
+// одним запросом (messageReplies.max_id/read_max_id постов страницы): номер
+// последнего видимого ему сообщения треда и его горизонт треда (max(запись
+// треда, горизонт чата), как ThreadHorizon). Корни без ответов и без
+// горизонта в карту не попадают.
+func (r *TopicsRepo) ThreadReadStates(ctx context.Context, chatID, viewerID int64, roots []int64) (map[int64]domain.ThreadReadState, error) {
+	out := map[int64]domain.ThreadReadState{}
+	if len(roots) == 0 {
+		return out, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx, `
+		SELECT x.root,
+		       COALESCE((SELECT MAX(m.seq) FROM messages m
+		                  WHERE m.chat_id = $1 AND m.thread_root_id = x.root AND `+messageVisibleTo("m", "$2")+`), 0),
+		       GREATEST(COALESCE(st.last_read_seq, 0), COALESCE(cm.last_read_seq, 0))
+		  FROM unnest($3::bigint[]) AS x(root)
+		  LEFT JOIN topic_user_state st ON st.chat_id = $1 AND st.root_msg_id = x.root AND st.user_id = $2
+		  LEFT JOIN chat_members cm ON cm.chat_id = $1 AND cm.user_id = $2`,
+		chatID, viewerID, roots)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var root int64
+		var st domain.ThreadReadState
+		if err := rows.Scan(&root, &st.MaxID, &st.ReadMaxID); err != nil {
+			return nil, err
+		}
+		if st.MaxID > 0 || st.ReadMaxID > 0 {
+			out[root] = st
+		}
+	}
+	return out, rows.Err()
+}
+
 // ClearThreadMentions снимает непрочитанные упоминания userID в треде root
 // (страж General — domain.GeneralThreadRoot) с seq <= upToSeq и пересчитывает
 // счётчик «@» чата (у не участника строки chat_members нет — пересчёт пуст).

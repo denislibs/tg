@@ -874,6 +874,12 @@ type TopicRepo interface {
 	ThreadHorizon(ctx context.Context, chatID, rootMsgID, userID int64) (int64, error)
 	// ThreadHorizons — горизонты треда у всех читающих (участники и гости треда).
 	ThreadHorizons(ctx context.Context, chatID, rootMsgID int64) (map[int64]int64, error)
+	// ThreadReadOutbox — горизонт ✓✓ треда для зрителя: MAX горизонтов треда
+	// остальных читающих (read_outbox_max_id discussionMessage).
+	ThreadReadOutbox(ctx context.Context, chatID, rootMsgID, viewerID int64) (int64, error)
+	// ThreadReadStates — последний видимый номер и горизонт зрителя по тредам
+	// roots одним запросом (messageReplies.max_id/read_max_id).
+	ThreadReadStates(ctx context.Context, chatID, viewerID int64, roots []int64) (map[int64]domain.ThreadReadState, error)
 	// ClearThreadMentions снимает упоминания треда root (General — страж) до
 	// upToSeq и пересчитывает «@» чата.
 	ClearThreadMentions(ctx context.Context, chatID, userID, root, upToSeq int64) (int, error)

@@ -509,3 +509,37 @@ func TestDeleteAlbumPost_RootMirrorLivesWithAlbum(t *testing.T) {
 		}
 	}
 }
+
+// §9 / messageReplies: тред комментариев поста несёт max_id и read_max_id
+// зрителя по горизонту ТРЕДА (readDiscussion), в том числе у не участника —
+// по ним tweb ставит синюю точку «есть новые» (replies.ts:110-118). Нет
+// горизонта — read_max_id не едет.
+func TestCommentCounts_ThreadReadState(t *testing.T) {
+	f := newDiscussionFixture(t)
+	ctx := context.Background()
+	ft := newFakeTopicRepo()
+	f.i.SetTopics(ft)
+	c, err := f.i.PostComment(ctx, f.ch, f.post.ID, 9, "c1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ft.threadMax = map[[2]int64]int64{{f.disc, f.mirror.ID}: c.Seq}
+	got, _, err := f.i.CommentCounts(ctx, 8, f.ch, []int64{f.post.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := got[f.post.ID]; r.MaxID != c.Seq || r.ReadMaxID != 0 {
+		t.Fatalf("не читавшему: max_id=%d read_max_id=%d, want %d и нет", r.MaxID, r.ReadMaxID, c.Seq)
+	}
+	ft.reads = map[[3]int64]int64{{f.disc, f.mirror.ID, 8}: c.Seq}
+	got, _, _ = f.i.CommentCounts(ctx, 8, f.ch, []int64{f.post.ID})
+	if r := got[f.post.ID]; r.MaxID != c.Seq || r.ReadMaxID != c.Seq {
+		t.Fatalf("прочитавшему: max_id=%d read_max_id=%d, want %d и %d", r.MaxID, r.ReadMaxID, c.Seq, c.Seq)
+	}
+	b, _ := json.Marshal(got[f.post.ID])
+	var wire map[string]any
+	_ = json.Unmarshal(b, &wire)
+	if wire["max_id"] == nil || wire["read_max_id"] == nil {
+		t.Fatalf("провод messageReplies = %s, want max_id и read_max_id", b)
+	}
+}
