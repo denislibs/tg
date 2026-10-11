@@ -15,7 +15,7 @@ function req<T>(r: IDBRequest<T>): Promise<T> {
 }
 
 describe('persist v6', () => {
-  it('апгрейд с v5 пересоздаёт сообщения и диалоги, карточки остаются', async () => {
+  it('апгрейд с v5 пересоздаёт сообщения и диалоги, снимает allDialogsLoaded/hiddenPinnedMessages, карточки и папки остаются', async () => {
     const open5 = indexedDB.open('msgr-store', 5)
     open5.onupgradeneeded = () => {
       const db = open5.result
@@ -27,18 +27,27 @@ describe('persist v6', () => {
       db.createObjectStore('messages', { keyPath: 'pk' }).createIndex('byPeer', 'peerId')
     }
     const db5 = await req(open5)
-    const tx = db5.transaction(['dialogs', 'messages', 'users'], 'readwrite')
+    const tx = db5.transaction(['dialogs', 'messages', 'users', 'state'], 'readwrite')
     const oldMid = 0xFFFFFFFF + 7
     tx.objectStore('dialogs').put({ peerId: 5, top_message: oldMid })
     tx.objectStore('messages').put({ pk: `5:${oldMid}`, peerId: 5, id: oldMid })
     tx.objectStore('users').put({ _: 'user', id: 9 })
+    // Признак «список загружен целиком» при стёртом сторе диалогов — пустой
+    // список навсегда (ревью Б1); номера плашек закрепа — прошлого пространства.
+    tx.objectStore('state').put({ 0: true }, 'allDialogsLoaded')
+    tx.objectStore('state').put({ [`5_${oldMid}`]: oldMid }, 'hiddenPinnedMessages')
+    tx.objectStore('state').put([{ id: 2 }], 'folders')
     await new Promise((resolve) => { tx.oncomplete = resolve })
     db5.close()
 
-    const { loadDialogs, loadMessages, loadUsers, DB_VERSION } = await import('./persist')
+    const { loadDialogs, loadMessages, loadUsers, loadStateAll, DB_VERSION } = await import('./persist')
     expect(DB_VERSION).toBe(6)
     expect(await loadDialogs()).toEqual([])
     expect(await loadMessages(5)).toEqual([])
     expect((await loadUsers()).map((u) => u.id)).toEqual([9])
+    const state = await loadStateAll()
+    expect(state.allDialogsLoaded).toBeUndefined()
+    expect(state.hiddenPinnedMessages).toBeUndefined()
+    expect(state.folders).toEqual([{ id: 2 }])
   })
 })
