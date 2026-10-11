@@ -959,6 +959,14 @@ type ScheduledRepo interface {
 	Update(ctx context.Context, m domain.ScheduledMessage, oldAt time.Time, oldWhenOnline bool) error
 	// SetWebPage пишет превью ссылки отложенного (P1); nil — снять.
 	SetWebPage(ctx context.Context, id int64, wp *domain.WebPagePreview) error
+	// SetWebPageIfSame — догоняющее превью отложенного (P1): пишет wp, только
+	// если строка стоит вне аренды и всё ещё с тем текстом, сущностями и
+	// решением о превью (params.web_page), по которым карточку собирали.
+	// ok=false — строку правили, публикуют или сняли: карточка устарела.
+	SetWebPageIfSame(ctx context.Context, id int64, wp *domain.WebPagePreview, text string, entities domain.MessageEntities, choice *domain.WebPageInput) (bool, error)
+	// SetWebPageChoice переписывает в снимке решение о превью (params.web_page;
+	// nil — убрать) — правка отложенного с no_webpage/invert_media/media.
+	SetWebPageChoice(ctx context.Context, id int64, choice *domain.WebPageInput) error
 }
 
 // ScheduledWait — ожидание «когда в сети»: чат, автор и собеседник лички.

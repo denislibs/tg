@@ -9,6 +9,7 @@ import (
 	_ "image/png"  // размеры og:image (largePreviewPhoto)
 	neturl "net/url"
 	"path"
+	"reflect"
 	"regexp"
 	"strings"
 	"time"
@@ -304,6 +305,107 @@ func (i *Interactor) writeChannelWebPreview(ctx context.Context, msg domain.Mess
 	}
 	i.publishChannelUpdate(ctx, post.ChatID, "edit_message", body, pts, post.SenderID)
 	i.syncMirrorContent(ctx, post, false)
+}
+
+// attachScheduledWebPreview — превью ОТЛОЖЕННОГО (спецификация Ф-5 п. 4.2.4):
+// та же сборка, что у сообщения (buildWebPreview), запись в строку очереди и
+// кадр updateNewScheduledMessage автору — правка отложенного тем же id (tweb
+// onUpdateNewScheduledMessage → handleEditedMessage, appMessagesManager.ts
+// :11773-11794; у tweb отложенное с ожидающим превью — свой ключ,
+// appWebPagesManager.ts:202-204). При публикации готовая карточка уходит в
+// сообщение без повторной сборки (publishScheduledRow → in.webPage); не
+// успела — сообщение строит её само (startWebPreview).
+//
+// Запись условная (SetWebPageIfSame): правка текста или решения о превью,
+// публикация и снятие за время сборки делают карточку ненужной — тогда ни
+// записи, ни кадра. Секретный чат отложить нельзя (enqueueScheduled), копия
+// пересылки несёт карточку источника.
+func (i *Interactor) attachScheduledWebPreview(row domain.ScheduledMessage) {
+	defer saferun.Recover("chat.attachScheduledWebPreview")
+	if i.preview == nil || i.scheduled == nil || row.Type != "text" || row.WebPage != nil || row.Params.Fwd != nil {
+		return
+	}
+	var choice domain.WebPageInput
+	if row.Params.WebPage != nil {
+		choice = *row.Params.WebPage
+	}
+	u := previewURL(choice, row.Text, row.Entities)
+	if u == "" {
+		return
+	}
+	wp := i.buildWebPreview(u, row.SenderID)
+	if wp == nil {
+		return
+	}
+	choice.ApplySize(wp)
+	withBudget(writeTimeout, func(ctx context.Context) {
+		_ = i.writeScheduled(ctx, row.SenderID, func(ctx context.Context) ([]scheduledFrame, error) {
+			ok, err := i.scheduled.SetWebPageIfSame(ctx, row.ID, wp, row.Text, row.Entities, row.Params.WebPage)
+			if err != nil || !ok {
+				return nil, err
+			}
+			// Свежая строка: срок за время сборки могли перенести.
+			cur, err := i.scheduled.ByID(ctx, row.ID)
+			if err != nil {
+				return nil, err
+			}
+			frames, _, err := i.scheduledNewFrames(ctx, []domain.ScheduledMessage{cur})
+			return frames, err
+		})
+	})
+}
+
+// scheduledWebPageEdit — что правка отложенного делает с превью.
+type scheduledWebPageEdit struct {
+	choice        *domain.WebPageInput // решение после правки (снимок)
+	choiceChanged bool                 // решение отличается от снимка
+	next          *domain.WebPagePreview
+	rebuild       bool // после коммита собрать карточку заново
+}
+
+// scheduledEditWebPage — превью при правке отложенного, по тем же правилам,
+// что у сообщения (updateTextWithWebPage/keptWebPage): ссылка та же —
+// карточка остаётся (выбор размера — из media), ссылки нет или no_webpage —
+// карточка снята, ссылка другая — снята и собирается заново.
+func (i *Interactor) scheduledEditWebPage(m domain.ScheduledMessage, in EditScheduledInput, entities domain.MessageEntities, textChanged bool) scheduledWebPageEdit {
+	e := scheduledWebPageEdit{choice: m.Params.WebPage, next: m.WebPage}
+	// «Изменить время» у tweb — editMessage без полей превью и с прежним
+	// текстом (contextMenu.ts:979-983): решение снимка он не трогает.
+	if in.WebPage != nil && (textChanged || *in.WebPage != (domain.WebPageInput{})) {
+		e.choice = webPageInputPtr(*in.WebPage)
+		e.choiceChanged = !reflect.DeepEqual(e.choice, m.Params.WebPage)
+	}
+	if m.Type != "text" || m.Params.Fwd != nil || (!textChanged && !e.choiceChanged) {
+		return e
+	}
+	var choice domain.WebPageInput
+	if e.choice != nil {
+		choice = *e.choice
+	}
+	url := previewURL(choice, in.Text, entities)
+	if m.WebPage != nil {
+		e.next = keptWebPage(m.WebPage, url, choice)
+	}
+	e.rebuild = e.next == nil && url != "" && i.preview != nil
+	return e
+}
+
+// applyScheduledEditWebPage — запись решения о превью и карточки правки в
+// транзакции EditScheduled; row получает их для кадра правки.
+func (i *Interactor) applyScheduledEditWebPage(ctx context.Context, row *domain.ScheduledMessage, e scheduledWebPageEdit) error {
+	if e.choiceChanged {
+		if err := i.scheduled.SetWebPageChoice(ctx, row.ID, e.choice); err != nil {
+			return err
+		}
+		row.Params.WebPage = e.choice
+	}
+	if e.next != row.WebPage {
+		if err := i.scheduled.SetWebPage(ctx, row.ID, e.next); err != nil {
+			return err
+		}
+		row.WebPage = e.next
+	}
+	return nil
 }
 
 // GetWebPage — карточка ссылки для плашки над полем ввода, до отправки

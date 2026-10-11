@@ -1677,6 +1677,7 @@ func (h *ChatHandler) editScheduled(w http.ResponseWriter, r *http.Request, chat
 	updates, err := h.svc.EditScheduled(r.Context(), usecasechat.EditScheduledInput{
 		ChatID: chatID, ID: id, UserID: h.meID(r), Text: body.Text, Entities: body.Entities,
 		ScheduleDate: body.ScheduleDate, ScheduleRepeatPeriod: body.ScheduleRepeatPeriod,
+		WebPage: &body.WebPageInput,
 	})
 	switch {
 	case errors.Is(err, domain.ErrMessageNotModified):

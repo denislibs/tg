@@ -311,6 +311,59 @@ func (r *ScheduledRepo) SetWebPage(ctx context.Context, id int64, wp *domain.Web
 	return err
 }
 
+// SetWebPageIfSame — см. порт: условие — текст, сущности и решение о превью,
+// по которым собрана карточка, и строка вне аренды (иначе кадр
+// updateNewScheduledMessage лёг бы после её публикации и вернул бы клиенту
+// уже отправленное отложенное).
+func (r *ScheduledRepo) SetWebPageIfSame(ctx context.Context, id int64, wp *domain.WebPagePreview, text string, entities domain.MessageEntities, choice *domain.WebPageInput) (bool, error) {
+	param, photoID, err := webPageParams(wp)
+	if err != nil {
+		return false, err
+	}
+	choiceParam, err := webPageChoiceParam(choice)
+	if err != nil {
+		return false, err
+	}
+	tag, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE scheduled_messages SET web_page=$2, web_page_media_id=$3
+		  WHERE id=$1 AND text=$4
+		    AND coalesce(nullif(entities, 'null'::jsonb), '[]'::jsonb) = coalesce($5::jsonb, '[]'::jsonb)
+		    AND params->'web_page' IS NOT DISTINCT FROM $6::jsonb AND `+unclaimed,
+		id, param, photoID, text, entitiesParam(entities), choiceParam)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
+}
+
+// SetWebPageChoice — см. порт. Правит один ключ jsonb, не переписывая снимок
+// целиком: нечитаемый снимок (ParamsBroken) так и остаётся нечитаемым.
+func (r *ScheduledRepo) SetWebPageChoice(ctx context.Context, id int64, choice *domain.WebPageInput) error {
+	choiceParam, err := webPageChoiceParam(choice)
+	if err != nil {
+		return err
+	}
+	_, err = querier(ctx, r.pool).Exec(ctx,
+		`UPDATE scheduled_messages
+		    SET params = CASE WHEN $2::jsonb IS NULL THEN params - 'web_page'
+		                      ELSE jsonb_set(params, '{web_page}', $2::jsonb) END
+		  WHERE id=$1`, id, choiceParam)
+	return err
+}
+
+// webPageChoiceParam — решение о превью jsonb-строкой той же формы, что в
+// снимке (ScheduledParams.WebPage); nil → NULL.
+func webPageChoiceParam(choice *domain.WebPageInput) (any, error) {
+	if choice == nil {
+		return nil, nil
+	}
+	b, err := json.Marshal(choice)
+	if err != nil {
+		return nil, err
+	}
+	return string(b), nil
+}
+
 func (r *ScheduledRepo) query(ctx context.Context, sql string, args ...any) ([]domain.ScheduledMessage, error) {
 	rows, err := querier(ctx, r.pool).Query(ctx, sql, args...)
 	if err != nil {

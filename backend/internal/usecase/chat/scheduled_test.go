@@ -294,6 +294,31 @@ func (f *fakeScheduled) SetWebPage(_ context.Context, id int64, wp *domain.WebPa
 	return nil
 }
 
+func (f *fakeScheduled) SetWebPageIfSame(_ context.Context, id int64, wp *domain.WebPagePreview, text string, entities domain.MessageEntities, choice *domain.WebPageInput) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cur, ok := f.rows[id]
+	if !ok || f.claimed(id) || cur.Text != text || !entitiesEqual(cur.Entities, entities) ||
+		!reflect.DeepEqual(cur.Params.WebPage, choice) {
+		return false, nil
+	}
+	cur.WebPage = wp
+	f.rows[id] = cur
+	return true, nil
+}
+
+func (f *fakeScheduled) SetWebPageChoice(_ context.Context, id int64, choice *domain.WebPageInput) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cur, ok := f.rows[id]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	cur.Params.WebPage = choice
+	f.rows[id] = cur
+	return nil
+}
+
 func (f *fakeScheduled) count() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()

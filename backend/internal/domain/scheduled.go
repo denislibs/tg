@@ -152,6 +152,7 @@ func (m ScheduledMessage) Message() Message {
 		Effect: p.Effect, SendAsChatID: p.SendAsChatID,
 		MediaSpoiler: p.MediaSpoiler && m.MediaID != nil,
 		WebPage:      m.WebPage,
+		InvertMedia:  p.WebPage != nil && p.WebPage.InvertMedia,
 	}
 	if p.GroupedID != 0 && m.MediaID != nil {
 		g := p.GroupedID
