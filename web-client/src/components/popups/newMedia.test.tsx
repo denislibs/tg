@@ -35,17 +35,18 @@ const doc = (name: string) => new File(['x'], name, { type: 'application/pdf' })
 
 function makeChat(params: MessageSendingParams, type = ChatType.Chat) {
   const sendFile = vi.fn(async() => {})
+  const sendGrouped = vi.fn(async() => {})
   const onHelperCancel = vi.fn()
   const getMessageSendingParams = vi.fn(() => params)
   const scheduleSending = vi.fn((_callback: () => void) => {})
   const resetSendingFlags = vi.fn()
   const chat = {
     peerId: 5 as PeerId,
-    managers: { messages: { sendFile } } as never,
+    managers: { messages: { sendFile, sendGrouped } } as never,
     type,
     input: { getMessageSendingParams, onHelperCancel, scheduleSending, resetSendingFlags },
   }
-  return { chat, sendFile, onHelperCancel, getMessageSendingParams, scheduleSending, resetSendingFlags }
+  return { chat, sendFile, sendGrouped, onHelperCancel, getMessageSendingParams, scheduleSending, resetSendingFlags }
 }
 
 function mountTopPopup() {
@@ -77,7 +78,7 @@ describe('popups/newMedia — мост попапа медиа', () => {
   })
 
   it('несколько фото — один пакет параметров, общий groupedId, подпись на первом, плашка ответа гаснет', async() => {
-    const { chat, sendFile, onHelperCancel, getMessageSendingParams } = makeChat({ replyToMsgId: 42 })
+    const { chat, sendFile, sendGrouped, onHelperCancel, getMessageSendingParams } = makeChat({ replyToMsgId: 42 })
     showNewMediaPopup(chat, [photo('1.png'), photo('2.png')], 'media')
     mountTopPopup()
 
@@ -85,8 +86,10 @@ describe('popups/newMedia — мост попапа медиа', () => {
     await flush()
 
     expect(getMessageSendingParams).toHaveBeenCalledTimes(1)
-    expect(sendFile).toHaveBeenCalledTimes(2)
-    const [a, b] = sendFile.mock.calls.map((c) => (c as unknown as [Record<string, unknown>])[0])
+    // tweb `sendGrouped` (appMessagesManager.ts:3593): альбом — ОДИН вызов со всеми файлами
+    expect(sendFile).not.toHaveBeenCalled()
+    expect(sendGrouped).toHaveBeenCalledTimes(1)
+    const [a, b] = (sendGrouped.mock.calls[0] as unknown as [Record<string, unknown>[]])[0]
     expect(a.groupedId).toBeDefined()
     expect(a.groupedId).toBe(b.groupedId)
     expect([a.caption, b.caption]).toEqual(['подпись', ''])
@@ -99,18 +102,18 @@ describe('popups/newMedia — мост попапа медиа', () => {
   // tweb newMedia.tsx:1013-1018: в ленте отложенных сперва календарь, затем
   // выборка уходит с пакетом, где уже лежит выбранное время.
   it('лента отложенных: отправка спрашивает время, выборка уходит после выбора', async() => {
-    const { chat, sendFile, scheduleSending } = makeChat({ scheduleDate: 1_900_000_000 }, ChatType.Scheduled)
+    const { chat, sendGrouped, scheduleSending } = makeChat({ scheduleDate: 1_900_000_000 }, ChatType.Scheduled)
     showNewMediaPopup(chat, [photo('1.png'), photo('2.png')], 'media')
     mountTopPopup()
 
     act(() => lastProps!.onSend('', false))
     await flush()
-    expect(sendFile).not.toHaveBeenCalled()
+    expect(sendGrouped).not.toHaveBeenCalled()
     expect(scheduleSending).toHaveBeenCalledTimes(1)
 
     scheduleSending.mock.calls[0][0]()
     await flush()
-    const calls = sendFile.mock.calls.map((c) => (c as unknown as [Record<string, unknown>])[0])
+    const calls = (sendGrouped.mock.calls[0] as unknown as [Record<string, unknown>[]])[0]
     expect(calls).toHaveLength(2)
     expect(calls.every((c) => c.scheduleDate === 1_900_000_000)).toBe(true)
     expect(calls[0].groupedId).toBe(calls[1].groupedId)

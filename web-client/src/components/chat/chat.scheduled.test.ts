@@ -235,4 +235,25 @@ describe('лента отложенных (ChatType.Scheduled)', () => {
     rootScope.dispatchEventSingle('history_update', { storageKey, message: withRandom(scheduled(10, soon), 'c2'), tempId: 9.5 })
     await vi.waitFor(() => expect(bubbleMids(c)).toEqual([5, 9]))
   })
+
+  // Альбом отложенных приходит кадрами `updateNewScheduledMessage` по одному —
+  // второе сообщение собирает его в тот же бабл (порт `grouped_edit`, tweb bubbles.ts:1472-1490).
+  it('альбом, пришедший по одному сообщению, — один бабл с раскладкой альбома', async() => {
+    const photo = (id: number) => {
+      const m = makeMessage({ id, peerId: FRIEND, fromId: ME, text: '', date: today(), out: true, groupedId: 77, media: { _: 'messageMediaPhoto', photo: { _: 'photo', id: 500 + id, access_hash: '0', file_reference: [], date: 0, sizes: [{ _: 'photoSize', type: 'x', w: 320, h: 240, size: 100 }], dc_id: 0 } } as never })
+      m.pFlags.is_scheduled = true
+      return m
+    }
+    const { c } = await openScheduled([scheduled(5, today() - 60)])
+    await vi.waitFor(() => expect(bubbleMids(c)).toEqual([5]))
+
+    rootScope.dispatchEventSingle('scheduled_new', photo(6))
+    await vi.waitFor(() => expect(bubbleMids(c)).toEqual([5, 6]))
+    rootScope.dispatchEventSingle('scheduled_new', photo(7))
+    await vi.waitFor(() => {
+      const album = c.bubbles.chatInner.querySelector<HTMLElement>('.bubble[data-mid="6"]')!
+      expect(album.classList.contains('is-album')).toBe(true)
+    })
+    expect(bubbleMids(c)).toEqual([5, 6])
+  })
 })

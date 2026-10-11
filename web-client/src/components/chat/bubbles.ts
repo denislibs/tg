@@ -2744,6 +2744,121 @@ export default class ChatBubbles implements BubbleGroupsHost {
     }
   }
 
+  /**
+   * Сообщение альбома, пришедшее к уже нарисованной группе, — порт обработчика
+   * `grouped_edit` (tweb bubbles.ts:1472-1490): бабл группы перерисовывается
+   * главным сообщением с ПОЛНЫМ составом. У оригинала это `safeRenderMessage(
+   * {message, reverse: true, bubble})` — новый узел встаёт на место старого
+   * (`bubblesToReplace` → `changeBubbleByBubble`, :6338); здесь то же самое
+   * синхронно: `renderMessage` строит узел (вложение-альбом, наблюдатель
+   * непрочитанного со старшим номером группы — :7859-7860, :7945), он
+   * заменяет старый в серии, состояние старого снимается
+   * (`releaseBubbleState`), позиция ленты держится `ScrollSaver`.
+   *
+   * Главное сообщение может смениться — пришло младше нарисованного (ветка
+   * `wasMainMid`, :1477-1488): новый узел строится по новому главному, ключи
+   * всей группы ведут на него.
+   *
+   * Почему у tweb на приходе нового это не нужно: Telegram шлёт альбом одной
+   * пачкой `updates`, и к асинхронному рендеру первого сообщения группа в
+   * хранилище уже полная (`getMessagesByGroupedId`, :7846-7857). У нас каждое
+   * сообщение альбома — свой кадр (`new_message`, `updateNewScheduledMessage`).
+   *
+   * Неотправленные тоже: так в ленту отложенных приезжает свой альбом
+   * (`scheduled_new` по сообщению), а ack группы доводит `history_update`.
+   * Возвращает `true`, если сообщение ушло в перерисованный бабл.
+   */
+  private regroupRenderedAlbum(message: MyMessage): boolean {
+    const groupedId = message._ === 'message' ? message.grouped_id : undefined
+    if (!groupedId) return false
+    if (this.bubbles[makeFullMid(this.peerId, message.id)]) return false
+
+    const group = this.groupedMessages(groupedId)
+    const rendered = group.find((m) => m.id !== message.id && this.bubbles[makeFullMid(this.peerId, m.id)])
+    const oldBubble = rendered && this.bubbles[makeFullMid(this.peerId, rendered.id)]
+    return !!oldBubble && this.replaceAlbumBubble(oldBubble, group)
+  }
+
+  /**
+   * Удаление ЧАСТИ альбома — порт `grouped_edit` по удалению (tweb
+   * appMessagesManager.ts:14106-14153 → bubbles.ts:1472-1490): у бабла, в
+   * котором остались другие сообщения группы, снимается только адрес
+   * удалённого, а сам бабл перерисовывается оставшимися. Возвращает адреса,
+   * которые удаляются обычным путём. Так отменённая ячейка своего альбома
+   * (`cancelPending` → `history_delete`) не уносит весь бабл.
+   */
+  private takeAlbumRemainders(fullMids: string[]): string[] {
+    const regroup = new Map<HTMLElement, number>()
+    const rest = fullMids.filter((fullMid) => {
+      const bubble = this.bubbles[fullMid]
+      if (!bubble) return true
+      const siblings = Object.keys(this.bubbles).filter((key) => key !== fullMid && !fullMids.includes(key) && this.bubbles[key] === bubble)
+      const kept = siblings.map((key) => this.getMessage(splitFullMid(key).mid)).find((m) => m?._ === 'message' && m.grouped_id)
+      if (!kept || kept._ !== 'message' || !kept.grouped_id) return true
+      delete this.bubbles[fullMid]
+      regroup.set(bubble, kept.grouped_id)
+      return false
+    })
+    for (const [bubble, groupedId] of regroup) {
+      this.replaceAlbumBubble(bubble, this.groupedMessages(groupedId))
+    }
+    return rest
+  }
+
+  /** Новый узел бабла альбома главным сообщением группы на месте старого —
+   *  тело `grouped_edit` (tweb bubbles.ts:1472-1490) и финал ack группы
+   *  (`message_sent`, :1244-1255). См. `regroupRenderedAlbum`. */
+  private replaceAlbumBubble(oldBubble: HTMLElement, group: MyMessage[]): boolean {
+    const item = this.bubbleGroups.getItemByBubble(oldBubble)
+    if (!item) return false
+
+    const main = group[0]
+    const mainChanged = item.mid !== main.id
+    // Позиция ленты: стояла внизу — доводим к концу (ветка `scrolledDown`
+    // `_renderNewMessage`, tweb :5254-5257); иначе якорь — верхний видимый бабл
+    // (`ScrollSaver(true)`), он переживает замену узла ниже.
+    const wasScrolledDown = this.scrolledDown
+    const scrollSaver = this.createScrollSaver(true)
+    scrollSaver.save()
+
+    const bubble = this.renderMessage(main)
+    this.releaseBubbleState(oldBubble)
+    oldBubble.replaceWith(bubble)
+    this.bubbleGroups.changeBubbleByBubble(oldBubble, bubble)
+    for (const fullMid of Object.keys(this.bubbles)) {
+      if (this.bubbles[fullMid] === oldBubble) delete this.bubbles[fullMid]
+    }
+    for (const m of group) this.bubbles[makeFullMid(this.peerId, m.id)] = bubble
+    bubble.dataset.maxBubbleMid = String(this.maxBubbleMid(main))
+    // tweb :5931-5935 — в режиме выделения новому узлу нужен чекбокс (и
+    // состояние выбранного по `selectedMids`); ставит его обычно очередь.
+    if (this.chat.selection.isSelecting) {
+      this.chat.selection.toggleElementCheckbox(bubble, true)
+    }
+    // Плашка «Непрочитанные» живёт классом на узле (`setUnreadDelimiter`).
+    if (this.firstUnreadBubble === oldBubble) {
+      this.firstUnreadBubble = bubble
+      if (oldBubble.classList.contains('is-first-unread')) bubble.classList.add('is-first-unread')
+    }
+
+    if (mainChanged) {
+      // Сменилось главное (младше нарисованного) — узел переезжает на место
+      // нового номера тем же путём, что перестановка в `history_update`.
+      this.bubbleGroups.removeAndUnmountBubble(bubble)
+      this.bubbleGroups.mountUnmountGroups(this.groupBubbles([{ bubble, message: main }]))
+    } else {
+      item.group?.updateClassNames()
+    }
+
+    if (wasScrolledDown) {
+      // tweb :5254-5257 — в ленте отложенных бабл стоит по своей дате, не внизу
+      void (this.chat.type === ChatType.Scheduled ? this.scrollToBubbleEnd(bubble) : this.scrollToEnd())
+    } else {
+      scrollSaver.restore(true)
+    }
+    return true
+  }
+
   /** Порт tweb `renderNewMessage` (bubbles.ts:4528): промис рендера нового
    *  сообщения живёт в реестре, пока не разрешится, — на него смотрит
    *  обработчик `history_update` (:780-783). */
@@ -2786,6 +2901,16 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // `savedReaction`), а `reactionsEqual` оригинала разбирает конструктор.
     if(this.savedReaction && !hasReactionEmoticon(message.reactions, this.savedReaction)) {
       return
+    }
+
+    // Альбом, чьё сообщение пришло ПОСЛЕ того, как группа уже нарисована.
+    // Сначала — очередь рендера: бабл группы мог быть заведён, но ещё не
+    // разложен по сериям, а заменить можно только разложенный.
+    if (message._ === 'message' && message.grouped_id) {
+      const generation = this.getMiddleware()
+      await this.awaitMessagesQueue()
+      if (!generation()) return
+      if (this.regroupRenderedAlbum(message)) return
     }
 
     const fullMid = makeFullMid(this.peerId, message.id)
@@ -5901,6 +6026,31 @@ export default class ChatBubbles implements BubbleGroupsHost {
       const fullMid = makeFullMid(this.peerId, message.id)
       delete this.bubbles[fullTempMid]
       this.bubbles[fullMid] = bubble
+
+      // АЛЬБОМ — tweb `message_sent` :1244-1255: группа доводится целиком, когда
+      // принят её ПОСЛЕДНИЙ номер (у оригинала все ack приходят одной пачкой
+      // `updates` на `sendMultiMedia`; у нас — по кадру на сообщение, поэтому
+      // «последний» — это «неотправленных в группе не осталось»). До того у
+      // ack одна работа — переклеить свой адрес на общий бабл. Финал — новый
+      // узел главным сообщением (номера ячеек, статус, `maxBubbleMid`, место
+      // в серии), тем же путём, что `grouped_edit`.
+      const groupedId = message._ === 'message' ? message.grouped_id : undefined
+      const group = groupedId ? this.groupedMessages(groupedId) : []
+      if (group.length > 1) {
+        // tweb :1234-1240 — проверка срока идёт по каждому сообщению ДО групповой
+        // ветки: отложенное, до отправки которого ≤ 10 с, снимается сразу.
+        if (this.chat.type === ChatType.Scheduled && (Date.now() / 1000 | 0) >= message.date - 10) {
+          this.deleteMessagesByIds(Object.keys(this.bubbles).filter((key) => this.bubbles[key] === bubble))
+          return
+        }
+        if (group.some((m) => isLocalMessageId(m.id))) return
+        const generation = this.getMiddleware()
+        await this.awaitMessagesQueue()
+        if (!generation() || this.getBubble(fullMid) !== bubble) return
+        this.replaceAlbumBubble(bubble, this.groupedMessages(groupedId!))
+        return
+      }
+
       bubble.dataset.mid = '' + message.id
 
       // Порт tweb bubbles.ts:917-938. Ack — это НЕ ТОЛЬКО новый номер: тем же
@@ -6090,7 +6240,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // с номерами чата пересекаются)
     this.listenerSetter.add(rootScope)('history_delete', ({ peerId, msgs }) => {
       if (peerId !== this.peerId || this.chat.type === ChatType.Scheduled) return
-      this.deleteMessagesByIds([...msgs].map((mid) => makeFullMid(peerId, mid)))
+      const fullMids = [...msgs].map((mid) => makeFullMid(peerId, mid))
+      this.deleteMessagesByIds(this.takeAlbumRemainders(fullMids))
     })
 
     // tweb bubbles.ts:2351-2358 (`refreshInput`) + :2410-2432 (`chat_update`):
@@ -6279,6 +6430,41 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.addMessageSpoilerOverlay(messageDiv)
   }
 
+  /** Снять с бабла всё, что лента держит на нём адресно, — общая часть
+   *  удаления (`deleteMessagesByIds`) и замены узла (`regroupRenderedAlbum`).
+   *  tweb гасит это одним побабльным middleware (:4408/:4416, `onDestroy`). */
+  private releaseBubbleState(bubble: HTMLElement) {
+    // Оверлей спойлеров — адресно, см. `spoilerOverlays`.
+    const messageDiv = bubble.querySelector<HTMLElement>('.message')
+    if (messageDiv) {
+      this.spoilerOverlays.get(messageDiv)?.()
+      this.spoilerOverlays.delete(messageDiv)
+    }
+
+    // Тело опроса (у tweb `middleware.onDestroy` → `updateLocalOnEdit.delete(bubble)`,
+    // bubbles.ts:8806-8808).
+    this.pollContents.get(bubble)?.destroy()
+    this.pollContents.delete(bubble)
+
+    // tweb :4314-4316 снимает наблюдение непрочитанных с САМОГО бабла. У
+    // поста канала наблюдаемый узел не бабл, а время внутри него (:7638-7640),
+    // поэтому обход по вхождению. Удаление текущего ключа по ходу обхода `Map`
+    // определено спецификацией — копию делать не за чем.
+    if (this.observer) {
+      for (const element of this.unreaded.keys()) {
+        if (element === bubble || bubble.contains(element)) {
+          this.observer.unobserve(element, this.unreadedObserverCallback)
+          this.unreaded.delete(element)
+        }
+      }
+      // tweb :4957-4959 — наблюдатель содержимого: узел — сам бабл.
+      this.observer.unobserve(bubble, this.unreadedContentObserverCallback)
+      this.unreadedContent.delete(bubble)
+      // tweb :4321-4322 — просмотры своей парой: наблюдаемый узел — сам бабл (:7685).
+      this.observer.unobserve(bubble, this.viewsObserverCallback)
+    }
+  }
+
   /** Порт tweb `deleteMessagesByIds` (bubbles.ts:4302-4313/4470-4478): забыть
    *  адрес и снять бабл ЧЕРЕЗ ГРУППЫ — `removeAndUnmountBubble` не только
    *  убирает узел, но и сливает обратно соседей, которых удалённый бабл
@@ -6304,44 +6490,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
         this.firstUnreadBubble = undefined
       }
 
-      // tweb гасит здесь ВЕСЬ побабльный middleware (:4408/:4416), а с ним и
-      // оверлей спойлеров; у нас гасить надо адресно — см. `spoilerOverlays`.
-      const messageDiv = bubble.querySelector<HTMLElement>('.message')
-      if (messageDiv) {
-        this.spoilerOverlays.get(messageDiv)?.()
-        this.spoilerOverlays.delete(messageDiv)
-      }
-
-      // Тело опроса — тот же адресный снос (у tweb это `middleware.onDestroy`
-      // → `updateLocalOnEdit.delete(bubble)`, bubbles.ts:8806-8808).
-      this.pollContents.get(bubble)?.destroy()
-      this.pollContents.delete(bubble)
-
+      this.releaseBubbleState(bubble)
       this.bubbleGroups.removeAndUnmountBubble(bubble)
 
-      // tweb :4314-4316 снимает наблюдение непрочитанных с САМОГО бабла. У
-      // поста канала наблюдаемый узел не бабл, а время внутри него (:7638-7640),
-      // поэтому здесь обход по вхождению: иначе подрезка вьюпорта оставляла бы
-      // в карте оторванный от документа узел на каждый удалённый пост.
-      if (this.observer) {
-        // Удаление ТЕКУЩЕГО ключа по ходу обхода `Map` определено спецификацией
-        // (пропускается только запись, удалённая ДО того, как её посетили), —
-        // копию делать не за чем.
-        for (const element of this.unreaded.keys()) {
-          if (element === bubble || bubble.contains(element)) {
-            this.observer.unobserve(element, this.unreadedObserverCallback)
-            this.unreaded.delete(element)
-          }
-        }
-        // tweb :4957-4959 — наблюдатель содержимого: узел — сам бабл.
-        this.observer.unobserve(bubble, this.unreadedContentObserverCallback)
-        this.unreadedContent.delete(bubble)
-        // tweb :4321-4322 — просмотры своей парой: наблюдаемый узел здесь сам
-        // бабл (:7685), а накопленный номер уходит из набора, чтобы дебаунс не
-        // зарегистрировал просмотр удалённого поста.
-        this.observer.unobserve(bubble, this.viewsObserverCallback)
-        this.viewsMids.delete(splitFullMid(fullMid).mid)
-      }
+      // tweb :4321-4322 — накопленный номер просмотра уходит из набора, чтобы
+      // дебаунс не зарегистрировал просмотр удалённого поста.
+      this.viewsMids.delete(splitFullMid(fullMid).mid)
     }
 
     this.scrollable.ignoreNextScrollEvent()
