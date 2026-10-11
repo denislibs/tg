@@ -1298,8 +1298,8 @@ describe('dialogsManager.getDialogReadState', () => {
     expect(mgr.getDialogReadState(5)).toEqual({ readInboxMaxSeq: 40, unreadCount: 2, readOutboxMaxSeq: 0 })
   })
 
-  // tweb updateUnreadByDialog (bubbles.ts:4858-4860): горизонт исходящих — у
-  // диалога `read_outbox_max_id`, у «Избранного» — горизонт входящих, у темы — темы
+  // tweb bubbles.ts:4858-4860, :11105, :1206: горизонт исходящих — у диалога
+  // `read_outbox_max_id`, у темы — темы, в «Избранном» своё прочитано всегда
   it('горизонт исходящих: диалог, «Избранное», тема', async () => {
     const topic = { read_inbox_max_id: 20, read_outbox_max_id: 18, unread_count: 0, top_message: 23 }
     const mgr = newDialogsManager({
@@ -1315,7 +1315,7 @@ describe('dialogsManager.getDialogReadState', () => {
     })
     await mgr.fillMirror()
     expect(mgr.getDialogReadState(5)?.readOutboxMaxSeq).toBe(41)
-    expect(mgr.getDialogReadState(7)?.readOutboxMaxSeq).toBe(30)
+    expect(mgr.getDialogReadState(7)?.readOutboxMaxSeq).toBe(Number.MAX_SAFE_INTEGER)
     expect(mgr.getDialogReadState(5, 9)?.readOutboxMaxSeq).toBe(18)
   })
 

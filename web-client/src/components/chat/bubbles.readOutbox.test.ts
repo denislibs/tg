@@ -15,6 +15,7 @@ import type { HistoryResult } from '@core/managers/messagesManager'
 import type ChatBubbles from './bubbles'
 import type { BubblesManagers } from './bubbles'
 import { createTestChat, mountTestBubbles, type TestChatOptions } from './testChat'
+import { ChatType } from './chatType'
 
 const CHAT = 92
 const ME = 1
@@ -34,6 +35,7 @@ class FakeIntersectionObserver {
 function managersWith(messages: MyMessage[], readOutboxMaxSeq?: number) {
   const managers: BubblesManagers = {
     messages: {
+      getScheduledMessages: vi.fn(async () => messages),
       getHistory: vi.fn(async (): Promise<HistoryResult> => ({ messages, count: messages.length, reachedTop: true, reachedBottom: true })),
       getAround: vi.fn(async () => ({ messages, reachedTop: true, reachedBottom: true })),
       messageByDate: vi.fn(async () => null),
@@ -116,4 +118,18 @@ describe('ChatBubbles — «прочитано» по горизонту исх�
     expect(isRead(bubbleOf(b, 11))).toBe(true)
     expect(isRead(bubbleOf(b, 12))).toBe(false)
   })
+
+  it('операция `upsert` диалога тоже двигает горизонт', async () => {
+    const b = await open([own(11), own(12)], 10)
+    rootScope.dispatchEventSingle(RT.dialogOp, { ops: [{ op: 'upsert', items: [{ dialog: { peerId: CHAT, read_outbox_max_id: 12 } as never, index: 1 }] }] })
+    expect(isRead(bubbleOf(b, 12))).toBe(true)
+  })
+
+  // tweb :11105 — отложенные всегда «✓» (`is_scheduled`), своя нумерация
+  it('отложенные: операции диалога их не перекрашивают', async () => {
+    const b = await open([own(11)], undefined, { type: ChatType.Scheduled })
+    rootScope.dispatchEventSingle(RT.dialogOp, { ops: [{ op: 'patch', peerId: CHAT, fields: { read_outbox_max_id: 50 } }] })
+    expect(isRead(bubbleOf(b, 11))).toBe(false)
+  })
 })
+

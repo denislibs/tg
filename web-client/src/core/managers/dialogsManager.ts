@@ -1381,13 +1381,14 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
      * консервативно (`core/messages/isUnreadByReadCursor.ts`).
      *
      * `readOutboxMaxSeq` — горизонт ИСХОДЯЩИХ, от которого бабл выбирает «✓» или
-     * «✓✓» (tweb `updateUnreadByDialog`, bubbles.ts:4858-4860: у «Избранного» —
-     * горизонт входящих, иначе `historyStorage.readOutboxMaxId`, у темы — темы).
+     * «✓✓» (tweb `historyStorage.readOutboxMaxId`, bubbles.ts:4858-4860; у темы —
+     * темы). В «Избранном» своё прочитано всегда (у tweb там нет `pFlags.unread`,
+     * :11105, и ack сразу даёт «прочитано», :1206) — горизонт бесконечен.
      */
     getDialogReadState(peerId: number, threadId?: number): { readInboxMaxSeq: number, unreadCount: number, readOutboxMaxSeq?: number } | undefined {
       const d = readSource(peerId, threadId)
       if (!d) return undefined
-      const readOutboxMaxSeq = peerId === getMeId?.() ? d.read_inbox_max_id : d.read_outbox_max_id
+      const readOutboxMaxSeq = peerId === getMeId?.() ? Number.MAX_SAFE_INTEGER : d.read_outbox_max_id
       return { readInboxMaxSeq: d.read_inbox_max_id, unreadCount: d.unread_count, ...(readOutboxMaxSeq !== undefined ? { readOutboxMaxSeq } : {}) }
     },
 
