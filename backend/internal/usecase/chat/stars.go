@@ -194,8 +194,8 @@ type paidCharge struct {
 func (i *Interactor) chargePaidMessage(ctx context.Context, in SendInput) (paidCharge, error) {
 	// Публикация отложенного не платит второй раз: звёзды списаны при
 	// постановке (В-2, tweb allow_paid_stars в запросе с schedule_date,
-	// appMessagesManager.ts:2748).
-	if i.groups == nil || i.stars == nil || in.Type == "service" || in.fromSchedule {
+	// appMessagesManager.ts:2748). Кроме сроков повтора после первого.
+	if i.groups == nil || i.stars == nil || in.Type == "service" || (in.fromSchedule && !in.repeatOccurrence) {
 		return paidCharge{}, nil
 	}
 	typ, err := i.chats.ChatType(ctx, in.ChatID)

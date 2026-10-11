@@ -804,6 +804,10 @@ type SendInput struct {
 	// clear_draft в scheduleMessage, а к моменту отправки в поле уже другой
 	// текст).
 	fromSchedule bool
+	// repeatOccurrence — публикация второго и следующих сроков повтора: плата
+	// списывается заново (первый срок оплачен при постановке), иначе один
+	// платёж отправлял бы сообщение в платную группу бессрочно.
+	repeatOccurrence bool
 	// webPage — готовое превью отложенного: публикация пишет его в сообщение
 	// (как у копии, insertCopy) и не строит превью второй раз.
 	webPage *domain.WebPagePreview
@@ -884,20 +888,40 @@ type ScheduledRepo interface {
 	ByIDs(ctx context.Context, chatID, senderID int64, ids []int64) ([]domain.ScheduledMessage, error)
 	// ByGroupedID — элементы отложенного альбома (общий grouped_id), по порядку постановки.
 	ByGroupedID(ctx context.Context, chatID, senderID, groupedID int64) ([]domain.ScheduledMessage, error)
-	// DeleteIDs удаляет строки и возвращает ключи РЕАЛЬНО удалённых: из
-	// конкурирующих снятий одной строки её получает ровно одно.
+	// DeleteIDs удаляет строки (публикация: аренда не мешает) и возвращает
+	// ключи РЕАЛЬНО удалённых: из конкурирующих снятий одной строки её
+	// получает ровно одно.
 	DeleteIDs(ctx context.Context, ids []int64) ([]int64, error)
-	// Due — созревшие по времени (send_at<=now, без when_online), по send_at, id.
+	// DeleteUnclaimed — снятие автором: строки в аренде публикации пропускаются.
+	DeleteUnclaimed(ctx context.Context, ids []int64) ([]int64, error)
+	// Due — созревшие по времени (send_at<=now, без when_online, вне аренды),
+	// по send_at, id.
 	Due(ctx context.Context, now time.Time, limit int) ([]domain.ScheduledMessage, error)
+	// Claim берёт строку в аренду публикации на lease и отдаёт свежей —
+	// только если она на том же сроке (sendAt/whenOnline) и не в аренде;
+	// countAttempt — attempts+1 (воркер). ok=false — строку сняли, перенесли
+	// или публикуют.
+	Claim(ctx context.Context, id int64, sendAt time.Time, whenOnline bool, lease time.Duration, countAttempt bool) (domain.ScheduledMessage, bool, error)
+	// Release снимает аренду; retryAfter > 0 — отступ воркера (Due и
+	// WhenOnlineIn строку до него не отдают).
+	Release(ctx context.Context, id int64, retryAfter time.Duration) error
+	// Reschedule переставляет опубликованный срок повтора from → to (тот же
+	// id), снимает аренду, occurrence+1; ok=false — строку сняли или перенесли.
+	Reschedule(ctx context.Context, id int64, from, to time.Time) (domain.ScheduledMessage, bool, error)
+	// LockQueue — транзакционная блокировка очереди автора в чате (лимит 100).
+	LockQueue(ctx context.Context, chatID, senderID int64) error
 	// WhenOnlineWaits — все пары «чат + автор + собеседник», у которых есть
 	// отложенные «когда в сети» (НО-2: проверяется присутствие КАЖДОГО
 	// собеседника, окно по created_at больше не голодает).
 	WhenOnlineWaits(ctx context.Context) ([]ScheduledWait, error)
-	// WhenOnlineIn — отложенные «когда в сети» автора в чате, по порядку постановки.
+	// WhenOnlineIn — отложенные «когда в сети» автора в чате вне аренды, по
+	// порядку постановки.
 	WhenOnlineIn(ctx context.Context, chatID, senderID int64) ([]domain.ScheduledMessage, error)
-	// Update переписывает изменяемое у стоящей строки: text, entities, send_at,
-	// when_online, repeat_period.
-	Update(ctx context.Context, m domain.ScheduledMessage) error
+	// Update переписывает изменяемое у стоящей строки вне аренды и на
+	// прочитанном сроке (oldAt/oldWhenOnline): text, entities, send_at,
+	// when_online, repeat_period. Снятой, публикуемой или переставленной —
+	// domain.ErrNotFound.
+	Update(ctx context.Context, m domain.ScheduledMessage, oldAt time.Time, oldWhenOnline bool) error
 	// SetWebPage пишет превью ссылки отложенного (P1); nil — снять.
 	SetWebPage(ctx context.Context, id int64, wp *domain.WebPagePreview) error
 }

@@ -1624,8 +1624,14 @@ func (h *ChatHandler) SendScheduledNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	updates, err := h.svc.SendScheduledNow(r.Context(), chatID, h.meID(r), b.IDs)
-	if err != nil {
+	if errors.Is(err, domain.ErrNotFound) {
 		h.mapScheduledErr(w, err)
+		return
+	}
+	if err != nil {
+		// Отказ гейта публикации — та же таблица, что у отправки; строка
+		// остаётся в очереди.
+		writeSendError(w, err, "not a member of this chat")
 		return
 	}
 	writeScheduledUpdates(w, r, updates)
