@@ -340,18 +340,23 @@ func (i *Interactor) ResolveThreadRootForSend(ctx context.Context, chatID int64,
 
 // ThreadReplyTo — ответ отправки в TL-форме треда: tweb шлёт
 // inputReplyToMessage{reply_to_msg_id: тред, top_msg_id: тред}, когда ответа
-// нет (appMessagesManager.ts:4341-4342, 4255-4262), то есть reply_to_msg_id,
+// нет (appMessagesManager.ts:4341-4343, 4255-4262), то есть reply_to_msg_id,
 // совпавший с корнем треда, — не ответ, а адрес треда. Здесь он снимается.
 //
 // Так же в форуме reply_to_msg_id = 1 без треда — адрес General, а не ответ на
 // служебку создания чата: tweb цитату «ответ на создание группы» не рисует,
 // значит сервер TG этот ответ снимает (вывод из клиента).
 //
-// Оба числа — НОМЕРА в чате (до ResolveThreadRootForSend). Зовётся на той же
+// Настоящий ответ НЕ снимается: ответ в чужой чат (reply_to_peer_id) и ответ
+// с цитатой (quote_text) — их tweb собирает только из явного ответа
+// пользователя (appMessagesManager.ts:4261 reply_to_peer_id из replyToPeerId,
+// :4264-4268 quote_* из replyToQuote), адрес треда их не несёт.
+//
+// Числа — НОМЕРА в чате (до ResolveThreadRootForSend). Зовётся на той же
 // границе HTTP/WS, что и ResolveThreadRootForSend.
-func (i *Interactor) ThreadReplyTo(ctx context.Context, chatID int64, threadRoot, replyTo *int64) *int64 {
-	if replyTo == nil {
-		return nil
+func (i *Interactor) ThreadReplyTo(ctx context.Context, chatID int64, threadRoot, replyTo, replyToPeer *int64, quoteText *string) *int64 {
+	if replyTo == nil || replyToPeer != nil || (quoteText != nil && *quoteText != "") {
+		return replyTo
 	}
 	if threadRoot != nil && *threadRoot == *replyTo {
 		return nil

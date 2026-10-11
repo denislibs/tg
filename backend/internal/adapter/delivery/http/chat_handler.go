@@ -446,7 +446,7 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 	}
 	msg, err := h.svc.Send(r.Context(), usecasechat.SendInput{
 		ChatID: chatID, SenderID: h.meID(r), Type: body.Type, Text: body.Text, Entities: body.Entities,
-		ReplyToID:      h.svc.ThreadReplyTo(r.Context(), chatID, body.ThreadRootID, body.ReplyToID),
+		ReplyToID:      h.svc.ThreadReplyTo(r.Context(), chatID, body.ThreadRootID, body.ReplyToID, replyPeer, body.ReplyQuoteText),
 		ReplyToPeerID:  replyPeer,
 		ReplyQuoteText: body.ReplyQuoteText, ReplyQuoteOffset: body.ReplyQuoteOffset,
 		ClientMsgID: body.ClientMsgID, MediaID: body.MediaID, GroupedID: body.GroupedID,
@@ -1329,7 +1329,7 @@ func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 		Question: b.Question, Options: b.Options,
 		Anonymous: b.Anonymous, Multiple: b.Multiple, Quiz: b.Quiz, CorrectOption: b.CorrectOption,
 		ClientMsgID:    b.ClientMsgID,
-		ReplyToID:      h.svc.ThreadReplyTo(r.Context(), chatID, b.ThreadRootID, b.ReplyToID),
+		ReplyToID:      h.svc.ThreadReplyTo(r.Context(), chatID, b.ThreadRootID, b.ReplyToID, replyPeer, b.ReplyQuoteText),
 		ReplyToPeerID:  replyPeer,
 		ReplyQuoteText: b.ReplyQuoteText, ReplyQuoteOffset: b.ReplyQuoteOffset,
 		ThreadRootID: threadRoot, Silent: b.Silent, SendAsChatID: sendAsChatID(b.SendAsPeerID),

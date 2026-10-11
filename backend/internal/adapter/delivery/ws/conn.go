@@ -464,7 +464,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		}
 		msg, err := c.svc.Send(ctx, usecasechat.SendInput{
 			ChatID: chatID, SenderID: c.userID, Type: d.Type, Text: d.Text, Entities: d.Entities,
-			ReplyToID:      c.svc.ThreadReplyTo(ctx, chatID, d.ThreadRootID, d.ReplyToID),
+			ReplyToID:      c.svc.ThreadReplyTo(ctx, chatID, d.ThreadRootID, d.ReplyToID, replyPeer, d.ReplyQuoteText),
 			ReplyToPeerID:  replyPeer,
 			ReplyQuoteText: d.ReplyQuoteText, ReplyQuoteOffset: d.ReplyQuoteOffset,
 			ClientMsgID: d.ClientMsgID, MediaID: d.MediaID, GroupedID: d.GroupedID,

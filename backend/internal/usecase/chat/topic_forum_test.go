@@ -229,15 +229,28 @@ func TestForumThreadAddressing(t *testing.T) {
 	}
 	// TL-форма inputReplyToMessage{reply_to_msg_id: тред, top_msg_id: тред}.
 	x := int64(42)
-	for name, c := range map[string]struct{ thread, reply, want *int64 }{
-		"тред без ответа":       {&n, &n, nil},
-		"General без ответа":    {&general, &general, nil},
-		"General без top":       {nil, &general, nil},
-		"ответ внутри темы":     {&n, &x, &x},
-		"ответ вне треда":       {nil, &x, &x},
-		"без ответа и без тред": {nil, nil, nil},
+	other := int64(555) // ключ чужого чата (reply_to_peer_id)
+	quote, empty := "цитата", ""
+	for name, c := range map[string]struct {
+		thread, reply, peer *int64
+		quote               *string
+		want                *int64
+	}{
+		"тред без ответа":       {thread: &n, reply: &n},
+		"General без ответа":    {thread: &general, reply: &general},
+		"General без top":       {reply: &general},
+		"ответ внутри темы":     {thread: &n, reply: &x, want: &x},
+		"ответ вне треда":       {reply: &x, want: &x},
+		"без ответа и без тред": {},
+		// Ревью п. 2: явный ответ на корень треда не снимается — ни в чужой
+		// чат, ни с цитатой (tweb appMessagesManager.ts:4261, 4264-4268).
+		"ответ на корень с цитатой":      {thread: &n, reply: &n, quote: &quote, want: &n},
+		"ответ на корень в чужой чат":    {thread: &n, reply: &n, peer: &other, want: &n},
+		"ответ на сообщение 1 с цитатой": {reply: &general, quote: &quote, want: &general},
+		"пустая цитата — не цитата":      {thread: &n, reply: &n, quote: &empty},
+		"чужой чат, номер 1 без треда":   {reply: &general, peer: &other, want: &general},
 	} {
-		got := in.ThreadReplyTo(ctx, id, c.thread, c.reply)
+		got := in.ThreadReplyTo(ctx, id, c.thread, c.reply, c.peer, c.quote)
 		if (got == nil) != (c.want == nil) || (got != nil && *got != *c.want) {
 			t.Errorf("%s: ThreadReplyTo = %v, ждали %v", name, got, c.want)
 		}
@@ -275,7 +288,7 @@ func TestThreadNumberOne_NotForum(t *testing.T) {
 	if got := in.resolveThreadRootForQuery(ctx, id, &one); got != nil && *got == domain.GeneralThreadRoot {
 		t.Fatal("не-форум перевёл номер 1 в General")
 	}
-	if got := in.ThreadReplyTo(ctx, id, nil, &one); got == nil || *got != one {
+	if got := in.ThreadReplyTo(ctx, id, nil, &one, nil, nil); got == nil || *got != one {
 		t.Fatalf("ответ на сообщение 1 в не-форуме снят: %v", got)
 	}
 }
