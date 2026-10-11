@@ -7,6 +7,7 @@ import type { RestClient } from '../../net/restClient'
 import type { MyMessage } from '../../models'
 import type { MessageOp } from '../../realtime/messageOps'
 import type { UserReal } from '../../peers/peer'
+import type { ScheduledUpdates } from '../messagesManager'
 
 /** Точечно обновить одно сообщение чата в SSOT + персист (см. messagesManager.patchMsg). */
 export type PatchMsg = (peerId: number, match: (m: MyMessage) => boolean, upd: (m: MyMessage) => MyMessage | null) => void
@@ -48,4 +49,8 @@ export interface MessagesCtx {
    *  на сервере нечего, если бейджа нет. Опционален по той же причине, что
    *  `getMeId`: без него сброс не уходит никогда. */
   getUnreadReactionsCount?: (peerId: number) => number
+  /** Ответ отложенной отправки — `Updates` (tweb `processUpdateMessage`): кадры
+   *  ленты отложенных применяет её владелец (messagesManager). Опционален по
+   *  той же причине, что `getMeId`. */
+  applyScheduledUpdates?: (r: ScheduledUpdates | undefined) => void
 }

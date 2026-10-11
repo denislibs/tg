@@ -3,8 +3,8 @@
 //    `setPeerParams` (расписание/напоминание/платный чат), «без звука» — один `sendText`
 //    с `silent` и сброс флага (`resetSendingFlags`);
 //  - расписание (tweb `scheduleSending`/`setScheduleTimestamp`): лента отложенных
-//    открывает календарь вместо отправки, выбранное время уходит в `scheduleMessage`,
-//    прошлое время — обычной отправкой;
+//    открывает календарь вместо отправки, выбранное время уходит полем `scheduleDate`
+//    пакета (`sendText`), прошлое время — обычной отправкой;
 //  - «отправить, когда будет в сети» (`canSendWhenOnline`);
 //  - экран закрепов (Б-90): плашка «Открепить все»/«Скрыть закреплённые»;
 //  - send-as (`chat/sendAs.ts`): одна личность — кнопки нет, две — аватарка, пакет
@@ -46,7 +46,6 @@ function makeManagers() {
   return {
     messages: {
       sendText: vi.fn(async(_args: Record<string, unknown>) => ({ ok: true })),
-      scheduleMessage: vi.fn(async(_peerId: number, _p: Record<string, unknown>) => ({})),
       getScheduledMessages: vi.fn(async() => [] as MyMessage[]),
       editMessage: vi.fn(async() => ({})),
       forwardMessages: vi.fn(async() => []),
@@ -197,7 +196,9 @@ describe('ChatInput: меню отправки', () => {
 })
 
 describe('ChatInput: расписание', () => {
-  it('«Запланировать» — календарь, выбранное время уходит в scheduleMessage, sendText не зовётся, лента отложенных открывается', async() => {
+  // Ф-5, п. 1.2: отложенное — обычная отправка с `scheduleDate` пакета (tweb
+  // `chat.ts:1388-1389`), а не своя ручка.
+  it('«Запланировать» — календарь, выбранное время уходит полем пакета sendText, лента отложенных открывается', async() => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date(2026, 9, 3, 12, 0))
     try {
@@ -212,9 +213,8 @@ describe('ChatInput: расписание', () => {
       scheduleSpy.opts!.onPick(at, undefined, false)
       await flush()
 
-      expect(managers.messages.sendText).not.toHaveBeenCalled()
-      expect(managers.messages.scheduleMessage).toHaveBeenCalledTimes(1)
-      expect(managers.messages.scheduleMessage.mock.calls[0]).toEqual([BOB, expect.objectContaining({ text: 'потом', sendAt: at, whenOnline: false })])
+      expect(managers.messages.sendText).toHaveBeenCalledTimes(1)
+      expect(managers.messages.sendText.mock.calls[0][0]).toMatchObject({ peerId: BOB, text: 'потом', scheduleDate: at })
       expect(appImManager.openScheduled).toHaveBeenCalledWith(BOB)
       expect(input.scheduleDate).toBeUndefined()
       // черновика не было — снимать нечего
@@ -230,17 +230,29 @@ describe('ChatInput: расписание', () => {
     input.messageInputField.setValueSilently('сейчас')
     input.setScheduleTimestamp(Math.floor(Date.now() / 1000) + 5, () => void input.sendMessage(true))
     await flush()
-    expect(managers.messages.scheduleMessage).not.toHaveBeenCalled()
     expect(managers.messages.sendText).toHaveBeenCalledTimes(1)
+    expect(managers.messages.sendText.mock.calls[0][0].scheduleDate).toBeUndefined()
   })
 
-  it('«Когда будет в сети» — whenOnline у scheduleMessage', async() => {
+  it('«Когда будет в сети» — та же отправка с датой-меткой SEND_WHEN_ONLINE_TIMESTAMP', async() => {
     mounted = await mountInput()
     const { input, managers } = mounted
     input.messageInputField.setValueSilently('когда появишься')
     input.setScheduleTimestamp(SEND_WHEN_ONLINE_TIMESTAMP, () => void input.sendMessage(true))
     await flush()
-    expect(managers.messages.scheduleMessage.mock.calls[0][1]).toMatchObject({ text: 'когда появишься', whenOnline: true })
+    expect(managers.messages.sendText.mock.calls[0][0]).toMatchObject({ text: 'когда появишься', scheduleDate: SEND_WHEN_ONLINE_TIMESTAMP })
+  })
+
+  it('повтор из календаря едет полем scheduleRepeatPeriod пакета', async() => {
+    mounted = await mountInput()
+    const { input, managers } = mounted
+    input.messageInputField.setValueSilently('каждый день')
+    void input.scheduleSending()
+    await flush()
+    scheduleSpy.opts!.onPick(Math.floor(Date.now() / 1000) + 3600, 86400, false)
+    await flush()
+    expect(managers.messages.sendText.mock.calls[0][0]).toMatchObject({ scheduleRepeatPeriod: 86400 })
+    expect(input.scheduleRepeatPeriod).toBeUndefined()
   })
 
   it('в ленте отложенных Enter открывает календарь, а не шлёт', async() => {
@@ -392,14 +404,18 @@ describe('ChatInput: команды бота (Б-36)', () => {
 })
 
 describe('ChatInput: черновик после отложенной отправки', () => {
-  it('сохранённый черновик снимается явно (сервер его после отложенного не снимает)', async() => {
+  // Ф-5, п. 2: черновик при постановке снимает сервер, как при обычной отправке
+  // (tweb `clear_draft` в том же запросе, appMessagesManager.ts:2740) — ручного
+  // `drafts.save('')` клиента больше нет.
+  it('черновик клиент сам не снимает — только локально прячет (clearedDraft)', async() => {
     mounted = await mountInput()
     useChatsStore.setState({ dialogs: [{ ...makeDialog({ peerId: BOB }), draft: { _: 'draftMessage', message: 'потом', date: 1 } }] })
     const { input, managers } = mounted
     await vi.waitFor(() => expect(input.messageInput.textContent).toBe('потом'))
     input.setScheduleTimestamp(Math.floor(Date.now() / 1000) + 3600, () => void input.sendMessage(true))
-    await vi.waitFor(() => expect(managers.messages.scheduleMessage).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(managers.messages.sendText).toHaveBeenCalledTimes(1))
     await flush()
-    expect(managers.drafts.save).toHaveBeenCalledWith(BOB, '', null)
+    expect(managers.drafts.save).not.toHaveBeenCalledWith(BOB, '', null)
+    expect(input.messageInput.textContent).toBe('')
   })
 })

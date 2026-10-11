@@ -37,6 +37,11 @@ type SendPollInput struct {
 	ThreadRootID     *int64
 	Silent           bool
 	SendAsChatID     *int64
+	// Отложенный опрос: tweb шлёт messages.sendMedia{media: inputMediaPoll,
+	// schedule_date, schedule_repeat_period} (appMessagesManager.ts:4152-4166) —
+	// постановка идёт тем же Send (enqueueScheduled), ответ — updates.
+	ScheduleDate         int64
+	ScheduleRepeatPeriod int
 }
 
 // SendPoll валидирует и отправляет опрос: создаёт poll, затем сообщение через
@@ -92,9 +97,15 @@ func (i *Interactor) SendPoll(ctx context.Context, in SendPollInput) (domain.Mes
 		ReplyToID: in.ReplyToID, ReplyToPeerID: in.ReplyToPeerID,
 		ReplyQuoteText: in.ReplyQuoteText, ReplyQuoteOffset: in.ReplyQuoteOffset,
 		ThreadRootID: in.ThreadRootID, Silent: in.Silent, SendAsChatID: in.SendAsChatID,
+		ScheduleDate: in.ScheduleDate, ScheduleRepeatPeriod: in.ScheduleRepeatPeriod,
 	})
 	if err != nil {
 		return domain.Message{}, err
+	}
+	if in.ScheduleDate != 0 {
+		// Отложенное: ответ ручки — updateNewScheduledMessage (ScheduledUpdates
+		// гидрирует опрос сам), id — ключ отложенного.
+		return msg, nil
 	}
 	if e := i.hydratePolls(ctx, in.SenderID, []domain.Message{msg}); e == nil && msg.PollID != nil {
 		// hydratePolls работает по слайсу-копии — перечитываем для ответа
