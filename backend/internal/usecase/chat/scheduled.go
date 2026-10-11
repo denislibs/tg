@@ -784,6 +784,14 @@ func entitiesEqual(a, b domain.MessageEntities) bool {
 // отложенные чата снимаются одной транзакцией с кадром
 // updateDeleteScheduledMessages (tweb :12606-12613). Чужие и уже снятые ключи
 // пропускаются.
+//
+// Оплаченное при постановке (платная группа) возвращается автору в той же
+// транзакции — решение пользователя 2026-10-12, тем же refundScheduled, что
+// отказ публикации: только за реально снятые строки и по их состоянию на
+// момент снятия (у повтора после первого вхождения оплаты на строке уже нет —
+// следующие вхождения платят при публикации). Строка, чьё сообщение этого
+// срока уже вставлено (сбой между публикацией и снятием), — доставлена:
+// без возврата.
 func (i *Interactor) DeleteScheduled(ctx context.Context, chatID, userID int64, ids []int64) ([]domain.Update, error) {
 	if i.scheduled == nil {
 		return nil, domain.ErrNotFound
@@ -797,13 +805,31 @@ func (i *Interactor) DeleteScheduled(ctx context.Context, chatID, userID int64, 
 		own[k] = r.ID
 	}
 	var upd *domain.UpdateDeleteScheduledMessages
+	var balances map[int64]int64
 	err = i.writeScheduled(ctx, userID, func(ctx context.Context) ([]scheduledFrame, error) {
+		balances = map[int64]int64{}
 		// Строку в аренде публикации снятие пропускает: её снимет сама
 		// публикация кадром с sent_messages.
-		deleted, e := i.scheduled.DeleteUnclaimed(ctx, own)
-		if e != nil || len(deleted) == 0 {
+		gone, e := i.scheduled.DeleteUnclaimed(ctx, own)
+		if e != nil || len(gone) == 0 {
 			return nil, e
 		}
+		deleted := make([]int64, len(gone))
+		for k, r := range gone {
+			deleted[k] = r.ID
+			if r.PaidStars <= 0 {
+				continue
+			}
+			if _, e := i.msgs.FindByClientMsgID(ctx, r.ChatID, r.SenderID, publishKey(r)); e == nil {
+				continue // уже доставлено
+			} else if !errors.Is(e, domain.ErrNotFound) {
+				return nil, e
+			}
+			if e := i.refundScheduled(ctx, r, balances); e != nil {
+				return nil, e
+			}
+		}
+		slices.Sort(deleted)
 		u, e := i.scheduledDeleteUpdate(ctx, chatID, userID, deleted, nil)
 		if e != nil {
 			return nil, e
@@ -817,6 +843,9 @@ func (i *Interactor) DeleteScheduled(ctx context.Context, chatID, userID int64, 
 	})
 	if err != nil || upd == nil {
 		return nil, err
+	}
+	for uid, bal := range balances {
+		i.publishBalance(ctx, uid, bal)
 	}
 	return []domain.Update{*upd}, nil
 }
@@ -1126,7 +1155,8 @@ func (i *Interactor) publishScheduled(ctx context.Context, chatID, userID int64,
 }
 
 // refundScheduled возвращает автору звёзды, списанные при постановке
-// отвергнутого отложенного (решение пользователя 2026-10-11): тем же
+// отвергнутого отложенного (решение пользователя 2026-10-11) или снятого
+// самим автором (2026-10-12): тем же
 // движением баланса, что и списание (chargePaidMessage), в обратную сторону.
 // Получатель (владелец группы) отдаёт полученное, но не больше своего
 // баланса (атомарно, TakeUpTo): звёзды он мог уже потратить, а

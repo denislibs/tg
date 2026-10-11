@@ -910,8 +910,9 @@ type ScheduledRepo interface {
 	// ключи РЕАЛЬНО удалённых: из конкурирующих снятий одной строки её
 	// получает ровно одно.
 	DeleteIDs(ctx context.Context, ids []int64) ([]int64, error)
-	// DeleteUnclaimed — снятие автором: строки в аренде публикации пропускаются.
-	DeleteUnclaimed(ctx context.Context, ids []int64) ([]int64, error)
+	// DeleteUnclaimed — снятие автором: строки в аренде публикации
+	// пропускаются; отдаёт реально снятые строки (состояние на момент снятия).
+	DeleteUnclaimed(ctx context.Context, ids []int64) ([]domain.ScheduledMessage, error)
 	// Due — созревшие по времени (send_at<=now, без when_online, вне аренды),
 	// по send_at, id.
 	Due(ctx context.Context, now time.Time, limit int) ([]domain.ScheduledMessage, error)

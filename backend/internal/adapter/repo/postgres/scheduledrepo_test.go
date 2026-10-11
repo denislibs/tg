@@ -175,7 +175,7 @@ func TestScheduledRepo_ClaimRescheduleUnclaimed(t *testing.T) {
 	if due, _ := r.Due(ctx, next.SendAt.Add(time.Second), 10); len(due) != 0 {
 		t.Fatal("Due отдал строку в отступе после сбоя")
 	}
-	if del, _ := r.DeleteUnclaimed(ctx, []int64{m.ID}); len(del) != 1 {
+	if del, _ := r.DeleteUnclaimed(ctx, []int64{m.ID}); len(del) != 1 || del[0].ID != m.ID {
 		t.Fatal("снятие после Release")
 	}
 	if err := r.Update(ctx, next, next.SendAt, false); err != domain.ErrNotFound {
