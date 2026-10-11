@@ -2744,6 +2744,47 @@ export default class ChatBubbles implements BubbleGroupsHost {
     }
   }
 
+  /**
+   * Сообщение альбома, пришедшее к уже нарисованной группе, — порт обработчика
+   * `grouped_edit` (tweb bubbles.ts:1472-1490): бабл группы перерисовывается
+   * главным сообщением с полным составом В ТОТ ЖЕ УЗЕЛ (`safeRenderMessage(
+   * {message, reverse: true, bubble})`). У нас пересборки узла целиком нет, а
+   * от состава группы зависит ровно вложение (раскладка альбома, `renderMedia`),
+   * поэтому пересобирается оно; адреса прочих сообщений ведут на тот же узел,
+   * `maxBubbleMid` — старший номер группы (tweb :7859-7860). Возвращает `true`,
+   * если сообщение ушло в нарисованный бабл.
+   *
+   * Почему у tweb это не нужно на приходе нового: Telegram шлёт альбом одной
+   * пачкой `updates`, и к асинхронному рендеру первого сообщения группа в
+   * хранилище уже полная (`getMessagesByGroupedId`, :7846-7857). У нас каждое
+   * сообщение альбома — свой кадр (`new_message`, `updateNewScheduledMessage`),
+   * и первое успевает нарисоваться одиночным фото.
+   *
+   * Главное сообщение группы при этом не меняется: оно — младший номер, а
+   * кадры альбома приходят по возрастанию. Пришедшее младше нарисованного
+   * главного (сдвиг главного, ветка `wasMainMid` оригинала) не трогаем.
+   * Неотправленные (дробный номер) — тоже: свой альбом ведёт `history_update`.
+   */
+  private appendToRenderedGroup(message: MyMessage): boolean {
+    const groupedId = message._ === 'message' ? message.grouped_id : undefined
+    if (!groupedId || isLocalMessageId(message.id)) return false
+    if (this.bubbles[makeFullMid(this.peerId, message.id)]) return false
+
+    const group = this.groupedMessages(groupedId)
+    const main = group[0]
+    if (!main || main.id === message.id || group.some((m) => isLocalMessageId(m.id))) return false
+    const bubble = this.bubbles[makeFullMid(this.peerId, main.id)]
+    const bubbleContainer = bubble?.querySelector<HTMLElement>('.bubble-content')
+    const messageDiv = bubble?.querySelector<HTMLElement>('.message')
+    if (!bubble || !bubbleContainer || !messageDiv) return false
+
+    for (const m of group) this.bubbles[makeFullMid(this.peerId, m.id)] = bubble
+    bubble.dataset.maxBubbleMid = String(this.maxBubbleMid(main))
+    bubbleContainer.querySelector(':scope > .attachment')?.remove()
+    this.renderMedia(main, bubbleContainer, messageDiv)
+    return true
+  }
+
   /** Порт tweb `renderNewMessage` (bubbles.ts:4528): промис рендера нового
    *  сообщения живёт в реестре, пока не разрешится, — на него смотрит
    *  обработчик `history_update` (:780-783). */
@@ -2787,6 +2828,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
     if(this.savedReaction && !hasReactionEmoticon(message.reactions, this.savedReaction)) {
       return
     }
+
+    // Альбом, чьё сообщение пришло ПОСЛЕ того, как группа уже нарисована
+    // (бабл с вложением строится синхронно в `safeRenderMessage`, очередь
+    // раскладывает по сериям уже готовый узел).
+    if (this.appendToRenderedGroup(message)) return
 
     const fullMid = makeFullMid(this.peerId, message.id)
     if (this.getBubble(fullMid)) {

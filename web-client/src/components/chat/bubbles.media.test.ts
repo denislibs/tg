@@ -6,7 +6,7 @@
 // `.attachment`, ставит классы бабла и стыка, а внутрь контейнера попадает то,
 // что положил враппер.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { resetMessagesMirror } from '@core/history/messagesMirror'
+import { applyOpsToMirror, resetMessagesMirror } from '@core/history/messagesMirror'
 import { resetPeerMirror } from '@core/peerCache'
 import { saveDocument, THUMB_TYPE_FULL, type DocumentAttribute, type MessageMedia } from '@core/media/messageMedia'
 import { makeMessage } from '@core/messages/testMessage'
@@ -298,6 +298,32 @@ describe('ChatBubbles — медиа в бабле', () => {
       const rendered = bubbles.chatInner.querySelectorAll('.bubble:not(.service)')
       expect(rendered).toHaveLength(1)
       expect((rendered[0] as HTMLElement).dataset.mid).toBe('1')
+    })
+
+    // Каждое сообщение альбома у нас — свой кадр, и первое успевает
+    // нарисоваться одиночным фото. Порт `grouped_edit` (tweb bubbles.ts:1472-1490):
+    // пришедшее к нарисованной группе сообщение перерисовывает её главным, с
+    // полным составом.
+    it('сообщение альбома, пришедшее после нарисованной группы, собирает альбом в ОДИН бабл', async () => {
+      const group = album([1, 2])
+      bubbles = mountTestBubbles(chatContext(), managersWith([group[0]]))
+      await openFeed(bubbles)
+      await settle()
+      const before = bubbles.chatInner.querySelector<HTMLElement>('.bubble:not(.service)')!
+      expect(before.classList.contains('is-album')).toBe(false)
+
+      applyOpsToMirror([{ op: 'insert', key: String(CHAT), msg: group[1] }])
+      await settle()
+
+      const rendered = bubbles.chatInner.querySelectorAll<HTMLElement>('.bubble:not(.service)')
+      expect(rendered).toHaveLength(1)
+      expect(rendered[0]).toBe(before)
+      expect(rendered[0].classList.contains('is-album')).toBe(true)
+      expect(rendered[0].querySelectorAll('.attachment')).toHaveLength(1)
+      expect(rendered[0].dataset.mid).toBe('1')
+      expect(rendered[0].dataset.maxBubbleMid).toBe('2')
+      expect(bubbles.getBubble(makeFullMid(CHAT, 2))).toBe(rendered[0])
+      expect(bubbles.getBubble(makeFullMid(CHAT, 1))).toBe(rendered[0])
     })
 
     it('группа из ОДНОГО сообщения альбомом не считается', async () => {
