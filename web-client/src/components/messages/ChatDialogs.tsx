@@ -1,5 +1,5 @@
 import type { LangPackKey } from '@/lang'
-import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 // Presentational chat dialogs/popups extracted from Chat: forward target
 // picker, the reacted/seen list. Each is dumb — it self-sources i18n +
 // motion constants and emits its actions via callbacks; the parent owns the
@@ -173,7 +173,7 @@ const DEFAULT_FORWARD_RIGHTS: readonly ChatRights[] = ['send_messages']
 // недавних, табы папок (липкие при скролле, порт `pickUser.tsx:325-424` —
 // `popups/pickUserFolderTabs.ts`) и список чатов с аватарами/подписями.
 // Мультивыбор; аккордная кнопка «Переслать (N)» шлёт во все выбранные чаты сразу.
-export function ForwardPicker({ dialogs, onPick, onClose, chatRightsActions = DEFAULT_FORWARD_RIGHTS }: {
+export function ForwardPicker({ dialogs, onPick, onClose, chatRightsActions = DEFAULT_FORWARD_RIGHTS, onSendButtonRef, onSelectionChange }: {
   dialogs: Dialog[]
   // Один чат → tweb-флоу: открыть чат и показать плашку форварда в композере
   // (опции show/hide sender/caption живут в меню плашки). Несколько → отправить сразу.
@@ -186,6 +186,12 @@ export function ForwardPicker({ dialogs, onPick, onClose, chatRightsActions = DE
    * `send_media` (`stories/share.ts:34`). Наши имена — `core/peers/filterByRights.ts`.
    */
   chatRightsActions?: readonly ChatRights[]
+  /** Кнопка «Переслать» подвала — под меню отправки (tweb `forward.tsx:396-399`,
+   *  `btnProps.ref` → `setupSendMenu`). */
+  onSendButtonRef?: (el: HTMLButtonElement | null) => void
+  /** Выбор изменился — владелец пересчитывает меню отправки (tweb `onChange`,
+   *  `:363-368` → `updateSendMenuPeerParams`). */
+  onSelectionChange?: (peerIds: number[]) => void
 }) {
   const t = useT()
   const [lang] = useLang()
@@ -203,6 +209,8 @@ export function ForwardPicker({ dialogs, onPick, onClose, chatRightsActions = DE
   const [open, setOpen] = useState(true)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const confirmed = useRef<number[] | null>(null)
+
+  useEffect(() => { onSelectionChange?.([...selected]) }, [selected, onSelectionChange])
 
   const toggle = (peerId: number) => setSelected((prev) => {
     const next = new Set(prev)
@@ -291,7 +299,7 @@ export function ForwardPicker({ dialogs, onPick, onClose, chatRightsActions = DE
       title={t('ShareWith')}
       onClose={() => setOpen(false)}
       onExitComplete={() => { const c = confirmed.current; if (c) onPick(c); else onClose() }}
-      action={selected.size ? { label: `${t('Forward')} (${selected.size})`, onClick: confirm } : undefined}
+      action={selected.size ? { label: `${t('Forward')} (${selected.size})`, onClick: confirm, ref: onSendButtonRef } : undefined}
       width={460}
     >
       {/* Тело — тот же селектор, что у участников/админов справа: в tweb форвард-попап

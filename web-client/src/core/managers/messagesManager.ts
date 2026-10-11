@@ -22,14 +22,15 @@ export interface MessagesSearchResultsCalendar {
   messages: RawMyMessage[]
   users: UserReal[]
 }
-import { getThreadRootId, mapMyMessage, type MyMessage, type MessageReal, type MessageEntity, type MessageFields, type MessageReplies, type MessageReplyHeader, type RawMessage, type RawMyMessage, type SecretMedia } from '../models'
+import { getMessageThreadId, mapMyMessage, type MyMessage, type MessageReal, type MessageEntity, type MessageFields, type MessageReplies, type MessageReplyHeader, type RawMessage, type RawMyMessage, type SecretMedia } from '../models'
 import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
 import pause from '@helpers/schedulers/pause'
-import { getPeerId, type Peer } from '../peers/peerId'
+import { getPeerId, isAnyChat, type Peer } from '../peers/peerId'
 import type { UserReal, User, Chat } from '../peers/peer'
 import canEditMessage from '../messages/canEditMessage'
+import { isForum } from '../peers/predicates'
 import { generateMessageId, getServerMessageId, isLocalMessageId } from '../history/messageId'
-import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, PinMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, PaidMediaUnlockEvt, SendMessageAction } from '../realtime/events'
+import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, PinMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, PaidMediaUnlockEvt, SendMessageAction, NewScheduledMessageEvt, DeleteScheduledMessagesEvt, Update } from '../realtime/events'
 import type { SendArgs as WireSendArgs } from '../realtime/connectionManager'
 import type { UploadArgs } from './mediaManager'
 import { RT } from '../realtime/events'
@@ -60,6 +61,14 @@ export type { ReactionUser, SavedTag, StarSender, StarReactionInfo, StarReaction
  * `users` — карточки авторов пачки: получатель списка обязан уметь нарисовать
  * подпись, ни о ком не спрашивая отдельно.
  */
+/** Ответ ручек отложенных — контейнер `updates` (tweb `Updates`): кадры ленты
+ *  отложенных и пиры пачки. */
+export interface ScheduledUpdates {
+  updates?: Update[]
+  users?: UserReal[]
+  chats?: Chat[]
+}
+
 export interface MessagesContainer {
   _: 'messages.messages' | 'messages.messagesSlice' | 'messages.channelMessages'
   /** pts журнала канала — только у `messages.channelMessages` (история канала). */
@@ -227,9 +236,13 @@ export interface MessagesDeps {
    *  состояние канала, когда диалога нет (tweb appMessagesManager.ts
    *  :13503-13505). */
   addChannelState?: (peerId: number, pts: number) => void
+  /** Состояние треда комментариев из `messages.discussionMessage` — владелец
+   *  прочтения тредов (`threadReads.saveDiscussion`, tweb
+   *  `getDiscussionMessage` :8843-8846). Номера клиентские. */
+  saveDiscussion?: (peerId: number, threadId: number, state: { maxId: number; readMaxId: number; readOutboxMaxId: number; unreadCount: number }) => void
 }
 
-export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium, meReady, isBroadcastChat, getPeer, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers, onMessagesDeleted, getUnreadReactionsCount, addChannelState }: MessagesDeps) {
+export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium, meReady, isBroadcastChat, getPeer, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers, onMessagesDeleted, getUnreadReactionsCount, addChannelState, saveDiscussion }: MessagesDeps) {
   // ── Граница маппинга ────────────────────────────────────────────────────────
   // `pFlags.out` производит СЕРВЕР (решение Р7 разбора отменено): после порта у
   // сообщения от лица канала автором на проводе становится сам канал, и прежней
@@ -237,6 +250,13 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
   // перевод номеров в клиентское пространство и уточнение служебного действия —
   // и то и другое делает `mapMyMessage`.
   const mapOne = (r: RawMyMessage): MyMessage => mapMyMessage(r, getMeId?.() ?? null)
+  // Тред сообщения — tweb `getThreadKey` (appMessagesManager.ts:11903-11921):
+  // только у группы/канала (`peerId.isAnyChat()`, :11910 — ответ в личке тредом
+  // не становится), `getMessageThreadId` с видом чата. В форуме сообщение без
+  // `reply_to.pFlags.forum_topic` живёт в General, а не в «чате целиком».
+  // Ветки ботфорума и `saved_peer_id` нет — предметов нет (О-3).
+  const threadIdOf = (m: MyMessage): number | undefined =>
+    isAnyChat(m.peerId) ? getMessageThreadId(m, { isForum: isForum(getPeer?.(m.peerId) as Chat | undefined) }) : undefined
   // Гейт личности (см. `meReady` в MessagesDeps) — ждут его СЕТЕВЫЕ пути.
   // `cacheLive`/`insertPending` синхронны и ждать не могут: живой кадр приходит
   // по уже поднятому WS, а неотправленный бабл заводит сам пользователь — оба
@@ -439,13 +459,47 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     patchMsg(peerId, (m) => m.id === msgId, (m) => (m._ !== 'message' ? m : { ...m, factcheck }))
     emitFactCheckOps(peerId, msgId, factcheck)
   }
-  const ctx = { rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers, getUnreadReactionsCount }
+  // ── Хранилище отложенных — порт tweb `scheduledMessagesStorage`
+  // (appMessagesManager.ts:596, `getScheduledMessagesStorage` :12386-12388).
+  // Отдельно от истории: номера отложенных — ключи очереди, а не номера чата, и
+  // живут в том же клиентском пространстве, поэтому смешивать их с `msgsByChat`
+  // нельзя. Хранилище заводится при первом обращении (`??=` оригинала): чтением
+  // ленты или своей отправкой; кадры без хранилища пропускаются (:11777-11780).
+  const scheduledStorage = new Map<number, Map<number, MyMessage>>()
+  const getScheduledStorage = (peerId: number): Map<number, MyMessage> => {
+    let storage = scheduledStorage.get(peerId)
+    if (!storage) scheduledStorage.set(peerId, storage = new Map())
+    return storage
+  }
+  // Ключ окна ленты отложенных — тот же, что у `Chat.messagesStorageKey`
+  // (`components/chat/chat.ts`, tweb `${peerId}_scheduled`).
+  const scheduledKey = (peerId: number): string => `${peerId}_scheduled`
+  // tweb `saveMessages(..., {storage, isScheduled: true})` (:7042-7044): флаг
+  // отложенного ставит сохранение в его хранилище.
+  const saveScheduled = (storage: Map<number, MyMessage>, m: MyMessage): MyMessage => {
+    const saved = { ...m, pFlags: { ...m.pFlags, is_scheduled: true as const } } as MyMessage
+    storage.set(saved.id, saved)
+    return saved
+  }
+  // Порядок ленты — по дате отправки (у «когда в сети» она одна на всех).
+  const sortScheduled = (storage: Map<number, MyMessage>): MyMessage[] =>
+    [...storage.values()].sort((a, b) => a.date - b.date || a.id - b.id)
+
+  const ctx = {
+    rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers, getUnreadReactionsCount,
+    // Стрелкой: функция объявлена ниже, а зовётся только из ответа ручки.
+    applyScheduledUpdates: (r: ScheduledUpdates | undefined) => applyScheduledUpdates(r?.updates, r),
+  }
   // Локальной ссылкой (а не только спредом ниже) — её зовёт cacheLive, чтобы эхо
   // своей отправки убирало временный бабл из SSOT (порт tweb checkPendingMessage).
   const pending = newPendingMethods({
     hkey, slices, msgsFor, appendNewest,
+    scheduledFor: getScheduledStorage,
+    scheduledKey,
+    scheduledNew: (message) => broadcast?.('scheduled_new', message),
     getMeId: () => getMeId?.() ?? null,
     isBroadcastChat: (peerId) => isBroadcastChat?.(peerId) ?? false,
+    isForum: (peerId) => isForum(getPeer?.(peerId) as Chat | undefined),
     emit: emitOps,
     // Заглушки-по-умолчанию — для юнит-тестов кэш-методов, которые собирают
     // менеджер одним лишь `rest`; в воркере все четыре подставляет workerCore
@@ -456,6 +510,63 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     sendTyping: sendTyping ?? (() => {}),
     uploadProgress: uploadProgress ?? (() => {}),
   })
+
+  /** tweb `onUpdateNewScheduledMessage` (`:11773-11802`). Хранилища нет —
+   *  лента не открывалась, применять некуда. Номер уже есть — это правка
+   *  (`message_edit` окна отложенных; у нас — операция `replace`, из которой
+   *  зеркало выводит то же событие). Новое: своё ожидающее (по `random_id`)
+   *  финализируется (`checkPendingMessage` → `history_update`), иначе —
+   *  `scheduled_new`. */
+  const applyNewScheduledMessage = (u: NewScheduledMessageEvt): void => {
+    if (u.message._ === 'messageEmpty') return
+    const incoming = mapOne(u.message)
+    const { peerId } = incoming
+    const storage = scheduledStorage.get(peerId)
+    if (!storage) return
+    const old = storage.get(incoming.id)
+    const message = saveScheduled(storage, incoming)
+    if (old) {
+      // Тот же кадр дважды — ответ ручки и затем сокет (сервер шлёт кадр всем
+      // устройствам автора, включая отправившее; MTProto апдейты ответа сессии-
+      // отправителю повторно не присылает, поэтому tweb дубля не видит) — второй
+      // ничего не меняет, правку окна не объявляем.
+      if (JSON.stringify(old) === JSON.stringify(message)) return
+      emitOps([{ op: 'replace', key: scheduledKey(peerId), msg: message }])
+      return
+    }
+    if (message.random_id && pending.hasPending(message.random_id)) {
+      emitOps(pending.finalizePendingMessage(message.random_id, message))
+      return
+    }
+    broadcast?.('scheduled_new', message)
+  }
+
+  /** tweb `onUpdateDeleteScheduledMessages` (`:11804-11815`): хранилище есть —
+   *  номера уходят из него, ленте — `scheduled_delete`. `sent_messages` не
+   *  читается (как у оригинала). */
+  const applyDeleteScheduledMessages = (u: DeleteScheduledMessagesEvt): void => {
+    const peerId = getPeerId(u.peer)
+    const storage = scheduledStorage.get(peerId)
+    if (!storage) return
+    // Объявляем только снятые сейчас: повтор того же кадра (ответ ручки, затем
+    // сокет — см. дубль в `applyNewScheduledMessage`) ленте уже не событие.
+    const mids = u.messages.map(generateMessageId).filter((mid) => storage.delete(mid))
+    if (mids.length) broadcast?.('scheduled_delete', { peerId, mids })
+  }
+
+  // Ответ ручки отложенных — `Updates` (tweb `processUpdateMessage`). Здесь
+  // применяются только кадры ленты отложенных: опубликованное сообщение
+  // приезжает штатным веером `new_message`. Тот же кадр из сокета следом
+  // отсекается: номер уже в хранилище с тем же содержимым, снятые номера уже
+  // сняты (`applyNewScheduledMessage`/`applyDeleteScheduledMessages`).
+  const applyScheduledUpdates = (updates: Update[] | undefined, peersOf?: { users?: UserReal[], chats?: Chat[] }): void => {
+    // tweb `processUpdateMessage` :239-240 — пиры пачки сохраняются ДО апдейтов
+    if (peersOf?.users?.length || peersOf?.chats?.length) peers?.saveApiPeers({ users: peersOf.users, chats: peersOf.chats })
+    for (const u of updates ?? []) {
+      if (u._ === 'updateNewScheduledMessage') applyNewScheduledMessage(u)
+      else if (u._ === 'updateDeleteScheduledMessages') applyDeleteScheduledMessages(u)
+    }
+  }
 
   // Шаред-медиа профиля (табы Media/Files/Links/Music/Voice) — история чата
   // одного типа, новые сверху (tweb inputMessagesFilter*) + общее число.
@@ -698,6 +809,22 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     // настоящие, как `messagesStorage` + `historyStorage.history` в оригинале.
     // Поэтому у него свой ctx, а не общий MessagesCtx.
     ...pending,
+
+    /**
+     * Форум выключили — окна тредов чата сбрасываются (`chat_toggle_forum` →
+     * `delete this.threadsStorage[peerId]`, tweb appMessagesManager.ts:921-932):
+     * темы перестали быть тредами, и их срезы с номерами тем больше не верны.
+     * Сами сообщения (SSOT) и основное окно остаются. Вторая половина
+     * обработчика (`pinnedMessages` с ключом `peerId_*`) у tweb не срабатывает
+     * никогда (`+key === peerId && key.startsWith(peerId + '_')`) — не переносится.
+     */
+    flushThreadWindows(peerId: number): void {
+      for (const key of winKeysOf(peerId)) {
+        if (key === String(peerId)) continue
+        slices.delete(key)
+        historyCounts.delete(key)
+      }
+    },
 
     /**
      * Положить в SSOT сообщения, приехавшие ПОПУТНО с чужим ответом, — вектор
@@ -983,7 +1110,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
         thread_root_id: args.threadRootId != null ? getServerMessageId(args.threadRootId) : null,
       })
       const m = await mapNet(created)
-      const root = getThreadRootId(m)
+      const root = threadIdOf(m)
       // Кладём и в основное окно чата, и в окно треда (если это тред-сообщение).
       for (const key of root ? [hkey(args.peerId), hkey(args.peerId, root)] : [hkey(args.peerId)]) {
         put(key, [m])
@@ -996,7 +1123,35 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
 
     // Edit a message's text (author only, server-enforced). Returns the updated
     // message and refreshes the cache entry.
-    async editMessage(peerId: number, msgId: number, text: string, entities?: MessageEntity[]): Promise<MyMessage> {
+    //
+    // Отложенное правится ТЕМ ЖЕ методом с `schedule_date` (tweb `editMessage`
+    // :2209-2222: `schedule_date = options.scheduleDate || message.date` у
+    // `is_scheduled`); `msgId` тогда — ключ отложенного. Ответ — `Updates` с
+    // `updateNewScheduledMessage` того же номера, то есть правка ленты отложенных
+    // (`processUpdateMessage` оригинала). Правка без изменений — не отказ
+    // (`onEditMessageError` :2226-2240, `MESSAGE_NOT_MODIFIED`).
+    async editMessage(
+      peerId: number, msgId: number, text: string, entities?: MessageEntity[],
+      options?: { scheduleDate?: number | null; scheduleRepeatPeriod?: number | null },
+    ): Promise<MyMessage | undefined> {
+      if (options?.scheduleDate) {
+        try {
+          const r = await rest.patch<ScheduledUpdates>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}`, {
+            text, entities: entities ?? null,
+            schedule_date: options.scheduleDate,
+            // Ключ — только когда период передан (tweb :2218 кладёт его лишь у
+            // `options.scheduleRepeatPeriod`): правка текста без периода повтор
+            // не трогает (у сервера nil = «не менять»), «Изменить время» шлёт
+            // явное значение, 0 = снять повтор.
+            ...(options.scheduleRepeatPeriod !== undefined ? { schedule_repeat_period: options.scheduleRepeatPeriod ?? 0 } : {}),
+          })
+          applyScheduledUpdates(r?.updates, r)
+        } catch (e) {
+          if (e instanceof HttpError && e.type === 'MESSAGE_NOT_MODIFIED') return undefined
+          throw e
+        }
+        return scheduledStorage.get(peerId)?.get(msgId)
+      }
       const updated = await rest.patch<RawMyMessage>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}`, { text, entities: entities ?? null })
       const m = await mapNet(updated)
       // upsert правки в SSOT (только если сообщение уже загружено в чат).
@@ -1113,17 +1268,28 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       toPeerId: number,
       fromPeerId: number,
       msgIds: number[],
-      opts?: { dropAuthor?: boolean; dropCaption?: boolean; silent?: boolean; threadId?: number | null },
+      opts?: { dropAuthor?: boolean; dropCaption?: boolean; silent?: boolean; threadId?: number | null; scheduleDate?: number | null; scheduleRepeatPeriod?: number | null },
     ): Promise<MyMessage[]> {
-      const r = await rest.post<MessagesContainer>(`/chats/${toPeerId}/forward`, {
+      const r = await rest.post<MessagesContainer | ScheduledUpdates>(`/chats/${toPeerId}/forward`, {
         from_peer_id: fromPeerId,
         ids: msgIds.map(getServerMessageId),
         drop_author: opts?.dropAuthor ?? false,
         drop_caption: opts?.dropCaption ?? false,
         silent: opts?.silent ?? false,
         top_msg_id: opts?.threadId ? getServerMessageId(opts.threadId) : null,
+        // tweb `messages.forwardMessages{schedule_date, schedule_repeat_period}`
+        // (appMessagesManager.ts:5641-5660)
+        schedule_date: opts?.scheduleDate || 0,
+        schedule_repeat_period: opts?.scheduleRepeatPeriod || 0,
       })
-      const msgs = await mapContainer(r)
+      // Отложенные копии — не история: ответ — `Updates` с
+      // `updateNewScheduledMessage` (tweb `processUpdateMessage`), они и ложатся
+      // в ленту отложенных.
+      if (opts?.scheduleDate) {
+        applyScheduledUpdates((r as ScheduledUpdates).updates, r)
+        return []
+      }
+      const msgs = await mapContainer(r as MessagesContainer)
       put(hkey(toPeerId), msgs)
       return msgs
     },
@@ -1144,12 +1310,20 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
      * Ответ — `messages.discussionMessage`: его `chats` везут группу обсуждения
      * и канал (без карточки группы композер треда считал «писать нельзя»), и
      * `mapContainer` сохраняет их до отдачи сообщения. Состояние треда
-     * (`max_id`/`read_*_max_id`) окно треда пока считает само.
+     * (`max_id`, `read_inbox_max_id` — без него номер корня, `read_outbox_max_id`,
+     * `unread_count`) уходит владельцу прочтения тредов (tweb :8843-8846).
      */
     async getDiscussionMessage(peerId: number, mid: number): Promise<MyMessage | undefined> {
-      const r = await rest.get<MessagesContainer>(`/channels/${peerId}/posts/${getServerMessageId(mid)}/discussion`)
+      const r = await rest.get<MessagesContainer & { max_id?: number; read_inbox_max_id?: number; read_outbox_max_id?: number; unread_count?: number }>(`/channels/${peerId}/posts/${getServerMessageId(mid)}/discussion`)
       const [message] = await mapContainer(r)
-      return message?._ === 'message' ? message : undefined
+      if (message?._ !== 'message') return undefined
+      saveDiscussion?.(message.peerId, message.id, {
+        maxId: r.max_id ? generateMessageId(r.max_id) : 0,
+        readMaxId: r.read_inbox_max_id != null ? generateMessageId(r.read_inbox_max_id) : message.id,
+        readOutboxMaxId: r.read_outbox_max_id ? generateMessageId(r.read_outbox_max_id) : 0,
+        unreadCount: r.unread_count ?? 0,
+      })
+      return message
     },
 
     async listPins(peerId: number): Promise<MyMessage[]> {
@@ -1249,73 +1423,54 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
 
     // ── Запланированные сообщения (Telegram scheduled) ──
     //
-    // Собственной проводной формы у отложенного больше НЕТ: сервер отдаёт тот же
-    // конструктор `message` с клиентским флагом `pFlags.is_scheduled`, датой
-    // `date` = время отправки (или `SEND_WHEN_ONLINE_TIMESTAMP`) и нашими
-    // параметрами `send_at`/`when_online` — ровно как у оригинала, где
-    // отложенные едут вектором `messages.Message`.
+    // Собственной проводной формы у отложенного НЕТ: сервер отдаёт тот же
+    // конструктор `message` с флагом `pFlags.is_scheduled` и датой `date` =
+    // время отправки (или `SEND_WHEN_ONLINE_TIMESTAMP`), как оригинал, где
+    // отложенные едут вектором `messages.Message`. Поставить в очередь — это
+    // обычная отправка с `scheduleDate` в пакете (`sendText`/`sendFile`/
+    // `forwardMessages`/`channels.post`), отдельной ручки постановки нет
+    // (tweb: `schedule_date` — поле каждого метода отправки).
     //
-    // Идентичность у них СВОЯ: номера в чате отложенное ещё не получило (он
-    // назначается при отправке), поэтому `id` здесь — ключ строки
-    // `scheduled_messages`, а адрес — `/chats/{peerID}/scheduled/{schedID}`.
-    // Клиентское пространство при этом ОБЩЕЕ (`generateMessageId` применяется на
-    // границе разбора ко всему), значит и обратно оно приводится тем же
-    // `getServerMessageId`. В окна истории они не попадают: лента отложенных
-    // (`ChatType.Scheduled`) держит их под своим ключом и узнаёт о переменах
-    // событиями `scheduled_new`/`scheduled_delete` (tweb rootScope.ts:131-132) —
-    // их объявляет этот владелец ПОСЛЕ ответа ручки, всем вкладкам.
-    //
-    // whenOnline (tweb Schedule.SendWhenOnline): очередь ждёт появления
-    // собеседника в сети — send_at игнорируется бэком (только приватный чат).
-    //
-    // `type`/`mediaId` — отложенный стикер или сохранённая гифка (tweb
-    // `sendMessageWithDocument` под `scheduleDate`): ручка берёт `media_id` готового
-    // файла, как кадр `send_message`.
-    async scheduleMessage(peerId: number, p: { text: string; entities?: MessageEntity[]; sendAt: number; replyToId?: number; whenOnline?: boolean; type?: 'text' | 'sticker' | 'video' | 'voice' | 'roundVideo'; mediaId?: number }): Promise<MyMessage> {
-      const r = await rest.post<RawMyMessage>(`/chats/${peerId}/scheduled`, {
-        type: p.type ?? 'text', text: p.text, entities: p.entities ?? null,
-        media_id: p.mediaId ?? null,
-        reply_to_id: p.replyToId != null ? getServerMessageId(p.replyToId) : null, send_at: p.sendAt,
-        when_online: p.whenOnline ?? false,
-      })
-      const message = await mapNet(r)
-      broadcast?.('scheduled_new', message)
-      return message
-    },
-    // tweb `getScheduledMessages` (`appMessagesManager.ts:12394`): набор отдан
-    // целиком тем же контейнером, что история (`messages.messages`), по
-    // возрастанию даты отправки — порядок ленты. Карточка автора приезжает
-    // вектором `users` и публикуется до отдачи страницы.
+    // Идентичность у отложенных СВОЯ: номер — ключ строки очереди, а не номер в
+    // чате. Клиентское пространство при этом общее (`generateMessageId` на
+    // границе разбора), обратно — тем же `getServerMessageId`. В окна истории
+    // они не попадают: живут в хранилище отложенных (`scheduledStorage`), лента
+    // узнаёт о переменах событиями `scheduled_new`/`scheduled_delete` и правкой
+    // окна `${peerId}_scheduled` (tweb rootScope.ts:131-132, :11773-11815).
+    // Источник перемен — КАДРЫ (`applyNewScheduledMessage`/
+    // `applyDeleteScheduledMessages`), а не ответ ручки: второе устройство
+    // узнаёт о постановке, правке и публикации тем же путём.
+
+    // tweb `getScheduledMessages` (`appMessagesManager.ts:12394-12418`): есть
+    // хранилище с сообщениями — отдаём его, иначе `messages.getScheduledHistory`.
+    // Набор приходит контейнером истории (`messages.messages`), карточки авторов
+    // публикуются до отдачи. Порядок ленты — по дате отправки.
     async getScheduledMessages(peerId: number): Promise<MyMessage[]> {
+      const cached = getScheduledStorage(peerId)
+      if (cached.size) return sortScheduled(cached)
       const messages = await mapContainer(await rest.get<MessagesContainer>(`/chats/${peerId}/scheduled`))
-      return messages.sort((a, b) => a.date - b.date || a.id - b.id)
+      const storage = getScheduledStorage(peerId)
+      for (const m of messages) saveScheduled(storage, m)
+      return sortScheduled(storage)
     },
-    // tweb `deleteScheduledMessages` (`:12606`): по ответу — `scheduled_delete`.
+    // tweb `deleteScheduledMessages` (`:12606-12613`): один вызов на пачку
+    // (`messages.deleteScheduledMessages{peer, id[]}`), ответ — Updates.
     async deleteScheduledMessages(peerId: number, mids: number[]): Promise<void> {
-      await Promise.all(mids.map((mid) => rest.del(`/chats/${peerId}/scheduled/${getServerMessageId(mid)}`)))
-      broadcast?.('scheduled_delete', { peerId, mids })
+      const r = await rest.post<ScheduledUpdates>(`/chats/${peerId}/scheduled/delete`, { id: mids.map(getServerMessageId) })
+      applyScheduledUpdates(r?.updates, r)
     },
-    // Перепланировать (tweb MessageScheduleEditTime): сменить время отправки.
-    // Сброс when_online делает бэк (появляется конкретная дата).
-    // Лента отложенных узнаёт о новом времени теми же событиями владельца, что и о
-    // появлении/удалении (`scheduled_delete` + `scheduled_new`): у tweb правку
-    // приносит `updateEditMessage` отложенного, а у нас кадра правки отложенного нет —
-    // бабл переезжает на новое место по дате, как у оригинала.
-    async editScheduled(peerId: number, id: number, sendAt: number): Promise<MyMessage> {
-      const r = await rest.patch<RawMyMessage>(`/chats/${peerId}/scheduled/${getServerMessageId(id)}`, { send_at: sendAt })
-      const message = await mapNet(r)
-      broadcast?.('scheduled_delete', { peerId, mids: [id] })
-      broadcast?.('scheduled_new', message)
-      return message
-    },
-    // tweb `sendScheduledMessages` (`:12420`, `messages.sendScheduledMessages`):
-    // отправить немедленно. Само сообщение в окно истории кладёт ВЕЕР сервера
-    // (`new_message` → операция `insert`, бэкенд шлёт его и автору); отсюда —
-    // только `scheduled_delete`: из ленты отложенных оно уходит.
+    // tweb `sendScheduledMessages` (`:12420-12427`, `messages.sendScheduledMessages`):
+    // отправить немедленно. Опубликованное сообщение приезжает штатным веером
+    // `new_message`, уход из ленты — `updateDeleteScheduledMessages` в ответе.
     async sendScheduledMessages(peerId: number, mids: number[]): Promise<void> {
-      await Promise.all(mids.map((mid) => rest.post(`/chats/${peerId}/scheduled/${getServerMessageId(mid)}/send_now`, {})))
-      broadcast?.('scheduled_delete', { peerId, mids })
+      const r = await rest.post<ScheduledUpdates>(`/chats/${peerId}/scheduled/send_now`, { id: mids.map(getServerMessageId) })
+      applyScheduledUpdates(r?.updates, r)
     },
+
+    applyNewScheduledMessage,
+    applyDeleteScheduledMessages,
+    /** Ответ `Updates` отложенной отправки чужим транспортом (пост канала). */
+    applyScheduledUpdates: ctx.applyScheduledUpdates,
 
     // Кто сейчас в видеочате группы (для баннера Join).
     //
@@ -1343,7 +1498,9 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     // затронутое окно (Stage 1B.2, Task 3): воркер зеркалит их проектору главного
     // потока (routeNewMessage → RT.messageOp), тот переигрывает поверх стора вместо
     // самостоятельного разбора кадра.
-    cacheLive(evt: NewMessageEvt): MessageOp[] {
+    /** `mapped` — сообщение, уже разобранное роутером кадра (один разбор на
+     *  кадр, как `saveMessages` в tweb `onUpdateNewMessage`, :10243-10253). */
+    cacheLive(evt: NewMessageEvt, mapped?: MyMessage): MessageOp[] {
       // Отдельного маппера live-кадра (`fromNewMessageEvt`) больше НЕТ и быть не
       // может: кадр несёт сообщение ЦЕЛИКОМ под ключом `message` — тот же
       // конструктор, что и витрина (решение Р5). Прежде это была вторая проводная
@@ -1352,7 +1509,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       // появление сообщения, а не его отсутствие), но объединение это допускает —
       // отвечаем ПУСТЫМ списком операций, а не молчаливой подстановкой.
       if (evt.message._ === 'messageEmpty') return []
-      const m = mapOne(evt.message)
+      const m = mapped ?? mapOne(evt.message)
       // Порт tweb checkPendingMessage: эхо СВОЕЙ отправки несёт random_id —
       // временный бабл уходит из SSOT воркера ДО вставки настоящего. Иначе в
       // хранилище остались бы два объекта, и переоткрытие чата показало бы
@@ -1364,7 +1521,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       // эха (у комментария — номер зеркала поста, tweb `getDiscussionMessage`),
       // поэтому окна временного бабла (tweb `pendingData.storage.key`,
       // appMessagesManager.ts:11946) и окна эха совпадают по построению.
-      const root = getThreadRootId(m)
+      const root = threadIdOf(m)
       const keys = root ? [hkey(m.peerId), hkey(m.peerId, root)] : [hkey(m.peerId)]
       const ops: MessageOp[] = []
       for (const key of keys) {

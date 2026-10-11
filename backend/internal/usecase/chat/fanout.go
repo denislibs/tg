@@ -246,10 +246,7 @@ func (i *Interactor) notifyNewMessage(ctx context.Context, msg domain.Message, s
 	if i.notifier == nil {
 		return
 	}
-	var topic int64
-	if msg.ThreadRootID != nil {
-		topic = *msg.ThreadRootID
-	}
+	topic := pushTopicRoot(msg)
 	for _, uid := range recipients {
 		if uid == senderID {
 			continue

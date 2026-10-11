@@ -28,6 +28,9 @@ func writeSendError(w http.ResponseWriter, err error, notFound string) {
 		writeError(w, http.StatusForbidden, "privacy")
 	case errors.Is(err, domain.ErrPaidRequired):
 		writeError(w, http.StatusPaymentRequired, "paid_required")
+	case errors.Is(err, domain.ErrScheduleTooMuch):
+		// Лимит очереди отложенных чата (Telegram SCHEDULE_TOO_MUCH).
+		writeError(w, http.StatusBadRequest, "SCHEDULE_TOO_MUCH")
 	default:
 		writeError(w, http.StatusInternalServerError, "send failed")
 	}

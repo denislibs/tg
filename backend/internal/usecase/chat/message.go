@@ -144,9 +144,6 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			return domain.Message{}, err
 		}
 	}
-	if err := i.checkTopicOpen(ctx, in); err != nil {
-		return domain.Message{}, err
-	}
 	// Вид ДОСТАВКИ — свойство ПИРА, а не ручки. У оригинала метод отправки один
 	// (messages.sendMessage/sendMedia), а «пост канала» получается из того, что
 	// получатель — broadcast: сервер отвечает updateNewChannelMessage, а не
@@ -159,6 +156,9 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		return domain.Message{}, err
 	}
 	broadcast := chatType == domain.ChatTypeChannel
+	if err := i.checkTopicOpen(ctx, in, chatType == domain.ChatTypeGroup); err != nil {
+		return domain.Message{}, err
+	}
 	// Вид строки выводится ИЗ ДЕЙСТВИЯ, а не приходит полем: «служебное ли» —
 	// это выбор конструктора, и клиент его назначить не может (у него в теле
 	// запроса действия нет вовсе; лог звонка кладёт сервер по концу звонка,
@@ -385,6 +385,12 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		}
 	}
 
+	// Отложенная отправка (schedule_date): все гейты пройдены — вместо
+	// публикации снимок встаёт в очередь отложенных (scheduled.go).
+	if in.ScheduleDate != 0 {
+		return i.enqueueScheduled(ctx, in)
+	}
+
 	// PERF (send hot path): гидратация read-моделей (poll/checklist/giveaway/
 	// gift) читает ПРЕД-существующие строки по input-ID и не зависит от
 	// msg.ID/Seq — делаем ДО транзакции, чтобы не держать row-lock строки чата
@@ -480,7 +486,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 		if in.GroupedID != 0 && in.MediaID != nil {
 			groupedID = &in.GroupedID
 		}
-		msg, e = i.msgs.Insert(ctx, domain.Message{
+		msg, e = i.insertCopy(ctx, domain.Message{
 			ChatID: in.ChatID, Seq: seq, SenderID: in.SenderID,
 			Type: in.Type, Text: in.Text, Entities: in.Entities, ReplyToID: in.ReplyToID, ClientMsgID: cmid,
 			ReplyQuoteText: in.ReplyQuoteText, ReplyQuoteOffset: in.ReplyQuoteOffset,
@@ -500,6 +506,8 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			MediaSpoiler: in.MediaSpoiler && in.MediaID != nil,
 			// Voice/round content starts "unlistened" (Telegram media_unread).
 			MediaUnread: in.Type == "voice" || in.Type == "roundVideo",
+			// Публикация отложенного: признак и готовое превью (без пересборки).
+			FromScheduled: in.fromSchedule, WebPage: in.webPage,
 		})
 		if e != nil {
 			return e
@@ -609,7 +617,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	// подписчикам (channel_fanout.go).
 	if channelPts != 0 {
 		i.deliverChannelPost(ctx, msg, channelPayload, channelPts, channelPostOpts{
-			silent: in.Silent, clearDraft: in.Action == nil && !in.fromSchedule, preview: in.Type == "text",
+			silent: in.Silent, clearDraft: in.Action == nil && !in.fromSchedule, preview: in.Type == "text" && in.webPage == nil,
 		})
 	}
 	if recipients != nil {
@@ -641,7 +649,7 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	// рассылает всем): для нового текстового сообщения с http/https-ссылкой —
 	// асинхронно после коммита, кадром web_page_update (сервисные/секретные
 	// сообщения исключены: service не text, secret отсекается по типу чата).
-	if recipients != nil && i.preview != nil && in.Type == "text" {
+	if recipients != nil && i.preview != nil && in.Type == "text" && in.webPage == nil {
 		if u := firstURL(msg.Text, msg.Entities); u != "" {
 			go i.attachWebPreview(msg, u, recipients)
 		}
@@ -740,7 +748,7 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 			effective = cur
 		}
 		advanced = effective > cur
-		u, e := i.msgs.CountUnread(ctx, chatID, userID, effective)
+		u, e := i.countUnread(ctx, chatID, userID, effective)
 		if e != nil {
 			return e
 		}
@@ -796,19 +804,8 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 			return e
 		}
 		readAddr = addr
-		date := nowUnix()
-		for _, uid := range members {
-			payload, e := json.Marshal(readPayload(addr.forViewer(uid), effective, unread, uid == userID))
-			if e != nil {
-				return e
-			}
-			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "read", payload)
-			if e != nil {
-				return e
-			}
-			ptsByUser[uid] = pts
-		}
-		return nil
+		ptsByUser, e = i.journalRead(ctx, addr, members, userID, effective, unread)
+		return e
 	})
 	if err != nil {
 		return err
@@ -821,11 +818,8 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 	}
 	// Only fan out when the read marker actually advanced — a no-op re-read
 	// must not spam every member with a redundant read frame.
-	if i.publisher != nil && advanced {
-		for _, uid := range members {
-			body := readPayload(readAddr.forViewer(uid), effective, unread, uid == userID)
-			_ = i.publisher.PublishToUser(ctx, uid, framePts("read", body, ptsByUser[uid]))
-		}
+	if advanced {
+		i.publishRead(ctx, readAddr, members, userID, effective, unread, ptsByUser)
 	}
 	deliverReactions(ctx)
 	// Channel posts track a per-viewer view count: register this reader's view of
@@ -836,6 +830,38 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 		_ = i.msgs.RegisterChannelViews(ctx, chatID, userID, effective)
 	}
 	return nil
+}
+
+// journalRead — кадры прочтения группы в журнал получателей, в транзакции
+// прочтения: читателю — updateReadHistoryInbox с его счётчиком, остальным —
+// updateReadHistoryOutbox с горизонтом (readPayload). Один путь у MarkRead и
+// у прочтения треда вне форума, поднявшего горизонт группы (ReadDiscussion).
+func (i *Interactor) journalRead(ctx context.Context, addr chatAddress, recipients []int64, reader, effective int64, unread int) (map[int64]int64, error) {
+	ptsByUser := make(map[int64]int64, len(recipients))
+	date := nowUnix()
+	for _, uid := range recipients {
+		payload, e := json.Marshal(readPayload(addr.forViewer(uid), effective, unread, uid == reader))
+		if e != nil {
+			return nil, e
+		}
+		pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "read", payload)
+		if e != nil {
+			return nil, e
+		}
+		ptsByUser[uid] = pts
+	}
+	return ptsByUser, nil
+}
+
+// publishRead — живые кадры прочтения после коммита (тела — как в journalRead).
+func (i *Interactor) publishRead(ctx context.Context, addr chatAddress, recipients []int64, reader, effective int64, unread int, ptsByUser map[int64]int64) {
+	if i.publisher == nil {
+		return
+	}
+	for _, uid := range recipients {
+		body := readPayload(addr.forViewer(uid), effective, unread, uid == reader)
+		_ = i.publisher.PublishToUser(ctx, uid, framePts("read", body, ptsByUser[uid]))
+	}
 }
 
 // OutboxReadDate returns when the peer read the caller's outgoing message in a

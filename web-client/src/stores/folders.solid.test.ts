@@ -14,6 +14,7 @@ import { initialState } from '../core/state/state'
 import { ALL_FOLDER_ID } from '../core/folderIds'
 import { makeDialog } from '../core/dialogs/testDialog'
 import { applyPeerOps, resetPeerMirror } from '../core/peerCache'
+import { applyForumUnread, resetForumUnreadMirror } from '../core/dialogs/forumUnreadMirror'
 import type { Folder, RawFolder } from '../core/managers/foldersManager'
 import type { Dialog } from '../core/models'
 
@@ -139,6 +140,19 @@ describe('folders.solid — счётчики вкладок', () => {
 
     expect(item(ALL_FOLDER_ID)?.notifications).toEqual({ count: 0, muted: true })
     expect(item(7)?.notifications).toEqual({ count: 1, muted: true })
+  })
+
+  // tweb getDialogUnreadCount (:14233-14250): у форума — непрочитанные ТЕМЫ;
+  // значение хранилища тем приезжает зеркалом, его смена пересчитывает счётчики
+  it('форум: счёт по непрочитанным темам из зеркала, прочтение темы его гасит', () => {
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'channel', id: 60, title: 'Ф', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true, forum: true } } as never] }])
+    applyForumUnread(-60, { count: 1, unreadNotifySettings: [{ _: 'peerNotifySettings' }] })
+    setDialogs([makeDialog({ peerId: -60, unread: 5 })])
+    folders.hydrate()
+    expect(item(ALL_FOLDER_ID)?.notifications).toEqual({ count: 1, muted: false })
+    applyForumUnread(-60, { count: 0, unreadNotifySettings: [] })
+    expect(item(ALL_FOLDER_ID)?.notifications).toEqual({ count: 0, muted: false })
+    resetForumUnreadMirror()
   })
 
   it('контакты меняют состав папки contacts/non_contacts — и её счётчик', () => {

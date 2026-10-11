@@ -48,9 +48,12 @@
 //     аватарки, `welcome_*`, ветка заголовка `Welcome` — предметов нет. Заголовок
 //     экрана закрепов (`:1557-1585`) — счёт `core/pinnedMessages.ts::getPinnedMessage`. Тема форума
 //     (заголовок `wrapPeerTitle({threadId})`, аватар `avatarNew({threadId})`, статус
-//     `TopicProfileStatus` `:1736-1742`) — тема приходит не из кэша, а ручкой списка тем
-//     (`loadForumTopic`). Замка закрытой темы в шапке у tweb нет (`pFlags.closed` темы
-//     шапка не читает) — его рисовал прежний React `ChatHeader`, в порт он не идёт.
+//     `TopicProfileStatus` `:1736-1742`) — тема приходит из хранилища тем воркера
+//     (`forumTopics.getForumTopicOrReload`, tweb `getForumTopicById`); правки темы
+//     (`peer_title_edit`/`avatar_update` с `threadId`) ловят модульные слушатели
+//     `PeerTitle` и аватарки, как у tweb (`avatarNew.tsx:117-130`). Замка закрытой темы в шапке у tweb нет
+//     (`pFlags.closed` темы шапка не читает) — его рисовал прежний React `ChatHeader`,
+//     в порт он не идёт.
 //  4. Статус — `appImManager.setPeerStatus` (блок L, его расхождения Н1–Н6). Поводы
 //     перерисовки — зеркала, а не события: набор и присутствие — `chatsStore.typing`/
 //     `presence` (вместо `peer_typings`/`user_update`), карточка — `peerCache`.
@@ -69,9 +72,11 @@
 //     vanilla `PopupMute` (ВРЕМЕННО до 2C-7, как `dialogsContextMenu.ts`). Жалоба —
 //     `showPeerReport` (`popups/reportAd.bridge.ts`, ВРЕМЕННО до 2C-27: React `ReportPopup`
 //     острова оверлеев).
-//  8. Мьют темы форума (`isPeerLocalMuted({threadId})`, `togglePeerMute({threadId})`) — ручки
-//     мьюта темы нет (`groups.setMute` глушит весь чат), поэтому в теме (`threadId`) пунктов
-//     «Без звука»/«Со звуком» нет (Б-85).
+//  8. Мьют темы форума (`:504-510`): «Со звуком» в теме — `togglePeerMute({threadId})`
+//     (`:1224-1226`) → `groups.updateTopicNotifySettings(…, 0)`; видимость пунктов —
+//     `isPeerLocalMuted({threadId})` по теме из хранилища тем воркера. «Без звука»
+//     перенесён буквально: у tweb `showMutePopup(this.peerId)` (`:1220-1222`) без
+//     `threadId` — попап из темы глушит ВЕСЬ форум.
 //     «Удалить» у «Избранного» (`ChatType.Saved` и свой пир) не показывается — ручка
 //     удаления уже есть (`chats.deleteHistory`), но ключа текста попапа
 //     `AreYouSureDeleteThisChatSavedMessages` в словаре нет (так же `dialogsContextMenu.ts`).
@@ -130,6 +135,8 @@ import { isUser, toPeerId } from '@core/peers/peerId'
 import { RT } from '@core/realtime/events'
 import { getLinkedChatPeerId } from '@core/peers/peer'
 import { isPeerMuted } from '@core/dialogs/notifySettings'
+import { isForumTopicMuted } from '@core/dialogs/forumTopic'
+import { subscribeForumUnread } from '@core/dialogs/forumUnreadMirror'
 import canClearHistory from '@core/peers/canClearHistory'
 import canReportBot from '@core/peers/canReportBot'
 import { getDeleteButtonText } from '@core/peers/dialogType'
@@ -430,12 +437,12 @@ export default class ChatTopbar {
       icon: 'mute',
       text: 'ChatList.Context.Mute',
       onClick: this.onMuteClick,
-      verify: () => this.chat.type === ChatType.Chat && !this.chat.monoforumThreadId && !this.chat.threadId && rootScope.myId !== this.peerId && !this.isPeerLocalMuted(),
+      verify: async() => this.chat.type === ChatType.Chat && !this.chat.monoforumThreadId && rootScope.myId !== this.peerId && !(await this.isPeerLocalMuted()),
     }, {
       icon: 'unmute',
       text: 'ChatList.Context.Unmute',
       onClick: this.onUnmuteClick,
-      verify: () => this.chat.type === ChatType.Chat && !this.chat.monoforumThreadId && !this.chat.threadId && rootScope.myId !== this.peerId && this.isPeerLocalMuted(),
+      verify: () => this.chat.type === ChatType.Chat && !this.chat.monoforumThreadId && rootScope.myId !== this.peerId && this.isPeerLocalMuted(),
     }, {
       icon: 'comments',
       text: 'ViewDiscussion',
@@ -543,9 +550,20 @@ export default class ChatTopbar {
     }, true)
   }
 
-  // * `appNotificationsManager.isPeerLocalMuted({respectType: false})` (расхождение 7)
-  private isPeerLocalMuted() {
-    return isPeerMuted(this.getDialog()?.notify_settings, Math.floor(Date.now() / 1000))
+  /**
+   * `appNotificationsManager.isPeerLocalMuted({respectType: false, threadId})`
+   * (appNotificationsManager.ts:396-410; расхождения 7, 8): у темы форума — её
+   * настройка, без срока — форума; `threadId` не форума отбрасывается
+   * (`validatePeerSettings`, :390-394).
+   */
+  private async isPeerLocalMuted() {
+    const chatMuted = () => isPeerMuted(this.getDialog()?.notify_settings, Math.floor(Date.now() / 1000))
+    const { peerId, threadId } = this.chat
+    if(threadId && this.chat.isForumTopic) {
+      const topic = await this.managers.forumTopics.getForumTopic(peerId, threadId)
+      if(topic) return isForumTopicMuted(topic, chatMuted)
+    }
+    return chatMuted()
   }
 
   private getFullUser() {
@@ -740,6 +758,8 @@ export default class ChatTopbar {
         this.updateBackBadge()
       }
     }))
+    // непрочитанное форума — темы (`core/dialogs/forumUnreadMirror.ts`)
+    this.listenerSetter.addCleanup(subscribeForumUnread(() => this.updateBackBadge()))
 
     // tweb :1134-1147
     this.chat.addEventListener('setPeer', (mid, isTopMessage) => {
@@ -866,9 +886,14 @@ export default class ChatTopbar {
     })
   }
 
-  /** tweb `:1224-1226` */
+  /** tweb `:1224-1226` — `togglePeerMute({peerId, threadId})`: снять мьют, у темы — её (`mutePeer`, :11985-11991) */
   private onUnmuteClick = () => {
-    void this.managers.groups.setMute(this.peerId, false)
+    const { peerId, threadId } = this.chat
+    if(threadId && this.chat.isForumTopic) {
+      void this.managers.groups.updateTopicNotifySettings(peerId, threadId, 0)
+      return
+    }
+    void this.managers.groups.setMute(peerId, false)
   }
 
   private onResize = () => {
@@ -1001,24 +1026,16 @@ export default class ChatTopbar {
   }
 
   /**
-   * Б-57: тема форума — у tweb её отдаёт кэш `dialogsStorage.getForumTopic` (заголовок —
-   * `wrapPeerTitle({threadId})`, аватар — `avatarNew({threadId})`). Хранилища тем на главном
-   * потоке у нас нет: список тем перечитывается ручкой, как у форум-таба
-   * (`autonomousDialogList/forumTopics.ts`). Темы нет — заголовок и аватар пира (как у tweb,
-   * когда `getForumTopicById` ничего не нашёл, `peerTitle.ts:160-170`).
+   * Б-57: тема форума — у tweb её отдаёт `dialogsStorage.getForumTopicById` (заголовок —
+   * `wrapPeerTitle({threadId})`, аватар — `avatarNew({threadId})`): хранилище тем воркера
+   * (`core/managers/forumTopicsStorage.ts`). Темы нет — заголовок и аватар пира (как у
+   * tweb, когда `getForumTopicById` ничего не нашёл, `peerTitle.ts:160-170`).
    */
   private async loadForumTopic(): Promise<TopicIconSource | undefined> {
     const { peerId, threadId } = this.chat
-    if(!this.chat.isForumTopic) return
+    if(!this.chat.isForumTopic || !threadId) return
 
-    const topics = await this.managers.groups.listTopics(peerId).catch(() => [])
-    const topic = topics.find((topic) => topic.id === threadId)
-    return topic && {
-      title: topic.title,
-      icon_color: topic.iconColor,
-      icon_emoji: topic.iconEmoji,
-      isGeneral: topic.isGeneral,
-    }
+    return this.managers.forumTopics.getForumTopicOrReload(peerId, threadId).catch(() => undefined)
   }
 
   public async finishPeerChange(options: { middleware: () => boolean }) {

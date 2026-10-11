@@ -48,6 +48,9 @@ function worker(keys: string[]) {
       return c
     },
     appendNewest: (_key, sa, id) => { if (!sa.findSlice(id)) sa.unshift(id) },
+    scheduledFor: () => new Map(),
+    scheduledKey: (peerId) => `${peerId}_scheduled`,
+    scheduledNew: () => {},
     // `me` владельцу нужен на границе разбора (уточнение служебного действия);
     // здесь это тот же отправитель, что у всех сообщений стенда.
     getMeId: () => SENDER,

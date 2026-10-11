@@ -15,13 +15,19 @@
 //     планирования; поле принимается и не читается;
 //  2. границы режима планирования (`withTime`): от текущей минуты до года вперёд;
 //  3. `footerAfter` — только одна вторичная кнопка (`secondaryButton`: ключ + колбэк,
-//     «Отправить, когда будет в сети» планирования); `headerActions`/`bodyAfter`
-//     (тихая отправка и повтор `scheduleSendingPopup.tsx`) React-попап не держит.
+//     «Отправить, когда будет в сети» планирования); `headerActions` (тихая
+//     отправка `scheduleSendingPopup.tsx`) React-попап не держит. `bodyAfter` —
+//     Solid-компонент со снимком пропов, монтируется островом (`SolidIsland`).
 import { createElement } from 'react'
 import DatePickerPopup, { DATE_PICKER_POPUP_KIND, getMaxScheduleDate } from '@components/DatePickerPopup'
+import SolidIsland from '@shared/solid/SolidIsland'
 import { openPopup } from '@stores/popupStore'
 import type { LangPackKey } from '@/lang'
 import I18n from '@lib/langPack'
+
+/** Слот `bodyAfter`: компонент — СТАБИЛЬНАЯ ссылка (контракт `SolidIsland`). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- пропы острова произвольны, как `JSX.Element` у tweb
+type BodyAfter = { component: (props: any) => unknown, props: Record<string, unknown> }
 
 export default function showDatePickerPopup(options: {
   initDate: Date,
@@ -35,6 +41,8 @@ export default function showDatePickerPopup(options: {
   peerId?: PeerId,
   /** расхождение 3: одна вторичная кнопка под подтверждением (tweb `footerAfter`) */
   secondaryButton?: { langKey: LangPackKey, callback: () => void }
+  /** tweb `bodyAfter` (datePicker.tsx:906-908) — Solid-компонент и снимок его пропов */
+  bodyAfter?: BodyAfter
 }) {
   let initDate = options.addMinutes ? new Date(options.initDate.getTime() + 10 * 60_000) : options.initDate
   // tweb `datePicker.tsx::checkDate` — режим планирования: дата вне [сейчас; год вперёд]
@@ -58,6 +66,7 @@ export default function showDatePickerPopup(options: {
       },
     } : undefined,
     chatId: options.peerId,
+    bodyAfter: options.bodyAfter ? createElement(SolidIsland, options.bodyAfter) : undefined,
     // режим `withTime` попап сам не закрывает (его закрывает вызывающий
     // планирования, `SchedulePopup.tsx`); у оригинала выбор закрывает попап
     onPick: (timestamp: number) => {

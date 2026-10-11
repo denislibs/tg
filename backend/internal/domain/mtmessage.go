@@ -57,8 +57,6 @@ import "time"
 //     нигде не хранится: на отданном сообщении его нет, колонки нет;
 //   - noforwards — защиты контента у чата нет ни колонкой, ни механикой;
 //   - invert_media — «медиа под текстом» не умеет ни одна сторона;
-//   - from_scheduled — отложенные сообщения есть, но признак «это сработавшее
-//     отложенное» не хранится;
 //   - legacy, edit_hide, offline, video_processing_pending,
 //     paid_suggested_post_stars/ton — ни колонки, ни механики.
 //
@@ -66,7 +64,7 @@ import "time"
 // диалогов нет), via_bot_id и via_business_bot_id (инлайн-ботов нет),
 // guestchat_via_from, from_boosts_applied, from_rank, restriction_reason,
 // quick_reply_shortcut_id, report_delivery_until_date, paid_message_stars,
-// suggested_post, schedule_repeat_period, summary_from_language, rich_message.
+// suggested_post, summary_from_language, rich_message.
 //
 // Отдельно post_author (flags.16?string) — «подпись автора под постом канала».
 // Подписи у канала есть (chats.signatures), но ИМЯ автора собирает клиент из
@@ -278,15 +276,10 @@ type MessageReal struct {
 	// FactCheck — flags2.3?FactCheck.
 	FactCheck *MTFactCheck `json:"factcheck,omitempty"`
 
-	// SendAt/WhenOnline — ОТЛОЖЕННАЯ отправка, наши параметры вне схемы.
-	// «Это отложенное» у оригинала выражает клиентский флаг pFlags.is_scheduled
-	// (он объявлен в schema_additional_params.json самим tweb), а вот СРОК у
-	// оригинала живёт не на сообщении: schedule_date это параметр МЕТОДА
-	// отправки, а «когда появится онлайн» — его sentinel-значение. У нас срок
-	// хранится строкой scheduled_messages и обязан доехать до списка
-	// отложенных, поэтому едет здесь, названным параметром.
-	SendAt     int64 `json:"send_at,omitempty"`
-	WhenOnline bool  `json:"when_online,omitempty"`
+	// ScheduleRepeatPeriod — flags2.10?int: повтор отложенного, секунды (tweb
+	// `chat/messageRender.ts:358`, `chat/contextMenu.ts:986`). Ставит только
+	// ScheduledMessage.ToWire.
+	ScheduleRepeatPeriod int `json:"schedule_repeat_period,omitempty"`
 
 	// RandomID — ключ, которым ОТПРАВИТЕЛЬ матчит эхо со своим оптимистичным
 	// баблом. Клиентский параметр самого оригинала (`random_id` у предиката
@@ -575,6 +568,7 @@ const (
 	MessageActionPinMessageTag            = "messageActionPinMessage"
 	MessageActionSetMessagesTTLTag        = "messageActionSetMessagesTTL"
 	MessageActionTopicCreateTag           = "messageActionTopicCreate"
+	MessageActionTopicEditTag             = "messageActionTopicEdit"
 	MessageActionSuggestProfilePhotoTag   = "messageActionSuggestProfilePhoto"
 	MessageActionSuggestBirthdayTag       = "messageActionSuggestBirthday"
 	MessageActionSuggestedPostApprovalTag = "messageActionSuggestedPostApproval"
@@ -746,20 +740,61 @@ func NewMessageActionSetMessagesTTL(period int) MessageActionSetMessagesTTL {
 //
 // icon_emoji_id не производится: в схеме это document_id кастом-эмодзи, а у
 // нас иконка темы — unicode-символ (forum_topics.icon_emoji), тот же случай,
-// что emoji_status у пира. Параметр необязательный, поэтому пропуск бесплатен;
-// сама иконка едет строкой темы, а не действием. title_missing предмета не
-// имеет: тема без названия у нас невозможна.
+// что emoji_status у пира. Вместо него едет НАШ параметр icon_emoji_emoticon
+// (schema_additional_params.json): по служебке клиент собирает тему целиком
+// (tweb appMessagesManager.ts:10307-10319, createBotforumTopicFromAction), и
+// без иконки собранная тема расходилась бы со строкой списка.
+// title_missing предмета не имеет: тема без названия у нас невозможна.
 type MessageActionTopicCreate struct {
 	Underscore string `json:"_"`
 	Title      string `json:"title"`
 	IconColor  int    `json:"icon_color"`
+	// IconEmojiEmoticon — наш параметр вместо icon_emoji_id (см. докблок).
+	IconEmojiEmoticon string `json:"icon_emoji_emoticon,omitempty"`
 }
 
 func (MessageActionTopicCreate) isMessageAction() {}
 func (a MessageActionTopicCreate) Tag() string    { return a.Underscore }
 
-func NewMessageActionTopicCreate(title string, iconColor int) MessageActionTopicCreate {
-	return MessageActionTopicCreate{Underscore: MessageActionTopicCreateTag, Title: title, IconColor: iconColor}
+func NewMessageActionTopicCreate(title string, iconColor int, iconEmoji string) MessageActionTopicCreate {
+	return MessageActionTopicCreate{Underscore: MessageActionTopicCreateTag, Title: title, IconColor: iconColor,
+		IconEmojiEmoticon: iconEmoji}
+}
+
+// messageActionTopicEdit#c0944820 flags:# title:flags.0?string
+// icon_emoji_id:flags.1?long closed:flags.2?Bool hidden:flags.3?Bool
+// = MessageAction;
+//
+// Правка темы — переименование, смена значка, закрытие, скрытие General.
+// Служебка ложится В САМУ ТЕМУ (у General — без треда) и одна несёт все
+// изменённые поля: клиент правит строку темы по ней же
+// (tweb appMessagesManager.ts:10342-10365), а текст пилюли выбирает по тому,
+// какое поле приехало (messageActionTextNewUnsafe.ts:597-645).
+//
+// Все параметры необязательные, и «не менялось» — ОТСУТСТВИЕ ключа, поэтому
+// поля указатели. closed/hidden — `Bool`, а не `true`: «открыли тему» это
+// явное false, и в pFlags ему не место.
+//
+// icon_emoji_id — как у TopicCreate: наш icon_emoji_emoticon вместо номера
+// документа кастом-эмодзи; пустая строка — значок снят (у оригинала 0).
+type MessageActionTopicEdit struct {
+	Underscore        string  `json:"_"`
+	Title             *string `json:"title,omitempty"`
+	IconEmojiEmoticon *string `json:"icon_emoji_emoticon,omitempty"`
+	Closed            *bool   `json:"closed,omitempty"`
+	Hidden            *bool   `json:"hidden,omitempty"`
+}
+
+func (MessageActionTopicEdit) isMessageAction() {}
+func (a MessageActionTopicEdit) Tag() string    { return a.Underscore }
+
+// Empty — правка ничего не меняет: служебки не будет.
+func (a MessageActionTopicEdit) Empty() bool {
+	return a.Title == nil && a.IconEmojiEmoticon == nil && a.Closed == nil && a.Hidden == nil
+}
+
+func NewMessageActionTopicEdit() MessageActionTopicEdit {
+	return MessageActionTopicEdit{Underscore: MessageActionTopicEditTag}
 }
 
 // messageActionSuggestProfilePhoto#57de635e photo:Photo = MessageAction;

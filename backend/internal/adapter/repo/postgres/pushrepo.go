@@ -63,7 +63,7 @@ func (r *PushRepo) DeleteByEndpoint(ctx context.Context, endpoint string) error 
 }
 
 // ShouldNotify — гейт пуша одним запросом: мьют чата (сроком), мьют темы
-// (topic_user_state) и глобальные настройки по типу чата (notify_settings, у
+// (topic_user_state.muted_until: NULL — наследует чат, иначе решает сам) и глобальные настройки по типу чата (notify_settings, у
 // не сохранявших — дефолты). Упоминание или ответ получателю (mentioned)
 // пробивает любой из мьютов — как у Telegram (tweb appMessagesManager
 // handleNotifications: `muted && !mentioned` → не уведомлять). Не участник
@@ -76,22 +76,25 @@ func (r *PushRepo) DeleteByEndpoint(ctx context.Context, endpoint string) error 
 // предикат домена (PeerNotifySettings.Muted) — той же копии условия в SQL здесь
 // больше нет.
 func (r *PushRepo) ShouldNotify(ctx context.Context, chatID, userID, topicRootID int64, mentioned bool) (bool, bool, error) {
-	var muteUntil *time.Time
+	var muteUntil, topicMuteUntil *time.Time
 	var chatType string
-	var topicMuted bool
 	var pm, pp, gm, gp, cm, cp *bool
 	var member bool
 	err := querier(ctx, r.pool).QueryRow(ctx,
 		`SELECT m.user_id IS NOT NULL, m.muted_until, c.type,
-		        COALESCE((SELECT ts.muted FROM topic_user_state ts
-		                   WHERE ts.chat_id = c.id AND ts.root_msg_id = $3 AND ts.user_id = $2), false),
+		        -- Настройка темы — только у форума: в не-форуме tweb сбрасывает
+		        -- threadId (appNotificationsManager.ts:389-392), и записи тем,
+		        -- оставшиеся от выключенного форума, не решают за чат.
+		        CASE WHEN c.is_forum THEN
+		          (SELECT ts.muted_until FROM topic_user_state ts
+		            WHERE ts.chat_id = c.id AND ts.root_msg_id = $3 AND ts.user_id = $2) END,
 		        ns.private_muted, ns.private_preview, ns.groups_muted, ns.groups_preview,
 		        ns.channels_muted, ns.channels_preview
 		 FROM chats c
 		 LEFT JOIN chat_members m ON m.chat_id = c.id AND m.user_id = $2
 		 LEFT JOIN notify_settings ns ON ns.user_id = $2
 		 WHERE c.id=$1`,
-		chatID, userID, topicRootID).Scan(&member, &muteUntil, &chatType, &topicMuted, &pm, &pp, &gm, &gp, &cm, &cp)
+		chatID, userID, topicRootID).Scan(&member, &muteUntil, &chatType, &topicMuteUntil, &pm, &pp, &gm, &gp, &cm, &cp)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, false, nil // чата нет
 	}
@@ -109,7 +112,11 @@ func (r *PushRepo) ShouldNotify(ctx context.Context, chatID, userID, topicRootID
 		ns.Channels = domain.NotifyTypeSettings{Muted: *cm, Preview: *cp}
 	}
 	t := ns.ForChatType(chatType)
-	muted := peerNotifySettings(muteUntil, nil, nil, now).Muted(now) || t.Muted || topicMuted
+	// Мьют темы — три состояния (domain.TopicMuted): своя настройка темы решает
+	// сама, даже против заглушённого чата; нет её — мьют чата или типа чата
+	// (tweb isPeerLocalMuted, appNotificationsManager.ts:398-409).
+	chatMuted := peerNotifySettings(muteUntil, nil, nil, now).Muted(now) || t.Muted
+	muted := domain.TopicMuted(topicMuteUntil, chatMuted, now)
 	if muted && !mentioned {
 		return false, false, nil
 	}

@@ -42,9 +42,10 @@
 //  • видео-аватарки (`loadAvatarVideoOverlay`, :147-186) — `pFlags.has_video`
 //    и размеров `photo_video`/`photo_video_full` наша модель фото не объявляет;
 //  • монофорум (:756-760, :806) — его в модели нет. Тема форума (`threadId` →
-//    `wrapTopicIcon`, :786-796) портирована опцией `topic`: хранилища тем
-//    (`dialogsStorage.getForumTopic`) на главном потоке нет, тему приносит
-//    вызывающий — как у `PeerTitle` (`chat/peerTitle.ts`, опция `topic`);
+//    `wrapTopicIcon`, :786-796) портирована опцией `topic`: хранилище тем
+//    живёт в воркере, а рендер синхронный, поэтому тему приносит вызывающий —
+//    как у `PeerTitle` (`chat/peerTitle.ts`, опция `topic`); правки темы
+//    приезжают модульным слушателем `RT.forumTopicOp` ниже;
 //  • `asAllChats` и `savedAsForum` у «Избранного» (:729-753) — «всех чатов» и
 //    настройки «Избранное как форум» у нас нет. Сама ветка «Избранного»
 //    (`isDialog` + свой пир → иконка `saved_filled`) портирована, вместе с
@@ -93,6 +94,7 @@ import rootScope from '@lib/rootScope'
 import { MOUNT_CLASS_TO } from '@config/debug'
 import findUpClassName from '@helpers/dom/findUpClassName'
 import { wrapTopicIcon, type TopicIconSource } from '@components/topicAvatar'
+import { RT } from '@core/realtime/events'
 
 /** tweb avatarNew.tsx:52 — та же длительность, что у `.fade-in` в `_avatar.scss:126`. */
 const FADE_IN_DURATION = 200
@@ -176,6 +178,21 @@ subscribePeerMirror(() => {
   }
 })
 
+// tweb `avatar_update`/`peer_title_edit` с `threadId` (avatarNew.tsx:117-130,
+// источник — `processTopicUpdate`, dialogs.ts:1781-1797): у темы сменили
+// значок или название (буква значка без эмодзи) — живые аватарки этой темы
+// рисуются заново. У нас событие — операция `edit` хранилища тем воркера.
+rootScope.addEventListener(RT.forumTopicOp, ({ ops }) => {
+  for (const op of ops) {
+    if (op.op !== 'edit') continue
+    const { topic } = op
+    for (const ref of live) {
+      const avatar = ref.deref()
+      if (avatar?.isTopicOf(topic.peerId, topic.id)) avatar.setTopic(topic)
+    }
+  }
+})
+
 // Для диагностики (tweb — то же имя): размер реестра — самый дешёвый способ
 // понять, отпускаются ли аватарки.
 if (MOUNT_CLASS_TO) MOUNT_CLASS_TO.avatarsMap = live
@@ -198,12 +215,15 @@ class Avatar {
   private color?: AvatarColorName
   private isForum = false
   private isTopic = false
+  /** тема форума — из опций, дальше живыми правками темы (`setTopic`) */
+  private topic?: TopicIconSource
 
   constructor(private readonly options: AvatarOptions) {
     // tweb :479 — дочерний scope: `render()` гасит прошлое поколение своим
     // `clean()`, а смерть вызывающего гасит всё.
     this.middlewareHelper = options.middleware.create()
     this.readyThumbPromise = deferredPromise<void>()
+    this.topic = options.topic
 
     const node = this.node = document.createElement('div')
     // :1073 — четыре класса безусловно, ровно в этом порядке.
@@ -246,6 +266,17 @@ class Avatar {
    * «фотографии нет, показать то, что уже выставлено, и отпустить ждущих» —
    * применяется тоже синхронно, а не после `await`.
    */
+  /** Аватарка темы `threadId` пира `peerId` (ключ `getAvatarQueueKey`, avatarNew.tsx:113-115). */
+  public isTopicOf(peerId: PeerId, threadId: number): boolean {
+    return !!this.topic && this.options.peerId === peerId && this.options.threadId === threadId
+  }
+
+  /** Правка темы — `onAvatarUpdate` (avatarNew.tsx:117-119): новая тема и перерисовка. */
+  public setTopic(topic: TopicIconSource): void {
+    this.topic = topic
+    this.render()
+  }
+
   public render(): void {
     this.middlewareHelper.clean()
     const middleware = this.middlewareHelper.get()
@@ -275,9 +306,9 @@ class Avatar {
     }
 
     // :786-796 — тема форума: значок темы медиа узла
-    if (this.options.topic) {
+    if (this.topic) {
       this.set({ isTopic: true })
-      this.setMedia(wrapTopicIcon(this.options.topic))
+      this.setMedia(wrapTopicIcon(this.topic))
       return true
     }
 

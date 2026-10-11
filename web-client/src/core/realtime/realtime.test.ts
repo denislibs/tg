@@ -29,6 +29,7 @@ describe('realtime.markMediaRead', () => {
       messages,
       broadcast,
       channelFunnel: { subscribe: () => undefined, unsubscribe: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
+      threadReads: { readHistory: async () => {} },
     })
 
     await rt.markMediaRead({ peerId: 1, msgId: 7 })
@@ -48,6 +49,7 @@ describe('realtime.markMediaRead', () => {
       messages,
       broadcast,
       channelFunnel: { subscribe: () => undefined, unsubscribe: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
+      threadReads: { readHistory: async () => {} },
     })
 
     await rt.markMediaRead({ peerId: 1, msgId: 7 })
@@ -79,6 +81,7 @@ describe('realtime.getStatus', () => {
       messages: { cacheMediaRead: vi.fn(() => []) },
       broadcast: vi.fn(),
       channelFunnel: { subscribe: () => undefined, unsubscribe: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
+      threadReads: { readHistory: async () => {} },
     })
 
     await expect(rt.getStatus()).resolves.toEqual({
@@ -138,6 +141,7 @@ describe('realtime.getStatus — иммунность к потере push-ув�
       messages: { cacheMediaRead: () => [] },
       broadcast: () => {},
       channelFunnel: { subscribe: () => undefined, unsubscribe: () => undefined } as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
+      threadReads: { readHistory: async () => {} },
     })
 
     const status = await rt.getStatus()
@@ -165,3 +169,45 @@ describe('realtime.getStatus — иммунность к потере push-ув�
 // аплоадом и с транспортом, который туда приходит инъекцией. Её тесты — там же
 // (managers/messages/pending.test.ts): бабл → аплоад → attach → ровно один
 // кадр, ошибка и отмена аплоада.
+
+// tweb readHistory, ветка `threadId` (appMessagesManager.ts:9186-9210): любой
+// тред (тема, комментарии) читается `messages.readDiscussion`, горизонт чата не уходит.
+describe('realtime.markRead', () => {
+  function make() {
+    const markRead = vi.fn()
+    const conn = { markRead } as unknown as Parameters<typeof newRealtime>[0]['conn']
+    const threadReads = { readHistory: vi.fn(async () => {}) }
+    const rt = newRealtime({
+      conn,
+      sync: { isSyncing: () => false },
+      syncWait: { waitForSync: async () => undefined },
+      tokens: { load: async () => undefined },
+      messages: { cacheMediaRead: () => [] },
+      broadcast: () => {},
+      channelFunnel: {} as unknown as Parameters<typeof newRealtime>[0]['channelFunnel'],
+      threadReads,
+    })
+    return { rt, markRead, threadReads }
+  }
+  const OFFSET = 0x100000000
+
+  it('с threadId — тред читается `threadReads` клиентскими номерами, горизонт чата не уходит', async () => {
+    const { rt, markRead, threadReads } = make()
+    await rt.markRead({ peerId: -5, upToId: OFFSET + 40, threadId: OFFSET + 7 })
+    expect(threadReads.readHistory).toHaveBeenCalledWith(-5, OFFSET + 7, OFFSET + 40)
+    expect(markRead).not.toHaveBeenCalled()
+  })
+
+  it('отказ запроса треда доходит до вызывающего (лента повторяет его)', async () => {
+    const { rt, threadReads } = make()
+    threadReads.readHistory.mockRejectedValueOnce(new Error('net'))
+    await expect(rt.markRead({ peerId: -5, upToId: OFFSET + 40, threadId: OFFSET + 7 })).rejects.toThrow('net')
+  })
+
+  it('без threadId — горизонт чата серверным номером', async () => {
+    const { rt, markRead, threadReads } = make()
+    await rt.markRead({ peerId: -5, upToId: OFFSET + 40 })
+    expect(threadReads.readHistory).not.toHaveBeenCalled()
+    expect(markRead).toHaveBeenCalledWith(-5, 40)
+  })
+})

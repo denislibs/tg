@@ -256,6 +256,8 @@ import { ForumTab } from '@components/forumTab/forumTab'
 import findForumTabByPeerId from '@components/forumTab/findForumTabByPeerId'
 import { fillForumTabRegister } from '@components/forumTab/fillRegister'
 import { getForumTopicMuted, isForumTopic, type ForumTopic } from '@components/autonomousDialogList/forumTopics'
+import { forumHasUnmuted } from '@core/dialogs/forumTopic'
+import type { ForumUnreadCount } from '@core/managers/forumTopicsStorage'
 import { APP_TABS } from '@lib/appImManager'
 import { dispatchHeavyAnimationEvent } from '@core/dom/heavyAnimation'
 import shake from '@helpers/dom/shake'
@@ -303,14 +305,12 @@ const REACTIONS_PRELOAD_DELAY = 7.5e3
 //      не ставятся, а «✓/✓✓» считаются по `read_outbox_max_id` диалога
 //      (`components/sendingStatus.ts`, расхождение 1).
 //  С3. Чего нет в модели, того нет и в строке (ветки удалены, а не заглушены):
-//      метка `not-visited` темы (`read_inbox_max_id` в строке темы нет, С11),
 //      монофорум и «все чаты» (`monoforumParentPeerId`,
 //      `asAllChats`, О-4), сообщества (`subtitlePeerId`, `getEmptySubtitle`, О-5),
 //      ограничения/чувствительное/самоуничтожающееся медиа (`isMessageRestricted`,
 //      `isMessageSensitive`, `ttl_seconds` — признаков нет в `core/models.ts`).
 //      Отложено с предметом: закреп внутри пользовательской папки
-//      (`filter.pinnedPeerIds`) — `// О-70 волна 7`; непрочитанное форума по
-//      темам (`getForumUnreadCount`, `no-unmuted-topic`) — `// О-71 волна 7`;
+//      (`filter.pinnedPeerIds`) — `// О-70 волна 7`;
 //      «отметить непрочитанным» (`pFlags.unread_mark`) — `// О-72 волна 7`;
 //      закреп сохранённого диалога (`dialog.pFlags.pinned` у `isSaved`,
 //      `:2709`) — `// О-111 волна 7`;
@@ -358,9 +358,10 @@ const REACTIONS_PRELOAD_DELAY = 7.5e3
 //      значок и название темы. Тему `PeerTitle` и бейджи получают объектом
 //      `ForumTopic` (опция `topic` строки, `dialog` списка), а не из
 //      `dialogsStorage.getForumTopic(peerId, threadId)` (`peerTitle.ts:152-187`,
-//      `:2836-2843`): хранилища тем у нас нет. Мьют темы — `getForumTopicMuted`,
-//      «✓/✓✓» последнего своего — по горизонту чтения форума
-//      (`read_outbox_max_id` темы в модели нет), черновика у темы нет.
+//      `:2836-2843`): хранилище тем живёт в воркере (`forumTopicsStorage`), а
+//      строка рисуется синхронно. Мьют темы — `getForumTopicMuted`, «✓/✓✓»
+//      последнего своего — по `read_outbox_max_id` темы, черновика у темы нет
+//      (черновики тредов — волна 2 Ф-5).
 //  С9. Порядок частей строки задаёт HEAD `rowTsx.tsx:247-257` (заголовок →
 //      подпись → аватар), живые дампы `docs/tweb/dom/dumps/15-right-14…` сняты со
 //      старой базы (подпись → заголовок); вид не меняется — места раскладывает
@@ -557,9 +558,7 @@ export class DialogElement {
 
     // tweb `:345-348`
     const isSavedDialog = !!threadId && peerId === rootScope.myId
-    // тема — и по номеру, и по самой теме: у General номер корня 0 (у нас его
-    // сообщения без темы, `forum_topics.root_msg_id = 0`), у tweb — `GENERAL_TOPIC_ID` 1
-    const isForumTopic = !!topic || (!!threadId && !isSavedDialog)
+    const isForumTopic = !!threadId && !isSavedDialog
 
     const usePeerId = isSavedDialog ? threadId! : peerId
 
@@ -1684,6 +1683,7 @@ export class AppDialogsManager {
       filterId: this.filterId,
       isArchive: !!this.xd && this.xd === this.xds.get(ARCHIVE_FOLDER_ID),
       isChatListNarrow: () => this.isChatListNarrow(),
+      getForumUnreadCount: (peerId) => this.managers.forumTopics.getForumUnreadCount(peerId),
     }
   }
 
@@ -2167,6 +2167,8 @@ export type DialogListContext = {
   filterId: number,
   isArchive: boolean,
   isChatListNarrow: () => boolean,
+  /** `dialogsStorage.getForumUnreadCount` (`:2711-2721`, О-71) — хранилище тем воркера */
+  getForumUnreadCount?: (peerId: PeerId) => Promise<ForumUnreadCount | undefined>,
 }
 
 /** Строка «Всех чатов» в широкой колонке — когда списка нет (строки поиска). */
@@ -2216,7 +2218,9 @@ function isDialogPinned(dialog: Dialog, filterId: number) {
 
 /**
  * tweb `appMessagesManager.isDialogUnread`/`getDialogUnreadCount`
- * (`:14233-14254`): сумма по темам форума — О-71, `unread_mark` — О-72.
+ * (`:14233-14254`) без ветки форума: число непрочитанных тем у нас асинхронно
+ * (хранилище тем воркера), его подставляет `setUnreadMessages` (О-71);
+ * `unread_mark` — О-72.
  */
 export function isDialogUnread(dialog: Dialog) {
   return !!dialog.unread_count
@@ -2529,7 +2533,24 @@ async function setUnreadMessages({
   const { draftMessage, lastMessage } = !isSaved ? getLastMessageForDialog(dialog) : {}
   // О-111 волна 7: закрепа сохранённых диалогов на бэкенде нет (`dialog.pFlags.pinned`, `:2709`)
   const isPinned = isTopic ? !!dialog.pFlags.pinned : isSaved ? false : isDialogPinned(dialog, list.filterId)
-  const isUnread = isTopic ? !!dialog.unread_count : isSaved ? false : isDialogUnread(dialog)
+  let isUnread = isTopic ? !!dialog.unread_count : isSaved ? false : isDialogUnread(dialog)
+
+  // tweb `:2711-2721`, `:2726-2733` (О-71): непрочитанное ФОРУМА — число
+  // непрочитанных тем, а не сообщений. Список тем ещё не загружен — ноль, а
+  // по загрузке хранилище тем пришлёт `forumUnread`, и строка пересчитается
+  // (у оригинала — `acknowledged`-вызов и повторный `setUnreadMessagesN`).
+  // `hasUnmuted` считается здесь — расхождение 4 хранилища тем.
+  let forumUnreadCount: { count: number, hasUnmuted: boolean } | undefined
+  if(!isTopic && !isSaved && isAnyChat(peerId) && isForum(cachedChat(peerId)) && list.getForumUnreadCount) {
+    const result = await middleware(list.getForumUnreadCount(peerId).catch(() => undefined))
+    const forumMuted = () => isDialogMuted(dialog as Dialog, cachedChat(peerId), useNotifyStore.getState().settings)
+    forumUnreadCount = result ? {
+      count: result.count,
+      hasUnmuted: forumHasUnmuted(result, forumMuted),
+    } : { count: 0, hasUnmuted: false }
+  }
+  const unreadTopicsCount = forumUnreadCount?.count
+  const hasUnmutedTopic = forumUnreadCount?.hasUnmuted
 
   // tweb `:2723-2726`: значок у своего последнего исходящего, не в «Избранном»;
   // «прочитан ли» — по горизонту собеседника (С2), у темы — форума (С11);
@@ -2538,11 +2559,19 @@ async function setUnreadMessages({
   if(isTopic && dialog.pFlags.closed) {
     sendingStatus = 'premium_lock'
   } else if(!isSaved && !draftMessage && lastMessage && lastMessage.pFlags.out && lastMessage.peerId !== rootScope.myId) {
-    const readOutboxMaxId = isTopic ? getDialog(peerId).read_outbox_max_id : (dialog as Dialog).read_outbox_max_id
+    const readOutboxMaxId = (dialog as Dialog | ForumTopic).read_outbox_max_id
     sendingStatus = lastMessage.id > readOutboxMaxId ? 'check' : 'checks'
   }
 
-  const unreadCount = isSaved ? 0 : dialog.unread_count
+  const unreadCount = unreadTopicsCount ?? (isSaved ? 0 : dialog.unread_count)
+  if(unreadTopicsCount !== undefined) {
+    isUnread = !!unreadCount
+  }
+
+  // tweb `:2735-2737`: тему, где зритель ещё не был (горизонта нет), — точкой
+  if(isTopic && !isUnread) {
+    isUnread = !getServerMessageId(dialog.read_inbox_max_id)
+  }
 
   // * have to await all promises before modifying something
 
@@ -2555,6 +2584,9 @@ async function setUnreadMessages({
   }
 
   const transitionDuration = isBatch ? 0 : BADGE_TRANSITION_TIME
+
+  // tweb `:2752`
+  dom.listEl.classList.toggle('no-unmuted-topic', !isMuted && hasUnmutedTopic !== undefined && !hasUnmutedTopic)
 
   setSendingStatus(dom.statusSpan, sendingStatus)
 
@@ -2591,6 +2623,11 @@ async function setUnreadMessages({
     reactions: hasReactionsBadge,
     transitionDuration,
   })
+
+  // tweb `:2807-2810`
+  if(isTopic && dom.unreadBadge) {
+    dom.unreadBadge.classList.toggle('not-visited', isUnread && unreadBadgeText === ' ')
+  }
 
   deferred.resolve!()
 }

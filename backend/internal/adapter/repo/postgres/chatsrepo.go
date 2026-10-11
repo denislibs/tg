@@ -493,7 +493,8 @@ func (r *ChatsRepo) ForgetUnread(ctx context.Context, chatID, senderID, seq int6
 		  WHERE m.chat_id = $1 AND m.seq = $3
 		    AND cm.chat_id = $1 AND cm.user_id <> $2 AND cm.last_read_seq < $3
 		    AND cm.unread_count > 0
-		    AND `+messageInViewOf("m", "cm.user_id"), chatID, senderID, seq)
+		    AND `+messageInViewOf("m", "cm.user_id")+`
+		    AND `+notReadInForum("m", "cm.user_id"), chatID, senderID, seq)
 	return err
 }
 
@@ -928,7 +929,10 @@ func (r *ChatsRepo) RecountCounters(ctx context.Context, chatID int64, userIDs [
 	}
 	_, err := q.Exec(ctx,
 		`UPDATE chat_members cm SET
-		    unread_count = CASE WHEN c.type = 'channel' THEN cm.unread_count ELSE (
+		    unread_count = CASE WHEN c.type = 'channel' THEN cm.unread_count
+		      -- форум — сумма по темам (В-8, forumUnreadSQL)
+		      WHEN c.is_forum THEN `+forumUnreadSQL("cm.chat_id", "cm.last_read_seq", "cm.user_id")+`
+		      ELSE (
 		        SELECT count(*) FROM messages m
 		         WHERE m.chat_id = cm.chat_id AND m.seq > cm.last_read_seq
 		           AND (m.sender_id <> cm.user_id OR m.is_discussion_mirror)

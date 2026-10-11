@@ -9,12 +9,9 @@ import { adminRightsMask, allowedFromBannedRights, deniedMask } from '../peers/r
 import { BANNED_RIGHTS_UNTIL_FOREVER } from './constants'
 import { MUTE_UNTIL_FOREVER } from '../dialogs/notifySettings'
 import type { MissingInvitee } from '@layer'
-import { WIRE_FOLDER_ARCHIVE, type MyMessage, type RawMyMessage } from '../models'
-import { generateMessageId } from '../history/messageId'
-import type { MessagesManager } from './messagesManager'
-import type { Chat } from '../peers/peer'
-import type { PeerNotifySettings } from '../dialogs/notifySettings'
-import { isPeerMuted } from '../dialogs/notifySettings'
+import { WIRE_FOLDER_ARCHIVE } from '../models'
+import { getServerMessageId } from '../history/messageId'
+import type { ForumTopicsStorage } from './forumTopicsStorage'
 import { publicLinkFromTelegramPath } from '../publicLink'
 import { toChatId, toPeerId } from '../peers/peerId'
 import { getPeerSearchText } from '../peers/peerSearchText'
@@ -288,114 +285,7 @@ const mapInvite = (l: ChatInviteExported): InviteLink => ({
   revoked: !!l.pFlags?.revoked,
 })
 
-/**
- * Тема форум-группы — СТРОКА списка: состояние чтения, место в списке и
- * разрешённое последнее сообщение.
- *
- * Выжимок последнего сообщения (`lastText`, `lastType`, `lastAt` и склеенное
- * СЕРВЕРОМ `lastSenderName`) здесь больше нет: сообщение приезжает вектором
- * `messages` контейнера, строка адресует его числом `top_message`, а имя
- * автора собирает клиент из карточки пира — тот же ход, что сделан у диалогов.
- *
- * Ушли и `msgCount` с `pos`: счётчика сообщений темы у оригинала не бывает
- * вовсе, а порядок задаёт сам вектор.
- */
-export interface TopicRow {
-  id: number
-  peerId: number
-  rootMsgId: number
-  title: string
-  iconColor: number
-  iconEmoji: string
-  closed: boolean
-  hidden: boolean
-  pinned: boolean
-  isGeneral: boolean
-  createdBy: number
-  /** непрочитанные сообщения темы (чужие, как у диалога) */
-  unread: number
-  /** непрочитанные упоминания зрителя в теме */
-  unreadMentions: number
-  /** тема заглушена этим пользователем */
-  muted: boolean
-  /** seq последнего сообщения темы (для пометки «прочитано») */
-  lastMsgSeq: number
-  /** последнее сообщение темы ЦЕЛИКОМ — разрешено по `top_message` */
-  lastMessage?: MyMessage
-}
-
-/**
- * `forumTopic` — строка на проводе. Наших параметров у неё три, и все три
- * объявлены клиентскими в `schema/schema_additional_params.json`:
- * `root_msg_id` (у оригинала id темы И ЕСТЬ номер её корня),
- * `icon_emoji_emoticon` (у схемы это номер документа кастомного эмодзи) и флаг
- * `is_general` (у оригинала General узнают по id == 1).
- */
-export interface ForumTopicWire {
-  _: 'forumTopic'
-  pFlags?: { my?: true; closed?: true; pinned?: true; hidden?: true; is_general?: true }
-  id: number
-  date: number
-  peer: Peer
-  title: string
-  icon_color: number
-  icon_emoji_emoticon?: string
-  root_msg_id?: number
-  from_id: Peer
-  top_message: number
-  read_inbox_max_id: number
-  unread_count: number
-  unread_mentions_count: number
-  notify_settings: PeerNotifySettings
-}
-
-/** `messages.forumTopics` — контейнер списка тем. */
-export interface MessagesForumTopics {
-  _: 'messages.forumTopics'
-  count: number
-  topics: ForumTopicWire[]
-  messages: RawMyMessage[]
-  chats: Chat[]
-  users: UserReal[]
-}
-
-/**
- * Строка провода → строка модели. Переводится ровно одно — ПРОСТРАНСТВО
- * НОМЕРОВ: `top_message` сравнивается с `message.id`, и оставить его серверным
- * значило бы сравнивать числа из разных пространств (то же делает оригинал в
- * `saveConversation`).
- *
- * Заглушённость ВЫЧИСЛЯЕТСЯ по сроку (`notify_settings.mute_until`), а не
- * приезжает булевым полем: тот же предикат, что у диалога.
- */
-const mapTopic = (
-  r: ForumTopicWire,
-  messages?: Pick<MessagesManager, 'getMessageByPeer'>,
-  now = Math.floor(Date.now() / 1000),
-): TopicRow => {
-  const peerId = getPeerId(r.peer)
-  const topMessage = generateMessageId(r.top_message)
-  return {
-    id: r.id,
-    peerId,
-    rootMsgId: r.root_msg_id ?? 0,
-    title: r.title,
-    iconColor: r.icon_color,
-    iconEmoji: r.icon_emoji_emoticon ?? '',
-    closed: !!r.pFlags?.closed,
-    hidden: !!r.pFlags?.hidden,
-    pinned: !!r.pFlags?.pinned,
-    isGeneral: !!r.pFlags?.is_general,
-    createdBy: getPeerId(r.from_id),
-    unread: r.unread_count ?? 0,
-    unreadMentions: r.unread_mentions_count ?? 0,
-    muted: isPeerMuted(r.notify_settings, now),
-    lastMsgSeq: topMessage,
-    lastMessage: messages?.getMessageByPeer(peerId, topMessage),
-  }
-}
-
-export function newGroupsManager({ rest, dialogs, peers, messages, getMeId, onChannelParticipant }: {
+export function newGroupsManager({ rest, dialogs, peers, forumTopics, getMeId, onChannelParticipant }: {
   rest: Pick<RestClient, 'post' | 'get' | 'put' | 'patch' | 'del'>
   // Task 4 (действия без оптимистики): владелец списка диалогов — сеть-сначала,
   // локальный апдейт стоит там же, где сетевой вызов (порт tweb toggleDialogPin:
@@ -408,12 +298,10 @@ export function newGroupsManager({ rest, dialogs, peers, messages, getMeId, onCh
   // попадает в зеркало главного потока вовсе, и предикаты вида чата вместе с
   // правами отвечают «нет» на всё.
   peers: Pick<PeersManager, 'saveApiPeers'>
-  // Владелец сообщений: контейнер списка тем несёт вектор `messages`, и
-  // последнее сообщение темы разрешается по ссылке `top_message` — тем же
-  // порядком, что у контейнера диалогов. Опционален по той же причине, что у
-  // диалогов: тесты, которых контейнер не касается, его не задают, и тогда
-  // строка просто остаётся без превью, а не падает.
-  messages?: Pick<MessagesManager, 'saveApiMessages' | 'getMessageByPeer'>
+  // Владелец тем (хранилище тем воркера): мьют темы применяется ПОСЛЕ ответа
+  // сети тем же входом, что и кадр с другого устройства. Опционален: тестам,
+  // которых темы не касаются, его не задают.
+  forumTopics?: Pick<ForumTopicsStorage, 'applyNotifySettings'>
   // Свой id — `promoted_by`/`kicked_by` местного апдейта участника (tweb
   // `appUsersManager.getSelf().id` в `editAdmin`/`editBanned`).
   getMeId?: () => number | null
@@ -636,46 +524,18 @@ export function newGroupsManager({ rest, dialogs, peers, messages, getMeId, onCh
     async setForum(peerId: number, enabled: boolean): Promise<void> {
       await rest.post(`/chats/${peerId}/forum`, { enabled })
     },
-    // Созданная тема — та же СТРОКА, что едет в списке: своей формы у ответа
-    // нет. Наружу отдаём пару адресов, которой пользуется вызывающий.
-    async createTopic(peerId: number, title: string, iconColor: number, iconEmoji = ''): Promise<{ id: number; rootMsgId: number }> {
-      const r = await rest.post<ForumTopicWire>(`/chats/${peerId}/topics`, { title, icon_color: iconColor, icon_emoji: iconEmoji })
-      return { id: r.id, rootMsgId: r.root_msg_id ?? 0 }
-    },
     /**
-     * Список тем контейнером `messages.forumTopics`.
-     *
-     * Порядок обязателен и он же — порядок оригинала: сначала в хранилища
-     * втекают ПИРЫ и СООБЩЕНИЯ, и только потом разрешаются ссылки на них.
-     * Иначе `getMessageByPeer(peerId, top_message)` не нашёл бы ничего, а имя
-     * автора превью собирать было бы не из кого.
+     * Мьют темы со сроком — `mutePeer({peerId, muteUntil, threadId})`
+     * (tweb appMessagesManager.ts:11962-11983): `inputNotifyForumTopic`, срок —
+     * `mute_until`. Применяется ПОСЛЕ ответа сети местным
+     * `updateNotifySettings` с ТЕМ ЖЕ `mute_until` (`appNotificationsManager
+     * .updateNotifySettings`): `0` — явно со звуком, даже если форум заглушён
+     * (наследование — только при отсутствии срока, `isForumTopicMuted`).
+     * Другие устройства получат кадр `updateNotifySettings{notifyForumTopic}`.
      */
-    async listTopics(peerId: number): Promise<TopicRow[]> {
-      const r = await rest.get<MessagesForumTopics>(`/chats/${peerId}/topics`)
-      peers?.saveApiPeers({ chats: r.chats, users: r.users })
-      await messages?.saveApiMessages(r.messages)
-      return (r.topics ?? []).map((t) => mapTopic(t, messages))
-    },
-    async closeTopic(peerId: number, topicId: number, closed: boolean): Promise<void> {
-      await rest.post(`/chats/${peerId}/topics/${topicId}/close`, { closed })
-    },
-    async editTopic(peerId: number, topicId: number, title: string, iconColor: number, iconEmoji = ''): Promise<void> {
-      await rest.patch(`/chats/${peerId}/topics/${topicId}`, { title, icon_color: iconColor, icon_emoji: iconEmoji })
-    },
-    async setTopicHidden(peerId: number, topicId: number, hidden: boolean): Promise<void> {
-      await rest.post(`/chats/${peerId}/topics/${topicId}/hide`, { hidden })
-    },
-    async setTopicPinned(peerId: number, topicId: number, pinned: boolean): Promise<void> {
-      await rest.post(`/chats/${peerId}/topics/${topicId}/pin`, { pinned })
-    },
-    // Пометить тему прочитанной до upToSeq (Telegram readDiscussion с threadId).
-    // Адресуется по rootMsgId (пара chat+root — ключ состояния темы на бэке).
-    async readTopic(peerId: number, rootMsgId: number, upToSeq: number): Promise<void> {
-      await rest.post(`/chats/${peerId}/topics/${rootMsgId}/read`, { up_to_seq: upToSeq })
-    },
-    // Вкл/выкл уведомления темы для пользователя (адресуется по rootMsgId).
-    async setTopicMuted(peerId: number, rootMsgId: number, muted: boolean): Promise<void> {
-      await rest.post(`/chats/${peerId}/topics/${rootMsgId}/mute`, { muted })
+    async updateTopicNotifySettings(peerId: number, topicId: number, muteUntil: number): Promise<void> {
+      await rest.post(`/chats/${peerId}/topics/${getServerMessageId(topicId)}/mute`, { mute_until: muteUntil })
+      forumTopics?.applyNotifySettings(peerId, topicId, { _: 'peerNotifySettings', mute_until: muteUntil })
     },
 
     // Закрепить/открепить диалог вверху списка (лимит 5 — бэк вернёт 400: при

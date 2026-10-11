@@ -43,8 +43,6 @@ describe('mapMessage', () => {
       grouped_id: undefined,
       effect_name: undefined,
       factcheck: undefined,
-      send_at: undefined,
-      when_online: undefined,
       enc_body: undefined,
       destruct_at: undefined,
     })

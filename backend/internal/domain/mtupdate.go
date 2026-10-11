@@ -101,6 +101,11 @@ const (
 	// Участники (Ф-3б, Б-115/Б-86) — блок в конце по правилу горячих файлов.
 	UpdateChannelParticipantTag  = "updateChannelParticipant"
 	UpdatePendingJoinRequestsTag = "updatePendingJoinRequests"
+	// Темы форума (Ф-5, БЭК-1) — блок в конце по правилу горячих файлов.
+	UpdatePinnedForumTopicTag = "updatePinnedForumTopic"
+	// Прочтение треда (Ф-5, БЭК-1b) — messages.readDiscussion.
+	UpdateReadChannelDiscussionInboxTag  = "updateReadChannelDiscussionInbox"
+	UpdateReadChannelDiscussionOutboxTag = "updateReadChannelDiscussionOutbox"
 )
 
 // Значения дискриминатора `_` объединения SendMessageAction.
@@ -585,9 +590,13 @@ func NewUpdateFolderPeers(peers []FolderPeer, pts int64) UpdateFolderPeers {
 // булево: «заглушить на час» работало как «навсегда».
 //
 // Своего pts у конструктора нет — курсор едет в конверте.
+//
+// Адрес — объединение NotifyPeer: настройки ДИАЛОГА едут с notifyPeer, а темы
+// форума — с notifyForumTopic{peer, top_msg_id} (tweb
+// appMessagesManager.ts:11751-11770 разводит их по `peer._`).
 type UpdateNotifySettings struct {
 	Underscore     string             `json:"_"`
-	Peer           NotifyPeer         `json:"peer"`
+	Peer           NotifyPeerRef      `json:"peer"`
 	NotifySettings PeerNotifySettings `json:"notify_settings"`
 }
 
@@ -597,6 +606,95 @@ func (u UpdateNotifySettings) Tag() string { return u.Underscore }
 func NewUpdateNotifySettings(peer Peer, settings PeerNotifySettings) UpdateNotifySettings {
 	return UpdateNotifySettings{Underscore: UpdateNotifySettingsTag,
 		Peer: NewNotifyPeer(peer), NotifySettings: settings}
+}
+
+// NewUpdateTopicNotifySettings — те же настройки, но ТЕМЫ форума: адрес
+// notifyForumTopic. Кадр уходит только своим устройствам — мьют личный.
+func NewUpdateTopicNotifySettings(peer Peer, topicID int64, settings PeerNotifySettings) UpdateNotifySettings {
+	return UpdateNotifySettings{Underscore: UpdateNotifySettingsTag,
+		Peer: NewNotifyForumTopic(peer, topicID), NotifySettings: settings}
+}
+
+// NotifyPeerRef — объединение NotifyPeer. Производим два его конструктора:
+// notifyPeer (диалог, mtdialog.go) и notifyForumTopic (тема, mtforumtopic.go).
+type NotifyPeerRef interface{ isNotifyPeer() }
+
+func (NotifyPeer) isNotifyPeer() {}
+
+// ── Темы форума ─────────────────────────────────────────────────────────────
+
+// updatePinnedForumTopic#683b2c52 flags:# pinned:flags.0?true peer:Peer
+// topic_id:int = Update;
+//
+// Тему закрепили или открепили. Закреп темы ОБЩИЙ (pFlags.pinned строки видят
+// все, кто читает список), поэтому кадр уходит всем участникам, а не только
+// актору: tweb перекладывает тему в списке по нему же (dialogs.ts:2480-2490).
+// «Открепили» — опущенный бит, как у закрепа диалога.
+//
+// topic_id — номер темы (ForumTopicRecord.Number). Своего pts у конструктора
+// нет — курсор едет в конверте.
+//
+// updatePinnedForumTopics (порядок закреплённых) не производится: ручки
+// перестановки (reorderPinnedForumTopics) у нас нет.
+type UpdatePinnedForumTopic struct {
+	Underscore string          `json:"_"`
+	PFlags     map[string]bool `json:"pFlags,omitempty"`
+	Peer       Peer            `json:"peer"`
+	TopicID    int64           `json:"topic_id"`
+}
+
+func (UpdatePinnedForumTopic) isUpdate()     {}
+func (u UpdatePinnedForumTopic) Tag() string { return u.Underscore }
+
+func NewUpdatePinnedForumTopic(peer Peer, topicID int64, pinned bool) UpdatePinnedForumTopic {
+	u := UpdatePinnedForumTopic{Underscore: UpdatePinnedForumTopicTag, Peer: peer, TopicID: topicID}
+	setPFlag(&u.PFlags, "pinned", pinned)
+	return u
+}
+
+// updateReadChannelDiscussionInbox#d6b19546 flags:# channel_id:long
+// top_msg_id:int read_max_id:int broadcast_id:flags.0?long
+// broadcast_post:flags.1?int = Update;
+//
+// Я прочитал ТРЕД (тему форума, General, комментарии к посту) до read_max_id
+// — messages.readDiscussion. Уходит своим устройствам: tweb двигает горизонт
+// треда и гасит непрочитанное темы (appMessagesManager.ts:10795-10990).
+// top_msg_id — номер треда (у темы — ForumTopicRecord.Number, у General — 1,
+// у комментариев — номер зеркала). broadcast_id/broadcast_post tweb не
+// читает — не производятся. Своего pts нет — курсор едет в конверте.
+type UpdateReadChannelDiscussionInbox struct {
+	Underscore string `json:"_"`
+	ChannelID  int64  `json:"channel_id"`
+	TopMsgID   int64  `json:"top_msg_id"`
+	ReadMaxID  int64  `json:"read_max_id"`
+}
+
+func (UpdateReadChannelDiscussionInbox) isUpdate()     {}
+func (u UpdateReadChannelDiscussionInbox) Tag() string { return u.Underscore }
+
+func NewUpdateReadChannelDiscussionInbox(channelID, topMsgID, readMaxID int64) UpdateReadChannelDiscussionInbox {
+	return UpdateReadChannelDiscussionInbox{Underscore: UpdateReadChannelDiscussionInboxTag,
+		ChannelID: channelID, TopMsgID: topMsgID, ReadMaxID: readMaxID}
+}
+
+// updateReadChannelDiscussionOutbox#695c9e7c channel_id:long top_msg_id:int
+// read_max_id:int = Update;
+//
+// Мои сообщения в треде прочитали до read_max_id: горизонт ✓✓ треда (MAX
+// горизонтов остальных) вырос. Уходит остальным участникам.
+type UpdateReadChannelDiscussionOutbox struct {
+	Underscore string `json:"_"`
+	ChannelID  int64  `json:"channel_id"`
+	TopMsgID   int64  `json:"top_msg_id"`
+	ReadMaxID  int64  `json:"read_max_id"`
+}
+
+func (UpdateReadChannelDiscussionOutbox) isUpdate()     {}
+func (u UpdateReadChannelDiscussionOutbox) Tag() string { return u.Underscore }
+
+func NewUpdateReadChannelDiscussionOutbox(channelID, topMsgID, readMaxID int64) UpdateReadChannelDiscussionOutbox {
+	return UpdateReadChannelDiscussionOutbox{Underscore: UpdateReadChannelDiscussionOutboxTag,
+		ChannelID: channelID, TopMsgID: topMsgID, ReadMaxID: readMaxID}
 }
 
 // updateDraftMessage#edfc111e flags:# peer:Peer top_msg_id:flags.0?int
@@ -1239,4 +1337,52 @@ func nonNilIDs(ids []int64) []int64 {
 		return []int64{}
 	}
 	return ids
+}
+
+// ── Отложенные (Ф-5, S1) — блок в конце по правилу горячих файлов ───────────
+
+const (
+	UpdateNewScheduledMessageTag     = "updateNewScheduledMessage"
+	UpdateDeleteScheduledMessagesTag = "updateDeleteScheduledMessages"
+)
+
+// updateNewScheduledMessage#39a51dfb message:Message = Update;
+//
+// Отложенное поставлено или изменено (текст, время, «когда в сети», повтор,
+// готовое превью). Существующий id у клиента — правка (tweb
+// appMessagesManager.ts:11787-11794). Идёт только автору, его пер-юзерным
+// журналом; своего pts у конструктора нет — курсор едет в конверте.
+type UpdateNewScheduledMessage struct {
+	Underscore string    `json:"_"`
+	Message    MTMessage `json:"message"`
+}
+
+func (UpdateNewScheduledMessage) isUpdate()     {}
+func (u UpdateNewScheduledMessage) Tag() string { return u.Underscore }
+
+func NewUpdateNewScheduledMessage(m MTMessage) UpdateNewScheduledMessage {
+	return UpdateNewScheduledMessage{Underscore: UpdateNewScheduledMessageTag, Message: m}
+}
+
+// updateDeleteScheduledMessages#f2a71983 flags:# peer:Peer messages:Vector<int>
+// sent_messages:flags.0?Vector<int> = Update;
+//
+// Отложенные сняты: удалены автором, опубликованы (sent_messages — номера
+// опубликованных в чате) либо отвергнуты при публикации (без sent_messages).
+type UpdateDeleteScheduledMessages struct {
+	Underscore   string  `json:"_"`
+	Peer         Peer    `json:"peer"`
+	Messages     []int64 `json:"messages"`
+	SentMessages []int64 `json:"sent_messages,omitempty"`
+}
+
+func (UpdateDeleteScheduledMessages) isUpdate()     {}
+func (u UpdateDeleteScheduledMessages) Tag() string { return u.Underscore }
+
+func NewUpdateDeleteScheduledMessages(peer Peer, ids, sent []int64) UpdateDeleteScheduledMessages {
+	u := UpdateDeleteScheduledMessages{Underscore: UpdateDeleteScheduledMessagesTag, Peer: peer, Messages: nonNilIDs(ids)}
+	if len(sent) > 0 {
+		u.SentMessages = sent
+	}
+	return u
 }

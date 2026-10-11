@@ -72,6 +72,7 @@ import { useFoldersStore } from './foldersStore'
 import { useChatsStore } from './chatsStore'
 import { useNotifyStore } from './notifyStore'
 import { cachedPeer, subscribePeerMirror } from '../core/peerCache'
+import { getForumUnread, subscribeForumUnread } from '../core/dialogs/forumUnreadMirror'
 import { ALL_FOLDER_ID } from '../core/folderIds'
 import { folderUnreadCounts, type FolderNotifications } from '../core/folders/folderUnreadCounts'
 import { dialogMatchesFolder } from '../core/folderFilter'
@@ -122,6 +123,9 @@ function project(): void {
     useFoldersStore.getState().contactIds,
     useNotifyStore.getState().settings,
     cachedPeer,
+    undefined,
+    // у форума — число непрочитанных тем (tweb `getDialogUnreadCount`, :14233-14250)
+    getForumUnread,
   )
   const chatsCount = (filter: Folder) => folderChatsCount(useChatsStore.getState().dialogs, filter)
   const items: StoredFolder[] = [
@@ -164,6 +168,8 @@ function hydrate(): void {
     // Карточка пира решает «канал, группа или бот» — и правило типов папки, и
     // мьют типа (`folderUnreadCounts`, параметр `peerOf`); доехала позже — пересчёт.
     subscribePeerMirror(project),
+    // непрочитанное форума сменилось в хранилище тем воркера
+    subscribeForumUnread(project),
   ]
 }
 

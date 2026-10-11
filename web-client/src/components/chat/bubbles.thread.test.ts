@@ -99,6 +99,17 @@ describe('ChatBubbles — плашка «Обсуждение началось»
     expect(plate(bubbles)).toBeNull()
   })
 
+  // tweb getHistoryType (appMessagesManager.ts:12667-12683): тред форума — `Topic`,
+  // плашка — только у `Thread` (:13176)
+  it('в теме форума плашки нет', async () => {
+    const chat = createTestChat({ peerId: GROUP, threadId: ROOT_MID, isForum: true, messagesStorageKey: `${GROUP}_${ROOT_MID}` })
+    bubbles = mountTestBubbles(chat, managersWith([rootMirror(), comment(2)]))
+    await (await bubbles.setPeer())?.promise
+    await settle()
+
+    expect(plate(bubbles)).toBeNull()
+  })
+
   it('верх треда не сведён — плашки нет', async () => {
     bubbles = mountTestBubbles(chatContext(ROOT_MID), managersWith([rootMirror(), comment(2)], false))
     await (await bubbles.setPeer())?.promise
