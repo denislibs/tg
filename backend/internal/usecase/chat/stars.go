@@ -192,7 +192,10 @@ type paidCharge struct {
 // транзакции Send (querier берёт tx из ctx). Владелец/админ и не-группы бесплатны;
 // нехватка средств → domain.ErrPaidRequired (откатывает всю отправку).
 func (i *Interactor) chargePaidMessage(ctx context.Context, in SendInput) (paidCharge, error) {
-	if i.groups == nil || i.stars == nil || in.Type == "service" {
+	// Публикация отложенного не платит второй раз: звёзды списаны при
+	// постановке (В-2, tweb allow_paid_stars в запросе с schedule_date,
+	// appMessagesManager.ts:2748).
+	if i.groups == nil || i.stars == nil || in.Type == "service" || in.fromSchedule {
 		return paidCharge{}, nil
 	}
 	typ, err := i.chats.ChatType(ctx, in.ChatID)

@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/messenger-denis/backend/internal/domain"
 	storepostgres "github.com/messenger-denis/backend/internal/store/postgres"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
@@ -46,11 +45,15 @@ func TestMigration0132_AudioDocumentsBecomeAudio(t *testing.T) {
 			t.Fatalf("nextSeq: %v", err)
 		}
 		mid := media(mime)
-		m, err := msgs.Insert(ctx, domain.Message{ChatID: chatID, Seq: seq, SenderID: a, Type: typ, MediaID: &mid})
-		if err != nil {
+		// Строка — сырым INSERT: репозиторий пишет колонки ТЕКУЩЕЙ схемы,
+		// а база здесь откачена до 0131.
+		var id int64
+		if err := pool.QueryRow(ctx,
+			`INSERT INTO messages (chat_id, seq, sender_id, type, media_id) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+			chatID, seq, a, typ, mid).Scan(&id); err != nil {
 			t.Fatalf("insert: %v", err)
 		}
-		return m.ID
+		return id
 	}
 
 	mp3 := insert("document", "audio/mpeg")

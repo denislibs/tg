@@ -57,8 +57,6 @@ import "time"
 //     нигде не хранится: на отданном сообщении его нет, колонки нет;
 //   - noforwards — защиты контента у чата нет ни колонкой, ни механикой;
 //   - invert_media — «медиа под текстом» не умеет ни одна сторона;
-//   - from_scheduled — отложенные сообщения есть, но признак «это сработавшее
-//     отложенное» не хранится;
 //   - legacy, edit_hide, offline, video_processing_pending,
 //     paid_suggested_post_stars/ton — ни колонки, ни механики.
 //
@@ -66,7 +64,7 @@ import "time"
 // диалогов нет), via_bot_id и via_business_bot_id (инлайн-ботов нет),
 // guestchat_via_from, from_boosts_applied, from_rank, restriction_reason,
 // quick_reply_shortcut_id, report_delivery_until_date, paid_message_stars,
-// suggested_post, schedule_repeat_period, summary_from_language, rich_message.
+// suggested_post, summary_from_language, rich_message.
 //
 // Отдельно post_author (flags.16?string) — «подпись автора под постом канала».
 // Подписи у канала есть (chats.signatures), но ИМЯ автора собирает клиент из
@@ -287,6 +285,10 @@ type MessageReal struct {
 	// отложенных, поэтому едет здесь, названным параметром.
 	SendAt     int64 `json:"send_at,omitempty"`
 	WhenOnline bool  `json:"when_online,omitempty"`
+	// ScheduleRepeatPeriod — flags2.10?int: повтор отложенного, секунды (tweb
+	// `chat/messageRender.ts:358`, `chat/contextMenu.ts:986`). Ставит только
+	// ScheduledMessage.ToWire.
+	ScheduleRepeatPeriod int `json:"schedule_repeat_period,omitempty"`
 
 	// RandomID — ключ, которым ОТПРАВИТЕЛЬ матчит эхо со своим оптимистичным
 	// баблом. Клиентский параметр самого оригинала (`random_id` у предиката

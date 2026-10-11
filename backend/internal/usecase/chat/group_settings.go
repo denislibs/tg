@@ -133,7 +133,9 @@ func (i *Interactor) checkSendAllowed(ctx context.Context, in SendInput) error {
 			return domain.ErrForbidden // сбой чтения ограничения — отказ, а не пропуск
 		}
 	}
-	if s.SlowmodeSeconds > 0 {
+	// Публикация отложенного медленный режим не проходит: он проверен при
+	// постановке (В-2, tweb input.ts:4587-4593 — без оглядки на scheduleDate).
+	if s.SlowmodeSeconds > 0 && !in.fromSchedule {
 		// Пачку (пересылка нескольких сообщений) в медленном режиме не отправить
 		// вовсе — у оригинала SLOWMODE_MULTI_MSGS_DISABLED, tweb предупреждает
 		// заранее (showSlowModeTooltipIfNeeded({sendingFew})).

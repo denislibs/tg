@@ -771,6 +771,15 @@ type SendInput struct {
 	// обычная отправка от себя. Проверяется правом: юзер — админ/владелец канала,
 	// либо это анонимный постинг от имени самой супергруппы (юзер — её админ).
 	SendAsChatID *int64
+	// ScheduleDate — отложенная отправка (schema schedule_date, unix-секунды;
+	// domain.SendWhenOnlineTimestamp — «когда будет в сети»). Не ноль — Send
+	// проходит все гейты и вместо публикации кладёт снимок отправки в очередь
+	// (scheduled.go: enqueueScheduled). У оригинала это поле КАЖДОГО метода
+	// отправки (tweb appMessagesManager.ts:2741, :3230, :3779, :4149, :5652).
+	ScheduleDate int64
+	// ScheduleRepeatPeriod — повтор отложенного (schema schedule_repeat_period,
+	// секунды из domain.ScheduleRepeatPeriods); только вместе с ScheduleDate.
+	ScheduleRepeatPeriod int
 	// skipMediaOwner пропускает проверку владельца media (share истории в чат:
 	// media принадлежит автору истории, а видимость уже проверена story-usecase).
 	// Не экспортируется — ставится только внутри пакета (SendStoryShare).
@@ -795,6 +804,9 @@ type SendInput struct {
 	// clear_draft в scheduleMessage, а к моменту отправки в поле уже другой
 	// текст).
 	fromSchedule bool
+	// webPage — готовое превью отложенного: публикация пишет его в сообщение
+	// (как у копии, insertCopy) и не строит превью второй раз.
+	webPage *domain.WebPagePreview
 }
 
 // GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis).
@@ -849,20 +861,43 @@ type TopicRepo interface {
 	ByRoot(ctx context.Context, chatID, rootMsgID int64) (domain.ForumTopicRecord, error)
 }
 
-// ScheduledRepo хранит очередь запланированных сообщений.
+// ScheduledRepo хранит очередь отложенных сообщений (полный снимок отправки).
 type ScheduledRepo interface {
-	Create(ctx context.Context, m domain.ScheduledMessage) (domain.ScheduledMessage, error)
+	// Create ставит строку. Строка с тем же (chat, sender, client_msg_id) уже
+	// стоит — возвращается она и created=false (повтор кадра отправки).
+	Create(ctx context.Context, m domain.ScheduledMessage) (sm domain.ScheduledMessage, created bool, err error)
+	// ListByChat — СВОИ отложенные в чате, ближайшие сверху.
 	ListByChat(ctx context.Context, chatID, senderID int64) ([]domain.ScheduledMessage, error)
-	CountByUser(ctx context.Context, senderID int64) (int, error)
+	// CountByChat — сколько отложенных у автора в чате (лимит 100 на чат).
+	CountByChat(ctx context.Context, chatID, senderID int64) (int, error)
 	ByID(ctx context.Context, id int64) (domain.ScheduledMessage, error)
-	Delete(ctx context.Context, id int64) error
-	// Due — созревшие по времени (send_at<=now, without when_online).
+	// ByClientMsgID — строка по ключу идемпотентности постановки; domain.ErrNotFound — нет.
+	ByClientMsgID(ctx context.Context, chatID, senderID int64, clientMsgID string) (domain.ScheduledMessage, error)
+	// ByIDs — свои отложенные чата по ключам (чужие и отсутствующие пропускаются).
+	ByIDs(ctx context.Context, chatID, senderID int64, ids []int64) ([]domain.ScheduledMessage, error)
+	// ByGroupedID — элементы отложенного альбома (общий grouped_id), по порядку постановки.
+	ByGroupedID(ctx context.Context, chatID, senderID, groupedID int64) ([]domain.ScheduledMessage, error)
+	// DeleteIDs удаляет строки и возвращает ключи РЕАЛЬНО удалённых: из
+	// конкурирующих снятий одной строки её получает ровно одно.
+	DeleteIDs(ctx context.Context, ids []int64) ([]int64, error)
+	// Due — созревшие по времени (send_at<=now, без when_online), по send_at, id.
 	Due(ctx context.Context, now time.Time, limit int) ([]domain.ScheduledMessage, error)
-	// DueWhenOnline — записи с флагом when_online (отправляются, когда собеседник
-	// приватного чата онлайн; момент проверяет воркер через PresenceQuery).
-	DueWhenOnline(ctx context.Context, limit int) ([]domain.ScheduledMessage, error)
-	// UpdateSendAt переносит запланированное сообщение на новое время (reschedule).
-	UpdateSendAt(ctx context.Context, id int64, sendAt time.Time) error
+	// WhenOnlineWaits — все пары «чат + автор + собеседник», у которых есть
+	// отложенные «когда в сети» (НО-2: проверяется присутствие КАЖДОГО
+	// собеседника, окно по created_at больше не голодает).
+	WhenOnlineWaits(ctx context.Context) ([]ScheduledWait, error)
+	// WhenOnlineIn — отложенные «когда в сети» автора в чате, по порядку постановки.
+	WhenOnlineIn(ctx context.Context, chatID, senderID int64) ([]domain.ScheduledMessage, error)
+	// Update переписывает изменяемое у стоящей строки: text, entities, send_at,
+	// when_online, repeat_period.
+	Update(ctx context.Context, m domain.ScheduledMessage) error
+	// SetWebPage пишет превью ссылки отложенного (P1); nil — снять.
+	SetWebPage(ctx context.Context, id int64, wp *domain.WebPagePreview) error
+}
+
+// ScheduledWait — ожидание «когда в сети»: чат, автор и собеседник лички.
+type ScheduledWait struct {
+	ChatID, SenderID, PeerID int64
 }
 
 // PresenceQuery отвечает, онлайн ли пользователь (Redis presence). Опционален —
