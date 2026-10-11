@@ -106,6 +106,19 @@ func (f *fakeScheduled) DeleteUnclaimed(_ context.Context, ids []int64) ([]int64
 	return f.DeleteIDs(context.Background(), keep)
 }
 
+func (f *fakeScheduled) TakePaidByChat(_ context.Context, chatID int64) ([]domain.ScheduledMessage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.ScheduledMessage
+	for id, m := range f.rows {
+		if m.ChatID == chatID && m.PaidStars > 0 {
+			out = append(out, m)
+			delete(f.rows, id)
+		}
+	}
+	return out, nil
+}
+
 func (f *fakeScheduled) LockQueue(context.Context, int64, int64) error { return nil }
 
 // expireClaims — аренды и отступы истекли (следующая попытка воркера).
@@ -1474,5 +1487,53 @@ func TestScheduled_RefundCapsCreatorBalance(t *testing.T) {
 	}
 	if b, _ := stars.Balance(ctx, 1); b != 0 {
 		t.Fatalf("владелец %d, want 0", b)
+	}
+}
+
+// Ревью s1b: удаление группы владельцем возвращает звёзды за её очередь.
+func TestScheduled_DeleteGroupRefundsQueue(t *testing.T) {
+	in, stars, fs, _, cid := paidScheduledGroup(t, 20)
+	ctx := context.Background()
+	if _, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future()}); err != nil {
+		t.Fatal(err)
+	}
+	if err := in.DeleteGroup(ctx, cid, 1); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := stars.Balance(ctx, 2); b != 20 || fs.count() != 0 {
+		t.Fatalf("после удаления группы автор %d rows=%d, want 20 и 0", b, fs.count())
+	}
+	if b, _ := stars.Balance(ctx, 1); b != 0 {
+		t.Fatalf("владелец сохранил %d", b)
+	}
+}
+
+// Ревью s1b: строку, чьё сообщение уже вставлено по прежнему сроку, нельзя
+// перенести (новый ключ публикации дал бы дубль или возврат за доставленное).
+func TestScheduled_EditTimeRefusedAfterPublishedKey(t *testing.T) {
+	in, stars, fs, s, cid := paidScheduledGroup(t, 20)
+	ctx := context.Background()
+	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fs.set(sm.Seq, func(m *domain.ScheduledMessage) { m.SendAt = time.Now().Add(-time.Minute) })
+	before := len(messagesOf(s, cid))
+	fs.failDelete = 1
+	_, _ = in.DispatchDueScheduled(ctx) // опубликовано, снятие упало
+	fs.expireClaims()
+	if _, err := in.EditScheduled(ctx, EditScheduledInput{ChatID: cid, ID: sm.Seq, UserID: 2, Text: "x",
+		ScheduleDate: future()}); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("перенос опубликованной строки: %v, want ErrNotFound", err)
+	}
+	if err := in.SetChatPermissions(ctx, cid, 1, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = in.DispatchDueScheduled(ctx)
+	if len(messagesOf(s, cid)) != before+1 || fs.count() != 0 {
+		t.Fatalf("msgs=%d rows=%d", len(messagesOf(s, cid))-before, fs.count())
+	}
+	if b, _ := stars.Balance(ctx, 2); b != 15 {
+		t.Fatalf("возврат за доставленное: баланс %d, want 15", b)
 	}
 }

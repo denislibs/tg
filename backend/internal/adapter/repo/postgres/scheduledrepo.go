@@ -277,6 +277,13 @@ func (r *ScheduledRepo) DeleteUnclaimed(ctx context.Context, ids []int64) ([]int
 	return r.deleteWhere(ctx, `id = ANY($1) AND `+unclaimed, ids)
 }
 
+// TakePaidByChat — удаление группы: оплаченные строки чата снимаются до
+// каскада chats → scheduled_messages, чтобы вернуть звёзды.
+func (r *ScheduledRepo) TakePaidByChat(ctx context.Context, chatID int64) ([]domain.ScheduledMessage, error) {
+	return r.query(ctx,
+		`DELETE FROM scheduled_messages WHERE chat_id=$1 AND paid_stars > 0 RETURNING `+scheduledCols, chatID)
+}
+
 // LockQueue — транзакционная блокировка очереди автора в чате: лимит 100
 // считается и вставка идёт без гонки параллельных постановок.
 func (r *ScheduledRepo) LockQueue(ctx context.Context, chatID, senderID int64) error {

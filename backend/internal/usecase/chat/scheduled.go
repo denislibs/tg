@@ -722,6 +722,17 @@ func (i *Interactor) EditScheduled(ctx context.Context, in EditScheduledInput) (
 		}
 	}
 	if timeChanged {
+		// Строка, чьё сообщение уже вставлено по прежнему сроку (сбой между
+		// публикацией и снятием), не переносится: новый срок дал бы новый
+		// ключ публикации — второе сообщение или возврат звёзд за
+		// доставленное. Её снимет воркер с sent_messages.
+		for _, r := range group {
+			if _, e := i.msgs.FindByClientMsgID(ctx, r.ChatID, r.SenderID, publishKey(r)); e == nil {
+				return nil, domain.ErrNotFound
+			} else if !errors.Is(e, domain.ErrNotFound) {
+				return nil, e
+			}
+		}
 		// Перенос срока держит интервал медленного режима, как постановка;
 		// сама строка и её альбом — одна единица.
 		ids := make(map[int64]bool, len(group))
@@ -1118,7 +1129,8 @@ func (i *Interactor) publishScheduled(ctx context.Context, chatID, userID int64,
 // отвергнутого отложенного (решение пользователя 2026-10-11): тем же
 // движением баланса, что и списание (chargePaidMessage), в обратную сторону.
 // Получатель (владелец группы) отдаёт полученное, но не больше своего
-// баланса: звёзды он мог уже потратить, а отрицательного баланса нет —
+// баланса (атомарно, TakeUpTo): звёзды он мог уже потратить, а
+// отрицательного баланса нет —
 // осознанное отступление, в tweb не видно, как поступает сервер Telegram.
 // balances — новые балансы для updateStarsBalance после коммита (клиент
 // tweb обновляет баланс по нему, appPaymentsManager.ts:33-35, :420-428).
@@ -1134,19 +1146,29 @@ func (i *Interactor) refundScheduled(ctx context.Context, r domain.ScheduledMess
 	if r.PaidTo == 0 {
 		return nil
 	}
-	have, err := i.stars.Balance(ctx, r.PaidTo)
-	if err != nil {
-		return err
-	}
-	take := min(have, r.PaidStars)
-	if take <= 0 {
-		return nil
-	}
-	cbal, err := i.stars.AddBalance(ctx, r.PaidTo, -take)
+	cbal, err := i.stars.TakeUpTo(ctx, r.PaidTo, r.PaidStars)
 	if err != nil {
 		return err
 	}
 	balances[r.PaidTo] = cbal
+	return nil
+}
+
+// refundScheduledOfChat — удаление группы: оплаченные отложенные чата
+// снимаются и возвращаются авторам (в транзакции удаления).
+func (i *Interactor) refundScheduledOfChat(ctx context.Context, chatID int64, balances map[int64]int64) error {
+	if i.scheduled == nil || i.stars == nil {
+		return nil
+	}
+	rows, err := i.scheduled.TakePaidByChat(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	for _, r := range rows {
+		if err := i.refundScheduled(ctx, r, balances); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

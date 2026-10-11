@@ -196,3 +196,37 @@ func TestScheduledRepo_ClaimRescheduleUnclaimed(t *testing.T) {
 		t.Fatalf("битый снимок: %+v err=%v", bm, err)
 	}
 }
+
+// 0170: оплаченные строки чата снимаются для возврата; TakeUpTo не уводит в минус.
+func TestScheduledRepo_TakePaidAndStarsTakeUpTo(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+79990001700")
+	b := seedUser(t, pool, "+79990001701")
+	chatID := seedPrivateChat(t, pool, a, b)
+	r := NewScheduledRepo(pool)
+	at := time.Now().Add(time.Hour)
+	if _, _, err := r.Create(ctx, domain.ScheduledMessage{ChatID: chatID, SenderID: a, Type: "text", Text: "p", SendAt: at, PaidStars: 5, PaidTo: b}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := r.Create(ctx, domain.ScheduledMessage{ChatID: chatID, SenderID: a, Type: "text", Text: "free", SendAt: at}); err != nil {
+		t.Fatal(err)
+	}
+	taken, err := r.TakePaidByChat(ctx, chatID)
+	if err != nil || len(taken) != 1 || taken[0].PaidStars != 5 || taken[0].Text != "p" {
+		t.Fatalf("TakePaidByChat: %+v err=%v", taken, err)
+	}
+	if n, _ := r.CountByChat(ctx, chatID, a); n != 1 {
+		t.Fatalf("бесплатная строка снята: осталось %d", n)
+	}
+	st := NewStarsRepo(pool)
+	if _, err := st.AddBalance(ctx, b, 3); err != nil {
+		t.Fatal(err)
+	}
+	if bal, err := st.TakeUpTo(ctx, b, 5); err != nil || bal != 0 {
+		t.Fatalf("TakeUpTo: bal=%d err=%v, want 0", bal, err)
+	}
+	if bal, err := st.TakeUpTo(ctx, a, 5); err != nil || bal != 0 {
+		t.Fatalf("TakeUpTo без строки баланса: bal=%d err=%v", bal, err)
+	}
+}
