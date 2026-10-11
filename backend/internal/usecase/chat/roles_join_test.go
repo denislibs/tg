@@ -655,6 +655,8 @@ func (r *fakeTopicRepo) SetTopicRead(_ context.Context, chatID, rootMsgID, userI
 	return nil
 }
 
+func (r *fakeTopicRepo) LockThread(context.Context, int64, int64) error { return nil }
+
 func (r *fakeTopicRepo) ThreadHorizon(_ context.Context, chatID, rootMsgID, userID int64) (int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

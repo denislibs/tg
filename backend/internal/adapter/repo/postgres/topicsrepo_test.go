@@ -498,6 +498,10 @@ func TestTopicsRepo_ReadDiscussionState(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Блокировка треда — параметры кодируются (вне транзакции снимается сразу).
+	if err := r.LockThread(ctx, chat, rootA); err != nil {
+		t.Fatalf("LockThread: %v", err)
+	}
 	// Непрочитанное форума до прочтений: всё чужое (4,5,6,7,8) — 5.
 	if n, err := r.CountChatUnread(ctx, chat, me, 0); err != nil || n != 5 {
 		t.Fatalf("CountChatUnread до = %d, %v; want 5", n, err)
@@ -543,9 +547,28 @@ func TestTopicsRepo_ReadDiscussionState(t *testing.T) {
 	if err := r.SetTopicRead(ctx, chat, rootA, guest, 4); err != nil {
 		t.Fatal(err)
 	}
+	// Строка не участника у треда темы (бывший участник) — не в счёт: ни ✓✓,
+	// ни кадра outbox.
 	hs, err := r.ThreadHorizons(ctx, chat, rootA)
+	if err != nil || hs[me] != 6 || hs[other] != 0 || len(hs) != 2 {
+		t.Fatalf("ThreadHorizons(A, тема) = %v, %v; want me 6, other 0 без бывшего участника", hs, err)
+	}
+	// У зеркала поста гость треда комментариев — в счёт; забаненный — нет.
+	if _, err := pool.Exec(ctx, `UPDATE messages SET is_discussion_mirror = true WHERE id = $1`, rootA); err != nil {
+		t.Fatal(err)
+	}
+	hs, err = r.ThreadHorizons(ctx, chat, rootA)
 	if err != nil || hs[me] != 6 || hs[other] != 0 || hs[guest] != 4 || len(hs) != 3 {
-		t.Fatalf("ThreadHorizons(A) = %v, %v; want me 6, other 0, guest 4", hs, err)
+		t.Fatalf("ThreadHorizons(зеркало) = %v, %v; want me 6, other 0, guest 4", hs, err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO chat_bans (chat_id, user_id) VALUES ($1, $2)`, chat, guest); err != nil {
+		t.Fatal(err)
+	}
+	if hs, _ = r.ThreadHorizons(ctx, chat, rootA); len(hs) != 2 {
+		t.Fatalf("забаненный гость в горизонтах: %v", hs)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE messages SET is_discussion_mirror = false WHERE id = $1`, rootA); err != nil {
+		t.Fatal(err)
 	}
 	// Горизонт чата 0: форум считает по темам (осталась B:6), не-форум — всё
 	// выше горизонта чата (4,5,6,7,8).
@@ -557,5 +580,86 @@ func TestTopicsRepo_ReadDiscussionState(t *testing.T) {
 	}
 	if n, _ := r.CountChatUnread(ctx, chat, me, 0); n != 5 {
 		t.Fatalf("не-форум при горизонте чата 0 = %d; want 5", n)
+	}
+}
+
+// Точечные правки unread_count в форуме (удаление у всех, скрытие у себя,
+// пересчёт) знают о горизонтах тем: сообщение прочитанной темы в счётчике не
+// числится (сумма по темам, В-8).
+func TestForumUnread_PointEditsRespectTopicHorizon(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewTopicsRepo(pool)
+	chats := NewChatsRepo(pool)
+	msgs := NewMessagesRepo(pool)
+	ctx := context.Background()
+	me := seedUser(t, pool, "+7950")
+	other := seedUser(t, pool, "+7951")
+	var chat int64
+	if err := pool.QueryRow(ctx, `INSERT INTO chats (type, is_forum) VALUES ('group', true) RETURNING id`).Scan(&chat); err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range []int64{me, other} {
+		if _, err := pool.Exec(ctx, `INSERT INTO chat_members (chat_id, user_id, role) VALUES ($1,$2,'member')`, chat, u); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insert := func(seq, sender int64, root *int64) int64 {
+		var id int64
+		if err := pool.QueryRow(ctx,
+			`INSERT INTO messages (chat_id, seq, sender_id, type, text, thread_root_id) VALUES ($1,$2,$3,'text','x',$4) RETURNING id`,
+			chat, seq, sender, root).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	rootA, rootB := insert(1, me, nil), insert(2, me, nil)
+	for _, root := range []int64{rootA, rootB} {
+		if _, err := r.Create(ctx, domain.ForumTopicRecord{ChatID: chat, RootMsgID: root, Title: "T", CreatedBy: me}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	readA := insert(3, other, &rootA)
+	hideA := insert(4, other, &rootA)
+	_ = insert(5, other, &rootB)
+	_ = insert(6, other, &rootB)
+	if err := r.SetTopicRead(ctx, chat, rootA, me, 4); err != nil {
+		t.Fatal(err)
+	}
+	unread := func() int {
+		var n int
+		if err := pool.QueryRow(ctx, `SELECT unread_count FROM chat_members WHERE chat_id=$1 AND user_id=$2`, chat, me).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if err := chats.RecountCounters(ctx, chat, []int64{me}); err != nil {
+		t.Fatal(err)
+	}
+	if n := unread(); n != 2 {
+		t.Fatalf("RecountCounters в форуме = %d; want 2 (тема A прочитана)", n)
+	}
+	// Удаление у всех сообщения прочитанной темы не списывает.
+	if _, err := pool.Exec(ctx, `UPDATE messages SET deleted_at = now() WHERE id = $1`, readA); err != nil {
+		t.Fatal(err)
+	}
+	if err := chats.ForgetUnread(ctx, chat, other, 3); err != nil {
+		t.Fatal(err)
+	}
+	if n := unread(); n != 2 {
+		t.Fatalf("ForgetUnread сообщения прочитанной темы: %d; want 2", n)
+	}
+	// ...а непрочитанной — списывает.
+	if err := chats.ForgetUnread(ctx, chat, other, 5); err != nil {
+		t.Fatal(err)
+	}
+	if n := unread(); n != 1 {
+		t.Fatalf("ForgetUnread сообщения непрочитанной темы: %d; want 1", n)
+	}
+	// Скрыть у себя сообщение прочитанной темы — не списывает.
+	if err := msgs.HideForUser(ctx, me, hideA); err != nil {
+		t.Fatal(err)
+	}
+	if n := unread(); n != 1 {
+		t.Fatalf("HideForUser сообщения прочитанной темы: %d; want 1", n)
 	}
 }

@@ -848,6 +848,8 @@ type TopicRepo interface {
 	ListByChat(ctx context.Context, chatID, userID int64) ([]domain.TopicRow, error)
 	// SetTopicRead поднимает last_read_seq треда до max(old, upToSeq) (UPSERT).
 	SetTopicRead(ctx context.Context, chatID, rootMsgID, userID, upToSeq int64) error
+	// LockThread — блокировка треда до конца транзакции (прочтение по очереди).
+	LockThread(ctx context.Context, chatID, rootMsgID int64) error
 	// ThreadHorizon — горизонт треда у пользователя: max(запись треда, горизонт чата).
 	ThreadHorizon(ctx context.Context, chatID, rootMsgID, userID int64) (int64, error)
 	// ThreadHorizons — горизонты треда у всех читающих (участники и гости треда).

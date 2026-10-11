@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -208,19 +209,28 @@ func (i *Interactor) ReadDiscussion(ctx context.Context, chatID, number, userID,
 	} else if readMaxID > last {
 		readMaxID = last
 	}
-	var outbox []int64
-	advanced := false
+	addr, err := i.peerAddress(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	type readFrame struct {
+		uid  int64
+		body map[string]any
+		pts  int64
+	}
+	var frames []readFrame
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if e := i.topics.LockThread(ctx, chatID, th.stateRoot); e != nil {
+			return e
+		}
 		old, e := i.topics.ThreadHorizon(ctx, chatID, th.stateRoot, userID)
 		if e != nil || readMaxID <= old {
 			return e
 		}
-		advanced = true
 		before, e := i.topics.ThreadHorizons(ctx, chatID, th.stateRoot)
 		if e != nil {
 			return e
 		}
-		outbox = outboxRaised(before, userID, readMaxID)
 		if e := i.topics.SetTopicRead(ctx, chatID, th.stateRoot, userID, readMaxID); e != nil {
 			return e
 		}
@@ -232,21 +242,39 @@ func (i *Interactor) ReadDiscussion(ctx context.Context, chatID, number, userID,
 				return e
 			}
 		}
+		// Журнал — в той же транзакции, что горизонт (как MarkRead): иначе
+		// сбой после коммита оставил бы другие устройства без кадра, а повтор
+		// прочтения его уже не разошлёт — горизонт вырос.
+		frames = append(frames, readFrame{uid: userID, body: structPayload(
+			domain.NewUpdateReadChannelDiscussionInbox(addr.forViewer(userID).ToChatID(), number, readMaxID))})
+		for _, uid := range outboxRaised(before, userID, readMaxID) {
+			frames = append(frames, readFrame{uid: uid, body: structPayload(
+				domain.NewUpdateReadChannelDiscussionOutbox(addr.forViewer(uid).ToChatID(), number, readMaxID))})
+		}
+		if i.updates == nil {
+			return nil
+		}
+		date := nowUnix()
+		for k := range frames {
+			payload, e := json.Marshal(frames[k].body)
+			if e != nil {
+				return e
+			}
+			if frames[k].pts, e = i.updates.AppendUpdate(ctx, frames[k].uid, 1, date, "read_discussion", payload); e != nil {
+				return e
+			}
+		}
 		return nil
 	})
-	if err != nil || !advanced {
+	if err != nil || len(frames) == 0 {
 		return err
 	}
 	i.invalidateDialogs(ctx, userID)
-	// best-effort: прочтение закоммичено — сбой лога/публикации не возвращаем.
-	_ = i.logAndPublishPerPeer(ctx, chatID, []int64{userID}, "read_discussion",
-		func(peer domain.PeerID) map[string]any {
-			return structPayload(domain.NewUpdateReadChannelDiscussionInbox(peer.ToChatID(), number, readMaxID))
-		})
-	_ = i.logAndPublishPerPeer(ctx, chatID, outbox, "read_discussion",
-		func(peer domain.PeerID) map[string]any {
-			return structPayload(domain.NewUpdateReadChannelDiscussionOutbox(peer.ToChatID(), number, readMaxID))
-		})
+	if i.publisher != nil {
+		for _, f := range frames {
+			_ = i.publisher.PublishToUser(ctx, f.uid, framePts("read_discussion", f.body, f.pts))
+		}
+	}
 	return nil
 }
 
