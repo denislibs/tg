@@ -31,8 +31,10 @@ import type { ReadDiscussion } from './forumTopicsStorage'
 /** Состояние треда комментариев — `historyStorage(peerId, threadId)` оригинала в нужном объёме. */
 type ThreadState = { maxId: number; readMaxId: number; readOutboxMaxId: number; unreadCount: number }
 
-/** Горизонт треда для ленты — то, что лента спрашивает у `dialogs.getDialogReadState`. */
-export type ThreadReadState = { read_inbox_max_id: number; unread_count: number; top_message: number }
+/** Горизонт треда для ленты — то, что лента спрашивает у `dialogs.getDialogReadState`.
+ *  `merged` — тред комментариев: его горизонт сводится с горизонтом группы
+ *  (`isMergedReadCursorThread`, :5107-5113, :5122-5127) — сводит владелец диалогов. */
+export type ThreadReadState = { read_inbox_max_id: number; unread_count: number; top_message: number; merged?: true }
 
 export interface ThreadReadsDeps {
   rest: Pick<RestClient, 'post'>
@@ -48,6 +50,10 @@ export function newThreadReads({ rest, isForumPeer, forumTopics, getMeId }: Thre
   const states = new Map<string, ThreadState>()
   /** `historyStorage.triedToReadMaxId` (:9165-9170, :9248-9252) */
   const tried = new Map<string, number>()
+  /** `historyStorage.readPromise` (:9165, :9256-9280) */
+  const readPromises = new Map<string, Promise<unknown>>()
+  /** треды, чей последний запрос отказал (расхождение у `readHistory`) */
+  const failed = new Set<string>()
   const key = (peerId: PeerId, threadId: number) => peerId + '_' + threadId
 
   const topicOf = (peerId: PeerId, threadId: number) =>
@@ -80,7 +86,55 @@ export function newThreadReads({ rest, isForumPeer, forumTopics, getMeId }: Thre
     const topic = topicOf(peerId, threadId)
     if (topic) return topic
     const state = states.get(key(peerId, threadId))
-    return state && { read_inbox_max_id: state.readMaxId, unread_count: state.readMaxId < state.maxId ? state.unreadCount || 1 : 0, top_message: state.maxId }
+    // своё последнее сообщение треда непрочитанным его не делает (:5135-5137)
+    return state && { read_inbox_max_id: state.readMaxId, unread_count: state.readMaxId < state.maxId ? state.unreadCount : 0, top_message: state.maxId, merged: true }
+  }
+
+  /**
+   * Ветка `threadId` у `readHistory` (:9107-9280): гейт «уже прочитано»
+   * (:9133-9157), местный `updateReadChannelDiscussionInbox` сразу
+   * (:9203-9209), сервер — `messages.readDiscussion` (:9186-9193): не чаще
+   * одного запроса в полёте (`readPromise`) и один раз на рубеж
+   * (`triedToReadMaxId`, :9165), по окончании — дочитать то, что набежало за
+   * полёт (:9267-9277). Промис запроса — вызывающему (лента повторяет отказ
+   * один раз, `bubbles.ts::readUnreaded`). Горизонт чата эта ветка не двигает.
+   *
+   * Расхождение: отказ сети снимает рубеж (`triedToReadMaxId`) и помечает
+   * тред, и гейт «уже прочитано» пропускает повтор, пока запрос не пройдёт, —
+   * у tweb местный горизонт уже сдвинут, повтор ленты гасится гейтом, и
+   * сервер так и не узнаёт прочтения.
+   */
+  function readHistory(peerId: PeerId, threadId: number, maxId: number): Promise<unknown> {
+    if (!maxId) return Promise.resolve()
+    const k = key(peerId, threadId)
+    const read = getReadState(peerId, threadId)
+    const was = tried.get(k) ?? 0
+    if (read && !read.unread_count && maxId <= read.read_inbox_max_id && !failed.has(k)) return Promise.resolve()
+    apply({ peerId, topicId: threadId, maxId, out: false })
+    const pending = readPromises.get(k)
+    if (was >= maxId || pending) {
+      if (!(was >= maxId)) tried.set(k, maxId)
+      return pending ?? Promise.resolve()
+    }
+    tried.set(k, maxId)
+    const promise = rest.post(`/chats/${peerId}/threads/${getServerMessageId(threadId)}/read`, { read_max_id: getServerMessageId(maxId) })
+      .then((r) => { failed.delete(k); return r }, (err: unknown) => {
+        // отказ — рубеж снова «не отправлен»
+        if (tried.get(k) === maxId) tried.set(k, was)
+        failed.add(k)
+        throw err
+      })
+      .finally(() => {
+        readPromises.delete(k)
+        // :9267-9277 — за полёт рубеж вырос: дочитать
+        const next = tried.get(k) ?? 0
+        if (next > maxId) {
+          tried.set(k, maxId)
+          void readHistory(peerId, threadId, next).catch(() => {})
+        }
+      })
+    readPromises.set(k, promise)
+    return promise
   }
 
   return {
@@ -104,34 +158,33 @@ export function newThreadReads({ rest, isForumPeer, forumTopics, getMeId }: Thre
       if (!m.pFlags.out && m.fromId !== getMeId() && m.id > state.readMaxId) ++state.unreadCount
     },
 
-    /**
-     * Ветка `threadId` у `readHistory` (:9107-9270): гейт «уже прочитано»
-     * (:9133-9157), местный `updateReadChannelDiscussionInbox` сразу
-     * (:9203-9209), сервер — `messages.readDiscussion` один раз на рубеж
-     * (:9186-9193, `triedToReadMaxId`). Горизонт чата эта ветка не двигает.
-     */
-    readHistory(peerId: PeerId, threadId: number, maxId: number): void {
-      if (!maxId) return
-      const k = key(peerId, threadId)
-      const read = getReadState(peerId, threadId)
-      if (read && !read.unread_count && maxId <= read.read_inbox_max_id) return
-      apply({ peerId, topicId: threadId, maxId, out: false })
-      const was = tried.get(k) ?? 0
-      if (was >= maxId) return
-      tried.set(k, maxId)
-      void rest.post(`/chats/${peerId}/threads/${getServerMessageId(threadId)}/read`, { read_max_id: getServerMessageId(maxId) }).catch(() => {
-        // отказ — рубеж снова «не отправлен», следующий круг ленты повторит
-        if (tried.get(k) === maxId) tried.set(k, was)
-      })
-    },
+    readHistory,
 
-    /** Кадры `updateReadChannelDiscussionInbox/Outbox` (:777-778) — номера уже клиентские. */
-    applyReadDiscussion: apply,
+    /**
+     * Кадры `updateReadChannelDiscussionInbox/Outbox` (:777-778) — номера уже
+     * клиентские. Горизонт не ниже уже известного — пропуск: сервер шлёт inbox и
+     * устройству, которое само читало (у tweb эха своего прочтения нет, местный
+     * кадр — только `processLocalUpdate`, :9203-9209), и эхо не должно ни
+     * откатывать горизонт, ни перечитывать список тем.
+     */
+    applyReadDiscussion(update: ReadDiscussion): void {
+      const read = update.out ? undefined : getReadState(update.peerId, update.topicId)
+      if (read && update.maxId <= read.read_inbox_max_id) return
+      if (update.out) {
+        const topic = topicOf(update.peerId, update.topicId)
+        const state = states.get(key(update.peerId, update.topicId))
+        const outMax = topic?.read_outbox_max_id ?? state?.readOutboxMaxId ?? 0
+        if (update.maxId <= outMax) return
+      }
+      apply(update)
+    },
 
     /** Смена сессии — всё в памяти (у оригинала — новый воркер). */
     reset(): void {
       states.clear()
       tried.clear()
+      readPromises.clear()
+      failed.clear()
     },
   }
 }

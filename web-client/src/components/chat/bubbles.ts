@@ -370,8 +370,8 @@ export interface BubblesManagers extends PeerTitleManagers {
    *     `messages.readDiscussion` (`core/managers/threadReads.ts`); `monoforumThreadId`
    *     нет (монофорумов нет);
    *   • нет `force` (tweb им обходит собственную проверку «уже прочитано»,
-   *     :5757): у нашей ручки такой проверки нет вовсе — дедуп стоит ниже, по
-   *     уже отправленному рубежу (`connectionManager.ts:178`). */
+   *     :5757): дедуп стоит ниже, по уже отправленному рубежу — у чата
+   *     `connectionManager.ts::markRead`, у треда `threadReads` (`triedToReadMaxId`). */
   realtime: {
     markRead(args: { peerId: number, upToId: number, threadId?: number }): Promise<unknown>
     /** Живая подписка канала на время окна (см. хвост `setPeer`). Опциональна: без

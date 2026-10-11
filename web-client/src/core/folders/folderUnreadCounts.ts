@@ -28,7 +28,9 @@
  *     темы не загружены — ноль); значение хранилища тем воркера приезжает
  *     зеркалом `core/dialogs/forumUnreadMirror.ts`, параметр `forumUnreadOf`.
  *     Упоминания форума считаются, только пока непрочитанные темы есть
- *     (`wasUnreadMentionsCount = wasUnreadCount ? … : 0`, `dialogs.ts:848-852`).
+ *     (`wasUnreadMentionsCount = wasUnreadCount ? … : 0`, `dialogs.ts:848-852`);
+ *     «не заглушён» у форума — есть незаглушённая непрочитанная тема
+ *     (`hasUnmuted`, `dialogs.ts:931-934`, `:2252-2255`).
  *     Флага `unread_mark` на нашем проводе нет (`core/models.ts::RawDialog`).
  *  3. Принадлежность папке — та же, что у её списка
  *     (`components/autonomousDialogList/dialogs.ts::testDialogForFilter`,
@@ -47,6 +49,7 @@ import { dialogMatchesFolder } from '../folderFilter'
 import { isDialogMuted } from '../../stores/notifyStore'
 import { ALL_FOLDER_ID } from '../folderIds'
 import { isForum } from '../peers/predicates'
+import { forumHasUnmuted, type ForumUnreadCount } from '../dialogs/forumTopic'
 
 /** `StoredFolder.notifications` оригинала (`stores/folders.ts:11-14`). */
 export interface FolderNotifications {
@@ -69,7 +72,7 @@ interface FolderUnread {
  * @param notifySettings глобальные настройки по типам — правилу «замьючен»
  * @param peerOf     карточка пира из зеркала пиров (`core/peerCache.ts::cachedPeer`):
  *                   нужна правилу типов папки (группа/канал/бот) и правилу мьюта типа
- * @param forumUnreadOf число непрочитанных тем форума (`undefined` — не загружены)
+ * @param forumUnreadOf непрочитанное форума по темам (`undefined` — не загружены)
  * @returns запись на «Все чаты» и на каждую папку, в том числе с нулём
  */
 export function folderUnreadCounts(
@@ -79,7 +82,7 @@ export function folderUnreadCounts(
   notifySettings: NotifySettings,
   peerOf: (peerId: PeerId) => User | Chat | undefined,
   now = Math.floor(Date.now() / 1000),
-  forumUnreadOf: (peerId: PeerId) => number | undefined = () => undefined,
+  forumUnreadOf: (peerId: PeerId) => ForumUnreadCount | undefined = () => undefined,
 ): Record<number, FolderNotifications> {
   const acc = new Map<number, FolderUnread>()
   const empty = (): FolderUnread => ({ unread: 0, unreadUnmuted: 0, unreadMentions: 0 })
@@ -90,8 +93,10 @@ export function folderUnreadCounts(
     if (isDialogArchived(dialog)) continue
     const peer = peerOf(dialog.peerId)
     const chat = peer && peer._ !== 'user' && peer._ !== 'userEmpty' ? peer : undefined
-    if (!(dialogUnreadCount(dialog, chat, forumUnreadOf) > 0)) continue
-    const muted = isDialogMuted(dialog, chat, notifySettings, now)
+    const forum = isForum(chat) ? forumUnreadOf(dialog.peerId) ?? NO_FORUM_UNREAD : undefined
+    if (!((forum ? forum.count : dialog.unread_count) > 0)) continue
+    const dialogMuted = isDialogMuted(dialog, chat, notifySettings, now)
+    const muted = forum ? !forumHasUnmuted(forum, () => dialogMuted) : dialogMuted
     const mention = dialog.unread_mentions_count > 0
     const add = (id: number) => {
       const it = acc.get(id)!
@@ -116,24 +121,15 @@ export function folderUnreadCounts(
   return out
 }
 
-/**
- * tweb `getDialogUnreadCount` (`appMessagesManager.ts:14233-14250`): у форума —
- * число непрочитанных тем (`view_forum_as_messages` у нас нет), иначе
- * `unread_count`.
- */
-export function dialogUnreadCount(
-  dialog: Pick<Dialog, 'peerId' | 'unread_count'>,
-  chat: Chat | undefined,
-  forumUnreadOf: (peerId: PeerId) => number | undefined,
-): number {
-  return isForum(chat) ? forumUnreadOf(dialog.peerId) ?? 0 : dialog.unread_count
-}
+/** Темы форума не загружены — ноль (Promise-ветка `getDialogUnreadCount`, :14242-14243). */
+const NO_FORUM_UNREAD: ForumUnreadCount = { count: 0, unreadNotifySettings: [] }
 
 /**
  * `getFolderUnreadCount(FOLDER_ID_ARCHIVE, true).unreadCount` оригинала — чатов
  * архива с непрочитанным. Читают строка «Архив» (`archiveDialog.tsx:300-326`) и
- * бейдж пункта «Архив» бургера (`sidebarLeft/index.ts:230-247`). Расхождения 1 и 2
- * выше — те же: только диалоги зеркала, «непрочитан» = `unread_count > 0`.
+ * бейдж пункта «Архив» бургера (`sidebarLeft/index.ts:230-247`). Расхождение 1
+ * выше — то же (только диалоги зеркала); «непрочитан» здесь — `unread_count > 0`,
+ * правила форума по темам (расхождение 2) у счётчика архива пока нет.
  */
 export function archiveUnreadCount(dialogs: readonly Dialog[]): number {
   let count = 0

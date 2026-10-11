@@ -15,10 +15,10 @@
 // знает, вопрос задаётся владельцу один раз (у tweb — тем же вызовом).
 import rootScope from '@lib/rootScope'
 import { RT } from '../realtime/events'
-import type { ForumUnreadCount } from './forumTopic'
+import { forumHasUnmuted, type ForumUnreadCount } from './forumTopic'
 import type { Dialog } from '../models'
 import { cachedChat } from '../peerCache'
-import { dialogUnreadCount } from '../folders/folderUnreadCounts'
+import { isForum } from '../peers/predicates'
 
 const counts = new Map<PeerId, ForumUnreadCount>()
 const asked = new Set<PeerId>()
@@ -32,7 +32,11 @@ function emit(): void {
 /** Значение владельца для форума (`undefined` — темы ещё не загружены). */
 export function applyForumUnread(peerId: PeerId, unread: ForumUnreadCount | undefined): void {
   if (unread) counts.set(peerId, unread)
-  else counts.delete(peerId)
+  else {
+    // темы сброшены (форум выключили) — следующий вопрос снова к владельцу
+    counts.delete(peerId)
+    asked.delete(peerId)
+  }
   emit()
 }
 
@@ -50,9 +54,18 @@ export function getForumUnread(peerId: PeerId): ForumUnreadCount | undefined {
   return value
 }
 
-/** tweb `getDialogUnreadCount` (:14233-14250) по зеркалам вкладки: форум — темы. */
-export function getDialogUnreadCount(dialog: Pick<Dialog, 'peerId' | 'unread_count'>): number {
-  return dialogUnreadCount(dialog, cachedChat(dialog.peerId), (peerId) => getForumUnread(peerId)?.count)
+/**
+ * «Непрочитан и не заглушён» — членство в `unreadUnmutedPeerIds` папки «Все»
+ * (tweb `dialogs.ts:840-880`, `:925-934`): у форума — есть непрочитанная тема
+ * (`getDialogUnreadCount`, :14233-14250) и среди них незаглушённая
+ * (`hasUnmuted`); у остальных — `unread_count` и мьют диалога (`dialogMuted`).
+ */
+export function isDialogUnreadUnmuted(dialog: Pick<Dialog, 'peerId' | 'unread_count'>, dialogMuted: () => boolean): boolean {
+  if (isForum(cachedChat(dialog.peerId))) {
+    const unread = getForumUnread(dialog.peerId)
+    return !!unread?.count && forumHasUnmuted(unread, dialogMuted)
+  }
+  return !!dialog.unread_count && !dialogMuted()
 }
 
 export function subscribeForumUnread(listener: () => void): () => void {

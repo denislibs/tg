@@ -12,7 +12,7 @@ import type { LangPackKey } from '@/lang'
 import { useChatsStore } from '../stores/chatsStore'
 import { isDialogArchived, type Dialog } from '../core/models'
 import { isPeerMuted } from '../core/dialogs/notifySettings'
-import { getDialogUnreadCount, subscribeForumUnread } from '../core/dialogs/forumUnreadMirror'
+import { isDialogUnreadUnmuted, subscribeForumUnread } from '../core/dialogs/forumUnreadMirror'
 import { useI18nStore } from '../i18n'
 import { IS_MOBILE } from '../environment/userAgent'
 import idleController from '../helpers/idleController'
@@ -44,12 +44,11 @@ export function notificationsCountTitle(count: number, tArgs: (key: LangPackKey,
 export function countUnmutedUnreadPeers(
   dialogs: Pick<Dialog, 'peerId' | 'unread_count' | 'notify_settings' | 'folder_id'>[],
   now = Math.floor(Date.now() / 1000),
-  // «непрочитан» — tweb `getDialogUnreadCount` (:14233-14250): у форума — темы
-  unreadOf: (d: Pick<Dialog, 'peerId' | 'unread_count'>) => number = getDialogUnreadCount,
 ): number {
   let n = 0
   for (const d of dialogs) {
-    if (unreadOf(d) && !isPeerMuted(d.notify_settings, now) && !isDialogArchived(d)) n += 1
+    // у форума — непрочитанные темы и их мьют (`core/dialogs/forumUnreadMirror.ts`)
+    if (!isDialogArchived(d) && isDialogUnreadUnmuted(d, () => isPeerMuted(d.notify_settings, now))) n += 1
   }
   return n
 }

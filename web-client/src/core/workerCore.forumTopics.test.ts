@@ -201,12 +201,18 @@ describe('createWorkerCore(): кадры тем применяет хранил�
   // tweb onUpdateNewMessage (appMessagesManager.ts:10243-10253): кадр разбирается
   // один раз, история, диалог и тема читают тот же объект
   it('новое сообщение разбирается один раз на кадр', async () => {
-    const { ops } = await boot()
+    const { core, ops } = await boot()
+    const cacheLive = vi.spyOn(core.registry.messages, 'cacheLive')
+    const applyNewMessage = vi.spyOn(core.registry.dialogs, 'applyNewMessage')
     mapMessageSpy.calls = 0
     const raw = makeRawMessage({ id: 16, peerId: FORUM, fromId: 2, text: 'раз', replyToMsgId: 10, forumTopic: true })
     capturedConnDeps!.onFrame('new_message', { _: 'updateNewChannelMessage', message: raw })
     await vi.waitFor(() => expect(ops.map((op) => op.op)).toContain('update'))
     expect(mapMessageSpy.calls).toBe(1)
+    // и история, и диалог получили ТОТ ЖЕ разобранный объект — своего разбора у них нет
+    const mapped = cacheLive.mock.calls[0][1]
+    expect(mapped).toMatchObject({ id: generateMessageId(16) })
+    expect(applyNewMessage.mock.calls[0][1]).toBe(mapped)
   })
 
   // tweb :777-778 → onUpdateReadHistory: кадр с другого устройства гасит тему

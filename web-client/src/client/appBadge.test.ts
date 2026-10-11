@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { countUnmutedUnreadPeers, notificationsCountTitle } from './appBadge'
 import { makeDialog } from '../core/dialogs/testDialog'
+import { applyForumUnread, resetForumUnreadMirror } from '../core/dialogs/forumUnreadMirror'
+import { applyPeerOps, resetPeerMirror } from '../core/peerCache'
 import { useI18nStore } from '../i18n'
 import { applyLang } from '@/test/lang'
 
@@ -22,11 +24,22 @@ describe('countUnmutedUnreadPeers', () => {
     expect(countUnmutedUnreadPeers([d(2), d(4, false, true)])).toBe(1)
   })
 
-  // tweb getDialogUnreadCount (:14233-14250): у форума — непрочитанные темы
-  it('форум считается по темам: `unreadOf` решает «непрочитан»', () => {
+  // tweb getDialogUnreadCount (:14233-14250) + hasUnmuted (dialogs.ts:931-934): у форума —
+  // непрочитанные темы и их мьют, а не `unread_count` и мьют диалога
+  it('форум считается по темам: непрочитанная незаглушённая тема — да, все заглушены — нет', () => {
+    applyPeerOps([{ op: 'upsert', peers: [{ _: 'channel', id: 60, title: 'Ф', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { megagroup: true, forum: true } } as never] }])
     const forum = makeDialog({ peerId: -60, unread: 9 })
-    expect(countUnmutedUnreadPeers([forum], undefined, (dd) => (dd.peerId === -60 ? 0 : dd.unread_count))).toBe(0)
-    expect(countUnmutedUnreadPeers([forum], undefined, () => 1)).toBe(1)
+    applyForumUnread(-60, { count: 0, unreadNotifySettings: [] })
+    expect(countUnmutedUnreadPeers([forum])).toBe(0)
+    applyForumUnread(-60, { count: 1, unreadNotifySettings: [{ _: 'peerNotifySettings' }] })
+    expect(countUnmutedUnreadPeers([forum])).toBe(1)
+    applyForumUnread(-60, { count: 1, unreadNotifySettings: [{ _: 'peerNotifySettings', mute_until: 0x7FFFFFFF }] })
+    expect(countUnmutedUnreadPeers([forum])).toBe(0)
+    // форум заглушён, а непрочитанная тема явно со звуком — считается
+    applyForumUnread(-60, { count: 1, unreadNotifySettings: [{ _: 'peerNotifySettings', mute_until: 0 }] })
+    expect(countUnmutedUnreadPeers([makeDialog({ peerId: -60, unread: 9, muteUntil: true })])).toBe(1)
+    resetForumUnreadMirror()
+    resetPeerMirror()
   })
 
   it('пустой список → 0', () => {

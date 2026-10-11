@@ -49,21 +49,25 @@ describe('threadReads: тема форума', () => {
     expect(applyReadDiscussion).not.toHaveBeenCalled()
   })
 
-  it('рубеж уже отправлен — сервер второй раз не зовётся (`triedToReadMaxId`, :9165-9170)', () => {
+  it('рубеж уже отправлен — сервер второй раз не зовётся (`triedToReadMaxId`, :9165-9170)', async () => {
     const { reads, post } = setup([{ id: mid(10), read_inbox_max_id: mid(10), top_message: mid(20), unread_count: 10 }])
-    reads.readHistory(FORUM, mid(10), mid(15))
-    reads.readHistory(FORUM, mid(10), mid(14))
+    const first = reads.readHistory(FORUM, mid(10), mid(15))
+    void reads.readHistory(FORUM, mid(10), mid(14))
     expect(post).toHaveBeenCalledTimes(1)
-    reads.readHistory(FORUM, mid(10), mid(18))
+    // запрос в полёте — новый рубеж ждёт его (`readPromise`, :9165) и дочитывается по окончании (:9267-9277)
+    expect(reads.readHistory(FORUM, mid(10), mid(18))).toBe(first)
+    expect(post).toHaveBeenCalledTimes(1)
+    await first
+    await flush()
     expect(post).toHaveBeenCalledTimes(2)
+    expect(post).toHaveBeenLastCalledWith('/chats/-50/threads/10/read', { read_max_id: 18 })
   })
 
   it('отказ сервера — рубеж снова не отправлен, следующий круг повторяет', async () => {
     const { reads, post } = setup([{ id: mid(10), read_inbox_max_id: mid(10), top_message: mid(20), unread_count: 10 }])
     post.mockRejectedValueOnce(new Error('net'))
-    reads.readHistory(FORUM, mid(10), mid(15))
-    await flush()
-    reads.readHistory(FORUM, mid(10), mid(15))
+    await expect(reads.readHistory(FORUM, mid(10), mid(15))).rejects.toThrow('net')
+    await reads.readHistory(FORUM, mid(10), mid(15))
     expect(post).toHaveBeenCalledTimes(2)
   })
 
@@ -82,7 +86,7 @@ describe('threadReads: тред комментариев (не форум)', () 
     const { reads } = setup()
     expect(reads.getReadState(GROUP, mid(7))).toBeUndefined()
     reads.saveDiscussion(GROUP, mid(7), discussion)
-    expect(reads.getReadState(GROUP, mid(7))).toEqual({ read_inbox_max_id: mid(25), unread_count: 5, top_message: mid(30) })
+    expect(reads.getReadState(GROUP, mid(7))).toEqual({ read_inbox_max_id: mid(25), unread_count: 5, top_message: mid(30), merged: true })
   })
 
   it('прочтение: горизонт треда сразу, `readDiscussion` номером зеркала; хранилище тем не зовётся', () => {
@@ -91,7 +95,7 @@ describe('threadReads: тред комментариев (не форум)', () 
     reads.readHistory(GROUP, mid(7), mid(30))
     expect(post).toHaveBeenCalledWith('/chats/-70/threads/7/read', { read_max_id: 30 })
     expect(applyReadDiscussion).not.toHaveBeenCalled()
-    expect(reads.getReadState(GROUP, mid(7))).toEqual({ read_inbox_max_id: mid(30), unread_count: 0, top_message: mid(30) })
+    expect(reads.getReadState(GROUP, mid(7))).toEqual({ read_inbox_max_id: mid(30), unread_count: 0, top_message: mid(30), merged: true })
   })
 
   it('тред, состояния которого нет (не открывали `discussionMessage`), — всё равно читается на сервере', () => {
@@ -104,7 +108,7 @@ describe('threadReads: тред комментариев (не форум)', () 
     const { reads } = setup()
     reads.saveDiscussion(GROUP, mid(7), { maxId: mid(30), readMaxId: mid(30), readOutboxMaxId: 0, unreadCount: 0 })
     reads.applyNewMessage(makeMessage({ id: mid(31), peerId: GROUP, fromId: 2, replyToMsgId: mid(7) }))
-    expect(reads.getReadState(GROUP, mid(7))).toEqual({ read_inbox_max_id: mid(30), unread_count: 1, top_message: mid(31) })
+    expect(reads.getReadState(GROUP, mid(7))).toEqual({ read_inbox_max_id: mid(30), unread_count: 1, top_message: mid(31), merged: true })
     reads.applyNewMessage(makeMessage({ id: mid(32), peerId: GROUP, fromId: 1, out: true, replyToMsgId: mid(7) }))
     expect(reads.getReadState(GROUP, mid(7))).toMatchObject({ unread_count: 1, top_message: mid(32) })
   })
@@ -125,3 +129,23 @@ describe('threadReads: тред комментариев (не форум)', () 
     expect(reads.getReadState(GROUP, mid(7))).toBeUndefined()
   })
 })
+
+// Эхо своего прочтения и порядок кадров (независимое ревью КЛ-1b п. 1)
+describe('threadReads: кадры прочтения', () => {
+  it('inbox не выше известного горизонта — пропуск (эхо своего прочтения не откатывает и не перечитывает)', () => {
+    const { reads, applyReadDiscussion } = setup([{ id: mid(10), read_inbox_max_id: mid(15), top_message: mid(20), unread_count: 5 }])
+    reads.applyReadDiscussion({ peerId: FORUM, topicId: mid(10), maxId: mid(15), out: false })
+    reads.applyReadDiscussion({ peerId: FORUM, topicId: mid(10), maxId: mid(12), out: false })
+    expect(applyReadDiscussion).not.toHaveBeenCalled()
+    reads.applyReadDiscussion({ peerId: FORUM, topicId: mid(10), maxId: mid(18), out: false })
+    expect(applyReadDiscussion).toHaveBeenCalledTimes(1)
+  })
+
+  it('своё последнее сообщение не делает тред непрочитанным (:5135-5137)', () => {
+    const { reads } = setup()
+    reads.saveDiscussion(GROUP, mid(7), { maxId: mid(30), readMaxId: mid(30), readOutboxMaxId: 0, unreadCount: 0 })
+    reads.applyNewMessage(makeMessage({ id: mid(31), peerId: GROUP, fromId: 1, out: true, replyToMsgId: mid(7) }))
+    expect(reads.getReadState(GROUP, mid(7))).toMatchObject({ unread_count: 0, top_message: mid(31) })
+  })
+})
+

@@ -125,7 +125,7 @@ function project(): void {
     cachedPeer,
     undefined,
     // у форума — число непрочитанных тем (tweb `getDialogUnreadCount`, :14233-14250)
-    (peerId) => getForumUnread(peerId)?.count,
+    getForumUnread,
   )
   const chatsCount = (filter: Folder) => folderChatsCount(useChatsStore.getState().dialogs, filter)
   const items: StoredFolder[] = [

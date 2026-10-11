@@ -128,7 +128,7 @@ export interface DialogsDeps {
    * (`appMessagesManager.ts:5122-5140`). Опционален по тому же приёму, что
    * `savePinnedOrders`.
    */
-  getThreadReadState?: (peerId: number, threadId: number) => { read_inbox_max_id: number, unread_count: number, top_message: number } | undefined
+  getThreadReadState?: (peerId: number, threadId: number) => { read_inbox_max_id: number, unread_count: number, top_message: number, merged?: true } | undefined
   /**
    * Владелец карточек пиров. Контейнер `/chats` несёт векторы `chats`/`users` —
    * тела групп и собеседников, — и они втекают в УЖЕ существующий приёмник
@@ -523,8 +523,15 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
    * форума или тред комментариев — tweb `getInboxReadMaxId(peerId, threadId)`,
    * appMessagesManager.ts:5122-5131), иначе — диалога.
    */
-  const readSource = (peerId: number, threadId?: number) =>
-    (threadId ? getThreadReadState?.(peerId, threadId) : undefined) ?? findDialog(peerId)
+  const readSource = (peerId: number, threadId?: number) => {
+    const thread = threadId ? getThreadReadState?.(peerId, threadId) : undefined
+    if (!thread) return findDialog(peerId)
+    if (!thread.merged) return thread
+    // тред комментариев: горизонт сводится с горизонтом группы
+    // (`isMergedReadCursorThread`, appMessagesManager.ts:5107-5113, :5122-5127, :5138)
+    const read = Math.max(findDialog(peerId)?.read_inbox_max_id ?? 0, thread.read_inbox_max_id)
+    return { ...thread, read_inbox_max_id: read, unread_count: read < thread.top_message ? thread.unread_count : 0 }
+  }
 
   /**
    * Точечно смержить `fields` в один диалог кэша и опубликовать `patch`. Индекс

@@ -1322,6 +1322,23 @@ describe('dialogsManager.getDialogReadState', () => {
     expect(mgr.getHistoryMaxSeq(-5, 7)).toBe(23)
     expect(mgr.getDialogReadState(-5, 8)).toEqual({ readInboxMaxSeq: 90, unreadCount: 0 })
   })
+
+  // tweb isMergedReadCursorThread (appMessagesManager.ts:5107-5113, :5122-5127):
+  // горизонт треда комментариев — max(группа, тред)
+  it('тред комментариев: горизонт сводится с горизонтом группы', async () => {
+    const thread = { read_inbox_max_id: 20, unread_count: 3, top_message: 30, merged: true as const }
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [makeDialog({ peerId: -6, topMessage: 90, readInboxMaxId: 25, unread: 1 })],
+      loadState: async () => ({ pinnedOrders: {} }),
+      getThreadReadState: () => thread,
+    })
+    await mgr.fillMirror()
+    expect(mgr.getDialogReadState(-6, 7)).toEqual({ readInboxMaxSeq: 25, unreadCount: 3 })
+    thread.read_inbox_max_id = 28
+    expect(mgr.getDialogReadState(-6, 7)).toEqual({ readInboxMaxSeq: 28, unreadCount: 3 })
+  })
 })
 
 // Порт tweb `onUpdateDeleteMessages` (:11546-11548) с подсчётом

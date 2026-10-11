@@ -45,7 +45,7 @@ export interface RealtimeDeps {
   broadcast: (event: string, payload: unknown) => void
   channelFunnel: ChannelFunnel
   /** Прочтение треда (тема, тред комментариев) — `threadReads.readHistory`. */
-  threadReads: { readHistory(peerId: PeerId, threadId: number, maxId: number): void }
+  threadReads: { readHistory(peerId: PeerId, threadId: number, maxId: number): Promise<unknown> }
 }
 
 export function newRealtime({ conn, sync, syncWait, tokens, messages, broadcast, channelFunnel, threadReads }: RealtimeDeps) {
@@ -104,9 +104,11 @@ export function newRealtime({ conn, sync, syncWait, tokens, messages, broadcast,
     //
     // `threadId` — ветка треда tweb `readHistory` (appMessagesManager.ts:9186-9210):
     // и тема форума, и тред комментариев читаются `messages.readDiscussion`
-    // (`threadReads`); горизонт ЧАТА в этой ветке не уходит.
+    // (`threadReads`); горизонт ЧАТА в этой ветке не уходит. Ответ ждёт запрос
+    // треда — как промис `readHistory` у tweb (:9276-9280): отказ доходит до
+    // ленты, и та повторяет его (`bubbles.ts::readUnreaded`).
     async markRead(args: { peerId: number; upToId: number; threadId?: number }) {
-      if (args.threadId) threadReads.readHistory(args.peerId, args.threadId, args.upToId)
+      if (args.threadId) await threadReads.readHistory(args.peerId, args.threadId, args.upToId)
       else conn.markRead(args.peerId, getServerMessageId(args.upToId))
       return { ok: true }
     },

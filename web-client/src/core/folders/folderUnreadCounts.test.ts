@@ -153,13 +153,21 @@ describe('folderUnreadCounts — форум считается по темам',
   const peerOf = (id: number) => (id === -60 ? FORUM : undefined)
 
   it('прочитанные темы — форум не в счёте, даже если `unread_count` диалога не ноль', () => {
-    const counts = folderUnreadCounts([makeDialog({ peerId: -60, unread: 9 })], [], NO_CONTACTS, SETTINGS, peerOf, undefined, () => 0)
+    const counts = folderUnreadCounts([makeDialog({ peerId: -60, unread: 9 })], [], NO_CONTACTS, SETTINGS, peerOf, undefined, () => ({ count: 0, unreadNotifySettings: [] }))
     expect(counts[ALL_FOLDER_ID]).toEqual({ count: 0, muted: false })
   })
 
   it('темы не загружены — ноль (как Promise-ветка tweb), непрочитанная тема — один чат', () => {
     expect(folderUnreadCounts([makeDialog({ peerId: -60, unread: 9 })], [], NO_CONTACTS, SETTINGS, peerOf)[ALL_FOLDER_ID].count).toBe(0)
-    const counts = folderUnreadCounts([makeDialog({ peerId: -60, unread: 0 })], [], NO_CONTACTS, SETTINGS, peerOf, undefined, () => 2)
+    const counts = folderUnreadCounts([makeDialog({ peerId: -60, unread: 0 })], [], NO_CONTACTS, SETTINGS, peerOf, undefined, () => ({ count: 2, unreadNotifySettings: [{ _: 'peerNotifySettings' }, { _: 'peerNotifySettings' }] }))
     expect(counts[ALL_FOLDER_ID]).toEqual({ count: 1, muted: false })
+  })
+
+  // hasUnmuted (dialogs.ts:931-934, :2252-2255): «не заглушён» у форума — по темам
+  it('мьют форума — по непрочитанным темам: все заглушены — серый, явно со звуком при заглушённом форуме — в счёте', () => {
+    const allMuted = folderUnreadCounts([makeDialog({ peerId: -60 })], [], NO_CONTACTS, SETTINGS, peerOf, undefined, () => ({ count: 1, unreadNotifySettings: [{ _: 'peerNotifySettings', mute_until: 0x7FFFFFFF }] }))
+    expect(allMuted[ALL_FOLDER_ID]).toEqual({ count: 0, muted: true })
+    const loud = folderUnreadCounts([makeDialog({ peerId: -60, muteUntil: true })], [], NO_CONTACTS, SETTINGS, peerOf, undefined, () => ({ count: 1, unreadNotifySettings: [{ _: 'peerNotifySettings', mute_until: 0 }] }))
+    expect(loud[ALL_FOLDER_ID]).toEqual({ count: 1, muted: false })
   })
 })

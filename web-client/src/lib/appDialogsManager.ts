@@ -256,7 +256,7 @@ import { ForumTab } from '@components/forumTab/forumTab'
 import findForumTabByPeerId from '@components/forumTab/findForumTabByPeerId'
 import { fillForumTabRegister } from '@components/forumTab/fillRegister'
 import { getForumTopicMuted, isForumTopic, type ForumTopic } from '@components/autonomousDialogList/forumTopics'
-import { isForumTopicMuted } from '@core/dialogs/forumTopic'
+import { forumHasUnmuted } from '@core/dialogs/forumTopic'
 import type { ForumUnreadCount } from '@core/managers/forumTopicsStorage'
 import { APP_TABS } from '@lib/appImManager'
 import { dispatchHeavyAnimationEvent } from '@core/dom/heavyAnimation'
@@ -2546,7 +2546,7 @@ async function setUnreadMessages({
     const forumMuted = () => isDialogMuted(dialog as Dialog, cachedChat(peerId), useNotifyStore.getState().settings)
     forumUnreadCount = result ? {
       count: result.count,
-      hasUnmuted: result.unreadNotifySettings.some((notify_settings) => !isForumTopicMuted({ notify_settings }, forumMuted)),
+      hasUnmuted: forumHasUnmuted(result, forumMuted),
     } : { count: 0, hasUnmuted: false }
   }
   const unreadTopicsCount = forumUnreadCount?.count
