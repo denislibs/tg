@@ -185,7 +185,7 @@ func (r *MessagesRepo) GetAround(ctx context.Context, chatID, userID, centerSeq 
 	}
 	half := limit / 2
 	q := querier(ctx, r.pool)
-	excl := ` AND ` + messageVisibleTo("messages", "$4") + ` AND ($5::bigint IS NULL OR ` + threadFilter("messages", "$5", true) + `)`
+	excl := ` AND ` + messageVisibleTo("messages", "$4") + ` AND ` + threadFilter("messages", "$5", threadRootID, true)
 	scan := func(rows pgx.Rows, err error) ([]domain.Message, error) {
 		if err != nil {
 			return nil, err
@@ -580,7 +580,7 @@ func (r *MessagesRepo) MediaHistory(ctx context.Context, chatID, userID int64, f
 	// ответы, как `top_msg_id` у messages.search).
 	if page.ThreadRoot != nil {
 		args = append(args, *page.ThreadRoot)
-		where += ` AND ` + threadFilter("m", fmt.Sprintf("$%d", len(args)), false)
+		where += ` AND ` + threadFilter("m", fmt.Sprintf("$%d", len(args)), page.ThreadRoot, false)
 	}
 	var count int
 	if err := qq.QueryRow(ctx, `SELECT count(*)`+where, args...).Scan(&count); err != nil {
@@ -641,7 +641,7 @@ func (r *MessagesRepo) SearchCounters(ctx context.Context, chatID, userID int64,
 	thread := ""
 	if threadRootID != nil {
 		args = append(args, *threadRootID)
-		thread = ` AND ` + threadFilter("m", "$3", false)
+		thread = ` AND ` + threadFilter("m", "$3", threadRootID, false)
 	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
 		`SELECT CASE `+strings.Join(arms, " ")+` END AS f, count(*)
@@ -1073,8 +1073,7 @@ func (r *MessagesRepo) GetHistory(ctx context.Context, chatID, userID, offsetSeq
 	q := querier(ctx, r.pool)
 	// Плейсхолдеры зависят от формы запроса.
 	thrN := func(n int) string {
-		p := fmt.Sprintf("$%d", n)
-		return ` AND (` + p + `::bigint IS NULL OR ` + threadFilter("messages", p, true) + `)`
+		return ` AND ` + threadFilter("messages", fmt.Sprintf("$%d", n), threadRootID, true)
 	}
 	// tagN (Избранное): оставляем только сообщения, помеченные зрителем реакцией
 	// $%[2]d (эмодзи/id кастом-эмодзи). Пустой тег ($%[2]d='') снимает фильтр.
@@ -1199,7 +1198,7 @@ func (r *MessagesRepo) ListThread(ctx context.Context, chatID, viewerID, threadR
 	q := querier(ctx, r.pool)
 	rows, err := q.Query(ctx,
 		`SELECT `+messageCols+`
-		 FROM messages WHERE chat_id=$1 AND thread_root_id=$2 AND `+messageVisibleTo("messages", "$5")+` ORDER BY seq ASC LIMIT $3 OFFSET $4`,
+		 FROM messages WHERE chat_id=$1 AND `+threadFilter("messages", "$2", &threadRootID, false)+` AND `+messageVisibleTo("messages", "$5")+` ORDER BY seq ASC LIMIT $3 OFFSET $4`,
 		chatID, threadRootID, limit, offset, viewerID)
 	if err != nil {
 		return nil, err
@@ -1221,7 +1220,7 @@ func (r *MessagesRepo) CountThread(ctx context.Context, chatID, threadRootID int
 	q := querier(ctx, r.pool)
 	var n int
 	err := q.QueryRow(ctx,
-		`SELECT count(*) FROM messages WHERE chat_id=$1 AND `+threadFilter("messages", "$2", false)+` AND deleted_at IS NULL`,
+		`SELECT count(*) FROM messages WHERE chat_id=$1 AND `+threadFilter("messages", "$2", &threadRootID, false)+` AND deleted_at IS NULL`,
 		chatID, threadRootID).Scan(&n)
 	return n, err
 }

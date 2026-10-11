@@ -363,13 +363,19 @@ func (i *Interactor) SetTopicPinned(ctx context.Context, chatID, number, userID 
 	return domain.NewUpdatePinnedForumTopic(domain.NewPeer(peer), topicID, pinned), nil
 }
 
-// ListThreadMessages — сообщения треда (форум-топика) по возрастанию.
-func (i *Interactor) ListThreadMessages(ctx context.Context, chatID, rootID, userID int64, offset, limit int) ([]domain.Message, int, error) {
+// ListThreadMessages — сообщения треда (темы форума, комментариев) по
+// возрастанию. rootSeq — НОМЕР корня в чате; в форуме 1 — General
+// (resolveThreadRootForQuery), её лента — сообщения без треда.
+func (i *Interactor) ListThreadMessages(ctx context.Context, chatID, rootSeq, userID int64, offset, limit int) ([]domain.Message, int, error) {
 	if err := i.RequireChatRead(ctx, chatID, userID); err != nil {
 		return nil, 0, err
 	}
 	if limit <= 0 || limit > 100 {
 		limit = 50
+	}
+	rootID := *i.resolveThreadRootForQuery(ctx, chatID, &rootSeq)
+	if rootID == 0 {
+		return nil, 0, domain.ErrNotFound // номера в чате нет
 	}
 	msgs, err := i.msgs.ListThread(ctx, chatID, userID, rootID, offset, limit)
 	if err != nil {

@@ -113,6 +113,18 @@ func TestGroupRepo_ListParticipantsFilters(t *testing.T) {
 	if ps, total = list(domain.ParticipantsFilter{Kind: domain.ParticipantsMentions, TopMsgID: 1}, 0, 50); total != 5 || len(ps) != 5 {
 		t.Fatalf("mentions: total=%d %v", total, ids(ps))
 	}
+	// Форум: номер 1 — General; писавший в General (без треда) — первым
+	// (ревью БЭК-1: General в подсказке @).
+	if _, err := pool.Exec(ctx, `UPDATE chats SET is_forum = true WHERE id = $1`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO messages (chat_id, seq, sender_id, type, text) VALUES ($1, 900, $2, 'text', 'в General')`, chatID, owner); err != nil {
+		t.Fatal(err)
+	}
+	if ps, total = list(domain.ParticipantsFilter{Kind: domain.ParticipantsMentions, TopMsgID: domain.GeneralTopicID}, 0, 50); total != 5 || ps[0].UserID != owner {
+		t.Fatalf("mentions General: total=%d %v; want owner первым", total, ids(ps))
+	}
 
 	// Ограниченные ключевым курсором (фоновая рассылка, ревью #411 п. 1).
 	if ids, err := r.RestrictedMemberIDs(ctx, chatID, 0, 10); err != nil || len(ids) != 1 || ids[0] != m1 {

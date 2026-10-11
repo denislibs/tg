@@ -8,6 +8,7 @@ import (
 
 	"github.com/messenger-denis/backend/internal/domain"
 	storepostgres "github.com/messenger-denis/backend/internal/store/postgres"
+	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
 )
 
 func TestTopicsRepo_GeneralPinEditOrder(t *testing.T) {
@@ -268,6 +269,12 @@ func TestTopicsRepo_GeneralAndNumbers(t *testing.T) {
 		`INSERT INTO reactions (message_id, user_id, emoji, unread) VALUES ($1,$2,'👍',true)`, inTopic, other); err != nil {
 		t.Fatal(err)
 	}
+	// Счётчики чата — их ведут штатные пути (вставка упоминания, реакция);
+	// счётчики тем — подмножество, при нуле в чате не считаются.
+	if _, err := pool.Exec(ctx,
+		`UPDATE chat_members SET unread_mentions_count = 1, unread_reactions = 1 WHERE chat_id=$1 AND user_id=$2`, chat, me); err != nil {
+		t.Fatal(err)
+	}
 
 	byID := map[int64]domain.TopicRow{}
 	for _, row := range mustList(t, r, chat, me) {
@@ -330,5 +337,49 @@ func TestTopicsRepo_GeneralAndNumbers(t *testing.T) {
 	hist, err = msgs.GetHistory(ctx, chat, me, 0, 0, 50, &topicRoot, "")
 	if err != nil || len(hist) != 2 {
 		t.Fatalf("история темы = %d msgs, %v; want 2", len(hist), err)
+	}
+
+	// Ревью п. 4: горизонт General при деплое — записи темы нет, действует
+	// горизонт чата (прочитано всё до него, General в том числе).
+	if _, err := pool.Exec(ctx,
+		`UPDATE chat_members SET last_read_seq = 4 WHERE chat_id=$1 AND user_id=$2`, chat, me); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range mustList(t, r, chat, me) {
+		if row.Topic.IsGeneral && (row.UnreadCount != 0 || row.UnreadMentions != 0 || row.LastReadSeq != 4) {
+			t.Fatalf("General после горизонта чата 4: unread=%d mentions=%d read=%d; want 0/0/4",
+				row.UnreadCount, row.UnreadMentions, row.LastReadSeq)
+		}
+	}
+	// read_outbox General у other — горизонт чата me.
+	for _, row := range mustList(t, r, chat, other) {
+		if row.Topic.IsGeneral && row.ReadOutboxSeq != 4 {
+			t.Fatalf("read_outbox General у other = %d; want 4", row.ReadOutboxSeq)
+		}
+	}
+
+	// Медиа и счётчики поиска General: фото без треда — да, фото темы — нет.
+	_ = insert(5, other, "photo", nil)
+	_ = insert(6, other, "photo", &topicRoot)
+	media, count, err := msgs.MediaHistory(ctx, chat, me, "media", usecasechat.MediaPage{Limit: 50, ThreadRoot: &root})
+	if err != nil || count != 1 || len(media) != 1 || media[0].Seq != 5 {
+		t.Fatalf("MediaHistory(General) = %d msgs, count %d, %v; want [5]", len(media), count, err)
+	}
+	media, count, err = msgs.MediaHistory(ctx, chat, me, "media", usecasechat.MediaPage{Limit: 50, ThreadRoot: &topicRoot})
+	if err != nil || count != 1 || len(media) != 1 || media[0].Seq != 6 {
+		t.Fatalf("MediaHistory(тема) = %d msgs, count %d, %v; want [6]", len(media), count, err)
+	}
+	counters, err := msgs.SearchCounters(ctx, chat, me, []string{"media"}, &root)
+	if err != nil || counters["media"] != 1 {
+		t.Fatalf("SearchCounters(General) = %v, %v; want media=1", counters, err)
+	}
+	all, err := msgs.SearchCounters(ctx, chat, me, []string{"media"}, nil)
+	if err != nil || all["media"] != 2 {
+		t.Fatalf("SearchCounters(чат) = %v, %v; want media=2", all, err)
+	}
+	// /threads General (ListThread) — только сообщения General, без корня.
+	thread, err := msgs.ListThread(ctx, chat, me, domain.GeneralThreadRoot, 0, 50)
+	if err != nil || len(thread) != 3 {
+		t.Fatalf("ListThread(General) = %d msgs, %v; want 3 (seq 1, 4, 5)", len(thread), err)
 	}
 }

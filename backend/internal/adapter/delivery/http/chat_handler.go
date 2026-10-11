@@ -1895,19 +1895,20 @@ func (h *ChatHandler) MuteTopic(w http.ResponseWriter, r *http.Request) {
 }
 
 // ThreadMessages — GET /chats/{peerID}/threads/{rootSeq}: сообщения треда.
-// В сегменте едет НОМЕР корня в этом чате (для комментариев — номер зеркала).
+// В сегменте едет НОМЕР корня в этом чате (для комментариев — номер зеркала,
+// в форуме 1 — General); перевод в ключ строки — в usecase.
 func (h *ChatHandler) ThreadMessages(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
-	rootID, ok := msgSeqIDParam(w, r, h.svc, chatID, "rootSeq")
+	rootSeq, ok := pathMsgSeq(w, r, "rootSeq")
 	if !ok {
 		return
 	}
 	offset := int(queryInt(r, "offset", 0))
 	limit := int(queryInt(r, "limit", 50))
-	msgs, count, err := h.svc.ListThreadMessages(r.Context(), chatID, rootID, h.meID(r), offset, limit)
+	msgs, count, err := h.svc.ListThreadMessages(r.Context(), chatID, rootSeq, h.meID(r), offset, limit)
 	if err != nil {
 		h.mapScheduledErr(w, err)
 		return
