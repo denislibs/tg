@@ -210,9 +210,11 @@ export interface MessageReplyHeader {
  * у которой в схеме нет предмета. Теперь тред доводится внутри пачки
  * (`usecase/chat/messagescontainer.go::hydrateThreads`).
  *
- * `replies_pts` и `max_id`/`read_max_id` сервер не производит (журнала и
- * горизонта чтения У ТРЕДА у нас нет) — названо в `domain/mtmessage.go` и в
- * `core/messages/message.schema.test.ts`.
+ * `replies_pts` сервер не производит (журнала У ТРЕДА у нас нет) — названо в
+ * `domain/mtmessage.go` и в `core/messages/message.schema.test.ts`.
+ * `max_id`/`read_max_id` едут у треда комментариев: последний номер треда и
+ * горизонт треда зрителя (`readDiscussion`) — по ним футер ставит
+ * `is-unread` (tweb replies.ts:110-118).
  */
 export interface MessageReplies {
   _: 'messageReplies'
@@ -224,6 +226,10 @@ export interface MessageReplies {
   recent_repliers?: Peer[]
   /** ключ ГРУППЫ ОБСУЖДЕНИЯ, где живёт тред (только у поста канала) */
   channel_id?: number
+  /** последний номер треда (клиентский, после `mapReplies`) */
+  max_id?: number
+  /** горизонт треда зрителя (клиентский, после `mapReplies`) */
+  read_max_id?: number
 }
 
 /** Булевы флаги схемы у обоих конструкторов сообщения. «Выключено» — ОТСУТСТВИЕ
@@ -893,6 +899,17 @@ export function mapMyMessage(r: RawMyMessage, meId: PeerId | null = null): MyMes
   return mapMessage(r, meId) as MyMessage
 }
 
+/** Номера внутри треда — серверные: переводятся в клиентские на границе разбора
+ *  (tweb appMessagesManager.ts:7095-7099). Без номеров тред едет как есть. */
+function mapReplies(r: MessageReplies | undefined): MessageReplies | undefined {
+  if (!r || (!r.max_id && !r.read_max_id)) return r
+  return {
+    ...r,
+    ...(r.max_id ? { max_id: generateMessageId(r.max_id) } : {}),
+    ...(r.read_max_id ? { read_max_id: generateMessageId(r.read_max_id) } : {}),
+  }
+}
+
 export function mapMessage(r: RawMessage, meId: PeerId | null = null): Message {
   const peerId = getPeerId(r.peer_id)
   if (r._ === 'messageEmpty') return { _: 'messageEmpty', id: generateMessageId(r.id), peer_id: r.peer_id, peerId }
@@ -945,9 +962,7 @@ export function mapMessage(r: RawMessage, meId: PeerId | null = null): Message {
     entities: r.entities,
     views: r.views,
     forwards: r.forwards,
-    // Тред кладётся вербатим: номеров сообщений внутри него нет (`max_id`/
-    // `read_max_id` мы не производим), поэтому переводить нечего.
-    replies: r.replies,
+    replies: mapReplies(r.replies),
     edit_date: r.edit_date,
     grouped_id: r.grouped_id,
     effect_name: mapEffect(r.effect_name),

@@ -186,29 +186,34 @@ func (i *Interactor) fanOutEdit(ctx context.Context, msg domain.Message, author,
 	if i.updates == nil {
 		return d, nil
 	}
+	// Журнал — пачками по телу кадра (appendByPeerAs), а не записью на
+	// участника: правка поста канала раскладывается по всей группе
+	// обсуждения. Открытая копия платного медиа — отдельной пачкой.
 	date := nowUnix()
-	for _, uid := range members {
-		payload, err := d.ppFor(uid).payload(uid)
-		if err != nil {
+	locked := members
+	if d.ppLocked != d.pp && slices.Contains(members, opener) {
+		locked = slices.DeleteFunc(slices.Clone(members), func(u int64) bool { return u == opener })
+		if err := i.appendByPeerAs(ctx, d.pp, []int64{opener}, date, "edit_message", d.ptsByUser); err != nil {
 			return nil, err
 		}
-		pts, err := i.updates.AppendUpdate(ctx, uid, 1, date, "edit_message", payload)
-		if err != nil {
-			return nil, err
-		}
-		d.ptsByUser[uid] = pts
+	}
+	if err := i.appendByPeerAs(ctx, d.ppLocked, locked, date, "edit_message", d.ptsByUser); err != nil {
+		return nil, err
 	}
 	return d, nil
 }
 
-// publishEdit — живые кадры правки после коммита (пара fanOutEdit).
+// publishEdit — живые кадры правки после коммита (пара fanOutEdit), одним
+// конвейером.
 func (i *Interactor) publishEdit(ctx context.Context, d *editDelivery) {
-	if d == nil || i.publisher == nil {
+	if d == nil || i.publisher == nil || len(d.recipients) == 0 {
 		return
 	}
+	frames := make([][]byte, 0, len(d.recipients))
 	for _, uid := range d.recipients {
-		_ = i.publisher.PublishToUser(ctx, uid, d.ppFor(uid).framePts("edit_message", uid, d.ptsByUser[uid]))
+		frames = append(frames, d.ppFor(uid).framePts("edit_message", uid, d.ptsByUser[uid]))
 	}
+	_ = i.publisher.PublishToUsers(ctx, d.recipients, frames)
 }
 
 // mirrorSync переносит содержимое поста канала post (уже записанное) в его
@@ -526,17 +531,30 @@ func (i *Interactor) logDelete(ctx context.Context, msg domain.Message, users []
 	if i.updates == nil {
 		return d, nil
 	}
-	date := nowUnix()
+	// Пачками по ключу пира (в группе он у всех один): удаление поста канала
+	// уносит зеркало у всей группы обсуждения.
+	byPeer := map[domain.PeerID][]int64{}
+	var order []domain.PeerID
 	for _, uid := range users {
-		payload, err := json.Marshal(deletePayload(addr.forViewer(uid), msg.Seq))
+		peer := addr.forViewer(uid)
+		if _, ok := byPeer[peer]; !ok {
+			order = append(order, peer)
+		}
+		byPeer[peer] = append(byPeer[peer], uid)
+	}
+	date := nowUnix()
+	for _, peer := range order {
+		payload, err := json.Marshal(deletePayload(peer, msg.Seq))
 		if err != nil {
 			return nil, err
 		}
-		pts, err := i.updates.AppendUpdate(ctx, uid, 1, date, "delete_message", payload)
+		m, err := i.updates.AppendUpdateBulk(ctx, byPeer[peer], 1, date, "delete_message", payload)
 		if err != nil {
 			return nil, err
 		}
-		d.ptsByUser[uid] = pts
+		for u, p := range m {
+			d.ptsByUser[u] = p
+		}
 	}
 	return d, nil
 }
@@ -554,10 +572,14 @@ func (i *Interactor) publishDelete(ctx context.Context, d *deleteDelivery) {
 	if i.publisher == nil {
 		return
 	}
-	for _, uid := range d.recipients {
-		body := deletePayload(d.addr.forViewer(uid), d.seq)
-		_ = i.publisher.PublishToUser(ctx, uid, framePts("delete_message", body, d.ptsByUser[uid]))
+	if len(d.recipients) == 0 {
+		return
 	}
+	frames := make([][]byte, 0, len(d.recipients))
+	for _, uid := range d.recipients {
+		frames = append(frames, framePts("delete_message", deletePayload(d.addr.forViewer(uid), d.seq), d.ptsByUser[uid]))
+	}
+	_ = i.publisher.PublishToUsers(ctx, d.recipients, frames)
 }
 
 // mirrorDelete — зеркала, которые уносит удалённый у всех пост канала post, в

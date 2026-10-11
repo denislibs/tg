@@ -49,6 +49,7 @@ func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, 
 	broadcast := i.isBroadcast(ctx, chatID)
 	var members []int64
 	var pp *peerPayloads
+	var mirror *editDelivery
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if text != nil {
@@ -68,7 +69,15 @@ func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, 
 			msg = m
 		}
 		if broadcast {
-			return nil
+			// Текст поста дошёл и до его зеркала в группе обсуждения — как у
+			// правки админом (EditMessage → mirrorSync, A2-20). Клавиатура
+			// зеркалу не переносится: у зеркала её нет (discussion_mirror.go).
+			if text == nil {
+				return nil
+			}
+			var e error
+			mirror, e = i.mirrorSync(ctx, msg, true)
+			return e
 		}
 		mem, e := i.chats.MemberIDs(ctx, chatID)
 		if e != nil {
@@ -105,6 +114,7 @@ func (i *Interactor) botEditMessage(ctx context.Context, bot domain.BotAccount, 
 		if hm, e := i.hydrateBroadcastMessage(ctx, msg); e == nil {
 			_ = i.publishChannelEdit(ctx, hm)
 		}
+		i.publishEdit(ctx, mirror)
 		return msg, nil
 	}
 	if i.publisher != nil {

@@ -712,6 +712,10 @@ type PushNotifier interface {
 	// это пробивает мьют чата, типа и темы, как в Telegram. topicRootID —
 	// корень темы (ключ topic_user_state, 0 — вне темы): мьют темы гасит пуш.
 	NotifyNewMessage(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, mentioned bool, topicRootID int64)
+	// NotifyGuest — пуш гостю обсуждения (не участнику) об ответе на его
+	// комментарий или упоминании: без гейта присутствия — живого кадра у
+	// гостя нет (группы у него нет, чата «Ответы» тоже).
+	NotifyGuest(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, topicRootID int64)
 	// NotifyChannelPost — пуш о посте broadcast-канала его подписчикам
 	// (recipients, без автора) одним батчем: кто онлайн и кому канал не
 	// замьючен, нотификатор решает пачкой. title — название канала (автор поста
@@ -887,6 +891,12 @@ type TopicRepo interface {
 	ThreadHorizon(ctx context.Context, chatID, rootMsgID, userID int64) (int64, error)
 	// ThreadHorizons — горизонты треда у всех читающих (участники и гости треда).
 	ThreadHorizons(ctx context.Context, chatID, rootMsgID int64) (map[int64]int64, error)
+	// ThreadReadOutbox — горизонт ✓✓ треда для зрителя: MAX горизонтов треда
+	// остальных читающих (read_outbox_max_id discussionMessage).
+	ThreadReadOutbox(ctx context.Context, chatID, rootMsgID, viewerID int64) (int64, error)
+	// ThreadReadStates — последний видимый номер и горизонт зрителя по тредам
+	// roots одним запросом (messageReplies.max_id/read_max_id).
+	ThreadReadStates(ctx context.Context, chatID, viewerID int64, roots []int64) (map[int64]domain.ThreadReadState, error)
 	// ClearThreadMentions снимает упоминания треда root (General — страж) до
 	// upToSeq и пересчитывает «@» чата.
 	ClearThreadMentions(ctx context.Context, chatID, userID, root, upToSeq int64) (int, error)

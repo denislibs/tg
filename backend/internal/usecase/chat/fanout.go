@@ -260,7 +260,9 @@ func (i *Interactor) notifyNewMessage(ctx context.Context, msg domain.Message, s
 // которые комментируют без вступления): об ответе на их комментарий и об
 // упоминании в треде комментариев. Членства и ленты у гостя нет, чата
 // «Ответы» (tweb REPLIES_PEER_ID, bubbles.ts:3757-3766) у нас тоже, поэтому
-// временная замена — пуш (решение пользователя к В-2). mentioned — все, кого
+// временная замена — пуш (решение пользователя к В-2), и уходит он и онлайн
+// (NotifyGuest без гейта присутствия): живого кадра гостю нет, а «Ответы» у
+// Telegram уведомляют и при открытом клиенте. mentioned — все, кого
 // упоминает сообщение (messageMentions, до отсева по членству); recipients —
 // участники веера. Гость — тот, кто в обсуждении участвует: читает его
 // (discussionGuestThread) И сам писал в группу (живое сообщение) — иначе
@@ -294,7 +296,7 @@ func (i *Interactor) notifyDiscussionGuests(ctx context.Context, msg domain.Mess
 		if err != nil {
 			continue
 		}
-		i.notifier.NotifyNewMessage(ctx, uid, msg.ChatID, msg.Seq, msg.SenderID, msg.Text, peer, true, *msg.ThreadRootID)
+		i.notifier.NotifyGuest(ctx, uid, msg.ChatID, msg.Seq, msg.SenderID, msg.Text, peer, *msg.ThreadRootID)
 	}
 }
 

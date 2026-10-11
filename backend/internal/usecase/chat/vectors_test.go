@@ -53,6 +53,8 @@ func TestMessagesContainer_ChatsVector(t *testing.T) {
 // сообщений запрещена».
 func TestDiscussionContainer(t *testing.T) {
 	in, fg, _, _ := newChannelTestInteractor(t)
+	ft := newFakeTopicRepo()
+	in.SetTopics(ft)
 	ctx := context.Background()
 	ch, _ := in.CreateChannel(ctx, 7, "News", "", "", true)
 	disc, _ := in.EnableDiscussion(ctx, ch, 7)
@@ -81,15 +83,22 @@ func TestDiscussionContainer(t *testing.T) {
 	if out.MaxID == nil || *out.MaxID != c1.Seq {
 		t.Fatalf("max_id = %v, want номер последнего комментария %d", out.MaxID, c1.Seq)
 	}
-	// Подписчик в группе не состоит — горизонта прочтения нет.
-	if out.ReadInboxMaxID != nil || out.UnreadCount != 0 {
-		t.Fatalf("не участнику: read_inbox_max_id=%v unread=%d, want нет", out.ReadInboxMaxID, out.UnreadCount)
+	// §9: состояние треда — по горизонту ТРЕДА (readDiscussion), и у не
+	// участника тоже. Подписчик тред не читал — горизонта нет (клиент возьмёт
+	// номер корня), комментарий непрочитан.
+	if out.ReadInboxMaxID != nil || out.UnreadCount != 1 {
+		t.Fatalf("не читавшему: read_inbox_max_id=%v unread=%d, want нет и 1", out.ReadInboxMaxID, out.UnreadCount)
 	}
-
-	// Комментатор (вступил в группу) — горизонт группы и непрочитанное.
-	mine, err := in.DiscussionContainer(ctx, ch, post.ID, 7)
-	if err != nil || mine.ReadInboxMaxID == nil {
-		t.Fatalf("участнику: %+v %v, want read_inbox_max_id", mine, err)
+	// Прочитал тред до комментария — горизонт треда, непрочитанного нет;
+	// ✓✓ — горизонт остальных (комментатор 8 прочёл свой).
+	mirror, _ := in.msgs.MirrorByPost(ctx, ch, post.ID)
+	ft.reads = map[[3]int64]int64{{disc, mirror, 9}: c1.Seq, {disc, mirror, 8}: c1.Seq - 1}
+	out, err = in.DiscussionContainer(ctx, ch, post.ID, 9)
+	if err != nil || out.ReadInboxMaxID == nil || *out.ReadInboxMaxID != c1.Seq || out.UnreadCount != 0 {
+		t.Fatalf("прочитавшему: %+v %v, want read_inbox_max_id=%d unread=0", out, err, c1.Seq)
+	}
+	if out.ReadOutboxMaxID == nil || *out.ReadOutboxMaxID != c1.Seq-1 {
+		t.Fatalf("read_outbox_max_id = %v, want горизонт треда комментатора %d", out.ReadOutboxMaxID, c1.Seq-1)
 	}
 
 	page, err := in.CommentsContainer(ctx, ch, post.ID, 9, 0, 50)

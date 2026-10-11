@@ -392,7 +392,7 @@ export function newPendingMethods(ctx: PendingCtx) {
    *  последнего занятого номера окна, а не «максимум + 1» и не отрицательное
    *  число. Дробь и есть признак «номер назначен клиентом» (`isLocalMessageId`),
    *  и она же держит бабл ПОСЛЕ последнего сообщения при сортировке. */
-  const tentativeId = (peerId: number, keys: string[]): number => {
+  const tentativeId = (peerId: number, keys: string[], threadRootId?: number | null): number => {
     const c = msgsFor(peerId)
     let max = 0
     for (const key of keys) {
@@ -401,6 +401,14 @@ export function newPendingMethods(ctx: PendingCtx) {
       for (const slice of sa.slices) for (const s of slice) if (s > max) max = s
     }
     for (const s of c.keys()) if (s > max) max = s
+    // Номер плашки «Обсуждение началось» (дробь поверх корня треда, лента —
+    // `bubbles.ts::threadServiceStartMessage`) занят: оригинал заводит её тем
+    // же `generateTempMessageId` с записью в реестр `tempMids`
+    // (appMessagesManager.ts:8793, :6956-6965), и следующий временный номер
+    // пира встаёт уже поверх неё. Без этого первый комментарий пустого треда
+    // получал номер плашки, и лента его не рисовала (бабл с таким адресом
+    // уже есть).
+    if (threadRootId) max = Math.max(max, generateTempMessageId(threadRootId))
     // Пустое окно: до первого сообщения занятых номеров нет, и клиентская
     // граница начинается с самого порога.
     return generateTempMessageId(Math.max(max, generateMessageId(0)))
@@ -527,7 +535,7 @@ export function newPendingMethods(ctx: PendingCtx) {
     // хранилища: окон истории у ленты отложенных нет.
     const id = scheduled
       ? generateTempMessageId(Math.max(generateMessageId(0), ...storage.keys()))
-      : tentativeId(e.peer_id, keys)
+      : tentativeId(e.peer_id, keys, e.thread_root_id)
     const msg: MyMessage = {
       _: 'message',
       // `out` у бабла: он ИСХОДЯЩИЙ по определению — это сообщение зрителя,

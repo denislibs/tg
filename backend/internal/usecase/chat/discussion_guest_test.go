@@ -29,9 +29,16 @@ type discussionFixture struct {
 
 func newDiscussionFixture(t *testing.T) discussionFixture {
 	t.Helper()
+	return newDiscussionFixtureMsgs(t, func(s *store) MessageRepo { return fakeMsgs{s} })
+}
+
+// newDiscussionFixtureMsgs — то же с MessageRepo, собранным вызывающим
+// (автоудаление — expiringMsgs).
+func newDiscussionFixtureMsgs(t *testing.T, msgs func(*store) MessageRepo) discussionFixture {
+	t.Helper()
 	s := newStore()
 	fg := newFakeGroupRepo()
-	i := New(fakeTx{}, groupMembershipChatsFanout{groupMembershipChats{fg, s}}, fakeMsgs{s},
+	i := New(fakeTx{}, groupMembershipChatsFanout{groupMembershipChats{fg, s}}, msgs(s),
 		fakeUpdates{s}, nil, fakeMedia{s}, fg, nil, newFakeChannelRepo(), newFakeSearchRepo(), nil)
 	i.SetChannelPublisher(&fakeChannelPublisher{})
 	fg.onCreate = func(id int64, typ string) {
@@ -257,8 +264,11 @@ func TestGuest_PushOnReplyAndMention(t *testing.T) {
 	if _, err := f.i.Send(ctx, SendInput{ChatID: f.disc, SenderID: 9, Text: "reply", ThreadRootID: &root, ReplyToID: &replyTo}); err != nil {
 		t.Fatal(err)
 	}
-	if !f.notif.mentioned[8] {
-		t.Fatalf("гостю нет пуша об ответе на его комментарий: %+v", f.notif.recipients)
+	if !f.notif.mentioned[8] || !f.notif.guests[8] {
+		t.Fatalf("гостю нет пуша об ответе на его комментарий (путь гостя, без гейта присутствия): %+v", f.notif.recipients)
+	}
+	if f.notif.guests[7] || f.notif.guests[9] {
+		t.Fatalf("участникам — путь гостя: %+v", f.notif.guests)
 	}
 	// Упоминание text_mention — тоже пуш.
 	f.notif.mentioned, f.notif.recipients = nil, nil
@@ -507,5 +517,105 @@ func TestDeleteAlbumPost_RootMirrorLivesWithAlbum(t *testing.T) {
 		if m, _ := f.i.msgs.GetByID(ctx, id); !m.Deleted {
 			t.Fatalf("зеркало %d осталось после удаления всего альбома", id)
 		}
+	}
+}
+
+// §9 / messageReplies: тред комментариев поста несёт max_id и read_max_id
+// зрителя по горизонту ТРЕДА (readDiscussion), в том числе у не участника —
+// по ним tweb ставит синюю точку «есть новые» (replies.ts:110-118). Нет
+// горизонта — read_max_id не едет.
+func TestCommentCounts_ThreadReadState(t *testing.T) {
+	f := newDiscussionFixture(t)
+	ctx := context.Background()
+	ft := newFakeTopicRepo()
+	f.i.SetTopics(ft)
+	c, err := f.i.PostComment(ctx, f.ch, f.post.ID, 9, "c1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ft.threadMax = map[[2]int64]int64{{f.disc, f.mirror.ID}: c.Seq}
+	got, _, err := f.i.CommentCounts(ctx, 8, f.ch, []int64{f.post.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := got[f.post.ID]; r.MaxID != c.Seq || r.ReadMaxID != 0 {
+		t.Fatalf("не читавшему: max_id=%d read_max_id=%d, want %d и нет", r.MaxID, r.ReadMaxID, c.Seq)
+	}
+	ft.reads = map[[3]int64]int64{{f.disc, f.mirror.ID, 8}: c.Seq}
+	got, _, _ = f.i.CommentCounts(ctx, 8, f.ch, []int64{f.post.ID})
+	if r := got[f.post.ID]; r.MaxID != c.Seq || r.ReadMaxID != c.Seq {
+		t.Fatalf("прочитавшему: max_id=%d read_max_id=%d, want %d и %d", r.MaxID, r.ReadMaxID, c.Seq, c.Seq)
+	}
+	b, _ := json.Marshal(got[f.post.ID])
+	var wire map[string]any
+	_ = json.Unmarshal(b, &wire)
+	if wire["max_id"] == nil || wire["read_max_id"] == nil {
+		t.Fatalf("провод messageReplies = %s, want max_id и read_max_id", b)
+	}
+}
+
+// Правка поста БОТОМ доходит до зеркала так же, как правка админом (A2-20):
+// иначе шапка треда у tweb остаётся со старым текстом.
+func TestBotEditPost_SyncsMirror(t *testing.T) {
+	f := newDiscussionFixture(t)
+	ctx := context.Background()
+	if _, err := f.i.BotEditMessageText(ctx, domain.BotAccount{BotID: 7}, f.ch, f.post.ID, "bot text", nil, nil, false); err != nil {
+		t.Fatalf("правка ботом: %v", err)
+	}
+	m, _ := f.i.msgs.GetByID(ctx, f.mirror.ID)
+	if m.Text != "bot text" || m.EditedAt == nil {
+		t.Fatalf("зеркало после правки ботом: text=%q edited=%v", m.Text, m.EditedAt)
+	}
+	got := f.journal(9, "edit_message")
+	if len(got) != 1 || journalMsgID(got[0]) != f.mirror.Seq || journalOut(got[0]) {
+		t.Fatalf("участник группы: %+v, want edit_message зеркала %d без out", got, f.mirror.Seq)
+	}
+	// Только клавиатура — зеркало не трогается (клавиатуры у него нет).
+	if _, err := f.i.BotEditReplyMarkup(ctx, domain.BotAccount{BotID: 7}, f.ch, f.post.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.journal(9, "edit_message"); len(got) != 1 {
+		t.Fatalf("правка клавиатуры поста правит зеркало: %+v", got)
+	}
+}
+
+// Автоудаление поста уносит зеркало, как ручное (В-1); комментарии остаются.
+// Автоудаление комментария гостя — тем же путём, что удаление «у всех»:
+// гостю — на свои устройства, участникам — кадр.
+func TestAutoDelete_PostTakesMirror_GuestCommentDelivered(t *testing.T) {
+	var expired []domain.Message
+	f := newDiscussionFixtureMsgs(t, func(s *store) MessageRepo { return expiringMsgs{fakeMsgs{s}, &expired} })
+	ctx := context.Background()
+	c, err := f.i.PostComment(ctx, f.ch, f.post.ID, 8, "guest comment", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	expired = []domain.Message{{ID: c.ID, ChatID: c.ChatID, Seq: c.Seq}}
+	if n, err := f.i.PurgeExpiredMessages(ctx); err != nil || n != 1 {
+		t.Fatalf("автоудаление комментария = %d %v", n, err)
+	}
+	for _, uid := range []int64{8, 9} {
+		if got := f.journal(uid, "delete_message"); len(got) != 1 {
+			t.Fatalf("журнал %d: %+v, want delete_message комментария", uid, got)
+		}
+	}
+	expired = []domain.Message{{ID: f.post.ID, ChatID: f.post.ChatID, Seq: f.post.Seq}}
+	if n, err := f.i.PurgeExpiredMessages(ctx); err != nil || n != 1 {
+		t.Fatalf("автоудаление поста = %d %v", n, err)
+	}
+	if m, _ := f.i.msgs.GetByID(ctx, f.mirror.ID); !m.Deleted {
+		t.Fatal("зеркало пережило автоудаление поста")
+	}
+	got := f.journal(9, "delete_message")
+	if len(got) != 2 {
+		t.Fatalf("участник группы: %+v, want ещё delete_message зеркала", got)
+	}
+	if ids, _ := got[1]["messages"].([]any); len(ids) != 1 || int64(ids[0].(float64)) != f.mirror.Seq {
+		t.Fatalf("delete_message несёт %v, want [%d]", got[1]["messages"], f.mirror.Seq)
+	}
+	// Уже удалённое (гонка с ручным удалением) — не считается.
+	expired = []domain.Message{{ID: f.post.ID, ChatID: f.post.ChatID, Seq: f.post.Seq}}
+	if n, err := f.i.PurgeExpiredMessages(ctx); err != nil || n != 0 {
+		t.Fatalf("повторное автоудаление = %d %v, want 0", n, err)
 	}
 }

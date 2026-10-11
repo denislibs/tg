@@ -511,8 +511,10 @@ const MessageRepliesTag = "messageReplies"
 //   - replies_pts (ОБЯЗАТЕЛЬНЫЙ) — отдельного журнала апдейтов у треда нет:
 //     pts у нас на чат, а не на тред. На фазе 2 станет заглушкой-нулём в
 //     потоке (tl-program.md, «нет предмета перестаёт быть бесплатным»);
-//   - max_id/read_max_id — горизонта чтения ВНУТРИ треда мы не храним:
-//     прочитанность считается по чату обсуждения целиком.
+//
+// max_id/read_max_id производятся у треда КОММЕНТАРИЕВ (WithReadState):
+// последний видимый номер треда и горизонт треда зрителя, который ведёт
+// readDiscussion; по ним tweb ставит синюю точку футера (replies.ts:110-118).
 type MessageReplies struct {
 	Underscore string          `json:"_"`
 	PFlags     map[string]bool `json:"pFlags,omitempty"`
@@ -524,6 +526,10 @@ type MessageReplies struct {
 	// ChannelID — flags.0?long: id ГРУППЫ ОБСУЖДЕНИЯ, где живёт тред. Делит
 	// бит с pFlags.comments — у оригинала они всегда парой.
 	ChannelID int64 `json:"channel_id,omitempty"`
+	// MaxID — flags.2?int: последний видимый зрителю номер треда.
+	MaxID int64 `json:"max_id,omitempty"`
+	// ReadMaxID — flags.3?int: горизонт треда зрителя (readDiscussion).
+	ReadMaxID int64 `json:"read_max_id,omitempty"`
 }
 
 // NewMessageReplies — тред комментариев поста канала. Флаг comments и
@@ -537,6 +543,13 @@ func NewMessageReplies(replies int, discussionChatID int64, recent []Peer) Messa
 		ChannelID:      discussionChatID,
 	}
 	setPFlag(&r.PFlags, "comments", discussionChatID != 0)
+	return r
+}
+
+// WithReadState — тред с состоянием прочтения зрителя (max_id/read_max_id).
+// Нулевые значения не едут.
+func (r MessageReplies) WithReadState(st ThreadReadState) MessageReplies {
+	r.MaxID, r.ReadMaxID = st.MaxID, st.ReadMaxID
 	return r
 }
 

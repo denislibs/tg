@@ -302,12 +302,15 @@ func (i *Interactor) GetDiscussionMessage(ctx context.Context, channelID, postID
 // которой у подписчика нет в списке диалогов, и без её карточки клиент
 // оригинала считает «писать нельзя» (hasRights без default_banned_rights).
 //
-// Состояние треда (A4-10): max_id — последний видимый номер треда;
-// read_inbox_max_id/unread_count — по горизонту прочтения группы, если зритель
-// в ней состоит (номера группы монотонны, горизонт верен и для треда);
-// read_outbox_max_id — горизонт собеседников. Не участнику горизонта нет:
-// read_*_max_id не едут, и клиент оригинала считает тред прочитанным до корня
-// (`read_inbox_max_id ?? message.mid`, tweb appMessagesManager.ts:8850).
+// Состояние треда (A4-10, §9 спецификации Ф-5) — по горизонту ТРЕДА, который
+// ведёт readDiscussion (tweb getDiscussionMessage, appMessagesManager.ts:
+// 8848-8852): max_id — последний видимый номер треда; read_inbox_max_id —
+// горизонт треда зрителя (max(запись треда, горизонт группы) у участника,
+// запись треда у гостя); read_outbox_max_id — MAX горизонтов остальных;
+// unread_count — чужие видимые сообщения треда выше горизонта (tweb его не
+// читает, поле обязательное). Горизонта нет (гость треда не читал) —
+// read_inbox_max_id не едет, и клиент считает тред прочитанным до корня
+// (`read_inbox_max_id ?? message.mid`, :8850).
 func (i *Interactor) DiscussionContainer(ctx context.Context, channelID, postID, userID int64) (domain.MessagesDiscussionMessage, error) {
 	root, err := i.GetDiscussionMessage(ctx, channelID, postID, userID)
 	if err != nil {
@@ -318,31 +321,28 @@ func (i *Interactor) DiscussionContainer(ctx context.Context, channelID, postID,
 		return domain.MessagesDiscussionMessage{}, err
 	}
 	chats = i.withChats(ctx, userID, chats, root.ChatID, channelID)
-	var readSeq int64
-	var group domain.ChatRecord
-	if i.groups != nil {
-		if g, err := i.groups.Card(ctx, root.ChatID, userID); err == nil {
-			group = g
+	var inbox, outbox int64
+	if i.topics != nil {
+		if inbox, err = i.topics.ThreadHorizon(ctx, root.ChatID, root.ID, userID); err != nil {
+			return domain.MessagesDiscussionMessage{}, err
+		}
+		if outbox, err = i.topics.ThreadReadOutbox(ctx, root.ChatID, root.ID, userID); err != nil {
+			return domain.MessagesDiscussionMessage{}, err
 		}
 	}
-	member := group.MyRole != ""
-	if member {
-		readSeq = group.ReadInboxMaxID
-	}
-	maxSeq, unread, err := i.msgs.ThreadState(ctx, root.ChatID, root.ID, userID, readSeq)
+	maxSeq, unread, err := i.msgs.ThreadState(ctx, root.ChatID, root.ID, userID, inbox)
 	if err != nil {
 		return domain.MessagesDiscussionMessage{}, err
-	}
-	if !member {
-		unread = 0
 	}
 	out := domain.NewMessagesDiscussionMessage(wire, unread, chats, users)
 	if maxSeq > 0 {
 		out.MaxID = &maxSeq
 	}
-	if member {
-		inbox, outbox := group.ReadInboxMaxID, group.ReadOutboxMaxID
-		out.ReadInboxMaxID, out.ReadOutboxMaxID = &inbox, &outbox
+	if inbox > 0 {
+		out.ReadInboxMaxID = &inbox
+	}
+	if outbox > 0 {
+		out.ReadOutboxMaxID = &outbox
 	}
 	return out, nil
 }
@@ -520,13 +520,22 @@ func (i *Interactor) CommentCounts(ctx context.Context, viewerID, channelID int6
 	if err != nil {
 		return out, nil, err
 	}
+	// Состояние прочтения треда зрителя (max_id/read_max_id) — по горизонту
+	// ТРЕДА, как discussionMessage (§9): по нему tweb решает «есть новые
+	// комментарии» (replies.ts:110-118).
+	var states map[int64]domain.ThreadReadState
+	if i.topics != nil {
+		if states, err = i.topics.ThreadReadStates(ctx, disc, viewerID, roots); err != nil {
+			return out, nil, err
+		}
+	}
 	for postID, root := range mirrors {
 		c := counts[root]
 		peers := make([]domain.Peer, 0, RecentRepliersLimit)
 		for _, a := range recent[root] {
 			peers = append(peers, domain.NewPeer(a))
 		}
-		out[postID] = domain.NewMessageReplies(c, disc, peers)
+		out[postID] = domain.NewMessageReplies(c, disc, peers).WithReadState(states[root])
 	}
 	return out, cards, nil
 }
