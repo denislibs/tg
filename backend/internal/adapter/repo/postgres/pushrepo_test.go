@@ -119,6 +119,9 @@ func TestPushRepo_ShouldNotify(t *testing.T) {
 	// пробивает и его. Мьют темы — СРОК (Ф-5): до срока молчит, после —
 	// пробивается.
 	const topicRoot int64 = 4242
+	if _, err := pool.Exec(ctx, `UPDATE chats SET is_forum = true WHERE id = $1`, chatID); err != nil {
+		t.Fatalf("forum on: %v", err)
+	}
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO topic_user_state (chat_id, root_msg_id, user_id, muted_until) VALUES ($1,$2,$3,now()+interval '1 hour')`,
 		chatID, topicRoot, userID); err != nil {
@@ -150,6 +153,15 @@ func TestPushRepo_ShouldNotify(t *testing.T) {
 		t.Fatalf("topic explicit on: %v", err)
 	}
 	checkAt("chat muted, topic explicit on", topicRoot, false, true, true)
+	// Темы выключены — записи тем за чат не решают (tweb validatePeerSettings,
+	// appNotificationsManager.ts:389-392).
+	if _, err := pool.Exec(ctx, `UPDATE chats SET is_forum = false WHERE id = $1`, chatID); err != nil {
+		t.Fatalf("forum off: %v", err)
+	}
+	checkAt("not a forum, stale topic explicit on, chat muted", topicRoot, false, false, false)
+	if _, err := pool.Exec(ctx, `UPDATE chats SET is_forum = true WHERE id = $1`, chatID); err != nil {
+		t.Fatalf("forum on: %v", err)
+	}
 	if _, err := pool.Exec(ctx,
 		`UPDATE chat_members SET muted_until=NULL WHERE chat_id=$1 AND user_id=$2`, chatID, userID); err != nil {
 		t.Fatalf("unmute chat: %v", err)

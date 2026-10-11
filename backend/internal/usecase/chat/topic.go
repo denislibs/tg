@@ -132,6 +132,19 @@ func (i *Interactor) reserveGeneralNumber(ctx context.Context, chatID int64) err
 	return err
 }
 
+// pushTopicRoot — ключ корня темы сообщения для пуш-гейта (мьют темы):
+// корень его треда, а у служебки создания темы — она сама: служебка
+// принадлежит своей теме, не General (tweb getMessageThreadId.ts:20-21).
+func pushTopicRoot(msg domain.Message) int64 {
+	if _, ok := msg.Action.(domain.MessageActionTopicCreate); ok {
+		return msg.ID
+	}
+	if msg.ThreadRootID != nil {
+		return *msg.ThreadRootID
+	}
+	return 0
+}
+
 // sanitizeTopicEmoji ограничивает иконку темы коротким unicode-emoji (без custom-emoji
 // инфраструктуры): режем по рунам, чтобы не хранить произвольный текст.
 func sanitizeTopicEmoji(s string) string {
@@ -206,11 +219,7 @@ func (i *Interactor) SetTopicMuteUntil(ctx context.Context, chatID, number, user
 	// best-effort: мутация закоммичена — сбой лога/публикации не возвращаем.
 	_ = i.logAndPublishPerPeer(ctx, chatID, []int64{userID}, "topic_mute",
 		func(peer domain.PeerID) map[string]any {
-			return map[string]any{
-				"_":               domain.UpdateNotifySettingsTag,
-				"peer":            domain.NewNotifyForumTopic(domain.NewPeer(peer), topicID),
-				"notify_settings": settings,
-			}
+			return structPayload(domain.NewUpdateTopicNotifySettings(domain.NewPeer(peer), topicID, settings))
 		})
 	return nil
 }
@@ -250,14 +259,16 @@ func (i *Interactor) canManageTopic(ctx context.Context, t domain.ForumTopicReco
 // canSendToPeer: closed ∧ ¬canManageTopic → нельзя). Служебные сообщения
 // сервера (in.Action) не гейтятся. Без треда в форуме — General: её тоже
 // закрывают (tweb dialogsContextMenu.ts:403-415 не исключает General).
-func (i *Interactor) checkTopicOpen(ctx context.Context, in SendInput) error {
+// maybeForum — чат может быть форумом (группа): только тогда General
+// спрашивается у хранилища, личка и канал лишнего запроса не платят.
+func (i *Interactor) checkTopicOpen(ctx context.Context, in SendInput, maybeForum bool) error {
 	if in.Action != nil || i.topics == nil {
 		return nil
 	}
 	var t domain.ForumTopicRecord
 	var err error
 	if in.ThreadRootID == nil {
-		if !i.isGeneralNumber(ctx, in.ChatID, domain.GeneralTopicID) {
+		if !maybeForum || !i.isGeneralNumber(ctx, in.ChatID, domain.GeneralTopicID) {
 			return nil // не форум — General нет
 		}
 		t, err = i.topics.ByNumber(ctx, in.ChatID, domain.GeneralTopicID)
@@ -392,15 +403,7 @@ func (i *Interactor) SetTopicPinned(ctx context.Context, chatID, number, userID 
 		// best-effort: мутация закоммичена.
 		_ = i.logAndPublishPerPeer(ctx, chatID, members, "topic_pin",
 			func(peer domain.PeerID) map[string]any {
-				body := map[string]any{
-					"_":        domain.UpdatePinnedForumTopicTag,
-					"peer":     domain.NewPeer(peer),
-					"topic_id": topicID,
-				}
-				if pinned {
-					body["pFlags"] = map[string]bool{"pinned": true}
-				}
-				return body
+				return structPayload(domain.NewUpdatePinnedForumTopic(domain.NewPeer(peer), topicID, pinned))
 			})
 	}
 	return update, nil

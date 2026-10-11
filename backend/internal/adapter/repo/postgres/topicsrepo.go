@@ -113,22 +113,31 @@ func (r *TopicsRepo) TopicRoots(ctx context.Context, rootIDs []int64) (map[int64
 // Postgres выводит из запроса, а аргумент передан всегда:
 //   - root == nil — треда нет, условие истинно;
 //   - General — страж domain.GeneralThreadRoot: корня у неё нет, её сообщения —
-//     без треда, кроме служебок создания тем (они в своих темах, tweb
-//     getMessageThreadId.ts:20-23);
+//     всё, что не в темах (generalMember);
 //   - иначе — тред корня.
 func threadFilter(alias, param string, root *int64, withRoot bool) string {
 	switch {
 	case root == nil:
 		return param + `::bigint IS NULL`
 	case *root == domain.GeneralThreadRoot:
-		return fmt.Sprintf(`(%[2]s::bigint = %[3]d AND %[1]s.thread_root_id IS NULL
-			AND NOT EXISTS (SELECT 1 FROM forum_topics gft WHERE gft.root_msg_id = %[1]s.id))`,
-			alias, param, domain.GeneralThreadRoot)
+		return fmt.Sprintf(`(%[2]s::bigint = %[3]d AND %[4]s)`, alias, param, domain.GeneralThreadRoot, generalMember(alias))
 	case withRoot:
 		return fmt.Sprintf(`(%[1]s.thread_root_id = %[2]s::bigint OR %[1]s.id = %[2]s::bigint)`, alias, param)
 	default:
 		return fmt.Sprintf(`%[1]s.thread_root_id = %[2]s::bigint`, alias, param)
 	}
+}
+
+// generalMember — сообщение alias принадлежит General форума: оно не служебка
+// создания темы и его тред (если есть) — не тема. Порт tweb
+// getMessageThreadId.ts:17-23: у сообщения форума без forum_topic тред —
+// General, и сюда попадают треды, накопленные до включения тем, и
+// комментарии к постам канала (форум бывает группой обсуждения) — иначе они
+// выпали бы и из General, и из всех тем. Диапазон по (chat_id, seq) плюс
+// anti-join по forum_topics_root_idx (0163).
+func generalMember(alias string) string {
+	return fmt.Sprintf(`NOT EXISTS (SELECT 1 FROM forum_topics gft
+		WHERE gft.root_msg_id IN (%[1]s.id, %[1]s.thread_root_id) AND NOT gft.is_general)`, alias)
 }
 
 // EnsureGeneralTopic идемпотентно создаёт системную тему «General» для чата,
@@ -153,8 +162,7 @@ func (r *TopicsRepo) EnsureGeneralTopic(ctx context.Context, chatID, createdBy i
 // план индексов. Ветка выбирается здесь, в Go:
 //   - обычная тема — тред её корня (idx_messages_thread_seq, 0164), корень — первым
 //     сообщением ленты;
-//   - General — сообщения без треда, кроме служебок создания тем (те в своих
-//     темах, tweb getMessageThreadId.ts:20-23), диапазоном по
+//   - General — всё, что не в темах (generalMember), диапазоном по
 //     (chat_id, seq).
 //
 // Горизонт чтения темы — max(своя запись темы, горизонт чата
@@ -162,8 +170,8 @@ func (r *TopicsRepo) EnsureGeneralTopic(ctx context.Context, chatID, createdBy i
 // темы в том числе. До этой волны General не считалась, и записей
 // topic_user_state у неё нет ни у кого — без горизонта чата после деплоя вся
 // её история стала бы непрочитанной; у обычной темы, которую участник ни
-// разу не открывал, — тоже, и подсчёт шёл бы по всему треду. Так же —
-// read_outbox_max_id General.
+// разу не открывал, — тоже, и подсчёт шёл бы по всему треду. read_outbox_max_id
+// — тот же максимум по остальным участникам.
 //
 // Упоминания и реакции темы — подмножество счётчиков чата
 // (chat_members.unread_mentions_count / unread_reactions): при нуле в чате
@@ -172,9 +180,12 @@ func (r *TopicsRepo) EnsureGeneralTopic(ctx context.Context, chatID, createdBy i
 func topicRowsSQL(general bool) string {
 	inTopic := `m.chat_id = t.chat_id AND m.thread_root_id = t.root_msg_id`
 	horizon := `GREATEST(COALESCE(st.last_read_seq, 0), COALESCE(cm.last_read_seq, 0))`
-	outbox := `COALESCE((SELECT MAX(o.last_read_seq) FROM topic_user_state o
-	                     WHERE o.chat_id = t.chat_id AND o.root_msg_id = t.root_msg_id
-	                       AND o.user_id <> $2), 0)`
+	outbox := `GREATEST(
+	             COALESCE((SELECT MAX(o.last_read_seq) FROM topic_user_state o
+	                        WHERE o.chat_id = t.chat_id AND o.root_msg_id = t.root_msg_id
+	                          AND o.user_id <> $2), 0),
+	             COALESCE((SELECT MAX(om.last_read_seq) FROM chat_members om
+	                        WHERE om.chat_id = t.chat_id AND om.user_id <> $2), 0))`
 	last := `(SELECT m.id, m.created_at, m.seq FROM messages m
 	           WHERE ` + inTopic + ` AND ` + messageVisibleTo("m", "$2") + `
 	           ORDER BY m.seq DESC LIMIT 1)
@@ -183,11 +194,7 @@ func topicRowsSQL(general bool) string {
 	           WHERE m.id = t.root_msg_id AND ` + messageVisibleTo("m", "$2") + `)`
 	where := `t.chat_id = $1 AND NOT t.is_general`
 	if general {
-		inTopic = `m.chat_id = t.chat_id AND m.thread_root_id IS NULL
-		       AND NOT EXISTS (SELECT 1 FROM forum_topics gft WHERE gft.root_msg_id = m.id)`
-		outbox = `GREATEST(` + outbox + `,
-		           COALESCE((SELECT MAX(om.last_read_seq) FROM chat_members om
-		                      WHERE om.chat_id = t.chat_id AND om.user_id <> $2), 0))`
+		inTopic = `m.chat_id = t.chat_id AND ` + generalMember("m")
 		last = `SELECT m.id, m.created_at, m.seq FROM messages m
 		         WHERE ` + inTopic + ` AND ` + messageVisibleTo("m", "$2") + `
 		         ORDER BY m.seq DESC LIMIT 1`
@@ -217,9 +224,11 @@ func topicRowsSQL(general bool) string {
 		     ORDER BY x.seq DESC LIMIT 1
 		  ) lm ON true
 		  LEFT JOIN LATERAL (
-		    -- непрочитанные темы: чужие сообщения темы выше горизонта
+		    -- непрочитанные темы: чужие сообщения темы выше горизонта; у
+		    -- читателя публичного форума без вступления непрочитанного нет.
 		    SELECT count(*) AS n FROM messages m
-		     WHERE ` + inTopic + ` AND m.seq > ` + horizon + `
+		     WHERE cm.user_id IS NOT NULL
+		       AND ` + inTopic + ` AND m.seq > ` + horizon + `
 		       AND ` + messageVisibleTo("m", "$2") + ` AND m.sender_id <> $2
 		  ) unr ON true
 		  LEFT JOIN LATERAL (
