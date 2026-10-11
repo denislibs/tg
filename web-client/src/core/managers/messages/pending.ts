@@ -662,11 +662,79 @@ export function newPendingMethods(ctx: PendingCtx) {
     return opsFor(d, (key) => ({ op: 'remove', key, msgId: cur.id }))
   }
 
+  /** Заявка временного бабла и кадр отправки одного файла — общее у
+   *  `sendFile` и `sendGrouped` (tweb `sendFile`, :1642-1790). */
+  const fileSendPlan = (o: SendFileArgs): { event: PendingNewEvt; wire: WireSendArgs; mime: string } => {
+    const mime = o.mime || o.file.type || 'application/octet-stream'
+    const localUrl = o.isMedia ? URL.createObjectURL(o.file) : undefined
+    const { params } = splitSendingParams(o)
+    const wire: WireSendArgs = {
+      peerId: o.peerId,
+      text: o.caption ?? '',
+      entities: o.entities ?? null,
+      clientMsgId: o.clientMsgId,
+      type: o.type,
+      groupedId: o.groupedId,
+      paidMediaPrice: o.paidMediaPrice ?? null,
+      mediaSpoiler: o.spoiler,
+      ...sendingParamsToWire(params),
+    }
+    const event: PendingNewEvt = {
+      peer_id: o.peerId,
+      thread_root_id: params.threadId ?? null,
+      client_msg_id: o.clientMsgId,
+      reply_to_id: params.replyToMsgId ?? null,
+      reply_quote_text: params.replyToQuote?.text,
+      reply_to_peer_id: params.replyToPeerId ?? undefined,
+      schedule_date: params.scheduleDate ?? undefined,
+      schedule_repeat_period: params.scheduleRepeatPeriod ?? undefined,
+      sender_id: o.senderId,
+      text: o.caption ?? '',
+      type: o.type,
+      entities: o.entities,
+      grouped_id: o.groupedId,
+      local_url: localUrl,
+      media: {
+        width: o.width, height: o.height, mime, size: o.file.size, name: o.fileName,
+        duration: o.duration,
+        // tweb `isAnimated` → `documentAttributeAnimated` в собранном документе.
+        animated: o.isAnimated,
+        // Те же байты пиков, что уедут в аплоад: волна на бабле «отправляется…»
+        // рисуется сразу и не меняется после ack — сервер вернёт их же.
+        waveform: o.waveform ? b64FromBytes(o.waveform) : undefined,
+        // Своя отправка со спойлером обязана показать спойлер СРАЗУ: в tweb
+        // попап отправки уже накрыл превью (applyMediaSpoiler), и бабл не
+        // должен на миг обнажить медиа до эха сервера.
+        spoiler: o.spoiler,
+      },
+      // `sequential` здесь НЕ ставится — 1:1 с tweb `sendFile`
+      // (appMessagesManager.ts:1784-1790, единственный send-путь оригинала без
+      // этой опции): между баблом и кадром стоит аплоад, за время которого
+      // вперёд успевает уйти другое сообщение, и серверный порядок разойдётся
+      // с позицией бабла. Такой бабл лента перекладывает общим путём.
+    }
+    return { event, wire, mime }
+}
+
   /** Порт tweb `upload()` внутри `sendFile` (:1642-1775): отгрузка байтов, затем
    *  отправка кадра уже с media_id. Пинг «отправляет фото/файл…» — порт
    *  `setTyping(peerId, {_: actionName})` из того же места. Ошибка/отмена —
    *  `cancelPendingMessage`/`toggleError` там же. */
   const uploadAndSend = async (o: SendFileArgs, mime: string, wire: WireSendArgs): Promise<number | null> => {
+    const mediaId = await uploadFile(o, mime)
+    if (mediaId !== null) sendUploaded(o, wire, mediaId)
+    return mediaId
+  }
+
+  /** Байты ушли — бабл получает media_id, на сервер уходит кадр отправки. */
+  const sendUploaded = (o: SendFileArgs, wire: WireSendArgs, mediaId: number) => {
+    emit(attachPendingMedia(o.clientMsgId, mediaId))
+    ctx.send({ ...wire, mediaId })
+  }
+
+  /** Отгрузка байтов одного файла; `null` — сорвалась или отменена (бабл
+   *  помечен упавшим либо уже снят). */
+  const uploadFile = async (o: SendFileArgs, mime: string): Promise<number | null> => {
     ctx.uploadProgress(o.clientMsgId, 0, 1)
     // Пинг сразу и каждые UPLOAD_TYPING_MS — TTL приёмника вдвое больше.
     const action = o.uploadAction
@@ -681,8 +749,6 @@ export function newPendingMethods(ctx: PendingCtx) {
         width: o.width, height: o.height, duration: o.duration,
         fileName: o.fileName, waveform: o.waveform, progressId: o.clientMsgId,
       })
-      emit(attachPendingMedia(o.clientMsgId, mediaId))
-      ctx.send({ ...wire, mediaId })
       return mediaId
     } catch {
       // Отменённый аплоад бабл уже снял (cancelPending) — fail тогда no-op.
@@ -757,57 +823,31 @@ export function newPendingMethods(ctx: PendingCtx) {
      *  загруженным файлом (автосохранение отправленного Tenor-гифа в /gifs/saved);
      *  `null` = аплоад сорвался или был отменён. */
     async sendFile(o: SendFileArgs): Promise<{ mediaId: number | null }> {
-      const mime = o.mime || o.file.type || 'application/octet-stream'
-      const localUrl = o.isMedia ? URL.createObjectURL(o.file) : undefined
-      const { params } = splitSendingParams(o)
-      const wire: WireSendArgs = {
-        peerId: o.peerId,
-        text: o.caption ?? '',
-        entities: o.entities ?? null,
-        clientMsgId: o.clientMsgId,
-        type: o.type,
-        groupedId: o.groupedId,
-        paidMediaPrice: o.paidMediaPrice ?? null,
-        mediaSpoiler: o.spoiler,
-        ...sendingParamsToWire(params),
-      }
+      const { event, wire, mime } = fileSendPlan(o)
       let sent: Promise<number | null> = Promise.resolve(null)
-      beforeMessageSending({
-        peer_id: o.peerId,
-        thread_root_id: params.threadId ?? null,
-        client_msg_id: o.clientMsgId,
-        reply_to_id: params.replyToMsgId ?? null,
-        reply_quote_text: params.replyToQuote?.text,
-        reply_to_peer_id: params.replyToPeerId ?? undefined,
-        schedule_date: params.scheduleDate ?? undefined,
-        schedule_repeat_period: params.scheduleRepeatPeriod ?? undefined,
-        sender_id: o.senderId,
-        text: o.caption ?? '',
-        type: o.type,
-        entities: o.entities,
-        grouped_id: o.groupedId,
-        local_url: localUrl,
-        media: {
-          width: o.width, height: o.height, mime, size: o.file.size, name: o.fileName,
-          duration: o.duration,
-          // tweb `isAnimated` → `documentAttributeAnimated` в собранном документе.
-          animated: o.isAnimated,
-          // Те же байты пиков, что уедут в аплоад: волна на бабле «отправляется…»
-          // рисуется сразу и не меняется после ack — сервер вернёт их же.
-          waveform: o.waveform ? b64FromBytes(o.waveform) : undefined,
-          // Своя отправка со спойлером обязана показать спойлер СРАЗУ: в tweb
-          // попап отправки уже накрыл превью (applyMediaSpoiler), и бабл не
-          // должен на миг обнажить медиа до эха сервера.
-          spoiler: o.spoiler,
-        },
-        // `sequential` здесь НЕ ставится — 1:1 с tweb `sendFile`
-        // (appMessagesManager.ts:1784-1790, единственный send-путь оригинала без
-        // этой опции): между баблом и кадром стоит аплоад, за время которого
-        // вперёд успевает уйти другое сообщение, и серверный порядок разойдётся
-        // с позицией бабла. Такой бабл лента перекладывает общим путём.
-      }, () => { sent = uploadAndSend(o, mime, wire) })
+      beforeMessageSending(event, () => { sent = uploadAndSend(o, mime, wire) })
       return { mediaId: await sent }
     },
+
+    /**
+     * Альбом — порт tweb `sendGrouped` (appMessagesManager.ts:3593-3830):
+     * ВСЕ временные сообщения группы встают до сети и объявляются ОДНИМ ходом
+     * (там `processAfter` копит `beforeMessageSending` каждого `sendFile` и
+     * зовёт их разом, :3672-3727), поэтому бабл-альбом появляется сразу целиком,
+     * а не одиночным фото. Затем отгружаются все файлы, и только потом уходит
+     * отправка — у tweb один `messages.sendMultiMedia` (:3776); у нас пакетного
+     * метода на проводе нет, кадры уходят по порядку группы.
+     */
+    async sendGrouped(items: SendFileArgs[]): Promise<void> {
+      const plans = items.map(fileSendPlan)
+      emit(plans.flatMap(({ event }) => insertPending(event)))
+      const mediaIds = await Promise.all(items.map((o, i) => uploadFile(o, plans[i].mime)))
+      items.forEach((o, i) => {
+        const mediaId = mediaIds[i]
+        if (mediaId !== null) sendUploaded(o, plans[i].wire, mediaId)
+      })
+    },
+
 
     /** Отправка сорвалась на пути, который идёт мимо `sendFile` (секретный чат:
      *  нет ключа / оффлайн / упал аплоад шифртекста) — красная пометка на бабле

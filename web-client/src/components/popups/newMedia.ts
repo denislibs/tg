@@ -95,8 +95,8 @@ function probeMediaDuration(file: File, kind: 'audio' | 'video'): Promise<number
   })
 }
 
-/** Один файл выборки — tweb `newMedia.tsx` `sendFileDetails` + `appMessagesManager.sendFile`. */
-async function sendOneFile(
+/** Один файл выборки — tweb `newMedia.tsx` `sendFileDetails`: заявка `sendFile`. */
+async function prepareFile(
   chat: NewMediaChat,
   input: File,
   options: {
@@ -136,7 +136,7 @@ async function sendOneFile(
     : { _: 'sendMessageUploadDocumentAction' }
   // tweb `isMedia`: фото/видео как медиа — бабл сразу с локальным превью.
   const isVisual = (type === 'photo' || type === 'video') && !asFile
-  await chat.managers.messages.sendFile({
+  return {
     peerId,
     clientMsgId: `c-${peerId}-${performance.now()}-${Math.random().toString(36).slice(2)}`,
     senderId: useChatsStore.getState().meId ?? -1,
@@ -155,7 +155,7 @@ async function sendOneFile(
     uploadAction,
     // спойлер — только у визуального медиа (tweb `canToggleSpoilers`)
     spoiler: spoiler && isVisual,
-  })
+  }
 }
 
 /**
@@ -206,16 +206,25 @@ function performSend(
   const groupedId = asAlbum ? Date.now() * 1000 + Math.floor(Math.random() * 1000) : undefined
   // Платное медиа — только одиночное фото/видео «как медиа».
   const price = !asFile && !asAlbum && files.length === 1 ? paidPrice ?? null : null
+  const prepare = (i: number) => prepareFile(chat, files[i], {
+    asFile,
+    caption: i === 0 ? caption : '',
+    groupedId,
+    paidMediaPrice: price,
+    spoiler: !!spoilers?.[i],
+    sendingParams,
+  })
   void (async() => {
+    // tweb :1022-1106 → `sendGrouped` (альбом: все временные разом, одна
+    // отправка) либо `sendFile` по одному.
+    if(asAlbum) {
+      const items = []
+      for(let i = 0; i < files.length; i++) items.push(await prepare(i))
+      await chat.managers.messages.sendGrouped(items)
+      return
+    }
     for(let i = 0; i < files.length; i++) {
-      await sendOneFile(chat, files[i], {
-        asFile,
-        caption: i === 0 ? caption : '',
-        groupedId,
-        paidMediaPrice: price,
-        spoiler: !!spoilers?.[i],
-        sendingParams,
-      })
+      await chat.managers.messages.sendFile(await prepare(i))
     }
   })()
 

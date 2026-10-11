@@ -2764,20 +2764,27 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * хранилище уже полная (`getMessagesByGroupedId`, :7846-7857). У нас каждое
    * сообщение альбома — свой кадр (`new_message`, `updateNewScheduledMessage`).
    *
-   * Неотправленные (дробный номер) не трогаем: свой альбом ведёт `history_update`.
+   * Неотправленные тоже: так в ленту отложенных приезжает свой альбом
+   * (`scheduled_new` по сообщению), а ack группы доводит `history_update`.
    * Возвращает `true`, если сообщение ушло в перерисованный бабл.
    */
   private regroupRenderedAlbum(message: MyMessage): boolean {
     const groupedId = message._ === 'message' ? message.grouped_id : undefined
-    if (!groupedId || isLocalMessageId(message.id)) return false
+    if (!groupedId) return false
     if (this.bubbles[makeFullMid(this.peerId, message.id)]) return false
 
     const group = this.groupedMessages(groupedId)
-    if (group.some((m) => isLocalMessageId(m.id))) return false
     const rendered = group.find((m) => m.id !== message.id && this.bubbles[makeFullMid(this.peerId, m.id)])
     const oldBubble = rendered && this.bubbles[makeFullMid(this.peerId, rendered.id)]
-    const item = oldBubble && this.bubbleGroups.getItemByBubble(oldBubble)
-    if (!oldBubble || !item) return false
+    return !!oldBubble && this.replaceAlbumBubble(oldBubble, group)
+  }
+
+  /** Новый узел бабла альбома главным сообщением группы на месте старого —
+   *  тело `grouped_edit` (tweb bubbles.ts:1472-1490) и финал ack группы
+   *  (`message_sent`, :1244-1255). См. `regroupRenderedAlbum`. */
+  private replaceAlbumBubble(oldBubble: HTMLElement, group: MyMessage[]): boolean {
+    const item = this.bubbleGroups.getItemByBubble(oldBubble)
+    if (!item) return false
 
     const main = group[0]
     const mainChanged = item.mid !== main.id
@@ -2873,7 +2880,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // Альбом, чьё сообщение пришло ПОСЛЕ того, как группа уже нарисована.
     // Сначала — очередь рендера: бабл группы мог быть заведён, но ещё не
     // разложен по сериям, а заменить можно только разложенный.
-    if (message._ === 'message' && message.grouped_id && !isLocalMessageId(message.id)) {
+    if (message._ === 'message' && message.grouped_id) {
       const generation = this.getMiddleware()
       await this.awaitMessagesQueue()
       if (!generation()) return
@@ -5993,6 +6000,25 @@ export default class ChatBubbles implements BubbleGroupsHost {
       const fullMid = makeFullMid(this.peerId, message.id)
       delete this.bubbles[fullTempMid]
       this.bubbles[fullMid] = bubble
+
+      // АЛЬБОМ — tweb `message_sent` :1244-1255: группа доводится целиком, когда
+      // принят её ПОСЛЕДНИЙ номер (у оригинала все ack приходят одной пачкой
+      // `updates` на `sendMultiMedia`; у нас — по кадру на сообщение, поэтому
+      // «последний» — это «неотправленных в группе не осталось»). До того у
+      // ack одна работа — переклеить свой адрес на общий бабл. Финал — новый
+      // узел главным сообщением (номера ячеек, статус, `maxBubbleMid`, место
+      // в серии), тем же путём, что `grouped_edit`.
+      const groupedId = message._ === 'message' ? message.grouped_id : undefined
+      const group = groupedId ? this.groupedMessages(groupedId) : []
+      if (group.length > 1) {
+        if (group.some((m) => isLocalMessageId(m.id))) return
+        const generation = this.getMiddleware()
+        await this.awaitMessagesQueue()
+        if (!generation() || this.getBubble(fullMid) !== bubble) return
+        this.replaceAlbumBubble(bubble, this.groupedMessages(groupedId!))
+        return
+      }
+
       bubble.dataset.mid = '' + message.id
 
       // Порт tweb bubbles.ts:917-938. Ack — это НЕ ТОЛЬКО новый номер: тем же

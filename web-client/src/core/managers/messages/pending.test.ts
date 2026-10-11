@@ -610,6 +610,37 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
   })
 })
 
+// Порт tweb `sendGrouped` (appMessagesManager.ts:3593-3830): все временные
+// сообщения альбома — ОДНИМ объявлением до сети (`processAfter`, :3672-3727),
+// отправка — после всех аплоадов, по порядку группы.
+describe('sendGrouped: альбом — все баблы разом, затем аплоады, затем отправка', () => {
+  const file = () => new Blob(['xxx'], { type: 'image/jpeg' })
+
+  it('баблы группы уходят одним emit, кадры — после всех аплоадов, по порядку', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [cid(10)])
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    let n = 0
+    h.upload.mockImplementation(async () => { const id = 900 + ++n; await gate; return id })
+    const p = newPendingMethods(h.ctx)
+
+    const sending = p.sendGrouped([1, 2, 3].map((i) => ({
+      peerId: 1, clientMsgId: `c${i}`, senderId: 5, file: file(), type: 'photo' as const,
+      isMedia: true, groupedId: 77, caption: i === 1 ? 'подпись' : '',
+    })))
+    // до аплоадов: ОДИН emit с тремя вставками, сеть не тронута
+    expect(h.emitted).toHaveLength(1)
+    expect(h.emitted[0].map((op) => (op as { msg: MessageReal }).msg.random_id)).toEqual(['c1', 'c2', 'c3'])
+    expect(h.emitted[0].every((op) => (op as { msg: MessageReal }).msg.grouped_id === 77)).toBe(true)
+    expect(h.sends).toEqual([])
+
+    release()
+    await sending
+    expect(h.sends.map((a) => [a.clientMsgId, a.mediaId, a.groupedId])).toEqual([['c1', 901, 77], ['c2', 902, 77], ['c3', 903, 77]])
+  })
+})
+
 describe('sendFile: бабл → аплоад → attach → отправка (порт tweb sendFile)', () => {
   const file = (bytes = 'xxx', type = 'image/jpeg') => new Blob([bytes], { type })
 

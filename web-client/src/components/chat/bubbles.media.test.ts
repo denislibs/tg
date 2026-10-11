@@ -16,6 +16,7 @@ import type { HistoryResult } from '@core/managers/messagesManager'
 import * as viewer from '@components/mediaViewer/openMediaViewer'
 import type ChatBubbles from './bubbles'
 import { makeFullMid, type BubblesManagers } from './bubbles'
+import { generateTempMessageId } from '@core/history/messageId'
 import { createTestChat, mountTestBubbles } from './testChat'
 
 /** Открыть окно ленты и дождаться ОТРИСОВКИ. `setPeer` (как в оригинале)
@@ -367,6 +368,45 @@ describe('ChatBubbles — медиа в бабле', () => {
 
       const album2 = bubbles.chatInner.querySelector<HTMLElement>('.bubble.is-album')!
       expect(toggle).toHaveBeenCalledWith(album2, true)
+    })
+
+    // Свой альбом — tweb `sendGrouped` (все временные одним ходом) и
+    // `message_sent` по группе (bubbles.ts:1244-1255): бабл-альбом сразу
+    // целиком, ack по одному не дробят его, финал — по последнему.
+    it('свой альбом: временные одним ходом — один бабл; ack по одному — бабл один, финал на настоящих номерах', async () => {
+      bubbles = mountTestBubbles(chatContext(), managersWith([withPhoto({ id: 1 })]))
+      await openFeed(bubbles)
+      await settle()
+      await settle()
+      const t1 = generateTempMessageId(1)
+      const t2 = generateTempMessageId(t1)
+      const mk = (id: number, randomId: string) => makeMessage({
+        peerId: CHAT, fromId: 2, id, text: '', createdAt: '2026-08-15T12:00:00Z', media: photoMedia(), groupedId: 901, randomId,
+      })
+      const key = String(CHAT)
+      applyOpsToMirror([{ op: 'insert', key, msg: mk(t1, 'r1') }, { op: 'insert', key, msg: mk(t2, 'r2') }])
+      await settle()
+      await settle()
+      const albumNow = () => bubbles!.chatInner.querySelectorAll<HTMLElement>('.bubble.is-album')
+      await vi.waitFor(() => expect(albumNow()).toHaveLength(1))
+
+      applyOpsToMirror([{ op: 'insert', key, msg: mk(5, 'r1') }])
+      await settle()
+      await settle()
+      expect(albumNow()).toHaveLength(1)
+      expect(bubbles.chatInner.querySelectorAll('.bubble:not(.service)')).toHaveLength(2)
+
+      applyOpsToMirror([{ op: 'insert', key, msg: mk(6, 'r2') }])
+      await settle()
+      await settle()
+      const final = albumNow()
+      expect(final).toHaveLength(1)
+      expect(bubbles.chatInner.querySelectorAll('.bubble:not(.service)')).toHaveLength(2)
+      expect(final[0].dataset.mid).toBe('5')
+      expect(final[0].dataset.maxBubbleMid).toBe('6')
+      expect(bubbles.getBubble(makeFullMid(CHAT, 5))).toBe(final[0])
+      expect(bubbles.getBubble(makeFullMid(CHAT, 6))).toBe(final[0])
+      expect(bubbles.getBubble(makeFullMid(CHAT, t1))).toBeUndefined()
     })
 
     it('группа из ОДНОГО сообщения альбомом не считается', async () => {
