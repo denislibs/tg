@@ -2780,23 +2780,49 @@ export default class ChatBubbles implements BubbleGroupsHost {
     if (!oldBubble || !item) return false
 
     const main = group[0]
-    const scrollSaver = this.createScrollSaver(false)
+    const mainChanged = item.mid !== main.id
+    // Позиция ленты: стояла внизу — доводим к концу (ветка `scrolledDown`
+    // `_renderNewMessage`, tweb :5254-5257); иначе якорь — верхний видимый бабл
+    // (`ScrollSaver(true)`), он переживает замену узла ниже.
+    const wasScrolledDown = this.scrolledDown
+    const scrollSaver = this.createScrollSaver(true)
     scrollSaver.save()
 
     const bubble = this.renderMessage(main)
     this.releaseBubbleState(oldBubble)
     oldBubble.replaceWith(bubble)
     this.bubbleGroups.changeBubbleByBubble(oldBubble, bubble)
-    this.bubbleGroups.changeBubbleMessage(bubble, main)
     for (const fullMid of Object.keys(this.bubbles)) {
       if (this.bubbles[fullMid] === oldBubble) delete this.bubbles[fullMid]
     }
     for (const m of group) this.bubbles[makeFullMid(this.peerId, m.id)] = bubble
     bubble.dataset.maxBubbleMid = String(this.maxBubbleMid(main))
-    if (this.firstUnreadBubble === oldBubble) this.firstUnreadBubble = bubble
-    item.group?.updateClassNames()
+    // tweb :5931-5935 — в режиме выделения новому узлу нужен чекбокс (и
+    // состояние выбранного по `selectedMids`); ставит его обычно очередь.
+    if (this.chat.selection.isSelecting) {
+      this.chat.selection.toggleElementCheckbox(bubble, true)
+    }
+    // Плашка «Непрочитанные» живёт классом на узле (`setUnreadDelimiter`).
+    if (this.firstUnreadBubble === oldBubble) {
+      this.firstUnreadBubble = bubble
+      if (oldBubble.classList.contains('is-first-unread')) bubble.classList.add('is-first-unread')
+    }
 
-    scrollSaver.restore(false)
+    if (mainChanged) {
+      // Сменилось главное (младше нарисованного) — узел переезжает на место
+      // нового номера тем же путём, что перестановка в `history_update`.
+      this.bubbleGroups.removeAndUnmountBubble(bubble)
+      this.bubbleGroups.mountUnmountGroups(this.groupBubbles([{ bubble, message: main }]))
+    } else {
+      item.group?.updateClassNames()
+    }
+
+    if (wasScrolledDown) {
+      // tweb :5254-5257 — в ленте отложенных бабл стоит по своей дате, не внизу
+      void (this.chat.type === ChatType.Scheduled ? this.scrollToBubbleEnd(bubble) : this.scrollToEnd())
+    } else {
+      scrollSaver.restore(true)
+    }
     return true
   }
 
@@ -6345,20 +6371,6 @@ export default class ChatBubbles implements BubbleGroupsHost {
     this.addMessageSpoilerOverlay(messageDiv)
   }
 
-  /** Порт tweb `deleteMessagesByIds` (bubbles.ts:4302-4313/4470-4478): забыть
-   *  адрес и снять бабл ЧЕРЕЗ ГРУППЫ — `removeAndUnmountBubble` не только
-   *  убирает узел, но и сливает обратно соседей, которых удалённый бабл
-   *  разделял.
-   *
-   *  Хвост — из оригинала (:4452, :4463-4468): `ignoreNextScrollEvent` глушит
-   *  «скролл», который родит само схлопывание контента, пустые секции дней
-   *  уходят, и лента пересчитывает скролл — КРОМЕ случая `ignoreOnScroll`, то
-   *  есть подрезки вьюпорта, где позицию восстанавливает `ScrollSaver` и лишний
-   *  пересчёт посреди этого только помешал бы.
-   *
-   *  `permanent` (анимация удаления через `destroyBubble`) не портирован —
-   *  анимации удаления бабла у нас нет; вместо неё осталось снятие границы
-   *  непрочитанных с удаляемого узла (:4306-4308). */
   /** Снять с бабла всё, что лента держит на нём адресно, — общая часть
    *  удаления (`deleteMessagesByIds`) и замены узла (`regroupRenderedAlbum`).
    *  tweb гасит это одним побабльным middleware (:4408/:4416, `onDestroy`). */
@@ -6394,6 +6406,20 @@ export default class ChatBubbles implements BubbleGroupsHost {
     }
   }
 
+  /** Порт tweb `deleteMessagesByIds` (bubbles.ts:4302-4313/4470-4478): забыть
+   *  адрес и снять бабл ЧЕРЕЗ ГРУППЫ — `removeAndUnmountBubble` не только
+   *  убирает узел, но и сливает обратно соседей, которых удалённый бабл
+   *  разделял.
+   *
+   *  Хвост — из оригинала (:4452, :4463-4468): `ignoreNextScrollEvent` глушит
+   *  «скролл», который родит само схлопывание контента, пустые секции дней
+   *  уходят, и лента пересчитывает скролл — КРОМЕ случая `ignoreOnScroll`, то
+   *  есть подрезки вьюпорта, где позицию восстанавливает `ScrollSaver` и лишний
+   *  пересчёт посреди этого только помешал бы.
+   *
+   *  `permanent` (анимация удаления через `destroyBubble`) не портирован —
+   *  анимации удаления бабла у нас нет; вместо неё осталось снятие границы
+   *  непрочитанных с удаляемого узла (:4306-4308). */
   public deleteMessagesByIds(fullMids: string[], ignoreOnScroll?: boolean) {
     for (const fullMid of fullMids) {
       const bubble = this.bubbles[fullMid]

@@ -351,6 +351,24 @@ describe('ChatBubbles — медиа в бабле', () => {
       expect(bubbles.getBubble(makeFullMid(CHAT, 2))).toBe(rendered[0])
     })
 
+    // tweb :5931-5935 — в режиме выделения новому узлу нужен чекбокс; замена
+    // идёт мимо очереди, которая его обычно ставит.
+    it('в режиме выделения перерисованный бабл альбома получает чекбокс', async () => {
+      const group = album([1, 2])
+      const chat = chatContext()
+      bubbles = mountTestBubbles(chat, managersWith([group[0]]))
+      await openFeed(bubbles)
+      await settle()
+      chat.selection.isSelecting = true
+      const toggle = vi.spyOn(chat.selection, 'toggleElementCheckbox')
+
+      applyOpsToMirror([{ op: 'insert', key: String(CHAT), msg: group[1] }])
+      await settle()
+
+      const album2 = bubbles.chatInner.querySelector<HTMLElement>('.bubble.is-album')!
+      expect(toggle).toHaveBeenCalledWith(album2, true)
+    })
+
     it('группа из ОДНОГО сообщения альбомом не считается', async () => {
       bubbles = mountTestBubbles(chatContext(), managersWith(album([1])))
       await openFeed(bubbles)
