@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -228,5 +229,55 @@ func TestScheduledRepo_TakePaidAndStarsTakeUpTo(t *testing.T) {
 	}
 	if bal, err := st.TakeUpTo(ctx, a, 5); err != nil || bal != 0 {
 		t.Fatalf("TakeUpTo без строки баланса: bal=%d err=%v", bal, err)
+	}
+}
+
+// Блокировка публикации: снятие автором ждёт коммита транзакции вставки.
+func TestScheduledRepo_LockForPublishBlocksDelete(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+79990001710")
+	b := seedUser(t, pool, "+79990001711")
+	chatID := seedPrivateChat(t, pool, a, b)
+	r := NewScheduledRepo(pool)
+	m, _, err := r.Create(ctx, domain.ScheduledMessage{ChatID: chatID, SenderID: a, Type: "text", Text: "x", SendAt: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	locked := make(chan struct{})
+	release := make(chan struct{})
+	txDone := make(chan error, 1)
+	go func() {
+		txDone <- NewTxManager(pool).WithinTx(ctx, func(ctx context.Context) error {
+			ok, e := r.LockForPublish(ctx, m.ID)
+			if e != nil || !ok {
+				close(locked)
+				return fmt.Errorf("lock: ok=%v err=%v", ok, e)
+			}
+			close(locked)
+			<-release
+			return nil
+		})
+	}()
+	<-locked
+	delDone := make(chan int, 1)
+	go func() {
+		del, _ := r.DeleteUnclaimed(ctx, []int64{m.ID})
+		delDone <- len(del)
+	}()
+	select {
+	case <-delDone:
+		t.Fatal("снятие прошло мимо блокировки публикации")
+	case <-time.After(300 * time.Millisecond):
+	}
+	close(release)
+	if err := <-txDone; err != nil {
+		t.Fatal(err)
+	}
+	if n := <-delDone; n != 1 {
+		t.Fatalf("снятие после коммита: %d", n)
+	}
+	if ok, err := r.LockForPublish(ctx, m.ID); err != nil || ok {
+		t.Fatalf("LockForPublish снятой строки: ok=%v err=%v", ok, err)
 	}
 }

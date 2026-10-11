@@ -1184,6 +1184,25 @@ func (i *Interactor) refundScheduled(ctx context.Context, r domain.ScheduledMess
 	return nil
 }
 
+// lockScheduledForPublish — в транзакции вставки опубликованного: строка
+// очереди под блокировкой до коммита. Снятие автором (DELETE) ждёт её и
+// после коммита видит вставленное сообщение по ключу публикации — без
+// возврата за доставленное; уже снятую строку публикация не вставляет
+// (аренда могла истечь посреди долгой публикации).
+func (i *Interactor) lockScheduledForPublish(ctx context.Context, id int64) error {
+	if id == 0 || i.scheduled == nil {
+		return nil
+	}
+	ok, err := i.scheduled.LockForPublish(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 // refundScheduledOfChat — удаление группы: оплаченные отложенные чата
 // снимаются и возвращаются авторам (в транзакции удаления).
 func (i *Interactor) refundScheduledOfChat(ctx context.Context, chatID int64, balances map[int64]int64) error {
@@ -1267,6 +1286,7 @@ func (i *Interactor) publishScheduledRow(ctx context.Context, row domain.Schedul
 	in.ClientMsgID = key
 	in.fromSchedule = true
 	in.repeatOccurrence = row.Occurrence > 0
+	in.scheduledID = row.ID
 	in.webPage = row.WebPage
 	return i.Send(ctx, in)
 }
@@ -1303,6 +1323,7 @@ func (i *Interactor) publishScheduledCopy(ctx context.Context, row domain.Schedu
 	in := ForwardInput{
 		ToChatID: row.ChatID, SenderID: row.SenderID, Silent: row.Params.Silent,
 		ThreadRootID: row.Params.ThreadRootID, fromSchedule: true, repeatOccurrence: row.Occurrence > 0,
+		scheduledID: row.ID,
 	}
 	if err := i.checkForwardAllowed(ctx, in, []domain.Message{c}, 1, broadcast); err != nil {
 		return domain.Message{}, err

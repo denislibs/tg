@@ -36,6 +36,8 @@ type ForwardInput struct {
 	// repeatOccurrence — как SendInput.repeatOccurrence: срок повтора после
 	// первого платит заново.
 	repeatOccurrence bool
+	// scheduledID — как SendInput.scheduledID.
+	scheduledID int64
 }
 
 // forwardCopy — копия одного исходного сообщения и всё, что нужно её доставке
@@ -225,6 +227,9 @@ func (i *Interactor) deliverForwardCopies(ctx context.Context, in ForwardInput, 
 	out := make([]forwardCopy, 0, len(copies))
 	var charge paidCharge // платная группа: последнее списание (балансы абсолютны)
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if e := i.lockScheduledForPublish(ctx, in.scheduledID); e != nil {
+			return e
+		}
 		for idx, c := range copies {
 			// Плата — за каждое сообщение (allow_paid_stars = цена × число).
 			probe := sendProbe(in.ToChatID, in.SenderID, c)

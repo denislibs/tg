@@ -29,6 +29,8 @@ type fakeScheduled struct {
 	failReschedule, failDelete int
 	// onReschedule — вклинивается перед перепостановкой (гонка с автором).
 	onReschedule func()
+	// onLockForPublish — вклинивается перед блокировкой строки публикацией.
+	onLockForPublish func()
 }
 
 func newFakeScheduled() *fakeScheduled {
@@ -106,6 +108,16 @@ func (f *fakeScheduled) DeleteUnclaimed(_ context.Context, ids []int64) ([]domai
 		}
 	}
 	return out, nil
+}
+
+func (f *fakeScheduled) LockForPublish(_ context.Context, id int64) (bool, error) {
+	if f.onLockForPublish != nil {
+		f.onLockForPublish()
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, ok := f.rows[id]
+	return ok, nil
 }
 
 func (f *fakeScheduled) TakePaidByChat(_ context.Context, chatID int64) ([]domain.ScheduledMessage, error) {
@@ -1647,5 +1659,33 @@ func TestScheduled_AuthorDeleteRepeat(t *testing.T) {
 	}
 	if bal, _ := stars.Balance(ctx, 2); bal != 15 {
 		t.Fatalf("возврат за опубликованное вхождение: %d, want 15", bal)
+	}
+}
+
+// Ревью s1c: аренда истекла посреди публикации, автор снял строку и получил
+// возврат — транзакция вставки, заблокировав строку, её уже не находит и
+// сообщение не вставляет (иначе доставка за возвращённые звёзды).
+func TestScheduled_AuthorDeleteDuringSlowPublish(t *testing.T) {
+	in, stars, fs, s, cid := paidScheduledGroup(t, 20)
+	ctx := context.Background()
+	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fs.set(sm.Seq, func(m *domain.ScheduledMessage) { m.SendAt = time.Now().Add(-time.Minute) })
+	before := len(messagesOf(s, cid))
+	fs.onLockForPublish = func() {
+		fs.onLockForPublish = nil
+		fs.expireClaims()
+		if upd, err := in.DeleteScheduled(ctx, cid, 2, []int64{sm.Seq}); err != nil || len(upd) != 1 {
+			t.Errorf("снятие посреди публикации: %v %v", upd, err)
+		}
+	}
+	_, _ = in.DispatchDueScheduled(ctx)
+	if got := len(messagesOf(s, cid)) - before; got != 0 {
+		t.Fatalf("вставлено %d сообщений после снятия с возвратом", got)
+	}
+	if b, _ := stars.Balance(ctx, 2); b != 20 {
+		t.Fatalf("баланс %d, want 20 (ровно один возврат)", b)
 	}
 }

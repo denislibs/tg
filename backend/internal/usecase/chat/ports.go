@@ -808,6 +808,11 @@ type SendInput struct {
 	// списывается заново (первый срок оплачен при постановке), иначе один
 	// платёж отправлял бы сообщение в платную группу бессрочно.
 	repeatOccurrence bool
+	// scheduledID — ключ строки очереди, которую публикует эта отправка:
+	// транзакция вставки держит её блокировку (lockScheduledForPublish), и
+	// снятие автором не может вернуть звёзды за сообщение, которое как раз
+	// вставляется.
+	scheduledID int64
 	// webPage — готовое превью отложенного: публикация пишет его в сообщение
 	// (как у копии, insertCopy) и не строит превью второй раз.
 	webPage *domain.WebPagePreview
@@ -927,6 +932,9 @@ type ScheduledRepo interface {
 	// Reschedule переставляет опубликованный срок повтора from → to (тот же
 	// id), снимает аренду, occurrence+1; ok=false — строку сняли или перенесли.
 	Reschedule(ctx context.Context, id int64, from, to time.Time) (domain.ScheduledMessage, bool, error)
+	// LockForPublish блокирует строку до конца транзакции (FOR UPDATE);
+	// false — строки уже нет.
+	LockForPublish(ctx context.Context, id int64) (bool, error)
 	// TakePaidByChat снимает оплаченные при постановке строки чата (удаление
 	// группы) и отдаёт их — для возврата звёзд.
 	TakePaidByChat(ctx context.Context, chatID int64) ([]domain.ScheduledMessage, error)

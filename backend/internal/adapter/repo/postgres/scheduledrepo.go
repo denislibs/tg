@@ -280,6 +280,18 @@ func (r *ScheduledRepo) DeleteUnclaimed(ctx context.Context, ids []int64) ([]dom
 		`DELETE FROM scheduled_messages WHERE id = ANY($1) AND `+unclaimed+` RETURNING `+scheduledCols, ids)
 }
 
+// LockForPublish — блокировка строки до конца транзакции вставки
+// опубликованного (против снятия автором с возвратом).
+func (r *ScheduledRepo) LockForPublish(ctx context.Context, id int64) (bool, error) {
+	var one int
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT 1 FROM scheduled_messages WHERE id=$1 FOR UPDATE`, id).Scan(&one)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 // TakePaidByChat — удаление группы: оплаченные строки чата снимаются до
 // каскада chats → scheduled_messages, чтобы вернуть звёзды.
 func (r *ScheduledRepo) TakePaidByChat(ctx context.Context, chatID int64) ([]domain.ScheduledMessage, error) {

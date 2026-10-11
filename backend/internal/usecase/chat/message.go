@@ -456,6 +456,9 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	// carries exactly the value persisted for each member.
 	ptsByUser := map[int64]int64{}
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if e := i.lockScheduledForPublish(ctx, in.scheduledID); e != nil {
+			return e
+		}
 		if in.ClientMsgID != "" {
 			if existing, e := i.msgs.FindByClientMsgID(ctx, in.ChatID, in.SenderID, in.ClientMsgID); e == nil {
 				msg = existing
