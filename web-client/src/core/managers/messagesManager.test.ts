@@ -6,7 +6,8 @@ import { mapMyMessage, type MessageReal, type MyMessage, type RawMessage, type R
 import type { NewMessageEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, DeleteMessageEvt } from '../realtime/events'
 import { RT } from '../realtime/events'
 import type { MessageOp } from '../realtime/messageOps'
-import { generateMessageId } from '../history/messageId'
+import { GENERAL_TOPIC_ID, generateMessageId } from '../history/messageId'
+import type { Chat } from '../peers/peer'
 import { SliceEnd } from '../history/slicedArray'
 import { makeRawMessage } from '../messages/testMessage'
 import { getDocumentFromMessage, getMediaFromMessage, pollOptionKey, type MessageMedia, type MessageMediaPoll, type MessageMediaToDo } from '../media/messageMedia'
@@ -19,10 +20,10 @@ const cid = generateMessageId
 const real = (m: MyMessage | undefined): MessageReal | undefined =>
   m?._ === 'message' ? m : undefined
 
-function rawPage(ids: number[]): { messages: RawMessage[]; count: number } {
+function rawPage(ids: number[], peerId = 1): { messages: RawMessage[]; count: number } {
   // backend returns newest-first (DESC) for offset_id=0 / older pages
   const messages = ids.map((id) => makeRawMessage({
-    id, peerId: 1, fromId: 1, text: `m${id}`, createdAt: '2026-06-24T10:00:00Z',
+    id, peerId, fromId: 1, text: `m${id}`, createdAt: '2026-06-24T10:00:00Z',
   }) as RawMessage)
   return { messages, count: messages.length }
 }
@@ -323,29 +324,64 @@ describe('MessagesManager.cacheLive', () => {
   // который пишет в оба ключа при threadRootId).
   it('returns two insert ops (main + thread window) when both slices are loaded', async () => {
     // thread window — свой ключ истории (thread_root=100), тоже полная «нижняя»
-    // страница (offsetId=0 → всегда держит низ).
-    const threadPage = { messages: [makeRawMessage({ id: 2, peerId: 1, fromId: 1, text: 'root reply', threadRootId: 100, createdAt: '2026-06-24T10:00:00Z' }) as RawMessage], count: 1 }
+    // страница (offsetId=0 → всегда держит низ). Чат — группа: тред есть только
+    // у группы/канала (tweb getThreadKey :11910).
+    const threadPage = { messages: [makeRawMessage({ id: 2, peerId: -1, fromId: 1, text: 'root reply', threadRootId: 100, createdAt: '2026-06-24T10:00:00Z' }) as RawMessage], count: 1 }
     const rest = {
       get: async (_path: string, q?: Record<string, string | number>) => {
         if (q?.thread_root === 100) return threadPage
-        return rawPage([3, 2, 1])
+        return rawPage([3, 2, 1], -1)
       },
       post: async () => ({}),
     } as unknown as RestClient
     const mgr = newMessagesManager({ rest })
-    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40 })
-    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 40, threadRoot: cid(100) })
+    await mgr.getHistory({ peerId: -1, offsetId: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: -1, offsetId: 0, addOffset: 0, limit: 40, threadRoot: cid(100) })
     // Корень треда живёт ВНУТРИ ссылки на ответ (`reply_to.reply_to_top_id`) —
     // отдельного `thread_root_id` рядом с сообщением больше нет.
     const ops = mgr.cacheLive(liveEvt(makeRawMessage({
-      id: 5, peerId: 1, fromId: 1, text: 'thread hi', threadRootId: 100, createdAt: '2026-06-24T10:00:00Z',
+      id: 5, peerId: -1, fromId: 1, text: 'thread hi', threadRootId: 100, createdAt: '2026-06-24T10:00:00Z',
     })))
     expect(ops).toHaveLength(2)
-    expect(ops.map((o) => o.key).sort()).toEqual(['1', `1:${cid(100)}`])
+    expect(ops.map((o) => o.key).sort()).toEqual(['-1', `-1:${cid(100)}`])
     for (const op of ops) {
       expect(op.op).toBe('insert')
       if (op.op === 'insert') expect(op.msg.id).toBe(cid(5))
     }
+  })
+
+  // A1-16 + порт getMessageThreadId (tweb getThreadKey, appMessagesManager.ts:11903-11921):
+  // в форуме простое сообщение темы — `reply_to_msg_id` = номер темы с
+  // `forum_topic`, БЕЗ `reply_to_top_id`; без флага — General.
+  it('форум: сообщение темы уходит в окно темы, без `forum_topic` — в окно General', async () => {
+    const FORUM = -5
+    const forumChat = { _: 'channel', id: 5, title: 'Ф', pFlags: { megagroup: true, forum: true } } as unknown as Chat
+    const rest = {
+      get: async () => ({ messages: [], count: 0 }),
+      post: async () => ({}),
+    } as unknown as RestClient
+    const mgr = newMessagesManager({ rest, getPeer: (id) => (id === FORUM ? forumChat : undefined) })
+    await mgr.getHistory({ peerId: FORUM, offsetId: 0, addOffset: 0, limit: 40, threadRoot: cid(10) })
+    await mgr.getHistory({ peerId: FORUM, offsetId: 0, addOffset: 0, limit: 40, threadRoot: GENERAL_TOPIC_ID })
+    const inTopic = mgr.cacheLive(liveEvt(makeRawMessage({ id: 11, peerId: FORUM, fromId: 1, replyToMsgId: 10, forumTopic: true })))
+    expect(inTopic.map((o) => o.key)).toEqual([`${FORUM}:${cid(10)}`])
+    const inGeneral = mgr.cacheLive(liveEvt(makeRawMessage({ id: 12, peerId: FORUM, fromId: 1 })))
+    expect(inGeneral.map((o) => o.key)).toEqual([`${FORUM}:${GENERAL_TOPIC_ID}`])
+  })
+
+  // tweb getThreadKey :11910 — тред только у группы/канала: ответ в личке
+  // окна треда «номер ответа» не заводит (ревью КЛ-1 М1)
+  it('личка: ответ уходит в основное окно, не в тред номера ответа', async () => {
+    const USER = 7
+    const rest = {
+      get: async () => ({ messages: [], count: 0 }),
+      post: async () => ({}),
+    } as unknown as RestClient
+    const mgr = newMessagesManager({ rest, getPeer: () => undefined })
+    await mgr.getHistory({ peerId: USER, offsetId: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: USER, offsetId: 0, addOffset: 0, limit: 40, threadRoot: cid(3) })
+    const reply = mgr.cacheLive(liveEvt(makeRawMessage({ id: 4, peerId: USER, fromId: USER, replyToMsgId: 3 })))
+    expect(reply.map((o) => o.key)).toEqual([`${USER}`])
   })
 
   // КРИТИЧНО: окно, не державшее низ истории (сохранена только «средняя»/старая
@@ -417,9 +453,10 @@ describe('MessagesManager.cacheLive', () => {
 describe('MessagesManager.cacheLive — сообщение собирает ТОТ ЖЕ маппер, что и страница истории', () => {
   const ME = 9
   // Кадр с максимумом полей конструктора `message`, какие несёт живое сообщение.
+  // Чат — группа: тред есть только у группы/канала (tweb getThreadKey :11910).
   const fullMessage: RawMessageReal = {
     ...makeRawMessage({
-      id: 42, peerId: 3, fromId: ME, text: 'caption', createdAt: '2026-08-10T13:00:00Z',
+      id: 42, peerId: -3, fromId: ME, text: 'caption', createdAt: '2026-08-10T13:00:00Z',
       entities: [{ _: 'messageEntityBold', offset: 0, length: 3 }],
       threadRootId: 100, replyToMsgId: 41, groupedId: 7007, randomId: 'c-parity-1',
       mediaUnread: true, out: true,
@@ -444,9 +481,9 @@ describe('MessagesManager.cacheLive — сообщение собирает ТО
   it('cacheLive(evt).msg равен mapMyMessage(evt.message) без исключений', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([1]) })
     const mgr = newMessagesManager({ rest, getMeId: () => ME })
-    await mgr.getHistory({ peerId: 3, offsetId: 0, addOffset: 0, limit: 40 }) // держит низ — гейт вставки открыт
+    await mgr.getHistory({ peerId: -3, offsetId: 0, addOffset: 0, limit: 40 }) // держит низ — гейт вставки открыт
     const ops = mgr.cacheLive(liveEvt(fullMessage))
-    const main = ops.find((o) => o.key === '3')
+    const main = ops.find((o) => o.key === '-3')
     expect(main?.op).toBe('insert')
     expect(main && main.op === 'insert' ? main.msg : null).toEqual(mapMyMessage(fullMessage, ME))
   })
@@ -454,10 +491,10 @@ describe('MessagesManager.cacheLive — сообщение собирает ТО
   it('тред-ключ той же операции тоже несёт полный (не урезанный) msg', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([1]) })
     const mgr = newMessagesManager({ rest, getMeId: () => ME })
-    await mgr.getHistory({ peerId: 3, offsetId: 0, addOffset: 0, limit: 40 })
-    await mgr.getHistory({ peerId: 3, offsetId: 0, addOffset: 0, limit: 40, threadRoot: cid(100) })
+    await mgr.getHistory({ peerId: -3, offsetId: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: -3, offsetId: 0, addOffset: 0, limit: 40, threadRoot: cid(100) })
     const ops = mgr.cacheLive(liveEvt(fullMessage))
-    const thread = ops.find((o) => o.key === `3:${cid(100)}`)
+    const thread = ops.find((o) => o.key === `-3:${cid(100)}`)
     expect(thread?.op).toBe('insert')
     expect(thread && thread.op === 'insert' ? thread.msg : null).toEqual(mapMyMessage(fullMessage, ME))
   })
@@ -472,9 +509,9 @@ describe('MessagesManager.cacheLive — сообщение собирает ТО
   it('pFlags.out кадра доезжает до операции неизменным', async () => {
     const { rest } = countingRest({ '0:0:40': rawPage([1]) })
     const mgr = newMessagesManager({ rest, getMeId: () => ME })
-    await mgr.getHistory({ peerId: 3, offsetId: 0, addOffset: 0, limit: 40 })
+    await mgr.getHistory({ peerId: -3, offsetId: 0, addOffset: 0, limit: 40 })
     const ops = mgr.cacheLive(liveEvt(fullMessage))
-    const main = ops.find((o) => o.key === '3')
+    const main = ops.find((o) => o.key === '-3')
     expect(main && main.op === 'insert' ? main.msg.pFlags.out : null).toBe(true)
   })
 })

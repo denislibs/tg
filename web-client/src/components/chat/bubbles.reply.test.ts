@@ -110,6 +110,31 @@ describe('ChatBubbles — reply-заголовок', () => {
     expect(bubbleOf(bubbles, 2).querySelector('.reply')).toBeNull()
   })
 
+  // A1-16: сообщение темы форума — `reply_to_msg_id` = номер темы без `top_id`;
+  // это не ответ, а принадлежность треду (tweb bubbles.ts:10766-10767:
+  // `reply_to_mid !== this.chat.threadId`)
+  it('в треде темы ссылка сообщения на саму тему шапки не даёт, ответ внутри темы — даёт', async () => {
+    const chat = createTestChat({ peerId: CHAT, threadId: 1, isForum: true })
+    bubbles = mountTestBubbles(chat, managersWith([plain(1, 'тема'), plain(3, 'оригинал'), replying(2, 1), replying(4, 3, { topId: 1 })]))
+    await openFeed(bubbles)
+    await settle()
+
+    expect(bubbleOf(bubbles, 2).querySelector('.reply')).toBeNull()
+    expect(bubbleOf(bubbles, 4).querySelector('.reply')).not.toBeNull()
+  })
+
+  // tweb bubbles.ts:10771 + chat.ts:963 (`isAllMessagesForum`): форум целиком —
+  // шапку даёт только ответ внутри темы (`reply_to_top_id`)
+  it('форум «как сообщения»: ссылка на тему без `top_id` шапки не даёт', async () => {
+    const chat = createTestChat({ peerId: CHAT, isForum: true })
+    bubbles = mountTestBubbles(chat, managersWith([plain(1, 'тема'), plain(3, 'оригинал'), replying(2, 1), replying(4, 3, { topId: 1 })]))
+    await openFeed(bubbles)
+    await settle()
+
+    expect(bubbleOf(bubbles, 2).querySelector('.reply')).toBeNull()
+    expect(bubbleOf(bubbles, 4).querySelector('.reply')).not.toBeNull()
+  })
+
   it('цитата сильнее оригинала: показывается выделенный фрагмент', async () => {
     // Выделенный фрагмент нельзя вывести из сообщения, которое потом изменили.
     bubbles = mountTestBubbles(chatContext(), managersWith([

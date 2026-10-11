@@ -44,6 +44,26 @@ describe('serviceMsgText', () => {
     expect(serviceMsgText(inChannel)).toBe('Алиса joined the channel by request')
   })
 
+  // tweb messageActionTextNewUnsafe.ts:597-645 — ветки `messageActionTopicEdit`
+  // ключами словаря (здесь английский запасной, `lang.ts`)
+  it('правка темы: закрытие/открытие, название, значок, General; своё — «You»', () => {
+    const edit = (a: Omit<Extract<MessageAction, { _: 'messageActionTopicEdit' }>, '_'>, out = false) =>
+      serviceMsgText(pill({ _: 'messageActionTopicEdit', ...a }, { out }))
+    expect(edit({ closed: true })).toBe('Алиса closed the topic')
+    expect(edit({ closed: false })).toBe('Алиса reopened the topic')
+    expect(edit({ closed: true }, true)).toBe('You closed the topic')
+    expect(edit({ title: 'Новости' })).toBe('Алиса changed topic name to "Новости"')
+    expect(edit({ title: 'Новости' }, true)).toBe('You changed topic name to "Новости"')
+    expect(edit({ icon_emoji_emoticon: '🔥' })).toBe('Алиса changed topic icon to 🔥')
+    expect(edit({ icon_emoji_emoticon: '' })).toBe('Алиса removed the icon')
+    expect(edit({ title: 'Новости', icon_emoji_emoticon: '🔥' })).toBe('Алиса changed the topic name and icon to 🔥 Новости')
+    expect(edit({ title: 'Новости', icon_emoji_emoticon: '' }, true)).toBe('You changed the topic name to "Новости" and removed icon')
+    expect(edit({ hidden: true })).toBe('Алиса hid the general topic')
+    expect(edit({ hidden: false }, true)).toBe('You unhid the general topic')
+    // автор — ссылкой на пира, а не именем строкой
+    expect(serviceMsgSegs(pill({ _: 'messageActionTopicEdit', closed: true }))[0]).toEqual({ kind: 'peer', peerId: ALICE, fallback: 'Пользователь' })
+  })
+
   it('renders edit_photo pill (фото едет ВНУТРИ действия, а не media_id рядом)', () => {
     expect(serviceMsgText(pill({ _: 'messageActionChatEditPhoto' }))).toBe('Алиса обновил(а) фото группы')
   })

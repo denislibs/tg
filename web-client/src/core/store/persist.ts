@@ -31,7 +31,7 @@ import type { AppState } from '../state/state'
 
 const DB = 'msgr-store'
 /** Текущая версия схемы. Экспортируется для тестов, чтобы они не прибивались к литералу. */
-export const DB_VERSION = 5
+export const DB_VERSION = 6
 const VERSION = DB_VERSION
 const S_META = 'meta'
 const S_DIALOGS = 'dialogs'
@@ -153,6 +153,35 @@ const MIGRATIONS: Record<number, Migration> = {
     }
     db.createObjectStore(S_DIALOGS, { keyPath: 'peerId' })
     db.createObjectStore(S_MESSAGES, { keyPath: 'pk' }).createIndex('byPeer', 'peerId')
+  },
+  // v6 — порог клиентского пространства номеров выровнен с tweb
+  // (`MESSAGE_ID_OFFSET` `0xFFFFFFFF` → `0x100000000`, `core/history/messageId.ts`).
+  //
+  // Третий шаг, который пересоздаёт сторы, а не переливает, и причина у него
+  // та же, что у v5: на диске лежат номера ПРОШЛОГО пространства — ключ записи
+  // сообщения (`${peerId}:${id}`), `id`/`reply_to` самих сообщений, а у
+  // диалогов `top_message`, оба горизонта чтения и `reply_to` черновика.
+  // Переливать сдвигом на единицу можно было бы, но тогда шаг обязан знать
+  // каждое поле, где номер лежит, — и молча испортил бы то, которое забыл.
+  // Кэш, а не источник истины: цена — один холодный старт без офлайн-копии
+  // истории и списка; карточки пиров/чатов не затрагиваются.
+  //
+  // Из `state` уходят два ключа, которые описывают именно стёртое:
+  //  • `allDialogsLoaded` — «выборка списка загружена целиком» (tweb
+  //    `dialogs.ts:262`). Оставь его — и владелец диалогов, найдя признак при
+  //    пустом сторе, больше не ходит за страницами: список пуст навсегда;
+  //  • `hiddenPinnedMessages` — ключ `getPinnedMessagesKey(peerId, threadId)` и
+  //    значение — номера прошлого пространства (свёрнутая плашка закрепа).
+  6: (db, tx) => {
+    for (const store of [S_MESSAGES, S_DIALOGS]) {
+      if (db.objectStoreNames.contains(store)) db.deleteObjectStore(store)
+    }
+    db.createObjectStore(S_DIALOGS, { keyPath: 'peerId' })
+    db.createObjectStore(S_MESSAGES, { keyPath: 'pk' }).createIndex('byPeer', 'peerId')
+    if (db.objectStoreNames.contains(S_STATE)) {
+      const state = tx.objectStore(S_STATE)
+      for (const key of ['allDialogsLoaded', 'hiddenPinnedMessages'] satisfies (keyof AppState)[]) state.delete(key)
+    }
   },
 }
 

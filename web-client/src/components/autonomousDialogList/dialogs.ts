@@ -6,7 +6,8 @@
 //
 // ИСТОЧНИК ДАННЫХ — Отступление В7-5 плана волны 7 (и Отступление 2 спеки
 // `2026-08-12-dialogs-ownership-and-virtual-list-design.md`): событий tweb
-// (`dialogs_multiupdate`, `dialog_drop`, `dialog_unread`, `dialog_draft`,
+// (`dialogs_multiupdate`, `dialog_drop`, `dialog_unread` — кроме непрочитанного
+// форума по темам, его приносит операция `forumUnread` хранилища тем, `dialog_draft`,
 // `dialog_flush`, `dialog_notify_settings`, `peer_typings`, `user_update`,
 // `filter_update`) у нас нет — их факты приезжают операциями воркера `dialog_op`
 // в зеркало `chatsStore`, и второй шины не заводится. Список читает зеркало
@@ -60,6 +61,7 @@ import { cachedChat, cachedPeer, subscribePeerMirror } from '@core/peerCache'
 import { isForum } from '@core/peers/predicates'
 import { isUserStatusOnline } from '@core/peers/peer'
 import rootScope from '@lib/rootScope'
+import { RT } from '@core/realtime/events'
 import { useAppStateStore } from '@stores/appState'
 import { useChatsStore } from '@stores/chatsStore'
 import { useFoldersStore } from '@stores/foldersStore'
@@ -143,6 +145,18 @@ export class AutonomousDialogList extends AutonomousDialogListBase {
         const dialog = dialogs.find((d) => d.peerId === +key)
         if(dialog && this.isActive) this.updateDialog(dialog)
       })
+    })
+
+    // `dialog_unread` ФОРУМА (`:244-250`): хранилище тем воркера сообщает, что
+    // непрочитанное его тем сменилось (`processChangedUnreadOrUnmuted`,
+    // tweb dialogs.ts:968-985), — строка форума пересчитывает бейдж по темам (О-71).
+    this.listenerSetter.add(rootScope)(RT.forumTopicOp, ({ ops }) => {
+      if(!this.isActive) return
+      for(const op of ops) {
+        if(op.op !== 'forumUnread') continue
+        const dialog = useChatsStore.getState().dialogs.find((d) => d.peerId === op.peerId)
+        if(dialog) this.updateDialog(dialog)
+      }
     })
 
     this.unsubscribers.push(
