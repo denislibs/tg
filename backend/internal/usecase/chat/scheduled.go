@@ -620,10 +620,10 @@ func (i *Interactor) ScheduledUpdates(ctx context.Context, chatID, userID int64,
 // EditScheduledInput — правка отложенного (messages.editMessage с
 // schedule_date, tweb appMessagesManager.ts:2207-2222).
 type EditScheduledInput struct {
-	ChatID, ID, UserID   int64
-	Text                 string
-	Entities             domain.MessageEntities
-	ScheduleDate int64
+	ChatID, ID, UserID int64
+	Text               string
+	Entities           domain.MessageEntities
+	ScheduleDate       int64
 	// ScheduleRepeatPeriod — nil: повтор не меняется. tweb шлёт период только
 	// там, где его выбирали (contextMenu.ts:981, «Изменить время»); правка
 	// текста из поля ввода его не несёт, и снимать повтор она не должна.

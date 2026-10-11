@@ -333,14 +333,17 @@ func decodeViews(t *testing.T, rec *httptest.ResponseRecorder) viewsWire {
 	return out
 }
 
-// threadTop — корень треда, как он реально уезжает: messageReplyHeader.
-// reply_to_top_id внутри самого сообщения. Отдельного поля thread_root_id в
-// схеме нет вовсе, и корень ВСЕГДА в том же пире, что и сообщение: у
-// комментария это номер ЗЕРКАЛА поста в группе обсуждения.
+// threadTop — корень треда, как его выводит клиент из messageReplyHeader
+// (порт tweb getMessageThreadId.ts:17-18 для не-форума): reply_to_top_id, а у
+// сообщения без ответа — reply_to_msg_id (форма TG, A1-16: простой
+// комментарий несёт только reply_to_msg_id = зеркало). Отдельного поля
+// thread_root_id в схеме нет, и корень ВСЕГДА в том же пире, что и
+// сообщение: у комментария это номер ЗЕРКАЛА поста в группе обсуждения.
 func threadTop(t *testing.T, raw []byte) *int64 {
 	t.Helper()
 	var m struct {
 		ReplyTo *struct {
+			ReplyToMsgID *int64 `json:"reply_to_msg_id"`
 			ReplyToTopID *int64 `json:"reply_to_top_id"`
 		} `json:"reply_to"`
 	}
@@ -350,7 +353,10 @@ func threadTop(t *testing.T, raw []byte) *int64 {
 	if m.ReplyTo == nil {
 		return nil
 	}
-	return m.ReplyTo.ReplyToTopID
+	if m.ReplyTo.ReplyToTopID != nil {
+		return m.ReplyTo.ReplyToTopID
+	}
+	return m.ReplyTo.ReplyToMsgID
 }
 
 // discussionRoot — номер корня треда комментариев поста (зеркала в группе

@@ -194,4 +194,26 @@ func TestScheduled_ListIsAMessagesContainer(t *testing.T) {
 	if strings.Contains(rec.Body.String(), "послезавтра") {
 		t.Fatalf("опубликованное осталось в ленте отложенных: %s", rec.Body.String())
 	}
+
+	// Отложенный опрос (просьба C1): ручка опросов принимает schedule_date как
+	// sendMedia{inputMediaPoll} у tweb (appMessagesManager.ts:4152-4166); ответ —
+	// updates, опрос лежит в ленте отложенных.
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(created)+"/polls", tokenA, map[string]any{
+		"question": "Куда?", "options": []string{"сюда", "туда"}, "client_msg_id": "poll-1",
+		"schedule_date": time.Now().Add(time.Hour).Unix(), "schedule_repeat_period": 86400,
+	})
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"updateNewScheduledMessage"`) ||
+		!strings.Contains(rec.Body.String(), `"schedule_repeat_period":86400`) {
+		t.Fatalf("отложенный опрос: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+itoa(created)+"/scheduled", tokenA, nil)
+	if !strings.Contains(rec.Body.String(), "Куда?") {
+		t.Fatalf("опроса нет в ленте отложенных: %s", rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(created)+"/polls", tokenA, map[string]any{
+		"question": "Q", "options": []string{"a", "b"}, "schedule_date": 1,
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("опрос с прошедшей датой: %d %s", rec.Code, rec.Body.String())
+	}
 }
