@@ -47,6 +47,7 @@ import {
   type ForumTopic,
   type ForumTopicOp,
   type ForumTopicWire,
+  type ForumUnreadCount,
 } from '../dialogs/forumTopic'
 
 /** `messages.forumTopics` — контейнер списка тем. */
@@ -62,12 +63,7 @@ export interface MessagesForumTopics {
 /** Ответ `getForumTopics` — форма страницы списка (`DialogsPage`). */
 export type ForumTopicsPage = { dialogs: ForumTopic[]; count: number; isEnd: boolean }
 
-/**
- * Непрочитанное форума — `getForumUnreadCount` (`dialogs.ts:2229-2258`):
- * сколько тем из первых двадцати непрочитаны. Настройки уведомлений этих тем
- * едут рядом — `hasUnmuted` считает вкладка (расхождение 4).
- */
-export type ForumUnreadCount = { count: number; unreadNotifySettings: PeerNotifySettings[] }
+export type { ForumUnreadCount }
 
 /** Прочтение треда — `updateReadChannelDiscussionInbox/Outbox` в клиентском пространстве. */
 export type ReadDiscussion = { peerId: PeerId; topicId: number; maxId: number; out: boolean }
@@ -171,7 +167,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
       }
       cache.loaded = true
       const ops: ForumTopicOp[] = dropped.map((id) => ({ op: 'drop', peerId, id }))
-      ops.push({ op: 'update', peerId, topics: sorted(cache) }, { op: 'forumUnread', peerId })
+      ops.push({ op: 'update', peerId, topics: sorted(cache) }, forumUnreadOp(peerId))
       onOps(ops)
       return sorted(cache)
     })()
@@ -194,6 +190,18 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
     return topic
   }
 
+  /** tweb `getForumUnreadCount` (`dialogs.ts:2229-2258`) по загруженному списку. */
+  function forumUnread(cache: TopicsCache): ForumUnreadCount {
+    const top = sorted(cache).slice(0, FORUM_UNREAD_LIMIT).filter((t) => t.unread_count)
+    return { count: top.length, unreadNotifySettings: top.map((t) => t.notify_settings) }
+  }
+
+  /** `forumUnread` со значением — счётчикам папок вкладки (`core/dialogs/forumUnreadMirror.ts`). */
+  function forumUnreadOp(peerId: PeerId): ForumTopicOp {
+    const cache = caches.get(peerId)
+    return cache?.loaded ? { op: 'forumUnread', peerId, unread: forumUnread(cache) } : { op: 'forumUnread', peerId }
+  }
+
   /** Объявить изменённую тему (`scheduleHandleNewDialogs` → `dialogs_multiupdate`). */
   function emitUpdate(topic: ForumTopic, extra: ForumTopicOp[] = []): void {
     onOps([{ op: 'update', peerId: topic.peerId, topics: [topic] }, ...extra])
@@ -201,7 +209,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
 
   /** `dialog_unread` темы + пересчёт бейджа форума (`dialogs.ts:968-985`). */
   const unreadOps = (topic: ForumTopic): ForumTopicOp[] =>
-    [{ op: 'unread', topic }, { op: 'forumUnread', peerId: topic.peerId }]
+    [{ op: 'unread', topic }, forumUnreadOp(topic.peerId)]
 
   /**
    * `handleDialogTogglePinned` (`dialogs.ts:2354-2366`) с
@@ -314,8 +322,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
         void load(peerId).catch(() => {})
         return undefined
       }
-      const top = sorted(cache).slice(0, FORUM_UNREAD_LIMIT).filter((t) => t.unread_count)
-      return { count: top.length, unreadNotifySettings: top.map((t) => t.notify_settings) }
+      return forumUnread(cache)
     },
 
     /**
@@ -345,7 +352,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
           if (created) {
             cache.deletedTopics.delete(created.id)
             saveTopic(cache, created)
-            emitUpdate(created, [{ op: 'forumUnread', peerId }])
+            emitUpdate(created, [forumUnreadOp(peerId)])
           }
         } else {
           void reloadForTopic(peerId, threadId).catch(() => {})
@@ -417,7 +424,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
       const topic = caches.get(peerId)?.topics.get(topicId)
       if (!topic) return
       topic.notify_settings = settings
-      onOps([{ op: 'notify', topic }, { op: 'forumUnread', peerId }])
+      onOps([{ op: 'notify', topic }, forumUnreadOp(peerId)])
     },
 
     applyReadDiscussion,
@@ -503,7 +510,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
         if (list.some((m) => m.id === topic.top_message)) reload = true
       }
       if (ops.length) {
-        ops.push({ op: 'forumUnread', peerId })
+        ops.push(forumUnreadOp(peerId))
         onOps(ops)
       }
       if (reload) void load(peerId).catch(() => {})
@@ -517,7 +524,7 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
      */
     onChatToggleForum(peerId: PeerId, enabled: boolean): void {
       if (!enabled) caches.delete(peerId)
-      onOps([{ op: 'forumUnread', peerId }])
+      onOps([forumUnreadOp(peerId)])
     },
 
     /** Смена сессии — всё хранилище в памяти (у оригинала — новый воркер). */

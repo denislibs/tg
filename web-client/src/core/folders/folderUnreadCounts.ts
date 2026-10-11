@@ -23,10 +23,13 @@
  *     `dialogsManager` нет. Следствие — в счёт входят только диалоги, которые
  *     уже в зеркале (загруженные страницы). Отложенная задача 16 плана
  *     `docs/superpowers/plans/2026-09-07-solid-wave-3-folders-tabs.md`.
- *  2. «Непрочитан» = `unread_count > 0`. У `getDialogUnreadCount`
- *     (`appMessagesManager.ts:10550-10567`) ещё два источника — флаг
- *     `unread_mark` и сумма по топикам форума; ни того, ни другого на нашем
- *     проводе нет (`core/models.ts::RawDialog`).
+ *  2. «Непрочитан» — `getDialogUnreadCount` (`appMessagesManager.ts:14233-14250`):
+ *     `unread_count > 0`, у форума — число непрочитанных ТЕМ (`getForumUnreadCount`,
+ *     темы не загружены — ноль); значение хранилища тем воркера приезжает
+ *     зеркалом `core/dialogs/forumUnreadMirror.ts`, параметр `forumUnreadOf`.
+ *     Упоминания форума считаются, только пока непрочитанные темы есть
+ *     (`wasUnreadMentionsCount = wasUnreadCount ? … : 0`, `dialogs.ts:848-852`).
+ *     Флага `unread_mark` на нашем проводе нет (`core/models.ts::RawDialog`).
  *  3. Принадлежность папке — та же, что у её списка
  *     (`components/autonomousDialogList/dialogs.ts::testDialogForFilter`,
  *     воркерный `dialogsManager.forFilter`): архив не входит ни в «Все чаты», ни
@@ -43,6 +46,7 @@ import type { Chat, User } from '../peers/peer'
 import { dialogMatchesFolder } from '../folderFilter'
 import { isDialogMuted } from '../../stores/notifyStore'
 import { ALL_FOLDER_ID } from '../folderIds'
+import { isForum } from '../peers/predicates'
 
 /** `StoredFolder.notifications` оригинала (`stores/folders.ts:11-14`). */
 export interface FolderNotifications {
@@ -65,6 +69,7 @@ interface FolderUnread {
  * @param notifySettings глобальные настройки по типам — правилу «замьючен»
  * @param peerOf     карточка пира из зеркала пиров (`core/peerCache.ts::cachedPeer`):
  *                   нужна правилу типов папки (группа/канал/бот) и правилу мьюта типа
+ * @param forumUnreadOf число непрочитанных тем форума (`undefined` — не загружены)
  * @returns запись на «Все чаты» и на каждую папку, в том числе с нулём
  */
 export function folderUnreadCounts(
@@ -74,6 +79,7 @@ export function folderUnreadCounts(
   notifySettings: NotifySettings,
   peerOf: (peerId: PeerId) => User | Chat | undefined,
   now = Math.floor(Date.now() / 1000),
+  forumUnreadOf: (peerId: PeerId) => number | undefined = () => undefined,
 ): Record<number, FolderNotifications> {
   const acc = new Map<number, FolderUnread>()
   const empty = (): FolderUnread => ({ unread: 0, unreadUnmuted: 0, unreadMentions: 0 })
@@ -81,9 +87,10 @@ export function folderUnreadCounts(
   for (const folder of folders) acc.set(folder.id, empty())
 
   for (const dialog of dialogs) {
-    if (!(dialog.unread_count > 0) || isDialogArchived(dialog)) continue
+    if (isDialogArchived(dialog)) continue
     const peer = peerOf(dialog.peerId)
     const chat = peer && peer._ !== 'user' && peer._ !== 'userEmpty' ? peer : undefined
+    if (!(dialogUnreadCount(dialog, chat, forumUnreadOf) > 0)) continue
     const muted = isDialogMuted(dialog, chat, notifySettings, now)
     const mention = dialog.unread_mentions_count > 0
     const add = (id: number) => {
@@ -107,6 +114,19 @@ export function folderUnreadCounts(
     }
   }
   return out
+}
+
+/**
+ * tweb `getDialogUnreadCount` (`appMessagesManager.ts:14233-14250`): у форума —
+ * число непрочитанных тем (`view_forum_as_messages` у нас нет), иначе
+ * `unread_count`.
+ */
+export function dialogUnreadCount(
+  dialog: Pick<Dialog, 'peerId' | 'unread_count'>,
+  chat: Chat | undefined,
+  forumUnreadOf: (peerId: PeerId) => number | undefined,
+): number {
+  return isForum(chat) ? forumUnreadOf(dialog.peerId) ?? 0 : dialog.unread_count
 }
 
 /**

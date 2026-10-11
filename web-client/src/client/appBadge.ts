@@ -12,6 +12,7 @@ import type { LangPackKey } from '@/lang'
 import { useChatsStore } from '../stores/chatsStore'
 import { isDialogArchived, type Dialog } from '../core/models'
 import { isPeerMuted } from '../core/dialogs/notifySettings'
+import { getDialogUnreadCount, subscribeForumUnread } from '../core/dialogs/forumUnreadMirror'
 import { useI18nStore } from '../i18n'
 import { IS_MOBILE } from '../environment/userAgent'
 import idleController from '../helpers/idleController'
@@ -41,12 +42,14 @@ export function notificationsCountTitle(count: number, tArgs: (key: LangPackKey,
  * задаются здесь теми же функциями, что и везде.
  */
 export function countUnmutedUnreadPeers(
-  dialogs: Pick<Dialog, 'unread_count' | 'notify_settings' | 'folder_id'>[],
+  dialogs: Pick<Dialog, 'peerId' | 'unread_count' | 'notify_settings' | 'folder_id'>[],
   now = Math.floor(Date.now() / 1000),
+  // «непрочитан» — tweb `getDialogUnreadCount` (:14233-14250): у форума — темы
+  unreadOf: (d: Pick<Dialog, 'peerId' | 'unread_count'>) => number = getDialogUnreadCount,
 ): number {
   let n = 0
   for (const d of dialogs) {
-    if (d.unread_count && !isPeerMuted(d.notify_settings, now) && !isDialogArchived(d)) n += 1
+    if (unreadOf(d) && !isPeerMuted(d.notify_settings, now) && !isDialogArchived(d)) n += 1
   }
   return n
 }
@@ -203,11 +206,14 @@ export function initAppBadge(): void {
   // отступление от tweb: события folder_unread у нас нет — пересчитываем по
   // подписке на стор с trailing-троттлом 500мс (стор дёргается и на печать/презенс).
   updateAppBadge()
-  useChatsStore.subscribe(() => {
+  const schedule = () => {
     if (badgeTimer) return
     badgeTimer = setTimeout(() => {
       badgeTimer = null
       updateAppBadge()
     }, 500)
-  })
+  }
+  useChatsStore.subscribe(schedule)
+  // непрочитанное форума — темы (`core/dialogs/forumUnreadMirror.ts`)
+  subscribeForumUnread(schedule)
 }

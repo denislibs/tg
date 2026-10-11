@@ -95,6 +95,16 @@ describe('forumTopicsStorage: страница и номера', () => {
     expect(r.unreadNotifySettings.map((s) => s.mute_until)).toContain(2_000_000_000)
   })
 
+  // `forumUnread` везёт значение — счётчикам папок вкладки (tweb getDialogUnreadCount :14233-14250)
+  it('`forumUnread` несёт число непрочитанных тем, пока список не загружен — без значения', async () => {
+    const { storage, ops } = setup([wire(10, { unread_count: 2 }), wire(20)])
+    await storage.getForumTopics(FORUM)
+    expect(ops).toContainEqual({ op: 'forumUnread', peerId: FORUM, unread: { count: 1, unreadNotifySettings: [{ _: 'peerNotifySettings' }] } })
+    ops.length = 0
+    storage.onChatToggleForum(FORUM, false)
+    expect(ops).toEqual([{ op: 'forumUnread', peerId: FORUM }])
+  })
+
   it('getForumUnreadCount: не форум — ответа нет и в сеть не ходит', () => {
     const { storage, get } = setup([wire(10)], { forum: false })
     expect(storage.getForumUnreadCount(FORUM)).toBeUndefined()
@@ -311,7 +321,7 @@ describe('forumTopicsStorage: readHistory (appMessagesManager.ts:9186-9210)', ()
     ops.length = 0
     expect(storage.readHistory(FORUM, mid(10), mid(13))).toBe(true)
     expect(storage.getForumTopic(FORUM, mid(10))!.unread_count).toBe(0)
-    expect(ops).toContainEqual({ op: 'forumUnread', peerId: FORUM })
+    expect(ops).toContainEqual({ op: 'forumUnread', peerId: FORUM, unread: { count: 0, unreadNotifySettings: [] } })
     expect(post).toHaveBeenCalledWith('/chats/-50/topics/10/read', { up_to_seq: 13 })
   })
 

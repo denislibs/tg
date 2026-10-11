@@ -136,6 +136,7 @@ import { RT } from '@core/realtime/events'
 import { getLinkedChatPeerId } from '@core/peers/peer'
 import { isPeerMuted } from '@core/dialogs/notifySettings'
 import { isForumTopicMuted } from '@core/dialogs/forumTopic'
+import { subscribeForumUnread } from '@core/dialogs/forumUnreadMirror'
 import canClearHistory from '@core/peers/canClearHistory'
 import canReportBot from '@core/peers/canReportBot'
 import { getDeleteButtonText } from '@core/peers/dialogType'
@@ -757,6 +758,8 @@ export default class ChatTopbar {
         this.updateBackBadge()
       }
     }))
+    // непрочитанное форума — темы (`core/dialogs/forumUnreadMirror.ts`)
+    this.listenerSetter.addCleanup(subscribeForumUnread(() => this.updateBackBadge()))
 
     // tweb :1134-1147
     this.chat.addEventListener('setPeer', (mid, isTopMessage) => {

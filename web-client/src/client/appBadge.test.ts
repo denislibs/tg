@@ -22,6 +22,13 @@ describe('countUnmutedUnreadPeers', () => {
     expect(countUnmutedUnreadPeers([d(2), d(4, false, true)])).toBe(1)
   })
 
+  // tweb getDialogUnreadCount (:14233-14250): у форума — непрочитанные темы
+  it('форум считается по темам: `unreadOf` решает «непрочитан»', () => {
+    const forum = makeDialog({ peerId: -60, unread: 9 })
+    expect(countUnmutedUnreadPeers([forum], undefined, (dd) => (dd.peerId === -60 ? 0 : dd.unread_count))).toBe(0)
+    expect(countUnmutedUnreadPeers([forum], undefined, () => 1)).toBe(1)
+  })
+
   it('пустой список → 0', () => {
     expect(countUnmutedUnreadPeers([])).toBe(0)
   })
