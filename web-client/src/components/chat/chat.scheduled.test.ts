@@ -215,10 +215,19 @@ describe('лента отложенных (ChatType.Scheduled)', () => {
     const far = Math.floor(Date.now() / 1000) + 3 * 86400
     rootScope.dispatchEventSingle('scheduled_new', withRandom(scheduled(5.5, far), 'c1'))
     await vi.waitFor(() => expect(bubbleMids(c)).toEqual([5, 5.5]))
-    const temp = c.bubbles.chatInner.querySelector('.bubble[data-mid="5.5"]')
+    const temp = c.bubbles.chatInner.querySelector('.bubble[data-mid="5.5"]')!
+    const series = temp.closest('.bubbles-group')
+    // перестановка (общий путь) сняла бы бабл из серии и разложила заново
+    const moved = vi.fn()
+    const mo = new MutationObserver((records) => { if(records.some((r) => [...r.removedNodes].includes(temp))) moved() })
+    mo.observe(c.bubbles.chatInner, { childList: true, subtree: true })
     rootScope.dispatchEventSingle('history_update', { storageKey, message: withRandom(scheduled(9, far), 'c1'), tempId: 5.5 })
     await vi.waitFor(() => expect(bubbleMids(c)).toEqual([5, 9]))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    mo.disconnect()
     expect(c.bubbles.chatInner.querySelector('.bubble[data-mid="9"]')).toBe(temp)
+    expect(temp.closest('.bubbles-group')).toBe(series)
+    expect(moved).not.toHaveBeenCalled()
 
     const soon = Math.floor(Date.now() / 1000) + 5
     rootScope.dispatchEventSingle('scheduled_new', withRandom(scheduled(9.5, soon), 'c2'))

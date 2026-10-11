@@ -14,7 +14,7 @@
  */
 import { createEffect, createSignal, onCleanup } from 'solid-js'
 import Row from '@components/rowTsx.solid'
-import { attachClickEvent } from '@helpers/dom/clickEvent'
+import { hasMouseMovedSinceDown } from '@helpers/dom/clickEvent'
 import InlineSelect from '@components/sidebarLeft/tabs/passcodeLock/inlineSelect.solid'
 import { i18n } from '@lib/langPack'
 
@@ -41,12 +41,19 @@ export default function ScheduleRepeatRow(props: { initValue: number, onChange: 
   // tweb `clickable={onClick}` (:127) — делегированный `onClick` Solid. У нас ряд
   // живёт островом внутри React-попапа, а его контейнер гасит всплытие щелчка
   // (`shared/ui/Popup/Popup.tsx`, `e.stopPropagation()`), так что до
-  // делегата на `document` щелчок не доходит. Поэтому слушатель — прямо на ряду.
+  // делегата на `document` щелчок не доходит. Поэтому слушатель — прямо на ряду,
+  // тем же `click` с тем же фильтром, что у `Row.onClick` (rowTsx.solid.tsx:252-258):
+  // не `attachClickEvent` — на тач-устройствах тот слушает `mousedown`, и
+  // клавиатура (`buttonKeyDown` → `el.click()`) ряд бы не открывала.
   // ВРЕМЕННО до 2C-23 (календарь на Solid, без React-попапа).
   createEffect(() => {
     const el = rowEl()
     if(!el) return
-    onCleanup(attachClickEvent(el, () => setSelectOpen((v) => !v)))
+    const onClick = (event: MouseEvent) => {
+      if(!hasMouseMovedSinceDown(event)) setSelectOpen((v) => !v)
+    }
+    el.addEventListener('click', onClick)
+    onCleanup(() => el.removeEventListener('click', onClick))
   })
 
   return (
