@@ -154,8 +154,7 @@ describe('threadReads: диалог группы', () => {
   it('прочтение треда комментариев зовёт `onCommentThreadRead` ДО сдвига горизонта треда; у темы — нет', () => {
     const seen: unknown[] = []
     const post = vi.fn(async () => true)
-    let reads!: ReturnType<typeof newThreadReads>
-    reads = newThreadReads({
+    const reads: ReturnType<typeof newThreadReads> = newThreadReads({
       rest: { post } as never,
       isForumPeer: (p) => p === FORUM,
       forumTopics: { getForumTopic: () => undefined, applyReadDiscussion: vi.fn() },
