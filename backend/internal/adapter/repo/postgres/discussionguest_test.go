@@ -188,13 +188,14 @@ func TestThreadReadOutboxAndStates(t *testing.T) {
 	c2 := ins(s.member, &mirror.ID, false)
 	other := ins(s.owner, nil, true) // тред без ответов
 
-	// Никто не читал: ✓✓ нет, у гостя горизонта нет.
+	// Никто не читал: ✓✓ нет.
 	if h, err := topics.ThreadReadOutbox(ctx, s.disc, mirror.ID, s.guest); err != nil || h != 0 {
 		t.Fatalf("ThreadReadOutbox до прочтений = %d, %v; want 0", h, err)
 	}
 	st, err := topics.ThreadReadStates(ctx, s.disc, s.guest, []int64{mirror.ID, other.ID})
-	if err != nil || st[mirror.ID] != (domain.ThreadReadState{MaxID: c2.Seq}) {
-		t.Fatalf("ThreadReadStates(гость) = %v, %v; want max %d без горизонта", st, err, c2.Seq)
+	// Горизонта треда у гостя нет, но свой комментарий c1 прочитан.
+	if err != nil || st[mirror.ID] != (domain.ThreadReadState{MaxID: c2.Seq, ReadMaxID: c1.Seq}) {
+		t.Fatalf("ThreadReadStates(гость) = %v, %v; want max %d, горизонт = свой %d", st, err, c2.Seq, c1.Seq)
 	}
 	if _, ok := st[other.ID]; ok {
 		t.Fatalf("тред без ответов и горизонта в карте: %v", st)
@@ -208,6 +209,11 @@ func TestThreadReadOutboxAndStates(t *testing.T) {
 	}
 	if st, _ = topics.ThreadReadStates(ctx, s.disc, s.guest, []int64{mirror.ID}); st[mirror.ID].ReadMaxID != c1.Seq {
 		t.Fatalf("горизонт гостя = %v; want %d", st, c1.Seq)
+	}
+	// Свой комментарий выше горизонта прочитан: у участника (горизонт 0)
+	// его c2 — горизонт, точки «есть новые» нет.
+	if st, _ = topics.ThreadReadStates(ctx, s.disc, s.member, []int64{mirror.ID}); st[mirror.ID] != (domain.ThreadReadState{MaxID: c2.Seq, ReadMaxID: c2.Seq}) {
+		t.Fatalf("состояние автора последнего комментария = %v; want горизонт = его %d", st, c2.Seq)
 	}
 	// Горизонт группы участника — его горизонт треда и ✓✓ для гостя.
 	if _, err := pool.Exec(ctx, `UPDATE chat_members SET last_read_seq=$3 WHERE chat_id=$1 AND user_id=$2`, s.disc, s.member, c2.Seq); err != nil {

@@ -403,8 +403,9 @@ func (r *TopicsRepo) ThreadReadOutbox(ctx context.Context, chatID, rootMsgID, vi
 // ThreadReadStates — состояние тредов roots чата chatID глазами viewerID
 // одним запросом (messageReplies.max_id/read_max_id постов страницы): номер
 // последнего видимого ему сообщения треда и его горизонт треда (max(запись
-// треда, горизонт чата), как ThreadHorizon). Корни без ответов и без
-// горизонта в карту не попадают.
+// треда, горизонт чата), как ThreadHorizon, и не ниже его собственного
+// последнего сообщения треда). Корни без ответов и без горизонта в карту не
+// попадают.
 func (r *TopicsRepo) ThreadReadStates(ctx context.Context, chatID, viewerID int64, roots []int64) (map[int64]domain.ThreadReadState, error) {
 	out := map[int64]domain.ThreadReadState{}
 	if len(roots) == 0 {
@@ -414,7 +415,13 @@ func (r *TopicsRepo) ThreadReadStates(ctx context.Context, chatID, viewerID int6
 		SELECT x.root,
 		       COALESCE((SELECT MAX(m.seq) FROM messages m
 		                  WHERE m.chat_id = $1 AND m.thread_root_id = x.root AND `+messageVisibleTo("m", "$2")+`), 0),
-		       GREATEST(COALESCE(st.last_read_seq, 0), COALESCE(cm.last_read_seq, 0))
+		       GREATEST(COALESCE(st.last_read_seq, 0), COALESCE(cm.last_read_seq, 0),
+		                -- своё исходящее прочитано (у Telegram отправка читает
+		                -- историю до себя): иначе собственный комментарий выше
+		                -- горизонта зажигал бы точку «есть новые» у поста
+		                COALESCE((SELECT MAX(om.seq) FROM messages om
+		                           WHERE om.chat_id = $1 AND om.thread_root_id = x.root
+		                             AND om.sender_id = $2 AND om.deleted_at IS NULL), 0))
 		  FROM unnest($3::bigint[]) AS x(root)
 		  LEFT JOIN topic_user_state st ON st.chat_id = $1 AND st.root_msg_id = x.root AND st.user_id = $2
 		  LEFT JOIN chat_members cm ON cm.chat_id = $1 AND cm.user_id = $2`,
