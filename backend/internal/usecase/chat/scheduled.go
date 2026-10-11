@@ -394,6 +394,8 @@ func (i *Interactor) putScheduledOnce(ctx context.Context, chatID, senderID int6
 			}
 			if ch.applied {
 				charge = ch
+				// Сумма — на строке: отвергнутая публикация её вернёт.
+				rows[idx].PaidStars, rows[idx].PaidTo = ch.amount, ch.creatorID
 			}
 			// Превью у строки бывает только снимком копии (пересылка); пишется
 			// отдельным UPDATE, как у сообщения (insertCopy).
@@ -971,6 +973,7 @@ const maxPublishAttempts = 10
 func (i *Interactor) publishScheduled(ctx context.Context, chatID, userID int64, rows []domain.ScheduledMessage,
 	strict bool) ([]domain.Update, int, error) {
 	var published, rejected []int64
+	refundOf := map[int64]domain.ScheduledMessage{} // отвергнутые с оплатой постановки
 	seqOf := map[int64]int64{} // ключ отложенного → номер опубликованного
 	var repeats []domain.ScheduledMessage
 	now := time.Now()
@@ -1002,6 +1005,9 @@ func (i *Interactor) publishScheduled(ctx context.Context, chatID, userID int64,
 			}
 			if publishRefused(err) {
 				rejected = append(rejected, row.ID)
+				if row.PaidStars > 0 {
+					refundOf[row.ID] = row
+				}
 				continue
 			}
 			// Сбой (БД, таймаут) — строка ждёт отступа: повтор идемпотентен
@@ -1023,15 +1029,20 @@ func (i *Interactor) publishScheduled(ctx context.Context, chatID, userID int64,
 		seqOf[row.ID] = msg.Seq
 	}
 	var out []domain.Update
+	var balances map[int64]int64
 	err := i.writeScheduled(ctx, userID, func(ctx context.Context) ([]scheduledFrame, error) {
-		out = out[:0]
+		out, balances = out[:0], map[int64]int64{}
 		var frames []scheduledFrame
 		// sent_messages — по позициям messages (schema layer.d.ts:3313-3316):
 		// номер опубликованного для каждой РЕАЛЬНО снятой строки.
+		var deletedRejected []int64
 		del := func(ids []int64, withSent bool) error {
 			deleted, e := i.scheduled.DeleteIDs(ctx, ids)
 			if e != nil || len(deleted) == 0 {
 				return e
+			}
+			if !withSent {
+				deletedRejected = deleted
 			}
 			slices.Sort(deleted)
 			var sentSeqs []int64
@@ -1058,6 +1069,16 @@ func (i *Interactor) publishScheduled(ctx context.Context, chatID, userID int64,
 		if e := del(rejected, false); e != nil {
 			return nil, e
 		}
+		// Возврат звёзд отвергнутым — в той же транзакции, что снятие, и
+		// только за РЕАЛЬНО снятые строки (DeleteIDs отдаёт каждую ровно
+		// одному снятию): повторная попытка воркера второй раз не вернёт.
+		for _, id := range deletedRejected {
+			if r, ok := refundOf[id]; ok {
+				if e := i.refundScheduled(ctx, r, balances); e != nil {
+					return nil, e
+				}
+			}
+		}
 		// Перепостановка повтора — условно, по опубликованному сроку: только
 		// срок и счётчик вхождений, текст и прочее остаются как в строке.
 		var moved []domain.ScheduledMessage
@@ -1077,6 +1098,11 @@ func (i *Interactor) publishScheduled(ctx context.Context, chatID, userID int64,
 		out = append(out, nu...)
 		return append(frames, nf...), nil
 	})
+	if err == nil {
+		for uid, bal := range balances {
+			i.publishBalance(ctx, uid, bal)
+		}
+	}
 	if err != nil {
 		// Сообщения уже опубликованы; строки снимет следующий проход после
 		// истечения аренды (ключ публикации не даст дубля).
@@ -1086,6 +1112,42 @@ func (i *Interactor) publishScheduled(ctx context.Context, chatID, userID int64,
 		}
 	}
 	return out, sent, failed
+}
+
+// refundScheduled возвращает автору звёзды, списанные при постановке
+// отвергнутого отложенного (решение пользователя 2026-10-11): тем же
+// движением баланса, что и списание (chargePaidMessage), в обратную сторону.
+// Получатель (владелец группы) отдаёт полученное, но не больше своего
+// баланса: звёзды он мог уже потратить, а отрицательного баланса нет —
+// осознанное отступление, в tweb не видно, как поступает сервер Telegram.
+// balances — новые балансы для updateStarsBalance после коммита (клиент
+// tweb обновляет баланс по нему, appPaymentsManager.ts:33-35, :420-428).
+func (i *Interactor) refundScheduled(ctx context.Context, r domain.ScheduledMessage, balances map[int64]int64) error {
+	if i.stars == nil || r.PaidStars <= 0 {
+		return nil
+	}
+	bal, err := i.stars.AddBalance(ctx, r.SenderID, r.PaidStars)
+	if err != nil {
+		return err
+	}
+	balances[r.SenderID] = bal
+	if r.PaidTo == 0 {
+		return nil
+	}
+	have, err := i.stars.Balance(ctx, r.PaidTo)
+	if err != nil {
+		return err
+	}
+	take := min(have, r.PaidStars)
+	if take <= 0 {
+		return nil
+	}
+	cbal, err := i.stars.AddBalance(ctx, r.PaidTo, -take)
+	if err != nil {
+		return err
+	}
+	balances[r.PaidTo] = cbal
+	return nil
 }
 
 // publishRefused — отказ публикации по существу (выгнали из чата, сняли

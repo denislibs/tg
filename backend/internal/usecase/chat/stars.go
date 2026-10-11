@@ -182,6 +182,7 @@ func (i *Interactor) hydrateGifts(ctx context.Context, viewerID int64, msgs []do
 // новый баланс отправителя и владельца для рассылки после коммита транзакции.
 type paidCharge struct {
 	applied    bool
+	amount     int64 // списано с отправителя
 	senderBal  int64
 	creatorID  int64
 	creatorBal int64
@@ -229,7 +230,7 @@ func (i *Interactor) chargePaidMessage(ctx context.Context, in SendInput) (paidC
 		}
 		return paidCharge{}, err
 	}
-	c := paidCharge{applied: true, senderBal: senderBal, creatorID: creator}
+	c := paidCharge{applied: true, amount: int64(s.ChargeStars), senderBal: senderBal, creatorID: creator}
 	if creator != 0 {
 		creatorBal, e := i.stars.AddBalance(ctx, creator, int64(s.ChargeStars))
 		if e != nil {

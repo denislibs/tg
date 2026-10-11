@@ -125,9 +125,13 @@ func TestScheduledRepo_ClaimRescheduleUnclaimed(t *testing.T) {
 	chatID := seedPrivateChat(t, pool, a, b)
 	r := NewScheduledRepo(pool)
 	at := time.Now().Add(-time.Minute).Truncate(time.Microsecond)
-	m, _, err := r.Create(ctx, domain.ScheduledMessage{ChatID: chatID, SenderID: a, Type: "text", Text: "x", SendAt: at, RepeatPeriod: 86400})
+	m, _, err := r.Create(ctx, domain.ScheduledMessage{ChatID: chatID, SenderID: a, Type: "text", Text: "x", SendAt: at, RepeatPeriod: 86400,
+		PaidStars: 5, PaidTo: b})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if m.PaidStars != 5 || m.PaidTo != b {
+		t.Fatalf("оплата постановки (0170): %d → %d", m.PaidStars, m.PaidTo)
 	}
 	if _, ok, err := r.Claim(ctx, m.ID, at.Add(time.Second), false, time.Minute, true); err != nil || ok {
 		t.Fatalf("claim по чужому сроку: ok=%v err=%v", ok, err)
@@ -153,7 +157,7 @@ func TestScheduledRepo_ClaimRescheduleUnclaimed(t *testing.T) {
 		t.Fatal("перепостановка по чужому сроку")
 	}
 	next, ok, err := r.Reschedule(ctx, m.ID, at, at.Add(24*time.Hour))
-	if err != nil || !ok || next.Occurrence != 1 || next.Attempts != 0 || next.Text != "x" {
+	if err != nil || !ok || next.Occurrence != 1 || next.Attempts != 0 || next.Text != "x" || next.PaidStars != 0 || next.PaidTo != 0 {
 		t.Fatalf("перепостановка: %+v ok=%v err=%v", next, ok, err)
 	}
 	if err := r.Update(ctx, next, at, false); err != domain.ErrNotFound {
