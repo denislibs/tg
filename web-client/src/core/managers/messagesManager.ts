@@ -1368,7 +1368,9 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     // затронутое окно (Stage 1B.2, Task 3): воркер зеркалит их проектору главного
     // потока (routeNewMessage → RT.messageOp), тот переигрывает поверх стора вместо
     // самостоятельного разбора кадра.
-    cacheLive(evt: NewMessageEvt): MessageOp[] {
+    /** `mapped` — сообщение, уже разобранное роутером кадра (один разбор на
+     *  кадр, как `saveMessages` в tweb `onUpdateNewMessage`, :10243-10253). */
+    cacheLive(evt: NewMessageEvt, mapped?: MyMessage): MessageOp[] {
       // Отдельного маппера live-кадра (`fromNewMessageEvt`) больше НЕТ и быть не
       // может: кадр несёт сообщение ЦЕЛИКОМ под ключом `message` — тот же
       // конструктор, что и витрина (решение Р5). Прежде это была вторая проводная
@@ -1377,7 +1379,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       // появление сообщения, а не его отсутствие), но объединение это допускает —
       // отвечаем ПУСТЫМ списком операций, а не молчаливой подстановкой.
       if (evt.message._ === 'messageEmpty') return []
-      const m = mapOne(evt.message)
+      const m = mapped ?? mapOne(evt.message)
       // Порт tweb checkPendingMessage: эхо СВОЕЙ отправки несёт random_id —
       // временный бабл уходит из SSOT воркера ДО вставки настоящего. Иначе в
       // хранилище остались бы два объекта, и переоткрытие чата показало бы

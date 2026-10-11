@@ -8,7 +8,7 @@
 // docs/superpowers/specs/2026-08-12-dialogs-ownership-and-virtual-list-design.md.
 import type { RestClient } from '../net/restClient'
 import { HttpError } from '../net/restClient'
-import { mapMessage, isDialogArchived, type Dialog, type DraftMessage, type MyMessage, type RawDialog, type RawMyMessage } from '../models'
+import { mapMessage, isDialogArchived, type Dialog, type DraftMessage, type Message, type MyMessage, type RawDialog, type RawMyMessage } from '../models'
 import { generateMessageId, isLocalMessageId } from '../history/messageId'
 import { SliceEnd } from '../history/slicedArray'
 import pause from '@helpers/schedulers/pause'
@@ -1545,11 +1545,17 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
     // идемпотентность `applyRead`, абсолютный снимок `chat_update`); меняется
     // только выход — вместо `set({dialogs})` публикуем `patch`/`remove`.
 
-    /** Новое сообщение (live `new_message`) поднимает диалог и бампит превью/unread. */
-    applyNewMessage(e: NewMessageEvt): void {
+    /**
+     * Новое сообщение (live `new_message`) поднимает диалог и бампит превью/unread.
+     * `mapped` — сообщение, уже разобранное роутером кадра: у tweb кадр
+     * разбирается и сохраняется один раз в `onUpdateNewMessage`
+     * (appMessagesManager.ts:10243-10253), дальше все части обработчика читают
+     * тот же объект. Без него (тесты) — разбор здесь.
+     */
+    applyNewMessage(e: NewMessageEvt, mapped?: Message): void {
       // Кадр несёт сообщение ЦЕЛИКОМ (форма `updateNewMessage`), поэтому и ключ
       // пира, и автор, и номер берутся из него, а не из россыпи полей конверта.
-      const m = mapMessage(e.message, getMeId?.() ?? null)
+      const m = mapped ?? mapMessage(e.message, getMeId?.() ?? null)
       if (m._ === 'messageEmpty') return
       const cur = findDialog(m.peerId)
       if (!cur) return // unknown chat (приедет на следующей reset-загрузке)

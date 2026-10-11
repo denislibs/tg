@@ -27,6 +27,16 @@ vi.mock('./realtime/connectionManager', async (importOriginal) => {
   }
 })
 
+// Счётчик разборов кадра (независимое ревью КЛ-1 М5): обёртка пропускает вызов насквозь.
+const mapMessageSpy = vi.hoisted(() => ({ calls: 0 }))
+vi.mock('./models', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./models')>()
+  return {
+    ...actual,
+    mapMessage: (...args: Parameters<typeof actual.mapMessage>) => { ++mapMessageSpy.calls; return actual.mapMessage(...args) },
+  }
+})
+
 import { createWorkerCore } from './workerCore'
 import { SuperMessagePort, type Endpoint } from '../rpc/superMessagePort'
 import { makeRawMessage } from './messages/testMessage'
@@ -182,6 +192,17 @@ describe('createWorkerCore(): кадры тем применяет хранил�
     core.registry.messages.cacheDelete({ _: 'updateDeletePeerMessages', peer: { _: 'peerChannel', channel_id: 50 }, messages: [15] } as never)
     expect(ops.map((op) => op.op)).toEqual(['unread', 'forumUnread'])
     expect((ops[0] as Extract<ForumTopicOp, { op: 'unread' }>).topic.unread_count).toBe(0)
+  })
+
+  // tweb onUpdateNewMessage (appMessagesManager.ts:10243-10253): кадр разбирается
+  // один раз, история, диалог и тема читают тот же объект
+  it('новое сообщение разбирается один раз на кадр', async () => {
+    const { ops } = await boot()
+    mapMessageSpy.calls = 0
+    const raw = makeRawMessage({ id: 16, peerId: FORUM, fromId: 2, text: 'раз', replyToMsgId: 10, forumTopic: true })
+    capturedConnDeps!.onFrame('new_message', { _: 'updateNewChannelMessage', message: raw })
+    await vi.waitFor(() => expect(ops.map((op) => op.op)).toContain('update'))
+    expect(mapMessageSpy.calls).toBe(1)
   })
 })
 

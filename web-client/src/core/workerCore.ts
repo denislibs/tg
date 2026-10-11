@@ -743,15 +743,18 @@ export function createWorkerCore() {
   // главном потоке) остаётся рабочим, новый (replay операций) переключается отдельной
   // задачей — откат одной строкой, если что-то пойдёт не так.
   function routeNewMessage(e: NewMessageEvt, meta?: EventMeta): void {
-    const ops = messages.cacheLive(e as never)
+    // Один разбор кадра на все части обработчика — как tweb `onUpdateNewMessage`
+    // (appMessagesManager.ts:10243-10253: `saveMessages` один раз, дальше история,
+    // диалог и тема читают тот же объект).
+    const m = mapMessage(e.message, me?.user.id ?? null)
+    const ops = m._ === 'messageEmpty' ? [] : messages.cacheLive(e as never, m)
     broadcast(RT.messageOp, { ops }, meta)
     // Task 3: превью/unread диалога в списке — тоже владелец (dialogsManager),
     // публикует свой patch независимо от rt:new_message ниже (тот остаётся для
     // read-marker/звука/нотификаций на main — см. storeProjection.ts).
-    dialogs.applyNewMessage(e)
+    dialogs.applyNewMessage(e, m)
     // Тема форума: счётчики, последнее сообщение, служебки создания/правки
     // (tweb onUpdateNewMessage, ветка треда :10300-10365, :10495-10520).
-    const m = mapMessage(e.message, me?.user.id ?? null)
     if (m._ !== 'messageEmpty') forumTopics.applyNewMessage(m)
     // tweb 1dc32d889 — признак «кадр пришёл первым difference после старта»
     // снимается В МОМЕНТ РАССЫЛКИ (у tweb — в `handleNewMessage`): к ответу
