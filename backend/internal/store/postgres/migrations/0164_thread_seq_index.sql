@@ -11,7 +11,7 @@
 -- Старый idx_messages_thread здесь НЕ удаляется, хотя он — префикс нового:
 -- прерванный CREATE INDEX CONCURRENTLY оставляет невалидный индекс, повтор с
 -- IF NOT EXISTS его пропускает, и DROP в том же шаге снёс бы единственный
--- рабочий. Удаление — отдельной миграцией с проверкой pg_index.indisvalid.
+-- рабочий. Удаление — в 0165, с проверкой pg_index.indisvalid.
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_messages_thread_seq
     ON messages (chat_id, thread_root_id, seq) WHERE thread_root_id IS NOT NULL;
 

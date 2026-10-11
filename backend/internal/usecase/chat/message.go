@@ -752,7 +752,7 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 			effective = cur
 		}
 		advanced = effective > cur
-		u, e := i.msgs.CountUnread(ctx, chatID, userID, effective)
+		u, e := i.countUnread(ctx, chatID, userID, effective)
 		if e != nil {
 			return e
 		}
@@ -808,19 +808,8 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 			return e
 		}
 		readAddr = addr
-		date := nowUnix()
-		for _, uid := range members {
-			payload, e := json.Marshal(readPayload(addr.forViewer(uid), effective, unread, uid == userID))
-			if e != nil {
-				return e
-			}
-			pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "read", payload)
-			if e != nil {
-				return e
-			}
-			ptsByUser[uid] = pts
-		}
-		return nil
+		ptsByUser, e = i.journalRead(ctx, addr, members, userID, effective, unread)
+		return e
 	})
 	if err != nil {
 		return err
@@ -833,11 +822,8 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 	}
 	// Only fan out when the read marker actually advanced — a no-op re-read
 	// must not spam every member with a redundant read frame.
-	if i.publisher != nil && advanced {
-		for _, uid := range members {
-			body := readPayload(readAddr.forViewer(uid), effective, unread, uid == userID)
-			_ = i.publisher.PublishToUser(ctx, uid, framePts("read", body, ptsByUser[uid]))
-		}
+	if advanced {
+		i.publishRead(ctx, readAddr, members, userID, effective, unread, ptsByUser)
 	}
 	deliverReactions(ctx)
 	// Channel posts track a per-viewer view count: register this reader's view of
@@ -848,6 +834,38 @@ func (i *Interactor) MarkRead(ctx context.Context, chatID, userID, upToSeq int64
 		_ = i.msgs.RegisterChannelViews(ctx, chatID, userID, effective)
 	}
 	return nil
+}
+
+// journalRead — кадры прочтения группы в журнал получателей, в транзакции
+// прочтения: читателю — updateReadHistoryInbox с его счётчиком, остальным —
+// updateReadHistoryOutbox с горизонтом (readPayload). Один путь у MarkRead и
+// у прочтения треда вне форума, поднявшего горизонт группы (ReadDiscussion).
+func (i *Interactor) journalRead(ctx context.Context, addr chatAddress, recipients []int64, reader, effective int64, unread int) (map[int64]int64, error) {
+	ptsByUser := make(map[int64]int64, len(recipients))
+	date := nowUnix()
+	for _, uid := range recipients {
+		payload, e := json.Marshal(readPayload(addr.forViewer(uid), effective, unread, uid == reader))
+		if e != nil {
+			return nil, e
+		}
+		pts, e := i.updates.AppendUpdate(ctx, uid, 1, date, "read", payload)
+		if e != nil {
+			return nil, e
+		}
+		ptsByUser[uid] = pts
+	}
+	return ptsByUser, nil
+}
+
+// publishRead — живые кадры прочтения после коммита (тела — как в journalRead).
+func (i *Interactor) publishRead(ctx context.Context, addr chatAddress, recipients []int64, reader, effective int64, unread int, ptsByUser map[int64]int64) {
+	if i.publisher == nil {
+		return
+	}
+	for _, uid := range recipients {
+		body := readPayload(addr.forViewer(uid), effective, unread, uid == reader)
+		_ = i.publisher.PublishToUser(ctx, uid, framePts("read", body, ptsByUser[uid]))
+	}
 }
 
 // OutboxReadDate returns when the peer read the caller's outgoing message in a

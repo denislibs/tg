@@ -862,8 +862,26 @@ type TopicRepo interface {
 	// ListByChat — темы чата с состоянием темы для зрителя userID (горизонты,
 	// непрочитанное, упоминания, реакции и мьют — относительно него).
 	ListByChat(ctx context.Context, chatID, userID int64) ([]domain.TopicRow, error)
-	// SetTopicRead поднимает last_read_seq темы до max(old, upToSeq) (UPSERT).
+	// SetTopicRead поднимает last_read_seq треда до max(old, upToSeq) (UPSERT).
 	SetTopicRead(ctx context.Context, chatID, rootMsgID, userID, upToSeq int64) error
+	// LockThread — блокировка треда до конца транзакции (прочтение по очереди).
+	LockThread(ctx context.Context, chatID, rootMsgID int64) error
+	// ThreadHorizon — горизонт треда у пользователя: max(запись треда, горизонт чата).
+	ThreadHorizon(ctx context.Context, chatID, rootMsgID, userID int64) (int64, error)
+	// ThreadHorizons — горизонты треда у всех читающих (участники и гости треда).
+	ThreadHorizons(ctx context.Context, chatID, rootMsgID int64) (map[int64]int64, error)
+	// ClearThreadMentions снимает упоминания треда root (General — страж) до
+	// upToSeq и пересчитывает «@» чата.
+	ClearThreadMentions(ctx context.Context, chatID, userID, root, upToSeq int64) (int, error)
+	// CountChatUnread — непрочитанное при горизонте чата readSeq: у форума —
+	// сумма по темам, иначе — сообщения выше горизонта (один запрос).
+	CountChatUnread(ctx context.Context, chatID, userID, readSeq int64) (int, error)
+	// ApplyThreadReadToGroup — прочтение треда вне форума правит диалог группы
+	// (горизонт, unread_count, упоминания), как tweb на месте; raised —
+	// горизонт группы вырос, readSeq — он после.
+	ApplyThreadReadToGroup(ctx context.Context, chatID, userID, root, merged, readMaxID, lastSeq int64) (raised bool, readSeq int64, err error)
+	// RecountForumUnread пересчитывает unread_count участника форума по темам.
+	RecountForumUnread(ctx context.Context, chatID, userID int64) (int, error)
 	// SetTopicMuteUntil пишет явную настройку уведомлений темы (UPSERT):
 	// срок мьюта, time.Unix(0) — «уведомлять». NULL («наследовать чат») —
 	// только у темы, которую пользователь не трогал.

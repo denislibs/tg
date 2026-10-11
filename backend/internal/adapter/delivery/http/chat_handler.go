@@ -1901,30 +1901,36 @@ func (h *ChatHandler) PinTopic(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewUpdates([]domain.Update{update}, nil, time.Now()))
 }
 
-// ReadTopic — POST /chats/{peerID}/topics/{topicID}/read {up_to_seq}.
-// Помечает тему прочитанной до up_to_seq (Telegram readDiscussion c threadId).
-// Тема — номером (General — 1).
-func (h *ChatHandler) ReadTopic(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := peerChatID(w, r, h.svc)
+// ReadDiscussion — POST /chats/{peerID}/threads/{rootSeq}/read {read_max_id}
+// → Bool: messages.readDiscussion (tweb appMessagesManager.ts:9186-9210).
+// {rootSeq} — номер треда: тема форума (General — 1), зеркало поста в группе
+// обсуждения или сообщение обычной группы. Не участник — только тред
+// комментариев (путь чтения: peerChatIDForRead).
+func (h *ChatHandler) ReadDiscussion(w http.ResponseWriter, r *http.Request) {
+	chatID, ok := peerChatIDForRead(w, r, h.svc)
 	if !ok {
 		return
 	}
-	number, ok := topicNumber(w, r)
+	number, ok := pathMsgSeq(w, r, "rootSeq")
 	if !ok {
 		return
 	}
 	var b struct {
-		UpToSeq int64 `json:"up_to_seq"`
+		ReadMaxID int64 `json:"read_max_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	if err := h.svc.MarkTopicRead(r.Context(), chatID, number, h.meID(r), b.UpToSeq); err != nil {
+	err := h.svc.ReadDiscussion(r.Context(), chatID, number, h.meID(r), b.ReadMaxID)
+	switch {
+	case errors.Is(err, domain.ErrTopicIDInvalid):
+		writeError(w, http.StatusBadRequest, "TOPIC_ID_INVALID")
+	case err != nil:
 		h.mapScheduledErr(w, err)
-		return
+	default:
+		writeJSON(w, http.StatusOK, domain.NewBool(true))
 	}
-	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // MuteTopic — POST /chats/{peerID}/topics/{topicID}/mute {mute_until} —

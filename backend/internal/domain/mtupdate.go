@@ -103,6 +103,9 @@ const (
 	UpdatePendingJoinRequestsTag = "updatePendingJoinRequests"
 	// Темы форума (Ф-5, БЭК-1) — блок в конце по правилу горячих файлов.
 	UpdatePinnedForumTopicTag = "updatePinnedForumTopic"
+	// Прочтение треда (Ф-5, БЭК-1b) — messages.readDiscussion.
+	UpdateReadChannelDiscussionInboxTag  = "updateReadChannelDiscussionInbox"
+	UpdateReadChannelDiscussionOutboxTag = "updateReadChannelDiscussionOutbox"
 )
 
 // Значения дискриминатора `_` объединения SendMessageAction.
@@ -647,6 +650,51 @@ func NewUpdatePinnedForumTopic(peer Peer, topicID int64, pinned bool) UpdatePinn
 	u := UpdatePinnedForumTopic{Underscore: UpdatePinnedForumTopicTag, Peer: peer, TopicID: topicID}
 	setPFlag(&u.PFlags, "pinned", pinned)
 	return u
+}
+
+// updateReadChannelDiscussionInbox#d6b19546 flags:# channel_id:long
+// top_msg_id:int read_max_id:int broadcast_id:flags.0?long
+// broadcast_post:flags.1?int = Update;
+//
+// Я прочитал ТРЕД (тему форума, General, комментарии к посту) до read_max_id
+// — messages.readDiscussion. Уходит своим устройствам: tweb двигает горизонт
+// треда и гасит непрочитанное темы (appMessagesManager.ts:10795-10990).
+// top_msg_id — номер треда (у темы — ForumTopicRecord.Number, у General — 1,
+// у комментариев — номер зеркала). broadcast_id/broadcast_post tweb не
+// читает — не производятся. Своего pts нет — курсор едет в конверте.
+type UpdateReadChannelDiscussionInbox struct {
+	Underscore string `json:"_"`
+	ChannelID  int64  `json:"channel_id"`
+	TopMsgID   int64  `json:"top_msg_id"`
+	ReadMaxID  int64  `json:"read_max_id"`
+}
+
+func (UpdateReadChannelDiscussionInbox) isUpdate()     {}
+func (u UpdateReadChannelDiscussionInbox) Tag() string { return u.Underscore }
+
+func NewUpdateReadChannelDiscussionInbox(channelID, topMsgID, readMaxID int64) UpdateReadChannelDiscussionInbox {
+	return UpdateReadChannelDiscussionInbox{Underscore: UpdateReadChannelDiscussionInboxTag,
+		ChannelID: channelID, TopMsgID: topMsgID, ReadMaxID: readMaxID}
+}
+
+// updateReadChannelDiscussionOutbox#695c9e7c channel_id:long top_msg_id:int
+// read_max_id:int = Update;
+//
+// Мои сообщения в треде прочитали до read_max_id: горизонт ✓✓ треда (MAX
+// горизонтов остальных) вырос. Уходит остальным участникам.
+type UpdateReadChannelDiscussionOutbox struct {
+	Underscore string `json:"_"`
+	ChannelID  int64  `json:"channel_id"`
+	TopMsgID   int64  `json:"top_msg_id"`
+	ReadMaxID  int64  `json:"read_max_id"`
+}
+
+func (UpdateReadChannelDiscussionOutbox) isUpdate()     {}
+func (u UpdateReadChannelDiscussionOutbox) Tag() string { return u.Underscore }
+
+func NewUpdateReadChannelDiscussionOutbox(channelID, topMsgID, readMaxID int64) UpdateReadChannelDiscussionOutbox {
+	return UpdateReadChannelDiscussionOutbox{Underscore: UpdateReadChannelDiscussionOutboxTag,
+		ChannelID: channelID, TopMsgID: topMsgID, ReadMaxID: readMaxID}
 }
 
 // updateDraftMessage#edfc111e flags:# peer:Peer top_msg_id:flags.0?int

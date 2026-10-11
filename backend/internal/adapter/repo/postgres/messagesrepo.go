@@ -1044,7 +1044,8 @@ func (r *MessagesRepo) HideForUser(ctx context.Context, userID, msgID int64) err
 		   FROM messages m
 		  WHERE m.id = $2 AND cm.chat_id = m.chat_id AND cm.user_id = $1
 		    AND m.sender_id <> $1 AND m.deleted_at IS NULL
-		    AND cm.last_read_seq < m.seq AND cm.cleared_max_seq < m.seq AND cm.unread_count > 0`,
+		    AND cm.last_read_seq < m.seq AND cm.cleared_max_seq < m.seq AND cm.unread_count > 0
+		    AND `+notReadInForum("m", "cm.user_id"),
 		userID, msgID); err != nil {
 		return err
 	}
@@ -1244,7 +1245,7 @@ func (r *MessagesRepo) ThreadState(ctx context.Context, chatID, threadRootID, vi
 // строки) — вызывающий отличает «ответов нет» по отсутствию ключа.
 //
 // Запрос ложится на idx_messages_thread_seq (chat_id, thread_root_id, seq) WHERE
-// thread_root_id IS NOT NULL из миграции 0164 (его префикс — индекс 0008).
+// thread_root_id IS NOT NULL из миграции 0164 (индекс 0008 снят в 0165).
 func (r *MessagesRepo) ThreadReplyCounts(ctx context.Context, chatID int64, rootIDs []int64) (map[int64]int, error) {
 	out := map[int64]int{}
 	if len(rootIDs) == 0 {
