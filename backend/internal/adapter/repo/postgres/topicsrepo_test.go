@@ -499,8 +499,8 @@ func TestTopicsRepo_ReadDiscussionState(t *testing.T) {
 	}
 
 	// Непрочитанное форума до прочтений: всё чужое (4,5,6,7,8) — 5.
-	if n, err := r.CountForumUnread(ctx, chat, me, 0); err != nil || n != 5 {
-		t.Fatalf("CountForumUnread до = %d, %v; want 5", n, err)
+	if n, err := r.CountChatUnread(ctx, chat, me, 0); err != nil || n != 5 {
+		t.Fatalf("CountChatUnread до = %d, %v; want 5", n, err)
 	}
 	// Прочитал тему A до 5: упоминание A снято, General — нет; форум = 3.
 	if err := r.SetTopicRead(ctx, chat, rootA, me, 5); err != nil {
@@ -536,7 +536,7 @@ func TestTopicsRepo_ReadDiscussionState(t *testing.T) {
 	if h, _ := r.ThreadHorizon(ctx, chat, rootB, me); h != 6 {
 		t.Fatalf("ThreadHorizon(B) с горизонтом чата 6 = %d; want 6", h)
 	}
-	if n, _ := r.CountForumUnread(ctx, chat, me, 6); n != 0 {
+	if n, _ := r.CountChatUnread(ctx, chat, me, 6); n != 0 {
 		t.Fatalf("форум при горизонте чата 6 = %d; want 0", n)
 	}
 	// Горизонты для ✓✓: участники (max(тред, чат)) и гость треда.
@@ -546,5 +546,16 @@ func TestTopicsRepo_ReadDiscussionState(t *testing.T) {
 	hs, err := r.ThreadHorizons(ctx, chat, rootA)
 	if err != nil || hs[me] != 6 || hs[other] != 0 || hs[guest] != 4 || len(hs) != 3 {
 		t.Fatalf("ThreadHorizons(A) = %v, %v; want me 6, other 0, guest 4", hs, err)
+	}
+	// Горизонт чата 0: форум считает по темам (осталась B:6), не-форум — всё
+	// выше горизонта чата (4,5,6,7,8).
+	if n, _ := r.CountChatUnread(ctx, chat, me, 0); n != 1 {
+		t.Fatalf("форум при горизонте чата 0 = %d; want 1", n)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE chats SET is_forum = false WHERE id = $1`, chat); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := r.CountChatUnread(ctx, chat, me, 0); n != 5 {
+		t.Fatalf("не-форум при горизонте чата 0 = %d; want 5", n)
 	}
 }

@@ -855,8 +855,9 @@ type TopicRepo interface {
 	// ClearThreadMentions снимает упоминания треда root (General — страж) до
 	// upToSeq и пересчитывает «@» чата.
 	ClearThreadMentions(ctx context.Context, chatID, userID, root, upToSeq int64) (int, error)
-	// CountForumUnread — непрочитанное форума (сумма по темам) при горизонте чата readSeq.
-	CountForumUnread(ctx context.Context, chatID, userID, readSeq int64) (int, error)
+	// CountChatUnread — непрочитанное при горизонте чата readSeq: у форума —
+	// сумма по темам, иначе — сообщения выше горизонта (один запрос).
+	CountChatUnread(ctx context.Context, chatID, userID, readSeq int64) (int, error)
 	// RecountForumUnread пересчитывает unread_count участника форума по темам.
 	RecountForumUnread(ctx context.Context, chatID, userID int64) (int, error)
 	// SetTopicMuteUntil пишет явную настройку уведомлений темы (UPSERT):

@@ -404,12 +404,19 @@ func forumUnreadSQL(chat, readSeq, viewer string) string {
 		` LIMIT ` + fmt.Sprint(UnreadCountCap) + `) uc)::int`
 }
 
-// CountForumUnread — непрочитанное участника в форуме при горизонте чата
-// readSeq (forumUnreadSQL): так MarkRead считает unread_count форума.
-func (r *TopicsRepo) CountForumUnread(ctx context.Context, chatID, userID, readSeq int64) (int, error) {
+// CountChatUnread — непрочитанное участника при горизонте чата readSeq для
+// chat_members.unread_count (MarkRead): у форума — сумма по темам
+// (forumUnreadSQL), у остального — unreadPostsCount. Один запрос: ветку
+// выбирает CASE по chats.is_forum, подзапрос другой ветки не выполняется.
+func (r *TopicsRepo) CountChatUnread(ctx context.Context, chatID, userID, readSeq int64) (int, error) {
 	var n int
-	err := querier(ctx, r.pool).QueryRow(ctx, `SELECT `+forumUnreadSQL("$1", "$2", "$3"),
-		chatID, readSeq, userID).Scan(&n)
+	err := querier(ctx, r.pool).QueryRow(ctx, `
+		SELECT CASE WHEN c.is_forum THEN `+forumUnreadSQL("c.id", "$2::bigint", "$3::bigint")+`
+		            ELSE `+unreadPostsCount("c.id", "$2::bigint", "$3::bigint")+` END
+		  FROM chats c WHERE c.id = $1`, chatID, readSeq, userID).Scan(&n)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, domain.ErrNotFound
+	}
 	return n, err
 }
 

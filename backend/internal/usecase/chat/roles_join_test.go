@@ -680,7 +680,7 @@ func (r *fakeTopicRepo) ClearThreadMentions(_ context.Context, _, _, root, upTo 
 	return 0, nil
 }
 
-func (r *fakeTopicRepo) CountForumUnread(context.Context, int64, int64, int64) (int, error) {
+func (r *fakeTopicRepo) CountChatUnread(context.Context, int64, int64, int64) (int, error) {
 	return 0, nil
 }
 

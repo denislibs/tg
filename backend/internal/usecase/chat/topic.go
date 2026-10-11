@@ -252,10 +252,11 @@ func (i *Interactor) ReadDiscussion(ctx context.Context, chatID, number, userID,
 
 // countUnread — непрочитанное участника при горизонте чата readSeq для
 // chat_members.unread_count. У форума — сумма по темам (у каждой свой горизонт
-// треда, В-8 спецификации), иначе — сообщения выше горизонта чата.
+// треда, В-8 спецификации), иначе — сообщения выше горизонта чата; без
+// лишнего запроса «форум ли» (CountChatUnread решает в одном SQL).
 func (i *Interactor) countUnread(ctx context.Context, chatID, userID, readSeq int64) (int, error) {
-	if i.topics != nil && i.groups != nil && i.isForum(ctx, chatID) {
-		return i.topics.CountForumUnread(ctx, chatID, userID, readSeq)
+	if i.topics != nil {
+		return i.topics.CountChatUnread(ctx, chatID, userID, readSeq)
 	}
 	return i.msgs.CountUnread(ctx, chatID, userID, readSeq)
 }
