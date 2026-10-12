@@ -3,8 +3,8 @@
 // экспортированный `setDirection`). Правки:
 //   • вход честно допускает `undefined` (tweb сам сравнивает `html === undefined`,
 //     но в его сигнатуре этого варианта нет — `strict` там выключен)
-//   • `getDirection` не перенесён: потребителей у него в репозитории нет
-//     (в tweb его зовут ещё не портированные модули)
+//   • `getDirection` — с первым потребителем, карточкой превью ссылки
+//     (`components/wrappers/webPage.solid.tsx`)
 export default function setInnerHTML(elem: Element, html: string | DocumentFragment | Element | undefined) {
   setDirection(elem)
   if(html === undefined) {
@@ -20,4 +20,9 @@ export default function setInnerHTML(elem: Element, html: string | DocumentFragm
 export function setDirection(elem: Element) {
   // Ветка `if(!I18n.isRTL)` в tweb закомментирована — атрибут ставится всегда.
   elem.setAttribute('dir', 'auto')
+}
+
+/** tweb `setInnerHTML.ts` `getDirection` */
+export function getDirection(): 'auto' {
+  return 'auto'
 }

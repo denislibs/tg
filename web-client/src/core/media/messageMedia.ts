@@ -432,12 +432,15 @@ export interface WebPage {
 }
 
 /** messageMediaWebPage#ddf10c3b flags:# force_large_media:flags.0?true
- *  force_small_media:flags.1?true … webpage:WebPage = MessageMedia;
+ *  force_small_media:flags.1?true manual:flags.3?true safe:flags.4?true
+ *  webpage:WebPage = MessageMedia;
  *
- *  `force_*` — выбор отправителя «крупнее/мельче» (tweb input.ts:830-838). */
+ *  `force_*` — выбор отправителя «крупнее/мельче» (tweb input.ts:830-838).
+ *  `safe` сервер не производит (`backend/internal/domain/mtwebpage.go`) — клик
+ *  по внешней карточке спрашивает подтверждение (tweb bubbles.ts:9456-9464). */
 export interface MessageMediaWebPage {
   _: 'messageMediaWebPage'
-  pFlags: Partial<{ force_large_media: true, force_small_media: true }>
+  pFlags: Partial<{ force_large_media: true, force_small_media: true, safe: true }>
   webpage: WebPage
 }
 
