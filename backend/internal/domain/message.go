@@ -22,8 +22,9 @@ type WebPagePreview struct {
 	SiteName    string `json:"site_name,omitempty"`
 	Title       string `json:"title,omitempty"`
 	Description string `json:"description,omitempty"`
-	// ImageURL — адрес og:image на ЧУЖОМ хосте. Транзитное поле: живёт только
-	// между разбором страницы и загрузкой картинки к нам (см. PhotoID), наружу
+	// ImageURL — адрес og:image на ЧУЖОМ хосте. Транзитное поле: живёт между
+	// разбором страницы и загрузкой картинки к нам (см. PhotoID) и в кэше
+	// страниц плашки сервера (до 10 минут, usecase/chat webPageCache); наружу
 	// не уходит и в jsonb не сохраняется — `json:"-"`. Отдать его клиенту
 	// значило бы, что браузер каждого участника чата сам сходит на i.ytimg.com
 	// и сдаст свой IP владельцу ссылки; Telegram так не делает — картинку

@@ -1,9 +1,17 @@
 package linkpreview
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net"
 	"net/url"
 	"strings"
 	"testing"
+
+	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
+	usecaseiv "github.com/messenger-denis/backend/internal/usecase/iv"
 )
 
 const fixtureOG = `<!doctype html>
@@ -83,5 +91,39 @@ func TestParse_RejectsNonHTTPImage(t *testing.T) {
 	}
 	if wp.ImageURL != "" {
 		t.Errorf("ImageURL = %q; want empty for non-http scheme", wp.ImageURL)
+	}
+}
+
+// Разбор сбоев на временные (повтор может пройти) и нет — на нём держится
+// «повтор только временных» в usecase; текст ошибки не несёт путь и query.
+func TestFetchAndStatusErrors(t *testing.T) {
+	transient := func(err error) bool { return errors.Is(err, usecasechat.ErrPreviewTransient) }
+	timeout := &url.Error{Op: "Get", URL: "https://a.example/secret?token=x", Err: context.DeadlineExceeded}
+	for _, c := range []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"таймаут", timeout, true},
+		{"обрыв", &url.Error{Op: "Get", URL: "https://a.example/p", Err: io.ErrUnexpectedEOF}, true},
+		{"кривой адрес редиректа", &url.Error{Op: "Get", URL: "https://a.example/", Err: usecaseiv.ErrBadURL}, false},
+		{"SSRF", &url.Error{Op: "Get", URL: "https://a.example/", Err: fmt.Errorf("x: %w", usecaseiv.ErrForbiddenTarget)}, false},
+		{"нет хоста", &url.Error{Op: "Get", URL: "https://a.example/", Err: &net.DNSError{Err: "no such host", IsNotFound: true}}, false},
+	} {
+		got := fetchError("a.example", c.err)
+		if transient(got) != c.want {
+			t.Errorf("%s: временная = %v; want %v (%v)", c.name, transient(got), c.want, got)
+		}
+		if strings.Contains(got.Error(), "secret") || strings.Contains(got.Error(), "token") {
+			t.Errorf("%s: в ошибке путь/query: %v", c.name, got)
+		}
+	}
+	for code, want := range map[int]bool{502: true, 503: true, 429: false, 404: false, 403: false} {
+		if err := statusError("a.example", code); err == nil || transient(err) != want {
+			t.Errorf("status %d: %v; временная want %v", code, err, want)
+		}
+	}
+	if statusError("a.example", 200) != nil {
+		t.Error("200 — ошибка")
 	}
 }

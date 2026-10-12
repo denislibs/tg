@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -56,20 +57,11 @@ func (c *Client) Preview(ctx context.Context, rawURL string) (*domain.WebPagePre
 	req.Header.Set("Accept", "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		// Сеть и таймауты — временные; кривой адрес редиректа — нет. (Отказ
-		// SSRF-проверки отдельной ошибки не имеет: один лишний повтор в фоне
-		// снова упрётся в ту же проверку.)
-		if errors.Is(err, usecaseiv.ErrBadURL) {
-			return nil, fmt.Errorf("link preview fetch: %w", err)
-		}
-		return nil, fmt.Errorf("link preview fetch %s: %w: %w", u.Hostname(), usecasechat.ErrPreviewTransient, err)
+		return nil, fetchError(u.Hostname(), err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
-		return nil, fmt.Errorf("link preview %s: status %d: %w", u.Hostname(), resp.StatusCode, usecasechat.ErrPreviewTransient)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, fmt.Errorf("link preview %s: status %d", u.Hostname(), resp.StatusCode)
+	if err := statusError(u.Hostname(), resp.StatusCode); err != nil {
+		return nil, err
 	}
 	if ct := resp.Header.Get("Content-Type"); ct != "" && !strings.Contains(ct, "html") {
 		return nil, fmt.Errorf("link preview %s: not html (%s)", u.Hostname(), ct)
@@ -81,6 +73,36 @@ func (c *Client) Preview(ctx context.Context, rawURL string) (*domain.WebPagePre
 	}
 	wp.URL = u.String()
 	return wp, nil
+}
+
+// fetchError — ошибка запроса страницы с разбором «временная или нет»
+// (usecasechat.ErrPreviewTransient: повтор может пройти). Временные — сеть,
+// таймаут, обрыв; нет — кривой адрес, отказ SSRF-гарда, несуществующий хост.
+// *url.Error разворачивается: его текст несёт полный адрес с путём и query,
+// а ошибка уходит в лог.
+func fetchError(host string, err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		err = ue.Err
+	}
+	var dnsErr *net.DNSError
+	if errors.Is(err, usecaseiv.ErrBadURL) || errors.Is(err, usecaseiv.ErrForbiddenTarget) ||
+		(errors.As(err, &dnsErr) && dnsErr.IsNotFound) {
+		return fmt.Errorf("link preview fetch %s: %w", host, err)
+	}
+	return fmt.Errorf("link preview fetch %s: %w: %w", host, usecasechat.ErrPreviewTransient, err)
+}
+
+// statusError — ответ не 2xx. 5xx — временная; 429 — нет: сайт просит
+// снизить частоту, и повтор через секунду почти наверняка снова получит 429.
+func statusError(host string, code int) error {
+	switch {
+	case code >= 200 && code <= 299:
+		return nil
+	case code >= 500:
+		return fmt.Errorf("link preview %s: status %d: %w", host, code, usecasechat.ErrPreviewTransient)
+	}
+	return fmt.Errorf("link preview %s: status %d", host, code)
 }
 
 // Parse вынимает превью из HTML: og:* приоритетнее twitter:*, <title> —

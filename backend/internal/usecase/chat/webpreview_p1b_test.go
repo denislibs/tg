@@ -168,16 +168,20 @@ func TestBuildWebPreview_PermanentFailureNotRetried(t *testing.T) {
 }
 
 // Плашка того же адреса ещё грузится — сборка карточки ждёт её, а не грузит
-// медленный сайт вторым запросом.
+// медленный сайт вторым запросом. Страница отпускается только после того, как
+// сборка встала в ожидание (шов onWait).
 func TestBuildWebPreview_WaitsForPlaqueLoad(t *testing.T) {
 	e := newPreviewEnv(t)
 	ctx := context.Background()
 	const u = "https://slow.example/x"
+	waiting := make(chan struct{}, 1)
+	e.in.webPages.onWait = func() { waiting <- struct{}{} }
 	release := e.prev.hold(u)
 	plaque := make(chan *domain.WebPagePreview)
 	go func() { plaque <- e.in.GetWebPage(ctx, u) }()
 	waitFor(t, func() bool { return len(e.prev.calls()) == 1 })
 	msg, _ := e.in.Send(ctx, SendInput{ChatID: e.chatID, SenderID: 1, Text: u})
+	<-waiting
 	close(release)
 	if wp := <-plaque; wp == nil {
 		t.Fatal("плашка без карточки")
@@ -188,6 +192,82 @@ func TestBuildWebPreview_WaitsForPlaqueLoad(t *testing.T) {
 	}
 	if n := len(e.prev.calls()); n != 1 {
 		t.Fatalf("загрузок %d; ждали 1 (сборка дождалась плашки)", n)
+	}
+}
+
+// slowHeadHTTP — картинка, заголовок которой (FetchPrefix плашки) отдаётся
+// только по release; целиком (FetchURL сборки) — сразу.
+type slowHeadHTTP struct {
+	fakeOutHTTP
+	release chan struct{}
+}
+
+func (h *slowHeadHTTP) FetchPrefix(ctx context.Context, url string, maxBytes int64) ([]byte, string, error) {
+	select {
+	case <-h.release:
+	case <-ctx.Done():
+		return nil, "", ctx.Err()
+	}
+	return h.fakeOutHTTP.FetchPrefix(ctx, url, maxBytes)
+}
+
+// Ревью «Ревьюер» 1: «вставил и Enter» — ожидание плашки кончается, как только
+// страница загружена; медленный заголовок картинки плашки (has_large_media)
+// сборку не держит и её бюджет не съедает.
+func TestBuildWebPreview_DoesNotWaitPlaqueImageHead(t *testing.T) {
+	e := newPreviewEnv(t)
+	head := &slowHeadHTTP{fakeOutHTTP: fakeOutHTTP{data: pngOf(t, 800, 400), mime: "image/png"}, release: make(chan struct{})}
+	e.in.SetBotHTTP(head)
+	e.in.SetBotMedia(&fakeMediaStore{})
+	e.prev.imageURL = "https://cdn.example/og.png"
+	ctx := context.Background()
+	const u = "https://a.example/x"
+	plaque := make(chan *domain.WebPagePreview)
+	go func() { plaque <- e.in.GetWebPage(ctx, u) }()
+	waitFor(t, func() bool { _, ok := e.in.webPages.get(u); return ok })
+	msg, _ := e.in.Send(ctx, SendInput{ChatID: e.chatID, SenderID: 1, Text: u})
+	// Сборка завершается, пока заголовок картинки плашки ещё висит.
+	waitFor(t, func() bool { return storedMsg(t, e.s, msg.ID).WebPage != nil })
+	if wp := storedMsg(t, e.s, msg.ID).WebPage; wp.PhotoID == 0 || !wp.HasLargeMedia {
+		t.Fatalf("карточка сообщения = %+v", wp)
+	}
+	close(head.release)
+	if wp := <-plaque; wp == nil || !wp.HasLargeMedia {
+		t.Fatalf("плашка = %+v", wp)
+	}
+	e.in.bg.Wait()
+	if n := len(e.prev.calls()); n != 1 {
+		t.Fatalf("загрузок страницы %d; ждали 1", n)
+	}
+}
+
+// Временный сбой плашки «карточки нет» не кэширует: следующий запрос того же
+// адреса снова идёт на сайт.
+func TestGetWebPage_TransientNotCached(t *testing.T) {
+	e := newPreviewEnv(t)
+	e.prev.fail = 1
+	ctx := context.Background()
+	if e.in.GetWebPage(ctx, "https://a.example/x") != nil {
+		t.Fatal("карточка при сбое")
+	}
+	if e.in.GetWebPage(ctx, "https://a.example/x") == nil {
+		t.Fatal("временный сбой закэширован")
+	}
+}
+
+// Ссылка с парными скобками (Википедия) — целиком, непарная скобка и
+// пунктуация — не часть ссылки.
+func TestFirstURL_Parens(t *testing.T) {
+	for in, want := range map[string]string{
+		"см. https://ru.wikipedia.org/wiki/X_(y)": "https://ru.wikipedia.org/wiki/X_(y)",
+		"(см. https://a.example/c)":               "https://a.example/c",
+		"смотри https://a.example/c.":             "https://a.example/c",
+		"«https://a.example/c»":                   "https://a.example/c",
+		"https://ru.wikipedia.org/wiki/X_(y)).":   "https://ru.wikipedia.org/wiki/X_(y)",
+	} {
+		if got := firstURL(in, nil); got != want {
+			t.Errorf("%q → %q; want %q", in, got, want)
+		}
 	}
 }
 

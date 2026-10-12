@@ -52,8 +52,28 @@ func firstURL(text string, entities domain.MessageEntities) string {
 			return v.URL
 		}
 	}
-	// Хвостовую пунктуацию («смотри https://a.b/c.») ссылкой не считаем.
-	return strings.TrimRight(urlRe.FindString(text), `.,;:!?)»"'`)
+	return trimURLTail(urlRe.FindString(text))
+}
+
+// trimURLTail — хвостовую пунктуацию («смотри https://a.b/c.») ссылкой не
+// считаем; закрывающую скобку — только непарную («(см. https://a.b/c)»), а
+// парная — часть адреса (https://ru.wikipedia.org/wiki/X_(y)), как её берёт
+// сущность ссылки tweb (input.ts:3561-3576).
+func trimURLTail(u string) string {
+	for u != "" {
+		last := u[len(u)-1]
+		switch {
+		case strings.IndexByte(`.,;:!?"'`, last) >= 0:
+			u = u[:len(u)-1]
+		case strings.HasSuffix(u, "»"):
+			u = strings.TrimSuffix(u, "»")
+		case last == ')' && strings.Count(u, "(") < strings.Count(u, ")"):
+			u = u[:len(u)-1]
+		default:
+			return u
+		}
+	}
+	return u
 }
 
 // previewURL — по какой ссылке строить превью сообщения с этим текстом; "" —
@@ -214,12 +234,18 @@ type builtPreview struct {
 // (downloadPreviewPhoto), проба Instant View. nil — карточки нет. Каждый
 // сетевой этап — со своим бюджетом (см. таймауты выше).
 func (i *Interactor) buildWebPreview(url string) *builtPreview {
+	// Ожидание идущей загрузки плашки и своя загрузка — каждое со своим
+	// бюджетом: не дождались (или плашка ничего не дала) — грузим сами с
+	// полным previewTimeout, а не с остатком.
 	var wp *domain.WebPagePreview
 	withBudget(previewTimeout, func(ctx context.Context) {
-		if wp = i.webPages.page(ctx, url); wp == nil {
-			wp = i.fetchPage(ctx, url)
-		}
+		wp = i.webPages.page(ctx, url)
 	})
+	if wp == nil {
+		withBudget(previewTimeout, func(ctx context.Context) {
+			wp = i.fetchPage(ctx, url)
+		})
+	}
 	if wp == nil {
 		return nil
 	}
@@ -295,16 +321,21 @@ func (i *Interactor) attachWebPreview(msg domain.Message, fl *previewFlight) {
 			wp := b.wp.Clone()
 			t.in.ApplySize(wp)
 			var ok bool
+			var err error
 			if typ == domain.ChatTypeChannel {
-				ok = i.writeChannelWebPreview(wctx, msg.ID, t.editedAt, wp)
+				ok, err = i.writeChannelWebPreview(wctx, msg.ID, t.editedAt, wp)
 			} else {
-				ok = i.writeChatWebPreview(wctx, msg, t, wp)
+				ok, err = i.writeChatWebPreview(wctx, msg, t, wp)
 			}
 			if ok {
 				return
 			}
+			if err != nil {
+				log.Printf("webpreview: %s: карточка %s не записана: %v", fl.key, previewHost(fl.url), err)
+				return
+			}
 			if i.previewFlights.settle(fl, t.gen) {
-				log.Printf("webpreview: %s: карточка %s не записана (условие записи: правка, удаление или сбой)", fl.key, previewHost(fl.url))
+				log.Printf("webpreview: %s: карточка %s не записана (условие записи: сообщение правили или удалили)", fl.key, previewHost(fl.url))
 				return
 			}
 		}
@@ -316,7 +347,11 @@ func (i *Interactor) attachWebPreview(msg domain.Message, fl *previewFlight) {
 // сохранения картинки к нам; окончательно решает условный UPDATE.
 func (i *Interactor) messagePreviewWanted(ctx context.Context, msgID int64, t previewTarget) bool {
 	cur, err := i.msgs.GetByID(ctx, msgID)
-	return err == nil && !cur.Deleted && cur.WebPage == nil && sameTime(cur.EditedAt, t.editedAt)
+	if err != nil {
+		log.Printf("webpreview: m:%d: строка не прочитана: %v", msgID, err)
+		return false
+	}
+	return !cur.Deleted && cur.WebPage == nil && sameTime(cur.EditedAt, t.editedAt)
 }
 
 func sameTime(a, b *time.Time) bool {
@@ -333,11 +368,11 @@ func sameTime(a, b *time.Time) bool {
 // коммита, и правка, пришедшая между ними, дождётся его и ляжет в журнал
 // ПОЗЖЕ карточки. Порознь правка могла бы снять только что записанную
 // карточку раньше, чем её кадр лёг в журнал, и догон вернул бы её клиенту.
-func (i *Interactor) writeChatWebPreview(ctx context.Context, msg domain.Message, t previewTarget, wp *domain.WebPagePreview) bool {
+func (i *Interactor) writeChatWebPreview(ctx context.Context, msg domain.Message, t previewTarget, wp *domain.WebPagePreview) (bool, error) {
 	media := wp.ToMedia()
 	var publish func(context.Context)
 	written := false
-	_ = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		ok, err := i.msgs.SetWebPageIfEdited(ctx, msg.ID, wp, t.editedAt)
 		if err != nil || !ok {
 			return err
@@ -355,13 +390,13 @@ func (i *Interactor) writeChatWebPreview(ctx context.Context, msg domain.Message
 	if publish != nil {
 		publish(ctx)
 	}
-	return written
+	return written, err
 }
 
 // writeChannelWebPreview — карточка поста broadcast-канала: условная запись,
 // правка поста в журнал канала и зеркало в группе обсуждения одной
 // транзакцией (см. writeChatWebPreview), живые кадры — после коммита.
-func (i *Interactor) writeChannelWebPreview(ctx context.Context, msgID int64, editedAt *time.Time, wp *domain.WebPagePreview) bool {
+func (i *Interactor) writeChannelWebPreview(ctx context.Context, msgID int64, editedAt *time.Time, wp *domain.WebPagePreview) (bool, error) {
 	var post domain.Message
 	var body map[string]any
 	var pts int64
@@ -389,11 +424,11 @@ func (i *Interactor) writeChannelWebPreview(ctx context.Context, msgID int64, ed
 		return err
 	})
 	if err != nil || body == nil {
-		return false
+		return false, err
 	}
 	i.publishChannelUpdate(ctx, post.ChatID, "edit_message", body, pts, post.SenderID)
 	i.publishEdit(ctx, mirror)
-	return true
+	return true, nil
 }
 
 // startScheduledWebPreview — превью ОТЛОЖЕННОГО (спецификация Ф-5 п. 4.2.4):
@@ -447,7 +482,7 @@ func (i *Interactor) attachScheduledWebPreview(row domain.ScheduledMessage, fl *
 			wp := b.wp.Clone()
 			derefChoice(t.choice).ApplySize(wp)
 			written := false
-			_ = i.writeScheduled(ctx, row.SenderID, func(ctx context.Context) ([]scheduledFrame, error) {
+			werr := i.writeScheduled(ctx, row.SenderID, func(ctx context.Context) ([]scheduledFrame, error) {
 				ok, err := i.scheduled.SetWebPageIfSame(ctx, row.ID, wp, t.text, t.entities, t.choice)
 				if err != nil || !ok {
 					return nil, err
@@ -464,8 +499,12 @@ func (i *Interactor) attachScheduledWebPreview(row domain.ScheduledMessage, fl *
 			if written {
 				return
 			}
+			if werr != nil {
+				log.Printf("webpreview: %s: карточка %s не записана: %v", fl.key, previewHost(fl.url), werr)
+				return
+			}
 			if i.previewFlights.settle(fl, t.gen) {
-				log.Printf("webpreview: %s: карточка %s не записана (условие записи: правка, публикация или сбой)", fl.key, previewHost(fl.url))
+				log.Printf("webpreview: %s: карточка %s не записана (условие записи: отложенное правили, сняли или публикуют)", fl.key, previewHost(fl.url))
 				return
 			}
 		}
@@ -476,7 +515,13 @@ func (i *Interactor) attachScheduledWebPreview(row domain.ScheduledMessage, fl *
 // текст, сущности и решение, карточки нет); до сохранения картинки к нам.
 func (i *Interactor) scheduledPreviewWanted(ctx context.Context, id int64, t previewTarget) bool {
 	cur, err := i.scheduled.ByID(ctx, id)
-	return err == nil && cur.WebPage == nil && cur.Text == t.text && entitiesEqual(cur.Entities, t.entities) &&
+	if err != nil {
+		if !errors.Is(err, domain.ErrNotFound) { // снятое/опубликованное — не сбой
+			log.Printf("webpreview: s:%d: строка не прочитана: %v", id, err)
+		}
+		return false
+	}
+	return cur.WebPage == nil && cur.Text == t.text && entitiesEqual(cur.Entities, t.entities) &&
 		reflect.DeepEqual(webPageInputPtr(derefChoice(cur.Params.WebPage)), webPageInputPtr(derefChoice(t.choice)))
 }
 
@@ -573,9 +618,31 @@ func (i *Interactor) GetWebPage(ctx context.Context, url string) *domain.WebPage
 		return nil
 	}
 	defer i.webPages.release()
-	defer i.webPages.startLoading(url)() // после put: ждущая сборка найдёт страницу
-	wp := i.fetchWebPage(ctx, url)
-	if ctx.Err() == nil { // запрос оборвали — «карточки нет» не запоминаем
+	// Без повтора: сбой плашки ничего не теряет — tweb перезапросит карточку
+	// при следующей найденной ссылке (input.ts:3581-3594), а повтор держал бы
+	// слот сборки и удваивал запросы к сайту на страницах без карточки.
+	done := i.webPages.startLoading(url)
+	pctx, cancel := context.WithTimeout(ctx, previewTimeout)
+	wp, err := i.preview.Preview(pctx, url)
+	cancel()
+	if err != nil {
+		wp = nil
+	}
+	// Страница — в кэш и ждущей сборке карточки сообщения СРАЗУ, до размера
+	// картинки: has_large_media плашки сборке не нужен (его ставит сохранённая
+	// картинка), и ждать заголовок с медленного CDN ей незачем. Оборванный
+	// запрос и временный сбой «карточки нет» не запоминают.
+	if ctx.Err() == nil && !errors.Is(err, ErrPreviewTransient) {
+		i.webPages.put(url, wp)
+	}
+	done()
+	if wp == nil {
+		return nil
+	}
+	ectx, cancel := context.WithTimeout(ctx, enrichTimeout)
+	wp.HasLargeMedia = i.previewHasLargeMedia(ectx, wp.ImageURL)
+	cancel()
+	if ctx.Err() == nil {
 		i.webPages.put(url, wp)
 	}
 	return plaqueCard(wp)
@@ -589,48 +656,30 @@ func plaqueCard(wp *domain.WebPagePreview) *domain.WebPagePreview {
 	return wp
 }
 
-// fetchWebPage — сборка карточки плашки: страница и размер картинки. Адрес
-// картинки остаётся в кэше (его возьмёт сборка карточки сообщения), наружу
-// он не уходит (GetWebPage гасит его в копии).
-func (i *Interactor) fetchWebPage(ctx context.Context, url string) *domain.WebPagePreview {
-	// Без повтора: сбой плашки ничего не теряет — tweb перезапросит карточку
-	// при следующей найденной ссылке (input.ts:3581-3594), а повтор держал бы
-	// слот сборки и удваивал запросы к сайту на страницах без карточки.
-	pctx, cancel := context.WithTimeout(ctx, previewTimeout)
-	wp, err := i.preview.Preview(pctx, url)
-	cancel()
-	if err != nil || wp == nil {
-		return nil
-	}
-	ectx, cancel := context.WithTimeout(ctx, enrichTimeout)
-	wp.HasLargeMedia = i.previewHasLargeMedia(ectx, wp.ImageURL)
-	cancel()
-	return wp
-}
-
 // pageRetryDelay — пауза перед повтором загрузки страницы (var: тесты ужимают).
 var pageRetryDelay = time.Second
 
-// fetchPage — og-теги страницы для карточки сообщения (фоновая сборка); сбой
-// (у адаптера 5 с на запрос: тяжёлая страница или занятый сайт не успевают)
-// повторяется один раз, если он временный (ErrPreviewTransient: сеть,
-// таймаут, 5xx, 429) — карточку сообщение иначе теряло бы навсегда. Отказ по
-// существу (не HTML, нет заголовка, 4xx) не повторяется. Дедлайн — бюджет
-// этапа (previewTimeout), а не 5 с на запрос: тяжёлая страница успевает.
+// fetchPage — og-теги страницы для карточки сообщения (фоновая сборка).
+// Временный сбой (ErrPreviewTransient: сеть, обрыв, 5xx) повторяется один
+// раз — карточку сообщение иначе теряло бы навсегда. Таймаут исчерпывает весь
+// бюджет этапа (previewTimeout), так что повтор срабатывает на быстрых
+// отказах. Отказ по существу (не HTML, нет заголовка, 4xx, 429, запрещённый
+// адрес) не повторяется.
 func (i *Interactor) fetchPage(ctx context.Context, url string) *domain.WebPagePreview {
 	for attempt := 0; ; attempt++ {
 		p, err := i.preview.Preview(ctx, url)
 		if err == nil && p != nil {
 			return p
 		}
-		if attempt == 1 || !errors.Is(err, ErrPreviewTransient) {
-			log.Printf("webpreview: страница %s без карточки (попытка %d): %v", previewHost(url), attempt+1, err)
+		transient := errors.Is(err, ErrPreviewTransient)
+		if attempt == 1 || !transient {
+			logPreviewFailure(url, transient, "страница без карточки (попытка %d): %v", attempt+1, err)
 			return nil
 		}
 		select {
 		case <-time.After(pageRetryDelay):
 		case <-ctx.Done():
-			log.Printf("webpreview: страница %s: бюджет загрузки исчерпан: %v", previewHost(url), err)
+			logPreviewFailure(url, true, "бюджет загрузки исчерпан: %v", err)
 			return nil
 		}
 	}
@@ -642,6 +691,34 @@ func previewHost(raw string) string {
 		return u.Host
 	}
 	return "?"
+}
+
+// Отказы по существу (PDF, картинка, страница без заголовка) — обычное дело
+// для ссылок в сообщениях: в лог по хосту не чаще раза в минуту. Временные
+// сбои пишутся всегда — по ним разбирают пропавшие карточки.
+var (
+	previewLogMu   sync.Mutex
+	previewLogLast = map[string]time.Time{}
+)
+
+const previewLogEvery = time.Minute
+
+func logPreviewFailure(url string, always bool, format string, args ...any) {
+	host := previewHost(url)
+	if !always {
+		previewLogMu.Lock()
+		now := time.Now()
+		if now.Sub(previewLogLast[host]) < previewLogEvery {
+			previewLogMu.Unlock()
+			return
+		}
+		if len(previewLogLast) > 4096 {
+			previewLogLast = map[string]time.Time{}
+		}
+		previewLogLast[host] = now
+		previewLogMu.Unlock()
+	}
+	log.Printf("webpreview: %s: "+format, append([]any{host}, args...)...)
 }
 
 // withBudget выполняет шаг под собственным дедлайном от context.Background():
@@ -812,8 +889,11 @@ type webPageCache struct {
 	mu    sync.Mutex
 	m     map[string]webPageCacheEntry
 	slots chan struct{}
-	// loading — идущие загрузки плашки по ключу (закрывается по готовности).
+	// loading — идущие загрузки плашки по ключу (закрывается, как только
+	// страница легла в кэш).
 	loading map[string]chan struct{}
+	// onWait — тестовый шов: сборка встала ждать загрузку плашки.
+	onWait func()
 }
 
 // startLoading отмечает загрузку плашки key; возвращает функцию завершения.
@@ -875,8 +955,12 @@ func (c *webPageCache) get(url string) (*domain.WebPagePreview, bool) {
 func (c *webPageCache) page(ctx context.Context, url string) *domain.WebPagePreview {
 	c.mu.Lock()
 	wait := c.loading[cacheKey(url)]
+	onWait := c.onWait
 	c.mu.Unlock()
 	if wait != nil {
+		if onWait != nil {
+			onWait()
+		}
 		select {
 		case <-wait:
 		case <-ctx.Done():

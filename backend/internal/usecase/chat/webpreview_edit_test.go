@@ -50,8 +50,12 @@ func (p *urlPreviewer) Preview(ctx context.Context, url string) (*domain.WebPage
 		select {
 		case <-hold:
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, fmt.Errorf("%w: %w", ErrPreviewTransient, ctx.Err())
 		}
+	}
+	// Как настоящий адаптер: истёкший бюджет — сбой, а не карточка.
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrPreviewTransient, err)
 	}
 	return &domain.WebPagePreview{URL: url, Title: url, HasLargeMedia: p.large, ImageURL: p.imageURL}, nil
 }
