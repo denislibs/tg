@@ -54,7 +54,7 @@ function makeManagers() {
       sendPoll: vi.fn(),
       hasOutgoingMessage: vi.fn(async(_peerId: number) => false),
     },
-    drafts: { save: vi.fn(async() => ({ _: 'draftMessageEmpty' })) },
+    drafts: { syncDraft: vi.fn(async() => true), getDraft: vi.fn(async() => undefined), clearDraft: vi.fn() },
     realtime: { sendTyping: vi.fn(async() => ({ ok: true })) },
     chats: {
       createPrivate: vi.fn(async(id: number) => id),
@@ -218,7 +218,7 @@ describe('ChatInput: расписание', () => {
       expect(appImManager.openScheduled).toHaveBeenCalledWith(BOB)
       expect(input.scheduleDate).toBeUndefined()
       // черновика не было — снимать нечего
-      expect(managers.drafts.save).not.toHaveBeenCalled()
+      expect(managers.drafts.syncDraft).not.toHaveBeenCalled()
     } finally {
       vi.useRealTimers()
     }
@@ -415,7 +415,7 @@ describe('ChatInput: черновик после отложенной отпра
     input.setScheduleTimestamp(Math.floor(Date.now() / 1000) + 3600, () => void input.sendMessage(true))
     await vi.waitFor(() => expect(managers.messages.sendText).toHaveBeenCalledTimes(1))
     await flush()
-    expect(managers.drafts.save).not.toHaveBeenCalledWith(BOB, '', null)
+    expect(managers.drafts.syncDraft).not.toHaveBeenCalled()
     expect(input.messageInput.textContent).toBe('')
   })
 })

@@ -343,47 +343,58 @@ describe('окно сообщений: своё действие доезжае�
     rootScope.removeEventListener('rt:message_op', off as never)
   })
 
-  // Счётчик комментариев — тот же владелец и тот же приём: число живёт ВНУТРИ
-  // сообщения (`replies.replies`), поэтому объявляет его окно, а не витрина.
-  it('cacheReplies() двигает счётчик треда в зеркале, не трогая остальной тред', async () => {
-    const { mgr } = await setup()
-    const replies = { _: 'messageReplies' as const, pFlags: { comments: true }, replies: 0, channel_id: 55 }
-    // Тред у сообщения появляется вместе с ним; здесь его заводит правка — тот
-    // же путь, которым его приносит живой кадр `new_message`.
-    rootScope.dispatchEventSingle('rt:message_op', {
-      ops: mgr.cacheEdit({
-        _: 'updateEditMessage',
-        message: { ...makeRawMessage({ id: getServerMessageId(cid(3)), peerId: CHAT, fromId: 2, text: 'пост' }), replies },
-      } as unknown as EditMessageEvt),
-    })
-    expect(inMirror(cid(3))?.replies?.replies).toBe(0)
+  // Тред поста — порт `updateMessage(…, 'replies_updated')` (tweb :11923-11937):
+  // пост перечитывается по адресу, и его тред ЦЕЛИКОМ (аватарки, счётчик,
+  // горизонты) доезжает до зеркала операцией ровно одним `replies` — зеркало
+  // объявляет её `replies_updated` (футер перерисовывает себя), а не правкой.
+  it('updateMessage() перечитывает пост и кладёт его тред в зеркало', async () => {
+    const { mgr, rest } = await setup()
+    const replies = {
+      _: 'messageReplies' as const, pFlags: { comments: true as const }, replies: 2, channel_id: 55,
+      recent_repliers: [{ _: 'peerUser' as const, user_id: 5 }, { _: 'peerUser' as const, user_id: 6 }],
+      max_id: 40, read_max_id: 38,
+    }
+    rest.get.mockImplementation(async (path: string) => path === `/chats/${CHAT}/messages`
+      ? { messages: [{ ...makeRawMessage({ id: 3, peerId: CHAT, fromId: 2, text: 'm3', createdAt: '2026-08-26T10:00:00Z' }), replies }] }
+      : page())
+    const events: unknown[] = []
+    const onReplies = (e: unknown) => { events.push(e) }
+    rootScope.addEventListener('replies_updated', onReplies as never)
 
-    mgr.cacheReplies(CHAT, cid(3), 3)
-    expect(inMirror(cid(3))?.replies?.replies).toBe(3)
-    // Кадр везёт ОДНО число — всё остальное в треде обязано пережить его.
-    expect(inMirror(cid(3))?.replies?.channel_id).toBe(55)
-    expect(inMirror(cid(3))?.replies?.pFlags?.comments).toBe(true)
+    await mgr.updateMessage(CHAT, cid(3))
 
-    // То же число второй раз — не событие (как у cacheViews выше): лишний патч
-    // рвал бы ссылку сообщения и перерисовывал бабл на ровном месте.
-    const seen: unknown[] = []
-    const off = (e: unknown) => { seen.push(e) }
-    rootScope.addEventListener('rt:message_op', off as never)
-    mgr.cacheReplies(CHAT, cid(3), 3)
-    expect(seen).toHaveLength(0)
-    rootScope.removeEventListener('rt:message_op', off as never)
+    expect(rest.get).toHaveBeenCalledWith(`/chats/${CHAT}/messages`, { ids: '3' })
+    const mirrored = inMirror(cid(3))?.replies
+    expect(mirrored?.recent_repliers).toEqual(replies.recent_repliers)
+    expect(mirrored?.replies).toBe(2)
+    // горизонты — клиентскими номерами (`mapReplies`)
+    expect(mirrored?.max_id).toBe(cid(40))
+    expect(mirrored?.read_max_id).toBe(cid(38))
+    expect(events).toHaveLength(1)
+
+    // Тот же тред второй раз — не изменение: операции нет.
+    const ops: unknown[] = []
+    const onOp = (e: unknown) => { ops.push(e) }
+    rootScope.addEventListener('rt:message_op', onOp as never)
+    await mgr.updateMessage(CHAT, cid(3))
+    expect(ops).toHaveLength(0)
+    rootScope.removeEventListener('rt:message_op', onOp as never)
+    rootScope.removeEventListener('replies_updated', onReplies as never)
   })
 
-  // Сообщение БЕЗ треда кадром не обзаводится: `channel_id` и `pFlags.comments`
-  // в нём не едут, и подставить их было бы выдумкой.
-  it('cacheReplies() молчит на сообщении без треда', async () => {
-    const { mgr } = await setup()
-    const seen: unknown[] = []
-    const off = (e: unknown) => { seen.push(e) }
-    rootScope.addEventListener('rt:message_op', off as never)
-    mgr.cacheReplies(CHAT, cid(2), 3)
-    expect(inMirror(cid(2))?.replies).toBeUndefined()
-    expect(seen).toHaveLength(0)
-    rootScope.removeEventListener('rt:message_op', off as never)
+  // Перечитанный пост ложится в SSOT ЦЕЛИКОМ — зеркало получает всё изменившееся,
+  // иначе следующий `cacheViews` сравнивался бы со свежим SSOT и молчал.
+  it('updateMessage(): изменилось не только тред — патч всеми параметрами, зеркало = SSOT', async () => {
+    const { mgr, rest } = await setup()
+    const replies = { _: 'messageReplies' as const, pFlags: { comments: true as const }, replies: 1, channel_id: 55 }
+    rest.get.mockImplementation(async (path: string) => path === `/chats/${CHAT}/messages`
+      ? { messages: [{ ...makeRawMessage({ id: 3, peerId: CHAT, fromId: 2, text: 'm3' }), replies, views: 500 }] }
+      : page())
+
+    await mgr.updateMessage(CHAT, cid(3))
+    expect(inMirror(cid(3))?.views).toBe(500)
+    expect(inMirror(cid(3))?.replies?.replies).toBe(1)
+    mgr.cacheViews(CHAT, new Map([[cid(3), 501]]))
+    expect(inMirror(cid(3))?.views).toBe(501)
   })
 })

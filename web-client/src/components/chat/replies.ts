@@ -24,21 +24,22 @@
 // несколько, и второй уже появился — чип реакции (`chat/reactions.ts`).
 //
 // ─── Чего здесь нет и почему ────────────────────────────────────────────────
-//  • ключ `ViewInChat` (replies.ts:102) — ветка чата `Replies`
-//    (`REPLIES_PEER_ID`), которого у нас нет как пира.
-//  • `subscribeRepliesThread` + `updateMessage(..., 'replies_updated')`
-//    (replies.ts:138-142) — ЗАПРОС свежего счётчика, который оригинал делает при
-//    первом показе футера. Предмета у него нет: счётчик приезжает ВНУТРИ самого
-//    сообщения (`backend/internal/usecase/chat/messagescontainer.go::
-//    hydrateThreads`), а дальше его двигает кадр `replies_update`
-//    (`updateChannelMessageReplies`). Сам глобальный слушатель `replies_updated`
-//    (replies.ts:17-22) ПОРТИРОВАН — он живёт у ленты (`bubbles.ts`), как и все
-//    прочие её подписки, и зовёт `setRepliesElementCount` ниже.
-//  • `ripple(rippleContainer)` (replies.ts:126) — ванильного `ripple` у нас нет
+//  • ключ `ViewInChat` (replies.ts:53, :107) — ветка чата `Replies`
+//    (`REPLIES_PEER_ID`), которого у нас нет как пира: футер строится только за
+//    прошедшим гейт тредом, `replies` есть всегда.
+//  • `lazyLoadQueue`/`loadPromises` (replies.ts:28-29, :149-151) — у нашего
+//    `StackedAvatars` очереди нет, аватарки грузятся сами.
+//  • `ripple(rippleContainer)` (replies.ts:131) — ванильного `ripple` у нас нет
 //    вовсе (React-порт живёт в `shared/ui/Ripple/useRipple.tsx`), поэтому узла
 //    `.c-ripple` внутри `div.rp` нет; тот же вычет уже записан в
 //    `components/AttachMenu.tsx:13`. Сам `div.rp` остаётся — на нём висит
 //    область клика (`_chatBubble.scss:2131-2140`).
+//  • `ensureButtonSemantics` (replies.ts:43) и `aria-label` (:51-53) — порта
+//    помощника нет; кликом футер ведёт лента (`bubbles.ts`), как и прежде.
+//
+// Глобальный слушатель `replies_updated` (replies.ts:17-23) живёт у ленты
+// (`bubbles.ts`), как и все прочие её подписки: событие приходит операцией окна
+// с ключом хранилища, и ключ сверяет лента.
 import Icon from '@components/icon'
 import type { AvatarManagers } from '@components/avatar'
 import StackedAvatars from '@components/stackedAvatars'
@@ -46,29 +47,43 @@ import type { Middleware } from '@helpers/middleware'
 import { getPeerId, type Peer } from '@core/peers/peerId'
 import type { MessageReplies } from '@core/models'
 import { fmtViews } from '@core/format/fmtViews'
+import { isLocalMessageId } from '@core/history/messageId'
 import I18n from '@lib/langPack'
 
-/** tweb replies.ts:15. */
+/** tweb replies.ts:16. */
 const TAG_NAME = 'replies-element'
 
-/** tweb replies.ts:63-69 — размер аватарки в стеке футера. */
+/** tweb replies.ts:68-72 — размер аватарки в стеке футера. */
 const AVATAR_SIZE = 30
 
-export interface RepliesElementOptions {
-  /** тред, уже прошедший гейт `getMessageWithCommentReplies` */
-  replies: MessageReplies
-  /** ключ чата и номер сообщения, НЕСУЩЕГО тред (у альбома — главного) */
+/** Перечитывание треда поста — менеджер сообщений воркера (tweb
+ *  `appMessagesManager.subscribeRepliesThread`/`updateMessage`, :8772-8779,
+ *  :11923-11937). Опционален: без него футер рисуется, но не обновляется. */
+export interface RepliesManagers extends AvatarManagers {
+  messages?: {
+    subscribeRepliesThread?(peerId: number, mid: number): unknown
+    updateMessage?(peerId: number, mid: number): unknown
+  }
+}
+
+/** Пост, НЕСУЩИЙ тред (у альбома — главное сообщение), — `message` оригинала в
+ *  нужном объёме. */
+export interface RepliesMessage {
   peerId: PeerId
   mid: number
-  /** tweb `repliesFooter.type` (messageRender.ts:409) */
+  /** тред, уже прошедший гейт `getMessageWithCommentReplies` */
+  replies: MessageReplies
+}
+
+export interface RepliesElementOptions extends RepliesMessage {
+  /** tweb `repliesFooter.type` (messageRender.ts:434) */
   type: 'footer' | 'beside'
   middleware: Middleware
-  managers: AvatarManagers
+  managers: RepliesManagers
 }
 
 /**
- * Ключ и аргументы текста футера — порт tweb `replies.ts:94-98`. Вынесено, чтобы
- * постройка и обновление на месте (`compareAndUpdate`) не разошлись по правилу.
+ * Ключ и аргументы текста футера — порт tweb `replies.ts:100-105`.
  */
 function repliesTextOptions(count: number) {
   return count
@@ -76,114 +91,137 @@ function repliesTextOptions(count: number) {
     : { key: 'LeaveAComment' as const }
 }
 
-function repliesTextElement(count: number) {
-  return new I18n.IntlElement(repliesTextOptions(count))
+/**
+ * `replies-element` — порт кастомного элемента `RepliesElement` (tweb
+ * replies.ts:25-153): узел ПЕРЕЖИВАЕТ обновление треда, `render` идемпотентен
+ * и переиспользует стек аватарок и текст (`compareAndUpdate`), — внутри футера
+ * живут аватарки комментаторов, которые пересборка перезагрузила бы.
+ */
+export default class RepliesElement extends HTMLElement {
+  public message!: RepliesMessage
+  public type!: 'footer' | 'beside'
+  public stackedAvatars?: StackedAvatars
+  public text?: I18n.IntlElement
+  public managers!: RepliesManagers
+  public middleware!: Middleware
+
+  private updated = false
+
+  /** tweb :42-47 */
+  public init() {
+    this.render()
+    this.dataset.postKey = this.message.peerId + '_' + this.message.mid
+    this.classList.add('replies', 'replies-' + this.type)
+  }
+
+  /** tweb :49-152 */
+  public render() {
+    const replies = this.message.replies
+
+    if (this.type === 'footer') {
+      let leftPart = this.firstElementChild as HTMLElement | null
+
+      if (replies.recent_repliers?.length) {
+        if (leftPart && !leftPart.classList.contains('replies-footer-avatars')) {
+          this.replaceChildren()
+          leftPart = null
+        }
+
+        if (!this.stackedAvatars) {
+          this.stackedAvatars = new StackedAvatars({ avatarSize: AVATAR_SIZE, middleware: this.middleware, managers: this.managers })
+          // tweb :74 — стек внутри футера несёт свой класс-модификатор.
+          this.stackedAvatars.container.classList.add('replies-footer-avatars')
+        }
+
+        leftPart = this.stackedAvatars.container
+        void this.stackedAvatars.render(replies.recent_repliers.map((peer: Peer) => getPeerId(peer)))
+      } else {
+        if (leftPart && !leftPart.classList.contains('replies-footer-icon-comments')) {
+          leftPart.remove()
+          leftPart = null
+        }
+
+        if (!leftPart) {
+          leftPart = Icon('comments', 'replies-footer-icon', 'replies-footer-icon-comments')
+        }
+      }
+
+      if (!leftPart.parentElement) {
+        this.prepend(leftPart)
+      }
+
+      // Текст — ЖИВОЙ УЗЕЛ ядра (`I18n.IntlElement`, tweb :95-108): язык
+      // меняется на месте (`applyLangPack`), число — `compareAndUpdate`.
+      if (!this.text) {
+        this.text = new I18n.IntlElement(repliesTextOptions(replies.replies))
+      } else {
+        this.text.compareAndUpdate(repliesTextOptions(replies.replies))
+      }
+
+      // tweb :110-121 — синяя точка «есть новые комментарии»: горизонт треда
+      // зрителя ниже последнего номера треда (оба едут в messageReplies).
+      let isUnread = false
+      if (replies.replies && replies.read_max_id !== undefined && replies.max_id !== undefined) {
+        isUnread = replies.read_max_id < replies.max_id
+      }
+      this.classList.toggle('is-unread', isUnread)
+
+      let textSpan = this.children[1] as HTMLElement | undefined
+      if (!textSpan) {
+        textSpan = document.createElement('span')
+        textSpan.classList.add('replies-footer-text')
+
+        const iconSpan = Icon('next', 'replies-footer-icon', 'replies-footer-icon-next')
+
+        // tweb :130-131 — ripple-контейнер (без ripple, см. шапку).
+        const rippleContainer = document.createElement('div')
+        rippleContainer.classList.add('rp')
+
+        this.append(textSpan, iconSpan, rippleContainer)
+      }
+
+      if (this.text.element.parentElement !== textSpan) textSpan.replaceChildren(this.text.element)
+    } else {
+      // tweb :138-140. Оригинал берёт `formatNumber(n, 0)`; тот же компактный
+      // формат у нас считает общий с просмотрами `fmtViews` — второго
+      // форматтера чисел не заводим.
+      this.classList.add('bubble-beside-button')
+      const text = document.createElement('span')
+      text.classList.add('replies-beside-text')
+      text.textContent = replies.replies ? fmtViews(replies.replies) : ''
+      this.replaceChildren(Icon('commentssticker_filled'), text)
+    }
+
+    // tweb :143-147 — при первом показе подписаться на тред и перечитать пост:
+    // тред в окне мог устареть (офлайн-кэш, пост пришёл страницей истории до
+    // новых комментариев). Неотправленному посту — нечего (`is_outgoing`).
+    if (!this.updated && !isLocalMessageId(this.message.mid)) {
+      void this.managers.messages?.subscribeRepliesThread?.(this.message.peerId, this.message.mid)
+      // отказ сети — футер остаётся с тем тредом, что есть
+      void Promise.resolve(this.managers.messages?.updateMessage?.(this.message.peerId, this.message.mid)).catch(() => {})
+      this.updated = true
+    }
+  }
 }
 
-/**
- * `replies-element` целиком — порт `RepliesElement.init`/`render`
- * (tweb replies.ts:41-147) в объёме одного построения: ветки обновления НА
- * МЕСТЕ (`if(this.firstElementChild)`, `compareAndUpdate`) предмета не имеют —
- * у нас узел пересобирается вместе с правкой сообщения.
- */
-export function createRepliesElement(options: RepliesElementOptions): HTMLElement {
+if (!customElements.get(TAG_NAME)) {
+  customElements.define(TAG_NAME, RepliesElement)
+}
+
+/** Сборка футера — тело `MessageRender.renderReplies` (messageRender.ts:432-437). */
+function createRepliesElement(options: RepliesElementOptions): RepliesElement {
   const { replies, peerId, mid, type, middleware, managers } = options
-
-  const element = document.createElement(TAG_NAME)
-  // tweb replies.ts:43-44.
-  element.dataset.postKey = peerId + '_' + mid
-  element.classList.add('replies', 'replies-' + type)
-
-  if (type === 'beside') {
-    // tweb replies.ts:132-135.
-    element.classList.add('bubble-beside-button')
-    const text = document.createElement('span')
-    text.classList.add('replies-beside-text')
-    // Оригинал берёт `formatNumber(n, 0)`; тот же компактный формат у нас
-    // считает общий с просмотрами `fmtViews` (один знак после запятой) —
-    // второго форматтера чисел не заводим.
-    text.textContent = replies.replies ? fmtViews(replies.replies) : ''
-    element.append(Icon('commentssticker_filled'), text)
-    return element
-  }
-
-  // Левая часть: аватарки комментаторов, а без них — иконка (tweb :56-84).
-  const recent = replies.recent_repliers
-  if (recent?.length) {
-    const stack = new StackedAvatars({ avatarSize: AVATAR_SIZE, middleware, managers })
-    // tweb :69 — стек внутри футера несёт свой класс-модификатор.
-    stack.container.classList.add('replies-footer-avatars')
-    element.append(stack.container)
-    void stack.render(recent.map((peer: Peer) => getPeerId(peer)))
-  } else {
-    element.append(Icon('comments', 'replies-footer-icon', 'replies-footer-icon-comments'))
-  }
-
-  // Текст — ЖИВОЙ УЗЕЛ ядра (`I18n.IntlElement`), ровно как у оригинала
-  // (`replies.ts:89-100`): `Comments` со счётчиком либо `LeaveAComment` на нуле.
-  //
-  // Прежде здесь был свой `span` с классом `i18n` и готовой строкой внутри.
-  // Класс был подделкой — узла в `weakMap` нет, `applyLangPack` его молча
-  // пропускает (`lib/langPack.ts:568-572`), — а своей перерисовки у ванильного
-  // узла, в отличие от React, не бывает: подпись застывала в языке момента
-  // постройки бабла и до перезагрузки чата не менялась.
-  //
-  // Вместе со строкой ушло и расхождение по КЛЮЧАМ: свои
-  // `Chat.Title.Comments`/`Chat.CommentsLabel` заменены ключами оригинала, и на
-  // нуле теперь «Оставьте комментарий», а не «Комментарии» — то самое
-  // расхождение, что было записано в docs/tweb/comments.md:339.
-  //
-  // Ветки `ViewInChat` (:99) у нас нет предмета: `replies` в опциях обязателен,
-  // футер строится только за прошедшим гейт тредом.
-  // tweb :110-119 — синяя точка «есть новые комментарии»: горизонт треда
-  // зрителя ниже последнего номера треда (оба едут в messageReplies).
-  let isUnread = false
-  if (replies.replies && replies.read_max_id !== undefined && replies.max_id !== undefined) {
-    isUnread = replies.read_max_id < replies.max_id
-  }
-  element.classList.toggle('is-unread', isUnread)
-
-  const textSpan = document.createElement('span')
-  textSpan.classList.add('replies-footer-text')
-  textSpan.append(repliesTextElement(replies.replies).element)
-
-  // tweb :123-128 — стрелка и ripple-контейнер ПОСЛЕДНИМИ.
-  const rippleContainer = document.createElement('div')
-  rippleContainer.classList.add('rp')
-
-  element.append(textSpan, Icon('next', 'replies-footer-icon', 'replies-footer-icon-next'), rippleContainer)
+  const element = new RepliesElement()
+  element.message = { peerId, mid, replies }
+  element.type = type
+  element.managers = managers
+  element.middleware = middleware.create().get()
+  element.init()
   return element
 }
 
 /**
- * Переписать ЧИСЛО в уже отрисованном футере — порт ветки текста
- * `RepliesElement.render` (tweb replies.ts:95-100), которую запускает глобальный
- * слушатель `replies_updated` (:17-22).
- *
- * Узел ПЕРЕЖИВАЕТ обновление, а не пересобирается: у оригинала на этом стоят
- * `compareAndUpdate`/`replaceContent`, а внутри футера живут аватарки
- * комментаторов, которые пересборка перезагрузила бы. По той же причине
- * счётчик и приезжает ЧИСЛОМ (см. `updateChannelMessageReplies` в
- * `core/realtime/events.ts`): кто именно комментировал, кадр не несёт, а
- * подставить сюда пустой стек значило бы стереть известное.
- */
-export function setRepliesElementCount(element: HTMLElement, count: number): void {
-  // tweb :131-135 — у beside-варианта текст один, компактным форматом.
-  const beside = element.querySelector<HTMLElement>('.replies-beside-text')
-  if (beside) {
-    beside.textContent = count ? fmtViews(count) : ''
-    return
-  }
-  const node = element.querySelector<HTMLElement>('.replies-footer-text .i18n')
-  const instance = node && I18n.weakMap.get(node)
-  if (!(instance instanceof I18n.IntlElement)) return
-  // tweb :94-98 — `compareAndUpdate`, а не пересборка: тот же ключ с теми же
-  // аргументами узел не трогает вовсе, а смена числа переписывает его на месте.
-  instance.compareAndUpdate(repliesTextOptions(count))
-}
-
-/**
- * Порт `MessageRender.renderReplies` (tweb messageRender.ts:395-416): выбрать
+ * Порт `MessageRender.renderReplies` (tweb messageRender.ts:420-440): выбрать
  * форму футера, собрать узел и повесить его в `bubbleContainer`.
  *
  * Возвращает `isFooter` — ровно то же, что оригинал, и по той же причине: на
@@ -195,11 +233,26 @@ export function renderReplies(options: Omit<RepliesElementOptions, 'type'> & {
   bubbleContainer: HTMLElement
 }): boolean {
   const { bubble, bubbleContainer, ...rest } = options
-  // tweb messageRender.ts:404-406.
+  // tweb messageRender.ts:429-431.
   const isFooter = !bubble.classList.contains('sticker') &&
     !bubble.classList.contains('emoji-big') &&
     !bubble.classList.contains('round')
+  const type = isFooter ? 'footer' : 'beside'
 
-  bubbleContainer.append(createRepliesElement({ ...rest, type: isFooter ? 'footer' : 'beside' }))
+  // Пересборка бабла правкой (`onMessageEdit`) у нас идёт на ЛЮБОЙ патч
+  // сообщения (реакция, опрос, прочтение медиа), а у оригинала футер
+  // пересоздаёт только настоящая правка (`safeRenderMessage`): тот же футер
+  // того же поста переживает её — `render` на месте, без нового `updateMessage`
+  // (`updated`) и без перезагрузки аватарок.
+  const existing = bubbleContainer.querySelector<RepliesElement>(`:scope > ${TAG_NAME}[data-post-key="${rest.peerId}_${rest.mid}"]`)
+  if (existing instanceof RepliesElement && existing.type === type) {
+    existing.message = { peerId: rest.peerId, mid: rest.mid, replies: rest.replies }
+    existing.render()
+    if (existing.nextElementSibling) bubbleContainer.append(existing)
+    return isFooter
+  }
+
+  bubbleContainer.querySelector(':scope > .replies')?.remove()
+  bubbleContainer.append(createRepliesElement({ ...rest, type }))
   return isFooter
 }

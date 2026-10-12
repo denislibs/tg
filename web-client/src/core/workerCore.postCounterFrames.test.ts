@@ -1,13 +1,12 @@
-// Пин ПРОВОДКИ в workerCore.ts: счётчики поста канала (`views_update`,
-// `replies_update`) применяет ВЛАДЕЛЕЦ окна — `messages.cacheViews` /
-// `messages.cacheReplies`, — а не витрина из сырого кадра.
+// Пин ПРОВОДКИ в workerCore.ts: просмотры поста канала (`views_update`)
+// применяет ВЛАДЕЛЕЦ окна — `messages.cacheViews`, — а не витрина из сырого кадра.
+// (Тред поста своего кадра не имеет: пост перечитывается, tweb :11923-11937.)
 //
-// Почему строки вообще нужны. Оба числа живут ВНУТРИ сообщения (`views`,
-// `replies.replies`), поэтому единственная законная точка их записи — окно.
-// Без реестровых строк `messages.cacheViews` не звался бы ниоткуда (ровно так и
-// было после снятия опроса `/view_counts`), а `cacheReplies` не существовал бы
-// вовсе: счётчики поста приезжали бы только с историей и застывали до
-// перезагрузки — это и есть задача #81.
+// Почему строка вообще нужна. Число живёт ВНУТРИ сообщения (`views`), поэтому
+// единственная законная точка его записи — окно. Без реестровой строки
+// `messages.cacheViews` не звался бы ниоткуда (ровно так и было после снятия
+// опроса `/view_counts`): счётчик поста приезжал бы только с историей и
+// застывал до перезагрузки — это и есть задача #81.
 //
 // Здесь же пинится ГРАНИЦА ПРОСТРАНСТВ: кадр несёт `channel_id` числом и `id` в
 // серверном пространстве номеров, а владелец окна знает пир ключом и номер —
@@ -32,7 +31,6 @@ vi.mock('./realtime/connectionManager', async (importOriginal) => {
 })
 
 const cacheViews = vi.fn()
-const cacheReplies = vi.fn()
 vi.mock('./managers/messagesManager', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./managers/messagesManager')>()
   return {
@@ -40,7 +38,6 @@ vi.mock('./managers/messagesManager', async (importOriginal) => {
     newMessagesManager: (deps: Parameters<typeof actual.newMessagesManager>[0]) => ({
       ...actual.newMessagesManager(deps),
       cacheViews,
-      cacheReplies,
     }),
   }
 })
@@ -88,7 +85,6 @@ beforeEach(() => {
   capturedConnDeps = null
   capturedChannelDeps = null
   cacheViews.mockClear()
-  cacheReplies.mockClear()
 })
 
 describe('createWorkerCore(): счётчики поста канала применяет владелец окна', () => {
@@ -100,16 +96,6 @@ describe('createWorkerCore(): счётчики поста канала прим�
     })
 
     expect(cacheViews).toHaveBeenCalledWith(-CHANNEL, new Map([[generateMessageId(SEQ), 12]]))
-  })
-
-  it('replies_update → cacheReplies с тем же переводом границ', () => {
-    boot()
-
-    capturedConnDeps!.onFrame('replies_update', {
-      _: 'updateChannelMessageReplies', channel_id: CHANNEL, id: SEQ, replies: 3,
-    })
-
-    expect(cacheReplies).toHaveBeenCalledWith(-CHANNEL, generateMessageId(SEQ), 3)
   })
 
   // РЕГИСТРАЦИЯ просмотра (ответ ручки `POST /channels/{id}/views`) применяется
@@ -126,7 +112,7 @@ describe('createWorkerCore(): счётчики поста канала прим�
     expect(cacheViews).toHaveBeenCalledWith(-CHANNEL, views)
   })
 
-  // Курсора у обоих кадров нет вовсе — воронка их не гейтит и не придерживает
+  // Курсора у кадра нет вовсе — воронка их не гейтит и не придерживает
   // (`globalFunnel.applyUpdate`: «курсора нет — транслируем как есть»). Пин на
   // это: кадр без `pts` доезжает до владельца, а не оседает в буфере разрывов.
   it('кадр без курсора не гейтится воронкой', () => {

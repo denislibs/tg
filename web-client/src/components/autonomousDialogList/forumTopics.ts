@@ -7,7 +7,7 @@
 // порт `dialogsStorage.forumTopics`, Б-54): страница — `forumTopics.getForumTopics`
 // (`dialogsStorage.getDialogs({filterId: peerId})`), живые изменения — операции
 // `rt:forum_topic_op` владельца, те же события, что слушает оригинал (`:24-104`):
-// `update` — `dialogs_multiupdate` с `topics`, `unread` — `dialog_unread`,
+// `update` — `dialogs_multiupdate` с `topics` и `dialog_draft`, `unread` — `dialog_unread`,
 // `notify` — `dialog_notify_settings` темы, `drop` — `dialog_drop`.
 //
 // Расхождения с оригиналом:
@@ -21,8 +21,8 @@
 //     мьют форума (диалог в `chatsStore`) или настройки по типам (`notifyStore`)
 //     пересчитывают бейджи всех строк.
 //  4. `peer_typings` с `threadId` (`:24-38`) — «печатает» в теме у нас не едет
-//     номером темы; `dialog_draft` темы (`:93-104`) — черновиков тредов нет
-//     (волна 2 Ф-5, КЛ-2).
+//     номером темы. `dialog_draft` темы (`:93-104`) едет операцией `update`
+//     (`forumTopicsStorage.applyDraft`): ветки `drop` у темы нет.
 //  5. `getDialogFromElement` — его потребитель, меню строки темы, не портирован
 //     (бэклог Б-53); `placeholderOptions` (`:22-26`) — наш `DialogsPlaceholder`
 //     параметров не берёт (расхождение 4 базы).

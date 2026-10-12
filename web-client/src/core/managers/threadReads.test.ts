@@ -204,3 +204,31 @@ describe('threadReads: горизонт исходящих треда — лен
     expect(reads.getReadState(GROUP, mid(7))?.read_outbox_max_id).toBe(mid(30))
   })
 })
+
+// tweb :10831-10836 — прочтение треда перечитывает его пост (`threadsToReplies`).
+// Своё прочтение — после ответа `readDiscussion` (расхождение шапки: REST без
+// порядка), кадр с другого устройства — сразу.
+describe('threadReads: прочтение треда перечитывает пост', () => {
+  it('своё — после ответа сервера, кадр — сразу', async () => {
+    let resolve!: (v: unknown) => void
+    const post = vi.fn(() => new Promise((r) => { resolve = r }))
+    const onThreadRead = vi.fn()
+    const reads = newThreadReads({
+      rest: { post } as never,
+      isForumPeer: () => false,
+      forumTopics: { getForumTopic: () => undefined, applyReadDiscussion: vi.fn() },
+      getMeId: () => 1,
+      onThreadRead,
+    })
+    reads.saveDiscussion(GROUP, mid(200), { maxId: mid(230), readMaxId: mid(220), readOutboxMaxId: 0, unreadCount: 5 })
+    const read = reads.readHistory(GROUP, mid(200), mid(230))
+    expect(onThreadRead).not.toHaveBeenCalled()
+    resolve(true)
+    await read
+    expect(onThreadRead).toHaveBeenCalledWith(GROUP, mid(200))
+
+    onThreadRead.mockClear()
+    reads.applyReadDiscussion({ peerId: GROUP, topicId: mid(200), maxId: mid(240), out: false })
+    expect(onThreadRead).toHaveBeenCalledWith(GROUP, mid(200))
+  })
+})

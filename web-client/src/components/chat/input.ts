@@ -60,13 +60,14 @@
 //     `sliceMessageEntities`) делает отправка здесь, а не менеджер: у tweb это тело
 //     `appMessagesManager.sendText`/`editMessage` (:2670-2683), наш `messages.sendText`
 //     шлёт кадр как есть.
-//  3. Черновик — поле диалога в зеркале `chatsStore` (`core/dialogs/draft.ts`), а не
-//     `appDraftsManager`: чтение — `getDraft`, сохранение — `managers.drafts.save` с
-//     отсечкой равных (`syncDraft`), приезд — подписка на зеркало (вместо
-//     `draft_updated`). Локальное снятие черновика отправкой (`sendText({clearDraft})`)
-//     эмулирует `clearedDraft`: сервер сам снимает черновик после отправки
-//     (`clearDraftAfterSend`), а до его кадра зеркало держит прежний. Черновиков тредов
-//     нет — у ручки `/chats/{id}/draft` нет `threadId`.
+//  3. Черновик ЧАТА — поле диалога в зеркале `chatsStore` (`core/dialogs/draft.ts`,
+//     расхождение 1 `core/managers/draftsManager.ts`): чтение — `getDraft`, сохранение —
+//     отсечка равных здесь и `managers.drafts.syncDraft`, приезд — подписка на зеркало
+//     (вместо `draft_updated`). Локальное снятие черновика чата отправкой
+//     (`sendText({clearDraft})`) эмулирует `clearedDraft`: сервер сам снимает черновик
+//     после отправки (`clearDraftAfterSend`), а до его кадра зеркало держит прежний.
+//     Черновик ТРЕДА (тема, General, комментарии) — 1:1 с tweb: `appDraftsManager`
+//     воркера (`getDraft`/`syncDraft`/`clearDraft`), приезд — `draft_updated` (:1711-1727).
 //  4. Канал постит REST-ручкой (`managers.channels.post`), а не `sendText`; первое
 //     сообщение пиру без диалога сначала заводит диалог (`managers.chats.createPrivate`) —
 //     обе ветки перенесены из снесённого `useChatSend.ts`.
@@ -821,8 +822,23 @@ export default class ChatInput {
     this.controlContainer.append(controlPlate)
   }
 
-  /** tweb `:1688-1812` — расхождение 3 шапки (черновик — подписка на зеркало). */
+  /** tweb `:1688-1812` — расхождение 3 шапки (черновик чата — подписка на зеркало). */
   private setChatListeners() {
+    // tweb `:1711-1727` — черновик треда (черновик чата — подписка на зеркало ниже)
+    this.listenerSetter.add(rootScope)('draft_updated', ({ peerId, threadId, draft, force }) => {
+      if(!threadId || this.chat.threadId !== threadId || this.chat.peerId !== peerId || PEER_EXCEPTIONS.has(this.chat.type)) return
+      if(!draft) {
+        // a pending local save means the user is actively typing newer content —
+        // let it win and sync normally instead of clobbering it with the remote clear.
+        // but a forced clear is our OWN send completing (clearDraft: true), so always
+        // honour it — otherwise the input never clears after sending while typing.
+        if(!force && this.saveDraftDebounced.isDebounced()) return
+        this.saveDraftDebounced.clearTimeout()
+      }
+
+      void this.setDraft(draft, true, force)
+    })
+
     this.listenerSetter.add(this.appImManager)('peer_changing', (chat: Chat) => {
       if(this.chat === chat && (this.chat.type === ChatType.Chat || this.chat.type === ChatType.Discussion)) {
         this.saveDraft()
@@ -1226,9 +1242,11 @@ export default class ChatInput {
         date: Math.floor(Date.now() / 1000),
         message: value.trim(),
         entities: entities.length ? entities : undefined,
+        // tweb :2290-2294 — тред ответа едет в `top_msg_id`
         reply_to: replyTo?.replyToMsgId ? {
           _: 'inputReplyToMessage',
           reply_to_msg_id: replyTo.replyToMsgId,
+          top_msg_id: this.chat.threadId,
         } : undefined,
       }
     }
@@ -1236,31 +1254,28 @@ export default class ChatInput {
     return draft
   }
 
-  /** tweb `:2315-2328` — `syncDraft` у нас — отсечка равных + `drafts.save`. */
+  /** tweb `:2319-2332` — у черновика чата отсечка равных здесь (расхождение 3). */
   public saveDraft() {
     if(
       !this.chat.peerId ||
       this.editMsgId ||
-      this.chat.threadId ||
       PEER_EXCEPTIONS.has(this.chat.type) ||
       !this.messageInputField
     ) {
       return
     }
 
+    const { peerId, threadId } = this.chat
     const draft = this.getCurrentInputAsDraft()
-    if(draftsAreEqual(draft, this.getDraft())) {
-      return
+    if(!threadId) {
+      if(draftsAreEqual(draft, this.getDraft())) {
+        return
+      }
+
+      this.clearedDraft = undefined
     }
 
-    const peerId = this.chat.peerId
-    this.clearedDraft = undefined
-    void this.managers.drafts.save(
-      peerId,
-      draft?.message ?? '',
-      draft?.reply_to?.reply_to_msg_id ?? null,
-      draft?.entities,
-    ).catch(() => {})
+    void this.managers.drafts.syncDraft({ peerId, threadId, localDraft: draft }).catch(() => {})
   }
 
   /** tweb `:2365-2388` */
@@ -1304,16 +1319,21 @@ export default class ChatInput {
   public async setDraft(draft?: DraftMessageReal, fromUpdate = true, force = false) {
     if(
       (!force && draft && !isInputEmpty(this.messageInput)) ||
-      PEER_EXCEPTIONS.has(this.chat.type) ||
-      this.chat.threadId
+      PEER_EXCEPTIONS.has(this.chat.type)
     ) {
       return false
     }
 
     if(!draft) {
-      draft = this.getDraft()
+      const { peerId, threadId } = this.chat
+      draft = threadId ? await this.managers.drafts.getDraft(peerId, threadId) : this.getDraft()
 
       if(!draft) {
+        // tweb :2427-2447 — снятие своей отправкой (`clearDraft`): поле уже очистил
+        // `sendMessage` → `onMessageSent`, второй очистки (и снятия выбранного после
+        // отправки ответа) не нужно
+        if(force) return fromUpdate
+
         if(fromUpdate && !this.saveDraftDebounced.isDebounced()) {
           void this.clearInput()
           this.clearHelper()
@@ -2326,9 +2346,11 @@ export default class ChatInput {
       }
 
       this.saveDraftDebounced.clearTimeout()
-      // tweb `sendText({clearDraft: true})` → `appDraftsManager.clearDraft`: черновик после
-      // отправки — и отложенной тоже — сервер снимает сам (расхождение 3)
-      this.clearedDraft = { peerId: chat.peerId, draft: this.getDialog(chat.peerId)?.draft }
+      // tweb `sendText({clearDraft: true})` → `appDraftsManager.clearDraft` (:2637-2642):
+      // черновик треда снимается местно, черновик чата — эмуляцией (расхождение 3);
+      // на сервере черновик после отправки — и отложенной тоже — снимает сервер
+      if(chat.threadId) void this.managers.drafts.clearDraft(chat.peerId, chat.threadId)
+      else this.clearedDraft = { peerId: chat.peerId, draft: this.getDialog(chat.peerId)?.draft }
 
       this.onMessageSent(true)
       return

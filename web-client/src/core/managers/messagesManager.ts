@@ -22,9 +22,10 @@ export interface MessagesSearchResultsCalendar {
   messages: RawMyMessage[]
   users: UserReal[]
 }
-import { getMessageThreadId, mapMyMessage, type MyMessage, type MessageReal, type MessageEntity, type MessageFields, type MessageReplies, type MessageReplyHeader, type RawMessage, type RawMyMessage, type SecretMedia } from '../models'
+import { getMessageThreadId, mapMyMessage, type MyMessage, type MessageReal, type MessageEntity, type MessageFields, type MessageReplyHeader, type RawMessage, type RawMyMessage, type SecretMedia } from '../models'
 import deferredPromise, { type CancellablePromise } from '@helpers/cancellablePromise'
 import pause from '@helpers/schedulers/pause'
+import deepEqual from '@helpers/object/deepEqual'
 import { getPeerId, isAnyChat, type Peer } from '../peers/peerId'
 import type { UserReal, User, Chat } from '../peers/peer'
 import canEditMessage from '../messages/canEditMessage'
@@ -424,6 +425,8 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     const known = msgsByChat.get(peerId)?.get(msgId)
     evictMsg(peerId, msgId)
     onMessagesDeleted?.(peerId, known ? [known] : [], known ? 0 : 1)
+    // tweb `handleDeletedMessages` (:14082): удалённое из треда перечитывает пост
+    if (known) updateMessageRepliesIfNeeded(known)
     return keys.map((key): MessageOp => ({ op: 'remove', key, msgId }))
   }
 
@@ -770,9 +773,11 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     return batchPromise
   }
 
-  const reloadMessage = (peerId: number, mid: number): MyMessage | undefined | Promise<MyMessage | undefined> => {
+  /** `overwrite` (tweb :13721, :13738) — перечитать и то, что уже лежит в SSOT:
+   *  так `updateMessage` берёт свежий тред поста (`replies`). */
+  const reloadMessage = (peerId: number, mid: number, overwrite?: boolean): MyMessage | undefined | Promise<MyMessage | undefined> => {
     const message = readMsg(peerId, mid)
-    if (message || missingMessages.has(`${peerId}_${mid}`)) return message
+    if ((message && !overwrite) || missingMessages.has(`${peerId}_${mid}`)) return message
 
     let map = needSingleMessages.get(peerId)
     if (!map) needSingleMessages.set(peerId, map = new Map())
@@ -797,6 +802,116 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     const next = replyTo
     if (!next) return
     emitOps(opWindowsFor(peerId, mid).map((key): MessageOp => ({ op: 'patch', key, msgId: mid, fields: { reply_to: next } })))
+  }
+
+  // ── Тред комментариев поста — порт `threadsToReplies` tweb ─────────────────
+  // (appMessagesManager.ts:620-622, :8772-8779, :8859, :11876-11898,
+  // :11923-11937). Футер поста (`components/chat/replies.ts`) при первом показе
+  // подписывается на тред (`subscribeRepliesThread` → `getDiscussionMessage`) и
+  // перечитывает пост (`updateMessage`); дальше пост перечитывается на новое и
+  // удалённое сообщение треда и на прочтение треда. `replies` поста —
+  // `recent_repliers`, счётчик, `max_id`/`read_max_id` — едет только внутри
+  // самого поста, своего кадра у него нет (layer.d.ts `messageReplies`).
+  //
+  // Ключ — тред (`группа_зеркало`), значение — пост (`канал_пост`), обе пары в
+  // клиентских номерах, как у оригинала.
+  //
+  // Не переносится: повторная рассылка `replies_updated` по всем тредам пира
+  // при прочтении его основной истории (:10980-10988) — сообщение то же, футер
+  // рисуется только из него; сброс карты при смене сессии (`clear()`, :993) —
+  // у менеджера сообщений сброса нет вовсе (как и у SSOT).
+  const threadsToReplies = new Map<string, string>()
+  /** tweb `invokeApiSingleProcess` (`:8823`): один запрос на пост в полёте. */
+  const discussionPromises = new Map<string, Promise<MyMessage | undefined>>()
+
+  /**
+   * Корень треда комментариев поста — его зеркало в группе обсуждения. Порт
+   * `appMessagesManager.getDiscussionMessage` (tweb :8814-8864): тред
+   * комментариев адресуется номером ЗЕРКАЛА (`threadId` = mid в группе), и
+   * им же — окно, отправка, живые кадры (`reply_to_top_id` комментария).
+   * Ответ — `messages.discussionMessage`: его `chats` везут группу обсуждения
+   * и канал (без карточки группы композер треда считал «писать нельзя»), и
+   * `mapContainer` сохраняет их до отдачи сообщения. Состояние треда
+   * (`max_id`, `read_inbox_max_id` — без него номер корня, `read_outbox_max_id`,
+   * `unread_count`) уходит владельцу прочтения тредов (tweb :8843-8846), тред —
+   * в `threadsToReplies` (:8859).
+   */
+  function getDiscussionMessage(peerId: number, mid: number): Promise<MyMessage | undefined> {
+    const repliesKey = peerId + '_' + mid
+    let promise = discussionPromises.get(repliesKey)
+    if (promise) return promise
+    promise = (async () => {
+      const r = await rest.get<MessagesContainer & { max_id?: number; read_inbox_max_id?: number; read_outbox_max_id?: number; unread_count?: number }>(`/channels/${peerId}/posts/${getServerMessageId(mid)}/discussion`)
+      const [message] = await mapContainer(r)
+      if (message?._ !== 'message') return undefined
+      saveDiscussion?.(message.peerId, message.id, {
+        maxId: r.max_id ? generateMessageId(r.max_id) : 0,
+        readMaxId: r.read_inbox_max_id != null ? generateMessageId(r.read_inbox_max_id) : message.id,
+        readOutboxMaxId: r.read_outbox_max_id ? generateMessageId(r.read_outbox_max_id) : 0,
+        unreadCount: r.unread_count ?? 0,
+      })
+      threadsToReplies.set(message.peerId + '_' + message.id, repliesKey)
+      return message
+    })()
+    discussionPromises.set(repliesKey, promise)
+    void promise.finally(() => { discussionPromises.delete(repliesKey) }).catch(() => {})
+    return promise
+  }
+
+  /** tweb `subscribeRepliesThread` (:8772-8779): тред поста уже известен — ничего. */
+  function subscribeRepliesThread(peerId: number, mid: number): void {
+    const repliesKey = peerId + '_' + mid
+    for (const value of threadsToReplies.values()) {
+      if (value === repliesKey) return
+    }
+    void getDiscussionMessage(peerId, mid).catch(() => {})
+  }
+
+  /**
+   * tweb `updateMessage(peerId, mid, 'replies_updated')` (:11923-11937):
+   * перечитать пост (`reloadMessage(…, true)`) и объявить его тред. У оригинала
+   * событие несёт само сообщение, и футер рисуется из него целиком; у нас
+   * изменение объявляется операцией окна ровно одним `replies` — зеркало
+   * вкладки превращает её в `replies_updated` (`core/history/messagesMirror.ts`).
+   * Тот же тред — не изменение: операции нет.
+   */
+  async function updateMessage(peerId: number, mid: number): Promise<void> {
+    const before = readMsg(peerId, mid)
+    const message = await reloadMessage(peerId, mid, true)
+    if (message?._ !== 'message' || !message.replies) return
+    const replies = message.replies
+    // Перечитанный пост лёг в SSOT ЦЕЛИКОМ (`put`), поэтому зеркало обязано
+    // получить всё, что в нём изменилось, а не один тред: иначе следующие
+    // патчи (просмотры, реакции) сравнивались бы со свежим SSOT и молчали, а
+    // вкладка осталась бы со старым. Изменился только тред — `patch {replies}`
+    // (→ `replies_updated`), иначе — всеми параметрами, как правка (`cacheEdit`).
+    const onlyReplies = before?._ === 'message' && deepEqual(before as MessageReal, message, ['replies'])
+    if (onlyReplies && deepEqual(before.replies, replies)) return
+    const fields: MessageFields = onlyReplies ? { replies } : messageFields(message)
+    emitOps(opWindowsFor(peerId, mid).map((key): MessageOp => ({ op: 'patch', key, msgId: mid, fields })))
+  }
+
+  /**
+   * tweb `updateMessageRepliesIfNeeded` (:11876-11898), ветка треда поста:
+   * новое или удалённое сообщение треда комментариев перечитывает пост. Ветки
+   * «обычных ответов группы» (`replies_short_update`, :11885-11894) нет: счётчик
+   * ответов у сообщения группы двигает сервер правкой сообщения.
+   */
+  function updateMessageRepliesIfNeeded(threadMessage: MyMessage): void {
+    const threadId = threadIdOf(threadMessage)
+    if (!threadId) return
+    const repliesKey = threadsToReplies.get(threadMessage.peerId + '_' + threadId)
+    if (!repliesKey) return
+    const [peerId, mid] = repliesKey.split('_')
+    void updateMessage(+peerId, +mid).catch(() => {})
+  }
+
+  /** Прочтение треда (tweb `onUpdateReadHistory` :10831-10836) — перечитать его пост. */
+  function onThreadRead(peerId: number, threadId: number): void {
+    const repliesKey = threadsToReplies.get(peerId + '_' + threadId)
+    if (!repliesKey) return
+    const [postPeerId, mid] = repliesKey.split('_')
+    void updateMessage(+postPeerId, +mid).catch(() => {})
   }
 
   return {
@@ -1302,29 +1417,18 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       await rest.del(`/chats/${peerId}/messages/${getServerMessageId(msgId)}/pin`)
     },
 
-    /**
-     * Корень треда комментариев поста — его зеркало в группе обсуждения. Порт
-     * `appMessagesManager.getDiscussionMessage` (tweb :8814-8864): тред
-     * комментариев адресуется номером ЗЕРКАЛА (`threadId` = mid в группе), и
-     * им же — окно, отправка, живые кадры (`reply_to_top_id` комментария).
-     * Ответ — `messages.discussionMessage`: его `chats` везут группу обсуждения
-     * и канал (без карточки группы композер треда считал «писать нельзя»), и
-     * `mapContainer` сохраняет их до отдачи сообщения. Состояние треда
-     * (`max_id`, `read_inbox_max_id` — без него номер корня, `read_outbox_max_id`,
-     * `unread_count`) уходит владельцу прочтения тредов (tweb :8843-8846).
-     */
-    async getDiscussionMessage(peerId: number, mid: number): Promise<MyMessage | undefined> {
-      const r = await rest.get<MessagesContainer & { max_id?: number; read_inbox_max_id?: number; read_outbox_max_id?: number; unread_count?: number }>(`/channels/${peerId}/posts/${getServerMessageId(mid)}/discussion`)
-      const [message] = await mapContainer(r)
-      if (message?._ !== 'message') return undefined
-      saveDiscussion?.(message.peerId, message.id, {
-        maxId: r.max_id ? generateMessageId(r.max_id) : 0,
-        readMaxId: r.read_inbox_max_id != null ? generateMessageId(r.read_inbox_max_id) : message.id,
-        readOutboxMaxId: r.read_outbox_max_id ? generateMessageId(r.read_outbox_max_id) : 0,
-        unreadCount: r.unread_count ?? 0,
-      })
-      return message
-    },
+    getDiscussionMessage,
+
+    /** tweb `subscribeRepliesThread` (:8772-8779) — см. `subscribeRepliesThread` выше. */
+    subscribeRepliesThread,
+
+    /** tweb `updateMessage(peerId, mid, 'replies_updated')` (:11923-11937) — см. выше. */
+    updateMessage,
+
+    /** Новое сообщение треда (tweb `onUpdateNewMessage` :10397) — см. выше. */
+    updateMessageRepliesIfNeeded,
+
+    onThreadRead,
 
     async listPins(peerId: number): Promise<MyMessage[]> {
       const r = await rest.get<MessagesContainer>(`/chats/${peerId}/pins`)
@@ -1565,43 +1669,6 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
         for (const key of opWindowsFor(peerId, id)) ops.push({ op: 'patch', key, msgId: id, fields: { views: count } })
       }
       emitOps(ops)
-    },
-
-    /**
-     * Свежий счётчик комментариев поста канала → SSOT + операции.
-     *
-     * Тот же приём, что у `cacheViews` выше, и по той же причине: число живёт
-     * ВНУТРИ сообщения (`replies.replies`), поэтому владелец у него один —
-     * окно, а объявляется изменение операцией.
-     *
-     * Кадр несёт АБСОЛЮТНОЕ число, а не дельту, — его и кладём. У оригинала на
-     * этом месте инкремент (`replies.replies + (add ? 1 : -1)`,
-     * tweb appMessagesManager.ts:8672), потому что там счётчик двигает САМ
-     * клиент, увидевший сообщение треда; у нас двигает сервер, и дельта,
-     * потерянная кадром без курсора, разошлась бы навсегда.
-     *
-     * Патчится только РЕАЛЬНО изменившееся и только там, где тред вообще есть:
-     * `replies` у поста приезжает вместе с ним, и подставлять его здесь из
-     * одного числа значило бы выдумать `channel_id` и `pFlags.comments`,
-     * которых в кадре нет.
-     */
-    cacheReplies(peerId: number, msgId: number, count: number): void {
-      let replies: MessageReplies | undefined
-      patchMsg(
-        peerId,
-        (m) => m.id === msgId,
-        // `null` — «применять нечего» (контракт patchMsg): у пилюли треда нет
-        // вовсе, у сообщения без треда его не из чего собрать (ни `channel_id`,
-        // ни `pFlags.comments` кадр не несёт), а то же число — не изменение.
-        (m) => {
-          if (m._ !== 'message' || !m.replies || m.replies.replies === count) return null
-          replies = { ...m.replies, replies: count }
-          return { ...m, replies }
-        },
-      )
-      const next = replies
-      if (!next) return
-      emitOps(opWindowsFor(peerId, msgId).map((key): MessageOp => ({ op: 'patch', key, msgId, fields: { replies: next } })))
     },
 
     // Live-правка от любого участника → единый объект в SSOT + операции по всем
