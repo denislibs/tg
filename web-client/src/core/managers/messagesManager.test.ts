@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { newMessagesManager } from './messagesManager'
 import { HttpError, type RestClient } from '../net/restClient'
-import { mapMyMessage, type MessageReal, type MyMessage, type RawMessage, type RawMessageReal } from '../models'
+import { mapMyMessage, type MessageReal, type MyMessage, type RawMessage, type RawMessageReal, type RawMyMessage } from '../models'
 import type { NewMessageEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, DeleteMessageEvt } from '../realtime/events'
 import { RT } from '../realtime/events'
 import type { MessageOp } from '../realtime/messageOps'
@@ -495,6 +495,60 @@ describe('MessagesManager.cacheLive', () => {
     const m = await mgr.getDiscussionMessage(-3, cid(9))
     expect(m?.id).toBe(cid(200))
     expect(saveDiscussion).toHaveBeenCalledWith(-5, cid(200), { maxId: cid(230), readMaxId: cid(225), readOutboxMaxId: cid(220), unreadCount: 4 })
+  })
+
+  // tweb `threadsToReplies` (:8772-8779, :8859, :11876-11898, :11923-11937):
+  // футер поста подписывается на тред, и пост перечитывается на новое и
+  // удалённое сообщение треда и на прочтение треда.
+  describe('тред поста — перечитывание поста (threadsToReplies)', () => {
+    const CHANNEL = -3
+    const GROUP = -5
+    const POST = 9
+    const MIRROR = 200
+    const setup = () => {
+      const mirror = makeRawMessage({ id: MIRROR, peerId: GROUP, fromId: GROUP, text: 'пост' }) as RawMessage
+      const get = vi.fn(async (path: string) => path.endsWith('/discussion')
+        ? { _: 'messages.discussionMessage', messages: [mirror], max_id: 230, read_inbox_max_id: 225, chats: [], users: [] }
+        : { messages: [] })
+      const rest = { get, post: async () => ({}) } as unknown as RestClient
+      const mgr = newMessagesManager({ rest })
+      const reloads = () => get.mock.calls.filter(([path]) => path === `/chats/${CHANNEL}/messages`).length
+      const discussions = () => get.mock.calls.filter(([path]) => String(path).endsWith('/discussion')).length
+      return { mgr, reloads, discussions }
+    }
+    const comment = (id: number): MyMessage => mapMyMessage({
+      ...makeRawMessage({ id, peerId: GROUP, fromId: 7, text: 'к' }),
+      reply_to: { _: 'messageReplyHeader', reply_to_msg_id: MIRROR, reply_to_top_id: MIRROR },
+    } as RawMyMessage, 1)
+
+    it('subscribeRepliesThread: один запрос discussion на пост, повтор — ничего', async () => {
+      const { mgr, discussions } = setup()
+      mgr.subscribeRepliesThread(CHANNEL, cid(POST))
+      mgr.subscribeRepliesThread(CHANNEL, cid(POST))
+      await new Promise((r) => setTimeout(r, 0))
+      mgr.subscribeRepliesThread(CHANNEL, cid(POST))
+      expect(discussions()).toBe(1)
+    })
+
+    it('новое сообщение треда перечитывает пост; чужой тред — нет', async () => {
+      const { mgr, reloads } = setup()
+      mgr.updateMessageRepliesIfNeeded(comment(231))
+      await new Promise((r) => setTimeout(r, 0))
+      expect(reloads()).toBe(0) // тред ещё не подписан
+      await mgr.getDiscussionMessage(CHANNEL, cid(POST))
+      mgr.updateMessageRepliesIfNeeded(comment(232))
+      await new Promise((r) => setTimeout(r, 0))
+      expect(reloads()).toBe(1)
+    })
+
+    it('прочтение треда перечитывает пост', async () => {
+      const { mgr, reloads } = setup()
+      await mgr.getDiscussionMessage(CHANNEL, cid(POST))
+      mgr.onThreadRead(GROUP, cid(MIRROR))
+      mgr.onThreadRead(GROUP, cid(MIRROR + 1))
+      await new Promise((r) => setTimeout(r, 0))
+      expect(reloads()).toBe(1)
+    })
   })
 
   // Комментарий канала: окно треда адресовано номером ЗЕРКАЛА поста в группе

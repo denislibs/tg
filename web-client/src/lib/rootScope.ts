@@ -17,7 +17,7 @@ import type {
   GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, StoryUpdateEvt,
   SentStoryReactionEvt, ReadStoriesEvt, ConnState, UserUpdateEvt, DialogPinEvt, DialogArchiveEvt, DialogMuteEvt,
   PollUpdateEvt, ChecklistUpdateEvt, GiveawayUpdateEvt, BoostUpdateEvt, BalanceUpdateEvt,
-  ViewsUpdateEvt, RepliesUpdateEvt, HistoryCountEvt,
+  ViewsUpdateEvt, HistoryCountEvt,
   PinnedForumTopicEvt,
   ReadDiscussionEvt,
 } from '@core/realtime/events'
@@ -104,13 +104,12 @@ export type BroadcastEvents = {
   [RT.paidMediaUnlock]: [NewMessageEvt, EventMeta?]
   [RT.webPageUpdate]: [WebPageUpdateEvt, EventMeta?]
   [RT.factCheckUpdate]: [FactCheckUpdateEvt, EventMeta?]
-  // Счётчики поста канала. Курсора кадры не несут (счётчики приближённы,
-  // догонять их разрывом незачем) — `EventMeta` у них поэтому нет. Сырой кадр
+  // Просмотры поста канала. Курсора кадр не несёт (счётчик приближён,
+  // догонять его разрывом незачем) — `EventMeta` у него поэтому нет. Сырой кадр
   // до витрины доезжает без потребителей: окно правит ВЛАДЕЛЕЦ (messages.
-  // cacheViews/cacheReplies → rt:message_op), а лента слушает уже
-  // messages_views/replies_updated ниже — как в оригинале.
+  // cacheViews → rt:message_op), а лента слушает уже messages_views ниже — как
+  // в оригинале.
   [RT.viewsUpdate]: [ViewsUpdateEvt]
-  [RT.repliesUpdate]: [RepliesUpdateEvt]
 
   // ── ephemeral (без pts, прямая трансляция) и bespoke (спец-обработка на onFrame) ──
   [RT.typing]: [TypingEvt]
@@ -207,10 +206,10 @@ export type BroadcastEvents = {
   // Счётчики поста канала — ОТДЕЛЬНО от `message_edit`, и это порт, а не
   // оптимизация. У оригинала «просмотров стало N» это своё событие
   // (`messages_views`, tweb rootScope.ts:92, форма 1:1 — вектор троек), а
-  // «комментариев стало N» — своё (`replies_updated`, :112, payload это само
-  // сообщение, из которого потребитель читает ТОЛЬКО число, bubbles.ts:1141).
+  // тред поста — своё (`replies_updated`, :112, payload это само сообщение,
+  // из которого футер перерисовывает себя: аватарки, число, точку, replies.ts:17-23).
   // Оба потребителя переписывают ОДИН УЗЕЛ бабла (`.post-views`,
-  // bubbles.ts:2094-2124; текст футера треда, replies.ts:17-22), тогда как
+  // bubbles.ts:2094-2124; футер треда, replies.ts:49-152), тогда как
   // `message_edit` у нас пересобирает содержимое бабла целиком (см. докблок
   // `onMessageEdit`): пост канала, который смотрят, перебирал бы своё вложение
   // раз в секунду.

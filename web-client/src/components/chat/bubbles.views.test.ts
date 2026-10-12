@@ -286,6 +286,44 @@ describe('ChatBubbles — счётчики поста двигаются кад�
     expect(after.querySelector('.replies-footer-text')!.textContent).toContain('3')
   })
 
+  // tweb replies.ts:49-152 — футер перерисовывает себя ЦЕЛИКОМ: аватарки
+  // комментаторов (`recent_repliers`), точку «есть новые» (`read_max_id <
+  // max_id`), — а при первом показе подписывается на тред и перечитывает пост
+  // (:143-147).
+  it('replies_updated: аватарки и точка «есть новые» — живьём, первый показ перечитывает пост', async () => {
+    const message = post(11, { replies: commentThread(1) })
+    const managers = managersWith([message])
+    const subscribeRepliesThread = vi.fn()
+    const updateMessage = vi.fn()
+    Object.assign(managers.messages, { subscribeRepliesThread, updateMessage })
+    bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managers)
+    await openFeed(bubbles)
+    await settle()
+
+    expect(subscribeRepliesThread).toHaveBeenCalledWith(CHAT, 11)
+    expect(updateMessage).toHaveBeenCalledWith(CHAT, 11)
+    const footer = bubbleOf(bubbles, 11).querySelector<HTMLElement>('.replies')!
+    expect(footer.querySelector('.replies-footer-icon-comments')).not.toBeNull()
+
+    const update = (replies: MessageReplies) => rootScope.dispatchEventSingle('replies_updated', {
+      storageKey: String(CHAT), peerId: CHAT, mid: 11, message: { ...message, replies } as MyMessage,
+    })
+    update({ ...commentThread(2), recent_repliers: [{ _: 'peerUser', user_id: 5 }, { _: 'peerUser', user_id: 6 }], max_id: 40, read_max_id: 38 })
+    await settle()
+    expect(footer.querySelector('.replies-footer-icon-comments')).toBeNull()
+    expect(footer.querySelectorAll('.replies-footer-avatars .stacked-avatars-avatar-container')).toHaveLength(2)
+    expect(footer.classList.contains('is-unread')).toBe(true)
+    expect(footer.querySelector('.replies-footer-text')!.textContent).toContain('2')
+
+    // тред прочитан — точка гаснет, аватарки на месте
+    update({ ...commentThread(2), recent_repliers: [{ _: 'peerUser', user_id: 5 }, { _: 'peerUser', user_id: 6 }], max_id: 40, read_max_id: 40 })
+    await settle()
+    expect(footer.classList.contains('is-unread')).toBe(false)
+    expect(footer.querySelectorAll('.replies-footer-avatars .stacked-avatars-avatar-container')).toHaveLength(2)
+    // повторная отрисовка того же футера на сервер не ходит (`updated`)
+    expect(updateMessage).toHaveBeenCalledTimes(1)
+  })
+
   it('кадр чужого окна футер не трогает', async () => {
     const message = post(11, { replies: commentThread(0) })
     bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managersWith([message]))

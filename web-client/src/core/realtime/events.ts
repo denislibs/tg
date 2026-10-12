@@ -27,14 +27,10 @@ export const RT = {
   typing: 'rt:typing',
   presence: 'rt:presence',
   reaction: 'rt:reaction',
-  // Счётчики поста канала. Событий ДВА, а не одно «счётчики поста»: у
-  // оригинала это тоже две разные подсистемы с разными владельцами —
-  // просмотры приезжают конструктором схемы `updateChannelMessageViews`
-  // (tweb appMessagesManager.ts:8448-8459), а число комментариев бампится
-  // приходом сообщения в тред (:8658-8680). Общим у них только то, что оба —
-  // числа на одном и том же посте.
+  // Просмотры поста канала — конструктор схемы `updateChannelMessageViews`
+  // (tweb appMessagesManager.ts:8448-8459). Тред поста своего кадра не имеет:
+  // пост перечитывается (`messages.updateMessage`, :11923-11937).
   viewsUpdate: 'rt:views_update',
-  repliesUpdate: 'rt:replies_update',
   ack: 'rt:ack',
   messageError: 'rt:message_error',
   // Пяти событий rt:pending_* больше нет: жизненный цикл неотправленного
@@ -703,33 +699,12 @@ export interface ViewsUpdateEvt {
   id: number
   views: number
 }
-/**
- * updateChannelMessageReplies#c8022fb8 channel_id:long id:int replies:int
- * = Update; — НАШ конструктор.
- *
- * Счётчик комментариев поста стал таким (АБСОЛЮТНОЕ число, не дифф). Апдейта
- * у предмета в схеме нет: у оригинала число бампит сам клиент, когда сообщение
- * приходит в тред (tweb appMessagesManager.ts:8658-8680), — ему видна вся
- * группа обсуждения. Нашему клиенту она не видна, пока тред не открыт, поэтому
- * на вопрос «сколько там теперь комментариев» отвечает сервер.
- *
- * Едет ЧИСЛО, а не `MessageReplies` целиком: тред у поста уже есть (он приезжает
- * с самим постом), меняется в нём ровно счётчик — его и читает потребитель у
- * оригинала (`setBubbleRepliesCount(bubble, message.replies.replies)`,
- * tweb bubbles.ts:1141).
- */
 /** Значение `rt:history_count`: окно (`winKey`) и его счёт. */
 export interface HistoryCountEvt {
   key: string
   count: number
 }
 
-export interface RepliesUpdateEvt {
-  _: 'updateChannelMessageReplies'
-  channel_id: number
-  id: number
-  replies: number
-}
 /** Бусты канала — НАШ конструктор (кадра бустов ЗРИТЕЛЮ в схеме нет:
  *  `updateBotChatBoost` про бота, следящего за чужим каналом). Сам статус —
  *  предмет схемный, `premium.boostsStatus`.
@@ -789,7 +764,6 @@ export type Update =
   | MediaReadEvt
   | ReactionEvt
   | ViewsUpdateEvt
-  | RepliesUpdateEvt
   | DraftUpdateEvt
   | DialogPinEvt
   | DialogArchiveEvt

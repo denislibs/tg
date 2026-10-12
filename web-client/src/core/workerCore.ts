@@ -56,7 +56,7 @@ import { newChannelFunnel, type ChannelDifference } from './realtime/channelFunn
 import { newSyncWait } from './realtime/syncWait'
 import { newGlobalFunnel } from './realtime/globalFunnel'
 import { createSecretManager } from './managers/secretManager'
-import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type RepliesUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type ReadDiscussionEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt } from './realtime/events'
+import { RT, type AckEvt, type MessageErrorEvt, type GeoLiveUpdateEvt, type NewMessageEvt, type PendingNewEvt, type ReadEvt, type ChatUpdateEvt, type ChatRemovedEvt, type ChannelEvt, type ReactionEvt, type DialogPinEvt, type DialogArchiveEvt, type DialogMuteEvt, type DraftUpdateEvt, type UserUpdateEvt, type ViewsUpdateEvt, type MediaReadEvt, type Update, type ChannelParticipantEvt, type PendingJoinRequestsEvt, type ChatRequestsEvt, type PinnedForumTopicEvt, type ReadDiscussionEvt, type NewScheduledMessageEvt, type DeleteScheduledMessagesEvt } from './realtime/events'
 import type { MessageOp } from './realtime/messageOps'
 import { generateMessageId } from './history/messageId'
 import { getPeerId, toChatId, toPeerId } from './peers/peerId'
@@ -433,6 +433,8 @@ export function createWorkerCore() {
     getMeId: () => me?.user.id ?? null,
     onCommentThreadRead: (peerId, threadId, maxId, out) => dialogs.applyThreadRead(peerId, threadId, maxId, out),
     onReadOutbox: (peerId, threadId, maxId) => broadcast(RT.readOutbox, { peerId, threadId, maxId }),
+    // Пост треда комментариев перечитывается (tweb :10831-10836).
+    onThreadRead: (peerId, threadId) => messages.onThreadRead(peerId, threadId),
   })
   // cacheViews — владелец счётчика просмотров: ответ на регистрацию просмотра
   // несёт уже новые значения, и применяет их та же точка, что и кадр
@@ -585,15 +587,14 @@ export function createWorkerCore() {
     updateDeletePeerMessages:       (p) => messages.cacheDelete(p),
     updatePinnedMessages:           (p) => messages.cachePinned(p),
     updateMessageReactions:         (p) => messages.cacheReaction(p),
-    // Счётчики поста канала. Оба числа живут ВНУТРИ сообщения, поэтому владелец
-    // у них тот же, что у всего окна, — messages; кадр лишь называет пост и
-    // новое значение. Номер поста приезжает в СЕРВЕРНОМ пространстве (как во
+    // Счётчик просмотров поста канала живёт ВНУТРИ сообщения, поэтому владелец
+    // у него тот же, что у всего окна, — messages; кадр лишь называет пост и
+    // новое значение. Тред поста (`replies`) своего кадра не имеет — пост
+    // перечитывается (`messages.updateMessage`, tweb :11923-11937). Номер поста приезжает в СЕРВЕРНОМ пространстве (как во
     // всех кадрах), ключ канала — числом `channel_id`: перевод обоих и есть
     // граница разбора (`core/history/messageId.ts`, `core/peers/peerId.ts`).
     updateChannelMessageViews:      (p: ViewsUpdateEvt) =>
       messages.cacheViews(toPeerId(p.channel_id, true), new Map([[generateMessageId(p.id), p.views]])),
-    updateChannelMessageReplies:    (p: RepliesUpdateEvt) =>
-      messages.cacheReplies(toPeerId(p.channel_id, true), generateMessageId(p.id), p.replies),
     updateMessageFactCheck:         (p) => messages.cacheFactCheck(p),
     updateMessagePoll:              (p) => messages.cachePoll(p),
     updateMessageToDo:              (p) => messages.cacheChecklist(p),
@@ -795,6 +796,8 @@ export function createWorkerCore() {
       forumTopics.applyNewMessage(m)
       // `historyStorage._maxId` треда комментариев (:10435-10437)
       threadReads.applyNewMessage(m)
+      // тред поста перечитывается (tweb `updateMessageRepliesIfNeeded`, :10397)
+      messages.updateMessageRepliesIfNeeded(m)
     }
     // tweb 1dc32d889 — признак «кадр пришёл первым difference после старта»
     // снимается В МОМЕНТ РАССЫЛКИ (у tweb — в `handleNewMessage`): к ответу
