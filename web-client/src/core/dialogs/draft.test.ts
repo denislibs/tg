@@ -24,6 +24,11 @@ describe('processApiDraft: pFlags и решение превью', () => {
     expect(draftsAreEqual(roundTrip, local())).toBe(true)
   })
 
+  it('media без pFlags с провода получает {} — плашка читает force_* без проверки', () => {
+    const wire = { _: 'draftMessage', date: 2, message: 'x', media: { _: 'inputMediaWebPage', url: 'https://ex.com' } } as unknown as DraftMessageReal
+    expect(processApiDraft(wire).media!.pFlags).toEqual({})
+  })
+
   it('решение превью различает черновики: другой размер — не равны', () => {
     const other = local()
     other.media!.pFlags = { optional: true }

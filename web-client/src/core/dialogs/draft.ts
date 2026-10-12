@@ -57,7 +57,10 @@ export function processApiDraft<T extends DraftMessage | undefined>(draft: T): T
   // `pFlags` провод опускает (omitempty), у оригинала объект заводит разбор TL —
   // без него черновик с провода не сравнялся бы с черновиком поля
   // (`ChatInput.getCurrentInputAsDraft` ставит `pFlags` всегда)
-  const out: DraftMessageReal = draft.pFlags ? draft : { ...draft, pFlags: {} }
+  let out: DraftMessageReal = draft.pFlags ? draft : { ...draft, pFlags: {} }
+  // у `inputMediaWebPage` флаги тоже omitempty — плашка читает их без проверки
+  // (tweb input.ts:3615, :3624-3625)
+  if (out.media && !out.media.pFlags) out = { ...out, media: { ...out.media, pFlags: {} } }
   if (!out.reply_to?.reply_to_msg_id) return out as T
   const replyTo = { ...out.reply_to, reply_to_msg_id: toClientId(out.reply_to.reply_to_msg_id) }
   if (replyTo.top_msg_id) replyTo.top_msg_id = toClientId(replyTo.top_msg_id)

@@ -386,6 +386,11 @@ describe('ChatInput: превью ссылки в черновике (tweb :2275
     const { input } = mounted
     await vi.waitFor(() => expect(input.willSendWebPage?.url).toBe(URL1))
     expect(input.getCurrentInputAsDraft()?.pFlags?.no_webpage).toBeUndefined()
+    // следствие: меню плашки ставит отложенное сохранение — черновик пересохраняется с карточкой
+    await new Promise((resolve) => setTimeout(resolve, 2700))
+    const saved = mounted.managers.drafts.syncDraft.mock.lastCall?.[0].localDraft
+    expect(saved?.media?.url).toBe(URL1)
+    expect(saved?.pFlags?.no_webpage).toBeUndefined()
   })
 })
 
