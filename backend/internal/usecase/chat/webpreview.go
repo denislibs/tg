@@ -576,10 +576,13 @@ func plaqueCard(wp *domain.WebPagePreview) *domain.WebPagePreview {
 // картинки остаётся в кэше (его возьмёт сборка карточки сообщения), наружу
 // он не уходит (GetWebPage гасит его в копии).
 func (i *Interactor) fetchWebPage(ctx context.Context, url string) *domain.WebPagePreview {
+	// Без повтора: сбой плашки ничего не теряет — tweb перезапросит карточку
+	// при следующей найденной ссылке (input.ts:3581-3594), а повтор держал бы
+	// слот сборки и удваивал запросы к сайту на страницах без карточки.
 	pctx, cancel := context.WithTimeout(ctx, previewTimeout)
-	wp := i.fetchPage(pctx, url)
+	wp, err := i.preview.Preview(pctx, url)
 	cancel()
-	if wp == nil {
+	if err != nil || wp == nil {
 		return nil
 	}
 	ectx, cancel := context.WithTimeout(ctx, enrichTimeout)
@@ -591,9 +594,11 @@ func (i *Interactor) fetchWebPage(ctx context.Context, url string) *domain.WebPa
 // pageRetryDelay — пауза перед повтором загрузки страницы (var: тесты ужимают).
 var pageRetryDelay = time.Second
 
-// fetchPage — og-теги страницы; сбой (у адаптера 5 с на запрос, тяжёлая
-// страница или занятый сайт не успевают) повторяется один раз: карточку,
-// которую плашка только что показала, сообщение иначе теряло бы навсегда.
+// fetchPage — og-теги страницы для карточки сообщения (фоновая сборка); сбой
+// (у адаптера 5 с на запрос: тяжёлая страница или занятый сайт не успевают)
+// повторяется один раз — карточку сообщение иначе теряло бы навсегда.
+// Детерминированный отказ (не HTML, нет заголовка) повтор тоже проходит:
+// адаптер ошибки не различает, а цена — одна лишняя загрузка в фоне.
 func (i *Interactor) fetchPage(ctx context.Context, url string) *domain.WebPagePreview {
 	for attempt := 0; ; attempt++ {
 		if p, err := i.preview.Preview(ctx, url); err == nil && p != nil {
@@ -756,8 +761,11 @@ func (i *Interactor) previewHasLargeMedia(ctx context.Context, imageURL string) 
 
 // Кэш карточек плашки. tweb зовёт getWebPage на каждую новую найденную
 // ссылку, пока её набирают (input.ts:3581-3594), и один адрес приходит
-// много раз подряд — сайт и картинку второй раз не дёргаем. Карточка
-// сообщения строится отдельно (buildWebPreview): у неё своя картинка к нам.
+// много раз подряд — сайт и картинку второй раз не дёргаем. Ту же страницу
+// берёт сборка карточки сообщения (buildWebPreview → page), картинку к нам она
+// сохраняет сама. Ключ — адрес в разборе url.Parse (cacheKey): плашка tweb
+// шлёт набранный адрес, а inputMediaWebPage — webPage.url, который отдал
+// наш адаптер уже разобранным (appMessagesManager.ts:4872).
 const (
 	webPageCacheTTL = 10 * time.Minute
 	webPageCacheMax = 2048
@@ -777,10 +785,19 @@ type webPageCache struct {
 	slots chan struct{}
 }
 
+// cacheKey — адрес в разборе url.Parse (кириллица и пробелы — в
+// процентной кодировке, как в webPage.url).
+func cacheKey(raw string) string {
+	if u, err := neturl.Parse(raw); err == nil {
+		return u.String()
+	}
+	return raw
+}
+
 func (c *webPageCache) get(url string) (*domain.WebPagePreview, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	e, ok := c.m[url]
+	e, ok := c.m[cacheKey(url)]
 	if !ok || time.Now().After(e.expires) {
 		return nil, false
 	}
@@ -818,7 +835,7 @@ func (c *webPageCache) put(url string, wp *domain.WebPagePreview) {
 			c.m = map[string]webPageCacheEntry{}
 		}
 	}
-	c.m[url] = webPageCacheEntry{wp: wp.Clone(), expires: now.Add(webPageCacheTTL)}
+	c.m[cacheKey(url)] = webPageCacheEntry{wp: wp.Clone(), expires: now.Add(webPageCacheTTL)}
 }
 
 // acquire занимает слот сборки; false — контекст кончился раньше.

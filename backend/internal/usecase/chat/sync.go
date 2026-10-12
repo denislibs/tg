@@ -230,9 +230,10 @@ func (i *Interactor) hydrateReplies(ctx context.Context, viewerID int64, msgs []
 // the bytes load (no layout shift). Missing/unprocessed media are left at zero.
 //
 // Картинка превью ссылки (web_page.photo_id) идёт тем же батчем и по той же
-// причине: размеры и stripped-подложка живут в строке media, а обработка после
-// скачивания асинхронная — на момент записи снимка превью их ещё нет, поэтому
-// это read-model, а не часть jsonb.
+// причине: stripped-подложка и уточнённый размер живут в строке media, а
+// обработка после скачивания асинхронная. Размер из заголовка картинки
+// сборка превью кладёт в снимок сразу — он остаётся, пока строка media
+// размера не дала.
 func (i *Interactor) hydrateMedia(ctx context.Context, msgs []domain.Message) error {
 	ids := make([]int64, 0)
 	seen := map[int64]bool{}

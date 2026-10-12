@@ -115,3 +115,39 @@ func TestBuildWebPreview_RetriesPageOnce(t *testing.T) {
 		t.Fatalf("загрузок %d; ждали 2", n)
 	}
 }
+
+// Кэш плашки: адрес набранный (кириллица) и адрес из webPage.url (в разборе
+// url.Parse — процентная кодировка) — один ключ; из кэша наружу не уходит
+// адрес чужой картинки, а сборке сообщения не достаётся has_large_media
+// плашки (его ставит только сохранённая картинка).
+func TestWebPageCache_KeyAndLeaks(t *testing.T) {
+	e := newPreviewEnv(t)
+	e.prev.large, e.prev.imageURL = true, "https://cdn.example/og.png"
+	ctx := context.Background()
+	raw := "https://a.example/путь"
+	if wp := e.in.GetWebPage(ctx, raw); wp == nil || wp.ImageURL != "" {
+		t.Fatalf("плашка = %+v", wp)
+	}
+	if wp := e.in.GetWebPage(ctx, raw); wp == nil || wp.ImageURL != "" {
+		t.Fatalf("плашка из кэша = %+v", wp)
+	}
+	page := e.in.webPages.page("https://a.example/%D0%BF%D1%83%D1%82%D1%8C")
+	if page == nil || page.ImageURL == "" || page.HasLargeMedia {
+		t.Fatalf("страница для сборки = %+v; ждали адрес картинки и без has_large_media", page)
+	}
+	if n := len(e.prev.calls()); n != 1 {
+		t.Fatalf("загрузок страницы %d; ждали 1", n)
+	}
+}
+
+// Плашка сбой не повторяет: tweb перезапросит при следующей ссылке.
+func TestGetWebPage_NoRetry(t *testing.T) {
+	e := newPreviewEnv(t)
+	e.prev.fail = 1
+	if wp := e.in.GetWebPage(context.Background(), "https://a.example/x"); wp != nil {
+		t.Fatalf("карточка = %+v", wp)
+	}
+	if n := len(e.prev.calls()); n != 1 {
+		t.Fatalf("загрузок %d; ждали 1", n)
+	}
+}
