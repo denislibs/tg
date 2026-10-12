@@ -696,8 +696,8 @@ function restWithThreadOverlap(): RestClient {
 /** Карточка ссылки в форме кадра: конструктор, а не плоский снимок. */
 function webPageMedia(title: string): MessageMedia {
   return {
-    _: 'messageMediaWebPage',
-    webpage: { _: 'webPage', url: 'https://x/', display_url: 'x', title },
+    _: 'messageMediaWebPage', pFlags: {},
+    webpage: { _: 'webPage', pFlags: {}, url: 'https://x/', display_url: 'x', title },
   }
 }
 
@@ -710,9 +710,9 @@ describe('MessagesManager.cacheWebPage', () => {
     // лестницей ступеней у картинки. Плоской формы (`site_name`/`photo_w`/
     // `photo_blur` россыпью) на проводе нет, поэтому и переводить нечего.
     const media: MessageMedia = {
-      _: 'messageMediaWebPage',
+      _: 'messageMediaWebPage', pFlags: {},
       webpage: {
-        _: 'webPage', url: 'https://x/', display_url: 'x',
+        _: 'webPage', pFlags: {}, url: 'https://x/', display_url: 'x',
         site_name: 'X', title: 'Title', has_iv: true,
         photo: {
           _: 'photo', id: 7,

@@ -80,7 +80,7 @@ describe('mediaKind — вид по КОНСТРУКТОРУ вложения', 
   // Карточка ссылки — вложение, но бабл у неё ТЕКСТОВЫЙ: она рисуется внутри
   // тела сообщения (tweb bubbles.ts:8112), а не вместо него.
   it('карточка ссылки: бабл остаётся текстовым', () => {
-    const media: MessageMedia = { _: 'messageMediaWebPage', webpage: { _: 'webPage', url: 'https://x/', display_url: 'x' } }
+    const media: MessageMedia = { _: 'messageMediaWebPage', pFlags: {}, webpage: { _: 'webPage', pFlags: {}, url: 'https://x/', display_url: 'x' } }
     expect(getMessageKind(msg(media))).toBe('text')
   })
 

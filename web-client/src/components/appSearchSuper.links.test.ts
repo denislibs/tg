@@ -40,9 +40,10 @@ const photo = (): MyPhoto => ({
   ],
 })
 
-const webPageMedia = (webpage: Omit<WebPage, '_'>): MessageMedia => ({
+const webPageMedia = (webpage: Omit<WebPage, '_' | 'pFlags'>): MessageMedia => ({
   _: 'messageMediaWebPage',
-  webpage: { _: 'webPage', ...webpage },
+  pFlags: {},
+  webpage: { _: 'webPage', pFlags: {}, ...webpage },
 })
 
 function fakeBackend(all: MyMessage[]) {

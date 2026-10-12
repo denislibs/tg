@@ -417,6 +417,11 @@ export interface MessageMediaGiveawayResults {
  */
 export interface WebPage {
   _: 'webPage'
+  /** `has_large_media:flags.13?true` — картинку можно показать крупно: без
+   *  него tweb прячет «крупнее/мельче» (input.ts:3619) и не читает `force_*`
+   *  (bubbles.ts:9479-9480). Правило флага — у сервера (`largePreviewPhoto`).
+   *  Провод отдаёт `pFlags` с `omitempty`; объект заводит `saveWebPage`. */
+  pFlags: Partial<{ has_large_media: true }>
   url: string
   display_url: string
   site_name?: string
@@ -426,8 +431,41 @@ export interface WebPage {
   has_iv?: boolean
 }
 
-/** messageMediaWebPage#ddf10c3b flags:# … webpage:WebPage = MessageMedia; */
-export interface MessageMediaWebPage { _: 'messageMediaWebPage'; webpage: WebPage }
+/** messageMediaWebPage#ddf10c3b flags:# force_large_media:flags.0?true
+ *  force_small_media:flags.1?true … webpage:WebPage = MessageMedia;
+ *
+ *  `force_*` — выбор отправителя «крупнее/мельче» (tweb input.ts:830-838). */
+export interface MessageMediaWebPage {
+  _: 'messageMediaWebPage'
+  pFlags: Partial<{ force_large_media: true, force_small_media: true }>
+  webpage: WebPage
+}
+
+/**
+ * Порт ветки `webPage` tweb `appWebPagesManager.saveWebPage`
+ * (appWebPagesManager.ts:66-196) — в объёме нашей карточки:
+ *  • `pFlags ??= {}` — провод отдаёт флаги с `omitempty`, а tweb читает
+ *    `webPage.pFlags.has_large_media` без проверки (input.ts:3619,
+ *    bubbles.ts:9479); у оригинала объект флагов заводит разбор TL;
+ *  • имя сайта, равное заголовку, снимается (:117-121).
+ * Реестра `webpages[id]` и ожидающих (`pendingWebPages`) нет: у нашей
+ * карточки нет `id` (снимок на сообщении, `backend/internal/domain/mtwebpage.go`),
+ * догоняет её свой кадр `updateMessageWebPage`. Фото/документ/атрибуты/
+ * `cached_page` не сохраняются — их у карточки нет (photo — обычная лестница,
+ * ей сохранять нечего). Тип `photo` (:183-187) не выводится: поля `type` нет.
+ */
+export function saveWebPage<T extends { _: string, pFlags?: object }>(webPage: T): T {
+  if (webPage._ !== 'webPage') return webPage
+  const page = webPage as unknown as WebPage
+  page.pFlags ??= {}
+  const siteName = page.site_name
+  const shortTitle = page.title || ''
+  if (siteName && shortTitle === siteName) {
+    delete page.site_name
+  }
+
+  return webPage
+}
 
 // ── Платное медиа ──────────────────────────────────────────────────────────
 
@@ -650,7 +688,10 @@ export function saveDocument(doc: MyDocument): MyDocument {
 export function saveMessageMedia(media: MessageMedia | undefined): MessageMedia | undefined {
   if (!media) return undefined
   if (media._ === 'messageMediaDocument') saveDocument(media.document)
-  else if (media._ === 'messageMediaPaidMedia') {
+  else if (media._ === 'messageMediaWebPage') {
+    media.pFlags ??= {}
+    saveWebPage(media.webpage)
+  } else if (media._ === 'messageMediaPaidMedia') {
     for (const item of media.extended_media) {
       if (item._ === 'messageExtendedMedia') saveMessageMedia(item.media)
     }

@@ -111,9 +111,9 @@ describe('mapMessage', () => {
   // провода и форма модели совпали, маппер обязан отдать объект как есть.
   it('превью ссылки приезжает вложением и не разбирается', () => {
     const media = {
-      _: 'messageMediaWebPage' as const,
+      _: 'messageMediaWebPage' as const, pFlags: {},
       webpage: {
-        _: 'webPage' as const,
+        _: 'webPage' as const, pFlags: {},
         url: 'https://example.com/', display_url: 'example.com',
         site_name: 'Example', title: 'Заголовок', description: 'Описание', has_iv: true,
         photo: {
