@@ -3,6 +3,7 @@ import type { ReplyMarkup } from './markup/replyMarkup'
 import type { EmojiEffectKind } from './effects/emojiEffects'
 import { saveMessageMedia, type MessageMedia, type TextWithEntities } from './media/messageMedia'
 import type { MessageEntity } from '@layer'
+import type { InputMediaWebPage } from './managers/messages/webPage'
 import { getPeerId, NULL_PEER_ID, type Peer } from './peers/peerId'
 import type { PeerNotifySettings } from './dialogs/notifySettings'
 import { GENERAL_TOPIC_ID, generateMessageId } from './history/messageId'
@@ -734,12 +735,21 @@ export function mapSuggestedPost(r: RawSuggestedPost): SuggestedPost {
 /** inputReplyToMessage — ответ черновика. `top_msg_id` — тред ответа (tweb
  *  `input.ts:2293`: черновик треда с ответом несёт номер треда здесь). */
 export interface InputReplyToMessage { _: 'inputReplyToMessage'; reply_to_msg_id: number; top_msg_id?: number }
-/** draftMessage#60fe3294 … message:string entities:flags.3?Vector<MessageEntity> date:int */
+/** draftMessage#60fe3294 flags:# no_webpage:flags.1?true invert_media:flags.6?true
+ *  reply_to:flags.4?InputReplyTo message:string entities:flags.3?Vector<MessageEntity>
+ *  media:flags.5?InputMedia date:int
+ *
+ *  `no_webpage`/`invert_media`/`media` — решение плашки превью ссылки (tweb
+ *  input.ts:2286-2307). `pFlags` провод опускает (omitempty) — объект заводит
+ *  `processApiDraft`, а поле ввода ставит его всегда: `draftsAreEqual` глубокий,
+ *  и `{}` против отсутствия ключа разошёлся бы. */
 export interface DraftMessageReal {
   _: 'draftMessage'
+  pFlags?: Partial<{ no_webpage: true, invert_media: true }>
   message: string
   entities?: MessageEntity[]
   reply_to?: InputReplyToMessage
+  media?: InputMediaWebPage
   date: number
 }
 /** draftMessageEmpty#1b0c841a — «черновик снят». */

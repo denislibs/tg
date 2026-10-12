@@ -53,10 +53,15 @@ export function draftDate(draft: DraftMessage | undefined): number {
  * черновик держат и строка списка, и кадр.
  */
 export function processApiDraft<T extends DraftMessage | undefined>(draft: T): T {
-  if (draft?._ !== 'draftMessage' || !draft.reply_to?.reply_to_msg_id) return draft
-  const replyTo = { ...draft.reply_to, reply_to_msg_id: toClientId(draft.reply_to.reply_to_msg_id) }
+  if (draft?._ !== 'draftMessage') return draft
+  // `pFlags` провод опускает (omitempty), у оригинала объект заводит разбор TL —
+  // без него черновик с провода не сравнялся бы с черновиком поля
+  // (`ChatInput.getCurrentInputAsDraft` ставит `pFlags` всегда)
+  const out: DraftMessageReal = draft.pFlags ? draft : { ...draft, pFlags: {} }
+  if (!out.reply_to?.reply_to_msg_id) return out as T
+  const replyTo = { ...out.reply_to, reply_to_msg_id: toClientId(out.reply_to.reply_to_msg_id) }
   if (replyTo.top_msg_id) replyTo.top_msg_id = toClientId(replyTo.top_msg_id)
-  return { ...draft, reply_to: replyTo }
+  return { ...out, reply_to: replyTo } as T
 }
 
 /** Идемпотентно, как tweb `generateMessageId` (`appMessagesIdsManager.ts:15-25`

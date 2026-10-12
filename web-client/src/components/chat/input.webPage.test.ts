@@ -7,7 +7,7 @@ import { getMiddleware } from '@helpers/middleware'
 import { useChatsStore } from '@stores/chatsStore'
 import { winKey } from '@core/history/messagesMirror'
 import { makeDialog } from '@core/dialogs/testDialog'
-import type { MyMessage } from '@core/models'
+import type { DraftMessageReal, MyMessage } from '@core/models'
 import type { WebPage } from '@core/media/messageMedia'
 import ChatInput from './input'
 import { ChatType } from './chatType'
@@ -21,8 +21,8 @@ const card = (url: string, over: Partial<WebPage> = {}): WebPage => ({
   _: 'webPage', pFlags: {}, url, display_url: url.replace('https://', ''), site_name: 'Example', title: 'Title', ...over,
 })
 
-async function mountInput(getWebPage: (url: string) => Promise<WebPage | undefined>) {
-  useChatsStore.setState({ dialogs: [makeDialog({ peerId: PEER })], loaded: true })
+async function mountInput(getWebPage: (url: string) => Promise<WebPage | undefined>, draft?: DraftMessageReal) {
+  useChatsStore.setState({ dialogs: [{ ...makeDialog({ peerId: PEER }), draft }], loaded: true })
   const messages = new Map<number, MyMessage>()
   const managers = {
     messages: {
@@ -32,7 +32,7 @@ async function mountInput(getWebPage: (url: string) => Promise<WebPage | undefin
       getMessageByPeer: vi.fn(async(_peerId: number, mid: number) => messages.get(mid)),
     },
     webPages: { getWebPage: vi.fn(getWebPage) },
-    drafts: { save: vi.fn(async() => ({ _: 'draftMessageEmpty' })) },
+    drafts: { syncDraft: vi.fn(async(_args: { localDraft?: DraftMessageReal }) => true), getDraft: vi.fn(async() => undefined), clearDraft: vi.fn() },
     realtime: { sendTyping: vi.fn(async() => ({ ok: true })) },
     chats: { createPrivate: vi.fn(async(id: number) => id) },
     dialogs: { refresh: vi.fn(async() => {}) },
@@ -303,3 +303,47 @@ describe('ChatInput: превью ссылки при правке', () => {
     }))
   })
 })
+
+describe('ChatInput: превью ссылки в черновике (tweb :2275-2310, :2466, :5345-5348)', () => {
+  it('черновик несёт решение плашки: media с выбором размера и invert_media', async() => {
+    mounted = await mountInput(async(url) => card(url, { pFlags: { has_large_media: true } }))
+    const { input } = mounted
+    await type(input, URL1)
+    const m = menu(input)
+    m.container.classList.add('active')
+    m.above.element.click()
+    m.smaller.element.click()
+
+    expect(input.getCurrentInputAsDraft()).toEqual(expect.objectContaining({
+      pFlags: { invert_media: true },
+      media: { _: 'inputMediaWebPage', url: URL1, pFlags: { force_small_media: true, optional: true } },
+    }))
+  })
+
+  it('крестик — no_webpage в черновике и в сохранении', async() => {
+    mounted = await mountInput(async(url) => card(url))
+    const { input, managers, chat } = mounted
+    await type(input, URL1)
+    ;(chat.container.querySelector('.reply-cancel') as HTMLElement).click()
+    await flush()
+    expect(input.getCurrentInputAsDraft()?.pFlags?.no_webpage).toBe(true)
+    input.saveDraft()
+    expect(managers.drafts.syncDraft.mock.lastCall![0].localDraft).toEqual(expect.objectContaining({ pFlags: expect.objectContaining({ no_webpage: true }) }))
+  })
+
+  it('восстановление: плашка поднимается по ссылке черновика с его «над/мельче», без пересохранения', async() => {
+    const draft: DraftMessageReal = {
+      _: 'draftMessage', pFlags: { invert_media: true }, message: 'про ' + URL1 + ' и ' + URL2, date: 1,
+      media: { _: 'inputMediaWebPage', url: URL2, pFlags: { force_small_media: true, optional: true } },
+    }
+    mounted = await mountInput(async(url) => card(url, { pFlags: { has_large_media: true } }), draft)
+    const { input, managers } = mounted
+    await vi.waitFor(() => expect(input.willSendWebPage?.url).toBe(URL2))
+    const m = menu(input)
+    expect(m.above.checkboxField.input.checked).toBe(true)
+    expect(m.smaller.checkboxField.input.checked).toBe(true)
+    expect(input.webPageOptions).toEqual({ optional: true, smallMedia: true })
+    expect(managers.drafts.syncDraft).not.toHaveBeenCalled()
+  })
+})
+
