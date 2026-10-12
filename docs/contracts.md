@@ -190,8 +190,13 @@ List the user's dialogs, newest activity first.
 источников значило бы держать порядок в двух местах. Ручка `/drafts` при этом
 остаётся — она отдаёт КОНТЕЙНЕР `updates` из кадров `updateDraftMessage` (как
 `messages.getAllDrafts` у оригинала, объявленный возвращающим `Updates`),
-которыми клиент заполняет те же диалоги. Тем же кадром отвечает и сохранение
-(`PUT /chats/{chatID}/draft`): третьей формы одного черновика нет.
+которыми клиент заполняет те же диалоги и темы. Черновик лежит на паре
+«пир + тред» (Ф-5, tweb `appDraftsManager.ts:88-90`): кадр несёт `top_msg_id`
+треда (тема, General = 1, тред комментариев — номер зеркала), черновик темы
+едет ещё и в `forumTopic.draft`, а диалогу — только черновик чата. Сохранение
+(`PUT /chats/{chatID}/draft`) — `messages.saveDraft` в форме TL
+(`{message, entities?, reply_to?: inputReplyToMessage{reply_to_msg_id, top_msg_id?}}`)
+и отвечает `Bool`: сам черновик уезжает кадром.
 
 ---
 
@@ -514,7 +519,8 @@ count.
 (`messages.views` — та же колонка, из которой читает `view_counts`), а
 `replies:flags.23?MessageReplies` доводится в `usecase/chat/messagescontainer.go`
 — тем же `threadReplies`, каким его берёт живой кадр. Обновление уже показанной
-ленты идёт КАДРАМИ (`views_update`, `replies_update` ниже), а не опросом.
+ленты идёт кадром `views_update` (ниже); счётчик комментариев своего кадра не
+имеет — клиент перечитывает пост, как tweb (`appMessagesManager.ts:11876-11898`).
 
 **Счётчики поста едут ПАРОЙ и только у поста — зато всегда.** `views` и
 `forwards` делят один бит (`views:flags.10?int forwards:flags.10?int`, предикат
@@ -1140,8 +1146,7 @@ Delete the caller's own story.
 | `pin_message` | `updatePinnedMessages` | «открепили» — ТОТ ЖЕ конструктор с опущенным битом `pFlags.pinned` |
 | `reaction` | `updateMessageReactions` | АБСОЛЮТНЫЙ агрегат с `pFlags.min`; платная ⭐-реакция — чип `reactionPaid` в том же векторе |
 | `views_update` | `updateChannelMessageViews` | `{channel_id, id, views}` — счётчик просмотров поста вырос; `id` это НОМЕР поста. Курсора нет: кадр уезжает в топик канала, а авторитетное значение приезжает с историей |
-| `replies_update` | `updateChannelMessageReplies` | наш конструктор: апдейта у предмета в схеме нет. `{channel_id, id, replies}` — счётчик комментариев поста стал таким (АБСОЛЮТНЫЙ, не дифф). Тоже в топик канала и тоже без курсора |
-| `draft_update` | `updateDraftMessage` | «черновик снят» — конструктор `draftMessageEmpty` внутри |
+| `draft_update` | `updateDraftMessage` | `top_msg_id` — тред черновика (нет — черновик чата); «черновик снят» — конструктор `draftMessageEmpty` внутри |
 | `dialog_pin` | `updateDialogPinned` | `peer: dialogPeer`; закрепление — бит |
 | `dialog_archive` | `updateFolderPeers` | вектор `folderPeer` с НОМЕРОМ папки; возврат из архива — папка 0 |
 | `dialog_mute` | `updateNotifySettings` | `peer: notifyPeer`, настройки ЦЕЛИКОМ (мьют это срок, а не флаг) |

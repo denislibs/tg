@@ -128,6 +128,18 @@ func TestDraftsRepo_ThreadKeys(t *testing.T) {
 		t.Fatalf("после снятия A и General: %+v", left)
 	}
 
+	// Сирота: корня треда нет — номер не вывести, черновик не выдаётся, и
+	// снимать его на устройствах нечего.
+	if _, err := pool.Exec(ctx, `INSERT INTO drafts (chat_id, user_id, thread_root_id, text) VALUES ($1, $2, 987654321, 'сирота')`, forum, user); err != nil {
+		t.Fatalf("seed orphan: %v", err)
+	}
+	if list, _ := r.ListByChat(ctx, user, forum); len(list) != 1 {
+		t.Fatalf("сирота в списке: %+v", list)
+	}
+	if _, ok, err := r.Delete(ctx, forum, user, 987654321); err != nil || ok {
+		t.Fatalf("Delete сироты: ok=%v, %v", ok, err)
+	}
+
 	gone, err := r.DeleteAllByUser(ctx, user)
 	if err != nil || len(gone) != 2 {
 		t.Fatalf("DeleteAllByUser: %+v, %v", gone, err)
