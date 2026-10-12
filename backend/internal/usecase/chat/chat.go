@@ -63,6 +63,10 @@ type Interactor struct {
 	botHub       *botPendingHub
 	// peerAddrs — кэш слоя разрешения peerId ↔ chatID (см. peeraddr.go).
 	peerAddrs *peerAddrCache
+	// webPages — кэш карточек плашки композера (GetWebPage, webpreview.go).
+	webPages webPageCache
+	// previewFlights — идущие сборки превью (webpreview_flight.go).
+	previewFlights previewFlights
 	// bg — фоновые хвосты запросов (веер поста канала: сброс снимков списка и
 	// пуш подписчикам), которые не должны держать ответ. Тесты ждут его.
 	bg sync.WaitGroup

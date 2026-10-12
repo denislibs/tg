@@ -230,3 +230,73 @@ func TestScheduledRepo_TakePaidAndStarsTakeUpTo(t *testing.T) {
 		t.Fatalf("TakeUpTo без строки баланса: bal=%d err=%v", bal, err)
 	}
 }
+
+// P1: догоняющее превью отложенного пишется только в строку с тем же текстом,
+// сущностями и решением о превью и вне аренды; решение правится одним ключом
+// снимка, остальное в нём не трогается.
+func TestScheduledRepo_WebPageIfSameAndChoice(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+79990001720")
+	b := seedUser(t, pool, "+79990001721")
+	chatID := seedPrivateChat(t, pool, a, b)
+	r := NewScheduledRepo(pool)
+	choice := &domain.WebPageInput{InvertMedia: true}
+	row, _, err := r.Create(ctx, domain.ScheduledMessage{ChatID: chatID, SenderID: a, Type: "text",
+		Text: "https://a.example", SendAt: time.Now().Add(time.Hour),
+		Params: domain.ScheduledParams{Silent: true, WebPage: choice}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wp := &domain.WebPagePreview{URL: "https://a.example", Title: "A", PhotoID: 0, HasLargeMedia: true}
+	if ok, err := r.SetWebPageIfSame(ctx, row.ID, wp, "другой текст", nil, choice); err != nil || ok {
+		t.Fatalf("другой текст: ok=%v err=%v", ok, err)
+	}
+	if ok, err := r.SetWebPageIfSame(ctx, row.ID, wp, row.Text, nil, nil); err != nil || ok {
+		t.Fatalf("другое решение о превью: ok=%v err=%v", ok, err)
+	}
+	if ok, err := r.SetWebPageIfSame(ctx, row.ID, wp, row.Text, nil, choice); err != nil || !ok {
+		t.Fatalf("та же строка: ok=%v err=%v", ok, err)
+	}
+	got, _ := r.ByID(ctx, row.ID)
+	if got.WebPage == nil || got.WebPage.Title != "A" || !got.WebPage.HasLargeMedia {
+		t.Fatalf("карточка = %+v", got.WebPage)
+	}
+
+	if err := r.SetWebPageChoice(ctx, row.ID, &domain.WebPageInput{NoWebpage: true}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = r.ByID(ctx, row.ID)
+	if got.Params.WebPage == nil || !got.Params.WebPage.NoWebpage || got.Params.WebPage.InvertMedia || !got.Params.Silent {
+		t.Fatalf("снимок после смены решения = %+v", got.Params)
+	}
+	if err := r.SetWebPageChoice(ctx, row.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = r.ByID(ctx, row.ID); got.Params.WebPage != nil || !got.Params.Silent {
+		t.Fatalf("снимок после снятия решения = %+v", got.Params)
+	}
+
+	// Самый частый путь: решения о превью нет (ключа web_page в снимке нет),
+	// у текста есть сущности — карточка пишется.
+	ents := domain.MessageEntities{domain.NewMessageEntityBold(0, 3)}
+	plain, _, err := r.Create(ctx, domain.ScheduledMessage{ChatID: chatID, SenderID: a, Type: "text",
+		Text: "жир https://b.example", Entities: ents, SendAt: time.Now().Add(time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := r.SetWebPageIfSame(ctx, plain.ID, wp, plain.Text, ents, nil); err != nil || !ok {
+		t.Fatalf("без решения, с сущностями: ok=%v err=%v", ok, err)
+	}
+	if ok, _ := r.SetWebPageIfSame(ctx, plain.ID, wp, plain.Text, nil, nil); ok {
+		t.Fatal("другие сущности — карточка записана")
+	}
+
+	// В аренде публикации — не пишется.
+	if _, ok, err := r.Claim(ctx, row.ID, got.SendAt, false, time.Minute, false); err != nil || !ok {
+		t.Fatalf("claim: ok=%v err=%v", ok, err)
+	}
+	if ok, err := r.SetWebPageIfSame(ctx, row.ID, nil, row.Text, nil, nil); err != nil || ok {
+		t.Fatalf("строка в аренде: ok=%v err=%v", ok, err)
+	}
+}

@@ -98,6 +98,12 @@ type ScheduledParams struct {
 	// `appMessagesManager.ts:5652`): содержимое снято copyContent при
 	// постановке, здесь — атрибуция и то, что нужно доставке копии.
 	Fwd *ScheduledFwd `json:"fwd,omitempty"`
+	// WebPage — решение отправителя о превью ссылки (no_webpage, invert_media,
+	// inputMediaWebPage; tweb шлёт их и с schedule_date,
+	// appMessagesManager.ts:2733-2753): по нему строится превью отложенного и,
+	// если оно не успело, превью опубликованного сообщения. nil — ничего не
+	// решено (превью по первой ссылке текста).
+	WebPage *WebPageInput `json:"web_page,omitempty"`
 }
 
 // ScheduledFwd — снимок пересылки для отложенной копии.
@@ -146,6 +152,7 @@ func (m ScheduledMessage) Message() Message {
 		Effect: p.Effect, SendAsChatID: p.SendAsChatID,
 		MediaSpoiler: p.MediaSpoiler && m.MediaID != nil,
 		WebPage:      m.WebPage,
+		InvertMedia:  p.WebPage != nil && p.WebPage.InvertMedia,
 	}
 	if p.GroupedID != 0 && m.MediaID != nil {
 		g := p.GroupedID

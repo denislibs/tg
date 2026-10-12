@@ -23,7 +23,12 @@ const editTimeLimit = 48 * time.Hour
 // шапка треда комментариев у tweb — зеркало в хранилище группы, и сменить его
 // текст может только updateEditChannelMessage ГРУППЫ (onUpdateEditMessage,
 // appMessagesManager.ts:10670-10760, правит лишь сообщение пира из апдейта).
-func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int64, text string, entities domain.MessageEntities) (domain.Message, error) {
+//
+// wp — решение композера о превью ссылки (no_webpage, invert_media,
+// inputMediaWebPage; tweb messages.editMessage, appMessagesManager.ts
+// :2207-2220). Необязательный: без него превью следует первой ссылке текста,
+// флаг invert_media не трогается (webpreview.go).
+func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int64, text string, entities domain.MessageEntities, wp ...domain.WebPageInput) (domain.Message, error) {
 	cur, guest, err := i.messageForAction(ctx, chatID, msgID, userID)
 	if err != nil {
 		return domain.Message{}, err
@@ -47,7 +52,7 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 	var msg domain.Message
 	var edit, mirror *editDelivery
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		m, e := i.msgs.UpdateText(ctx, msgID, text, entities)
+		m, e := i.updateTextWithWebPage(ctx, cur, text, entities, wp)
 		if e != nil {
 			return e
 		}
@@ -76,6 +81,13 @@ func (i *Interactor) EditMessage(ctx context.Context, chatID, msgID, userID int6
 	if err != nil {
 		return domain.Message{}, err
 	}
+	// Новая карточка ссылки — фоном, после публикации правки (обе ветки);
+	// получатели — веер правки (у канала nil: карточка едет журналом канала).
+	var recipients []int64
+	if edit != nil {
+		recipients = edit.recipients
+	}
+	defer func() { i.rebuildWebPreviewOnEdit(msg, wp, recipients) }()
 	if broadcast {
 		i.publishChannelUpdate(ctx, chatID, "edit_message", channelBody, channelPts, msg.SenderID)
 		i.publishEdit(ctx, mirror)
@@ -231,6 +243,10 @@ func (i *Interactor) mirrorSync(ctx context.Context, post domain.Message, edited
 	if err := i.msgs.SetWebPage(ctx, id, post.WebPage); err != nil {
 		return nil, err
 	}
+	// «Медиа над текстом» — флаг сообщения рядом с карточкой (P1).
+	if err := i.msgs.SetInvertMedia(ctx, id, post.InvertMedia); err != nil {
+		return nil, err
+	}
 	if m, err = i.msgs.GetByID(ctx, id); err != nil {
 		return nil, err
 	}
@@ -238,22 +254,6 @@ func (i *Interactor) mirrorSync(ctx context.Context, post domain.Message, edited
 		return nil, err
 	}
 	return i.fanOutEdit(ctx, m, 0, m.SenderID, nil)
-}
-
-// syncMirrorContent — содержимое поста канала изменилось ВНЕ транзакции
-// правки (догоняющее превью ссылки поста — P1, Ф-5 НО-5): своя транзакция
-// mirrorSync и публикация. Нет зеркала — no-op; сбой — best-effort (зеркало
-// догонит следующая правка поста).
-func (i *Interactor) syncMirrorContent(ctx context.Context, post domain.Message, edited bool) {
-	var d *editDelivery
-	if err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		var e error
-		d, e = i.mirrorSync(ctx, post, edited)
-		return e
-	}); err != nil {
-		return
-	}
-	i.publishEdit(ctx, d)
 }
 
 // canEditMessage — серверный порт tweb appMessagesManager.canEditMessage

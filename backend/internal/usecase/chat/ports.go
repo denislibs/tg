@@ -480,6 +480,12 @@ type MessageRepo interface {
 	// SetWebPage пишет серверное превью ссылки (messages.web_page) отдельным
 	// UPDATE после коммита отправки (Insert превью не несёт — оно догоняющее).
 	SetWebPage(ctx context.Context, msgID int64, wp *domain.WebPagePreview) error
+	// SetWebPageIfEdited — запись превью, только если строка не правилась с
+	// запуска сборки (edited_at совпадает; nil — не правилась). false — строка
+	// ушла вперёд или удалена: поздняя сборка не перезаписывает новую правку.
+	SetWebPageIfEdited(ctx context.Context, msgID int64, wp *domain.WebPagePreview, editedAt *time.Time) (bool, error)
+	// SetInvertMedia ставит флаг «медиа над текстом» (messages.invert_media).
+	SetInvertMedia(ctx context.Context, msgID int64, on bool) error
 	// SetFactCheck пишет/снимает «проверку фактов» (messages.factcheck) отдельным
 	// UPDATE; fc==nil снимает проверку. Возвращает обновлённую строку.
 	SetFactCheck(ctx context.Context, msgID int64, fc *domain.FactCheck) (domain.Message, error)
@@ -515,6 +521,9 @@ type BotHTTP interface {
 	PostWebhook(ctx context.Context, url string, body []byte)
 	// FetchURL качает файл по URL с лимитом размера; возвращает байты + mime.
 	FetchURL(ctx context.Context, url string, maxBytes int64) (data []byte, mime string, err error)
+	// FetchPrefix — первые maxBytes файла (больше — обрезается без ошибки):
+	// заголовок картинки ради размера (has_large_media плашки превью).
+	FetchPrefix(ctx context.Context, url string, maxBytes int64) (data []byte, mime string, err error)
 }
 
 type UpdateRepo interface {
@@ -807,6 +816,10 @@ type SendInput struct {
 	// сообщение, и только после всех гейтов (подарок: списание звёзд, выдача,
 	// запись в журнал). Может дописать in (GiftID). Ставится внутри пакета.
 	prepare func(ctx context.Context, in *SendInput) error
+	// WebPage — превью ссылки по выбору отправителя: no_webpage, invert_media,
+	// inputMediaWebPage (tweb messages.sendMessage/sendMedia,
+	// appMessagesManager.ts:2733-2753). Нулевое — превью первой ссылки текста.
+	WebPage domain.WebPageInput
 	// fromSchedule — отправка отложенного сообщения по расписанию: черновик
 	// чата она не снимает (у оригинала его снимает само планирование —
 	// clear_draft в scheduleMessage, а к моменту отправки в поле уже другой
@@ -959,6 +972,14 @@ type ScheduledRepo interface {
 	Update(ctx context.Context, m domain.ScheduledMessage, oldAt time.Time, oldWhenOnline bool) error
 	// SetWebPage пишет превью ссылки отложенного (P1); nil — снять.
 	SetWebPage(ctx context.Context, id int64, wp *domain.WebPagePreview) error
+	// SetWebPageIfSame — догоняющее превью отложенного (P1): пишет wp, только
+	// если строка стоит вне аренды и всё ещё с тем текстом, сущностями и
+	// решением о превью (params.web_page), по которым карточку собирали.
+	// ok=false — строку правили, публикуют или сняли: карточка устарела.
+	SetWebPageIfSame(ctx context.Context, id int64, wp *domain.WebPagePreview, text string, entities domain.MessageEntities, choice *domain.WebPageInput) (bool, error)
+	// SetWebPageChoice переписывает в снимке решение о превью (params.web_page;
+	// nil — убрать) — правка отложенного с no_webpage/invert_media/media.
+	SetWebPageChoice(ctx context.Context, id int64, choice *domain.WebPageInput) error
 }
 
 // ScheduledWait — ожидание «когда в сети»: чат, автор и собеседник лички.

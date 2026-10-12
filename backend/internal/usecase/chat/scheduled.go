@@ -66,7 +66,18 @@ func scheduledParamsOf(in SendInput) domain.ScheduledParams {
 		ContactUserID: in.ContactUserID,
 		Silent:        in.Silent, Effect: in.Effect, PaidMediaPrice: in.PaidMediaPrice,
 		MediaSpoiler: in.MediaSpoiler, SendAsChatID: in.SendAsChatID,
+		WebPage: webPageInputPtr(in.WebPage),
 	}
+}
+
+// webPageInputPtr — решение о превью в снимок, нормализованное: ложные
+// pFlags отброшены (как и при JSON-круге снимка), нулевое не хранится.
+func webPageInputPtr(w domain.WebPageInput) *domain.WebPageInput {
+	w = w.Normalized()
+	if w == (domain.WebPageInput{}) {
+		return nil
+	}
+	return &w
 }
 
 // sendInputOf — отправка, которую публикует строка очереди.
@@ -84,6 +95,9 @@ func sendInputOf(m domain.ScheduledMessage) SendInput {
 		Silent:        p.Silent, Effect: p.Effect, PaidMediaPrice: p.PaidMediaPrice,
 		MediaSpoiler: p.MediaSpoiler, SendAsChatID: p.SendAsChatID,
 		ScheduleRepeatPeriod: m.RepeatPeriod,
+	}
+	if p.WebPage != nil {
+		in.WebPage = *p.WebPage
 	}
 	if m.ClientMsgID != nil {
 		in.ClientMsgID = *m.ClientMsgID
@@ -197,6 +211,7 @@ func (i *Interactor) enqueueScheduled(ctx context.Context, in SendInput) (domain
 	}
 	if created {
 		i.clearDraftAfterSend(ctx, in.SenderID, in.ChatID)
+		i.startScheduledWebPreview(stored[0])
 	}
 	return stored[0].Message(), nil
 }
@@ -672,6 +687,11 @@ type EditScheduledInput struct {
 	// там, где его выбирали (contextMenu.ts:981, «Изменить время»); правка
 	// текста из поля ввода его не несёт, и снимать повтор она не должна.
 	ScheduleRepeatPeriod *int
+	// WebPage — решение о превью (no_webpage, invert_media, inputMediaWebPage):
+	// tweb шлёт их в messages.editMessage и с schedule_date
+	// (appMessagesManager.ts:2207-2220). nil — не передано, решение снимка не
+	// меняется (внутренние вызовы).
+	WebPage *domain.WebPageInput
 }
 
 // EditScheduled правит своё отложенное: текст и разметку, время, переход в
@@ -712,7 +732,8 @@ func (i *Interactor) EditScheduled(ctx context.Context, in EditScheduledInput) (
 		return nil, err
 	}
 	timeChanged := whenOnline != m.WhenOnline || (!whenOnline && !sendAt.Equal(m.SendAt)) || repeat != m.RepeatPeriod
-	if !textChanged && !timeChanged {
+	wp := i.scheduledEditWebPage(m, in, entities, textChanged)
+	if !textChanged && !timeChanged && !wp.choiceChanged {
 		return nil, domain.ErrMessageNotModified
 	}
 	group := []domain.ScheduledMessage{m}
@@ -760,6 +781,12 @@ func (i *Interactor) EditScheduled(ctx context.Context, in EditScheduledInput) (
 			if e := i.scheduled.Update(ctx, row, oldAt, oldWO); e != nil {
 				return nil, e
 			}
+			if row.ID == m.ID {
+				if e := i.applyScheduledEditWebPage(ctx, &row, wp); e != nil {
+					return nil, e
+				}
+				m = row
+			}
 			edited = append(edited, row)
 		}
 		frames, updates, e := i.scheduledNewFrames(ctx, edited)
@@ -768,6 +795,11 @@ func (i *Interactor) EditScheduled(ctx context.Context, in EditScheduledInput) (
 	})
 	if err != nil {
 		return nil, err
+	}
+	// Карточки нет, а ссылка есть (её сменили или добавили) — догоняющая
+	// сборка, как у правки сообщения (rebuildWebPreviewOnEdit).
+	if wp.rebuild {
+		i.startScheduledWebPreview(m)
 	}
 	return out, nil
 }

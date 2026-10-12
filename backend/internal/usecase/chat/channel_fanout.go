@@ -22,7 +22,8 @@ import (
 //   - непрочитанное — на чтении (postgres dialogUnreadCount), поэтому писать
 //     нечего, сбрасывается только снимок списка чатов подписчиков;
 //   - пуш — батчем по подписчикам (PushNotifier.NotifyChannelPost);
-//   - черновик автора и превью ссылки — как у обычной отправки.
+//   - черновик автора — как у обычной отправки; превью ссылки поста стартует
+//     из Send той же строкой, что у любого сообщения (startSendWebPreview).
 
 // channelPostOpts — чем пост отличается от других путей публикации.
 type channelPostOpts struct {
@@ -31,8 +32,6 @@ type channelPostOpts struct {
 	// clearDraft — отправка снимает черновик автора (Telegram-семантика); у
 	// пересылки и служебки черновик не трогается.
 	clearDraft bool
-	// preview — строить превью первой ссылки (обычный текстовый пост).
-	preview bool
 }
 
 // appendChannelUpdate — запись в журнал канала внутри транзакции вызывающего
@@ -94,11 +93,6 @@ func (i *Interactor) deliverChannelPost(ctx context.Context, msg domain.Message,
 			i.notifyChannelPost(ctx, msg, members)
 		}
 	})
-	if opt.preview && i.preview != nil && msg.Type == "text" {
-		if u := firstURL(msg.Text, msg.Entities); u != "" {
-			go i.attachWebPreview(msg, u, nil)
-		}
-	}
 }
 
 // goBG — фоновый хвост запроса: свой контекст (запрос к этому моменту может

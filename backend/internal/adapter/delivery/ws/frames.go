@@ -56,6 +56,9 @@ type sendMessageData struct {
 	MediaSpoiler bool `json:"media_spoiler"`
 	// SendAsPeerID — отправка от имени канала/группы (Telegram send_as); nil — от себя.
 	SendAsPeerID *domain.PeerID `json:"send_as_peer_id"`
+	// no_webpage / invert_media / media:inputMediaWebPage — превью ссылки
+	// (TL messages.sendMessage/sendMedia).
+	domain.WebPageInput
 	// ScheduleDate — отложенная отправка (schema schedule_date, unix-секунды;
 	// 0x7FFFFFFE — «когда будет в сети»), ScheduleRepeatPeriod — её повтор
 	// (tweb appMessagesManager.ts:2741-2742).

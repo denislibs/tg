@@ -481,6 +481,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 			PaidMediaPrice: d.PaidMediaPrice,
 			MediaSpoiler:   d.MediaSpoiler,
 			SendAsChatID:   sendAsChatID(d.SendAsPeerID),
+			WebPage:        d.WebPageInput,
 			ScheduleDate:   d.ScheduleDate, ScheduleRepeatPeriod: d.ScheduleRepeatPeriod,
 		})
 		if err != nil {

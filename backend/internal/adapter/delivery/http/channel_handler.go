@@ -77,12 +77,14 @@ func (h *ChannelHandler) Post(w http.ResponseWriter, r *http.Request) {
 		// отправки, tweb appMessagesManager.ts:2741-2742).
 		ScheduleDate         int64 `json:"schedule_date"`
 		ScheduleRepeatPeriod int   `json:"schedule_repeat_period"`
+		// no_webpage / invert_media / media:inputMediaWebPage — превью ссылки.
+		domain.WebPageInput
 	}
 	_ = json.NewDecoder(r.Body).Decode(&b)
 	if b.ScheduleDate != 0 {
 		msg, err := h.uc.Send(r.Context(), usecasechat.SendInput{
 			ChatID: chatID, SenderID: user.ID, Text: b.Text, Entities: b.Entities, ClientMsgID: b.ClientMsgID,
-			ScheduleDate: b.ScheduleDate, ScheduleRepeatPeriod: b.ScheduleRepeatPeriod,
+			ScheduleDate: b.ScheduleDate, ScheduleRepeatPeriod: b.ScheduleRepeatPeriod, WebPage: b.WebPageInput,
 		})
 		if err != nil {
 			writeSendError(w, err, "not found")
@@ -91,7 +93,7 @@ func (h *ChannelHandler) Post(w http.ResponseWriter, r *http.Request) {
 		writeScheduledSent(w, r, h.uc, chatID, []domain.Message{msg})
 		return
 	}
-	msg, err := h.uc.PostToChannel(r.Context(), chatID, user.ID, b.Text, b.Entities, b.ClientMsgID)
+	msg, err := h.uc.PostToChannel(r.Context(), chatID, user.ID, b.Text, b.Entities, b.ClientMsgID, b.WebPageInput)
 	if err != nil {
 		h.mapErr(w, err)
 		return
