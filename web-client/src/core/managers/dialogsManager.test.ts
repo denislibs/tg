@@ -1288,14 +1288,35 @@ describe('dialogsManager.getDialogReadState', () => {
     await mgr.fillMirror()
 
     expect(mgr.getReadMaxSeqIfUnread(5)).toBe(0)
-    expect(mgr.getDialogReadState(5)).toEqual({ readInboxMaxSeq: 40, unreadCount: 0 })
+    expect(mgr.getDialogReadState(5)).toEqual({ readInboxMaxSeq: 40, unreadCount: 0, readOutboxMaxSeq: 0 })
   })
 
   it('чат с непрочитанными — курсор ниже них и счётчик', async () => {
     const mgr = manager([makeDialog({ peerId: 5, topMessage: 42, readInboxMaxId: 40, unread: 2 })])
     await mgr.fillMirror()
 
-    expect(mgr.getDialogReadState(5)).toEqual({ readInboxMaxSeq: 40, unreadCount: 2 })
+    expect(mgr.getDialogReadState(5)).toEqual({ readInboxMaxSeq: 40, unreadCount: 2, readOutboxMaxSeq: 0 })
+  })
+
+  // tweb bubbles.ts:4858-4860, :11105, :1206: горизонт исходящих — у диалога
+  // `read_outbox_max_id`, у темы — темы, в «Избранном» своё прочитано всегда
+  it('горизонт исходящих: диалог, «Избранное», тема', async () => {
+    const topic = { read_inbox_max_id: 20, read_outbox_max_id: 18, unread_count: 0, top_message: 23 }
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [
+        makeDialog({ peerId: 5, topMessage: 42, readInboxMaxId: 42, readOutboxMaxId: 41 }),
+        makeDialog({ peerId: 7, topMessage: 30, readInboxMaxId: 30 }),
+      ],
+      loadState: async () => ({ pinnedOrders: {} }),
+      getMeId: () => 7,
+      getThreadReadState: (_peerId, threadId) => (threadId === 9 ? topic : undefined),
+    })
+    await mgr.fillMirror()
+    expect(mgr.getDialogReadState(5)?.readOutboxMaxSeq).toBe(41)
+    expect(mgr.getDialogReadState(7)?.readOutboxMaxSeq).toBe(Number.MAX_SAFE_INTEGER)
+    expect(mgr.getDialogReadState(5, 9)?.readOutboxMaxSeq).toBe(18)
   })
 
   it('диалога нет — курсор неизвестен (undefined), а не 0', async () => {
@@ -1320,7 +1341,7 @@ describe('dialogsManager.getDialogReadState', () => {
     expect(mgr.getDialogReadState(-5, 7)).toEqual({ readInboxMaxSeq: 20, unreadCount: 3 })
     expect(mgr.getReadMaxSeqIfUnread(-5, 7)).toBe(20)
     expect(mgr.getHistoryMaxSeq(-5, 7)).toBe(23)
-    expect(mgr.getDialogReadState(-5, 8)).toEqual({ readInboxMaxSeq: 90, unreadCount: 0 })
+    expect(mgr.getDialogReadState(-5, 8)).toEqual({ readInboxMaxSeq: 90, unreadCount: 0, readOutboxMaxSeq: 0 })
   })
 
   // tweb isMergedReadCursorThread (appMessagesManager.ts:5107-5113, :5122-5127):
@@ -1866,13 +1887,13 @@ describe('dialogsManager.applyThreadRead', () => {
   it('непрочитанные сообщения треда уходят со счётчика группы, группа получает горизонт треда', async () => {
     const { mgr } = await setup({ unread: 5, topMessage: 20, readInboxMaxId: 5 })
     mgr.applyThreadRead(G, id(7), id(12), false)
-    expect(mgr.getDialogReadState(G)).toEqual({ readInboxMaxSeq: id(12), unreadCount: 3 })
+    expect(mgr.getDialogReadState(G)).toEqual({ readInboxMaxSeq: id(12), unreadCount: 3, readOutboxMaxSeq: 0 })
   })
 
   it('прочитано до последнего сообщения группы — счётчик в ноль (:10939-10942)', async () => {
     const { mgr } = await setup({ unread: 5, topMessage: 13, readInboxMaxId: 5 })
     mgr.applyThreadRead(G, id(7), id(13), false)
-    expect(mgr.getDialogReadState(G)).toEqual({ readInboxMaxSeq: id(13), unreadCount: 0 })
+    expect(mgr.getDialogReadState(G)).toEqual({ readInboxMaxSeq: id(13), unreadCount: 0, readOutboxMaxSeq: 0 })
   })
 
   it('outbox — горизонт исходящих группы', async () => {
