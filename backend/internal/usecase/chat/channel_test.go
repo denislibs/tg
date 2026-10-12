@@ -346,7 +346,7 @@ func (c groupMembershipChats) MessageMentions(context.Context, int64) (map[int64
 func (c groupMembershipChats) ViewerMentions(context.Context, int64, []int64) (map[int64]bool, error) {
 	return nil, nil
 }
-func (c groupMembershipChats) MemberIDsByUsernames(context.Context, int64, []string) ([]int64, error) {
+func (c groupMembershipChats) ParticipantIDsByUsernames(context.Context, int64, []string) ([]int64, error) {
 	return nil, nil
 }
 func (c groupMembershipChats) ClearMentions(context.Context, int64, int64, int64) (int, error) {

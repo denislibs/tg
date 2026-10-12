@@ -308,6 +308,31 @@ func (f *fakeScheduled) SetWebPage(_ context.Context, id int64, wp *domain.WebPa
 	return nil
 }
 
+func (f *fakeScheduled) SetWebPageIfSame(_ context.Context, id int64, wp *domain.WebPagePreview, text string, entities domain.MessageEntities, choice *domain.WebPageInput) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cur, ok := f.rows[id]
+	if !ok || f.claimed(id) || cur.Text != text || !entitiesEqual(cur.Entities, entities) ||
+		!reflect.DeepEqual(cur.Params.WebPage, choice) {
+		return false, nil
+	}
+	cur.WebPage = wp
+	f.rows[id] = cur
+	return true, nil
+}
+
+func (f *fakeScheduled) SetWebPageChoice(_ context.Context, id int64, choice *domain.WebPageInput) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cur, ok := f.rows[id]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	cur.Params.WebPage = choice
+	f.rows[id] = cur
+	return nil
+}
+
 func (f *fakeScheduled) count() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -430,6 +455,19 @@ func fillNonZero(t *testing.T, f reflect.Value, name string) {
 			return
 		}
 		f.Set(reflect.MakeSlice(f.Type(), 1, 1))
+	case reflect.Struct:
+		for k := 0; k < f.NumField(); k++ {
+			if f.Type().Field(k).IsExported() {
+				fillNonZero(t, f.Field(k), name+"."+f.Type().Field(k).Name)
+			}
+		}
+	case reflect.Map:
+		m := reflect.MakeMap(f.Type())
+		key, val := reflect.New(f.Type().Key()).Elem(), reflect.New(f.Type().Elem()).Elem()
+		fillNonZero(t, key, name+"[k]")
+		fillNonZero(t, val, name+"[v]")
+		m.SetMapIndex(key, val)
+		f.Set(m)
 	case reflect.Interface:
 		// Action/ReplyMarkup — в списке исключений.
 	default:

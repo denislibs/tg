@@ -224,6 +224,37 @@ describe('pending: появление бабла', () => {
   })
 })
 
+describe('pending: номер плашки «Обсуждение началось» занят', () => {
+  // Пустой тред комментариев: в окне только корень, лента рисует за ним
+  // плашку с номером generateTempMessageId(корень). Оригинал заводит плашку
+  // тем же generateTempMessageId с записью в реестр tempMids
+  // (appMessagesManager.ts:8793, :6956-6965), поэтому первый комментарий
+  // встаёт ПОВЕРХ неё; без этого он получал номер плашки и не рисовался.
+  it('первый комментарий пустого треда не делит номер с плашкой', () => {
+    const { ctx, slices } = makeCtx()
+    const root = cid(10)
+    openWindow(slices, `1:${root}`, [root])
+    const p = newPendingMethods(ctx)
+
+    const msg = (p.beforeMessageSending(evt({ thread_root_id: root }))[0] as { msg: MessageReal }).msg
+
+    expect(msg.id).not.toBe(generateTempMessageId(root))
+    expect(msg.id).toBeGreaterThan(generateTempMessageId(root))
+    expect(isLocalMessageId(msg.id)).toBe(true)
+  })
+
+  it('тред с комментариями — номер поверх последнего, как раньше', () => {
+    const { ctx, slices } = makeCtx()
+    const root = cid(10)
+    openWindow(slices, `1:${root}`, [root, cid(12)])
+    const p = newPendingMethods(ctx)
+
+    const msg = (p.beforeMessageSending(evt({ thread_root_id: root }))[0] as { msg: MessageReal }).msg
+
+    expect(msg.id).toBe(generateTempMessageId(cid(12)))
+  })
+})
+
 describe('pending: подтверждение сервера', () => {
   it('ack переставляет номер и дату, сохраняя содержимое и random_id', () => {
     const { ctx, slices, msgsFor } = makeCtx()

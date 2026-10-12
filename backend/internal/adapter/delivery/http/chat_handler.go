@@ -408,6 +408,9 @@ type sendBody struct {
 	MediaSpoiler bool `json:"media_spoiler"`
 	// Отправка от имени канала/группы (Telegram send_as); nil — от себя.
 	SendAsPeerID *domain.PeerID `json:"send_as_peer_id"`
+	// no_webpage / invert_media / media:inputMediaWebPage — превью ссылки
+	// (TL messages.sendMessage/sendMedia).
+	domain.WebPageInput
 	// Отложенная отправка (schema schedule_date; 0x7FFFFFFE — «когда в сети»)
 	// и её повтор — поля отправки, как у оригинала (appMessagesManager.ts:2741-2742).
 	ScheduleDate         int64 `json:"schedule_date"`
@@ -465,6 +468,7 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		PaidMediaPrice: body.PaidMediaPrice,
 		MediaSpoiler:   body.MediaSpoiler,
 		SendAsChatID:   sendAsChatID(body.SendAsPeerID),
+		WebPage:        body.WebPageInput,
 		ScheduleDate:   body.ScheduleDate, ScheduleRepeatPeriod: body.ScheduleRepeatPeriod,
 	})
 	if err != nil {
@@ -728,6 +732,9 @@ func (h *ChatHandler) DeleteDialog(w http.ResponseWriter, r *http.Request) {
 type editBody struct {
 	Text     string                 `json:"text"`
 	Entities domain.MessageEntities `json:"entities"`
+	// no_webpage / invert_media / media:inputMediaWebPage — превью ссылки
+	// (TL messages.editMessage).
+	domain.WebPageInput
 	// schedule_date — правка ОТЛОЖЕННОГО (id — его ключ): текст, время,
 	// «когда в сети» (0x7FFFFFFE), повтор (tweb appMessagesManager.ts:2209-2218);
 	// без schedule_repeat_period повтор не меняется.
@@ -753,7 +760,7 @@ func (h *ChatHandler) EditMessage(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	msg, err := h.svc.EditMessage(r.Context(), chatID, msgID, h.meID(r), body.Text, body.Entities)
+	msg, err := h.svc.EditMessage(r.Context(), chatID, msgID, h.meID(r), body.Text, body.Entities, body.WebPageInput)
 	if errors.Is(err, domain.ErrForbidden) {
 		// tweb canEditMessage → сервер MESSAGE_EDIT_FORBIDDEN
 		writeError(w, http.StatusForbidden, "message edit forbidden")
@@ -1670,6 +1677,7 @@ func (h *ChatHandler) editScheduled(w http.ResponseWriter, r *http.Request, chat
 	updates, err := h.svc.EditScheduled(r.Context(), usecasechat.EditScheduledInput{
 		ChatID: chatID, ID: id, UserID: h.meID(r), Text: body.Text, Entities: body.Entities,
 		ScheduleDate: body.ScheduleDate, ScheduleRepeatPeriod: body.ScheduleRepeatPeriod,
+		WebPage: &body.WebPageInput,
 	})
 	switch {
 	case errors.Is(err, domain.ErrMessageNotModified):

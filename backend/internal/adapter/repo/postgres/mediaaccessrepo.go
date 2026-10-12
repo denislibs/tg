@@ -78,6 +78,11 @@ func (r *MediaAccessRepo) OwnerID(ctx context.Context, mediaID int64) (int64, er
 //     миграция 0092) сообщения, которое зритель видит в читаемом чате
 //     (messageVisibleTo: удалённое, скрытое у себя, очищенное и скрытая
 //     предыстория не качаются);
+//   - вложение или картинка превью СВОЕГО отложенного в читаемом чате
+//     (scheduled_messages.media_id / web_page_media_id): ленту отложенных
+//     видит только автор, а у отложенной пересылки и её карточки владелец
+//     файла — автор источника, и без этой ветки файл пропадал бы вместе с
+//     источником (находка 7 ревью S1);
 //   - медиа истории, которую зритель видит (storyVisibleTo — то же правило, что
 //     у ленты, просмотра и закреплённых профиля): живой либо закреплённой.
 //
@@ -98,6 +103,10 @@ func (r *MediaAccessRepo) CanAccess(ctx context.Context, userID, mediaID int64) 
 		   UNION ALL
 		   SELECT 1 FROM messages m
 		     WHERE m.web_page_media_id=$1 AND `+chatReadableBy("m.chat_id", "$2")+` AND `+messageVisibleTo("m", "$2")+`
+		   UNION ALL
+		   SELECT 1 FROM scheduled_messages sm
+		     WHERE (sm.media_id=$1 OR sm.web_page_media_id=$1) AND sm.sender_id=$2
+		       AND `+chatReadableBy("sm.chat_id", "$2")+`
 		   UNION ALL
 		   SELECT 1 FROM stories s
 		     WHERE s.media_id=$1 AND (s.expires_at > now() OR s.pinned)

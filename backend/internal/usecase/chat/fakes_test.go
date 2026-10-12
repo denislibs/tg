@@ -638,7 +638,7 @@ func (r fakeChats) AddMention(_ context.Context, chatID, msgID, seq, userID int6
 	return nil
 }
 
-func (r fakeChats) MemberIDsByUsernames(_ context.Context, chatID int64, usernames []string) ([]int64, error) {
+func (r fakeChats) ParticipantIDsByUsernames(_ context.Context, chatID int64, usernames []string) ([]int64, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	var ids []int64
@@ -961,6 +961,40 @@ func (r fakeMsgs) SetWebPage(_ context.Context, msgID int64, wp *domain.WebPageP
 		for idx, m := range msgs {
 			if m.ID == msgID && !m.Deleted {
 				r.s.messages[cid][idx].WebPage = wp
+				return nil
+			}
+		}
+	}
+	return nil
+}
+
+func (r fakeMsgs) SetWebPageIfEdited(_ context.Context, msgID int64, wp *domain.WebPagePreview, editedAt *time.Time) (bool, error) {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for cid, msgs := range r.s.messages {
+		for idx, m := range msgs {
+			if m.ID != msgID || m.Deleted {
+				continue
+			}
+			same := (m.EditedAt == nil && editedAt == nil) ||
+				(m.EditedAt != nil && editedAt != nil && m.EditedAt.Equal(*editedAt))
+			if !same {
+				return false, nil
+			}
+			r.s.messages[cid][idx].WebPage = wp
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (r fakeMsgs) SetInvertMedia(_ context.Context, msgID int64, on bool) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	for cid, msgs := range r.s.messages {
+		for idx, m := range msgs {
+			if m.ID == msgID && !m.Deleted {
+				r.s.messages[cid][idx].InvertMedia = on
 				return nil
 			}
 		}
@@ -2416,6 +2450,7 @@ type fakeNotifier struct {
 	recipients []int64
 	titles     []string // заголовки пушей поста канала (NotifyChannelPost)
 	mentioned  map[int64]bool
+	guests     map[int64]bool // кому ушёл NotifyGuest
 }
 
 func (n *fakeNotifier) NotifyNewMessage(_ context.Context, recipientID, _, _, _ int64, _ string, _ domain.PeerID, mentioned bool, _ int64) {
@@ -2428,6 +2463,18 @@ func (n *fakeNotifier) NotifyNewMessage(_ context.Context, recipientID, _, _, _ 
 		}
 		n.mentioned[recipientID] = true
 	}
+}
+
+// NotifyGuest — пуш гостю обсуждения; в фейке — как упоминание, плюс
+// отметка guests (путь без гейта присутствия).
+func (n *fakeNotifier) NotifyGuest(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, topicRootID int64) {
+	n.NotifyNewMessage(ctx, recipientID, chatID, seq, senderID, text, peer, true, topicRootID)
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.guests == nil {
+		n.guests = map[int64]bool{}
+	}
+	n.guests[recipientID] = true
 }
 
 func (n *fakeNotifier) NotifyChannelPost(_ context.Context, _ int64, recipients []int64, _ int64, title, _ string, _ domain.PeerID) {

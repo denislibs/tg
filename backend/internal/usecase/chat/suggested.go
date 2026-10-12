@@ -254,11 +254,13 @@ func (i *Interactor) publishApprovedPost(ctx context.Context, sp domain.Suggeste
 	if err != nil {
 		return domain.Message{}, err
 	}
-	i.deliverChannelPost(ctx, msg, i.channelPostPayload(ctx, msg), pts, channelPostOpts{preview: msgType == "text"})
+	i.deliverChannelPost(ctx, msg, i.channelPostPayload(ctx, msg), pts, channelPostOpts{})
 	if mirrorDeliv != nil {
 		i.publishMessageDelivery(ctx, mirrorDeliv.msg, mirrorDeliv.msg.SenderID,
 			mirrorDeliv.recipients, mirrorDeliv.ptsByUser, mirrorDeliv.mentions)
 	}
+	// Превью — после доставки зеркала: его карточка догоняет и зеркало.
+	i.startWebPreview(msg, domain.WebPageInput{}, nil)
 	return msg, nil
 }
 

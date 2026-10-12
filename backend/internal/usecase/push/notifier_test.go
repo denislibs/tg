@@ -206,6 +206,24 @@ func TestNotifier_SkipsWhenOnline(t *testing.T) {
 	}
 }
 
+// Гость обсуждения (Ф-5 В-2): живого кадра у него нет — пуш об ответе и
+// упоминании уходит и при открытом сокете; настройки уведомлений действуют
+// (как у упоминания).
+func TestNotifier_GuestPushedEvenOnline(t *testing.T) {
+	q := &fakeQueue{}
+	nf := &fakeNotify{muted: map[int64]bool{8: true}}
+	n := NewNotifier(&fakeOnline{online: map[int64]bool{7: true, 8: true}}, nf, q)
+
+	n.NotifyGuest(context.Background(), 7, 3, 5, 9, "reply", -3, 11)
+	if len(q.jobs) != 1 || q.jobs[0].Job.RecipientID != 7 {
+		t.Fatalf("онлайн-гостю нет пуша: %+v", q.jobs)
+	}
+	n.NotifyGuest(context.Background(), 8, 3, 6, 9, "reply", -3, 11)
+	if len(q.jobs) != 1 {
+		t.Fatalf("гостю с отказом настроек пуш ушёл: %+v", q.jobs)
+	}
+}
+
 func TestNotifier_SkipsWhenMuted(t *testing.T) {
 	q := &fakeQueue{}
 	n := NewNotifier(&fakeOnline{online: map[int64]bool{}}, &fakeNotify{muted: map[int64]bool{7: true}}, q)

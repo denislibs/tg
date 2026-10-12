@@ -89,10 +89,12 @@ type ChatRepo interface {
 	// возвращает оставшееся число. NextMention — НОМЕР ближайшего
 	// непрочитанного упоминания с seq>afterSeq (domain.ErrNotFound, если нет).
 	AddMention(ctx context.Context, chatID, msgID, seq, userID int64) error
-	// MemberIDsByUsernames — участники чата с этими именами (@username, без
-	// учёта регистра). Имя чата/канала из общего пространства имён (миграция
-	// 0134) пользователем не резолвится, не-участник в ответ не попадает.
-	MemberIDsByUsernames(ctx context.Context, chatID int64, usernames []string) ([]int64, error)
+	// ParticipantIDsByUsernames — пользователи с этими именами (@username, без
+	// учёта регистра), которые в чате участвуют: состоят в нём или писали в
+	// него (гость обсуждения комментирует без вступления — его тоже
+	// упоминают). Имя чата/канала из общего пространства имён (миграция 0134)
+	// пользователем не резолвится, посторонний в ответ не попадает.
+	ParticipantIDsByUsernames(ctx context.Context, chatID int64, usernames []string) ([]int64, error)
 	// Строка упоминания живёт и после прочтения (message.mentioned), прочтение
 	// лишь гасит её «непрочитано» (media_unread у адресата). ReadMention —
 	// прочтение одного упоминания (readMessageContents), true — было
@@ -224,6 +226,8 @@ type GroupRepo interface {
 	// SetSignatures toggles channel post signatures (Telegram
 	// channels.toggleSignatures). profiles is forced off when signatures is off.
 	SetSignatures(ctx context.Context, chatID int64, signatures, profiles bool) error
+	// SetJoinToSend — chats.join_to_send (channels.toggleJoinToSend).
+	SetJoinToSend(ctx context.Context, chatID int64, on bool) error
 	// IsDiscussionGroup — chatID является discussion-группой какого-то канала
 	// (тред комментариев там читается и без членства, как ListComments).
 	IsDiscussionGroup(ctx context.Context, chatID int64) (bool, error)
@@ -476,6 +480,12 @@ type MessageRepo interface {
 	// SetWebPage пишет серверное превью ссылки (messages.web_page) отдельным
 	// UPDATE после коммита отправки (Insert превью не несёт — оно догоняющее).
 	SetWebPage(ctx context.Context, msgID int64, wp *domain.WebPagePreview) error
+	// SetWebPageIfEdited — запись превью, только если строка не правилась с
+	// запуска сборки (edited_at совпадает; nil — не правилась). false — строка
+	// ушла вперёд или удалена: поздняя сборка не перезаписывает новую правку.
+	SetWebPageIfEdited(ctx context.Context, msgID int64, wp *domain.WebPagePreview, editedAt *time.Time) (bool, error)
+	// SetInvertMedia ставит флаг «медиа над текстом» (messages.invert_media).
+	SetInvertMedia(ctx context.Context, msgID int64, on bool) error
 	// SetFactCheck пишет/снимает «проверку фактов» (messages.factcheck) отдельным
 	// UPDATE; fc==nil снимает проверку. Возвращает обновлённую строку.
 	SetFactCheck(ctx context.Context, msgID int64, fc *domain.FactCheck) (domain.Message, error)
@@ -511,6 +521,9 @@ type BotHTTP interface {
 	PostWebhook(ctx context.Context, url string, body []byte)
 	// FetchURL качает файл по URL с лимитом размера; возвращает байты + mime.
 	FetchURL(ctx context.Context, url string, maxBytes int64) (data []byte, mime string, err error)
+	// FetchPrefix — первые maxBytes файла (больше — обрезается без ошибки):
+	// заголовок картинки ради размера (has_large_media плашки превью).
+	FetchPrefix(ctx context.Context, url string, maxBytes int64) (data []byte, mime string, err error)
 }
 
 type UpdateRepo interface {
@@ -699,6 +712,10 @@ type PushNotifier interface {
 	// это пробивает мьют чата, типа и темы, как в Telegram. topicRootID —
 	// корень темы (ключ topic_user_state, 0 — вне темы): мьют темы гасит пуш.
 	NotifyNewMessage(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, mentioned bool, topicRootID int64)
+	// NotifyGuest — пуш гостю обсуждения (не участнику) об ответе на его
+	// комментарий или упоминании: без гейта присутствия — живого кадра у
+	// гостя нет (группы у него нет, чата «Ответы» тоже).
+	NotifyGuest(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, topicRootID int64)
 	// NotifyChannelPost — пуш о посте broadcast-канала его подписчикам
 	// (recipients, без автора) одним батчем: кто онлайн и кому канал не
 	// замьючен, нотификатор решает пачкой. title — название канала (автор поста
@@ -799,6 +816,10 @@ type SendInput struct {
 	// сообщение, и только после всех гейтов (подарок: списание звёзд, выдача,
 	// запись в журнал). Может дописать in (GiftID). Ставится внутри пакета.
 	prepare func(ctx context.Context, in *SendInput) error
+	// WebPage — превью ссылки по выбору отправителя: no_webpage, invert_media,
+	// inputMediaWebPage (tweb messages.sendMessage/sendMedia,
+	// appMessagesManager.ts:2733-2753). Нулевое — превью первой ссылки текста.
+	WebPage domain.WebPageInput
 	// fromSchedule — отправка отложенного сообщения по расписанию: черновик
 	// чата она не снимает (у оригинала его снимает само планирование —
 	// clear_draft в scheduleMessage, а к моменту отправки в поле уже другой
@@ -875,6 +896,12 @@ type TopicRepo interface {
 	ThreadHorizon(ctx context.Context, chatID, rootMsgID, userID int64) (int64, error)
 	// ThreadHorizons — горизонты треда у всех читающих (участники и гости треда).
 	ThreadHorizons(ctx context.Context, chatID, rootMsgID int64) (map[int64]int64, error)
+	// ThreadReadOutbox — горизонт ✓✓ треда для зрителя: MAX горизонтов треда
+	// остальных читающих (read_outbox_max_id discussionMessage).
+	ThreadReadOutbox(ctx context.Context, chatID, rootMsgID, viewerID int64) (int64, error)
+	// ThreadReadStates — последний видимый номер и горизонт зрителя по тредам
+	// roots одним запросом (messageReplies.max_id/read_max_id).
+	ThreadReadStates(ctx context.Context, chatID, viewerID int64, roots []int64) (map[int64]domain.ThreadReadState, error)
 	// ClearThreadMentions снимает упоминания треда root (General — страж) до
 	// upToSeq и пересчитывает «@» чата.
 	ClearThreadMentions(ctx context.Context, chatID, userID, root, upToSeq int64) (int, error)
@@ -954,6 +981,14 @@ type ScheduledRepo interface {
 	Update(ctx context.Context, m domain.ScheduledMessage, oldAt time.Time, oldWhenOnline bool) error
 	// SetWebPage пишет превью ссылки отложенного (P1); nil — снять.
 	SetWebPage(ctx context.Context, id int64, wp *domain.WebPagePreview) error
+	// SetWebPageIfSame — догоняющее превью отложенного (P1): пишет wp, только
+	// если строка стоит вне аренды и всё ещё с тем текстом, сущностями и
+	// решением о превью (params.web_page), по которым карточку собирали.
+	// ok=false — строку правили, публикуют или сняли: карточка устарела.
+	SetWebPageIfSame(ctx context.Context, id int64, wp *domain.WebPagePreview, text string, entities domain.MessageEntities, choice *domain.WebPageInput) (bool, error)
+	// SetWebPageChoice переписывает в снимке решение о превью (params.web_page;
+	// nil — убрать) — правка отложенного с no_webpage/invert_media/media.
+	SetWebPageChoice(ctx context.Context, id int64, choice *domain.WebPageInput) error
 }
 
 // ScheduledWait — ожидание «когда в сети»: чат, автор и собеседник лички.

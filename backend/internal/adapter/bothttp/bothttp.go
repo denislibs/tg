@@ -47,6 +47,16 @@ func (c *Client) PostWebhook(ctx context.Context, url string, body []byte) {
 // FetchURL качает файл по URL с лимитом размера; mime берётся из заголовка ответа
 // либо определяется по содержимому. Ошибки — типизированные chat-ошибки.
 func (c *Client) FetchURL(ctx context.Context, url string, maxBytes int64) ([]byte, string, error) {
+	return c.fetch(ctx, url, maxBytes, false)
+}
+
+// FetchPrefix — первые maxBytes файла; длиннее — обрезается без ошибки
+// (размер картинки читается из её заголовка).
+func (c *Client) FetchPrefix(ctx context.Context, url string, maxBytes int64) ([]byte, string, error) {
+	return c.fetch(ctx, url, maxBytes, true)
+}
+
+func (c *Client) fetch(ctx context.Context, url string, maxBytes int64, prefix bool) ([]byte, string, error) {
 	if _, err := usecaseiv.ParseTargetURL(url); err != nil {
 		return nil, "", domain.ErrForbidden
 	}
@@ -67,7 +77,10 @@ func (c *Client) FetchURL(ctx context.Context, url string, maxBytes int64) ([]by
 		return nil, "", err
 	}
 	if int64(len(data)) > maxBytes {
-		return nil, "", domain.ErrTooLong
+		if !prefix {
+			return nil, "", domain.ErrTooLong
+		}
+		data = data[:maxBytes]
 	}
 	mime := resp.Header.Get("Content-Type")
 	if idx := strings.IndexByte(mime, ';'); idx >= 0 {

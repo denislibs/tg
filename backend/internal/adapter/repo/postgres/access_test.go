@@ -199,6 +199,29 @@ func TestMediaAccessRepo_CanAccessFollowsSource(t *testing.T) {
 		t.Fatal("медиа удалённого у всех сообщения скачивается (A5-39)")
 	}
 
+	// Отложенное (находка 7 ревью S1): вложение и картинку превью своего
+	// отложенного автор качает, даже если файл чужой (отложенная пересылка) и
+	// источника уже нет; собеседнику отложенное не видно.
+	sched := NewScheduledRepo(pool)
+	fwdPhoto := seedMedia(t, pool, stranger, "sp1")
+	wpPhoto := seedMedia(t, pool, stranger, "sp2")
+	row, _, err := sched.Create(ctx, domain.ScheduledMessage{ChatID: chatID, SenderID: owner, Type: "photo",
+		MediaID: &fwdPhoto, SendAt: time.Now().Add(time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sched.SetWebPage(ctx, row.ID, &domain.WebPagePreview{URL: "https://a.example", PhotoID: wpPhoto}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int64{fwdPhoto, wpPhoto} {
+		if ok, err := access.CanAccess(ctx, owner, id); err != nil || !ok {
+			t.Fatalf("автор не качает медиа своего отложенного %d: %v", id, err)
+		}
+		if ok, _ := access.CanAccess(ctx, bob, id); ok {
+			t.Fatalf("собеседник качает медиа чужого отложенного %d", id)
+		}
+	}
+
 	// Публичный канал: медиа поста качает и не вступивший.
 	ch := createGroupLike(t, pool, "channel", owner)
 	mustExec(t, pool, `UPDATE chats SET is_public = true WHERE id = $1`, ch)

@@ -199,6 +199,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/chats/{peerID}/message_by_date", ch.MessageByDate)
 		pr.Get("/chats/{peerID}/calendar", ch.Calendar)
 		pr.Post("/translate", ch.Translate)
+		pr.Get("/webpage", ch.GetWebPage) // messages.getWebPage (плашка превью ссылки)
 		pr.Post("/chats/{peerID}/polls", ch.SendPoll)
 		pr.Get("/chats/{peerID}/group_call", ch.GroupCallParticipants)
 		// RTMP-трансляции (Telegram livestream): старт/стоп — только админ,
@@ -363,6 +364,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Delete("/channels/{peerID}/discussion", chh.UnlinkDiscussion)
 		pr.Get("/channels/{peerID}/discussion_candidates", chh.DiscussionCandidates)
 		pr.Put("/channels/{peerID}/sign_messages", chh.SetSignatures)
+		pr.Put("/channels/{peerID}/join_to_send", chh.ToggleJoinToSend) // channels.toggleJoinToSend
 		pr.Post("/channels/{peerID}/posts/{postSeq}/comments", chh.PostComment)
 		pr.Get("/channels/{peerID}/posts/{postSeq}/comments", chh.ListComments)
 		pr.Get("/channels/{peerID}/posts/{postSeq}/discussion", chh.GetDiscussionMessage)

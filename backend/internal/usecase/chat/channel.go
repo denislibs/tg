@@ -44,9 +44,11 @@ func (i *Interactor) CreateChannel(ctx context.Context, creatorID int64, title, 
 //
 // Ручка остаётся как имя действия «опубликовать в канал» — у неё своя проверка
 // на границе HTTP и своя форма ответа.
-func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64, text string, entities domain.MessageEntities, clientMsgID string) (domain.Message, error) {
+func (i *Interactor) PostToChannel(ctx context.Context, channelID, actorID int64, text string, entities domain.MessageEntities, clientMsgID string, wp ...domain.WebPageInput) (domain.Message, error) {
+	in, _ := webPageInputOf(wp)
 	return i.Send(ctx, SendInput{
 		ChatID: channelID, SenderID: actorID, Text: text, Entities: entities, ClientMsgID: clientMsgID,
+		WebPage: in,
 	})
 }
 
