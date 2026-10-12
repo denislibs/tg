@@ -1,6 +1,9 @@
 package domain
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 // Превью ссылки в форме оригинала — конструкторы схемы TL. Правила фазы 0 — в
 // шапке mtmedia.go.
@@ -241,6 +244,33 @@ func (w WebPageInput) Normalized() WebPageInput {
 	}
 	w.Media = &m
 	return w
+}
+
+// ForDraft — решение о превью, каким его хранит черновик: media только
+// inputMediaWebPage с http(s)-ссылкой не длиннее maxURL рун и только флагами
+// конструктора (force_large_media, force_small_media, optional); иное
+// media — черновик с вложением, его у нас нет, — снимается.
+func (w WebPageInput) ForDraft(maxURL int) WebPageInput {
+	w = w.Normalized()
+	if w.Media == nil {
+		return w
+	}
+	u := w.MediaURL()
+	if u == "" || utf8.RuneCountInString(u) > maxURL {
+		w.Media = nil
+		return w
+	}
+	m := InputMediaWebPage{Underscore: InputMediaWebPageTag, URL: u}
+	for _, k := range []string{"force_large_media", "force_small_media", "optional"} {
+		setPFlag(&m.PFlags, k, w.Media.PFlags[k])
+	}
+	w.Media = &m
+	return w
+}
+
+// IsZero — решения о превью нет.
+func (w WebPageInput) IsZero() bool {
+	return !w.NoWebpage && !w.InvertMedia && w.Media == nil
 }
 
 // MediaURL — ссылка из inputMediaWebPage, если она http/https; иначе "".

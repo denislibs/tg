@@ -2631,7 +2631,8 @@ func (h *ChatHandler) MyDrafts(w http.ResponseWriter, r *http.Request) {
 
 // SaveDraft — PUT /chats/{chatID}/draft — messages.saveDraft в форме TL:
 // {message, entities?, reply_to?: inputReplyToMessage{reply_to_msg_id,
-// top_msg_id?}} → Bool (layer.d.ts:24059). Тред черновика едет в reply_to
+// top_msg_id?}, no_webpage?, invert_media?, media?: inputMediaWebPage} → Bool
+// (layer.d.ts:24059). Тред черновика едет в reply_to
 // (tweb appDraftsManager.ts:296-303), пустой message без ответа снимает
 // черновик треда. Сам черновик уезжает своим устройствам кадром
 // updateDraftMessage (и этому — тоже): tweb ответ saveDraft не читает.
@@ -2647,12 +2648,15 @@ func (h *ChatHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 			ReplyToMsgID *int64 `json:"reply_to_msg_id"`
 			TopMsgID     *int64 `json:"top_msg_id"`
 		} `json:"reply_to"`
+		// no_webpage / invert_media / media:inputMediaWebPage — превью
+		// ссылки черновика, плоско, как в TL (tweb appDraftsManager.ts:281-291).
+		domain.WebPageInput
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	in := usecasechat.DraftInput{Message: b.Message, Entities: b.Entities}
+	in := usecasechat.DraftInput{Message: b.Message, Entities: b.Entities, WebPage: b.WebPageInput}
 	if b.ReplyTo != nil {
 		in.ReplyToMsgID, in.TopMsgID = b.ReplyTo.ReplyToMsgID, b.ReplyTo.TopMsgID
 	}
