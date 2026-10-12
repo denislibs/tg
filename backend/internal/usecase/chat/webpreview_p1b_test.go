@@ -131,7 +131,7 @@ func TestWebPageCache_KeyAndLeaks(t *testing.T) {
 	if wp := e.in.GetWebPage(ctx, raw); wp == nil || wp.ImageURL != "" {
 		t.Fatalf("плашка из кэша = %+v", wp)
 	}
-	page := e.in.webPages.page("https://a.example/%D0%BF%D1%83%D1%82%D1%8C")
+	page := e.in.webPages.page(ctx, "https://a.example/%D0%BF%D1%83%D1%82%D1%8C")
 	if page == nil || page.ImageURL == "" || page.HasLargeMedia {
 		t.Fatalf("страница для сборки = %+v; ждали адрес картинки и без has_large_media", page)
 	}
@@ -146,6 +146,121 @@ func TestGetWebPage_NoRetry(t *testing.T) {
 	e.prev.fail = 1
 	if wp := e.in.GetWebPage(context.Background(), "https://a.example/x"); wp != nil {
 		t.Fatalf("карточка = %+v", wp)
+	}
+	if n := len(e.prev.calls()); n != 1 {
+		t.Fatalf("загрузок %d; ждали 1", n)
+	}
+}
+
+// Отказ по существу (не HTML, нет заголовка, 4xx) не повторяется: повтор
+// его не исправит, а сайту — лишний запрос.
+func TestBuildWebPreview_PermanentFailureNotRetried(t *testing.T) {
+	old := pageRetryDelay
+	pageRetryDelay = time.Millisecond
+	defer func() { pageRetryDelay = old }()
+	e := newPreviewEnv(t)
+	e.prev.permanent = true
+	e.in.Send(context.Background(), SendInput{ChatID: e.chatID, SenderID: 1, Text: "https://a.example/file.pdf"})
+	e.in.bg.Wait()
+	if n := len(e.prev.calls()); n != 1 {
+		t.Fatalf("загрузок %d; ждали 1", n)
+	}
+}
+
+// Плашка того же адреса ещё грузится — сборка карточки ждёт её, а не грузит
+// медленный сайт вторым запросом.
+func TestBuildWebPreview_WaitsForPlaqueLoad(t *testing.T) {
+	e := newPreviewEnv(t)
+	ctx := context.Background()
+	const u = "https://slow.example/x"
+	release := e.prev.hold(u)
+	plaque := make(chan *domain.WebPagePreview)
+	go func() { plaque <- e.in.GetWebPage(ctx, u) }()
+	waitFor(t, func() bool { return len(e.prev.calls()) == 1 })
+	msg, _ := e.in.Send(ctx, SendInput{ChatID: e.chatID, SenderID: 1, Text: u})
+	close(release)
+	if wp := <-plaque; wp == nil {
+		t.Fatal("плашка без карточки")
+	}
+	e.in.bg.Wait()
+	if storedMsg(t, e.s, msg.ID).WebPage == nil {
+		t.Fatal("сообщение без карточки")
+	}
+	if n := len(e.prev.calls()); n != 1 {
+		t.Fatalf("загрузок %d; ждали 1 (сборка дождалась плашки)", n)
+	}
+}
+
+// photoSizesOf — ступени фото карточки в теле с message.media.
+func photoSizesOf(msg map[string]any) []any {
+	media, _ := msg["media"].(map[string]any)
+	page, _ := media["webpage"].(map[string]any)
+	photo, _ := page["photo"].(map[string]any)
+	sizes, _ := photo["sizes"].([]any)
+	return sizes
+}
+
+func hasSize(sizes []any, w, h float64) bool {
+	for _, z := range sizes {
+		if m, _ := z.(map[string]any); m["w"] == w && m["h"] == h {
+			return true
+		}
+	}
+	return false
+}
+
+// Размер фото — и в правке поста канала журналом канала, и в кадре
+// отложенного (оба пути гидрируют сообщение до обработки медиа).
+func TestWebPageFrame_PhotoSizeChannelAndScheduled(t *testing.T) {
+	t.Run("пост канала", func(t *testing.T) {
+		e := newChannelEnv(t)
+		e.i.SetLinkPreviewer(&urlPreviewer{imageURL: "https://cdn.example/og.png"})
+		e.i.SetBotHTTP(&fakeOutHTTP{data: pngOf(t, 800, 400), mime: "image/png"})
+		e.i.SetBotMedia(&fakeMediaStore{})
+		ctx := context.Background()
+		if _, err := e.i.Send(ctx, SendInput{ChatID: e.ch, SenderID: 7, Text: "https://a.example/x"}); err != nil {
+			t.Fatal(err)
+		}
+		e.i.bg.Wait()
+		log := e.channelLog()
+		d := bodyTag(t, log[len(log)-1].Payload)
+		m, _ := d["message"].(map[string]any)
+		if !hasSize(photoSizesOf(m), 800, 400) {
+			t.Fatalf("правка поста: ступени %v", photoSizesOf(m))
+		}
+	})
+	t.Run("отложенное", func(t *testing.T) {
+		in, s, _, prev, cid := scheduledPreviewEnv(t)
+		prev.imageURL = "https://cdn.example/og.png"
+		in.SetBotHTTP(&fakeOutHTTP{data: pngOf(t, 800, 400), mime: "image/png"})
+		in.SetBotMedia(&fakeMediaStore{})
+		if _, err := in.Send(context.Background(), SendInput{ChatID: cid, SenderID: 1, Text: "https://a.example/x", ScheduleDate: future()}); err != nil {
+			t.Fatal(err)
+		}
+		in.bg.Wait()
+		news := logOf(s, 1, scheduledNewFrame)
+		m, _ := news[len(news)-1]["message"].(map[string]any)
+		if !hasSize(photoSizesOf(m), 800, 400) {
+			t.Fatalf("кадр отложенного: ступени %v", photoSizesOf(m))
+		}
+	})
+}
+
+// Отправка после плашки с кириллицей в адресе: inputMediaWebPage.url — в
+// процентной кодировке (webPage.url, appMessagesManager.ts:4872), кэш
+// попадает, второй загрузки нет.
+func TestSend_EncodedMediaURLHitsPlaqueCache(t *testing.T) {
+	e := newPreviewEnv(t)
+	ctx := context.Background()
+	if e.in.GetWebPage(ctx, "https://a.example/путь") == nil {
+		t.Fatal("плашка без карточки")
+	}
+	enc := "https://a.example/%D0%BF%D1%83%D1%82%D1%8C"
+	msg, _ := e.in.Send(ctx, SendInput{ChatID: e.chatID, SenderID: 1, Text: "https://a.example/путь",
+		WebPage: domain.WebPageInput{Media: &domain.InputMediaWebPage{Underscore: domain.InputMediaWebPageTag, URL: enc}}})
+	e.in.bg.Wait()
+	if storedMsg(t, e.s, msg.ID).WebPage == nil {
+		t.Fatal("сообщение без карточки")
 	}
 	if n := len(e.prev.calls()); n != 1 {
 		t.Fatalf("загрузок %d; ждали 1", n)

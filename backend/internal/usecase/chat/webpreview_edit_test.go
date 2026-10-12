@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"sync"
@@ -24,21 +25,26 @@ type urlPreviewer struct {
 	large bool
 	// imageURL — og:image карточек (картинку отдаёт фейковый BotHTTP).
 	imageURL string
-	// fail — сколько ближайших загрузок страницы вернуть сбоем.
-	fail int
+	// fail — сколько ближайших загрузок страницы вернуть временным сбоем
+	// (ErrPreviewTransient); permanent — отказ по существу (не HTML и т. п.).
+	fail      int
+	permanent bool
 }
 
 func (p *urlPreviewer) Preview(ctx context.Context, url string) (*domain.WebPagePreview, error) {
 	p.mu.Lock()
 	p.urls = append(p.urls, url)
 	hold := p.holds[url]
-	failNow := p.fail > 0
+	failNow, permanent := p.fail > 0, p.permanent
 	if failNow {
 		p.fail--
 	}
 	p.mu.Unlock()
+	if permanent {
+		return nil, errors.New("link preview: not html")
+	}
 	if failNow {
-		return nil, errors.New("page fetch: timeout")
+		return nil, fmt.Errorf("page fetch: %w", ErrPreviewTransient)
 	}
 	if hold != nil {
 		select {

@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"image"
 	_ "image/gif"  // размеры og:image (largePreviewPhoto)
 	_ "image/jpeg" // размеры og:image (largePreviewPhoto)
 	_ "image/png"  // размеры og:image (largePreviewPhoto)
+	"log"
 	neturl "net/url"
 	"path"
 	"reflect"
@@ -212,12 +214,12 @@ type builtPreview struct {
 // (downloadPreviewPhoto), проба Instant View. nil — карточки нет. Каждый
 // сетевой этап — со своим бюджетом (см. таймауты выше).
 func (i *Interactor) buildWebPreview(url string) *builtPreview {
-	wp := i.webPages.page(url)
-	if wp == nil {
-		withBudget(previewTimeout, func(ctx context.Context) {
+	var wp *domain.WebPagePreview
+	withBudget(previewTimeout, func(ctx context.Context) {
+		if wp = i.webPages.page(ctx, url); wp == nil {
 			wp = i.fetchPage(ctx, url)
-		})
-	}
+		}
+	})
 	if wp == nil {
 		return nil
 	}
@@ -266,7 +268,11 @@ func (i *Interactor) attachWebPreview(msg domain.Message, fl *previewFlight) {
 	withBudget(writeTimeout, func(ctx context.Context) {
 		typ, _ = i.chats.ChatType(ctx, msg.ChatID)
 	})
-	if typ == "" || typ == domain.ChatTypeSecret {
+	if typ == "" {
+		log.Printf("webpreview: %s: тип чата не прочитан", fl.key)
+		return
+	}
+	if typ == domain.ChatTypeSecret {
 		return
 	}
 	b := i.buildWebPreview(fl.url)
@@ -280,6 +286,7 @@ func (i *Interactor) attachWebPreview(msg domain.Message, fl *previewFlight) {
 			t := i.previewFlights.target(fl)
 			if b.img != nil && !i.messagePreviewWanted(wctx, msg.ID, t) {
 				if i.previewFlights.settle(fl, t.gen) {
+					log.Printf("webpreview: %s: карточка %s не нужна (сообщение правили или удалили)", fl.key, previewHost(fl.url))
 					return
 				}
 				continue
@@ -293,7 +300,11 @@ func (i *Interactor) attachWebPreview(msg domain.Message, fl *previewFlight) {
 			} else {
 				ok = i.writeChatWebPreview(wctx, msg, t, wp)
 			}
-			if ok || i.previewFlights.settle(fl, t.gen) {
+			if ok {
+				return
+			}
+			if i.previewFlights.settle(fl, t.gen) {
+				log.Printf("webpreview: %s: карточка %s не записана (условие записи: правка, удаление или сбой)", fl.key, previewHost(fl.url))
 				return
 			}
 		}
@@ -427,6 +438,7 @@ func (i *Interactor) attachScheduledWebPreview(row domain.ScheduledMessage, fl *
 			t := i.previewFlights.target(fl)
 			if b.img != nil && !i.scheduledPreviewWanted(ctx, row.ID, t) {
 				if i.previewFlights.settle(fl, t.gen) {
+					log.Printf("webpreview: %s: карточка %s не нужна (отложенное правили, сняли или публикуют)", fl.key, previewHost(fl.url))
 					return
 				}
 				continue
@@ -449,7 +461,11 @@ func (i *Interactor) attachScheduledWebPreview(row domain.ScheduledMessage, fl *
 				written = err == nil
 				return frames, err
 			})
-			if written || i.previewFlights.settle(fl, t.gen) {
+			if written {
+				return
+			}
+			if i.previewFlights.settle(fl, t.gen) {
+				log.Printf("webpreview: %s: карточка %s не записана (условие записи: правка, публикация или сбой)", fl.key, previewHost(fl.url))
 				return
 			}
 		}
@@ -557,6 +573,7 @@ func (i *Interactor) GetWebPage(ctx context.Context, url string) *domain.WebPage
 		return nil
 	}
 	defer i.webPages.release()
+	defer i.webPages.startLoading(url)() // после put: ждущая сборка найдёт страницу
 	wp := i.fetchWebPage(ctx, url)
 	if ctx.Err() == nil { // запрос оборвали — «карточки нет» не запоминаем
 		i.webPages.put(url, wp)
@@ -596,23 +613,35 @@ var pageRetryDelay = time.Second
 
 // fetchPage — og-теги страницы для карточки сообщения (фоновая сборка); сбой
 // (у адаптера 5 с на запрос: тяжёлая страница или занятый сайт не успевают)
-// повторяется один раз — карточку сообщение иначе теряло бы навсегда.
-// Детерминированный отказ (не HTML, нет заголовка) повтор тоже проходит:
-// адаптер ошибки не различает, а цена — одна лишняя загрузка в фоне.
+// повторяется один раз, если он временный (ErrPreviewTransient: сеть,
+// таймаут, 5xx, 429) — карточку сообщение иначе теряло бы навсегда. Отказ по
+// существу (не HTML, нет заголовка, 4xx) не повторяется. Дедлайн — бюджет
+// этапа (previewTimeout), а не 5 с на запрос: тяжёлая страница успевает.
 func (i *Interactor) fetchPage(ctx context.Context, url string) *domain.WebPagePreview {
 	for attempt := 0; ; attempt++ {
-		if p, err := i.preview.Preview(ctx, url); err == nil && p != nil {
+		p, err := i.preview.Preview(ctx, url)
+		if err == nil && p != nil {
 			return p
 		}
-		if attempt == 1 {
+		if attempt == 1 || !errors.Is(err, ErrPreviewTransient) {
+			log.Printf("webpreview: страница %s без карточки (попытка %d): %v", previewHost(url), attempt+1, err)
 			return nil
 		}
 		select {
 		case <-time.After(pageRetryDelay):
 		case <-ctx.Done():
+			log.Printf("webpreview: страница %s: бюджет загрузки исчерпан: %v", previewHost(url), err)
 			return nil
 		}
 	}
+}
+
+// previewHost — хост ссылки для логов (путь и параметры в лог не пишем).
+func previewHost(raw string) string {
+	if u, err := neturl.Parse(raw); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return "?"
 }
 
 // withBudget выполняет шаг под собственным дедлайном от context.Background():
@@ -783,6 +812,28 @@ type webPageCache struct {
 	mu    sync.Mutex
 	m     map[string]webPageCacheEntry
 	slots chan struct{}
+	// loading — идущие загрузки плашки по ключу (закрывается по готовности).
+	loading map[string]chan struct{}
+}
+
+// startLoading отмечает загрузку плашки key; возвращает функцию завершения.
+func (c *webPageCache) startLoading(url string) func() {
+	key := cacheKey(url)
+	ch := make(chan struct{})
+	c.mu.Lock()
+	if c.loading == nil {
+		c.loading = map[string]chan struct{}{}
+	}
+	c.loading[key] = ch
+	c.mu.Unlock()
+	return func() {
+		c.mu.Lock()
+		if c.loading[key] == ch {
+			delete(c.loading, key)
+		}
+		c.mu.Unlock()
+		close(ch)
+	}
 }
 
 // cacheKey — адрес в разборе url.Parse (кириллица и пробелы — в
@@ -804,12 +855,34 @@ func (c *webPageCache) get(url string) (*domain.WebPagePreview, bool) {
 	return e.wp.Clone(), true
 }
 
-// page — страница из кэша плашки для сборки карточки сообщения (tweb
-// отправляет с сообщением ту же карточку, что показала плашка:
-// generateOutgoingWebPage, appMessagesManager.ts:4895-4908) — без второго
-// похода на сайт. Копия с адресом картинки и без has_large_media: флаг
-// ставит сборка по картинке, которую сама сохранит. nil — страницы нет.
-func (c *webPageCache) page(url string) *domain.WebPagePreview {
+// page — страница из кэша плашки для сборки карточки сообщения, без второго
+// похода на сайт. НАШЕ серверное решение: tweb шлёт серверу только
+// inputMediaWebPage{url, pFlags} (getInputMediaWebPage,
+// appMessagesManager.ts:4865-4879), а карточку плашки кладёт лишь в своё
+// оптимистичное сообщение (generateOutgoingWebPage :4895-4908); как сервер
+// Telegram собирает карточку, из tweb не видно — у него страница кэшируется
+// глобально по URL, у нас — в памяти процесса (допущение: один процесс
+// бэкенда; при нескольких — промах и обычная загрузка). Страница, показанная
+// плашкой, и уходит в сообщение — как у Telegram с его кэшем webpage; её
+// возраст — до webPageCacheTTL, и временная страница (заглушка антибота с
+// заголовком), пойманная плашкой, ляжет в снимок так же, как легла бы при
+// своей загрузке в ту же минуту.
+//
+// Загрузка плашки того же адреса ещё идёт — ждём её (не больше ctx), а не
+// грузим медленный сайт вторым запросом параллельно. Копия с адресом
+// картинки и без has_large_media: флаг ставит сборка по картинке, которую
+// сама сохранит. nil — страницы нет.
+func (c *webPageCache) page(ctx context.Context, url string) *domain.WebPagePreview {
+	c.mu.Lock()
+	wait := c.loading[cacheKey(url)]
+	c.mu.Unlock()
+	if wait != nil {
+		select {
+		case <-wait:
+		case <-ctx.Done():
+			return nil
+		}
+	}
 	wp, ok := c.get(url)
 	if !ok || wp == nil {
 		return nil
@@ -831,8 +904,16 @@ func (c *webPageCache) put(url string, wp *domain.WebPagePreview) {
 				delete(c.m, k)
 			}
 		}
-		if len(c.m) >= webPageCacheMax {
-			c.m = map[string]webPageCacheEntry{}
+		// Свежих не меньше потолка — вытесняем самую старую, а не весь кэш:
+		// от него зависит и сборка карточек сообщений.
+		for len(c.m) >= webPageCacheMax {
+			oldest, at := "", time.Time{}
+			for k, e := range c.m {
+				if oldest == "" || e.expires.Before(at) {
+					oldest, at = k, e.expires
+				}
+			}
+			delete(c.m, oldest)
 		}
 	}
 	c.m[cacheKey(url)] = webPageCacheEntry{wp: wp.Clone(), expires: now.Add(webPageCacheTTL)}

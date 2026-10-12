@@ -5,6 +5,7 @@ package linkpreview
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,7 +21,11 @@ import (
 )
 
 const (
-	fetchTimeout = 5 * time.Second
+	// fetchTimeout — потолок одного запроса на случай вызова без дедлайна;
+	// обычно раньше срабатывает дедлайн контекста usecase (previewTimeout):
+	// тяжёлая страница не должна обрываться на 5 с, пока бюджет этапа не
+	// исчерпан.
+	fetchTimeout = 30 * time.Second
 	maxBody      = 1 << 20 // 1 МБ HTML: og-теги живут в <head>, больше не нужно
 	// UA обычного браузера: многие сайты отдают ботам обрезанную вёрстку.
 	userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
@@ -51,9 +56,18 @@ func (c *Client) Preview(ctx context.Context, rawURL string) (*domain.WebPagePre
 	req.Header.Set("Accept", "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("link preview fetch: %w", err)
+		// Сеть и таймауты — временные; кривой адрес редиректа — нет. (Отказ
+		// SSRF-проверки отдельной ошибки не имеет: один лишний повтор в фоне
+		// снова упрётся в ту же проверку.)
+		if errors.Is(err, usecaseiv.ErrBadURL) {
+			return nil, fmt.Errorf("link preview fetch: %w", err)
+		}
+		return nil, fmt.Errorf("link preview fetch %s: %w: %w", u.Hostname(), usecasechat.ErrPreviewTransient, err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+		return nil, fmt.Errorf("link preview %s: status %d: %w", u.Hostname(), resp.StatusCode, usecasechat.ErrPreviewTransient)
+	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return nil, fmt.Errorf("link preview %s: status %d", u.Hostname(), resp.StatusCode)
 	}

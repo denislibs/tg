@@ -4,6 +4,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -499,6 +500,12 @@ type MessageRepo interface {
 type LinkPreviewer interface {
 	Preview(ctx context.Context, url string) (*domain.WebPagePreview, error)
 }
+
+// ErrPreviewTransient — сбой загрузки страницы, который может пройти при
+// повторе (сеть, таймаут, 5xx, 429); адаптер оборачивает им такие ошибки.
+// Остальные (не HTML, нет заголовка, 4xx, запрещённый адрес) повторять
+// бессмысленно.
+var ErrPreviewTransient = errors.New("link preview: transient failure")
 
 // IVProber отвечает, извлекается ли из страницы статья Instant View. Нужен,
 // чтобы кнопка «Мгновенный просмотр» появлялась только там, где ей есть что
