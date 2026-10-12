@@ -285,6 +285,22 @@ describe('MessagesManager — лента отложенных', () => {
     expect(ops()).toEqual([expect.objectContaining({ op: 'replace', key: '1_scheduled', msg: expect.objectContaining({ date: 0x7FFFFFFE }) })])
   })
 
+  // Ф-5 C2: правка (и отложенного) несёт решение плашки превью (tweb :2207-2220)
+  it('editMessage: no_webpage / invert_media / media в теле PATCH — и у отложенного', async () => {
+    const bodies: Record<string, unknown>[] = []
+    const { mgr } = setup({ patch: async (_p: string, b: Record<string, unknown>) => { bodies.push(b); return { updates: [] } } })
+    await mgr.getScheduledMessages(1)
+    const webPage = { _: 'webPage' as const, pFlags: { has_large_media: true as const }, url: 'https://ex.com', display_url: 'ex.com' }
+    await mgr.editMessage(1, cid(1), 'https://ex.com', undefined, { scheduleDate: 1_900_000_000, webPage, webPageOptions: { smallMedia: true, optional: true }, invertMedia: true })
+    await mgr.editMessage(1, cid(1), 'https://ex.com', undefined, { scheduleDate: 1_900_000_000, noWebPage: true })
+    expect(bodies[0]).toEqual(expect.objectContaining({
+      invert_media: true,
+      media: { _: 'inputMediaWebPage', url: 'https://ex.com', pFlags: { force_large_media: undefined, force_small_media: true, optional: true } },
+    }))
+    expect(bodies[1]).toEqual(expect.objectContaining({ no_webpage: true }))
+    expect('media' in bodies[1]).toBe(false)
+  })
+
   it('правка с явным периодом шлёт его, 0 — снять повтор; правка текста без периода повтор не снимает', async () => {
     const bodies: Record<string, unknown>[] = []
     const { mgr } = setup({ patch: async (_p: string, b: Record<string, unknown>) => { bodies.push(b); return { updates: [] } } })

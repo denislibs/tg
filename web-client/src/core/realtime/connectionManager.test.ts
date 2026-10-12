@@ -226,3 +226,20 @@ describe('ConnectionManager.markRead — дедуп по upToSeq', () => {
     expect(ws.frames.filter(f => f.t === 'read')).toHaveLength(2)
   })
 })
+
+describe('ConnectionManager: превью ссылки в send_message (контракт P1, tweb :2746, :4882-4910)', () => {
+  it('no_webpage / invert_media / media уходят плоскими полями кадра; без решения — их нет', () => {
+    const ws = fakeWs()
+    const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState: () => {}, onFrame: () => {} })
+    cm.start(); ws.fireOpen()
+    const media = { _: 'inputMediaWebPage' as const, url: 'https://ex.com', pFlags: { force_large_media: true as const } }
+    cm.sendMessage({ peerId: 1, text: 'https://ex.com', clientMsgId: 'c1', webPageFields: { media, invert_media: true } })
+    cm.sendMessage({ peerId: 1, text: 'https://ex.com', clientMsgId: 'c2', webPageFields: { no_webpage: true } })
+    cm.sendMessage({ peerId: 1, text: 'hi', clientMsgId: 'c3' })
+    const d = ws.frames.filter((f) => f.t === 'send_message').map((f) => f.d as Record<string, unknown>)
+    expect(d[0]).toEqual(expect.objectContaining({ media, invert_media: true }))
+    expect('no_webpage' in d[0]).toBe(false)
+    expect(d[1]).toEqual(expect.objectContaining({ no_webpage: true }))
+    expect(['media', 'no_webpage', 'invert_media'].some((k) => k in d[2])).toBe(false)
+  })
+})

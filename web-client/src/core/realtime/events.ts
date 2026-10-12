@@ -1,6 +1,6 @@
 // src/core/realtime/events.ts
 import type { MessageEntity, RawMessage, RawMyMessage, MessageReactions, Reaction } from '../models'
-import type { MessageMedia, MyDocument } from '../media/messageMedia'
+import type { MessageMedia, MessageMediaWebPage, MyDocument } from '../media/messageMedia'
 import type { MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
 import type { PeerNotifySettings } from '../dialogs/notifySettings'
 import type { StoryItem } from '../stories/story'
@@ -911,6 +911,11 @@ export interface PendingNewEvt {
   schedule_date?: number
   /** tweb `scheduleRepeatPeriod` — бабл несёт `schedule_repeat_period` сразу. */
   schedule_repeat_period?: number
+  /** Карточка ссылки плашки композера — вложение бабла сразу, до эха (tweb
+   *  `generateOutgoingWebPage`, appMessagesManager.ts:4893-4900). */
+  web_page?: MessageMediaWebPage
+  /** «Карточка над текстом» — `message.pFlags.invert_media` (tweb :4903-4905). */
+  invert_media?: true
   /** Порт ОПЦИИ tweb `beforeMessageSending({sequential})` (не проводного поля:
    *  наружу этот признак уходит не кадром, а полем операции `insert`, см.
    *  `core/realtime/messageOps.ts`). Смысл в оригинале — «кадр отправки уходит

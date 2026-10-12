@@ -31,6 +31,7 @@ import canEditMessage from '../messages/canEditMessage'
 import { isForum } from '../peers/predicates'
 import { generateMessageId, getServerMessageId, isLocalMessageId } from '../history/messageId'
 import type { NewMessageEvt, EditMessageEvt, DeleteMessageEvt, PinMessageEvt, GeoLiveUpdateEvt, WebPageUpdateEvt, FactCheckUpdateEvt, MediaReadEvt, PaidMediaUnlockEvt, SendMessageAction, NewScheduledMessageEvt, DeleteScheduledMessagesEvt, Update } from '../realtime/events'
+import { editWebPageWireFields, type WebPageSendOptions } from './messages/webPage'
 import type { SendArgs as WireSendArgs } from '../realtime/connectionManager'
 import type { UploadArgs } from './mediaManager'
 import { RT } from '../realtime/events'
@@ -1130,14 +1131,19 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     // `updateNewScheduledMessage` того же номера, то есть правка ленты отложенных
     // (`processUpdateMessage` оригинала). Правка без изменений — не отказ
     // (`onEditMessageError` :2226-2240, `MESSAGE_NOT_MODIFIED`).
+    //
+    // Превью ссылки — те же поля, что у отправки (tweb :2207-2220:
+    // `no_webpage`, `invert_media`, `media: inputMediaWebPage`), и у отложенного
+    // тоже; решает их плашка композера (`webPage.ts`).
     async editMessage(
       peerId: number, msgId: number, text: string, entities?: MessageEntity[],
-      options?: { scheduleDate?: number | null; scheduleRepeatPeriod?: number | null },
+      options?: { scheduleDate?: number | null; scheduleRepeatPeriod?: number | null } & WebPageSendOptions,
     ): Promise<MyMessage | undefined> {
+      const webPageFields = editWebPageWireFields(options ?? {})
       if (options?.scheduleDate) {
         try {
           const r = await rest.patch<ScheduledUpdates>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}`, {
-            text, entities: entities ?? null,
+            text, entities: entities ?? null, ...webPageFields,
             schedule_date: options.scheduleDate,
             // Ключ — только когда период передан (tweb :2218 кладёт его лишь у
             // `options.scheduleRepeatPeriod`): правка текста без периода повтор
@@ -1152,7 +1158,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
         }
         return scheduledStorage.get(peerId)?.get(msgId)
       }
-      const updated = await rest.patch<RawMyMessage>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}`, { text, entities: entities ?? null })
+      const updated = await rest.patch<RawMyMessage>(`/chats/${peerId}/messages/${getServerMessageId(msgId)}`, { text, entities: entities ?? null, ...webPageFields })
       const m = await mapNet(updated)
       // upsert правки в SSOT (только если сообщение уже загружено в чат).
       if (msgsFor(peerId).has(m.id)) put(hkey(peerId), [m])
