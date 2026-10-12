@@ -1007,8 +1007,11 @@ DOM бабла у нас уже близок к tweb: `div.bubble.is-in|is-out�
    файл на все типы; в tweb — набор wrapper-функций по `message.media._`.
 5. **Альбом — синтетический `ConvMsg`**, собираемый пре-пассом фида, а не `grouped_id`-модель;
    альбомы документов (`is-multiple-documents`) не поддержаны — файлы отдельными баблами.
-6. Не реализовано: `invert-media` (класс не ставится), `has-webpage` (не ставится),
-   sponsored (`is-sponsored`), story-reply, topic-кнопки, свайп-ответ на баблах.
+6. Не реализовано: sponsored (`is-sponsored`), story-reply, topic-кнопки, свайп-ответ на баблах.
+   Карточка ссылки (`has-webpage`, `invert-media`, §4.8) портирована Ф-5 C2 (2026-10-12):
+   `ChatBubbles.renderWebPage` (`W/components/chat/bubbles.ts`) + `WebPageBox`
+   (`W/components/wrappers/webPage.solid.tsx`); без документа/истории/подарка/набора стикеров,
+   футера Instant View, `hideLinks` и `wrapPeerColorPattern` — разбор в докблоке метода.
 7. **Sticky-дата** — класс `is-sticky` приходит пропом из `Chat` (React стёр бы
    императивный класс), в tweb — императивно из `StickyIntersector`.
 8. Unread-divider: как в tweb — модификатор `is-first-unread` + CSS `::before`.

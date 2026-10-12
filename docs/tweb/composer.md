@@ -736,7 +736,15 @@ div.reply-wrapper.rows-wrapper-row                      input.ts:625-626
 собирается `wrapReply` (`W/components/wrappers/reply.ts`) поверх `ReplyContainer`/`DivAndCaption`
 (`W/components/chat/replyContainer.ts`, `W/components/divAndCaption.ts`). Не перенесено: цвет автора
 (`setPeerColorToElement`, подсистемы цветов пира нет), превью медиа в плашке (`wrapReplyMedia`), меню
-плашек (`DropdownHover`) и плашка ссылки (`webpage`) — Б-72. React-`ReplyWrapper.tsx` снесён.
+плашек ответа и пересылки (`DropdownHover`) — Б-72. React-`ReplyWrapper.tsx` снесён.
+
+**У нас (Ф-5 C2, 2026-10-12): плашка ссылки (`webpage`) портирована** — `processWebPage`
+(`input.ts:3533-3631`) зовёт `managers.webPages.getWebPage` (`W/core/managers/webPagesManager.ts`,
+`GET /webpage`, без id-кэша: у нашей карточки нет `id`), меню плашки `constructWebPageElements`
+(`:799-851`) на радиогруппах `ButtonMenuSync` (`W/components/buttonMenu.ts`), ховер
+`createReplyLineHover`/`setCurrentHover` (`:5205-5247`), крестик → `noWebPage` (`:4124-4141`),
+поля отправки/правки (`:4690-4741`) — `W/core/managers/messages/webPage.ts`. Черновик решения
+плашки не несёт (ручка черновика этих полей не принимает) — расхождение 11 шапки `input.ts`.
 
 ### 4.3 Внутреннее дерево `div.reply` (из `DivAndCaption`)
 
