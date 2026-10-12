@@ -326,11 +326,13 @@ describe('dialogsManager: realtime-кадры применяет владеле�
 
   it('applyRead: Inbox несёт мой счётчик; Outbox двигает горизонт собеседника, не мой unread; устаревший Outbox не регрессирует и не публикует операцию', async () => {
     const ops: DialogOp[] = []
+    const readOutbox: unknown[] = []
     const mgr = newDialogsManager({
       rest: restStub([]) as never,
       onDialogOps: (o) => ops.push(...o),
       loadCache: async () => [dialog(1, '2026-08-01T00:00:00Z')],
       loadState: async () => ({ pinnedOrders: {} }),
+      onReadOutbox: (...args) => { readOutbox.push(args) },
     })
     await mgr.fillMirror()
     mgr.applyNewMessage({ _: 'updateNewMessage', message: makeRawMessage({ id: 2, peerId: 1, fromId: 9, text: 'x', createdAt: '2026-08-01T00:00:01Z' }) })
@@ -344,10 +346,13 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     const opPeer = ops[0] as Extract<DialogOp, { op: 'patch' }>
     expect(opPeer.fields.read_outbox_max_id).toBe(generateMessageId(9))
     expect(opPeer.fields.unread_count).toBeUndefined() // чужое прочтение мой unread не трогает
+    // горизонт хранилища истории чата — ленте (tweb :10916, `dialog_unread` :10950)
+    expect(readOutbox).toEqual([[1, generateMessageId(9)]])
 
     ops.length = 0
     mgr.applyRead({ _: 'updateReadHistoryOutbox', peer: { _: 'peerUser', user_id: 1 }, max_id: 4 })
     expect(ops).toHaveLength(0)
+    expect(readOutbox).toHaveLength(1)
   })
 
   // Прочтение истории НЕ означает «реакции прочитаны»: у оригинала бейдж ❤
@@ -1878,9 +1883,11 @@ describe('dialogsManager.applyThreadRead', () => {
     const messages = fakeMessages()
     const ops: DialogOp[] = []
     const thread = { read_inbox_max_id: id(10), unread_count: 2, top_message: id(13), merged: true as const }
+    const readOutbox: unknown[] = []
     const mgr = newDialogsManager({
       rest: restStub([]) as never,
       onDialogOps: (o) => ops.push(...o),
+      onReadOutbox: (...args) => { readOutbox.push(args) },
       loadCache: async () => [makeDialog({ peerId: G, topMessage: id(over.topMessage), readInboxMaxId: id(over.readInboxMaxId), unread: over.unread })],
       loadState: async () => ({ pinnedOrders: {} }),
       messages: messages as never,
@@ -1894,7 +1901,7 @@ describe('dialogsManager.applyThreadRead', () => {
       makeRawMessage({ id: 13, peerId: G, fromId: 1, out: true, replyToMsgId: 7 }),
       makeRawMessage({ id: 14, peerId: G, fromId: 2 }),
     ] as never)
-    return { mgr, ops }
+    return { mgr, ops, readOutbox }
   }
 
   it('непрочитанные сообщения треда уходят со счётчика группы, группа получает горизонт треда', async () => {
@@ -1909,11 +1916,20 @@ describe('dialogsManager.applyThreadRead', () => {
     expect(mgr.getDialogReadState(G)).toEqual({ readInboxMaxSeq: id(13), unreadCount: 0, readOutboxMaxSeq: 0 })
   })
 
-  it('outbox — горизонт исходящих группы', async () => {
-    const { mgr, ops } = await setup({ unread: 5, topMessage: 20, readInboxMaxId: 5 })
+  // :10920 — поле диалога; хранилище истории группы (:10916 пишет тред) не сдвинуто,
+  // основной ленте группы горизонт не объявляется
+  it('outbox — горизонт исходящих ДИАЛОГА группы; ленте группы не объявляется', async () => {
+    const { mgr, ops, readOutbox } = await setup({ unread: 5, topMessage: 20, readInboxMaxId: 5 })
     ops.length = 0
-    mgr.applyThreadRead(G, id(7), id(12), true)
+    expect(mgr.applyThreadRead(G, id(7), id(12), true)).toBe(true)
     expect(ops).toContainEqual(expect.objectContaining({ op: 'patch', peerId: G, fields: { read_outbox_max_id: id(12) } }))
+    expect(readOutbox).toEqual([])
+  })
+
+  it('диалога группы нет — `foundDialog` ложь', async () => {
+    const { mgr } = await setup({ unread: 5, topMessage: 20, readInboxMaxId: 5 })
+    expect(mgr.applyThreadRead(G - 1, id(7), id(12), true)).toBe(false)
+    expect(mgr.applyThreadRead(G - 1, id(7), id(12), false)).toBe(false)
   })
 })
 

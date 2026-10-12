@@ -6332,38 +6332,20 @@ export default class ChatBubbles implements BubbleGroupsHost {
       }
     })
 
-    // tweb bubbles.ts:2318-2326 — `dialog_unread` (его шлёт и прочтение
-    // исходящих, `onUpdateReadHistory` :10951) перекрашивает свои баблы до
-    // нового горизонта. У нас горизонт диалога приезжает операцией владельца
-    // диалогов (`read_outbox_max_id`), темы — операцией хранилища тем.
+    // tweb bubbles.ts:2318-2326 — `dialog_unread` пира: лента перекрашивает свои
+    // баблы до горизонта СВОЕГО хранилища истории (`historyStorage(peerId,
+    // threadId).readOutboxMaxId`, :4858-4860). Хранилище сдвигает кадр прочтения
+    // исходящих (:10916) — у нас его горизонт объявляют владельцы (`readOutbox`):
+    // чата — dialogsManager, треда — threadReads. Поле диалога (`dialogOp`) ленту
+    // не красит: прочтение треда ставит его группе (:10920), а хранилище группы — нет.
     // Отложенные — своя нумерация и всегда «✓» (`is_scheduled`, :11105);
     // «Избранное» — всегда «✓✓» (горизонт выбирает владелец диалогов).
-    // Тред (тема, комментарии) — свой горизонт исходящих (`historyStorage(peerId,
-    // threadId).readOutboxMaxId`, :4858-4859): горизонт ДИАЛОГА его не двигает.
-    this.listenerSetter.add(rootScope)(RT.dialogOp, ({ ops }) => {
-      if (this.chat.type === ChatType.Scheduled || this.peerId === rootScope.myId || this.chat.threadId) return
-      for (const op of ops) {
-        const dialog = op.op === 'patch' && op.peerId === this.peerId ? op.fields :
-          op.op === 'reset' || op.op === 'upsert' ? op.items.find((it) => it.dialog.peerId === this.peerId)?.dialog : undefined
-        if (dialog?.read_outbox_max_id !== undefined) this.updateUnreadByDialog(dialog.read_outbox_max_id)
-      }
-    })
-    // Горизонт исходящих ТРЕДА (кадр `updateReadChannelDiscussionOutbox`, tweb
-    // :777-778 → `onUpdateReadHistory` :10916 → `dialog_unread` :10950) объявляет
-    // `threadReads` воркера — у темы не из кэша и у треда комментариев (тему
-    // из кэша везёт операция хранилища тем ниже).
-    this.listenerSetter.add(rootScope)(RT.threadReadOutbox, ({ peerId, threadId, maxId }) => {
-      if (this.chat.type === ChatType.Scheduled || peerId !== this.peerId || threadId !== this.chat.threadId) return
+    // Экран закрепов красит по горизонту чата — как его снимок в `setPeer`.
+    this.listenerSetter.add(rootScope)(RT.readOutbox, ({ peerId, threadId, maxId }) => {
+      if (this.chat.type === ChatType.Scheduled || peerId === rootScope.myId || peerId !== this.peerId) return
+      const ownThreadId = this.chat.type === ChatType.Pinned ? undefined : this.chat.threadId
+      if ((threadId || undefined) !== (ownThreadId || undefined)) return
       this.updateUnreadByDialog(maxId)
-    })
-    this.listenerSetter.add(rootScope)(RT.forumTopicOp, ({ ops }) => {
-      const { threadId } = this.chat
-      if (!threadId || !this.chat.isForum || this.chat.type === ChatType.Scheduled) return
-      for (const op of ops) {
-        const topic = op.op === 'update' && op.peerId === this.peerId ? op.topics.find((t) => t.id === threadId) :
-          (op.op === 'unread' || op.op === 'notify') && op.topic.peerId === this.peerId && op.topic.id === threadId ? op.topic : undefined
-        if (topic) this.updateUnreadByDialog(topic.read_outbox_max_id)
-      }
     })
 
     // * pinned part start — tweb bubbles.ts:2544-2555

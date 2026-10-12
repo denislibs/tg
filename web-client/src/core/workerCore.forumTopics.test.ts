@@ -244,21 +244,30 @@ describe('createWorkerCore(): кадры тем применяет хранил�
   })
 
   // Кадр `updateReadChannelDiscussionOutbox` (tweb :777-778 → :10916 → `dialog_unread`
-  // :10950): горизонт исходящих треда — ленте треда одной операцией владельца, эхо отсеяно
-  it('outbox треда комментариев → `threadReadOutbox`, темы из кэша → только `forumTopicOp`; эхо — тишина', async () => {
-    const { core, tab, ops } = await boot()
+  // внутри `if(foundDialog)` :10919-10950): горизонт исходящих треда — ленте треда
+  // операцией владельца `readOutbox`, только при найденном диалоге; эхо отсеяно
+  it('outbox треда → `rt:read_outbox` клиентскими номерами при найденном диалоге; эхо — тишина', async () => {
+    const { core, tab } = await boot()
     const seen: unknown[] = []
-    tab.on('rt:thread_read_outbox', (p) => { seen.push(p) })
+    tab.on('rt:read_outbox', (p) => { seen.push(p) })
     await core.registry.messages.getDiscussionMessage(-3, generateMessageId(9))
+    // диалога группы -70 нет — горизонт треда записан, ленте не объявлен
+    capturedConnDeps!.onFrame('read_discussion', { _: 'updateReadChannelDiscussionOutbox', channel_id: 70, top_msg_id: 200, read_max_id: 227 })
+    expect(core.registry.dialogs.getDialogReadState(-70, generateMessageId(200))?.readOutboxMaxSeq).toBe(generateMessageId(227))
+    vi.spyOn(core.registry.dialogs, 'applyThreadRead').mockReturnValue(true)
     const frame = { _: 'updateReadChannelDiscussionOutbox', channel_id: 70, top_msg_id: 200, read_max_id: 228 }
     capturedConnDeps!.onFrame('read_discussion', frame)
     capturedConnDeps!.onFrame('read_discussion', frame)
+    // тема в кэше — `foundDialog`
     capturedConnDeps!.onFrame('read_discussion', { _: 'updateReadChannelDiscussionOutbox', channel_id: 50, top_msg_id: 10, read_max_id: 12 })
-    await vi.waitFor(() => expect(seen).toHaveLength(1))
-    expect(seen).toEqual([{ peerId: -70, threadId: generateMessageId(200), maxId: generateMessageId(228) }])
-    const update = ops.find((op) => op.op === 'update') as Extract<ForumTopicOp, { op: 'update' }>
-    expect(update.topics[0]).toMatchObject({ id: generateMessageId(10), read_outbox_max_id: generateMessageId(12) })
-    expect(core.registry.dialogs.getDialogReadState(-70, generateMessageId(200))?.readOutboxMaxSeq).toBe(generateMessageId(228))
+    // темы нет в кэше — тишина
+    capturedConnDeps!.onFrame('read_discussion', { _: 'updateReadChannelDiscussionOutbox', channel_id: 50, top_msg_id: 11, read_max_id: 12 })
+    // доставка вкладке синхронна (`pair()`); позже happy-dom возвращает событие
+    // через глобальное окно — артефакт окружения, поэтому проверка сразу
+    expect(seen).toEqual([
+      { peerId: -70, threadId: generateMessageId(200), maxId: generateMessageId(228) },
+      { peerId: FORUM, threadId: generateMessageId(10), maxId: generateMessageId(12) },
+    ])
   })
 })
 

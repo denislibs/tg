@@ -18,13 +18,9 @@
 //
 // Горизонт исходящих треда у оригинала — его `historyStorage` (:10916), лента
 // треда перечитывает его на `dialog_unread` пира (:10950 → bubbles.ts:2318-2326,
-// :4860). Лента у нас хранилище не читает: тема из кэша приезжает ей операцией
-// хранилища тем, прочее — `onReadOutbox`.
-//
-// Расхождение: `dialog_unread` у оригинала — внутри `if(foundDialog)`
-// (:10919-10950), и тема не из кэша (тред комментариев — без диалога группы)
-// живьём не перекрашивается до следующего `dialog_unread` пира; у нас
-// `onReadOutbox` объявляется и тогда — следующего события лента ждать не может.
+// :4860). Лента у нас хранилище не читает — горизонт ей объявляет `onReadOutbox`,
+// как у оригинала, только при найденном диалоге (`if(foundDialog)`,
+// :10919-10950): у темы — тема в кэше, у треда комментариев — диалог группы.
 //
 // Расхождение с оригиналом: `notification_reset`/`notification_cancel` и
 // `threadsToReplies` (счётчик непрочитанных комментариев у поста,
@@ -54,8 +50,9 @@ export interface ThreadReadsDeps {
   }
   getMeId: () => number | null
   /** Прочтение треда комментариев на диалоге группы — `dialogs.applyThreadRead`
-   *  (до сдвига горизонта треда). Опционален: тестам без диалогов не нужен. */
-  onCommentThreadRead?: (peerId: PeerId, threadId: number, maxId: number, out: boolean) => void
+   *  (до сдвига горизонта треда); ответ — нашёлся ли диалог группы (`foundDialog`,
+   *  :10814-10816). Опционален: тестам без диалогов не нужен. */
+  onCommentThreadRead?: (peerId: PeerId, threadId: number, maxId: number, out: boolean) => boolean
   /** Горизонт исходящих треда сдвинут — ленте треда (`dialog_unread`, :10950 →
    *  bubbles.ts:2318-2326 → `historyStorage(peerId, threadId).readOutboxMaxId`, :4860). */
   onReadOutbox?: (peerId: PeerId, threadId: number, maxId: number) => void
@@ -77,25 +74,30 @@ export function newThreadReads({ rest, isForumPeer, forumTopics, getMeId, onComm
   /** Местное прочтение треда — `onUpdateReadHistory` (:10795-10990), ветки темы и треда. */
   function apply(update: ReadDiscussion): void {
     const { peerId, topicId, maxId, out } = update
-    // тема из кэша доезжает до ленты операцией хранилища тем (`forumTopicOp`)
-    const viaTopic = !!topicOf(peerId, topicId)
-    if (isForumPeer(peerId)) forumTopics.applyReadDiscussion(update)
-    else applyCommentThread(peerId, topicId, maxId, out)
-    if (out && !viaTopic) onReadOutbox?.(peerId, topicId, maxId)
+    let foundDialog: boolean
+    if (isForumPeer(peerId)) {
+      foundDialog = !!topicOf(peerId, topicId)
+      forumTopics.applyReadDiscussion(update)
+    } else {
+      foundDialog = applyCommentThread(peerId, topicId, maxId, out)
+    }
+    // :10916 + `dialog_unread` внутри `if(foundDialog)` (:10919-10950)
+    if (out && foundDialog) onReadOutbox?.(peerId, topicId, maxId)
   }
 
-  function applyCommentThread(peerId: PeerId, topicId: number, maxId: number, out: boolean): void {
+  /** Ответ — нашёлся ли диалог группы (`foundDialog`). */
+  function applyCommentThread(peerId: PeerId, topicId: number, maxId: number, out: boolean): boolean {
     // диалог группы (:10814-10816) — до сдвига горизонта треда
-    onCommentThreadRead?.(peerId, topicId, maxId, out)
+    const foundDialog = onCommentThreadRead?.(peerId, topicId, maxId, out) ?? false
     const state = states.get(key(peerId, topicId))
-    if (!state) return
+    if (!state) return foundDialog
     // :10916 — горизонт треда присваивается
-    if (out) {
-      state.readOutboxMaxId = maxId
-      return
+    if (out) state.readOutboxMaxId = maxId
+    else {
+      state.readMaxId = maxId
+      if (maxId >= state.maxId) state.unreadCount = 0
     }
-    state.readMaxId = maxId
-    if (maxId >= state.maxId) state.unreadCount = 0
+    return foundDialog
   }
 
   /**

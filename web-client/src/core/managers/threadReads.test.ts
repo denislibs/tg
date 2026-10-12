@@ -159,7 +159,7 @@ describe('threadReads: диалог группы', () => {
       isForumPeer: (p) => p === FORUM,
       forumTopics: { getForumTopic: () => undefined, applyReadDiscussion: vi.fn() },
       getMeId: () => 1,
-      onCommentThreadRead: (...args) => { seen.push([...args, reads.getReadState(GROUP, mid(7))?.read_inbox_max_id]) },
+      onCommentThreadRead: (...args) => { seen.push([...args, reads.getReadState(GROUP, mid(7))?.read_inbox_max_id]); return true },
     })
     reads.saveDiscussion(GROUP, mid(7), { maxId: mid(30), readMaxId: mid(25), readOutboxMaxId: 0, unreadCount: 5 })
     reads.readHistory(GROUP, mid(7), mid(30))
@@ -169,30 +169,38 @@ describe('threadReads: диалог группы', () => {
   })
 })
 
-// tweb :10916 → `dialog_unread` :10950 → bubbles.ts:2318-2326/:4860 — горизонт
-// исходящих треда уходит ленте треда; тему из кэша везёт хранилище тем
+// tweb :10916 → `dialog_unread` внутри `if(foundDialog)` (:10919-10950) →
+// bubbles.ts:2318-2326/:4860 — горизонт исходящих треда уходит ленте треда, только
+// если диалог найден: у темы — тема в кэше, у треда комментариев — диалог группы
 describe('threadReads: горизонт исходящих треда — ленте', () => {
-  it('объявляет `onReadOutbox` после отсева эха — теме не из кэша и треду комментариев; входящие — нет', () => {
+  it('объявляет `onReadOutbox` после отсева эха при найденном диалоге; входящие — нет', () => {
     const out: unknown[] = []
     const topic = { id: mid(10), read_inbox_max_id: mid(10), read_outbox_max_id: mid(12), top_message: mid(13), unread_count: 3 } as ForumTopic
+    let groupDialog = false
     const reads = newThreadReads({
       rest: { post: vi.fn(async () => true) } as never,
       isForumPeer: (p) => p === FORUM,
       forumTopics: { getForumTopic: (_p, id) => (id === mid(10) ? topic : undefined), applyReadDiscussion: vi.fn() },
       getMeId: () => 1,
+      onCommentThreadRead: () => groupDialog,
       onReadOutbox: (...args) => { out.push(args) },
     })
     reads.saveDiscussion(GROUP, mid(7), { maxId: mid(30), readMaxId: mid(25), readOutboxMaxId: mid(20), unreadCount: 5 })
+    groupDialog = true
     // эхо (не выше известного) — тишина
     reads.applyReadDiscussion({ peerId: FORUM, topicId: mid(10), maxId: mid(12), out: true })
     reads.applyReadDiscussion({ peerId: GROUP, topicId: mid(7), maxId: mid(20), out: true })
     // входящие — не горизонт исходящих
     reads.applyReadDiscussion({ peerId: GROUP, topicId: mid(7), maxId: mid(28), out: false })
     expect(out).toEqual([])
-    reads.applyReadDiscussion({ peerId: FORUM, topicId: mid(10), maxId: mid(13), out: true }) // тема из кэша — `forumTopicOp`
-    reads.applyReadDiscussion({ peerId: FORUM, topicId: mid(11), maxId: mid(14), out: true }) // темы нет в кэше
+    reads.applyReadDiscussion({ peerId: FORUM, topicId: mid(10), maxId: mid(13), out: true }) // тема в кэше
+    reads.applyReadDiscussion({ peerId: FORUM, topicId: mid(11), maxId: mid(14), out: true }) // темы нет в кэше — тишина
     reads.applyReadDiscussion({ peerId: GROUP, topicId: mid(7), maxId: mid(29), out: true })
-    expect(out).toEqual([[FORUM, mid(11), mid(14)], [GROUP, mid(7), mid(29)]])
-    expect(reads.getReadState(GROUP, mid(7))?.read_outbox_max_id).toBe(mid(29))
+    expect(out).toEqual([[FORUM, mid(10), mid(13)], [GROUP, mid(7), mid(29)]])
+    // диалога группы нет — горизонт треда записан, ленте не объявлен
+    groupDialog = false
+    reads.applyReadDiscussion({ peerId: GROUP, topicId: mid(7), maxId: mid(30), out: true })
+    expect(out).toHaveLength(2)
+    expect(reads.getReadState(GROUP, mid(7))?.read_outbox_max_id).toBe(mid(30))
   })
 })
