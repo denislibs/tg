@@ -160,7 +160,7 @@ func TestChannelPost_FanOutWithoutPerSubscriberJournal(t *testing.T) {
 	if len(e.notif.titles) != 1 || e.notif.titles[0] != "News" {
 		t.Fatalf("заголовок пуша = %v, want название канала", e.notif.titles)
 	}
-	if _, ok := e.drafts.m[[2]int64{e.ch, 7}]; ok {
+	if _, ok := e.drafts.m[[3]int64{e.ch, 7, 0}]; ok {
 		t.Fatal("черновик автора пережил публикацию поста")
 	}
 	for _, uid := range []int64{7, 8, 9} {
@@ -226,7 +226,7 @@ func TestForwardToChannel_DeliversLikePost(t *testing.T) {
 	if !slices.Equal(got, []int64{8, 9}) {
 		t.Fatalf("пуш пересланного поста = %v, want [8 9]", got)
 	}
-	if _, ok := e.drafts.m[[2]int64{e.ch, 7}]; !ok {
+	if _, ok := e.drafts.m[[3]int64{e.ch, 7, 0}]; !ok {
 		t.Fatal("пересылка сняла черновик")
 	}
 }
@@ -575,7 +575,7 @@ func TestScheduledChannelPost_KeepsDraft(t *testing.T) {
 	if _, err := e.i.SendScheduledNow(ctx, e.ch, 7, []int64{sm.Seq}); err != nil {
 		t.Fatalf("публикация: %v", err)
 	}
-	if _, ok := e.drafts.m[[2]int64{e.ch, 7}]; !ok {
+	if _, ok := e.drafts.m[[3]int64{e.ch, 7, 0}]; !ok {
 		t.Fatal("отложенный пост снял текущий черновик автора")
 	}
 }

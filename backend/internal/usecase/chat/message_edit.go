@@ -474,12 +474,6 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 		return nil
 	}
 	i.publishDelete(ctx, del)
-	// Снятый комментарий уменьшает счётчик «N комментариев» у поста канала —
-	// тот же кадр, что и на приходе (см. publishPostReplies). Только у
-	// удаления «у всех»: «удалить у себя» тред не трогает.
-	if revoke {
-		i.publishPostReplies(ctx, cur)
-	}
 	return nil
 }
 

@@ -632,16 +632,13 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 			i.notifyNewMessage(ctx, msg, in.SenderID, recipients, mentions)
 			i.notifyDiscussionGuests(ctx, msg, recipients, mentioned)
 		}
-		// Отправка сообщения снимает черновик чата (Telegram-семантика);
-		// служебное — например, лог звонка — черновика не трогает.
+		// Отправка сообщения снимает черновик своего треда (Telegram-семантика,
+		// clearDraftAfterSend); служебное — например, лог звонка — черновика
+		// не трогает.
 		if in.Action == nil && !in.fromSchedule {
-			i.clearDraftAfterSend(ctx, in.SenderID, in.ChatID)
+			i.clearDraftAfterSend(ctx, in.SenderID, in.ChatID, in.ThreadRootID, in.ReplyToID)
 		}
 	}
-	// Комментарий к посту канала (сообщение в тред зеркала): счётчик «N
-	// комментариев» у самого поста вырос — рассылаем его подписчикам канала.
-	// «Комментарий ли это» решает сама publishPostReplies, по корню треда.
-	i.publishPostReplies(ctx, msg)
 	// Зеркало поста канала (если было создано выше) — доставляем участникам
 	// группы обсуждения ТЕМ ЖЕ путём, тоже после коммита. Отдельно от блока
 	// выше: зеркало живёт в ДРУГОМ чате (группе обсуждения), не in.ChatID.

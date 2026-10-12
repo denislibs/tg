@@ -73,7 +73,6 @@ const (
 	UpdatePinnedMessagesTag           = "updatePinnedMessages"
 	UpdateMessageReactionsTag         = "updateMessageReactions"
 	UpdateChannelMessageViewsTag      = "updateChannelMessageViews"
-	UpdateChannelMessageRepliesTag    = "updateChannelMessageReplies"
 	UpdateDialogPinnedTag             = "updateDialogPinned"
 	UpdateFolderPeersTag              = "updateFolderPeers"
 	UpdateNotifySettingsTag           = "updateNotifySettings"
@@ -459,38 +458,6 @@ func NewUpdateChannelMessageViews(channelID, id, views int64) UpdateChannelMessa
 	}
 }
 
-// updateChannelMessageReplies#c8022fb8 channel_id:long id:int replies:int
-// = Update; — НАШ конструктор.
-//
-// Счётчик комментариев поста изменился. Апдейта у предмета в схеме нет: у
-// оригинала число бампит САМ КЛИЕНТ, когда сообщение приходит в тред
-// (appMessagesManager.ts:8670-8675), — ему видна вся группа обсуждения. У нас
-// клиент группы обсуждения не видит, пока тред не открыт, поэтому ответ на
-// «сколько там теперь комментариев» даёт сервер.
-//
-// Едет ЧИСЛО, а не MessageReplies целиком, и это не обрезка: тред у поста уже
-// есть (он приезжает с самим постом), меняется в нём ровно счётчик — его и
-// читает потребитель у оригинала (`setBubbleRepliesCount(bubble,
-// message.replies.replies)`, tweb bubbles.ts:1141). Вези кадр весь
-// конструктор — в нём поехали бы ССЫЛКИ recent_repliers, а вектора users
-// рядом с кадром у нас пока нет вовсе.
-type UpdateChannelMessageReplies struct {
-	Underscore string `json:"_"`
-	ChannelID  int64  `json:"channel_id"`
-	ID         int64  `json:"id"`
-	Replies    int64  `json:"replies"`
-}
-
-func (UpdateChannelMessageReplies) isUpdate()     {}
-func (u UpdateChannelMessageReplies) Tag() string { return u.Underscore }
-
-func NewUpdateChannelMessageReplies(channelID, id, replies int64) UpdateChannelMessageReplies {
-	return UpdateChannelMessageReplies{
-		Underscore: UpdateChannelMessageRepliesTag,
-		ChannelID:  channelID, ID: id, Replies: replies,
-	}
-}
-
 // ── Реакции ─────────────────────────────────────────────────────────────────
 
 // updateMessageReactions#1e297bfa flags:# peer:Peer msg_id:int
@@ -704,21 +671,24 @@ func NewUpdateReadChannelDiscussionOutbox(channelID, topMsgID, readMaxID int64) 
 // а КОНСТРУКТОР draftMessageEmpty внутри того же параметра: отсутствие выражено
 // выбором конструктора, а не значением.
 //
-// top_msg_id не производится: черновик у нас один на чат, тредового черновика
-// нет ни в хранилище, ни в композере.
+// top_msg_id — тред черновика номером (Draft.TopMsgID): тема, General в форуме
+// — 1, тред комментариев — номер зеркала; у черновика чата поля нет. tweb
+// кладёт черновик по ключу `peer_top_msg_id` (appDraftsManager.ts:44-69).
+// saved_peer_id (монофорумы) не производится — предмета нет.
 //
 // Своего pts у конструктора нет — курсор такого кадра едет в конверте.
 type UpdateDraftMessage struct {
 	Underscore string       `json:"_"`
 	Peer       Peer         `json:"peer"`
+	TopMsgID   int64        `json:"top_msg_id,omitempty"`
 	Draft      DraftMessage `json:"draft"`
 }
 
 func (UpdateDraftMessage) isUpdate()     {}
 func (u UpdateDraftMessage) Tag() string { return u.Underscore }
 
-func NewUpdateDraftMessage(peer Peer, draft DraftMessage) UpdateDraftMessage {
-	return UpdateDraftMessage{Underscore: UpdateDraftMessageTag, Peer: peer, Draft: draft}
+func NewUpdateDraftMessage(peer Peer, topMsgID int64, draft DraftMessage) UpdateDraftMessage {
+	return UpdateDraftMessage{Underscore: UpdateDraftMessageTag, Peer: peer, TopMsgID: topMsgID, Draft: draft}
 }
 
 // ── Печатает: SendMessageAction ─────────────────────────────────────────────

@@ -642,8 +642,16 @@ func (r *fakeTopicRepo) EnsureGeneralTopic(ctx context.Context, chatID, createdB
 	return r.Create(ctx, domain.ForumTopicRecord{ChatID: chatID, Title: "General", IsGeneral: true, CreatedBy: createdBy})
 }
 
-func (r *fakeTopicRepo) ListByChat(context.Context, int64, int64) ([]domain.TopicRow, error) {
-	return nil, nil
+func (r *fakeTopicRepo) ListByChat(_ context.Context, chatID, _ int64) ([]domain.TopicRow, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []domain.TopicRow
+	for _, t := range r.topics {
+		if t.ChatID == chatID {
+			out = append(out, domain.TopicRow{Topic: t})
+		}
+	}
+	return out, nil
 }
 
 func (r *fakeTopicRepo) SetTopicRead(_ context.Context, chatID, rootMsgID, userID, upToSeq int64) error {

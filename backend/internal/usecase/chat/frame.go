@@ -476,16 +476,15 @@ func typingPayload(addr chatAddress, userID int64, act domain.SendMessageAction)
 // отсутствие выражалось значением, и каждый читатель заводил свою ветку
 // `if (draft)`; выбор конструктора делает это ветвление тем же, что у любого
 // другого объединения схемы.
-func draftPayload(peer domain.PeerID, d *domain.Draft) map[string]any {
+//
+// topMsgID — тред черновика номером (top_msg_id; 0 — черновик чата, поля нет):
+// tweb кладёт черновик по ключу `peer_top_msg_id` (appDraftsManager.ts:44-69).
+func draftPayload(peer domain.PeerID, topMsgID int64, d *domain.Draft) map[string]any {
 	var draft domain.DraftMessage = domain.NewDraftMessageEmpty()
 	if d != nil {
 		draft = d.Wire()
 	}
-	return map[string]any{
-		"_":     domain.UpdateDraftMessageTag,
-		"peer":  domain.NewPeer(peer),
-		"draft": draft,
-	}
+	return structPayload(domain.NewUpdateDraftMessage(domain.NewPeer(peer), topMsgID, draft))
 }
 
 // dialogPinPayload — тело кадра закрепления ДИАЛОГА.

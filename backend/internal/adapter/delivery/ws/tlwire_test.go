@@ -106,13 +106,13 @@ func newSubprotocolRequest(t *testing.T, value string) *http.Request {
 	return r
 }
 
-// Счётчики поста канала кодируются в TL так же, как всё остальное: своим
-// конструктором из таблицы схемы. Просмотры — конструктор ОРИГИНАЛА
-// (updateChannelMessageViews#f226ac08), комментарии — наш
-// (updateChannelMessageReplies#c8022fb8, id назначен тем же правилом CRC32 по
-// строке определения, что и у остальных наших).
+// Счётчик поста канала кодируется в TL так же, как всё остальное: своим
+// конструктором из таблицы схемы — просмотры, конструктор ОРИГИНАЛА
+// (updateChannelMessageViews#f226ac08). Своего кадра комментариев больше нет:
+// футер клиент перечитывает с постом, как tweb (appMessagesManager.ts:
+// 11876-11898).
 //
-// Курсора у обоих нет ни в конструкторе, ни в конверте — оболочкой становится
+// Курсора нет ни в конструкторе, ни в конверте — оболочкой становится
 // updateShort, как у любого кадра без курсора (печатает/присутствие).
 func TestTLEncodeUpdateFrame_PostCounters(t *testing.T) {
 	for _, tc := range []struct {
@@ -121,7 +121,6 @@ func TestTLEncodeUpdateFrame_PostCounters(t *testing.T) {
 		body any
 	}{
 		{"просмотры", "views_update", domain.NewUpdateChannelMessageViews(42, 7, 1234)},
-		{"комментарии", "replies_update", domain.NewUpdateChannelMessageReplies(42, 7, 3)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			raw, err := json.Marshal(tc.body)
