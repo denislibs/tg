@@ -169,3 +169,30 @@ describe('threadReads: диалог группы', () => {
   })
 })
 
+// tweb :10916 → `dialog_unread` :10950 → bubbles.ts:2318-2326/:4860 — горизонт
+// исходящих треда уходит ленте треда, у темы — есть ли она в кэше или нет
+describe('threadReads: горизонт исходящих треда — ленте', () => {
+  it('объявляет `onReadOutbox` после отсева эха; входящие — нет', () => {
+    const out: unknown[] = []
+    const topic = { id: mid(10), read_inbox_max_id: mid(10), read_outbox_max_id: mid(12), top_message: mid(13), unread_count: 3 } as ForumTopic
+    const reads = newThreadReads({
+      rest: { post: vi.fn(async () => true) } as never,
+      isForumPeer: (p) => p === FORUM,
+      forumTopics: { getForumTopic: (_p, id) => (id === mid(10) ? topic : undefined), applyReadDiscussion: vi.fn() },
+      getMeId: () => 1,
+      onReadOutbox: (...args) => { out.push(args) },
+    })
+    reads.saveDiscussion(GROUP, mid(7), { maxId: mid(30), readMaxId: mid(25), readOutboxMaxId: mid(20), unreadCount: 5 })
+    // эхо (не выше известного) — тишина
+    reads.applyReadDiscussion({ peerId: FORUM, topicId: mid(10), maxId: mid(12), out: true })
+    reads.applyReadDiscussion({ peerId: GROUP, topicId: mid(7), maxId: mid(20), out: true })
+    // входящие — не горизонт исходящих
+    reads.applyReadDiscussion({ peerId: GROUP, topicId: mid(7), maxId: mid(28), out: false })
+    expect(out).toEqual([])
+    reads.applyReadDiscussion({ peerId: FORUM, topicId: mid(10), maxId: mid(13), out: true })
+    reads.applyReadDiscussion({ peerId: FORUM, topicId: mid(11), maxId: mid(14), out: true }) // темы нет в кэше
+    reads.applyReadDiscussion({ peerId: GROUP, topicId: mid(7), maxId: mid(29), out: true })
+    expect(out).toEqual([[FORUM, mid(10), mid(13)], [FORUM, mid(11), mid(14)], [GROUP, mid(7), mid(29)]])
+    expect(reads.getReadState(GROUP, mid(7))?.read_outbox_max_id).toBe(mid(29))
+  })
+})

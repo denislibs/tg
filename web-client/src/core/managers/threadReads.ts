@@ -46,9 +46,12 @@ export interface ThreadReadsDeps {
   /** Прочтение треда комментариев на диалоге группы — `dialogs.applyThreadRead`
    *  (до сдвига горизонта треда). Опционален: тестам без диалогов не нужен. */
   onCommentThreadRead?: (peerId: PeerId, threadId: number, maxId: number, out: boolean) => void
+  /** Горизонт исходящих треда сдвинут — ленте треда (`dialog_unread`, :10950 →
+   *  bubbles.ts:2318-2326 → `historyStorage(peerId, threadId).readOutboxMaxId`, :4860). */
+  onReadOutbox?: (peerId: PeerId, threadId: number, maxId: number) => void
 }
 
-export function newThreadReads({ rest, isForumPeer, forumTopics, getMeId, onCommentThreadRead }: ThreadReadsDeps) {
+export function newThreadReads({ rest, isForumPeer, forumTopics, getMeId, onCommentThreadRead, onReadOutbox }: ThreadReadsDeps) {
   const states = new Map<string, ThreadState>()
   /** `historyStorage.triedToReadMaxId` (:9165-9170, :9248-9252) */
   const tried = new Map<string, number>()
@@ -64,15 +67,19 @@ export function newThreadReads({ rest, isForumPeer, forumTopics, getMeId, onComm
   /** Местное прочтение треда — `onUpdateReadHistory` (:10795-10990), ветки темы и треда. */
   function apply(update: ReadDiscussion): void {
     const { peerId, topicId, maxId, out } = update
-    if (isForumPeer(peerId)) {
-      forumTopics.applyReadDiscussion(update)
-      return
-    }
+    if (isForumPeer(peerId)) forumTopics.applyReadDiscussion(update)
+    else applyCommentThread(peerId, topicId, maxId, out)
+    // горизонт треда у оригинала — его `historyStorage` (:10916), есть ли тема
+    // в кэше или нет; лента треда узнаёт его из `dialog_unread` (:10950)
+    if (out) onReadOutbox?.(peerId, topicId, maxId)
+  }
+
+  function applyCommentThread(peerId: PeerId, topicId: number, maxId: number, out: boolean): void {
     // диалог группы (:10814-10816) — до сдвига горизонта треда
     onCommentThreadRead?.(peerId, topicId, maxId, out)
     const state = states.get(key(peerId, topicId))
     if (!state) return
-    // :10925-10926 — горизонт треда присваивается
+    // :10916 — горизонт треда присваивается
     if (out) {
       state.readOutboxMaxId = maxId
       return
@@ -91,7 +98,7 @@ export function newThreadReads({ rest, isForumPeer, forumTopics, getMeId, onComm
     if (topic) return topic
     const state = states.get(key(peerId, threadId))
     // своё последнее сообщение треда непрочитанным его не делает (:5135-5137)
-    // горизонт исходящих треда — `historyStorage.readOutboxMaxId` (:8845), не сводится с группой
+    // горизонт исходящих треда — `historyStorage.readOutboxMaxId` (:8851), не сводится с группой
     return state && { read_inbox_max_id: state.readMaxId, read_outbox_max_id: state.readOutboxMaxId, unread_count: state.readMaxId < state.maxId ? state.unreadCount : 0, top_message: state.maxId, merged: true }
   }
 

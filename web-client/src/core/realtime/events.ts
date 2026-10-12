@@ -112,8 +112,13 @@ export const RT = {
   pinnedForumTopic: 'rt:pinned_forum_topic',
   // Прочтение треда (тема форума, тред комментариев) — `updateReadChannelDiscussion
   // Inbox/Outbox` (tweb appMessagesManager.ts:777-778). Применяет `threadReads`
-  // воркера, вкладкам темы уезжают операциями `forumTopicOp`; имя нужно полноте реестра.
+  // воркера, вкладкам темы уезжают операциями `forumTopicOp`, горизонт исходящих
+  // треда — `threadReadOutbox`; имя нужно полноте реестра.
   readDiscussion: 'rt:read_discussion',
+  // Горизонт исходящих треда сдвинут — публикует `threadReads` воркера (после
+  // отсева эха). Порт `dialog_unread` (tweb :10950) для ленты треда, которая
+  // красит «✓✓» по `historyStorage(peerId, threadId).readOutboxMaxId` (bubbles.ts:4860).
+  threadReadOutbox: 'rt:thread_read_outbox',
   pollUpdate: 'rt:poll_update',
   checklistUpdate: 'rt:checklist_update',
   boostUpdate: 'rt:boost_update',

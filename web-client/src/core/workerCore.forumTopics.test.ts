@@ -101,7 +101,7 @@ async function boot() {
   await tab.invoke('manager', { name: 'forumTopics', method: 'getForumTopics', args: [FORUM] })
   ops.length = 0
   expect(capturedConnDeps).not.toBeNull()
-  return { core, ops, dialogOps }
+  return { core, ops, dialogOps, tab }
 }
 
 describe('createWorkerCore(): кадры тем применяет хранилище тем', () => {
@@ -241,6 +241,25 @@ describe('createWorkerCore(): кадры тем применяет хранил�
     expect(groupRead).toHaveBeenCalledWith(-70, generateMessageId(200), generateMessageId(230), false)
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/chats/-70/threads/200/read'), expect.objectContaining({ body: JSON.stringify({ read_max_id: 230 }) }))
     expect(core.registry.dialogs.getDialogReadState(-70, generateMessageId(200))).toEqual({ readInboxMaxSeq: generateMessageId(230), unreadCount: 0, readOutboxMaxSeq: 0 })
+  })
+
+  // Кадр `updateReadChannelDiscussionOutbox` (tweb :777-778 → :10916 → `dialog_unread`
+  // :10950): горизонт исходящих треда — ленте треда операцией владельца, эхо отсеяно
+  it('outbox треда комментариев и темы → `threadReadOutbox` клиентскими номерами, эхо — тишина', async () => {
+    const { core, tab } = await boot()
+    const seen: unknown[] = []
+    tab.on('rt:thread_read_outbox', (p) => { seen.push(p) })
+    await core.registry.messages.getDiscussionMessage(-3, generateMessageId(9))
+    const frame = { _: 'updateReadChannelDiscussionOutbox', channel_id: 70, top_msg_id: 200, read_max_id: 228 }
+    capturedConnDeps!.onFrame('read_discussion', frame)
+    capturedConnDeps!.onFrame('read_discussion', frame)
+    capturedConnDeps!.onFrame('read_discussion', { _: 'updateReadChannelDiscussionOutbox', channel_id: 50, top_msg_id: 10, read_max_id: 12 })
+    await vi.waitFor(() => expect(seen).toHaveLength(2))
+    expect(seen).toEqual([
+      { peerId: -70, threadId: generateMessageId(200), maxId: generateMessageId(228) },
+      { peerId: FORUM, threadId: generateMessageId(10), maxId: generateMessageId(12) },
+    ])
+    expect(core.registry.dialogs.getDialogReadState(-70, generateMessageId(200))?.readOutboxMaxSeq).toBe(generateMessageId(228))
   })
 })
 

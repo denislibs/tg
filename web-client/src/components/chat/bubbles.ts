@@ -105,7 +105,7 @@ import { RT } from '@core/realtime/events'
 import { ANCHOR_ACTION_ATTRIBUTE, wrapEmojiText, wrapMessageText } from '@lib/richtext'
 import showForwardPopup from '@components/popups/forward.bridge'
 import { mirrorWindow, putMirrorPage, replaceMirrorWindow } from '@core/history/messagesMirror'
-import { generateMessageId, generateTempMessageId, isLocalMessageId } from '@core/history/messageId'
+import { generateTempMessageId, isLocalMessageId } from '@core/history/messageId'
 import { messageToConvMsg } from '@core/messageToConvMsg'
 import { dayLabel, SEND_WHEN_ONLINE_TIMESTAMP } from '@core/format/dayLabel'
 import { fmtViews } from '@core/format/fmtViews'
@@ -6348,16 +6348,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
         if (dialog?.read_outbox_max_id !== undefined) this.updateUnreadByDialog(dialog.read_outbox_max_id)
       }
     })
-    // Горизонт исходящих ТРЕДА растёт кадром `updateReadChannelDiscussionOutbox`
-    // (tweb :777-778 → `onUpdateReadHistory` → `dialog_unread`, :10951): у темы
-    // его применяет и хранилище тем (операция ниже), у треда комментариев —
-    // только `threadReads` воркера, строки группы может не быть — поэтому лента
-    // берёт рубеж из самого кадра (номера — клиентские, :10800-10801).
-    this.listenerSetter.add(rootScope)(RT.readDiscussion, (update) => {
-      const { threadId } = this.chat
-      if (update._ !== 'updateReadChannelDiscussionOutbox' || !threadId || this.chat.type === ChatType.Scheduled) return
-      if (toPeerId(update.channel_id, true) !== this.peerId || generateMessageId(update.top_msg_id) !== threadId) return
-      this.updateUnreadByDialog(generateMessageId(update.read_max_id))
+    // Горизонт исходящих ТРЕДА (кадр `updateReadChannelDiscussionOutbox`, tweb
+    // :777-778 → `onUpdateReadHistory` :10916 → `dialog_unread` :10950) объявляет
+    // `threadReads` воркера — и у темы без кэша, и у треда комментариев.
+    this.listenerSetter.add(rootScope)(RT.threadReadOutbox, ({ peerId, threadId, maxId }) => {
+      if (this.chat.type === ChatType.Scheduled || peerId !== this.peerId || threadId !== this.chat.threadId) return
+      this.updateUnreadByDialog(maxId)
     })
     this.listenerSetter.add(rootScope)(RT.forumTopicOp, ({ ops }) => {
       const { threadId } = this.chat

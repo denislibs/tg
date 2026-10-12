@@ -132,9 +132,10 @@ describe('ChatBubbles — «прочитано» по горизонту исх�
     expect(isRead(bubbleOf(b, 11))).toBe(false)
   })
 
-  // tweb :4858-4859 — у треда свой горизонт исходящих; растёт кадром
-  // `updateReadChannelDiscussionOutbox` (:777-778), горизонт группы его не двигает
-  it('тред комментариев: горизонт треда, рост — кадром outbox треда, операция группы не трогает', async () => {
+  // tweb :4858-4860 — у треда свой горизонт исходящих; растёт кадром
+  // `updateReadChannelDiscussionOutbox` (:777-778 → :10916 → `dialog_unread` :10950),
+  // который воркер объявляет `threadReadOutbox`; горизонт группы его не двигает
+  it('тред комментариев: горизонт треда, рост — операцией threadReadOutbox, операция группы не трогает', async () => {
     const OFFSET = 0x100000000
     const GROUP = -(CHAT)
     const THREAD = OFFSET + 7
@@ -148,21 +149,24 @@ describe('ChatBubbles — «прочитано» по горизонту исх�
     rootScope.dispatchEventSingle(RT.dialogOp, { ops: [{ op: 'patch', peerId: GROUP, fields: { read_outbox_max_id: OFFSET + 99 } }] })
     expect(isRead(bubbleOf(b, OFFSET + 12))).toBe(false)
     // чужой тред — не наш
-    rootScope.dispatchEventSingle(RT.readDiscussion, { _: 'updateReadChannelDiscussionOutbox', channel_id: CHAT, top_msg_id: 8, read_max_id: 13 })
+    rootScope.dispatchEventSingle(RT.threadReadOutbox, { peerId: GROUP, threadId: OFFSET + 8, maxId: OFFSET + 13 })
     expect(isRead(bubbleOf(b, OFFSET + 12))).toBe(false)
-    rootScope.dispatchEventSingle(RT.readDiscussion, { _: 'updateReadChannelDiscussionOutbox', channel_id: CHAT, top_msg_id: 7, read_max_id: 12 })
+    // чужой пир — не наш
+    rootScope.dispatchEventSingle(RT.threadReadOutbox, { peerId: GROUP - 1, threadId: THREAD, maxId: OFFSET + 13 })
+    expect(isRead(bubbleOf(b, OFFSET + 12))).toBe(false)
+    rootScope.dispatchEventSingle(RT.threadReadOutbox, { peerId: GROUP, threadId: THREAD, maxId: OFFSET + 12 })
     expect(isRead(bubbleOf(b, OFFSET + 12))).toBe(true)
     expect(isRead(bubbleOf(b, OFFSET + 13))).toBe(false)
   })
 
-  it('тема форума: кадр outbox треда тоже перекрашивает живьём', async () => {
+  it('тема форума (и без кэша тем): threadReadOutbox перекрашивает живьём', async () => {
     const OFFSET = 0x100000000
     const GROUP = -(CHAT)
     const THREAD = OFFSET + 7
     bubbles = mountTestBubbles(createTestChat({ peerId: GROUP, threadId: THREAD, isForum: true }), managersWith([own(OFFSET + 11, GROUP)], OFFSET + 10))
     await openFeed(bubbles)
     await settle()
-    rootScope.dispatchEventSingle(RT.readDiscussion, { _: 'updateReadChannelDiscussionOutbox', channel_id: CHAT, top_msg_id: 7, read_max_id: 11 })
+    rootScope.dispatchEventSingle(RT.threadReadOutbox, { peerId: GROUP, threadId: THREAD, maxId: OFFSET + 11 })
     expect(isRead(bubbleOf(bubbles, OFFSET + 11))).toBe(true)
   })
 })
