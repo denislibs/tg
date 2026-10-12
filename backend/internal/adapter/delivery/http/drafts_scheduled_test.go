@@ -22,7 +22,8 @@ type updatesWire struct {
 			Underscore string `json:"_"`
 			UserID     int64  `json:"user_id"`
 		} `json:"peer"`
-		Draft struct {
+		TopMsgID int64 `json:"top_msg_id"`
+		Draft    struct {
 			Underscore string `json:"_"`
 			Message    string `json:"message"`
 		} `json:"draft"`
@@ -48,23 +49,12 @@ func TestDrafts_ListAndSaveAreTheSameFrame(t *testing.T) {
 		t.Fatalf("первое сообщение: %d %s", rec.Code, rec.Body.String())
 	}
 
-	// Сохранение отвечает ТЕМ ЖЕ кадром, что приезжает живым и что едет
-	// списком: третьей формы одного черновика больше нет.
+	// Сохранение — messages.saveDraft в форме TL → Bool (layer.d.ts:24059):
+	// сам черновик уезжает кадром updateDraftMessage, ответ tweb не читает.
 	rec = authedReq(t, h, http.MethodPut, "/chats/"+itoa(created)+"/draft", tokenA,
-		map[string]any{"text": "недописанное"})
-	if rec.Code != http.StatusOK {
+		map[string]any{"message": "недописанное"})
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"boolTrue"`) {
 		t.Fatalf("сохранение черновика: %d %s", rec.Code, rec.Body.String())
-	}
-	var saved struct {
-		Underscore string `json:"_"`
-		Draft      struct {
-			Underscore string `json:"_"`
-			Message    string `json:"message"`
-		} `json:"draft"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &saved)
-	if saved.Underscore != "updateDraftMessage" || saved.Draft.Message != "недописанное" {
-		t.Fatalf("сохранение = %s", rec.Body.String())
 	}
 
 	// Список — контейнер `updates` из тех же кадров.
@@ -80,7 +70,7 @@ func TestDrafts_ListAndSaveAreTheSameFrame(t *testing.T) {
 		t.Fatalf("список = %s", rec.Body.String())
 	}
 	u := list.Updates[0]
-	if u.Underscore != "updateDraftMessage" || u.Draft.Message != "недописанное" || u.Peer.UserID != idB {
+	if u.Underscore != "updateDraftMessage" || u.Draft.Message != "недописанное" || u.Peer.UserID != idB || u.TopMsgID != 0 {
 		t.Fatalf("кадр списка = %s", rec.Body.String())
 	}
 	// Обязательные векторы контейнера едут ПУСТЫМИ, а не пропадают.
@@ -88,12 +78,94 @@ func TestDrafts_ListAndSaveAreTheSameFrame(t *testing.T) {
 		t.Fatalf("контейнер неполон: %s", rec.Body.String())
 	}
 
-	// Пустой текст снимает черновик — КОНСТРУКТОРОМ, а не null.
-	rec = authedReq(t, h, http.MethodPut, "/chats/"+itoa(created)+"/draft", tokenA,
-		map[string]any{"text": ""})
-	_ = json.Unmarshal(rec.Body.Bytes(), &saved)
-	if saved.Underscore != "updateDraftMessage" || saved.Draft.Underscore != "draftMessageEmpty" {
-		t.Fatalf("снятие черновика = %s", rec.Body.String())
+	// Пустой текст снимает черновик.
+	if rec = authedReq(t, h, http.MethodPut, "/chats/"+itoa(created)+"/draft", tokenA,
+		map[string]any{"message": ""}); rec.Code != http.StatusOK {
+		t.Fatalf("снятие черновика: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodGet, "/drafts", tokenA, nil)
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || len(list.Updates) != 0 {
+		t.Fatalf("после снятия список = %s", rec.Body.String())
+	}
+}
+
+// Ф-5 п. 3 (A3-32): черновики в двух темах форума и в General — по ключу
+// треда; список и строки тем несут их с номером треда (tweb
+// appDraftsManager.ts:44-69, dialogs.ts:1693-1697).
+func TestDrafts_ForumTopicThreads(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990070011")
+
+	rec := authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{"title": "Форум"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("создание группы: %d %s", rec.Code, rec.Body.String())
+	}
+	cid := itoa(createdPeerID(t, rec))
+	if rec := authedReq(t, h, http.MethodPost, "/chats/"+cid+"/forum", tokenA,
+		map[string]any{"enabled": true}); rec.Code != http.StatusOK {
+		t.Fatalf("включение тем: %d %s", rec.Code, rec.Body.String())
+	}
+	topic := func(title string) int64 {
+		rec := authedReq(t, h, http.MethodPost, "/chats/"+cid+"/topics", tokenA, map[string]any{"title": title})
+		var up struct {
+			Updates []struct {
+				Message struct {
+					ID int64 `json:"id"`
+				} `json:"message"`
+			} `json:"updates"`
+		}
+		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &up) != nil || len(up.Updates) != 1 {
+			t.Fatalf("создание темы: %d %s", rec.Code, rec.Body.String())
+		}
+		return up.Updates[0].Message.ID
+	}
+	a, b := topic("A"), topic("B")
+	save := func(body map[string]any) {
+		t.Helper()
+		if rec := authedReq(t, h, http.MethodPut, "/chats/"+cid+"/draft", tokenA, body); rec.Code != http.StatusOK {
+			t.Fatalf("черновик %v: %d %s", body, rec.Code, rec.Body.String())
+		}
+	}
+	save(map[string]any{"message": "в A", "reply_to": map[string]any{"_": "inputReplyToMessage", "reply_to_msg_id": a}})
+	save(map[string]any{"message": "в B", "reply_to": map[string]any{"_": "inputReplyToMessage", "reply_to_msg_id": b}})
+	save(map[string]any{"message": "в General", "reply_to": map[string]any{"_": "inputReplyToMessage", "reply_to_msg_id": 1}})
+
+	rec = authedReq(t, h, http.MethodGet, "/drafts", tokenA, nil)
+	var list updatesWire
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || len(list.Updates) != 3 {
+		t.Fatalf("список = %s", rec.Body.String())
+	}
+	want := map[string]int64{"в A": a, "в B": b, "в General": 1}
+	for _, u := range list.Updates {
+		if want[u.Draft.Message] != u.TopMsgID {
+			t.Fatalf("черновик %q: top_msg_id = %d, ждали %d", u.Draft.Message, u.TopMsgID, want[u.Draft.Message])
+		}
+	}
+
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/topics", tokenA, nil)
+	var topics struct {
+		Topics []struct {
+			ID    int64 `json:"id"`
+			Draft *struct {
+				Underscore string `json:"_"`
+				Message    string `json:"message"`
+			} `json:"draft"`
+		} `json:"topics"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &topics); err != nil || len(topics.Topics) != 3 {
+		t.Fatalf("темы = %s", rec.Body.String())
+	}
+	for _, tp := range topics.Topics {
+		if tp.Draft == nil || tp.Draft.Underscore != "draftMessage" {
+			t.Fatalf("у темы %d нет черновика: %s", tp.ID, rec.Body.String())
+		}
+	}
+
+	// Тред не темы — TOPIC_ID_INVALID.
+	rec = authedReq(t, h, http.MethodPut, "/chats/"+cid+"/draft", tokenA,
+		map[string]any{"message": "x", "reply_to": map[string]any{"reply_to_msg_id": a, "top_msg_id": 100500}})
+	if rec.Code == http.StatusOK {
+		t.Fatalf("черновик в несуществующей теме принят: %s", rec.Body.String())
 	}
 }
 

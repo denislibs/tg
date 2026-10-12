@@ -1738,7 +1738,7 @@ func (h *ChatHandler) SetForum(w http.ResponseWriter, r *http.Request) {
 func topicJSON(row domain.TopicRow, viewerID int64) domain.ForumTopicReal {
 	// Темы бывают только у супергрупп — ключ пира тут один на всех: -chatID.
 	peer := domain.NewPeer(domain.ToPeerID(row.Topic.ChatID, true))
-	return domain.NewForumTopic(row.Topic, peer, domain.NewPeer(domain.PeerID(row.Topic.CreatedBy)),
+	t := domain.NewForumTopic(row.Topic, peer, domain.NewPeer(domain.PeerID(row.Topic.CreatedBy)),
 		domain.ForumTopicState{
 			TopMessage:      row.LastMsgSeq,
 			ReadInboxMaxID:  row.LastReadSeq,
@@ -1754,6 +1754,11 @@ func topicJSON(row domain.TopicRow, viewerID int64) domain.ForumTopicReal {
 			Pinned: row.Topic.Pinned,
 			Hidden: row.Topic.Hidden,
 		})
+	// Черновик зрителя в теме (flags.4?DraftMessage; tweb dialogs.ts:1693-1697).
+	if row.Draft != nil {
+		t.Draft = row.Draft.Wire()
+	}
+	return t
 }
 
 // topicNumber — {topicID} пути: НОМЕР темы (номер служебки создания в чате, у
@@ -2596,7 +2601,7 @@ func (h *ChatHandler) SetChatTheme(w http.ResponseWriter, r *http.Request) {
 // Прежде витрина и кадр несли РАЗНЫЕ формы одного черновика (тут `text` и
 // `peer_id` плоско, там вложенный словарь), и расходились они сами по себе.
 func draftJSON(d domain.Draft, peer domain.PeerID) domain.UpdateDraftMessage {
-	return domain.NewUpdateDraftMessage(domain.NewPeer(peer), d.Wire())
+	return domain.NewUpdateDraftMessage(domain.NewPeer(peer), d.TopMsgID, d.Wire())
 }
 
 // sendAsChatID — знаковый ключ «личности отправителя» во внутренний chatID.
@@ -2624,55 +2629,45 @@ func (h *ChatHandler) MyDrafts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewUpdates(out, nil, time.Now()))
 }
 
-// SaveDraft — PUT /chats/{chatID}/draft {text, entities, reply_to_id}.
-// Пустой текст без reply_to_id удаляет черновик (Telegram draftMessageEmpty).
+// SaveDraft — PUT /chats/{chatID}/draft — messages.saveDraft в форме TL:
+// {message, entities?, reply_to?: inputReplyToMessage{reply_to_msg_id,
+// top_msg_id?}} → Bool (layer.d.ts:24059). Тред черновика едет в reply_to
+// (tweb appDraftsManager.ts:296-303), пустой message без ответа снимает
+// черновик треда. Сам черновик уезжает своим устройствам кадром
+// updateDraftMessage (и этому — тоже): tweb ответ saveDraft не читает.
 func (h *ChatHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := peerChatIDOrCreate(w, r, h.svc)
 	if !ok {
 		return
 	}
 	var b struct {
-		Text      string                 `json:"text"`
-		Entities  domain.MessageEntities `json:"entities"`
-		ReplyToID *int64                 `json:"reply_to_id"`
+		Message  string                 `json:"message"`
+		Entities domain.MessageEntities `json:"entities"`
+		ReplyTo  *struct {
+			ReplyToMsgID *int64 `json:"reply_to_msg_id"`
+			TopMsgID     *int64 `json:"top_msg_id"`
+		} `json:"reply_to"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	d, err := h.svc.SaveDraft(r.Context(), h.meID(r), chatID, b.Text, b.Entities, b.ReplyToID)
-	if errors.Is(err, domain.ErrNotFound) {
+	in := usecasechat.DraftInput{Message: b.Message, Entities: b.Entities}
+	if b.ReplyTo != nil {
+		in.ReplyToMsgID, in.TopMsgID = b.ReplyTo.ReplyToMsgID, b.ReplyTo.TopMsgID
+	}
+	_, err := h.svc.SaveDraft(r.Context(), h.meID(r), chatID, in)
+	switch {
+	case errors.Is(err, domain.ErrTopicIDInvalid):
+		writeError(w, http.StatusBadRequest, "TOPIC_ID_INVALID")
+		return
+	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusForbidden, "not a member of this chat")
 		return
-	}
-	if errors.Is(err, domain.ErrTooLong) {
+	case errors.Is(err, domain.ErrTooLong):
 		writeError(w, http.StatusBadRequest, "too long")
 		return
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal")
-		return
-	}
-	// Ответ — ТОТ ЖЕ кадр, что приезжает живым и что едет в списке `/drafts`:
-	// третьей формы одного черновика у нас больше нет.
-	//
-	// «Черновик снят» — КОНСТРУКТОР draftMessageEmpty, а не null: отсутствие
-	// выражается выбором конструктора, как у любого объединения схемы.
-	peer := domain.NewPeer(peerOf(r, h.svc, chatID))
-	if d == nil {
-		writeJSON(w, http.StatusOK, domain.NewUpdateDraftMessage(peer, domain.NewDraftMessageEmpty()))
-		return
-	}
-	writeJSON(w, http.StatusOK, domain.NewUpdateDraftMessage(peer, d.Wire()))
-}
-
-// DeleteDraft — DELETE /chats/{chatID}/draft.
-func (h *ChatHandler) DeleteDraft(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := peerChatID(w, r, h.svc)
-	if !ok {
-		return
-	}
-	if err := h.svc.DeleteDraft(r.Context(), h.meID(r), chatID); err != nil {
+	case err != nil:
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}

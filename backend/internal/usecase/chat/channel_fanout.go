@@ -76,7 +76,7 @@ func (i *Interactor) publishChannelUpdate(ctx context.Context, channelID int64, 
 func (i *Interactor) deliverChannelPost(ctx context.Context, msg domain.Message, body map[string]any, pts int64, opt channelPostOpts) {
 	i.publishChannelUpdate(ctx, msg.ChatID, "new_message", body, pts, msg.SenderID)
 	if opt.clearDraft {
-		i.clearDraftAfterSend(ctx, msg.SenderID, msg.ChatID)
+		i.clearDraftAfterSend(ctx, msg.SenderID, msg.ChatID, msg.ThreadRootID, msg.ReplyToID)
 	}
 	i.goBG("chat.channelPostFanout", func(ctx context.Context) {
 		members, err := i.chats.MemberIDs(ctx, msg.ChatID)

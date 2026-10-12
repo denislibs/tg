@@ -3,10 +3,18 @@ package domain
 import "time"
 
 // Draft — облачный черновик сообщения (Telegram DraftMessage): по одному на
-// пару (чат, пользователь), пустой текст без reply означает отсутствие
-// черновика (удаление).
+// тройку (чат, тред, пользователь), пустой текст без reply означает
+// отсутствие черновика (удаление). Ключ «пир + тред» — порт tweb
+// appDraftsManager.ts:88-90 (`peerId_threadId`).
 type Draft struct {
-	ChatID    int64
+	ChatID int64
+	// ThreadRootID — ключ строки корня треда (drafts.thread_root_id): 0 — без
+	// треда; в форуме 0 — General (строки корня у неё нет).
+	ThreadRootID int64
+	// TopMsgID — тот же тред НОМЕРОМ снаружи (updateDraftMessage.top_msg_id):
+	// номер темы, у General в форуме — 1, у треда комментариев — номер
+	// зеркала; 0 — черновик чата. Выводит хранилище при чтении.
+	TopMsgID  int64
 	Text      string
 	Entities  MessageEntities
 	ReplyToID *int64
@@ -21,5 +29,5 @@ type Draft struct {
 // (draftMessageEmpty), и выбирает между ними тот, у кого есть ответ на вопрос
 // «есть ли черновик»: строка есть — draftMessage, строки нет — пустой.
 func (d Draft) Wire() DraftMessageReal {
-	return NewDraftMessage(d.Text, d.Entities, d.ReplyToID, d.UpdatedAt)
+	return NewDraftMessage(d.Text, d.Entities, d.ReplyToID, d.TopMsgID, d.UpdatedAt)
 }

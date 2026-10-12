@@ -368,11 +368,18 @@ type DraftMessageReal struct {
 func (DraftMessageReal) isDraftMessage() {}
 func (d DraftMessageReal) Tag() string   { return d.Underscore }
 
-func NewDraftMessage(text string, entities MessageEntities, replyToMsgID *int64, updatedAt time.Time) DraftMessageReal {
+// NewDraftMessage — черновик провода. topMsgID — номер треда черновика (0 —
+// черновик чата): он едет в reply_to.top_msg_id ТОЛЬКО при ответе — так
+// складывает черновик треда сам tweb (input.ts:2290-2294: reply_to есть лишь
+// у ответа, и в нём top_msg_id = тред), а черновики сравнивает целиком
+// (draftsAreEqual → deepEqual reply_to). Тред без ответа адресует сам кадр
+// (updateDraftMessage.top_msg_id).
+func NewDraftMessage(text string, entities MessageEntities, replyToMsgID *int64, topMsgID int64, updatedAt time.Time) DraftMessageReal {
 	d := DraftMessageReal{Underscore: DraftMessageTag, Message: text, Entities: entities,
 		Date: unixSeconds(updatedAt)}
 	if replyToMsgID != nil {
 		r := NewInputReplyToMessage(*replyToMsgID)
+		r.TopMsgID = topMsgID
 		d.ReplyTo = &r
 	}
 	return d
@@ -392,11 +399,14 @@ const InputReplyToMessageTag = "inputReplyToMessage"
 // (inputReplyToStory) не объявляется: ответить историей из композера у нас
 // нельзя.
 //
-// Цитаты и тред здесь не производятся: черновик хранит только номер, на который
-// отвечают, — остальное собирается на отправке.
+// Цитаты здесь не производятся: черновик хранит номер, на который отвечают, и
+// тред (top_msg_id) — остальное собирается на отправке.
 type InputReplyToMessage struct {
 	Underscore   string `json:"_"`
 	ReplyToMsgID int64  `json:"reply_to_msg_id"`
+	// TopMsgID — flags.0?int: номер треда, внутри которого ответ (тема,
+	// General = 1, тред комментариев). 0 — ответ вне треда.
+	TopMsgID int64 `json:"top_msg_id,omitempty"`
 }
 
 func NewInputReplyToMessage(msgID int64) InputReplyToMessage {

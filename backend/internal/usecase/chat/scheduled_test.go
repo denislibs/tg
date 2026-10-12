@@ -710,14 +710,14 @@ func TestScheduled_DraftClearedOnEnqueueKeptOnPublish(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := drafts.m[[2]int64{cid, 1}]; ok {
+	if _, ok := drafts.m[[3]int64{cid, 1, 0}]; ok {
 		t.Fatal("постановка не сняла черновик")
 	}
 	_, _ = drafts.Upsert(ctx, 1, domain.Draft{ChatID: cid, Text: "новый черновик"})
 	if _, err := in.SendScheduledNow(ctx, cid, 1, []int64{sm.Seq}); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := drafts.m[[2]int64{cid, 1}]; !ok {
+	if _, ok := drafts.m[[3]int64{cid, 1, 0}]; !ok {
 		t.Fatal("публикация сняла текущий черновик")
 	}
 }
