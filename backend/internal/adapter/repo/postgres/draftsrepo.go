@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -29,7 +30,8 @@ var _ usecasechat.DraftRepo = (*DraftsRepo)(nil)
 //
 // Ожидает алиасы d (drafts), c (chats), r (корень, LEFT JOIN по
 // draftRootJoin).
-const draftTopMsgID = `CASE WHEN d.thread_root_id = 0 THEN CASE WHEN c.is_forum THEN 1 ELSE 0 END ELSE r.seq END`
+var draftTopMsgID = `CASE WHEN d.thread_root_id = 0 THEN CASE WHEN c.is_forum THEN ` +
+	strconv.FormatInt(domain.GeneralTopicID, 10) + ` ELSE 0 END ELSE r.seq END`
 
 const draftRootJoin = ` JOIN chats c ON c.id = d.chat_id
 	LEFT JOIN messages r ON d.thread_root_id <> 0 AND r.id = d.thread_root_id`
@@ -38,7 +40,7 @@ const draftRootJoin = ` JOIN chats c ON c.id = d.chat_id
 // треда ему не вывести.
 const draftLive = `(d.thread_root_id = 0 OR r.id IS NOT NULL)`
 
-const draftCols = `d.chat_id, d.thread_root_id, ` + draftTopMsgID + `, d.text, d.entities, d.reply_to_id, d.updated_at`
+var draftCols = `d.chat_id, d.thread_root_id, ` + draftTopMsgID + `, d.text, d.entities, d.reply_to_id, d.updated_at`
 
 func scanDraft(row pgx.Row) (domain.Draft, error) {
 	var d domain.Draft

@@ -26,7 +26,16 @@ END $$;
 -- +goose Down
 -- Обратно один черновик на чат: черновики тредов удаляются — старой схеме их
 -- некуда положить.
-DELETE FROM drafts WHERE thread_root_id <> 0;
-ALTER TABLE drafts DROP CONSTRAINT IF EXISTS drafts_pkey;
-ALTER TABLE drafts ADD CONSTRAINT drafts_pkey PRIMARY KEY (chat_id, user_id);
-ALTER TABLE drafts DROP COLUMN IF EXISTS thread_root_id;
+-- +goose StatementBegin
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'drafts' AND column_name = 'thread_root_id') THEN
+        DELETE FROM drafts WHERE thread_root_id <> 0;
+        ALTER TABLE drafts DROP CONSTRAINT IF EXISTS drafts_pkey;
+        ALTER TABLE drafts ADD CONSTRAINT drafts_pkey PRIMARY KEY (chat_id, user_id);
+        ALTER TABLE drafts DROP COLUMN thread_root_id;
+    END IF;
+END $$;
+-- +goose StatementEnd

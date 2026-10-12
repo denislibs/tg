@@ -76,8 +76,9 @@ func (i *Interactor) SaveDraft(ctx context.Context, userID, chatID int64, in Dra
 // (layer.d.ts:20048-20060), tweb кладёт его в reply_to (appDraftsManager.ts:
 // 296-303): без ответа reply_to_msg_id = тред, с ответом top_msg_id = тред.
 // Правило (спецификация Ф-5 п. 3, В-7):
-//  1. есть top_msg_id — тред = он, ответ = reply_to_msg_id (совпал с тредом —
-//     ответа нет: это адрес треда, как у отправки, ThreadReplyTo);
+//  1. есть top_msg_id — тред = он, ответ = reply_to_msg_id. Форма
+//     {R, top: R} — не ответ, а адрес треда R (как у отправки,
+//     ThreadReplyTo) и решается правилом 2;
 //  2. иначе reply_to_msg_id — адрес треда, если это General (1) или корень
 //     темы в форуме либо зеркало поста канала в любой группе: ответа на
 //     зеркало в самой группе не бывает (В-7);
@@ -88,13 +89,13 @@ func (i *Interactor) SaveDraft(ctx context.Context, userID, chatID int64, in Dra
 // тема и не зеркало — domain.ErrTopicIDInvalid.
 func (i *Interactor) draftThread(ctx context.Context, userID, chatID int64, replyTo, top *int64) (int64, int64, *int64, error) {
 	forum := i.groups != nil && i.isForum(ctx, chatID)
+	if top != nil && replyTo != nil && *top == *replyTo {
+		top = nil // {R, top: R} — адрес треда R (правило 2)
+	}
 	number, reply := int64(0), replyTo
 	switch {
 	case top != nil && *top != 0:
 		number = *top
-		if reply != nil && *reply == number {
-			reply = nil
-		}
 	case replyTo != nil:
 		addr, err := i.isDraftThreadAddress(ctx, chatID, forum, *replyTo)
 		if err != nil {
@@ -202,9 +203,20 @@ func (i *Interactor) clearDraftAfterSend(ctx context.Context, userID, chatID int
 // — корень треда (тема или зеркало; General — 0); вне форума — зеркало поста;
 // тред обычной группы ключом становится только с ответом (правило 1: tweb
 // шлёт top_msg_id лишь вместе с ответом), без ответа его черновик — черновик
-// чата (правило 3).
+// чата (правило 3). Сообщение без треда с ответом на зеркало снимает черновик
+// треда комментариев: такой черновик правило 2 кладёт на ключ зеркала (В-7).
 func (i *Interactor) sentDraftThread(ctx context.Context, chatID int64, threadRoot, replyTo *int64) int64 {
 	if threadRoot == nil || *threadRoot <= 0 {
+		if replyTo == nil {
+			return 0
+		}
+		rootID, err := i.msgs.IDBySeq(ctx, chatID, *replyTo)
+		if err != nil {
+			return 0
+		}
+		if mirror, err := i.isMirror(ctx, rootID); err == nil && mirror {
+			return rootID
+		}
 		return 0
 	}
 	root := *threadRoot

@@ -122,7 +122,11 @@ func TestDraft_ForumErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := in.SaveDraft(ctx, 7, id, DraftInput{Message: "x", ReplyToMsgID: i64(plain.Seq), TopMsgID: i64(plain.Seq + 0)}); !errors.Is(err, domain.ErrTopicIDInvalid) {
+	other, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 8, Text: "ещё в General"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := in.SaveDraft(ctx, 7, id, DraftInput{Message: "x", ReplyToMsgID: i64(other.Seq), TopMsgID: i64(plain.Seq)}); !errors.Is(err, domain.ErrTopicIDInvalid) {
 		t.Fatalf("тред не темы = %v, ждали ErrTopicIDInvalid", err)
 	}
 	// Ответ на сообщение General без top_msg_id — черновик General с ответом.
@@ -264,5 +268,82 @@ func TestDraft_DialogCarriesOnlyChatDraft(t *testing.T) {
 	}
 	if row := page.Dialogs[0].(domain.DialogReal); row.Draft != nil {
 		t.Fatalf("черновик треда приехал диалогу: %+v", row.Draft)
+	}
+}
+
+// Тред обычной группы (не форум, корень не зеркало): ключ треда даёт только
+// правило 1 (ответ + top_msg_id), форма {R, top: R} — адрес треда, правило
+// 2/3. Что сохранено, то снимает отправка в тот же тред (sentDraftThread).
+func TestDraft_PlainGroupThreadConsistent(t *testing.T) {
+	in, _, _, id := gateGroup(t)
+	drafts := newFakeDrafts()
+	in.SetDrafts(drafts)
+	ctx := context.Background()
+	root, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 8, Text: "корень"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	x, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 8, Text: "в треде", ThreadRootID: &root.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Ответ X в треде R — ключ R.
+	d, err := in.SaveDraft(ctx, 7, id, DraftInput{Message: "ответ", ReplyToMsgID: i64(x.Seq), TopMsgID: i64(root.Seq)})
+	if err != nil || d.ThreadRootID != root.ID || d.TopMsgID != root.Seq || d.ReplyToID == nil {
+		t.Fatalf("правило 1 в обычной группе: %+v, %v", d, err)
+	}
+	if _, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 7, Text: "ответил", ThreadRootID: &root.ID, ReplyToID: i64(x.Seq)}); err != nil {
+		t.Fatal(err)
+	}
+	if len(drafts.m) != 0 {
+		t.Fatalf("ответ в треде не снял черновик треда: %+v", drafts.m)
+	}
+
+	// {R, top: R} — адрес треда, не ответ на корень: в обычной группе это
+	// черновик чата с ответом R, и его снимает отправка в тред без ответа.
+	d, err = in.SaveDraft(ctx, 7, id, DraftInput{Message: "в тред", ReplyToMsgID: i64(root.Seq), TopMsgID: i64(root.Seq)})
+	if err != nil || d.ThreadRootID != 0 || d.TopMsgID != 0 {
+		t.Fatalf("{R, top: R}: %+v, %v", d, err)
+	}
+	if _, err := in.Send(ctx, SendInput{ChatID: id, SenderID: 7, Text: "в тред", ThreadRootID: &root.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if len(drafts.m) != 0 {
+		t.Fatalf("отправка в тред не сняла черновик {R, top: R}: %+v", drafts.m)
+	}
+}
+
+// Ответ на зеркало в ленте группы обсуждения (без треда) снимает черновик
+// треда комментариев: правило 2 кладёт его на ключ зеркала (В-7).
+func TestDraft_ReplyToMirrorClearsCommentDraft(t *testing.T) {
+	in, _, _, _ := newChannelTestInteractor(t)
+	in.updates = fakeUpdates{newStore()}
+	drafts := newFakeDrafts()
+	in.SetDrafts(drafts)
+	in.SetPublisher(&fakePublisher{})
+	ctx := context.Background()
+	ch, _ := in.CreateChannel(ctx, 7, "News", "", "", true)
+	gid, err := in.EnableDiscussion(ctx, ch, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	post, err := in.PostToChannel(ctx, ch, 7, "пост", nil, "p1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mirrorID, _ := in.msgs.MirrorByPost(ctx, ch, post.ID)
+	mirror, err := in.msgs.GetByID(ctx, mirrorID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := in.SaveDraft(ctx, 7, gid, DraftInput{Message: "к посту", ReplyToMsgID: i64(mirror.Seq)}); err != nil {
+		t.Fatal(err)
+	}
+	// Веер фикстуры канала участникам группы пуст (снятие черновика после
+	// отправки зовётся из доставки), поэтому — тот же вызов напрямую.
+	in.clearDraftAfterSend(ctx, 7, gid, nil, i64(mirror.Seq))
+	if len(drafts.m) != 0 {
+		t.Fatalf("ответ на зеркало не снял черновик треда: %+v", drafts.m)
 	}
 }
