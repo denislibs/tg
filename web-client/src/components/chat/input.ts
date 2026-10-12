@@ -48,7 +48,16 @@
 // `:3759-3771`, недавние эмодзи в `onMessageSent` `:4506-4519`. `is-under` — по `resize` окна
 // (наш `windowSize` не реактивен, у tweb — `createEffect`).
 //
-// В бэклоге (строки раздела 5 плана): меню плашек и превью ссылки (Б-72), плашки без
+// Превью ссылки (Ф-5 C2, Б-72): поля `:289-291`, `:302`, `:307`, меню плашки
+// `constructWebPageElements` `:799-851`, `processWebPage` `:3533-3631` (вызов из
+// `onMessageInput` `:3484`), крестик `onHelperCancel` `:4124-4141`, тач-меню
+// `onHelperClick` `:4237-4243`, сброс `onMessageSent` `:4521-4525`/`clearHelper`
+// `:5270-5274`, поля отправки и правки `sendMessage` `:4690-4741`, гейт
+// `setTopInfo` `:5368-5370`, ховер плашки `setCurrentHover`/`createReplyLineHover`/
+// `positionReplyLineMenu`/`openReplyLineMenuTouch` `:5205-5247`, уборка меню
+// `destroy` `:2377-2387`. Расхождение 11 — ниже.
+//
+// В бэклоге (строки раздела 5 плана): меню плашек ответа и пересылки (Б-72), плашки без
 // предмета (Б-73), эффекты сообщений (Б-125), сохранение личности send-as (Б-127).
 //
 // ОБЪЯВЛЕННЫЕ РАСХОЖДЕНИЯ С ОРИГИНАЛОМ
@@ -93,6 +102,12 @@
 //     и перепроверки по `settings_updated`/`peer_full_update` (своих событий нет). Права
 //     `send_stickers`/`send_inline` — наши `send_media`/`send_messages` (расхождение 5).
 //     `insertAtCaret`/`onEmojiSelected` — одна копия, у эмодзи-дропдауна (Б-35).
+// 11. Превью ссылки: черновик решения плашки не несёт (`pFlags.no_webpage`/`invert_media`/
+//     `media` у `draftMessage`, tweb `:2275-2310`, `:2466`, и сравнение с ними в
+//     `onHelperCancel` `:4145-4171`) — ручка `/chats/{id}/draft` этих полей не принимает.
+//     Право `embed_links` (`:3595`) — наше `send_messages` (расхождение 5).
+//     `hoverListenerSetter` (`:341`, `:5210`) не заведён: в tweb в него никто не
+//     добавляет, остался только `removeAll`.
 import type { Managers } from '@/client/bootstrap'
 import type { AppImManager } from '@lib/appImManager'
 import rootScope from '@lib/rootScope'
@@ -133,7 +148,7 @@ import findUpClassName from '@helpers/dom/findUpClassName'
 import isInputEmpty from '@helpers/dom/isInputEmpty'
 import isSendShortcutPressed from '@helpers/dom/isSendShortcutPressed'
 import focusInput from '@helpers/dom/focusInput'
-import { getAppWindow } from '@helpers/appWindow'
+import { getAppWindow, getOverlayRoot } from '@helpers/appWindow'
 import placeCaretAtEnd from '@helpers/dom/placeCaretAtEnd'
 import getRichValueWithCaret from '@helpers/dom/getRichValueWithCaret'
 import classifyInputKeyup from '@helpers/dom/classifyInputKeyup'
@@ -154,7 +169,12 @@ import Button from '@components/button'
 import ButtonIcon from '@components/buttonIcon'
 import ButtonCorner from '@components/buttonCorner'
 import ButtonMenuToggle from '@components/buttonMenuToggle'
-import type { ButtonMenuItemOptionsVerifiable } from '@components/buttonMenu'
+import { ButtonMenuSync, type ButtonMenuItemOptions, type ButtonMenuItemOptionsVerifiable } from '@components/buttonMenu'
+import DropdownHover from '@helpers/dropdownHover'
+import contextMenuController from '@helpers/contextMenuController'
+import { positionMenuTrigger } from '@helpers/positionMenu'
+import type { WebPage } from '@core/media/messageMedia'
+import type { WebPageOptions, WebPageSendOptions } from '@core/managers/messages/webPage'
 import Icon from '@components/icon'
 import InputFieldAnimated from '@components/inputFieldAnimated'
 import { toastNew } from '@components/toast'
@@ -269,6 +289,29 @@ export default class ChatInput {
     iconBtn: HTMLElement,
     content: HTMLElement,
   } = {} as ChatInput['replyElements']
+
+  /** tweb `:276-282` — меню плашки превью ссылки */
+  private webPageElements?: {
+    above: ButtonMenuItemOptions,
+    below: ButtonMenuItemOptions,
+    larger: ButtonMenuItemOptions,
+    smaller: ButtonMenuItemOptions,
+    container: HTMLElement
+  }
+  /** tweb `:284`, `:286` */
+  private webPageHover?: DropdownHover
+  private currentHover?: DropdownHover
+
+  /** tweb `:227` — ссылка, по которой показана (или запрошена) плашка */
+  public lastUrl = ''
+  /** tweb `:289-291` */
+  private getWebPagePromise?: Promise<void>
+  public willSendWebPage: WebPage | null = null
+  public webPageOptions: WebPageOptions = {}
+  /** tweb `:302` — крестик плашки: превью не строить (`no_webpage`) */
+  private noWebPage?: true
+  /** tweb `:307` — «над сообщением» (`invert_media`) */
+  public invertMedia?: boolean
 
   public forwarding?: { [fromPeerId: PeerId]: number[] }
   public replyToMsgId: MessageSendingParams['replyToMsgId']
@@ -542,6 +585,109 @@ export default class ChatInput {
     attachClickEvent(this.replyElements.content, this.onHelperClick, { listenerSetter: this.listenerSetter })
   }
 
+  /** tweb `:799-851` — меню плашки превью ссылки: «выше/ниже», «крупнее/мельче», «убрать». */
+  private constructWebPageElements() {
+    const webPageElements = this.webPageElements = {} as NonNullable<ChatInput['webPageElements']>
+    const buttons: ButtonMenuItemOptions[] = [webPageElements.above = {
+      text: 'AboveMessage',
+      onClick: () => {},
+      radioGroup: 'position',
+    }, webPageElements.below = {
+      text: 'BelowMessage',
+      onClick: () => {},
+      radioGroup: 'position',
+    }, webPageElements.larger = {
+      text: 'LargerMedia',
+      onClick: () => {},
+      radioGroup: 'size',
+    }, webPageElements.smaller = {
+      text: 'SmallerMedia',
+      onClick: () => {},
+      radioGroup: 'size',
+    }, {
+      text: 'WebPage.RemovePreview',
+      onClick: () => {
+        void this.onHelperCancel()
+      },
+      icon: 'delete',
+      danger: true,
+    }]
+    const btnMenu = webPageElements.container = ButtonMenuSync({
+      buttons,
+      radioGroups: [{
+        name: 'position',
+        onChange: (value) => {
+          this.invertMedia = !!+value
+          void this.saveDraftDebounced?.()
+        },
+        checked: 0,
+      }, {
+        name: 'size',
+        onChange: (value) => {
+          this.webPageOptions.largeMedia = !!+value
+          this.webPageOptions.smallMedia = !+value
+          void this.saveDraftDebounced?.()
+        },
+        checked: 0,
+      }],
+      listenerSetter: this.listenerSetter,
+    })
+
+    btnMenu.classList.add('reply-line-menu', 'top-right')
+
+    if(!IS_TOUCH_SUPPORTED) {
+      this.webPageHover = this.createReplyLineHover(btnMenu)
+    }
+  }
+
+  /** tweb `:5205-5213` */
+  private setCurrentHover(dropdownHover?: DropdownHover, newReply?: HTMLElement) {
+    if(this.currentHover) {
+      void this.currentHover.toggle(false)
+    }
+
+    this.currentHover = dropdownHover
+    if(newReply) dropdownHover?.attachButtonListener(newReply, this.listenerSetter)
+  }
+
+  /** tweb `:5215-5230` */
+  private createReplyLineHover(menu: HTMLElement) {
+    const hover = new DropdownHover({ element: menu })
+
+    hover.addEventListener('open', () => {
+      if(!menu.parentElement) {
+        getOverlayRoot().append(menu)
+      }
+      this.positionReplyLineMenu(menu)
+    })
+
+    hover.addEventListener('closed', () => {
+      menu.remove()
+    })
+
+    return hover
+  }
+
+  /** tweb `:5232-5236` */
+  private positionReplyLineMenu(menu: HTMLElement) {
+    const trigger = this.replyElements.content?.querySelector<HTMLElement>('.reply') || this.replyElements.iconBtn
+    if(!trigger) return
+    positionMenuTrigger(trigger, menu, 'top-right', { top: 8, bottom: 8, left: 8, right: 8 })
+  }
+
+  /** tweb `:5238-5247` */
+  private openReplyLineMenuTouch(menu: HTMLElement) {
+    if(!menu.parentElement) {
+      getOverlayRoot().append(menu)
+    }
+    this.positionReplyLineMenu(menu)
+    contextMenuController.openBtnMenu(menu, () => {
+      setTimeout(() => {
+        if(!menu.classList.contains('active')) menu.remove()
+      }, 300)
+    })
+  }
+
   /** tweb `:1055-1682` — расхождение 6 шапки. */
   /** tweb `:1048-1053` */
   private constructRecorder() {
@@ -553,6 +699,8 @@ export default class ChatInput {
 
   public constructPeerHelpers() {
     this.constructReplyElements()
+    // tweb `:1060-1061` (меню плашек ответа и пересылки — Б-72)
+    this.constructWebPageElements()
 
     this.newMessageWrapper = document.createElement('div')
     this.newMessageWrapper.classList.add('new-message-wrapper', 'rows-wrapper-row')
@@ -1274,6 +1422,10 @@ export default class ChatInput {
     // any in-flight recording navigation item, and removes the body-mounted
     // round-preview element.
     this.recordingController?.destroy()
+    // tweb :2377-2387 — меню плашки, всплывшее в body, уходит вместе с полем
+    this.setCurrentHover()
+    const menu = this.webPageElements?.container
+    if(menu?.parentElement?.matches('body')) menu.remove()
     this.saveDraftDebounced?.clearTimeout()
   }
 
@@ -1895,12 +2047,15 @@ export default class ChatInput {
     return this.messageInput.isContentEditable && !this.chatInput.classList.contains('is-hidden')
   }
 
-  /** tweb `:3458-3532` — без превью ссылки (Б-72) и бейджа звёзд. */
+  /** tweb `:3458-3532` — без бейджа звёзд. */
   public onMessageInput = (e?: Event) => {
     const { value: richValue, entities: markdownEntities1, caretPos } = getRichValueWithCaret(this.messageInputField.input)
 
     const [value, markdownEntities] = parseMarkdown(richValue, markdownEntities1, true)
     const entities = mergeEntities(markdownEntities, parseEntities(value))
+
+    // tweb :3484
+    this.processWebPage(richValue, entities)
 
     const isEmpty = !richValue.trim()
     if(isEmpty) {
@@ -1942,6 +2097,114 @@ export default class ChatInput {
     processCurrentFormatting(this.messageInput, undefined, (e as InputEvent | undefined)?.inputType as Parameters<typeof processCurrentFormatting>[2])
 
     this.updateSendBtn()
+  }
+
+  /**
+   * tweb `:3533-3631` — плашка превью ссылки: первая ссылка текста → карточка
+   * (`webPages.getWebPage`, у tweb `appWebPagesManager.getWebPage`) → плашка
+   * `webpage` над полем. При правке ссылка и «над/под» берутся из сообщения
+   * (`:3538-3542`), выбор размера — из его `force_*` (`:3615-3627`); группа
+   * «крупнее/мельче» скрыта без `has_large_media` (`:3619`). Черновик
+   * (`processingDraftMessage`) — расхождение 11.
+   */
+  private processWebPage(
+    richValue: string,
+    entities: MessageEntity[],
+    message: MyMessage | undefined = this.editMessage,
+  ) {
+    const messageMedia = message?._ === 'message' ? message.media : undefined
+    const invertMedia = message?.pFlags?.invert_media
+    const webPageUrl = messageMedia?._ === 'messageMediaWebPage' ? messageMedia.webpage.url : undefined
+    const urlEntities = (!messageMedia || webPageUrl) &&
+      entities.filter((e): e is MessageEntity.messageEntityUrl | MessageEntity.messageEntityTextUrl => e._ === 'messageEntityUrl' || e._ === 'messageEntityTextUrl')
+    if(!urlEntities || !urlEntities.length) {
+      if(this.lastUrl) {
+        this.lastUrl = ''
+        delete this.noWebPage
+        this.willSendWebPage = null
+
+        if(this.helperType) {
+          void this.helperFunc!()
+        } else {
+          this.clearHelper()
+        }
+      }
+
+      return
+    }
+
+    let foundUrl = webPageUrl
+    if(!foundUrl) for(const entity of urlEntities) {
+      let url: string
+      if(entity._ === 'messageEntityTextUrl') {
+        url = entity.url
+      } else {
+        url = richValue.slice(entity.offset, entity.offset + entity.length)
+
+        if(!(url.includes('http://') || url.includes('https://'))) {
+          continue
+        }
+      }
+
+      foundUrl = url
+      break
+    }
+
+    if(this.lastUrl === foundUrl) {
+      return
+    }
+
+    if(!foundUrl) {
+      if(this.willSendWebPage) {
+        void this.onHelperCancel()
+      }
+
+      return
+    }
+
+    this.lastUrl = foundUrl
+    const oldWebPage = webPageUrl
+    const promise: Promise<void> = this.getWebPagePromise = Promise.all([
+      this.managers.webPages.getWebPage(foundUrl),
+      this.chat.canSend('send_messages'),
+    ]).then(([webPage, canEmbedLinks]) => {
+      if(this.getWebPagePromise === promise) this.getWebPagePromise = undefined
+      if(this.lastUrl !== foundUrl) return
+      if(webPage?._ === 'webPage' && canEmbedLinks) {
+        const newReply = this.setTopInfo({
+          type: 'webpage',
+          callerFunc: () => {},
+          title: webPage.site_name || webPage.title || 'Webpage',
+          subtitle: webPage.description || webPage.url || '',
+        })
+
+        this.setCurrentHover(this.webPageHover, newReply)
+        delete this.noWebPage
+        this.willSendWebPage = webPage
+
+        const media = messageMedia?._ === 'messageMediaWebPage' ? messageMedia : undefined
+        if(this.webPageElements) {
+          const positionElement = oldWebPage && invertMedia ? this.webPageElements.above : this.webPageElements.below
+          positionElement.checkboxField!.checked = true
+
+          const sizeElement = oldWebPage && media?.pFlags.force_small_media ? this.webPageElements.smaller : this.webPageElements.larger
+          sizeElement.checkboxField!.checked = true
+
+          const sizeGroupContainer = sizeElement.element!.parentElement!
+          sizeGroupContainer.classList.toggle('hide', !webPage.pFlags.has_large_media)
+        }
+
+        this.webPageOptions = {
+          optional: true,
+          ...(oldWebPage ? {
+            smallMedia: oldWebPage && media?.pFlags.force_small_media || undefined,
+            largeMedia: oldWebPage && media?.pFlags.force_large_media || undefined,
+          } : {}),
+        }
+      } else if(this.willSendWebPage) {
+        void this.onHelperCancel()
+      }
+    })
   }
 
   /** tweb `:3796` — фокус в поле (лента зовёт его при «ответить»). */
@@ -2023,10 +2286,31 @@ export default class ChatInput {
     }
   }
 
-  /** tweb `:4119-4221` — без превью ссылки (Б-72). */
+  /** tweb `:4119-4221` — черновик превью — расхождение 11. */
   public onHelperCancel = async(e?: Event, force?: boolean) => {
     if(e) {
       cancelEvent(e)
+    }
+
+    // tweb :4124-4141 — крестик плашки превью: вернуть прежнюю плашку и не строить превью
+    if(this.willSendWebPage) {
+      const lastUrl = this.lastUrl
+      const needReturn = !!this.helperType
+
+      // * has to be dropped BEFORE restoring the previous helper, otherwise
+      // * setTopInfo would ignore it and the preview would stay in the plate
+      this.willSendWebPage = null
+
+      if(needReturn) {
+        await this.helperFunc!()
+        this.willSendWebPage = null // * in case a new one has been fetched meanwhile
+      }
+
+      // * restore values
+      this.lastUrl = lastUrl
+      this.noWebPage = true
+
+      if(needReturn) return
     }
 
     if(this.helperType === 'edit' && !force) {
@@ -2060,15 +2344,22 @@ export default class ChatInput {
     this.updateSendBtn()
   }
 
-  /** tweb `:4223-4244` — без меню плашки на таче (Б-72). */
+  /** tweb `:4223-4244` — тач-меню плашек ответа и пересылки — Б-72. */
   private onHelperClick = (e?: Event) => {
     if(e) cancelEvent(e)
 
     if(e && !findUpClassName(e.target as HTMLElement, 'reply')) return
+    let possibleBtnMenuContainer: HTMLElement | undefined
     if(this.helperType === 'reply') {
       void this.chat.setMessageId({ lastMsgId: this.replyToMsgId ?? undefined })
     } else if(this.helperType === 'edit') {
       void this.chat.setMessageId({ lastMsgId: this.editMsgId })
+    } else if(!this.helperType) {
+      possibleBtnMenuContainer = this.webPageElements?.container
+    }
+
+    if(IS_TOUCH_SUPPORTED && possibleBtnMenuContainer && !possibleBtnMenuContainer.classList.contains('active')) {
+      this.openReplyLineMenuTouch(possibleBtnMenuContainer)
     }
   }
 
@@ -2179,6 +2470,10 @@ export default class ChatInput {
     })
 
     if(clearInput) {
+      // tweb :4521-4524
+      this.lastUrl = ''
+      delete this.noWebPage
+      this.willSendWebPage = null
       void this.clearInput()
     }
 
@@ -2210,8 +2505,13 @@ export default class ChatInput {
    * Текст в пир — тело tweb `appMessagesManager.sendText` (:2670-2683, :2850-2860):
    * длинный режется `splitStringByLength`, сущности кусков — `sliceMessageEntities`,
    * маркеры разбирает `parseMarkdown`. Расхождения 2 и 4 шапки.
+   *
+   * Превью ссылки — параметры `sendText` (:2590-2599). Длинный текст: карточка
+   * снимается, если её ссылки нет в первой части (:2679-2683), — и у всех частей
+   * сразу, потому что оригинал удаляет её из общих `options`, которые следующие
+   * части наследуют (:2848-2856).
    */
-  private async sendText(value: string, entities: MessageEntity[], sendingParams: MessageSendingParams) {
+  private async sendText(value: string, entities: MessageEntity[], sendingParams: MessageSendingParams, webPageParams: WebPageSendOptions = {}) {
     const { peerId } = this.chat
     if(isUser(peerId) && !this.getDialog(peerId)) {
       await this.managers.chats.createPrivate(peerId)
@@ -2219,6 +2519,10 @@ export default class ChatInput {
     }
 
     const splitted = splitStringByLength(value, MESSAGE_LENGTH_MAX)
+    if(splitted.length > 1 && webPageParams.webPage && !splitted[0].includes(webPageParams.webPage.url)) {
+      webPageParams = { ...webPageParams, webPage: undefined }
+    }
+
     const isChannel = isBroadcastPeer(peerId)
     let partOffset = 0
     for(const part of splitted) {
@@ -2229,7 +2533,7 @@ export default class ChatInput {
       const sendEntities = parsedEntities.length ? parsedEntities : undefined
       if(isChannel) {
         // Отказ (права, лимит очереди отложенных) — бабл уже помечен упавшим, здесь тост
-        void this.managers.channels.post(peerId, text, clientMsgId, sendEntities, { senderId: rootScope.myId, threadRootId: this.chat.threadId }, sendingParams)
+        void this.managers.channels.post(peerId, text, clientMsgId, sendEntities, { senderId: rootScope.myId, threadRootId: this.chat.threadId }, sendingParams, webPageParams)
           .catch(() => toastNew({ langPackKey: 'Error.AnError' }))
       } else {
         void this.managers.messages.sendText({
@@ -2238,6 +2542,7 @@ export default class ChatInput {
           entities: sendEntities,
           clientMsgId,
           ...sendingParams,
+          ...webPageParams,
           optimistic: { senderId: rootScope.myId },
         })
       }
@@ -2251,12 +2556,15 @@ export default class ChatInput {
     entities,
     forwarding,
     forwardParams = {},
+    sendTextParams,
   }: {
     sendingParams: MessageSendingParams,
     value: string,
     entities: MessageEntity[],
     forwarding?: ChatInput['forwarding'],
     forwardParams?: { dropAuthor?: boolean, dropCaption?: boolean },
+    /** tweb `sendTextParams` (:4692-4699) — превью ссылки */
+    sendTextParams?: WebPageSendOptions,
   }) {
     const trimmedValue = value.trim()
 
@@ -2282,7 +2590,7 @@ export default class ChatInput {
     }
 
     if(trimmedValue) {
-      void this.sendText(value, entities, sendingParams)
+      void this.sendText(value, entities, sendingParams, sendTextParams)
     }
 
     for(const fromPeerId in forwarding) {
@@ -2308,6 +2616,7 @@ export default class ChatInput {
       return
     }
 
+    const { noWebPage } = this
     if(!editMsgId) {
       if(!(await this.chat.canSend('send_messages'))) {
         return
@@ -2319,6 +2628,13 @@ export default class ChatInput {
         entities,
         sendingParams: this.getMessageSendingParams(),
         forwarding: this.forwarding,
+        // tweb :4692-4697
+        sendTextParams: {
+          noWebPage,
+          webPage: this.getWebPagePromise ? undefined : this.willSendWebPage,
+          webPageOptions: this.webPageOptions,
+          invertMedia: this.willSendWebPage ? this.invertMedia : undefined,
+        },
       })
 
       if(!result || !result.messageCount) {
@@ -2343,6 +2659,11 @@ export default class ChatInput {
       // tweb `editMessage` :2209 — у отложенного `schedule_date = message.date`
       void this.managers.messages.editMessage(chat.peerId, editMsgId, text, parsedEntities.length ? parsedEntities : undefined, {
         scheduleDate: message.pFlags.is_scheduled ? message.date : undefined,
+        // tweb :4733-4739
+        noWebPage,
+        webPage: this.getWebPagePromise ? undefined : this.willSendWebPage,
+        webPageOptions: this.webPageOptions,
+        invertMedia: this.willSendWebPage ? this.invertMedia : this.editMessage?.pFlags?.invert_media,
       }).catch(() => toastNew({ langPackKey: 'Error.AnError' }))
 
       this.onMessageSent()
@@ -2622,6 +2943,13 @@ export default class ChatInput {
       void this.clearInput()
     }
 
+    // tweb :5270-5274
+    if(type) {
+      this.lastUrl = ''
+      delete this.noWebPage
+      this.willSendWebPage = null
+    }
+
     if(type !== 'reply') {
       this.setReplyTo(undefined)
       this.forwarding = undefined
@@ -2629,6 +2957,7 @@ export default class ChatInput {
 
     this.editMsgId = this.editMessage = undefined
     this.helperType = this.helperFunc = undefined
+    this.setCurrentHover()
     void this.saveDraftDebounced?.()
 
     if(this.restoreInputLock) {
@@ -2681,7 +3010,7 @@ export default class ChatInput {
     })
   }
 
-  /** tweb `:5353-5426` — без меню плашки (Б-72) и цвета автора (`wrappers/reply.ts`). */
+  /** tweb `:5353-5426` — без меню плашек ответа и пересылки (Б-72) и цвета автора (`wrappers/reply.ts`). */
   public setTopInfo({
     type,
     callerFunc,
@@ -2696,7 +3025,12 @@ export default class ChatInput {
     callerFunc: () => void,
     input?: Parameters<InputFieldAnimated['setValueSilently']>[0],
     message?: MyMessage,
-  } & Pick<Parameters<typeof wrapReply>[0], 'title' | 'subtitle' | 'setColorPeerId' | 'quote'>) {
+  } & Pick<Parameters<typeof wrapReply>[0], 'title' | 'subtitle' | 'setColorPeerId' | 'quote'>): HTMLElement | undefined {
+    // tweb :5368-5370
+    if(this.willSendWebPage && type === 'reply') {
+      return
+    }
+
     if(type !== 'webpage') {
       this.clearHelper(type, true)
       this.helperType = type

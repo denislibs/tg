@@ -40,6 +40,10 @@ export type TestChatInput = {
   inputContainer?: HTMLElement
   center(animate?: boolean): Promise<void>
   initMessagesForward(fromPeerIdsMids: { [fromPeerId: PeerId]: number[] }): void
+  /** превью ссылки — сброс плашки по `chat_update` (tweb bubbles.ts:2434-2438) */
+  willSendWebPage: unknown
+  lastUrl: string
+  onMessageInput(): void
 }
 
 export type TestAppImManager = {
@@ -85,6 +89,9 @@ export function createTestChat(options: TestChatOptions = {}): Chat {
     inputContainer,
     center: () => Promise.resolve(),
     initMessagesForward: noop,
+    willSendWebPage: null,
+    lastUrl: '',
+    onMessageInput: noop,
     messageInput: document.createElement('div'),
     canSendPlain: () => true,
     getChatInputReplyToFromMessage: (message) => ({ replyToMsgId: message.id }),

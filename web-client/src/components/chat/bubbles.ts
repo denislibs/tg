@@ -6306,7 +6306,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // права зрителя сменились живьём — ограничили, сняли ограничение, повысили
     // (сервер шлёт затронутому пер-зрительский `channel`, Ф-3б A2-05) — и поле
     // ввода пересобирается тем же `finishPeerChange`, что при смене пира.
-    // Сброс превью ссылки (`embed_links`, :2434-2438) — без предмета (Б-72).
+    // Сброс превью ссылки (`embed_links`, :2434-2438) — право у нас
+    // `send_messages` (расхождение 5 `input.ts`).
     const refreshInput = async() => {
       const middleware = this.getMiddleware()
       const callbacks = await Promise.all([
@@ -6329,6 +6330,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
       if(hadRights !== hasRights) {
         await refreshInput()
+      }
+
+      if(!middleware()) return
+      // tweb :2434-2438 — reset webpage
+      const canEmbedLinks = hasRights
+      if((canEmbedLinks && !this.chat.input.willSendWebPage) || (!canEmbedLinks && this.chat.input.willSendWebPage)) {
+        this.chat.input.lastUrl = ''
+        this.chat.input.onMessageInput()
       }
     })
 

@@ -6,11 +6,15 @@
       "native_name": "English",
       "plural_code": "en",
       "position": 1,
-      "version": 67,
+      "version": 68,
       "strings": [
         {
           "key": "ALongTimeAgo",
           "value": "last seen a long time ago"
+        },
+        {
+          "key": "AboveMessage",
+          "value": "Show Above the Message"
         },
         {
           "key": "AccDescr.ChatInfo",
@@ -538,6 +542,10 @@
         {
           "key": "AvailableReactions",
           "value": "Available reactions"
+        },
+        {
+          "key": "BelowMessage",
+          "value": "Show Below the Message"
         },
         {
           "key": "Bio.Description",
@@ -3336,6 +3344,10 @@
           "value": "Languages"
         },
         {
+          "key": "LargerMedia",
+          "value": "Show Larger Media"
+        },
+        {
           "key": "LastName",
           "value": "Last name (optional)"
         },
@@ -4386,6 +4398,10 @@
         {
           "key": "OpenInNewTab",
           "value": "Open in new tab"
+        },
+        {
+          "key": "OpenMessage",
+          "value": "VIEW MESSAGE"
         },
         {
           "key": "OpenStory",
@@ -6286,6 +6302,10 @@
           "value": "This text is too long to send as one message.\n\nSlow Mode is active. You can't send more than one message at once."
         },
         {
+          "key": "SmallerMedia",
+          "value": "Show Smaller Media"
+        },
+        {
           "key": "SomeReactions",
           "value": "Some reactions"
         },
@@ -7425,6 +7445,10 @@
           "value": "INSTANT VIEW"
         },
         {
+          "key": "WebPage.RemovePreview",
+          "value": "Remove Link Preview"
+        },
+        {
           "key": "Weeks",
           "forms": {
             "one_value": "%1$d week",
@@ -7494,7 +7518,7 @@
       "base_lang_code": "en",
       "plural_code": "ru",
       "position": 2,
-      "version": 66,
+      "version": 67,
       "strings": [
         {
           "key": "Chat.SendAs.Title",
@@ -7567,6 +7591,30 @@
         {
           "key": "WebPage.InstantView",
           "value": "Мгновенный просмотр"
+        },
+        {
+          "key": "AboveMessage",
+          "value": "Показать над сообщением"
+        },
+        {
+          "key": "BelowMessage",
+          "value": "Показать под сообщением"
+        },
+        {
+          "key": "LargerMedia",
+          "value": "Показать крупнее"
+        },
+        {
+          "key": "SmallerMedia",
+          "value": "Показать мельче"
+        },
+        {
+          "key": "WebPage.RemovePreview",
+          "value": "Убрать превью ссылки"
+        },
+        {
+          "key": "OpenMessage",
+          "value": "ОТКРЫТЬ СООБЩЕНИЕ"
         },
         {
           "key": "InstantView.OpenInBrowser",

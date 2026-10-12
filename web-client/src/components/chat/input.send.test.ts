@@ -163,7 +163,11 @@ describe('ChatInput: отправка', () => {
     await input.sendMessage()
 
     expect(managers.messages.editMessage).toHaveBeenCalledTimes(1)
-    expect(managers.messages.editMessage).toHaveBeenCalledWith(PEER, 7, 'новый', undefined, { scheduleDate: undefined })
+    expect(managers.messages.editMessage).toHaveBeenCalledWith(PEER, 7, 'новый', undefined, {
+      scheduleDate: undefined,
+      // превью не решалось (ссылки нет) — tweb :4733-4739
+      noWebPage: undefined, webPage: null, webPageOptions: {}, invertMedia: undefined,
+    })
     expect(managers.messages.sendText).not.toHaveBeenCalled()
     expect(input.editMsgId).toBeUndefined()
   })
@@ -180,7 +184,7 @@ describe('ChatInput: отправка', () => {
     input.messageInputField.setValueSilently('новый')
     await input.sendMessage()
 
-    expect(managers.messages.editMessage).toHaveBeenCalledWith(PEER, 7, 'новый', undefined, { scheduleDate: 1_900_000_000 })
+    expect(managers.messages.editMessage).toHaveBeenCalledWith(PEER, 7, 'новый', undefined, expect.objectContaining({ scheduleDate: 1_900_000_000 }))
   })
 
   // НО-7 (tweb input.ts:1744-1748): отложенное, которое правят, удалили или
