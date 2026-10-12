@@ -104,8 +104,12 @@
 //     `send_stickers`/`send_inline` — наши `send_media`/`send_messages` (расхождение 5).
 //     `insertAtCaret`/`onEmojiSelected` — одна копия, у эмодзи-дропдауна (Б-35).
 // 11. Превью ссылки: черновик несёт решение плашки (`pFlags.no_webpage`/`invert_media`/
-//     `media`, tweb `:2275-2310`, `:2466`, `:5345-5348`, сравнение в `onHelperCancel`
-//     `:4145-4171`) 1:1.
+//     `media`, tweb `:2275-2310`, `:2466`, `:5345-5348`) 1:1, вместе с поведением
+//     оригинала: `invertMedia` после выбора «над» не сбрасывается и едет в следующие
+//     черновики (`:2288`, ставит его только меню `:830`); `no_webpage` черновика при
+//     восстановлении снимает заново поднятая плашка (`:3605`). Сравнение отмены правки
+//     (`onHelperCancel` `:4145-4200`) — с решением превью и фильтром сущностей, но без
+//     `reply_to` сообщения (`:4162-4165`): у нашей правки ответа в поле нет.
 //     Право `embed_links` (`:3595`) — наше `send_messages` (расхождение 5).
 //     `processWebPage` получает разобранный текст (`value`), а не сырой `richValue`
 //     (`:3484`): наше поле хранит markdown-маркеры до отправки, а смещения сущностей —
@@ -137,7 +141,8 @@ import mediaSizes from '@core/dom/mediaSizes'
 import { useChatsStore } from '@stores/chatsStore'
 import parseEntities from '@lib/richtext/parseEntities'
 import parseMarkdown from '@lib/richtext/parseMarkdown'
-import { mergeEntities } from '@lib/richtext/entities'
+import { MARKDOWN_ENTITIES, mergeEntities } from '@lib/richtext/entities'
+import forEachReverse from '@helpers/array/forEachReverse'
 import wrapDraftText from '@lib/richtext/wrapDraftText'
 import splitStringByLength from '@helpers/string/splitStringByLength'
 import sliceMessageEntities from '@helpers/sliceMessageEntities'
@@ -2394,6 +2399,33 @@ export default class ChatInput {
           },
           url: messageMedia.webpage.url,
         },
+      }
+
+      // tweb :4177-4200 — сравниваются только разметка и свои эмодзи: ссылки,
+      // упоминания и прочее, что поле выводит из текста само, правкой не считаются
+      if(originalDraft.entities?.length || draft?.entities?.length) {
+        const canPassEntitiesTypes = new Set<string>(Object.values(MARKDOWN_ENTITIES))
+        canPassEntitiesTypes.add('messageEntityCustomEmoji')
+
+        if(originalDraft.entities) {
+          originalDraft.entities = originalDraft.entities.slice()
+        }
+
+        [originalDraft, draft].forEach((draft) => {
+          if(!draft?.entities) {
+            return
+          }
+
+          forEachReverse(draft.entities, (entity, idx, arr) => {
+            if(!canPassEntitiesTypes.has(entity._)) {
+              arr!.splice(idx!, 1)
+            }
+          })
+
+          if(!draft.entities.length) {
+            delete draft.entities
+          }
+        })
       }
 
       if(!draftsAreEqual(draft, originalDraft)) {

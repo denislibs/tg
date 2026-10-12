@@ -273,6 +273,34 @@ describe('ChatInput: превью ссылки при правке', () => {
     }))
   })
 
+  // tweb :4124-4141, :4145-4200 — первая отмена при плашке превью снимает превью,
+  // вторая сравнивает правку с сообщением: снятое превью — изменение
+  it('отмена правки: сначала снимается превью, затем «Отменить изменения?» (превью снято)', async() => {
+    mounted = await mountInput(async(url) => card(url, { pFlags: { has_large_media: true } }))
+    const { input, messages } = mounted
+    messages.set(7, editable())
+    await input.initMessageEditing(7)
+    await flush()
+    await input.onHelperCancel()
+    expect(input.willSendWebPage).toBeNull()
+    expect(input.helperType).toBe('edit')
+
+    await input.onHelperCancel()
+    expect(input.helperType).toBe('edit')
+    expect(document.querySelector('.popup')).not.toBeNull()
+  })
+
+  it('отмена неизменённой правки со ссылкой в тексте (сущность-ссылка поля) — без вопроса', async() => {
+    mounted = await mountInput(async() => undefined)
+    const { input, messages } = mounted
+    // сервер отдаёт ссылку сущностью сообщения, а поле её как разметку не хранит
+    messages.set(7, editable({ media: undefined, pFlags: { out: true }, entities: [{ _: 'messageEntityUrl', offset: 5, length: URL1.length }] }))
+    await input.initMessageEditing(7)
+    await flush()
+    await input.onHelperCancel()
+    expect(input.helperType).toBeUndefined()
+  })
+
   it('крестик во время правки возвращает плашку правки и снимает превью (no_webpage)', async() => {
     mounted = await mountInput(async(url) => card(url))
     const { input, managers, messages, chat } = mounted
@@ -343,7 +371,21 @@ describe('ChatInput: превью ссылки в черновике (tweb :2275
     expect(m.above.checkboxField.input.checked).toBe(true)
     expect(m.smaller.checkboxField.input.checked).toBe(true)
     expect(input.webPageOptions).toEqual({ optional: true, smallMedia: true })
+    // отложенное сохранение (2500 мс, `saveDraftDebounced`) ставят `clearHelper` и
+    // меню плашки — ждём его: поднятый черновик равен сохранённому, PUT не уходит
+    await new Promise((resolve) => setTimeout(resolve, 2700))
     expect(managers.drafts.syncDraft).not.toHaveBeenCalled()
+  })
+
+  // tweb :2466 ставит `noWebPage`, но `processWebPage` без `media` черновика
+  // заново поднимает плашку и снимает его (:3605) — решение крестика живёт до
+  // следующего открытия чата. Пин поведения оригинала.
+  it('восстановление черновика с no_webpage поднимает плашку заново (как tweb)', async() => {
+    const draft: DraftMessageReal = { _: 'draftMessage', pFlags: { no_webpage: true }, message: URL1, date: 1 }
+    mounted = await mountInput(async(url) => card(url), draft)
+    const { input } = mounted
+    await vi.waitFor(() => expect(input.willSendWebPage?.url).toBe(URL1))
+    expect(input.getCurrentInputAsDraft()?.pFlags?.no_webpage).toBeUndefined()
   })
 })
 
