@@ -113,9 +113,14 @@ func (i *Interactor) dialogsContainer(ctx context.Context, viewerID int64, recor
 	}
 	// ── drafts: черновики зрителя ───────────────────────────────────────────
 	// ОДИН запрос на страницу, не N: черновиков у пользователя единицы, и
-	// хранятся они парой (чат, владелец). Место черновика — сам диалог: пока
-	// он ехал отдельным списком, дата последней активности чата собиралась из
-	// двух источников, а от неё зависит порядок списка.
+	// хранятся они тройкой (чат, тред, владелец). Место черновика — сам
+	// диалог: пока он ехал отдельным списком, дата последней активности чата
+	// собиралась из двух источников, а от неё зависит порядок списка.
+	//
+	// Диалогу — только черновик ЧАТА (без треда): черновики тем и тредов
+	// живут под ключом треда (tweb dialogs.ts:1693-1697 — у диалога
+	// threadId нет), у форума черновика чата нет вовсе — черновик General
+	// едет в forumTopic.draft (TopMsgID = 1).
 	drafts := map[int64]domain.DraftMessage{}
 	if i.drafts != nil {
 		list, err := i.drafts.ListByUser(ctx, viewerID)
@@ -123,7 +128,9 @@ func (i *Interactor) dialogsContainer(ctx context.Context, viewerID int64, recor
 			return DialogsPage{}, err
 		}
 		for _, d := range list {
-			drafts[d.ChatID] = d.Wire()
+			if d.TopMsgID == 0 {
+				drafts[d.ChatID] = d.Wire()
+			}
 		}
 	}
 

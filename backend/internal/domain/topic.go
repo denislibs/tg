@@ -100,6 +100,8 @@ type TopicRow struct {
 	// до него (tweb appNotificationsManager.ts:398-405 наследует только при
 	// mute_until === undefined).
 	MuteUntil *time.Time
+	// Draft — черновик зрителя в этой теме (forumTopic.draft); nil — нет.
+	Draft *Draft
 }
 
 // TopicNotifySettings — настройки уведомлений темы для провода (строка списка

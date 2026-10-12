@@ -45,9 +45,10 @@ type ForumTopic interface {
 // документа кастомного эмодзи, у нас — сам символ. Тот же приём, что у
 // `user.emoji_status_emoticon` оригинала.
 //
-// Не производятся: `unread_poll_votes_count` (голосов опроса как
-// непрочитанного у нас нет — пропуск назван в OmittedWithoutSubject) и `draft`
-// (черновики тредов — волна 2, БЭК-2).
+// Не производится `unread_poll_votes_count` (голосов опроса как
+// непрочитанного у нас нет — пропуск назван в OmittedWithoutSubject).
+// `draft` — черновик темы зрителя (tweb кладёт его по ключу темы,
+// dialogs.ts:1693-1697); нет черновика — поля нет.
 //
 // `pos` (порядок среди закреплённых) на провод не идёт: порядок задаёт сам
 // вектор, и держать его вторым способом значило бы завести два источника.
@@ -78,6 +79,8 @@ type ForumTopicReal struct {
 	// конструктором, а не отсутствием поля. Заглушённость это СРОК, а не
 	// булево поле рядом — тот же предикат, что у диалога.
 	NotifySettings PeerNotifySettings `json:"notify_settings"`
+	// Draft — flags.4?DraftMessage: черновик зрителя в этой теме.
+	Draft DraftMessage `json:"draft,omitempty"`
 }
 
 func (ForumTopicReal) isForumTopic() {}

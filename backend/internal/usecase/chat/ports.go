@@ -682,12 +682,22 @@ type SecretRepo interface {
 	Get(ctx context.Context, chatID int64) (domain.SecretChat, error)
 }
 
-// DraftRepo хранит облачные черновики (по одному на пару чат+пользователь).
+// DraftRepo хранит облачные черновики — по одному на тройку (чат, тред,
+// пользователь); тред — ключ строки корня (domain.Draft.ThreadRootID, 0 — без
+// треда / General). Номер треда наружу (Draft.TopMsgID) выводит хранилище.
 type DraftRepo interface {
+	// Upsert пишет черновик ключа (d.ChatID, d.ThreadRootID); d.TopMsgID
+	// не хранится — в ответе он выведен заново из ключа.
 	Upsert(ctx context.Context, userID int64, d domain.Draft) (domain.Draft, error)
-	Delete(ctx context.Context, chatID, userID int64) (bool, error) // false — черновика не было
+	// Delete снимает черновик треда; ok=false — его не было. topMsgID —
+	// номер треда снятого черновика (для кадра).
+	Delete(ctx context.Context, chatID, userID, threadRootID int64) (topMsgID int64, ok bool, err error)
 	ListByUser(ctx context.Context, userID int64) ([]domain.Draft, error)
-	DeleteAllByUser(ctx context.Context, userID int64) ([]int64, error) // chat_id удалённых
+	// ListByChat — черновики пользователя в одном чате (все треды).
+	ListByChat(ctx context.Context, userID, chatID int64) ([]domain.Draft, error)
+	// DeleteAllByUser снимает все черновики; в ответе — ключи снятых
+	// (ChatID, ThreadRootID, TopMsgID).
+	DeleteAllByUser(ctx context.Context, userID int64) ([]domain.Draft, error)
 }
 
 // PrivacyChecker решает вопросы конфиденциальности (usecase/privacy): может ли

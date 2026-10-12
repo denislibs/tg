@@ -60,9 +60,8 @@ func (i *Interactor) SetChatAutoDelete(ctx context.Context, chatID, actorID int6
 // тем же путём, что DeleteMessage «у всех» (fanOutDelete: soft-delete,
 // снятие с непрочитанного, delete_message в журнал и живой кадр участникам),
 // у broadcast-канала — записью журнала канала. Пост канала уносит своё
-// зеркало в группе обсуждения (mirrorDelete, как при обычном удалении — В-1),
-// снятый комментарий двигает счётчик поста (publishPostReplies). Возвращает
-// число удалённых (вызывается фоновым тикером).
+// зеркало в группе обсуждения (mirrorDelete, как при обычном удалении — В-1).
+// Возвращает число удалённых (вызывается фоновым тикером).
 func (i *Interactor) PurgeExpiredMessages(ctx context.Context) (int, error) {
 	expired, err := i.msgs.ExpiredMessages(ctx, 200)
 	if err != nil || len(expired) == 0 {
@@ -135,7 +134,6 @@ func (i *Interactor) PurgeExpiredMessages(ctx context.Context) (int, error) {
 			continue
 		}
 		i.publishDelete(ctx, del)
-		i.publishPostReplies(ctx, msg)
 	}
 	return purged, nil
 }

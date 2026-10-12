@@ -12,8 +12,8 @@ import (
 
 func TestUpdatesContainer_MatchesSchema(t *testing.T) {
 	value := NewUpdates([]Update{
-		NewUpdateDraftMessage(NewPeerUser(7), NewDraftMessage("привет", nil, nil, time.Unix(1787334148, 0))),
-		NewUpdateDraftMessage(NewPeerUser(8), NewDraftMessageEmpty()),
+		NewUpdateDraftMessage(NewPeerUser(7), 0, NewDraftMessage("привет", nil, nil, 0, time.Unix(1787334148, 0))),
+		NewUpdateDraftMessage(NewPeerUser(8), 0, NewDraftMessageEmpty()),
 	}, []UserReal{{Underscore: UserTag, ID: 7}}, time.Unix(1787334148, 0))
 
 	c := &schemaChecker{

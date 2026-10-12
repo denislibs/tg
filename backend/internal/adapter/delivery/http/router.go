@@ -169,7 +169,6 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/drafts", ch.MyDrafts)
 		pr.Delete("/drafts", ch.ClearAllDrafts)
 		pr.Put("/chats/{peerID}/draft", ch.SaveDraft)
-		pr.Delete("/chats/{peerID}/draft", ch.DeleteDraft)
 		pr.Post("/saved", ch.Saved)
 		pr.Get("/saved/dialogs", ch.SavedDialogs)
 		pr.Get("/saved/tags", ch.SavedTags)                  // теги-реакции «Избранного»

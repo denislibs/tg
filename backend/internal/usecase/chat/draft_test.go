@@ -10,31 +10,34 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
-// fakeDrafts — in-memory chat.DraftRepo.
+// fakeDrafts — in-memory chat.DraftRepo. Номер треда (TopMsgID) хранит тот,
+// что передал usecase: настоящее хранилище выводит его из ключа тем же
+// правилом (draftsrepo.go draftTopMsgID).
 type fakeDrafts struct {
 	mu sync.Mutex
-	m  map[[2]int64]domain.Draft // {chatID,userID}
+	m  map[[3]int64]domain.Draft // {chatID,userID,threadRootID}
 }
 
-func newFakeDrafts() *fakeDrafts { return &fakeDrafts{m: map[[2]int64]domain.Draft{}} }
+func newFakeDrafts() *fakeDrafts { return &fakeDrafts{m: map[[3]int64]domain.Draft{}} }
 
 func (f *fakeDrafts) Upsert(_ context.Context, userID int64, d domain.Draft) (domain.Draft, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	d.UpdatedAt = time.Now()
-	f.m[[2]int64{d.ChatID, userID}] = d
+	f.m[[3]int64{d.ChatID, userID, d.ThreadRootID}] = d
 	return d, nil
 }
 
-func (f *fakeDrafts) Delete(_ context.Context, chatID, userID int64) (bool, error) {
+func (f *fakeDrafts) Delete(_ context.Context, chatID, userID, threadRootID int64) (int64, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	k := [2]int64{chatID, userID}
-	if _, ok := f.m[k]; !ok {
-		return false, nil
+	k := [3]int64{chatID, userID, threadRootID}
+	d, ok := f.m[k]
+	if !ok {
+		return 0, false, nil
 	}
 	delete(f.m, k)
-	return true, nil
+	return d.TopMsgID, true, nil
 }
 
 func (f *fakeDrafts) ListByUser(_ context.Context, userID int64) ([]domain.Draft, error) {
@@ -49,13 +52,25 @@ func (f *fakeDrafts) ListByUser(_ context.Context, userID int64) ([]domain.Draft
 	return out, nil
 }
 
-func (f *fakeDrafts) DeleteAllByUser(_ context.Context, userID int64) ([]int64, error) {
+func (f *fakeDrafts) ListByChat(_ context.Context, userID, chatID int64) ([]domain.Draft, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	var out []int64
-	for k := range f.m {
+	var out []domain.Draft
+	for k, d := range f.m {
+		if k[1] == userID && k[0] == chatID {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeDrafts) DeleteAllByUser(_ context.Context, userID int64) ([]domain.Draft, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []domain.Draft
+	for k, d := range f.m {
 		if k[1] == userID {
-			out = append(out, k[0])
+			out = append(out, domain.Draft{ChatID: d.ChatID, ThreadRootID: d.ThreadRootID, TopMsgID: d.TopMsgID})
 			delete(f.m, k)
 		}
 	}
@@ -92,7 +107,7 @@ func TestDrafts_SaveListClearAndSendClears(t *testing.T) {
 	chatID, _ := in.CreatePrivateChat(ctx, a, b)
 
 	// Сохранение → черновик в списке + draft_update владельцу.
-	d, err := in.SaveDraft(ctx, a, chatID, "черновик", nil, nil)
+	d, err := in.SaveDraft(ctx, a, chatID, DraftInput{Message: "черновик"})
 	if err != nil || d == nil || d.Text != "черновик" {
 		t.Fatalf("SaveDraft: %v %+v", err, d)
 	}
@@ -108,12 +123,12 @@ func TestDrafts_SaveListClearAndSendClears(t *testing.T) {
 	}
 
 	// Не участник чата — ErrNotFound.
-	if _, err := in.SaveDraft(ctx, 99, chatID, "x", nil, nil); err != domain.ErrNotFound {
+	if _, err := in.SaveDraft(ctx, 99, chatID, DraftInput{Message: "x"}); err != domain.ErrNotFound {
 		t.Fatalf("outsider SaveDraft: %v", err)
 	}
 
 	// Пустой текст без reply → удаление + draft_update null.
-	if d, err := in.SaveDraft(ctx, a, chatID, "", nil, nil); err != nil || d != nil {
+	if d, err := in.SaveDraft(ctx, a, chatID, DraftInput{Message: ""}); err != nil || d != nil {
 		t.Fatalf("empty SaveDraft: %v %+v", err, d)
 	}
 	if list, _ := in.MyDrafts(ctx, a); len(list) != 0 {
@@ -130,7 +145,7 @@ func TestDrafts_SaveListClearAndSendClears(t *testing.T) {
 	}
 
 	// Отправка сообщения снимает черновик.
-	_, _ = in.SaveDraft(ctx, a, chatID, "again", nil, nil)
+	_, _ = in.SaveDraft(ctx, a, chatID, DraftInput{Message: "again"})
 	if _, err := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "hi", ClientMsgID: "d1"}); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
@@ -140,8 +155,8 @@ func TestDrafts_SaveListClearAndSendClears(t *testing.T) {
 
 	// ClearAllDrafts чистит все и шлёт null-апдейты.
 	chat2, _ := in.CreatePrivateChat(ctx, a, 3)
-	_, _ = in.SaveDraft(ctx, a, chatID, "one", nil, nil)
-	_, _ = in.SaveDraft(ctx, a, chat2, "two", nil, nil)
+	_, _ = in.SaveDraft(ctx, a, chatID, DraftInput{Message: "one"})
+	_, _ = in.SaveDraft(ctx, a, chat2, DraftInput{Message: "two"})
 	pub.reset()
 	if err := in.ClearAllDrafts(ctx, a); err != nil {
 		t.Fatalf("ClearAllDrafts: %v", err)
@@ -178,7 +193,7 @@ func TestDrafts_EntitiesAndReply(t *testing.T) {
 		domain.NewMessageEntityTextURL(0, 4, "javascript:alert(1)"),
 		domain.NewMessageEntityItalic(-1, 2),
 	}
-	d, err := in.SaveDraft(ctx, a, chatID, "жирный", ents, &msg.ID)
+	d, err := in.SaveDraft(ctx, a, chatID, DraftInput{Message: "жирный", Entities: ents, ReplyToMsgID: &msg.ID})
 	if err != nil || d == nil {
 		t.Fatalf("SaveDraft: %v %+v", err, d)
 	}
@@ -208,16 +223,16 @@ func TestDrafts_EntitiesAndReply(t *testing.T) {
 	}
 
 	// Reply на сообщение из другого чата → NULL (черновик сохраняется).
-	if d, err = in.SaveDraft(ctx, a, chatID, "x", nil, &foreign.ID); err != nil || d == nil || d.ReplyToID != nil {
+	if d, err = in.SaveDraft(ctx, a, chatID, DraftInput{Message: "x", ReplyToMsgID: &foreign.ID}); err != nil || d == nil || d.ReplyToID != nil {
 		t.Fatalf("foreign reply must be nulled: %v %+v", err, d)
 	}
 	// Reply на несуществующее сообщение → NULL.
 	missing := int64(999999)
-	if d, err = in.SaveDraft(ctx, a, chatID, "y", nil, &missing); err != nil || d == nil || d.ReplyToID != nil {
+	if d, err = in.SaveDraft(ctx, a, chatID, DraftInput{Message: "y", ReplyToMsgID: &missing}); err != nil || d == nil || d.ReplyToID != nil {
 		t.Fatalf("missing reply must be nulled: %v %+v", err, d)
 	}
 	// Пустой текст + невалидный reply → это удаление черновика.
-	if d, err = in.SaveDraft(ctx, a, chatID, "", nil, &missing); err != nil || d != nil {
+	if d, err = in.SaveDraft(ctx, a, chatID, DraftInput{Message: "", ReplyToMsgID: &missing}); err != nil || d != nil {
 		t.Fatalf("empty text with invalid reply must delete: %v %+v", err, d)
 	}
 	if list, _ := in.MyDrafts(ctx, a); len(list) != 0 {
@@ -243,7 +258,7 @@ func TestDrafts_FrameIsSchemaConstructor(t *testing.T) {
 		t.Fatalf("CreatePrivateChat: %v", err)
 	}
 
-	if _, err := in.SaveDraft(ctx, a, chatID, "набросок", nil, nil); err != nil {
+	if _, err := in.SaveDraft(ctx, a, chatID, DraftInput{Message: "набросок"}); err != nil {
 		t.Fatalf("SaveDraft: %v", err)
 	}
 	frames := draftFramesFor(pub, a)
@@ -267,7 +282,7 @@ func TestDrafts_FrameIsSchemaConstructor(t *testing.T) {
 	assertEncodesAsTL(t, d)
 
 	// Снятие: тот же кадр, ВТОРОЙ конструктор внутри.
-	if _, err := in.SaveDraft(ctx, a, chatID, "", nil, nil); err != nil {
+	if _, err := in.SaveDraft(ctx, a, chatID, DraftInput{Message: ""}); err != nil {
 		t.Fatalf("SaveDraft(empty): %v", err)
 	}
 	frames = draftFramesFor(pub, a)

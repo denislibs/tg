@@ -164,12 +164,12 @@ func TestChannelPostFrame_NoDiscussion_NoRepliesThread(t *testing.T) {
 	}
 }
 
-// Счётчик комментариев ЖИВОЙ: приход комментария в группу обсуждения бампит
-// `replies.replies` у поста, снятие — уменьшает. У оригинала это делает сам
-// клиент (updateMessageRepliesIfNeeded, tweb appMessagesManager.ts:8658-8680,
-// событие `replies_short_update` ловит лента, bubbles.ts:1137-1142), но ему
-// видна вся группа обсуждения — у нас нет, поэтому отвечает сервер.
-func TestComment_BumpsPostRepliesCounter(t *testing.T) {
+// Футер поста — путь tweb (Ф-5 п. 8, В-5 а): своего кадра счётчика
+// комментариев нет, клиент на приход и снятие сообщения треда перечитывает
+// пост (updateMessageRepliesIfNeeded → updateMessage(post, 'replies_updated'),
+// tweb appMessagesManager.ts:11876-11898, 11923-11937), и messageReplies
+// приезжает внутри самого сообщения целиком: число, последние комментаторы.
+func TestComment_PostRepliesRideWithThePost(t *testing.T) {
 	i, fg, _, fpub := newChannelTestInteractor(t)
 	ctx := context.Background()
 	fg.users[8] = domain.UserReal{ID: 8, FirstName: "Боб"}
@@ -187,50 +187,26 @@ func TestComment_BumpsPostRepliesCounter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PostComment: %v", err)
 	}
-	f := repliesFrame(t, framesSince(t, fpub, mark))
-	if f["channel_id"] != float64(ch) {
-		t.Fatalf("channel_id = %v, want %d", f["channel_id"], ch)
+	for _, f := range framesSince(t, fpub, mark) {
+		if f["t"] == "replies_update" || f["_"] == "updateChannelMessageReplies" {
+			t.Fatalf("свой кадр счётчика комментариев: %+v", f)
+		}
 	}
-	if f["id"] != float64(post.Seq) {
-		t.Fatalf("id поста в кадре = %v, want номер %d", f["id"], post.Seq)
+	rep, _ := postFromHistory(t, i, 7, post.ID)["replies"].(map[string]any)
+	if rep["replies"] != float64(1) {
+		t.Fatalf("комментариев у перечитанного поста = %v, want 1", rep["replies"])
 	}
-	if f["replies"] != float64(1) {
-		t.Fatalf("комментариев в кадре = %v, want 1", f["replies"])
+	recent, _ := rep["recent_repliers"].([]any)
+	if len(recent) != 1 || recent[0].(map[string]any)["user_id"] != float64(8) {
+		t.Fatalf("recent_repliers = %+v, want [Боб]", rep["recent_repliers"])
 	}
 
-	// Снятый комментарий уменьшает счётчик — тем же кадром.
-	mark = frameMark(fpub)
 	if err := i.DeleteMessage(ctx, comment.ChatID, comment.ID, 8, true); err != nil {
 		t.Fatalf("DeleteMessage: %v", err)
 	}
-	f = repliesFrame(t, framesSince(t, fpub, mark))
-	if f["replies"] != float64(0) {
-		t.Fatalf("комментариев после удаления = %v, want 0", f["replies"])
-	}
-}
-
-// Обычное сообщение группы кадра о комментариях не порождает: тред поста
-// канала и ответы в группе — разные предметы.
-func TestGroupMessage_NoRepliesFrame(t *testing.T) {
-	i, fg, _, fpub := newChannelTestInteractor(t)
-	ctx := context.Background()
-	gid, _ := fg.CreateMultiMember(ctx, "group", "Chat", "", "", false, 7)
-	_ = fg.AddMember(ctx, gid, 7, domain.RoleCreator, domain.AllRights)
-	root, err := i.Send(ctx, SendInput{ChatID: gid, SenderID: 7, Type: "text", Text: "корень"})
-	if err != nil {
-		t.Fatalf("Send: %v", err)
-	}
-
-	mark := frameMark(fpub)
-	if _, err := i.Send(ctx, SendInput{
-		ChatID: gid, SenderID: 7, Type: "text", Text: "ответ", ThreadRootID: &root.ID,
-	}); err != nil {
-		t.Fatalf("Send в тред: %v", err)
-	}
-	for _, f := range framesSince(t, fpub, mark) {
-		if f["_"] == domain.UpdateChannelMessageRepliesTag {
-			t.Fatalf("ответ в группе породил кадр о комментариях поста: %+v", f)
-		}
+	rep, _ = postFromHistory(t, i, 7, post.ID)["replies"].(map[string]any)
+	if rep["replies"] != float64(0) || rep["recent_repliers"] != nil {
+		t.Fatalf("после удаления = %+v, want 0 без комментаторов", rep)
 	}
 }
 
@@ -338,26 +314,4 @@ func assertNoPostCounters(t *testing.T, where string, wire map[string]any) {
 			t.Errorf("%s: у сообщения вне канала приехал %q = %#v", where, key, v)
 		}
 	}
-}
-
-// repliesFrame — единственный кадр updateChannelMessageReplies среди пачки.
-func repliesFrame(t *testing.T, frames []map[string]any) map[string]any {
-	t.Helper()
-	var out map[string]any
-	for _, f := range frames {
-		if f["_"] != domain.UpdateChannelMessageRepliesTag {
-			continue
-		}
-		if out != nil {
-			t.Fatalf("кадров о комментариях больше одного: %+v", frames)
-		}
-		if f["t"] != "replies_update" {
-			t.Fatalf("тип конверта = %v, want replies_update", f["t"])
-		}
-		out = f
-	}
-	if out == nil {
-		t.Fatalf("кадра о комментариях нет вовсе: %+v", frames)
-	}
-	return out
 }

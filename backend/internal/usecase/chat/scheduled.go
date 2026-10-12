@@ -210,7 +210,7 @@ func (i *Interactor) enqueueScheduled(ctx context.Context, in SendInput) (domain
 		return domain.Message{}, err
 	}
 	if created {
-		i.clearDraftAfterSend(ctx, in.SenderID, in.ChatID)
+		i.clearDraftAfterSend(ctx, in.SenderID, in.ChatID, in.ThreadRootID, in.ReplyToID)
 		i.startScheduledWebPreview(stored[0])
 	}
 	return stored[0].Message(), nil

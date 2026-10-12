@@ -81,5 +81,26 @@ func (i *Interactor) TopicsPage(ctx context.Context, chatID, viewerID int64) (To
 		}
 	}
 
+	// ── draft: черновики зрителя по темам (forumTopic.draft) ────────────────
+	// ОДИН запрос на список: черновики чата зрителя по ключу треда — корень
+	// темы, у General ключ 0 (как topic_user_state).
+	if i.drafts != nil {
+		list, err := i.drafts.ListByChat(ctx, viewerID, chatID)
+		if err != nil {
+			return TopicsPage{}, err
+		}
+		byRoot := make(map[int64]*domain.Draft, len(list))
+		for k := range list {
+			byRoot[list[k].ThreadRootID] = &list[k]
+		}
+		for k := range rows {
+			root := rows[k].Topic.RootMsgID
+			if rows[k].Topic.IsGeneral {
+				root = 0
+			}
+			rows[k].Draft = byRoot[root]
+		}
+	}
+
 	return TopicsPage{Topics: rows, Messages: messages, Users: users}, nil
 }
