@@ -61,9 +61,9 @@ describe('bubbleClasses', () => {
   // есть, и бабл обязан остаться текстовым.
   it('сообщение с карточкой ссылки остаётся текстовым баблом', () => {
     const media: MessageMedia = {
-      _: 'messageMediaWebPage',
+      _: 'messageMediaWebPage', pFlags: {},
       webpage: {
-        _: 'webPage', url: 'https://x/', display_url: 'x', title: 'T',
+        _: 'webPage', pFlags: {}, url: 'https://x/', display_url: 'x', title: 'T',
         photo: { _: 'photo', id: 7, sizes: [{ _: 'photoSize', type: 'w', w: 10, h: 10, size: 1 }] },
       },
     }

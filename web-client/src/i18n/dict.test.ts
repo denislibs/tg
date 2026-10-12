@@ -652,8 +652,11 @@ const RU_INDECLINABLE = new Set<string>(['PreviewSender.SendPhoto', 'PreviewSend
 // `RequestToJoin{Group,Channel}Approved`).
 // Ф-5 КЛ-1 (темы форума): у ru +18 ключей tweb lang.ts — служебка правки темы
 // `messageActionTopicEdit` (`Chat.Service.Group.TopicEdited.*`, `Chat.Service.TopicEdited.*`).
+// Ф-5 C2 (превью ссылки): у ru +6 ключей tweb lang.ts:583-587, :2318 — меню плашки
+// (`AboveMessage`/`BelowMessage`/`LargerMedia`/`SmallerMedia`/`WebPage.RemovePreview`)
+// и футер карточки `OpenMessage`.
 const COMPOSITION = {
-  ru: { keys: 1809, plural: 65 },
+  ru: { keys: 1815, plural: 65 },
   uk: { keys: 842, plural: 35 },
   es: { keys: 813, plural: 34 },
   de: { keys: 814, plural: 35 },
@@ -862,8 +865,9 @@ const COMPOSITION = {
 // Пачкой Ф-5 (C1) — у ru +7 ключей tweb `Schedule.Repeat.*` (периоды ряда «Повторять» календаря).
 // Ф-1б — у ru +2 ключа редактора прав админа (разбор — там же).
 // Ф-5 КЛ-1 — у ru +18 ключей правки темы (разбор — там же).
+// Ф-5 C2 — у ru +6 ключей превью ссылки (разбор — там же).
 const FINGERPRINT = {
-  ru: '96818770',
+  ru: 'd44c3fbd',
   uk: 'e72f8ee2',
   es: 'ff56151a',
   de: '39848741',

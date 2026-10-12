@@ -292,9 +292,9 @@ const GIVEAWAY_RESULTS: MessageMedia = {
 }
 
 const WEB_PAGE: MessageMedia = {
-  _: 'messageMediaWebPage',
+  _: 'messageMediaWebPage', pFlags: {},
   webpage: {
-    _: 'webPage',
+    _: 'webPage', pFlags: {},
     url: 'https://example.com/post',
     display_url: 'example.com/post',
     site_name: 'Example',

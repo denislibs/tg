@@ -285,6 +285,22 @@ describe('MessagesManager — лента отложенных', () => {
     expect(ops()).toEqual([expect.objectContaining({ op: 'replace', key: '1_scheduled', msg: expect.objectContaining({ date: 0x7FFFFFFE }) })])
   })
 
+  // Ф-5 C2: правка (и отложенного) несёт решение плашки превью (tweb :2207-2220)
+  it('editMessage: no_webpage / invert_media / media в теле PATCH — и у отложенного', async () => {
+    const bodies: Record<string, unknown>[] = []
+    const { mgr } = setup({ patch: async (_p: string, b: Record<string, unknown>) => { bodies.push(b); return { updates: [] } } })
+    await mgr.getScheduledMessages(1)
+    const webPage = { _: 'webPage' as const, pFlags: { has_large_media: true as const }, url: 'https://ex.com', display_url: 'ex.com' }
+    await mgr.editMessage(1, cid(1), 'https://ex.com', undefined, { scheduleDate: 1_900_000_000, webPage, webPageOptions: { smallMedia: true, optional: true }, invertMedia: true })
+    await mgr.editMessage(1, cid(1), 'https://ex.com', undefined, { scheduleDate: 1_900_000_000, noWebPage: true })
+    expect(bodies[0]).toEqual(expect.objectContaining({
+      invert_media: true,
+      media: { _: 'inputMediaWebPage', url: 'https://ex.com', pFlags: { force_large_media: undefined, force_small_media: true, optional: true } },
+    }))
+    expect(bodies[1]).toEqual(expect.objectContaining({ no_webpage: true }))
+    expect('media' in bodies[1]).toBe(false)
+  })
+
   it('правка с явным периодом шлёт его, 0 — снять повтор; правка текста без периода повтор не снимает', async () => {
     const bodies: Record<string, unknown>[] = []
     const { mgr } = setup({ patch: async (_p: string, b: Record<string, unknown>) => { bodies.push(b); return { updates: [] } } })
@@ -759,8 +775,8 @@ function restWithThreadOverlap(): RestClient {
 /** Карточка ссылки в форме кадра: конструктор, а не плоский снимок. */
 function webPageMedia(title: string): MessageMedia {
   return {
-    _: 'messageMediaWebPage',
-    webpage: { _: 'webPage', url: 'https://x/', display_url: 'x', title },
+    _: 'messageMediaWebPage', pFlags: {},
+    webpage: { _: 'webPage', pFlags: {}, url: 'https://x/', display_url: 'x', title },
   }
 }
 
@@ -773,9 +789,9 @@ describe('MessagesManager.cacheWebPage', () => {
     // лестницей ступеней у картинки. Плоской формы (`site_name`/`photo_w`/
     // `photo_blur` россыпью) на проводе нет, поэтому и переводить нечего.
     const media: MessageMedia = {
-      _: 'messageMediaWebPage',
+      _: 'messageMediaWebPage', pFlags: {},
       webpage: {
-        _: 'webPage', url: 'https://x/', display_url: 'x',
+        _: 'webPage', pFlags: {}, url: 'https://x/', display_url: 'x',
         site_name: 'X', title: 'Title', has_iv: true,
         photo: {
           _: 'photo', id: 7,

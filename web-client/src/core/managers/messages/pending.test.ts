@@ -1247,3 +1247,38 @@ describe('pending: отложенная отправка', () => {
     expect(h.scheduledFor(1).size).toBe(0)
   })
 })
+
+describe('sendText: превью ссылки (tweb sendText :2695, generateOutgoingWebPage :4882-4910)', () => {
+  const webPage = { _: 'webPage' as const, pFlags: {}, url: 'https://ex.com/a', display_url: 'ex.com/a', title: 'T' }
+
+  it('карточка плашки: бабл сразу с messageMediaWebPage и invert_media, в кадре — media и invert_media', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [cid(10)])
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendText({
+      peerId: 1, text: 'смотри https://ex.com/a', clientMsgId: 'c1',
+      webPage, webPageOptions: { optional: true }, invertMedia: true,
+      optimistic: { senderId: 5 },
+    })
+
+    const msg = (h.emitted[0][0] as { msg: MessageReal }).msg
+    expect(msg.media).toEqual({ _: 'messageMediaWebPage', pFlags: { force_large_media: undefined, force_small_media: undefined }, webpage: webPage })
+    expect(msg.pFlags.invert_media).toBe(true)
+    expect(h.sends[0].webPageFields).toEqual({
+      media: { _: 'inputMediaWebPage', url: 'https://ex.com/a', pFlags: { force_large_media: undefined, force_small_media: undefined, optional: true } },
+      invert_media: true,
+    })
+  })
+
+  it('крестик плашки: no_webpage в кадре, бабл без карточки', async () => {
+    const h = makeCtx()
+    openWindow(h.slices, '1', [cid(10)])
+    const p = newPendingMethods(h.ctx)
+
+    await p.sendText({ peerId: 1, text: 'https://ex.com/a', clientMsgId: 'c1', noWebPage: true, optimistic: { senderId: 5 } })
+
+    expect((h.emitted[0][0] as { msg: MessageReal }).msg.media).toBeUndefined()
+    expect(h.sends[0].webPageFields).toEqual({ no_webpage: true })
+  })
+})

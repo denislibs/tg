@@ -102,7 +102,14 @@ import { getHeavyAnimationPromise, interruptHeavyAnimation, onHeavyAnimation as 
 import { cancelAnimationByKey } from '@helpers/animation'
 import rootScope from '@lib/rootScope'
 import { RT } from '@core/realtime/events'
-import { ANCHOR_ACTION_ATTRIBUTE, wrapEmojiText, wrapMessageText } from '@lib/richtext'
+import { ANCHOR_ACTION_ATTRIBUTE, parseEntities, safeWrapUrl, wrapEmojiText, wrapMessageText, wrapRichText } from '@lib/richtext'
+import { setBlankToAnchor } from '@lib/richtext/url'
+import { getAnchorListener } from '@helpers/addAnchorListener'
+import { mergeEntities } from '@lib/richtext/entities'
+import WebPageBox, { type WebPageBoxProps } from '@components/wrappers/webPage.solid'
+import wrapWebPageTitle from '@components/wrappers/webPageTitle'
+import wrapWebPageDescription from '@components/wrappers/webPageDescription'
+import { createRoot } from 'solid-js'
 import showForwardPopup from '@components/popups/forward.bridge'
 import { mirrorWindow, putMirrorPage, replaceMirrorWindow } from '@core/history/messagesMirror'
 import { generateTempMessageId, isLocalMessageId } from '@core/history/messageId'
@@ -763,6 +770,19 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * включая ключ: адресуемся БАБЛОМ, а не телом, ровно как там.
    */
   private pollContents = new Map<HTMLElement, PollMessageContentHandle>()
+
+  /**
+   * Карточки превью ссылок (`renderWebPage`): бабл → уборка Solid-корня и
+   * поколения медиа, ключ содержимого (карточка, `invert_media`, текст и его
+   * сущности — по ним выбирается адрес карточки, :9364-9383): `message_edit`,
+   * который их не меняет (реакция, `media_read`), карточку не пересобирает —
+   * иначе каждая реакция заново грузила бы картинку, см. докблок
+   * `onMessageEdit`; правка текста пересобирает, как у tweb пересоздаётся
+   * весь бабл (:1097). Классы бабла карточки (`onMessageEdit` пишет
+   * `className` целиком) и сторона (`invert_media` — над текстом).
+   * У tweb уборку держит побабльный `middleware.onDestroy(dispose)` (:9749).
+   */
+  private webPageBoxes = new Map<HTMLElement, { destroy: () => void, key: string, classes: string[], inverted: boolean, box: HTMLElement }>()
 
   constructor(private chat: Chat, private managers: BubblesManagers) {
     this.constructBubbles()
@@ -1849,6 +1869,234 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * эмодзи ещё не заведена), премиум-эффекты и `nopremium` (:6120-6161 —
    * подсистемы эффектов у нас нет).
    */
+  /**
+   * КАРТОЧКА ПРЕВЬЮ ССЫЛКИ — порт ветки `case 'messageMediaWebPage'` (tweb
+   * bubbles.ts:9334-9786) и класса `invert-media` (:9191-9193). Разметку
+   * строит `WebPageBox` (`wrappers/webPage.solid.tsx`, tweb `webPage.tsx`).
+   *
+   * Раскладка 1:1: `has-webpage single-media`; картинка — крупно
+   * (`mediaSizes.active.webpage`) или квадратом 48×48 (`is-square-photo`), если
+   * ступень квадратная без `has_large_media` либо отправитель выбрал «мельче»
+   * (`force_small_media` при `has_large_media`, :9479-9480, :9593-9604);
+   * вертикальная без `has_large_media` — `is-vertical-photo` (:9605-9608).
+   * Медиа над текстом карточки при `invert_media` или квадрате, иначе под ним
+   * (:9744-9746); сама карточка — перед временем, при `invert_media` — первой в
+   * теле с `mt-bigger` (:9754-9763).
+   *
+   * Клик (`attachContainerListeners`, tweb :3926-3938): адрес карточки —
+   * `href` с `target=_blank`; внутренняя t.me-ссылка — действием
+   * (`data-anchor-action`, у tweb `data-callback`) и футером «VIEW MESSAGE»
+   * (`OpenMessage`, :9446); внешняя без `messageMediaWebPage.pFlags.safe` —
+   * `showMaskedAlert` (:9456-9464). Ссылка проходит allow-list схем
+   * (`safeWrapUrl`): не прошедшая — карточка без адреса.
+   *
+   * Без предмета (у нашей карточки этих полей нет — `core/media/messageMedia.ts`
+   * `WebPage`): документ/видео (:9496-9542), история, подарок, набор стикеров,
+   * спонсорское, `cached_page` → футер Instant View (:9396-9416; наш `has_iv`
+   * открывать нечем — у ленты нет читалки, `InstantView.tsx` без вызывающих),
+   * `webPageTypes`/`webPageTypesSiteNames` (поля `type` нет), сущности описания
+   * (`webPage.entities`). Не портированы: политика скрытия ссылок `hideLinks`
+   * (:9338-9341, `shouldHideMessageLinks` у нас нет) и узор цвета автора за
+   * карточкой (`wrapPeerColorPattern`, :9767-9775 — враппера у нас нет).
+   */
+  private renderWebPage(message: MyMessage, bubble: HTMLElement, messageDiv: HTMLElement): void {
+    // tweb :9191-9193 — флаг сообщения, не только карточки
+    const invertMedia = message._ === 'message' && !!message.pFlags.invert_media
+    if (invertMedia) bubble.classList.add('invert-media')
+
+    const messageMedia = message._ === 'message' && message.media?._ === 'messageMediaWebPage' ? message.media : undefined
+    const webPage = messageMedia?.webpage
+    const key = webPage ? JSON.stringify([messageMedia, invertMedia, message._ === 'message' ? [message.message, message.entities] : '']) : ''
+    const previous = this.webPageBoxes.get(bubble)
+    if (previous) {
+      if (previous.key === key && previous.box.parentElement === messageDiv) {
+        bubble.classList.add(...previous.classes)
+        return
+      }
+
+      previous.destroy()
+      this.webPageBoxes.delete(bubble)
+    }
+
+    messageDiv.classList.remove('mt-bigger')
+    if (!messageMedia || webPage?._ !== 'webPage') return
+
+    const middlewareHelper = this.getMiddleware().create()
+    const middleware = middlewareHelper.get()
+    const classes: string[] = ['has-webpage', 'single-media']
+
+    // * find entity with anchor (:9364-9383)
+    let wrapped = safeWrapUrl(webPage.url)
+    const text = getMessageText(message)
+    const totalEntities = mergeEntities(message._ === 'message' ? message.entities ?? [] : [], parseEntities(text))
+    const urlEntities = wrapped ? totalEntities.map((entity) => {
+      try {
+        let entityUrl = entity._ === 'messageEntityTextUrl' ? entity.url : undefined
+        if (!entityUrl && entity._ === 'messageEntityUrl') {
+          entityUrl = text.slice(entity.offset, entity.offset + entity.length)
+        }
+
+        if (!entityUrl) {
+          return
+        }
+
+        const w = safeWrapUrl(entityUrl)
+        if (!w) return
+        const u = new URL(w.url)
+        u.hash = ''
+        return u.toString() === wrapped!.url ? w : undefined
+      } catch {}
+    }).filter((w): w is NonNullable<typeof w> => !!w) : []
+    if (urlEntities.length === 1) {
+      wrapped = urlEntities[0]
+    }
+
+    const props: WebPageBoxProps = {}
+    const boxRefs: ((box: HTMLAnchorElement) => void)[] = []
+
+    // tweb :9393 — `UNSAFE_ANCHOR_LINK_TYPES` (`showMaskedAlert`/`execBotCommand`)
+    // `wrapUrl` не возвращает никогда, поэтому «безопасно» = есть действие
+    const hasSafeUrl = !!wrapped?.action
+    if (hasSafeUrl) {
+      boxRefs.push((box) => {
+        box.setAttribute('safe', '1')
+      })
+
+      props.footer = {
+        content: i18n('OpenMessage'),
+      }
+
+      const action = wrapped!.action!
+      boxRefs.push((box) => {
+        box.setAttribute(ANCHOR_ACTION_ATTRIBUTE, action)
+        // У tweb `window[callback]` есть у каждого действия, что отдаёт `wrapUrl`;
+        // у нас реестр действий шире исполнителей (`KNOWN_ANCHOR_ACTIONS` против
+        // `lib/internalLinkProcessor.ts`), и клик без исполнителя уходит браузеру —
+        // карточка тогда открывается новой вкладкой, как ссылка в тексте.
+        if (!getAnchorListener(action)) setBlankToAnchor(box)
+      })
+    } else {
+      const isUnsafe = !messageMedia.pFlags.safe
+      boxRefs.push((box) => {
+        setBlankToAnchor(box)
+
+        if (isUnsafe) {
+          box.setAttribute(ANCHOR_ACTION_ATTRIBUTE, 'showMaskedAlert')
+        }
+      })
+    }
+
+    if (wrapped?.url) {
+      const url = wrapped.url
+      boxRefs.push((box) => {
+        box.href = url
+      })
+    }
+
+    let preview: HTMLDivElement | undefined
+    const hasLargeMedia = !!webPage.pFlags.has_large_media
+    const hasSmallMedia = !!(hasLargeMedia && messageMedia.pFlags.force_small_media)
+    const photo = webPage.photo
+    if (photo) {
+      preview = document.createElement('div')
+      props.media = {
+        content: preview,
+        position: 'top',
+      }
+    }
+
+    if (webPage.site_name) {
+      let smth: HTMLElement | DocumentFragment = wrapEmojiText(webPage.site_name)
+      // tweb :9558-9563 — имя сайта ссылкой на сам адрес
+      const a = wrapRichText(webPage.url).firstElementChild
+      if (a) {
+        a.replaceChildren(smth)
+        smth = a as HTMLElement
+      }
+
+      props.name = {
+        content: smth,
+      }
+    }
+
+    const title = wrapWebPageTitle(webPage)
+    if (title.textContent) {
+      props.title = title
+    }
+
+    const description = wrapWebPageDescription(webPage)
+    if (description.textContent) {
+      props.text = description
+    }
+
+    let isSquare = false
+    if (photo && preview) {
+      classes.push('photo')
+
+      const squareBoxSize = 48
+      const last = photo.sizes[photo.sizes.length - 1]
+      const size = last && 'w' in last ? last : undefined
+      if ((!size || (size.w === size.h && !hasLargeMedia) || hasSmallMedia) && (props.name || props.title || props.text)) {
+        classes.push('is-square-photo')
+        props.media!.photoSize = 'square'
+        isSquare = true
+        preview.style.width = preview.style.height = `${squareBoxSize}px`
+      } else if (size && size.h > size.w && !hasLargeMedia) {
+        classes.push('is-vertical-photo')
+        props.media!.photoSize = 'vertical'
+      }
+
+      void wrapPhoto({
+        photo,
+        container: preview,
+        boxWidth: isSquare ? 0 : mediaSizes.active.webpage.width,
+        boxHeight: isSquare ? 0 : mediaSizes.active.webpage.height,
+        hasMessage: true,
+        middleware,
+        withoutPreloader: isSquare,
+        autoDownloadSize: this.autoDownload?.photo,
+      }).catch(noop)
+    }
+
+    if (preview) {
+      props.media!.position = invertMedia || isSquare ? 'top' : 'bottom'
+    }
+
+    bubble.classList.add(...classes)
+
+    let box!: HTMLAnchorElement
+    const dispose = createRoot((dispose) => {
+      WebPageBox({
+        ...props,
+        ref: (el) => {
+          box = el
+          boxRefs.forEach((ref) => ref(el))
+          if (invertMedia) {
+            messageDiv.prepend(el)
+            messageDiv.classList.add('mt-bigger')
+          } else {
+            messageDiv.insertBefore(el, messageDiv.querySelector(':scope > .reactions, :scope > .time'))
+          }
+        },
+        clickable: true,
+      })
+      return dispose
+    })
+
+    this.webPageBoxes.set(bubble, {
+      key,
+      classes,
+      inverted: invertMedia,
+      box,
+      destroy: () => {
+        dispose()
+        middlewareHelper.destroy()
+        box.remove()
+        bubble.classList.remove(...classes)
+      },
+    })
+  }
+
   private renderStickerMedia(doc: MyDocument, bubbleContainer: HTMLElement): void {
     const bubble = bubbleContainer.parentElement?.parentElement
     bubble?.classList.add('sticker')
@@ -2105,6 +2353,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // взаимоисключительны, вложение у сообщения ровно одно.
     this.renderContact(message, messageDiv)
 
+    // Карточка ссылки — ветка `messageMediaWebPage` того же switch'а (:9334).
+    this.renderWebPage(message, bubble, messageDiv)
+
     // Лог звонка — соседняя ветка того же switch'а оригинала (:10067), поэтому
     // и здесь она стоит рядом с медиа. Само сообщение при этом СЛУЖЕБНОЕ:
     // из пилюли его увёл `getMessageKind` (см. ветку сервисного бабла выше),
@@ -2193,6 +2444,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // висят таймеры и анимации, а бабл уходит вместе со всем деревом.
     for (const handle of this.pollContents.values()) handle.destroy()
     this.pollContents.clear()
+
+    for (const webPage of this.webPageBoxes.values()) webPage.destroy()
+    this.webPageBoxes.clear()
   }
 
   /**
@@ -2532,7 +2786,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * тела — например, приехавшая реакция — уносила бы карточку насовсем, и
    * бабл возвращался ровно в тот пустой вид, ради которого задача.
    */
-  private static readonly BODY_NOT_CONTENT = '.document, .audio, .time, .reactions, .poll-message-content, .contact'
+  private static readonly BODY_NOT_CONTENT = '.document, .audio, .time, .reactions, .poll-message-content, .contact, .webpage'
 
   /**
    * СОДЕРЖИМОЕ тела — текст сообщения с разметкой.
@@ -2567,7 +2821,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
       node.remove()
     }
 
-    const tail = messageDiv.querySelector(':scope > .reactions, :scope > .time')
+    // Карточка ссылки под текстом стоит перед временем (tweb :9758
+    // `timeSpan.before(box)`), значит текст правки встаёт перед ней; над
+    // текстом (`invert_media`) — первая в теле, и текст идёт после неё.
+    const webPage = this.webPageBoxes.get(messageDiv.closest<HTMLElement>('.bubble')!)
+    const tail = (webPage && !webPage.inverted && webPage.box.parentElement === messageDiv ? webPage.box : null) ??
+      messageDiv.querySelector(':scope > .reactions, :scope > .time')
     messageDiv.insertBefore(this.wrapMessageContent(message), tail)
   }
 
@@ -3473,9 +3732,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // Внутренняя ссылка Telegram (`data-anchor-action`) — tweb исполняет её
     // inline-`onclick` якоря; у нас — делегированный слушатель на `document`
     // (`helpers/addAnchorListener.ts::listenForAnchorClicks`, обработчики —
-    // `lib/internalLinkProcessor.ts`). Ветки ниже по такому клику не идут.
+    // `lib/internalLinkProcessor.ts`). Ветки ниже по такому клику не идут —
+    // кроме карточки ссылки: её действие у tweb исполняет своя ветка
+    // (`dispatchWebPageClick`, :3926-3938), и картинка превью до него не доходит.
     const anchor = target.closest<HTMLElement>(`[${ANCHOR_ACTION_ATTRIBUTE}]`)
-    if (anchor) {
+    if (anchor && !anchor.classList.contains('webpage')) {
       return
     }
 
@@ -3695,6 +3956,31 @@ export default class ChatBubbles implements BubbleGroupsHost {
     const attachment = target.closest<HTMLElement>('.attachment')
     if (attachment && this.openMediaViewerFor(attachment)) {
       cancelEvent(e)
+      return
+    }
+
+    // Карточка ссылки — tweb :3921-3938: картинка превью — во вьювер
+    // (`checkTargetForMediaViewer`, ветка `IMG`/`canvas-thumbnail` :4120-4126),
+    // остальное поле превью клик глотает, прочее — сама ссылка карточки:
+    // `href` либо действие (`data-anchor-action` исполняет делегированный
+    // `listenForAnchorClicks`, у tweb — `dispatchWebPageClick` :7163-7180).
+    const webPageContainer = target.closest<HTMLElement>('.webpage')
+    if (webPageContainer) {
+      if (target.closest('.webpage-name-tip')) {
+        return
+      }
+
+      const preview = target.closest<HTMLElement>('.webpage-preview')
+      if (preview && (target.tagName === 'IMG' || target.classList.contains('canvas-thumbnail')) && this.openMediaViewerFor(preview)) {
+        cancelEvent(e)
+        return
+      }
+
+      if (target.closest('.webpage-preview-resizer')) {
+        e.preventDefault()
+        return
+      }
+
       return
     }
 
@@ -6315,7 +6601,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // права зрителя сменились живьём — ограничили, сняли ограничение, повысили
     // (сервер шлёт затронутому пер-зрительский `channel`, Ф-3б A2-05) — и поле
     // ввода пересобирается тем же `finishPeerChange`, что при смене пира.
-    // Сброс превью ссылки (`embed_links`, :2434-2438) — без предмета (Б-72).
+    // Сброс превью ссылки (`embed_links`, :2434-2438) — право у нас
+    // `send_messages` (расхождение 5 `input.ts`).
     const refreshInput = async() => {
       const middleware = this.getMiddleware()
       const callbacks = await Promise.all([
@@ -6338,6 +6625,14 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
       if(hadRights !== hasRights) {
         await refreshInput()
+      }
+
+      if(!middleware()) return
+      // tweb :2434-2438 — reset webpage
+      const canEmbedLinks = hasRights
+      if((canEmbedLinks && !this.chat.input.willSendWebPage) || (!canEmbedLinks && this.chat.input.willSendWebPage)) {
+        this.chat.input.lastUrl = ''
+        this.chat.input.onMessageInput()
       }
     })
 
@@ -6503,6 +6798,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
     }
 
     this.renderMessageContent(message, messageDiv)
+    // Карточка ссылки: правка её добавила, сняла или сменила (у tweb правка
+    // пересоздаёт бабл целиком, :1097); прежняя — только классы на место.
+    this.renderWebPage(message, bubble, messageDiv)
     this.renderMessageMeta(
       message,
       bubble,
@@ -6528,6 +6826,9 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // bubbles.ts:8806-8808).
     this.pollContents.get(bubble)?.destroy()
     this.pollContents.delete(bubble)
+
+    this.webPageBoxes.get(bubble)?.destroy()
+    this.webPageBoxes.delete(bubble)
 
     // tweb :4314-4316 снимает наблюдение непрочитанных с САМОГО бабла. У
     // поста канала наблюдаемый узел не бабл, а время внутри него (:7638-7640),

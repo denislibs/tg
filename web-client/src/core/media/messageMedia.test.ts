@@ -268,9 +268,9 @@ describe('getMediaFromMessage — файл вложения, каким бы к�
 
   it('карточка ссылки: файл — картинка ВНУТРИ webpage, той же лестницей', () => {
     const media: MessageMedia = {
-      _: 'messageMediaWebPage',
+      _: 'messageMediaWebPage', pFlags: {},
       webpage: {
-        _: 'webPage', url: 'https://x/', display_url: 'x',
+        _: 'webPage', pFlags: {}, url: 'https://x/', display_url: 'x',
         photo: { _: 'photo', id: 7, sizes: [{ _: 'photoStrippedSize', type: 'i', bytes: 'AQID' }] },
       },
     }
@@ -284,9 +284,9 @@ describe('getMediaFromMessage — файл вложения, каким бы к�
   // со ссылкой уехало бы в медиа-ветку и превратилось в картинку без текста.
   it('карточку ссылки бабл своим медиа НЕ считает', () => {
     const media: MessageMedia = {
-      _: 'messageMediaWebPage',
+      _: 'messageMediaWebPage', pFlags: {},
       webpage: {
-        _: 'webPage', url: 'https://x/', display_url: 'x',
+        _: 'webPage', pFlags: {}, url: 'https://x/', display_url: 'x',
         photo: { _: 'photo', id: 7, sizes: [] },
       },
     }

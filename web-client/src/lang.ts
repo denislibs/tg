@@ -10,6 +10,7 @@
 // с `src/i18n/dict.*.ts`.
 const lang = {
   'ALongTimeAgo': 'last seen a long time ago',
+  AboveMessage: 'Show Above the Message',
   'AccDescr.ChatInfo': 'Chat info',
   'AccDescr.ChatList': 'Chat list',
   'AccDescr.DeleteLastCharacter': 'Delete last character',
@@ -144,6 +145,7 @@ const lang = {
   AutodownloadSizeLimitUpTo: 'up to %1$s',
   AutomaticMediaDownload: 'Automatic media download',
   AvailableReactions: 'Available reactions',
+  BelowMessage: 'Show Below the Message',
   'Bio.Description': 'Any details such as age, occupation or city.\nExample: 23 y.o. designer from San Francisco',
   BioCopied: 'Bio copied to clipboard.',
   Birthday: 'Birthday',
@@ -882,6 +884,7 @@ const lang = {
   KickFromSupergroup: 'Restrict user',
   LanguageName: 'English',
   LanguagesChartTitle: 'Languages',
+  LargerMedia: 'Show Larger Media',
   LastName: 'Last name (optional)',
   'LastSeen.HoursAgo': {
     one_value: 'last seen %d hour ago',
@@ -1166,6 +1169,7 @@ const lang = {
   Open: 'Open',
   OpenChat: 'Open Chat',
   OpenInNewTab: 'Open in new tab',
+  OpenMessage: 'VIEW MESSAGE',
   OpenStory: 'OPEN STORY',
   OpenUrlAlert2: 'Do you want to open %1$s?',
   OpenUrlTitle: 'Open Link',
@@ -1666,6 +1670,7 @@ const lang = {
   SlowmodeSeconds: '%1$ds',
   SlowmodeSendError: 'Slow Mode is active. You can\'t send more than one message at once.',
   SlowmodeSendErrorTooLong: 'This text is too long to send as one message.\n\nSlow Mode is active. You can\'t send more than one message at once.',
+  SmallerMedia: 'Show Smaller Media',
   SomeReactions: 'Some reactions',
   'StarGift.ConvertTo': 'Convert to',
   'StarGift.GiftTo': 'Gift to',
@@ -1968,6 +1973,7 @@ const lang = {
   'WebApp.QrUnsupported': 'QR scanning is not supported in this browser',
   'WebApp.WriteAccess.Question': 'Allow this bot to message you?',
   'WebPage.InstantView': 'INSTANT VIEW',
+  'WebPage.RemovePreview': 'Remove Link Preview',
   Weeks: {
     one_value: '%1$d week',
     other_value: '%1$d weeks',

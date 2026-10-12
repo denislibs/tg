@@ -1,6 +1,7 @@
 import type { RestClient } from '../net/restClient'
 import type { PendingNewEvt } from '../realtime/events'
 import type { MessageSendingParams } from './messages/sendingParams'
+import { generateOutgoingWebPageMedia, sendWebPageWireFields, type WebPageSendOptions } from './messages/webPage'
 import { mapMyMessage, mapSuggestedPost, type MyMessage, type RawMyMessage, type MessageEntity, type SuggestedPost, type RawSuggestedPost } from '../models'
 import type { Chat, MessagesChatFull, UserReal } from '../peers/peer'
 import type { Peer } from '../peers/peerId'
@@ -113,10 +114,14 @@ export function newChannelsManager({ rest, beforeSending, failSending, applySche
     // `sendText` с пакетом); ручка берёт из него отложенную отправку
     // (`schedule_date`, tweb appMessagesManager.ts:2741) — бабл тогда ложится в
     // ленту отложенных, а не в историю.
+    //
+    // `webPage` — решение плашки превью ссылки (tweb `sendText` :2590-2599 →
+    // `generateOutgoingWebPage` :4882-4910), те же поля, что у кадра `send_message`.
     async post(
       peerId: number, text: string, clientMsgId: string, entities?: MessageEntity[],
       optimistic?: { senderId: number; threadRootId?: number | null },
       sendingParams?: Pick<MessageSendingParams, 'scheduleDate' | 'scheduleRepeatPeriod'>,
+      webPage: WebPageSendOptions = {},
     ): Promise<MyMessage | undefined> {
       const scheduleDate = sendingParams?.scheduleDate || 0
       const scheduleRepeatPeriod = sendingParams?.scheduleRepeatPeriod || 0
@@ -126,6 +131,8 @@ export function newChannelsManager({ rest, beforeSending, failSending, applySche
           sender_id: optimistic.senderId, text, type: 'text', entities,
           ...(scheduleDate ? { schedule_date: scheduleDate } : {}),
           ...(scheduleRepeatPeriod ? { schedule_repeat_period: scheduleRepeatPeriod } : {}),
+          web_page: generateOutgoingWebPageMedia(webPage),
+          invert_media: webPage.invertMedia || undefined,
           // Тот же класс, что `messages.sendText` в tweb: между баблом и уходом
           // запроса ничего не ждём, поэтому позиция бабла внизу окна переживёт
           // финализацию (см. докблок `PendingNewEvt.sequential`).
@@ -137,6 +144,7 @@ export function newChannelsManager({ rest, beforeSending, failSending, applySche
         r = await rest.post<RawMyMessage | ScheduledUpdates>(`/channels/${peerId}/messages`, {
           text, entities, client_msg_id: clientMsgId,
           schedule_date: scheduleDate, schedule_repeat_period: scheduleRepeatPeriod,
+          ...sendWebPageWireFields(webPage),
         })
       } catch (e) {
         // tweb :2819-2834 — `toggleError` бабла и проброс отказа вызывателю (тост)

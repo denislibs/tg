@@ -40,6 +40,7 @@ import { newReportManager } from './managers/reportManager'
 import { newStatsManager } from './managers/statsManager'
 import { newBotsManager } from './managers/botsManager'
 import { newIVManager } from './managers/ivManager'
+import { newWebPagesManager } from './managers/webPagesManager'
 import { newDraftsManager } from './managers/draftsManager'
 import { newPersistManager } from './managers/persistManager'
 import { newChatThemesManager } from './managers/chatThemesManager'
@@ -492,6 +493,8 @@ export function createWorkerCore() {
   const stickers = newStickersManager({ rest })
   const reactions = newReactionsManager({ rest })
   const iv = newIVManager({ rest })
+  // tweb `appWebPagesManager.getWebPage` — карточка плашки превью над полем ввода
+  const webPages = newWebPagesManager({ rest })
   // tweb `appDocsManager.getDoc` — документ по id из хранилища, которое
   // наполняет `saveDocument` (`core/media/messageMedia.ts`). Читатель —
   // предпросмотр стикера (`components/stickerViewer.ts`): у ячейки есть только
@@ -1086,7 +1089,7 @@ export function createWorkerCore() {
     health, auth, profile, premium, chats, messages, realtime, media, push, notify,
     folders, groups, channels, peers, dialogs, forumTopics, presence, stories, contacts, privacy, drafts,
     chatThemes, sessions, calls, livestream, stars, boosts, report, stats, bots,
-    stickers, reactions, iv, secret, persist, langPack, docs,
+    stickers, reactions, iv, webPages, secret, persist, langPack, docs,
   }
 
   function bind(ep: Endpoint) {

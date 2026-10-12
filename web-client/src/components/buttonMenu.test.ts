@@ -180,3 +180,53 @@ describe('ButtonMenuSync / ButtonMenu', () => {
     expect(el.classList.contains('btn-menu')).toBe(true)
   })
 })
+
+describe('ButtonMenuSync: радиогруппы (tweb buttonMenu.ts:262-318)', () => {
+  function build(onChange = vi.fn()) {
+    const above: ButtonMenuItemOptions = { text: 'Copy', onClick: () => {}, radioGroup: 'position' }
+    const below: ButtonMenuItemOptions = { text: 'Delete', onClick: () => {}, radioGroup: 'position' }
+    const plain: ButtonMenuItemOptions = { text: 'Cancel', onClick: () => {} }
+    const el = ButtonMenuSync({ buttons: [above, below, plain], radioGroups: [{ name: 'position', onChange, checked: 0 }] })
+    return { el, above, below, plain, onChange }
+  }
+
+  it('пункты группы — в form, у каждого радио-поле, за группой hr; прочие на месте', () => {
+    const { el, above, below, plain } = build()
+    const form = el.firstElementChild as HTMLElement
+    expect(form.tagName).toBe('FORM')
+    expect(Array.from(form.children)).toEqual([above.element, below.element, form.lastElementChild])
+    expect(form.lastElementChild!.tagName).toBe('HR')
+    expect(el.lastElementChild).toBe(plain.element)
+
+    for (const [b, value] of [[above, '1'], [below, '0']] as const) {
+      const input = b.checkboxField!.input
+      expect(input.type).toBe('radio')
+      expect(input.name).toBe('position')
+      expect(input.value).toBe(value)
+      expect(b.element!.classList.contains('has-checkbox')).toBe(true)
+      expect(b.element!.contains(b.checkboxField!.label)).toBe(true)
+    }
+    expect(above.checkboxField!.input.checked).toBe(true)
+    expect(below.checkboxField!.input.checked).toBe(false)
+  })
+
+  it('клик по пункту взводит его радио, onChange получает value; меню остаётся открытым', () => {
+    const { el, below, onChange } = build()
+    mountActiveMenu(el)
+    const close = vi.spyOn(contextMenuController, 'close')
+
+    below.element!.click()
+
+    expect(below.checkboxField!.input.checked).toBe(true)
+    expect(onChange).toHaveBeenCalledTimes(1)
+    expect(onChange.mock.calls[0][0]).toBe('0')
+    expect(close).not.toHaveBeenCalled()
+  })
+
+  it('запись checked снаружи тоже зовёт onChange (tweb input.ts:3612-3616 опирается на это)', () => {
+    const { above, below, onChange } = build()
+    below.checkboxField!.checked = true
+    above.checkboxField!.checked = true
+    expect(onChange.mock.calls.map((c) => c[0])).toEqual(['0', '1'])
+  })
+})

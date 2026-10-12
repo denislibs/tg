@@ -107,6 +107,25 @@ describe('ChannelsManager.post', () => {
     expect(pendings).toEqual([expect.objectContaining({ schedule_date: 1_900_000_000, schedule_repeat_period: 86400 })])
   })
 
+  // Ф-5 C2: пост канала несёт решение плашки превью тем же набором полей, что send_message
+  it('превью ссылки: media/invert_media в теле, бабл сразу с карточкой', async () => {
+    const post = vi.fn(async () => raw(6))
+    const rest = { post, get: vi.fn() } as unknown as RestClient
+    const pendings: Record<string, unknown>[] = []
+    const mgr = newChannelsManager({ rest, beforeSending: (p) => { pendings.push(p as never) }, peers: fakePeers(), cacheViews: () => {} })
+    const webPage = { _: 'webPage' as const, pFlags: {}, url: 'https://ex.com', display_url: 'ex.com' }
+
+    await mgr.post(7, 'https://ex.com', 'c13', undefined, { senderId: 3 }, undefined, { webPage, invertMedia: true })
+    await mgr.post(7, 'https://ex.com', 'c14', undefined, { senderId: 3 }, undefined, { noWebPage: true })
+
+    expect(post).toHaveBeenNthCalledWith(1, '/channels/7/messages', expect.objectContaining({
+      invert_media: true, media: expect.objectContaining({ _: 'inputMediaWebPage', url: 'https://ex.com' }),
+    }))
+    expect(post).toHaveBeenNthCalledWith(2, '/channels/7/messages', expect.objectContaining({ no_webpage: true }))
+    expect(pendings[0]).toEqual(expect.objectContaining({ web_page: expect.objectContaining({ webpage: webPage }), invert_media: true }))
+    expect(pendings[1].web_page).toBeUndefined()
+  })
+
   // tweb `processUpdateMessage(updates)` у отправки (appMessagesManager.ts:2810-2811):
   // ответ отложенного поста — `Updates`, их применяет владелец ленты отложенных.
   it('отложенный пост: ответ Updates уходит владельцу ленты отложенных', async () => {

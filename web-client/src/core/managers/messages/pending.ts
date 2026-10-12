@@ -77,6 +77,7 @@ import SlicedArray, { SliceEnd } from '../../history/slicedArray'
 import { GENERAL_TOPIC_ID, generateMessageId, generateTempMessageId } from '../../history/messageId'
 import { getOutputPeer } from '../../peers/peerId'
 import { sendingParamsToWire, splitSendingParams, type MessageSendingParams, type SendingParamsWireFields } from './sendingParams'
+import { generateOutgoingWebPageMedia, sendWebPageWireFields, type WebPageSendOptions } from './webPage'
 
 /** Данные временного бабла, которых нет в проводных полях send_message: автор,
  *  локальная мета файла, имя контакта, заголовок send-as, метка секретного чата.
@@ -112,7 +113,7 @@ export type SendWireArgs = Omit<WireSendArgs, keyof SendingParamsWireFields>
  *  заявка на бабл. Порт tweb `sendText(options: MessageSendingParams & {...})`
  *  (:1290); наш `sendText` покрывает и `sendOther` (стикер/гиф/гео/контакт): у
  *  них ровно та же форма — байтов нет, кадр один, пакет тот же. */
-export interface SendTextArgs extends SendWireArgs, MessageSendingParams {
+export interface SendTextArgs extends SendWireArgs, MessageSendingParams, WebPageSendOptions {
   optimistic?: SendOptimistic
 }
 
@@ -555,6 +556,9 @@ export function newPendingMethods(ctx: PendingCtx) {
         // tweb `saveMessages({isScheduled: true})` (:7042-7044) — флаг ставит
         // сохранение в хранилище отложенных, у бабла тоже
         ...(scheduled ? { is_scheduled: true as const } : {}),
+        // tweb `generateOutgoingWebPage` :4903-4905 — «карточка над текстом»
+        // ставится вместе с карточкой
+        ...(e.web_page && e.invert_media ? { invert_media: true as const } : {}),
       },
       id,
       // Автор бабла — send-as личность, если она выбрана: на проводе у эха там
@@ -596,7 +600,11 @@ export function newPendingMethods(ctx: PendingCtx) {
       // Гео и визитка собираются здесь же и тем же приёмом: они КОНСТРУКТОРЫ
       // того же объединения, а не собственные поля сообщения рядом с медиа, —
       // значит и у бабла им место ровно одно.
-      media: e.document ? { _: 'messageMediaDocument', document: e.document }
+      //
+      // Карточка ссылки — карточка плашки композера (tweb `generateOutgoingWebPage`
+      // :4893-4900, `message.media = messageMediaWebPage{webpage: options.webPage}`).
+      media: e.web_page ? e.web_page
+        : e.document ? { _: 'messageMediaDocument', document: e.document }
         : e.media
         ? makeDocumentAndMetaForSendingFile({ ...e.media, mediaTempId: e.media_id ?? id, attachType: e.type ?? 'document' })
         : e.geo ? makeGeoMedia(e.geo)
@@ -780,9 +788,12 @@ export function newPendingMethods(ctx: PendingCtx) {
      *  байтов нет, поэтому весь метод — бабл + один кадр. Единственная точка
      *  отправки сообщения без файла; транспорт зовётся ВНУТРИ
      *  `beforeMessageSending`, как `message.send()` в оригинале. */
-    async sendText({ optimistic, ...o }: SendTextArgs): Promise<{ ok: true }> {
+    async sendText({ optimistic, noWebPage, webPage, webPageOptions, invertMedia, ...o }: SendTextArgs): Promise<{ ok: true }> {
       const { params, rest } = splitSendingParams(o)
-      const args: WireSendArgs = { ...rest, ...sendingParamsToWire(params) }
+      // tweb `sendText` :2695 (`generateOutgoingWebPage`) и :2746 (`invert_media`)
+      const webPageSend: WebPageSendOptions = { noWebPage, webPage, webPageOptions, invertMedia }
+      const webPageFields = sendWebPageWireFields(webPageSend)
+      const args: WireSendArgs = { ...rest, ...sendingParamsToWire(params), ...(Object.keys(webPageFields).length ? { webPageFields } : {}) }
       const send = () => ctx.send(args)
       if (!optimistic) { send(); return { ok: true } }
       beforeMessageSending({
@@ -808,6 +819,8 @@ export function newPendingMethods(ctx: PendingCtx) {
         reply_to_peer_id: params.replyToPeerId ?? undefined,
         schedule_date: params.scheduleDate ?? undefined,
         schedule_repeat_period: params.scheduleRepeatPeriod ?? undefined,
+        web_page: generateOutgoingWebPageMedia(webPageSend),
+        invert_media: invertMedia || undefined,
         // Порт tweb `sendText → beforeMessageSending({sequential: true})`
         // (appMessagesManager.ts:1503-1508): байтов нет, кадр уходит тем же
         // ходом, что и бабл, — позиция внизу окна за ним и останется.
@@ -917,7 +930,10 @@ export function newPendingMethods(ctx: PendingCtx) {
       if (next._ === 'message') {
         if (ack.entities) next.entities = ack.entities
         if (ack.ttl_period) next.ttl_period = ack.ttl_period
-        if (ack.media && !next.media) next.media = saveMessageMedia(ack.media)
+        // Карточку плашки композера подтверждение заменяет серверной (tweb
+        // `newMessage.media = updates.media`, :2776); вложение-файл бабла — нет:
+        // его локальное превью живёт до эха.
+        if (ack.media && (!next.media || next.media._ === 'messageMediaWebPage')) next.media = saveMessageMedia(ack.media)
       }
       return finalizePendingMessage(ack.client_msg_id, next)
     },

@@ -247,6 +247,9 @@ export type MessagePFlags = Partial<{
   post: true
   pinned: true
   is_scheduled: true
+  /** `invert_media:flags.27?true` — медиа над текстом (у превью ссылки —
+   *  карточка над текстом, tweb bubbles.ts:9191-9193, :9757-9759) */
+  invert_media: true
 }>
 
 /** Общее у `message` и `messageService` — то, что читают без ветвления по

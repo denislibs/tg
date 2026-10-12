@@ -27,6 +27,13 @@ const ru = {
   'UserInfo.SetPhotoTitle': 'Установить фото',
   // ── Instant View ──
   'WebPage.InstantView': 'Мгновенный просмотр',
+  // ── Превью ссылки над полем ввода (tweb input.ts:799-851, bubbles.ts:9446) ──
+  AboveMessage: 'Показать над сообщением',
+  BelowMessage: 'Показать под сообщением',
+  LargerMedia: 'Показать крупнее',
+  SmallerMedia: 'Показать мельче',
+  'WebPage.RemovePreview': 'Убрать превью ссылки',
+  OpenMessage: 'ОТКРЫТЬ СООБЩЕНИЕ',
   'InstantView.OpenInBrowser': 'Открыть в браузере',
   // ── Проверка фактов (tweb factCheck) ──
   FactCheck: 'Проверка фактов',
