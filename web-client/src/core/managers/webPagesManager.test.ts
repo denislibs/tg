@@ -30,9 +30,9 @@ describe('webPagesManager.getWebPage', () => {
     expect(await newWebPagesManager({ rest: { get } as never }).getWebPage('u')).toBeUndefined()
   })
 
-  it('429 → undefined, без reject (расхождение 3)', async () => {
+  it('429 → null, без reject (расхождение 3)', async () => {
     const get = vi.fn().mockRejectedValue(new HttpError(429, 'too many requests'))
-    await expect(newWebPagesManager({ rest: { get } as never }).getWebPage('u')).resolves.toBeUndefined()
+    await expect(newWebPagesManager({ rest: { get } as never }).getWebPage('u')).resolves.toBeNull()
   })
 
   it('одинаковый URL в полёте — один запрос; после ответа — новый (без id-кэша)', async () => {

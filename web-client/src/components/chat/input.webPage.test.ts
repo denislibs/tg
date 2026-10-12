@@ -185,6 +185,36 @@ describe('ChatInput: плашка превью ссылки', () => {
     }))
   })
 
+  it('отказ ручки (429) по новой ссылке: показанная плашка остаётся, no_webpage не уходит (tweb :3594-3631)', async() => {
+    let fail = false
+    mounted = await mountInput(async(url) => fail ? null as never : card(url))
+    const { input, managers, chat } = mounted
+    await type(input, URL1)
+    expect(input.willSendWebPage).not.toBeNull()
+
+    fail = true
+    await type(input, URL2)
+    expect(chat.container.classList.contains('is-helper-active')).toBe(true)
+    expect(input.willSendWebPage).not.toBeNull()
+
+    await input.sendMessage()
+    const args = managers.messages.sendText.mock.calls[0][0]
+    expect(args.noWebPage).toBeUndefined()
+    // запрос «в полёте» по tweb не сбрасывается — карточку выбирает сервер
+    expect(args.webPage).toBeUndefined()
+  })
+
+  it('длинный текст: карточка снимается у всех частей, если её ссылки нет в первой (tweb :2679-2683, :2848-2856)', async() => {
+    mounted = await mountInput(async(url) => card(url))
+    const { input, managers } = mounted
+    await type(input, 'а'.repeat(4096) + ' ' + URL1)
+    expect(input.willSendWebPage).not.toBeNull()
+    await input.sendMessage()
+    const calls = managers.messages.sendText.mock.calls.map((c) => c[0])
+    expect(calls.length).toBe(2)
+    expect(calls.every((c) => c.webPage === undefined)).toBe(true)
+  })
+
   it('«Убрать превью» в меню — то же, что крестик (tweb :817-823)', async() => {
     mounted = await mountInput(async(url) => card(url))
     const { input } = mounted

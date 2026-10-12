@@ -104,6 +104,7 @@ import rootScope from '@lib/rootScope'
 import { RT } from '@core/realtime/events'
 import { ANCHOR_ACTION_ATTRIBUTE, parseEntities, safeWrapUrl, wrapEmojiText, wrapMessageText, wrapRichText } from '@lib/richtext'
 import { setBlankToAnchor } from '@lib/richtext/url'
+import { getAnchorListener } from '@helpers/addAnchorListener'
 import { mergeEntities } from '@lib/richtext/entities'
 import WebPageBox, { type WebPageBoxProps } from '@components/wrappers/webPage.solid'
 import wrapWebPageTitle from '@components/wrappers/webPageTitle'
@@ -767,9 +768,12 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
   /**
    * Карточки превью ссылок (`renderWebPage`): бабл → уборка Solid-корня и
-   * поколения медиа, ключ содержимого (правка без смены карточки её не
-   * пересобирает — иначе каждая реакция заново грузила бы картинку, см.
-   * докблок `onMessageEdit`), классы бабла карточки (`onMessageEdit` пишет
+   * поколения медиа, ключ содержимого (карточка, `invert_media`, текст и его
+   * сущности — по ним выбирается адрес карточки, :9364-9383): `message_edit`,
+   * который их не меняет (реакция, `media_read`), карточку не пересобирает —
+   * иначе каждая реакция заново грузила бы картинку, см. докблок
+   * `onMessageEdit`; правка текста пересобирает, как у tweb пересоздаётся
+   * весь бабл (:1097). Классы бабла карточки (`onMessageEdit` пишет
    * `className` целиком) и сторона (`invert_media` — над текстом).
    * У tweb уборку держит побабльный `middleware.onDestroy(dispose)` (:9749).
    */
@@ -1897,7 +1901,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
 
     const messageMedia = message._ === 'message' && message.media?._ === 'messageMediaWebPage' ? message.media : undefined
     const webPage = messageMedia?.webpage
-    const key = webPage ? JSON.stringify([messageMedia, invertMedia, message._ === 'message' ? message.message : '']) : ''
+    const key = webPage ? JSON.stringify([messageMedia, invertMedia, message._ === 'message' ? [message.message, message.entities] : '']) : ''
     const previous = this.webPageBoxes.get(bubble)
     if (previous) {
       if (previous.key === key && previous.box.parentElement === messageDiv) {
@@ -1960,6 +1964,11 @@ export default class ChatBubbles implements BubbleGroupsHost {
       const action = wrapped!.action!
       boxRefs.push((box) => {
         box.setAttribute(ANCHOR_ACTION_ATTRIBUTE, action)
+        // У tweb `window[callback]` есть у каждого действия, что отдаёт `wrapUrl`;
+        // у нас реестр действий шире исполнителей (`KNOWN_ANCHOR_ACTIONS` против
+        // `lib/internalLinkProcessor.ts`), и клик без исполнителя уходит браузеру —
+        // карточка тогда открывается новой вкладкой, как ссылка в тексте.
+        if (!getAnchorListener(action)) setBlankToAnchor(box)
       })
     } else {
       const isUnsafe = !messageMedia.pFlags.safe

@@ -930,7 +930,10 @@ export function newPendingMethods(ctx: PendingCtx) {
       if (next._ === 'message') {
         if (ack.entities) next.entities = ack.entities
         if (ack.ttl_period) next.ttl_period = ack.ttl_period
-        if (ack.media && !next.media) next.media = saveMessageMedia(ack.media)
+        // Карточку плашки композера подтверждение заменяет серверной (tweb
+        // `newMessage.media = updates.media`, :2776); вложение-файл бабла — нет:
+        // его локальное превью живёт до эха.
+        if (ack.media && (!next.media || next.media._ === 'messageMediaWebPage')) next.media = saveMessageMedia(ack.media)
       }
       return finalizePendingMessage(ack.client_msg_id, next)
     },

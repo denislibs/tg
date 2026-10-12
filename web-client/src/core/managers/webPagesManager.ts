@@ -14,9 +14,11 @@
 //     (`invokeApiSingleProcess`, apiManagerMethods.ts:153-173) — она и
 //     перенесена. Кэш ответов держит сервер (10 минут по URL).
 //  3. Отказ ручки (429 — лимит частоты 1/с со всплеском 10, сеть) отвечает
-//     `undefined`: плашка tweb на отказ просто не появляется — промис
-//     `getWebPage` в `processWebPage` без `catch`, а `then` не выполняется.
-//     У нас отказ из воркера стал бы необработанным reject во вкладке.
+//     `null`, а не reject: у tweb промис `getWebPage` в `processWebPage` без
+//     `catch` — `then` не выполняется вовсе (плашка остаётся какой была,
+//     `getWebPagePromise` не сбрасывается), а у нас отказ из воркера стал бы
+//     необработанным reject во вкладке. `processWebPage` на `null` выходит
+//     ровно так же — без снятия плашки и без `no_webpage`.
 //  4. `getWebPagePreview` (:220-271, `messages.getWebPagePreview`) не
 //     портирован: композер tweb зовёт `getWebPage`, а `getWebPagePreview`
 //     зовёт только вложение-ссылка опроса (`popups/createPoll/mediaAttachment.tsx:242`)
@@ -31,21 +33,21 @@ interface WebPageEmpty { _: 'webPageEmpty'; url?: string }
 interface MessagesWebPage { _: 'messages.webPage'; webpage: WebPage | WebPageEmpty }
 
 export function newWebPagesManager({ rest }: { rest: Pick<RestClient, 'get'> }) {
-  const inFlight = new Map<string, Promise<WebPage | undefined>>()
+  const inFlight = new Map<string, Promise<WebPage | undefined | null>>()
 
   return {
     /** tweb :273-284. Ответ — карточка либо `undefined` («карточки нет»:
      *  `webPageEmpty`, у оригинала `saveWebPage` его без ожидающего не
-     *  возвращает, :76-77; отказ ручки — расхождение 3). Пиров карточка не
+     *  возвращает, :76-77); `null` — отказ ручки (расхождение 3). Пиров карточка не
      *  упоминает, `saveApiPeers` (:277) сохранять нечего — векторы пусты. */
-    getWebPage(url: string): Promise<WebPage | undefined> {
+    getWebPage(url: string): Promise<WebPage | undefined | null> {
       let promise = inFlight.get(url)
       if (promise) return promise
 
       promise = rest.get<MessagesWebPage>('/webpage', { url }).then((messagesWebPage) => {
         const webPage = messagesWebPage?.webpage
         return webPage?._ === 'webPage' ? saveWebPage(webPage) : undefined
-      }, () => undefined).finally(() => {
+      }, () => null).finally(() => {
         inFlight.delete(url)
       })
       inFlight.set(url, promise)

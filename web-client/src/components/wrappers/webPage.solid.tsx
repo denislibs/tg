@@ -4,6 +4,14 @@
  * карточка превью ссылки в бабле (`chat/bubbles.ts`, ветка `messageMediaWebPage`,
  * tweb bubbles.ts:9334-9786). Разметка и классы — дословно; стили —
  * `styles/tweb/_chatBubble.scss` (`.webpage`) и `_quote.scss` (`.quote-like`).
+ *
+ * Компонент перенесён файлом: у tweb его зовут ещё «проверка фактов»
+ * (bubbles.ts:9224-9260), игра (:9882) и спонсорское (ветка карточки :9430-9444)
+ * — им нужны
+ * `name.tip`, `media.hasDocument`, `minContent`, `footer.link/text/ref` и
+ * некликабельный вариант. У нашего первого потребителя (карточка ссылки,
+ * `chat/bubbles.ts::renderWebPage`) этих веток нет; они остаются ради тех
+ * портов, а не как заготовка.
  */
 import type { JSX, Ref } from 'solid-js'
 import { Dynamic } from 'solid-js/web'

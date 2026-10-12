@@ -7,6 +7,7 @@ import { resetPeerMirror } from '@core/peerCache'
 import { makeMessage } from '@core/messages/testMessage'
 import rootScope from '@lib/rootScope'
 import { ANCHOR_ACTION_ATTRIBUTE } from '@lib/richtext'
+import addAnchorListener from '@helpers/addAnchorListener'
 import type { MessageMediaWebPage, MyPhoto, WebPage } from '@core/media/messageMedia'
 import type { MyMessage } from '@core/models'
 import type { HistoryResult } from '@core/managers/messagesManager'
@@ -93,11 +94,14 @@ describe('ChatBubbles — карточка превью ссылки', () => {
   })
 
   it('t.me-ссылка: действие на карточке и футер «VIEW MESSAGE» (tweb :9418-9454)', async () => {
+    addAnchorListener({ name: 'im', callback: () => {} })
     const tme = 'https://t.me/durov'
     bubbles = await feedWith(msg(media(webPage({ url: tme, display_url: 't.me/durov' })), { text: tme }))
     const box = boxOf(bubbles)!
     expect(box.getAttribute(ANCHOR_ACTION_ATTRIBUTE)).toBe('im')
     expect(box.getAttribute('safe')).toBe('1')
+    // исполнитель есть — карточка ведёт внутри приложения, без новой вкладки
+    expect(box.target).toBe('')
     expect(box.querySelector('.webpage-footer')!.textContent).toBe('VIEW MESSAGE')
   })
 
@@ -144,7 +148,7 @@ describe('ChatBubbles — карточка превью ссылки', () => {
     expect(boxOf(bubbles)!.querySelector('.webpage-content')!.firstElementChild!.classList.contains('webpage-preview-resizer')).toBe(true)
   })
 
-  it('правка: реакция/текст не пересобирает карточку; снятое превью уносит её и классы; догонка — рисует', async () => {
+  it('правка: тот же текст и карточка (реакция) — тот же узел; снятое превью уносит её и классы; догонка — рисует', async () => {
     const m = media(webPage())
     bubbles = await feedWith(msg(m))
     const box = boxOf(bubbles)
@@ -167,6 +171,29 @@ describe('ChatBubbles — карточка превью ссылки', () => {
     edit(msg(m))
     await settle()
     expect(boxOf(bubbles)).not.toBeNull()
+  })
+
+  it('правка текста пересобирает карточку (у tweb правка пересоздаёт бабл, :1097)', async () => {
+    const m = media(webPage())
+    bubbles = await feedWith(msg(m))
+    const box = boxOf(bubbles)
+    rootScope.dispatchEventSingle('message_edit', { storageKey: String(CHAT), peerId: CHAT, mid: 1, message: msg(m, { text: 'иначе ' + URL }) })
+    await settle()
+    expect(boxOf(bubbles)).not.toBeNull()
+    expect(boxOf(bubbles)).not.toBe(box)
+  })
+
+  it('t.me-действие без исполнителя открывается новой вкладкой (наш реестр шире исполнителей)', async () => {
+    const tme = 'https://t.me/share/url?url=x'
+    bubbles = await feedWith(msg(media(webPage({ url: tme, display_url: 't.me/share/url' })), { text: tme }))
+    const box = boxOf(bubbles)!
+    expect(box.getAttribute(ANCHOR_ACTION_ATTRIBUTE)).toBe('share')
+    expect(box.target).toBe('_blank')
+  })
+
+  it('адрес вне allow-list схем — карточка без href', async () => {
+    bubbles = await feedWith(msg(media(webPage({ url: 'javascript:alert(1)', display_url: 'x' })), { text: 'x' }))
+    expect(boxOf(bubbles)!.hasAttribute('href')).toBe(false)
   })
 
   it('клик по полю превью не открывает ссылку (tweb :3932-3935)', async () => {

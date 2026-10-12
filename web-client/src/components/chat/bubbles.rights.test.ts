@@ -16,6 +16,9 @@ let bubbles: ChatBubbles | undefined
 let canWrite = true
 let finishInput: ReturnType<typeof vi.fn<(options: { peerId: PeerId, middleware: () => boolean }) => Promise<() => void>>>
 
+let onMessageInput = vi.fn()
+let willSendWebPage: unknown = null
+
 function mount() {
   const managers: BubblesManagers = {
     messages: {
@@ -34,7 +37,7 @@ function mount() {
   const chat = createTestChat({
     peerId: PEER,
     canSend: () => canWrite,
-    input: { finishPeerChange: finishInput },
+    input: { finishPeerChange: finishInput, onMessageInput, willSendWebPage },
   })
   return bubbles = mountTestBubbles(chat, managers)
 }
@@ -68,5 +71,24 @@ describe('ChatBubbles — права зрителя по chat_update', () => {
     rootScope.dispatchEvent(RT.chatUpdate, frame(-999))
     await settle()
     expect(finishInput).not.toHaveBeenCalled()
+  })
+
+  // tweb bubbles.ts:2434-2438 — плашка превью ссылки пересчитывается, когда право
+  // вставлять ссылки разошлось с её наличием (у нас право — `send_messages`)
+  it('сброс плашки превью: есть право и нет плашки / нет права и есть плашка → onMessageInput', async() => {
+    onMessageInput = vi.fn()
+    willSendWebPage = null
+    mount().chatInner.classList.add('has-rights')
+    rootScope.dispatchEvent(RT.chatUpdate, frame(PEER))
+    await settle()
+    expect(onMessageInput).toHaveBeenCalledTimes(1)
+    bubbles?.destroy()
+
+    onMessageInput = vi.fn()
+    willSendWebPage = { _: 'webPage' }
+    mount().chatInner.classList.add('has-rights')
+    rootScope.dispatchEvent(RT.chatUpdate, frame(PEER))
+    await settle()
+    expect(onMessageInput).not.toHaveBeenCalled()
   })
 })

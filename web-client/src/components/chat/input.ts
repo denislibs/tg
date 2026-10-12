@@ -2168,6 +2168,8 @@ export default class ChatInput {
       this.managers.webPages.getWebPage(foundUrl),
       this.chat.canSend('send_messages'),
     ]).then(([webPage, canEmbedLinks]) => {
+      // отказ ручки — у tweb `then` не выполняется вовсе (webPagesManager, расхождение 3)
+      if(webPage === null) return
       if(this.getWebPagePromise === promise) this.getWebPagePromise = undefined
       if(this.lastUrl !== foundUrl) return
       if(webPage?._ === 'webPage' && canEmbedLinks) {
