@@ -1329,6 +1329,11 @@ export default class ChatInput {
       draft = threadId ? await this.managers.drafts.getDraft(peerId, threadId) : this.getDraft()
 
       if(!draft) {
+        // tweb :2427-2447 — снятие своей отправкой (`clearDraft`): поле уже очистил
+        // `sendMessage` → `onMessageSent`, второй очистки (и снятия выбранного после
+        // отправки ответа) не нужно
+        if(force) return fromUpdate
+
         if(fromUpdate && !this.saveDraftDebounced.isDebounced()) {
           void this.clearInput()
           this.clearHelper()

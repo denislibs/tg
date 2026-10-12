@@ -21,12 +21,18 @@
 //  2. Словарь живёт в памяти, на диск не пишется (`appStateManager.storage
 //     'drafts'`, `:74-76`, `:165-167`): после перезапуска его наполняет
 //     `getAllDrafts` (`addMissedDialogs`) и строки тем (`forumTopic.draft`).
-//  3. Ответ `saveDraft` — `Bool`; диалог без сообщений, заведённый черновиком
-//     (`:319-324`, `reloadConversation`), не перечитывается — строку чата ведёт
-//     кадр сервера.
+//  3. Ответ `saveDraft` — `Bool`; диалог, заведённый черновиком (`:319-324`,
+//     `reloadConversation`), после ответа не перечитывается — его заводит кадр
+//     сервера (`dialogs.applyDraft` перечитывает строку чата, которой нет в
+//     списке, как слушатель `draft_updated`, `appMessagesManager.ts:895-899`).
 //  4. Монофорумов и `media`/`no_webpage`/`invert_media` черновика (`:281-291`)
 //     нет: ручка этих полей не принимает (Б-72 — превью ссылки без черновика).
-//  5. ИСПРАВЛЕН баг оригинала `:66` (решение пользователя, В-6 спеки Ф-5): tweb
+//  5. Своё сохранение сервер присылает эхом и этому устройству (кадр всем
+//     устройствам владельца; у оригинала эха своей сессии нет). Эхо, равное
+//     уже записанному, ничего не объявляет; эхо черновика, который отправка
+//     уже сняла (`clearDraft`), не возвращает его — его снимет кадр очистки
+//     сервера (тот же приём, что `clearedDraft` поля ввода у черновика чата).
+//  6. ИСПРАВЛЕН баг оригинала `:66` (решение пользователя, В-6 спеки Ф-5): tweb
 //     кладёт в ключ серверный `top_msg_id` без `generateMessageId`, а поле ввода
 //     сравнивает его с клиентским `threadId` (`input.ts:1718`) — черновик треда с
 //     другого устройства и из `getAllDrafts` у tweb не применяется.
@@ -66,6 +72,8 @@ export interface DraftsDeps {
 export function newDraftsManager({ rest, applyDialogDraft, applyTopicDraft, onDraftUpdated }: DraftsDeps) {
   /** tweb `drafts` (`:36`) — черновики тредов (расхождение 1). */
   const drafts = new Map<string, DraftMessageReal>()
+  /** Снятые отправкой черновики тредов — расхождение 5. */
+  const clearedDrafts = new Map<string, DraftMessageReal>()
   let getAllDraftPromise: Promise<void> | undefined
 
   /** tweb `getKey` (`:88-90`) */
@@ -115,15 +123,23 @@ export function newDraftsManager({ rest, applyDialogDraft, applyTopicDraft, onDr
   /** `updateDraftMessage` — tweb `:44-71`. */
   function applyUpdate(update: RawDraft): void {
     const peerId = getPeerId(update.peer)
-    saveDraft({
-      peerId,
-      // ИСПРАВЛЕНО (расхождение 5 шапки): tweb `:66` кладёт серверный
-      // `top_msg_id` как есть, а ключ треда — клиентский номер
-      // (`appMessagesIdsManager.generateMessageId(top_msg_id, channelId)`).
-      threadId: update.top_msg_id ? generateMessageId(update.top_msg_id) : undefined,
-      draft: update.draft,
-      notify: true,
-    })
+    // ИСПРАВЛЕНО (расхождение 6 шапки): tweb `:66` кладёт серверный
+    // `top_msg_id` как есть, а ключ треда — клиентский номер
+    // (`appMessagesIdsManager.generateMessageId(top_msg_id, channelId)`).
+    const threadId = update.top_msg_id ? generateMessageId(update.top_msg_id) : undefined
+    if (threadId) {
+      // расхождение 5 — эхо своего сохранения
+      const key = getKey(peerId, threadId)
+      const next = realDraft(processApiDraft(update.draft))
+      const cleared = clearedDrafts.get(key)
+      if (!next) clearedDrafts.delete(key)
+      else if (cleared && draftsAreEqual(next, cleared)) return
+      if (draftsAreEqual(drafts.get(key), next)) {
+        if (next) drafts.set(key, next)
+        return
+      }
+    }
+    saveDraft({ peerId, threadId, draft: update.draft, notify: true })
   }
 
   return {
@@ -155,6 +171,7 @@ export function newDraftsManager({ rest, applyDialogDraft, applyTopicDraft, onDr
       peerId: PeerId; threadId?: number; localDraft: DraftMessageReal | undefined; force?: boolean
     }): Promise<unknown> {
       if (threadId && draftsAreEqual(drafts.get(getKey(peerId, threadId)), localDraft)) return true
+      if (threadId) clearedDrafts.delete(getKey(peerId, threadId))
 
       const params: SaveDraftParams = { message: '' }
       let draftObj: DraftMessage | undefined
@@ -186,6 +203,11 @@ export function newDraftsManager({ rest, applyDialogDraft, applyTopicDraft, onDr
     /** tweb `clearDraft` (`:353-371`) — местное снятие черновика треда
      *  отправкой (`sendText({clearDraft})`); у чата — расхождение 1. */
     clearDraft(peerId: PeerId, threadId: number): void {
+      const key = getKey(peerId, threadId)
+      const draft = drafts.get(key)
+      // снимать нечего — у оригинала `syncDraft` гасит равное (:219-222)
+      if (!draft) return
+      clearedDrafts.set(key, draft)
       saveDraft({ peerId, threadId, draft: { _: 'draftMessageEmpty' }, notify: true, force: true })
     },
 
@@ -202,6 +224,7 @@ export function newDraftsManager({ rest, applyDialogDraft, applyTopicDraft, onDr
     /** Смена сессии — у оригинала `clear()` (`:79-86`). */
     reset(): void {
       drafts.clear()
+      clearedDrafts.clear()
       getAllDraftPromise = undefined
     },
   }

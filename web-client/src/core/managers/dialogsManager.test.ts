@@ -1147,6 +1147,29 @@ describe('dialogsManager: совпавший ответ не даёт ни оп�
   })
 })
 
+// tweb `appMessagesManager.ts:895-899` (`draft_updated`) и `addMissedDialogs`
+// (appDraftsManager.ts:120-125): черновик чата, которого нет в списке, — строка
+// перечитывается (`reloadConversation` → `GET /peer_dialogs`); снятый — нет.
+describe('dialogsManager.applyDraft: чата нет в списке', () => {
+  it('черновик → строка перечитывается; снятый черновик — без запроса', async () => {
+    const get = vi.fn(async (_path: string, _q?: unknown) => ({ _: 'messages.peerDialogs', dialogs: [], messages: [], chats: [], users: [] }))
+    const mgr = newDialogsManager({
+      rest: { get } as never,
+      onDialogOps: () => {},
+      loadCache: async () => [dialog(1, '2026-08-09T10:00:00Z')],
+      loadState: async () => ({ pinnedOrders: {} }),
+    })
+    await mgr.fillMirror()
+    get.mockClear()
+    mgr.applyDraft(9, { _: 'draftMessageEmpty' })
+    mgr.applyDraft(1, { _: 'draftMessage', message: 'есть', date: 1 })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(get).not.toHaveBeenCalled()
+    mgr.applyDraft(9, { _: 'draftMessage', message: 'новый', date: 1 })
+    await vi.waitFor(() => expect(get).toHaveBeenCalledWith('/peer_dialogs', { peers: '9' }))
+  })
+})
+
 // Minor #4: `resetForLogout()` опустошает кэш синхронно, но уже улетевшие
 // `hydrate()`/`refresh()` этим не гасятся — ответ `/chats`, отправленный под
 // ПРОШЛЫМ токеном, применился бы к кэшу нового аккаунта и разошёлся веером по

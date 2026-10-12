@@ -197,7 +197,8 @@ export default class RepliesElement extends HTMLElement {
     // новых комментариев). Неотправленному посту — нечего (`is_outgoing`).
     if (!this.updated && !isLocalMessageId(this.message.mid)) {
       void this.managers.messages?.subscribeRepliesThread?.(this.message.peerId, this.message.mid)
-      void this.managers.messages?.updateMessage?.(this.message.peerId, this.message.mid)
+      // отказ сети — футер остаётся с тем тредом, что есть
+      void Promise.resolve(this.managers.messages?.updateMessage?.(this.message.peerId, this.message.mid)).catch(() => {})
       this.updated = true
     }
   }
@@ -208,7 +209,7 @@ if (!customElements.get(TAG_NAME)) {
 }
 
 /** Сборка футера — тело `MessageRender.renderReplies` (messageRender.ts:432-437). */
-export function createRepliesElement(options: RepliesElementOptions): RepliesElement {
+function createRepliesElement(options: RepliesElementOptions): RepliesElement {
   const { replies, peerId, mid, type, middleware, managers } = options
   const element = new RepliesElement()
   element.message = { peerId, mid, replies }
@@ -236,7 +237,22 @@ export function renderReplies(options: Omit<RepliesElementOptions, 'type'> & {
   const isFooter = !bubble.classList.contains('sticker') &&
     !bubble.classList.contains('emoji-big') &&
     !bubble.classList.contains('round')
+  const type = isFooter ? 'footer' : 'beside'
 
-  bubbleContainer.append(createRepliesElement({ ...rest, type: isFooter ? 'footer' : 'beside' }))
+  // Пересборка бабла правкой (`onMessageEdit`) у нас идёт на ЛЮБОЙ патч
+  // сообщения (реакция, опрос, прочтение медиа), а у оригинала футер
+  // пересоздаёт только настоящая правка (`safeRenderMessage`): тот же футер
+  // того же поста переживает её — `render` на месте, без нового `updateMessage`
+  // (`updated`) и без перезагрузки аватарок.
+  const existing = bubbleContainer.querySelector<RepliesElement>(`:scope > ${TAG_NAME}[data-post-key="${rest.peerId}_${rest.mid}"]`)
+  if (existing instanceof RepliesElement && existing.type === type) {
+    existing.message = { peerId: rest.peerId, mid: rest.mid, replies: rest.replies }
+    existing.render()
+    if (existing.nextElementSibling) bubbleContainer.append(existing)
+    return isFooter
+  }
+
+  bubbleContainer.querySelector(':scope > .replies')?.remove()
+  bubbleContainer.append(createRepliesElement({ ...rest, type }))
   return isFooter
 }

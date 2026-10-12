@@ -1882,6 +1882,13 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
      * просто исчезает.
      */
     applyDraft(peerId: number, draft: DraftMessage): void {
+      // tweb `appMessagesManager.ts:895-899` (и `addMissedDialogs`, appDraftsManager.ts:120-125):
+      // черновик чата, которого нет в списке, — строка перечитывается и встаёт по
+      // дате черновика. Снятый черновик у такого чата строку не заводит.
+      if (draft._ === 'draftMessage' && !items.some((i) => i.dialog.peerId === peerId)) {
+        reloadConversation(peerId)
+        return
+      }
       patchDialog(peerId, { draft: draft._ === 'draftMessage' ? processApiDraft(draft) : undefined })
     },
 

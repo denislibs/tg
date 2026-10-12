@@ -147,3 +147,41 @@ describe('DraftsManager: прочее', () => {
     expect(onDraftUpdated).toHaveBeenCalledWith({ peerId: FORUM, threadId: cid(10), draft: undefined, force: undefined })
   })
 })
+
+// Расхождение 5: эхо своего сохранения (кадр едет всем устройствам владельца).
+describe('DraftsManager: эхо своего сохранения', () => {
+  const frame = (message: string | null): RawDraft => ({
+    _: 'updateDraftMessage', peer: { _: 'peerChannel', channel_id: 50 }, top_msg_id: 10,
+    draft: message === null ? { _: 'draftMessageEmpty' } : { _: 'draftMessage', message, date: 7 },
+  })
+
+  it('эхо равного черновика ничего не объявляет', async () => {
+    const { mgr, onDraftUpdated } = setup()
+    await mgr.syncDraft({ peerId: FORUM, threadId: cid(10), localDraft: local('abc') })
+    onDraftUpdated.mockClear()
+    mgr.applyUpdate(frame('abc'))
+    expect(onDraftUpdated).not.toHaveBeenCalled()
+  })
+
+  it('эхо черновика, снятого отправкой, его не возвращает; очистка сервера — тишина; новый чужой — применяется', async () => {
+    const { mgr, onDraftUpdated } = setup()
+    await mgr.syncDraft({ peerId: FORUM, threadId: cid(10), localDraft: local('abc') })
+    mgr.clearDraft(FORUM, cid(10))
+    onDraftUpdated.mockClear()
+
+    mgr.applyUpdate(frame('abc'))
+    expect(mgr.getDraft(FORUM, cid(10))).toBeUndefined()
+    mgr.applyUpdate(frame(null))
+    expect(onDraftUpdated).not.toHaveBeenCalled()
+
+    mgr.applyUpdate(frame('abc'))
+    expect(mgr.getDraft(FORUM, cid(10))?.message).toBe('abc')
+    expect(onDraftUpdated).toHaveBeenCalledTimes(1)
+  })
+
+  it('clearDraft без черновика — тишина (tweb syncDraft гасит равное, :219-222)', () => {
+    const { mgr, onDraftUpdated } = setup()
+    mgr.clearDraft(FORUM, cid(10))
+    expect(onDraftUpdated).not.toHaveBeenCalled()
+  })
+})

@@ -355,7 +355,7 @@ describe('окно сообщений: своё действие доезжае�
       max_id: 40, read_max_id: 38,
     }
     rest.get.mockImplementation(async (path: string) => path === `/chats/${CHAT}/messages`
-      ? { messages: [{ ...makeRawMessage({ id: 3, peerId: CHAT, fromId: 2, text: 'm3' }), replies }] }
+      ? { messages: [{ ...makeRawMessage({ id: 3, peerId: CHAT, fromId: 2, text: 'm3', createdAt: '2026-08-26T10:00:00Z' }), replies }] }
       : page())
     const events: unknown[] = []
     const onReplies = (e: unknown) => { events.push(e) }
@@ -380,5 +380,21 @@ describe('окно сообщений: своё действие доезжае�
     expect(ops).toHaveLength(0)
     rootScope.removeEventListener('rt:message_op', onOp as never)
     rootScope.removeEventListener('replies_updated', onReplies as never)
+  })
+
+  // Перечитанный пост ложится в SSOT ЦЕЛИКОМ — зеркало получает всё изменившееся,
+  // иначе следующий `cacheViews` сравнивался бы со свежим SSOT и молчал.
+  it('updateMessage(): изменилось не только тред — патч всеми параметрами, зеркало = SSOT', async () => {
+    const { mgr, rest } = await setup()
+    const replies = { _: 'messageReplies' as const, pFlags: { comments: true as const }, replies: 1, channel_id: 55 }
+    rest.get.mockImplementation(async (path: string) => path === `/chats/${CHAT}/messages`
+      ? { messages: [{ ...makeRawMessage({ id: 3, peerId: CHAT, fromId: 2, text: 'm3' }), replies, views: 500 }] }
+      : page())
+
+    await mgr.updateMessage(CHAT, cid(3))
+    expect(inMirror(cid(3))?.views).toBe(500)
+    expect(inMirror(cid(3))?.replies?.replies).toBe(1)
+    mgr.cacheViews(CHAT, new Map([[cid(3), 501]]))
+    expect(inMirror(cid(3))?.views).toBe(501)
   })
 })

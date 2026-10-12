@@ -322,6 +322,18 @@ describe('ChatBubbles — счётчики поста двигаются кад�
     expect(footer.querySelectorAll('.replies-footer-avatars .stacked-avatars-avatar-container')).toHaveLength(2)
     // повторная отрисовка того же футера на сервер не ходит (`updated`)
     expect(updateMessage).toHaveBeenCalledTimes(1)
+
+    // правка поста (у нас — любой патч: реакция, опрос) пересобирает бабл, но
+    // футер того же поста переживает её: тот же узел, без нового перечитывания
+    rootScope.dispatchEventSingle('message_edit', {
+      storageKey: String(CHAT), peerId: CHAT, mid: 11,
+      message: { ...message, message: 'правка', replies: { ...commentThread(5), max_id: 41, read_max_id: 40 } } as MyMessage,
+    })
+    await settle()
+    const afterEdit = bubbleOf(bubbles, 11).querySelector<HTMLElement>('.replies')!
+    expect(afterEdit).toBe(footer)
+    expect(afterEdit.querySelector('.replies-footer-text')!.textContent).toContain('5')
+    expect(updateMessage).toHaveBeenCalledTimes(1)
   })
 
   it('кадр чужого окна футер не трогает', async () => {

@@ -541,6 +541,15 @@ describe('MessagesManager.cacheLive', () => {
       expect(reloads()).toBe(1)
     })
 
+    it('удалённое сообщение треда перечитывает пост (tweb :14082)', async () => {
+      const { mgr, reloads } = setup()
+      await mgr.getDiscussionMessage(CHANNEL, cid(POST))
+      await mgr.saveApiMessages([{ ...makeRawMessage({ id: 233, peerId: GROUP, fromId: 7, text: 'к' }), reply_to: { _: 'messageReplyHeader', reply_to_msg_id: MIRROR, reply_to_top_id: MIRROR } } as RawMyMessage])
+      mgr.cacheDelete({ _: 'updateDeletePeerMessages', peer: { _: 'peerChannel', channel_id: 5 }, messages: [233] })
+      await new Promise((r) => setTimeout(r, 0))
+      expect(reloads()).toBe(1)
+    })
+
     it('прочтение треда перечитывает пост', async () => {
       const { mgr, reloads } = setup()
       await mgr.getDiscussionMessage(CHANNEL, cid(POST))

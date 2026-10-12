@@ -815,6 +815,11 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
   //
   // Ключ — тред (`группа_зеркало`), значение — пост (`канал_пост`), обе пары в
   // клиентских номерах, как у оригинала.
+  //
+  // Не переносится: повторная рассылка `replies_updated` по всем тредам пира
+  // при прочтении его основной истории (:10980-10988) — сообщение то же, футер
+  // рисуется только из него; сброс карты при смене сессии (`clear()`, :993) —
+  // у менеджера сообщений сброса нет вовсе (как и у SSOT).
   const threadsToReplies = new Map<string, string>()
   /** tweb `invokeApiSingleProcess` (`:8823`): один запрос на пост в полёте. */
   const discussionPromises = new Map<string, Promise<MyMessage | undefined>>()
@@ -875,8 +880,15 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     const message = await reloadMessage(peerId, mid, true)
     if (message?._ !== 'message' || !message.replies) return
     const replies = message.replies
-    if (before?._ === 'message' && deepEqual(before.replies, replies)) return
-    emitOps(opWindowsFor(peerId, mid).map((key): MessageOp => ({ op: 'patch', key, msgId: mid, fields: { replies } })))
+    // Перечитанный пост лёг в SSOT ЦЕЛИКОМ (`put`), поэтому зеркало обязано
+    // получить всё, что в нём изменилось, а не один тред: иначе следующие
+    // патчи (просмотры, реакции) сравнивались бы со свежим SSOT и молчали, а
+    // вкладка осталась бы со старым. Изменился только тред — `patch {replies}`
+    // (→ `replies_updated`), иначе — всеми параметрами, как правка (`cacheEdit`).
+    const onlyReplies = before?._ === 'message' && deepEqual(before as MessageReal, message, ['replies'])
+    if (onlyReplies && deepEqual(before.replies, replies)) return
+    const fields: MessageFields = onlyReplies ? { replies } : messageFields(message)
+    emitOps(opWindowsFor(peerId, mid).map((key): MessageOp => ({ op: 'patch', key, msgId: mid, fields })))
   }
 
   /**

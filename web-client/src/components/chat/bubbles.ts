@@ -2399,7 +2399,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * `NewMessageReplies(count, discussionChatId, repliers)`, группе —
    * `NewMessageReplies(count, 0, nil)`, то есть без флага и без `channel_id`.
    *
-   * Метод ИДЕМПОТЕНТЕН: старый футер снимается перед сборкой нового, а
+   * Метод ИДЕМПОТЕНТЕН: футер того же поста перерисовывается на месте (`renderReplies`), чужой снимается, а
    * `setRepliesCount(…, 0)` сам убирает число. Это цена второго вызывателя
    * (правка): у оригинала он один, потому что бабл там новый.
    *
@@ -2408,12 +2408,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * знает, а класс обязан сниматься вместе с исчезнувшим футером.
    */
   private renderMessageReplies(message: MyMessage, bubble: HTMLElement, bubbleContainer: HTMLElement): void {
-    bubbleContainer.querySelector(':scope > .replies')?.remove()
     bubble.classList.remove('with-replies', 'with-beside-replies')
 
     const replies = message._ === 'message' ? message.replies : undefined
 
     const commentReplies = this.getMessageWithCommentReplies(message)
+    // футер того же поста переживает пересборку (`renderReplies`) — снимается только чужой
+    if (!commentReplies) bubbleContainer.querySelector(':scope > .replies')?.remove()
     if (commentReplies) {
       // tweb :7775 — класс объявляет наличие футера, по нему CSS убирает хвост
       // бабла и растягивает нижние углы.
