@@ -236,7 +236,9 @@ func (i *Interactor) hydrateReplies(ctx context.Context, viewerID int64, msgs []
 // размера не дала. Остаточный риск: где разбор заголовка и обработка медиа
 // расходятся (AVIF/HEIC заголовок не разбирает — размера нет до обработки;
 // анимированный WebP), живой кадр и записи журнала несут размер из
-// заголовка, история после обработки — размер из строки media.
+// заголовка, история после обработки — размер из строки media. Размер из
+// заголовка — пиксели файла без учёта EXIF-ориентации (так же отдаёт его и
+// обработка медиа, ffprobe).
 func (i *Interactor) hydrateMedia(ctx context.Context, msgs []domain.Message) error {
 	ids := make([]int64, 0)
 	seen := map[int64]bool{}

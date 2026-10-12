@@ -4,7 +4,10 @@
 package linkpreview
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -66,8 +69,14 @@ func (c *Client) Preview(ctx context.Context, rawURL string) (*domain.WebPagePre
 	if ct := resp.Header.Get("Content-Type"); ct != "" && !strings.Contains(ct, "html") {
 		return nil, fmt.Errorf("link preview %s: not html (%s)", u.Hostname(), ct)
 	}
+	// Тело читается целиком до разбора: обрыв или таймаут на чтении — такой
+	// же временный сбой, как на запросе, а не «страница не разобралась».
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	if err != nil {
+		return nil, fetchError(u.Hostname(), err)
+	}
 	// База для относительных ссылок — финальный URL после редиректов.
-	wp, err := Parse(io.LimitReader(resp.Body, maxBody), resp.Request.URL)
+	wp, err := Parse(bytes.NewReader(body), resp.Request.URL)
 	if err != nil {
 		return nil, err
 	}
@@ -85,12 +94,26 @@ func fetchError(host string, err error) error {
 	if errors.As(err, &ue) {
 		err = ue.Err
 	}
-	var dnsErr *net.DNSError
-	if errors.Is(err, usecaseiv.ErrBadURL) || errors.Is(err, usecaseiv.ErrForbiddenTarget) ||
-		(errors.As(err, &dnsErr) && dnsErr.IsNotFound) {
+	if permanentFetchError(err) {
 		return fmt.Errorf("link preview fetch %s: %w", host, err)
 	}
 	return fmt.Errorf("link preview fetch %s: %w: %w", host, usecasechat.ErrPreviewTransient, err)
+}
+
+// permanentFetchError — сбой, который повтор не исправит: кривой адрес,
+// отказ SSRF-гарда, несуществующий хост, битый сертификат или не-TLS ответ
+// на https.
+func permanentFetchError(err error) bool {
+	var dnsErr *net.DNSError
+	var certErr *tls.CertificateVerificationError
+	var unknownCA x509.UnknownAuthorityError
+	var invalidCert x509.CertificateInvalidError
+	var hostErr x509.HostnameError
+	var recErr tls.RecordHeaderError
+	return errors.Is(err, usecaseiv.ErrBadURL) || errors.Is(err, usecaseiv.ErrForbiddenTarget) ||
+		(errors.As(err, &dnsErr) && dnsErr.IsNotFound) ||
+		errors.As(err, &certErr) || errors.As(err, &unknownCA) || errors.As(err, &invalidCert) ||
+		errors.As(err, &hostErr) || errors.As(err, &recErr)
 }
 
 // statusError — ответ не 2xx. 5xx — временная; 429 — нет: сайт просит

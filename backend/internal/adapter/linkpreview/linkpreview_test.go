@@ -2,10 +2,14 @@ package linkpreview
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -109,6 +113,8 @@ func TestFetchAndStatusErrors(t *testing.T) {
 		{"кривой адрес редиректа", &url.Error{Op: "Get", URL: "https://a.example/", Err: usecaseiv.ErrBadURL}, false},
 		{"SSRF", &url.Error{Op: "Get", URL: "https://a.example/", Err: fmt.Errorf("x: %w", usecaseiv.ErrForbiddenTarget)}, false},
 		{"нет хоста", &url.Error{Op: "Get", URL: "https://a.example/", Err: &net.DNSError{Err: "no such host", IsNotFound: true}}, false},
+		{"битый сертификат", &url.Error{Op: "Get", URL: "https://a.example/", Err: x509.UnknownAuthorityError{}}, false},
+		{"не TLS на https", &url.Error{Op: "Get", URL: "https://a.example/", Err: tls.RecordHeaderError{Msg: "first record does not look like a TLS handshake"}}, false},
 	} {
 		got := fetchError("a.example", c.err)
 		if transient(got) != c.want {
@@ -125,5 +131,26 @@ func TestFetchAndStatusErrors(t *testing.T) {
 	}
 	if statusError("a.example", 200) != nil {
 		t.Error("200 — ошибка")
+	}
+}
+
+// Ревью 3, п.1: обрыв на чтении тела — временный сбой (а не «не разобралась»).
+func TestPreview_BodyReadFailureIsTransient(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.Header().Set("Content-Length", "100000")
+		_, _ = w.Write([]byte("<html><head><title>x"))
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			return
+		}
+		conn, _, _ := hj.Hijack()
+		_ = conn.Close() // обрыв посреди тела
+	}))
+	defer srv.Close()
+	c := &Client{http: srv.Client()}
+	_, err := c.Preview(context.Background(), srv.URL+"/page")
+	if err == nil || !errors.Is(err, usecasechat.ErrPreviewTransient) {
+		t.Fatalf("err = %v; ждали временный сбой", err)
 	}
 }
