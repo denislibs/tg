@@ -260,7 +260,11 @@ func (i *Interactor) hydrateMedia(ctx context.Context, msgs []domain.Message) er
 	for idx := range msgs {
 		if wp := msgs[idx].WebPage; wp != nil && wp.PhotoID > 0 {
 			if d, ok := dims[wp.PhotoID]; ok {
-				wp.PhotoW, wp.PhotoH = d.Width, d.Height
+				// Пока обработка медиа не дала размер, остаётся размер из
+				// заголовка, записанный сборкой превью (storePreviewPhoto).
+				if d.Width > 0 && d.Height > 0 {
+					wp.PhotoW, wp.PhotoH = d.Width, d.Height
+				}
 				wp.PhotoBlur, wp.PhotoHasThumb = d.Blur, d.HasThumb
 			}
 		}

@@ -212,12 +212,12 @@ type builtPreview struct {
 // (downloadPreviewPhoto), проба Instant View. nil — карточки нет. Каждый
 // сетевой этап — со своим бюджетом (см. таймауты выше).
 func (i *Interactor) buildWebPreview(url string) *builtPreview {
-	var wp *domain.WebPagePreview
-	withBudget(previewTimeout, func(ctx context.Context) {
-		if p, err := i.preview.Preview(ctx, url); err == nil {
-			wp = p
-		}
-	})
+	wp := i.webPages.page(url)
+	if wp == nil {
+		withBudget(previewTimeout, func(ctx context.Context) {
+			wp = i.fetchPage(ctx, url)
+		})
+	}
 	if wp == nil {
 		return nil
 	}
@@ -551,7 +551,7 @@ func (i *Interactor) GetWebPage(ctx context.Context, url string) *domain.WebPage
 		return nil
 	}
 	if wp, ok := i.webPages.get(url); ok {
-		return wp
+		return plaqueCard(wp)
 	}
 	if !i.webPages.acquire(ctx) {
 		return nil
@@ -561,22 +561,53 @@ func (i *Interactor) GetWebPage(ctx context.Context, url string) *domain.WebPage
 	if ctx.Err() == nil { // запрос оборвали — «карточки нет» не запоминаем
 		i.webPages.put(url, wp)
 	}
+	return plaqueCard(wp)
+}
+
+// plaqueCard — карточка плашки наружу: без адреса чужой картинки.
+func plaqueCard(wp *domain.WebPagePreview) *domain.WebPagePreview {
+	if wp != nil {
+		wp.ImageURL = ""
+	}
 	return wp
 }
 
-// fetchWebPage — сборка карточки плашки: страница и размер картинки.
+// fetchWebPage — сборка карточки плашки: страница и размер картинки. Адрес
+// картинки остаётся в кэше (его возьмёт сборка карточки сообщения), наружу
+// он не уходит (GetWebPage гасит его в копии).
 func (i *Interactor) fetchWebPage(ctx context.Context, url string) *domain.WebPagePreview {
 	pctx, cancel := context.WithTimeout(ctx, previewTimeout)
-	wp, err := i.preview.Preview(pctx, url)
+	wp := i.fetchPage(pctx, url)
 	cancel()
-	if err != nil || wp == nil {
+	if wp == nil {
 		return nil
 	}
 	ectx, cancel := context.WithTimeout(ctx, enrichTimeout)
 	wp.HasLargeMedia = i.previewHasLargeMedia(ectx, wp.ImageURL)
 	cancel()
-	wp.ImageURL = ""
 	return wp
+}
+
+// pageRetryDelay — пауза перед повтором загрузки страницы (var: тесты ужимают).
+var pageRetryDelay = time.Second
+
+// fetchPage — og-теги страницы; сбой (у адаптера 5 с на запрос, тяжёлая
+// страница или занятый сайт не успевают) повторяется один раз: карточку,
+// которую плашка только что показала, сообщение иначе теряло бы навсегда.
+func (i *Interactor) fetchPage(ctx context.Context, url string) *domain.WebPagePreview {
+	for attempt := 0; ; attempt++ {
+		if p, err := i.preview.Preview(ctx, url); err == nil && p != nil {
+			return p
+		}
+		if attempt == 1 {
+			return nil
+		}
+		select {
+		case <-time.After(pageRetryDelay):
+		case <-ctx.Done():
+			return nil
+		}
+	}
 }
 
 // withBudget выполняет шаг под собственным дедлайном от context.Background():
@@ -635,8 +666,14 @@ func (i *Interactor) storePreviewPhoto(ctx context.Context, b *builtPreview, own
 	img := b.img
 	b.img = nil
 	if id, e := i.botMedia.Store(ctx, ownerID, img.mime, img.name, img.data); e == nil {
-		b.wp.PhotoID = id
-		b.wp.HasLargeMedia = largePreviewPhoto(img.data)
+		// Размер — из заголовка сразу: обработка медиа асинхронная, и кадр
+		// карточки (web_page_update, правка поста) уходит раньше, чем строка
+		// media получит размеры. Без них ступени фото пришли бы без w/h, и
+		// tweb нарисовал бы картинку квадратом до перезагрузки (bubbles.ts
+		// :9592-9593: нет размера → is-square-photo).
+		w, h := previewImageSize(img.data)
+		b.wp.PhotoID, b.wp.PhotoW, b.wp.PhotoH = id, w, h
+		b.wp.HasLargeMedia = largeSize(w, h)
 	}
 }
 
@@ -658,13 +695,20 @@ const (
 // largePreviewMinH. Размер читается из заголовка файла: jpeg/png/gif —
 // стандартной библиотекой, webp — webpSize.
 func largePreviewPhoto(data []byte) bool {
-	w, h := 0, 0
+	return largeSize(previewImageSize(data))
+}
+
+func largeSize(w, h int) bool { return w >= largePreviewMinW && h >= largePreviewMinH }
+
+// previewImageSize — размер картинки из заголовка файла (0, 0 — не разобрать).
+func previewImageSize(data []byte) (w, h int) {
 	if cfg, _, err := image.DecodeConfig(bytes.NewReader(data)); err == nil {
-		w, h = cfg.Width, cfg.Height
-	} else if ww, hh, ok := webpSize(data); ok {
-		w, h = ww, hh
+		return cfg.Width, cfg.Height
 	}
-	return w >= largePreviewMinW && h >= largePreviewMinH
+	if ww, hh, ok := webpSize(data); ok {
+		return ww, hh
+	}
+	return 0, 0
 }
 
 // webpSize — размер картинки WebP из заголовка контейнера RIFF (спецификация
@@ -741,6 +785,20 @@ func (c *webPageCache) get(url string) (*domain.WebPagePreview, bool) {
 		return nil, false
 	}
 	return e.wp.Clone(), true
+}
+
+// page — страница из кэша плашки для сборки карточки сообщения (tweb
+// отправляет с сообщением ту же карточку, что показала плашка:
+// generateOutgoingWebPage, appMessagesManager.ts:4895-4908) — без второго
+// похода на сайт. Копия с адресом картинки и без has_large_media: флаг
+// ставит сборка по картинке, которую сама сохранит. nil — страницы нет.
+func (c *webPageCache) page(url string) *domain.WebPagePreview {
+	wp, ok := c.get(url)
+	if !ok || wp == nil {
+		return nil
+	}
+	wp.HasLargeMedia = false
+	return wp
 }
 
 func (c *webPageCache) put(url string, wp *domain.WebPagePreview) {

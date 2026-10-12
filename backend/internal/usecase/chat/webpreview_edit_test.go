@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strings"
 	"sync"
@@ -23,13 +24,22 @@ type urlPreviewer struct {
 	large bool
 	// imageURL — og:image карточек (картинку отдаёт фейковый BotHTTP).
 	imageURL string
+	// fail — сколько ближайших загрузок страницы вернуть сбоем.
+	fail int
 }
 
 func (p *urlPreviewer) Preview(ctx context.Context, url string) (*domain.WebPagePreview, error) {
 	p.mu.Lock()
 	p.urls = append(p.urls, url)
 	hold := p.holds[url]
+	failNow := p.fail > 0
+	if failNow {
+		p.fail--
+	}
 	p.mu.Unlock()
+	if failNow {
+		return nil, errors.New("page fetch: timeout")
+	}
 	if hold != nil {
 		select {
 		case <-hold:
