@@ -72,6 +72,7 @@ func wireMessage() Message {
 		Effect:            "fireworks",
 		StarReactionTotal: 30, StarReactionMine: 25,
 		SendAsChatID: &sendAs,
+		InvertMedia:  true,
 	}
 }
 
@@ -194,6 +195,7 @@ func wireAttachments() map[string]Message {
 				URL: "https://example.org/a", SiteName: "Example", Title: "Заголовок",
 				Description: "Описание", PhotoID: 77, PhotoW: 800, PhotoH: 600,
 				PhotoBlur: []byte{1, 2, 3}, PhotoHasThumb: true, HasIV: true,
+				ForceLargeMedia: true,
 			}
 		}),
 		"платное медиа: оплачено": wireMessageWith(func(m *Message) {
@@ -235,7 +237,7 @@ func TestMessageWire_MatchesSchema(t *testing.T) {
 	scheduled := ScheduledMessage{
 		ID: 3, ChatID: 9, SenderID: 42, Text: "потом",
 		Entities: MessageEntities{NewMessageEntityBold(0, 5)},
-		SendAt:   now.Add(time.Hour), CreatedAt: now, WhenOnline: true,
+		SendAt:   now.Add(time.Hour), CreatedAt: now, RepeatPeriod: 86400,
 	}
 
 	objects := []any{
@@ -244,7 +246,7 @@ func TestMessageWire_MatchesSchema(t *testing.T) {
 		// Пустая строка витрины: обязательные параметры обязаны остаться даже
 		// нулевыми, а всё необязательное — исчезнуть.
 		Message{Seq: 2, CreatedAt: now}.ToWire(MessageContext{Peer: NewPeerUser(42)}),
-		scheduled.ToWire(NewPeerUser(42)),
+		scheduled.ToWire(scheduled.Message().ToWire(MessageContext{Peer: NewPeerUser(42)}).(MessageReal)),
 		// Дыра: производитель у неё появился вместе с этим шагом.
 		MessageEmpty{Underscore: MessageEmptyTag, ID: 119, PeerID: NewPeerChannel(9)},
 	}
@@ -765,6 +767,58 @@ func TestMessageWire_WebPageIsMedia(t *testing.T) {
 	}
 }
 
+// Б-72: «медиа над текстом» — флаг сообщения, выбор размера карточки — флаг
+// вложения (tweb generateOutgoingWebPage, appMessagesManager.ts:4884-4910).
+func TestMessageWire_InvertMediaAndWebPageSize(t *testing.T) {
+	j := wireObject(t, wireAttachments()["превью ссылки"].ToWire(MessageContext{Peer: NewPeerUser(42)}))
+	pf, _ := j["pFlags"].(map[string]any)
+	if pf["invert_media"] != true {
+		t.Fatalf("pFlags = %#v, ждали invert_media", j["pFlags"])
+	}
+	media, _ := j["media"].(map[string]any)
+	mpf, _ := media["pFlags"].(map[string]any)
+	if mpf["force_large_media"] != true || mpf["force_small_media"] != nil {
+		t.Fatalf("pFlags карточки = %#v", media["pFlags"])
+	}
+	plain := wireObject(t, Message{Seq: 2, CreatedAt: time.Unix(1_700_000_000, 0),
+		WebPage: &WebPagePreview{URL: "https://example.org"}}.ToWire(MessageContext{Peer: NewPeerUser(42)}))
+	if _, ok := plain["pFlags"]; ok {
+		t.Fatalf("флаги у обычного сообщения: %#v", plain["pFlags"])
+	}
+	if pm, _ := plain["media"].(map[string]any); pm["pFlags"] != nil {
+		t.Fatalf("флаги размера без выбора: %#v", pm["pFlags"])
+	}
+}
+
+// messages.getWebPage: карточка — та же форма webPage, что в сообщении;
+// её нет — webPageEmpty с адресом.
+func TestMessagesWebPage(t *testing.T) {
+	full := wireObject(t, NewMessagesWebPage("https://example.org/a", &WebPagePreview{URL: "https://example.org/a", Title: "T"}))
+	page, _ := full["webpage"].(map[string]any)
+	if full["_"] != MessagesWebPageTag || page["_"] != WebPageTag || page["title"] != "T" {
+		t.Fatalf("ответ = %#v", full)
+	}
+	empty := wireObject(t, NewMessagesWebPage("https://example.org/b", nil))
+	page, _ = empty["webpage"].(map[string]any)
+	if page["_"] != WebPageEmptyTag || page["url"] != "https://example.org/b" {
+		t.Fatalf("пустой ответ = %#v", empty)
+	}
+	if c, _ := empty["chats"].([]any); c == nil {
+		t.Fatal("chats обязателен (пустой вектор)")
+	}
+	// Провод TL (Accept: application/x-tl) обязан уметь оба ответа.
+	for _, v := range []any{
+		NewMessagesWebPage("https://example.org/a", &WebPagePreview{URL: "https://example.org/a", Title: "T", ForceSmallMedia: true, HasLargeMedia: true}),
+		NewMessagesWebPage("https://example.org/b", nil),
+		Message{Seq: 2, CreatedAt: time.Unix(1_700_000_000, 0), InvertMedia: true,
+			WebPage: &WebPagePreview{URL: "https://example.org", ForceLargeMedia: true}}.ToWire(MessageContext{Peer: NewPeerUser(42)}),
+	} {
+		if _, err := WireCodec.Marshal(v); err != nil {
+			t.Errorf("TL-кодек: %v (%T)", err, v)
+		}
+	}
+}
+
 // Сообщение-картинка со ссылкой в подписи НЕ несёт превью: media в схеме ровно
 // одно, и у оригинала карточка ссылки — это само вложение.
 func TestMessageWire_WebPageYieldsToRealMedia(t *testing.T) {
@@ -814,5 +868,27 @@ func TestMessageWire_PostCountersPairedAndPostOnly(t *testing.T) {
 		if v, ok := j[key]; ok {
 			t.Errorf("у сообщения вне канала приехал %q = %#v", key, v)
 		}
+	}
+}
+
+// has_large_media — флаг САМОЙ карточки (webPage.pFlags), не вложения: его
+// читают плашка (input.ts:3619) и бабл (bubbles.ts:9479) tweb.
+func TestWebPageWire_HasLargeMedia(t *testing.T) {
+	large := wireObject(t, NewMessagesWebPage("https://example.org/a",
+		&WebPagePreview{URL: "https://example.org/a", HasLargeMedia: true}))
+	page, _ := large["webpage"].(map[string]any)
+	if pf, _ := page["pFlags"].(map[string]any); pf["has_large_media"] != true {
+		t.Fatalf("webPage.pFlags = %#v, ждали has_large_media", page["pFlags"])
+	}
+	plain := wireObject(t, NewMessagesWebPage("https://example.org/a", &WebPagePreview{URL: "https://example.org/a"}))
+	page, _ = plain["webpage"].(map[string]any)
+	if _, ok := page["pFlags"]; ok {
+		t.Fatalf("флаги у карточки без крупной картинки: %#v", page["pFlags"])
+	}
+	// Флаг переживает jsonb снимка.
+	raw, _ := json.Marshal(WebPagePreview{URL: "https://example.org/a", HasLargeMedia: true})
+	var back WebPagePreview
+	if err := json.Unmarshal(raw, &back); err != nil || !back.HasLargeMedia {
+		t.Fatalf("снимок = %s", raw)
 	}
 }

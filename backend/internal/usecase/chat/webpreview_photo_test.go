@@ -1,9 +1,13 @@
 package chat
 
 import (
+	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/png"
 	"strings"
 	"sync"
 	"testing"
@@ -31,6 +35,14 @@ func (f *fakeOutHTTP) FetchURL(_ context.Context, url string, maxBytes int64) ([
 	f.urls = append(f.urls, url)
 	f.maxBytes = append(f.maxBytes, maxBytes)
 	return f.data, f.mime, f.err
+}
+
+func (f *fakeOutHTTP) FetchPrefix(ctx context.Context, url string, maxBytes int64) ([]byte, string, error) {
+	data, mime, err := f.FetchURL(ctx, url, maxBytes)
+	if int64(len(data)) > maxBytes {
+		data = data[:maxBytes]
+	}
+	return data, mime, err
 }
 
 func (f *fakeOutHTTP) calls() ([]string, []int64) {
@@ -80,6 +92,12 @@ func (f *fakeIVProber) HasArticle(ctx context.Context, _ string) bool {
 	return f.has
 }
 
+// fetchPhoto — скачать и сохранить картинку карточки (как сборка перед записью).
+func fetchPhoto(in *Interactor, wp *domain.WebPagePreview, owner int64) {
+	b := &builtPreview{wp: wp, img: in.downloadPreviewPhoto(context.Background(), wp)}
+	in.storePreviewPhoto(context.Background(), b, owner)
+}
+
 // preview с картинкой og:image — то, что отдаёт разбор страницы.
 func previewWithImage() *domain.WebPagePreview {
 	return &domain.WebPagePreview{
@@ -96,7 +114,7 @@ func TestFetchPreviewPhoto_ProxiesToOurMedia(t *testing.T) {
 	in.SetBotMedia(store)
 	wp := previewWithImage()
 
-	in.fetchPreviewPhoto(context.Background(), wp, 42)
+	fetchPhoto(in, wp, 42)
 
 	if wp.PhotoID != 101 {
 		t.Fatalf("PhotoID = %d; want 101", wp.PhotoID)
@@ -129,7 +147,7 @@ func TestFetchPreviewPhoto_FileNameIgnoresQuery(t *testing.T) {
 	wp := previewWithImage()
 	wp.ImageURL = "https://cdn.example/img/cover.png?w=1200&sig=zzz"
 
-	in.fetchPreviewPhoto(context.Background(), wp, 1)
+	fetchPhoto(in, wp, 1)
 
 	if store.names[0] != "cover.png" {
 		t.Errorf("file name = %q; want cover.png", store.names[0])
@@ -144,7 +162,7 @@ func TestFetchPreviewPhoto_NonImageRejected(t *testing.T) {
 	in.SetBotMedia(store)
 	wp := previewWithImage()
 
-	in.fetchPreviewPhoto(context.Background(), wp, 1)
+	fetchPhoto(in, wp, 1)
 
 	if wp.PhotoID != 0 || store.stored() != 0 {
 		t.Fatalf("PhotoID = %d, stored = %d; ничего сохранять не должны", wp.PhotoID, store.stored())
@@ -162,7 +180,7 @@ func TestFetchPreviewPhoto_FetchErrorIsSoft(t *testing.T) {
 	in.SetBotMedia(store)
 	wp := previewWithImage()
 
-	in.fetchPreviewPhoto(context.Background(), wp, 1)
+	fetchPhoto(in, wp, 1)
 
 	if wp.PhotoID != 0 || store.stored() != 0 {
 		t.Fatalf("PhotoID = %d, stored = %d", wp.PhotoID, store.stored())
@@ -176,7 +194,7 @@ func TestFetchPreviewPhoto_NoStoreNoFetch(t *testing.T) {
 	in.SetBotHTTP(http)
 	wp := previewWithImage()
 
-	in.fetchPreviewPhoto(context.Background(), wp, 1)
+	fetchPhoto(in, wp, 1)
 
 	if urls, _ := http.calls(); len(urls) != 0 {
 		t.Fatalf("FetchURL вызван без хранилища: %v", urls)
@@ -275,11 +293,11 @@ type ctxSpyMsgs struct {
 	seen     bool
 }
 
-func (m *ctxSpyMsgs) SetWebPage(ctx context.Context, msgID int64, wp *domain.WebPagePreview) error {
+func (m *ctxSpyMsgs) SetWebPageIfEdited(ctx context.Context, msgID int64, wp *domain.WebPagePreview, editedAt *time.Time) (bool, error) {
 	m.mu.Lock()
 	m.writeErr, m.seen = ctx.Err(), true
 	m.mu.Unlock()
-	return m.MessageRepo.SetWebPage(ctx, msgID, wp)
+	return m.MessageRepo.SetWebPageIfEdited(ctx, msgID, wp, editedAt)
 }
 
 func (m *ctxSpyMsgs) write() (error, bool) {
@@ -337,5 +355,122 @@ func TestAttachWebPreview_NoProberNoIV(t *testing.T) {
 	stored, _ := fakeMsgs{s}.GetByID(ctx, msg.ID)
 	if stored.WebPage.HasIV {
 		t.Error("HasIV=true без пробы")
+	}
+}
+
+// pngOf — настоящий PNG заданного размера (размер читает largePreviewPhoto).
+func pngOf(t *testing.T, w, h int) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewGray(image.Rect(0, 0, w, h))); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// Правило has_large_media (осознанное отступление, webpreview.go
+// largePreviewPhoto): картинка не меньше коробки карточки tweb.
+func TestLargePreviewPhoto(t *testing.T) {
+	for _, c := range []struct {
+		w, h int
+		want bool
+	}{
+		{1200, 630, true}, {420, 200, true}, {512, 512, true},
+		{419, 630, false}, {1200, 199, false}, {48, 48, false},
+	} {
+		if got := largePreviewPhoto(pngOf(t, c.w, c.h)); got != c.want {
+			t.Errorf("%d×%d: has_large_media = %v; want %v", c.w, c.h, got, c.want)
+		}
+	}
+	if largePreviewPhoto([]byte("not an image")) {
+		t.Error("неразборчивый файл — крупная картинка")
+	}
+}
+
+// Карточка сообщения: флаг ставится по скачанной картинке.
+func TestFetchPreviewPhoto_SetsHasLargeMedia(t *testing.T) {
+	in, _ := newInteractor()
+	in.SetBotHTTP(&fakeOutHTTP{data: pngOf(t, 1280, 720), mime: "image/png"})
+	in.SetBotMedia(&fakeMediaStore{})
+	wp := previewWithImage()
+	fetchPhoto(in, wp, 1)
+	if wp.PhotoID == 0 || !wp.HasLargeMedia {
+		t.Fatalf("карточка = %+v; ждали фото и has_large_media", wp)
+	}
+	small := previewWithImage()
+	in.SetBotHTTP(&fakeOutHTTP{data: pngOf(t, 64, 64), mime: "image/png"})
+	fetchPhoto(in, small, 1)
+	if small.PhotoID == 0 || small.HasLargeMedia {
+		t.Fatalf("маленькая картинка = %+v; has_large_media не ждали", small)
+	}
+}
+
+// Плашка композера (getWebPage): размер картинки читается тем же правилом, но
+// сама картинка к нам НЕ сохраняется (доступ к ней — только через сообщение).
+func TestGetWebPage_HasLargeMediaWithoutStoring(t *testing.T) {
+	in, _ := newInteractor()
+	in.SetLinkPreviewer(&fakePreviewer{wp: previewWithImage()})
+	http := &fakeOutHTTP{data: pngOf(t, 1280, 720), mime: "image/png"}
+	store := &fakeMediaStore{}
+	in.SetBotHTTP(http)
+	in.SetBotMedia(store)
+	wp := in.GetWebPage(context.Background(), "https://example.com/post")
+	if wp == nil || !wp.HasLargeMedia || wp.PhotoID != 0 || wp.ImageURL != "" {
+		t.Fatalf("карточка = %+v", wp)
+	}
+	if store.stored() != 0 {
+		t.Fatalf("картинка плашки сохранена (%d)", store.stored())
+	}
+	if urls, limits := http.calls(); len(urls) != 1 || limits[0] != imageHeadBytes {
+		t.Fatalf("картинка плашки: запросы %v, лимиты %v; ждали один запрос заголовка (%d байт)", urls, limits, imageHeadBytes)
+	}
+}
+
+// Плашка: повтор того же адреса (tweb зовёт getWebPage на каждую найденную
+// ссылку, input.ts:3581-3594) отдаётся из кэша — сайт и картинка второй раз
+// не запрашиваются; копия из кэша независима от выданной.
+func TestGetWebPage_Cached(t *testing.T) {
+	in, _ := newInteractor()
+	prev := &urlPreviewer{}
+	in.SetLinkPreviewer(prev)
+	ctx := context.Background()
+	a := in.GetWebPage(ctx, "https://a.example/x")
+	a.Title = "испорчено"
+	b := in.GetWebPage(ctx, "https://a.example/x")
+	if n := len(prev.calls()); n != 1 {
+		t.Fatalf("Preview звали %d раз; ждали 1", n)
+	}
+	if b == nil || b.Title != "https://a.example/x" {
+		t.Fatalf("из кэша = %+v", b)
+	}
+	in.GetWebPage(ctx, "https://b.example/y")
+	if n := len(prev.calls()); n != 2 {
+		t.Fatalf("другой адрес не собран: %d", n)
+	}
+}
+
+// Ревью 14: размер WebP читается из заголовка контейнера — у всех трёх видов
+// чанков (заголовки сняты с файлов, сохранённых Pillow: 1200×630 с потерями и
+// без, 640×360 с альфой — VP8X).
+func TestWebpSize(t *testing.T) {
+	for _, c := range []struct {
+		name, hex string
+		w, h      int
+	}{
+		{"VP8", "524946469605000057454250565038208a050000b0a4009d012ab00476023e6d369949a42322a120", 1200, 630},
+		{"VP8L", "5249464644000000574542505650384c370000002faf449d0007508a2ad4a3ff012141e2fff53622", 1200, 630},
+		{"VP8X", "524946460e02000057454250565038580a000000100000007f0200670100414c50481b0000000107", 640, 360},
+	} {
+		b, _ := hex.DecodeString(c.hex)
+		w, h, ok := webpSize(b)
+		if !ok || w != c.w || h != c.h {
+			t.Errorf("%s: %d×%d ok=%v; ждали %d×%d", c.name, w, h, ok, c.w, c.h)
+		}
+		if !largePreviewPhoto(b) {
+			t.Errorf("%s: has_large_media не выставлен", c.name)
+		}
+	}
+	if _, _, ok := webpSize([]byte("RIFF\x00\x00\x00\x00WEBPVP8 short")); ok {
+		t.Error("обрезанный заголовок разобран")
 	}
 }

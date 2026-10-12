@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"slices"
 	"sync"
@@ -106,9 +107,14 @@ func (i *Interactor) checkSendAllowed(ctx context.Context, in SendInput) error {
 	if i.groups == nil {
 		return nil
 	}
+	// Не участник сюда доходит только гостем обсуждения (Send) — для него
+	// гейт тот же, что у обычного участника.
 	m, err := i.groups.GetMember(ctx, in.ChatID, in.SenderID)
-	if err != nil || m.Role == domain.RoleCreator || m.Role == domain.RoleAdmin {
-		return nil // membership уже проверена; админам можно всё
+	if err == nil && (m.Role == domain.RoleCreator || m.Role == domain.RoleAdmin) {
+		return nil // админам можно всё
+	}
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return err
 	}
 	s, err := i.groups.Settings(ctx, in.ChatID)
 	if err != nil {
@@ -133,7 +139,9 @@ func (i *Interactor) checkSendAllowed(ctx context.Context, in SendInput) error {
 			return domain.ErrForbidden // сбой чтения ограничения — отказ, а не пропуск
 		}
 	}
-	if s.SlowmodeSeconds > 0 {
+	// Публикация отложенного медленный режим не проходит: он проверен при
+	// постановке (В-2, tweb input.ts:4587-4593 — без оглядки на scheduleDate).
+	if s.SlowmodeSeconds > 0 && !in.fromSchedule {
 		// Пачку (пересылка нескольких сообщений) в медленном режиме не отправить
 		// вовсе — у оригинала SLOWMODE_MULTI_MSGS_DISABLED, tweb предупреждает
 		// заранее (showSlowModeTooltipIfNeeded({sendingFew})).
@@ -510,7 +518,16 @@ func (i *Interactor) DeleteGroup(ctx context.Context, chatID, actorID int64) err
 	payload := map[string]any{"_": domain.UpdateChatRemovedTag,
 		"peer": domain.NewPeer(domain.ToPeerID(chatID, true))}
 	ptsByUser := map[int64]int64{}
+	var refunds map[int64]int64
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		refunds = map[int64]int64{}
+		// Оплаченные отложенные чата уходят вместе с ним — звёзды авторам
+		// возвращаются (решение 2026-10-11), как при отказе публикации.
+		// Первым шагом: публикация держит строку очереди раньше журнала
+		// участников (user_state), тот же порядок исключает взаимную блокировку.
+		if e := i.refundScheduledOfChat(ctx, chatID, refunds); e != nil {
+			return e
+		}
 		if i.updates != nil {
 			b, e := json.Marshal(payload)
 			if e != nil {
@@ -529,6 +546,9 @@ func (i *Interactor) DeleteGroup(ctx context.Context, chatID, actorID int64) err
 	})
 	if err != nil {
 		return err
+	}
+	for uid, bal := range refunds {
+		i.publishBalance(ctx, uid, bal)
 	}
 	// Чат пропал из списка у всех участников — их снимки диалогов устарели.
 	i.invalidateDialogs(ctx, members...)

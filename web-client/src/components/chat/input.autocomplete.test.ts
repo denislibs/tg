@@ -37,7 +37,6 @@ function makeManagers() {
   return {
     messages: {
       getScheduledMessages: vi.fn(async() => []),
-      scheduleMessage: vi.fn(async() => ({})),
       sendText: vi.fn(async(_args: Record<string, unknown>) => ({ ok: true })),
       editMessage: vi.fn(async() => ({})),
       forwardMessages: vi.fn(async() => []),

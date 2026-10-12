@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"slices"
 
 	"github.com/messenger-denis/backend/internal/domain"
@@ -134,8 +135,8 @@ func (i *Interactor) DiscussionCandidates(ctx context.Context, actorID int64) ([
 // на его зеркале в группе обсуждения (комментарии — обычные сообщения группы),
 // поэтому ThreadRootID — id зеркала, а не id поста. Returns domain.ErrNotFound,
 // если обсуждения выключены ЛИБО постId не резолвится в реальный пост этого
-// канала (тредить действительно некуда). The commenter is auto-joined to the
-// discussion group (idempotent) before posting.
+// канала (тредить действительно некуда). Комментатор в группу НЕ вступает:
+// не участник пишет гостем обсуждения (requireDiscussionGuest внутри Send).
 func (i *Interactor) PostComment(ctx context.Context, channelID, postID, userID int64, text, clientMsgID string) (domain.Message, error) {
 	// Комментировать может тот, кто читает канал и не забанен в группе
 	// обсуждения — до ленивой дозаводки зеркала, чтобы посторонний не плодил
@@ -167,11 +168,6 @@ func (i *Interactor) PostComment(ctx context.Context, channelID, postID, userID 
 		if root == 0 {
 			return domain.Message{}, domain.ErrNotFound
 		}
-	}
-	// Автовступление комментатора — общей точкой: забаненный в группе
-	// обсуждения комментарием не возвращается.
-	if _, err := i.admit(ctx, disc, userID, userID, admitSelf); err != nil {
-		return domain.Message{}, err
 	}
 	return i.Send(ctx, SendInput{
 		ChatID: disc, SenderID: userID, Type: "text", Text: text,
@@ -306,12 +302,15 @@ func (i *Interactor) GetDiscussionMessage(ctx context.Context, channelID, postID
 // которой у подписчика нет в списке диалогов, и без её карточки клиент
 // оригинала считает «писать нельзя» (hasRights без default_banned_rights).
 //
-// Состояние треда (A4-10): max_id — последний видимый номер треда;
-// read_inbox_max_id/unread_count — по горизонту прочтения группы, если зритель
-// в ней состоит (номера группы монотонны, горизонт верен и для треда);
-// read_outbox_max_id — горизонт собеседников. Не участнику горизонта нет:
-// read_*_max_id не едут, и клиент оригинала считает тред прочитанным до корня
-// (`read_inbox_max_id ?? message.mid`, tweb appMessagesManager.ts:8850).
+// Состояние треда (A4-10, §9 спецификации Ф-5) — по горизонту ТРЕДА, который
+// ведёт readDiscussion (tweb getDiscussionMessage, appMessagesManager.ts:
+// 8848-8852): max_id — последний видимый номер треда; read_inbox_max_id —
+// горизонт треда зрителя (max(запись треда, горизонт группы) у участника,
+// запись треда у гостя); read_outbox_max_id — MAX горизонтов остальных;
+// unread_count — чужие видимые сообщения треда выше горизонта (tweb его не
+// читает, поле обязательное). Горизонта нет (гость треда не читал) —
+// read_inbox_max_id не едет, и клиент считает тред прочитанным до корня
+// (`read_inbox_max_id ?? message.mid`, :8850).
 func (i *Interactor) DiscussionContainer(ctx context.Context, channelID, postID, userID int64) (domain.MessagesDiscussionMessage, error) {
 	root, err := i.GetDiscussionMessage(ctx, channelID, postID, userID)
 	if err != nil {
@@ -322,31 +321,28 @@ func (i *Interactor) DiscussionContainer(ctx context.Context, channelID, postID,
 		return domain.MessagesDiscussionMessage{}, err
 	}
 	chats = i.withChats(ctx, userID, chats, root.ChatID, channelID)
-	var readSeq int64
-	var group domain.ChatRecord
-	if i.groups != nil {
-		if g, err := i.groups.Card(ctx, root.ChatID, userID); err == nil {
-			group = g
+	var inbox, outbox int64
+	if i.topics != nil {
+		if inbox, err = i.topics.ThreadHorizon(ctx, root.ChatID, root.ID, userID); err != nil {
+			return domain.MessagesDiscussionMessage{}, err
+		}
+		if outbox, err = i.topics.ThreadReadOutbox(ctx, root.ChatID, root.ID, userID); err != nil {
+			return domain.MessagesDiscussionMessage{}, err
 		}
 	}
-	member := group.MyRole != ""
-	if member {
-		readSeq = group.ReadInboxMaxID
-	}
-	maxSeq, unread, err := i.msgs.ThreadState(ctx, root.ChatID, root.ID, userID, readSeq)
+	maxSeq, unread, err := i.msgs.ThreadState(ctx, root.ChatID, root.ID, userID, inbox)
 	if err != nil {
 		return domain.MessagesDiscussionMessage{}, err
-	}
-	if !member {
-		unread = 0
 	}
 	out := domain.NewMessagesDiscussionMessage(wire, unread, chats, users)
 	if maxSeq > 0 {
 		out.MaxID = &maxSeq
 	}
-	if member {
-		inbox, outbox := group.ReadInboxMaxID, group.ReadOutboxMaxID
-		out.ReadInboxMaxID, out.ReadOutboxMaxID = &inbox, &outbox
+	if inbox > 0 {
+		out.ReadInboxMaxID = &inbox
+	}
+	if outbox > 0 {
+		out.ReadOutboxMaxID = &outbox
 	}
 	return out, nil
 }
@@ -524,13 +520,22 @@ func (i *Interactor) CommentCounts(ctx context.Context, viewerID, channelID int6
 	if err != nil {
 		return out, nil, err
 	}
+	// Состояние прочтения треда зрителя (max_id/read_max_id) — по горизонту
+	// ТРЕДА, как discussionMessage (§9): по нему tweb решает «есть новые
+	// комментарии» (replies.ts:110-118).
+	var states map[int64]domain.ThreadReadState
+	if i.topics != nil {
+		if states, err = i.topics.ThreadReadStates(ctx, disc, viewerID, roots); err != nil {
+			return out, nil, err
+		}
+	}
 	for postID, root := range mirrors {
 		c := counts[root]
 		peers := make([]domain.Peer, 0, RecentRepliersLimit)
 		for _, a := range recent[root] {
 			peers = append(peers, domain.NewPeer(a))
 		}
-		out[postID] = domain.NewMessageReplies(c, disc, peers)
+		out[postID] = domain.NewMessageReplies(c, disc, peers).WithReadState(states[root])
 	}
 	return out, cards, nil
 }
@@ -612,4 +617,89 @@ func (i *Interactor) publishViewCounts(ctx context.Context, channelID int64, gro
 		_ = i.chPub.PublishToChannel(ctx, channelID,
 			frame("views_update", domain.NewUpdateChannelMessageViews(channelID, seq, grown[id])))
 	}
+}
+
+// discussionGuestThread — не участник группы chatID действует в ней ГОСТЕМ
+// обсуждения: группа служит обсуждением канала, зритель читает её как
+// обсуждение (RequireDiscussionRead: читает канал и не забанен в группе), и
+// дело происходит в треде комментариев — корень threadRoot (ключ строки) это
+// зеркало поста этой группы. Писать можно только в тред живого зеркала;
+// своё в треде удалённого поста (rootGone) — править и удалять.
+//
+// Так у tweb: в треде без join_to_send кнопки «Вступить» нет
+// (components/chat/input.ts:2044), отправка в тред вступления не требует
+// (canSendToPeer, appMessagesManager.ts:12003-12025), а скрытых групп
+// обсуждения нет — комментатор участником не становится и группа у него в
+// списке не появляется (dialogs.ts:1502-1520). Отказ — domain.ErrNotFound:
+// чат для постороннего чужой.
+func (i *Interactor) discussionGuestThread(ctx context.Context, chatID, userID int64, threadRoot *int64, rootGone bool) error {
+	if threadRoot == nil || i.groups == nil {
+		return domain.ErrNotFound
+	}
+	disc, err := i.groups.IsDiscussionGroup(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	if !disc {
+		return domain.ErrNotFound
+	}
+	if err := i.RequireDiscussionRead(ctx, chatID, userID); err != nil {
+		return err
+	}
+	root, err := i.msgs.GetByID(ctx, *threadRoot)
+	if errors.Is(err, domain.ErrNotFound) {
+		return domain.ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if root.ChatID != chatID || !root.IsDiscussionMirror || (root.Deleted && !rootGone) {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+// requireDiscussionGuest — не участник пишет в группу chatID гостем
+// обсуждения (discussionGuestThread), и у группы нет join_to_send: с ним
+// писать может только участник — domain.ErrForbidden («вступите, чтобы
+// писать»; tweb показывает кнопку вступления, input.ts:2044). Строки
+// участника не появляется; права группы по умолчанию, ограничения и
+// медленный режим проверяет общий гейт отправки (checkSendAllowed) — у left
+// tweb берёт default_banned_rights (hasRights.ts:29-34, 70-73).
+func (i *Interactor) requireDiscussionGuest(ctx context.Context, chatID, userID int64, threadRoot *int64) error {
+	if err := i.discussionGuestThread(ctx, chatID, userID, threadRoot, false); err != nil {
+		return err
+	}
+	st, err := i.groups.Settings(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	if st.JoinToSend {
+		return domain.ErrForbidden
+	}
+	return nil
+}
+
+// ToggleJoinToSend — порт channels.toggleJoinToSend (tweb
+// appChatsManager.ts:1157 → toggleSomething → onChatUpdated): писать в группу
+// только участникам. Только у группы (tweb chatType.tsx:147 — у broadcast
+// флаг не меняется) и только создателем: переключатель живёт на экране типа
+// группы, вход в который — право change_type (editChat.tsx:665-669; наш
+// SetChatType — requireCreator).
+func (i *Interactor) ToggleJoinToSend(ctx context.Context, chatID, actorID int64, enabled bool) error {
+	typ, err := i.chats.ChatType(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	if typ != domain.ChatTypeGroup {
+		return domain.ErrForbidden
+	}
+	if err := i.requireCreator(ctx, chatID, actorID); err != nil {
+		return err
+	}
+	if err := i.groups.SetJoinToSend(ctx, chatID, enabled); err != nil {
+		return err
+	}
+	i.publishChatUpdate(ctx, chatID)
+	return nil
 }

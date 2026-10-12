@@ -56,9 +56,6 @@ import "time"
 //   - silent — у нас это ПАРАМЕТР ОТПРАВКИ (SendInput.Silent гасит пуш) и
 //     нигде не хранится: на отданном сообщении его нет, колонки нет;
 //   - noforwards — защиты контента у чата нет ни колонкой, ни механикой;
-//   - invert_media — «медиа под текстом» не умеет ни одна сторона;
-//   - from_scheduled — отложенные сообщения есть, но признак «это сработавшее
-//     отложенное» не хранится;
 //   - legacy, edit_hide, offline, video_processing_pending,
 //     paid_suggested_post_stars/ton — ни колонки, ни механики.
 //
@@ -66,7 +63,7 @@ import "time"
 // диалогов нет), via_bot_id и via_business_bot_id (инлайн-ботов нет),
 // guestchat_via_from, from_boosts_applied, from_rank, restriction_reason,
 // quick_reply_shortcut_id, report_delivery_until_date, paid_message_stars,
-// suggested_post, schedule_repeat_period, summary_from_language, rich_message.
+// suggested_post, summary_from_language, rich_message.
 //
 // Отдельно post_author (flags.16?string) — «подпись автора под постом канала».
 // Подписи у канала есть (chats.signatures), но ИМЯ автора собирает клиент из
@@ -278,15 +275,10 @@ type MessageReal struct {
 	// FactCheck — flags2.3?FactCheck.
 	FactCheck *MTFactCheck `json:"factcheck,omitempty"`
 
-	// SendAt/WhenOnline — ОТЛОЖЕННАЯ отправка, наши параметры вне схемы.
-	// «Это отложенное» у оригинала выражает клиентский флаг pFlags.is_scheduled
-	// (он объявлен в schema_additional_params.json самим tweb), а вот СРОК у
-	// оригинала живёт не на сообщении: schedule_date это параметр МЕТОДА
-	// отправки, а «когда появится онлайн» — его sentinel-значение. У нас срок
-	// хранится строкой scheduled_messages и обязан доехать до списка
-	// отложенных, поэтому едет здесь, названным параметром.
-	SendAt     int64 `json:"send_at,omitempty"`
-	WhenOnline bool  `json:"when_online,omitempty"`
+	// ScheduleRepeatPeriod — flags2.10?int: повтор отложенного, секунды (tweb
+	// `chat/messageRender.ts:358`, `chat/contextMenu.ts:986`). Ставит только
+	// ScheduledMessage.ToWire.
+	ScheduleRepeatPeriod int `json:"schedule_repeat_period,omitempty"`
 
 	// RandomID — ключ, которым ОТПРАВИТЕЛЬ матчит эхо со своим оптимистичным
 	// баблом. Клиентский параметр самого оригинала (`random_id` у предиката
@@ -519,8 +511,10 @@ const MessageRepliesTag = "messageReplies"
 //   - replies_pts (ОБЯЗАТЕЛЬНЫЙ) — отдельного журнала апдейтов у треда нет:
 //     pts у нас на чат, а не на тред. На фазе 2 станет заглушкой-нулём в
 //     потоке (tl-program.md, «нет предмета перестаёт быть бесплатным»);
-//   - max_id/read_max_id — горизонта чтения ВНУТРИ треда мы не храним:
-//     прочитанность считается по чату обсуждения целиком.
+//
+// max_id/read_max_id производятся у треда КОММЕНТАРИЕВ (WithReadState):
+// последний видимый номер треда и горизонт треда зрителя, который ведёт
+// readDiscussion; по ним tweb ставит синюю точку футера (replies.ts:110-118).
 type MessageReplies struct {
 	Underscore string          `json:"_"`
 	PFlags     map[string]bool `json:"pFlags,omitempty"`
@@ -532,6 +526,10 @@ type MessageReplies struct {
 	// ChannelID — flags.0?long: id ГРУППЫ ОБСУЖДЕНИЯ, где живёт тред. Делит
 	// бит с pFlags.comments — у оригинала они всегда парой.
 	ChannelID int64 `json:"channel_id,omitempty"`
+	// MaxID — flags.2?int: последний видимый зрителю номер треда.
+	MaxID int64 `json:"max_id,omitempty"`
+	// ReadMaxID — flags.3?int: горизонт треда зрителя (readDiscussion).
+	ReadMaxID int64 `json:"read_max_id,omitempty"`
 }
 
 // NewMessageReplies — тред комментариев поста канала. Флаг comments и
@@ -545,6 +543,13 @@ func NewMessageReplies(replies int, discussionChatID int64, recent []Peer) Messa
 		ChannelID:      discussionChatID,
 	}
 	setPFlag(&r.PFlags, "comments", discussionChatID != 0)
+	return r
+}
+
+// WithReadState — тред с состоянием прочтения зрителя (max_id/read_max_id).
+// Нулевые значения не едут.
+func (r MessageReplies) WithReadState(st ThreadReadState) MessageReplies {
+	r.MaxID, r.ReadMaxID = st.MaxID, st.ReadMaxID
 	return r
 }
 

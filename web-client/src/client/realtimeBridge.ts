@@ -2,6 +2,7 @@
 // Точка сборки realtime: поднимает «насос» smp → rootScope и регистрирует подписчиков
 // шины. Сам мост больше не содержит обработчиков событий — они живут в модулях-
 // подписчиках (storeProjection / soundSubscriber / notificationSubscriber).
+import { registerForumUnreadMirror } from '../core/dialogs/forumUnreadMirror'
 import { startClient } from './bootstrap'
 import { RT } from '../core/realtime/events'
 import rootScope from '@lib/rootScope'
@@ -30,8 +31,9 @@ let started = false
 // книги (`contactsManager::onContactUpdated`), а не кадр провода.
 // `peer_block` — то же: его шлёт менеджер приватности после ответа сервера
 // (`privacyManager.toggleBlock`, tweb `appProfileManager.ts:1528`).
-// `scheduled_new`/`scheduled_delete` — менеджер сообщений после ответа ручек
-// отложенных (tweb `appMessagesManager.ts:11799`, `:11813`).
+// `scheduled_new`/`scheduled_delete` — владелец хранилища отложенных (менеджер
+// сообщений) по кадрам ленты отложенных и своей постановке (tweb
+// `appMessagesManager.ts:4383-4388`, `:11799`, `:11813`).
 const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change', 'contacts_update', 'peer_block', 'scheduled_new', 'scheduled_delete']
 
 // Subscribe to worker realtime events exactly once per page.
@@ -71,6 +73,7 @@ export function startRealtime(): void {
   registerNotificationSubscriber()
   registerCallSubscriber()
   registerRefetchSubscriber(managers)
+  registerForumUnreadMirror((peerId) => managers.forumTopics.getForumUnreadCount(peerId))
 
   void managers.realtime.start()
 }

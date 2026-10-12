@@ -151,6 +151,23 @@ describe('ChatBubbles — тред под сообщением', () => {
       expect(node.textContent).toBe('Leave a comment')
     })
 
+    // tweb replies.ts:110-119 — синяя точка: горизонт треда зрителя
+    // (`read_max_id`, его ведёт readDiscussion) ниже последнего номера треда.
+    // Нет горизонта — точки нет.
+    it('`is-unread` — по read_max_id < max_id треда (tweb replies.ts:110-119)', async () => {
+      const unread = { ...commentThread(2), max_id: 12, read_max_id: 10 }
+      const read = { ...commentThread(2), max_id: 12, read_max_id: 12 }
+      const noHorizon = { ...commentThread(2), max_id: 12 }
+      bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managersWith([post(1, unread), post(2, read), post(3, noHorizon)]))
+      await openFeed(bubbles)
+      await settle()
+
+      const footer = (mid: number) => bubbleOf(bubbles!, mid).querySelector<HTMLElement>('.replies-footer')!
+      expect(footer(1).classList.contains('is-unread')).toBe(true)
+      expect(footer(2).classList.contains('is-unread')).toBe(false)
+      expect(footer(3).classList.contains('is-unread')).toBe(false)
+    })
+
     it('счётчика у времени при этом НЕТ — это другая ветка', async () => {
       bubbles = mountTestBubbles(chatContext({ isBroadcast: true }), managersWith([post(1, commentThread(8))]))
       await openFeed(bubbles)

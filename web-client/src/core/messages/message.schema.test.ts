@@ -47,10 +47,8 @@ const OMITTED_WITHOUT_SUBJECT: Record<string, string[]> = {
   // `core/media/messageMedia.schema.test.ts`).
   photo: ['access_hash', 'file_reference', 'date', 'dc_id'],
   document: ['access_hash', 'file_reference', 'date', 'dc_id'],
-  // Журнала апдейтов У ТРЕДА у нас нет (pts на чат, а не на тред), горизонта
-  // чтения внутри треда — тоже: прочитанность считается по чату обсуждения
-  // целиком. То же названо на бэкенде — `domain/mtmessage.go`, докблок
-  // MessageReplies.
+  // Журнала апдейтов У ТРЕДА у нас нет (pts на чат, а не на тред). То же
+  // названо на бэкенде — `domain/mtmessage.go`, докблок MessageReplies.
   messageReplies: ['replies_pts'],
   // Внешность подарка в схеме — АНИМИРОВАННЫЙ СТИКЕР, у нас unicode-символ;
   // класть символ в поле документа нельзя, он едет клиентским `emoji`

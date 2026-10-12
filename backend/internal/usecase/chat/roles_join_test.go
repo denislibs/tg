@@ -557,6 +557,15 @@ type fakeTopicRepo struct {
 	nextID    int64
 	topics    map[int64]domain.ForumTopicRecord
 	muteUntil map[[3]int64]time.Time
+	// reads — горизонты тредов (chat, root, user); clearedMentions — вызовы
+	// ClearThreadMentions (root, upTo); forumRecounts — пересчёты форума.
+	reads           map[[3]int64]int64
+	clearedMentions [][2]int64
+	forumRecounts   int
+	// groupReads — вызовы ApplyThreadReadToGroup (root, merged, readMaxID, lastSeq).
+	groupReads [][4]int64
+	// threadMax — последний номер треда (chat, root) для ThreadReadStates.
+	threadMax map[[2]int64]int64
 }
 
 func newFakeTopicRepo() *fakeTopicRepo {
@@ -637,7 +646,88 @@ func (r *fakeTopicRepo) ListByChat(context.Context, int64, int64) ([]domain.Topi
 	return nil, nil
 }
 
-func (r *fakeTopicRepo) SetTopicRead(context.Context, int64, int64, int64, int64) error { return nil }
+func (r *fakeTopicRepo) SetTopicRead(_ context.Context, chatID, rootMsgID, userID, upToSeq int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.reads == nil {
+		r.reads = map[[3]int64]int64{}
+	}
+	k := [3]int64{chatID, rootMsgID, userID}
+	if upToSeq > r.reads[k] {
+		r.reads[k] = upToSeq
+	}
+	return nil
+}
+
+func (r *fakeTopicRepo) LockThread(context.Context, int64, int64) error { return nil }
+
+func (r *fakeTopicRepo) ThreadHorizon(_ context.Context, chatID, rootMsgID, userID int64) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.reads[[3]int64{chatID, rootMsgID, userID}], nil
+}
+
+func (r *fakeTopicRepo) ThreadHorizons(_ context.Context, chatID, rootMsgID int64) (map[int64]int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := map[int64]int64{}
+	for k, v := range r.reads {
+		if k[0] == chatID && k[1] == rootMsgID {
+			out[k[2]] = v
+		}
+	}
+	return out, nil
+}
+
+func (r *fakeTopicRepo) ThreadReadOutbox(_ context.Context, chatID, rootMsgID, viewerID int64) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var h int64
+	for k, v := range r.reads {
+		if k[0] == chatID && k[1] == rootMsgID && k[2] != viewerID && v > h {
+			h = v
+		}
+	}
+	return h, nil
+}
+
+func (r *fakeTopicRepo) ThreadReadStates(_ context.Context, chatID, viewerID int64, roots []int64) (map[int64]domain.ThreadReadState, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := map[int64]domain.ThreadReadState{}
+	for _, root := range roots {
+		st := domain.ThreadReadState{MaxID: r.threadMax[[2]int64{chatID, root}], ReadMaxID: r.reads[[3]int64{chatID, root, viewerID}]}
+		if st.MaxID > 0 || st.ReadMaxID > 0 {
+			out[root] = st
+		}
+	}
+	return out, nil
+}
+
+func (r *fakeTopicRepo) ClearThreadMentions(_ context.Context, _, _, root, upTo int64) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.clearedMentions = append(r.clearedMentions, [2]int64{root, upTo})
+	return 0, nil
+}
+
+func (r *fakeTopicRepo) CountChatUnread(context.Context, int64, int64, int64) (int, error) {
+	return 0, nil
+}
+
+func (r *fakeTopicRepo) ApplyThreadReadToGroup(_ context.Context, _, _, root, merged, readMaxID, lastSeq int64) (bool, int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.groupReads = append(r.groupReads, [4]int64{root, merged, readMaxID, lastSeq})
+	return readMaxID > merged, readMaxID, nil
+}
+
+func (r *fakeTopicRepo) RecountForumUnread(context.Context, int64, int64) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.forumRecounts++
+	return 0, nil
+}
 
 func (r *fakeTopicRepo) SetTopicMuteUntil(_ context.Context, chatID, rootMsgID, userID int64, until time.Time) error {
 	r.mu.Lock()

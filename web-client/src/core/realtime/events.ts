@@ -1,5 +1,5 @@
 // src/core/realtime/events.ts
-import type { MessageEntity, RawMyMessage, MessageReactions, Reaction } from '../models'
+import type { MessageEntity, RawMessage, RawMyMessage, MessageReactions, Reaction } from '../models'
 import type { MessageMedia, MyDocument } from '../media/messageMedia'
 import type { MessagesChatFull, UserReal, UserStatus } from '../peers/peer'
 import type { PeerNotifySettings } from '../dialogs/notifySettings'
@@ -53,6 +53,12 @@ export const RT = {
   // канала в воркере (tweb processUpdate :658-662 → getChannelDifference),
   // имя нужно лишь полноте реестра.
   channelTooLong: 'rt:channel_too_long',
+  // `updateNewScheduledMessage`/`updateDeleteScheduledMessages` — лента
+  // отложенных. Сырым кадром вкладкам не рассылаются: их применяет владелец
+  // хранилища отложенных (`messagesManager`), наружу уходят события оригинала
+  // `scheduled_new`/`scheduled_delete`/`message_edit` (tweb :11773-11815); имя
+  // нужно лишь полноте реестра.
+  scheduled: 'rt:scheduled',
   draftUpdate: 'rt:draft_update',
   chatThemeUpdate: 'rt:chat_theme_update',
   dialogPin: 'rt:dialog_pin',
@@ -104,6 +110,10 @@ export const RT = {
   // Применяет хранилище тем, вкладкам уезжает операциями `forumTopicOp`; имя
   // нужно полноте реестра.
   pinnedForumTopic: 'rt:pinned_forum_topic',
+  // Прочтение треда (тема форума, тред комментариев) — `updateReadChannelDiscussion
+  // Inbox/Outbox` (tweb appMessagesManager.ts:777-778). Применяет `threadReads`
+  // воркера, вкладкам темы уезжают операциями `forumTopicOp`; имя нужно полноте реестра.
+  readDiscussion: 'rt:read_discussion',
   pollUpdate: 'rt:poll_update',
   checklistUpdate: 'rt:checklist_update',
   boostUpdate: 'rt:boost_update',
@@ -256,6 +266,19 @@ export interface WebPageUpdateEvt {
   msg_id: number
   media: MessageMedia
 }
+/** updateNewScheduledMessage#39a51dfb message:Message = Update;
+ *
+ *  Отложенное появилось или изменилось (текст, время, переход в «когда в
+ *  сети») — схемный конструктор, `layer.d.ts:3306-3310`. Едет только автору,
+ *  на все его устройства; `message.random_id` — `client_msg_id` постановки
+ *  (по нему снимается свой временный бабл, tweb `checkPendingMessage`). */
+export interface NewScheduledMessageEvt { _: 'updateNewScheduledMessage'; message: RawMessage }
+/** updateDeleteScheduledMessages#f2a71983 flags:# peer:Peer messages:Vector<int>
+ *  sent_messages:flags.0?Vector<int> = Update;
+ *
+ *  Отложенные удалены или опубликованы (`layer.d.ts:3312-3317`). Номера —
+ *  ключи отложенных, СЕРВЕРНОЕ пространство. `sent_messages` tweb не читает. */
+export interface DeleteScheduledMessagesEvt { _: 'updateDeleteScheduledMessages'; peer: Peer; messages: number[]; sent_messages?: number[] }
 // «Проверка фактов» прикреплена/изменена/снята (factcheck_update): кадр патчит
 // блок fact-check в уже отрисованном бабле. factcheck===null — проверка снята.
 export interface FactCheckUpdateEvt {
@@ -473,6 +496,17 @@ export interface DialogArchiveEvt {
 /** updatePinnedForumTopic#683b2c52 flags:# pinned:flags.0?true peer:Peer
  *  topic_id:int = Update; — тему закрепили/открепили (tweb `dialogs.ts:2480-2490`).
  *  «Открепили» — отсутствие бита. `topic_id` — серверный номер темы. */
+/** updateReadChannelDiscussionInbox#d6b19546 flags:# channel_id:long top_msg_id:int
+ *  read_max_id:int broadcast_id:flags.0?long broadcast_post:flags.0?int = Update;
+ *  updateReadChannelDiscussionOutbox#695c9e7c channel_id:long top_msg_id:int read_max_id:int = Update;
+ *  — горизонт прочтения ТРЕДА (тема, тред комментариев). Номера серверные;
+ *  `broadcast_*` tweb не читает, сервер их не производит. */
+export interface ReadDiscussionEvt {
+  _: 'updateReadChannelDiscussionInbox' | 'updateReadChannelDiscussionOutbox'
+  channel_id: number
+  top_msg_id: number
+  read_max_id: number
+}
 export interface PinnedForumTopicEvt {
   _: 'updatePinnedForumTopic'
   pFlags?: { pinned?: true }
@@ -753,6 +787,7 @@ export type Update =
   | DialogArchiveEvt
   | DialogMuteEvt
   | PinnedForumTopicEvt
+  | ReadDiscussionEvt
   | TypingEvt
   | PresenceEvt
   | UserUpdateEvt
@@ -773,6 +808,8 @@ export type Update =
   | StoryUpdateEvt
   | SentStoryReactionEvt
   | ReadStoriesEvt
+  | NewScheduledMessageEvt
+  | DeleteScheduledMessagesEvt
 
 /** Значение дискриминатора `_` — то же, что `predicate` в схеме. */
 export type UpdatePredicate = Update['_']
@@ -785,6 +822,10 @@ export type UpdatePredicate = Update['_']
 export interface AckEvt {
   client_msg_id: string; id: number; date: number
   entities?: MessageEntity[]; media?: MessageMedia; ttl_period?: number
+  /** Только провод (S1): отправка ушла в очередь отложенных, `id` — ключ
+   *  отложенного. Клиент флаг не читает: куда финализировать бабл, знает сама
+   *  заявка (`schedule_date`, `managers/messages/pending.ts`). */
+  scheduled?: boolean
 }
 // Server rejected a send (e.g. text too long). The client drops it from the outbox
 // (no infinite retry) and removes the optimistic bubble.
@@ -857,6 +898,11 @@ export interface PendingNewEvt {
    *  строится из `reply_to.reply_from`/`reply_media`, которые приедут с эхом; до
    *  него плашка показывает ссылку. */
   reply_to_peer_id?: PeerId
+  /** tweb `options.scheduleDate` у `generateOutgoingMessage`/`beforeMessageSending`:
+   *  бабл ложится в хранилище отложенных, `date` — время отправки. */
+  schedule_date?: number
+  /** tweb `scheduleRepeatPeriod` — бабл несёт `schedule_repeat_period` сразу. */
+  schedule_repeat_period?: number
   /** Порт ОПЦИИ tweb `beforeMessageSending({sequential})` (не проводного поля:
    *  наружу этот признак уходит не кадром, а полем операции `insert`, см.
    *  `core/realtime/messageOps.ts`). Смысл в оригинале — «кадр отправки уходит

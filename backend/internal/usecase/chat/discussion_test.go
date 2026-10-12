@@ -182,7 +182,7 @@ func TestPostComment_DiscussionsOff_NotFound(t *testing.T) {
 	}
 }
 
-func TestPostComment_ThreadsAndAutoJoins(t *testing.T) {
+func TestPostComment_ThreadsWithoutJoining(t *testing.T) {
 	i, fg, _, _ := newChannelTestInteractor(t)
 	ctx := context.Background()
 	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
@@ -213,9 +213,9 @@ func TestPostComment_ThreadsAndAutoJoins(t *testing.T) {
 	if msg.ThreadRootID == nil || *msg.ThreadRootID != mirrorID {
 		t.Fatalf("comment ThreadRootID=%v, want mirror %d", msg.ThreadRootID, mirrorID)
 	}
-	// commenter auto-joined the discussion group
-	if _, err := fg.GetMember(ctx, gid, 8); err != nil {
-		t.Fatalf("commenter not auto-joined: %v", err)
+	// Ф-5 В-2: комментатор в группу обсуждения НЕ вступает (tweb input.ts:2044).
+	if _, err := fg.GetMember(ctx, gid, 8); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("commenter joined the discussion group: %v", err)
 	}
 }
 

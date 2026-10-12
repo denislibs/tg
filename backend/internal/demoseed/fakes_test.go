@@ -301,7 +301,7 @@ func (f *fakeChat) LinkDiscussion(_ context.Context, channelID, groupID, actorID
 	return groupID, nil
 }
 
-func (f *fakeChat) PostToChannel(ctx context.Context, channelID, actorID int64, text string, ents domain.MessageEntities, clientMsgID string) (domain.Message, error) {
+func (f *fakeChat) PostToChannel(ctx context.Context, channelID, actorID int64, text string, ents domain.MessageEntities, clientMsgID string, _ ...domain.WebPageInput) (domain.Message, error) {
 	c := f.chats[channelID]
 	if c == nil || c.typ != domain.ChatTypeChannel || c.creator != actorID {
 		return domain.Message{}, errFake

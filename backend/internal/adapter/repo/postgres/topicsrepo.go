@@ -316,6 +316,295 @@ func (r *TopicsRepo) SetTopicRead(ctx context.Context, chatID, rootMsgID, userID
 	return err
 }
 
+// LockThread — транзакционная блокировка треда (chat, root) на время
+// прочтения: два параллельных readDiscussion одного треда считают ✓✓ и
+// рассылают кадры по очереди, по свежим горизонтам. Снимается коммитом.
+func (r *TopicsRepo) LockThread(ctx context.Context, chatID, rootMsgID int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`SELECT pg_advisory_xact_lock(hashtextextended('thread:' || $1::bigint::text || ':' || $2::bigint::text, 0))`,
+		chatID, rootMsgID)
+	return err
+}
+
+// ThreadHorizon — горизонт чтения треда rootMsgID у userID: max(запись треда,
+// горизонт чата) — то же правило, что у строки темы (topicRowsSQL). У General
+// rootMsgID = 0. Не участнику горизонт чата — 0.
+func (r *TopicsRepo) ThreadHorizon(ctx context.Context, chatID, rootMsgID, userID int64) (int64, error) {
+	var h int64
+	err := querier(ctx, r.pool).QueryRow(ctx, `
+		SELECT GREATEST(
+		  COALESCE((SELECT last_read_seq FROM topic_user_state
+		             WHERE chat_id = $1 AND root_msg_id = $2 AND user_id = $3), 0),
+		  COALESCE((SELECT last_read_seq FROM chat_members WHERE chat_id = $1 AND user_id = $3), 0))`,
+		chatID, rootMsgID, userID).Scan(&h)
+	return h, err
+}
+
+// ThreadHorizons — горизонты треда rootMsgID у всех, кто его читает: у
+// участников — max(запись треда, горизонт чата), у не участников (гость
+// комментариев, только у зеркала поста) — запись треда. По ним считается ✓✓
+// треда (MAX остальных) и кому уходит outbox.
+func (r *TopicsRepo) ThreadHorizons(ctx context.Context, chatID, rootMsgID int64) (map[int64]int64, error) {
+	rows, err := querier(ctx, r.pool).Query(ctx, `
+		SELECT u, MAX(h) FROM (
+		  SELECT cm.user_id AS u, GREATEST(cm.last_read_seq, COALESCE(st.last_read_seq, 0)) AS h
+		    FROM chat_members cm
+		    LEFT JOIN topic_user_state st
+		      ON st.chat_id = cm.chat_id AND st.root_msg_id = $2 AND st.user_id = cm.user_id
+		   WHERE cm.chat_id = $1
+		  UNION ALL
+		  -- Не участник — только гость треда комментариев: корень — зеркало
+		  -- поста, и он не забанен. Строки бывших участников (выход, кик) и
+		  -- строки тем, оставшиеся от них, сюда не попадают.
+		  SELECT st.user_id, st.last_read_seq FROM topic_user_state st
+		   WHERE st.chat_id = $1 AND st.root_msg_id = $2
+		     AND EXISTS (SELECT 1 FROM messages rm WHERE rm.id = $2 AND rm.is_discussion_mirror)
+		     AND NOT EXISTS (SELECT 1 FROM chat_bans b WHERE b.chat_id = $1 AND b.user_id = st.user_id)
+		) x GROUP BY u`, chatID, rootMsgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]int64{}
+	for rows.Next() {
+		var u, h int64
+		if err := rows.Scan(&u, &h); err != nil {
+			return nil, err
+		}
+		out[u] = h
+	}
+	return out, rows.Err()
+}
+
+// ThreadReadOutbox — горизонт ✓✓ треда rootMsgID для зрителя viewerID: MAX
+// горизонтов треда всех остальных читающих (read_outbox_max_id
+// messages.discussionMessage, tweb appMessagesManager.ts:8852). Тот же круг,
+// что ThreadHorizons, но одним MAX в SQL — без строки на каждого участника
+// группы обсуждения: у участника горизонт треда = max(запись треда, горизонт
+// чата), поэтому MAX по ним — это MAX горизонтов чата и записей треда.
+func (r *TopicsRepo) ThreadReadOutbox(ctx context.Context, chatID, rootMsgID, viewerID int64) (int64, error) {
+	var h int64
+	err := querier(ctx, r.pool).QueryRow(ctx, `
+		SELECT GREATEST(
+		  COALESCE((SELECT MAX(cm.last_read_seq) FROM chat_members cm
+		             WHERE cm.chat_id = $1 AND cm.user_id <> $3), 0),
+		  COALESCE((SELECT MAX(st.last_read_seq) FROM topic_user_state st
+		             WHERE st.chat_id = $1 AND st.root_msg_id = $2 AND st.user_id <> $3
+		               AND (EXISTS (SELECT 1 FROM chat_members cm2
+		                             WHERE cm2.chat_id = $1 AND cm2.user_id = st.user_id)
+		                    -- гость треда комментариев (см. ThreadHorizons)
+		                    OR (EXISTS (SELECT 1 FROM messages rm WHERE rm.id = $2 AND rm.is_discussion_mirror)
+		                        AND NOT EXISTS (SELECT 1 FROM chat_bans b
+		                                         WHERE b.chat_id = $1 AND b.user_id = st.user_id)))), 0))`,
+		chatID, rootMsgID, viewerID).Scan(&h)
+	return h, err
+}
+
+// ThreadReadStates — состояние тредов roots чата chatID глазами viewerID
+// одним запросом (messageReplies.max_id/read_max_id постов страницы): номер
+// последнего видимого ему сообщения треда и его горизонт треда (max(запись
+// треда, горизонт чата), как ThreadHorizon, и не ниже его собственного
+// последнего сообщения треда). Корни без ответов и без горизонта в карту не
+// попадают.
+func (r *TopicsRepo) ThreadReadStates(ctx context.Context, chatID, viewerID int64, roots []int64) (map[int64]domain.ThreadReadState, error) {
+	out := map[int64]domain.ThreadReadState{}
+	if len(roots) == 0 {
+		return out, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx, `
+		SELECT x.root,
+		       COALESCE((SELECT MAX(m.seq) FROM messages m
+		                  WHERE m.chat_id = $1 AND m.thread_root_id = x.root AND `+messageVisibleTo("m", "$2")+`), 0),
+		       GREATEST(COALESCE(st.last_read_seq, 0), COALESCE(cm.last_read_seq, 0),
+		                -- своё исходящее прочитано (у Telegram отправка читает
+		                -- историю до себя): иначе собственный комментарий выше
+		                -- горизонта зажигал бы точку «есть новые» у поста
+		                COALESCE((SELECT MAX(om.seq) FROM messages om
+		                           WHERE om.chat_id = $1 AND om.thread_root_id = x.root
+		                             AND om.sender_id = $2 AND om.deleted_at IS NULL), 0))
+		  FROM unnest($3::bigint[]) AS x(root)
+		  LEFT JOIN topic_user_state st ON st.chat_id = $1 AND st.root_msg_id = x.root AND st.user_id = $2
+		  LEFT JOIN chat_members cm ON cm.chat_id = $1 AND cm.user_id = $2`,
+		chatID, viewerID, roots)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var root int64
+		var st domain.ThreadReadState
+		if err := rows.Scan(&root, &st.MaxID, &st.ReadMaxID); err != nil {
+			return nil, err
+		}
+		if st.MaxID > 0 || st.ReadMaxID > 0 {
+			out[root] = st
+		}
+	}
+	return out, rows.Err()
+}
+
+// ClearThreadMentions снимает непрочитанные упоминания userID в треде root
+// (страж General — domain.GeneralThreadRoot) с seq <= upToSeq и пересчитывает
+// счётчик «@» чата (у не участника строки chat_members нет — пересчёт пуст).
+// Возвращает, сколько упоминаний снято. Порт эффекта readDiscussion: tweb
+// гасит упоминания темы и на столько же — родителя
+// (appMessagesManager.ts:10880-10890, 10969-10980).
+func (r *TopicsRepo) ClearThreadMentions(ctx context.Context, chatID, userID, root, upToSeq int64) (int, error) {
+	q := querier(ctx, r.pool)
+	tag, err := q.Exec(ctx, `
+		UPDATE message_mentions mm SET unread = false
+		  FROM messages m
+		 WHERE m.id = mm.message_id AND mm.chat_id = $1 AND mm.user_id = $2 AND mm.unread
+		   AND mm.seq <= $4 AND `+threadFilter("m", "$3", &root, false),
+		chatID, userID, root, upToSeq)
+	if err != nil {
+		return 0, err
+	}
+	if tag.RowsAffected() == 0 {
+		return 0, nil
+	}
+	_, err = q.Exec(ctx, `
+		UPDATE chat_members SET unread_mentions_count =
+		       (SELECT count(*) FROM message_mentions WHERE chat_id = $1 AND user_id = $2 AND unread)
+		 WHERE chat_id = $1 AND user_id = $2`, chatID, userID)
+	return int(tag.RowsAffected()), err
+}
+
+// ApplyThreadReadToGroup — прочтение треда ВНЕ форума (комментарии к посту,
+// тред группы) правит и диалог группы, как tweb на месте: у треда вне форума
+// курсор сведён с горизонтом группы, и onUpdateReadHistory правит диалог
+// группы (appMessagesManager.ts:10814-10816, 5107-5131):
+//   - горизонт группы — read_max_id (:10918-10920; вниз не идёт: tweb читает
+//     только выше сведённого курсора, :9133-9156);
+//   - unread_count минус чужие видимые сообщения треда в (merged, readMaxID]
+//     (:10846-10881); readMaxID >= последнего номера или merged = 0 → 0
+//     (:10924-10944), не ниже 0;
+//   - счётчик стал 0 — гаснут и упоминания группы (:10941-10943).
+//
+// merged — сведённый курсор до прочтения (max(горизонт группы, треда)),
+// lastSeq — последний номер чата. Не участнику (гостю) — ничего. raised —
+// горизонт группы вырос (тогда остальным участникам уходит ✓✓ группы тем же
+// путём, что у прочтения группы); readSeq — горизонт группы после.
+func (r *TopicsRepo) ApplyThreadReadToGroup(ctx context.Context, chatID, userID, root, merged, readMaxID, lastSeq int64) (raised bool, readSeq int64, err error) {
+	q := querier(ctx, r.pool)
+	var unread int
+	var oldSeq int64
+	err = q.QueryRow(ctx, `
+		WITH prev AS (
+		  SELECT last_read_seq FROM chat_members WHERE chat_id = $1 AND user_id = $2 FOR UPDATE)
+		UPDATE chat_members cm SET
+		       last_read_seq = GREATEST(cm.last_read_seq, $5),
+		       unread_count = CASE WHEN $5::bigint >= $6::bigint OR $4::bigint = 0 THEN 0
+		         ELSE GREATEST(0, cm.unread_count - (
+		           SELECT count(*) FROM messages m
+		            WHERE m.chat_id = $1 AND `+threadFilter("m", "$3", &root, false)+`
+		              AND m.seq > $4 AND m.seq <= $5 AND m.sender_id <> $2
+		              AND `+messageVisibleTo("m", "$2")+`)) END
+		  FROM prev
+		 WHERE cm.chat_id = $1 AND cm.user_id = $2
+		 RETURNING prev.last_read_seq, cm.last_read_seq, cm.unread_count`,
+		chatID, userID, root, merged, readMaxID, lastSeq).Scan(&oldSeq, &readSeq, &unread)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, 0, nil // не участник
+	}
+	if err != nil {
+		return false, 0, err
+	}
+	raised = readSeq > oldSeq
+	if unread > 0 {
+		return raised, readSeq, nil
+	}
+	if _, err := q.Exec(ctx,
+		`UPDATE message_mentions SET unread = false WHERE chat_id = $1 AND user_id = $2 AND unread`, chatID, userID); err != nil {
+		return false, 0, err
+	}
+	_, err = q.Exec(ctx,
+		`UPDATE chat_members SET unread_mentions_count = 0 WHERE chat_id = $1 AND user_id = $2`, chatID, userID)
+	return raised, readSeq, err
+}
+
+// forumUnreadSQL — непрочитанное участника viewer в форуме chat: сумма по
+// темам (В-8 спецификации). У каждой темы свой горизонт — max(горизонт чата
+// readSeq, запись темы), и считается она по своему диапазону: обычная тема —
+// по idx_messages_thread_seq (тред корня) плюс сама служебка создания,
+// General — по (chat_id, seq) с generalMember. Просматриваются только строки
+// выше горизонта темы, а не вся история выше горизонта чата: в форуме tweb
+// читает readDiscussion (appMessagesManager.ts:9186-9193), и горизонт чата
+// почти не двигается. Чужое и видимое зрителю, потолок UnreadCountCap — тот
+// же предикат, что unreadPostsCount.
+func forumUnreadSQL(chat, readSeq, viewer string) string {
+	cap := fmt.Sprint(UnreadCountCap)
+	topicHorizon := `GREATEST(` + readSeq + `, COALESCE(fst.last_read_seq, 0))`
+	generalHorizon := `GREATEST(` + readSeq + `, COALESCE((SELECT gst.last_read_seq FROM topic_user_state gst
+		 WHERE gst.chat_id = ` + chat + ` AND gst.root_msg_id = 0 AND gst.user_id = ` + viewer + `), 0))`
+	return `LEAST(` + cap + `, (
+		SELECT COALESCE(SUM(
+		  (SELECT count(*) FROM (SELECT 1 FROM messages um
+		    WHERE um.chat_id = ft.chat_id AND um.thread_root_id = ft.root_msg_id AND um.seq > ` + topicHorizon + `
+		      AND um.sender_id <> ` + viewer + ` AND ` + messageVisibleTo("um", viewer) + ` LIMIT ` + cap + `) tu)
+		  + (SELECT count(*) FROM messages ur
+		    WHERE ur.id = ft.root_msg_id AND ur.seq > ` + topicHorizon + `
+		      AND ur.sender_id <> ` + viewer + ` AND ` + messageVisibleTo("ur", viewer) + `)), 0)
+		  FROM forum_topics ft
+		  LEFT JOIN topic_user_state fst
+		    ON fst.chat_id = ft.chat_id AND fst.root_msg_id = ft.root_msg_id AND fst.user_id = ` + viewer + `
+		 WHERE ft.chat_id = ` + chat + ` AND NOT ft.is_general)
+		+ (SELECT count(*) FROM (SELECT 1 FROM messages gm
+		    WHERE gm.chat_id = ` + chat + ` AND gm.seq > ` + generalHorizon + ` AND ` + generalMember("gm") + `
+		      AND gm.sender_id <> ` + viewer + ` AND ` + messageVisibleTo("gm", viewer) + ` LIMIT ` + cap + `) gu))::int`
+}
+
+// forumThreadUnread — сообщение m выше горизонта СВОЕЙ темы у viewer (запись
+// topic_user_state темы: корень — по generalMember-правилу, General — 0). Для
+// точечных правок счётчика (удаление, скрытие, пересчёт): в форуме
+// непрочитанное — сумма по темам (forumUnreadSQL), и сообщение прочитанной
+// темы в счётчике не числится.
+func forumThreadUnread(m, viewer string) string {
+	return `COALESCE((SELECT tst.last_read_seq FROM topic_user_state tst
+		 WHERE tst.chat_id = ` + m + `.chat_id AND tst.user_id = ` + viewer + `
+		   AND tst.root_msg_id = COALESCE((SELECT tft.root_msg_id FROM forum_topics tft
+		        WHERE tft.chat_id = ` + m + `.chat_id AND NOT tft.is_general
+		          AND tft.root_msg_id IN (` + m + `.id, ` + m + `.thread_root_id) LIMIT 1), 0)), 0) < ` + m + `.seq`
+}
+
+// notReadInForum — условие для точечных правок unread_count: вне форума
+// истинно, в форуме — сообщение m не покрыто горизонтом своей темы.
+func notReadInForum(m, viewer string) string {
+	return `(NOT EXISTS (SELECT 1 FROM chats nfc WHERE nfc.id = ` + m + `.chat_id AND nfc.is_forum) OR ` +
+		forumThreadUnread(m, viewer) + `)`
+}
+
+// CountChatUnread — непрочитанное участника при горизонте чата readSeq для
+// chat_members.unread_count (MarkRead): у форума — сумма по темам
+// (forumUnreadSQL), у остального — unreadPostsCount. Один запрос: ветку
+// выбирает CASE по chats.is_forum, подзапрос другой ветки не выполняется.
+func (r *TopicsRepo) CountChatUnread(ctx context.Context, chatID, userID, readSeq int64) (int, error) {
+	var n int
+	err := querier(ctx, r.pool).QueryRow(ctx, `
+		SELECT CASE WHEN c.is_forum THEN `+forumUnreadSQL("c.id", "$2::bigint", "$3::bigint")+`
+		            ELSE `+unreadPostsCount("c.id", "$2::bigint", "$3::bigint")+` END
+		  FROM chats c WHERE c.id = $1`, chatID, readSeq, userID).Scan(&n)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, domain.ErrNotFound
+	}
+	return n, err
+}
+
+// RecountForumUnread пересчитывает chat_members.unread_count участника в
+// форуме (сумма по темам при его горизонте чата) — после прочтения темы.
+// Не участник — 0 строк, ответ 0.
+func (r *TopicsRepo) RecountForumUnread(ctx context.Context, chatID, userID int64) (int, error) {
+	var n int
+	err := querier(ctx, r.pool).QueryRow(ctx, `
+		UPDATE chat_members cm SET unread_count = `+forumUnreadSQL("cm.chat_id", "cm.last_read_seq", "cm.user_id")+`
+		 WHERE cm.chat_id = $1 AND cm.user_id = $2
+		 RETURNING unread_count`, chatID, userID).Scan(&n)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil
+	}
+	return n, err
+}
+
 // SetTopicMuteUntil пишет явную настройку уведомлений темы — UPSERT в
 // topic_user_state.muted_until: срок мьюта либо time.Unix(0) («уведомлять»).
 // NULL в колонке — тема не тронута, наследует мьют чата (три состояния, tweb

@@ -63,11 +63,6 @@ const ALLOWED: Record<string, number> = {
   // (`sendText({peerId, threadId, text})`) — ни ответа, ни треда, ни send-as у
   // выбора чатом `ForwardPicker` нет, собирать в пакет нечего.
   'components/popups/shareUrl.bridge.ts': 1,
-  // Пост канала (`ChatInput.sendText`, расхождение 4 шапки `components/chat/input.ts`):
-  // ручка `POST /channels/{id}/messages` принимает ровно {text, entities,
-  // client_msg_id} (`channel_handler.go`) — пакету некуда уехать; тред поста
-  // уходит полем `threadRootId` бабла.
-  'components/chat/input.ts': 1,
   // Кнопка reply-клавиатуры бота (`keyboardButton`, Б-36): tweb `wrappers/keyboardButton.ts`
   // шлёт ровно `sendText({peerId, text: button.text})` (+ эфемерный снимок, которого у нас
   // нет) — без ответа, треда и send-as; клавиатура принадлежит чату, а не строке ввода.
@@ -125,11 +120,20 @@ describe('пакет параметров отправки: ни один пут
   // целиком. Список полей здесь — не украшение: пропусти `sendingParamsToWire`
   // одно поле, и путь будет «передавать пакет», а поле молча не уедет (ровно
   // это годами происходило с `effect` — он был в SendArgs и не попадал в кадр).
-  it('пакет разворачивается ровно в восемь проводных полей', async () => {
+  it('пакет разворачивается ровно в десять проводных полей', async () => {
     const { sendingParamsToWire } = await import('./managers/messages/sendingParams')
     expect(Object.keys(sendingParamsToWire({})).sort()).toEqual([
       'effect', 'replyQuoteOffset', 'replyQuoteText', 'replyToId', 'replyToPeerId',
-      'sendAsPeerId', 'silent', 'threadRootId',
+      'scheduleDate', 'scheduleRepeatPeriod', 'sendAsPeerId', 'silent', 'threadRootId',
     ])
+  })
+
+  // Ф-5, п. 1.2: отложенная отправка — поле пакета (tweb `chat.ts:1388-1389`), а не
+  // своя ручка; пустое расписание — `null`, а не 0 («поля нет»).
+  it('расписание пакета уезжает в кадр как есть, пустое — null', async () => {
+    const { sendingParamsToWire } = await import('./managers/messages/sendingParams')
+    expect(sendingParamsToWire({ scheduleDate: 0x7FFFFFFE, scheduleRepeatPeriod: 604800 }))
+      .toMatchObject({ scheduleDate: 0x7FFFFFFE, scheduleRepeatPeriod: 604800 })
+    expect(sendingParamsToWire({ scheduleDate: undefined })).toMatchObject({ scheduleDate: null, scheduleRepeatPeriod: null })
   })
 })

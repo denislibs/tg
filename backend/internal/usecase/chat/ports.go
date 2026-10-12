@@ -89,10 +89,12 @@ type ChatRepo interface {
 	// возвращает оставшееся число. NextMention — НОМЕР ближайшего
 	// непрочитанного упоминания с seq>afterSeq (domain.ErrNotFound, если нет).
 	AddMention(ctx context.Context, chatID, msgID, seq, userID int64) error
-	// MemberIDsByUsernames — участники чата с этими именами (@username, без
-	// учёта регистра). Имя чата/канала из общего пространства имён (миграция
-	// 0134) пользователем не резолвится, не-участник в ответ не попадает.
-	MemberIDsByUsernames(ctx context.Context, chatID int64, usernames []string) ([]int64, error)
+	// ParticipantIDsByUsernames — пользователи с этими именами (@username, без
+	// учёта регистра), которые в чате участвуют: состоят в нём или писали в
+	// него (гость обсуждения комментирует без вступления — его тоже
+	// упоминают). Имя чата/канала из общего пространства имён (миграция 0134)
+	// пользователем не резолвится, посторонний в ответ не попадает.
+	ParticipantIDsByUsernames(ctx context.Context, chatID int64, usernames []string) ([]int64, error)
 	// Строка упоминания живёт и после прочтения (message.mentioned), прочтение
 	// лишь гасит её «непрочитано» (media_unread у адресата). ReadMention —
 	// прочтение одного упоминания (readMessageContents), true — было
@@ -224,6 +226,8 @@ type GroupRepo interface {
 	// SetSignatures toggles channel post signatures (Telegram
 	// channels.toggleSignatures). profiles is forced off when signatures is off.
 	SetSignatures(ctx context.Context, chatID int64, signatures, profiles bool) error
+	// SetJoinToSend — chats.join_to_send (channels.toggleJoinToSend).
+	SetJoinToSend(ctx context.Context, chatID int64, on bool) error
 	// IsDiscussionGroup — chatID является discussion-группой какого-то канала
 	// (тред комментариев там читается и без членства, как ListComments).
 	IsDiscussionGroup(ctx context.Context, chatID int64) (bool, error)
@@ -476,6 +480,12 @@ type MessageRepo interface {
 	// SetWebPage пишет серверное превью ссылки (messages.web_page) отдельным
 	// UPDATE после коммита отправки (Insert превью не несёт — оно догоняющее).
 	SetWebPage(ctx context.Context, msgID int64, wp *domain.WebPagePreview) error
+	// SetWebPageIfEdited — запись превью, только если строка не правилась с
+	// запуска сборки (edited_at совпадает; nil — не правилась). false — строка
+	// ушла вперёд или удалена: поздняя сборка не перезаписывает новую правку.
+	SetWebPageIfEdited(ctx context.Context, msgID int64, wp *domain.WebPagePreview, editedAt *time.Time) (bool, error)
+	// SetInvertMedia ставит флаг «медиа над текстом» (messages.invert_media).
+	SetInvertMedia(ctx context.Context, msgID int64, on bool) error
 	// SetFactCheck пишет/снимает «проверку фактов» (messages.factcheck) отдельным
 	// UPDATE; fc==nil снимает проверку. Возвращает обновлённую строку.
 	SetFactCheck(ctx context.Context, msgID int64, fc *domain.FactCheck) (domain.Message, error)
@@ -511,6 +521,9 @@ type BotHTTP interface {
 	PostWebhook(ctx context.Context, url string, body []byte)
 	// FetchURL качает файл по URL с лимитом размера; возвращает байты + mime.
 	FetchURL(ctx context.Context, url string, maxBytes int64) (data []byte, mime string, err error)
+	// FetchPrefix — первые maxBytes файла (больше — обрезается без ошибки):
+	// заголовок картинки ради размера (has_large_media плашки превью).
+	FetchPrefix(ctx context.Context, url string, maxBytes int64) (data []byte, mime string, err error)
 }
 
 type UpdateRepo interface {
@@ -699,6 +712,10 @@ type PushNotifier interface {
 	// это пробивает мьют чата, типа и темы, как в Telegram. topicRootID —
 	// корень темы (ключ topic_user_state, 0 — вне темы): мьют темы гасит пуш.
 	NotifyNewMessage(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, mentioned bool, topicRootID int64)
+	// NotifyGuest — пуш гостю обсуждения (не участнику) об ответе на его
+	// комментарий или упоминании: без гейта присутствия — живого кадра у
+	// гостя нет (группы у него нет, чата «Ответы» тоже).
+	NotifyGuest(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, topicRootID int64)
 	// NotifyChannelPost — пуш о посте broadcast-канала его подписчикам
 	// (recipients, без автора) одним батчем: кто онлайн и кому канал не
 	// замьючен, нотификатор решает пачкой. title — название канала (автор поста
@@ -771,6 +788,15 @@ type SendInput struct {
 	// обычная отправка от себя. Проверяется правом: юзер — админ/владелец канала,
 	// либо это анонимный постинг от имени самой супергруппы (юзер — её админ).
 	SendAsChatID *int64
+	// ScheduleDate — отложенная отправка (schema schedule_date, unix-секунды;
+	// domain.SendWhenOnlineTimestamp — «когда будет в сети»). Не ноль — Send
+	// проходит все гейты и вместо публикации кладёт снимок отправки в очередь
+	// (scheduled.go: enqueueScheduled). У оригинала это поле КАЖДОГО метода
+	// отправки (tweb appMessagesManager.ts:2741, :3230, :3779, :4149, :5652).
+	ScheduleDate int64
+	// ScheduleRepeatPeriod — повтор отложенного (schema schedule_repeat_period,
+	// секунды из domain.ScheduleRepeatPeriods); только вместе с ScheduleDate.
+	ScheduleRepeatPeriod int
 	// skipMediaOwner пропускает проверку владельца media (share истории в чат:
 	// media принадлежит автору истории, а видимость уже проверена story-usecase).
 	// Не экспортируется — ставится только внутри пакета (SendStoryShare).
@@ -790,11 +816,27 @@ type SendInput struct {
 	// сообщение, и только после всех гейтов (подарок: списание звёзд, выдача,
 	// запись в журнал). Может дописать in (GiftID). Ставится внутри пакета.
 	prepare func(ctx context.Context, in *SendInput) error
+	// WebPage — превью ссылки по выбору отправителя: no_webpage, invert_media,
+	// inputMediaWebPage (tweb messages.sendMessage/sendMedia,
+	// appMessagesManager.ts:2733-2753). Нулевое — превью первой ссылки текста.
+	WebPage domain.WebPageInput
 	// fromSchedule — отправка отложенного сообщения по расписанию: черновик
 	// чата она не снимает (у оригинала его снимает само планирование —
 	// clear_draft в scheduleMessage, а к моменту отправки в поле уже другой
 	// текст).
 	fromSchedule bool
+	// repeatOccurrence — публикация второго и следующих сроков повтора: плата
+	// списывается заново (первый срок оплачен при постановке), иначе один
+	// платёж отправлял бы сообщение в платную группу бессрочно.
+	repeatOccurrence bool
+	// scheduledID — ключ строки очереди, которую публикует эта отправка:
+	// транзакция вставки держит её блокировку (lockScheduledForPublish), и
+	// снятие автором не может вернуть звёзды за сообщение, которое как раз
+	// вставляется.
+	scheduledID int64
+	// webPage — готовое превью отложенного: публикация пишет его в сообщение
+	// (как у копии, insertCopy) и не строит превью второй раз.
+	webPage *domain.WebPagePreview
 }
 
 // GroupCallStore хранит участников активных групповых звонков (эфемерно, Redis).
@@ -846,8 +888,32 @@ type TopicRepo interface {
 	// ListByChat — темы чата с состоянием темы для зрителя userID (горизонты,
 	// непрочитанное, упоминания, реакции и мьют — относительно него).
 	ListByChat(ctx context.Context, chatID, userID int64) ([]domain.TopicRow, error)
-	// SetTopicRead поднимает last_read_seq темы до max(old, upToSeq) (UPSERT).
+	// SetTopicRead поднимает last_read_seq треда до max(old, upToSeq) (UPSERT).
 	SetTopicRead(ctx context.Context, chatID, rootMsgID, userID, upToSeq int64) error
+	// LockThread — блокировка треда до конца транзакции (прочтение по очереди).
+	LockThread(ctx context.Context, chatID, rootMsgID int64) error
+	// ThreadHorizon — горизонт треда у пользователя: max(запись треда, горизонт чата).
+	ThreadHorizon(ctx context.Context, chatID, rootMsgID, userID int64) (int64, error)
+	// ThreadHorizons — горизонты треда у всех читающих (участники и гости треда).
+	ThreadHorizons(ctx context.Context, chatID, rootMsgID int64) (map[int64]int64, error)
+	// ThreadReadOutbox — горизонт ✓✓ треда для зрителя: MAX горизонтов треда
+	// остальных читающих (read_outbox_max_id discussionMessage).
+	ThreadReadOutbox(ctx context.Context, chatID, rootMsgID, viewerID int64) (int64, error)
+	// ThreadReadStates — последний видимый номер и горизонт зрителя по тредам
+	// roots одним запросом (messageReplies.max_id/read_max_id).
+	ThreadReadStates(ctx context.Context, chatID, viewerID int64, roots []int64) (map[int64]domain.ThreadReadState, error)
+	// ClearThreadMentions снимает упоминания треда root (General — страж) до
+	// upToSeq и пересчитывает «@» чата.
+	ClearThreadMentions(ctx context.Context, chatID, userID, root, upToSeq int64) (int, error)
+	// CountChatUnread — непрочитанное при горизонте чата readSeq: у форума —
+	// сумма по темам, иначе — сообщения выше горизонта (один запрос).
+	CountChatUnread(ctx context.Context, chatID, userID, readSeq int64) (int, error)
+	// ApplyThreadReadToGroup — прочтение треда вне форума правит диалог группы
+	// (горизонт, unread_count, упоминания), как tweb на месте; raised —
+	// горизонт группы вырос, readSeq — он после.
+	ApplyThreadReadToGroup(ctx context.Context, chatID, userID, root, merged, readMaxID, lastSeq int64) (raised bool, readSeq int64, err error)
+	// RecountForumUnread пересчитывает unread_count участника форума по темам.
+	RecountForumUnread(ctx context.Context, chatID, userID int64) (int, error)
 	// SetTopicMuteUntil пишет явную настройку уведомлений темы (UPSERT):
 	// срок мьюта, time.Unix(0) — «уведомлять». NULL («наследовать чат») —
 	// только у темы, которую пользователь не трогал.
@@ -856,20 +922,78 @@ type TopicRepo interface {
 	TopicRoots(ctx context.Context, rootIDs []int64) (map[int64]bool, error)
 }
 
-// ScheduledRepo хранит очередь запланированных сообщений.
+// ScheduledRepo хранит очередь отложенных сообщений (полный снимок отправки).
 type ScheduledRepo interface {
-	Create(ctx context.Context, m domain.ScheduledMessage) (domain.ScheduledMessage, error)
+	// Create ставит строку. Строка с тем же (chat, sender, client_msg_id) уже
+	// стоит — возвращается она и created=false (повтор кадра отправки).
+	Create(ctx context.Context, m domain.ScheduledMessage) (sm domain.ScheduledMessage, created bool, err error)
+	// ListByChat — СВОИ отложенные в чате, ближайшие сверху.
 	ListByChat(ctx context.Context, chatID, senderID int64) ([]domain.ScheduledMessage, error)
-	CountByUser(ctx context.Context, senderID int64) (int, error)
+	// CountByChat — сколько отложенных у автора в чате (лимит 100 на чат).
+	CountByChat(ctx context.Context, chatID, senderID int64) (int, error)
 	ByID(ctx context.Context, id int64) (domain.ScheduledMessage, error)
-	Delete(ctx context.Context, id int64) error
-	// Due — созревшие по времени (send_at<=now, without when_online).
+	// ByClientMsgID — строка по ключу идемпотентности постановки; domain.ErrNotFound — нет.
+	ByClientMsgID(ctx context.Context, chatID, senderID int64, clientMsgID string) (domain.ScheduledMessage, error)
+	// ByIDs — свои отложенные чата по ключам (чужие и отсутствующие пропускаются).
+	ByIDs(ctx context.Context, chatID, senderID int64, ids []int64) ([]domain.ScheduledMessage, error)
+	// ByGroupedID — элементы отложенного альбома (общий grouped_id), по порядку постановки.
+	ByGroupedID(ctx context.Context, chatID, senderID, groupedID int64) ([]domain.ScheduledMessage, error)
+	// DeleteIDs удаляет строки (публикация: аренда не мешает) и возвращает
+	// ключи РЕАЛЬНО удалённых: из конкурирующих снятий одной строки её
+	// получает ровно одно.
+	DeleteIDs(ctx context.Context, ids []int64) ([]int64, error)
+	// DeleteUnclaimed — снятие автором: строки в аренде публикации
+	// пропускаются; отдаёт реально снятые строки (состояние на момент снятия).
+	DeleteUnclaimed(ctx context.Context, ids []int64) ([]domain.ScheduledMessage, error)
+	// Due — созревшие по времени (send_at<=now, без when_online, вне аренды),
+	// по send_at, id.
 	Due(ctx context.Context, now time.Time, limit int) ([]domain.ScheduledMessage, error)
-	// DueWhenOnline — записи с флагом when_online (отправляются, когда собеседник
-	// приватного чата онлайн; момент проверяет воркер через PresenceQuery).
-	DueWhenOnline(ctx context.Context, limit int) ([]domain.ScheduledMessage, error)
-	// UpdateSendAt переносит запланированное сообщение на новое время (reschedule).
-	UpdateSendAt(ctx context.Context, id int64, sendAt time.Time) error
+	// Claim берёт строку в аренду публикации на lease и отдаёт свежей —
+	// только если она на том же сроке (sendAt/whenOnline) и не в аренде;
+	// countAttempt — attempts+1 (воркер). ok=false — строку сняли, перенесли
+	// или публикуют.
+	Claim(ctx context.Context, id int64, sendAt time.Time, whenOnline bool, lease time.Duration, countAttempt bool) (domain.ScheduledMessage, bool, error)
+	// Release снимает аренду; retryAfter > 0 — отступ воркера (Due и
+	// WhenOnlineIn строку до него не отдают).
+	Release(ctx context.Context, id int64, retryAfter time.Duration) error
+	// Reschedule переставляет опубликованный срок повтора from → to (тот же
+	// id), снимает аренду, occurrence+1; ok=false — строку сняли или перенесли.
+	Reschedule(ctx context.Context, id int64, from, to time.Time) (domain.ScheduledMessage, bool, error)
+	// LockForPublish блокирует строку до конца транзакции (FOR UPDATE);
+	// false — строки уже нет.
+	LockForPublish(ctx context.Context, id int64) (bool, error)
+	// TakePaidByChat снимает оплаченные при постановке строки чата (удаление
+	// группы) и отдаёт их — для возврата звёзд.
+	TakePaidByChat(ctx context.Context, chatID int64) ([]domain.ScheduledMessage, error)
+	// LockQueue — транзакционная блокировка очереди автора в чате (лимит 100).
+	LockQueue(ctx context.Context, chatID, senderID int64) error
+	// WhenOnlineWaits — все пары «чат + автор + собеседник», у которых есть
+	// отложенные «когда в сети» (НО-2: проверяется присутствие КАЖДОГО
+	// собеседника, окно по created_at больше не голодает).
+	WhenOnlineWaits(ctx context.Context) ([]ScheduledWait, error)
+	// WhenOnlineIn — отложенные «когда в сети» автора в чате вне аренды, по
+	// порядку постановки.
+	WhenOnlineIn(ctx context.Context, chatID, senderID int64) ([]domain.ScheduledMessage, error)
+	// Update переписывает изменяемое у стоящей строки вне аренды и на
+	// прочитанном сроке (oldAt/oldWhenOnline): text, entities, send_at,
+	// when_online, repeat_period. Снятой, публикуемой или переставленной —
+	// domain.ErrNotFound.
+	Update(ctx context.Context, m domain.ScheduledMessage, oldAt time.Time, oldWhenOnline bool) error
+	// SetWebPage пишет превью ссылки отложенного (P1); nil — снять.
+	SetWebPage(ctx context.Context, id int64, wp *domain.WebPagePreview) error
+	// SetWebPageIfSame — догоняющее превью отложенного (P1): пишет wp, только
+	// если строка стоит вне аренды и всё ещё с тем текстом, сущностями и
+	// решением о превью (params.web_page), по которым карточку собирали.
+	// ok=false — строку правили, публикуют или сняли: карточка устарела.
+	SetWebPageIfSame(ctx context.Context, id int64, wp *domain.WebPagePreview, text string, entities domain.MessageEntities, choice *domain.WebPageInput) (bool, error)
+	// SetWebPageChoice переписывает в снимке решение о превью (params.web_page;
+	// nil — убрать) — правка отложенного с no_webpage/invert_media/media.
+	SetWebPageChoice(ctx context.Context, id int64, choice *domain.WebPageInput) error
+}
+
+// ScheduledWait — ожидание «когда в сети»: чат, автор и собеседник лички.
+type ScheduledWait struct {
+	ChatID, SenderID, PeerID int64
 }
 
 // PresenceQuery отвечает, онлайн ли пользователь (Redis presence). Опционален —
@@ -909,6 +1033,9 @@ type StarsRepo interface {
 	// AddBalance атомарно меняет баланс на delta (может быть отрицательной);
 	// возвращает новый баланс. При недостатке средств — domain.ErrForbidden.
 	AddBalance(ctx context.Context, userID, delta int64) (int64, error)
+	// TakeUpTo атомарно снимает с баланса до max звёзд (не уводя в минус);
+	// возвращает новый баланс.
+	TakeUpTo(ctx context.Context, userID, max int64) (int64, error)
 	// Catalog — доступные для покупки подарки (без распроданных сверху).
 	Catalog(ctx context.Context) ([]domain.StarGift, error)
 	// GiftByID — позиция каталога по id.

@@ -42,7 +42,7 @@ import (
 // сознательно не производим. Каждая строка — утверждение, а не забывчивость.
 //
 // Необязательные пропуски (message.saved_peer_id, via_bot_id, post_author,
-// pFlags.out/silent/noforwards/invert_media, messageReplies.max_id/read_max_id,
+// pFlags.out/silent/noforwards/invert_media,
 // messageActionTopicCreate.icon_emoji_id, factCheck.need_check и прочие) сюда
 // попасть не могут по устройству сверщика — он спрашивает только про
 // ОБЯЗАТЕЛЬНЫЕ параметры. Они названы в шапке mtmessage.go, и это не
@@ -144,8 +144,6 @@ func allMessageConstructors() []any {
 	full.Reactions.TopReactors = []MessageReactor{NewMyMessageReactor(25)}
 	full.TTLPeriod = 86400
 	full.RandomID = "cm-1"
-	full.SendAt = now.Add(time.Hour).Unix()
-	full.WhenOnline = true
 	full.EncBody = "AQID"
 	full.DestructAt = ptr(now.Add(time.Minute).Format(time.RFC3339))
 	full.Effect = "fireworks"

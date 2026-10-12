@@ -43,8 +43,6 @@ describe('mapMessage', () => {
       grouped_id: undefined,
       effect_name: undefined,
       factcheck: undefined,
-      send_at: undefined,
-      when_online: undefined,
       enc_body: undefined,
       destruct_at: undefined,
     })
@@ -205,12 +203,11 @@ describe('mapMessage', () => {
     expect(mapMyMessage(raw({ reactions })).reactions).toBe(reactions)
   })
 
-  // ТРЕД поста канала — параметр самого сообщения, и переводить в нём нечего:
-  // номеров внутри (`max_id`/`read_max_id`) сервер не производит. Что ломается
-  // без этой строки маппера: счётчик комментариев и стек аватаров в футере
-  // поста пропадают вовсе — витрина читает их из сообщения
-  // (лента чата), а карты из отдельной ручки больше нет.
-  it('тред комментариев доезжает конструктором и не разбирается', () => {
+  // ТРЕД поста канала — параметр самого сообщения. Что ломается без этой
+  // строки маппера: счётчик комментариев и стек аватаров в футере поста
+  // пропадают вовсе — витрина читает их из сообщения (лента чата), а карты из
+  // отдельной ручки больше нет. Без номеров тред едет тем же объектом.
+  it('тред комментариев доезжает конструктором', () => {
     const replies = {
       _: 'messageReplies' as const,
       pFlags: { comments: true as const },
@@ -220,6 +217,19 @@ describe('mapMessage', () => {
     }
     const m = mapMyMessage(raw({ replies }))
     expect(m._ === 'message' ? m.replies : undefined).toBe(replies)
+  })
+
+  // Номера внутри треда (`max_id`/`read_max_id`) серверные — переводятся в
+  // клиентские на границе разбора (tweb appMessagesManager.ts:7095-7099), иначе
+  // сравнение с номерами ленты и `is-unread` футера считались бы в разных
+  // пространствах.
+  it('max_id/read_max_id треда переводятся в клиентские номера', () => {
+    const replies = { _: 'messageReplies' as const, pFlags: { comments: true as const }, replies: 2, channel_id: 77, max_id: 12, read_max_id: 10 }
+    const m = mapMyMessage(raw({ replies }))
+    const got = m._ === 'message' ? m.replies : undefined
+    expect(got?.max_id).toBe(generateMessageId(12))
+    expect(got?.read_max_id).toBe(generateMessageId(10))
+    expect(replies.max_id).toBe(12) // вход не мутируется
   })
 })
 

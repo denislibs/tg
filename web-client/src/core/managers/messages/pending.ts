@@ -156,6 +156,10 @@ export interface SendFileArgs extends MessageSendingParams {
 interface PendingDetails {
   peerId: number
   threadRootId?: number | null
+  /** Хранилище, где лежит временный бабл, — tweb `PendingMessageDetails.storage`:
+   *  история чата (`msgsFor`) либо хранилище отложенных пира (`scheduledFor`,
+   *  tweb `beforeMessageSending` :4370-4372). */
+  storage: Map<number, MyMessage>
   /** позиция в окне (у нас порядок задаёт seq, в tweb — временный mid) */
   tempId: number
   /** окна, куда бабл вставлен: основное чата и, для тред-сообщения, окно треда */
@@ -181,6 +185,16 @@ export interface PendingCtx {
    *  растит его (`messagesManager.ts::appendNewest`, порт
    *  `++historyStorage.count`). Временный бабл сюда НЕ ходит: он не история. */
   appendNewest: (key: string, sa: SlicedArray<number>, id: number) => void
+  /** Хранилище отложенных пира — порт `getScheduledMessagesStorage` (tweb
+   *  appMessagesManager.ts:12386-12388, `??=`: заводится при первой отправке).
+   *  Владелец — `messagesManager` (секция «Запланированные»). */
+  scheduledFor: (peerId: number) => Map<number, MyMessage>
+  /** Ключ окна ленты отложенных (`chat.ts` — `${peerId}_scheduled`). */
+  scheduledKey: (peerId: number) => string
+  /** tweb `rootScope.dispatchEvent('scheduled_new', message)` из
+   *  `beforeMessageSending` (:4383-4388): бабл отложенного ложится в ленту
+   *  отложенных событием, а не операцией окна истории. */
+  scheduledNew: (message: MyMessage) => void
   /** id текущего пользователя. Временному баблу он больше НЕ нужен для `out`
    *  (флаг производит сервер, а у бабла он исходящий по определению) — нужен
    *  границе разбора, которая уточняет служебное действие. Геттер, а не
@@ -378,7 +392,7 @@ export function newPendingMethods(ctx: PendingCtx) {
    *  последнего занятого номера окна, а не «максимум + 1» и не отрицательное
    *  число. Дробь и есть признак «номер назначен клиентом» (`isLocalMessageId`),
    *  и она же держит бабл ПОСЛЕ последнего сообщения при сортировке. */
-  const tentativeId = (peerId: number, keys: string[]): number => {
+  const tentativeId = (peerId: number, keys: string[], threadRootId?: number | null): number => {
     const c = msgsFor(peerId)
     let max = 0
     for (const key of keys) {
@@ -387,6 +401,14 @@ export function newPendingMethods(ctx: PendingCtx) {
       for (const slice of sa.slices) for (const s of slice) if (s > max) max = s
     }
     for (const s of c.keys()) if (s > max) max = s
+    // Номер плашки «Обсуждение началось» (дробь поверх корня треда, лента —
+    // `bubbles.ts::threadServiceStartMessage`) занят: оригинал заводит её тем
+    // же `generateTempMessageId` с записью в реестр `tempMids`
+    // (appMessagesManager.ts:8793, :6956-6965), и следующий временный номер
+    // пира встаёт уже поверх неё. Без этого первый комментарий пустого треда
+    // получал номер плашки, и лента его не рисовала (бабл с таким адресом
+    // уже есть).
+    if (threadRootId) max = Math.max(max, generateTempMessageId(threadRootId))
     // Пустое окно: до первого сообщения занятых номеров нет, и клиентская
     // граница начинается с самого порога.
     return generateTempMessageId(Math.max(max, generateMessageId(0)))
@@ -394,19 +416,17 @@ export function newPendingMethods(ctx: PendingCtx) {
 
   /** Снять временный бабл из SSOT и срезов. Возвращает, был ли он там. */
   const dropTemp = (d: PendingDetails): boolean => {
-    const c = msgsFor(d.peerId)
-    const existed = c.delete(d.tempId)
+    const existed = d.storage.delete(d.tempId)
     for (const key of d.keys) slices.get(key)?.delete(d.tempId)
     return existed
   }
 
   /** Точечно поправить временный бабл в SSOT. */
   const patchTemp = (d: PendingDetails, upd: (m: MyMessage) => MyMessage): MyMessage | undefined => {
-    const c = msgsFor(d.peerId)
-    const cur = c.get(d.tempId)
+    const cur = d.storage.get(d.tempId)
     if (!cur) return undefined
     const next = upd(cur)
-    c.set(d.tempId, next)
+    d.storage.set(d.tempId, next)
     return next
   }
 
@@ -422,8 +442,9 @@ export function newPendingMethods(ctx: PendingCtx) {
     if (!d) return []
     pendingByClientId.delete(clientMsgId)
     dropTemp(d)
-    const c = msgsFor(d.peerId)
-    c.set(final.id, final)
+    d.storage.set(final.id, final)
+    // Окна истории растят счёт; у ленты отложенных срезов нет (`slices` её
+    // ключа не знает) — для неё это пустой проход.
     for (const key of d.keys) {
       const sa = slices.get(key)
       if (sa) appendNewest(key, sa, final.id)
@@ -502,12 +523,19 @@ export function newPendingMethods(ctx: PendingCtx) {
   }
 
   const insertPending = (e: PendingNewEvt): MessageOp[] => {
-    const keys = targetKeys(e.peer_id, e.thread_root_id)
+    // Отложенное — в хранилище отложенных пира, а не в историю (tweb
+    // `beforeMessageSending({isScheduled})`, :4370-4372, :4383-4388).
+    const scheduled = !!e.schedule_date
+    const storage = scheduled ? ctx.scheduledFor(e.peer_id) : msgsFor(e.peer_id)
+    const keys = scheduled ? [ctx.scheduledKey(e.peer_id)] : targetKeys(e.peer_id, e.thread_root_id)
     if (!keys.length) return []
     // Номер назначен КЛИЕНТОМ: дробь поверх последнего занятого (порт
     // `generateTempMessageId`). Отрицательного id больше нет — dedupKey отличает
-    // бабл по самой дробности, а не по знаку.
-    const id = tentativeId(e.peer_id, keys)
+    // бабл по самой дробности, а не по знаку. У отложенного — поверх номеров его
+    // хранилища: окон истории у ленты отложенных нет.
+    const id = scheduled
+      ? generateTempMessageId(Math.max(generateMessageId(0), ...storage.keys()))
+      : tentativeId(e.peer_id, keys, e.thread_root_id)
     const msg: MyMessage = {
       _: 'message',
       // `out` у бабла: он ИСХОДЯЩИЙ по определению — это сообщение зрителя,
@@ -524,6 +552,9 @@ export function newPendingMethods(ctx: PendingCtx) {
         // Сервер ставит media_unread на голосовые и кружки — отражаем сразу,
         // чтобы точка не «моргала» после ack.
         ...(e.type === 'voice' || e.type === 'roundVideo' ? { media_unread: true as const } : {}),
+        // tweb `saveMessages({isScheduled: true})` (:7042-7044) — флаг ставит
+        // сохранение в хранилище отложенных, у бабла тоже
+        ...(scheduled ? { is_scheduled: true as const } : {}),
       },
       id,
       // Автор бабла — send-as личность, если она выбрана: на проводе у эха там
@@ -533,7 +564,9 @@ export function newPendingMethods(ctx: PendingCtx) {
       peer_id: getOutputPeer(e.peer_id),
       peerId: e.peer_id,
       reply_to: replyHeaderFor(e),
-      date: Math.floor(Date.now() / 1000),
+      // tweb `generateOutgoingMessage`: `date: options.scheduleDate || tsNow(true)`
+      date: e.schedule_date || Math.floor(Date.now() / 1000),
+      ...(e.schedule_repeat_period ? { schedule_repeat_period: e.schedule_repeat_period } : {}),
       message: e.text,
       entities: e.entities,
       grouped_id: e.grouped_id,
@@ -571,9 +604,13 @@ export function newPendingMethods(ctx: PendingCtx) {
         : undefined,
       secret: e.secret,
     }
-    const d: PendingDetails = { peerId: e.peer_id, threadRootId: e.thread_root_id, tempId: id, keys, sequential: e.sequential }
+    const d: PendingDetails = { peerId: e.peer_id, threadRootId: e.thread_root_id, storage, tempId: id, keys, sequential: e.sequential }
     pendingByClientId.set(e.client_msg_id, d)
-    msgsFor(e.peer_id).set(id, msg)
+    storage.set(id, msg)
+    if (scheduled) {
+      ctx.scheduledNew(msg)
+      return []
+    }
     for (const key of keys) {
       const sa = slices.get(key)
       if (sa && !sa.findSlice(id)) sa.unshift(id)
@@ -628,16 +665,84 @@ export function newPendingMethods(ctx: PendingCtx) {
     const d = pendingByClientId.get(clientMsgId)
     if (!d) return []
     pendingByClientId.delete(clientMsgId)
-    const cur = msgsFor(d.peerId).get(d.tempId)
+    const cur = d.storage.get(d.tempId)
     if (!dropTemp(d) || !cur) return []
     return opsFor(d, (key) => ({ op: 'remove', key, msgId: cur.id }))
   }
+
+  /** Заявка временного бабла и кадр отправки одного файла — общее у
+   *  `sendFile` и `sendGrouped` (tweb `sendFile`, :1642-1790). */
+  const fileSendPlan = (o: SendFileArgs): { event: PendingNewEvt; wire: WireSendArgs; mime: string } => {
+    const mime = o.mime || o.file.type || 'application/octet-stream'
+    const localUrl = o.isMedia ? URL.createObjectURL(o.file) : undefined
+    const { params } = splitSendingParams(o)
+    const wire: WireSendArgs = {
+      peerId: o.peerId,
+      text: o.caption ?? '',
+      entities: o.entities ?? null,
+      clientMsgId: o.clientMsgId,
+      type: o.type,
+      groupedId: o.groupedId,
+      paidMediaPrice: o.paidMediaPrice ?? null,
+      mediaSpoiler: o.spoiler,
+      ...sendingParamsToWire(params),
+    }
+    const event: PendingNewEvt = {
+      peer_id: o.peerId,
+      thread_root_id: params.threadId ?? null,
+      client_msg_id: o.clientMsgId,
+      reply_to_id: params.replyToMsgId ?? null,
+      reply_quote_text: params.replyToQuote?.text,
+      reply_to_peer_id: params.replyToPeerId ?? undefined,
+      schedule_date: params.scheduleDate ?? undefined,
+      schedule_repeat_period: params.scheduleRepeatPeriod ?? undefined,
+      sender_id: o.senderId,
+      text: o.caption ?? '',
+      type: o.type,
+      entities: o.entities,
+      grouped_id: o.groupedId,
+      local_url: localUrl,
+      media: {
+        width: o.width, height: o.height, mime, size: o.file.size, name: o.fileName,
+        duration: o.duration,
+        // tweb `isAnimated` → `documentAttributeAnimated` в собранном документе.
+        animated: o.isAnimated,
+        // Те же байты пиков, что уедут в аплоад: волна на бабле «отправляется…»
+        // рисуется сразу и не меняется после ack — сервер вернёт их же.
+        waveform: o.waveform ? b64FromBytes(o.waveform) : undefined,
+        // Своя отправка со спойлером обязана показать спойлер СРАЗУ: в tweb
+        // попап отправки уже накрыл превью (applyMediaSpoiler), и бабл не
+        // должен на миг обнажить медиа до эха сервера.
+        spoiler: o.spoiler,
+      },
+      // `sequential` здесь НЕ ставится — 1:1 с tweb `sendFile`
+      // (appMessagesManager.ts:1784-1790, единственный send-путь оригинала без
+      // этой опции): между баблом и кадром стоит аплоад, за время которого
+      // вперёд успевает уйти другое сообщение, и серверный порядок разойдётся
+      // с позицией бабла. Такой бабл лента перекладывает общим путём.
+    }
+    return { event, wire, mime }
+}
 
   /** Порт tweb `upload()` внутри `sendFile` (:1642-1775): отгрузка байтов, затем
    *  отправка кадра уже с media_id. Пинг «отправляет фото/файл…» — порт
    *  `setTyping(peerId, {_: actionName})` из того же места. Ошибка/отмена —
    *  `cancelPendingMessage`/`toggleError` там же. */
   const uploadAndSend = async (o: SendFileArgs, mime: string, wire: WireSendArgs): Promise<number | null> => {
+    const mediaId = await uploadFile(o, mime)
+    if (mediaId !== null) sendUploaded(o, wire, mediaId)
+    return mediaId
+  }
+
+  /** Байты ушли — бабл получает media_id, на сервер уходит кадр отправки. */
+  const sendUploaded = (o: SendFileArgs, wire: WireSendArgs, mediaId: number) => {
+    emit(attachPendingMedia(o.clientMsgId, mediaId))
+    ctx.send({ ...wire, mediaId })
+  }
+
+  /** Отгрузка байтов одного файла; `null` — сорвалась или отменена (бабл
+   *  помечен упавшим либо уже снят). */
+  const uploadFile = async (o: SendFileArgs, mime: string): Promise<number | null> => {
     ctx.uploadProgress(o.clientMsgId, 0, 1)
     // Пинг сразу и каждые UPLOAD_TYPING_MS — TTL приёмника вдвое больше.
     const action = o.uploadAction
@@ -652,8 +757,6 @@ export function newPendingMethods(ctx: PendingCtx) {
         width: o.width, height: o.height, duration: o.duration,
         fileName: o.fileName, waveform: o.waveform, progressId: o.clientMsgId,
       })
-      emit(attachPendingMedia(o.clientMsgId, mediaId))
-      ctx.send({ ...wire, mediaId })
       return mediaId
     } catch {
       // Отменённый аплоад бабл уже снял (cancelPending) — fail тогда no-op.
@@ -703,6 +806,8 @@ export function newPendingMethods(ctx: PendingCtx) {
         reply_to_id: params.replyToMsgId ?? null,
         reply_quote_text: params.replyToQuote?.text,
         reply_to_peer_id: params.replyToPeerId ?? undefined,
+        schedule_date: params.scheduleDate ?? undefined,
+        schedule_repeat_period: params.scheduleRepeatPeriod ?? undefined,
         // Порт tweb `sendText → beforeMessageSending({sequential: true})`
         // (appMessagesManager.ts:1503-1508): байтов нет, кадр уходит тем же
         // ходом, что и бабл, — позиция внизу окна за ним и останется.
@@ -726,54 +831,41 @@ export function newPendingMethods(ctx: PendingCtx) {
      *  загруженным файлом (автосохранение отправленного Tenor-гифа в /gifs/saved);
      *  `null` = аплоад сорвался или был отменён. */
     async sendFile(o: SendFileArgs): Promise<{ mediaId: number | null }> {
-      const mime = o.mime || o.file.type || 'application/octet-stream'
-      const localUrl = o.isMedia ? URL.createObjectURL(o.file) : undefined
-      const { params } = splitSendingParams(o)
-      const wire: WireSendArgs = {
-        peerId: o.peerId,
-        text: o.caption ?? '',
-        entities: o.entities ?? null,
-        clientMsgId: o.clientMsgId,
-        type: o.type,
-        groupedId: o.groupedId,
-        paidMediaPrice: o.paidMediaPrice ?? null,
-        mediaSpoiler: o.spoiler,
-        ...sendingParamsToWire(params),
-      }
+      const { event, wire, mime } = fileSendPlan(o)
       let sent: Promise<number | null> = Promise.resolve(null)
-      beforeMessageSending({
-        peer_id: o.peerId,
-        thread_root_id: params.threadId ?? null,
-        client_msg_id: o.clientMsgId,
-        reply_to_id: params.replyToMsgId ?? null,
-        reply_quote_text: params.replyToQuote?.text,
-        reply_to_peer_id: params.replyToPeerId ?? undefined,
-        sender_id: o.senderId,
-        text: o.caption ?? '',
-        type: o.type,
-        entities: o.entities,
-        grouped_id: o.groupedId,
-        local_url: localUrl,
-        media: {
-          width: o.width, height: o.height, mime, size: o.file.size, name: o.fileName,
-          duration: o.duration,
-          // tweb `isAnimated` → `documentAttributeAnimated` в собранном документе.
-          animated: o.isAnimated,
-          // Те же байты пиков, что уедут в аплоад: волна на бабле «отправляется…»
-          // рисуется сразу и не меняется после ack — сервер вернёт их же.
-          waveform: o.waveform ? b64FromBytes(o.waveform) : undefined,
-          // Своя отправка со спойлером обязана показать спойлер СРАЗУ: в tweb
-          // попап отправки уже накрыл превью (applyMediaSpoiler), и бабл не
-          // должен на миг обнажить медиа до эха сервера.
-          spoiler: o.spoiler,
-        },
-        // `sequential` здесь НЕ ставится — 1:1 с tweb `sendFile`
-        // (appMessagesManager.ts:1784-1790, единственный send-путь оригинала без
-        // этой опции): между баблом и кадром стоит аплоад, за время которого
-        // вперёд успевает уйти другое сообщение, и серверный порядок разойдётся
-        // с позицией бабла. Такой бабл лента перекладывает общим путём.
-      }, () => { sent = uploadAndSend(o, mime, wire) })
+      beforeMessageSending(event, () => { sent = uploadAndSend(o, mime, wire) })
       return { mediaId: await sent }
+    },
+
+    /**
+     * Альбом — порт tweb `sendGrouped` (appMessagesManager.ts:3593-3830):
+     * ВСЕ временные сообщения группы встают до сети и объявляются ОДНИМ ходом
+     * (там `processAfter` копит `beforeMessageSending` каждого `sendFile` и
+     * зовёт их разом, :3672-3727), поэтому бабл-альбом появляется сразу целиком,
+     * а не одиночным фото. Затем отгружаются все файлы, и только потом уходит
+     * отправка — у tweb один `messages.sendMultiMedia` (:3776); у нас пакетного
+     * метода на проводе нет, кадры уходят по порядку группы.
+     */
+    async sendGrouped(items: SendFileArgs[]): Promise<void> {
+      const plans = items.map(fileSendPlan)
+      emit(plans.flatMap(({ event }) => insertPending(event)))
+      const mediaIds = await Promise.all(items.map((o, i) => uploadFile(o, plans[i].mime)))
+      // Отменённая ячейка (её бабла в реестре уже нет) из отправки выпадает
+      // (tweb `UPLOAD_CANCELED` → `undefined`, :3831-3834; `inputs.filter(Boolean)`).
+      // Сорвавшийся аплоад остальной ячейки валит ВСЮ отправку: у tweb
+      // `toggleError` этой ячейки и `throw` — `Promise.all` отклоняется и
+      // `sendMultiMedia` не уходит (:3836-3840); неполного альбома собеседник не
+      // получит. Помечена упавшей у нас она уже в `uploadFile`.
+      const alive = items.map((o, i) => ({ o, wire: plans[i].wire, mediaId: mediaIds[i] }))
+        .filter(({ o }) => pendingByClientId.has(o.clientMsgId))
+      if (alive.some(({ mediaId }) => mediaId === null)) return
+      // Подпись одна на альбом и уходит с первой ОТПРАВЛЯЕМОЙ ячейкой (tweb
+      // :3879-3884 — `caption` отдаётся первому `inputSingleMedia` и гасится).
+      const caption = plans.find(({ wire }) => wire.text)?.wire
+      alive.forEach(({ o, wire, mediaId }, i) => {
+        const withCaption = caption ? { ...wire, text: i === 0 ? caption.text : '', entities: i === 0 ? caption.entities : null } : wire
+        sendUploaded(o, withCaption, mediaId!)
+      })
     },
 
     /** Отправка сорвалась на пути, который идёт мимо `sendFile` (секретный чат:
@@ -812,7 +904,7 @@ export function newPendingMethods(ctx: PendingCtx) {
     ackPendingMessage(ack: AckEvt): MessageOp[] {
       const d = pendingByClientId.get(ack.client_msg_id)
       if (!d) return []
-      const cur = msgsFor(d.peerId).get(d.tempId)
+      const cur = d.storage.get(d.tempId)
       if (!cur) return []
       const next = {
         ...cur,

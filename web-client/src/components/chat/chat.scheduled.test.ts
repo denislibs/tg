@@ -195,4 +195,65 @@ describe('лента отложенных (ChatType.Scheduled)', () => {
 
     expect(bubbleMids(c)).toEqual([5])
   })
+
+  // tweb bubbleGroups.ts:411-412: лента отложенных идёт по дате отправки, номер —
+  // лишь порядок постановки.
+  it('порядок баблов — по дате отправки, а не по номеру', async() => {
+    const { c } = await openScheduled([scheduled(5, today()), scheduled(6, today() - 3600)])
+    await vi.waitFor(() => expect(bubbleMids(c)).toEqual([6, 5]))
+  })
+
+  // tweb `message_sent` (bubbles.ts:1185-1187, :1234-1240): свой бабл в ленте
+  // отложенных финализируется без перестановки, а если до отправки ≤ 10 с —
+  // снимается (`history_update` у Scheduled оригинал игнорирует, :1003).
+  it('финализация своего бабла: новый номер на том же узле; до отправки ≤ 10 с — бабл снят', async() => {
+    const { c } = await openScheduled([scheduled(5, today())])
+    await vi.waitFor(() => expect(bubbleMids(c)).toEqual([5]))
+    const storageKey = `${FRIEND}_scheduled`
+    const withRandom = (m: MyMessage, randomId: string) => ({ ...m, random_id: randomId }) as MyMessage
+
+    const far = Math.floor(Date.now() / 1000) + 3 * 86400
+    rootScope.dispatchEventSingle('scheduled_new', withRandom(scheduled(5.5, far), 'c1'))
+    await vi.waitFor(() => expect(bubbleMids(c)).toEqual([5, 5.5]))
+    const temp = c.bubbles.chatInner.querySelector('.bubble[data-mid="5.5"]')!
+    const series = temp.closest('.bubbles-group')
+    // перестановка (общий путь) сняла бы бабл из серии и разложила заново
+    const moved = vi.fn()
+    const mo = new MutationObserver((records) => { if(records.some((r) => [...r.removedNodes].includes(temp))) moved() })
+    mo.observe(c.bubbles.chatInner, { childList: true, subtree: true })
+    rootScope.dispatchEventSingle('history_update', { storageKey, message: withRandom(scheduled(9, far), 'c1'), tempId: 5.5 })
+    await vi.waitFor(() => expect(bubbleMids(c)).toEqual([5, 9]))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    mo.disconnect()
+    expect(c.bubbles.chatInner.querySelector('.bubble[data-mid="9"]')).toBe(temp)
+    expect(temp.closest('.bubbles-group')).toBe(series)
+    expect(moved).not.toHaveBeenCalled()
+
+    const soon = Math.floor(Date.now() / 1000) + 5
+    rootScope.dispatchEventSingle('scheduled_new', withRandom(scheduled(9.5, soon), 'c2'))
+    await vi.waitFor(() => expect(bubbleMids(c)).toContain(9.5))
+    rootScope.dispatchEventSingle('history_update', { storageKey, message: withRandom(scheduled(10, soon), 'c2'), tempId: 9.5 })
+    await vi.waitFor(() => expect(bubbleMids(c)).toEqual([5, 9]))
+  })
+
+  // Альбом отложенных приходит кадрами `updateNewScheduledMessage` по одному —
+  // второе сообщение собирает его в тот же бабл (порт `grouped_edit`, tweb bubbles.ts:1472-1490).
+  it('альбом, пришедший по одному сообщению, — один бабл с раскладкой альбома', async() => {
+    const photo = (id: number) => {
+      const m = makeMessage({ id, peerId: FRIEND, fromId: ME, text: '', date: today(), out: true, groupedId: 77, media: { _: 'messageMediaPhoto', photo: { _: 'photo', id: 500 + id, access_hash: '0', file_reference: [], date: 0, sizes: [{ _: 'photoSize', type: 'x', w: 320, h: 240, size: 100 }], dc_id: 0 } } as never })
+      m.pFlags.is_scheduled = true
+      return m
+    }
+    const { c } = await openScheduled([scheduled(5, today() - 60)])
+    await vi.waitFor(() => expect(bubbleMids(c)).toEqual([5]))
+
+    rootScope.dispatchEventSingle('scheduled_new', photo(6))
+    await vi.waitFor(() => expect(bubbleMids(c)).toEqual([5, 6]))
+    rootScope.dispatchEventSingle('scheduled_new', photo(7))
+    await vi.waitFor(() => {
+      const album = c.bubbles.chatInner.querySelector<HTMLElement>('.bubble[data-mid="6"]')!
+      expect(album.classList.contains('is-album')).toBe(true)
+    })
+    expect(bubbleMids(c)).toEqual([5, 6])
+  })
 })

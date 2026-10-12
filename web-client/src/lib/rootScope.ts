@@ -19,6 +19,7 @@ import type {
   PollUpdateEvt, ChecklistUpdateEvt, GiveawayUpdateEvt, BoostUpdateEvt, BalanceUpdateEvt,
   ViewsUpdateEvt, RepliesUpdateEvt, HistoryCountEvt,
   PinnedForumTopicEvt,
+  ReadDiscussionEvt,
 } from '@core/realtime/events'
 import type { MyMessage } from '@core/models'
 import type { GroupCallFrame } from '@core/calls/groupCallEngine'
@@ -81,6 +82,7 @@ export type BroadcastEvents = {
   // Без EventMeta: операции порождает владелец, а не funnel курсора.
   [RT.forumTopicOp]: [{ ops: ForumTopicOp[] }]
   [RT.pinnedForumTopic]: [PinnedForumTopicEvt, EventMeta?]
+  [RT.readDiscussion]: [ReadDiscussionEvt, EventMeta?]
   // Кадры диалогов — конструкторы схемы, а не пары «ключ пира + признак»:
   // закрепление это БИТ, архив это НОМЕР ПАПКИ, мьют это СРОК внутри настроек.
   // Прежние типы здесь описывали форму, которой на проводе не существовало уже
@@ -246,9 +248,11 @@ export type BroadcastEvents = {
   'contacts_update': [UserId]
 
   // tweb rootScope.ts:131-132 — лента отложенных (`ChatType.Scheduled`): появилось
-  // отложенное / отложенные ушли (отправлены сейчас или удалены). Шлёт воркер
-  // (`messagesManager` — `scheduleMessage`/`sendScheduledMessages`/
-  // `deleteScheduledMessages`), слушает лента (`chat/bubbles.ts`, tweb :2558-2575).
+  // отложенное / отложенные ушли (отправлены или удалены). Шлёт воркер — владелец
+  // хранилища отложенных (`messagesManager`: своя постановка — `beforeMessageSending`,
+  // кадры `updateNewScheduledMessage`/`updateDeleteScheduledMessages`, tweb
+  // :4383-4388, :11773-11815), слушают лента (`chat/bubbles.ts`, tweb :2558-2575) и
+  // ввод (кнопка-календарик и закрытие правки, tweb input.ts:922-946, :1744-1748).
   'scheduled_new': [MyMessage]
   'scheduled_delete': [{ peerId: PeerId; mids: number[] }]
 

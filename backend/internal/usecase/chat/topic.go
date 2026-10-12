@@ -2,7 +2,9 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -177,15 +179,253 @@ func (i *Interactor) topicByNumber(ctx context.Context, chatID, number int64) (d
 	return i.topics.ByNumber(ctx, chatID, number)
 }
 
-// MarkTopicRead помечает тему прочитанной до upToSeq (Telegram readDiscussion
-// с threadId): поднимает персональный last_read_seq темы. Тема — номером
-// (General — 1). Кадров и пересчёта чата здесь нет — это волна 2 (БЭК-2).
-func (i *Interactor) MarkTopicRead(ctx context.Context, chatID, number, userID, upToSeq int64) error {
-	t, err := i.memberTopic(ctx, chatID, number, userID)
+// ReadDiscussion — порт messages.readDiscussion (tweb readHistory с threadId,
+// appMessagesManager.ts:9186-9210): тред number прочитан до readMaxID. Тред —
+// тема форума (General — 1), тред комментариев (номер зеркала) или тред
+// сообщения в обычной группе. Двигается горизонт ТРЕДА; у треда вне форума —
+// и диалог группы, как tweb на месте (курсор сведён с группой,
+// ApplyThreadReadToGroup), у темы форума горизонт чата не трогается.
+//
+// Эффект как у tweb onUpdateReadHistory (:10795-10990): гаснет непрочитанное
+// этой темы (горизонт треда), снимаются упоминания треда до readMaxID — и в
+// счётчике «@» чата (:10969-10980). У форума unread_count чата — сумма по
+// темам (В-8 спецификации; tweb бейдж форума считает по темам сам,
+// :14233-14249, серверный нужен пуш-бейджу) — пересчитывается.
+//
+// Кадры: своим устройствам — updateReadChannelDiscussionInbox; остальным, у
+// кого вырос горизонт ✓✓ треда (MAX горизонтов остальных), —
+// updateReadChannelDiscussionOutbox. Горизонт не вырос — ни записи, ни кадров.
+//
+// Читать тред может участник; не участник — только тред комментариев
+// обсуждения, которое он читает (у него своя строка состояния треда).
+func (i *Interactor) ReadDiscussion(ctx context.Context, chatID, number, userID, readMaxID int64) error {
+	if i.topics == nil {
+		return domain.ErrNotFound
+	}
+	th, err := i.discussionThread(ctx, chatID, number, userID)
 	if err != nil {
 		return err
 	}
-	return i.topics.SetTopicRead(ctx, chatID, t.RootMsgID, userID, upToSeq)
+	last, err := i.chats.MaxSeq(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	if readMaxID > last {
+		readMaxID = last
+	}
+	addr, err := i.peerAddress(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	type readFrame struct {
+		uid  int64
+		body map[string]any
+		pts  int64
+	}
+	var frames []readFrame
+	// ✓✓ группы: тред вне форума поднял её горизонт — остальным участникам
+	// тот же updateReadHistoryOutbox, что у прочтения группы (journalRead).
+	var groupRead struct {
+		members []int64
+		seq     int64
+		pts     map[int64]int64
+	}
+	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if e := i.topics.LockThread(ctx, chatID, th.stateRoot); e != nil {
+			return e
+		}
+		old, e := i.topics.ThreadHorizon(ctx, chatID, th.stateRoot, userID)
+		if e != nil || readMaxID <= old {
+			return e
+		}
+		before, e := i.topics.ThreadHorizons(ctx, chatID, th.stateRoot)
+		if e != nil {
+			return e
+		}
+		if e := i.topics.SetTopicRead(ctx, chatID, th.stateRoot, userID, readMaxID); e != nil {
+			return e
+		}
+		if _, e := i.topics.ClearThreadMentions(ctx, chatID, userID, th.filterRoot, readMaxID); e != nil {
+			return e
+		}
+		if th.forum {
+			if _, e := i.topics.RecountForumUnread(ctx, chatID, userID); e != nil {
+				return e
+			}
+		} else {
+			// Тред вне форума: курсор сведён с группой, и tweb правит её диалог
+			// (горизонт, счётчик, упоминания) — appMessagesManager.ts:10814-10816.
+			raised, seq, e := i.topics.ApplyThreadReadToGroup(ctx, chatID, userID, th.filterRoot, old, readMaxID, last)
+			if e != nil {
+				return e
+			}
+			if raised && i.updates != nil {
+				members, e := i.chats.MemberIDs(ctx, chatID)
+				if e != nil {
+					return e
+				}
+				others := slices.DeleteFunc(slices.Clone(members), func(u int64) bool { return u == userID })
+				slices.Sort(others)
+				pts, e := i.journalRead(ctx, addr, others, userID, seq, 0)
+				if e != nil {
+					return e
+				}
+				groupRead.members, groupRead.seq, groupRead.pts = others, seq, pts
+			}
+		}
+		// Журнал — в той же транзакции, что горизонт (как MarkRead): иначе
+		// сбой после коммита оставил бы другие устройства без кадра, а повтор
+		// прочтения его уже не разошлёт — горизонт вырос.
+		frames = append(frames, readFrame{uid: userID, body: structPayload(
+			domain.NewUpdateReadChannelDiscussionInbox(addr.forViewer(userID).ToChatID(), number, readMaxID))})
+		for _, uid := range outboxRaised(before, userID, readMaxID) {
+			frames = append(frames, readFrame{uid: uid, body: structPayload(
+				domain.NewUpdateReadChannelDiscussionOutbox(addr.forViewer(uid).ToChatID(), number, readMaxID))})
+		}
+		if i.updates == nil {
+			return nil
+		}
+		date := nowUnix()
+		for k := range frames {
+			payload, e := json.Marshal(frames[k].body)
+			if e != nil {
+				return e
+			}
+			if frames[k].pts, e = i.updates.AppendUpdate(ctx, frames[k].uid, 1, date, "read_discussion", payload); e != nil {
+				return e
+			}
+		}
+		return nil
+	})
+	if err != nil || len(frames) == 0 {
+		return err
+	}
+	i.invalidateDialogs(ctx, userID)
+	if len(groupRead.members) > 0 {
+		// У остальных сменился read_outbox_max_id строки группы.
+		i.invalidateDialogs(ctx, groupRead.members...)
+		i.publishRead(ctx, addr, groupRead.members, userID, groupRead.seq, 0, groupRead.pts)
+	}
+	if i.publisher != nil {
+		for _, f := range frames {
+			_ = i.publisher.PublishToUser(ctx, f.uid, framePts("read_discussion", f.body, f.pts))
+		}
+	}
+	return nil
+}
+
+// countUnread — непрочитанное участника при горизонте чата readSeq для
+// chat_members.unread_count. У форума — сумма по темам (у каждой свой горизонт
+// треда, В-8 спецификации), иначе — сообщения выше горизонта чата; без
+// лишнего запроса «форум ли» (CountChatUnread решает в одном SQL).
+func (i *Interactor) countUnread(ctx context.Context, chatID, userID, readSeq int64) (int, error) {
+	if i.topics != nil {
+		return i.topics.CountChatUnread(ctx, chatID, userID, readSeq)
+	}
+	return i.msgs.CountUnread(ctx, chatID, userID, readSeq)
+}
+
+// outboxRaised — кому прочтение читателя reader до h подняло горизонт ✓✓
+// треда: у получателя x это MAX горизонтов всех, кроме x. Читатель и так
+// продвинулся (h > его прежнего), значит у x горизонт вырос ровно тогда, когда
+// h выше горизонтов всех, кроме x и читателя. Возвращается по возрастанию.
+func outboxRaised(horizons map[int64]int64, reader, h int64) []int64 {
+	var top1, top2 int64 // два наибольших горизонта среди всех, кроме читателя
+	var top1User int64
+	for u, v := range horizons {
+		if u == reader {
+			continue
+		}
+		switch {
+		case v > top1:
+			top2, top1, top1User = top1, v, u
+		case v > top2:
+			top2 = v
+		}
+	}
+	var out []int64
+	for u := range horizons {
+		if u == reader {
+			continue
+		}
+		others := top1
+		if u == top1User {
+			others = top2
+		}
+		if h > others {
+			out = append(out, u)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// discussionThreadRef — тред прочтения: ключ строки состояния (у General — 0,
+// как в topic_user_state) и корень для выборок (у General — страж).
+type discussionThreadRef struct {
+	stateRoot  int64
+	filterRoot int64
+	forum      bool
+}
+
+// discussionThread переводит номер треда в ключи и проверяет доступ: в
+// форуме — тема, General или зеркало поста (requireForumThread, иначе
+// TOPIC_ID_INVALID); вне форума — любое сообщение чата. Не участнику —
+// только зеркало поста в группе обсуждения, которую он читает.
+func (i *Interactor) discussionThread(ctx context.Context, chatID, number, userID int64) (discussionThreadRef, error) {
+	member, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil {
+		return discussionThreadRef{}, err
+	}
+	forum := i.groups != nil && i.isForum(ctx, chatID)
+	if forum && number == domain.GeneralTopicID {
+		if !member {
+			return discussionThreadRef{}, domain.ErrNotFound
+		}
+		return discussionThreadRef{stateRoot: 0, filterRoot: domain.GeneralThreadRoot, forum: true}, nil
+	}
+	rootID, err := i.msgs.IDBySeq(ctx, chatID, number)
+	if err != nil {
+		return discussionThreadRef{}, err
+	}
+	if forum {
+		if err := i.requireForumThread(ctx, chatID, rootID); err != nil {
+			return discussionThreadRef{}, err
+		}
+	}
+	if !member {
+		if err := i.requireCommentsReader(ctx, chatID, rootID, userID); err != nil {
+			return discussionThreadRef{}, err
+		}
+	}
+	return discussionThreadRef{stateRoot: rootID, filterRoot: rootID, forum: forum}, nil
+}
+
+// requireCommentsReader — не участник читает тред rootID группы chatID только
+// как тред комментариев: группа — обсуждение канала, он её читает
+// (RequireDiscussionRead), корень — зеркало поста.
+func (i *Interactor) requireCommentsReader(ctx context.Context, chatID, rootID, userID int64) error {
+	if i.groups == nil {
+		return domain.ErrNotFound
+	}
+	disc, err := i.groups.IsDiscussionGroup(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	if !disc {
+		return domain.ErrNotFound
+	}
+	if err := i.RequireDiscussionRead(ctx, chatID, userID); err != nil {
+		return err
+	}
+	msgs, err := i.msgs.GetByIDs(ctx, []int64{rootID})
+	if err != nil {
+		return err
+	}
+	if len(msgs) != 1 || !msgs[0].IsDiscussionMirror {
+		return domain.ErrNotFound
+	}
+	return nil
 }
 
 // SetTopicMuteUntil пишет настройку уведомлений темы пользователя — срок
