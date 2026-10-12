@@ -89,6 +89,71 @@ func TestDrafts_ListAndSaveAreTheSameFrame(t *testing.T) {
 	}
 }
 
+// Ф-5 БЭК-2b: сохранение в личку с ответом и в «Избранное» отвечает Bool
+// (жалоба «PUT → 500» со стенда — рассинхрон бинаря и схемы, не код main);
+// решение о превью ссылки (no_webpage,
+// invert_media, media:inputMediaWebPage) возвращается списком 1:1 (tweb
+// appDraftsManager.ts:281-291, draftsAreEqual).
+func TestDrafts_PrivateSavedAndWebPage(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, idA := signUp(t, h, pool, "+79990070021")
+	_, idB := signUp(t, h, pool, "+79990070022")
+	rec := authedReq(t, h, http.MethodPost, "/chats", tokenA, map[string]int64{"user_id": idB})
+	created := createdPeerFrom(t, rec)
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(created)+"/messages", tokenA,
+		map[string]any{"text": "привет", "client_msg_id": "w1"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("первое сообщение: %d %s", rec.Code, rec.Body.String())
+	}
+	put := func(peer int64, body map[string]any) {
+		t.Helper()
+		if rec := authedReq(t, h, http.MethodPut, "/chats/"+itoa(peer)+"/draft", tokenA, body); rec.Code != http.StatusOK {
+			t.Fatalf("черновик %v: %d %s", body, rec.Code, rec.Body.String())
+		}
+	}
+	put(created, map[string]any{"message": "ответ", "reply_to": map[string]any{"_": "inputReplyToMessage", "reply_to_msg_id": 1}})
+	put(idA, map[string]any{"message": "себе"})
+	put(created, map[string]any{"message": "https://example.com", "no_webpage": true, "invert_media": true,
+		"media": map[string]any{"_": "inputMediaWebPage", "pFlags": map[string]any{"force_small_media": true, "optional": true}, "url": "https://example.com"}})
+
+	rec = authedReq(t, h, http.MethodGet, "/drafts", tokenA, nil)
+	var list struct {
+		Updates []struct {
+			Peer struct {
+				UserID int64 `json:"user_id"`
+			} `json:"peer"`
+			Draft struct {
+				Message string          `json:"message"`
+				PFlags  map[string]bool `json:"pFlags"`
+				Media   *struct {
+					Underscore string          `json:"_"`
+					PFlags     map[string]bool `json:"pFlags"`
+					URL        string          `json:"url"`
+				} `json:"media"`
+			} `json:"draft"`
+		} `json:"updates"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || len(list.Updates) != 2 {
+		t.Fatalf("список = %s", rec.Body.String())
+	}
+	for _, u := range list.Updates {
+		switch u.Peer.UserID {
+		case idA:
+			if u.Draft.Message != "себе" {
+				t.Fatalf("черновик «Избранного»: %+v", u.Draft)
+			}
+		case idB:
+			m := u.Draft.Media
+			if !u.Draft.PFlags["no_webpage"] || !u.Draft.PFlags["invert_media"] || m == nil || m.Underscore != "inputMediaWebPage" ||
+				m.URL != "https://example.com" || !m.PFlags["force_small_media"] || !m.PFlags["optional"] {
+				t.Fatalf("решение о превью в черновике: %s", rec.Body.String())
+			}
+		default:
+			t.Fatalf("чужой пир в списке: %s", rec.Body.String())
+		}
+	}
+}
+
 // Ф-5 п. 3 (A3-32): черновики в двух темах форума и в General — по ключу
 // треда; список и строки тем несут их с номером треда (tweb
 // appDraftsManager.ts:44-69, dialogs.ts:1693-1697).
