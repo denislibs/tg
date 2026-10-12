@@ -89,10 +89,12 @@ type ChatRepo interface {
 	// возвращает оставшееся число. NextMention — НОМЕР ближайшего
 	// непрочитанного упоминания с seq>afterSeq (domain.ErrNotFound, если нет).
 	AddMention(ctx context.Context, chatID, msgID, seq, userID int64) error
-	// MemberIDsByUsernames — участники чата с этими именами (@username, без
-	// учёта регистра). Имя чата/канала из общего пространства имён (миграция
-	// 0134) пользователем не резолвится, не-участник в ответ не попадает.
-	MemberIDsByUsernames(ctx context.Context, chatID int64, usernames []string) ([]int64, error)
+	// ParticipantIDsByUsernames — пользователи с этими именами (@username, без
+	// учёта регистра), которые в чате участвуют: состоят в нём или писали в
+	// него (гость обсуждения комментирует без вступления — его тоже
+	// упоминают). Имя чата/канала из общего пространства имён (миграция 0134)
+	// пользователем не резолвится, посторонний в ответ не попадает.
+	ParticipantIDsByUsernames(ctx context.Context, chatID int64, usernames []string) ([]int64, error)
 	// Строка упоминания живёт и после прочтения (message.mentioned), прочтение
 	// лишь гасит её «непрочитано» (media_unread у адресата). ReadMention —
 	// прочтение одного упоминания (readMessageContents), true — было
@@ -224,6 +226,8 @@ type GroupRepo interface {
 	// SetSignatures toggles channel post signatures (Telegram
 	// channels.toggleSignatures). profiles is forced off when signatures is off.
 	SetSignatures(ctx context.Context, chatID int64, signatures, profiles bool) error
+	// SetJoinToSend — chats.join_to_send (channels.toggleJoinToSend).
+	SetJoinToSend(ctx context.Context, chatID int64, on bool) error
 	// IsDiscussionGroup — chatID является discussion-группой какого-то канала
 	// (тред комментариев там читается и без членства, как ListComments).
 	IsDiscussionGroup(ctx context.Context, chatID int64) (bool, error)
@@ -699,6 +703,10 @@ type PushNotifier interface {
 	// это пробивает мьют чата, типа и темы, как в Telegram. topicRootID —
 	// корень темы (ключ topic_user_state, 0 — вне темы): мьют темы гасит пуш.
 	NotifyNewMessage(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, mentioned bool, topicRootID int64)
+	// NotifyGuest — пуш гостю обсуждения (не участнику) об ответе на его
+	// комментарий или упоминании: без гейта присутствия — живого кадра у
+	// гостя нет (группы у него нет, чата «Ответы» тоже).
+	NotifyGuest(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, topicRootID int64)
 	// NotifyChannelPost — пуш о посте broadcast-канала его подписчикам
 	// (recipients, без автора) одним батчем: кто онлайн и кому канал не
 	// замьючен, нотификатор решает пачкой. title — название канала (автор поста
@@ -870,6 +878,12 @@ type TopicRepo interface {
 	ThreadHorizon(ctx context.Context, chatID, rootMsgID, userID int64) (int64, error)
 	// ThreadHorizons — горизонты треда у всех читающих (участники и гости треда).
 	ThreadHorizons(ctx context.Context, chatID, rootMsgID int64) (map[int64]int64, error)
+	// ThreadReadOutbox — горизонт ✓✓ треда для зрителя: MAX горизонтов треда
+	// остальных читающих (read_outbox_max_id discussionMessage).
+	ThreadReadOutbox(ctx context.Context, chatID, rootMsgID, viewerID int64) (int64, error)
+	// ThreadReadStates — последний видимый номер и горизонт зрителя по тредам
+	// roots одним запросом (messageReplies.max_id/read_max_id).
+	ThreadReadStates(ctx context.Context, chatID, viewerID int64, roots []int64) (map[int64]domain.ThreadReadState, error)
 	// ClearThreadMentions снимает упоминания треда root (General — страж) до
 	// upToSeq и пересчитывает «@» чата.
 	ClearThreadMentions(ctx context.Context, chatID, userID, root, upToSeq int64) (int, error)

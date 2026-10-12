@@ -24,6 +24,21 @@ func (n *Notifier) NotifyNewMessage(ctx context.Context, recipientID, chatID, se
 	if online, _ := n.online.IsOnline(ctx, recipientID); online {
 		return
 	}
+	n.enqueue(ctx, recipientID, chatID, seq, senderID, text, peer, mentioned, topicRootID)
+}
+
+// NotifyGuest — пуш гостю обсуждения (комментирует, не вступая) об ответе на
+// его комментарий или упоминании. Гейта присутствия нет: живого кадра гостю
+// не уходит (группы у него нет), и сокет ничего ему не доставил. У Telegram
+// такое сообщение приходит в чат «Ответы» (tweb REPLIES_PEER_ID,
+// bubbles.ts:3757-3766) и уведомляет и онлайн; этого чата у нас нет, пуш —
+// замена (решение пользователя к В-2). Мьюты — как у упоминания.
+func (n *Notifier) NotifyGuest(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, topicRootID int64) {
+	n.enqueue(ctx, recipientID, chatID, seq, senderID, text, peer, true, topicRootID)
+}
+
+// enqueue — гейт настроек уведомлений и постановка пуша в очередь.
+func (n *Notifier) enqueue(ctx context.Context, recipientID, chatID, seq, senderID int64, text string, peer domain.PeerID, mentioned bool, topicRootID int64) {
 	// Muted per-chat, by the chat-type settings or per-topic (or lookup error)?
 	// Don't push — unless the recipient is mentioned / replied to.
 	notify, preview, err := n.notify.ShouldNotify(ctx, chatID, recipientID, topicRootID, mentioned)

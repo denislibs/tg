@@ -131,3 +131,11 @@ func TopicMuted(topicUntil *time.Time, chatMuted bool, now time.Time) bool {
 	}
 	return chatMuted
 }
+
+// ThreadReadState — состояние треда глазами зрителя для messageReplies поста
+// (max_id/read_max_id, tweb replies.ts:110-118): MaxID — последний видимый
+// номер треда, ReadMaxID — горизонт треда зрителя (max(запись треда,
+// горизонт группы) — то же правило, что ThreadHorizon). 0 — нет.
+type ThreadReadState struct {
+	MaxID, ReadMaxID int64
+}

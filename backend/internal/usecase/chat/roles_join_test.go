@@ -564,6 +564,8 @@ type fakeTopicRepo struct {
 	forumRecounts   int
 	// groupReads — вызовы ApplyThreadReadToGroup (root, merged, readMaxID, lastSeq).
 	groupReads [][4]int64
+	// threadMax — последний номер треда (chat, root) для ThreadReadStates.
+	threadMax map[[2]int64]int64
 }
 
 func newFakeTopicRepo() *fakeTopicRepo {
@@ -672,6 +674,31 @@ func (r *fakeTopicRepo) ThreadHorizons(_ context.Context, chatID, rootMsgID int6
 	for k, v := range r.reads {
 		if k[0] == chatID && k[1] == rootMsgID {
 			out[k[2]] = v
+		}
+	}
+	return out, nil
+}
+
+func (r *fakeTopicRepo) ThreadReadOutbox(_ context.Context, chatID, rootMsgID, viewerID int64) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var h int64
+	for k, v := range r.reads {
+		if k[0] == chatID && k[1] == rootMsgID && k[2] != viewerID && v > h {
+			h = v
+		}
+	}
+	return h, nil
+}
+
+func (r *fakeTopicRepo) ThreadReadStates(_ context.Context, chatID, viewerID int64, roots []int64) (map[int64]domain.ThreadReadState, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := map[int64]domain.ThreadReadState{}
+	for _, root := range roots {
+		st := domain.ThreadReadState{MaxID: r.threadMax[[2]int64{chatID, root}], ReadMaxID: r.reads[[3]int64{chatID, root, viewerID}]}
+		if st.MaxID > 0 || st.ReadMaxID > 0 {
+			out[root] = st
 		}
 	}
 	return out, nil

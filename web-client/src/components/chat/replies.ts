@@ -24,11 +24,6 @@
 // несколько, и второй уже появился — чип реакции (`chat/reactions.ts`).
 //
 // ─── Чего здесь нет и почему ────────────────────────────────────────────────
-//  • `is-unread` (синяя точка, replies.ts:105-116). Признак считается по
-//    `replies.read_max_id < replies.max_id`, а этих параметров сервер не
-//    производит вовсе (`backend/internal/domain/mtmessage.go:485-488`: горизонта
-//    чтения У ТРЕДА у нас нет). Ставить класс, условие которого невычислимо,
-//    значило бы объявить непрочитанность выдумкой.
 //  • ключ `ViewInChat` (replies.ts:102) — ветка чата `Replies`
 //    (`REPLIES_PEER_ID`), которого у нас нет как пира.
 //  • `subscribeRepliesThread` + `updateMessage(..., 'replies_updated')`
@@ -140,6 +135,14 @@ export function createRepliesElement(options: RepliesElementOptions): HTMLElemen
   //
   // Ветки `ViewInChat` (:99) у нас нет предмета: `replies` в опциях обязателен,
   // футер строится только за прошедшим гейт тредом.
+  // tweb :110-119 — синяя точка «есть новые комментарии»: горизонт треда
+  // зрителя ниже последнего номера треда (оба едут в messageReplies).
+  let isUnread = false
+  if (replies.replies && replies.read_max_id !== undefined && replies.max_id !== undefined) {
+    isUnread = replies.read_max_id < replies.max_id
+  }
+  element.classList.toggle('is-unread', isUnread)
+
   const textSpan = document.createElement('span')
   textSpan.classList.add('replies-footer-text')
   textSpan.append(repliesTextElement(replies.replies).element)

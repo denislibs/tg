@@ -76,7 +76,9 @@ const UnreadCountCap = 9999
 
 // unreadPostsCount — ОДНА формула непрочитанного на всех: посты чата chat
 // выше горизонта readSeq, не от viewer и не удалённые, не больше
-// UnreadCountCap. Её подставляют строка списка (dialogUnreadCount) и пересчёт
+// UnreadCountCap. Зеркало поста в группе обсуждения — ничьё (его автор —
+// канал, A1-13), поэтому непрочитано и у опубликовавшего пост админа. Её
+// подставляют строка списка (dialogUnreadCount) и пересчёт
 // при прочтении (MessagesRepo.CountUnread → still_unread_count), поэтому
 // бейдж в списке и после прочтения совпадает. Индекс —
 // idx_messages_unread_count (0142), index-only scan.
@@ -87,7 +89,7 @@ const UnreadCountCap = 9999
 // считать так же).
 func unreadPostsCount(chat, readSeq, viewer string) string {
 	return `(SELECT count(*) FROM (SELECT 1 FROM messages um WHERE um.chat_id = ` + chat +
-		` AND um.seq > ` + readSeq + ` AND um.sender_id <> ` + viewer +
+		` AND um.seq > ` + readSeq + ` AND (um.sender_id <> ` + viewer + ` OR um.is_discussion_mirror)` +
 		` AND ` + messageVisibleTo("um", viewer) + ` LIMIT ` + strconv.Itoa(UnreadCountCap) + `) uc)::int`
 }
 

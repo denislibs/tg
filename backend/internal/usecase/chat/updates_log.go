@@ -249,6 +249,11 @@ func (p *peerPayloads) bodyFor(viewerID int64) map[string]any {
 // остальных); то же с упоминанием. Автор ровно один, упомянутых — единицы,
 // поэтому батчей становится на пару больше, а не по батчу на человека.
 func (i *Interactor) appendByPeer(ctx context.Context, pp *peerPayloads, users []int64, date int64, ptsByUser map[int64]int64) error {
+	return i.appendByPeerAs(ctx, pp, users, date, "new_message", ptsByUser)
+}
+
+// appendByPeerAs — appendByPeer с видом записи журнала (edit_message у правки).
+func (i *Interactor) appendByPeerAs(ctx context.Context, pp *peerPayloads, users []int64, date int64, typ string, ptsByUser map[int64]int64) error {
 	byPeer := make(map[payloadKey][]int64, 3)
 	for _, uid := range users {
 		key := pp.key(uid)
@@ -259,7 +264,7 @@ func (i *Interactor) appendByPeer(ctx context.Context, pp *peerPayloads, users [
 		if err != nil {
 			return err
 		}
-		m, err := i.updates.AppendUpdateBulk(ctx, group, 1, date, "new_message", payload)
+		m, err := i.updates.AppendUpdateBulk(ctx, group, 1, date, typ, payload)
 		if err != nil {
 			return err
 		}

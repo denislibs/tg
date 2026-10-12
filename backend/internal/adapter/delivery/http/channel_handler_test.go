@@ -810,7 +810,7 @@ func TestGenericSend_ThreadRootID_PreMigrationPost_NoSentinelZeroCollapse(t *tes
 func TestCommentThreadHistory_HiddenMirrorRoot_NotForceShown(t *testing.T) {
 	h, pool := newMessagingRouter(t)
 	tokenA, _ := signUp(t, h, pool, "+79990009001")
-	tokenB, _ := signUp(t, h, pool, "+79990009002")
+	tokenB, idB := signUp(t, h, pool, "+79990009002")
 
 	rec := authedReq(t, h, http.MethodPost, "/channels", tokenA, map[string]any{
 		"title": "Discuss7", "username": "discusschan7", "is_public": true,
@@ -840,7 +840,13 @@ func TestCommentThreadHistory_HiddenMirrorRoot_NotForceShown(t *testing.T) {
 	disc := linkedPeerOf(t, h, tokenA, cid)
 	discCid := itoa(disc)
 
-	// B комментирует — заводит зеркало и авто-вступает в группу обсуждения.
+	// B — участник группы обсуждения (комментатора сервер больше не
+	// вступает сам, Ф-5 В-2; «удалить у себя» чужое и общая история группы —
+	// участнику). Комментарий заводит зеркало.
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+discCid+"/members", tokenA, map[string]any{"user_id": idB})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("add member: %d %s", rec.Code, rec.Body.String())
+	}
 	rec = authedReq(t, h, http.MethodPost, "/channels/"+cid+"/posts/"+itoa(post.ID)+"/comments", tokenB, map[string]any{
 		"text": "comment", "client_msg_id": "k1",
 	})
