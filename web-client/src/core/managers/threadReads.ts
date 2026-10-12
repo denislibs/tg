@@ -22,9 +22,15 @@
 // как у оригинала, только при найденном диалоге (`if(foundDialog)`,
 // :10919-10950): у темы — тема в кэше, у треда комментариев — диалог группы.
 //
-// Расхождение с оригиналом: `notification_reset`/`notification_cancel` и
-// `threadsToReplies` (счётчик непрочитанных комментариев у поста,
-// `replies_updated`) — предметов нет.
+// Прочтение треда перечитывает его пост (`threadsToReplies` → `updateMessage(…,
+// 'replies_updated')`, :10831-10836) — `onThreadRead`, ведёт менеджер сообщений.
+//
+// Расхождения с оригиналом: `notification_reset`/`notification_cancel` —
+// предметов нет. Своё прочтение перечитывает пост ПОСЛЕ ответа
+// `readDiscussion`, а не сразу: у оригинала `channels.getMessages` уходит тем же
+// соединением следом за `messages.readDiscussion` (`:9186-9209`, перечитывание —
+// после `pause(0)`), и сервер отвечает уже с новым горизонтом; наши REST-запросы
+// идут параллельно, и перечитанный раньше прочтения пост вернул бы старую точку.
 import type { RestClient } from '../net/restClient'
 import type { MyMessage } from '../models'
 import { getMessageThreadId } from '../models'
@@ -56,9 +62,11 @@ export interface ThreadReadsDeps {
   /** Горизонт исходящих треда сдвинут — ленте треда (`dialog_unread`, :10950 →
    *  bubbles.ts:2318-2326 → `historyStorage(peerId, threadId).readOutboxMaxId`, :4860). */
   onReadOutbox?: (peerId: PeerId, threadId: number, maxId: number) => void
+  /** Тред прочитан — перечитать его пост (`messages.onThreadRead`, :10831-10836). */
+  onThreadRead?: (peerId: PeerId, threadId: number) => void
 }
 
-export function newThreadReads({ rest, isForumPeer, forumTopics, getMeId, onCommentThreadRead, onReadOutbox }: ThreadReadsDeps) {
+export function newThreadReads({ rest, isForumPeer, forumTopics, getMeId, onCommentThreadRead, onReadOutbox, onThreadRead }: ThreadReadsDeps) {
   const states = new Map<string, ThreadState>()
   /** `historyStorage.triedToReadMaxId` (:9165-9170, :9248-9252) */
   const tried = new Map<string, number>()
@@ -71,8 +79,9 @@ export function newThreadReads({ rest, isForumPeer, forumTopics, getMeId, onComm
   const topicOf = (peerId: PeerId, threadId: number) =>
     isForumPeer(peerId) ? forumTopics.getForumTopic(peerId, threadId) : undefined
 
-  /** Местное прочтение треда — `onUpdateReadHistory` (:10795-10990), ветки темы и треда. */
-  function apply(update: ReadDiscussion): void {
+  /** Местное прочтение треда — `onUpdateReadHistory` (:10795-10990), ветки темы и треда.
+   *  `local` — своё прочтение: пост перечитает ответ `readDiscussion` (шапка). */
+  function apply(update: ReadDiscussion, local = false): void {
     const { peerId, topicId, maxId, out } = update
     let foundDialog: boolean
     if (isForumPeer(peerId)) {
@@ -83,6 +92,8 @@ export function newThreadReads({ rest, isForumPeer, forumTopics, getMeId, onComm
     }
     // :10916 + `dialog_unread` внутри `if(foundDialog)` (:10919-10950)
     if (out && foundDialog) onReadOutbox?.(peerId, topicId, maxId)
+    // :10831-10836
+    if (!local) onThreadRead?.(peerId, topicId)
   }
 
   /** Ответ — нашёлся ли диалог группы (`foundDialog`). */
@@ -134,7 +145,7 @@ export function newThreadReads({ rest, isForumPeer, forumTopics, getMeId, onComm
     const read = getReadState(peerId, threadId)
     const was = tried.get(k) ?? 0
     if (read && !read.unread_count && maxId <= read.read_inbox_max_id && !failed.has(k)) return Promise.resolve()
-    apply({ peerId, topicId: threadId, maxId, out: false })
+    apply({ peerId, topicId: threadId, maxId, out: false }, true)
     const pending = readPromises.get(k)
     if (was >= maxId || pending) {
       if (!(was >= maxId)) tried.set(k, maxId)
@@ -142,7 +153,7 @@ export function newThreadReads({ rest, isForumPeer, forumTopics, getMeId, onComm
     }
     tried.set(k, maxId)
     const promise = rest.post(`/chats/${peerId}/threads/${getServerMessageId(threadId)}/read`, { read_max_id: getServerMessageId(maxId) })
-      .then((r) => { failed.delete(k); return r }, (err: unknown) => {
+      .then((r) => { failed.delete(k); onThreadRead?.(peerId, threadId); return r }, (err: unknown) => {
         // отказ — рубеж снова «не отправлен»
         if (tried.get(k) === maxId) tried.set(k, was)
         failed.add(k)

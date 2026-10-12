@@ -8,7 +8,7 @@ import { getMiddleware } from '@helpers/middleware'
 import { useChatsStore } from '@stores/chatsStore'
 import { winKey } from '@core/history/messagesMirror'
 import { makeDialog } from '@core/dialogs/testDialog'
-import type { Dialog, DraftMessage, MyMessage } from '@core/models'
+import type { Dialog, DraftMessage, DraftMessageReal, MyMessage } from '@core/models'
 import ChatInput from './input'
 import { ChatType } from './chatType'
 
@@ -39,7 +39,7 @@ function makeManagers(messages: Map<number, MyMessage>) {
       reloadMessage: vi.fn(async(_peerId: number, mid: number) => messages.get(mid)),
       sendPoll: vi.fn(),
     },
-    drafts: { save: vi.fn(async() => ({ _: 'draftMessageEmpty' })) },
+    drafts: { syncDraft: vi.fn(async() => true), getDraft: vi.fn(async(_peerId: number, _threadId: number): Promise<DraftMessageReal | undefined> => undefined), clearDraft: vi.fn() },
     realtime: { sendTyping: vi.fn(async() => ({ ok: true })) },
     chats: { createPrivate: vi.fn(async(id: number) => id) },
     dialogs: { refresh: vi.fn(async() => {}) },
@@ -50,15 +50,16 @@ function makeManagers(messages: Map<number, MyMessage>) {
   }
 }
 
-async function mountInput(options: { draft?: DraftMessage } = {}) {
+async function mountInput(options: { draft?: DraftMessage, threadId?: number, threadDraft?: DraftMessageReal } = {}) {
   setDialog(options.draft)
   const messages = new Map<number, MyMessage>()
   const managers = makeManagers(messages)
+  if(options.threadDraft) managers.drafts.getDraft.mockImplementation(async(_p, threadId) => threadId === options.threadId ? options.threadDraft : undefined)
   const appImManager = new EventListenerBase<{ peer_changing: (chat: unknown) => void }>()
   const container = document.createElement('div')
   const chat = {
     peerId: PEER,
-    threadId: undefined as number | undefined,
+    threadId: options.threadId,
     type: ChatType.Chat,
     container,
     messagesStorageKey: winKey(PEER),
@@ -260,8 +261,8 @@ describe('ChatInput: черновик', () => {
     input.messageInputField.setValueSilently('недописанное')
     appImManager.dispatchEvent('peer_changing', chat)
 
-    expect(managers.drafts.save).toHaveBeenCalledTimes(1)
-    expect(managers.drafts.save).toHaveBeenCalledWith(PEER, 'недописанное', null, undefined)
+    expect(managers.drafts.syncDraft).toHaveBeenCalledTimes(1)
+    expect(managers.drafts.syncDraft).toHaveBeenCalledWith({ peerId: PEER, threadId: undefined, localDraft: expect.objectContaining({ _: 'draftMessage', message: 'недописанное' }) })
   })
 
   it('равный черновику текст не пересохраняется', async() => {
@@ -270,7 +271,7 @@ describe('ChatInput: черновик', () => {
     await vi.waitFor(() => expect(input.messageInput.textContent).toBe('есть'))
 
     appImManager.dispatchEvent('peer_changing', chat)
-    expect(managers.drafts.save).not.toHaveBeenCalled()
+    expect(managers.drafts.syncDraft).not.toHaveBeenCalled()
   })
 
   it('finishPeerChange восстанавливает черновик диалога в поле', async() => {
@@ -301,7 +302,7 @@ describe('ChatInput: черновик', () => {
     setDialog(undefined)
     await flush()
     expect(input.isInputEmpty()).toBe(true)
-    expect(managers.drafts.save).not.toHaveBeenCalled()
+    expect(managers.drafts.syncDraft).not.toHaveBeenCalled()
   })
 
   it('черновик, приехавший кадром, встаёт в пустое поле', async() => {
@@ -310,5 +311,61 @@ describe('ChatInput: черновик', () => {
 
     setDialog({ _: 'draftMessage', message: 'с другого устройства', date: 2 })
     await vi.waitFor(() => expect(input.messageInput.textContent).toBe('с другого устройства'))
+  })
+})
+
+// Черновик ТРЕДА — 1:1 с tweb (расхождение 3 шапки): `appDraftsManager` воркера —
+// `syncDraft` с `threadId` (input.ts:2331), `getDraft(peerId, threadId)` (:2424),
+// `draft_updated` с `threadId` (:1711-1727), `clearDraft` при отправке (:2637-2642).
+describe('ChatInput: черновик треда', () => {
+  const THREAD = 0x100000000 + 10
+
+  it('смена пира сохраняет черновик треда с `threadId`; ответ несёт `top_msg_id`', async() => {
+    mounted = await mountInput({ threadId: THREAD })
+    const { input, managers, appImManager, chat } = mounted
+    mounted.messages.set(0x100000000 + 12, message(0x100000000 + 12, 'оригинал'))
+    await input.initMessageReply({ replyToMsgId: 0x100000000 + 12 })
+    input.messageInputField.setValueSilently('в теме')
+    appImManager.dispatchEvent('peer_changing', chat)
+
+    expect(managers.drafts.syncDraft).toHaveBeenCalledWith({
+      peerId: PEER, threadId: THREAD,
+      localDraft: expect.objectContaining({ message: 'в теме', reply_to: { _: 'inputReplyToMessage', reply_to_msg_id: 0x100000000 + 12, top_msg_id: THREAD } }),
+    })
+  })
+
+  it('вход в тред восстанавливает его черновик, а не черновик чата', async() => {
+    mounted = await mountInput({ threadId: THREAD, draft: { _: 'draftMessage', message: 'чат', date: 1 }, threadDraft: { _: 'draftMessage', message: 'тред', date: 1 } })
+    await vi.waitFor(() => expect(mounted!.input.messageInput.textContent).toBe('тред'))
+    expect(mounted.managers.drafts.getDraft).toHaveBeenCalledWith(PEER, THREAD)
+  })
+
+  it('`draft_updated` открытого треда встаёт в пустое поле; чужой тред — нет', async() => {
+    mounted = await mountInput({ threadId: THREAD })
+    const { input } = mounted
+    const { default: rootScope } = await import('@lib/rootScope')
+
+    rootScope.dispatchEventSingle('draft_updated', { peerId: PEER, threadId: THREAD + 1, draft: { _: 'draftMessage', message: 'чужой', date: 2 } })
+    await flush()
+    expect(input.isInputEmpty()).toBe(true)
+
+    rootScope.dispatchEventSingle('draft_updated', { peerId: PEER, threadId: THREAD, draft: { _: 'draftMessage', message: 'с другого устройства', date: 2 } })
+    await vi.waitFor(() => expect(input.messageInput.textContent).toBe('с другого устройства'))
+  })
+
+  it('черновик чата (зеркало) поле треда не трогает', async() => {
+    mounted = await mountInput({ threadId: THREAD })
+    setDialog({ _: 'draftMessage', message: 'чат', date: 2 })
+    await flush()
+    await flush()
+    expect(mounted.input.isInputEmpty()).toBe(true)
+  })
+
+  it('отправка в тред снимает черновик треда местно (`clearDraft`)', async() => {
+    mounted = await mountInput({ threadId: THREAD })
+    const { input, managers } = mounted
+    input.messageInputField.setValueSilently('ушло')
+    await input.sendMessage()
+    expect(managers.drafts.clearDraft).toHaveBeenCalledWith(PEER, THREAD)
   })
 })

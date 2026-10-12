@@ -25,7 +25,7 @@ function upsert(id: number, pFlags: Record<string, true>) {
 function makeManagers() {
   return {
     messages: { getScheduledMessages: vi.fn(async() => []) },
-    drafts: { save: vi.fn(async() => ({ _: 'draftMessageEmpty' })) },
+    drafts: { syncDraft: vi.fn(async() => true), getDraft: vi.fn(async() => undefined), clearDraft: vi.fn() },
     realtime: { sendTyping: vi.fn(async() => ({ ok: true })) },
     chats: { getSendAs: vi.fn(async() => ({ _: 'channels.sendAsPeers', peers: [], chats: [], users: [] })) },
     dialogs: { refresh: vi.fn(async() => {}) },

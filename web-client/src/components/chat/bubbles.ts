@@ -133,7 +133,7 @@ import { createDateBubble as createServiceDateBubble, createServiceBubble } from
 import { createReplyContainer } from './replyContainer'
 import { createMessageTime, setRepliesCount, setSendingStatus } from './messageTime'
 import { renderReactionsElement, getAvailableReactions, getAvailableReactionsForPeer, sendReaction, type ReactionsManagers } from './reactions'
-import { renderReplies, setRepliesElementCount } from './replies'
+import RepliesElement, { renderReplies } from './replies'
 import { attachReplySwipe, findDoubleClickReplyBubble } from './replySwipe'
 import type Chat from './chat'
 import type { ChatSavedPosition, ChatSetPeerOptions } from '@lib/appImManager'
@@ -319,6 +319,11 @@ export interface BubblesManagers extends PeerTitleManagers {
      *  футеру комментариев (`openDiscussion`). Опционален по той же причине, что
      *  `react`/`unreact`: без него футер рисуется, но тред не открывается. */
     getDiscussionMessage?(peerId: number, mid: number): Promise<MyMessage | undefined>
+    /** Тред поста под футером — порт `subscribeRepliesThread`/`updateMessage(…,
+     *  'replies_updated')` (tweb :8772-8779, :11923-11937): зовёт футер при первом
+     *  показе (`RepliesElement.render`). Опциональны: без них футер не обновляется. */
+    subscribeRepliesThread?(peerId: number, mid: number): unknown
+    updateMessage?(peerId: number, mid: number): unknown
     /** Лента отложенных (`ChatType.Scheduled`) — порт ветки `requestHistory`
      *  (tweb bubbles.ts:11822-11834, `appMessagesManager.getScheduledMessages`):
      *  набор целиком, по возрастанию даты отправки. Опциональна: без неё лента
@@ -2648,7 +2653,7 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * `NewMessageReplies(count, discussionChatId, repliers)`, группе —
    * `NewMessageReplies(count, 0, nil)`, то есть без флага и без `channel_id`.
    *
-   * Метод ИДЕМПОТЕНТЕН: старый футер снимается перед сборкой нового, а
+   * Метод ИДЕМПОТЕНТЕН: футер того же поста перерисовывается на месте (`renderReplies`), чужой снимается, а
    * `setRepliesCount(…, 0)` сам убирает число. Это цена второго вызывателя
    * (правка): у оригинала он один, потому что бабл там новый.
    *
@@ -2657,12 +2662,13 @@ export default class ChatBubbles implements BubbleGroupsHost {
    * знает, а класс обязан сниматься вместе с исчезнувшим футером.
    */
   private renderMessageReplies(message: MyMessage, bubble: HTMLElement, bubbleContainer: HTMLElement): void {
-    bubbleContainer.querySelector(':scope > .replies')?.remove()
     bubble.classList.remove('with-replies', 'with-beside-replies')
 
     const replies = message._ === 'message' ? message.replies : undefined
 
     const commentReplies = this.getMessageWithCommentReplies(message)
+    // футер того же поста переживает пересборку (`renderReplies`) — снимается только чужой
+    if (!commentReplies) bubbleContainer.querySelector(':scope > .replies')?.remove()
     if (commentReplies) {
       // tweb :7775 — класс объявляет наличие футера, по нему CSS убирает хвост
       // бабла и растягивает нижние углы.
@@ -6558,26 +6564,29 @@ export default class ChatBubbles implements BubbleGroupsHost {
     })
 
     /**
-     * Комментарии поста — порт глобального слушателя `replies_updated`
-     * (tweb replies.ts:17-22) вместе с приёмом :1137-1142: потребитель читает
-     * ТОЛЬКО ЧИСЛО.
+     * Тред поста — порт глобального слушателя `replies_updated`
+     * (tweb replies.ts:18-23): каждый футер этого поста получает свежее
+     * сообщение и перерисовывает себя (`RepliesElement.render`) — аватарки
+     * комментаторов, число, точку «есть новые».
      *
      * Футер адресуется `data-post-key`, а не картой баблов, и это из оригинала:
      * у АЛЬБОМА тред лежит на одном сообщении группы, а футер рисуется один на
      * альбом — поэтому номер в ключе футера не обязан совпадать с `data-mid`
      * бабла, под которым тот висит (`getMessageWithCommentReplies`).
      *
-     * Ветки `setBubbleRepliesCount` (число у времени, tweb :6410-6431) здесь
-     * нет: она про сообщение ГРУППЫ с ответами, а кадр — канальный
-     * (`updateChannelMessageReplies`). Счётчик группы двигает обычная правка
-     * сообщения, как и всё остальное её содержимое.
+     * Ветки `setBubbleRepliesCount` (число у времени, tweb :1465-1470,
+     * `replies_short_update`) здесь нет: её предмет — счётчик ответов
+     * сообщения ГРУППЫ, а его двигает обычная правка сообщения.
      */
     this.listenerSetter.add(rootScope)('replies_updated', ({ storageKey, peerId, mid, message }) => {
       if (storageKey !== this.chat.messagesStorageKey) return
       const replies = message._ === 'message' ? message.replies : undefined
       if (!replies) return
-      const elements = this.chatInner.querySelectorAll<HTMLElement>(`replies-element[data-post-key="${peerId}_${mid}"]`)
-      elements.forEach((element) => { setRepliesElementCount(element, replies.replies) })
+      const elements = this.chatInner.querySelectorAll<RepliesElement>(`replies-element[data-post-key="${peerId}_${mid}"]`)
+      elements.forEach((element) => {
+        element.message = { peerId, mid, replies }
+        element.render()
+      })
     })
 
     // tweb bubbles.ts:1903, гейт отложенных — :2283 (их номера — ключи очереди,

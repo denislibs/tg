@@ -138,7 +138,7 @@ npx vite build --outDir ../client-build
   | своя отметка в чек-листе | `messages.toggleChecklistItem`/`addChecklistItems` → `patch {media}` | вызыватель → `setChecklistMedia` |
   | «проверка фактов» своим действием | `messages.setFactCheck`/`removeFactCheck` → `patch {factcheck}` | вызыватель → `applyFactCheck` |
   | просмотры поста канала | `messages.cacheViews` → `patch {views}`; зовущих ДВА, оба в воркере — ответ `channels.registerViews` и кадр `updateChannelMessageViews` | `core/hooks/useChannelExtras.ts` → `patchViews` (опрос, который слал клиентские номера и потому не работал ни разу) |
-  | число комментариев под постом канала | `messages.cacheReplies` → `patch {replies}` по кадру `updateChannelMessageReplies` | НИЧЕГО: счётчик приезжал с историей и замирал до перезагрузки окна |
+  | тред поста канала (аватарки комментаторов, счётчик, точка «есть новые») | `messages.updateMessage` → `patch {replies}`: пост перечитывается при первом показе футера, на новое/удалённое сообщение треда и на прочтение треда (порт tweb `threadsToReplies`, `appMessagesManager.ts:8772-8779, 11876-11898, 11923-11937`); своего кадра у треда нет | НИЧЕГО: счётчик приезжал с историей и замирал до перезагрузки окна |
   | расшифровка голосового/кружка | `messages.transcribe` → `patch {transcription}` | НИЧЕГО не объявляли: параметр ложился только в SSOT воркера и доезжал до окна лишь перезагрузкой чата, хотя бабл рисует именно его (`components/messages/Transcription.tsx:20-21`) |
 
   Удаление своего сообщения в эту таблицу не попало: `messages.deleteMessage`

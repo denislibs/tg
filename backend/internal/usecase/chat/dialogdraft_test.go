@@ -20,7 +20,7 @@ func TestDialogsPage_DraftRidesOnTheDialog(t *testing.T) {
 	const a, b int64 = 1, 2
 	chatID, _ := in.CreatePrivateChat(ctx, a, b)
 
-	if _, err := in.SaveDraft(ctx, a, chatID, "недописанное", nil, nil); err != nil {
+	if _, err := in.SaveDraft(ctx, a, chatID, DraftInput{Message: "недописанное"}); err != nil {
 		t.Fatalf("SaveDraft: %v", err)
 	}
 
@@ -82,7 +82,7 @@ func TestDialogsPage_DraftIsPerViewer(t *testing.T) {
 	const a, b int64 = 1, 2
 	chatID, _ := in.CreatePrivateChat(ctx, a, b)
 
-	if _, err := in.SaveDraft(ctx, b, chatID, "черновик собеседника", nil, nil); err != nil {
+	if _, err := in.SaveDraft(ctx, b, chatID, DraftInput{Message: "черновик собеседника"}); err != nil {
 		t.Fatalf("SaveDraft: %v", err)
 	}
 

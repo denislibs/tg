@@ -130,6 +130,19 @@ describe('realtimeBridge.startRealtime — насос smp → rootScope', () => 
     expect(received).toEqual([{ peerId: 6, blocked: true }])
   })
 
+  // Черновик треда (tweb rootScope.ts:162) — шлёт `draftsManager.saveDraft` воркера,
+  // слушает поле ввода открытого треда (`ChatInput`, tweb input.ts:1711-1727).
+  it('draft_updated воркера доезжает до rootScope вкладки', async () => {
+    const { deliver, rootScope, startRealtime } = await setup()
+    startRealtime()
+    const received: unknown[] = []
+    rootScope.addEventListener('draft_updated', (e) => received.push(e))
+
+    deliver({ kind: 'event', event: 'draft_updated', payload: { peerId: -5, threadId: 7, draft: undefined } })
+
+    expect(received).toEqual([{ peerId: -5, threadId: 7, draft: undefined }])
+  })
+
   it('rootScope.setPort(smp) реально вызывается — событие этой вкладки (dispatchEvent) уходит в порт', async () => {
     const { rootScope, RT, startRealtime, startClient } = await setup()
     startRealtime()

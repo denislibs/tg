@@ -70,11 +70,16 @@ func updateCases() []struct {
 		{"открепили тему", NewUpdatePinnedForumTopic(peer, GeneralTopicID+11, false)},
 		{"прочитал тред", NewUpdateReadChannelDiscussionInbox(5, 12, 40)},
 		{"прочитали мои в треде", NewUpdateReadChannelDiscussionOutbox(5, GeneralTopicID, 41)},
-		{"черновик", NewUpdateDraftMessage(peer, func() DraftMessageReal {
+		{"черновик", NewUpdateDraftMessage(peer, 0, func() DraftMessageReal {
 			id := int64(12)
-			return NewDraftMessage("набросок", nil, &id, time.Unix(1787334148, 0))
+			return NewDraftMessage("набросок", nil, &id, 0, time.Unix(1787334148, 0))
 		}())},
-		{"черновик снят", NewUpdateDraftMessage(peer, NewDraftMessageEmpty())},
+		{"черновик снят", NewUpdateDraftMessage(peer, 0, NewDraftMessageEmpty())},
+		{"черновик темы", NewUpdateDraftMessage(peer, 12, func() DraftMessageReal {
+			id := int64(14)
+			return NewDraftMessage("в теме", nil, &id, 12, time.Unix(1787334148, 0))
+		}())},
+		{"черновик General снят", NewUpdateDraftMessage(peer, GeneralTopicID, NewDraftMessageEmpty())},
 		{"печатает в личке", NewUpdateUserTyping(7, SendMessageActionByTag(SendMessageTypingActionTag))},
 		{"записывает голосовое", NewUpdateUserTyping(7, SendMessageActionByTag(SendMessageRecordAudioActionTag))},
 		{"записывает видео", NewUpdateUserTyping(7, SendMessageActionByTag(SendMessageRecordVideoActionTag))},

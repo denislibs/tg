@@ -2261,13 +2261,17 @@ export function setLastMessageN(options: SetLastMessageOptions) {
 
 /**
  * tweb `:2408-2435` — В7-3 (С2): последнее сообщение — `dialog.lastMessage`
- * зеркала. Черновик не показывается у форума (`!apiManagerProxy.isForum`),
- * монофорума у нас нет.
+ * зеркала. Черновик показывается у темы (`isForumTopic(dialog)`, :2418) и у
+ * чата, кроме форума (`!apiManagerProxy.isForum`); монофорума у нас нет.
  */
 function getLastMessageForDialog(dialog: PossibleDialog, lastMessage?: MyMessage) {
   let draftMessage: DraftMessageReal | undefined
-  // С10, С11: у сохранённого диалога и темы черновика нет, последнее — их `topMessage`
-  if(!lastMessage && (isSavedDialog(dialog) || isForumTopic(dialog))) {
+  // С10: у сохранённого диалога черновика нет, последнее — его `topMessage`
+  if(!lastMessage && isSavedDialog(dialog)) {
+    lastMessage = dialog.lastMessage
+  } else if(!lastMessage && isForumTopic(dialog)) {
+    // tweb :2414-2423 — черновик темы (`forumTopic.draft`)
+    draftMessage = realDraft(dialog.draft)
     lastMessage = dialog.lastMessage
   } else if(!lastMessage && isFullDialog(dialog)) {
     const draft = realDraft(dialog.draft)

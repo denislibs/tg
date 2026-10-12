@@ -401,51 +401,6 @@ func (i *Interactor) CommentsContainer(ctx context.Context, channelID, postID, u
 	return domain.NewMessagesMessagesSlice(count, wire, chats, users), nil
 }
 
-// publishPostReplies — счётчик комментариев поста канала изменился: кадр
-// updateChannelMessageReplies в топик канала.
-//
-// Зовут её оба конца жизни комментария — приход (Send) и снятие
-// (DeleteMessage), — и оба отдают ей САМ комментарий: «а был ли это вообще
-// комментарий» решает она, по корню треда, а не место вызова. У оригинала
-// ровно так же: одна updateMessageRepliesIfNeeded с признаком add на оба
-// случая (tweb appMessagesManager.ts:8658-8680).
-//
-// Счётчик едет АБСОЛЮТНЫЙ (пересчитанный), а не «плюс один»: кадр в топик
-// канала доставляется без курсора и без догона разрыва, поэтому дифф,
-// потерянный подписчиком, разошёлся бы с истиной навсегда. У оригинала дифф
-// допустим потому, что клиенту видна вся группа обсуждения целиком.
-//
-// Best-effort и после коммита: счётчик комментариев не имеет права ни уронить
-// отправку, ни уехать раньше, чем сам комментарий доступен на чтение.
-func (i *Interactor) publishPostReplies(ctx context.Context, comment domain.Message) {
-	if i.chPub == nil || i.msgs == nil || comment.ThreadRootID == nil {
-		return
-	}
-	// Корень треда — ЗЕРКАЛО поста в группе обсуждения (см. PostComment).
-	// Тред форум-топика сюда не долетает: у его корня зеркальных полей нет.
-	root, err := i.msgs.GetByID(ctx, *comment.ThreadRootID)
-	if err != nil || !root.IsDiscussionMirror || root.FwdFromChatID == nil || root.FwdFromMsgID == nil {
-		return
-	}
-	channelID, postID := *root.FwdFromChatID, *root.FwdFromMsgID
-	counts, err := i.msgs.ThreadReplyCounts(ctx, comment.ChatID, []int64{root.ID})
-	if err != nil {
-		return
-	}
-	// Пост адресуется НОМЕРОМ в канале — тем же, что и во всех остальных
-	// кадрах; ключ строки наружу не выходит.
-	seqByID, err := i.msgs.SeqsByIDs(ctx, []int64{postID})
-	if err != nil {
-		return
-	}
-	seq, ok := seqByID[postID]
-	if !ok {
-		return // пост удалили — комментировать больше нечего
-	}
-	_ = i.chPub.PublishToChannel(ctx, channelID,
-		frame("replies_update", domain.NewUpdateChannelMessageReplies(channelID, seq, int64(counts[root.ID]))))
-}
-
 // RecentRepliersLimit — сколько аватаров показывает футер «N комментариев»
 // (Telegram рисует стек последних комментаторов).
 const RecentRepliersLimit = 3

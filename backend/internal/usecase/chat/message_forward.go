@@ -330,7 +330,6 @@ func (i *Interactor) deliverForwardCopies(ctx context.Context, in ForwardInput, 
 		if md := fc.mirror; md != nil {
 			i.publishMessageDelivery(ctx, md.msg, md.msg.SenderID, md.recipients, md.ptsByUser, md.mentions)
 		}
-		i.publishPostReplies(ctx, fc.msg)
 	}
 	return created, nil
 }

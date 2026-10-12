@@ -99,9 +99,14 @@ func allDialogConstructors() []any {
 		// «Черновика нет» — ВТОРОЙ конструктор, а не null под тем же ключом.
 		func() DraftMessageReal {
 			id := int64(12)
-			return NewDraftMessage("набросок", nil, &id, now)
+			return NewDraftMessage("набросок", nil, &id, 0, now)
 		}(),
-		NewDraftMessage("без ответа", nil, nil, now),
+		// Ответ внутри треда: reply_to несёт top_msg_id.
+		func() DraftMessageReal {
+			id := int64(14)
+			return NewDraftMessage("ответ в теме", nil, &id, 12, now)
+		}(),
+		NewDraftMessage("без ответа", nil, nil, 0, now),
 		NewDraftMessageEmpty(),
 		// ── Dialog ───────────────────────────────────────────────────────────
 		full,

@@ -31,7 +31,7 @@ const wire = (id: number, over: Partial<ForumTopicWire> = {}): ForumTopicWire =>
   ...over,
 })
 
-function setup(topics: ForumTopicWire[], opts: { forum?: boolean } = {}) {
+function setup(topics: ForumTopicWire[], opts: { forum?: boolean, saveTopicDraft?: Parameters<typeof newForumTopicsStorage>[0]['saveTopicDraft'] } = {}) {
   const ops: ForumTopicOp[] = []
   const store = new Map<number, MyMessage>()
   const response = (): MessagesForumTopics => ({ _: 'messages.forumTopics', count: topics.length, topics, messages: [], chats: [], users: [] })
@@ -47,6 +47,7 @@ function setup(topics: ForumTopicWire[], opts: { forum?: boolean } = {}) {
     getMeId: () => ME,
     onOps: (o) => { ops.push(...o) },
     onParentMentionsRead,
+    saveTopicDraft: opts.saveTopicDraft,
   })
   return { storage, ops, get, store, onParentMentionsRead }
 }
@@ -336,3 +337,38 @@ describe('forumTopicsStorage: удаление сообщений', () => {
   })
 })
 
+// Черновик темы: строка из ответа списка — в словарь черновиков (`dialogs.ts:1692-1697`),
+// живое изменение — ветка темы слушателя `draft_updated` (`appMessagesManager.ts:858-901`).
+describe('forumTopicsStorage: черновик темы', () => {
+  it('черновик из ответа списка уходит словарю и ложится в тему его ответом', async () => {
+    const saveTopicDraft = vi.fn((_p: PeerId, _id: number, d: unknown) => d ? { _: 'draftMessage' as const, message: 'из списка', date: 5 } : undefined)
+    const { storage } = setup([wire(10, { draft: { _: 'draftMessage', message: 'из списка', date: 5 } }), wire(20)], { saveTopicDraft })
+    await storage.getForumTopics(FORUM)
+    expect(saveTopicDraft).toHaveBeenCalledWith(FORUM, mid(10), { _: 'draftMessage', message: 'из списка', date: 5 })
+    expect(storage.getForumTopic(FORUM, mid(10))!.draft).toEqual({ _: 'draftMessage', message: 'из списка', date: 5 })
+    expect(storage.getForumTopic(FORUM, mid(20))!.draft).toBeUndefined()
+  })
+
+  it('applyDraft: черновик в строку, свежая дата поднимает тему, `update` списку; снятие — убирает', async () => {
+    const { storage, ops } = setup([wire(10), wire(20)])
+    await storage.getForumTopics(FORUM)
+    ops.length = 0
+    const before = storage.getForumTopic(FORUM, mid(10))!.index
+    storage.applyDraft(FORUM, mid(10), { _: 'draftMessage', message: 'набросок', date: 1_900_000_000 })
+    const topic = storage.getForumTopic(FORUM, mid(10))!
+    expect(topic.draft).toEqual({ _: 'draftMessage', message: 'набросок', date: 1_900_000_000 })
+    expect(topic.index).toBeGreaterThan(before)
+    expect(ops).toEqual([{ op: 'update', peerId: FORUM, topics: [topic] }])
+
+    storage.applyDraft(FORUM, mid(10), undefined)
+    expect(storage.getForumTopic(FORUM, mid(10))!.draft).toBeUndefined()
+  })
+
+  it('applyDraft неизвестной темы загруженного форума — перечитать список (getForumTopicById)', async () => {
+    const { storage, get } = setup([wire(10)])
+    await storage.getForumTopics(FORUM)
+    storage.applyDraft(FORUM, mid(99), { _: 'draftMessage', message: 'x', date: 1 })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(get).toHaveBeenCalledTimes(2)
+  })
+})
