@@ -29,6 +29,8 @@ type fakeScheduled struct {
 	failReschedule, failDelete int
 	// onReschedule — вклинивается перед перепостановкой (гонка с автором).
 	onReschedule func()
+	// onLockForPublish — вклинивается перед блокировкой строки публикацией.
+	onLockForPublish func()
 }
 
 func newFakeScheduled() *fakeScheduled {
@@ -94,16 +96,28 @@ func (f *fakeScheduled) Reschedule(_ context.Context, id int64, from, to time.Ti
 	return m, true, nil
 }
 
-func (f *fakeScheduled) DeleteUnclaimed(_ context.Context, ids []int64) ([]int64, error) {
+func (f *fakeScheduled) DeleteUnclaimed(_ context.Context, ids []int64) ([]domain.ScheduledMessage, error) {
 	f.mu.Lock()
-	keep := ids[:0:0]
+	defer f.mu.Unlock()
+	var out []domain.ScheduledMessage
 	for _, id := range ids {
-		if !f.claimed(id) {
-			keep = append(keep, id)
+		if m, ok := f.rows[id]; ok && !f.claimed(id) {
+			out = append(out, m)
+			delete(f.rows, id)
+			delete(f.claims, id)
 		}
 	}
-	f.mu.Unlock()
-	return f.DeleteIDs(context.Background(), keep)
+	return out, nil
+}
+
+func (f *fakeScheduled) LockForPublish(_ context.Context, id int64) (bool, error) {
+	if f.onLockForPublish != nil {
+		f.onLockForPublish()
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, ok := f.rows[id]
+	return ok, nil
 }
 
 func (f *fakeScheduled) TakePaidByChat(_ context.Context, chatID int64) ([]domain.ScheduledMessage, error) {
@@ -1573,5 +1587,143 @@ func TestScheduled_EditTimeRefusedAfterPublishedKey(t *testing.T) {
 	}
 	if b, _ := stars.Balance(ctx, 2); b != 15 {
 		t.Fatalf("возврат за доставленное: баланс %d, want 15", b)
+	}
+}
+
+// --- Решение 2026-10-12: возврат звёзд при снятии отложенного автором ---
+
+func TestScheduled_AuthorDeleteRefunds(t *testing.T) {
+	in, stars, _, s, cid := paidScheduledGroup(t, 20)
+	ctx := context.Background()
+	send := func(text string) int64 {
+		sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: text, ScheduleDate: future() + int64(len(text))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sm.Seq
+	}
+	one, two, three := send("a"), send("bb"), send("ccc")
+	if b, _ := stars.Balance(ctx, 2); b != 5 {
+		t.Fatalf("после трёх постановок %d, want 5", b)
+	}
+	// Одна.
+	if upd, err := in.DeleteScheduled(ctx, cid, 2, []int64{one}); err != nil || len(upd) != 1 {
+		t.Fatalf("снятие: %v %v", upd, err)
+	}
+	if b, _ := stars.Balance(ctx, 2); b != 10 {
+		t.Fatalf("после снятия одной %d, want 10", b)
+	}
+	// Повторное снятие той же — без второго возврата.
+	if upd, _ := in.DeleteScheduled(ctx, cid, 2, []int64{one}); len(upd) != 0 {
+		t.Fatal("повторное снятие дало кадр")
+	}
+	// Пакетом (с уже снятой внутри).
+	if _, err := in.DeleteScheduled(ctx, cid, 2, []int64{one, two, three}); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := stars.Balance(ctx, 2); b != 20 {
+		t.Fatalf("после пакетного снятия %d, want 20 (каждая ровно один раз)", b)
+	}
+	if b, _ := stars.Balance(ctx, 1); b != 0 {
+		t.Fatalf("владелец сохранил %d", b)
+	}
+	var last float64
+	for _, d := range logOf(s, 2, "balance_update") {
+		if bal, ok := d["balance"].(map[string]any); ok {
+			last, _ = bal["amount"].(float64)
+		}
+	}
+	if last != 20 {
+		t.Fatalf("последний updateStarsBalance автору %v, want 20", last)
+	}
+}
+
+// Гонка с публикацией: строку в аренде снятие пропускает (возврата нет), её
+// публикует воркер; доставленное по прежнему сроку (сбой снятия после
+// публикации) снятие автором не возвращает.
+func TestScheduled_AuthorDeleteRaceWithPublish(t *testing.T) {
+	in, stars, fs, _, cid := paidScheduledGroup(t, 20)
+	ctx := context.Background()
+	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, _ := fs.ByID(ctx, sm.Seq)
+	if _, ok, _ := fs.Claim(ctx, row.ID, row.SendAt, false, time.Minute, true); !ok {
+		t.Fatal("claim")
+	}
+	if upd, _ := in.DeleteScheduled(ctx, cid, 2, []int64{sm.Seq}); len(upd) != 0 {
+		t.Fatal("снята строка в аренде")
+	}
+	if b, _ := stars.Balance(ctx, 2); b != 15 {
+		t.Fatalf("возврат за публикуемую строку: %d", b)
+	}
+	fs.expireClaims()
+	// Опубликовано, снятие строки упало: сообщение доставлено.
+	fs.set(sm.Seq, func(m *domain.ScheduledMessage) { m.SendAt = time.Now().Add(-time.Minute) })
+	fs.failDelete = 1
+	_, _ = in.DispatchDueScheduled(ctx)
+	fs.expireClaims()
+	if _, err := in.DeleteScheduled(ctx, cid, 2, []int64{sm.Seq}); err != nil || fs.count() != 0 {
+		t.Fatalf("снятие доставленной строки: %v rows=%d", err, fs.count())
+	}
+	if b, _ := stars.Balance(ctx, 2); b != 15 {
+		t.Fatalf("возврат за доставленное: %d, want 15", b)
+	}
+}
+
+// Повтор: снятие до первой публикации возвращает оплату постановки; после
+// первого вхождения оплаты на строке нет (следующие платят при публикации).
+func TestScheduled_AuthorDeleteRepeat(t *testing.T) {
+	in, stars, fs, _, cid := paidScheduledGroup(t, 20)
+	ctx := context.Background()
+	a, _ := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "до", ScheduleDate: future(), ScheduleRepeatPeriod: 86400})
+	b, _ := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "после", ScheduleDate: future() + 100, ScheduleRepeatPeriod: 86400})
+	if bal, _ := stars.Balance(ctx, 2); bal != 10 {
+		t.Fatalf("после постановок %d", bal)
+	}
+	if _, err := in.DeleteScheduled(ctx, cid, 2, []int64{a.Seq}); err != nil {
+		t.Fatal(err)
+	}
+	if bal, _ := stars.Balance(ctx, 2); bal != 15 {
+		t.Fatalf("снятие неопубликованного повтора: %d, want 15", bal)
+	}
+	fs.set(b.Seq, func(m *domain.ScheduledMessage) { m.SendAt = time.Now().Add(-time.Minute) })
+	if n, _ := in.DispatchDueScheduled(ctx); n != 1 {
+		t.Fatal("первое вхождение не опубликовано")
+	}
+	if _, err := in.DeleteScheduled(ctx, cid, 2, []int64{b.Seq}); err != nil || fs.count() != 0 {
+		t.Fatalf("снятие повтора после вхождения: %v rows=%d", err, fs.count())
+	}
+	if bal, _ := stars.Balance(ctx, 2); bal != 15 {
+		t.Fatalf("возврат за опубликованное вхождение: %d, want 15", bal)
+	}
+}
+
+// Ревью s1c: аренда истекла посреди публикации, автор снял строку и получил
+// возврат — транзакция вставки, заблокировав строку, её уже не находит и
+// сообщение не вставляет (иначе доставка за возвращённые звёзды).
+func TestScheduled_AuthorDeleteDuringSlowPublish(t *testing.T) {
+	in, stars, fs, s, cid := paidScheduledGroup(t, 20)
+	ctx := context.Background()
+	sm, err := in.Send(ctx, SendInput{ChatID: cid, SenderID: 2, Text: "x", ScheduleDate: future()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fs.set(sm.Seq, func(m *domain.ScheduledMessage) { m.SendAt = time.Now().Add(-time.Minute) })
+	before := len(messagesOf(s, cid))
+	fs.onLockForPublish = func() {
+		fs.onLockForPublish = nil
+		fs.expireClaims()
+		if upd, err := in.DeleteScheduled(ctx, cid, 2, []int64{sm.Seq}); err != nil || len(upd) != 1 {
+			t.Errorf("снятие посреди публикации: %v %v", upd, err)
+		}
+	}
+	_, _ = in.DispatchDueScheduled(ctx)
+	if got := len(messagesOf(s, cid)) - before; got != 0 {
+		t.Fatalf("вставлено %d сообщений после снятия с возвратом", got)
+	}
+	if b, _ := stars.Balance(ctx, 2); b != 20 {
+		t.Fatalf("баланс %d, want 20 (ровно один возврат)", b)
 	}
 }

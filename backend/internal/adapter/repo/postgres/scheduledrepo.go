@@ -269,12 +269,27 @@ func (r *ScheduledRepo) Reschedule(ctx context.Context, id int64, from, to time.
 }
 
 // DeleteUnclaimed — снятие автором: строки в аренде публикации пропускаются
-// (их снимет публикация с sent_messages).
-func (r *ScheduledRepo) DeleteUnclaimed(ctx context.Context, ids []int64) ([]int64, error) {
+// (их снимет публикация с sent_messages). Отдаёт РЕАЛЬНО снятые строки в
+// состоянии на момент снятия (оплата для возврата — свежая, не из чтения до
+// транзакции).
+func (r *ScheduledRepo) DeleteUnclaimed(ctx context.Context, ids []int64) ([]domain.ScheduledMessage, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	return r.deleteWhere(ctx, `id = ANY($1) AND `+unclaimed, ids)
+	return r.query(ctx,
+		`DELETE FROM scheduled_messages WHERE id = ANY($1) AND `+unclaimed+` RETURNING `+scheduledCols, ids)
+}
+
+// LockForPublish — блокировка строки до конца транзакции вставки
+// опубликованного (против снятия автором с возвратом).
+func (r *ScheduledRepo) LockForPublish(ctx context.Context, id int64) (bool, error) {
+	var one int
+	err := querier(ctx, r.pool).QueryRow(ctx,
+		`SELECT 1 FROM scheduled_messages WHERE id=$1 FOR UPDATE`, id).Scan(&one)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 // TakePaidByChat — удаление группы: оплаченные строки чата снимаются до
