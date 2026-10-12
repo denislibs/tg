@@ -40,14 +40,19 @@ const draftRootJoin = ` JOIN chats c ON c.id = d.chat_id
 // треда ему не вывести.
 const draftLive = `(d.thread_root_id = 0 OR r.id IS NOT NULL)`
 
-var draftCols = `d.chat_id, d.thread_root_id, ` + draftTopMsgID + `, d.text, d.entities, d.reply_to_id, d.updated_at`
+var draftCols = `d.chat_id, d.thread_root_id, ` + draftTopMsgID + `, d.text, d.entities, d.reply_to_id, d.web_page, d.updated_at`
 
 func scanDraft(row pgx.Row) (domain.Draft, error) {
 	var d domain.Draft
-	var entRaw []byte
+	var entRaw, wpRaw []byte
 	var top *int64
-	if err := row.Scan(&d.ChatID, &d.ThreadRootID, &top, &d.Text, &entRaw, &d.ReplyToID, &d.UpdatedAt); err != nil {
+	if err := row.Scan(&d.ChatID, &d.ThreadRootID, &top, &d.Text, &entRaw, &d.ReplyToID, &wpRaw, &d.UpdatedAt); err != nil {
 		return domain.Draft{}, err
+	}
+	if len(wpRaw) > 0 {
+		if err := json.Unmarshal(wpRaw, &d.WebPage); err != nil {
+			return domain.Draft{}, err
+		}
 	}
 	if top != nil {
 		d.TopMsgID = *top
@@ -61,13 +66,27 @@ func scanDraft(row pgx.Row) (domain.Draft, error) {
 func (r *DraftsRepo) Upsert(ctx context.Context, userID int64, d domain.Draft) (domain.Draft, error) {
 	return scanDraft(querier(ctx, r.pool).QueryRow(ctx,
 		`WITH d AS (
-		   INSERT INTO drafts (chat_id, user_id, thread_root_id, text, entities, reply_to_id, updated_at)
-		   VALUES ($1, $2, $3, $4, $5, $6, now())
+		   INSERT INTO drafts (chat_id, user_id, thread_root_id, text, entities, reply_to_id, web_page, updated_at)
+		   VALUES ($1, $2, $3, $4, $5, $6, $7, now())
 		   ON CONFLICT (chat_id, user_id, thread_root_id)
-		   DO UPDATE SET text=$4, entities=$5, reply_to_id=$6, updated_at=now()
+		   DO UPDATE SET text=$4, entities=$5, reply_to_id=$6, web_page=$7, updated_at=now()
 		   RETURNING *)
 		 SELECT `+draftCols+` FROM d`+draftRootJoin,
-		d.ChatID, userID, d.ThreadRootID, d.Text, entitiesParam(d.Entities), d.ReplyToID))
+		d.ChatID, userID, d.ThreadRootID, d.Text, entitiesParam(d.Entities), d.ReplyToID, draftWebPageParam(d.WebPage)))
+}
+
+// draftWebPageParam — решение о превью jsonb-строкой (форма
+// domain.WebPageInput, как scheduled_messages.params.web_page); нет решения —
+// NULL.
+func draftWebPageParam(w domain.WebPageInput) any {
+	if w.IsZero() {
+		return nil
+	}
+	b, err := json.Marshal(w)
+	if err != nil {
+		return nil
+	}
+	return string(b)
 }
 
 func (r *DraftsRepo) Delete(ctx context.Context, chatID, userID, threadRootID int64) (int64, bool, error) {

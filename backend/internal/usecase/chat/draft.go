@@ -25,6 +25,10 @@ type DraftInput struct {
 	ReplyToMsgID *int64
 	// TopMsgID — reply_to.top_msg_id: тред, внутри которого ответ.
 	TopMsgID *int64
+	// WebPage — no_webpage, invert_media, media:inputMediaWebPage: решение о
+	// превью ссылки (tweb appDraftsManager.ts:281-291). Хранится как прислали
+	// (domain.WebPageInput.ForDraft) — tweb сравнивает черновик целиком.
+	WebPage domain.WebPageInput
 }
 
 // SaveDraft сохраняет (или снимает — при пустом тексте без ответа) черновик
@@ -62,6 +66,7 @@ func (i *Interactor) SaveDraft(ctx context.Context, userID, chatID int64, in Dra
 	d, err := i.drafts.Upsert(ctx, userID, domain.Draft{
 		ChatID: chatID, ThreadRootID: root, TopMsgID: top, Text: in.Message,
 		Entities: domain.SanitizeEntities(in.Entities), ReplyToID: replyToID,
+		WebPage: in.WebPage.ForDraft(maxMessageRunes),
 	})
 	if err != nil {
 		return nil, err

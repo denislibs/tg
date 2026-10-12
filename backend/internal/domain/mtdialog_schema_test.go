@@ -107,6 +107,12 @@ func allDialogConstructors() []any {
 			return NewDraftMessage("ответ в теме", nil, &id, 12, now)
 		}(),
 		NewDraftMessage("без ответа", nil, nil, 0, now),
+		// Решение о превью ссылки: pFlags и media:inputMediaWebPage.
+		NewDraftMessage("https://example.com", nil, nil, 0, now).WithWebPage(WebPageInput{
+			NoWebpage: true, InvertMedia: true,
+			Media: &InputMediaWebPage{Underscore: InputMediaWebPageTag, URL: "https://example.com",
+				PFlags: map[string]bool{"force_large_media": true, "optional": true}},
+		}),
 		NewDraftMessageEmpty(),
 		// ── Dialog ───────────────────────────────────────────────────────────
 		full,

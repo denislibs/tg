@@ -347,3 +347,51 @@ func TestDraft_ReplyToMirrorClearsCommentDraft(t *testing.T) {
 		t.Fatalf("ответ на зеркало не снял черновик треда: %+v", drafts.m)
 	}
 }
+
+// Ф-5 БЭК-2b: черновик хранит решение о превью ссылки (tweb
+// appDraftsManager.ts:281-291) и отдаёт его в кадре 1:1 — tweb сравнивает
+// черновики целиком (draftsAreEqual). media — только inputMediaWebPage.
+func TestDraft_KeepsWebPageChoice(t *testing.T) {
+	in, _ := newInteractor()
+	pub := &fakePublisher{}
+	in.SetPublisher(pub)
+	in.SetDrafts(newFakeDrafts())
+	ctx := context.Background()
+	chatID, _ := in.CreatePrivateChat(ctx, 1, 2)
+
+	wp := domain.WebPageInput{NoWebpage: true, InvertMedia: true, Media: &domain.InputMediaWebPage{
+		Underscore: domain.InputMediaWebPageTag, URL: "https://example.com/a",
+		PFlags: map[string]bool{"force_large_media": true, "optional": true}}}
+	if _, err := in.SaveDraft(ctx, 1, chatID, DraftInput{Message: "смотри https://example.com/a", WebPage: wp}); err != nil {
+		t.Fatal(err)
+	}
+	f := lastFrameOfType(t, pub, 1, "draft_update")
+	d, _ := f["draft"].(map[string]any)
+	pf, _ := d["pFlags"].(map[string]any)
+	media, _ := d["media"].(map[string]any)
+	mpf, _ := media["pFlags"].(map[string]any)
+	if pf["no_webpage"] != true || pf["invert_media"] != true || media["_"] != domain.InputMediaWebPageTag ||
+		media["url"] != "https://example.com/a" || mpf["force_large_media"] != true || mpf["optional"] != true {
+		t.Fatalf("черновик в кадре = %v", d)
+	}
+	assertEncodesAsTL(t, f)
+	list, _ := in.MyDrafts(ctx, 1)
+	if len(list) != 1 || !list[0].WebPage.NoWebpage || list[0].WebPage.Media == nil {
+		t.Fatalf("getAllDrafts без решения о превью: %+v", list)
+	}
+
+	// Решение снято — флагов и media нет; чужое media не сохраняется.
+	if _, err := in.SaveDraft(ctx, 1, chatID, DraftInput{Message: "без превью", WebPage: domain.WebPageInput{
+		Media: &domain.InputMediaWebPage{Underscore: "inputMediaPhoto", URL: "https://example.com"}}}); err != nil {
+		t.Fatal(err)
+	}
+	d, _ = lastFrameOfType(t, pub, 1, "draft_update")["draft"].(map[string]any)
+	if d["pFlags"] != nil || d["media"] != nil {
+		t.Fatalf("снятое решение о превью осталось: %v", d)
+	}
+
+	// Пустой текст без ответа снимает черновик и с media (tweb isEmptyDraft).
+	if got, err := in.SaveDraft(ctx, 1, chatID, DraftInput{WebPage: wp}); err != nil || got != nil {
+		t.Fatalf("пустой черновик с media: %+v, %v", got, err)
+	}
+}
