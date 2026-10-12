@@ -7,14 +7,19 @@
 // `checkForClose() === false` отменяет закрытие, иначе — `contextMenuController.close()`
 // (кроме `keepOpen`).
 //
+// `checkboxField` / `noCheckboxClickListener` / `radioGroup` / `radioGroups`
+// (tweb :50-52, :59, :184-218, :226-232, :250-318) — портированы с первым
+// потребителем, меню плашки превью ссылки (`chat/input.ts`,
+// `constructWebPageElements`, tweb input.ts:799-851): радиогруппа — `form`
+// (`components/radioForm.ts`) из пунктов, у каждого `CheckboxField` с
+// `input.type = 'radio'`, перед группой — `hr`. Роли a11y (`role`,
+// `aria-labelledby`) и `handleMenuKeyDown` не переносились: в остальном файле
+// их нет (меню без ролей).
+//
 // НЕ портировано (каждый пункт — из-за отсутствующей в проекте подсистемы):
 //   • `ripple(el)` под `IS_MOBILE` (tweb :89-91) — ванильного `components/ripple.ts`
 //     у нас нет (в tweb он на solid-js); класс-клип `rp-overflow` при этом стоит
 //     на пункте безусловно, как в оригинале;
-//   • `checkboxField` / `noCheckboxClickListener` / `radioGroup` / `radioGroups`
-//     (`ButtonMenuSync` :226-232, :250-277) — `CheckboxField` и `RadioForm` не
-//     портированы; вместе с ними ушла ветка `keepOpen = !!checkboxField`
-//     (осталась `!!options.keepOpen`) и класс `has-checkbox`;
 //   • `iconDoc` (`wrapAttachBotIcon`) — иконок attach-ботов в проекте нет
 //     (боты меню вложений — О-80 волны 7);
 //   • `new` (бейдж `span.btn-menu-item-badge`, tweb :178-183) — его ставят
@@ -44,6 +49,8 @@ import setInnerHTML from '@helpers/dom/setInnerHTML'
 import type ListenerSetter from '@helpers/listenerSetter'
 import Icon from '@components/icon'
 import { putPreloader } from '@components/putPreloader'
+import CheckboxField from '@components/checkboxField'
+import RadioForm from '@components/radioForm'
 import type { IconName } from '@core/tgico-icons'
 import { i18n, type FormatterArguments, type LangPackKey } from '@lib/langPack'
 import { avatarNew, type AvatarManagers } from '@components/avatar'
@@ -90,12 +97,18 @@ export type ButtonMenuItemOptions = {
   element?: HTMLElement,
   textElement?: HTMLElement,
   options?: AttachClickOptions,
+  /** tweb :50 — поле с галочкой/радио справа; пункт тогда не закрывает меню */
+  checkboxField?: CheckboxField,
+  /** tweb :51 — клик по пункту не переключает поле сам */
+  noCheckboxClickListener?: boolean,
   keepOpen?: boolean,
   separator?: boolean | HTMLElement,
   separatorDown?: boolean,
   multiline?: boolean,
   secondary?: boolean,
   loadPromise?: Promise<unknown>,
+  /** tweb :59 — имя радиогруппы `ButtonMenuSync({radioGroups})` */
+  radioGroup?: string,
   dispose?: () => void,
   onOpen?: () => void,
   onClose?: () => void,
@@ -144,6 +157,8 @@ export function ButtonMenuItem(options: ButtonMenuItemOptions) {
     onClick,
     emptyIcon,
     avatarInfo,
+    checkboxField,
+    noCheckboxClickListener,
   } = options
   const el = document.createElement('div')
   const iconSplitted = icon?.split(' ')
@@ -194,7 +209,7 @@ export function ButtonMenuItem(options: ButtonMenuItemOptions) {
   textElement.classList.add('btn-menu-item-text')
   el.append(textElement)
 
-  const keepOpen = !!options.keepOpen
+  const keepOpen = !!checkboxField || !!options.keepOpen
 
   // * cancel mobile keyboard close
   onClick && attachClickEvent(el, (e) => {
@@ -213,7 +228,18 @@ export function ButtonMenuItem(options: ButtonMenuItemOptions) {
     if(!keepOpen) {
       contextMenuController.close()
     }
+
+    // tweb :200-202
+    if(checkboxField && !noCheckboxClickListener) {
+      checkboxField.checked = checkboxField.input.type === 'radio' ? true : !checkboxField.checked
+    }
   }, options.options)
+
+  // tweb :205-213 (без ролей a11y — см. шапку)
+  if(checkboxField) {
+    el.append(checkboxField.label)
+    el.classList.add('has-checkbox')
+  }
 
   if(options.separator === true || options.separatorDown) {
     options.separator = document.createElement('hr')
@@ -237,12 +263,29 @@ export function ButtonMenuItem(options: ButtonMenuItemOptions) {
   return ret.filter(Boolean)
 }
 
-export function ButtonMenuSync({ listenerSetter, buttons }: {
+export function ButtonMenuSync({ listenerSetter, buttons, radioGroups }: {
   buttons: ButtonMenuItemOptions[],
+  /** tweb :252-256 — `checked` это индекс взведённого пункта группы */
+  radioGroups?: {
+    name: string,
+    onChange: (value: string, e: Event) => void,
+    checked: number
+  }[],
   listenerSetter?: ListenerSetter
 }) {
   const el: HTMLElement = document.createElement('div')
   el.classList.add('btn-menu')
+
+  // tweb :262-270
+  if(radioGroups) {
+    buttons.forEach((b) => {
+      if(!b.radioGroup) {
+        return
+      }
+
+      b.checkboxField ??= new CheckboxField()
+    })
+  }
 
   if(listenerSetter) {
     buttons.forEach((b) => {
@@ -252,6 +295,31 @@ export function ButtonMenuSync({ listenerSetter, buttons }: {
 
   const items = buttons.map((button) => ButtonMenuItem(button))
   el.append(...flatten(items))
+
+  // tweb :281-318 — пункты группы уходят в `form`, на месте первого — `hr`
+  if(radioGroups) {
+    radioGroups.forEach((group) => {
+      const elements = buttons.filter((button) => button.radioGroup === group.name)
+
+      const hr = document.createElement('hr')
+      elements[0].element!.replaceWith(hr)
+
+      const container = RadioForm(elements.map((e, idx) => {
+        const input = e.checkboxField!.input
+        input.type = 'radio'
+        input.name = group.name
+        input.value = '' + +(idx === group.checked)
+        input.checked = idx === group.checked
+        return {
+          container: e.element!,
+          input,
+        }
+      }), group.onChange)
+
+      hr.before(container)
+      container.append(hr)
+    })
+  }
 
   return el
 }

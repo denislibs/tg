@@ -7,7 +7,10 @@
  *    два поля — `label` (кладёт в бабл) и `input` (`input.checked = …`);
  *  • `PopupPeer` чекбоксы (`popupPeer.ts`, раунд правок 3 — см. докблок файла)
  *    строит `new CheckboxField({text, checked})` (tweb peer.ts:98-101, внутри
- *    `if(options.checkboxes)`) и читает `input.checked` в колбэке кнопки.
+ *    `if(options.checkboxes)`) и читает `input.checked` в колбэке кнопки;
+ *  • радиогруппы меню `ButtonMenuSync({radioGroups})` (`buttonMenu.ts`, tweb
+ *    buttonMenu.ts:262-270, :303-316) — `new CheckboxField()` без опций, затем
+ *    вызывающий сам ставит `input.type = 'radio'` (`asRadio` не нужен).
  *
  * ── Что урезано и почему ────────────────────────────────────────────────────
  * Ветки оригинала, у которых здесь нет вызывающего и нет зависимости в репо:
