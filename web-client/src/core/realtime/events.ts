@@ -112,8 +112,16 @@ export const RT = {
   pinnedForumTopic: 'rt:pinned_forum_topic',
   // Прочтение треда (тема форума, тред комментариев) — `updateReadChannelDiscussion
   // Inbox/Outbox` (tweb appMessagesManager.ts:777-778). Применяет `threadReads`
-  // воркера, вкладкам темы уезжают операциями `forumTopicOp`; имя нужно полноте реестра.
+  // воркера, вкладкам темы уезжают операциями `forumTopicOp`, горизонт исходящих
+  // треда — `readOutbox`; имя нужно полноте реестра.
   readDiscussion: 'rt:read_discussion',
+  // Горизонт исходящих истории сдвинут кадром прочтения — `historyStorage(peerId,
+  // threadId).readOutboxMaxId = maxId` (tweb appMessagesManager.ts:10916) и
+  // `dialog_unread` (:10950, только при найденном диалоге/теме), по которому лента
+  // перекрашивает «✓✓» (bubbles.ts:2318-2326, :4858-4860). Публикуют владельцы:
+  // чата — dialogsManager, треда — threadReads. Горизонт ДИАЛОГА (`dialogOp`) ленту
+  // не красит: у оригинала поле диалога и хранилище истории — разные вещи (:10920).
+  readOutbox: 'rt:read_outbox',
   pollUpdate: 'rt:poll_update',
   checklistUpdate: 'rt:checklist_update',
   boostUpdate: 'rt:boost_update',

@@ -83,6 +83,8 @@ export type BroadcastEvents = {
   [RT.forumTopicOp]: [{ ops: ForumTopicOp[] }]
   [RT.pinnedForumTopic]: [PinnedForumTopicEvt, EventMeta?]
   [RT.readDiscussion]: [ReadDiscussionEvt, EventMeta?]
+  // Без EventMeta: значение публикуют владельцы (dialogsManager, threadReads), а не funnel курсора.
+  [RT.readOutbox]: [{ peerId: PeerId; threadId?: number; maxId: number }]
   // Кадры диалогов — конструкторы схемы, а не пары «ключ пира + признак»:
   // закрепление это БИТ, архив это НОМЕР ПАПКИ, мьют это СРОК внутри настроек.
   // Прежние типы здесь описывали форму, которой на проводе не существовало уже

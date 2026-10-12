@@ -2,7 +2,7 @@
 // (tweb bubbles.ts:11101-11110, правило :9716-9719), рост горизонта
 // перекрашивает свои баблы (`dialog_unread` → `updateUnreadByDialog`,
 // :2318-2326, :4858-4879). Горизонт приезжает тем же `getDialogReadState`,
-// что курсор входящих, а рост — операциями владельцев (диалог, тема).
+// что курсор входящих, а рост — `readOutbox` владельцев (чат, тред).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import rootScope from '@lib/rootScope'
 import { resetMessagesMirror } from '@core/history/messagesMirror'
@@ -91,15 +91,25 @@ describe('ChatBubbles — «прочитано» по горизонту исх�
     expect(icon(bubbleOf(b, 13))).toBe(glyph('check'))
   })
 
-  it('кадр прочтения диалога (`read_outbox_max_id`) перекрашивает свои баблы до горизонта живьём', async () => {
+  it('кадр прочтения исходящих (`readOutbox` чата) перекрашивает свои баблы до горизонта живьём', async () => {
     const b = await open([own(11), own(12), own(13)], 11)
     expect(isRead(bubbleOf(b, 12))).toBe(false)
-    rootScope.dispatchEventSingle(RT.dialogOp, { ops: [{ op: 'patch', peerId: CHAT, fields: { read_outbox_max_id: 12 } }] })
+    rootScope.dispatchEventSingle(RT.readOutbox, { peerId: CHAT, maxId: 12 })
     expect(isRead(bubbleOf(b, 12))).toBe(true)
     expect(isRead(bubbleOf(b, 13))).toBe(false)
-    // чужой диалог — не наш горизонт
-    rootScope.dispatchEventSingle(RT.dialogOp, { ops: [{ op: 'patch', peerId: CHAT + 1, fields: { read_outbox_max_id: 99 } }] })
+    // чужой чат и тред этого чата — не наш горизонт
+    rootScope.dispatchEventSingle(RT.readOutbox, { peerId: CHAT + 1, maxId: 99 })
+    rootScope.dispatchEventSingle(RT.readOutbox, { peerId: CHAT, threadId: 7, maxId: 99 })
     expect(isRead(bubbleOf(b, 13))).toBe(false)
+  })
+
+  // tweb :10920 — прочтение треда ставит горизонт ДИАЛОГУ группы, а лента
+  // красит по хранилищу истории (:4860), которое оно не двигает
+  it('операции диалога (`patch`/`upsert` горизонта) ленту не красят', async () => {
+    const b = await open([own(11), own(12)], 10)
+    rootScope.dispatchEventSingle(RT.dialogOp, { ops: [{ op: 'patch', peerId: CHAT, fields: { read_outbox_max_id: 12 } }] })
+    rootScope.dispatchEventSingle(RT.dialogOp, { ops: [{ op: 'upsert', items: [{ dialog: { peerId: CHAT, read_outbox_max_id: 12 } as never, index: 1 }] }] })
+    expect(isRead(bubbleOf(b, 11))).toBe(false)
   })
 
   it('горизонт неизвестен — всё своё «✓» (как раньше)', async () => {
@@ -107,29 +117,44 @@ describe('ChatBubbles — «прочитано» по горизонту исх�
     expect(bubbleOf(b, 11).classList.contains('is-sent')).toBe(true)
   })
 
-  it('тема форума: горизонт — темы, рост приезжает операцией хранилища тем', async () => {
+  it('тема форума: горизонт — темы, рост — `readOutbox` темы; горизонт чата и операции тем не трогают', async () => {
     const THREAD = 7
     const b = await open([own(11), own(12)], 10, { threadId: THREAD, isForum: true })
     expect(isRead(bubbleOf(b, 11))).toBe(false)
-    // операция диалога форума тему не трогает
-    rootScope.dispatchEventSingle(RT.dialogOp, { ops: [{ op: 'patch', peerId: CHAT, fields: { read_outbox_max_id: 50 } }] })
-    expect(isRead(bubbleOf(b, 11))).toBe(false)
+    rootScope.dispatchEventSingle(RT.readOutbox, { peerId: CHAT, maxId: 50 })
     rootScope.dispatchEventSingle(RT.forumTopicOp, { ops: [{ op: 'update', peerId: CHAT, topics: [{ id: THREAD, read_outbox_max_id: 11 } as never] }] })
+    expect(isRead(bubbleOf(b, 11))).toBe(false)
+    rootScope.dispatchEventSingle(RT.readOutbox, { peerId: CHAT, threadId: THREAD, maxId: 11 })
     expect(isRead(bubbleOf(b, 11))).toBe(true)
     expect(isRead(bubbleOf(b, 12))).toBe(false)
   })
 
-  it('операция `upsert` диалога тоже двигает горизонт', async () => {
-    const b = await open([own(11), own(12)], 10)
-    rootScope.dispatchEventSingle(RT.dialogOp, { ops: [{ op: 'upsert', items: [{ dialog: { peerId: CHAT, read_outbox_max_id: 12 } as never, index: 1 }] }] })
-    expect(isRead(bubbleOf(b, 12))).toBe(true)
-  })
-
   // tweb :11105 — отложенные всегда «✓» (`is_scheduled`), своя нумерация
-  it('отложенные: операции диалога их не перекрашивают', async () => {
+  it('отложенные: прочтение их не перекрашивает', async () => {
     const b = await open([own(11)], undefined, { type: ChatType.Scheduled })
-    rootScope.dispatchEventSingle(RT.dialogOp, { ops: [{ op: 'patch', peerId: CHAT, fields: { read_outbox_max_id: 50 } }] })
+    rootScope.dispatchEventSingle(RT.readOutbox, { peerId: CHAT, maxId: 50 })
     expect(isRead(bubbleOf(b, 11))).toBe(false)
   })
-})
 
+  // tweb :4858-4860 — у треда комментариев свой горизонт исходящих; растёт кадром
+  // `updateReadChannelDiscussionOutbox` (:777-778 → :10916 → `dialog_unread` :10950)
+  it('тред комментариев: горизонт треда, рост — `readOutbox` треда', async () => {
+    const OFFSET = 0x100000000
+    const GROUP = -(CHAT)
+    const THREAD = OFFSET + 7
+    const msgs = [own(OFFSET + 11, GROUP), own(OFFSET + 12, GROUP), own(OFFSET + 13, GROUP)]
+    bubbles = mountTestBubbles(createTestChat({ peerId: GROUP, threadId: THREAD, type: ChatType.Discussion }), managersWith(msgs, OFFSET + 11))
+    await openFeed(bubbles)
+    await settle()
+    const b = bubbles
+    expect(isRead(bubbleOf(b, OFFSET + 11))).toBe(true)
+    expect(isRead(bubbleOf(b, OFFSET + 12))).toBe(false)
+    // горизонт чата группы и чужой тред — не наши
+    rootScope.dispatchEventSingle(RT.readOutbox, { peerId: GROUP, maxId: OFFSET + 99 })
+    rootScope.dispatchEventSingle(RT.readOutbox, { peerId: GROUP, threadId: OFFSET + 8, maxId: OFFSET + 13 })
+    expect(isRead(bubbleOf(b, OFFSET + 12))).toBe(false)
+    rootScope.dispatchEventSingle(RT.readOutbox, { peerId: GROUP, threadId: THREAD, maxId: OFFSET + 12 })
+    expect(isRead(bubbleOf(b, OFFSET + 12))).toBe(true)
+    expect(isRead(bubbleOf(b, OFFSET + 13))).toBe(false)
+  })
+})

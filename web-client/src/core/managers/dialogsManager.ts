@@ -130,6 +130,13 @@ export interface DialogsDeps {
    */
   getThreadReadState?: (peerId: number, threadId: number) => { read_inbox_max_id: number, read_outbox_max_id?: number, unread_count: number, top_message: number, merged?: true } | undefined
   /**
+   * Горизонт исходящих ЧАТА сдвинут кадром прочтения — `historyStorage(peerId)
+   * .readOutboxMaxId` (appMessagesManager.ts:10916) и `dialog_unread` (:10950),
+   * по которому лента красит «✓✓» (bubbles.ts:2318-2326). Опционален по тому же
+   * приёму, что `savePinnedOrders`.
+   */
+  onReadOutbox?: (peerId: number, maxId: number) => void
+  /**
    * Владелец карточек пиров. Контейнер `/chats` несёт векторы `chats`/`users` —
    * тела групп и собеседников, — и они втекают в УЖЕ существующий приёмник
    * `saveApiPeers` (порт `appPeersManager.saveApiPeers`, шаг D пиров). Своей
@@ -163,7 +170,7 @@ export interface DialogsDeps {
  * каждое изменение. */
 const PERSIST_DEBOUNCE_MS = 1000
 
-export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCache, loadState, getMeId, savePinnedOrders, mirrorStateKey, saveCache, saveDialogsLoaded, peers, messages, getThreadReadState }: DialogsDeps) {
+export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCache, loadState, getMeId, savePinnedOrders, mirrorStateKey, saveCache, saveDialogsLoaded, peers, messages, getThreadReadState, onReadOutbox }: DialogsDeps) {
   let items: DialogItem[] = []
   // Полный State-ключ (все папки) — нужен целиком, чтобы applyPinned не затёр
   // чужие записи при записи на диск (порт tweb: `{...orders, [ALL_FOLDER_ID]: …}`,
@@ -1645,14 +1652,19 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
      * строку (:10956-10962). Сервер (БЭК-1b) делает то же.
      *
      * Зовёт `threadReads` ДО того, как сдвинет горизонт самого треда: «было ли
-     * непрочитанным» решает прежний горизонт.
+     * непрочитанным» решает прежний горизонт. Ответ — нашёлся ли диалог
+     * (`foundDialog`): от него зависит `dialog_unread` (:10919-10950).
+     *
+     * Горизонт исходящих группы (:10920) — поле ДИАЛОГА; хранилище истории группы
+     * он не двигает (:10916 пишет хранилище треда), и основная лента группы
+     * живьём не перекрашивается (`readOutbox` объявляет только тред).
      */
-    applyThreadRead(peerId: number, threadId: number, maxId: number, out: boolean): void {
+    applyThreadRead(peerId: number, threadId: number, maxId: number, out: boolean): boolean {
       const cur = findDialog(peerId)
-      if (!cur) return
+      if (!cur) return false
       if (out) {
         if (cur.read_outbox_max_id !== maxId) patchDialog(peerId, { read_outbox_max_id: maxId })
-        return
+        return true
       }
       const readMaxId = readMaxIfUnread(peerId, threadId)
       let unreadCount = cur.unread_count
@@ -1675,6 +1687,7 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
       if (newUnreadMentionsCount < 0 || !unreadCount) mentionsCount = 0
       patchDialog(peerId, { unread_count: unreadCount, unread_mentions_count: mentionsCount, read_inbox_max_id: maxId })
       if (!foundAffected && unreadCount) reloadConversation(peerId)
+      return true
     },
 
     /** `read` — моё прочтение гасит unread/горизонт, чужое двигает peerReadSeq (✓✓). */
@@ -1720,6 +1733,7 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
         const readOutbox = Math.max(cur.read_outbox_max_id, upTo)
         if (readOutbox === cur.read_outbox_max_id) return // no advance → no-op (без операции)
         patchDialog(peerId, { read_outbox_max_id: readOutbox })
+        onReadOutbox?.(peerId, readOutbox)
       }
     },
 

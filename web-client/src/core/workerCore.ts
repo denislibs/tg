@@ -317,6 +317,7 @@ export function createWorkerCore() {
     // вызову она уже есть.
     addChannelState: (peerId, pts) => { channelFunnel.addChannelState(peerId, pts) },
     onDialogOps: (ops) => broadcast(RT.dialogOp, { ops }),
+    onReadOutbox: (peerId, maxId) => broadcast(RT.readOutbox, { peerId, maxId }),
     loadCache: () => loadDialogs(),
     loadState: async () => {
       // Fix (финальное ревью, Minor #2): версионный гейт (`getState` выше). Без
@@ -431,6 +432,7 @@ export function createWorkerCore() {
     forumTopics,
     getMeId: () => me?.user.id ?? null,
     onCommentThreadRead: (peerId, threadId, maxId, out) => dialogs.applyThreadRead(peerId, threadId, maxId, out),
+    onReadOutbox: (peerId, threadId, maxId) => broadcast(RT.readOutbox, { peerId, threadId, maxId }),
   })
   // cacheViews — владелец счётчика просмотров: ответ на регистрацию просмотра
   // несёт уже новые значения, и применяет их та же точка, что и кадр
