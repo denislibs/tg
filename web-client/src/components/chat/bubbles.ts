@@ -6350,7 +6350,8 @@ export default class ChatBubbles implements BubbleGroupsHost {
     })
     // Горизонт исходящих ТРЕДА (кадр `updateReadChannelDiscussionOutbox`, tweb
     // :777-778 → `onUpdateReadHistory` :10916 → `dialog_unread` :10950) объявляет
-    // `threadReads` воркера — и у темы без кэша, и у треда комментариев.
+    // `threadReads` воркера — у темы не из кэша и у треда комментариев (тему
+    // из кэша везёт операция хранилища тем ниже).
     this.listenerSetter.add(rootScope)(RT.threadReadOutbox, ({ peerId, threadId, maxId }) => {
       if (this.chat.type === ChatType.Scheduled || peerId !== this.peerId || threadId !== this.chat.threadId) return
       this.updateUnreadByDialog(maxId)

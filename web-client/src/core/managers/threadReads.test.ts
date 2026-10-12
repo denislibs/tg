@@ -170,9 +170,9 @@ describe('threadReads: диалог группы', () => {
 })
 
 // tweb :10916 → `dialog_unread` :10950 → bubbles.ts:2318-2326/:4860 — горизонт
-// исходящих треда уходит ленте треда, у темы — есть ли она в кэше или нет
+// исходящих треда уходит ленте треда; тему из кэша везёт хранилище тем
 describe('threadReads: горизонт исходящих треда — ленте', () => {
-  it('объявляет `onReadOutbox` после отсева эха; входящие — нет', () => {
+  it('объявляет `onReadOutbox` после отсева эха — теме не из кэша и треду комментариев; входящие — нет', () => {
     const out: unknown[] = []
     const topic = { id: mid(10), read_inbox_max_id: mid(10), read_outbox_max_id: mid(12), top_message: mid(13), unread_count: 3 } as ForumTopic
     const reads = newThreadReads({
@@ -189,10 +189,10 @@ describe('threadReads: горизонт исходящих треда — лен
     // входящие — не горизонт исходящих
     reads.applyReadDiscussion({ peerId: GROUP, topicId: mid(7), maxId: mid(28), out: false })
     expect(out).toEqual([])
-    reads.applyReadDiscussion({ peerId: FORUM, topicId: mid(10), maxId: mid(13), out: true })
+    reads.applyReadDiscussion({ peerId: FORUM, topicId: mid(10), maxId: mid(13), out: true }) // тема из кэша — `forumTopicOp`
     reads.applyReadDiscussion({ peerId: FORUM, topicId: mid(11), maxId: mid(14), out: true }) // темы нет в кэше
     reads.applyReadDiscussion({ peerId: GROUP, topicId: mid(7), maxId: mid(29), out: true })
-    expect(out).toEqual([[FORUM, mid(10), mid(13)], [FORUM, mid(11), mid(14)], [GROUP, mid(7), mid(29)]])
+    expect(out).toEqual([[FORUM, mid(11), mid(14)], [GROUP, mid(7), mid(29)]])
     expect(reads.getReadState(GROUP, mid(7))?.read_outbox_max_id).toBe(mid(29))
   })
 })

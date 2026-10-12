@@ -16,6 +16,16 @@
 // снимаются со счётчика группы, группа получает горизонт треда (:10876-10880,
 // :10928-10929); делает это владелец диалогов (`dialogs.applyThreadRead`).
 //
+// Горизонт исходящих треда у оригинала — его `historyStorage` (:10916), лента
+// треда перечитывает его на `dialog_unread` пира (:10950 → bubbles.ts:2318-2326,
+// :4860). Лента у нас хранилище не читает: тема из кэша приезжает ей операцией
+// хранилища тем, прочее — `onReadOutbox`.
+//
+// Расхождение: `dialog_unread` у оригинала — внутри `if(foundDialog)`
+// (:10919-10950), и тема не из кэша (тред комментариев — без диалога группы)
+// живьём не перекрашивается до следующего `dialog_unread` пира; у нас
+// `onReadOutbox` объявляется и тогда — следующего события лента ждать не может.
+//
 // Расхождение с оригиналом: `notification_reset`/`notification_cancel` и
 // `threadsToReplies` (счётчик непрочитанных комментариев у поста,
 // `replies_updated`) — предметов нет.
@@ -67,11 +77,11 @@ export function newThreadReads({ rest, isForumPeer, forumTopics, getMeId, onComm
   /** Местное прочтение треда — `onUpdateReadHistory` (:10795-10990), ветки темы и треда. */
   function apply(update: ReadDiscussion): void {
     const { peerId, topicId, maxId, out } = update
+    // тема из кэша доезжает до ленты операцией хранилища тем (`forumTopicOp`)
+    const viaTopic = !!topicOf(peerId, topicId)
     if (isForumPeer(peerId)) forumTopics.applyReadDiscussion(update)
     else applyCommentThread(peerId, topicId, maxId, out)
-    // горизонт треда у оригинала — его `historyStorage` (:10916), есть ли тема
-    // в кэше или нет; лента треда узнаёт его из `dialog_unread` (:10950)
-    if (out) onReadOutbox?.(peerId, topicId, maxId)
+    if (out && !viaTopic) onReadOutbox?.(peerId, topicId, maxId)
   }
 
   function applyCommentThread(peerId: PeerId, topicId: number, maxId: number, out: boolean): void {

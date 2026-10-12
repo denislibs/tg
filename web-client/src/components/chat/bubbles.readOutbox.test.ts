@@ -159,7 +159,7 @@ describe('ChatBubbles — «прочитано» по горизонту исх�
     expect(isRead(bubbleOf(b, OFFSET + 13))).toBe(false)
   })
 
-  it('тема форума (и без кэша тем): threadReadOutbox перекрашивает живьём', async () => {
+  it('тема форума: threadReadOutbox перекрашивает живьём', async () => {
     const OFFSET = 0x100000000
     const GROUP = -(CHAT)
     const THREAD = OFFSET + 7
@@ -169,5 +169,14 @@ describe('ChatBubbles — «прочитано» по горизонту исх�
     rootScope.dispatchEventSingle(RT.threadReadOutbox, { peerId: GROUP, threadId: THREAD, maxId: OFFSET + 11 })
     expect(isRead(bubbleOf(bubbles, OFFSET + 11))).toBe(true)
   })
-})
 
+  it('лента без треда того же пира threadReadOutbox не слушает', async () => {
+    const OFFSET = 0x100000000
+    const GROUP = -(CHAT)
+    bubbles = mountTestBubbles(createTestChat({ peerId: GROUP }), managersWith([own(OFFSET + 11, GROUP)], OFFSET + 10))
+    await openFeed(bubbles)
+    await settle()
+    rootScope.dispatchEventSingle(RT.threadReadOutbox, { peerId: GROUP, threadId: OFFSET + 7, maxId: OFFSET + 11 })
+    expect(isRead(bubbleOf(bubbles, OFFSET + 11))).toBe(false)
+  })
+})

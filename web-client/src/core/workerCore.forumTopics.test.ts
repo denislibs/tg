@@ -244,9 +244,9 @@ describe('createWorkerCore(): кадры тем применяет хранил�
   })
 
   // Кадр `updateReadChannelDiscussionOutbox` (tweb :777-778 → :10916 → `dialog_unread`
-  // :10950): горизонт исходящих треда — ленте треда операцией владельца, эхо отсеяно
-  it('outbox треда комментариев и темы → `threadReadOutbox` клиентскими номерами, эхо — тишина', async () => {
-    const { core, tab } = await boot()
+  // :10950): горизонт исходящих треда — ленте треда одной операцией владельца, эхо отсеяно
+  it('outbox треда комментариев → `threadReadOutbox`, темы из кэша → только `forumTopicOp`; эхо — тишина', async () => {
+    const { core, tab, ops } = await boot()
     const seen: unknown[] = []
     tab.on('rt:thread_read_outbox', (p) => { seen.push(p) })
     await core.registry.messages.getDiscussionMessage(-3, generateMessageId(9))
@@ -254,11 +254,10 @@ describe('createWorkerCore(): кадры тем применяет хранил�
     capturedConnDeps!.onFrame('read_discussion', frame)
     capturedConnDeps!.onFrame('read_discussion', frame)
     capturedConnDeps!.onFrame('read_discussion', { _: 'updateReadChannelDiscussionOutbox', channel_id: 50, top_msg_id: 10, read_max_id: 12 })
-    await vi.waitFor(() => expect(seen).toHaveLength(2))
-    expect(seen).toEqual([
-      { peerId: -70, threadId: generateMessageId(200), maxId: generateMessageId(228) },
-      { peerId: FORUM, threadId: generateMessageId(10), maxId: generateMessageId(12) },
-    ])
+    await vi.waitFor(() => expect(seen).toHaveLength(1))
+    expect(seen).toEqual([{ peerId: -70, threadId: generateMessageId(200), maxId: generateMessageId(228) }])
+    const update = ops.find((op) => op.op === 'update') as Extract<ForumTopicOp, { op: 'update' }>
+    expect(update.topics[0]).toMatchObject({ id: generateMessageId(10), read_outbox_max_id: generateMessageId(12) })
     expect(core.registry.dialogs.getDialogReadState(-70, generateMessageId(200))?.readOutboxMaxSeq).toBe(generateMessageId(228))
   })
 })
