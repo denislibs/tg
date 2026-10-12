@@ -315,3 +315,63 @@ func assertNoPostCounters(t *testing.T, where string, wire map[string]any) {
 		}
 	}
 }
+
+// openMaxSeq — номер последнего сообщения без верхней границы: фикстура
+// канала отвечает нулём, а ReadDiscussion обрезает read_max_id по нему.
+type openMaxSeq struct{ ChatRepo }
+
+func (openMaxSeq) MaxSeq(context.Context, int64) (int64, error) { return 1 << 40, nil }
+
+// Футер после прочтения треда (хвост БЭК-3): двигает его кадр прочтения
+// updateReadChannelDiscussionInbox своим устройствам — tweb в
+// onUpdateReadHistory находит пост по threadsToReplies и перечитывает его
+// (appMessagesManager.ts:10831-10836). Кадр адресует тред ГРУППЫ ОБСУЖДЕНИЯ
+// (channel_id — группа, top_msg_id — номер зеркала), а перечитанный пост
+// несёт read_max_id = новый горизонт треда — по нему гаснет is-unread
+// футера (replies.ts:110-119). Гостю (не участнику группы) — тоже.
+func TestReadCommentThread_MovesPostFooter(t *testing.T) {
+	i, fg, _, _ := newChannelTestInteractor(t)
+	ctx := context.Background()
+	fg.users[8] = domain.UserReal{ID: 8, FirstName: "Боб"}
+	fg.users[9] = domain.UserReal{ID: 9, FirstName: "Ева"}
+	ft := newFakeTopicRepo()
+	i.SetTopics(ft)
+	pub := &fakePublisher{}
+	i.SetPublisher(pub)
+	i.chats = openMaxSeq{i.chats}
+	ch, _ := i.CreateChannel(ctx, 7, "News", "", "", true)
+	gid, err := i.EnableDiscussion(ctx, ch, 7)
+	if err != nil {
+		t.Fatalf("EnableDiscussion: %v", err)
+	}
+	post, err := i.PostToChannel(ctx, ch, 7, "пост", nil, "p1")
+	if err != nil {
+		t.Fatalf("PostToChannel: %v", err)
+	}
+	comment, err := i.PostComment(ctx, ch, post.ID, 9, "коммент Евы", "c1")
+	if err != nil {
+		t.Fatalf("PostComment: %v", err)
+	}
+	mirrorID := *comment.ThreadRootID
+	mirror, err := i.msgs.GetByID(ctx, mirrorID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ft.threadMax = map[[2]int64]int64{{gid, mirrorID}: comment.Seq}
+	if rep, _ := postFromHistory(t, i, 8, post.ID)["replies"].(map[string]any); rep["read_max_id"] != nil {
+		t.Fatalf("до прочтения read_max_id = %v", rep["read_max_id"])
+	}
+
+	if err := i.ReadDiscussion(ctx, gid, mirror.Seq, 8, comment.Seq); err != nil {
+		t.Fatalf("ReadDiscussion: %v", err)
+	}
+	f := lastFrameOfType(t, pub, 8, "read_discussion")
+	if f["_"] != domain.UpdateReadChannelDiscussionInboxTag || f["channel_id"] != float64(gid) ||
+		f["top_msg_id"] != float64(mirror.Seq) || f["read_max_id"] != float64(comment.Seq) {
+		t.Fatalf("кадр прочтения треда = %v", f)
+	}
+	rep, _ := postFromHistory(t, i, 8, post.ID)["replies"].(map[string]any)
+	if rep["read_max_id"] != float64(comment.Seq) || rep["max_id"] != float64(comment.Seq) {
+		t.Fatalf("футер перечитанного поста = %+v, ждали read_max_id = max_id = %d", rep, comment.Seq)
+	}
+}
