@@ -26,10 +26,17 @@ type DraftInput struct {
 	// TopMsgID — reply_to.top_msg_id: тред, внутри которого ответ.
 	TopMsgID *int64
 	// WebPage — no_webpage, invert_media, media:inputMediaWebPage: решение о
-	// превью ссылки (tweb appDraftsManager.ts:281-291). Хранится как прислали
-	// (domain.WebPageInput.ForDraft) — tweb сравнивает черновик целиком.
+	// превью ссылки (tweb appDraftsManager.ts:281-291). Хранится в форме
+	// domain.WebPageInput.ForDraft: ссылка без пробелов по краям, только флаги
+	// inputMediaWebPage, чужой конструктор media снят — остальное как
+	// прислали: tweb сравнивает черновик целиком (draftsAreEqual).
 	WebPage domain.WebPageInput
 }
+
+// maxDraftWebPageURLRunes — предел ссылки media черновика. У tweb и TL своего
+// предела нет; ссылка превью берётся из текста черновика, поэтому её предел —
+// предел самого текста.
+const maxDraftWebPageURLRunes = maxMessageRunes
 
 // SaveDraft сохраняет (или снимает — при пустом тексте без ответа) черновик
 // треда. Тред выводится из reply_to так же, как его туда кладёт tweb
@@ -66,7 +73,7 @@ func (i *Interactor) SaveDraft(ctx context.Context, userID, chatID int64, in Dra
 	d, err := i.drafts.Upsert(ctx, userID, domain.Draft{
 		ChatID: chatID, ThreadRootID: root, TopMsgID: top, Text: in.Message,
 		Entities: domain.SanitizeEntities(in.Entities), ReplyToID: replyToID,
-		WebPage: in.WebPage.ForDraft(maxMessageRunes),
+		WebPage: in.WebPage.ForDraft(maxDraftWebPageURLRunes),
 	})
 	if err != nil {
 		return nil, err

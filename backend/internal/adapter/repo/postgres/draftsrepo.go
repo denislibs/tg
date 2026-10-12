@@ -64,6 +64,10 @@ func scanDraft(row pgx.Row) (domain.Draft, error) {
 }
 
 func (r *DraftsRepo) Upsert(ctx context.Context, userID int64, d domain.Draft) (domain.Draft, error) {
+	wp, err := draftWebPageParam(d.WebPage)
+	if err != nil {
+		return domain.Draft{}, err
+	}
 	return scanDraft(querier(ctx, r.pool).QueryRow(ctx,
 		`WITH d AS (
 		   INSERT INTO drafts (chat_id, user_id, thread_root_id, text, entities, reply_to_id, web_page, updated_at)
@@ -72,21 +76,21 @@ func (r *DraftsRepo) Upsert(ctx context.Context, userID int64, d domain.Draft) (
 		   DO UPDATE SET text=$4, entities=$5, reply_to_id=$6, web_page=$7, updated_at=now()
 		   RETURNING *)
 		 SELECT `+draftCols+` FROM d`+draftRootJoin,
-		d.ChatID, userID, d.ThreadRootID, d.Text, entitiesParam(d.Entities), d.ReplyToID, draftWebPageParam(d.WebPage)))
+		d.ChatID, userID, d.ThreadRootID, d.Text, entitiesParam(d.Entities), d.ReplyToID, wp))
 }
 
 // draftWebPageParam — решение о превью jsonb-строкой (форма
 // domain.WebPageInput, как scheduled_messages.params.web_page); нет решения —
 // NULL.
-func draftWebPageParam(w domain.WebPageInput) any {
+func draftWebPageParam(w domain.WebPageInput) (any, error) {
 	if w.IsZero() {
-		return nil
+		return nil, nil
 	}
 	b, err := json.Marshal(w)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return string(b)
+	return string(b), nil
 }
 
 func (r *DraftsRepo) Delete(ctx context.Context, chatID, userID, threadRootID int64) (int64, bool, error) {
