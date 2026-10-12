@@ -728,7 +728,9 @@ export function mapSuggestedPost(r: RawSuggestedPost): SuggestedPost {
  * звался `text`, то есть был вторым именем одного поля), а дата — `date` в
  * секундах эпохи, как у сообщения, а не ISO-строкой своей ручки.
  */
-export interface InputReplyToMessage { _: 'inputReplyToMessage'; reply_to_msg_id: number }
+/** inputReplyToMessage — ответ черновика. `top_msg_id` — тред ответа (tweb
+ *  `input.ts:2293`: черновик треда с ответом несёт номер треда здесь). */
+export interface InputReplyToMessage { _: 'inputReplyToMessage'; reply_to_msg_id: number; top_msg_id?: number }
 /** draftMessage#60fe3294 … message:string entities:flags.3?Vector<MessageEntity> date:int */
 export interface DraftMessageReal {
   _: 'draftMessage'
@@ -747,6 +749,9 @@ export type DraftMessage = DraftMessageReal | DraftMessageEmpty
 export interface RawDraft {
   _: 'updateDraftMessage'
   peer: Peer
+  /** тред черновика (`flags.0?int`, серверный номер): тема, General = 1, зеркало
+   *  поста у треда комментариев; черновик чата — без поля */
+  top_msg_id?: number
   draft: DraftMessage
 }
 

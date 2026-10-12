@@ -363,6 +363,10 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
     expect(dialogOps).toEqual([])
   })
 
+  /** Адреса запросов, кроме `/drafts` (tweb `addMissedDialogs` при подъёме списка). */
+  const notDrafts = (fetch: ReturnType<typeof vi.fn>) =>
+    fetch.mock.calls.map((c) => String((c as unknown[])[0])).filter((url) => !url.includes('/drafts'))
+
   // Сообщения в памяти нет — счёт локально не вывести, строка перечитывается
   // (tweb fixDialogUnreadMentionsIfNoMessage({force: true})).
   it('реакция на сообщение вне памяти → строка перечитывается у сервера', async () => {
@@ -372,8 +376,9 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
 
     capturedConnDeps!.onFrame('reaction', reactionFrame(true))
 
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalled())
-    expect(String((fetch.mock.calls[0] as unknown[])[0])).toContain('/peer_dialogs')
+    // `/drafts` — черновики при подъёме списка (`addMissedDialogs`), не этот вопрос
+    await vi.waitFor(() => expect(notDrafts(fetch)).not.toHaveLength(0))
+    expect(notDrafts(fetch)[0]).toContain('/peer_dialogs')
   })
 
   // min-кадр (общее тело всем участникам группы) флага `unread` не несёт и
@@ -390,7 +395,7 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
     // Перечитывание идёт пачкой через `pause(0)` и асинхронный REST — ждём с
     // запасом, иначе отсутствие запроса доказывалось бы раньше, чем он ушёл бы.
     await new Promise((r) => setTimeout(r, 50))
-    expect(fetch).not.toHaveBeenCalled()
+    expect(notDrafts(fetch)).toEqual([])
   })
 
   // Порт tweb `readMessages` (appMessagesManager.ts:9566, :9607-9609): лента

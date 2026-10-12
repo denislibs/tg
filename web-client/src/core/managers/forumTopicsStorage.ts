@@ -33,7 +33,7 @@
 //     такой темы; служебка создания и появление в ответе её снимают.
 import type { RestClient } from '../net/restClient'
 import type { Chat, UserReal } from '../peers/peer'
-import type { MyMessage, RawMyMessage } from '../models'
+import type { DraftMessage, DraftMessageReal, MyMessage, RawMyMessage } from '../models'
 import { getMessageThreadId } from '../models'
 import { isForum } from '../peers/predicates'
 import { MESSAGE_ID_OFFSET } from '../history/messageId'
@@ -89,6 +89,9 @@ export interface ForumTopicsDeps {
   /** Упоминания темы, прочитанные в треде, уходят и из бейджа форума
    *  (`appMessagesManager.ts:10969-10980`) — владелец строки форума. */
   onParentMentionsRead?: (peerId: PeerId, count: number) => void
+  /** Черновик темы из ответа списка — словарь черновиков (`appDraftsManager.saveDraft`
+   *  без `notify`, `dialogs.ts:1692-1697`): ответ — черновик в клиентских номерах. */
+  saveTopicDraft?: (peerId: PeerId, topicId: number, draft: DraftMessage | undefined) => DraftMessageReal | undefined
 }
 
 /** tweb `getForumUnreadCount` берёт первые 20 тем папки (`dialogs.ts:2244-2247`). */
@@ -161,6 +164,10 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
       for (const id of dropped) cache.topics.delete(id)
       for (const topic of topics) {
         cache.deletedTopics.delete(topic.id)
+        // `dialogs.ts:1692-1697`
+        const draft = deps.saveTopicDraft ? deps.saveTopicDraft(peerId, topic.id, topic.draft) : undefined
+        if (draft) topic.draft = draft
+        else delete topic.draft
         saveTopic(cache, topic)
       }
       cache.loaded = true
@@ -423,6 +430,29 @@ export function newForumTopicsStorage(deps: ForumTopicsDeps) {
     },
 
     applyReadDiscussion,
+
+    /**
+     * Черновик треда изменился — ветка темы слушателя `draft_updated`
+     * (`appMessagesManager.ts:858-901`): черновик в строку, индекс (дата
+     * черновика двигает тему, `getDialogActivityDate`), `dialog_draft` списку.
+     * Темы нет в загруженном списке — перечитать (`getForumTopicById`,
+     * расхождение 1); список ни разу не грузили — первый показ возьмёт его с
+     * сервера уже с черновиком. Ветки `drop` (`:876-878`) у темы нет: тема всегда
+     * держит служебку создания (`top_message`).
+     */
+    applyDraft(peerId: PeerId, topicId: number, draft: DraftMessageReal | undefined): void {
+      const cache = caches.get(peerId)
+      if (!cache?.loaded) return
+      const topic = cache.topics.get(topicId)
+      if (!topic) {
+        if (isForumPeer(peerId)) void reloadForTopic(peerId, topicId).catch(() => {})
+        return
+      }
+      if (draft) topic.draft = draft
+      else delete topic.draft
+      reindex(cache, topic)
+      emitUpdate(topic)
+    },
 
     /**
      * Удаление сообщений — ветка темы `onUpdateDeleteMessages`

@@ -23,6 +23,7 @@
 
 import type { DraftMessage, DraftMessageReal } from '../models'
 import deepEqual from '@helpers/object/deepEqual'
+import { generateMessageId, getServerMessageId } from '../history/messageId'
 
 /** Настоящий черновик, если он есть (пустой конструктор — не черновик). */
 export function realDraft(draft: DraftMessage | undefined): DraftMessageReal | undefined {
@@ -41,31 +42,35 @@ export function hasDraft(draft: DraftMessage | undefined): boolean {
   return !!d && (!!d.message.trim() || d.reply_to !== undefined)
 }
 
-/** На что отвечает черновик (наш `reply_to_msg_id`), либо null. */
-export function draftReplyToId(draft: DraftMessage | undefined): number | null {
-  return realDraft(draft)?.reply_to?.reply_to_msg_id ?? null
-}
-
 /** Дата черновика, секунды эпохи — те же единицы, что у сообщения. */
 export function draftDate(draft: DraftMessage | undefined): number {
   return realDraft(draft)?.date ?? 0
 }
 
-/** Черновик, собранный клиентом для оптимистичной записи до ответа ручки. */
-export function newDraft(text: string, replyToId: number | null, date: number): DraftMessageReal {
-  const d: DraftMessageReal = { _: 'draftMessage', message: text, date }
-  if (replyToId != null) d.reply_to = { _: 'inputReplyToMessage', reply_to_msg_id: replyToId }
-  return d
+/**
+ * Черновик с провода → клиентские номера ответа — tweb `processApiDraft`
+ * (`appDraftsManager.ts:199-214`). Новый объект, а не правка на месте: тот же
+ * черновик держат и строка списка, и кадр.
+ */
+export function processApiDraft<T extends DraftMessage | undefined>(draft: T): T {
+  if (draft?._ !== 'draftMessage' || !draft.reply_to?.reply_to_msg_id) return draft
+  const replyTo = { ...draft.reply_to, reply_to_msg_id: toClientId(draft.reply_to.reply_to_msg_id) }
+  if (replyTo.top_msg_id) replyTo.top_msg_id = toClientId(replyTo.top_msg_id)
+  return { ...draft, reply_to: replyTo }
 }
+
+/** Идемпотентно, как tweb `generateMessageId` (`appMessagesIdsManager.ts:15-25`
+ *  сначала приводит к серверному): локальный черновик уже в клиентских номерах. */
+const toClientId = (id: number) => generateMessageId(getServerMessageId(id))
 
 /**
  * Порт tweb `appManagers/utils/drafts/draftsAreEqual.ts`: черновики равны без
- * даты и ссылки ответа, а ответ сравнивается отдельно (`repliesAreEqual` — у нас
- * у `InputReplyToMessage` предметно только `reply_to_msg_id`). Сравнение глубокое:
- * поле ввода собирает черновик заново на каждый вызов (`ChatInput.getCurrentInputAsDraft`).
+ * даты и ссылки ответа, а ответ сравнивается отдельно (`repliesAreEqual` —
+ * `deepEqual`, `utils/messages/repliesAreEqual.ts`). Сравнение глубокое: поле
+ * ввода собирает черновик заново на каждый вызов (`ChatInput.getCurrentInputAsDraft`).
  */
 export function draftsAreEqual(draft1: DraftMessage | undefined, draft2: DraftMessage | undefined): boolean {
   const d1 = realDraft(draft1), d2 = realDraft(draft2)
   return deepEqual(d1 as DraftMessageReal, d2 as DraftMessageReal, ['date', 'reply_to']) &&
-    d1?.reply_to?.reply_to_msg_id === d2?.reply_to?.reply_to_msg_id
+    deepEqual(d1?.reply_to, d2?.reply_to)
 }

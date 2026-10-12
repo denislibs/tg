@@ -385,6 +385,24 @@ describe('живые события тем (Б-54)', () => {
     expect(getForumTopics.mock.calls.length).toBe(calls)
   })
 
+  // `dialog_draft` темы (tweb forumTopics.ts:93-104) → `updateDialog`; строка —
+  // «Draft:» как у чата (`getLastMessageForDialog` :2414-2423, ветка `isForumTopic`)
+  it('черновик темы в строке: из списка и живьём (`update`), снятие возвращает последнее', async () => {
+    await start([topic(1, { draft: { _: 'draftMessage', message: 'из списка', date: 1_700_000_500 } }), topic(2)])
+    await openForum()
+    const text = (id: number) => topicRows().find((r) => r.dataset.threadId === '' + generateMessageId(id))!.querySelector('.row-subtitle, .dialog-subtitle')!.textContent
+    await vi.waitFor(() => { flushFrames(); expect(text(1)).toContain('из списка') })
+    expect(text(1)).toContain('Draft')
+
+    const drafted = { ...forumTab()!.xd.getDialog(generateMessageId(2))!, draft: { _: 'draftMessage' as const, message: 'живой', date: 1_700_000_900 } }
+    topicOps([{ op: 'update', peerId: FORUM_ID, topics: [drafted] }])
+    await vi.waitFor(() => { flushFrames(); expect(text(2)).toContain('живой') })
+
+    const cleared = { ...drafted, draft: undefined }
+    topicOps([{ op: 'update', peerId: FORUM_ID, topics: [cleared] }])
+    await vi.waitFor(() => { flushFrames(); expect(text(2)).toContain('текст 2') })
+  })
+
   it('`update` чужого форума строки не трогает', async () => {
     await start([topic(1)])
     await openForum()

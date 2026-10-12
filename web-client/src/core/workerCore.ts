@@ -179,11 +179,11 @@ export function createWorkerCore() {
     // `msgr/kv` вне скоупа персиста, и без сброса вход после выхода догонял бы
     // разницу от курсора ПРОШЛОЙ сессии (а то и чужого аккаунта) вместо того,
     // чтобы взять базой текущее состояние сервера (updates.getState, onReady).
-    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); forumTopics.reset(); threadReads.reset(); contacts.resetForLogout(); cursor.reset(); channelFunnel.resetForLogout(); broadcast(RT.loggingOut, e) },
+    onLoggingOut: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); forumTopics.reset(); threadReads.reset(); drafts.reset(); contacts.resetForLogout(); cursor.reset(); channelFunnel.resetForLogout(); broadcast(RT.loggingOut, e) },
     // Симметричный кадр входа (порт tweb `account_logged_in`) — тем же веером и
     // с тем же сбросом: активный токен сменился, а значит медиа-токен, добытый
     // до входа, принадлежит прошлой сессии; то же — про кэш диалогов.
-    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); forumTopics.reset(); threadReads.reset(); contacts.resetForLogout(); cursor.reset(); channelFunnel.resetForLogout(); broadcast(RT.loggedIn, e) },
+    onLoggedIn: (e) => { media.resetToken(); media.resetDownloads(); dialogs.cancelPersist(); dialogs.resetForLogout(); forumTopics.reset(); threadReads.reset(); drafts.reset(); contacts.resetForLogout(); cursor.reset(); channelFunnel.resetForLogout(); broadcast(RT.loggedIn, e) },
   })
   const profile = newProfileManager({ rest, onMeChanged: setMe, getMe: () => me })
   const premium = newPremiumManager({ rest, onMeChanged: setMe })
@@ -318,6 +318,9 @@ export function createWorkerCore() {
     addChannelState: (peerId, pts) => { channelFunnel.addChannelState(peerId, pts) },
     onDialogOps: (ops) => broadcast(RT.dialogOp, { ops }),
     onReadOutbox: (peerId, maxId) => broadcast(RT.readOutbox, { peerId, maxId }),
+    // tweb `appDraftsManager.addMissedDialogs` — черновики чатов и тредов
+    // (`messages.getAllDrafts`); `drafts` объявлен ниже — стрелка ленивая.
+    addMissedDialogs: () => { void drafts.addMissedDialogs().catch(() => {}) },
     loadCache: () => loadDialogs(),
     loadState: async () => {
       // Fix (финальное ревью, Minor #2): версионный гейт (`getState` выше). Без
@@ -421,6 +424,8 @@ export function createWorkerCore() {
     },
     getMeId: () => me?.user.id ?? null,
     onOps: (ops) => broadcast(RT.forumTopicOp, { ops }),
+    // черновик темы из ответа списка — словарь черновиков (tweb dialogs.ts:1692-1697)
+    saveTopicDraft: (peerId, topicId, draft) => drafts.saveTopicDraft(peerId, topicId, draft),
     onParentMentionsRead: (peerId, count) => dialogs.applyMentionsRead(peerId, count),
   })
   // Прочтение тредов (тема форума, тред комментариев) — tweb `readHistory` с
@@ -462,7 +467,15 @@ export function createWorkerCore() {
   // `peer_block` — событие tweb `toggleBlock` (`appUsersManager.ts:520-536`);
   // broadcast объявлен ниже — стрелка дёргает его лениво.
   const privacy = newPrivacyManager({ rest, peers, onPeerBlock: (e) => broadcast('peer_block', e) })
-  const drafts = newDraftsManager({ rest })
+  // Черновики — порт `appDraftsManager`: черновик чата — поле диалога
+  // (`dialogs.applyDraft`), черновик треда — словарь менеджера и строка темы
+  // (`forumTopics.applyDraft`); вкладкам — `draft_updated` (tweb rootScope.ts:162).
+  const drafts = newDraftsManager({
+    rest,
+    applyDialogDraft: (peerId, draft) => dialogs.applyDraft(peerId, draft),
+    applyTopicDraft: (peerId, topicId, draft) => forumTopics.applyDraft(peerId, topicId, draft),
+    onDraftUpdated: (e) => broadcast('draft_updated', e),
+  })
   // Тема оформления чата: только REST. Её место в схеме — полная карточка
   // (решение Р7), поэтому применяет её читатель карточки на главном потоке.
   const chatThemes = newChatThemesManager({ rest })
@@ -690,12 +703,11 @@ export function createWorkerCore() {
       void onUpdatePendingJoinRequests(d as PendingJoinRequestsEvt, meta)
       return
     }
-    // Черновик — ПОЛЕ диалога, поэтому его применяет владелец списка: от даты
-    // черновика зависит место строки, и считать её на витрине значило бы
-    // держать порядок в двух местах.
+    // Черновик — tweb `appDraftsManager` (:44-71): черновик чата — поле диалога
+    // (его применяет владелец списка: от даты черновика зависит место строки),
+    // черновик треда (`top_msg_id`) — словарь менеджера и строка темы.
     else if (pred === 'updateDraftMessage') {
-      const e = d as DraftUpdateEvt
-      dialogs.applyDraft(getPeerId(e.peer), e.draft)
+      drafts.applyUpdate(d as DraftUpdateEvt)
     }
     // Task 4 (действия без оптимистики): то же действие, применённое с ДРУГОГО
     // устройства/вкладки, доезжает этим кадром (backend logAndPublish на все

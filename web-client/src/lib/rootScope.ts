@@ -34,6 +34,7 @@ import type { MediaTokenInfo, MediaUrlEvt } from '@core/managers/mediaManager'
 import type { StickerSet } from '@core/managers/stickersManager'
 import type { MyDocument } from '@core/media/messageMedia'
 import type { PeerBlockEvt } from '@core/managers/privacyManager'
+import type { DraftUpdatedEvt } from '@core/managers/draftsManager'
 
 export type { EventMeta } from '@rpc/superMessagePort'
 import type { EventMeta } from '@rpc/superMessagePort'
@@ -311,6 +312,9 @@ export type BroadcastEvents = {
   // (`privacyManager.toggleBlock`), подписчик — вкладка «Заблокированные»
   // (`sidebarLeft/tabs/blockedUsers.solid.tsx`).
   'peer_block': [PeerBlockEvt]
+  // tweb rootScope.ts:162 — черновик треда изменился (`appDraftsManager.saveDraft`
+  // с `notify`); черновик чата едет строкой диалога (`core/managers/draftsManager.ts`).
+  'draft_updated': [DraftUpdatedEvt]
 }
 
 export type BroadcastEventsListeners = {

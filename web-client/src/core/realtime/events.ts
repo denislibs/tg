@@ -588,11 +588,7 @@ export interface ChatRequestsEvt { chatId: ChatId; recentRequesters: UserId[]; r
  *
  * Своего `pts` у конструктора нет — курсор едет в КОНВЕРТЕ (`Frame.pts`).
  */
-export interface DraftUpdateEvt {
-  _: 'updateDraftMessage'
-  peer: Peer
-  draft: import('../models').DraftMessage
-}
+export type DraftUpdateEvt = import('../models').RawDraft
 /**
  * Что именно делает собеседник — ОБЪЕДИНЕНИЕ `SendMessageAction`, а не строка
  * из шести значений с дефолтом «печатает».

@@ -43,7 +43,7 @@ function makeManagers() {
       getMessageByPeer: vi.fn(async() => undefined),
       reloadMessage: vi.fn(async() => undefined),
     },
-    drafts: { save: vi.fn(async() => ({ _: 'draftMessageEmpty' })) },
+    drafts: { syncDraft: vi.fn(async() => true), getDraft: vi.fn(async() => undefined), clearDraft: vi.fn() },
     realtime: { sendTyping: vi.fn(async() => ({ ok: true })) },
     chats: {
       createPrivate: vi.fn(async(id: number) => id),

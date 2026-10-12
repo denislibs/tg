@@ -30,7 +30,7 @@ async function mountInput(type = ChatType.Chat) {
       getMessageByPeer: vi.fn(async(_peerId: number, mid: number) => messages.get(mid)),
       reloadMessage: vi.fn(async(_peerId: number, mid: number) => messages.get(mid)),
     },
-    drafts: { save: vi.fn(async() => ({ _: 'draftMessageEmpty' })) },
+    drafts: { syncDraft: vi.fn(async() => true), getDraft: vi.fn(async() => undefined), clearDraft: vi.fn() },
     realtime: { sendTyping: vi.fn(async() => ({ ok: true })) },
     groups: { setMute: vi.fn(async() => {}) },
     peers: { fillMirror: vi.fn(async() => {}) },

@@ -16,6 +16,7 @@ import { getPeerId } from '../peers/peerId'
 import { MUTE_UNTIL_FOREVER, type PeerNotifySettings } from '../dialogs/notifySettings'
 import type { Chat, UserReal } from '../peers/peer'
 import { dialogIndex } from '../dialogs/dialogIndex'
+import { processApiDraft } from '../dialogs/draft'
 import { DIALOG_LOAD_COUNT } from '../dialogs/loadCount'
 import type { DialogItem, DialogOp } from '../dialogs/dialogOps'
 import type { NewMessageEvt, ReadEvt } from '../realtime/events'
@@ -129,6 +130,10 @@ export interface DialogsDeps {
    * `savePinnedOrders`.
    */
   getThreadReadState?: (peerId: number, threadId: number) => { read_inbox_max_id: number, read_outbox_max_id?: number, unread_count: number, top_message: number, merged?: true } | undefined
+  /** Список поднят — с диска (tweb `dialogs.ts:264-266`) или верхней сетевой
+   *  страницей (`appMessagesManager.ts:5222-5226`): `appDraftsManager.addMissedDialogs`
+   *  (черновики всех чатов и тредов, `messages.getAllDrafts`, один раз за сессию). */
+  addMissedDialogs?: () => void
   /**
    * Горизонт исходящих ЧАТА сдвинут кадром прочтения — `historyStorage(peerId)
    * .readOutboxMaxId` (appMessagesManager.ts:10916) и `dialog_unread` (:10950),
@@ -170,7 +175,7 @@ export interface DialogsDeps {
  * каждое изменение. */
 const PERSIST_DEBOUNCE_MS = 1000
 
-export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCache, loadState, getMeId, savePinnedOrders, mirrorStateKey, saveCache, saveDialogsLoaded, peers, messages, getThreadReadState, onReadOutbox }: DialogsDeps) {
+export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCache, loadState, getMeId, savePinnedOrders, mirrorStateKey, saveCache, saveDialogsLoaded, peers, messages, getThreadReadState, onReadOutbox, addMissedDialogs }: DialogsDeps) {
   let items: DialogItem[] = []
   // Полный State-ключ (все папки) — нужен целиком, чтобы applyPinned не затёр
   // чужие записи при записи на диск (порт tweb: `{...orders, [ALL_FOLDER_ID]: …}`,
@@ -685,7 +690,7 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
     // с `message.id`. Ключ ставится ТОЛЬКО когда черновик есть: «черновика нет»
     // — отсутствие параметра (правило фазы 0), и заведённый впустую ключ
     // разошёлся бы с кэшем при структурной сверке (`equal` считает ключи).
-    const draft = toClientDraft(raw.draft)
+    const draft = processApiDraft(raw.draft)
     if (draft) dialog.draft = draft
     return dialog
   }
@@ -742,15 +747,6 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
     })
   }
 
-  /** Перевод номера ответа черновика в клиентское пространство. */
-  function toClientDraft(draft: DraftMessage | undefined): DraftMessage | undefined {
-    if (draft?._ !== 'draftMessage' || draft.reply_to === undefined) return draft
-    return {
-      ...draft,
-      reply_to: { ...draft.reply_to, reply_to_msg_id: generateMessageId(draft.reply_to.reply_to_msg_id) },
-    }
-  }
-
   async function doHydrate(): Promise<void> {
     // Гварды поколения (Minor #4): чтение диска асинхронно, за это время могла
     // случиться смена сессии — тогда прочитанное принадлежит прошлому аккаунту.
@@ -773,6 +769,8 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
       // хранилища, заводят состояния каналов ДО attach — разница
       // (updateChannelTooLong) догоняет каналы от их pts.
       for (const d of cached) if (d.pts) addChannelState?.(d.peerId, d.pts)
+      // tweb dialogs.ts:264-266
+      if (cached.length) addMissedDialogs?.()
       // tweb dialogs.ts:262 — признак «загружено целиком» поднимается с диска
       // ВМЕСТЕ с кэшем: `getDialogs` отвечает из кэша без сети и тогда, когда
       // строк меньше страницы (dialogs.ts:1903-1905, `loadedAll`).
@@ -1012,6 +1010,8 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
       if (typeof r.count === 'number') serverCount[scope] = r.count
       advanceCursor(scope, dialogs)
       const added = mergePage(dialogs)
+      // tweb :5222-5226 — `!peerId && !offsetDate`
+      if (!offsetPeerId) addMissedDialogs?.()
       // Конец выборки — ПОРТ ФОРМУЛЫ ОРИГИНАЛА (appMessagesManager.ts:3629):
       //   isEnd = !count || dialogsLength >= count || !items.length
       // Отсутствие `count` и есть «это всё»: его нет только у конструктора
@@ -1882,7 +1882,7 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
      * просто исчезает.
      */
     applyDraft(peerId: number, draft: DraftMessage): void {
-      patchDialog(peerId, { draft: draft._ === 'draftMessage' ? toClientDraft(draft) : undefined })
+      patchDialog(peerId, { draft: draft._ === 'draftMessage' ? processApiDraft(draft) : undefined })
     },
 
     applyNotifySettings(peerId: number, settings: PeerNotifySettings): void {

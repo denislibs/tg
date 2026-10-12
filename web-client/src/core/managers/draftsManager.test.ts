@@ -1,61 +1,149 @@
 // src/core/managers/draftsManager.test.ts
 //
-// Черновик на проводе — объединение `DraftMessage`, и оба конструктора значат
-// разное: `draftMessage` это черновик, `draftMessageEmpty` — что его СНЯЛИ.
-// Прежде отсутствие выражалось `null` под тем же ключом, и различие «нет
-// черновика» / «поле не заполнено» стиралось.
-//
-// Витрина `/drafts` при этом отвечает ТЕМИ ЖЕ кадрами, что приезжают живыми, и
-// КОНТЕЙНЕРОМ `updates` (у оригинала `messages.getAllDrafts` объявлен
-// возвращающим `Updates`), поэтому разбор у списка и у кадра один — и своей
-// проекции у менеджера НЕТ: форма провода и форма модели совпали, черновик
-// едет в диалог как есть. Сохранение отвечает тем же кадром.
+// Черновики — порт tweb `appDraftsManager` (812502980): ключ «пир + тред»
+// (`:88-90`), тред в `reply_to` на проводе (`syncDraft` `:296-303`), приём
+// `updateDraftMessage` (`:44-71`) с ИСПРАВЛЕННЫМ багом `:66` (серверный
+// `top_msg_id` переводится в клиентский номер), `getAllDrafts` один раз за
+// сессию (`addMissedDialogs` `:109-139`), местное снятие (`clearDraft` `:353-371`).
 import { describe, it, expect, vi } from 'vitest'
-import { newDraftsManager } from './draftsManager'
-import type { RestClient } from '../net/restClient'
+import { newDraftsManager, type DraftsDeps } from './draftsManager'
+import type { DraftMessageReal, RawDraft } from '../models'
+import { GENERAL_TOPIC_ID, generateMessageId } from '../history/messageId'
 
-const FRAME = {
-  _: 'updateDraftMessage',
-  peer: { _: 'peerUser', user_id: 7 },
-  draft: {
-    _: 'draftMessage',
-    message: 'набросок',
-    entities: [{ _: 'messageEntityBold', offset: 0, length: 4 }],
-    reply_to: { _: 'inputReplyToMessage', reply_to_msg_id: 12 },
-    date: 1785578400,
-  },
+const cid = generateMessageId
+const FORUM = -50
+
+function setup(rest: Partial<Record<'get' | 'put' | 'del', ReturnType<typeof vi.fn>>> = {}) {
+  const deps = {
+    rest: { get: vi.fn(async () => ({})), put: vi.fn(async () => true), del: vi.fn(async () => true), ...rest } as unknown as DraftsDeps['rest'],
+    applyDialogDraft: vi.fn(),
+    applyTopicDraft: vi.fn(),
+    onDraftUpdated: vi.fn(),
+  }
+  return { mgr: newDraftsManager(deps), ...deps, put: deps.rest.put as unknown as ReturnType<typeof vi.fn> }
 }
 
-describe('DraftsManager', () => {
-  it('list отдаёт кадры витрины как есть — своего маппера у менеджера нет', async () => {
-    const rest = { get: vi.fn(async () => ({ _: 'updates', updates: [FRAME], users: [], chats: [] })) } as unknown as RestClient
+const local = (message: string, replyTo?: number, threadId?: number): DraftMessageReal => ({
+  _: 'draftMessage', message, date: 1,
+  ...(replyTo ? { reply_to: { _: 'inputReplyToMessage' as const, reply_to_msg_id: replyTo, top_msg_id: threadId } } : {}),
+})
 
-    expect(await newDraftsManager({ rest }).list()).toEqual([FRAME])
+describe('DraftsManager: приём updateDraftMessage (tweb :44-71)', () => {
+  it('черновик треда ложится по КЛИЕНТСКОМУ номеру треда — исправленный баг tweb :66', () => {
+    const { mgr, onDraftUpdated, applyTopicDraft, applyDialogDraft } = setup()
+    const frame: RawDraft = {
+      _: 'updateDraftMessage', peer: { _: 'peerChannel', channel_id: 50 }, top_msg_id: 10,
+      draft: { _: 'draftMessage', message: 'тема', date: 5, reply_to: { _: 'inputReplyToMessage', reply_to_msg_id: 12, top_msg_id: 10 } },
+    }
+    mgr.applyUpdate(frame)
+
+    const expected = { _: 'draftMessage', message: 'тема', date: 5, reply_to: { _: 'inputReplyToMessage', reply_to_msg_id: cid(12), top_msg_id: cid(10) } }
+    expect(mgr.getDraft(FORUM, cid(10))).toEqual(expected)
+    expect(onDraftUpdated).toHaveBeenCalledWith({ peerId: FORUM, threadId: cid(10), draft: expected, force: undefined })
+    expect(applyTopicDraft).toHaveBeenCalledWith(FORUM, cid(10), expected)
+    expect(applyDialogDraft).not.toHaveBeenCalled()
   })
 
-  it('пустая витрина — пустой список, а не падение на отсутствующем поле', async () => {
-    const rest = { get: vi.fn(async () => ({})) } as unknown as RestClient
-
-    expect(await newDraftsManager({ rest }).list()).toEqual([])
+  it('General — `top_msg_id: 1` → `GENERAL_TOPIC_ID`', () => {
+    const { mgr } = setup()
+    mgr.applyUpdate({ _: 'updateDraftMessage', peer: { _: 'peerChannel', channel_id: 50 }, top_msg_id: 1, draft: { _: 'draftMessage', message: 'g', date: 5 } })
+    expect(mgr.getDraft(FORUM, GENERAL_TOPIC_ID)?.message).toBe('g')
   })
 
-  it('save с пустым текстом получает draftMessageEmpty — «снят», а не null', async () => {
-    // Ответ сохранения — тот же КАДР, что едет списком: конструктор черновика
-    // лежит внутри него, а не под голым ключом `draft`.
-    const put = vi.fn(async () => ({ ...FRAME, draft: { _: 'draftMessageEmpty' } }))
-    const rest = { put } as unknown as RestClient
-
-    expect(await newDraftsManager({ rest }).save(7, '')).toEqual({ _: 'draftMessageEmpty' })
-    expect(put).toHaveBeenCalledWith('/chats/7/draft', { text: '', entities: null, reply_to_id: null })
+  it('снятый черновик треда — из словаря, вкладкам `draft: undefined`', () => {
+    const { mgr, onDraftUpdated } = setup()
+    mgr.saveTopicDraft(FORUM, cid(10), { _: 'draftMessage', message: 'x', date: 1 })
+    mgr.applyUpdate({ _: 'updateDraftMessage', peer: { _: 'peerChannel', channel_id: 50 }, top_msg_id: 10, draft: { _: 'draftMessageEmpty' } })
+    expect(mgr.getDraft(FORUM, cid(10))).toBeUndefined()
+    expect(onDraftUpdated).toHaveBeenCalledWith({ peerId: FORUM, threadId: cid(10), draft: undefined, force: undefined })
   })
 
-  it('save возвращает конструктор черновика с датой в СЕКУНДАХ — тех же единицах, что у сообщения', async () => {
-    const rest = {
-      put: vi.fn(async () => ({ ...FRAME, draft: { _: 'draftMessage', message: 'x', date: 1785578400 } })),
-    } as unknown as RestClient
+  it('черновик чата — полю диалога (расхождение 1), словарь его не держит', () => {
+    const { mgr, onDraftUpdated, applyDialogDraft } = setup()
+    const draft = { _: 'draftMessage' as const, message: 'чат', date: 5 }
+    mgr.applyUpdate({ _: 'updateDraftMessage', peer: { _: 'peerUser', user_id: 7 }, draft })
+    expect(applyDialogDraft).toHaveBeenCalledWith(7, draft)
+    expect(onDraftUpdated).not.toHaveBeenCalled()
+  })
+})
 
-    expect(await newDraftsManager({ rest }).save(7, 'x')).toEqual({
-      _: 'draftMessage', message: 'x', date: 1785578400,
-    })
+describe('DraftsManager.syncDraft (tweb :216-330)', () => {
+  it('тред без ответа — `reply_to_msg_id = тред` серверным номером; местная запись и `draft_updated`', async () => {
+    const { mgr, put, onDraftUpdated, applyTopicDraft } = setup()
+    await mgr.syncDraft({ peerId: FORUM, threadId: cid(10), localDraft: local('привет') })
+    expect(put).toHaveBeenCalledWith(`/chats/${FORUM}/draft`, { message: 'привет', reply_to: { _: 'inputReplyToMessage', reply_to_msg_id: 10 } })
+    expect(mgr.getDraft(FORUM, cid(10))?.message).toBe('привет')
+    expect(onDraftUpdated).toHaveBeenCalledTimes(1)
+    expect(applyTopicDraft).toHaveBeenCalledTimes(1)
+  })
+
+  it('тред с ответом — `top_msg_id = тред`', async () => {
+    const { mgr, put } = setup()
+    await mgr.syncDraft({ peerId: FORUM, threadId: cid(10), localDraft: local('a', cid(15), cid(10)) })
+    expect(put).toHaveBeenCalledWith(`/chats/${FORUM}/draft`, { message: 'a', reply_to: { _: 'inputReplyToMessage', reply_to_msg_id: 15, top_msg_id: 10 } })
+  })
+
+  it('тот же черновик треда — сервер не зовётся', async () => {
+    const { mgr, put } = setup()
+    await mgr.syncDraft({ peerId: FORUM, threadId: cid(10), localDraft: local('a') })
+    await mgr.syncDraft({ peerId: FORUM, threadId: cid(10), localDraft: { ...local('a'), date: 99 } })
+    expect(put).toHaveBeenCalledTimes(1)
+  })
+
+  it('пустой черновик треда — снятие: `message: ""` с тредом, словарь пуст', async () => {
+    const { mgr, put, onDraftUpdated } = setup()
+    mgr.saveTopicDraft(FORUM, cid(10), local('был'))
+    await mgr.syncDraft({ peerId: FORUM, threadId: cid(10), localDraft: undefined })
+    expect(put).toHaveBeenCalledWith(`/chats/${FORUM}/draft`, { message: '', reply_to: { _: 'inputReplyToMessage', reply_to_msg_id: 10 } })
+    expect(mgr.getDraft(FORUM, cid(10))).toBeUndefined()
+    expect(onDraftUpdated).toHaveBeenLastCalledWith({ peerId: FORUM, threadId: cid(10), draft: undefined, force: false })
+  })
+
+  it('черновик чата — только сервер (строку ведёт кадр, расхождение 1)', async () => {
+    const { mgr, put, onDraftUpdated, applyDialogDraft } = setup()
+    await mgr.syncDraft({ peerId: 7, localDraft: local('x', cid(3)) })
+    expect(put).toHaveBeenCalledWith('/chats/7/draft', { message: 'x', reply_to: { _: 'inputReplyToMessage', reply_to_msg_id: 3 } })
+    expect(onDraftUpdated).not.toHaveBeenCalled()
+    expect(applyDialogDraft).not.toHaveBeenCalled()
+  })
+})
+
+describe('DraftsManager: прочее', () => {
+  it('clearDraft — местно, `force`, без сервера (tweb :353-371)', () => {
+    const { mgr, put, onDraftUpdated } = setup()
+    mgr.saveTopicDraft(FORUM, cid(10), local('был'))
+    mgr.clearDraft(FORUM, cid(10))
+    expect(mgr.getDraft(FORUM, cid(10))).toBeUndefined()
+    expect(put).not.toHaveBeenCalled()
+    expect(onDraftUpdated).toHaveBeenCalledWith({ peerId: FORUM, threadId: cid(10), draft: undefined, force: true })
+  })
+
+  it('saveTopicDraft — черновик строки темы в словарь без `draft_updated` (dialogs.ts:1692-1697)', () => {
+    const { mgr, onDraftUpdated } = setup()
+    const d = mgr.saveTopicDraft(FORUM, cid(10), { _: 'draftMessage', message: 't', date: 1, reply_to: { _: 'inputReplyToMessage', reply_to_msg_id: 11 } })
+    expect(d?.reply_to?.reply_to_msg_id).toBe(cid(11))
+    expect(mgr.getDraft(FORUM, cid(10))).toEqual(d)
+    expect(onDraftUpdated).not.toHaveBeenCalled()
+  })
+
+  it('addMissedDialogs — `GET /drafts` один раз, кадры тем же приёмом', async () => {
+    const get = vi.fn(async () => ({ _: 'updates', updates: [
+      { _: 'updateDraftMessage', peer: { _: 'peerChannel', channel_id: 5 }, top_msg_id: 200, draft: { _: 'draftMessage', message: 'к', date: 1 } },
+    ] }))
+    const { mgr } = setup({ get })
+    await mgr.addMissedDialogs()
+    await mgr.addMissedDialogs()
+    expect(get).toHaveBeenCalledTimes(1)
+    expect(get).toHaveBeenCalledWith('/drafts')
+    expect(mgr.getDraft(-5, cid(200))?.message).toBe('к')
+  })
+
+  it('clearAll — `DELETE /drafts`, черновики тредов сняты местно (tweb :332-351)', async () => {
+    const { mgr, rest, onDraftUpdated } = setup()
+    mgr.saveTopicDraft(FORUM, cid(10), local('был'))
+    await mgr.clearAll()
+    expect(rest.del).toHaveBeenCalledWith('/drafts')
+    expect(mgr.getDraft(FORUM, cid(10))).toBeUndefined()
+    expect(onDraftUpdated).toHaveBeenCalledWith({ peerId: FORUM, threadId: cid(10), draft: undefined, force: undefined })
   })
 })

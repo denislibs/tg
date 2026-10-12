@@ -77,8 +77,12 @@ beforeEach(() => {
       return new Response(JSON.stringify({ _: 'messages.discussionMessage', messages: [makeRawMessage({ id: 200, peerId: -70, fromId: -3, text: 'пост' })], max_id: 230, read_inbox_max_id: 225, unread_count: 2, chats: [], users: [] }), { status: 200 })
     }
     if (String(url).includes('/chats/-70/threads/')) return new Response('true', { status: 200 })
+    if (String(url).includes('/chats/-3/messages')) {
+      return new Response(JSON.stringify({ messages: [{ ...makeRawMessage({ id: 9, peerId: -3, fromId: -3, text: 'пост' }), replies: { _: 'messageReplies', pFlags: { comments: true }, replies: 3, channel_id: 70 } }], chats: [], users: [] }), { status: 200 })
+    }
+    if (String(url).includes('/drafts')) return new Response(JSON.stringify({ _: 'updates', updates: [] }), { status: 200 })
     if (String(url).includes('/chats/-50/topics')) {
-      return new Response(JSON.stringify({ _: 'messages.forumTopics', count: 2, topics: [topic(1), topic(10)], messages: [], chats: [], users: [] }), { status: 200 })
+      return new Response(JSON.stringify({ _: 'messages.forumTopics', count: 2, topics: [topic(1), topic(10, { draft: { _: 'draftMessage', message: 'из списка', date: 5 } })], messages: [], chats: [], users: [] }), { status: 200 })
     }
     throw new Error('unexpected fetch ' + String(url))
   }))
@@ -271,3 +275,48 @@ describe('createWorkerCore(): кадры тем применяет хранил�
   })
 })
 
+// Проводка черновиков (порт `appDraftsManager`): кадр `updateDraftMessage` с
+// `top_msg_id` → словарь черновиков (`drafts.applyUpdate`), строка темы
+// (`forumTopics.applyDraft`) и `draft_updated` вкладке; черновик темы из ответа
+// списка — тот же словарь (`saveTopicDraft`, tweb dialogs.ts:1692-1697).
+describe('createWorkerCore(): черновики тредов', () => {
+  it('черновик темы из ответа списка — в строке и в словаре', async () => {
+    const { core } = await boot()
+    expect(core.registry.forumTopics.getForumTopic(FORUM, generateMessageId(10))?.draft).toMatchObject({ message: 'из списка' })
+    expect(core.registry.drafts.getDraft(FORUM, generateMessageId(10))).toMatchObject({ message: 'из списка' })
+  })
+
+  it('кадр `draft_update` треда → словарь, строка темы (`update`) и `draft_updated` клиентским номером', async () => {
+    const { core, ops, tab } = await boot()
+    const seen: unknown[] = []
+    tab.on('draft_updated', (p) => { seen.push(p) })
+    capturedConnDeps!.onFrame('draft_update', { _: 'updateDraftMessage', peer: { _: 'peerChannel', channel_id: 50 }, top_msg_id: 1, draft: { _: 'draftMessage', message: 'в general', date: 9 } })
+    expect(core.registry.drafts.getDraft(FORUM, generateMessageId(1))).toMatchObject({ message: 'в general' })
+    const update = ops.find((op) => op.op === 'update') as Extract<ForumTopicOp, { op: 'update' }>
+    expect(update.topics[0]).toMatchObject({ id: generateMessageId(1), draft: { message: 'в general' } })
+    expect(seen).toEqual([{ peerId: FORUM, threadId: generateMessageId(1), draft: { _: 'draftMessage', message: 'в general', date: 9 } }])
+  })
+})
+
+// Проводка треда поста (tweb `threadsToReplies`): новое сообщение треда
+// комментариев (`routeNewMessage` → `updateMessageRepliesIfNeeded`, :10397) и
+// прочтение треда (`threadReads` → `messages.onThreadRead`, :10831-10836)
+// перечитывают пост.
+describe('createWorkerCore(): тред поста перечитывается', () => {
+  const reloads = () => (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(([url]) => String(url).includes('/chats/-3/messages')).length
+
+  it('новое сообщение треда комментариев → пост перечитан', async () => {
+    const { core } = await boot()
+    await core.registry.messages.getDiscussionMessage(-3, generateMessageId(9))
+    const raw = makeRawMessage({ id: 231, peerId: -70, fromId: 2, text: 'коммент', replyToMsgId: 200 })
+    capturedConnDeps!.onFrame('new_message', { _: 'updateNewChannelMessage', message: raw })
+    await vi.waitFor(() => expect(reloads()).toBe(1))
+  })
+
+  it('кадр прочтения треда комментариев → пост перечитан', async () => {
+    const { core } = await boot()
+    await core.registry.messages.getDiscussionMessage(-3, generateMessageId(9))
+    capturedConnDeps!.onFrame('read_discussion', { _: 'updateReadChannelDiscussionInbox', channel_id: 70, top_msg_id: 200, read_max_id: 230 })
+    await vi.waitFor(() => expect(reloads()).toBe(1))
+  })
+})
