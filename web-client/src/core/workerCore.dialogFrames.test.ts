@@ -227,6 +227,8 @@ describe('createWorkerCore(): realtime-кадры применяет владе�
       fields: {
         draft: {
           _: 'draftMessage',
+          // провод опускает `pFlags` (omitempty) — объект заводит `processApiDraft`
+          pFlags: {},
           message: 'набросок',
           reply_to: { _: 'inputReplyToMessage', reply_to_msg_id: generateMessageId(3) },
           date: 1785578400,
