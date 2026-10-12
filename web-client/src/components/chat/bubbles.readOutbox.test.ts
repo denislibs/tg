@@ -131,5 +131,39 @@ describe('ChatBubbles — «прочитано» по горизонту исх�
     rootScope.dispatchEventSingle(RT.dialogOp, { ops: [{ op: 'patch', peerId: CHAT, fields: { read_outbox_max_id: 50 } }] })
     expect(isRead(bubbleOf(b, 11))).toBe(false)
   })
+
+  // tweb :4858-4859 — у треда свой горизонт исходящих; растёт кадром
+  // `updateReadChannelDiscussionOutbox` (:777-778), горизонт группы его не двигает
+  it('тред комментариев: горизонт треда, рост — кадром outbox треда, операция группы не трогает', async () => {
+    const OFFSET = 0x100000000
+    const GROUP = -(CHAT)
+    const THREAD = OFFSET + 7
+    const msgs = [own(OFFSET + 11, GROUP), own(OFFSET + 12, GROUP), own(OFFSET + 13, GROUP)]
+    bubbles = mountTestBubbles(createTestChat({ peerId: GROUP, threadId: THREAD, type: ChatType.Discussion }), managersWith(msgs, OFFSET + 11))
+    await openFeed(bubbles)
+    await settle()
+    const b = bubbles
+    expect(isRead(bubbleOf(b, OFFSET + 11))).toBe(true)
+    expect(isRead(bubbleOf(b, OFFSET + 12))).toBe(false)
+    rootScope.dispatchEventSingle(RT.dialogOp, { ops: [{ op: 'patch', peerId: GROUP, fields: { read_outbox_max_id: OFFSET + 99 } }] })
+    expect(isRead(bubbleOf(b, OFFSET + 12))).toBe(false)
+    // чужой тред — не наш
+    rootScope.dispatchEventSingle(RT.readDiscussion, { _: 'updateReadChannelDiscussionOutbox', channel_id: CHAT, top_msg_id: 8, read_max_id: 13 })
+    expect(isRead(bubbleOf(b, OFFSET + 12))).toBe(false)
+    rootScope.dispatchEventSingle(RT.readDiscussion, { _: 'updateReadChannelDiscussionOutbox', channel_id: CHAT, top_msg_id: 7, read_max_id: 12 })
+    expect(isRead(bubbleOf(b, OFFSET + 12))).toBe(true)
+    expect(isRead(bubbleOf(b, OFFSET + 13))).toBe(false)
+  })
+
+  it('тема форума: кадр outbox треда тоже перекрашивает живьём', async () => {
+    const OFFSET = 0x100000000
+    const GROUP = -(CHAT)
+    const THREAD = OFFSET + 7
+    bubbles = mountTestBubbles(createTestChat({ peerId: GROUP, threadId: THREAD, isForum: true }), managersWith([own(OFFSET + 11, GROUP)], OFFSET + 10))
+    await openFeed(bubbles)
+    await settle()
+    rootScope.dispatchEventSingle(RT.readDiscussion, { _: 'updateReadChannelDiscussionOutbox', channel_id: CHAT, top_msg_id: 7, read_max_id: 11 })
+    expect(isRead(bubbleOf(bubbles, OFFSET + 11))).toBe(true)
+  })
 })
 

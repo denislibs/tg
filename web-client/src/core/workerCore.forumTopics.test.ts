@@ -232,7 +232,7 @@ describe('createWorkerCore(): кадры тем применяет хранил�
   it('тред комментариев: горизонт треда для ленты и readDiscussion номером зеркала', async () => {
     const { core } = await boot()
     await core.registry.messages.getDiscussionMessage(-3, generateMessageId(9))
-    expect(core.registry.dialogs.getDialogReadState(-70, generateMessageId(200))).toEqual({ readInboxMaxSeq: generateMessageId(225), unreadCount: 2 })
+    expect(core.registry.dialogs.getDialogReadState(-70, generateMessageId(200))).toEqual({ readInboxMaxSeq: generateMessageId(225), unreadCount: 2, readOutboxMaxSeq: 0 })
     expect(core.registry.dialogs.getHistoryMaxSeq(-70, generateMessageId(200))).toBe(generateMessageId(230))
     const fetchMock = vi.mocked(fetch)
     const groupRead = vi.spyOn(core.registry.dialogs, 'applyThreadRead')
@@ -240,7 +240,7 @@ describe('createWorkerCore(): кадры тем применяет хранил�
     // диалог группы — у владельца диалогов (tweb :10814-10816)
     expect(groupRead).toHaveBeenCalledWith(-70, generateMessageId(200), generateMessageId(230), false)
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/chats/-70/threads/200/read'), expect.objectContaining({ body: JSON.stringify({ read_max_id: 230 }) }))
-    expect(core.registry.dialogs.getDialogReadState(-70, generateMessageId(200))).toEqual({ readInboxMaxSeq: generateMessageId(230), unreadCount: 0 })
+    expect(core.registry.dialogs.getDialogReadState(-70, generateMessageId(200))).toEqual({ readInboxMaxSeq: generateMessageId(230), unreadCount: 0, readOutboxMaxSeq: 0 })
   })
 })
 

@@ -33,7 +33,7 @@ type ThreadState = { maxId: number; readMaxId: number; readOutboxMaxId: number; 
 /** Горизонт треда для ленты — то, что лента спрашивает у `dialogs.getDialogReadState`.
  *  `merged` — тред комментариев: его горизонт сводится с горизонтом группы
  *  (`isMergedReadCursorThread`, :5107-5113, :5122-5127) — сводит владелец диалогов. */
-export type ThreadReadState = { read_inbox_max_id: number; unread_count: number; top_message: number; merged?: true }
+export type ThreadReadState = { read_inbox_max_id: number; read_outbox_max_id?: number; unread_count: number; top_message: number; merged?: true }
 
 export interface ThreadReadsDeps {
   rest: Pick<RestClient, 'post'>
@@ -91,7 +91,8 @@ export function newThreadReads({ rest, isForumPeer, forumTopics, getMeId, onComm
     if (topic) return topic
     const state = states.get(key(peerId, threadId))
     // своё последнее сообщение треда непрочитанным его не делает (:5135-5137)
-    return state && { read_inbox_max_id: state.readMaxId, unread_count: state.readMaxId < state.maxId ? state.unreadCount : 0, top_message: state.maxId, merged: true }
+    // горизонт исходящих треда — `historyStorage.readOutboxMaxId` (:8845), не сводится с группой
+    return state && { read_inbox_max_id: state.readMaxId, read_outbox_max_id: state.readOutboxMaxId, unread_count: state.readMaxId < state.maxId ? state.unreadCount : 0, top_message: state.maxId, merged: true }
   }
 
   /**

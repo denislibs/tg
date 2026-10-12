@@ -1319,6 +1319,19 @@ describe('dialogsManager.getDialogReadState', () => {
     expect(mgr.getDialogReadState(5, 9)?.readOutboxMaxSeq).toBe(18)
   })
 
+  // tweb :4858-4859 — у треда комментариев горизонт исходящих свой, не группы
+  it('тред комментариев: горизонт исходящих — треда, не группы', async () => {
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: () => {},
+      loadCache: async () => [makeDialog({ peerId: -6, topMessage: 90, readInboxMaxId: 90, readOutboxMaxId: 80 })],
+      loadState: async () => ({ pinnedOrders: {} }),
+      getThreadReadState: () => ({ read_inbox_max_id: 20, read_outbox_max_id: 15, unread_count: 0, top_message: 30, merged: true }),
+    })
+    await mgr.fillMirror()
+    expect(mgr.getDialogReadState(-6, 7)?.readOutboxMaxSeq).toBe(15)
+  })
+
   it('диалога нет — курсор неизвестен (undefined), а не 0', async () => {
     const mgr = manager([])
     await mgr.fillMirror()

@@ -105,7 +105,7 @@ import { RT } from '@core/realtime/events'
 import { ANCHOR_ACTION_ATTRIBUTE, wrapEmojiText, wrapMessageText } from '@lib/richtext'
 import showForwardPopup from '@components/popups/forward.bridge'
 import { mirrorWindow, putMirrorPage, replaceMirrorWindow } from '@core/history/messagesMirror'
-import { generateTempMessageId, isLocalMessageId } from '@core/history/messageId'
+import { generateMessageId, generateTempMessageId, isLocalMessageId } from '@core/history/messageId'
 import { messageToConvMsg } from '@core/messageToConvMsg'
 import { dayLabel, SEND_WHEN_ONLINE_TIMESTAMP } from '@core/format/dayLabel'
 import { fmtViews } from '@core/format/fmtViews'
@@ -6338,13 +6338,26 @@ export default class ChatBubbles implements BubbleGroupsHost {
     // диалогов (`read_outbox_max_id`), темы — операцией хранилища тем.
     // Отложенные — своя нумерация и всегда «✓» (`is_scheduled`, :11105);
     // «Избранное» — всегда «✓✓» (горизонт выбирает владелец диалогов).
+    // Тред (тема, комментарии) — свой горизонт исходящих (`historyStorage(peerId,
+    // threadId).readOutboxMaxId`, :4858-4859): горизонт ДИАЛОГА его не двигает.
     this.listenerSetter.add(rootScope)(RT.dialogOp, ({ ops }) => {
-      if (this.chat.type === ChatType.Scheduled || this.peerId === rootScope.myId || (this.chat.threadId && this.chat.isForum)) return
+      if (this.chat.type === ChatType.Scheduled || this.peerId === rootScope.myId || this.chat.threadId) return
       for (const op of ops) {
         const dialog = op.op === 'patch' && op.peerId === this.peerId ? op.fields :
           op.op === 'reset' || op.op === 'upsert' ? op.items.find((it) => it.dialog.peerId === this.peerId)?.dialog : undefined
         if (dialog?.read_outbox_max_id !== undefined) this.updateUnreadByDialog(dialog.read_outbox_max_id)
       }
+    })
+    // Горизонт исходящих ТРЕДА растёт кадром `updateReadChannelDiscussionOutbox`
+    // (tweb :777-778 → `onUpdateReadHistory` → `dialog_unread`, :10951): у темы
+    // его применяет и хранилище тем (операция ниже), у треда комментариев —
+    // только `threadReads` воркера, строки группы может не быть — поэтому лента
+    // берёт рубеж из самого кадра (номера — клиентские, :10800-10801).
+    this.listenerSetter.add(rootScope)(RT.readDiscussion, (update) => {
+      const { threadId } = this.chat
+      if (update._ !== 'updateReadChannelDiscussionOutbox' || !threadId || this.chat.type === ChatType.Scheduled) return
+      if (toPeerId(update.channel_id, true) !== this.peerId || generateMessageId(update.top_msg_id) !== threadId) return
+      this.updateUnreadByDialog(generateMessageId(update.read_max_id))
     })
     this.listenerSetter.add(rootScope)(RT.forumTopicOp, ({ ops }) => {
       const { threadId } = this.chat
