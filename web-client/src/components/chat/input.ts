@@ -107,6 +107,9 @@
 //     `media` у `draftMessage`, tweb `:2275-2310`, `:2466`, и сравнение с ними в
 //     `onHelperCancel` `:4145-4171`) — ручка `/chats/{id}/draft` этих полей не принимает.
 //     Право `embed_links` (`:3595`) — наше `send_messages` (расхождение 5).
+//     `processWebPage` получает разобранный текст (`value`), а не сырой `richValue`
+//     (`:3484`): наше поле хранит markdown-маркеры до отправки, а смещения сущностей —
+//     в разобранном тексте.
 //     `hoverListenerSetter` (`:341`, `:5210`) не заведён: в tweb в него никто не
 //     добавляет, остался только `removeAll`.
 import type { Managers } from '@/client/bootstrap'
@@ -2074,8 +2077,12 @@ export default class ChatInput {
     const [value, markdownEntities] = parseMarkdown(richValue, markdownEntities1, true)
     const entities = mergeEntities(markdownEntities, parseEntities(value))
 
-    // tweb :3484
-    this.processWebPage(richValue, entities)
+    // tweb :3484 отдаёт `richValue`, а режет его (:3568) смещениями `entities`
+    // разобранного `value`. Наше поле хранит сырые markdown-маркеры до отправки
+    // (разбор — в `sendText`), и при маркерах перед ссылкой такой срез промахнулся
+    // бы мимо адреса. Режем тот же `value`, который увидит отправка.
+    // Расхождение 11 шапки.
+    this.processWebPage(value, entities)
 
     const isEmpty = !richValue.trim()
     if(isEmpty) {

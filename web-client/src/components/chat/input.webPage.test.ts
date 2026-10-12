@@ -116,6 +116,21 @@ describe('ChatInput: плашка превью ссылки', () => {
     expect(managers.messages.sendText.mock.calls[0][0].noWebPage).toBeUndefined()
   })
 
+  // Наше поле хранит сырые markdown-маркеры до отправки: адрес плашки — из того же
+  // разбора, что у отправки, иначе маркеры перед ссылкой сдвигали срез мимо адреса.
+  it.each([
+    ['маркеры перед ссылкой', '**жирный** ' + URL1],
+    ['ссылка внутри маркеров', '**' + URL1 + '**'],
+    ['курсив и код перед ссылкой', '__курсив__ `код` ' + URL1],
+  ])('%s: плашка ищет точный адрес', async(_name, text) => {
+    mounted = await mountInput(async(url) => card(url))
+    const { input, managers } = mounted
+    await type(input, text)
+    expect(managers.webPages.getWebPage).toHaveBeenCalledTimes(1)
+    expect(managers.webPages.getWebPage).toHaveBeenCalledWith(URL1)
+    expect(input.willSendWebPage?.url).toBe(URL1)
+  })
+
   it('без карточки (webPageEmpty/429) плашки нет, отправка без решения', async() => {
     mounted = await mountInput(async() => undefined)
     const { input, managers, chat } = mounted
