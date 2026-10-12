@@ -52,18 +52,6 @@ func (i *Interactor) SaveDraft(ctx context.Context, userID, chatID int64, in Dra
 	if err != nil {
 		return nil, err
 	}
-	// reply_to_msg_id — НОМЕР сообщения в этом же чате (у черновика чужого
-	// пира нет: reply_to_peer_id в draftMessage не производится).
-	// Валидируется мягко: нет такого номера — черновик без ответа.
-	if replyToID != nil {
-		_, err := i.messageBySeq(ctx, chatID, *replyToID)
-		switch {
-		case errors.Is(err, domain.ErrNotFound):
-			replyToID = nil
-		case err != nil:
-			return nil, err
-		}
-	}
 	if in.Message == "" && replyToID == nil {
 		if err := i.deleteDraft(ctx, userID, chatID, root); err != nil {
 			return nil, err
@@ -105,17 +93,26 @@ func (i *Interactor) draftThread(ctx context.Context, userID, chatID int64, repl
 		top = nil // {R, top: R} — адрес треда R (правило 2)
 	}
 	number, reply := int64(0), replyTo
+	// replyFound — ответ уже прочитан правилом 2 (nil — не читали): строку
+	// одного номера горячий путь набора не читает дважды.
+	var replyFound *bool
 	switch {
 	case top != nil && *top != 0:
 		number = *top
 	case replyTo != nil:
-		addr, err := i.isDraftThreadAddress(ctx, chatID, forum, *replyTo)
+		addr, found, err := i.isDraftThreadAddress(ctx, chatID, forum, *replyTo)
 		if err != nil {
 			return 0, 0, nil, err
 		}
 		if addr {
 			number, reply = *replyTo, nil
+		} else {
+			replyFound = &found
 		}
+	}
+	reply, err := i.draftReply(ctx, chatID, reply, replyFound)
+	if err != nil {
+		return 0, 0, nil, err
 	}
 	if number == 0 {
 		ok, err := i.chats.IsMember(ctx, chatID, userID)
@@ -137,30 +134,58 @@ func (i *Interactor) draftThread(ctx context.Context, userID, chatID int64, repl
 	return th.stateRoot, number, reply, nil
 }
 
+// draftReply — ответ черновика: reply_to_msg_id — НОМЕР сообщения в этом же
+// чате (у черновика чужого пира нет: reply_to_peer_id в draftMessage не
+// производится). Валидируется мягко: нет такого номера — черновик без ответа.
+// found — уже известно, есть ли номер (nil — прочитать).
+func (i *Interactor) draftReply(ctx context.Context, chatID int64, reply *int64, found *bool) (*int64, error) {
+	if reply == nil {
+		return nil, nil
+	}
+	if found != nil {
+		if !*found {
+			return nil, nil
+		}
+		return reply, nil
+	}
+	_, err := i.messageBySeq(ctx, chatID, *reply)
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		return nil, nil
+	case err != nil:
+		return nil, err
+	}
+	return reply, nil
+}
+
 // isDraftThreadAddress — номер n без top_msg_id адресует тред, а не ответ
 // (правило 2 draftThread): в форуме General и корень темы, в любой группе —
-// зеркало поста канала.
-func (i *Interactor) isDraftThreadAddress(ctx context.Context, chatID int64, forum bool, n int64) (bool, error) {
+// зеркало поста канала. found — сообщение с этим номером есть (одно чтение
+// строки на оба вопроса).
+func (i *Interactor) isDraftThreadAddress(ctx context.Context, chatID int64, forum bool, n int64) (addr, found bool, err error) {
 	if forum && n == domain.GeneralTopicID {
-		return true, nil
+		return true, true, nil
 	}
-	rootID, err := i.msgs.IDBySeq(ctx, chatID, n)
+	m, err := i.messageBySeq(ctx, chatID, n)
 	if errors.Is(err, domain.ErrNotFound) {
-		return false, nil
+		return false, false, nil
 	}
 	if err != nil {
-		return false, err
+		return false, false, err
+	}
+	if m.IsDiscussionMirror {
+		return true, true, nil
 	}
 	if forum && i.topics != nil {
-		_, err := i.topics.ByRoot(ctx, chatID, rootID)
+		_, err := i.topics.ByRoot(ctx, chatID, m.ID)
 		if err == nil {
-			return true, nil
+			return true, true, nil
 		}
 		if !errors.Is(err, domain.ErrNotFound) {
-			return false, err
+			return false, true, err
 		}
 	}
-	return i.isMirror(ctx, rootID)
+	return false, true, nil
 }
 
 // isMirror — сообщение rootID — зеркало поста канала в группе обсуждения.

@@ -49,10 +49,10 @@ func scanDraft(row pgx.Row) (domain.Draft, error) {
 	if err := row.Scan(&d.ChatID, &d.ThreadRootID, &top, &d.Text, &entRaw, &d.ReplyToID, &wpRaw, &d.UpdatedAt); err != nil {
 		return domain.Draft{}, err
 	}
-	if len(wpRaw) > 0 {
-		if err := json.Unmarshal(wpRaw, &d.WebPage); err != nil {
-			return domain.Draft{}, err
-		}
+	// Битое решение о превью (смена формы WebPageInput) — черновик без него,
+	// как и битые entities ниже: одна строка не роняет весь список диалогов.
+	if len(wpRaw) > 0 && json.Unmarshal(wpRaw, &d.WebPage) != nil {
+		d.WebPage = domain.WebPageInput{}
 	}
 	if top != nil {
 		d.TopMsgID = *top
@@ -68,15 +68,21 @@ func (r *DraftsRepo) Upsert(ctx context.Context, userID int64, d domain.Draft) (
 	if err != nil {
 		return domain.Draft{}, err
 	}
-	return scanDraft(querier(ctx, r.pool).QueryRow(ctx,
+	out, err := scanDraft(querier(ctx, r.pool).QueryRow(ctx,
 		`WITH d AS (
 		   INSERT INTO drafts (chat_id, user_id, thread_root_id, text, entities, reply_to_id, web_page, updated_at)
 		   VALUES ($1, $2, $3, $4, $5, $6, $7, now())
 		   ON CONFLICT (chat_id, user_id, thread_root_id)
 		   DO UPDATE SET text=$4, entities=$5, reply_to_id=$6, web_page=$7, updated_at=now()
 		   RETURNING *)
-		 SELECT `+draftCols+` FROM d`+draftRootJoin,
+		 SELECT `+draftCols+` FROM d`+draftRootJoin+` WHERE `+draftLive,
 		d.ChatID, userID, d.ThreadRootID, d.Text, entitiesParam(d.Entities), d.ReplyToID, wp))
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Корень треда удалили между проверкой и записью — черновик-сирота
+		// не выдаётся (draftLive), и кадра о нём быть не должно.
+		return domain.Draft{}, domain.ErrNotFound
+	}
+	return out, err
 }
 
 // draftWebPageParam — решение о превью jsonb-строкой (форма

@@ -2619,6 +2619,7 @@ func sendAsChatID(peer *domain.PeerID) *int64 {
 func (h *ChatHandler) MyDrafts(w http.ResponseWriter, r *http.Request) {
 	drafts, err := h.svc.MyDrafts(r.Context(), h.meID(r))
 	if err != nil {
+		log.Printf("getAllDrafts failed: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
@@ -2672,6 +2673,7 @@ func (h *ChatHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "too long")
 		return
 	case err != nil:
+		log.Printf("saveDraft failed chat=%d: %v", chatID, err)
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
@@ -2681,6 +2683,7 @@ func (h *ChatHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 // ClearAllDrafts — DELETE /drafts («Удалить все черновики»).
 func (h *ChatHandler) ClearAllDrafts(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.ClearAllDrafts(r.Context(), h.meID(r)); err != nil {
+		log.Printf("clearAllDrafts failed: %v", err)
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}

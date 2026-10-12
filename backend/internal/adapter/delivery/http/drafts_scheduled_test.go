@@ -89,8 +89,9 @@ func TestDrafts_ListAndSaveAreTheSameFrame(t *testing.T) {
 	}
 }
 
-// Регрессия «PUT /chats/{p}/draft → 500» (Ф-5 БЭК-2b): сохранение в личку с
-// ответом и в «Избранное» отвечает Bool; решение о превью ссылки (no_webpage,
+// Ф-5 БЭК-2b: сохранение в личку с ответом и в «Избранное» отвечает Bool
+// (жалоба «PUT → 500» со стенда — рассинхрон бинаря и схемы, не код main);
+// решение о превью ссылки (no_webpage,
 // invert_media, media:inputMediaWebPage) возвращается списком 1:1 (tweb
 // appDraftsManager.ts:281-291, draftsAreEqual).
 func TestDrafts_PrivateSavedAndWebPage(t *testing.T) {
