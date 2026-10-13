@@ -42,6 +42,9 @@ type SendPollInput struct {
 	// постановка идёт тем же Send (enqueueScheduled), ответ — updates.
 	ScheduleDate         int64
 	ScheduleRepeatPeriod int
+	// AllowPaidStars — согласие на плату в платной группе (tweb
+	// appPollsManager.ts:1149 allow_paid_stars), как SendInput.AllowPaidStars.
+	AllowPaidStars int64
 }
 
 // SendPoll валидирует и отправляет опрос: создаёт poll, затем сообщение через
@@ -98,6 +101,7 @@ func (i *Interactor) SendPoll(ctx context.Context, in SendPollInput) (domain.Mes
 		ReplyQuoteText: in.ReplyQuoteText, ReplyQuoteOffset: in.ReplyQuoteOffset,
 		ThreadRootID: in.ThreadRootID, Silent: in.Silent, SendAsChatID: in.SendAsChatID,
 		ScheduleDate: in.ScheduleDate, ScheduleRepeatPeriod: in.ScheduleRepeatPeriod,
+		AllowPaidStars: in.AllowPaidStars,
 	})
 	if err != nil {
 		return domain.Message{}, err

@@ -280,7 +280,7 @@ type fakeSender struct {
 	failFor map[int64]error // per-chat errors (e.g. ErrNotFound for non-member)
 }
 
-func (f *fakeSender) SendStoryShare(ctx context.Context, chatID, senderID, mediaID int64, caption string) error {
+func (f *fakeSender) SendStoryShare(ctx context.Context, chatID, senderID, mediaID int64, caption string, _ int64) error {
 	if e, ok := f.failFor[chatID]; ok {
 		return e
 	}
@@ -1028,7 +1028,7 @@ func TestShare_OK(t *testing.T) {
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	sender := &fakeSender{}
 	svc.SetMessageSender(sender)
-	sent, err := svc.Share(context.Background(), 10, 42, 1, []int64{10, 20, 30})
+	sent, err := svc.Share(context.Background(), 10, 42, 1, []int64{10, 20, 30}, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1051,7 +1051,7 @@ func TestShare_ForbiddenWhenNotVisible(t *testing.T) {
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	sender := &fakeSender{}
 	svc.SetMessageSender(sender)
-	if _, err := svc.Share(context.Background(), 10, 42, 1, []int64{10}); !errors.Is(err, domain.ErrForbidden) {
+	if _, err := svc.Share(context.Background(), 10, 42, 1, []int64{10}, 0); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("want ErrForbidden, got %v", err)
 	}
 	if len(sender.calls) != 0 {
@@ -1062,7 +1062,7 @@ func TestShare_ForbiddenWhenNotVisible(t *testing.T) {
 func TestShare_UnavailableWithoutSender(t *testing.T) {
 	repo := &fakeRepo{visible: true}
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
-	if _, err := svc.Share(context.Background(), 10, 42, 1, []int64{10}); !errors.Is(err, domain.ErrUnavailable) {
+	if _, err := svc.Share(context.Background(), 10, 42, 1, []int64{10}, 0); !errors.Is(err, domain.ErrUnavailable) {
 		t.Fatalf("want ErrUnavailable, got %v", err)
 	}
 }
@@ -1072,7 +1072,7 @@ func TestShare_SkipsNonMemberChats(t *testing.T) {
 	svc := New(repo, &fakePartners{}, &fakeMedia{}, &fakeTx{})
 	sender := &fakeSender{failFor: map[int64]error{20: domain.ErrNotFound}}
 	svc.SetMessageSender(sender)
-	sent, err := svc.Share(context.Background(), 10, 42, 1, []int64{10, 20, 30})
+	sent, err := svc.Share(context.Background(), 10, 42, 1, []int64{10, 20, 30}, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

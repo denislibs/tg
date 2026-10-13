@@ -91,12 +91,13 @@ func (i *Interactor) SendGift(ctx context.Context, fromID, toID, giftID int64, m
 	var bal int64
 	msg, err := i.Send(ctx, SendInput{
 		ChatID: chatID, SenderID: fromID, Type: "gift",
+		paidConsentNotRequired: true, // подарок — не sendMessage, allow_paid_stars нет
 		prepare: func(ctx context.Context, in *SendInput) error {
-			// Списываем звёзды атомарно; нехватка — ErrPaidRequired (отличить
+			// Списываем звёзды атомарно; нехватка — ErrBalanceTooLow (отличить
 			// от запретов гейтов отправки).
 			b, e := i.stars.AddBalance(ctx, fromID, -gift.PriceStars)
 			if errors.Is(e, domain.ErrForbidden) {
-				return domain.ErrPaidRequired
+				return domain.ErrBalanceTooLow
 			}
 			if e != nil {
 				return e
@@ -188,51 +189,93 @@ type paidCharge struct {
 	creatorBal int64
 }
 
-// chargePaidMessage списывает плату за сообщение в платной группе: charge_stars
-// звёзд с отправителя (не-админа), начисляет владельцу — атомарно внутри общей
-// транзакции Send (querier берёт tx из ctx). Владелец/админ и не-группы бесплатны;
-// нехватка средств → domain.ErrPaidRequired (откатывает всю отправку).
-func (i *Interactor) chargePaidMessage(ctx context.Context, in SendInput) (paidCharge, error) {
-	// Публикация отложенного не платит второй раз: звёзды списаны при
-	// постановке (В-2, tweb allow_paid_stars в запросе с schedule_date,
-	// appMessagesManager.ts:2748). Кроме сроков повтора после первого.
-	if i.groups == nil || i.stars == nil || in.Type == "service" || (in.fromSchedule && !in.repeatOccurrence) {
-		return paidCharge{}, nil
+// paidPrice — цена ОДНОГО сообщения отправителя в чат в звёздах; 0 — бесплатно.
+// Платит не-админ группы с charge_stars > 0: владелец, админы, личные чаты,
+// каналы и группы без платы пишут бесплатно.
+func (i *Interactor) paidPrice(ctx context.Context, chatID, senderID int64) (int64, error) {
+	if i.groups == nil || i.stars == nil {
+		return 0, nil
 	}
-	typ, err := i.chats.ChatType(ctx, in.ChatID)
+	typ, err := i.chats.ChatType(ctx, chatID)
 	if err != nil {
-		return paidCharge{}, err
+		return 0, err
 	}
 	if typ != domain.ChatTypeGroup {
-		return paidCharge{}, nil
+		return 0, nil
 	}
-	s, err := i.groups.Settings(ctx, in.ChatID)
+	s, err := i.groups.Settings(ctx, chatID)
 	if err != nil || s.ChargeStars <= 0 {
-		return paidCharge{}, nil // нет настроек / плата выключена
+		return 0, nil // нет настроек / плата выключена
 	}
 	// Владелец и админы пишут бесплатно (как и slowmode/permissions).
-	if m, e := i.groups.GetMember(ctx, in.ChatID, in.SenderID); e == nil {
+	if m, e := i.groups.GetMember(ctx, chatID, senderID); e == nil {
 		if m.Role == domain.RoleCreator || m.Role == domain.RoleAdmin {
-			return paidCharge{}, nil
+			return 0, nil
 		}
 	}
-	creator, err := i.groups.CreatorID(ctx, in.ChatID)
+	return int64(s.ChargeStars), nil
+}
+
+// requirePaidAllowance — согласие отправителя на плату запроса из units
+// сообщений: allow (allow_paid_stars) — потолок суммы запроса, цена × units
+// выше него — ErrAllowPaymentRequired с требуемой суммой (tweb
+// appMessagesManager.ts:2702 шлёт цену × число сообщений). Возвращает цену ОДНОГО
+// сообщения (0 — бесплатно), по которой и надо списывать (chargePaidMessage), —
+// цена читается один раз, смена её админом между проверкой и списанием не
+// спишет больше согласованного. Звать внутри транзакции, до первого списания
+// и для всей пачки сразу (пересылка, отложенные, альбом).
+func (i *Interactor) requirePaidAllowance(ctx context.Context, chatID, senderID int64, units int, allow int64) (int64, error) {
+	price, err := i.paidPrice(ctx, chatID, senderID)
+	if err != nil || price == 0 {
+		return 0, err
+	}
+	if need := price * int64(units); allow < need {
+		return 0, domain.ErrAllowPaymentRequired{Stars: need}
+	}
+	return price, nil
+}
+
+// paidPriceFor — цена одного сообщения отправки после гейта согласия.
+// Служебки бесплатны; публикация отложенного не платит второй раз (звёзды
+// списаны при постановке, В-2, tweb allow_paid_stars в запросе с schedule_date,
+// appMessagesManager.ts:2748) — кроме сроков повтора после первого. Вход без
+// allow_paid_stars в TL (боты, розыгрыш, подарок, повтор до деплоя) помечен
+// paidConsentNotRequired и платит без проверки согласия.
+func (i *Interactor) paidPriceFor(ctx context.Context, in SendInput, units int) (int64, error) {
+	if in.Type == "service" || (in.fromSchedule && !in.repeatOccurrence) {
+		return 0, nil
+	}
+	if in.paidConsentNotRequired {
+		return i.paidPrice(ctx, in.ChatID, in.SenderID)
+	}
+	return i.requirePaidAllowance(ctx, in.ChatID, in.SenderID, units, in.AllowPaidStars)
+}
+
+// chargePaidMessage списывает price звёзд за одно сообщение в платной группе с
+// отправителя и начисляет владельцу — атомарно внутри общей транзакции Send
+// (querier берёт tx из ctx). price получен из requirePaidAllowance/paidPriceFor;
+// 0 — ничего. Нехватка средств → domain.ErrBalanceTooLow (откатывает отправку).
+func (i *Interactor) chargePaidMessage(ctx context.Context, chatID, senderID, price int64) (paidCharge, error) {
+	if price <= 0 {
+		return paidCharge{}, nil
+	}
+	creator, err := i.groups.CreatorID(ctx, chatID)
 	if err != nil {
 		return paidCharge{}, err
 	}
-	if creator == in.SenderID {
+	if creator == senderID {
 		return paidCharge{}, nil // страховка: владелец не платит сам себе
 	}
-	senderBal, err := i.stars.AddBalance(ctx, in.SenderID, -int64(s.ChargeStars))
+	senderBal, err := i.stars.AddBalance(ctx, senderID, -price)
 	if err != nil {
 		if err == domain.ErrForbidden {
-			return paidCharge{}, domain.ErrPaidRequired
+			return paidCharge{}, domain.ErrBalanceTooLow
 		}
 		return paidCharge{}, err
 	}
-	c := paidCharge{applied: true, amount: int64(s.ChargeStars), senderBal: senderBal, creatorID: creator}
+	c := paidCharge{applied: true, amount: price, senderBal: senderBal, creatorID: creator}
 	if creator != 0 {
-		creatorBal, e := i.stars.AddBalance(ctx, creator, int64(s.ChargeStars))
+		creatorBal, e := i.stars.AddBalance(ctx, creator, price)
 		if e != nil {
 			return paidCharge{}, e
 		}

@@ -52,7 +52,7 @@ func (i *Interactor) SendStarReaction(ctx context.Context, chatID, messageID, us
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		b, e := i.stars.AddBalance(ctx, userID, -count)
 		if e == domain.ErrForbidden {
-			return domain.ErrPaidRequired // недостаточно звёзд
+			return domain.ErrBalanceTooLow // недостаточно звёзд
 		}
 		if e != nil {
 			return e

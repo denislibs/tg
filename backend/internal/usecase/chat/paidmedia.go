@@ -134,7 +134,7 @@ func (i *Interactor) UnlockPaidMedia(ctx context.Context, msgID, userID int64) (
 			err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 				b, e := i.stars.AddBalance(ctx, userID, -price)
 				if e == domain.ErrForbidden {
-					return domain.ErrPaidRequired // недостаточно звёзд
+					return domain.ErrBalanceTooLow // недостаточно звёзд
 				}
 				if e != nil {
 					return e

@@ -39,7 +39,8 @@ func (i *Interactor) maybeBotReply(ctx context.Context, chatID, senderID, msgID 
 	if reply == "" {
 		return
 	}
-	_, _ = i.Send(ctx, SendInput{ChatID: chatID, SenderID: botID, Type: "text", Text: reply, ReplyMarkup: markup})
+	_, _ = i.Send(ctx, SendInput{ChatID: chatID, SenderID: botID, Type: "text", Text: reply, ReplyMarkup: markup,
+		paidConsentNotRequired: true}) // ответ бота: у него нет allow_paid_stars
 }
 
 // privateBotPeer возвращает id второго участника приватного чата, если он бот.
@@ -95,7 +96,7 @@ func (i *Interactor) BotCallback(ctx context.Context, chatID, userID, botID, msg
 		return domain.BotCallbackAnswer{Text: "Это alert-попап! 🎉", Alert: true}, nil
 	case "more":
 		_, _ = i.Send(ctx, SendInput{ChatID: chatID, SenderID: botID, Type: "text",
-			Text: "Ещё одно сообщение от бота 🤖"})
+			Text: "Ещё одно сообщение от бота 🤖", paidConsentNotRequired: true})
 		return domain.BotCallbackAnswer{Text: "Отправил ещё одно"}, nil
 	case "echo":
 		return domain.BotCallbackAnswer{Text: "Кнопка нажата 🙂"}, nil

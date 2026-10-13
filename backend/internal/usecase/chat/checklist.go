@@ -25,6 +25,9 @@ type SendChecklistInput struct {
 	OthersCanAdd     bool
 	OthersCanMark    bool
 	ClientMsgID      string
+	// AllowPaidStars — согласие на плату в платной группе (tweb шлёт чек-лист
+	// как sendMedia с inputMediaTodo и allow_paid_stars), как SendInput.AllowPaidStars.
+	AllowPaidStars int64
 }
 
 // SendChecklist валидирует и отправляет чек-лист: создаёт checklist, затем
@@ -68,7 +71,7 @@ func (i *Interactor) SendChecklist(ctx context.Context, in SendChecklistInput) (
 	}
 	msg, err := i.Send(ctx, SendInput{
 		ChatID: in.ChatID, SenderID: in.SenderID, Type: "checklist",
-		ClientMsgID: in.ClientMsgID, ChecklistID: &c.ID,
+		ClientMsgID: in.ClientMsgID, ChecklistID: &c.ID, AllowPaidStars: in.AllowPaidStars,
 	})
 	if err != nil {
 		return domain.Message{}, err

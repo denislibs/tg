@@ -337,7 +337,7 @@ func (f *fakeChat) Send(_ context.Context, in usecasechat.SendInput) (domain.Mes
 // на зеркало поста, автор доподписывается на группу обсуждения. Зеркала может
 // не быть вовсе (пост опубликован до привязки обсуждения) — тогда его дозаводит
 // сам комментарий, как lazyMirrorPost.
-func (f *fakeChat) PostComment(ctx context.Context, channelID, postID, userID int64, text, clientMsgID string) (domain.Message, error) {
+func (f *fakeChat) PostComment(ctx context.Context, channelID, postID, userID int64, text, clientMsgID string, _ int64) (domain.Message, error) {
 	f.postCommentCalls++
 	disc := f.discussion[channelID]
 	if disc == 0 {

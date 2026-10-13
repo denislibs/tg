@@ -415,6 +415,9 @@ type sendBody struct {
 	// и её повтор — поля отправки, как у оригинала (appMessagesManager.ts:2741-2742).
 	ScheduleDate         int64 `json:"schedule_date"`
 	ScheduleRepeatPeriod int   `json:"schedule_repeat_period"`
+	// allow_paid_stars — сумма, на которую отправитель согласился в платной
+	// группе (tweb appMessagesManager.ts:2702); 0/нет — не согласен.
+	AllowPaidStars int64 `json:"allow_paid_stars"`
 }
 
 func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
@@ -470,6 +473,7 @@ func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
 		SendAsChatID:   sendAsChatID(body.SendAsPeerID),
 		WebPage:        body.WebPageInput,
 		ScheduleDate:   body.ScheduleDate, ScheduleRepeatPeriod: body.ScheduleRepeatPeriod,
+		AllowPaidStars: body.AllowPaidStars,
 	})
 	if err != nil {
 		writeSendError(w, err, "not a member of this chat")
@@ -925,6 +929,9 @@ type forwardBody struct {
 	// (messages.forwardMessages, tweb appMessagesManager.ts:5652).
 	ScheduleDate         int64 `json:"schedule_date"`
 	ScheduleRepeatPeriod int   `json:"schedule_repeat_period"`
+	// allow_paid_stars — согласие на плату ЗА ВСЮ ПАЧКУ (цена × число сообщений,
+	// tweb forwardMessages, appMessagesManager.ts:3787).
+	AllowPaidStars int64 `json:"allow_paid_stars"`
 }
 
 func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
@@ -970,6 +977,7 @@ func (h *ChatHandler) Forward(w http.ResponseWriter, r *http.Request) {
 		DropAuthor: body.DropAuthor, DropCaption: body.DropCaption,
 		Silent: body.Silent, ThreadRootID: threadRoot,
 		ScheduleDate: body.ScheduleDate, ScheduleRepeatPeriod: body.ScheduleRepeatPeriod,
+		AllowPaidStars: body.AllowPaidStars,
 	})
 	if err != nil {
 		writeSendError(w, err, "not a member or message not found")
@@ -1348,6 +1356,9 @@ func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 		// inputMediaPoll, appMessagesManager.ts:4152-4166).
 		ScheduleDate         int64 `json:"schedule_date"`
 		ScheduleRepeatPeriod int   `json:"schedule_repeat_period"`
+		// allow_paid_stars — согласие на плату в платной группе (tweb
+		// appPollsManager.ts:1149).
+		AllowPaidStars int64 `json:"allow_paid_stars"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
@@ -1381,6 +1392,7 @@ func (h *ChatHandler) SendPoll(w http.ResponseWriter, r *http.Request) {
 		ReplyQuoteText: b.ReplyQuoteText, ReplyQuoteOffset: b.ReplyQuoteOffset,
 		ThreadRootID: threadRoot, Silent: b.Silent, SendAsChatID: sendAsChatID(b.SendAsPeerID),
 		ScheduleDate: b.ScheduleDate, ScheduleRepeatPeriod: b.ScheduleRepeatPeriod,
+		AllowPaidStars: b.AllowPaidStars,
 	})
 	if errors.Is(err, domain.ErrTooLong) {
 		writeError(w, http.StatusBadRequest, "invalid poll")
@@ -1466,6 +1478,8 @@ func (h *ChatHandler) SendChecklist(w http.ResponseWriter, r *http.Request) {
 		OthersCanAdd  bool     `json:"others_can_add"`
 		OthersCanMark bool     `json:"others_can_mark"`
 		ClientMsgID   string   `json:"client_msg_id"`
+		// allow_paid_stars — согласие на плату в платной группе.
+		AllowPaidStars int64 `json:"allow_paid_stars"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
@@ -1475,7 +1489,7 @@ func (h *ChatHandler) SendChecklist(w http.ResponseWriter, r *http.Request) {
 		ChatID: chatID, SenderID: h.meID(r),
 		Title: b.Title, Items: b.Items,
 		OthersCanAdd: b.OthersCanAdd, OthersCanMark: b.OthersCanMark,
-		ClientMsgID: b.ClientMsgID,
+		ClientMsgID: b.ClientMsgID, AllowPaidStars: b.AllowPaidStars,
 	})
 	if errors.Is(err, domain.ErrTooLong) {
 		writeError(w, http.StatusBadRequest, "invalid checklist")
@@ -1483,6 +1497,9 @@ func (h *ChatHandler) SendChecklist(w http.ResponseWriter, r *http.Request) {
 	}
 	if errors.Is(err, domain.ErrNotFound) {
 		writeError(w, http.StatusForbidden, "not a member of this chat")
+		return
+	}
+	if writePaidError(w, err) {
 		return
 	}
 	if err != nil {
@@ -2333,7 +2350,7 @@ func (h *ChatHandler) SendStarReaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	agg, top, bal, err := h.svc.SendStarReaction(r.Context(), chatID, msgID, h.meID(r), body.Count, body.Anonymous)
-	if errors.Is(err, domain.ErrPaidRequired) {
+	if errors.Is(err, domain.ErrBalanceTooLow) {
 		writeError(w, http.StatusPaymentRequired, "not enough stars")
 		return
 	}
@@ -2351,7 +2368,7 @@ func (h *ChatHandler) SendStarReaction(w http.ResponseWriter, r *http.Request) {
 	}
 	// Баланса рядом больше нет: его владелец — кадр `updateStarsBalance`.
 	_ = bal
-	writeStarReaction(w, r, h.svc, chatID, agg, top)
+	writeStarReaction(w, r, h.svc, chatID, msgID, agg, top)
 }
 
 // GetStarReaction — GET /chats/{chatID}/messages/{msgID}/star_reaction: агрегат
@@ -2374,7 +2391,7 @@ func (h *ChatHandler) GetStarReaction(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load star reaction")
 		return
 	}
-	writeStarReaction(w, r, h.svc, chatID, agg, top)
+	writeStarReaction(w, r, h.svc, chatID, msgID, agg, top)
 }
 
 // writeStarReaction — витрина ⭐-реакции сообщения.
@@ -2387,10 +2404,17 @@ func (h *ChatHandler) GetStarReaction(w http.ResponseWriter, r *http.Request) {
 //
 // Едет агрегат кадром `updateMessageReactions` в контейнере `updates`: сам по
 // себе `messageReactions` вектора карточек не имеет, а ссылкам нужен адресат.
+//
+// Агрегат — ПОЛНЫЙ, глазами зрителя (эмодзи-чипы и платный): клиент заменяет им
+// агрегат сообщения целиком (tweb appReactionsManager.ts:966-972), и ответ с
+// одним платным чипом стёр бы у ставившего его обычные реакции.
 func writeStarReaction(w http.ResponseWriter, r *http.Request, svc *usecasechat.Interactor,
-	chatID int64, agg domain.StarReactionAgg, top []domain.StarReactionSender) {
-	results := []domain.MTReactionCount{
-		domain.NewReactionCount(domain.NewReactionPaid(), int(agg.Total), agg.Mine > 0),
+	chatID, msgID int64, agg domain.StarReactionAgg, top []domain.StarReactionSender) {
+	me, _ := UserFromContext(r.Context())
+	reactions, err := svc.ReactionsSeenBy(r.Context(), chatID, msgID, me.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not render star reaction")
+		return
 	}
 	reactors := make([]domain.MessageReactor, 0, len(top)+1)
 	users := make([]domain.UserReal, 0, len(top))
@@ -2407,11 +2431,8 @@ func writeStarReaction(w http.ResponseWriter, r *http.Request, svc *usecasechat.
 	if agg.Mine > 0 {
 		reactors = append(reactors, domain.NewMyMessageReactor(int(agg.Mine)))
 	}
-	reactions := domain.NewMessageReactions(results, nil)
-	reactions.SetCanSeeList(svc.CanSeeReactionsList(r.Context(), chatID))
 	reactions.TopReactors = reactors
 
-	me, _ := UserFromContext(r.Context())
 	peer, err := svc.ChatIDToPeer(r.Context(), me.ID, chatID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not render star reaction")

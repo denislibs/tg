@@ -225,7 +225,7 @@ func TestJoin_BanHoldsOnEveryPath(t *testing.T) {
 	// (а) комментарий и ответ в тред не возвращают забаненного. Отказ даёт
 	// гейт чтения обсуждения (RequireChannelCommentsRead): забаненному в группе
 	// обсуждения комментарии канала не видны — ErrNotFound, как CHANNEL_PRIVATE.
-	if _, err := i.PostComment(ctx, ch, post.ID, 8, "я вернулся", ""); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := i.PostComment(ctx, ch, post.ID, 8, "я вернулся", "", 0); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("комментарий забаненного = %v, ждали ErrNotFound", err)
 	}
 	if _, err := i.Send(ctx, SendInput{ChatID: gid, SenderID: 8, Text: "я вернулся", ThreadRootID: &root}); !errors.Is(err, domain.ErrNotFound) {

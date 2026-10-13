@@ -185,9 +185,9 @@ func TestPaidMedia_UnlockChargesCreditsAndIdempotent(t *testing.T) {
 	msgID, mediaID := sendPaidPhoto(t, in, s, 20)
 	ctx := context.Background()
 
-	// без звёзд — ErrPaidRequired
-	if _, _, err := in.UnlockPaidMedia(ctx, msgID, 2); err != domain.ErrPaidRequired {
-		t.Fatalf("unlock without stars = %v; want ErrPaidRequired", err)
+	// без звёзд — ErrBalanceTooLow
+	if _, _, err := in.UnlockPaidMedia(ctx, msgID, 2); err != domain.ErrBalanceTooLow {
+		t.Fatalf("unlock without stars = %v; want ErrBalanceTooLow", err)
 	}
 	// медиа всё ещё закрыто для скачивания
 	if locked, _ := pm.LockedMedia(ctx, 2, mediaID); !locked {

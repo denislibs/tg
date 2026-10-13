@@ -118,7 +118,7 @@ func TestPostComment_GuestCommentsWithoutJoining(t *testing.T) {
 	f := newDiscussionFixture(t)
 	ctx := context.Background()
 
-	msg, err := f.i.PostComment(ctx, f.ch, f.post.ID, 8, "first", "c1")
+	msg, err := f.i.PostComment(ctx, f.ch, f.post.ID, 8, "first", "c1", 0)
 	if err != nil {
 		t.Fatalf("PostComment гостя: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestSend_GuestBannedOrUnreadable_Rejected(t *testing.T) {
 	ctx := context.Background()
 	root := f.mirror.ID
 	_ = f.fg.Ban(ctx, f.disc, 8, 7)
-	if _, err := f.i.PostComment(ctx, f.ch, f.post.ID, 8, "x", ""); err == nil {
+	if _, err := f.i.PostComment(ctx, f.ch, f.post.ID, 8, "x", "", 0); err == nil {
 		t.Fatal("забаненный в группе прокомментировал")
 	}
 	if _, err := f.i.Send(ctx, SendInput{ChatID: f.disc, SenderID: 8, Text: "x", ThreadRootID: &root}); !errors.Is(err, domain.ErrNotFound) {
@@ -230,16 +230,16 @@ func TestJoinToSend_GatesGuest(t *testing.T) {
 	if s, _ := f.fg.Settings(ctx, f.disc); !s.JoinToSend {
 		t.Fatal("флаг join_to_send не записан")
 	}
-	if _, err := f.i.PostComment(ctx, f.ch, f.post.ID, 8, "x", ""); !errors.Is(err, domain.ErrForbidden) {
+	if _, err := f.i.PostComment(ctx, f.ch, f.post.ID, 8, "x", "", 0); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("гость при join_to_send = %v, want ErrForbidden", err)
 	}
-	if _, err := f.i.PostComment(ctx, f.ch, f.post.ID, 9, "member", ""); err != nil {
+	if _, err := f.i.PostComment(ctx, f.ch, f.post.ID, 9, "member", "", 0); err != nil {
 		t.Fatalf("участник при join_to_send: %v", err)
 	}
 	if err := f.i.ToggleJoinToSend(ctx, f.disc, 7, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.i.PostComment(ctx, f.ch, f.post.ID, 8, "x", ""); err != nil {
+	if _, err := f.i.PostComment(ctx, f.ch, f.post.ID, 8, "x", "", 0); err != nil {
 		t.Fatalf("гость после снятия join_to_send: %v", err)
 	}
 }
@@ -249,7 +249,7 @@ func TestJoinToSend_GatesGuest(t *testing.T) {
 func TestGuest_PushOnReplyAndMention(t *testing.T) {
 	f := newDiscussionFixture(t)
 	ctx := context.Background()
-	c, err := f.i.PostComment(ctx, f.ch, f.post.ID, 8, "guest comment", "")
+	c, err := f.i.PostComment(ctx, f.ch, f.post.ID, 8, "guest comment", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +303,7 @@ func contains(ids []int64, id int64) bool {
 func TestGuest_EditsAndDeletesOwnComment(t *testing.T) {
 	f := newDiscussionFixture(t)
 	ctx := context.Background()
-	c, err := f.i.PostComment(ctx, f.ch, f.post.ID, 8, "typo", "")
+	c, err := f.i.PostComment(ctx, f.ch, f.post.ID, 8, "typo", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +313,7 @@ func TestGuest_EditsAndDeletesOwnComment(t *testing.T) {
 	if len(f.journal(8, "edit_message")) != 1 {
 		t.Fatal("гостю не ушла своя правка")
 	}
-	other, err := f.i.PostComment(ctx, f.ch, f.post.ID, 9, "member", "")
+	other, err := f.i.PostComment(ctx, f.ch, f.post.ID, 9, "member", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +364,7 @@ func TestEditPost_SyncsMirror(t *testing.T) {
 func TestDeletePost_DeletesMirror_KeepsComments(t *testing.T) {
 	f := newDiscussionFixture(t)
 	ctx := context.Background()
-	c, err := f.i.PostComment(ctx, f.ch, f.post.ID, 9, "comment", "")
+	c, err := f.i.PostComment(ctx, f.ch, f.post.ID, 9, "comment", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,7 +426,7 @@ func TestMirror_NoOutForPostAuthor(t *testing.T) {
 func TestGuest_OwnCommentUnderDeletedPost(t *testing.T) {
 	f := newDiscussionFixture(t)
 	ctx := context.Background()
-	c, err := f.i.PostComment(ctx, f.ch, f.post.ID, 8, "mine", "")
+	c, err := f.i.PostComment(ctx, f.ch, f.post.ID, 8, "mine", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -507,7 +507,7 @@ func TestDeleteAlbumPost_RootMirrorLivesWithAlbum(t *testing.T) {
 	if m, _ := f.i.msgs.GetByID(ctx, root); m.Deleted {
 		t.Fatal("корень треда альбома удалён, пока жив второй элемент")
 	}
-	if _, err := f.i.PostComment(ctx, f.ch, a2.ID, 9, "still alive", ""); err != nil {
+	if _, err := f.i.PostComment(ctx, f.ch, a2.ID, 9, "still alive", "", 0); err != nil {
 		t.Fatalf("тред альбома умер после удаления первого элемента: %v", err)
 	}
 	if err := f.i.DeleteMessage(ctx, f.ch, a2.ID, 7, true); err != nil {
@@ -529,7 +529,7 @@ func TestCommentCounts_ThreadReadState(t *testing.T) {
 	ctx := context.Background()
 	ft := newFakeTopicRepo()
 	f.i.SetTopics(ft)
-	c, err := f.i.PostComment(ctx, f.ch, f.post.ID, 9, "c1", "")
+	c, err := f.i.PostComment(ctx, f.ch, f.post.ID, 9, "c1", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -586,7 +586,7 @@ func TestAutoDelete_PostTakesMirror_GuestCommentDelivered(t *testing.T) {
 	var expired []domain.Message
 	f := newDiscussionFixtureMsgs(t, func(s *store) MessageRepo { return expiringMsgs{fakeMsgs{s}, &expired} })
 	ctx := context.Background()
-	c, err := f.i.PostComment(ctx, f.ch, f.post.ID, 8, "guest comment", "")
+	c, err := f.i.PostComment(ctx, f.ch, f.post.ID, 8, "guest comment", "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}

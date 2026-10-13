@@ -828,6 +828,16 @@ type SendInput struct {
 	// ScheduleRepeatPeriod — повтор отложенного (schema schedule_repeat_period,
 	// секунды из domain.ScheduleRepeatPeriods); только вместе с ScheduleDate.
 	ScheduleRepeatPeriod int
+	// AllowPaidStars — сумма, на которую отправитель согласился в платной группе
+	// (tweb allow_paid_stars = цена × число сообщений запроса,
+	// appMessagesManager.ts:2702): потолок платы ЭТОЙ отправки. 0 — не согласен:
+	// в платной группе (не админ) отправка отвергается ErrAllowPaymentRequired
+	// с требуемой суммой, чтобы клиент переспросил (tweb RepayRequestHandler).
+	AllowPaidStars int64
+	// paidConsentNotRequired — отправка не спрашивает согласия на плату. Только
+	// входы, у которых в TL нет allow_paid_stars: боты, розыгрыш, подарок,
+	// публикация повтора отложенного, поставленного до деплоя. Не экспортируется.
+	paidConsentNotRequired bool
 	// skipMediaOwner пропускает проверку владельца media (share истории в чат:
 	// media принадлежит автору истории, а видимость уже проверена story-usecase).
 	// Не экспортируется — ставится только внутри пакета (SendStoryShare).
