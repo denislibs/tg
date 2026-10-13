@@ -1,54 +1,46 @@
 /** @jsxImportSource solid-js */
-// SignQRCard — вход по QR-коду. Solid-порт нашей React `cards/SignQRCard.tsx`
-// (которая сама — порт tweb `pages/cards/SignQRCard.tsx`, 245 строк, поверх
-// нашего REST-бэкенда: у tweb это MTProto-цикл `auth.exportLoginToken`/
-// `auth.importLoginToken`, у нас — `managers.auth.qrNew`/`qrStatus`).
+// SignQRCard — вход по QR-коду. Solid-порт tweb `pages/cards/SignQRCard.tsx`
+// (цикл `iterate`, :135-192) поверх нашего REST: `auth.exportLoginToken` у нас —
+// `managers.auth.exportLoginToken(loginKey)`.
 //
-// ── Ротация и опрос ЖИВУТ В КАРТОЧКЕ и снимаются вместе с ней ───────────────
-// Это то самое особое внимание задачи 5: у tweb — `onCleanup` В САМОЙ
-// карточке (`SignQRCard.tsx:212-216`, `stopped = true` + снятие подписок
-// rootScope), а не возврат из React `useEffect` (как было бы у нас в
-// React-версии). Здесь — ровно тот же приём: `onCleanup`, а не что-либо,
-// зависящее от порядка React-рендеров. Пины `SignQRCard.solid.test.tsx`
-// (describe «таймеры снимаются вместе с карточкой») продвигают фейковые
-// таймеры ПОСЛЕ `dispose()` и проверяют, что ни `qrNew`, ни `qrStatus` больше
-// не званы — заодно ловят и позднюю подтверждённость (ответ, догнавший уже
-// мёртвую карточку), которую флаг `alive` внутри отбрасывает.
+// ── Один цикл, как у tweb ───────────────────────────────────────────────────
+// `iterate()` опрашивает сервер, рисует QR ТОЛЬКО при смене токена (:162-166),
+// и пауза до следующего опроса — `diff > FETCH_INTERVAL ? 3 с : diff`, где
+// `diff = expires − now` (:169-171). Выпуск, опрос и ротацию кода делает сам
+// сервер: протухший код он заменяет новым прямо в ответе. Прежние два
+// независимых интервала (`ROTATE_MS`/`POLL_MS`) и ветка `expired` удалены.
 //
-// ── Ротация/опрос — наше расширение против tweb (REST, не MTProto) ─────────
-// У tweb один цикл `iterate()` сам решает, когда переопросить сервер (`diff`
-// от `expires` токена). У нашего REST `qrNew`/`qrStatus` нет отдельного
-// «сколько ждать» в ответе — поэтому, как и в React-версии, здесь ДВА
-// независимых интервала: ротация токена (`ROTATE_MS`, если экран открыт
-// долго и токен истёк на сервере) и опрос подтверждения (`POLL_MS`).
+// ── Ключ входа ──────────────────────────────────────────────────────────────
+// Экран при монтировании генерирует ключ входа (32 случайных байта, hex) и шлёт
+// его заголовком `X-Login-Key` в каждом `exportLoginToken`. Право забрать
+// сессию принадлежит ключу, а не коду: код нарисован в QR и виден любому, кто
+// смотрит на экран. Ключ не попадает ни в QR, ни в URL, ни в хранилище.
 //
-// ── Что НЕ портировано из tweb (нет предмета на REST-бэкенде) ───────────────
-// Ветка `SESSION_PASSWORD_NEEDED → navigate({name:'password'})`
-// (`SignQRCard.tsx:168-171`, MTProto бросает эту ошибку из
-// `auth.exportLoginToken`, если у аккаунта, с которого сканируют,
-// включён облачный пароль) — не портирована: у нашего `qrStatus` РОВНО
-// три исхода (`pending`/`expired`/`confirmed`, все — обычные значения, не
-// исключения), у него нет третьего/четвёртого конструктора под 2FA. Как
-// именно REST-бэкенд обошёлся бы с паролем на QR-входе — вопрос протокола
-// `POST/GET /auth/qr/*`, не этой карточки.
+// ── Шаг пароля ──────────────────────────────────────────────────────────────
+// Аккаунт с облачным паролем: `exportLoginToken` отвечает `status: 'password'`
+// (`auth.loginTokenSuccess{authorization: auth.passwordNeeded}`) — карточка
+// уходит на шаг пароля с `token` и `hint` (tweb :174-178, там это ошибка
+// `SESSION_PASSWORD_NEEDED` плюс состояние сессии на сервере; у REST состояния
+// нет, поэтому токен шага едет в ответе).
+//
+// ── Остановка ───────────────────────────────────────────────────────────────
+// `onCleanup` в самой карточке (:212-216): `stopped = true`. Подписка tweb на
+// `user_auth` (:67-72) у нас не нужна: вход ЛЮБЫМ путём объявляет
+// `rt:logged_in`, а `index.ts::listenSessionTransitions` перезагружает страницу
+// (во всех вкладках), то есть цикл умирает вместе со страницей; вход ключом
+// доступа в самой карточке останавливает цикл явно (`stopped = true`).
 //
 // ── Отказ виден, а не проглочен ─────────────────────────────────────────────
-// У tweb `iterate()` разбирает ошибку ПО ТИПУ (`SignQRCard.tsx:172-188`) и ни
-// одну не гасит молча: `SESSION_PASSWORD_NEEDED` (:174) уводит на карточку
-// пароля, `AUTH_TOKEN_EXPIRED` (:178) пишет `console.warn` и крутит цикл
-// дальше, ЛЮБАЯ прочая (`default:`, :181-184) — `console.error` плюс
-// `stopped = true`, то есть остановка опроса. Прежняя редакция этой карточки
-// держала на обоих вызовах ПУСТОЙ `catch {}`: падение (например, недоступный
-// `managers.auth` при поломке RPC-прокси) превращалось в вечный прелоадер без
-// единой строки в консоли — кнопка «нажимается и ничего не происходит».
-// Здесь — ветка `default:` оригинала дословно (след в консоли + остановка) и,
-// сверх неё, видимый отказ: `toastNew` (tweb `components/toast.ts`, ключ из
-// словаря). Двух других веток у нас нет предмета — см. абзац выше про 2FA и
-// `qrStatus`, где протухший токен приезжает ЗНАЧЕНИЕМ `expired`, а не броском.
+// Ветка `default:` разбора ошибки у tweb (:181-184) — `console.error` плюс
+// `stopped = true`; сверх неё — видимый отказ: `toastNew` (ключ словаря) и
+// подзаголовок с текстом отказа, иначе остался бы вечный прелоадер без
+// объяснения. Ветки `AUTH_TOKEN_EXPIRED` (:178-180) нет: наш `export` протухший
+// код сам заменяет новым и этого отказа в ходе цикла не производит.
 import { createSignal, onCleanup, onMount, Show, type JSX } from 'solid-js'
 import Button from '@components/buttonTsx.solid'
 import { toastNew } from '@components/toast'
 import { i18n } from '@lib/langPack'
+import pause from '@helpers/schedulers/pause'
 import { isWebAuthnSupported, getPasskeyAssertion } from '@core/webauthnBrowser'
 import AuthCard from '../AuthCard.solid'
 import MediaHeader from '@components/mediaHeader.solid'
@@ -65,8 +57,12 @@ type Spec = Extract<CardSpec, { name: 'signQR' }>
 // в атрибутах канвы); до 208 CSS её ужимает `.qrCanvas{width/height:100%}`
 // внутри контейнера с padding 16.
 const QR_SIZE = 240
-const ROTATE_MS = 30_000
-const POLL_MS = 2_000
+// tweb SignQRCard.tsx:30.
+const FETCH_INTERVAL = 3
+
+// Ключ входа: 32 случайных байта, hex нижнего регистра (формат X-Login-Key).
+const makeLoginKey = (): string =>
+  [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, '0')).join('')
 
 export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
   const { managers, navigate, toIm } = useAuthFlow()
@@ -81,67 +77,65 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
   // узел `MediaHeader.Subtitle`, что и в оригинале, только с другим ключом
   // словаря: своей разметки/стилей под ошибку здесь не заводится.
   const [failed, setFailed] = createSignal(false)
-  let qrToken = ''
+  // Как `let stopped` у tweb (:41): цикл и вход ключом доступа гасят его.
+  let stopped = false
+  onCleanup(() => { stopped = true })
 
   onMount(() => {
-    let alive = true
+    const loginKey = makeLoginKey()
+    let prevToken = ''
 
     // Ветка `default:` разбора ошибки у tweb (`SignQRCard.tsx:181-184`):
-    // `console.error` + `stopped = true`. Останавливаем оба таймера тем же
-    // `cleanup`, что и успешный вход, и показываем всплывашку — иначе на
-    // экране остался бы бесконечно крутящийся прелоадер без объяснения.
-    const fail = (what: string, err: unknown) => {
-      if (!alive) return
-      console.error(`SignQRCard: ${what} error:`, err)
-      cleanup()
+    // `console.error` + `stopped = true`, плюс всплывашка — иначе на экране
+    // остался бы бесконечно крутящийся прелоадер без объяснения.
+    const fail = (err: unknown) => {
+      console.error('SignQRCard: exportLoginToken error:', err)
+      stopped = true
       setFailed(true)
       toastNew({ langPackKey: 'Login.Error.Generic' })
     }
 
-    const regen = async () => {
+    // tweb `iterate()` (:135-192); true — выйти из цикла.
+    const iterate = async (): Promise<boolean> => {
       try {
-        const token = await managers.auth.qrNew('web')
-        if (!alive) return
-        qrToken = token
-        // URL для сканера строим от реального origin — с бэка он не едет
-        // (за nginx мог потерять порт из Host-заголовков прокси).
-        setQrUrl(`${location.origin}/qr/${token}`)
-      } catch (err) {
-        fail('qrNew', err)
-      }
-    }
-    const tick = async () => {
-      const token = qrToken
-      if (!token) return
-      try {
-        const r = await managers.auth.qrStatus(token)
-        if (!alive) return
-        if (r.status === 'confirmed') {
-          cleanup()
-          void toIm() // токен уже сохранён внутри qrStatus
-        } else if (r.status === 'expired') {
-          void regen() // крутим свежий код
+        const r = await managers.auth.exportLoginToken(loginKey)
+        if (stopped) return true // карточку убрали, пока ответ летел
+        if (r.status === 'success') {
+          stopped = true
+          void toIm() // сессия уже сохранена внутри exportLoginToken
+          return true
         }
+        if (r.status === 'password') {
+          stopped = true
+          navigate({ name: 'password', payload: { token: r.passwordToken, hint: r.hint } })
+          return true
+        }
+        // Перерисовка только при смене токена (:162-166). URL для сканера
+        // строим от реального origin — с бэка он не едет.
+        if (r.token !== prevToken) {
+          prevToken = r.token
+          setQrUrl(`${location.origin}/qr/${r.token}`)
+        }
+        const diff = r.expires - Date.now() / 1000
+        // TODO(ждёт решения пользователя, Ф7-Б): tweb вычитает смещение
+        // серверного времени — `diff = expires − now − getServerTimeOffset()`
+        // (:170); у клиента такого смещения нет. Предложено (не принято): при
+        // `diff <= 0` (часы клиента спешат) ждать полный шаг 3 с, а не 0 —
+        // иначе горячий цикл. Пока формула дословно по tweb.
+        await pause(diff > FETCH_INTERVAL ? 1e3 * FETCH_INTERVAL : (1e3 * diff) | 0)
       } catch (err) {
-        // Протухший код сюда НЕ попадает — `qrStatus` отдаёт его значением
-        // `expired` (`core/managers/authManager.ts`, ветка 404). Значит здесь
-        // только настоящий отказ (сеть/воркер) — ветка `default:` оригинала.
-        fail('qrStatus', err)
+        if (stopped) return true
+        fail(err)
+        return true
       }
-    }
-    const cleanup = () => {
-      alive = false
-      clearInterval(rotate)
-      clearInterval(poll)
+      return false
     }
 
-    void regen()
-    // `cleanup` (объявлен выше) читает `rotate`/`poll` по замыканию, а вызван
-    // будет не раньше первого сработавшего таймера — TDZ здесь не грозит.
-    const rotate = setInterval(() => void regen(), ROTATE_MS)
-    const poll = setInterval(() => void tick(), POLL_MS)
-
-    onCleanup(cleanup)
+    void (async () => {
+      while (!stopped) {
+        if ((await iterate()) || stopped) break
+      }
+    })()
   })
 
   // Вход по ключу доступа (WebAuthn discoverable credential) — tweb держит эту
@@ -154,6 +148,7 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
       const { session, options } = await managers.auth.passkeyLoginBegin()
       const assertion = await getPasskeyAssertion(options)
       await managers.auth.passkeyLoginFinish(session, assertion, 'web', 'browser')
+      stopped = true // вход состоялся — цикл экспорта больше не нужен (tweb: `user_auth`)
       void toIm()
     } catch (err) {
       // Разбор — общий на обе карточки, см. `../passkeyLoginError.ts`

@@ -196,28 +196,34 @@ export type AuthAuthorizationWire =
   | { _: 'auth.passwordNeeded'; password_token: string; hint: string }
 
 /**
- * `auth.LoginToken` — состояние входа по QR-коду: код ждёт подтверждения либо
- * подтверждён и несёт ТОТ ЖЕ исход входа, что обычный шаг (прежде сессия и
- * карточка ехали соседними ключами — второй формой одного предмета).
+ * `auth.LoginToken` — исход `auth.exportLoginToken`: код ждёт подтверждения либо
+ * подтверждён и несёт исход входа (`auth.authorization` — сессия,
+ * `auth.passwordNeeded` — облачный пароль; по TL `authorization` это
+ * `auth.Authorization`, новых конструкторов нет).
  *
  * Третьего состояния, «протух», в объединении нет: у оригинала это ОШИБКА
- * (`AUTH_TOKEN_EXPIRED`), а прежде ехало `{status:'expired'}` со статусом 200,
- * то есть «не получилось» витриной успеха.
+ * (`AUTH_TOKEN_EXPIRED`); наш сервер протухший код сам заменяет новым.
  */
 export type AuthLoginTokenWire =
   | { _: 'auth.loginToken'; expires: number; token: string }
   | { _: 'auth.loginTokenSuccess'; authorization: AuthAuthorizationWire }
 
 /**
- * Адрес выпущенного кода для маршрута `/auth/qr/{token}`.
- *
- * `token` в схеме — БАЙТЫ, на JSON-проводе фазы 0 это base64-строка (та же
- * договорённость, что у `stripped_thumb`), а маршрут берёт ту же величину
- * шестнадцатеричной записью.
+ * Исход `exportLoginToken` для карточки QR (порт ветвления `iterate` tweb
+ * `SignQRCard.tsx:155-178`).
  */
-const qrToken = (r: AuthLoginTokenWire): string => {
-  if (r._ !== 'auth.loginToken') throw new Error(`неожиданный ответ выпуска кода: ${r._}`)
-  const bin = atob(r.token)
+export type LoginTokenResult =
+  | { status: 'pending'; token: string /* hex */; expires: number /* unix-с */ }
+  | { status: 'success'; user: PeerProfile }
+  | { status: 'password'; passwordToken: string; hint: string }
+
+/**
+ * Код в шестнадцатеричной записи — той же, что в адресе QR `/qr/<hex>` и в
+ * `acceptLoginToken`. `token` в схеме — БАЙТЫ, на JSON-проводе фазы 0 это
+ * base64-строка (та же договорённость, что у `stripped_thumb`).
+ */
+const hexOfToken = (b64: string): string => {
+  const bin = atob(b64)
   let out = ''
   for (let i = 0; i < bin.length; i++) out += bin.charCodeAt(i).toString(16).padStart(2, '0')
   return out
@@ -226,7 +232,7 @@ const qrToken = (r: AuthLoginTokenWire): string => {
 export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLoggedIn }: AuthDeps) {
   // Активный вход завершён: сохранить токен + занести аккаунт в реестр (мультиаккаунт).
   // Единая точка для signIn/signUp/checkPassword/confirmPasswordRecovery/
-  // signImport/passkeyLoginFinish/qrStatus(confirmed) — все семь путей входа
+  // signImport/passkeyLoginFinish/exportLoginToken(success) — все семь путей входа
   // заводят сессию через неё (вызовов persist() шесть: signIn и signImport
   // делят общий toOutcome).
   const persist = async (token: string, u: PeerProfile) => {
@@ -507,32 +513,31 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
       )) }
     },
 
-    // Выпуск QR-кода: конструктор `auth.loginToken`. Ссылка для сканера в
-    // ответе не едет — её строит экран входа от своего origin (серверную он и
-    // раньше игнорировал: за прокси она теряла порт).
-    async qrNew(platform: string): Promise<string> {
-      return qrToken(await rest.post<AuthLoginTokenWire>('/auth/qr/new', { platform }))
-    },
-
-    async qrStatus(token: string): Promise<{ status: 'pending' | 'confirmed' | 'expired'; user?: PeerProfile }> {
-      let r: AuthLoginTokenWire
-      try {
-        r = await rest.get<AuthLoginTokenWire>(`/auth/qr/${token}`)
-      } catch (e) {
-        // Протухший (или чужой) код — ОТКАЗ, а не третий конструктор
-        // объединения: так у оригинала (`AUTH_TOKEN_EXPIRED`). Наружу отдаём
-        // тем же дискриминированным результатом — HttpError не переживает
-        // границу worker-RPC.
-        if (e instanceof HttpError && e.status === 404) return { status: 'expired' }
-        throw e
+    /**
+     * `auth.exportLoginToken` (tweb `SignQRCard.tsx:137-142`): выпуск и опрос кода
+     * QR-входа. `loginKey` — ключ входа этого экрана (32 случайных байта hex):
+     * право забрать сессию принадлежит ему, а не коду из QR, поэтому ключ едет
+     * заголовком и нигде не показывается. `except_ids` — аккаунты этого
+     * устройства (`AccountController.getUserIds`, :136): ими код подтвердить
+     * нельзя.
+     */
+    async exportLoginToken(loginKey: string): Promise<LoginTokenResult> {
+      const exceptIds = (await listAccounts()).map((a) => a.id)
+      const r = await rest.post<AuthLoginTokenWire>(
+        '/auth/export_login_token',
+        { except_ids: exceptIds, platform: 'web' },
+        { headers: { 'X-Login-Key': loginKey } },
+      )
+      if (r._ === 'auth.loginToken') return { status: 'pending', token: hexOfToken(r.token), expires: r.expires }
+      if (r.authorization._ === 'auth.passwordNeeded') {
+        return { status: 'password', passwordToken: r.authorization.password_token, hint: r.authorization.hint ?? '' }
       }
-      if (r._ === 'auth.loginToken') return { status: 'pending' }
-      // Подтверждённый код несёт ТОТ ЖЕ исход входа, что и обычный шаг.
-      return { status: 'confirmed', user: await toSession(r.authorization) }
+      return { status: 'success', user: await toSession(r.authorization) }
     },
 
-    async qrConfirm(token: string): Promise<void> {
-      await rest.post('/auth/qr/confirm', { token })
+    /** `auth.acceptLoginToken`: подтвердить код с экрана другого устройства (hex из QR). */
+    async acceptLoginToken(token: string): Promise<void> {
+      await rest.post('/auth/accept_login_token', { token })
     },
 
     // Публичный /me — используется прогревом/loadChats. Тело — fetchMe() (см.

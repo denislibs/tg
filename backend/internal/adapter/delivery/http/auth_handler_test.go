@@ -124,8 +124,7 @@ func loginViaHTTPAs(t *testing.T, h http.Handler, phone string, headers map[stri
 }
 
 // hexOfBase64 — `token` конструктора `auth.loginToken` это БАЙТЫ (на JSON-проводе
-// base64), а маршрут `/auth/qr/{token}` берёт ту же величину шестнадцатеричной
-// записью.
+// base64), а accept_login_token берёт ту же величину шестнадцатеричной записью.
 func hexOfBase64(t *testing.T, s string) string {
 	t.Helper()
 	raw, err := base64.StdEncoding.DecodeString(s)
