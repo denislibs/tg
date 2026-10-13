@@ -51,7 +51,7 @@ func (h *ContactPhotoHandler) SetCustomPhoto(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusNotFound, "not_found")
 		return
 	case err != nil:
-		log.Printf("[contacts] set custom photo contact=%d media=%d: %v", userID, body.MediaID, err)
+		log.Printf("[contacts] set custom photo user=%d contact=%d media=%d: %v", u.ID, userID, body.MediaID, err)
 		writeError(w, http.StatusInternalServerError, "set contact photo failed")
 		return
 	}

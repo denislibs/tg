@@ -839,3 +839,30 @@ func TestSaveGif_RequiresAccessAndKind(t *testing.T) {
 		}
 	}
 }
+
+// Белый список формата стикера: все форматы, которые кладёт сид, проходят;
+// html/svg/pdf — нет.
+func TestAddSticker_MimeWhitelist(t *testing.T) {
+	f := newFakeRepo()
+	in := newInteractor(f)
+	ctx := context.Background()
+	set, _ := seedSet(t, in, f, 1, "mime_set", 0)
+	for k, c := range []struct {
+		mime string
+		want bool
+	}{
+		{"application/x-tgsticker", true}, {"image/webp", true}, {"video/webm", true},
+		{"image/png", true}, {"application/json", true},
+		{"image/svg+xml", false}, {"application/pdf", false}, {"text/html", false},
+	} {
+		id := int64(700 + k)
+		f.media[id] = domain.Media{ID: id, OwnerID: 1, Mime: c.mime}
+		_, err := in.AddSticker(ctx, 1, set.ID, id, "🙂")
+		if c.want && err != nil {
+			t.Errorf("%s: err=%v; want принят", c.mime, err)
+		}
+		if !c.want && !errors.Is(err, domain.ErrNotFound) {
+			t.Errorf("%s: err=%v; want ErrNotFound", c.mime, err)
+		}
+	}
+}

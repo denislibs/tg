@@ -13,8 +13,9 @@ import (
 
 // F7-A (MC-01), настоящая БД: чужой файл, поданный в фото профиля или свой
 // набор стикеров, не становится ни аватаркой, ни стикерным медиа — то есть
-// третий пользователь по-прежнему не получает к нему доступ: публичный доступ
-// chat.CanAccessMedia строится ровно на AvatarOwners и IsStickerMedia.
+// третий пользователь по-прежнему не получает к нему доступ: публичную часть
+// chat.CanAccessMedia, которую затрагивают эти два пути, составляют AvatarOwners
+// и IsStickerMedia.
 func TestF7_ForeignMediaNeverBecomesPublic(t *testing.T) {
 	pool := postgres.NewTestDB(t)
 	ctx := context.Background()
