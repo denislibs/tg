@@ -98,13 +98,14 @@ type ChatRepo interface {
 	// пользователем не резолвится, посторонний в ответ не попадает.
 	ParticipantIDsByUsernames(ctx context.Context, chatID int64, usernames []string) ([]int64, error)
 	// Строка упоминания живёт и после прочтения (message.mentioned), прочтение
-	// лишь гасит её «непрочитано» (media_unread у адресата). ReadMention —
-	// прочтение одного упоминания (readMessageContents), true — было
-	// непрочитано. RemoveMention — правка сняла упоминание. MessageMentions —
+	// лишь гасит её «непрочитано» (media_unread у адресата). ReadMentions —
+	// прочтение упоминаний зрителя в названных сообщениях (readMessageContents):
+	// возвращает id тех, что были непрочитаны, и один раз пересчитывает счётчик.
+	// RemoveMention — правка сняла упоминание. MessageMentions —
 	// адресаты сообщения (userID -> непрочитано), ViewerMentions — какие из
 	// msgIDs упоминают зрителя (msgID -> непрочитано). Счётчик
 	// unread_mentions_count пересчитывается там, где строка меняется.
-	ReadMention(ctx context.Context, chatID, msgID, userID int64) (bool, error)
+	ReadMentions(ctx context.Context, chatID, userID int64, msgIDs []int64) ([]int64, error)
 	RemoveMention(ctx context.Context, chatID, msgID, userID int64) error
 	MessageMentions(ctx context.Context, msgID int64) (map[int64]bool, error)
 	ViewerMentions(ctx context.Context, userID int64, msgIDs []int64) (map[int64]bool, error)

@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -986,11 +987,14 @@ func (i *Interactor) ReadReactions(ctx context.Context, chatID, userID int64) er
 	return nil
 }
 
-// ReadMedia clears a voice/round message's media_unread flag when its recipient
-// plays it (tweb messages.readMessageContents) and fans out a media_read frame
-// to every member — the sender's "unlistened" dot goes out live. Idempotent:
-// repeat plays and own messages publish nothing.
-func (i *Interactor) ReadMedia(ctx context.Context, chatID, userID, msgID int64) error {
+// ReadMessageContents — messages.readMessageContents{id: Vector<int>} (tweb
+// appMessagesManager.ts:9519-9600): получатель проиграл голосовые/кружки —
+// снимает media_unread и «непрочитано» упоминания зрителя в названных
+// сообщениях (по НОМЕРАМ у пира), а каждому участнику уходит кадр media_read:
+// у автора гаснет точка «не прослушано». Идемпотентно: повтор, свои сообщения и
+// неизвестные номера ничего не публикуют. Вектор не длиннее потолка кадра (его
+// держит delivery/ws), общие чтения — один раз на вызов.
+func (i *Interactor) ReadMessageContents(ctx context.Context, chatID, userID int64, seqs []int64) error {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {
 		return err
@@ -998,28 +1002,57 @@ func (i *Interactor) ReadMedia(ctx context.Context, chatID, userID, msgID int64)
 	if !ok {
 		return domain.ErrNotFound
 	}
-	msg, err := i.msgs.GetByID(ctx, msgID)
+	if len(seqs) == 0 {
+		return nil
+	}
+	idBySeq, err := i.MessageIDsBySeqs(ctx, chatID, seqs)
 	if err != nil {
 		return err
 	}
-	if msg.ChatID != chatID || msg.SenderID == userID {
+	ids := make([]int64, 0, len(idBySeq))
+	for _, id := range idBySeq {
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
 		return nil
 	}
-	// Упоминание зрителя в этом сообщении: прочтение содержимого гасит его
-	// «непрочитано» (Telegram readMessageContents снимает media_unread
-	// упомянутому) — у него одного, факт упоминания остаётся.
-	if err := i.readMentionContents(ctx, chatID, userID, msg); err != nil {
+	found, err := i.msgs.GetByIDs(ctx, ids)
+	if err != nil {
 		return err
 	}
-	if !msg.MediaUnread {
-		return nil
+	// Чужой чат и собственные сообщения отбрасываются: прослушать можно только
+	// сообщение, адресованное тебе.
+	msgs := found[:0]
+	for _, m := range found {
+		if m.ChatID == chatID && m.SenderID != userID {
+			msgs = append(msgs, m)
+		}
 	}
+	slices.SortFunc(msgs, func(a, b domain.Message) int { return cmp.Compare(a.Seq, b.Seq) })
+	if err := i.readMentionContents(ctx, chatID, userID, msgs); err != nil {
+		return err
+	}
+	for _, msg := range msgs {
+		if msg.MediaUnread {
+			if err := i.clearMediaUnread(ctx, chatID, msg); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// clearMediaUnread снимает media_unread одного сообщения и шлёт media_read всем
+// участникам. Своя транзакция на сообщение (длина не растёт против вектора):
+// состав участников читается внутри неё, участники отсортированы — порядок
+// блокировок pts один.
+func (i *Interactor) clearMediaUnread(ctx context.Context, chatID int64, msg domain.Message) error {
 	var members []int64
 	var cleared bool
 	var mediaReadAddr chatAddress
 	ptsByUser := map[int64]int64{}
-	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		c, e := i.msgs.ClearMediaUnread(ctx, msgID)
+	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		c, e := i.msgs.ClearMediaUnread(ctx, msg.ID)
 		if e != nil || !c {
 			return e
 		}
@@ -1061,40 +1094,67 @@ func (i *Interactor) ReadMedia(ctx context.Context, chatID, userID, msgID int64)
 	return nil
 }
 
-// readMentionContents снимает «непрочитано» с упоминания зрителя в msg и
-// шлёт ЕМУ (всем его устройствам) кадр прочтения содержимого — тот же
-// updateReadPeerMessagesContents, что у прослушанного голосового: клиент
+// readMentionContents снимает «непрочитано» с упоминаний зрителя в msgs и
+// шлёт ЕМУ (всем его устройствам) по кадру прочтения содержимого на сообщение —
+// тот же updateReadPeerMessagesContents, что у прослушанного голосового: клиент
 // снимает pFlags.media_unread и с ним бейдж «@» (tweb
-// onUpdateReadMessagesContents). Не упомянут или уже прочитано — no-op.
-func (i *Interactor) readMentionContents(ctx context.Context, chatID, userID int64, msg domain.Message) error {
-	var pts int64
+// onUpdateReadMessagesContents). Одна транзакция на вызов (вектор ограничен
+// потолком кадра), счётчик упоминаний пересчитывается один раз. Не упомянут или
+// уже прочитано — no-op.
+func (i *Interactor) readMentionContents(ctx context.Context, chatID, userID int64, msgs []domain.Message) error {
+	if len(msgs) == 0 {
+		return nil
+	}
+	ids := make([]int64, len(msgs))
+	for n, m := range msgs {
+		ids[n] = m.ID
+	}
+	type readFrame struct {
+		seq int64
+		pts int64
+	}
+	var frames []readFrame
 	var addr chatAddress
-	var read bool
 	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
-		r, e := i.chats.ReadMention(ctx, chatID, msg.ID, userID)
-		if e != nil || !r {
+		readIDs, e := i.chats.ReadMentions(ctx, chatID, userID, ids)
+		if e != nil || len(readIDs) == 0 {
 			return e
 		}
-		read = true
 		if addr, e = i.peerAddress(ctx, chatID); e != nil {
 			return e
 		}
-		payload, e := json.Marshal(mediaReadPayload(addr.forViewer(userID), msg.Seq))
-		if e != nil {
-			return e
+		read := make(map[int64]bool, len(readIDs))
+		for _, id := range readIDs {
+			read[id] = true
 		}
-		pts, e = i.updates.AppendUpdate(ctx, userID, 1, nowUnix(), "media_read", payload)
-		return e
+		date := nowUnix()
+		for _, m := range msgs {
+			if !read[m.ID] {
+				continue
+			}
+			payload, e := json.Marshal(mediaReadPayload(addr.forViewer(userID), m.Seq))
+			if e != nil {
+				return e
+			}
+			pts, e := i.updates.AppendUpdate(ctx, userID, 1, date, "media_read", payload)
+			if e != nil {
+				return e
+			}
+			frames = append(frames, readFrame{seq: m.Seq, pts: pts})
+		}
+		return nil
 	})
-	if err != nil || !read {
+	if err != nil || len(frames) == 0 {
 		return err
 	}
 	if i.dialogsCache != nil {
 		i.dialogsCache.Invalidate(ctx, userID)
 	}
 	if i.publisher != nil {
-		body := mediaReadPayload(addr.forViewer(userID), msg.Seq)
-		_ = i.publisher.PublishToUser(ctx, userID, framePts("media_read", body, pts))
+		for _, f := range frames {
+			body := mediaReadPayload(addr.forViewer(userID), f.seq)
+			_ = i.publisher.PublishToUser(ctx, userID, framePts("media_read", body, f.pts))
+		}
 	}
 	return nil
 }

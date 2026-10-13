@@ -528,12 +528,13 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		if json.Unmarshal(f.D, &d) != nil {
 			return
 		}
+		// Пустой или слишком длинный вектор — кадр отбрасывается целиком (без
+		// ответа, как и любая ошибка этого кадра).
+		if len(d.IDs) == 0 || len(d.IDs) > readMediaMaxIDs {
+			return
+		}
 		if chatID, err := c.svc.PeerToChatID(ctx, c.userID, d.PeerID); err == nil {
-			// Номер в чате — во внутренний ключ строки; нет такого номера —
-			// нечего и отмечать (кадр без ответа, как и раньше при промахе).
-			if msgID, e := c.svc.MessageIDBySeq(ctx, chatID, d.Seq); e == nil {
-				_ = c.svc.ReadMedia(ctx, chatID, c.userID, msgID)
-			}
+			_ = c.svc.ReadMessageContents(ctx, chatID, c.userID, d.IDs)
 		}
 	case "typing":
 		var d typingData

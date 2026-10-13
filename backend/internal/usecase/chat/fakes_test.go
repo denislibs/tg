@@ -681,18 +681,25 @@ func (s *store) syncMentionsLocked(chatID, userID int64) int {
 	return n
 }
 
-func (r fakeChats) ReadMention(_ context.Context, chatID, msgID, userID int64) (bool, error) {
+func (r fakeChats) ReadMentions(_ context.Context, chatID, userID int64, msgIDs []int64) ([]int64, error) {
+	want := map[int64]bool{}
+	for _, id := range msgIDs {
+		want[id] = true
+	}
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
+	var read []int64
 	for i := range r.s.mentions {
 		m := &r.s.mentions[i]
-		if m.msgID == msgID && m.userID == userID && !m.read {
+		if want[m.msgID] && m.userID == userID && !m.read {
 			m.read = true
-			r.s.syncMentionsLocked(chatID, userID)
-			return true, nil
+			read = append(read, m.msgID)
 		}
 	}
-	return false, nil
+	if len(read) > 0 {
+		r.s.syncMentionsLocked(chatID, userID)
+	}
+	return read, nil
 }
 
 func (r fakeChats) RemoveMention(_ context.Context, chatID, msgID, userID int64) error {

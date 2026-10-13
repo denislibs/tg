@@ -190,8 +190,9 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
       lastReadSeq.set(peerId, upToSeq)
       ws.send('read', { peer_id: peerId, up_to_seq: upToSeq })
     },
-    // «Прослушано/просмотрено» для голосового/кружка (tweb readMessageContents).
-    markMediaRead(peerId: number, msgId: number) { if (ws.isOpen()) ws.send('read_media', { peer_id: peerId, msg_id: msgId }) },
+    // «Прослушано/просмотрено» для голосового/кружка: messages.readMessageContents
+    // {id: Vector<int>} — вектор СЕРВЕРНЫХ номеров (tweb appMessagesManager.ts:9568).
+    markMediaRead(peerId: number, ids: number[]) { if (ws.isOpen()) ws.send('read_media', { peer_id: peerId, id: ids }) },
     // Действие едет КОНСТРУКТОРОМ (у оригинала это messages.setTyping{peer,
     // action}) — одна форма на обе стороны провода.
     sendTyping(peerId: number, action: SendMessageAction = { _: 'sendMessageTypingAction' }) {
