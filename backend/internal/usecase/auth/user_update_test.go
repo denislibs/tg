@@ -212,3 +212,165 @@ func TestUserUpdate_JournalKeepsPhoto(t *testing.T) {
 		t.Fatalf("фото в строке журнала = %v, want userProfilePhoto", body.User.Photo)
 	}
 }
+
+// userFromFrame — карточка `user` из живого кадра user_update.
+func userFromFrame(t *testing.T, raw []byte) domain.UserReal {
+	t.Helper()
+	var env struct {
+		T string `json:"t"`
+		D struct {
+			User domain.UserReal `json:"user"`
+		} `json:"d"`
+	}
+	if err := json.Unmarshal(raw, &env); err != nil {
+		t.Fatalf("unmarshal frame: %v", err)
+	}
+	if env.T != "user_update" {
+		t.Fatalf("тип кадра %q, want user_update", env.T)
+	}
+	return env.D.User
+}
+
+// newOwnSyncFixture — владелец и один партнёр по чату, журнал и издатель подключены.
+func newOwnSyncFixture(t *testing.T, phone string) (i *Interactor, owner domain.UserRecord, partner int64, log *fakeUpdateLog, pub *fakeAuthPub) {
+	t.Helper()
+	i, users, _, _ := newInteractor()
+	owner, _ = users.CreateWithName(context.Background(), phone, "Боб", "")
+	log, pub = newFakeUpdateLog(), newFakeAuthPub()
+	i.SetUpdateLog(log)
+	i.SetPublisher(pub)
+	const peer int64 = 999
+	i.SetPartners(func(context.Context, int64) ([]int64, error) { return []int64{peer}, nil })
+	return i, owner, peer, log, pub
+}
+
+// A2-10: эмодзи-статус меняет карточку у владельца и у партнёров живьём и в журнале.
+func TestSetEmojiStatus_EmitsUserUpdate(t *testing.T) {
+	i, u, peer, log, pub := newOwnSyncFixture(t, "+70000000010")
+	if _, err := i.SetEmojiStatus(context.Background(), u.ID, "🔥"); err != nil {
+		t.Fatalf("SetEmojiStatus: %v", err)
+	}
+	for _, uid := range []int64{u.ID, peer} {
+		if len(log.rows[uid]) != 1 || log.rows[uid][0] != "user_update" {
+			t.Fatalf("журнал %d = %v; want один user_update", uid, log.rows[uid])
+		}
+		if len(pub.frames[uid]) != 1 {
+			t.Fatalf("кадров у %d: %d, want 1", uid, len(pub.frames[uid]))
+		}
+		if got := userFromFrame(t, pub.frames[uid][0]).EmojiStatus; got != "🔥" {
+			t.Fatalf("emoji_status у %d = %q, want 🔥", uid, got)
+		}
+	}
+}
+
+// A2-10: Premium включает значок у владельца (второе устройство) и у партнёров.
+// Себе карточка несёт phone — как у tweb self; партнёру номер не уходит.
+func TestPremium_EmitsUserUpdateWithSelfPhone(t *testing.T) {
+	cases := map[string]func(i *Interactor, id int64) error{
+		"ActivatePremium": func(i *Interactor, id int64) error {
+			_, err := i.ActivatePremium(context.Background(), id)
+			return err
+		},
+		"CheckoutPremium": func(i *Interactor, id int64) error {
+			_, _, err := i.CheckoutPremium(context.Background(), id, "6m")
+			return err
+		},
+	}
+	phones := map[string]string{"ActivatePremium": "+70000000011", "CheckoutPremium": "+70000000012"}
+	for name, run := range cases {
+		t.Run(name, func(t *testing.T) {
+			i, u, peer, log, pub := newOwnSyncFixture(t, phones[name])
+			i.SetPremiumRepo(newFakePremiumRepo())
+			if err := run(i, u.ID); err != nil {
+				t.Fatal(err)
+			}
+			for _, uid := range []int64{u.ID, peer} {
+				if len(log.rows[uid]) != 1 || len(pub.frames[uid]) != 1 {
+					t.Fatalf("%d: журнал %v, кадров %d; want по одному", uid, log.rows[uid], len(pub.frames[uid]))
+				}
+				if !userFromFrame(t, pub.frames[uid][0]).PFlags["premium"] {
+					t.Fatalf("у %d нет pFlags.premium", uid)
+				}
+			}
+			if got := userFromFrame(t, pub.frames[u.ID][0]).Phone; got != phones[name] {
+				t.Fatalf("phone в своей карточке = %q, want %q", got, phones[name])
+			}
+			if got := userFromFrame(t, pub.frames[peer][0]).Phone; got != "" {
+				t.Fatalf("партнёру уехал номер %q", got)
+			}
+			var logged struct {
+				User domain.UserReal `json:"user"`
+			}
+			if err := json.Unmarshal(log.payloads[u.ID][0], &logged); err != nil {
+				t.Fatal(err)
+			}
+			if logged.User.Phone != phones[name] {
+				t.Fatalf("phone в строке журнала владельца = %q", logged.User.Phone)
+			}
+		})
+	}
+}
+
+// orderRecorder — общий порядок вызовов журнала и отзыва устройств.
+type orderRecorder struct{ events []string }
+
+type orderedLog struct {
+	*fakeUpdateLog
+	rec *orderRecorder
+}
+
+func (l orderedLog) AppendUpdate(ctx context.Context, userID int64, ptsCount int, date int64, typ string, payload json.RawMessage) (int64, error) {
+	l.rec.events = append(l.rec.events, "append")
+	return l.fakeUpdateLog.AppendUpdate(ctx, userID, ptsCount, date, typ, payload)
+}
+
+type orderedRevoker struct{ rec *orderRecorder }
+
+func (r orderedRevoker) NotifyRevoked(context.Context, int64) error {
+	r.rec.events = append(r.rec.events, "revoke")
+	return nil
+}
+
+// VA2-02: удаление аккаунта — партнёры получают карточку с pFlags.deleted, и
+// строка журнала пишется ДО отзыва устройств (сокеты ещё живы).
+func TestDeleteAccount_EmitsDeletedCardBeforeRevoke(t *testing.T) {
+	ctx := context.Background()
+	i, users, _, _ := newInteractor()
+	res := registerUser(t, i, "+70000000013", "Удаляемый", "", "web", "browser")
+	log, pub := newFakeUpdateLog(), newFakeAuthPub()
+	rec := &orderRecorder{}
+	i.SetUpdateLog(orderedLog{log, rec})
+	i.SetPublisher(pub)
+	i.SetRevocationNotifier(orderedRevoker{rec})
+	const peer int64 = 999
+	i.SetPartners(func(context.Context, int64) ([]int64, error) { return []int64{peer}, nil })
+
+	if err := i.DeleteAccount(ctx, res.User.ID); err != nil {
+		t.Fatalf("DeleteAccount: %v", err)
+	}
+	if _, err := users.GetByID(ctx, res.User.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(pub.frames[peer]) != 1 {
+		t.Fatalf("кадров у партнёра: %d, want 1", len(pub.frames[peer]))
+	}
+	card := userFromFrame(t, pub.frames[peer][0])
+	if !card.Deleted() || card.Username != "" {
+		t.Fatalf("карточка удалённого: %+v", card)
+	}
+	if len(log.rows[peer]) != 1 || log.rows[peer][0] != "user_update" {
+		t.Fatalf("журнал партнёра = %v", log.rows[peer])
+	}
+	lastAppend, firstRevoke := -1, -1
+	for n, e := range rec.events {
+		if e == "append" {
+			lastAppend = n
+		}
+		if e == "revoke" && firstRevoke < 0 {
+			firstRevoke = n
+		}
+	}
+	if lastAppend < 0 || firstRevoke < 0 || lastAppend > firstRevoke {
+		t.Fatalf("порядок вызовов %v: журнал должен предшествовать отзыву", rec.events)
+	}
+}

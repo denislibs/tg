@@ -62,7 +62,15 @@ func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.UserRecord) {
 	date := time.Now().Unix() // updates.state.date — секунды (A4-18)
 	for _, uid := range recipients {
 		seen := func(showPhoto bool) domain.UpdateUserSnapshot {
-			return domain.NewUpdateUserSnapshot(u.ToUser(domain.UserFlags{Self: uid == u.ID}, nil, showPhoto).SeenBy(views[uid]))
+			card := u.ToUser(domain.UserFlags{Self: uid == u.ID}, nil, showPhoto).SeenBy(views[uid])
+			if uid == u.ID {
+				// Себе карточка с номером — как у tweb self (users.getUsers([inputUserSelf])):
+				// кадр заменяет карточку в кэше целиком, и без phone второе
+				// устройство потеряло бы номер. Остальным получателям его
+				// решает правило PrivacyPhoneNumber, а не этот кадр.
+				card.Phone = u.Phone
+			}
+			return domain.NewUpdateUserSnapshot(card)
 		}
 		live := seen(i.photoVisible(ctx, u.ID, uid))
 		env := map[string]any{"t": "user_update", "d": live}
@@ -153,13 +161,21 @@ func (i *Interactor) SetEmojiStatus(ctx context.Context, id int64, emoji string)
 	if utf8.RuneCountInString(emoji) > domain.MaxEmojiStatusRunes {
 		return domain.UserRecord{}, errors.New("emoji status too long")
 	}
-	return i.users.SetEmojiStatus(ctx, id, emoji)
+	u, err := i.users.SetEmojiStatus(ctx, id, emoji)
+	if err == nil {
+		i.emitUserUpdate(ctx, u) // статус виден партнёрам и второму устройству
+	}
+	return u, err
 }
 
 // ActivatePremium flips the user's Telegram Premium flag on. This is a clone: the
 // "purchase" is faked, there's no billing — activating simply grants the badge.
 func (i *Interactor) ActivatePremium(ctx context.Context, id int64) (domain.UserRecord, error) {
-	return i.users.SetPremium(ctx, id, true)
+	u, err := i.users.SetPremium(ctx, id, true)
+	if err == nil {
+		i.emitUserUpdate(ctx, u) // значок Premium приходит в карточке (tweb checkPremium)
+	}
+	return u, err
 }
 
 // CheckoutPremium runs the mock card checkout for a plan: it validates the plan,
@@ -193,6 +209,7 @@ func (i *Interactor) CheckoutPremium(ctx context.Context, id int64, planID strin
 	if err != nil {
 		return domain.UserRecord{}, domain.PremiumSubscription{}, err
 	}
+	i.emitUserUpdate(ctx, user)
 	return user, sub, nil
 }
 

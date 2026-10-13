@@ -16,6 +16,14 @@ func (i *Interactor) DeleteAccount(ctx context.Context, userID int64) error {
 	if err := i.users.SoftDelete(ctx, userID); err != nil {
 		return err
 	}
+	// Карточка «Deleted Account» уходит партнёрам и своим устройствам ДО отзыва
+	// сессий: DeleteAll закрывает сокеты, и после него живой кадр владельцу не
+	// дойдёт. Сбой чтения не отменяет удаление — оно уже записано.
+	if u, err := i.users.GetByID(ctx, userID); err == nil {
+		i.emitUserUpdate(ctx, u)
+	} else {
+		i.logf("[user_update] reread deleted user %d: %v", userID, err)
+	}
 	removed, err := i.devices.DeleteAll(ctx, userID)
 	if err != nil {
 		return err
