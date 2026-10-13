@@ -401,7 +401,10 @@ export default class ChatTopbar {
   }
 
   private verifyIfCanDeleteChat = () => {
-    if(this.chat.type === ChatType.Saved) return true
+    // расхождение 8: у tweb `ChatType.Saved` → `true` (там `deleteSavedHistory` одного
+    // поддиалога); ветки `savedDialog` у нас нет (О-3), а `deleteHistory(myId)` снесло бы
+    // всё «Избранное».
+    if(this.chat.type === ChatType.Saved) return false
 
     return (
       this.chat.type === ChatType.Chat &&

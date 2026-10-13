@@ -313,9 +313,11 @@ export type BroadcastEvents = {
   // (`sidebarLeft/tabs/blockedUsers.solid.tsx`).
   'peer_block': [PeerBlockEvt]
   // tweb rootScope.ts:73 — история очищена у себя (`chats.clearHistory`, tweb
-  // `flushHistory` :6685). Шлёт воркер; `dialog` — строка, какой она у владельца
-  // на этот момент (у tweb `getDialogOnly`), у нас может отсутствовать: диалога
-  // нет в загруженной части списка. Подписчик — вкладка с открытым чатом.
+  // `flushHistory` :6685). Шлёт воркер во все вкладки; `dialog` — строка, какой она
+  // у владельца в момент отправки, ДО перечитывания у сервера (`reloadConversation`
+  // асинхронна), и может отсутствовать — диалога нет в загруженной части списка.
+  // Подписчики: проектор зеркала окна (`storeProjection.ts`) и лента открытого чата
+  // (`chat/bubbles.ts`); строку диалога никто из `dialog` не берёт.
   'dialog_flush': [{ peerId: PeerId; dialog: Dialog | undefined }]
   // tweb rootScope.ts:162 — черновик треда изменился (`appDraftsManager.saveDraft`
   // с `notify`); черновик чата едет строкой диалога (`core/managers/draftsManager.ts`).

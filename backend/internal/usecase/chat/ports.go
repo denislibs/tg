@@ -134,9 +134,10 @@ type ChatRepo interface {
 	// сообщение.
 	SetDialogHidden(ctx context.Context, chatID, userID int64, hidden bool) error
 	ShowDialogs(ctx context.Context, chatID int64) error
-	// LockDialogDelete — транзакционный замок «удаление диалога» чата: встречные
-	// DeleteDialog(revoke) с разных сторон берут строки chat_members в разном
-	// порядке и без общего замка ловят deadlock. Первой командой транзакции.
+	// LockDialogDelete — транзакционный замок «удаление диалога» чата: двух
+	// встречных DeleteDialog(revoke) с разных сторон он разводит (они берут строки
+	// chat_members в разном порядке). Другие пути (DeleteMessage, Send) замок не
+	// берут. Первой командой транзакции.
 	LockDialogDelete(ctx context.Context, chatID int64) error
 	// RecountCounters пересчитывает непрочитанное, «@» и ❤ участников по
 	// видимым им сообщениям (после массового удаления), выбросив упоминания

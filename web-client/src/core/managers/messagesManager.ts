@@ -946,14 +946,21 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
      * Порт `flushStoragesByPeerId` (tweb `appMessagesManager.ts:6677-6679`,
      * `:6700-6730`) — окна ВСЕХ ключей чата, включая основное: после очистки или
      * удаления истории (`flushHistory`) в них не остаётся ничего, пока их не
-     * переспросят у сервера. Объекты сообщений в хранилище остаются: их снимает
-     * `delete_message` (кадр или местный путь), а ссылок окна на них уже нет.
+     * переспросят у сервера; объекты сообщений чата уходят из SSOT (неотправленные
+     * живут отдельно, `pending`). Известный счёт окна объявляется нулём — шапка
+     * «Избранного» читает его из зеркала вкладки. Персист чата снимает вызывающий
+     * (`clearPersistedChat`).
      */
     flushHistoryWindows(peerId: number): void {
       for (const key of winKeysOf(peerId)) {
+        if (historyCounts.has(key)) {
+          historyCounts.set(key, 0)
+          declareCount(key)
+        }
         slices.delete(key)
         historyCounts.delete(key)
       }
+      msgsByChat.delete(peerId)
     },
 
     /**

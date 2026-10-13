@@ -669,6 +669,14 @@ describe('ChatTopbar: меню ⋮ — пункты по verify (tweb :462-902)'
     ])
   })
 
+  // `ChatType.Saved` у нас — окно сохранённого поддиалога (`peerId === myId` + `threadId`),
+  // а «Удалить» зовёт `deleteHistory(myId)` на ВСЁ «Избранное»: у tweb там
+  // `messages.deleteSavedHistory` (ветки `savedDialog` у нас нет, О-3).
+  it('окно сохранённого поддиалога: «Удалить» не предлагается (иначе снесло бы всё «Избранное»)', async() => {
+    const topbar = await open(makeChat({ peerId: ME, type: ChatType.Saved, threadId: 7 }))
+    expect(menuTexts(await openMenu(topbar))).not.toContain(t('ChatList.Context.DeleteChat'))
+  })
+
   // «Удалить» лички — попап с чекбоксом `revoke` (tweb deleteDialog.ts case 'chat');
   // у секретного чата (В7-1) удаление — выход, чекбокса нет: признак строки
   // (`dialog.secret`) шапка обязана передать попапу.

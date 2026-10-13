@@ -94,11 +94,27 @@ describe('MessagesManager.flushHistoryWindows (tweb flushStoragesByPeerId)', () 
     await mgr.getHistory({ peerId: 2, offsetId: 0, addOffset: 0, limit: 3 })
     expect(calls()).toBe(2)
 
+    expect(mgr.getMessageByPeer(1, cid(5))).toBeDefined()
     mgr.flushHistoryWindows(1)
+    expect(mgr.getMessageByPeer(1, cid(5))).toBeUndefined() // объекты чата — тоже (tweb flushStoragesByPeerId)
     await mgr.getHistory({ peerId: 2, offsetId: 0, addOffset: 0, limit: 3 })
     expect(calls()).toBe(2) // чат 2 из кэша
     await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 3 })
     expect(calls()).toBe(3) // чат 1 — заново
+  })
+})
+
+describe('MessagesManager.flushHistoryWindows — счёт истории', () => {
+  it('известный счёт окна объявляется нулём (шапка «Избранного» не держит «N сообщений»)', async () => {
+    const { rest } = countingRest({ '0:0:3': rawPage([5, 4, 3]) })
+    const broadcast = vi.fn()
+    const mgr = newMessagesManager({ rest, broadcast })
+    await mgr.getHistory({ peerId: 1, offsetId: 0, addOffset: 0, limit: 3 })
+    broadcast.mockClear()
+
+    mgr.flushHistoryWindows(1)
+
+    expect(broadcast).toHaveBeenCalledWith(RT.historyCount, { key: '1', count: 0 })
   })
 })
 
