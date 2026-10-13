@@ -203,6 +203,27 @@ func TestExportLoginToken_IPLimitBeforeKeyBucket(t *testing.T) {
 	}
 }
 
+// Тело публичной ручки ограничено до разбора: огромный except_ids не должен
+// стоить памяти.
+func TestExportLoginToken_BodyLimit(t *testing.T) {
+	h := qrRouterNoDB()
+	big := `{"except_ids":[` + strings.Repeat("1,", 100_000) + `1],"platform":"web"}`
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/auth/export_login_token", strings.NewReader(big))
+	req.Header.Set("X-Login-Key", loginKey(77))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("большое тело: %d %s", rec.Code, rec.Body.String())
+	}
+	// Больше потолка по числу аккаунтов — тоже отказ.
+	many := make([]int64, 21)
+	rec = doReq(t, h, http.MethodPost, "/auth/export_login_token",
+		map[string]any{"except_ids": many, "platform": "web"}, map[string]string{"X-Login-Key": loginKey(78)})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("21 аккаунт: %d", rec.Code)
+	}
+}
+
 func TestAcceptLoginToken_Auth(t *testing.T) {
 	pool := postgres.NewTestDB(t)
 	uc := newAuthUC(pool)
@@ -290,10 +311,10 @@ func TestQRLoginFlow_HTTP(t *testing.T) {
 		t.Fatalf("после accept: %+v", done)
 	}
 
-	// Одноразово: следующий опрос — уже новый код.
+	// Потерянный ответ не теряет сессию: тот же ключ получает ту же сессию.
 	next := decodeLoginToken(t, exportReq(t, h, loginKey(1)))
-	if next.Underscore != "auth.loginToken" || hexOfBase64(t, next.Token) == qrToken {
-		t.Fatalf("второй опрос после выдачи: %+v", next)
+	if next.Underscore != "auth.loginTokenSuccess" || next.Authorization.Token != done.Authorization.Token {
+		t.Fatalf("повторный опрос после выдачи: %+v", next)
 	}
 	// Подтвердить уже принятый код нельзя.
 	rec = postJSONAuth(t, h, "/auth/accept_login_token", map[string]string{"token": qrToken}, scanner)

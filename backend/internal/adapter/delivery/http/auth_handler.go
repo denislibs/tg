@@ -514,6 +514,7 @@ const qrIdle = time.Minute
 const (
 	qrMaxExceptIDs = 20
 	qrMaxPlatform  = 32
+	qrMaxBody      = 4 << 10 // байт: 20 id и короткая строка влезают с запасом
 )
 
 type exportLoginTokenBody struct {
@@ -547,20 +548,22 @@ func (h *AuthHandler) ExportLoginToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "LOGIN_KEY_INVALID")
 		return
 	}
-	var body exportLoginTokenBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil ||
-		len(body.ExceptIDs) > qrMaxExceptIDs || len(body.Platform) > qrMaxPlatform {
-		writeError(w, http.StatusBadRequest, "invalid body")
-		return
-	}
-	// Сначала IP (несколько карточек за одним NAT), и только пропущенный по IP
-	// запрос заводит ведро ключа.
+	// Лимиты — ДО разбора тела: ручка публичная, и тело не должно стоить памяти
+	// тому, кого всё равно откажут. Сначала IP (несколько карточек за одним NAT),
+	// и только пропущенный по IP запрос заводит ведро ключа.
 	if ok, wait := h.qrLimiter.allowWait("qrexport-ip:"+clientIP(r), 5, 50); !ok {
 		writeFloodWait(w, wait)
 		return
 	}
 	if ok, wait := h.qrLimiter.allowWait("qrexport-key:"+keyHash, 1, 5); !ok {
 		writeFloodWait(w, wait)
+		return
+	}
+	var body exportLoginTokenBody
+	r.Body = http.MaxBytesReader(w, r.Body, qrMaxBody)
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil ||
+		len(body.ExceptIDs) > qrMaxExceptIDs || len(body.Platform) > qrMaxPlatform {
+		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
 	ctx := usecaseauth.WithClientInfo(r.Context(), clientInfoFromRequest(r))

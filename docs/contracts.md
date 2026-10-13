@@ -99,12 +99,12 @@ Request a login code. In dev the code is **not** sent — it is logged server-si
 - 200 код ждёт: `{ "_": "auth.loginToken", "expires": 1787334148, "token": "<base64>" }`
   — `token` в схеме БАЙТЫ; клиент рисует его hex в QR (`/qr/<hex>`)
 - 200 подтверждено: `{ "_": "auth.loginTokenSuccess", "authorization": { "_": "auth.authorization", "token": "<opaque>", "user": { "_": "user", … } } }`
-  — ТОТ ЖЕ исход входа, что у обычного шага; сессию отдаёт один раз
+  — ТОТ ЖЕ исход входа, что у обычного шага; запись живёт до TTL (60 с): повторный опрос тем же ключом отдаёт ту же сессию (потерянный ответ не теряет её)
 - 200 у аккаунта с облачным паролем: `{ "_": "auth.loginTokenSuccess", "authorization": { "_": "auth.passwordNeeded", "password_token": "…", "hint": "…" } }`
   — шаг пароля: `POST /auth/check_password`
 - 400: `LOGIN_KEY_INVALID` (нет заголовка или не 64 hex нижнего регистра); `invalid body`
 - 420: `FLOOD_WAIT_<N>` (сначала лимит по IP, затем по ключу входа)
-- 503: `qr login unavailable` (no QRStore / Redis down)
+- 503: `qr login unavailable` (хранилище QR не подключено); сбой Redis — 500
 - При запросе через DNP-канал заголовок не передаётся — клиент ходит этим методом
   обычным `fetch` (мимо канала).
 
@@ -119,7 +119,7 @@ Request a login code. In dev the code is **not** sent — it is logged server-si
 - 404: `AUTH_TOKEN_EXPIRED` — код неизвестен, протух, уже принят, либо аккаунт
   входит в `except_ids` экспортёра (запись при этом не меняется)
 - 420: `FLOOD_WAIT_<N>`
-- 503: `qr login unavailable`
+- 503: `qr login unavailable` (хранилище QR не подключено)
 
 ### GET /me  · auth
 - 200 — та же ПАРА, что и `GET /users/{id}`: конструктор

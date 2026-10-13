@@ -18,6 +18,8 @@ import { toastNew } from '@components/toast'
 import type { Managers } from '@/client/bootstrap'
 import { AuthFlowContext, type AuthFlowContextValue } from '../authFlow.solid'
 import SignQRCard from './SignQRCard.solid'
+import rootScope from '@lib/rootScope'
+import { RT } from '@core/realtime/events'
 import mediaHeaderStyles from '@components/mediaHeader.module.scss'
 
 vi.mock('@core/webauthnBrowser', () => ({
@@ -181,6 +183,36 @@ describe('SignQRCard.solid: цикл iterate (tweb SignQRCard.tsx:135-192)', () 
     expect(exportLoginToken).toHaveBeenCalledTimes(1)
   })
 
+  it('retry (сбой сети/5xx): ждём шаг и повторяем, цикл жив, отказа не показываем', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const exportLoginToken = vi.fn()
+      .mockResolvedValueOnce({ status: 'retry' })
+      .mockImplementation(async () => PENDING('aa01'))
+    mount({ exportLoginToken })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(exportLoginToken).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(2_999)
+    expect(exportLoginToken).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(exportLoginToken).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(toastNew)).not.toHaveBeenCalled()
+    expect(consoleError).not.toHaveBeenCalled()
+    consoleError.mockRestore()
+  })
+
+  it('expired (AUTH_TOKEN_EXPIRED): console.warn и цикл идёт дальше без паузы, как у tweb :179-181', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const exportLoginToken = vi.fn()
+      .mockResolvedValueOnce({ status: 'expired' })
+      .mockImplementation(async () => PENDING('aa01'))
+    mount({ exportLoginToken })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(warn).toHaveBeenCalled()
+    expect(exportLoginToken).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(toastNew)).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
   it('«Log in by phone number» — назад на signIn, ни одного лишнего запроса', async () => {
     const { navigate, cancelBtn } = mount()
     await vi.advanceTimersByTimeAsync(0)
@@ -214,6 +246,19 @@ describe('SignQRCard.solid: цикл снимается вместе с карт
     await vi.advanceTimersByTimeAsync(0)
 
     expect(toIm).not.toHaveBeenCalled()
+  })
+
+  // tweb `user_auth` (SignQRCard.tsx:67-72): вход любым путём останавливает цикл.
+  // Наш аналог — `rt:logged_in`; полагаться только на перезагрузку страницы
+  // (index.ts) нельзя: при `?noSharedWorker=1` вход соседней вкладки до этой не доходит.
+  it('rt:logged_in останавливает цикл (аналог user_auth)', async () => {
+    const { exportLoginToken } = mount()
+    await vi.advanceTimersByTimeAsync(0)
+    const before = exportLoginToken.mock.calls.length
+
+    rootScope.dispatchEventSingle(RT.loggedIn, { userId: 3 })
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(exportLoginToken.mock.calls.length).toBe(before)
   })
 
   it('вход ключом доступа останавливает цикл (аналог user_auth у tweb)', async () => {

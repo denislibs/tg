@@ -203,6 +203,10 @@ export type AuthAuthorizationWire =
  *
  * Третьего состояния, «протух», в объединении нет: у оригинала это ОШИБКА
  * (`AUTH_TOKEN_EXPIRED`); наш сервер протухший код сам заменяет новым.
+ *
+ * `auth.passwordNeeded` в `authorization` — НАШЕ расширение вне TL (там член
+ * объединения `auth.Authorization` — это не он), та же форма, что у шага
+ * `sign_in`; решение В-2 спеки Ф-7.
  */
 export type AuthLoginTokenWire =
   | { _: 'auth.loginToken'; expires: number; token: string }
@@ -216,6 +220,12 @@ export type LoginTokenResult =
   | { status: 'pending'; token: string /* hex */; expires: number /* unix-с */ }
   | { status: 'success'; user: PeerProfile }
   | { status: 'password'; passwordToken: string; hint: string }
+  // Отказы, которые цикл карточки переживает. `HttpError` не переживает границу
+  // worker-RPC, поэтому класс ошибки определяется здесь и уходит значением.
+  /** `AUTH_TOKEN_EXPIRED`: цикл идёт дальше (tweb SignQRCard.tsx:179-181). */
+  | { status: 'expired' }
+  /** Сбой сети / 5xx / 429 / 420: подождать шаг и повторить (у tweb это делает `invokeApi`). */
+  | { status: 'retry' }
 
 /**
  * Код в шестнадцатеричной записи — той же, что в адресе QR `/qr/<hex>` и в
@@ -523,11 +533,23 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
      */
     async exportLoginToken(loginKey: string): Promise<LoginTokenResult> {
       const exceptIds = (await listAccounts()).map((a) => a.id)
-      const r = await rest.post<AuthLoginTokenWire>(
-        '/auth/export_login_token',
-        { except_ids: exceptIds, platform: 'web' },
-        { headers: { 'X-Login-Key': loginKey } },
-      )
+      let r: AuthLoginTokenWire
+      try {
+        r = await rest.post<AuthLoginTokenWire>(
+          '/auth/export_login_token',
+          { except_ids: exceptIds, platform: 'web' },
+          { headers: { 'X-Login-Key': loginKey } },
+        )
+      } catch (e) {
+        if (e instanceof HttpError) {
+          if (e.status === 404 && e.type === 'AUTH_TOKEN_EXPIRED') return { status: 'expired' }
+          // 420 здесь — FLOOD_WAIT дольше, чем пережидает RestClient.
+          if (e.status >= 500 || e.status === 429 || e.status === 420 || e.status === 408) return { status: 'retry' }
+          throw e
+        }
+        console.warn('exportLoginToken: сбой сети, повтор', e)
+        return { status: 'retry' }
+      }
       if (r._ === 'auth.loginToken') return { status: 'pending', token: hexOfToken(r.token), expires: r.expires }
       if (r.authorization._ === 'auth.passwordNeeded') {
         return { status: 'password', passwordToken: r.authorization.password_token, hint: r.authorization.hint ?? '' }

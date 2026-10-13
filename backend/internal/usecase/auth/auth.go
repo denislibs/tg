@@ -405,9 +405,14 @@ func (i *Interactor) ExportLoginToken(ctx context.Context, keyHash string, excep
 	if i.qr == nil {
 		return ExportResult{}, ErrQRUnavailable
 	}
-	// Две попытки: запись могла протухнуть между проигранным NX и чтением.
-	for attempt := 0; attempt < 2; attempt++ {
+	// Несколько попыток: запись могла протухнуть между проигранным NX и чтением,
+	// а ждущая запись — дожить до своего срока раньше TTL хранилища.
+	for attempt := 0; attempt < 3; attempt++ {
 		rec, err := i.qr.GetByKey(ctx, keyHash)
+		if err == nil && rec.Status == domain.QRPending && !time.Now().Before(rec.ExpiresAt) {
+			_ = i.qr.DeleteByKey(ctx, keyHash) // отдавать код с expires <= now нельзя
+			err = domain.ErrNotFound
+		}
 		if errors.Is(err, domain.ErrNotFound) {
 			token, tokenHash, err := domain.GenerateToken()
 			if err != nil {
@@ -436,10 +441,13 @@ func (i *Interactor) ExportLoginToken(ctx context.Context, keyHash string, excep
 	return ExportResult{}, domain.ErrNotFound
 }
 
+// exportFromRecord — исход экспорта по существующей записи ключа. Подтверждённая
+// запись НЕ удаляется при чтении, а живёт до TTL: секрет — сам ключ входа, и
+// повторное чтение им безопасно; потерянный ответ (обрыв сети, 502) иначе
+// оставил бы выпущенную сессию без получателя.
 func (i *Interactor) exportFromRecord(ctx context.Context, keyHash string, rec domain.QRLogin) (ExportResult, error) {
 	switch rec.Status {
 	case domain.QRConfirmed:
-		_ = i.qr.DeleteByKey(ctx, keyHash) // сессию заберут ровно один раз
 		return ExportResult{Session: &SignInResult{Token: rec.SessionToken, User: rec.User}}, nil
 	case domain.QRPasswordNeeded:
 		res, needed, err := i.startPasswordStep(ctx, rec.UserID)
@@ -448,17 +456,25 @@ func (i *Interactor) exportFromRecord(ctx context.Context, keyHash string, rec d
 			return ExportResult{}, err
 		}
 		if needed {
-			_ = i.qr.DeleteByKey(ctx, keyHash)
 			return ExportResult{Password: &res}, nil
 		}
 		// Пароль сняли, пока экспортёр не опросил: пароля больше нет — сессия.
 		u, err := i.users.GetByID(ctx, rec.UserID)
-		_ = i.qr.DeleteByKey(ctx, keyHash)
 		if err != nil {
+			_ = i.qr.DeleteByKey(ctx, keyHash)
 			return ExportResult{}, err
 		}
-		res, err = i.mintSession(ctx, u, "", rec.Platform)
+		res, err = i.mintSession(ctx, u, "QR login", rec.Platform)
 		if err != nil {
+			_ = i.qr.DeleteByKey(ctx, keyHash)
+			return ExportResult{}, err
+		}
+		// Запись становится подтверждённой: повторный опрос отдаст ту же сессию,
+		// а не выпустит вторую.
+		rec.Status, rec.SessionToken, rec.User = domain.QRConfirmed, res.Token, u
+		if err := i.qr.PutByKey(ctx, keyHash, rec, QRLoginTTL); err != nil {
+			_, _ = i.RevokeSession(ctx, u.ID, res.Device.ID)
+			_ = i.qr.DeleteByKey(ctx, keyHash)
 			return ExportResult{}, err
 		}
 		return ExportResult{Session: &res}, nil
@@ -512,15 +528,19 @@ func (i *Interactor) AcceptLoginToken(ctx context.Context, token string, user do
 		// notifyLogin не зовутся). Реквизиты — экспортёра; hash 0 здесь значит
 		// «сессии нет», а не «текущая» (pFlags.current не ставится).
 		now := time.Now()
+		place := rec.Client.Location
+		if place == "" && i.geo != nil && rec.Client.IP != "" {
+			place = i.geo.Locate(rec.Client.IP) // как mintSession в ветке без пароля
+		}
 		out := domain.NewAuthorization(domain.Device{
 			Name: rec.Client.Browser, Platform: rec.Platform, SystemVersion: rec.Client.OS,
-			AppVersion: rec.Client.AppVersion, IP: rec.Client.IP, Location: rec.Client.Location,
+			AppVersion: rec.Client.AppVersion, IP: rec.Client.IP, Location: place,
 			CreatedAt: now, LastActive: now,
 		}, false)
 		out.PFlags["password_pending"] = true
 		return out, nil
 	}
-	res, err := i.mintSession(WithClientInfo(ctx, qrClientInfo(rec.Client)), user, "", rec.Platform)
+	res, err := i.mintSession(WithClientInfo(ctx, qrClientInfo(rec.Client)), user, "QR login", rec.Platform)
 	if err != nil {
 		_ = i.qr.DeleteByKey(ctx, keyHash)
 		return domain.Authorization{}, err

@@ -175,11 +175,14 @@ func TestQR_AcceptThenExportOnce(t *testing.T) {
 		t.Fatalf("выданный токен не аутентифицирует: %v", err)
 	}
 
-	// Второй опрос — уже новый код, а не вторая выдача.
-	rn, err := i.ExportLoginToken(ctx, "keyA", nil, "web")
-	n := mustPending(t, rn, err)
-	if n.Token == code.Token {
-		t.Fatal("после выдачи ключ получил старый код")
+	// Потерянный ответ не теряет сессию: повторный опрос ТЕМ ЖЕ ключом отдаёт ту
+	// же сессию (секрет — ключ), а не выпускает вторую и не пропадает.
+	again, err := i.ExportLoginToken(ctx, "keyA", nil, "web")
+	if err != nil || again.Session == nil || again.Session.Token != ra.Session.Token {
+		t.Fatalf("повторный Export(keyA) = %+v, err=%v; ожидалась та же сессия", again, err)
+	}
+	if devicesOf(t, devices, user.ID) != before+1 {
+		t.Fatal("повторное чтение выпустило вторую сессию")
 	}
 }
 
@@ -293,6 +296,14 @@ func TestQR_PasswordRemovedWhileWaiting(t *testing.T) {
 	}
 	if re.Session.Device.ID == 0 {
 		t.Fatal("SignInResult.Device не заполнен mintSession")
+	}
+	// Повторный опрос не выпускает вторую сессию: запись стала подтверждённой.
+	again, err := i.ExportLoginToken(ctx, "keyA", nil, "web")
+	if err != nil || again.Session == nil || again.Session.Token != re.Session.Token {
+		t.Fatalf("повторный Export = %+v, err=%v; ожидалась та же сессия", again, err)
+	}
+	if devicesOf(t, devices, uid) != before+1 {
+		t.Fatal("повторный опрос выпустил вторую сессию")
 	}
 }
 
@@ -435,5 +446,42 @@ func TestQR_UnavailableWithoutStore(t *testing.T) {
 	}
 	if _, err := i.AcceptLoginToken(context.Background(), "t", domain.UserRecord{ID: 1}); !errors.Is(err, ErrQRUnavailable) {
 		t.Fatalf("Accept без стора = %v", err)
+	}
+}
+
+// Ждущая запись, дожившая до своего срока раньше TTL хранилища, не отдаётся
+// с expires <= now: ключ получает новый код.
+func TestQR_ExpiredPendingReplaced(t *testing.T) {
+	i, _, store, _ := qrInteractor(t)
+	ctx := context.Background()
+	r, err := i.ExportLoginToken(ctx, "keyA", nil, "web")
+	old := mustPending(t, r, err)
+
+	rec, _ := store.GetByKey(ctx, "keyA")
+	rec.ExpiresAt = time.Now().Add(-time.Second)
+	_ = store.PutByKey(ctx, "keyA", rec, time.Minute)
+
+	rn, err := i.ExportLoginToken(ctx, "keyA", nil, "web")
+	n := mustPending(t, rn, err)
+	if n.Token == old.Token || !n.ExpiresAt.After(time.Now()) {
+		t.Fatalf("отдан просроченный код: %+v", n)
+	}
+}
+
+// Сессия подтверждения QR получает имя устройства, даже когда User-Agent
+// экспортёра не разобрался.
+func TestQR_AcceptNamesSession(t *testing.T) {
+	i, devices, _, _ := qrInteractor(t)
+	ctx := context.Background()
+	user := qrUser(t, i, "+79990030011")
+	r, err := i.ExportLoginToken(ctx, "keyA", nil, "web")
+	code := mustPending(t, r, err)
+	authz, err := i.AcceptLoginToken(ctx, code.Token, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, _ := devices.byID[authz.Hash]
+	if d.Name != "QR login" {
+		t.Fatalf("имя сессии = %q", d.Name)
 	}
 }

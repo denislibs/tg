@@ -25,22 +25,31 @@
 //
 // ── Остановка ───────────────────────────────────────────────────────────────
 // `onCleanup` в самой карточке (:212-216): `stopped = true`. Подписка tweb на
-// `user_auth` (:67-72) у нас не нужна: вход ЛЮБЫМ путём объявляет
-// `rt:logged_in`, а `index.ts::listenSessionTransitions` перезагружает страницу
-// (во всех вкладках), то есть цикл умирает вместе со страницей; вход ключом
-// доступа в самой карточке останавливает цикл явно (`stopped = true`).
+// `user_auth` (:67-72) — `rt:logged_in`: вход любым путём, в этой вкладке или в
+// соседней, останавливает цикл. Перезагрузки страницы из
+// `index.ts::listenSessionTransitions` для этого мало: при `?noSharedWorker=1`
+// кадр входа соседней вкладки сюда не доходит. Вход ключом доступа в самой
+// карточке гасит цикл тем же флагом.
+//
+// ── Какие ошибки цикл переживает ────────────────────────────────────────────
+// `AUTH_TOKEN_EXPIRED` (:179-181) — `console.warn` и дальше без паузы.
+// Сбой сети/5xx/429/420 — у tweb такое переотправляет сам `invokeApi`, поэтому
+// в ветку `default:` они не попадают; у нас им соответствует `status: 'retry'`
+// (класс ошибки определяет `authManager`: `HttpError` не переживает границу
+// worker-RPC) — пауза шага и повтор.
 //
 // ── Отказ виден, а не проглочен ─────────────────────────────────────────────
 // Ветка `default:` разбора ошибки у tweb (:181-184) — `console.error` плюс
 // `stopped = true`; сверх неё — видимый отказ: `toastNew` (ключ словаря) и
 // подзаголовок с текстом отказа, иначе остался бы вечный прелоадер без
-// объяснения. Ветки `AUTH_TOKEN_EXPIRED` (:178-180) нет: наш `export` протухший
-// код сам заменяет новым и этого отказа в ходе цикла не производит.
+// объяснения.
 import { createSignal, onCleanup, onMount, Show, type JSX } from 'solid-js'
 import Button from '@components/buttonTsx.solid'
 import { toastNew } from '@components/toast'
 import { i18n } from '@lib/langPack'
 import pause from '@helpers/schedulers/pause'
+import rootScope from '@lib/rootScope'
+import { RT } from '@core/realtime/events'
 import { isWebAuthnSupported, getPasskeyAssertion } from '@core/webauthnBrowser'
 import AuthCard from '../AuthCard.solid'
 import MediaHeader from '@components/mediaHeader.solid'
@@ -79,7 +88,14 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
   const [failed, setFailed] = createSignal(false)
   // Как `let stopped` у tweb (:41): цикл и вход ключом доступа гасят его.
   let stopped = false
-  onCleanup(() => { stopped = true })
+  // tweb `rootScope.addEventListener('user_auth', …, {once: true})` (:67-72):
+  // вход любым путём — в этой вкладке или в соседней — останавливает цикл.
+  const onUserAuth = () => { stopped = true }
+  rootScope.addEventListener(RT.loggedIn, onUserAuth, { once: true })
+  onCleanup(() => {
+    stopped = true
+    rootScope.removeEventListener(RT.loggedIn, onUserAuth)
+  })
 
   onMount(() => {
     const loginKey = makeLoginKey()
@@ -109,6 +125,16 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
           stopped = true
           navigate({ name: 'password', payload: { token: r.passwordToken, hint: r.hint } })
           return true
+        }
+        if (r.status === 'expired') {
+          console.warn('SignQRCard: AUTH_TOKEN_EXPIRED') // tweb :179-181: цикл идёт дальше
+          return false
+        }
+        if (r.status === 'retry') {
+          // Сбой сети/5xx/429: у tweb переотправляет сам `invokeApi`; у нас —
+          // пауза шага и тот же вызов (иначе одна икота сети убивала бы QR).
+          await pause(1e3 * FETCH_INTERVAL)
+          return false
         }
         // Перерисовка только при смене токена (:162-166). URL для сканера
         // строим от реального origin — с бэка он не едет.

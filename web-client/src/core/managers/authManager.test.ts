@@ -270,6 +270,35 @@ describe('AuthManager', () => {
     expect(onLoggedIn).not.toHaveBeenCalled()
   })
 
+  // Класс ошибки решает, умирает ли цикл карточки. У tweb сеть и разрыв
+  // переотправляет сам invokeApi, а `AUTH_TOKEN_EXPIRED` цикл переживает
+  // (SignQRCard.tsx:179-181); остальные отказы API останавливают его (:182-185).
+  it('exportLoginToken: сбой сети, 5xx, 429 и 420 -> retry, а не отказ', async () => {
+    const make = (err: unknown) => newAuthManager({
+      rest: { post: () => Promise.reject(err) } as unknown as AuthDeps['rest'],
+      store: { get: () => null, set: async () => {}, clear: async () => {}, ready: async () => {} },
+    })
+    for (const err of [new TypeError('Failed to fetch'), new HttpError(502, 'x'), new HttpError(503, 'x'), new HttpError(429, 'x'), new HttpError(420, 'FLOOD_WAIT_90', 'FLOOD_WAIT_90')]) {
+      await expect(make(err).exportLoginToken('k'.repeat(64))).resolves.toEqual({ status: 'retry' })
+    }
+  })
+
+  it('exportLoginToken: 404 AUTH_TOKEN_EXPIRED -> expired (цикл продолжается)', async () => {
+    const auth = newAuthManager({
+      rest: { post: () => Promise.reject(new HttpError(404, 'AUTH_TOKEN_EXPIRED', 'AUTH_TOKEN_EXPIRED')) } as unknown as AuthDeps['rest'],
+      store: { get: () => null, set: async () => {}, clear: async () => {}, ready: async () => {} },
+    })
+    await expect(auth.exportLoginToken('k'.repeat(64))).resolves.toEqual({ status: 'expired' })
+  })
+
+  it('exportLoginToken: прочие отказы API (400 LOGIN_KEY_INVALID) пробрасываются', async () => {
+    const auth = newAuthManager({
+      rest: { post: () => Promise.reject(new HttpError(400, 'LOGIN_KEY_INVALID', 'LOGIN_KEY_INVALID')) } as unknown as AuthDeps['rest'],
+      store: { get: () => null, set: async () => {}, clear: async () => {}, ready: async () => {} },
+    })
+    await expect(auth.exportLoginToken('k'.repeat(64))).rejects.toMatchObject({ status: 400 })
+  })
+
   it('acceptLoginToken шлёт hex-код', async () => {
     const { d, calls } = deps()
     await newAuthManager(d).acceptLoginToken('tok123')
