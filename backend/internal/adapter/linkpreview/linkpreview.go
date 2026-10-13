@@ -4,9 +4,14 @@
 package linkpreview
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -20,7 +25,11 @@ import (
 )
 
 const (
-	fetchTimeout = 5 * time.Second
+	// fetchTimeout — потолок одного запроса на случай вызова без дедлайна;
+	// обычно раньше срабатывает дедлайн контекста usecase (previewTimeout):
+	// тяжёлая страница не должна обрываться на 5 с, пока бюджет этапа не
+	// исчерпан.
+	fetchTimeout = 30 * time.Second
 	maxBody      = 1 << 20 // 1 МБ HTML: og-теги живут в <head>, больше не нужно
 	// UA обычного браузера: многие сайты отдают ботам обрезанную вёрстку.
 	userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
@@ -51,22 +60,72 @@ func (c *Client) Preview(ctx context.Context, rawURL string) (*domain.WebPagePre
 	req.Header.Set("Accept", "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("link preview fetch: %w", err)
+		return nil, fetchError(u.Hostname(), err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, fmt.Errorf("link preview %s: status %d", u.Hostname(), resp.StatusCode)
+	if err := statusError(u.Hostname(), resp.StatusCode); err != nil {
+		return nil, err
 	}
 	if ct := resp.Header.Get("Content-Type"); ct != "" && !strings.Contains(ct, "html") {
 		return nil, fmt.Errorf("link preview %s: not html (%s)", u.Hostname(), ct)
 	}
+	// Тело читается целиком до разбора: обрыв или таймаут на чтении — такой
+	// же временный сбой, как на запросе, а не «страница не разобралась».
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	if err != nil {
+		return nil, fetchError(u.Hostname(), err)
+	}
 	// База для относительных ссылок — финальный URL после редиректов.
-	wp, err := Parse(io.LimitReader(resp.Body, maxBody), resp.Request.URL)
+	wp, err := Parse(bytes.NewReader(body), resp.Request.URL)
 	if err != nil {
 		return nil, err
 	}
 	wp.URL = u.String()
 	return wp, nil
+}
+
+// fetchError — ошибка запроса страницы с разбором «временная или нет»
+// (usecasechat.ErrPreviewTransient: повтор может пройти). Временные — сеть,
+// таймаут, обрыв; нет — кривой адрес, отказ SSRF-гарда, несуществующий хост.
+// *url.Error разворачивается: его текст несёт полный адрес с путём и query,
+// а ошибка уходит в лог.
+func fetchError(host string, err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		err = ue.Err
+	}
+	if permanentFetchError(err) {
+		return fmt.Errorf("link preview fetch %s: %w", host, err)
+	}
+	return fmt.Errorf("link preview fetch %s: %w: %w", host, usecasechat.ErrPreviewTransient, err)
+}
+
+// permanentFetchError — сбой, который повтор не исправит: кривой адрес,
+// отказ SSRF-гарда, несуществующий хост, битый сертификат или не-TLS ответ
+// на https.
+func permanentFetchError(err error) bool {
+	var dnsErr *net.DNSError
+	var certErr *tls.CertificateVerificationError
+	var unknownCA x509.UnknownAuthorityError
+	var invalidCert x509.CertificateInvalidError
+	var hostErr x509.HostnameError
+	var recErr tls.RecordHeaderError
+	return errors.Is(err, usecaseiv.ErrBadURL) || errors.Is(err, usecaseiv.ErrForbiddenTarget) ||
+		(errors.As(err, &dnsErr) && dnsErr.IsNotFound) ||
+		errors.As(err, &certErr) || errors.As(err, &unknownCA) || errors.As(err, &invalidCert) ||
+		errors.As(err, &hostErr) || errors.As(err, &recErr)
+}
+
+// statusError — ответ не 2xx. 5xx, 408 и 425 — временная; 429 — нет: сайт просит
+// снизить частоту, и повтор через секунду почти наверняка снова получит 429.
+func statusError(host string, code int) error {
+	switch {
+	case code >= 200 && code <= 299:
+		return nil
+	case code >= 500, code == http.StatusRequestTimeout, code == http.StatusTooEarly:
+		return fmt.Errorf("link preview %s: status %d: %w", host, code, usecasechat.ErrPreviewTransient)
+	}
+	return fmt.Errorf("link preview %s: status %d", host, code)
 }
 
 // Parse вынимает превью из HTML: og:* приоритетнее twitter:*, <title> —
