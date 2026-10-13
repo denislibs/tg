@@ -135,7 +135,7 @@ func TestPeerNotifySettings_Muted(t *testing.T) {
 
 	// Переопределения нет вовсе: пир не замьючен сам по себе, дальше решает
 	// настройка типа чата.
-	if (NewPeerNotifySettings(time.Time{}, nil, nil)).Muted(now) {
+	if mutedAt(NewPeerNotifySettings(time.Time{}, nil, nil), now) {
 		t.Error("без переопределения пир не замьючен")
 	}
 
@@ -144,7 +144,7 @@ func TestPeerNotifySettings_Muted(t *testing.T) {
 	silent := true
 	s := NewPeerNotifySettings(time.Time{}, nil, nil)
 	s.Silent = &silent
-	if !s.Muted(now) {
+	if !mutedAt(s, now) {
 		t.Error("silent = true — замьючен")
 	}
 }
@@ -179,7 +179,7 @@ func TestDialog_Unmarshal(t *testing.T) {
 	if d.NotifySettings.OtherSound == nil || d.NotifySettings.OtherSound.Tag() != NotificationSoundNoneTag {
 		t.Errorf("other_sound разобран как %#v", d.NotifySettings.OtherSound)
 	}
-	if !d.NotifySettings.Muted(time.Unix(1_700_000_000, 0)) {
+	if !mutedAt(d.NotifySettings, time.Unix(1_700_000_000, 0)) {
 		t.Error("разобранный «навсегда» обязан читаться как замьючен")
 	}
 }
