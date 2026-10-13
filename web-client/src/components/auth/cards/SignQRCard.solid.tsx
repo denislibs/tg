@@ -139,12 +139,13 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
           setQrUrl(`${location.origin}/qr/${r.token}`)
         }
         const diff = r.expires - Date.now() / 1000
-        // TODO(ждёт решения пользователя, Ф7-Б): tweb вычитает смещение
-        // серверного времени — `diff = expires − now − getServerTimeOffset()`
-        // (:170); у клиента такого смещения нет. Предложено (не принято): при
-        // `diff <= 0` (часы клиента спешат) ждать полный шаг 3 с, а не 0 —
-        // иначе горячий цикл. Пока формула дословно по tweb.
-        await pause(diff > FETCH_INTERVAL ? 1e3 * FETCH_INTERVAL : (1e3 * diff) | 0)
+        // ОТСТУПЛЕНИЕ ОТ TWEB, согласовано с пользователем 2026-10-13: tweb
+        // вычитает смещение серверного времени — `diff = expires − now −
+        // getServerTimeOffset()` (:170); у клиента такого смещения нет, `diff`
+        // считается от `Date.now()`. При `diff <= 0` (часы клиента спешат) ждём
+        // полный шаг 3 с, а не 0 — иначе горячий цикл. Худший случай: смена QR
+        // запаздывает не больше чем на 3 с.
+        await pause(diff > FETCH_INTERVAL || diff <= 0 ? 1e3 * FETCH_INTERVAL : (1e3 * diff) | 0)
       } catch (err) {
         if (stopped) return true
         fail(err)

@@ -9,8 +9,8 @@
  * `stopped = true` в `onCleanup`, оставила бы цикл опрашивать сервер по мёртвой
  * карточке.
  *
- * ТЕСТЫ ПРО ЧАСЫ КЛИЕНТА ЗДЕСЬ НЕТ: пауза при `diff <= 0` (смещение серверного
- * времени) ждёт решения пользователя, см. TODO в карточке.
+ * Отступление от tweb, согласованное 2026-10-13: смещения серверного времени у
+ * клиента нет, при `diff <= 0` пауза — полный шаг (тест «часы клиента спешат»).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'solid-js/web'
@@ -131,6 +131,19 @@ describe('SignQRCard.solid: цикл iterate (tweb SignQRCard.tsx:135-192)', () 
     await vi.advanceTimersByTimeAsync(0)
     expect(exportLoginToken).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(1_000)
+    expect(exportLoginToken).toHaveBeenCalledTimes(2)
+  })
+
+  // Согласованное отступление 2026-10-13: смещения серверного времени у клиента
+  // нет, поэтому при `diff <= 0` (часы клиента спешат) пауза — полный шаг, а не 0.
+  it('часы клиента спешат: не чаще одного вызова за шаг 3 с', async () => {
+    const exportLoginToken = vi.fn().mockImplementation(async () => PENDING('aa01', -120))
+    mount({ exportLoginToken })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(exportLoginToken).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(2_999)
+    expect(exportLoginToken).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
     expect(exportLoginToken).toHaveBeenCalledTimes(2)
   })
 
