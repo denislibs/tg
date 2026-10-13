@@ -1,6 +1,7 @@
 package http
 
 import (
+	"math"
 	"sync"
 	"time"
 )
@@ -10,6 +11,7 @@ import (
 type keyRateLimiter struct {
 	mu      sync.Mutex
 	buckets map[string]*tokenBucket
+	idle    time.Duration // через сколько простоя бакет можно выбросить
 }
 
 type tokenBucket struct {
@@ -17,12 +19,23 @@ type tokenBucket struct {
 	last   time.Time
 }
 
-func newKeyRateLimiter() *keyRateLimiter {
-	return &keyRateLimiter{buckets: map[string]*tokenBucket{}}
+func newKeyRateLimiter() *keyRateLimiter { return newKeyRateLimiterIdle(limiterIdle) }
+
+// newKeyRateLimiterIdle — лимитер со своим сроком простоя ведра: для ключей,
+// которых заводят много и случайно (QR-вход), он короче общего.
+func newKeyRateLimiterIdle(idle time.Duration) *keyRateLimiter {
+	return &keyRateLimiter{buckets: map[string]*tokenBucket{}, idle: idle}
 }
 
 // allow пропускает запрос по ключу с заданной скоростью (rps) и «ведром» (burst).
 func (l *keyRateLimiter) allow(key string, rps, burst float64) bool {
+	ok, _ := l.allowWait(key, rps, burst)
+	return ok
+}
+
+// allowWait — как allow, плюс при отказе число целых секунд (≥ 1), через
+// которое в ведре появится токен: из него строится FLOOD_WAIT_<N>.
+func (l *keyRateLimiter) allowWait(key string, rps, burst float64) (ok bool, waitSec int) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := time.Now()
@@ -39,9 +52,12 @@ func (l *keyRateLimiter) allow(key string, rps, burst float64) bool {
 	b.last = now
 	if b.tokens >= 1 {
 		b.tokens--
-		return true
+		return true, 0
 	}
-	return false
+	if rps <= 0 {
+		return false, 1
+	}
+	return false, max(1, int(math.Ceil((1-b.tokens)/rps)))
 }
 
 // limiterMaxBuckets — сколько ключей держится без уборки; дальше бакеты,
@@ -57,7 +73,7 @@ func (l *keyRateLimiter) sweep(now time.Time) {
 		return
 	}
 	for k, b := range l.buckets {
-		if now.Sub(b.last) > limiterIdle {
+		if now.Sub(b.last) > l.idle {
 			delete(l.buckets, k)
 		}
 	}
