@@ -72,3 +72,42 @@ describe('newPendingPts', () => {
     expect(b.has()).toBe(false)
   })
 })
+
+describe('newPendingPts — pts_count (tweb popPendingPtsUpdate :136-172)', () => {
+  it('элемент {pts:15, ptsCount:3} при курсоре 12 сливается', () => {
+    const b = newPendingPts()
+    b.push({ key: 'updatePts', pts: 15, ptsCount: 3, d: null })
+    const h = harness(12)
+    b.drain(h.getCursor, h.apply)
+    expect(h.applied).toEqual([15])
+    expect(b.has()).toBe(false)
+  })
+
+  it('при курсоре 11 тот же элемент остаётся ждать (дыра)', () => {
+    const b = newPendingPts()
+    b.push({ key: 'updatePts', pts: 15, ptsCount: 3, d: null })
+    const h = harness(11)
+    b.drain(h.getCursor, h.apply)
+    expect(h.applied).toEqual([])
+    expect(b.size()).toBe(1)
+  })
+
+  it('updatePts заменяет лежащий в буфере живой кадр с тем же pts', () => {
+    const b = newPendingPts()
+    b.push(item(13))
+    b.push({ key: 'updatePts', pts: 13, ptsCount: 3, d: null })
+    expect(b.size()).toBe(1)
+    const h = harness(10)
+    b.drain(h.getCursor, h.apply)
+    expect(h.applied).toEqual([13]) // живой 13 с ptsCount 1 при курсоре 10 не слился бы
+  })
+
+  it('живой кадр с тем же pts не вытесняет updatePts', () => {
+    const b = newPendingPts()
+    b.push({ key: 'updatePts', pts: 13, ptsCount: 3, d: null })
+    b.push(item(13))
+    const h = harness(10)
+    b.drain(h.getCursor, h.apply)
+    expect(h.applied).toEqual([13])
+  })
+})

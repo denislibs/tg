@@ -5,20 +5,25 @@
 // SharedWorker, персистится в IDB (ключи 'pts'/'date' — те же, что раньше писал
 // syncEngine), поэтому переживает reload вкладки И рестарт воркера. Всё логируемое
 // обновление (живой кадр {t,d} с d.pts) сверяется с этим
-// курсором в funnel'е воркера: pts<=cursor — дубль, pts===cursor+1 — применить и
-// сдвинуть, pts>cursor+1 — дыра → getDifference. Разница курсор ставит своим state.
+// курсором в funnel'е воркера: pts<=cursor — дубль, cursor+pts_count>=pts — применить и
+// сдвинуть, иначе — дыра → getDifference. Разница курсор ставит своим state.
 
 interface KV { get(k: string): Promise<unknown>; set(k: string, v: unknown): Promise<void> }
 
-// Арифметика funnel'а — чистая, чтобы её можно было отдельно протестировать.
+// Арифметика funnel'а — чистая, чтобы её можно было отдельно протестировать
+// (tweb `processUpdate`, apiUpdatesManager.ts:696-734).
 // 'dup'  — pts уже применён (или out-of-order повтор) → отбросить.
-// 'next' — ровно следующий (cursor+1) → применить и сдвинуть.
-// 'gap'  — пропущен хотя бы один pts → нужен catch-up (для live-пути).
+// 'next' — cursor + pts_count >= pts → применить и сдвинуть курсор на pts.
+// 'gap'  — cursor + pts_count < pts: пропущен хотя бы один pts → нужен catch-up
+//          (для live-пути).
+// У журнальных кадров pts_count === 1; больше он у местного updatePts —
+// ответа на очистку истории (messages.affectedHistory), где одна операция
+// пишет несколько строк журнала.
 export type PtsClass = 'dup' | 'next' | 'gap'
-export function classifyPts(cursor: number, pts: number): PtsClass {
+export function classifyPts(cursor: number, pts: number, ptsCount = 1): PtsClass {
   if (pts <= cursor) return 'dup'
-  if (pts === cursor + 1) return 'next'
-  return 'gap'
+  if (cursor + ptsCount < pts) return 'gap'
+  return 'next'
 }
 
 export interface Cursor {
