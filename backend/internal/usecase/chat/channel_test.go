@@ -316,6 +316,7 @@ func (c groupMembershipChats) VisibleSeqsUpTo(context.Context, int64, int64, int
 }
 func (c groupMembershipChats) SetDialogHidden(context.Context, int64, int64, bool) error { return nil }
 func (c groupMembershipChats) ShowDialogs(context.Context, int64) error                  { return nil }
+func (c groupMembershipChats) LockDialogDelete(context.Context, int64) error             { return nil }
 func (c groupMembershipChats) RecountCounters(context.Context, int64, []int64) error     { return nil }
 func (c groupMembershipChats) DropMessageMentions(context.Context, int64, int64) error   { return nil }
 func (c groupMembershipChats) DropUserMentions(context.Context, int64, int64) error      { return nil }

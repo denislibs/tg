@@ -218,9 +218,9 @@ describe('DialogsContextMenu: пункты по verify tweb', () => {
     expect(labels(await open(CHANNEL))).toEqual(['Open in new tab', 'Pin', 'Mute', 'Archive', 'Leave Channel'])
   })
 
-  it('«Избранное»: без mute и архива (peerId !== myId), без удаления (О-89)', async() => {
+  it('«Избранное»: без mute и архива (peerId !== myId), «Удалить» есть (checkIfCanDelete → true)', async() => {
     await seed([dialog(ME)])
-    expect(labels(await open(ME))).toEqual(['Open in new tab', 'Pin', 'Clear history'])
+    expect(labels(await open(ME))).toEqual(['Open in new tab', 'Pin', 'Clear history', 'Delete Chat'])
   })
 
   it('пользовательская папка — меню на её списке, пунктов закрепа нет (О-70)', async() => {
@@ -302,8 +302,9 @@ describe('DialogsContextMenu: действия', () => {
   })
 
   // tweb deleteDialog.ts case 'chat' → `flushHistory({justClear: false, revoke})`:
-  // у нас `chats.deleteHistory`, строку снимает `dialogs.applyRemoved`. Выход из
-  // лички (`removeMember`) сервер теперь отвергает.
+  // у нас `chats.deleteHistory`; курсор, окна и строку снимает сам менеджер воркера
+  // (вкладка `dialogs.applyRemoved` не зовёт). Выход из лички (`removeMember`)
+  // сервер теперь отвергает.
   it('«Delete Chat» лички — попап popup-delete-chat, подтверждение удаляет историю у себя', async() => {
     await seed([dialog(USER)])
     click((await open(USER))!, 'Delete Chat')
@@ -315,7 +316,7 @@ describe('DialogsContextMenu: действия', () => {
     await settle()
 
     expect(mounted!.hooks.managers.chats.deleteHistory).toHaveBeenCalledWith(USER, false)
-    expect(mounted!.hooks.managers.dialogs.applyRemoved).toHaveBeenCalledWith(USER)
+    expect(mounted!.hooks.managers.dialogs.applyRemoved).not.toHaveBeenCalled()
     expect(mounted!.hooks.managers.groups.removeMember).not.toHaveBeenCalled()
   })
 
@@ -329,7 +330,6 @@ describe('DialogsContextMenu: действия', () => {
     await settle()
 
     expect(mounted!.hooks.managers.chats.deleteHistory).toHaveBeenCalledWith(USER, true)
-    expect(mounted!.hooks.managers.dialogs.applyRemoved).toHaveBeenCalledWith(USER)
   })
 
   // В7-1: секретный чат — выход, как раньше, и без чекбокса `revoke`.

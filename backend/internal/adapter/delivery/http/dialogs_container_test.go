@@ -226,7 +226,7 @@ func TestListDialogs_ClearedHistoryStaysCleared_HTTP(t *testing.T) {
 		t.Fatalf("send: %d %s", rec.Code, rec.Body.String())
 	}
 
-	if rec := authedReq(t, h, http.MethodPost, "/chats/"+peerA+"/clear", tokenA, nil); rec.Code != http.StatusOK {
+	if rec := authedReq(t, h, http.MethodDelete, "/chats/"+peerA+"/history?just_clear=1", tokenA, nil); rec.Code != http.StatusOK {
 		t.Fatalf("clear: %d %s", rec.Code, rec.Body.String())
 	}
 

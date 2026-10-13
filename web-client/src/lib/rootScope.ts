@@ -21,7 +21,7 @@ import type {
   PinnedForumTopicEvt,
   ReadDiscussionEvt,
 } from '@core/realtime/events'
-import type { MyMessage } from '@core/models'
+import type { Dialog, MyMessage } from '@core/models'
 import type { GroupCallFrame } from '@core/calls/groupCallEngine'
 import type { LivestreamFrame } from '@core/calls/livestreamEngine'
 import type { FolderUpdateEvt } from '@stores/foldersStore'
@@ -313,6 +313,13 @@ export type BroadcastEvents = {
   // (`privacyManager.toggleBlock`), подписчик — вкладка «Заблокированные»
   // (`sidebarLeft/tabs/blockedUsers.solid.tsx`).
   'peer_block': [PeerBlockEvt]
+  // tweb rootScope.ts:73 — история очищена у себя (`chats.clearHistory`, tweb
+  // `flushHistory` :6685). Шлёт воркер во все вкладки; `dialog` — строка, какой она
+  // у владельца в момент отправки, ДО перечитывания у сервера (`reloadConversation`
+  // асинхронна), и может отсутствовать — диалога нет в загруженной части списка.
+  // Подписчики: проектор зеркала окна (`storeProjection.ts`) и лента открытого чата
+  // (`chat/bubbles.ts`); строку диалога никто из `dialog` не берёт.
+  'dialog_flush': [{ peerId: PeerId; dialog: Dialog | undefined }]
   // tweb rootScope.ts:162 — черновик треда изменился (`appDraftsManager.saveDraft`
   // с `notify`); черновик чата едет строкой диалога (`core/managers/draftsManager.ts`).
   'draft_updated': [DraftUpdatedEvt]

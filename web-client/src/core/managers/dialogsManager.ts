@@ -1770,6 +1770,11 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
       reloadConversation(peerId)
     },
 
+    /** tweb `getDialogOnly` (appMessagesManager): строка диалога, какой она у владельца сейчас. */
+    getDialogOnly(peerId: number): Dialog | undefined {
+      return findDialog(peerId)
+    },
+
     /**
      * Удалённые сообщения снимаются со счётчиков строки — порт tweb
      * `onUpdateDeleteMessages` (appMessagesManager.ts:11540-11557) с подсчётом
