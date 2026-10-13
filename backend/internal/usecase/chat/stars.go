@@ -262,7 +262,6 @@ func (i *Interactor) chargePaidMessage(ctx context.Context, chatID, senderID, am
 	if amount <= 0 {
 		return paidCharge{}, nil
 	}
-	price := amount
 	creator, err := i.groups.CreatorID(ctx, chatID)
 	if err != nil {
 		return paidCharge{}, err
@@ -270,16 +269,16 @@ func (i *Interactor) chargePaidMessage(ctx context.Context, chatID, senderID, am
 	if creator == senderID {
 		return paidCharge{}, nil // страховка: владелец не платит сам себе
 	}
-	senderBal, err := i.stars.AddBalance(ctx, senderID, -price)
+	senderBal, err := i.stars.AddBalance(ctx, senderID, -amount)
 	if err != nil {
 		if err == domain.ErrForbidden {
 			return paidCharge{}, domain.ErrBalanceTooLow
 		}
 		return paidCharge{}, err
 	}
-	c := paidCharge{applied: true, amount: price, senderBal: senderBal, creatorID: creator}
+	c := paidCharge{applied: true, amount: amount, senderBal: senderBal, creatorID: creator}
 	if creator != 0 {
-		creatorBal, e := i.stars.AddBalance(ctx, creator, price)
+		creatorBal, e := i.stars.AddBalance(ctx, creator, amount)
 		if e != nil {
 			return paidCharge{}, e
 		}

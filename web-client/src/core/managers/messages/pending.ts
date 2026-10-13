@@ -456,6 +456,9 @@ export function newPendingMethods(ctx: PendingCtx) {
     const d = pendingByClientId.get(clientMsgId)
     if (!d) return []
     pendingByClientId.delete(clientMsgId)
+    // Бабл подтвердился (ретрай, снизившаяся цена) — запрос на оплату не нужен: «Отправить
+    // снова» породило бы дубль.
+    if (d.repayId !== undefined) ctx.repay?.cancelRepayRequest(d.repayId)
     dropTemp(d)
     d.storage.set(final.id, final)
     // Окна истории растят счёт; у ленты отложенных срезов нет (`slices` её
@@ -1034,6 +1037,7 @@ export function newPendingMethods(ctx: PendingCtx) {
       const d = pendingByClientId.get(clientMsgId)
       if (!d) return undefined
       pendingByClientId.delete(clientMsgId)
+      if (d.repayId !== undefined) ctx.repay?.cancelRepayRequest(d.repayId)
       dropTemp(d)
       return d.sequential
     },

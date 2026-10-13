@@ -25,7 +25,7 @@ const INSUFFICIENT_STARS_FOR_MESSAGE_PREFIX = 'ALLOW_PAYMENT_REQUIRED_'
 export type ConfirmedPaymentResult = NonNullable<MessageSendingParams['confirmedPaymentResult']>
 
 /** tweb `RepayRequest` — то, что остаётся на неудавшемся сообщении окна. */
-export type RepayRequest = { id: number; messageCount: number }
+export type RepayRequest = { id: number; messageCount: number; /** цена одного сообщения из отказа */ starsAmount: number }
 
 /** `undefined` — платить больше не нужно (цена стала нулевой): tweb `prepareStarsForPayment`
  *  тогда отвечает `undefined`, и повтор уходит без суммы. */
@@ -69,7 +69,7 @@ export function newRepayRequestHandler({ dispatch }: { dispatch: RepayDispatch }
       // плашка и повторная оплата не зависят от того, успела ли дойти обновлённая карточка чата.
       const starsAmount = Math.round(requiredStarsOf(reason!) / Math.max(1, messageCount))
       dispatch('insufficent_stars_for_message', { requestId: id, messageCount, peerId, starsAmount })
-      return { id, messageCount }
+      return { id, messageCount, starsAmount }
     },
 
     /** tweb `confirmRepayRequest` (:98-104). */

@@ -694,7 +694,7 @@ describe('платная отправка: repayRequest и повтор', () => 
 
     const ops = h.p.failPendingMessage('c1', 'ALLOW_PAYMENT_REQUIRED_5')
 
-    expect(ops[0]).toMatchObject({ op: 'patch', fields: { failed: true, repayRequest: { id: 1, messageCount: 1 } } })
+    expect(ops[0]).toMatchObject({ op: 'patch', fields: { failed: true, repayRequest: { id: 1, messageCount: 1, starsAmount: 5 } } })
     expect(h.events).toEqual([['insufficent_stars_for_message', { requestId: 1, messageCount: 1, peerId: 1, starsAmount: 5 }]])
     expect(h.p.hasPending('c1')).toBe(true)
   })
@@ -735,6 +735,21 @@ describe('платная отправка: repayRequest и повтор', () => 
 
     h.repay.confirmRepayRequest(1, { starsAmount: 5 })
     expect(h.sends).toHaveLength(1) // повтор не ушёл
+  })
+
+  // Ревью контрольного прохода п.3: бабл всё же подтвердился — запрос на оплату снимается,
+  // иначе «Отправить снова» породило бы дубль.
+  it('ack бабла с живым запросом снимает запрос', async () => {
+    const h = stand()
+    await h.p.sendText(textArgs)
+    h.p.failPendingMessage('c1', 'ALLOW_PAYMENT_REQUIRED_5')
+    h.events.length = 0
+
+    h.p.ackPendingMessage({ client_msg_id: 'c1', id: 11, date: 1 })
+
+    expect(h.events).toEqual([['fulfill_repaid_message', { requestId: 1 }]])
+    h.repay.confirmRepayRequest(1, { starsAmount: 5 })
+    expect(h.sends).toHaveLength(1)
   })
 
   // Ревью п.10: повторный NACK того же clientMsgId не плодит второй запрос.

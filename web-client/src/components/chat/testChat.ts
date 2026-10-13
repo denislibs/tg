@@ -45,7 +45,7 @@ export type TestChatInput = {
   lastUrl: string
   onMessageInput(): void
   /** оплата платных сообщений (tweb `ChatInput.paidMessageInterceptor`) — пункт «Resend» */
-  paidMessageInterceptor?: { prepareStarsForPayment(messageCount: number): Promise<unknown> }
+  paidMessageInterceptor?: { prepareStarsForPayment(messageCount: number, knownStarsAmount?: number): Promise<unknown> }
 }
 
 export type TestAppImManager = {

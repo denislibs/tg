@@ -22,7 +22,7 @@ const group = (id: number): Channel => ({
   default_banned_rights: { _: 'chatBannedRights', pFlags: {}, until_date: 0 },
 } as Channel)
 
-function failed(id: number, repayRequest?: { id: number, messageCount: number }): MyMessage {
+function failed(id: number, repayRequest?: { id: number, messageCount: number, starsAmount?: number }): MyMessage {
   return {
     _: 'message', id, pFlags: { out: true }, peerId: GROUP,
     peer_id: { _: 'peerChannel', channel_id: 100 }, date: 1700000000, message: 'привет',
@@ -89,20 +89,21 @@ afterEach(() => { contextMenuController.close() })
 describe('«Resend» в меню сообщения (Ф7-Г)', () => {
   it('у сообщения с repayRequest пункт есть; клик платит за messageCount и подтверждает запрос', async () => {
     prepareStarsForPayment.mockResolvedValue({ starsAmount: 6, canUndo: false })
-    await openOn(failed(7.0001, { id: 3, messageCount: 2 }))
+    await openOn(failed(7.0001, { id: 3, messageCount: 2, starsAmount: 6 }))
     const item = resendItem()
     expect(item).toBeDefined()
 
     item!.click()
     await flush()
 
-    expect(prepareStarsForPayment).toHaveBeenCalledWith(2)
+    // цена — из самого отказа (ревью п.2), а не из возможно отставшего зеркала
+    expect(prepareStarsForPayment).toHaveBeenCalledWith(2, 6)
     expect(confirmRepayRequest).toHaveBeenCalledWith(3, { starsAmount: 6, canUndo: false })
   })
 
   it('отказ от оплаты — запрос не подтверждается', async () => {
     prepareStarsForPayment.mockResolvedValue(PAYMENT_REJECTED)
-    await openOn(failed(7.0001, { id: 3, messageCount: 1 }))
+    await openOn(failed(7.0001, { id: 3, messageCount: 1, starsAmount: 5 }))
     resendItem()!.click()
     await flush()
     expect(confirmRepayRequest).not.toHaveBeenCalled()

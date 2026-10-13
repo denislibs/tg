@@ -1654,6 +1654,7 @@ export default class ChatContextMenu {
 
     const preparedPaymentResult = await this.chat.input.paidMessageInterceptor.prepareStarsForPayment(
       message.repayRequest.messageCount,
+      message.repayRequest.starsAmount,
     )
 
     if(preparedPaymentResult === PAYMENT_REJECTED) return

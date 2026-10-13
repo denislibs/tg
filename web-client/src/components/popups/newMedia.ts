@@ -175,10 +175,9 @@ function send(
   payment: Exclude<PreparedPaymentResult, typeof PAYMENT_REJECTED>,
   paidPrice?: number | null,
   spoilers?: boolean[],
-  force = false,
 ) {
   try {
-    performSend(chat, files, caption, asFile, payment, paidPrice, spoilers, force)
+    performSend(chat, files, caption, asFile, payment, paidPrice, spoilers)
   } finally {
     chat.input.resetSendingFlags()
   }
@@ -193,15 +192,7 @@ function performSend(
   payment: Exclude<PreparedPaymentResult, typeof PAYMENT_REJECTED>,
   paidPrice?: number | null,
   spoilers?: boolean[],
-  force = false,
 ) {
-  // tweb :1013-1018 — в ленте отложенных сперва время; оно ляжет в пакет
-  // (`scheduleDate`), и вся выборка уйдёт в очередь отложенных
-  if(chat.type === ChatType.Scheduled && !force) {
-    void chat.input.scheduleSending(() => send(chat, files, caption, asFile, payment, paidPrice, spoilers, true))
-    return
-  }
-
   // tweb :1022 — пакет один на всю выборку; согласие на плату (`payment`) спросил попап
   // ДО закрытия (`NewMediaPopupHost.onSend`), цена одного сообщения уезжает пакетом
   // `confirmedPaymentResult` в каждый кадр
@@ -275,11 +266,18 @@ function NewMediaPopupHost(props: {
       // tweb :1032-1036 — согласие на плату за все сообщения выборки; отказ оставляет попап
       // открытым (`return` до `context.hide()`, :1112): выборка и подпись не теряются
       const files = filesRef.current
-      void props.chat.input.paidMessageInterceptor.prepareStarsForPayment(files.length).then((payment) => {
+      const ask = () => props.chat.input.paidMessageInterceptor.prepareStarsForPayment(files.length).then((payment) => {
         if(payment === PAYMENT_REJECTED) return
         props.destroy()
         send(props.chat, files, caption, asFile, payment, paidPrice, spoilers)
       })
+      // tweb :1013-1018 — в ленте отложенных сперва время (попап открыт: отмена календаря
+      // выборку не теряет); оно ляжет в пакет (`scheduleDate`), затем согласие и закрытие
+      if(props.chat.type === ChatType.Scheduled) {
+        void props.chat.input.scheduleSending(() => { void ask() })
+        return
+      }
+      void ask()
     },
   })
 }

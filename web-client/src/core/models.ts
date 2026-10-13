@@ -304,7 +304,7 @@ interface MessageCommon {
    *  отправка отвергнута `ALLOW_PAYMENT_REQUIRED_<N>`, а повтор держит воркер.
    *  `id` — ключ запроса для `messages.confirmRepayRequest`, `messageCount` —
    *  сколько сообщений платить заново (пункт меню «Resend»). */
-  repayRequest?: { id: number; messageCount: number }
+  repayRequest?: { id: number; messageCount: number; starsAmount?: number }
   /** сообщение из секретного чата (после расшифровки `message` заполнен локально) */
   secret?: boolean
   /** E2E-медиа секретного чата — инжектит расшифровка воркера, не провод */
