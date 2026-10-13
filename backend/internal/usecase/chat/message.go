@@ -133,17 +133,20 @@ func (i *Interactor) messageMentions(ctx context.Context, msg domain.Message) (m
 // frame to each member. Idempotent on ClientMsgID (duplicates publish nothing).
 func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, error) {
 	ok, err := i.chats.IsMember(ctx, in.ChatID, in.SenderID)
-	if err == nil && !ok && in.Action == nil {
-		// Служебку от имени вышедшего создателя (назначение админа) возвращать
-		// его в чат не должно: возврат — только когда он пишет сам.
-		ok, err = i.rejoinCreator(ctx, in.ChatID, in.SenderID)
+	// leftCreator — вышедший создатель пишет в свой чат (tweb hasRights.ts:6-7).
+	// Гость обсуждения пишет только в тред, поэтому его вопрос не задаём: горячий
+	// путь комментариев не получает лишних чтений. Публикация отложенного по
+	// расписанию создателя в чат не возвращает.
+	leftCreator := false
+	if err == nil && !ok && in.ThreadRootID == nil && !in.fromSchedule {
+		leftCreator, err = i.isChatCreator(ctx, in.ChatID, in.SenderID)
 	}
 	if err != nil {
 		return domain.Message{}, err
 	}
 	// guest — не участник пишет гостем обсуждения: в тред комментариев, без
 	// вступления (requireDiscussionGuest).
-	guest := !ok
+	guest := !ok && !leftCreator
 	if guest {
 		if err := i.requireDiscussionGuest(ctx, in.ChatID, in.SenderID, in.ThreadRootID); err != nil {
 			return domain.Message{}, err
@@ -347,6 +350,16 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	// действие (звонок, например, гейтится правилом звонков на call_request).
 	// Действие ПО ЗАПРОСУ пользователя (userAction) — та же отправка.
 	if in.Action == nil || in.userAction {
+		// Вышедший создатель возвращается в чат (строка creator, служебка
+		// «вступил(а)») ПОСЛЕ проверок содержимого и ДО проверки прав отправки:
+		// отвергнутая раньше отправка состав не меняет, а права проверяются
+		// уже по строке участника. Служебка от его имени (назначение админа)
+		// его не возвращает — она пишется без членства.
+		if leftCreator {
+			if err := i.rejoinCreator(ctx, in.ChatID, in.SenderID); err != nil {
+				return domain.Message{}, err
+			}
+		}
 		switch {
 		case broadcast:
 			// В канал пишут ПО ПРАВУ ПОСТИНГА. Дефолтная маска участника

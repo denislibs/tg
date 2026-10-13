@@ -164,6 +164,10 @@ func TestPromoteDemote_TargetGate(t *testing.T) {
 	}
 	// Не участник (MC-12, tweb editAdmin без приглашения): вступает и становится
 	// админом одной строкой — не «невидимым админом» без членства.
+	if err := i.PromoteAdmin(ctx, g, 7, 98, domain.RightBanUsers, nil); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("назначение несуществующего пользователя = %v, ждали ErrNotFound", err)
+	}
+	fg.users[99] = domain.UserReal{ID: 99, FirstName: "Гость"}
 	if err := i.PromoteAdmin(ctx, g, 7, 99, domain.RightBanUsers, nil); err != nil {
 		t.Fatalf("назначение не-участника = %v", err)
 	}

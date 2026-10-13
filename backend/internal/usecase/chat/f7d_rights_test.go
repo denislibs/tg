@@ -324,3 +324,145 @@ func TestLeftCreator_BannedDoesNotRejoin(t *testing.T) {
 		t.Fatal("бан обойдён")
 	}
 }
+
+// Ревью: админ с add_admins, которого назначил вышедший создатель, не может
+// вернуть создателя в чат своей ролью — ни назначением, ни баном.
+func TestLeftCreator_NotPromotedNotBannedByAdmin(t *testing.T) {
+	in, fg, _, _, _ := newMembersTestInteractor(t)
+	ctx := context.Background()
+	g, _, _ := in.CreateGroup(ctx, 7, "Группа", "", "grp", true, []int64{8})
+	_ = fg.SetRole(ctx, g, 8, domain.RoleAdmin, domain.RightManageAdmins|domain.RightBanUsers|domain.RightInviteUsers, 7)
+	if err := in.RemoveMember(ctx, g, 7, 7); err != nil {
+		t.Fatal(err)
+	}
+	if err := in.PromoteAdmin(ctx, g, 8, 7, domain.RightPinMessages, nil); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("админ назначил вышедшего создателя: %v", err)
+	}
+	if err := in.BanMember(ctx, g, 8, 7); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("админ забанил вышедшего создателя: %v", err)
+	}
+	if _, err := fg.GetMember(ctx, g, 7); err == nil {
+		t.Fatal("создатель вернулся чужой ролью")
+	}
+}
+
+// Ревью: отвергнутая отправка вышедшего создателя состав не меняет.
+func TestLeftCreator_RejectedSendDoesNotRejoin(t *testing.T) {
+	in, fg, _, _, s := newMembersTestInteractor(t)
+	ctx := context.Background()
+	g, _, _ := in.CreateGroup(ctx, 7, "Группа", "", "", false, []int64{8})
+	_ = in.RemoveMember(ctx, g, 7, 7)
+	before := len(s.messages[g])
+	long := make([]rune, maxMessageRunes+1)
+	for k := range long {
+		long[k] = 'я'
+	}
+	if _, err := in.Send(ctx, SendInput{ChatID: g, SenderID: 7, Text: string(long), ClientMsgID: "l1"}); !errors.Is(err, domain.ErrTooLong) {
+		t.Fatalf("слишком длинное: %v", err)
+	}
+	if _, err := fg.GetMember(ctx, g, 7); err == nil {
+		t.Fatal("отвергнутая отправка вернула создателя в чат")
+	}
+	if len(s.messages[g]) != before {
+		t.Fatalf("отвергнутая отправка добавила служебку: %d -> %d", before, len(s.messages[g]))
+	}
+}
+
+// Ревью: публикация отложенного по расписанию создателя в чат не возвращает.
+func TestLeftCreator_ScheduledPublishDoesNotRejoin(t *testing.T) {
+	in, fg, _, _, _ := newMembersTestInteractor(t)
+	ctx := context.Background()
+	g, _, _ := in.CreateGroup(ctx, 7, "Группа", "", "", false, []int64{8})
+	_ = in.RemoveMember(ctx, g, 7, 7)
+	if _, err := in.Send(ctx, SendInput{ChatID: g, SenderID: 7, Text: "по расписанию", ClientMsgID: "s1", fromSchedule: true}); err == nil {
+		t.Fatal("отложенное вышедшего создателя опубликовано")
+	}
+	if _, err := fg.GetMember(ctx, g, 7); err == nil {
+		t.Fatal("публикация по расписанию вернула создателя")
+	}
+}
+
+// Ревью п. 4: интерфейс показывает вышедшему создателю «Изменить» и «Удалить» —
+// сервер признаёт их (tweb hasRights.ts:25-27).
+func TestLeftCreator_EditAndDelete(t *testing.T) {
+	in, fg, _, _, _ := newMembersTestInteractor(t)
+	ctx := context.Background()
+	g, _, _ := in.CreateGroup(ctx, 7, "Группа", "", "", false, []int64{8})
+	_ = in.RemoveMember(ctx, g, 7, 7)
+	if err := in.EditAbout(ctx, g, 7, "описание"); err != nil {
+		t.Fatalf("EditAbout вышедшим создателем: %v", err)
+	}
+	if c, _ := fg.Card(ctx, g, 8); c.About != "описание" {
+		t.Fatalf("описание не записалось: %q", c.About)
+	}
+	if err := in.EditTitle(ctx, g, 7, "Новое"); err != nil {
+		t.Fatalf("EditTitle вышедшим создателем: %v", err)
+	}
+	if err := in.DeleteGroup(ctx, g, 7); err != nil {
+		t.Fatalf("DeleteGroup вышедшим создателем: %v", err)
+	}
+}
+
+// Ревью п. 5: служебка «добавил(а)» от имени вышедшего создателя не теряется.
+func TestLeftCreator_PromoteNonMemberPostsService(t *testing.T) {
+	in, _, _, _, s := newMembersTestInteractor(t)
+	ctx := context.Background()
+	g, _, _ := in.CreateGroup(ctx, 7, "Группа", "", "", false, nil)
+	_ = in.RemoveMember(ctx, g, 7, 7)
+	if err := in.PromoteAdmin(ctx, g, 7, 10, domain.RightPinMessages, nil); err != nil {
+		t.Fatal(err)
+	}
+	msgs := s.messages[g]
+	add, ok := msgs[len(msgs)-1].Action.(domain.MessageActionChatAddUser)
+	if !ok || len(add.Users) != 1 || add.Users[0] != 10 {
+		t.Fatalf("служебка «добавил(а)» потеряна: %#v", msgs[len(msgs)-1].Action)
+	}
+}
+
+// Ревью п. 7: ввод не-участника назначением требует права звать, как AddMember.
+func TestPromoteAdmin_NonMemberNeedsInviteRight(t *testing.T) {
+	in, fg, _, _, _ := newMembersTestInteractor(t)
+	ctx := context.Background()
+	g, _, _ := in.CreateGroup(ctx, 7, "Группа", "", "", false, []int64{8, 9})
+	_ = fg.SetRole(ctx, g, 8, domain.RoleAdmin, domain.RightManageAdmins|domain.RightPinMessages, 7)
+	if err := in.PromoteAdmin(ctx, g, 8, 10, domain.RightPinMessages, nil); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("админ без invite_users ввёл не-участника: %v", err)
+	}
+	if _, err := fg.GetMember(ctx, g, 10); err == nil {
+		t.Fatal("не-участник вошёл")
+	}
+	// Тот же админ правит права УЖЕ участника — invite_users не нужен.
+	if err := in.PromoteAdmin(ctx, g, 8, 9, domain.RightPinMessages, nil); err != nil {
+		t.Fatalf("правка прав: %v", err)
+	}
+}
+
+// Ревью п. 8: второй вход параллельного пути не считается вступлением.
+func TestAdmit_SecondEntryIsNotJoin(t *testing.T) {
+	in, _, _, _, _ := newMembersTestInteractor(t)
+	ctx := context.Background()
+	g, _, _ := in.CreateGroup(ctx, 7, "Группа", "", "", false, nil)
+	if joined, err := in.admit(ctx, g, 8, 8, admitSelf); err != nil || !joined {
+		t.Fatalf("первый вход: joined=%v err=%v", joined, err)
+	}
+	if joined, err := in.admit(ctx, g, 8, 8, admitSelf); err != nil || joined {
+		t.Fatalf("второй вход: joined=%v err=%v; ждали joined=false", joined, err)
+	}
+}
+
+// Ревью п. 12: то же значение — ни служебки, ни снимка чата.
+func TestEditAboutTitle_UnchangedIsSilent(t *testing.T) {
+	in, _, _, pub, _ := newMembersTestInteractor(t)
+	ctx := context.Background()
+	g, _, _ := in.CreateGroup(ctx, 7, "Группа", "о", "", false, []int64{8})
+	pub.reset()
+	if err := in.EditAbout(ctx, g, 7, "о"); err != nil {
+		t.Fatal(err)
+	}
+	if err := in.EditTitle(ctx, g, 7, "Группа"); err != nil {
+		t.Fatal(err)
+	}
+	if n := pub.countFor(8); n != 0 {
+		t.Fatalf("неизменённые значения разослали %d кадров", n)
+	}
+}

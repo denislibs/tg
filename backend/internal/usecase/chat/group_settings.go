@@ -25,7 +25,7 @@ func (i *Interactor) memberCan(ctx context.Context, chatID, userID int64, perm d
 	if i.groups == nil {
 		return false, nil
 	}
-	m, err := i.groups.GetMember(ctx, chatID, userID)
+	m, err := i.memberOrCreator(ctx, chatID, userID)
 	if err != nil {
 		return false, err
 	}
@@ -524,12 +524,8 @@ func (i *Interactor) UnrestrictMember(ctx context.Context, chatID, actorID, targ
 // «Delete and Leave Group» for the owner): every member gets a chat_removed
 // frame, then the chat row (members/messages cascade) is dropped.
 func (i *Interactor) DeleteGroup(ctx context.Context, chatID, actorID int64) error {
-	m, err := i.groups.GetMember(ctx, chatID, actorID)
-	if err != nil {
-		return domain.ErrForbidden
-	}
-	if m.Role != domain.RoleCreator {
-		return domain.ErrForbidden
+	if err := i.requireCreator(ctx, chatID, actorID); err != nil {
+		return err
 	}
 	members, err := i.chats.MemberIDs(ctx, chatID)
 	if err != nil {

@@ -89,10 +89,9 @@ func (i *Interactor) admit(ctx context.Context, chatID, userID, actorID int64, v
 	case e != nil && !errors.Is(e, domain.ErrNotFound):
 		return false, e
 	}
-	if err := i.groups.AddMember(ctx, chatID, userID, role, rights); err != nil {
-		return false, err
-	}
-	return true, nil
+	// inserted=false — строку успел вставить параллельный вход (два устройства,
+	// два админа): служебка и кадры уже за ним.
+	return i.groups.InsertMember(ctx, chatID, userID, role, rights)
 }
 
 // JoinFolderChat — вступление в чат по ссылке на папку (chatlists.joinChatlistInvite):
@@ -102,14 +101,11 @@ func (i *Interactor) JoinFolderChat(ctx context.Context, chatID, userID int64) e
 	return err
 }
 
-// rejoinCreator возвращает в чат вышедшего создателя, который пишет в него:
-// tweb оставляет создателю право писать и в «покинутый» канал
-// (utils/chats/hasRights.ts:6-7, «creator can still send messages to left
-// channel»). Что делает сервер Telegram, по tweb не определить; вывод — без
-// строки участника автор не попал бы в веер и не получил бы своё сообщение.
-// Возвращает true, если пользователь теперь участник. Не создатель, личка и
-// «Избранное» — false без ошибки; забаненному (admit) — ErrForbidden.
-func (i *Interactor) rejoinCreator(ctx context.Context, chatID, userID int64) (bool, error) {
+// isChatCreator — пользователь создатель этой группы или канала (chats.creator_id),
+// сам членом может и не быть. Личка и «Избранное» — всегда false. Два чтения по
+// первичному ключу; в горячий путь гостя обсуждения не входит (Send спрашивает
+// только когда треда нет).
+func (i *Interactor) isChatCreator(ctx context.Context, chatID, userID int64) (bool, error) {
 	if i.groups == nil {
 		return false, nil
 	}
@@ -118,20 +114,39 @@ func (i *Interactor) rejoinCreator(ctx context.Context, chatID, userID int64) (b
 		return false, err
 	}
 	cid, err := i.groups.CreatorID(ctx, chatID)
-	if errors.Is(err, domain.ErrNotFound) || (err == nil && (cid == 0 || cid != userID)) {
+	if errors.Is(err, domain.ErrNotFound) {
 		return false, nil
 	}
-	if err != nil {
-		return false, err
+	return err == nil && cid != 0 && cid == userID, err
+}
+
+// isMemberOrCreator — гейт «может ли быть адресатом отправки»: участник или
+// создатель (вышедшему создателю Send сам вернёт строку участника).
+func (i *Interactor) isMemberOrCreator(ctx context.Context, chatID, userID int64) (bool, error) {
+	ok, err := i.chats.IsMember(ctx, chatID, userID)
+	if err != nil || ok {
+		return ok, err
 	}
+	return i.isChatCreator(ctx, chatID, userID)
+}
+
+// rejoinCreator возвращает в чат вышедшего создателя, который пишет в него:
+// tweb оставляет создателю право писать и в «покинутый» канал
+// (utils/chats/hasRights.ts:6-7, «creator can still send messages to left
+// channel»). Что делает сервер Telegram, по tweb не определить; вывод — без
+// строки участника автор не попал бы в веер и не получил бы своё сообщение.
+// Зовётся Send после проверок содержимого, перед проверкой прав отправки:
+// отправка, отвергнутая раньше, состав не меняет. Забаненному (admit) —
+// ErrForbidden.
+func (i *Interactor) rejoinCreator(ctx context.Context, chatID, userID int64) error {
 	joined, err := i.admit(ctx, chatID, userID, userID, admitSelf)
 	if err != nil {
-		return false, err
+		return err
 	}
 	if joined {
 		i.afterSelfJoin(ctx, chatID, userID)
 	}
-	return true, nil
+	return nil
 }
 
 // afterSelfJoin — хвост вступления самого пользователя (по @имени, возврат
@@ -144,14 +159,4 @@ func (i *Interactor) afterSelfJoin(ctx context.Context, chatID, userID int64) {
 	i.publishChatUpdate(ctx, chatID)
 	i.publishViewerChat(ctx, chatID, userID)
 	i.emitParticipant(ctx, chatID, userID, userID, participantChange{next: i.participantNow(ctx, chatID, userID)})
-}
-
-// isMemberOrRejoin — гейт членства отправки: участник — да; вышедший создатель
-// сначала возвращается в чат (rejoinCreator) и тоже да; остальные — нет.
-func (i *Interactor) isMemberOrRejoin(ctx context.Context, chatID, userID int64) (bool, error) {
-	ok, err := i.chats.IsMember(ctx, chatID, userID)
-	if err != nil || ok {
-		return ok, err
-	}
-	return i.rejoinCreator(ctx, chatID, userID)
 }

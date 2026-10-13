@@ -24,7 +24,7 @@ func (i *Interactor) requireRight(ctx context.Context, chatID, userID int64, r d
 	if i.groups == nil {
 		return domain.ErrForbidden // no group repo (e.g. private chat) ⇒ no admin rights
 	}
-	m, err := i.groups.GetMember(ctx, chatID, userID)
+	m, err := i.memberOrCreator(ctx, chatID, userID)
 	if err != nil {
 		return domain.ErrForbidden // not a member ⇒ forbidden
 	}
@@ -328,6 +328,19 @@ func (i *Interactor) PromoteAdmin(ctx context.Context, chatID, actorID, userID i
 	if target.Role == domain.RoleAdmin && target.PromotedBy != 0 {
 		promotedBy = target.PromotedBy // правка прав не переназначает админа
 	}
+	if target.Role == "" {
+		// Не участник — это ввод в чат: право звать и существование человека
+		// проверяются так же, как у AddMember (без второго — нарушение внешнего
+		// ключа и 500).
+		if err := i.requirePermOrRight(ctx, chatID, actorID, domain.PermAddMembers, domain.RightInviteUsers); err != nil {
+			return err
+		}
+		if us, e := i.groups.UsersByIDs(ctx, 0, []int64{userID}); e != nil {
+			return e
+		} else if len(us) == 0 {
+			return domain.ErrNotFound
+		}
+	}
 	prev := i.participantNow(ctx, chatID, userID)
 	joined := false
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
@@ -343,6 +356,9 @@ func (i *Interactor) PromoteAdmin(ctx context.Context, chatID, actorID, userID i
 	if err != nil {
 		return err
 	}
+	if joined {
+		i.afterMemberAdded(ctx, chatID, actorID, userID)
+	}
 	// Повышение снимает личные ограничения, как у Telegram: иначе после
 	// разжалования прежнее ограничение «воскресло» бы (ревью #404 п. 11).
 	if err := i.groups.DeleteRestriction(ctx, chatID, userID); err != nil {
@@ -353,9 +369,6 @@ func (i *Interactor) PromoteAdmin(ctx context.Context, chatID, actorID, userID i
 		if err := i.groups.SetRank(ctx, chatID, userID, clipRank(*rank)); err != nil {
 			return err
 		}
-	}
-	if joined {
-		i.afterMemberAdded(ctx, chatID, actorID, userID)
 	}
 	i.publishChatUpdate(ctx, chatID) // состав админов (и участников) изменился
 	i.afterRightsChange(ctx, chatID, actorID, userID, prev)
@@ -421,20 +434,18 @@ func (i *Interactor) DemoteAdmin(ctx context.Context, chatID, actorID, userID in
 // EditTitle — channels.editTitle / messages.editChatTitle (tweb
 // appChatsManager.ts:922-937): только название, право change_info. Смена
 // названия — служебное сообщение (messageActionChatEditTitle); его fan-out
-// заодно обновляет диалог у всех участников live. Повтор того же названия
-// служебки не пишет.
+// заодно обновляет диалог у всех участников live. То же название —
+// ни служебки, ни рассылки.
 func (i *Interactor) EditTitle(ctx context.Context, chatID, actorID int64, title string) error {
 	if err := i.requirePermOrRight(ctx, chatID, actorID, domain.PermChangeInfo, domain.RightChangeInfo); err != nil {
 		return err
 	}
-	old, _ := i.groups.Card(ctx, chatID, actorID)
-	if err := i.groups.EditTitle(ctx, chatID, title); err != nil {
+	changed, err := i.groups.EditTitle(ctx, chatID, title)
+	if err != nil || !changed {
 		return err
 	}
-	if old.Title != "" && old.Title != title {
-		// Новое название — параметр конструктора: прежде его не ехало вовсе.
-		i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionChatEditTitle(title))
-	}
+	// Новое название — параметр конструктора: прежде его не ехало вовсе.
+	i.postGroupService(ctx, chatID, actorID, domain.NewMessageActionChatEditTitle(title))
 	i.publishChatUpdate(ctx, chatID)
 	return nil
 }
@@ -446,7 +457,8 @@ func (i *Interactor) EditAbout(ctx context.Context, chatID, actorID int64, about
 	if err := i.requirePermOrRight(ctx, chatID, actorID, domain.PermChangeInfo, domain.RightChangeInfo); err != nil {
 		return err
 	}
-	if err := i.groups.EditAbout(ctx, chatID, about); err != nil {
+	changed, err := i.groups.EditAbout(ctx, chatID, about)
+	if err != nil || !changed {
 		return err
 	}
 	i.publishChatUpdate(ctx, chatID)
