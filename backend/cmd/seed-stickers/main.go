@@ -141,8 +141,12 @@ func run(dir string) error {
 
 	// Тот же конвейер, что у обычной загрузки медиа (запись в media + объект в
 	// MinIO), только без постобработки — lottie-json в ней не нуждается.
-	mediaUC := usecasemedia.New(pgadapter.NewMediaRepo(pool), mc, nil)
+	mediaRepo := pgadapter.NewMediaRepo(pool)
+	mediaUC := usecasemedia.New(mediaRepo, mc, nil)
 	stickersUC := usecasestickers.New(pgadapter.NewStickersRepo(pool))
+	// Сид заливает файлы и наборы от сервисного аккаунта: проверка «файл —
+	// загрузка создателя набора» проходит.
+	stickersUC.SetMediaReader(mediaRepo)
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {

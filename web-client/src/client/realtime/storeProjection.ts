@@ -10,6 +10,7 @@ import { STATE_KEYS, type AppState } from '../../core/state/state'
 import { setStarsBalance } from '../../stores/starsStore'
 import { mapSuggestedPost } from '../../core/models'
 import { getPeerId } from '../../core/peers/peerId'
+import { useNotifyStore } from '../../stores/notifyStore'
 import { useBoostsStore } from '../../stores/boostsStore'
 import { useSuggestedPostsStore } from '../../stores/suggestedPostsStore'
 import { useUploadsStore } from '../../stores/uploadsStore'
@@ -174,6 +175,9 @@ const APPLY: Projector = {
   // окно зеркала пусто. Это делают ВСЕ вкладки, а не та, что нажала кнопку, —
   // воркер объявляет событие после ответа сервера.
   dialog_flush: (e) => { replaceMirrorWindow(winKey(e.peerId), []) },
+  // Глобальные настройки уведомлений по типу чатов — зеркало одно, `notifyStore`
+  // (tweb `onUpdateNotifySettings` → `savePeerSettings`, `appNotificationsManager.ts:504-538`).
+  notify_settings: (e) => { useNotifyStore.getState().apply(e.peer._, e.notify_settings) },
   // [RT.editMessage] / [RT.geoLiveUpdate] здесь БОЛЬШЕ НЕТ: правку и координаты
   // гео-трансляции применяет владелец окна (`messages.cacheEdit` /
   // `messages.cacheGeoLive`) и объявляет их операцией `rt:message_op`. Строки

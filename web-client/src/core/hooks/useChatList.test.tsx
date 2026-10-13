@@ -24,9 +24,9 @@ const GROUP_PEER_ID = -1
 const groupCard = { _: 'channel' as const, id: 1, title: 'Группа', photo: { _: 'chatPhotoEmpty' as const }, date: 0, pFlags: { megagroup: true as const } }
 
 const settings = (over: Partial<NotifySettings> = {}): NotifySettings => ({
-  private: { muted: false, preview: true },
-  groups: { muted: false, preview: true },
-  channels: { muted: false, preview: true },
+  notifyUsers: { _: 'peerNotifySettings', mute_until: 0, show_previews: true },
+  notifyChats: { _: 'peerNotifySettings', mute_until: 0, show_previews: true },
+  notifyBroadcasts: { _: 'peerNotifySettings', mute_until: 0, show_previews: true },
   ...over,
 })
 
@@ -47,7 +47,7 @@ beforeEach(() => {
 
 describe('useChatList: глобально выключенный тип чатов', () => {
   it('тип заглушён — чат показывается как muted, хотя свой mute у диалога снят', () => {
-    useNotifyStore.setState({ settings: settings({ groups: { muted: true, preview: true } }) })
+    useNotifyStore.setState({ settings: settings({ notifyChats: { _: 'peerNotifySettings', mute_until: 2147483647, show_previews: true } }) })
 
     const { result } = renderHook(() => useChatList(), { wrapper: withManagers })
 
@@ -55,7 +55,7 @@ describe('useChatList: глобально выключенный тип чато
   })
 
   it('заглушён ДРУГОЙ тип — этому чату muted не выдумывается', () => {
-    useNotifyStore.setState({ settings: settings({ channels: { muted: true, preview: true } }) })
+    useNotifyStore.setState({ settings: settings({ notifyBroadcasts: { _: 'peerNotifySettings', mute_until: 2147483647, show_previews: true } }) })
 
     const { result } = renderHook(() => useChatList(), { wrapper: withManagers })
 

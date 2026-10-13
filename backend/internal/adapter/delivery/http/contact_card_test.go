@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
 	"github.com/messenger-denis/backend/internal/store/postgres"
 	usecasecontacts "github.com/messenger-denis/backend/internal/usecase/contacts"
@@ -17,14 +18,22 @@ import (
 // зритель записал о контакте, едет в ПОЛНОЙ карточке пользователя, как у
 // оригинала (userFull.note, userFull.personal_photo, user.pFlags.contact).
 func newContactCardRouter(t *testing.T) http.Handler {
+	h, _ := newContactCardRouterDB(t)
+	return h
+}
+
+// newContactCardRouterDB — то же, но отдаёт и пул: тестам личного фото нужны
+// строки media своих владельцев (seedMedia).
+func newContactCardRouterDB(t *testing.T) (http.Handler, *pgxpool.Pool) {
 	t.Helper()
 	pool := postgres.NewTestDB(t)
 	repo := pgadapter.NewContactsRepo(pool)
 	contactsUC := usecasecontacts.New(repo)
 	contactsUC.SetCustomPhotos(repo)
+	contactsUC.SetMediaReader(pgadapter.NewMediaRepo(pool))
 	privacyUC := usecaseprivacy.New(pgadapter.NewPrivacyRepo(pool))
 	return NewRouter(newAuthUC(pool), newChatUC(pool), nil, nil, nil, nil, nil, nil, contactsUC,
-		NewICEHandler("", "test"), nil, nil, nil, privacyUC, nil, nil, nil, nil, nil, nil, nil)
+		NewICEHandler("", "test"), nil, nil, nil, privacyUC, nil, nil, nil, nil, nil, nil, nil), pool
 }
 
 // profileCard — ответ /users/{id}: полная форма и краткая того же пользователя.
@@ -147,9 +156,11 @@ func TestContactNote_LivesInFullUser_HTTP(t *testing.T) {
 // личное фото — полной формой (userFull.personal_photo) и краткой
 // (user.photo с pFlags.personal), как книга и список диалогов.
 func TestContactCard_FlagsAndPersonalPhoto_HTTP(t *testing.T) {
-	h := newContactCardRouter(t)
+	h, pool := newContactCardRouterDB(t)
 	tokenA, idA := signInToken(t, h, "+79990000311")
 	tokenB, idB := signInToken(t, h, "+79990000312")
+	photoA := seedMedia(t, pool, idA, "image/jpeg")
+	photoB := seedMedia(t, pool, idB, "image/jpeg")
 
 	card := getProfile(t, h, tokenA, idB)
 	if pflag(card.Users[0], "contact") || pflag(card.Users[0], "mutual_contact") {
@@ -179,19 +190,28 @@ func TestContactCard_FlagsAndPersonalPhoto_HTTP(t *testing.T) {
 		t.Fatalf("взаимный контакт без mutual_contact: %v", card.Users[0]["pFlags"])
 	}
 
-	// Личное фото: A ставит B своё фото.
+	// Личное фото: чужой файл (загруженный B) — 404, фото не меняется (F7-A).
 	if rec := authedReq(t, h, http.MethodPut, "/contacts/"+itoa(idB)+"/photo", tokenA, map[string]any{
-		"media_id": 4242,
+		"media_id": photoB,
+	}); rec.Code != http.StatusNotFound {
+		t.Fatalf("чужой файл как личное фото: %d %s; want 404", rec.Code, rec.Body.String())
+	}
+	if pp := getProfile(t, h, tokenA, idB).FullUser["personal_photo"]; pp != nil {
+		t.Fatalf("после отказа личное фото = %v", pp)
+	}
+	// A ставит B своё фото.
+	if rec := authedReq(t, h, http.MethodPut, "/contacts/"+itoa(idB)+"/photo", tokenA, map[string]any{
+		"media_id": photoA,
 	}); rec.Code != http.StatusOK {
 		t.Fatalf("set personal photo: %d %s", rec.Code, rec.Body.String())
 	}
 	card = getProfile(t, h, tokenA, idB)
 	pp, _ := card.FullUser["personal_photo"].(map[string]any)
-	if pp["_"] != "photo" || pp["id"] != float64(4242) {
+	if pp["_"] != "photo" || pp["id"] != float64(photoA) {
 		t.Fatalf("userFull.personal_photo = %v", card.FullUser["personal_photo"])
 	}
 	photo, _ := card.Users[0]["photo"].(map[string]any)
-	if photo["_"] != "userProfilePhoto" || photo["photo_id"] != float64(4242) || !pflag(photo, "personal") {
+	if photo["_"] != "userProfilePhoto" || photo["photo_id"] != float64(photoA) || !pflag(photo, "personal") {
 		t.Fatalf("user.photo = %v, want личное фото с pFlags.personal", card.Users[0]["photo"])
 	}
 	// Сам B своего «личного» фото не видит.

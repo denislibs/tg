@@ -5,7 +5,7 @@
 // per-chat mute → глобальные настройки типа чата → клиентские настройки.
 import { startClient } from './bootstrap'
 import { useSettingsStore } from '../settings'
-import { useNotifyStore, notifyTypeForChat, isDialogMuted } from '../stores/notifyStore'
+import { useNotifyStore, notifyTypeForChat, isDialogMuted, typeShowPreviews } from '../stores/notifyStore'
 import { useChatsStore } from '../stores/chatsStore'
 import { useI18nStore } from '../i18n'
 import { mediaLabel } from '../core/dialogToChat'
@@ -37,7 +37,7 @@ export function notifyIncomingMessage(evt: IncomingMsg, muted?: boolean): void {
   // её по-прежнему берём по типу чата напрямую.
   const chat = cachedChat(evt.peerId)
   if (muted ?? isDialogMuted(dialog, chat, notifySettings)) return
-  const typeSettings = notifySettings[notifyTypeForChat(evt.peerId, chat)]
+  const showPreview = typeShowPreviews(notifySettings, notifyTypeForChat(evt.peerId, chat))
 
   // Открытый чат в видимой вкладке — ни звука, ни уведомления (читается на экране):
   // tweb `notificationBuild` (`appImManager.ts:805-822`) сверяет `appImManager.chat`.
@@ -61,7 +61,7 @@ export function notifyIncomingMessage(evt: IncomingMsg, muted?: boolean): void {
   // диалога на проводе больше нет (шаг C диалогов: тело чата едет вектором
   // `chats` контейнера и живёт в зеркале пиров).
   const chatTitle = peerTitle(evt.peerId) || 'Telegram'
-  const body = typeSettings.preview ? getMessageText(evt) || mediaLabel(getMessageKind(evt)) || t('Notifications.New') : t('Notifications.New')
+  const body = showPreview ? getMessageText(evt) || mediaLabel(getMessageKind(evt)) || t('Notifications.New') : t('Notifications.New')
   void show(chatTitle, body, evt)
 }
 

@@ -404,6 +404,7 @@ export default class ChatTopbar {
     // расхождение 8: у tweb `ChatType.Saved` → `true` (там `deleteSavedHistory` одного
     // поддиалога); ветки `savedDialog` у нас нет (О-3), а `deleteHistory(myId)` снесло бы
     // всё «Избранное».
+    // Отступление согласовано 2026-10-13.
     if(this.chat.type === ChatType.Saved) return false
 
     return (

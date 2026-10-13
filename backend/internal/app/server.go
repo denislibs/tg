@@ -38,6 +38,7 @@ import (
 	usecaselangpack "github.com/messenger-denis/backend/internal/usecase/langpack"
 	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
 	usecasenotify "github.com/messenger-denis/backend/internal/usecase/notify"
+	"github.com/messenger-denis/backend/internal/usecase/ownsync"
 	usecasepasskeys "github.com/messenger-denis/backend/internal/usecase/passkeys"
 	usecasepresence "github.com/messenger-denis/backend/internal/usecase/presence"
 	usecaseprivacy "github.com/messenger-denis/backend/internal/usecase/privacy"
@@ -98,6 +99,13 @@ func registerServer(p serverParams) {
 	contactPhotos := pgadapter.NewContactsRepo(p.Pool)
 	p.ContactsUC.SetCustomPhotos(contactPhotos)
 
+	// Фото профиля и личное фото контакта ставятся только своим файлом: проверка
+	// владельца читает строку media. Без этого чужой media_id открывался бы
+	// всем по правилу приватности подложившего. Не подключить — 500, не 404.
+	mediaRepo := pgadapter.NewMediaRepo(p.Pool)
+	p.AuthUC.SetMediaReader(mediaRepo)
+	p.ContactsUC.SetMediaReader(mediaRepo)
+
 	// Близкие друзья: признак едет ФЛАГОМ карточки контакта
 	// (`user.pFlags.close_friend`), как у оригинала — метода чтения списка в
 	// схеме нет вовсе. Владелец списка — подсистема историй, она же его и
@@ -143,6 +151,10 @@ func registerServer(p serverParams) {
 	// стикера публично (шлётся и читается не-владельцем).
 	stickersRepo := pgadapter.NewStickersRepo(p.Pool)
 	stickersUC := usecasestickers.New(stickersRepo)
+	// Стикер — только файл создателя набора, гиф — только видимый и анимированный:
+	// IsStickerMedia открывает файл всем, saved_gifs отдаёт его метаданные.
+	stickersUC.SetMediaReader(mediaRepo)
+	stickersUC.SetMediaAccess(p.ChatUC)
 	p.ChatUC.SetStickerAccess(stickersRepo)
 	if p.Cfg.TenorAPIKey != "" {
 		stickersUC.SetGifSearch(gifsearch.NewTenor(p.Cfg.TenorAPIKey))
@@ -209,11 +221,18 @@ func registerServer(p serverParams) {
 	var wsHandler http.Handler
 	var presenceMgr *usecasepresence.Manager
 	var realtimePublisher *rtredis.RedisPublisher // set when Redis is up; wired to folders below
+	// Общие порты хелпера ownsync (журнал своих устройств + живой кадр). Журнал и
+	// транзакции — без условия; издатель — nil-ИНТЕРФЕЙС без Redis (типизированный
+	// nil в интерфейсе прошёл бы проверку «издатель есть»).
+	updatesRepo := pgadapter.NewUpdatesRepo(p.Pool)
+	txm := pgadapter.NewTxManager(p.Pool)
+	var pub ownsync.Publisher
 	if p.Redis.OK {
 		p.AuthUC.SetCache(redisSessionCache(p.Redis))
 		p.AuthUC.SetQRStore(redisQRStore(p.Redis))
 		publisher := rtredis.NewRedisPublisher(p.Redis.Client)
 		realtimePublisher = publisher
+		pub = publisher
 		p.ChatUC.SetPublisher(publisher)
 		p.ChatUC.SetChannelPublisher(publisher)
 		// user_update fan-out on profile changes: same publisher + the shared-chat
@@ -346,6 +365,7 @@ func registerServer(p serverParams) {
 
 	storyHandler := httptransport.NewStoryHandler(p.StoryUC, p.ChatUC)
 	notifyUC := usecasenotify.New(pgadapter.NewNotifyRepo(p.Pool))
+	notifyUC.SetEmitter(ownsync.New(updatesRepo, pub, txm))
 	// Жалобы на чаты/сообщения (tweb reportMessages): складируем без модерации.
 	reportUC := usecasereport.New(pgadapter.NewReportRepo(p.Pool))
 	// Статистика каналов (tweb stats.getBroadcastStats): серии считаются на лету

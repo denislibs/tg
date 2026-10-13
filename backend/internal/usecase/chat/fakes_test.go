@@ -52,6 +52,8 @@ type readMark struct {
 type store struct {
 	mu sync.Mutex
 
+	locked map[int64]int // userID -> сколько раз взят замок курсора (UpdateRepo.LockState)
+
 	nextChatID int64
 	nextMsgID  int64
 	chatType   map[int64]string
@@ -2184,6 +2186,17 @@ func (r fakeUpdates) AppendUpdateBulk(_ context.Context, userIDs []int64, ptsCou
 		out[userID] = newPts
 	}
 	return out, nil
+}
+
+// LockState запоминает, что замок взят: тест порядка «замок -> чтение -> запись».
+func (r fakeUpdates) LockState(_ context.Context, userID int64) error {
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	if r.s.locked == nil {
+		r.s.locked = map[int64]int{}
+	}
+	r.s.locked[userID]++
+	return nil
 }
 
 func (r fakeUpdates) PruneUpdates(_ context.Context, keepPerUser int64, _ int) (int64, error) {

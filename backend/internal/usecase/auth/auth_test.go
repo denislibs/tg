@@ -761,6 +761,7 @@ func TestDeleteProfilePhoto(t *testing.T) {
 	ctx := context.Background()
 	i, _, _, _ := newInteractor()
 	res := registerUser(t, i, "+79990000070", "Фото", "", "web", "browser")
+	ownImages(i, res.User.ID, 501, 502)
 
 	p1, err := i.AddProfilePhoto(ctx, res.User.ID, 501, nil)
 	if err != nil {

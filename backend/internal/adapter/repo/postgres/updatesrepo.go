@@ -73,6 +73,30 @@ func (r *UpdatesRepo) AppendUpdateBulk(ctx context.Context, userIDs []int64, pts
 	return out, rows.Err()
 }
 
+// LockState берёт блокировку строки курсора владельца (user_state) до конца
+// транзакции ctx; строку при отсутствии создаёт — как это делает AppendUpdate.
+// Параллельный AppendUpdate того же владельца ждёт у той же строки, поэтому
+// снимок, перечитанный после LockState, не бывает старее снимка с меньшим pts
+// (usecase/ownsync.EmitSnapshot). Вне транзакции замок снимается сразу после
+// запроса, и смысла не имеет.
+//
+// Обычный путь — один SELECT … FOR UPDATE без новой версии строки; INSERT нужен
+// лишь владельцу, у которого курсора ещё нет.
+func (r *UpdatesRepo) LockState(ctx context.Context, userID int64) error {
+	q := querier(ctx, r.pool)
+	var pts int64
+	err := q.QueryRow(ctx, `SELECT pts FROM user_state WHERE user_id=$1 FOR UPDATE`, userID).Scan(&pts)
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	// Строки нет: создаём (параллельный создатель дождётся нас на конфликте) и
+	// берём замок вставкой/обновлением той же строки.
+	return q.QueryRow(ctx,
+		`INSERT INTO user_state (user_id) VALUES ($1)
+		 ON CONFLICT (user_id) DO UPDATE SET pts = user_state.pts
+		 RETURNING pts`, userID).Scan(&pts)
+}
+
 // PruneUpdates deletes update-log rows more than keepPerUser pts behind each
 // user's current pts, in one bounded statement (≤ maxRows). Safe: any client
 // within keepPerUser still has all its rows, and keepPerUser must be ≥ the sync

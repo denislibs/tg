@@ -36,9 +36,12 @@ let started = false
 // `appMessagesManager.ts:4383-4388`, `:11799`, `:11813`).
 // `dialog_flush` — менеджер чатов после очистки истории (`chats.clearHistory`, tweb
 // `appMessagesManager.ts:6685`): вкладки опустошают окно чата.
+// `notify_settings` — глобальные настройки уведомлений по типу чатов: кадр
+// `updateNotifySettings{notifyUsers…}` (воркер: `workerCore.ts::dispatch`) и
+// местный апдейт своего PUT (`notifyManager.updateNotifySettings`).
 // `draft_updated` — менеджер черновиков (`draftsManager.saveDraft`, tweb
 // `appDraftsManager.ts:169-178`): черновик треда изменился.
-const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change', 'contacts_update', 'peer_block', 'scheduled_new', 'scheduled_delete', 'draft_updated', 'dialog_flush']
+const WORKER_EVENTS: string[] = [...Object.values(RT), 'rt:resync', 'media:upload_progress', 'state:mirror', 'language_change', 'contacts_update', 'peer_block', 'scheduled_new', 'scheduled_delete', 'draft_updated', 'notify_settings', 'dialog_flush']
 
 // Subscribe to worker realtime events exactly once per page.
 export function startRealtime(): void {

@@ -10,6 +10,7 @@ import { useAppStateStore, setAppState } from './appState'
 import { applyFolderUpdate, useFoldersStore } from './foldersStore'
 import { useChatsStore } from './chatsStore'
 import { useNotifyStore } from './notifyStore'
+import type { NotifySettings } from '../core/managers/notifyManager'
 import { initialState } from '../core/state/state'
 import { ALL_FOLDER_ID } from '../core/folderIds'
 import { makeDialog } from '../core/dialogs/testDialog'
@@ -18,10 +19,10 @@ import { applyForumUnread, resetForumUnreadMirror } from '../core/dialogs/forumU
 import type { Folder, RawFolder } from '../core/managers/foldersManager'
 import type { Dialog } from '../core/models'
 
-const SETTINGS = {
-  private: { muted: false, preview: true },
-  groups: { muted: false, preview: true },
-  channels: { muted: false, preview: true },
+const SETTINGS: NotifySettings = {
+  notifyUsers: { _: 'peerNotifySettings', mute_until: 0, show_previews: true },
+  notifyChats: { _: 'peerNotifySettings', mute_until: 0, show_previews: true },
+  notifyBroadcasts: { _: 'peerNotifySettings', mute_until: 0, show_previews: true },
 }
 
 const raw = (id: number, pos: number, over: Partial<RawFolder> = {}): RawFolder => ({
@@ -170,7 +171,7 @@ describe('folders.solid — счётчики вкладок', () => {
     op: 'upsert',
     peers: [{ _: 'channel', id: 50, title: 'Канал', photo: { _: 'chatPhotoEmpty' }, date: 0, pFlags: { broadcast: true } }],
   }])
-  const CHANNELS_MUTED = { ...SETTINGS, channels: { muted: true, preview: true } }
+  const CHANNELS_MUTED: NotifySettings = { ...SETTINGS, notifyBroadcasts: { _: 'peerNotifySettings', mute_until: 2147483647, show_previews: true } }
 
   it('глобальный мьют типа перекрашивает бейдж', () => {
     upsertBroadcast()

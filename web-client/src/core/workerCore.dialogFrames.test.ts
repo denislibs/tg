@@ -499,6 +499,30 @@ describe('createWorkerCore(): realtime-эхо действий (mute/pin/archive
     ])
   })
 
+  // Журнал `notify_settings` (глобальные настройки ТИПА чатов): у кадра нет пира,
+  // и ветка диалога (`getPeerId(e.peer.peer)`) на нём упала бы. Вкладкам уходит
+  // событие `notify_settings` (tweb `rootScope` :537), диалоги не трогаются.
+  it.each(['notifyUsers', 'notifyChats', 'notifyBroadcasts'] as const)(
+    'notify_settings{%s} → событие вкладкам, диалог не трогает',
+    async (key) => {
+      const { dialogOps, core } = await bootWithSeededDialog()
+      const events: unknown[] = []
+      const [epWorker, epTab] = pair()
+      core.bind(epWorker)
+      new SuperMessagePort(epTab).on('notify_settings', (p) => events.push(p))
+      const body = {
+        _: 'updateNotifySettings',
+        peer: { _: key },
+        notify_settings: { _: 'peerNotifySettings', mute_until: 2147483647, show_previews: false },
+      }
+
+      expect(() => capturedConnDeps!.onFrame('notify_settings', body)).not.toThrow()
+
+      expect(events).toEqual([body])
+      expect(dialogOps).toEqual([])
+    },
+  )
+
   // Архив — ПАПКА: кадр несёт вектор пиров с НОМЕРОМ папки, а не признак
   // `archived`. «Вернуть из архива» — тот же кадр с folder_id = 0.
   it('dialog_archive (без pts) → dialogs.applyFolder → ровно один rt:dialog_op patch (сбрасывает pinned)', async () => {

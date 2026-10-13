@@ -35,6 +35,7 @@ import type { StickerSet } from '@core/managers/stickersManager'
 import type { MyDocument } from '@core/media/messageMedia'
 import type { PeerBlockEvt } from '@core/managers/privacyManager'
 import type { DraftUpdatedEvt } from '@core/managers/draftsManager'
+import type { NotifyTypeUpdate } from '@core/managers/notifyManager'
 
 export type { EventMeta } from '@rpc/superMessagePort'
 import type { EventMeta } from '@rpc/superMessagePort'
@@ -322,6 +323,12 @@ export type BroadcastEvents = {
   // tweb rootScope.ts:162 — черновик треда изменился (`appDraftsManager.saveDraft`
   // с `notify`); черновик чата едет строкой диалога (`core/managers/draftsManager.ts`).
   'draft_updated': [DraftUpdatedEvt]
+  // tweb rootScope.ts `notify_settings` (`Update.updateNotifySettings`): глобальные
+  // настройки по ТИПУ чатов (`notifyUsers|notifyChats|notifyBroadcasts`) — с
+  // другого устройства (журнал `notify_settings`) и местный апдейт после своего PUT
+  // (`notifyManager.updateNotifySettings`). Пер-чатные идут `rt:dialog_op`.
+  // Подписчики — `notifyStore` (проектор) и вкладка «Уведомления и звуки».
+  'notify_settings': [NotifyTypeUpdate]
 }
 
 export type BroadcastEventsListeners = {

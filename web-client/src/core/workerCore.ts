@@ -17,7 +17,7 @@ import { newChatsManager } from './managers/chatsManager'
 import { newMessagesManager } from './managers/messagesManager'
 import { newMediaManager } from './managers/mediaManager'
 import { newPushManager } from './managers/pushManager'
-import { newNotifyManager } from './managers/notifyManager'
+import { newNotifyManager, type NotifyTypeKey } from './managers/notifyManager'
 import { newFoldersManager } from './managers/foldersManager'
 import { newGroupsManager } from './managers/groupsManager'
 import { newChannelsManager } from './managers/channelsManager'
@@ -296,7 +296,14 @@ export function createWorkerCore() {
     fileUpload,
   })
   const push = newPushManager({ rest })
-  const notify = newNotifyManager({ rest })
+  // Местный апдейт после своего PUT (tweb `generateLocalNotifySettingsUpdate`) —
+  // событие `notify_settings` вкладкам; `broadcast` объявлен ниже, зовётся позже.
+  const notifyFrames: Partial<Record<NotifyTypeKey, number>> = {}
+  const notify = newNotifyManager({
+    rest,
+    onLocalUpdate: (u) => broadcast('notify_settings', u),
+    frameVersion: (key) => notifyFrames[key] ?? 0,
+  })
   const folders = newFoldersManager({ rest })
   // Зеркало ключа State во все вкладки (порт tweb apiManagerProxy.processMirrorTaskMap.
   // state) — общая функция для persistManager.stateKey (сторонние ключи) И
@@ -740,6 +747,14 @@ export function createWorkerCore() {
     // второй кадр.
     else if (pred === 'updateNotifySettings') {
       const e = d as DialogMuteEvt
+      // Глобальные настройки ТИПА чатов (журнал `notify_settings`): пира нет, диалог
+      // и тема ни при чём — событие `notify_settings` вкладкам, как у tweb
+      // `rootScope.dispatchEvent('notify_settings', update)` (:537).
+      if (e.peer._ === 'notifyUsers' || e.peer._ === 'notifyChats' || e.peer._ === 'notifyBroadcasts') {
+        notifyFrames[e.peer._] = (notifyFrames[e.peer._] ?? 0) + 1
+        broadcast('notify_settings', d, meta)
+        return
+      }
       // Тема форума — свой ключ настроек (`notifyForumTopic`, tweb
       // appMessagesManager.ts:11751-11770): владелец — хранилище тем.
       if (e.peer._ === 'notifyForumTopic') {

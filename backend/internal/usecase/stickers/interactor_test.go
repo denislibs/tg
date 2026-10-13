@@ -24,7 +24,8 @@ type fakeRepo struct {
 	recent    map[int64]map[int64]int64 // userID -> stickerID -> usedAt
 	faved     map[int64]map[int64]int64
 	gifs      map[int64]map[int64]int64 // userID -> mediaID -> savedAt
-	media     map[int64]bool
+	media     map[int64]domain.Media    // строки media (MediaReader)
+	hidden    map[int64]bool            // media, недоступное зрителю (MediaAccess)
 	// featuredLimit — лимит, с которым usecase позвал FeaturedSets (для пина featuredLim).
 	featuredLimit int
 }
@@ -37,7 +38,8 @@ func newFakeRepo() *fakeRepo {
 		recent:    map[int64]map[int64]int64{},
 		faved:     map[int64]map[int64]int64{},
 		gifs:      map[int64]map[int64]int64{},
-		media:     map[int64]bool{},
+		media:     map[int64]domain.Media{},
+		hidden:    map[int64]bool{},
 	}
 }
 
@@ -432,10 +434,30 @@ func (f *fakeRepo) DeleteGif(_ context.Context, userID, mediaID int64) error {
 	return nil
 }
 
-func (f *fakeRepo) MediaExists(_ context.Context, mediaID int64) (bool, error) {
+// GetByID — MediaReader поверх строк media фейка.
+func (f *fakeRepo) GetByID(_ context.Context, id int64) (domain.Media, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.media[mediaID], nil
+	if m, ok := f.media[id]; ok {
+		return m, nil
+	}
+	return domain.Media{}, domain.ErrNotFound
+}
+
+// CanAccessMedia — MediaAccess: существующее media видно, кроме hidden.
+func (f *fakeRepo) CanAccessMedia(_ context.Context, _, mediaID int64) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, ok := f.media[mediaID]
+	return ok && !f.hidden[mediaID], nil
+}
+
+// newInteractor — Interactor с подключёнными MediaReader и MediaAccess фейка.
+func newInteractor(f *fakeRepo) *Interactor {
+	in := New(f)
+	in.SetMediaReader(f)
+	in.SetMediaAccess(f)
+	return in
 }
 
 func (f *fakeRepo) IsStickerMedia(_ context.Context, mediaID int64) (bool, error) {
@@ -462,7 +484,7 @@ func seedSet(t *testing.T, in *Interactor, f *fakeRepo, owner int64, slug string
 	sts := make([]domain.Sticker, 0, n)
 	for k := 0; k < n; k++ {
 		mediaID := int64(1000 + len(f.media))
-		f.media[mediaID] = true
+		f.media[mediaID] = domain.Media{ID: mediaID, OwnerID: owner, Mime: "image/webp"}
 		s, err := in.AddSticker(context.Background(), owner, set.ID, mediaID, "😀")
 		if err != nil {
 			t.Fatalf("AddSticker: %v", err)
@@ -473,7 +495,7 @@ func seedSet(t *testing.T, in *Interactor, f *fakeRepo, owner int64, slug string
 }
 
 func TestCreateSet_Validation(t *testing.T) {
-	in := New(newFakeRepo())
+	in := newInteractor(newFakeRepo())
 	ctx := context.Background()
 	for _, slug := range []string{"ab", "Upper", "with space", "тест", "a-b", strings.Repeat("a", 65)} {
 		if _, err := in.CreateSet(ctx, 1, slug, "Title", "sticker"); !errors.Is(err, domain.ErrInvalid) {
@@ -497,10 +519,10 @@ func TestCreateSet_Validation(t *testing.T) {
 
 func TestAddSticker_OwnerAndMedia(t *testing.T) {
 	f := newFakeRepo()
-	in := New(f)
+	in := newInteractor(f)
 	ctx := context.Background()
 	set, _ := seedSet(t, in, f, 1, "owner_set", 1)
-	f.media[500] = true
+	f.media[500] = domain.Media{ID: 500, OwnerID: 1, Mime: "image/webp"}
 	if _, err := in.AddSticker(ctx, 2, set.ID, 500, "😀"); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("чужой набор: want ErrForbidden, got %v", err)
 	}
@@ -511,7 +533,7 @@ func TestAddSticker_OwnerAndMedia(t *testing.T) {
 
 func TestInstallUninstall_Idempotent(t *testing.T) {
 	f := newFakeRepo()
-	in := New(f)
+	in := newInteractor(f)
 	ctx := context.Background()
 	set, _ := seedSet(t, in, f, 1, "duck_set", 1)
 	const user = int64(7)
@@ -541,7 +563,7 @@ func TestInstallUninstall_Idempotent(t *testing.T) {
 
 func TestRecent_LimitAndOrder(t *testing.T) {
 	f := newFakeRepo()
-	in := New(f)
+	in := newInteractor(f)
 	ctx := context.Background()
 	_, seeded := seedSet(t, in, f, 1, "many_set", 25)
 	const user = int64(7)
@@ -566,7 +588,7 @@ func TestRecent_LimitAndOrder(t *testing.T) {
 
 func TestFaved_Limit(t *testing.T) {
 	f := newFakeRepo()
-	in := New(f)
+	in := newInteractor(f)
 	ctx := context.Background()
 	_, seeded := seedSet(t, in, f, 1, "fav_set", 12)
 	const user = int64(7)
@@ -589,12 +611,12 @@ func TestFaved_Limit(t *testing.T) {
 
 func TestSavedGifs_LimitLIFO(t *testing.T) {
 	f := newFakeRepo()
-	in := New(f)
+	in := newInteractor(f)
 	ctx := context.Background()
 	const user = int64(7)
 	for k := 0; k < 205; k++ {
 		mediaID := int64(10000 + k)
-		f.media[mediaID] = true
+		f.media[mediaID] = domain.Media{ID: mediaID, OwnerID: 99, Mime: "image/gif", Animated: true}
 		if err := in.SaveGif(ctx, user, mediaID); err != nil {
 			t.Fatalf("SaveGif(%d): %v", mediaID, err)
 		}
@@ -614,7 +636,7 @@ func TestSavedGifs_LimitLIFO(t *testing.T) {
 
 func TestSearchByEmoji_InstalledOnly(t *testing.T) {
 	f := newFakeRepo()
-	in := New(f)
+	in := newInteractor(f)
 	ctx := context.Background()
 	installedSet, installedSts := seedSet(t, in, f, 1, "installed_set", 2)
 	_, otherSts := seedSet(t, in, f, 1, "other_set", 2)
@@ -636,7 +658,7 @@ func TestSearchByEmoji_InstalledOnly(t *testing.T) {
 }
 
 func TestSearchGifs_NoProviderIsEmptyPage(t *testing.T) {
-	in := New(newFakeRepo())
+	in := newInteractor(newFakeRepo())
 	page, err := in.SearchGifs(context.Background(), "cats", "")
 	if err != nil || page.Gifs == nil || len(page.Gifs) != 0 || page.Next != "" {
 		t.Fatalf("без провайдера: want пустая страница, got %+v, %v", page, err)
@@ -645,7 +667,7 @@ func TestSearchGifs_NoProviderIsEmptyPage(t *testing.T) {
 
 func TestCanUseStickerMedia(t *testing.T) {
 	f := newFakeRepo()
-	in := New(f)
+	in := newInteractor(f)
 	ctx := context.Background()
 	_, seeded := seedSet(t, in, f, 1, "media_set", 1)
 	s := seeded[0]
@@ -661,7 +683,7 @@ func TestCanUseStickerMedia(t *testing.T) {
 // новейшие наборы первыми и ограничивает выдачу featuredLim (40).
 func TestFeatured_NewestFirstAndLimit(t *testing.T) {
 	f := newFakeRepo()
-	in := New(f)
+	in := newInteractor(f)
 	ctx := context.Background()
 	older, olderSts := seedSet(t, in, f, 1, "older_set", 1)
 	newer, newerSts := seedSet(t, in, f, 1, "newer_set", 1)
@@ -698,7 +720,7 @@ func TestFeatured_NewestFirstAndLimit(t *testing.T) {
 // Пустой запрос — пустая выдача без похода в репозиторий.
 func TestSearchSets_ReturnsCovers(t *testing.T) {
 	f := newFakeRepo()
-	in := New(f)
+	in := newInteractor(f)
 	ctx := context.Background()
 	duck, duckSts := seedSet(t, in, f, 1, "duck_pack", 3)
 	seedSet(t, in, f, 1, "cat_pack", 1) // не матчится по запросу
@@ -717,5 +739,130 @@ func TestSearchSets_ReturnsCovers(t *testing.T) {
 	sets, covers, err = in.SearchSets(ctx, 1, "  ")
 	if err != nil || len(sets) != 0 || len(covers) != 0 {
 		t.Fatalf("SearchSets(пусто): %+v, %+v, %v — want пустую выдачу", sets, covers, err)
+	}
+}
+
+// F7-A (MC-01): свой набор не должен делать чужой файл публичным —
+// IsStickerMedia открывает файл любого стикера всем.
+func TestAddSticker_RequiresSetCreatorOwnsMedia(t *testing.T) {
+	f := newFakeRepo()
+	in := newInteractor(f)
+	ctx := context.Background()
+	set, _ := seedSet(t, in, f, 1, "mine_set", 0)
+	f.media[30] = domain.Media{ID: 30, OwnerID: 2, Mime: "application/pdf"}
+	f.media[31] = domain.Media{ID: 31, OwnerID: 1, Mime: "image/webp"}
+	f.media[33] = domain.Media{ID: 33, OwnerID: 1, Mime: "text/html"}
+
+	if _, err := in.AddSticker(ctx, 1, set.ID, 30, "🙂"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("чужой файл: err=%v; want ErrNotFound", err)
+	}
+	if ok, _ := f.IsStickerMedia(ctx, 30); ok {
+		t.Fatal("чужой файл стал стикерным медиа")
+	}
+	if _, err := in.AddStickerAt(ctx, 1, set.ID, 30, "🙂", 0, nil); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("AddStickerAt чужой файл: err=%v; want ErrNotFound", err)
+	}
+	if _, err := in.AddSticker(ctx, 1, set.ID, 33, "🙂"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("свой html: err=%v; want ErrNotFound", err)
+	}
+	if _, err := in.AddSticker(ctx, 1, set.ID, 31, "🙂"); err != nil {
+		t.Fatalf("свой файл: %v", err)
+	}
+	// Сид: файл и набор принадлежат сервисному аккаунту.
+	svcSet, _ := seedSet(t, in, f, domain.ServiceUserID, "svc_set", 0)
+	f.media[32] = domain.Media{ID: 32, OwnerID: domain.ServiceUserID, Mime: "application/x-tgsticker"}
+	if _, err := in.AddStickerAt(ctx, domain.ServiceUserID, svcSet.ID, 32, "🙂", 0, nil); err != nil {
+		t.Fatalf("сид: %v", err)
+	}
+}
+
+// Не подключённый MediaReader — ошибка проводки, не тихий 404.
+func TestStickers_UnwiredMediaReader(t *testing.T) {
+	f := newFakeRepo()
+	in := New(f)
+	ctx := context.Background()
+	set, err := in.CreateSet(ctx, 1, "unwired_set", "T", "sticker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.media[40] = domain.Media{ID: 40, OwnerID: 1, Mime: "image/gif"}
+	if _, err := in.AddSticker(ctx, 1, set.ID, 40, "🙂"); err == nil || errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("AddSticker: err=%v; want ошибку проводки", err)
+	}
+	if err := in.SaveGif(ctx, 1, 40); err == nil || errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("SaveGif: err=%v; want ошибку проводки", err)
+	}
+}
+
+// F7-A (MC-01): messages.saveGif адресуется InputDocument с access_hash
+// (tweb appGifsManager.ts:109-120) — сохранить можно только видимое и только гиф.
+func TestSaveGif_RequiresAccessAndKind(t *testing.T) {
+	f := newFakeRepo()
+	in := newInteractor(f)
+	ctx := context.Background()
+	const user = int64(1)
+	f.media[20] = domain.Media{ID: 20, OwnerID: 2, Mime: "video/mp4", Animated: true}
+	f.media[21] = domain.Media{ID: 21, OwnerID: 2, Mime: "image/jpeg"}
+	f.media[22] = domain.Media{ID: 22, OwnerID: 2, Mime: "image/gif"}
+	f.hidden[22] = true
+	f.media[23] = domain.Media{ID: 23, OwnerID: 2, Mime: "image/gif"}
+	f.media[24] = domain.Media{ID: 24, OwnerID: user, Mime: "video/mp4"}
+	f.media[25] = domain.Media{ID: 25, OwnerID: 2, Mime: "video/mp4"}
+	f.media[26] = domain.Media{ID: 26, OwnerID: user, Mime: "video/mp4", ThumbKey: "t/26"} // обработано, не гиф
+	f.media[27] = domain.Media{ID: 27, OwnerID: 2, Mime: "video/webm", Animated: true}     // стикер-webm
+
+	saved := func(id int64) bool { _, ok := f.gifs[user][id]; return ok }
+	for _, c := range []struct {
+		id   int64
+		want bool
+		why  string
+	}{
+		{20, true, "видимый анимированный mp4"},
+		{21, false, "картинка не гиф"},
+		{22, false, "гиф, но недоступен"},
+		{23, true, "image/gif до обработки"},
+		{24, true, "свой mp4 до обработки (Tenor сразу после sendFile)"},
+		{25, false, "чужой mp4 без Animated"},
+		{26, false, "своё обработанное mp4 без Animated"},
+		{27, false, "Animated, но не gif/mp4"},
+		{99999, false, "нет файла"},
+	} {
+		err := in.SaveGif(ctx, user, c.id)
+		if c.want && err != nil {
+			t.Errorf("%s: err=%v; want сохранён", c.why, err)
+		}
+		if !c.want && !errors.Is(err, domain.ErrNotFound) {
+			t.Errorf("%s: err=%v; want ErrNotFound", c.why, err)
+		}
+		if saved(c.id) != c.want {
+			t.Errorf("%s: saved=%v; want %v", c.why, saved(c.id), c.want)
+		}
+	}
+}
+
+// Белый список формата стикера: все форматы, которые кладёт сид, проходят;
+// html/svg/pdf — нет.
+func TestAddSticker_MimeWhitelist(t *testing.T) {
+	f := newFakeRepo()
+	in := newInteractor(f)
+	ctx := context.Background()
+	set, _ := seedSet(t, in, f, 1, "mime_set", 0)
+	for k, c := range []struct {
+		mime string
+		want bool
+	}{
+		{"application/x-tgsticker", true}, {"image/webp", true}, {"video/webm", true},
+		{"image/png", true}, {"application/json", true},
+		{"image/svg+xml", false}, {"application/pdf", false}, {"text/html", false},
+	} {
+		id := int64(700 + k)
+		f.media[id] = domain.Media{ID: id, OwnerID: 1, Mime: c.mime}
+		_, err := in.AddSticker(ctx, 1, set.ID, id, "🙂")
+		if c.want && err != nil {
+			t.Errorf("%s: err=%v; want принят", c.mime, err)
+		}
+		if !c.want && !errors.Is(err, domain.ErrNotFound) {
+			t.Errorf("%s: err=%v; want ErrNotFound", c.mime, err)
+		}
 	}
 }

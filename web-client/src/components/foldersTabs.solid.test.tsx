@@ -28,6 +28,7 @@ import { useAppStateStore } from '@stores/appState'
 import { applyFolderUpdate, useFoldersStore } from '@stores/foldersStore'
 import { useChatsStore } from '@stores/chatsStore'
 import { useNotifyStore } from '@stores/notifyStore'
+import type { NotifySettings } from '@core/managers/notifyManager'
 import { initialState } from '@core/state/state'
 import { ALL_FOLDER_ID } from '@core/folderIds'
 import { makeDialog } from '@core/dialogs/testDialog'
@@ -59,10 +60,10 @@ function snapshot(root: Element) {
   return out
 }
 
-const SETTINGS = {
-  private: { muted: false, preview: true },
-  groups: { muted: false, preview: true },
-  channels: { muted: false, preview: true },
+const SETTINGS: NotifySettings = {
+  notifyUsers: { _: 'peerNotifySettings', mute_until: 0, show_previews: true },
+  notifyChats: { _: 'peerNotifySettings', mute_until: 0, show_previews: true },
+  notifyBroadcasts: { _: 'peerNotifySettings', mute_until: 0, show_previews: true },
 }
 
 /** Папка «ровно эти чаты» — счётчик равен числу непрочитанных среди них. */
