@@ -136,6 +136,11 @@ type ChatRepo interface {
 	// сообщение.
 	SetDialogHidden(ctx context.Context, chatID, userID int64, hidden bool) error
 	ShowDialogs(ctx context.Context, chatID int64) error
+	// LockDialogDelete — транзакционный замок «удаление диалога» чата: двух
+	// встречных DeleteDialog(revoke) с разных сторон он разводит (они берут строки
+	// chat_members в разном порядке). Другие пути (DeleteMessage, Send) замок не
+	// берут. Первой командой транзакции.
+	LockDialogDelete(ctx context.Context, chatID int64) error
 	// RecountCounters пересчитывает непрочитанное, «@» и ❤ участников по
 	// видимым им сообщениям (после массового удаления), выбросив упоминания
 	// удалённых сообщений чата.
@@ -397,7 +402,9 @@ type MessageRepo interface {
 	UpdateReplyMarkup(ctx context.Context, msgID int64, markup domain.ReplyMarkup) (domain.Message, error)
 	// UpdateGeoLive обновляет координаты live-локации (+heading/stopped), бампит edited_at.
 	UpdateGeoLive(ctx context.Context, msgID int64, lat, lng float64, heading *int, stopped bool) (domain.Message, error)
-	SoftDelete(ctx context.Context, msgID int64) error
+	// SoftDelete — удалить у всех; false — уже было удалено (повтор), и
+	// вызывающий не трогает счётчики и журнал второй раз.
+	SoftDelete(ctx context.Context, msgID int64) (bool, error)
 	// SoftDeleteUpTo — удалить у всех сообщения чата с seq<=maxSeq
 	// (deleteHistory revoke).
 	SoftDeleteUpTo(ctx context.Context, chatID, maxSeq int64) error
@@ -405,7 +412,8 @@ type MessageRepo interface {
 	// полученных читателем (sender_id<>readerID) до readSeq; no-op для чатов
 	// без ttl. Идемпотентно.
 	SetDestructOnRead(ctx context.Context, chatID, readerID, readSeq int64) error
-	HideForUser(ctx context.Context, userID, msgID int64) error
+	// HideForUser — скрыть у себя; false — уже скрыто (повтор).
+	HideForUser(ctx context.Context, userID, msgID int64) (bool, error)
 	// ListThread — сообщения треда по возрастанию, только видимые зрителю viewerID.
 	ListThread(ctx context.Context, chatID, viewerID, threadRootID int64, offset, limit int) ([]domain.Message, error)
 	CountThread(ctx context.Context, chatID, threadRootID int64) (int, error)

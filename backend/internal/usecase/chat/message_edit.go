@@ -422,10 +422,18 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 	var channelPts int64
 	var del *deleteDelivery
 	var mirrors []*deleteDelivery
+	// changed=false — повтор: сообщение уже удалено (или скрыто), журнал и
+	// счётчики не трогаем, кадра не шлём.
+	changed := true
 	err = i.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if channelDelete {
-			if e := i.msgs.SoftDelete(ctx, msgID); e != nil {
+			done, e := i.msgs.SoftDelete(ctx, msgID)
+			if e != nil {
 				return e
+			}
+			if !done {
+				changed = false
+				return nil
 			}
 			// Непрочитанное канала считается на чтении — удалённый пост выпадает
 			// из него сам, хранимых счётчиков править не нужно.
@@ -452,15 +460,22 @@ func (i *Interactor) DeleteMessage(ctx context.Context, chatID, msgID, userID in
 			return e
 		}
 		// delete for me: hide for this user only; sync only their own devices.
-		if e := i.msgs.HideForUser(ctx, userID, msgID); e != nil {
+		hidden, e := i.msgs.HideForUser(ctx, userID, msgID)
+		if e != nil {
 			return e
 		}
-		var e error
+		if !hidden {
+			changed = false
+			return nil
+		}
 		del, e = i.logDelete(ctx, cur, []int64{userID})
 		return e
 	})
 	if err != nil {
 		return err
+	}
+	if !changed {
+		return nil
 	}
 	if channelDelete {
 		i.publishChannelUpdate(ctx, chatID, "delete_message", channelBody, channelPts, 0)
@@ -489,10 +504,15 @@ type deleteDelivery struct {
 // fanOutDelete — удаление «у всех» сообщения msg его чата: мягкое удаление,
 // снятие с непрочитанного (sender — автор, у которого оно не непрочитано; 0 —
 // ничьё, зеркало) и delete_message в журнал участников и extra (гость
-// обсуждения — свои устройства). Звать в транзакции.
+// обсуждения — свои устройства). Повтор (сообщение уже удалено) не делает
+// ничего: (nil, nil), публиковать нечего. Звать в транзакции.
 func (i *Interactor) fanOutDelete(ctx context.Context, msg domain.Message, sender int64, extra []int64) (*deleteDelivery, error) {
-	if err := i.msgs.SoftDelete(ctx, msg.ID); err != nil {
+	done, err := i.msgs.SoftDelete(ctx, msg.ID)
+	if err != nil {
 		return nil, err
+	}
+	if !done {
+		return nil, nil
 	}
 	// Кто ещё не прочёл удалённое, тому оно больше не непрочитанное.
 	// Без этого хранимый счётчик держал удалённое в бейдже до

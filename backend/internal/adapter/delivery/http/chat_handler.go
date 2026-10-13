@@ -685,47 +685,44 @@ func (h *ChatHandler) ReadReactions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
-// ClearHistory clears the caller's copy of the chat history (POST
-// /chats/{chatID}/clear; Telegram «Очистить историю» — у себя): messages stay
-// for everyone else, only this user's window is emptied.
-func (h *ChatHandler) ClearHistory(w http.ResponseWriter, r *http.Request) {
+// DeleteHistory — messages.deleteHistory (DELETE
+// /chats/{peerID}/history?just_clear=1|0&revoke=1|0; tweb
+// appMessagesManager.doFlushHistory :6441-6595).
+//
+// just_clear=1 — «Очистить историю» только у себя (revoke игнорируется):
+// сообщения остаются у остальных, пустеет лишь окно этого пользователя.
+// Иначе — «Удалить чат» в личке и «Избранном»: история очищается у себя,
+// строка пропадает из списка до следующего сообщения, участие остаётся;
+// revoke — удалить и у собеседника. Группа/канал — 400 PEER_ID_INVALID (там
+// выход или удаление чата).
+//
+// Ответ — messages.affectedHistory: pts и pts_count журнала актора. Клиент
+// двигает по ним свой курсор. Операция атомарна, offset всегда 0.
+func (h *ChatHandler) DeleteHistory(w http.ResponseWriter, r *http.Request) {
 	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
-	err := h.svc.ClearHistory(r.Context(), chatID, h.meID(r))
-	if errors.Is(err, domain.ErrNotFound) {
-		writeError(w, http.StatusForbidden, "not a member of this chat")
-		return
+	q := r.URL.Query()
+	flag := func(key string) bool { return q.Get(key) == "1" || q.Get(key) == "true" }
+	var (
+		res domain.MessagesAffectedHistory
+		err error
+	)
+	if flag("just_clear") {
+		res, err = h.svc.ClearHistory(r.Context(), chatID, h.meID(r))
+	} else {
+		res, err = h.svc.DeleteDialog(r.Context(), chatID, h.meID(r), flag("revoke"))
 	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "clear failed")
-		return
-	}
-	writeJSON(w, http.StatusOK, domain.NewBool(true))
-}
-
-// DeleteDialog — «Удалить чат» в личке и «Избранном» (DELETE
-// /chats/{peerID}/history?revoke=1; Telegram messages.deleteHistory
-// just_clear=false): история очищается у себя, строка пропадает из списка до
-// следующего сообщения, участие остаётся. revoke — удалить и у собеседника.
-// Группа/канал — 400 PEER_ID_INVALID (там выход или удаление чата).
-func (h *ChatHandler) DeleteDialog(w http.ResponseWriter, r *http.Request) {
-	chatID, ok := peerChatID(w, r, h.svc)
-	if !ok {
-		return
-	}
-	revoke := r.URL.Query().Get("revoke") == "1" || r.URL.Query().Get("revoke") == "true"
-	err := h.svc.DeleteDialog(r.Context(), chatID, h.meID(r), revoke)
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusForbidden, "not a member of this chat")
 	case errors.Is(err, domain.ErrInvalid):
 		writeError(w, http.StatusBadRequest, "PEER_ID_INVALID")
 	case err != nil:
-		writeError(w, http.StatusInternalServerError, "delete failed")
+		writeError(w, http.StatusInternalServerError, "delete history failed")
 	default:
-		writeJSON(w, http.StatusOK, domain.NewBool(true))
+		writeJSON(w, http.StatusOK, res)
 	}
 }
 

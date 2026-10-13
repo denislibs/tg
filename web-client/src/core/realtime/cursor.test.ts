@@ -84,3 +84,12 @@ describe('newCursor.reset (переход сессии)', () => {
     expect(store._m.get('date')).toBe(0)
   })
 })
+
+describe('classifyPts с pts_count (tweb processUpdate :696-734)', () => {
+  it('cur + pts_count >= pts — next, дальше — gap, не позже курсора — dup', () => {
+    expect(classifyPts(10, 13, 3)).toBe('next')
+    expect(classifyPts(10, 14, 3)).toBe('gap')
+    expect(classifyPts(10, 10, 3)).toBe('dup')
+    expect(classifyPts(10, 11)).toBe('next') // pts_count по умолчанию 1
+  })
+})

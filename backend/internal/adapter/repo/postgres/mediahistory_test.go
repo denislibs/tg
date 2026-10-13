@@ -153,7 +153,7 @@ func TestMessagesRepo_SearchCounters(t *testing.T) {
 	insert("text", "смотри https://example.com")
 	insert("text", "без ссылки")
 	deleted := insert("photo", "")
-	if err := msgs.SoftDelete(ctx, deleted.ID); err != nil {
+	if _, err := msgs.SoftDelete(ctx, deleted.ID); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 

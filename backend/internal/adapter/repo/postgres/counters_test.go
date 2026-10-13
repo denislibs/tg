@@ -59,7 +59,7 @@ func TestCounters_UnreadReactionsByMessages(t *testing.T) {
 	if _, _, r := memberCounters(t, pool, chatID, a); r != 1 {
 		t.Fatalf("после прочтения до m1 unread_reactions = %d, want 1", r)
 	}
-	if err := msgs.SoftDelete(ctx, m2.ID); err != nil {
+	if _, err := msgs.SoftDelete(ctx, m2.ID); err != nil {
 		t.Fatal(err)
 	}
 	if n, _ := chats.RecountUnreadReactions(ctx, chatID, a); n != 0 {
@@ -111,7 +111,7 @@ func TestCounters_PinnedSkipsDeleted(t *testing.T) {
 	if p, _ := chats.PinnedIDs(ctx, []int64{m1.ID, m2.ID}); !p[m1.ID] || !p[m2.ID] {
 		t.Fatalf("PinnedIDs = %v", p)
 	}
-	_ = msgs.SoftDelete(ctx, m2.ID)
+	_, _ = msgs.SoftDelete(ctx, m2.ID)
 	card, err := groups.Card(ctx, chatID, a)
 	if err != nil || card.PinnedMsgID != m1.Seq {
 		t.Fatalf("pinned_msg_id = %d, %v; want %d (предыдущий живой)", card.PinnedMsgID, err, m1.Seq)
@@ -162,7 +162,7 @@ func TestCounters_DialogHiddenAndRecount(t *testing.T) {
 	_, _ = chats.IncUnreadBulk(ctx, chatID, []int64{a})
 
 	// «удалить у себя» m2: CountUnread его не считает.
-	_ = msgs.HideForUser(ctx, a, m2.ID)
+	_, _ = msgs.HideForUser(ctx, a, m2.ID)
 	if n, _ := msgs.CountUnread(ctx, chatID, a, 0); n != 1 {
 		t.Fatalf("CountUnread со скрытым у себя = %d, want 1", n)
 	}
@@ -172,7 +172,7 @@ func TestCounters_DialogHiddenAndRecount(t *testing.T) {
 	}
 
 	// удаление у всех m1: упоминание снимается, пересчёт счётчиков.
-	_ = msgs.SoftDelete(ctx, m1.ID)
+	_, _ = msgs.SoftDelete(ctx, m1.ID)
 	if err := chats.DropMessageMentions(ctx, chatID, m1.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +234,7 @@ func TestCounters_SoftDeleteAndHideBookkeeping(t *testing.T) {
 	_ = reacts.Add(ctx, m1.ID, a, "👍", true)
 	_, _ = chats.RecountUnreadReactions(ctx, chatID, b)
 
-	if err := msgs.SoftDelete(ctx, m1.ID); err != nil {
+	if _, err := msgs.SoftDelete(ctx, m1.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, mn, _ := memberCounters(t, pool, chatID, a); mn != 1 {
@@ -246,11 +246,37 @@ func TestCounters_SoftDeleteAndHideBookkeeping(t *testing.T) {
 	if next, _ := chats.NextMention(ctx, chatID, a, 0); next != m2.Seq {
 		t.Fatalf("к следующему @ = %d, want %d", next, m2.Seq)
 	}
-	if err := msgs.HideForUser(ctx, a, m2.ID); err != nil {
+	if _, err := msgs.HideForUser(ctx, a, m2.ID); err != nil {
 		t.Fatal(err)
 	}
-	_ = msgs.HideForUser(ctx, a, m2.ID) // повтор — no-op
+	_, _ = msgs.HideForUser(ctx, a, m2.ID) // повтор — no-op
 	if u, mn, _ := memberCounters(t, pool, chatID, a); u != 1 || mn != 0 {
 		t.Fatalf("после удаления у себя unread=%d «@»=%d, want 1/0", u, mn)
+	}
+}
+
+// F6 (9.1): повтор удаления отвечает «ничего не изменилось» — вызывающий не
+// вычитает непрочитанное и не пишет журнал второй раз.
+func TestSoftDeleteAndHide_RepeatReportsNoChange(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	msgs := NewMessagesRepo(pool)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+7652")
+	b := seedUser(t, pool, "+7653")
+	chatID := createPrivate(t, pool, a, b)
+	m1 := insertMsg(t, msgs, chatID, b, "text", "раз")
+	m2 := insertMsg(t, msgs, chatID, b, "text", "два")
+
+	for i, want := range []bool{true, false, false} {
+		got, err := msgs.SoftDelete(ctx, m1.ID)
+		if err != nil || got != want {
+			t.Fatalf("SoftDelete #%d = %v %v, want %v", i+1, got, err, want)
+		}
+	}
+	for i, want := range []bool{true, false} {
+		got, err := msgs.HideForUser(ctx, a, m2.ID)
+		if err != nil || got != want {
+			t.Fatalf("HideForUser #%d = %v %v, want %v", i+1, got, err, want)
+		}
 	}
 }

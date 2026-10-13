@@ -106,7 +106,7 @@ func TestMessagesRepo_CountMessagesIsViewerVisible(t *testing.T) {
 		ids = append(ids, m.ID)
 	}
 	// a скрыл у себя последнее и очистил историю до seq 1.
-	if err := msgs.HideForUser(ctx, a, ids[3]); err != nil {
+	if _, err := msgs.HideForUser(ctx, a, ids[3]); err != nil {
 		t.Fatal(err)
 	}
 	if err := NewChatsRepo(pool).SetClearedSeq(ctx, chatID, a, 1); err != nil {

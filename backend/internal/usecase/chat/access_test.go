@@ -238,7 +238,7 @@ func TestMessagesBySeqs_OnlyVisible(t *testing.T) {
 		seqs, ids = append(seqs, m.Seq), append(ids, m.ID)
 	}
 	_ = in.chats.SetClearedSeq(ctx, 50, 2, seqs[0]) // Боб очистил историю до «старого»
-	_ = in.msgs.HideForUser(ctx, 2, ids[1])         // и удалил у себя «скрытое»
+	_, _ = in.msgs.HideForUser(ctx, 2, ids[1])      // и удалил у себя «скрытое»
 
 	got, err := in.MessagesBySeqs(ctx, 50, 2, seqs)
 	if err != nil {
