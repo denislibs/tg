@@ -92,6 +92,9 @@ func allDialogConstructors() []any {
 		// сверяться обязаны там же, где объявлены.
 		NewDialogPeer(NewPeerUser(42)),
 		NewNotifyPeer(NewPeerChannel(8)),
+		NotifyTypePeer(NotifyTypeUsers),
+		NotifyTypePeer(NotifyTypeChats),
+		NotifyTypePeer(NotifyTypeBroadcasts),
 		NewFolderPeer(NewPeerUser(42), FolderArchive),
 		// «Вернуть из архива» — тот же конструктор с нулевой папкой, а не второй.
 		NewFolderPeer(NewPeerUser(42), FolderAll),
@@ -219,6 +222,7 @@ func dialogConstructorTags() []string {
 	return []string{
 		DialogTag, DialogFolderTag, FolderTag,
 		DialogPeerTag, NotifyPeerTag, FolderPeerTag,
+		NotifyUsersTag, NotifyChatsTag, NotifyBroadcastsTag,
 		DraftMessageTag, DraftMessageEmptyTag, InputReplyToMessageTag,
 		PeerNotifySettingsTag,
 		NotificationSoundDefaultTag, NotificationSoundNoneTag,
