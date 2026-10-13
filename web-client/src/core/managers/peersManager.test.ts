@@ -531,4 +531,22 @@ describe('PeersManager — переключение pFlags.contact', () => {
 
     expect(toggles).toEqual([])
   })
+
+  // Книга двигается ПОСЛЕ объявления карточки зеркалу (tweb: `mirrorUser`, затем
+  // `onContactUpdated`, :749-760): подписчик `contacts_update` читает свежую карточку.
+  it('переключение книги — после rt:peer_op', async () => {
+    const { rest } = fakeRest([user(2)])
+    const order: string[] = []
+    const mgr = newPeersManager({
+      rest,
+      onPeerOps: () => order.push('peer_op'),
+      onContactToggle: () => order.push('toggle'),
+    })
+    await mgr.getUsers([2])
+    order.length = 0
+
+    mgr.applyUserUpdate(asContact(2))
+
+    expect(order).toEqual(['peer_op', 'toggle'])
+  })
 })

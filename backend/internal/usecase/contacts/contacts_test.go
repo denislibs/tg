@@ -186,13 +186,30 @@ type fakeClose struct{ ids []int64 }
 
 func (f fakeClose) CloseFriends(context.Context, int64) ([]int64, error) { return f.ids, nil }
 
-// denyPrivacy — правило запрещает показ указанных ключей пользователям из deny.
-type fakePrivacy struct{ allow map[domain.PrivacyKey]bool }
+// fakePrivacy — правила: allow[ключ] — пускает ли оно зрителя; rulesErr — сбой
+// запроса правил.
+type fakePrivacy struct {
+	allow    map[domain.PrivacyKey]bool
+	rulesErr error
+}
 
 func (p fakePrivacy) VisibleMap(_ context.Context, _ int64, ids []int64, key domain.PrivacyKey) (map[int64]bool, error) {
 	out := map[int64]bool{}
 	for _, id := range ids {
 		out[id] = p.allow[key]
+	}
+	return out, nil
+}
+func (p fakePrivacy) VisibleMaps(_ context.Context, _ int64, ids []int64, keys ...domain.PrivacyKey) (map[domain.PrivacyKey]map[int64]bool, error) {
+	if p.rulesErr != nil {
+		return nil, p.rulesErr
+	}
+	out := map[domain.PrivacyKey]map[int64]bool{}
+	for _, k := range keys {
+		out[k] = map[int64]bool{}
+		for _, id := range ids {
+			out[k][id] = p.allow[k]
+		}
 	}
 	return out, nil
 }
@@ -385,5 +402,101 @@ func TestMutations_WithoutEmitter(t *testing.T) {
 	}
 	if _, found, err := i.Delete(context.Background(), cOwner, cBob); err != nil || !found {
 		t.Fatalf("found=%v err=%v", found, err)
+	}
+}
+
+// Ответ ручки и строка журнала — ОДНА карточка: устройство-инициатор получает и
+// кадр, и ответ. Сырая карточка репозитория отдавала номер мимо правила
+// phone_number и без close_friend/личного фото.
+func TestAdd_ResponseMatchesJournalCard(t *testing.T) {
+	i, book, log := newBookInteractor(t)
+	ctx := context.Background()
+	book.phones[cBob] = "+79990000002"
+	i.SetCloseFriends(fakeClose{ids: []int64{cBob}})
+	i.SetPrivacy(fakePrivacy{}) // phone_number и profile_photo закрыты
+
+	c, err := i.Add(ctx, cOwner, AddInput{UserID: cBob, FirstName: "Б"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.User.Phone != "" {
+		t.Fatalf("номер в ответе мимо правила: %q", c.User.Phone)
+	}
+	row, _ := rowCard(t, log, cOwner)
+	got, _ := json.Marshal(c.User)
+	want, _ := json.Marshal(row)
+	if string(got) != string(want) || !c.User.PFlags["close_friend"] {
+		t.Fatalf("ответ %s != журнал %s", got, want)
+	}
+}
+
+// Личное фото владелец поставил сам — правило profile_photo контакта его не гасит.
+func TestSnapshot_PersonalPhotoSurvivesClosedPhotoRule(t *testing.T) {
+	i, _, log := newBookInteractor(t)
+	i.SetPrivacy(fakePrivacy{})
+	i.SetCustomPhotos(&fakeCustomPhotos{set: map[int64]int64{cBob: 6}})
+	i.SetMediaReader(&fakeMediaReader{m: map[int64]domain.Media{6: {ID: 6, OwnerID: cOwner, Mime: "image/jpeg"}}})
+	if err := i.SetCustomPhoto(context.Background(), cOwner, cBob, 6); err != nil {
+		t.Fatal(err)
+	}
+	u, _ := rowCard(t, log, cOwner)
+	if p, ok := u.Photo.(domain.UserProfilePhotoReal); !ok || !p.Personal() {
+		t.Fatalf("личное фото погашено правилом: %+v", u.Photo)
+	}
+}
+
+// Отказ по added_by_phone — ни записи, ни строки.
+func TestAddByPhone_PrivacyRefusalWritesNothing(t *testing.T) {
+	i, book, log := newBookInteractor(t)
+	book.phones[cBob] = "+79990000002"
+	i.SetPrivacy(fakePrivacy{})
+	_, err := i.AddByPhone(context.Background(), cOwner, AddByPhoneInput{Phone: "+79990000002", FirstName: "Б"})
+	if !errors.Is(err, domain.ErrPrivacy) {
+		t.Fatalf("err=%v; want ErrPrivacy", err)
+	}
+	if len(log.rows[cOwner]) != 0 || len(book.rows) != 0 {
+		t.Fatalf("после отказа: журнал %v, книга %v", log.rows, book.rows)
+	}
+}
+
+type failingEmitter struct{}
+
+func (failingEmitter) EmitSnapshot(context.Context, int64, string, func(context.Context) (map[string]any, error)) error {
+	return errors.New("журнал недоступен")
+}
+
+// Сбой журнала ответ не ломает: мутация закоммичена.
+func TestAdd_EmitterFailureKeepsResponse(t *testing.T) {
+	book := newFakeBook()
+	i := New(book)
+	i.SetEmitter(failingEmitter{})
+	c, err := i.Add(context.Background(), cOwner, AddInput{UserID: cBob, FirstName: "Б"})
+	if err != nil || !c.User.ContactRecord() {
+		t.Fatalf("Add: c=%+v err=%v", c.User, err)
+	}
+	if _, found, err := i.Delete(context.Background(), cOwner, cBob); err != nil || !found {
+		t.Fatalf("Delete: found=%v err=%v", found, err)
+	}
+}
+
+// Сбой правил приватности гасит то, что они охраняют (фото, номер), но строка
+// журнала об удалении пишется и ответ не 500.
+func TestDelete_PrivacyRulesFailureStillJournals(t *testing.T) {
+	i, book, log := newBookInteractor(t)
+	ctx := context.Background()
+	book.phones[cBob] = "+79990000002"
+	i.SetPrivacy(fakePrivacy{allow: map[domain.PrivacyKey]bool{domain.PrivacyPhoneNumber: true}, rulesErr: errors.New("бд недоступна")})
+	if _, err := i.Add(ctx, cOwner, AddInput{UserID: cBob, FirstName: "Б"}); err != nil {
+		t.Fatal(err)
+	}
+	card, found, err := i.Delete(ctx, cOwner, cBob)
+	if err != nil || !found {
+		t.Fatalf("Delete: found=%v err=%v", found, err)
+	}
+	if card.Phone != "" || card.ContactRecord() {
+		t.Fatalf("ответ = %+v", card)
+	}
+	if u, n := rowCard(t, log, cOwner); n != 2 || u.ContactRecord() || u.Phone != "" {
+		t.Fatalf("строка (n=%d) = %+v", n, u)
 	}
 }

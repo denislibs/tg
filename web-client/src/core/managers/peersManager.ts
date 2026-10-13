@@ -177,7 +177,7 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
    * это единственная причина, по которой имена и аватарки вообще есть у
    * объектов, за которыми никто отдельно не ходил.
    */
-  function save(peers: readonly (User | Chat)[]): { written: (User | Chat)[]; replaced: (User | Chat)[] } {
+  function save(peers: readonly (User | Chat)[]): { written: (User | Chat)[]; replaced: (User | Chat)[]; afterPublish: () => void } {
     const written: (User | Chat)[] = []
     const replaced: (User | Chat)[] = []
     const persist: UserReal[] = []
@@ -217,8 +217,12 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
     if (persist.length) void persistUsers(persist) // write-through в офлайн-стор
     if (persistChatCards.length) void persistChats(persistChatCards)
     for (const [peerId, enabled] of toggledForum) onChatToggleForum?.(peerId, enabled)
-    for (const [userId, isContact] of toggledContact) onContactToggle?.(userId, isContact, !isContact)
-    return { written, replaced }
+    // Книга двигается ПОСЛЕ объявления карточки зеркалу (tweb: `mirrorUser`, затем
+    // `onContactUpdated`, :749-760): подписчик `contacts_update` читает свежую карточку.
+    const afterPublish = () => {
+      for (const [userId, isContact] of toggledContact) onContactToggle?.(userId, isContact, !isContact)
+    }
+    return { written, replaced, afterPublish }
   }
 
   /**
@@ -252,7 +256,9 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
     if (!object) return
     const peers: (User | Chat)[] = [...(object.chats ?? []), ...(object.users ?? [])]
     if (!peers.length) return
-    publish(save(peers).written)
+    const saved = save(peers)
+    publish(saved.written)
+    saved.afterPublish()
   }
 
   /**
@@ -265,14 +271,17 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
    * обслуживаются кэшем и молчат, если его нет: это не потеря, а отсутствие
    * источника.
    */
-  async function resolve(peerIds: PeerId[]): Promise<{ peers: (User | Chat)[]; changed: (User | Chat)[] }> {
+  async function resolve(peerIds: PeerId[]): Promise<{ peers: (User | Chat)[]; changed: (User | Chat)[]; afterPublish: () => void }> {
     const missing = peerIds.filter((id) => isUser(id) && !cache.has(id)).map(toUserId)
     let changed: (User | Chat)[] = []
+    let afterPublish = (): void => {}
     if (missing.length) {
       try {
         // Ответ — сам вектор `Vector<User>`: обёртки `{users}` у ручки нет.
         const users = await rest.get<UserReal[]>('/users', { ids: missing.join(',') })
-        changed = save(users ?? []).replaced
+        const saved = save(users ?? [])
+        changed = saved.replaced
+        afterPublish = saved.afterPublish
       } catch (e) {
         // Сеть недоступна — поднимаем персистнутых юзеров в память, чтобы имена
         // и аватарки резолвились офлайн. Не глотаем HTTP-ошибки (401/500 и т.п.).
@@ -280,14 +289,15 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
         for (const u of await loadUsers()) if (!cache.has(peerKey(u))) cache.set(peerKey(u), u)
       }
     }
-    return { peers: peerIds.map((id) => cache.get(id)).filter((p): p is User | Chat => !!p), changed }
+    return { peers: peerIds.map((id) => cache.get(id)).filter((p): p is User | Chat => !!p), changed, afterPublish }
   }
 
   /** Чтение для тех, кто рисует по возвращённому массиву. Объявляем только
    *  замену — впервые заведённая карточка зеркалу не адресована. */
   async function getPeers(peerIds: PeerId[]): Promise<(User | Chat)[]> {
-    const { peers, changed } = await resolve(peerIds)
+    const { peers, changed, afterPublish } = await resolve(peerIds)
     publish(changed)
+    afterPublish()
     return peers
   }
 
@@ -323,8 +333,9 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
     // Ровно один кадр на вызов: ответ на пробел уже содержит всё, что
     // изменилось, поэтому берём `resolve` напрямую, а не `getPeers` — иначе на
     // одном вызове публиковались бы два кадра.
-    const { peers } = await resolve(peerIds)
+    const { peers, afterPublish } = await resolve(peerIds)
     publish(peers)
+    afterPublish()
   }
 
   /**
@@ -346,7 +357,9 @@ export function newPeersManager({ rest, onPeerOps, onUserStatus, onChatToggleFor
     if (!user) return
     const key = peerKey(user)
     const known = cache.has(key)
-    publish(save([user]).written)
+    const saved = save([user])
+    publish(saved.written)
+    saved.afterPublish()
     if (!known && user.pFlags?.contact) onContactToggle?.(user.id, true, false)
   }
 

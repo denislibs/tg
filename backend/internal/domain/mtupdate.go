@@ -1369,9 +1369,11 @@ func NewUpdateDeleteScheduledMessages(peer Peer, ids, sent []int64) UpdateDelete
 	return u
 }
 
-// updateSavedReactionTags#39c67432 = Update; — тег «Избранного» переименован
-// или набор тегов сменился. Параметров нет: клиент перечитывает теги, если они
-// у него в кэше (tweb appReactionsManager.ts:121-132).
+// updateSavedReactionTags#39c67432 = Update; — тег «Избранного» переименован.
+// Параметров нет: клиент перечитывает теги, если они у него в кэше (tweb
+// appReactionsManager.ts:121-132). Кадр пишет только переименование; смена
+// набора тегов реакциями в «Избранном» не синхронизируется (UI тегов не
+// портирован, Б-26).
 type UpdateSavedReactionTags struct {
 	Underscore string `json:"_"`
 }

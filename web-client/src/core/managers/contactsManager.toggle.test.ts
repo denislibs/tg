@@ -37,10 +37,13 @@ describe('contactsManager.onContactUpdated — контакт пришёл ка�
     expect(await mgr.getContactsPeerIds('Бобб', false, 'none')).toEqual([BOB])
   })
 
-  it('повтор с тем же состоянием молчит (идемпотентно)', () => {
+  it('повтор того же состояния молчит (идемпотентно)', async () => {
     const { mgr, onContactsUpdate } = stand([bob])
+    await mgr.list()
 
     mgr.onContactUpdated(BOB, true, false)
+    // Реальный путь peersManager всегда передаёт явный wasContact; повтор того же
+    // состояния без него сравнивается с членством в книге.
     mgr.onContactUpdated(BOB, true)
 
     expect(onContactsUpdate).toHaveBeenCalledTimes(1)
