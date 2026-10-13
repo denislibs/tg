@@ -12,7 +12,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/messenger-denis/backend/internal/domain"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 )
@@ -129,10 +128,14 @@ func parseUserAgent(ua string) (browser, os string) {
 type AuthHandler struct {
 	svc     *usecaseauth.Interactor
 	limiter *keyRateLimiter // анти-брутфорс OTP/пароля по реальному IP + номеру
+	// qrLimiter — лимиты QR-входа в отдельном экземпляре: ключи входа случайные
+	// и одноразовые, им нужно короткое время простоя ведра (qrIdle). Лимитер в
+	// памяти процесса — допущение одного экземпляра бэкенда.
+	qrLimiter *keyRateLimiter
 }
 
 func NewAuthHandler(svc *usecaseauth.Interactor) *AuthHandler {
-	return &AuthHandler{svc: svc, limiter: newKeyRateLimiter()}
+	return &AuthHandler{svc: svc, limiter: newKeyRateLimiter(), qrLimiter: newKeyRateLimiterIdle(qrIdle)}
 }
 
 type requestCodeBody struct {
@@ -498,84 +501,112 @@ func (h *AuthHandler) CheckPassword(w http.ResponseWriter, r *http.Request) {
 	writeSignInResult(w, res)
 }
 
-type qrNewBody struct {
-	Platform string `json:"platform"`
+// loginKeyHeader — ключ входа QR: 32 случайных байта, которые экспортёр
+// генерирует сам и НЕ показывает (в QR только код). Право забрать сессию живёт в
+// нём, а не в коде: код видит любой, кто смотрит на экран.
+const loginKeyHeader = "X-Login-Key"
+
+// qrIdle — срок простоя ведра QR-лимитера: ключи случайные и одноразовые, и без
+// короткого срока они раздували бы карту общего лимитера.
+const qrIdle = time.Minute
+
+// Предельные размеры тела экспорта: аккаунтов на одном устройстве немного.
+const (
+	qrMaxExceptIDs = 20
+	qrMaxPlatform  = 32
+	qrMaxBody      = 4 << 10 // байт: 20 id и короткая строка влезают с запасом
+)
+
+type exportLoginTokenBody struct {
+	ExceptIDs []int64 `json:"except_ids"`
+	Platform  string  `json:"platform"`
 }
 
-func (h *AuthHandler) QRNew(w http.ResponseWriter, r *http.Request) {
-	var body qrNewBody
-	_ = json.NewDecoder(r.Body).Decode(&body) // platform optional
-	token, expiresAt, err := h.svc.NewQRLogin(r.Context(), body.Platform)
-	if errors.Is(err, usecaseauth.ErrQRUnavailable) {
+// parseLoginKey разбирает ключ входа: ровно 64 шестнадцатеричных символа нижнего
+// регистра. Возвращает его хеш — им адресуется запись в хранилище.
+func parseLoginKey(r *http.Request) (keyHash string, ok bool) {
+	k := r.Header.Get(loginKeyHeader)
+	if len(k) != 64 || strings.ToLower(k) != k {
+		return "", false
+	}
+	if _, err := hex.DecodeString(k); err != nil {
+		return "", false
+	}
+	return domain.HashToken(k), true
+}
+
+// writeFloodWait — лимит как у оригинала: 420 FLOOD_WAIT_<N>, N — секунды.
+func writeFloodWait(w http.ResponseWriter, waitSec int) {
+	writeError(w, 420, fmt.Sprintf("FLOOD_WAIT_%d", waitSec))
+}
+
+// ExportLoginToken — auth.exportLoginToken. Публичная: вызывающее устройство ещё
+// не вошло. Опрашивается раз в несколько секунд (цикл iterate у tweb).
+func (h *AuthHandler) ExportLoginToken(w http.ResponseWriter, r *http.Request) {
+	keyHash, ok := parseLoginKey(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "LOGIN_KEY_INVALID")
+		return
+	}
+	// Лимиты — ДО разбора тела: ручка публичная, и тело не должно стоить памяти
+	// тому, кого всё равно откажут. Сначала IP (несколько карточек за одним NAT),
+	// и только пропущенный по IP запрос заводит ведро ключа.
+	if ok, wait := h.qrLimiter.allowWait("qrexport-ip:"+clientIP(r), 5, 50); !ok {
+		writeFloodWait(w, wait)
+		return
+	}
+	if ok, wait := h.qrLimiter.allowWait("qrexport-key:"+keyHash, 1, 5); !ok {
+		writeFloodWait(w, wait)
+		return
+	}
+	var body exportLoginTokenBody
+	r.Body = http.MaxBytesReader(w, r.Body, qrMaxBody)
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil ||
+		len(body.ExceptIDs) > qrMaxExceptIDs || len(body.Platform) > qrMaxPlatform {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	ctx := usecaseauth.WithClientInfo(r.Context(), clientInfoFromRequest(r))
+	res, err := h.svc.ExportLoginToken(ctx, keyHash, body.ExceptIDs, body.Platform)
+	switch {
+	case errors.Is(err, usecaseauth.ErrQRUnavailable):
 		writeError(w, http.StatusServiceUnavailable, "qr login unavailable")
 		return
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not start qr login")
-		return
-	}
-	// Ссылку для сканера строит клиент от своего origin: серверную он и раньше
-	// игнорировал (за прокси она теряла порт), так что адрес ехал дважды, а
-	// читали его один раз.
-	out, err := qrLoginToken(token, expiresAt)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not start qr login")
-		return
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
-// qrLoginToken — конструктор выпущенного кода. `token` у схемы БАЙТЫ, а
-// маршрут `/auth/qr/{token}` берёт ту же величину шестнадцатеричной записью
-// (domain.GenerateToken).
-func qrLoginToken(token string, expiresAt time.Time) (domain.AuthLoginTokenReal, error) {
-	raw, err := hex.DecodeString(token)
-	if err != nil {
-		return domain.AuthLoginTokenReal{}, err
-	}
-	return domain.NewAuthLoginToken(raw, expiresAt), nil
-}
-
-func (h *AuthHandler) QRStatus(w http.ResponseWriter, r *http.Request) {
-	token := chi.URLParam(r, "token")
-	rec, err := h.svc.QRStatus(r.Context(), token)
-	if errors.Is(err, domain.ErrNotFound) {
-		// Протухший код — ОТКАЗ, а не третий конструктор объединения: так у
-		// оригинала (`AUTH_TOKEN_EXPIRED`). Прежде ехало `{"status":"expired"}`
-		// со статусом 200, то есть «не получилось» витриной успеха.
+	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusNotFound, "AUTH_TOKEN_EXPIRED")
 		return
-	}
-	if errors.Is(err, usecaseauth.ErrQRUnavailable) {
-		writeError(w, http.StatusServiceUnavailable, "qr login unavailable")
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, "export login token failed")
 		return
 	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "qr status failed")
-		return
-	}
-	if rec.Status == domain.QRConfirmed {
-		// Подтверждённый код несёт ТОТ ЖЕ исход входа, что и обычный шаг:
-		// прежде сессия и карточка ехали соседними ключами — второй формой
-		// одного предмета.
+	switch {
+	case res.Session != nil:
+		// Тот же исход входа, что у обычного шага: вложенный конструктор.
 		writeJSON(w, http.StatusOK, domain.NewAuthLoginTokenSuccess(
-			domain.NewAuthAuthorization(rec.SessionToken, selfUser(rec.User))))
-		return
+			domain.NewAuthAuthorization(res.Session.Token, selfUser(res.Session.User))))
+	case res.Password != nil:
+		writeJSON(w, http.StatusOK, domain.NewAuthLoginTokenSuccess(
+			domain.NewAuthPasswordNeeded(res.Password.PasswordToken, res.Password.Hint)))
+	default:
+		// `token` у схемы БАЙТЫ; ссылку для сканера строит клиент от своего origin.
+		raw, err := hex.DecodeString(res.Pending.Token)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "export login token failed")
+			return
+		}
+		writeJSON(w, http.StatusOK, domain.NewAuthLoginToken(raw, res.Pending.ExpiresAt))
 	}
-	out, err := qrLoginToken(token, rec.CreatedAt.Add(usecaseauth.QRLoginTTL))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "qr status failed")
-		return
-	}
-	writeJSON(w, http.StatusOK, out)
 }
 
-type qrConfirmBody struct {
+type acceptLoginTokenBody struct {
 	Token string `json:"token"`
 }
 
-func (h *AuthHandler) QRConfirm(w http.ResponseWriter, r *http.Request) {
-	var body qrConfirmBody
+// AcceptLoginToken — auth.acceptLoginToken: вошедшее устройство подтверждает код
+// с экрана другого. Любой отказ — 404 AUTH_TOKEN_EXPIRED (код неизвестен,
+// протух, принят, или аккаунт уже вошёл на устройстве-экспортёре).
+func (h *AuthHandler) AcceptLoginToken(w http.ResponseWriter, r *http.Request) {
+	var body acceptLoginTokenBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Token == "" {
 		writeError(w, http.StatusBadRequest, "token is required")
 		return
@@ -585,20 +616,21 @@ func (h *AuthHandler) QRConfirm(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	err := h.svc.ConfirmQRLogin(r.Context(), body.Token, user)
-	if errors.Is(err, domain.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "invalid or expired token")
+	if ok, wait := h.qrLimiter.allowWait("qraccept-ip:"+clientIP(r), 0.2, 5); !ok {
+		writeFloodWait(w, wait)
 		return
 	}
-	if errors.Is(err, usecaseauth.ErrQRUnavailable) {
+	authz, err := h.svc.AcceptLoginToken(r.Context(), body.Token, user)
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		writeError(w, http.StatusNotFound, "AUTH_TOKEN_EXPIRED")
+	case errors.Is(err, usecaseauth.ErrQRUnavailable):
 		writeError(w, http.StatusServiceUnavailable, "qr login unavailable")
-		return
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, "accept login token failed")
+	default:
+		writeJSON(w, http.StatusOK, authz)
 	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "qr confirm failed")
-		return
-	}
-	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // writeJSON — витрина на проводе. Имя осталось прежним, но формат теперь

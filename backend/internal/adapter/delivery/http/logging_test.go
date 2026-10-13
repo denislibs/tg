@@ -7,8 +7,6 @@ func TestRedactPath(t *testing.T) {
 		"/bot/123:ABCDEF/sendMessage": "/bot/***/sendMessage",
 		"/bot/secret-token":           "/bot/***",
 		"/bot/secret/getUpdates":      "/bot/***/getUpdates",
-		"/auth/qr/deadbeeftoken":      "/auth/qr/***",
-		"/auth/qr/new":                "/auth/qr/new", // POST создания — не токен
 		"/media/42/content":           "/media/42/content",
 		"/auth/sign_in":               "/auth/sign_in",
 		"/ws":                         "/ws",

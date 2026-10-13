@@ -38,7 +38,7 @@ const managers = {
   groups: { importChatInvite: vi.fn() },
   folders: { previewInvite: vi.fn() },
   bots: { start: vi.fn(), menuButton: vi.fn() },
-  auth: { qrConfirm: vi.fn() },
+  auth: { acceptLoginToken: vi.fn() },
 }
 
 beforeAll(() => {
@@ -235,5 +235,20 @@ describe('замаскированная ссылка спрашивает пе�
     anchor.addEventListener('auxclick', (e) => e.preventDefault(), { once: true })
     press(anchor, 'auxclick', 1)
     expect(popup()).toBeNull()
+  })
+})
+
+// НАШЕ РАСШИРЕНИЕ (у tweb нет): подтверждение QR-входа другого устройства. Кнопка
+// «Подтвердить» зовёт `auth.acceptLoginToken` с hex-кодом из адреса `/qr/<hex>`.
+describe('processLoginTokenLink', () => {
+  it('«Подтвердить» зовёт acceptLoginToken(token)', async () => {
+    managers.auth.acceptLoginToken.mockResolvedValue(undefined)
+    void internalLinkProcessor.processLoginTokenLink('0a0b')
+
+    const confirm = Array.from(document.querySelectorAll<HTMLElement>('.popup-qr-login .popup-button'))[0]
+    expect(confirm).toBeTruthy()
+    confirm.dispatchEvent(new MouseEvent(CLICK_EVENT_NAME, { bubbles: true }))
+
+    expect(managers.auth.acceptLoginToken).toHaveBeenCalledWith('0a0b')
   })
 })

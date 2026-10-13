@@ -379,12 +379,13 @@ func TestResetAccount_CancelledByOwnerLogin(t *testing.T) {
 	}
 }
 
-// Подтверждение QR-кода — единственная выдача сессии мимо mintSession, и она
-// тоже снимает сброс: подтвердить может только уже вошедший владелец.
-func TestResetAccount_CancelledByQRConfirm(t *testing.T) {
+// QR-подтверждение аккаунта с облачным паролем сессии не выпускает (второй
+// фактор не пройден), поэтому сброс НЕ снимает; после ввода пароля —
+// снимает (вход прошёл).
+func TestResetAccount_QRConfirmCancelsOnlyAfterPassword(t *testing.T) {
 	ctx := context.Background()
 	i, _, _, codes := newInteractor()
-	i.SetQRStore(newFakeQRStoreTTL())
+	i.SetQRStore(newFakeQRStore())
 
 	userID, pwToken := twoFactorLogin(t, i, codes, "+79990020014", "")
 	if _, err := i.ResetAccount(ctx, pwToken); !errors.Is(err, ErrResetPending) {
@@ -395,15 +396,25 @@ func TestResetAccount_CancelledByQRConfirm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetByID: %v", err)
 	}
-	qrToken, _, err := i.NewQRLogin(ctx, "web")
-	if err != nil {
-		t.Fatalf("NewQRLogin: %v", err)
+	exported, err := i.ExportLoginToken(ctx, "keyA", nil, "web")
+	if err != nil || exported.Pending == nil {
+		t.Fatalf("ExportLoginToken: %+v, %v", exported, err)
 	}
-	if err := i.ConfirmQRLogin(ctx, qrToken, owner); err != nil {
-		t.Fatalf("ConfirmQRLogin: %v", err)
+	if _, err := i.AcceptLoginToken(ctx, exported.Pending.Token, owner); err != nil {
+		t.Fatalf("AcceptLoginToken: %v", err)
+	}
+	if _, err := i.ResetAccount(ctx, pwToken); !errors.Is(err, ErrResetPending) {
+		t.Fatalf("после QR без пароля = %v, want ErrResetPending (сессии нет — сброс не снят)", err)
+	}
+	step, err := i.ExportLoginToken(ctx, "keyA", nil, "web")
+	if err != nil || step.Password == nil {
+		t.Fatalf("Export после Accept: %+v, %v", step, err)
+	}
+	if _, err := i.CheckPassword(ctx, step.Password.PasswordToken, "s3cret", "dev", "test"); err != nil {
+		t.Fatalf("CheckPassword: %v", err)
 	}
 	if _, err := i.ResetAccount(ctx, pwToken); !errors.Is(err, ErrResetRecentConfirm) {
-		t.Fatalf("после подтверждения QR = %v, want ErrResetRecentConfirm", err)
+		t.Fatalf("после пароля = %v, want ErrResetRecentConfirm", err)
 	}
 }
 
