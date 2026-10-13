@@ -590,21 +590,6 @@ type PeerNotifySettings struct {
 	OtherSound NotificationSound `json:"other_sound,omitempty"`
 }
 
-// Muted — замьючен ли пир В ЭТОТ МОМЕНТ. Порт tweb appNotificationsManager.ts:255
-// (`silent || mute_until * 1000 > tsNow()`): мьют это СРОК, поэтому предикат
-// принимает время, а не читает часы сам — иначе его нельзя проверить тестом и
-// нельзя посчитать «на момент кадра».
-//
-// Единственное место, где этот вопрос решается: пять копий SQL-условия
-// (`m.muted OR (m.muted_until IS NOT NULL AND m.muted_until > now())` в
-// chatsrepo/pushrepo/grouprepo) сводятся сюда на шаге B.
-func (s PeerNotifySettings) Muted(now time.Time) bool {
-	if s.Silent != nil && *s.Silent {
-		return true
-	}
-	return s.MuteUntil != nil && int64(*s.MuteUntil) > now.Unix()
-}
-
 // NewPeerNotifySettings собирает настройки пира. Каждый аргумент умеет означать
 // «переопределения нет», и это не то же самое, что «выключено»: нулевое
 // muteUntil, nil showPreviews и nil sound снимают соответствующий ключ, и

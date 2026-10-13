@@ -558,7 +558,7 @@ describe('dialogsManager: действия без оптимистики — п�
     expect(ops).toHaveLength(1)
     expect(ops[0]).toMatchObject({ op: 'patch', peerId: 1 })
     // Срок вышел — явное «уведомлять» (mute_until: 0), а не снятый ключ: tweb
-    // checkMuteUntil (:187-190) «не удаляет — иначе пер-чатные настройки были бы
+    // checkMuteUntil (:232-235) «не удаляет — иначе пер-чатные настройки были бы
     // перетёрты настройками типа в getPeerLocalSettings».
     const d = mgr.getSnapshot()[0].dialog
     expect(d.notify_settings.mute_until).toBe(0)

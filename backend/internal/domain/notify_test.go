@@ -94,3 +94,10 @@ func TestChatMuted_ThreeStates(t *testing.T) {
 		}
 	}
 }
+
+// mutedAt — «замьючено ли значение на проводе в этот момент» (tweb isMuted:
+// silent || mute_until > now) — проверка ПРОВОДА в тестах; решение о чате
+// принимает ChatMuted.
+func mutedAt(s PeerNotifySettings, now time.Time) bool {
+	return (s.Silent != nil && *s.Silent) || (s.MuteUntil != nil && int64(*s.MuteUntil) > now.Unix())
+}

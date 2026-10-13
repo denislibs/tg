@@ -191,7 +191,7 @@ func (r *PushRepo) UnreadBadge(ctx context.Context, userID int64) (int, error) {
 		   FROM chat_members m JOIN chats c ON c.id = m.chat_id
 		   LEFT JOIN notify_settings ns ON ns.user_id = m.user_id
 		  WHERE m.user_id=$1 AND NOT m.archived
-		    AND NOT `+chatMutedSQL("m", "c", joinedNotify),
+		    AND NOT `+chatMutedSQL(joinedNotify),
 		userID).Scan(&badge)
 	return badge, nil
 }

@@ -849,8 +849,8 @@ func (r *ChatsRepo) MaxSeq(ctx context.Context, chatID int64) (int64, error) {
 	return seq, err
 }
 
-// UnarchiveUnmuted — см. ChatRepo.UnarchiveUnmuted. «Заглушён» — мьют чата
-// сроком в будущем (тот же срок, что читает PeerNotifySettings.Muted).
+// UnarchiveUnmuted — см. ChatRepo.UnarchiveUnmuted. «Заглушён» — domain.ChatMuted:
+// свой мьют чата, если задан (срок в будущем), иначе тип чата (chatMutedSQL).
 func (r *ChatsRepo) UnarchiveUnmuted(ctx context.Context, chatID int64, userIDs []int64) ([]int64, error) {
 	if len(userIDs) == 0 {
 		return nil, nil
@@ -859,7 +859,7 @@ func (r *ChatsRepo) UnarchiveUnmuted(ctx context.Context, chatID int64, userIDs 
 		`UPDATE chat_members m SET archived = false
 		   FROM chats c
 		  WHERE c.id = $1 AND m.chat_id = c.id AND m.user_id = ANY($2::bigint[]) AND m.archived
-		    AND NOT `+chatMutedSQL("m", "c", memberNotify)+`
+		    AND NOT `+chatMutedSQL(memberNotify)+`
 		  RETURNING m.user_id`, chatID, userIDs)
 	if err != nil {
 		return nil, err

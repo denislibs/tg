@@ -57,7 +57,7 @@ func (r *StatsRepo) Summary(ctx context.Context, chatID int64) (domain.ChannelSt
 			(SELECT count(*) FROM messages WHERE chat_id=$1 AND deleted_at IS NULL AND type <> 'service'),
 			(SELECT count(*) FROM chat_members m JOIN chats c ON c.id = m.chat_id
 			  LEFT JOIN notify_settings ns ON ns.user_id = m.user_id
-			  WHERE m.chat_id=$1 AND NOT `+chatMutedSQL("m", "c", joinedNotify)+`)`,
+			  WHERE m.chat_id=$1 AND NOT `+chatMutedSQL(joinedNotify)+`)`,
 		chatID,
 	).Scan(&s.Members, &s.TotalViews, &s.TotalForwards, &s.TotalReactions, &s.PostsCount, &s.NotificationsOn)
 	return s, err

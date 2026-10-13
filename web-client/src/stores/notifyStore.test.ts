@@ -85,7 +85,7 @@ describe('notifyStore', () => {
 // Мьют чата трёхзначный (tweb appNotificationsManager.ts:342-384): настройки типа
 // подставляются только в НЕопределённые поля пира. Явное «уведомлять» —
 // mute_until: 0 (togglePeerMute, appMessagesManager.ts:11985-11991, и истечение
-// срока в checkMuteUntil :187-190) — перекрывает заглушённый тип.
+// срока в checkMuteUntil :232-235) — перекрывает заглушённый тип.
 describe('isDialogMuted: мьют чата против типа', () => {
   const typeMuted = (): NotifySettings => ({
     ...DEFAULT(),

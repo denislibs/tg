@@ -102,34 +102,34 @@ func TestMuteUntil_Constants(t *testing.T) {
 	}
 }
 
-// Предикат «замьючен ли сейчас» — порт appNotificationsManager.ts:255. Здесь
+// Предикат «замьючен ли сейчас» — порт appNotificationsManager.ts:322. Здесь
 // чинится дефект разбора: у булева «замьючен» срока годности не было, и
 // «заглушить на 1 час» работало как «заглушить навсегда».
 func TestPeerNotifySettings_Muted(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	hour := NewPeerNotifySettings(now.Add(time.Hour), nil, nil)
 
-	if !hour.Muted(now) {
+	if !mutedAt(hour, now) {
 		t.Error("замьючен на час — должен быть замьючен сейчас")
 	}
-	if hour.Muted(now.Add(2 * time.Hour)) {
+	if mutedAt(hour, now.Add(2*time.Hour)) {
 		t.Error("мьют на час обязан кончиться САМ, без единого кадра с сервера")
 	}
 	// Ровно в назначенную секунду мьют уже снят: у оригинала условие строгое
 	// (mute_until * 1000 > tsNow()).
-	if hour.Muted(now.Add(time.Hour)) {
+	if mutedAt(hour, now.Add(time.Hour)) {
 		t.Error("в секунду истечения мьют уже снят")
 	}
 
 	forever := NewPeerNotifySettings(time.Unix(MuteUntilForever, 0), nil, nil)
-	if !forever.Muted(now) {
+	if !mutedAt(forever, now) {
 		t.Error("замьючен навсегда — должен быть замьючен")
 	}
 
 	never := NewPeerNotifySettings(time.Time{}, nil, nil)
 	zero := MuteUntilNever
 	never.MuteUntil = &zero
-	if never.Muted(now) {
+	if mutedAt(never, now) {
 		t.Error("mute_until = 0 означает «не замьючен»")
 	}
 
