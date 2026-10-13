@@ -161,3 +161,50 @@ func TestPrivacyRepo_ContactViews(t *testing.T) {
 		t.Errorf("лишние зрители: %+v", got)
 	}
 }
+
+// PartnersAmong — то же отношение, что ChatPartners: общий НЕ-канальный чат или
+// контакт в любую сторону; общий канал и посторонний — не партнёры.
+func TestPrivacyRepo_PartnersAmong(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	r := NewPrivacyRepo(pool)
+	ctx := context.Background()
+	me := seedUser(t, pool, "+7921")
+	inChat := seedUser(t, pool, "+7922")
+	myContact := seedUser(t, pool, "+7923")
+	addedMe := seedUser(t, pool, "+7924")
+	onlyChannel := seedUser(t, pool, "+7925")
+	stranger := seedUser(t, pool, "+7926")
+
+	seedPrivateChat(t, pool, me, inChat)
+	var chID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO chats (type) VALUES ('channel') RETURNING id`).Scan(&chID); err != nil {
+		t.Fatal(err)
+	}
+	for _, uid := range []int64{me, onlyChannel} {
+		if _, err := pool.Exec(ctx, `INSERT INTO chat_members (chat_id, user_id) VALUES ($1,$2)`, chID, uid); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range [][2]int64{{me, myContact}, {addedMe, me}} {
+		if _, err := pool.Exec(ctx, `INSERT INTO contacts (owner_id, user_id, first_name) VALUES ($1,$2,'K')`, c[0], c[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := r.PartnersAmong(ctx, me, []int64{inChat, myContact, addedMe, onlyChannel, stranger, me})
+	if err != nil {
+		t.Fatalf("PartnersAmong: %v", err)
+	}
+	want := map[int64]bool{inChat: true, myContact: true, addedMe: true}
+	if len(got) != len(want) {
+		t.Fatalf("PartnersAmong = %v; want %v", got, want)
+	}
+	for _, id := range got {
+		if !want[id] {
+			t.Fatalf("лишний партнёр %d в %v", id, got)
+		}
+	}
+	if none, err := r.PartnersAmong(ctx, me, nil); err != nil || len(none) != 0 {
+		t.Fatalf("пустой список кандидатов = %v, %v", none, err)
+	}
+}

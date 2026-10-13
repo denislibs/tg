@@ -185,6 +185,40 @@ func (r *PrivacyRepo) ContactCard(ctx context.Context, viewerID, targetID int64)
 	return card, nil
 }
 
+// PartnersAmong — какие из candidates «знакомы» с userID для живых кадров о нём:
+// то же отношение, что ChatsRepo.ChatPartners (общий не-канальный чат либо
+// контакт в любую сторону), но проверка точечная по списку кандидатов, а не
+// выборка всех партнёров. Нужна, чтобы блок пересчитывал вид одному человеку
+// (usecase/auth.AnnounceUserTo, usecase/presence.ReannounceTo).
+func (r *PrivacyRepo) PartnersAmong(ctx context.Context, userID int64, candidates []int64) ([]int64, error) {
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	rows, err := querier(ctx, r.pool).Query(ctx,
+		`SELECT c FROM unnest($2::bigint[]) AS c
+		  WHERE c <> $1 AND (
+		    EXISTS (SELECT 1 FROM chat_members m1
+		              JOIN chats ch ON ch.id = m1.chat_id AND ch.type <> 'channel'
+		              JOIN chat_members m2 ON m2.chat_id = m1.chat_id AND m2.user_id = c
+		             WHERE m1.user_id = $1)
+		    OR EXISTS (SELECT 1 FROM contacts ct
+		                WHERE (ct.owner_id = $1 AND ct.user_id = c) OR (ct.owner_id = c AND ct.user_id = $1)))`,
+		userID, candidates)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 // ContactViews — как книги зрителей viewerIDs видят пользователя userID
 // (usecase/auth.ContactViewer): имя, под которым зритель его сохранил, и есть
 // ли зритель в книге самого userID. Зрители без связи в ответ не попадают.

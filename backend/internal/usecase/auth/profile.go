@@ -50,6 +50,77 @@ func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.UserRecord) {
 		}
 		recipients = append(recipients, partners...)
 	}
+	i.sendUserUpdate(ctx, u, recipients)
+}
+
+// AnnounceUser пересылает карточку пользователя заново ему самому и всем
+// партнёрам — когда её ВИД поменялся без правки самой записи (правило
+// приватности фото профиля: у каждого получателя карточка собирается по
+// правилу заново). Запись читается свежей, как в методах профиля.
+func (i *Interactor) AnnounceUser(ctx context.Context, userID int64) error {
+	u, err := i.users.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	i.emitUserUpdate(ctx, u)
+	return nil
+}
+
+// AnnounceUserTo — то же, но только названным зрителям и только тем из них, кто
+// партнёр (пересечение viewers ∩ партнёры): блок меняет вид карточки для
+// одного человека, и рассылка O(партнёров) тут лишняя. Не-партнёру карточка не
+// уходит: у него её нет, поправлять нечего, а живой кадр выдал бы момент блока.
+// Сам владелец получает свою строку, как при любой смене профиля.
+func (i *Interactor) AnnounceUserTo(ctx context.Context, userID int64, viewers []int64) error {
+	u, err := i.users.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if i.pub == nil && i.updates == nil {
+		return nil
+	}
+	recipients := []int64{u.ID}
+	if len(viewers) > 0 {
+		partners, err := i.partnersAmong(ctx, u.ID, viewers)
+		if err != nil {
+			return err
+		}
+		recipients = append(recipients, partners...)
+	}
+	i.sendUserUpdate(ctx, u, recipients)
+	return nil
+}
+
+// partnersAmong — какие из candidates сейчас партнёры userID. Точечный запрос
+// (SetPartnersAmong) не тянет всех партнёров; без него — пересечение с полным
+// списком (деградация без хранилища-подсказки).
+func (i *Interactor) partnersAmong(ctx context.Context, userID int64, candidates []int64) ([]int64, error) {
+	if i.partnersIn != nil {
+		return i.partnersIn(ctx, userID, candidates)
+	}
+	if i.partners == nil {
+		return nil, nil
+	}
+	all, err := i.partners(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	have := make(map[int64]struct{}, len(all))
+	for _, id := range all {
+		have[id] = struct{}{}
+	}
+	var out []int64
+	for _, c := range candidates {
+		if _, ok := have[c]; ok && c != userID {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+// sendUserUpdate кладёт в журнал и рассылает карточку u каждому из recipients
+// (первым идёт сам владелец).
+func (i *Interactor) sendUserUpdate(ctx context.Context, u domain.UserRecord, recipients []int64) {
 	views := map[int64]domain.ContactView{}
 	if i.contacts != nil {
 		v, err := i.contacts.ContactViews(ctx, u.ID, recipients)

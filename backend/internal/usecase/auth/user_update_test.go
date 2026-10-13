@@ -212,3 +212,69 @@ func TestUserUpdate_JournalKeepsPhoto(t *testing.T) {
 		t.Fatalf("фото в строке журнала = %v, want userProfilePhoto", body.User.Photo)
 	}
 }
+
+// AnnounceUserTo (блок/разблок): карточку пересчитывают ТОЛЬКО названному зрителю
+// и только если он партнёр; остальные партнёры и не-партнёр ничего не получают.
+// Сам владелец получает свою строку, как при любой смене профиля.
+func TestAnnounceUserTo_OnlyNamedPartner(t *testing.T) {
+	i, users, _, _ := newInteractor()
+	ctx := context.Background()
+	u, _ := users.CreateWithName(ctx, "+70000000011", "Алиса", "")
+
+	log := newFakeUpdateLog()
+	pub := newFakeAuthPub()
+	i.SetUpdateLog(log)
+	i.SetPublisher(pub)
+	const friend, other, stranger int64 = 901, 902, 903
+	partners := map[int64]bool{friend: true, other: true}
+	i.SetPartners(func(context.Context, int64) ([]int64, error) { return []int64{friend, other}, nil })
+	i.SetPartnersAmong(func(_ context.Context, _ int64, cand []int64) ([]int64, error) {
+		var out []int64
+		for _, c := range cand {
+			if partners[c] {
+				out = append(out, c)
+			}
+		}
+		return out, nil
+	})
+
+	if err := i.AnnounceUserTo(ctx, u.ID, []int64{friend, stranger}); err != nil {
+		t.Fatalf("AnnounceUserTo: %v", err)
+	}
+	for _, uid := range []int64{u.ID, friend} {
+		if len(log.rows[uid]) != 1 || log.rows[uid][0] != "user_update" {
+			t.Fatalf("журнал %d = %v; ждали одну строку user_update", uid, log.rows[uid])
+		}
+		if len(pub.frames[uid]) != 1 {
+			t.Fatalf("кадров у %d = %d; ждали 1", uid, len(pub.frames[uid]))
+		}
+	}
+	for _, uid := range []int64{other, stranger} {
+		if len(log.rows[uid]) != 0 || len(pub.frames[uid]) != 0 {
+			t.Fatalf("у %d есть строка или кадр: %v / %d", uid, log.rows[uid], len(pub.frames[uid]))
+		}
+	}
+}
+
+// AnnounceUser (смена правила фото): сам и ВСЕ партнёры, как при смене профиля.
+func TestAnnounceUser_OwnAndAllPartners(t *testing.T) {
+	i, users, _, _ := newInteractor()
+	ctx := context.Background()
+	u, _ := users.CreateWithName(ctx, "+70000000012", "Алиса", "")
+
+	log := newFakeUpdateLog()
+	pub := newFakeAuthPub()
+	i.SetUpdateLog(log)
+	i.SetPublisher(pub)
+	const a, b int64 = 901, 902
+	i.SetPartners(func(context.Context, int64) ([]int64, error) { return []int64{a, b}, nil })
+
+	if err := i.AnnounceUser(ctx, u.ID); err != nil {
+		t.Fatalf("AnnounceUser: %v", err)
+	}
+	for _, uid := range []int64{u.ID, a, b} {
+		if len(log.rows[uid]) != 1 {
+			t.Fatalf("журнал %d = %v; ждали одну строку", uid, log.rows[uid])
+		}
+	}
+}

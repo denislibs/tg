@@ -426,3 +426,106 @@ func (s *fakeStore) Snapshots(_ context.Context, userIDs []int64) (map[int64]Sna
 	}
 	return out, nil
 }
+
+// fakePrivacy — правило last_seen: нельзя тем, кто в deny.
+type fakePrivacy struct{ deny map[int64]bool }
+
+func (f *fakePrivacy) Check(_ context.Context, _, viewerID int64, _ domain.PrivacyKey) (bool, error) {
+	return !f.deny[viewerID], nil
+}
+
+func statusTag(t *testing.T, frame []byte) string {
+	t.Helper()
+	var live struct {
+		D struct {
+			Status struct {
+				Underscore string `json:"_"`
+			} `json:"status"`
+		} `json:"d"`
+	}
+	if err := json.Unmarshal(frame, &live); err != nil {
+		t.Fatalf("разбор кадра: %v", err)
+	}
+	return live.D.Status.Underscore
+}
+
+// Смена правила last_seen: партнёрам, которым вид поменялся, статус уходит
+// заново БЕЗ ожидания следующего события присутствия (иначе собеседник видел бы
+// точное время до перезагрузки).
+func TestManager_ReannounceAppliesNewRule(t *testing.T) {
+	m, pub, _ := newManager(t)
+	ctx := context.Background()
+	priv := &fakePrivacy{deny: map[int64]bool{}}
+	m.SetPrivacy(priv)
+	_ = m.Online(ctx, 1)
+	_ = m.Offline(ctx, 1) // у партнёра 2 — точное время
+	if got := statusTag(t, pub.last(2)); got != domain.UserStatusOfflineTag {
+		t.Fatalf("до правила: %q", got)
+	}
+	before := pub.count(2)
+
+	priv.deny[2] = true // правило «никто»
+	if err := m.Reannounce(ctx, 1); err != nil {
+		t.Fatalf("Reannounce: %v", err)
+	}
+	if pub.count(2) != before+1 {
+		t.Fatalf("кадров у партнёра = %d; want %d", pub.count(2), before+1)
+	}
+	if got := statusTag(t, pub.last(2)); got != domain.UserStatusRecentlyTag {
+		t.Fatalf("после правила: %q; want userStatusRecently", got)
+	}
+}
+
+// ReannounceTo: статус уходит только названным зрителям и только партнёрам;
+// остальные партнёры и не-партнёры кадра не получают.
+func TestManager_ReannounceToNamedPartnerOnly(t *testing.T) {
+	store := newFakeStore()
+	pub := newFakePub()
+	partners := func(_ context.Context, userID int64) ([]int64, error) {
+		if userID == 1 {
+			return []int64{2, 3}, nil
+		}
+		return nil, nil
+	}
+	m := NewManager(store, pub, partners, 30*time.Second)
+	m.now = store.clock
+	ctx := context.Background()
+	_ = m.Online(ctx, 1)
+	_ = m.Offline(ctx, 1)
+	base2, base3, base4 := pub.count(2), pub.count(3), pub.count(4)
+
+	if err := m.ReannounceTo(ctx, 1, []int64{2, 4}); err != nil {
+		t.Fatalf("ReannounceTo: %v", err)
+	}
+	if pub.count(2) != base2+1 {
+		t.Fatalf("названный партнёр не получил кадр: %d", pub.count(2))
+	}
+	if pub.count(3) != base3 {
+		t.Fatalf("не названный партнёр получил кадр")
+	}
+	if pub.count(4) != base4 {
+		t.Fatalf("не-партнёр получил кадр")
+	}
+}
+
+// Блок: ReannounceTo с правилом, закрытым для зрителя, шлёт ему userStatusRecently;
+// разблок — снова точное время.
+func TestManager_ReannounceToHonoursBlock(t *testing.T) {
+	m, pub, _ := newManager(t)
+	ctx := context.Background()
+	priv := &fakePrivacy{deny: map[int64]bool{}}
+	m.SetPrivacy(priv)
+	_ = m.Online(ctx, 1)
+	_ = m.Offline(ctx, 1)
+
+	priv.deny[2] = true
+	_ = m.ReannounceTo(ctx, 1, []int64{2})
+	if got := statusTag(t, pub.last(2)); got != domain.UserStatusRecentlyTag {
+		t.Fatalf("при блоке: %q", got)
+	}
+	delete(priv.deny, 2)
+	_ = m.ReannounceTo(ctx, 1, []int64{2})
+	if got := statusTag(t, pub.last(2)); got != domain.UserStatusOfflineTag {
+		t.Fatalf("после разблока: %q", got)
+	}
+}

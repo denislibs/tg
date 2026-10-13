@@ -19,6 +19,10 @@ type Publisher interface {
 // PartnersFunc returns the user ids that should see a user's presence.
 type PartnersFunc func(ctx context.Context, userID int64) ([]int64, error)
 
+// PartnersAmongFunc — какие из candidates партнёры userID, одним точечным
+// запросом (то же отношение, что у PartnersFunc).
+type PartnersAmongFunc func(ctx context.Context, userID int64, candidates []int64) ([]int64, error)
+
 // PrivacyChecker отвечает, видит ли viewer аспект key владельца ownerID
 // (usecase/privacy). Для presence используется ключ last_seen.
 type PrivacyChecker interface {
@@ -73,9 +77,12 @@ type Manager struct {
 	store    PresenceStore
 	pub      Publisher
 	partners PartnersFunc
-	ttl      time.Duration
-	privacy  PrivacyChecker
-	now      func() time.Time
+	// partnersIn — необязателен: без него ReannounceTo пересекает с полным
+	// списком партнёров.
+	partnersIn PartnersAmongFunc
+	ttl        time.Duration
+	privacy    PrivacyChecker
+	now        func() time.Time
 }
 
 func NewManager(store PresenceStore, pub Publisher, partners PartnersFunc, ttl time.Duration) *Manager {
@@ -86,6 +93,10 @@ func NewManager(store PresenceStore, pub Publisher, partners PartnersFunc, ttl t
 // партнёрам вне правила уходит presence с online=false/last_seen=0
 // (клиент показывает «был(а) недавно», как Telegram).
 func (m *Manager) SetPrivacy(p PrivacyChecker) { m.privacy = p }
+
+// SetPartnersAmong подключает точечную проверку «кто из этих — партнёр»
+// (optional, для ReannounceTo).
+func (m *Manager) SetPartnersAmong(f PartnersAmongFunc) { m.partnersIn = f }
 
 // Online marks a user online. It fans out a presence(online) frame only on the
 // transition from offline → online (SET NX), so multiple devices/replicas don't
@@ -255,6 +266,64 @@ func (m *Manager) fanout(ctx context.Context, userID int64, status domain.UserSt
 	if err != nil {
 		return err
 	}
+	m.fanoutTo(ctx, userID, status, partners)
+	return nil
+}
+
+// Reannounce шлёт всем партнёрам ТЕКУЩИЙ статус пользователя заново: правило
+// last_seen поменялось, и вид статуса у каждого партнёра пересчитывается по
+// новому правилу, не дожидаясь следующей смены присутствия.
+func (m *Manager) Reannounce(ctx context.Context, userID int64) error {
+	partners, err := m.partners(ctx, userID)
+	if err != nil {
+		return err
+	}
+	m.fanoutTo(ctx, userID, domain.PresenceStatus(m.Status(ctx, userID)), partners)
+	return nil
+}
+
+// ReannounceTo — то же, но только названным зрителям и только тем из них, кто
+// партнёр (viewers ∩ партнёры): блок меняет вид статуса для одного человека, и
+// полный веер с privacy.Check на каждого тут лишний.
+func (m *Manager) ReannounceTo(ctx context.Context, userID int64, viewers []int64) error {
+	if len(viewers) == 0 {
+		return nil
+	}
+	partners, err := m.partnersAmong(ctx, userID, viewers)
+	if err != nil {
+		return err
+	}
+	m.fanoutTo(ctx, userID, domain.PresenceStatus(m.Status(ctx, userID)), partners)
+	return nil
+}
+
+// partnersAmong — какие из candidates партнёры userID. Точечный запрос
+// (SetPartnersAmong) не тянет всех партнёров; без него — пересечение с полным
+// списком.
+func (m *Manager) partnersAmong(ctx context.Context, userID int64, candidates []int64) ([]int64, error) {
+	if m.partnersIn != nil {
+		return m.partnersIn(ctx, userID, candidates)
+	}
+	all, err := m.partners(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	have := make(map[int64]struct{}, len(all))
+	for _, id := range all {
+		have[id] = struct{}{}
+	}
+	var out []int64
+	for _, c := range candidates {
+		if _, ok := have[c]; ok {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+// fanoutTo — кадр статуса каждому из recipients, скрытый правилом last_seen —
+// userStatusRecently.
+func (m *Manager) fanoutTo(ctx context.Context, userID int64, status domain.UserStatus, partners []int64) {
 	frame, _ := json.Marshal(map[string]any{
 		"t": "presence",
 		"d": domain.NewUpdateUserStatus(userID, status),
@@ -275,5 +344,4 @@ func (m *Manager) fanout(ctx context.Context, userID int64, status domain.UserSt
 		}
 		_ = m.pub.PublishToUser(ctx, p, f)
 	}
-	return nil
 }
