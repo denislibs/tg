@@ -35,7 +35,7 @@ func TestMessagesRepo_CallLogExcludesHiddenForViewer(t *testing.T) {
 
 	kept := insertMsg(t, msgs, chatID, a, "call", "")
 	hidden := insertMsg(t, msgs, chatID, b, "call", "")
-	if err := msgs.HideForUser(ctx, a, hidden.ID); err != nil {
+	if _, err := msgs.HideForUser(ctx, a, hidden.ID); err != nil {
 		t.Fatalf("hide: %v", err)
 	}
 
