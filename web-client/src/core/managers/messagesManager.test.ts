@@ -159,7 +159,66 @@ describe('MessagesManager.forwardMessages', () => {
     expect(body).toEqual({ from_peer_id: 2, ids: [3, 4], drop_author: true, drop_caption: false, silent: false, top_msg_id: null, schedule_date: 0, schedule_repeat_period: 0 })
   })
 
-  // tweb forwardMessagesInner: `silent` и `top_msg_id` (корень темы/треда у
+  // Ф7-Г (MC-06): allow_paid_stars у пересылки — сумма ЗА ПАЧКУ: цена одного
+  // сообщения × число сообщений (tweb forwardMessagesInner, appMessagesManager.ts:5634).
+  it('allow_paid_stars = цена × число сообщений пачки', async () => {
+    let body: Record<string, unknown> = {}
+    const rest = {
+      post: async (_p: string, b: Record<string, unknown>) => { body = b; return { messages: [], users: [], chats: [] } },
+    } as unknown as RestClient
+    const mgr = newMessagesManager({ rest })
+    await mgr.forwardMessages(1, 2, [cid(3), cid(4), cid(5)], { confirmedPaymentResult: { starsAmount: 5 } })
+    expect(body.allow_paid_stars).toBe(15)
+    await mgr.forwardMessages(1, 2, [cid(3)])
+    expect(body.allow_paid_stars).toBeUndefined()
+  })
+
+  // Ф7-Г (MC-06): 403 ALLOW_PAYMENT_REQUIRED_<N> у пересылки — не «ошибка», а
+  // запрос на повторную оплату (tweb :5805 → `tryRegisterRequest` с повтором
+  // `forwardMessagesInner({...options, ...override})`): вызывающий не получает
+  // ошибки, подсказка о смене цены — по событию.
+  it('403 ALLOW_PAYMENT_REQUIRED регистрирует повтор; подтверждение повторяет пересылку с новой суммой', async () => {
+    const bodies: Record<string, unknown>[] = []
+    let first = true
+    const events: [string, unknown][] = []
+    const rest = {
+      post: async (_p: string, b: Record<string, unknown>) => {
+        bodies.push(b)
+        if (first) { first = false; throw new HttpError(403, 'ALLOW_PAYMENT_REQUIRED_15', 'ALLOW_PAYMENT_REQUIRED_15') }
+        return { messages: [], users: [], chats: [] }
+      },
+    } as unknown as RestClient
+    const mgr = newMessagesManager({ rest, broadcast: (e, p) => { events.push([e, p]) } })
+
+    const r = await mgr.forwardMessages(1, 2, [cid(3), cid(4), cid(5)], { confirmedPaymentResult: { starsAmount: 5 } })
+
+    expect(r).toEqual([])
+    expect(events).toEqual([['insufficent_stars_for_message', { requestId: 1, messageCount: 3, peerId: 1 }]])
+
+    mgr.confirmRepayRequest(1, { starsAmount: 6 })
+    await new Promise((res) => setTimeout(res, 0))
+
+    expect(bodies).toHaveLength(2)
+    expect(bodies[1].allow_paid_stars).toBe(18)
+    expect(events[events.length - 1]).toEqual(['fulfill_repaid_message', { requestId: 1 }])
+  })
+
+  it('прочие отказы пересылки по-прежнему бросаются вызывающему', async () => {
+    const rest = { post: async () => { throw new HttpError(403, 'forbidden', 'forbidden') } } as unknown as RestClient
+    const mgr = newMessagesManager({ rest, broadcast: () => {} })
+    await expect(mgr.forwardMessages(1, 2, [cid(3)])).rejects.toBeInstanceOf(HttpError)
+  })
+
+  // tweb `forwardMessagesInner`: нехватка баланса — тоже не повтор оплаты.
+  it('BALANCE_TOO_LOW не регистрирует повтор и бросается', async () => {
+    const events: unknown[] = []
+    const rest = { post: async () => { throw new HttpError(400, 'BALANCE_TOO_LOW', 'BALANCE_TOO_LOW') } } as unknown as RestClient
+    const mgr = newMessagesManager({ rest, broadcast: (e) => { events.push(e) } })
+    await expect(mgr.forwardMessages(1, 2, [cid(3)], { confirmedPaymentResult: { starsAmount: 5 } })).rejects.toBeInstanceOf(HttpError)
+    expect(events).toEqual([])
+  })
+
+  // tweb `forwardMessagesInner`: `silent` и `top_msg_id` (корень темы/треда у
   // приёмника, серверный номер) — без них пересылка в тему уходила в General.
   it('несёт silent и top_msg_id темы приёмника', async () => {
     let body: Record<string, unknown> = {}

@@ -20,7 +20,7 @@ import { resetPlayback } from '../../core/audio/mediaPlaybackController'
 import { applyOpsToMirror, replaceMirrorWindow, resetMessagesMirror, setMirrorHistoryCount, winKey } from '../../core/history/messagesMirror'
 import { resetProfilePhoneMirror } from '../../core/profilePhoneCache'
 import rootScope, { type BroadcastEventsListeners } from '@lib/rootScope'
-import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type MessageErrorEvt, type BotCallbackAnswerEvt, type StoryUpdateEvt, type SentStoryReactionEvt, type ReadStoriesEvt } from '../../core/realtime/events'
+import { RT, type NewMessageEvt, type PresenceEvt, type TypingEvt, type BotCallbackAnswerEvt, type StoryUpdateEvt, type SentStoryReactionEvt, type ReadStoriesEvt } from '../../core/realtime/events'
 import { useSecretChatStore } from '../../stores/secretChatStore'
 import { useStoriesStore, loadStories } from '../../stores/storiesStore'
 import type { Managers } from '../bootstrap'
@@ -280,14 +280,10 @@ export function registerStoreProjection(managers: Managers): void {
   // RT.ack здесь больше не слушается: сверку бабла с сервером делает владелец
   // (workerCore.ts::onFrame → messages.ackPendingMessage), а окно правит его
   // операция. У кадра остался ровно один потребитель на витрине — звук
-  // подтверждения отправки («пак»), см. soundSubscriber.
-  rootScope.addEventListener(RT.messageError, (raw) => {
-    const err = raw as MessageErrorEvt
-    // Пометку failed на бабле ставит владелец (messages.failPendingMessage,
-    // тот же onFrame) — здесь осталась только реакция витрины: платное
-    // сообщение отвергнуто из-за нехватки звёзд (Telegram paid messages).
-    if (err.reason === 'paid_required') rootScope.dispatchEvent('ui:toast', 'Недостаточно звёзд для отправки сообщения')
-  })
+  // подтверждения отправки («пак»), см. soundSubscriber. Кадр `message_error` на
+  // витрине не слушается вовсе: красную пометку и запрос на повторную оплату
+  // ставит владелец (messages.failPendingMessage), тост `paid_required` снят —
+  // платная отправка называется кодами TG (ALLOW_PAYMENT_REQUIRED_<N>, BALANCE_TOO_LOW).
   // RT.paidMediaUnlock: раньше отдельный addEventListener строил incoming через
   // fromNewMessageEvt и звал applyPaidUnlock — теперь окно правит operation-based
   // патч (cachePaidUnlock → RT.messageOp → applyOps), см. комментарий у RT.messageOp

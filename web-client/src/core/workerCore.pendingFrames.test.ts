@@ -5,7 +5,7 @@
 // Проверяется именно проводка workerCore.ts: что вызов владельца стоит, что его
 // операции уходят кадром rt:message_op и что СЫРОЙ кадр при этом продолжает
 // лететь дальше (у rt:ack остался потребитель — звук отправки в
-// client/realtime/soundSubscriber.ts; у rt:message_error — тост paid_required).
+// client/realtime/soundSubscriber.ts; у rt:message_error — витрина `paid_required` снята, Ф7-Г).
 //
 // Приём — тот же, что в workerCore.dialogFrames.test.ts: частичный vi.mock
 // connectionManager, чтобы перехватить onFrame и позвать его напрямую. Плюс
@@ -109,9 +109,18 @@ describe('createWorkerCore(): message_ack / message_error применяет в�
 
     capturedConnDeps!.onFrame('message_error', err)
 
-    expect(failPendingMessage).toHaveBeenCalledWith('c-1')
+    expect(failPendingMessage).toHaveBeenCalledWith('c-1', 'too_long')
     expect(ops).toEqual(FAIL_OPS)
     expect(raw).toEqual([{ event: RT.messageError, payload: err }])
+  })
+
+  // Ф7-Г: причина отказа едет владельцу — по `ALLOW_PAYMENT_REQUIRED_<N>` он
+  // заводит запрос на повторную оплату, без причины бабл просто падал.
+  it('message_error с ALLOW_PAYMENT_REQUIRED отдаёт владельцу причину целиком', () => {
+    boot()
+    capturedConnDeps!.onFrame('message_error', { client_msg_id: 'c-2', reason: 'ALLOW_PAYMENT_REQUIRED_15' })
+
+    expect(failPendingMessage).toHaveBeenCalledWith('c-2', 'ALLOW_PAYMENT_REQUIRED_15')
   })
 
   // Идемпотентность: бабла уже нет (эхо new_message сняло его раньше) — владелец

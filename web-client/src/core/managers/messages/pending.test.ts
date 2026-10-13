@@ -15,6 +15,7 @@ import { describe, it, expect, vi } from 'vitest'
 import type { SendMessageAction } from '../../realtime/events'
 import SlicedArray, { SliceEnd } from '../../history/slicedArray'
 import { newPendingMethods } from './pending'
+import { newRepayRequestHandler } from './repayRequestHandler'
 import { getDocumentFromMessage, getMediaDimensions, getMediaFromMessage, isMediaSpoiler } from '../../media/messageMedia'
 import { messageToConvMsg } from '../../messageToConvMsg'
 import type { MessageReal, MyMessage } from '../../models'
@@ -566,7 +567,7 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
     expect(h.sends).toEqual([{
       peerId: 1, text: 'hi', clientMsgId: 'c1', type: 'contact', contactUserId: 42,
       threadRootId: 7, replyToId: null, replyToPeerId: null, replyQuoteText: null,
-      replyQuoteOffset: null, silent: false, effect: null, sendAsPeerId: null, scheduleDate: null, scheduleRepeatPeriod: null,
+      replyQuoteOffset: null, silent: false, effect: null, sendAsPeerId: null, scheduleDate: null, scheduleRepeatPeriod: null, allowPaidStars: null,
     }])
   })
 
@@ -644,6 +645,132 @@ describe('sendText: бабл + кадр (порт tweb sendText → beforeMessag
 // Порт tweb `sendGrouped` (appMessagesManager.ts:3593-3830): все временные
 // сообщения альбома — ОДНИМ объявлением до сети (`processAfter`, :3672-3727),
 // отправка — после всех аплоадов, по порядку группы.
+// Ф7-Г (MC-06): согласие на плату едет пакетом параметров (`confirmedPaymentResult`
+// — поле MessageSendingParams, tweb appMessagesManager.ts:255) и становится
+// `allowPaidStars` кадра на КАЖДОМ сообщении; цена в нём — за ОДНО сообщение.
+describe('confirmedPaymentResult → allowPaidStars кадра', () => {
+  it('sendText: сумма согласия уезжает в кадр', async () => {
+    const { ctx, sends } = makeCtx()
+    const p = newPendingMethods(ctx)
+    await p.sendText({ peerId: 1, text: 'x', clientMsgId: 'c-1', confirmedPaymentResult: { starsAmount: 5 } })
+    expect(sends[0].allowPaidStars).toBe(5)
+  })
+
+  it('без согласия поле пусто', async () => {
+    const { ctx, sends } = makeCtx()
+    const p = newPendingMethods(ctx)
+    await p.sendText({ peerId: 1, text: 'x', clientMsgId: 'c-1' })
+    expect(sends[0].allowPaidStars ?? null).toBeNull()
+  })
+
+  it('sendFile: согласие доезжает до кадра после аплоада', async () => {
+    const { ctx, sends, slices } = makeCtx()
+    openWindow(slices, '1')
+    const p = newPendingMethods(ctx)
+    await p.sendFile({ peerId: 1, clientMsgId: 'f-1', senderId: 42, file: new Blob(['x']), type: 'document', confirmedPaymentResult: { starsAmount: 7 } })
+    expect(sends[0].allowPaidStars).toBe(7)
+  })
+})
+
+// Ф7-Г (MC-06): NACK `ALLOW_PAYMENT_REQUIRED_<N>` — не просто «ошибка»: на
+// неудавшемся сообщении остаётся `repayRequest {id, messageCount}` (tweb
+// `onMessagesSendError`, appMessagesManager.ts:5805-5838), а повтор — снятие
+// старого бабла (`cancelPendingMessage`, :3810) и НОВАЯ отправка того же
+// содержимого с новым clientMsgId и новой суммой.
+describe('платная отправка: repayRequest и повтор', () => {
+  function stand() {
+    const h = makeCtx()
+    const events: [string, unknown][] = []
+    const repay = newRepayRequestHandler({ dispatch: (e, p) => { events.push([e, p]) } })
+    openWindow(h.slices, '1', [cid(10)])
+    const p = newPendingMethods({ ...h.ctx, repay })
+    return { ...h, p, repay, events }
+  }
+  const textArgs = { peerId: 1, text: 'привет', clientMsgId: 'c1', optimistic: { senderId: 42 } }
+
+  it('NACK ALLOW_PAYMENT_REQUIRED кладёт repayRequest на бабл и объявляет запрос', async () => {
+    const h = stand()
+    await h.p.sendText(textArgs)
+
+    const ops = h.p.failPendingMessage('c1', 'ALLOW_PAYMENT_REQUIRED_5')
+
+    expect(ops[0]).toMatchObject({ op: 'patch', fields: { failed: true, repayRequest: { id: 1, messageCount: 1 } } })
+    expect(h.events).toEqual([['insufficent_stars_for_message', { requestId: 1, messageCount: 1, peerId: 1 }]])
+    expect(h.p.hasPending('c1')).toBe(true)
+  })
+
+  it('подтверждение: один бабл (старый снят, новый без ошибки), новый clientMsgId и сумма в кадре', async () => {
+    const h = stand()
+    await h.p.sendText({ ...textArgs, threadId: null })
+    h.p.failPendingMessage('c1', 'ALLOW_PAYMENT_REQUIRED_5')
+    h.emitted.length = 0
+
+    h.repay.confirmRepayRequest(1, { starsAmount: 6 })
+
+    expect(h.p.hasPending('c1')).toBe(false)
+    const flat = h.emitted.flat()
+    expect(flat.filter((o) => o.op === 'remove')).toHaveLength(1)
+    const inserted = flat.filter((o) => o.op === 'insert') as { msg: MessageReal }[]
+    expect(inserted).toHaveLength(1)
+    const newId = inserted[0].msg.random_id!
+    expect(newId).not.toBe('c1')
+    expect(inserted[0].msg.failed).toBeUndefined()
+    expect(h.p.hasPending(newId)).toBe(true)
+    // второй кадр: тот же текст, новый id, сумма согласия
+    expect(h.sends).toHaveLength(2)
+    expect(h.sends[1]).toMatchObject({ text: 'привет', clientMsgId: newId, allowPaidStars: 6 })
+    expect(h.events[h.events.length - 1]).toEqual(['fulfill_repaid_message', { requestId: 1 }])
+  })
+
+  it('BALANCE_TOO_LOW и прочие отказы — только failed, без запроса на оплату', async () => {
+    const h = stand()
+    await h.p.sendText(textArgs)
+    const ops = h.p.failPendingMessage('c1', 'BALANCE_TOO_LOW')
+    expect(ops[0]).toMatchObject({ fields: { failed: true } })
+    expect((ops[0] as { fields: object }).fields).not.toHaveProperty('repayRequest')
+    expect(h.events).toEqual([])
+  })
+
+  it('файл: повтор не грузит байты заново, шлёт тот же media_id', async () => {
+    const h = stand()
+    await h.p.sendFile({ peerId: 1, clientMsgId: 'f1', senderId: 42, file: new Blob(['x']), type: 'document' })
+    expect(h.uploads).toHaveLength(1)
+    h.p.failPendingMessage('f1', 'ALLOW_PAYMENT_REQUIRED_5')
+
+    h.repay.confirmRepayRequest(1, { starsAmount: 5 })
+    await Promise.resolve()
+
+    expect(h.uploads).toHaveLength(1)
+    expect(h.sends).toHaveLength(2)
+    expect(h.sends[1]).toMatchObject({ mediaId: 909, allowPaidStars: 5 })
+    expect(h.sends[1].clientMsgId).not.toBe('f1')
+  })
+
+  it('альбом: каждая ячейка получает свой запрос, повтор сохраняет groupedId', async () => {
+    const h = stand()
+    const file = (n: string) => ({ peerId: 1, clientMsgId: n, senderId: 42, file: new Blob(['x']), type: 'photo', groupedId: 77 })
+    await h.p.sendGrouped([file('g1'), file('g2')])
+    h.p.failPendingMessage('g1', 'ALLOW_PAYMENT_REQUIRED_5')
+    h.p.failPendingMessage('g2', 'ALLOW_PAYMENT_REQUIRED_5')
+    expect(h.events.filter(([e]) => e === 'insufficent_stars_for_message')).toHaveLength(2)
+
+    h.repay.confirmRepayRequest(1, { starsAmount: 5 })
+    h.repay.confirmRepayRequest(2, { starsAmount: 5 })
+    await Promise.resolve()
+
+    const resent = h.sends.slice(2)
+    expect(resent).toHaveLength(2)
+    expect(resent.every((w) => w.groupedId === 77 && w.allowPaidStars === 5)).toBe(true)
+  })
+
+  it('отправка без бабла (optimistic не передан): запрашивать нечего', async () => {
+    const h = stand()
+    await h.p.sendText({ peerId: 1, text: 'x', clientMsgId: 'c1' })
+    expect(h.p.failPendingMessage('c1', 'ALLOW_PAYMENT_REQUIRED_5')).toEqual([])
+    expect(h.events).toEqual([])
+  })
+})
+
 describe('sendGrouped: альбом — все баблы разом, затем аплоады, затем отправка', () => {
   const file = () => new Blob(['xxx'], { type: 'image/jpeg' })
 
@@ -751,7 +878,7 @@ describe('sendFile: бабл → аплоад → attach → отправка (�
       peerId: 1, text: 'подпись', entities: null, clientMsgId: 'c1', type: 'photo',
       groupedId: undefined, paidMediaPrice: null, mediaId: 909, mediaSpoiler: undefined,
       threadRootId: null, replyToId: null, replyToPeerId: null, replyQuoteText: null,
-      replyQuoteOffset: null, silent: false, effect: null, sendAsPeerId: null, scheduleDate: null, scheduleRepeatPeriod: null,
+      replyQuoteOffset: null, silent: false, effect: null, sendAsPeerId: null, scheduleDate: null, scheduleRepeatPeriod: null, allowPaidStars: null,
     }])
   })
 

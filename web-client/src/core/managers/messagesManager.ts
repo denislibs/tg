@@ -46,6 +46,7 @@ import { saveMessages, loadMessages, deletePersistedMessage } from '../store/per
 import { newPollMethods } from './messages/pollMethods'
 import { newTranslationMethods } from './messages/translationMethods'
 import { newPendingMethods } from './messages/pending'
+import { newRepayRequestHandler, registerHttpRepay, type ConfirmedPaymentResult } from './messages/repayRequestHandler'
 import { sendingParamsToWire, type MessageSendingParams } from './messages/sendingParams'
 import { newReactionMethods } from './messages/reactionMethods'
 // Реакционные типы переехали в reactionMethods — реэкспорт для стабильности
@@ -489,8 +490,11 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
   const sortScheduled = (storage: Map<number, MyMessage>): MyMessage[] =>
     [...storage.values()].sort((a, b) => a.date - b.date || a.id - b.id)
 
+  // Запросы на повторную оплату (tweb `RepayRequestHandler`): события уходят
+  // вкладкам, подтверждение приходит их RPC (`confirmRepayRequest` ниже).
+  const repay = newRepayRequestHandler({ dispatch: (event, payload) => broadcast?.(event, payload) })
   const ctx = {
-    rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers, getUnreadReactionsCount,
+    rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers, getUnreadReactionsCount, repay,
     // Стрелкой: функция объявлена ниже, а зовётся только из ответа ручки.
     applyScheduledUpdates: (r: ScheduledUpdates | undefined) => applyScheduledUpdates(r?.updates, r),
   }
@@ -513,6 +517,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     cancelUpload: cancelUpload ?? (() => {}),
     sendTyping: sendTyping ?? (() => {}),
     uploadProgress: uploadProgress ?? (() => {}),
+    repay,
   })
 
   /** tweb `onUpdateNewScheduledMessage` (`:11773-11802`). Хранилища нет —
@@ -915,7 +920,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     void updateMessage(+postPeerId, +mid).catch(() => {})
   }
 
-  return {
+  const api = {
     ...newReactionMethods(ctx),
     ...newPollMethods(ctx),
     ...newTranslationMethods(ctx),
@@ -925,6 +930,16 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     // настоящие, как `messagesStorage` + `historyStorage.history` в оригинале.
     // Поэтому у него свой ctx, а не общий MessagesCtx.
     ...pending,
+
+    /** tweb `confirmRepayRequest` (appMessagesManager): пользователь согласился
+     *  заплатить новую цену — повтор отправки получает сумму. */
+    confirmRepayRequest(id: number, confirmedPaymentResult: ConfirmedPaymentResult): void {
+      repay.confirmRepayRequest(id, confirmedPaymentResult)
+    },
+    /** tweb `cancelRepayRequest`: отказ от повторной оплаты. */
+    cancelRepayRequest(id: number): void {
+      repay.cancelRepayRequest(id)
+    },
 
     /**
      * Форум выключили — окна тредов чата сбрасываются (`chat_toggle_forum` →
@@ -1410,20 +1425,34 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       toPeerId: number,
       fromPeerId: number,
       msgIds: number[],
-      opts?: { dropAuthor?: boolean; dropCaption?: boolean; silent?: boolean; threadId?: number | null; scheduleDate?: number | null; scheduleRepeatPeriod?: number | null },
+      opts?: { dropAuthor?: boolean; dropCaption?: boolean; silent?: boolean; threadId?: number | null; scheduleDate?: number | null; scheduleRepeatPeriod?: number | null; confirmedPaymentResult?: { starsAmount: number } | null },
     ): Promise<MyMessage[]> {
-      const r = await rest.post<MessagesContainer | ScheduledUpdates>(`/chats/${toPeerId}/forward`, {
-        from_peer_id: fromPeerId,
-        ids: msgIds.map(getServerMessageId),
-        drop_author: opts?.dropAuthor ?? false,
-        drop_caption: opts?.dropCaption ?? false,
-        silent: opts?.silent ?? false,
-        top_msg_id: opts?.threadId ? getServerMessageId(opts.threadId) : null,
-        // tweb `messages.forwardMessages{schedule_date, schedule_repeat_period}`
-        // (appMessagesManager.ts:5641-5660)
-        schedule_date: opts?.scheduleDate || 0,
-        schedule_repeat_period: opts?.scheduleRepeatPeriod || 0,
-      })
+      let r: MessagesContainer | ScheduledUpdates
+      try {
+        r = await rest.post<MessagesContainer | ScheduledUpdates>(`/chats/${toPeerId}/forward`, {
+          from_peer_id: fromPeerId,
+          ids: msgIds.map(getServerMessageId),
+          drop_author: opts?.dropAuthor ?? false,
+          drop_caption: opts?.dropCaption ?? false,
+          silent: opts?.silent ?? false,
+          top_msg_id: opts?.threadId ? getServerMessageId(opts.threadId) : null,
+          // tweb `messages.forwardMessages{schedule_date, schedule_repeat_period}`
+          // (appMessagesManager.ts:5641-5660)
+          schedule_date: opts?.scheduleDate || 0,
+          schedule_repeat_period: opts?.scheduleRepeatPeriod || 0,
+          // tweb `allow_paid_stars: starsAmount * mids.length` (:5634) — за ВСЮ пачку
+          allow_paid_stars: opts?.confirmedPaymentResult ? opts.confirmedPaymentResult.starsAmount * msgIds.length : undefined,
+        })
+      } catch (err) {
+        // 403 ALLOW_PAYMENT_REQUIRED_<N> — запрос на повторную оплату, а не ошибка
+        // (tweb :5805 → `tryRegisterRequest` с повтором `forwardMessagesInner`):
+        // подсказка о смене цены и «Resend» повторят пересылку с новой суммой.
+        if (registerHttpRepay(repay, err, {
+          peerId: toPeerId, messageCount: msgIds.length,
+          repay: (confirmedPaymentResult) => { void api.forwardMessages(toPeerId, fromPeerId, msgIds, { ...opts, confirmedPaymentResult }).catch(() => {}) },
+        })) return []
+        throw err
+      }
       // Отложенные копии — не история: ответ — `Updates` с
       // `updateNewScheduledMessage` (tweb `processUpdateMessage`), они и ложатся
       // в ленту отложенных.
@@ -1955,6 +1984,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     },
 
   }
+  return api
 }
 
 export type MessagesManager = ReturnType<typeof newMessagesManager>
