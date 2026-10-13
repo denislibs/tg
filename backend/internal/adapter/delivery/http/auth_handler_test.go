@@ -16,7 +16,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	pgadapter "github.com/messenger-denis/backend/internal/adapter/repo/postgres"
-	"github.com/messenger-denis/backend/internal/domain"
 	"github.com/messenger-denis/backend/internal/store/postgres"
 	usecaseauth "github.com/messenger-denis/backend/internal/usecase/auth"
 	usecasechat "github.com/messenger-denis/backend/internal/usecase/chat"
@@ -127,8 +126,7 @@ func loginViaHTTPAs(t *testing.T, h http.Handler, phone string, headers map[stri
 }
 
 // hexOfBase64 — `token` конструктора `auth.loginToken` это БАЙТЫ (на JSON-проводе
-// base64), а маршрут `/auth/qr/{token}` берёт ту же величину шестнадцатеричной
-// записью.
+// base64), а accept_login_token берёт ту же величину шестнадцатеричной записью.
 func hexOfBase64(t *testing.T, s string) string {
 	t.Helper()
 	raw, err := base64.StdEncoding.DecodeString(s)
@@ -267,26 +265,6 @@ func TestAuthFlow_HTTP(t *testing.T) {
 	}
 }
 
-// memQRStore is an in-memory usecaseauth.QRStore for the QR HTTP test.
-type memQRStore struct{ m map[string]domain.QRLogin }
-
-func newMemQRStore() *memQRStore { return &memQRStore{m: map[string]domain.QRLogin{}} }
-
-func (s *memQRStore) Put(_ context.Context, h string, r domain.QRLogin, _ time.Duration) error {
-	s.m[h] = r
-	return nil
-}
-
-func (s *memQRStore) Get(_ context.Context, h string) (domain.QRLogin, error) {
-	r, ok := s.m[h]
-	if !ok {
-		return domain.QRLogin{}, domain.ErrNotFound
-	}
-	return r, nil
-}
-
-func (s *memQRStore) Delete(_ context.Context, h string) error { delete(s.m, h); return nil }
-
 func getReq(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, path, nil)
@@ -303,91 +281,6 @@ func postJSONAuth(t *testing.T, h http.Handler, path string, body any, token str
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	return rec
-}
-
-func TestQRLoginFlow_HTTP(t *testing.T) {
-	pool := postgres.NewTestDB(t)
-	uc := newAuthUC(pool)
-	uc.SetQRStore(newMemQRStore())
-	h := NewRouter(uc, newChatUC(pool), nil, nil, nil, nil, nil, nil, nil, NewICEHandler("", "test"), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-
-	// Sign in a user → Bearer token.
-	signinToken, signinUserID := loginViaHTTP(t, h, "+79992223344")
-
-	// POST /auth/qr/new → конструктор auth.loginToken.
-	rec := postJSON(t, h, "/auth/qr/new", map[string]string{"platform": "web"})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("qr/new status = %d, body=%s", rec.Code, rec.Body.String())
-	}
-	var issued struct {
-		Underscore string `json:"_"`
-		Expires    int64  `json:"expires"`
-		Token      string `json:"token"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &issued)
-	if issued.Underscore != "auth.loginToken" || issued.Token == "" || issued.Expires == 0 {
-		t.Fatalf("qr/new = %s", rec.Body.String())
-	}
-	// Ссылки для сканера в ответе больше нет: её строит клиент от своего origin
-	// (серверную он и раньше игнорировал — за прокси она теряла порт).
-	if strings.Contains(rec.Body.String(), `"url"`) {
-		t.Fatalf("адрес сканера всё ещё едет вторым ключом: %s", rec.Body.String())
-	}
-	qrToken := hexOfBase64(t, issued.Token)
-
-	// GET /auth/qr/{token} → тот же конструктор: код ждёт подтверждения.
-	rec = getReq(t, h, "/auth/qr/"+qrToken)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("qr status pending: code=%d body=%s", rec.Code, rec.Body.String())
-	}
-	var pending struct {
-		Underscore string `json:"_"`
-		Token      string `json:"token"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &pending)
-	if pending.Underscore != "auth.loginToken" || hexOfBase64(t, pending.Token) != qrToken {
-		t.Fatalf("ожидался невыкупленный код, body=%s", rec.Body.String())
-	}
-
-	// POST /auth/qr/confirm with Bearer → ok.
-	rec = postJSONAuth(t, h, "/auth/qr/confirm", map[string]string{"token": qrToken}, signinToken)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("qr/confirm status = %d, body=%s", rec.Code, rec.Body.String())
-	}
-	if !isBoolTrue(rec.Body.Bytes()) {
-		t.Fatalf("ожидался boolTrue, body=%s", rec.Body.String())
-	}
-
-	// Подтверждённый код несёт ТОТ ЖЕ исход входа, что и обычный шаг, —
-	// вложенным конструктором, а не соседними ключами session_token + user.
-	rec = getReq(t, h, "/auth/qr/"+qrToken)
-	var success struct {
-		Underscore    string     `json:"_"`
-		Authorization signInWire `json:"authorization"`
-	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &success)
-	if success.Underscore != "auth.loginTokenSuccess" ||
-		success.Authorization.Underscore != "auth.authorization" ||
-		success.Authorization.Token == "" || success.Authorization.User.ID != signinUserID {
-		t.Fatalf("подтверждённый QR = %s", rec.Body.String())
-	}
-
-	// Повторное чтение — код одноразовый. Протухший код теперь ОТКАЗ, а не
-	// третий конструктор объединения (у оригинала `AUTH_TOKEN_EXPIRED`);
-	// прежде ехало `{"status":"expired"}` со статусом 200.
-	rec = getReq(t, h, "/auth/qr/"+qrToken)
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("повторное чтение: %d %s", rec.Code, rec.Body.String())
-	}
-	var expired wireError
-	_ = json.Unmarshal(rec.Body.Bytes(), &expired)
-	if expired.Text != "AUTH_TOKEN_EXPIRED" {
-		t.Fatalf("повторное чтение = %s", rec.Body.String())
-	}
-	// Неизвестный код — тот же отказ.
-	if rec := getReq(t, h, "/auth/qr/bogus"); rec.Code != http.StatusNotFound {
-		t.Fatalf("неизвестный код: %d %s", rec.Code, rec.Body.String())
-	}
 }
 
 func TestSignIn_WrongCode_HTTP(t *testing.T) {
