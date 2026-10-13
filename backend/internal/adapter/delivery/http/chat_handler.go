@@ -665,24 +665,49 @@ func (h *ChatHandler) ReadDate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, domain.NewOutboxReadDate(at))
 }
 
-// ReadReactions clears the caller's unread-reactions badge for a chat
-// (POST /chats/{chatID}/reactions/read; Telegram readReactions) without moving
-// the read horizon.
+// ReadReactions — messages.readReactions (POST
+// /chats/{peerID}/reactions/read?top_msg_id=): гасит непрочитанные реакции на
+// сообщениях вызывающего в чате или в теме форума, не двигая горизонт
+// прочтения. Ответ — messages.affectedHistory; offset=1 — остаток есть,
+// повторить запрос (tweb appMessagesManager.readMentions :9614-9650).
 func (h *ChatHandler) ReadReactions(w http.ResponseWriter, r *http.Request) {
+	h.readInTopic(w, r, h.svc.ReadReactions, "read reactions failed")
+}
+
+// ReadMentions — messages.readMentions (POST
+// /chats/{peerID}/mentions/read?top_msg_id=): то же для непрочитанных
+// упоминаний («@»).
+func (h *ChatHandler) ReadMentions(w http.ResponseWriter, r *http.Request) {
+	h.readInTopic(w, r, h.svc.ReadMentions, "read mentions failed")
+}
+
+// readInTopic — общий разбор readReactions/readMentions: top_msg_id —
+// серверный номер темы форума (0 или нет — весь чат).
+func (h *ChatHandler) readInTopic(w http.ResponseWriter, r *http.Request, read func(ctx context.Context, chatID, userID, topMsgID int64) (domain.MessagesAffectedHistory, error), failure string) {
 	chatID, ok := peerChatID(w, r, h.svc)
 	if !ok {
 		return
 	}
-	err := h.svc.ReadReactions(r.Context(), chatID, h.meID(r))
-	if errors.Is(err, domain.ErrNotFound) {
+	var top int64
+	if raw := r.URL.Query().Get("top_msg_id"); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || n < 0 {
+			writeError(w, http.StatusBadRequest, "bad top_msg_id")
+			return
+		}
+		top = n
+	}
+	res, err := read(r.Context(), chatID, h.meID(r), top)
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
 		writeError(w, http.StatusForbidden, "not a member of this chat")
-		return
+	case errors.Is(err, domain.ErrTopicIDInvalid):
+		writeError(w, http.StatusBadRequest, "TOPIC_ID_INVALID")
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, failure)
+	default:
+		writeJSON(w, http.StatusOK, res)
 	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "read reactions failed")
-		return
-	}
-	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
 
 // DeleteHistory — messages.deleteHistory (DELETE

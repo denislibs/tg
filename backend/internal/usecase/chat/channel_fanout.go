@@ -190,7 +190,7 @@ func (i *Interactor) publishChannelReactions(ctx context.Context, chatID, seq in
 		return
 	}
 	_ = i.chPub.PublishToChannel(ctx, chatID,
-		frame("reaction", reactionsPayload(domain.ToPeerID(chatID, true), seq, agg)))
+		frame("reaction", reactionsPayload(domain.ToPeerID(chatID, true), seq, agg, 0)))
 }
 
 // isBroadcast — чат это broadcast-канал (доставка — журналом канала).

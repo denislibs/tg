@@ -47,7 +47,7 @@ func TestReactionFrame_CanSeeListFollowsChatKind(t *testing.T) {
 			}
 			// Проверяется ТЕЛО кадра, а не структура рядом: витрина кадра —
 			// единственное, что реально уезжает получателю.
-			raw, err := json.Marshal(reactionsPayload(domain.PeerID(canSeeChat), 1, agg))
+			raw, err := json.Marshal(reactionsPayload(domain.PeerID(canSeeChat), 1, agg, 0))
 			if err != nil {
 				t.Fatalf("marshal: %v", err)
 			}

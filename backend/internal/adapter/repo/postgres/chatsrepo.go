@@ -580,6 +580,75 @@ func (r *ChatsRepo) ReadReactions(ctx context.Context, chatID, userID, uptoSeq i
 	return out, nil
 }
 
+// ReadReactionsIn — см. ChatRepo.ReadReactionsIn. Тема сужается тем же
+// threadFilter, что строки списка тем (topicsrepo.go): General — страж
+// generalMember, обычная тема — thread_root_id корня. В выборку входят только
+// ВИДИМЫЕ зрителю сообщения (как счётчик пересчёта recountUnreadReactionsSQL),
+// иначе скрытое с непрочитанной реакцией крутило бы offset вечно.
+func (r *ChatsRepo) ReadReactionsIn(ctx context.Context, chatID, userID int64, topic *domain.TopicScope, limit int) ([]domain.Message, bool, error) {
+	q := querier(ctx, r.pool)
+	root := topic.ThreadRoot()
+	rows, err := q.Query(ctx,
+		`SELECT m.id FROM messages m
+		  WHERE m.chat_id = $1 AND m.sender_id = $2 AND `+threadFilter("m", "$3", root, false)+`
+		    AND m.id IN (SELECT re.message_id FROM reactions re WHERE re.unread)
+		    AND `+messageVisibleTo("m", "$2")+`
+		  ORDER BY m.seq LIMIT $4`, chatID, userID, root, limit+1)
+	if err != nil {
+		return nil, false, err
+	}
+	ids, err := scanIDs(rows)
+	if err != nil {
+		return nil, false, err
+	}
+	more := len(ids) > limit
+	if more {
+		ids = ids[:limit]
+	}
+	if len(ids) == 0 {
+		return nil, false, nil
+	}
+	if _, err := q.Exec(ctx, `UPDATE reactions SET unread = false WHERE unread AND message_id = ANY($1)`, ids); err != nil {
+		return nil, false, err
+	}
+	mrows, err := q.Query(ctx,
+		`SELECT `+messageColsPrefixed("m")+` FROM messages m WHERE m.id = ANY($1) ORDER BY m.seq`, ids)
+	if err != nil {
+		return nil, false, err
+	}
+	defer mrows.Close()
+	var out []domain.Message
+	for mrows.Next() {
+		m, e := scanMessage(mrows)
+		if e != nil {
+			return nil, false, e
+		}
+		out = append(out, m)
+	}
+	if err := mrows.Err(); err != nil {
+		return nil, false, err
+	}
+	mrows.Close()
+	if _, err := r.RecountUnreadReactions(ctx, chatID, userID); err != nil {
+		return nil, false, err
+	}
+	return out, more, nil
+}
+
+// scanIDs читает колонку id и закрывает rows.
+func scanIDs(rows pgx.Rows) ([]int64, error) {
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // CurrentReadSeq returns a member's current last_read_seq.
 func (r *ChatsRepo) CurrentReadSeq(ctx context.Context, chatID, userID int64) (int64, error) {
 	q := querier(ctx, r.pool)
@@ -734,6 +803,54 @@ func (r *ChatsRepo) ClearMentions(ctx context.Context, chatID, userID, uptoSeq i
 		return 0, err
 	}
 	return r.syncUnreadMentions(ctx, chatID, userID)
+}
+
+// ClearMentionsIn — см. ChatRepo.ClearMentionsIn. Выборка идёт по
+// message_mentions_lookup (chat_id, user_id, seq); тема и видимость — те же
+// предикаты, что у подсчёта «@» темы (topicRowsSQL).
+func (r *ChatsRepo) ClearMentionsIn(ctx context.Context, chatID, userID int64, topic *domain.TopicScope, limit int) ([]int64, bool, error) {
+	q := querier(ctx, r.pool)
+	root := topic.ThreadRoot()
+	rows, err := q.Query(ctx,
+		`SELECT mm.message_id, mm.seq FROM message_mentions mm
+		   JOIN messages m ON m.id = mm.message_id
+		  WHERE mm.chat_id = $1 AND mm.user_id = $2 AND mm.unread
+		    AND `+threadFilter("m", "$3", root, false)+`
+		    AND `+messageVisibleTo("m", "$2")+`
+		  ORDER BY mm.seq LIMIT $4`, chatID, userID, root, limit+1)
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	var ids, seqs []int64
+	for rows.Next() {
+		var id, seq int64
+		if err := rows.Scan(&id, &seq); err != nil {
+			return nil, false, err
+		}
+		ids, seqs = append(ids, id), append(seqs, seq)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, err
+	}
+	rows.Close()
+	more := len(ids) > limit
+	if more {
+		ids, seqs = ids[:limit], seqs[:limit]
+	}
+	if len(ids) == 0 {
+		return nil, false, nil
+	}
+	if _, err := q.Exec(ctx,
+		`UPDATE message_mentions SET unread = false
+		  WHERE chat_id = $1 AND user_id = $2 AND unread AND message_id = ANY($3)`,
+		chatID, userID, ids); err != nil {
+		return nil, false, err
+	}
+	if _, err := r.syncUnreadMentions(ctx, chatID, userID); err != nil {
+		return nil, false, err
+	}
+	return seqs, more, nil
 }
 
 // syncUnreadMentions пересчитывает unread_mentions_count участника по

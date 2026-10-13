@@ -159,7 +159,7 @@ func (i *Interactor) journalReactions(ctx context.Context, chatID int64, msg dom
 	if i.isBroadcast(ctx, chatID) {
 		var ownDeliver func(context.Context)
 		if len(personal) > 0 && personal[0] != 0 {
-			d, e := i.journalOwnReactions(ctx, chatID, personal[0], []domain.Message{msg})
+			d, _, _, e := i.journalOwnReactions(ctx, chatID, personal[0], []domain.Message{msg})
 			if e != nil {
 				return nil, e
 			}
@@ -191,6 +191,11 @@ func (i *Interactor) journalReactions(ctx context.Context, chatID int64, msg dom
 	if err != nil {
 		return nil, err
 	}
+	// Номер темы — один на реакцию, не на получателя.
+	topics, err := i.reactionTopics(ctx, chatID, []domain.Message{msg})
+	if err != nil {
+		return nil, err
+	}
 	bodies := make(map[int64]map[string]any, len(members))
 	ptsByUser := make(map[int64]int64, len(members))
 	date := nowUnix()
@@ -199,7 +204,7 @@ func (i *Interactor) journalReactions(ctx context.Context, chatID int64, msg dom
 		if o, ok := own[uid]; ok {
 			r = o
 		}
-		body := reactionsPayload(addr.forViewer(uid), msg.Seq, r)
+		body := reactionsPayload(addr.forViewer(uid), msg.Seq, r, topics[msg.ID])
 		payload, e := json.Marshal(body)
 		if e != nil {
 			return nil, e
@@ -223,33 +228,48 @@ func (i *Interactor) journalReactions(ctx context.Context, chatID int64, msg dom
 // journalOwnReactions — кадры реакций msgs ОДНОМУ пользователю (всем его
 // устройствам), агрегатом его глазами: прочтение реакций гасит pFlags.unread,
 // и по этой смене остальные устройства снимают бейдж ❤ сами. Внутри
-// транзакции вызывающего; доставка — после коммита.
-func (i *Interactor) journalOwnReactions(ctx context.Context, chatID, userID int64, msgs []domain.Message) (func(context.Context), error) {
+// транзакции вызывающего; доставка — после коммита. lastPts и rows — pts
+// последней записанной строки и их число (по ним строится affectedHistory).
+//
+// Агрегаты собираются одной выборкой на все сообщения (reactionsSeenByMany),
+// номер темы — одним разбором корней (reactionTopics); строк журнала столько
+// же, сколько сообщений: получатель один, а тела разные.
+func (i *Interactor) journalOwnReactions(ctx context.Context, chatID, userID int64, msgs []domain.Message) (deliver func(context.Context), lastPts int64, rows int, err error) {
 	if len(msgs) == 0 {
-		return func(context.Context) {}, nil
+		return func(context.Context) {}, 0, 0, nil
 	}
 	addr, err := i.peerAddress(ctx, chatID)
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
+	}
+	topics, err := i.reactionTopics(ctx, chatID, msgs)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	ids := make([]int64, len(msgs))
+	for n, m := range msgs {
+		ids[n] = m.ID
+	}
+	aggs, err := i.reactionsSeenByMany(ctx, chatID, ids, userID)
+	if err != nil {
+		return nil, 0, 0, err
 	}
 	peer := addr.forViewer(userID)
 	frames := make([][]byte, 0, len(msgs))
 	date := nowUnix()
 	for _, m := range msgs {
-		r, e := i.reactionsSeenBy(ctx, chatID, m.ID, userID)
-		if e != nil {
-			return nil, e
-		}
-		body := reactionsPayload(peer, m.Seq, r)
+		body := reactionsPayload(peer, m.Seq, aggs[m.ID], topics[m.ID])
 		payload, e := json.Marshal(body)
 		if e != nil {
-			return nil, e
+			return nil, 0, 0, e
 		}
 		pts, e := i.updates.AppendUpdate(ctx, userID, 1, date, "reaction", payload)
 		if e != nil {
-			return nil, e
+			return nil, 0, 0, e
 		}
 		frames = append(frames, framePts("reaction", body, pts))
+		lastPts = pts
+		rows++
 	}
 	return func(ctx context.Context) {
 		if i.publisher == nil {
@@ -258,7 +278,30 @@ func (i *Interactor) journalOwnReactions(ctx context.Context, chatID, userID int
 		for _, f := range frames {
 			_ = i.publisher.PublishToUser(ctx, userID, f)
 		}
-	}, nil
+	}, lastPts, rows, nil
+}
+
+// reactionTopics — номер темы форума (top_msg_id кадра реакции) для каждого
+// сообщения msgs: сообщение в теме — номер её корня, остальное в форуме —
+// General (1, tweb getMessageThreadId.ts:17-23). Вне форума — пустая карта,
+// ключа в кадре нет. Один разбор корней на пачку (ExternalizeThreadRoots).
+func (i *Interactor) reactionTopics(ctx context.Context, chatID int64, msgs []domain.Message) (map[int64]int64, error) {
+	if i.groups == nil || len(msgs) == 0 || !i.isForum(ctx, chatID) {
+		return nil, nil
+	}
+	ext, err := i.ExternalizeThreadRoots(ctx, msgs)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int64]int64, len(msgs))
+	for n, m := range ext {
+		if m.ThreadRootID != nil && m.ForumTopic {
+			out[msgs[n].ID] = *m.ThreadRootID
+		} else {
+			out[msgs[n].ID] = domain.GeneralTopicID
+		}
+	}
+	return out, nil
 }
 
 // isSavedTag — реакции ЭТОГО чата являются ТЕГАМИ «Избранного», а не реакциями.
@@ -360,39 +403,53 @@ func (i *Interactor) messageReactionsAggregate(ctx context.Context, chatID, mess
 // recent_reactions. viewerID 0 — без зрителя, и тогда агрегат помечен `min`:
 // пер-зрительской части в нём нет.
 func (i *Interactor) reactionsSeenBy(ctx context.Context, chatID, messageID, viewerID int64) (domain.MessageReactions, error) {
-	byMsg, err := i.reactions.ReactionsFor(ctx, []int64{messageID}, viewerID)
+	aggs, err := i.reactionsSeenByMany(ctx, chatID, []int64{messageID}, viewerID)
 	if err != nil {
 		return domain.MessageReactions{}, err
 	}
+	return aggs[messageID], nil
+}
+
+// reactionsSeenByMany — reactionsSeenBy для пачки сообщений одной выборкой
+// реакций и одной — звёзд (а не по запросу на сообщение).
+func (i *Interactor) reactionsSeenByMany(ctx context.Context, chatID int64, messageIDs []int64, viewerID int64) (map[int64]domain.MessageReactions, error) {
+	byMsg, err := i.reactions.ReactionsFor(ctx, messageIDs, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	var stars map[int64]domain.StarReactionAgg
+	if i.starReaction != nil {
+		if stars, err = i.starReaction.AggregatesFor(ctx, messageIDs, viewerID); err != nil {
+			return nil, err
+		}
+	}
 	kind := i.chatKind(ctx, chatID)
 	canSeeList := domain.CanSeeReactionsList(kind)
-	m := domain.Message{Reactions: byMsg[messageID]}
-	if i.starReaction != nil {
-		stars, e := i.starReaction.AggregatesFor(ctx, []int64{messageID}, viewerID)
-		if e != nil {
-			return domain.MessageReactions{}, e
+	viewList := domain.CanViewReactionsList(kind)
+	out := make(map[int64]domain.MessageReactions, len(messageIDs))
+	for _, id := range messageIDs {
+		m := domain.Message{Reactions: byMsg[id]}
+		if stars != nil {
+			m.StarReactionTotal = stars[id].Total
+			m.StarReactionMine = stars[id].Mine
 		}
-		m.StarReactionTotal = stars[messageID].Total
-		m.StarReactionMine = stars[messageID].Mine
-	}
-	out := domain.NewMessageReactions(nil, nil)
-	if r := m.WireReactions(canSeeList, domain.CanViewReactionsList(kind)); r != nil {
-		out = *r
-	} else {
-		// Реакций не осталось. Внутри СООБЩЕНИЯ это выражается отсутствием
-		// параметра, но кадр несёт агрегат ОБЯЗАТЕЛЬНЫМ параметром: «реакций
-		// нет» — такое же состояние, как «есть три», и едет пустым вектором.
-		out.SetCanSeeList(canSeeList)
-	}
-	if viewerID == 0 {
-		out.MarkMin()
+		agg := domain.NewMessageReactions(nil, nil)
+		if r := m.WireReactions(canSeeList, viewList); r != nil {
+			agg = *r
+		} else {
+			// Реакций не осталось. Внутри СООБЩЕНИЯ это выражается отсутствием
+			// параметра, но кадр несёт агрегат ОБЯЗАТЕЛЬНЫМ параметром: «реакций
+			// нет» — такое же состояние, как «есть три», и едет пустым вектором.
+			agg.SetCanSeeList(canSeeList)
+		}
+		if viewerID == 0 {
+			agg.MarkMin()
+		}
+		out[id] = agg
 	}
 	return out, nil
 }
 
-// chatKind — вид чата ОДНИМ вопросом для правил реакций. Неизвестен — пустая
-// строка, и правила ниже отвечают на неё «нельзя»: и флаг, и право УТВЕРЖДАЮТ
-// доступ, а утверждать его, не зная чата, нельзя.
 func (i *Interactor) chatKind(ctx context.Context, chatID int64) string {
 	if i.chats == nil {
 		return ""

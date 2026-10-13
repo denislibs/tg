@@ -1030,6 +1030,12 @@ func (c groupChats) RecountUnreadReactions(context.Context, int64, int64) (int, 
 func (c groupChats) ReadReactions(context.Context, int64, int64, int64) ([]domain.Message, error) {
 	return nil, nil
 }
+func (c groupChats) ReadReactionsIn(context.Context, int64, int64, *domain.TopicScope, int) ([]domain.Message, bool, error) {
+	return nil, false, nil
+}
+func (c groupChats) ClearMentionsIn(context.Context, int64, int64, *domain.TopicScope, int) ([]int64, bool, error) {
+	return nil, false, nil
+}
 func (c groupChats) UnarchiveUnmuted(context.Context, int64, []int64) ([]int64, error) {
 	return nil, nil
 }
