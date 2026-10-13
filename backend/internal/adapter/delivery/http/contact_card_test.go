@@ -330,3 +330,32 @@ func TestContactName_SeenByViewerEverywhere_HTTP(t *testing.T) {
 	}
 	want("участники у самого Боба", usersOf(tokenB, "/chats/"+itoa(group)+"/participants"), "Боб", "Петров", false)
 }
+
+// F7-A2: серверной ручки принятия предложенного фото нет — в tweb «Установить
+// фото» скачивает файл и ставит его СВОЕЙ загрузкой (bubbles.ts:8236-8246 →
+// avatarEdit.ts uploadProfilePhoto), а наш клиент ручку не звал. Предложение
+// остаётся сообщением; принять его через сервер нельзя.
+func TestPhotoSuggestion_AcceptRouteRemoved_HTTP(t *testing.T) {
+	h, pool := newContactCardRouterDB(t)
+	tokenA, idA := signInToken(t, h, "+79990000321")
+	tokenB, idB := signInToken(t, h, "+79990000322")
+	photoB := seedMedia(t, pool, idB, "image/jpeg")
+
+	rec := authedReq(t, h, http.MethodPost, "/contacts/"+itoa(idA)+"/suggest_photo", tokenB, map[string]any{"media_id": photoB})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("suggest: %d %s", rec.Code, rec.Body.String())
+	}
+	var msg struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &msg)
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+itoa(idB)+"/photo_suggestions/"+itoa(msg.ID)+"/accept", tokenA, map[string]any{})
+	if rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("accept: %d %s; want 404/405", rec.Code, rec.Body.String())
+	}
+	if card := getProfile(t, h, tokenA, idA); card.Users[0]["photo"] != nil {
+		if ph, _ := card.Users[0]["photo"].(map[string]any); ph["_"] != "userProfilePhotoEmpty" {
+			t.Fatalf("фото предложившего стало аватаркой: %v", ph)
+		}
+	}
+}

@@ -390,11 +390,6 @@ export function newContactsManager({ rest, peers, getMe, state, onContactsUpdate
     async suggestPhoto(contactId: number, mediaId: number): Promise<void> {
       await rest.post(`/contacts/${contactId}/suggest_photo`, { media_id: mediaId })
     },
-
-    // Принять предложенное фото профиля: оно становится аватаром принявшего.
-    async acceptPhotoSuggestion(msgId: number): Promise<void> {
-      await rest.post(`/photo_suggestions/${msgId}/accept`, {})
-    },
   }
 }
 

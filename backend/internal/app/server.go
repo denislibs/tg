@@ -112,7 +112,6 @@ func registerServer(p serverParams) {
 	// правит, поэтому источник здесь она, а не второй репозиторий.
 	p.ContactsUC.SetCloseFriends(p.StoryUC)
 	p.ChatUC.SetContactPhotos(contactPhotos)
-	p.ChatUC.SetProfilePhotos(p.AuthUC)
 
 	// Облачные черновики: хранение per (чат, пользователь) + синк draft_update.
 	p.ChatUC.SetDrafts(pgadapter.NewDraftsRepo(p.Pool))
