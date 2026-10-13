@@ -351,3 +351,34 @@ func TestScheduledRepo_WebPageIfSameAndChoice(t *testing.T) {
 		t.Fatalf("строка в аренде: ok=%v err=%v", ok, err)
 	}
 }
+
+// Баг C2 №2: решение плашки tweb — {invert_media, media:inputMediaWebPage
+// {url, pFlags{optional}}} — и сущности текста: условие догоняющей записи на
+// настоящем jsonb выполняется для строки, какой её вернул Create (так её
+// получает сборка превью).
+func TestScheduledRepo_WebPageIfSame_PlaqueChoice(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+79990001730")
+	b := seedUser(t, pool, "+79990001731")
+	chatID := seedPrivateChat(t, pool, a, b)
+	r := NewScheduledRepo(pool)
+	choice := &domain.WebPageInput{InvertMedia: true, Media: &domain.InputMediaWebPage{
+		Underscore: domain.InputMediaWebPageTag, URL: "https://github.com/telegramdesktop/tdesktop",
+		PFlags: map[string]bool{"optional": true, "force_small_media": true}}}
+	for _, ents := range []domain.MessageEntities{nil, {domain.NewMessageEntityBold(0, 2)}} {
+		row, _, err := r.Create(ctx, domain.ScheduledMessage{ChatID: chatID, SenderID: a, Type: "text",
+			Text: "C2 отложенное https://github.com/telegramdesktop/tdesktop", Entities: ents,
+			SendAt: time.Now().Add(time.Hour), Params: domain.ScheduledParams{WebPage: choice}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wp := &domain.WebPagePreview{URL: "https://github.com/telegramdesktop/tdesktop", Title: "T"}
+		if ok, err := r.SetWebPageIfSame(ctx, row.ID, wp, row.Text, row.Entities, row.Params.WebPage); err != nil || !ok {
+			t.Fatalf("entities=%v: ok=%v err=%v", ents, ok, err)
+		}
+		if got, _ := r.ByID(ctx, row.ID); got.WebPage == nil {
+			t.Fatalf("entities=%v: карточка не записана", ents)
+		}
+	}
+}

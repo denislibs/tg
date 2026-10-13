@@ -3,6 +3,8 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"sync"
@@ -19,25 +21,41 @@ type urlPreviewer struct {
 	mu    sync.Mutex
 	urls  []string
 	holds map[string]chan struct{}
-	// large — карточки с has_large_media (как после крупного og:image).
-	large bool
 	// imageURL — og:image карточек (картинку отдаёт фейковый BotHTTP).
 	imageURL string
+	// fail — сколько ближайших загрузок страницы вернуть временным сбоем
+	// (ErrPreviewTransient); permanent — отказ по существу (не HTML и т. п.).
+	fail      int
+	permanent bool
 }
 
 func (p *urlPreviewer) Preview(ctx context.Context, url string) (*domain.WebPagePreview, error) {
 	p.mu.Lock()
 	p.urls = append(p.urls, url)
 	hold := p.holds[url]
+	failNow, permanent := p.fail > 0, p.permanent
+	if failNow {
+		p.fail--
+	}
 	p.mu.Unlock()
+	if permanent {
+		return nil, errors.New("link preview: not html")
+	}
+	if failNow {
+		return nil, fmt.Errorf("page fetch: %w", ErrPreviewTransient)
+	}
 	if hold != nil {
 		select {
 		case <-hold:
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, fmt.Errorf("%w: %w", ErrPreviewTransient, ctx.Err())
 		}
 	}
-	return &domain.WebPagePreview{URL: url, Title: url, HasLargeMedia: p.large, ImageURL: p.imageURL}, nil
+	// Как настоящий адаптер: истёкший бюджет — сбой, а не карточка.
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrPreviewTransient, err)
+	}
+	return &domain.WebPagePreview{URL: url, Title: url, ImageURL: p.imageURL}, nil
 }
 
 func (p *urlPreviewer) calls() []string {
@@ -293,7 +311,10 @@ func TestWebPageInput_NoWebpage(t *testing.T) {
 // messageMediaWebPage.pFlags.
 func TestWebPageInput_MediaChoosesURLAndSize(t *testing.T) {
 	e := newPreviewEnv(t)
-	e.prev.large = true
+	// Крупная картинка (has_large_media ставит сохранённая картинка).
+	e.in.SetBotHTTP(&fakeOutHTTP{data: pngOf(t, 800, 400), mime: "image/png"})
+	e.in.SetBotMedia(&fakeMediaStore{})
+	e.prev.imageURL = "https://cdn.example/og.png"
 	ctx := context.Background()
 	media := &domain.InputMediaWebPage{Underscore: domain.InputMediaWebPageTag, URL: "https://chosen.example/",
 		PFlags: map[string]bool{"force_small_media": true, "optional": true}}

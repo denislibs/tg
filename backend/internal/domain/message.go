@@ -22,8 +22,9 @@ type WebPagePreview struct {
 	SiteName    string `json:"site_name,omitempty"`
 	Title       string `json:"title,omitempty"`
 	Description string `json:"description,omitempty"`
-	// ImageURL — адрес og:image на ЧУЖОМ хосте. Транзитное поле: живёт только
-	// между разбором страницы и загрузкой картинки к нам (см. PhotoID), наружу
+	// ImageURL — адрес og:image на ЧУЖОМ хосте. Транзитное поле: живёт между
+	// разбором страницы и загрузкой картинки к нам (см. PhotoID) и в кэше
+	// страниц плашки сервера (до 10 минут, usecase/chat webPageCache); наружу
 	// не уходит и в jsonb не сохраняется — `json:"-"`. Отдать его клиенту
 	// значило бы, что браузер каждого участника чата сам сходит на i.ytimg.com
 	// и сдаст свой IP владельцу ссылки; Telegram так не делает — картинку
@@ -34,9 +35,11 @@ type WebPagePreview struct {
 	// дорога, что у фото сообщения: объект в MinIO, фоновая обработка даёт
 	// размеры/thumb/stripped-превью). 0 — картинки нет или скачать не вышло.
 	PhotoID int64 `json:"photo_id,omitempty"`
-	// Размеры/подложка/наличие thumb — read-model: заполняются на чтении из
-	// строки media (hydrateMedia), а не хранятся в jsonb: обработка медиа
-	// асинхронная и на момент записи превью их ещё нет.
+	// Подложка/наличие thumb — read-model: заполняются на чтении из строки
+	// media (hydrateMedia): обработка медиа асинхронная и на момент записи
+	// превью их ещё нет. Размер сборка пишет в снимок сразу — из заголовка
+	// картинки (кадр карточки уходит раньше обработки); на чтении его
+	// уточняет строка media, когда размер в ней уже есть.
 	PhotoW        int    `json:"photo_w,omitempty"`
 	PhotoH        int    `json:"photo_h,omitempty"`
 	PhotoBlur     []byte `json:"photo_blur,omitempty"`
