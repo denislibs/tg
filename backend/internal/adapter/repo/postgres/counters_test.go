@@ -280,3 +280,73 @@ func TestSoftDeleteAndHide_RepeatReportsNoChange(t *testing.T) {
 		}
 	}
 }
+
+// F6 (Р-13): «удалить у себя» невидимого зрителю сообщения — (false, nil), без
+// строки скрытия и без вычета непрочитанного: удалённое у всех и лежащее под
+// горизонтом очистки в unread_count уже не входят.
+func TestHideForUser_InvisibleMessageIsNoop(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	chats := NewChatsRepo(pool)
+	msgs := NewMessagesRepo(pool)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+7654")
+	b := seedUser(t, pool, "+7655")
+	chatID := createPrivate(t, pool, a, b)
+	old := insertMsg(t, msgs, chatID, b, "text", "старое")
+	gone := insertMsg(t, msgs, chatID, b, "text", "удалённое")
+	live := insertMsg(t, msgs, chatID, b, "text", "живое")
+	for range 3 {
+		_, _ = chats.IncUnreadBulk(ctx, chatID, []int64{a})
+	}
+	if _, err := msgs.SoftDelete(ctx, gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE chat_members SET cleared_max_seq = $3 WHERE chat_id = $1 AND user_id = $2`, chatID, a, old.Seq); err != nil {
+		t.Fatal(err)
+	}
+	before, _, _ := memberCounters(t, pool, chatID, a)
+
+	for _, id := range []int64{gone.ID, old.ID} {
+		if ok, err := msgs.HideForUser(ctx, a, id); err != nil || ok {
+			t.Fatalf("HideForUser(невидимое %d) = %v %v, want false nil", id, ok, err)
+		}
+	}
+	var hides int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM message_hides WHERE user_id = $1`, a).Scan(&hides); err != nil || hides != 0 {
+		t.Fatalf("строк скрытия %d (%v), want 0", hides, err)
+	}
+	if after, _, _ := memberCounters(t, pool, chatID, a); after != before {
+		t.Fatalf("unread %d -> %d: невидимое списало счётчик", before, after)
+	}
+	if ok, err := msgs.HideForUser(ctx, a, live.ID); err != nil || !ok {
+		t.Fatalf("HideForUser(видимое) = %v %v, want true nil", ok, err)
+	}
+}
+
+// F6 (Р-11): DropDialogPlacement снимает закреп и архив только у названных.
+func TestDropDialogPlacement(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	chats := NewChatsRepo(pool)
+	ctx := context.Background()
+	a := seedUser(t, pool, "+7656")
+	b := seedUser(t, pool, "+7657")
+	chatID := createPrivate(t, pool, a, b)
+	if _, err := pool.Exec(ctx, `UPDATE chat_members SET pinned_at = now(), archived = true WHERE chat_id = $1`, chatID); err != nil {
+		t.Fatal(err)
+	}
+	if err := chats.DropDialogPlacement(ctx, chatID, []int64{a}); err != nil {
+		t.Fatal(err)
+	}
+	state := func(uid int64) (pinned, archived bool) {
+		if err := pool.QueryRow(ctx, `SELECT pinned_at IS NOT NULL, archived FROM chat_members WHERE chat_id=$1 AND user_id=$2`, chatID, uid).Scan(&pinned, &archived); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	if p, ar := state(a); p || ar {
+		t.Fatalf("у a pinned=%v archived=%v, want false/false", p, ar)
+	}
+	if p, ar := state(b); !p || !ar {
+		t.Fatalf("у b pinned=%v archived=%v: чужой диалог тронут", p, ar)
+	}
+}

@@ -202,3 +202,38 @@ func TestPurgeExpired_RaceWithManualDeleteSkips(t *testing.T) {
 		t.Errorf("unread(b) = %d; want 1", got)
 	}
 }
+
+// F6 (Р-13): «удалить у себя» невидимого зрителю сообщения — ничего не меняет:
+// ни счётчика, ни строки журнала (tweb: на невидимое сервер отвечает
+// pts_count: 0, aMM:9017-9044).
+func TestDeleteMessage_ForMeInvisibleIsNoop(t *testing.T) {
+	in, st := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	old, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "old"})
+	gone, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "gone"})
+	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "tail"})
+
+	// «gone» удалено у всех; «old» — под горизонтом очистки собеседника.
+	if err := in.DeleteMessage(ctx, chatID, gone.ID, a, true); err != nil {
+		t.Fatal(err)
+	}
+	st.mu.Lock()
+	st.members[chatID][b].clearedSeq = old.Seq
+	st.mu.Unlock()
+	unread := st.members[chatID][b].unread
+	rows := st.journalCount(b, "delete_message")
+
+	for _, id := range []int64{gone.ID, old.ID} {
+		if err := in.DeleteMessage(ctx, chatID, id, b, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := st.members[chatID][b].unread; got != unread {
+		t.Errorf("unread(b) = %d, был %d: невидимое списало счётчик", got, unread)
+	}
+	if got := st.journalCount(b, "delete_message"); got != rows {
+		t.Errorf("строк delete_message %d, было %d: невидимое попало в журнал", got, rows)
+	}
+}

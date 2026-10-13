@@ -912,6 +912,14 @@ func (r *ChatsRepo) ShowDialogs(ctx context.Context, chatID int64) error {
 	return err
 }
 
+// DropDialogPlacement — см. ChatRepo.DropDialogPlacement.
+func (r *ChatsRepo) DropDialogPlacement(ctx context.Context, chatID int64, userIDs []int64) error {
+	_, err := querier(ctx, r.pool).Exec(ctx,
+		`UPDATE chat_members SET pinned_at = NULL, archived = false
+		  WHERE chat_id = $1 AND user_id = ANY($2::bigint[]) AND (pinned_at IS NOT NULL OR archived)`, chatID, userIDs)
+	return err
+}
+
 // LockDialogDelete — см. ChatRepo.LockDialogDelete. Ключ с пространством имён
 // (как scheduledrepo.go LockQueue, topicsrepo.go).
 func (r *ChatsRepo) LockDialogDelete(ctx context.Context, chatID int64) error {

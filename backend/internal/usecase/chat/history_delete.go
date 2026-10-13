@@ -147,7 +147,8 @@ func (i *Interactor) DeleteDialog(ctx context.Context, chatID, userID int64, rev
 		deliver = append(deliver, d)
 		touched = append(touched, userID)
 		if !revoke {
-			return nil
+			// Удалённый диалог не возвращается закреплённым или в архиве.
+			return i.chats.DropDialogPlacement(ctx, chatID, touched)
 		}
 		if e := i.msgs.SoftDeleteUpTo(ctx, chatID, maxSeq); e != nil {
 			return e
@@ -169,6 +170,9 @@ func (i *Interactor) DeleteDialog(ctx context.Context, chatID, userID int64, rev
 			}
 			deliver = append(deliver, d)
 			touched = append(touched, uid)
+		}
+		if e := i.chats.DropDialogPlacement(ctx, chatID, touched); e != nil {
+			return e
 		}
 		return i.chats.RecountCounters(ctx, chatID, members)
 	})

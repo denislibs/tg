@@ -136,6 +136,12 @@ type ChatRepo interface {
 	// сообщение.
 	SetDialogHidden(ctx context.Context, chatID, userID int64, hidden bool) error
 	ShowDialogs(ctx context.Context, chatID int64) error
+	// DropDialogPlacement снимает с диалога закреп и архив у userIDs — вместе со
+	// скрытием строки при «удалить чат»: у tweb удалённый диалог выбрасывается из
+	// закреплённых и папки (storages/dialogs.ts dropDialogFromFolders :1244-1273),
+	// и вернувшаяся новым сообщением строка встаёт обычной. Явные списки папок не
+	// трогаются.
+	DropDialogPlacement(ctx context.Context, chatID int64, userIDs []int64) error
 	// LockDialogDelete — транзакционный замок «удаление диалога» чата: двух
 	// встречных DeleteDialog(revoke) с разных сторон он разводит (они берут строки
 	// chat_members в разном порядке). Другие пути (DeleteMessage, Send) замок не
