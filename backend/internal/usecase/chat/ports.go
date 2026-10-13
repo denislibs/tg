@@ -133,15 +133,13 @@ type ChatRepo interface {
 	VisibleSeqsUpTo(ctx context.Context, chatID, userID, maxSeq int64) ([]int64, error)
 	// SetDialogHidden прячет/показывает строку диалога участника («удалить
 	// чат» в личке); ShowDialogs возвращает её всем участникам — новое
-	// сообщение.
+	// сообщение. Скрытие заодно снимает закреп и архив, а возврат строки их
+	// сбрасывает: у tweb удалённый диалог выбрасывается из закреплённых и папки
+	// (storages/dialogs.ts dropDialogFromFolders :1244-1273), и вернувшаяся
+	// строка встаёт обычной — даже если закреп/архив пришёл с другого
+	// устройства уже после удаления. Явные списки папок не трогаются.
 	SetDialogHidden(ctx context.Context, chatID, userID int64, hidden bool) error
 	ShowDialogs(ctx context.Context, chatID int64) error
-	// DropDialogPlacement снимает с диалога закреп и архив у userIDs — вместе со
-	// скрытием строки при «удалить чат»: у tweb удалённый диалог выбрасывается из
-	// закреплённых и папки (storages/dialogs.ts dropDialogFromFolders :1244-1273),
-	// и вернувшаяся новым сообщением строка встаёт обычной. Явные списки папок не
-	// трогаются.
-	DropDialogPlacement(ctx context.Context, chatID int64, userIDs []int64) error
 	// LockDialogDelete — транзакционный замок «удаление диалога» чата: двух
 	// встречных DeleteDialog(revoke) с разных сторон он разводит (они берут строки
 	// chat_members в разном порядке). Другие пути (DeleteMessage, Send) замок не

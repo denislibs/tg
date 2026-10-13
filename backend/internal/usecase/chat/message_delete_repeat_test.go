@@ -204,8 +204,8 @@ func TestPurgeExpired_RaceWithManualDeleteSkips(t *testing.T) {
 }
 
 // F6 (Р-13): «удалить у себя» невидимого зрителю сообщения — ничего не меняет:
-// ни счётчика, ни строки журнала (tweb: на невидимое сервер отвечает
-// pts_count: 0, aMM:9017-9044).
+// ни счётчика, ни строки журнала (вывод из клиента: на невидимое сервер
+// отвечает pts_count: 0, aMM:9017-9044).
 func TestDeleteMessage_ForMeInvisibleIsNoop(t *testing.T) {
 	in, st := newInteractor()
 	ctx := context.Background()

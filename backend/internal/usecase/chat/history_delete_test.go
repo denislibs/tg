@@ -294,11 +294,16 @@ func TestDeleteDialog_RevokeDropsPinAndArchiveOfPeerToo(t *testing.T) {
 	const a, b int64 = 1, 2
 	chatID, _ := in.CreatePrivateChat(ctx, a, b)
 	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Text: "hi"})
-	s.members[chatID][b].pinned = true
-	s.members[chatID][b].archived = true
+	for _, uid := range []int64{a, b} {
+		s.members[chatID][uid].pinned = true
+		s.members[chatID][uid].archived = true
+	}
 
 	if _, err := in.DeleteDialog(ctx, chatID, a, true); err != nil {
 		t.Fatal(err)
+	}
+	if m := s.members[chatID][a]; m.pinned || m.archived {
+		t.Fatalf("у удалившего при revoke остались pinned=%v archived=%v", m.pinned, m.archived)
 	}
 	if m := s.members[chatID][b]; m.pinned || m.archived {
 		t.Fatalf("у собеседника при revoke остались pinned=%v archived=%v", m.pinned, m.archived)

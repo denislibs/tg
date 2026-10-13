@@ -461,6 +461,9 @@ func (r fakeChats) SetDialogHidden(_ context.Context, chatID, userID int64, hidd
 	defer r.s.mu.Unlock()
 	if m := r.s.members[chatID][userID]; m != nil {
 		m.hidden = hidden
+		if hidden { // как ChatsRepo.SetDialogHidden: скрытие снимает закреп и архив
+			m.pinned, m.archived = false, false
+		}
 	}
 	return nil
 }
@@ -473,18 +476,10 @@ func (r fakeChats) ShowDialogs(_ context.Context, chatID int64) error {
 	}
 	r.s.showDialogsCalls[chatID]++
 	for _, m := range r.s.members[chatID] {
-		m.hidden = false
-	}
-	return nil
-}
-
-func (r fakeChats) DropDialogPlacement(_ context.Context, chatID int64, userIDs []int64) error {
-	r.s.mu.Lock()
-	defer r.s.mu.Unlock()
-	for _, uid := range userIDs {
-		if m := r.s.members[chatID][uid]; m != nil {
+		if m.hidden { // возврат строки сбрасывает закреп и архив (ChatsRepo.ShowDialogs)
 			m.pinned, m.archived = false, false
 		}
+		m.hidden = false
 	}
 	return nil
 }

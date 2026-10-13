@@ -1063,8 +1063,9 @@ func (r *MessagesRepo) SetDestructOnRead(ctx context.Context, chatID, readerID, 
 // прочитанное входящее уходит из unread_count, его упоминание — из «@»,
 // непрочитанные реакции на своём — из ❤. Остальные участники не затронуты.
 // Повтор — no-op: false значит «уже скрыто» (или сообщения нет). Скрывается
-// только то, что зритель видит (messageVisibleTo): у tweb на невидимое сервер
-// отвечает pts_count: 0, ничего не меняя (appMessagesManager.ts:9017-9044).
+// только то, что зритель видит (messageVisibleTo). Вывод из клиента, не код tweb:
+// на невидимое сервер Telegram отвечает pts_count: 0, ничего не меняя (клиент
+// двигает pts по ответу, appMessagesManager.ts:9017-9044).
 func (r *MessagesRepo) HideForUser(ctx context.Context, userID, msgID int64) (bool, error) {
 	q := querier(ctx, r.pool)
 	var chatID int64
