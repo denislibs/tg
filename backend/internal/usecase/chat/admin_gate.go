@@ -39,7 +39,11 @@ func (i *Interactor) manageTarget(ctx context.Context, chatID, actorID, targetID
 	case errors.Is(err, domain.ErrNotFound):
 		// Вышедший создатель — всё ещё владелец: его не трогает никто, и вернуть
 		// его в чат чужой ролью (promote/ban) нельзя.
-		if cid, e := i.groups.CreatorID(ctx, chatID); e == nil && cid != 0 && cid == targetID {
+		cid, e := i.groups.CreatorID(ctx, chatID)
+		if e != nil && !errors.Is(e, domain.ErrNotFound) {
+			return actor, domain.Member{}, e
+		}
+		if e == nil && cid != 0 && cid == targetID {
 			return actor, domain.Member{}, domain.ErrForbidden
 		}
 		if requireMember {

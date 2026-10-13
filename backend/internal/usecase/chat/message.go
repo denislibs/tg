@@ -134,9 +134,11 @@ func (i *Interactor) messageMentions(ctx context.Context, msg domain.Message) (m
 func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, error) {
 	ok, err := i.chats.IsMember(ctx, in.ChatID, in.SenderID)
 	// leftCreator — вышедший создатель пишет в свой чат (tweb hasRights.ts:6-7).
-	// Гость обсуждения пишет только в тред, поэтому его вопрос не задаём: горячий
-	// путь комментариев не получает лишних чтений. Публикация отложенного по
-	// расписанию создателя в чат не возвращает.
+	// Гость обсуждения пишет только в тред, поэтому без треда вопрос задаём
+	// сразу, а в треде — лишь когда путь гостя отказал (тема форума, тред
+	// комментариев своей группы): горячий путь комментариев лишних чтений не
+	// получает. Публикация отложенного по расписанию создателя в чат не
+	// возвращает.
 	leftCreator := false
 	if err == nil && !ok && in.ThreadRootID == nil && !in.fromSchedule {
 		leftCreator, err = i.isChatCreator(ctx, in.ChatID, in.SenderID)
@@ -148,8 +150,15 @@ func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, er
 	// вступления (requireDiscussionGuest).
 	guest := !ok && !leftCreator
 	if guest {
-		if err := i.requireDiscussionGuest(ctx, in.ChatID, in.SenderID, in.ThreadRootID); err != nil {
-			return domain.Message{}, err
+		if gerr := i.requireDiscussionGuest(ctx, in.ChatID, in.SenderID, in.ThreadRootID); gerr != nil {
+			if in.ThreadRootID == nil || in.fromSchedule {
+				return domain.Message{}, gerr
+			}
+			isCreator, cerr := i.isChatCreator(ctx, in.ChatID, in.SenderID)
+			if cerr != nil || !isCreator {
+				return domain.Message{}, gerr
+			}
+			leftCreator, guest = true, false
 		}
 	}
 	// Вид ДОСТАВКИ — свойство ПИРА, а не ручки. У оригинала метод отправки один

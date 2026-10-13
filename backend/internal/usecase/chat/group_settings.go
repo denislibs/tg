@@ -93,6 +93,12 @@ func (i *Interactor) memberOrCreator(ctx context.Context, chatID, userID int64) 
 	if cid == 0 || cid != userID {
 		return domain.Member{}, domain.ErrNotFound
 	}
+	// Бан на создателе не обходится правами «владельца без строки».
+	if banned, e := i.groups.IsBanned(ctx, chatID, userID); e != nil {
+		return domain.Member{}, e
+	} else if banned {
+		return domain.Member{}, domain.ErrNotFound
+	}
 	return domain.Member{ChatID: chatID, UserID: userID, Role: domain.RoleCreator, Rights: domain.AllRights}, nil
 }
 

@@ -466,3 +466,41 @@ func TestEditAboutTitle_UnchangedIsSilent(t *testing.T) {
 		t.Fatalf("неизменённые значения разослали %d кадров", n)
 	}
 }
+
+// Контрольный проход п. 1: вышедший создатель пишет в тред (тема форума) — путь
+// гостя отказывает, и тогда его возвращают как создателя.
+func TestLeftCreator_SendInThreadRejoins(t *testing.T) {
+	in, fg, _, _, _ := newMembersTestInteractor(t)
+	ctx := context.Background()
+	g, _, _ := in.CreateGroup(ctx, 7, "Группа", "", "", false, []int64{8})
+	root, err := in.Send(ctx, SendInput{ChatID: g, SenderID: 8, Text: "корень", ClientMsgID: "root"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = in.RemoveMember(ctx, g, 7, 7)
+	if _, err := in.Send(ctx, SendInput{ChatID: g, SenderID: 7, Text: "в тред", ClientMsgID: "th1", ThreadRootID: &root.Seq}); err != nil {
+		t.Fatalf("Send в тред вышедшим создателем: %v", err)
+	}
+	if m, err := fg.GetMember(ctx, g, 7); err != nil || m.Role != domain.RoleCreator {
+		t.Fatalf("после отправки в тред: %+v err=%v", m, err)
+	}
+}
+
+// Контрольный проход п. 2: бан на вышедшем создателе не обходится правами
+// «владельца без строки».
+func TestLeftCreator_BannedHasNoOwnerRights(t *testing.T) {
+	in, fg, _, _, _ := newMembersTestInteractor(t)
+	ctx := context.Background()
+	g, _, _ := in.CreateGroup(ctx, 7, "Группа", "", "", false, nil)
+	_ = fg.RemoveMember(ctx, g, 7)
+	_ = fg.Ban(ctx, g, 7, 7)
+	if err := in.UnbanMember(ctx, g, 7, 7); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("забаненный создатель снял бан: %v", err)
+	}
+	if err := in.EditTitle(ctx, g, 7, "x"); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("забаненный создатель правит название: %v", err)
+	}
+	if err := in.SetChatType(ctx, g, 7, true, "x_grp"); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("забаненный создатель правит тип: %v", err)
+	}
+}
