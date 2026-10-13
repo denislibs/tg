@@ -294,7 +294,7 @@ describe('createWorkerCore(): черновики тредов', () => {
     expect(core.registry.drafts.getDraft(FORUM, generateMessageId(1))).toMatchObject({ message: 'в general' })
     const update = ops.find((op) => op.op === 'update') as Extract<ForumTopicOp, { op: 'update' }>
     expect(update.topics[0]).toMatchObject({ id: generateMessageId(1), draft: { message: 'в general' } })
-    expect(seen).toEqual([{ peerId: FORUM, threadId: generateMessageId(1), draft: { _: 'draftMessage', message: 'в general', date: 9 } }])
+    expect(seen).toEqual([{ peerId: FORUM, threadId: generateMessageId(1), draft: { _: 'draftMessage', pFlags: {}, message: 'в general', date: 9 } }])
   })
 })
 

@@ -42,6 +42,7 @@ import { getPeerId } from '../peers/peerId'
 import { generateMessageId, getServerMessageId, isLocalMessageId } from '../history/messageId'
 import { draftsAreEqual, processApiDraft, realDraft } from '../dialogs/draft'
 import tsNow from '@helpers/tsNow'
+import type { InputMediaWebPage } from './messages/webPage'
 
 /** `draft_updated` (tweb `rootScope.ts:162`) — вкладкам. */
 export interface DraftUpdatedEvt {
@@ -56,6 +57,10 @@ interface SaveDraftParams {
   message: string
   entities?: MessageEntity[]
   reply_to?: { _: 'inputReplyToMessage'; reply_to_msg_id?: number; top_msg_id?: number }
+  /** решение плашки превью ссылки — tweb `syncDraft` :280-290 */
+  no_webpage?: true
+  invert_media?: true
+  media?: InputMediaWebPage
 }
 
 export interface DraftsDeps {
@@ -185,6 +190,10 @@ export function newDraftsManager({ rest, applyDialogDraft, applyTopicDraft, onDr
           params.reply_to = { _: 'inputReplyToMessage', reply_to_msg_id: getServerMessageId(replyTo.reply_to_msg_id) }
         }
         if (draft.entities?.length) params.entities = draft.entities
+        // tweb :280-290 — решение плашки превью ссылки
+        if (draft.pFlags?.no_webpage) params.no_webpage = draft.pFlags.no_webpage
+        if (draft.pFlags?.invert_media) params.invert_media = draft.pFlags.invert_media
+        if (draft.media) params.media = draft.media
         params.message = draft.message
       }
 

@@ -764,6 +764,8 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
       // офлайн-старт показал бы список без имён (см. `peers.hydrateFromDisk`).
       const [cached] = await Promise.all([loadCache(), peers?.hydrateFromDisk()])
       if (gen !== sessionGen) return
+      // черновик кэша прошлой версии — без `pFlags` (`processApiDraft` идемпотентен)
+      for (const d of cached) if (d.draft) d.draft = processApiDraft(d.draft)
       setAll(cached)
       // tweb dialogs.ts:280-302 → saveDialog :1755-1757: строки, поднятые из
       // хранилища, заводят состояния каналов ДО attach — разница

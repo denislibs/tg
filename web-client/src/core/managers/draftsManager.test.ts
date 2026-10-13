@@ -23,8 +23,9 @@ function setup(rest: Partial<Record<'get' | 'put' | 'del', ReturnType<typeof vi.
   return { mgr: newDraftsManager(deps), ...deps, put: deps.rest.put as unknown as ReturnType<typeof vi.fn> }
 }
 
+/** черновик поля ввода — `pFlags` у него всегда (`ChatInput.getCurrentInputAsDraft`) */
 const local = (message: string, replyTo?: number, threadId?: number): DraftMessageReal => ({
-  _: 'draftMessage', message, date: 1,
+  _: 'draftMessage', pFlags: {}, message, date: 1,
   ...(replyTo ? { reply_to: { _: 'inputReplyToMessage' as const, reply_to_msg_id: replyTo, top_msg_id: threadId } } : {}),
 })
 
@@ -37,7 +38,7 @@ describe('DraftsManager: приём updateDraftMessage (tweb :44-71)', () => {
     }
     mgr.applyUpdate(frame)
 
-    const expected = { _: 'draftMessage', message: 'тема', date: 5, reply_to: { _: 'inputReplyToMessage', reply_to_msg_id: cid(12), top_msg_id: cid(10) } }
+    const expected = { _: 'draftMessage', pFlags: {}, message: 'тема', date: 5, reply_to: { _: 'inputReplyToMessage', reply_to_msg_id: cid(12), top_msg_id: cid(10) } }
     expect(mgr.getDraft(FORUM, cid(10))).toEqual(expected)
     expect(onDraftUpdated).toHaveBeenCalledWith({ peerId: FORUM, threadId: cid(10), draft: expected, force: undefined })
     expect(applyTopicDraft).toHaveBeenCalledWith(FORUM, cid(10), expected)
@@ -105,6 +106,28 @@ describe('DraftsManager.syncDraft (tweb :216-330)', () => {
     expect(put).toHaveBeenCalledWith('/chats/7/draft', { message: 'x', reply_to: { _: 'inputReplyToMessage', reply_to_msg_id: 3 } })
     expect(onDraftUpdated).not.toHaveBeenCalled()
     expect(applyDialogDraft).not.toHaveBeenCalled()
+  })
+})
+
+describe('DraftsManager: решение превью ссылки (tweb syncDraft :280-290)', () => {
+  it('no_webpage / invert_media / media уходят в saveDraft; ложных флагов нет', async () => {
+    const { mgr, put } = setup()
+    const media = { _: 'inputMediaWebPage' as const, url: 'https://ex.com', pFlags: { force_small_media: true as const, optional: true as const } }
+    await mgr.syncDraft({ peerId: 7, localDraft: { ...local('https://ex.com'), pFlags: { invert_media: true }, media } })
+    await mgr.syncDraft({ peerId: 7, localDraft: { ...local('https://ex.com x'), pFlags: { no_webpage: true } } })
+    await mgr.syncDraft({ peerId: 7, localDraft: local('y') })
+    expect(put.mock.calls.map((c) => c[1])).toEqual([
+      { message: 'https://ex.com', invert_media: true, media },
+      { message: 'https://ex.com x', no_webpage: true },
+      { message: 'y' },
+    ])
+  })
+
+  it('черновик треда с провода: pFlags заводится, media доезжает (сравнение с полем ввода)', () => {
+    const { mgr } = setup()
+    const media = { _: 'inputMediaWebPage' as const, url: 'https://ex.com', pFlags: { optional: true as const } }
+    mgr.applyUpdate({ _: 'updateDraftMessage', peer: { _: 'peerChannel', channel_id: 50 }, top_msg_id: 10, draft: { _: 'draftMessage', message: 'a', date: 5, media } })
+    expect(mgr.getDraft(FORUM, cid(10))).toEqual({ _: 'draftMessage', pFlags: {}, message: 'a', date: 5, media })
   })
 })
 

@@ -266,7 +266,8 @@ describe('ChatInput: черновик', () => {
   })
 
   it('равный черновику текст не пересохраняется', async() => {
-    mounted = await mountInput({ draft: { _: 'draftMessage', message: 'есть', date: 1 } })
+    // черновик зеркала — после `processApiDraft` (`pFlags` заведён), как у поля ввода
+    mounted = await mountInput({ draft: { _: 'draftMessage', pFlags: {}, message: 'есть', date: 1 } })
     const { input, managers, appImManager, chat } = mounted
     await vi.waitFor(() => expect(input.messageInput.textContent).toBe('есть'))
 
