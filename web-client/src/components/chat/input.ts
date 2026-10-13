@@ -103,10 +103,20 @@
 //     и перепроверки по `settings_updated`/`peer_full_update` (своих событий нет). Права
 //     `send_stickers`/`send_inline` — наши `send_media`/`send_messages` (расхождение 5).
 //     `insertAtCaret`/`onEmojiSelected` — одна копия, у эмодзи-дропдауна (Б-35).
-// 11. Превью ссылки: черновик решения плашки не несёт (`pFlags.no_webpage`/`invert_media`/
-//     `media` у `draftMessage`, tweb `:2275-2310`, `:2466`, и сравнение с ними в
-//     `onHelperCancel` `:4145-4171`) — ручка `/chats/{id}/draft` этих полей не принимает.
+// 11. Превью ссылки: черновик несёт решение плашки (`pFlags.no_webpage`/`invert_media`/
+//     `media`, tweb `:2275-2310`, `:2466`, `:5345-5348`) 1:1, вместе с поведением
+//     оригинала, кроме одного: у tweb `invertMedia` после выбора «над» не сбрасывается
+//     (`:307`, ставит только меню `:830`) и едет в следующие черновики и в сравнение
+//     отмены правки (ложное «Отменить изменения?») — баг tweb; у нас сбрасывается после
+//     отправки и выхода из правки (решение пользователя 2026-10-13, `onMessageSent`,
+//     `clearHelper`); `no_webpage` черновика при восстановлении снимает заново поднятая плашка (`:3605`),
+//     и её меню пересохраняет черновик уже с карточкой. Сравнение отмены правки
+//     (`onHelperCancel` `:4145-4200`) — с решением превью и фильтром сущностей, но без
+//     `reply_to` сообщения (`:4162-4165`): у нашей правки ответа в поле нет.
 //     Право `embed_links` (`:3595`) — наше `send_messages` (расхождение 5).
+//     `processWebPage` получает разобранный текст (`value`), а не сырой `richValue`
+//     (`:3484`): наше поле хранит markdown-маркеры до отправки, а смещения сущностей —
+//     в разобранном тексте.
 //     `hoverListenerSetter` (`:341`, `:5210`) не заведён: в tweb в него никто не
 //     добавляет, остался только `removeAll`.
 import type { Managers } from '@/client/bootstrap'
@@ -134,7 +144,8 @@ import mediaSizes from '@core/dom/mediaSizes'
 import { useChatsStore } from '@stores/chatsStore'
 import parseEntities from '@lib/richtext/parseEntities'
 import parseMarkdown from '@lib/richtext/parseMarkdown'
-import { mergeEntities } from '@lib/richtext/entities'
+import { MARKDOWN_ENTITIES, mergeEntities } from '@lib/richtext/entities'
+import forEachReverse from '@helpers/array/forEachReverse'
 import wrapDraftText from '@lib/richtext/wrapDraftText'
 import splitStringByLength from '@helpers/string/splitStringByLength'
 import sliceMessageEntities from '@helpers/sliceMessageEntities'
@@ -313,6 +324,8 @@ export default class ChatInput {
   private noWebPage?: true
   /** tweb `:307` — «над сообщением» (`invert_media`) */
   public invertMedia?: boolean
+  /** tweb `:436` — черновик, который сейчас поднимается в поле (`setInputValue`) */
+  private processingDraftMessage?: DraftMessageReal
 
   public forwarding?: { [fromPeerId: PeerId]: number[] }
   public replyToMsgId: MessageSendingParams['replyToMsgId']
@@ -1383,13 +1396,30 @@ export default class ChatInput {
     const { value, entities } = getRichValueWithCaret(this.messageInputField.input, true, false)
 
     let draft: DraftMessageReal | undefined
-    if((value.length || ignoreEmptyValue) || this.replyToMsgId) {
+    if((value.length || ignoreEmptyValue) || this.replyToMsgId || this.willSendWebPage) {
       const replyTo = this.getReplyTo()
+      // tweb :2276-2278, :2286-2289, :2302-2310 — решение плашки превью ссылки
+      const webPage = this.willSendWebPage
+      const webPageOptions = this.webPageOptions
+      const hasLargeMedia = !!webPage?.pFlags?.has_large_media
       draft = {
         _: 'draftMessage',
         date: Math.floor(Date.now() / 1000),
         message: value.trim(),
         entities: entities.length ? entities : undefined,
+        pFlags: {
+          no_webpage: this.noWebPage,
+          invert_media: this.invertMedia || undefined,
+        },
+        media: webPage ? {
+          _: 'inputMediaWebPage',
+          pFlags: {
+            force_large_media: hasLargeMedia && webPageOptions?.largeMedia || undefined,
+            force_small_media: hasLargeMedia && webPageOptions?.smallMedia || undefined,
+            optional: true,
+          },
+          url: webPage.url,
+        } : undefined,
         // tweb :2290-2294 — тред ответа едет в `top_msg_id`
         reply_to: replyTo?.replyToMsgId ? {
           _: 'inputReplyToMessage',
@@ -1508,12 +1538,14 @@ export default class ChatInput {
       this.clearHelper()
     }
 
+    // tweb :2466
+    this.noWebPage = draft.pFlags?.no_webpage
     const draftReplyToMsgId = draft.reply_to?.reply_to_msg_id
     if(draftReplyToMsgId) {
       void this.initMessageReply({ replyToMsgId: draftReplyToMsgId })
     }
 
-    this.setInputValue(wrappedDraft, fromUpdate, fromUpdate)
+    this.setInputValue(wrappedDraft, fromUpdate, fromUpdate, draft)
     return true
   }
 
@@ -2074,8 +2106,12 @@ export default class ChatInput {
     const [value, markdownEntities] = parseMarkdown(richValue, markdownEntities1, true)
     const entities = mergeEntities(markdownEntities, parseEntities(value))
 
-    // tweb :3484
-    this.processWebPage(richValue, entities)
+    // tweb :3484 отдаёт `richValue`, а режет его (:3568) смещениями `entities`
+    // разобранного `value`. Наше поле хранит сырые markdown-маркеры до отправки
+    // (разбор — в `sendText`), и при маркерах перед ссылкой такой срез промахнулся
+    // бы мимо адреса. Режем тот же `value`, который увидит отправка.
+    // Расхождение 11 шапки.
+    this.processWebPage(value, entities)
 
     const isEmpty = !richValue.trim()
     if(isEmpty) {
@@ -2108,7 +2144,8 @@ export default class ChatInput {
       this.updateBotCommandsToggle()
     }
 
-    if(!this.editMsgId) {
+    // tweb :3522 — восстановление черновика сам черновик не пересохраняет
+    if(!this.editMsgId && !this.processingDraftMessage) {
       void this.saveDraftDebounced()
     }
 
@@ -2124,17 +2161,19 @@ export default class ChatInput {
    * (`webPages.getWebPage`, у tweb `appWebPagesManager.getWebPage`) → плашка
    * `webpage` над полем. При правке ссылка и «над/под» берутся из сообщения
    * (`:3538-3542`), выбор размера — из его `force_*` (`:3615-3627`); группа
-   * «крупнее/мельче» скрыта без `has_large_media` (`:3619`). Черновик
-   * (`processingDraftMessage`) — расхождение 11.
+   * «крупнее/мельче» скрыта без `has_large_media` (`:3619`). У черновика
+   * (`processingDraftMessage`, `:3536`) — его `inputMediaWebPage` и `pFlags`.
    */
   private processWebPage(
     richValue: string,
     entities: MessageEntity[],
-    message: MyMessage | undefined = this.editMessage,
+    message: MyMessage | DraftMessageReal | undefined = this.processingDraftMessage || this.editMessage,
   ) {
-    const messageMedia = message?._ === 'message' ? message.media : undefined
+    const messageMedia = message?._ === 'message' ? message.media : message?._ === 'draftMessage' ? message.media : undefined
     const invertMedia = message?.pFlags?.invert_media
-    const webPageUrl = messageMedia?._ === 'messageMediaWebPage' ? messageMedia.webpage.url : undefined
+    const webPageUrl = messageMedia?._ === 'inputMediaWebPage' ?
+      messageMedia.url :
+      messageMedia?._ === 'messageMediaWebPage' ? messageMedia.webpage.url : undefined
     const urlEntities = (!messageMedia || webPageUrl) &&
       entities.filter((e): e is MessageEntity.messageEntityUrl | MessageEntity.messageEntityTextUrl => e._ === 'messageEntityUrl' || e._ === 'messageEntityTextUrl')
     if(!urlEntities || !urlEntities.length) {
@@ -2204,7 +2243,8 @@ export default class ChatInput {
         delete this.noWebPage
         this.willSendWebPage = webPage
 
-        const media = messageMedia?._ === 'messageMediaWebPage' ? messageMedia : undefined
+        // у правки — `messageMediaWebPage`, у черновика — `inputMediaWebPage`; `force_*` в `pFlags` обоих
+        const media = messageMedia?._ === 'messageMediaWebPage' || messageMedia?._ === 'inputMediaWebPage' ? messageMedia : undefined
         if(this.webPageElements) {
           const positionElement = oldWebPage && invertMedia ? this.webPageElements.above : this.webPageElements.below
           positionElement.checkboxField!.checked = true
@@ -2308,7 +2348,7 @@ export default class ChatInput {
     }
   }
 
-  /** tweb `:4119-4221` — черновик превью — расхождение 11. */
+  /** tweb `:4119-4221` */
   public onHelperCancel = async(e?: Event, force?: boolean) => {
     if(e) {
       cancelEvent(e)
@@ -2338,11 +2378,57 @@ export default class ChatInput {
     if(this.helperType === 'edit' && !force) {
       const message = this.editMessage!
       const draft = this.getCurrentInputAsDraft(true)
+      // tweb :4147-4171 — решение превью сообщения против решения плашки
+      if(draft?.pFlags) {
+        delete draft.pFlags.no_webpage
+      }
+
+      const messageMedia = message._ === 'message' && message.media?._ === 'messageMediaWebPage' ? message.media : undefined
+      const hasLargeMedia = messageMedia?.webpage.pFlags?.has_large_media
       const originalDraft: DraftMessageReal = {
         _: 'draftMessage',
         date: draft?.date ?? 0,
         message: getMessageText(message),
         entities: message._ === 'message' && message.entities?.length ? message.entities : undefined,
+        pFlags: {
+          invert_media: message.pFlags.invert_media,
+        },
+        media: messageMedia && {
+          _: 'inputMediaWebPage',
+          pFlags: {
+            force_large_media: hasLargeMedia && messageMedia.pFlags.force_large_media || undefined,
+            force_small_media: hasLargeMedia && messageMedia.pFlags.force_small_media || undefined,
+            optional: true,
+          },
+          url: messageMedia.webpage.url,
+        },
+      }
+
+      // tweb :4177-4200 — сравниваются только разметка и свои эмодзи: ссылки,
+      // упоминания и прочее, что поле выводит из текста само, правкой не считаются
+      if(originalDraft.entities?.length || draft?.entities?.length) {
+        const canPassEntitiesTypes = new Set<string>(Object.values(MARKDOWN_ENTITIES))
+        canPassEntitiesTypes.add('messageEntityCustomEmoji')
+
+        if(originalDraft.entities) {
+          originalDraft.entities = originalDraft.entities.slice()
+        }
+
+        [originalDraft, draft].forEach((draft) => {
+          if(!draft?.entities) {
+            return
+          }
+
+          forEachReverse(draft.entities, (entity, idx, arr) => {
+            if(!canPassEntitiesTypes.has(entity._)) {
+              arr!.splice(idx!, 1)
+            }
+          })
+
+          if(!draft.entities.length) {
+            delete draft.entities
+          }
+        })
       }
 
       if(!draftsAreEqual(draft, originalDraft)) {
@@ -2496,6 +2582,11 @@ export default class ChatInput {
       this.lastUrl = ''
       delete this.noWebPage
       this.willSendWebPage = null
+      // ОТСТУПЛЕНИЕ от tweb (баг tweb `input.ts:307`/`:830`: `invertMedia` ставит
+      // только меню плашки и никто не сбрасывает — «над сообщением» уезжало в
+      // следующие черновики и давало ложное «Отменить изменения?»). Решение
+      // пользователя 2026-10-13: после отправки сбрасывается вместе с плашкой.
+      this.invertMedia = undefined
       void this.clearInput()
     }
 
@@ -2964,6 +3055,9 @@ export default class ChatInput {
   /** tweb `:5265-5317` */
   public clearHelper(type?: ChatInputHelperType, willHaveHelper?: boolean) {
     if(this.helperType === 'edit' && type !== 'edit') {
+      // ОТСТУПЛЕНИЕ от tweb (баг tweb `input.ts:307`/`:830`, см. `onMessageSent`),
+      // решение пользователя 2026-10-13: выход из правки сбрасывает «над сообщением»
+      this.invertMedia = undefined
       void this.clearInput()
     }
 
@@ -3021,6 +3115,7 @@ export default class ChatInput {
     value: Parameters<InputFieldAnimated['setValueSilently']>[0],
     clear = true,
     focus = true,
+    draftMessage?: DraftMessageReal,
   ) {
     value ||= ''
 
@@ -3029,7 +3124,10 @@ export default class ChatInput {
 
     fastRaf(() => {
       if(focus) placeCaretAtEnd(this.messageInput)
+      // tweb :5345-5348 — плашка превью поднимается из решения черновика
+      this.processingDraftMessage = draftMessage
       this.onMessageInput()
+      this.processingDraftMessage = undefined
       this.messageInput.scrollTop = this.messageInput.scrollHeight
     })
   }

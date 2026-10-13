@@ -7,7 +7,7 @@ import { getMiddleware } from '@helpers/middleware'
 import { useChatsStore } from '@stores/chatsStore'
 import { winKey } from '@core/history/messagesMirror'
 import { makeDialog } from '@core/dialogs/testDialog'
-import type { MyMessage } from '@core/models'
+import type { DraftMessageReal, MyMessage } from '@core/models'
 import type { WebPage } from '@core/media/messageMedia'
 import ChatInput from './input'
 import { ChatType } from './chatType'
@@ -21,8 +21,8 @@ const card = (url: string, over: Partial<WebPage> = {}): WebPage => ({
   _: 'webPage', pFlags: {}, url, display_url: url.replace('https://', ''), site_name: 'Example', title: 'Title', ...over,
 })
 
-async function mountInput(getWebPage: (url: string) => Promise<WebPage | undefined>) {
-  useChatsStore.setState({ dialogs: [makeDialog({ peerId: PEER })], loaded: true })
+async function mountInput(getWebPage: (url: string) => Promise<WebPage | undefined>, draft?: DraftMessageReal) {
+  useChatsStore.setState({ dialogs: [{ ...makeDialog({ peerId: PEER }), draft }], loaded: true })
   const messages = new Map<number, MyMessage>()
   const managers = {
     messages: {
@@ -32,7 +32,7 @@ async function mountInput(getWebPage: (url: string) => Promise<WebPage | undefin
       getMessageByPeer: vi.fn(async(_peerId: number, mid: number) => messages.get(mid)),
     },
     webPages: { getWebPage: vi.fn(getWebPage) },
-    drafts: { save: vi.fn(async() => ({ _: 'draftMessageEmpty' })) },
+    drafts: { syncDraft: vi.fn(async(_args: { localDraft?: DraftMessageReal }) => true), getDraft: vi.fn(async() => undefined), clearDraft: vi.fn() },
     realtime: { sendTyping: vi.fn(async() => ({ ok: true })) },
     chats: { createPrivate: vi.fn(async(id: number) => id) },
     dialogs: { refresh: vi.fn(async() => {}) },
@@ -89,6 +89,8 @@ beforeEach(async() => {
 afterEach(() => {
   mounted?.input.destroy()
   mounted?.chat.container.remove()
+  // попап «Отменить изменения?» живёт в body — соседний тест не должен его видеть
+  document.querySelectorAll('.popup').forEach((popup) => popup.remove())
   mounted = undefined
   useChatsStore.setState({ dialogs: [] })
 })
@@ -114,6 +116,21 @@ describe('ChatInput: плашка превью ссылки', () => {
       webPage: card(URL1), webPageOptions: { optional: true }, invertMedia: false,
     }))
     expect(managers.messages.sendText.mock.calls[0][0].noWebPage).toBeUndefined()
+  })
+
+  // Наше поле хранит сырые markdown-маркеры до отправки: адрес плашки — из того же
+  // разбора, что у отправки, иначе маркеры перед ссылкой сдвигали срез мимо адреса.
+  it.each([
+    ['маркеры перед ссылкой', '**жирный** ' + URL1],
+    ['ссылка внутри маркеров', '**' + URL1 + '**'],
+    ['курсив и код перед ссылкой', '__курсив__ `код` ' + URL1],
+  ])('%s: плашка ищет точный адрес', async(_name, text) => {
+    mounted = await mountInput(async(url) => card(url))
+    const { input, managers } = mounted
+    await type(input, text)
+    expect(managers.webPages.getWebPage).toHaveBeenCalledTimes(1)
+    expect(managers.webPages.getWebPage).toHaveBeenCalledWith(URL1)
+    expect(input.willSendWebPage?.url).toBe(URL1)
   })
 
   it('без карточки (webPageEmpty/429) плашки нет, отправка без решения', async() => {
@@ -258,6 +275,34 @@ describe('ChatInput: превью ссылки при правке', () => {
     }))
   })
 
+  // tweb :4124-4141, :4145-4200 — первая отмена при плашке превью снимает превью,
+  // вторая сравнивает правку с сообщением: снятое превью — изменение
+  it('отмена правки: сначала снимается превью, затем «Отменить изменения?» (превью снято)', async() => {
+    mounted = await mountInput(async(url) => card(url, { pFlags: { has_large_media: true } }))
+    const { input, messages } = mounted
+    messages.set(7, editable())
+    await input.initMessageEditing(7)
+    await flush()
+    await input.onHelperCancel()
+    expect(input.willSendWebPage).toBeNull()
+    expect(input.helperType).toBe('edit')
+
+    await input.onHelperCancel()
+    expect(input.helperType).toBe('edit')
+    expect(document.querySelector('.popup')).not.toBeNull()
+  })
+
+  it('отмена неизменённой правки со ссылкой в тексте (сущность-ссылка поля) — без вопроса', async() => {
+    mounted = await mountInput(async() => undefined)
+    const { input, messages } = mounted
+    // сервер отдаёт ссылку сущностью сообщения, а поле её как разметку не хранит
+    messages.set(7, editable({ media: undefined, pFlags: { out: true }, entities: [{ _: 'messageEntityUrl', offset: 5, length: URL1.length }] }))
+    await input.initMessageEditing(7)
+    await flush()
+    await input.onHelperCancel()
+    expect(input.helperType).toBeUndefined()
+  })
+
   it('крестик во время правки возвращает плашку правки и снимает превью (no_webpage)', async() => {
     mounted = await mountInput(async(url) => card(url))
     const { input, managers, messages, chat } = mounted
@@ -288,3 +333,115 @@ describe('ChatInput: превью ссылки при правке', () => {
     }))
   })
 })
+
+describe('ChatInput: превью ссылки в черновике (tweb :2275-2310, :2466, :5345-5348)', () => {
+  it('черновик несёт решение плашки: media с выбором размера и invert_media', async() => {
+    mounted = await mountInput(async(url) => card(url, { pFlags: { has_large_media: true } }))
+    const { input } = mounted
+    await type(input, URL1)
+    const m = menu(input)
+    m.container.classList.add('active')
+    m.above.element.click()
+    m.smaller.element.click()
+
+    expect(input.getCurrentInputAsDraft()).toEqual(expect.objectContaining({
+      pFlags: { invert_media: true },
+      media: { _: 'inputMediaWebPage', url: URL1, pFlags: { force_small_media: true, optional: true } },
+    }))
+  })
+
+  it('крестик — no_webpage в черновике и в сохранении', async() => {
+    mounted = await mountInput(async(url) => card(url))
+    const { input, managers, chat } = mounted
+    await type(input, URL1)
+    ;(chat.container.querySelector('.reply-cancel') as HTMLElement).click()
+    await flush()
+    expect(input.getCurrentInputAsDraft()?.pFlags?.no_webpage).toBe(true)
+    input.saveDraft()
+    expect(managers.drafts.syncDraft.mock.lastCall![0].localDraft).toEqual(expect.objectContaining({ pFlags: expect.objectContaining({ no_webpage: true }) }))
+  })
+
+  it('восстановление: плашка поднимается по ссылке черновика с его «над/мельче», без пересохранения', async() => {
+    const draft: DraftMessageReal = {
+      _: 'draftMessage', pFlags: { invert_media: true }, message: 'про ' + URL1 + ' и ' + URL2, date: 1,
+      media: { _: 'inputMediaWebPage', url: URL2, pFlags: { force_small_media: true, optional: true } },
+    }
+    mounted = await mountInput(async(url) => card(url, { pFlags: { has_large_media: true } }), draft)
+    const { input, managers } = mounted
+    await vi.waitFor(() => expect(input.willSendWebPage?.url).toBe(URL2))
+    const m = menu(input)
+    expect(m.above.checkboxField.input.checked).toBe(true)
+    expect(m.smaller.checkboxField.input.checked).toBe(true)
+    expect(input.webPageOptions).toEqual({ optional: true, smallMedia: true })
+    // отложенное сохранение (2500 мс, `saveDraftDebounced`) ставят `clearHelper` и
+    // меню плашки — ждём его: поднятый черновик равен сохранённому, PUT не уходит
+    await new Promise((resolve) => setTimeout(resolve, 2700))
+    expect(managers.drafts.syncDraft).not.toHaveBeenCalled()
+  })
+
+  // tweb :2466 ставит `noWebPage`, но `processWebPage` без `media` черновика
+  // заново поднимает плашку и снимает его (:3605) — решение крестика живёт до
+  // следующего открытия чата. Пин поведения оригинала.
+  it('восстановление черновика с no_webpage поднимает плашку заново (как tweb)', async() => {
+    const draft: DraftMessageReal = { _: 'draftMessage', pFlags: { no_webpage: true }, message: URL1, date: 1 }
+    mounted = await mountInput(async(url) => card(url), draft)
+    const { input } = mounted
+    await vi.waitFor(() => expect(input.willSendWebPage?.url).toBe(URL1))
+    expect(input.getCurrentInputAsDraft()?.pFlags?.no_webpage).toBeUndefined()
+    // следствие: меню плашки ставит отложенное сохранение — черновик пересохраняется с карточкой
+    await new Promise((resolve) => setTimeout(resolve, 2700))
+    const saved = mounted.managers.drafts.syncDraft.mock.lastCall?.[0].localDraft
+    expect(saved?.media?.url).toBe(URL1)
+    expect(saved?.pFlags?.no_webpage).toBeUndefined()
+  })
+})
+
+// Отступление от tweb (баг tweb input.ts:307/:830 — `invertMedia` никто не сбрасывал),
+// решение пользователя 2026-10-13
+describe('ChatInput: «над сообщением» сбрасывается после отправки и выхода из правки', () => {
+  it('после отправки с «над» следующий черновик без invert_media', async() => {
+    mounted = await mountInput(async(url) => card(url))
+    const { input } = mounted
+    await type(input, URL1)
+    const m = menu(input)
+    m.container.classList.add('active')
+    m.above.element.click()
+    expect(input.invertMedia).toBe(true)
+    await input.sendMessage()
+    await flush()
+
+    await type(input, 'обычный текст')
+    expect(input.getCurrentInputAsDraft()?.pFlags?.invert_media).toBeUndefined()
+  })
+
+  it('после «над» правка сообщения без ссылки отменяется без ложного «Отменить изменения?»', async() => {
+    mounted = await mountInput(async(url) => card(url))
+    const { input, messages } = mounted
+    await type(input, URL1)
+    const m = menu(input)
+    m.container.classList.add('active')
+    m.above.element.click()
+    await input.sendMessage()
+    await flush()
+
+    messages.set(8, { _: 'message', id: 8, peerId: PEER, fromId: ME, date: 1, message: 'без ссылки', pFlags: { out: true } } as MyMessage)
+    await input.initMessageEditing(8)
+    await flush()
+    await input.onHelperCancel()
+    expect(input.helperType).toBeUndefined()
+    expect(document.querySelector('.popup')).toBeNull()
+  })
+
+  it('выход из правки сбрасывает флаг, выбранный в её плашке', async() => {
+    mounted = await mountInput(async(url) => card(url))
+    const { input, messages } = mounted
+    messages.set(9, { _: 'message', id: 9, peerId: PEER, fromId: ME, date: 1, message: 'было ' + URL1, pFlags: { out: true, invert_media: true },
+      media: { _: 'messageMediaWebPage', pFlags: {}, webpage: card(URL1) } } as MyMessage)
+    await input.initMessageEditing(9)
+    await flush()
+    expect(input.invertMedia).toBe(true)
+    input.clearHelper()
+    expect(input.invertMedia).toBeUndefined()
+  })
+})
+
