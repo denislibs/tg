@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/messenger-denis/backend/internal/domain"
+	"strings"
 	"testing"
 )
 
 // fakeUpdateLog — in-memory per-user update log (dense pts).
 type fakeUpdateLog struct {
+	onAppend func(userID int64) // хук: что-то происходит между записями
 	pts      map[int64]int64
 	rows     map[int64][]string          // userID -> types appended
 	payloads map[int64][]json.RawMessage // userID -> logged bodies
@@ -22,6 +24,9 @@ func (l *fakeUpdateLog) AppendUpdate(_ context.Context, userID int64, ptsCount i
 	l.pts[userID] += int64(ptsCount)
 	l.rows[userID] = append(l.rows[userID], typ)
 	l.payloads[userID] = append(l.payloads[userID], payload)
+	if l.onAppend != nil {
+		l.onAppend(userID)
+	}
 	return l.pts[userID], nil
 }
 
@@ -275,6 +280,44 @@ func TestAnnounceUser_OwnAndAllPartners(t *testing.T) {
 	for _, uid := range []int64{u.ID, a, b} {
 		if len(log.rows[uid]) != 1 {
 			t.Fatalf("журнал %d = %v; ждали одну строку", uid, log.rows[uid])
+		}
+	}
+}
+
+// Пересчёт идёт пачками, и запись читается заново на КАЖДОЙ: правка профиля,
+// вклинившаяся за время прохода, не должна затираться у партнёров, до которых
+// цикл дошёл позже.
+func TestAnnounceUser_RereadsRecordPerBatch(t *testing.T) {
+	i, users, _, _ := newInteractor()
+	ctx := context.Background()
+	u, _ := users.CreateWithName(ctx, "+70000000013", "Старое", "")
+	old := announceBatch
+	announceBatch = 2
+	defer func() { announceBatch = old }()
+
+	log := newFakeUpdateLog()
+	i.SetUpdateLog(log)
+	i.SetPublisher(newFakeAuthPub())
+	partners := []int64{901, 902, 903, 904, 905}
+	i.SetPartners(func(context.Context, int64) ([]int64, error) { return partners, nil })
+	renamed := false
+	log.onAppend = func(uid int64) {
+		if uid == 901 && !renamed { // первая пачка прошла — владелец меняет имя
+			renamed = true
+			_, _ = users.UpdateProfile(ctx, u.ID, "Новое", "", "", nil)
+		}
+	}
+
+	if err := i.AnnounceUser(ctx, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	last := string(log.payloads[905][0])
+	if !strings.Contains(last, "Новое") || strings.Contains(last, "Старое") {
+		t.Fatalf("партнёр из последней пачки получил устаревшую карточку: %s", last)
+	}
+	for _, uid := range partners {
+		if len(log.payloads[uid]) != 1 {
+			t.Fatalf("партнёр %d получил %d строк", uid, len(log.payloads[uid]))
 		}
 	}
 }

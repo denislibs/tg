@@ -60,21 +60,30 @@ func (r *PrivacyRepo) Get(ctx context.Context, userID int64, key domain.PrivacyK
 	return rule, err
 }
 
-func (r *PrivacyRepo) Upsert(ctx context.Context, userID int64, rule domain.PrivacyRuleRecord) error {
+// Upsert сохраняет правило; true — строка вставлена либо реально изменилась
+// (повтор того же правила строку не трогает: ни WAL, ни блокировки, ни
+// RowsAffected). Решение «изменилось» принимает сама база в одном выражении:
+// чтение до записи вне замка проиграло бы гонку двух устройств.
+func (r *PrivacyRepo) Upsert(ctx context.Context, userID int64, rule domain.PrivacyRuleRecord) (bool, error) {
 	allow, err := json.Marshal(orEmpty(rule.AllowUserIDs))
 	if err != nil {
-		return err
+		return false, err
 	}
 	deny, err := json.Marshal(orEmpty(rule.DenyUserIDs))
 	if err != nil {
-		return err
+		return false, err
 	}
-	_, err = querier(ctx, r.pool).Exec(ctx,
+	tag, err := querier(ctx, r.pool).Exec(ctx,
 		`INSERT INTO privacy_rules (user_id, key, value, allow_user_ids, deny_user_ids)
 		 VALUES ($1,$2,$3,$4,$5)
-		 ON CONFLICT (user_id, key) DO UPDATE SET value=$3, allow_user_ids=$4, deny_user_ids=$5`,
+		 ON CONFLICT (user_id, key) DO UPDATE SET value=$3, allow_user_ids=$4, deny_user_ids=$5
+		 WHERE (privacy_rules.value, privacy_rules.allow_user_ids, privacy_rules.deny_user_ids)
+		       IS DISTINCT FROM (EXCLUDED.value, EXCLUDED.allow_user_ids, EXCLUDED.deny_user_ids)`,
 		userID, rule.Key, rule.Value, string(allow), string(deny))
-	return err
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 func orEmpty(ids []int64) []int64 {

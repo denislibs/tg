@@ -3,6 +3,7 @@ package privacy
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"sync"
 	"testing"
 
@@ -22,11 +23,14 @@ func newSyncRepo() *syncRepo {
 	return &syncRepo{rules: map[domain.PrivacyKey]domain.PrivacyRuleRecord{}, blocked: map[[2]int64]bool{}}
 }
 
-func (r *syncRepo) Upsert(_ context.Context, _ int64, rule domain.PrivacyRuleRecord) error {
+func (r *syncRepo) Upsert(_ context.Context, _ int64, rule domain.PrivacyRuleRecord) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	old, had := r.rules[rule.Key]
 	r.rules[rule.Key] = rule
-	return nil
+	same := had && old.Value == rule.Value && slices.Equal(old.AllowUserIDs, rule.AllowUserIDs) &&
+		slices.Equal(old.DenyUserIDs, rule.DenyUserIDs)
+	return !same, nil
 }
 
 func (r *syncRepo) Get(_ context.Context, _ int64, key domain.PrivacyKey) (domain.PrivacyRuleRecord, error) {
@@ -368,7 +372,7 @@ func TestBlock_SnapshotRereadUnderLock(t *testing.T) {
 func TestSetRule_SnapshotRereadUnderLock(t *testing.T) {
 	uc, log, _, _, _, repo := newSyncUCRepo()
 	log.onLock = func() {
-		_ = repo.Upsert(context.Background(), 1, domain.PrivacyRuleRecord{Key: domain.PrivacyAbout, Value: domain.PrivacyNobody})
+		_, _ = repo.Upsert(context.Background(), 1, domain.PrivacyRuleRecord{Key: domain.PrivacyAbout, Value: domain.PrivacyNobody})
 	}
 
 	_, err := uc.SetRule(context.Background(), 1, domain.PrivacyRuleRecord{Key: domain.PrivacyAbout, Value: domain.PrivacyContacts})

@@ -58,7 +58,15 @@ func (i *Interactor) emitUserUpdate(ctx context.Context, u domain.UserRecord) {
 // карточка, прочитанная один раз в начале, к концу устарела бы: правка профиля,
 // вклинившаяся за это время, затёрлась бы у партнёров, до которых цикл дошёл
 // позже, строкой с БОЛЬШИМ pts.
-const announceBatch = 200
+//
+// Окно гонки сужено до одной пачки, а не закрыто: правка, вклинившаяся внутрь
+// пачки, всё ещё может быть перекрыта строкой с большим pts (тот же класс гонки,
+// что у двух подряд идущих правок профиля в emitUserUpdate). Дедлайн ставится на
+// пачку, а не на весь проход: проход по десяткам тысяч партнёров не должен
+// обрываться в середине, оставляя хвост со старым видом.
+var announceBatch = 200
+
+const announceBatchTimeout = 30 * time.Second
 
 // AnnounceUser пересылает карточку пользователя заново ему самому и всем
 // партнёрам — когда её ВИД поменялся без правки самой записи (правило
@@ -86,7 +94,12 @@ func (i *Interactor) AnnounceUser(ctx context.Context, userID int64) error {
 			recipients = append([]int64{u.ID}, recipients...)
 		}
 		partners = partners[n:]
-		i.sendUserUpdate(ctx, u, recipients)
+		bctx, cancel := context.WithTimeout(ctx, announceBatchTimeout)
+		i.sendUserUpdate(bctx, u, recipients)
+		cancel()
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 	}
 	return nil
 }

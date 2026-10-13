@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"slices"
 	"sync"
 	"time"
 
@@ -19,7 +20,10 @@ import (
 // Repo — хранилище правил, блокировок и справок о контактах/пользователях.
 type Repo interface {
 	Rules(ctx context.Context, userID int64) ([]domain.PrivacyRuleRecord, error) // только сохранённые
-	Upsert(ctx context.Context, userID int64, r domain.PrivacyRuleRecord) error
+	// Upsert — true, если правило вставлено или изменилось (то же правило не меняет
+	// ничего). «Изменилось» решает база одним выражением: чтение до записи вне замка
+	// проиграло бы гонку двух устройств.
+	Upsert(ctx context.Context, userID int64, r domain.PrivacyRuleRecord) (bool, error)
 	Get(ctx context.Context, userID int64, key domain.PrivacyKey) (domain.PrivacyRuleRecord, error) // domain.ErrNotFound → дефолт
 
 	// Block — false, если запись уже была (повторный блок ничего не меняет).
@@ -171,19 +175,17 @@ func (i *Interactor) SetRule(ctx context.Context, userID int64, r domain.Privacy
 	// Сам себе пользователь всегда «виден» — себя в списках не храним.
 	r.AllowUserIDs = dropID(r.AllowUserIDs, userID)
 	r.DenyUserIDs = dropID(r.DenyUserIDs, userID)
-	old, err := i.repo.Get(ctx, userID, r.Key)
-	if errors.Is(err, domain.ErrNotFound) {
-		old, err = domain.DefaultPrivacyRule(r.Key), nil
-	}
+	// Исключения хранятся отсортированными: порядок id не должен делать то же
+	// правило «изменённым».
+	r.AllowUserIDs = sortedCopy(r.AllowUserIDs)
+	r.DenyUserIDs = sortedCopy(r.DenyUserIDs)
+	changed, err := i.repo.Upsert(ctx, userID, r)
 	if err != nil {
-		return domain.PrivacyRuleRecord{}, err
-	}
-	if err := i.repo.Upsert(ctx, userID, r); err != nil {
 		return domain.PrivacyRuleRecord{}, err
 	}
 	// Правило не изменилось — другим устройствам и собеседникам сообщать нечего:
 	// повторное сохранение того же не должно раздувать журналы партнёров.
-	if old.Same(r) {
+	if !changed {
 		return r, nil
 	}
 	// Мутация закоммичена: журнал и пересчёт не должен оборвать закрытый клиентом
@@ -211,12 +213,10 @@ func (i *Interactor) SetRule(ctx context.Context, userID int64, r domain.Privacy
 	return r, nil
 }
 
-// Сроки: запись в журнал после коммита — секунды; полный пересчёт у тысяч
-// партнёров — минуты.
-const (
-	syncTimeout      = 15 * time.Second
-	recomputeTimeout = 3 * time.Minute
-)
+// Срок записи в журнал после коммита — секунды. У полного пересчёта у тысяч
+// партнёров общего срока нет: дедлайн стоит на каждую пачку получателей внутри
+// AnnounceUser/Reannounce, иначе проход обрывался бы на хвосте.
+const syncTimeout = 15 * time.Second
 
 // detached — контекст, переживающий отмену запроса: мутация уже закоммичена, и
 // закрытая клиентом вкладка не должна лишать второе устройство строки журнала.
@@ -251,11 +251,9 @@ func (i *Interactor) recomputeForPeers(ctx context.Context, userID int64, key do
 	ctx = context.WithoutCancel(ctx)
 	i.async(func() {
 		for {
-			pctx, cancel := detached(ctx, recomputeTimeout)
-			if err := run(pctx); err != nil {
+			if err := run(ctx); err != nil {
 				log.Printf("privacy: recompute %s user=%d: %v", key, userID, err)
 			}
-			cancel()
 			i.flightsMu.Lock()
 			if !f.dirty {
 				delete(i.flights, fk)
@@ -277,6 +275,15 @@ func bodyOf(v any) (map[string]any, error) {
 	}
 	var m map[string]any
 	return m, json.Unmarshal(raw, &m)
+}
+
+func sortedCopy(ids []int64) []int64 {
+	if ids == nil {
+		return nil
+	}
+	out := slices.Clone(ids)
+	slices.Sort(out)
+	return out
 }
 
 func dropID(ids []int64, id int64) []int64 {

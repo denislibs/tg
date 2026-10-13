@@ -539,3 +539,50 @@ func TestManager_ReannounceToHonoursBlock(t *testing.T) {
 		t.Fatalf("после разблока: %q", got)
 	}
 }
+
+// Статус перечитывается на каждой пачке партнёров: ушёл в офлайн посреди прохода —
+// остаток получает офлайн, а не снимок «онлайн» из начала прохода.
+func TestManager_ReannounceRereadsStatusPerBatch(t *testing.T) {
+	store := newFakeStore()
+	pub := newFakePub()
+	var partners []int64
+	for id := int64(10); id < 15; id++ {
+		partners = append(partners, id)
+	}
+	m := NewManager(store, pub, func(context.Context, int64) ([]int64, error) { return partners, nil }, 30*time.Second)
+	m.now = store.clock
+	ctx := context.Background()
+	_ = m.Online(ctx, 1)
+	old := reannounceBatch
+	reannounceBatch = 2
+	defer func() { reannounceBatch = old }()
+	base := map[int64]int{}
+	for _, p := range partners {
+		base[p] = pub.count(p)
+	}
+	// Первая пачка прошла — пользователь уходит в офлайн. Хук ловим на публикации.
+	hook := &offlineOnFirst{fakePub: pub, m: m}
+	m.pub = hook
+
+	if err := m.Reannounce(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if got := statusTag(t, pub.last(14)); got != domain.UserStatusOfflineTag {
+		t.Fatalf("партнёр последней пачки получил %q; ждали userStatusOffline", got)
+	}
+}
+
+type offlineOnFirst struct {
+	*fakePub
+	m    *Manager
+	done bool
+}
+
+func (p *offlineOnFirst) PublishToUser(ctx context.Context, userID int64, frame []byte) error {
+	err := p.fakePub.PublishToUser(ctx, userID, frame)
+	if !p.done {
+		p.done = true
+		_ = p.m.store.SetOffline(ctx, 1, p.m.now().UnixMilli())
+	}
+	return err
+}

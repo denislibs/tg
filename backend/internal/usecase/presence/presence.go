@@ -273,7 +273,10 @@ func (m *Manager) fanout(ctx context.Context, userID int64, status domain.UserSt
 // reannounceBatch — сколько партнёров обслуживается по одному снимку статуса.
 // Пересчёт идёт долго, и снимок, взятый один раз в начале, к концу устарел бы:
 // после ухода в офлайн часть партнёров осталась бы с «онлайн».
-const reannounceBatch = 200
+var reannounceBatch = 200
+
+// reannounceBatchTimeout — дедлайн на пачку, а не на весь проход (см. auth.announceBatch).
+const reannounceBatchTimeout = 30 * time.Second
 
 // Reannounce шлёт всем партнёрам ТЕКУЩИЙ статус пользователя заново: правило
 // last_seen поменялось, и вид статуса у каждого партнёра пересчитывается по
@@ -286,8 +289,13 @@ func (m *Manager) Reannounce(ctx context.Context, userID int64) error {
 	}
 	for len(partners) > 0 {
 		n := min(reannounceBatch, len(partners))
-		m.fanoutTo(ctx, userID, domain.PresenceStatus(m.Status(ctx, userID)), partners[:n])
+		bctx, cancel := context.WithTimeout(ctx, reannounceBatchTimeout)
+		m.fanoutTo(bctx, userID, domain.PresenceStatus(m.Status(bctx, userID)), partners[:n])
+		cancel()
 		partners = partners[n:]
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
