@@ -51,7 +51,7 @@ describe('ReportPopup', () => {
 
   it('жалоба на чат целиком — mids пуст, по умолчанию spam', async () => {
     const { report } = renderWithFake()
-    useReportStore.getState().open({ peerId: -77 })
+    useReportStore.getState().open({ peerId: -77, mids: [] })
 
     const reportEls = await screen.findAllByText('Report')
     fireEvent.click(reportEls[reportEls.length - 1])

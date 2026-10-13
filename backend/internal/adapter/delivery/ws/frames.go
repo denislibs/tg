@@ -71,12 +71,6 @@ type readData struct {
 	UpToSeq int64         `json:"up_to_seq"`
 }
 
-// readMediaMaxIDs — потолок вектора в одном кадре read_media. По tweb он не
-// определяется (appMessagesManager.ts:9519-9600 шлёт всё накопленное разом);
-// наш клиент шлёт один номер, а потолок держит веер media_read одного кадра:
-// не больше 10 сообщений × участников.
-const readMediaMaxIDs = 10
-
 // readMediaData — «медиа прослушано»: messages.readMessageContents{id:
 // Vector<int>}. Сообщения адресуются парой «пир + номера», как и везде: ключ
 // `id` со списком seq.

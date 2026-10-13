@@ -45,7 +45,7 @@ func (h *ReportHandler) Report(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	if len(b.Seqs) > usecasereport.MaxIDs {
+	if len(b.Seqs) > usecasereport.MaxIDs || !domain.ValidReportReason(domain.ReportReason(b.Reason)) {
 		writeError(w, http.StatusBadRequest, "invalid report")
 		return
 	}

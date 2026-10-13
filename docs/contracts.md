@@ -1123,7 +1123,7 @@ Delete the caller's own story.
 |-----|-----|--------|
 | `send_message` | `{ peer_id, type?, text?, entities?, reply_to_id?, reply_to_peer_id?, client_msg_id, media_id?, thread_root_id?, … }` | То же, что `POST /chats/{id}/messages`; отвечает `message_ack` и рассылает `new_message` |
 | `read` | `{ peer_id, up_to_seq }` | То же, что `POST /chats/{id}/read`; рассылает `read` |
-| `read_media` | `{ peer_id, id: [серверные номера, ≤ 10] }` | Вложение прослушано; рассылает `media_read` |
+| `read_media` | `{ peer_id, id: [серверные номера, ≤ 10] }` | Вложение прослушано; рассылает `media_read`. Длиннее 10 номеров сервер отбрасывает кадр — клиент режет вектор |
 | `typing` | `{ peer_id, action: { _ } }` | Эфемерно; `action` — конструктор `SendMessageAction` (`sendMessageTypingAction`, `sendMessageRecordAudioAction`, …), а не строка |
 | `subscribe_channel` | `{ peer_id }` | Подписать это соединение на живые посты канала (Hub лениво входит в Redis-топик `channel:{id}`) |
 | `unsubscribe_channel` | `{ peer_id }` | Отписать; снимается и автоматически на разрыве |

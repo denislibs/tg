@@ -987,13 +987,20 @@ func (i *Interactor) ReadReactions(ctx context.Context, chatID, userID int64) er
 	return nil
 }
 
+// ReadContentsMaxIDs — потолок вектора ReadMessageContents. По tweb он не
+// определяется (appMessagesManager.ts:9519-9600 шлёт всё накопленное разом);
+// потолок держит работу одного вызова: не больше 10 транзакций со всем веером
+// media_read. Клиент режет вектор на куски этого размера.
+const ReadContentsMaxIDs = 10
+
 // ReadMessageContents — messages.readMessageContents{id: Vector<int>} (tweb
 // appMessagesManager.ts:9519-9600): получатель проиграл голосовые/кружки —
 // снимает media_unread и «непрочитано» упоминания зрителя в названных
 // сообщениях (по НОМЕРАМ у пира), а каждому участнику уходит кадр media_read:
 // у автора гаснет точка «не прослушано». Идемпотентно: повтор, свои сообщения и
-// неизвестные номера ничего не публикуют. Вектор не длиннее потолка кадра (его
-// держит delivery/ws), общие чтения — один раз на вызов.
+// неизвестные номера ничего не публикуют. Вектор не длиннее ReadContentsMaxIDs
+// (больше — domain.ErrInvalid, ничего не сделано), общие чтения — один раз на
+// вызов. Сбой одного сообщения не отменяет остальные: ошибки собираются.
 func (i *Interactor) ReadMessageContents(ctx context.Context, chatID, userID int64, seqs []int64) error {
 	ok, err := i.chats.IsMember(ctx, chatID, userID)
 	if err != nil {
@@ -1004,6 +1011,9 @@ func (i *Interactor) ReadMessageContents(ctx context.Context, chatID, userID int
 	}
 	if len(seqs) == 0 {
 		return nil
+	}
+	if len(seqs) > ReadContentsMaxIDs {
+		return domain.ErrInvalid
 	}
 	idBySeq, err := i.MessageIDsBySeqs(ctx, chatID, seqs)
 	if err != nil {
@@ -1032,14 +1042,13 @@ func (i *Interactor) ReadMessageContents(ctx context.Context, chatID, userID int
 	if err := i.readMentionContents(ctx, chatID, userID, msgs); err != nil {
 		return err
 	}
+	var errs []error
 	for _, msg := range msgs {
 		if msg.MediaUnread {
-			if err := i.clearMediaUnread(ctx, chatID, msg); err != nil {
-				return err
-			}
+			errs = append(errs, i.clearMediaUnread(ctx, chatID, msg))
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // clearMediaUnread снимает media_unread одного сообщения и шлёт media_read всем

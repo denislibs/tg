@@ -12,7 +12,7 @@ import { newRealtime } from './realtime'
 import { newConnectionManager } from './connectionManager'
 import { newSyncEngine } from './syncEngine'
 import { RT } from './events'
-import { getServerMessageId } from '../history/messageId'
+import { generateMessageId, getServerMessageId } from '../history/messageId'
 import type { MessageOp } from './messageOps'
 import type { Cursor } from './cursor'
 
@@ -34,7 +34,7 @@ describe('realtime.markMediaRead', () => {
       threadReads: { readHistory: async () => {} },
     })
 
-    await rt.markMediaRead({ peerId: 1, msgId: 7 })
+    await rt.markMediaRead({ peerId: 1, msgId: generateMessageId(7) })
 
     expect(broadcast).toHaveBeenCalledWith(RT.messageOp, { ops })
     // На провод — вектор из одного СЕРВЕРНОГО номера (readMessageContents.id)

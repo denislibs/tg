@@ -38,6 +38,8 @@ export interface CMDeps {
 const HEARTBEAT_MS = 20_000
 const PONG_GRACE = 2 // missed pongs before force-reconnect
 const MAX_BACKOFF = 30_000
+// Потолок вектора в кадре read_media: сервер (usecase ReadContentsMaxIDs) отбрасывает больше.
+const READ_MEDIA_MAX_IDS = 10
 
 export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, outboxStore, now = Date.now }: CMDeps) {
   const outbox = new Map<string, SendArgs>()
@@ -192,7 +194,14 @@ export function newConnectionManager({ ws, getToken, onReady, onState, onFrame, 
     },
     // «Прослушано/просмотрено» для голосового/кружка: messages.readMessageContents
     // {id: Vector<int>} — вектор СЕРВЕРНЫХ номеров (tweb appMessagesManager.ts:9568).
-    markMediaRead(peerId: number, ids: number[]) { if (ws.isOpen()) ws.send('read_media', { peer_id: peerId, id: ids }) },
+    // Сервер отбрасывает кадр длиннее READ_MEDIA_MAX_IDS целиком, поэтому длинный
+    // вектор режется на кадры допустимого размера здесь.
+    markMediaRead(peerId: number, ids: number[]) {
+      if (!ws.isOpen()) return
+      for (let i = 0; i < ids.length; i += READ_MEDIA_MAX_IDS) {
+        ws.send('read_media', { peer_id: peerId, id: ids.slice(i, i + READ_MEDIA_MAX_IDS) })
+      }
+    },
     // Действие едет КОНСТРУКТОРОМ (у оригинала это messages.setTyping{peer,
     // action}) — одна форма на обе стороны провода.
     sendTyping(peerId: number, action: SendMessageAction = { _: 'sendMessageTypingAction' }) {

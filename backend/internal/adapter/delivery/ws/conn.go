@@ -530,7 +530,7 @@ func (c *Conn) dispatch(ctx context.Context, f Frame) {
 		}
 		// Пустой или слишком длинный вектор — кадр отбрасывается целиком (без
 		// ответа, как и любая ошибка этого кадра).
-		if len(d.IDs) == 0 || len(d.IDs) > readMediaMaxIDs {
+		if len(d.IDs) == 0 || len(d.IDs) > usecasechat.ReadContentsMaxIDs {
 			return
 		}
 		if chatID, err := c.svc.PeerToChatID(ctx, c.userID, d.PeerID); err == nil {

@@ -138,3 +138,23 @@ func TestReadMessageContents_Vector(t *testing.T) {
 		t.Fatalf("автор снял media_unread со своего сообщения")
 	}
 }
+
+// Потолок вектора держит и usecase: больше ReadContentsMaxIDs номеров — отказ,
+// ни одного чтения репозитория.
+func TestReadMessageContents_VectorCap(t *testing.T) {
+	in, _, chatID := mentionGroup(t)
+	ctx := context.Background()
+	c := &rcCounts{}
+	in.msgs, in.chats, in.tx = rcMsgs{in.msgs, c}, rcChats{in.chats, c}, rcTx{c}
+
+	seqs := make([]int64, ReadContentsMaxIDs+1)
+	for n := range seqs {
+		seqs[n] = int64(n + 1)
+	}
+	if err := in.ReadMessageContents(ctx, chatID, mBob, seqs); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("%d номеров: err=%v; want ErrInvalid", len(seqs), err)
+	}
+	if c.idsBySeqs != 0 || c.getByIDs != 0 || c.txs != 0 {
+		t.Fatalf("после отказа были чтения: idsBySeqs=%d getByIDs=%d txs=%d", c.idsBySeqs, c.getByIDs, c.txs)
+	}
+}

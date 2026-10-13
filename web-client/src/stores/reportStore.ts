@@ -7,8 +7,8 @@ import { create } from 'zustand'
 
 export interface ReportTarget {
   peerId: number
-  /** КЛИЕНТСКИЕ mid выбранных сообщений; не заданы или пусты — жалоба на чат целиком */
-  mids?: number[]
+  /** КЛИЕНТСКИЕ mid выбранных сообщений; пусто — жалоба на чат целиком */
+  mids: number[]
 }
 
 interface ReportState {

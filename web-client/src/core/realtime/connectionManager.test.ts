@@ -256,4 +256,15 @@ describe('ConnectionManager.markMediaRead — вектор id', () => {
 
     expect(ws.frames.filter(f => f.t === 'read_media')).toEqual([{ t: 'read_media', d: { peer_id: 5, id: [12] } }])
   })
+
+  it('вектор длиннее потолка режется на кадры по 10 (сервер отбрасывает длинный кадр целиком)', () => {
+    const ws = fakeWs()
+    const cm = newConnectionManager({ ws: ws.client as never, getToken: () => 'tok', onReady: () => {}, onState: () => {}, onFrame: () => {} })
+    cm.start(); ws.fireOpen()
+
+    cm.markMediaRead(5, Array.from({ length: 11 }, (_, n) => n + 1))
+
+    const frames = ws.frames.filter(f => f.t === 'read_media').map(f => (f.d as { id: number[] }).id)
+    expect(frames).toEqual([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], [11]])
+  })
 })
