@@ -57,3 +57,27 @@ func notificationSound(sound *string) domain.NotificationSound {
 	}
 	return nil
 }
+
+// chatMutedSQL — SQL-копия domain.ChatMuted: заглушён ли чат m сейчас с учётом
+// типа чата. m — алиас chat_members, c — chats; ns(col) — выражение для колонки
+// notify_settings владельца строки m (`ns.col` при LEFT JOIN либо коррелированный
+// подзапрос в UPDATE). Мьют чата задан (muted_until не NULL) — решает он сам (0
+// и истёкший срок = «уведомлять»); не задан — настройка типа: личные и
+// «Избранное» — private, группа — groups, канал — channels (тот же выбор, что
+// domain.NotifySettings.ForChatType). Строки notify_settings нет — тип не
+// заглушён (дефолты).
+func chatMutedSQL(m, c string, ns func(col string) string) string {
+	return `(CASE WHEN ` + m + `.muted_until IS NOT NULL THEN ` + m + `.muted_until > now()
+	  ELSE COALESCE(CASE ` + c + `.type
+	    WHEN 'group' THEN ` + ns("groups_muted") + `
+	    WHEN 'channel' THEN ` + ns("channels_muted") + `
+	    ELSE ` + ns("private_muted") + ` END, false) END)`
+}
+
+// joinedNotify — `ns.<col>` при LEFT JOIN notify_settings ns.
+func joinedNotify(col string) string { return "ns." + col }
+
+// memberNotify — коррелированная колонка notify_settings участника m (UPDATE).
+func memberNotify(col string) string {
+	return "(SELECT " + col + " FROM notify_settings WHERE user_id = m.user_id)"
+}

@@ -3,6 +3,7 @@ package domain
 import (
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 func TestParseNotifyType(t *testing.T) {
@@ -64,5 +65,32 @@ func TestInputPeerNotifySettings_Decode(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(`{"_":"inputPeerNotifySettings","show_previews":false}`), &in); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Три состояния мьюта чата, как у темы (TopicMuted): NULL — наследует тип,
+// явное «уведомлять» (0 или истёкший срок) перекрывает заглушённый тип, срок в
+// будущем — заглушён сам. tweb appNotificationsManager.ts:342-384: тип
+// подставляется только в НЕопределённые поля пира.
+func TestChatMuted_ThreeStates(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	at := func(sec int64) *time.Time { v := time.Unix(sec, 0); return &v }
+	cases := []struct {
+		name      string
+		until     *time.Time
+		typeMuted bool
+		want      bool
+	}{
+		{"не трогали, тип включён", nil, false, false},
+		{"не трогали, тип выключен — наследует", nil, true, true},
+		{"явно включён (0), тип выключен — исключение", at(0), true, false},
+		{"истёкший срок, тип выключен — тоже явное «включён»", at(now.Unix() - 10), true, false},
+		{"срок в будущем, тип включён", at(now.Unix() + 60), false, true},
+		{"навсегда, тип включён", at(MuteUntilForever), false, true},
+	}
+	for _, c := range cases {
+		if got := ChatMuted(c.until, c.typeMuted, now); got != c.want {
+			t.Errorf("%s: ChatMuted = %v, want %v", c.name, got, c.want)
+		}
 	}
 }

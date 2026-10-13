@@ -856,10 +856,11 @@ func (r *ChatsRepo) UnarchiveUnmuted(ctx context.Context, chatID int64, userIDs 
 		return nil, nil
 	}
 	rows, err := querier(ctx, r.pool).Query(ctx,
-		`UPDATE chat_members SET archived = false
-		  WHERE chat_id = $1 AND user_id = ANY($2::bigint[]) AND archived
-		    AND (muted_until IS NULL OR muted_until <= now())
-		  RETURNING user_id`, chatID, userIDs)
+		`UPDATE chat_members m SET archived = false
+		   FROM chats c
+		  WHERE c.id = $1 AND m.chat_id = c.id AND m.user_id = ANY($2::bigint[]) AND m.archived
+		    AND NOT `+chatMutedSQL("m", "c", memberNotify)+`
+		  RETURNING m.user_id`, chatID, userIDs)
 	if err != nil {
 		return nil, err
 	}

@@ -168,8 +168,10 @@ type GroupRepo interface {
 	// SetRole — смена роли; promotedBy — назначивший админа (0 — нет).
 	// domain.ErrNotFound, если userID не участник.
 	SetRole(ctx context.Context, chatID, userID int64, role string, rights domain.Rights, promotedBy int64) error
-	// SetMuted записывает СРОК мьюта: nil снимает его, domain.MuteUntilForever —
-	// «навсегда». Булева аргумента здесь нет: два способа сказать одно и то же и
+	// SetMuted записывает СРОК мьюта чата, ТРИ состояния: nil — не задан (чат
+	// наследует тип), time.Unix(domain.MuteUntilNever) — явное «уведомлять»
+	// (перекрывает выключенный тип), domain.MuteUntilForever — «навсегда».
+	// Булева аргумента здесь нет: два способа сказать одно и то же и
 	// были дефектом, из-за которого «заглушить на час» работало как «навсегда».
 	SetMuted(ctx context.Context, chatID, userID int64, until *time.Time) error
 	// NotifySettings — пер-чатное переопределение уведомлений участника целиком
