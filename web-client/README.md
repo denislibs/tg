@@ -216,9 +216,11 @@ src/
   (токен из IndexedDB; `tokenStore.ready()` защищает от гонки при старте).
 - **2FA (облачный пароль):** если включён, `sign_in` возвращает `password_token` → шаг пароля
   (`POST /auth/check_password`) → `session_token`.
-- **QR-логин:** desktop `POST /auth/qr/new` → рендер QR, кодирующего `${origin}/qr/{token}`, + поллинг
-  `GET /auth/qr/{token}`; уже авторизованное устройство открывает `/qr/{token}` → `POST /auth/qr/confirm` →
-  desktop получает `session_token` из статуса и входит.
+- **QR-логин:** один цикл `iterate` (как `SignQRCard.tsx` tweb): desktop раз в ~3 с зовёт
+  `POST /auth/export_login_token` с ключом входа в заголовке `X-Login-Key` (ключ нигде не показывается),
+  QR кодирует `${origin}/qr/{hex-кода}`; уже авторизованное устройство открывает `/qr/{hex}` →
+  `POST /auth/accept_login_token`; desktop получает сессию (или шаг облачного пароля) ответом на
+  следующий опрос.
 - **Passkeys (WebAuthn):** begin/finish выполняются в **UI-потоке** (`core/webauthnBrowser.ts`,
   `navigator.credentials`) — WebAuthn недоступен в воркере.
 - **Passcode-lock:** локальная блокировка приложения (PBKDF2-хэш в IndexedDB, `stores/lockStore.ts`),
