@@ -1107,8 +1107,8 @@ func (i *Interactor) clearMediaUnread(ctx context.Context, chatID int64, msg dom
 // шлёт ЕМУ (всем его устройствам) по кадру прочтения содержимого на сообщение —
 // тот же updateReadPeerMessagesContents, что у прослушанного голосового: клиент
 // снимает pFlags.media_unread и с ним бейдж «@» (tweb
-// onUpdateReadMessagesContents). Одна транзакция на вызов (вектор ограничен
-// потолком кадра), счётчик упоминаний пересчитывается один раз. Не упомянут или
+// onUpdateReadMessagesContents). Одна транзакция на вызов (вектор не длиннее
+// ReadContentsMaxIDs), счётчик упоминаний уменьшается один раз. Не упомянут или
 // уже прочитано — no-op.
 func (i *Interactor) readMentionContents(ctx context.Context, chatID, userID int64, msgs []domain.Message) error {
 	if len(msgs) == 0 {

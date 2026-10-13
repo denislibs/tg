@@ -756,7 +756,10 @@ func (r *ChatsRepo) syncUnreadMentions(ctx context.Context, chatID, userID int64
 // (Telegram readMessageContents on a mention) and lowers the counter once by the
 // number actually read. Не пересчёт count(*) по истории (строки упоминаний не
 // удаляются, а запись абсолютного значения теряет конкурентный AddMention или
-// ClearMentions): декремент под блокировкой строки участника безопасен.
+// ClearMentions): декремент под блокировкой строки участника безопасен —
+// вызывающие ClearMentions берут её заранее через SetRead; остальные записи
+// абсолютного значения (RemoveMention, удаление сообщений) такой гонки не
+// закрывают и были ей подвержены и раньше.
 // Returns the ids of the messages whose mention WAS unread.
 func (r *ChatsRepo) ReadMentions(ctx context.Context, chatID, userID int64, msgIDs []int64) ([]int64, error) {
 	if len(msgIDs) == 0 {
