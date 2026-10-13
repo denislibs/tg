@@ -98,7 +98,7 @@ func TestNotifyHandler_BadPeerAndBody(t *testing.T) {
 		if rec := notifyCall(h.Get, http.MethodGet, target, ""); rec.Code != http.StatusBadRequest {
 			t.Errorf("GET %s = %d", target, rec.Code)
 		}
-		if rec := notifyCall(h.Update, http.MethodPut, target, `{}`); rec.Code != http.StatusBadRequest {
+		if rec := notifyCall(h.Update, http.MethodPut, target, `{"_":"inputPeerNotifySettings"}`); rec.Code != http.StatusBadRequest {
 			t.Errorf("PUT %s = %d", target, rec.Code)
 		}
 	}
@@ -110,8 +110,8 @@ func TestNotifyHandler_BadPeerAndBody(t *testing.T) {
 // Частичный PUT не трогает непереданное поле.
 func TestNotifyHandler_PartialPutKeepsOtherField(t *testing.T) {
 	h := NewNotifyHandler(usecasenotify.New(&memNotifyRepo{}))
-	notifyCall(h.Update, http.MethodPut, "/me/notify_settings?peer=notifyChats", `{"show_previews":false}`)
-	notifyCall(h.Update, http.MethodPut, "/me/notify_settings?peer=notifyChats", `{"mute_until":2147483647}`)
+	notifyCall(h.Update, http.MethodPut, "/me/notify_settings?peer=notifyChats", `{"_":"inputPeerNotifySettings","show_previews":false}`)
+	notifyCall(h.Update, http.MethodPut, "/me/notify_settings?peer=notifyChats", `{"_":"inputPeerNotifySettings","mute_until":2147483647}`)
 	var got map[string]any
 	_ = json.Unmarshal(notifyCall(h.Get, http.MethodGet, "/me/notify_settings?peer=notifyChats", "").Body.Bytes(), &got)
 	if got["show_previews"] != false || got["mute_until"] != float64(domain.MuteUntilForever) {
@@ -125,5 +125,14 @@ func TestNotifyHandler_RejectsForeignConstructor(t *testing.T) {
 	rec := notifyCall(h.Update, http.MethodPut, "/me/notify_settings?peer=notifyUsers", `{"_":"peerNotifySettings","mute_until":1}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("PUT = %d", rec.Code)
+	}
+}
+
+// Тело без конструктора TL — 400 (вход и журнал проверяются одинаково).
+func TestNotifyHandler_RequiresConstructor(t *testing.T) {
+	h := NewNotifyHandler(usecasenotify.New(&memNotifyRepo{}))
+	rec := notifyCall(h.Update, http.MethodPut, "/me/notify_settings?peer=notifyUsers", `{"mute_until":1}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("PUT без _ = %d", rec.Code)
 	}
 }

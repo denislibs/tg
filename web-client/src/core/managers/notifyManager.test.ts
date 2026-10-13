@@ -56,6 +56,27 @@ describe('notifyManager', () => {
     expect(onLocalUpdate).not.toHaveBeenCalled()
   })
 
+  // Кадр пришёл, пока шёл GET: ответ старее применённого — читаем заново.
+  it('кадр этого ключа во время GET — ответ перечитывается', async () => {
+    let version = 0
+    let n = 0
+    const get = vi.fn(async () => { n++; if (n === 1) version++; return settings(0, n === 1 ? true : false) })
+    const m = newNotifyManager({ rest: { get } as unknown as RestClient, onLocalUpdate: vi.fn(), frameVersion: () => version })
+
+    expect(await m.getNotifySettings('notifyChats')).toEqual(settings(0, false))
+    expect(get).toHaveBeenCalledTimes(2)
+  })
+
+  it('одновременные getNotifyPeerTypeSettings делят один запрос', async () => {
+    const get = vi.fn(async () => settings(0, true))
+    const m = newNotifyManager({ rest: { get } as unknown as RestClient, onLocalUpdate: vi.fn(), frameVersion: () => 0 })
+
+    await Promise.all([m.getNotifyPeerTypeSettings(), m.getNotifyPeerTypeSettings()])
+    expect(get).toHaveBeenCalledTimes(3)
+    await m.getNotifyPeerTypeSettings() // после завершения — новый запрос
+    expect(get).toHaveBeenCalledTimes(6)
+  })
+
   // Наш сервер шлёт кадр и инициатору: пришёл более новый кадр этого ключа, пока
   // шёл PUT, — опоздавший ответ не должен затирать его местным апдейтом.
   it('кадр этого ключа во время PUT отменяет местный апдейт; кадр другого ключа — нет', async () => {

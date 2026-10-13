@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -461,4 +462,30 @@ type lockProbeGroupRepo struct {
 func (r lockProbeGroupRepo) NotifySettings(ctx context.Context, chatID, userID int64) (domain.PeerNotifySettings, error) {
 	r.onRead()
 	return r.fakeGroupRepo.NotifySettings(ctx, chatID, userID)
+}
+
+// Не участник: ручка настроек чата отвечает отказом, а не 200 «ничего не
+// изменилось» (мутация затронула ноль строк, настройки не читаются).
+func TestSetChatNotify_NonMemberGetsNotFound(t *testing.T) {
+	in, s, _, pub := newLoggedGroupInteractor()
+	ctx := context.Background()
+	const owner, stranger int64 = 7, 99
+	chatID, _, err := in.CreateGroup(ctx, owner, "Team", "", "", false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub.reset()
+	off := false
+	if err := in.SetChatNotify(ctx, chatID, stranger, &off, nil); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("SetChatNotify чужого = %v, want ErrNotFound", err)
+	}
+	if err := in.SetMute(ctx, chatID, stranger, true, nil); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("SetMute чужого = %v, want ErrNotFound", err)
+	}
+	s.mu.Lock()
+	rows := len(s.updates[stranger])
+	s.mu.Unlock()
+	if rows != 0 || len(pub.frames) != 0 {
+		t.Fatalf("не участнику записаны строки/кадры: %d/%d", rows, len(pub.frames))
+	}
 }

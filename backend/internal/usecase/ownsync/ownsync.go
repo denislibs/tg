@@ -77,7 +77,7 @@ func (e *Emitter) Emit(ctx context.Context, userIDs []int64, typ string, body ma
 	if e == nil || e.log == nil || len(userIDs) == 0 {
 		return nil
 	}
-	if _, ok := body["_"].(string); !ok {
+	if tag, ok := body["_"].(string); !ok || tag == "" {
 		return ErrBodyWithoutConstructor
 	}
 	ids := slices.Clone(userIDs)
@@ -107,9 +107,11 @@ func (e *Emitter) Emit(ctx context.Context, userIDs []int64, typ string, body ma
 // эту транзакцию класть не нужно — она закоммичена раньше.
 //
 // build обязан читать состояние ЧЕРЕЗ ctx, который ему передан (репозитории
-// берут транзакцию из него), и не писать в журнал: одно соединение пула на весь
-// вызов, а запись журнала владельца изнутри build заблокировала бы сама себя на
-// замке LockState. Тело — конструктор TL с `_` (ErrBodyWithoutConstructor).
+// берут транзакцию из него) и не писать в журнал: pts поднимется дважды, а в
+// транзакции с замком лишняя запись удлиняет его. EmitSnapshot зовут ВНЕ чужой
+// транзакции: WithinTx не присоединяется к внешней, и вложенный вызов при
+// уже взятом замке владельца ждал бы собственную внешнюю транзакцию. Тело —
+// конструктор TL с `_` (ErrBodyWithoutConstructor).
 func (e *Emitter) EmitSnapshot(ctx context.Context, userID int64, typ string,
 	build func(ctx context.Context) (map[string]any, error)) error {
 	if e == nil || e.log == nil {
@@ -129,7 +131,7 @@ func (e *Emitter) EmitSnapshot(ctx context.Context, userID int64, typ string,
 		if err != nil {
 			return err
 		}
-		if _, ok := b["_"].(string); !ok {
+		if tag, ok := b["_"].(string); !ok || tag == "" {
 			return ErrBodyWithoutConstructor
 		}
 		payload, err := json.Marshal(b)
@@ -156,8 +158,9 @@ func (e *Emitter) EmitSnapshot(ctx context.Context, userID int64, typ string,
 	return nil
 }
 
-// publishAll — живые кадры получателям. Общее для всех (тело, ссылки на пиров)
-// считается один раз; на получателя меняется только курсор. Ошибка публикации не
+// publishAll — живые кадры получателям. Курсор в конверте (конструктор без
+// параметра pts): тело и ссылки на пиров считаются один раз, на получателя
+// меняется только курсор. Курсор в теле (конструктор с pts): тело у каждого своё. Ошибка публикации не
 // теряет апдейт: строка уже в журнале, клиент догонит её через getDifference —
 // но потерю кадров видно в логе.
 func (e *Emitter) publishAll(ctx context.Context, ids []int64, typ string, body map[string]any, ptsByUser map[int64]int64) {

@@ -34,14 +34,29 @@ export function newNotifyManager({ rest, onLocalUpdate, frameVersion }: {
   frameVersion: (key: NotifyTypeKey) => number
 }) {
   // Методы не опираются на `this`: реестр RPC зовёт их отвязанными.
-  const getNotifySettings = (key: NotifyTypeKey): Promise<PeerNotifySettings> =>
-    rest.get<PeerNotifySettings>('/me/notify_settings', { peer: key })
+  // Пока шёл GET, мог прийти кадр этого ключа (переподключение: ответ запрошен до
+  // кадра, а доставлен после): такой ответ старее состояния, которое вкладки
+  // уже применили, и затёр бы его. Читаем заново (tweb применяет ответ только
+  // если апдейт его не опередил — notifications.tsx:79-83).
+  const getNotifySettings = async (key: NotifyTypeKey): Promise<PeerNotifySettings> => {
+    for (let attempt = 0; ; attempt++) {
+      const before = frameVersion(key)
+      const settings = await rest.get<PeerNotifySettings>('/me/notify_settings', { peer: key })
+      if (frameVersion(key) === before || attempt === 2) return settings
+    }
+  }
+
+  // Один запрос на всех вызывающих (tweb кэширует `getNotifyPeerTypePromise`,
+  // :114-127): старт, открытие вкладки и rt:resync всех вкладок не множат GET.
+  let typeSettings: Promise<NotifySettings> | undefined
 
   return {
     getNotifySettings,
-    async getNotifyPeerTypeSettings(): Promise<NotifySettings> {
-      const [notifyUsers, notifyChats, notifyBroadcasts] = await Promise.all(NOTIFY_TYPE_KEYS.map(getNotifySettings))
-      return { notifyUsers, notifyChats, notifyBroadcasts }
+    getNotifyPeerTypeSettings(): Promise<NotifySettings> {
+      typeSettings ??= Promise.all(NOTIFY_TYPE_KEYS.map(getNotifySettings))
+        .then(([notifyUsers, notifyChats, notifyBroadcasts]) => ({ notifyUsers, notifyChats, notifyBroadcasts }))
+        .finally(() => { typeSettings = undefined })
+      return typeSettings
     },
     async updateNotifySettings(key: NotifyTypeKey, settings: InputNotifySettings): Promise<void> {
       const sent = frameVersion(key)

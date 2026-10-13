@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"log"
 	"strings"
 	"time"
 
@@ -503,6 +505,16 @@ func (i *Interactor) emitChatNotifySettings(ctx context.Context, chatID, userID 
 		return err
 	})
 	if err != nil {
+		// Не участник (строки диалога нет) — отказ, как у остальных ручек чата: мутация
+		// ничего не изменила, а 200 соврал бы клиенту.
+		if errors.Is(err, domain.ErrNotFound) {
+			return err
+		}
+		// Инфраструктурный сбой журнала: мутация закоммичена, ответ успешный, но кэш
+		// списка диалогов владельца сбрасываем всё равно (его сбросил бы publish),
+		// иначе второе устройство не увидит перемену до TTL.
+		log.Printf("notify: dialog_mute chat=%d user=%d: %v", chatID, userID, err)
+		i.invalidateDialogs(ctx, userID)
 		return nil
 	}
 	publish(ctx)
