@@ -98,6 +98,22 @@ export function getPinnedMessageByMid(peerId: PeerId, mid: number, threadId?: nu
   return pinnedMessages[getPinnedMessagesKey(peerId, threadId)]?.messages?.find((message) => message.id === mid)
 }
 
+/**
+ * Лежит ли в кэше закрепов пира (любой ключ, включая тематические) один из `mids` — или
+ * кэш ещё грузится (ответ мог предшествовать удалению). Удаление сообщения без бита
+ * `pinned` в воркере (закреп вне его окна) сбрасывает кэш только при `true`: tweb решает по
+ * `message.pFlags.pinned` своего хранилища (`:14078`), а у нас сообщения закрепов лежат здесь
+ * (расхождение 2).
+ */
+export function hasPinnedMessageCached(peerId: PeerId, mids: number[]) {
+  for(const key in pinnedMessages) {
+    if(+key !== peerId && !key.startsWith(peerId + '_')) continue
+    const messages = pinnedMessages[key].messages
+    if(!messages || messages.some((message) => mids.includes(message.id))) return true
+  }
+  return false
+}
+
 export type PinnedHistoryResult = {
   /** номера по убыванию, как `history` у tweb `getHistory` */
   history: number[],

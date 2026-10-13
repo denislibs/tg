@@ -301,6 +301,12 @@ export type BroadcastEvents = {
   // Подписчики — плашка закрепа (`chat/pinnedMessage.solid.tsx`), лента экрана закрепов.
   'peer_pinned_messages': [{ peerId: PeerId; threadId?: number; mids?: number[]; pinned?: boolean; unpinAll?: true }]
   'peer_pinned_hidden': [{ peerId: PeerId; threadId?: number; maxId: number }]
+  // Наше транспортное событие (в tweb воркера нет, `resetPinnedMessagesCache` зовётся
+  // из `handleDeletedMessages` прямо, appMessagesManager.ts:14078-14080): воркер удалил
+  // сообщение(я). `mids` — клиентские номера всех удалённых, `pinned` — те из них, что
+  // воркер знает закреплёнными. Шлётся на каждое удаление; подписчик
+  // (`client/realtime/refetchSubscriber.ts`) решает по кэшу закрепов вкладки.
+  'peer_pinned_deleted': [{ peerId: PeerId; mids: number[]; pinned: number[] }]
 
   // ── ширина левой колонки (порт tweb rootScope.ts:238, отправители —
   // helpers/installColumnResize.ts:89, components/sidebarLeft/index.ts:574).

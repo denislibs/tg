@@ -262,8 +262,12 @@ export function createWorkerCore() {
     // пути удаления (кадр и своя ручка) проходят через эвикцию, поэтому
     // вычитание одно и повториться не может. `dialogs` объявлен ниже —
     // стрелка ленивая.
-    onMessagesDeleted: (peerId, deleted, missing) => {
+    onMessagesDeleted: (peerId, deleted, missing, mids) => {
       dialogs.applyDeletedMessages(peerId, deleted, missing)
+      // закреп удалён вместе с сообщением (tweb :14078-14080, `resetPinnedMessagesCache`):
+      // кэш закрепов живёт на главном потоке и сообщений вне окна воркера не знает,
+      // поэтому воркер шлёт все номера и те из них, что сам знает закреплёнными
+      broadcast('peer_pinned_deleted', { peerId, mids, pinned: deleted.filter((m) => m.pFlags.pinned).map((m) => m.id) })
       // ветка темы того же обработчика (tweb :11493-11592); `forumTopics`
       // объявлен ниже — стрелка дёргает его лениво
       forumTopics.applyDeletedMessages(peerId, deleted)
