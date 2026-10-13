@@ -84,12 +84,14 @@ async function sendMessageWithForward(peerId: PeerId, forwarding: ForwardPeerIdM
       const confirmedPaymentResult = await PaidMessagesInterceptor.prepareStarsForPayment({ peerId, messageCount: mids.length })
       if(confirmedPaymentResult === PAYMENT_REJECTED) return false
 
-      await managers.messages.forwardMessages(peerId, +fromPeerId, mids, { silent, scheduleDate, scheduleRepeatPeriod, confirmedPaymentResult })
+      await managers.messages.forwardMessages(peerId, +fromPeerId, mids, { silent, scheduleDate, scheduleRepeatPeriod, confirmedPaymentResult, noRepay: true })
     }
 
     return true
   } catch(err) {
     console.error('forward failed', { peerId }, err)
+    // Отказ (в том числе выросшая цена платного чата) не должен выглядеть ушедшей пересылкой.
+    toastNew({ langPackKey: 'Error.AnError' })
     return false
   }
 }

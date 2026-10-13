@@ -129,6 +129,8 @@ describe('popups/newMedia — мост попапа медиа', () => {
     expect(sendFile).not.toHaveBeenCalled()
     expect(sendGrouped).not.toHaveBeenCalled()
     expect(onHelperCancel).not.toHaveBeenCalled()
+    // tweb newMedia.tsx:1035 — попап остаётся открытым, выборка и подпись не теряются
+    expect(usePopupStore.getState().popups).toHaveLength(1)
   })
 
   // tweb newMedia.tsx:1013-1018: в ленте отложенных сперва календарь, затем

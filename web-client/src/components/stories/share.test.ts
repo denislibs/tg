@@ -27,4 +27,12 @@ describe('shareStoryToChats', () => {
       [10, 42, [7], undefined],
     ])
   })
+
+  it('отказ одного чата не обрывает остальные', async() => {
+    prepare.mockResolvedValue(undefined)
+    const share = vi.fn(async(_a: number, _s: number, peers: number[]) => { if(peers[0] === -100) throw new Error('403'); return 1 })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(await shareStoryToChats({ stories: { share } } as never, 10, 42, [-100, 7])).toBe(1)
+    expect(share).toHaveBeenCalledTimes(2)
+  })
 })

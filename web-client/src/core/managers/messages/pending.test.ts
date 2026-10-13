@@ -695,7 +695,7 @@ describe('платная отправка: repayRequest и повтор', () => 
     const ops = h.p.failPendingMessage('c1', 'ALLOW_PAYMENT_REQUIRED_5')
 
     expect(ops[0]).toMatchObject({ op: 'patch', fields: { failed: true, repayRequest: { id: 1, messageCount: 1 } } })
-    expect(h.events).toEqual([['insufficent_stars_for_message', { requestId: 1, messageCount: 1, peerId: 1 }]])
+    expect(h.events).toEqual([['insufficent_stars_for_message', { requestId: 1, messageCount: 1, peerId: 1, starsAmount: 5 }]])
     expect(h.p.hasPending('c1')).toBe(true)
   })
 
@@ -720,6 +720,33 @@ describe('платная отправка: repayRequest и повтор', () => 
     expect(h.sends).toHaveLength(2)
     expect(h.sends[1]).toMatchObject({ text: 'привет', clientMsgId: newId, allowPaidStars: 6 })
     expect(h.events[h.events.length - 1]).toEqual(['fulfill_repaid_message', { requestId: 1 }])
+  })
+
+  // Ревью Ф7-Г п.3: удалённый упавший бабл не должен оставлять живой запрос —
+  // «Отправить снова» воскресило бы его и списало звёзды.
+  it('отмена упавшего бабла снимает его запрос на оплату', async () => {
+    const h = stand()
+    await h.p.sendText(textArgs)
+    h.p.failPendingMessage('c1', 'ALLOW_PAYMENT_REQUIRED_5')
+    h.events.length = 0
+
+    await h.p.cancelPending({ clientMsgId: 'c1' })
+    expect(h.events).toEqual([['fulfill_repaid_message', { requestId: 1 }]])
+
+    h.repay.confirmRepayRequest(1, { starsAmount: 5 })
+    expect(h.sends).toHaveLength(1) // повтор не ушёл
+  })
+
+  // Ревью п.10: повторный NACK того же clientMsgId не плодит второй запрос.
+  it('повторный NACK заменяет запрос, а не добавляет второй', async () => {
+    const h = stand()
+    await h.p.sendText(textArgs)
+    h.p.failPendingMessage('c1', 'ALLOW_PAYMENT_REQUIRED_5')
+    h.p.failPendingMessage('c1', 'ALLOW_PAYMENT_REQUIRED_5')
+
+    h.repay.confirmRepayRequest(1, { starsAmount: 5 })
+    h.repay.confirmRepayRequest(2, { starsAmount: 5 })
+    expect(h.sends).toHaveLength(2) // исходная + ОДИН повтор
   })
 
   it('BALANCE_TOO_LOW и прочие отказы — только failed, без запроса на оплату', async () => {

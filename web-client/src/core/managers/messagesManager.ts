@@ -1420,12 +1420,13 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     // dropAuthor — скрыть отправителя (копия как своё сообщение), dropCaption —
     // убрать подпись у пересылаемого медиа (tweb dropAuthor/dropCaptions);
     // silent и threadId — как у tweb forwardMessagesInner (`silent`,
-    // `top_msg_id` = корень темы/треда у приёмника).
+    // `top_msg_id` = корень темы/треда у приёмника). `noRepay` — вызывающий сам
+    // отвечает за отказ оплаты (мост пересылки не показывает плашки в чужом чате).
     async forwardMessages(
       toPeerId: number,
       fromPeerId: number,
       msgIds: number[],
-      opts?: { dropAuthor?: boolean; dropCaption?: boolean; silent?: boolean; threadId?: number | null; scheduleDate?: number | null; scheduleRepeatPeriod?: number | null; confirmedPaymentResult?: { starsAmount: number } | null },
+      opts?: { dropAuthor?: boolean; dropCaption?: boolean; silent?: boolean; threadId?: number | null; scheduleDate?: number | null; scheduleRepeatPeriod?: number | null; confirmedPaymentResult?: { starsAmount: number } | null; noRepay?: boolean },
     ): Promise<MyMessage[]> {
       let r: MessagesContainer | ScheduledUpdates
       try {
@@ -1447,7 +1448,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
         // 403 ALLOW_PAYMENT_REQUIRED_<N> — запрос на повторную оплату, а не ошибка
         // (tweb :5805 → `tryRegisterRequest` с повтором `forwardMessagesInner`):
         // подсказка о смене цены и «Resend» повторят пересылку с новой суммой.
-        if (registerHttpRepay(repay, err, {
+        if (!opts?.noRepay && registerHttpRepay(repay, err, {
           peerId: toPeerId, messageCount: msgIds.length,
           repay: (confirmedPaymentResult) => { void api.forwardMessages(toPeerId, fromPeerId, msgIds, { ...opts, confirmedPaymentResult }).catch(() => {}) },
         })) return []

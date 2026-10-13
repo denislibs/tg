@@ -172,23 +172,25 @@ function send(
   files: File[],
   caption: string,
   asFile: boolean,
+  payment: Exclude<PreparedPaymentResult, typeof PAYMENT_REJECTED>,
   paidPrice?: number | null,
   spoilers?: boolean[],
   force = false,
 ) {
   try {
-    void performSend(chat, files, caption, asFile, paidPrice, spoilers, force)
+    performSend(chat, files, caption, asFile, payment, paidPrice, spoilers, force)
   } finally {
     chat.input.resetSendingFlags()
   }
 }
 
 /** Отправка выборки — tweb `newMedia.tsx:1022-1106` (расхождение 1). */
-async function performSend(
+function performSend(
   chat: NewMediaChat,
   files: File[],
   caption: string,
   asFile: boolean,
+  payment: Exclude<PreparedPaymentResult, typeof PAYMENT_REJECTED>,
   paidPrice?: number | null,
   spoilers?: boolean[],
   force = false,
@@ -196,18 +198,14 @@ async function performSend(
   // tweb :1013-1018 — в ленте отложенных сперва время; оно ляжет в пакет
   // (`scheduleDate`), и вся выборка уйдёт в очередь отложенных
   if(chat.type === ChatType.Scheduled && !force) {
-    void chat.input.scheduleSending(() => send(chat, files, caption, asFile, paidPrice, spoilers, true))
+    void chat.input.scheduleSending(() => send(chat, files, caption, asFile, payment, paidPrice, spoilers, true))
     return
   }
 
-  // tweb :1022 — пакет один на всю выборку. Снимается ДО ожидания согласия: разовые
-  // флаги композера (время, без звука) `send` сбросит, не дожидаясь ответа.
-  const baseParams = chat.input.getMessageSendingParams()
-  // tweb :1032-1036 — согласие на плату за все сообщения выборки; цена одного
-  // уезжает пакетом `confirmedPaymentResult` в каждый кадр
-  const preparedPaymentResult = await chat.input.paidMessageInterceptor.prepareStarsForPayment(files.length)
-  if(preparedPaymentResult === PAYMENT_REJECTED) return
-  const sendingParams: MessageSendingParams = { ...baseParams, confirmedPaymentResult: preparedPaymentResult }
+  // tweb :1022 — пакет один на всю выборку; согласие на плату (`payment`) спросил попап
+  // ДО закрытия (`NewMediaPopupHost.onSend`), цена одного сообщения уезжает пакетом
+  // `confirmedPaymentResult` в каждый кадр
+  const sendingParams: MessageSendingParams = { ...chat.input.getMessageSendingParams(), confirmedPaymentResult: payment }
   // Несколько фото/видео «как медиа» → один альбом (grouped_id).
   const asAlbum = !asFile &&
     files.length > 1 &&
@@ -274,8 +272,14 @@ function NewMediaPopupHost(props: {
     initialAsFile: props.willAttachType === 'document',
     onClose: props.destroy,
     onSend: (caption: string, asFile: boolean, paidPrice?: number | null, spoilers?: boolean[]) => {
-      props.destroy()
-      send(props.chat, filesRef.current, caption, asFile, paidPrice, spoilers)
+      // tweb :1032-1036 — согласие на плату за все сообщения выборки; отказ оставляет попап
+      // открытым (`return` до `context.hide()`, :1112): выборка и подпись не теряются
+      const files = filesRef.current
+      void props.chat.input.paidMessageInterceptor.prepareStarsForPayment(files.length).then((payment) => {
+        if(payment === PAYMENT_REJECTED) return
+        props.destroy()
+        send(props.chat, files, caption, asFile, payment, paidPrice, spoilers)
+      })
     },
   })
 }

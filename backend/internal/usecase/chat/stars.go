@@ -251,14 +251,18 @@ func (i *Interactor) paidPriceFor(ctx context.Context, in SendInput, units int) 
 	return i.requirePaidAllowance(ctx, in.ChatID, in.SenderID, units, in.AllowPaidStars)
 }
 
-// chargePaidMessage списывает price звёзд за одно сообщение в платной группе с
-// отправителя и начисляет владельцу — атомарно внутри общей транзакции Send
-// (querier берёт tx из ctx). price получен из requirePaidAllowance/paidPriceFor;
-// 0 — ничего. Нехватка средств → domain.ErrBalanceTooLow (откатывает отправку).
-func (i *Interactor) chargePaidMessage(ctx context.Context, chatID, senderID, price int64) (paidCharge, error) {
-	if price <= 0 {
+// chargePaidMessage списывает amount звёзд в платной группе с отправителя и
+// начисляет владельцу — атомарно внутри общей транзакции (querier берёт tx из
+// ctx). amount = цена одного сообщения × число сообщений запроса: пачка
+// (пересылка, отложенные) списывается ОДНОЙ парой UPDATE баланса, а не по паре на
+// сообщение — строка баланса владельца группы держится под замком один раз.
+// Цена получена из requirePaidAllowance/paidPriceFor; 0 — ничего. Нехватка
+// средств → domain.ErrBalanceTooLow (откатывает отправку).
+func (i *Interactor) chargePaidMessage(ctx context.Context, chatID, senderID, amount int64) (paidCharge, error) {
+	if amount <= 0 {
 		return paidCharge{}, nil
 	}
+	price := amount
 	creator, err := i.groups.CreatorID(ctx, chatID)
 	if err != nil {
 		return paidCharge{}, err

@@ -193,7 +193,7 @@ describe('MessagesManager.forwardMessages', () => {
     const r = await mgr.forwardMessages(1, 2, [cid(3), cid(4), cid(5)], { confirmedPaymentResult: { starsAmount: 5 } })
 
     expect(r).toEqual([])
-    expect(events).toEqual([['insufficent_stars_for_message', { requestId: 1, messageCount: 3, peerId: 1 }]])
+    expect(events).toEqual([['insufficent_stars_for_message', { requestId: 1, messageCount: 3, peerId: 1, starsAmount: 5 }]])
 
     mgr.confirmRepayRequest(1, { starsAmount: 6 })
     await new Promise((res) => setTimeout(res, 0))
@@ -201,6 +201,16 @@ describe('MessagesManager.forwardMessages', () => {
     expect(bodies).toHaveLength(2)
     expect(bodies[1].allow_paid_stars).toBe(18)
     expect(events[events.length - 1]).toEqual(['fulfill_repaid_message', { requestId: 1 }])
+  })
+
+  // Мост пересылки не открывает чат получателя: плашки там нет, поэтому запрос не заводится —
+  // отказ бросается, и мост не засчитывает чат отправленным (ревью Ф7-Г п.1).
+  it('noRepay: 403 ALLOW_PAYMENT_REQUIRED бросается, запрос не заводится', async () => {
+    const events: unknown[] = []
+    const rest = { post: async () => { throw new HttpError(403, 'ALLOW_PAYMENT_REQUIRED_15', 'ALLOW_PAYMENT_REQUIRED_15') } } as unknown as RestClient
+    const mgr = newMessagesManager({ rest, broadcast: (e) => { events.push(e) } })
+    await expect(mgr.forwardMessages(1, 2, [cid(3)], { noRepay: true })).rejects.toBeInstanceOf(HttpError)
+    expect(events).toEqual([])
   })
 
   it('прочие отказы пересылки по-прежнему бросаются вызывающему', async () => {

@@ -9,7 +9,8 @@
 // ОТЛИЧИЯ ОТ ОРИГИНАЛА
 //  1. Чат запроса — `peerId` события: воркер знает пир отправки, а `invokeApiArgs`
 //     (из которого оригинал достаёт `peer`/`to_peer`) у нас нет.
-//  2. Цена — `getStarsAmount(peerId)` из зеркала пиров (`core/peerCache.ts`): у
+//  2. Цена — из самого отказа (`starsAmount` события = N / число сообщений), запасной путь —
+//     `getStarsAmount(peerId)` из зеркала пиров (`core/peerCache.ts`): у
 //     личек стоимости нет (бэкенд её не производит), для групп карточка свежая —
 //     смену платы сервер объявляет кадром чата. `getStarsAmountForUser`/
 //     `updateCachedUserFullStarsAmount`/`chat.updateStarsAmount` не нужны: поля
@@ -63,11 +64,12 @@ class PriceChangedInterceptor {
   }
 
   init() {
-    this.listenerSetter.add(rootScope)('insufficent_stars_for_message', ({ requestId, messageCount, peerId }) => {
+    this.listenerSetter.add(rootScope)('insufficent_stars_for_message', ({ requestId, messageCount, peerId, starsAmount }) => {
       if(peerId !== this.chat.peerId) return
 
       this.handleNewRepayRequest({
-        starsAmount: getStarsAmount(peerId) ?? 0,
+        // цена — из самого отказа сервера; зеркало пиров может отстать от него
+        starsAmount: starsAmount || getStarsAmount(peerId) || 0,
         requestId,
         messageCount,
       })
@@ -94,7 +96,7 @@ class PriceChangedInterceptor {
 
   private openTooltip(starsAmount: number) {
     const onResend = () => {
-      void this.confirmResend([...this.pendingRequests])
+      void this.confirmResend([...this.pendingRequests], starsAmount)
     }
 
     const entry: OpenedTooltip = this.openedTooltip = {
@@ -120,10 +122,10 @@ class PriceChangedInterceptor {
     this.openedTooltip = undefined
   }
 
-  private async confirmResend(pendingRequests: PendingRequest[]) {
+  private async confirmResend(pendingRequests: PendingRequest[], starsAmount: number) {
     const messageCount = accumulate(pendingRequests.map(r => r.messageCount), 0)
 
-    const preparedPaymentResult = await this.chat.input.paidMessageInterceptor.prepareStarsForPayment(messageCount)
+    const preparedPaymentResult = await this.chat.input.paidMessageInterceptor.prepareStarsForPayment(messageCount, starsAmount || undefined)
 
     if(preparedPaymentResult === PAYMENT_REJECTED) return
 

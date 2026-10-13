@@ -241,15 +241,15 @@ func (i *Interactor) deliverForwardCopies(ctx context.Context, in ForwardInput, 
 		if e != nil {
 			return e
 		}
+		// Плата за всю пачку — одним списанием (цена × число копий).
+		ch, e := i.chargePaidMessage(ctx, in.ToChatID, in.SenderID, price*int64(len(copies)))
+		if e != nil {
+			return e
+		}
+		if ch.applied {
+			charge = ch
+		}
 		for idx, c := range copies {
-			// Плата — за каждое сообщение пачки.
-			ch, e := i.chargePaidMessage(ctx, in.ToChatID, in.SenderID, price)
-			if e != nil {
-				return e
-			}
-			if ch.applied {
-				charge = ch
-			}
 			seq, e := i.msgs.NextSeq(ctx, in.ToChatID)
 			if e != nil {
 				return e

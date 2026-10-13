@@ -425,16 +425,17 @@ func (i *Interactor) putScheduledOnce(ctx context.Context, chatID, senderID int6
 		if e != nil {
 			return e
 		}
+		// Плата за все новые строки — одним списанием; на каждой строке остаётся
+		// её доля (цена одного сообщения): отвергнутая публикация вернёт её.
+		ch, e := i.chargePaidMessage(ctx, chatID, senderID, price*int64(len(fresh)))
+		if e != nil {
+			return e
+		}
+		charge = ch
 		news := make([]domain.ScheduledMessage, 0, len(fresh))
 		for _, idx := range fresh {
-			ch, e := i.chargePaidMessage(ctx, chatID, senderID, price)
-			if e != nil {
-				return e
-			}
 			if ch.applied {
-				charge = ch
-				// Сумма — на строке: отвергнутая публикация её вернёт.
-				rows[idx].PaidStars, rows[idx].PaidTo = ch.amount, ch.creatorID
+				rows[idx].PaidStars, rows[idx].PaidTo = price, ch.creatorID
 			}
 			// Превью у строки бывает только снимком копии (пересылка); пишется
 			// отдельным UPDATE, как у сообщения (insertCopy).

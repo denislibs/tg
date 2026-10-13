@@ -18,7 +18,12 @@ export async function shareStoryToChats(
   for(const peerId of chatIds) {
     const confirmedPaymentResult = await PaidMessagesInterceptor.prepareStarsForPayment({ messageCount: 1, peerId })
     if(confirmedPaymentResult === PAYMENT_REJECTED) continue
-    sent += await managers.stories.share(authorId, storyId, [peerId], confirmedPaymentResult)
+    // Отказ одного чата (выросшая цена, права) не обрывает остальные
+    try {
+      sent += await managers.stories.share(authorId, storyId, [peerId], confirmedPaymentResult)
+    } catch(err) {
+      console.error('story share failed', { peerId }, err)
+    }
   }
   return sent
 }

@@ -43,8 +43,8 @@ function setup(prepare: () => Promise<unknown> = async () => ({ starsAmount: 6, 
   return { interceptor, confirmRepayRequest, prepareStarsForPayment, listenerSetter }
 }
 
-const need = (requestId: number, messageCount: number, peerId: PeerId = PEER) =>
-  rootScope.dispatchEventSingle('insufficent_stars_for_message', { requestId, messageCount, peerId })
+const need = (requestId: number, messageCount: number, peerId: PeerId = PEER, starsAmount = 6) =>
+  rootScope.dispatchEventSingle('insufficent_stars_for_message', { requestId, messageCount, peerId, starsAmount })
 
 beforeEach(() => {
   tooltip.calls.length = 0
@@ -76,7 +76,7 @@ describe('PriceChangedInterceptor', () => {
     tooltip.calls[0].onResend()
     await flush()
 
-    expect(prepareStarsForPayment).toHaveBeenCalledWith(3)
+    expect(prepareStarsForPayment).toHaveBeenCalledWith(3, 6)
     expect(confirmRepayRequest.mock.calls).toEqual([
       [1, { starsAmount: 6, canUndo: false }],
       [2, { starsAmount: 6, canUndo: false }],
@@ -104,11 +104,19 @@ describe('PriceChangedInterceptor', () => {
     listenerSetter.removeAll()
   })
 
+  // Ревью п.2: цена берётся из отказа сервера, а не из зеркала — оно может отстать.
+  it('цена из отказа важнее устаревшего зеркала и не обнуляется при отсутствии карточки', () => {
+    const { listenerSetter } = setup()
+    resetPeerMirror()
+    need(1, 1, PEER, 8)
+    expect(tooltip.calls.map((c) => c.starsAmount)).toEqual([8])
+    listenerSetter.removeAll()
+  })
+
   it('цена снова поменялась — старая плашка закрывается, открывается новая', () => {
     const { listenerSetter } = setup()
     need(1, 1)
-    putChannel(9)
-    need(2, 1)
+    need(2, 1, PEER, 9)
     expect(tooltip.calls.map((c) => c.starsAmount)).toEqual([6, 9])
     expect(tooltip.calls[0].hide).toHaveBeenCalled()
     listenerSetter.removeAll()

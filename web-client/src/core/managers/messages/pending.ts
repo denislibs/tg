@@ -180,6 +180,8 @@ interface PendingDetails {
   resend?: (confirmedPaymentResult: ConfirmedPaymentResult | undefined) => void
   /** Настоящий id уже загруженного файла: повтору байты грузить незачем. */
   mediaId?: number
+  /** Живой запрос на повторную оплату этого бабла (`RepayRequest.id`). */
+  repayId?: number
 }
 
 /** Внутренности хранилища истории, которые нужны pending-механике. Отдельно от
@@ -672,7 +674,10 @@ export function newPendingMethods(ctx: PendingCtx) {
     let repayRequest: RepayRequest | undefined
     const resend = d.resend
     if (reason && resend && ctx.repay) {
+      // Повторный NACK того же бабла (переотправка outbox) заменяет прежний запрос.
+      if (d.repayId !== undefined) ctx.repay.cancelRepayRequest(d.repayId)
       repayRequest = ctx.repay.tryRegisterRequest({ reason, peerId: d.peerId, messageCount: 1, repay: resend })
+      d.repayId = repayRequest?.id
     }
     const fields: Partial<MessageReal> = repayRequest ? { failed: true, repayRequest } : { failed: true }
     const next = patchTemp(d, (m) => (m._ === 'message' ? { ...m, ...fields } : { ...m, failed: true }))
@@ -694,6 +699,9 @@ export function newPendingMethods(ctx: PendingCtx) {
     const d = pendingByClientId.get(clientMsgId)
     if (!d) return []
     pendingByClientId.delete(clientMsgId)
+    // Живой запрос на оплату уходит вместе с баблом: иначе «Отправить снова» воскресило бы
+    // удалённое сообщение (и держало бы файл замыканием повтора).
+    if (d.repayId !== undefined) ctx.repay?.cancelRepayRequest(d.repayId)
     const cur = d.storage.get(d.tempId)
     if (!dropTemp(d) || !cur) return []
     return opsFor(d, (key) => ({ op: 'remove', key, msgId: cur.id }))
@@ -935,6 +943,11 @@ export function newPendingMethods(ctx: PendingCtx) {
       // `toggleError` этой ячейки и `throw` — `Promise.all` отклоняется и
       // `sendMultiMedia` не уходит (:3836-3840); неполного альбома собеседник не
       // получит. Помечена упавшей у нас она уже в `uploadFile`.
+      // ОТСТУПЛЕНИЕ (платная группа): кадры идут по одному на ячейку, а не одним
+      // `sendMultiMedia`, поэтому согласие и списание проверяет каждый кадр отдельно
+      // (цена одной ячейки) — рост цены между кадрами оставит часть альбома
+      // неотправленной, и каждая ячейка повторяется своим запросом с тем же groupedId.
+      // Атомарно на весь альбом — после `send_multi_media` (docs/audit/2026-10-12-album-multimedia-spec.md).
       const alive = items.map((o, i) => ({ o, wire: plans[i].wire, mediaId: mediaIds[i] }))
         .filter(({ o }) => pendingByClientId.has(o.clientMsgId))
       if (alive.some(({ mediaId }) => mediaId === null)) return

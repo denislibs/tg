@@ -139,10 +139,10 @@ describe('realtimeBridge.startRealtime — насос smp → rootScope', () => 
     rootScope.addEventListener('insufficent_stars_for_message', (e) => received.push(['need', e]))
     rootScope.addEventListener('fulfill_repaid_message', (e) => received.push(['done', e]))
 
-    deliver({ kind: 'event', event: 'insufficent_stars_for_message', payload: { requestId: 1, messageCount: 2, peerId: -5 } })
+    deliver({ kind: 'event', event: 'insufficent_stars_for_message', payload: { requestId: 1, messageCount: 2, peerId: -5, starsAmount: 5 } })
     deliver({ kind: 'event', event: 'fulfill_repaid_message', payload: { requestId: 1 } })
 
-    expect(received).toEqual([['need', { requestId: 1, messageCount: 2, peerId: -5 }], ['done', { requestId: 1 }]])
+    expect(received).toEqual([['need', { requestId: 1, messageCount: 2, peerId: -5, starsAmount: 5 }], ['done', { requestId: 1 }]])
   })
 
   // Глобальные настройки уведомлений по типу чатов (tweb rootScope.ts `notify_settings`) —

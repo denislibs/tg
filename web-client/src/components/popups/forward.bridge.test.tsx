@@ -8,7 +8,8 @@ import { usePopupStore, type PopupApi } from '@stores/popupStore'
 
 type PickerProps = { onPick: (peerIds: number[]) => void }
 let picker: PickerProps | undefined
-const { forwardMessages, prepare } = vi.hoisted(() => ({
+const { forwardMessages, prepare, toastNew } = vi.hoisted(() => ({
+  toastNew: vi.fn(),
   forwardMessages: vi.fn(async(..._args: unknown[]) => []),
   prepare: vi.fn(),
 }))
@@ -18,7 +19,7 @@ vi.mock('@components/messages/ChatDialogs', () => ({
 }))
 vi.mock('@/client/bootstrap', () => ({ startClient: () => ({ managers: { messages: { forwardMessages } } }) }))
 vi.mock('@lib/appImManager', () => ({ default: { chat: undefined, setInnerPeer: vi.fn() } }))
-vi.mock('@components/toast', () => ({ toastNew: vi.fn() }))
+vi.mock('@components/toast', () => ({ toastNew }))
 vi.mock('@components/chat/paidMessagesInterceptor', async(importOriginal) => {
   const actual = await importOriginal<typeof import('@components/chat/paidMessagesInterceptor')>()
   return { ...actual, default: { prepareStarsForPayment: prepare } }
@@ -55,7 +56,24 @@ describe('forward.bridge — платные получатели', () => {
 
     expect(prepare).toHaveBeenCalledWith({ peerId: -100, messageCount: 3 })
     expect(forwardMessages).toHaveBeenCalledTimes(2)
-    expect(forwardMessages.mock.calls[0]).toEqual([-100, 9, [1, 2, 3], { silent: undefined, scheduleDate: undefined, scheduleRepeatPeriod: undefined, confirmedPaymentResult: { starsAmount: 5, canUndo: false } }])
+    expect(forwardMessages.mock.calls[0]).toEqual([-100, 9, [1, 2, 3], { silent: undefined, scheduleDate: undefined, scheduleRepeatPeriod: undefined, confirmedPaymentResult: { starsAmount: 5, canUndo: false }, noRepay: true }])
     expect(forwardMessages.mock.calls[1][0]).toBe(7)
+  })
+
+  // Ревью Ф7-Г п.1: отказ оплаты (цена выросла) не должен выглядеть ушедшей пересылкой.
+  it('отказ пересылки — тост ошибки, а не «Переслано»', async() => {
+    prepare.mockResolvedValue(undefined)
+    forwardMessages.mockRejectedValueOnce(new Error('403'))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    await showForwardPopup({ 9: [1] })
+    mountTopPopup()
+
+    picker!.onPick([-100, 7])
+    await flush()
+    await flush()
+
+    expect(toastNew).toHaveBeenCalledWith({ langPackKey: 'Error.AnError' })
+    // успешный чат (7) отчитан отдельно, отказавший (-100) в «Переслано» не входит
+    expect(toastNew.mock.calls.filter(([a]) => a.langPackKey === 'FwdMessageTo')).toHaveLength(1)
   })
 })

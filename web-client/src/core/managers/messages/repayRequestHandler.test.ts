@@ -18,7 +18,7 @@ describe('RepayRequestHandler', () => {
     const req = h.tryRegisterRequest({ reason: 'ALLOW_PAYMENT_REQUIRED_15', peerId: 7, messageCount: 3, repay })
 
     expect(req).toEqual({ id: 1, messageCount: 3 })
-    expect(events).toEqual([['insufficent_stars_for_message', { requestId: 1, messageCount: 3, peerId: 7 }]])
+    expect(events).toEqual([['insufficent_stars_for_message', { requestId: 1, messageCount: 3, peerId: 7, starsAmount: 5 }]])
     expect(repay).not.toHaveBeenCalled()
   })
 

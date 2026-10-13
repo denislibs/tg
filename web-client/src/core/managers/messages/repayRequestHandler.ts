@@ -65,7 +65,10 @@ export function newRepayRequestHandler({ dispatch }: { dispatch: RepayDispatch }
       if (!canHandleRepayReason(reason)) return undefined
       const id = ++seed
       requests.set(id, repay)
-      dispatch('insufficent_stars_for_message', { requestId: id, messageCount, peerId })
+      // Цена одного сообщения — из самого отказа (`N` = цена × число сообщений запроса):
+      // плашка и повторная оплата не зависят от того, успела ли дойти обновлённая карточка чата.
+      const starsAmount = Math.round(requiredStarsOf(reason!) / Math.max(1, messageCount))
+      dispatch('insufficent_stars_for_message', { requestId: id, messageCount, peerId, starsAmount })
       return { id, messageCount }
     },
 
