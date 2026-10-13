@@ -309,11 +309,14 @@ func UnmarshalDialog(raw []byte) (Dialog, error) {
 // выражено ЗНАЧЕНИЕМ, а не выбором конструктора, и потому у каждого читателя
 // своя ветка `if (draft)`.
 //
+// Превью ссылки черновика — no_webpage / invert_media (pFlags) и media
+// (flags.5?InputMedia) ТОЛЬКО конструктором inputMediaWebPage: tweb кладёт их
+// в черновик (input.ts:2275-2310) и сравнивает черновики целиком
+// (draftsAreEqual), поэтому сервер возвращает их ровно как сохранили.
+//
 // Чего нет и почему:
-//   - no_webpage / invert_media — управление превью ссылки в черновике; у
-//     композера такой настройки нет вовсе;
-//   - media (flags.5?InputMedia) — черновик с вложением: у нас черновик это
-//     только текст с разметкой и ответом;
+//   - media другими конструкторами — черновик с вложением: у нас черновик это
+//     текст с разметкой, ответом и решением о превью;
 //   - effect / suggested_post / rich_message — предмета нет;
 //   - date у draftMessageEmpty — момент удаления мы не храним, а параметр
 //     необязательный.
@@ -354,12 +357,17 @@ func NewDraftMessageEmpty() DraftMessageEmpty {
 // `text`, и это было второе имя одного поля на проводе.
 type DraftMessageReal struct {
 	Underscore string `json:"_"`
+	// PFlags — no_webpage (flags.1) и invert_media (flags.6); «выключено» —
+	// отсутствие ключа.
+	PFlags map[string]bool `json:"pFlags,omitempty"`
 	// ReplyTo — flags.4?InputReplyTo: на что отвечает черновик. Объединение
 	// ВХОДЯЩЕЕ (Input*), потому что черновик — заготовка ОТПРАВКИ, а не
 	// сохранённое сообщение.
 	ReplyTo  *InputReplyToMessage `json:"reply_to,omitempty"`
 	Message  string               `json:"message"`
 	Entities MessageEntities      `json:"entities,omitempty"`
+	// Media — flags.5?InputMedia: превью ссылки (inputMediaWebPage).
+	Media *InputMediaWebPage `json:"media,omitempty"`
 	// Date — когда черновик последний раз менялся (unix-секунды). Обязателен:
 	// по нему клиент решает, чей черновик свежее при гонке двух устройств.
 	Date int `json:"date"`
@@ -367,6 +375,15 @@ type DraftMessageReal struct {
 
 func (DraftMessageReal) isDraftMessage() {}
 func (d DraftMessageReal) Tag() string   { return d.Underscore }
+
+// WithWebPage — тот же черновик с решением о превью ссылки (no_webpage,
+// invert_media, media:inputMediaWebPage).
+func (d DraftMessageReal) WithWebPage(w WebPageInput) DraftMessageReal {
+	setPFlag(&d.PFlags, "no_webpage", w.NoWebpage)
+	setPFlag(&d.PFlags, "invert_media", w.InvertMedia)
+	d.Media = w.Media
+	return d
+}
 
 // NewDraftMessage — черновик провода. topMsgID — номер треда черновика (0 —
 // черновик чата): он едет в reply_to.top_msg_id ТОЛЬКО при ответе — так

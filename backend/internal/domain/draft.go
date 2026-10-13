@@ -18,6 +18,9 @@ type Draft struct {
 	Text      string
 	Entities  MessageEntities
 	ReplyToID *int64
+	// WebPage — решение о превью ссылки (no_webpage, invert_media,
+	// media:inputMediaWebPage), как его прислал saveDraft.
+	WebPage   WebPageInput
 	UpdatedAt time.Time
 }
 
@@ -29,5 +32,5 @@ type Draft struct {
 // (draftMessageEmpty), и выбирает между ними тот, у кого есть ответ на вопрос
 // «есть ли черновик»: строка есть — draftMessage, строки нет — пустой.
 func (d Draft) Wire() DraftMessageReal {
-	return NewDraftMessage(d.Text, d.Entities, d.ReplyToID, d.TopMsgID, d.UpdatedAt)
+	return NewDraftMessage(d.Text, d.Entities, d.ReplyToID, d.TopMsgID, d.UpdatedAt).WithWebPage(d.WebPage)
 }

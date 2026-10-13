@@ -40,6 +40,17 @@ func TestDraftsRepo_CRUD(t *testing.T) {
 		t.Fatalf("UpdatedAt not set")
 	}
 
+	// Решение о превью ссылки — jsonb туда и обратно; повтор без него — снят.
+	wp := domain.WebPageInput{NoWebpage: true, Media: &domain.InputMediaWebPage{Underscore: domain.InputMediaWebPageTag,
+		URL: "https://example.com", PFlags: map[string]bool{"optional": true}}}
+	if d3, err := r.Upsert(ctx, user, domain.Draft{ChatID: chat1, Text: "с превью", WebPage: wp}); err != nil ||
+		!d3.WebPage.NoWebpage || d3.WebPage.Media == nil || d3.WebPage.Media.URL != "https://example.com" || !d3.WebPage.Media.PFlags["optional"] {
+		t.Fatalf("Upsert с превью: %+v, %v", d3, err)
+	}
+	if d4, err := r.Upsert(ctx, user, domain.Draft{ChatID: chat1, Text: "обновлённый"}); err != nil || !d4.WebPage.IsZero() {
+		t.Fatalf("Upsert без превью: %+v, %v", d4, err)
+	}
+
 	// Список пользователя.
 	_, _ = r.Upsert(ctx, user, domain.Draft{ChatID: chat2, Text: "второй"})
 	list, err := r.ListByUser(ctx, user)
