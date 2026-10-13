@@ -127,7 +127,17 @@ func (b *fakeBook) Add(_ context.Context, c domain.ContactRecord) (domain.Contac
 	c.IsBot = b.bots[c.UserID]
 	return c, nil
 }
-func (b *fakeBook) List(context.Context, int64) ([]domain.ContactRecord, error) { return nil, nil }
+func (b *fakeBook) List(_ context.Context, owner int64) ([]domain.ContactRecord, error) {
+	var out []domain.ContactRecord
+	for k, r := range b.rows {
+		if k[0] == owner {
+			r.User = b.seen(owner, k[1])
+			r.User.Phone = b.phones[k[1]] // как scanContact: сырой номер, прячет List
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
 func (b *fakeBook) Delete(_ context.Context, owner, user int64) (bool, error) {
 	_, ok := b.rows[[2]int64{owner, user}]
 	delete(b.rows, [2]int64{owner, user})
@@ -498,5 +508,69 @@ func TestDelete_PrivacyRulesFailureStillJournals(t *testing.T) {
 	}
 	if u, n := rowCard(t, log, cOwner); n != 2 || u.ContactRecord() || u.Phone != "" {
 		t.Fatalf("строка (n=%d) = %+v", n, u)
+	}
+}
+
+// GET /contacts и ответ добавления — одна и та же карточка: правило profile_photo
+// гасит аватарку на обоих путях (иначе она мигает при каждой мутации).
+func TestList_MatchesAddResponse(t *testing.T) {
+	i, book, _ := newBookInteractor(t)
+	ctx := context.Background()
+	pr := book.profile[cBob]
+	pr.Photo = domain.NewUserProfilePhoto(900, nil, false, false)
+	book.profile[cBob] = pr
+	book.phones[cBob] = "+79990000002"
+	i.SetPrivacy(fakePrivacy{allow: map[domain.PrivacyKey]bool{domain.PrivacyPhoneNumber: true}}) // фото закрыто
+
+	added, err := i.Add(ctx, cOwner, AddInput{UserID: cBob, FirstName: "Б"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := i.List(ctx, cOwner)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("List: %v %v", list, err)
+	}
+	a, _ := json.Marshal(added.User)
+	l, _ := json.Marshal(list[0].User)
+	if string(a) != string(l) {
+		t.Fatalf("Add: %s\nList: %s", a, l)
+	}
+	if _, ok := list[0].User.Photo.(domain.UserProfilePhotoReal); ok {
+		t.Fatalf("закрытая аватарка в книге: %+v", list[0].User.Photo)
+	}
+}
+
+// Правила приватности читаются ДО транзакции с замком курсора: сбой SQL внутри
+// неё переводит транзакцию в aborted, и строка журнала теряется.
+type orderEmitter struct {
+	inner  SnapshotEmitter
+	events *[]string
+}
+
+func (o orderEmitter) EmitSnapshot(ctx context.Context, u int64, typ string, build func(context.Context) (map[string]any, error)) error {
+	*o.events = append(*o.events, "emit")
+	return o.inner.EmitSnapshot(ctx, u, typ, build)
+}
+
+type orderPrivacy struct {
+	fakePrivacy
+	events *[]string
+}
+
+func (p orderPrivacy) VisibleMaps(ctx context.Context, v int64, ids []int64, keys ...domain.PrivacyKey) (map[domain.PrivacyKey]map[int64]bool, error) {
+	*p.events = append(*p.events, "rules")
+	return p.fakePrivacy.VisibleMaps(ctx, v, ids, keys...)
+}
+
+func TestPublishContactCard_ReadsPrivacyBeforeTransaction(t *testing.T) {
+	i, _, log := newBookInteractor(t)
+	var events []string
+	i.SetEmitter(orderEmitter{inner: ownsync.New(log, nil, directTx{}), events: &events})
+	i.SetPrivacy(orderPrivacy{events: &events})
+	if _, err := i.Add(context.Background(), cOwner, AddInput{UserID: cBob, FirstName: "Б"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(events) < 2 || events[0] != "rules" || events[1] != "emit" {
+		t.Fatalf("порядок = %v; want правила до EmitSnapshot", events)
 	}
 }

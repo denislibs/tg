@@ -76,9 +76,14 @@ func (i *Interactor) SetEmitter(e SnapshotEmitter) { i.emit = e }
 func (i *Interactor) publishContactCard(ctx context.Context, ownerID, userID int64, needCard bool) (domain.UserReal, error) {
 	var card domain.UserReal
 	built := false
+	// Правила приватности читаются ДО транзакции с замком: сбой SQL внутри
+	// транзакции переводит её в aborted, и «гасим фото и номер» стоило бы строки
+	// журнала. Правила замком курсора владельца не упорядочиваются: их смена —
+	// предмет f6-privacy, не этой строки.
+	rules := i.privacyRules(ctx, ownerID, userID)
 	if i.emit != nil {
 		err := i.emit.EmitSnapshot(ctx, ownerID, "user_update", func(ctx context.Context) (map[string]any, error) {
-			u, err := i.seenByOwner(ctx, ownerID, userID)
+			u, err := i.seenByOwner(ctx, ownerID, userID, rules)
 			if err != nil {
 				return nil, err
 			}
@@ -92,34 +97,43 @@ func (i *Interactor) publishContactCard(ctx context.Context, ownerID, userID int
 	if built || !needCard {
 		return card, nil
 	}
-	return i.seenByOwner(ctx, ownerID, userID)
+	return i.seenByOwner(ctx, ownerID, userID, rules)
+}
+
+// ownerPrivacy — ответы правил приватности пользователя ЗРИТЕЛЮ-владельцу.
+type ownerPrivacy struct{ photo, phone map[int64]bool }
+
+// privacyRules — profile_photo и phone_number одним запросом. Сбой гасит то, что
+// правила охраняют (фото и номер не показываются), как usecase/privacy.ViewUsers.
+// Без проверяющего приватности фото видно, номер скрыт.
+func (i *Interactor) privacyRules(ctx context.Context, ownerID, userID int64) ownerPrivacy {
+	if i.privacy == nil {
+		return ownerPrivacy{photo: map[int64]bool{userID: true}, phone: map[int64]bool{}}
+	}
+	maps, err := i.privacy.VisibleMaps(ctx, ownerID, []int64{userID}, domain.PrivacyProfilePhoto, domain.PrivacyPhoneNumber)
+	if err != nil {
+		log.Printf("[user_update] privacy rules owner=%d user=%d: %v", ownerID, userID, err)
+		return ownerPrivacy{photo: map[int64]bool{}, phone: map[int64]bool{}}
+	}
+	return ownerPrivacy{photo: maps[domain.PrivacyProfilePhoto], phone: maps[domain.PrivacyPhoneNumber]}
 }
 
 // seenByOwner — краткая карточка userID глазами ownerID: имя и pFlags.contact
 // из его книги (SeenUser), аватарка по правилу profile_photo пользователя и
-// поверх неё личное фото владельца, номер по правилу phone_number,
-// pFlags.close_friend. Сбой правила приватности гасит то, что оно охраняет
-// (фото и номер не показываются) — как usecase/privacy.ViewUsers; без
-// проверяющего приватности фото видно, номер скрыт.
-func (i *Interactor) seenByOwner(ctx context.Context, ownerID, userID int64) (domain.UserReal, error) {
+// поверх неё личное фото владельца, номер по правилу phone_number
+// (rules — privacyRules), pFlags.close_friend. Читает только через ctx: зовётся
+// и внутри транзакции с замком курсора владельца.
+func (i *Interactor) seenByOwner(ctx context.Context, ownerID, userID int64, rules ownerPrivacy) (domain.UserReal, error) {
 	u, err := i.repo.SeenUser(ctx, ownerID, userID)
 	if err != nil {
 		return domain.UserReal{}, err
 	}
 	users := []domain.UserReal{u}
-	rules := domain.UncheckedUserViewRules(ownerID, users)
+	view := domain.UncheckedUserViewRules(ownerID, users)
 	// Присутствие в снимок не входит: своё место у него — updateUserStatus, а
 	// «ничего не известно» в карточке стёрло бы у клиента настоящий статус.
-	rules.Status = nil
-	if i.privacy != nil {
-		rules.Photo, rules.Phone = nil, map[int64]bool{}
-		maps, err := i.privacy.VisibleMaps(ctx, ownerID, []int64{userID}, domain.PrivacyProfilePhoto, domain.PrivacyPhoneNumber)
-		if err != nil {
-			log.Printf("[user_update] privacy rules owner=%d user=%d: %v", ownerID, userID, err)
-		} else {
-			rules.Photo, rules.Phone = maps[domain.PrivacyProfilePhoto], maps[domain.PrivacyPhoneNumber]
-		}
-	}
+	view.Status = nil
+	view.Photo, view.Phone = rules.photo, rules.phone
 	// Личное фото задано ЗРИТЕЛЕМ (pFlags.personal): правило аватарки его не гасит.
 	if i.photos != nil {
 		custom, err := i.photos.CustomPhotoMap(ctx, ownerID, []int64{userID})
@@ -130,7 +144,7 @@ func (i *Interactor) seenByOwner(ctx context.Context, ownerID, userID int64) (do
 			users[0].Photo = domain.NewUserProfilePhoto(mediaID, nil, false, true)
 		}
 	}
-	rules.Apply(users)
+	view.Apply(users)
 	u = users[0]
 	if i.close != nil {
 		friends, err := i.close.CloseFriends(ctx, ownerID)
@@ -297,15 +311,19 @@ func (i *Interactor) AddByPhone(ctx context.Context, ownerID int64, in AddByPhon
 // карточка в ответе ручки. Сырая карточка репозитория (c.User) телефон и фото
 // отдаёт без правил приватности и без личного фото и close_friend; устройство-
 // инициатор получает и кадр, и ответ — они обязаны совпадать.
+//
+// Ошибка сборки (не журнала) — 500 после коммита: Add идемпотентен (upsert), и
+// повтор клиента доведёт запись; деградировать до сырой карточки репозитория
+// нельзя — она отдаёт номер и фото мимо правил приватности. (Delete, у которого
+// повтор отвечает 404, деградирует до урезанной карточки.)
 func (i *Interactor) withOwnerCard(ctx context.Context, c domain.ContactRecord) (domain.ContactRecord, error) {
 	card, err := i.publishContactCard(ctx, c.OwnerID, c.UserID, true)
 	if err != nil {
 		return domain.ContactRecord{}, err
 	}
 	c.User = card
-	if p, ok := card.Photo.(domain.UserProfilePhotoReal); ok {
-		c.HasCustomPhoto = p.Personal()
-	}
+	p, ok := card.Photo.(domain.UserProfilePhotoReal)
+	c.HasCustomPhoto = ok && p.Personal()
 	return c, nil
 }
 
@@ -366,13 +384,19 @@ func (i *Interactor) List(ctx context.Context, ownerID int64) ([]domain.ContactR
 		ids = append(ids, c.UserID)
 	}
 	if i.privacy != nil {
-		vis, err := i.privacy.VisibleMap(ctx, ownerID, ids, domain.PrivacyPhoneNumber)
+		// Фото и номер — одним запросом; тот же набор правил, что в карточке после
+		// мутации (seenByOwner), иначе одна и та же карточка выходит разной из
+		// GET /contacts и из ответа добавления.
+		maps, err := i.privacy.VisibleMaps(ctx, ownerID, ids, domain.PrivacyProfilePhoto, domain.PrivacyPhoneNumber)
 		if err != nil {
 			return nil, err
 		}
 		for idx := range list {
-			if !vis[list[idx].UserID] {
+			if !maps[domain.PrivacyPhoneNumber][list[idx].UserID] {
 				list[idx].User.Phone = ""
+			}
+			if !maps[domain.PrivacyProfilePhoto][list[idx].UserID] {
+				list[idx].User.Photo = domain.NewUserProfilePhotoEmpty()
 			}
 		}
 	}
