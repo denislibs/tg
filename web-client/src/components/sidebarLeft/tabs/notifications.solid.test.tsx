@@ -63,6 +63,7 @@ const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 let host: InstalledSidebarLeft
 let uninstallLabelActivation: () => void
 let update: ReturnType<typeof vi.fn>
+let getPeerTypes: ReturnType<typeof vi.fn>
 let requestPermission: ReturnType<typeof vi.fn>
 
 function stubPermission(permission: NotificationPermission, answer: NotificationPermission = permission) {
@@ -81,8 +82,9 @@ beforeEach(() => {
   useSettingsStore.getState().update({ notifyDesktop: true, notifyPush: true, notifySound: true, notifyVolume: 0.5, sentMessageSound: true })
   useNotifyStore.getState().set(structuredClone(SERVER))
 
+  getPeerTypes = vi.fn(async() => SERVER)
   update = vi.fn(async(_key: NotifyTypeKey, _settings: InputNotifySettings) => {})
-  const managers = { notify: { updateNotifySettings: update, getNotifySettings: async(key: NotifyTypeKey) => SERVER[key] } } as unknown as Managers
+  const managers = { notify: { updateNotifySettings: update, getNotifySettings: async(key: NotifyTypeKey) => SERVER[key], getNotifyPeerTypeSettings: getPeerTypes } } as unknown as Managers
 
   const columnEl = document.createElement('div')
   columnEl.id = 'column-left'
@@ -323,6 +325,26 @@ describe('вкладка «Уведомления» — типы чатов', ()
 
     expect(update).toHaveBeenCalledTimes(1)
     expect(update).toHaveBeenCalledWith('notifyUsers', { mute_until: MUTE_UNTIL_FOREVER, show_previews: true })
+  })
+
+  // Загрузка настроек при старте упала: тумблеры стоят на дефолтах, и запись
+  // «личные: превью выкл» с mute_until: 0 размьютила бы тип на всех устройствах.
+  it('стор не загружен — правка на закрытии НЕ пишется, вкладка просит настройки сама', async() => {
+    useNotifyStore.setState({ settings: useNotifyStore.getInitialState().settings, loaded: false })
+    const tab = await open()
+    expect(getPeerTypes).toHaveBeenCalledTimes(1)
+
+    titleOf(row(tab, lang.MessagePreview)).click()
+    useNotifyStore.setState({ loaded: false }) // повторная загрузка не успела
+    tab.close()
+    await pause(400)
+
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('стор загружен — вкладка настройки повторно не просит', async() => {
+    await open()
+    expect(getPeerTypes).not.toHaveBeenCalled()
   })
 
   it('«группы» и «каналы» адресуются своими ключами; включение снимает мьют (mute_until: 0)', async() => {

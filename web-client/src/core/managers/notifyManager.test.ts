@@ -11,7 +11,7 @@ const settings = (mute_until: number, show_previews: boolean) => ({ _: 'peerNoti
 describe('notifyManager', () => {
   it('getNotifySettings(key) → GET /me/notify_settings?peer=key', async () => {
     const get = vi.fn(async () => settings(0, true))
-    const m = newNotifyManager({ rest: { get } as unknown as RestClient, onLocalUpdate: vi.fn() })
+    const m = newNotifyManager({ rest: { get } as unknown as RestClient, onLocalUpdate: vi.fn(), frameVersion: () => 0 })
 
     expect(await m.getNotifySettings('notifyChats')).toEqual(settings(0, true))
     expect(get).toHaveBeenCalledWith('/me/notify_settings', { peer: 'notifyChats' })
@@ -20,7 +20,7 @@ describe('notifyManager', () => {
   it('getNotifyPeerTypeSettings() спрашивает все три ключа (tweb :114-127)', async () => {
     const get = vi.fn(async (_path: string, q?: Record<string, string | number>) =>
       settings(q?.peer === 'notifyUsers' ? 0x7fffffff : 0, q?.peer !== 'notifyChats'))
-    const m = newNotifyManager({ rest: { get } as unknown as RestClient, onLocalUpdate: vi.fn() })
+    const m = newNotifyManager({ rest: { get } as unknown as RestClient, onLocalUpdate: vi.fn(), frameVersion: () => 0 })
 
     expect(await m.getNotifyPeerTypeSettings()).toEqual({
       notifyUsers: settings(0x7fffffff, true),
@@ -34,7 +34,7 @@ describe('notifyManager', () => {
     const order: string[] = []
     const put = vi.fn(async () => { order.push('put'); return { _: 'boolTrue' } })
     const onLocalUpdate = vi.fn(() => { order.push('local') })
-    const m = newNotifyManager({ rest: { put } as unknown as RestClient, onLocalUpdate })
+    const m = newNotifyManager({ rest: { put } as unknown as RestClient, onLocalUpdate, frameVersion: () => 0 })
 
     await m.updateNotifySettings('notifyUsers', { mute_until: 0x7fffffff })
 
@@ -50,17 +50,33 @@ describe('notifyManager', () => {
   it('отказ сервера не порождает местного апдейта', async () => {
     const put = vi.fn(async () => { throw new Error('500') })
     const onLocalUpdate = vi.fn()
-    const m = newNotifyManager({ rest: { put } as unknown as RestClient, onLocalUpdate })
+    const m = newNotifyManager({ rest: { put } as unknown as RestClient, onLocalUpdate, frameVersion: () => 0 })
 
     await expect(m.updateNotifySettings('notifyChats', { show_previews: false })).rejects.toThrow('500')
     expect(onLocalUpdate).not.toHaveBeenCalled()
+  })
+
+  // Наш сервер шлёт кадр и инициатору: пришёл более новый кадр этого ключа, пока
+  // шёл PUT, — опоздавший ответ не должен затирать его местным апдейтом.
+  it('кадр этого ключа во время PUT отменяет местный апдейт; кадр другого ключа — нет', async () => {
+    const versions: Record<string, number> = { notifyUsers: 0, notifyChats: 0 }
+    const put = vi.fn(async () => { versions.notifyUsers++; return { _: 'boolTrue' } })
+    const onLocalUpdate = vi.fn()
+    const m = newNotifyManager({ rest: { put } as unknown as RestClient, onLocalUpdate, frameVersion: (k) => versions[k] ?? 0 })
+
+    await m.updateNotifySettings('notifyUsers', { show_previews: false })
+    expect(onLocalUpdate).not.toHaveBeenCalled()
+
+    put.mockImplementationOnce(async () => { versions.notifyChats++; return { _: 'boolTrue' } })
+    await m.updateNotifySettings('notifyUsers', { show_previews: true })
+    expect(onLocalUpdate).toHaveBeenCalledTimes(1)
   })
 
   // Реестр RPC зовёт метод отвязанным (см. privacyManager.test.ts).
   it('методы работают отвязанными', async () => {
     const get = vi.fn(async () => settings(0, true))
     // oxlint-disable-next-line typescript/unbound-method -- отвязанный вызов и есть предмет теста
-    const { getNotifySettings } = newNotifyManager({ rest: { get } as unknown as RestClient, onLocalUpdate: vi.fn() })
+    const { getNotifySettings } = newNotifyManager({ rest: { get } as unknown as RestClient, onLocalUpdate: vi.fn(), frameVersion: () => 0 })
     await getNotifySettings('notifyBroadcasts')
     expect(get).toHaveBeenCalled()
   })

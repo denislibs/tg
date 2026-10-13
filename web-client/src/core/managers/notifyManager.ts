@@ -22,11 +22,16 @@ export interface NotifyTypeUpdate {
   notify_settings: PeerNotifySettings
 }
 
-export function newNotifyManager({ rest, onLocalUpdate }: {
+export function newNotifyManager({ rest, onLocalUpdate, frameVersion }: {
   rest: Pick<RestClient, 'get' | 'put'>
   /** Местный апдейт после ответа сервера (tweb `generateLocalNotifySettingsUpdate`
    *  → `processLocalUpdate`): воркер рассылает событие `notify_settings` вкладкам. */
   onLocalUpdate: (update: NotifyTypeUpdate) => void
+  /** Сколько кадров `updateNotifySettings` этого ключа уже пришло с сервера.
+   *  Наш сервер шлёт кадр и инициатору (TG — нет), поэтому ответ на PUT может
+   *  опоздать за более новым кадром другого устройства: тогда местный апдейт
+   *  затёр бы свежее состояние старым. */
+  frameVersion: (key: NotifyTypeKey) => number
 }) {
   // Методы не опираются на `this`: реестр RPC зовёт их отвязанными.
   const getNotifySettings = (key: NotifyTypeKey): Promise<PeerNotifySettings> =>
@@ -39,7 +44,11 @@ export function newNotifyManager({ rest, onLocalUpdate }: {
       return { notifyUsers, notifyChats, notifyBroadcasts }
     },
     async updateNotifySettings(key: NotifyTypeKey, settings: InputNotifySettings): Promise<void> {
+      const sent = frameVersion(key)
       await rest.put(`/me/notify_settings?peer=${key}`, { _: 'inputPeerNotifySettings', ...settings })
+      // Пока шёл PUT, пришёл кадр этого ключа — он новее нашего ответа (его и
+      // подтверждение нашей же правки несёт серверный снимок): местный апдейт лишний.
+      if (frameVersion(key) !== sent) return
       onLocalUpdate({
         _: 'updateNotifySettings',
         peer: { _: key },

@@ -50,7 +50,7 @@ import cancelEvent from '@helpers/dom/cancelEvent'
 import { subscribeExternal } from '@helpers/solid/subscribeExternal'
 import IS_NOTIFICATION_SUPPORTED from '@environment/notificationSupport'
 import { useAppSettings } from '@stores/appSettings.solid'
-import { useNotifyStore } from '@stores/notifyStore'
+import { loadNotifySettings, useNotifyStore } from '@stores/notifyStore'
 import type { NotifyTypeKey } from '@core/managers/notifyManager'
 import { isPeerMuted, MUTE_UNTIL_FOREVER } from '@core/dialogs/notifySettings'
 import { DEFAULTS } from '@/settings'
@@ -90,6 +90,10 @@ const NotifySection = (props: {
   })
 
   onCleanup(() => {
+    // Снимка с сервера нет (загрузка при старте упала) — тумблеры показывают
+    // дефолты, а не настройки аккаунта: писать их значит затереть чужое. tweb
+    // без снимка тоже ничего не пишет (`:50-56` — `isMuted(undefined)` падает).
+    if(!useNotifyStore.getState().loaded) return
     const mute = !enabled()
     const _showPreviews = showPreviews()
     const _notifySettings = notifySettings()
@@ -283,6 +287,10 @@ const SoundEffectsSection = () => {
 }
 
 const Notifications: Component = () => {
+  const [tab] = useSuperTab<typeof AppNotificationsTab>()
+  // tweb `:78-90` — вкладка сама просит настройки типов. Старт приложения уже
+  // грузит их (`loadNotifySettings`); здесь — повтор, если та загрузка упала.
+  if(!useNotifyStore.getState().loaded) void loadNotifySettings(tab.managers!)
   return (
     <>
       <NotificationsSection />
