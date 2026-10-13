@@ -575,6 +575,14 @@ func NewUpdateNotifySettings(peer Peer, settings PeerNotifySettings) UpdateNotif
 		Peer: NewNotifyPeer(peer), NotifySettings: settings}
 }
 
+// NewUpdateTypeNotifySettings — глобальные настройки ТИПА чатов: адрес
+// notifyUsers/notifyChats/notifyBroadcasts. Кадр уходит только своим
+// устройствам.
+func NewUpdateTypeNotifySettings(t NotifyType, settings PeerNotifySettings) UpdateNotifySettings {
+	return UpdateNotifySettings{Underscore: UpdateNotifySettingsTag,
+		Peer: NotifyTypePeer(t), NotifySettings: settings}
+}
+
 // NewUpdateTopicNotifySettings — те же настройки, но ТЕМЫ форума: адрес
 // notifyForumTopic. Кадр уходит только своим устройствам — мьют личный.
 func NewUpdateTopicNotifySettings(peer Peer, topicID int64, settings PeerNotifySettings) UpdateNotifySettings {
@@ -582,8 +590,9 @@ func NewUpdateTopicNotifySettings(peer Peer, topicID int64, settings PeerNotifyS
 		Peer: NewNotifyForumTopic(peer, topicID), NotifySettings: settings}
 }
 
-// NotifyPeerRef — объединение NotifyPeer. Производим два его конструктора:
-// notifyPeer (диалог, mtdialog.go) и notifyForumTopic (тема, mtforumtopic.go).
+// NotifyPeerRef — объединение NotifyPeer. Производим пять конструкторов:
+// notifyPeer (диалог, mtdialog.go), notifyForumTopic (тема, mtforumtopic.go) и
+// notifyUsers/notifyChats/notifyBroadcasts (тип чатов, mtdialog.go).
 type NotifyPeerRef interface{ isNotifyPeer() }
 
 func (NotifyPeer) isNotifyPeer() {}

@@ -177,7 +177,7 @@ describe('AutonomousDialogList: строки — производная зерк
     applyPeerOps([{ op: 'upsert', peers: [user(1)] }])
     putFolders({ ...raw(7, 1, 'Без звука'), contacts: true, non_contacts: true, exclude_muted: true })
     seed([dialogOf(1)])
-    useNotifyStore.setState({ settings: { ...useNotifyStore.getState().settings, private: { muted: true, preview: true } } })
+    useNotifyStore.setState({ settings: { ...useNotifyStore.getState().settings, notifyUsers: { _: 'peerNotifySettings', mute_until: 2147483647, show_previews: true } } })
     await start()
 
     expect(xd(7).testDialogForFilter(useChatsStore.getState().dialogs[0])).toBe(false)

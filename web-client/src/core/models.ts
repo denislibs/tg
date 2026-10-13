@@ -126,7 +126,11 @@ export const WIRE_FOLDER_ARCHIVE = 1
  * `backend/internal/domain/mtdialog.go`, там же названо, чего нет.
  */
 export interface DialogPeer { _: 'dialogPeer'; peer: Peer }
-export type NotifyPeer = { _: 'notifyPeer'; peer: Peer } | NotifyForumTopic
+export type NotifyPeer = { _: 'notifyPeer'; peer: Peer } | NotifyForumTopic | NotifyTypePeer
+/** notifyUsers#b4c83b4c / notifyChats#c007cec3 / notifyBroadcasts#d612e8ef = NotifyPeer; —
+ *  адрес ГЛОБАЛЬНЫХ настроек по типу чатов: все личные / все группы / все каналы
+ *  (пиром не выражается, параметров нет). */
+export type NotifyTypePeer = { _: 'notifyUsers' } | { _: 'notifyChats' } | { _: 'notifyBroadcasts' }
 /** notifyForumTopic#226e6308 peer:Peer top_msg_id:int = NotifyPeer; — настройки
  *  ТЕМЫ форума (tweb `appMessagesManager.ts:11751-11770`); `top_msg_id` —
  *  серверный номер темы. */

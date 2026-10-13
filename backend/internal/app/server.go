@@ -38,6 +38,7 @@ import (
 	usecaselangpack "github.com/messenger-denis/backend/internal/usecase/langpack"
 	usecasemedia "github.com/messenger-denis/backend/internal/usecase/media"
 	usecasenotify "github.com/messenger-denis/backend/internal/usecase/notify"
+	"github.com/messenger-denis/backend/internal/usecase/ownsync"
 	usecasepasskeys "github.com/messenger-denis/backend/internal/usecase/passkeys"
 	usecasepresence "github.com/messenger-denis/backend/internal/usecase/presence"
 	usecaseprivacy "github.com/messenger-denis/backend/internal/usecase/privacy"
@@ -220,11 +221,18 @@ func registerServer(p serverParams) {
 	var wsHandler http.Handler
 	var presenceMgr *usecasepresence.Manager
 	var realtimePublisher *rtredis.RedisPublisher // set when Redis is up; wired to folders below
+	// Общие порты хелпера ownsync (журнал своих устройств + живой кадр). Журнал и
+	// транзакции — без условия; издатель — nil-ИНТЕРФЕЙС без Redis (типизированный
+	// nil в интерфейсе прошёл бы проверку «издатель есть»).
+	updatesRepo := pgadapter.NewUpdatesRepo(p.Pool)
+	txm := pgadapter.NewTxManager(p.Pool)
+	var pub ownsync.Publisher
 	if p.Redis.OK {
 		p.AuthUC.SetCache(redisSessionCache(p.Redis))
 		p.AuthUC.SetQRStore(redisQRStore(p.Redis))
 		publisher := rtredis.NewRedisPublisher(p.Redis.Client)
 		realtimePublisher = publisher
+		pub = publisher
 		p.ChatUC.SetPublisher(publisher)
 		p.ChatUC.SetChannelPublisher(publisher)
 		// user_update fan-out on profile changes: same publisher + the shared-chat
@@ -357,6 +365,7 @@ func registerServer(p serverParams) {
 
 	storyHandler := httptransport.NewStoryHandler(p.StoryUC, p.ChatUC)
 	notifyUC := usecasenotify.New(pgadapter.NewNotifyRepo(p.Pool))
+	notifyUC.SetEmitter(ownsync.New(updatesRepo, pub, txm))
 	// Жалобы на чаты/сообщения (tweb reportMessages): складируем без модерации.
 	reportUC := usecasereport.New(pgadapter.NewReportRepo(p.Pool))
 	// Статистика каналов (tweb stats.getBroadcastStats): серии считаются на лету

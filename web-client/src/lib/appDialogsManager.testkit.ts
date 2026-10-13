@@ -21,6 +21,7 @@ import { useAppStateStore } from '@stores/appState'
 import { applyFolderUpdate, useFoldersStore } from '@stores/foldersStore'
 import { useChatsStore } from '@stores/chatsStore'
 import { useNotifyStore } from '@stores/notifyStore'
+import type { NotifySettings } from '@core/managers/notifyManager'
 import useFolders from '@stores/folders.solid'
 import { initialState } from '@core/state/state'
 import { ALL_FOLDER_ID } from '@core/folderIds'
@@ -41,10 +42,10 @@ const VIEWPORT = 600
 /** строк в первой странице дублёра — больше окна, чтобы было куда скроллить */
 export const PAGE = 20
 
-const SETTINGS = {
-  private: { muted: false, preview: true },
-  groups: { muted: false, preview: true },
-  channels: { muted: false, preview: true },
+const SETTINGS: NotifySettings = {
+  notifyUsers: { _: 'peerNotifySettings', mute_until: 0, show_previews: true },
+  notifyChats: { _: 'peerNotifySettings', mute_until: 0, show_previews: true },
+  notifyBroadcasts: { _: 'peerNotifySettings', mute_until: 0, show_previews: true },
 }
 
 export const raw = (id: number, pos: number, title: string): RawFolder => ({

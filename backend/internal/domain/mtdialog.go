@@ -438,11 +438,13 @@ func NewInputReplyToMessage(msgID int64) InputReplyToMessage {
 // «все каналы», которые пиром не выражаются вовсе), папки — folderPeer, который
 // НЕСЁТ НОМЕР ПАПКИ рядом с пиром.
 //
-// Мы производим по одному конструктору каждого объединения, и это названо:
+// Мы производим по одному конструктору dialogPeer и folderPeer, а у notifyPeer —
+// пять из шести; не производим, и это названо:
 //   - dialogPeerFolder (строка «Архив» как элемент списка) — у нас архив это
 //     не строка списка, а фильтр;
-//   - notifyUsers/notifyChats/notifyBroadcasts/notifyForumTopic — глобальных
-//     настроек по ТИПУ пира у нас нет, только пер-чатовые.
+//   - notifyCommunity — сообществ в этом порту нет.
+// Глобальные настройки по ТИПУ пира (notifyUsers/notifyChats/notifyBroadcasts)
+// есть: страница «Уведомления и звуки» (notify_handler.go, domain/notify.go).
 
 // DialogPeerTag — дискриминатор `_` конструктора dialogPeer.
 const DialogPeerTag = "dialogPeer"
@@ -468,6 +470,45 @@ type NotifyPeer struct {
 
 func NewNotifyPeer(peer Peer) NotifyPeer {
 	return NotifyPeer{Underscore: NotifyPeerTag, Peer: peer}
+}
+
+// Дискриминаторы `_` конструкторов notifyUsers/notifyChats/notifyBroadcasts.
+const (
+	NotifyUsersTag      = "notifyUsers"
+	NotifyChatsTag      = "notifyChats"
+	NotifyBroadcastsTag = "notifyBroadcasts"
+)
+
+// notifyUsers#b4c83b4c = NotifyPeer;
+// notifyChats#c007cec3 = NotifyPeer;
+// notifyBroadcasts#d612e8ef = NotifyPeer;
+//
+// Адрес глобальных настроек по ТИПУ пира: все личные чаты, все группы, все
+// каналы. Пиром не выражается — конструкторы без параметров.
+type NotifyUsers struct {
+	Underscore string `json:"_"`
+}
+type NotifyChats struct {
+	Underscore string `json:"_"`
+}
+type NotifyBroadcasts struct {
+	Underscore string `json:"_"`
+}
+
+func (NotifyUsers) isNotifyPeer()      {}
+func (NotifyChats) isNotifyPeer()      {}
+func (NotifyBroadcasts) isNotifyPeer() {}
+
+// NotifyTypePeer — адрес настроек типа: notifyUsers/notifyChats/notifyBroadcasts.
+func NotifyTypePeer(t NotifyType) NotifyPeerRef {
+	switch t {
+	case NotifyTypeChats:
+		return NotifyChats{Underscore: NotifyChatsTag}
+	case NotifyTypeBroadcasts:
+		return NotifyBroadcasts{Underscore: NotifyBroadcastsTag}
+	default:
+		return NotifyUsers{Underscore: NotifyUsersTag}
+	}
 }
 
 // FolderPeerTag — дискриминатор `_` конструктора folderPeer.
