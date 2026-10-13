@@ -153,3 +153,99 @@ describe('globalFunnel.applyUpdate — дата состояния', () => {
     expect(h.cursor.get().date).toBe(1200)
   })
 })
+
+describe('globalFunnel.applyLocalPts — местный updatePts (tweb processLocalUpdate :191-199)', () => {
+  async function at(pts: number, opts: { syncDelay?: number } = {}) {
+    const h = harness(opts)
+    await h.cursor.ready()
+    h.cursor.set(pts, 0)
+    return h
+  }
+
+  it('applyLocalPts(13, 3) при курсоре 10 двигает курсор на 13, dispatch не зовёт', async () => {
+    const h = await at(10)
+    h.funnel.applyLocalPts(13, 3)
+    expect(h.cursor.get().pts).toBe(13)
+    expect(h.dispatched).toHaveLength(0)
+    expect(h.catchUp).not.toHaveBeenCalled()
+  })
+
+  it('живой кадр с pts 12 после этого — дубль', async () => {
+    const h = await at(10)
+    h.funnel.applyLocalPts(13, 3)
+    h.funnel.applyUpdate('read', 12, {})
+    expect(h.dispatched).toHaveLength(0)
+    expect(h.cursor.get().pts).toBe(13)
+  })
+
+  it('при isSyncing() === true курсор всё равно двигается (tweb ignoreSyncLoading)', async () => {
+    const h = await at(10)
+    h.syncing.value = true
+    h.funnel.applyLocalPts(13, 3)
+    expect(h.cursor.get().pts).toBe(13)
+  })
+
+  it('applyLocalPts(20, 3) при курсоре 10 — дыра: буфер и через syncDelay catchUp', async () => {
+    vi.useFakeTimers()
+    try {
+      const h = await at(10, { syncDelay: 0 })
+      h.funnel.applyLocalPts(20, 3)
+      expect(h.cursor.get().pts).toBe(10)
+      expect(h.catchUp).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(10)
+      expect(h.catchUp).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('буфер держит живой pts 14: после applyLocalPts(13, 3) он применяется сразу, без catchUp', async () => {
+    const h = await at(10)
+    h.funnel.applyUpdate('read', 14, { live: true }) // дыра 11-13 → буфер
+    expect(h.dispatched).toHaveLength(0)
+    h.funnel.applyLocalPts(13, 3)
+    expect(h.dispatched).toEqual([{ t: 'read', d: { live: true }, pts: 14, catchUp: false }])
+    expect(h.cursor.get().pts).toBe(14)
+    expect(h.catchUp).not.toHaveBeenCalled()
+  })
+
+  it('буфер держит живой pts 12: applyLocalPts(12, 2) выбрасывает его без применения', async () => {
+    const h = await at(10)
+    h.funnel.applyUpdate('read', 12, {})
+    h.funnel.applyLocalPts(12, 2)
+    expect(h.dispatched).toHaveLength(0)
+    expect(h.cursor.get().pts).toBe(12)
+  })
+
+  it('applyLocalPts(15, 0) — ничего не делает', async () => {
+    const h = await at(10)
+    h.funnel.applyUpdate('read', 12, { live: true }) // в буфере
+    h.funnel.applyLocalPts(15, 0)
+    expect(h.cursor.get().pts).toBe(10)
+    expect(h.dispatched).toHaveLength(0)
+    expect(h.catchUp).not.toHaveBeenCalled()
+    h.funnel.applyUpdate('read', 11, {}) // буфер цел: 11 закрывает дыру, 12 сливается
+    expect(h.dispatched.map((x) => x.pts)).toEqual([11, 12])
+  })
+
+  it('живой pts 13 в буфере при курсоре 9, затем applyLocalPts(13, 3) и живой pts 10 — курсор 13 без catchUp', async () => {
+    const h = await at(9)
+    h.funnel.applyUpdate('read', 13, { live: true })
+    h.funnel.applyLocalPts(13, 3) // gap: заменяет лежащий живой 13
+    h.funnel.applyUpdate('read', 10, { a: 1 })
+    expect(h.dispatched).toEqual([{ t: 'read', d: { a: 1 }, pts: 10, catchUp: false }])
+    expect(h.cursor.get().pts).toBe(13)
+    expect(h.catchUp).not.toHaveBeenCalled()
+  })
+
+  it('до гидратации курсора — catchUp, курсор не двигается', () => {
+    const catchUp = vi.fn()
+    const cursor = newCursor(memStore(), 0)
+    const funnel = newGlobalFunnel({
+      dispatch: () => {}, cursor, isCursorReady: () => false, isSyncing: () => false, catchUp,
+    })
+    funnel.applyLocalPts(3, 3)
+    expect(catchUp).toHaveBeenCalledTimes(1)
+    expect(cursor.get().pts).toBe(0)
+  })
+})

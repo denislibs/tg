@@ -22,7 +22,7 @@ func TestClearHistory_FramesToOwnDevices(t *testing.T) {
 
 	before := len(s.updates[a])
 	pub.reset()
-	if err := in.ClearHistory(ctx, chatID, a); err != nil {
+	if _, err := in.ClearHistory(ctx, chatID, a); err != nil {
 		t.Fatalf("ClearHistory: %v", err)
 	}
 	if got := len(s.updates[a]) - before; got != 2 {
@@ -61,7 +61,7 @@ func TestDeleteDialog_PrivateIsNotLeave(t *testing.T) {
 		t.Fatalf("RemoveMember в личке = %v, want ErrInvalid", err)
 	}
 	pub.reset()
-	if err := in.DeleteDialog(ctx, chatID, a, false); err != nil {
+	if _, err := in.DeleteDialog(ctx, chatID, a, false); err != nil {
 		t.Fatalf("DeleteDialog: %v", err)
 	}
 	if pub.countFor(b) != 0 {
@@ -102,7 +102,7 @@ func TestDeleteDialog_RevokeDeletesForPeer(t *testing.T) {
 	chatID, _ := in.CreatePrivateChat(ctx, a, b)
 	m, _ := in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "hi"})
 	pub.reset()
-	if err := in.DeleteDialog(ctx, chatID, a, true); err != nil {
+	if _, err := in.DeleteDialog(ctx, chatID, a, true); err != nil {
 		t.Fatalf("DeleteDialog revoke: %v", err)
 	}
 	del := lastFrameOfType(t, pub, b, "delete_message")
@@ -133,7 +133,7 @@ func TestDeleteDialog_RevokeDeletesForPeer(t *testing.T) {
 func TestDeleteDialog_GroupInvalid(t *testing.T) {
 	in, s := newInteractor()
 	s.seedChat(60, domain.ChatTypeGroup, 1, 2)
-	if err := in.DeleteDialog(context.Background(), 60, 1, false); !errors.Is(err, domain.ErrInvalid) {
+	if _, err := in.DeleteDialog(context.Background(), 60, 1, false); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("DeleteDialog группы = %v, want ErrInvalid", err)
 	}
 }
@@ -209,5 +209,55 @@ func TestSend_ShowDialogsOnlyForPrivate(t *testing.T) {
 	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: 1, Text: "личка"})
 	if n := s.showDialogsCalls[chatID]; n != 1 {
 		t.Fatalf("ShowDialogs в личке вызван %d раз, want 1", n)
+	}
+}
+
+// F6: ответ — messages.affectedHistory с курсором актора: pts — последний pts
+// его журнала, pts_count — число записанных ему строк (tweb doFlushHistory
+// :6453 превращает его в местный updatePts).
+func TestClearHistory_ReturnsAffectedHistoryOfActor(t *testing.T) {
+	in, s := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Text: "one"})
+	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: b, Text: "two"})
+
+	before := len(s.updates[a])
+	res, err := in.ClearHistory(ctx, chatID, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := len(s.updates[a]) - before
+	if res.Underscore != domain.MessagesAffectedHistoryTag || res.Offset != 0 {
+		t.Fatalf("ответ = %+v", res)
+	}
+	if rows == 0 || res.PtsCount != rows {
+		t.Fatalf("pts_count = %d, строк журнала актора %d", res.PtsCount, rows)
+	}
+	if res.Pts != s.pts[a] {
+		t.Fatalf("pts = %d, курсор актора %d", res.Pts, s.pts[a])
+	}
+}
+
+// DeleteDialog: то же, строки собеседника в pts_count не входят.
+func TestDeleteDialog_ReturnsAffectedHistoryOfActorOnly(t *testing.T) {
+	in, s := newInteractor()
+	ctx := context.Background()
+	const a, b int64 = 1, 2
+	chatID, _ := in.CreatePrivateChat(ctx, a, b)
+	_, _ = in.Send(ctx, SendInput{ChatID: chatID, SenderID: a, Text: "hi"})
+
+	beforeA, beforeB := len(s.updates[a]), len(s.updates[b])
+	res, err := in.DeleteDialog(ctx, chatID, a, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rowsA, rowsB := len(s.updates[a])-beforeA, len(s.updates[b])-beforeB
+	if rowsB == 0 {
+		t.Fatal("собеседнику строк не записано — тест ничего не проверяет")
+	}
+	if res.PtsCount != rowsA || res.Pts != s.pts[a] {
+		t.Fatalf("ответ = %+v, строк актора %d (pts %d), собеседника %d", res, rowsA, s.pts[a], rowsB)
 	}
 }

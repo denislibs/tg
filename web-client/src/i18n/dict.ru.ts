@@ -2057,6 +2057,7 @@ const ru = {
   AreYouSureDeleteAndExit: 'Вы уверены, что хотите удалить группу и покинуть её?',
   AreYouSureDeleteAndExitChannel: 'Вы хотите удалить канал и покинуть его?',
   AreYouSureDeleteAndExitName: 'Вы уверены, что хотите удалить группу **%1$s** и покинуть её?',
+  AreYouSureDeleteThisChatSavedMessages: 'Вы уверены, что хотите удалить **Избранное**?',
   AreYouSureDeleteThisChatWithUser: 'Вы уверены, что хотите удалить чат с **%1$s**?',
   ChannelDelete: 'Удалить канал',
   ChannelDeleteMenu: 'Удалить канал',

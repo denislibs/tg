@@ -5,6 +5,9 @@ import type { Chat, UserReal } from '../peers/peer'
 import { getPeerId, type Peer } from '../peers/peerId'
 import { generateMessageId } from '../history/messageId'
 import type { MyMessage, RawMyMessage } from '../models'
+import type { MessagesAffectedHistory } from '@layer'
+import type { GlobalFunnel } from '../realtime/globalFunnel'
+import type { DialogsManager } from './dialogsManager'
 import type { MessagesManager } from './messagesManager'
 import type { PeersManager } from './peersManager'
 
@@ -15,7 +18,15 @@ export interface ChatsDeps {
   // строка списка держит только ССЫЛКИ. Оба опциональны по той же причине,
   // что у диалогов: тесты, которых контейнер не касается, их не задают.
   peers?: Pick<PeersManager, 'saveApiPeers'>
-  messages?: Pick<MessagesManager, 'saveApiMessages' | 'getMessageByPeer'>
+  messages?: Pick<MessagesManager, 'saveApiMessages' | 'getMessageByPeer' | 'flushHistoryWindows'>
+  // Очистка и удаление истории (tweb `flushHistory`): ответ сервера двигает
+  // курсор апдейтов как местный `updatePts`, затем сбрасываются окна чата и
+  // строка диалога. Воронка создаётся ПОЗЖЕ менеджеров (`workerCore.ts`), поэтому
+  // ленивая; все четыре опциональны — тесты, которых это не касается, их не задают.
+  getFunnel?: () => Pick<GlobalFunnel, 'applyLocalPts'>
+  dialogs?: Pick<DialogsManager, 'reloadConversation' | 'applyRemoved' | 'getDialogOnly'>
+  /** Событие воркера во все вкладки (`workerScope.broadcast`). */
+  broadcast?: (event: string, payload: unknown) => void
 }
 
 // Результат read-date исходящего сообщения (tweb getOutboxReadDate):
@@ -31,7 +42,22 @@ export type ReadDateResult = { readAt: string } | { restricted: true } | null
 // напрямую, свой собственный офлайн-фолбэк — `loadCache()`/`persist.loadDialogs`,
 // см. dialogsManager.ts). Осиротевший метод + его тест (`chatsManager.test.ts`,
 // целиком про listDialogs) удалены вместе.
-export function newChatsManager({ rest, peers, messages }: ChatsDeps) {
+export function newChatsManager({ rest, peers, messages, getFunnel, dialogs, broadcast }: ChatsDeps) {
+  // Порт `doFlushHistory` (tweb :6441-6595): `messages.affectedHistory` →
+  // местный `updatePts` (:6453); при `offset` запрос повторяется (:6533).
+  async function flushHistory(peerId: number, query: string): Promise<void> {
+    let offset = 0
+    do {
+      const r = await rest.del<MessagesAffectedHistory>(`/chats/${peerId}/history${query}`)
+      getFunnel?.().applyLocalPts(r.pts, r.pts_count)
+      offset = r.offset
+    } while (offset > 0)
+    // `flushStoragesByPeerId` (tweb :6677-6679): окна чата пусты, пока их не
+    // переспросят у сервера.
+    messages?.flushHistoryWindows(peerId)
+    void clearPersistedChat(peerId) // офлайн-история чата тоже очищается
+  }
+
   return {
     // Resolve (creating if needed) the private chat with a user; returns its id.
     // Idempotent server-side — repeated calls return the same chat.
@@ -48,20 +74,26 @@ export function newChatsManager({ rest, peers, messages }: ChatsDeps) {
 
     // «Очистить историю» у себя (Telegram deleteHistory just_clear): сообщения
     // скрываются только для меня, у остальных участников остаются.
+    //
+    // Конец — tweb :6685: строка перечитывается у сервера (счётчики и превью
+    // после очистки), и вкладкам объявляется `dialog_flush` — они опустошают
+    // окно. `dialog` — строка, какой она у воркера сейчас (`getDialogOnly`).
     async clearHistory(peerId: number): Promise<void> {
-      await rest.post(`/chats/${peerId}/clear`, {})
-      void clearPersistedChat(peerId) // офлайн-история чата тоже очищается
+      await flushHistory(peerId, '?just_clear=1')
+      dialogs?.reloadConversation(peerId)
+      broadcast?.('dialog_flush', { peerId, dialog: dialogs?.getDialogOnly(peerId) })
     },
 
     // «Удалить чат» лички и «Избранного» — tweb `flushHistory({justClear: false,
     // revoke})` → `messages.deleteHistory` без `just_clear`: история уходит
     // вместе с диалогом. `revoke` — удалить и у собеседника. Строку снимает
-    // вызывающий (`dialogs.applyRemoved`), своим устройствам сервер шлёт кадры
-    // удаления и `updateChatRemoved`. Для групп и каналов ручка отвечает 400 —
+    // воркер (`dropDialogOnDeletion`, tweb :6698 — здесь `dialogs.applyRemoved`):
+    // живой кадр `chat_removed` мог быть отброшен воронкой как дубль ответа,
+    // поэтому на него не полагаемся. Для групп и каналов ручка отвечает 400 —
     // там «удалить» это выход или удаление чата целиком.
     async deleteHistory(peerId: number, revoke: boolean): Promise<void> {
-      await rest.del(`/chats/${peerId}/history${revoke ? '?revoke=1' : ''}`)
-      void clearPersistedChat(peerId)
+      await flushHistory(peerId, revoke ? '?revoke=1' : '')
+      dialogs?.applyRemoved(peerId)
     },
 
     // Когда получатель прочитал исходящее сообщение в приватном чате

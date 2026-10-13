@@ -1005,18 +1005,19 @@ func (r *MessagesRepo) UpdateGeoLive(ctx context.Context, msgID int64, lat, lng 
 // уходят из ❤ автора. Держит это хранилище — как триггер, — потому что
 // SoftDelete зовут все пути удаления у всех (удаление, автоудаление по TTL,
 // самоуничтожение), и пересчёт не должен зависеть от того, вспомнил ли о нём
-// вызывающий. Повторное удаление — no-op.
-func (r *MessagesRepo) SoftDelete(ctx context.Context, msgID int64) error {
+// вызывающий. Повторное удаление — no-op: false значит «уже удалено», и
+// вызывающий не вычитает непрочитанное и не пишет журнал второй раз.
+func (r *MessagesRepo) SoftDelete(ctx context.Context, msgID int64) (bool, error) {
 	q := querier(ctx, r.pool)
 	var chatID, senderID int64
 	err := q.QueryRow(ctx,
 		`UPDATE messages SET deleted_at=now(), text='', enc_body=NULL
 		  WHERE id=$1 AND deleted_at IS NULL RETURNING chat_id, sender_id`, msgID).Scan(&chatID, &senderID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil
+		return false, nil
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
 	if _, err := q.Exec(ctx,
 		`WITH gone AS (DELETE FROM message_mentions WHERE message_id = $1 RETURNING user_id)
@@ -1024,10 +1025,12 @@ func (r *MessagesRepo) SoftDelete(ctx context.Context, msgID int64) error {
 		     SELECT count(*) FROM message_mentions mm
 		      WHERE mm.chat_id = cm.chat_id AND mm.user_id = cm.user_id AND mm.unread AND mm.message_id <> $1)
 		  WHERE cm.chat_id = $2 AND cm.user_id IN (SELECT user_id FROM gone)`, msgID, chatID); err != nil {
-		return err
+		return false, err
 	}
-	_, err = q.Exec(ctx, recountUnreadReactionsSQL, chatID, senderID)
-	return err
+	if _, err = q.Exec(ctx, recountUnreadReactionsSQL, chatID, senderID); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // SoftDeleteUpTo — удалить у всех сообщения чата с seq<=maxSeq (Telegram
@@ -1059,8 +1062,8 @@ func (r *MessagesRepo) SetDestructOnRead(ctx context.Context, chatID, readerID, 
 // (Telegram пересчитывает unread при deleteMessages без revoke): ещё не
 // прочитанное входящее уходит из unread_count, его упоминание — из «@»,
 // непрочитанные реакции на своём — из ❤. Остальные участники не затронуты.
-// Повтор — no-op.
-func (r *MessagesRepo) HideForUser(ctx context.Context, userID, msgID int64) error {
+// Повтор — no-op: false значит «уже скрыто» (или сообщения нет).
+func (r *MessagesRepo) HideForUser(ctx context.Context, userID, msgID int64) (bool, error) {
 	q := querier(ctx, r.pool)
 	var chatID int64
 	err := q.QueryRow(ctx,
@@ -1069,10 +1072,10 @@ func (r *MessagesRepo) HideForUser(ctx context.Context, userID, msgID int64) err
 		 SELECT m.chat_id FROM messages m WHERE m.id IN (SELECT msg_id FROM ins)`,
 		userID, msgID).Scan(&chatID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil // уже скрыто (или сообщения нет)
+		return false, nil // уже скрыто (или сообщения нет)
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
 	// Непрочитанное: то же условие, что у ForgetUnread, для одного участника.
 	if _, err := q.Exec(ctx,
@@ -1083,7 +1086,7 @@ func (r *MessagesRepo) HideForUser(ctx context.Context, userID, msgID int64) err
 		    AND cm.last_read_seq < m.seq AND cm.cleared_max_seq < m.seq AND cm.unread_count > 0
 		    AND `+notReadInForum("m", "cm.user_id"),
 		userID, msgID); err != nil {
-		return err
+		return false, err
 	}
 	if _, err := q.Exec(ctx,
 		`WITH gone AS (DELETE FROM message_mentions WHERE message_id = $2 AND user_id = $1 RETURNING user_id)
@@ -1091,10 +1094,12 @@ func (r *MessagesRepo) HideForUser(ctx context.Context, userID, msgID int64) err
 		     SELECT count(*) FROM message_mentions mm
 		      WHERE mm.chat_id = cm.chat_id AND mm.user_id = cm.user_id AND mm.unread AND mm.message_id <> $2)
 		  WHERE cm.chat_id = $3 AND cm.user_id IN (SELECT user_id FROM gone)`, userID, msgID, chatID); err != nil {
-		return err
+		return false, err
 	}
-	_, err = q.Exec(ctx, recountUnreadReactionsSQL, chatID, userID)
-	return err
+	if _, err = q.Exec(ctx, recountUnreadReactionsSQL, chatID, userID); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // GetHistory returns up to limit messages around offsetSeq, excluding messages
