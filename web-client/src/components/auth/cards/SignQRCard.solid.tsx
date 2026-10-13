@@ -25,11 +25,8 @@
 //
 // ── Остановка ───────────────────────────────────────────────────────────────
 // `onCleanup` в самой карточке (:212-216): `stopped = true`. Подписка tweb на
-// `user_auth` (:67-72) — `rt:logged_in`: вход любым путём, в этой вкладке или в
-// соседней, останавливает цикл. Перезагрузки страницы из
-// `index.ts::listenSessionTransitions` для этого мало: при `?noSharedWorker=1`
-// кадр входа соседней вкладки сюда не доходит. Вход ключом доступа в самой
-// карточке гасит цикл тем же флагом.
+// `user_auth` (:67-72) — наш `rt:logged_in`: вход останавливает цикл. Вход ключом
+// доступа в самой карточке гасит цикл тем же флагом.
 //
 // ── Какие ошибки цикл переживает ────────────────────────────────────────────
 // `AUTH_TOKEN_EXPIRED` (:179-181) — `console.warn` и дальше без паузы.
@@ -88,8 +85,7 @@ export default function SignQRCard(_props: { spec: Spec }): JSX.Element {
   const [failed, setFailed] = createSignal(false)
   // Как `let stopped` у tweb (:41): цикл и вход ключом доступа гасят его.
   let stopped = false
-  // tweb `rootScope.addEventListener('user_auth', …, {once: true})` (:67-72):
-  // вход любым путём — в этой вкладке или в соседней — останавливает цикл.
+  // tweb `rootScope.addEventListener('user_auth', …, {once: true})` (:67-72).
   const onUserAuth = () => { stopped = true }
   rootScope.addEventListener(RT.loggedIn, onUserAuth, { once: true })
   onCleanup(() => {

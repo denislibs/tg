@@ -543,8 +543,10 @@ export function newAuthManager({ rest, store, onMeChanged, onLoggingOut, onLogge
       } catch (e) {
         if (e instanceof HttpError) {
           if (e.status === 404 && e.type === 'AUTH_TOKEN_EXPIRED') return { status: 'expired' }
-          // 420 здесь — FLOOD_WAIT дольше, чем пережидает RestClient.
-          if (e.status >= 500 || e.status === 429 || e.status === 420 || e.status === 408) return { status: 'retry' }
+          // Постоянный отказ (QR-хранилище не подключено) — не повод крутиться вечно.
+          if (e.status === 503 && e.type === 'qr login unavailable') throw e
+          // 420 здесь не повторяется: FLOOD_WAIT дольше минуты у tweb — отказ (apiManager.ts:788-790).
+          if (e.status >= 500 || e.status === 429 || e.status === 408) return { status: 'retry' }
           throw e
         }
         console.warn('exportLoginToken: сбой сети, повтор', e)

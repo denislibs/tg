@@ -248,9 +248,8 @@ describe('SignQRCard.solid: цикл снимается вместе с карт
     expect(toIm).not.toHaveBeenCalled()
   })
 
-  // tweb `user_auth` (SignQRCard.tsx:67-72): вход любым путём останавливает цикл.
-  // Наш аналог — `rt:logged_in`; полагаться только на перезагрузку страницы
-  // (index.ts) нельзя: при `?noSharedWorker=1` вход соседней вкладки до этой не доходит.
+  // tweb `user_auth` (SignQRCard.tsx:67-72): вход останавливает цикл. Наш аналог —
+  // `rt:logged_in`.
   it('rt:logged_in останавливает цикл (аналог user_auth)', async () => {
     const { exportLoginToken } = mount()
     await vi.advanceTimersByTimeAsync(0)

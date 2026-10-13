@@ -278,7 +278,7 @@ describe('AuthManager', () => {
       rest: { post: () => Promise.reject(err) } as unknown as AuthDeps['rest'],
       store: { get: () => null, set: async () => {}, clear: async () => {}, ready: async () => {} },
     })
-    for (const err of [new TypeError('Failed to fetch'), new HttpError(502, 'x'), new HttpError(503, 'x'), new HttpError(429, 'x'), new HttpError(420, 'FLOOD_WAIT_90', 'FLOOD_WAIT_90')]) {
+    for (const err of [new TypeError('Failed to fetch'), new HttpError(502, 'x'), new HttpError(503, 'x'), new HttpError(429, 'x')]) {
       await expect(make(err).exportLoginToken('k'.repeat(64))).resolves.toEqual({ status: 'retry' })
     }
   })
@@ -289,6 +289,15 @@ describe('AuthManager', () => {
       store: { get: () => null, set: async () => {}, clear: async () => {}, ready: async () => {} },
     })
     await expect(auth.exportLoginToken('k'.repeat(64))).resolves.toEqual({ status: 'expired' })
+  })
+
+  it('exportLoginToken: постоянные отказы (503 qr login unavailable, 420 дольше минуты) пробрасываются', async () => {
+    const make = (err: unknown) => newAuthManager({
+      rest: { post: () => Promise.reject(err) } as unknown as AuthDeps['rest'],
+      store: { get: () => null, set: async () => {}, clear: async () => {}, ready: async () => {} },
+    })
+    await expect(make(new HttpError(503, 'qr login unavailable', 'qr login unavailable')).exportLoginToken('k'.repeat(64))).rejects.toMatchObject({ status: 503 })
+    await expect(make(new HttpError(420, 'FLOOD_WAIT_90', 'FLOOD_WAIT_90')).exportLoginToken('k'.repeat(64))).rejects.toMatchObject({ status: 420 })
   })
 
   it('exportLoginToken: прочие отказы API (400 LOGIN_KEY_INVALID) пробрасываются', async () => {

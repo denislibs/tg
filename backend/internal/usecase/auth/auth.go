@@ -456,6 +456,11 @@ func (i *Interactor) exportFromRecord(ctx context.Context, keyHash string, rec d
 			return ExportResult{}, err
 		}
 		if needed {
+			// Шаг пароля выдаётся ОДИН раз: каждый опрос выпускал бы новый
+			// password_token со своими пятью попытками, и перебор пароля обходил бы
+			// лимит попыток на токен. Потерянный ответ здесь — не потеря сессии
+			// (её нет): карточка получит новый код и сканирование повторится.
+			_ = i.qr.DeleteByKey(ctx, keyHash)
 			return ExportResult{Password: &res}, nil
 		}
 		// Пароль сняли, пока экспортёр не опросил: пароля больше нет — сессия.
@@ -503,7 +508,8 @@ func (i *Interactor) AcceptLoginToken(ctx context.Context, token string, user do
 		return domain.Authorization{}, err
 	}
 	// Ключ мог получить новый код — старый указатель тогда ничего не значит.
-	if rec.Status != domain.QRPending || subtle.ConstantTimeCompare([]byte(rec.Token), []byte(token)) != 1 {
+	if rec.Status != domain.QRPending || !time.Now().Before(rec.ExpiresAt) ||
+		subtle.ConstantTimeCompare([]byte(rec.Token), []byte(token)) != 1 {
 		return domain.Authorization{}, domain.ErrNotFound
 	}
 	if slices.Contains(rec.ExceptIDs, user.ID) {

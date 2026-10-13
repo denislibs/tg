@@ -217,6 +217,15 @@ func TestQR_PasswordStepNoSession(t *testing.T) {
 	if devicesOf(t, devices, uid) != before {
 		t.Fatal("сессия выпущена на шаге пароля")
 	}
+	// Шаг пароля выдаётся один раз: повторный опрос не выпускает новый токен
+	// (иначе перебор пароля обходил бы лимит попыток на токен).
+	pw := i.pw.(*fakePasswordRepo)
+	tokensBefore := len(pw.tokens)
+	rn, err := i.ExportLoginToken(ctx, "keyA", nil, "web")
+	n := mustPending(t, rn, err)
+	if n.Token == code.Token || len(pw.tokens) != tokensBefore {
+		t.Fatalf("повторный опрос: %+v, токенов пароля %d -> %d", rn, tokensBefore, len(pw.tokens))
+	}
 	res, err := i.CheckPassword(ctx, re.Password.PasswordToken, "s3cret", "dev", "test")
 	if err != nil || res.Token == "" {
 		t.Fatalf("CheckPassword = %+v, err=%v", res, err)

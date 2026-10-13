@@ -215,6 +215,16 @@ func TestExportLoginToken_BodyLimit(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("большое тело: %d %s", rec.Code, rec.Body.String())
 	}
+	// Валидное по форме, но больше 4 КиБ тело — отказ из-за MaxBytesReader, а не
+	// из-за числа аккаунтов.
+	padded := `{"except_ids":[],"platform":"web","x":"` + strings.Repeat("a", 8<<10) + `"}`
+	req = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/auth/export_login_token", strings.NewReader(padded))
+	req.Header.Set("X-Login-Key", loginKey(79))
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("тело больше потолка: %d %s", rec.Code, rec.Body.String())
+	}
 	// Больше потолка по числу аккаунтов — тоже отказ.
 	many := make([]int64, 21)
 	rec = doReq(t, h, http.MethodPost, "/auth/export_login_token",
