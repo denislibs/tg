@@ -731,6 +731,8 @@ func TestLoadPage_PanicReleasesMarkAndSlot(t *testing.T) {
 	if e.in.webPages.loadingNow("https://a.example/x") || len(e.in.previewFlights.slots) != 0 {
 		t.Fatal("после паники осталась метка загрузки или слот")
 	}
+	// Адрес после паники — отказ на webPageRefusalTTL; по истечении грузится.
+	expireCacheEntry(e.in, "https://a.example/x")
 	if e.in.GetWebPage(context.Background(), "https://a.example/x") == nil {
 		t.Fatal("плашка после паники не грузит")
 	}
@@ -867,5 +869,25 @@ func TestFirstURL_SkipsCode(t *testing.T) {
 	code := domain.MessageEntities{domain.NewMessageEntityCode(4, utf16Len("https://a.example/x"))}
 	if got := firstURL(text, code); got != "https://b.example/y" {
 		t.Fatalf("ссылка в code: %q", got)
+	}
+}
+
+// Контрольное ревью, п.1: паника разбора страницы в плашке возвращает слот
+// и снимает метку; адрес запоминается отказом — следующая плашка не падает.
+func TestGetWebPage_PanicReleasesSlot(t *testing.T) {
+	e := newPreviewEnv(t)
+	e.in.SetLinkPreviewer(&panicPreviewer{})
+	func() {
+		defer func() { _ = recover() }()
+		e.in.GetWebPage(context.Background(), "https://a.example/x")
+	}()
+	if n := len(e.in.webPages.slots); n != 0 {
+		t.Fatalf("слотов плашки занято после паники: %d", n)
+	}
+	if e.in.webPages.loadingNow("https://a.example/x") {
+		t.Fatal("метка загрузки осталась")
+	}
+	if wp, known := e.in.webPages.pageEntry("https://a.example/x"); !known || wp != nil {
+		t.Fatalf("после паники в кэше: %+v known=%v; ждали отказ", wp, known)
 	}
 }

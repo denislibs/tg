@@ -297,7 +297,7 @@ func (i *Interactor) rebuildWebPreviewOnEdit(msg domain.Message, opt []domain.We
 // false — слот не получен за previewTimeout, работа не сделана.
 func (i *Interactor) inBuildSlot(key string, fn func()) bool {
 	if !i.previewFlights.acquireBuild() {
-		log.Printf("webpreview: %s: все слоты сборки заняты дольше %v — карточки не будет", key, previewTimeout)
+		log.Printf("webpreview: %s: все слоты сборки заняты дольше %v — карточка без картинки и Instant View", key, previewTimeout)
 		return false
 	}
 	defer i.previewFlights.releaseBuild()
@@ -352,9 +352,10 @@ func (i *Interactor) buildWebPreview(url, key string) *builtPreview {
 			defer release() // и на панике пробы IV
 			enrich()
 		}()
-		return b
+	} else {
+		i.inBuildSlot(key, enrich)
 	}
-	i.inBuildSlot(key, enrich)
+	wp.ImageURL = "" // транзитное поле в снимок не попадает и без обогащения
 	return b
 }
 
@@ -364,8 +365,9 @@ func (i *Interactor) buildWebPreview(url, key string) *builtPreview {
 // Сами грузим, сначала получив слот фоновой сборки и только потом заняв
 // метку загрузки: держатель метки не стоит в очереди слотов, пока плашки
 // этого адреса его ждут. Результат загрузки (и временный сбой после повтора —
-// на короткий срок) кладётся в кэш, метка снимается сразу. Всё ожидание — в
-// пределах двух previewTimeout.
+// на короткий срок) кладётся в кэш, метка снимается сразу. Ждём чужие
+// загрузки до 2×previewTimeout, затем — не больше одной своей попытки
+// (очередь слота и загрузка — каждая до previewTimeout).
 //
 // release != nil — слот остаётся за вызывающим (он загрузил страницу сам и
 // обогатит её в том же слоте); вызывающий обязан его вернуть.
@@ -388,6 +390,10 @@ func (i *Interactor) loadPage(url, key string) (wp *domain.WebPagePreview, relea
 			continue
 		}
 		if !i.previewFlights.acquireBuild() {
+			// Пока стояли в очереди, страницу мог положить кто-то другой.
+			if wp, known := i.webPages.pageEntry(url); known && wp != nil {
+				return wp, nil
+			}
 			log.Printf("webpreview: %s: все слоты сборки заняты дольше %v — карточки не будет", key, previewTimeout)
 			return nil, nil
 		}
@@ -417,10 +423,11 @@ func (i *Interactor) loadPageHolding(url, key string, finish func()) (wp *domain
 	done := func() { once.Do(finish) }
 	panicking := true
 	defer func() {
-		done()
 		if panicking {
+			i.webPages.putPage(url, nil, false) // ждущие не падают по очереди
 			i.previewFlights.releaseBuild()
 		}
+		done()
 	}()
 	// Метка наша; пока её занимали, загрузка могла закончиться.
 	if cached, known := i.webPages.pageEntry(url); known {
@@ -870,6 +877,11 @@ func (i *Interactor) GetWebPage(ctx context.Context, url string) *domain.WebPage
 		if finish, ok = i.webPages.claimLoading(url); !ok {
 			return nil
 		}
+		// Под меткой — ещё раз кэш: другой загрузчик мог успеть.
+		if wp, known := i.webPages.pageEntry(url); known {
+			finish()
+			return i.completePlaqueCard(ctx, url, wp)
+		}
 	}
 	var once sync.Once
 	done := func() { once.Do(finish) }
@@ -886,10 +898,7 @@ func (i *Interactor) GetWebPage(ctx context.Context, url string) *domain.WebPage
 	// Без повтора: сбой плашки ничего не теряет — tweb перезапросит карточку
 	// при следующей найденной ссылке (input.ts:3581-3594), а повтор держал бы
 	// слот и удваивал запросы к сайту на страницах без карточки.
-	pctx, cancel := context.WithTimeout(ctx, previewTimeout)
-	wp, err := i.preview.Preview(pctx, url)
-	cancel()
-	i.webPages.release()
+	wp, err := i.plaqueFetch(ctx, url)
 	if err != nil {
 		wp = nil
 	}
@@ -903,6 +912,24 @@ func (i *Interactor) GetWebPage(ctx context.Context, url string) *domain.WebPage
 	}
 	done()
 	return i.completePlaqueCard(ctx, url, wp)
+}
+
+// plaqueFetch — загрузка страницы плашкой в занятом слоте. Слот возвращается
+// и на панике разбора чужого HTML (иначе восемь «ядовитых» ссылок оставили
+// бы плашки всего сервера без слотов до рестарта); паника записывается в кэш
+// отказом, чтобы следующие запросы этого адреса не падали по очереди, и идёт
+// дальше (её ловит Recoverer запроса).
+func (i *Interactor) plaqueFetch(ctx context.Context, url string) (*domain.WebPagePreview, error) {
+	defer i.webPages.release()
+	defer func() {
+		if r := recover(); r != nil {
+			i.webPages.putPage(url, nil, false)
+			panic(r)
+		}
+	}()
+	pctx, cancel := context.WithTimeout(ctx, previewTimeout)
+	defer cancel()
+	return i.preview.Preview(pctx, url)
 }
 
 // completePlaqueCard — карточка плашки из страницы: размер картинки
