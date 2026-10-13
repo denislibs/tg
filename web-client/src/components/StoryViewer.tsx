@@ -25,7 +25,7 @@ import rootScope from '@lib/rootScope'
 import classNames from '../shared/lib/classNames'
 import { animateStoryViewer, type StoryMorphElements } from './storyViewerMorph'
 import type { StoryGroup } from '../core/managers/storiesManager'
-import { isStoryEdited, realStory, storyCaption, storyDate, storyMediaId, storyPrivacy } from '../core/stories/story'
+import { isStoryEdited, realStory, storyCaption, storyCanShare, storyDate, storyMediaId } from '../core/stories/story'
 import { getUserTitle } from '../core/peers/getPeerTitle'
 import { getPeerPhotoId, type UserReal } from '../core/peers/peer'
 import { useMediaUrl } from '../core/hooks/useMediaUrl'
@@ -227,9 +227,9 @@ export default function StoryViewer({ groupIndex, getTarget, onClose }: {
   // 4d: share истории в чаты + репост.
   const [shareOpen, setShareOpen] = useState(false)
   const [repostOpen, setRepostOpen] = useState(false)
-  // «Поделиться»/«Репост» — только у публичной истории (tweb viewer.tsx:2222-2224:
-  // `pFlags.public && !noforwards`); сервер для остальных отвечает 403.
-  const canShare = storyPrivacy(vm.story) === 'everyone'
+  // «Поделиться»/«Репост» — только у публичной истории (см. storyCanShare);
+  // сервер для остальных отвечает 403.
+  const canShare = storyCanShare(vm.story)
 
   // Звук: tweb стартует с muted (store.tsx:166) и даёт кнопку mute в шапке.
   const [muted, setMuted] = useState(true)
