@@ -395,7 +395,7 @@ func TestAuthRepo_SoftDeleteDropsBadges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := repo.SetPremium(ctx, u.ID, true); err != nil {
+	if _, _, err := repo.SetPremium(ctx, u.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.SoftDelete(ctx, u.ID); err != nil {
@@ -407,5 +407,36 @@ func TestAuthRepo_SoftDeleteDropsBadges(t *testing.T) {
 	}
 	if !got.Deleted || got.IsPremium || got.IsVerified {
 		t.Fatalf("после удаления: %+v", got)
+	}
+}
+
+// changed — атомарный признак «значение сменилось»: повтор того же значения его
+// не поднимает, а сменяющий вызов поднимает ровно один раз (рассылка карточки
+// строится на нём).
+func TestAuthRepo_EmojiStatusAndPremiumReportChange(t *testing.T) {
+	pool := storepostgres.NewTestDB(t)
+	repo := NewAuthRepo(pool)
+	ctx := context.Background()
+	u, err := repo.CreateWithName(ctx, "+79000000077", "Статус", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for n, want := range []bool{true, false} {
+		rec, changed, err := repo.SetEmojiStatus(ctx, u.ID, "🔥")
+		if err != nil || changed != want || rec.EmojiStatus != "🔥" {
+			t.Fatalf("SetEmojiStatus #%d: changed=%v rec=%q err=%v, want changed=%v", n, changed, rec.EmojiStatus, err, want)
+		}
+	}
+	if _, changed, err := repo.SetEmojiStatus(ctx, u.ID, ""); err != nil || !changed {
+		t.Fatalf("снятие статуса: changed=%v err=%v", changed, err)
+	}
+	for n, want := range []bool{true, false} {
+		rec, changed, err := repo.SetPremium(ctx, u.ID, true)
+		if err != nil || changed != want || !rec.IsPremium {
+			t.Fatalf("SetPremium #%d: changed=%v premium=%v err=%v, want changed=%v", n, changed, rec.IsPremium, err, want)
+		}
+	}
+	if _, _, err := repo.SetPremium(ctx, 987654321, true); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("SetPremium чужого id = %v, want ErrNotFound", err)
 	}
 }

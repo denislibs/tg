@@ -129,24 +129,26 @@ func (r *fakeUserRepo) SoftDelete(_ context.Context, id int64) error {
 	return nil
 }
 
-func (r *fakeUserRepo) SetEmojiStatus(_ context.Context, id int64, emoji string) (domain.UserRecord, error) {
+func (r *fakeUserRepo) SetEmojiStatus(_ context.Context, id int64, emoji string) (domain.UserRecord, bool, error) {
 	phone, u, ok := r.find(id)
 	if !ok {
-		return domain.UserRecord{}, domain.ErrNotFound
+		return domain.UserRecord{}, false, domain.ErrNotFound
 	}
+	changed := u.EmojiStatus != emoji
 	u.EmojiStatus = emoji
 	r.byPhone[phone] = u
-	return u, nil
+	return u, changed, nil
 }
 
-func (r *fakeUserRepo) SetPremium(_ context.Context, id int64, premium bool) (domain.UserRecord, error) {
+func (r *fakeUserRepo) SetPremium(_ context.Context, id int64, premium bool) (domain.UserRecord, bool, error) {
 	phone, u, ok := r.find(id)
 	if !ok {
-		return domain.UserRecord{}, domain.ErrNotFound
+		return domain.UserRecord{}, false, domain.ErrNotFound
 	}
+	changed := u.IsPremium != premium
 	u.IsPremium = premium
 	r.byPhone[phone] = u
-	return u, nil
+	return u, changed, nil
 }
 
 func (r *fakeUserRepo) AddProfilePhoto(_ context.Context, userID, mediaID int64, videoMediaID *int64, preview []byte) (domain.ProfilePhoto, error) {

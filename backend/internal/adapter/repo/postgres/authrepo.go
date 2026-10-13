@@ -197,16 +197,34 @@ func (r *AuthRepo) SoftDelete(ctx context.Context, id int64) error {
 	return err
 }
 
-// SetEmojiStatus writes the user's emoji status ("" clears it) and returns the user.
-func (r *AuthRepo) SetEmojiStatus(ctx context.Context, id int64, emoji string) (domain.UserRecord, error) {
-	return scanUser(r.pool.QueryRow(ctx,
-		`UPDATE users SET emoji_status=$2 WHERE id=$1 RETURNING `+userCols, id, emoji))
+// SetEmojiStatus writes the user's emoji status ("" clears it) and returns the
+// user. changed=false — значение уже было таким: UPDATE с условием атомарен под
+// блокировкой строки, поэтому две одновременные мутации не подавят рассылку
+// друг друга (сравнение «до чтения» в usecase такого не гарантирует).
+func (r *AuthRepo) SetEmojiStatus(ctx context.Context, id int64, emoji string) (domain.UserRecord, bool, error) {
+	return r.updateIfChanged(ctx, id,
+		`UPDATE users SET emoji_status=$2 WHERE id=$1 AND emoji_status IS DISTINCT FROM $2 RETURNING `+userCols, emoji)
 }
 
-// SetPremium flips the Telegram Premium flag and returns the fresh user.
-func (r *AuthRepo) SetPremium(ctx context.Context, id int64, premium bool) (domain.UserRecord, error) {
-	return scanUser(r.pool.QueryRow(ctx,
-		`UPDATE users SET is_premium=$2 WHERE id=$1 RETURNING `+userCols, id, premium))
+// SetPremium flips the Telegram Premium flag and returns the fresh user;
+// changed=false — флаг уже стоял.
+func (r *AuthRepo) SetPremium(ctx context.Context, id int64, premium bool) (domain.UserRecord, bool, error) {
+	return r.updateIfChanged(ctx, id,
+		`UPDATE users SET is_premium=$2 WHERE id=$1 AND is_premium IS DISTINCT FROM $2 RETURNING `+userCols, premium)
+}
+
+// updateIfChanged исполняет условный UPDATE … RETURNING: нет строки в ответе —
+// значение не менялось, пользователь читается как есть (ErrNotFound, если его нет).
+func (r *AuthRepo) updateIfChanged(ctx context.Context, id int64, query string, value any) (domain.UserRecord, bool, error) {
+	u, err := scanUser(r.pool.QueryRow(ctx, query, id, value))
+	if err == nil {
+		return u, true, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return domain.UserRecord{}, false, err
+	}
+	u, err = r.GetByID(ctx, id)
+	return u, false, err
 }
 
 // --- Telegram Premium subscription (mock checkout) ---

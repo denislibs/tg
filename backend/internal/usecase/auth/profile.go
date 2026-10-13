@@ -171,11 +171,10 @@ func (i *Interactor) SetEmojiStatus(ctx context.Context, id int64, emoji string)
 	if utf8.RuneCountInString(emoji) > domain.MaxEmojiStatusRunes {
 		return domain.UserRecord{}, errors.New("emoji status too long")
 	}
-	before, beforeErr := i.users.GetByID(ctx, id)
-	u, err := i.users.SetEmojiStatus(ctx, id, emoji)
+	u, changed, err := i.users.SetEmojiStatus(ctx, id, emoji)
 	// Повтор того же значения ничего не меняет — рассылка P получателям зря
 	// (tweb: `changedEmojiStatus`, appUsersManager.ts:728-729).
-	if err == nil && (beforeErr != nil || before.EmojiStatus != u.EmojiStatus) {
+	if err == nil && changed {
 		i.emitUserUpdate(ctx, u) // статус виден партнёрам и второму устройству
 	}
 	return u, err
@@ -184,25 +183,19 @@ func (i *Interactor) SetEmojiStatus(ctx context.Context, id int64, emoji string)
 // ActivatePremium flips the user's Telegram Premium flag on. This is a clone: the
 // "purchase" is faked, there's no billing — activating simply grants the badge.
 func (i *Interactor) ActivatePremium(ctx context.Context, id int64) (domain.UserRecord, error) {
-	u, _, err := i.grantPremium(ctx, id)
-	return u, err
+	return i.grantPremium(ctx, id)
 }
 
 // grantPremium включает значок и рассылает карточку, если он реально сменился
 // (продление подписки и повторная активация лишних строк журнала не пишут: tweb
 // реагирует на `changedPremium`, appUsersManager.ts:731). Значок приходит в
 // карточке `user` (tweb `checkPremium` :793-800).
-func (i *Interactor) grantPremium(ctx context.Context, id int64) (domain.UserRecord, bool, error) {
-	before, beforeErr := i.users.GetByID(ctx, id)
-	u, err := i.users.SetPremium(ctx, id, true)
-	if err != nil {
-		return u, false, err
-	}
-	changed := beforeErr != nil || !before.IsPremium
-	if changed {
+func (i *Interactor) grantPremium(ctx context.Context, id int64) (domain.UserRecord, error) {
+	u, changed, err := i.users.SetPremium(ctx, id, true)
+	if err == nil && changed {
 		i.emitUserUpdate(ctx, u)
 	}
-	return u, changed, nil
+	return u, err
 }
 
 // CheckoutPremium runs the mock card checkout for a plan: it validates the plan,
@@ -232,7 +225,7 @@ func (i *Interactor) CheckoutPremium(ctx context.Context, id int64, planID strin
 	if err != nil {
 		return domain.UserRecord{}, domain.PremiumSubscription{}, err
 	}
-	user, _, err := i.grantPremium(ctx, id)
+	user, err := i.grantPremium(ctx, id)
 	if err != nil {
 		return domain.UserRecord{}, domain.PremiumSubscription{}, err
 	}

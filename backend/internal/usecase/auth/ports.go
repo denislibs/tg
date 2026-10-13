@@ -30,10 +30,11 @@ type UserRepo interface {
 	// is freed, personal fields are cleared and deleted_at is stamped. Message
 	// history is preserved and shown as coming from a "Deleted Account".
 	SoftDelete(ctx context.Context, id int64) error
-	// SetEmojiStatus writes the user's emoji status ("" clears it).
-	SetEmojiStatus(ctx context.Context, id int64, emoji string) (domain.UserRecord, error)
-	// SetPremium flips the Telegram Premium flag.
-	SetPremium(ctx context.Context, id int64, premium bool) (domain.UserRecord, error)
+	// SetEmojiStatus writes the user's emoji status ("" clears it). changed=false —
+	// значение уже было таким (проверка атомарна с записью).
+	SetEmojiStatus(ctx context.Context, id int64, emoji string) (rec domain.UserRecord, changed bool, err error)
+	// SetPremium flips the Telegram Premium flag; changed=false — флаг уже стоял.
+	SetPremium(ctx context.Context, id int64, premium bool) (rec domain.UserRecord, changed bool, err error)
 	// AddProfilePhoto inserts a gallery photo and, in the same transaction,
 	// promotes it to the user's current avatar (users.avatar_media_id +
 	// users.avatar_preview). preview — stripped-превью аватарки (nil, если

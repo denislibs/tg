@@ -370,19 +370,57 @@ func TestDeleteAccount_RevokesBeforeEmitToPartnersOnly(t *testing.T) {
 	}
 }
 
-// Рассылка переживает отмену запроса: удаление уже записано.
-func TestDeleteAccount_EmitSurvivesCancelledRequest(t *testing.T) {
-	i, _, _, _ := newInteractor()
-	res := registerUser(t, i, "+70000000014", "Удаляемый", "", "web", "browser")
+// ctxUserRepo — хранилище, которое, как pgx, отказывает на отменённом контексте.
+// SoftDelete отменяет запрос ПОСЛЕ записи: клиент разорвал соединение сразу после
+// коммита анонимизации.
+type ctxUserRepo struct {
+	*fakeUserRepo
+	cancel context.CancelFunc
+}
+
+func (r ctxUserRepo) SoftDelete(ctx context.Context, id int64) error {
+	err := r.fakeUserRepo.SoftDelete(ctx, id)
+	r.cancel()
+	return err
+}
+
+func (r ctxUserRepo) GetByID(ctx context.Context, id int64) (domain.UserRecord, error) {
+	if err := ctx.Err(); err != nil {
+		return domain.UserRecord{}, err
+	}
+	return r.fakeUserRepo.GetByID(ctx, id)
+}
+
+// ctxDevices отказывает на отменённом контексте, как хранилище.
+type ctxDevices struct{ *fakeDeviceRepo }
+
+func (d ctxDevices) DeleteAll(ctx context.Context, userID int64) ([]domain.Device, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return d.fakeDeviceRepo.DeleteAll(ctx, userID)
+}
+
+// SoftDelete необратим: разрыв соединения клиентом после него не должен оставить
+// анонимизированный аккаунт с живыми сессиями и не должен глушить рассылку.
+func TestDeleteAccount_TailSurvivesCancelledRequest(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	base, users, devices, _ := newInteractor()
+	res := registerUser(t, base, "+70000000014", "Удаляемый", "", "web", "browser")
+	rev := &fakeRevoker{}
 	pub := newFakeAuthPub()
+	i := New(ctxUserRepo{users, cancel}, ctxDevices{devices}, newFakeCodeRepo(), newFakePasswordRepo(), newFakeStepRepo(), "12345", func(string, ...any) {})
+	i.SetRevocationNotifier(rev)
 	i.SetPublisher(&ctxCheckPub{fakeAuthPub: pub})
 	const peer int64 = 999
 	i.SetPartners(func(context.Context, int64) ([]int64, error) { return []int64{peer}, nil })
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
 	if err := i.DeleteAccount(ctx, res.User.ID); err != nil {
 		t.Fatalf("DeleteAccount: %v", err)
+	}
+	if len(rev.revoked) == 0 {
+		t.Fatal("сессии не отозваны после отмены запроса")
 	}
 	if len(pub.frames[peer]) != 1 {
 		t.Fatalf("кадров у партнёра: %d, want 1", len(pub.frames[peer]))
