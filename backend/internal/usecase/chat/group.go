@@ -474,8 +474,23 @@ func (i *Interactor) SetMute(ctx context.Context, chatID, userID int64, muted bo
 
 // SetChatNotify обновляет per-chat уведомления (показ превью, звук). nil-поля не
 // меняются (sound валидируется до 'default'|'none' в хендлере).
+//
+// Как SetMute: настройки перечитываются из базы и едут ЦЕЛИКОМ в журнал
+// владельца (dialog_mute) и живым кадром updateNotifySettings{notifyPeer} — так
+// превью и звук доходят до второго устройства (tweb: тот же
+// account.updateNotifySettings, апдейт updateNotifySettings).
 func (i *Interactor) SetChatNotify(ctx context.Context, chatID, userID int64, preview *bool, sound *string) error {
-	return i.groups.SetNotify(ctx, chatID, userID, preview, sound)
+	if err := i.groups.SetNotify(ctx, chatID, userID, preview, sound); err != nil {
+		return err
+	}
+	settings, err := i.groups.NotifySettings(ctx, chatID, userID)
+	if err != nil {
+		return err
+	}
+	// best-effort: мутация закоммичена — сбой лога/публикации не возвращаем как ошибку.
+	_ = i.logAndPublishPerPeer(ctx, chatID, []int64{userID}, "dialog_mute",
+		func(peer domain.PeerID) map[string]any { return notifySettingsPayload(peer, settings) })
+	return nil
 }
 
 // ChatCard — полная карточка чата (channels.getFullChannel) тому, кто чат

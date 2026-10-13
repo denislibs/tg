@@ -128,6 +128,10 @@ func TestDialogFlagsAndTheme_LoggedAndDiff(t *testing.T) {
 		{"pin", "dialog_pin", func() error { return in.PinDialog(ctx, chatID, owner, true) }},
 		{"archive", "dialog_archive", func() error { return in.ArchiveDialog(ctx, chatID, owner, true) }},
 		{"mute", "dialog_mute", func() error { return in.SetMute(ctx, chatID, owner, true, nil) }},
+		{"notify", "dialog_mute", func() error {
+			off := false
+			return in.SetChatNotify(ctx, chatID, owner, &off, nil)
+		}},
 		{"theme", "chat_theme_update", func() error { return in.SetChatTheme(ctx, chatID, owner, "dark") }},
 	}
 	for _, st := range steps {
@@ -138,6 +142,43 @@ func TestDialogFlagsAndTheme_LoggedAndDiff(t *testing.T) {
 		pts := assertLoggedRow(t, s, owner, st.typ)
 		assertLiveFramePts(t, pub, owner, st.typ, pts)
 		assertInDifference(t, in, owner, st.typ, pts)
+	}
+}
+
+// SetChatNotify (превью и звук чата) идёт тем же журналом, что SetMute: строка
+// dialog_mute, тело updateNotifySettings{notifyPeer} с настройками ЦЕЛИКОМ —
+// превью выключено, а мьют, поставленный раньше, на месте. Второе устройство
+// получает его живьём и через getDifference.
+func TestSetChatNotify_LoggedAsNotifySettings(t *testing.T) {
+	in, s, _, pub := newLoggedGroupInteractor()
+	ctx := context.Background()
+	const owner int64 = 7
+	chatID, _, err := in.CreateGroup(ctx, owner, "Team", "", "", false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := in.SetMute(ctx, chatID, owner, true, nil); err != nil {
+		t.Fatal(err)
+	}
+	pub.reset()
+	off := false
+	if err := in.SetChatNotify(ctx, chatID, owner, &off, nil); err != nil {
+		t.Fatalf("SetChatNotify: %v", err)
+	}
+	pts := assertLoggedRow(t, s, owner, "dialog_mute")
+	assertLiveFramePts(t, pub, owner, "dialog_mute", pts)
+	assertInDifference(t, in, owner, "dialog_mute", pts)
+
+	d := lastFrameFor(t, pub, owner)
+	ns, _ := d["notify_settings"].(map[string]any)
+	if d["_"] != domain.UpdateNotifySettingsTag || ns == nil || ns["_"] != domain.PeerNotifySettingsTag {
+		t.Fatalf("кадр = %v", d)
+	}
+	if ns["show_previews"] != false {
+		t.Fatalf("show_previews = %v, want false", ns["show_previews"])
+	}
+	if ns["mute_until"] != float64(domain.MuteUntilForever) {
+		t.Fatalf("мьют потерян в кадре: %v", ns)
 	}
 }
 

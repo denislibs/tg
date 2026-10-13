@@ -28,6 +28,7 @@ type fakeGroupRepo struct {
 	archived     map[int64]map[int64]bool                     // userID -> chatID -> archived
 	forum        map[int64]bool                               // chatID -> темы включены
 	mutedUntil   map[int64]map[int64]*time.Time               // chatID -> userID -> срок мьюта (nil — не замьючен)
+	notifyPrev   map[int64]map[int64]*bool                    // chatID -> userID -> показ превью (nil — переопределения нет)
 	public       map[int64]bool                               // chatID -> chats.is_public
 	// onCreate — хук «чат создан», зеркалящий строку в общий store. Тип чата
 	// едет ПАРАМЕТРОМ, а не подставляется хуком из головы: доставка сообщения
@@ -422,10 +423,22 @@ func (r *fakeGroupRepo) NotifySettings(_ context.Context, chatID, userID int64) 
 	if u := r.mutedUntil[chatID][userID]; u != nil {
 		until = *u
 	}
-	return domain.NewPeerNotifySettings(until, nil, nil), nil
+	return domain.NewPeerNotifySettings(until, r.notifyPrev[chatID][userID], nil), nil
 }
 
-func (r *fakeGroupRepo) SetNotify(_ context.Context, _, _ int64, _ *bool, _ *string) error {
+func (r *fakeGroupRepo) SetNotify(_ context.Context, chatID, userID int64, preview *bool, _ *string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if preview == nil {
+		return nil
+	}
+	if r.notifyPrev == nil {
+		r.notifyPrev = map[int64]map[int64]*bool{}
+	}
+	if r.notifyPrev[chatID] == nil {
+		r.notifyPrev[chatID] = map[int64]*bool{}
+	}
+	r.notifyPrev[chatID][userID] = preview
 	return nil
 }
 
