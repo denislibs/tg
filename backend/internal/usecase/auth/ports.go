@@ -63,7 +63,15 @@ type AvatarPreviewer interface {
 // usecase кладёт центральным квадратом в НОВОЕ медиа). Реализуется media
 // usecase. Optional — без него аватаркой становится медиа как загружено.
 type AvatarSquarer interface {
-	SquareAvatar(ctx context.Context, mediaID int64) (int64, error)
+	// SquareAvatar кропит медиа mediaID, принадлежащее ownerID; чужое — ErrNotFound.
+	SquareAvatar(ctx context.Context, ownerID, mediaID int64) (int64, error)
+}
+
+// MediaReader — строка медиа по id (владелец, mime) для проверки «файл свой».
+// Реализация — postgres MediaRepo. Без него фото профиля не ставится
+// (errMediaReaderUnwired), а не молча отвечает 404.
+type MediaReader interface {
+	GetByID(ctx context.Context, id int64) (domain.Media, error)
 }
 
 // PremiumRepo persists Telegram Premium subscriptions (clone: mock checkout).

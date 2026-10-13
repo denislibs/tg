@@ -15,6 +15,7 @@ import { useAppStateStore } from '@stores/appState'
 import { applyFolderUpdate, useFoldersStore } from '@stores/foldersStore'
 import { useChatsStore } from '@stores/chatsStore'
 import { useNotifyStore } from '@stores/notifyStore'
+import type { NotifySettings } from '@core/managers/notifyManager'
 import { useSettingsStore } from '@/settings'
 import { initialState } from '@core/state/state'
 import { ALL_FOLDER_ID } from '@core/folderIds'
@@ -28,10 +29,10 @@ import { applyLang } from '@/test/lang'
 import { renderFoldersSidebarContent } from './index.solid'
 import extractEmojiFromFilterTitle from './extractEmojiFromFilterTitle'
 
-const SETTINGS = {
-  private: { muted: false, preview: true },
-  groups: { muted: false, preview: true },
-  channels: { muted: false, preview: true },
+const SETTINGS: NotifySettings = {
+  notifyUsers: { _: 'peerNotifySettings', mute_until: 0, show_previews: true },
+  notifyChats: { _: 'peerNotifySettings', mute_until: 0, show_previews: true },
+  notifyBroadcasts: { _: 'peerNotifySettings', mute_until: 0, show_previews: true },
 }
 
 const raw = (id: number, pos: number, over: Partial<RawFolder> = {}): RawFolder => ({

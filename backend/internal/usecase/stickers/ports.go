@@ -79,10 +79,21 @@ type Repo interface {
 	SaveGif(ctx context.Context, userID, mediaID int64, keep int) error
 	DeleteGif(ctx context.Context, userID, mediaID int64) error
 
-	MediaExists(ctx context.Context, mediaID int64) (bool, error)
 	// IsStickerMedia — media принадлежит какому-либо стикеру или это обложка
 	// набора (наборы публичны, поэтому такое media можно слать и читать всем).
 	IsStickerMedia(ctx context.Context, mediaID int64) (bool, error)
+}
+
+// MediaReader — строка медиа по id (владелец, mime, Animated) для проверок
+// «файл свой» и «это гиф». Реализация — postgres MediaRepo.
+type MediaReader interface {
+	GetByID(ctx context.Context, id int64) (domain.Media, error)
+}
+
+// MediaAccess — видит ли пользователь файл (по источнику: чат, история,
+// профиль, стикеры). Реализация — usecase/chat (CanAccessMedia).
+type MediaAccess interface {
+	CanAccessMedia(ctx context.Context, userID, mediaID int64) (bool, error)
 }
 
 // GifSearcher — внешний поиск GIF (Tenor). Опционален: без него поиск отдаёт

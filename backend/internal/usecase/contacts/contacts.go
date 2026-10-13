@@ -29,7 +29,12 @@ type Interactor struct {
 	privacy PrivacyChecker
 	photos  CustomPhotoRepo
 	close   CloseFriendsRepo
+	media   MediaReader
 }
+
+// errMediaReaderUnwired — забытая проводка MediaReader в app/server.go: не
+// domain-ошибка, чтобы ручка ответила 500 и записала в лог, а не тихим 404.
+var errMediaReaderUnwired = errors.New("media reader не подключён")
 
 func New(repo ContactsRepo) *Interactor { return &Interactor{repo: repo} }
 
@@ -43,6 +48,9 @@ func (i *Interactor) SetCustomPhotos(p CustomPhotoRepo) { i.photos = p }
 // флагом карточки контакта, как у оригинала.
 func (i *Interactor) SetCloseFriends(p CloseFriendsRepo) { i.close = p }
 
+// SetMediaReader подключает проверку «файл свой» для личных фото контактов.
+func (i *Interactor) SetMediaReader(m MediaReader) { i.media = m }
+
 // SetCustomPhoto задаёт личное фото контакта: mediaID подменяет настоящий
 // аватар contactUserID в глазах ownerID (список диалогов/контактов/шапка чата).
 // На проводе это userProfilePhoto с pFlags.personal. Требует подключённого
@@ -53,6 +61,18 @@ func (i *Interactor) SetCustomPhoto(ctx context.Context, ownerID, contactUserID,
 	}
 	if contactUserID == ownerID {
 		return ErrSelfContact
+	}
+	// photos.uploadContactProfilePhoto{file: InputFile} (tweb
+	// appProfileManager.ts:1085-1114): личное фото — только своя загрузка.
+	if i.media == nil {
+		return errMediaReaderUnwired
+	}
+	m, err := i.media.GetByID(ctx, mediaID)
+	if err != nil {
+		return err
+	}
+	if m.OwnerID != ownerID || !strings.HasPrefix(m.Mime, "image/") {
+		return domain.ErrNotFound
 	}
 	return i.photos.SetCustomPhoto(ctx, ownerID, contactUserID, mediaID)
 }

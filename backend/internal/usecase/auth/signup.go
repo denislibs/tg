@@ -50,7 +50,7 @@ func (i *Interactor) startSignUp(ctx context.Context, phone string) (SignInResul
 //
 // Аватар здесь не принимается: как и в tweb (SignUpCard шлёт uploadProfilePhoto
 // уже после auth.authorization), он загружается обычным путём — POST /media/upload
-// + PUT /me/avatar — под свежей сессией.
+// + POST /me/photos — под свежей сессией.
 func (i *Interactor) SignUp(ctx context.Context, rawToken, firstName, lastName, deviceName, platform string) (SignInResult, error) {
 	if i.steps == nil {
 		return SignInResult{}, ErrLoginStepsUnavailable

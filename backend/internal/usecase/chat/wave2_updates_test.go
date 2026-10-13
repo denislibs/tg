@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -128,6 +129,10 @@ func TestDialogFlagsAndTheme_LoggedAndDiff(t *testing.T) {
 		{"pin", "dialog_pin", func() error { return in.PinDialog(ctx, chatID, owner, true) }},
 		{"archive", "dialog_archive", func() error { return in.ArchiveDialog(ctx, chatID, owner, true) }},
 		{"mute", "dialog_mute", func() error { return in.SetMute(ctx, chatID, owner, true, nil) }},
+		{"notify", "dialog_mute", func() error {
+			off := false
+			return in.SetChatNotify(ctx, chatID, owner, &off, nil)
+		}},
 		{"theme", "chat_theme_update", func() error { return in.SetChatTheme(ctx, chatID, owner, "dark") }},
 	}
 	for _, st := range steps {
@@ -138,6 +143,43 @@ func TestDialogFlagsAndTheme_LoggedAndDiff(t *testing.T) {
 		pts := assertLoggedRow(t, s, owner, st.typ)
 		assertLiveFramePts(t, pub, owner, st.typ, pts)
 		assertInDifference(t, in, owner, st.typ, pts)
+	}
+}
+
+// SetChatNotify (превью и звук чата) идёт тем же журналом, что SetMute: строка
+// dialog_mute, тело updateNotifySettings{notifyPeer} с настройками ЦЕЛИКОМ —
+// превью выключено, а мьют, поставленный раньше, на месте. Второе устройство
+// получает его живьём и через getDifference.
+func TestSetChatNotify_LoggedAsNotifySettings(t *testing.T) {
+	in, s, _, pub := newLoggedGroupInteractor()
+	ctx := context.Background()
+	const owner int64 = 7
+	chatID, _, err := in.CreateGroup(ctx, owner, "Team", "", "", false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := in.SetMute(ctx, chatID, owner, true, nil); err != nil {
+		t.Fatal(err)
+	}
+	pub.reset()
+	off := false
+	if err := in.SetChatNotify(ctx, chatID, owner, &off, nil); err != nil {
+		t.Fatalf("SetChatNotify: %v", err)
+	}
+	pts := assertLoggedRow(t, s, owner, "dialog_mute")
+	assertLiveFramePts(t, pub, owner, "dialog_mute", pts)
+	assertInDifference(t, in, owner, "dialog_mute", pts)
+
+	d := lastFrameFor(t, pub, owner)
+	ns, _ := d["notify_settings"].(map[string]any)
+	if d["_"] != domain.UpdateNotifySettingsTag || ns == nil || ns["_"] != domain.PeerNotifySettingsTag {
+		t.Fatalf("кадр = %v", d)
+	}
+	if ns["show_previews"] != false {
+		t.Fatalf("show_previews = %v, want false", ns["show_previews"])
+	}
+	if ns["mute_until"] != float64(domain.MuteUntilForever) {
+		t.Fatalf("мьют потерян в кадре: %v", ns)
 	}
 }
 
@@ -377,5 +419,73 @@ func TestDialogMuteFrameCarriesNotifySettings(t *testing.T) {
 	}
 	if got, ok := settingsOf(t)["mute_until"]; ok {
 		t.Fatalf("после снятия mute_until = %v; want отсутствие ключа", got)
+	}
+}
+
+// Настройки уведомлений чата читаются ПОСЛЕ замка курсора владельца и в той же
+// транзакции, что запись: снимок с большим pts не бывает старее (та же гарантия,
+// что у ownsync.EmitSnapshot). Тест порядка: на момент чтения замок уже взят.
+func TestChatNotifySnapshot_ReadAfterCursorLock(t *testing.T) {
+	in, s, fg, _ := newLoggedGroupInteractor()
+	ctx := context.Background()
+	const owner int64 = 7
+	chatID, _, err := in.CreateGroup(ctx, owner, "Team", "", "", false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lockedAtRead int
+	in.groups = lockProbeGroupRepo{fakeGroupRepo: fg, onRead: func() {
+		s.mu.Lock()
+		lockedAtRead = s.locked[owner]
+		s.mu.Unlock()
+	}}
+	off := false
+	if err := in.SetChatNotify(ctx, chatID, owner, &off, nil); err != nil {
+		t.Fatal(err)
+	}
+	if lockedAtRead != 1 {
+		t.Fatalf("настройки прочитаны без замка курсора (locked=%d)", lockedAtRead)
+	}
+	if err := in.SetMute(ctx, chatID, owner, true, nil); err != nil {
+		t.Fatal(err)
+	}
+	if lockedAtRead != 2 {
+		t.Fatalf("SetMute читает настройки без замка курсора (locked=%d)", lockedAtRead)
+	}
+}
+
+type lockProbeGroupRepo struct {
+	*fakeGroupRepo
+	onRead func()
+}
+
+func (r lockProbeGroupRepo) NotifySettings(ctx context.Context, chatID, userID int64) (domain.PeerNotifySettings, error) {
+	r.onRead()
+	return r.fakeGroupRepo.NotifySettings(ctx, chatID, userID)
+}
+
+// Не участник: ручка настроек чата отвечает отказом, а не 200 «ничего не
+// изменилось» (мутация затронула ноль строк, настройки не читаются).
+func TestSetChatNotify_NonMemberGetsNotFound(t *testing.T) {
+	in, s, _, pub := newLoggedGroupInteractor()
+	ctx := context.Background()
+	const owner, stranger int64 = 7, 99
+	chatID, _, err := in.CreateGroup(ctx, owner, "Team", "", "", false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub.reset()
+	off := false
+	if err := in.SetChatNotify(ctx, chatID, stranger, &off, nil); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("SetChatNotify чужого = %v, want ErrNotFound", err)
+	}
+	if err := in.SetMute(ctx, chatID, stranger, true, nil); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("SetMute чужого = %v, want ErrNotFound", err)
+	}
+	s.mu.Lock()
+	rows := len(s.updates[stranger])
+	s.mu.Unlock()
+	if rows != 0 || len(pub.frames) != 0 {
+		t.Fatalf("не участнику записаны строки/кадры: %d/%d", rows, len(pub.frames))
 	}
 }

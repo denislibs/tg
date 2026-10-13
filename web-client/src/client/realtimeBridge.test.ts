@@ -130,6 +130,20 @@ describe('realtimeBridge.startRealtime — насос smp → rootScope', () => 
     expect(received).toEqual([{ peerId: 6, blocked: true }])
   })
 
+  // Глобальные настройки уведомлений по типу чатов (tweb rootScope.ts `notify_settings`) —
+  // шлёт воркер (кадр журнала и местный апдейт своего PUT), слушает проектор notifyStore.
+  it('notify_settings воркера доезжает до rootScope вкладки', async () => {
+    const { deliver, rootScope, startRealtime } = await setup()
+    startRealtime()
+    const received: unknown[] = []
+    rootScope.addEventListener('notify_settings', (e) => received.push(e))
+    const body = { _: 'updateNotifySettings', peer: { _: 'notifyUsers' }, notify_settings: { _: 'peerNotifySettings', mute_until: 0 } }
+
+    deliver({ kind: 'event', event: 'notify_settings', payload: body })
+
+    expect(received).toEqual([body])
+  })
+
   // Черновик треда (tweb rootScope.ts:162) — шлёт `draftsManager.saveDraft` воркера,
   // слушает поле ввода открытого треда (`ChatInput`, tweb input.ts:1711-1727).
   it('draft_updated воркера доезжает до rootScope вкладки', async () => {

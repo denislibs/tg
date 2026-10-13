@@ -481,7 +481,7 @@ describe('setLastMessage + setUnreadMessages — строка списка', () 
   })
 
   it('(а) mute по ТИПУ чатов (`isDialogMuted` — правило одно на приложение)', async () => {
-    useNotifyStore.setState({ settings: { ...useNotifyStore.getState().settings, private: { ...useNotifyStore.getState().settings.private, muted: true } } })
+    useNotifyStore.getState().apply('notifyUsers', { _: 'peerNotifySettings', mute_until: 2147483647 })
     const d = listRow(ALICE)
     await fill(d, makeDialog({ peerId: ALICE, lastMessage: message() }))
     expect(d.dom.listEl.classList.contains('is-muted')).toBe(true)

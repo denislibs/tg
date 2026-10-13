@@ -7,19 +7,21 @@ import (
 	"github.com/messenger-denis/backend/internal/domain"
 )
 
-// fakePhotoAdder captures AddProfilePhoto calls (the accept side effect).
+// fakePhotoAdder captures AddSuggestedProfilePhoto calls (the accept side effect).
 type fakePhotoAdder struct {
 	calls []struct {
-		userID  int64
-		mediaID int64
+		userID      int64
+		suggesterID int64
+		mediaID     int64
 	}
 }
 
-func (f *fakePhotoAdder) AddProfilePhoto(_ context.Context, userID, mediaID int64, _ *int64) (domain.ProfilePhoto, error) {
+func (f *fakePhotoAdder) AddSuggestedProfilePhoto(_ context.Context, userID, suggesterID, mediaID int64) (domain.ProfilePhoto, error) {
 	f.calls = append(f.calls, struct {
-		userID  int64
-		mediaID int64
-	}{userID, mediaID})
+		userID      int64
+		suggesterID int64
+		mediaID     int64
+	}{userID, suggesterID, mediaID})
 	return domain.ProfilePhoto{ID: int64(len(f.calls)), MediaID: mediaID}, nil
 }
 
@@ -49,7 +51,11 @@ func TestSuggestAndAcceptProfilePhoto(t *testing.T) {
 		t.Fatalf("recipient accept: %v", err)
 	}
 	if len(adder.calls) != 1 || adder.calls[0].userID != recipient || adder.calls[0].mediaID != 99 {
-		t.Fatalf("AddProfilePhoto calls = %+v", adder.calls)
+		t.Fatalf("AddSuggestedProfilePhoto calls = %+v", adder.calls)
+	}
+	// F7-A: файл принадлежит предложившему — его id уходит в проверку владельца.
+	if adder.calls[0].suggesterID != suggester {
+		t.Fatalf("suggesterID = %d; want %d", adder.calls[0].suggesterID, suggester)
 	}
 
 	// Accepting twice is rejected (idempotent guard).

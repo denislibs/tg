@@ -11,6 +11,7 @@ import { getPeerId, toPeerId } from '../../core/peers/peerId'
 import { cachedPeerFull } from '../../core/chatFullCache'
 import { refreshFullPeer } from '../../stores/fullPeers.solid'
 import { useChatsStore } from '../../stores/chatsStore'
+import { loadNotifySettings } from '../../stores/notifyStore'
 import { onPinnedMessagesUpdate } from '../../core/pinnedMessages'
 import { applyFolderUpdate, type FolderUpdateEvt } from '../../stores/foldersStore'
 import { refreshFullPeerIfNeeded } from '../../stores/fullPeers.solid'
@@ -100,5 +101,10 @@ export function registerRefetchSubscriber(managers: Managers): void {
     applyFolderUpdate(raw as FolderUpdateEvt)
   })
   // Полный resync (too_long) → перезагрузить диалоги.
-  rootScope.addEventListener('rt:resync', () => { void managers.dialogs.refresh().catch(() => {}) }) // .catch — см. Minor #3 выше
+  rootScope.addEventListener('rt:resync', () => {
+    void managers.dialogs.refresh().catch(() => {}) // .catch — см. Minor #3 выше
+    // Строки журнала `notify_settings` могли быть вычищены: глобальные тумблеры
+    // «Уведомления» перечитываем, иначе до перезагрузки они остались бы старыми.
+    void loadNotifySettings(managers)
+  })
 }

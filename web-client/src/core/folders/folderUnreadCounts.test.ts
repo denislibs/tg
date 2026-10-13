@@ -10,9 +10,9 @@ import type { Chat, UserReal } from '../peers/peer'
 import { ALL_FOLDER_ID } from '../folderIds'
 
 const SETTINGS: NotifySettings = {
-  private: { muted: false, preview: true },
-  groups: { muted: false, preview: true },
-  channels: { muted: false, preview: true },
+  notifyUsers: { _: 'peerNotifySettings', mute_until: 0, show_previews: true },
+  notifyChats: { _: 'peerNotifySettings', mute_until: 0, show_previews: true },
+  notifyBroadcasts: { _: 'peerNotifySettings', mute_until: 0, show_previews: true },
 }
 
 const folder = (id: number, over: Partial<Folder> = {}): Folder => ({
@@ -45,7 +45,7 @@ describe('folderUnreadCounts — «Все чаты»', () => {
     const counts = folderUnreadCounts(
       [makeDialog({ peerId: -50, unread: 4 })],
       [], NO_CONTACTS,
-      { ...SETTINGS, channels: { muted: true, preview: true } },
+      { ...SETTINGS, notifyBroadcasts: { _: 'peerNotifySettings', mute_until: 2147483647, show_previews: true } },
       (id) => (id === -50 ? BROADCAST : undefined),
     )
     expect(counts[ALL_FOLDER_ID]).toEqual({ count: 0, muted: true })
@@ -71,7 +71,7 @@ describe('folderUnreadCounts — пользовательская папка', (
     const counts = folderUnreadCounts(
       [makeDialog({ peerId: -50, unread: 4 })],
       [channels], NO_CONTACTS,
-      { ...SETTINGS, channels: { muted: true, preview: true } },
+      { ...SETTINGS, notifyBroadcasts: { _: 'peerNotifySettings', mute_until: 2147483647, show_previews: true } },
       (id) => (id === -50 ? BROADCAST : undefined),
     )
     expect(counts[8]).toEqual({ count: 0, muted: false })

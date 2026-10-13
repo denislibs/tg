@@ -38,6 +38,7 @@ type Interactor struct {
 	updates  UpdateLog          // optional: per-user update log for user_update (dense pts)
 	previews AvatarPreviewer    // optional: stripped-превью аватарки при её установке
 	squarer  AvatarSquarer      // optional: квадрат неквадратной аватарки
+	media    MediaReader        // обязателен для фото профиля: проверка «файл свой»
 	privacy  PrivacyChecker     // optional: видимость фото профиля в кадре user_update
 	contacts ContactViewer      // optional: имя из книги получателя в кадре user_update
 	pwFails  *failCounter       // счётчик неудачных попыток пароля на password_token
@@ -191,6 +192,7 @@ func (i *Interactor) SetPartners(f PartnersFunc)                 { i.partners = 
 func (i *Interactor) SetUpdateLog(u UpdateLog)                   { i.updates = u }
 func (i *Interactor) SetAvatarPreviewer(p AvatarPreviewer)       { i.previews = p }
 func (i *Interactor) SetAvatarSquarer(s AvatarSquarer)           { i.squarer = s }
+func (i *Interactor) SetMediaReader(m MediaReader)               { i.media = m }
 func (i *Interactor) SetPrivacy(p PrivacyChecker)                { i.privacy = p }
 func (i *Interactor) SetContactViewer(c ContactViewer)           { i.contacts = c }
 

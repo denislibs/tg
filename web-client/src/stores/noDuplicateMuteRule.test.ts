@@ -15,9 +15,10 @@
 // (его уже поздно ловить), а саму возможность завести вторую копию.
 //
 // Копия узнаётся по паре признаков: файл берёт настройки ПО ТИПУ ЧАТА
-// (`notifyTypeForChat`) и читает у них `.muted`. Экран настроек уведомлений
-// (`components/sidebarLeft/tabs/notifications.solid.tsx`) читает `settings[key].muted`
-// напрямую и правило не выводит — под пин не попадает и попадать не должен.
+// (`notifyTypeForChat`) и спрашивает про их мьют (`isTypeMuted` / `mute_until`).
+// Экран настроек уведомлений (`components/sidebarLeft/tabs/notifications.solid.tsx`)
+// читает мьют своего ключа напрямую и правило не выводит — под пин не попадает
+// и попадать не должен.
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -40,10 +41,10 @@ function walk(dir: string, acc: string[] = []): string[] {
 const stripComments = (src: string): string =>
   src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')
 
-/** Файл выводит правило: берёт настройки по типу чата И читает у них `.muted`. */
+/** Файл выводит правило: берёт настройки по типу чата И спрашивает про их мьют. */
 function derivesMuteRule(src: string): boolean {
   const code = stripComments(src)
-  return /\bnotifyTypeForChat\s*\(/.test(code) && /\.muted\b/.test(code)
+  return /\bnotifyTypeForChat\s*\(/.test(code) && /\b(isTypeMuted|mute_until)\b/.test(code)
 }
 
 describe('«заглушён» — одно правило на всё приложение', () => {

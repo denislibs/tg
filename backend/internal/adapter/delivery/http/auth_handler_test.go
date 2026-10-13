@@ -25,7 +25,9 @@ import (
 // all three repo ports) for use in delivery tests.
 func newAuthUC(pool *pgxpool.Pool) *usecaseauth.Interactor {
 	r := pgadapter.NewAuthRepo(pool)
-	return usecaseauth.New(r, r, r, r, r, "12345", func(string, ...any) {})
+	uc := usecaseauth.New(r, r, r, r, r, "12345", func(string, ...any) {})
+	uc.SetMediaReader(pgadapter.NewMediaRepo(pool))
+	return uc
 }
 
 // signedInUser — форма пользователя в ответах входа и в /me: пара

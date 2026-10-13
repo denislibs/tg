@@ -227,7 +227,7 @@ type signUpBody struct {
 
 // SignUp — регистрация нового номера (второй шаг после signup_required).
 // Аватар сюда не передаётся: как и в tweb, он грузится уже под выданной сессией
-// (POST /media/upload + PUT /me/avatar).
+// (POST /media/upload + POST /me/photos).
 func (h *AuthHandler) SignUp(w http.ResponseWriter, r *http.Request) {
 	var body signUpBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {

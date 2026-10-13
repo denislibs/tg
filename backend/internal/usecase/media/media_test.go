@@ -498,7 +498,7 @@ func TestSquareAvatar(t *testing.T) {
 	s := New(repo, st, nil)
 	s.SetSquareCropper(cr)
 
-	id, err := s.SquareAvatar(ctx, 1)
+	id, err := s.SquareAvatar(ctx, 7, 1)
 	if err != nil {
 		t.Fatalf("SquareAvatar: %v", err)
 	}
@@ -519,19 +519,41 @@ func TestSquareAvatar(t *testing.T) {
 	// Квадрат и видео кроп не зовут и id не меняют.
 	for _, keep := range []int64{2, 3} {
 		cr.calls = 0
-		if got, err := s.SquareAvatar(ctx, keep); err != nil || got != keep || cr.calls != 0 {
+		if got, err := s.SquareAvatar(ctx, 7, keep); err != nil || got != keep || cr.calls != 0 {
 			t.Fatalf("media %d: id=%d err=%v calls=%d; want как есть", keep, got, err, cr.calls)
 		}
 	}
 
 	// Кроп сказал «трогать нечего» (nil) — исходник как есть.
 	cr.out, cr.calls = nil, 0
-	if got, err := s.SquareAvatar(ctx, 1); err != nil || got != 1 || cr.calls != 1 {
+	if got, err := s.SquareAvatar(ctx, 7, 1); err != nil || got != 1 || cr.calls != 1 {
 		t.Fatalf("nil от кропа: id=%d err=%v calls=%d; want 1", got, err, cr.calls)
 	}
 
 	// Без кропера (опциональная зависимость) — мягкая деградация.
-	if got, err := New(repo, st, nil).SquareAvatar(ctx, 1); err != nil || got != 1 {
+	if got, err := New(repo, st, nil).SquareAvatar(ctx, 7, 1); err != nil || got != 1 {
 		t.Fatalf("без кропера: id=%d err=%v; want 1", got, err)
+	}
+}
+
+// F7-A: чужой файл не кропается и не тиражируется копией: ни чтения, ни записи
+// в хранилище, ни нового медиа.
+func TestSquareAvatar_ForeignOwner(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeRepo()
+	repo.rows[1] = domain.Media{ID: 1, OwnerID: 2, ObjectKey: "2/tall", Mime: "image/png", Width: 100, Height: 200}
+	repo.nextID = 10
+	st := newFakeStorage()
+	st.blobs["2/tall"] = []byte("png")
+	cr := &fakeCropper{out: []byte{1}, side: 100}
+	s := New(repo, st, nil)
+	s.SetSquareCropper(cr)
+
+	id, err := s.SquareAvatar(ctx, 1, 1)
+	if !errors.Is(err, domain.ErrNotFound) || id != 1 {
+		t.Fatalf("чужой файл: id=%d err=%v; want 1, ErrNotFound", id, err)
+	}
+	if cr.calls != 0 || len(st.blobs) != 1 || len(repo.rows) != 1 {
+		t.Fatalf("чужой файл кропнут: crop=%d blobs=%d rows=%d", cr.calls, len(st.blobs), len(repo.rows))
 	}
 }

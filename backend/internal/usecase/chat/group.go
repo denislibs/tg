@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"log"
 	"strings"
 	"time"
 
@@ -462,20 +464,61 @@ func (i *Interactor) SetMute(ctx context.Context, chatID, userID int64, muted bo
 	if err := i.groups.SetMuted(ctx, chatID, userID, muteUntil); err != nil {
 		return err
 	}
-	settings, err := i.groups.NotifySettings(ctx, chatID, userID)
-	if err != nil {
-		return err
-	}
-	// best-effort: мутация закоммичена — сбой лога/публикации не возвращаем как ошибку.
-	_ = i.logAndPublishPerPeer(ctx, chatID, []int64{userID}, "dialog_mute",
-		func(peer domain.PeerID) map[string]any { return notifySettingsPayload(peer, settings) })
-	return nil
+	return i.emitChatNotifySettings(ctx, chatID, userID)
 }
 
 // SetChatNotify обновляет per-chat уведомления (показ превью, звук). nil-поля не
 // меняются (sound валидируется до 'default'|'none' в хендлере).
+//
+// Как SetMute: настройки перечитываются из базы и едут ЦЕЛИКОМ в журнал
+// владельца (dialog_mute) и живым кадром updateNotifySettings{notifyPeer} — так
+// превью и звук доходят до второго устройства (tweb: тот же
+// account.updateNotifySettings, апдейт updateNotifySettings).
 func (i *Interactor) SetChatNotify(ctx context.Context, chatID, userID int64, preview *bool, sound *string) error {
-	return i.groups.SetNotify(ctx, chatID, userID, preview, sound)
+	if err := i.groups.SetNotify(ctx, chatID, userID, preview, sound); err != nil {
+		return err
+	}
+	return i.emitChatNotifySettings(ctx, chatID, userID)
+}
+
+// emitChatNotifySettings пишет настройки уведомлений чата ЦЕЛИКОМ в журнал
+// владельца (dialog_mute) и живым кадром. Замок курсора берётся ДО чтения
+// настроек: иначе два устройства, меняющие мьют, превью и звук, ложились бы в
+// журнал в обратном порядке (A перечитал -> B записал pts 11 -> A записал pts 12
+// со старым состоянием). Мутация уже закоммичена; сбой лога/публикации ответ не
+// портит (best-effort), как у остальных кадров диалога.
+func (i *Interactor) emitChatNotifySettings(ctx context.Context, chatID, userID int64) error {
+	if i.updates == nil {
+		return nil
+	}
+	var publish func(context.Context)
+	err := i.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if err := i.updates.LockState(ctx, userID); err != nil {
+			return err
+		}
+		settings, err := i.groups.NotifySettings(ctx, chatID, userID)
+		if err != nil {
+			return err
+		}
+		publish, err = i.appendPerPeer(ctx, chatID, []int64{userID}, "dialog_mute",
+			func(peer domain.PeerID) map[string]any { return notifySettingsPayload(peer, settings) })
+		return err
+	})
+	if err != nil {
+		// Не участник (строки диалога нет) — отказ, как у остальных ручек чата: мутация
+		// ничего не изменила, а 200 соврал бы клиенту.
+		if errors.Is(err, domain.ErrNotFound) {
+			return err
+		}
+		// Инфраструктурный сбой журнала: мутация закоммичена, ответ успешный, но кэш
+		// списка диалогов владельца сбрасываем всё равно (его сбросил бы publish),
+		// иначе второе устройство не увидит перемену до TTL.
+		log.Printf("notify: dialog_mute chat=%d user=%d: %v", chatID, userID, err)
+		i.invalidateDialogs(ctx, userID)
+		return nil
+	}
+	publish(ctx)
+	return nil
 }
 
 // ChatCard — полная карточка чата (channels.getFullChannel) тому, кто чат

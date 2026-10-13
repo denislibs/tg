@@ -23,11 +23,12 @@ type ContactPhotoLookup interface {
 	CustomPhotoMap(ctx context.Context, ownerID int64, contactIDs []int64) (map[int64]int64, error)
 }
 
-// ProfilePhotoAdder appends a photo to a user's profile gallery and promotes it
-// to the current avatar (implemented by the auth usecase). Used when a user
-// accepts a suggested profile photo. Optional.
+// ProfilePhotoAdder appends a suggested photo to a user's profile gallery and
+// promotes it to the current avatar (implemented by the auth usecase). Used
+// when a user accepts a suggested profile photo; the file belongs to the
+// suggester (suggesterID), whom the implementation checks as its owner. Optional.
 type ProfilePhotoAdder interface {
-	AddProfilePhoto(ctx context.Context, userID, mediaID int64, videoMediaID *int64) (domain.ProfilePhoto, error)
+	AddSuggestedProfilePhoto(ctx context.Context, userID, suggesterID, mediaID int64) (domain.ProfilePhoto, error)
 }
 
 type ChatRepo interface {
@@ -538,6 +539,10 @@ type UpdateRepo interface {
 	// AppendUpdateBulk — batched AppendUpdate for a set of users sharing one payload
 	// (one round-trip instead of 2×N). Returns per-user resulting pts.
 	AppendUpdateBulk(ctx context.Context, userIDs []int64, ptsCount int, date int64, typ string, payload json.RawMessage) (map[int64]int64, error)
+	// LockState берёт замок строки курсора владельца до конца транзакции ctx:
+	// снимок, перечитанный после него, не бывает старее снимка с меньшим pts
+	// (usecase/ownsync.EmitSnapshot — тот же приём).
+	LockState(ctx context.Context, userID int64) error
 	GetUserState(ctx context.Context, userID int64) (domain.UserState, error)
 	UpdatesSince(ctx context.Context, userID, sincePts int64, limit int) ([]domain.UpdateRecord, error)
 	// PruneUpdates trims the per-user log to keepPerUser pts of history (bounded

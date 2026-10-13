@@ -36,6 +36,12 @@ type CustomPhotoRepo interface {
 	CustomPhotoMap(ctx context.Context, ownerID int64, contactIDs []int64) (map[int64]int64, error)
 }
 
+// MediaReader — строка медиа по id (владелец, mime) для проверки «файл свой».
+// Реализация — postgres MediaRepo.
+type MediaReader interface {
+	GetByID(ctx context.Context, id int64) (domain.Media, error)
+}
+
 // CloseFriendsRepo отвечает на вопрос «кто из этих людей у владельца в близких
 // друзьях». Признак зависит от ЗРИТЕЛЯ и потому едет флагом карточки
 // (`user.pFlags.close_friend`), а не отдельной витриной-списком: у оригинала

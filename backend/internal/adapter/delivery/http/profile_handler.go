@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -144,22 +145,6 @@ func (h *ProfileHandler) Update(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, userJSON(user))
 }
 
-// DeleteAccount soft-deletes (anonymizes) the current user's account and revokes
-// every session (DELETE /me). The client should drop its token and return to the
-// login screen, as with a normal logout.
-func (h *ProfileHandler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
-	u, ok := UserFromContext(r.Context())
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "no user")
-		return
-	}
-	if err := h.uc.DeleteAccount(r.Context(), u.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, "delete account failed")
-		return
-	}
-	writeJSON(w, http.StatusOK, domain.NewBool(true))
-}
-
 type usernameBody struct {
 	Username string `json:"username"`
 }
@@ -219,28 +204,6 @@ func (h *ProfileHandler) CheckUsername(w http.ResponseWriter, r *http.Request) {
 
 type avatarBody struct {
 	MediaID int64 `json:"media_id"`
-}
-
-// SetAvatar points the user's avatar at an uploaded media object (PUT /me/avatar).
-// It also appends the photo to the gallery (the usecase keeps the denormalized
-// avatar and the gallery consistent), so old clients on this route stay in sync.
-func (h *ProfileHandler) SetAvatar(w http.ResponseWriter, r *http.Request) {
-	u, ok := UserFromContext(r.Context())
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "no user")
-		return
-	}
-	var body avatarBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.MediaID <= 0 {
-		writeError(w, http.StatusBadRequest, "invalid body")
-		return
-	}
-	user, err := h.uc.SetAvatar(r.Context(), u.ID, body.MediaID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "set avatar failed")
-		return
-	}
-	writeJSON(w, http.StatusOK, userJSON(user))
 }
 
 type emojiStatusBody struct {
@@ -412,7 +375,13 @@ func (h *ProfileHandler) AddPhoto(w http.ResponseWriter, r *http.Request) {
 		videoMediaID = &body.VideoMediaID
 	}
 	photo, err := h.uc.AddProfilePhoto(r.Context(), u.ID, body.MediaID, videoMediaID)
+	if errors.Is(err, domain.ErrNotFound) {
+		// Чужой, отсутствующий или не-картинка — один ответ (usecase auth.ownedMedia).
+		writeError(w, http.StatusNotFound, "not_found")
+		return
+	}
 	if err != nil {
+		log.Printf("[profile] add photo user=%d media=%d: %v", u.ID, body.MediaID, err)
 		writeError(w, http.StatusInternalServerError, "add photo failed")
 		return
 	}

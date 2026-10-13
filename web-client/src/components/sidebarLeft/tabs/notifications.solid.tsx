@@ -19,20 +19,23 @@
  *     (`core/auth/accounts.ts:1-5`) — строке нечего переключать.
  *  2. (О-3, О-4, О-5) Секций «Stories» (`:112-228`), «Reactions» (`:237-347`) и
  *     «Other → Contact joined» (`:349-377`) нет: у `/me/notify_settings` только
- *     `muted`/`preview` по трём типам (`backend/internal/adapter/delivery/http/
+ *     `mute_until`/`show_previews` по трём типам (`backend/internal/adapter/delivery/http/
  *     notify_handler.go`), ручек реакций и уведомления о новом контакте нет.
  *  3. Отказ в разрешении показывает тост. У оригинала `throw 1` стоит в
  *     onFulfilled того же `.then(onFulfilled, onRejected)` (`:395-406`) и до
  *     onRejected не доходит: отказ — необработанный reject без тоста. У нас
  *     `.then().catch()`: и отказ, и ошибка запроса — `Notifications.Restricted`
  *     (так было и в прежнем экране).
- *  4. Типы чатов: вместо `appNotificationsManager.getNotifySettings`/событий
- *     `notify_settings` (`:71-83`) — `stores/notifyStore.ts`, единственный
+ *  4. Типы чатов: вместо подписки вкладки на `notify_settings` (`:71-83`, `:167`) и
+ *     собственного `getNotifySettings` — `stores/notifyStore.ts`, единственный
  *     владелец глобальных настроек по типам (его читают список чатов, папки и
- *     уведомления). Запись — `managers.notify.update` с зеркалом в сторе и
- *     откатом к серверу при ошибке, как и прежде; момент записи — закрытие
- *     вкладки и только при изменении, как `onCleanup` оригинала (`:49-69`).
- *     `isMuted(notifySettings)` = наш `muted` (глобальный тип — признак, не срок).
+ *     уведомления; событие `notify_settings` пишет в него проектор
+ *     `storeProjection.ts`, а при старте значения грузит `loadNotifySettings`).
+ *     Запись — `managers.notify.updateNotifySettings(key, {mute_until, show_previews})`
+ *     (`:63-64`) на закрытии вкладки и только при изменении, как `onCleanup`
+ *     оригинала (`:49-69`); зеркало обновит местный апдейт после ответа
+ *     сервера, откатывать нечего. `mute_until` хранится у нас булево:
+ *     `MUTE_UNTIL`/0 (tweb шлёт для типов только их же).
  *  5. `uiNotificationsManager.onPushConditionsChange` →
  *     `client/pushSetup.ts::onPushConditionsChange`, `testSound` →
  *     `core/audio/sounds.ts::testSound` (у нас нет класса-менеджера, и
@@ -47,8 +50,9 @@ import cancelEvent from '@helpers/dom/cancelEvent'
 import { subscribeExternal } from '@helpers/solid/subscribeExternal'
 import IS_NOTIFICATION_SUPPORTED from '@environment/notificationSupport'
 import { useAppSettings } from '@stores/appSettings.solid'
-import { useNotifyStore } from '@stores/notifyStore'
-import type { NotifyChatType } from '@core/managers/notifyManager'
+import { loadNotifySettings, useNotifyStore } from '@stores/notifyStore'
+import type { NotifyTypeKey } from '@core/managers/notifyManager'
+import { isPeerMuted, MUTE_UNTIL_FOREVER } from '@core/dialogs/notifySettings'
 import { DEFAULTS } from '@/settings'
 import { onPushConditionsChange } from '@/client/pushSetup'
 import { testSound } from '@core/audio/sounds'
@@ -61,15 +65,19 @@ import { toastNew } from '@components/toast'
 import { useSuperTab } from '@components/solidJsTabs/superTabProvider.solid'
 import type { AppNotificationsTab } from '@components/solidJsTabs/tabs'
 
+const nowSeconds = () => Math.floor(Date.now() / 1000)
+
 const NotifySection = (props: {
   name: LangPackKey
   typeText: LangPackKey
-  inputKey: NotifyChatType
+  inputKey: NotifyTypeKey
 }) => {
   const [tab] = useSuperTab<typeof AppNotificationsTab>()
   const [enabled, setEnabled] = createSignal(true)
   const [showPreviews, setShowPreviews] = createSignal(true)
   // tweb :33, :71-83 — снимок настроек типа, обновляемый апдейтами (расхождение 4)
+  // Снимок — настройки ИМЕННО этого типа: сторы пересоздают объект только
+  // изменившегося ключа, и чужой апдейт не сбрасывает ещё не записанную правку.
   const notifySettings = subscribeExternal(
     useNotifyStore.subscribe,
     () => useNotifyStore.getState().settings[props.inputKey],
@@ -77,29 +85,31 @@ const NotifySection = (props: {
 
   createEffect(() => {
     const _notifySettings = notifySettings()
-    setEnabled(!_notifySettings.muted)
-    setShowPreviews(_notifySettings.preview)
+    setEnabled(!isPeerMuted(_notifySettings, nowSeconds()))
+    setShowPreviews(_notifySettings.show_previews !== false)
   })
 
   onCleanup(() => {
+    // Снимка с сервера нет (загрузка при старте упала) — тумблеры показывают
+    // дефолты, а не настройки аккаунта: писать их значит затереть чужое. tweb
+    // без снимка тоже ничего не пишет (`:50-56` — `isMuted(undefined)` падает).
+    if(!useNotifyStore.getState().loaded) return
     const mute = !enabled()
     const _showPreviews = showPreviews()
     const _notifySettings = notifySettings()
     if(
-      mute === _notifySettings.muted &&
-      _showPreviews === _notifySettings.preview
+      mute === isPeerMuted(_notifySettings, nowSeconds()) &&
+      _showPreviews === (_notifySettings.show_previews !== false)
     ) {
       return
     }
 
     // Полный тип, как `inputSettings` оригинала (`:61-64`): и mute, и превью.
-    const patch = { muted: mute, preview: _showPreviews }
-    const managers = tab.managers!
-    const store = useNotifyStore.getState()
-    store.setType(props.inputKey, patch)
-    managers.notify.update({ [props.inputKey]: patch }).catch(() => {
-      // не сохранилось — возвращаем зеркало к серверному состоянию
-      return managers.notify.settings().then((server) => useNotifyStore.getState().set(server))
+    // Отказ сервера — как у tweb: необработанный reject (зеркало не менялось,
+    // откатывать нечего); `catch` — чтобы не плодить unhandled rejection при закрытии.
+    void tab.managers!.notify.updateNotifySettings(props.inputKey, {
+      mute_until: mute ? MUTE_UNTIL_FOREVER : 0,
+      show_previews: _showPreviews,
     }).catch(() => undefined)
   })
 
@@ -277,6 +287,10 @@ const SoundEffectsSection = () => {
 }
 
 const Notifications: Component = () => {
+  const [tab] = useSuperTab<typeof AppNotificationsTab>()
+  // tweb `:78-90` — вкладка сама просит настройки типов. Старт приложения уже
+  // грузит их (`loadNotifySettings`); здесь — повтор, если та загрузка упала.
+  if(!useNotifyStore.getState().loaded) void loadNotifySettings(tab.managers!)
   return (
     <>
       <NotificationsSection />
@@ -285,17 +299,17 @@ const Notifications: Component = () => {
       <NotifySection
         name="NotificationsPrivateChats"
         typeText="NotificationsForPrivateChats"
-        inputKey="private"
+        inputKey="notifyUsers"
       />
       <NotifySection
         name="NotificationsGroups"
         typeText="NotificationsForGroups"
-        inputKey="groups"
+        inputKey="notifyChats"
       />
       <NotifySection
         name="NotificationsChannels"
         typeText="NotificationsForChannels"
-        inputKey="channels"
+        inputKey="notifyBroadcasts"
       />
       {/* tweb :564-566 — Stories, Reactions, Other: О-3, О-4, О-5 */}
     </>
