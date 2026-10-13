@@ -269,12 +269,6 @@ func TestStickersRepo_IsStickerMediaAndExists(t *testing.T) {
 	if ok, err := r.IsStickerMedia(ctx, cover); err != nil || !ok {
 		t.Fatalf("IsStickerMedia(обложка набора): %v, %v", ok, err)
 	}
-	if ok, err := r.MediaExists(ctx, plainMedia); err != nil || !ok {
-		t.Fatalf("MediaExists: %v, %v", ok, err)
-	}
-	if ok, _ := r.MediaExists(ctx, 999999); ok {
-		t.Fatalf("MediaExists(нет): want false")
-	}
 }
 
 // Метаданные файла (размеры, mime, stripped-превью) едут вместе со стикером во

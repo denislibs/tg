@@ -492,13 +492,6 @@ func (r *StickersRepo) DeleteGif(ctx context.Context, userID, mediaID int64) err
 	return err
 }
 
-func (r *StickersRepo) MediaExists(ctx context.Context, mediaID int64) (bool, error) {
-	var ok bool
-	err := querier(ctx, r.pool).QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM media WHERE id=$1)`, mediaID).Scan(&ok)
-	return ok, err
-}
-
 // IsStickerMedia — файл стикера ИЛИ обложки набора (`cover_media_id`,
 // у клиента `thumb_document_id`). Обложка — такой же публичный файл набора, что
 // и его стикеры: без неё выдача файла отвечала 404, и обложки наборов не

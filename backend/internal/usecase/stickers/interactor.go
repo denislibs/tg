@@ -2,6 +2,7 @@ package stickers
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -37,11 +38,24 @@ var slugRe = regexp.MustCompile(`^[a-z0-9_]{3,64}$`)
 
 // Interactor — бизнес-логика стикеров/GIF поверх портов Repo и GifSearcher.
 type Interactor struct {
-	repo Repo
-	gifs GifSearcher
+	repo   Repo
+	gifs   GifSearcher
+	media  MediaReader // обязателен: проверки «файл свой» и «это гиф»
+	access MediaAccess // обязателен для SaveGif: файл виден пользователю
 }
 
+// errMediaReaderUnwired — забытая проводка MediaReader/MediaAccess в
+// app/server.go: не domain-ошибка, чтобы ручка ответила 500 и записала в лог,
+// а не тихим 404.
+var errMediaReaderUnwired = errors.New("media reader не подключён")
+
 func New(repo Repo) *Interactor { return &Interactor{repo: repo} }
+
+// SetMediaReader подключает чтение строк media (владелец, mime, Animated).
+func (i *Interactor) SetMediaReader(m MediaReader) { i.media = m }
+
+// SetMediaAccess подключает проверку «пользователь видит файл» для SaveGif.
+func (i *Interactor) SetMediaAccess(a MediaAccess) { i.access = a }
 
 // SetGifSearch подключает внешний поиск GIF (optional; без него — пустая выдача).
 func (i *Interactor) SetGifSearch(g GifSearcher) { i.gifs = g }
@@ -198,7 +212,25 @@ func (i *Interactor) CreateSet(ctx context.Context, ownerID int64, slug, title, 
 	return i.repo.CreateSet(ctx, domain.StickerSetRecord{Slug: slug, Title: title, Kind: kind, CreatedBy: ownerID})
 }
 
-// AddSticker пополняет набор: только владелец, media должно существовать.
+// requireSetCreatorMedia — файл стикера загружен создателем набора. Иначе
+// «свой набор» делал бы любой чужой media_id публичным (IsStickerMedia отдаёт
+// файл стикера всем) с байтами любого mime. Нет файла и чужой файл — один
+// ErrNotFound.
+func (i *Interactor) requireSetCreatorMedia(ctx context.Context, creatorID, mediaID int64) error {
+	if i.media == nil {
+		return errMediaReaderUnwired
+	}
+	m, err := i.media.GetByID(ctx, mediaID)
+	if err != nil {
+		return err
+	}
+	if m.OwnerID != creatorID {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
+// AddSticker пополняет набор: только владелец, файл — его загрузка.
 func (i *Interactor) AddSticker(ctx context.Context, ownerID, setID, mediaID int64, emoji string) (domain.Sticker, error) {
 	if len(emoji) > maxEmojiBytes {
 		return domain.Sticker{}, domain.ErrInvalid
@@ -210,18 +242,14 @@ func (i *Interactor) AddSticker(ctx context.Context, ownerID, setID, mediaID int
 	if set.CreatedBy != ownerID {
 		return domain.Sticker{}, domain.ErrForbidden
 	}
-	ok, err := i.repo.MediaExists(ctx, mediaID)
-	if err != nil {
+	if err := i.requireSetCreatorMedia(ctx, set.CreatedBy, mediaID); err != nil {
 		return domain.Sticker{}, err
-	}
-	if !ok {
-		return domain.Sticker{}, domain.ErrNotFound
 	}
 	return i.repo.AddSticker(ctx, domain.Sticker{SetID: setID, MediaID: mediaID, Emoji: emoji})
 }
 
 // AddStickerAt пополняет набор на явную позицию — те же проверки, что у
-// AddSticker (владелец, существование media), но используется только сидом
+// AddSticker (владелец набора, файл — его загрузка), но используется только сидом
 // (cmd/seed-stickers): публичному API взять позицию неоткуда, там позицию
 // назначает хранилище через AddSticker.
 func (i *Interactor) AddStickerAt(ctx context.Context, ownerID, setID, mediaID int64, emoji string, position int, pathThumb []byte) (domain.Sticker, error) {
@@ -235,12 +263,8 @@ func (i *Interactor) AddStickerAt(ctx context.Context, ownerID, setID, mediaID i
 	if set.CreatedBy != ownerID {
 		return domain.Sticker{}, domain.ErrForbidden
 	}
-	ok, err := i.repo.MediaExists(ctx, mediaID)
-	if err != nil {
+	if err := i.requireSetCreatorMedia(ctx, set.CreatedBy, mediaID); err != nil {
 		return domain.Sticker{}, err
-	}
-	if !ok {
-		return domain.Sticker{}, domain.ErrNotFound
 	}
 	return i.repo.AddStickerAt(ctx, setID, mediaID, emoji, position, pathThumb)
 }
@@ -250,14 +274,33 @@ func (i *Interactor) SavedGifs(ctx context.Context, userID int64) ([]domain.Save
 	return i.repo.SavedGifs(ctx, userID)
 }
 
-// SaveGif сохраняет GIF (upsert; хранится не больше savedGifsLimit — старые
-// по saved_at вытесняются). media должно существовать.
+// SaveGif — messages.saveGif: документ адресуется доступом (InputDocument с
+// access_hash, tweb appGifsManager.ts:109-120), поэтому сохраняется только то,
+// что пользователь видит (CanAccessMedia), и только гиф (documentAttributeAnimated).
+// Хранится не больше savedGifsLimit — старые по saved_at вытесняются.
 func (i *Interactor) SaveGif(ctx context.Context, userID, mediaID int64) error {
-	ok, err := i.repo.MediaExists(ctx, mediaID)
+	if i.access == nil || i.media == nil {
+		return errMediaReaderUnwired
+	}
+	ok, err := i.access.CanAccessMedia(ctx, userID, mediaID)
 	if err != nil {
 		return err
 	}
 	if !ok {
+		return domain.ErrNotFound
+	}
+	m, err := i.media.GetByID(ctx, mediaID)
+	if err != nil {
+		return err
+	}
+	// Вид: гиф (Animated, аналог documentAttributeAnimated) либо image/gif.
+	// Свой video/mp4 до фоновой обработки (Animated ещё false) — тоже: клиент
+	// Tenor-гифа зовёт saveGif сразу после sendFile (input.ts:2760-2774).
+	// Признака «обработка ещё не прошла» у media нет; своё видео со звуком так
+	// сохранить можно только прямым вызовом API — пункт «Сохранить GIF»
+	// интерфейс даёт лишь гифам.
+	ownFresh := m.OwnerID == userID && m.Mime == "video/mp4"
+	if !m.Animated && m.Mime != "image/gif" && !ownFresh {
 		return domain.ErrNotFound
 	}
 	return i.repo.SaveGif(ctx, userID, mediaID, savedGifsLimit)
