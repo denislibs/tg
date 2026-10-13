@@ -22,8 +22,8 @@ func requestLogger(next http.Handler) http.Handler {
 	})
 }
 
-// redactPath маскирует секреты, живущие В ПУТИ: /bot/{token}/{method} и
-// /auth/qr/{token}. Остальные пути — как есть (query отбрасывается в логгере).
+// redactPath маскирует секреты, живущие В ПУТИ: /bot/{token}/{method}.
+// Остальные пути — как есть (query отбрасывается в логгере).
 func redactPath(p string) string {
 	if strings.HasPrefix(p, "/bot/") {
 		rest := p[len("/bot/"):]
@@ -31,10 +31,6 @@ func redactPath(p string) string {
 			return "/bot/***" + rest[i:] // /bot/***/sendMessage
 		}
 		return "/bot/***"
-	}
-	// /auth/qr/new — это POST создания, не токен; /auth/qr/{token} — GET статуса.
-	if strings.HasPrefix(p, "/auth/qr/") && p != "/auth/qr/new" {
-		return "/auth/qr/***"
 	}
 	return p
 }

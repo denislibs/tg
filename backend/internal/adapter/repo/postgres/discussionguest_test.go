@@ -142,7 +142,7 @@ func TestMirror_UnreadForPostAuthor(t *testing.T) {
 	if n, _ := chats.UnreadTotal(ctx, s.owner); n != 1 {
 		t.Fatalf("после пересчёта у автора поста %d непрочитанных, want 1", n)
 	}
-	if err := msgs.HideForUser(ctx, s.owner, m.ID); err != nil {
+	if _, err := msgs.HideForUser(ctx, s.owner, m.ID); err != nil {
 		t.Fatal(err)
 	}
 	if n, _ := chats.UnreadTotal(ctx, s.owner); n != 0 {

@@ -401,7 +401,7 @@ func TestPostComment_DeletedPost_NotFound(t *testing.T) {
 	if _, err := i.EnableDiscussion(ctx, ch, 7); err != nil {
 		t.Fatalf("EnableDiscussion: %v", err)
 	}
-	if err := i.msgs.SoftDelete(ctx, post.ID); err != nil {
+	if _, err := i.msgs.SoftDelete(ctx, post.ID); err != nil {
 		t.Fatalf("SoftDelete: %v", err)
 	}
 

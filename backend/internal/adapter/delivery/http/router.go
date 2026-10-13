@@ -49,8 +49,9 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		r.Post("/auth/passkey/begin", passkeyH.BeginLogin)
 		r.Post("/auth/passkey/finish", passkeyH.FinishLogin)
 	}
-	r.Post("/auth/qr/new", authH.QRNew)
-	r.Get("/auth/qr/{token}", authH.QRStatus)
+	// Вход по QR: публичный экспорт (устройство ещё не вошло; право забрать
+	// сессию — в заголовке X-Login-Key) и подтверждение под сессией ниже.
+	r.Post("/auth/export_login_token", authH.ExportLoginToken)
 
 	// Языковой пакет — ВНЕ группы Bearer: строки нужны экрану входа, то есть до
 	// того, как появился токен. У оригинала методы `langpack.*` вызываются на
@@ -256,8 +257,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Get("/chats/{peerID}/media", ch.MediaHistory)
 		pr.Get("/chats/{peerID}/search_counters", ch.SearchCounters)
 		pr.Post("/chats/{peerID}/read", ch.Read)
-		pr.Post("/chats/{peerID}/clear", ch.ClearHistory)
-		pr.Delete("/chats/{peerID}/history", ch.DeleteDialog)              // messages.deleteHistory just_clear=false
+		pr.Delete("/chats/{peerID}/history", ch.DeleteHistory)             // messages.deleteHistory (just_clear, revoke)
 		pr.Get("/updates/state", ch.UpdatesState)                          // updates.getState
 		pr.Get("/updates/difference", ch.UpdatesDifference)                // updates.getDifference
 		pr.Get("/updates/channel_difference", ch.UpdatesChannelDifference) // updates.getChannelDifference
@@ -459,7 +459,7 @@ func NewRouter(authUC *usecaseauth.Interactor, chatUC *usecasechat.Interactor, w
 		pr.Delete("/sessions/others", sh.RevokeOthers)
 		pr.Delete("/sessions/{deviceID}", sh.Revoke)
 		pr.Post("/auth/logout", sh.Logout)
-		pr.Post("/auth/qr/confirm", authH.QRConfirm)
+		pr.Post("/auth/accept_login_token", authH.AcceptLoginToken)
 		pr.Post("/auth/web_token", authH.NewWebAuthToken)
 	})
 	return r

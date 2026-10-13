@@ -443,6 +443,23 @@ describe('ChatBubbles — подписки на события истории', 
       expect(rendered(bubbles!)).toHaveLength(2)
     })
   })
+
+  // tweb bubbles.ts:1144: очистка истории снимает всё отрисованное. Живые кадры
+  // удаления её не заменяют: ответ REST двигает курсор раньше кадров, и воронка
+  // выбрасывает их как дубли (`GlobalFunnel.applyLocalPts`).
+  describe('dialog_flush', () => {
+    it('снимает все баблы открытого чата', () => {
+      rootScope.dispatchEventSingle('dialog_flush', { peerId: CHAT, dialog: undefined })
+
+      expect(rendered(bubbles!)).toHaveLength(0)
+      expect(bubbles!.getBubble(makeFullMid(CHAT, 1))).toBeUndefined()
+    })
+
+    it('событие про ЧУЖОЙ чат игнорируется', () => {
+      rootScope.dispatchEventSingle('dialog_flush', { peerId: OTHER_CHAT, dialog: undefined })
+      expect(rendered(bubbles!)).toHaveLength(2)
+    })
+  })
 })
 
 describe('ChatBubbles.destroy/cleanup', () => {

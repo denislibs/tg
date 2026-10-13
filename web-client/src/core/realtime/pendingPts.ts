@@ -7,26 +7,37 @@
 // round-trip). Если дыра не закрылась за отведённое время — funnel уходит в
 // точечный catch-up (`getDifference` в терминах tweb), а буфер сбрасывается.
 //
-// Контракт одиночного писателя даёт `pts_count === 1`, поэтому «contiguous» из
-// tweb (`curPts += pts_count`) вырождается в «pts === cursor+1»: дренаж применяет
-// подряд идущие pts, пока в буфере есть ровно следующий.
+// «Contiguous» из tweb (`curPts + pts_count >= pts`) считается по `ptsCount`
+// элемента: у живого журнального кадра он 1, у местного `updatePts` (ответ на
+// очистку истории) — число строк журнала, которые операция записала.
 //
 // Источник переупорядочивания у нас — асинхронная расшифровка секретных сообщений
 // в воркере (`workerCore.ts`: два concurrent decrypt резолвятся не в порядке pts).
 // Модуль чистый (без таймеров) — таймаут/фолбэк на catch-up держит вызывающий.
 
-export interface PendingItem { key: string; pts: number; d: unknown }
+export interface PendingItem {
+  key: string
+  pts: number
+  /** Сколько pts занимает элемент (по умолчанию 1; tweb `pts_count`). */
+  ptsCount?: number
+  d: unknown
+}
+
+/** Ключ местного updatePts: двигает курсор и ничего не диспатчит. */
+export const LOCAL_PTS_KEY = 'updatePts'
 
 export interface PendingPts {
   /**
-   * Придержать out-of-order кадр (pts > cursor+1). Дедуп по pts (тот же кадр мог
-   * прийти повторно). Возвращает false, если буфер переполнен, — вызывающему это
+   * Придержать out-of-order кадр (дыра). Дедуп по pts (тот же кадр мог прийти
+   * повторно); местный updatePts заменяет лежащий с тем же pts: живой кадр при
+   * сливе всё равно выбрасывается, а updatePts несёт нужный ptsCount.
+   * Возвращает false, если буфер переполнен, — вызывающему это
    * сигнал уйти в catch-up (дыра слишком большая, чтобы её пересидеть).
    */
   push(item: PendingItem): boolean
   /**
-   * Слить подряд идущие кадры начиная с cursor+1. `getCursor` читается заново перед
-   * каждым шагом (apply двигает курсор на +1), `apply` применяет кадр. Кадры с
+   * Слить подряд идущие кадры: `cursor + ptsCount >= pts`. `getCursor` читается
+   * заново перед каждым шагом (apply двигает курсор на pts), `apply` применяет кадр. Кадры с
    * pts <= cursor отбрасываются как дубли (курсор их уже прошёл через catch-up),
    * на первой же дыре дренаж останавливается — остаток ждёт в буфере.
    */
@@ -42,7 +53,11 @@ export function newPendingPts(max = 512): PendingPts {
   return {
     push(item) {
       if (buf.length >= max) return false
-      if (buf.some((x) => x.pts === item.pts)) return true // дубль out-of-order
+      const same = buf.findIndex((x) => x.pts === item.pts)
+      if (same >= 0) { // дубль out-of-order
+        if (item.key === LOCAL_PTS_KEY) buf[same] = item
+        return true
+      }
       buf.push(item)
       return true
     },
@@ -53,8 +68,8 @@ export function newPendingPts(max = 512): PendingPts {
       for (; i < buf.length; i++) {
         const cur = getCursor()
         if (buf[i].pts <= cur) continue      // дубль: курсор уже прошёл этот pts → выбросить
-        if (buf[i].pts !== cur + 1) break    // дыра ещё есть → оставить остаток в буфере
-        apply(buf[i])                        // apply двигает курсор на +1
+        if (cur + (buf[i].ptsCount ?? 1) < buf[i].pts) break // дыра ещё есть → оставить остаток в буфере
+        apply(buf[i])                        // apply двигает курсор на pts
       }
       buf = buf.slice(i)
     },

@@ -477,6 +477,8 @@ func (r fakeChats) ShowDialogs(_ context.Context, chatID int64) error {
 	return nil
 }
 
+func (r fakeChats) LockDialogDelete(context.Context, int64) error { return nil }
+
 // RecountCounters — те же формулы, что у ChatsRepo.RecountCounters, в объёме
 // фейка.
 func (r fakeChats) RecountCounters(_ context.Context, chatID int64, userIDs []int64) error {
@@ -1643,14 +1645,14 @@ func (r fakeMsgs) SoftDeleteUpTo(_ context.Context, chatID, maxSeq int64) error 
 	return nil
 }
 
-func (r fakeMsgs) SoftDelete(_ context.Context, msgID int64) error {
+func (r fakeMsgs) SoftDelete(_ context.Context, msgID int64) (bool, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	for chatID, msgs := range r.s.messages {
 		for idx, m := range msgs {
 			if m.ID == msgID {
 				if m.Deleted {
-					return nil
+					return false, nil
 				}
 				m.Deleted = true
 				m.Text = ""
@@ -1670,11 +1672,11 @@ func (r fakeMsgs) SoftDelete(_ context.Context, msgID int64) error {
 					r.s.syncMentionsLocked(chatID, uid)
 				}
 				r.s.recountReactionsLocked(chatID, m.SenderID)
-				return nil
+				return true, nil
 			}
 		}
 	}
-	return domain.ErrNotFound
+	return false, domain.ErrNotFound
 }
 
 func (r fakeMsgs) SetDestructOnRead(_ context.Context, chatID, readerID, readSeq int64) error {
@@ -1689,7 +1691,7 @@ func (s *store) hiddenFor(userID, msgID int64) bool {
 	return s.hidden != nil && s.hidden[userID] != nil && s.hidden[userID][msgID]
 }
 
-func (r fakeMsgs) HideForUser(_ context.Context, userID, msgID int64) error {
+func (r fakeMsgs) HideForUser(_ context.Context, userID, msgID int64) (bool, error) {
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	if r.s.hidden == nil {
@@ -1699,7 +1701,7 @@ func (r fakeMsgs) HideForUser(_ context.Context, userID, msgID int64) error {
 		r.s.hidden[userID] = map[int64]bool{}
 	}
 	if r.s.hidden[userID][msgID] {
-		return nil
+		return false, nil
 	}
 	r.s.hidden[userID][msgID] = true
 	// Как MessagesRepo.HideForUser: скрытое уходит из счётчиков скрывшего.
@@ -1724,7 +1726,7 @@ func (r fakeMsgs) HideForUser(_ context.Context, userID, msgID int64) error {
 			r.s.recountReactionsLocked(chatID, userID)
 		}
 	}
-	return nil
+	return true, nil
 }
 
 func (r fakeMsgs) GetHistory(_ context.Context, chatID, userID, offsetSeq int64, addOffset, limit int, _ *int64, tag string) ([]domain.Message, error) {
