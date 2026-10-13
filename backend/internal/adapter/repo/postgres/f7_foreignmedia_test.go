@@ -54,7 +54,7 @@ func TestF7_ForeignMediaNeverBecomesPublic(t *testing.T) {
 	if _, err := authUC.AddProfilePhoto(ctx, a, own, nil); err != nil {
 		t.Fatalf("AddProfilePhoto(свой): %v", err)
 	}
-	if _, err := stUC.AddSticker(ctx, a, set.ID, seedMedia(t, pool, a, "f7/a-sticker"), "🙂"); err != nil {
+	if _, err := stUC.AddSticker(ctx, a, set.ID, seedStickerMedia(t, pool, a, "f7/a-sticker"), "🙂"); err != nil {
 		t.Fatalf("AddSticker(свой): %v", err)
 	}
 }
