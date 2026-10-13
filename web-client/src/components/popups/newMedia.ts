@@ -267,7 +267,12 @@ function NewMediaPopupHost(props: {
       // открытым (`return` до `context.hide()`, :1112): выборка и подпись не теряются
       const files = filesRef.current
       const ask = () => props.chat.input.paidMessageInterceptor.prepareStarsForPayment(files.length).then((payment) => {
-        if(payment === PAYMENT_REJECTED) return
+        if(payment === PAYMENT_REJECTED) {
+          // tweb `send` снимает разовые флаги в `finally` и при отказе оплаты (:902-908): выбранное
+          // календарём время не должно достаться следующему сообщению (опросу, голосовому)
+          props.chat.input.resetSendingFlags()
+          return
+        }
         props.destroy()
         send(props.chat, files, caption, asFile, payment, paidPrice, spoilers)
       })

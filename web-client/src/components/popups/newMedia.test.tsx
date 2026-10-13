@@ -104,7 +104,7 @@ describe('popups/newMedia — мост попапа медиа', () => {
   // Контрольный проход Ф7-Г п.1, tweb newMedia.tsx:1013-1018 -> :1032-1036: в ленте отложенных
   // сперва календарь (попап открыт), затем согласие на плату и только потом закрытие.
   it('лента отложенных: календарь → согласие → закрытие попапа; отказ после календаря оставляет попап', async() => {
-    const { chat, sendGrouped, scheduleSending, prepareStarsForPayment } = makeChat({ scheduleDate: 1_900_000_000 }, ChatType.Scheduled)
+    const { chat, sendGrouped, scheduleSending, prepareStarsForPayment, resetSendingFlags } = makeChat({ scheduleDate: 1_900_000_000 }, ChatType.Scheduled)
     showNewMediaPopup(chat, [photo('1.png'), photo('2.png')], 'media')
     mountTopPopup()
 
@@ -119,6 +119,7 @@ describe('popups/newMedia — мост попапа медиа', () => {
     await flush()
     expect(prepareStarsForPayment).toHaveBeenCalledWith(2)
     expect(sendGrouped).not.toHaveBeenCalled()
+    expect(resetSendingFlags).toHaveBeenCalledTimes(1) // время календаря не утекает
     expect(usePopupStore.getState().popups).toHaveLength(1)
 
     scheduleSending.mock.calls[0][0]()
