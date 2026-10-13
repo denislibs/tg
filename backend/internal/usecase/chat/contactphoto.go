@@ -73,7 +73,7 @@ func (i *Interactor) AcceptProfilePhotoSuggestion(ctx context.Context, userID, m
 	if m.MediaID == nil || *m.MediaID <= 0 {
 		return domain.ErrInvalid
 	}
-	if _, err := i.profilePics.AddProfilePhoto(ctx, userID, *m.MediaID, nil); err != nil {
+	if _, err := i.profilePics.AddSuggestedProfilePhoto(ctx, userID, m.SenderID, *m.MediaID); err != nil {
 		return err
 	}
 
