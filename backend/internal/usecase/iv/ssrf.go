@@ -2,6 +2,7 @@ package iv
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -40,15 +41,19 @@ func AllowedIP(ip net.IP) bool {
 // публичные и приватные адреса).
 func CheckResolved(host string, ips []net.IP) error {
 	if len(ips) == 0 {
-		return fmt.Errorf("%s: no addresses resolved", host)
+		return fmt.Errorf("%s: no addresses resolved: %w", host, ErrForbiddenTarget)
 	}
 	for _, ip := range ips {
 		if !AllowedIP(ip) {
-			return fmt.Errorf("%s resolves to forbidden address %s", host, ip)
+			return fmt.Errorf("%s resolves to forbidden address %s: %w", host, ip, ErrForbiddenTarget)
 		}
 	}
 	return nil
 }
+
+// ErrForbiddenTarget — отказ SSRF-гарда (адрес вне разрешённых, слишком
+// много редиректов): повтор запроса его не исправит.
+var ErrForbiddenTarget = errors.New("forbidden fetch target")
 
 // NewSafeHTTPClient — общий HTTP-клиент с анти-SSRF гардом в DialContext: хост
 // резолвится, КАЖДЫЙ адрес проверяется (CheckResolved), соединение идёт на
@@ -80,7 +85,7 @@ func NewSafeHTTPClient(timeout time.Duration) *http.Client {
 		Transport: transport,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 5 {
-				return fmt.Errorf("too many redirects")
+				return fmt.Errorf("too many redirects: %w", ErrForbiddenTarget)
 			}
 			if _, err := ParseTargetURL(req.URL.String()); err != nil {
 				return err // редирект только на http/https
