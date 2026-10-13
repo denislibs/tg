@@ -465,7 +465,14 @@ func (c ChatRecord) ToChannel() Channel {
 	out.ParticipantsCount = c.MemberCount
 	out.SendPaidMessagesStars = int64(c.Settings.ChargeStars)
 	if c.ViewerID != 0 {
-		out.SetViewerMembership(c.MyRole, c.MyRights)
+		// pFlags.creator живёт независимо от left (tweb hasRights.ts:6-7,
+		// :25-27): вышедший создатель — creator и left одновременно, а права
+		// ему сервер по-прежнему признаёт (usecase memberOrCreator).
+		role, rights := c.MyRole, c.MyRights
+		if role == "" && c.CreatorID != 0 && c.CreatorID == c.ViewerID {
+			role, rights = RoleCreator, AllRights
+		}
+		out.SetViewerMembership(role, rights)
 	}
 	// ChatSettings.DefaultPerms — что участнику МОЖНО, а chatBannedRights —
 	// что НЕЛЬЗЯ: NewChatBannedRights инвертирует. Ловушка выписана в его

@@ -553,7 +553,7 @@ func (r *fakeGroupRepo) Cards(ctx context.Context, viewerID int64, ids []int64) 
 	return out, nil
 }
 
-func (r *fakeGroupRepo) EditInfo(_ context.Context, chatID int64, title, about, username string) error {
+func (r *fakeGroupRepo) EditTitle(_ context.Context, chatID int64, title string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	c, ok := r.cards[chatID]
@@ -561,8 +561,18 @@ func (r *fakeGroupRepo) EditInfo(_ context.Context, chatID int64, title, about, 
 		return domain.ErrNotFound
 	}
 	c.Title = title
+	r.cards[chatID] = c
+	return nil
+}
+
+func (r *fakeGroupRepo) EditAbout(_ context.Context, chatID int64, about string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, ok := r.cards[chatID]
+	if !ok {
+		return domain.ErrNotFound
+	}
 	c.About = about
-	c.Username = username
 	r.cards[chatID] = c
 	return nil
 }

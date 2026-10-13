@@ -74,13 +74,36 @@ func (i *Interactor) restricted(ctx context.Context, chatID, userID int64, perm 
 	return res.DeniedRights.Denies(perm), nil
 }
 
+// memberOrCreator — строка участника, а при её отсутствии у создателя чата
+// (chats.creator_id) — синтетическая строка владельца. Создатель остаётся
+// создателем и вышедшим: tweb отдаёт ему любое право независимо от left
+// (utils/chats/hasRights.ts:6-7, :25-27 — «creator can still send messages to
+// left channel»), и интерфейс показывает ему «Изменить» и «Тип группы». Сервер
+// признаёт это в действиях владельца (requireCreator, актор manageTarget).
+// Не участник и не создатель — domain.ErrNotFound.
+func (i *Interactor) memberOrCreator(ctx context.Context, chatID, userID int64) (domain.Member, error) {
+	m, err := i.groups.GetMember(ctx, chatID, userID)
+	if !errors.Is(err, domain.ErrNotFound) {
+		return m, err
+	}
+	cid, err := i.groups.CreatorID(ctx, chatID)
+	if err != nil {
+		return domain.Member{}, err
+	}
+	if cid == 0 || cid != userID {
+		return domain.Member{}, domain.ErrNotFound
+	}
+	return domain.Member{ChatID: chatID, UserID: userID, Role: domain.RoleCreator, Rights: domain.AllRights}, nil
+}
+
 // requireCreator — действие только владельца (tweb hasRights: toggle_forum,
-// change_type, delete_chat → false у не-создателя).
+// change_type, delete_chat → false у не-создателя). Вышедший создатель — всё
+// ещё владелец (memberOrCreator).
 func (i *Interactor) requireCreator(ctx context.Context, chatID, userID int64) error {
 	if i.groups == nil {
 		return domain.ErrForbidden
 	}
-	m, err := i.groups.GetMember(ctx, chatID, userID)
+	m, err := i.memberOrCreator(ctx, chatID, userID)
 	if err != nil || m.Role != domain.RoleCreator {
 		return domain.ErrForbidden
 	}

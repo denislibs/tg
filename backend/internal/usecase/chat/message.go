@@ -133,6 +133,11 @@ func (i *Interactor) messageMentions(ctx context.Context, msg domain.Message) (m
 // frame to each member. Idempotent on ClientMsgID (duplicates publish nothing).
 func (i *Interactor) Send(ctx context.Context, in SendInput) (domain.Message, error) {
 	ok, err := i.chats.IsMember(ctx, in.ChatID, in.SenderID)
+	if err == nil && !ok && in.Action == nil {
+		// Служебку от имени вышедшего создателя (назначение админа) возвращать
+		// его в чат не должно: возврат — только когда он пишет сам.
+		ok, err = i.rejoinCreator(ctx, in.ChatID, in.SenderID)
+	}
 	if err != nil {
 		return domain.Message{}, err
 	}

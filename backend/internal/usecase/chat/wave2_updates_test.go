@@ -198,8 +198,8 @@ func TestChatUpdate_LoggedAndLiveToMembers(t *testing.T) {
 	}
 
 	pub.reset()
-	if err := in.EditInfo(ctx, chatID, owner, "Renamed", "about", ""); err != nil {
-		t.Fatalf("EditInfo: %v", err)
+	if err := in.EditTitle(ctx, chatID, owner, "Renamed"); err != nil {
+		t.Fatalf("EditTitle: %v", err)
 	}
 	for _, uid := range []int64{owner, member} {
 		pts := assertLoggedRow(t, s, uid, "chat_update")

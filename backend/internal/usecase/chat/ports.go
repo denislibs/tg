@@ -189,7 +189,11 @@ type GroupRepo interface {
 	// (отсутствующие пропускаются). Тот же сборщик, что Card: из него едут
 	// все карточки чатов — векторы `chats`, поиск, похожие, send-as.
 	Cards(ctx context.Context, viewerID int64, ids []int64) ([]domain.ChatRecord, error)
-	EditInfo(ctx context.Context, chatID int64, title, about, username string) error
+	// EditTitle/EditAbout — отдельные колонки: название и описание правятся
+	// разными методами оригинала (channels.editTitle, messages.editChatAbout),
+	// публичное имя — только SetType.
+	EditTitle(ctx context.Context, chatID int64, title string) error
+	EditAbout(ctx context.Context, chatID int64, about string) error
 	SetPhoto(ctx context.Context, chatID, mediaID int64) error
 	// UsersByIDs — карточки глазами viewerID (domain.UserReal.SeenBy): имя из
 	// его книги и pFlags.contact. viewerID 0 — без зрителя (профильные имена).

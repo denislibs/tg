@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -555,4 +556,142 @@ func inviteToken(t *testing.T, rec *httptest.ResponseRecorder) string {
 		t.Fatalf("ответ не messages.exportedChatInvite: %s", rec.Body.String())
 	}
 	return out.Invite.Link[strings.LastIndexByte(out.Invite.Link, '/')+1:]
+}
+
+// MC-11: название и описание — отдельные ручки, как в оригинале
+// (channels.editTitle → Updates, messages.editChatAbout → Bool). Старый
+// PATCH /chats/{id} снят: он писал и публичное имя из устаревшего кэша клиента.
+func TestEditTitleAndAbout_HTTP(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, _ := signUp(t, h, pool, "+79990001061")
+	tokenB, idB := signUp(t, h, pool, "+79990001062")
+
+	rec := authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{
+		"title": "Старое", "about": "было", "username": "f7d_grp_http", "is_public": true, "member_ids": []int64{idB}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create group: %d %s", rec.Code, rec.Body.String())
+	}
+	cid := itoa(createdPeerID(t, rec))
+
+	// Админ с change_info правит описание: имя группы на месте.
+	rec = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/admins", tokenA, map[string]any{"user_id": idB, "rights": int(domain.RightChangeInfo)})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("promote: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = authedReq(t, h, http.MethodPut, "/chats/"+cid+"/about", tokenB, map[string]any{"about": "стало"})
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "boolTrue") {
+		t.Fatalf("about: %d %s; ждали boolTrue", rec.Code, rec.Body.String())
+	}
+	var card struct {
+		Chats []struct {
+			Title    string `json:"title"`
+			Username string `json:"username"`
+		} `json:"chats"`
+		FullChat struct {
+			About string `json:"about"`
+		} `json:"full_chat"`
+	}
+	rec = authedReq(t, h, http.MethodGet, "/chats/"+cid+"/card", tokenA, nil)
+	_ = json.Unmarshal(rec.Body.Bytes(), &card)
+	if len(card.Chats) != 1 || card.Chats[0].Username != "f7d_grp_http" || card.Chats[0].Title != "Старое" || card.FullChat.About != "стало" {
+		t.Fatalf("после about: %s", rec.Body.String())
+	}
+
+	// Название: ответ — Updates с карточкой зрителя в chats[0].
+	rec = authedReq(t, h, http.MethodPut, "/chats/"+cid+"/title", tokenB, map[string]any{"title": "Новое"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("title: %d %s", rec.Code, rec.Body.String())
+	}
+	var up struct {
+		Underscore string `json:"_"`
+		Updates    []any  `json:"updates"`
+		Chats      []struct {
+			Underscore string `json:"_"`
+			Title      string `json:"title"`
+			Username   string `json:"username"`
+		} `json:"chats"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &up)
+	if up.Underscore != domain.UpdatesTag || len(up.Chats) != 1 || up.Chats[0].Title != "Новое" || up.Chats[0].Username != "f7d_grp_http" {
+		t.Fatalf("ответ title не Updates с карточкой: %s", rec.Body.String())
+	}
+
+	// Пустое название — 400, и название на месте.
+	if rec = authedReq(t, h, http.MethodPut, "/chats/"+cid+"/title", tokenB, map[string]any{"title": "  "}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("пустое название: %d %s; ждали 400", rec.Code, rec.Body.String())
+	}
+	// Старой ручки нет.
+	if rec = authedReq(t, h, http.MethodPatch, "/chats/"+cid, tokenA, map[string]any{"title": "x", "about": "x", "username": ""}); rec.Code != http.StatusNotFound && rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("PATCH /chats/{id} жив: %d %s", rec.Code, rec.Body.String())
+	}
+	// Обычный участник без права — 403 (после сужения прав группы).
+	tokenC, idC := signUp(t, h, pool, "+79990001063")
+	_ = authedReq(t, h, http.MethodPost, "/chats/"+cid+"/members", tokenA, map[string]int64{"user_id": idC})
+	_ = authedReq(t, h, http.MethodPut, "/chats/"+cid+"/permissions", tokenA, map[string]int{"permissions": 31 &^ int(domain.PermChangeInfo), "slowmode_seconds": 0})
+	if rec = authedReq(t, h, http.MethodPut, "/chats/"+cid+"/about", tokenC, map[string]any{"about": "x"}); rec.Code != http.StatusForbidden {
+		t.Fatalf("about без права: %d %s; ждали 403", rec.Code, rec.Body.String())
+	}
+}
+
+// MC-12 + MC-13 на настоящей БД: админом назначают не-участника (вступление и
+// права за один вызов), а вышедший создатель остаётся создателем — карточка
+// несёт creator и left сразу, тип группы ему доступен, отправка возвращает его
+// в чат строкой creator.
+func TestPromoteNonMember_AndLeftCreator_HTTP(t *testing.T) {
+	h, pool := newMessagingRouter(t)
+	tokenA, idA := signUp(t, h, pool, "+79990001071")
+	_, idB := signUp(t, h, pool, "+79990001072")
+
+	rec := authedReq(t, h, http.MethodPost, "/groups", tokenA, map[string]any{
+		"title": "Права", "username": "f7d_left_creator", "is_public": true})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create group: %d %s", rec.Code, rec.Body.String())
+	}
+	cid := itoa(createdPeerID(t, rec))
+	role := func(uid int64) string {
+		var r string
+		if err := pool.QueryRow(context.Background(),
+			`SELECT role FROM chat_members WHERE chat_id=$1 AND user_id=$2`, -createdPeerID(t, rec), uid).Scan(&r); err != nil {
+			return ""
+		}
+		return r
+	}
+
+	// MC-12: B не участник — editAdmin вводит его админом.
+	rec2 := authedReq(t, h, http.MethodPost, "/chats/"+cid+"/admins", tokenA, map[string]any{"user_id": idB, "rights": int(domain.RightPinMessages)})
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("promote не-участника: %d %s", rec2.Code, rec2.Body.String())
+	}
+	if role(idB) != domain.RoleAdmin {
+		t.Fatalf("B после назначения: роль %q, ждали admin", role(idB))
+	}
+
+	// MC-13: создатель выходит.
+	if r := authedReq(t, h, http.MethodDelete, "/chats/"+cid+"/members/"+itoa(idA), tokenA, nil); r.Code != http.StatusOK {
+		t.Fatalf("выход создателя: %d %s", r.Code, r.Body.String())
+	}
+	if role(idA) != "" {
+		t.Fatalf("создатель остался участником: %q", role(idA))
+	}
+	var card struct {
+		Chats []struct {
+			PFlags map[string]bool `json:"pFlags"`
+		} `json:"chats"`
+	}
+	r := authedReq(t, h, http.MethodGet, "/chats/"+cid+"/card", tokenA, nil)
+	_ = json.Unmarshal(r.Body.Bytes(), &card)
+	if len(card.Chats) != 1 || !card.Chats[0].PFlags["creator"] || !card.Chats[0].PFlags["left"] {
+		t.Fatalf("карточка вышедшего создателя: %s", r.Body.String())
+	}
+	// Тип группы — право создателя, и сервер его признаёт без строки участника.
+	if r := authedReq(t, h, http.MethodPut, "/chats/"+cid+"/type", tokenA, map[string]any{"is_public": true, "username": "f7d_left_creator2"}); r.Code != http.StatusOK {
+		t.Fatalf("тип группы вышедшим создателем: %d %s", r.Code, r.Body.String())
+	}
+	// Отправка возвращает его в чат создателем.
+	if r := authedReq(t, h, http.MethodPost, "/chats/"+cid+"/messages", tokenA, map[string]any{"text": "я тут", "client_msg_id": "f7d1"}); r.Code != http.StatusOK {
+		t.Fatalf("отправка вышедшего создателя: %d %s", r.Code, r.Body.String())
+	}
+	if role(idA) != domain.RoleCreator {
+		t.Fatalf("после отправки: роль %q, ждали creator", role(idA))
+	}
 }

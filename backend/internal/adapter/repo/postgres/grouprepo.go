@@ -194,13 +194,13 @@ func (r *GroupRepo) SetArchived(ctx context.Context, chatID, userID int64, archi
 	return err
 }
 
-func (r *GroupRepo) EditInfo(ctx context.Context, chatID int64, title, about, username string) error {
-	var u any
-	if username != "" {
-		u = username
-	}
-	_, err := querier(ctx, r.pool).Exec(ctx,
-		`UPDATE chats SET title=$2, about=$3, username=$4 WHERE id=$1`, chatID, title, about, u)
+func (r *GroupRepo) EditTitle(ctx context.Context, chatID int64, title string) error {
+	_, err := querier(ctx, r.pool).Exec(ctx, `UPDATE chats SET title=$2 WHERE id=$1`, chatID, title)
+	return err
+}
+
+func (r *GroupRepo) EditAbout(ctx context.Context, chatID int64, about string) error {
+	_, err := querier(ctx, r.pool).Exec(ctx, `UPDATE chats SET about=$2 WHERE id=$1`, chatID, about)
 	return err
 }
 
