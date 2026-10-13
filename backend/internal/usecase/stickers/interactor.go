@@ -212,10 +212,18 @@ func (i *Interactor) CreateSet(ctx context.Context, ownerID int64, slug, title, 
 	return i.repo.CreateSet(ctx, domain.StickerSetRecord{Slug: slug, Title: title, Kind: kind, CreatedBy: ownerID})
 }
 
-// requireSetCreatorMedia — файл стикера загружен создателем набора. Иначе
-// «свой набор» делал бы любой чужой media_id публичным (IsStickerMedia отдаёт
-// файл стикера всем) с байтами любого mime. Нет файла и чужой файл — один
-// ErrNotFound.
+// stickerMimes — форматы файла стикера (tweb appDocsManager.ts:207-218: webp,
+// tgs, webm) плюс те, что кладёт сид (png, lottie-json). Публичным через набор
+// нельзя сделать html, svg, pdf и прочее.
+var stickerMimes = map[string]bool{
+	"image/webp": true, "image/png": true, "video/webm": true,
+	"application/x-tgsticker": true, "application/json": true,
+}
+
+// requireSetCreatorMedia — файл стикера загружен создателем набора и имеет
+// формат стикера. Иначе «свой набор» делал бы любой чужой media_id (или файл
+// любого mime) публичным: IsStickerMedia отдаёт файл стикера всем. Нет файла,
+// чужой файл и не-стикер — один ErrNotFound.
 func (i *Interactor) requireSetCreatorMedia(ctx context.Context, creatorID, mediaID int64) error {
 	if i.media == nil {
 		return errMediaReaderUnwired
@@ -224,7 +232,7 @@ func (i *Interactor) requireSetCreatorMedia(ctx context.Context, creatorID, medi
 	if err != nil {
 		return err
 	}
-	if m.OwnerID != creatorID {
+	if m.OwnerID != creatorID || !stickerMimes[m.Mime] {
 		return domain.ErrNotFound
 	}
 	return nil
@@ -282,25 +290,27 @@ func (i *Interactor) SaveGif(ctx context.Context, userID, mediaID int64) error {
 	if i.access == nil || i.media == nil {
 		return errMediaReaderUnwired
 	}
+	// Дешёвое чтение по PK — до дорогой проверки доступа: отказ «нет файла /
+	// не гиф» и отказ «не виден» отвечают одинаково (404).
+	m, err := i.media.GetByID(ctx, mediaID)
+	if err != nil {
+		return err
+	}
+	// Вид: documentAttributeAnimated и mime gif/mp4 (tweb appDocsManager.ts:
+	// 230-235) либо image/gif. Свой video/mp4, у которого фоновая обработка
+	// ещё не отдала постер (ThumbKey пуст, Animated ещё false), — тоже: клиент
+	// Tenor-гифа зовёт saveGif сразу после sendFile (input.ts:2760-2774). Своё
+	// обработанное видео без Animated гифом не станет.
+	animated := m.Animated && (m.Mime == "image/gif" || m.Mime == "video/mp4")
+	ownFresh := m.OwnerID == userID && m.Mime == "video/mp4" && m.ThumbKey == ""
+	if !animated && m.Mime != "image/gif" && !ownFresh {
+		return domain.ErrNotFound
+	}
 	ok, err := i.access.CanAccessMedia(ctx, userID, mediaID)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		return domain.ErrNotFound
-	}
-	m, err := i.media.GetByID(ctx, mediaID)
-	if err != nil {
-		return err
-	}
-	// Вид: гиф (Animated, аналог documentAttributeAnimated) либо image/gif.
-	// Свой video/mp4 до фоновой обработки (Animated ещё false) — тоже: клиент
-	// Tenor-гифа зовёт saveGif сразу после sendFile (input.ts:2760-2774).
-	// Признака «обработка ещё не прошла» у media нет; своё видео со звуком так
-	// сохранить можно только прямым вызовом API — пункт «Сохранить GIF»
-	// интерфейс даёт лишь гифам.
-	ownFresh := m.OwnerID == userID && m.Mime == "video/mp4"
-	if !m.Animated && m.Mime != "image/gif" && !ownFresh {
 		return domain.ErrNotFound
 	}
 	return i.repo.SaveGif(ctx, userID, mediaID, savedGifsLimit)

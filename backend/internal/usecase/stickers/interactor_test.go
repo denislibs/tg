@@ -751,6 +751,7 @@ func TestAddSticker_RequiresSetCreatorOwnsMedia(t *testing.T) {
 	set, _ := seedSet(t, in, f, 1, "mine_set", 0)
 	f.media[30] = domain.Media{ID: 30, OwnerID: 2, Mime: "application/pdf"}
 	f.media[31] = domain.Media{ID: 31, OwnerID: 1, Mime: "image/webp"}
+	f.media[33] = domain.Media{ID: 33, OwnerID: 1, Mime: "text/html"}
 
 	if _, err := in.AddSticker(ctx, 1, set.ID, 30, "🙂"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("чужой файл: err=%v; want ErrNotFound", err)
@@ -760,6 +761,9 @@ func TestAddSticker_RequiresSetCreatorOwnsMedia(t *testing.T) {
 	}
 	if _, err := in.AddStickerAt(ctx, 1, set.ID, 30, "🙂", 0, nil); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("AddStickerAt чужой файл: err=%v; want ErrNotFound", err)
+	}
+	if _, err := in.AddSticker(ctx, 1, set.ID, 33, "🙂"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("свой html: err=%v; want ErrNotFound", err)
 	}
 	if _, err := in.AddSticker(ctx, 1, set.ID, 31, "🙂"); err != nil {
 		t.Fatalf("свой файл: %v", err)
@@ -804,6 +808,8 @@ func TestSaveGif_RequiresAccessAndKind(t *testing.T) {
 	f.media[23] = domain.Media{ID: 23, OwnerID: 2, Mime: "image/gif"}
 	f.media[24] = domain.Media{ID: 24, OwnerID: user, Mime: "video/mp4"}
 	f.media[25] = domain.Media{ID: 25, OwnerID: 2, Mime: "video/mp4"}
+	f.media[26] = domain.Media{ID: 26, OwnerID: user, Mime: "video/mp4", ThumbKey: "t/26"} // обработано, не гиф
+	f.media[27] = domain.Media{ID: 27, OwnerID: 2, Mime: "video/webm", Animated: true}     // стикер-webm
 
 	saved := func(id int64) bool { _, ok := f.gifs[user][id]; return ok }
 	for _, c := range []struct {
@@ -817,6 +823,8 @@ func TestSaveGif_RequiresAccessAndKind(t *testing.T) {
 		{23, true, "image/gif до обработки"},
 		{24, true, "свой mp4 до обработки (Tenor сразу после sendFile)"},
 		{25, false, "чужой mp4 без Animated"},
+		{26, false, "своё обработанное mp4 без Animated"},
+		{27, false, "Animated, но не gif/mp4"},
 		{99999, false, "нет файла"},
 	} {
 		err := in.SaveGif(ctx, user, c.id)

@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -216,6 +217,7 @@ func (h *StickersHandler) AddSticker(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		log.Printf("[stickers] add sticker set=%d media=%d: %v", id, b.MediaID, err)
 		writeError(w, http.StatusInternalServerError, "could not add sticker")
 		return
 	}
@@ -350,6 +352,7 @@ func (h *StickersHandler) SaveGif(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		log.Printf("[stickers] save gif media=%d: %v", b.MediaID, err)
 		writeError(w, http.StatusInternalServerError, "could not save gif")
 		return
 	}

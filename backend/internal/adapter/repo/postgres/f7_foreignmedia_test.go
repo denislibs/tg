@@ -13,14 +13,13 @@ import (
 
 // F7-A (MC-01), настоящая БД: чужой файл, поданный в фото профиля или свой
 // набор стикеров, не становится ни аватаркой, ни стикерным медиа — то есть
-// третий пользователь по-прежнему не получает к нему доступ (ни CanAccess, ни
-// AvatarOwners, ни IsStickerMedia).
+// третий пользователь по-прежнему не получает к нему доступ: публичный доступ
+// chat.CanAccessMedia строится ровно на AvatarOwners и IsStickerMedia.
 func TestF7_ForeignMediaNeverBecomesPublic(t *testing.T) {
 	pool := postgres.NewTestDB(t)
 	ctx := context.Background()
 	a := seedUser(t, pool, "+79990000071")
 	b := seedUser(t, pool, "+79990000072")
-	c := seedUser(t, pool, "+79990000073")
 	foreign := seedMedia(t, pool, b, "f7/b-private") // image/jpeg, владелец B
 
 	ar := NewAuthRepo(pool)
@@ -47,9 +46,6 @@ func TestF7_ForeignMediaNeverBecomesPublic(t *testing.T) {
 	}
 	if ok, err := sr.IsStickerMedia(ctx, foreign); err != nil || ok {
 		t.Fatalf("IsStickerMedia = %v, %v; want false", ok, err)
-	}
-	if ok, err := NewMediaAccessRepo(pool).CanAccess(ctx, c, foreign); err != nil || ok {
-		t.Fatalf("CanAccess(C) = %v, %v; want false", ok, err)
 	}
 
 	// Свой файл проходит (контроль, что тест не красный от неверной проводки).

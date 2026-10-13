@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -380,6 +381,7 @@ func (h *ProfileHandler) AddPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		log.Printf("[profile] add photo user=%d media=%d: %v", u.ID, body.MediaID, err)
 		writeError(w, http.StatusInternalServerError, "add photo failed")
 		return
 	}
