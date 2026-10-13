@@ -262,7 +262,9 @@ func TestDeleteDialog_ReturnsAffectedHistoryOfActorOnly(t *testing.T) {
 	}
 }
 
-// F6 (Р-11): удалённый диалог не возвращается закреплённым или в архиве. У tweb
+// F6 (Р-11): удалённый диалог не возвращается закреплённым или в архиве.
+// Сам SQL сброса проверяет postgres-тест TestDialogHidden_DropsAndResetsPinAndArchive;
+// здесь — что DeleteDialog скрывает строку у нужных участников (фейк повторяет сброс). У tweb
 // `dropDialogFromFolders` (storages/dialogs.ts:1244-1273) снимает диалог из
 // закреплённых и из папки; пустая строка, вернувшаяся новым сообщением, встаёт
 // обычной (вывод из клиента: восстановить закреп не из чего).

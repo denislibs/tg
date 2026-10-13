@@ -402,6 +402,9 @@ func TestDialogHidden_DropsAndResetsPinAndArchive(t *testing.T) {
 	if n, err := groups.CountPinned(ctx, a); err != nil || n != 0 {
 		t.Fatalf("CountPinned = %d %v, want 0: скрытая строка ест лимит", n, err)
 	}
+	if _, err := pool.Exec(ctx, `UPDATE chat_members SET archived = true WHERE chat_id = $1 AND user_id = $2`, chatID, a); err != nil {
+		t.Fatal(err)
+	}
 	if err := chats.ShowDialogs(ctx, chatID); err != nil {
 		t.Fatal(err)
 	}
