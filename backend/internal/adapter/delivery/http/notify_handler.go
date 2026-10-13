@@ -8,57 +8,52 @@ import (
 	usecasenotify "github.com/messenger-denis/backend/internal/usecase/notify"
 )
 
-// NotifyHandler — глобальные настройки уведомлений (страница
-// «Notifications and Sounds»): GET/PUT /me/notify_settings.
+// NotifyHandler — глобальные настройки уведомлений по типу чатов (страница
+// «Notifications and Sounds»): account.getNotifySettings / updateNotifySettings
+// с адресом notifyUsers | notifyChats | notifyBroadcasts в ?peer=.
 type NotifyHandler struct{ uc *usecasenotify.Interactor }
 
 func NewNotifyHandler(uc *usecasenotify.Interactor) *NotifyHandler { return &NotifyHandler{uc: uc} }
 
+// notifyTypeParam разбирает ?peer=; нет или неизвестный — 400.
+func notifyTypeParam(w http.ResponseWriter, r *http.Request) (domain.NotifyType, bool) {
+	t, ok := domain.ParseNotifyType(r.URL.Query().Get("peer"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid request")
+	}
+	return t, ok
+}
+
+// Get — GET /me/notify_settings?peer=… → peerNotifySettings{show_previews, mute_until}.
 func (h *NotifyHandler) Get(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	s, err := h.uc.Get(r.Context(), user.ID)
+	t, ok := notifyTypeParam(w, r)
+	if !ok {
+		return
+	}
+	s, err := h.uc.Get(r.Context(), user.ID, t)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
-	writeJSON(w, http.StatusOK, notifySettingsJSON(s))
+	writeJSON(w, http.StatusOK, s)
 }
 
-type notifyTypePatchJSON struct {
-	Muted   *bool `json:"muted"`
-	Preview *bool `json:"preview"`
-}
-
+// Update — PUT /me/notify_settings?peer=… с телом inputPeerNotifySettings → Bool(true).
 func (h *NotifyHandler) Update(w http.ResponseWriter, r *http.Request) {
 	user, _ := UserFromContext(r.Context())
-	var b struct {
-		Private  notifyTypePatchJSON `json:"private"`
-		Groups   notifyTypePatchJSON `json:"groups"`
-		Channels notifyTypePatchJSON `json:"channels"`
+	t, ok := notifyTypeParam(w, r)
+	if !ok {
+		return
 	}
-	if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+	var in domain.InputPeerNotifySettings
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "bad body")
 		return
 	}
-	s, err := h.uc.Update(r.Context(), user.ID, usecasenotify.Patch{
-		Private:  usecasenotify.TypePatch{Muted: b.Private.Muted, Preview: b.Private.Preview},
-		Groups:   usecasenotify.TypePatch{Muted: b.Groups.Muted, Preview: b.Groups.Preview},
-		Channels: usecasenotify.TypePatch{Muted: b.Channels.Muted, Preview: b.Channels.Preview},
-	})
-	if err != nil {
+	if err := h.uc.Update(r.Context(), user.ID, t, in); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal")
 		return
 	}
-	writeJSON(w, http.StatusOK, notifySettingsJSON(s))
-}
-
-func notifySettingsJSON(s domain.NotifySettings) map[string]any {
-	typeJSON := func(t domain.NotifyTypeSettings) map[string]any {
-		return map[string]any{"muted": t.Muted, "preview": t.Preview}
-	}
-	return map[string]any{
-		"private":  typeJSON(s.Private),
-		"groups":   typeJSON(s.Groups),
-		"channels": typeJSON(s.Channels),
-	}
+	writeJSON(w, http.StatusOK, domain.NewBool(true))
 }
