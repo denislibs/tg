@@ -671,6 +671,8 @@ export interface ReactionEvt {
   _: 'updateMessageReactions'
   peer: Peer
   msg_id: number
+  /** Тема форума, в которой лежит сообщение (General — 1); серверный номер. */
+  top_msg_id?: number
   reactions: MessageReactions
 }
 /**

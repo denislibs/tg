@@ -7,6 +7,7 @@ import type { RestClient } from '../../net/restClient'
 import type { MyMessage } from '../../models'
 import type { MessageOp } from '../../realtime/messageOps'
 import type { UserReal } from '../../peers/peer'
+import type { MediaReadEvt } from '../../realtime/events'
 import type { ScheduledUpdates } from '../messagesManager'
 
 /** Точечно обновить одно сообщение чата в SSOT + персист (см. messagesManager.patchMsg). */
@@ -44,11 +45,30 @@ export interface MessagesCtx {
    *  зеркало — иначе доска рисует их фолбэком. Опционален по той же причине,
    *  что `getMeId`: часть тестов собирает под-модули одним `rest`. */
   peers?: { saveApiPeers(o: { users?: UserReal[] }): void }
-  /** Бейдж ❤ диалога — его владелец `dialogsManager`. Нужен `readMessages`
-   *  гейтом `hadUnreadReactions` (tweb appMessagesManager.ts:9566): сбрасывать
-   *  на сервере нечего, если бейджа нет. Опционален по той же причине, что
+  /** Счётчики «@» и ❤ того, что tweb называет `getAnyDialog(peerId, threadId)`:
+   *  темы форума (`threadId`) или диалога — их владельцы `forumTopicsStorage` и
+   *  `dialogsManager`. Нужны `readMessages` гейтами `hadUnreadMentions`/
+   *  `hadUnreadReactions` (tweb appMessagesManager.ts:9564-9566): сбрасывать на
+   *  сервере нечего, если бейджа нет. Опционален по той же причине, что
    *  `getMeId`: без него сброс не уходит никогда. */
-  getUnreadReactionsCount?: (peerId: number) => number
+  getUnreadBadge?: (peerId: number, threadId?: number) => { mentions: number; reactions: number } | undefined
+  /** Обнулить счётчик «@» (`isReaction = false`) или ❤ у `getAnyDialog(peerId,
+   *  threadId)` — ответ `readMentions` (tweb :9636-9644). Родителя темы не трогает. */
+  clearUnreadBadge?: (peerId: number, threadId: number | undefined, isReaction: boolean) => void
+  /** Ответ `affectedHistory` двигает курсор журнала как местный `updatePts`
+   *  (tweb :9626-9630) — владелец воронка (`GlobalFunnel.applyLocalPts`). */
+  applyLocalPts?: (pts: number, ptsCount: number) => void
+  /** `messages.readMessageContents` — WS `read_media` с СЕРВЕРНЫМИ номерами
+   *  (владелец транспорта — connectionManager). */
+  markMediaRead?: (peerId: number, serverIds: number[]) => void
+  /** Местный `updateReadMessagesContents` (tweb `processLocalUpdate`, :9593):
+   *  прочитанные упоминания гасят точку и бейдж сразу, не дожидаясь кадра
+   *  сервера. Применяет воркер тем же путём, что и серверный кадр. */
+  applyLocalMediaRead?: (frame: MediaReadEvt) => void
+  /** Тема форума, в которой лежит сообщение (`getMessageThreadId` с видом чата
+   *  форума), либо `undefined` вне форума — tweb `readMessages` берёт её из
+   *  увиденного сообщения (appMessagesManager.ts:9549-9555). */
+  forumThreadIdOf?: (m: MyMessage) => number | undefined
   /** Ответ отложенной отправки — `Updates` (tweb `processUpdateMessage`): кадры
    *  ленты отложенных применяет её владелец (messagesManager). Опционален по
    *  той же причине, что `getMeId`. */

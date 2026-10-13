@@ -372,3 +372,61 @@ describe('forumTopicsStorage: черновик темы', () => {
     expect(get).toHaveBeenCalledTimes(2)
   })
 })
+
+// Ф-6, задача 18: бейджи ❤ и «@» темы — tweb `modifyCachedMentionsAndSave`
+// (appMessagesManager.ts:9330-9363) по теме: ±1 по кадру, ноль по ответу
+// `readMentions`/`readReactions`.
+describe('forumTopicsStorage: бейджи ❤ и «@» темы', () => {
+  const unreadOf = (ops: ForumTopicOp[]) => ops.filter((op) => op.op === 'unread')
+
+  it('modifyUnreadReactions: +1 / −1 (ниже нуля не уходит), `unread` + `forumUnread`', async () => {
+    const { storage, ops } = setup([wire(10, { unread_reactions_count: 1 })])
+    await storage.getForumTopics(FORUM)
+    ops.length = 0
+    storage.modifyUnreadReactions(FORUM, mid(10), true)
+    expect(storage.getForumTopic(FORUM, mid(10))!.unread_reactions_count).toBe(2)
+    expect(ops.map((op) => op.op)).toEqual(['unread', 'forumUnread'])
+    storage.modifyUnreadReactions(FORUM, mid(10), false)
+    storage.modifyUnreadReactions(FORUM, mid(10), false)
+    storage.modifyUnreadReactions(FORUM, mid(10), false)
+    expect(storage.getForumTopic(FORUM, mid(10))!.unread_reactions_count).toBe(0)
+  })
+
+  it('modifyUnreadMentions: та же арифметика для «@»', async () => {
+    const { storage } = setup([wire(10, { unread_mentions_count: 2 })])
+    await storage.getForumTopics(FORUM)
+    storage.modifyUnreadMentions(FORUM, mid(10), false)
+    expect(storage.getForumTopic(FORUM, mid(10))!.unread_mentions_count).toBe(1)
+    storage.modifyUnreadMentions(FORUM, mid(10), true)
+    expect(storage.getForumTopic(FORUM, mid(10))!.unread_mentions_count).toBe(2)
+  })
+
+  it('темы нет в кэше — ничего (tweb: `if(!dialog) return`)', async () => {
+    const { storage, ops } = setup([wire(10)])
+    await storage.getForumTopics(FORUM)
+    ops.length = 0
+    storage.modifyUnreadReactions(FORUM, mid(99), true)
+    storage.modifyUnreadMentions(FORUM, mid(99), false)
+    expect(ops).toEqual([])
+  })
+
+  it('clearUnread: обнуляет ТОЛЬКО названный счётчик (ответ readMentions/readReactions)', async () => {
+    const { storage, ops } = setup([wire(10, { unread_reactions_count: 3, unread_mentions_count: 2 })])
+    await storage.getForumTopics(FORUM)
+    ops.length = 0
+    storage.clearUnread(FORUM, mid(10), true)
+    const t = storage.getForumTopic(FORUM, mid(10))!
+    expect(t.unread_reactions_count).toBe(0)
+    expect(t.unread_mentions_count).toBe(2)
+    expect(unreadOf(ops)).toHaveLength(1)
+    storage.clearUnread(FORUM, mid(10), false)
+    expect(storage.getForumTopic(FORUM, mid(10))!.unread_mentions_count).toBe(0)
+  })
+
+  it('getUnreadBadge: счётчики темы; нет темы — undefined', async () => {
+    const { storage } = setup([wire(10, { unread_reactions_count: 3, unread_mentions_count: 2 })])
+    await storage.getForumTopics(FORUM)
+    expect(storage.getUnreadBadge(FORUM, mid(10))).toEqual({ mentions: 2, reactions: 3 })
+    expect(storage.getUnreadBadge(FORUM, mid(99))).toBeUndefined()
+  })
+})

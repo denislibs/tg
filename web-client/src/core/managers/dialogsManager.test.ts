@@ -214,6 +214,31 @@ describe('dialogsManager: realtime-кадры применяет владеле�
     expect(ops).toHaveLength(0)
   })
 
+  // Ф-6, задача 18: ответ `readMentions`/`readReactions` без темы обнуляет
+  // счётчик диалога (tweb readMentions :9636-9644 → modifyCachedMentionsAndSave).
+  it('clearUnread: обнуляет только названный счётчик; getUnreadBadge их показывает', async () => {
+    const ops: DialogOp[] = []
+    const mgr = newDialogsManager({
+      rest: restStub([]) as never,
+      onDialogOps: (o) => ops.push(...o),
+      loadCache: async () => [{ ...dialog(1, '2026-08-01T00:00:00Z'), unread_reactions_count: 3, unread_mentions_count: 2 }],
+      loadState: async () => ({ pinnedOrders: {} }),
+    })
+    await mgr.fillMirror()
+    expect(mgr.getUnreadBadge(1)).toEqual({ mentions: 2, reactions: 3 })
+    expect(mgr.getUnreadBadge(99)).toBeUndefined()
+    ops.length = 0
+
+    mgr.clearUnread(1, true)
+    expect(mgr.getUnreadBadge(1)).toEqual({ mentions: 2, reactions: 0 })
+    mgr.clearUnread(1, false)
+    expect(mgr.getUnreadBadge(1)).toEqual({ mentions: 0, reactions: 0 })
+    ops.length = 0
+    mgr.clearUnread(1, true) // уже ноль — операции нет
+    mgr.clearUnread(99, false) // неизвестный чат — no-op
+    expect(ops).toHaveLength(0)
+  })
+
   it('applyRemoved публикует remove; диалога нет в кэше — тихий no-op', async () => {
     const ops: DialogOp[] = []
     const mgr = newDialogsManager({

@@ -604,6 +604,16 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
     return { index, moved }
   }
 
+  /**
+   * Сообщения, которого нет в памяти, коснулся кадр — строка с ненулевым «@»
+   * или ❤ перечитывается у сервера (tweb `fixDialogUnreadMentionsIfNoMessage`
+   * без `force`, appMessagesManager.ts:9305-9310): локально счёт уже не вывести.
+   */
+  function fixUnreadIfNoMessage(peerId: number): void {
+    const cur = findDialog(peerId)
+    if (cur && (cur.unread_mentions_count || cur.unread_reactions_count)) reloadConversation(peerId)
+  }
+
   function patchDialog(peerId: number, fields: Partial<Dialog>): void {
     const r = mergeDialog(peerId, fields)
     if (!r) return
@@ -1739,6 +1749,26 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
       }
     },
 
+    /** Счётчики «@» и ❤ строки — то, что tweb `readMessages` читает у
+     *  `getAnyDialog(peerId)` гейтами `hadUnreadMentions`/`hadUnreadReactions`
+     *  (appMessagesManager.ts:9564-9566). Диалога нет — `undefined`. */
+    getUnreadBadge(peerId: number): { mentions: number; reactions: number } | undefined {
+      const cur = findDialog(peerId)
+      return cur ? { mentions: cur.unread_mentions_count, reactions: cur.unread_reactions_count } : undefined
+    },
+
+    /**
+     * Ответ `readMentions`/`readReactions` без темы обнуляет счётчик строки —
+     * `modifyCachedMentionsAndSave({addMention|addReaction: -count})`
+     * (appMessagesManager.ts:9636-9644). Диалога нет или счётчик уже ноль —
+     * ничего.
+     */
+    clearUnread(peerId: number, isReaction: boolean): void {
+      patchDialog(peerId, isReaction ? { unread_reactions_count: 0 } : { unread_mentions_count: 0 })
+    },
+
+    fixUnreadIfNoMessage,
+
     /**
      * Бейдж непрочитанных реакций ±1 — порт tweb `modifyCachedMentionsAndSave`
      * с `addReaction` (appMessagesManager.ts:9330-9363): `true` — у моего
@@ -1747,13 +1777,6 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
      * владелец окна по `recent_reactions[].pFlags.unread` (tweb
      * `onUpdateMessageReactions` :10580-10604), сюда приходит только знак.
      */
-    /** Бейдж ❤ диалога — `dialog.unread_reactions_count`, который tweb
-     *  `readMessages` читает гейтом `hadUnreadReactions` (appMessagesManager.ts
-     *  :9566). Диалога нет — 0. */
-    getUnreadReactionsCount(peerId: number): number {
-      return findDialog(peerId)?.unread_reactions_count ?? 0
-    },
-
     modifyUnreadReactions(peerId: number, add: boolean): void {
       const cur = findDialog(peerId)
       if (!cur) return
@@ -1805,7 +1828,7 @@ export function newDialogsManager({ rest, addChannelState, onDialogOps, loadCach
     applyDeletedMessages(peerId: number, deleted: readonly MyMessage[], missing = 0): void {
       const cur = findDialog(peerId)
       if (!cur) return
-      if (missing && (cur.unread_mentions_count || cur.unread_reactions_count)) reloadConversation(peerId)
+      if (missing) fixUnreadIfNoMessage(peerId)
       let unread = 0
       let unreadMentions = 0
       let unreadReactions = 0

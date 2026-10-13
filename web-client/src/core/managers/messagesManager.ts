@@ -48,6 +48,7 @@ import { newTranslationMethods } from './messages/translationMethods'
 import { newPendingMethods } from './messages/pending'
 import { sendingParamsToWire, type MessageSendingParams } from './messages/sendingParams'
 import { newReactionMethods } from './messages/reactionMethods'
+import type { MessagesCtx } from './messages/ctx'
 // Реакционные типы переехали в reactionMethods — реэкспорт для стабильности
 // импортов (`SavedTagsPanel` и др. берут их отсюда).
 export type { ReactionUser, SavedTag, StarSender, StarReactionInfo, StarReactionResult } from './messages/reactionMethods'
@@ -229,10 +230,14 @@ export interface MessagesDeps {
    *  `missing` — номера, которых в SSOT не было (tweb зовёт для них
    *  `fixDialogUnreadMentionsIfNoMessage`, :14055-14058). */
   onMessagesDeleted?: (peerId: number, deleted: MyMessage[], missing: number) => void
-  /** Бейдж ❤ диалога (`dialogsManager.getUnreadReactionsCount`) — гейт
-   *  `hadUnreadReactions` у `readMessages` (tweb appMessagesManager.ts:9566),
-   *  см. `MessagesCtx`. */
-  getUnreadReactionsCount?: (peerId: number) => number
+  /** Бейджи «@»/❤ диалога или темы, их обнуление, курсор журнала, `read_media` и
+   *  местный кадр прочтения — зависимости `readMessages`/`readMentions`
+   *  (tweb appMessagesManager.ts:9519-9650), см. `MessagesCtx`. */
+  getUnreadBadge?: MessagesCtx['getUnreadBadge']
+  clearUnreadBadge?: MessagesCtx['clearUnreadBadge']
+  applyLocalPts?: MessagesCtx['applyLocalPts']
+  markMediaRead?: MessagesCtx['markMediaRead']
+  applyLocalMediaRead?: MessagesCtx['applyLocalMediaRead']
   /** Порт `apiUpdatesManager.addChannelState`: история канала
    *  (`messages.channelMessages`) несёт pts его журнала — из него заводится
    *  состояние канала, когда диалога нет (tweb appMessagesManager.ts
@@ -244,7 +249,7 @@ export interface MessagesDeps {
   saveDiscussion?: (peerId: number, threadId: number, state: { maxId: number; readMaxId: number; readOutboxMaxId: number; unreadCount: number }) => void
 }
 
-export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium, meReady, isBroadcastChat, getPeer, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers, onMessagesDeleted, getUnreadReactionsCount, addChannelState, saveDiscussion }: MessagesDeps) {
+export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium, meReady, isBroadcastChat, getPeer, broadcast, send, upload, cancelUpload, sendTyping, uploadProgress, peers, onMessagesDeleted, getUnreadBadge, clearUnreadBadge, applyLocalPts, markMediaRead, applyLocalMediaRead, addChannelState, saveDiscussion }: MessagesDeps) {
   // ── Граница маппинга ────────────────────────────────────────────────────────
   // `pFlags.out` производит СЕРВЕР (решение Р7 разбора отменено): после порта у
   // сообщения от лица канала автором на проводе становится сам канал, и прежней
@@ -259,6 +264,11 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
   // Ветки ботфорума и `saved_peer_id` нет — предметов нет (О-3).
   const threadIdOf = (m: MyMessage): number | undefined =>
     isAnyChat(m.peerId) ? getMessageThreadId(m, { isForum: isForum(getPeer?.(m.peerId) as Chat | undefined) }) : undefined
+  // Тема форума, в которой лежит сообщение, — для бейджей «@»/❤ темы (tweb
+  // `readMessages` :9549-9555, `onUpdateReadMessagesContents`): только у форума,
+  // вне него `undefined` — счётчики живут на самом диалоге.
+  const forumThreadIdOf = (m: MyMessage): number | undefined =>
+    isForum(getPeer?.(m.peerId) as Chat | undefined) ? getMessageThreadId(m, { isForum: true }) : undefined
   // Гейт личности (см. `meReady` в MessagesDeps) — ждут его СЕТЕВЫЕ пути.
   // `cacheLive`/`insertPending` синхронны и ждать не могут: живой кадр приходит
   // по уже поднятому WS, а неотправленный бабл заводит сам пользователь — оба
@@ -490,7 +500,7 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
     [...storage.values()].sort((a, b) => a.date - b.date || a.id - b.id)
 
   const ctx = {
-    rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers, getUnreadReactionsCount,
+    rest, patchMsg, getMeId, getMePremium, opWindowsFor, emitOps, readMsg, peers, getUnreadBadge, clearUnreadBadge, applyLocalPts, markMediaRead, applyLocalMediaRead, forumThreadIdOf,
     // Стрелкой: функция объявлена ниже, а зовётся только из ответа ручки.
     applyScheduledUpdates: (r: ScheduledUpdates | undefined) => applyScheduledUpdates(r?.updates, r),
   }
@@ -1859,16 +1869,30 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       })
     },
 
-    // Сколько из номеров кадра прочтения содержимого — ВХОДЯЩИЕ непрочитанные
-    // упоминания в окне. Спрашивается ДО cacheMediaRead: после снятия
-    // media_unread ответить было бы не из чего (tweb
-    // onUpdateReadMessagesContents, appMessagesManager.ts:11009-11013).
-    mentionsUnreadAmong(evt: MediaReadEvt): number {
+    /**
+     * Что кадр прочтения содержимого (`updateReadPeerMessagesContents`) снимает
+     * со счётчиков «@» — цикл по номерам tweb `onUpdateReadMessagesContents`
+     * (appMessagesManager.ts:11009-11079). Спрашивается ДО `cacheMediaRead`:
+     * после снятия `media_unread` ответить было бы не из чего.
+     *
+     *  • `mentionThreads` — по одной записи на каждое ВХОДЯЩЕЕ непрочитанное
+     *    упоминание из окна: тема форума, в которой оно лежит (из самого
+     *    сообщения — наш кадр охватывает несколько тем сразу, у tweb тема одна,
+     *    из `top_msg_id` кадра :10998-10999; отступление), `undefined` вне
+     *    форума;
+     *  • `missing` — сколько номеров в памяти нет: по каждому tweb зовёт
+     *    `fixDialogUnreadMentionsIfNoMessage` (:11075-11079).
+     */
+    mediaReadEffects(evt: MediaReadEvt): { mentionThreads: (number | undefined)[]; missing: number } {
       const peerId = getPeerId(evt.peer)
-      return evt.messages.filter((id) => {
-        const m = readMsg(peerId, generateMessageId(id))
-        return !!m && !m.pFlags.out && isMentionUnread(m)
-      }).length
+      const mentionThreads: (number | undefined)[] = []
+      let missing = 0
+      for (const serverId of evt.messages) {
+        const m = readMsg(peerId, generateMessageId(serverId))
+        if (!m) { ++missing; continue }
+        if (!m.pFlags.out && isMentionUnread(m)) mentionThreads.push(forumThreadIdOf(m))
+      }
+      return { mentionThreads, missing }
     },
 
     /**
@@ -1899,13 +1923,13 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
       return count
     },
 
-    // Голосовое/кружок прослушано → точка media_unread гаснет. Без кэша переоткрытие
-    // чата из кэша возвращало точку (P0-1). matched — тот же гейт, что у patchMsg
-    // (уже прочитанное сообщение не патчим и операцию на него не порождаем).
+    // Содержимое прочитано → точка media_unread гаснет у КАЖДОГО названного
+    // сообщения (голосовое/кружок прослушаны, упоминание прочитано; кадр
+    // readMentions несёт пачку номеров). Без кэша переоткрытие чата из кэша
+    // возвращало точку (P0-1). matched — тот же гейт, что у patchMsg (уже
+    // прочитанное сообщение не патчим и операцию на него не порождаем).
     cacheMediaRead(evt: MediaReadEvt): MessageOp[] {
-      let matched = false
       const peerId = getPeerId(evt.peer)
-      const id = generateMessageId(evt.messages[0])
       // «Ещё не прослушано» — булев флаг СХЕМЫ (`pFlags.media_unread`), а не
       // отдельное поле рядом; «прослушано» значит ОТСУТСТВИЕ ключа.
       const pFlags = (m: MyMessage): MyMessage['pFlags'] => {
@@ -1913,11 +1937,15 @@ export function newMessagesManager({ rest, decryptSecret, getMeId, getMePremium,
         delete next.media_unread
         return next
       }
-      patchMsg(peerId, (m) => m.id === id && !!m.pFlags.media_unread, (m) => { matched = true; return { ...m, pFlags: pFlags(m) } })
-      if (!matched) return []
-      const cur = msgsByChat.get(peerId)?.get(id)
-      const fields = cur ? { pFlags: cur.pFlags } : {}
-      return opWindowsFor(peerId, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields }))
+      return evt.messages.flatMap((serverId): MessageOp[] => {
+        let matched = false
+        const id = generateMessageId(serverId)
+        patchMsg(peerId, (m) => m.id === id && !!m.pFlags.media_unread, (m) => { matched = true; return { ...m, pFlags: pFlags(m) } })
+        if (!matched) return []
+        const cur = msgsByChat.get(peerId)?.get(id)
+        const fields = cur ? { pFlags: cur.pFlags } : {}
+        return opWindowsFor(peerId, id).map((key): MessageOp => ({ op: 'patch', key, msgId: id, fields }))
+      })
     },
 
     // Live location: отправить начальную точку трансляции по REST (нужен msgId,
