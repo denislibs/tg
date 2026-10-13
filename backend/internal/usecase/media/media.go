@@ -40,13 +40,20 @@ func (s *Interactor) SetSquareCropper(c SquareCropper) { s.cropper = c }
 // становится НОВЫМ медиа того же владельца — центральным квадратом, —
 // исходник не трогается (он может быть уже отправлен сообщением).
 // Квадрат, не-картинка и формат, который кроп не берёт, остаются как есть.
-func (s *Interactor) SquareAvatar(ctx context.Context, id int64) (int64, error) {
+//
+// ownerID — владелец, от чьего имени ставится фото: чужой файл не кропается и
+// не тиражируется (ErrNotFound). Это не рубеж защиты (при ошибке вызывающий
+// ставит исходник), защиту даёт проверка владельца до кропа в usecase/auth.
+func (s *Interactor) SquareAvatar(ctx context.Context, ownerID, id int64) (int64, error) {
 	if s.cropper == nil {
 		return id, nil
 	}
 	m, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return id, err
+	}
+	if m.OwnerID != ownerID {
+		return id, domain.ErrNotFound
 	}
 	if !strings.HasPrefix(m.Mime, "image/") || (m.Width > 0 && m.Width == m.Height) {
 		return id, nil

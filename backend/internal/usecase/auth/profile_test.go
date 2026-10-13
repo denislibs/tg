@@ -50,22 +50,41 @@ func (p *fakePreviewer) StrippedPreview(_ context.Context, mediaID int64) ([]byt
 	return p.preview, nil
 }
 
-// SetAvatar с подключённым превьюером кладёт stripped-превью аватарки в
-// профиль; без превьюера (или для не-медийного url) аватарка ставится без
-// превью — мягкая деградация.
-func TestSetAvatarStrippedPreview(t *testing.T) {
+// fakeMediaReader — MediaReader: строки медиа в памяти (владелец, mime).
+type fakeMediaReader struct{ m map[int64]domain.Media }
+
+func (f *fakeMediaReader) GetByID(_ context.Context, id int64) (domain.Media, error) {
+	if m, ok := f.m[id]; ok {
+		return m, nil
+	}
+	return domain.Media{}, domain.ErrNotFound
+}
+
+// ownImages подключает MediaReader с image/jpeg-файлами owner под указанными id.
+func ownImages(i *Interactor, owner int64, ids ...int64) {
+	m := map[int64]domain.Media{}
+	for _, id := range ids {
+		m[id] = domain.Media{ID: id, OwnerID: owner, Mime: "image/jpeg"}
+	}
+	i.SetMediaReader(&fakeMediaReader{m: m})
+}
+
+// AddProfilePhoto с подключённым превьюером кладёт stripped-превью аватарки в
+// профиль; без превьюера аватарка ставится без превью — мягкая деградация.
+func TestAddProfilePhotoStrippedPreview(t *testing.T) {
 	ctx := context.Background()
 	i, _, _, _ := newInteractor()
 	id := seedUser(t, i, "+79990000031")
+	ownImages(i, id, 42)
 
 	stripped := []byte{0xff, 0xd8, 0xff, 0xe0, 5}
 	pv := &fakePreviewer{preview: stripped}
 	i.SetAvatarPreviewer(pv)
 
-	u, err := i.SetAvatar(ctx, id, 42)
-	if err != nil {
-		t.Fatalf("SetAvatar: %v", err)
+	if _, err := i.AddProfilePhoto(ctx, id, 42, nil); err != nil {
+		t.Fatalf("AddProfilePhoto: %v", err)
 	}
+	u, _ := i.GetUser(ctx, id)
 	if pv.gotID != 42 {
 		t.Fatalf("previewer got media id %d, want 42", pv.gotID)
 	}
@@ -76,10 +95,11 @@ func TestSetAvatarStrippedPreview(t *testing.T) {
 	// Без превьюера аватарка ставится, превью пустое (старое поведение не ломается).
 	i2, _, _, _ := newInteractor()
 	id2 := seedUser(t, i2, "+79990000032")
-	u2, err := i2.SetAvatar(ctx, id2, 43)
-	if err != nil {
-		t.Fatalf("SetAvatar without previewer: %v", err)
+	ownImages(i2, id2, 43)
+	if _, err := i2.AddProfilePhoto(ctx, id2, 43, nil); err != nil {
+		t.Fatalf("AddProfilePhoto without previewer: %v", err)
 	}
+	u2, _ := i2.GetUser(ctx, id2)
 	if u2.PhotoID == nil || *u2.PhotoID != 43 || u2.PhotoPreview != nil {
 		t.Fatalf("without previewer: photo=%v preview=%v", u2.PhotoID, u2.PhotoPreview)
 	}
@@ -88,11 +108,15 @@ func TestSetAvatarStrippedPreview(t *testing.T) {
 // fakeSquarer — AvatarSquarer: квадрат для неквадратного медиа лежит под
 // другим id (map), остальные id — как есть; err — отказ кропа.
 type fakeSquarer struct {
-	to  map[int64]int64
-	err error
+	to        map[int64]int64
+	err       error
+	calls     int
+	lastOwner int64
 }
 
-func (f *fakeSquarer) SquareAvatar(_ context.Context, mediaID int64) (int64, error) {
+func (f *fakeSquarer) SquareAvatar(_ context.Context, ownerID, mediaID int64) (int64, error) {
+	f.calls++
+	f.lastOwner = ownerID
 	if f.err != nil {
 		return mediaID, f.err
 	}
@@ -110,19 +134,21 @@ func TestAvatarIsSquared(t *testing.T) {
 	ctx := context.Background()
 	i, _, _, _ := newInteractor()
 	id := seedUser(t, i, "+79990000033")
+	ownImages(i, id, 42, 44, 45)
 	pv := &fakePreviewer{preview: []byte{1}}
 	i.SetAvatarPreviewer(pv)
-	i.SetAvatarSquarer(&fakeSquarer{to: map[int64]int64{42: 99, 44: 101}})
+	sq := &fakeSquarer{to: map[int64]int64{42: 99, 44: 101}}
+	i.SetAvatarSquarer(sq)
 
-	u, err := i.SetAvatar(ctx, id, 42)
+	ph, err := i.AddProfilePhoto(ctx, id, 42, nil)
 	if err != nil {
-		t.Fatalf("SetAvatar: %v", err)
+		t.Fatalf("AddProfilePhoto: %v", err)
 	}
-	if u.PhotoID == nil || *u.PhotoID != 99 || pv.gotID != 99 {
-		t.Fatalf("SetAvatar: photo=%v preview for %d; want квадрат 99", u.PhotoID, pv.gotID)
+	if ph.MediaID != 99 || pv.gotID != 99 || sq.lastOwner != id {
+		t.Fatalf("AddProfilePhoto: media=%d preview for %d owner=%d; want квадрат 99 владельца %d", ph.MediaID, pv.gotID, sq.lastOwner, id)
 	}
 
-	ph, err := i.AddProfilePhoto(ctx, id, 44, nil)
+	ph, err = i.AddProfilePhoto(ctx, id, 44, nil)
 	if err != nil {
 		t.Fatalf("AddProfilePhoto: %v", err)
 	}
@@ -135,8 +161,88 @@ func TestAvatarIsSquared(t *testing.T) {
 
 	// Отказ кропа — не повод не поставить фото: ставится исходник.
 	i.SetAvatarSquarer(&fakeSquarer{err: errors.New("minio down")})
-	if u, err := i.SetAvatar(ctx, id, 45); err != nil || u.PhotoID == nil || *u.PhotoID != 45 {
-		t.Fatalf("отказ кропа: photo=%v err=%v; want исходник 45", u.PhotoID, err)
+	if _, err := i.AddProfilePhoto(ctx, id, 45, nil); err != nil {
+		t.Fatalf("отказ кропа: %v", err)
+	}
+	if u, _ := i.GetUser(ctx, id); u.PhotoID == nil || *u.PhotoID != 45 {
+		t.Fatalf("отказ кропа: photo=%v; want исходник 45", u.PhotoID)
+	}
+}
+
+// F7-A (MC-01): фото профиля ставится только своим файлом — иначе чужой
+// media_id открывался бы всем по правилу приватности подложившего.
+func TestAddProfilePhoto_RejectsForeignMedia(t *testing.T) {
+	ctx := context.Background()
+	i, _, _, _ := newInteractor()
+	me := seedUser(t, i, "+79990000051")
+	other := seedUser(t, i, "+79990000052")
+	sq := &fakeSquarer{}
+	i.SetAvatarSquarer(sq)
+	i.SetMediaReader(&fakeMediaReader{m: map[int64]domain.Media{
+		10: {ID: 10, OwnerID: other, Mime: "image/jpeg"},
+		11: {ID: 11, OwnerID: me, Mime: "image/jpeg"},
+		12: {ID: 12, OwnerID: me, Mime: "application/pdf"},
+		13: {ID: 13, OwnerID: other, Mime: "video/mp4"},
+		14: {ID: 14, OwnerID: me, Mime: "video/mp4"},
+	}})
+
+	if _, err := i.AddProfilePhoto(ctx, me, 10, nil); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("чужое фото: err=%v; want ErrNotFound", err)
+	}
+	if sq.calls != 0 {
+		t.Fatalf("кроп звался %d раз для чужого фото", sq.calls)
+	}
+	if _, err := i.AddProfilePhoto(ctx, me, 12, nil); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("не картинка: err=%v; want ErrNotFound", err)
+	}
+	v := int64(13)
+	if _, err := i.AddProfilePhoto(ctx, me, 11, &v); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("чужое видео: err=%v; want ErrNotFound", err)
+	}
+	if _, err := i.AddProfilePhoto(ctx, me, 999, nil); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("нет файла: err=%v; want ErrNotFound", err)
+	}
+	if u, _ := i.GetUser(ctx, me); u.PhotoID != nil {
+		t.Fatalf("после отказов аватарка = %v; want nil", *u.PhotoID)
+	}
+	v = 14
+	if _, err := i.AddProfilePhoto(ctx, me, 11, &v); err != nil {
+		t.Fatalf("своё фото+видео: %v", err)
+	}
+}
+
+// Не подключённый MediaReader — не тихий 404, а ошибка проводки (500 в ручке).
+func TestAddProfilePhoto_UnwiredMediaReader(t *testing.T) {
+	i, _, _, _ := newInteractor()
+	me := seedUser(t, i, "+79990000053")
+	_, err := i.AddProfilePhoto(context.Background(), me, 1, nil)
+	if err == nil || errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("err=%v; want ошибку проводки, не ErrNotFound", err)
+	}
+}
+
+// Принятое предложение фото: файл принадлежит предложившему, не принимающему.
+func TestAddSuggestedProfilePhoto(t *testing.T) {
+	ctx := context.Background()
+	i, _, _, _ := newInteractor()
+	me := seedUser(t, i, "+79990000054")
+	suggester := seedUser(t, i, "+79990000055")
+	stranger := seedUser(t, i, "+79990000056")
+	sq := &fakeSquarer{}
+	i.SetAvatarSquarer(sq)
+	i.SetMediaReader(&fakeMediaReader{m: map[int64]domain.Media{
+		20: {ID: 20, OwnerID: suggester, Mime: "image/jpeg"},
+		21: {ID: 21, OwnerID: stranger, Mime: "image/jpeg"},
+	}})
+	if _, err := i.AddSuggestedProfilePhoto(ctx, me, suggester, 21); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("файл не предложившего: err=%v; want ErrNotFound", err)
+	}
+	ph, err := i.AddSuggestedProfilePhoto(ctx, me, suggester, 20)
+	if err != nil || ph.MediaID != 20 {
+		t.Fatalf("файл предложившего: ph=%+v err=%v", ph, err)
+	}
+	if sq.lastOwner != suggester {
+		t.Fatalf("кроп с владельцем %d; want предложивший %d", sq.lastOwner, suggester)
 	}
 }
 
